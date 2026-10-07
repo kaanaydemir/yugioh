@@ -14,7 +14,8 @@
 //   --start MS         game time to advance before the first film frame (default 0)
 //   --cols C           contact sheet columns (default 4)
 //   --clip x,y,w,h     crop to a region in GAME pixels (640×360 space)
-//   --timeout MS       ready timeout (default 30000)
+//   --timeout MS       ready timeout (default 30000); page loads wait at least 120 s
+//   console.log / console.error output from the page (and from --eval) is printed
 //
 // Prints page errors / console errors. Exit code 1 if the page threw.
 
@@ -77,8 +78,13 @@ let failed = false;
 try {
   const page = await browser.newPage({ viewport: { width: 640 * scale, height: 360 * scale }, deviceScaleFactor: 1 });
   const logs = [];
+  const navTimeout = Number(args.timeout ?? 30000);
+  page.setDefaultNavigationTimeout(Math.max(navTimeout, 120000));
+  page.setDefaultTimeout(Math.max(navTimeout, 120000));
   page.on('console', (m) => {
-    if (m.type() === 'error' || m.type() === 'warning') logs.push(`[console.${m.type()}] ${m.text()}`);
+    const t = m.text();
+    if (m.type() === 'error' || m.type() === 'warning') logs.push(`[console.${m.type()}] ${t}`);
+    else if (m.type() === 'log' && !t.startsWith('%c')) logs.push(`[console.log] ${t}`);
   });
   page.on('pageerror', (e) => {
     failed = true;
