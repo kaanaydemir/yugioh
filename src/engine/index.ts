@@ -53,3 +53,11 @@ export function cardIdOf(state: GameState, uid: Uid): CardId {
 export function locate(state: GameState, uid: Uid): ZoneRef | null {
   return impl.locate(state, uid);
 }
+
+// --- Additive exports (engine agent) ---------------------------------------------------
+/** Greedy CPU player: always returns a legal action for actingPlayer(state). */
+export { chooseAction } from './bot';
+/** Short Turkish battle-log line for an event (null = not logged), plus name inflection helpers. */
+export { describeEvent, describeEvents, describePending, cardName, playerName, inflect } from './describe';
+/** True if `action` would be accepted by apply() right now. */
+export { isLegal } from './rules';
