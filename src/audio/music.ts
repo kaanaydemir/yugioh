@@ -1,17 +1,24 @@
 // Procedural chiptune music: a lookahead scheduler (setInterval pumps notes ~150 ms ahead on
 // the audio clock, so timing is sample-accurate and loops are seamless) and three tracks:
 //
-//   title   — D minor, 84 bpm. Echoing 12.5 % pulse arpeggios over a slow pad, a heartbeat
-//             kick and reverse swells; the second pass adds an FM bell melody.
-//   duel    — E minor, 136 bpm. Pulse bass, kit, arps and pad. setIntensity() fades in a
-//             "hot" layer: syncopated kicks, 16th hats, snare rolls, crashes, a galloping saw
-//             bass and the heroic lead melody.
-//   victory — 4-bar brass fanfare with timpani, then a calm C major loop.
+//   title   — D minor, 84 bpm, 46 s loop. Echoing 12.5 % pulse arpeggios over a slow pad, a
+//             heartbeat kick and reverse swells; the second pass adds an FM bell melody.
+//   duel    — E minor, 136 bpm, 56 s loop in two 16-bar sections (A: the theme, B: a soaring
+//             answer ending on the Neapolitan F → B → Em). Pulse bass, kit, arps and pad.
+//             setIntensity() glides in a "hot" layer: syncopated kicks, 16th hats, snare
+//             rolls, crashes, a galloping saw bass and the heroic lead (doubled in late B); a
+//             jump up (≥ +0.3 to ≥ 0.5, e.g. into the battle phase) adds a drum fill + crash on
+//             the next downbeat.
+//   victory — 4-bar brass fanfare with timpani, then a calm C major loop. Started right after
+//             the victory sting (sfx), it waits for the sting and skips its own fanfare.
 //
-// The same scheduler renders into an OfflineAudioContext for ?dev=audio (renderMusic()).
+// Mixing: strips → buses (main / hot / cool) whose echo and reverb sends are scaled post-bus,
+// so intensity and track fades apply to the wet signal too. Big sfx duck the music bus.
+// The same scheduler renders into an OfflineAudioContext for ?dev=audio (renderMusic(),
+// scheduleMusic() — also used by renderScene() in sfx.ts).
 
 import type { MusicTrack } from './sfx';
-import { audio, buildChain, peekLive, rng, safe, trim, whenRunning, type Chain } from './engine';
+import { applyDuck, audio, buildChain, peekLive, rng, safe, trim, whenRunning, type Chain } from './engine';
 import { midiHz, perc, Voice, type Pt } from './synth';
 
 // ------------------------------------------------------------------ notation
@@ -48,16 +55,92 @@ interface StripOpts {
   verb?: number;
 }
 
-/** Per-track routing: every part has a strip → (main | hot) bus, with echo / reverb sends. */
+/** A gain that glides (setTargetAtTime) and remembers its curve, so its value at any time is known. */
+class Glide {
+  private from: number;
+  private to: number;
+  private t0 = 0;
+  private tc = 0.01;
+  constructor(
+    readonly params: readonly AudioParam[],
+    v: number,
+  ) {
+    this.from = this.to = v;
+    for (const p of params) p.value = v;
+  }
+  valueAt(t: number): number {
+    if (t <= this.t0) return this.from;
+    return this.to + (this.from - this.to) * Math.exp(-(t - this.t0) / this.tc);
+  }
+  set(v: number, at: number, tc: number): void {
+    const cur = this.valueAt(at);
+    for (const p of this.params) {
+      p.cancelScheduledValues(at);
+      p.setValueAtTime(cur, at);
+      p.setTargetAtTime(v, at, tc);
+    }
+    this.from = cur;
+    this.to = v;
+    this.t0 = at;
+    this.tc = Math.max(0.001, tc);
+  }
+}
+
+/** A gain that moves in linear ramps and remembers them (track fades). */
+class Ramp {
+  private a: number;
+  private b: number;
+  private ta = 0;
+  private tb = 0;
+  constructor(
+    readonly params: readonly AudioParam[],
+    v: number,
+  ) {
+    this.a = this.b = v;
+    for (const p of params) p.value = v;
+  }
+  valueAt(t: number): number {
+    if (t <= this.ta) return this.a;
+    if (t >= this.tb) return this.b;
+    return this.a + ((this.b - this.a) * (t - this.ta)) / (this.tb - this.ta);
+  }
+  to(v: number, at: number, secs: number): void {
+    const cur = this.valueAt(at);
+    const end = at + Math.max(0.005, secs);
+    for (const p of this.params) {
+      p.cancelScheduledValues(at);
+      p.setValueAtTime(cur, at);
+      p.linearRampToValueAtTime(v, end);
+    }
+    this.a = cur;
+    this.b = v;
+    this.ta = at;
+    this.tb = end;
+  }
+}
+
+/** A bus: dry signal plus its echo / reverb send collectors, all scaled by the same gain. */
+interface Bus {
+  dry: GainNode;
+  echo: GainNode;
+  verb: GainNode;
+}
+
+/**
+ * Per-track routing: every part has a strip → bus (main | hot | cool). Sends are taken per strip
+ * but scaled post-bus, so a quiet hot layer also has quiet echoes and reverb, and a track fade
+ * (fader) also fades its reverb send.
+ */
 class Mix {
   readonly ctx: BaseAudioContext;
-  readonly fader: GainNode;
-  readonly hot: GainNode;
+  /** Track fade (dry + echo, and the reverb send). */
+  readonly fader: Ramp;
+  /** Intensity layer: gain = intensity. */
+  readonly hot: Glide;
   /** Parts that step back when the hot layer comes in (gain = 1 − 0.45·intensity). */
-  readonly cool: GainNode;
-  private readonly main: GainNode;
-  private readonly echoIn: GainNode;
-  private readonly verb: GainNode;
+  readonly cool: Glide;
+  private readonly buses: Record<'main' | 'hot' | 'cool', Bus>;
+  private readonly nodes: AudioNode[] = [];
   readonly rnd = rng(77);
   /** Live mode: per-note output nodes waiting to be disconnected once their voice has ended. */
   readonly pending: Array<{ out: GainNode; v: Voice }> = [];
@@ -68,55 +151,69 @@ class Mix {
     readonly live = false,
   ) {
     const ctx = (this.ctx = chain.ctx);
-    this.fader = ctx.createGain();
-    this.fader.connect(chain.music);
-    this.main = ctx.createGain();
-    this.main.connect(this.fader);
-    this.hot = ctx.createGain();
-    this.hot.gain.value = 0;
-    this.hot.connect(this.fader);
-    this.cool = ctx.createGain();
-    this.cool.connect(this.main);
+    const g = (v = 1): GainNode => {
+      const n = ctx.createGain();
+      n.gain.value = v;
+      this.nodes.push(n);
+      return n;
+    };
+    const fader = g();
+    fader.connect(chain.music);
     // tempo-synced echo (dotted 8th), darkened each repeat
-    this.echoIn = ctx.createGain();
+    const echoIn = g();
     const dl = ctx.createDelay(2);
     dl.delayTime.value = echoTime;
-    const fb = ctx.createGain();
-    fb.gain.value = 0.38;
+    const fb = g(0.38);
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
     lp.frequency.value = 2800;
-    this.echoIn.connect(dl).connect(lp).connect(fb).connect(dl);
-    const wet = ctx.createGain();
-    wet.gain.value = 0.6;
-    lp.connect(wet).connect(this.fader);
-    this.verb = ctx.createGain();
-    this.verb.gain.value = 0.8;
-    this.verb.connect(chain.send);
+    this.nodes.push(dl, lp);
+    echoIn.connect(dl).connect(lp).connect(fb).connect(dl);
+    lp.connect(g(0.6)).connect(fader);
+    const verbFader = g();
+    verbFader.connect(g(0.8)).connect(chain.send);
+    this.fader = new Ramp([fader.gain, verbFader.gain], 1);
+    const bus = (to: Bus): Bus => {
+      const b = { dry: g(), echo: g(), verb: g() };
+      b.dry.connect(to.dry);
+      b.echo.connect(to.echo);
+      b.verb.connect(to.verb);
+      return b;
+    };
+    const out: Bus = { dry: fader, echo: echoIn, verb: verbFader };
+    const main = bus(out);
+    const hot = bus(out);
+    const cool = bus(main);
+    this.buses = { main, hot, cool };
+    this.hot = new Glide([hot.dry.gain, hot.echo.gain, hot.verb.gain], 0);
+    this.cool = new Glide([cool.dry.gain, cool.echo.gain, cool.verb.gain], 1);
   }
 
   strip(o: StripOpts, bus: 'main' | 'hot' | 'cool' = 'main'): GainNode {
     const ctx = this.ctx;
+    const to = this.buses[bus];
     const g = ctx.createGain();
     g.gain.value = o.level;
+    this.nodes.push(g);
     let tail: AudioNode = g;
     const c = ctx as BaseAudioContext & { createStereoPanner?: () => StereoPannerNode };
     if (o.pan && c.createStereoPanner) {
       const p = c.createStereoPanner();
       p.pan.value = o.pan;
       g.connect(p);
+      this.nodes.push(p);
       tail = p;
     }
-    tail.connect(bus === 'hot' ? this.hot : bus === 'cool' ? this.cool : this.main);
-    if (o.echo) {
+    tail.connect(to.dry);
+    for (const [amt, dest] of [
+      [o.echo, to.echo],
+      [o.verb, to.verb],
+    ] as const) {
+      if (!amt) continue;
       const s = ctx.createGain();
-      s.gain.value = o.echo;
-      tail.connect(s).connect(this.echoIn);
-    }
-    if (o.verb) {
-      const s = ctx.createGain();
-      s.gain.value = o.verb;
-      tail.connect(s).connect(this.verb);
+      s.gain.value = amt;
+      this.nodes.push(s);
+      tail.connect(s).connect(dest);
     }
     return g;
   }
@@ -137,6 +234,12 @@ class Mix {
       const ms = (v.t0 + v.end - now + 0.6) * 1000;
       setTimeout(() => safe(() => out.disconnect()), Math.max(50, ms));
     }
+  }
+
+  /** Tear the whole track graph down (after its fade-out). */
+  dispose(): void {
+    for (const n of this.nodes) safe(() => n.disconnect());
+    this.nodes.length = 0;
   }
 }
 
@@ -229,7 +332,8 @@ const ins = {
     const v = mx.voice(t, to);
     const f = midiHz(m);
     const lp = v.filt('lowpass', [[0, 500], [0.04, 3600, 'e'], [Math.max(0.06, dur), 1700, 'e']], 1.3);
-    const env: Pt[] = [[0, 0], [0.02, 0.1 * vel], [Math.max(0.03, dur * 0.8), 0.08 * vel], [dur + 0.14, 0.0001, 'e']];
+    // blat, settle, hold full to the end of the note, then a short release
+    const env: Pt[] = [[0, 0], [0.02, 0.13 * vel], [Math.min(0.12, dur * 0.5), 0.105 * vel], [Math.max(0.13, dur), 0.095 * vel], [Math.max(0.13, dur) + 0.12, 0.0001, 'e']];
     for (const det of [-7, 7]) {
       const o = v.tone('sawtooth', f, { g: env, to: lp, detune: det });
       if (dur > 0.3) v.lfo(o.osc.detune, 5.2, [[0, 0], [0.25, 0], [0.5, 12]], { d: dur + 0.15 });
@@ -250,10 +354,17 @@ interface Track {
   setup(mx: Mix): Record<string, GainNode>;
   /** Schedule song position `pos` at time t (sd = step duration). */
   step(mx: Mix, s: Record<string, GainNode>, pos: number, t: number, sd: number, hotOn: boolean): void;
+  /**
+   * Optional drum fill played when the intensity jumps up (e.g. entering the battle phase):
+   * called for k = 0..n-1 on the n 16ths before the next downbeat, then once with k = n on it.
+   */
+  fill?(mx: Mix, s: Record<string, GainNode>, t: number, k: number, n: number): void;
 }
 
-// ---- duel (E minor)
+// ---- duel (E minor). 32 bars: A (Em C D B · Em C Am B, the main theme) then B (Am Em C D ·
+// Am Em F B — a soaring answer that ends on the Neapolitan F → B → back to Em at the loop seam).
 const DUEL_CHORDS = [
+  // A
   { root: 40, tones: [64, 67, 71] }, // Em
   { root: 36, tones: [60, 64, 67] }, // C
   { root: 38, tones: [62, 66, 69] }, // D
@@ -262,9 +373,19 @@ const DUEL_CHORDS = [
   { root: 36, tones: [60, 64, 67] }, // C
   { root: 33, tones: [57, 60, 64] }, // Am
   { root: 35, tones: [59, 63, 66] }, // B
+  // B
+  { root: 33, tones: [57, 60, 64] }, // Am
+  { root: 40, tones: [59, 64, 67] }, // Em (B in the bass of the arp)
+  { root: 36, tones: [60, 64, 67] }, // C
+  { root: 38, tones: [62, 66, 69] }, // D
+  { root: 33, tones: [57, 60, 64] }, // Am
+  { root: 40, tones: [59, 64, 67] }, // Em
+  { root: 41, tones: [60, 65, 69] }, // F (Neapolitan)
+  { root: 35, tones: [59, 63, 66] }, // B
 ];
 const DUEL_LEAD = melody(
   [
+    // A — the theme
     'E5:6 F#5:2 G5:4 B5:4', 'A5:6 G5:2 F#5:4 E5:4',
     'G5:6 E5:2 C5:4 E5:4', 'G5:8 A5:4 G5:4',
     'F#5:6 D5:2 A4:4 D5:4', 'F#5:4 A5:4 D6:8',
@@ -273,17 +394,28 @@ const DUEL_LEAD = melody(
     'C6:6 B5:2 G5:4 E5:4', 'G5:8 r:4 E5:4',
     'A5:6 B5:2 C6:4 B5:4', 'A5:4 G5:4 E5:8',
     'F#5:6 G5:2 A5:4 B5:4', 'D#5:8 F#5:4 B4:4',
+    // B — the answer (higher, longer notes; doubled an octave down in its second half)
+    'C6:8 B5:4 A5:4', 'E5:12 A5:4',
+    'B5:8 A5:4 G5:4', 'E5:12 G5:4',
+    'A5:6 G5:2 E5:4 G5:4', 'C6:8 B5:4 C6:4',
+    'D6:6 C6:2 A5:4 F#5:4', 'A5:8 B5:4 D6:4',
+    'E6:8 D6:4 C6:4', 'A5:12 C6:4',
+    'B5:6 A5:2 G5:4 B5:4', 'G5:4 F#5:4 E5:8',
+    'F5:6 G5:2 A5:4 C6:4', 'F6:8 E6:4 C6:4',
+    'D#6:6 C#6:2 B5:4 A5:4', 'B5:8 A5:4 F#5:2 D#5:2',
   ].join(' '),
 );
 const BASS_PAT = [0, 0, 12, 0, 0, 12, 0, 7];
 const BASS_PAT2 = [0, 12, 0, 7, 12, 0, 7, 12];
+const BASS_PAT3 = [0, 0, 7, 12, 0, 7, 12, 7];
 const ARP_PAT = [0, 1, 2, 3, 2, 1, 0, 1, 0, 1, 2, 3, 2, 1, 2, 3];
 const ARP_PAT2 = [0, 2, 1, 3, 0, 2, 1, 3, 2, 1, 0, 2, 3, 2, 1, 0];
+const ARP_PAT3 = [3, 2, 1, 0, 1, 2, 3, 2, 3, 1, 2, 0, 1, 2, 3, 1];
 
 const duel: Track = {
   bpm: 136,
   intro: 0,
-  loop: 256,
+  loop: 512,
   hot: true,
   setup: (mx) => ({
     drums: mx.strip({ level: 0.55, verb: 0.08 }),
@@ -295,24 +427,28 @@ const duel: Track = {
     hhats: mx.strip({ level: 0.48, pan: -0.15 }, 'hot'),
     hbass: mx.strip({ level: 0.55 }, 'hot'),
     lead: mx.strip({ level: 0.66, pan: 0.08, echo: 0.22, verb: 0.25 }, 'hot'),
+    lead2: mx.strip({ level: 0.4, pan: -0.12, echo: 0.15, verb: 0.3 }, 'hot'),
   }),
   step(mx, s, pos, t, sd, hotOn) {
     const bar = Math.floor(pos / 16);
     const b = pos % 16;
-    const ch = DUEL_CHORDS[Math.floor(bar / 2) % 8];
-    const B = bar >= 8; // second half: varied bass / arp figures, ghost snares
+    const ch = DUEL_CHORDS[Math.floor(bar / 2) % 16];
+    const sectB = bar >= 16;
+    const half2 = bar % 16 >= 8; // second half of a section: varied bass / arp figures, ghost snares
     // base kit
     if (b === 0 || b === 8 || (b === 10 && bar % 2 === 1)) ins.kick(mx, s.drums, t, b === 0 ? 1 : 0.85);
+    if (sectB && b === 13 && bar % 4 === 3) ins.kick(mx, s.drums, t, 0.6);
     if (b === 4 || b === 12) ins.snare(mx, s.drums, t, 0.8);
-    if (B && (b === 7 || b === 15) && bar % 2 === 1) ins.snare(mx, s.drums, t, 0.22);
+    if (half2 && (b === 7 || b === 15) && bar % 2 === 1) ins.snare(mx, s.drums, t, 0.22);
     if (b % 2 === 0) ins.hat(mx, s.hats, t, b % 4 === 2 ? 0.55 : 0.3);
     // base bass: driving 8ths with octave pops
-    if (b % 2 === 0) ins.bass(mx, s.bass, t, ch.root + (B ? BASS_PAT2 : BASS_PAT)[b / 2], sd * 1.5, b === 0 ? 1 : 0.8);
+    const bp = sectB ? (half2 ? BASS_PAT2 : BASS_PAT3) : half2 ? BASS_PAT2 : BASS_PAT;
+    if (b % 2 === 0) ins.bass(mx, s.bass, t, ch.root + bp[b / 2], sd * 1.5, b === 0 ? 1 : 0.8);
     // arpeggio
-    const idx = (B ? ARP_PAT2 : ARP_PAT)[b];
+    const idx = (sectB ? ARP_PAT3 : half2 ? ARP_PAT2 : ARP_PAT)[b];
     ins.arp(mx, s.arp, t, (idx === 3 ? ch.tones[0] + 12 : ch.tones[idx]) + 12, b % 4 === 0 ? 0.9 : 0.6, 0.12);
-    // pad
-    if (b === 0 && bar % 2 === 0) ins.pad(mx, s.pad, t, ch.tones.map((m) => m - 12), sd * 32, 0.9, 1600);
+    // pad (brighter in the B section)
+    if (b === 0 && bar % 2 === 0) ins.pad(mx, s.pad, t, ch.tones.map((m) => m - 12), sd * 32, 0.9, sectB ? 2000 : 1600);
     if (!hotOn) return;
     // hot layer
     if (b === 6 || b === 11 || b === 14) ins.kick(mx, s.hdrums, t, 0.75);
@@ -323,7 +459,21 @@ const duel: Track = {
     if (bar % 8 === 0 && b === 0) ins.crash(mx, s.hdrums, t, 1);
     if (b % 4 !== 1) ins.sawBass(mx, s.hbass, t, ch.root + (b % 8 === 6 ? 12 : 0), sd * 0.85, b % 4 === 0 ? 1 : 0.7);
     const n = DUEL_LEAD.get(pos);
-    if (n) ins.lead(mx, s.lead, t, n.m, n.len * sd * 0.92, 1);
+    if (n) {
+      ins.lead(mx, s.lead, t, n.m, n.len * sd * 0.92, 1);
+      if (sectB && half2) ins.lead(mx, s.lead2, t, n.m - 12, n.len * sd * 0.92, 0.8);
+    }
+  },
+  fill(mx, s, t, k, n) {
+    // k = 0..n-1: a 16th snare roll rising into the downbeat; k = n: crash + kick on the downbeat
+    if (k < n) {
+      ins.snare(mx, s.drums, t, 0.35 + (0.5 * k) / Math.max(1, n - 1));
+      if (k === n - 2) ins.tom(mx, s.drums, t, 110, 0.6);
+      if (k === n - 1) ins.tom(mx, s.drums, t, 82, 0.7);
+    } else {
+      ins.crash(mx, s.drums, t, 0.95);
+      ins.kick(mx, s.drums, t, 1);
+    }
   },
 };
 
@@ -422,8 +572,8 @@ const victory: Track = {
   loop: 128,
   hot: false,
   setup: (mx) => ({
-    brass: mx.strip({ level: 0.75, verb: 0.35, echo: 0.1 }),
-    chords: mx.strip({ level: 0.5, verb: 0.4 }),
+    brass: mx.strip({ level: 0.9, verb: 0.35, echo: 0.1 }),
+    chords: mx.strip({ level: 0.55, verb: 0.4 }),
     drums: mx.strip({ level: 0.6, verb: 0.3 }),
     sparkle: mx.strip({ level: 0.5, pan: 0.25, echo: 0.3, verb: 0.5 }),
     arp: mx.strip({ level: 0.45, pan: -0.2, echo: 0.3, verb: 0.3 }),
@@ -463,7 +613,7 @@ export const TRACKS: Record<MusicTrack, Track> = { title, duel, victory };
 
 /** Melodic lines and harmony (step-keyed), exported for the ?dev=audio&page=score piano roll. */
 export const SCORE = {
-  duelLead: { notes: DUEL_LEAD, steps: 256, chords: DUEL_CHORDS.map((c) => c.root), chordSteps: 32 },
+  duelLead: { notes: DUEL_LEAD, steps: 512, chords: DUEL_CHORDS.map((c) => c.root), chordSteps: 32 },
   titleBell: { notes: TITLE_BELL, steps: 128, chords: TITLE_CHORDS.map((c) => c.root), chordSteps: 32 },
   victoryFanfare: { notes: VIC_FANFARE, steps: 64, chords: [36, 41, 38, 36], chordSteps: 16 },
   victoryBell: { notes: VIC_BELL, steps: 128, chords: VIC_LOOP.map((c) => c.root), chordSteps: 32 },
@@ -475,10 +625,17 @@ class Player {
   readonly mx: Mix;
   readonly strips: Record<string, GainNode>;
   readonly sd: number;
+  /** Context time of absolute step 0 (may be a negative offset when starting mid-song). */
+  readonly t0: number;
+  /** The absolute step the track started on (≥ intro: the intro was skipped). */
+  readonly startStep: number;
   step = 0;
   next: number;
   intensity = 0;
   hotUntil = 0;
+  /** Pending drum fill: absolute step of the downbeat it lands on (−1 = none) and its length. */
+  fillAt = -1;
+  fillLen = 0;
 
   constructor(
     chain: Chain,
@@ -493,6 +650,8 @@ class Player {
     this.strips = track.setup(this.mx);
     this.next = start;
     this.step = startStep;
+    this.startStep = startStep;
+    this.t0 = start - startStep * this.sd;
   }
 
   /** Song position of an absolute step count (intro once, then the loop forever). */
@@ -501,31 +660,62 @@ class Player {
     return step < intro ? step : intro + ((step - intro) % loop);
   }
 
+  /** True while the one-shot intro (the victory fanfare) is playing at context time t (false if it was skipped). */
+  inIntro(t: number): boolean {
+    return this.startStep < this.track.intro && t < this.t0 + this.track.intro * this.sd;
+  }
+
   /** Schedule every step that starts before `until`. */
   pump(until: number): void {
     while (this.next < until) {
       const hotOn = this.track.hot && (this.intensity > 0.001 || this.next < this.hotUntil);
       this.track.step(this.mx, this.strips, this.pos(this.step), this.next, this.sd, hotOn);
+      if (this.fillAt >= 0 && this.track.fill) {
+        const k = this.step - (this.fillAt - this.fillLen);
+        if (k >= 0 && k <= this.fillLen) this.track.fill(this.mx, this.strips, this.next, k, this.fillLen);
+        if (k >= this.fillLen) this.fillAt = -1;
+      }
       this.step++;
       this.next += this.sd;
     }
     if (this.mx.live) this.mx.reap();
   }
 
-  setIntensity(v: number, now: number): void {
+  /** Queue a short snare/tom fill into the next downbeat (2–4 sixteenths, never cut mid-roll). */
+  queueFill(): void {
+    if (!this.track.fill || this.fillAt >= 0) return;
+    const intro = this.track.intro;
+    if (this.step < intro) return;
+    let down = intro + Math.ceil((this.step - intro) / 16) * 16;
+    if (down - this.step < 2) down += 16;
+    this.fillAt = down;
+    this.fillLen = Math.min(4, down - this.step);
+  }
+
+  /** Glide the hot / cool layers to intensity v. A real jump up also queues a drum fill. */
+  setIntensity(v: number, now: number, fill = true): void {
     const old = this.intensity;
     this.intensity = v;
     const tc = v > old ? 0.35 : 0.6;
-    for (const [g, target] of [
-      [this.mx.hot.gain, v],
-      [this.mx.cool.gain, 1 - 0.45 * v],
-    ] as const) {
-      g.cancelScheduledValues(now);
-      g.setValueAtTime(g.value, now);
-      g.setTargetAtTime(target, now, tc);
-    }
+    this.mx.hot.set(v, now, tc);
+    this.mx.cool.set(1 - 0.45 * v, now, tc);
     if (v < old) this.hotUntil = now + 3;
+    // e.g. entering the battle phase: a snare/tom roll and a crash on the next downbeat
+    if (fill && v >= 0.5 && v - old >= 0.3) this.queueFill();
   }
+}
+
+/** Length of the victory sting (sfx 'victory') up to the end of its held chord, in seconds. */
+export const VICTORY_STING_SEC = 1.8;
+
+/**
+ * Where a track starts. The victory track normally opens with its own 4-bar fanfare; when the
+ * short victory sting (sfx) has just played, it waits for the sting's chord to ring out and goes
+ * straight into its calm loop instead, so the two fanfares never clash.
+ */
+export function startPlan(track: MusicTrack, now: number, stingEnd: number): { at: number; step: number } {
+  if (track === 'victory' && stingEnd > now - 0.4) return { at: Math.max(now + 0.06, stingEnd - 0.1), step: TRACKS.victory.intro };
+  return { at: now + 0.06, step: 0 };
 }
 
 // ------------------------------------------------------------------ live control
@@ -536,6 +726,8 @@ let timer: ReturnType<typeof setInterval> | null = null;
 let wanted: MusicTrack | null = null;
 let intensity = 0;
 let volume = 0.45;
+/** Context time at which the last victory sting's held chord ends (−1 = none). */
+let stingEnd = -1;
 
 function tick(): void {
   const a = peekLive();
@@ -552,11 +744,8 @@ function tick(): void {
 }
 
 function fadeOut(p: Player, now: number, secs: number): void {
-  const g = p.mx.fader.gain;
-  g.cancelScheduledValues(now);
-  g.setValueAtTime(g.value, now);
-  g.linearRampToValueAtTime(0, now + Math.max(0.02, secs));
-  setTimeout(() => safe(() => p.mx.fader.disconnect()), (secs + 3) * 1000);
+  p.mx.fader.to(0, now, Math.max(0.02, secs));
+  setTimeout(() => safe(() => p.mx.dispose()), (secs + 3) * 1000);
 }
 
 function start(track: MusicTrack): void {
@@ -565,10 +754,11 @@ function start(track: MusicTrack): void {
   a.chain.music.gain.value = volume;
   const now = a.ctx.currentTime;
   if (current) fadeOut(current, now, 0.5);
-  current = new Player(a.chain, track, TRACKS[track], now + 0.06, 0, true);
-  current.mx.fader.gain.setValueAtTime(0, now);
-  current.mx.fader.gain.linearRampToValueAtTime(1, now + (track === 'victory' ? 0.02 : 0.4));
-  current.setIntensity(intensity, now);
+  const plan = startPlan(track, now, stingEnd);
+  current = new Player(a.chain, track, TRACKS[track], plan.at, plan.step, true);
+  current.mx.fader.to(0, now, 0.005);
+  current.mx.fader.to(1, plan.at - 0.04, track === 'victory' && plan.step === 0 ? 0.02 : 0.4);
+  current.setIntensity(intensity, now, false);
   if (!timer) timer = setInterval(() => safe(tick), 25);
   tick();
 }
@@ -620,35 +810,67 @@ export const musicEngine = {
   duck(amount: number, at: number): void {
     const a = peekLive();
     if (!a || !current) return;
-    const g = a.chain.duck.gain;
-    const depth = Math.max(0.35, 1 - 0.5 * Math.min(1, amount));
-    g.cancelScheduledValues(at);
-    g.setValueAtTime(Math.min(g.value, 1), at);
-    g.linearRampToValueAtTime(Math.min(g.value, depth), at + 0.03);
-    g.setTargetAtTime(1, at + 0.2, 0.4);
+    applyDuck(a.chain, amount, at);
+  },
+  /** The victory sting (sfx) starts at context time `at`: a victory track started now waits for it. */
+  sting(at: number, pitch = 1): void {
+    stingEnd = at + VICTORY_STING_SEC / Math.max(0.25, pitch);
+  },
+  /** True while the victory track's own fanfare is playing (the sting would clash with it). */
+  fanfarePlaying(): boolean {
+    const a = peekLive();
+    return !!a && current?.name === 'victory' && current.inIntro(a.ctx.currentTime);
   },
 };
 
 // ------------------------------------------------------------------ offline (dev preview)
 
+export interface MusicRenderOpts {
+  /** Start intensity (0..1). */
+  intensity?: number;
+  /** Intensity changes during the render: [seconds, value] (a jump up plays the drum fill). */
+  intensityAt?: ReadonlyArray<readonly [number, number]>;
+  /** Start mid-song (absolute step), e.g. to hear the loop seam. */
+  startStep?: number;
+}
+
+/**
+ * Schedule `seconds` of a track into an offline chain, starting at context time `start`.
+ * Shared by renderMusic() and the sfx scene renderer (renderScene in sfx.ts).
+ */
+export function scheduleMusic(chain: Chain, track: MusicTrack, start: number, seconds: number, o: MusicRenderOpts = {}): void {
+  const p = new Player(chain, track, TRACKS[track], start, o.startStep ?? 0);
+  const v0 = Math.max(0, Math.min(1, o.intensity ?? 0));
+  p.intensity = v0;
+  p.mx.hot.set(v0, 0, 0.001);
+  p.mx.cool.set(1 - 0.45 * v0, 0, 0.001);
+  const changes = [...(o.intensityAt ?? [])].sort((x, y) => x[0] - y[0]);
+  for (const [at, v] of changes) {
+    p.pump(start + at);
+    p.setIntensity(Math.max(0, Math.min(1, v)), start + at);
+  }
+  p.pump(start + seconds);
+}
+
 /** Render `seconds` of a track offline (through the real master chain). startStep lets you hear the loop seam. */
-export async function renderMusic(track: MusicTrack, seconds: number, o: { intensity?: number; startStep?: number; sampleRate?: number } = {}): Promise<AudioBuffer | null> {
+export async function renderMusic(track: MusicTrack, seconds: number, o: MusicRenderOpts & { sampleRate?: number } = {}): Promise<AudioBuffer | null> {
   try {
     const sr = o.sampleRate ?? 44100;
     const pre = 0.8; // compressor warm-up (see renderSfx)
     const ctx = new OfflineAudioContext(2, Math.ceil(sr * (seconds + pre)), sr);
     const chain = buildChain(ctx);
     chain.music.gain.value = volume;
-    const p = new Player(chain, track, TRACKS[track], pre, o.startStep ?? 0);
-    p.intensity = o.intensity ?? 0;
-    p.mx.hot.gain.value = p.intensity;
-    p.mx.cool.gain.value = 1 - 0.45 * p.intensity;
-    p.pump(seconds + pre);
+    scheduleMusic(chain, track, pre, seconds, o);
     return trim(await ctx.startRendering(), pre);
   } catch (err) {
     console.warn('[audio] renderMusic failed', err);
     return null;
   }
+}
+
+/** Default music volume (the music bus gain), for offline renders that mirror the live mix. */
+export function musicVolume(): number {
+  return volume;
 }
 
 /** Seconds per loop and intro, for the preview's labels. */

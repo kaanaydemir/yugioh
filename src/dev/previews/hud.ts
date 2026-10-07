@@ -4,7 +4,8 @@
 //          trap            trap response prompt (2 choices)
 //          pass            pass-device curtain (click / Enter to continue; loops)
 //          gameover        victory screen with fireworks
-//          confirm | instruction | log | swap | draw | inspect | heal | hover | icons
+//          confirm | instruction (&text=long|xlong) | log | swap | draw | inspect | heal | hover
+//          still (static layout, drive with --eval) | icons
 //   &active=1|2      active player (default 1)
 //   &loop=0          run the demo once
 //   &sync=1          film t=0 = demo start (tools/shot.mjs --film)
@@ -70,6 +71,8 @@ async function repeat(ctx: Ctx, fn: () => Promise<void>): Promise<void> {
 }
 
 const STATES: Record<string, (c: Ctx) => Promise<void>> = {
+  /** Static layout, nothing scripted (drive it with --eval / window.__neon). */
+  async still() {},
   async duel(c) {
     c.hand.setHover(1);
     await repeat(c, async () => {
@@ -119,6 +122,7 @@ const STATES: Record<string, (c: Ctx) => Promise<void>> = {
         { id: 'set', label: 'Kapalı Koy' },
         { id: 'activate', label: 'Aktive Et', enabled: false },
       ], { style: c.active === 0 ? 'p1' : 'p2', title: 'Kor Kurdu' });
+      (window.__neon.results as string[]).push(`menu:${id}`);
       c.log.add(`Menü: ${id ?? 'iptal'}`, c.active);
       await wait(c.scene, 300);
     });
@@ -129,6 +133,7 @@ const STATES: Record<string, (c: Ctx) => Promise<void>> = {
         { uid: 14, cardId: 'chains_of_light' },
         { uid: 16, cardId: 'mirror_barrier' },
       ]);
+      (window.__neon.results as string[]).push(`trap:${uid}`);
       c.log.add(uid === null ? 'Oyuncu 2 geçti' : `Tuzak açıldı (#${uid})`, 1);
       await wait(c.scene, 400);
     });
@@ -155,13 +160,21 @@ const STATES: Record<string, (c: Ctx) => Promise<void>> = {
   async confirm(c) {
     await repeat(c, async () => {
       const ok = await c.prompt.confirm('Teslim olmak istediğine emin misin?');
+      (window.__neon.results as string[]).push(`confirm:${ok}`);
       c.log.add(ok ? 'Evet' : 'Hayır');
       await wait(c.scene, 300);
     });
   },
   async instruction(c) {
+    // &text=long|xlong exercises the width clamp (small font, then two lines)
+    const texts: Record<string, string> = {
+      short: 'Hedef seç: rakibin bir canavarı',
+      long: "Dikenli Pusucu'nun etkisi: yok edilecek canavarı seç.",
+      xlong: 'Ruh Çağrısı: mezarlıktan bir canavar seç, sonra onu çağıracağın boş canavar alanını seç.',
+    };
+    const which = new URLSearchParams(location.search).get('text') ?? 'short';
     await repeat(c, async () => {
-      const ins = c.prompt.instruction('Hedef seç: rakibin bir canavarı');
+      const ins = c.prompt.instruction(texts[which] ?? texts.short);
       await Promise.race([ins.cancelled, wait(c.scene, 2600)]);
       ins.close();
       await wait(c.scene, 500);
@@ -237,7 +250,7 @@ const STATES: Record<string, (c: Ctx) => Promise<void>> = {
 
 const preview: DevPreview = {
   name: 'hud',
-  description: 'HUD/hand/inspect/menu/prompts: &state=duel|menu|trap|pass|gameover|confirm|instruction|log|swap|draw|inspect|heal|hover|icons &active=1|2 &loop=0 &sync=1',
+  description: 'HUD/hand/inspect/menu/prompts: &state=duel|menu|trap|pass|gameover|confirm|instruction|log|swap|draw|inspect|heal|hover|still|icons &active=1|2 &loop=0 &sync=1',
   async create(scene, params) {
     installVirtualClock();
     const state = params.get('state') ?? 'duel';
@@ -257,14 +270,26 @@ const preview: DevPreview = {
     hand.setPlayable(active === 0 ? [1, 2, 4] : [11, 12]);
     const inspect = new InspectPanel(scene);
     hand.onHover = (uid) => (uid === null ? inspect.hide() : inspect.show(CARD_OF.get(uid) ?? null));
+    // results are mirrored on window.__neon.results for input tests (tools / shots/hud/_multi.mjs)
+    const results: string[] = [];
+    hand.onSelect = (uid) => {
+      results.push(`select:${uid}`);
+      log.add(`Seçildi: ${CARD_OF.get(uid) ?? uid}`, active);
+    };
     const menu = new ActionMenu(scene);
     const prompt = new Prompt(scene);
     const log = new LogView(scene);
     hud.onLog = () => log.toggle();
-    hud.onEndTurn = () => log.add('Tur bitti', active);
-    hud.onBattle = () => log.add('Savaş aşaması!', PAL.fire3);
+    hud.onEndTurn = () => {
+      results.push('endTurn');
+      log.add('Tur bitti', active);
+    };
+    hud.onBattle = () => {
+      results.push('battle');
+      log.add('Savaş aşaması!', PAL.fire3);
+    };
     const ctx: Ctx = { scene, hud, hand, inspect, menu, prompt, log, active, loop: params.get('loop') !== '0', auto: params.get('auto') === '1' };
-    Object.assign(window.__neon as Record<string, unknown>, { hud, hand, inspect, menu, prompt, log });
+    Object.assign(window.__neon as Record<string, unknown>, { hud, hand, inspect, menu, prompt, log, results });
     const run = STATES[state];
     if (!run) throw new Error(`unknown state ${state}`);
     const start = () => void run(ctx);

@@ -84,6 +84,8 @@ export function midiHz(m: number): number {
 export class Voice {
   /** Latest stop time (relative, unscaled seconds). */
   end = 0;
+  /** True once a sub-layer was placed with panner() (the voice's output is stereo). */
+  stereo = false;
   readonly sources: AudioScheduledSourceNode[] = [];
 
   constructor(
@@ -211,6 +213,7 @@ export class Voice {
   /** Stereo placement (−1..1) for a sub-layer. */
   panner(p: Env, o: { t?: number; to?: AudioNode } = {}): AudioNode {
     const to = o.to ?? this.out;
+    this.stereo = true;
     const ctx = this.ctx as BaseAudioContext & { createStereoPanner?: () => StereoPannerNode };
     if (!ctx.createStereoPanner) {
       const g = this.ctx.createGain();

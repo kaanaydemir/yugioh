@@ -32,7 +32,7 @@ import {
   vineBurst,
 } from '../../vfx/setpieces';
 import { cutIn } from '../../vfx/cutin';
-import { banner, duelStart, phaseBanner, trapBanner, turnBanner, victory } from '../../vfx/banners';
+import { banner, clearBanners, duelStart, phaseBanner, trapBanner, turnBanner, victory } from '../../vfx/banners';
 import { pixelText } from '../../ui/text';
 import type { DevPreview } from '../types';
 
@@ -43,8 +43,13 @@ const LINEUP: Record<PlayerId, MonsterId[]> = {
   1: ['tide_golem', 'shade_assassin', 'storm_hawk'],
 };
 
+interface BoardLike {
+  setTheme(theme: 'normal' | 'volcano', animate?: boolean, from?: PlayerId | null): Promise<void>;
+}
+
 interface Ctx {
   scene: Phaser.Scene;
+  board: BoardLike | null;
   player: PlayerId;
   opp: PlayerId;
   mons: Record<PlayerId, Spr[]>;
@@ -139,9 +144,11 @@ const FX: Record<string, { desc: string; period: number; play: (c: Ctx) => Promi
     desc: 'Volkan Arenası ambience on → off',
     period: 4600,
     play: async (c) => {
-      await setVolcanoAmbience(c.scene, true);
+      // in the duel the board's own lava/sky transformation runs alongside (&board=0 to isolate)
+      const withBoard = new URLSearchParams(location.search).get('board') !== '0';
+      await Promise.all([setVolcanoAmbience(c.scene, true), withBoard ? c.board?.setTheme('volcano', true, c.player) : undefined]);
       await wait(c.scene, 2000);
-      await setVolcanoAmbience(c.scene, false);
+      await Promise.all([setVolcanoAmbience(c.scene, false), withBoard ? c.board?.setTheme('normal', true) : undefined]);
     },
   },
   trap: {
@@ -248,10 +255,12 @@ const FX: Record<string, { desc: string; period: number; play: (c: Ctx) => Promi
     play: (c) => turnBanner(c.scene, c.player, 3),
   },
   phase: {
-    desc: 'phase banners (battle, main, end)',
-    period: 3600,
+    desc: 'phase banners (battle, draw, main, end)',
+    period: 4600,
     play: async (c) => {
       await phaseBanner(c.scene, 'battle');
+      await wait(c.scene, 200);
+      await phaseBanner(c.scene, 'draw');
       await wait(c.scene, 200);
       await phaseBanner(c.scene, 'main');
       await wait(c.scene, 200);
@@ -272,6 +281,11 @@ const FX: Record<string, { desc: string; period: number; play: (c: Ctx) => Promi
     desc: '"SAVAŞ BİTTİ" banner',
     period: 1700,
     play: (c) => banner(c.scene, 'SAVAŞ BİTTİ', { style: 'trap' }),
+  },
+  deckout: {
+    desc: '"DESTE BİTTİ!" big slam in crimson (color option)',
+    period: 2200,
+    play: (c) => banner(c.scene, 'DESTE BİTTİ!', { style: 'big', color: PAL.crim3 }),
   },
   duel: {
     desc: '"DÜELLO!" slam',
@@ -294,10 +308,11 @@ const preview: DevPreview = {
     const player: PlayerId = params.get('player') === '2' ? 1 : 0;
     const opp: PlayerId = player === 0 ? 1 : 0;
 
+    let board: BoardLike | null = null;
     if (params.get('arena') !== '0') {
       try {
         const mod = await import('../../view/BoardView');
-        new mod.BoardView(scene, { active: player });
+        board = new mod.BoardView(scene, { active: player });
       } catch (e) {
         console.warn('[vfx-set] BoardView unavailable, drawing plain tiles', e);
         drawTiles(scene);
@@ -322,6 +337,7 @@ const preview: DevPreview = {
 
     const mons: Record<PlayerId, Spr[]> = { 0: [], 1: [] };
     const reset = () => {
+      clearBanners(scene, 0);
       for (const p of [0, 1] as PlayerId[]) {
         mons[p].forEach((s) => s.destroy());
         mons[p] = LINEUP[p].map((id, i) => {
@@ -333,6 +349,7 @@ const preview: DevPreview = {
     reset();
     const ctx: Ctx = {
       scene,
+      board,
       player,
       opp,
       mons,

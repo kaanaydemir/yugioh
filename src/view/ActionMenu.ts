@@ -20,7 +20,7 @@ import { sfx } from '../audio/sfx';
 import { measureText, pixelText, textMetrics, type TextSize } from '../ui/text';
 import { TEX, tween } from '../vfx/core';
 import { DEPTH, GAME_H, GAME_W } from './layout';
-import { GLOW_PAD, ICON, UI_RAMP, type UiStyle, glowTex, panelTex } from './ui-textures';
+import { GLOW_PAD, ICON, UI_RAMP, type UiStyle, glowTex, panelTex, pushUiKeys } from './ui-textures';
 
 export interface MenuOption {
   id: string;
@@ -67,7 +67,7 @@ export class ActionMenu {
   private hover = -1;
   private barY = 0;
   private resolve: ((id: string | null) => void) | null = null;
-  private keyHandler: ((e: KeyboardEvent) => void) | null = null;
+  private releaseKeys: (() => void) | null = null;
   private style: UiStyle = 'neutral';
   private w = 0;
   private h = 0;
@@ -164,13 +164,15 @@ export class ActionMenu {
         size: 'md',
         color: !enabled ? PAL.night4 : isCancel ? PAL.mist : PAL.white,
       });
+      label.setData('x0', label.x);
       root.add([key, label]);
       return { opt, y: ry, key, label, enabled };
     });
 
     // hit area over the rows (scene-level so the unfold scale does not matter)
+    // (covers the whole panel so clicks on the title / padding do not fall through and cancel)
     this.hit = sc.add
-      .zone(left, top + this.bodyTop, this.w, list.length * ROW_H)
+      .zone(left, top, this.w, this.h)
       .setOrigin(0)
       .setDepth(DEPTH.MENU + 1)
       .setScrollFactor(0)
@@ -185,23 +187,23 @@ export class ActionMenu {
       if (i >= 0 && i < this.rows.length) this.pick(i);
     });
 
-    this.keyHandler = (e: KeyboardEvent) => this.onKey(e);
-    window.addEventListener('keydown', this.keyHandler);
+    this.releaseKeys = pushUiKeys((e) => this.onKey(e));
 
-    // unfold
+    // unfold; the rows slide in to their resting x (the initially hovered row sits 2px in)
     sfx.play('uiClick', { volume: 0.5, pitch: 1.2 });
     root.setScale(0.92, 0.2).setAlpha(0);
     sc.tweens.add({ targets: root, scaleX: 1, scaleY: 1, alpha: 1, duration: 170, ease: 'Back.Out', easeParams: [1.6] });
+    const firstEnabled = Math.max(0, this.rows.findIndex((r) => r.enabled && r.opt.id !== 'cancel'));
     this.rows.forEach((r, i) => {
-      const x0 = r.label.x;
+      const x0 = r.label.getData('x0') as number;
+      const to = x0 + (i === firstEnabled && r.enabled ? 2 : 0);
       r.label.setAlpha(0).setX(x0 - 6);
       r.key.setAlpha(0);
-      sc.tweens.add({ targets: r.label, x: x0, alpha: 1, delay: 50 + i * 28, duration: 150, ease: 'Cubic.Out' });
+      sc.tweens.add({ targets: r.label, x: to, alpha: 1, delay: 50 + i * 28, duration: 150, ease: 'Cubic.Out' });
       sc.tweens.add({ targets: r.key, alpha: 1, delay: 50 + i * 28, duration: 120 });
     });
-    const firstEnabled = this.rows.findIndex((r) => r.enabled && r.opt.id !== 'cancel');
-    this.barY = this.rows[Math.max(0, firstEnabled)].y;
-    this.setHover(Math.max(0, firstEnabled), false);
+    this.barY = this.rows[firstEnabled].y;
+    this.setHover(firstEnabled, false, false);
     this.closing = false;
     return new Promise((resolve) => {
       this.resolve = resolve;
@@ -219,7 +221,7 @@ export class ActionMenu {
 
   // ------------------------------------------------------------ internals
 
-  private setHover(i: number, sound: boolean): void {
+  private setHover(i: number, sound: boolean, nudge = true): void {
     if (i === this.hover || !this.root || !this.bar) return;
     this.hover = i;
     const r = this.rows[i];
@@ -237,14 +239,15 @@ export class ActionMenu {
       onUpdate: () => this.drawBar(),
     });
     this.drawBar();
-    // label nudge
-    const x0 = r.label.getData('x0') ?? r.label.x;
-    r.label.setData('x0', x0);
+    if (!nudge) return;
+    // label nudge: the hovered (enabled) row steps 2px in, the others return to their base x
     this.rows.forEach((row) => {
-      const bx = row.label.getData('x0') ?? row.label.x;
-      if (row !== r) this.scene.tweens.add({ targets: row.label, x: bx, duration: 90 });
+      const bx = row.label.getData('x0') as number;
+      const to = row === r && r.enabled ? bx + 2 : bx;
+      this.scene.tweens.killTweensOf(row.label);
+      row.label.setAlpha(1);
+      if (row.label.x !== to) this.scene.tweens.add({ targets: row.label, x: to, duration: 90, ease: 'Quad.Out' });
     });
-    if (r.enabled) this.scene.tweens.add({ targets: r.label, x: x0 + 2, duration: 90, ease: 'Quad.Out' });
   }
 
   private drawBar(): void {
@@ -267,15 +270,16 @@ export class ActionMenu {
     this.caret.setVisible(false);
   }
 
-  private onKey(e: KeyboardEvent): void {
-    if (!this.root || this.closing) return;
+  /** Keyboard: 1–9 pick, ↑/↓ move, Enter/Space confirm, Esc cancel. Returns true when used. */
+  private onKey(e: KeyboardEvent): boolean {
+    if (!this.root) return false;
+    const nav = ['Escape', 'ArrowDown', 'ArrowUp', 'Enter', ' '];
+    if (this.closing) return nav.includes(e.key) || /^[1-9]$/.test(e.key);
     if (e.key === 'Escape') {
-      e.preventDefault();
       this.cancel();
-      return;
+      return true;
     }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault();
       const dir = e.key === 'ArrowDown' ? 1 : -1;
       let i = this.hover;
       for (let k = 0; k < this.rows.length; k++) {
@@ -283,21 +287,24 @@ export class ActionMenu {
         if (this.rows[i].enabled) break;
       }
       this.setHover(i, true);
-      return;
+      return true;
     }
     if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
       if (this.hover >= 0) this.pick(this.hover);
-      return;
+      return true;
     }
-    const n = Number(e.key);
-    if (Number.isInteger(n) && n >= 1 && n <= 9 && n <= this.rows.length) {
-      e.preventDefault();
-      const i = n - 1;
-      if (this.rows[i].opt.id === 'cancel') return this.cancel();
+    if (/^[1-9]$/.test(e.key)) {
+      const i = Number(e.key) - 1;
+      if (i >= this.rows.length) return true;
+      if (this.rows[i].opt.id === 'cancel') {
+        this.cancel();
+        return true;
+      }
       this.setHover(i, false);
       this.pick(i);
+      return true;
     }
+    return false;
   }
 
   private pick(i: number): void {
@@ -306,7 +313,8 @@ export class ActionMenu {
     if (r.opt.id === 'cancel') return this.cancel();
     if (!r.enabled) {
       sfx.play('uiError', { volume: 0.5 });
-      const x0 = r.label.getData('x0') ?? r.label.x;
+      const x0 = r.label.getData('x0') as number;
+      this.scene.tweens.killTweensOf(r.label);
       const o = { t: 0 };
       this.scene.tweens.add({
         targets: o,
@@ -371,8 +379,8 @@ export class ActionMenu {
     this.rows = [];
     this.hover = -1;
     this.scene.tweens.killTweensOf(this);
-    if (this.keyHandler) window.removeEventListener('keydown', this.keyHandler);
-    this.keyHandler = null;
+    this.releaseKeys?.();
+    this.releaseKeys = null;
     if (root) {
       if (animate)
         void tween(this.scene, { targets: root, scaleY: 0.1, scaleX: 0.95, alpha: 0, duration: 120, ease: 'Quad.In' }).then(() => root.destroy());

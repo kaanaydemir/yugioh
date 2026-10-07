@@ -23,8 +23,8 @@ import { measureText, pixelLetters, pixelText, textMetrics, wrapText, type Pixel
 import { TEX, shake, tween, wait } from '../vfx/core';
 import { Button } from './Button';
 import { CardSprite } from './CardSprite';
-import { CARD_H, CARD_W, DEPTH, GAME_H, GAME_W } from './layout';
-import { GLOW_PAD, ICON, UI_RAMP, glowTex, haloTex, panelTex, playerStyle, streakTex, stripesTex, typeOn } from './ui-textures';
+import { CARD_H, CARD_W, DEPTH, GAME_H, GAME_W, UI } from './layout';
+import { GLOW_PAD, ICON, UI_RAMP, type UiKeyHandler, crownTex, pushUiKeys, glowTex, haloTex, panelTex, playerStyle, streakTex, stripesTex, typeOn } from './ui-textures';
 
 export interface TrapOption {
   uid: Uid;
@@ -60,22 +60,27 @@ function possessive(p: PlayerId): string {
 
 export class Prompt {
   private readonly scene: Phaser.Scene;
-  private readonly keyHandlers: ((e: KeyboardEvent) => boolean)[] = [];
-  private readonly onKey = (e: KeyboardEvent) => {
-    const h = this.keyHandlers[this.keyHandlers.length - 1];
-    if (h && h(e)) e.preventDefault();
-  };
+  /** Keyboard handlers this prompt holds on the shared UI focus stack (see pushUiKeys). */
+  private readonly keyReleases = new Map<UiKeyHandler, () => void>();
   private seed = 0x1234567;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
-    window.addEventListener('keydown', this.onKey);
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroy());
   }
 
   destroy(): void {
-    window.removeEventListener('keydown', this.onKey);
-    this.keyHandlers.length = 0;
+    for (const release of this.keyReleases.values()) release();
+    this.keyReleases.clear();
+  }
+
+  private addKeys(fn: UiKeyHandler): void {
+    this.keyReleases.set(fn, pushUiKeys(fn));
+  }
+
+  private removeKeys(fn: UiKeyHandler): void {
+    this.keyReleases.get(fn)?.();
+    this.keyReleases.delete(fn);
   }
 
   // ================================================================ pass device
@@ -283,7 +288,10 @@ export class Prompt {
     });
 
     // behind-the-curtain work (hand swap) runs while the title plays
-    const covered = onCovered ? Promise.resolve(onCovered()) : Promise.resolve();
+    // (an error in the callback must never leave the curtain stuck on screen)
+    const covered = Promise.resolve()
+      .then(() => onCovered?.())
+      .catch((e) => console.error('[prompt] passDevice onCovered', e));
 
     // band + title
     band.x = GAME_W;
@@ -305,7 +313,7 @@ export class Prompt {
       const go = () => {
         if (done) return;
         done = true;
-        this.keyHandlers.splice(this.keyHandlers.indexOf(keyFn), 1);
+        this.removeKeys(keyFn);
         resolve();
       };
       const keyFn = (e: KeyboardEvent) => {
@@ -315,7 +323,7 @@ export class Prompt {
         }
         return false;
       };
-      this.keyHandlers.push(keyFn);
+      this.addKeys(keyFn);
       blocker.setInteractive({ useHandCursor: true });
       blocker.once(Phaser.Input.Events.POINTER_DOWN, go);
     });
@@ -354,6 +362,7 @@ export class Prompt {
    * (GEÇ). Resolves with the chosen uid or null. Keys: 1–9 select, Enter = AÇ, Esc = GEÇ.
    */
   async trapResponse(player: PlayerId, options: TrapOption[]): Promise<Uid | null> {
+    if (options.length === 0) return null;
     const sc = this.scene;
     const R = RAMPS.mag;
     const root = sc.add.container(0, 0).setDepth(DEPTH.OVERLAY).setScrollFactor(0);
@@ -473,7 +482,7 @@ export class Prompt {
       const finish = (v: Uid | null) => {
         if (done) return;
         done = true;
-        this.keyHandlers.splice(this.keyHandlers.indexOf(keyFn), 1);
+        this.removeKeys(keyFn);
         resolve(v);
       };
       openBtn.onClick = () => {
@@ -496,7 +505,7 @@ export class Prompt {
         }
         return false;
       };
-      this.keyHandlers.push(keyFn);
+      this.addKeys(keyFn);
     });
 
     // ---- outro
@@ -530,24 +539,37 @@ export class Prompt {
     let resolveCancel: () => void = () => undefined;
     const cancelled = new Promise<void>((r) => (resolveCancel = r));
     let closed = false;
-    const H = 21;
+    let H = 21;
     const Y = 25;
+    /** Widest bar that stays clear of the inspect panel (left) and the P2 panel (right). */
+    const MAX_W = 2 * (UI.p2Panel.x - 4 - GAME_W / 2);
 
     const build = (s: string, animate: boolean) => {
       bar?.destroy();
-      const tw = measureText(s, 'md').w;
-      const w = 20 + tw + (showCancel ? 58 : 10);
+      const extra = 20 + (showCancel ? 58 : 10);
+      // md when it fits, else the small font, wrapped onto two lines if it must
+      let size: TextSize = 'md';
+      let m = measureText(s, 'md');
+      if (m.w > MAX_W - extra) {
+        size = 'sm';
+        m = measureText(s, 'sm', MAX_W - extra);
+      }
+      const lines = wrapText(s, size, size === 'sm' ? MAX_W - extra : undefined).length;
+      H = lines > 1 ? 9 + lines * textMetrics('sm').lineHeight : 21;
+      const w = extra + m.w;
       const x = Math.round(GAME_W / 2 - w / 2);
       bar = sc.add.container(x, Y);
       const glow = sc.add.image(-GLOW_PAD, -GLOW_PAD, glowTex(sc, w, H)).setOrigin(0).setBlendMode(ADD).setTint(R[3]).setAlpha(0.45);
       const bg = sc.add.image(0, 0, panelTex(sc, style, w, H, { alpha: 245 })).setOrigin(0);
-      const arrow = sc.add.image(7, 6, ICON.caret).setOrigin(0).setTint(R[4]);
-      label = pixelText(sc, 16, capY('md', 7), s, { size: 'md', color: PAL.white });
+      const arrow = sc.add.image(7, Math.round(H / 2) - 4, ICON.caret).setOrigin(0).setTint(R[4]);
+      const tm = textMetrics(size);
+      const textTop = Math.floor((H - ((lines - 1) * tm.lineHeight + tm.capHeight)) / 2);
+      label = pixelText(sc, 16, capY(size, textTop), s, { size, color: PAL.white, maxWidth: size === 'sm' ? MAX_W - extra : undefined });
       bar.add([glow, bg, arrow, label]);
       sc.tweens.add({ targets: arrow, x: 9, duration: 300, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
       sc.tweens.add({ targets: glow, alpha: { from: 0.25, to: 0.7 }, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
       if (showCancel) {
-        cancelBtn = new Button(sc, w - 52, 3, { w: 48, h: 15, label: 'İPTAL', size: 'sm', icon: ICON.close, style: 'neutral' });
+        cancelBtn = new Button(sc, w - 52, Math.round(H / 2) - 7, { w: 48, h: 15, label: 'İPTAL', size: 'sm', icon: ICON.close, style: 'neutral' });
         cancelBtn.onClick = () => doCancel();
         bar.add(cancelBtn);
       }
@@ -568,8 +590,7 @@ export class Prompt {
     const close = () => {
       if (closed) return;
       closed = true;
-      const i = this.keyHandlers.indexOf(keyFn);
-      if (i >= 0) this.keyHandlers.splice(i, 1);
+      this.removeKeys(keyFn);
       const b = bar;
       if (b) sc.tweens.add({ targets: b, y: -H - 8, duration: 180, ease: 'Quad.In', onComplete: () => root.destroy() });
       else root.destroy();
@@ -580,7 +601,7 @@ export class Prompt {
       close();
       resolveCancel();
     };
-    this.keyHandlers.push(keyFn);
+    this.addKeys(keyFn);
     build(text, true);
     sfx.play('uiConfirm', { volume: 0.4, pitch: 1.3 });
     return {
@@ -626,7 +647,7 @@ export class Prompt {
       const finish = (v: boolean) => {
         if (done) return;
         done = true;
-        this.keyHandlers.splice(this.keyHandlers.indexOf(keyFn), 1);
+        this.removeKeys(keyFn);
         resolve(v);
       };
       yes.onClick = () => finish(true);
@@ -642,7 +663,7 @@ export class Prompt {
         }
         return false;
       };
-      this.keyHandlers.push(keyFn);
+      this.addKeys(keyFn);
     });
     sc.tweens.add({ targets: dim, alpha: 0, duration: 160 });
     await tween(sc, { targets: panel, scale: 0.9, alpha: 0, duration: 140, ease: 'Quad.In' });
@@ -667,7 +688,7 @@ export class Prompt {
     for (let i = 0; i < nr; i++) {
       const a0 = (i / nr) * Math.PI * 2;
       const a1 = a0 + (Math.PI / nr) * 0.55;
-      rays.fillStyle(i % 2 ? PAL.gold2 : R[2], 0.22);
+      rays.fillStyle(i % 2 ? PAL.gold2 : R[2], 0.17);
       rays.fillTriangle(0, 0, Math.cos(a0) * 420, Math.sin(a0) * 420, Math.cos(a1) * 420, Math.sin(a1) * 420);
     }
     root.add(rays);
@@ -680,7 +701,7 @@ export class Prompt {
     band.fillStyle(PAL.gold1).fillRect(0, cy - 32, GAME_W, 1).fillRect(0, cy + 45, GAME_W, 1);
     band.setAlpha(0);
     root.add(band);
-    const crown = sc.add.image(cx, cy - 46, ICON.crown).setScale(3).setTint(PAL.gold3).setAlpha(0);
+    const crown = sc.add.image(cx, cy - 50, crownTex(sc, winner)).setScale(2).setAlpha(0);
     const kaz = pixelText(sc, cx, capY('lg', cy - 26), 'KAZANAN', { size: 'lg', color: PAL.gold4, originX: 0.5, shadow: 1 });
     kaz.setAlpha(0);
     const title = pixelLetters(sc, cx, capY('xl', cy + 2), NAME[winner], { size: 'xl', color: R[3], originX: 0.5, shadow: 1 });
@@ -717,15 +738,17 @@ export class Prompt {
     await this.slamLetters(title.letters, PAL.gold4, 60, true);
     void shake(sc, 260, 4);
     sfx.play('impactHeavy', { volume: 0.6 });
-    crown.setScale(6);
-    sc.tweens.add({ targets: crown, alpha: 1, scale: 3, duration: 260, ease: 'Back.Out' });
+    crown.setScale(4);
+    sc.tweens.add({ targets: crown, alpha: 1, scale: 2, duration: 260, ease: 'Back.Out' });
+    // the crown keeps a slow bob + an occasional sparkle on its tips
+    sc.tweens.add({ targets: crown, y: crown.y - 2, duration: 900, ease: 'Sine.InOut', yoyo: true, repeat: -1, delay: 300 });
     if (why) sc.tweens.add({ targets: why, alpha: 1, duration: 300, delay: 200 });
     void this.glint(title.letters, PAL.gold4);
     const glintEv = sc.time.addEvent({ delay: 2200, loop: true, callback: () => void this.glint(title.letters, PAL.gold4) });
 
 
     await wait(sc, 600);
-    const again = new Button(sc, Math.round(cx - 64), cy + 74, { w: 128, h: 25, label: 'Tekrar Oyna', icon: ICON.endTurn, style: 'gold' });
+    const again = new Button(sc, Math.round(cx - 64), cy + 74, { w: 128, h: 25, label: 'TEKRAR OYNA', icon: ICON.replay, style: 'gold' });
     root.add(again);
     again.setAlpha(0);
     again.y += 10;
@@ -736,7 +759,7 @@ export class Prompt {
       const finish = () => {
         if (done) return;
         done = true;
-        this.keyHandlers.splice(this.keyHandlers.indexOf(keyFn), 1);
+        this.removeKeys(keyFn);
         resolve();
       };
       again.onClick = finish;
@@ -747,7 +770,7 @@ export class Prompt {
         }
         return false;
       };
-      this.keyHandlers.push(keyFn);
+      this.addKeys(keyFn);
     });
     fw.remove();
     glintEv.remove();
@@ -765,10 +788,12 @@ export class Prompt {
     const jobs = letters.map(async (l, i) => {
       await wait(sc, i * stagger);
       const o = l.obj;
-      o.setAlpha(0).setScale(heavy ? 2.6 : 2).setPosition(l.x, l.y - (heavy ? 18 : 10));
+      // the glyph drops in from above, stretched by its speed (crisp: no zoomed-up blob)
+      o.setAlpha(0).setScale(0.8, 1.45).setPosition(l.x, l.y - (heavy ? 26 : 18));
       o.setTint(PAL.white);
       sfx.play('uiClick', { volume: 0.35, pitch: 0.8 + (i % 5) * 0.08 });
-      await tween(sc, { targets: o, alpha: 1, scale: 1, y: l.y, duration: heavy ? 150 : 120, ease: 'Quad.In' });
+      sc.tweens.add({ targets: o, alpha: 1, duration: heavy ? 70 : 50 });
+      await tween(sc, { targets: o, scaleX: 1, scaleY: 1, y: l.y, duration: heavy ? 150 : 120, ease: 'Quad.In' });
       // squash on landing
       o.setScale(1.25, 0.8);
       void tween(sc, { targets: o, scaleX: 1, scaleY: 1, duration: 140, ease: 'Back.Out', easeParams: [3] });

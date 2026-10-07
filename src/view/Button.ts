@@ -266,7 +266,8 @@ export class Button extends Phaser.GameObjects.Container {
     this.flashImg.y = st === 'p' ? BUTTON_PRESS : 0;
     const R = UI_RAMP[this.style];
     const textCol = st === 'd' ? PAL.stone3 : PAL.white;
-    const iconCol = st === 'd' ? PAL.stone2 : st === 'h' ? PAL.white : mix(R[4], PAL.white, 0.4);
+    // icon art is white/mist/steel: tint warm-to-the-ramp so it never reads cold on hot faces
+    const iconCol = st === 'd' ? PAL.stone2 : st === 'h' ? mix(R[4], PAL.white, 0.65) : mix(R[4], PAL.white, 0.35);
     this.label?.setTint(textCol);
     this.icon?.setTint(iconCol);
     this.glow.setTint(R[3]);

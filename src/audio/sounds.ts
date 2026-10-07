@@ -460,8 +460,9 @@ export const RECIPES: Record<SfxName, Recipe> = {
     verb: 0.4,
     duck: 0.5,
     play(v) {
-      v.noise('white', { g: [[0, 0.0001], [0.16, 0.25, 'e'], [0.18, 0.0001, 'e']], to: v.filt('bandpass', [[0, 2000], [0.17, 6000, 'e']], 6) });
-      const T = 0.16;
+      // riser lands with the lock-on reticle snapping shut (vfx lockOn: 230 ms)
+      v.noise('white', { g: [[0, 0.0001], [0.21, 0.25, 'e'], [0.23, 0.0001, 'e']], to: v.filt('bandpass', [[0, 2000], [0.22, 6000, 'e']], 6) });
+      const T = 0.22;
       const lp = v.filt('lowpass', [[0, 500], [0.03, 3000, 'e'], [0.7, 600, 'e']], 1.5, { t: T });
       for (const m of [50, 53, 57, 62])
         v.tone('sawtooth', midiHz(m), { t: T, g: [[0, 0], [0.015, 0.085], [0.25, 0.06], [0.75, 0.0001, 'e']], to: lp, detune: v.r(-10, 10) });
@@ -634,11 +635,15 @@ export const RECIPES: Record<SfxName, Recipe> = {
     verb: 0.4,
     duck: 0.6,
     play(v) {
-      bigHit(v, 0, 0.95, { sub: 120 });
+      // the blow lands on the duelist: a punchy body hit (less crack than a strike) ...
+      bigHit(v, 0, 0.85, { sub: 120, blast: 0.3 });
+      v.tone('triangle', [[0, 150], [0.12, 62, 'e']], { g: perc(0.3, 0.2, 0.002) });
+      // ... the hologram suit sparks (ring-modulated zap) ...
       const rm = v.ring(1300, { d: 0.25, mix: 1, to: v.filt('highpass', 400) });
-      v.tone('sawtooth', [[0, 2400], [0.18, 300, 'e']], { g: perc(0.2, 0.2, 0.001), to: rm });
-      const lp = v.filt('lowpass', 4000);
-      for (let i = 0; i < 6; i++) v.tone('square', v.r(300, 1600), { t: 0.05 + i * 0.035, g: perc(0.06, 0.025, 0.001), to: lp });
+      v.tone('sawtooth', [[0, 2400], [0.18, 300, 'e']], { g: perc(0.16, 0.2, 0.001), to: rm });
+      // ... and the retro "hurt" arpeggio tumbling down: reads as LP damage, not as an attack
+      const lp = v.filt('lowpass', 3800);
+      [83, 78, 74, 69, 64].forEach((m, i) => v.tone('p25', midiHz(m), { t: 0.04 + i * 0.036, g: ahr(0.16 * (1 - i * 0.1), 0.002, 0.026, 0.014), to: lp }));
       v.noise('brown', { t: 0.03, g: perc(0.3, 0.7, 0.03), to: v.filt('lowpass', 350) });
     },
   },
@@ -671,13 +676,17 @@ export const RECIPES: Record<SfxName, Recipe> = {
     },
   },
   lpTick: {
-    cap: 2,
+    // coin-counter blip: a tiny pulse chirp down onto F#6 with a click on top (rate-limited).
+    // Bright and short so it cuts through the music even at the HUD's volume 0.35.
+    cap: 3,
     gap: 0.035,
-    verb: 0,
+    verb: 0.03,
     vary: 0.02,
     play(v) {
-      v.tone('square', 1480, { g: perc(0.05, 0.018, 0.0005), to: v.filt('lowpass', 5000) });
-      v.tone('sine', 2960, { g: perc(0.03, 0.012) });
+      const lp = v.filt('lowpass', 6500);
+      v.tone('p25', [[0, 1900], [0.012, 1480, 'e']], { g: perc(0.26, 0.026, 0.0005), to: lp });
+      v.tone('sine', 2960, { g: perc(0.1, 0.018) });
+      v.noise('white', { g: perc(0.14, 0.004, 0.0003), to: v.filt('highpass', 6000) });
     },
   },
   burn: {
@@ -722,19 +731,27 @@ export const RECIPES: Record<SfxName, Recipe> = {
     },
   },
   trapActivate: {
+    // Front-loaded: the hit lands on the call (the magenta flash of trapSpring / the "Aç" press).
     cap: 2,
     gap: 0.1,
     verb: 0.5,
     duck: 0.6,
     play(v) {
-      v.noise('white', { g: swell(0.3, 0.2, 0.02), to: v.filt('bandpass', [[0, 1000], [0.2, 4500, 'e']], 4) });
-      const T = 0.2;
-      v.tone('sine', [[0, 150], [0.3, 40, 'e']], { t: T, g: perc(0.8, 0.45), to: v.drive(2) });
-      v.noise('white', { t: T, g: perc(0.35, 0.18), to: v.filt('lowpass', [[0, 5000], [0.25, 400, 'e']]) });
-      const lp = v.filt('lowpass', [[0, 600], [0.03, 3500, 'e'], [0.8, 500, 'e']], 3, { t: T });
+      // SNAP — spring-loaded jaws: a hard metallic clack and an inharmonic clang
+      v.noise('white', { g: perc(0.5, 0.012, 0.0002), to: v.filt('highpass', 2500) });
+      v.noise('white', { g: perc(0.3, 0.05, 0.0005), to: v.drive(6, { to: v.filt('bandpass', 1900, 1.6), trim: 0.5 }) });
+      v.bell(698, { g: 0.12, dec: 1.0, ratio: 1.41, index: 3, idxDec: 0.25 });
+      v.bell(1109, { t: 0.004, g: 0.05, dec: 0.5, ratio: 2.76, index: 2, idxDec: 0.1 });
+      // body: sub drop and a darkening blast
+      v.tone('sine', [[0, 170], [0.25, 40, 'e']], { g: perc(0.7, 0.42, 0.001), to: v.drive(2) });
+      v.noise('white', { g: perc(0.28, 0.16), to: v.filt('lowpass', [[0, 5000], [0.22, 400, 'e']]) });
+      // "TUZAK!": a dissonant cluster stab (C F# G C# F#) ...
+      const lp = v.filt('lowpass', [[0, 700], [0.025, 3500, 'e'], [0.8, 500, 'e']], 3, { t: 0.008 });
       for (const m of [48, 54, 55, 61, 66])
-        v.tone('sawtooth', midiHz(m), { t: T, g: [[0, 0], [0.01, 0.065], [0.3, 0.045], [0.85, 0.0001, 'e']], to: lp, detune: v.r(-12, 12) });
-      v.bell(698, { t: T, g: 0.1, dec: 0.9, ratio: 1.41, index: 3, idxDec: 0.25 });
+        v.tone('sawtooth', midiHz(m), { t: 0.008, g: [[0, 0], [0.01, 0.06], [0.3, 0.042], [0.85, 0.0001, 'e']], to: lp, detune: v.r(-12, 12) });
+      // ... and a sinister ring-modulated dive under it
+      const rm = v.ring([[0, 300], [0.5, 90, 'e']], { t: 0.02, d: 0.55, mix: 1, to: v.filt('bandpass', 900, 1.2) });
+      v.tone('square', [[0, 440], [0.5, 110, 'e']], { t: 0.02, g: perc(0.12, 0.5, 0.01), to: rm });
     },
   },
   lightning: {
@@ -763,20 +780,35 @@ export const RECIPES: Record<SfxName, Recipe> = {
     cap: 2,
     gap: 0.1,
     verb: 0.4,
-    duck: 0.4,
+    duck: 0.45,
     play(v) {
+      // the chains shoot out of the card: a dense metallic rattle sweeping across on a rising zip
+      const sp = v.panner([[0, -0.5], [0.55, 0.45]]);
       const times: number[] = [];
-      for (let i = 0; i < 14; i++) {
-        const t = 0.02 + Math.pow(i / 13, 0.85) * 0.6 + v.r(-0.01, 0.01);
+      for (let i = 0; i < 20; i++) {
+        const t = 0.01 + Math.pow(i / 19, 0.9) * 0.5 + v.r(-0.008, 0.008);
         times.push(t);
-        clink(v, v.r(1800, 3600), t, 0.06 * v.r(0.6, 1), v.r(0.04, 0.09));
+        clink(v, v.r(2000, 4200), t, 0.07 * v.r(0.6, 1), v.r(0.03, 0.07), sp);
       }
-      v.bursts(times, times.map(() => 0.1), { dec: 0.006, f: 6000, q: 0.7 });
-      v.noise('pink', { g: [[0, 0], [0.2, 0.15], [0.6, 0.0001, 'e']], to: v.filt('bandpass', [[0, 1200], [0.5, 3500, 'e']], 1.5) });
-      const T = 0.7;
-      v.tone('sine', [[0, 600], [0.03, 300, 'e']], { t: T, g: perc(0.4, 0.06, 0.0005) });
-      v.noise('white', { t: T, g: perc(0.35, 0.02, 0.0003), to: v.filt('bandpass', 2500, 1.5) });
-      v.bell(1568, { t: T, g: 0.08, dec: 0.6, ratio: 2.76, index: 1.5 });
+      v.bursts(times, times.map(() => v.r(0.08, 0.16)), { dec: 0.005, f: 5500, q: 0.8, to: sp });
+      v.noise('white', { g: [[0, 0], [0.42, 0.2], [0.55, 0.0001, 'e']], to: v.filt('bandpass', [[0, 1500], [0.5, 6000, 'e']], 3, { to: sp }) });
+      // they wrap around the attacker: three heavier links
+      for (const [t, f] of [
+        [0.56, 1250],
+        [0.62, 1050],
+        [0.67, 1400],
+      ] as const) {
+        clink(v, f, t, 0.12, 0.12);
+        v.noise('white', { t, g: perc(0.16, 0.015, 0.0003), to: v.filt('bandpass', 3000, 1.2) });
+      }
+      // LOCK — "tak!": a heavy shackle clunk with a ringing iron tail
+      const T = 0.78;
+      v.tone('sine', [[0, 240], [0.06, 70, 'e']], { t: T, g: perc(0.55, 0.14, 0.0005), to: v.drive(1.8, { trim: 0.8 }) });
+      v.noise('white', { t: T, g: perc(0.4, 0.025, 0.0003), to: v.filt('bandpass', 2200, 1.3) });
+      v.noise('white', { t: T, g: perc(0.22, 0.09, 0.001), to: v.filt('lowpass', 1200) });
+      v.bell(784, { t: T, g: 0.09, dec: 0.9, ratio: 1.41, index: 3, idxDec: 0.15 });
+      v.bell(1568, { t: T + 0.005, g: 0.05, dec: 0.6, ratio: 2.76, index: 1.5 });
+      clink(v, 2900, T, 0.07, 0.3);
     },
   },
   mirror: {

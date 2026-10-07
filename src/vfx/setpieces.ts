@@ -24,18 +24,20 @@
 // (`Sparks`) tinted through palette ramps. Clocks follow scene.tweens.timeScale, so setSpeed()
 // fast-forwards and hitStop() freezes everything consistently.
 //
-// The kit section (Raster, Sparks, onFrame, run, spriteBox...) is exported for cutin.ts/banners.ts.
+// The kit section (Raster, Sparks, onFrame, run, spriteBox, freeze...) is exported for cutin.ts,
+// banners.ts and the duel views. Hit-stops go through freeze() (= combat.stopTime, nesting-safe).
 
 import Phaser from 'phaser';
 import type { MonsterId } from '../data/cards';
 import type { PlayerId } from '../engine/types';
-import { PAL, RAMPS, type Ramp } from '../art/palette';
+import { PAL, PLAYER_COLOR, RAMPS, type Ramp } from '../art/palette';
 import { PixelCanvas, mix, mulberry32 } from '../art/pixel';
 import { monsterFrame } from '../art/textures';
 import { monsterArt } from '../art/monsters';
 import { sfx, type SfxName } from '../audio/sfx';
-import { DEPTH, GAME_H, GAME_W, type XY, isoToScreen, screenToIso, unitDepth } from '../view/layout';
-import { TEX, flash, hitStop, shake, wait } from './core';
+import { DEPTH, GAME_H, GAME_W, type XY, isoToScreen, panelRect, screenToIso, unitDepth } from '../view/layout';
+import { TEX, flash, shake, wait } from './core';
+import { stopTime } from './combat';
 import { pixelText } from '../ui/text';
 
 export type Unit = Phaser.GameObjects.Sprite | Phaser.GameObjects.Image;
@@ -164,6 +166,14 @@ export function sleep(scene: Phaser.Scene, ms: number): Promise<void> {
   return wait(scene, ms);
 }
 
+/**
+ * Nesting-safe hit-stop (delegates to combat.stopTime, which merges overlapping freezes; the
+ * core hitStop restores a stale 0 time scale when two overlap and freezes the game).
+ */
+export function freeze(scene: Phaser.Scene, ms: number): Promise<void> {
+  return stopTime(scene, ms);
+}
+
 function alive(scene: Phaser.Scene): boolean {
   return !!scene.sys && scene.sys.isActive() !== false && !!scene.sys.displayList;
 }
@@ -201,7 +211,11 @@ export class Raster {
     this.tex = scene.textures.createCanvas(this.key, this.w, this.h)!;
     this.imageData = new ImageData(this.pc.data as Uint8ClampedArray<ArrayBuffer>, this.w, this.h);
     this.img = scene.add.image(this.x, this.y, this.key).setOrigin(0, 0).setDepth(depth).setBlendMode(blend);
-    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroy());
+    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, this.onShutdown, this);
+  }
+
+  private onShutdown(): void {
+    this.destroy();
   }
 
   /** Raster centered on (cx, cy). */
@@ -242,6 +256,7 @@ export class Raster {
   destroy(): void {
     if (this.dead) return;
     this.dead = true;
+    this.scene.events?.off(Phaser.Scenes.Events.SHUTDOWN, this.onShutdown, this);
     this.img.destroy();
     if (this.scene.textures?.exists(this.key)) this.scene.textures.remove(this.key);
   }
@@ -1144,7 +1159,7 @@ export async function stormStrike(scene: Phaser.Scene, x: number, y: number, opt
   void floorRing(scene, x, y, { r0: 10, r1: 92, ms: 520, ramp: [PAL.white, PAL.teal4, PAL.teal3, PAL.teal2, PAL.teal1], depth: DEPTH.SHADOW - 1 });
   void floorRing(scene, x, y, { r0: 4, r1: 54, ms: 380, ramp: [PAL.teal4, PAL.teal3, PAL.teal2], depth: DEPTH.SHADOW - 1 });
   void shake(scene, 380, 5);
-  await hitStop(scene, 85);
+  await freeze(scene, 85);
 
   // re-strikes: the bolt flickers and re-forks (anime triple-hit)
   const pattern = [1, 1, 0.4, 1, 1, 0.3, 0.9, 0.6, 0.2, 0.7, 0.3, 0.1, 0];
@@ -1345,29 +1360,32 @@ export async function healingFountain(scene: Phaser.Scene, player: PlayerId, toX
   await sleep(scene, 280);
 
   // ---- 500: droplets launch toward the LP panel
-  const N = 12;
+  const N = 16;
   let landed = 0;
   let first = true;
   const done = new Promise<void>((resolve) => {
     for (let i = 0; i < N; i++) {
       void (async () => {
-        await sleep(scene, i * 45);
+        await sleep(scene, i * 34);
         const from = { x: x + rr(-5, 5), y: y - height + rr(0, 8) };
         const side = toXY.x < from.x ? -1 : 1;
         const ctrl = { x: lerp(from.x, toXY.x, 0.35) + rr(-30, 30) * side, y: Math.min(from.y, toXY.y) - rr(50, 90) };
         const dest = { x: toXY.x + rr(-14, 14), y: toXY.y + rr(-6, 6) };
-        const head = scene.add.image(from.x, from.y, TEX.dot5).setTint(PAL.teal4).setDepth(DEPTH.HUD + 8);
-        const core = scene.add.image(from.x, from.y, TEX.px1).setTint(PAL.white).setDepth(DEPTH.HUD + 9);
+        const head = scene.add.image(from.x, from.y, TEX.dot5).setTint(PAL.teal2).setDepth(DEPTH.HUD + 8);
+        const core = scene.add.image(from.x, from.y, TEX.px3).setTint(PAL.teal4).setDepth(DEPTH.HUD + 9);
+        const spec = scene.add.image(from.x, from.y, TEX.px1).setTint(PAL.white).setDepth(DEPTH.HUD + 9.5);
         const dur = rr(480, 620);
         await run(scene, dur, (t) => {
           const k = E.inOutSine(t);
           const p = qbez(from, ctrl, dest, k);
           head.setPosition(Math.round(p.x), Math.round(p.y));
-          core.setPosition(Math.round(p.x) - 1, Math.round(p.y) - 1);
+          core.setPosition(Math.round(p.x), Math.round(p.y));
+          spec.setPosition(Math.round(p.x) - 1, Math.round(p.y) - 1);
           if (rnd() < 0.7) trail.add({ x: p.x + rr(-2, 2), y: p.y + rr(-2, 2), vy: rr(-12, 4), life: rr(200, 360), ramp: [PAL.white, PAL.gold4, PAL.leaf3, PAL.leaf2], flicker: true });
         });
         head.destroy();
         core.destroy();
+        spec.destroy();
         orbs.burst(7, (k) => {
           const a = (k / 7) * TAU;
           return { x: dest.x, y: dest.y, vx: Math.cos(a) * 55, vy: Math.sin(a) * 55, drag: 5, life: 280, ramp: [PAL.white, PAL.leaf4, PAL.leaf3, PAL.gold3], tex: k % 2 ? TEX.plus : TEX.px1 };
@@ -1400,11 +1418,15 @@ export async function healingFountain(scene: Phaser.Scene, player: PlayerId, toX
   });
 }
 
-/** Glowing frame pulse around a player's LP panel (HUD depth). */
+/** Glowing frame pulse around a player's LP panel (HUD depth): additive fill pop + expanding frame. */
 export function panelGlow(scene: Phaser.Scene, player: PlayerId, ramp: readonly number[], ms = 520): Promise<void> {
-  const rect = player === 0 ? { x: 4, y: 292, w: 148, h: 64 } : { x: 488, y: 4, w: 148, h: 64 };
+  const rect = panelRect(player);
   const ras = new Raster(scene, rect.x - 10, rect.y - 10, rect.w + 20, rect.h + 20, DEPTH.HUD + 5);
+  ras.img.setScrollFactor(0);
+  const fill = scene.add.rectangle(rect.x, rect.y, rect.w, rect.h, rampAt(ramp, 2), 1).setOrigin(0).setDepth(DEPTH.HUD + 4.5).setBlendMode(ADD).setScrollFactor(0);
   return run(scene, ms, (t) => {
+    const f = 1 - t / 0.45;
+    fill.setAlpha(f > 0.66 ? 0.4 : f > 0.33 ? 0.25 : f > 0 ? 0.12 : 0);
     ras.draw((g) => {
       const grow = Math.round(E.outCubic(t) * 7);
       const col = rampAt(ramp, t * ramp.length);
@@ -1417,9 +1439,17 @@ export function panelGlow(scene: Phaser.Scene, player: PlayerId, ramp: readonly 
       g.rect(x0, y0 + h - 1, w, 1, col, lv);
       g.rect(x0, y0, 1, h, col, lv);
       g.rect(x0 + w - 1, y0, 1, h, col, lv);
-      if (t < 0.3) g.rect(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2, rampAt(ramp, 1), 0.18 * (1 - t / 0.3));
+      if (t < 0.25) {
+        g.rect(rect.x, rect.y, rect.w, 1, PAL.white);
+        g.rect(rect.x, rect.y + rect.h - 1, rect.w, 1, PAL.white);
+        g.rect(rect.x, rect.y, 1, rect.h, PAL.white);
+        g.rect(rect.x + rect.w - 1, rect.y, 1, rect.h, PAL.white);
+      }
     });
-  }).then(() => ras.destroy());
+  }).then(() => {
+    ras.destroy();
+    fill.destroy();
+  });
 }
 
 // ------------------------------------------------------------------ Ruh Çağrısı — ghostRise
@@ -1704,34 +1734,38 @@ export async function swordForge(scene: Phaser.Scene, target: Unit): Promise<Aur
   const b0 = spriteBox(scene, target);
   const ax = Math.round(b0.cx);
   const SW = 15;
-  const SH = 46;
-  const hoverY = Math.round(b0.top - 34); // sword center while forging
-  const circleY = hoverY - 4;
+  // integer magnification keeps the blade crisp: a giant ×2 blade for medium+ monsters
+  const SS = b0.h >= 40 ? 2 : 1;
+  const SH = 46 * SS;
+  const hoverY = Math.max(Math.round(SH / 2) + 6, Math.round(b0.top - SH / 2 - 12)); // sword center while forging
+  const circleY = hoverY + Math.round(SH * 0.18);
+  const CR = 22 + SS * 10; // rune circle radius
   const runes: Phaser.GameObjects.Image[] = [];
   const sparks = new Sparks(scene, DEPTH.FX + 3);
-  const halo = Raster.around(scene, ax, circleY, 110, 60, DEPTH.FX + 1);
-  const sword = scene.add.image(ax, hoverY, 'set:sword').setDepth(DEPTH.FX + 2).setVisible(false);
-  const glint = Raster.around(scene, ax, hoverY, 40, 70, DEPTH.FX + 3);
+  const halo = Raster.around(scene, ax, circleY, CR * 2 + 30, CR + 30, DEPTH.FX + 1);
+  const sword = scene.add.image(ax, hoverY, 'set:sword').setDepth(DEPTH.FX + 2).setScale(SS).setVisible(false);
+  const glint = Raster.around(scene, ax, hoverY, 40, SH + 24, DEPTH.FX + 3);
   let circleOn = 0;
   let spin = 0;
   let glintT = -1;
   const stopDraw = onFrame(scene, (_dt, el) => {
     halo.draw((g) => {
       if (circleOn <= 0.01) return;
-      const r = 30 + (1 - circleOn) * 10;
+      const r = CR + (1 - circleOn) * 10;
       g.ring(ax, circleY, r, r * 0.32, PAL.gold3, circleOn);
       g.ring(ax, circleY, r - 4, r * 0.32 - 1.3, PAL.gold1, circleOn * 0.8);
+      g.ring(ax, circleY, r + 6, r * 0.32 + 2, PAL.gold2, circleOn * 0.45);
       for (let i = 0; i < 12; i++) {
         const a = el * 0.002 + (i / 12) * TAU;
         g.px(ax + Math.cos(a) * (r + 3), circleY + Math.sin(a) * (r * 0.32 + 1), PAL.gold4, circleOn);
       }
     });
-    glint.moveTo(sword.x - 20, sword.y - 35);
+    glint.moveTo(sword.x - 20, sword.y - SH / 2 - 12);
     glint.draw((g) => {
       if (glintT < 0 || glintT > 1 || !sword.visible) return;
       // diagonal shine sweeping down the blade
       const yy = sword.y - SH / 2 + glintT * (SH + 8);
-      for (let i = -3; i <= 3; i++) g.px(sword.x + i, yy + i * 0.5 - 2, i === 0 ? PAL.white : PAL.gold4, i === 0 ? 1 : 0.6);
+      for (let i = -3 * SS; i <= 3 * SS; i++) g.px(sword.x + i, yy + i * 0.5 - 2, Math.abs(i) <= SS - 1 ? PAL.white : PAL.gold4, Math.abs(i) <= SS - 1 ? 1 : 0.6);
     });
   });
 
@@ -1743,7 +1777,7 @@ export async function swordForge(scene: Phaser.Scene, target: Unit): Promise<Aur
     const img = scene.add.image(ax, circleY, 'set:rune', `r${i}`).setDepth(DEPTH.FX + 2).setVisible(false);
     runes.push(img);
   }
-  const runePos = (i: number, el: number, r = 30): XY => {
+  const runePos = (i: number, el: number, r = CR): XY => {
     const a = el * 0.0028 + (i / NR) * TAU;
     return { x: ax + Math.cos(a) * r, y: circleY + Math.sin(a) * r * 0.32 - 3 };
   };
@@ -1759,7 +1793,7 @@ export async function swordForge(scene: Phaser.Scene, target: Unit): Promise<Aur
   });
   for (let i = 0; i < NR; i++) {
     void (async () => {
-      await sleep(scene, 40 + i * 36);
+      await sleep(scene, 30 + i * 28);
       const r = runes[i];
       r.setVisible(true).setTintFill(PAL.white);
       sparks.add({ x: r.x, y: r.y, life: 120, ramp: [PAL.white, PAL.gold4, PAL.gold3], tex: TEX.spark });
@@ -1768,14 +1802,14 @@ export async function swordForge(scene: Phaser.Scene, target: Unit): Promise<Aur
       r.clearTint();
     })();
   }
-  await sleep(scene, 400);
+  await sleep(scene, 330);
 
   // ---- 400–640: runes converge into a vertical line — the blade's spine
   orbit();
-  const spine = (i: number): XY => ({ x: ax, y: hoverY - SH / 2 + 4 + (i / (NR - 1)) * (SH - 10) });
+  const spine = (i: number): XY => ({ x: ax, y: hoverY - SH / 2 + 4 * SS + (i / (NR - 1)) * (SH - 10 * SS) });
   const starts = runes.map((r) => ({ x: r.x, y: r.y }));
   runes.forEach((r) => r.setData('free', true));
-  await run(scene, 220, (t) => {
+  await run(scene, 190, (t) => {
     const k = E.inCubic(t);
     runes.forEach((r, i) => {
       const p = spine(i);
@@ -1786,7 +1820,7 @@ export async function swordForge(scene: Phaser.Scene, target: Unit): Promise<Aur
   snd('summonBurst', 0.4, 1.3);
   // ---- 640: the blade draws itself top → bottom (white), then cools to gold
   sword.setVisible(true).setTintFill(PAL.white);
-  await run(scene, 90, (t) => sword.setCrop(0, 0, SW, Math.ceil(SH * t)));
+  await run(scene, 90, (t) => sword.setCrop(0, 0, SW, Math.ceil(46 * t)));
   sword.setCrop();
   sparks.burst(16, (i) => {
     const yy = hoverY - SH / 2 + rnd() * SH;
@@ -1800,16 +1834,16 @@ export async function swordForge(scene: Phaser.Scene, target: Unit): Promise<Aur
 
   // ---- 760–1120: spin twice while rising
   snd('whoosh', 0.35, 1.4);
-  await run(scene, 380, (t) => {
+  await run(scene, 330, (t) => {
     spin = E.outCubic(t) * TAU * 2;
     const c = Math.cos(spin);
-    sword.setScale(Math.max(0.14, Math.abs(c)), 1).setFlipX(c < 0);
+    sword.setScale(Math.max(0.14, Math.abs(c)) * SS, SS).setFlipX(c < 0);
     if (Math.abs(c) < 0.3) sword.setTintFill(PAL.gold4);
     else sword.clearTint();
     sword.setY(Math.round(hoverY - E.outQuad(t) * 8));
     if (rnd() < 0.5) sparks.add({ x: ax + rr(-6, 6), y: sword.y + rr(-20, 20), vy: rr(10, 30), life: 300, ramp: [PAL.gold4, PAL.gold3, PAL.gold2], flicker: true });
   });
-  sword.setScale(1).setFlipX(false).clearTint();
+  sword.setScale(SS).setFlipX(false).clearTint();
   void run(scene, 200, (t) => (circleOn = 1 - t));
 
   // ---- anticipation: hang, tip glint
@@ -1819,7 +1853,7 @@ export async function swordForge(scene: Phaser.Scene, target: Unit): Promise<Aur
 
   // ---- plunge
   const b = spriteBox(scene, target);
-  const stabY = Math.round(b.top + b.h * 0.45 - SH / 2 + 6);
+  const stabY = Math.round(b.top + b.h * 0.5 - SH / 2);
   const fromY = sword.y;
   snd('whoosh', 0.6, 1.8);
   await run(scene, 100, (t) => sword.setY(Math.round(lerp(fromY, stabY, E.inQuad(t)))));
@@ -1834,7 +1868,7 @@ export async function swordForge(scene: Phaser.Scene, target: Unit): Promise<Aur
     return { x: ax, y: stabY + SH / 2 - 4, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.6 - 40, ay: 260, drag: 1.5, life: rr(300, 600), ramp: [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2, PAL.gold1], trail: true };
   });
   void shake(scene, 160, 2);
-  await hitStop(scene, 60);
+  await freeze(scene, 60);
   // the monster drinks the gold: white frame → gold silhouette → additive gold glow fading out
   void (async () => {
     await sleep(scene, 34);
@@ -1846,7 +1880,7 @@ export async function swordForge(scene: Phaser.Scene, target: Unit): Promise<Aur
   // the blade sinks into the body and vanishes in a column of light
   const column = Raster.around(scene, ax, b.top + b.h / 2 - 20, 30, b.h + 60, DEPTH.FX + 1, ADD);
   await run(scene, 260, (t) => {
-    sword.setY(Math.round(stabY + t * 10));
+    sword.setY(Math.round(stabY + t * 10 * SS));
     sword.setAlpha(t < 0.4 ? 1 : t < 0.7 ? 0.6 : 0.25);
     column.draw((g) => {
       const hw = 5 * (1 - t);
@@ -1866,6 +1900,7 @@ export async function swordForge(scene: Phaser.Scene, target: Unit): Promise<Aur
 // ------------------------------------------------------------------ Volkan Arenası — ambience
 
 interface Volcano {
+  alive: boolean;
   level: number;
   target: number;
   stop: () => void;
@@ -1894,14 +1929,20 @@ interface Mote {
  */
 export function setVolcanoAmbience(scene: Phaser.Scene, on: boolean): Promise<void> {
   let v = volcanoes.get(scene);
+  if (v && !v.alive) {
+    volcanoes.delete(scene);
+    v = undefined;
+  }
   if (!v) {
     if (!on) return Promise.resolve();
     v = buildVolcano(scene);
     volcanoes.set(scene, v);
   }
   const vv = v;
-  vv.target = on ? 1 : 0;
-  snd("fieldChange", on ? 0.6 : 0.3, on ? 0.8 : 1.2);
+  const target = on ? 1 : 0;
+  if (vv.target === target && vv.level === target) return Promise.resolve();
+  vv.target = target;
+  snd('fieldChange', on ? 0.6 : 0.3, on ? 0.8 : 1.2);
   return new Promise<void>((resolve) => vv.waiters.push(resolve));
 }
 
@@ -1911,16 +1952,29 @@ export function volcanoAmbienceOn(scene: Phaser.Scene): boolean {
 }
 
 function buildVolcano(scene: Phaser.Scene): Volcano {
-  // static dithered gradients (built once, alpha-faded)
-  const sky = new Raster(scene, 0, 0, GAME_W, 190, DEPTH.STADIUM + 4, ADD);
+  // static dithered gradients (built once, alpha-faded). The veil darkens the night sky toward
+  // ember red (normal blend, so blue + red never mixes into magenta); the glow adds the lava
+  // light along the horizon and under the platform.
+  const sky = new Raster(scene, 0, 0, GAME_W, 200, DEPTH.STADIUM + 4);
   sky.draw((g) => {
-    for (let yy = 0; yy < 190; yy++) {
-      const t = yy / 190;
-      const band = t < 0.35 ? PAL.crim1 : t < 0.7 ? PAL.fire1 : PAL.fire0;
-      const lv = 1 - t * 0.85;
+    for (let yy = 0; yy < 200; yy++) {
+      const t = yy / 200;
+      const band = t < 0.45 ? PAL.fire0 : PAL.crim0;
+      const lv = 0.5 + t * 0.25;
       for (let xx = 0; xx < GAME_W; xx++) {
-        const wave = Math.sin(xx * 0.02) * 0.08 + Math.sin(xx * 0.051 + 1) * 0.05;
-        g.dpx(xx, yy, band, lv * (0.85 + wave));
+        const wave = Math.sin(xx * 0.021) * 0.06 + Math.sin(xx * 0.053 + 1) * 0.04;
+        g.dpx(xx, yy, band, lv + wave);
+      }
+    }
+  });
+  const glow = new Raster(scene, 0, 60, GAME_W, 150, DEPTH.STADIUM + 5, ADD);
+  glow.draw((g) => {
+    for (let yy = 60; yy < 210; yy++) {
+      const t = (yy - 60) / 150;
+      const k = Math.max(0, 1 - Math.abs(t - 0.62) / 0.42);
+      for (let xx = 0; xx < GAME_W; xx++) {
+        const flick = 0.85 + Math.sin(xx * 0.037 + yy * 0.11) * 0.15;
+        g.dpx(xx, yy, k > 0.7 ? PAL.fire2 : PAL.fire1, k * 0.5 * flick);
       }
     }
   });
@@ -1930,13 +1984,14 @@ function buildVolcano(scene: Phaser.Scene): Volcano {
       const t = (yy - 200) / 160;
       for (let xx = 0; xx < GAME_W; xx++) {
         const d = Math.abs(xx - 320) / 320;
-        g.dpx(xx, yy, t > 0.5 ? PAL.fire1 : PAL.crim0, (0.25 + t * 0.6) * (1 - d * 0.6));
+        g.dpx(xx, yy, t > 0.5 ? PAL.fire1 : PAL.fire0, (0.25 + t * 0.6) * (1 - d * 0.6));
       }
     }
   });
   // a faint warm wash over the whole field (under units) so the scene reads hot
   const wash = scene.add.rectangle(0, 0, GAME_W, GAME_H, PAL.fire1, 1).setOrigin(0).setDepth(DEPTH.SHADOW - 3).setBlendMode(ADD).setAlpha(0);
   sky.img.setAlpha(0);
+  glow.img.setAlpha(0);
   low.img.setAlpha(0);
 
   const motes: Mote[] = [];
@@ -1949,37 +2004,55 @@ function buildVolcano(scene: Phaser.Scene): Volcano {
   }
   const spawn = (kind: Mote['kind'], init: boolean): Mote => {
     const far = kind === 'emberFar';
-    const img = scene.add.image(0, 0, kind === 'ash' ? (rnd() < 0.5 ? TEX.px2 : TEX.px1) : TEX.px1).setDepth(far ? DEPTH.STADIUM + 6 : kind === 'ash' ? DEPTH.FX - 2 : DEPTH.FX - 1);
+    const big = kind === 'ember' && rnd() < 0.35;
+    const img = scene.add.image(0, 0, kind === 'ash' || big ? (rnd() < 0.5 || big ? TEX.px2 : TEX.px1) : TEX.px1).setDepth(far ? DEPTH.STADIUM + 6 : kind === 'ash' ? DEPTH.FX - 2 : DEPTH.FX - 1);
+    // rising sparks boil off the lava seams of the board
+    const seam = kind === 'rise' ? isoToScreen(rr(-0.4, 4.4), rr(-0.4, 4.4)) : null;
     const m: Mote = {
       img,
       kind,
-      x: rr(-20, GAME_W + 40),
-      y: kind === 'rise' ? GAME_H + rr(0, 20) : rr(-30, -4),
-      vx: kind === 'ash' ? rr(-14, -4) : far ? rr(-18, -8) : rr(-34, -14),
-      vy: kind === 'rise' ? rr(-60, -28) : kind === 'ash' ? rr(9, 18) : far ? rr(16, 26) : rr(30, 52),
+      x: seam ? seam.x : rr(-20, GAME_W + 40),
+      y: seam ? seam.y : rr(-30, -4),
+      vx: kind === 'ash' ? rr(-14, -4) : far ? rr(-18, -8) : kind === 'rise' ? rr(-8, 8) : rr(-34, -14),
+      vy: kind === 'rise' ? rr(-46, -22) : kind === 'ash' ? rr(9, 18) : far ? rr(16, 26) : rr(30, 52),
       ph: rr(0, TAU),
-      life: rr(5000, 9000),
+      life: kind === 'rise' ? rr(700, 1500) : 1e9,
       age: 0,
     };
-    if (init) m.y = rr(0, GAME_H);
+    if (init && kind !== 'rise') m.y = rr(0, GAME_H);
     if (kind === 'ash') img.setTint(rnd() < 0.5 ? PAL.stone2 : PAL.stone3);
     return m;
   };
-  const counts: Record<Mote['kind'], number> = { ember: 26, emberFar: 22, rise: 10, ash: 30 };
+  const counts: Record<Mote['kind'], number> = { ember: 34, emberFar: 26, rise: 22, ash: 30 };
   const v: Volcano = {
+    alive: true,
     level: 0,
     target: 1,
     waiters: [],
-    objs: [sky, low, wash, ...heat],
+    objs: [sky, glow, low, wash, ...heat],
     stop: () => undefined,
   };
   let reported = -1;
+  const teardown = () => {
+    if (!v.alive) return;
+    v.alive = false;
+    for (const m of motes) m.img.destroy();
+    motes.length = 0;
+    v.objs.forEach((o) => o.destroy());
+    if (volcanoes.get(scene) === v) volcanoes.delete(scene);
+    v.waiters.splice(0).forEach((w) => w());
+  };
+  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+    v.stop();
+    teardown();
+  });
   v.stop = onFrame(scene, (dt, el) => {
     const s = dt / 1000;
     if (v.level < v.target) v.level = Math.min(v.target, v.level + dt / 1200);
     else if (v.level > v.target) v.level = Math.max(v.target, v.level - dt / 1200);
     const L = v.level;
-    sky.img.setAlpha(L * 0.95);
+    sky.img.setAlpha(L * 0.9);
+    glow.img.setAlpha(L * (0.85 + 0.15 * Math.sin(el * 0.003)));
     low.img.setAlpha(L * 0.8);
     wash.setAlpha(L * (0.06 + 0.02 * Math.sin(el * 0.004)));
     // keep the particle population proportional to the level
@@ -1994,7 +2067,7 @@ function buildVolcano(scene: Phaser.Scene): Volcano {
       const sway = Math.sin(m.ph + el * (m.kind === 'ash' ? 0.003 : 0.005)) * (m.kind === 'ash' ? 10 : 6);
       m.x += (m.vx + sway) * s;
       m.y += m.vy * s;
-      const out = m.y > GAME_H + 30 || m.y < -40 || m.x < -40;
+      const out = m.y > GAME_H + 30 || m.y < -40 || m.x < -40 || m.age > m.life;
       if (out || (v.target === 0 && rnd() < dt / 900)) {
         m.img.destroy();
         motes.splice(i, 1);
@@ -2011,6 +2084,10 @@ function buildVolcano(scene: Phaser.Scene): Volcano {
         if (m.kind === 'emberFar') {
           c = f > 0.6 ? PAL.fire3 : PAL.fire2;
           a = 0.7;
+        } else if (m.kind === 'rise') {
+          const lt = m.age / m.life;
+          c = lt < 0.3 ? PAL.fire4 : lt < 0.7 ? PAL.fire3 : PAL.fire2;
+          a = lt > 0.8 ? 0.5 : 1;
         } else c = f > 0.8 ? PAL.fire4 : f > 0.3 ? PAL.fire3 : PAL.fire2;
       }
       m.img.setPosition(Math.round(m.x), Math.round(m.y)).setTint(c).setAlpha(a * Math.min(1, L * 1.5));
@@ -2039,10 +2116,7 @@ function buildVolcano(scene: Phaser.Scene): Volcano {
       const ws = v.waiters.splice(0);
       ws.forEach((w) => w());
       if (v.target === 0) {
-        for (const m of motes) m.img.destroy();
-        motes.length = 0;
-        v.objs.forEach((o) => o.destroy());
-        volcanoes.delete(scene);
+        teardown();
         return false;
       }
     }
@@ -2072,8 +2146,10 @@ export interface BurnOpts {
 
 /** Which LP panel (if any) a screen point sits on. */
 function panelAt(p: XY): PlayerId | null {
-  if (p.x <= 156 && p.y >= 286) return 0;
-  if (p.x >= 484 && p.y <= 72) return 1;
+  for (const pl of [0, 1] as PlayerId[]) {
+    const r = panelRect(pl);
+    if (p.x >= r.x - 6 && p.x <= r.x + r.w + 6 && p.y >= r.y - 6 && p.y <= r.y + r.h + 6) return pl;
+  }
   return null;
 }
 
@@ -2091,18 +2167,20 @@ export async function burnFly(scene: Phaser.Scene, fromXY: XY, toXY: XY, opts: B
   const ramp = rampOf(opts.color ?? PAL.fire3);
   const hot = [PAL.white, ramp[4], ramp[3], ramp[2], ramp[1], ramp[0]];
   const depth = DEPTH.HUD + 6;
-  const R = new Raster(scene, 0, 0, 72, 72, depth);
+  const R = new Raster(scene, 0, 0, 120, 120, depth);
   const trail = new Sparks(scene, depth - 1);
   const smoke = new Sparks(scene, depth - 2);
   const isWisp = kind === 'wisp';
+  const S = isWisp ? 1.5 : 1.8; // head scale
   let pos = { x: fromXY.x, y: fromXY.y };
   let vel = { x: 0, y: -1 };
   let size = 0;
   let el0 = 0;
   const drawHead = () => {
-    R.moveTo(Math.round(pos.x) - 36, Math.round(pos.y) - 36);
+    R.moveTo(Math.round(pos.x) - 60, Math.round(pos.y) - 60);
     R.draw((g) => {
       if (size <= 0.05) return;
+      const sz = size * S;
       const sp = Math.hypot(vel.x, vel.y) || 1;
       const bx = -vel.x / sp;
       const by = -vel.y / sp;
@@ -2111,45 +2189,52 @@ export async function burnFly(scene: Phaser.Scene, fromXY: XY, toXY: XY, opts: B
       const fl = el0 * 0.03;
       if (isWisp) {
         // teardrop flame body with a flickering tip streaming backward
-        const L = 12 * size;
+        const L = 12 * sz;
+        g.disc(pos.x, pos.y, 7 * sz, ramp[1], 0.3);
         for (let i = 10; i >= 0; i--) {
           const t = i / 10;
-          const wob = Math.sin(fl * 2 + t * 6) * 1.8 * t;
-          const r = (1 - t) * 4.2 * size + 0.6;
+          const wob = Math.sin(fl * 2 + t * 6) * 1.8 * t * S;
+          const r = (1 - t) * 4.2 * sz + 0.6;
           const cx = pos.x + bx * L * t + px * wob;
           const cy = pos.y + by * L * t + py * wob;
           g.disc(cx, cy, r + 1, t > 0.6 ? ramp[1] : ramp[2]);
         }
         for (let i = 10; i >= 0; i--) {
           const t = i / 10;
-          const wob = Math.sin(fl * 2 + t * 6) * 1.8 * t;
-          const r = (1 - t) * 4.2 * size;
+          const wob = Math.sin(fl * 2 + t * 6) * 1.8 * t * S;
+          const r = (1 - t) * 4.2 * sz;
           g.disc(pos.x + bx * L * t + px * wob, pos.y + by * L * t + py * wob, r, t > 0.45 ? ramp[3] : ramp[4]);
         }
-        g.disc(pos.x - bx, pos.y - by, 2.2 * size, PAL.white);
-        // eyes look where it flies
-        const ex = pos.x - bx * 1.5;
-        const ey = pos.y - by * 1.5 - 1;
-        g.px(ex + px * 1.6, ey + py * 1.6, PAL.ink);
-        g.px(ex - px * 1.6, ey - py * 1.6, PAL.ink);
+        g.disc(pos.x - bx, pos.y - by, 2.2 * sz, PAL.white);
+        // eyes look where it flies (2px tall, blinking)
+        const ex = pos.x - bx * 2;
+        const ey = pos.y - by * 2 - 1;
+        const blink = Math.floor(el0 / 90) % 9 === 0;
+        for (const sgn of [1, -1]) {
+          const qx = ex + px * 2.4 * sgn;
+          const qy = ey + py * 2.4 * sgn;
+          g.px(qx, qy, PAL.ink);
+          if (!blink) g.px(qx, qy - 1, PAL.ink);
+        }
         return;
       }
       // fireball: tongues trailing against velocity
       const tongues = 7;
       for (let k = 0; k < tongues; k++) {
-        const sway = Math.sin(fl * 1.7 + k * 1.9) * 2.4;
-        const len = (10 + (k % 3) * 4 + Math.sin(fl * 2.3 + k) * 2) * size;
+        const sway = Math.sin(fl * 1.7 + k * 1.9) * 2.4 * S;
+        const len = (10 + (k % 3) * 4 + Math.sin(fl * 2.3 + k) * 2) * sz;
         for (let i = 6; i >= 1; i--) {
           const t = i / 6;
-          const r = (1 - t) * 4 * size + 0.5;
-          const off = (k - (tongues - 1) / 2) * 1.1 * (1 - t * 0.5);
+          const r = (1 - t) * 4 * sz + 0.5;
+          const off = (k - (tongues - 1) / 2) * 1.1 * S * (1 - t * 0.5);
           g.disc(pos.x + bx * len * t + px * (off + sway * t), pos.y + by * len * t + py * (off + sway * t), r, t > 0.66 ? ramp[1] : t > 0.33 ? ramp[2] : ramp[3]);
         }
       }
-      g.disc(pos.x, pos.y, 6 * size, ramp[2]);
-      g.disc(pos.x - bx * 0.5, pos.y - by * 0.5, 4.6 * size, ramp[3]);
-      g.disc(pos.x - bx * 1.2, pos.y - by * 1.2, 3 * size, ramp[4]);
-      g.disc(pos.x - bx * 1.6 - 0.5, pos.y - by * 1.6 - 0.5, 1.6 * size, PAL.white);
+      g.disc(pos.x, pos.y, 8 * sz, ramp[1], 0.35);
+      g.disc(pos.x, pos.y, 6 * sz, ramp[2]);
+      g.disc(pos.x - bx * 0.5 * S, pos.y - by * 0.5 * S, 4.6 * sz, ramp[3]);
+      g.disc(pos.x - bx * 1.2 * S, pos.y - by * 1.2 * S, 3 * sz, ramp[4]);
+      g.disc(pos.x - bx * 1.6 * S - 0.5, pos.y - by * 1.6 * S - 0.5, 1.6 * sz, PAL.white);
     });
   };
   const stopDraw = onFrame(scene, (_dt, el) => {
@@ -2190,8 +2275,8 @@ export async function burnFly(scene: Phaser.Scene, fromXY: XY, toXY: XY, opts: B
     vel = { x: p.x - prev.x || vel.x, y: p.y - prev.y || vel.y };
     prev = p;
     pos = p;
-    if (rnd() < 0.9)
-      trail.add({ x: p.x + rr(-2, 2), y: p.y + rr(-2, 2), vx: rr(-15, 15), vy: rr(-25, 5), life: rr(220, 420), ramp: hot.slice(1), tex: rnd() < 0.3 ? TEX.px2 : TEX.px1, flicker: true });
+    for (let k = 0; k < (isWisp ? 1 : 2); k++)
+      trail.add({ x: p.x + rr(-3, 3), y: p.y + rr(-3, 3), vx: rr(-15, 15), vy: rr(-25, 5), life: rr(220, 460), ramp: hot.slice(1), tex: rnd() < 0.4 ? TEX.px2 : TEX.px1, flicker: true });
     if (!isWisp && el % 3 < 1.5 && rnd() < 0.35) smoke.add({ x: p.x, y: p.y, vy: rr(-14, -4), life: rr(300, 500), ramp: [PAL.stone2, PAL.stone1, PAL.night2], tex: TEX.dot5, wobble: 4 });
   });
 
@@ -2201,7 +2286,7 @@ export async function burnFly(scene: Phaser.Scene, fromXY: XY, toXY: XY, opts: B
   opts.onImpact?.();
   snd(isWisp ? 'burn' : 'fireBurst', 1);
   snd('lpDown', 0.4);
-  void explosion(scene, toXY.x, toXY.y, ramp, isWisp ? 0.75 : 1, depth);
+  void explosion(scene, toXY.x, toXY.y, ramp, isWisp ? 0.95 : 1.35, depth);
   const panel = panelAt(toXY);
   if (panel !== null) void panelGlow(scene, panel, [PAL.white, ramp[4], ramp[3], ramp[2]], 420);
   void shake(scene, 180, isWisp ? 1 : 2);
@@ -2310,30 +2395,39 @@ export async function healFly(scene: Phaser.Scene, fromXY: XY, toXY: XY, opts: {
   for (let i = 0; i < N; i++) {
     jobs.push(
       (async () => {
-        await sleep(scene, i * 60);
+        await sleep(scene, i * 45);
         const star = scene.add.image(fromXY.x, fromXY.y, TEX.spark).setDepth(DEPTH.HUD + 8).setTint(PAL.gold4);
+        const halo = scene.add.image(fromXY.x, fromXY.y, TEX.dot5).setDepth(DEPTH.HUD + 7.5).setTint(PAL.leaf2).setBlendMode(ADD).setScale(2);
+        const follow = () => halo.setPosition(star.x, star.y).setAlpha(Math.floor(scene.time.now / 70) % 2 ? 0.7 : 0.45);
         const a = -Math.PI / 2 + (i - (N - 1) / 2) * 0.32;
         const peak = { x: fromXY.x + Math.cos(a) * rr(22, 34), y: fromXY.y + Math.sin(a) * rr(26, 40) };
         // rise
-        await run(scene, 260, (t, el) => {
+        await run(scene, 220, (t, el) => {
           const k = E.outCubic(t);
           star.setPosition(Math.round(lerp(fromXY.x, peak.x, k)), Math.round(lerp(fromXY.y, peak.y, k)));
           star.setTint(Math.floor(el / 60) % 2 ? PAL.white : PAL.gold4);
+          follow();
           if (rnd() < 0.6) trail.add({ x: star.x + rr(-1, 1), y: star.y + rr(-1, 1), vy: rr(5, 20), life: 260, ramp: [PAL.gold4, PAL.leaf4, PAL.leaf3], flicker: true });
         });
         // hang + twinkle
-        await sleep(scene, 80 + (N - i) * 25);
+        await run(scene, 60 + (N - i) * 18, (_t, el) => {
+          star.setTint(Math.floor(el / 50) % 2 ? PAL.white : PAL.gold4).setScale(Math.floor(el / 100) % 2 ? 1 : 2);
+          follow();
+        });
+        star.setScale(1);
         // stream into the panel
         const from = { x: star.x, y: star.y };
         const ctrl = { x: lerp(from.x, toXY.x, 0.2) + rr(-30, 30), y: Math.min(from.y, toXY.y) - rr(20, 60) };
         const dest = { x: toXY.x + rr(-12, 12), y: toXY.y + rr(-5, 5) };
-        await run(scene, rr(420, 520), (t, el) => {
+        await run(scene, rr(360, 430), (t, el) => {
           const p = qbez(from, ctrl, dest, E.inQuad(t) * 0.6 + t * 0.4);
           star.setPosition(Math.round(p.x), Math.round(p.y));
           star.setTint(Math.floor(el / 50) % 2 ? PAL.white : PAL.gold4);
-          trail.add({ x: p.x + rr(-1.5, 1.5), y: p.y + rr(-1.5, 1.5), vy: rr(-8, 8), life: rr(220, 380), ramp: [PAL.white, PAL.gold4, PAL.leaf3, PAL.leaf2], flicker: true });
+          follow();
+          for (let k = 0; k < 2; k++) trail.add({ x: p.x + rr(-2, 2), y: p.y + rr(-2, 2), vy: rr(-8, 8), life: rr(240, 420), ramp: [PAL.white, PAL.gold4, PAL.leaf4, PAL.leaf3, PAL.leaf2], flicker: true, tex: k === 0 && rnd() < 0.4 ? TEX.px2 : TEX.px1 });
         });
         star.destroy();
+        halo.destroy();
         pops.burst(8, (k) => {
           const an = (k / 8) * TAU;
           return { x: dest.x, y: dest.y, vx: Math.cos(an) * 60, vy: Math.sin(an) * 60, drag: 5, life: 260, ramp: [PAL.white, PAL.leaf4, PAL.leaf3, PAL.gold3], tex: k % 2 ? TEX.plus : TEX.px1 };
@@ -2355,19 +2449,21 @@ export async function healFly(scene: Phaser.Scene, fromXY: XY, toXY: XY, opts: {
 }
 
 /**
- * Abyss magus effect (~0.9 s main beat): a shadow pool opens under the caster, a thorny shadow
- * tendril snakes along the floor to `toXY`, a void opens under the target card and three
- * tendrils burst up around it and clench. Resolves at the clench (crack / swallow the card then);
- * the tendrils retract and the pools close on their own (~500 ms).
+ * Abyss magus effect (~1.0 s main beat): a shadow pool opens under the caster, a glowing thorny
+ * shadow tendril snakes along the floor to `toXY` (the target spell/trap card), a void opens
+ * under the card and three tendrils burst up around it and clench. Resolves at the clench (crack
+ * / swallow the card then); the tendrils retract and the pools close on their own (~550 ms).
  */
 export async function tendril(scene: Phaser.Scene, fromXY: XY, toXY: XY): Promise<void> {
-  const x0 = Math.min(fromXY.x, toXY.x) - 40;
-  const y0 = Math.min(fromXY.y, toXY.y) - 70;
-  const W = Math.abs(fromXY.x - toXY.x) + 80;
-  const H = Math.abs(fromXY.y - toXY.y) + 110;
-  const floorR = new Raster(scene, x0, y0, W, H, DEPTH.TILE_FX + 3);
-  const upR = Raster.around(scene, toXY.x, toXY.y - 20, 90, 90, DEPTH.FX + 1);
+  const x0 = Math.min(fromXY.x, toXY.x) - 50;
+  const y0 = Math.min(fromXY.y, toXY.y) - 30;
+  const W = Math.abs(fromXY.x - toXY.x) + 100;
+  const H = Math.abs(fromXY.y - toXY.y) + 60;
+  const floorR = new Raster(scene, x0, y0, W, H, DEPTH.SHADOW - 1);
+  // the risers stand on the card's tile: in front of the card, behind the units in front of it
+  const upR = Raster.around(scene, toXY.x, toXY.y - 24, 100, 90, unitDepth(toXY.y) + 2);
   const sp = new Sparks(scene, DEPTH.FX + 2);
+  const back = new Sparks(scene, unitDepth(toXY.y) + 3);
   // floor path: gentle S-curve
   const dx = toXY.x - fromXY.x;
   const dy = toXY.y - fromXY.y;
@@ -2376,8 +2472,8 @@ export async function tendril(scene: Phaser.Scene, fromXY: XY, toXY: XY): Promis
   const ny = dx / L;
   const path = (t: number, el: number): XY => {
     const base = { x: fromXY.x + dx * t, y: fromXY.y + dy * t };
-    const s1 = Math.sin(t * Math.PI * 2) * 12 * Math.sin(t * Math.PI);
-    const wig = Math.sin(t * 22 - el * 0.02) * 2 * Math.sin(t * Math.PI);
+    const s1 = Math.sin(t * Math.PI * 2) * 14 * Math.sin(t * Math.PI);
+    const wig = Math.sin(t * 20 - el * 0.02) * 2.2 * Math.sin(t * Math.PI);
     return { x: base.x + nx * (s1 + wig), y: base.y + ny * (s1 + wig) * 0.5 };
   };
   let grow = 0;
@@ -2386,107 +2482,119 @@ export async function tendril(scene: Phaser.Scene, fromXY: XY, toXY: XY): Promis
   let rise = 0;
   let clench = 0;
   let retract = 0;
-  const pool = (g: Raster, p: XY, k: number, el: number) => {
+  let hot = 0; // clench flash
+  const pool = (g: Raster, p: XY, k: number, el: number, r0: number) => {
     if (k <= 0.02) return;
-    g.ell(p.x, p.y, 16 * k, 8 * k, PAL.void1);
-    g.ell(p.x, p.y, 12 * k, 6 * k, PAL.void0);
-    g.ell(p.x, p.y, 7 * k, 3.5 * k, PAL.ink);
+    const rx = r0 * k;
+    const ry = rx / 2;
+    g.ell(p.x, p.y, rx + 3, ry + 1.5, PAL.void2, 0.35);
+    g.ell(p.x, p.y, rx, ry, PAL.void1);
+    g.ell(p.x, p.y, rx * 0.78, ry * 0.78, PAL.void0);
+    g.ell(p.x, p.y + 0.5, rx * 0.5, ry * 0.5, PAL.ink);
+    g.ring(p.x, p.y, rx, ry, PAL.void3);
     for (let i = 0; i < 3; i++) {
-      const a = el * 0.006 + (i / 3) * TAU;
-      g.ring(p.x, p.y, 12 * k, 6 * k, PAL.void3, 1, a, a + 0.9);
+      const a = el * 0.007 + (i / 3) * TAU;
+      g.ring(p.x, p.y, rx * 0.66, ry * 0.66, PAL.void3, 1, a, a + 1.1);
+      g.ring(p.x, p.y, rx, ry, PAL.void4, 1, -a * 0.8, -a * 0.8 + 0.5);
     }
+  };
+  // thick glowing shadow stroke along points (radius shrinks toward the tip)
+  const stroke = (g: Raster, pts: readonly XY[], r0: number, r1: number) => {
+    const n = pts.length;
+    if (n < 2) return;
+    const rad = (i: number) => lerp(r0, r1, i / (n - 1));
+    for (let i = 1; i < n; i++) g.thick(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y, rad(i) + 2.4, PAL.void2, 0.4);
+    for (let i = 1; i < n; i++) g.thick(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y, rad(i) + 1, PAL.void3);
+    for (let i = 1; i < n; i++) g.thick(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y, rad(i), PAL.void0);
+    for (let i = 2; i < n; i += 2) {
+      // lit top edge + pulsing veins
+      const r = rad(i);
+      g.px(pts[i].x, pts[i].y - Math.round(r + 0.5), (i + Math.floor(rnd() * 2)) % 6 === 0 ? PAL.white : PAL.void4);
+      if (r > 1.6 && i % 4 === 0) g.px(pts[i].x, pts[i].y, PAL.void2);
+    }
+    for (let i = 3; i < n - 2; i += 5) {
+      // thorns, alternating sides
+      const a = pts[i];
+      const b = pts[i - 1];
+      const tx = a.x - b.x;
+      const ty = a.y - b.y;
+      const l = Math.hypot(tx, ty) || 1;
+      const side = i % 10 === 3 ? 1 : -1;
+      const r = rad(i) + 3;
+      g.line(a.x, a.y, a.x - (ty / l) * r * side - (tx / l) * 2, a.y + (tx / l) * r * side - (ty / l) * 2, PAL.void3);
+    }
+    const h = pts[n - 1];
+    g.disc(h.x, h.y, r1 + 1.2, PAL.void4);
+    g.px(h.x, h.y, PAL.white);
   };
   const stop = onFrame(scene, (_dt, el) => {
     floorR.draw((g) => {
-      pool(g, fromXY, poolA, el);
-      pool(g, toXY, poolB, el);
+      pool(g, fromXY, poolA, el, 18);
+      pool(g, toXY, poolB, el, 22);
       if (grow <= 0) return;
-      const t0 = retract;
-      const n = 60;
+      const n = 56;
       const pts: XY[] = [];
       for (let i = 0; i <= n; i++) {
         const t = (i / n) * grow;
-        if (t < t0 * grow) continue;
+        if (t < retract * grow) continue;
         pts.push(path(t, el));
       }
-      // shadow on the floor, body, highlight
-      for (let i = 1; i < pts.length; i++) {
-        const t = i / pts.length;
-        const w = 3.2 - t * 1.8;
-        g.thick(pts[i - 1].x, pts[i - 1].y + 1, pts[i].x, pts[i].y + 1, w + 0.8, PAL.ink, 0.6);
-      }
-      for (let i = 1; i < pts.length; i++) {
-        const t = i / pts.length;
-        const w = 2.8 - t * 1.6;
-        g.thick(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y, w, PAL.void1);
-      }
-      for (let i = 1; i < pts.length; i++) {
-        const t = i / pts.length;
-        g.px(pts[i].x, pts[i].y - Math.max(1, 2 - t * 1.5), i % 5 === 0 ? PAL.void4 : PAL.void3);
-        if (i % 6 === 3) {
-          // thorn
-          const a = pts[i];
-          const b = pts[i - 1];
-          const tx = a.x - b.x;
-          const ty = a.y - b.y;
-          const l = Math.hypot(tx, ty) || 1;
-          const side = i % 12 === 3 ? 1 : -1;
-          g.line(a.x, a.y, a.x - (ty / l) * 3 * side - (tx / l) * 2, a.y + (tx / l) * 3 * side - (ty / l) * 2, PAL.void2);
-        }
-      }
-      if (pts.length) {
-        const h = pts[pts.length - 1];
-        g.disc(h.x, h.y, 1.5, PAL.void3);
-        g.px(h.x, h.y, PAL.void4);
-      }
+      stroke(g, pts, 3.4, 1.4);
     });
     upR.draw((g) => {
       if (rise <= 0) return;
       for (let k = 0; k < 3; k++) {
-        const base = { x: toXY.x + [-14, 0, 14][k], y: toXY.y + [2, 6, 2][k] };
-        const hgt = (26 + k * 4) * rise * (1 - retract);
+        const base = { x: toXY.x + [-15, 0, 15][k], y: toXY.y + [1, 6, 1][k] };
+        const hgt = (30 + k * 3) * rise * (1 - retract);
+        if (hgt < 2) continue;
         const lean = [-1, 0, 1][k];
         const pts: XY[] = [];
-        for (let i = 0; i <= 14; i++) {
-          const t = i / 14;
-          const curl = clench * t * t * 10;
-          const wav = Math.sin(t * 6 + el * 0.02 + k) * 2.5 * t;
-          pts.push({ x: base.x + lean * (t * 8 - curl) + wav, y: base.y - hgt * t + curl * 0.3 });
+        for (let i = 0; i <= 16; i++) {
+          const t = i / 16;
+          const curl = clench * t * t * 13;
+          const wav = Math.sin(t * 6 + el * 0.02 + k) * 2.5 * t * (1 - clench * 0.6);
+          pts.push({ x: base.x + lean * (t * 9 - curl) + wav, y: base.y - hgt * t + curl * 0.35 });
         }
-        for (let i = 1; i < pts.length; i++) {
-          const t = i / pts.length;
-          g.thick(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y, 2.6 - t * 1.8, PAL.void1);
-        }
-        for (let i = 1; i < pts.length; i++) g.px(pts[i].x - 1, pts[i].y, i % 4 === 0 ? PAL.void4 : PAL.void3);
-        const tip = pts[pts.length - 1];
-        g.px(tip.x, tip.y, PAL.void4);
+        stroke(g, pts, 3, 1);
+      }
+      if (hot > 0.05) {
+        g.ell(toXY.x, toXY.y - 16, 14 * hot, 9 * hot, PAL.void4, hot);
+        g.ell(toXY.x, toXY.y - 16, 7 * hot, 4 * hot, PAL.white, hot);
       }
     });
   });
   // ---- caster's shadow pool
   snd('darkPulse', 0.8);
-  await run(scene, 160, (t) => (poolA = E.outBack(t)));
+  back.burst(8, () => ({ x: fromXY.x + rr(-12, 12), y: fromXY.y + rr(-3, 3), vy: rr(-40, -18), wobble: 8, life: rr(300, 520), ramp: [PAL.void4, PAL.void3, PAL.void2], tex: rnd() < 0.3 ? TEX.px2 : TEX.px1 }));
+  await run(scene, 170, (t) => (poolA = E.outBack(t)));
   // ---- the tendril snakes along the floor
   snd('whoosh', 0.5, 0.6);
-  await run(scene, 420, (t) => {
+  await run(scene, 440, (t) => {
     grow = E.inOutSine(t);
-    if (rnd() < 0.6) {
+    if (rnd() < 0.8) {
       const p = path(grow, 0);
-      sp.add({ x: p.x, y: p.y, vy: rr(-30, -10), vx: rr(-10, 10), life: rr(240, 400), ramp: [PAL.void3, PAL.void2, PAL.void1], tex: TEX.px1 });
+      sp.add({ x: p.x + rr(-2, 2), y: p.y - rr(0, 3), vy: rr(-36, -12), vx: rr(-10, 10), life: rr(240, 420), ramp: [PAL.void4, PAL.void3, PAL.void2, PAL.void1], tex: TEX.px1, flicker: rnd() < 0.3 });
     }
   });
   // ---- void under the target, tendrils erupt and clench
   snd('darkPulse', 1, 0.7);
   void run(scene, 160, (t) => (poolB = E.outBack(t)));
-  await run(scene, 180, (t) => (rise = E.outBack(t)));
-  sp.burst(16, () => ({ x: toXY.x + rr(-14, 14), y: toXY.y + rr(-2, 4), vy: rr(-90, -40), vx: rr(-30, 30), ay: 120, life: rr(260, 460), ramp: [PAL.void4, PAL.void3, PAL.void2, PAL.void1], trail: true }));
+  await run(scene, 170, (t) => (rise = E.outBack(t)));
+  sp.burst(18, () => ({ x: toXY.x + rr(-16, 16), y: toXY.y + rr(-2, 4), vy: rr(-100, -40), vx: rr(-30, 30), ay: 120, life: rr(260, 460), ramp: [PAL.void4, PAL.void3, PAL.void2, PAL.void1], trail: true }));
   await run(scene, 140, (t) => (clench = E.inQuad(t)));
+  hot = 1;
+  void run(scene, 200, (t) => (hot = 1 - t));
   snd('impactHeavy', 0.5, 0.6);
-  void shake(scene, 120, 1);
+  sp.burst(12, () => {
+    const a = rr(0, TAU);
+    const v = rr(50, 130);
+    return { x: toXY.x, y: toXY.y - 16, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.6, drag: 3, life: rr(200, 380), ramp: [PAL.white, PAL.void4, PAL.void3], tex: rnd() < 0.3 ? TEX.plus : TEX.px1 };
+  });
+  void shake(scene, 140, 1.5);
   // main beat — retract in the background
   void (async () => {
     await sleep(scene, 280);
-    await run(scene, 360, (t) => {
+    await run(scene, 380, (t) => {
       retract = E.inQuad(t);
       poolA = 1 - t;
       poolB = 1 - E.inQuad(t);
@@ -2495,6 +2603,7 @@ export async function tendril(scene: Phaser.Scene, fromXY: XY, toXY: XY): Promis
     floorR.destroy();
     upR.destroy();
     sp.close();
+    back.close();
   })();
 }
 
@@ -2610,7 +2719,7 @@ export async function vineBurst(scene: Phaser.Scene, x: number, y: number, targe
     return { x: x + rr(-8, 8), y: y - rr(4, H * 0.8), vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.7 - 30, ay: 320, drag: 2, life: rr(260, 520), ramp: [PAL.white, PAL.leaf4, PAL.leaf3, PAL.earth3], trail: true, tex: rnd() < 0.3 ? TEX.plus : TEX.px1 };
   });
   void shake(scene, 180, 2);
-  await hitStop(scene, 70);
+  await freeze(scene, 70);
   if (target.active) {
     target.clearTint();
     target.setScale(sx, sy);
@@ -2800,7 +2909,7 @@ export async function trapSpring(scene: Phaser.Scene, x: number, y: number): Pro
       word.setTint(t < 0.2 ? PAL.white : fl ? PAL.mag3 : PAL.mag4);
       const a = 1 - seg(t, 0.55, 1);
       word.setAlpha(a > 0.66 ? 1 : a > 0.33 ? 0.66 : a > 0 ? 0.33 : 0);
-      word.setScale(t < 0.1 ? 2 : 1);
+      word.setScale(t < 0.05 ? 1.5 : 1);
     }
     if (t > 0.15 && t < 0.8 && rnd() < 0.6) sparks.add({ x: x + rr(-14, 14), y: cy + rr(-4, 6), vy: rr(-90, -50), life: rr(200, 380), ramp: [PAL.mag4, PAL.mag3, PAL.mag2], tex: TEX.px1, trail: true });
   });
@@ -2828,6 +2937,10 @@ export interface MirrorOpts {
   onHit?: (i: number) => void;
   /** Called when the incoming attack strikes the dome. */
   onBlock?: () => void;
+  /** Where the incoming attack comes from (the declared attacker's core). Default attackers[0]. */
+  source?: XY;
+  /** Color of the incoming attack streak. Default: the attacking player's color. */
+  attackColor?: number;
 }
 
 /**
@@ -2841,7 +2954,7 @@ export async function mirrorDome(scene: Phaser.Scene, side: PlayerId, attackers:
   const b0 = side === 0 ? 3 : 1;
   const ra = 1.78;
   const rb = 1.02;
-  const rz = 98;
+  const rz = 84;
   const fs = side === 0 ? -1 : 1; // forward sign along rows (toward the attacker)
   const k = 1 / 32;
   const cScr = isoToScreen(a0, b0);
@@ -2955,8 +3068,10 @@ export async function mirrorDome(scene: Phaser.Scene, side: PlayerId, attackers:
             c = hot > 0.4 || fresh ? PAL.white : PAL.mag4;
             lv = 1;
           } else if (edge) {
-            c = fresh || hot > 0.75 ? PAL.white : hot > 0.35 ? PAL.mag4 : near ? PAL.mag3 : PAL.mag2;
-            lv = near ? 1 : 0.4;
+            // glass: hex seams fade where we look straight through the shell, glow at grazing angles
+            const fresE = 1 - Math.min(1, thick * 2.2);
+            c = fresh || hot > 0.75 ? PAL.white : hot > 0.35 ? PAL.mag4 : near ? (fresE > 0.45 ? PAL.mag3 : PAL.mag2) : PAL.mag2;
+            lv = near ? (fresh || hot > 0.35 ? 1 : 0.2 + fresE * 0.8) : 0.35;
           } else {
             const fres = 1 - Math.min(1, thick * 2.2);
             if (fresh) {
@@ -2967,7 +3082,7 @@ export async function mirrorDome(scene: Phaser.Scene, side: PlayerId, attackers:
               lv = 0.15 + hot * 0.35;
             } else {
               c = near ? PAL.mag2 : PAL.mag1;
-              lv = near ? 0.04 + fres * 0.3 : 0.05 + fres * 0.12;
+              lv = near ? fres * fres * 0.3 : 0.04 + fres * 0.1;
             }
           }
           // specular streaks on the near glass (light from the upper left)
@@ -3016,7 +3131,8 @@ export async function mirrorDome(scene: Phaser.Scene, side: PlayerId, attackers:
   build = 1;
 
   // ---- 450–640 the incoming attack streaks into the shell
-  const src = attackers[0] ?? { x: cScr.x - fs * 60, y: cScr.y + fs * 60 };
+  const src = opts.source ?? attackers[0] ?? { x: cScr.x - fs * 60, y: cScr.y + fs * 60 };
+  const atk = rampOf(opts.attackColor ?? PLAYER_COLOR[side === 0 ? 1 : 0]);
   const streak = new Raster(scene, Math.min(src.x, hit.x) - 12, Math.min(src.y, hit.y) - 12, Math.abs(src.x - hit.x) + 24, Math.abs(src.y - hit.y) + 24, DEPTH.FX + 4);
   snd('beamFire', 0.6, 1.2);
   await run(scene, 170, (t) => {
@@ -3026,7 +3142,7 @@ export async function mirrorDome(scene: Phaser.Scene, side: PlayerId, attackers:
     const tx = lerp(src.x, hit.x, Math.max(0, kk - 0.35));
     const ty = lerp(src.y, hit.y, Math.max(0, kk - 0.35));
     streak.draw((g) => {
-      glowStroke(g, [{ x: tx, y: ty }, { x: hx, y: hy }], [PAL.crim1, PAL.crim3, PAL.crim4, PAL.white], 1.6);
+      glowStroke(g, [{ x: tx, y: ty }, { x: hx, y: hy }], [atk[1], atk[3], atk[4], PAL.white], 1.6);
       g.disc(hx, hy, 3.5, PAL.white);
     });
   });
@@ -3044,16 +3160,19 @@ export async function mirrorDome(scene: Phaser.Scene, side: PlayerId, attackers:
   });
   const star = scene.add.image(hit.x, hit.y, TEX.spark).setScale(5).setTint(PAL.white).setDepth(DEPTH.FX + 7);
   void shake(scene, 220, 3);
-  await hitStop(scene, 80);
+  await freeze(scene, 80);
   void run(scene, 160, (t) => star.setScale(Math.max(1, Math.round(5 * (1 - t))))).then(() => star.destroy());
   void run(scene, 140, (t) => (flashAll = 0.6 * (1 - t)));
-  await run(scene, 300, (t) => (rippleT = t));
+  await run(scene, 250, (t) => (rippleT = t));
   rippleT = -1;
 
   // ---- charge: the shell glows hotter, light gathers at the impact point
   snd('beamCharge', 0.7, 1.4);
+  // the light gathers at the impact point: a growing white core
+  const core = scene.add.image(hit.x, hit.y, TEX.dot5).setDepth(DEPTH.FX + 7).setTint(PAL.mag4).setScale(0.2);
   await run(scene, 220, (t) => {
     charge = E.inQuad(t);
+    core.setScale(Math.max(0.2, Math.round(E.inQuad(t) * 6) / 2)).setTint(Math.floor(t * 8) % 2 ? PAL.white : PAL.mag4);
     if (rnd() < 0.8) {
       const a = rr(0, TAU);
       const r = rr(20, 40);
@@ -3066,34 +3185,65 @@ export async function mirrorDome(scene: Phaser.Scene, side: PlayerId, attackers:
   snd('beamFire', 1, 1.1);
   flashAll = 1;
   void flash(scene, 120, PAL.mag4, 0.35);
+  core.destroy();
+  // each reflected beam arcs on its own curve (fanned so a row of attackers never overlaps)
+  const nB = attackers.length;
   const beams = attackers.map((p, i) => {
-    const from = toward(p);
-    const r = new Raster(scene, Math.min(from.x, p.x) - 14, Math.min(from.y, p.y) - 14, Math.abs(from.x - p.x) + 28, Math.abs(from.y - p.y) + 28, DEPTH.FX + 5);
-    return { from, to: p, r, i, hitDone: false };
+    const from = { x: hit.x, y: hit.y };
+    const mx = (from.x + p.x) / 2;
+    const my = (from.y + p.y) / 2;
+    const dxB = p.x - from.x;
+    const dyB = p.y - from.y;
+    const lB = Math.hypot(dxB, dyB) || 1;
+    const fan = (i - (nB - 1) / 2) * 34 + (nB === 1 ? 0 : 0);
+    const ctrl = { x: mx + (-dyB / lB) * fan, y: my + (dxB / lB) * fan - 26 - Math.abs(fan) * 0.3 };
+    const curve: XY[] = [];
+    for (let k = 0; k <= 32; k++) curve.push(qbez(from, ctrl, p, k / 32));
+    const xs = curve.map((q) => q.x);
+    const ys = curve.map((q) => q.y);
+    const bx0 = Math.min(...xs) - 14;
+    const by0 = Math.min(...ys) - 14;
+    const r = new Raster(scene, bx0, by0, Math.max(...xs) - bx0 + 14, Math.max(...ys) - by0 + 14, DEPTH.FX + 5);
+    return { from, to: p, curve, r, i, hitDone: false };
   });
+  // stray reflections splaying off the dome (anime "many beams")
+  const strays = Array.from({ length: 7 }, (_, i) => {
+    const a = -Math.PI / 2 + (i - 3) * 0.42 + rr(-0.1, 0.1) + (side === 0 ? 0.35 : -0.35);
+    const len = rr(60, 130);
+    return { a, len, d: rr(0, 60) };
+  });
+  const strayR = Raster.around(scene, hit.x, hit.y, 300, 300, DEPTH.FX + 4);
+  void run(scene, 300, (t, el) => {
+    strayR.draw((g) => {
+      for (const st of strays) {
+        const lt = clamp01((el - st.d) / 110);
+        if (lt <= 0 || t > 0.95) continue;
+        const r0 = st.len * Math.max(0, lt - 0.45) * 1.6;
+        const r1 = st.len * E.outQuad(lt);
+        const ca = Math.cos(st.a);
+        const sa = Math.sin(st.a);
+        g.line(hit.x + ca * r0, hit.y + sa * r0, hit.x + ca * r1, hit.y + sa * r1, lt < 0.6 ? PAL.white : PAL.mag3, 1 - t * 0.6, 1);
+      }
+    });
+  }).then(() => strayR.destroy());
   void shake(scene, 300, 4);
   await run(scene, 420, (t, el) => {
     charge = Math.max(0, 1 - t * 2);
     flashAll = Math.max(0, 1 - t * 3);
     for (const b of beams) {
-      const lt = clamp01((el - b.i * 45) / 110); // head travel
+      const lt = clamp01((el - b.i * 45) / 150); // head travel
       const fade = seg(t, 0.55, 1);
       b.r.draw((g) => {
         if (lt <= 0) return;
-        const hx = lerp(b.from.x, b.to.x, E.outQuad(lt));
-        const hy = lerp(b.from.y, b.to.y, E.outQuad(lt));
+        const n = Math.max(2, Math.round(E.outQuad(lt) * (b.curve.length - 1)) + 1);
+        const tail = Math.max(0, Math.floor(seg(t, 0.45, 1) * (b.curve.length - 1)));
+        const pts = b.curve.slice(Math.min(tail, n - 2), n);
         const wob = Math.sin(el * 0.08 + b.i) * 0.4;
-        glowStroke(g, [b.from, { x: hx, y: hy }], [PAL.mag1, PAL.mag3, PAL.mag4, PAL.white], Math.max(0.6, 2.4 * (1 - fade) + wob), 1 - fade * 0.8);
-        // thinner companion rays fanning from neighbouring hexes
-        for (const o of [-1, 1]) {
-          const lt2 = clamp01(lt * 1.15 - 0.1);
-          if (lt2 <= 0 || fade > 0.7) continue;
-          const fx = b.from.x + o * 9;
-          const fy = b.from.y + o * 5 + 4;
-          const ex = lerp(fx, b.to.x + o * 3, E.outQuad(lt2));
-          const ey = lerp(fy, b.to.y - o * 2, E.outQuad(lt2));
-          g.line(fx, fy, ex, ey, PAL.mag3, 1 - fade);
-          g.line(fx, fy - 1, ex, ey - 1, Math.floor(el / 34) % 2 ? PAL.white : PAL.mag4, 1 - fade);
+        glowStroke(g, pts, [PAL.mag1, PAL.mag3, PAL.mag4, PAL.white], Math.max(0.6, 2.2 * (1 - fade) + wob), 1 - fade * 0.8);
+        const h = pts[pts.length - 1];
+        if (lt < 1) {
+          g.disc(h.x, h.y, 3.5, PAL.mag4);
+          g.disc(h.x, h.y, 2, PAL.white);
         }
         if (lt >= 1 && fade < 0.6) {
           g.disc(b.to.x, b.to.y, 7 * (1 - fade), PAL.mag4, 0.8);
@@ -3139,6 +3289,8 @@ export interface ChainOpts {
 
 /** Draw a run of chain links along a polyline, up to `len` px. Returns the end point. */
 function drawChain(g: Raster, pts: readonly XY[], len: number, glow: number, phase = 0): XY {
+  const SPACING = 5;
+  const links: { x: number; y: number; ux: number; uy: number; face: boolean; hot: boolean }[] = [];
   let acc = 0;
   let next = 0;
   let idx = 0;
@@ -3154,27 +3306,35 @@ function drawChain(g: Raster, pts: readonly XY[], len: number, glow: number, pha
       const t = (next - acc) / sl;
       const cx = a.x + (b.x - a.x) * t;
       const cy = a.y + (b.y - a.y) * t;
-      const hot = (idx + phase) % 7 === 0;
-      if (glow > 0 && idx % 2 === 0) g.disc(cx, cy, 3.4, PAL.mag1, 0.3 * glow);
-      if (idx % 2 === 0) {
-        // face-on oval link
-        for (let s = 0; s < 16; s++) {
-          const an = (s / 16) * TAU;
-          const px = cx + ux * Math.cos(an) * 2.6 - uy * Math.sin(an) * 1.7;
-          const py = cy + uy * Math.cos(an) * 2.6 + ux * Math.sin(an) * 1.7;
-          g.px(px, py, hot ? PAL.white : Math.sin(an) < 0 ? PAL.gold4 : PAL.gold3);
-        }
-      } else {
-        // edge-on link
-        g.line(cx - ux * 2.5, cy - uy * 2.5, cx + ux * 2.5, cy + uy * 2.5, hot ? PAL.white : PAL.gold4);
-        g.px(cx - uy, cy + ux, PAL.gold2);
-      }
+      links.push({ x: cx, y: cy, ux, uy, face: idx % 2 === 0, hot: (idx + phase) % 7 === 0 });
       end = { x: cx, y: cy };
       idx++;
-      next += 4;
+      next += SPACING;
     }
     acc += sl;
     if (next > len) break;
+  }
+  const oval = (l: (typeof links)[number], rx: number, ry: number, col: (an: number) => number) => {
+    for (let s = 0; s < 28; s++) {
+      const an = (s / 28) * TAU;
+      g.px(l.x + l.ux * Math.cos(an) * rx - l.uy * Math.sin(an) * ry, l.y + l.uy * Math.cos(an) * rx + l.ux * Math.sin(an) * ry, col(an));
+    }
+  };
+  // halo
+  if (glow > 0) for (const l of links) if (l.face) g.disc(l.x, l.y, 5, PAL.mag2, 0.3 * glow);
+  // ink pass (outline) then metal pass, so links read on any background
+  for (const l of links) {
+    if (l.face) {
+      oval(l, 4.4, 3.1, () => PAL.ink);
+      oval(l, 2.4, 1.2, () => PAL.ink);
+    } else g.line(l.x - l.ux * 3.5, l.y - l.uy * 3.5, l.x + l.ux * 3.5, l.y + l.uy * 3.5, PAL.ink, 1, 3);
+  }
+  for (const l of links) {
+    if (l.face) oval(l, 3.4, 2.2, (an) => (l.hot ? PAL.white : Math.sin(an) < -0.2 ? PAL.gold4 : Math.sin(an) > 0.5 ? PAL.gold2 : PAL.gold3));
+    else {
+      g.line(l.x - l.ux * 2.5, l.y - l.uy * 2.5, l.x + l.ux * 2.5, l.y + l.uy * 2.5, l.hot ? PAL.white : PAL.gold3);
+      g.px(l.x - l.uy * 0.8, l.y + l.ux * 0.8 - 1, PAL.gold4);
+    }
   }
   return end;
 }
@@ -3296,14 +3456,19 @@ export async function chainsBind(scene: Phaser.Scene, fromXY: XY, target: Unit, 
           }
           flush();
           void prev;
-          // padlock sigil on the front of the coil
-          if (front && locked > 0) {
-            const lx = c.x;
-            const ly = c.y + ry + 1;
-            const pop = locked > 0.7 ? 1 : 0;
-            g.rect(lx - 2, ly - 1, 5, 4, PAL.mag3);
-            g.rect(lx - 1, ly, 3, 2, pop ? PAL.white : PAL.mag4);
-            g.ring(lx + 0.5, ly - 1.5, 1.8, 1.8, PAL.mag4, 1, Math.PI, TAU);
+          // padlock sigil on the front of the middle coil
+          if (front && locked > 0 && i === 1) {
+            const lx = Math.round(c.x);
+            const ly = Math.round(c.y + ry + 2);
+            const pop = locked > 0.7;
+            g.rect(lx - 5, ly - 2, 11, 9, PAL.ink);
+            g.ring(lx + 0.5, ly - 2.5, 3.6, 4, PAL.ink, 1, Math.PI, TAU);
+            g.ring(lx + 0.5, ly - 2.5, 2.6, 3, pop ? PAL.white : PAL.mag4, 1, Math.PI, TAU);
+            g.ring(lx + 0.5, ly - 2.5, 3.6, 4, PAL.mag2, 1, Math.PI * 1.1, Math.PI * 1.5);
+            g.rect(lx - 4, ly - 1, 9, 7, pop ? PAL.white : PAL.mag3);
+            g.rect(lx - 4, ly + 4, 9, 2, pop ? PAL.mag4 : PAL.mag2);
+            g.rect(lx - 3, ly, 2, 1, pop ? PAL.white : PAL.mag4);
+            g.rect(lx, ly + 1, 1, 3, PAL.mag1);
           }
         }
       });
@@ -3339,7 +3504,7 @@ export async function chainsBind(scene: Phaser.Scene, fromXY: XY, target: Unit, 
     sparks.burst(8, () => ({ x: target.x, y: a.y + 4, vx: rr(-90, 90), vy: rr(-80, 10), ay: 300, drag: 2, life: rr(200, 380), ramp: [PAL.white, PAL.gold4, PAL.mag3], trail: true }));
   }
   void shake(scene, 160, 2);
-  await hitStop(scene, 60);
+  await freeze(scene, 60);
   if (target.active) target.clearTint();
   void addGlow(scene, target, PAL.mag3, 300, 0.6);
   // ---- drag back home
@@ -3447,8 +3612,9 @@ export async function chasm(scene: Phaser.Scene, x: number, y: number, sprite: U
           const yy = lerp(p.y, q.y, s / steps);
           for (let d = 0; d < wallH; d++) {
             const f = d / Math.max(1, wallH);
-            let c: number = d < 1 ? PAL.earth2 : f < 0.3 ? PAL.earth1 : f < 0.55 ? PAL.earth0 : PAL.void0;
-            if ((d + Math.floor(xx * 0.3)) % 4 === 0 && d > 1 && f < 0.55) c = PAL.earth0;
+            // the platform's cross-section: lit slab edge, dark strata, then the glowing deep
+            let c: number = d < 1 ? PAL.steel : f < 0.3 ? PAL.night2 : f < 0.55 ? PAL.night1 : PAL.night0;
+            if ((d + Math.floor(xx * 0.3)) % 4 === 0 && d > 1 && f < 0.55) c = PAL.night0;
             // the abyss glow climbs the lower wall
             if (f > 0.55 && bayer(Math.round(xx), Math.round(yy + d)) < (f - 0.55) * 1.6 * glowK) c = f > 0.85 ? PAL.mag2 : PAL.mag1;
             g.px(xx, yy + d, c);
@@ -3464,7 +3630,7 @@ export async function chasm(scene: Phaser.Scene, x: number, y: number, sprite: U
         const p = rim((i / NJ) * TAU, open);
         const q = rim(((i + 1) / NJ) * TAU, open);
         const front = Math.sin((i / NJ) * TAU) > 0;
-        g.line(p.x, p.y, q.x, q.y, front ? PAL.mag3 : PAL.earth3);
+        g.line(p.x, p.y, q.x, q.y, front ? PAL.mag3 : PAL.night4);
         if (front) g.line(p.x, p.y + 1, q.x, q.y + 1, PAL.mag1);
       }
     });

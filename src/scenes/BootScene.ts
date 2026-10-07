@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { BootStep } from '../boot/types';
-import { FIRST_SCENE } from './registry';
+import { firstScene } from './registry';
 
 const steps = Object.values(import.meta.glob<{ default: BootStep }>(['../boot/*.ts', '!../boot/types.ts'], { eager: true }))
   .map((m) => m.default)
@@ -22,6 +22,12 @@ export class BootScene extends Phaser.Scene {
       }
     }
     const dev = this.registry.get('dev') as string | null;
-    this.scene.start(dev ? 'Dev' : FIRST_SCENE);
+    if (dev) {
+      this.scene.start('Dev');
+      return;
+    }
+    const params = (this.registry.get('params') as URLSearchParams | undefined) ?? new URLSearchParams(location.search);
+    const first = firstScene(params);
+    this.scene.start(first.key, first.data);
   }
 }

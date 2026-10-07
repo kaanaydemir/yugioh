@@ -444,6 +444,7 @@ export const ICON = {
   trap: 'ui:icon:trap',
   caret: 'ui:icon:caret',
   crown: 'ui:icon:crown',
+  replay: 'ui:icon:replay',
 } as const;
 export type IconKey = (typeof ICON)[keyof typeof ICON];
 
@@ -488,7 +489,7 @@ const ICON_ART: Record<keyof typeof ICON, readonly string[] | ((p: PixelCanvas) 
   speed: ['W...W...', 'WW..WW..', 'WWW.WWW.', 'WWWWWWWW', 'WWW.WWW.', 'WW..WW..', 'W...W...'],
   soundOn: ['....W......', '...WW...m..', 'WWWWW.m..m.', 'WWWWW..m.m.', 'WWWWW..m.m.', 'WWWWW.m..m.', '...WW...m..', '....W......'],
   soundOff: ['....W......', '...WW......', 'WWWWW.m...m', 'WWWWW..m.m.', 'WWWWW...m..', 'WWWWW..m.m.', '...WW.m...m', '....W......'],
-  log: ['WWWWWW.', 'W....Wm', 'W.ss.Wm', 'W....Wm', 'W.sss.W', 'W.....W', 'W.ss..W', 'W.....W', 'WWWWWWW'],
+  log: ['mm.WWWWW', '........', 'mm.WWWWW', '........', 'mm.WWWW.', '........', 'WW.WWWWW'],
   atk: ['......W', '.....WW', '....WW.', 's..WW..', '.sWW...', '..s....', '.s.s...'],
   def: ['WWWWWWW', 'WmmmmmW', 'WmWWWmW', 'WmWWWmW', '.WmWmW.', '.WmWmW.', '..WmW..', '...W...'],
   close: ['WW...WW', 'WWW.WWW', '.WWWWW.', '..WWW..', '.WWWWW.', 'WWW.WWW', 'WW...WW'],
@@ -511,6 +512,7 @@ const ICON_ART: Record<keyof typeof ICON, readonly string[] | ((p: PixelCanvas) 
   trap: ['..WWW..', '.WmmmW.', 'WmWWWmW', 'WmW.WmW', 'WmWWWmW', '.WmmmW.', '..WWW..'],
   caret: ['W....', 'WW...', 'WWW..', 'WWWW.', 'WWW..', 'WW...', 'W....'],
   crown: ['W..W..W', 'WW.W.WW', 'WWWWWWW', 'WmWmWmW', 'WWWWWWW'],
+  replay: ['..WWWW.W', '.Wm...WW', 'Wm...WWW', 'W.......', 'W......W', 'Wm....mW', '.Wm..mW.', '..WWWW..'],
 };
 
 function buildIcon(scene: Phaser.Scene, name: keyof typeof ICON): void {
@@ -660,6 +662,66 @@ export function emblemTex(scene: Phaser.Scene, player: PlayerId): string {
   return put(scene, key, p);
 }
 
+/**
+ * Victory crown (25×20, full color — do not tint): gold ramp lit from the top-left, three
+ * pearl-tipped points and band gems in the winner's ramp. Show it at 2× for the game-over screen.
+ */
+export function crownTex(scene: Phaser.Scene, player: PlayerId): string {
+  const key = `ui:crown:${player}`;
+  if (scene.textures.exists(key)) return key;
+  const G = RAMPS.gold;
+  const R = player === 0 ? RAMPS.cyan : RAMPS.crim;
+  const W = 25;
+  const H = 20;
+  const p = new PixelCanvas(W, H);
+  const ox = 2;
+  const oy = 3;
+  // body: three points rising from the band
+  p.poly(
+    [
+      [ox + 0, oy + 10],
+      [ox + 1, oy + 2],
+      [ox + 6, oy + 7],
+      [ox + 10, oy + 0],
+      [ox + 14, oy + 7],
+      [ox + 19, oy + 2],
+      [ox + 20, oy + 10],
+    ],
+    G[3],
+  );
+  // shade: right part darker, rim pixels (nothing above) brightest
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      if (p.get(x, y) !== G[3]) continue;
+      const rx = (x - ox) / 20;
+      if (rx > 0.62 && PixelCanvas.ditherAt(x, y, Math.round((rx - 0.62) * 40))) p.set(x, y, G[2]);
+      if (p.get(x, y - 1) === null) p.set(x, y, rx < 0.5 ? G[4] : G[3]);
+    }
+  // band
+  p.rect(ox, oy + 10, 21, 5, G[2]);
+  p.hline(ox, ox + 20, oy + 10, G[4]);
+  p.hline(ox + 1, ox + 19, oy + 11, G[3]);
+  p.hline(ox, ox + 20, oy + 14, G[1]);
+  p.vline(ox, oy + 10, oy + 14, G[3]);
+  // band gems (player ramp) and two small gold studs between them
+  for (const gx of [ox + 4, ox + 10, ox + 16]) {
+    p.rect(gx - 1, oy + 12, 3, 2, R[2]);
+    p.set(gx, oy + 11, R[3]).set(gx - 1, oy + 12, R[4]).set(gx, oy + 12, R[3]).set(gx + 1, oy + 13, R[1]);
+  }
+  p.set(ox + 7, oy + 12, G[4]).set(ox + 13, oy + 12, G[4]);
+  // pearls on the tips
+  for (const [tx, ty] of [
+    [ox + 1, oy + 1],
+    [ox + 10, oy - 1],
+    [ox + 19, oy + 1],
+  ]) {
+    p.rect(tx - 1, ty - 1, 3, 3, G[3]);
+    p.set(tx - 1, ty - 1, PAL.white).set(tx, ty - 1, G[4]).set(tx - 1, ty, G[4]).set(tx + 1, ty + 1, G[2]);
+  }
+  p.outline(PAL.ink);
+  return put(scene, key, p);
+}
+
 // ---------------------------------------------------------------- text
 
 /**
@@ -682,6 +744,54 @@ export function typeOn(scene: Phaser.Scene, t: Phaser.GameObjects.BitmapText, cp
   });
 }
 
+// ---------------------------------------------------------------- keyboard focus
+
+/** Returns true when it used the key (the event is then consumed: preventDefault + stop). */
+export type UiKeyHandler = (e: KeyboardEvent) => boolean;
+
+const uiKeyStack: UiKeyHandler[] = [];
+let uiKeysInstalled = false;
+
+/**
+ * Keyboard focus stack shared by the menus and prompts: one capture-phase window listener
+ * offers each keydown to the most recently pushed handler only (an ActionMenu opened over a
+ * target-selection bar gets Esc first). Keys a handler uses never reach the game's own
+ * listeners; unused keys pass through. Returns the remover.
+ */
+export function pushUiKeys(h: UiKeyHandler): () => void {
+  if (!uiKeysInstalled && typeof window !== 'undefined') {
+    uiKeysInstalled = true;
+    window.addEventListener(
+      'keydown',
+      (e) => {
+        const top = uiKeyStack[uiKeyStack.length - 1];
+        if (!top) return;
+        let used = false;
+        try {
+          used = top(e);
+        } catch (err) {
+          console.error('[ui keys]', err);
+        }
+        if (used) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        }
+      },
+      true,
+    );
+  }
+  uiKeyStack.push(h);
+  return () => {
+    const i = uiKeyStack.indexOf(h);
+    if (i >= 0) uiKeyStack.splice(i, 1);
+  };
+}
+
+/** True while a menu / prompt holds keyboard focus (game hotkeys can stand down). */
+export function uiKeysActive(): boolean {
+  return uiKeyStack.length > 0;
+}
+
 // ---------------------------------------------------------------- boot
 
 /** Called by src/boot/40-ui.ts. Prebuilds the fixed-size textures; others build lazily. */
@@ -692,4 +802,6 @@ export function buildUiTextures(scene: Phaser.Scene): void {
   for (const s of ['p1', 'p2', 'trap', 'gold'] as UiStyle[]) stripesTex(scene, s);
   streakTex(scene, 24);
   haloTex(scene, 12);
+  crownTex(scene, 0);
+  crownTex(scene, 1);
 }

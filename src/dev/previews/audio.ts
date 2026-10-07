@@ -1,20 +1,25 @@
 // ?dev=audio — every synthesized sound rendered offline (OfflineAudioContext, through the real
 // master chain) and drawn as a thumbnail. This is how sounds are verified headless.
-//   &page=grid   (default) 8×8 tiles: waveform (teal), RMS envelope (gold), raw-voice peak line;
-//                stats: length · post-chain peak · loudest-50ms dB. Red frame = clipping risk,
-//                red name = silent. Click a tile to play it live.
+//   &page=grid   (default) 8×8 tiles: waveform (teal), RMS envelope (gold), raw-voice peak line
+//                (cyan; orange when the raw voice drives the limiter > 1, as big moments do);
+//                stats: length · post-chain peak · loudest-50ms dB. Red frame = post-chain peak
+//                ≥ 0.98 (clipping risk), red name = silent. Click a tile to play it live.
 //   &page=spec&p=0..3  4×4 tiles with log-frequency spectrograms (40 Hz – 16 kHz).
 //   &page=one&name=<sfx>  one sound, big: raw vs chain waveform, RMS, spectrogram, stats.
 //   &page=music  title / duel (intensity 0 and 1) / duel loop seam / victory, rendered offline;
 //                top buttons play live (title · duel · victory · stop · intensity 0 / ½ / 1).
+//   &page=mix    typical game moments rendered as scenes (sfx cues over the duel music, with the
+//                live ducking / limiter / victory-sting logic): cue ticks, waveform, spectrogram.
+//                Click a row to play that scene live.
 //   &page=score  piano roll of the composed melodies (duel lead, title bells, victory) over chord roots.
 //   &log=1       print a stats table to the console (shows in tools/shot.mjs output).
 import type Phaser from 'phaser';
 import { PAL, css } from '../../art/palette';
 import { pixelText } from '../../ui/text';
-import { music, renderSfx, sfx, SFX_NAMES, type MusicTrack, type SfxName } from '../../audio/sfx';
+import { music, renderScene, renderSfx, sfx, SFX_NAMES, type MusicTrack, type SfxCue, type SfxName } from '../../audio/sfx';
 import { renderMusic, SCORE, trackInfo } from '../../audio/music';
 import { columns, spectrogram, stats, type Stats } from '../../audio/analyze';
+import { peekLive } from '../../audio/engine';
 import type { DevPreview } from '../types';
 
 const W = 640;
@@ -76,7 +81,7 @@ function drawWave(g: CanvasRenderingContext2D, b: AudioBuffer, x: number, y: num
   if (o.rawPeak !== undefined) {
     // dashed line at the raw (pre-chain) peak level
     const py = Math.round(mid - Math.min(1, o.rawPeak) * half);
-    g.fillStyle = css(o.rawPeak > 1 ? PAL.crim3 : PAL.cyan1);
+    g.fillStyle = css(o.rawPeak > 1 ? PAL.fire3 : PAL.cyan1);
     for (let i = 0; i < w; i += 3) g.fillRect(x + i, py, 1, 1);
   }
 }
@@ -177,10 +182,27 @@ async function pageGrid(scene: Phaser.Scene, log: boolean): Promise<void> {
     const { x, y } = pos(i);
     rect(g, x + 1, y + 1, TW - 2, TH - 2, PAL.night1);
     drawWave(g, a.buf, x + 2, y + 10, TW - 4, 24, axis(a), { rawPeak: a.raw.peak });
-    const bad = a.s.peak >= 0.98 || a.raw.peak > 1;
-    if (bad) frame(g, x, y, TW, TH, PAL.crim3);
+    if (a.s.peak >= 0.98) frame(g, x, y, TW, TH, PAL.crim3);
   });
+  // legend swatches (right of the stats note)
+  const lg = pos(list.length + 1);
+  const sw: Array<[number, number, (x: number, y: number) => void]> = [
+    [0, 0, (x, y) => rect(g, x, y + 1, 8, 5, PAL.teal3)],
+    [0, 10, (x, y) => (rect(g, x, y + 1, 8, 1, PAL.gold3), rect(g, x, y + 5, 8, 1, PAL.gold3))],
+    [0, 20, (x, y) => [0, 3, 6].forEach((d) => rect(g, x + d, y + 3, 1, 1, PAL.cyan1))],
+    [0, 30, (x, y) => [0, 3, 6].forEach((d) => rect(g, x + d, y + 3, 1, 1, PAL.fire3))],
+    [150, 0, (x, y) => frame(g, x, y, 9, 7, PAL.crim3)],
+  ];
+  for (const [dx, dy, f] of sw) f(lg.x + 4 + dx, lg.y + 3 + dy);
   show(scene, c, 'dev-audio-grid');
+  for (const [dx, dy, t] of [
+    [0, 0, 'dalga'],
+    [0, 10, 'RMS zarfı'],
+    [0, 20, 'ham ses tepesi'],
+    [0, 30, 'ham > 1: limitere yüklenir (büyük anlar)'],
+    [150, 0, 'zincir sonrası klip riski'],
+  ] as const)
+    pixelText(scene, lg.x + 16 + dx, lg.y + 2 + dy, t, { size: 'sm', color: PAL.mist });
   list.forEach((a, i) => {
     const { x, y } = pos(i);
     pixelText(scene, x + 2, y + 1, a.name, { size: 'sm', color: a.s.peak < 0.005 ? PAL.crim3 : PAL.gold3 });
@@ -273,15 +295,24 @@ async function pageOne(scene: Phaser.Scene, name: SfxName, log: boolean): Promis
 async function pageMusic(scene: Phaser.Scene, log: boolean): Promise<void> {
   const { c, g } = canvas();
   const duelLoop = trackInfo('duel');
-  const rows: Array<{ label: string; track: MusicTrack; secs: number; intensity?: number; startStep?: number; seam?: number }> = [
+  const sdDuel = duelLoop.loopSec / duelLoop.loopSteps;
+  const rows: Array<{
+    label: string;
+    track: MusicTrack;
+    secs: number;
+    intensity?: number;
+    intensityAt?: Array<[number, number]>;
+    startStep?: number;
+    seam?: number;
+  }> = [
     { label: 'title · 84 bpm · Re minör', track: 'title', secs: 16 },
-    { label: 'duel · yoğunluk 0', track: 'duel', secs: 14 },
-    { label: 'duel · yoğunluk 1', track: 'duel', secs: 14, intensity: 1 },
-    { label: 'duel · döngü dikişi (yoğunluk 1)', track: 'duel', secs: 7, intensity: 1, startStep: duelLoop.loopSteps - 32, seam: 32 * (duelLoop.loopSec / duelLoop.loopSteps) },
+    { label: 'duel A · yoğunluk .35 → .85 @5s (dolgu + crash)', track: 'duel', secs: 14, intensity: 0.35, intensityAt: [[5, 0.85]], seam: 5 },
+    { label: 'duel B bölümü · yoğunluk 1', track: 'duel', secs: 14, intensity: 1, startStep: 256 },
+    { label: `duel · döngü dikişi (${Math.round(duelLoop.loopSec)}s döngü, yoğunluk 1)`, track: 'duel', secs: 7, intensity: 1, startStep: duelLoop.loopSteps - 32, seam: 32 * sdDuel },
     { label: 'victory · fanfar → sakin döngü', track: 'victory', secs: 16 },
   ];
   const bufs: Array<AudioBuffer | null> = [];
-  for (const r of rows) bufs.push(await renderMusic(r.track, r.secs, { intensity: r.intensity, startStep: r.startStep }));
+  for (const r of rows) bufs.push(await renderMusic(r.track, r.secs, { intensity: r.intensity, intensityAt: r.intensityAt, startStep: r.startStep }));
   const top = 16;
   const RH = 68;
   rows.forEach((r, i) => {
@@ -298,7 +329,7 @@ async function pageMusic(scene: Phaser.Scene, log: boolean): Promise<void> {
     // bar ticks
     const info = trackInfo(r.track);
     const barSec = (info.loopSec / info.loopSteps) * 16;
-    for (let t = 0; t < r.secs; t += barSec) rect(g, 4 + Math.round((t / r.secs) * (W - 8)), y + 9, 1, 1, PAL.steel);
+    for (let t = barSec; t < r.secs; t += barSec) rect(g, 4 + Math.round((t / r.secs) * (W - 8)), y + 9, 1, 1, PAL.steel);
   });
   // control bar
   const buttons: Array<{ label: string; run: () => void }> = [
@@ -315,13 +346,13 @@ async function pageMusic(scene: Phaser.Scene, log: boolean): Promise<void> {
   const hits: Array<{ x: number; w: number; run: () => void }> = [];
   for (const btn of buttons) {
     const w = btn.label.length * 5 + 10;
-    rect(g, bx, 2, w, 12, PAL.night2);
-    frame(g, bx, 2, w, 12, PAL.teal2);
+    rect(g, bx, 1, w, 14, PAL.night2);
+    frame(g, bx, 1, w, 14, PAL.teal2);
     hits.push({ x: bx, w, run: btn.run });
     bx += w + 4;
   }
   show(scene, c, 'dev-audio-music');
-  for (const h of hits) pixelText(scene, h.x + 5, 4, buttons[hits.indexOf(h)].label, { size: 'sm', color: PAL.teal4 });
+  for (const h of hits) pixelText(scene, h.x + 5, 1, buttons[hits.indexOf(h)].label, { size: 'sm', color: PAL.teal4 });
   rows.forEach((r, i) => {
     const b = bufs[i];
     const y = top + i * RH;
@@ -332,16 +363,192 @@ async function pageMusic(scene: Phaser.Scene, log: boolean): Promise<void> {
     if (st && st.peak < 0.01) window.__neon.errors.push(`audio: music ${r.label} is silent`);
     if (log && st) console.warn(`[music] ${r.label}: peak ${st.peak.toFixed(3)} rms ${st.rmsDb.toFixed(1)} loud ${st.maxWinDb.toFixed(1)}`);
   });
-  const status = pixelText(scene, bx + 4, 4, '', { size: 'sm', color: PAL.mist });
-  scene.time.addEvent({ delay: 250, loop: true, callback: () => status.setText(`çalan: ${music.current() ?? '-'}`) });
+  const status = pixelText(scene, bx + 4, 1, '', { size: 'sm', color: PAL.mist });
+  // live output meter (post limiter), once audio runs
+  const meterX = W - 84;
+  const meterBg = scene.add.rectangle(meterX, 4, 80, 8, PAL.ink).setOrigin(0, 0);
+  const meterBar = scene.add.rectangle(meterX + 1, 5, 0, 6, PAL.teal3).setOrigin(0, 0);
+  const meterPeak = scene.add.rectangle(meterX + 1, 5, 1, 6, PAL.gold4).setOrigin(0, 0).setVisible(false);
+  void meterBg;
+  let an: AnalyserNode | null = null;
+  const td = new Float32Array(1024);
+  let hold = 0;
+  scene.time.addEvent({
+    delay: 60,
+    loop: true,
+    callback: () => {
+      status.setText(`çalan: ${music.current() ?? '-'}`);
+      const live = peekLive();
+      if (!live) return;
+      if (!an) {
+        an = live.ctx.createAnalyser();
+        an.fftSize = 1024;
+        (live.chain.tap ?? live.chain.master).connect(an);
+      }
+      an.getFloatTimeDomainData(td);
+      let pk = 0;
+      for (const x of td) pk = Math.max(pk, Math.abs(x));
+      // dB scale: −48 dB … 0 dB over 78 px
+      const px = (v: number) => Math.round(Math.max(0, Math.min(1, (20 * Math.log10(v + 1e-9) + 48) / 48)) * 78);
+      hold = Math.max(pk, hold * 0.92);
+      meterBar.width = px(pk);
+      meterBar.fillColor = pk >= 0.98 ? PAL.crim3 : pk > 0.7 ? PAL.gold3 : PAL.teal3;
+      meterPeak.setVisible(hold > 0.002).setX(meterX + 1 + Math.min(77, px(hold)));
+    },
+  });
   scene.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
     sfx.unlock();
     if (p.y > 16) return;
     const h = hits.find((q) => p.x >= q.x && p.x < q.x + q.w);
     if (h) {
       h.run();
-      flashRect(scene, h.x, 2, h.w, 12);
+      flashRect(scene, h.x, 1, h.w, 14);
     }
+  });
+}
+
+interface MixScene {
+  label: string;
+  secs: number;
+  music?: MusicTrack;
+  intensity?: number;
+  cues: SfxCue[];
+}
+
+const tickRun = (from: number, n: number, every: number, loss = true): SfxCue[] =>
+  Array.from({ length: n }, (_, i) => ({ at: from + i * every, name: 'lpTick' as const, opts: { volume: 0.35, pitch: loss ? 0.9 + 0.2 * (1 - i / n) : 1 + (0.3 * i) / n } }));
+
+/** Typical moments of a duel, timed after the storyboards in docs/GAME_DESIGN.md §6–7. */
+const MIX_SCENES: MixScene[] = [
+  {
+    label: 'normal çağırma (ATEŞ) · düello .35',
+    secs: 3.4,
+    music: 'duel',
+    intensity: 0.35,
+    cues: [
+      { at: 0, name: 'cardSlide' },
+      { at: 0.25, name: 'cardSlam' },
+      { at: 0.3, name: 'summonCharge', opts: { volume: 0.7 } },
+      { at: 0.5, name: 'fireBurst', opts: { volume: 0.7 } },
+      { at: 0.7, name: 'materialize' },
+      { at: 0.75, name: 'roarSmall' },
+      { at: 1.1, name: 'summonBurst', opts: { volume: 0.8 } },
+    ],
+  },
+  {
+    label: 'kurban + as cut-in · Kristal Ejder',
+    secs: 4.2,
+    music: 'duel',
+    intensity: 0.35,
+    cues: [
+      { at: 0, name: 'tribute' },
+      { at: 0.9, name: 'cutIn' },
+      { at: 2.3, name: 'summonBurst' },
+      { at: 2.35, name: 'roarBig' },
+      { at: 2.4, name: 'holyChime', opts: { volume: 0.6 } },
+    ],
+  },
+  {
+    label: 'ışın saldırısı → yok etme → LP · düello .85',
+    secs: 3.8,
+    music: 'duel',
+    intensity: 0.85,
+    cues: [
+      { at: 0, name: 'attackDeclare' },
+      { at: 0.25, name: 'lockOn' },
+      { at: 0.7, name: 'beamCharge' },
+      { at: 1.25, name: 'beamFire' },
+      { at: 1.45, name: 'impactHeavy' },
+      { at: 1.6, name: 'shatter' },
+      { at: 1.95, name: 'lpDown' },
+      ...tickRun(2.05, 14, 0.05),
+    ],
+  },
+  {
+    label: 'Yıldırım Hükmü + Işık Zincirleri',
+    secs: 4.2,
+    music: 'duel',
+    intensity: 0.85,
+    cues: [
+      { at: 0, name: 'spellActivate' },
+      { at: 0.7, name: 'darkPulse', opts: { volume: 0.6 } },
+      { at: 1.3, name: 'lightning' },
+      { at: 1.33, name: 'thunder' },
+      { at: 1.45, name: 'shatter' },
+      { at: 2.6, name: 'trapActivate' },
+      { at: 3.0, name: 'chains' },
+    ],
+  },
+  {
+    label: 'zafer: sting → müzik (fanfarsız sakin döngü)',
+    secs: 6,
+    music: 'victory',
+    cues: [
+      { at: 0, name: 'victory' },
+      { at: 0.1, name: 'shatter', opts: { volume: 0.5 } },
+      ...tickRun(0.3, 10, 0.06, false).map((c) => ({ ...c, name: 'lpTick' as const })),
+    ],
+  },
+];
+
+/** Short, readable tick labels for cue names. */
+function cueTag(n: SfxName): string {
+  return n.replace(/([A-Z])/g, ' $1').split(' ')[0].slice(0, 6);
+}
+
+async function pageMix(scene: Phaser.Scene, log: boolean): Promise<void> {
+  const { c, g } = canvas();
+  const bufs: Array<AudioBuffer | null> = [];
+  for (const sc of MIX_SCENES) bufs.push(await renderScene(sc.cues, { seconds: sc.secs, music: sc.music, intensity: sc.intensity }));
+  const RH = 72;
+  const X0 = 4;
+  const WW = W - 8;
+  const labels: Array<[number, number, string, number, number?]> = [];
+  MIX_SCENES.forEach((sc, i) => {
+    const b = bufs[i];
+    const y = i * RH;
+    rect(g, 1, y + 1, W - 2, RH - 2, PAL.night1);
+    if (!b) return;
+    const px = (t: number) => X0 + Math.round((t / sc.secs) * (WW - 1));
+    // cue ticks (labels only where they do not collide)
+    let lastLabel = -99;
+    for (const cue of sc.cues) {
+      const x = px(cue.at);
+      rect(g, x, y + 10, 1, 4, cue.name === 'lpTick' ? PAL.steel : PAL.gold3);
+      if (cue.name !== 'lpTick' && x - lastLabel > 34) {
+        labels.push([x + 2, y + 9, cueTag(cue.name), PAL.gold2]);
+        lastLabel = x;
+      }
+    }
+    drawWave(g, b, X0, y + 16, WW, 20, sc.secs, {});
+    drawSpec(g, b, X0, y + 37, WW, 33, sc.secs);
+    // second ticks
+    for (let t = 0; t <= sc.secs + 1e-6; t += 0.5) rect(g, px(t), y + 36, 1, Number.isInteger(t) ? 2 : 1, PAL.steel);
+    const st = stats(b);
+    labels.push([4, y + 1, sc.label, PAL.gold3]);
+    labels.push([W - 4, y + 1, `tepe ${st.peak.toFixed(2)} · en yüksek ${st.maxWinDb.toFixed(1)} dB`, st.peak >= 0.98 ? PAL.crim3 : PAL.mist, 1]);
+    if (st.peak >= 0.99) window.__neon.errors.push(`audio: mix scene "${sc.label}" clips (${st.peak.toFixed(3)})`);
+    if (log) console.warn(`[mix] ${sc.label}: peak ${st.peak.toFixed(3)} loud ${st.maxWinDb.toFixed(1)} rms ${st.rmsDb.toFixed(1)}`);
+  });
+  show(scene, c, 'dev-audio-mix');
+  for (const [x, y, t, col, ox] of labels) pixelText(scene, x, y, t, { size: 'sm', color: col, originX: ox ?? 0 });
+  // click a row: play the scene live
+  let timers: Array<ReturnType<typeof setTimeout>> = [];
+  scene.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+    sfx.unlock();
+    const i = Math.floor(p.y / RH);
+    const sc = MIX_SCENES[i];
+    if (!sc) return;
+    for (const t of timers) clearTimeout(t);
+    timers = [];
+    flashRect(scene, 0, i * RH, W, RH);
+    if (sc.music) {
+      music.setIntensity(sc.intensity ?? 0);
+      music.play(sc.music);
+    }
+    // give a freshly started track a moment, then fire the cues on their own clock
+    const lead = sc.music && music.current() !== sc.music ? 450 : 50;
+    for (const cue of sc.cues) timers.push(setTimeout(() => sfx.play(cue.name, cue.opts), lead + cue.at * 1000));
   });
 }
 
@@ -375,7 +582,8 @@ function pageScore(scene: Phaser.Scene): void {
       rect(g, x0 + st * cw, ry, Math.max(1, n.len * cw - 1), ph, PAL.gold3);
       rect(g, x0 + st * cw, ry, 1, ph, PAL.white);
     }
-    labels.push([x0, y0, `${name} · ${notes.length} nota · ${NAMES[lo % 12]}${Math.floor(lo / 12) - 1}–${NAMES[hi % 12]}${Math.floor(hi / 12) - 1}`, PAL.gold3]);
+    const nm = (m: number) => `${NAMES[m % 12]}${Math.floor(m / 12) - 1}`;
+    labels.push([x0, y0, `${name} · ${notes.length} nota · ${nm(lo + 1)}–${nm(hi - 1)} · ${sc.steps / 16} ölçü`, PAL.gold3]);
   });
   show(scene, c, 'dev-audio-score');
   for (const [x, y, t, col] of labels) pixelText(scene, x, y, t, { size: 'sm', color: col });
@@ -383,7 +591,7 @@ function pageScore(scene: Phaser.Scene): void {
 
 const preview: DevPreview = {
   name: 'audio',
-  description: 'synth sfx + music rendered offline: &page=grid|spec&p=0..3|one&name=<sfx>|music, &log=1',
+  description: 'synth sfx + music rendered offline: &page=grid|spec&p=0..3|one&name=<sfx>|music|mix|score, &log=1',
   async create(scene, params) {
     const page = params.get('page') ?? 'grid';
     const log = params.get('log') === '1';
@@ -397,6 +605,7 @@ const preview: DevPreview = {
       const name = (params.get('name') ?? 'roarBig') as SfxName;
       await pageOne(scene, SFX_NAMES.includes(name) ? name : 'roarBig', log);
     } else if (page === 'music') await pageMusic(scene, log);
+    else if (page === 'mix') await pageMix(scene, log);
     else if (page === 'score') pageScore(scene);
     else await pageGrid(scene, log);
   },

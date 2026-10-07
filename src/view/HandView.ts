@@ -58,6 +58,8 @@ const HOVER_LIFT = 14;
 const SPREAD = 13;
 const MAX_STEP = 52;
 const MAX_MINIS = 10;
+/** Deepest dip of the outermost cards of the fan. */
+const MAX_DIP = 7;
 
 export class HandView {
   onHover: ((uid: Uid | null) => void) | null = null;
@@ -253,9 +255,10 @@ export class HandView {
     const target = this.pose(n - 1, n, this.hoverIndex());
     s.sprite.setTrail(true);
     await s.sprite.flyTo(target.x, target.y, { ms: 360, arc: 54, scale: 1, rotation: target.rot, reveal: !this.faceDown, land: false });
-    s.sprite.setTrail(false);
     s.busy = false;
-    if (!this.slot(uid)) return;
+    // a sync (setCards) or takeCard during the flight replaced / removed this slot
+    if (!this.slots.includes(s) || !s.sprite.active) return;
+    s.sprite.setTrail(false);
     this.layout(true);
     sfx.play('cardPlace', { volume: 0.5 });
     await s.sprite.punch(0.12, 200);
@@ -407,7 +410,9 @@ export class HandView {
     const off = i - (n - 1) / 2;
     const dRot = Math.min(0.05, 0.22 / Math.max(1, n - 1));
     let x = cx + off * step;
-    let y = BASE_Y + off * off * 1.4;
+    // arc: the outer cards dip like a held hand, at most MAX_DIP px however many cards there are
+    const half = Math.max(1, (n - 1) / 2);
+    let y = BASE_Y + off * off * Math.min(1.4, MAX_DIP / (half * half));
     let rot = off * dRot;
     if (h >= 0 && i !== h) {
       const d = i - h;
@@ -530,9 +535,22 @@ export class HandView {
         .setScrollFactor(0);
       list.push(img);
       if (animate) {
-        img.setScale(0).setTintFill(PAL.white);
-        this.scene.tweens.add({ targets: img, scale: 1, duration: 220, ease: 'Back.Out', delay: i * 25, onComplete: () => img.clearTint() });
-        this.miniSpark(p, PLAYER_COLOR[player]);
+        // pops in with a one-frame white flash as it lands (not a white blob while growing)
+        img.setScale(0);
+        this.scene.tweens.add({
+          targets: img,
+          scale: 1,
+          duration: 200,
+          ease: 'Back.Out',
+          easeParams: [2.2],
+          delay: i * 30,
+          onComplete: () => {
+            if (!img.active) return;
+            img.setTintFill(mix(PLAYER_COLOR[player], PAL.white, 0.6));
+            this.scene.time.delayedCall(34, () => img.active && img.clearTint());
+          },
+        });
+        this.scene.time.delayedCall(i * 30, () => this.miniSpark(p, PLAYER_COLOR[player]));
       }
     }
     // re-fan

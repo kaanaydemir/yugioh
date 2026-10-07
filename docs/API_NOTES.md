@@ -1,6 +1,7 @@
 # API notes from the build agents
 
-Auto-collected `apiNotes` returned by each agent (exact exported APIs, sync points, colors). Read the source when in doubt.
+Auto-collected `apiNotes` returned by each agent (exact exported APIs, sync points, colors).
+When two sections cover the same files, the LATER section is newer. Read the source when in doubt.
 
 ## src/engine/rules.ts, src/engine/query.ts, src/engine/legal.ts, src/engine/rng.ts
 
@@ -782,3 +783,377 @@ Open issues reported by the agent:
 - The `?dev=monster` / `?dev=monsters` previews do not apply `hover`, so in those previews the hawk and fairy sit on the tile. vfx-combat does lift them by hover, which is the intended convention: anchor = bottom of the body, game lifts by hover.
 - Storm hawk is small-class (48 px) and reads smaller than the 64 px monsters, especially when the lineup captures a downstroke frame. That is intended for level 3, but VFX and cinematics may want a slightly bigger wind aura around it.
 - The hawk's attack moves the body only about 5–6 px forward inside the frame. The 'Kasırga Dalışı' travel to the target (and the arc over defenders for a direct attack) must come from the cinematic tween.
+
+## src/view/HudView.ts, src/view/HandView.ts, src/view/InspectPanel.ts, src/view/ActionMenu.ts
+
+Files: src/view/HudView.ts, src/view/HandView.ts, src/view/InspectPanel.ts, src/view/ActionMenu.ts, src/view/Prompt.ts, src/view/Button.ts, src/view/LogView.ts, src/view/ui-textures.ts, src/boot/40-ui.ts, src/dev/previews/hud.ts
+
+All existing exports and signatures are unchanged; the additions below are additive only.
+
+Additive API:
+- ui-textures.ts:
+  - `pushUiKeys(handler: (e: KeyboardEvent) => boolean): () => void` puts a handler on a shared keyboard-focus stack and returns the remover. One capture-phase window listener offers each key only to the most recently pushed handler; when it returns true the key gets `preventDefault` + `stopImmediatePropagation`.
+  - `uiKeysActive(): boolean` is true while a menu or prompt holds keys (game hotkeys can stand down).
+  - `type UiKeyHandler`.
+  - `crownTex(scene, player)` → 'ui:crown:<p>' (25×20, full colour, do not tint).
+  - `ICON.replay` ('ui:icon:replay').
+  - The `ICON.log` art changed to a list glyph; same key.
+- HudView.ts: `export type HudCountKind = 'deck' | 'hand' | 'grave'` (the parameter type of `countXY`).
+
+Behaviour changes inside the existing API:
+- ActionMenu and Prompt handle keys through `pushUiKeys`, so the keys they use (Esc / Enter / Space / arrows / 1–9 while a menu is open; Enter / Space / Esc / 1–9 in prompts) no longer reach other window keydown listeners. A Space fast-forward hotkey will not fire while a menu or modal is open; check `uiKeysActive()` if needed.
+- `Prompt.trapResponse(p, [])` resolves null at once.
+- `Prompt.passDevice`: errors in `onCovered` are caught and logged.
+- The `gameOver` button label is now 'TEKRAR OYNA' (still resolves on click or Enter).
+- `HudView.setLp` loss/gain chip: the panel emblem flips away while the chip shows (cosmetic only).
+
+Reference for integration (exact current API):
+- **HudView**: `new HudView(scene, {lp?, active?, phase?, turn?, speed?})`.
+  - Callbacks: `onBattle`, `onEndTurn`, `onSpeed(k: 1|2|3)`, `onSound(muted)`, `onLog`.
+  - `setLp(p, v, animate=true): Promise`, `getLp(p)`, `setCounts(p, {deck?, hand?, grave?}, animate=true)`.
+  - `setActive(p, animate=true)`, `setPhase(phase, p=active, animate=true): Promise`, `currentPhase`, `setTurn(n, animate=true)`.
+  - `setButtons({battle?, endTurn?, attention?: 'battle'|'endTurn'|null})`, `setLocked(b)`, `setSpeed(k)`, `speedLevel`.
+  - Anchors and effects: `lpXY(p)`, `panelXY(p)`, `countXY(p, kind)`, `flashPanel(p, color, alpha=0.7, ms=320): Promise`, `shake(p, px=3, ms=320)`.
+  - `setVisible(b)`, `destroy()`, `battleButton`, `endTurnButton` (Button).
+- **HandView**: `new HandView(scene, {owner?, faceDown?})`. Callbacks: `onHover(uid|null)`, `onSelect(uid)`. Getters: `owner`, `isFaceDown`, `uids`.
+  - `sprite(uid)`, `cardXY(uid)`, `nextSlotXY()`, `miniXY(p, i?)`.
+  - `setHover(uid|null)`, `setEnabled(b)`, `setCards(list, player=owner)`, `setOpponentCount(p, n, animate=true)`, `setPlayable(uids)`, `setSelected(uid|null)`.
+  - `addCard(uid, cardId, from?, player=owner): Promise`, `takeCard(uid): CardSprite|null`, `removeCard(uid, 'dissolve'|'fade'): Promise`.
+  - `setFaceDown(b): Promise`, `setOwner(p, faceDown=false): Promise`, `destroy()`.
+- **InspectPanel**: `show(cardId|null, {atk?, def?})`, `hide(immediate=false)`, `visible`, `destroy()`.
+- **ActionMenu**: `open(x, y, [{id, label, enabled?}], {style?, title?, cancelRow?=true}): Promise<string|null>`, `close()`, `isOpen`, `destroy()`.
+- **Prompt**:
+  - `passDevice(p, onCovered?): Promise<void>`.
+  - `trapResponse(p, [{uid, cardId}]): Promise<uid|null>`.
+  - `instruction(text, {cancel?=true, style?}) → {close(), cancelled: Promise<void>, setText(s)}`.
+  - `confirm(text, {yes?, no?, style?}): Promise<boolean>`.
+  - `gameOver(winner, reason?): Promise<void>`.
+- **LogView**: `add(text, PlayerId|color)`, `clear()`, `toggle()`, `setOpen(b)`, `open`.
+
+Depth and camera: everything these views create, including short-lived sparks and chips, uses depth ≥ DEPTH.HUD−1 and scrollFactor 0 (mini-hand at HUD−1, hand input zone at HAND−1). A separate HUD camera can therefore route objects by depth ≥ DEPTH.HUD−1.
+
+Open issues reported by the agent:
+- Integration note: DuelViews says the HUD will live on a separate un-zoomed camera. My views add short-lived objects (sparks, LP chips, toasts, fireworks) at runtime, so routing objects to the HUD camera must work for later-added objects, not only those that exist at startup — for example, route by depth ≥ DEPTH.HUD−1 on each added object. HandView.addCard flies from the deck tile's screen position, which only lines up while the world camera is at zoom 1 with no pan.
+- The keyboard focus stack (pushUiKeys) consumes the keys menus and prompts use. If the DuelController binds Space for 3× fast-forward, it will not fire while an ActionMenu or modal is open; use uiKeysActive() to stand down hotkeys, or push your own handler with pushUiKeys.
+- The LogView panel (x 488–636, y 96–292) overlaps the board's right edge by about 12px while open. It is a toggle, so this was left as is.
+- The trap prompt only highlights the trap cards inside the prompt. The doc's 'savunan oyuncunun kapalı kartları macenta nabız atar' (the defender's set cards on the board pulse magenta) is board-side work: Director + BoardView.highlightZone / TileCard.pulse.
+- The game-over sunburst rays are vector Graphics triangles, so their edges step slightly while rotating. It is acceptable at this alpha, but a pre-rendered dithered ray texture would be crisper.
+
+## src/audio/sfx.ts, src/audio/engine.ts, src/audio/synth.ts, src/audio/sounds.ts
+
+Files: src/audio/sfx.ts, src/audio/engine.ts, src/audio/synth.ts, src/audio/sounds.ts, src/audio/music.ts, src/audio/analyze.ts, src/dev/previews/audio.ts
+
+src/audio/sfx.ts — existing API unchanged (signatures and export names are the same). Everything below is additive.
+
+Original API:
+- type SfxName (59 names, unchanged), SfxOpts { volume?: 0..1; pitch?: playback-rate multiplier, clamped 0.25–4; pan?: -1..1 }, type MusicTrack = 'title' | 'duel' | 'victory'
+- sfx.play(name, opts?), sfx.unlock(), sfx.setMuted(m), sfx.isMuted()
+- music.play(track), music.stop(fadeMs = 600), music.setIntensity(v 0..1)
+
+Extras added by the previous agent (unchanged):
+- sfx.setVolume(v 0..1): sfx volume only. sfx.isRunning(): true once the AudioContext is running.
+- music.setVolume(v 0..1, default 0.45). music.current(): MusicTrack | null.
+- SFX_NAMES: SfxName[]
+- renderSfx(name, { seconds?=3.5, chain?=true, opts?, sampleRate?=44100, seed?=1234 }): Promise<AudioBuffer | null> (offline render).
+
+New exports (additive):
+- interface SfxCue { at: number /* s */; name: SfxName; opts?: SfxOpts }
+- renderScene(cues: readonly SfxCue[], o: { seconds: number; music?: MusicTrack; musicAt?: number; intensity?: number; intensityAt?: [s, v][]; startStep?: number; sampleRate?: number; seed?: number }): Promise<AudioBuffer | null>. Offline mix with the same ducking and victory logic as live play.
+- music.ts: renderMusic(track, seconds, { intensity?, intensityAt?, startStep?, sampleRate? }) — the options are a superset of the old ones. Also new: scheduleMusic(chain, track, start, seconds, opts), startPlan(track, now, stingEnd), VICTORY_STING_SEC = 1.8, musicVolume(), interface MusicRenderOpts, and musicEngine.sting(at, pitch?) / musicEngine.fanfarePlaying().
+- engine.ts: applyDuck(chain, amount, at). Chain.tap?: AudioNode is the last node before the destination (post-limiter), for level meters.
+
+Behaviour notes for integrators:
+- Every call is a silent no-op without WebAudio, before unlock, or when autoplay is blocked. Verified: nothing throws. Calls made before unlock are remembered: music.play / setIntensity / setVolume apply once audio unlocks.
+- Gesture listeners (pointerdown, keydown, touchend, capture phase) unlock audio automatically, and also resume it if the browser suspends it later. Calling sfx.unlock() in your own input handler is still fine.
+- Each sound has a voice cap and a minimum gap between triggers (lpTick: cap 3, gap 35 ms). Two calls of the same sound within its gap play only once (e.g. attackDeclare from both the attack-declare cinematic in battle.ts and combat.ts attackArrow).
+- Big sounds duck the music by up to −6 dB for about 1 s.
+- Timing changes: trapActivate now hits at about 5 ms (was about 200 ms after a riser). attackDeclare's hit is at about 220 ms (lands with lockOn's 230 ms snap). chains: rattle 0–0.5 s, wrap 0.56–0.67 s, lock "tak" at 0.78 s.
+- Loudness changes: lpTick is louder (meant for the HUD's volume 0.35). Panned sounds now keep the same loudness as unpanned ones (they used to drop 3 dB).
+- music.setIntensity: the hot layer (drums, saw bass, lead) glides in over about 1 s. A jump of at least +0.3 to a value of at least 0.5 adds a drum fill and a crash on the next downbeat; calling it at track start does not trigger a fill.
+- Duel loop: 512 steps at 136 bpm (about 56.5 s). Title loop about 45.7 s. Victory: 8 s fanfare then a 16 s calm loop.
+- Victory coordination: music.play('victory') within 0.4 s after the end of an sfx 'victory' sting starts when the sting ends and goes straight into the calm loop (no second fanfare). sfx.play('victory') while the victory track's own fanfare is playing is skipped. Either call order is safe.
+- Track switch = 0.5 s crossfade. music.stop(ms) fades out the dry signal and the reverb send.
+- Preview: ?dev=audio[&page=grid|spec&p=0..3|one&name=<sfx>|music|mix|score][&log=1]. The music page has live buttons and an output meter.
+
+Open issues reported by the agent:
+- Sound quality was checked only through waveforms, spectrograms, level stats and similarity metrics, never by ear. A human should listen to ?dev=audio (click tiles), ?dev=audio&page=mix and the live buttons on page=music.
+- No caller plays music.play('victory') yet: the gameOver cinematic stops the music, and Prompt.ts / banners.ts play only the victory sting. To get the victory track after the sting, call music.play('victory') at or after the sting; the two are coordinated automatically.
+- A stereo-source sound panned hard to one side (whoosh, shatter, windGust, chains with pan ±1) gets about +3 dB on that side, because the stereo panner folds both channels together. Small pans are unaffected.
+- tools/shot.mjs has a fixed 30 s page-load timeout, and at --scale 4 the audio preview pages sometimes timed out while the machine was heavily loaded. Scales 2 and 3 worked. (That tool is not owned by this task.)
+- music.ts reverb sends go to the shared reverb, whose return is not ducked, so during big sounds only the dry music is ducked. This is minor and intentional.
+
+## src/vfx/setpieces.ts, src/vfx/cutin.ts, src/vfx/banners.ts, src/boot/14-vfx-set.ts
+
+Files: src/vfx/setpieces.ts, src/vfx/cutin.ts, src/vfx/banners.ts, src/boot/14-vfx-set.ts, src/dev/previews/vfx-set.ts
+
+All exports and signatures from before are unchanged. Additions:
+
+src/vfx/banners.ts
+- type BannerStyle = 'turn'|'phase'|'trap'|'spell'|'big'
+- BannerOpts { style?='big'; color? (snaps to its palette ramp; defaults: turn cyan, phase night, spell teal, trap magenta, big gold); sub?: string; NEW hold?: ms; NEW dir?: 1|-1 (sweep direction, 1 = band enters from the left); NEW textColor? }
+- banner(scene, text, o): Promise<void>. Resolves after the banner has left the screen. Text is upper-cased Turkish-aware. Rough lengths at speed 1: turn ≈1.0 s, phase ≈0.9 s, spell ≈1.2 s, trap ≈1.2 s, big ≈1.5 s.
+- turnBanner(scene, player, turn): "OYUNCU n · TUR t", sweeps in from that player's side in their colour, plays the turnStart sound.
+- phaseBanner(scene, phase): ÇEKME AŞAMASI / ANA AŞAMA / SAVAŞ AŞAMASI / BİTİŞ AŞAMASI. The battle phase uses a crimson band plus edgePulse.
+- trapBanner(scene): "TUZAK!" letter drop.
+- duelStart(scene): "DÜELLO!" gold punch-in, ×2 letters, 5 px shake.
+- victory(scene, player, { hold?=1200 }): resolves once the title has landed plus `hold`. The screen (dim, rays, fireworks) STAYS until clearBanners(scene) or scene shutdown.
+- NEW clearBanners(scene, ms=300): fades out the persistent victory screen; ms 0 = instant; safe when nothing is up.
+- NEW edgePulse(scene, color=PAL.crim2, ms=700): Promise. Two stepped vignette pulses.
+- Everything is at DEPTH.BANNER with scrollFactor 0 and cleans itself up.
+- When banner({ style: 'big', color: X }) uses a non-gold colour, the letters are white (as in 'DESTE BİTTİ!').
+
+src/vfx/setpieces.ts (additions)
+- NEW freeze(scene, ms): Promise. Nesting-safe hit-stop (= combat.stopTime). All set pieces use it.
+- NEW MirrorOpts.source?: XY (where the incoming attack streak starts; default attackers[0]) and MirrorOpts.attackColor?: number (default: the attacking player's PLAYER_COLOR). Pass the declared attacker's core as `source` when it is not among the attack-position kills.
+- setVolcanoAmbience(scene, on): repeated calls with the state already reached resolve immediately (they used to hang). Scene shutdown tears it down and resolves any waiters.
+- panelGlow(scene, player, ramp, ms) now takes its rectangle from layout.panelRect(player).
+
+Behaviour notes for integrators:
+- stormStrike: onImpact fires on the strike frame. The target flashes white or dark during the re-strikes and its tint is cleared at the end; the target is never hidden.
+- chasm: resolves with the sprite HIDDEN, unmasked, tint cleared, back at its original x/y.
+- vineBurst: the target's scale and tint are restored before it resolves.
+- swordForge: the blade is ×2 when the target's opaque height is 40 px or more; resolves with goldAura(target).
+- Boot step 14 builds the textures 'set:sword', 'set:rune' (frames r0..r7) and 'set:rock' (frames k0..k3). Banners create 'set:vignette:<hex>' on first use.
+
+src/vfx/cutin.ts: cutIn(scene, { monsterId, name, attribute, player }) is unchanged, about 1.55 s. It uses the 'cutin:<id>' texture (frame 'f0', anim 'cutin:<id>') when it exists, otherwise the monster's idle animation at ×3.
+
+Preview: ?dev=vfx-set&fx=storm|fountain|ghost|sword|volcano(&board=0)|trap|mirror|chains|chasm|fireball|wisp|bolt|heal|tendril|vines|cutin(&id=)|turn|phase|trapbanner|spellbanner|battleover|deckout|duel|victory, plus &player=1|2, &once=1, &period=MS, &arena=0. With no fx it shows a clickable menu.
+
+Open issues reported by the agent:
+- tools/shot.mjs and src/main.ts are not mine. __neon.step(ms) still runs every frame in one synchronous call, so await chains only move forward at film-frame boundaries. My wrapper (shots/vfx-set/shot.sh) fixes this by patching step through --eval to yield between frames. I recommend adding that yield to main.ts.
+- No 'cutin:<id>' portrait textures exist yet (src/art/cutins is empty), so the cut-in was only checked with the fallback (the monster's idle animation ×3, cropped by the band). When the portrait agent's textures arrive, check the framing (scale = floor((138+40)/h)) and eye detection again.
+- src/vfx/core.ts hitStop still cannot handle overlapping calls. My files and combat.ts avoid it, but other callers should use setpieces.freeze or combat.stopTime.
+- Cinematics in src/cinematics/_defaults/cards.ts call mirrorDome with only the attack-position kills, so the incoming streak starts at the first kill. Passing { source: attackerCore } (new option) would start it from the attacker that actually declared the attack.
+- Run while the machine was heavily loaded by other agents: some shot.mjs page loads timed out and were retried. The player-2 smoke runs of volcano, deckout and victory never loaded after 3 tries, so those three were only checked as player 1.
+
+## src/scenes/TitleScene.ts, src/scenes/title/logo.ts, src/scenes/title/camera.ts, src/scenes/title/showcase.ts
+
+Files: src/scenes/TitleScene.ts, src/scenes/title/logo.ts, src/scenes/title/camera.ts, src/scenes/title/showcase.ts, src/scenes/title/ambient.ts, src/scenes/title/prompt.ts, src/scenes/title/icons.ts, src/scenes/title/menu.ts, src/scenes/title/overlay.ts, src/scenes/title/settings.ts, src/scenes/title/gallery.ts, src/scenes/title/howto.ts, src/scenes/title/transition.ts, src/dev/previews/title.ts
+
+SCENE: key 'Title' (src/scenes/TitleScene.ts, class TitleScene). init data TitleData = { at?: 'attract'|'menu'|'howto'|'gallery'|'settings'; page?: number; card?: string; sync?: boolean; logoOnly?: boolean; dev?: boolean; from?: 'duel' }.
+- From a finished duel: this.scene.start('Title', { from: 'duel' }). The DuelScene already does this. It skips the click gate, goes straight to the menu with the logo lit, and resumes audio per settings (music.play('title')).
+- Plain start (no data): full intro (sky tilt-down, sign power-up, floodlights), then attract mode ('BAŞLAMAK İÇİN TIKLA'). The first click or key calls sfx.unlock() and applies the audio settings.
+- Launch: scene.start('Duel', { mode: 'hotseat' | 'vsBot' | 'demo' }). Only `mode` is set; seed, first player and botPlayer are left at their defaults. window.__neon.titleLaunch holds the last DuelLaunch. If 'Duel' is not registered, the title shows a message and wipes back to the menu.
+- When booted normally, TitleScene sets window.__neon.ready = true itself. URL QA options without ?dev: ?holdIntro=1 (start on the shot tool's freeze), ?title=menu|howto|gallery|settings&page=N&card=<cardId>.
+
+DEV PREVIEW: ?dev=title&at=attract|menu|howto|gallery|settings&page=0..5&card=<id>&sync=1&logo=1&from=duel.
+- sync=1 starts the intro on the shot tool's freeze, so films are deterministic.
+- QA hooks (dev only), via window.__neon.title (the scene):
+  - .qaKey('ArrowDown')
+  - .qaKeys([[2500, 'Digit5'], [5200, 'Escape']]) schedules presses on GAME time
+  - .qaScreen reads the current screen ('attract'|'menu'|'howto'|'gallery'|'settings'|'busy'|'launch'|'intro')
+- Film recipe for async chains: pass --eval "const o=window.__neon.step; window.__neon.step=async(ms)=>{const n=Math.max(1,Math.round(ms/(1000/60)));for(let i=0;i<n;i++){o(1000/60);await new Promise(r=>setTimeout(r,0));}};" so await continuations advance every frame. My helper script is scratchpad/title/film.sh.
+  Example: EXTRA_EVAL="window.__neon.title.qaKeys([[2400,'ArrowDown'],[2700,'Enter']]);" film.sh "?dev=title&sync=1&at=menu" out.png --film 16 --start 2300 --every 90
+
+REUSABLE EXPORTS:
+- src/scenes/title/settings.ts
+  - applyAudioSettings(s: Settings, track: 'title'|'duel'|null = 'title'). Sound off = sfx.setVolume(0); music off = music.stop(); it un-mutes sfx if either is on. The duel can call applyAudioSettings(loadSettings(), 'duel').
+  - SettingsOverlay(scene, settings) with .onChange(settings).
+- src/scenes/title/transition.ts
+  - wipeOut(scene, ms=560): Promise<Graphics> — cyan bands from the left and crimson from the right interlock into ink, then a seam flash. The cover stays (depth DEPTH.TRANSITION).
+  - wipeIn(scene, cover, ms=520) reverses it.
+- src/scenes/title/logo.ts
+  - buildLogo(scene): LogoLayout (w 431 × h 56; textures 'title:logo:<ch>:<word>:on|off|glow|sil', sheen 'title:logo:sheen').
+  - new TitleLogo(scene, x, y, {depth=2000, seed, sound}) with: reveal(), ignite(), showLit(), startIdle(), stopIdle(), sweep(ms), flickerRandom(), glitch(power), flashAll(ms, amount), powerDown(ms), sparkAt(i, n), root (container, scrollFactor 0).
+- src/scenes/title/camera.ts
+  - new TitleCamera(scene) re-routes cameras.main.shake into scroll offsets, so VFX shakes move only scrollFactor≠0 objects. Props: base {x, y}, drift (0..1), shakeScale. Methods: moveTo(x, y, ms, ease), snapTo(x, y).
+- src/scenes/title/showcase.ts
+  - new Showcase(scene, {seed, max=4, period=2.9, volume(), cutins()}) with start(firstDelay), stop(), clear(ms), summon(id, slot), clash(a, b).
+- src/scenes/title/overlay.ts
+  - abstract Overlay(scene, w, h, title, style): open(), close(), onKey(e), onClose.
+  - Depths: OV_DIM 36 < OV_BG 38 < OV_FLOOR 39 < floor VFX 40–57 < units / VFX 100–1100 < OV_UI (DEPTH.MENU). This lets world-space VFX play inside panels while the camera rests at scroll (0,0).
+  - Helpers: hitZone(), keyHint().
+- Other classes:
+  - HowToOverlay(scene, page) and HOWTO_PAGES = 6 (src/scenes/title/howto.ts)
+  - GalleryOverlay(scene, cardId?) (src/scenes/title/gallery.ts)
+  - MainMenu(scene, x, y, entries, {w, depth, title}) with .onSelect, move(d), select(i, sound), activate(), show(), hide(), setEnabled() (src/scenes/title/menu.ts)
+  - StartPrompt (src/scenes/title/prompt.ts); Motes and Tagline (src/scenes/title/ambient.ts)
+  - Icon textures: TICON.duo|bot|eye|book|cards|gear|left|right|key|mouse, built by buildTitleIcons(scene) (src/scenes/title/icons.ts)
+- No shared contracts were modified.
+
+Open issues reported by the agent:
+- tools/shot.mjs and main.ts: __neon.step runs all frames in one synchronous task, so films of async (await-chained) choreography are distorted. My films patch step through --eval to yield every frame (recipe in apiNotes). Adopting that in main.ts would help every agent. Under heavy machine load a long faithful-step film (30 s of game time) exceeded 10 minutes, and some shots needed retries after page.screenshot timeouts.
+- Showcase clashes use the shared combat VFX, which play their own sfx at fixed volume, and impact() hit-stops, which briefly (about 80–100 ms) freeze all title tweens, including menu animations. This is intended impact feel. setCombatSfx is global, so I did not touch it.
+- If the player opens a sub-screen exactly while a showcase clash is mid-beam, beam or impact residue can flash over the unfolding panel for under 300 ms. It is cosmetic and threw no errors in testing.
+- How-to page 3: the big Kristal Ejder summon pillar (210 px tall) rises above the illustration frame into the panel header. I left it as intentional 'bursting out' drama; lower the pillar height if a tidier frame is preferred.
+- Settings semantics: 'Ses efektleri' maps to sfx.setVolume(0/1), not sfx.setMuted (which would also mute music); 'Müzik' starts and stops the track. The Duel scene should honour loadSettings().speed and .curtain, and can reuse applyAudioSettings(settings, 'duel').
+- The launch passes only { mode }. vsBot relies on the DuelLaunch default botPlayer = 1 and the duel picks its own seed.
+- In the gallery, spell and trap stages are fairly static compared with monsters (floating 3× art, rune circle, periodic element effects). Signature mini set-pieces per spell (for example from src/vfx/setpieces.ts) could be added later.
+
+## src/scenes/DuelScene.ts, src/scenes/registry.ts, src/scenes/BootScene.ts, src/dev/previews/duel.ts
+
+Files: src/scenes/DuelScene.ts, src/scenes/registry.ts, src/scenes/BootScene.ts, src/dev/previews/duel.ts, src/cinematics/index.ts, src/cinematics/api.ts, src/cinematics/_core/registry.ts, src/cinematics/_core/types.ts, src/cinematics/_core/Director.ts, src/cinematics/_core/project.ts, src/cinematics/_core/helpers.ts, src/cinematics/_defaults/index.ts, src/cinematics/_defaults/flow.ts, src/cinematics/_defaults/summon.ts, src/cinematics/_defaults/battle.ts, src/cinematics/_defaults/strikes.ts, src/cinematics/_defaults/cards.ts, src/duel/types.ts, src/duel/MonsterUnit.ts, src/duel/StatBadge.ts, src/duel/FieldView.ts, src/duel/PileView.ts, src/duel/auras.ts, src/duel/CameraRig.ts, src/duel/speed.ts, src/duel/viewer.ts, src/duel/DuelistView.ts, src/duel/HumanInput.ts, src/duel/DuelController.ts, src/duel/CardPicker.ts, src/duel/scenario.ts, src/duel/scenarios.ts, src/duel/testClock.ts
+
+CINEMATIC REGISTRY. Import everything from `src/cinematics/api.ts` (`./api` from a top-level cinematics file).
+
+Loading:
+- Put a file anywhere under `src/cinematics/` except `_core/`, `_defaults/`, `api.ts` and `index.ts`, and register at module top level.
+- `loadCinematics()` installs the defaults first (priority `DEFAULT_PRIORITY = -100`). It then imports the other files lazily, one at a time, in path order.
+- A file that throws while loading is logged and skipped; the game keeps going.
+
+Registration functions (each returns an unregister function; `opts = { priority?: number (default 0), name?: string }`):
+- `registerEvent(type, handler, opts?)`
+- `registerCardHook(cardId, kind, handler, opts?)`
+- `registerStrike(monsterId, (s: StrikeArgs) => Promise<void>, opts?)`. This replaces only the attack motion. The default battle handler still clears the arrow and does the outcome, damage and shattering. The strike must call `s.impact(at?)` once at contact and resolve when the attacker is back home.
+
+Other exports:
+- `registerObserver(fn(ev, ctx))`: called for every event when it starts.
+- `strikeFor(id)`, `listHandlers()`, `HOOK_KEYS`.
+- `fx`: the helpers in `_core/helpers.ts`.
+
+A handler is `(ctx) => void | Promise`. Resolve only when the visuals of every event you handled are final; decorative tails may keep running.
+
+Chain order for one event:
+1. Higher priority first.
+2. At equal priority, card hooks before event-type handlers.
+3. Then the later registration first.
+
+`ctx.base()` runs the next handler in the chain (middleware style). So a new file registered at priority 0 always overrides the defaults, whatever the import order.
+
+Card hook kinds (`CardHookEvents`), with the card each one is keyed by:
+
+| Kind | Event | Keyed by |
+|---|---|---|
+| summon | summon | the summoned card (normal / tribute / special; a flip summon arrives as 'flip') |
+| flip | flip | the flipped card. With cause flipSummon the default consumes the paired summon. |
+| tribute | tribute | the monster being Tribute Summoned (forUid) |
+| tributed | tribute | the tributed monster |
+| attackDeclare | attackDeclare | the attacker |
+| attack | battle | the attacker. The default consumes the battle damage and battle destroys and plays them with ctx.play. |
+| defend | battle | the attacked monster |
+| activate | activate | the spell or trap |
+| effect | activate (kind monsterEffect) | the monster |
+| target | target | the source card |
+| destroyed | destroy | the destroyed card |
+| destroys | destroy | sourceUid's card (e.g. chasm_trap) |
+| toGraveyard | toGraveyard | the card |
+| equip | equip | the equip spell |
+| field | fieldSpell | the field spell |
+| statChange | statChange | the monster |
+| damage | damage | the source card |
+| lpGain | lpGain | the source card |
+| discard | discard | the card |
+| negate | attackNegated | byUid's card |
+
+setMonster, setSpellTrap and draw have no card hooks (the card is hidden).
+
+CinematicContext (`_core/types.ts`):
+- Scene and event:
+  - `scene`, `views`, `ev`, `index`, `events`.
+  - `before` / `after`: the engine state at the start / end of the batch.
+  - `state`: the projected state just before this event. `stateNext`: just after it. `stateAt(i)`.
+  - `hints`: data passed by `ctx.play`.
+- Players and settings: `mode`, `viewer`, `canSee(p)`, `isHuman(p)`, `skipIntro`, `settings`.
+- Lookups:
+  - `cardId`, `card`, `monster`, `owner`.
+  - `atk(uid, when?)` and `def(uid, when?)` include equips and the field spell. `when` is 'now' | 'next' | 'after' | 'before'.
+  - `locate(uid, when?)`, `unit(uid)`, `tile(uid)`.
+- Event queue:
+  - `peek(n)`.
+  - `find(pred, { from, until, includeConsumed })` and `findType(type, pred?, opts?)` return an index or -1.
+  - `consume(n)`, `consumeAt(i)`, `isConsumed(i)`.
+  - `play(i, hints?)` runs a later event's full handler chain now and marks it consumed. Await it.
+  - `base()`.
+- Effects and timing:
+  - `sfx(name, opts)`, `music`, `wait(ms)`, `tween(cfg)`, `safe(p)`.
+  - `focus(xy, { zoom, ms, pan })` / `unfocus(ms)`: world camera only.
+  - `keep(key, handle)` / `take(key)`: kept handles survive across a pending decision. The attack arrow is kept as 'attack'.
+  - `log(text, color)`.
+  - `userWait(p)`: pauses the watchdog.
+
+Hint conventions:
+- damage: `{ at: XY, battle, delivered }`. `delivered` means the number and LP roll only, no fireball.
+- lpGain: `{ delivered, at }`.
+- destroy: `{ push: XY, hit: boolean }`.
+- summon: `{ noCard, ghost }`. `noCard` means no card flight.
+
+StrikeArgs: `{ ctx, scene, attacker: MonsterUnit, target: MonsterUnit|null, to, toGround, direct, blocked, power: 1|2|3, impact(at?), impacted }`.
+
+fx helpers:
+- Cards: `takeHandCard`, `slamToZone`, `cardToGraveyard`, `tileToGraveyard`.
+- Monsters: `summonEntrance(ctx, unit, { big, cutIn })`, `shatterUnit`, `hitReact`, `hexShield`.
+- Spells and traps: `spellShowcase(ctx, { uid, cardId, player, from: 'hand'|TileCard|CardSprite, hold, kind })` returns `{ card, release(to), land({ player, spot, index, uid, cardId }), close() }`. `energyBolt`, `trapReveal`.
+- Damage and LP: `presentDamage`, `presentHeal`.
+- Resolution runs: `resolutionRun(ctx)` gives the indices of the activation's own resolution events. `playRun(ctx, indices, hints?)` plays them in order. Use these so an activation owns its whole resolution and the board is never re-synced half-way.
+- Points and colours: `lpPoint`, `duelistPoint`, `dim`, `attrRamp`, `isAce`, `zoneCenter`.
+
+Defaults: `_defaults/flow`, `summon`, `battle`, `strikes` and `cards` cover all 28 event types.
+- Card hooks:
+  - Spells (activate): judgment_bolt, healing_spring, soul_recall, dragon_blade, volcano_arena.
+  - Traps: chasm_trap (activate and destroys), mirror_barrier and chains_of_light (activate).
+  - Monster effects (effect): magma_titan, ember_wolf, volt_lizard, tide_golem, lumen_sprite, abyss_magus, thorn_lurker.
+- Strikes for all 12 monsters:
+  - prism beam (wyrm), dark orb (magus), heavy lunge with stomp (titan), water jet that pierces (coral)
+  - lunge and bite (wolf), wave (golem), spiral dive (hawk), boulder (sentinel), sparks (lumen)
+  - shadow step and X-slash (shade), lightning (volt), vine whip (thorn)
+
+FIELDVIEW (`src/duel/FieldView.ts`):
+- `sync(state)`: instant reconcile, including auras (equip gold aura; volcano flame for FIRE, steam for WATER).
+- Lookups: `entry(p, spot, i)`, `entryOf(uid)`, `unit(uid)` (also finds units that are still fading out), `unitAt(p, zone)`, `units()`, `tileOf(uid)`, `tileAt(p, spot, i)`, `tiles()`.
+- `pile(p, 'deck'|'graveyard')` returns a PileView: `count`, `topCard`, `topXY()`, `set(n, topId)`, `bump()`, `flash(color)`.
+- Building visuals before the state catches up:
+  - `placeCard(p, spot, i, uid, cardId, faceUp, orientation)`
+  - `placeMonster(p, zone, uid, cardId, { position, faceUp, hidden, atk, def })`
+  - `addUnit(uid, { hidden, atk, def, position })`
+  - `release(uid)`: detaches the objects; the caller owns them.
+  - `remove(uid, { fade })`, `forget(uid)`.
+
+MONSTERUNIT (`src/duel/MonsterUnit.ts`):
+- Fields: `uid`, `cardId`, `card`, `art`, `attribute`.
+- `sprite` is a plain top-level Sprite, not inside a container, so every VFX helper accepts it. Its origin is the art anchor (mirrored for P2, who uses flipX). It is lifted by `hover` and its depth is unitDepth(ground y).
+- `shadow` scales with hover. `badge` is a StatBadge (3×5 card digits; green when raised, red when lowered; rolls on change).
+- State: `player`, `zone`, `position`, `tile`, `lift`, `posed`, `retired`.
+- Points: `home`, `rest0`, `flipX`, `frameInfo()`, `framePoint(fx, fy)`, `worldPoint('muzzle'|'core'|'anchor'|'feet'|'top')`, `core()`, `muzzle()`.
+- Animation:
+  - `play(anim, { hold })`: one-shots resolve on complete, then return to idle/guard.
+  - `playToFrame(anim, f)`, `attackToImpact()`, `impactMs`, `rest()`.
+- Stats and position: `setStats(atk, def, animate)`, `setPosition(pos, animate)` (also rotates the tile), `setController(p, zone)`.
+- Auras: `setAura(key, handle|null)`, `aura(key)`, `hasAura(key)`.
+- Visibility: `hide()`, `show()`, `showSprite()`, `settle()`, `displaced`, `retire(ms)`, `destroy()`.
+- Set `lift` while the sprite is in the air so the shadow stays on the floor. Set `posed = true` to hold a pose across syncs.
+
+Other views:
+- `DuelViews = { board, field, hud, hand, inspect, prompt, menu, log, camera: CameraRig, duelists: DuelistViews|null, info: ViewerPolicy, speed: SpeedControl }`.
+- `CameraRig`: `focus(xy, { zoom, ms, pan })`, `unfocus()`, `descend(ms, from)`, `worldPoint(sx, sy)`, `reset()`.
+- `SpeedControl`: `base`, `value`, `setBase(k)`, `slowMo(k, ms)`.
+- `ViewerPolicy`: `viewer`, `canSee(p)`, `isHuman(p)`, `ensureViewer(p)` (shows the curtain in hot-seat).
+- `DuelistViews.get(p)`: `play('command'|'hurt'|'defeat'|'victory')`, `jolt()`, `chest()`.
+
+QA:
+- URL: `?mode=hotseat|vsBot|demo&seed=N&first=0|1&skipIntro=1&speed=N&curtain=0&loop=1&holdIntro=1`. `holdIntro` reports ready at once and starts the opening on the first freeze, for films. Also `?dev=duel&s=<scenario>`.
+- `window.__neon.duel`:
+  - `state()`, `legal()`, `busy()`, `lastEvents()`, `idle()`, `uid(cardId, owner?)`.
+  - `dispatch(action)`: `player` may be omitted. Validates the action, plays its cinematics and resolves after the sync.
+  - `dispatchOnFreeze(action)`, `auto(on)`.
+  - `restart(opts: NewGameOptions & { mode, skipIntro, stage, state, curtain, speed, auto, loop })`: resolves when the new duel waits for its first action.
+  - `scenario(name, { film })`, `scenarios()`, `errors()`, `handlers()`, `views`, `launch`.
+- `window.__neon.ready` becomes true once the duel is interactive, including when the curtain waits for a click.
+
+Recipe for staging any scenario:
+```
+node tools/shot.mjs "?mode=hotseat&seed=1&skipIntro=1&curtain=0" --eval "await __neon.duel.restart({mode:'hotseat',curtain:false,stage:{phase:'battle',p0:{monsters:[null,'crystal_wyrm']},p1:{monsters:[null,'abyss_magus'],spellTraps:['mirror_barrier']}}}); const D=__neon.duel; D.dispatchOnFreeze({type:'attack',player:0,attackerZone:1,targetZone:1});" --film 24 --every 120
+```
+- To answer the trap, dispatch `{ type:'respond', player:1, uid: D.uid('mirror_barrier',1) }` after the attack resolves.
+- Simpler: add an entry to `src/duel/scenarios.ts` and run `node tools/shot.mjs "?dev=duel&s=<name>" --film 30 --every 150`.
+- StageSpec: `{ p0/p1: { hand, deck, graveyard, monsters: [id | { id, position, faceUp, ... } | null], spellTraps: [id | { id, faceUp, equippedTo: zoneIndex }], field, lp }, phase, active, turn }`.
+
+Defaults that are most basic and most need signature versions (most needed first):
+1. Summons: every monster gets the generic attributeSummon by attribute and the cut-in for aces. No monster has its own entrance yet (e.g. the wyrm's wing spread, the titan's ground split).
+2. Impacts: every strike's impact uses only attribute-coloured sparks. The bible's per-card impacts are missing: crystal shards (wyrm), lava splash (titan), implosion (magus, partly), water spray (coral).
+3. Spells: one common showcase for all five; no per-card intro (e.g. the sky darkening for Yıldırım Hükmü).
+4. Traps: trapReveal and the "TUZAK!" banner are shared.
+5. Destroy: the same generic shatter for every monster. Şimşek Kertenkelesi's remains and the ace deaths need flavour.
+6. Draw, turn and phase: basic.
+7. Game over: the losers' holograms collapse, then Prompt.gameOver. banners.victory is not used.
+8. Duelist reactions are wired (command, hurt, defeat, victory) but the duelist art does not exist yet.
+
+Open issues reported by the agent:
+- setpieces.goldAura (and the same pattern elsewhere) throws a TDZ ReferenceError ('kill' before initialization) when its first onFrame tick sees an inactive target or a scene that is not running yet, e.g. when created inside a scene's create(). FieldView now only creates auras on a running scene (and retries on the first UPDATE), but the setpieces owner should declare kill/stop before onFrame.
+- src/art/duelists.ts does not exist yet. createDuelists() returns null and every duelist beat is skipped; direct hits and battle damage numbers fall back to a point behind the back row. The export names are guessed: duelistTextureKey(p), duelistAnimKey(p, anim), DUELIST_W/H, and either DUELIST_ANCHOR {x,y} or DUELIST_ANCHOR_X/Y (default bottom-centre). Re-check the placement once the art lands.
+- Prompt.gameOver only offers 'Tekrar Oyna'. DuelScene adds its own 'Ana Menü' button under it (plus Esc), which goes to scene 'Title' with { from: 'duel' }. If the UI agent adds a back-to-title choice, remove mine in DuelScene.gameOver.
+- The ATK/DEF badge uses the 3×5 card digit font (drawDigits) on a small plate rather than pixelText, for a compact, crisp 1× badge. Swapping it is local to StatBadge.ts.
+- CameraRig assigns every top-level object to a camera by depth each frame: depth ≥ DEPTH.HUD−10 goes to the un-zoomed UI camera, everything else to the main camera that zooms and shakes. Screen-space effects drawn below HUD depth with scrollFactor 0 still zoom with the world during focus(). core.shake only moves the world, never the HUD.
+- Under the shared machine load, headless swiftshader runs well behind real time (the suite took 146–344 s at speed 3). Films are deterministic (testClock yields each frame), but real-time waits in Playwright scripts need generous margins. The curtain test presses Enter until the curtain is gone.
+- Prompt.passDevice ignores input until its letters have landed, so QA tools that start a hot-seat duel with the curtain on must click or press Enter later, or pass curtain:false / &curtain=0.
+- In demo mode the hand view follows the active player (spectator); in vsBot it stays on the human. Set cards are never revealed on screen except the viewer's own in the inspect panel.
+- BootScene.ts got the minimal edit allowed by the task (it now uses firstScene(params)). FIRST_SCENE = 'Title' is still exported.

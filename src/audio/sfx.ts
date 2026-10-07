@@ -8,9 +8,14 @@
 // sounds.ts (one recipe per SfxName), music.ts (lookahead chiptune sequencer).
 // Every call is a silent no-op when audio is unavailable (headless, autoplay blocked, no
 // WebAudio) — nothing here ever throws. Preview: ?dev=audio.
+//
+// Extras (additive): sfx.setVolume / isRunning, music.setVolume / current, SFX_NAMES, and the
+// offline renderers renderSfx / renderScene. The victory sting (sfx 'victory') and the victory
+// track coordinate in either order: started after the sting, the track waits for it and skips
+// its own fanfare; while the track's fanfare plays, the sting is skipped.
 
-import { audio, audioRunning, buildChain, liveAudio, MASTER_LEVEL, peekLive, rng, safe, setMasterLevel, trim, type Chain } from './engine';
-import { musicEngine } from './music';
+import { applyDuck, audio, audioRunning, buildChain, liveAudio, MASTER_LEVEL, peekLive, rng, safe, setMasterLevel, trim, type Chain } from './engine';
+import { musicEngine, musicVolume, scheduleMusic, startPlan, VICTORY_STING_SEC, type MusicRenderOpts } from './music';
 import { RECIPES } from './sounds';
 import { Voice } from './synth';
 
@@ -68,6 +73,9 @@ function build(chain: Chain, name: SfxName, t0: number, opts: SfxOpts, rnd: () =
   const out = ctx.createGain();
   out.gain.value = clamp(opts.volume ?? 1, 0, 1.5);
   const nodes: AudioNode[] = [out];
+  const voice = new Voice(ctx, out, t0, clamp(opts.pitch ?? 1, 0.25, 4), rnd);
+  r.play(voice);
+  // route after the recipe is built (it tells us whether it is already stereo)
   let tail: AudioNode = out;
   const pan = clamp(opts.pan ?? 0, -1, 1);
   const c = ctx as BaseAudioContext & { createStereoPanner?: () => StereoPannerNode };
@@ -77,6 +85,9 @@ function build(chain: Chain, name: SfxName, t0: number, opts: SfxOpts, rnd: () =
     out.connect(p);
     tail = p;
     nodes.push(p);
+    // The equal-power law puts a MONO source at −3 dB per side at centre: make up for it so
+    // pan 0.01 is exactly as loud as no pan. (A stereo source passes a centred panner unchanged.)
+    if (!voice.stereo) out.gain.value *= Math.SQRT2;
   }
   tail.connect(chain.sfx);
   if (r.verb) {
@@ -85,8 +96,6 @@ function build(chain: Chain, name: SfxName, t0: number, opts: SfxOpts, rnd: () =
     tail.connect(s).connect(chain.send);
     nodes.push(s);
   }
-  const voice = new Voice(ctx, out, t0, clamp(opts.pitch ?? 1, 0.25, 4), rnd);
-  r.play(voice);
   return { voice, out, nodes };
 }
 
@@ -141,12 +150,15 @@ function playLive(name: SfxName, opts: SfxOpts): void {
   if (muted) return;
   const r = RECIPES[name];
   if (!r) return;
+  if (!((opts.volume ?? 1) * sfxVolume > 0.001)) return; // sound off (also rejects NaN)
   const a = audio();
   if (!a) return;
   // Never queue sounds while suspended (they would all burst out on resume) — except right
   // after unlock(): the click that unlocks audio should still make its own sound.
   if (a.ctx.state !== 'running' && performance.now() - resumeAsked > 300) return;
   const now = a.ctx.currentTime;
+  // the victory track opens with its own (longer) fanfare: the sting would clash with it
+  if (name === 'victory' && musicEngine.fanfarePlaying()) return;
   const last = lastPlay.get(name);
   if (last !== undefined && now - last < (r.gap ?? 0.02)) return;
   reap(now);
@@ -164,6 +176,7 @@ function playLive(name: SfxName, opts: SfxOpts): void {
   const lv: LiveVoice = { ...b, name, start: now, end };
   active.push(lv);
   if (r.duck) musicEngine.duck(r.duck * Math.min(1, volume), t0);
+  if (name === 'victory') musicEngine.sting(t0, pitch);
   setTimeout(() => {
     const i = active.indexOf(lv);
     if (i >= 0) active.splice(i, 1);
@@ -242,13 +255,21 @@ export const music = {
 };
 
 // Belt and braces: unlock on the first gesture even if the game forgets to call sfx.unlock().
+// The listeners stay (they cost one state check): if the browser suspends the context later
+// (iOS interruption, audio device change), the next gesture resumes it. Returning to the tab
+// also tries to resume (allowed once the page has had a gesture).
 safe(() => {
   if (typeof window === 'undefined') return;
-  const once = () => {
-    sfx.unlock();
-    if (audioRunning()) for (const ev of ['pointerdown', 'keydown', 'touchend']) window.removeEventListener(ev, once, true);
+  const onGesture = () => {
+    if (!audioRunning()) sfx.unlock();
   };
-  for (const ev of ['pointerdown', 'keydown', 'touchend']) window.addEventListener(ev, once, { capture: true, passive: true });
+  for (const ev of ['pointerdown', 'keydown', 'touchend']) window.addEventListener(ev, onGesture, { capture: true, passive: true });
+  document.addEventListener?.('visibilitychange', () =>
+    safe(() => {
+      const a = peekLive();
+      if (a && !document.hidden && a.ctx.state !== 'running' && a.ctx.state !== 'closed') void a.ctx.resume().catch(() => {});
+    }),
+  );
 });
 
 // ------------------------------------------------------------------ offline rendering (dev preview / tests)
@@ -277,6 +298,55 @@ export async function renderSfx(
     return trim(await ctx.startRendering(), pre);
   } catch (err) {
     console.warn('[audio] renderSfx failed', name, err);
+    return null;
+  }
+}
+
+/** One sound in a renderScene() cue list. */
+export interface SfxCue {
+  /** Seconds from the start of the scene. */
+  at: number;
+  name: SfxName;
+  opts?: SfxOpts;
+}
+
+/**
+ * Render a little scene offline: sfx cues over an optional music track, with the same music
+ * ducking and victory-sting coordination as live play — this is how overlap, ducking and the
+ * limiter are checked headless (?dev=audio&page=mix). Deterministic (seeded).
+ */
+export async function renderScene(
+  cues: readonly SfxCue[],
+  o: MusicRenderOpts & { seconds: number; music?: MusicTrack; musicAt?: number; sampleRate?: number; seed?: number },
+): Promise<AudioBuffer | null> {
+  try {
+    const sr = o.sampleRate ?? 44100;
+    const pre = 0.8; // compressor warm-up (see renderSfx)
+    const ctx = new OfflineAudioContext(2, Math.ceil(sr * (o.seconds + pre)), sr);
+    const chain = buildChain(ctx);
+    chain.music.gain.value = musicVolume();
+    const rnd = rng(o.seed ?? 1234);
+    let stingEnd = -1;
+    for (const c of [...cues].sort((x, y) => x.at - y.at)) {
+      const r = RECIPES[c.name];
+      if (!r) continue;
+      const t0 = pre + c.at;
+      build(chain, c.name, t0, c.opts ?? {}, rnd);
+      if (c.name === 'victory') stingEnd = t0 + VICTORY_STING_SEC / clamp(c.opts?.pitch ?? 1, 0.25, 4);
+      if (r.duck && o.music) applyDuck(chain, r.duck * Math.min(1, c.opts?.volume ?? 1), t0);
+    }
+    if (o.music) {
+      const plan = startPlan(o.music, pre + (o.musicAt ?? 0), stingEnd);
+      const shift = plan.at - pre;
+      scheduleMusic(chain, o.music, plan.at, o.seconds - shift, {
+        intensity: o.intensity,
+        startStep: o.startStep ?? plan.step,
+        intensityAt: o.intensityAt?.map(([t, v]) => [t - shift, v] as const).filter(([t]) => t >= 0),
+      });
+    }
+    return trim(await ctx.startRendering(), pre);
+  } catch (err) {
+    console.warn('[audio] renderScene failed', err);
     return null;
   }
 }

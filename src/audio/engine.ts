@@ -20,6 +20,8 @@ export interface Chain {
   duck: GainNode;
   /** Master volume / mute (before the limiter). */
   master: GainNode;
+  /** The very last node before the destination (post limiter + safety clip) — for meters. */
+  tap?: AudioNode;
 }
 
 export const MASTER_LEVEL = 0.9;
@@ -253,7 +255,35 @@ export function buildChain(ctx: BaseAudioContext, dest: AudioNode = ctx.destinat
   send.connect(hp).connect(conv).connect(lp).connect(ret).connect(glue);
   music.connect(duck).connect(glue);
   glue.connect(master).connect(limiter).connect(pre).connect(clip).connect(dest);
-  return { ctx, sfx, send, music, duck, master };
+  return { ctx, sfx, send, music, duck, master, tap: clip };
+}
+
+// ------------------------------------------------------------------ music ducking
+
+/** The duck curve last scheduled on each chain (kept analytically: AudioParam.value is not reliable ahead of time). */
+const duckState = new WeakMap<Chain, { at: number; from: number; depth: number }>();
+
+function duckValue(s: { at: number; from: number; depth: number } | undefined, t: number): number {
+  if (!s || t <= s.at) return s ? s.from : 1;
+  if (t <= s.at + 0.03) return s.from + ((s.depth - s.from) * (t - s.at)) / 0.03;
+  if (t <= s.at + 0.2) return s.depth;
+  return 1 - (1 - s.depth) * Math.exp(-(t - s.at - 0.2) / 0.4);
+}
+
+/**
+ * Pull the music bus down at context time `at` by `amount` (0..1 → up to −6 dB, floor 0.35),
+ * hold 200 ms, then recover over ~1 s. Overlapping ducks never jump up — the deepest wins.
+ */
+export function applyDuck(chain: Chain, amount: number, at: number): void {
+  const g = chain.duck.gain;
+  const prev = duckState.get(chain);
+  const cur = Math.min(1, duckValue(prev, at));
+  const depth = Math.min(cur, Math.max(0.35, 1 - 0.5 * Math.min(1, Math.max(0, amount))));
+  g.cancelScheduledValues(at);
+  g.setValueAtTime(cur, at);
+  g.linearRampToValueAtTime(depth, at + 0.03);
+  g.setTargetAtTime(1, at + 0.2, 0.4);
+  duckState.set(chain, { at, from: cur, depth });
 }
 
 /** Build every cache up front (noise, waves, curves) so no sound pays for it mid-game. */

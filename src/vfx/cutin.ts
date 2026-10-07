@@ -188,7 +188,8 @@ export async function cutIn(scene: Phaser.Scene, o: CutInOpts): Promise<void> {
             else if (r < 44 * burstOn) c = wedgeC;
             if (r < 34 * burstOn) c = bayer(x, y) < 0.5 ? ramp[1] : glowC;
           }
-          if (bandFlash > 0 && bayer(x, y) < bandFlash) c = PAL.white;
+          // flash: every tone steps up the ramp (solid, no stipple)
+          if (bandFlash > 0.12) c = bandFlash > 0.42 ? (c === deep ? glowC : ramp[4]) : c === deep ? wedgeC : c === wedgeC ? glowC : ramp[3];
           g.px(x, y, c);
         }
         // borders: white + attribute light, thin outer echo
@@ -356,8 +357,8 @@ export async function cutIn(scene: Phaser.Scene, o: CutInOpts): Promise<void> {
       streak2.setAlpha(0.6);
     });
   }
-  bandFlash = 0.35;
-  void run(scene, 120, (t) => (bandFlash = 0.35 * (1 - t)));
+  bandFlash = 0.3;
+  void run(scene, 90, (t) => (bandFlash = 0.3 * (1 - t)));
   await sleep(scene, 100);
 
   // ---- name plate slam
@@ -409,16 +410,22 @@ export async function cutIn(scene: Phaser.Scene, o: CutInOpts): Promise<void> {
     });
   snd('cardSlam', 1);
   snd('impactHeavy', 0.8, 0.9);
-  if (title) title.setScale(2).setTint(PAL.gold4).setAlpha(0.7);
-  await run(scene, 100, (t) => {
+  // never let the oversized slam frame leave the screen
+  const maxK = Math.max(1, Math.min(1.75, (2 * Math.min(plateX, GAME_W - plateX) - 8) / Math.max(1, tw)));
+  if (title) title.setScale(maxK).setTint(PAL.white).setAlpha(1);
+  await run(scene, 90, (t) => {
     plateK = E.outBack(t);
     drawPlate();
-    if (title) title.setScale(lerp(2, 1, E.inQuad(t)));
+    // stepped scale (big → 1) reads as a slam and keeps the glyphs blocky
+    if (title) title.setScale(t < 0.4 ? maxK : t < 0.7 ? lerp(maxK, 1, 0.5) : t < 0.9 ? lerp(maxK, 1, 0.8) : 1);
   });
   plateK = 1;
   drawPlate();
-  if (title) title.setScale(1).setAlpha(1).setTint(PAL.white);
-  void shake(scene, 200, 2);
+  if (title) title.setScale(1.08, 0.9).setTint(PAL.white);
+  bandFlash = 0.5;
+  void run(scene, 140, (t) => (bandFlash = 0.5 * (1 - t)));
+  void sleep(scene, 50).then(() => title?.active && title.setScale(1));
+  void shake(scene, 220, 3);
   sparks.burst(26, () => {
     const a = rr(0, TAU);
     const v = rr(80, 240);

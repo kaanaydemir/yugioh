@@ -15,7 +15,7 @@ import { ATTRIBUTE_NAMES, type CardId, cardDef, isMonster, isSpell } from '../da
 import { cardAccent } from '../art/cards';
 import { PAL } from '../art/palette';
 import { mix } from '../art/pixel';
-import { measureText, pixelText, setTextMaxWidth, textMetrics, type TextSize } from '../ui/text';
+import { measureText, pixelText, textMetrics, type TextSize } from '../ui/text';
 import { TEX, tween } from '../vfx/core';
 import { CardSprite } from './CardSprite';
 import { DEPTH, UI } from './layout';
@@ -59,7 +59,7 @@ export class InspectPanel {
   private readonly defIcon: Phaser.GameObjects.Image;
   private readonly atkText: Phaser.GameObjects.BitmapText;
   private readonly defText: Phaser.GameObjects.BitmapText;
-  private readonly body: Phaser.GameObjects.BitmapText;
+  private body: Phaser.GameObjects.BitmapText;
   private readonly motes: { img: Phaser.GameObjects.Image; t: number; x: number; speed: number; life: number }[] = [];
   private readonly updateFn: (t: number, dt: number) => void;
   private shown = false;
@@ -256,7 +256,7 @@ export class InspectPanel {
     // name: md, falls back to sm when too wide
     const nameSize: TextSize = measureText(name, 'md').w <= R.w - 6 ? 'md' : 'sm';
     this.name.destroy();
-    const nameY = 154;
+    const nameY = 150;
     this.name = pixelText(this.scene, 0, capY(nameSize, nameY + (nameSize === 'sm' ? 1 : 0)), name, {
       size: nameSize,
       color: PAL.white,
@@ -277,14 +277,20 @@ export class InspectPanel {
     const hasStats = !!id && isMonster(cardDef(id));
     this.stats.setVisible(hasStats);
     this.stats.y = dy + 5;
-    setTextMaxWidth(this.body, TEXT_W);
-    this.body.setText(text).setTint(flavor ? mix(PAL.mist, accent, 0.25) : PAL.white);
     const bodyY = (hasStats ? dy + 15 : dy + 5) - 1;
-    this.body.setPosition(7, bodyY);
-    // long texts tighten their leading so they always fit inside the panel
+    // long texts tighten their leading so they always fit inside the panel (the line pitch is
+    // a creation option of pixelText, so the body is rebuilt rather than re-spaced)
     const room = R.h - 3 - bodyY;
     const tight = measureText(text, 'sm', TEXT_W, true, -1).h > room;
-    this.body.setLineSpacing(tight ? -3 : -2);
+    const idx = this.root.getIndex(this.body);
+    this.body.destroy();
+    this.body = pixelText(this.scene, 7, bodyY, text, {
+      size: 'sm',
+      color: flavor ? mix(PAL.mist, accent, 0.25) : PAL.white,
+      maxWidth: TEXT_W,
+      lineSpacing: tight ? -2 : -1,
+    });
+    this.root.addAt(this.body, idx);
   }
 
   private fillStats(id: CardId | null, animate: boolean): void {

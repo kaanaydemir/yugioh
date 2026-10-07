@@ -74,10 +74,14 @@ const LP_X = 22;
 const LP_CAP = 19;
 const BAR = { x: 8, y: 37, w: 132, h: 4 };
 const ICON_CY = 50;
+/** Top-left of the 25×23 player emblem. */
+const EMBLEM = { x: PW - 33, y: 13 };
 /** Images per running light: halo + head + tail. */
 const COMET = 14;
 
 type Kind = 'deck' | 'hand' | 'grave';
+/** Count icon kinds of a player panel (countXY). */
+export type HudCountKind = Kind;
 
 interface CountUi {
   icon: Phaser.GameObjects.Image;
@@ -101,6 +105,10 @@ interface Panel {
   bar: Phaser.GameObjects.Graphics;
   chip: Phaser.GameObjects.Container;
   chipCaret: Phaser.GameObjects.Image;
+  /** Player emblem (hexagon + number), pivoting on its center so it can flip away. */
+  emblem: Phaser.GameObjects.Container;
+  /** LP delta chips currently on screen (the emblem steps aside while > 0). */
+  deltaChips: Phaser.GameObjects.BitmapText[];
   counts: Record<Kind, CountUi>;
   comets: Phaser.GameObjects.Image[];
   path: XY[];
@@ -319,7 +327,7 @@ export class HudView {
     const amount = Math.abs(delta || value - from);
     const ms = Math.min(1100, Math.max(420, 320 + amount * 0.32));
     sfx.play(loss ? 'lpDown' : 'lpUp');
-    this.flashPanel(player, loss ? PAL.crim3 : PAL.leaf3, loss ? 0.85 : 0.6, loss ? 340 : 520);
+    this.flashPanel(player, loss ? PAL.crim3 : PAL.leaf3, loss ? 0.72 : 0.6, loss ? 340 : 520);
     if (loss) this.shakePanel(P, Math.min(5, 2 + amount / 600), 360);
     this.chip(P, (loss ? '-' : '+') + amount, loss ? PAL.crim3 : PAL.leaf3);
     if (!loss) this.healSparkles(P);
@@ -683,10 +691,13 @@ export class HudView {
     const lpLabel = pixelText(sc, 8, capY('sm', LP_CAP + 9), 'LP', { size: 'sm', color: PAL.mist });
     const lpText = pixelText(sc, LP_X, capY('lg', LP_CAP), String(lp), { size: 'lg', color: PAL.white });
     const bar = sc.add.graphics();
-    const emblem = sc.add.image(PW - 33, 13, emblemTex(sc, player)).setOrigin(0);
-    const emblemNum = pixelText(sc, 0, capY('md', 13 + 8), String(player + 1), { size: 'md', color: R[4] });
-    emblemNum.x = Math.round(PW - 33 + 12.5 - emblemNum.width / 2);
-    root.add([name, lpLabel, lpText, bar, emblem, emblemNum]);
+    // emblem: container centered on the hexagon so it can flip (scaleX) around its middle
+    const emblem = sc.add.container(EMBLEM.x + 12, EMBLEM.y + 11);
+    const emblemImg = sc.add.image(-12, -11, emblemTex(sc, player)).setOrigin(0);
+    const emblemNum = pixelText(sc, 0, capY('md', -3), String(player + 1), { size: 'md', color: R[4] });
+    emblemNum.x = Math.round(0.5 - emblemNum.width / 2);
+    emblem.add([emblemImg, emblemNum]);
+    root.add([name, lpLabel, lpText, bar, emblem]);
 
     // count groups
     const counts = {} as Record<Kind, CountUi>;
@@ -755,6 +766,8 @@ export class HudView {
       bar,
       chip,
       chipCaret: caret,
+      emblem,
+      deltaChips: [],
       counts,
       comets,
       path,
@@ -860,21 +873,52 @@ export class HudView {
     });
   }
 
-  /** "-800" / "+500" chip popping out next to the LP number and floating away. */
+  /**
+   * "-800" / "+500" chip next to the LP number. The emblem flips edge-on out of the way so
+   * the chip has the whole right side of the LP row; it flips back once the last chip leaves.
+   */
   private chip(P: Panel, s: string, color: number): void {
     const sc = this.scene;
+    // an older chip still on screen hurries away upward
+    for (const old of P.deltaChips) {
+      sc.tweens.killTweensOf(old);
+      sc.tweens.add({ targets: old, y: old.y - 8, alpha: 0, duration: 140, ease: 'Quad.In', onComplete: () => this.dropChip(P, old) });
+    }
+    if (P.deltaChips.length === 0) {
+      sc.tweens.killTweensOf(P.emblem);
+      sc.tweens.add({ targets: P.emblem, scaleX: 0, duration: 90, ease: 'Quad.In', onComplete: () => P.emblem.setVisible(false) });
+    }
     const lpW = measureText(String(Math.max(P.shownLp, P.lp)), 'lg').w;
     const w = measureText(s, 'md').w;
-    // centered in the gap between the LP number and the emblem
-    const gapL = P.rect.x + LP_X + lpW + 3;
-    const gapR = P.rect.x + PW - 35;
+    const gapL = P.rect.x + LP_X + lpW + 4;
+    const gapR = P.rect.x + PW - 7;
     const cx = Math.round(Math.max(gapL + w / 2, (gapL + gapR) / 2));
     const cy = P.rect.y + LP_CAP + 7;
     const t = pixelText(sc, cx, cy, s, { size: 'md', color }).setDepth(DEPTH.HUD + 1).setScrollFactor(0);
-    t.setOrigin(0.5, 0.5).setTint(PAL.white).setScale(1.3);
-    sc.time.delayedCall(70, () => t.active && t.setTint(color));
-    sc.tweens.add({ targets: t, scale: 1, duration: 220, ease: 'Back.Out', easeParams: [2.5] });
-    sc.tweens.add({ targets: t, y: cy - 10, alpha: 0, delay: 700, duration: 420, ease: 'Quad.In', onComplete: () => t.destroy() });
+    t.setOrigin(0.5, 0.5).setTintFill(PAL.white).setScale(1.6, 0.6);
+    P.deltaChips.push(t);
+    sc.time.delayedCall(60, () => t.active && t.setTint(color));
+    sc.tweens.add({ targets: t, scaleX: 1, scaleY: 1, duration: 240, ease: 'Back.Out', easeParams: [2.5] });
+    sc.tweens.add({
+      targets: t,
+      y: cy - 10,
+      alpha: 0,
+      delay: 760,
+      duration: 380,
+      ease: 'Quad.In',
+      onComplete: () => this.dropChip(P, t),
+    });
+  }
+
+  private dropChip(P: Panel, t: Phaser.GameObjects.BitmapText): void {
+    const i = P.deltaChips.indexOf(t);
+    if (i >= 0) P.deltaChips.splice(i, 1);
+    t.destroy();
+    if (P.deltaChips.length > 0 || !P.emblem.active) return;
+    // emblem flips back in with a little overshoot
+    this.scene.tweens.killTweensOf(P.emblem);
+    P.emblem.setVisible(true);
+    this.scene.tweens.add({ targets: P.emblem, scaleX: 1, duration: 220, ease: 'Back.Out', easeParams: [2.2] });
   }
 
   private healSparkles(P: Panel): void {
