@@ -4,10 +4,13 @@
 //   1. every body part is rasterized into its own G-buffer layer as primitives that carry a
 //      surface normal (ellipsoids, tapered tubes, flat crystal facets) and a depth (z-union
 //      inside the layer, so overlapping primitives merge like clay);
-//   2. each layer is lit with one top-left key light and quantized onto hand-picked palette
-//      ramps per material (crystal hide, gold, glowing crystal, wing glass, mouth);
-//   3. hand-placed details (eyes, teeth, veins, glints) are painted on top, the layer gets
-//      its own 1px ink contour and is composited back-to-front.
+//   2. each layer is lit with one top-left key light, quantized onto hand-picked palette ramps
+//      per material (crystal hide, gold, glowing crystal, wing glass, mouth) and despeckled
+//      (no lonely pixels survive quantization);
+//   3. hand-placed details (eyes, teeth, veins, glints) are painted on top and the layer is
+//      composited back-to-front. Where a layer overlaps parts already drawn it gets a soft
+//      contact-shadow seam (one or two steps down the ramp of the surface behind it); the
+//      silhouette gets exactly one 1px PAL.ink contour at the very end.
 // A pose is a set of numbers (hip offset, torso lean, head position/angle, jaw, wing angles,
 // tail phase, energy glow...). Every animation frame is a pose, so proportions never drift.
 
@@ -37,46 +40,7 @@ const rotV = (a: V, rad: number): V => [a[0] * Math.cos(rad) - a[1] * Math.sin(r
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const rnd = (a: V): V => [Math.round(a[0]), Math.round(a[1])];
-
-function hash2(i: number, j: number): number {
-  let h = (i * 374761393 + j * 668265263) | 0;
-  h = Math.imul(h ^ (h >>> 13), 1274126177);
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
-}
-
-/**
- * Cut-crystal plates: a jittered Voronoi tiling expressed in a part's local frame (so the
- * facets ride with the body instead of swimming). Each plate tilts the light a little, and the
- * seams between plates catch a thin highlight.
- */
-function crystalPlates(origin: V, ang: number, cell: number, amp: number, seed: number, seamK = 0) {
-  const cs = Math.cos(-ang);
-  const sn = Math.sin(-ang);
-  return (x: number, y: number): number => {
-    const dx = x + 0.5 - origin[0];
-    const dy = y + 0.5 - origin[1];
-    const gx = (dx * cs - dy * sn) / cell;
-    const gy = (dx * sn + dy * cs) / cell;
-    const ci = Math.floor(gx);
-    const cj = Math.floor(gy);
-    let d1 = Infinity;
-    let d2 = Infinity;
-    let id = 0;
-    for (let j = cj - 1; j <= cj + 1; j++)
-      for (let i = ci - 1; i <= ci + 1; i++) {
-        const sx = i + 0.2 + 0.6 * hash2(i + seed, j);
-        const sy = j + 0.2 + 0.6 * hash2(i, j + seed * 7);
-        const d = (gx - sx) * (gx - sx) + (gy - sy) * (gy - sy);
-        if (d < d1) {
-          d2 = d1;
-          d1 = d;
-          id = hash2(i * 3 + seed, j * 5);
-        } else if (d < d2) d2 = d;
-      }
-    const seam = Math.sqrt(d2) - Math.sqrt(d1) < 0.12;
-    return (id - 0.5) * amp + (seam ? seamK * amp : 0);
-  };
-}
+const flo = (a: V): V => [Math.floor(a[0]), Math.floor(a[1])];
 
 // ------------------------------------------------------------------ materials
 
@@ -86,19 +50,11 @@ const LIGHT = (() => {
   const m = Math.hypot(l[0], l[1], l[2]);
   return [l[0] / m, l[1] / m, l[2] / m] as const;
 })();
-// Blinn half vector (viewer at +z) for crystal glints.
-const HALF = (() => {
-  const h = [LIGHT[0], LIGHT[1], LIGHT[2] + 1];
-  const m = Math.hypot(h[0], h[1], h[2]);
-  return [h[0] / m, h[1] / m, h[2] / m] as const;
-})();
 
 interface Mat {
   ramp: number[];
   /** ascending intensity thresholds, length = ramp.length - 1 */
   th: number[];
-  /** specular threshold on N·H → brightest tone */
-  spec?: number;
   /** the pixel's bias IS the ramp index (hand-authored tone levels, e.g. wing glass) */
   direct?: boolean;
 }
@@ -107,30 +63,23 @@ const M = {
   HIDE: 0,
   HIDE_FAR: 1,
   GOLD: 2,
-  GOLD_FAR: 3,
   CRYS: 4,
-  CRYS_FAR: 5,
   GLASS: 6,
   GLASS_FAR: 7,
   MOUTH: 8,
-  CLAW: 9,
-  CLAW_FAR: 10,
-  BELLY: 11,
+  HIDE_D: 9,
 } as const;
 
 const MATS: Mat[] = [];
 MATS[M.HIDE] = { ramp: [PAL.night2, PAL.night3, PAL.steel, PAL.mist, PAL.white], th: [-0.6, -0.25, 0.12, 0.58] };
 MATS[M.HIDE_FAR] = { ramp: [PAL.night1, PAL.night2, PAL.night3, PAL.steel, PAL.mist], th: [-0.55, -0.15, 0.22, 0.7] };
 MATS[M.GOLD] = { ramp: [PAL.gold0, PAL.gold1, PAL.gold2, PAL.gold3, PAL.gold4], th: [-0.6, -0.2, 0.15, 0.6] };
-MATS[M.GOLD_FAR] = { ramp: [PAL.gold0, PAL.gold0, PAL.gold1, PAL.gold2, PAL.gold3], th: [-0.55, -0.1, 0.3, 0.78] };
 MATS[M.CRYS] = { ramp: [PAL.cyan1, PAL.cyan2, PAL.cyan3, PAL.cyan4, PAL.white], th: [], direct: true };
-MATS[M.CRYS_FAR] = { ramp: [PAL.cyan0, PAL.cyan1, PAL.cyan2, PAL.cyan3, PAL.cyan4], th: [], direct: true };
 MATS[M.GLASS] = { ramp: [PAL.cyan0, PAL.cyan1, PAL.cyan2, PAL.cyan3, PAL.cyan4, PAL.white], th: [], direct: true };
 MATS[M.GLASS_FAR] = { ramp: [PAL.night1, PAL.cyan0, PAL.cyan1, PAL.cyan2, PAL.cyan3, PAL.cyan4], th: [], direct: true };
 MATS[M.MOUTH] = { ramp: [PAL.night0, PAL.night1, PAL.crim1], th: [0.3, 0.8] };
-MATS[M.CLAW] = { ramp: [PAL.night3, PAL.steel, PAL.mist, PAL.white], th: [-0.2, 0.3, 0.75] };
-MATS[M.CLAW_FAR] = { ramp: [PAL.night2, PAL.night3, PAL.steel, PAL.mist], th: [-0.2, 0.3, 0.75] };
-MATS[M.BELLY] = { ramp: [PAL.night2, PAL.night3, PAL.steel, PAL.mist, PAL.white], th: [-0.35, 0.05, 0.45, 0.9] };
+// hand-toned hide (the head is cut in flat planes: 2 steel, 3 mist, 4 white)
+MATS[M.HIDE_D] = { ramp: [PAL.night2, PAL.night3, PAL.steel, PAL.mist, PAL.white], th: [], direct: true };
 
 function toneOf(m: Mat, i: number): number {
   let k = 0;
@@ -152,11 +101,8 @@ class G {
   nz = new Float32Array(W * H);
   z = new Float32Array(W * H).fill(-1e9);
   bias = new Float32Array(W * H);
-  /** free per-pixel tags for detail passes (e.g. tube u / v) */
-  u = new Float32Array(W * H);
-  v = new Float32Array(W * H);
 
-  put(x: number, y: number, mat: number, nx: number, ny: number, nz: number, z: number, bias = 0, u = 0, v = 0) {
+  put(x: number, y: number, mat: number, nx: number, ny: number, nz: number, z: number, bias = 0) {
     if (x < 0 || y < 0 || x >= W || y >= H) return;
     const i = y * W + x;
     if (z < this.z[i]) return;
@@ -167,27 +113,60 @@ class G {
     this.nz[i] = nz / m;
     this.z[i] = z;
     this.bias[i] = bias;
-    this.u[i] = u;
-    this.v[i] = v;
   }
 
-  /** Light + quantize into a canvas. `toneShift` lets callers nudge whole layers (energy glow). */
-  render(shift = 0, tint?: (x: number, y: number, mat: number) => number): PixelCanvas {
+  /** Light + quantize into a canvas, then despeckle so every tone forms a cluster. */
+  render(shift = 0): PixelCanvas {
     const out = newCanvas();
     for (let i = 0; i < W * H; i++) {
       const mi = this.mat[i];
       if (mi < 0) continue;
       const m = MATS[mi];
-      const nx = this.nx[i];
-      const ny = this.ny[i];
-      const nz = this.nz[i];
-      let I = nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2] + this.bias[i] + shift;
-      if (tint) I += tint(i % W, Math.floor(i / W), mi);
-      let k = m.direct ? clamp(Math.round(this.bias[i] + (tint ? tint(i % W, Math.floor(i / W), mi) : 0)), 0, m.ramp.length - 1) : toneOf(m, I);
-      if (m.spec !== undefined && nx * HALF[0] + ny * HALF[1] + nz * HALF[2] > m.spec) k = m.ramp.length - 1;
+      const I = this.nx[i] * LIGHT[0] + this.ny[i] * LIGHT[1] + this.nz[i] * LIGHT[2] + this.bias[i] + shift;
+      const k = m.direct ? clamp(Math.round(this.bias[i]), 0, m.ramp.length - 1) : toneOf(m, I);
       out.set(i % W, Math.floor(i / W), m.ramp[k]);
     }
+    despeckle(out);
     return out;
+  }
+}
+
+/**
+ * Light quantization leaves lonely pixels along tone borders. Any pixel with no 8-neighbour of
+ * its own colour takes the colour most of its neighbours share (two passes).
+ */
+function despeckle(c: PixelCanvas) {
+  const d = c.data;
+  const col = (x: number, y: number) => {
+    if (x < 0 || y < 0 || x >= W || y >= H) return -1;
+    const i = (y * W + x) * 4;
+    return d[i + 3] ? (d[i] << 16) | (d[i + 1] << 8) | d[i + 2] : -1;
+  };
+  for (let pass = 0; pass < 2; pass++) {
+    const fix: number[] = [];
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        const c0 = col(x, y);
+        if (c0 < 0) continue;
+        let same = false;
+        const votes = new Map<number, number>();
+        for (let dy = -1; dy <= 1; dy++)
+          for (let dx = -1; dx <= 1; dx++) {
+            if (!dx && !dy) continue;
+            const n = col(x + dx, y + dy);
+            if (n < 0) continue;
+            if (n === c0) same = true;
+            // 4-neighbours weigh double so straight runs win over corner touches
+            else votes.set(n, (votes.get(n) ?? 0) + (dx && dy ? 1 : 2));
+          }
+        if (same || votes.size === 0) continue;
+        let best = -1;
+        let bv = 0;
+        for (const [k, v] of votes) if (v > bv) [best, bv] = [k, v];
+        fix.push(x, y, best);
+      }
+    if (!fix.length) break;
+    for (let i = 0; i < fix.length; i += 3) c.set(fix[i], fix[i + 1], fix[i + 2]);
   }
 }
 
@@ -216,10 +195,8 @@ interface PrimOpt {
   flat?: number;
   /** quantize the cylinder normal into this many facets (crystal look) */
   facets?: number;
-  /** ventral plates: pixels with v > from get lighter plates separated by grooves every `period` px */
-  plates?: { from: number; period: number };
-  /** extra per-pixel brightness (surface texture that rides with the part) */
-  tex?: (x: number, y: number) => number;
+  /** ventral scales: pixels with v > from are lifted by `lift` (one lighter band, no grooves) */
+  belly?: { from: number; lift: number };
 }
 
 function gEll(g: G, c: V, rx: number, ry: number, ang: number, mat: number, o: PrimOpt = {}) {
@@ -237,25 +214,12 @@ function gEll(g: G, c: V, rx: number, ry: number, ang: number, mat: number, o: P
       const d2 = lx * lx + ly * ly;
       if (d2 > 1) continue;
       const nz = Math.sqrt(1 - d2);
-      let qx = lx;
-      let qy = ly;
-      let qz = nz;
-      if (o.facets) {
-        // gem cut: a table facet in the middle and a ring of crown facets around it
-        const r = Math.sqrt(d2);
-        const step = (Math.PI * 2) / o.facets;
-        const th = (Math.floor(Math.atan2(ly, lx) / step) + 0.5) * step;
-        const rq = r < 0.5 ? 0.15 : r < 0.85 ? 0.62 : 0.9;
-        qx = Math.cos(th) * rq;
-        qy = Math.sin(th) * rq;
-        qz = Math.sqrt(1 - rq * rq);
-      }
-      g.put(x, y, mat, qx * cs - qy * sn, qx * sn + qy * cs, qz * flat, z0 + nz * Math.min(rx, ry), (o.bias ?? 0) + (o.tex ? o.tex(x, y) : 0));
+      g.put(x, y, mat, lx * cs - ly * sn, lx * sn + ly * cs, nz * flat, z0 + nz * Math.min(rx, ry), o.bias ?? 0);
     }
   }
 }
 
-/** Tapered tube along a polyline with cylinder normals. u = arc length, v = signed offset (-1..1). */
+/** Tapered tube along a polyline with cylinder normals. */
 function gTube(g: G, path: V[], w0: number, w1: number, mat: number, o: PrimOpt = {}) {
   if (path.length < 2) return;
   const lens = [0];
@@ -328,18 +292,15 @@ function gTube(g: G, path: V[], w0: number, w1: number, mat: number, o: PrimOpt 
         nz = Math.sqrt(1 - o2) * flat;
       }
       const hz = Math.sqrt(Math.max(0, 1 - Math.min(1, ox * ox + oy * oy)));
-      let bias = (o.bias ?? 0) + (o.tex ? o.tex(x, y) : 0);
-      if (o.plates && v > o.plates.from) {
-        bias += 0.16;
-        if (bu % o.plates.period < 1) bias -= 0.5;
-      }
-      g.put(x, y, mat, nx, ny, nz, z0 + hz * r, bias, bu / total, v);
+      let bias = o.bias ?? 0;
+      if (o.belly && v > o.belly.from) bias += o.belly.lift;
+      g.put(x, y, mat, nx, ny, nz, z0 + hz * r, bias);
     }
   }
 }
 
 /** Scanline polygon fill sampled at pixel centers; calls cb for every covered pixel. */
-function fillPoly(pts: V[], cb: (x: number, y: number) => void) {
+function fillPoly(pts: readonly V[], cb: (x: number, y: number) => void) {
   if (pts.length < 3) return;
   let minY = Infinity;
   let maxY = -Infinity;
@@ -362,14 +323,16 @@ function fillPoly(pts: V[], cb: (x: number, y: number) => void) {
   }
 }
 
-function gFacet(g: G, pts: V[], mat: number, n: readonly [number, number, number], z = 0, bias: number | ((x: number, y: number) => number) = 0) {
+const FLAT_N = [0, 0, 1] as const;
+
+function gFacet(g: G, pts: readonly V[], mat: number, n: readonly [number, number, number], z = 0, bias: number | ((x: number, y: number) => number) = 0) {
   fillPoly(pts, (x, y) => g.put(x, y, mat, n[0], n[1], n[2], z, typeof bias === 'number' ? bias : bias(x, y)));
 }
 
-/** Faceted crystal shard: base → tip along dir, two facets split down the ridge. */
 /**
  * Faceted crystal shard: base → tip along dir, two facets split down the ridge. The facet that
  * faces the key light takes the bright tone, the other the deep tone; `glow` (0..1) lifts both.
+ * Small shards are a single tone (two tones on a 3-pixel shard is just noise).
  */
 function gShard(g: G, base: V, dir: V, length: number, hw: number, mat: number, z = 0, glow = 0) {
   const d = norm(dir);
@@ -378,13 +341,16 @@ function gShard(g: G, base: V, dir: V, length: number, hw: number, mat: number, 
   const b0 = sub(base, mul(d, 2));
   const l = add(b0, mul(p, hw));
   const r = sub(b0, mul(p, hw));
+  const up = glow >= 0.75 ? 1 : 0;
+  if (length < 4.6) {
+    gFacet(g, [l, tip, r], mat, FLAT_N, z, 2 + up);
+    return;
+  }
   const sl = add(add(base, mul(p, hw * 0.85)), mul(d, length * 0.45));
   const sr = add(sub(base, mul(p, hw * 0.85)), mul(d, length * 0.45));
   const lit1 = p[0] * LIGHT[0] + p[1] * LIGHT[1] > 0;
-  const up = glow >= 0.75 ? 1 : 0;
-  const n: [number, number, number] = [0, 0, 1];
-  gFacet(g, [l, sl, tip, b0], mat, n, z, (lit1 ? 3 : 1) + up);
-  gFacet(g, [b0, tip, sr, r], mat, n, z, (lit1 ? 1 : 3) + up);
+  gFacet(g, [l, sl, tip, b0], mat, FLAT_N, z, (lit1 ? 3 : 1) + up);
+  gFacet(g, [b0, tip, sr, r], mat, FLAT_N, z, (lit1 ? 1 : 3) + up);
 }
 
 // ------------------------------------------------------------------ pose
@@ -398,6 +364,10 @@ interface Wing {
   a3: number;
   /** finger fan step (deg); sign picks the fan direction */
   fan: number;
+  /** bone length multiplier (a spread far wing turns toward the viewer and reads bigger) */
+  span: number;
+  /** where the inner membrane meets the body, in torso space (undefined = default) */
+  at?: V;
 }
 
 interface Pose {
@@ -433,6 +403,8 @@ interface Pose {
   glint: number;
   /** crystal twinkles: [anchor index, size 1|2] (anchors: 0/1/3 near-wing glass, 2 far wing, 4 tail) */
   sparkles: [number, number][];
+  /** motion smear: the head's path from this pose to the current one is drawn as a light trail */
+  smearFrom?: PoseDelta;
 }
 
 const NEUTRAL: Pose = {
@@ -441,10 +413,10 @@ const NEUTRAL: Pose = {
   lean: 0,
   headX: 0,
   headY: 0,
-  ha: 0.12,
+  ha: 0.1,
   jaw: 0,
-  nw: { a1: -108, a2: -138, a3: -118, fan: -40 },
-  fw: { a1: -84, a2: -110, a3: -92, fan: -28 },
+  nw: { a1: -108, a2: -138, a3: -118, fan: -40, span: 1 },
+  fw: { a1: -84, a2: -110, a3: -92, fan: -28, span: 1 },
   tail: 0,
   tailAmp: 4,
   tailLift: 0,
@@ -463,10 +435,27 @@ function pose(d: PoseDelta): Pose {
   return { ...NEUTRAL, ...d, nw: { ...NEUTRAL.nw, ...(d.nw ?? {}) }, fw: { ...NEUTRAL.fw, ...(d.fw ?? {}) } };
 }
 
+/** Numeric in-between of two poses (used for the attack smear). */
+function lerpPose(a: Pose, b: Pose, t: number): Pose {
+  const w = (x: Wing, y: Wing): Wing => ({ a1: lerp(x.a1, y.a1, t), a2: lerp(x.a2, y.a2, t), a3: lerp(x.a3, y.a3, t), fan: lerp(x.fan, y.fan, t), span: lerp(x.span, y.span, t), at: y.at });
+  return {
+    ...b,
+    hx: lerp(a.hx, b.hx, t),
+    hy: lerp(a.hy, b.hy, t),
+    lean: lerp(a.lean, b.lean, t),
+    headX: lerp(a.headX, b.headX, t),
+    headY: lerp(a.headY, b.headY, t),
+    ha: lerp(a.ha, b.ha, t),
+    jaw: lerp(a.jaw, b.jaw, t),
+    nw: w(a.nw, b.nw),
+    fw: w(a.fw, b.fw),
+  };
+}
+
 // ------------------------------------------------------------------ skeleton
 
 const NEAR_FINGERS = [19.5, 22.5, 19];
-const FAR_FINGERS = [17, 15.5, 12];
+const FAR_FINGERS = [17.5, 16, 12.5];
 
 interface WingRig {
   S: V;
@@ -489,9 +478,9 @@ function keepIn(from: V, to: V): V {
 }
 
 function wingRig(S: V, w: Wing, fingers: number[], l1: number, l2: number, attach: V): WingRig {
-  const E = add(S, polar(w.a1, l1));
-  const Wr = add(E, polar(w.a2, l2));
-  const tips = fingers.map((fl, i) => keepIn(Wr, add(Wr, polar(w.a3 + w.fan * i, fl))));
+  const E = keepIn(S, add(S, polar(w.a1, l1 * w.span)));
+  const Wr = keepIn(E, add(E, polar(w.a2, l2 * w.span)));
+  const tips = fingers.map((fl, i) => keepIn(Wr, add(Wr, polar(w.a3 + w.fan * i, fl * w.span))));
   return { S, E, Wr, tips, attach };
 }
 
@@ -527,11 +516,34 @@ function samplePath(path: V[], t: number): { p: V; tan: V } {
 
 // ------------------------------------------------------------------ compositing helpers
 
+/** Contact shadow a front part casts on the surface right behind its edge (same ramp, darker). */
+const SEAM: Record<number, number> = {
+  [PAL.white]: PAL.steel,
+  [PAL.mist]: PAL.steel,
+  [PAL.steel]: PAL.night2,
+  [PAL.night4]: PAL.night2,
+  [PAL.night3]: PAL.night1,
+  [PAL.night2]: PAL.night1,
+  [PAL.night1]: PAL.night0,
+  [PAL.cyan4]: PAL.cyan2,
+  [PAL.cyan3]: PAL.cyan1,
+  [PAL.cyan2]: PAL.cyan1,
+  [PAL.cyan1]: PAL.cyan0,
+  [PAL.cyan0]: PAL.night0,
+  [PAL.gold4]: PAL.gold2,
+  [PAL.gold3]: PAL.gold1,
+  [PAL.gold2]: PAL.gold1,
+  [PAL.gold1]: PAL.gold0,
+};
+type SeamFn = (x: number, y: number, behind: number) => number;
+const selout: SeamFn = (_x, _y, c) => SEAM[c] ?? PAL.ink;
+
 /**
- * Outline the layer and blit it. Where the contour falls over something already drawn it uses
- * `inner` (a softer internal line); over empty space it is the ink silhouette.
+ * Blit a layer. Its edge pixels that fall over parts already drawn become a seam line
+ * (contact shadow by default); over empty space nothing is added — the single silhouette
+ * contour comes from the final p.outline(PAL.ink).
  */
-function composite(dst: PixelCanvas, layer: PixelCanvas, inner: number = PAL.ink) {
+function composite(dst: PixelCanvas, layer: PixelCanvas, seam: SeamFn = selout) {
   const lw = layer.w;
   const lh = layer.h;
   const la = layer.data;
@@ -553,12 +565,13 @@ function composite(dst: PixelCanvas, layer: PixelCanvas, inner: number = PAL.ink
   for (let y = Math.max(0, y0 - 1); y <= Math.min(lh - 1, y1 + 1); y++)
     for (let x = Math.max(0, x0 - 1); x <= Math.min(lw - 1, x1 + 1); x++) {
       if (la[(y * lw + x) * 4 + 3] > 0) continue;
+      if (!dst.isOpaque(x, y)) continue;
       if (op(x - 1, y) || op(x + 1, y) || op(x, y - 1) || op(x, y + 1)) edge.push(x, y);
     }
   for (let i = 0; i < edge.length; i += 2) {
     const x = edge[i];
     const y = edge[i + 1];
-    layer.set(x, y, dst.isOpaque(x, y) ? inner : PAL.ink);
+    layer.set(x, y, seam(x, y, dst.get(x, y)!));
   }
   // opaque copy (layers never carry partial alpha)
   const dw = dst.w;
@@ -575,28 +588,60 @@ function composite(dst: PixelCanvas, layer: PixelCanvas, inner: number = PAL.ink
     }
 }
 
+/** Mark a layer's opaque pixels in a mask. */
+function maskOf(c: PixelCanvas, into: Uint8Array) {
+  into.fill(0);
+  for (let i = 0; i < W * H; i++) if (c.data[i * 4 + 3]) into[i] = 1;
+}
+
 /** paint a pixel only over this layer's opaque pixels */
 function dot(c: PixelCanvas, p: V, col: number) {
   c.paint(Math.floor(p[0]), Math.floor(p[1]), col);
 }
 
+/** 1px Bresenham line painted only over a layer's opaque pixels (optionally only over `only`). */
+function lineOn(c: PixelCanvas, a: V, b: V, col: number, only?: (cur: number) => boolean) {
+  let [x0, y0] = flo(a);
+  const [x1, y1] = flo(b);
+  const dx = Math.abs(x1 - x0);
+  const dy = -Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1;
+  const sy = y0 < y1 ? 1 : -1;
+  let err = dx + dy;
+  for (;;) {
+    const cur = c.get(x0, y0);
+    if (cur !== null && (!only || only(cur))) c.set(x0, y0, col);
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 >= dy) {
+      err += dy;
+      x0 += sx;
+    }
+    if (e2 <= dx) {
+      err += dx;
+      y0 += sy;
+    }
+  }
+}
+
 /**
- * Cool reflected light from the arena on the shadow-side rim (bottom-right) of the crystal hide:
- * the last dark pixel before the contour turns teal, which makes the body read as glassy.
+ * Cool reflected light from the arena on the shadow-side silhouette (bottom/right edges) of the
+ * crystal hide: one continuous cyan line, only where the edge faces empty space.
  */
-function rimLight(c: PixelCanvas) {
+function rimLight(c: PixelCanvas, dst: PixelCanvas) {
   const d = c.data;
-  const a = new Uint8Array(W * H);
-  for (let i = 0; i < W * H; i++) a[i] = d[i * 4 + 3] > 0 ? 1 : 0;
-  const open = (x: number, y: number) => x < 0 || y < 0 || x >= W || y >= H || a[y * W + x] === 0;
+  const inL = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H && d[(y * W + x) * 4 + 3] > 0;
+  const open = (x: number, y: number) => !inL(x, y) && !dst.isOpaque(x, y);
+  const hits: number[] = [];
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
-      if (!a[y * W + x]) continue;
-      if (!(open(x + 1, y + 1) && (open(x + 1, y) || open(x, y + 1)) && !open(x - 1, y - 1))) continue;
+      if (!inL(x, y)) continue;
+      if (!(open(x + 1, y) || open(x, y + 1))) continue;
+      if (!inL(x - 1, y) || !inL(x, y - 1)) continue;
       const col = c.get(x, y);
-      if (col === PAL.night3 || col === PAL.night2) c.set(x, y, PAL.cyan2);
-      else if (col === PAL.steel) c.set(x, y, PAL.cyan3);
+      if (col === PAL.night2 || col === PAL.night3 || col === PAL.steel) hits.push(x, y);
     }
+  for (let i = 0; i < hits.length; i += 2) c.set(hits[i], hits[i + 1], PAL.cyan2);
 }
 
 /** 4-point star glint drawn only over the body (never spills past the silhouette). */
@@ -613,11 +658,6 @@ function twinkle(p: PixelCanvas, at: V, size: number) {
     put(dx, dy, arm);
     if (size >= 2) put(dx * 2, dy * 2, PAL.cyan3);
   }
-}
-
-function veinLine(c: PixelCanvas, a: V, b: V, col: number) {
-  const n = Math.max(1, Math.ceil(len(sub(b, a))));
-  for (let i = 0; i <= n; i++) dot(c, lerpV(a, b, i / n), col);
 }
 
 // ------------------------------------------------------------------ the dragon
@@ -641,23 +681,28 @@ function rig(P: Pose): Rig {
   const tAng = -0.95 + P.lean;
   const chest = add(hip, [Math.cos(tAng) * 18, Math.sin(tAng) * 18]);
   const att = (o: V): V => add(chest, rotV(o, P.lean));
-  return { hip, chest, tAng, att, neck0: att([3, -5]), head: rnd(add(chest, [17 + P.headX, -28 + P.headY])) };
+  return { hip, chest, tAng, att, neck0: att([3, -5]), head: rnd(add(chest, [14 + P.headX, -28 + P.headY])) };
+}
+
+function wings(P: Pose) {
+  const { hip, chest, att } = rig(P);
+  const backAttach = add(lerpV(hip, chest, 0.3), rotV([-8, -5], P.lean));
+  const farWing = wingRig(att([1, -8]), P.fw, FAR_FINGERS, 11, 13, att(P.fw.at ?? [-6, -4]));
+  const nearWing = wingRig(att([-6, -6]), P.nw, NEAR_FINGERS, 13, 16, P.nw.at ? att(P.nw.at) : backAttach);
+  if (P.guard) {
+    nearWing.attach = add(hip, [0, 8]);
+    farWing.attach = att([12, 10]);
+  }
+  return { farWing, nearWing };
 }
 
 function drawDragon(p: PixelCanvas, P: Pose) {
   resetPools();
   const R = rig(P);
   const { hip, chest, tAng, att, neck0, head } = R;
+  const { farWing, nearWing } = wings(P);
 
-  // ---------------- wings rigs
-  const backAttach = add(lerpV(hip, chest, 0.3), rotV([-8, -5], P.lean));
-  const farWing = wingRig(att([1, -8]), P.fw, FAR_FINGERS, 11, 13, att([-6, -4]));
-  const nearWing = wingRig(att([-6, -6]), P.nw, NEAR_FINGERS, 13, 16, backAttach);
-  if (P.guard) {
-    nearWing.attach = add(hip, [0, 8]);
-    farWing.attach = att([12, 10]);
-  }
-  composite(p, drawWing(farWing, true, P, p));
+  composite(p, drawWing(farWing, true, P));
 
   // ---------------- far leg / far arm
   {
@@ -676,8 +721,9 @@ function drawDragon(p: PixelCanvas, P: Pose) {
     const g = newG();
     const s = att([7, 1]);
     const el = add(s, polar(72 - P.arm, 7));
-    const wr = add(el, polar(-35 - P.arm * 1.4, 6.5));
-    gTube(g, [s, el, wr], 4.6, 3.2, M.HIDE_FAR);
+    const wr = add(el, polar(-35 - P.arm * 1.4, 8));
+    gTube(g, [s, el, wr], 4.8, 3.4, M.HIDE_FAR);
+    gEll(g, add(wr, polar(-35 - P.arm * 1.4, 1)), 2.2, 1.7, (-35 - P.arm * 1.4) * DEG, M.HIDE_FAR, { z: 2 });
     const c = g.render();
     hand(c, wr, -35 - P.arm * 1.4, true);
     composite(p, c);
@@ -699,22 +745,22 @@ function drawDragon(p: PixelCanvas, P: Pose) {
     // curl the tail a little tighter instead of letting the blade leave the frame
     for (let seg = 3.35; seg > 2.6 && Math.min(...tailPts.map((q) => q[0])) < MARGIN + 1; seg -= 0.1) tailPts = chain(seg);
     const gs = newG();
-    for (let i = 1; i < tailPts.length - 2; i++) {
+    for (let i = 1; i < tailPts.length - 2; i += 2) {
       const t = norm(sub(tailPts[i + 1], tailPts[i]));
       const dn = dorsal(t);
       const k = i / tailPts.length;
       const r = lerp(10, 2.6, k) / 2;
       const b = add(tailPts[i], mul(dn, r));
-      gShard(gs, b, add(dn, mul(t, 0.6)), lerp(5, 2.8, k), lerp(1.8, 1.1, k), M.CRYS, 0, P.glow);
+      gShard(gs, b, add(dn, mul(t, 0.6)), lerp(6, 4, k), lerp(2, 1.4, k), M.CRYS, 0, P.glow);
     }
     composite(p, gs.render());
     const g = newG();
-    gTube(g, tailPts, 10, 2.6, M.HIDE, { facets: 4, plates: { from: 0.35, period: 3 } });
+    gTube(g, tailPts, 10, 2.6, M.HIDE, { facets: 4, belly: { from: 0.35, lift: 0.16 } });
     const tip = tailPts[tailPts.length - 1];
     const tdir = norm(sub(tip, tailPts[tailPts.length - 3]));
     gShard(g, sub(tip, mul(tdir, 1)), tdir, 8, 2.8, M.CRYS, 6, P.glow);
     const c = g.render();
-    rimLight(c);
+    rimLight(c, p);
     composite(p, c);
   }
 
@@ -737,13 +783,17 @@ function drawDragon(p: PixelCanvas, P: Pose) {
   }
   {
     const g = newG();
-    const tex = crystalPlates(hip, tAng, 8, 0.5, 3);
-    gEll(g, hip, 11, 9.5, tAng * 0.3, M.HIDE, { flat: 1.3, tex });
-    gEll(g, chest, 8.5, 10, tAng, M.HIDE, { flat: 1.3, tex });
-    gTube(g, [hip, chest, att([3, -5])], 17, 13, M.HIDE, { flat: 1.3, plates: { from: 0.3, period: 3 }, tex });
+    gEll(g, hip, 11, 9.5, tAng * 0.3, M.HIDE, { flat: 1.3 });
+    gEll(g, chest, 8.5, 10, tAng, M.HIDE, { flat: 1.3 });
+    gTube(g, [hip, chest, att([3, -5])], 17, 13, M.HIDE, { flat: 1.3 });
     const c = g.render();
-    rimLight(c);
-    composite(p, c, PAL.night1);
+    // two crystal facet lines across the chest (cut-gem planes, not cracks)
+    const fl = PAL.cyan2;
+    const onHide = (cur: number) => cur === PAL.white || cur === PAL.mist || cur === PAL.steel;
+    lineOn(c, att([-7, 0]), att([-3, 8]), fl, onHide);
+    lineOn(c, att([-3, 8]), att([1, 10]), fl, onHide);
+    rimLight(c, p);
+    composite(p, c);
   }
 
   // ---------------- near hind leg
@@ -751,14 +801,18 @@ function drawDragon(p: PixelCanvas, P: Pose) {
     const g = newG();
     const j = add(hip, [3, 3]);
     const knee = ik(j, ANKLE_NEAR, 11, 9.5, -1);
-    gTube(g, [j, knee], 13, 7.5, M.HIDE, { z: 2, flat: 1.2, tex: crystalPlates(j, Math.atan2(knee[1] - j[1], knee[0] - j[0]), 7, 0.45, 11) });
+    gTube(g, [j, knee], 13, 7.5, M.HIDE, { z: 2, flat: 1.2 });
     gTube(g, [knee, ANKLE_NEAR], 6.5, 4.6, M.HIDE, { z: 1 });
     gTube(g, [ANKLE_NEAR, add(FOOT_NEAR, [-1, 0])], 4.6, 4, M.HIDE, { z: 2 });
     gEll(g, FOOT_NEAR, 3.8, 2.2, 0, M.HIDE, { z: 2 });
     const c = g.render();
-    rimLight(c);
+    // one facet line down the thigh
+    const ax = norm(sub(knee, j));
+    const pr: V = [-ax[1], ax[0]];
+    lineOn(c, add(lerpV(j, knee, 0.05), mul(pr, -2.5)), add(lerpV(j, knee, 0.62), mul(pr, -0.5)), PAL.cyan2, (cur) => cur === PAL.white || cur === PAL.mist);
+    rimLight(c, p);
     claws(c, FOOT_NEAR, false);
-    composite(p, c, PAL.night2);
+    composite(p, c);
   }
 
   // ---------------- neck (+ crystal crest)
@@ -768,16 +822,16 @@ function drawDragon(p: PixelCanvas, P: Pose) {
     for (const t of [0.3, 0.45, 0.6, 0.74, 0.87]) {
       const s = samplePath(neckPath, t);
       const dn = dorsal(s.tan);
-      const r = lerp(10, 6.5, t) / 2;
+      const r = lerp(10, 7, t) / 2;
       const b = add(s.p, mul(dn, r - 0.5));
       gShard(gs, b, add(dn, mul(s.tan, -0.55)), lerp(8, 5, t), lerp(2.4, 1.7, t), M.CRYS, 0, P.glow);
     }
     composite(p, gs.render());
     const g = newG();
-    gTube(g, neckPath, 10, 6.5, M.HIDE, { facets: 4, plates: { from: 0.3, period: 3 } });
+    gTube(g, neckPath, 10.5, 7, M.HIDE, { facets: 4, belly: { from: 0.3, lift: 0.16 } });
     const c = g.render();
-    rimLight(c);
-    composite(p, c, PAL.night1);
+    rimLight(c, p);
+    composite(p, c);
   }
 
   // ---------------- head
@@ -788,17 +842,19 @@ function drawDragon(p: PixelCanvas, P: Pose) {
     const g = newG();
     const s = att([2, 3]);
     const el = add(s, polar(68 - P.arm, 7.5));
-    const wr = add(el, polar(-30 - P.arm * 1.4, 7));
-    gEll(g, add(s, [0.5, 1]), 3.4, 3, 0, M.HIDE, { z: 1 });
-    gTube(g, [s, el, wr], 5.2, 3.6, M.HIDE);
+    const wa = -30 - P.arm * 1.4;
+    const wr = add(el, polar(wa, 9));
+    gEll(g, add(s, [0.5, 1]), 3.6, 3.2, 0, M.HIDE, { z: 1 });
+    gTube(g, [s, el, wr], 5.8, 4.2, M.HIDE);
+    gEll(g, add(wr, polar(wa, 1)), 2.6, 2, wa * DEG, M.HIDE, { z: 2, bias: 0.4 });
     const c = g.render();
-    rimLight(c);
-    hand(c, wr, -30 - P.arm * 1.4, false);
-    composite(p, c, PAL.night2);
+    rimLight(c, p);
+    hand(c, wr, wa, false);
+    composite(p, c);
   }
 
-  // ---------------- near wing (in front, translucent over what is behind it)
-  composite(p, drawWing(nearWing, false, P, p));
+  // ---------------- near wing (in front)
+  composite(p, drawWing(nearWing, false, P));
 
   // ---------------- crystal twinkles
   if (P.sparkles.length) {
@@ -813,6 +869,9 @@ function drawDragon(p: PixelCanvas, P: Pose) {
   }
 
   p.outline(PAL.ink);
+
+  // motion smear behind the lunging head (light, not matter: unoutlined, only on empty pixels)
+  if (P.smearFrom) smear(p, pose(P.smearFrom), P);
 
   // prism light gathering between the jaws while charging (unoutlined: it is light, not matter)
   if (P.mouth > 0.45 && P.jaw < 0.5) {
@@ -832,25 +891,73 @@ function drawDragon(p: PixelCanvas, P: Pose) {
   }
 }
 
+/**
+ * Motion smear of the lunging head: the paths swept by the brow, the nose and the chin between the
+ * previous pose and this one, as light streaks (white nose streak, cyan4/cyan3 brow and chin) that
+ * thicken toward the head. Only on empty pixels, never outlined: it is light, not matter.
+ */
+function smear(p: PixelCanvas, from: Pose, to: Pose) {
+  const N = 16;
+  const pts = (t: number) => {
+    const P = lerpPose(from, to, t);
+    const { T } = headFrame(rig(P).head, P);
+    return { top: T(5, -6.6), nose: T(18.6, -1.2), chin: T(13, 4.6) };
+  };
+  const sm = newCanvas();
+  const seg = (a: V, b: V, col: number) => sm.line(Math.floor(a[0]), Math.floor(a[1]), Math.floor(b[0]), Math.floor(b[1]), col);
+  let prev = pts(0.3);
+  for (let i = 1; i <= N; i++) {
+    const t = 0.3 + (0.7 * i) / N;
+    const cur = pts(t);
+    if (t > 0.55) fillPoly([prev.top, cur.top, cur.nose, prev.nose], (x, y) => sm.set(x, y, t > 0.8 ? PAL.cyan4 : PAL.cyan3));
+    seg(prev.top, cur.top, PAL.cyan4);
+    if (t > 0.45) seg(prev.chin, cur.chin, PAL.cyan3);
+    prev = cur;
+  }
+  prev = pts(0.4);
+  for (let i = 1; i <= N; i++) {
+    const t = 0.4 + (0.6 * i) / N;
+    const cur = pts(t);
+    seg(prev.nose, cur.nose, PAL.white);
+    prev = cur;
+  }
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const c = sm.get(x, y);
+      if (c !== null && !p.isOpaque(x, y)) p.set(x, y, c);
+    }
+}
+
 function claws(c: PixelCanvas, foot: V, far: boolean) {
   const col = far ? PAL.steel : PAL.white;
   const x = Math.floor(foot[0]);
   const y = Math.floor(foot[1]);
   c.set(x + 4, y + 1, col);
+  c.set(x + 3, y + 2, col);
   c.set(x + 2, y + 2, col);
-  c.set(x + 3, y + 2, far ? PAL.night3 : PAL.mist);
-  c.set(x - 1, y + 2, far ? PAL.night3 : PAL.mist);
-  c.set(x + 0, y + 2, col);
+  c.set(x, y + 2, col);
+  c.set(x - 1, y + 2, col);
 }
 
+/** Forefoot claws: two hooks growing straight out of the front of the palm (no gaps → no ink clutter). */
 function hand(c: PixelCanvas, wr: V, ang: number, far: boolean) {
   const col = far ? PAL.steel : PAL.white;
-  const shade = far ? PAL.night3 : PAL.mist;
-  const a = add(wr, polar(ang + 30, 2));
-  const b = add(wr, polar(ang - 25, 2.2));
-  c.set(Math.floor(a[0]), Math.floor(a[1]), shade);
-  c.set(Math.floor(a[0]) + 1, Math.floor(a[1]) + 1, col);
-  c.set(Math.floor(b[0]) + 1, Math.floor(b[1]), col);
+  const tipCol = far ? PAL.night3 : PAL.mist;
+  const palm = add(wr, polar(ang, 1));
+  for (const [da, long] of [[0, true], [48, false]] as const) {
+    // first pixel just outside the palm, touching it
+    let k = 1.5;
+    let a = flo(add(palm, polar(ang + da, k)));
+    while (c.isOpaque(a[0], a[1]) && k < 6) {
+      k += 0.5;
+      a = flo(add(palm, polar(ang + da, k)));
+    }
+    c.set(a[0], a[1], col);
+    if (long) {
+      const b = flo(add(palm, polar(ang + da + 35, k + 1.2)));
+      if (!c.isOpaque(b[0], b[1])) c.set(b[0], b[1], tipCol);
+    }
+  }
 }
 
 // ------------------------------------------------------------------ wing
@@ -868,16 +975,28 @@ function distPoly(p: V, pts: V[]): number {
   return d;
 }
 
-function drawWing(r: WingRig, far: boolean, P: Pose, behind: PixelCanvas): PixelCanvas {
+/**
+ * Crystal wing. Every membrane panel is two flat glass facets (the leading one brighter), the
+ * outer panel is the thinnest and brightest glass; the trailing edge carries one continuous
+ * bright rim line, veins run from the wrist into each pleat. Bones are hide.
+ */
+function drawWing(r: WingRig, far: boolean, P: Pose): PixelCanvas {
   const g = newG();
   const glass = far ? M.GLASS_FAR : M.GLASS;
   const hide = far ? M.HIDE_FAR : M.HIDE;
   const { S, E, Wr, tips, attach } = r;
   const n = tips.length;
+  const shield = P.guard && !far;
+  // [leading, trailing] facet levels per panel (outer → inner)
+  const levels: [number, number][] = shield ? [[2, 1], [2, 1], [2, 1]] : far ? [[4, 3], [3, 2], [3, 2]] : [[4, 3], [3, 2], [3, 2]];
+  const gx = lerp(-20, 150, P.glint);
+  const glintAt = (x: number, y: number) => {
+    if (P.glint < 0) return 0;
+    const d = x + y - gx;
+    return d >= 0 && d < 3 ? 1 : 0;
+  };
   const valleys: V[] = [];
   const curves: V[][] = [];
-  const flatN = [0, 0, 1] as const;
-  const gx = lerp(-20, 130, P.glint);
   for (let i = 0; i < n; i++) {
     const a = tips[i];
     const inner = i + 1 >= n;
@@ -885,61 +1004,71 @@ function drawWing(r: WingRig, far: boolean, P: Pose, behind: PixelCanvas): Pixel
     const hub = inner ? lerpV(Wr, E, 0.5) : Wr;
     // trailing edge: a soft scallop between two finger tips
     const curve = bezier(a, lerpV(lerpV(a, b, 0.5), hub, inner ? 0.42 : 0.62), b, undefined, 10);
-    const mid = curve[5];
-    valleys.push(mid);
+    valleys.push(curve[5]);
     curves.push(curve);
-    const level = (x: number, y: number, base: number) => {
-      const q: V = [x + 0.5, y + 0.5];
-      const de = distPoly(q, curve);
-      let k = base;
-      if (de < 1.1) return far ? 4 : 5; // bright rim where light pours through the thin edge
-      if (de < 3.2 && !far) k += 1;
-      else if (len(sub(q, Wr)) < 6) k -= 1; // thick root
-      if (P.glint >= 0) {
-        const d = x + y * 0.75 - gx;
-        if (d >= 0 && d < 2.5) k += 1;
-      }
-      return k;
-    };
-    gFacet(g, [Wr, ...curve.slice(0, 6)], glass, flatN, 0, (x, y) => level(x, y, 3));
-    if (!inner) gFacet(g, [Wr, ...curve.slice(5)], glass, flatN, 0, (x, y) => level(x, y, 2));
-    else gFacet(g, [Wr, ...curve.slice(5), S, E], glass, flatN, 0, (x, y) => level(x, y, 2));
+    const [lead, trail] = levels[Math.min(i, levels.length - 1)];
+    gFacet(g, [Wr, ...curve.slice(0, 6)], glass, FLAT_N, 0, (x, y) => lead + glintAt(x, y));
+    if (!inner) gFacet(g, [Wr, ...curve.slice(5)], glass, FLAT_N, 0, (x, y) => trail + glintAt(x, y));
+    else gFacet(g, [Wr, ...curve.slice(5), S, E], glass, FLAT_N, 0, (x, y) => trail + glintAt(x, y));
   }
-  // bones
-  gTube(g, [S, E, Wr], 4.8, 3.4, hide, { z: 4, flat: 1.2 });
-  for (let i = 0; i < n; i++) {
-    const mid = lerpV(Wr, tips[i], 0.5);
-    gTube(g, [Wr, mid, tips[i]], 3.2, 1.2, hide, { z: 3 });
-  }
+  // arm bones (leading edge)
+  gTube(g, [S, E, Wr], 4.8, 3.6, hide, { z: 4, flat: 1.2 });
   gEll(g, Wr, 2.5, 2.5, 0, hide, { z: 5 });
   gEll(g, E, 2.7, 2.7, 0, hide, { z: 5 });
   // crystal spur growing out of the elbow
   const out = norm(add(norm(sub(E, S)), norm(sub(E, Wr))));
   if (!far) gShard(g, E, out, 6, 1.8, M.CRYS, 7, P.glow);
-  const spurDir = norm(sub(Wr, E));
-  if (!far) gTube(g, [Wr, add(Wr, rotV(mul(spurDir, 5), -0.75))], 2.4, 0.8, M.GOLD, { z: 6 });
+  const c = g.render();
 
-  // translucency: the glass brightens where something pale sits behind it
-  const tint = far
-    ? undefined
-    : (x: number, y: number, mat: number) => {
-        if (mat !== glass) return 0;
-        const c = behind.get(x, y);
-        return c === PAL.white || c === PAL.mist || c === PAL.cyan4 || c === PAL.cyan3 ? 1 : 0;
-      };
-  const c = g.render(0, tint);
+  // trailing-edge rim: glass pixels on the silhouette next to a scallop → one bright line
+  const rim = far ? PAL.cyan3 : shield ? PAL.cyan3 : PAL.white;
+  const glassCols = new Set(MATS[glass].ramp);
+  const hits: number[] = [];
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const col = c.get(x, y);
+      if (col === null || !glassCols.has(col)) continue;
+      if (c.isOpaque(x - 1, y) && c.isOpaque(x + 1, y) && c.isOpaque(x, y - 1) && c.isOpaque(x, y + 1)) continue;
+      const q: V = [x + 0.5, y + 0.5];
+      let near = false;
+      for (const cv of curves) if (distPoly(q, cv) < 1.6) near = true;
+      if (near) hits.push(x, y);
+    }
+  for (let i = 0; i < hits.length; i += 2) c.set(hits[i], hits[i + 1], rim);
 
   // glowing veins from the wrist down every pleat valley
   const glow = P.glow;
-  const vein = far ? (glow > 0.6 ? PAL.cyan3 : PAL.cyan2) : glow > 0.75 ? PAL.white : PAL.cyan4;
-  if (!far || glow > 0.6) for (let i = 0; i < n; i++) veinLine(c, lerpV(Wr, valleys[i], 0.22), lerpV(Wr, valleys[i], 0.8), vein);
-  if (!far) {
-    // the broad arm membrane gets two more veins fanning from the elbow
+  const vein = far ? (glow > 0.6 ? PAL.cyan3 : PAL.cyan2) : shield ? PAL.cyan3 : glow > 0.75 ? PAL.white : PAL.cyan4;
+  const onGlass = (cur: number) => glassCols.has(cur) && cur !== rim;
+  if (!shield && (!far || glow > 0.4)) for (let i = 0; i < n; i++) lineOn(c, lerpV(Wr, valleys[i], 0.25), lerpV(Wr, valleys[i], 0.8), vein, onGlass);
+  if (!far && !shield) {
+    // the broad arm membrane gets one more vein fanning from the elbow
     const inner = curves[n - 1];
-    const root = lerpV(E, Wr, 0.25);
-    for (const k of [2, 8]) veinLine(c, lerpV(root, inner[k], 0.2), lerpV(root, inner[k], 0.78), vein);
+    const root = lerpV(E, Wr, 0.3);
+    lineOn(c, lerpV(root, inner[7], 0.2), lerpV(root, inner[7], 0.78), vein, onGlass);
   }
-  if (!far) for (const t of tips) dot(c, t, PAL.white);
+
+  // finger bones: a two-tone 2px spar that thins to a single bright line toward the tip
+  // (folded into a shield they are plain 1px ribs that stay inside the glass)
+  const boneHi = far ? PAL.mist : PAL.white;
+  const boneLo = far ? PAL.steel : PAL.mist;
+  for (let i = 0; i < n; i++) {
+    if (shield) {
+      lineOn(c, lerpV(Wr, tips[i], 0.2), lerpV(Wr, tips[i], 0.86), i === 0 ? PAL.white : PAL.mist);
+      continue;
+    }
+    const t = tips[i];
+    const dir = norm(sub(t, Wr));
+    // shadow side of the spar is the side away from the key light
+    const side: V = Math.abs(dir[0]) > Math.abs(dir[1]) ? [0, 1] : [dir[1] > 0 ? -1 : 1, 0];
+    const mid = lerpV(Wr, t, 0.55);
+    const a = flo(Wr);
+    const b = flo(mid);
+    const e = flo(t);
+    c.line(a[0], a[1], b[0], b[1], boneHi);
+    c.line(a[0] + side[0], a[1] + side[1], b[0] + side[0], b[1] + side[1], boneLo);
+    c.line(b[0], b[1], e[0], e[1], i === 0 ? boneHi : boneLo);
+  }
   return c;
 }
 
@@ -947,209 +1076,294 @@ function drawWing(r: WingRig, far: boolean, P: Pose, behind: PixelCanvas): Pixel
 
 /** head scale (the card portrait draws the same head bigger) */
 let HS = 1.2;
+const HINGE: V = [-1.5, 1.4];
+const JAW_OPEN = 0.62; // ~35° at jaw = 1
 
 interface HeadFrame {
   T: (x: number, y: number) => V;
   J: (x: number, y: number) => V;
+  jawA: number;
 }
 
 function headFrame(hp: V, P: Pose): HeadFrame {
   const ha = P.ha;
   const T = (x: number, y: number): V => add(hp, rotV([x * HS, y * HS], ha));
-  const jawA = P.jaw * 0.56;
-  const hinge: V = [-1.5, 0.8];
+  const jawA = P.jaw * JAW_OPEN;
   const J = (x: number, y: number): V => {
-    const q = add(hinge, rotV(sub([x, y], hinge), jawA));
+    const q = add(HINGE, rotV(sub([x, y], HINGE), jawA));
     return T(q[0], q[1]);
   };
-  return { T, J };
+  return { T, J, jawA };
 }
 
 /** Centre of the open mouth (beam origin). */
 function mouthPoint(P: Pose): V {
   const { T, J } = headFrame(rig(P).head, P);
-  return lerpV(T(17, 0.9), J(16.2, 1.6), 0.5);
+  return lerpV(T(16, 1.4), J(15.5, 1.4), 0.5);
 }
 
-function drawHead(p: PixelCanvas, hp: V, P: Pose) {
-  const ha = P.ha;
-  const { T, J } = headFrame(hp, P);
-  const Ts = (pts: [number, number][]) => pts.map(([x, y]) => T(x, y));
-  const Js = (pts: [number, number][]) => pts.map(([x, y]) => J(x, y));
-  const rn = (x: number, y: number, z: number): [number, number, number] => {
-    const q = rotV([x, y], ha);
-    return [q[0], q[1], z];
-  };
+// Head planes in head space (x forward along the snout, y down; scaled by HS, rotated by ha).
+type P2 = [number, number];
+// side plane of skull + snout (mist)
+const SKULL: P2[] = [[-5, 1.4], [-6.4, -2], [-4.8, -5.4], [-0.8, -7.3], [4.4, -7.4], [7.8, -6.2], [9.8, -4.7], [14.8, -3.8], [17.4, -3.4], [18.8, -2.2], [19.1, -0.3], [18.3, 1.4], [10, 1.4], [3, 1.4]];
+// lit top plane: crown, brow ridge and the bridge of the snout (white)
+const SKULL_TOP: P2[] = [[-4.8, -5.4], [-0.8, -7.3], [4.4, -7.4], [7.8, -6.2], [9.8, -4.7], [14.8, -3.8], [17.4, -3.4], [18.8, -2.2], [17, -2], [14.4, -2.5], [9.2, -3.3], [7.2, -4.9], [3.6, -5.8], [-0.4, -5.8], [-4.4, -3.8]];
+// shadowed cheek below/behind the eye and the upper lip band (steel)
+const CHEEK: P2[] = [[-5, 1.4], [-6.4, -2], [-5.4, -1.6], [-1.6, -1.2], [2.6, 0], [4.6, 1.4]];
+const LIP: P2[] = [[3.6, 0.2], [12, -0.2], [19, -0.6], [18.3, 1.4], [3, 1.4]];
+// lower jaw (rotates about HINGE): side plane (mist) and its shadowed underside (steel)
+const JAW: P2[] = [[-4.4, 1.4], [18, 1.4], [18.2, 2.9], [15.2, 4.2], [9, 5.0], [2, 5.8], [-2.6, 5.6], [-4.8, 3.6]];
+const JAW_UNDER: P2[] = [[18.2, 2.9], [15.2, 4.2], [9, 5.0], [2, 5.8], [-2.6, 5.6], [-3.2, 4.6], [2, 4.6], [9, 3.8], [15, 3.1]];
 
-  // mouth interior (only visible when the jaw opens)
-  if (P.jaw > 0.12) {
+// eye: 2×2 white core, cyan4 surround, cyan3 trail backward, under a steel brow; night3 socket
+const EYE_OPEN = ['.SSSSS', '34WWn.', '.4WWn.', '..nn..'];
+const EYE_SHUT = ['.SSSS', 'nnnn.', '..2..'];
+const EYE_KEY: Record<string, number> = { S: PAL.steel, W: PAL.white, '4': PAL.cyan4, '3': PAL.cyan3, n: PAL.night3, '2': PAL.cyan2 };
+
+const MOUTH_MASK = new Uint8Array(W * H);
+const JAW_MASK = new Uint8Array(W * H);
+
+function drawHead(p: PixelCanvas, hp: V, P: Pose) {
+  const { T, J, jawA } = headFrame(hp, P);
+  const Ts = (pts: P2[]) => pts.map(([x, y]) => T(x, y));
+  const Js = (pts: P2[]) => pts.map(([x, y]) => J(x, y));
+  const open = P.jaw > 0.1;
+  MOUTH_MASK.fill(0);
+  JAW_MASK.fill(0);
+
+  // mouth cavity: dark throat at the back, glowing prism light at the front when charged
+  if (open) {
     const g = newG();
-    gFacet(g, [T(-2, 0.2), T(17, 0.4), J(16.4, 2), J(-2, 1.8)], M.MOUTH, [0, 0, 1], 0);
+    gFacet(g, [T(-2.6, 1.4), T(18.3, 1.4), J(18, 1.4), J(-2.6, 1.4)], M.MOUTH, FLAT_N, 0);
     const c = g.render();
+    const back = T(-1, 1.4);
+    const front = T(18.3, 1.4);
+    const m = lerpV(T(16, 1.4), J(15.5, 1.4), 0.5); // == mouthPoint(P) on the dragon
     const glowM = P.mouth;
-    const back = lerpV(T(0, 0.8), J(0, 1.2), 0.5);
-    const front = lerpV(T(17, 0.8), J(16.4, 1.6), 0.5);
+    const axis = sub(front, back);
+    const al = len(axis) || 1;
+    const jawLine = [J(-2, 1.4), J(18, 1.4)];
     for (let y = 0; y < H; y++)
       for (let x = 0; x < W; x++) {
         if (!c.isOpaque(x, y)) continue;
         const q: V = [x + 0.5, y + 0.5];
-        const d = distSeg(q, back, front);
-        const along = len(sub(q, back)) / (len(sub(front, back)) || 1);
-        let col: number;
-        if (glowM > 0.5) col = d < 1.2 && along > 0.25 ? PAL.white : d < 2.6 ? PAL.cyan4 : PAL.cyan3;
-        else if (glowM > 0.1) col = d < 1.2 && along > 0.4 ? PAL.cyan3 : along < 0.35 ? PAL.night0 : PAL.cyan1;
-        else col = along < 0.4 ? PAL.night0 : d < 1.3 && along > 0.5 ? PAL.crim1 : PAL.night1;
+        const along = ((q[0] - back[0]) * axis[0] + (q[1] - back[1]) * axis[1]) / (al * al);
+        const dm = len(sub(q, m));
+        let col: number = along < 0.42 ? PAL.night0 : PAL.night1;
+        if (glowM > 0.5) {
+          if (dm < 1.9) col = PAL.white;
+          else if (dm < 3.1) col = PAL.cyan4;
+          else if (dm < 4.3) col = PAL.cyan3;
+          else if (along > 0.5) col = PAL.cyan1;
+        } else if (along > 0.3 && along < 0.85 && distSeg(q, jawLine[0], jawLine[1]) < 1.6) col = PAL.crim1; // tongue
         c.set(x, y, col);
       }
+    maskOf(c, MOUTH_MASK);
     composite(p, c);
   }
 
-  // lower jaw (own layer → its contour separates it from the mouth)
+  // lower jaw (own layer, own contour: an ink gape line where it meets the open mouth)
   {
     const g = newG();
-    gFacet(g, Js([[-3.5, 0.8], [16.6, 1.1], [15.8, 2.3], [9, 3.3], [1, 3.9], [-3.6, 3.0]]), M.HIDE, rn(0.05, 0.2, 0.98), 0);
-    gFacet(g, Js([[15.8, 2.3], [9, 3.3], [1, 3.9], [-3.6, 3.0], [-3.2, 4.4], [1, 5], [9, 4.3]]), M.HIDE, rn(0.1, 0.95, 0.3), -0.5);
+    gFacet(g, Js(JAW), M.HIDE_D, FLAT_N, 0, 3);
+    gFacet(g, Js(JAW_UNDER), M.HIDE_D, FLAT_N, 0, 2);
     const c = g.render();
-    if (P.jaw > 0.12) for (const tx of [9, 13]) dot(c, J(tx, 1.2), PAL.white);
-    composite(p, c);
+    maskOf(c, JAW_MASK);
+    composite(p, c, (x, y, b) => (MOUTH_MASK[y * W + x] ? PAL.ink : selout(x, y, b)));
   }
 
   // upper head: side plane, cheek, lip band, lit top plane with the brow
   const g = newG();
-  gFacet(g, Ts([[-4, 0.8], [-5.2, -2.4], [-3, -5], [2, -6.4], [6.8, -5.6], [9, -3.9], [17.2, -1.7], [18.5, 0], [17.6, 1.2], [4, 1.3], [-1.5, 1.5]]), M.HIDE, rn(0.02, 0.0, 1), 0);
-  gFacet(g, Ts([[-4, 0.8], [-5.2, -2.4], [-3.5, -2], [1.5, -0.6], [4, 1.3], [-1.5, 1.5]]), M.HIDE, rn(0.35, 0.45, 0.82), 0.5);
-  gFacet(g, Ts([[4, 0.1], [17.8, -0.2], [17.6, 1.2], [4, 1.3]]), M.HIDE, rn(0.1, 0.6, 0.79), 0.5);
-  gFacet(g, Ts([[-3, -5], [2, -6.4], [6.8, -5.6], [9, -3.9], [17.2, -1.7], [17.8, -0.9], [8.6, -2.6], [6.6, -3.9], [1.5, -4.4], [-3.6, -3.6]]), M.HIDE, rn(-0.3, -0.9, 0.42), 0.5);
+  gFacet(g, Ts(SKULL), M.HIDE_D, FLAT_N, 0, 3);
+  gFacet(g, Ts(CHEEK), M.HIDE_D, FLAT_N, 0, 2);
+  gFacet(g, Ts(LIP), M.HIDE_D, FLAT_N, 0, 2);
+  gFacet(g, Ts(SKULL_TOP), M.HIDE_D, FLAT_N, 0, 4);
   const c = g.render();
   // nostril
-  dot(c, T(16, -1.1), PAL.night2);
-  // eye under the brow: dark brow line + glowing slit (the brightest pixels of the sprite)
   {
-    const e = rnd(T(4.9, -2.0));
-    const u: V = [Math.cos(ha), Math.sin(ha)];
-    const nn: V = [-Math.sin(ha), Math.cos(ha)];
-    const at = (k: number, m: number): V => add(e, rnd(add(mul(u, k), mul(nn, m))));
-    const put = (q: V, col: number) => {
-      if (c.isOpaque(q[0], q[1])) c.set(q[0], q[1], col);
-    };
-    for (let k = -2; k <= 2; k++) put(at(k, -1), k === 2 ? PAL.night2 : PAL.night1);
-    if (P.eye > 0.5) {
-      put(at(-1, 0), PAL.cyan3);
-      put(at(0, 0), PAL.cyan4);
-      put(at(1, 0), PAL.white);
-      put(at(-1, 1), PAL.night2);
-      if (P.glow > 0.85) put(at(-2, 0), PAL.cyan2);
-    } else {
-      put(at(-1, 0), PAL.night1);
-      put(at(0, 0), PAL.night2);
-      put(at(1, 0), PAL.cyan2);
+    const n0 = flo(T(17.4, -1.5));
+    c.paint(n0[0], n0[1], PAL.night2);
+    c.paint(n0[0] - 1, n0[1], PAL.night3);
+  }
+  // charged lips: a thread of light leaks between the closed jaws
+  if (!open && P.mouth > 0.2) lineOn(c, T(6, 1.0), T(18.5, 0.8), P.mouth > 0.6 ? PAL.cyan4 : PAL.cyan3);
+  composite(p, c, (x, y, b) => {
+    const i = y * W + x;
+    if (MOUTH_MASK[i]) return PAL.ink;
+    if (JAW_MASK[i]) return open ? PAL.ink : PAL.night2;
+    return selout(x, y, b);
+  });
+  // eye (the brightest pixels of the sprite)
+  {
+    const e = flo(T(4.4, -3.6));
+    const rows = P.eye > 0.5 ? EYE_OPEN : EYE_SHUT;
+    for (let j = 0; j < rows.length; j++)
+      for (let i = 0; i < rows[j].length; i++) {
+        const col = EYE_KEY[rows[j][i]];
+        if (col === undefined) continue;
+        const x = e[0] + i - 2;
+        const y = e[1] + j - 1;
+        if (p.isOpaque(x, y) && p.get(x, y) !== PAL.ink) p.set(x, y, col);
+      }
+    if (P.eye > 0.5 && P.glow > 0.85) {
+      const x = e[0] - 3;
+      const y = e[1];
+      if (p.isOpaque(x, y) && p.get(x, y) !== PAL.ink) p.set(x, y, PAL.cyan3);
     }
   }
-  if (P.jaw <= 0.12 && P.mouth > 0.2) veinLine(c, T(6, 1.0), T(16.5, 0.8), P.mouth > 0.6 ? PAL.cyan4 : PAL.cyan3);
-  composite(p, c);
-  // upper fangs hang over the open mouth
-  if (P.jaw > 0.12) for (const tx of [7, 10.5, 14, 16.4]) p.set(Math.floor(T(tx, 1.9)[0]), Math.floor(T(tx, 1.9)[1]), PAL.white);
 
-  // near horns (gold)
+  // fangs: white teeth hang just inside the ink gape line
+  if (open) {
+    const down = rotV([0, 1], P.ha);
+    const up = rotV([0, -1], P.ha + jawA);
+    const tooth = (from: V, dir: V, long: boolean) => {
+      let seenInk = false;
+      let last = '';
+      for (let k = 0; k < 9; k += 0.5) {
+        const q = flo(add(from, mul(dir, k)));
+        const key = q[0] + ',' + q[1];
+        if (key === last) continue;
+        last = key;
+        if (q[0] < 0 || q[1] < 0 || q[0] >= W || q[1] >= H) return;
+        const i = q[1] * W + q[0];
+        const cur = p.get(q[0], q[1]);
+        if (!MOUTH_MASK[i]) {
+          if (seenInk) return;
+          continue;
+        }
+        if (cur === PAL.ink) {
+          seenInk = true;
+          continue;
+        }
+        p.set(q[0], q[1], PAL.white);
+        if (long) {
+          const q2 = flo(add(from, mul(dir, k + 1)));
+          if (MOUTH_MASK[q2[1] * W + q2[0]] && p.get(q2[0], q2[1]) !== PAL.ink) p.set(q2[0], q2[1], PAL.mist);
+        }
+        return;
+      }
+    };
+    for (const [tx, long] of [[6.5, false], [10, true], [13.5, true], [17, true]] as const) tooth(T(tx, 0.4), down, long);
+    for (const tx of [12, 16.2]) tooth(J(tx, 2.6), up, false);
+  }
+
+  // horns (gold): the main sweep off the crown and a cheek horn
   {
     const g2 = newG();
     const k = HS / 1.2;
-    gTube(g2, bezier(T(-2.2, -4.6), T(-7, -6.2), T(-11.5, -6.6), T(-15.5, -9.6), 12), 3.3 * k, 0.8, M.GOLD);
-    gTube(g2, bezier(T(-3, -0.6), T(-6.5, -0.4), T(-9, 0.6), T(-11, 2.6), 8), 2.4 * k, 0.8, M.GOLD, { z: 1 });
+    gTube(g2, bezier(T(-1.6, -6.2), T(-6.8, -8.4), T(-11.8, -8.8), T(-16.2, -12), 12), 3.8 * k, 1, M.GOLD);
+    gTube(g2, bezier(T(-3.6, -0.4), T(-7, -0.2), T(-9.4, 0.8), T(-11.6, 3), 8), 2.6 * k, 1, M.GOLD, { z: 1 });
     composite(p, g2.render());
   }
 }
 
 // ------------------------------------------------------------------ animations
 
-function idlePose(f: number, n: number): Pose {
-  const t = f / n;
-  // breathing + one slow wing beat per loop: the downstroke (t 0.25 → 0.75) lifts the body;
-  // forearm and finger tips trail the shoulder (secondary motion). Frame 0 == NEUTRAL.
+const IDLE_N = 12;
+// one twinkle travels across the near wing's glass, then the arm membrane
+const IDLE_SPARKS: [number, number][][] = [[], [[0, 1]], [[0, 2]], [[0, 2]], [[0, 1]], [], [], [[1, 1]], [[1, 2]], [[1, 2]], [[1, 1]], []];
+
+function idlePose(f: number): Pose {
+  const t = f / IDLE_N;
+  // breathing + one slow wing beat per loop: the downstroke lifts the body; forearm and finger
+  // tips trail the shoulder by one and two frames (secondary motion). Frame 0 == NEUTRAL.
   const s = Math.sin(t * Math.PI * 2);
-  const beat = (lag: number) => Math.sin((t - lag) * Math.PI * 2);
+  const beat = (lagFrames: number) => Math.sin((t - lagFrames / IDLE_N) * Math.PI * 2);
   return pose({
     hy: Math.round(s * 1),
     lean: -0.025 * s,
-    headY: Math.round(Math.sin((t - 0.12) * Math.PI * 2) * 1),
-    nw: { a1: NEUTRAL.nw.a1 - 7 * s, a2: NEUTRAL.nw.a2 - 6 * beat(0.08), a3: NEUTRAL.nw.a3 - 9 * beat(0.16) },
-    fw: { a1: NEUTRAL.fw.a1 - 5 * s, a2: NEUTRAL.fw.a2 - 5 * beat(0.08), a3: NEUTRAL.fw.a3 - 7 * beat(0.16) },
+    headY: Math.round(beat(1.5)),
+    nw: { a1: NEUTRAL.nw.a1 - 4 * s, a2: NEUTRAL.nw.a2 - 3.5 * beat(1), a3: NEUTRAL.nw.a3 - 4 * beat(2) },
+    fw: { a1: NEUTRAL.fw.a1 - 4 * s, a2: NEUTRAL.fw.a2 - 4 * beat(1), a3: NEUTRAL.fw.a3 - 5 * beat(2) },
     tail: t,
     glow: 0.3 + 0.2 * Math.sin((t - 0.25) * Math.PI * 2),
     glint: t * 1.6 - 0.3,
-    sparkles: (
-      [[], [[0, 1]], [[0, 2]], [[0, 1]], [], [[1, 1]], [[1, 2]], [[1, 1]]] as [number, number][][]
-    )[f % 8],
+    sparkles: IDLE_SPARKS[f % IDLE_N],
   });
 }
+
+// far wing spread wide behind the neck (roar): it turns toward the viewer, so it reads bigger
+const FW_SPREAD: Partial<Wing> = { a1: -40, a2: -14, a3: -56, fan: 33, span: 1.3, at: [7, 3] };
+const NW_SPREAD: Partial<Wing> = { a1: -120, a2: -144, a3: -110, fan: -46, span: 1.05 };
 
 // roar: crouch (anticipation) → explode upward, rear, wings flung wide → trembling roar → settle
 const ROAR: PoseDelta[] = [
   {},
-  { hy: 2, lean: 0.07, headX: -3, headY: 4, ha: 0.4, nw: { a1: -100, a2: -122, a3: -128, fan: -26 }, fw: { a1: -92, a2: -116, a3: -100, fan: -20 }, tailLift: -5, arm: -6, glow: 0.4 },
-  { hy: 3, lean: 0.12, headX: -4, headY: 7, ha: 0.55, nw: { a1: -96, a2: -118, a3: -132, fan: -22 }, fw: { a1: -94, a2: -118, a3: -104, fan: -18 }, tailLift: -8, arm: -12, glow: 0.55 },
-  // explode upward (overshoot)
-  { hy: -3, lean: -0.3, headX: 3, headY: -2, ha: -0.6, jaw: 1, nw: { a1: -128, a2: -158, a3: -98, fan: -47 }, fw: { a1: 2, a2: 10, a3: 0, fan: -26 }, tailLift: 14, arm: 60, glow: 1, tail: 0.1, sparkles: [[0, 2], [2, 1]] },
+  { hy: 2, lean: 0.07, headX: 0, headY: 4, ha: 0.4, nw: { a1: -100, a2: -122, a3: -128, fan: -26 }, fw: { a1: -92, a2: -116, a3: -100, fan: -20 }, tailLift: -5, arm: -6, glow: 0.4 },
+  { hy: 3, lean: 0.12, headX: -1, headY: 7, ha: 0.55, nw: { a1: -96, a2: -118, a3: -132, fan: -22 }, fw: { a1: -94, a2: -118, a3: -104, fan: -18 }, tailLift: -8, arm: -12, glow: 0.55 },
+  // explode upward: rear on the hind legs (chest high, back leaning), head thrown to the sky,
+  // both wings flung open (overshoot)
+  { hy: -2, lean: -0.47, headX: -7, headY: 3, ha: -0.82, jaw: 0.72, nw: { ...NW_SPREAD, a1: -124, fan: -49 }, fw: { ...FW_SPREAD, a1: -44 }, tailLift: 16, arm: 62, glow: 1, tail: 0.1, sparkles: [[0, 2], [2, 1]] },
   // trembling roar: the whole body vibrates, jaws quiver, energy pulses
-  { hx: 1, hy: -3, lean: -0.26, headX: 3, headY: -1, ha: -0.52, jaw: 0.95, nw: { a1: -124, a2: -153, a3: -101, fan: -45 }, fw: { a1: 2, a2: 10, a3: 0, fan: -26 }, tailLift: 12, arm: 55, glow: 1, tail: 0.25, sparkles: [[0, 1], [1, 2]] },
-  { hx: -1, hy: -3, lean: -0.27, headX: 2, headY: -2, ha: -0.56, jaw: 1, nw: { a1: -126, a2: -155, a3: -99, fan: -46 }, fw: { a1: 2, a2: 10, a3: 0, fan: -26 }, tailLift: 13, arm: 58, glow: 0.8, tail: 0.4, sparkles: [[1, 1], [3, 2]] },
-  { hx: 1, hy: -3, lean: -0.26, headX: 3, headY: -1, ha: -0.53, jaw: 0.92, nw: { a1: -124, a2: -153, a3: -101, fan: -45 }, fw: { a1: 2, a2: 10, a3: 0, fan: -26 }, tailLift: 12, arm: 55, glow: 1, tail: 0.55, sparkles: [[3, 1], [2, 2]] },
-  { hx: 0, hy: -2, lean: -0.24, headX: 2, headY: -1, ha: -0.48, jaw: 0.8, nw: { a1: -122, a2: -151, a3: -103, fan: -44 }, fw: { a1: 2, a2: 10, a3: 0, fan: -26 }, tailLift: 11, arm: 50, glow: 0.8, tail: 0.7 },
-  // release
-  { hy: -1, lean: -0.1, headX: 1, headY: -1, ha: -0.15, jaw: 0.3, nw: { a1: -112, a2: -142, a3: -112, fan: -42 }, fw: { a1: -48, a2: -52, a3: -58, fan: -28 }, tailLift: 5, arm: 20, glow: 0.6, tail: 0.85 },
-  { hy: 0, lean: -0.02, ha: 0.1, nw: { a1: -108, a2: -139 }, glow: 0.4, tail: 0.95 },
+  { hx: 1, hy: -1, lean: -0.42, headX: -6, headY: 2, ha: -0.8, jaw: 0.82, nw: NW_SPREAD, fw: FW_SPREAD, tailLift: 13, arm: 55, glow: 1, tail: 0.25, sparkles: [[0, 1], [1, 2]] },
+  { hx: -1, hy: -1, lean: -0.43, headX: -7, headY: 2, ha: -0.83, jaw: 0.76, nw: { ...NW_SPREAD, a1: -118 }, fw: { ...FW_SPREAD, a1: -38 }, tailLift: 14, arm: 58, glow: 0.8, tail: 0.4, sparkles: [[1, 1], [3, 2]] },
+  { hx: 1, hy: -1, lean: -0.42, headX: -6, headY: 2, ha: -0.8, jaw: 0.82, nw: NW_SPREAD, fw: FW_SPREAD, tailLift: 13, arm: 55, glow: 1, tail: 0.55, sparkles: [[3, 1], [2, 2]] },
+  { hx: 0, hy: -1, lean: -0.34, headX: -5, headY: 2, ha: -0.64, jaw: 0.66, nw: { a1: -116, a2: -142, a3: -112, fan: -44 }, fw: { a1: -50, a2: -30, a3: -66, fan: 26, span: 1.2, at: [6, 2] }, tailLift: 11, arm: 45, glow: 0.8, tail: 0.7 },
+  // release: the far wing folds back through an in-between (never pops)
+  { hy: 0, lean: -0.14, headX: -1, headY: 0, ha: -0.2, jaw: 0.35, nw: { a1: -111, a2: -140, a3: -115, fan: -41 }, fw: { a1: -68, a2: -70, a3: -56, fan: -22, span: 1.08, at: [1, -2] }, tailLift: 5, arm: 18, glow: 0.6, tail: 0.85 },
+  { hy: 0, lean: -0.03, ha: 0.06, nw: { a1: -108, a2: -139 }, fw: { a1: -82, a2: -106, a3: -92, fan: -24 }, glow: 0.4, tail: 0.95 },
 ];
 
-// attack "Prizma Nefesi": head rears back while light gathers in the jaws → lunges forward,
-// jaws flung open at the impact frame (beam fires from `muzzle`) → holds while firing → recovers
+// attack "Prizma Nefesi": the whole body coils (torso leans back, wings rise and spread, head
+// pulled back behind the neck) while light gathers in the jaws → the head whips forward past
+// neutral with the chest leaning in, jaws flung open (beam fires from `muzzle`), wings snap
+// back then flare open, tail whips → beam kickback pushes the head back 1–2 px a frame → settle.
 const ATTACK: PoseDelta[] = [
   {},
-  { hy: -1, lean: -0.06, headX: -4, headY: -1, ha: -0.12, nw: { a1: -112, a2: -143, a3: -116, fan: -42 }, glow: 0.5, mouth: 0.25, tailLift: 4 },
-  { hx: -1, hy: -1, lean: -0.13, headX: -8, headY: -3, ha: -0.32, nw: { a1: -117, a2: -149, a3: -112, fan: -44 }, fw: { a1: -88, a2: -110 }, glow: 0.7, mouth: 0.55, tailLift: 9, arm: 15, sparkles: [[3, 1]] },
-  { hx: -1, hy: -2, lean: -0.17, headX: -10, headY: -4, ha: -0.44, jaw: 0.18, nw: { a1: -120, a2: -153, a3: -110, fan: -46 }, fw: { a1: -91, a2: -113 }, glow: 0.9, mouth: 0.8, tailLift: 13, arm: 22, sparkles: [[3, 2], [0, 1]] },
-  { hx: -2, hy: -2, lean: -0.19, headX: -11, headY: -4, ha: -0.5, jaw: 0.25, nw: { a1: -122, a2: -155, a3: -109, fan: -47 }, fw: { a1: -92, a2: -114 }, glow: 1, mouth: 1, tailLift: 15, arm: 26, sparkles: [[0, 2], [1, 1], [2, 1]] },
-  // IMPACT — the Prism Breath fires: lunge, jaws flung wide, wings thrown back
-  { hx: 1, hy: 1, lean: 0.13, headX: 0, headY: 6, ha: 0.1, jaw: 1, nw: { a1: -100, a2: -128, a3: -126, fan: -33 }, fw: { a1: -94, a2: -120 }, glow: 1, mouth: 1, tailLift: -10, arm: -12, tail: 0.15 },
-  { hx: 1, hy: 1, lean: 0.11, headX: -1, headY: 5, ha: 0.08, jaw: 1, nw: { a1: -101, a2: -130, a3: -124, fan: -35 }, fw: { a1: -92 }, glow: 1, mouth: 1, tailLift: -8, arm: -8, tail: 0.3 },
-  { hx: 0, hy: 1, lean: 0.09, headX: -1, headY: 4, ha: 0.1, jaw: 0.95, nw: { a1: -103, a2: -132 }, glow: 0.9, mouth: 0.9, tailLift: -6, tail: 0.45 },
-  { hx: 0, hy: 0, lean: 0.05, headX: 1, headY: 3, ha: 0.12, jaw: 0.55, nw: { a1: -105, a2: -135 }, glow: 0.6, mouth: 0.3, tailLift: -3, tail: 0.6 },
-  { hy: 0, lean: 0.01, headX: 0, headY: 1, ha: 0.12, jaw: 0.1, nw: { a1: -107 }, glow: 0.4, tail: 0.8 },
+  { hx: -1, hy: -1, lean: -0.08, headX: -5, headY: -1, ha: -0.04, nw: { a1: -113, a2: -144, a3: -114, fan: -44 }, fw: { a1: -88, a2: -114 }, glow: 0.5, mouth: 0.25, tailLift: 4, arm: 8 },
+  { hx: -2, hy: -1, lean: -0.15, headX: -10, headY: -2, ha: -0.18, nw: { a1: -119, a2: -150, a3: -108, fan: -48 }, fw: { a1: -92, a2: -118, a3: -88 }, glow: 0.7, mouth: 0.55, tailLift: 9, arm: 16, sparkles: [[3, 1]] },
+  { hx: -3, hy: -2, lean: -0.2, headX: -13, headY: -2, ha: -0.28, jaw: 0.14, nw: { a1: -123, a2: -155, a3: -104, fan: -51 }, fw: { a1: -95, a2: -121, a3: -86 }, glow: 0.9, mouth: 0.8, tailLift: 10, arm: 22, sparkles: [[3, 2], [0, 1]] },
+  { hx: -3, hy: -2, lean: -0.22, headX: -14, headY: -2, ha: -0.32, jaw: 0.2, nw: { a1: -125, a2: -157, a3: -102, fan: -52 }, fw: { a1: -96, a2: -122, a3: -85 }, glow: 1, mouth: 1, tailLift: 11, arm: 26, sparkles: [[0, 2], [1, 1], [2, 1]] },
+  // IMPACT — the Prism Breath fires: lunge past neutral, jaws flung wide, wings swept back
+  { hx: 1, hy: 1, lean: 0.12, headX: 1, headY: 4, ha: 0.02, jaw: 1, nw: { a1: -131, a2: -167, a3: -112, fan: -46 }, fw: { a1: -104, a2: -130, a3: -84, fan: -34 }, glow: 1, mouth: 1, tailLift: -6, tail: 0.18, tailAmp: 6, arm: -14 },
+  // kickback: the beam pushes the head and chest back, the wings flare open
+  { hx: 1, hy: 1, lean: 0.1, headX: 0, headY: 3, ha: 0.0, jaw: 1, nw: { a1: -124, a2: -156, a3: -98, fan: -53 }, fw: { a1: -99, a2: -125, a3: -82, fan: -34 }, glow: 1, mouth: 1, tailLift: -1, tail: 0.3, tailAmp: 5, arm: -8 },
+  { hx: 0, hy: 1, lean: 0.08, headX: 0, headY: 3, ha: 0.02, jaw: 0.95, nw: { a1: -117, a2: -149, a3: -106, fan: -47 }, fw: { a1: -93, a2: -119, a3: -87, fan: -31 }, glow: 0.9, mouth: 0.9, tailLift: -4, tail: 0.45, tailAmp: 5, arm: -4 },
+  { hx: 0, hy: 0, lean: 0.04, headX: -1, headY: 2, ha: 0.06, jaw: 0.6, nw: { a1: -111, a2: -141, a3: -115 }, fw: { a1: -87, a2: -112 }, glow: 0.6, mouth: 0.3, tailLift: -2, tail: 0.6 },
+  { hy: 0, lean: 0.01, headX: 0, headY: 1, ha: 0.09, jaw: 0.12, nw: { a1: -108 }, glow: 0.4, tail: 0.8 },
 ];
+const IMPACT = 5;
+ATTACK[IMPACT].smearFrom = ATTACK[IMPACT - 1];
 
 // hit: snapped back, eyes squeezed shut, wings flinch inward → shakes it off
 const HIT: PoseDelta[] = [
-  { hx: -3, lean: -0.2, headX: -7, headY: -1, ha: -0.36, jaw: 0.5, eye: 0, nw: { a1: -95, a2: -117, a3: -117, fan: -30 }, fw: { a1: -96, a2: -122, fan: -22 }, tailLift: 4, arm: 28, glow: 0.05 },
-  { hx: -4, hy: 1, lean: -0.08, headX: -4, headY: 3, ha: 0.24, jaw: 0.2, eye: 0, nw: { a1: -100, a2: -126, a3: -114, fan: -35 }, fw: { a1: -92, fan: -24 }, tailLift: -2, arm: 10, glow: 0.15, tail: 0.2 },
-  { hx: -1, hy: 1, lean: -0.02, headX: -1, headY: 1, ha: 0.16, jaw: 0.05, eye: 1, nw: { a1: -105, a2: -134 }, glow: 0.25, tail: 0.35 },
-  { hx: 0, hy: 0, lean: 0, headX: 0, headY: 0, ha: 0.13, nw: { a1: -107 }, glow: 0.3, tail: 0.45 },
+  { hx: -3, lean: -0.2, headX: -5, headY: -1, ha: -0.3, jaw: 0.28, eye: 0, nw: { a1: -95, a2: -117, a3: -117, fan: -30 }, fw: { a1: -96, a2: -122, fan: -22 }, tailLift: 4, arm: 28, glow: 0.05 },
+  { hx: -4, hy: 1, lean: -0.08, headX: -2, headY: 3, ha: 0.24, jaw: 0.2, eye: 0, nw: { a1: -100, a2: -126, a3: -114, fan: -35 }, fw: { a1: -92, fan: -24 }, tailLift: -2, arm: 10, glow: 0.15, tail: 0.2 },
+  { hx: -1, hy: 1, lean: -0.02, headX: -1, headY: 1, ha: 0.14, jaw: 0, eye: 1, nw: { a1: -105, a2: -134 }, glow: 0.25, tail: 0.35 },
+  { hx: 0, hy: 0, lean: 0, headX: 0, headY: 0, ha: 0.11, nw: { a1: -107 }, glow: 0.3, tail: 0.45 },
 ];
 
-function guardPose(f: number, n: number): Pose {
-  const t = f / n;
-  const s = Math.sin(t * Math.PI * 2);
+const GUARD_N = 8;
+
+function guardPose(f: number): Pose {
+  // slow breathing in 1px steps (0,0,1,2,2,2,1,0); wing ribs and tail trail the body by a frame
+  const bob = (k: number) => Math.round(1 - Math.cos((((k % GUARD_N) + GUARD_N) % GUARD_N) / GUARD_N * Math.PI * 2));
+  const b = bob(f);
+  const bl = bob(f - 1);
+  const s = Math.sin(((f - 1) / GUARD_N) * Math.PI * 2);
   return pose({
     guard: true,
-    hy: f === 2 || f === 3 ? 4 : 3,
+    hy: 3 + b,
     lean: 0.16,
     headX: -3,
-    headY: 12 + (f === 2 || f === 3 ? 1 : 0),
+    headY: 12 + b,
     ha: 0.34,
-    nw: { a1: -64 + 2 * s, a2: 40 + 1.5 * s, a3: 76, fan: 21 },
-    fw: { a1: -50 + 2 * s, a2: 60, a3: 85, fan: 15 },
-    tailLift: -14,
+    nw: { a1: -64 + bl, a2: 40 + bl * 0.8, a3: 76, fan: 21 },
+    fw: { a1: -50 + bl, a2: 60, a3: 85, fan: 15 },
+    tailLift: -14 + bl,
     tailAmp: 2,
-    tail: t,
-    arm: -10,
+    tail: (f - 1) / GUARD_N,
+    arm: 24,
     glow: 0.35 + 0.2 * s,
     // a slow glint sweeps across the crystal shield, then it rests
-    glint: f === 0 ? -1 : 0.5 + f * 0.13,
+    glint: f < 2 ? -1 : 0.42 + (f - 2) * 0.09,
   });
 }
 
 function framePose(anim: MonsterAnim, f: number): Pose {
   switch (anim) {
     case 'idle':
-      return idlePose(f, ANIMS.idle.frames);
+      return idlePose(f);
     case 'roar':
       return pose(ROAR[f] ?? {});
     case 'attack':
@@ -1157,16 +1371,16 @@ function framePose(anim: MonsterAnim, f: number): Pose {
     case 'hit':
       return pose(HIT[f] ?? {});
     case 'guard':
-      return guardPose(f, ANIMS.guard.frames);
+      return guardPose(f);
   }
 }
 
 const ANIMS = {
-  idle: { frames: 8, fps: 7, loop: true },
+  idle: { frames: IDLE_N, fps: 10, loop: true },
   roar: { frames: ROAR.length, fps: 10, loop: false },
   attack: { frames: ATTACK.length, fps: 10, loop: false },
   hit: { frames: HIT.length, fps: 10, loop: false },
-  guard: { frames: 4, fps: 4, loop: true },
+  guard: { frames: GUARD_N, fps: 6, loop: true },
 };
 
 // ------------------------------------------------------------------ portrait
@@ -1200,18 +1414,20 @@ function portrait(p: PixelCanvas) {
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) p.set(x + dx, y + dy, PAL.gold3);
   }
 
-  const P = pose({ glow: 0.9, jaw: 0.45, mouth: 0.8, ha: 0.04 });
-  const hp: V = [14, 16];
+  // the character is built on its own transparent canvas, outlined once, then laid on the rays
+  const ch = new PixelCanvas(W, H);
+  const P = pose({ glow: 0.9, jaw: 0.4, mouth: 0.8, ha: 0.04 });
+  const hp: V = [13, 15];
   // crystal wing glass behind, top-left
   {
     const g = newG();
     const Wr: V = [2, 2];
-    gFacet(g, [Wr, [24, -6], [16, 6]], M.GLASS, [0, 0, 1], 0, 3);
-    gFacet(g, [Wr, [16, 6], [12, 12], [0, 14]], M.GLASS, [0, 0, 1], 0, 2);
+    gFacet(g, [Wr, [24, -6], [16, 6]], M.GLASS, FLAT_N, 0, 4);
+    gFacet(g, [Wr, [16, 6], [12, 12], [0, 14]], M.GLASS, FLAT_N, 0, 3);
     const c = g.render();
-    veinLine(c, [3, 3], [15, 5], PAL.cyan4);
-    veinLine(c, [3, 4], [10, 11], PAL.cyan3);
-    composite(p, c);
+    lineOn(c, [3, 3], [15, 5], PAL.white);
+    lineOn(c, [3, 4], [10, 11], PAL.cyan4);
+    composite(ch, c);
   }
   // neck with its crystal ridge, curling down out of frame
   {
@@ -1222,21 +1438,22 @@ function portrait(p: PixelCanvas) {
       const dn = dorsal(s.tan);
       gShard(gs, add(s.p, mul(dn, 6)), add(dn, mul(s.tan, -0.5)), 7, 2.4, M.CRYS, 0, 0.5);
     }
-    composite(p, gs.render());
+    composite(ch, gs.render());
     const g = newG();
-    gTube(g, neck, 13, 16, M.HIDE, { facets: 4, plates: { from: 0.3, period: 4 } });
+    gTube(g, neck, 13, 16, M.HIDE, { facets: 4, belly: { from: 0.3, lift: 0.16 } });
     const c = g.render();
-    rimLight(c);
-    composite(p, c);
+    rimLight(c, ch);
+    composite(ch, c);
   }
   HS = 1.48;
-  drawHead(p, hp, P);
+  drawHead(ch, hp, P);
   HS = 1.2;
+  ch.outline(PAL.ink);
+  p.blit(ch, 0, 0);
 }
 
 // ------------------------------------------------------------------ export
 
-const IMPACT = 5;
 const MUZZLE = rnd(mouthPoint(framePose('attack', IMPACT)));
 
 const crystalWyrm: MonsterArt = {

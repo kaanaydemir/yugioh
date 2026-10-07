@@ -2,10 +2,12 @@
 //
 // A hulking body of living sea water held together by ancient stone: a carved collar and waist
 // ring, rune-carved bracelets on the forearms, and a coral-crusted stone face mask whose eye
-// holes glow cyan. Facing right in 3/4. The torso rises out of a spinning waterspout that
-// splashes into a foam ring on the ground; inside the body currents swirl around a glowing cyan
-// core and bubbles rise. Water is shaded as a translucent liquid (lit body, deep interior,
-// foam caps on every crest, specular glints). Parametric rig: every frame is a Pose (numbers);
+// holes glow cyan. Turned 3/4 to the right (big near shoulder, chest/mask/core pushed forward, far
+// fist raised in a brawler's guard). The torso rises out of a spinning waterspout that splashes
+// into a foam ring on the ground; inside the body 1px currents sweep around a diamond-shaped cyan
+// core and bubble rings rise. Water is shaded as a translucent liquid (light rim where the water is
+// thin, deep water1 interior, white foam caps breaking on the shoulders and fists). Parametric
+// rig: every frame is a Pose (numbers);
 // drawGolem() paints back-to-front: far arm → back foam / guard ring → waterspout → torso
 // (water, currents, core) → stone rings → head (wave-crest hood, mask, coral) → near arm → front
 // foam / guard ring → geysers, slam splash, loose water → outline → swing swoosh. Arms are
@@ -62,6 +64,10 @@ interface Pose {
   smear: Pt[];
   /** Geysers erupting up out of both fists (roar) 0..1. */
   spout: number;
+  /** Foam collar bursting around the fists as the geysers launch (roar) 0..1. */
+  collar: number;
+  /** Arm length scale (the water limbs stretch on big heaves). */
+  reach: number;
   /** Gobs of body water knocked loose (hit): x, y, radius. */
   blobs: [number, number, number][];
   drops: Drop[];
@@ -70,17 +76,17 @@ interface Pose {
 const N: Pose = {
   bx: 30,
   by: 33,
-  lean: 0,
+  lean: 0.06,
   sx: 1,
   sy: 1,
-  hdx: 0,
+  hdx: 1,
   hdy: 0,
   face: 'n',
-  nf: [10, 48],
-  ff: [51, 47],
+  nf: [9, 48],
+  ff: [51, 41],
   farFront: false,
   nBend: 0,
-  fBend: 0,
+  fBend: -1,
   core: 1,
   flow: 0,
   foam: 1,
@@ -88,6 +94,8 @@ const N: Pose = {
   slam: 0,
   smear: [],
   spout: 0,
+  collar: 0,
+  reach: 1,
   blobs: [],
   drops: [],
 };
@@ -118,7 +126,7 @@ function idleDrips(t: number): Drop[] {
   const out: Drop[] = [];
   for (const [ph, x, y0] of [
     [0, 8, 53],
-    [0.5, 54, 52],
+    [0.5, 52, 46],
   ] as const) {
     const k = (t + ph) % 1;
     if (k < 0.25) continue;
@@ -145,42 +153,48 @@ const ROAR_SPRAY: [number, number, number][] = [
 const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> = {
   idle: { fps: 8, loop: true, poses: Array.from({ length: 8 }, (_, f) => idlePose(f, 8)) },
 
-  // Roar: sink and gather (anticipation) → surge up, both arms thrown up and out, water erupts
-  // off the shoulders and fists, the mask's eyes and mouth blaze → hold → settle.
+  // Roar: sink and gather (anticipation) → surge up, both arms thrown up and out, a foam collar
+  // bursts round each fist and 13–15px geysers blast up out of them, the mask's eyes and mouth
+  // blaze → the geysers break and shed drops → settle.
   roar: {
     fps: 10,
     loop: false,
     poses: [
       P({ flow: 0 }),
       P({ by: 36, sy: 0.92, sx: 1.06, lean: 0.08, nf: [19, 50], ff: [42, 50], core: 0.6, foam: 1.4, hdy: 1, flow: 0.1 }),
-      P({ by: 31, sy: 1.06, sx: 0.96, lean: -0.08, nf: [10, 22], ff: [52, 20], core: 1.6, foam: 1.6, face: 'roar', hdx: -1, hdy: -1, flow: 0.2 }),
-      P({ by: 31, sy: 1.08, sx: 0.95, lean: -0.12, nf: [9, 17], ff: [53, 15], core: 2, foam: 2, face: 'roar', hdx: -1, hdy: -2, flow: 0.3, spout: 0.6, drops: sprayUp(0.25, ROAR_SPRAY) }),
-      P({ by: 31, sy: 1.08, sx: 0.95, lean: -0.13, nf: [9, 16], ff: [53, 14], core: 2, foam: 1.8, face: 'roar', hdx: -1, hdy: -2, flow: 0.4, spout: 1, drops: sprayUp(0.5, ROAR_SPRAY) }),
-      P({ by: 31, sy: 1.07, sx: 0.95, lean: -0.12, nf: [10, 17], ff: [52, 15], core: 1.9, foam: 1.6, face: 'roar', hdx: -1, hdy: -2, flow: 0.5, spout: 0.85, drops: sprayUp(0.75, ROAR_SPRAY) }),
-      P({ by: 31, sy: 1.06, sx: 0.96, lean: -0.1, nf: [10, 18], ff: [52, 16], core: 1.8, foam: 1.4, face: 'roar', hdx: -1, hdy: -1, flow: 0.6, spout: 0.45, drops: sprayUp(1, ROAR_SPRAY) }),
-      P({ by: 32, sy: 1.02, lean: -0.03, nf: [12, 30], ff: [50, 28], core: 1.5, foam: 1.2, flow: 0.7 }),
-      P({ by: 34, sy: 0.97, sx: 1.03, nf: [11, 46], ff: [50, 45], core: 1.2, foam: 1.3, flow: 0.8 }),
+      P({ by: 31, sy: 1.06, sx: 0.98, lean: -0.08, nf: [10, 25], ff: [52, 23], nBend: -1, fBend: 1, core: 1.6, foam: 1.6, face: 'roar', hdx: -1, hdy: -1, flow: 0.2, spout: 0.25 }),
+      P({ by: 31, sy: 1.08, sx: 0.98, lean: -0.1, nf: [8, 23], ff: [54, 21], nBend: -1, fBend: 1, core: 2, foam: 2, face: 'roar', hdx: -1, hdy: -2, flow: 0.3, spout: 0.65, collar: 1 }),
+      P({ by: 31, sy: 1.08, sx: 0.98, lean: -0.11, nf: [8, 23], ff: [54, 21], nBend: -1, fBend: 1, core: 2, foam: 1.8, face: 'roar', hdx: -1, hdy: -2, flow: 0.4, spout: 1, collar: 0.4 }),
+      P({ by: 31, sy: 1.07, sx: 0.98, lean: -0.1, nf: [8, 23], ff: [54, 21], nBend: -1, fBend: 1, core: 1.9, foam: 1.6, face: 'roar', hdx: -1, hdy: -2, flow: 0.5, spout: 0.95,
+        drops: [{ x: 1, y: 8, s: 2 }, { x: 3, y: 12, s: 1 }, { x: 61, y: 7, s: 2 }, { x: 59, y: 11, s: 1 }, { x: 13, y: 5, s: 0 }, { x: 50, y: 4, s: 0 }] }),
+      P({ by: 31, sy: 1.06, sx: 0.98, lean: -0.08, nf: [9, 24], ff: [53, 22], nBend: -1, fBend: 1, core: 1.8, foam: 1.4, face: 'roar', hdx: -1, hdy: -1, flow: 0.6, spout: 0.6,
+        drops: [{ x: 1, y: 15, s: 2 }, { x: 4, y: 19, s: 1 }, { x: 62, y: 14, s: 2 }, { x: 59, y: 19, s: 1 }, { x: 14, y: 9, s: 1 }, { x: 49, y: 8, s: 1 }] }),
+      P({ by: 32, sy: 1.02, lean: -0.03, nf: [12, 32], ff: [50, 30], core: 1.5, foam: 1.2, flow: 0.7, spout: 0.15,
+        drops: [{ x: 2, y: 24, s: 1 }, { x: 62, y: 23, s: 1 }, { x: 15, y: 15, s: 0 }, { x: 48, y: 14, s: 0 }] }),
+      P({ by: 34, sy: 0.97, sx: 1.03, nf: [11, 46], ff: [49, 45], core: 1.2, foam: 1.3, flow: 0.8 }),
       P({ flow: 0.9 }),
     ],
   },
 
-  // Attack ("Dalga Darbesi"): both arms heave overhead, the body leans back and the core charges
-  // (anticipation) → slam forward and down → IMPACT: fists hit the ground in front, a burst of
-  // foam (muzzle = fists, the floor wave starts here) → follow-through → recover.
+  // Attack ("Dalga Darbesi"): crouch and gather → heave both arms up into a wide V, fists high and
+  // apart, forearms showing, shoulders still broad, the core charging (anticipation) → the arms swing
+  // forward over the head (the mask and blazing eyes stay visible under them) → slam down: IMPACT,
+  // fists hit the ground in front, a burst of foam (muzzle = fists, the floor wave starts here) →
+  // follow-through → recover.
   attack: {
     fps: 12,
     loop: false,
     poses: [
       P({ flow: 0 }),
-      P({ by: 34, sy: 0.95, sx: 1.04, lean: 0.06, nf: [20, 50], ff: [42, 50], core: 1.2, flow: 0.1 }),
-      P({ by: 31, sy: 1.07, sx: 0.96, lean: -0.16, nf: [13, 10], ff: [35, 8], nBend: 1, fBend: -1, core: 1.6, flow: 0.2, hdx: -1, hdy: -1 }),
-      P({ by: 30, sy: 1.09, sx: 0.95, lean: -0.2, nf: [12, 8], ff: [35, 7], nBend: 1, fBend: -1, core: 2, flow: 0.3, hdx: -1, hdy: -1, face: 'roar' }),
-      P({ by: 32, sy: 1.04, lean: 0.14, nf: [44, 17], ff: [50, 15], core: 2, flow: 0.4, face: 'roar', smear: [[20, 11], [27, 6], [35, 5], [41, 9]] }),
+      P({ by: 34, sy: 0.95, sx: 1.04, lean: 0.06, nf: [14, 51], ff: [46, 50], fBend: 1, core: 1.2, flow: 0.1 }),
+      P({ by: 31, sy: 1.05, lean: -0.1, nf: [15, 11], ff: [44, 10], nBend: -1, fBend: 1, reach: 1.05, core: 1.6, flow: 0.2, hdx: -1, hdy: -1 }),
+      P({ by: 30, sy: 1.07, lean: -0.14, nf: [14, 9], ff: [45, 8], nBend: -1, fBend: 1, reach: 1.1, core: 2, flow: 0.3, hdx: -1, hdy: -1, face: 'roar' }),
+      P({ by: 32, sy: 1.02, lean: 0.12, nf: [36, 8], ff: [48, 10], nBend: -1, fBend: 1, reach: 1.15, core: 2, flow: 0.4, hdx: 1, hdy: 2, face: 'roar', smear: [[15, 8], [20, 4], [28, 3]] }),
       P({ by: 37, sy: 0.92, sx: 1.07, lean: 0.36, nf: [47, 55], ff: [54, 54], core: 1.8, flow: 0.5, face: 'roar', slam: 1, foam: 1.8 }),
       P({ by: 37, sy: 0.93, sx: 1.06, lean: 0.34, nf: [47, 55], ff: [54, 54], core: 1.5, flow: 0.6, slam: 0.6, foam: 1.6,
         drops: [{ x: 57, y: 44, s: 2 }, { x: 60, y: 49, s: 1 }, { x: 44, y: 45, s: 1 }, { x: 59, y: 39, s: 0 }] }),
       P({ by: 35, sy: 0.97, lean: 0.18, nf: [38, 52], ff: [50, 51], core: 1.3, flow: 0.7, foam: 1.3, drops: [{ x: 60, y: 47, s: 1 }, { x: 61, y: 55, s: 0 }] }),
-      P({ by: 33, lean: 0.04, nf: [14, 49], ff: [50, 48], core: 1.1, flow: 0.8 }),
+      P({ by: 33, lean: 0.04, nf: [14, 49], ff: [49, 47], core: 1.1, flow: 0.8 }),
       P({ flow: 0.9 }),
     ],
   },
@@ -194,7 +208,7 @@ const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> 
         drops: [{ x: 47, y: 22, s: 2 }, { x: 51, y: 30, s: 2 }, { x: 45, y: 15, s: 1 }, { x: 53, y: 38, s: 1 }, { x: 8, y: 26, s: 1 }] }),
       P({ bx: 28, by: 34, lean: -0.12, sx: 1.04, sy: 0.96, hdx: -1, face: 'hit', nf: [9, 46], ff: [47, 44], core: 0.7, flow: 0.3, foam: 1.3, blobs: [[51, 20, 1.8], [54, 31, 1.3], [47, 12, 1]],
         drops: [{ x: 52, y: 19, s: 1 }, { x: 56, y: 30, s: 1 }, { x: 49, y: 12, s: 0 }, { x: 57, y: 41, s: 1 }, { x: 5, y: 30, s: 0 }] }),
-      P({ bx: 31, lean: 0.05, sx: 0.98, sy: 1.02, nf: [11, 48], ff: [52, 47], core: 0.9, flow: 0.45, drops: [{ x: 58, y: 36, s: 0 }, { x: 58, y: 50, s: 0 }] }),
+      P({ bx: 31, lean: 0.07, sx: 0.98, sy: 1.02, nf: [10, 48], ff: [51, 44], core: 0.9, flow: 0.45, drops: [{ x: 58, y: 36, s: 0 }, { x: 58, y: 50, s: 0 }] }),
       P({ flow: 0.6 }),
     ],
   },
@@ -217,6 +231,7 @@ const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> 
         nf: [26, 41 - b],
         ff: [39, 40 - b],
         farFront: true,
+        fBend: 1,
         core: 0.8 + 0.3 * s,
         flow: f / 4,
         wall: 1,
@@ -285,46 +300,62 @@ function reach(q: Canvas, x: number, y: number, dx: number, dy: number, n: numbe
 }
 
 /**
- * Water material with volume: each pixel compares how far it is from the silhouette edge toward
- * the light (top-left) and away from it, giving a lit side (water3), body (water2) and shadow
- * side (water1/water0). Crests along the top edge get foam (water4) with drifting white caps.
+ * Translucent water material. Light passes through the thin edges, so the silhouette carries a
+ * light rim (water4 on the lit top crest, water3 around the lit side, water2 on the shadowed
+ * bottom-right) over a deep water1 interior; the side toward the light glows water2 inside.
+ * `dim` = far/back elements (one step darker everywhere).
  */
-function shadeWater(q: Canvas, foamPh: number, dim = false): void {
+function shadeWater(q: Canvas, dim = false): void {
   const src = q.clone();
   const R = 7;
   for (let y = 0; y < q.h; y++)
     for (let x = 0; x < q.w; x++) {
       if (!src.isOpaque(x, y)) continue;
-      const dl = Math.min(reach(src, x, y, -1, 0, R), reach(src, x, y, 0, -1, R), reach(src, x, y, -1, -1, R) * 1.4);
-      const ds = Math.min(reach(src, x, y, 1, 0, R), reach(src, x, y, 0, 1, R), reach(src, x, y, 1, 1, R) * 1.4);
+      const dl = Math.min(reach(src, x, y, -1, 0, R), reach(src, x, y, 0, -1, R));
+      const ds = Math.min(reach(src, x, y, 1, 0, R), reach(src, x, y, 0, 1, R));
+      const e = Math.min(dl, ds);
       const t = dl / (dl + ds);
-      // translucent liquid: lit body toward the light, deep interior, reflected light on the far rim
       let c: number;
-      if (dim) c = t < 0.4 ? PAL.water1 : PAL.water0;
-      else c = t < 0.34 ? PAL.water2 : PAL.water1;
-      if (ds <= 1) c = dim ? PAL.water1 : PAL.water2;
-      if (dl <= 1) c = dim ? PAL.water2 : PAL.water3;
-      else if (dl <= 2 && t < 0.3 && !dim) c = PAL.water3;
-      if (!src.isOpaque(x, y - 1)) {
-        // foam crest along the top: white caps drift with the flow phase
-        const k = frac((x + foamPh * 12) / 6);
-        c = dim ? PAL.water2 : k < 0.55 ? PAL.water4 : PAL.water3;
-        if (!dim && k < 0.2 && !src.isOpaque(x - 1, y - 1)) c = PAL.white;
-      }
+      if (e <= 1) {
+        // rim: the water is thin here and lets the light through
+        if (!src.isOpaque(x, y - 1)) c = dim ? PAL.water2 : PAL.water4;
+        else if (dl <= 1) c = dim ? PAL.water2 : PAL.water3;
+        else c = dim ? PAL.water1 : PAL.water2;
+      } else if (e === 2 && dl === 2) c = dim ? PAL.water1 : PAL.water3;
+      else if (e === 2) c = dim ? PAL.water1 : PAL.water2;
+      else c = t < 0.3 ? (dim ? PAL.water1 : PAL.water2) : dim ? PAL.water0 : PAL.water1;
       q.set(x, y, c);
     }
 }
 
-/** A curved specular glint inside the upper-left of a round water form. */
-function glint(q: Canvas, cx: number, cy: number, r: number, dim = false): void {
-  if (dim) return;
-  for (let i = 0; i <= 6; i++) {
-    const a = Math.PI * 1.08 + (i / 6) * 0.55 * Math.PI;
-    const x = cx + Math.cos(a) * r * 0.62;
-    const y = cy + Math.sin(a) * r * 0.62;
-    if (q.isOpaque(x, y)) q.set(x, y, i === 3 || i === 4 ? PAL.white : PAL.water4);
-  }
+/** White foam lumps sitting on a water crest (drawn on top of the shaded water, they extend the silhouette). */
+function foamCap(q: Canvas, lumps: readonly (readonly [number, number, number])[], dim = false): void {
+  const f = new PixelCanvas(q.w, q.h);
+  for (const [x, y, r] of lumps) f.disc(x, y, r, PAL.white);
+  for (let y = 0; y < q.h; y++)
+    for (let x = 0; x < q.w; x++) {
+      if (!f.isOpaque(x, y)) continue;
+      const top = !f.isOpaque(x, y - 1);
+      const bottom = !f.isOpaque(x, y + 1);
+      let c: number = top ? PAL.white : bottom ? PAL.water3 : PAL.water4;
+      if (dim) c = top ? PAL.water4 : PAL.water3;
+      q.set(x, y, c);
+    }
 }
+
+/** Hollow bubble ring (4 px) or a single-pixel bubble. */
+function bubble(t: Canvas, x: number, y: number, ring: boolean): void {
+  x = Math.round(x);
+  y = Math.round(y);
+  if (!ring) {
+    t.set(x, y, PAL.cyan4);
+    return;
+  }
+  t.set(x, y - 1, PAL.cyan4).set(x - 1, y, PAL.cyan4).set(x + 1, y, PAL.cyan4).set(x, y + 1, PAL.cyan3);
+}
+
+/** Interior water (not the light rim) — where currents and bubbles may be painted. */
+const DEEP = new Set<number>([PAL.water0, PAL.water1, PAL.water2]);
 
 /** Stone material: stone2 base, lit top-left, dark bottom-right, optional 1px top highlight. */
 function shadeStone(q: Canvas, dim = false): void {
@@ -365,10 +396,10 @@ function rig(o: Pose): Rig {
   return {
     T,
     shN: T(-12, -8),
-    shF: T(11, -9),
+    shF: T(10, -9.5),
     waist: [wx, wy],
-    core: T(1, -3),
-    head: T(6 + o.hdx, -14 + o.hdy),
+    core: T(3.5, -3.5),
+    head: T(8 + o.hdx, -14.5 + o.hdy),
   };
 }
 
@@ -377,37 +408,58 @@ function rig(o: Pose): Rig {
 const UPPER = 9.5;
 const FORE = 10;
 
-function armPts(sh: Pt, fist: Pt, bend: 1 | -1): { el: Pt; wr: Pt } {
+function armPts(sh: Pt, fist: Pt, bend: 1 | -1, k: number): { el: Pt; wr: Pt } {
   // the fist center sits ~4px past the wrist
   const dx = fist[0] - sh[0];
   const dy = fist[1] - sh[1];
   const d = Math.hypot(dx, dy) || 1;
   const wrT: Pt = [fist[0] - (dx / d) * 3.5, fist[1] - (dy / d) * 3.5];
-  const [el, wr] = ik(sh[0], sh[1], wrT[0], wrT[1], UPPER, FORE, bend);
+  const [el, wr] = ik(sh[0], sh[1], wrT[0], wrT[1], UPPER * k, FORE * k, bend);
   return { el, wr };
 }
 
 function drawArm(p: Canvas, o: Pose, sh: Pt, fist: Pt, near: boolean, bend: 1 | -1): void {
-  const { el, wr } = armPts(sh, fist, bend);
+  const { el, wr } = armPts(sh, fist, bend, o.reach);
   const dim = !near;
+  const fr = near ? 5.6 : 5;
   // water limb: slim upper arm, forearm swelling into a heavy fist
   layer(p, (q) => {
     q.stroke([sh, el], near ? 7 : 6, near ? 6 : 5, PAL.water2);
     q.stroke([el, wr], near ? 6 : 5, near ? 7.5 : 6.5, PAL.water2);
-    q.disc(fist[0], fist[1], near ? 5.6 : 5, PAL.water2);
-    shadeWater(q, o.flow + (near ? 0 : 0.5), dim);
-    // a current running down the arm into the fist
+    q.disc(fist[0], fist[1], fr, PAL.water2);
+    shadeWater(q, dim);
+    const base = q.clone();
+    // a current running down the arm into the fist (1px dashes travelling with the flow)
     clip(q, (t) => {
-      for (let i = 0; i < 2; i++) {
-        const k = frac(o.flow * 2 + i * 0.5 + (near ? 0 : 0.25));
-        const a: Pt = k < 0.5 ? [lerp(sh[0], el[0], k * 2), lerp(sh[1], el[1], k * 2)] : [lerp(el[0], wr[0], k * 2 - 1), lerp(el[1], wr[1], k * 2 - 1)];
-        t.set(a[0] - 1, a[1] - 1, dim ? PAL.water2 : PAL.water4);
-        t.set(a[0] - 1, a[1], dim ? PAL.water2 : PAL.water3);
+      const path: Pt[] = [sh, el, wr, fist];
+      const total = Math.hypot(el[0] - sh[0], el[1] - sh[1]) + Math.hypot(wr[0] - el[0], wr[1] - el[1]) + Math.hypot(fist[0] - wr[0], fist[1] - wr[1]);
+      let acc = 0;
+      for (let i = 0; i + 1 < path.length; i++) {
+        const [ax, ay] = path[i];
+        const [bx, by] = path[i + 1];
+        const L = Math.hypot(bx - ax, by - ay);
+        const nx = -(by - ay) / (L || 1);
+        const ny = (bx - ax) / (L || 1);
+        for (let k = 0; k <= L * 2; k++) {
+          const u = k / (L * 2 || 1);
+          const sAt = acc + L * u;
+          if (frac(sAt / 7 - o.flow * 2 - (near ? 0 : 0.4)) > 0.5) continue;
+          const x = Math.floor(lerp(ax, bx, u) - nx * 1.2);
+          const y = Math.floor(lerp(ay, by, u) - ny * 1.2);
+          if (DEEP.has(base.get(x, y) ?? -1)) t.set(x, y, dim ? PAL.water2 : PAL.water3);
+        }
+        acc += L;
       }
+      void total;
     });
-    glint(q, fist[0], fist[1], near ? 5.6 : 5, dim);
+    // foam breaking over the top of the fist
+    const up = fist[1] - fr + 0.6;
+    foamCap(q, [
+      [fist[0] - 1.8, up + 0.6, 1.5],
+      [fist[0] + 0.9, up, 1.8],
+    ], dim);
   });
-  // stone rings: an armband on the upper arm and a heavy bracelet at the wrist
+  // stone ring: a heavy rune-carved bracelet at the wrist
   const band = (a: Pt, b: Pt, w: number, rune: boolean) =>
     layer(p, (q) => {
       q.stroke([a, b], w, w, PAL.stone2);
@@ -428,7 +480,7 @@ function drawArm(p: Canvas, o: Pose, sh: Pt, fist: Pt, near: boolean, bend: 1 | 
         q.set(m[0] + Math.cos(ang) * -3.4, m[1] + Math.sin(ang) * -3.4 + 1, PAL.stone4);
       }
     });
-  band([lerp(el[0], wr[0], 0.5), lerp(el[1], wr[1], 0.5)], [lerp(el[0], wr[0], 0.72), lerp(el[1], wr[1], 0.72)], near ? 8.5 : 7.5, true);
+  band([lerp(el[0], wr[0], 0.5), lerp(el[1], wr[1], 0.5)], [lerp(el[0], wr[0], 0.66), lerp(el[1], wr[1], 0.66)], near ? 7.5 : 6.5, true);
 }
 
 function drawVortex(p: Canvas, o: Pose): void {
@@ -436,8 +488,8 @@ function drawVortex(p: Canvas, o: Pose): void {
   const top = R.waist;
   const cx = lerp(top[0], o.bx, 0.5);
   layer(p, (q) => {
-    // spinning waterspout: pinched in the middle, flaring into the ground; the bands wrap around
-    // the column (cylindrical phase) and travel with the flow
+    // spinning waterspout: pinched in the middle, flaring into the ground; thin spiral currents
+    // wrap around the column (cylindrical phase) and travel with the flow
     for (let y = Math.floor(top[1] - 2); y <= GROUND - 2; y++) {
       const t = (y - (top[1] - 2)) / (GROUND - 2 - (top[1] - 2));
       const xc = lerp(top[0], cx, t);
@@ -448,12 +500,10 @@ function drawVortex(p: Canvas, o: Pose): void {
         if (Math.abs(u) > 1) continue;
         const ang = Math.asin(Math.max(-1, Math.min(1, u))) / Math.PI; // -0.5..0.5 around the front
         const band = frac(ang * 1.6 + y / 6 - o.flow * 2);
-        let c: number = PAL.water2;
-        if (band < 0.2) c = u < 0.3 ? PAL.water3 : PAL.water2;
-        else if (band > 0.7) c = PAL.water1;
-        if (band < 0.07 && u < -0.1 && u > -0.75) c = PAL.water4;
-        if (u > 0.7) c = band < 0.2 ? PAL.water2 : PAL.water1;
-        if (u < -0.8) c = PAL.water3;
+        let c: number = u < -0.35 ? PAL.water2 : PAL.water1;
+        if (band < 0.13) c = u < 0.2 ? PAL.water3 : PAL.water2;
+        if (u > 0.8) c = PAL.water2;
+        if (u < -0.78) c = PAL.water3;
         q.set(x, y, c);
       }
     }
@@ -501,7 +551,7 @@ function drawFoamRing(p: Canvas, o: Pose, front: boolean): void {
   );
 }
 
-/** Torso water mass: barrel chest, humped shoulders, tapering waist (torso-local shapes). */
+/** Torso water mass, turned 3/4 to the right: big near shoulder, chest pushed forward, small far shoulder. */
 function drawTorso(p: Canvas, o: Pose): void {
   const R = rig(o);
   const { T } = R;
@@ -510,62 +560,72 @@ function drawTorso(p: Canvas, o: Pose): void {
       const [cx, cy] = T(x, y);
       q.ellipse(cx, cy, rx * o.sx, ry * o.sy, PAL.water2);
     };
-    blob(0, -3, 12.5, 8.5);
-    blob(0, 5, 7.5, 6);
-    blob(-10, -8, 6, 5.5);
-    blob(10.5, -9, 5.5, 5);
-    blob(1, -11, 8, 4);
-    shadeWater(q, o.flow);
-    {
-      const [gx, gy] = T(-1, -4);
-      glint(q, gx, gy, 11);
-      const [sx2, sy2] = T(-10, -8);
-      glint(q, sx2, sy2, 5.5);
-    }
+    blob(0, -3, 12, 8.5);
+    blob(5.5, -4, 8, 7);
+    blob(1, 5, 7.5, 6);
+    blob(-10.5, -8, 6.5, 6);
+    blob(10, -9.5, 5, 4.6);
+    blob(0, -11, 8, 4);
+    shadeWater(q);
     const base = q.clone();
-    // internal currents swirling around the core (bright on the lit side, dark undertow opposite)
+    const deep = (x: number, y: number) => DEEP.has(base.get(x, y) ?? -1);
     clip(q, (t) => {
-      const [cx, cy] = R.core;
-      for (let k = 0; k < 2; k++) {
-        const rr = 5.5 + k * 3;
-        const a0 = o.flow * TAU * (k ? -1 : 1) + k * 2.6;
-        const n = 14;
-        for (let i = 0; i <= n; i++) {
-          const a = a0 + (i / n) * 1.9;
-          const x = cx + Math.cos(a) * rr * 1.2;
-          const y = cy + Math.sin(a) * rr * 0.8;
-          const under = base.get(x, y);
-          if (under === PAL.water1 || under === PAL.water0) t.set(x, y, i > n - 3 ? PAL.water3 : PAL.water2);
-          else t.set(x, y, i > n - 3 ? PAL.water4 : PAL.water3);
+      // internal currents: 1px lines sweeping down through the body, dashes travel with the flow
+      const curves: Pt[][] = [
+        [[-14, -5], [-11, 0], [-6, 4], [0, 6], [6, 4.5]],
+        [[-7, -9], [-6, -5], [-2, -1], [-4, 3]],
+        [[13, -6], [12, -1], [9, 3], [4, 8]],
+      ];
+      curves.forEach((c, ci) => {
+        let acc = 0;
+        for (let i = 0; i + 1 < c.length; i++) {
+          const a = T(c[i][0], c[i][1]);
+          const b = T(c[i + 1][0], c[i + 1][1]);
+          const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+          for (let k = 0; k <= L * 2; k++) {
+            const u = k / (L * 2 || 1);
+            if (frac((acc + L * u) / 11 - o.flow * 2 - ci * 0.33) > 0.72) continue;
+            const x = Math.floor(lerp(a[0], b[0], u));
+            const y = Math.floor(lerp(a[1], b[1], u));
+            if (deep(x, y)) t.set(x, y, PAL.water3);
+          }
+          acc += L;
         }
-      }
-      // rising bubbles
+      });
+      // bubble rings rising from the waist up through the chest, wobbling as they go
+      const lanes = [-8, 11, -3.5];
       for (let k = 0; k < 3; k++) {
         const ph = frac(o.flow + k / 3);
-        const [x, y] = T(-5 + k * 5, 8 - ph * 18);
-        t.set(x, y, PAL.water4);
+        const [x, y] = T(lanes[k] + Math.sin((ph + k * 0.3) * TAU) * 1.2, 6 - ph * 17);
+        if (deep(x, y) && deep(x - 1, y) && deep(x + 1, y) && deep(x, y - 1) && deep(x, y + 1)) bubble(t, x, y, k !== 2);
+        const [sx, sy] = T(lanes[(k + 1) % 3] + 1.5, 3 - frac(ph + 0.5) * 14);
+        if (deep(sx, sy)) bubble(t, sx, sy, false);
       }
     });
-    // keep silhouette rims crisp on top of the currents
-    for (let y = 0; y < H; y++)
-      for (let x = 0; x < W; x++) {
-        if (!base.isOpaque(x, y)) continue;
-        if (!base.isOpaque(x, y - 1) || !base.isOpaque(x + 1, y) || !base.isOpaque(x, y + 1) || !base.isOpaque(x - 1, y)) q.set(x, y, base.get(x, y)!);
-      }
-    // glowing core seen through the water
-    const [cx, cy] = R.core;
+    // glowing core seen through the water: a 5px diamond (white/cyan4 heart) inside a cyan2 halo
+    const [cx, cy] = R.core.map(Math.round) as unknown as Pt;
     const g = o.core;
-    clip(q, (t) => {
-      for (let y = Math.floor(cy - 7); y <= cy + 7; y++)
-        for (let x = Math.floor(cx - 7); x <= cx + 7; x++) {
-          const d = Math.hypot(x + 0.5 - cx, (y + 0.5 - cy) * 1.1);
-          if (d < 0.9 + 0.45 * g) t.set(x, y, g > 1.4 ? PAL.white : PAL.cyan4);
-          else if (d < 1.8 + 0.5 * g) t.set(x, y, PAL.cyan4);
-          else if (d < 2.6 + 0.6 * g) t.set(x, y, PAL.cyan3);
-          else if (d < 3.4 + 0.8 * g && PixelCanvas.ditherAt(x, y, 9)) t.set(x, y, PAL.cyan2);
-          else if (d < 4.6 + g && PixelCanvas.ditherAt(x, y, 3)) t.set(x, y, PAL.cyan1);
-        }
-    });
+    for (let dy = -5; dy <= 5; dy++)
+      for (let dx = -5; dx <= 5; dx++) {
+        const d = Math.abs(dx) + Math.abs(dy);
+        let c: number | null = null;
+        if (d === 0) c = PAL.white;
+        else if (d === 1) c = g > 1.25 ? PAL.white : PAL.cyan4;
+        else if (d === 2) c = g > 0.8 ? PAL.cyan4 : PAL.cyan3;
+        else if (d === 3) c = g > 1.6 ? PAL.cyan3 : PAL.cyan2;
+        else if (d === 4 && g > 1.6) c = PAL.cyan2;
+        if (c !== null && q.isOpaque(cx + dx, cy + dy)) q.set(cx + dx, cy + dy, c);
+      }
+    // foam breaking over the shoulders
+    const [nsx, nsy] = T(-10.5, -14);
+    const [fsx, fsy] = T(10, -14.1);
+    foamCap(q, [
+      [nsx - 3.4, nsy + 2.2, 1.5],
+      [nsx - 1, nsy + 0.6, 2],
+      [nsx + 1.8, nsy + 0.5, 1.6],
+      [fsx - 0.2, fsy + 0.5, 1.7],
+      [fsx + 2.2, fsy + 1.5, 1.3],
+    ]);
   });
 }
 
@@ -588,7 +648,7 @@ function drawRing(p: Canvas, o: Pose, y: number, rx: number, thick: number, rune
       const [x, yy] = T(Math.cos(a) * rx, y + Math.sin(a) * 2.2);
       const xi = Math.floor(x);
       const yi = Math.floor(yy + thick * 0.5);
-      if (i === 3 || i === 4) {
+      if (i === 2 || i === 3) {
         if (runes > 0) q.set(xi, yi, o.core > 1.5 ? PAL.cyan4 : PAL.cyan3);
       } else if (q.isOpaque(xi, yi)) q.set(xi, yi, PAL.stone0);
     }
@@ -597,20 +657,21 @@ function drawRing(p: Canvas, o: Pose, y: number, rx: number, thick: number, rune
 
 // ---------------------------------------------------------------- head: water dome + stone mask
 
-// Mask (11×11), facing right in 3/4: heavy brow, deep sockets, nose ridge, a carved mouth with
-// teeth grooves. Keys: 0–4 stone ramp, e/f/g eye glow, m mouth (glows when roaring), b barnacle.
+// Mask (12×11), turned 3/4 to the right: lit side plane on the left, heavy brow and nose jutting
+// right, near eye big, far eye squeezed beside the nose ridge, carved mouth.
+// Keys: 0–4 stone ramp, e/f/g eye glow, m mouth (glows when roaring), b barnacle.
 const MASK = [
-  '..2333332..',
-  '.234444432.',
-  '.2344444321',
-  '.0000300001',
-  '.0fe030fg01',
-  '.1000300011',
-  '.b233433221',
-  '.12m0m0m21.',
-  '.12mmmmm21.',
-  '..1233321..',
-  '...11111...',
+  '...2333332..',
+  '..234444432.',
+  '.23444444443',
+  '.32000030011',
+  '.320fe03fg1.',
+  '.32100034421',
+  '.b2233343321',
+  '.312m0m0m21.',
+  '.312mmmmm21.',
+  '..21233321..',
+  '...111111...',
 ];
 
 function drawHead(p: Canvas, o: Pose): void {
@@ -619,7 +680,7 @@ function drawHead(p: Canvas, o: Pose): void {
   const x0 = Math.round(hx - 5);
   const y0 = Math.round(hy - 5);
   const sway = Math.sin((o.flow + 0.2) * TAU);
-  // water hood behind the mask, swept back into a curling wave crest
+  // water hood behind the mask, swept back into a curling wave crest with a foam lip
   layer(p, (q) => {
     q.ellipse(x0 + 3, y0 + 4, 6, 6, PAL.water2);
     q.stroke(
@@ -633,8 +694,11 @@ function drawHead(p: Canvas, o: Pose): void {
       2.5,
       PAL.water2,
     );
-    shadeWater(q, o.flow + 0.3);
-    q.set(x0 - 3 + sway, y0 - 2, PAL.white).set(x0 - 2 + sway, y0 - 2, PAL.water4);
+    shadeWater(q);
+    foamCap(q, [
+      [x0 - 2.5 + sway * 0.5, y0 - 2.6, 1.3],
+      [x0 + 0.2, y0 - 3.2, 1.2],
+    ]);
   });
   const roar = o.face === 'roar';
   const hit = o.face === 'hit';
@@ -654,10 +718,10 @@ function drawHead(p: Canvas, o: Pose): void {
     q.stamp(MASK, key, x0, y0);
     if (hit) {
       // eyes squeezed into slits
-      q.set(x0 + 2, y0 + 4, PAL.stone0).set(x0 + 3, y0 + 4, PAL.stone0).set(x0 + 2, y0 + 5, PAL.cyan2).set(x0 + 3, y0 + 5, PAL.cyan1);
-      q.set(x0 + 7, y0 + 4, PAL.stone0).set(x0 + 8, y0 + 4, PAL.stone0).set(x0 + 7, y0 + 5, PAL.cyan1);
+      q.set(x0 + 4, y0 + 4, PAL.stone0).set(x0 + 5, y0 + 4, PAL.stone0).set(x0 + 4, y0 + 5, PAL.cyan2).set(x0 + 5, y0 + 5, PAL.cyan1);
+      q.set(x0 + 8, y0 + 4, PAL.stone0).set(x0 + 9, y0 + 4, PAL.stone0).set(x0 + 8, y0 + 5, PAL.cyan1);
     }
-    if (roar) q.set(x0 + 4, y0 + 8, PAL.cyan4).set(x0 + 5, y0 + 8, PAL.cyan4);
+    if (roar) q.set(x0 + 5, y0 + 8, PAL.cyan4).set(x0 + 6, y0 + 8, PAL.cyan4).set(x0 + 3, y0 + 4, PAL.cyan3);
     // coral crust growing off the brow: two knobbly branches + barnacles
     const cq = new PixelCanvas(W, H);
     cq.stroke([[x0 + 3, y0 + 1], [x0 + 2, y0 - 2], [x0 + 0.5, y0 - 4.5]], 2.4, 1.2, PAL.mag2);
@@ -668,7 +732,7 @@ function drawHead(p: Canvas, o: Pose): void {
     edge(cq, 0, -1, PAL.mag3);
     cq.set(x0, y0 - 5, PAL.mag4).set(x0 + 4, y0 - 4, PAL.mag4).set(x0 + 7, y0 - 3, PAL.mag4).set(x0 + 2, y0 - 1, PAL.crim3);
     q.blit(cq, 0, 0);
-    q.set(x0 + 9, y0 + 2, PAL.mag3).set(x0 + 9, y0 + 1, PAL.mag2);
+    q.set(x0 + 10, y0 + 2, PAL.mag3).set(x0 + 10, y0 + 1, PAL.mag2);
   });
 }
 
@@ -695,7 +759,7 @@ function drawWall(p: Canvas, o: Pose, front: boolean): void {
       const th = 3.2 + 1.6 * crest + (front ? 0.6 : 0);
       q.disc(x, y - crest * 1.5, th / 2, PAL.water2);
     }
-    shadeWater(q, o.flow * 2, !front);
+    shadeWater(q, !front);
     if (front) {
       // foam caps riding the crests
       for (let k = 0; k < 3; k++) {
@@ -735,34 +799,66 @@ function drawSlam(p: Canvas, o: Pose): void {
   });
 }
 
-/** Water geysers shooting up from the raised fists: a widening column capped by a foam head. */
+/**
+ * Water geysers blasting up out of the raised fists (roar): an aerated water3 column leaning
+ * outward, light rim on the lit side, rising water4 streaks, a churning white/water4 foam crest that
+ * spills outward. `collar` adds a crown of foam bursting round the top of the fist as it launches.
+ */
 function drawSpouts(p: Canvas, o: Pose): void {
-  if (o.spout <= 0) return;
+  if (o.spout <= 0 && o.collar <= 0) return;
   for (const [f, near] of [
-    [o.nf, true],
     [o.ff, false],
+    [o.nf, true],
   ] as const) {
+    const dir = near ? -1 : 1;
+    const bx = f[0];
+    const by = f[1] - (near ? 5 : 4.4);
     layer(p, (q) => {
-      const h = 10 * o.spout;
-      const top = Math.max(6, f[1] - 4 - h);
-      const sway = Math.sin((o.flow + (near ? 0 : 0.5)) * TAU) * 1;
-      const tx = f[0] + sway;
-      q.stroke([[f[0], f[1] - 2], [lerp(f[0], tx, 0.5), lerp(f[1] - 2, top, 0.5)], [tx, top + 1]], 3, 5, PAL.water2);
-      // frothy head: a cluster of foam lobes that churns with the flow
-      const ph = o.flow * TAU * 2;
-      const r = 1.6 + 1.1 * o.spout;
-      q.disc(tx, top, r + 0.4, PAL.water2);
-      q.disc(tx - r * 0.9, top + 0.6 + Math.sin(ph) * 0.5, r * 0.75, PAL.water2);
-      q.disc(tx + r * 0.9, top + 0.6 + Math.cos(ph) * 0.5, r * 0.75, PAL.water2);
-      shadeWater(q, o.flow);
-      // churning foam on the head, streaks rising in the column
-      for (let y = Math.floor(top - r - 1); y <= top + 1; y++)
-        for (let x = Math.floor(tx - r * 2); x <= tx + r * 2; x++)
-          if (q.isOpaque(x, y) && !q.isOpaque(x, y - 1)) q.set(x, y, frac((x + y + o.flow * 6) / 3) < 0.5 ? PAL.white : PAL.water4);
-      clip(q, (t) => {
-        const k = Math.floor(o.flow * 9) % 3;
-        for (let y = Math.floor(top) + 3 + k; y < f[1] - 4; y += 3) t.set(Math.round(lerp(tx, f[0], (y - top) / (f[1] - top))) - 1, y, PAL.water4);
-      });
+      if (o.spout > 0) {
+        const top = Math.max(3, by - 15 * o.spout);
+        const lean = dir * 2 * o.spout;
+        const tx = bx + lean;
+        const col = new PixelCanvas(W, H);
+        col.stroke([[bx, by + 1], [bx + lean * 0.3, lerp(by, top, 0.55)], [tx, top + 1.5]], 3, 4.4, PAL.water3);
+        // crest: a mushroom of foam lobes, the outer one spilling over and down
+        const r = 1.2 + 1.3 * o.spout;
+        col.disc(tx, top + 0.8, r, PAL.water3);
+        col.disc(tx + dir * r * 1.1, top + 1.9, r * 0.75, PAL.water3);
+        col.disc(tx - dir * r * 0.8, top + 1.5, r * 0.6, PAL.water3);
+        const src = col.clone();
+        for (let y = 0; y < H; y++)
+          for (let x = 0; x < W; x++) {
+            if (!src.isOpaque(x, y)) continue;
+            let c: number = PAL.water3;
+            if (!src.isOpaque(x + 1, y)) c = PAL.water2;
+            if (!src.isOpaque(x - 1, y)) c = PAL.water4;
+            if (y <= top + r + 1) {
+              // churning foam head: white caps, water4 body, water3 underside
+              c = !src.isOpaque(x, y - 1) || frac((x * 0.6 + y * 0.8 + o.flow * 5) / 3) < 0.4 ? PAL.white : PAL.water4;
+              if (!src.isOpaque(x, y + 1)) c = PAL.water3;
+            } else {
+              // streaks racing up the column
+              const cxl = lerp(bx, tx, (by - y) / Math.max(1, by - top));
+              if (Math.abs(x + 0.5 - cxl) < 1 && frac((y + o.flow * 12) / 4) < 0.35) c = PAL.white;
+            }
+            col.set(x, y, c);
+          }
+        q.blit(col, 0, 0);
+      }
+      if (o.collar > 0) {
+        // crown splash: tongues of foam thrown up and out round the top of the fist
+        const k = o.collar;
+        const ring = new PixelCanvas(W, H);
+        for (const [dx, h] of [
+          [-4.2, 2.5],
+          [-2.4, 4],
+          [2.4, 4],
+          [4.2, 2.5],
+        ] as const) ring.stroke([[bx + dx * 0.7, by + 1.5], [bx + dx * (1 + 0.25 * k), by + 1.5 - h * k]], 1.8, 1, PAL.water4);
+        ring.ellipse(bx, by + 1.5, 3.2 + k, 1.2, PAL.water4);
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (ring.isOpaque(x, y) && !ring.isOpaque(x, y - 1)) ring.set(x, y, PAL.white);
+        q.blit(ring, 0, 0);
+      }
     });
   }
 }
@@ -791,7 +887,7 @@ function drawBlobs(p: Canvas, o: Pose): void {
   if (!o.blobs.length) return;
   layer(p, (q) => {
     for (const [x, y, r] of o.blobs) q.disc(x, y, r, PAL.water2);
-    shadeWater(q, o.flow);
+    shadeWater(q);
     for (const [x, y, r] of o.blobs) if (r > 1.4) q.set(x - 1, y - 1, PAL.white);
   });
 }
@@ -870,7 +966,10 @@ const art: MonsterArt = {
   anchorY: GROUND,
   hover: 0,
   muzzle: { x: Math.round((IMPACT.nf[0] + IMPACT.ff[0]) / 2 + 2), y: GROUND - 3 },
-  core: { x: 31, y: 30 },
+  core: (() => {
+    const c = rig(N).core;
+    return { x: Math.round(c[0]), y: Math.round(c[1]) };
+  })(),
   anims: {
     idle: { frames: ANIMS.idle.poses.length, fps: ANIMS.idle.fps, loop: true },
     roar: { frames: ANIMS.roar.poses.length, fps: ANIMS.roar.fps, loop: false },

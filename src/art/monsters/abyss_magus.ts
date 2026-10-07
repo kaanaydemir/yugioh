@@ -54,8 +54,17 @@ interface Pose {
   flash: number;
   /** Guard ward: a faint dotted barrier arc in front of the body (0..1). */
   ward: number;
-  /** Smear: staff angle the orb swept from this frame (NaN = none). Drawn as a glowing arc. */
-  trail: number;
+  /** Smear: the orb's path this frame, a curve from (sfx,sfy) bending through (scx,scy) to the orb
+   *  (NaN = none). Drawn as a tapered glowing band, behind the body. */
+  sfx: number;
+  sfy: number;
+  scx: number;
+  scy: number;
+  /** Wind-up: the upper staff + orb are drawn behind the shoulders and helm. */
+  orbBack: number;
+  /** Roar: void flame in the raised free hand 0..1, star burst around the orb 0..1. */
+  flame: number;
+  star: number;
   /** Time phase for ripples/sparkles. */
   t: number;
 }
@@ -87,7 +96,13 @@ const NEUTRAL: Pose = {
   aura: 0,
   charge: 0,
   flash: 0,
-  trail: NaN,
+  sfx: NaN,
+  sfy: NaN,
+  scx: NaN,
+  scy: NaN,
+  orbBack: 0,
+  flame: 0,
+  star: 0,
   ward: 0,
   t: 0,
 };
@@ -119,7 +134,10 @@ function idlePose(f: number, n: number): Pose {
 const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> = {
   idle: { fps: 8, loop: true, poses: Array.from({ length: 8 }, (_, f) => idlePose(f, 8)) },
 
-  // Roar: gather (sink, staff in, runes ignite) → BURST (staff high, cape flares, aura ring) → hold → settle.
+  // Roar: gather (sink, staff in, runes ignite) → BURST (helm thrown back, visor flaring white, staff
+  // and orb hoisted high with a star burst, free hand raised with a void flame, cape flares, robe
+  // runes flash) → the aura ring rolls out (r 14→32 over f4–f6, lower half in front of the robe,
+  // dither-fading) → settle.
   roar: {
     fps: 10,
     loop: false,
@@ -127,28 +145,31 @@ const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> 
       P({ bob: 1, lean: -1, gy: 45, cy: -1, t: 0.0, rune: 0.6 }),
       P({ bob: 2, lean: 2, hy: 1, gx: 54, gy: 46, sa: 0.02, bx: 36, by: 42, cx: 2, cy: -1, glow: 0.7, eye: 1.2, rune: 0.8, charge: 0.4, sway: 1, t: 0.1 }),
       P({ bob: 3, lean: 3, hy: 2, gx: 53, gy: 45, sa: 0.0, bx: 38, by: 41, cx: 3, cy: -2, glow: 0.9, eye: 1.4, rune: 1, charge: 0.8, sway: 1.5, t: 0.2 }),
-      P({ bob: -2, lean: -3, hy: -1, gx: 56, gy: 37, sa: 0.32, bx: 19, by: 31, cx: -3, cy: -3, flare: 0.8, ripple: 1.6, glow: 1, orb: 1.15, eye: 2, rune: 1, aura: 0.2, flash: 1, sway: -2, t: 0.3 }),
-      P({ bob: -2, lean: -3, hy: -1, gx: 56, gy: 37, sa: 0.34, bx: 18, by: 30, cx: -3, cy: -5, flare: 1, ripple: 1.8, glow: 1, orb: 1.18, eye: 2, rune: 1, aura: 0.45, sway: -2.5, t: 0.42 }),
-      P({ bob: -2, lean: -2, hy: -1, gx: 56, gy: 37, sa: 0.33, bx: 18, by: 31, cx: -3, cy: -6, flare: 1, ripple: 1.6, glow: 1, orb: 1.15, eye: 1.8, rune: 1, aura: 0.7, sway: -2, t: 0.54 }),
-      P({ bob: -2, lean: -2, gx: 56, gy: 38, sa: 0.3, bx: 19, by: 32, cx: -3, cy: -5, flare: 0.85, ripple: 1.4, glow: 0.9, orb: 1.15, eye: 1.6, rune: 0.9, aura: 0.95, sway: -1.5, t: 0.66 }),
-      P({ bob: -1, lean: -1, gx: 56, gy: 39, sa: 0.18, bx: 24, by: 39, cx: -2, cy: -3, flare: 0.5, ripple: 1.2, glow: 0.8, orb: 1.1, eye: 1.3, rune: 0.7, sway: -0.5, t: 0.78 }),
+      P({ bob: -2, lean: -4, hx: -2, hy: -2, gx: 57, gy: 37, sa: 0.3, bx: 19, by: 25, cx: -3, cy: -3, flare: 0.8, ripple: 1.6, glow: 1, orb: 1.2, eye: 2.5, rune: 2, flame: 1, star: 1, flash: 1, sway: -2, t: 0.3 }),
+      P({ bob: -2, lean: -4, hx: -2, hy: -2, gx: 57, gy: 37, sa: 0.32, bx: 18, by: 24, cx: -3, cy: -5, flare: 1, ripple: 1.8, glow: 1, orb: 1.18, eye: 2.5, rune: 1.6, flame: 1, star: 0.6, aura: 0.05, sway: -2.5, t: 0.42 }),
+      P({ bob: -2, lean: -3, hx: -1, hy: -1, gx: 57, gy: 37, sa: 0.31, bx: 18, by: 25, cx: -3, cy: -6, flare: 1, ripple: 1.6, glow: 1, orb: 1.15, eye: 2, rune: 1, flame: 0.7, star: 0.25, aura: 0.525, sway: -2, t: 0.54 }),
+      P({ bob: -2, lean: -2, gx: 56, gy: 38, sa: 0.28, bx: 20, by: 28, cx: -3, cy: -5, flare: 0.85, ripple: 1.4, glow: 0.9, orb: 1.12, eye: 1.6, rune: 0.9, flame: 0.35, aura: 1, sway: -1.5, t: 0.66 }),
+      P({ bob: -1, lean: -1, gx: 56, gy: 40, sa: 0.18, bx: 24, by: 37, cx: -2, cy: -3, flare: 0.5, ripple: 1.2, glow: 0.8, orb: 1.08, eye: 1.3, rune: 0.7, sway: -0.5, t: 0.78 }),
       P({ bob: -1, lean: 0, gx: 55, gy: 42, sa: 0.08, bx: 28, by: 44, cx: 1, cy: -1, flare: 0.2, glow: 0.6, orb: 1.04, eye: 1.1, rune: 0.5, sway: 0.5, t: 0.9 }),
       P({ bob: 0, gx: 55, gy: 44, cx: 1, t: 1.0 }),
     ],
   },
 
-  // Attack: staff swings back over the shoulder while the orb swells and draws in motes (anticipation)
-  // → smear → THRUST (impact: orb at the muzzle, flash) → follow-through (orb spent) → recovery.
+  // Attack: the staff lifts (f1), then swings back over the near shoulder so the swelling orb hangs
+  // behind the shoulder, clear of the helm and under the horns, while the body sinks and leans back
+  // (f2–f3, anticipation) → the orb whips over the head in one curved smear (f4) → THRUST forward,
+  // body lunging (impact f5: orb at the muzzle, flash) → follow-through (orb spent) → recovery.
   attack: {
     fps: 10,
     loop: false,
     poses: [
       P({ t: 0 }),
-      P({ bob: 1, lean: -1, dx: -1, gx: 52, gy: 42, sa: -0.22, bx: 41, by: 38, cx: 1, cy: -1, orb: 1.12, glow: 0.7, eye: 1.2, rune: 0.6, charge: 0.4, sway: 0.5, t: 0.1 }),
-      P({ bob: 1, lean: -3, dx: -2, gx: 48, gy: 39, sa: -0.62, bx: 46, by: 36, cx: 2, cy: -2, orb: 1.3, glow: 0.9, eye: 1.5, rune: 0.8, charge: 0.75, sway: 1, t: 0.2 }),
-      P({ bob: 2, lean: -4, dx: -2, gx: 46, gy: 38, sa: -0.9, bx: 48, by: 35, cx: 3, cy: -2, orb: 1.45, glow: 1, eye: 1.8, rune: 1, charge: 1, sway: 1.5, t: 0.3 }),
-      P({ bob: 0, lean: 1, dx: 0, gx: 51, gy: 40, sa: 0.3, bx: 40, by: 39, cx: -1, cy: -1, flare: 0.3, ripple: 1.4, orb: 1.35, glow: 1, eye: 1.8, rune: 1, sway: -1, trail: -0.75, t: 0.4 }),
-      P({ bob: -1, lean: 4, dx: 2, hx: 1, gx: 50, gy: 41, sa: 0.8, bx: 30, by: 41, cx: -5, cy: -3, flare: 0.6, ripple: 1.6, orb: 1.15, glow: 1, eye: 2, rune: 1, flash: 1, sway: -2, trail: 0.35, t: 0.5 }),
+      P({ bob: 1, lean: -2, dx: -1, gx: 56, gy: 37, sa: -0.1, bx: 38, by: 40, cx: 1, cy: -1, orb: 1.12, glow: 0.7, eye: 1.2, rune: 0.6, charge: 0.4, sway: 0.8, t: 0.1 }),
+      P({ bob: 1, lean: -4, dx: -1, gx: 45, gy: 36, sa: -0.95, bx: 46, by: 37, cx: 2, cy: -2, orb: 1.3, glow: 0.9, eye: 1.5, rune: 0.8, charge: 0.75, sway: 1.5, orbBack: 1,
+        sfx: 52, sfy: 12, scx: 38, scy: 2, t: 0.2 }),
+      P({ bob: 2, lean: -6, dx: -2, gx: 45, gy: 37, sa: -1.05, bx: 49, by: 36, cx: 3, cy: -2, orb: 1.45, glow: 1, eye: 1.8, rune: 1, charge: 1, sway: 2.2, orbBack: 1, t: 0.3 }),
+      P({ bob: 0, lean: 2, dx: 0, gx: 52, gy: 39, sa: 0.3, bx: 40, by: 39, cx: -1, cy: -1, flare: 0.3, ripple: 1.4, orb: 1.35, glow: 1, eye: 1.8, rune: 1, sway: -1, sfx: 19.7, sfy: 25.6, scx: 36, scy: -12, t: 0.4 }),
+      P({ bob: -1, lean: 5, dx: 3, hx: 1, gx: 50, gy: 41, sa: 0.8, bx: 30, by: 41, cx: -5, cy: -3, flare: 0.6, ripple: 1.6, orb: 1.15, glow: 1, eye: 2, rune: 1, flash: 1, sway: -2.5, sfx: 59.8, sfy: 13.7, scx: 69, scy: 13, t: 0.5 }),
       P({ bob: -1, lean: 4, dx: 2, hx: 1, gx: 53, gy: 42, sa: 0.88, bx: 29, by: 43, cx: -6, cy: -4, flare: 0.7, ripple: 1.4, orb: 0.3, glow: 0.3, eye: 1.5, rune: 0.8, sway: -2.5, t: 0.6 }),
       P({ bob: 0, lean: 2, dx: 1, gx: 54, gy: 43, sa: 0.5, bx: 29, by: 45, cx: 1, cy: -2, flare: 0.3, orb: 0.5, glow: 0.35, eye: 1.2, rune: 0.6, sway: -0.5, t: 0.7 }),
       P({ bob: 0, lean: 1, dx: 0, gx: 55, gy: 44, sa: 0.18, cx: 2, cy: -1, orb: 0.72, glow: 0.4, rune: 0.5, sway: 0.8, t: 0.8 }),
@@ -191,7 +212,7 @@ const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> 
         ripple: 0.4,
         orb: 0.95 + 0.06 * s,
         glow: 0.5 + 0.2 * s,
-        eye: 0.9,
+        eye: 1.4,
         rune: 0.35 + 0.25 * s,
         sway: Math.sin((t - 0.25) * TAU) * 0.5,
         t,
@@ -249,6 +270,19 @@ const PAULDRON_B = [
   '.443321.',
   '..2211..',
 ];
+
+/** Armor plates (helm, pauldrons) are lit one step brighter than the stamp digits suggest, so the
+ *  metal reads against the night-blue arena: 4 = steel, 3 = night4 … 0 = night1. */
+const ARMOR_KEY: Record<string, number> = {
+  k: PAL.ink,
+  '0': PAL.night1,
+  '1': PAL.night2,
+  '2': PAL.night3,
+  '3': PAL.night4,
+  '4': PAL.steel,
+  s: PAL.mist,
+  m: PAL.white,
+};
 
 const KEY: Record<string, number> = {
   k: PAL.ink,
@@ -404,6 +438,89 @@ function drawMagus(p: Canvas, o: Pose): void {
   const orbC = orbCenter(o);
   const SU = (u: number, v: number): Pt => [top[0] + dir[0] * u + nrm[0] * v, top[1] + dir[1] * u + nrm[1] * v];
 
+  // ------------------------------------------------ staff pieces (drawn in two places: normally in front
+  // of the body; during the wind-up the head + orb go behind the shoulders and helm)
+  const drawShaft = (part: 'upper' | 'lower' | 'all') =>
+    layer(
+      p,
+      (q) => {
+        const a = part === 'upper' ? grip : bot;
+        const b = part === 'lower' ? grip : top;
+        q.line(a[0], a[1], b[0], b[1], PAL.void2);
+        q.line(a[0] + nrm[0], a[1] + nrm[1], b[0] + nrm[0], b[1] + nrm[1], PAL.void1);
+        // glowing wraps along the shaft (u < 0 runs down from the head toward the grip and beyond)
+        for (const u of [-3, -6, -29, -33]) {
+          if ((part === 'upper' && u < -STAFF_UP) || (part === 'lower' && u > -STAFF_UP)) continue;
+          const [x, y] = SU(u, 0);
+          q.set(x, y, PAL.void4);
+          q.set(x + nrm[0], y + nrm[1], PAL.void3);
+        }
+        if (part !== 'upper') {
+          const f1: Pt = [bot[0] - dir[0] * 3, bot[1] - dir[1] * 3];
+          q.line(bot[0], bot[1], f1[0], f1[1], PAL.night4);
+          q.set(f1[0], f1[1], PAL.mist);
+        }
+      },
+      PAL.ink,
+    );
+  const drawStaffHead = () =>
+    layer(
+      p,
+      (q) => {
+        const r = orbR;
+        // crescent cupping the orb from below; tips curl up past its equator
+        const R = Math.max(3.2, r + 1.4);
+        const arcL: Pt[] = [];
+        const arcR: Pt[] = [];
+        for (let i = 0; i <= 10; i++) {
+          const th = (i / 10) * 2.05;
+          const u = orbOff - Math.cos(th) * R;
+          arcL.push(SU(u, -Math.sin(th) * R));
+          arcR.push(SU(u, Math.sin(th) * R));
+        }
+        q.stroke(arcR, 2.6, 1, PAL.night3);
+        q.stroke(arcL, 2.6, 1, PAL.night4);
+        q.stroke([SU(0, 0), SU(orbOff - R, 0)], 2.4, 2.4, PAL.night3);
+        for (let i = 1; i < arcL.length - 1; i++) q.paint(arcL[i][0] - 0.6, arcL[i][1] - 0.6, i > 4 ? PAL.steel : PAL.night4);
+        q.paint(arcL[arcL.length - 1][0], arcL[arcL.length - 1][1], PAL.mist);
+        q.paint(arcR[arcR.length - 1][0], arcR[arcR.length - 1][1], PAL.steel);
+        const [cx, cy] = SU(0.8, 0);
+        q.disc(cx, cy, 1.8, PAL.night3);
+        q.set(cx - 1, cy - 1, PAL.steel);
+        q.set(cx, cy - 1, PAL.mist);
+      },
+      PAL.ink,
+    );
+  const drawOrb = () => {
+    if (orbR <= 0.9) {
+      p.set(orbC[0], orbC[1], PAL.void3);
+      return;
+    }
+    layer(
+      p,
+      (q) => {
+        const r = orbR;
+        const [ox, oy] = orbC;
+        q.disc(ox, oy, r, PAL.void2);
+        q.disc(ox - 0.5, oy - 0.5, Math.max(0.6, r - 1), PAL.void3);
+        q.disc(ox - r * 0.3, oy - r * 0.3, Math.max(0.5, r * 0.52), o.glow > 0.55 ? PAL.void4 : PAL.void3);
+        if (r > 2.6) {
+          // the abyss swirling inside
+          const a = o.t * TAU * 1.5;
+          for (let s = 0; s < 3; s++) {
+            const aa = a + s * 0.5;
+            const rr = r * (0.55 - s * 0.12);
+            q.set(ox + Math.cos(aa) * rr, oy + Math.sin(aa) * rr, s === 0 ? PAL.void1 : PAL.void2);
+          }
+          edge(q, 1, 1, PAL.void1);
+        }
+        q.set(ox - r * 0.45, oy - r * 0.5, PAL.white);
+        if (o.glow > 0.8) q.set(ox - r * 0.45 + 1, oy - r * 0.5, PAL.white).set(ox - r * 0.45, oy - r * 0.5 + 1, PAL.void4);
+      },
+      PAL.ink,
+    );
+  };
+
   // ------------------------------------------------ cape (back layer)
   {
     const fl = o.flare;
@@ -451,7 +568,7 @@ function drawMagus(p: Canvas, o: Pose): void {
       p,
       (q) => {
         q.poly(shape, PAL.night2);
-        rows(q, (u) => (u < 0.05 ? PAL.night4 : u < 0.2 ? PAL.night3 : u < 0.68 ? PAL.night2 : PAL.night1));
+        rows(q, (u, v) => (u < 0.07 ? PAL.steel : u < 0.36 ? PAL.night4 : u < 0.74 || v < 0.12 ? PAL.night3 : PAL.night2));
         // folds: from under the shoulder down to each hem notch
         clip(q, (t) => {
           for (let i = 0; i < hem.length; i += 2) {
@@ -459,18 +576,25 @@ function drawMagus(p: Canvas, o: Pose): void {
             const from = T(32 - i * 0.5, 34);
             const mid: Pt = [lerp(from[0], nx, 0.5) - 2 - fl * 2, lerp(from[1], ny, 0.5)];
             const path = bezier(from, mid, [nx, ny - 2], undefined, 12);
-            t.polyline(path, PAL.night1);
+            t.polyline(path, PAL.night2);
             t.polyline(
               path.map(([x, y]) => [x - 1, y] as Pt),
-              i === 0 ? PAL.night4 : PAL.night3,
+              i === 0 ? PAL.steel : PAL.night4,
             );
           }
         });
         // rim light along the outer edge
-        for (let i = 0; i < 9; i++) q.paint(edgePts[i][0] + 0.5, edgePts[i][1], i < 5 ? PAL.steel : PAL.night4);
+        for (let i = 0; i < 9; i++) q.paint(edgePts[i][0] + 0.5, edgePts[i][1], i < 5 ? PAL.mist : PAL.steel);
       },
       null,
     );
+  }
+
+  // ------------------------------------------------ wind-up: staff head + orb hang behind the shoulder
+  if (o.orbBack) {
+    drawShaft('upper');
+    drawStaffHead();
+    drawOrb();
   }
 
   // ------------------------------------------------ back arm (far sleeve)
@@ -487,16 +611,16 @@ function drawMagus(p: Canvas, o: Pose): void {
         const uy = cd[1] / cl;
         const cuff: Pt = [bHand[0] - ux * 2, bHand[1] - uy * 2];
         q.poly(sleevePoly(bShoulder, el, cuff, 4.5, 5, 7, 3, 0), PAL.void1);
-        rows(q, (u) => (u < 0.25 ? PAL.void2 : u < 0.8 ? PAL.void1 : PAL.void0));
+        rows(q, (u) => (u < 0.3 ? PAL.void3 : u < 0.8 ? PAL.void2 : PAL.void1));
         q.disc(cuff[0] + ux * 0.5, cuff[1] + uy * 0.5, 1.6, PAL.void0); // sleeve mouth
         // gauntlet (open claw)
         const hx = bHand[0];
         const hy = bHand[1];
-        q.disc(hx, hy, 1.8, PAL.night2);
-        q.set(hx - 1, hy - 1, PAL.night3);
-        q.set(hx + ux * 2.2, hy + uy * 2.2, PAL.night2);
-        q.set(hx + ux * 2 - uy * 1.6, hy + uy * 2 + ux * 1.6, PAL.night2);
-        q.set(hx + ux * 2 + uy * 1.6, hy + uy * 2 - ux * 1.6, PAL.night3);
+        q.disc(hx, hy, 1.8, PAL.night3);
+        q.set(hx - 1, hy - 1, PAL.steel);
+        q.set(hx + ux * 2.2, hy + uy * 2.2, PAL.night3);
+        q.set(hx + ux * 2 - uy * 1.6, hy + uy * 2 + ux * 1.6, PAL.night3);
+        q.set(hx + ux * 2 + uy * 1.6, hy + uy * 2 - ux * 1.6, PAL.night4);
       },
       sep,
     );
@@ -528,28 +652,34 @@ function drawMagus(p: Canvas, o: Pose): void {
         if (i === 4 && v > 0.55) i = 3;
         return [PAL.void0, PAL.void1, PAL.void2, PAL.void3, PAL.void4][Math.max(0, Math.min(4, i))];
       });
-      // rune band above the hem: a dark embroidered strip; small runes glow in a travelling wave
+      // rune band above the hem: a dark embroidered strip; non-alphabetic sigils (diamond, crossed
+      // strokes, plus) glow in a travelling wave, each with one hot void4/white pixel
       clip(q, (t) => {
         for (let x = 20; x < 60; x++) {
           const [bx, by] = L(x, 61);
-          t.set(bx, by - 1, PAL.void0);
+          t.set(bx, by - 1, PAL.void1);
           t.set(bx, by, PAL.void1);
           t.set(bx, by + 1, PAL.void1);
           t.set(bx, by + 2, PAL.void1);
           t.set(bx, by + 3, PAL.void0);
         }
         const glyphs = [
-          ['x.', 'xx', 'x.'],
-          ['.x', 'xx', '.x'],
-          ['xx', '.x', 'x.'],
-          ['x.', 'x.', 'xx'],
+          ['.b.', 'a.a', '.a.'], // diamond with a hot tick on top
+          ['a.a', '.b.', 'a.a'], // crossed strokes
+          ['.a.', 'aba', '.a.'], // plus
         ];
-        for (let i = 0; i < 9; i++) {
-          const [gx, gy] = L(25.5 + i * 3.4, 61);
-          const lit = (Math.sin((o.t - i * 0.11) * TAU) * 0.5 + 0.5) * o.rune;
-          const c = lit > 0.62 ? PAL.void4 : lit > 0.3 ? PAL.void3 : PAL.void2;
-          const g = glyphs[(i * 3) % glyphs.length];
-          for (let j = 0; j < 3; j++) for (let ii = 0; ii < 2; ii++) if (g[j][ii] === 'x') t.set(Math.floor(gx) + ii, Math.floor(gy) + j, c);
+        for (let i = 0; i < 7; i++) {
+          const [gx, gy] = L(24.6 + i * 4.8, 61);
+          const lit = Math.min(1, (Math.sin((o.t - i * 0.11) * TAU) * 0.5 + 0.5) * o.rune);
+          const flash = o.rune >= 1.5;
+          const ca = flash ? (o.rune >= 2 ? PAL.white : PAL.void4) : lit > 0.62 ? PAL.void4 : lit > 0.25 ? PAL.void3 : PAL.void2;
+          const cb = flash || lit > 0.45 ? PAL.white : PAL.void4;
+          const g = glyphs[i % glyphs.length];
+          for (let j = 0; j < 3; j++)
+            for (let ii = 0; ii < 3; ii++) {
+              const ch = g[j][ii];
+              if (ch !== '.') t.set(Math.floor(gx) + ii - 1, Math.floor(gy) + j, ch === 'b' ? cb : ca);
+            }
         }
       });
       edge(q, 0, 1, PAL.void1);
@@ -563,7 +693,7 @@ function drawMagus(p: Canvas, o: Pose): void {
     (q) => {
       const tb: Pt[] = [T(36.5, 42.5), T(42.5, 42.5), L(43.5, 56), L(43, 64), L(40, 70.5), L(37, 64), L(36, 56)];
       q.poly(tb, PAL.night2);
-      rows(q, (u) => (u < 0.22 ? PAL.night3 : u < 0.72 ? PAL.night2 : PAL.night1));
+      rows(q, (u) => (u < 0.2 ? PAL.steel : u < 0.5 ? PAL.night4 : u < 0.8 ? PAL.night3 : PAL.night2));
       const lit = o.rune;
       const c1 = lit > 0.7 ? PAL.void4 : PAL.void3;
       // the abyssal eye sigil, and a drip of runes below it
@@ -583,8 +713,8 @@ function drawMagus(p: Canvas, o: Pose): void {
         const e0 = T(29, 35);
         const e1 = L(52, 50);
         const shape: Pt[] = [e0, [lerp(e0[0], e1[0], 0.5), lerp(e0[1], e1[1], 0.5) + 1.5], e1, L(54.5, 58), L(55, 64), L(51.5, 71), L(48, 67), L(44, 72), L(40, 67.5), L(36, 72), L(32, 67), L(28, 71), L(25, 66), L(26, 55), L(27.5, 46)];
-        q.poly(shape, PAL.night2);
-        rows(q, (u) => (u < 0.07 ? PAL.night3 : u < 0.35 ? PAL.night2 : u < 0.8 ? PAL.night1 : PAL.night0));
+        q.poly(shape, PAL.night3);
+        rows(q, (u) => (u < 0.07 ? PAL.steel : u < 0.38 ? PAL.night4 : u < 0.8 ? PAL.night3 : PAL.night2));
         clip(q, (t) => {
           // folds fan out from where the cloth is gathered at the front hip toward the hem
           const g = L(51, 51);
@@ -596,18 +726,20 @@ function drawMagus(p: Canvas, o: Pose): void {
             const b = L(hx, hy);
             const m: Pt = [lerp(g[0], b[0], 0.5) + 2, lerp(g[1], b[1], 0.5) - 1];
             const path = bezier(g, m, b, undefined, 16);
-            t.polyline(path, PAL.night0);
+            t.polyline(path, lit ? PAL.night2 : PAL.void2);
             t.polyline(
               path.map(([x, y]) => [x - 1, y] as Pt),
-              lit ? PAL.night3 : PAL.night2,
+              lit ? PAL.steel : PAL.night4,
             );
           }
-          // turned-over edge shows the violet lining
-          t.line(e0[0], e0[1], e1[0], e1[1], PAL.void2);
-          t.line(e0[0], e0[1] + 1, e1[0], e1[1] + 1, PAL.void1);
+          // turned-over edge shows the violet lining, a lit hem above it
+          t.line(e0[0], e0[1] - 1, e1[0], e1[1] - 1, PAL.steel);
+          t.line(e0[0], e0[1], e1[0], e1[1], PAL.void3);
+          t.line(e0[0], e0[1] + 1, e1[0], e1[1] + 1, PAL.void2);
         });
-        edge(q, 0, 1, PAL.void1);
-        edge(q, -1, 0, PAL.night3);
+        edge(q, 0, 1, PAL.void2);
+        edge(q, 1, 0, PAL.void3);
+        edge(q, -1, 0, PAL.night4);
       },
       PAL.ink,
     );
@@ -619,13 +751,13 @@ function drawMagus(p: Canvas, o: Pose): void {
     (q) => {
       const plate: Pt[] = [T(32, 29.5), T(36, 27.5), T(44, 27.5), T(48, 29.5), T(47.5, 35), T(45, 42.5), T(35, 42.5), T(32.5, 36)];
       q.poly(plate, PAL.night2);
-      rows(q, (u, v) => (u < 0.14 ? PAL.steel : u < 0.3 ? PAL.night4 : u < 0.55 ? (v < 0.55 ? PAL.night3 : PAL.night2) : u < 0.86 ? PAL.night2 : PAL.night1));
+      rows(q, (u, v) => (u < 0.14 ? PAL.mist : u < 0.32 ? PAL.steel : u < 0.58 ? (v < 0.55 ? PAL.night4 : PAL.night3) : u < 0.86 ? PAL.night3 : PAL.night2));
       clip(q, (t) => {
         // sternum ridge, pectoral line, ab plate
-        t.line(...T(40, 29), ...T(40, 39), PAL.night1);
-        t.line(...T(39, 30), ...T(39, 38), PAL.night3);
-        t.line(...T(34, 35), ...T(46, 35), PAL.night1);
-        t.line(...T(34, 38.5), ...T(46, 38.5), PAL.night1);
+        t.line(...T(40, 29), ...T(40, 39), PAL.night2);
+        t.line(...T(39, 30), ...T(39, 38), PAL.night4);
+        t.line(...T(34, 35), ...T(46, 35), PAL.night2);
+        t.line(...T(34, 38.5), ...T(46, 38.5), PAL.night2);
         // belt
         t.poly([T(33, 40.5), T(47, 40.5), T(46, 43.5), T(34, 43.5)], PAL.void0);
         const [bkx, bky] = T(39, 40.5);
@@ -657,7 +789,7 @@ function drawMagus(p: Canvas, o: Pose): void {
     p,
     (q) => {
       const [x, y] = T(26.5, 27.5);
-      q.stamp(PAULDRON_B, KEY, Math.round(x), Math.round(y));
+      q.stamp(PAULDRON_B, ARMOR_KEY, Math.round(x), Math.round(y));
     },
     PAL.night0,
   );
@@ -687,13 +819,18 @@ function drawMagus(p: Canvas, o: Pose): void {
   layer(
     p,
     (q) => {
-      q.stamp(HEAD, KEY, HX, HY);
+      q.stamp(HEAD, ARMOR_KEY, HX, HY);
       const sq = o.squint;
       const e = o.eye;
       const ey = HY + EYE_ROW;
       const ex = HX + EYE_COL;
       if (sq >= 1) {
         q.hline(ex + 1, ex + 5, ey - 1, PAL.mag1);
+      } else if (e > 2.2) {
+        // roar: the visor flares white-hot
+        q.hline(ex + 1, ex + 5, ey, PAL.white);
+        q.set(ex + 1, ey, PAL.mag4);
+        q.hline(ex + 2, ex + 4, ey - 1, PAL.mag4);
       } else {
         q.set(ex + 1, ey, e > 1.2 ? PAL.mag3 : PAL.mag2);
         q.set(ex + 2, ey, PAL.mag4);
@@ -728,29 +865,13 @@ function drawMagus(p: Canvas, o: Pose): void {
     p,
     (q) => {
       const [x, y] = T(43, 26.5);
-      q.stamp(PAULDRON_F, KEY, Math.round(x), Math.round(y));
+      q.stamp(PAULDRON_F, ARMOR_KEY, Math.round(x), Math.round(y));
     },
     PAL.night0,
   );
 
-  // ------------------------------------------------ staff shaft
-  layer(
-    p,
-    (q) => {
-      q.line(bot[0], bot[1], top[0], top[1], PAL.void1);
-      q.line(bot[0] + nrm[0], bot[1] + nrm[1], top[0] + nrm[0], top[1] + nrm[1], PAL.void0);
-      // glowing wraps along the shaft (u < 0 runs down from the head toward the grip and beyond)
-      for (const u of [-3, -6, -29, -33]) {
-        const [x, y] = SU(u, 0);
-        q.set(x, y, PAL.void3);
-        q.set(x + nrm[0], y + nrm[1], PAL.void2);
-      }
-      const f1: Pt = [bot[0] - dir[0] * 3, bot[1] - dir[1] * 3];
-      q.line(bot[0], bot[1], f1[0], f1[1], PAL.night3);
-      q.set(f1[0], f1[1], PAL.steel);
-    },
-    PAL.ink,
-  );
+  // ------------------------------------------------ staff shaft (lower half only while the head is swung back)
+  drawShaft(o.orbBack ? 'lower' : 'all');
 
   // ------------------------------------------------ front arm: bell sleeve + gauntlet
   const fShoulder = T(47.5, 31.5);
@@ -788,97 +909,110 @@ function drawMagus(p: Canvas, o: Pose): void {
   if (o.bFront) drawBackArm(PAL.void0);
 
   // ------------------------------------------------ staff head (crescent claw) + orb
-  layer(
-    p,
-    (q) => {
-      const r = orbR;
-      // crescent cupping the orb from below; tips curl up past its equator
-      const R = Math.max(3.2, r + 1.4);
-      const arcL: Pt[] = [];
-      const arcR: Pt[] = [];
-      for (let i = 0; i <= 10; i++) {
-        const th = (i / 10) * 2.05;
-        const u = orbOff - Math.cos(th) * R;
-        arcL.push(SU(u, -Math.sin(th) * R));
-        arcR.push(SU(u, Math.sin(th) * R));
+  if (!o.orbBack) {
+    drawStaffHead();
+    drawOrb();
+  }
+
+  // ------------------------------------------------ rim light: silhouette edges facing away from the
+  // key light get a void3 rim (void4 on sharp corners) so the dark figure separates from the tiles
+  {
+    // candidates: body pixels on the right silhouette edge (1px-wide strands such as the staff are
+    // skipped); only runs of 2+ connected rim pixels are kept, so the rim never leaves stray dots
+    const src = p.clone();
+    const rim = new Uint8Array(W * H);
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        const c = src.get(x, y);
+        if (c === null || !BODY.has(c) || src.isOpaque(x + 1, y) || !src.isOpaque(x - 1, y)) continue;
+        rim[y * W + x] = 1;
       }
-      q.stroke(arcR, 2.6, 1, PAL.night2);
-      q.stroke(arcL, 2.6, 1, PAL.night3);
-      q.stroke([SU(0, 0), SU(orbOff - R, 0)], 2.4, 2.4, PAL.night2);
-      for (let i = 1; i < arcL.length - 1; i++) q.paint(arcL[i][0] - 0.6, arcL[i][1] - 0.6, i > 4 ? PAL.night4 : PAL.night3);
-      q.paint(arcL[arcL.length - 1][0], arcL[arcL.length - 1][1], PAL.steel);
-      q.paint(arcR[arcR.length - 1][0], arcR[arcR.length - 1][1], PAL.night4);
-      const [cx, cy] = SU(0.8, 0);
-      q.disc(cx, cy, 1.8, PAL.night2);
-      q.set(cx - 1, cy - 1, PAL.night4);
-      q.set(cx, cy - 1, PAL.steel);
-    },
-    PAL.ink,
-  );
-  if (orbR > 0.9) {
-    layer(
-      p,
-      (q) => {
-        const r = orbR;
-        const [ox, oy] = orbC;
-        q.disc(ox, oy, r, PAL.void2);
-        q.disc(ox - 0.5, oy - 0.5, Math.max(0.6, r - 1), PAL.void3);
-        q.disc(ox - r * 0.3, oy - r * 0.3, Math.max(0.5, r * 0.52), o.glow > 0.55 ? PAL.void4 : PAL.void3);
-        if (r > 2.6) {
-          // the abyss swirling inside
-          const a = o.t * TAU * 1.5;
-          for (let s = 0; s < 3; s++) {
-            const aa = a + s * 0.5;
-            const rr = r * (0.55 - s * 0.12);
-            q.set(ox + Math.cos(aa) * rr, oy + Math.sin(aa) * rr, s === 0 ? PAL.void1 : PAL.void2);
-          }
-          edge(q, 1, 1, PAL.void1);
-        }
-        q.set(ox - r * 0.45, oy - r * 0.5, PAL.white);
-        if (o.glow > 0.8) q.set(ox - r * 0.45 + 1, oy - r * 0.5, PAL.white).set(ox - r * 0.45, oy - r * 0.5 + 1, PAL.void4);
-      },
-      PAL.ink,
-    );
-  } else {
-    p.set(orbC[0], orbC[1], PAL.void3);
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        if (!rim[y * W + x]) continue;
+        let run = false;
+        for (let dy = -1; dy <= 1 && !run; dy++)
+          for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && x + dx >= 0 && x + dx < W && y + dy >= 0 && y + dy < H && rim[(y + dy) * W + x + dx]) run = true;
+        if (run) p.set(x, y, PAL.void3);
+      }
   }
 
   // ------------------------------------------------ outline
   p.outline(PAL.ink);
 
   // ------------------------------------------------ glow pass (unoutlined light)
-  // aura ring + burst lines (light only on empty pixels: reads as behind the body, unoutlined)
   const put = (x: number, y: number, c: number) => {
     if (!p.isOpaque(x, y)) p.set(x, y, c);
   };
-  if (o.aura > 0) {
-    // shock ring of abyssal energy: bright leading edge, dimmer trailing band, fading as it grows
-    const [ax, ay] = T(40, 44);
-    const r = 10 + o.aura * 19;
-    const fade = 1 - o.aura;
-    for (let a = 0; a < 160; a++) {
-      const ang = (a / 160) * TAU;
-      const wob = Math.sin(ang * 7 + o.t * 13) * 1.2;
-      const ca = Math.cos(ang);
-      const sa = Math.sin(ang) * 0.62;
-      const lead = r + wob;
-      put(ax + ca * lead, ay + sa * lead, fade > 0.55 ? PAL.void4 : fade > 0.25 ? PAL.void3 : PAL.void2);
-      if (fade > 0.2) put(ax + ca * (lead - 1.2), ay + sa * (lead - 1.2), fade > 0.55 ? PAL.void3 : PAL.void2);
-      if (fade > 0.45 && a % 2 === 0) put(ax + ca * (lead - 2.4), ay + sa * (lead - 2.4), PAL.void1);
-    }
-    if (o.aura < 0.35) {
-      // burst: speed lines shooting outward
-      for (let i = 0; i < 14; i++) {
-        const ang = (i / 14) * TAU + 0.2;
-        const r0 = r + 2 + (i % 3) * 2;
-        const r1 = r0 + 5 + (i % 2) * 4;
-        for (let d = r0; d <= r1; d += 0.5) put(ax + Math.cos(ang) * d, ay + Math.sin(ang) * d * 0.62, d > r1 - 2 ? PAL.void2 : PAL.void3);
-      }
-    }
-  }
-
   const [ox, oy] = orbC;
   const r = orbR;
+
+  if (!Number.isNaN(o.sfx)) {
+    // smear: the orb's path as one curved band (void2 → void3 → void4 core), tapered at both ends,
+    // passing BEHIND the helm and horns (light only on empty pixels)
+    const P0: Pt = [o.sfx, o.sfy];
+    const C: Pt = [o.scx, o.scy];
+    const P1: Pt = [ox, oy];
+    const N = 90;
+    const pts: Pt[] = [];
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      const u = 1 - t;
+      pts.push([u * u * P0[0] + 2 * u * t * C[0] + t * t * P1[0], u * u * P0[1] + 2 * u * t * C[1] + t * t * P1[1]]);
+    }
+    const band = new PixelCanvas(W, H);
+    const maxW = 2.3;
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      // fat toward the leading end, pinched at both tips
+      const w = maxW * Math.pow(Math.sin(Math.PI * Math.min(1, t * 1.15)), 0.7) * (0.45 + 0.55 * t);
+      if (w < 0.35) continue;
+      const [cx, cy] = pts[i];
+      for (let yy = Math.floor(cy - w - 1); yy <= cy + w + 1; yy++)
+        for (let xx = Math.floor(cx - w - 1); xx <= cx + w + 1; xx++) {
+          const d = Math.hypot(xx + 0.5 - cx, yy + 0.5 - cy);
+          if (d > w) continue;
+          const k = d / w;
+          const c = k < 0.35 && t > 0.3 ? PAL.void4 : k < 0.7 ? PAL.void3 : PAL.void2;
+          const cur = band.get(xx, yy);
+          // keep the brightest value where samples overlap
+          const rank = (v: number | null) => (v === PAL.void4 ? 3 : v === PAL.void3 ? 2 : v === PAL.void2 ? 1 : 0);
+          if (rank(c) > rank(cur)) band.set(xx, yy, c);
+        }
+    }
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        const c = band.get(x, y);
+        if (c === null) continue;
+        if (Math.hypot(x + 0.5 - ox, y + 0.5 - oy) < r + 1) continue; // the orb stays on top of its own smear
+        put(x, y, c);
+      }
+  }
+
+  if (o.aura > 0) {
+    // aura ring rolling out around the robe: 2px (void3 body, void4 inner highlight); the lower half
+    // passes IN FRONT of the robe, the upper half behind; dithers away on its last frame
+    const ax = 40 + o.dx;
+    const ay = 58 + o.bob;
+    const rad = 14 + 18 * Math.min(1, Math.max(0, (o.aura - 0.05) / 0.95));
+    const sy = 0.55;
+    const fade = o.aura > 0.95;
+    for (let y = Math.floor(ay - rad * sy - 3); y <= ay + rad * sy + 3; y++)
+      for (let x = Math.floor(ax - rad - 3); x <= ax + rad + 3; x++) {
+        const dx = x + 0.5 - ax;
+        const dy = (y + 0.5 - ay) / sy;
+        const e = Math.hypot(dx, dy);
+        const th = Math.atan2(dy, dx);
+        const g = Math.hypot(Math.cos(th), Math.sin(th) / sy); // e-units per pixel along the normal
+        const pd = (e - rad) / g; // signed pixel distance to the ring line
+        if (pd > 0 || pd <= -2) continue;
+        if (fade && !PixelCanvas.ditherAt(x, y, 8)) continue;
+        const c = pd > -1 ? PAL.void3 : PAL.void4;
+        if (dy > 0) p.set(x, y, c);
+        else put(x, y, c);
+      }
+  }
+
   const nS = o.glow > 0.8 ? 4 : 2;
   for (let i = 0; i < nS; i++) {
     const a = o.t * TAU + (i / nS) * TAU;
@@ -897,30 +1031,6 @@ function drawMagus(p: Canvas, o: Pose): void {
       const x2 = ox + Math.cos(a - 0.25) * (rr + 1.4);
       const y2 = oy + Math.sin(a - 0.25) * (rr + 1.4);
       if (!p.isOpaque(x2, y2)) p.set(x2, y2, PAL.void2);
-    }
-  }
-  if (!Number.isNaN(o.trail)) {
-    // smear arc: the orb's path from `trail` to the current angle, thick at the head, tapering
-    const dist = STAFF_UP + orbOff;
-    const a0 = o.trail;
-    const a1 = o.sa;
-    const steps = 28;
-    for (let i = 0; i <= steps; i++) {
-      const f = i / steps; // 0 = tail, 1 = head
-      const a = a0 + (a1 - a0) * f;
-      const cx = grip[0] + Math.sin(a) * dist;
-      const cy = grip[1] - Math.cos(a) * dist;
-      const w = r * (0.2 + 0.65 * f);
-      for (let yy = Math.floor(cy - w); yy <= cy + w; yy++)
-        for (let xx = Math.floor(cx - w); xx <= cx + w; xx++) {
-          const d = Math.hypot(xx + 0.5 - cx, yy + 0.5 - cy);
-          if (d > w) continue;
-          // the thin tail passes behind the helm; only the leading head of the smear covers the body
-          if (f < 0.6 && p.isOpaque(xx, yy)) continue;
-          if (Math.hypot(xx + 0.5 - ox, yy + 0.5 - oy) < r + 1) continue; // the orb stays on top of its own smear
-          const core = d < w * 0.45 && f > 0.35;
-          p.set(xx, yy, core ? (f > 0.7 ? PAL.void4 : PAL.void3) : f > 0.5 ? PAL.void2 : PAL.void1);
-        }
     }
   }
   if (o.flash > 0) {
@@ -942,28 +1052,66 @@ function drawMagus(p: Canvas, o: Pose): void {
       }
     }
   }
+  if (o.star > 0) {
+    // roar: a four-point star burst on the hoisted orb (long cross + short diagonals)
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * TAU;
+      const long = i % 2 === 0;
+      const len = r + 1.5 + (long ? 7 : 3) * o.star;
+      for (let d = r + 1.2; d <= len; d += 0.5) {
+        const x = ox + Math.cos(a) * d;
+        const y = oy + Math.sin(a) * d;
+        const k = (d - r) / (len - r);
+        put(x, y, k < 0.4 ? PAL.white : k < 0.75 ? PAL.void4 : PAL.void3);
+      }
+    }
+  }
+  if (o.flame > 0) {
+    // roar: a void flame licking up from the raised free hand
+    const hx = o.bx + o.dx;
+    const hy = o.by + o.bob - 2;
+    const h = 3 + 6 * o.flame;
+    const sway = Math.sin(o.t * TAU * 3) * 1.2;
+    for (let y = Math.floor(hy - h); y <= hy; y++) {
+      const v = (hy - y) / h; // 0 at the base, 1 at the tip
+      const cx = hx + sway * v * v;
+      const hw = 2.3 * Math.sin(Math.PI * Math.min(1, 0.25 + v * 0.85)) * (1 - v * 0.55);
+      for (let x = Math.floor(cx - hw); x <= cx + hw; x++) {
+        const k = Math.abs(x + 0.5 - cx) / Math.max(0.5, hw);
+        const c = k < 0.4 && v < 0.55 ? PAL.white : k < 0.75 ? PAL.void4 : PAL.void3;
+        p.set(x, y, c);
+      }
+    }
+    put(hx + sway - 1, hy - h - 1.5, PAL.void3);
+  }
   if (o.ward > 0) {
-    // ward: a shell of abyssal light in front of the body, a bright crest sliding along it
+    // ward: a solid 1px shell of abyssal light in front of the body; a bright crest slides along it
     const [cx, cy] = T(40, 44);
-    for (let i = 0; i <= 60; i++) {
-      const f = i / 60;
+    const N = 150;
+    const crestAt = ((o.t % 1) + 1) % 1;
+    for (let i = 0; i <= N; i++) {
+      const f = i / N;
       const a = -1.05 + f * 2.1;
       const x = cx + Math.cos(a) * 27;
       const y = cy + Math.sin(a) * 30;
-      const crest = Math.abs(f - ((o.t * 1.0) % 1)) < 0.09;
-      if (!crest && (i % 2 === 1 || o.ward < 0.5)) continue;
-      put(x, y, crest ? (o.ward > 0.8 ? PAL.void4 : PAL.void3) : PAL.void2);
+      const dc = Math.abs(f - crestAt) * 60; // ≈ px along the arc
+      put(x, y, dc < 0.8 ? PAL.white : dc < 2 ? PAL.void4 : PAL.void3);
     }
   }
   if (o.eye > 1.5 && o.squint < 0.5) {
+    // visor flare streaming forward (longer and whiter at a full roar)
     const ey = HY + EYE_ROW;
-    for (let i = 0; i < 4; i++) {
+    const n = o.eye > 2.2 ? 7 : 4;
+    for (let i = 0; i < n; i++) {
       const x = HX + 18 + i;
-      if (!p.isOpaque(x, ey)) p.set(x, ey, i === 0 ? PAL.mag4 : i < 3 ? PAL.mag3 : PAL.mag2);
+      if (!p.isOpaque(x, ey)) p.set(x, ey, i === 0 ? (n > 4 ? PAL.white : PAL.mag4) : i < n - 2 ? PAL.mag3 : PAL.mag2);
+      if (n > 4 && i < 3 && !p.isOpaque(x, ey - 1)) p.set(x, ey - 1, PAL.mag2);
     }
   }
-
 }
+
+/** Colors that count as cloth/armor for the rim-light pass. */
+const BODY = new Set<number>([PAL.night0, PAL.night1, PAL.night2, PAL.night3, PAL.night4, PAL.void0, PAL.void1, PAL.void2]);
 
 // ---------------------------------------------------------------- portrait (44×34)
 

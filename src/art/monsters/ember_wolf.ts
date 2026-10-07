@@ -1,14 +1,26 @@
 // Kor Kurdu (ember_wolf) — FIRE beast, 64×64, side profile facing right.
 //
-// A sleek charcoal wolf whose mane, tail and paws are living flame. Parametric rig: every frame
-// is a Pose (numbers) and drawWolf() paints the body back-to-front (far legs → torso → near
-// legs → neck → head) with ink separation between parts, outlines the solid body, then paints
-// the flames as light: tongues that only fill empty pixels sit BEHIND the body (no outline,
-// they glow against the night), a few front tongues lick over the neck. Every tongue flickers
-// per frame (length, sway, heat) and streams back with the wind of the wolf's motion.
+// An ash-charcoal wolf whose mane, tail and paws are living flame. Anatomy: a deep chest that
+// drops well below the belly line, a tucked waist, a muscular shoulder hump under the mane;
+// front legs = upper arm → straight forearm → forward-angled pastern, hind legs = heavy thigh →
+// gaskin → back-angled hock → near-vertical metatarsus. Both leg chains are IK'd from the paw
+// targets, so the body can crouch, fly and land while the paws stay planted.
+//
+// Lighting: top-left key light (stone3 rim on the topline, stone2 back / top planes, stone1
+// flanks, stone0 underside) plus a warm underlight from the burning paws (fire2 rim along the
+// belly, brisket and leg fronts) so the dark body separates from the night board. Three
+// deliberate ember seams (shoulder blade, haunch, spine) glow fire3 in fire2 lips.
+//
+// Flames are light (no outline): every flame is a few shaped tongues — curved teardrops nested
+// fire2 → fire3 → fire4 → gold4 root — that sway per frame and stream back with the wind of the
+// wolf's motion. Behind-the-body tongues only fill empty pixels. Lunge afterimages are whole
+// wolf silhouettes in translucent fire, offset back along the travel.
+//
+// Rig: every frame is a Pose (numbers); drawWolf() paints back-to-front (far legs → tail →
+// body → near thigh/legs → head) with ink separation between parts, outlines, then the light.
 
 import { PAL } from '../palette';
-import { PixelCanvas, bezier, type Pt } from '../pixel';
+import { PixelCanvas, type Pt } from '../pixel';
 import type { MonsterAnim, MonsterArt } from '../types';
 
 const W = 64;
@@ -21,73 +33,75 @@ const GROUND = 59;
 interface Ghost {
   dx: number;
   dy: number;
-  /** 0..1 strength */
-  k: number;
+  /** Opacity 0..1. */
+  a: number;
 }
 
 interface Pose {
-  /** Body root = middle of the torso (frame px). */
+  /** Body root = middle of the torso at spine-to-belly center (frame px). */
   x: number;
   y: number;
-  /** Body pitch (rad, + = chest up) and stretch (1 = normal length). */
+  /** Body pitch (rad, + = chest up) and chest push (px, the brisket swells forward/out — howl). */
   tilt: number;
-  st: number;
-  /** Neck direction (rad, screen space) and length; head pitch (rad, + = nose up). */
+  chest: number;
+  /** Neck direction (screen rad) and length; head pitch (rad, + = nose up). */
   na: number;
   nl: number;
   hp: number;
-  /** Jaw 0..1, ears 0 (pricked) .. 1 (flat back), snarl 0..1 (lip curled), eye 0 (shut) .. 2 (blazing). */
+  /** Jaw opening (rad, ~0.55 = wide), ears 0 (pricked) .. 1 (flat), snarl 0..1, eye 0 (shut) .. 2 (blazing). */
   jaw: number;
   ears: number;
   snarl: number;
   eye: number;
-  /** Paws (ground contact points): front near/far, hind near/far. */
+  /** Paw ground points: front near/far, hind near/far. */
   fn: Pt;
   ff: Pt;
   hn: Pt;
   hf: Pt;
-  /** Hind metatarsus angle (paw → hock, rad). */
+  /** Front pastern angle (paw → wrist, rad) and hind metatarsus angle (paw → hock, rad). */
+  fpa: number;
   hna: number;
-  hfa: number;
-  /** Tail base direction (rad), wave phase, wave amplitude. */
+  /** Tail stub direction (rad), sway phase, sway amplitude. */
   tail: number;
   tw: number;
   ta: number;
-  /** Flame size/heat 0.4..1.7, and wind 0..1 (flames stream back horizontally). */
+  /** Flame size/heat ~0.5..1.7, wind 0..1 (flames stream back horizontally). */
   fl: number;
   wind: number;
-  /** Lunge afterimages (flame silhouettes) and fire trail on the ground. */
+  /** Lunge afterimages, fire trail along the ground, landing ember/dust puff (0..1). */
   ghosts: Ghost[];
   trail: number;
-  /** Flicker phase (any number; integer steps loop). */
+  puff: number;
+  /** Flicker phase (integer steps loop). */
   t: number;
 }
 
 const N: Pose = {
-  x: 27,
-  y: 42,
-  tilt: 0.08,
-  st: 1,
-  na: -0.85,
+  x: 30,
+  y: 40,
+  tilt: 0,
+  chest: 0,
+  na: -0.92,
   nl: 10,
-  hp: -0.04,
-  jaw: 0.15,
+  hp: 0.05,
+  jaw: 0.1,
   ears: 0,
   snarl: 0,
   eye: 1,
-  fn: [35, GROUND],
-  ff: [31, GROUND],
-  hn: [20, GROUND],
-  hf: [16, GROUND],
-  hna: -1.78,
-  hfa: -1.75,
-  tail: Math.PI + 1.0,
+  fn: [42, GROUND],
+  ff: [38, GROUND],
+  hn: [19, GROUND],
+  hf: [15, GROUND],
+  fpa: -2.05,
+  hna: -1.74,
+  tail: Math.PI + 0.75,
   tw: 0,
   ta: 1,
   fl: 1,
   wind: 0,
   ghosts: [],
   trail: 0,
+  puff: 0,
   t: 0,
 };
 
@@ -97,19 +111,19 @@ const P = (o: Partial<Pose>): Pose => ({ ...N, ...o });
 
 function idlePose(f: number, n: number): Pose {
   const t = f / n;
-  const pant = f % 2; // two quick pants per beat
-  const breath = Math.sin(t * TAU * 2);
+  const s = Math.sin(t * TAU);
+  const pant = f % 2; // quick panting, two pants per breath
   return P({
-    y: N.y + (breath > 0.3 ? 1 : 0),
-    jaw: pant ? 0.34 : 0.08,
+    // breathing at 1px resolution: the chest lifts first, the head follows a frame later
+    y: N.y + Math.round(-0.6 * s),
+    na: N.na + 0.05 * Math.round(Math.sin((t - 0.125) * TAU)),
+    jaw: pant ? 0.27 : 0.14,
     hp: N.hp + (pant ? -0.04 : 0),
-    na: N.na + (breath > 0.3 ? 0.04 : 0),
-    tail: N.tail + Math.sin(t * TAU) * 0.18,
+    tail: N.tail + Math.sin(t * TAU) * 0.16,
     tw: t,
-    ta: 1,
     fl: 1 + 0.08 * Math.sin(t * TAU * 2),
     // an ear flick and a slow blink keep the loop from feeling mechanical
-    ears: f === 4 ? 0.3 : 0,
+    ears: f === 4 ? 0.35 : 0,
     eye: f === 6 ? 0.5 : 1,
     t,
   });
@@ -118,60 +132,66 @@ function idlePose(f: number, n: number): Pose {
 const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> = {
   idle: { fps: 8, loop: true, poses: Array.from({ length: 8 }, (_, f) => idlePose(f, 8)) },
 
-  // Roar: dip the head (anticipation) → rear the chest up, muzzle to the sky, a long howl while
-  // the mane and tail erupt → lower and settle.
+  // Roar ("uluma"): dip the head and gather (anticipation) → rear the chest out, front legs
+  // braced forward, hind legs sunk; the neck stretches up and the muzzle points ~65° to the sky
+  // with the lower jaw dropped, throat glowing → hold the howl while mane and tail erupt → settle.
   roar: {
     fps: 10,
     loop: false,
     poses: [
       P({ t: 0 }),
-      P({ y: 42, tilt: -0.04, na: -0.7, hp: -0.3, jaw: 0.05, ears: 0.3, fl: 0.8, tail: N.tail - 0.2, tw: 0.1, t: 0.1 }),
-      P({ y: 40, tilt: 0.12, na: -1.35, hp: 0.45, jaw: 0.45, fl: 1.15, tail: N.tail + 0.2, tw: 0.2, t: 0.2 }),
-      P({ y: 39, tilt: 0.2, na: -1.55, nl: 10, hp: 0.95, jaw: 0.85, eye: 0.4, fl: 1.5, tail: N.tail + 0.45, tw: 0.3, t: 0.3 }),
-      P({ y: 39, tilt: 0.21, na: -1.58, nl: 10, hp: 1.0, jaw: 0.9, eye: 0.4, fl: 1.7, tail: N.tail + 0.5, tw: 0.4, t: 0.4 }),
-      P({ y: 40, tilt: 0.2, na: -1.56, nl: 10, hp: 0.97, jaw: 0.82, eye: 0.4, fl: 1.65, tail: N.tail + 0.5, tw: 0.5, t: 0.5 }),
-      P({ y: 39, tilt: 0.2, na: -1.55, nl: 10, hp: 0.95, jaw: 0.8, eye: 0.5, fl: 1.55, tail: N.tail + 0.45, tw: 0.6, t: 0.6 }),
-      P({ y: 40, tilt: 0.12, na: -1.3, hp: 0.5, jaw: 0.4, eye: 1.2, fl: 1.3, tail: N.tail + 0.25, tw: 0.7, t: 0.7 }),
-      P({ y: 41, tilt: 0.06, na: -1.08, hp: 0.15, jaw: 0.2, eye: 1.4, fl: 1.1, tail: N.tail + 0.1, tw: 0.8, t: 0.8 }),
+      P({ y: 41, tilt: -0.05, na: -0.62, hp: -0.4, jaw: 0.04, ears: 0.35, fl: 0.85, tail: N.tail - 0.15, tw: 0.1, t: 0.1 }),
+      P({ y: 40, tilt: 0.08, chest: 1, na: -1.2, nl: 10.5, hp: 0.55, jaw: 0.22, fn: [43, GROUND], fpa: -1.95, fl: 1.2, tail: N.tail + 0.2, tw: 0.2, t: 0.2 }),
+      P({ y: 40, tilt: 0.14, chest: 2, na: -1.42, nl: 11, hp: 1.1, jaw: 0.5, eye: 0.4, ears: 0.15, fn: [45, GROUND], ff: [41, GROUND], fpa: -2.15, fl: 1.55, tail: N.tail + 0.4, tw: 0.3, t: 0.3 }),
+      P({ y: 40, tilt: 0.15, chest: 2, na: -1.45, nl: 11, hp: 1.15, jaw: 0.56, eye: 0.4, ears: 0.15, fn: [45, GROUND], ff: [41, GROUND], fpa: -2.15, fl: 1.7, tail: N.tail + 0.45, tw: 0.4, t: 0.4 }),
+      P({ y: 40, tilt: 0.15, chest: 2, na: -1.45, nl: 11, hp: 1.15, jaw: 0.54, eye: 0.4, ears: 0.15, fn: [45, GROUND], ff: [41, GROUND], fpa: -2.15, fl: 1.65, tail: N.tail + 0.45, tw: 0.5, t: 0.5 }),
+      P({ y: 40, tilt: 0.14, chest: 2, na: -1.43, nl: 11, hp: 1.1, jaw: 0.5, eye: 0.5, ears: 0.15, fn: [45, GROUND], ff: [41, GROUND], fpa: -2.15, fl: 1.55, tail: N.tail + 0.4, tw: 0.6, t: 0.6 }),
+      P({ y: 40, tilt: 0.08, chest: 1, na: -1.2, nl: 10.5, hp: 0.5, jaw: 0.25, eye: 1.2, fn: [43, GROUND], fpa: -1.95, fl: 1.3, tail: N.tail + 0.25, tw: 0.7, t: 0.7 }),
+      P({ y: 40, tilt: 0.03, na: -1.0, hp: 0.15, jaw: 0.15, eye: 1.4, fl: 1.12, tail: N.tail + 0.1, tw: 0.8, t: 0.8 }),
       P({ fl: 1.05, tw: 0.9, t: 0.9 }),
     ],
   },
 
-  // Attack ("Kor Dişi"): crouch back, coiled, snarling (anticipation) → explode forward → IMPACT:
-  // airborne lunge, jaws wide, afterimages and a fire trail → chomp → land → recover.
+  // Attack ("Kor Dişi"): crouch back, coiled and snarling (anticipation) → push off, hind legs
+  // driving, fire trail streaming back along the ground → IMPACT: flying gallop, straight spine,
+  // front legs reaching for the target, hind legs fully back, jaws wide, two fire afterimages →
+  // chomp → landing squash with an ember puff → rebound → settle. Torso length never changes:
+  // the stretch comes from the legs.
   attack: {
     fps: 12,
     loop: false,
     poses: [
       P({ t: 0 }),
-      P({ x: 25, y: 44, tilt: -0.06, na: -0.75, hp: -0.25, jaw: 0.25, ears: 0.7, snarl: 0.8, eye: 1.5, hna: -2.15, hfa: -2.1, fl: 1.1, wind: 0.1, tail: N.tail - 0.3, tw: 0.1, t: 0.1 }),
-      P({ x: 23, y: 46, tilt: -0.08, st: 0.94, na: -0.55, hp: -0.3, jaw: 0.3, ears: 1, snarl: 1, eye: 1.8, fn: [33, GROUND], ff: [29, GROUND], hn: [20, GROUND], hf: [16, GROUND], hna: -2.45, hfa: -2.4, fl: 1.3, tail: N.tail - 0.5, tw: 0.2, t: 0.2 }),
-      P({ x: 22, y: 47, tilt: -0.09, st: 0.93, na: -0.52, hp: -0.32, jaw: 0.36, ears: 1, snarl: 1, eye: 2, fn: [33, GROUND], ff: [29, GROUND], hn: [20, GROUND], hf: [16, GROUND], hna: -2.5, hfa: -2.45, fl: 1.5, tail: N.tail - 0.55, tw: 0.25, t: 0.25 }),
-      P({ x: 30, y: 39, tilt: 0.18, st: 1.12, na: -0.6, nl: 10, hp: -0.05, jaw: 0.55, ears: 1, snarl: 1, eye: 2, fn: [44, 47], ff: [41, 50], hn: [15, GROUND], hf: [11, 58], hna: -2.7, hfa: -2.75, fl: 1.4, wind: 0.8, tail: Math.PI + 0.25, tw: 0.3, ta: 0.6,
-        ghosts: [{ dx: -8, dy: 1, k: 0.6 }], trail: 0.6, t: 0.3 }),
-      P({ x: 32, y: 36, tilt: 0.02, st: 1.16, na: -0.42, nl: 9.5, hp: 0.12, jaw: 1, ears: 1, snarl: 1, eye: 2, fn: [48, 44], ff: [45, 47], hn: [14, 50], hf: [10, 52], hna: -2.95, hfa: -3.0, fl: 1.6, wind: 1, tail: Math.PI + 0.1, tw: 0.4, ta: 0.5,
-        ghosts: [{ dx: -15, dy: 2, k: 0.3 }, { dx: -8, dy: 1, k: 0.65 }], trail: 1, t: 0.4 }),
-      P({ x: 32, y: 37, tilt: -0.03, st: 1.14, na: -0.45, nl: 9.5, hp: -0.02, jaw: 0.08, ears: 1, snarl: 1, eye: 2, fn: [47, 51], ff: [44, 53], hn: [16, 53], hf: [12, 55], hna: -2.6, hfa: -2.6, fl: 1.5, wind: 0.8, tail: Math.PI + 0.3, tw: 0.5, ta: 0.8,
-        ghosts: [{ dx: -7, dy: 0, k: 0.35 }], trail: 0.7, t: 0.5 }),
-      P({ x: 31, y: 43, tilt: -0.07, st: 1.02, na: -0.75, hp: -0.1, jaw: 0.15, ears: 0.6, snarl: 0.6, eye: 1.6, fn: [42, GROUND], ff: [38, GROUND], hn: [24, GROUND], hf: [19, GROUND], hna: -2.05, hfa: -2.0, fl: 1.25, wind: 0.4, tail: N.tail + 0.15, tw: 0.6, trail: 0.35, t: 0.6 }),
-      P({ x: 28, y: 42, tilt: 0.03, na: -1.0, jaw: 0.15, ears: 0.3, snarl: 0.3, eye: 1.3, fn: [37, GROUND], ff: [33, GROUND], hn: [21, GROUND], hf: [17, GROUND], fl: 1.1, wind: 0.15, tail: N.tail + 0.1, tw: 0.7, t: 0.7 }),
+      P({ x: 29, y: 42, tilt: -0.06, na: -0.72, hp: -0.25, jaw: 0.18, ears: 0.7, snarl: 0.8, eye: 1.5, fn: [41, GROUND], ff: [37, GROUND], hna: -2.0, fl: 1.1, wind: 0.1, tail: Math.PI + 0.65, tw: 0.1, t: 0.1 }),
+      P({ x: 28, y: 44, tilt: -0.09, na: -0.55, hp: -0.32, jaw: 0.25, ears: 1, snarl: 1, eye: 1.8, fn: [40, GROUND], ff: [36, GROUND], hn: [19, GROUND], hf: [15, GROUND], hna: -2.3, fpa: -1.95, fl: 1.3, tail: Math.PI + 0.78, tw: 0.2, t: 0.2 }),
+      P({ x: 27, y: 45, tilt: -0.1, na: -0.52, hp: -0.34, jaw: 0.3, ears: 1, snarl: 1, eye: 2, fn: [40, GROUND], ff: [36, GROUND], hn: [19, GROUND], hf: [15, GROUND], hna: -2.4, fpa: -2.0, fl: 1.5, tail: Math.PI + 0.8, tw: 0.25, t: 0.25 }),
+      P({ x: 29, y: 39, tilt: 0.12, na: -0.62, hp: -0.05, jaw: 0.35, ears: 1, snarl: 1, eye: 2, fn: [45, 50], ff: [42, 52], fpa: -2.7, hn: [15, GROUND], hf: [11, 58], hna: -2.45, fl: 1.45, wind: 0.7, tail: Math.PI + 0.5, tw: 0.3, ta: 0.6,
+        ghosts: [{ dx: -6, dy: 3, a: 0.62 }], trail: 0.6, t: 0.3 }),
+      P({ x: 31, y: 35, tilt: 0, na: -0.45, nl: 10, hp: 0.1, jaw: 0.6, ears: 1, snarl: 1, eye: 2, fn: [53, 41], ff: [50, 43], fpa: Math.PI + 0.25, hn: [9, 46], hf: [6, 48], hna: -0.35, fl: 1.6, wind: 1, tail: Math.PI + 0.4, tw: 0.4, ta: 0.4,
+        ghosts: [{ dx: -14, dy: 6, a: 0.5 }, { dx: -7, dy: 3, a: 0.75 }], trail: 1, t: 0.4 }),
+      P({ x: 31, y: 37, tilt: -0.05, na: -0.5, nl: 10, hp: -0.06, jaw: 0.04, ears: 1, snarl: 1, eye: 2, fn: [51, 49], ff: [48, 51], fpa: -2.6, hn: [12, 51], hf: [9, 53], hna: -0.9, fl: 1.5, wind: 0.8, tail: Math.PI + 0.3, tw: 0.5, ta: 0.7,
+        ghosts: [{ dx: -7, dy: 1, a: 0.45 }], trail: 0.7, t: 0.5 }),
+      P({ x: 31, y: 43, tilt: -0.08, na: -0.72, hp: -0.15, jaw: 0.12, ears: 0.6, snarl: 0.6, eye: 1.6, fn: [44, GROUND], ff: [40, GROUND], fpa: -2.15, hn: [20, GROUND], hf: [16, GROUND], hna: -2.15, fl: 1.3, wind: 0.35, tail: Math.PI + 0.5, tw: 0.6, puff: 1, trail: 0.35, t: 0.6 }),
+      P({ x: 30, y: 39, tilt: 0.04, na: -0.98, jaw: 0.15, ears: 0.3, snarl: 0.3, eye: 1.3, fn: [42, GROUND], ff: [38, GROUND], fl: 1.15, wind: 0.1, tail: N.tail + 0.05, tw: 0.7, puff: 0.5, t: 0.7 }),
       P({ tw: 0.8, t: 0.8 }),
     ],
   },
 
-  // Hit: yelp — jerked back, head flung up, eyes squeezed, ears flat, flames gutter; recover.
+  // Hit: yelp — jerked back, front paw lifts, head flung up, eyes squeezed, ears flat, flames
+  // gutter and blow back; recover. The tail flame angles up-left and stays inside the frame.
   hit: {
     fps: 10,
     loop: false,
     poses: [
-      P({ x: 24, y: 41, tilt: 0.14, na: -1.4, nl: 9, hp: 0.55, jaw: 0.55, ears: 1, eye: 0, fn: [35, 56], ff: [31, 58], hn: [19, GROUND], hf: [15, GROUND], fl: 0.5, wind: 0.6, tail: Math.PI - 0.4, tw: 0.1, t: 0.1 }),
-      P({ x: 24, y: 42, tilt: 0.08, na: -1.25, hp: 0.3, jaw: 0.35, ears: 1, eye: 0, fn: [34, GROUND], hn: [19, GROUND], hf: [15, GROUND], fl: 0.6, wind: 0.3, tail: Math.PI - 0.15, tw: 0.2, t: 0.2 }),
-      P({ x: 25, y: 42, tilt: 0.05, na: -1.1, hp: 0.12, jaw: 0.2, ears: 0.6, eye: 0.6, hn: [19, GROUND], fl: 0.8, tail: N.tail - 0.15, tw: 0.3, t: 0.3 }),
-      P({ x: 26, tw: 0.4, fl: 0.95, ears: 0.2, t: 0.4 }),
+      P({ x: 27, y: 41, tilt: 0.16, na: -1.35, nl: 9.5, hp: 0.6, jaw: 0.42, ears: 1, eye: 0, fn: [39, 56], ff: [36, GROUND], hn: [18, GROUND], hf: [14, GROUND], fl: 0.55, wind: 0.45, tail: Math.PI + 0.85, ta: 0.4, tw: 0.1, t: 0.1 }),
+      P({ x: 27, y: 41, tilt: 0.1, na: -1.2, hp: 0.35, jaw: 0.28, ears: 1, eye: 0, fn: [40, GROUND], ff: [36, GROUND], hn: [18, GROUND], hf: [14, GROUND], fl: 0.65, wind: 0.25, tail: Math.PI + 0.85, ta: 0.5, tw: 0.2, t: 0.2 }),
+      P({ x: 28, y: 40, tilt: 0.05, na: -1.05, hp: 0.15, jaw: 0.18, ears: 0.6, eye: 0.6, fn: [41, GROUND], ff: [37, GROUND], hn: [18, GROUND], fl: 0.82, tail: Math.PI + 0.8, tw: 0.3, t: 0.3 }),
+      P({ x: 29, ears: 0.2, fl: 0.95, tail: Math.PI + 0.78, tw: 0.4, t: 0.4 }),
     ],
   },
 
-  // Guard: low crouch, head down and forward, ears flat, lips curled in a snarl, flames banked low.
+  // Guard: low crouch, head down and forward, ears flat, lips curled in a snarl, flames banked
+  // low; the tail flame is held low and up-left, well inside the frame.
   guard: {
     fps: 5,
     loop: true,
@@ -179,27 +199,26 @@ const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> 
       const t = f / 4;
       const s = Math.sin(t * TAU);
       return P({
-        x: 26,
-        y: 46 + (s > 0.5 ? -1 : 0),
-        tilt: -0.07,
-        st: 0.96,
-        na: -0.55,
+        x: 30,
+        y: 45 - Math.round(0.6 * s),
+        tilt: -0.06,
+        na: -0.5,
         nl: 9,
-        hp: -0.22,
-        jaw: 0.18 + (s > 0.5 ? 0.06 : 0),
+        hp: -0.2,
+        jaw: 0.14 + 0.05 * s,
         ears: 1,
         snarl: 1,
         eye: 1.6,
-        fn: [36, GROUND],
-        ff: [32, GROUND],
+        fn: [43, GROUND],
+        ff: [39, GROUND],
+        fpa: -2.0,
         hn: [19, GROUND],
         hf: [15, GROUND],
-        hna: -2.35,
-        hfa: -2.3,
-        tail: Math.PI + 0.05,
+        hna: -2.3,
+        tail: Math.PI + 0.62,
         tw: t,
         ta: 0.5,
-        fl: 0.55 + 0.08 * s,
+        fl: 0.62 + 0.08 * s,
         t,
       });
     }),
@@ -211,7 +230,7 @@ const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> 
 type Canvas = PixelCanvas;
 
 /** Draw into a fresh layer, then composite with an ink separation line where it overlaps. */
-function layer(p: Canvas, fn: (q: Canvas) => void, sep: number | null = PAL.ink): void {
+function layer(p: Canvas, fn: (q: Canvas) => void, sep: number | null = PAL.ink): Canvas {
   const q = new PixelCanvas(p.w, p.h);
   fn(q);
   if (sep !== null) {
@@ -222,6 +241,7 @@ function layer(p: Canvas, fn: (q: Canvas) => void, sep: number | null = PAL.ink)
       }
   }
   p.blit(q, 0, 0);
+  return q;
 }
 
 function ik(sx: number, sy: number, hx: number, hy: number, l1: number, l2: number, bend: 1 | -1): [Pt, Pt] {
@@ -246,66 +266,7 @@ function hash(a: number, b = 0, c = 0): number {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
-const FUR_N = [PAL.ink, PAL.night0, PAL.night1, PAL.stone1, PAL.stone2, PAL.stone3] as const;
-const isFur = (c: number | null) => c !== null && (FUR_N as readonly number[]).includes(c) && c !== PAL.ink;
-const furUp = (c: number) => FUR_N[Math.min(FUR_N.length - 1, (FUR_N as readonly number[]).indexOf(c) + 1)];
-const furDn = (c: number) => FUR_N[Math.max(1, (FUR_N as readonly number[]).indexOf(c) - 1)];
-
-/** Light a fur layer from the top-left: lit rim on top/left edges, cool shadow on bottom/right. */
-function furLight(q: Canvas, near: boolean, depth = 1): void {
-  const src = q.clone();
-  for (let y = 0; y < q.h; y++)
-    for (let x = 0; x < q.w; x++) {
-      const c = src.get(x, y);
-      if (c === null || !isFur(c)) continue;
-      const up = !src.isOpaque(x, y - 1);
-      const left = !src.isOpaque(x - 1, y);
-      let down = !src.isOpaque(x, y + 1);
-      for (let d = 2; d <= depth && !down; d++) down = !src.isOpaque(x, y + d);
-      const right = !src.isOpaque(x + 1, y);
-      if (up) {
-        let n = furUp(c);
-        if (!near && n === PAL.stone3) n = PAL.stone2;
-        q.set(x, y, n);
-      } else if (left && near) q.set(x, y, furUp(c));
-      else if (down || right) q.set(x, y, furDn(c));
-    }
-}
-
-/**
- * A flame tongue from `base` toward `dir`: tapered, swaying, nested heat (fire1 rim → fire2 →
- * fire3 → fire4 core → gold4 at the root when very hot). `behind` paints only empty pixels.
- */
-function flame(p: Canvas, base: Pt, dir: number, len: number, wid: number, ph: number, heat: number, behind: Canvas | null): void {
-  if (len < 1.5) return;
-  const path = (L: number): Pt[] => {
-    const out: Pt[] = [];
-    const n = Math.max(3, Math.ceil(L / 1.5));
-    for (let i = 0; i <= n; i++) {
-      const f = i / n;
-      const wob = Math.sin((ph - f * 0.8) * TAU) * f * f * (wid * 0.55 + L * 0.12);
-      out.push([base[0] + Math.cos(dir) * L * f - Math.sin(dir) * wob, base[1] + Math.sin(dir) * L * f + Math.cos(dir) * wob]);
-    }
-    return out;
-  };
-  const t = new PixelCanvas(p.w, p.h);
-  t.stroke(path(len), wid + 1, 1, PAL.fire1);
-  t.stroke(path(len * 0.9), wid, 1, heat > 0.45 ? PAL.fire2 : PAL.fire1);
-  if (len > 3) t.stroke(path(len * 0.62), Math.max(1, wid * 0.6), 1, heat > 0.45 ? PAL.fire3 : PAL.fire2);
-  if (len > 4.5 && heat > 0.6) t.stroke(path(len * 0.32), Math.max(1, wid * 0.32), 1, heat > 1.35 ? PAL.gold4 : PAL.fire4);
-  for (let y = 0; y < t.h; y++)
-    for (let x = 0; x < t.w; x++) {
-      const c = t.get(x, y);
-      if (c === null) continue;
-      if (behind && behind.isOpaque(x, y)) continue;
-      // never paint a darker flame tone over a brighter one already there
-      const cur = p.get(x, y);
-      if (cur !== null && FIRE_RANK(cur) > FIRE_RANK(c)) continue;
-      p.set(x, y, c);
-    }
-}
-
-function FIRE_RANK(c: number): number {
+function FIRE_RANK(c: number | null): number {
   switch (c) {
     case PAL.fire1:
       return 1;
@@ -317,410 +278,615 @@ function FIRE_RANK(c: number): number {
       return 4;
     case PAL.gold4:
       return 5;
+    case PAL.white:
+      return 6;
     default:
       return 0;
   }
 }
 
-// ---------------------------------------------------------------- the rig
-
-/** Body silhouette in body-local space (x forward, y down): level back, deep chest, tucked waist. */
-const BODY: Pt[] = [
-  ...bezier([-12.5, -5], [-8, -7.5], [-1, -5.5], [7, -8], 8),
-  ...bezier([7, -8], [12, -7], [14.5, -1], [12.5, 5], 8).slice(1),
-  ...bezier([12.5, 5], [11, 8.5], [6, 9.5], [3, 6.5], 6).slice(1),
-  ...bezier([3, 6.5], [0.5, 3.5], [-3, 1.5], [-6, 2.2], 6).slice(1),
-  ...bezier([-6, 2.2], [-9, 2.5], [-10.5, 5.5], [-12.5, 4.5], 6).slice(1),
-  ...bezier([-12.5, 4.5], [-16, 3], [-16, -3], [-12.5, -5], 8).slice(1),
-];
+/** True if (x, y) or a 4-neighbour is opaque in m (the part plus its outline ring). */
+function near4(m: Canvas, x: number, y: number): boolean {
+  return m.isOpaque(x, y) || m.isOpaque(x - 1, y) || m.isOpaque(x + 1, y) || m.isOpaque(x, y - 1) || m.isOpaque(x, y + 1);
+}
 
 /**
- * Cylinder shading for the torso/neck: per pixel column, a lit band along the top (back, crest),
- * mid fur, and a cool shadow band along the underside (belly, throat).
+ * A flame tongue: a curved teardrop (broad root → 1px tip) with nested heat — fire2 fringe →
+ * fire3 body → fire4 core → gold4 at the root when hot. Light: no outline, single stray pixels
+ * dropped, never paints a cooler flame tone over a hotter one. `curl` bends the tongue along its
+ * length (rad, − = curls back/left for an upward tongue), `ph` sways it. The tongue shortens
+ * itself to stay 2px inside the frame. `behind`: skip pixels covered by that canvas (+ outline).
  */
-function volumeShade(q: Canvas): void {
+function tongue(p: Canvas, base: Pt, dir: number, len: number, wid: number, curl: number, ph: number, heat: number, behind: Canvas | null): void {
+  if (len < 2) return;
+  let C: Pt[] = [];
+  let n = 4;
+  for (let tries = 0; tries < 8; tries++) {
+    n = Math.max(4, Math.ceil(len / 1.4));
+    C = [];
+    let a = dir + Math.sin(ph * TAU) * 0.12;
+    let [x, y] = base;
+    for (let i = 0; i <= n; i++) {
+      C.push([x, y]);
+      a += curl / n + Math.sin((ph - i / n) * TAU) * 0.05;
+      x += (Math.cos(a) * len) / n;
+      y += (Math.sin(a) * len) / n;
+    }
+    // the whole tongue (centerline ± its half-width) must stay 2px inside the frame
+    const inside = C.every(([cx, cy], i) => {
+      const hw = (wid / 2) * (1 - i / n) + 2;
+      return cx >= hw && cx <= p.w - 1 - hw && cy >= hw;
+    });
+    if (inside || len < 2.5) break;
+    len *= 0.85;
+  }
+  if (len < 2) return;
+  const shape = (k: number, wk: number): Pt[] => {
+    const m = Math.max(2, Math.round(n * k));
+    const left: Pt[] = [];
+    const right: Pt[] = [];
+    for (let i = 0; i <= m; i++) {
+      const f = i / m;
+      const [x0, y0] = C[Math.max(0, i - 1)];
+      const [x1, y1] = C[Math.min(m, i + 1)];
+      const d = Math.hypot(x1 - x0, y1 - y0) || 1;
+      const nx = -(y1 - y0) / d;
+      const ny = (x1 - x0) / d;
+      const w = ((wid * wk) / 2) * (f < 0.3 ? 0.85 + f * 0.5 : Math.pow((1 - f) / 0.7, 0.8));
+      left.push([C[i][0] + nx * w, C[i][1] + ny * w]);
+      right.push([C[i][0] - nx * w, C[i][1] - ny * w]);
+    }
+    return [...left, ...right.reverse()];
+  };
+  const t = new PixelCanvas(p.w, p.h);
+  t.poly(shape(1, 1), heat > 0.35 ? PAL.fire2 : PAL.fire1);
+  if (len > 3) t.poly(shape(0.72, 0.6), heat > 0.35 ? PAL.fire3 : PAL.fire2);
+  if (len > 4.5 && heat > 0.55) t.poly(shape(0.42, 0.34), heat > 1.35 ? PAL.gold4 : PAL.fire4);
+  for (let y = 0; y < t.h; y++)
+    for (let x = 0; x < t.w; x++) {
+      const c = t.get(x, y);
+      if (c === null) continue;
+      if (!t.isOpaque(x - 1, y) && !t.isOpaque(x + 1, y) && !t.isOpaque(x, y - 1) && !t.isOpaque(x, y + 1)) continue;
+      if (behind && near4(behind, x, y)) continue;
+      // unoutlined light never touches the outermost frame pixels (no hard cut)
+      if (x < 1 || y < 1 || x > p.w - 2) continue;
+      const cur = p.get(x, y);
+      if (cur !== null && FIRE_RANK(cur) > FIRE_RANK(c)) continue;
+      p.set(x, y, c);
+    }
+}
+
+// ---------------------------------------------------------------- fur shading
+
+/** Base fill color for fur parts before shading (replaced by the shading passes). */
+const FUR = PAL.stone1;
+
+/**
+ * Cylinder shading for the torso/neck, per pixel column: stone3 rim on the topline, stone2 back
+ * plane, stone1 flank, stone0 underside and a fire2 underlight on the belly/brisket edge (the
+ * burning paws light it from below). Left silhouette edges catch the key light too.
+ */
+function shadeBody(q: Canvas, warmFrom: number, warmTo: number): void {
+  const src = q.clone();
   for (let x = 0; x < q.w; x++) {
     let y = 0;
     while (y < q.h) {
-      if (!q.isOpaque(x, y)) {
+      if (!src.isOpaque(x, y)) {
         y++;
         continue;
       }
       const top = y;
-      while (y < q.h && q.isOpaque(x, y)) y++;
+      while (y < q.h && src.isOpaque(x, y)) y++;
       const bot = y - 1;
       const L = bot - top + 1;
       for (let yy = top; yy <= bot; yy++) {
-        if (q.get(x, yy) !== PAL.stone1) continue;
-        const dTop = yy - top;
-        const dBot = bot - yy;
+        if (src.get(x, yy) !== FUR) continue;
+        const d = (yy - top) / Math.max(1, L - 1);
         let c: number = PAL.stone1;
-        if (L >= 4 && dTop < 1) c = PAL.stone2;
-        else if (L >= 4 && dBot === 0) c = PAL.night0;
-        else if (L >= 6 && dBot < 3) c = PAL.night1;
+        if (yy === top) c = PAL.stone3;
+        else if (d < 0.55) c = PAL.stone2;
+        else if (yy === bot && x >= warmFrom && x <= warmTo && L >= 5) c = PAL.fire2;
+        else if (d > 0.84 && L >= 6) c = PAL.stone0;
+        if (c === PAL.stone1 && !src.isOpaque(x - 1, yy)) c = PAL.stone2;
         q.set(x, yy, c);
       }
     }
   }
 }
 
-/** Body length squash (body-local x) and head scale. */
-const BK = 0.8;
-const HS = 1.18;
+/**
+ * Leg shading: lit back/left edge, dark front/right edge — except near the paw, where the front
+ * edge catches the paw fire (fire2 underlight, fire3 right above the flames).
+ */
+function shadeLeg(q: Canvas, near: boolean, pawY: number): void {
+  const src = q.clone();
+  for (let y = 0; y < q.h; y++)
+    for (let x = 0; x < q.w; x++) {
+      if (src.get(x, y) !== FUR) continue;
+      const left = !src.isOpaque(x - 1, y);
+      const right = !src.isOpaque(x + 1, y);
+      const up = !src.isOpaque(x, y - 1);
+      // near legs: lit stone2 with a stone3 back edge; far legs one step darker (depth)
+      let c: number = near ? PAL.stone2 : PAL.stone1;
+      if (left || up) c = near ? PAL.stone3 : PAL.stone2;
+      else if (right) c = pawY - y <= 5 && pawY - y >= 0 ? (pawY - y <= 2 && near ? PAL.fire3 : PAL.fire2) : near ? PAL.stone1 : PAL.stone0;
+      q.set(x, y, c);
+    }
+}
 
-/** Pose → body-local and head-local transforms. */
-function frameOf(o: Pose) {
+// ---------------------------------------------------------------- the rig
+
+/** Body silhouette, body-local (x forward, y down): croup, loin, shoulder hump, deep chest, tuck. */
+const BODY: Pt[] = [
+  [-16.5, -3],
+  [-14, -5.8],
+  [-10, -6.2],
+  [-5, -5.2],
+  [0, -5.6],
+  [4, -7.4],
+  [7, -9],
+  [10, -8.3],
+  [12.5, -6],
+  [14.5, -2.5],
+  [15, 0.5],
+  [14, 4],
+  [11.5, 7],
+  [8, 8],
+  [4, 7],
+  [0, 5],
+  [-4, 3],
+  [-8, 2.6],
+  [-12, 2.6],
+  [-16, 1],
+  [-17, -1],
+];
+
+/** Body scale (body-local units → px) and head scale (head-local units → px). */
+const BK = 1.1;
+const HS = 1.15;
+const UPPER_ARM = 7.5;
+const FOREARM = 8.5;
+const PASTERN = 4;
+const THIGH = 8.5;
+const GASKIN = 7.5;
+const META = 6.5;
+
+/** Pose → transforms + skeleton. */
+function rig(o: Pose) {
   const ca = Math.cos(-o.tilt);
   const sa = Math.sin(-o.tilt);
   /** Body-local (x forward, y down) → frame px. */
-  const B = (x: number, y: number): Pt => [o.x + x * BK * ca - y * sa, o.y + x * BK * sa + y * ca];
-  const neckBase = B(9 * o.st, -4);
+  const B = (x: number, y: number): Pt => [o.x + (x * ca - y * sa) * BK, o.y + (x * sa + y * ca) * BK];
+  const neckBase = B(9.5, -5.5);
   const head: Pt = [neckBase[0] + Math.cos(o.na) * o.nl, neckBase[1] + Math.sin(o.na) * o.nl];
   const hc = Math.cos(-o.hp);
   const hs = Math.sin(-o.hp);
-  /** Head-local (u toward the nose, v down) → frame px. */
+  /** Head-local (u toward the nose, v down; origin = skull center) → frame px. */
   const Hd = (u: number, v: number): Pt => [head[0] + (u * hc - v * hs) * HS, head[1] + (u * hs + v * hc) * HS];
-  return { B, Hd, head };
+  // lower jaw: hinged under the ear, rotates down by o.jaw
+  const jc = Math.cos(o.jaw);
+  const js = Math.sin(o.jaw);
+  const J = (u: number, v: number): Pt => {
+    const du = u + 1.5;
+    const dv = v - 1.6;
+    return Hd(-1.5 + du * jc - dv * js, 1.6 + du * js + dv * jc);
+  };
+  // legs
+  const front = (sh: Pt, pw: Pt) => {
+    const wrist: Pt = [pw[0] - 0.5 + Math.cos(o.fpa) * PASTERN, pw[1] - 1.6 + Math.sin(o.fpa) * PASTERN];
+    const [el, wr] = ik(sh[0], sh[1], wrist[0], wrist[1], UPPER_ARM, FOREARM, 1);
+    return { sh, el, wr, pw };
+  };
+  const hind = (hip: Pt, pw: Pt, ma: number) => {
+    const hock: Pt = [pw[0] - 0.5 + Math.cos(ma) * META, pw[1] - 1.6 + Math.sin(ma) * META];
+    const [knee, hk] = ik(hip[0], hip[1], hock[0], hock[1], THIGH, GASKIN, -1);
+    return { hip, knee, hk, pw };
+  };
+  const FN = front(B(9.5, -0.5), o.fn);
+  const FF = front(B(7, -0.5), o.ff);
+  const HN = hind(B(-11.5, -2.5), o.hn, o.hna);
+  const HF = hind(B(-13.5, -2.5), o.hf, o.hna - 0.05);
+  return { B, Hd, J, head, hc, hs, FN, FF, HN, HF };
 }
 
-function drawWolf(p: Canvas, o: Pose, ghost = false): void {
-  const st = o.st;
-  const { B, Hd, head } = frameOf(o);
-  /** Flame flicker 0..1: a flowing wave per tongue plus a little per-frame crackle. */
-  const flick = (i: number) => Math.max(0, Math.min(1, 0.5 + 0.36 * Math.sin((o.t * 2 + i * 0.618) * TAU) + 0.28 * (hash(i, Math.round(o.t * 40), 7) - 0.5)));
+type Rig = ReturnType<typeof rig>;
 
-  // ------------------------------------------------ skeleton
-  const shN = B(8 * st, 1);
-  const shF = B(6 * st, 1);
-  const hipN = B(-9 * st, -1.5);
-  const hipF = B(-11 * st, -1.5);
-  const tailRoot = B(-13 * st, -4);
-  const front = (sh: Pt, paw: Pt) => {
-    const [el, wr] = ik(sh[0], sh[1], paw[0] - 0.5, paw[1] - 3.5, 7, 8.5, -1);
-    return { el, wr };
-  };
-  const hind = (hip: Pt, paw: Pt, ma: number) => {
-    const hock: Pt = [paw[0] + Math.cos(ma) * 6.5, paw[1] - 1 + Math.sin(ma) * 6.5];
-    const [knee, hk] = ik(hip[0], hip[1], hock[0], hock[1], 8.5, 7.5, 1);
-    return { knee, hk };
-  };
-  const FN = front(shN, o.fn);
-  const FF = front(shF, o.ff);
-  const HN = hind(hipN, o.hn, o.hna);
-  const HF = hind(hipF, o.hf, o.hfa);
+/** Solid wolf (no light): far legs, tail stub, body, near legs, head. Returns the body+head masks. */
+function drawBody(p: Canvas, o: Pose, R: Rig, silhouette: boolean): { body: Canvas; head: Canvas; tailTip: Pt; tailPts: Pt[] } {
+  const { B, Hd, J, head, hc, hs, FN, FF, HN, HF } = R;
+  const sep = silhouette ? null : PAL.ink;
 
-  // lower legs + paws (the upper bones live inside the body silhouette)
-  const paw = (q: Canvas, pw: Pt, base: number, near: boolean) => {
-    q.ellipse(pw[0] + 1.5, pw[1] - 1.1, 2.7, 1.6, base);
-    if (near) q.set(pw[0] + 3.6, pw[1] - 0.6, PAL.stone3).set(pw[0] + 2.4, pw[1] - 0.2, PAL.stone2);
+  // ------------------------------------------------ legs
+  const paw = (q: Canvas, pw: Pt, near: boolean) => {
+    q.ellipse(pw[0] + 0.7, pw[1] - 1.5, 3.1, 1.7, FUR);
+    return near;
   };
-  const frontLow = (q: Canvas, g: { el: Pt; wr: Pt }, pw: Pt, near: boolean, upper: Pt | null) => {
-    const base = near ? PAL.stone1 : PAL.night1;
-    if (upper) q.stroke([upper, g.el], 6, 4.5, base);
-    q.stroke([g.el, g.wr], 4.8, 3.4, base);
-    q.stroke([g.wr, [pw[0] + 0.5, pw[1] - 1.3]], 3.4, 2.8, base);
-    paw(q, pw, base, near);
-    // elbow tuft
-    q.set(g.el[0] - 2.2, g.el[1] + 1.2, base);
-    furLight(q, near);
+  const shadePaw = (q: Canvas, pw: Pt, near: boolean) => {
+    // toes glow from the flames licking out between them
+    const y = Math.round(pw[1] - 1);
+    for (let x = Math.round(pw[0] - 2); x <= pw[0] + 3; x++) if (q.isOpaque(x, y) && !q.isOpaque(x, y + 1)) q.set(x, y, near ? PAL.fire2 : PAL.fire1);
+    q.paint(Math.round(pw[0] + 2.6), Math.round(pw[1] - 1.4), near ? PAL.fire3 : PAL.fire2);
   };
-  const hindLow = (q: Canvas, g: { knee: Pt; hk: Pt }, pw: Pt, near: boolean, hip: Pt | null) => {
-    const base = near ? PAL.stone1 : PAL.night1;
-    if (hip) q.stroke([hip, g.knee], 8, 4.5, base);
-    q.stroke([g.knee, g.hk], 5, 3.4, base);
-    q.stroke([g.hk, [pw[0] + 0.5, pw[1] - 1.3]], 3.4, 2.8, base);
-    paw(q, pw, base, near);
-    q.set(g.hk[0] - 1.6, g.hk[1] + 0.4, base);
-    furLight(q, near);
+  const frontLeg = (q: Canvas, g: Rig['FN'], near: boolean, withUpper: boolean) => {
+    if (withUpper) q.stroke([g.sh, g.el], 7, 5.4, FUR);
+    q.stroke([g.el, g.wr], 5.2, 3.6, FUR);
+    q.stroke([g.wr, [g.pw[0] - 0.2, g.pw[1] - 1.5]], 3.6, 3.2, FUR);
+    paw(q, g.pw, near);
+    // elbow point and wrist knob give the leg its angles
+    q.disc(g.el[0] - 0.8, g.el[1] + 0.3, 2.3, FUR);
+    q.disc(g.wr[0], g.wr[1], 1.7, FUR);
+    if (!silhouette) {
+      shadeLeg(q, near, g.pw[1] - 1);
+      shadePaw(q, g.pw, near);
+    }
+  };
+  const hindLeg = (q: Canvas, g: Rig['HN'], near: boolean, withThigh: boolean) => {
+    if (withThigh) {
+      // heavy haunch → stifle
+      q.stroke([g.hip, g.knee], 10, 6, FUR);
+      q.disc(g.hip[0] - 0.5, g.hip[1] + 0.5, 5, FUR);
+    }
+    q.stroke([g.knee, g.hk], 5.6, 3.6, FUR);
+    // hock: the heel point juts back
+    const [hx, hy] = g.hk;
+    const ux = g.hk[0] - g.knee[0];
+    const uy = g.hk[1] - g.knee[1];
+    const ul = Math.hypot(ux, uy) || 1;
+    q.tri(hx - 1.5, hy - 1.5, hx + 1.5, hy + 1, hx + (ux / ul) * 2.4 - 0.5, hy + (uy / ul) * 2.4, FUR);
+    q.stroke([g.hk, [g.pw[0] - 0.2, g.pw[1] - 1.5]], 3.6, 3.1, FUR);
+    paw(q, g.pw, near);
+    if (!silhouette) {
+      shadeLeg(q, near, g.pw[1] - 1);
+      shadePaw(q, g.pw, near);
+      if (withThigh && near) {
+        // haunch ember seam: curving down the front of the thigh
+        const a = lerpPt(g.hip, g.knee, 0.15);
+        const b = lerpPt(g.hip, g.knee, 0.55);
+        const c = lerpPt(g.hip, g.knee, 0.85);
+        seam(q, [
+          [a[0] + 2.5, a[1] - 1],
+          [b[0] + 2.2, b[1]],
+          [c[0] + 1, c[1] + 0.5],
+        ], o.fl);
+      }
+    }
   };
 
-  // ------------------------------------------------ far legs (cool shadow side)
-  if (!ghost) {
-    layer(p, (q) => hindLow(q, HF, o.hf, false, hipF));
-    layer(p, (q) => frontLow(q, FF, o.ff, false, shF));
-  }
+  layer(p, (q) => hindLeg(q, HF, false, true), sep);
+  layer(p, (q) => frontLeg(q, FF, false, true), sep);
 
-  // ------------------------------------------------ tail root (charcoal, catching fire)
+  // ------------------------------------------------ tail stub (charcoal, catching fire at the tip)
+  const tailRoot = B(-16, -3.5);
   const tailPts: Pt[] = [tailRoot];
   {
     let [x, y] = tailRoot;
-    const n = 6;
-    for (let i = 1; i <= n; i++) {
-      const f = i / n;
-      const a = o.tail + Math.sin((o.tw - f * 0.6) * TAU) * 0.3 * o.ta * f;
-      x += Math.cos(a) * 2.2;
-      y += Math.sin(a) * 2.2;
+    for (let i = 1; i <= 4; i++) {
+      const f = i / 4;
+      const a = o.tail + Math.sin((o.tw - f * 0.5) * TAU) * 0.25 * o.ta * f;
+      x += Math.cos(a) * 1.8;
+      y += Math.sin(a) * 1.8;
       tailPts.push([x, y]);
     }
   }
-  layer(p, (q) => {
-    q.stroke(tailPts.slice(0, 4), 4.6, 3, PAL.stone1);
-    furLight(q, true);
-    q.paint(tailPts[3][0], tailPts[3][1], PAL.fire2);
-    q.paint(tailPts[2][0], tailPts[2][1] - 1, PAL.fire1);
-  });
+  layer(
+    p,
+    (q) => {
+      q.stroke(tailPts, 4.6, 3.4, FUR);
+      if (!silhouette) {
+        shadeLeg(q, true, -99);
+        q.paint(tailPts[3][0], tailPts[3][1], PAL.fire2);
+        q.paint(tailPts[4][0], tailPts[4][1], PAL.fire3);
+      }
+    },
+    sep,
+  );
 
-  // ------------------------------------------------ body: torso + neck + near thigh + near upper arm
-  layer(p, (q) => {
-    const fur = PAL.stone1;
-    // deep chest, tucked waist, round haunch
-    q.poly(BODY.map(([x, y]) => B(x * st, y)), fur);
-    // neck rising from the chest into the head
-    const n0 = B(7 * st, -2);
-    const n1: Pt = [head[0] - 1, head[1] + 1];
-    q.stroke([n0, [lerp(n0[0], n1[0], 0.5) + 0.8, lerp(n0[1], n1[1], 0.5)], n1], 11, 7.5, fur);
-    // chest ruff: jagged tufts at the throat and brisket
-    for (let i = 0; i < 3; i++) {
-      const [rx, ry] = B(12.5 * st + (i === 1 ? 0.8 : 0), -0.5 + i * 2.4);
-      q.tri(rx - 2, ry - 1.2, rx + 2.2, ry + 0.6, rx - 1.2, ry + 2, fur);
-    }
-    // shaggy tufts: under the belly, behind the haunch
-    for (const [x, y, dx, dy] of [
-      [1.5, 4.2, -1.2, 2.2],
-      [-2.5, 2.2, -1.4, 2],
-      [-14, 1.5, -1.8, 1.6],
-      [-14.8, -1.5, -2, 0.8],
-    ] as const) {
-      const a = B(x * st, y);
-      const b = B((x + 1.6) * st, y);
-      q.tri(a[0], a[1] - 0.5, b[0], b[1] - 0.5, a[0] + dx, a[1] + dy, fur);
-    }
-    // near thigh and upper foreleg belong to the body silhouette
-    if (!ghost) {
-      q.stroke([hipN, HN.knee], 8.5, 4.5, fur);
-      q.stroke([shN, FN.el], 6.5, 4.5, fur);
-    }
-    volumeShade(q);
-    furLight(q, true);
-    // muscle definition: lit crescents over the haunch and shoulder, stifle crease
-    const arc = (c: Pt, r: number, a0: number, a1: number, col: number) => {
-      for (let k = 0; k <= 8; k++) {
-        const an = lerp(a0, a1, k / 8) - o.tilt;
-        q.paint(c[0] + Math.cos(an) * r, c[1] + Math.sin(an) * r, col);
+  // ------------------------------------------------ body: torso + neck + chest ruff
+  const chest = o.chest;
+  const body = layer(
+    p,
+    (q) => {
+      q.poly(
+        BODY.map(([x, y]) => (x > 9 ? B(x + chest * Math.max(0, 1 - Math.abs(y - 1) / 7), y + (y > 4 ? chest * 0.4 : 0)) : B(x, y))),
+        FUR,
+      );
+      // thick neck from the shoulder hump to the skull
+      const n0 = B(9, -4);
+      const n1: Pt = Hd(-1.5, 0.8);
+      q.stroke([n0, lerpPt(n0, n1, 0.5), n1], 11.5, 8.5, FUR);
+      // throat / chest ruff: jagged tufts pointing down-back
+      for (const [x, y] of [
+        [13.4 + chest, -3.2],
+        [14.6 + chest, 0.6],
+        [13.6 + chest, 4.2],
+      ] as const) {
+        const [rx, ry] = B(x, y);
+        q.tri(rx - 1.5, ry - 1.4, rx + 1.6, ry + 0.2, rx - 0.6, ry + 2.6, FUR);
       }
-    };
-    arc(B(-10 * st, -0.5), 4.2, Math.PI * 1.05, Math.PI * 1.45, PAL.stone2);
-    arc(B(8 * st, -0.5), 4.4, Math.PI * 1.1, Math.PI * 1.4, PAL.stone2);
-    arc(B(8 * st, -0.5), 4.4, Math.PI * 0.55, Math.PI * 0.85, PAL.night1);
-    // fur flow: short strokes sweeping back and down
-    for (const [x, y, c] of [
-      [5, 2, PAL.night1],
-      [-1, 0.5, PAL.night1],
-      [-11, 1.5, PAL.night1],
-    ] as const) {
-      q.paint(...B(x * st, y), c);
-      q.paint(...B((x - 1.3) * st, y + 1), c);
-    }
-    if (!ghost) {
-      for (let k = 0; k <= 4; k++) {
-        const [x, y] = [lerp(hipN[0], HN.knee[0], 0.35 + k * 0.15) + 2.6, lerp(hipN[1], HN.knee[1], 0.35 + k * 0.15)];
-        q.paint(x, y, PAL.night1);
+      // belly tufts
+      for (const [x, y] of [
+        [3, 6.6],
+        [-1.5, 4.4],
+      ] as const) {
+        const [a, b] = [B(x, y), B(x - 2, y - 0.6)];
+        q.tri(a[0], a[1] - 0.6, b[0], b[1] - 0.6, a[0] - 1.6, a[1] + 1.6, FUR);
       }
-    }
-    // smouldering ember cracks in the charcoal coat, flowing with the fur
-    const stripes: [Pt, Pt][] = [
-      [B(8 * st, -2), B(9.5 * st, 1.5)],
-      [B(-7.5 * st, -3.5), B(-6.5 * st, -0.5)],
-    ];
-    stripes.forEach(([a0, a1], i) => {
-      const g = o.fl * (0.65 + 0.5 * flick(i + 20));
-      const n = Math.ceil(Math.hypot(a1[0] - a0[0], a1[1] - a0[1]) * 2);
-      for (let j = 0; j <= n; j++) {
-        const f = j / n;
-        const hot = g * (1 - Math.abs(f - 0.4) * 1.6);
-        q.paint(lerp(a0[0], a1[0], f), lerp(a0[1], a1[1], f), hot > 1.0 ? PAL.fire3 : hot > 0.55 ? PAL.fire2 : PAL.fire1);
-      }
-    });
-    // the mane's glow warms the top of the neck and withers
-    for (let k = 0; k <= 6; k++) {
-      const [x, y] = lerpPt(Hd(-3, -2.5), B(3 * st, -7), k / 6);
-      for (let d = -2; d < 4; d++)
-        if (q.isOpaque(x, y + d) && !q.isOpaque(x, y + d - 1)) {
-          q.set(x, y + d, o.fl > 1.15 ? PAL.fire2 : PAL.fire1);
-          break;
+      if (!silhouette) {
+        const [wx0] = B(-6, 0);
+        const [wx1] = B(15, 0);
+        shadeBody(q, Math.round(wx0), Math.round(wx1));
+        // muscle: the shoulder blade and upper arm catch the light, crease behind the elbow
+        const sh = FN.sh;
+        for (let k = 0; k <= 6; k++) {
+          const an = lerp(Math.PI * 1.05, Math.PI * 1.45, k / 6) - o.tilt;
+          const px = sh[0] - 1 + Math.cos(an) * 4.5;
+          const py = sh[1] + Math.sin(an) * 4.5;
+          if (q.get(px, py) === PAL.stone1) q.set(px, py, PAL.stone2);
         }
-    }
-  });
+        // ember seams: along the shoulder blade and the spine
+        seam(q, [B(5.5, -6.6), B(7.6, -3.5), B(8.2, 0), B(7.4, 3)], o.fl);
+        seam(q, [B(-9, -4.4), B(-5.5, -3.6), B(-1.5, -4)], o.fl * 0.9);
+        // the mane's glow warms the crest
+        for (let k = 0; k <= 8; k++) {
+          const [x, y] = lerpPt(Hd(-3, -3.4), B(5, -8.2), k / 8);
+          for (let d = -2; d < 4; d++)
+            if (q.isOpaque(x, y + d) && !q.isOpaque(x, y + d - 1)) {
+              q.set(x, y + d, o.fl > 1.2 ? PAL.fire3 : PAL.fire2);
+              break;
+            }
+        }
+      }
+    },
+    sep,
+  );
 
-  // ------------------------------------------------ near legs (lower parts, in front)
-  if (!ghost) {
-    layer(p, (q) => hindLow(q, HN, o.hn, true, null));
-    layer(p, (q) => frontLow(q, FN, o.fn, true, null));
-  }
+  // ------------------------------------------------ near legs (in front)
+  layer(p, (q) => hindLeg(q, HN, true, true), sep);
+  layer(p, (q) => frontLeg(q, FN, true, false), sep);
 
   // ------------------------------------------------ head
-  layer(p, (q) => {
-    const fur = PAL.stone1;
-    // ears: wide-based and upright; they flatten back as `ears` → 1
-    const ear = (du: number, col: number) => {
-      const tip = Hd(lerp(-1.6, -8.6, o.ears) + du * 0.6, lerp(-9, -4.4, o.ears));
-      const a = Hd(-3.8 + du, -1.8);
-      const b = Hd(1.1 + du, -3.4);
-      const m = Hd(lerp(-3.6, -5.6, o.ears) + du, lerp(-5.6, -2.6, o.ears));
-      q.poly([a, m, tip, b], col);
-      return { a, b, tip };
-    };
-    ear(2.4, PAL.night1);
-    // skull, then the muzzle below a little stop
-    q.ellipse(...Hd(0, -0.3), 4.7, 3.9, fur);
-    q.poly([Hd(2, -3.2), Hd(4.6, -2.7), Hd(9.4, -1.2), Hd(10.3, 0), Hd(9.8, 1.2), Hd(2, 2.1)], fur);
-    // lower jaw, hinged under the ear
-    const jo = o.jaw * 0.75;
-    const jc = Math.cos(jo);
-    const js = Math.sin(jo);
-    const J = (u: number, v: number): Pt => {
-      const dv = v - 1.6;
-      return Hd(u * jc - dv * js, 1.6 + u * js + dv * jc);
-    };
-    if (o.jaw > 0.1) q.poly([Hd(1.5, 1.1), Hd(9.6, 1.0), J(9, 1.9), J(1.5, 2.2)], PAL.fire2);
-    q.poly([J(-0.5, 1.5), J(9.2, 1.7), J(9, 2.8), J(5, 3.5), J(0.5, 4.3)], fur);
-    // cheek / jowl ruff
-    q.ellipse(...Hd(-0.6, 1.5), 3.3, 2.7, fur);
-    q.tri(...Hd(-3.6, 1.5), ...Hd(-1, 3.8), ...Hd(-4.6, 4.6), fur);
-    const E = ear(0, fur);
-    furLight(q, true);
-    // ear interior glows from the mane
-    {
-      const i0 = lerpPt(E.a, E.b, 0.45);
-      const i1 = lerpPt(i0, E.tip, 0.55);
-      q.line(i0[0], i0[1], i1[0], i1[1], o.fl > 0.75 ? PAL.fire2 : PAL.fire1);
-      q.paint(i0[0], i0[1], PAL.fire1);
-    }
-    // lit forehead and muzzle bridge
-    q.paint(...Hd(-1, -3.6), PAL.stone2);
-    q.paint(...Hd(5.5, -2.4), PAL.stone2);
-    q.paint(...Hd(7, -2), PAL.stone2);
-    // mouth: a dark seam when shut, a furnace when open
-    if (o.jaw <= 0.1) q.line(...Hd(3.5, 1.7), ...Hd(9, 1.4), PAL.night0);
-    else {
-      q.set(...Hd(3, 1.8), o.jaw > 0.5 ? PAL.fire4 : PAL.fire3);
-      if (o.jaw > 0.45) {
-        q.set(...Hd(4.5, 1.9), PAL.gold4);
-        q.set(...Hd(6, 1.9), PAL.fire3);
-        q.set(...J(4.5, 2.1), PAL.fire3);
+  const headMask = layer(
+    p,
+    (q) => {
+      // far ear (behind the skull)
+      const ear = (du: number, col: number) => {
+        // set back on the skull with a narrow base, so the domed forehead shows in front of it
+        const tip = Hd(lerp(-3.4, -9, o.ears) + du * 0.5, lerp(-8.6, -4.4, o.ears));
+        const a = Hd(-4.6 + du, -2.4);
+        const b = Hd(-1.2 + du, -4.2);
+        const m = Hd(lerp(-4.6, -6.4, o.ears) + du, lerp(-6, -3.2, o.ears));
+        q.poly([a, m, tip, b], col);
+        return { a, b, tip };
+      };
+      ear(1.4, PAL.stone0);
+      // skull, muzzle (stop → nose)
+      // domed skull with a clear stop, then a long tapering muzzle
+      q.ellipse(...Hd(-0.8, -0.7), 4.7 * HS, 4.3 * HS, FUR);
+      q.poly([Hd(2, -3.3), Hd(4, -2.6), Hd(7, -2.1), Hd(9.8, -1.4), Hd(11, -0.6), Hd(11.2, 0.6), Hd(10.4, 1.4), Hd(6, 1.8), Hd(1, 2.4), Hd(-1, 1)], FUR);
+      // open mouth: a furnace between the jaws
+      const open = o.jaw > 0.08;
+      if (open) {
+        q.poly([Hd(-0.5, 1.2), Hd(10.4, 1.4), J(9.6, 1.8), J(0, 1.8)], PAL.fire2);
+        q.poly([Hd(0.5, 1.6), Hd(7.5, 1.8), J(7, 2.1), J(0.5, 2.1)], PAL.fire3);
+        if (o.jaw > 0.3) q.poly([Hd(-0.5, 1.6), Hd(3.5, 1.9), J(3, 2.1), J(-0.5, 2)], PAL.fire4);
       }
-      q.set(...Hd(8.8, 1.6), PAL.white);
-      q.set(...J(8.3, 1.9), PAL.stone4);
-    }
-    // snarl: lip curled back over the teeth, wrinkled muzzle
-    if (o.snarl > 0.4) {
-      for (let u = 5; u <= 8.5; u += 1.75) q.set(...Hd(u, 1.4), PAL.stone4);
-      q.set(...Hd(6, -1.6), PAL.night1);
-      q.set(...Hd(7.2, -1.2), PAL.night1);
-    }
-    // nose
-    const ns = Hd(10, -0.5);
-    q.set(ns[0], ns[1], PAL.ink).set(ns[0], ns[1] + 1, PAL.ink).set(ns[0] - 1, ns[1], PAL.night0);
-    // heavy brow + glowing amber eye
-    const eyeP = Hd(3.4, -1.3);
-    const ex = Math.round(eyeP[0]);
-    const ey = Math.round(eyeP[1]);
-    q.set(ex - 1, ey - 1, PAL.ink).set(ex, ey - 1, PAL.ink).set(ex + 1, ey - 1, PAL.night0).set(ex - 2, ey - 1, PAL.night0);
-    if (o.eye < 0.2) {
-      q.set(ex - 1, ey, PAL.ink).set(ex, ey, PAL.fire2).set(ex + 1, ey, PAL.ink);
-    } else if (o.eye < 0.8) {
-      q.set(ex - 1, ey, PAL.gold2).set(ex, ey, PAL.gold3).set(ex + 1, ey, PAL.ink);
-    } else {
-      q.set(ex - 1, ey, PAL.gold3).set(ex, ey, o.eye > 1.5 ? PAL.white : PAL.gold4).set(ex + 1, ey, PAL.ink);
-      q.set(ex - 1, ey + 1, PAL.fire2);
-    }
+      // lower jaw
+      q.poly([J(-2, 1.5), J(9.4, 1.9), J(9.2, 2.7), J(6, 3.3), J(2, 3.9), J(-1.5, 4.2), J(-2.8, 3.4)], FUR);
+      // cheek ruff behind the jaw: shaggy tufts sweeping back
+      q.ellipse(...Hd(-1.8, 1.8), 3 * HS, 2.5 * HS, FUR);
+      q.tri(...Hd(-4.4, 0.2), ...Hd(-2, 2.6), ...Hd(-6.2, 3), FUR);
+      q.tri(...Hd(-3.4, 2.2), ...Hd(-0.6, 4), ...Hd(-4.6, 5.6), FUR);
+      const E = ear(0, FUR);
+      if (silhouette) return;
+      // shading: crown and muzzle bridge lit, jaw in shadow, warm underlight on the jaw line
+      {
+        const src = q.clone();
+        const up = (x: number, y: number) => !src.isOpaque(x, y - 1);
+        for (let y = 0; y < q.h; y++)
+          for (let x = 0; x < q.w; x++) {
+            if (src.get(x, y) !== FUR) continue;
+            // position in head space (rotate back)
+            const dx = x + 0.5 - head[0];
+            const dy = y + 0.5 - head[1];
+            const v = (-dx * hs + dy * hc) / HS;
+            let c: number = PAL.stone1;
+            if (up(x, y)) c = PAL.stone3;
+            else if (v < 0.4) c = PAL.stone2;
+            else if (!src.isOpaque(x, y + 1)) c = open ? PAL.fire2 : PAL.stone0;
+            else if (v > 2.6) c = PAL.stone0;
+            if (c === PAL.stone1 && !src.isOpaque(x - 1, y)) c = PAL.stone2;
+            q.set(x, y, c);
+          }
+      }
+      // ear interiors glow from the mane
+      {
+        const i0 = lerpPt(lerpPt(E.a, E.b, 0.55), E.tip, 0.2);
+        const i1 = lerpPt(i0, E.tip, 0.45);
+        q.paint(i0[0], i0[1], o.fl > 0.75 ? PAL.fire2 : PAL.fire1);
+        q.paint(i1[0], i1[1], PAL.fire1);
+      }
+      // mouth line when shut, teeth when open, snarl wrinkles
+      if (!open) {
+        q.line(...Hd(4, 1.9), ...Hd(10, 1.5), PAL.ink);
+        q.paint(...Hd(3.4, 2.1), PAL.fire2);
+      } else {
+        // fangs: upper canine hangs down, lower canine points up
+        q.set(...Hd(9.2, 2.1), PAL.white);
+        if (o.jaw > 0.25) q.set(...Hd(9.2, 2.9), PAL.stone4);
+        q.set(...J(8.8, 1.6), PAL.white);
+      }
+      if (o.snarl > 0.4) {
+        for (let u = 5; u <= 8.5; u += 1.75) q.paint(...Hd(u, 1.6), PAL.stone4);
+        q.paint(...Hd(6.2, -2), PAL.stone0);
+        q.paint(...Hd(7.4, -1.6), PAL.stone0);
+      }
+      // nose
+      const ns = Hd(10.8, -0.4);
+      q.set(ns[0], ns[1], PAL.ink).set(ns[0] - 1, ns[1], PAL.ink).set(ns[0], ns[1] + 1, PAL.ink);
+      // brow + glowing amber eye
+      const eyeP = Hd(2.6, -1.6);
+      const ex = Math.round(eyeP[0]);
+      const ey = Math.round(eyeP[1]);
+      q.set(ex - 2, ey - 1, PAL.stone0).set(ex - 1, ey - 1, PAL.ink).set(ex, ey - 1, PAL.ink).set(ex + 1, ey - 1, PAL.stone0);
+      if (o.eye < 0.2) {
+        q.set(ex - 1, ey, PAL.ink).set(ex, ey, PAL.ink).set(ex + 1, ey, PAL.fire2);
+      } else if (o.eye < 0.8) {
+        q.set(ex - 1, ey, PAL.ink).set(ex, ey, PAL.gold3).set(ex + 1, ey, PAL.fire3);
+      } else {
+        q.set(ex - 1, ey, PAL.fire3).set(ex, ey, o.eye > 1.5 ? PAL.white : PAL.gold4).set(ex + 1, ey, PAL.gold3);
+        q.set(ex, ey + 1, PAL.ink);
+      }
+    },
+    sep,
+  );
+
+  return { body, head: headMask, tailTip: tailPts[tailPts.length - 1], tailPts };
+}
+
+/** A deliberate ember seam: 1px fire3 vein with fire2 lips at its wider middle. */
+function seam(q: Canvas, pts: Pt[], fl: number): void {
+  const hot = fl > 1.25 ? PAL.fire4 : PAL.fire3;
+  const lip = fl < 0.7 ? PAL.fire1 : PAL.fire2;
+  const all: Pt[] = [];
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const n = Math.max(1, Math.ceil(Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]) * 1.5));
+    for (let k = 0; k < n; k++) all.push(lerpPt(pts[i], pts[i + 1], k / n));
+  }
+  all.push(pts[pts.length - 1]);
+  all.forEach(([x, y], i) => {
+    const f = i / (all.length - 1);
+    const mid = f > 0.25 && f < 0.75;
+    if (mid) q.paint(x - 1, y, lip);
+    q.paint(x, y, f < 0.08 || f > 0.92 ? lip : hot);
   });
+}
+
+function drawWolf(p: Canvas, o: Pose): void {
+  const R = rig(o);
+  const { B, Hd } = R;
+  const S = drawBody(p, o, R, false);
 
   // ------------------------------------------------ outline the solid body
   p.outline(PAL.ink);
-  if (ghost) return;
-  const body = p.clone();
+  const solid = p.clone();
+  /** Flicker 0..1: a flowing wave per tongue plus a little per-frame crackle. */
+  const flick = (i: number) => Math.max(0, Math.min(1, 0.5 + 0.36 * Math.sin((o.t * 2 + i * 0.618) * TAU) + 0.24 * (hash(i, Math.round(o.t * 40), 7) - 0.5)));
+  const fl = o.fl;
+  /** Wind: flames stream back (toward screen-left) as the wolf moves. */
+  const windA = (a: number, k = 0.85) => {
+    // rotate toward π (back) through the shorter way
+    let d = Math.PI - a;
+    while (d > Math.PI) d -= TAU;
+    while (d < -Math.PI) d += TAU;
+    return a + d * o.wind * k;
+  };
 
-  // ------------------------------------------------ lunge afterimages: flame silhouettes behind
+  // ------------------------------------------------ lunge afterimages: whole-wolf silhouettes in translucent fire
   for (const g of o.ghosts) {
     const t = new PixelCanvas(p.w, p.h);
-    drawWolf(t, { ...o, ghosts: [], trail: 0 }, true);
+    drawBody(t, { ...o, ghosts: [] }, R, true);
+    const b = t.bounds();
+    if (!b) continue;
     for (let y = 0; y < t.h; y++)
       for (let x = 0; x < t.w; x++) {
-        const c = t.get(x, y);
-        if (c === null || c === PAL.ink) continue;
+        if (!t.isOpaque(x, y)) continue;
         const X = x + g.dx;
         const Y = y + g.dy;
-        if (p.isOpaque(X, Y)) continue;
-        const rim = t.get(x + 1, y) === PAL.ink || t.get(x, y - 1) === PAL.ink || t.get(x, y + 1) === PAL.ink;
-        if (rim) p.set(X, Y, g.k > 0.5 ? PAL.fire3 : PAL.fire2);
+        if (X < 0 || Y < 0 || X >= p.w || Y >= p.h || solid.isOpaque(X, Y)) continue;
+        // fades out toward the tail end, a hotter rim along the top edge
+        const f = (x - b.x) / Math.max(1, b.w);
+        const edge = !t.isOpaque(x, y - 1);
+        // …and toward the frame's left edge, so a ghost never ends in a hard cut
+        const a = Math.round(255 * Math.min(1, g.a * Math.min(1, 0.15 + 1.1 * f)) * Math.max(0, Math.min(1, (X - 1) / 8)));
+        if (a < 24) continue;
+        const nearG = g.a > 0.55;
+        p.set(X, Y, edge ? (nearG ? PAL.fire4 : PAL.fire3) : nearG ? PAL.fire3 : PAL.fire2, a);
       }
   }
 
-  // ------------------------------------------------ fire trail scorched along the ground
+  // ------------------------------------------------ fire trail streaming back along the ground
   if (o.trail > 0) {
-    const x0 = Math.min(o.hn[0], o.hf[0]) - 1;
-    const len = Math.max(0, Math.min(Math.round(20 * o.trail), x0 - 1));
+    const x0 = Math.round(Math.min(o.hn[0], o.hf[0]) - 2);
+    const len = Math.max(0, Math.min(Math.round(22 * o.trail), x0 - 2));
     for (let i = 0; i < len; i++) {
       const x = x0 - i;
-      if (x < 0) break;
       const k = 1 - i / len;
-      p.set(x, GROUND - 1, k > 0.5 ? PAL.fire2 : PAL.fire1);
-      if (i % 3 === 0) flame(p, [x, GROUND - 1], -Math.PI / 2 - 0.3, (2 + 4 * k) * (0.6 + 0.6 * flick(i + 80)), 2, o.t * 4 + i * 0.3, k * 1.2, body);
+      if (!solid.isOpaque(x, GROUND - 1)) p.set(x, GROUND - 1, k > 0.6 ? PAL.fire3 : k > 0.25 ? PAL.fire2 : PAL.fire1);
+      if (i % 4 === 1 && x >= 7) tongue(p, [x, GROUND - 1], -Math.PI + 0.55, (2.5 + 4 * k) * (0.7 + 0.5 * flick(i + 80)), 2.6, 0.25, o.t * 4 + i * 0.3, k * 1.3, solid);
     }
   }
 
-  // ------------------------------------------------ flames (light: no outline)
-  const fl = o.fl;
-  const windA = (a: number) => lerp(a, Math.PI - 0.12, o.wind * 0.8);
-
-  // mane: a ruff of flame rooted along the skull, neck crest and withers, streaming back
-  const crest = (f: number): Pt => lerpPt(Hd(-3.2, -2.2), B(2 * st, -7.2), f);
-  const mane: [Pt, number, number][] = [
-    [Hd(-1.5, -3.5), 0.75, -2.0],
-    [crest(0), 1.0, -2.15],
-    [crest(0.2), 1.08, -2.28],
-    [crest(0.4), 1.0, -2.4],
-    [crest(0.6), 0.85, -2.52],
-    [crest(0.8), 0.65, -2.65],
-    [crest(1), 0.45, -2.78],
+  // ------------------------------------------------ mane: four shaped tongues along the crest, curling back
+  const crest = (f: number): Pt => lerpPt(Hd(-2.6, -3.4), B(5, -8.4), f);
+  const mane: [number, number, number, number][] = [
+    // [crest pos, length, width, base angle] — tallest in the middle, sweeping back
+    [0.05, 9, 5, -1.7],
+    [0.35, 13, 6, -1.95],
+    [0.65, 12.5, 6, -2.2],
+    [0.95, 9.5, 5, -2.5],
   ];
-  mane.forEach(([r, k, a], i) => {
-    const L = fl * k * 11 * (0.78 + 0.4 * flick(i + 1));
-    flame(p, r, windA(a + Math.sin((o.t * 2 + i * 0.13) * TAU) * 0.1), L, 3.4 * Math.min(1.15, 0.55 + k * 0.55), o.t * 3 + i * 0.23, fl * (0.85 + 0.35 * k), body);
+  mane.forEach(([f, L0, wd, a], i) => {
+    const L = fl * L0 * (0.84 + 0.28 * flick(i + 1));
+    const r = crest(f);
+    tongue(p, [r[0], r[1] + 1.5], windA(a + Math.sin((o.t * 2 + i * 0.21) * TAU) * 0.08), L, wd, -0.5 - 0.3 * o.wind, o.t * 2 + i * 0.27, fl * 1.05, S.head);
   });
-  // embers torn off the mane drift up and back
-  for (let k = 0; k < 3; k++) {
-    const ph = (o.t * 2 + k / 3) % 1;
-    const r = crest(0.15 + k * 0.3);
-    const ex = Math.round(r[0] - 3 - ph * (5 + o.wind * 8) + Math.sin((ph + k * 0.3) * TAU) * 1.2);
-    const ey = Math.round(r[1] - 6 - ph * 9 * fl + o.wind * ph * 6);
-    if (!p.isOpaque(ex, ey)) p.set(ex, ey, ph < 0.35 ? PAL.fire4 : ph < 0.7 ? PAL.fire3 : PAL.fire2);
+  // two small front tongues lick over the crest so the mane sits ON the neck
+  for (let i = 0; i < 2; i++) {
+    const r = crest(0.25 + i * 0.4);
+    const L = fl * (3.5 + 2 * flick(i + 60));
+    tongue(p, [r[0] + 0.5, r[1] + 2], windA(-2.0 - i * 0.2), L, 3, -0.4, o.t * 3 + i * 0.4 + 0.2, fl * 1.1, S.head);
   }
-  // a few front tongues lick over the crest
-  for (let i = 0; i < 3; i++) {
-    const r = crest(0.15 + i * 0.25);
-    const L = fl * (3 + 2.5 * flick(i + 60));
-    flame(p, [r[0] + 0.5, r[1] + 1.5], windA(-2.25 - i * 0.12), L, 2, o.t * 3 + i * 0.4 + 0.2, fl * 1.15, null);
+  // a couple of embers torn off the mane drift up and back
+  for (let k = 0; k < 2; k++) {
+    const ph = (o.t * 2 + k / 2) % 1;
+    const r = crest(0.3 + k * 0.4);
+    const ex = Math.round(r[0] - 4 - ph * (5 + o.wind * 8));
+    const ey = Math.round(r[1] - 8 - ph * 7 * fl + o.wind * ph * 6);
+    if (ex > 1 && ey > 1 && !p.isOpaque(ex, ey) && !p.isOpaque(ex, ey + 1)) {
+      p.set(ex, ey, ph < 0.4 ? PAL.fire4 : PAL.fire3);
+      p.set(ex, ey + 1, PAL.fire2);
+    }
   }
 
-  // tail plume: tongues along the outer tail, one big torch flame at the tip. The plume leans
-  // up more than back so it never runs off the left edge of the frame.
-  const windT = (a: number) => lerp(a, Math.PI - 0.5, o.wind * 0.45);
-  const fit = (x: number, dir: number, L: number) => (Math.cos(dir) < -0.05 ? Math.min(L, (x - 1) / -Math.cos(dir)) : L);
-  for (let i = 3; i < tailPts.length; i++) {
-    const f = (i - 3) / (tailPts.length - 4);
-    const [x, y] = tailPts[i];
-    const dir = windT(-Math.PI / 2 - 0.75 + Math.sin((o.tw + f) * TAU) * 0.18);
-    const L = fit(x, dir, fl * (5 + f * 5) * (0.8 + 0.4 * flick(i + 30)));
-    flame(p, [x, y], dir, L, 3.4 - f * 0.6, o.t * 3 + i * 0.21, fl * (1.15 - f * 0.25), body);
-  }
+  // ------------------------------------------------ tail plume: three tongues curling up and back
   {
-    const tip = tailPts[tailPts.length - 1];
-    const dir = windT(o.tail - 0.35);
-    flame(p, tip, dir, fit(tip[0], dir, fl * 6.5 * (0.85 + 0.3 * flick(40))), 3, o.t * 3 + 0.5, fl, body);
+    const tip = S.tailTip;
+    // the plume rises from the tail tip and curls back; wind lays it down behind the wolf
+    const dir = windA(o.tail + 0.55, 0.5);
+    const sway = Math.sin(o.tw * TAU) * 0.12;
+    tongue(p, tip, dir + sway, fl * 12 * (0.85 + 0.25 * flick(40)), 5.6, -0.3, o.t * 2 + 0.5, fl * 1.1, null);
+    tongue(p, S.tailPts[3], dir + 0.5 + sway, fl * 7.5 * (0.8 + 0.3 * flick(41)), 4, -0.45, o.t * 2 + 0.15, fl, solid);
+    tongue(p, S.tailPts[2], dir - 0.55 + sway, fl * 6.5 * (0.8 + 0.3 * flick(42)), 3.6, -0.35, o.t * 2 + 0.8, fl * 0.9, solid);
   }
 
-  // paws burn
+  // ------------------------------------------------ paws burn: small tongues rising behind the heels
   for (const [pw, near] of [
     [o.ff, false],
     [o.hf, false],
     [o.fn, true],
     [o.hn, true],
   ] as const) {
-    for (let k = 0; k < 2; k++) {
-      const L = fl * (near ? 4.2 : 3.2) * (0.6 + 0.7 * flick(pw[0] * 3 + k));
-      flame(p, [pw[0] + k * 2, pw[1] - 1.2], windA(-Math.PI / 2 - 0.4 - k * 0.15), L, 2.2, o.t * 4 + k * 0.5 + pw[0] * 0.1, fl * (near ? 1 : 0.7), k === 0 || !near ? body : null);
+    const L = fl * (near ? 5 : 4) * (0.65 + 0.6 * flick(Math.round(pw[0]) * 3));
+    tongue(p, [pw[0] - 1.5, pw[1] - 2], windA(-Math.PI / 2 - 0.55), L, 3, -0.35, o.t * 4 + pw[0] * 0.1, fl * (near ? 1.05 : 0.8), solid);
+  }
+
+  // ------------------------------------------------ landing puff: dust kicked sideways, embers popping up
+  if (o.puff > 0) {
+    const k = o.puff;
+    for (const pw of [o.fn, o.ff]) {
+      const d = Math.round(3 + 3 * k);
+      for (const [dx, dy, c] of [
+        [-d - 1, -1, PAL.stone2],
+        [-d, -2, PAL.stone3],
+        [d + 2, -1, PAL.stone2],
+        [d + 3, -2, PAL.stone3],
+        [-d + 1, -3 - Math.round(2 * k), PAL.fire3],
+        [d + 1, -4 - Math.round(2 * k), PAL.fire4],
+      ] as const) {
+        const x = Math.round(pw[0] + dx);
+        const y = Math.round(pw[1] + dy);
+        if (!p.isOpaque(x, y)) p.set(x, y, c);
+      }
     }
   }
 }
@@ -738,10 +904,10 @@ function portrait(p: Canvas): void {
       p.set(x, y, col);
     }
   const big = new PixelCanvas(W, H);
-  drawWolf(big, P({ eye: 2, jaw: 0.55, snarl: 1, ears: 0.3, fl: 1.3, t: 0.35, tw: 0.35, na: -0.95, hp: 0.05 }));
+  drawWolf(big, P({ eye: 2, jaw: 0.42, snarl: 1, ears: 0.3, fl: 1.3, t: 0.35, tw: 0.35, na: -0.95, hp: 0.05 }));
   // frame the head: eye at ~2/3 of the width
-  const ox = 13;
-  const oy = 9;
+  const ox = 15;
+  const oy = 8;
   for (let y = 0; y < 34; y++)
     for (let x = 0; x < 44; x++) {
       const col = big.get(ox + x, oy + y);
@@ -760,22 +926,23 @@ function portrait(p: Canvas): void {
 // ---------------------------------------------------------------- export
 
 const IMPACT_FRAME = 5;
-/** Muzzle = between the jaws (front teeth) in the impact frame. */
+/** Muzzle = between the open jaws (the canines) in the impact frame. */
 const MUZZLE = (() => {
-  const { Hd } = frameOf(ANIMS.attack.poses[IMPACT_FRAME]);
-  const [x, y] = Hd(9, 2);
-  return { x: Math.round(x), y: Math.round(y) };
+  const { Hd, J } = rig(ANIMS.attack.poses[IMPACT_FRAME]);
+  const a = Hd(9.2, 2.1);
+  const b = J(8.8, 1.6);
+  return { x: Math.round((a[0] + b[0]) / 2), y: Math.round((a[1] + b[1]) / 2) };
 })();
 
 const art: MonsterArt = {
   id: 'ember_wolf',
   w: W,
   h: H,
-  anchorX: 28,
+  anchorX: 29,
   anchorY: GROUND,
   hover: 0,
   muzzle: MUZZLE,
-  core: { x: 28, y: 40 },
+  core: { x: 30, y: 40 },
   anims: {
     idle: { frames: ANIMS.idle.poses.length, fps: ANIMS.idle.fps, loop: true },
     roar: { frames: ANIMS.roar.poses.length, fps: ANIMS.roar.fps, loop: false },

@@ -35,6 +35,8 @@ interface Pose {
   /** Rising body: lower bend, upper bend, head joint (back of skull). */
   k1: Pt;
   k2: Pt;
+  /** Extra spine knots between k2 and the head (tight S-coil wind-ups). */
+  ks: Pt[];
   h: Pt;
   /** Head angle (rad, 0 = facing right, negative = nose up). */
   ha: number;
@@ -65,9 +67,10 @@ const N: Pose = {
   ry: 6.5,
   k1: [45, 52],
   k2: [38, 39],
+  ks: [],
   h: [44, 28],
   ha: 0.12,
-  jaw: 0,
+  jaw: 0.22,
   frill: 1,
   rip: 0,
   tail: 0,
@@ -138,34 +141,35 @@ const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> 
     loop: false,
     poses: [
       P({}),
-      P({ k1: [44, 53], k2: [36, 42], h: [40, 31], ha: 0.4, frill: 0.55, ry: 6, glow: 0.7, rip: 0.1 }),
-      P({ k1: [46, 47], k2: [35, 33], h: [42, 23], ha: -0.22, frill: 1.2, jaw: 0.45, glow: 1.4, rip: 0.2, eye: 'wide' }),
-      P({ k1: [47, 46], k2: [34, 30], h: [42, 21], ha: -0.4, frill: 1.65, jaw: 1, glow: 2, rip: 0.3, eye: 'wide' }),
-      P({ k1: [47, 46], k2: [35, 30], h: [43, 21], ha: -0.43, frill: 1.6, jaw: 1, glow: 2, rip: 0.45, eye: 'wide', tail: 1, drops: roarSpray(0.15) }),
-      P({ k1: [47, 46], k2: [34, 30], h: [42, 21], ha: -0.4, frill: 1.68, jaw: 0.95, glow: 1.8, rip: 0.6, eye: 'wide', tail: -1, drops: roarSpray(0.45) }),
-      P({ k1: [47, 46], k2: [35, 30], h: [43, 22], ha: -0.42, frill: 1.6, jaw: 1, glow: 1.9, rip: 0.75, eye: 'wide', tail: 1, drops: roarSpray(0.75) }),
-      P({ k1: [46, 48], k2: [36, 33], h: [43, 22], ha: -0.12, frill: 1.35, jaw: 0.4, glow: 1.5, rip: 0.9, eye: 'wide', drops: roarSpray(1) }),
-      P({ k1: [45, 52], k2: [38, 38], h: [44, 27], ha: 0.16, frill: 1.08, jaw: 0, glow: 1.2, rip: 0.0 }),
+      P({ rx: 18.2, ry: 5.5, cy: 67, k1: [44, 53], k2: [36, 42], h: [40, 31], ha: 0.4, frill: 0.55, glow: 0.7, rip: 0.1, jaw: 0.1, tail: -1.8 }),
+      P({ rx: 16.4, ry: 7, cy: 65.5, k1: [46, 47], k2: [35, 33], h: [42, 23], ha: -0.22, frill: 1.2, jaw: 0.45, glow: 1.4, rip: 0.2, eye: 'wide', tail: 1.2 }),
+      P({ rx: 16, ry: 7.4, cy: 65.1, k1: [47, 46], k2: [34, 30], h: [42, 21], ha: -0.4, frill: 1.65, jaw: 1, glow: 2, rip: 0.3, eye: 'wide', tail: 2.4 }),
+      P({ rx: 16.2, ry: 7.2, cy: 65.3, k1: [47, 46], k2: [35, 30], h: [43, 21], ha: -0.43, frill: 1.6, jaw: 1, glow: 2, rip: 0.45, eye: 'wide', tail: -2.4, drops: roarSpray(0.15) }),
+      P({ rx: 16, ry: 7.4, cy: 65.1, k1: [47, 46], k2: [34, 30], h: [42, 21], ha: -0.4, frill: 1.68, jaw: 0.95, glow: 1.8, rip: 0.6, eye: 'wide', tail: 2.2, drops: roarSpray(0.45) }),
+      P({ rx: 16.2, ry: 7.2, cy: 65.3, k1: [47, 46], k2: [35, 30], h: [43, 22], ha: -0.42, frill: 1.6, jaw: 1, glow: 1.9, rip: 0.75, eye: 'wide', tail: -2, drops: roarSpray(0.75) }),
+      P({ rx: 16.6, ry: 6.8, cy: 65.7, k1: [46, 48], k2: [36, 33], h: [43, 22], ha: -0.12, frill: 1.35, jaw: 0.4, glow: 1.5, rip: 0.9, eye: 'wide', tail: 1, drops: roarSpray(1) }),
+      P({ rx: 17.4, ry: 6.2, cy: 66.3, k1: [45, 52], k2: [38, 38], h: [44, 27], ha: 0.16, frill: 1.08, jaw: 0.15, glow: 1.2, rip: 0.0, tail: -0.5 }),
       P({ glow: 1.05, rip: 0.1 }),
     ],
   },
 
-  // Attack ("Gelgit Mızrağı"): coil the neck back into an S (anticipation) while a water orb charges
-  // in the mouth → snap forward → IMPACT: jaws wide, the jet leaves the mouth (muzzle) → hold the
-  // jet (frames 5–7) → recover.
+  // Attack ("Gelgit Mızrağı"): the ground coil squashes and the neck winds back into a tight S-spring
+  // (head drawn back behind the coil, tail fin cocked up) while a water orb charges between the
+  // jaws → the spring releases, the coil stretches tall and the head whips forward → IMPACT: jaws
+  // wide, the jet leaves the mouth (muzzle) → hold the jet (frames 5–7) → recover.
   attack: {
     fps: 12,
     loop: false,
     poses: [
       P({}),
-      P({ k1: [45, 52], k2: [33, 39], h: [36, 24], ha: -0.1, frill: 1.2, jaw: 0.15, glow: 1.3, rip: 0.15, ry: 6.6 }),
-      P({ k1: [46, 52], k2: [30, 40], h: [29, 23], ha: -0.2, frill: 1.45, jaw: 0.35, glow: 1.7, rip: 0.3, eye: 'wide', charge: 0.5, ry: 6.6 }),
-      P({ k1: [46, 52], k2: [29, 40], h: [28, 22], ha: -0.22, frill: 1.55, jaw: 0.45, glow: 2, rip: 0.45, eye: 'wide', charge: 1, tail: -1, ry: 6.6 }),
-      P({ k1: [49, 50], k2: [45, 38], h: [49, 27], ha: 0.06, frill: 1.5, jaw: 0.75, glow: 2, rip: 0.6, eye: 'wide', smear: [[28, 22], [35, 24], [42, 26]], tail: 1 }),
-      P({ k1: [50, 51], k2: [49, 39], h: [53, 29], ha: 0.1, frill: 1.55, jaw: 1, glow: 2, rip: 0.7, eye: 'wide', tail: 1, burst: 1 }),
-      P({ k1: [50, 51], k2: [48, 39], h: [52, 29], ha: 0.1, frill: 1.45, jaw: 1, glow: 1.8, rip: 0.8, eye: 'wide', burst: 0.6 }),
-      P({ k1: [49, 51], k2: [46, 38], h: [51, 28], ha: 0.12, frill: 1.35, jaw: 0.9, glow: 1.6, rip: 0.9, eye: 'wide' }),
-      P({ k1: [47, 52], k2: [41, 39], h: [46, 28], ha: 0.14, frill: 1.15, jaw: 0.25, glow: 1.3, rip: 0.0 }),
+      P({ rx: 17.8, ry: 6, cy: 66.5, k1: [46, 54], k2: [32, 45], ks: [[31, 37]], h: [38, 31], ha: 0.06, frill: 1.15, jaw: 0.24, glow: 1.3, rip: 0.15, tail: -1.4 }),
+      P({ rx: 18.6, ry: 5.4, cy: 67.1, k1: [45, 56], k2: [28, 47], ks: [[25, 38]], h: [34, 32], ha: 0.02, frill: 1.45, jaw: 0.3, glow: 1.7, rip: 0.3, eye: 'wide', charge: 0.55, tail: -2.6 }),
+      P({ rx: 19, ry: 5.1, cy: 67.4, k1: [46, 57.5], k2: [26, 48.5], ks: [[23.5, 38.5]], h: [32.5, 32.5], ha: 0.04, frill: 1.55, jaw: 0.34, glow: 2, rip: 0.45, eye: 'wide', charge: 1, tail: -3.2 }),
+      P({ rx: 16.2, ry: 7.1, cy: 65.4, k1: [49, 50], k2: [45, 38], h: [48, 27], ha: 0.05, frill: 1.5, jaw: 0.75, glow: 2, rip: 0.6, eye: 'wide', smear: [[32.5, 32.5], [38, 30], [43, 28]], tail: 1.8 }),
+      P({ rx: 16, ry: 7.4, cy: 65.1, k1: [50, 51], k2: [49, 39], h: [51, 29], ha: 0.1, frill: 1.55, jaw: 1, glow: 2, rip: 0.7, eye: 'wide', tail: 2.2, burst: 1 }),
+      P({ rx: 16.4, ry: 7, cy: 65.5, k1: [50, 51], k2: [48, 39], h: [50, 29], ha: 0.1, frill: 1.45, jaw: 1, glow: 1.8, rip: 0.8, eye: 'wide', tail: 0.8, burst: 0.6 }),
+      P({ rx: 16.8, ry: 6.7, cy: 65.8, k1: [49, 51], k2: [46, 38], h: [49, 28], ha: 0.12, frill: 1.35, jaw: 0.9, glow: 1.6, rip: 0.9, eye: 'wide', tail: -0.6 }),
+      P({ rx: 17.2, ry: 6.4, cy: 66.1, k1: [47, 52], k2: [41, 39], h: [46, 28], ha: 0.14, frill: 1.15, jaw: 0.4, glow: 1.3, rip: 0.0, tail: 0.3 }),
       P({ glow: 1.1, rip: 0.1 }),
     ],
   },
@@ -175,11 +179,11 @@ const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> 
     fps: 10,
     loop: false,
     poses: [
-      P({ k1: [42, 51], k2: [33, 36], h: [35, 23], ha: -0.38, jaw: 0.45, frill: 0.45, eye: 'squint', glow: 0.4, cx: 30, ry: 6.9, tail: -1,
+      P({ k1: [42, 51], k2: [33, 36], h: [35, 23], ha: -0.38, jaw: 0.45, frill: 0.45, eye: 'squint', glow: 0.4, cx: 30, rx: 17.8, ry: 6, cy: 66.5, tail: -1.8,
         drops: [{ x: 60, y: 24, s: 2 }, { x: 64, y: 31, s: 1 }, { x: 57, y: 17, s: 1 }, { x: 62, y: 40, s: 0 }] }),
-      P({ k1: [43, 51], k2: [34, 36], h: [37, 23], ha: -0.28, jaw: 0.25, frill: 0.6, eye: 'squint', glow: 0.6, ry: 6.7, tail: 1,
+      P({ k1: [43, 51], k2: [34, 36], h: [37, 23], ha: -0.28, jaw: 0.25, frill: 0.6, eye: 'squint', glow: 0.6, ry: 6.8, cy: 65.7, tail: 1.4,
         drops: [{ x: 65, y: 22, s: 1 }, { x: 69, y: 31, s: 1 }, { x: 61, y: 15, s: 0 }, { x: 66, y: 41, s: 0 }] }),
-      P({ k1: [44, 52], k2: [37, 39], h: [42, 27], ha: 0.02, jaw: 0, frill: 0.85, glow: 0.9, drops: [{ x: 70, y: 27, s: 0 }, { x: 70, y: 44, s: 0 }] }),
+      P({ k1: [44, 52], k2: [37, 39], h: [42, 27], ha: 0.02, jaw: 0.1, frill: 0.85, glow: 0.9, drops: [{ x: 70, y: 27, s: 0 }, { x: 70, y: 44, s: 0 }] }),
       P({ k1: [45, 52], k2: [38, 39], h: [44, 28], ha: 0.1, glow: 1 }),
     ],
   },
@@ -198,6 +202,7 @@ const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> 
         k2: [35, 49 - 0.4 * s],
         h: [40, 41 - 0.6 * s],
         ha: 0.3,
+        jaw: 0.06,
         frill: 0.08,
         rip: f / 4,
         glow: 0.8 + 0.3 * s,
@@ -350,7 +355,7 @@ function rasterTube(nodes: Node[]): (TubeHit | null)[] {
   return buf;
 }
 
-function drawBody(q: Canvas, nodes: Node[], o: Pose, glowFrom: number, glowTo: number): void {
+function drawBody(q: Canvas, nodes: Node[]): void {
   const buf = rasterTube(nodes);
   const [lx, ly, lz] = LIGHT;
   for (let y = 0; y < H; y++)
@@ -363,18 +368,12 @@ function drawBody(q: Canvas, nodes: Node[], o: Pose, glowFrom: number, glowTo: n
       const ventral = belly > 0.05 && u > lerp(1.2, 0.2, belly);
       let col: number;
       if (ventral) {
-        // ventral scutes: broad pale plates with a shadow seam every ~3px
+        // ventral scutes: a regular rhythm of 2px pale plates and a 1px shadow seam
         let i = d < -0.1 ? 0 : d < 0.2 ? 1 : d < 0.55 ? 2 : 3;
-        if (frac(s / 3.1) < 0.3) i = Math.max(0, i - 1);
+        if (frac(s / 3) < 0.34) i = Math.max(0, i - 1);
         col = BELLY[i];
       } else {
-        let i = d < -0.18 ? 0 : d < 0.16 ? 1 : d < 0.52 ? 2 : d < 0.84 ? 3 : 4;
-        // sparse scale rows: a darker scale edge on the lit band, staggered every row
-        if (i === 3) {
-          const a = s / 3;
-          const b = (u * hit.r) / 2 + (Math.floor(a) % 2) * 0.5;
-          if (frac(a) < 0.3 && frac(b) < 0.42) i = 2;
-        }
+        const i = d < -0.18 ? 0 : d < 0.16 ? 1 : d < 0.52 ? 2 : d < 0.84 ? 3 : 4;
         col = SCALE[i];
       }
       q.set(x, y, col);
@@ -398,33 +397,32 @@ function drawBody(q: Canvas, nodes: Node[], o: Pose, glowFrom: number, glowTo: n
         }
       }
     }
-  // photophores: a row of glowing dots along the flank (pulse travels up the body)
-  let s = 0;
-  let next = glowFrom;
-  let k = 0;
-  for (let i = 0; i + 1 < nodes.length; i++) {
-    const a = nodes[i];
-    const b = nodes[i + 1];
-    const seg = Math.hypot(b.x - a.x, b.y - a.y);
-    while (next <= s + seg && next <= glowTo) {
-      const t = (next - s) / (seg || 1);
-      const x = lerp(a.x, b.x, t);
-      const y = lerp(a.y, b.y, t);
-      const nx = -(b.y - a.y) / (seg || 1);
-      const ny = (b.x - a.x) / (seg || 1);
-      const r = lerp(a.r, b.r, t);
-      const px = Math.floor(x - nx * r * 0.42);
-      const py = Math.floor(y - ny * r * 0.42);
-      const hit = buf[py * W + px];
-      if (hit && Math.abs(hit.s - next) < 2) {
-        const pulse = o.glow + 0.6 * Math.sin((o.rip - k * 0.12) * TAU);
-        q.set(px, py, pulse > 1.3 ? PAL.cyan4 : PAL.cyan3);
-      }
-      next += 5.5;
-      k++;
+  despeckle(q);
+}
+
+/** Fold isolated single pixels (no same-colour 8-neighbour) into their most common neighbour colour. */
+function despeckle(q: Canvas): void {
+  const src = q.clone();
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const c = src.get(x, y);
+      if (c === null || c === PAL.ink) continue;
+      const votes = new Map<number, number>();
+      let same = false;
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          const n = src.get(x + dx, y + dy);
+          if (n === null || n === PAL.ink) continue;
+          if (n === c) same = true;
+          votes.set(n, (votes.get(n) ?? 0) + 1);
+        }
+      if (same || !votes.size) continue;
+      let best = c;
+      let bv = 0;
+      for (const [k, v] of votes) if (v > bv) [best, bv] = [k, v];
+      q.set(x, y, best);
     }
-    s += seg;
-  }
 }
 
 // ---------------------------------------------------------------- head (local: x forward, y down)
@@ -433,16 +431,19 @@ const SKULL: Pt[] = [
   [-4, -1],
   [-3, -4.5],
   [0, -7],
-  [4, -8],
-  [8.5, -7.6],
-  [10.6, -6],
-  [14, -4.7],
-  [18, -3.9],
-  [20.6, -3],
-  [21.5, -1.4],
-  [21, 0.5],
-  [19.6, 1.3],
-  [14, 1.3],
+  [4, -8.2],
+  [8, -8.1],
+  [10.6, -8.8],
+  [12.8, -8.1],
+  [13.6, -5.9],
+  [16.5, -4.9],
+  [20.5, -3.7],
+  [23.5, -2.3],
+  [25.4, -0.7],
+  [25.3, 1.4],
+  [23.9, 0.9],
+  [19, 1],
+  [14, 1.2],
   [8, 1.5],
   [4.5, 0.7],
   [1.5, 2.6],
@@ -452,25 +453,29 @@ const SKULL: Pt[] = [
 const SKULL_TOP: Pt[] = [
   [-2.8, -4.2],
   [0, -6.7],
-  [4, -7.7],
-  [8.5, -7.2],
-  [10.6, -5.7],
-  [14, -4.4],
-  [18, -3.6],
-  [20.6, -2.7],
-  [18, -2.5],
-  [14, -3.2],
-  [10.6, -4.3],
-  [8.4, -5.7],
-  [4, -6.1],
+  [4, -7.9],
+  [8, -7.8],
+  [10.6, -8.5],
+  [12.6, -7.8],
+  [13.4, -5.6],
+  [16.5, -4.6],
+  [20.5, -3.4],
+  [23.5, -2],
+  [24.6, -1],
+  [22.5, -1.4],
+  [18, -2.6],
+  [13.2, -3.8],
+  [11.5, -6.4],
+  [8.5, -6.4],
+  [4, -6.3],
   [0, -5.3],
   [-2.4, -3],
 ];
-/** Deep brow socket the eye glows out of. */
+/** Deep brow socket the eye glows out of (slanted: the brow bears down on the eye). */
 const SOCKET: Pt[] = [
-  [6, -5.4],
-  [11.6, -4.6],
-  [11.4, -2.2],
+  [6.4, -5.2],
+  [12.4, -4.4],
+  [11.8, -2.1],
   [7.4, -2.6],
 ];
 const JAW_HINGE: Pt = [3.5, 1];
@@ -478,10 +483,12 @@ const JAW: Pt[] = [
   [2.5, 0.9],
   [8, 1.6],
   [14, 1.5],
-  [19.4, 1.4],
-  [20, 2.8],
-  [16, 3.9],
-  [10, 5],
+  [19, 1.3],
+  [22.6, 1.2],
+  [22.9, 2.5],
+  [19, 3.5],
+  [14, 4.4],
+  [9, 5.2],
   [4, 6],
   [0, 5.4],
   [-2.5, 3.6],
@@ -490,11 +497,12 @@ const JAW: Pt[] = [
 const JAW_UNDER: Pt[] = [
   [-1, 4.6],
   [4, 4.9],
-  [10, 3.9],
-  [16, 2.9],
-  [20, 2.8],
-  [16, 3.9],
-  [10, 5],
+  [10, 4.1],
+  [16, 3.3],
+  [22.8, 2.4],
+  [19, 3.5],
+  [14, 4.4],
+  [9, 5.2],
   [4, 6],
   [0, 5.4],
   [-2.5, 3.6],
@@ -530,17 +538,30 @@ function inLine(q: Canvas, a: Pt, b: Pt, c: number, only?: number): void {
   }
 }
 
+/** Mouth gap (px) between the jaws at local x, for the current jaw opening. */
+const gapAt = (o: Pose, x: number) => (x - JAW_HINGE[0]) * Math.sin(o.jaw * 0.72);
+
 function drawHead(q: Canvas, o: Pose): void {
   const T = headXf(o);
   const J = jawXf(o);
   const m = (pts: Pt[], f: (x: number, y: number) => Pt) => pts.map(([x, y]) => f(x, y));
 
-  // ---- mouth interior (visible when the jaw drops)
+  // ---- mouth interior (visible when the jaw drops) + the water orb charging inside it
   const mq = new PixelCanvas(W, H);
   if (o.jaw > 0.05) {
-    mq.poly([T(0.5, 0.8), T(21.5, 0.9), J(20.8, 1.5), J(11, 1.6), J(1.5, 1.4)], PAL.crim1);
+    mq.poly([T(0.5, 0.8), T(24.4, 1), J(22.6, 1.4), J(11, 1.6), J(1.5, 1.4)], PAL.crim1);
     mq.poly([T(0.5, 0.8), T(8, 1), J(8, 1.6), J(1.5, 1.4)], PAL.crim0);
     if (o.jaw > 0.35) mq.stroke([J(3, 2), J(9, 2), J(14, 1.6)], 2, 1, PAL.crim2);
+  }
+  if (o.charge > 0) {
+    // the orb sits between the jaws: only the gap shows it, the lips are lit cyan from inside
+    const ox = 16.5;
+    const [cx, cy] = T(ox, 1.2 + gapAt(o, ox) * 0.5);
+    const r = 1.4 + o.charge * 1.4;
+    mq.disc(cx, cy, r + 1, PAL.cyan2);
+    mq.disc(cx, cy, r, PAL.cyan3);
+    mq.disc(cx - 0.3, cy - 0.3, r * 0.55, PAL.cyan4);
+    mq.set(cx - 1, cy - 1, PAL.white).set(cx, cy - 1, PAL.white);
   }
 
   // ---- lower jaw: blue flank, pale underside, lower fangs
@@ -549,15 +570,27 @@ function drawHead(q: Canvas, o: Pose): void {
   jq.poly(m(JAW_UNDER, J), PAL.mist);
   edge(jq, 0, 1, PAL.steel, PAL.mist);
   edge(jq, 0, -1, PAL.water2, PAL.water1);
-  if (o.jaw > 0.12) {
-    for (const tx of [8, 12, 15.5]) {
-      const [x, y] = J(tx, 0.5);
+  {
+    // lower canine always bared
+    const [x, y] = J(18, 0.6);
+    jq.set(x, y, PAL.white);
+    const [x2, y2] = J(18, -0.3);
+    jq.set(x2, y2, PAL.white);
+  }
+  if (o.jaw > 0.42) {
+    for (const tx of [8, 11.8, 15]) {
+      const [x, y] = J(tx, 0.6);
       jq.set(x, y, PAL.white);
     }
-    const [x, y] = J(19.2, 0.4);
+    const [x, y] = J(22, 0.5);
     jq.set(x, y, PAL.white);
-    const [x2, y2] = J(19.2, -0.4);
-    jq.set(x2, y2, PAL.mist);
+  }
+  if (o.charge > 0) {
+    // cyan underglow on the lower lip
+    for (const tx of [12, 14, 17, 19]) {
+      const [x, y] = J(tx, 1.6);
+      if (jq.isOpaque(x, y)) jq.set(x, y, PAL.cyan2);
+    }
   }
 
   // ---- skull: side plane, lit top plane, shadowed cheek, deep socket
@@ -570,23 +603,21 @@ function drawHead(q: Canvas, o: Pose): void {
   edge(sq, 0, 1, PAL.water1);
   edge(sq, 0, -1, PAL.water4, PAL.water3);
   // cheek shadow along the lip
-  inLine(sq, T(5, 0.2), T(20, 0.3), PAL.water1, PAL.water2);
+  inLine(sq, T(5, 0.2), T(22, 0.2), PAL.water1, PAL.water2);
   inLine(sq, T(4.6, 0.8), T(8, 1.1), PAL.water0);
-  inLine(sq, T(8, 1.1), T(20.5, 0.9), PAL.water0);
-  // nostril + hooked nose shadow
-  {
-    const [x, y] = T(19.6, -2);
-    sq.set(x, y, PAL.water0);
-  }
+  inLine(sq, T(8, 1.1), T(24, 0.6), PAL.water0);
+  // nostril slit on the hooked snout
+  inLine(sq, T(21.6, -1.6), T(22.8, -1.2), PAL.water0);
   // socket + glowing eye
   const sock = new PixelCanvas(W, H);
   sock.poly(m(SOCKET, T), PAL.water0);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (sock.isOpaque(x, y) && sq.isOpaque(x, y)) sq.set(x, y, PAL.water0);
-  // brow spike over the socket
-  inLine(sq, T(5, -6.2), T(10.8, -5.1), PAL.water1, PAL.water3);
+  // heavy brow ridge bearing down on the eye (angry slant toward the snout)
+  inLine(sq, T(5.5, -6.6), T(13, -4.6), PAL.water1);
+  inLine(sq, T(5.5, -7.3), T(12.4, -5.6), PAL.water4, PAL.water3);
   // cheekbone ridge
-  inLine(sq, T(3.5, -1.6), T(12.5, -1.5), PAL.water3, PAL.water2);
-  const [ex, ey] = T(10, -3.4);
+  inLine(sq, T(3.5, -1.6), T(12.5, -1.4), PAL.water3, PAL.water2);
+  const [ex, ey] = T(10.2, -3.2);
   const exi = Math.floor(ex);
   const eyi = Math.floor(ey);
   // dark ring of the socket around the eye so the glow reads at 1×
@@ -594,41 +625,47 @@ function drawHead(q: Canvas, o: Pose): void {
   if (o.eye === 'squint') {
     sq.set(exi - 1, eyi + 1, PAL.cyan2).set(exi, eyi + 1, PAL.cyan3).set(exi + 1, eyi + 1, PAL.cyan2);
   } else {
-    // glowing eye: hot core toward the snout
-    sq.set(exi - 1, eyi, PAL.cyan2).set(exi, eyi, PAL.cyan4).set(exi + 1, eyi, PAL.white);
-    sq.set(exi, eyi + 1, PAL.cyan3).set(exi + 1, eyi + 1, PAL.cyan4);
-    if (o.eye === 'wide' || o.glow > 1.6) sq.set(exi - 1, eyi, PAL.cyan3).set(exi - 1, eyi + 1, PAL.cyan2).set(exi + 1, eyi - 1, PAL.cyan3);
+    // glowing eye: hot core toward the snout, lid cut flat by the brow
+    sq.set(exi - 1, eyi + 1, PAL.cyan2).set(exi, eyi + 1, PAL.cyan4).set(exi + 1, eyi + 1, PAL.white);
+    sq.set(exi + 1, eyi, PAL.cyan3);
+    if (o.eye === 'wide' || o.glow > 1.6) sq.set(exi, eyi, PAL.cyan3).set(exi + 1, eyi, PAL.cyan4).set(exi - 1, eyi + 1, PAL.cyan3);
   }
-  // upper fangs
-  if (o.jaw > 0.12) {
-    for (const tx of [7, 10.5, 14, 17]) {
+  // upper fangs: the big canine always hangs over the lip, the rest show when the jaw opens
+  {
+    const [x, y] = T(21, 1.7);
+    sq.set(x, y, PAL.white);
+    const [x2, y2] = T(21, 2.7);
+    sq.set(x2, y2, o.jaw > 0.08 ? PAL.white : PAL.mist);
+  }
+  if (o.jaw > 0.42) {
+    for (const tx of [7, 10.5, 14, 17.5]) {
       const [x, y] = T(tx, 1.7);
       sq.set(x, y, PAL.white);
     }
-    const [x, y] = T(21.2, 1.9);
-    sq.set(x, y, PAL.white);
-    const [x2, y2] = T(21.2, 2.8);
-    sq.set(x2, y2, PAL.mist);
+  }
+
+  // ---- coral horn sweeping back off the brow
+  const hq = new PixelCanvas(W, H);
+  const horn = [T(11.6, -7.6), T(7, -10.4), T(1.5, -12), T(-4.5, -11.6)];
+  hq.stroke(horn, 3.4, 1, PAL.mag3);
+  edge(hq, 1, 0, PAL.mag2);
+  edge(hq, 0, 1, PAL.mag2);
+  edge(hq, 0, -1, PAL.mag4);
+  {
+    const [x, y] = horn[horn.length - 1];
+    hq.set(x, y, PAL.mag4);
   }
 
   layer(q, (t) => t.blit(mq, 0, 0), null);
   layer(q, (t) => t.blit(jq, 0, 0));
   layer(q, (t) => t.blit(sq, 0, 0));
+  layer(q, (t) => t.blit(hq, 0, 0));
 
   // glow streak trailing from a blazing eye (anime eye-trail)
   if (o.eye === 'wide') {
-    const a = T(6.5, -3.6);
-    const b = T(3, -4.4);
+    const a = T(6.5, -3);
+    const b = T(3, -3.8);
     q.set(a[0], a[1], PAL.cyan3).set(b[0], b[1], PAL.cyan2);
-  }
-  // water orb charging between the jaws
-  if (o.charge > 0) {
-    const [ox, oy] = T(19, 1.6 + o.jaw * 2.2);
-    const r = 1 + o.charge * 1.7;
-    q.disc(ox, oy, r + 0.9, PAL.cyan2);
-    q.disc(ox, oy, r, PAL.cyan3);
-    q.disc(ox - 0.4, oy - 0.4, r * 0.55, PAL.cyan4);
-    q.set(ox - 1, oy - 1, PAL.white);
   }
 }
 
@@ -792,7 +829,7 @@ function spineOf(o: Pose): { nodes: Node[]; rise0: number; pts: Pt[] } {
   const pre: Pt = [base[0] - (tan[0] / tl) * 6, base[1] - (tan[1] / tl) * 6];
   const na = o.ha - 1.15;
   const post: Pt = [o.h[0] + Math.cos(na) * 6, o.h[1] + Math.sin(na) * 6];
-  const rise = catmull([pre, base, o.k1, o.k2, o.h, post], 8);
+  const rise = catmull([pre, base, o.k1, o.k2, ...o.ks, o.h, post], 8);
   const zBack = Math.sin(ph1) * 9;
   rise.forEach(([x, y], i) => {
     if (i === 0) return;
@@ -805,7 +842,7 @@ function spineOf(o: Pose): { nodes: Node[]; rise0: number; pts: Pt[] } {
 /** Pressurised water bursting from the mouth at the impact frame (the jet VFX starts here). */
 function drawBurst(p: Canvas, o: Pose): void {
   const T = headXf(o);
-  const [mx, my] = T(22.5, 2.2 + o.jaw * 1.6);
+  const [mx, my] = T(24.5, 1.8 + o.jaw * 1.6);
   const a = o.ha + o.jaw * 0.3;
   const k = o.burst;
   const bq = new PixelCanvas(W, H);
@@ -842,7 +879,7 @@ const OX = -2;
 
 function shifted(o: Pose): Pose {
   const sh = (q: Pt): Pt => [q[0] + OX, q[1]];
-  return { ...o, cx: o.cx + OX, k1: sh(o.k1), k2: sh(o.k2), h: sh(o.h), smear: o.smear.map(sh), drops: o.drops.map((d) => ({ ...d, x: d.x + OX })) };
+  return { ...o, cx: o.cx + OX, k1: sh(o.k1), k2: sh(o.k2), ks: o.ks.map(sh), h: sh(o.h), smear: o.smear.map(sh), drops: o.drops.map((d) => ({ ...d, x: d.x + OX })) };
 }
 
 function drawSerpent(p: Canvas, pose: Pose): void {
@@ -896,7 +933,7 @@ function drawSerpent(p: Canvas, pose: Pose): void {
   }
 
   // body
-  layer(p, (q) => drawBody(q, nodes, o, pts.length > 0 ? rise0Len(nodes, rise0) - 10 : 0, totalLen(nodes) - 8));
+  layer(p, (q) => drawBody(q, nodes));
 
   // head + gill fronds
   drawHead(p, o);
@@ -927,16 +964,6 @@ function drawSerpent(p: Canvas, pose: Pose): void {
       }
     }
   }
-}
-
-function rise0Len(nodes: Node[], idx: number): number {
-  let s = 0;
-  for (let i = 1; i <= idx; i++) s += Math.hypot(nodes[i].x - nodes[i - 1].x, nodes[i].y - nodes[i - 1].y);
-  return s;
-}
-
-function totalLen(nodes: Node[]): number {
-  return rise0Len(nodes, nodes.length - 1);
 }
 
 // ---------------------------------------------------------------- portrait (44×34)
@@ -970,7 +997,7 @@ const IMPACT_FRAME = 5;
 const IMPACT = ANIMS.attack.poses[IMPACT_FRAME];
 const MUZZLE = (() => {
   const T = headXf(shifted(IMPACT));
-  const [x, y] = T(22.5, 2.2 + IMPACT.jaw * 1.6);
+  const [x, y] = T(24.5, 1.8 + IMPACT.jaw * 1.6);
   return { x: Math.round(x), y: Math.round(y) };
 })();
 

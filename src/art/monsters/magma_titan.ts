@@ -19,6 +19,8 @@ const GROUND = 77;
 
 // ---------------------------------------------------------------- pose
 
+type Expr = 'n' | 'blaze' | 'snarl' | 'roar' | 'hit' | 'guard';
+
 interface Chip {
   x: number;
   y: number;
@@ -37,10 +39,14 @@ interface Pose {
   breath: number;
   /** Shoulder twist: -1 = near shoulder pulled back (wind-up), +1 = rolled forward (punch). */
   twist: number;
-  /** Head offset and expression. */
+  /** Head offset (torso-local) and expression. */
   hdx: number;
   hdy: number;
-  head: 'n' | 'roar' | 'hit' | 'guard';
+  head: Expr;
+  /** Absolute head center (frame px) — overrides the torso-attached position (punch frames). */
+  hxy: Pt | null;
+  /** Head painted over the near shoulder (punch: the face pokes out ahead of the shoulder line). */
+  headFront: boolean;
   /** Near (screen-left, in front) fist, far (screen-right, behind) fist + knuckle direction (rad). */
   nh: Pt;
   nd: number;
@@ -83,13 +89,17 @@ const N: Pose = {
   hdx: 0,
   hdy: 0,
   head: 'n',
-  nh: [17, 57],
-  nd: Math.PI / 2,
-  fh: [60, 56],
-  fd: Math.PI / 2,
+  hxy: null,
+  headFront: false,
+  // 3/4 stance facing right: near fist hangs forward with the knuckles angled at the foe, the far
+  // fist hangs behind the chest, far foot planted ahead.
+  nh: [21, 56],
+  nd: 1.15,
+  fh: [60, 55],
+  fd: 1.4,
   farFront: false,
-  nf: [29, GROUND],
-  ff: [49, GROUND],
+  nf: [28, GROUND],
+  ff: [51, GROUND],
   core: 1,
   seam: 1,
   eye: 1,
@@ -110,14 +120,17 @@ const P = (o: Partial<Pose>): Pose => ({ ...N, ...o });
 
 function idlePose(f: number, n: number): Pose {
   const t = f / n;
-  const s = Math.sin(t * TAU); // breath: + = inhale (chest up)
-  const lag = Math.sin((t - 0.12) * TAU); // fists follow the shoulders a beat later
-  const fy = (lag > 0.4 ? -1 : 0) + (lag < -0.6 ? 1 : 0);
+  // Breathing straight from the sine at 1px resolution: the chest leads, the pelvis settles a frame
+  // later and the hanging fists lag one more frame, so the 1px steps are spread over the cycle
+  // (no frame moves every part at once) and the parts move rigidly (no edge shimmer).
+  const s = Math.sin(t * TAU); // + = inhale (chest up)
+  const lag1 = Math.sin((t - 1 / n) * TAU);
+  const lag2 = Math.sin((t - 2 / n) * TAU);
   return P({
-    breath: s > 0.35 ? 1 : s < -0.35 ? -1 : 0,
-    py: N.py + (s < -0.5 ? 1 : 0),
-    nh: [N.nh[0], N.nh[1] + fy],
-    fh: [N.fh[0], N.fh[1] + fy],
+    breath: Math.round(1.3 * s),
+    py: N.py + Math.round(0.5 - 0.6 * lag1),
+    nh: [N.nh[0], N.nh[1] + Math.round(-1.1 * lag2)],
+    fh: [N.fh[0], N.fh[1] + Math.round(-1.1 * lag2)],
     core: 1 + 0.55 * s,
     seam: 1 + 0.25 * Math.sin((t + 0.15) * TAU),
     drip: t,
@@ -137,36 +150,37 @@ const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> 
     loop: false,
     poses: [
       P({ t: 0.0 }),
-      P({ py: 58, lean: 0.1, hdy: 1, nh: [21, 60], fh: [56, 60], core: 0.5, seam: 0.6, eye: 0.8, t: 0.1 }),
-      P({ py: 55, lean: -0.06, nh: [8, 40], nd: -2.2, fh: [68, 38], fd: -0.9, core: 1.4, seam: 1.3, eye: 1.4, flare: 0.5, t: 0.2 }),
-      P({ py: 54, lean: -0.12, hdx: -1, hdy: -1, head: 'roar', nh: [11, 13], nd: -1.9, fh: [66, 12], fd: -1.25, core: 2, seam: 2, eye: 2, flare: 1.3, t: 0.3 }),
-      P({ py: 54, lean: -0.13, hdx: -1, hdy: -1, head: 'roar', nh: [10, 12], nd: -1.9, fh: [67, 11], fd: -1.25, core: 2, seam: 1.8, eye: 2, flare: 1.6, t: 0.4 }),
-      P({ py: 56, lean: 0.04, head: 'roar', nh: [26, 40], nd: 0.15, fh: [66, 24], fd: -1.0, core: 2.3, seam: 2, eye: 2, flare: 1.2, beat: 1, t: 0.5 }),
-      P({ py: 56, lean: 0.02, head: 'roar', nh: [10, 34], nd: -2.3, fh: [53, 39], fd: Math.PI - 0.15, farFront: true, core: 2.3, seam: 1.9, eye: 2, flare: 1.1, beat: 2, t: 0.6 }),
-      P({ py: 56, lean: 0.04, head: 'roar', nh: [26, 40], nd: 0.15, fh: [66, 26], fd: -1.0, core: 2.3, seam: 2, eye: 2, flare: 1.0, beat: 1, t: 0.7 }),
-      P({ py: 56, lean: 0.02, nh: [20, 51], nd: 1.9, fh: [60, 47], fd: 1.2, core: 1.4, seam: 1.3, eye: 1.3, flare: 0.4, t: 0.8 }),
+      P({ py: 58, lean: 0.1, hdy: 1, nh: [23, 60], nd: 1.3, fh: [57, 60], core: 0.5, seam: 0.6, eye: 0.8, t: 0.1 }),
+      P({ py: 55, lean: -0.06, head: 'blaze', nh: [14, 40], nd: -2.1, fh: [68, 38], fd: -0.9, core: 1.4, seam: 1.3, eye: 1.6, flare: 0.5, t: 0.2 }),
+      P({ py: 54, lean: -0.12, hdx: -1, hdy: -2, head: 'roar', nh: [13, 13], nd: -1.85, fh: [66, 12], fd: -1.25, core: 2, seam: 2, eye: 2, flare: 1.3, t: 0.3 }),
+      P({ py: 54, lean: -0.13, hdx: -1, hdy: -2, head: 'roar', nh: [12, 12], nd: -1.85, fh: [67, 11], fd: -1.25, core: 2, seam: 1.8, eye: 2, flare: 1.6, t: 0.4 }),
+      P({ py: 56, lean: 0.04, head: 'roar', nh: [27, 40], nd: 0.15, fh: [66, 24], fd: -1.0, core: 2.3, seam: 2, eye: 2, flare: 1.2, beat: 1, t: 0.5 }),
+      P({ py: 56, lean: 0.02, head: 'roar', nh: [14, 35], nd: -2.2, fh: [53, 39], fd: Math.PI - 0.15, farFront: true, core: 2.3, seam: 1.9, eye: 2, flare: 1.1, beat: 2, t: 0.6 }),
+      P({ py: 56, lean: 0.04, head: 'roar', nh: [27, 40], nd: 0.15, fh: [66, 26], fd: -1.0, core: 2.3, seam: 2, eye: 2, flare: 1.0, beat: 1, t: 0.7 }),
+      P({ py: 56, lean: 0.02, head: 'blaze', nh: [22, 51], nd: 1.5, fh: [60, 47], fd: 1.2, core: 1.4, seam: 1.3, eye: 1.4, flare: 0.4, t: 0.8 }),
       P({ core: 1.1, seam: 1.1, flare: 0.1, t: 0.9 }),
     ],
   },
 
-  // Attack ("Lav Yumruğu"): rear back, near fist cocked far behind (anticipation, core charging) →
-  // stomp forward and swing (smear) → IMPACT: arm fully extended, knuckles white-hot → hold →
-  // follow-through → recover.
+  // Attack ("Lav Yumruğu"): rear back, near fist cocked high behind the shoulder (anticipation,
+  // core charging, fist heating up) → stomp forward and swing (smear) → IMPACT: arm fully extended
+  // at chest height, knuckles white-hot, face snarling over the shoulder → hold → follow-through →
+  // recover. The face stays visible on every frame (f4–f7 it rides over the near shoulder).
   attack: {
     fps: 12,
     loop: false,
     poses: [
       P({ t: 0 }),
-      P({ px: 36, lean: -0.08, twist: -0.5, nh: [12, 48], nd: 2.6, fh: [58, 47], fd: -0.6, ff: [50, 75], core: 1.3, seam: 1.2, t: 0.1 }),
-      P({ px: 35, py: 57, lean: -0.15, twist: -1, hdx: -1, nh: [12, 25], nd: -2.2, fh: [57, 43], fd: -0.4, ff: [51, 73], nf: [28, GROUND], core: 1.8, seam: 1.5, eye: 1.5, flare: 0.25, heat: 0.5, t: 0.2 }),
-      P({ px: 35, py: 57, lean: -0.17, twist: -1, hdx: -1, nh: [11, 24], nd: -2.25, fh: [57, 43], fd: -0.4, ff: [51, 73], nf: [28, GROUND], core: 2, seam: 1.7, eye: 1.8, flare: 0.4, heat: 0.75, t: 0.3 }),
-      P({ px: 39, py: 57, lean: 0.1, twist: 0.4, nh: [42, 29], nd: -0.4, fh: [52, 50], fd: 2.6, ff: [55, GROUND], nf: [27, GROUND], core: 2, seam: 1.6, eye: 2, flare: 0.4, heat: 0.6,
-        smear: [[11, 25], [15, 20], [24, 19], [34, 23]], stomp: 1, t: 0.4 }),
-      P({ px: 41, py: 57, lean: 0.2, twist: 1, nh: [64, 37], nd: 0.08, fh: [50, 52], fd: 2.4, ff: [56, GROUND], nf: [25, GROUND], core: 2, seam: 2, eye: 2, flare: 0.6, heat: 1, burst: 1,
-        smear: [[34, 27], [44, 30], [54, 34]], stomp: 0.6, t: 0.5 }),
-      P({ px: 41, py: 57, lean: 0.21, twist: 1, nh: [65, 38], nd: 0.08, fh: [50, 52], fd: 2.4, ff: [56, GROUND], nf: [25, GROUND], core: 1.8, seam: 1.8, eye: 2, flare: 0.4, heat: 0.8, burst: 0.6, t: 0.6 }),
-      P({ px: 40, py: 57, lean: 0.14, twist: 0.7, nh: [62, 46], nd: 0.6, fh: [53, 52], fd: 2.0, ff: [55, GROUND], nf: [26, GROUND], core: 1.5, seam: 1.4, eye: 1.5, heat: 0.4, burst: 0.25, t: 0.7 }),
-      P({ px: 38, py: 57, lean: 0.05, twist: 0.2, nh: [30, 57], nd: 1.6, fh: [58, 54], fd: 1.7, ff: [51, GROUND], core: 1.2, seam: 1.1, t: 0.8 }),
+      P({ px: 36, lean: -0.08, twist: -0.5, head: 'blaze', nh: [17, 46], nd: 2.5, fh: [59, 47], fd: -0.6, ff: [52, 75], core: 1.3, seam: 1.2, eye: 1.3, heat: 0.25, t: 0.1 }),
+      P({ px: 35, py: 57, lean: -0.15, twist: -1, hdx: -1, head: 'blaze', nh: [18, 25], nd: -2.0, fh: [58, 43], fd: -0.4, ff: [53, 73], nf: [27, GROUND], core: 1.8, seam: 1.5, eye: 1.6, flare: 0.25, heat: 0.55, t: 0.2 }),
+      P({ px: 35, py: 57, lean: -0.17, twist: -1, hdx: -1, head: 'blaze', nh: [17, 24], nd: -2.05, fh: [58, 43], fd: -0.4, ff: [53, 73], nf: [27, GROUND], core: 2, seam: 1.7, eye: 1.8, flare: 0.4, heat: 0.8, t: 0.3 }),
+      P({ px: 39, py: 57, lean: 0.1, twist: 0.4, head: 'blaze', hxy: [48, 27], headFront: true, nh: [45, 38], nd: -0.15, fh: [53, 50], fd: 2.6, ff: [55, GROUND], nf: [26, GROUND], core: 2, seam: 1.6, eye: 2, flare: 0.4, heat: 0.75,
+        smear: [[17, 21], [20, 13], [29, 10], [39, 15], [45, 26]], stomp: 1, t: 0.4 }),
+      P({ px: 41, py: 57, lean: 0.2, twist: 1, head: 'snarl', hxy: [52, 26], headFront: true, nh: [64, 40], nd: 0.05, fh: [51, 52], fd: 2.4, ff: [56, GROUND], nf: [25, GROUND], core: 2, seam: 2, eye: 2, flare: 0.6, heat: 1, burst: 1,
+        stomp: 0.6, t: 0.5 }),
+      P({ px: 41, py: 57, lean: 0.21, twist: 1, head: 'snarl', hxy: [52, 26], headFront: true, nh: [65, 41], nd: 0.05, fh: [51, 52], fd: 2.4, ff: [56, GROUND], nf: [25, GROUND], core: 1.8, seam: 1.8, eye: 2, flare: 0.4, heat: 0.85, burst: 0.6, t: 0.6 }),
+      P({ px: 40, py: 57, lean: 0.14, twist: 0.7, head: 'blaze', hxy: [50, 28], headFront: true, nh: [62, 47], nd: 0.6, fh: [54, 52], fd: 2.0, ff: [55, GROUND], nf: [26, GROUND], core: 1.5, seam: 1.4, eye: 1.6, heat: 0.45, burst: 0.25, t: 0.7 }),
+      P({ px: 38, py: 57, lean: 0.05, twist: 0.2, nh: [31, 56], nd: 1.4, fh: [59, 54], fd: 1.6, ff: [52, GROUND], core: 1.2, seam: 1.1, eye: 1.2, heat: 0.15, t: 0.8 }),
       P({ t: 0.9 }),
     ],
   },
@@ -176,41 +190,42 @@ const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> 
     fps: 10,
     loop: false,
     poses: [
-      P({ px: 34, lean: -0.17, head: 'hit', hdx: -1, nh: [11, 53], nd: 2.2, fh: [64, 48], fd: -0.2, core: 0.4, seam: 2, eye: 0.3,
+      P({ px: 34, lean: -0.17, head: 'hit', hdx: -1, nh: [16, 53], nd: 2.3, fh: [64, 48], fd: -0.2, core: 0.4, seam: 2, eye: 0.3,
         chips: [{ x: 63, y: 29, s: 3 }, { x: 67, y: 37, s: 2 }, { x: 60, y: 23, s: 2 }, { x: 67, y: 30, s: 1, hot: true }, { x: 64, y: 41, s: 1, hot: true }], t: 0.1 }),
-      P({ px: 34, lean: -0.13, head: 'hit', nh: [12, 55], nd: 2.0, fh: [63, 51], fd: 0.4, core: 0.7, seam: 1.5, eye: 0.3,
+      P({ px: 34, lean: -0.13, head: 'hit', nh: [16, 55], nd: 2.0, fh: [63, 51], fd: 0.4, core: 0.7, seam: 1.5, eye: 0.3,
         chips: [{ x: 68, y: 24, s: 3 }, { x: 72, y: 34, s: 2 }, { x: 64, y: 16, s: 2 }, { x: 73, y: 26, s: 1, hot: true }, { x: 70, y: 41, s: 1, hot: true }], t: 0.2 }),
-      P({ px: 35, lean: -0.07, nh: [15, 57], nd: 1.8, fh: [62, 54], fd: 1.0, core: 0.9, seam: 1.2, eye: 0.9,
+      P({ px: 35, lean: -0.07, nh: [18, 57], nd: 1.6, fh: [62, 54], fd: 1.0, core: 0.9, seam: 1.2, eye: 0.9,
         chips: [{ x: 72, y: 23, s: 2 }, { x: 76, y: 36, s: 1 }, { x: 67, y: 13, s: 1 }, { x: 77, y: 27, s: 1, hot: true }], t: 0.3 }),
       P({ px: 36, lean: -0.02, core: 1, seam: 1, t: 0.4 }),
     ],
   },
 
-  // Guard: crouched, forearms crossed low in front of the belly, fists up at the pecs — the core
-  // glows in the V between them; seams banked low, slow breathing.
+  // Guard: crouched, forearms crossed in an X over the core (its glow leaks through the V), the
+  // head hunkered down between the shoulders with the ember eyes peering over the arms; seams
+  // banked, slow continuous breathing.
   guard: {
     fps: 4,
     loop: true,
     poses: [0, 1, 2, 3].map((f) => {
       const t = f / 4;
       const s = Math.sin(t * TAU);
-      const up = s > 0.5 ? 1 : 0;
+      const lag = Math.sin((t - 0.25) * TAU);
       return P({
         py: 58,
         lean: 0.06,
         twist: 0.4,
-        breath: up,
+        breath: Math.round(0.9 * s),
         head: 'guard',
-        hdy: 1,
-        nh: [49, 43 - up],
-        nd: -0.9,
-        fh: [29, 43 - up],
-        fd: -2.25,
+        hdy: -3,
+        nh: [44, 44 - Math.round(0.8 * lag)],
+        nd: -0.75,
+        fh: [31, 44 - Math.round(0.8 * lag)],
+        fd: -2.4,
         farFront: true,
         nf: [27, GROUND],
-        ff: [50, GROUND],
-        core: 0.85 + 0.35 * s,
-        seam: 0.55 + 0.15 * s,
+        ff: [51, GROUND],
+        core: 1 + 0.3 * s,
+        seam: 0.85 + 0.12 * s,
         eye: 1,
         drip: t,
         t,
@@ -251,6 +266,17 @@ function ik(sx: number, sy: number, hx: number, hy: number, l1: number, l2: numb
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const lerpPt = (a: Pt, b: Pt, t: number): Pt => [lerp(a[0], b[0], t), lerp(a[1], b[1], t)];
+const norm = (x: number, y: number): Pt => {
+  const d = Math.hypot(x, y) || 1;
+  return [x / d, y / d];
+};
+/** Point at arc length d along a polyline with cumulative lengths cum. */
+function along(path: Pt[], cum: number[], d: number): Pt {
+  let i = 0;
+  while (i + 2 < path.length && cum[i + 1] < d) i++;
+  const seg = cum[i + 1] - cum[i] || 1;
+  return lerpPt(path[i], path[i + 1], Math.max(0, Math.min(1, (d - cum[i]) / seg)));
+}
 
 /** Deterministic hash noise in 0..1. */
 function hash(a: number, b = 0, c = 0): number {
@@ -342,81 +368,198 @@ function chunk(q: Canvas, a: Pt, b: Pt, wa: number, wb: number, seed: number, ne
 }
 
 /**
- * A flame tongue: tapered, wavy, nested heat layers (fire1 rim → fire2 → fire3 → fire4 core).
- * Drawn without outline (light). `ph` animates the wave.
+ * A flame tongue: a curved teardrop (broad root → 1px tip) with nested heat — fire2 fringe →
+ * fire3 body → fire4 core → gold4 at the root when very hot. Light: no outline, stray single
+ * pixels dropped, never paints a cooler flame tone over a hotter one. `curl` bends the tongue
+ * along its length (rad), `ph` sways it.
  */
-function flame(p: Canvas, base: Pt, dir: number, len: number, wid: number, ph: number, bright = 1): void {
-  if (len < 1) return;
-  const path = (L: number): Pt[] => {
-    const out: Pt[] = [];
-    const n = Math.max(3, Math.ceil(L / 2));
+function tongue(p: Canvas, base: Pt, dir: number, len: number, wid: number, curl: number, ph: number, heat = 1, behind: Canvas | null = null): void {
+  if (len < 2) return;
+  const n = Math.max(4, Math.ceil(len / 1.4));
+  const C: Pt[] = [];
+  {
+    let a = dir + Math.sin(ph * TAU) * 0.12;
+    let [x, y] = base;
     for (let i = 0; i <= n; i++) {
-      const f = i / n;
-      const wob = Math.sin((ph - f * 0.9) * TAU) * f * f * wid * 0.9;
-      out.push([base[0] + Math.cos(dir) * L * f - Math.sin(dir) * wob, base[1] + Math.sin(dir) * L * f + Math.cos(dir) * wob]);
+      C.push([x, y]);
+      a += curl / n + Math.sin((ph - i / n) * TAU) * 0.05;
+      x += (Math.cos(a) * len) / n;
+      y += (Math.sin(a) * len) / n;
     }
-    return out;
+  }
+  const shape = (k: number, wk: number): Pt[] => {
+    const m = Math.max(2, Math.round(n * k));
+    const left: Pt[] = [];
+    const right: Pt[] = [];
+    for (let i = 0; i <= m; i++) {
+      const f = i / m;
+      const [x0, y0] = C[Math.max(0, i - 1)];
+      const [x1, y1] = C[Math.min(m, i + 1)];
+      const d = Math.hypot(x1 - x0, y1 - y0) || 1;
+      const nx = -(y1 - y0) / d;
+      const ny = (x1 - x0) / d;
+      const w = ((wid * wk) / 2) * (f < 0.3 ? 0.85 + f * 0.5 : Math.pow((1 - f) / 0.7, 0.8));
+      left.push([C[i][0] + nx * w, C[i][1] + ny * w]);
+      right.push([C[i][0] - nx * w, C[i][1] - ny * w]);
+    }
+    return [...left, ...right.reverse()];
   };
-  p.stroke(path(len), wid + 1, 1, PAL.fire1);
-  p.stroke(path(len * 0.92), wid, 1, bright > 0.6 ? PAL.fire2 : PAL.fire1);
-  if (len > 3) p.stroke(path(len * 0.68), Math.max(1, wid * 0.62), 1, bright > 0.6 ? PAL.fire3 : PAL.fire2);
-  if (len > 5 && bright > 0.4) p.stroke(path(len * 0.38), Math.max(1, wid * 0.3), 1, bright > 1.1 ? PAL.gold4 : PAL.fire4);
+  const t = new PixelCanvas(p.w, p.h);
+  t.poly(shape(1, 1), heat > 0.35 ? PAL.fire2 : PAL.fire1);
+  if (len > 3) t.poly(shape(0.72, 0.6), heat > 0.35 ? PAL.fire3 : PAL.fire2);
+  if (len > 5 && heat > 0.55) t.poly(shape(0.42, 0.34), heat > 1.3 ? PAL.gold4 : PAL.fire4);
+  for (let y = 0; y < t.h; y++)
+    for (let x = 0; x < t.w; x++) {
+      const c = t.get(x, y);
+      if (c === null) continue;
+      if (!t.isOpaque(x - 1, y) && !t.isOpaque(x + 1, y) && !t.isOpaque(x, y - 1) && !t.isOpaque(x, y + 1)) continue;
+      if (behind && near4(behind, x, y)) continue;
+      const cur = p.get(x, y);
+      if (cur !== null && FIRE_RANK(cur) > FIRE_RANK(c)) continue;
+      p.set(x, y, c);
+    }
+}
+
+function FIRE_RANK(c: number): number {
+  switch (c) {
+    case PAL.fire1:
+      return 1;
+    case PAL.fire2:
+      return 2;
+    case PAL.fire3:
+      return 3;
+    case PAL.fire4:
+      return 4;
+    case PAL.gold4:
+      return 5;
+    case PAL.white:
+      return 6;
+    default:
+      return 0;
+  }
+}
+
+/** True if (x, y) or one of its 4-neighbours is opaque in m (a part plus its outline ring). */
+function near4(m: Canvas, x: number, y: number): boolean {
+  return m.isOpaque(x, y) || m.isOpaque(x - 1, y) || m.isOpaque(x + 1, y) || m.isOpaque(x, y - 1) || m.isOpaque(x, y + 1);
+}
+
+/** Paint a disc only onto pixels that already exist. */
+function paintDisc(q: Canvas, cx: number, cy: number, r: number, c: number): void {
+  for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++)
+    for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
+      const dx = x + 0.5 - cx;
+      const dy = y + 0.5 - cy;
+      if (dx * dx + dy * dy <= r * r) q.paint(x, y, c);
+    }
+}
+
+/** Bresenham line painted only onto existing pixels. */
+function paintLine(q: Canvas, x0: number, y0: number, x1: number, y1: number, c: number): void {
+  x0 = Math.round(x0);
+  y0 = Math.round(y0);
+  x1 = Math.round(x1);
+  y1 = Math.round(y1);
+  const dx = Math.abs(x1 - x0);
+  const dy = -Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1;
+  const sy = y0 < y1 ? 1 : -1;
+  let err = dx + dy;
+  for (;;) {
+    q.paint(x0, y0, c);
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 >= dy) {
+      err += dy;
+      x0 += sx;
+    }
+    if (e2 <= dx) {
+      err += dx;
+      y0 += sy;
+    }
+  }
 }
 
 // ---------------------------------------------------------------- hand-pixelled heads (13×11)
-// Facing right in 3/4: craggy crown lit from the top-left, a heavy brow shelf jutting over deep
-// sockets with slanted ember eyes ('e' = hot core, 'E' = rim), a jagged glowing mouth with rock
-// teeth ('r'/'R'/'g' lava, 't' tooth) and an underbite jaw.
+// 3/4 view facing right: a craggy skull block lit from the top-left, a heavy brow slab jutting
+// forward over deep ink sockets with 2×1 ember slits ('E' rim / 'e' hot center), and a wide lava
+// jaw crack ('m' fire2 lip, 'M' fire3 body, 'g' fire4/gold4 core). 'x' = eye glow spilling onto
+// the cheek (only when blazing), 't' = rock fang.
 
 const HEAD_N = [
-  '....2.32....',
-  '...1222332..',
-  '..112222233.',
-  '113333333333',
-  '11Ekk000kkE2',
-  '110eEk0kEe01',
-  '1100kk0kk001',
-  '1100r0R0r001',
-  '.1000r0r0000',
-  '..000000000.',
+  '.2232.11221..',
+  '233321r123321',
+  '2333221r22222',
+  '23321333333334',
+  '2321000k000000',
+  '2221kEEk00EEk.',
+  '12210000000k..',
+  '1221mMMMMMMm00',
+  '.11100000000k.',
+  '..1100000000..',
+];
+const HEAD_BLAZE = [
+  '.2232.11221..',
+  '233321r123321',
+  '2333221r22222',
+  '23321333333334',
+  '23210kkk0kkkk0',
+  '2221kEek0eEk..',
+  '12210xx00xxk..',
+  '1221mMMgMMMm00',
+  '.11100000000k.',
+  '..1100000000..',
+];
+const HEAD_SNARL = [
+  '.2232.11221..',
+  '233321r123321',
+  '2333221r22222',
+  '23321333333334',
+  '23210kkk0kkkk0',
+  '2221kEek0eEk..',
+  '12210xx00xxk..',
+  '1221mtMMMMtmk0',
+  '122kMggggggMk0',
+  '.11kmMMMMMMmk.',
+  '..1100000000..',
 ];
 const HEAD_ROAR = [
-  '....2.32....',
-  '...1222332..',
-  '..112222233.',
-  '113333333333',
-  '11Ekk000kkE2',
-  '110eEk0kEe01',
-  '1100kkkkk001',
-  '110kRgggRk01',
-  '.10kRgggRk00',
-  '.100rRRRr000',
-  '..00krrrk00.',
-  '...0000000..',
+  '.2232.11221..',
+  '233321r123321',
+  '2333221r22222',
+  '23321333333334',
+  '2321000k000000',
+  '2221kEek0eEk..',
+  '12210xx00xxk..',
+  '1221mtMMMMMtm0',
+  '122kMgggggggMk',
+  '122kMggggggMk.',
+  '.11kmMMMMMMk..',
+  '..11000000k...',
 ];
 const HEAD_HIT = [
-  '....2.32....',
-  '...1222332..',
-  '..112222233.',
-  '113333333333',
-  '110kkk00kkk2',
-  '110kEE0EEk01',
-  '1100000000k1',
-  '110kRRRRk001',
-  '.1000kkk0000',
-  '..000000000.',
+  '.2232.11221..',
+  '233321r123321',
+  '2333221r22222',
+  '23321333333334',
+  '23210kkk0kkkk0',
+  '2221kmEk0mEk..',
+  '12210000000k..',
+  '1221mkMMkMkm00',
+  '.11100000000k.',
+  '..1100000000..',
 ];
 const HEAD_GUARD = [
-  '....2.32....',
-  '...1222332..',
-  '..112222233.',
-  '113333333333',
-  '110kkk00kkk2',
-  '110eEk0kEe01',
-  '1100kk0kk001',
-  '1100r0r0r001',
-  '.1000r0r0000',
-  '..000000000.',
+  '.2232.11221..',
+  '233321r123321',
+  '2333221r22222',
+  '23321333333334',
+  '23210kkk0kkkk0',
+  '2221kkEk0kEk..',
+  '12210000000k..',
+  '12210mMMMMm000',
+  '.11100000000k.',
+  '..1100000000..',
 ];
 
 // ---------------------------------------------------------------- the rig
@@ -452,16 +595,18 @@ const PLATES: [Pt[], 0 | 1 | 2][] = [
   [[[-12, 1], [13, 0], [14, 5], [-11, 6]], 0],
 ];
 const CORE_L: Pt = [2, -15];
-/** Lava seams (local polylines) radiating from the core; first point = hottest. */
-const SEAMS: { pts: Pt[]; heat: number; ph: number }[] = [
-  { pts: [[-2, -17], [-5, -19], [-8, -19], [-12, -22], [-17, -22]], heat: 1.1, ph: 0 },
-  { pts: [[6, -18], [8, -22], [11, -23], [13, -27]], heat: 1.05, ph: 0.3 },
-  { pts: [[-2, -12], [-4, -9], [-8, -7], [-10, -3], [-12, -1]], heat: 1.0, ph: 0.2 },
-  { pts: [[6, -12], [9, -9], [13, -8], [15, -4]], heat: 1.0, ph: 0.75 },
-  { pts: [[2, -10], [3, -6], [1, -3], [2, 0]], heat: 1.0, ph: 0.55 },
-  { pts: [[7, -15], [12, -15], [15, -17], [20, -16]], heat: 0.95, ph: 0.9 },
-  { pts: [[-8, -19], [-11, -15], [-16, -14]], heat: 0.6, ph: 0.45 },
-  { pts: [[-11, 1], [-6, 0], [-1, 1], [5, 0], [12, 1]], heat: 0.75, ph: 0.4 },
+/**
+ * Lava fissures (local control polylines) radiating from the core; first point = root (widest,
+ * hottest). w0/w1 = root/tip width, forks = side branches.
+ */
+const SEAMS: { pts: Pt[]; heat: number; ph: number; w0: number; w1: number; forks: number }[] = [
+  { pts: [[-2, -17], [-6, -19], [-12, -21], [-17, -22]], heat: 1.1, ph: 0, w0: 2.4, w1: 0.9, forks: 1 },
+  { pts: [[6, -18], [9, -23], [13, -27]], heat: 1.05, ph: 0.3, w0: 2.2, w1: 0.9, forks: 1 },
+  { pts: [[-2, -12], [-6, -8], [-10, -3], [-12, -1]], heat: 1.0, ph: 0.2, w0: 2.2, w1: 0.9, forks: 1 },
+  { pts: [[6, -12], [10, -9], [15, -5]], heat: 1.0, ph: 0.75, w0: 2, w1: 0.9, forks: 0 },
+  { pts: [[2, -10], [2, -5], [1, 0]], heat: 1.0, ph: 0.55, w0: 1.9, w1: 1, forks: 1 },
+  { pts: [[7, -15], [13, -16], [20, -15]], heat: 0.95, ph: 0.9, w0: 1.9, w1: 0.9, forks: 0 },
+  { pts: [[-10, 2], [-3, 1.5], [5, 2.5], [12, 1.5]], heat: 0.75, ph: 0.4, w0: 1.3, w1: 1, forks: 1 },
 ];
 
 /** Shoulder boulders, local to the shoulder joint (craggy top with a vent between the crags). */
@@ -475,6 +620,8 @@ const BOULDER_F: Pt[] = [
   [-8, 3], [-9, -2], [-6, -7], [-3, -11], [-1, -8], [2, -8], [5, -11], [7, -6], [9, -1], [8, 4], [3, 6], [-4, 6],
 ];
 const BOULDER_F_LIT: Pt[] = [[-8, 2], [-9, -2], [-6, -7], [-3, -10], [-1, -7], [0, -3], [-4, 0]];
+/** The far shoulder is turned away (3/4 view): drawn smaller and darker behind the head. */
+const FAR_K = 0.82;
 
 function drawTitan(p: Canvas, o: Pose): void {
   const c = Math.cos(o.lean);
@@ -486,42 +633,77 @@ function drawTitan(p: Canvas, o: Pose): void {
     return [o.px + x * c - Y * s, o.py + x * s + Y * c];
   };
   const tw = o.twist;
-  const shN = T(-16 + tw * (tw < 0 ? 6 : 9), -25 - Math.max(0, tw));
-  const shF = T(16 - tw * 2, -26);
+  const shN = T(-16 + tw * (tw < 0 ? 3 : 7), -25 - Math.max(0, tw));
+  const shF = T(13 - tw * 2, -27);
   const hipN = T(-6, 2);
   const hipF = T(8, 2);
-  const headPos = T(6 + o.hdx, -25 + o.hdy);
+  const headPos: Pt = o.hxy ?? T(9 + o.hdx, -24 + o.hdy);
   const coreXY = T(CORE_L[0], CORE_L[1]);
 
-  // ------------------------------------------------ seams
-  const seamLine = (q: Canvas, pts: Pt[], heat: number, ph: number) => {
-    // a glowing crack: hottest at its root, flickers with t; warm halo on the rock around it
-    const lit: [number, number, number][] = [];
+  // ------------------------------------------------ lava fissures
+  /**
+   * A jagged lava fissure painted onto the rock of layer q: the control polyline is broken into
+   * 3–5 px zig-zag segments, width tapers root → tip with pinches and swells, forks branch off.
+   * Thin parts are a 1px fire3 thread; wide parts get a fire2 lip around the fire3 body and a
+   * fire4 (gold4 when very hot) core. Heat follows the pose's seam glow and flickers.
+   */
+  const crack = (q: Canvas, pts: Pt[], heat: number, ph: number, w0 = 1.6, w1 = 0.9, seed = 1, forks = 0) => {
+    const path: Pt[] = [pts[0]];
+    let zi = 0;
     for (let i = 0; i + 1 < pts.length; i++) {
-      const [x0, y0] = pts[i];
-      const [x1, y1] = pts[i + 1];
-      const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 2));
-      for (let k = 0; k <= n; k++) {
-        const f = (i + k / n) / (pts.length - 1);
-        const x = Math.floor(lerp(x0, x1, k / n));
-        const y = Math.floor(lerp(y0, y1, k / n));
-        const fl = 0.85 + 0.3 * Math.sin((o.t * 2 + ph + f * 0.7) * TAU) + (hash(x, y, Math.floor(o.t * 10)) - 0.5) * 0.25;
-        const cd = Math.hypot(x - coreXY[0], y - coreXY[1]);
-        const cl = Math.max(0, 1 - cd / 11) * o.core * 0.7;
-        lit.push([x, y, o.seam * heat * fl * (1.2 - f * 0.6) + 0.4 + cl]);
+      const [ax, ay] = pts[i];
+      const [bx, by] = pts[i + 1];
+      const L = Math.hypot(bx - ax, by - ay) || 1;
+      const n = Math.max(1, Math.round(L / 3.6));
+      const nx = -(by - ay) / L;
+      const ny = (bx - ax) / L;
+      for (let k = 1; k <= n; k++) {
+        const f = k / n;
+        const j = k === n ? 0 : (zi++ % 2 ? 1 : -1) * (0.6 + 0.6 * hash(seed, zi, 3));
+        path.push([ax + (bx - ax) * f + nx * j, ay + (by - ay) * f + ny * j]);
       }
     }
-    for (const [x, y, g] of lit) {
-      if (g < 1.2) continue;
-      for (const [dx, dy] of [
-        [0, 1],
-        [1, 0],
-        [0, -1],
-        [-1, 0],
-      ])
-        if (isRock(q.get(x + dx, y + dy))) q.set(x + dx, y + dy, g > 1.7 ? PAL.fire1 : PAL.fire0);
+    const cum = [0];
+    for (let i = 1; i < path.length; i++) cum.push(cum[i - 1] + Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]));
+    const total = cum[cum.length - 1] || 1;
+    const fl = 0.9 + 0.2 * Math.sin((o.t * 2 + ph) * TAU) + (hash(seed, Math.floor(o.t * 10), 5) - 0.5) * 0.12;
+    const g0 = o.seam * heat * fl;
+    const body = (g: number) => (g > 1.6 ? PAL.fire4 : g > 0.8 ? PAL.fire3 : g > 0.5 ? PAL.fire2 : PAL.fire1);
+    const lip = (g: number) => (g > 1.6 ? PAL.fire3 : g > 0.5 ? PAL.fire2 : PAL.fire1);
+    const hot = (g: number) => (g > 1.75 ? PAL.gold4 : g > 0.7 ? PAL.fire4 : PAL.fire3);
+    const gAt = (d: number) => g0 * (1.15 - 0.4 * (d / total));
+    const wAt = (d: number) => lerp(w0, w1, d / total) * (0.72 + 0.56 * hash(seed, Math.floor(d / 2.4), 9));
+    // lips around the wide stretches
+    for (let d = 0; d <= total; d += 0.5) {
+      const w = wAt(d);
+      if (w < 1.5) continue;
+      const [x, y] = along(path, cum, d);
+      paintDisc(q, x, y, w / 2, lip(gAt(d)));
     }
-    for (const [x, y, g] of lit) if (q.isOpaque(x, y)) q.set(x, y, lava(g));
+    // the 1px thread
+    for (let i = 0; i + 1 < path.length; i++) {
+      const d = (cum[i] + cum[i + 1]) / 2;
+      paintLine(q, path[i][0], path[i][1], path[i + 1][0], path[i + 1][1], body(gAt(d)));
+    }
+    // white-hot heart where the fissure is widest
+    for (let d = 0; d <= total; d += 0.5) {
+      if (wAt(d) < 2.1) continue;
+      const [x, y] = along(path, cum, d);
+      q.paint(x, y, hot(gAt(d)));
+    }
+    // forks: short thin branches splitting off at an angle
+    for (let k = 0; k < forks; k++) {
+      const d = total * (0.35 + 0.3 * hash(seed, k, 21));
+      const [x, y] = along(path, cum, d);
+      const [x2, y2] = along(path, cum, Math.min(total, d + 1));
+      const a = Math.atan2(y2 - y, x2 - x) + (hash(seed, k, 22) > 0.5 ? 1 : -1) * (0.6 + 0.4 * hash(seed, k, 23));
+      const L = 2.5 + 2 * hash(seed, k, 24);
+      const mx = x + Math.cos(a) * L * 0.5 + Math.cos(a + 1.57) * 0.6;
+      const my = y + Math.sin(a) * L * 0.5 + Math.sin(a + 1.57) * 0.6;
+      const col = body(gAt(d) * 0.8);
+      paintLine(q, x, y, mx, my, col);
+      paintLine(q, mx, my, x + Math.cos(a) * L, y + Math.sin(a) * L, col);
+    }
   };
 
   // ------------------------------------------------ limbs
@@ -540,10 +722,13 @@ function drawTitan(p: Canvas, o: Pose): void {
     q.disc(knee[0] + 1, knee[1], 3.6, mid);
     q.disc(knee[0] + 0.5, knee[1] - 0.5, 2.2, near ? PAL.stone2 : PAL.stone1);
     rockLight(q, near);
-    seamLine(q, [[knee[0] - 5, knee[1] + 3], [knee[0] - 1, knee[1] + 3.5], [knee[0] + 4, knee[1] + 3]], near ? 0.8 : 0.55, 0.33);
-    seamLine(q, [[fx - 6, fy - 3], [fx, fy - 2.5], [fx + 4, fy - 3], [fx + 8, fy - 1]], near ? 0.6 : 0.4, 0.6);
-    const m = lerpPt(hip, knee, 0.5);
-    seamLine(q, [[m[0] - 2, m[1] - 3], [m[0], m[1]], [m[0] - 1, m[1] + 3]], near ? 0.55 : 0.4, 0.1);
+    const k = near ? 1.15 : 0.8;
+    // thigh: a fissure running down the outer face; shin: a split up the front; toe crack
+    const [ux, uy] = norm(knee[0] - hip[0], knee[1] - hip[1]);
+    crack(q, [[hip[0] - uy * 3 + ux * 1, hip[1] + ux * 3 + uy * 1], lerpPt(hip, knee, 0.55), [knee[0] - 2, knee[1] - 2]], 0.75 * k, 0.1, 1.6, 0.8, seed * 7 + 1, 1);
+    const [vx, vy] = norm(an[0] - knee[0], an[1] - knee[1]);
+    crack(q, [[knee[0] + 1 + vx * 3, knee[1] + vy * 3], [an[0] + 1.5 - vy, an[1] - 1]], 0.65 * k, 0.33, 1.4, 0.8, seed * 7 + 2, 0);
+    crack(q, [[fx + 1, fy - 4.5], [fx + 4, fy - 2.5], [fx + 7, fy - 2]], 0.6 * k, 0.6, 1.2, 0.8, seed * 7 + 3, 0);
   };
 
   const drawArm = (q: Canvas, sh: Pt, hand: Pt, fd: number, near: boolean, hot: number, seed: number) => {
@@ -573,50 +758,70 @@ function drawTitan(p: Canvas, o: Pose): void {
       q.disc(kx, ky, 1.8, v * litSide > 0 ? hi : mid);
     }
     rockLight(q, near);
-    // elbow seam, forearm crack, glowing finger seams
-    const ed = Math.atan2(wr[1] - sh[1], wr[0] - sh[0]) + Math.PI / 2;
-    const ex = Math.cos(ed) * 4.5;
-    const ey = Math.sin(ed) * 4.5;
-    seamLine(q, [[el[0] - ex, el[1] - ey], [el[0] + 0.5, el[1] + 0.5], [el[0] + ex, el[1] + ey]], near ? 0.85 : 0.6, 0.15);
-    const m = lerpPt(el, wr, 0.5);
-    seamLine(q, [lerpPt(el, wr, 0.25), [m[0] + 1, m[1] - 0.5], lerpPt(el, wr, 0.8)], near ? 0.75 : 0.5, 0.7);
-    const fh = (near ? 0.85 : 0.65) + hot * 1.1;
-    seamLine(q, [F(2, -2), F(5, -2), F(9, -2)], fh, 0.1);
-    seamLine(q, [F(2, 2), F(5, 2), F(9, 2)], fh, 0.5);
-    seamLine(q, [F(-1, -5), F(0, 0), F(-1, 5)], fh * 0.75, 0.3);
-    if (hot > 0.5) {
-      // white-hot knuckles
+    // fissures along the bones (never straight bands across the limb)
+    const [ax, ay] = norm(el[0] - sh[0], el[1] - sh[1]);
+    crack(q, [[sh[0] + ax * 3 - ay * 2.5, sh[1] + ay * 3 + ax * 2.5], lerpPt(sh, el, 0.6), [el[0] - ay * 1.5, el[1] + ax * 1.5]], near ? 0.95 : 0.65, 0.15, 1.6, 0.8, seed * 5 + 1, 1);
+    const [bx, by] = norm(wr[0] - el[0], wr[1] - el[1]);
+    crack(q, [[el[0] + bx * 2.5 + by * 1.5, el[1] + by * 2.5 - bx * 1.5], lerpPt(el, wr, 0.55), [wr[0] - bx * 2 - by * 2, wr[1] - by * 2 + bx * 2]], near ? 0.9 : 0.6, 0.7, 1.7, 0.8, seed * 5 + 2, 1);
+    // finger gaps glow (short, along the fist)
+    const fh = (near ? 0.8 : 0.6) + hot * 0.9;
+    crack(q, [F(3.5, -2), F(8.5, -2)], fh, 0.1, 1, 1, seed * 5 + 3, 0);
+    crack(q, [F(3.5, 2), F(8.5, 2)], fh, 0.5, 1, 1, seed * 5 + 4, 0);
+    if (hot > 0.15) {
+      // heat: the fist turns molten from the knuckles back — fire2 fringe, fire3 body, fire4 and
+      // gold4 at the knuckles, white-hot knuckle tips at the moment of impact
+      const xs = fist.map((pt) => pt[0]);
+      const ys = fist.map((pt) => pt[1]);
+      const mask = new PixelCanvas(q.w, q.h).poly(fist, 1);
       for (const v of [-4, 0, 4]) {
-        const [kx, ky] = F(8, v);
-        q.set(kx, ky, hot > 0.9 ? PAL.gold4 : PAL.fire4);
-        q.set(kx - ux, ky - uy, PAL.fire3);
+        const [kx, ky] = F(7.5, v);
+        mask.disc(kx, ky, 1.8 * fs, 1);
       }
+      const [gx, gy] = F(6.5, 0);
+      const R = 9.5 * fs;
+      for (let y = Math.floor(Math.min(...ys)) - 2; y <= Math.max(...ys) + 2; y++)
+        for (let x = Math.floor(Math.min(...xs)) - 2; x <= Math.max(...xs) + 2; x++) {
+          if (!mask.isOpaque(x, y) || !q.isOpaque(x, y)) continue;
+          const u = ((x + 0.5 - wr[0]) * ux + (y + 0.5 - wr[1]) * uy) / fs;
+          const v = (-(x + 0.5 - wr[0]) * uy + (y + 0.5 - wr[1]) * ux) / fs;
+          const groove = Math.abs(Math.abs(v) - 2) < 0.6 && u > 2.5;
+          const d = Math.hypot(x + 0.5 - gx, y + 0.5 - gy) / R;
+          const h = hot * (1.3 - d * 1.1) - (groove ? 0.2 : 0);
+          let col: number | null = null;
+          if (h > 0.98) col = PAL.gold4;
+          else if (h > 0.74) col = PAL.fire4;
+          else if (h > 0.48) col = PAL.fire3;
+          else if (h > 0.26) col = PAL.fire2;
+          if (col !== null) q.set(x, y, col);
+        }
+      if (hot > 0.9)
+        for (const v of [-4, 0, 4]) {
+          const [kx, ky] = F(8.6, v);
+          q.paint(kx, ky, PAL.white);
+        }
     }
   };
 
   const drawBoulder = (q: Canvas, sh: Pt, near: boolean) => {
     const B = near ? BOULDER_N : BOULDER_F;
     const BL = near ? BOULDER_N_LIT : BOULDER_F_LIT;
+    const k = near ? 1 : FAR_K;
     const [x, y] = sh;
-    const tr = (pts: Pt[]): Pt[] => pts.map(([u, v]) => [x + u, y + v]);
+    const tr = (pts: Pt[]): Pt[] => pts.map(([u, v]) => [x + u * k, y + v * k]);
     q.poly(tr(B), near ? PAL.stone1 : PAL.stone0);
     q.poly(tr(BL), near ? PAL.stone2 : PAL.stone1);
     // dark underside
-    q.poly(tr([[-9, 3], [9, 1], [8, 5], [3, 7], [-4, 7]]), near ? PAL.stone0 : PAL.stone0);
+    q.poly(tr([[-9, 3], [9, 1], [8, 5], [3, 7], [-4, 7]]), PAL.stone0);
     rockLight(q, near);
-    // glowing vent in the notch between the crags, a fissure running down the face, joint seam
-    seamLine(q, tr([[-2, -8], [-1, -7], [1, -7], [2, -8]]), 1.3, 0.45);
-    seamLine(q, tr([[1, -6], [3, -3], [2, 0], [4, 2]]), near ? 0.8 : 0.6, 0.15);
-    seamLine(q, tr([[-8, 3], [-3, 4], [3, 4], [8, 2]]), near ? 0.7 : 0.5, 0.6);
+    // glowing vent in the notch between the crags, a fissure splitting the face
+    crack(q, tr([[-2, -8], [0, -7.5], [2, -8]]), 1.3, 0.45, 2.2, 1.6, near ? 61 : 62, 0);
+    crack(q, tr([[1, -6], [3, -2], [2, 2], [5, 4]]), near ? 0.8 : 0.6, 0.15, 1.6, 0.8, near ? 63 : 64, 1);
+    crack(q, tr([[-8, 2], [-5, 4], [-1, 4.5]]), near ? 0.65 : 0.45, 0.6, 1.2, 0.8, near ? 65 : 66, 0);
   };
 
   // ------------------------------------------------ far arm (behind the body unless guarding)
-  const farArm = () => {
-    layer(p, (q) => drawArm(q, shF, o.fh, o.fd, false, 0, 40));
-    layer(p, (q) => drawBoulder(q, shF, false));
-  };
-  if (!o.farFront) farArm();
-  else layer(p, (q) => drawBoulder(q, shF, false));
+  if (!o.farFront) layer(p, (q) => drawArm(q, shF, o.fh, o.fd, false, 0, 40));
+  layer(p, (q) => drawBoulder(q, shF, false));
 
   // ------------------------------------------------ far leg
   layer(p, (q) => drawLeg(q, hipF, o.ff, false, 20));
@@ -627,7 +832,7 @@ function drawTitan(p: Canvas, o: Pose): void {
     q.poly([T(-12, -1), T(12, -2), T(14, 4), T(9, 7), T(-9, 7), T(-13, 4)], PAL.stone1);
     for (const [pts, tone] of PLATES) q.poly(pts.map(([x, y]) => T(x, y)), [PAL.stone0, PAL.stone1, PAL.stone2][tone]);
     rockLight(q, true);
-    for (const sm of SEAMS) seamLine(q, sm.pts.map(([x, y]) => T(x, y)), sm.heat, sm.ph);
+    SEAMS.forEach((sm, i) => crack(q, sm.pts.map(([x, y]) => T(x, y)), sm.heat, sm.ph, sm.w0, sm.w1, 100 + i, sm.forks));
     // molten core: dark socket, glowing magma, white heart when pulsing hard
     const [cx, cy] = T(CORE_L[0], CORE_L[1]);
     const k = o.core;
@@ -645,7 +850,7 @@ function drawTitan(p: Canvas, o: Pose): void {
       [3, 4],
       [4, 3],
     ])
-      if (isRock(q.get(cx + dx, cy + dy))) q.set(cx + dx, cy + dy, k > 1.2 ? PAL.fire1 : PAL.fire0);
+      if (isRock(q.get(cx + dx, cy + dy))) q.set(cx + dx, cy + dy, k > 1.2 ? PAL.fire2 : PAL.fire1);
   });
 
   if (o.farFront) layer(p, (q) => drawArm(q, shF, o.fh, o.fd, false, 0, 40));
@@ -653,29 +858,38 @@ function drawTitan(p: Canvas, o: Pose): void {
   // ------------------------------------------------ near leg
   layer(p, (q) => drawLeg(q, hipN, o.nf, true, 10));
 
-  // ------------------------------------------------ head (sunk between the shoulders)
-  layer(p, (q) => {
-    const rows = o.head === 'roar' ? HEAD_ROAR : o.head === 'hit' ? HEAD_HIT : o.head === 'guard' ? HEAD_GUARD : HEAD_N;
-    const e = o.eye;
-    const key: Record<string, number> = {
-      k: PAL.ink,
-      '0': PAL.stone0,
-      '1': PAL.stone1,
-      '2': PAL.stone2,
-      '3': PAL.stone3,
-      e: e > 1.5 ? PAL.white : e > 0.6 ? PAL.gold4 : PAL.fire2,
-      E: e > 0.6 ? PAL.fire3 : PAL.fire1,
-      r: lava(0.6 + o.seam * 0.45),
-      R: lava(1.1 + o.core * 0.4),
-      g: o.core > 1.5 ? PAL.gold4 : PAL.fire4,
-      t: PAL.stone2,
-    };
-    q.stamp(rows, key, Math.round(headPos[0] - 6), Math.round(headPos[1] - 6));
-  });
+  // ------------------------------------------------ head (sunk between the shoulders, ahead of the far one)
+  let headMask: Canvas | null = null;
+  const drawHead = () =>
+    layer(p, (q) => {
+      headMask = q;
+      const rows = { n: HEAD_N, blaze: HEAD_BLAZE, snarl: HEAD_SNARL, roar: HEAD_ROAR, hit: HEAD_HIT, guard: HEAD_GUARD }[o.head];
+      const e = o.eye;
+      const mouthHot = Math.max(o.core, o.seam);
+      const key: Record<string, number> = {
+        k: PAL.ink,
+        '0': PAL.stone0,
+        '1': PAL.stone1,
+        '2': PAL.stone2,
+        '3': PAL.stone3,
+        '4': PAL.stone4,
+        E: e < 0.6 ? PAL.fire2 : e > 1.5 ? PAL.gold4 : PAL.fire4,
+        e: e < 0.6 ? PAL.fire3 : e > 1.5 ? PAL.white : PAL.gold4,
+        x: e > 1.5 ? PAL.fire2 : PAL.stone0,
+        m: PAL.fire2,
+        M: mouthHot > 1.7 ? PAL.fire4 : PAL.fire3,
+        g: mouthHot > 1.7 ? PAL.gold4 : PAL.fire4,
+        t: PAL.stone3,
+        r: o.seam > 1.4 ? PAL.fire4 : o.seam > 0.75 ? PAL.fire3 : PAL.fire2,
+      };
+      q.stamp(rows, key, Math.round(headPos[0] - 6), Math.round(headPos[1] - 4));
+    });
+  if (!o.headFront) drawHead();
 
   // ------------------------------------------------ near arm (in front)
   layer(p, (q) => drawArm(q, shN, o.nh, o.nd, true, o.heat, 30));
   layer(p, (q) => drawBoulder(q, shN, true));
+  if (o.headFront) drawHead();
 
   // ------------------------------------------------ core light leaking through the gaps between the arms and chest
   if (o.farFront) {
@@ -707,22 +921,36 @@ function drawTitan(p: Canvas, o: Pose): void {
 
   // ------------------------------------------------ light pass (unoutlined glow)
   if (o.smear.length) {
-    // the fist's swing smear: a hot arc thickening toward the fist
+    // the fist's swing smear: a hot arc thickening toward the fist, traced over the top of the
+    // silhouette (light behind the body) — bright core, fire3 body, fire2 fringe only
     const pts = [...o.smear, o.nh];
+    const sm = new PixelCanvas(p.w, p.h);
+    const rank = (c: number) => FIRE_RANK(c);
     for (let i = 0; i + 1 < pts.length; i++) {
-      const n = 10;
+      const n = 12;
       for (let k = 0; k <= n; k++) {
         const f = (i + k / n) / (pts.length - 1);
         const [x, y] = lerpPt(pts[i], pts[i + 1], k / n);
-        const w = 0.5 + f * 6;
-        for (let d = -w; d <= w; d += 0.5) {
-          const yy = y + d;
-          if (p.isOpaque(x, yy) && p.get(x, yy) !== PAL.ink) continue;
-          const core = Math.abs(d) < w * 0.35;
-          p.set(x, yy, core ? (f > 0.6 ? PAL.fire4 : PAL.fire3) : f > 0.5 ? PAL.fire2 : PAL.fire1);
-        }
+        const w = 0.6 + f * 4.2;
+        for (let yy = Math.floor(y - w); yy <= y + w; yy++)
+          for (let xx = Math.floor(x - w); xx <= x + w; xx++) {
+            const a = Math.hypot(xx + 0.5 - x, yy + 0.5 - y) / w;
+            if (a > 1) continue;
+            const col = a < 0.3 ? (f > 0.55 ? PAL.gold4 : PAL.fire4) : a < 0.65 ? PAL.fire3 : PAL.fire2;
+            const cur = sm.get(xx, yy);
+            if (cur === null || rank(col) > rank(cur)) sm.set(xx, yy, col);
+          }
       }
     }
+    for (let y = 0; y < p.h; y++)
+      for (let x = 0; x < p.w; x++) {
+        const c = sm.get(x, y);
+        if (c === null) continue;
+        const cur = p.get(x, y);
+        // light behind the silhouette: only empty pixels and the outline
+        if (cur !== null && cur !== PAL.ink) continue;
+        p.set(x, y, c);
+      }
   }
 
   // chest beat: a hot impact star where the knuckles land on the pec
@@ -757,11 +985,12 @@ function drawTitan(p: Canvas, o: Pose): void {
     [shN, 1],
   ] as const) {
     const vx = sh[0];
-    const vy = sh[1] - 9;
+    const vy = sh[1] - (side ? 9 : 9 * FAR_K);
     if (o.flare > 0.05) {
       for (let i = 0; i < 3; i++) {
-        const L = Math.min(vy - 2, o.flare * (6 + 4 * hash(i, Math.floor(o.t * 10), side)) * (i === 1 ? 1.35 : 0.9));
-        flame(p, [vx + (i - 1) * 2.5, vy + (i === 1 ? 0 : 1)], -Math.PI / 2 + (i - 1) * 0.3, L, 3, o.t * 3 + i * 0.33, o.flare);
+        const L = Math.min(vy - 1, o.flare * (6 + 3 * hash(i, Math.floor(o.t * 10), side)) * (i === 1 ? 1.35 : 0.9));
+        const lean = (i - 1) * 0.35;
+        tongue(p, [vx + (i - 1) * 2.5, vy + (i === 1 ? 0 : 1)], -Math.PI / 2 + lean, L, i === 1 ? 4.2 : 3.4, -lean * 0.6 + Math.sin((o.t * 3 + i * 0.3) * TAU) * 0.35, o.t * 3 + i * 0.33, o.flare + 0.3, side ? null : headMask);
       }
     }
     for (let k = 0; k < 2; k++) {
@@ -778,18 +1007,18 @@ function drawTitan(p: Canvas, o: Pose): void {
     const [x, y] = [Math.round(src[0]), Math.round(src[1])];
     if (t < 0.55) {
       const L = Math.floor(t * 6);
-      for (let i = 0; i <= L; i++) p.set(x, y + i, i === L ? PAL.fire3 : PAL.fire2);
+      for (let i = 0; i <= L; i++) p.set(x, y + i, i === L ? PAL.fire4 : PAL.fire3);
     } else {
       const fy = y + 3 + Math.floor((t - 0.55) * 30);
       if (fy < GROUND) {
         p.set(x, fy, PAL.fire4);
-        p.set(x, fy - 1, PAL.fire2);
+        p.set(x, fy - 1, PAL.fire3);
       }
-      p.set(x, y, PAL.fire2);
+      p.set(x, y, PAL.fire3);
     }
   };
-  if (!o.smear.length && o.burst === 0 && o.nd > 0.8 && o.nd < 2.4) drip([o.nh[0] + Math.cos(o.nd) * 10 + 1, o.nh[1] + Math.sin(o.nd) * 10], 0);
-  if (!o.farFront && o.fd > 0.8 && o.fd < 2.4) drip([o.fh[0] + Math.cos(o.fd) * 10 - 1, o.fh[1] + Math.sin(o.fd) * 10], 0.45);
+  if (!o.smear.length && o.burst === 0 && o.nd > 0.8 && o.nd < 2.4) drip([o.nh[0] + Math.cos(o.nd) * 9, o.nh[1] + Math.sin(o.nd) * 9 + 1], 0);
+  if (!o.farFront && o.fd > 0.8 && o.fd < 2.4) drip([o.fh[0] + Math.cos(o.fd) * 9 - 1, o.fh[1] + Math.sin(o.fd) * 9 + 1], 0.45);
 
   // impact burst of magma off the knuckles
   if (o.burst > 0) {
@@ -797,9 +1026,12 @@ function drawTitan(p: Canvas, o: Pose): void {
     const uy = Math.sin(o.nd);
     const kx = o.nh[0] + ux * 10;
     const ky = o.nh[1] + uy * 10;
-    for (let i = 0; i < 7; i++) {
-      const a = o.nd + (i - 3) * 0.45;
-      flame(p, [kx - ux * 2, ky - uy * 2], a, o.burst * (4 + 3 * hash(i, 5)), 2.5, i * 0.17 + o.t, 1.5);
+    for (let i = 0; i < 5; i++) {
+      const a = o.nd + (i - 2) * 0.62;
+      const bx = kx - ux * 2;
+      // keep the tongues 2px inside the frame (they are unoutlined light)
+      const room = Math.cos(a) > 0.1 ? (W - 3 - bx) / Math.cos(a) : 99;
+      tongue(p, [bx, ky - uy * 2], a, Math.min(room, o.burst * (6 + 3 * hash(i, 5)) * (i === 2 ? 1.25 : 1)), 4.2, (i - 2) * 0.3, i * 0.17 + o.t, 1.5);
     }
     p.disc(kx, ky, 1.6 * o.burst + 0.5, PAL.gold4);
     if (o.burst > 0.8) p.disc(kx - 0.5, ky, 1, PAL.white);
@@ -816,11 +1048,11 @@ function drawTitan(p: Canvas, o: Pose): void {
       const y = Math.round(fy - 1 - (i >> 1) * 1.6 * k - (k > 0.8 ? 1 : 0));
       if (!p.isOpaque(x, y)) p.set(x, y, i < 2 ? PAL.fire4 : i < 4 ? PAL.fire3 : PAL.stone2);
     }
-    for (let x = -6; x <= 8; x++) if (!p.isOpaque(fx + x, fy)) p.set(fx + x, fy, Math.abs(x) < 4 ? PAL.fire3 : PAL.fire1);
+    for (let x = -6; x <= 8; x++) if (!p.isOpaque(fx + x, fy)) p.set(fx + x, fy, Math.abs(x) < 4 ? PAL.fire3 : PAL.fire2);
   }
 
   // hot embers off the hit
-  for (const ch of o.chips) if (ch.hot) p.set(ch.x, ch.y, PAL.fire4).set(ch.x - 1, ch.y + 1, PAL.fire3).set(ch.x - 2, ch.y + 2, PAL.fire1);
+  for (const ch of o.chips) if (ch.hot) p.set(ch.x, ch.y, PAL.fire4).set(ch.x - 1, ch.y + 1, PAL.fire3).set(ch.x - 2, ch.y + 2, PAL.fire2);
 }
 
 // ---------------------------------------------------------------- portrait (44×34)
