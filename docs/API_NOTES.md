@@ -1239,3 +1239,428 @@ Open issues reported by the agent:
 - Prompt.passDevice ignores input until its letters have landed, so QA tools that start a hot-seat duel with the curtain on must click or press Enter later, or pass curtain:false / &curtain=0.
 - In demo mode the hand view follows the active player (spectator); in vsBot it stays on the human. Set cards are never revealed on screen except the viewer's own in the inspect panel.
 - BootScene.ts got the minimal edit allowed by the task (it now uses firstScene(params)). FIRST_SCENE = 'Title' is still exported.
+
+## src/cinematics/strikes-b/_kit.ts, src/cinematics/strikes-b/storm_hawk.ts, src/cinematics/strikes-b/stone_sentinel.ts, src/cinematics/strikes-b/lumen_sprite.ts
+
+Files: src/cinematics/strikes-b/_kit.ts, src/cinematics/strikes-b/storm_hawk.ts, src/cinematics/strikes-b/stone_sentinel.ts, src/cinematics/strikes-b/lumen_sprite.ts, src/cinematics/strikes-b/shade_assassin.ts, src/cinematics/strikes-b/volt_lizard.ts, src/cinematics/strikes-b/thorn_lurker.ts, src/duel/scenarios/strikes-b.ts
+
+- No shared contracts were changed. No library, view, art, _core or _defaults files were touched.
+- New export in `src/cinematics/strikes-b/_kit.ts`:
+  - `worldToScreen(scene, p)`: projects a world point through the main camera, including zoom and scroll.
+  - `impactPoint(s: StrikeArgs, at)`: returns `at` for strikes on monsters and the projected screen point for direct attacks. Use it for any `s.impact()` on a direct attack while the camera is pushed in. directHit draws on the screen-space UI camera.
+- Hooks registered in strikes-b (priority 0):
+  - Strikes: registerStrike for all six monsters.
+  - Effects: registerCardHook 'effect' for lumen_sprite, volt_lizard and thorn_lurker.
+  - Deaths: registerCardHook 'destroyed' for all six.
+- The Dikenli Pusucu FLIP effect owns its whole resolution run. It uses the target to aim, plays the destroy event with `{ hit: false, push: { x: 0, y: -1 } }` while the vines hold the victim, then plays the rest of the run.
+- Frame data is never hard-coded except the documented vine root (36,41). Everything else is read at runtime: unit.art anims and frames, framePoint, core(), and worldBox from the current frame's bounds.
+- Scenario pack `src/duel/scenarios/strikes-b.ts` gained sbThornFlipSet. It holds 48 scenarios in all, named sb<Monster><Case>.
+
+Open issues reported by the agent:
+- Library (vfx/setpieces.vineBurst): its vines are thin, dark leaf0/leaf2 strokes that become hard to read over a busy sprite such as Magma Titanı. strikes-b now uses its own local vineCrush, but the default thorn_lurker handler and any other users of vineBurst still get the faint version.
+- Battle default / vfx/combat.directHit: directHit draws its burst and speed lines on the screen-space UI camera, but the default battle handler passes it a world point while the camera is pushed in. Any strike that calls s.impact(at) on a direct attack lands about 30px off unless it projects the point first (strikes-b now does this via _kit.impactPoint). The battle handler could project the point once, which would fix it for every strike pack.
+- Timing for Şimşek Kertenkelesi's death: the default destroy handler's card flight to the graveyard runs before the separate activate event, so there is about 1 s between the remains ball forming and the discharge bolt. The ball crackles the whole time, so nothing looks dead, but the sequence is about 0.3 s longer than ideal. It cannot be shortened from inside strikes-b without consuming the destroy's graveyard flight.
+
+## src/art/cutins/index.ts, src/art/cutins/crystal_wyrm.ts, src/art/cutins/abyss_magus.ts, src/art/cutins/magma_titan.ts
+
+Files: src/art/cutins/index.ts, src/art/cutins/crystal_wyrm.ts, src/art/cutins/abyss_magus.ts, src/art/cutins/magma_titan.ts, src/art/cutins/coral_serpent.ts, src/art/duelists.ts, src/boot/25-cutins.ts, src/dev/previews/cutin.ts, src/dev/previews/duelists.ts
+
+**Cut-in registry: `src/art/cutins/index.ts`**
+- Exports:
+  - `cutinArt(id)`: always returns a portrait; when no hand-made one exists it builds one from the monster's idle frames, upscaled.
+  - `hasCutin(id)`
+  - `cutinIds()`
+  - `cutinSequence(art)`: returns `{frame, ms}[]`.
+  - `cutinTextureKey(id)` and `cutinAnimKey(id)`: both return `cutin:<id>`.
+  - `cutinFrameName(f)`: returns `f<n>`.
+  - `cutinFrame(id, f)`: the cached frame image.
+  - `whenCutinsBuilt()`: a Promise that resolves once every `cutin:<id>` texture exists.
+  - `markCutinsBuilt()`
+  - The drawing kit: `KIT`, `GBuf`, `composite`, `rim`, `glow`, `star`, `streakDissolve`, `castShadow`, `lineOn`, `pathOn`, `despeckle`, `bayer`, `dissolveRows`, plus the types `CutinKit`, `CutinFactory`, `Mat`, `PrimOpt`, `V`.
+- A portrait file's default export may be a `CutinArt` or a factory `(kit) => CutinArt`. The factory form avoids a circular import, because art files only `import type` from `index.ts`.
+- Files whose name starts with `_` are ignored by the auto-registry.
+
+**Textures and animation**
+- Texture `cutin:<id>` has frames `f0`…`f5`, each 200×144. At scale 1, `cutin.ts` computes scale = floor(178/144) = 1.
+- Animation `cutin:<id>` is one-shot, about 2.1 s, with per-frame durations:
+  - f0: 400 ms
+  - f1, f2: 70 ms each
+  - f3 (roar peak): 130 ms, starting at about 540 ms, just before the 590 ms eye flare.
+  - f4 and f5 then alternate at 83 ms.
+- The 4 hand-made portraits (`crystal_wyrm`, `abyss_magus`, `magma_titan`, `coral_serpent`) are built time-sliced after boot, or synchronously when the URL has `?test`. Placeholder portraits are never registered as textures, so `cutin.ts` keeps its own fallback for other monsters.
+- accent / accentDark per portrait:
+  - LIGHT: gold3 / gold1
+  - DARK: void3 / void1
+  - FIRE: fire3 / fire1
+  - WATER: water3 / water1
+
+**Duelists: `src/art/duelists.ts`**
+- No Phaser import; the boot step builds the textures.
+- Exports:
+  - `type DuelistAnim = 'idle' | 'command' | 'hurt' | 'defeat' | 'victory'` (the same union as `DuelistView`) and `DUELIST_ANIMS`.
+  - Size and anchor: `DUELIST_W = 32`, `DUELIST_H = 40`, `DUELIST_ANCHOR = {x: 13, y: 39}` (ground point between the feet), `DUELIST_ANCHOR_X`, `DUELIST_ANCHOR_Y`.
+  - Points in the idle pose, facing right: `DUELIST_DISK = {19, 25}`, `DUELIST_CHEST = {13, 20}`.
+  - `DUELIST_SPECS`:
+    - idle: 8 frames @ 7 fps, loops
+    - command: 6 frames @ 12 fps
+    - hurt: 4 frames @ 10 fps
+    - defeat: 6 frames @ 8 fps, holds the last frame
+    - victory: 6 frames @ 10 fps, holds the last frame
+  - Key helpers: `duelistTextureKey(p)` returns `duelist:<p>`; `duelistAnimKey(p, anim)` returns `duelist:<p>:<anim>`; `duelistFrameName(anim, f)` returns `<anim>:<f>`; `duelistFrame(p, anim, f)` returns the frame image.
+- Both are drawn facing right. `DuelistView` mirrors P2 with flipX and originX = 1 − 13/32, which is already what it does. No changes to `DuelistView` were needed.
+
+**Shared files**
+- No shared contract files were touched.
+- `cutin.ts` was only consumed, not edited.
+
+Open issues reported by the agent:
+- Bug in src/vfx/cutin.ts (not my file): for player 2 the lens glint lands on the wrong side of the portrait. When a portrait texture exists, the eye's x offset is not mirrored for the flipped sprite: `eyes = findEyes(...).map(e => ({ x: (e.x - w/2) * scale, ... }))` has no `* (p1 ? 1 : -1)`, which its fallback branch does have. Fix: multiply the x offset by `(p1 ? 1 : -1)`.
+- Fragile in src/vfx/cutin.ts: `getFrameNames().sort().pop()` sorts text, so it would pick the wrong last frame once a portrait has 10 or more frames ('f9' sorts after 'f10'). All portraits have 6 frames, so this does not happen today.
+- If an ace is summoned within roughly the first second after boot, before the time-sliced build finishes, `cutin.ts` shows its monster-sprite fallback for that cut-in. In practice the title screen covers this time.
+- tools/shot.mjs gives up loading the page after a fixed 30 s, which fails often when the machine is busy. I used a patched copy, shots/cutins/shot.mjs, which takes `--timeout` for the page load and adds `--notest`. The shared tool should take the same change.
+- Possible later polish: Magma Titanı's mouth fangs are small at 1×; Uçurum Büyücüsü's armour is close in value to the dark void band and stands out mainly through outlines and rim light; the duelists are about 34 px tall per the brief, so facial detail is minimal at 1×.
+
+## src/cinematics/strikes-a/_kit.ts, src/cinematics/strikes-a/crystal_wyrm.ts, src/cinematics/strikes-a/abyss_magus.ts, src/cinematics/strikes-a/magma_titan.ts
+
+Files: src/cinematics/strikes-a/_kit.ts, src/cinematics/strikes-a/crystal_wyrm.ts, src/cinematics/strikes-a/abyss_magus.ts, src/cinematics/strikes-a/magma_titan.ts, src/cinematics/strikes-a/coral_serpent.ts, src/cinematics/strikes-a/ember_wolf.ts, src/cinematics/strikes-a/tide_golem.ts, src/duel/scenarios/strikes-a.ts
+
+Nothing outside my ownership list was changed and no shared contract was touched; registrations are unchanged.
+- My files register at priority 0, so they override the defaults:
+  - registerStrike for all six monsters.
+  - registerCardHook 'effect' for abyss_magus, magma_titan, ember_wolf and tide_golem.
+  - registerCardHook 'attack' for coral_serpent. It owns the whole battle only when the serpent pierces (it destroys a defender and there is battle damage); otherwise it hands off with ctx.base().
+  - registerCardHook 'destroyed' for all six.
+- The effect hooks own their resolution: they find it with resolutionRun, play the damage event with { delivered: true } at the moment the fireball, flame spirit or water spray lands, and finish with playRun.
+- Sprite data is read at runtime, never hard-coded:
+  - u.art.muzzle, u.art.core, u.impactMs and u.art.anims (frame rates and counts).
+  - CRYSTAL_WYRM_MOUTH, read from the art module.
+  - The magus staff orb, the wolf's mane and the wolf's eye are found by looking for their colour clusters in whatever frame the sprite is showing (clusterIn in _kit.ts), so later art revisions are picked up automatically.
+- Local kit additions (strikes-a/_kit.ts only): shatterPx takes two new options, ring (default true) and flashMode ('fill' | 'tint', default 'fill').
+- The scenario pack is src/duel/scenarios/strikes-a.ts, roughly 55 scenarios named sa*. It covers attack vs ATK, vs DEF / face-down, blocked, direct, player 2, each effect and each death.
+
+Open issues reported by the agent:
+- Library (setpieces.tendril): the shadow tendril snakes from the caster's tile while the face-down card is still flipping up, and it gives the caller no beat to sync to (no onClench / onSnake callback). An onClench callback would let a cinematic crack the card exactly when the tendril closes on it.
+- tools/shot.mjs: the page-load timeout is fixed at 30 s (Playwright's default for page.goto), whatever --timeout says, so under load many films failed and had to be retried up to 4 times. Also, console.log from --eval is never printed (only console.error is), so QA scripts have to log through console.error.
+- Integration hazard: src/boot/25-cutins.ts imported ../art/duelists for about 40 minutes before src/art/duelists.ts existed, and every page load failed during that time. A boot step that imports another agent's module would be safer with import.meta.glob, the way DuelistView does it.
+- Art (monster sprites): there is no hit animation drawn from the guard pose, so a monster in defense position pops upright when it is hit (already reported by the art agents). My deaths start from hit frame 0 or 1, so a defending golem or wolf also stands up for one frame before its death plays.
+- Gelgit Golemi counter-splash: by the time it starts, the battle cinematic has already ended and the camera has moved off, so there is a gap of about 0.6 s before the golem reacts. Fixing that needs the battle and its trigger staged together, which belongs in the defaults or the Director rather than in my files.
+
+## src/cinematics/spells/_kit.ts, src/cinematics/spells/_fountain.ts, src/cinematics/spells/judgment_bolt.ts, src/cinematics/spells/healing_spring.ts
+
+Files: src/cinematics/spells/_kit.ts, src/cinematics/spells/_fountain.ts, src/cinematics/spells/judgment_bolt.ts, src/cinematics/spells/healing_spring.ts, src/cinematics/spells/soul_recall.ts, src/cinematics/spells/dragon_blade.ts, src/cinematics/spells/volcano_arena.ts, src/duel/scenarios/spells.ts
+
+Registrations (all at priority 0, from src/cinematics/spells/*):
+- judgment_bolt: 'activate', 'destroys' (the victim's flavoured death steps aside because a 'destroys' hook exists; hints passed to the destroy: { hit:false, bolt:true, push:{x:0,y:-1} }).
+- healing_spring: 'activate'. It plays lpGain with { delivered: true }.
+- soul_recall: 'activate'. It consumes the target AND the special summon event and builds the tile and unit itself (field.placeCard + addUnit + materialize). Summon-entrance agents' 'summon' hooks are NOT called for soul_recall revivals.
+- dragon_blade: 'activate', 'equip' (forge; plays the paired statChange on the impact frame; accepts hints.from = rune origin XY), 'destroyed' (spellTrap location: card burns in gold, aura bursts off a surviving monster).
+- registerObserver on statChange: bursts the 'equip' aura off a unit whose blade is gone, even when another card's hook consumed the destroy (e.g. abyss_magus swallowCard).
+- volcano_arena: 'activate', 'field' (active: eruption + per-monster heat-up, consumes the following statChanges; inactive: cool-down, consumes the statChanges, skipped if another volcano is in play in the batch's after state).
+
+Reusable helpers in src/cinematics/spells/_kit.ts:
+- spellOpening(ctx, { uid, cardId, player, from: 'hand'|'set', zone, hold?, push?, onHold?(ms) }) → { card, center, release(to, { path:'arc'|'line'|'dive', ms, lift, ramp, size, onLaunch }), land({ spot, index }) → TileCard, close() }.
+- energyStreak, starFlare, resolvedToGraveyard, sendResolved(ctx, gi, fromXY, delay), setTileOf, idxOf, evAt, TEAL_FX / GOLD_FX / CYAN_FX.
+- src/cinematics/spells/_fountain.ts quickFountain(scene, player, lpXY, { at, onErupt, onArrive }) is a faster cut of setpieces.healingFountain.
+
+Monster data is read at runtime: unit.worldPoint('top'), spriteBox() of the current frame, unit.core()/home, monsterArt via ghostTexture. No frame indices are hard-coded.
+
+Open issues reported by the agent:
+- Time budget: §5 allows 2.5 s per spell. Measured end-to-end, the activations run 2.5–2.9 s: the common opening plus a 400 ms hold already costs about 1.0–1.15 s before each set piece starts. Shortening the hold or the card flight in _kit.ts would bring them under 2.5 s at the cost of reading time for the name plate.
+- Library bug (src/view/CardSprite.ts, not mine): setHighlight(null) starts a 120 ms fade whose onComplete calls glowRun.stop(). If the CardSprite is destroyed within those 120 ms, the stop throws 'Cannot read properties of undefined (reading stop)' inside the TweenManager. The guard should be `if (!this.active) return` in that onComplete. I work around it by not clearing the highlight before destroying the card.
+- Library (src/vfx/setpieces.ts stormStrike): the darkness rectangle is exactly 640×360 at depth SHADOW-2, so any world-camera zoom or pan (focus) or the 5 px shake shows its edges. I add four border strips with the same alpha curve locally; the library could pad the rectangle like dim() does.
+- Library (setpieces.healingFountain): its beats (eruption at +220 ms, droplets at +500 ms, 480–620 ms flights, collapse ~800 ms) are too slow for a 2.5 s spell after the common opening. I use a local faster copy (spells/_fountain.ts).
+- Library (setpieces.swordForge): it centres the rune circle and blade on the sprite's bounding box. The ring therefore floats at mid-body, and a ×2 blade on P2's back row has almost no plunge travel. My local forge (dragon_blade.ts) hovers the ring above the head and falls back to ×1.
+- soul_recall consumes the special summon event and plays its own cyan rematerialization, so the summon-A/summon-B per-monster 'summon' hooks never run for revivals. This follows §7 (a cyan pillar for every revived monster). If those agents want their signature entrance on revivals too, soul_recall could call ctx.play(si, { noCard: true, ghost: true }) instead.
+- abyss_magus's effect (strikes-a) consumes the destroy and toGraveyard events of a swallowed equip itself, so the dragon_blade 'destroyed' hook does not run there. The gold aura burst on the stat roll-back is handled by my statChange observer instead.
+
+## src/cinematics/battle/_kit.ts, src/cinematics/battle/declare.ts, src/cinematics/battle/battle.ts, src/cinematics/battle/damage.ts
+
+Files: src/cinematics/battle/_kit.ts, src/cinematics/battle/declare.ts, src/cinematics/battle/battle.ts, src/cinematics/battle/damage.ts, src/cinematics/traps/_opening.ts, src/cinematics/traps/_chains.ts, src/cinematics/traps/_mirror.ts, src/cinematics/traps/mirror_barrier.ts, src/cinematics/traps/chains_of_light.ts, src/cinematics/traps/chasm_trap.ts, src/duel/scenarios/traps.ts
+
+Registrations (all at priority 0; I registered no strikes):
+- Events: attackDeclare, decision (trapResponse only; other kinds go to ctx.base()), responseDeclined, attackNegated, battle, damage (undelivered effect damage goes to ctx.base()), lpGain (adds the duelist's 'command' then calls ctx.base()).
+- Card hooks: mirror_barrier 'activate'; chains_of_light 'activate' and 'negate' (only when hints.bound, otherwise ctx.base()); chasm_trap 'activate' and 'destroys'.
+- An observer that installs the guard-pose rule on every unit.
+
+Kept handles:
+- 'attack' is now an AttackHold { kind: 'attackHold', attackerUid, targetUid, player, from, to, dropMarks(), shatterMarks(), release(ms), destroy() }. destroy() still removes the arrow and reticle and restores the attacker's rest pose, so handlers that do ctx.take('attack')?.destroy() keep working.
+- 'trapPulse' holds the set-card pulse while a trap window is open. trapOpening and responseDeclined take it back.
+
+Hints:
+- battle → destroy: { push: blow direction, hit: false }.
+- battle → damage: { at, battle: true }. `at` is just above the struck monster for the defender's damage, the duelist point for direct hits, and above the attacker's duelist for recoil.
+- mirror_barrier → destroy: { hit: true, push }.
+- chasm activate → chasm destroys: { from: trap tile point, owned: true }.
+- chains activate → attackNegated: { bound: true }.
+
+Guard-pose rule (battle/_kit.ts guardRemap): a unit in defense position never shows 'hit' frames. play('hit') stays in guard and emits the 'hit' completion event after the anim's duration; setFrame('hit:N') shows the current guard frame. Death flavours that hold 'hit' frames therefore shatter from the guard pose.
+
+Helpers in src/cinematics/battle/_kit.ts that other agents may import (no registrations there): guardReact(ctx, unit, { power, dir, at, ramp, survive }), hexGlint(scene, x, y, face), setCardPulse(ctx, player), takeAttack(ctx).
+
+I did not change any sprite data. Points are read at runtime from MonsterUnit (core(), worldPoint('muzzle'/'top'), art.attackImpactFrame).
+
+Open issues reported by the agent:
+- Library (setpieces.mirrorDome, not mine): the reflected beams leave the dome as tall hooked curves and the shatter tail overlaps the attackers' deaths. I use a retimed local copy in src/cinematics/traps/_mirror.ts with fanned, low arcs and an onFire callback. The library owner may want to adopt these.
+- Library (setpieces.chainsBind): its 5 px links with heavy outlines bury small and medium monsters (the wolf read as a gold blob). I replaced it locally with finer 3 px light chains (src/cinematics/traps/_chains.ts).
+- vfx/banners: slamBanner accepts a `stagger` option that BannerOpts does not declare. I pass it through a widened type, which works but is fragile. Adding `stagger?: number` to BannerOpts would make it official.
+- Guard-pose rule: I implemented it by patching each unit's sprite.play and setFrame from my cinematics observer, because I may not edit _core or MonsterUnit. A cleaner place would be MonsterUnit.play('hit') and holdFrame in defense position. Note that the patch also applies outside battles, for example a spell destroying a defending monster.
+- core.hitStop is still not nesting-safe (known). My code only uses combat.stopTime / setpieces.freeze.
+- tools/shot.mjs: its fixed 30 s page.goto timeout fails while the machine is loaded (two of my runs hit it). My gitignored copy in shots/tb/shot.mjs uses 240 s.
+
+## src/art/monsters/coral_serpent.ts, src/art/monsters/tide_golem.ts
+
+Files: src/art/monsters/coral_serpent.ts, src/art/monsters/tide_golem.ts
+
+No contract changes. Anchor, hover, muzzle, core, attackImpactFrame and frame counts/fps are unchanged for both monsters. The muzzle is still computed from the impact pose.
+
+coral_serpent (80×80):
+- anchor (30,76), hover 0, muzzle (73,35) on impact frame 5, core (38,46).
+- idle 8f @8 loop, roar 10f @10, attack 10f @12, hit 4f @10, guard 4f @4 loop.
+- Attack sync points:
+  - f1–f3: wind-up into an S-spring; the cyan orb glows inside the mouth on f2–f3.
+  - f4: whip forward with a head after-image and speed lines.
+  - f5: impact. Jaws fully open and a water burst at the muzzle.
+  - f6: jaws still fully open (burst fading); f7 almost fully open; recovers by f9.
+- Main colours: water ramp body, mist/water4 belly, mag2–mag4 crown and fins with crim3 accents, cyan eye and orb.
+
+tide_golem (64×64):
+- anchor (30,60), hover 0, muzzle (53,57) = fists on the ground at impact frame 5, core (34,30).
+- idle 8f @8 loop, roar 10f @10, attack 10f @12, hit 4f @10, guard 4f @5 loop.
+- New attack poses:
+  - f2: arms rise into a V.
+  - f3: fists high at (9,9) and (51,8), core blazing.
+  - f4: arms swing forward over the head (fists about (44,10)/(53,14)) with a swoosh trail.
+  - f5: slam, foam burst at the ground. f6 holds the slam.
+- Roar: geysers rise f2–f4, peak f4–f5, shed drops f5–f7.
+- Main colours: water1–water4 with white foam, stone ramp mask and rings, cyan core and runes, mag/crim3 coral.
+
+Open issues reported by the agent:
+- The cross-cutting high issue is not fixed (it is outside my two files): when a defense-position monster takes a hit, it snaps from its guard pose into the upright 'hit' recoil. For coral_serpent the jump is 1185 px. Fixing it needs either an additive 'guardHit' animation (types.ts MonsterAnim, texture generation, MonsterUnit) or hitReact in cinematics/_core/helpers.ts skipping play('hit') for defense units, plus a crouch transition on attack→defense. Once a guardHit animation exists in the contract, I can draw it for both monsters.
+- Low, not raised by the reviewers: tide_golem's guard (arms crossed plus the spinning water ring) is busy at 1×, and the far fist partly covers the mask. Not changed.
+
+## src/art/monsters/magma_titan.ts, src/art/monsters/ember_wolf.ts
+
+Files: src/art/monsters/magma_titan.ts, src/art/monsters/ember_wolf.ts
+
+The MonsterArt contract is unchanged; read these values from the art at runtime.
+
+magma_titan
+- Frame 80×80, anchor (39,77), hover 0.
+- muzzle (74,40), core (39,41), attackImpactFrame 5: unchanged.
+- Frame counts and fps unchanged: idle 8f@7 loop, roar 10f@10, attack 10f@12, hit 4f@10, guard 4f@4 loop.
+- Pose changes only:
+  - Attack wind-up f1–f3: the body sits 2 px further right and the cocked fist is 3–4 px further in.
+  - Roar f2 and f4 fists, and hit f0 near fist, pulled 1–3 px inward.
+  - Guard core glow is brighter (core value 1.45±0.3).
+- Roar f0/f9, attack f0/f9 and hit f3 are now built from idle frame 0.
+- Sync points (unchanged): fist smear f4; impact f5–f6 with white-hot fist, lava burst and snarling face; chest beats on roar f5–f7.
+
+ember_wolf
+- Frame 64×64, anchor (29,59), hover 0, attackImpactFrame 5, frame counts and fps unchanged: idle 8f@8 loop, roar 10f@10, attack 10f@12, hit 4f@10, guard 4f@5 loop.
+- **Changed:** muzzle (60,29) → (58,27), computed from the impact-frame rig at the jaws.
+- **Changed:** core (30,40) → (30,38), the torso centre after the 2 px lift.
+- Sprite is bigger: idle frame 0 bounds x 3..60, y 9..59. The body root sits at y=38, and each frame's x position shifted per animation.
+- Sync points:
+  - Attack: crouch f1–f3; push-off f4 with ground fire trail; airborne f5 with jaws wide (jaw 0.6) and two fire afterimages; jaws snap shut f6; landing squash and ember/dust puff f7; rebound f8.
+  - Roar: howl hold f3–f6 (muzzle up about 65°, jaw dropped, throat glowing, mane and tail at peak).
+- Colours: stone2/stone3 body with fire2 underlight; flames fire2→fire3→fire4→gold4; eyes gold4/white.
+- The titan's colours are unchanged.
+
+Open issues reported by the agent:
+- Not done: the 'all' high issue (a defense-position monster plays 'hit' from the upright stance). Fixing it needs an additive anim such as 'guardHit' in src/art/types.ts and a change to hitReact in the cinematics, neither of which I own. Measured jump from guard f0 to hit f0: titan 1062 px, wolf about 800 px. Until then the cinematic should shake or flash the guard frame instead of playing 'hit' on defense units.
+- Wolf lunge afterimages: they are filled fire silhouettes as the review asked, but only the part peeking out under the belly and behind the hind legs is visible, because the 64 px frame has no room behind the wolf. At 1× they read as a fiery under-glow or trail rather than distinct ghost wolves. If the authors want stronger ghosts, the strike cinematic could add a sprite-level afterimage (the same frame, tinted fire, at 50%/30% alpha, offset back along the travel).
+- Titan guard: the crossed forearms still read as one dark mass at 1×; the core glow now shows between them. I tried raising the fists into an X, but that hid the face, so I reverted it.
+- Wolf idle0 is 1421 opaque px, just over the 1400 floor. The frame width (the wolf already spans x 2–61) limits further enlargement.
+
+## src/art/monsters/stone_sentinel.ts, src/art/monsters/thorn_lurker.ts
+
+Files: src/art/monsters/stone_sentinel.ts, src/art/monsters/thorn_lurker.ts
+
+Neither file changes MonsterArt's fields; frame sizes, frame counts, fps and attackImpactFrame are all unchanged.
+
+THORN_LURKER (48×48)
+- Anchor CHANGED: (23,44) → (17,44). The pod moved 6 px left in the frame; the in-game position is unchanged because placement is anchor-relative.
+- Muzzle CHANGED: (44,24) → (43,30). This is the whip tip at mouth height in the impact frame, computed from the pose.
+- Core CHANGED: (23,33) → (17,33).
+- Unchanged: hover 0, attackImpactFrame 4.
+- Anims: idle 8@8 loop, roar 9@10, attack 9@12, hit 4@10, guard 4@4 loop.
+- NEW additive named export: `export const VINE_ROOT = { x: 30, y: 42 }` is where the whip vine leaves the soil (it used to be about (36,41)).
+- Eyes: about (17–21,26) in idle, (16–21,20–22) at the attack impact.
+- Attack sync:
+  - f2 (167 ms): vine arched back over the pod, tip about (11,14).
+  - f3: overhead swing.
+  - f4 (333 ms): lash plus crack star at the muzzle.
+  - f5: overshoot low, tip about (44,40), fading star still at (43,30).
+- Roar: f2 bursts open (pod +1 px forward), f3–5 maw held wide, f7 snaps shut.
+- Colors: unchanged.
+
+STONE_SENTINEL (64×64)
+- Muzzle CHANGED: (52,13) → (48,10). These are the open hand's fingertips in the release frame, computed from the arm.
+- Unchanged: anchor (30,60), hover 0, core (31,36), attackImpactFrame 6.
+- Anims: idle 8@6 loop, roar 10@10, attack 10@12, hit 4@10, guard 4@4 loop.
+- Neutral shield center moved from (47,43) to (47,47) and now rests on the ground.
+- Attack sync:
+  - f1: digging hand at (13,56), unchanged.
+  - f4: wind-up with the boulder at (12,10). The eye slit is at y=20, x 20–31; the sprite's own glint is at x≈30–31.
+  - f5: boulder center (32,8) over the helm.
+  - f6 RELEASE: the sprite no longer draws the boulder. The eye slit plus glint is at y=24, x 37–48.
+  - f7: front-foot skid and dust at about (40–46,59).
+- Hit f0: eye off, shield center (43,47).
+- Guard: unchanged; shield rune about (39–45,41–43).
+- Colors: unchanged.
+
+Open issues reported by the agent:
+- src/cinematics/strikes-b/thorn_lurker.ts (not mine) still hard-codes `ROOT = { x: 36, y: 41 }` for the VFX vine start, both in the strike and in the FLIP effect. The sprite's vine root is now (30,42). Import `VINE_ROOT` from src/art/monsters/thorn_lurker.ts or update the constant; for now the VFX vines start about 6 px right of the drawn root.
+- src/cinematics/strikes-b/stone_sentinel.ts (not mine) uses `EYE = { x: 35, y: 20 }` (the idle eye) for its f4 glint. At attack f4 the visor front is at about (31,20) and the sprite draws its own glint there, so the strike's extra glint lands about 4 px right of the visor. `DIG` (13,57) is still correct.
+- The cross-cutting high issue (a 'guardHit' animation built from the guard pose) needs a contract change in src/art/types.ts plus boot texture generation and MonsterUnit, all outside my ownership. Battle already uses guardReact for defense units. Some other paths call play('hit') without checking position: judgment_bolt.ts:156 and the death paths in strikes-a.
+- docs/API_NOTES.md (the stone_sentinel / thorn_lurker section) now has stale values: lurker anchor, muzzle, core and vine root; sentinel muzzle; the neutral shield position. The values in apiNotes are the current ones.
+
+## src/art/monsters/volt_lizard.ts, src/art/monsters/storm_hawk.ts, src/art/monsters/lumen_sprite.ts
+
+Files: src/art/monsters/volt_lizard.ts, src/art/monsters/storm_hawk.ts, src/art/monsters/lumen_sprite.ts
+
+All three files still default-export a MonsterArt. Frame sizes, frame counts, fps and attackImpactFrame (5 for all three) are unchanged. Several anchor/muzzle/core points moved:
+
+VOLT_LIZARD (64×64): anchor (32,59) (was 35,59); hover 0; muzzle (61,37) (was 59,51), at the jaw gape in impact f5; core (31,41) (was 35,45).
+- Anims: idle 8f@8 loop, roar 10f@10, attack 10f@12, hit 4f@10, guard 4f@5 loop.
+- Sync points: attack f1–f4 charge wave climbs the crest tail→crown, and the eye brightens. Jaw starts parting f3–f4 with a glow. Jaws wide in a V f5–f6, with the white core and the first bolt fork (fire the bolt on f5). Roar jaws wide f3–f5; hit f0 crest dark, f1 crest flares white.
+- Colours: body gold1–gold4; crest gold2/gold4/white (night1–4 when shorted); arcs, sparks and mouth rim cyan4/white; eye cyan.
+- strikes-b/volt_lizard.ts picks crest pixels with CREST=[cyan2,cyan3,cyan4,white]. This still finds 30–89 pixels per charge frame (white spike tips, arcs, eye), so it works. Adding gold4 to that list would catch the whole crest.
+
+STORM_HAWK (48×48): anchor (23,37) (was 24,37); hover 10; muzzle (39,35) (was 42,34), at the spread talons in impact f5; core (23,26) (was 25,26).
+- Anims: idle 8f@12 loop, roar 10f@12, attack 10f@12, hit 4f@10, guard 4f@5 loop.
+- Idle body is now near-horizontal (pitch about 0.22). Wings: top of the stroke f0–f1, downstroke spread f3–f5.
+- Roar: wings wide and screech f3–f6, ring f3–f6. Attack: f1 downbeat, f2 wings up/fold, f3–f4 tucked dive, f5 impact with crescents, f6 clench.
+- Eye glint (white pixel): attack f0 (31,19), f1 (29,16), f2 (27,17).
+- Colours: leaf0–leaf3 with teal2/teal3 tips; mist/steel breast; gold talons and cere; wind effects white/teal4/teal3.
+
+LUMEN_SPRITE (48×48): anchor (24,38); hover 12; muzzle (40,24) (was 35,21), the flash centre about 6 px ahead of her palms in impact f5; core (24,24).
+- Anims: idle 8f@10 loop, roar 10f@12, attack 9f@12, hit 4f@10, guard 4f@4 loop.
+- Roar f5: front view, hands raised at about (17,12)/(31,12), star at about (24,7). That is close to the (24,8) that strikes-b/lumen_sprite.ts uses after playToFrame('roar',5).
+- Attack: f1 front, f2 left, f3 back (spin, orb charging), f4 thrust, f5 flash, f6 smaller flash.
+- New optional Pose fields are internal only: hstar, reach.
+- Colours: wings gold4/white (upper) and gold3/gold4 (lower); sparkles gold4/white; cyan only in the eyes and wing eye-spots. The +500 sparkles should use gold4/white.
+
+Open issues reported by the agent:
+- strikes-b/storm_hawk.ts hard-codes EYE = {x:37,y:17} for the eye glint on attack f2. The new hawk's eye glint there is at (27,17), so the glint would appear about 10 px ahead of the beak. That file is not mine. It needs a one-line change to (27,17), or the point should be derived from the frame's white glint pixel.
+- Cross-cutting high issue not done: a defense-position monster snapping from its guard pose into the upright hit pose. The fix needs an optional 'guardHit' anim in src/art/types.ts (shared contract) plus a change to hitReact in src/cinematics/_core/helpers.ts. Neither file is mine, and the assignment's 'all' scope was items (a) and (b).
+- The hawk's upstroke frame f6 is still the smallest idle frame (505 px against 743 at f0), with the hand folded behind. The box stays 38 px wide and the 1× read is fine, but the size still pulses a little at 12 fps.
+- The lizard's limbs bend lizard-style (knees forward, elbows back, splayed three-claw feet). A side view cannot show a true top-down sprawl.
+- In the volt cinematic, adding gold4 to its CREST colour list would let the crackle arcs use the whole gold-white crest instead of only its white tips.
+
+## src/cinematics/summon-a/_kit.ts, src/cinematics/summon-a/tribute.ts, src/cinematics/summon-a/crystal_wyrm.ts, src/cinematics/summon-a/abyss_magus.ts
+
+Files: src/cinematics/summon-a/_kit.ts, src/cinematics/summon-a/tribute.ts, src/cinematics/summon-a/crystal_wyrm.ts, src/cinematics/summon-a/abyss_magus.ts, src/cinematics/summon-a/magma_titan.ts, src/cinematics/summon-a/coral_serpent.ts, src/cinematics/summon-a/ember_wolf.ts, src/cinematics/summon-a/tide_golem.ts, src/duel/scenarios/summon-a.ts
+
+Registrations (all priority 0, in src/cinematics/summon-a/):
+- registerCardHook(id, 'summon') for crystal_wyrm, abyss_magus, magma_titan, coral_serpent, ember_wolf and tide_golem. The handler names are 'summon-a:<id>'. ev.from === 'field' (flip summon) falls through with ctx.base().
+- registerEvent('tribute') named 'summon-a:tribute'. It covers every tribute in the game: tribute summons, which are always summon-a's aces, and tribute SETs. For a face-up tribute summon it plays the paired summon event itself through ctx.play(summonIdx, { tribute: true, noCard: true }). The summon card hook therefore runs nested inside the tribute handler, and the tribute and toGraveyard events are consumed. For a tribute set it resolves early and the setMonster handler (summon-B's or the default) slams the card while the stream finishes.
+
+Summon hints honoured by my hooks:
+- noCard: skip the card flight; the tile is placed with a flash if it is missing.
+- ghost: cyan tile flash.
+- tribute: bigger everything.
+- cutIn: boolean override for aces. By default the cut-in plays only on tribute summons.
+
+soul_recall (spells agent) consumes its special summon itself, so my hooks only run on its fallback path. I checked that path with a QA override that plays the summon with {ghost, noCard}.
+
+Debug: adding &sudbg=1 to any URL logs beat timestamps (start / hover / streams done / slammed / entrance / cut-in / cut-in done / roar peak / end) as console warnings, which shot.mjs prints.
+
+Sprite data is read at runtime: roar fps and frame counts, art.core/anchor, opaque boxes and hover. The only hard-coded values are the roar peak frame indices: wyrm 3, magus 3, titan 4 (plus chest beats on frames 5–7), coral 3, wolf 4, golem 4. The wolf's run uses attack frames 4/5 and it lands on attack frame 7; the wyrm's descent uses guard frame 0. All of these are clamped to the art's frame counts.
+
+Scenarios added: suWyrm, suWyrmSameZone, suWyrmP2, suMagus, suMagusP2, suTitan, suTitanP2, suCoral, suCoralP2, suWolf, suWolfP2, suWolfEdge, suGolem, suGolemP2, suTributeFaceDown, suTributeEquip, suTributeSet, suChasm, suRevive.
+
+Open issues reported by the agent:
+- Library bug, src/view/CardSprite.ts setHighlight(null), not my file: the 120 ms fade-out's onComplete calls glowRun.stop() with no active guard. If the card is destroyed inside that window (the hand clears its playable highlights on dispatch, and a fast cinematic destroys the taken card), Phaser throws 'Cannot read properties of undefined (reading stop)' from the tween manager. I worked around it in summon-a with defuseCard() (it kills the inner tweens before destroy). Other cinematics that destroy a taken hand card within about 120 ms can still hit it. Fix: guard the onComplete with `if (!this.active) return`.
+- Pitfall in src/duel/MonsterUnit.ts / StatBadge, not my files: unit.show() calls badge.setVisible(true), which kills a running badge.pop() tween. Any cinematic that calls show() right after finale/pop cuts the pop short; use settle() or showSprite() instead.
+- soul_recall (spells agent) consumes the special summon itself, so special summons of my monsters use the spell's generic cyan rematerialize rather than the signature entrances. That is by design on their side; I only verified my hooks on the fallback path (playRun with {ghost, noCard}).
+- No cut-in on an ace's special summon by default (hints.cutIn: true enables it), to keep Ruh Çağrısı within its budget. Flip summons of tribute-set aces are summon-B's flip handler and get no signature entrance from me.
+- tools/shot.mjs, not mine: page.goto has a fixed 30 s timeout and timed out several times under the shared machine load. I used a private copy with a 240 s goto timeout at shots/summon-a/_shot.mjs (gitignored).
+- The cut-in portrait textures (src/art/cutins) exist only for the four aces. I did not change the cut-in's internals; climax() races it against a 1.48 s guard so a broken or missing portrait can never stall the summon.
+
+## src/cinematics/summon-b/_kit.ts, src/cinematics/summon-b/storm_hawk.ts, src/cinematics/summon-b/stone_sentinel.ts, src/cinematics/summon-b/lumen_sprite.ts
+
+Files: src/cinematics/summon-b/_kit.ts, src/cinematics/summon-b/storm_hawk.ts, src/cinematics/summon-b/stone_sentinel.ts, src/cinematics/summon-b/lumen_sprite.ts, src/cinematics/summon-b/shade_assassin.ts, src/cinematics/summon-b/volt_lizard.ts, src/cinematics/summon-b/thorn_lurker.ts, src/cinematics/summon-b/set.ts, src/cinematics/summon-b/flip.ts, src/cinematics/summon-b/position.ts, src/duel/scenarios/summon-b.ts
+
+Registrations (all at the default priority 0):
+- Card hooks for 'summon' on storm_hawk, stone_sentinel, lumen_sprite, shade_assassin, volt_lizard and thorn_lurker. Their names are summon-b:<id>.
+- Event handlers for 'setMonster', 'setSpellTrap', 'flip' and 'positionChange'. Their names are summon-b:<event>.
+- The flip handler covers all 12 monsters. For flip summons it consumes the paired summon event (method 'flip').
+- summon-a's card hooks call base() when ev.from === 'field', so flip summons of their monsters also come to this flip handler. The summon-a 'tribute' handler leads cleanly into the setMonster slam (tested with a set by tribute).
+
+The summon hooks handle:
+- from 'hand', with the card slam;
+- hints.noCard / hints.ghost / from 'graveyard': the tile is placed with a cyan or player-colour flash and no card flight;
+- from 'field' (a flip that reached the summon handler).
+Method 'tribute' adds a stronger camera lean-in (zoom 1.06 instead of 1.04) but otherwise plays the same entrance.
+
+Exports from src/cinematics/summon-b/_kit.ts (it registers nothing):
+- Entrance frame: entrance(ctx, piece). piece gets an Entrance object with scene, unit, sprite, home, rest, dir, ramp, big, revived, and finale(opts) for the shockwave + shake + badge pop.
+- slamCard(ctx, {...}): a hand card slam that is safe from the CardSprite crash described in openIssues. It keeps the hidden CardSprite alive for 260 ms.
+- Roar sync: roar(ctx, unit, {from, peak, sfx, onPeak}) returns {peak, done}. Also whenFrame(unit, anim, frame), playFrom, pose, the ROAR_PEAK table and roarPeak(unit).
+- Hologram: holo(sprite, ramp, params) and holoSettle.
+- Drawing and particles: liveLayer, afterTrail, bodyBox, hexPts, diamond, loop, star, burst, onFloor.
+- Utilities: capped, bg, and a seeded rnd/rr/reseed.
+
+ROAR_PEAK frames used: storm_hawk 3 (screech), stone_sentinel 2 (shield slam), lumen_sprite 5 (V-arms star flash), shade_assassin 6 (flourish), volt_lizard 3 (rear), thorn_lurker 2 (pod burst). The six summon-a monsters use 3. Values are clamped to the live frame count.
+
+src/cinematics/summon-b/thorn_lurker.ts also exports vineCage(scene, x, y, {n, radius, height}) with grow / curl / burst / retract. The flip handler reuses it.
+
+No sprite data was changed. Shared contracts were not touched.
+
+QA scenarios are in src/duel/scenarios/summon-b.ts:
+- Entrances: smbHawk, smbSentinel, smbLumen, smbShade, smbVolt, smbThorn, each also as …P2; smbHawkEdge.
+- Set: smbSetMonster, smbSetP2, smbSetTribute.
+- Flip: smbFlipHawk, smbFlipThorn, smbFlipP2, smbFlipTitan, smbFlipAttacked, smbFlipAttackedP2, smbFlipAttackedThorn.
+- Position: smbPos, smbPosP2, smbPosAce.
+- Other: smbRecall, smbRecallP2, smbChasm.
+
+Open issues reported by the agent:
+- Can freeze the game: src/view/CardSprite.ts setHighlight(null) starts a 120 ms fade tween whose onComplete calls glowRun.stop(). If the CardSprite is destroyed inside those 120 ms, glowRun.anims is undefined, the call throws inside TweenManager.update, and Phaser's requestAnimationFrame loop stops for good (the step function never re-schedules after a throw). Two ways I triggered it: (1) HandView.takeCard calls setHighlight(null) and fx.slamToZone destroys the card at once, as in the default summon handler. Repro: node tools/shot.mjs "?dev=duel&s=summonWind" --film 24 --every 60. (2) Scenario restarts in one page (D.scenario chained) after a hand card was highlighted. Suggested fix in CardSprite: in that onComplete add `if (!this.active || !this.glowRun.anims) return;`, or kill the tween on destroy. My handlers avoid it with _kit.slamCard, which keeps the hidden sprite alive for 260 ms. Other callers of fx.slamToZone with a freshly taken hand card are still exposed.
+- Ruh Çağrısı (spells/soul_recall.ts) consumes the special summon event and plays its own cyan rematerialize, so revived monsters never get their signature entrance. My summon hooks do support hints {noCard, ghost}: the spells owner can switch to `ctx.play(si, { noCard: true, ghost: true })` if the signature entrance is wanted after the ghost arrives.
+- Not exported from src/vfx/summon.ts: tornado, orbitingRocks, emergenceRing, shadowVortex and riseFromGround. I wrote local equivalents (wind funnel, orbiting rocks, clipped rise via holo({clipY})). Exporting them would allow sharing.
+- In src/vfx/summon.ts, flipBurst always raises an 80 px attribute column. When a defender is flipped by an attack mid-battle this is visually heavy; a lighter variant option (e.g. a smaller column for attacked flips) would help.
+- tools/shot.mjs has a fixed 30 s page.goto timeout and timed out under the shared machine load. I used a private copy in my scratchpad with a 240 s goto timeout; the shared tool should make it follow --timeout.
+
+## src/cinematics/flow/_kit.ts, src/cinematics/flow/opening.ts, src/cinematics/flow/draw.ts, src/cinematics/flow/turn.ts
+
+Files: src/cinematics/flow/_kit.ts, src/cinematics/flow/opening.ts, src/cinematics/flow/draw.ts, src/cinematics/flow/turn.ts, src/cinematics/flow/stats.ts, src/cinematics/flow/discard.ts, src/cinematics/flow/end.ts, src/duel/scenarios/flow.ts
+
+Registrations, all priority 0 and named 'flow:*': registerEvent for gameStart, shuffle, draw, turnStart, phaseChange, statChange, discard, deckOut and gameOver, plus one registerObserver on damage and lpGain.
+- The observer re-tunes the music on every damage and lpGain. On damage with lpAfter ≤ 0 it calls `views.speed.slowMo(0.35, 1000)` and `music.stop(1100)`.
+- I did not override decision or responseDeclined; those belong to the traps/battle agent.
+
+Behaviour other agents should know:
+- **gameStart**:
+  - It consumes the following shuffle events and the initial draw events.
+  - It plays music only if `settings.music` is on.
+  - While the opening plays (not on the skipIntro path), it pushes `speed.setBase(base × 4)` when the player skips and restores the base afterwards.
+  - It hides the HUD and duelists itself and shows them again in a `finally` block.
+- **draw**: resolves at about 0.35 s, after the in-flight reveal flip has finished; the landing punch is a decorative tail.
+- **turnStart**: calls `ensureViewer` concurrently with the banner when no curtain is needed, and still awaits it before resolving.
+- **statChange**: consumes the following unconsumed statChange events of the same run (same as the default). It is reached through `ctx.play` from the dragon_blade equip hook and works there.
+- **discard**: consumes the following discard events of the same player and every matching `toGraveyard` with `from: 'hand'`.
+- **gameOver**: sets `unit.posed = true` on the loser's collapsed units. It calls `music.play('victory')` (if music is on) right before `banners.victory`. It calls `clearBanners(scene, 1100)` at the end, so the game-over prompt that DuelScene shows next crossfades in.
+
+Kit exports in flow/_kit.ts, for the flow files only:
+- Music: `INTENSITY`, `intensityFor(state, phase)`, `lowLp`.
+- Coin: `coinTexture` (texture 'flow:coin', frames 0..19), `coinFrame`.
+- Effects and helpers: `chevronTexture` ('flow:chev2:up' / 'flow:chev2:down'), `beamDrop`, `isoGhost`, `emberStream`, `cameraAtRest`.
+
+Scenarios in src/duel/scenarios/flow.ts:
+- flowTurnP2, flowTurnP1, flowTurnLowLp
+- flowBattle, flowBattleP2, flowEndPhase
+- flowStatUp, flowStatUpP2, flowStatDown
+- flowDiscard, flowDiscard2, flowDiscardP2
+- flowDeckOut, flowDeckOutP1
+- flowLethal, flowLethalP2, flowSurrender
+
+The opening cannot be staged; film it with `?mode=hotseat&seed=1&holdIntro=1&curtain=0` and add `&first=0` for a player 1 start.
+
+No shared contracts, libraries, views or art were changed.
+
+Open issues reported by the agent:
+- The demo games show page errors that are not from flow: 'Cannot read properties of undefined (reading sys / add)' in CardSprite.refreshFace / CardSprite.burst. A CardSprite is destroyed while its flyTo({reveal:true}) flip is still running. Callers: src/cinematics/summon-a/tribute.ts:114 (the card is destroyed during the reveal flip it started at line 101) and src/cinematics/summon-b/_kit.ts:231. Robust fix for the CardSprite owner: in CardSprite.flip and the flyTo reveal delayedCall, return early when !this.active. The summon owners should also let the flip finish, or skip `reveal`, before destroying the card.
+- Prompt.gameOver repeats the winner title (KAZANAN / OYUNCU n, with its own fireworks and victory sting) right after the cinematic's banners.victory. I crossfade the two (clearBanners over 1.1 s while the prompt's dim comes up), so it reads as one continuous screen, but the title still appears twice. The UI owner could give Prompt.gameOver an option to skip its own title and fireworks and show only the buttons and the reason.
+- The battle agent's damage handler and fx.presentDamage call music.setIntensity(1) at LP ≤ 1000. My observer uses intensityFor (< 1000, and 0.7 outside the battle phase), and phaseChange re-tunes again later. This is harmless, but the low-LP rule now lives in two places.
+- The duelist art module (src/art/duelists.ts) exists and works. The defeat and victory poses hold their last frame through the game-over prompt; there is no idle again until the next duel.
