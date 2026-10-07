@@ -203,3 +203,9 @@ export const SCENARIOS: Record<string, Scenario> = {
   lethal: { desc: 'lethal direct attack → game over', stage: { phase: 'battle', p0: { monsters: ['crystal_wyrm'] }, p1: { lp: 1000 } }, steps: [{ type: 'attack', player: 0, attackerZone: 0, targetZone: null }] },
   surrender: { desc: 'player 2 surrenders', stage: {}, steps: [{ type: 'surrender', player: 1 }] },
 };
+
+// Extra scenario packs: any `src/duel/scenarios/<name>.ts` with `export default { [name]: Scenario }`
+// is merged in (later packs override earlier names). Cinematic authors add their own packs here.
+for (const mod of Object.values(import.meta.glob<{ default: Record<string, Scenario> }>('./scenarios/*.ts', { eager: true }))) {
+  Object.assign(SCENARIOS, mod.default ?? {});
+}
