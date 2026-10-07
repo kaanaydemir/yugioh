@@ -60,6 +60,8 @@ declare global {
 }
 
 let clock = 0;
+const realDateNow = Date.now.bind(Date);
+let virtualNow = 0;
 window.__neon = {
   game,
   ready: false,
@@ -67,16 +69,21 @@ window.__neon = {
   freeze() {
     game.loop.sleep();
     clock = game.loop.lastTime || performance.now();
+    // Phaser's TweenManager measures time with Date.now(), so virtualize it too.
+    virtualNow = realDateNow();
+    Date.now = () => virtualNow;
   },
   step(ms: number) {
     const dt = 1000 / 60;
     const n = Math.max(1, Math.round(ms / dt));
     for (let i = 0; i < n; i++) {
       clock += dt;
+      virtualNow += dt;
       game.loop.step(clock);
     }
   },
   unfreeze() {
+    Date.now = realDateNow;
     game.loop.wake();
   },
 };
