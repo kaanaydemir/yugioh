@@ -78,7 +78,7 @@ interface Pose {
 
 const N: Pose = {
   x: 30,
-  y: 40,
+  y: 38,
   tilt: 0,
   chest: 0,
   na: -0.92,
@@ -93,8 +93,8 @@ const N: Pose = {
   hn: [19, GROUND],
   hf: [15, GROUND],
   fpa: -2.05,
-  hna: -1.74,
-  tail: Math.PI + 0.75,
+  hna: -2.0,
+  tail: Math.PI + 1.0,
   tw: 0,
   ta: 1,
   fl: 1,
@@ -119,7 +119,7 @@ function idlePose(f: number, n: number): Pose {
     na: N.na + 0.05 * Math.round(Math.sin((t - 0.125) * TAU)),
     jaw: pant ? 0.27 : 0.14,
     hp: N.hp + (pant ? -0.04 : 0),
-    tail: N.tail + Math.sin(t * TAU) * 0.16,
+    tail: N.tail + Math.sin(t * TAU) * 0.1,
     tw: t,
     fl: 1 + 0.08 * Math.sin(t * TAU * 2),
     // an ear flick and a slow blink keep the loop from feeling mechanical
@@ -128,6 +128,10 @@ function idlePose(f: number, n: number): Pose {
     t,
   });
 }
+
+/** Idle frame 0 — the one-shots start from it and settle back into it (no pop between anims). */
+const IDLE0 = idlePose(0, 8);
+const I0 = (o: Partial<Pose>): Pose => ({ ...IDLE0, ...o });
 
 const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> = {
   idle: { fps: 8, loop: true, poses: Array.from({ length: 8 }, (_, f) => idlePose(f, 8)) },
@@ -139,16 +143,16 @@ const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> 
     fps: 10,
     loop: false,
     poses: [
-      P({ t: 0 }),
-      P({ y: 41, tilt: -0.05, na: -0.62, hp: -0.4, jaw: 0.04, ears: 0.35, fl: 0.85, tail: N.tail - 0.15, tw: 0.1, t: 0.1 }),
-      P({ y: 40, tilt: 0.08, chest: 1, na: -1.2, nl: 10.5, hp: 0.55, jaw: 0.22, fn: [43, GROUND], fpa: -1.95, fl: 1.2, tail: N.tail + 0.2, tw: 0.2, t: 0.2 }),
-      P({ y: 40, tilt: 0.14, chest: 2, na: -1.42, nl: 11, hp: 1.1, jaw: 0.5, eye: 0.4, ears: 0.15, fn: [45, GROUND], ff: [41, GROUND], fpa: -2.15, fl: 1.55, tail: N.tail + 0.4, tw: 0.3, t: 0.3 }),
-      P({ y: 40, tilt: 0.15, chest: 2, na: -1.45, nl: 11, hp: 1.15, jaw: 0.56, eye: 0.4, ears: 0.15, fn: [45, GROUND], ff: [41, GROUND], fpa: -2.15, fl: 1.7, tail: N.tail + 0.45, tw: 0.4, t: 0.4 }),
-      P({ y: 40, tilt: 0.15, chest: 2, na: -1.45, nl: 11, hp: 1.15, jaw: 0.54, eye: 0.4, ears: 0.15, fn: [45, GROUND], ff: [41, GROUND], fpa: -2.15, fl: 1.65, tail: N.tail + 0.45, tw: 0.5, t: 0.5 }),
-      P({ y: 40, tilt: 0.14, chest: 2, na: -1.43, nl: 11, hp: 1.1, jaw: 0.5, eye: 0.5, ears: 0.15, fn: [45, GROUND], ff: [41, GROUND], fpa: -2.15, fl: 1.55, tail: N.tail + 0.4, tw: 0.6, t: 0.6 }),
-      P({ y: 40, tilt: 0.08, chest: 1, na: -1.2, nl: 10.5, hp: 0.5, jaw: 0.25, eye: 1.2, fn: [43, GROUND], fpa: -1.95, fl: 1.3, tail: N.tail + 0.25, tw: 0.7, t: 0.7 }),
-      P({ y: 40, tilt: 0.03, na: -1.0, hp: 0.15, jaw: 0.15, eye: 1.4, fl: 1.12, tail: N.tail + 0.1, tw: 0.8, t: 0.8 }),
-      P({ fl: 1.05, tw: 0.9, t: 0.9 }),
+      I0({ t: 0 }),
+      P({ y: 39, tilt: -0.05, na: -0.62, hp: -0.4, jaw: 0.04, ears: 0.35, fl: 0.85, tail: N.tail - 0.15, tw: 0.1, t: 0.1 }),
+      P({ y: 38, tilt: 0.08, chest: 1, na: -1.2, nl: 10.5, hp: 0.55, jaw: 0.22, fn: [43, GROUND], fpa: -1.95, fl: 1.2, tail: N.tail + 0.2, tw: 0.2, t: 0.2 }),
+      P({ y: 38, tilt: 0.14, chest: 2, na: -1.42, nl: 11, hp: 1.1, jaw: 0.5, eye: 0.4, ears: 0.15, fn: [45, GROUND], ff: [41, GROUND], fpa: -2.15, fl: 1.55, tail: N.tail + 0.4, tw: 0.3, t: 0.3 }),
+      P({ y: 38, tilt: 0.15, chest: 2, na: -1.45, nl: 11, hp: 1.15, jaw: 0.56, eye: 0.4, ears: 0.15, fn: [45, GROUND], ff: [41, GROUND], fpa: -2.15, fl: 1.7, tail: N.tail + 0.45, tw: 0.4, t: 0.4 }),
+      P({ y: 38, tilt: 0.15, chest: 2, na: -1.45, nl: 11, hp: 1.15, jaw: 0.54, eye: 0.4, ears: 0.15, fn: [45, GROUND], ff: [41, GROUND], fpa: -2.15, fl: 1.65, tail: N.tail + 0.45, tw: 0.5, t: 0.5 }),
+      P({ y: 38, tilt: 0.14, chest: 2, na: -1.43, nl: 11, hp: 1.1, jaw: 0.5, eye: 0.5, ears: 0.15, fn: [45, GROUND], ff: [41, GROUND], fpa: -2.15, fl: 1.55, tail: N.tail + 0.4, tw: 0.6, t: 0.6 }),
+      P({ y: 38, tilt: 0.08, chest: 1, na: -1.2, nl: 10.5, hp: 0.5, jaw: 0.25, eye: 1.2, fn: [43, GROUND], fpa: -1.95, fl: 1.3, tail: N.tail + 0.25, tw: 0.7, t: 0.7 }),
+      P({ y: 38, tilt: 0.03, na: -1.0, hp: 0.15, jaw: 0.15, eye: 1.4, fl: 1.12, tail: N.tail + 0.1, tw: 0.8, t: 0.8 }),
+      I0({ fl: 1.05, tw: 0.9, t: 0.9 }),
     ],
   },
 
@@ -161,19 +165,19 @@ const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> 
     fps: 12,
     loop: false,
     poses: [
-      P({ t: 0 }),
-      P({ x: 29, y: 42, tilt: -0.06, na: -0.72, hp: -0.25, jaw: 0.18, ears: 0.7, snarl: 0.8, eye: 1.5, fn: [41, GROUND], ff: [37, GROUND], hna: -2.0, fl: 1.1, wind: 0.1, tail: Math.PI + 0.65, tw: 0.1, t: 0.1 }),
-      P({ x: 28, y: 44, tilt: -0.09, na: -0.55, hp: -0.32, jaw: 0.25, ears: 1, snarl: 1, eye: 1.8, fn: [40, GROUND], ff: [36, GROUND], hn: [19, GROUND], hf: [15, GROUND], hna: -2.3, fpa: -1.95, fl: 1.3, tail: Math.PI + 0.78, tw: 0.2, t: 0.2 }),
-      P({ x: 27, y: 45, tilt: -0.1, na: -0.52, hp: -0.34, jaw: 0.3, ears: 1, snarl: 1, eye: 2, fn: [40, GROUND], ff: [36, GROUND], hn: [19, GROUND], hf: [15, GROUND], hna: -2.4, fpa: -2.0, fl: 1.5, tail: Math.PI + 0.8, tw: 0.25, t: 0.25 }),
-      P({ x: 29, y: 39, tilt: 0.12, na: -0.62, hp: -0.05, jaw: 0.35, ears: 1, snarl: 1, eye: 2, fn: [45, 50], ff: [42, 52], fpa: -2.7, hn: [15, GROUND], hf: [11, 58], hna: -2.45, fl: 1.45, wind: 0.7, tail: Math.PI + 0.5, tw: 0.3, ta: 0.6,
-        ghosts: [{ dx: -6, dy: 3, a: 0.62 }], trail: 0.6, t: 0.3 }),
-      P({ x: 31, y: 35, tilt: 0, na: -0.45, nl: 10, hp: 0.1, jaw: 0.6, ears: 1, snarl: 1, eye: 2, fn: [53, 41], ff: [50, 43], fpa: Math.PI + 0.25, hn: [9, 46], hf: [6, 48], hna: -0.35, fl: 1.6, wind: 1, tail: Math.PI + 0.4, tw: 0.4, ta: 0.4,
-        ghosts: [{ dx: -14, dy: 6, a: 0.5 }, { dx: -7, dy: 3, a: 0.75 }], trail: 1, t: 0.4 }),
-      P({ x: 31, y: 37, tilt: -0.05, na: -0.5, nl: 10, hp: -0.06, jaw: 0.04, ears: 1, snarl: 1, eye: 2, fn: [51, 49], ff: [48, 51], fpa: -2.6, hn: [12, 51], hf: [9, 53], hna: -0.9, fl: 1.5, wind: 0.8, tail: Math.PI + 0.3, tw: 0.5, ta: 0.7,
-        ghosts: [{ dx: -7, dy: 1, a: 0.45 }], trail: 0.7, t: 0.5 }),
-      P({ x: 31, y: 43, tilt: -0.08, na: -0.72, hp: -0.15, jaw: 0.12, ears: 0.6, snarl: 0.6, eye: 1.6, fn: [44, GROUND], ff: [40, GROUND], fpa: -2.15, hn: [20, GROUND], hf: [16, GROUND], hna: -2.15, fl: 1.3, wind: 0.35, tail: Math.PI + 0.5, tw: 0.6, puff: 1, trail: 0.35, t: 0.6 }),
-      P({ x: 30, y: 39, tilt: 0.04, na: -0.98, jaw: 0.15, ears: 0.3, snarl: 0.3, eye: 1.3, fn: [42, GROUND], ff: [38, GROUND], fl: 1.15, wind: 0.1, tail: N.tail + 0.05, tw: 0.7, puff: 0.5, t: 0.7 }),
-      P({ tw: 0.8, t: 0.8 }),
+      I0({ t: 0 }),
+      P({ x: 30, y: 40, tilt: -0.06, na: -0.72, hp: -0.25, jaw: 0.18, ears: 0.7, snarl: 0.8, eye: 1.5, fn: [41, GROUND], ff: [37, GROUND], hna: -2.1, fl: 1.1, wind: 0.1, tail: Math.PI + 0.85, tw: 0.1, t: 0.1 }),
+      P({ x: 29, y: 42, tilt: -0.09, na: -0.55, nl: 9.2, hp: -0.32, jaw: 0.25, ears: 1, snarl: 1, eye: 1.8, fn: [40, GROUND], ff: [36, GROUND], hn: [19, GROUND], hf: [15, GROUND], hna: -2.35, fpa: -1.95, fl: 1.3, tail: Math.PI + 0.95, tw: 0.2, t: 0.2 }),
+      P({ x: 29, y: 43, tilt: -0.1, na: -0.52, nl: 9, hp: -0.34, jaw: 0.3, ears: 1, snarl: 1, eye: 2, fn: [40, GROUND], ff: [36, GROUND], hn: [19, GROUND], hf: [15, GROUND], hna: -2.45, fpa: -2.0, fl: 1.5, tail: Math.PI + 1.0, tw: 0.25, t: 0.25 }),
+      P({ x: 29, y: 37, tilt: 0.12, na: -0.62, hp: -0.05, jaw: 0.35, ears: 1, snarl: 1, eye: 2, fn: [45, 48], ff: [42, 50], fpa: -2.7, hn: [15, GROUND], hf: [11, 57], hna: -2.45, fl: 1.45, wind: 0.7, tail: Math.PI + 0.6, tw: 0.3, ta: 0.6,
+        ghosts: [{ dx: -5, dy: 4, a: 0.8 }], trail: 0.6, t: 0.3 }),
+      P({ x: 28, y: 33, tilt: 0, na: -0.45, nl: 9.4, hp: 0.1, jaw: 0.6, ears: 1, snarl: 1, eye: 2, fn: [50, 39], ff: [47, 41], fpa: Math.PI + 0.25, hn: [7, 44], hf: [4, 46], hna: -0.35, fl: 1.6, wind: 1, tail: Math.PI + 0.62, tw: 0.4, ta: 0.4,
+        ghosts: [{ dx: -10, dy: 8, a: 0.55 }, { dx: -5, dy: 4, a: 1 }], trail: 1, t: 0.4 }),
+      P({ x: 28, y: 35, tilt: -0.05, na: -0.5, nl: 9.4, hp: -0.06, jaw: 0.04, ears: 1, snarl: 1, eye: 2, fn: [48, 47], ff: [45, 49], fpa: -2.6, hn: [9, 49], hf: [6, 51], hna: -0.9, fl: 1.5, wind: 0.8, tail: Math.PI + 0.6, tw: 0.5, ta: 0.7,
+        ghosts: [{ dx: -5, dy: 3, a: 0.6 }], trail: 0.7, t: 0.5 }),
+      P({ x: 30, y: 41, tilt: -0.08, na: -0.72, nl: 9.3, hp: -0.15, jaw: 0.12, ears: 0.6, snarl: 0.6, eye: 1.6, fn: [43, GROUND], ff: [39, GROUND], fpa: -2.15, hn: [19, GROUND], hf: [15, GROUND], hna: -2.2, fl: 1.3, wind: 0.35, tail: Math.PI + 0.6, tw: 0.6, puff: 1, trail: 0.35, t: 0.6 }),
+      P({ x: 30, y: 37, tilt: 0.04, na: -0.98, jaw: 0.15, ears: 0.3, snarl: 0.3, eye: 1.3, fl: 1.15, wind: 0.1, tail: N.tail + 0.05, tw: 0.7, puff: 0.5, t: 0.7 }),
+      I0({ tw: 0.8, t: 0.8 }),
     ],
   },
 
@@ -183,15 +187,15 @@ const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> 
     fps: 10,
     loop: false,
     poses: [
-      P({ x: 27, y: 41, tilt: 0.16, na: -1.35, nl: 9.5, hp: 0.6, jaw: 0.42, ears: 1, eye: 0, fn: [39, 56], ff: [36, GROUND], hn: [18, GROUND], hf: [14, GROUND], fl: 0.55, wind: 0.45, tail: Math.PI + 0.85, ta: 0.4, tw: 0.1, t: 0.1 }),
-      P({ x: 27, y: 41, tilt: 0.1, na: -1.2, hp: 0.35, jaw: 0.28, ears: 1, eye: 0, fn: [40, GROUND], ff: [36, GROUND], hn: [18, GROUND], hf: [14, GROUND], fl: 0.65, wind: 0.25, tail: Math.PI + 0.85, ta: 0.5, tw: 0.2, t: 0.2 }),
-      P({ x: 28, y: 40, tilt: 0.05, na: -1.05, hp: 0.15, jaw: 0.18, ears: 0.6, eye: 0.6, fn: [41, GROUND], ff: [37, GROUND], hn: [18, GROUND], fl: 0.82, tail: Math.PI + 0.8, tw: 0.3, t: 0.3 }),
-      P({ x: 29, ears: 0.2, fl: 0.95, tail: Math.PI + 0.78, tw: 0.4, t: 0.4 }),
+      P({ x: 28, y: 39, tilt: 0.16, na: -1.35, nl: 9.5, hp: 0.6, jaw: 0.42, ears: 1, eye: 0, fn: [40, 54], ff: [37, GROUND], hn: [18, GROUND], hf: [14, GROUND], fl: 0.6, wind: 0.3, tail: Math.PI + 1.25, ta: 0.4, tw: 0.1, t: 0.1 }),
+      P({ x: 28, y: 39, tilt: 0.1, na: -1.2, hp: 0.35, jaw: 0.28, ears: 1, eye: 0, fn: [41, GROUND], ff: [37, GROUND], hn: [18, GROUND], hf: [14, GROUND], fl: 0.7, wind: 0.15, tail: Math.PI + 1.2, ta: 0.5, tw: 0.2, t: 0.2 }),
+      P({ x: 29, y: 38, tilt: 0.05, na: -1.05, hp: 0.15, jaw: 0.18, ears: 0.6, eye: 0.6, fn: [42, GROUND], ff: [38, GROUND], hn: [18, GROUND], fl: 0.85, tail: Math.PI + 1.1, tw: 0.3, t: 0.3 }),
+      I0({ x: 29, ears: 0.2, fl: 0.95, tw: 0.4, t: 0.4 }),
     ],
   },
 
   // Guard: low crouch, head down and forward, ears flat, lips curled in a snarl, flames banked
-  // low; the tail flame is held low and up-left, well inside the frame.
+  // low; the tail is held up like a torch so its flame stays well inside the frame.
   guard: {
     fps: 5,
     loop: true,
@@ -199,8 +203,8 @@ const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> 
       const t = f / 4;
       const s = Math.sin(t * TAU);
       return P({
-        x: 30,
-        y: 45 - Math.round(0.6 * s),
+        x: 28,
+        y: 43 - Math.round(0.6 * s),
         tilt: -0.06,
         na: -0.5,
         nl: 9,
@@ -209,13 +213,13 @@ const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> 
         ears: 1,
         snarl: 1,
         eye: 1.6,
-        fn: [43, GROUND],
-        ff: [39, GROUND],
+        fn: [41, GROUND],
+        ff: [37, GROUND],
         fpa: -2.0,
-        hn: [19, GROUND],
-        hf: [15, GROUND],
+        hn: [17, GROUND],
+        hf: [13, GROUND],
         hna: -2.3,
-        tail: Math.PI + 0.62,
+        tail: Math.PI + 1.15,
         tw: t,
         ta: 0.5,
         fl: 0.62 + 0.08 * s,
@@ -418,38 +422,39 @@ function shadeLeg(q: Canvas, near: boolean, pawY: number): void {
 
 /** Body silhouette, body-local (x forward, y down): croup, loin, shoulder hump, deep chest, tuck. */
 const BODY: Pt[] = [
-  [-16.5, -3],
-  [-14, -5.8],
-  [-10, -6.2],
-  [-5, -5.2],
-  [0, -5.6],
-  [4, -7.4],
-  [7, -9],
-  [10, -8.3],
+  [-16.5, -3.4],
+  [-14, -6],
+  [-10, -6.4],
+  [-5, -5.6],
+  [0, -6],
+  [4, -7.6],
+  [7, -9.2],
+  [10, -8.5],
   [12.5, -6],
   [14.5, -2.5],
   [15, 0.5],
   [14, 4],
-  [11.5, 7],
-  [8, 8],
-  [4, 7],
-  [0, 5],
-  [-4, 3],
-  [-8, 2.6],
-  [-12, 2.6],
+  [11.5, 7.2],
+  [8, 8.6],
+  [4, 8],
+  [0.5, 6],
+  [-2.5, 3.4],
+  [-6, 1.8],
+  [-9.5, 1.9],
+  [-12.5, 2.6],
   [-16, 1],
   [-17, -1],
 ];
 
 /** Body scale (body-local units → px) and head scale (head-local units → px). */
-const BK = 1.1;
-const HS = 1.15;
-const UPPER_ARM = 7.5;
-const FOREARM = 8.5;
-const PASTERN = 4;
-const THIGH = 8.5;
-const GASKIN = 7.5;
-const META = 6.5;
+const BK = 1.2;
+const HS = 1.2;
+const UPPER_ARM = 8;
+const FOREARM = 9.5;
+const PASTERN = 4.3;
+const THIGH = 10.5;
+const GASKIN = 9;
+const META = 7;
 
 /** Pose → transforms + skeleton. */
 function rig(o: Pose) {
@@ -492,7 +497,7 @@ function rig(o: Pose) {
 type Rig = ReturnType<typeof rig>;
 
 /** Solid wolf (no light): far legs, tail stub, body, near legs, head. Returns the body+head masks. */
-function drawBody(p: Canvas, o: Pose, R: Rig, silhouette: boolean): { body: Canvas; head: Canvas; tailTip: Pt; tailPts: Pt[] } {
+function drawBody(p: Canvas, o: Pose, R: Rig, silhouette: boolean): { body: Canvas; head: Canvas; nearLegs: Canvas; tailTip: Pt; tailPts: Pt[] } {
   const { B, Hd, J, head, hc, hs, FN, FF, HN, HF } = R;
   const sep = silhouette ? null : PAL.ink;
 
@@ -509,12 +514,12 @@ function drawBody(p: Canvas, o: Pose, R: Rig, silhouette: boolean): { body: Canv
   };
   const frontLeg = (q: Canvas, g: Rig['FN'], near: boolean, withUpper: boolean) => {
     if (withUpper) q.stroke([g.sh, g.el], 7, 5.4, FUR);
-    q.stroke([g.el, g.wr], 5.2, 3.6, FUR);
-    q.stroke([g.wr, [g.pw[0] - 0.2, g.pw[1] - 1.5]], 3.6, 3.2, FUR);
+    q.stroke([g.el, g.wr], 4.4, 3.1, FUR);
+    q.stroke([g.wr, [g.pw[0] - 0.2, g.pw[1] - 1.5]], 3, 2.7, FUR);
     paw(q, g.pw, near);
     // elbow point and wrist knob give the leg its angles
     q.disc(g.el[0] - 0.8, g.el[1] + 0.3, 2.3, FUR);
-    q.disc(g.wr[0], g.wr[1], 1.7, FUR);
+    q.disc(g.wr[0], g.wr[1], 1.5, FUR);
     if (!silhouette) {
       shadeLeg(q, near, g.pw[1] - 1);
       shadePaw(q, g.pw, near);
@@ -526,27 +531,27 @@ function drawBody(p: Canvas, o: Pose, R: Rig, silhouette: boolean): { body: Canv
       q.stroke([g.hip, g.knee], 10, 6, FUR);
       q.disc(g.hip[0] - 0.5, g.hip[1] + 0.5, 5, FUR);
     }
-    q.stroke([g.knee, g.hk], 5.6, 3.6, FUR);
+    q.stroke([g.knee, g.hk], 5, 3, FUR);
     // hock: the heel point juts back
     const [hx, hy] = g.hk;
     const ux = g.hk[0] - g.knee[0];
     const uy = g.hk[1] - g.knee[1];
     const ul = Math.hypot(ux, uy) || 1;
     q.tri(hx - 1.5, hy - 1.5, hx + 1.5, hy + 1, hx + (ux / ul) * 2.4 - 0.5, hy + (uy / ul) * 2.4, FUR);
-    q.stroke([g.hk, [g.pw[0] - 0.2, g.pw[1] - 1.5]], 3.6, 3.1, FUR);
+    q.stroke([g.hk, [g.pw[0] - 0.2, g.pw[1] - 1.5]], 2.9, 2.6, FUR);
     paw(q, g.pw, near);
     if (!silhouette) {
       shadeLeg(q, near, g.pw[1] - 1);
       shadePaw(q, g.pw, near);
       if (withThigh && near) {
-        // haunch ember seam: curving down the front of the thigh
-        const a = lerpPt(g.hip, g.knee, 0.15);
-        const b = lerpPt(g.hip, g.knee, 0.55);
-        const c = lerpPt(g.hip, g.knee, 0.85);
+        // haunch ember seam: an arc over the top of the haunch and down the front of the thigh
+        const b = lerpPt(g.hip, g.knee, 0.5);
+        const c = lerpPt(g.hip, g.knee, 0.8);
         seam(q, [
-          [a[0] + 2.5, a[1] - 1],
-          [b[0] + 2.2, b[1]],
-          [c[0] + 1, c[1] + 0.5],
+          [g.hip[0] - 2, g.hip[1] - 3.4],
+          [g.hip[0] + 1.6, g.hip[1] - 2.8],
+          [b[0] + 2.4, b[1]],
+          [c[0] + 1.2, c[1] + 0.6],
         ], o.fl);
       }
     }
@@ -571,7 +576,7 @@ function drawBody(p: Canvas, o: Pose, R: Rig, silhouette: boolean): { body: Canv
   layer(
     p,
     (q) => {
-      q.stroke(tailPts, 4.6, 3.4, FUR);
+      q.stroke(tailPts, 5.2, 3.6, FUR);
       if (!silhouette) {
         shadeLeg(q, true, -99);
         q.paint(tailPts[3][0], tailPts[3][1], PAL.fire2);
@@ -624,8 +629,8 @@ function drawBody(p: Canvas, o: Pose, R: Rig, silhouette: boolean): { body: Canv
           if (q.get(px, py) === PAL.stone1) q.set(px, py, PAL.stone2);
         }
         // ember seams: along the shoulder blade and the spine
-        seam(q, [B(5.5, -6.6), B(7.6, -3.5), B(8.2, 0), B(7.4, 3)], o.fl);
-        seam(q, [B(-9, -4.4), B(-5.5, -3.6), B(-1.5, -4)], o.fl * 0.9);
+        seam(q, [B(3.6, -6.4), B(6, -4.2), B(8.4, -1.6), B(10.4, 1.2)], o.fl);
+        seam(q, [B(-9, -4.6), B(-5.5, -4), B(-2, -4.4)], o.fl * 0.9);
         // the mane's glow warms the crest
         for (let k = 0; k <= 8; k++) {
           const [x, y] = lerpPt(Hd(-3, -3.4), B(5, -8.2), k / 8);
@@ -641,8 +646,8 @@ function drawBody(p: Canvas, o: Pose, R: Rig, silhouette: boolean): { body: Canv
   );
 
   // ------------------------------------------------ near legs (in front)
-  layer(p, (q) => hindLeg(q, HN, true, true), sep);
-  layer(p, (q) => frontLeg(q, FN, true, false), sep);
+  const nearLegs = layer(p, (q) => hindLeg(q, HN, true, true), sep).clone();
+  nearLegs.blit(layer(p, (q) => frontLeg(q, FN, true, false), sep), 0, 0);
 
   // ------------------------------------------------ head
   const headMask = layer(
@@ -740,7 +745,7 @@ function drawBody(p: Canvas, o: Pose, R: Rig, silhouette: boolean): { body: Canv
     sep,
   );
 
-  return { body, head: headMask, tailTip: tailPts[tailPts.length - 1], tailPts };
+  return { body, head: headMask, nearLegs, tailTip: tailPts[tailPts.length - 1], tailPts };
 }
 
 /** A deliberate ember seam: 1px fire3 vein with fire2 lips at its wider middle. */
@@ -792,15 +797,16 @@ function drawWolf(p: Canvas, o: Pose): void {
         if (!t.isOpaque(x, y)) continue;
         const X = x + g.dx;
         const Y = y + g.dy;
-        if (X < 0 || Y < 0 || X >= p.w || Y >= p.h || solid.isOpaque(X, Y)) continue;
-        // fades out toward the tail end, a hotter rim along the top edge
+        if (X < 0 || Y < 0 || X >= p.w || Y >= GROUND || solid.isOpaque(X, Y)) continue;
+        // fades out toward the tail end and toward the frame's left edge (never a hard cut)
         const f = (x - b.x) / Math.max(1, b.w);
-        const edge = !t.isOpaque(x, y - 1);
-        // …and toward the frame's left edge, so a ghost never ends in a hard cut
-        const a = Math.round(255 * Math.min(1, g.a * Math.min(1, 0.15 + 1.1 * f)) * Math.max(0, Math.min(1, (X - 1) / 8)));
-        if (a < 24) continue;
-        const nearG = g.a > 0.55;
-        p.set(X, Y, edge ? (nearG ? PAL.fire4 : PAL.fire3) : nearG ? PAL.fire3 : PAL.fire2, a);
+        const k = g.a * Math.min(1, 0.2 + 1.1 * f) * Math.max(0, Math.min(1, (X - 1) / 7));
+        // a hot rim around the ghost's silhouette, a dimmer translucent fill inside
+        const edge = !t.isOpaque(x, y - 1) || !t.isOpaque(x + 1, y) || !t.isOpaque(x - 1, y) || !t.isOpaque(x, y + 1);
+        const nearG = g.a > 0.6;
+        const a = Math.round(255 * Math.min(1, edge ? k * 1.1 : k * 0.72));
+        if (a < 28) continue;
+        p.set(X, Y, edge ? (nearG ? PAL.fire3 : PAL.fire2) : nearG ? PAL.fire2 : PAL.fire1, a);
       }
   }
 
@@ -816,14 +822,15 @@ function drawWolf(p: Canvas, o: Pose): void {
     }
   }
 
-  // ------------------------------------------------ mane: four shaped tongues along the crest, curling back
-  const crest = (f: number): Pt => lerpPt(Hd(-2.6, -3.4), B(5, -8.4), f);
+  // ------------------------------------------------ mane: five shaped tongues along the crest, curling back
+  const crest = (f: number): Pt => lerpPt(Hd(-2.8, -3.6), B(5, -8.4), f);
   const mane: [number, number, number, number][] = [
-    // [crest pos, length, width, base angle] — tallest in the middle, sweeping back
-    [0.05, 9, 5, -1.7],
-    [0.35, 13, 6, -1.95],
-    [0.65, 12.5, 6, -2.2],
-    [0.95, 9.5, 5, -2.5],
+    // [crest pos, length, width, base angle] — tallest in the middle, sweeping back over the shoulders
+    [0.0, 10, 5.5, -1.65],
+    [0.27, 14.5, 7, -1.9],
+    [0.53, 15.5, 7.5, -2.15],
+    [0.78, 13.5, 7, -2.4],
+    [1.02, 10, 6, -2.65],
   ];
   mane.forEach(([f, L0, wd, a], i) => {
     const L = fl * L0 * (0.84 + 0.28 * flick(i + 1));
@@ -852,22 +859,25 @@ function drawWolf(p: Canvas, o: Pose): void {
   {
     const tip = S.tailTip;
     // the plume rises from the tail tip and curls back; wind lays it down behind the wolf
-    const dir = windA(o.tail + 0.55, 0.5);
+    const dir = windA(o.tail + 0.4, 0.5);
     const sway = Math.sin(o.tw * TAU) * 0.12;
-    tongue(p, tip, dir + sway, fl * 12 * (0.85 + 0.25 * flick(40)), 5.6, -0.3, o.t * 2 + 0.5, fl * 1.1, null);
+    tongue(p, tip, dir + sway, fl * 15 * (0.85 + 0.25 * flick(40)), 6.5, -0.35, o.t * 2 + 0.5, fl * 1.1, null);
     tongue(p, S.tailPts[3], dir + 0.5 + sway, fl * 7.5 * (0.8 + 0.3 * flick(41)), 4, -0.45, o.t * 2 + 0.15, fl, solid);
     tongue(p, S.tailPts[2], dir - 0.55 + sway, fl * 6.5 * (0.8 + 0.3 * flick(42)), 3.6, -0.35, o.t * 2 + 0.8, fl * 0.9, solid);
   }
 
-  // ------------------------------------------------ paws burn: small tongues rising behind the heels
+  // ------------------------------------------------ paws of living flame: tongues wrap each paw and lick up the pastern
   for (const [pw, near] of [
     [o.ff, false],
     [o.hf, false],
     [o.fn, true],
     [o.hn, true],
   ] as const) {
-    const L = fl * (near ? 5 : 4) * (0.65 + 0.6 * flick(Math.round(pw[0]) * 3));
-    tongue(p, [pw[0] - 1.5, pw[1] - 2], windA(-Math.PI / 2 - 0.55), L, 3, -0.35, o.t * 4 + pw[0] * 0.1, fl * (near ? 1.05 : 0.8), solid);
+    const k = flick(Math.round(pw[0]) * 3);
+    const L = fl * (near ? 6.5 : 5.5) * (0.75 + 0.4 * k);
+    // far paws burn behind the near legs; near paws burn over everything
+    tongue(p, [pw[0] + 1, pw[1] - 0.5], windA(-Math.PI / 2 - 0.4), L, near ? 4.4 : 3.8, -0.45, o.t * 4 + pw[0] * 0.1, fl * (near ? 1.15 : 0.9), near ? null : S.nearLegs);
+    tongue(p, [pw[0] - 1.2, pw[1] - 1], windA(-Math.PI / 2 - 0.85), L * 0.55, 2.8, -0.3, o.t * 4 + pw[0] * 0.1 + 0.4, fl * (near ? 1 : 0.8), near ? null : S.nearLegs);
   }
 
   // ------------------------------------------------ landing puff: dust kicked sideways, embers popping up
@@ -906,8 +916,8 @@ function portrait(p: Canvas): void {
   const big = new PixelCanvas(W, H);
   drawWolf(big, P({ eye: 2, jaw: 0.42, snarl: 1, ears: 0.3, fl: 1.3, t: 0.35, tw: 0.35, na: -0.95, hp: 0.05 }));
   // frame the head: eye at ~2/3 of the width
-  const ox = 15;
-  const oy = 8;
+  const ox = 19;
+  const oy = 6;
   for (let y = 0; y < 34; y++)
     for (let x = 0; x < 44; x++) {
       const col = big.get(ox + x, oy + y);
@@ -942,7 +952,7 @@ const art: MonsterArt = {
   anchorY: GROUND,
   hover: 0,
   muzzle: MUZZLE,
-  core: { x: 30, y: 40 },
+  core: { x: 30, y: 38 },
   anims: {
     idle: { frames: ANIMS.idle.poses.length, fps: ANIMS.idle.fps, loop: true },
     roar: { frames: ANIMS.roar.poses.length, fps: ANIMS.roar.fps, loop: false },

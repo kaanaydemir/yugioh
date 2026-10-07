@@ -163,8 +163,8 @@ const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> 
     poses: [
       P({}),
       P({ rx: 17.8, ry: 6, cy: 66.5, k1: [46, 54], k2: [32, 45], ks: [[31, 37]], h: [38, 31], ha: 0.06, frill: 1.15, jaw: 0.24, glow: 1.3, rip: 0.15, tail: -1.4 }),
-      P({ rx: 18.6, ry: 5.4, cy: 67.1, k1: [45, 56], k2: [28, 47], ks: [[25, 38]], h: [34, 32], ha: 0.02, frill: 1.45, jaw: 0.3, glow: 1.7, rip: 0.3, eye: 'wide', charge: 0.55, tail: -2.6 }),
-      P({ rx: 19, ry: 5.1, cy: 67.4, k1: [46, 57.5], k2: [26, 48.5], ks: [[23.5, 38.5]], h: [32.5, 32.5], ha: 0.04, frill: 1.55, jaw: 0.34, glow: 2, rip: 0.45, eye: 'wide', charge: 1, tail: -3.2 }),
+      P({ rx: 18.6, ry: 5.4, cy: 67.1, k1: [45, 56], k2: [27.5, 47.5], ks: [[24, 38.5]], h: [32.5, 32.5], ha: 0.02, frill: 1.45, jaw: 0.42, glow: 1.7, rip: 0.3, eye: 'wide', charge: 0.6, tail: -2.6 }),
+      P({ rx: 19, ry: 5.1, cy: 67.4, k1: [46, 57.5], k2: [25.5, 49], ks: [[22, 39]], h: [30.5, 33.5], ha: 0.04, frill: 1.55, jaw: 0.55, glow: 2, rip: 0.45, eye: 'wide', charge: 1, tail: -3.2 }),
       P({ rx: 16.2, ry: 7.1, cy: 65.4, k1: [49, 50], k2: [45, 38], h: [48, 27], ha: 0.05, frill: 1.5, jaw: 0.75, glow: 2, rip: 0.6, eye: 'wide', smear: [[32.5, 32.5], [38, 30], [43, 28]], tail: 1.8 }),
       P({ rx: 16, ry: 7.4, cy: 65.1, k1: [50, 51], k2: [49, 39], h: [51, 29], ha: 0.1, frill: 1.55, jaw: 1, glow: 2, rip: 0.7, eye: 'wide', tail: 2.2, burst: 1 }),
       P({ rx: 16.4, ry: 7, cy: 65.5, k1: [50, 51], k2: [48, 39], h: [50, 29], ha: 0.1, frill: 1.45, jaw: 1, glow: 1.8, rip: 0.8, eye: 'wide', tail: 0.8, burst: 0.6 }),
@@ -847,7 +847,7 @@ function drawBurst(p: Canvas, o: Pose): void {
   const k = o.burst;
   const bq = new PixelCanvas(W, H);
   for (const [da, len, w] of [
-    [0, 6.5, 3],
+    [0, 5.5, 3],
     [-0.6, 5, 2],
     [0.62, 5, 2],
     [-1.25, 3.5, 1.5],

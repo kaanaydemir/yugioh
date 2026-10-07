@@ -67,6 +67,10 @@ interface Pose {
   aura: number;
   /** Light trail left by the hands sweeping forward from the hip (attack thrust) 0..1. */
   trail: number;
+  /** Star held up over her head between the raised hands (roar climax) 0..1. */
+  hstar: number;
+  /** Arm length multiplier (a chibi cheat: raised arms stretch so the V clears the big head). */
+  reach: number;
   /** Sparkle/flicker phase (0..1 loops). */
   t: number;
 }
@@ -101,6 +105,8 @@ const N: Pose = {
   burst: 0,
   aura: 0,
   trail: 0,
+  hstar: 0,
+  reach: 1,
   t: 0,
 };
 
@@ -131,40 +137,42 @@ function idlePose(f: number, n: number): Pose {
 const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> = {
   idle: { fps: 10, loop: true, poses: Array.from({ length: 8 }, (_, f) => idlePose(f, 8)) },
 
-  // Roar: dip and gather (wings closed) → spring up into a pirouette (front → left → back →
-  // right) with arms rising, skirt flaring → arms up in a V, wings flung open, a burst of
-  // sparkles rings outward → float back down.
+  // Roar: dip and gather (wings closed) → spring up into a pirouette (back → left → front) with the
+  // skirt flaring → CLIMAX (f5, facing us): arms flung up in a V, a star blazing over her head
+  // between the hands, all four wings spread wide on both sides, body stretched tall, a ring of
+  // eight sparkles rings outward (f5–f8) → turn back to face the foe and float down.
   roar: {
     fps: 12,
     loop: false,
     poses: [
       idlePose(0, 8),
       P({ y: 29, lean: -0.05, aN: 0.9, bN: 1.2, aF: 2.4, bF: -1.4, kN: 1.1, kF: 1.2, lN: 0.5, lF: 0.4, wU: 0.45, wL: 0.4, flare: 0, sway: -1, eye: 0, hair: -0.2, t: 0.1 }),
-      P({ y: 25, view: 'front', aN: -2.5, bN: -0.4, aF: -0.6, bF: 0.4, wU: 0.9, wL: 0.8, flare: 0.6, sway: 1, hair: 0.4, eye: 1, t: 0.2 }),
-      P({ y: 24, view: 'left', aN: -1.9, bN: -0.3, aF: -1.2, bF: 0.3, wU: 1.0, wL: 0.9, flare: 1, sway: 2, hair: 0.6, eye: 1, t: 0.3 }),
-      P({ y: 24, view: 'back', aN: -2.1, bN: -0.2, aF: -1.0, bF: 0.2, wU: 1.1, wL: 1.0, flare: 1, sway: -2, hair: 0.6, t: 0.4 }),
-      P({ y: 24, aN: -2.05, bN: -0.2, aF: -1.05, bF: 0.25, wU: 1.65, wL: 1.5, flare: 0.8, sway: -1, hair: 0.5, eye: 3, mouth: 1, burst: 0.2, aura: 1, t: 0.5 }),
-      P({ y: 24, aN: -2.1, bN: -0.25, aF: -1.0, bF: 0.2, wU: 1.6, wL: 1.45, flare: 0.6, sway: 0, hair: 0.4, eye: 3, mouth: 1, burst: 0.5, aura: 0.8, t: 0.6 }),
-      P({ y: 25, aN: -2.4, bN: -0.4, aF: -0.6, bF: 0.4, wU: 1.5, wL: 1.35, flare: 0.45, sway: 1, hair: 0.25, eye: 0, mouth: 0, burst: 0.8, aura: 0.5, t: 0.7 }),
-      P({ y: 26, aN: 2.6, bN: -0.6, aF: 0.9, bF: 0.6, wU: 1.3, wL: 1.2, flare: 0.3, sway: 0, hair: 0.1, eye: 1, burst: 1, aura: 0.2, t: 0.8 }),
+      P({ y: 26, view: 'back', aN: -2.3, bN: -0.3, aF: -0.9, bF: 0.3, wU: 1.0, wL: 0.9, flare: 0.7, sway: 2, hair: 0.5, t: 0.2 }),
+      P({ y: 25, view: 'left', aN: -2.0, bN: -0.3, aF: -1.1, bF: 0.3, wU: 1.1, wL: 1.0, flare: 1, sway: -2, hair: 0.6, eye: 1, t: 0.3 }),
+      P({ y: 25, view: 'front', reach: 1.2, aN: -2.3, bN: 0.2, aF: -0.85, bF: -0.2, wU: 1.3, wL: 1.2, flare: 0.9, sway: 1, hair: 0.5, eye: 1, mouth: 1, aura: 0.6, t: 0.4 }),
+      P({ y: 25, view: 'front', reach: 1.45, aN: -2.25, bN: 0.15, aF: -0.89, bF: -0.15, kN: 0.15, kF: 0.15, lN: 0.05, lF: -0.05, wU: 1.62, wL: 1.5, flare: 0.8, sway: 0, hair: 0.45, eye: 3, mouth: 1, hstar: 1, burst: 0.04, aura: 1, t: 0.5 }),
+      P({ y: 25, view: 'front', reach: 1.4, aN: -2.27, bN: 0.15, aF: -0.87, bF: -0.15, kN: 0.15, kF: 0.15, lN: 0.05, lF: -0.05, wU: 1.58, wL: 1.46, flare: 0.65, sway: 0, hair: 0.35, eye: 3, mouth: 1, hstar: 0.6, burst: 0.36, aura: 0.8, t: 0.6 }),
+      P({ y: 26, aN: -2.4, bN: -0.4, aF: -0.6, bF: 0.4, wU: 1.5, wL: 1.35, flare: 0.45, sway: 1, hair: 0.25, eye: 0, mouth: 0, burst: 0.68, aura: 0.5, t: 0.7 }),
+      P({ y: 27, aN: 2.6, bN: -0.6, aF: 0.9, bF: 0.6, wU: 1.3, wL: 1.2, flare: 0.3, sway: 0, hair: 0.1, eye: 1, burst: 0.98, aura: 0.2, t: 0.8 }),
       P({ y: 27, wU: 1.2, wL: 1.1, t: 0.9 }),
     ],
   },
 
-  // Attack ("Işık Kıvılcımı"): lean back and pull both hands to the hip while a light orb swells
-  // between them (anticipation) → thrust both hands forward → IMPACT: palms open, a flash bursts
-  // at the hands (projectiles spawn here), wings flare, hair whips back → recoil drift → settle.
+  // Attack ("Işık Kıvılcımı"): she SPINS (front → left → back) with both hands at her hip while a
+  // light orb swells between them (anticipation) → comes round and thrusts both arms straight out →
+  // IMPACT: a big flash bursts just ahead of her open palms (projectiles spawn here), wings flare,
+  // hair whips back; her face stays clear → recoil drift → settle.
   attack: {
     fps: 12,
     loop: false,
     poses: [
       idlePose(0, 8),
-      P({ x: 23, lean: -0.2, aN: 2.5, bN: -1.6, aF: 2.3, bF: -1.5, wU: 0.8, wL: 0.75, wTilt: 0.15, glow: 0.35, hair: 0.2, sway: 1, eye: 1, t: 0.1 }),
-      P({ x: 23, y: 28, lean: -0.32, aN: 2.65, bN: -1.8, aF: 2.5, bF: -1.7, wU: 0.55, wL: 0.5, wTilt: 0.25, glow: 0.7, hair: 0.3, sway: 1, kN: 0.8, lN: 0.4, eye: 3, t: 0.2 }),
-      P({ x: 23, y: 28, lean: -0.35, aN: 2.7, bN: -1.85, aF: 2.55, bF: -1.75, wU: 0.45, wL: 0.45, wTilt: 0.3, glow: 1, hair: 0.35, sway: 1, kN: 0.9, lN: 0.45, eye: 3, t: 0.3 }),
-      P({ x: 25, y: 27, lean: 0.25, aN: 0.25, bN: -0.2, aF: 0.1, bF: -0.15, wU: 1.2, wL: 1.1, glow: 1, hair: -0.3, sway: -1, eye: 3, mouth: 1, trail: 1, t: 0.4 }),
-      P({ x: 26, y: 27, lean: 0.35, aN: -0.12, bN: 0, aF: -0.22, bF: 0, wU: 1.7, wL: 1.6, wTilt: -0.1, blast: 1, hair: -0.55, sway: -2, flare: 0.5, eye: 3, mouth: 1, lN: -0.25, kN: 0.2, trail: 0.5, t: 0.5 }),
-      P({ x: 25, y: 27, lean: 0.2, aN: 0.0, bN: -0.1, aF: -0.1, bF: -0.05, wU: 1.5, wL: 1.4, blast: 0.5, hair: -0.35, sway: -1, flare: 0.4, eye: 1, mouth: 1, t: 0.6 }),
+      P({ x: 24, y: 28, view: 'front', lean: 0, aN: 2.2, bN: -1.2, aF: 2.0, bF: 1.0, wU: 0.8, wL: 0.75, glow: 0.35, hair: 0.3, sway: 2, flare: 0.6, eye: 1, t: 0.1 }),
+      P({ x: 24, y: 28, view: 'left', lean: -0.25, aN: 2.6, bN: -1.7, aF: 2.4, bF: -1.6, wU: 0.6, wL: 0.55, wTilt: 0.2, glow: 0.7, hair: 0.45, sway: -2, flare: 0.9, kN: 0.8, lN: 0.4, eye: 3, t: 0.2 }),
+      P({ x: 24, y: 28, view: 'back', lean: 0, aN: 2.3, bN: -1.0, aF: 2.0, bF: 1.0, wU: 0.7, wL: 0.65, glow: 1, hair: 0.5, sway: 2, flare: 1, eye: 3, t: 0.3 }),
+      P({ x: 24, y: 27, lean: 0.22, aN: 0.25, bN: -0.2, aF: 0.12, bF: -0.15, wU: 1.2, wL: 1.1, glow: 1, hair: -0.3, sway: -1, flare: 0.6, eye: 3, mouth: 1, trail: 1, t: 0.4 }),
+      P({ x: 25, y: 28, lean: 0.3, aN: 0.06, bN: 0, aF: -0.04, bF: 0, wU: 1.7, wL: 1.6, wTilt: -0.1, blast: 1, hair: -0.55, sway: -2, flare: 0.5, eye: 3, mouth: 1, lN: -0.25, kN: 0.2, trail: 0.5, t: 0.5 }),
+      P({ x: 25, y: 28, lean: 0.2, aN: 0.12, bN: -0.05, aF: 0.02, bF: -0.05, wU: 1.5, wL: 1.4, blast: 0.5, hair: -0.35, sway: -1, flare: 0.4, eye: 1, mouth: 1, t: 0.6 }),
       P({ x: 24, y: 27, lean: 0.1, aN: 1.0, bN: -0.5, aF: 0.8, bF: 0.2, wU: 1.3, wL: 1.2, hair: -0.1, sway: 0, eye: 1, t: 0.7 }),
       P({ t: 0.8 }),
     ],
@@ -293,6 +301,28 @@ function layer(p: Canvas, fn: (q: Canvas) => void, sep: number | null = PAL.ink)
   return q;
 }
 
+/**
+ * Like layer(), but where the new part overlaps the glowing wings / hair the seam is a solid
+ * gold2 band (4- and 8-connected, so a diagonal edge never turns into an ink/gold checkerboard);
+ * ink is kept only against skin and the silhouette.
+ */
+function layerSoft(p: Canvas, fn: (q: Canvas) => void): Canvas {
+  const q = new PixelCanvas(p.w, p.h);
+  fn(q);
+  const soft = (c: number | null) => c === PAL.gold4 || c === PAL.gold3 || c === PAL.gold2 || c === PAL.gold1 || c === PAL.white || c === PAL.ink;
+  for (let y = 0; y < q.h; y++)
+    for (let x = 0; x < q.w; x++) {
+      if (q.isOpaque(x, y) || !p.isOpaque(x, y)) continue;
+      const n4 = q.isOpaque(x - 1, y) || q.isOpaque(x + 1, y) || q.isOpaque(x, y - 1) || q.isOpaque(x, y + 1);
+      const n8 = n4 || q.isOpaque(x - 1, y - 1) || q.isOpaque(x + 1, y - 1) || q.isOpaque(x - 1, y + 1) || q.isOpaque(x + 1, y + 1);
+      const under = p.get(x, y);
+      if (soft(under) && n8) p.set(x, y, PAL.gold2);
+      else if (n4) p.set(x, y, PAL.ink);
+    }
+  p.blit(q, 0, 0);
+  return q;
+}
+
 /** 4-point twinkle star (light, no outline). size 0..3. */
 function star(p: Canvas, x: number, y: number, size: number, core: number = PAL.white, arm: number = PAL.gold4, tip: number = PAL.gold3, onlyEmpty = true): void {
   x = Math.round(x);
@@ -357,11 +387,11 @@ const WU: WingSpec = {
     [13, 8],
     [11, 4],
   ],
-  base: PAL.cyan4,
-  inner: PAL.cyan3,
+  base: PAL.gold4,
+  inner: PAL.white,
   rim: PAL.white,
-  vein: PAL.cyan3,
-  spotC: PAL.gold4,
+  vein: PAL.gold3,
+  spotC: PAL.cyan4,
 };
 const WL: WingSpec = {
   shape: LOWER,
@@ -370,11 +400,11 @@ const WL: WingSpec = {
     [8, -4.5],
     [6.5, -8.5],
   ],
-  base: PAL.gold4,
-  inner: PAL.gold3,
-  rim: PAL.white,
-  vein: PAL.gold3,
-  spotC: PAL.cyan4,
+  base: PAL.gold3,
+  inner: PAL.gold4,
+  rim: PAL.gold4,
+  vein: PAL.gold2,
+  spotC: PAL.white,
 };
 
 /**
@@ -396,6 +426,11 @@ function drawWingShape(q: Canvas, spec: WingSpec, M: (u: number, v: number) => P
   q.poly(pts, spec.base);
   // fill also a thin stroke so edge-on wings never vanish
   q.polyline(pts, spec.base, true);
+  // a solid root (the narrow base otherwise rasterises into a jagged sliver that, with the
+  // separation lines, reads as an ink checkerboard against the dress)
+  const r0 = M(0, spec === WU ? 0.6 : -1.6);
+  const r1 = M(spec === WU ? 2.2 : 1.8, spec === WU ? 2.0 : -3.2);
+  q.thickLine(r0[0], r0[1], r1[0], r1[1], 2.6, spec.base);
   // inner gradient: the half nearest the root takes the deeper tone
   const root = M(0, 0);
   const far = M(spec.spot[0], spec.spot[1]);
@@ -405,8 +440,7 @@ function drawWingShape(q: Canvas, spec: WingSpec, M: (u: number, v: number) => P
     for (let x = 0; x < q.w; x++) {
       if (src.get(x, y) !== spec.base) continue;
       const d = Math.hypot(x + 0.5 - root[0], y + 0.5 - root[1]) / span;
-      if (d < 0.38 && Math.abs(k) > 0.15) q.set(x, y, spec.inner);
-      else if (d < 0.5 && Math.abs(k) > 0.15 && PixelCanvas.ditherAt(x, y, 8)) q.set(x, y, spec.inner);
+      if (d < 0.42 && Math.abs(k) > 0.15) q.set(x, y, spec.inner);
     }
   // veins
   for (const [vu, vv] of spec.veins) {
@@ -446,8 +480,8 @@ interface Rig {
 // 3/4 view: her near (left) side is toward the camera → screen left; far (right) side → screen right
 const SH_N: Pt = [-1.5, -4.6];
 const SH_F: Pt = [1.6, -4.8];
-const UPPER_ARM = 3.4;
-const FOREARM = 3.2;
+const UPPER_ARM = 3.9;
+const FOREARM = 3.7;
 
 function rigOf(o: Pose): Rig {
   const c = Math.cos(o.lean);
@@ -458,8 +492,8 @@ function rigOf(o: Pose): Rig {
   const headY = Math.round(neck[1] - 10 + o.hy);
   const arm = (sh: Pt, a: number, b: number): Pt => {
     const s0 = T(sh[0], sh[1]);
-    const el: Pt = [s0[0] + Math.cos(a) * UPPER_ARM, s0[1] + Math.sin(a) * UPPER_ARM];
-    return [el[0] + Math.cos(a + b) * FOREARM, el[1] + Math.sin(a + b) * FOREARM];
+    const el: Pt = [s0[0] + Math.cos(a) * UPPER_ARM * o.reach, s0[1] + Math.sin(a) * UPPER_ARM * o.reach];
+    return [el[0] + Math.cos(a + b) * FOREARM * o.reach, el[1] + Math.sin(a + b) * FOREARM * o.reach];
   };
   const hands: [Pt, Pt] = [arm(SH_N, o.aN, o.bN), arm(SH_F, o.aF, o.bF)];
   const wr = T(-1.6, -3.6);
@@ -518,8 +552,8 @@ function drawFairy(p: Canvas, o: Pose): void {
         const c = wingsFar.get(x, y);
         if (c !== PAL.white) continue;
         const n = dst.get(x, y);
-        if (n === PAL.cyan4) dst.set(x, y, PAL.cyan3);
-        else if (n === PAL.gold4) dst.set(x, y, PAL.gold3);
+        if (n === PAL.gold4) dst.set(x, y, PAL.gold3);
+        else if (n === PAL.gold3) dst.set(x, y, PAL.gold2);
       }
   };
   ghost(wingsNear);
@@ -560,13 +594,21 @@ function drawFairy(p: Canvas, o: Pose): void {
           1,
           PAL.gold2,
         );
-      } else q.stroke(pts, w0, 1, i === 0 ? PAL.gold3 : PAL.gold2);
+      } else q.stroke(pts, w0, 1.8, i === 0 ? PAL.gold3 : PAL.gold2);
     });
     // highlight streak along the top strand
     const src = q.clone();
     for (let y = 0; y < q.h; y++)
       for (let x = 0; x < q.w; x++) if (src.get(x, y) === PAL.gold3 && !src.isOpaque(x, y - 1)) q.set(x, y, PAL.gold4);
-  });
+    // close single-pixel gaps between strands (no ink checkerboard where the hair meets the wings)
+    const s2 = q.clone();
+    for (let y = 1; y < q.h - 1; y++)
+      for (let x = 1; x < q.w - 1; x++) {
+        if (s2.isOpaque(x, y)) continue;
+        const n = (s2.isOpaque(x - 1, y) ? 1 : 0) + (s2.isOpaque(x + 1, y) ? 1 : 0) + (s2.isOpaque(x, y - 1) ? 1 : 0) + (s2.isOpaque(x, y + 1) ? 1 : 0);
+        if (n >= 3) q.set(x, y, PAL.gold2);
+      }
+  }, PAL.gold1);
 
   // ---------------------------------------- legs (under the skirt)
   const leg = (q: Canvas, near: boolean) => {
@@ -590,7 +632,7 @@ function drawFairy(p: Canvas, o: Pose): void {
     const sh = T(...(near ? SH_N : SH_F));
     const a = near ? o.aN : o.aF;
     const b = near ? o.bN : o.bF;
-    const el: Pt = [sh[0] + Math.cos(a) * UPPER_ARM, sh[1] + Math.sin(a) * UPPER_ARM];
+    const el: Pt = [sh[0] + Math.cos(a) * UPPER_ARM * o.reach, sh[1] + Math.sin(a) * UPPER_ARM * o.reach];
     const hd = near ? r.hands[0] : r.hands[1];
     q.stroke([sh, el], 1.9, 1.6, near ? PAL.skin3 : PAL.skin2);
     q.stroke([el, hd], 1.6, 1.4, near ? PAL.skin3 : PAL.skin2);
@@ -598,11 +640,13 @@ function drawFairy(p: Canvas, o: Pose): void {
     // puffed sleeve
     q.disc(sh[0] + Math.cos(a) * 0.8, sh[1] + Math.sin(a) * 0.8, 1.3, near ? PAL.white : PAL.mist);
   };
-  if (!backV) layer(p, (q) => armDraw(q, false), null);
-  else layer(p, (q) => armDraw(q, true), null);
+  // raised arms cross the wings and hair: outline them so the V reads
+  const armSep = o.reach > 1 ? PAL.ink : null;
+  if (!backV) layer(p, (q) => armDraw(q, false), armSep);
+  else layer(p, (q) => armDraw(q, true), armSep);
 
   // ---------------------------------------- skirt + bodice
-  layer(p, (q) => {
+  layerSoft(p, (q) => {
     // bell skirt with a petal hem; the hem sways (lags) and flares
     const top = 0.6;
     const hemY = 7.2 + o.flare * 0.4;
@@ -720,12 +764,37 @@ function drawFairy(p: Canvas, o: Pose): void {
   });
 
   // ---------------------------------------- near arm (in front)
-  if (!backV) layer(p, (q) => armDraw(q, true), null);
-  else layer(p, (q) => armDraw(q, false), null);
+  if (!backV) layer(p, (q) => armDraw(q, true), armSep);
+  else layer(p, (q) => armDraw(q, false), armSep);
 
   // ---------------------------------------- wings in front (cocoon / back view)
   if (nearInFront) layer(p, (q) => q.blit(wingsNear, 0, 0), PAL.ink);
 
+  // clean-up: pin-holes between the wings, hair and dress (the outline would fill them with ink
+  // and make a checkerboard at 1×) become a soft gold2 shadow
+  for (let pass = 0; pass < 2; pass++) {
+    const src = p.clone();
+    for (let y = 1; y < H - 1; y++)
+      for (let x = 1; x < W - 1; x++) {
+        if (src.isOpaque(x, y)) continue;
+        const nb = [src.get(x - 1, y), src.get(x + 1, y), src.get(x, y - 1), src.get(x, y + 1)];
+        const skin = nb.some((c) => c === PAL.skin1 || c === PAL.skin2 || c === PAL.skin3 || c === PAL.skin4);
+        if (!skin && nb.filter((c) => c !== null).length >= 3) p.set(x, y, PAL.gold2);
+      }
+  }
+  // isolated diagonal ink seams inside the glowing wings/hair also become gold2; ink stays on the
+  // silhouette and on real 4-connected seams
+  {
+    const src = p.clone();
+    const glow = (c: number | null) => c === PAL.gold4 || c === PAL.gold3 || c === PAL.gold2 || c === PAL.white || c === PAL.mist;
+    for (let y = 1; y < H - 1; y++)
+      for (let x = 1; x < W - 1; x++) {
+        if (src.get(x, y) !== PAL.ink) continue;
+        const nb = [src.get(x - 1, y), src.get(x + 1, y), src.get(x, y - 1), src.get(x, y + 1)];
+        if (nb.some((c) => c === null || c === PAL.ink)) continue;
+        if (nb.filter(glow).length >= 3) p.set(x, y, PAL.gold2);
+      }
+  }
   p.outline(PAL.ink);
   fx(p, o, r);
 }
@@ -750,8 +819,7 @@ function fx(p: Canvas, o: Pose, r: Rig): void {
       const k = (o.t + ph) % 1;
       const size = k < 0.25 ? 3 : k < 0.5 ? 2 : k < 0.7 ? 1 : 0;
       const drift = Math.sin((o.t + ph) * TAU) * 1;
-      const col = i % 2 ? PAL.cyan4 : PAL.gold4;
-      star(p, cx + dx, cy + dy + drift, size, PAL.white, col, i % 2 ? PAL.cyan3 : PAL.gold3);
+      star(p, cx + dx, cy + dy + drift, size, PAL.white, i % 2 ? PAL.white : PAL.gold4, PAL.gold3);
     });
   }
   // fairy dust: motes shed by the wings drift down and fade
@@ -795,60 +863,117 @@ function fx(p: Canvas, o: Pose, r: Rig): void {
     const [a, b] = r.hands;
     const m: Pt = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
     const R = 1 + o.glow * 2;
-    p.disc(m[0], m[1], R + 0.8, PAL.gold3);
-    p.disc(m[0], m[1], R, PAL.gold4);
-    p.disc(m[0], m[1], Math.max(0.6, R - 1.2), PAL.white);
-    if (o.glow > 0.6) star(p, m[0], m[1], 2 + o.glow * 3.5, PAL.white, PAL.gold4, PAL.gold3);
+    if (o.view === 'back') {
+      // the orb is in front of her: only its halo shows around her silhouette
+      const q = new PixelCanvas(W, H);
+      q.disc(m[0], m[1], R + 2.5, PAL.gold3);
+      q.disc(m[0], m[1], R + 1.5, PAL.gold4);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (q.isOpaque(x, y) && !p.isOpaque(x, y)) p.set(x, y, q.get(x, y)!);
+      star(p, m[0], m[1], 2 + o.glow * 4, PAL.white, PAL.gold4, PAL.gold3);
+    } else {
+      p.disc(m[0], m[1], R + 0.8, PAL.gold3);
+      p.disc(m[0], m[1], R, PAL.gold4);
+      p.disc(m[0], m[1], Math.max(0.6, R - 1.2), PAL.white);
+      if (o.glow > 0.6) star(p, m[0], m[1], 2 + o.glow * 3.5, PAL.white, PAL.gold4, PAL.gold3);
+    }
   }
-  // flash at the hands (impact): a big 4-point star with long rays
+  // flash just ahead of the open palms (impact): a hot disc with long forward/vertical rays and a
+  // short back ray, so it never covers her face
   if (o.blast > 0) {
-    const [a, b] = r.hands;
-    const m: Pt = [(a[0] + b[0]) / 2 + 1, (a[1] + b[1]) / 2];
-    const R = 2 + o.blast * 2;
-    p.disc(m[0], m[1], R, PAL.gold4);
-    p.disc(m[0], m[1], R - 1, PAL.white);
-    star(p, m[0], m[1], 3 + o.blast * 5, PAL.white, PAL.gold4, PAL.gold3, false);
+    const m = flashAt(r);
+    const R = 1.5 + o.blast * 2;
+    p.disc(m[0], m[1], R + 0.8, PAL.gold4);
+    p.disc(m[0], m[1], R, PAL.white);
+    const ray = (dx: number, dy: number, L: number) => {
+      for (let i = 1; i <= L; i++) {
+        const x = Math.round(m[0] + dx * i);
+        const y = Math.round(m[1] + dy * i);
+        if (x < 0 || y < 0 || x >= W || y >= H) continue;
+        p.set(x, y, i < L * 0.5 ? PAL.white : i < L * 0.8 ? PAL.gold4 : PAL.gold3);
+      }
+    };
+    const L = Math.round(3 + o.blast * 5);
+    ray(1, 0, Math.min(L + 1, W - 2 - m[0]));
+    ray(0, -1, L);
+    ray(0, 1, L);
+    ray(-1, 0, Math.max(2, Math.round(R + 1)));
     if (o.blast > 0.7) {
       for (const [dx, dy] of [
-        [5, -4],
-        [5, 4],
-        [8, 0],
+        [1, -1],
+        [1, 1],
       ] as const)
-        star(p, m[0] + dx, m[1] + dy, 2, PAL.white, PAL.cyan4, PAL.cyan3);
+        ray(dx, dy, 3);
+      for (const [dx, dy] of [
+        [6, -5],
+        [6, 5],
+        [9, 0],
+      ] as const)
+        if (m[0] + dx < W - 2) star(p, m[0] + dx, m[1] + dy, 2, PAL.white, PAL.gold4, PAL.gold3);
     }
   }
-  // roar burst: a ring of sparkles flying outward
+  // the star held up over her head between the raised hands (roar climax), with light running
+  // from each palm up into it
+  if (o.hstar > 0) {
+    const [a, b] = r.hands;
+    const sx = Math.round((a[0] + b[0]) / 2);
+    const sy = r.headY - 2;
+    for (const h of [a, b]) {
+      const n = Math.ceil(Math.hypot(sx - h[0], sy - h[1]));
+      for (let i = 1; i < n; i++) {
+        const x = Math.round(lerp(h[0], sx, i / n));
+        const y = Math.round(lerp(h[1], sy, i / n));
+        if (!p.isOpaque(x, y) && (i + Math.round(o.t * 10)) % 2 === 0) p.set(x, y, i > n * 0.6 ? PAL.white : PAL.gold4);
+      }
+    }
+    const size = 2.5 + o.hstar * 2.5;
+    p.disc(sx, sy, o.hstar > 0.8 ? 1.6 : 1, PAL.white);
+    star(p, sx, sy, size, PAL.white, PAL.gold4, PAL.gold3, false);
+  }
+  // roar burst: a ring of eight sparkles expanding from radius 10 to 20
   if (o.burst > 0 && o.burst < 1) {
-    const n = 10;
-    const R = 6 + o.burst * 16;
+    const n = 8;
+    const R = 10 + o.burst * 10;
     for (let i = 0; i < n; i++) {
-      const a = (i / n) * TAU + 0.3;
+      const a = (i / n) * TAU + 0.2;
       const x = cx + Math.cos(a) * R;
-      const y = cy + Math.sin(a) * R * 0.85;
-      const size = o.burst < 0.4 ? 3 : o.burst < 0.75 ? 2 : 1.2;
-      star(p, x, y, size, PAL.white, i % 2 ? PAL.cyan4 : PAL.gold4, i % 2 ? PAL.cyan3 : PAL.gold3);
+      const y = cy + 1 + Math.sin(a) * R * 0.85;
+      const size = o.burst < 0.4 ? 3 : o.burst < 0.75 ? 2.5 : 1.2;
+      star(p, x, y, size, PAL.white, i % 2 ? PAL.white : PAL.gold4, PAL.gold3);
     }
-    if (o.burst < 0.35) star(p, cx, cy - 2, 7, PAL.white, PAL.gold4, PAL.gold3);
   }
+}
+
+/** Centre of the impact flash: just ahead of the outstretched palms. */
+function flashAt(r: Rig): Pt {
+  const [a, b] = r.hands;
+  return [Math.round((a[0] + b[0]) / 2 + 6), Math.round((a[1] + b[1]) / 2 + 0.5)];
 }
 
 // ---------------------------------------------------------------- portrait (44×34)
 
 function portrait(p: Canvas): void {
-  // LIGHT: warm gold glow behind her, soft rays, specks of light
+  // LIGHT: a deep night sky with a warm gold-white glow and soft rays behind her, so the golden
+  // fairy reads against it
   for (let y = 0; y < 34; y++)
     for (let x = 0; x < 44; x++) {
-      const d = Math.hypot(x - 22, (y - 15) * 1.15);
-      let col: number = PAL.gold1;
-      if (d < 21) col = PAL.gold2;
-      if (d < 13) col = PAL.gold3;
-      if (d < 7) col = PAL.gold4;
-      const a = Math.atan2(y - 15, x - 22);
-      if (d > 7 && Math.sin(a * 6) > 0.86) col = d < 13 ? PAL.gold4 : PAL.gold3;
+      const d = Math.hypot(x - 22, (y - 13) * 1.15);
+      let col: number = PAL.night1;
+      if (d < 24) col = PAL.night2;
+      if (d < 16) col = PAL.gold0;
+      if (d < 10) col = PAL.gold1;
+      const a = Math.atan2(y - 13, x - 22);
+      if (d > 9 && Math.sin(a * 6) > 0.9) col = d < 16 ? PAL.gold2 : PAL.gold1;
       p.set(x, y, col);
     }
+  for (const [x, y] of [
+    [4, 5],
+    [39, 8],
+    [6, 27],
+    [37, 28],
+  ] as const)
+    star(p, x, y, 2, PAL.white, PAL.gold4, PAL.gold3, false);
   const big = new PixelCanvas(W, H);
-  drawFairy(big, P({ x: 24, y: 29, eye: 1, mouth: 0, aN: -0.9, bN: 0.3, aF: -2.2, bF: -0.2, wU: 1.5, wL: 1.4, flare: 0.5, hair: 0.3, t: 0.05 }));
+  drawFairy(big, P({ x: 24, y: 29, view: 'front', reach: 1.3, eye: 1, mouth: 1, aN: -2.25, bN: 0.15, aF: -0.89, bF: -0.15, wU: 1.5, wL: 1.4, flare: 0.5, hair: 0.3, t: 0.05 }));
   p.blit(big, -2, -11);
 }
 
@@ -856,11 +981,10 @@ function portrait(p: Canvas): void {
 
 const IMPACT_FRAME = 5;
 
-/** Muzzle = the flash between her outstretched hands in the impact frame. */
+/** Muzzle = the flash just ahead of her outstretched palms in the impact frame. */
 const MUZZLE = (() => {
-  const r = rigOf(ANIMS.attack.poses[IMPACT_FRAME]);
-  const [a, b] = r.hands;
-  return { x: Math.round((a[0] + b[0]) / 2 + 1), y: Math.round((a[1] + b[1]) / 2) };
+  const m = flashAt(rigOf(ANIMS.attack.poses[IMPACT_FRAME]));
+  return { x: m[0], y: m[1] };
 })();
 
 const art: MonsterArt = {

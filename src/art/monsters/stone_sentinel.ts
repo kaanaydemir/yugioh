@@ -13,7 +13,7 @@
 // unoutlined light pass (rune, eye slit, shield rune, swing smear, dust).
 
 import { PAL } from '../palette';
-import { PixelCanvas, type Pt } from '../pixel';
+import { PixelCanvas, bezier, type Pt } from '../pixel';
 import type { MonsterAnim, MonsterArt } from '../types';
 
 const W = 64;
@@ -52,6 +52,13 @@ interface Pose {
   lean: number;
   /** Chest lift 0..1 (breathing). */
   breath: number;
+  /** Pauldron / helm lift (px); default = follow the chest (breath). Idle staggers them a frame apart. */
+  pb?: number;
+  hb?: number;
+  /** Knees pushed forward (px) when the weight sinks (crouch / wind-up). */
+  kn: number;
+  /** Hanging moss strand sway (-1..1, px). */
+  moss: number;
   /** Near shoulder rolled forward 0..1 (throw). */
   twist: number;
   /** Helm offset (local px) and eye-slit state. */
@@ -95,6 +102,8 @@ const N: Pose = {
   by: PY,
   lean: 0,
   breath: 0,
+  kn: 0,
+  moss: 0,
   twist: 0,
   hdx: 0,
   hdy: 0,
@@ -102,7 +111,7 @@ const N: Pose = {
   nh: [14, 47],
   hand: 'fist',
   bend: 1,
-  sh: [47, 43],
+  sh: [47, 47],
   skew: 0,
   nf: [22, GROUND],
   ff: [37, GROUND],
@@ -124,19 +133,40 @@ const P = (o: Partial<Pose>): Pose => ({ ...N, ...o });
 
 // ---------------------------------------------------------------- animations
 
-function idlePose(f: number, n: number): Pose {
-  const t = f / n;
-  const s = Math.sin(t * TAU); // + = inhale
-  const lag = Math.sin((t - 0.15) * TAU); // arm + shield follow a beat later
+/**
+ * Idle (8 frames @ 6 fps): a slow, heavy breath that ripples up the statue one block at a time —
+ * chest (f1–3), pauldrons a frame later (f2–4), helm a frame after that (f3–5), then a 1 px sag
+ * on the exhale (f6–7). The shield stays planted on the ground. The chest rune and the eye slit
+ * glow in a cycle, a moss strand sways and a loose pebble trickles off the near pauldron, so
+ * every frame changes something.
+ */
+function idlePose(f: number): Pose {
+  const b = [0, 1, 1, 1, 0, 0, 0, 0][f];
+  const pb = [0, 0, 1, 1, 1, 0, 0, 0][f];
+  const hb = [0, 0, 0, 1, 1, 1, 0, 0][f];
+  const sag = [0, 0, 0, 0, 0, 0, 1, 1][f];
+  const pebble: (Chip | null)[] = [
+    null,
+    { x: 7, y: 33, s: 1 },
+    { x: 5, y: 37, s: 1 },
+    { x: 5, y: 44, s: 1 },
+    { x: 5, y: 52, s: 1 },
+    { x: 5, y: 59, s: 1 },
+    { x: 4, y: 58, s: 1 },
+    null,
+  ];
   return P({
-    breath: s > 0.3 ? 1 : 0,
-    by: PY + (s < -0.7 ? 1 : 0),
-    nh: [N.nh[0], N.nh[1] + (lag > 0.5 ? -1 : 0)],
-    sh: [N.sh[0], N.sh[1] + (lag > 0.5 ? -1 : 0)],
-    rune: 1.2 + 0.5 * s,
-    eye: f === 5 ? 0.6 : 1,
+    breath: b,
+    pb,
+    hb,
+    by: PY + sag,
+    nh: [N.nh[0], N.nh[1] - pb + sag],
+    rune: [0.9, 1.1, 1.6, 1.8, 1.6, 1.3, 1.0, 0.8][f],
+    eye: [1.0, 1.1, 1.25, 1.45, 1.6, 1.45, 1.25, 1.1][f],
+    moss: [0, 0, 1, 1, 0, -1, -1, 0][f],
+    chips: pebble[f] ? [pebble[f]!] : [],
     srune: 0,
-    t,
+    t: f / 8,
   });
 }
 
@@ -170,8 +200,11 @@ function tremble(k: number): Chip[] {
   return out;
 }
 
+/** Throwing hand target at the release (attack impact frame). */
+const RELEASE_HAND: Pt = [44, 12];
+
 const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> = {
-  idle: { fps: 6, loop: true, poses: Array.from({ length: 8 }, (_, f) => idlePose(f, 8)) },
+  idle: { fps: 6, loop: true, poses: Array.from({ length: 8 }, (_, f) => idlePose(f)) },
 
   // Roar: heave the shield high (anticipation) → SLAM it into the ground (rock spikes, dust,
   // chips) → rear up, near fist thrust to the sky, helm back, rune + eye blaze, sparks rise, the
@@ -191,8 +224,8 @@ const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> 
       P({ bx: 30.6, by: 45, lean: -0.12, hdx: -1, hdy: -2, sh: [47, 48], nh: [15, 9], rune: 1.9, eye: 2, eyeMode: 'roar', sparks: 0.7, spikes: 0.15,
         dust: slamDust(47, 0.8), chips: tremble(0.5), t: 0.5 }),
       P({ by: 45, lean: -0.1, hdx: -1, hdy: -1, sh: [47, 48], nh: [15, 10], rune: 1.8, eye: 1.8, eyeMode: 'roar', sparks: 0.95, chips: tremble(0.75), t: 0.6 }),
-      P({ by: 46, lean: -0.04, sh: [47, 46], nh: [17, 28], rune: 1.5, eye: 1.4, t: 0.7 }),
-      P({ by: 47, lean: 0.03, sh: [47, 44], nh: [14, 46], rune: 1.2, eye: 1.1, t: 0.8 }),
+      P({ by: 46, lean: -0.04, sh: [47, 47], nh: [17, 28], rune: 1.5, eye: 1.4, t: 0.7 }),
+      P({ by: 47, lean: 0.03, sh: [47, 47], nh: [14, 46], rune: 1.2, eye: 1.1, t: 0.8 }),
       P({ t: 0.9 }),
     ],
   },
@@ -206,24 +239,30 @@ const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> 
     loop: false,
     poses: [
       P({ t: 0 }),
-      P({ by: 49, lean: 0.2, nh: [13, 56], hand: 'grip', sh: [48, 46], rune: 1.2, hdy: 1,
+      P({ by: 49, kn: 1, lean: 0.2, nh: [13, 56], hand: 'grip', sh: [48, 47], rune: 1.2, hdy: 1,
         chips: [{ x: 8, y: 56, s: 1, dirt: true }, { x: 18, y: 57, s: 2, dirt: true }, { x: 11, y: 52, s: 1, dirt: true }],
         dust: [{ x: 11, y: 59, r: 2.2 }, { x: 17, y: 59, r: 1.6 }], t: 0.1 }),
-      P({ by: 47, lean: 0.06, nh: [13, 44], hand: 'grip', rock: [13, 38], sh: [48, 44], rune: 1.4,
+      P({ by: 47, lean: 0.06, nh: [13, 44], hand: 'grip', rock: [13, 38], sh: [48, 46], rune: 1.4,
         chips: [{ x: 10, y: 47, s: 2, dirt: true }, { x: 16, y: 50, s: 1, dirt: true }, { x: 12, y: 54, s: 1, dirt: true }, { x: 9, y: 57, s: 1, dirt: true }],
         dust: [{ x: 10, y: 58, r: 2.8, f: 0.2 }, { x: 16, y: 59, r: 2.2, f: 0.2 }], t: 0.2 }),
-      P({ by: 46, lean: -0.18, nh: [14, 18], bend: -1, hand: 'grip', rock: [13, 12], sh: [51, 42], skew: 0.05, rune: 1.7, eye: 1.4, hdx: -1, hdy: -1,
+      // heft: the weight goes onto the back foot — hips back, knees bent, torso arched back,
+      // the shield pushed forward as a counterweight
+      P({ bx: 29, by: 47, kn: 1, lean: -0.15, nh: [14, 18], bend: -1, hand: 'grip', rock: [13, 12], sh: [52, 45], skew: 0.05, rune: 1.7, eye: 1.4, hdx: -1, hdy: -1,
         chips: [{ x: 9, y: 26, s: 1, dirt: true }, { x: 15, y: 34, s: 1, dirt: true }], dust: [{ x: 10, y: 57, r: 3.2, f: 0.6 }], t: 0.3 }),
-      P({ by: 45, lean: -0.22, nh: [13, 17], bend: -1, hand: 'grip', rock: [12, 11], sh: [52, 41], skew: 0.06, rune: 2, eye: 2, eyeMode: 'roar', glint: true, hdx: -1, hdy: -1,
+      P({ bx: 28, by: 47, kn: 2, lean: -0.2, nh: [13, 16], bend: -1, hand: 'grip', rock: [12, 10], sh: [54, 44], skew: 0.08, rune: 2, eye: 2, eyeMode: 'roar', glint: true, hdx: -1, hdy: -1,
         chips: [{ x: 7, y: 33, s: 1, dirt: true }], t: 0.4 }),
-      P({ by: 46, lean: 0.06, twist: 0.5, nh: [30, 14], bend: -1, hand: 'grip', rock: [31, 9], sh: [49, 44], rune: 2, eye: 2, eyeMode: 'roar',
-        smear: [[12, 11], [15, 6], [20, 4], [26, 4]], t: 0.5 }),
-      P({ by: 47, lean: 0.22, twist: 1, nh: [48, 16], hand: 'open', sh: [45, 46], skew: -0.05, rune: 2, eye: 2, eyeMode: 'roar',
-        smear: [[31, 5], [38, 6], [43, 9], [46, 13]], chips: [{ x: 56, y: 10, s: 2, dirt: true }, { x: 59, y: 15, s: 1, dirt: true }, { x: 55, y: 6, s: 1, dirt: true }], t: 0.6 }),
-      P({ by: 48, lean: 0.3, twist: 1, nh: [50, 33], hand: 'open', sh: [44, 47], skew: -0.06, rune: 1.7, eye: 1.6,
-        dust: [{ x: 42, y: 59, r: 2.2 }, { x: 34, y: 59, r: 1.6 }], t: 0.7 }),
-      P({ by: 47, lean: 0.12, twist: 0.5, nh: [30, 46], sh: [46, 45], rune: 1.4, eye: 1.2, dust: [{ x: 44, y: 58, r: 2.4, f: 0.5 }], t: 0.8 }),
-      P({ rune: 1.1, t: 0.9 }),
+      // swing: hips drive forward, the boulder comes over the top
+      P({ bx: 31, by: 46, lean: 0.08, twist: 0.6, nh: [31, 12], bend: -1, hand: 'grip', rock: [32, 8], sh: [53, 46], skew: 0.02, rune: 2, eye: 2, eyeMode: 'roar', hdy: 1,
+        smear: [[11, 12], [14, 6], [20, 3], [27, 3]], t: 0.5 }),
+      // RELEASE: torso whipped forward, helm dips under the arm (the slit stays visible and
+      // flares), the throwing shoulder rolls over the top, the hand opens up-front (muzzle)
+      P({ bx: 33, by: 47, kn: 1, lean: 0.22, twist: 1, hdx: 1, hdy: 3, nh: RELEASE_HAND, bend: -1, hand: 'open', sh: [53, 47], skew: -0.04, rune: 2, eye: 2, eyeMode: 'roar', glint: true,
+        smear: [[29, 3], [35, 2], [40, 4], [43, 8]], chips: [{ x: 56, y: 8, s: 2, dirt: true }, { x: 59, y: 13, s: 1, dirt: true }, { x: 55, y: 3, s: 1, dirt: true }], t: 0.6 }),
+      // follow-through: the weight lands on the front foot, which skids forward in a puff of dust
+      P({ bx: 34, by: 48, kn: 2, lean: 0.27, twist: 1, hdx: 1, hdy: 2, nh: [50, 32], hand: 'open', ff: [39, GROUND], sh: [53, 47], skew: -0.06, rune: 1.7, eye: 1.6,
+        dust: [{ x: 45, y: 59, r: 2.6 }, { x: 40, y: 59, r: 1.6 }], t: 0.7 }),
+      P({ bx: 32, by: 47, kn: 1, lean: 0.12, twist: 0.5, hdy: 1, nh: [30, 46], ff: [38, GROUND], sh: [50, 47], rune: 1.4, eye: 1.2, dust: [{ x: 46, y: 58, r: 2.6, f: 0.55 }], t: 0.8 }),
+      P({ bx: 31, rune: 1.1, eye: 1.05, t: 0.9 }),
     ],
   },
 
@@ -232,14 +271,17 @@ const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> 
     fps: 10,
     loop: false,
     poses: [
-      P({ bx: 27, lean: -0.2, hdx: -1, eyeMode: 'hit', nh: [11, 45], sh: [44, 43], skew: -0.08, rune: 0.3, eye: 0.5,
-        chips: [{ x: 55, y: 33, s: 3 }, { x: 58, y: 40, s: 2 }, { x: 54, y: 27, s: 2 }, { x: 60, y: 46, s: 1 }],
-        dust: [{ x: 55, y: 36, r: 2.6 }, { x: 24, y: 59, r: 1.8 }], t: 0.1 }),
-      P({ bx: 28, lean: -0.14, hdx: -1, eyeMode: 'hit', nh: [12, 46], sh: [45, 43], skew: -0.05, rune: 0.5, eye: 0.6,
-        chips: [{ x: 59, y: 30, s: 2 }, { x: 60, y: 39, s: 2 }, { x: 57, y: 23, s: 1 }, { x: 61, y: 49, s: 1 }],
-        dust: [{ x: 58, y: 33, r: 3.2, f: 0.35 }, { x: 22, y: 58, r: 2.2, f: 0.4 }], t: 0.2 }),
-      P({ bx: 29, lean: -0.06, nh: [13, 47], sh: [46, 43], skew: -0.02, rune: 0.8, eye: 0.9,
-        chips: [{ x: 62, y: 33, s: 1 }, { x: 61, y: 54, s: 1 }], dust: [{ x: 60, y: 31, r: 3.6, f: 0.75 }], t: 0.3 }),
+      // the blow lands on the shield: the feet stay planted, the hips are shoved back and the
+      // statue tips back on its heels (top ~4 px further back than the feet), the helm drops,
+      // the eye goes dark, the shield is knocked in against the body
+      P({ bx: 28, by: 48, kn: -1, lean: -0.13, hdx: -1, hdy: 1, eyeMode: 'hit', eye: 0, nh: [11, 47], sh: [43, 47], skew: -0.1, rune: 0.3,
+        chips: [{ x: 53, y: 37, s: 3 }, { x: 56, y: 44, s: 2 }, { x: 52, y: 31, s: 2 }, { x: 58, y: 50, s: 1 }],
+        dust: [{ x: 53, y: 40, r: 2.6 }, { x: 25, y: 59, r: 1.8 }], t: 0.1 }),
+      P({ bx: 29, by: 47, lean: -0.08, hdx: -1, hdy: 1, eyeMode: 'hit', eye: 0.5, nh: [12, 47], sh: [45, 47], skew: -0.05, rune: 0.5,
+        chips: [{ x: 59, y: 34, s: 2 }, { x: 60, y: 43, s: 2 }, { x: 57, y: 27, s: 1 }, { x: 61, y: 53, s: 1 }],
+        dust: [{ x: 58, y: 37, r: 3.2, f: 0.35 }, { x: 23, y: 58, r: 2.2, f: 0.4 }], t: 0.2 }),
+      P({ bx: 30, lean: -0.03, nh: [13, 47], sh: [47, 47], skew: -0.02, rune: 0.8, eye: 0.9,
+        chips: [{ x: 62, y: 37, s: 1 }, { x: 61, y: 57, s: 1 }], dust: [{ x: 60, y: 35, r: 3.6, f: 0.75 }], t: 0.3 }),
       P({ rune: 1, t: 0.4 }),
     ],
   },
@@ -463,13 +505,39 @@ function upperBody(q: Canvas, o: Pose): void {
     // dark seam under the plate
     hl(-13, 13, -10, PAL.stone0);
     hl(-12, -5, -9, PAL.stone1);
-    // abdomen bands: lit top rows, dark seams
-    for (const yy of [-6, -3]) {
-      hl(-3, 9, yy, PAL.stone0);
-      hl(-10, -4, yy, PAL.stone1);
-      hl(-3, 7, yy + 1, PAL.stone2);
+    // abdomen masonry: three courses of blocks with staggered joints (brickwork). Each block:
+    // dark mortar seam on top and on its left joint, a lit top row, the lit flank on the left.
+    const pset = (x: number, y: number, c: number) => {
+      const [fx, fy] = L(x, y);
+      if (q.isOpaque(fx, fy)) q.set(fx, fy, c);
+    };
+    const courses: [number, number, number[]][] = [
+      [-8, -6, [-6, 1, 7]],
+      [-4, -2, [-9, -2, 5]],
+    ];
+    const sil = (y: number) => (y <= -7 ? 12 : y <= -4 ? 11 : 10);
+    for (const [y0, y1, joints] of courses) {
+      const xr = sil(y0);
+      if (y0 > -8) for (let x = -xr; x <= xr; x++) pset(x, y0 - 1, PAL.stone0);
+      for (let y = y0; y <= y1; y++) {
+        const r = sil(y);
+        for (let x = -r; x <= r; x++) {
+          const lit = x < -4;
+          let col: number = lit ? PAL.stone2 : PAL.stone1;
+          if (y === y0) col = lit ? PAL.stone3 : PAL.stone2;
+          pset(x, y, col);
+        }
+      }
+      for (const j of joints) {
+        for (let y = y0; y <= y1; y++) pset(j, y, PAL.stone0);
+        // the block right of the joint catches light on its left edge
+        pset(j + 1, y0 + 1, j + 1 < -4 ? PAL.stone3 : PAL.stone2);
+      }
     }
-    hl(-3, 7, -9, PAL.stone2);
+    // a chipped corner and a moss tuft in one mortar joint
+    pset(9, -6, PAL.stone0);
+    pset(-2, -5, PAL.leaf2);
+    pset(-1, -5, PAL.leaf1);
     // rune recess on the chest front (darker plate, lit lower-right lip)
     const [rx, ry] = L(1, -18);
     t.rect(rx - 1, ry - 1, 7, 7, PAL.stone1);
@@ -487,8 +555,10 @@ function upperBody(q: Canvas, o: Pose): void {
     cr(10, -19, PAL.stone0);
     cr(11, -18, PAL.stone0);
     cr(11, -17, PAL.stone0);
-    cr(-9, -4, PAL.stone1);
-    cr(-8, -3, PAL.stone1);
+    // chest plate built of two slabs: a joint across the lit flank
+    for (let x = -13; x <= -5; x++) cr(x, -14, PAL.stone2);
+    cr(-13, -13, PAL.stone4);
+    cr(-8, -13, PAL.stone2);
   });
   // ---- belt + tassets
   layer(q, (t) => {
@@ -516,9 +586,18 @@ function upperBody(q: Canvas, o: Pose): void {
     t.vline(PX + 5, PY + 3, PY + 7, PAL.stone2);
   });
   // ---- far pauldron, helm, near pauldron
-  layer(q, (t) => pauldronF(t, PX + 9, PY - 23 - b));
-  layer(q, (t) => helm(t, PX - 5 + o.hdx, PY - 31 - b + o.hdy));
-  layer(q, (t) => pauldronN(t, PX - 20, PY - 24 - b));
+  const pb = o.pb ?? b;
+  const hb = o.hb ?? b;
+  layer(q, (t) => pauldronF(t, PX + 9, PY - 23 - pb));
+  layer(q, (t) => helm(t, PX - 5 + o.hdx, PY - 31 - hb + o.hdy));
+  layer(q, (t) => {
+    pauldronN(t, PX - 20, PY - 24 - pb);
+    // a strand of moss hanging off the pauldron's front lip, swaying
+    const mx = PX - 9;
+    const my = PY - 13 - pb;
+    t.set(mx, my, PAL.leaf2).set(mx, my + 1, PAL.leaf1).set(mx + Math.round(o.moss * 0.6), my + 2, PAL.leaf1);
+    if (o.moss !== 0) t.set(mx + Math.sign(o.moss), my + 3, PAL.leaf0);
+  });
 }
 
 /** Shear-composite the local upper body into the frame. */
@@ -542,9 +621,9 @@ function toFrame(o: Pose, x: number, y: number): Pt {
   return [x + off + Math.round(o.bx - PX), y + Math.round(o.by - PY)];
 }
 
-function leg(q: Canvas, hip: Pt, foot: Pt, near: boolean): void {
+function leg(q: Canvas, hip: Pt, foot: Pt, near: boolean, kn = 0): void {
   const tone = near ? 2 : 1;
-  const knee: Pt = [lerp(hip[0], foot[0], 0.55) + 1, lerp(hip[1], foot[1] - 4, 0.6)];
+  const knee: Pt = [lerp(hip[0], foot[0], 0.55) + 1 + kn, lerp(hip[1], foot[1] - 4, 0.6)];
   const ank: Pt = [foot[0], foot[1] - 3];
   segment(q, hip, knee, 8, 7, tone);
   segment(q, knee, ank, 7, 7, tone);
@@ -733,14 +812,56 @@ function dustCloud(p: Canvas, puffs: Puff[]): void {
 
 // ---------------------------------------------------------------- the rig
 
+/** Near (throwing) arm: shoulder, elbow, wrist in frame px. The twist rolls the shoulder forward and up. */
+function armJoints(o: Pose): [Pt, Pt, Pt] {
+  const sh = toFrame(o, PX - 13 + o.twist * 6, PY - 17 - (o.pb ?? o.breath) - o.twist * 4);
+  const [el, wr] = ik(sh, o.nh, 10, 10, o.bend);
+  return [sh, el, wr];
+}
+
+/**
+ * Swing smear along `pts` (oldest first): a tapered streak 1 → 3.4 px wide, stone3 rim with a
+ * stone4 core toward the head; the thin tail is dithered away. Only paints empty pixels.
+ */
+function smearArc(p: Canvas, pts: Pt[]): void {
+  if (pts.length < 2) return;
+  const dense = bezier(pts[0], pts[Math.floor((pts.length - 1) / 3)], pts[Math.ceil(((pts.length - 1) * 2) / 3)], pts[pts.length - 1], 40);
+  const sm = new PixelCanvas(W, H);
+  const n = dense.length - 1;
+  for (const pass of [0, 1])
+    dense.forEach(([x, y], i) => {
+      const u = i / n;
+      const w = 1 + 2.4 * u;
+      if (pass === 0) sm.disc(x, y, w / 2, PAL.stone3);
+      else if (u > 0.4 && w > 2.2) sm.disc(x, y, w / 2 - 0.8, PAL.stone4);
+    });
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const c = sm.get(x, y);
+      if (c === null || p.isOpaque(x, y)) continue;
+      // dither the tail: find how far along the streak this pixel is
+      let best = 0;
+      let bd = 1e9;
+      dense.forEach(([dx, dy], i) => {
+        const d = (dx - x - 0.5) ** 2 + (dy - y - 0.5) ** 2;
+        if (d < bd) {
+          bd = d;
+          best = i / n;
+        }
+      });
+      if (best < 0.3 && (x + y) % 2 === 1) continue;
+      p.set(x, y, c);
+    }
+}
+
+
 function drawSentinel(p: Canvas, o: Pose): void {
   const twist = o.twist;
   // joints in frame space
-  const shN = toFrame(o, PX - 13 + twist * 8, PY - 17 - o.breath - twist);
-  const shF = toFrame(o, PX + 12, PY - 17 - o.breath);
+  const [shN, el, wr] = armJoints(o);
+  const shF = toFrame(o, PX + 12, PY - 17 - (o.pb ?? o.breath));
   const hipN: Pt = [o.bx - 5, o.by + 3];
   const hipF: Pt = [o.bx + 6, o.by + 3];
-  const [el, wr] = ik(shN, o.nh, 10, 10, o.bend);
   const nearArm = (q: Canvas) => {
     // articulated stone pieces, each separated by a dark seam
     const L = Math.hypot(wr[0] - el[0], wr[1] - el[1]) || 1;
@@ -765,15 +886,18 @@ function drawSentinel(p: Canvas, o: Pose): void {
   // far arm (behind everything): shoulder → shield grip
   layer(p, (q) => segment(q, shF, [o.sh[0] - 1, o.sh[1] - 2], 6, 6, 1), null);
   // legs
-  layer(p, (q) => leg(q, hipF, o.ff, false));
-  layer(p, (q) => leg(q, hipN, o.nf, true));
+  layer(p, (q) => leg(q, hipF, o.ff, false, o.kn));
+  layer(p, (q) => leg(q, hipN, o.nf, true, o.kn));
   // upper body (sheared)
   const ub = new PixelCanvas(W, H);
   upperBody(ub, o);
   merge(p, shearInto(ub, o), PAL.stone0);
+  // snapshots for the light pass: glows only show where nothing was drawn over them later
+  const ubSnap = p.clone();
   if (o.armBehind) layer(p, nearArm, PAL.ink);
   // shield
   layer(p, (q) => shield(q, o), PAL.ink);
+  const shSnap = p.clone();
   // rock spikes from the slam (composited over the dust at the end)
   const spikes = new PixelCanvas(W, H);
   if (o.spikes > 0) {
@@ -814,18 +938,18 @@ function drawSentinel(p: Canvas, o: Pose): void {
         const [fx, fy] = toFrame(o, rx + i, ry + j);
         // the stem burns one step hotter
         const hot = i === 2 ? glowCol(o.rune + 0.5) : runeCol;
-        if (p.isOpaque(fx, fy)) p.set(fx, fy, hot ?? runeCol);
+        if (p.isOpaque(fx, fy) && p.get(fx, fy) === ubSnap.get(fx, fy)) p.set(fx, fy, hot ?? runeCol);
       }
     });
   }
   // eye slit
   const hx = PX - 5 + o.hdx;
-  const hy = PY - 31 - o.breath + o.hdy;
+  const hy = PY - 31 - (o.hb ?? o.breath) + o.hdy;
   for (const [cx, cy, w] of slitCells(o.eyeMode)) {
     const col = glowCol(o.eye * w);
     const [fx, fy] = toFrame(o, hx + cx, hy + cy);
-    if (!p.isOpaque(fx, fy)) continue;
-    p.set(fx, fy, col ?? PAL.stone0);
+    if (!p.isOpaque(fx, fy) || p.get(fx, fy) !== ubSnap.get(fx, fy)) continue;
+    p.set(fx, fy, col ?? (o.eyeMode === 'hit' ? PAL.stone1 : PAL.stone0));
   }
   // eye glint on a blazing roar frame
   if (o.glint) {
@@ -836,7 +960,7 @@ function drawSentinel(p: Canvas, o: Pose): void {
   // shield rune
   const sCol = glowCol(o.srune);
   if (sCol !== null) {
-    for (const [x, y, stem] of shieldRuneCells(o)) if (p.isOpaque(x, y)) p.set(x, y, stem ? glowCol(o.srune + 0.5) ?? sCol : sCol);
+    for (const [x, y, stem] of shieldRuneCells(o)) if (p.isOpaque(x, y) && p.get(x, y) === shSnap.get(x, y)) p.set(x, y, stem ? glowCol(o.srune + 0.5) ?? sCol : sCol);
   }
   // rune sparks rising off the chest (roar)
   if (o.sparks > 0) {
@@ -850,14 +974,7 @@ function drawSentinel(p: Canvas, o: Pose): void {
     }
   }
   // swing smear
-  if (o.smear.length > 1) {
-    const pts = o.smear;
-    for (let i = 0; i + 1 < pts.length; i++) {
-      const w = 1 + (i / (pts.length - 1)) * 2.4;
-      const col = i >= pts.length - 2 ? PAL.stone4 : PAL.stone3;
-      p.thickLine(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], w, col);
-    }
-  }
+  smearArc(p, o.smear);
   // dust (soft, no outline), then the spikes punch through it
   dustCloud(p, o.dust);
   p.blit(spikes, 0, 0);
@@ -899,6 +1016,15 @@ function portrait(p: Canvas): void {
 
 // ---------------------------------------------------------------- export
 
+const IMPACT = 6;
+/** Where the boulder leaves the open hand in the impact frame (fingertips). */
+const MUZZLE = (() => {
+  const o = ANIMS.attack.poses[IMPACT];
+  const [, el, wr] = armJoints(o);
+  const a = Math.atan2(wr[1] - el[1], wr[0] - el[0]);
+  return { x: Math.round(wr[0] + Math.cos(a) * 5), y: Math.round(wr[1] + Math.sin(a) * 5) };
+})();
+
 const art: MonsterArt = {
   id: 'stone_sentinel',
   w: W,
@@ -906,7 +1032,7 @@ const art: MonsterArt = {
   anchorX: 30,
   anchorY: GROUND,
   hover: 0,
-  muzzle: { x: 52, y: 13 },
+  muzzle: MUZZLE,
   core: { x: 31, y: 36 },
   anims: {
     idle: { frames: ANIMS.idle.poses.length, fps: ANIMS.idle.fps, loop: true },
@@ -915,7 +1041,7 @@ const art: MonsterArt = {
     hit: { frames: ANIMS.hit.poses.length, fps: ANIMS.hit.fps, loop: false },
     guard: { frames: ANIMS.guard.poses.length, fps: ANIMS.guard.fps, loop: true },
   },
-  attackImpactFrame: 6,
+  attackImpactFrame: IMPACT,
   draw(p: Canvas, anim: MonsterAnim, frame: number) {
     const poses = ANIMS[anim].poses;
     drawSentinel(p, poses[Math.max(0, Math.min(poses.length - 1, frame))]);

@@ -140,6 +140,10 @@ function idlePose(f: number, n: number): Pose {
   });
 }
 
+/** Idle frame 0 — every one-shot starts from it and returns to it (no pop when switching anims). */
+const IDLE0 = idlePose(0, 8);
+const I0 = (o: Partial<Pose>): Pose => ({ ...IDLE0, ...o });
+
 const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> = {
   idle: { fps: 7, loop: true, poses: Array.from({ length: 8 }, (_, f) => idlePose(f, 8)) },
 
@@ -149,16 +153,16 @@ const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> 
     fps: 10,
     loop: false,
     poses: [
-      P({ t: 0.0 }),
+      I0({ t: 0.0 }),
       P({ py: 58, lean: 0.1, hdy: 1, nh: [23, 60], nd: 1.3, fh: [57, 60], core: 0.5, seam: 0.6, eye: 0.8, t: 0.1 }),
-      P({ py: 55, lean: -0.06, head: 'blaze', nh: [14, 40], nd: -2.1, fh: [68, 38], fd: -0.9, core: 1.4, seam: 1.3, eye: 1.6, flare: 0.5, t: 0.2 }),
+      P({ py: 55, lean: -0.06, head: 'blaze', nh: [16, 40], nd: -2.1, fh: [66, 38], fd: -0.9, core: 1.4, seam: 1.3, eye: 1.6, flare: 0.5, t: 0.2 }),
       P({ py: 54, lean: -0.12, hdx: -1, hdy: -2, head: 'roar', nh: [13, 13], nd: -1.85, fh: [66, 12], fd: -1.25, core: 2, seam: 2, eye: 2, flare: 1.3, t: 0.3 }),
-      P({ py: 54, lean: -0.13, hdx: -1, hdy: -2, head: 'roar', nh: [12, 12], nd: -1.85, fh: [67, 11], fd: -1.25, core: 2, seam: 1.8, eye: 2, flare: 1.6, t: 0.4 }),
+      P({ py: 54, lean: -0.13, hdx: -1, hdy: -2, head: 'roar', nh: [12, 13], nd: -1.85, fh: [67, 12], fd: -1.25, core: 2, seam: 1.8, eye: 2, flare: 1.6, t: 0.4 }),
       P({ py: 56, lean: 0.04, head: 'roar', nh: [27, 40], nd: 0.15, fh: [66, 24], fd: -1.0, core: 2.3, seam: 2, eye: 2, flare: 1.2, beat: 1, t: 0.5 }),
       P({ py: 56, lean: 0.02, head: 'roar', nh: [14, 35], nd: -2.2, fh: [53, 39], fd: Math.PI - 0.15, farFront: true, core: 2.3, seam: 1.9, eye: 2, flare: 1.1, beat: 2, t: 0.6 }),
       P({ py: 56, lean: 0.04, head: 'roar', nh: [27, 40], nd: 0.15, fh: [66, 26], fd: -1.0, core: 2.3, seam: 2, eye: 2, flare: 1.0, beat: 1, t: 0.7 }),
       P({ py: 56, lean: 0.02, head: 'blaze', nh: [22, 51], nd: 1.5, fh: [60, 47], fd: 1.2, core: 1.4, seam: 1.3, eye: 1.4, flare: 0.4, t: 0.8 }),
-      P({ core: 1.1, seam: 1.1, flare: 0.1, t: 0.9 }),
+      I0({ core: 1.1, seam: 1.1, flare: 0.1, t: 0.9 }),
     ],
   },
 
@@ -170,10 +174,10 @@ const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> 
     fps: 12,
     loop: false,
     poses: [
-      P({ t: 0 }),
-      P({ px: 36, lean: -0.08, twist: -0.5, head: 'blaze', nh: [17, 46], nd: 2.5, fh: [59, 47], fd: -0.6, ff: [52, 75], core: 1.3, seam: 1.2, eye: 1.3, heat: 0.25, t: 0.1 }),
-      P({ px: 35, py: 57, lean: -0.15, twist: -1, hdx: -1, head: 'blaze', nh: [18, 25], nd: -2.0, fh: [58, 43], fd: -0.4, ff: [53, 73], nf: [27, GROUND], core: 1.8, seam: 1.5, eye: 1.6, flare: 0.25, heat: 0.55, t: 0.2 }),
-      P({ px: 35, py: 57, lean: -0.17, twist: -1, hdx: -1, head: 'blaze', nh: [17, 24], nd: -2.05, fh: [58, 43], fd: -0.4, ff: [53, 73], nf: [27, GROUND], core: 2, seam: 1.7, eye: 1.8, flare: 0.4, heat: 0.8, t: 0.3 }),
+      I0({ t: 0 }),
+      P({ px: 38, lean: -0.08, twist: -0.5, head: 'blaze', nh: [21, 46], nd: 2.6, fh: [59, 47], fd: -0.6, ff: [52, 75], core: 1.3, seam: 1.2, eye: 1.3, heat: 0.25, t: 0.1 }),
+      P({ px: 37, py: 57, lean: -0.16, twist: -1, hdx: -1, head: 'blaze', nh: [21, 25], nd: -2.0, fh: [58, 43], fd: -0.4, ff: [53, 73], nf: [27, GROUND], core: 1.8, seam: 1.5, eye: 1.6, flare: 0.25, heat: 0.55, t: 0.2 }),
+      P({ px: 37, py: 57, lean: -0.18, twist: -1, hdx: -1, head: 'blaze', nh: [20, 24], nd: -2.05, fh: [58, 43], fd: -0.4, ff: [53, 73], nf: [27, GROUND], core: 2, seam: 1.7, eye: 1.8, flare: 0.4, heat: 0.8, t: 0.3 }),
       P({ px: 39, py: 57, lean: 0.1, twist: 0.4, head: 'blaze', hxy: [48, 27], headFront: true, nh: [45, 38], nd: -0.15, fh: [53, 50], fd: 2.6, ff: [55, GROUND], nf: [26, GROUND], core: 2, seam: 1.6, eye: 2, flare: 0.4, heat: 0.75,
         smear: [[17, 21], [20, 13], [29, 10], [39, 15], [45, 26]], stomp: 1, t: 0.4 }),
       P({ px: 41, py: 57, lean: 0.2, twist: 1, head: 'snarl', hxy: [52, 26], headFront: true, nh: [64, 40], nd: 0.05, fh: [51, 52], fd: 2.4, ff: [56, GROUND], nf: [25, GROUND], core: 2, seam: 2, eye: 2, flare: 0.6, heat: 1, burst: 1,
@@ -181,7 +185,7 @@ const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> 
       P({ px: 41, py: 57, lean: 0.21, twist: 1, head: 'snarl', hxy: [52, 26], headFront: true, nh: [65, 41], nd: 0.05, fh: [51, 52], fd: 2.4, ff: [56, GROUND], nf: [25, GROUND], core: 1.8, seam: 1.8, eye: 2, flare: 0.4, heat: 0.85, burst: 0.6, t: 0.6 }),
       P({ px: 40, py: 57, lean: 0.14, twist: 0.7, head: 'blaze', hxy: [50, 28], headFront: true, nh: [62, 47], nd: 0.6, fh: [54, 52], fd: 2.0, ff: [55, GROUND], nf: [26, GROUND], core: 1.5, seam: 1.4, eye: 1.6, heat: 0.45, burst: 0.25, t: 0.7 }),
       P({ px: 38, py: 57, lean: 0.05, twist: 0.2, nh: [31, 56], nd: 1.4, fh: [59, 54], fd: 1.6, ff: [52, GROUND], core: 1.2, seam: 1.1, eye: 1.2, heat: 0.15, t: 0.8 }),
-      P({ t: 0.9 }),
+      I0({ t: 0.9 }),
     ],
   },
 
@@ -190,13 +194,13 @@ const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> 
     fps: 10,
     loop: false,
     poses: [
-      P({ px: 34, lean: -0.17, head: 'hit', hdx: -1, nh: [16, 53], nd: 2.3, fh: [64, 48], fd: -0.2, core: 0.4, seam: 2, eye: 0.3,
+      P({ px: 35, lean: -0.17, head: 'hit', hdx: -1, nh: [19, 53], nd: 2.3, fh: [64, 48], fd: -0.2, core: 0.4, seam: 2, eye: 0.3,
         chips: [{ x: 63, y: 29, s: 3 }, { x: 67, y: 37, s: 2 }, { x: 60, y: 23, s: 2 }, { x: 67, y: 30, s: 1, hot: true }, { x: 64, y: 41, s: 1, hot: true }], t: 0.1 }),
       P({ px: 34, lean: -0.13, head: 'hit', nh: [16, 55], nd: 2.0, fh: [63, 51], fd: 0.4, core: 0.7, seam: 1.5, eye: 0.3,
         chips: [{ x: 68, y: 24, s: 3 }, { x: 72, y: 34, s: 2 }, { x: 64, y: 16, s: 2 }, { x: 73, y: 26, s: 1, hot: true }, { x: 70, y: 41, s: 1, hot: true }], t: 0.2 }),
       P({ px: 35, lean: -0.07, nh: [18, 57], nd: 1.6, fh: [62, 54], fd: 1.0, core: 0.9, seam: 1.2, eye: 0.9,
-        chips: [{ x: 72, y: 23, s: 2 }, { x: 76, y: 36, s: 1 }, { x: 67, y: 13, s: 1 }, { x: 77, y: 27, s: 1, hot: true }], t: 0.3 }),
-      P({ px: 36, lean: -0.02, core: 1, seam: 1, t: 0.4 }),
+        chips: [{ x: 72, y: 23, s: 2 }, { x: 74, y: 36, s: 1 }, { x: 67, y: 13, s: 1 }, { x: 76, y: 28, s: 1, hot: true }], t: 0.3 }),
+      I0({ px: 36, lean: -0.02, t: 0.4 }),
     ],
   },
 
@@ -224,7 +228,7 @@ const ANIMS: Record<MonsterAnim, { fps: number; loop: boolean; poses: Pose[] }> 
         farFront: true,
         nf: [27, GROUND],
         ff: [51, GROUND],
-        core: 1 + 0.3 * s,
+        core: 1.45 + 0.3 * s,
         seam: 0.85 + 0.12 * s,
         eye: 1,
         drip: t,
