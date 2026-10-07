@@ -414,8 +414,13 @@ export interface ShatterPxOpts {
   sound?: boolean;
   /** Colour of the glitch / burst flash frames (default white). */
   flashColor?: number;
+  /** 'fill' = solid silhouette flash (hologram look, default); 'tint' = multiplied colour glow
+   *  (rock / embers keep their texture instead of turning into a flat blob). */
+  flashMode?: 'fill' | 'tint';
   /** After `after` ms the bricks are sucked toward (x, y) and vanish there (void implosion). */
   attract?: { x: number; y: number; after: number; k?: number };
+  /** The burst ring + star at the core (default true; off for crumbling rock / melting). */
+  ring?: boolean;
 }
 
 let shSeq = 0;
@@ -449,6 +454,7 @@ export async function shatterPx(scene: Phaser.Scene, u: MonsterUnit, o: ShatterP
   const bounds = pc.bounds() ?? { x: 0, y: 0, w: W, h: H };
   // ---- glitch
   const glitchMs = o.glitchMs ?? 120;
+  const fillMode = o.flashMode !== 'tint';
   sprite.setVisible(false);
   if (glitchMs > 0) {
     const slices: { img: Phaser.GameObjects.Image; ghost: Phaser.GameObjects.Image }[] = [];
@@ -478,8 +484,14 @@ export async function shatterPx(scene: Phaser.Scene, u: MonsterUnit, o: ShatterP
               s.ghost.setAlpha(split ? 0.7 : 0);
               s.ghost.x = s.img.x + (rnd() < 0.5 ? -2 : 2);
               s.ghost.setTintFill(rnd() < 0.5 ? PAL.mag3 : PAL.cyan3);
-              if (el > glitchMs - 40) s.img.setTintFill(o.flashColor ?? PAL.white);
-              else if (rnd() < 0.12) s.img.setTintFill(ramp[3]);
+              if (el > glitchMs - 40) {
+                if (fillMode) s.img.setTintFill(o.flashColor ?? PAL.white);
+                else s.img.setTint(o.flashColor ?? PAL.white);
+              }
+              else if (rnd() < 0.12) {
+                if (fillMode) s.img.setTintFill(ramp[3]);
+                else s.img.setTint(ramp[3]);
+              }
               else s.img.clearTint();
             }
           }
@@ -527,7 +539,10 @@ export async function shatterPx(scene: Phaser.Scene, u: MonsterUnit, o: ShatterP
         if (!tex.has(name)) tex.add(name, 0, x, y, bw, bh);
         const c = toWorld(x + bw / 2, y + bh / 2);
         const img = scene.add.image(c.x, c.y, key, name).setFlipX(flip).setScale(sx, sy).setDepth(depth);
-        if (doFlash) img.setTintFill(o.flashColor ?? PAL.white);
+        if (doFlash) {
+          if (fillMode) img.setTintFill(o.flashColor ?? PAL.white);
+          else img.setTint(o.flashColor ?? PAL.white);
+        }
         const dx = c.x - core.x;
         const dy = c.y - core.y;
         const d = Math.hypot(dx, dy) || 1;
@@ -562,8 +577,10 @@ export async function shatterPx(scene: Phaser.Scene, u: MonsterUnit, o: ShatterP
       motes.add({ x: p.x, y: p.y, vx: rr(-10, 10), vy: rr(-45, -12), drag: 0.6, delay: rr(0, 200), life: rr(500, 1000), colors: [ramp[4], ramp[3], ramp[2]], shape: rnd() < 0.3 ? 'plus' : 'px', size: 1, flicker: true });
     }
   }
-  shards.add({ x: core.x, y: core.y, life: 300, size: 6, grow: 110, shape: 'ring', colors: [PAL.white, ramp[4], ramp[3]], alpha: 0.9 });
-  shards.add({ x: core.x, y: core.y, life: 180, size: 14, grow: -60, shape: 'star', colors: [PAL.white, ramp[4]], rot: Math.PI / 4, fadeAt: 0.3 });
+  if (o.ring !== false) {
+    shards.add({ x: core.x, y: core.y, life: 300, size: 6, grow: 110, shape: 'ring', colors: [PAL.white, ramp[4], ramp[3]], alpha: 0.9 });
+    shards.add({ x: core.x, y: core.y, life: 180, size: 14, grow: -60, shape: 'star', colors: [PAL.white, ramp[4]], rot: Math.PI / 4, fadeAt: 0.3 });
+  }
   motes.release();
   shards.release();
   void shake(scene, 200, o.shakePx ?? 2);
@@ -618,8 +635,13 @@ export async function shatterPx(scene: Phaser.Scene, u: MonsterUnit, o: ShatterP
             }
           }
           if (doFlash) {
-            if (f <= 2) b.img.setTintFill(o.flashColor ?? PAL.white);
-            else if (f <= 4) b.img.setTintFill(ramp[3]);
+            if (f <= 2) {
+              if (fillMode) b.img.setTintFill(o.flashColor ?? PAL.white);
+              else b.img.setTint(o.flashColor ?? PAL.white);
+            } else if (f <= 4) {
+              if (fillMode) b.img.setTintFill(ramp[3]);
+              else b.img.setTint(ramp[3]);
+            }
             else if (f <= 6) b.img.setTint(ramp[4]);
             else if (f === 7) b.img.clearTint();
           }

@@ -31,11 +31,13 @@ import {
   currentPixels,
   facing,
   flavoredDeath,
+  frameOffset,
   frameMs,
   holdFrame,
   layer,
   len,
   lerp,
+  lerpXY,
   norm,
   onFrame,
   otherPlayer,
@@ -255,9 +257,15 @@ registerCardHook('coral_serpent', 'attack', async (ctx: BattleCtx) => {
   ctx.take('attack')?.destroy();
   const to: XY = target && target.sprite.visible ? target.core() : tTile ? { x: tTile.home.x, y: tTile.home.y - 10 } : fx.zoneCenter(defender, 'monster', ev.targetZone ?? 1);
   const duelist = fx.duelistPoint(ctx, defender);
-  // the jet keeps going past the duelist a little so it visibly drills into them
-  const dir = norm(sub(duelist, to));
-  const through = { x: duelist.x + dir.x * 4, y: duelist.y + dir.y * 4 };
+  // the jet punches on along its own line (a pierce, not a ricochet), bending only slightly
+  // toward the duelist so it still lands on them
+  const mOff = frameOffset(u, u.art.muzzle.x, u.art.muzzle.y);
+  const mouth0 = { x: u.rest0.x + mOff.x, y: u.rest0.y + mOff.y };
+  const line = norm(sub(to, mouth0));
+  const reach = len(sub(duelist, to));
+  const straight = { x: to.x + line.x * reach, y: to.y + line.y * reach };
+  const through = lerpXY(straight, duelist, 0.45);
+  const dir = norm(sub(through, to));
   void ctx.focus({ x: lerp(u.core().x, duelist.x, 0.45), y: lerp(u.core().y, duelist.y, 0.45) }, { zoom: 1.05, ms: 320, pan: 0.3 });
   const pending: Promise<unknown>[] = [];
   const jdir = norm(sub(to, u.core()));
@@ -276,10 +284,10 @@ registerCardHook('coral_serpent', 'attack', async (ctx: BattleCtx) => {
     onPierce: (at) => {
       // "DELİCİ": the jet bursts out of the defender into the duelist
       playSfx('impactHeavy', { volume: 0.7, pitch: 0.9 });
-      pending.push(directHit(sc, defender, { at: duelist }));
+      pending.push(directHit(sc, defender, { at }));
       waterSplash(sc, at, { dir, floor: at.y + 24, power: 3 });
       void ctx.views.duelists?.get(defender).jolt();
-      pending.push(ctx.play(dmgIdx, { at: { x: duelist.x, y: duelist.y - 22 }, battle: true }));
+      pending.push(ctx.play(dmgIdx, { at: { x: at.x, y: at.y - 22 }, battle: true }));
     },
   });
   for (const i of destroyIdx) if (i !== tDestroy) pending.push(ctx.play(i));
@@ -292,7 +300,8 @@ registerCardHook('coral_serpent', 'attack', async (ctx: BattleCtx) => {
 
 // ================================================================ death: dissolving into sea foam
 
-const FOAM = [PAL.white, PAL.water4, PAL.mist] as const;
+const FOAM = [PAL.water2, PAL.water3, PAL.water4, PAL.mist, PAL.white] as const;
+const lum = (c: number): number => (((c >> 16) & 255) * 0.299 + ((c >> 8) & 255) * 0.587 + (c & 255) * 0.114) / 255;
 
 registerCardHook('coral_serpent', 'destroyed', (ctx) =>
   flavoredDeath(ctx, async (d) => {
@@ -324,19 +333,27 @@ registerCardHook('coral_serpent', 'destroyed', (ctx) =>
       }
       foam.clear();
       const level = b.y + b.h - (b.h + 8) * E.inOutQ(t);
+      const step = Math.floor(el / 60); // the foam boils (re-rolls its bubbles) every 60 ms
       for (let y = b.y; y < b.y + b.h; y++)
         for (let x = b.x; x < b.x + b.w; x++) {
-          if (!pc.isOpaque(x, y)) continue;
+          const c = pc.get(x, y);
+          if (c === null) continue;
           const k = y + noise(x, y) * 8;
-          if (k > level + 4) foam.set(x, y, FOAM[(x + y) % 3]);
-          else if (k > level) foam.set(x, y, PAL.water4, 160);
+          if (k > level + 4) {
+            // keep the body's shading: dark → deep water, lit → white foam
+            const l = lum(c);
+            let i = l < 0.1 ? 0 : Math.min(4, Math.floor(l * 4.5) + 1);
+            const h = noise(x + step * 13, y - step * 7);
+            if (h < 0.07) i = Math.max(0, i - 2); // a bubble pops
+            else if (h > 0.94) i = 4; // a glint
+            foam.set(x, y, FOAM[i]);
+          } else if (k > level) foam.set(x, y, k > level + 2 ? PAL.white : PAL.water4, 220); // the wet crest
         }
       ov.redraw(foam);
       if (dt > 0 && R2()) {
         const p = u.framePoint(b.x + RR(0, b.w), clamp(level + RR(0, 10), b.y, b.y + b.h));
         bubbles.add({ x: p.x, y: p.y, vx: RR(-6, 6), vy: RR(-40, -18), drag: 0.5, life: RR(400, 700), colors: [PAL.white, PAL.water4, PAL.water3], shape: 'ring', size: RR(1, 2), flicker: true });
       }
-      void el;
     });
     bubbles.release();
     const foamed = pc.clone();

@@ -49,6 +49,7 @@ import {
   type ActCtx,
   type Px,
   type StrikeArgs,
+  impactPoint,
 } from './_kit';
 
 const VOLT = [PAL.cyan1, PAL.cyan2, PAL.cyan3, PAL.cyan4, PAL.white] as const;
@@ -226,7 +227,7 @@ async function voltStrike(s: StrikeArgs): Promise<void> {
     const m = u.muzzle();
     const dir = vnorm(vsub(hitPt, m));
     const end = s.blocked ? { x: hitPt.x - dir.x * 7, y: hitPt.y - dir.y * 5 } : hitPt;
-    s.impact(hitPt);
+    s.impact(impactPoint(s, hitPt));
     s.ctx.sfx('lightning', { volume: 1 });
     s.ctx.sfx('thunder', { volume: 0.45, pitch: 1.4 });
     void flash(sc, 90, PAL.cyan4, 0.16, DEPTH.OVERLAY - 2);

@@ -45,6 +45,7 @@ import {
   vnorm,
   vsub,
   type StrikeArgs,
+  impactPoint,
 } from './_kit';
 
 const WIND = [PAL.teal2, PAL.teal3, PAL.teal4, PAL.white] as const;
@@ -283,7 +284,7 @@ async function hawkStrike(s: StrikeArgs): Promise<void> {
     if (s.blocked) {
       pose(u, 'hit', 0);
       spr.setAngle(-20 * d);
-      s.impact(hitPt);
+      s.impact(impactPoint(s, hitPt));
       feathers(sp, u.core(), 6, { spread: 90 });
       s.ctx.sfx('windGust', { volume: 0.5, pitch: 1.6 });
       // flung back, tumbling
@@ -307,7 +308,7 @@ async function hawkStrike(s: StrikeArgs): Promise<void> {
     } else {
       pose(u, 'attack', 5);
       spr.setAngle(-6 * d);
-      s.impact(hitPt);
+      s.impact(impactPoint(s, hitPt));
       s.ctx.sfx('slash', { volume: 0.7, pitch: 1.35 });
       s.ctx.sfx('windGust', { volume: 0.6, pitch: 1.4 });
       // "Beyaz-yeşil rüzgâr kesikleri hedefi yarar": three wind cuts across the target

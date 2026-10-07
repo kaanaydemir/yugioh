@@ -59,6 +59,7 @@ const scenarios: Record<string, Scenario> = {
   saMagusDef: duel('Uçurum Küresi vs a defending Taş Muhafız (2300 > 2100)', 'abyss_magus', def('stone_sentinel')),
   saMagusBlocked: duel('Uçurum Büyücüsü vs Kristal Ejder: orb fizzles, magus destroyed (void death)', 'abyss_magus', 'crystal_wyrm'),
   saMagusDirect: duel('Uçurum Küresi direct attack', 'abyss_magus', null),
+  saMagusP2Direct: duel('player 2 Uçurum Küresi direct attack (orb flies down-left at the duelist)', 'abyss_magus', null, { p2: true }),
   saMagusP2: duel('player 2 Uçurum Küresi on Mercan Yılanı', 'abyss_magus', 'coral_serpent', { p2: true }),
   saMagusEffect: {
     desc: 'Uçurum Büyücüsü tribute summon → shadow tendril swallows a set trap',
@@ -82,6 +83,8 @@ const scenarios: Record<string, Scenario> = {
   saTitanBlocked: duel('Magma Titanı punches Kristal Ejder: bounced, titan crumbles into cooling rock', 'magma_titan', 'crystal_wyrm'),
   saTitanEqual: duel('Magma Titanı vs a defending Taş Muhafız with equal 2100: nothing breaks', 'magma_titan', def('stone_sentinel')),
   saTitanDirect: duel('Lav Yumruğu direct attack (charges across the field)', 'magma_titan', null),
+  saTitanP2Direct: duel('player 2 Lav Yumruğu direct attack (charges down-left to the duelist)', 'magma_titan', null, { p2: true }),
+  saTitanP2Blocked: duel('player 2 Magma Titanı punches a defending Kristal Ejder (DEF 2300): bounced, 200 back (mirrored)', 'magma_titan', def('crystal_wyrm'), { p2: true }),
   saTitanP2: duel('player 2 Lav Yumruğu on Kor Kurdu (mirrored)', 'magma_titan', 'ember_wolf', { p2: true }),
   saTitanWide: duel('Magma Titanı from zone 2 straight up to zone 2 (vertical approach)', 'magma_titan', 'lumen_sprite', { az: 2, tz: 2 }),
   saTitanSummon: {
@@ -107,6 +110,7 @@ const scenarios: Record<string, Scenario> = {
   saCoralBlocked: duel('Gelgit Mızrağı splashes off a defending Taş Muhafız (100 back)', 'coral_serpent', def('stone_sentinel')),
   saCoralLose: duel('Mercan Yılanı vs Uçurum Büyücüsü: serpent destroyed (foam death)', 'coral_serpent', 'abyss_magus'),
   saCoralDirect: duel('Gelgit Mızrağı direct attack', 'coral_serpent', null),
+  saCoralP2Direct: duel('player 2 Gelgit Mızrağı direct attack', 'coral_serpent', null, { p2: true }),
   saCoralP2: duel('player 2 Gelgit Mızrağı pierces a defending Gölge Suikastçı', 'coral_serpent', def('shade_assassin'), { p2: true }),
 
   // ---------------------------------------------------------------- Kor Kurdu
@@ -115,6 +119,8 @@ const scenarios: Record<string, Scenario> = {
   saWolfBlocked: duel('Kor Kurdu bites a defending Taş Muhafız: bounced, 400 back', 'ember_wolf', def('stone_sentinel')),
   saWolfLose: duel('Kor Kurdu vs Magma Titanı: wolf destroyed (flames gutter out)', 'ember_wolf', 'magma_titan'),
   saWolfDirect: duel('Kor Dişi direct attack', 'ember_wolf', null),
+  saWolfP2Direct: duel('player 2 Kor Dişi direct attack (runs down-left to the duelist)', 'ember_wolf', null, { p2: true }),
+  saWolfP2Blocked: duel('player 2 Kor Kurdu bounces off a defending Taş Muhafız (mirrored knock-back)', 'ember_wolf', def('stone_sentinel'), { p2: true }),
   saWolfP2: duel('player 2 Kor Dişi on Gelgit Golemi (attack position) → burn', 'ember_wolf', 'tide_golem', { p2: true }),
   saWolfGuard: duel('player 2 Işık Perisi attacks Kor Kurdu: the wolf wins as defender and howls', 'lumen_sprite', 'ember_wolf', { p2: true }),
 
@@ -123,6 +129,7 @@ const scenarios: Record<string, Scenario> = {
   saGolemBlocked: duel('Gelgit Golemi vs Kor Kurdu: wave breaks, golem destroyed (melts)', 'tide_golem', 'ember_wolf'),
   saGolemDef: duel('Dalga Darbesi vs a face-down Işık Perisi (DEF 600)', 'tide_golem', def('lumen_sprite', false)),
   saGolemDirect: duel('Dalga Darbesi direct attack', 'tide_golem', null),
+  saGolemP2Direct: duel('player 2 Dalga Darbesi direct attack (the wave rolls off the board)', 'tide_golem', null, { p2: true }),
   saGolemP2: duel('player 2 Dalga Darbesi on Fırtına Atmacası', 'tide_golem', 'storm_hawk', { p2: true }),
   saGolemCounter: duel('Kor Kurdu hits a defending Gelgit Golemi: blocked + counter-splash 300', 'ember_wolf', def('tide_golem')),
   saGolemCounterDead: duel('Magma Titanı breaks a defending Gelgit Golemi: counter-splash from its puddle', 'magma_titan', def('tide_golem')),

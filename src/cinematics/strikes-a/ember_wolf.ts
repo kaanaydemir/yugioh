@@ -149,7 +149,8 @@ registerStrike('ember_wolf', async (s: StrikeArgs) => {
     // 2. launch (f4): a flaming arc toward the target, fire trail on the floor
     holdFrame(u, 'attack', 4);
     playSfx('whoosh', { volume: 0.8, pitch: 1.2 });
-    void afterimages(sc, spr, dashMs + 30, PAL.fire3, { every: 28, alpha: 0.55 });
+    // flame-tinted ghosts (sparse + dim: additive ghosts stacking up would bleach the wolf white)
+    void afterimages(sc, spr, dashMs + 30, PAL.fire2, { every: 40, alpha: 0.38, life: 150 });
     void bite(sc, s.to.x - sgn * 1, s.to.y + 1, PAL.fire3, { snapAt: dashMs + 10, size: 12 });
     let lastMark = { ...back };
     await animate(sc, dashMs, (t) => {
@@ -338,7 +339,9 @@ registerCardHook('ember_wolf', 'destroyed', (ctx) =>
       glitchMs: 70,
       speed: 0.8,
       up: [20, 55],
-      flashColor: PAL.fire4,
+      flashColor: PAL.fire4, // a last ember glow through the ash, not a hologram flash: the fire is out
+      flashMode: 'tint',
+      ring: false,
       shards: 12,
       shardColors: [PAL.stone3, PAL.stone2, PAL.stone1, PAL.night2],
     });

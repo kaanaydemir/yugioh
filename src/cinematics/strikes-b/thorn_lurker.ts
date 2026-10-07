@@ -16,14 +16,15 @@
 import Phaser from 'phaser';
 import { PAL, RAMPS } from '../../art/palette';
 import { DEPTH, type XY, unitDepth, zoneXY } from '../../view/layout';
-import { shake } from '../../vfx/core';
-import { slash, whiteFlash } from '../../vfx/combat';
-import { vineBurst } from '../../vfx/setpieces';
+import { shake, tween } from '../../vfx/core';
+import { impact, slash, whiteFlash } from '../../vfx/combat';
+import type { SfxName, SfxOpts } from '../../audio/sfx';
 import type { GameEvent } from '../../engine/types';
 import { fx, registerCardHook, registerStrike } from '../api';
 import {
   E,
   Sparks,
+  TAU,
   animate,
   cbez,
   clamp,
@@ -33,17 +34,21 @@ import {
   homeSprite,
   layer,
   lerp,
+  onFrame,
   playFrom,
   pose,
   reseed,
   rr,
+  seg,
   sleep,
   vlen,
   vlerp,
   vnorm,
   vsub,
+  worldBox,
   type Px,
   type StrikeArgs,
+  impactPoint,
 } from './_kit';
 
 /** Vine root in the soil, frame px. */
@@ -244,7 +249,7 @@ async function thornStrike(s: StrikeArgs): Promise<void> {
       },
       onImpact: () => {
         pose(u, 'attack', 4);
-        s.impact(hitPt);
+        s.impact(impactPoint(s, hitPt));
         s.ctx.sfx('slash', { volume: 0.8, pitch: 0.85 });
         void wait2(sc, 60).then(() => playFrom(u, 'attack', 5));
         if (!s.blocked) void groundRing(sc, floor.x, floor.y, { r0: 6, r1: 32, ms: 380, colors: [PAL.leaf4, PAL.leaf3, PAL.leaf2] });
@@ -266,41 +271,280 @@ registerStrike('thorn_lurker', thornStrike);
 
 // ---------------------------------------------------------------- FLIP effect
 
-/** A ridge of cracking soil racing underground from → to. */
+/**
+ * A ridge of heaving soil racing underground from → to: the mound bulges ahead with thorn tips
+ * poking through, soil chunks pop off it, and a cracked furrow is left behind (green glints of
+ * the vines inside it) that closes again. Drawn above the card tiles, below the units.
+ */
 function burrow(scene: Phaser.Scene, from: XY, to: XY, ms: number): Promise<void> {
-  const px = layer(scene, DEPTH.TILE_FX + 5);
+  const px = layer(scene, DEPTH.SHADOW - 0.5);
   const sp = new Sparks(scene, DEPTH.FX);
-  const marks: { p: XY; t: number }[] = [];
+  const d = vnorm(vsub(to, from));
+  const e = floorPerp(d);
+  const marks: { p: XY; t: number; j: number }[] = [];
   return animate(scene, ms, (t, el, dt) => {
-    const e = 0.4 * t + 0.6 * t * t;
-    const p = vlerp(from, to, e);
-    if (!marks.length || vlen(vsub(p, marks[marks.length - 1].p)) > 3) marks.push({ p, t: el });
+    const k = 0.35 * t + 0.65 * t * t;
+    const p = vlerp(from, to, k);
+    if (!marks.length || vlen(vsub(p, marks[marks.length - 1].p)) > 3) marks.push({ p, t: el, j: rr(-1.6, 1.6) });
     px.clear();
+    // the furrow: a jagged crack with a lip of turned soil, closing again behind the mound
     for (let i = 1; i < marks.length; i++) {
-      const age = clamp((el - marks[i].t) / 500, 0, 1);
-      const a = marks[i - 1].p;
-      const b = marks[i].p;
-      px.seg(a.x, a.y + 1, b.x, b.y + 1, 3, PAL.earth2, 0.7 * (1 - age));
-      px.line(a.x, a.y, b.x, b.y, PAL.ink, 1 - age);
-      if (i % 3 === 0) px.dot(b.x + 1, b.y - 1, PAL.leaf3, 1 - age);
+      const age = clamp((el - marks[i].t) / 520, 0, 1);
+      const a = marks[i - 1];
+      const b = marks[i];
+      const ax = a.p.x + e.x * a.j;
+      const ay = a.p.y + e.y * a.j;
+      const bx = b.p.x + e.x * b.j;
+      const by = b.p.y + e.y * b.j;
+      px.seg(ax, ay + 1, bx, by + 1, 4 * (1 - age * 0.6), PAL.earth2, 0.8 * (1 - age));
+      px.seg(ax, ay, bx, by, 2, PAL.ink, 1 - age);
+      if (i % 4 === 0 && age < 0.6) px.dot(bx, by, Math.floor(el / 60 + i) % 2 ? PAL.leaf3 : PAL.mag3, 1 - age);
+      if (i % 5 === 2 && age < 0.5) {
+        // side cracks
+        const s = i % 2 ? 1 : -1;
+        px.line(bx, by, bx + e.x * s * 4 + d.x * 2, by + e.y * s * 4 + d.y * 2, PAL.ink, 1 - age * 1.6);
+      }
     }
-    // the bulge of the travelling front: heaving soil with vine tips poking through
-    px.ellipse(p.x, p.y + 1, 8, 3.4, PAL.ink, 0.7);
-    px.ellipse(p.x, p.y, 7, 3, PAL.earth1, 1);
-    px.ellipse(p.x - 1, p.y - 1, 5, 2, PAL.earth2, 1);
-    px.ellipse(p.x - 2, p.y - 1.5, 2.5, 1, PAL.earth3, 1);
-    const wig = Math.floor(el / 50) % 2;
-    px.line(p.x - 3, p.y - 1, p.x - 4 - wig, p.y - 5, PAL.leaf2, 1).dot(p.x - 4 - wig, p.y - 6, PAL.mag3, 1);
-    px.line(p.x + 2, p.y - 1, p.x + 3 + wig, p.y - 4, PAL.leaf3, 1).dot(p.x + 3 + wig, p.y - 5, PAL.mag3, 1);
-    if (dt > 0)
-      for (let i = 0; i < 2; i++) sp.add({ x: p.x + rr(-3, 3), y: p.y, vx: rr(-30, 30), vy: -rr(40, 90), ay: 420, rot: rr(0, 6), vrot: rr(-10, 10), life: rr(220, 380), colors: i ? DIRT : LEAF, shape: i ? 'px' : 'shard', size: 2, floor: p.y + 3, bounce: 0.3 });
+    // the travelling mound
+    const wob = Math.sin(el * 0.06) * 0.6;
+    px.ellipse(p.x, p.y + 1.5, 11, 4.4, PAL.ink, 0.75);
+    px.ellipse(p.x, p.y, 9.5 + wob, 4, PAL.earth1, 1);
+    px.ellipse(p.x - 1, p.y - 1.2, 7.5, 2.8, PAL.earth2, 1);
+    px.ellipse(p.x - 2.5, p.y - 2, 3.5, 1.3, PAL.earth3, 1);
+    px.dot(p.x - 4, p.y - 2.5, PAL.earth4, 1);
+    // thorn tips writhing out of it
+    const wig = Math.floor(el / 45) % 2;
+    const tips: [number, number, number][] = [
+      [-4, -1, -6],
+      [1, -2, -8],
+      [5, 0, -5],
+    ];
+    tips.forEach(([ox, oy, h], i) => {
+      const sx = p.x + ox;
+      const sy = p.y + oy;
+      const tx = sx + (i % 2 ? wig : -wig) + d.x * 2;
+      const ty = sy + h;
+      px.seg(sx, sy, tx, ty, 2, PAL.leaf1, 1).line(sx, sy, tx, ty - 1, PAL.leaf3, 1);
+      px.dot(tx, ty - 1, PAL.mag3, 1).dot(tx + (i % 2 ? 1 : -1), ty + 1, PAL.mag2, 1);
+    });
+    if (dt > 0) {
+      for (let i = 0; i < 3; i++) {
+        const a = -Math.PI / 2 + rr(-1, 1);
+        const v = rr(50, 110);
+        sp.add({ x: p.x + rr(-5, 5), y: p.y - 1, vx: Math.cos(a) * v * 0.6 - d.x * 20, vy: Math.sin(a) * v, ay: 440, rot: rr(0, 6), vrot: rr(-10, 10), life: rr(240, 420), colors: i ? DIRT : LEAF, shape: i === 1 ? 'px' : 'shard', size: rr(1.6, 2.6), floor: p.y + 3, bounce: 0.3 });
+      }
+    }
   }).then(() => {
-    void animate(scene, 300, (t) => {
+    void animate(scene, 280, (t) => {
       px.clear();
       for (let i = 1; i < marks.length; i++) px.line(marks[i - 1].p.x, marks[i - 1].p.y, marks[i].p.x, marks[i].p.y, PAL.ink, 0.6 * (1 - t));
     }).then(() => px.g.destroy());
     sp.release();
   });
+}
+
+/** Short thorny sprouts burst out of the graveyard pile, then dive back into the soil. */
+function graveSprout(scene: Phaser.Scene, p: XY, ms = 300): Promise<void> {
+  const px = layer(scene, DEPTH.FX - 1);
+  const sp = new Sparks(scene, DEPTH.FX);
+  const sprouts = [
+    { x: -6, h: 13, lean: -4 },
+    { x: 1, h: 17, lean: 3 },
+    { x: 7, h: 11, lean: 5 },
+  ];
+  for (let i = 0; i < 12; i++) {
+    const a = -Math.PI / 2 + rr(-1.1, 1.1);
+    const v = rr(40, 110);
+    sp.add({ x: p.x + rr(-8, 8), y: p.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, ay: 380, rot: rr(0, 6), vrot: rr(-10, 10), life: rr(260, 460), colors: i % 2 ? LEAF : DIRT, shape: 'shard', size: rr(1.6, 2.4), floor: p.y + 4, bounce: 0.3 });
+  }
+  return animate(scene, ms, (t) => {
+    px.clear();
+    if (t >= 1) return;
+    // grow (0–0.45) → hold → sink (0.7–1)
+    const k = t < 0.45 ? E.outBack(t / 0.45) : t < 0.7 ? 1 : 1 - E.inQ((t - 0.7) / 0.3);
+    px.ellipse(p.x, p.y + 1, 12, 4, PAL.ink, 0.55 * Math.min(1, t * 4) * (1 - seg(t, 0.8, 1)));
+    for (const s of sprouts) {
+      const pts: XY[] = [];
+      for (let i = 0; i <= 8; i++) {
+        const u = (i / 8) * k;
+        pts.push({ x: p.x + s.x + s.lean * u * u + Math.sin(u * 5) * 1.2, y: p.y - s.h * u });
+      }
+      px.stroke(pts, 3.2, 1.2, PAL.leaf1);
+      px.stroke(
+        pts.map((q) => ({ x: q.x - 0.5, y: q.y })),
+        1.6,
+        0.8,
+        PAL.leaf3,
+      );
+      const tip = pts[pts.length - 1];
+      if (k > 0.3) px.dot(tip.x, tip.y - 1, PAL.mag3, 1).dot(pts[4].x + 1.5, pts[4].y, PAL.mag2, 1);
+    }
+  }).then(() => {
+    px.g.destroy();
+    sp.release();
+  });
+}
+
+interface CrushBody {
+  /** Floor centre under the victim. */
+  floor: XY;
+  /** Horizontal centre of the body, height of the wrap (px) and base radius. */
+  cx: number;
+  h: number;
+  r: number;
+  /** Object squeezed at the crush (sprite or tile). */
+  obj: Phaser.GameObjects.Components.Transform & Phaser.GameObjects.GameObject;
+  sprite: Phaser.GameObjects.Sprite | null;
+  depth: number;
+}
+
+/**
+ * The FLIP set piece (local, magenta-thorned take on setpieces.vineBurst that hugs the body):
+ * the ground splits under the victim, thorny vines erupt and spiral up around it, tighten, and
+ * CRUSH (the full impact beat: hit-stop, white silhouette, sparks, shake). `crushed` resolves
+ * right after the impact; call wither() to let the vines sink back into the soil.
+ */
+function vineCrush(scene: Phaser.Scene, body: CrushBody, sfx: (n: SfxName, o?: SfxOpts) => void): { crushed: Promise<void>; wither: () => Promise<void> } {
+  const { floor, cx, h: H } = body;
+  const back = layer(scene, body.depth - 0.5);
+  const front = layer(scene, body.depth + 0.5);
+  const ground = layer(scene, DEPTH.SHADOW - 0.5);
+  const sp = new Sparks(scene, DEPTH.FX + 2);
+  const NV = 4;
+  const vines = Array.from({ length: NV }, (_, i) => ({ a0: (i / NV) * TAU + rr(-0.3, 0.3), dir: i % 2 ? 1 : -1, delay: i * 0.08, turns: rr(1.15, 1.45) }));
+  const cracks = Array.from({ length: 7 }, (_, i) => {
+    const a = (i / 7) * TAU + rr(-0.25, 0.25);
+    const l = rr(body.r + 6, body.r + 16);
+    const pts: XY[] = [];
+    for (let k = 0; k <= 4; k++) {
+      const u = k / 4;
+      pts.push({ x: floor.x + Math.cos(a) * l * u + (k && k < 4 ? rr(-2, 2) : 0), y: floor.y + Math.sin(a) * l * u * 0.5 + (k && k < 4 ? rr(-1, 1) : 0) });
+    }
+    return pts;
+  });
+  let crackT = 0;
+  let grow = 0;
+  let squeeze = 0;
+  let keep = 1;
+  let fade = 1;
+  let el = 0;
+  const radius = (t: number) => (body.r * (1 - 0.22 * t) + (1 - t) * 3) * (1 - squeeze * 0.3);
+  const draw = () => {
+    back.clear();
+    front.clear();
+    ground.clear();
+    // floor: cracks + a dark split + soil lip
+    if (crackT > 0) {
+      ground.ellipse(floor.x, floor.y + 1, body.r + 5, (body.r + 5) * 0.42, PAL.ink, 0.55 * fade * Math.min(1, crackT * 2));
+      for (const c of cracks) {
+        const n = Math.max(2, Math.ceil(c.length * Math.min(1, crackT)));
+        for (let i = 1; i < n; i++) {
+          ground.seg(c[i - 1].x, c[i - 1].y, c[i].x, c[i].y, 2, PAL.ink, fade);
+          if (i < n - 1 && squeeze < 1) ground.dot(c[i].x, c[i].y - 1, PAL.leaf2, fade);
+        }
+      }
+      ground.ellipseRing(floor.x, floor.y + 1, body.r + 6, (body.r + 6) * 0.45, 1, PAL.earth2, 0.8 * fade);
+    }
+    if (grow <= 0) return;
+    for (const v of vines) {
+      const g0 = clamp((grow - v.delay) / (1 - v.delay), 0, 1);
+      if (g0 <= 0) continue;
+      const n = 46;
+      let prev: { p: XY; front: boolean } | null = null;
+      const top = Math.min(g0, keep);
+      for (let i = 0; i <= n * top; i++) {
+        const t = i / n;
+        const an = v.a0 + v.dir * t * TAU * v.turns;
+        const r = radius(t);
+        const p = { x: cx + Math.cos(an) * r, y: floor.y - t * H + Math.sin(an) * r * 0.36 };
+        const isFront = Math.sin(an) >= 0;
+        if (prev) {
+          const g = isFront ? front : back;
+          const w = 3.8 - t * 1.8;
+          g.seg(prev.p.x, prev.p.y + 0.6, p.x, p.y + 0.6, w + 1.6, PAL.ink, fade);
+          g.seg(prev.p.x, prev.p.y, p.x, p.y, w, isFront ? PAL.leaf2 : PAL.leaf1, fade);
+          if (isFront) {
+            g.seg(prev.p.x, prev.p.y - w * 0.35, p.x, p.y - w * 0.35, Math.max(1, w * 0.4), PAL.leaf3, fade);
+            if (i % 3 === 0) g.dot(p.x, p.y - Math.round(w * 0.5), PAL.leaf4, fade);
+          }
+          if (i % 4 === 0) {
+            // magenta thorn pointing outward
+            const ox = Math.cos(an);
+            const oy = Math.sin(an) * 0.36 - 0.3;
+            const l = Math.hypot(ox, oy) || 1;
+            const tx = p.x + (ox / l) * 3.2;
+            const ty = p.y + (oy / l) * 3.2;
+            g.line(p.x, p.y, tx, ty, PAL.mag2, fade);
+            g.dot(tx, ty, squeeze > 0.5 && Math.floor(el / 40 + i) % 2 ? PAL.white : PAL.mag3, fade);
+          }
+          if (i % 10 === 6 && isFront) {
+            g.ellipse(p.x + 2, p.y - 2, 2, 1.2, PAL.leaf3, fade).dot(p.x + 1, p.y - 2, PAL.leaf4, fade);
+          }
+        }
+        prev = { p, front: isFront };
+      }
+      // growing tip: a bud with a magenta barb
+      if (prev && g0 < 1 && keep >= 1) (prev.front ? front : back).disc(prev.p.x, prev.p.y - 1, 1.6, PAL.leaf3, 1).dot(prev.p.x, prev.p.y - 2.5, PAL.mag3, 1);
+    }
+  };
+  const stopDraw = onFrame(scene, (_dt, e) => {
+    el = e;
+    draw();
+  });
+  const obj = body.obj;
+  const sx = obj.scaleX;
+  const sy = obj.scaleY;
+  const crushed = (async () => {
+    // ---- the ground splits
+    sfx('groundCrack', { volume: 0.75, pitch: 1.15 });
+    void shake(scene, 160, 1);
+    await animate(scene, 150, (t, _e, dt) => {
+      crackT = E.outC(t);
+      if (dt > 0 && rr(0, 1) < 0.8) sp.add({ x: floor.x + rr(-body.r, body.r), y: floor.y + rr(-3, 3), vx: rr(-25, 25), vy: -rr(40, 90), ay: 380, life: rr(220, 380), colors: DIRT, shape: 'px', floor: floor.y + 4, bounce: 0.3 });
+    });
+    // ---- vines erupt and spiral up around it
+    sfx('whoosh', { volume: 0.7, pitch: 1.25 });
+    for (let i = 0; i < 16; i++) {
+      const a = rr(0, TAU);
+      sp.add({ x: floor.x + Math.cos(a) * body.r, y: floor.y + Math.sin(a) * body.r * 0.4, vx: Math.cos(a) * rr(20, 60), vy: -rr(70, 150), ay: 420, rot: rr(0, 6), vrot: rr(-12, 12), life: rr(300, 520), colors: i % 3 ? DIRT : LEAF, shape: 'shard', size: rr(1.8, 2.8), floor: floor.y + 4, bounce: 0.3 });
+    }
+    await animate(scene, 300, (t) => {
+      grow = E.outC(t);
+    });
+    grow = 1;
+    // ---- they tighten…
+    sfx('bite', { volume: 0.85, pitch: 0.75 });
+    await animate(scene, 170, (t) => {
+      squeeze = E.inC(t);
+      if (obj.active) obj.setScale(sx * (1 - 0.13 * squeeze), sy * (1 + 0.05 * squeeze));
+    });
+    // ---- CRUSH
+    sfx('impactHeavy', { volume: 0.85, pitch: 1.05 });
+    const c = { x: cx, y: floor.y - H * 0.45 };
+    for (let i = 0; i < 18; i++) {
+      const a = rr(0, TAU);
+      const v = rr(60, 170);
+      sp.add({ x: c.x + rr(-6, 6), y: c.y + rr(-H * 0.3, H * 0.3), vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.7 - 40, ay: 320, drag: 1.5, rot: rr(0, 6), vrot: rr(-12, 12), life: rr(300, 560), colors: i % 3 === 0 ? THORN : LEAF, shape: 'shard', size: rr(1.6, 2.8) });
+    }
+    await impact(scene, c.x, c.y, { power: 2, ramp: RAMPS.leaf, sprite: body.sprite ?? undefined });
+    if (obj.active) obj.setScale(sx * 0.9, sy * 1.03);
+  })();
+  const wither = async () => {
+    // spring back a little, hold the grip while the victim breaks, then sink into the soil
+    if (obj.active) void tween(scene, { targets: obj, scaleX: sx, scaleY: sy, duration: 140, ease: 'Back.Out' });
+    await sleep(scene, 160);
+    await animate(scene, 380, (t) => {
+      keep = 1 - E.inQ(t);
+      squeeze = 1 - t * 0.6;
+      fade = 1 - seg(t, 0.6, 1);
+    });
+    stopDraw();
+    back.g.destroy();
+    front.g.destroy();
+    ground.g.destroy();
+    sp.release();
+  };
+  return { crushed, wither };
 }
 
 registerCardHook('thorn_lurker', 'effect', async (ctx) => {
@@ -311,56 +555,69 @@ registerCardHook('thorn_lurker', 'effect', async (ctx) => {
   const ti = run.find((i) => ctx.events[i].type === 'target');
   const tEv = ti !== undefined ? (ctx.events[ti] as Extract<GameEvent, { type: 'target' }>) : null;
   const ref = tEv?.targets[0];
-  if (!ref || ti === undefined) {
+  if (!ref || ti === undefined || ref.zone !== 'monster') {
     await fx.playRun(ctx, run);
     return;
   }
   ctx.consumeAt(ti);
-  const victim = ctx.views.field.unitAt(ref.player, ref.index);
+  const field = ctx.views.field;
+  const victim = field.unitAt(ref.player, ref.index);
   const at = zoneXY(ref.player, 'monster', ref.index);
   const u = ctx.unit(ev.uid);
+  const sfx = (n: SfxName, o?: SfxOpts) => ctx.sfx(n, o);
   let from: XY;
-  if (u && u.sprite.visible) {
-    // the maw bursts open, vines fling out
+  if (u && u.sprite.visible && !u.retired) {
+    // the maw bursts open and the vines dive into the soil
     void ctx.focus({ x: (u.home.x + at.x) / 2, y: (u.home.y + at.y) / 2 - 10 }, { zoom: 1.05, ms: 300, pan: 0.3 });
-    void u.play('roar');
+    u.posed = true;
+    void playFrom(u, 'roar', 0).then(() => {
+      u.posed = false;
+    });
+    await sleep(sc, 100);
     ctx.sfx('roarSmall', { volume: 0.8, pitch: 1.2 });
-    await u.playToFrame('roar', 2);
+    await sleep(sc, 110);
     from = u.framePoint(ROOT.x, ROOT.y);
+    void groundRing(sc, from.x, from.y, { r0: 4, r1: 18, ms: 260, colors: [PAL.leaf4, PAL.leaf3, PAL.earth3] });
   } else {
     // it already fell: the vines come out of its grave
-    const pile = ctx.views.field.pile(ctx.owner(ev.uid), 'graveyard');
+    const pile = field.pile(ctx.owner(ev.uid), 'graveyard');
     const p = pile.topXY();
-    void pile.flash(PAL.leaf3);
-    from = { x: p.x, y: p.y + 4 };
-    void ctx.focus({ x: (from.x + at.x) / 2, y: (from.y + at.y) / 2 - 10 }, { zoom: 1.04, ms: 300, pan: 0.3 });
-    await sleep(sc, 160);
+    from = { x: p.x, y: p.y + 2 };
+    void ctx.focus({ x: (from.x + at.x) / 2, y: (from.y + at.y) / 2 - 10 }, { zoom: 1.05, ms: 300, pan: 0.3 });
+    ctx.sfx('roarSmall', { volume: 0.55, pitch: 1.5 });
+    await graveSprout(sc, from, 320);
   }
-  // lock: a green ring tightens on the victim's floor
+  // lock: a green ring tightens on the victim's floor while the soil ridge races to it
   void groundRing(sc, at.x, at.y, { r0: 34, r1: 10, ms: 300, colors: [PAL.leaf2, PAL.leaf3, PAL.leaf4, PAL.white] });
-  ctx.sfx('groundCrack', { volume: 0.7, pitch: 1.1 });
-  await burrow(sc, from, at, clamp(vlen(vsub(at, from)) * 2.4, 260, 420));
-  // erupt, wrap, crush — then it shatters
+  ctx.sfx('groundCrack', { volume: 0.55, pitch: 0.8 });
+  void shake(sc, 260, 1);
+  await burrow(sc, from, at, clamp(vlen(vsub(at, from)) * 2.6, 300, 460));
+  void ctx.focus({ x: at.x, y: at.y - 18 }, { zoom: 1.08, ms: 260, pan: 0.35 });
+  // erupt, wrap, crush — then it shatters inside the vines
   const di = fx.resolutionRun(ctx).find((i) => {
     const e = ctx.events[i];
     return e.type === 'destroy' && e.location === 'monster' && e.zone === ref.index && e.player === ref.player;
   });
-  if (victim && victim.sprite.visible) {
-    await vineBurst(sc, at.x, at.y, victim.sprite);
-    // magenta thorn shards at the crush
-    const sp = new Sparks(sc, DEPTH.FX + 2);
-    const c = victim.core();
-    for (let i = 0; i < 14; i++) {
-      const a = rr(0, Math.PI * 2);
-      const v = rr(60, 150);
-      sp.add({ x: c.x + rr(-6, 6), y: c.y + rr(-8, 8), vx: Math.cos(a) * v, vy: Math.sin(a) * v - 30, ay: 300, rot: rr(0, 6), vrot: rr(-12, 12), life: rr(300, 520), colors: THORN, shape: 'shard', size: rr(1.6, 2.6) });
-    }
-    sp.release();
+  let body: CrushBody | null = null;
+  if (victim && victim.sprite.active && victim.sprite.visible && !victim.retired) {
+    const b = worldBox(victim);
+    const fl = victim.home;
+    body = { floor: fl, cx: Math.round(b.cx), h: clamp(fl.y - b.y, 16, 70) * 0.9, r: clamp(b.w * 0.34, 9, 19), obj: victim.sprite, sprite: victim.sprite, depth: victim.sprite.depth };
+  } else {
+    const tile = field.tileAt(ref.player, 'monster', ref.index);
+    if (tile && tile.active && tile.visible) body = { floor: tile.home, cx: tile.home.x, h: 14, r: 15, obj: tile, sprite: null, depth: unitDepth(tile.home.y) };
+  }
+  if (body) {
+    const vc = vineCrush(sc, body, sfx);
+    await vc.crushed;
+    const withered = vc.wither();
+    if (di !== undefined) await ctx.play(di, { hit: false, push: { x: 0, y: -1 } });
+    await withered;
   } else {
     void shake(sc, 160, 1);
     await sleep(sc, 200);
+    if (di !== undefined) await ctx.play(di, { hit: false, push: { x: 0, y: -1 } });
   }
-  if (di !== undefined) await ctx.play(di, { hit: false, push: { x: 0, y: -1 } });
   await fx.playRun(ctx, fx.resolutionRun(ctx));
   await ctx.unfocus(260);
 });

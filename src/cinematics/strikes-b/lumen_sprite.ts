@@ -43,6 +43,7 @@ import {
   vsub,
   type Px,
   type StrikeArgs,
+  impactPoint,
 } from './_kit';
 
 const GOLD = [PAL.gold2, PAL.gold3, PAL.gold4, PAL.white] as const;
@@ -299,12 +300,12 @@ async function lumenStrike(s: StrikeArgs): Promise<void> {
         pop(sc, at, i, s.blocked, back);
         if (i === 2 && !impacted) {
           impacted = true;
-          s.impact(hitPt);
+          s.impact(impactPoint(s, hitPt));
           if (!s.blocked) lightBurst(sc, hitPt, s.direct ? 1.3 : 1);
         }
       },
     });
-    if (!impacted) s.impact(hitPt);
+    if (!impacted) s.impact(impactPoint(s, hitPt));
     // settle back down
     const y0 = spr.y;
     await animate(sc, 160, (t) => {

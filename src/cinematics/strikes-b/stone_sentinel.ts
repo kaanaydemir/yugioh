@@ -43,6 +43,7 @@ import {
   vnorm,
   vsub,
   type StrikeArgs,
+  impactPoint,
 } from './_kit';
 
 const ROCK_KEY = 'sb:rock';
@@ -245,7 +246,7 @@ async function sentinelStrike(s: StrikeArgs): Promise<void> {
     rock.destroy();
     shadow.g.destroy();
     // ---- IMPACT
-    s.impact(hitPt);
+    s.impact(impactPoint(s, hitPt));
     s.ctx.sfx('earthQuake', { volume: 0.9 });
     const floorY = s.direct ? s.toGround.y : target ? target.home.y : s.toGround.y;
     rockBurst(sc, stopAt, floorY + 2, dir, { big: s.direct ? 1.2 : 1, rebound: s.blocked });

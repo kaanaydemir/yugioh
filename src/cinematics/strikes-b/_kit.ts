@@ -307,6 +307,24 @@ export function glint(scene: Phaser.Scene, x: number, y: number, o: { size?: num
 
 // ---------------------------------------------------------------- camera
 
+/** World point → screen point through the main (world) camera (zoom + scroll). */
+export function worldToScreen(scene: Phaser.Scene, p: XY): XY {
+  const cam = scene.cameras.main;
+  const ox = cam.width * cam.originX;
+  const oy = cam.height * cam.originY;
+  return { x: (p.x - cam.scrollX - ox) * cam.zoom + ox + cam.x, y: (p.y - cam.scrollY - oy) * cam.zoom + oy + cam.y };
+}
+
+/**
+ * The point to hand to s.impact(). On a direct attack the default battle handler passes it to
+ * vfx/combat.directHit, whose burst and speed lines live on the un-zoomed UI camera (screen
+ * space) — so the world hit point is projected through the focused world camera, otherwise the
+ * burst lands ~30 px away from the strike while the camera is pushed in.
+ */
+export function impactPoint(s: StrikeArgs, at: XY): XY {
+  return s.direct ? worldToScreen(s.scene, at) : at;
+}
+
 /** Push the camera toward a point (the battle handler unfocuses at the end of the battle). */
 export function push(ctx: AnyCtx | StrikeArgs['ctx'], xy: XY, zoom = 1.06, ms = 260, pan = 0.32): void {
   void ctx.focus(xy, { zoom, ms, pan });

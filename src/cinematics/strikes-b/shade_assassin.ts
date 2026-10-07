@@ -17,7 +17,7 @@ import { DEPTH, type XY, unitDepth } from '../../view/layout';
 import { shadowPuddle, sinkInto, whiteFlash, xSlash, type Puddle } from '../../vfx/combat';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { registerCardHook, registerStrike } from '../api';
-import { E, Sparks, animate, facing, flavoredDeath, glint, homeSprite, layer, lerp, playFrom, pose, reseed, rr, sleep, vlen, vnorm, vsub, type StrikeArgs } from './_kit';
+import { E, Sparks, animate, facing, flavoredDeath, glint, homeSprite, impactPoint, layer, lerp, playFrom, pose, reseed, rr, sleep, vlen, vnorm, vsub, type StrikeArgs } from './_kit';
 
 /** Eye slit in attack f1 (coiled), frame px. */
 const EYE_F1 = { x: 41, y: 26 };
@@ -121,7 +121,7 @@ async function shadeStrike(s: StrikeArgs): Promise<void> {
     pose(u, 'attack', 4);
     await sleep(sc, 70);
     pose(u, 'attack', 5);
-    s.impact(hitPt);
+    s.impact(impactPoint(s, hitPt));
     const cut = vnorm(vsub(hitPt, E0));
     void xSlash(sc, hitPt.x, hitPt.y, { ramp: RAMPS.void, size: s.direct ? 32 : 28, ms: 220, gap: 70 });
     if (!s.blocked) inkBurst(sp, hitPt, { x: -cut.x, y: -cut.y }, s.direct ? 1.3 : 1);

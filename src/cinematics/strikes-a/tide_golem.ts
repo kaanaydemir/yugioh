@@ -184,17 +184,28 @@ registerCardHook('tide_golem', 'effect', async (ctx) => {
     from = u.framePoint(cx + 13, cy + 18);
     const ring = layer(sc, u.sprite.depth + 0.3);
     const c = u.framePoint(cx, cy + 16);
+    const heart = glow(sc, u.core().x, u.core().y, PAL.cyan3, 0.3, 0, u.sprite.depth + 0.25);
     playSfx('waterSplash', { volume: 0.5, pitch: 1.3 });
-    await animate(sc, 300, (t, el) => {
+    // the waist ring spins up into a whirling torrent; the core glows (anticipation)
+    await animate(sc, 340, (t, el) => {
       ring.clear();
-      const rx = 19 + 4 * E.outQ(t);
-      for (let i = 0; i < 18; i++) {
-        const a = el * 0.03 + (i / 18) * TAU;
-        ring.dot(c.x + Math.cos(a) * rx, c.y + Math.sin(a) * rx * 0.3, i % 3 === 0 ? PAL.white : PAL.water4, 0.9);
+      const k = E.inQ(t);
+      const rx = 19 + 6 * E.outQ(t);
+      const n = 22;
+      for (let i = 0; i < n; i++) {
+        const a = el * (0.02 + 0.05 * k) + (i / n) * TAU;
+        const front = Math.sin(a) > 0;
+        const x = c.x + Math.cos(a) * rx;
+        const y = c.y + Math.sin(a) * rx * 0.3;
+        ring.seg(x, y, x - Math.sin(a) * 3, y + Math.cos(a) * 0.9, 1, i % 4 === 0 ? PAL.white : front ? PAL.water4 : PAL.water3, front ? 1 : 0.6);
+        if (k > 0.4 && i % 3 === 0) ring.dot(x, y - 2 - 3 * k, PAL.water4, k);
       }
+      heart.setAlpha(0.8 * k).setScale(0.3 + 0.5 * k + (Math.floor(el / 50) % 2) * 0.06);
     });
     ring.g.destroy();
-    void glowPulse(sc, from.x, from.y, PAL.water4, { from: 0.3, to: 1.2, alpha: 0.9, ms: 180, depth: DEPTH.FX });
+    heart.destroy();
+    void shake(sc, 100, 1);
+    void glowPulse(sc, from.x, from.y, PAL.water4, { from: 0.4, to: 1.6, alpha: 1, ms: 200, depth: DEPTH.FX });
   } else {
     // answered from the puddle it left: a geyser
     const z = lastSpot(ctx, ev.uid) ?? fx.zoneCenter(ev.player, 'monster', 1);
@@ -208,7 +219,10 @@ registerCardHook('tide_golem', 'effect', async (ctx) => {
     onImpact: () => {
       if (attacker) {
         void attacker.play('hit');
-        void whiteFlash(sc, attacker.sprite, 2, PAL.water4);
+        // drenched for an instant (never leave the tint behind, whatever overlapped it)
+        void whiteFlash(sc, attacker.sprite, 2, PAL.water4).then(() => sleep(sc, 120)).then(() => {
+          if (attacker.sprite.active && !attacker.retired) attacker.sprite.clearTint();
+        });
       }
       waterSplash(sc, hitAt, { dir: norm(sub(hitAt, from)), floor: attacker ? attacker.home.y : hitAt.y + 18, power: 1 });
     },
@@ -238,10 +252,18 @@ async function geyser(scene: Phaser.Scene, at: XY, height: number): Promise<void
     const h = height * up;
     const w = 5 + Math.sin(el * 0.05) * 1;
     if (h > 1) {
-      px.rect(at.x - w, at.y - h, w * 2, h, PAL.water2, 0.9);
-      px.rect(at.x - w + 2, at.y - h, w * 2 - 4, h, PAL.water3, 1);
-      px.rect(at.x - 1, at.y - h, 2, h, PAL.water4, 1);
-      px.ellipse(at.x, at.y - h, w + 2, 3, PAL.white, 1);
+      // a churning column: each row wobbles, flares at the base and the crown, a lit core streams up
+      for (let y = 0; y < h; y++) {
+        const q = y / h;
+        const ww = w * (1 + 0.5 * (1 - q) * (1 - q)) + Math.sin(y * 0.7 - el * 0.04) * 1.1;
+        const cx = at.x + Math.sin(y * 0.35 + el * 0.02) * 0.8;
+        px.rect(cx - ww, at.y - y - 1, ww * 2, 1, PAL.water2, 0.95);
+        px.rect(cx - ww + 1.5, at.y - y - 1, ww * 2 - 3, 1, PAL.water3, 1);
+        if (((y + Math.floor(el / 30)) % 5) < 3) px.rect(cx - 1, at.y - y - 1, 2, 1, PAL.water4, 1);
+        if (((y * 7 + Math.floor(el / 40)) % 11) === 0) px.dot(cx + (y % 2 ? ww - 1 : -ww), at.y - y - 1, PAL.white, 1);
+      }
+      px.ellipse(at.x, at.y - h, w + 3, 3, PAL.water4, 1);
+      px.ellipse(at.x, at.y - h - 1, w + 1, 2, PAL.white, 1);
     }
     px.ellipse(at.x, at.y, 12, 5, PAL.water2, 0.6 * (1 - t));
     if (dt > 0 && h > 4) sp.add({ x: at.x + RR(-w, w), y: at.y - h, vx: RR(-40, 40), vy: RR(-60, -10), ay: 420, life: RR(300, 500), colors: [PAL.white, PAL.water4, PAL.water3], shape: 'px', floor: at.y + RR(-2, 3), bounce: 0.2 });

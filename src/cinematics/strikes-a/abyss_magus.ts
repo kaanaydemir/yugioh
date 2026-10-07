@@ -42,6 +42,7 @@ import {
   liveUnit,
   norm,
   onFrame,
+  playFrom,
   playSfx,
   screenFlash,
   seed,
@@ -289,37 +290,52 @@ registerCardHook('abyss_magus', 'effect', async (ctx) => {
   const tile: TileCard | null = field.tileAt(ref.player, ref.zone === 'field' ? 'field' : ref.zone, ref.index);
   // 1. the staff rises and points: a violet sight-line locks on the card
   void ctx.focus({ x: lerp(u ? u.core().x : cardAt.x, cardAt.x, 0.5), y: lerp(u ? u.core().y : cardAt.y, cardAt.y, 0.5) }, { zoom: 1.05, ms: 320, pan: 0.3 });
-  let lock: { destroy(): void; done: Promise<void> } | null = null;
+  let staffGlow: Phaser.GameObjects.Image | null = null;
+  let stopGlow: (() => void) | null = null;
   if (u) {
-    void u.play('roar');
+    // the roar's burst pose (staff raised, orb blazing) is held while the abyss obeys
+    void u.play('roar', { hold: true });
     playSfx('darkPulse', { volume: 0.8 });
     await sleep(sc, frameMs(u, 'roar') * 3);
+    holdFrame(u, 'roar', 3);
     const o = orbOf(u);
     void glowPulse(sc, o.x, o.y, PAL.void4, { from: 0.4, to: 1.6, alpha: 0.9, ms: 260, depth: DEPTH.FX + 1 });
     sightLine(sc, o, { x: cardAt.x, y: cardAt.y - 4 });
+    const g = glow(sc, o.x, o.y, PAL.void3, 0.5, 0.6, u.sprite.depth + 0.3);
+    staffGlow = g;
+    stopGlow = onFrame(sc, (_dt, el) => {
+      if (!g.active) return false;
+      g.setScale(0.45 + (Math.floor(el / 70) % 2) * 0.08).setAlpha(0.55 + 0.25 * Math.sin(el * 0.02));
+      return true;
+    });
   }
-  lock = lockOn(sc, cardAt.x, cardAt.y - 4, { color: PAL.void3, size: 26 });
+  const lock = lockOn(sc, cardAt.x, cardAt.y - 4, { color: PAL.void3, size: 26 });
   playSfx('lockOn', { volume: 0.6, pitch: 0.8 });
   const dIdx = run.find((i) => ctx.events[i].type === 'destroy' && !ctx.isConsumed(i)) ?? -1;
   const dEv = dIdx >= 0 ? (ctx.events[dIdx] as EvOf<'destroy'>) : null;
-  // a set card is exposed by the lock-on before the abyss reaches it
+  // a set card is exposed by the lock-on while the abyss is already on its way
   const flip = (async () => {
     if (tile && tile.active && !tile.faceUp && dEv) {
-      await sleep(sc, 120);
+      await sleep(sc, 90);
       tile.setCard(dEv.cardId);
       playSfx('cardFlip', { volume: 0.6 });
-      await tile.flipUp(260);
+      await tile.flipUp(240);
     }
   })();
-  await Promise.all([lock.done, flip]);
-  await sleep(sc, 120);
+  await lock.done;
   // 2. the shadow tendril crosses the floor; tendrils erupt around the card and clench
   const from = u ? u.home : zoneXY(ev.player, 'monster', 1);
   // the card stays visible over the tendril's void pool (under the risers) until it is swallowed
   const pin = tile ? onFrame(sc, () => (tile.active ? void tile.setDepth(DEPTH.SHADOW) : false)) : null;
-  const unlock = sleep(sc, 600).then(() => lock?.destroy());
-  await tendril(sc, from, cardAt);
-  await unlock;
+  await Promise.all([tendril(sc, from, cardAt), flip]);
+  lock.destroy();
+  // the clench: the magus lowers its staff
+  stopGlow?.();
+  if (staffGlow) {
+    const g = staffGlow;
+    void animate(sc, 160, (t) => g.active && g.setAlpha(0.6 * (1 - t))).then(() => g.destroy());
+  }
+  if (u && !u.retired) void playFrom(u, 'roar', 6);
   // 3. the card cracks and is swallowed by the void, then its remains go to the graveyard
   if (dEv && dIdx >= 0) {
     ctx.consumeAt(dIdx);

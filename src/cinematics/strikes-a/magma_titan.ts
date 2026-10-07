@@ -432,6 +432,10 @@ registerCardHook('magma_titan', 'destroyed', (ctx) =>
       motes: false,
       shakePx: 3,
       stopMs: 50,
+      // the last heat flares through the splitting rock instead of a white hologram flash
+      flashColor: PAL.fire4,
+      flashMode: 'tint',
+      ring: false,
     });
   }),
 );

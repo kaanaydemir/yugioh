@@ -102,6 +102,14 @@ const SB: Record<string, Scenario> = {
       { type: 'chooseTarget', player: 1, target: { player: 0, zone: 'monster', index: 1 } },
     ],
   },
+  sbThornFlipSet: {
+    desc: 'flip summon Dikenli Pusucu → vines crush a face-down monster card (no sprite: the tile is wrapped)',
+    stage: { p0: { monsters: [null, { id: 'thorn_lurker', faceUp: false }] }, p1: { monsters: [down('tide_golem'), 'ember_wolf'] } },
+    steps: [
+      { type: 'flipSummon', player: 0, zone: 1 },
+      { type: 'chooseTarget', player: 0, target: { player: 1, zone: 'monster', index: 0 } },
+    ],
+  },
   sbThornFlipDead: {
     desc: 'face-down Dikenli Pusucu dies in battle; its FLIP crushes Gölge Suikastçı from the grave',
     stage: { phase: 'battle', p0: { monsters: ['storm_hawk', 'shade_assassin'] }, p1: { monsters: [null, down('thorn_lurker')] } },
