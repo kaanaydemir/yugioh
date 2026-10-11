@@ -73,6 +73,9 @@ export class HandView {
   private hoverUid: Uid | null = null;
   private selectedUid: Uid | null = null;
   private playable = new Set<Uid>();
+  /** Multi-select marks (end-phase discard): raised a little and outlined in markColor. */
+  private marked = new Set<Uid>();
+  private markColor: number = PAL.crim3;
   private enabled = true;
   private readonly zone: Phaser.GameObjects.Zone;
   private readonly minis: Record<PlayerId, Phaser.GameObjects.Image[]> = { 0: [], 1: [] };
@@ -213,6 +216,14 @@ export class HandView {
   setPlayable(uids: Iterable<Uid>): void {
     this.playable = new Set(uids);
     this.applyHighlights();
+  }
+
+  /** Mark cards of a multi-select (e.g. the cards to discard): raised + outlined. [] clears. */
+  setMarked(uids: Iterable<Uid>, color: number = PAL.crim3): void {
+    this.marked = new Set(uids);
+    this.markColor = color;
+    this.applyHighlights();
+    this.layout(true);
   }
 
   /** Keep a card raised + gold outlined (while its action menu is open). null clears. */
@@ -422,6 +433,9 @@ export class HandView {
     if (i === h) {
       y = BASE_Y - HOVER_LIFT;
       rot = 0;
+    } else if (this.marked.size && this.slots[i] && this.marked.has(this.slots[i].uid)) {
+      y = BASE_Y - 9;
+      rot *= 0.5;
     }
     return { x: Math.round(x), y: Math.round(y), rot };
   }
@@ -457,6 +471,7 @@ export class HandView {
     for (const s of this.slots) {
       if (this.faceDown) s.sprite.setHighlight(null);
       else if (s.uid === this.selectedUid) s.sprite.setHighlight(PAL.gold3);
+      else if (this.marked.has(s.uid)) s.sprite.setHighlight(this.markColor);
       else if (this.playable.has(s.uid)) s.sprite.setHighlight(col);
       else s.sprite.setHighlight(null);
     }
@@ -485,6 +500,8 @@ export class HandView {
     }
     if (next === this.hoverUid) return;
     this.hoverUid = next;
+    // a hand card under the pointer is clickable: show it
+    this.scene.input.setDefaultCursor(next !== null ? 'pointer' : 'default');
     if (next !== null) sfx.play('uiHover', { volume: 0.35, pitch: 1.2 });
     this.layout(true);
     this.onHover?.(next);

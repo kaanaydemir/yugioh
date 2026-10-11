@@ -27,6 +27,8 @@ export interface MenuOption {
   label: string;
   /** Default true. Disabled rows are greyed and buzz when picked. */
   enabled?: boolean;
+  /** Why a disabled row is disabled (shown in a small bubble beside the menu on hover / pick). */
+  reason?: string;
 }
 
 export interface MenuOpts {
@@ -73,6 +75,10 @@ export class ActionMenu {
   private h = 0;
   private bodyTop = 0;
   private closing = false;
+  private left = 0;
+  private top = 0;
+  private tip: Phaser.GameObjects.Container | null = null;
+  private tipRow = -1;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -101,6 +107,8 @@ export class ActionMenu {
     let left = Math.round(x - this.w / 2);
     left = Math.max(4, Math.min(GAME_W - 4 - this.w, left));
     const top = above ? Math.round(y - this.h - 9) : Math.round(Math.min(GAME_H - 4 - this.h, y + 9));
+    this.left = left;
+    this.top = top;
 
     // full-screen click catcher (click outside = cancel)
     this.blocker = sc.add
@@ -210,6 +218,19 @@ export class ActionMenu {
     });
   }
 
+  /** Screen centre of the row with option `id` (QA / tutorials). null when closed or absent. */
+  rowXY(id: string): { x: number; y: number } | null {
+    if (!this.root) return null;
+    const i = this.rows.findIndex((r) => r.opt.id === id);
+    if (i < 0) return null;
+    return { x: Math.round(this.left + this.w / 2), y: Math.round(this.top + this.bodyTop + i * ROW_H + ROW_H / 2) };
+  }
+
+  /** Labels of the open menu's rows (QA). */
+  get labels(): string[] {
+    return this.rows.map((r) => `${r.opt.id}:${r.opt.label}${r.enabled ? '' : ' (x)'}`);
+  }
+
   /** Close as cancelled (resolves null). */
   close(): void {
     if (this.root) this.finish(null, true);
@@ -226,6 +247,8 @@ export class ActionMenu {
     this.hover = i;
     const r = this.rows[i];
     if (sound && r.enabled) sfx.play('uiHover', { volume: 0.35, pitch: 1.1 + i * 0.04 });
+    if (!r.enabled && r.opt.reason) this.showTip(i);
+    else this.hideTip();
     this.rows.forEach((row, k) => {
       const isCancel = row.opt.id === 'cancel';
       row.label.setTint(!row.enabled ? PAL.night4 : k === i ? PAL.white : isCancel ? PAL.mist : mix(PAL.white, PAL.mist, 0.4));
@@ -313,6 +336,7 @@ export class ActionMenu {
     if (r.opt.id === 'cancel') return this.cancel();
     if (!r.enabled) {
       sfx.play('uiError', { volume: 0.5 });
+      if (r.opt.reason) this.showTip(i, true);
       const x0 = r.label.getData('x0') as number;
       this.scene.tweens.killTweensOf(r.label);
       const o = { t: 0 };
@@ -365,7 +389,50 @@ export class ActionMenu {
     }
   }
 
+  /** Reason bubble beside the menu for a disabled row (right of the menu, or left if no room). */
+  private showTip(i: number, punch = false): void {
+    const r = this.rows[i];
+    const text = r?.opt.reason;
+    if (!text || !this.root) return;
+    if (this.tip && this.tipRow === i) {
+      if (punch) {
+        this.tip.setScale(1.08);
+        this.scene.tweens.add({ targets: this.tip, scale: 1, duration: 140, ease: 'Quad.Out' });
+      }
+      return;
+    }
+    this.hideTip();
+    const sc = this.scene;
+    const maxW = 120;
+    const m = measureText(text, 'sm', maxW);
+    const w = Math.ceil(m.w) + 12;
+    const h = Math.ceil(m.h) + 7;
+    let x = this.left + this.w + 5;
+    if (x + w > GAME_W - 4) x = this.left - 5 - w;
+    x = Math.max(4, x);
+    const rowY = this.top + this.bodyTop + i * ROW_H;
+    const y = Math.max(4, Math.min(GAME_H - 4 - h, Math.round(rowY + ROW_H / 2 - h / 2)));
+    const c = sc.add.container(x, y).setDepth(DEPTH.MENU + 3).setScrollFactor(0);
+    const bg = sc.add.image(0, 0, panelTex(sc, 'fire', w, h, { alpha: 240, chamfer: 2, scan: false })).setOrigin(0);
+    const t = pixelText(sc, 6, 3, text, { size: 'sm', color: PAL.white, maxWidth: maxW, lineSpacing: -1 });
+    c.add([bg, t]);
+    c.setAlpha(0);
+    sc.tweens.add({ targets: c, alpha: 1, duration: 120 });
+    this.tip = c;
+    this.tipRow = i;
+  }
+
+  private hideTip(): void {
+    const t = this.tip;
+    this.tip = null;
+    this.tipRow = -1;
+    if (!t) return;
+    this.scene.tweens.killTweensOf(t);
+    this.scene.tweens.add({ targets: t, alpha: 0, duration: 100, onComplete: () => t.destroy() });
+  }
+
   private finish(id: string | null, animate: boolean): void {
+    this.hideTip();
     const root = this.root;
     const resolve = this.resolve;
     this.root = null;

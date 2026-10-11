@@ -163,6 +163,41 @@ export function framePixelsOf(u: MonsterUnit, anim: MonsterAnim, frame: number, 
   return out;
 }
 
+/**
+ * Frame point of one of the sprite's own highlights (an eye glint, a visor spark...) in a given
+ * frame: the pixel of `colors` closest to `near` within `radius` px (ties: the front-most, then
+ * the higher one). `near` is only a search hint taken from the art notes, so a later sprite
+ * revision that nudges the eye by a few pixels is picked up automatically. Falls back to `near`
+ * when nothing matches. Frame coords (facing right), cached per unit art / frame.
+ */
+export function glintPoint(u: MonsterUnit, anim: MonsterAnim, frame: number, colors: readonly number[], near: XY, radius = 6): XY {
+  const n = u.art.anims[anim].frames;
+  const f = clamp(Math.round(frame), 0, n - 1);
+  const key = `${u.cardId}|${anim}|${f}|${colors.join(',')}|${near.x},${near.y}|${radius}`;
+  const hit = glintCache.get(key);
+  if (hit) return hit;
+  const pc = monsterFrame(u.cardId, anim, f);
+  const set = new Set(colors);
+  let best: XY = { x: near.x, y: near.y };
+  let bestD = Infinity;
+  for (let y = Math.max(0, near.y - radius); y <= Math.min(pc.h - 1, near.y + radius); y++)
+    for (let x = Math.max(0, near.x - radius); x <= Math.min(pc.w - 1, near.x + radius); x++) {
+      const c = pc.get(x, y);
+      if (c === null || !set.has(c)) continue;
+      const d = Math.hypot(x - near.x, y - near.y);
+      if (d > radius) continue;
+      // nearest wins; on a tie prefer the front (larger x), then the higher pixel
+      const score = d - x * 1e-3 + y * 1e-6;
+      if (score < bestD) {
+        bestD = score;
+        best = { x, y };
+      }
+    }
+  glintCache.set(key, best);
+  return best;
+}
+const glintCache = new Map<string, XY>();
+
 /** Opaque bounds of the sprite's current frame in world space. */
 export function worldBox(u: MonsterUnit): { x: number; y: number; w: number; h: number; cx: number; cy: number } {
   const fi = u.frameInfo();

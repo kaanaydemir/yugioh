@@ -20,7 +20,7 @@ import { cardArtwork } from './cardart';
 import { monsterArt } from './monsters';
 import { ATTRIBUTE_RAMP, PAL, RAMPS, type Ramp } from './palette';
 import { PixelCanvas, mix, mulberry32, rgb } from './pixel';
-import { monsterFrame } from './textures';
+import { addStaticCanvas, monsterFrame } from './textures';
 import { CARD_ART_H, CARD_ART_W } from './types';
 
 export const FACE_W = 48;
@@ -1398,8 +1398,7 @@ function sweepFrames(sil: PixelCanvas, frames: number, rainbow: boolean, width =
 // ---------------------------------------------------------------- texture building
 
 function addTex(scene: Phaser.Scene, key: string, p: PixelCanvas): void {
-  if (scene.textures.exists(key)) scene.textures.remove(key);
-  scene.textures.addCanvas(key, p.toCanvas());
+  addStaticCanvas(scene, key, p.toCanvas());
 }
 
 function addSheet(scene: Phaser.Scene, key: string, frames: [string, PixelCanvas][]): void {
@@ -1409,8 +1408,7 @@ function addSheet(scene: Phaser.Scene, key: string, frames: [string, PixelCanvas
   const rows = Math.ceil(frames.length / cols);
   const sheet = new PixelCanvas(cols * w, rows * h);
   frames.forEach(([, pc], i) => sheet.blit(pc, (i % cols) * w, Math.floor(i / cols) * h));
-  if (scene.textures.exists(key)) scene.textures.remove(key);
-  const tex = scene.textures.addCanvas(key, sheet.toCanvas())!;
+  const tex = addStaticCanvas(scene, key, sheet.toCanvas());
   frames.forEach(([name], i) => tex.add(name, 0, (i % cols) * w, Math.floor(i / cols) * h, w, h));
 }
 

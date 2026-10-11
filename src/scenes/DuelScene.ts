@@ -17,14 +17,11 @@ import { PAL } from '../art/palette';
 import { music, sfx } from '../audio/sfx';
 import { ActionMenu } from '../view/ActionMenu';
 import { BoardView } from '../view/BoardView';
-import { Button } from '../view/Button';
 import { HandView } from '../view/HandView';
 import { HudView } from '../view/HudView';
 import { InspectPanel } from '../view/InspectPanel';
 import { LogView } from '../view/LogView';
 import { Prompt } from '../view/Prompt';
-import { DEPTH, GAME_W } from '../view/layout';
-import { ICON } from '../view/ui-textures';
 import { setVolcanoAmbience, volcanoAmbienceOn } from '../vfx/setpieces';
 import { Director, loadCinematics } from '../cinematics';
 import { listHandlers } from '../cinematics/_core/registry';
@@ -310,30 +307,22 @@ export class DuelScene extends Phaser.Scene {
       void this.restartDuel({ seed: (L.seed ?? 0) + 1 });
       return;
     }
-    // "Ana Menü" next to the prompt's "Tekrar Oyna"
-    const back = new Button(this, Math.round(GAME_W / 2 - 64), 254, { w: 128, h: 20, label: 'Ana Menü', size: 'sm', icon: ICON.close, style: 'neutral', depth: DEPTH.OVERLAY + 5 });
-    back.setScrollFactor(0).setAlpha(0);
-    this.time.delayedCall(1300, () => {
-      if (back.active) this.tweens.add({ targets: back, alpha: 1, duration: 260 });
-    });
-    let toTitle = false;
-    const goTitle = () => {
-      toTitle = true;
-      sfx.play('uiBack');
-      this.scene.start('Title', { from: 'duel' });
-    };
-    back.onClick = goTitle;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') goTitle();
-    };
-    window.addEventListener('keydown', onKey);
+    // the cinematic's victory screen is up: the prompt adds only "Tekrar Oyna" / "Ana Menü"
+    // (Enter / Esc) under it — no second title — and clears it when a button is pressed
+    let choice: 'replay' | 'menu' = 'replay';
     try {
-      await this.director.userWait(v.prompt.gameOver(winner, reason));
-    } finally {
-      window.removeEventListener('keydown', onKey);
+      choice = await this.director.userWait(v.prompt.gameOver(winner, reason, { title: false, menu: true }));
+    } catch (e) {
+      console.error('[duel] game-over prompt failed', e);
     }
-    if (toTitle || !this.sys.isActive()) return;
-    back.destroy();
+    if (!this.sys.isActive()) return;
+    if (choice === 'menu') {
+      sfx.play('uiBack');
+      this.controller?.stop();
+      this.director?.dropKept();
+      this.scene.start('Title', { from: 'duel' });
+      return;
+    }
     void this.restartDuel({ seed: (L.seed ?? 0) + 1 });
   }
 

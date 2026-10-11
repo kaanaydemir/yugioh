@@ -224,7 +224,7 @@ registerCardHook('dragon_blade', 'activate', async (ctx) => {
   const ti = idxOf(ctx, run0, (e) => e.type === 'target');
   const ei = idxOf(ctx, run0, (e) => e.type === 'equip' && e.spellUid === ev.uid);
   const set = setTileOf(ctx);
-  const op = await spellOpening(ctx, { uid: ev.uid, cardId: ev.cardId, player: ev.player, from: set ? 'set' : 'hand', zone: ev.zone, hold: 400 });
+  const op = await spellOpening(ctx, { uid: ev.uid, cardId: ev.cardId, player: ev.player, from: set ? 'set' : 'hand', zone: ev.zone, hold: 260 });
   if (ev.zone === null) {
     await op.close();
     relax(ctx);

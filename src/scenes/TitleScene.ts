@@ -135,7 +135,7 @@ export class TitleScene extends Phaser.Scene {
     this.motes = new Motes(this);
     this.logo = new TitleLogo(this, logoX, LOGO_Y);
     this.tagline = new Tagline(this, 320, LOGO_Y + layout.h + 9);
-    this.prompt = new StartPrompt(this, 320, 330);
+    this.prompt = new StartPrompt(this, 320, 314);
     this.showcase = new Showcase(this, {
       volume: () => (this.audioOn ? (this.screen === 'attract' ? 1 : 0.6) : 0),
       cutins: () => this.screen === 'attract',
@@ -146,12 +146,18 @@ export class TitleScene extends Phaser.Scene {
     this.hints = this.buildHints();
 
     const onDown = () => this.onAnyPress();
-    const onKey = (e: KeyboardEvent) => this.onKey(e);
+    // Plain window listener (not Phaser's KeyboardPlugin): when several key events land inside
+    // one slow frame, the plugin re-dispatches the older queued keydowns (its duplicate guard
+    // only remembers the last event), so one press could move / toggle two or three times.
+    const onKey = (e: KeyboardEvent) => {
+      if (!this.sys.isActive()) return;
+      this.onKey(e);
+    };
     this.input.on(Phaser.Input.Events.POINTER_DOWN, onDown);
-    this.input.keyboard?.on('keydown', onKey);
+    window.addEventListener('keydown', onKey);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.input.off(Phaser.Input.Events.POINTER_DOWN, onDown);
-      this.input.keyboard?.off('keydown', onKey);
+      window.removeEventListener('keydown', onKey);
       this.overlay = null;
       this.hiddenFloor = [];
     });
@@ -328,7 +334,11 @@ export class TitleScene extends Phaser.Scene {
   private hideArenaFloorFx(): void {
     for (const o of this.children.list) {
       const g = o as Phaser.GameObjects.GameObject & { depth: number; visible: boolean; setVisible?(b: boolean): unknown };
-      if (g.depth >= DEPTH.TILE_FX && g.depth < DEPTH.CARD_ON_TILE && g.visible && g.setVisible) {
+      // the arena's floor-FX layer, plus whatever world-space VFX the showcase left drifting
+      // (summon feathers, embers, sparks: they would float over the panel's text)
+      const floor = g.depth >= DEPTH.TILE_FX && g.depth < DEPTH.CARD_ON_TILE;
+      const leftovers = g.depth >= DEPTH.SHADOW && g.depth < DEPTH.HUD;
+      if ((floor || leftovers) && g.visible && g.setVisible) {
         g.setVisible(false);
         this.hiddenFloor.push(o);
       }

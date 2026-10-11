@@ -15,6 +15,14 @@
 //
 // `lift` (px, default 0): set it while you move the sprite UP off the ground (jumps, dives) so
 // the shadow stays on the floor and shrinks instead of following the sprite into the air.
+//
+// Guard-pose rule (art review): a DEFENSE-position unit never snaps into its upright 'hit'
+// recoil. Every path that would show it — unit.play('hit'), unit.playToFrame('hit', f),
+// sprite.play(<hit anim>), sprite.setFrame('hit:N') (e.g. a death holding a hit frame) — is
+// answered from the guard pose instead: guard frames, a white flash frame, a small hex-shield
+// glint on the side the blow came from and a 2–3 px knock-back away from the attacker
+// (unit.guardHit). The sprite is a UnitSprite (a plain Sprite subclass) so this lives in one
+// place and holds for every cinematic, shatter and death flavour.
 
 import Phaser from 'phaser';
 import { CARDS, isMonster, type Attribute, type MonsterCardDef, type MonsterId } from '../data/cards';
@@ -29,6 +37,7 @@ import type { TileCard } from '../view/TileCard';
 import { wait } from '../vfx/core';
 import { framePointToWorld } from '../vfx/combat';
 import { clearHologram, getHologram } from '../vfx/hologram';
+import { Raster, run } from '../vfx/setpieces';
 import type { Disposable } from './types';
 import { StatBadge } from './StatBadge';
 
@@ -77,6 +86,113 @@ function rnd(): number {
   return unitSeed / 4294967296;
 }
 
+/** Frame name of a setFrame() argument (null for numeric indices). */
+function frameNameOf(frame: string | number | Phaser.Textures.Frame): string | null {
+  if (typeof frame === 'string') return frame;
+  if (frame instanceof Phaser.Textures.Frame) return String(frame.name);
+  return null;
+}
+
+/**
+ * The unit's sprite: a plain Phaser Sprite (every VFX helper takes it) that applies the
+ * guard-pose rule — while its unit stands in DEFENSE position, playing the 'hit' anim becomes a
+ * guard-pose reaction and showing a 'hit:N' frame shows the guard frame instead.
+ */
+export class UnitSprite extends Phaser.GameObjects.Sprite {
+  /** Set by MonsterUnit right after construction. */
+  unit: MonsterUnit | null = null;
+
+  override play(key: string | Phaser.Animations.Animation | Phaser.Types.Animations.PlayAnimationConfig, ignoreIfPlaying?: boolean): this {
+    const u = this.unit;
+    if (u && u.guarding && u.isHitKey(key)) {
+      u.guardHitFromSprite();
+      return this;
+    }
+    return super.play(key, ignoreIfPlaying);
+  }
+
+  override setFrame(frame: string | number | Phaser.Textures.Frame, updateSize?: boolean, updateOrigin?: boolean): this {
+    const u = this.unit;
+    if (u && u.guarding) {
+      const name = frameNameOf(frame);
+      if (name && name.startsWith('hit:')) frame = u.guardFrameName();
+    }
+    return super.setFrame(frame, updateSize, updateOrigin);
+  }
+}
+
+/**
+ * A small hexagonal shield glint (pixel raster, ~300 ms): a flattened hexagon facing `face`
+ * (−1 left / +1 right) flashes white, its rim ripples blue, a light streak crosses it, it fades.
+ */
+function guardGlint(scene: Phaser.Scene, x: number, y: number, face: number, depth: number, R = 11, ms = 300): void {
+  x = Math.round(x);
+  y = Math.round(y);
+  const ras = Raster.around(scene, x, y, Math.ceil(R * 1.4) * 2 + 6, Math.ceil(R * 1.15) * 2 + 6, depth, Phaser.BlendModes.ADD);
+  const sq = 0.55;
+  const hex = (r: number): XY[] => {
+    const pts: XY[] = [];
+    for (let i = 0; i <= 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+      pts.push({ x: x + Math.cos(a) * r * sq, y: y + Math.sin(a) * r });
+    }
+    return pts;
+  };
+  void run(scene, ms, (t) => {
+    ras.draw((g) => {
+      const r = R * (t < 0.2 ? 0.75 + (t / 0.2) * 0.3 : 1.05 - (t - 0.2) * 0.06);
+      const lv = t < 0.15 ? 1 : 1 - (t - 0.15) / 0.85;
+      const outer = hex(r);
+      if (t < 0.1) g.poly(outer, PAL.white, 0.45);
+      g.path(outer, t < 0.15 ? PAL.white : PAL.water3, lv);
+      if (t < 0.6) g.path(hex(r - 3), PAL.water4, lv * 0.6);
+      const sx = x + (-r * sq + 2 * r * sq * Math.min(1, t * 2.4)) * (face >= 0 ? 1 : -1);
+      if (t < 0.42) g.line(sx - 1, y - r * 0.6, sx + 1, y + r * 0.6, PAL.white, 1 - t * 2.2);
+    });
+  }).then(() => ras.destroy());
+}
+
+/**
+ * White silhouette over a sprite for `frames` real frames (it keeps flashing through a hit-stop).
+ * It is an overlay that follows the sprite, so the sprite's own tint — and any other flash
+ * running on it (combat.whiteFlash saves / restores the tint and must not capture this one) —
+ * is never touched.
+ */
+function flashOverlay(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite, frames: number): void {
+  if (!s.active || !s.visible || !s.frame) return;
+  const g = scene.add
+    .image(s.x, s.y, s.texture.key, s.frame.name)
+    .setOrigin(s.originX, s.originY)
+    .setFlipX(s.flipX)
+    .setScale(s.scaleX, s.scaleY)
+    .setAngle(s.angle)
+    .setDepth(s.depth + 0.05)
+    .setTintFill(PAL.white);
+  let k = 0;
+  const end = () => {
+    scene.events.off(Phaser.Scenes.Events.POST_UPDATE, tick);
+    scene.events.off(Phaser.Scenes.Events.SHUTDOWN, end);
+    if (g.active) g.destroy();
+  };
+  const tick = () => {
+    if (++k > frames || !s.active || !g.active) return end();
+    g.setPosition(s.x, s.y).setFrame(s.frame.name).setFlipX(s.flipX).setScale(s.scaleX, s.scaleY).setVisible(s.visible);
+  };
+  scene.events.on(Phaser.Scenes.Events.POST_UPDATE, tick);
+  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, end);
+}
+
+export interface GuardHitOpts {
+  /** Direction of the blow (attacker → this unit); the knock-back follows it. */
+  dir?: XY;
+  /** Where the blow comes from (used for the direction when `dir` is not given). */
+  from?: XY;
+  /** 1 light (2 px knock-back) · 2–3 heavy (3 px, longer flash). Default 2. */
+  power?: 1 | 2 | 3;
+  /** Stay pushed (a death follows) instead of springing back. */
+  hold?: boolean;
+}
+
 export interface MonsterUnitOpts {
   uid: Uid;
   cardId: MonsterId;
@@ -121,6 +237,10 @@ export class MonsterUnit {
   private readonly waiters: (() => void)[] = [];
   private readonly shadowBase: number;
   private readonly updateFn: () => void;
+  /** Guard-hit knock-back in progress: the spot it springs back to, and its token. */
+  private kbBase: XY | null = null;
+  private kbToken = 0;
+  private kbTween: Phaser.Tweens.Tween | null = null;
 
   constructor(scene: Phaser.Scene, o: MonsterUnitOpts) {
     this.scene = scene;
@@ -138,7 +258,10 @@ export class MonsterUnit {
     const rx = Math.max(7, Math.round(opaqueWidth(o.cardId) * 0.36));
     this.shadowBase = this.art.hover > 0 ? Math.max(0.55, 1 - this.art.hover / 30) : 1;
     this.shadow = scene.add.image(home.x, home.y, shadowKey(scene, rx)).setDepth(DEPTH.SHADOW).setAlpha(0.5).setScale(this.shadowBase);
-    this.sprite = scene.add.sprite(home.x, home.y - this.art.hover, monsterTextureKey(o.cardId), monsterFrameName('idle', 0));
+    const sprite = new UnitSprite(scene, home.x, home.y - this.art.hover, monsterTextureKey(o.cardId), monsterFrameName('idle', 0));
+    sprite.unit = this;
+    scene.add.existing(sprite);
+    this.sprite = sprite;
     this.applyFacing();
     this.sprite.setDepth(unitDepth(home.y));
     this.badge = new StatBadge(scene, home.x, home.y + BADGE_DY, {
@@ -228,6 +351,7 @@ export class MonsterUnit {
 
   /** Loop idle (attack position) or guard (defense position). */
   rest(randomStart = false): void {
+    if (!this.sprite.active) return;
     const anim: MonsterAnim = this.position === 'defense' ? 'guard' : 'idle';
     const key = monsterAnimKey(this.cardId, anim);
     if (!this.scene.anims.exists(key)) return;
@@ -239,10 +363,13 @@ export class MonsterUnit {
   /**
    * Play an animation. Looping anims resolve immediately. One-shots resolve on completion and
    * then return to idle/guard (opts.hold = stay on the last frame). Superseded plays resolve.
+   * 'hit' in DEFENSE position is the guard-pose reaction (guardHit; opts.dir / from / power
+   * steer it) — the upright recoil frames are never shown then.
    */
-  play(anim: MonsterAnim, opts: { hold?: boolean } = {}): Promise<void> {
+  play(anim: MonsterAnim, opts: { hold?: boolean } & GuardHitOpts = {}): Promise<void> {
     const key = monsterAnimKey(this.cardId, anim);
     if (!this.scene.anims.exists(key) || !this.sprite.active) return Promise.resolve();
+    if (anim === 'hit' && this.guarding) return this.guardHit(opts);
     this.flushWaiters();
     const token = ++this.playToken;
     const spec = this.art.anims[anim];
@@ -279,6 +406,12 @@ export class MonsterUnit {
   playToFrame(anim: MonsterAnim, frame: number): Promise<void> {
     const key = monsterAnimKey(this.cardId, anim);
     if (!this.scene.anims.exists(key) || !this.sprite.active) return Promise.resolve();
+    if (anim === 'hit' && this.guarding) {
+      // guard pose: react, and resolve when that hit frame would have shown
+      void this.guardHit();
+      const spec = this.art.anims.hit;
+      return wait(this.scene, (Math.max(0, frame) / Math.max(1, spec.fps)) * 1000);
+    }
     const cur = this.frameInfo();
     if (cur.anim !== anim || !this.sprite.anims.isPlaying) void this.play(anim);
     return new Promise<void>((resolve) => {
@@ -310,6 +443,103 @@ export class MonsterUnit {
   /** ms from the start of 'attack' to its impact frame. */
   get impactMs(): number {
     return (this.art.attackImpactFrame / this.art.anims.attack.fps) * 1000;
+  }
+
+  // ================================================================ guard pose
+
+  /** True while hits are answered from the guard pose (defense position, live, has a guard anim). */
+  get guarding(): boolean {
+    return this.position === 'defense' && !this.retired && this.sprite.active && this.scene.anims.exists(monsterAnimKey(this.cardId, 'guard'));
+  }
+
+  /** Is `key` (a play() argument) this unit's 'hit' animation? */
+  isHitKey(key: string | Phaser.Animations.Animation | Phaser.Types.Animations.PlayAnimationConfig): boolean {
+    const hitKey = monsterAnimKey(this.cardId, 'hit');
+    if (typeof key === 'string') return key === hitKey;
+    if (key instanceof Phaser.Animations.Animation) return key.key === hitKey;
+    const k = key?.key;
+    return typeof k === 'string' ? k === hitKey : k instanceof Phaser.Animations.Animation ? k.key === hitKey : false;
+  }
+
+  /** The guard frame to show instead of a 'hit:N' frame (the current guard frame, else guard:0). */
+  guardFrameName(): string {
+    const f = String(this.sprite.frame?.name ?? '');
+    return f.startsWith('guard:') ? f : monsterFrameName('guard', 0);
+  }
+
+  /** Default blow direction when none is known: from the opponent's side toward this unit's back. */
+  private defaultBlow(): XY {
+    return this.player === 0 ? { x: -1, y: 0.5 } : { x: 1, y: -0.5 };
+  }
+
+  /**
+   * The defense-position hit reaction, FROM THE GUARD POSE: the guard frames stay (never the
+   * upright 'hit' recoil), a 2–3 frame white flash, a small hex-shield glint on the face the
+   * blow came from and a 2–3 px knock-back along the blow that springs back (opts.hold: stays
+   * pushed — a death follows). Resolves when the motion is done (~0.3 s; ~60 ms with hold).
+   */
+  guardHit(o: GuardHitOpts = {}): Promise<void> {
+    const s = this.sprite;
+    if (!s.active || this.retired) return Promise.resolve();
+    const sc = this.scene;
+    const power = o.power ?? 2;
+    let dir = o.dir;
+    if (!dir && o.from) dir = { x: this.home.x - o.from.x, y: this.home.y - o.from.y };
+    const d = dir ?? this.defaultBlow();
+    const l = Math.hypot(d.x, d.y) || 1;
+    const blow = { x: d.x / l, y: d.y / l };
+    // 1. the guard pose holds (the loop keeps breathing; a held non-guard frame goes back to it)
+    if (this.frameInfo().anim !== 'guard' || !s.anims.isPlaying) this.rest();
+    // 2. white silhouette frame(s) (an overlay: never fights another flash over the tint)
+    flashOverlay(sc, s, power >= 3 ? 3 : 2);
+    // 3. hex-shield glint on the side the blow came from (bigger for heavier blows)
+    const c = this.core();
+    guardGlint(sc, c.x - blow.x * 6, c.y - blow.y * 6 - 2, -blow.x, s.depth + 0.5, 9 + power * 2);
+    // 4. knock-back along the blow (integer px), then spring back to where it stood
+    const token = ++this.kbToken;
+    this.kbTween?.stop();
+    const base = this.kbBase ?? { x: s.x, y: s.y };
+    this.kbBase = base;
+    const k = power >= 2 ? 3 : 2;
+    const to = { x: Math.round(base.x + blow.x * k), y: Math.round(base.y + blow.y * k * 0.6) };
+    return new Promise<void>((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        if (token === this.kbToken) {
+          this.kbBase = null;
+          this.kbTween = null;
+        }
+        resolve();
+      };
+      this.kbTween = sc.tweens.add({
+        targets: s,
+        x: to.x,
+        y: to.y,
+        duration: 60,
+        ease: 'Quad.Out',
+        onStop: finish,
+        onComplete: () => {
+          if (o.hold || !s.active || token !== this.kbToken) return finish();
+          this.kbTween = sc.tweens.add({ targets: s, x: base.x, y: base.y, duration: 240, ease: 'Back.Out', onComplete: finish, onStop: finish });
+        },
+      });
+      // safety net: settle() / killTweensOf may remove the tweens without any event
+      void wait(sc, o.hold ? 200 : 600).then(finish);
+    });
+  }
+
+  /** sprite.play(<hit anim>) on a guarding unit: react, then report the hit anim's completion. */
+  guardHitFromSprite(): void {
+    void this.guardHit();
+    const s = this.sprite;
+    const key = monsterAnimKey(this.cardId, 'hit');
+    const spec = this.art.anims.hit;
+    const anim = this.scene.anims.get(key);
+    void wait(this.scene, (spec.frames / Math.max(1, spec.fps)) * 1000).then(() => {
+      if (s.active) s.emit(Phaser.Animations.Events.ANIMATION_COMPLETE_KEY + key, anim, anim?.frames[anim.frames.length - 1], s, '');
+    });
   }
 
   // ================================================================ state
@@ -402,6 +632,9 @@ export class MonsterUnit {
     const r = this.rest0;
     const s = this.sprite;
     this.scene.tweens.killTweensOf(s);
+    this.kbToken++;
+    this.kbBase = null;
+    this.kbTween = null;
     s.setPosition(r.x, r.y).setScale(1).setAngle(0).setAlpha(1).setVisible(true);
     this.lift = 0;
     s.setCrop();

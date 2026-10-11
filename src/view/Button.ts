@@ -50,6 +50,8 @@ export class Button extends Phaser.GameObjects.Container {
   onClick: (() => void) | null;
   /** Fired on hover enter/leave (true/false). */
   onHover: ((on: boolean) => void) | null = null;
+  /** Fired when a DISABLED button is clicked (after its buzz) — e.g. to say why it is disabled. */
+  onBlocked: (() => void) | null = null;
   readonly w: number;
   readonly h: number;
   private style: UiStyle;
@@ -374,6 +376,7 @@ export class Button extends Phaser.GameObjects.Container {
 
   /** Disabled-click feedback: short horizontal wiggle + error blip. */
   private buzz(): void {
+    this.onBlocked?.();
     if (this.sound) sfx.play('uiError', { volume: 0.5 });
     const x0 = this.x;
     const o = { t: 0 };

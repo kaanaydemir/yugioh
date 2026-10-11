@@ -846,8 +846,11 @@ export async function stormStrike(scene: Phaser.Scene, x: number, y: number, opt
   const T_LOCK = 520;
   const T_STRIKE = 680;
 
-  // darkness: under the units (holograms keep glowing), over the floor
-  const dark = scene.add.rectangle(0, 0, GAME_W, GAME_H, PAL.ink, 1).setOrigin(0).setDepth(DEPTH.SHADOW - 2).setAlpha(0);
+  // darkness: under the units (holograms keep glowing), over the floor. It lives in the world
+  // (it must sit under the units), so it is padded well past the screen: a focused / panned
+  // world camera or the 5 px thunder shake never shows its edges.
+  const DARK_PAD = 200;
+  const dark = scene.add.rectangle(-DARK_PAD, -DARK_PAD, GAME_W + 2 * DARK_PAD, GAME_H + 2 * DARK_PAD, PAL.ink, 1).setOrigin(0).setDepth(DEPTH.SHADOW - 2).setAlpha(0);
 
   const clouds = Raster.around(scene, cx, cy, 236, 92, DEPTH.FX + 4);
   const sigil = Raster.around(scene, x, y, 120, 64, DEPTH.SHADOW - 1);
@@ -1210,20 +1213,25 @@ export interface FountainOpts {
   at?: XY;
   /** Called when the first droplet reaches the panel (start the LP count-up here). */
   onArrive?: () => void;
+  /** Called on the eruption beat (+150 ms): sync a cut, a duelist reaction or a sound to it. */
+  onErupt?: () => void;
+  /** Play the opening 'spellActivate' chime (default true; off when the caller has its own). */
+  chime?: boolean;
 }
 
 const WATER_RAMP = [PAL.white, PAL.teal4, PAL.teal3, PAL.teal2, PAL.teal1];
 
 /**
- * Healing spring (~1.45 s): ripples, then a teal geyser erupts on the player's side; a dozen
- * glowing droplets arc into the LP panel with green-gold sparkle trails and pop there.
- * Resolves when the last droplet has landed.
+ * Healing spring (~1.1 s): ripples, then a teal geyser erupts on the player's side (+150 ms,
+ * onErupt); from +340 ms fourteen glowing droplets arc into the LP panel with green-gold sparkle
+ * trails and pop there (the first lands ~0.37–0.44 s later: onArrive). The column collapses back
+ * into the pool meanwhile. Resolves when the last droplet has landed; the pool fades on its own.
  */
 export async function healingFountain(scene: Phaser.Scene, player: PlayerId, toXY: XY, opts: FountainOpts = {}): Promise<void> {
   const base = opts.at ?? isoToScreen(2, player === 0 ? 4 : 0);
   const x = Math.round(base.x);
   const y = Math.round(base.y);
-  const H = 74;
+  const H = 82;
   const geyser = new Raster(scene, x - 40, y - H - 20, 80, H + 40, unitDepth(y) + 2);
   const floor = Raster.around(scene, x, y, 120, 60, DEPTH.SHADOW - 1);
   const spray = new Sparks(scene, unitDepth(y) + 3);
@@ -1235,7 +1243,7 @@ export async function healingFountain(scene: Phaser.Scene, player: PlayerId, toX
   let ripple = 0;
   const rings: number[] = [];
 
-  snd('spellActivate', 0.5, 1.1);
+  if (opts.chime !== false) snd('spellActivate', 0.5, 1.1);
   const stopDraw = onFrame(scene, (_dt, el) => {
     floor.draw((g) => {
       // pool + concentric ripples
@@ -1326,13 +1334,14 @@ export async function healingFountain(scene: Phaser.Scene, player: PlayerId, toX
     });
   });
 
-  // ---- 0–220: the ground trembles, ripples open
+  // ---- 0–150: the ground trembles, ripples open
   rings.push(0, 120, 240);
-  void run(scene, 220, (t) => (ripple = E.outQuad(t)));
+  void run(scene, 150, (t) => (ripple = E.outQuad(t)));
   spray.burst(10, (i) => ({ x: x + rr(-8, 8), y: y - 1, vx: rr(-20, 20), vy: rr(-90, -40), ay: 360, life: rr(300, 450), ramp: WATER_RAMP, delay: i * 18 }));
-  await sleep(scene, 220);
+  await sleep(scene, 150);
+  opts.onErupt?.();
 
-  // ---- 220: eruption
+  // ---- 150: eruption
   snd('waterSplash', 0.9, 1.1);
   void shake(scene, 160, 1);
   rings.push(260, 420);
@@ -1357,16 +1366,16 @@ export async function healingFountain(scene: Phaser.Scene, player: PlayerId, toX
     }
     return el < 2000;
   });
-  await sleep(scene, 280);
+  await sleep(scene, 190);
 
-  // ---- 500: droplets launch toward the LP panel
-  const N = 16;
+  // ---- 340: droplets launch toward the LP panel
+  const N = 14;
   let landed = 0;
   let first = true;
   const done = new Promise<void>((resolve) => {
     for (let i = 0; i < N; i++) {
       void (async () => {
-        await sleep(scene, i * 34);
+        await sleep(scene, i * 22);
         const from = { x: x + rr(-5, 5), y: y - height + rr(0, 8) };
         const side = toXY.x < from.x ? -1 : 1;
         const ctrl = { x: lerp(from.x, toXY.x, 0.35) + rr(-30, 30) * side, y: Math.min(from.y, toXY.y) - rr(50, 90) };
@@ -1374,7 +1383,7 @@ export async function healingFountain(scene: Phaser.Scene, player: PlayerId, toX
         const head = scene.add.image(from.x, from.y, TEX.dot5).setTint(PAL.teal2).setDepth(DEPTH.HUD + 8);
         const core = scene.add.image(from.x, from.y, TEX.px3).setTint(PAL.teal4).setDepth(DEPTH.HUD + 9);
         const spec = scene.add.image(from.x, from.y, TEX.px1).setTint(PAL.white).setDepth(DEPTH.HUD + 9.5);
-        const dur = rr(480, 620);
+        const dur = rr(360, 440);
         await run(scene, dur, (t) => {
           const k = E.inOutSine(t);
           const p = qbez(from, ctrl, dest, k);
@@ -1401,9 +1410,9 @@ export async function healingFountain(scene: Phaser.Scene, player: PlayerId, toX
     }
   });
 
-  // ---- 700–1150: the column collapses back into the pool
-  await sleep(scene, 380);
-  await run(scene, 420, (t) => (collapse = E.inQuad(t)));
+  // ---- 640–1000: the column collapses back into the pool
+  await sleep(scene, 300);
+  await run(scene, 360, (t) => (collapse = E.inQuad(t)));
   height = 0;
   sprayStop();
   void run(scene, 500, (t) => (ripple = 1 - t));
@@ -1734,12 +1743,21 @@ export async function swordForge(scene: Phaser.Scene, target: Unit): Promise<Aur
   const b0 = spriteBox(scene, target);
   const ax = Math.round(b0.cx);
   const SW = 15;
-  // integer magnification keeps the blade crisp: a giant ×2 blade for medium+ monsters
-  const SS = b0.h >= 40 ? 2 : 1;
+  // The rune circle hovers right above the head like a halo; the blade forms above it (hilt up)
+  // and plunges THROUGH it into the body. Integer magnification keeps the blade crisp: a giant ×2
+  // blade for medium+ monsters, but only when there is head room under the top of the screen for
+  // a real plunge (P2's back row may not have it) — otherwise ×1.
+  const circleY = Math.max(22, Math.round(b0.top - 8));
+  const layout = (ss: number) => {
+    const sh = 46 * ss;
+    const hy = Math.max(Math.round(sh / 2) + 16, circleY - Math.round(sh / 2) - 4); // sword center while forging
+    return { sh, hy, travel: Math.round(b0.top + b0.h * 0.5 - sh / 2) - hy };
+  };
+  let SS = b0.h >= 40 ? 2 : 1;
+  if (SS === 2 && layout(2).travel < 30) SS = 1;
   const SH = 46 * SS;
-  const hoverY = Math.max(Math.round(SH / 2) + 6, Math.round(b0.top - SH / 2 - 12)); // sword center while forging
-  const circleY = hoverY + Math.round(SH * 0.18);
-  const CR = 22 + SS * 10; // rune circle radius
+  const hoverY = layout(SS).hy;
+  const CR = 22 + SS * 8; // rune circle radius
   const runes: Phaser.GameObjects.Image[] = [];
   const sparks = new Sparks(scene, DEPTH.FX + 3);
   const halo = Raster.around(scene, ax, circleY, CR * 2 + 30, CR + 30, DEPTH.FX + 1);
@@ -2608,129 +2626,175 @@ export async function tendril(scene: Phaser.Scene, fromXY: XY, toXY: XY): Promis
 }
 
 /**
- * Thorn lurker flip effect (~0.9 s main beat): the ground splits under the target, four thorny
- * vines erupt and spiral up around it (back strands behind the sprite, front strands in front),
- * then crush: squash, hit-stop, thorn sparks. Resolves at the crush (shatter it then); the vines
- * wither away on their own. The sprite's scale/tint are restored before resolving.
+ * Thorn lurker flip effect (~0.75 s main beat): the ground splits under the target, four thick
+ * thorny vines erupt and spiral up around its body (back strands behind the sprite, front strands
+ * in front), tighten, then CRUSH: squash, white silhouette, hit-stop, thorn and leaf shards.
+ * Resolves at the crush (shatter it then); the vines wither back into the soil on their own.
+ * The vines are drawn to read over any sprite: ink-outlined strands, bright leaf-green bodies with
+ * a highlight, magenta thorns (the lurker's own), a few leaves and a budding tip while they grow.
+ * The sprite's scale/tint are restored before resolving.
  */
 export async function vineBurst(scene: Phaser.Scene, x: number, y: number, target: Unit): Promise<void> {
   x = Math.round(x);
   y = Math.round(y);
   const box = spriteBox(scene, target);
-  const back = Raster.around(scene, x, y - box.h / 2, 140, box.h + 60, unitDepth(y) - 1);
-  const front = Raster.around(scene, x, y - box.h / 2, 140, box.h + 60, unitDepth(y) + 1);
-  const floorR = Raster.around(scene, x, y, 110, 56, DEPTH.SHADOW - 1);
+  // the wrap hugs the body: radius from the silhouette width, height up to the head
+  const cx = Math.round(box.cx);
+  const H = Math.min(70, Math.max(16, y - box.top)) * 0.9;
+  const R0 = Math.min(19, Math.max(9, box.w * 0.34));
+  const back = Raster.around(scene, cx, y - H / 2, 2 * R0 + 40, H + 40, unitDepth(y) - 1);
+  const front = Raster.around(scene, cx, y - H / 2, 2 * R0 + 40, H + 40, unitDepth(y) + 1);
+  const floorR = Raster.around(scene, x, y, 2 * R0 + 60, R0 + 40, DEPTH.SHADOW - 1);
   const sp = new Sparks(scene, DEPTH.FX + 2);
   const NV = 4;
-  const vines = Array.from({ length: NV }, (_, i) => ({ a0: (i / NV) * TAU + rr(-0.3, 0.3), dir: i % 2 ? 1 : -1, delay: i * 40, turns: rr(1.1, 1.5) }));
-  const H = box.h * 0.92;
+  const vines = Array.from({ length: NV }, (_, i) => ({ a0: (i / NV) * TAU + rr(-0.3, 0.3), dir: i % 2 ? 1 : -1, delay: i * 0.08, turns: rr(1.15, 1.45) }));
+  const LEAF = [PAL.leaf4, PAL.leaf3, PAL.leaf2, PAL.leaf1];
+  const THORN = [PAL.white, PAL.mag4, PAL.mag3, PAL.mag2];
+  const DIRT = [PAL.earth3, PAL.earth2, PAL.earth1];
   let grow = 0;
   let squeeze = 0;
-  let wither = 0;
+  let keep = 1;
+  let fade = 1;
   let crackT = 0;
-  const cracks = Array.from({ length: 6 }, (_, i) => {
-    const a = (i / 6) * TAU + rr(-0.2, 0.2);
-    const l = rr(18, 30);
-    return boltPath({ x, y }, { x: x + Math.cos(a) * l, y: y + Math.sin(a) * l * 0.5 }, 4, 3);
-  });
-  const vinePts = (v: (typeof vines)[number], g0: number) => {
-    const pts: { p: XY; front: boolean; t: number }[] = [];
-    const n = 44;
-    for (let i = 0; i <= n * g0; i++) {
-      const t = i / n;
-      const hy = y - t * H;
-      const half = Math.max(box.halfAt(hy), 6);
-      const r = (half + 4) * (1 - squeeze * 0.28) + (1 - t) * 6;
-      const an = v.a0 + v.dir * t * TAU * v.turns;
-      pts.push({ p: { x: x + Math.cos(an) * r, y: hy + Math.sin(an) * r * 0.32 }, front: Math.sin(an) >= 0, t });
+  const cracks = Array.from({ length: 7 }, (_, i) => {
+    const a = (i / 7) * TAU + rr(-0.25, 0.25);
+    const l = rr(R0 + 6, R0 + 16);
+    const pts: XY[] = [];
+    for (let k = 0; k <= 4; k++) {
+      const u = k / 4;
+      const j = k && k < 4;
+      pts.push({ x: x + Math.cos(a) * l * u + (j ? rr(-2, 2) : 0), y: y + Math.sin(a) * l * u * 0.5 + (j ? rr(-1, 1) : 0) });
     }
     return pts;
-  };
-  const drawVines = (g: Raster, isFront: boolean, el: number) => {
-    for (const v of vines) {
-      const local = clamp01(grow * 1.25 - v.delay / 400);
-      const keep = 1 - wither;
-      if (local <= 0 || keep <= 0) continue;
-      const pts = vinePts(v, local);
-      for (let i = 1; i < pts.length; i++) {
-        const a = pts[i - 1];
-        const b = pts[i];
-        if (b.front !== isFront) continue;
-        if (b.t > keep) continue;
-        const w = 2.6 - b.t * 1.6;
-        g.thick(a.p.x, a.p.y + 0.5, b.p.x, b.p.y + 0.5, w + 0.7, PAL.leaf0);
-        g.thick(a.p.x, a.p.y, b.p.x, b.p.y, w, PAL.leaf2);
-        g.px(b.p.x, b.p.y - Math.round(w * 0.6), PAL.leaf3);
-        if (i % 5 === 0) {
-          // thorn pointing outward
-          const ox = b.p.x - x;
-          const oy = (b.p.y - (y - b.t * H)) * 3;
-          const l = Math.hypot(ox, oy) || 1;
-          const tx = b.p.x + (ox / l) * 3;
-          const ty = b.p.y + (oy / l) * 1.2 - 1;
-          g.line(b.p.x, b.p.y, tx, ty, squeeze > 0.6 && Math.floor(el / 40) % 2 ? PAL.white : PAL.earth4);
+  });
+  const radius = (t: number) => (R0 * (1 - 0.22 * t) + (1 - t) * 3) * (1 - squeeze * 0.3);
+  const drawVines = (el: number) => {
+    back.begin();
+    front.begin();
+    if (grow > 0 && fade > 0.05) {
+      const lv = fade;
+      for (const v of vines) {
+        const g0 = clamp01((grow - v.delay) / (1 - v.delay));
+        if (g0 <= 0) continue;
+        const n = 46;
+        const top = Math.min(g0, keep);
+        const pts: { p: XY; front: boolean; t: number; an: number; i: number }[] = [];
+        for (let i = 0; i <= n * top; i++) {
+          const t = i / n;
+          const an = v.a0 + v.dir * t * TAU * v.turns;
+          const r = radius(t);
+          pts.push({ p: { x: cx + Math.cos(an) * r, y: y - t * H + Math.sin(an) * r * 0.36 }, front: Math.sin(an) >= 0, t, an, i });
         }
-        if (i % 11 === 7) {
-          // leaf
-          g.disc(b.p.x + 2, b.p.y - 2, 1.5, PAL.leaf3);
-          g.px(b.p.x + 2, b.p.y - 3, PAL.leaf4);
+        // one strand in passes (outline, body, details) so the round caps never eat the body
+        const w = (t: number) => 3.8 - t * 1.8; // strand width (px)
+        for (let k = 1; k < pts.length; k++) {
+          const a = pts[k - 1];
+          const b = pts[k];
+          (b.front ? front : back).thick(a.p.x, a.p.y + 0.6, b.p.x, b.p.y + 0.6, (w(b.t) + 1.6) / 2, PAL.ink, lv);
+        }
+        for (let k = 1; k < pts.length; k++) {
+          const a = pts[k - 1];
+          const b = pts[k];
+          (b.front ? front : back).thick(a.p.x, a.p.y, b.p.x, b.p.y, w(b.t) / 2, b.front ? PAL.leaf2 : PAL.leaf1, lv);
+        }
+        for (let k = 1; k < pts.length; k++) {
+          const a = pts[k - 1];
+          const b = pts[k];
+          const g = b.front ? front : back;
+          const ww = w(b.t);
+          if (b.front) {
+            g.line(a.p.x, a.p.y - ww * 0.35, b.p.x, b.p.y - ww * 0.35, PAL.leaf3, lv);
+            if (b.i % 3 === 0) g.dpx(b.p.x, b.p.y - Math.round(ww * 0.5), PAL.leaf4, lv);
+          }
+          if (b.i % 4 === 0) {
+            // magenta thorn pointing outward, its tip flickering white under the squeeze
+            const ox = Math.cos(b.an);
+            const oy = Math.sin(b.an) * 0.36 - 0.3;
+            const l = Math.hypot(ox, oy) || 1;
+            const tx = b.p.x + (ox / l) * 3.2;
+            const ty = b.p.y + (oy / l) * 3.2;
+            g.line(b.p.x, b.p.y, tx, ty, PAL.mag2, lv);
+            g.dpx(tx, ty, squeeze > 0.5 && Math.floor(el / 40 + b.i) % 2 ? PAL.white : PAL.mag3, lv);
+          }
+          if (b.i % 10 === 6 && b.front) {
+            g.ell(b.p.x + 2, b.p.y - 2, 2, 1.2, PAL.leaf3, lv);
+            g.dpx(b.p.x + 1, b.p.y - 2, PAL.leaf4, lv);
+          }
+        }
+        // growing tip: a bud with a magenta barb
+        const tip = pts[pts.length - 1];
+        if (tip && g0 < 1 && keep >= 1) {
+          const g = tip.front ? front : back;
+          g.disc(tip.p.x, tip.p.y - 1, 1.6, PAL.leaf3);
+          g.px(tip.p.x, tip.p.y - 2.5, PAL.mag3);
         }
       }
     }
+    back.end();
+    front.end();
   };
   const stop = onFrame(scene, (_dt, el) => {
-    back.draw((g) => drawVines(g, false, el));
-    front.draw((g) => drawVines(g, true, el));
+    drawVines(el);
     floorR.draw((g) => {
-      if (crackT <= 0) return;
+      if (crackT <= 0 || fade <= 0.05) return;
+      // a dark split, ink cracks with green glints, a lip of turned soil
+      g.ell(x, y + 1, R0 + 5, (R0 + 5) * 0.42, PAL.ink, 0.55 * fade * Math.min(1, crackT * 2));
       for (const c of cracks) {
-        const n = Math.max(2, Math.floor(c.length * Math.min(1, crackT)));
-        g.path(c.slice(0, n), PAL.earth0, 1 - wither, 2);
-        g.path(c.slice(0, n), PAL.leaf1, 1 - wither);
+        const n = Math.max(2, Math.ceil(c.length * Math.min(1, crackT)));
+        for (let i = 1; i < n; i++) {
+          g.line(c[i - 1].x, c[i - 1].y, c[i].x, c[i].y, PAL.ink, fade, 2);
+          if (i < n - 1 && squeeze < 1) g.dpx(c[i].x, c[i].y - 1, PAL.leaf2, fade);
+        }
       }
-      g.ell(x, y, 14, 7, PAL.earth0, 0.6 * (1 - wither));
+      g.ring(x, y + 1, R0 + 6, (R0 + 6) * 0.45, PAL.earth2, 0.8 * fade);
     });
   });
   const sx = target.scaleX;
   const sy = target.scaleY;
   // ---- the ground splits
-  snd('groundCrack', 0.6, 1.3);
-  void shake(scene, 200, 1);
-  await run(scene, 180, (t) => {
+  snd('groundCrack', 0.7, 1.15);
+  void shake(scene, 160, 1);
+  await run(scene, 150, (t) => {
     crackT = E.outCubic(t);
-    if (rnd() < 0.6) sp.add({ x: x + rr(-14, 14), y: y + rr(-4, 4), vy: rr(-70, -30), vx: rr(-20, 20), ay: 300, life: rr(220, 380), ramp: [PAL.earth3, PAL.earth2, PAL.earth1], tex: TEX.px1 });
+    if (rnd() < 0.8) sp.add({ x: x + rr(-R0, R0), y: y + rr(-3, 3), vy: rr(-90, -40), vx: rr(-25, 25), ay: 380, life: rr(220, 380), ramp: DIRT, tex: TEX.px1 });
   });
-  // ---- vines erupt and spiral up
-  snd('whoosh', 0.6, 1.2);
-  sp.burst(12, () => ({ x: x + rr(-12, 12), y: y + rr(-3, 3), vx: rr(-60, 60), vy: rr(-120, -50), ay: 380, life: rr(300, 520), ramp: [PAL.leaf4, PAL.leaf3, PAL.leaf2], tex: rnd() < 0.5 ? TEX.px2 : TEX.px1 }));
-  await run(scene, 340, (t) => (grow = E.outCubic(t)));
-  grow = 1.4;
-  // ---- crush
-  snd('bite', 0.9, 0.8);
-  await run(scene, 160, (t) => {
+  // ---- vines erupt and spiral up around the body
+  snd('whoosh', 0.7, 1.25);
+  sp.burst(16, (i) => {
+    const a = rr(0, TAU);
+    return { x: x + Math.cos(a) * R0, y: y + Math.sin(a) * R0 * 0.4, vx: Math.cos(a) * rr(20, 60), vy: rr(-150, -70), ay: 420, life: rr(300, 520), ramp: i % 3 ? DIRT : LEAF, tex: rnd() < 0.5 ? TEX.px2 : TEX.px1 };
+  });
+  await run(scene, 300, (t) => (grow = E.outCubic(t)));
+  grow = 1;
+  // ---- they tighten…
+  snd('bite', 0.85, 0.75);
+  await run(scene, 170, (t) => {
     squeeze = E.inCubic(t);
-    if (target.active) target.setScale(sx * (1 - 0.14 * squeeze), sy * (1 + 0.06 * squeeze));
+    if (target.active) target.setScale(sx * (1 - 0.13 * squeeze), sy * (1 + 0.05 * squeeze));
   });
-  snd('impactHeavy', 0.8, 1.1);
+  // ---- CRUSH
+  snd('impactHeavy', 0.85, 1.05);
   if (target.active) target.setTintFill(PAL.white);
-  sp.burst(24, () => {
+  sp.burst(24, (i) => {
     const a = rr(0, TAU);
     const v = rr(60, 170);
-    return { x: x + rr(-8, 8), y: y - rr(4, H * 0.8), vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.7 - 30, ay: 320, drag: 2, life: rr(260, 520), ramp: [PAL.white, PAL.leaf4, PAL.leaf3, PAL.earth3], trail: true, tex: rnd() < 0.3 ? TEX.plus : TEX.px1 };
+    return { x: cx + rr(-6, 6), y: y - H * 0.45 + rr(-H * 0.3, H * 0.3), vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.7 - 40, ay: 320, drag: 1.5, life: rr(300, 560), ramp: i % 3 === 0 ? THORN : LEAF, trail: true, tex: rnd() < 0.3 ? TEX.plus : TEX.px1 };
   });
   void shake(scene, 180, 2);
   await freeze(scene, 70);
   if (target.active) {
     target.clearTint();
-    target.setScale(sx, sy);
+    target.setScale(sx * 0.92, sy * 1.03);
   }
-  await sleep(scene, 60);
-  // vines wither in the background
+  await sleep(scene, 50);
+  if (target.active) target.setScale(sx, sy);
+  // the vines hold the grip while the victim breaks, then sink back into the soil
   void (async () => {
-    await sleep(scene, 240);
-    await run(scene, 420, (t) => {
-      wither = E.inQuad(t);
-      squeeze = 1 - t;
+    await sleep(scene, 160);
+    await run(scene, 380, (t) => {
+      keep = 1 - E.inQuad(t);
+      squeeze = 1 - t * 0.6;
+      fade = 1 - seg(t, 0.6, 1);
     });
     stop();
     back.destroy();

@@ -118,7 +118,8 @@ class Stage {
   }
 
   async all(ps: Promise<unknown>[]): Promise<void> {
-    await Promise.all(ps.map((p) => safe(p)));
+    // a page change aborts the parallel branches too: that is not an error worth logging
+    await Promise.all(ps.map((p) => p.then(() => undefined, (e) => void (e instanceof Abort || console.error('[howto]', e)))));
     this.check();
   }
 
@@ -126,6 +127,21 @@ class Stage {
     this.objs.push(o);
     return o;
   }
+
+  /** Track a VFX handle (attack arrow, lock-on...) so a page change mid-beat removes it too. */
+  keep<T extends { destroy(): void }>(h: T): T {
+    let done = false;
+    const destroy = h.destroy.bind(h);
+    h.destroy = () => {
+      if (done) return;
+      done = true;
+      destroy();
+    };
+    this.handles.push(h);
+    return h;
+  }
+
+  private readonly handles: { destroy(): void }[] = [];
 
   sfx(name: SfxName, volume = 0.5, pitch = 1): void {
     if (this.alive()) sfx.play(name, { volume, pitch });
@@ -176,6 +192,13 @@ class Stage {
   }
 
   destroy(): void {
+    for (const h of this.handles.splice(0)) {
+      try {
+        h.destroy();
+      } catch {
+        /* already gone */
+      }
+    }
     for (const o of this.objs) if (o.active) o.destroy();
     this.objs.length = 0;
   }
@@ -478,8 +501,8 @@ const PAGES: Page[] = [
       const cap2 = st.label(144, 238, '', PAL.mist, 'sm');
       const badge = (x: number, y: number, s1: string, color: number) => st.label(x, y, s1, color, 'sm');
       const declare = async (from: { x: number; y: number }, to: { x: number; y: number }) => {
-        const a = attackArrow(s, st.at(from.x, from.y - 14), st.at(to.x, to.y - 14), 0);
-        const l = lockOn(s, st.at(to.x, to.y - 16).x, st.at(to.x, to.y - 16).y, { size: 24 });
+        const a = st.keep(attackArrow(s, st.at(from.x, from.y - 14), st.at(to.x, to.y - 14), 0));
+        const l = st.keep(lockOn(s, st.at(to.x, to.y - 16).x, st.at(to.x, to.y - 16).y, { size: 24 }));
         st.sfx('attackDeclare', 0.4);
         await st.wait(520);
         a.destroy();
@@ -625,7 +648,7 @@ const PAGES: Page[] = [
         const titan = st.monster('magma_titan', P1.x, P1.y, 0);
         await st.appear(titan, 'FIRE');
         await st.wait(300);
-        const a = attackArrow(s, st.at(P1.x, P1.y - 20), st.at(P2.x, P2.y - 10), 0);
+        const a = st.keep(attackArrow(s, st.at(P1.x, P1.y - 20), st.at(P2.x, P2.y - 10), 0));
         st.sfx('attackDeclare', 0.4);
         await st.wait(520);
         // the trap springs: the set card stands up and flips
@@ -697,11 +720,12 @@ const PAGES: Page[] = [
   {
     title: 'Kontroller',
     lines: [
-      'Elindeki ya da sahadaki bir karta tıkla: yapabileceğin eylemler açılır.',
+      'Elindeki ya da sahadaki bir karta tıkla: yapabileceğin eylemler açılır. Elin üstündeki satır sıradaki adımı söyler.',
+      'Parlayan alanlar seçilebilir. Esc ya da sağ tık: geri / iptal.',
       'Bir kartın üstüne gel: ayrıntıları kart panelinde gör.',
+      'Kısayollar: B = Savaş, E = Turu Bitir, 1–6 = eldeki kart, Esc = düello menüsü (teslim ol, ana menü).',
       'Space ya da basılı tutulan tıklama animasyonları 3× hızlandırır.',
       'Aynı ekranda oynarken sıra perdesi elini rakibinden gizler (Ayarlar).',
-      'İpucu: as kartlar (★) sahaya özel bir sinematikle gelir!',
     ],
     async run(st) {
       const s = st.scene;

@@ -488,12 +488,21 @@ export class PixelCanvas {
     return new ImageData(new Uint8ClampedArray(this.data), this.w, this.h);
   }
 
-  /** Browser only. */
+  /**
+   * Browser only. The canvas is CPU-backed (willReadFrequently): Phaser's addCanvas() reads every
+   * canvas back with getImageData() when it wraps it in a CanvasTexture, and effects read sprite
+   * sheets back for silhouettes. On a GPU-accelerated 2D canvas each of those readbacks is a
+   * synchronous GPU round trip (measured 50–300 ms per texture in the soak test: boot stalls and
+   * frame spikes on the first chevron / rune / panel / shatter texture); on a CPU canvas it is a
+   * plain memory copy. The context attributes only apply to the FIRST getContext() call, so the
+   * flag has to be set here, where the canvas is created.
+   */
   toCanvas(): HTMLCanvasElement {
     const cv = document.createElement('canvas');
     cv.width = this.w;
     cv.height = this.h;
-    cv.getContext('2d')!.putImageData(this.toImageData(), 0, 0);
+    const ctx = cv.getContext('2d', { willReadFrequently: true })!;
+    ctx.putImageData(new ImageData(this.data as Uint8ClampedArray<ArrayBuffer>, this.w, this.h), 0, 0);
     return cv;
   }
 }

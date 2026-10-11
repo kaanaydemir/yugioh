@@ -18,6 +18,11 @@
 // LP
 //   presentDamage(ctx, ev, { at })             → damage number + LP roll + duelist hurt
 //   presentHeal(ctx, ev, { at })
+// Battle
+//   playBattleTriggers(ctx, [attacker, target]) → the battle's monster-effect triggers, played
+//                                                 inside the battle's camera focus
+//   directImpact(ctx, at, ref) → { world, screen } a direct hit's point for the UI-camera burst
+//   screenPoint(ctx, p)                         → world → screen through the zoomed camera
 // Misc: unitPoint, zoneCenter, attrRamp, dim(ctx, alpha, ms), ace(cardId), sleepAll.
 
 import Phaser from 'phaser';
@@ -177,10 +182,14 @@ export async function tileToGraveyard(ctx: AnyCtx, uid: Uid, owner: PlayerId, ca
 
 // ================================================================ monsters
 
-/** Impact on a unit: sparks, hit-stop, shake (by power), white silhouette, 'hit' recoil. */
+/**
+ * Impact on a unit: sparks, hit-stop, shake (by power), white silhouette, 'hit' recoil. A unit in
+ * DEFENSE position reacts from its guard pose instead (MonsterUnit.guardHit: knock-back along
+ * `dir`, hex-shield glint) — never the upright recoil.
+ */
 export function hitReact(ctx: AnyCtx, unit: MonsterUnit | null, power: 1 | 2 | 3, ramp?: Ramp, at?: XY, dir?: XY): Promise<void> {
   const p = at ?? (unit ? unit.core() : { x: GAME_W / 2, y: GAME_H / 2 });
-  if (unit && unit.sprite.active && unit.sprite.visible) void unit.play('hit');
+  if (unit && unit.sprite.active && unit.sprite.visible) void unit.play('hit', { dir, power });
   return combatImpact(ctx.scene, p.x, p.y, { power, ramp, sprite: unit?.sprite.visible ? unit.sprite : undefined, dir });
 }
 
@@ -497,6 +506,72 @@ export async function playRun(ctx: AnyCtx, indices: readonly number[], hints?: (
     if (ctx.isConsumed(i)) continue;
     await ctx.play(i, hints?.(i) ?? {});
   }
+}
+
+// ================================================================ battle triggers
+
+const TRIGGER_RUN = new Set<GameEvent['type']>(['damage', 'destroy', 'toGraveyard', 'statChange', 'fieldSpell', 'lpGain', 'target']);
+
+/**
+ * Play the monster-effect triggers that answer this battle (Şimşek Kertenkelesi's discharge,
+ * Kor Kurdu's howl, Gelgit Golemi's counter-splash...) right away, INSIDE the battle's camera
+ * focus — instead of after the battle handler has eased the camera out, which left a dead gap
+ * before the trigger. Looks at the events after the battle: its own consequences (damage /
+ * destroy / toGraveyard / statChange), then monsterEffect activations of the monsters in
+ * `involved` (attacker / target) and their resolution runs. Everything up to the end of the last
+ * such run is played in engine order (already consumed events are skipped); anything else
+ * (another monster's effect, a decision, gameOver, a phase change) ends the look-ahead and is
+ * left to the Director. `skip`: indices the battle handler plays itself (its delayed damage).
+ * Resolves when they have played.
+ */
+export async function playBattleTriggers(ctx: AnyCtx, involved: readonly (Uid | null)[], o: { skip?: readonly number[] } = {}): Promise<void> {
+  const ids = involved.filter((u): u is Uid => u !== null && u !== undefined);
+  const skip = new Set(o.skip ?? []);
+  let end = -1;
+  for (let i = ctx.index + 1; i < ctx.events.length; i++) {
+    const e = ctx.events[i];
+    if (e.type === 'activate' && e.kind === 'monsterEffect' && ids.includes(e.uid)) {
+      // this trigger and its resolution run
+      let j = i + 1;
+      while (j < ctx.events.length && TRIGGER_RUN.has(ctx.events[j].type)) j++;
+      end = j - 1;
+      i = end;
+      continue;
+    }
+    if (TRIGGER_RUN.has(e.type)) continue;
+    break;
+  }
+  for (let i = ctx.index + 1; i <= end; i++) {
+    // `skip`: events the battle itself still plays (e.g. a damage number on a delay)
+    if (ctx.isConsumed(i) || skip.has(i)) continue;
+    await ctx.play(i);
+  }
+}
+
+// ================================================================ screen space
+
+/** A world point projected through the (zoomed / panned) world camera to the screen / UI camera. */
+export function screenPoint(ctx: AnyCtx, p: XY): XY {
+  const cam = ctx.views.camera.main;
+  const ox = cam.width * cam.originX;
+  const oy = cam.height * cam.originY;
+  return { x: (p.x - cam.scrollX - ox) * cam.zoom + ox + cam.x, y: (p.y - cam.scrollY - oy) * cam.zoom + oy + cam.y };
+}
+
+/**
+ * A direct hit's impact point in both spaces: `screen` for vfx/combat.directHit (it draws on the
+ * un-zoomed UI camera) and `world` for anything drawn in the world (damage numbers, sparks).
+ * Strikes hand s.impact() a WORLD point; it is projected here once, through the camera as it is
+ * at the impact frame. Compatibility: an older strike that already projected its point itself is
+ * recognised (it lies on the projected `ref` — the world point the hit aims at — rather than on
+ * `ref`) and is un-projected for `world` instead, so nothing is ever projected twice.
+ */
+export function directImpact(ctx: AnyCtx, at: XY, ref: XY): { world: XY; screen: XY } {
+  const refScreen = screenPoint(ctx, ref);
+  const dWorld = Math.hypot(at.x - ref.x, at.y - ref.y);
+  const dScreen = Math.hypot(at.x - refScreen.x, at.y - refScreen.y);
+  if (dScreen + 0.5 < dWorld) return { world: ctx.views.camera.worldPoint(at.x, at.y), screen: at };
+  return { world: at, screen: screenPoint(ctx, at) };
 }
 
 // ================================================================ lookups

@@ -17,10 +17,13 @@ import { DEPTH, type XY, unitDepth } from '../../view/layout';
 import { shadowPuddle, sinkInto, whiteFlash, xSlash, type Puddle } from '../../vfx/combat';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { registerCardHook, registerStrike } from '../api';
-import { E, Sparks, animate, facing, flavoredDeath, glint, homeSprite, impactPoint, layer, lerp, playFrom, pose, reseed, rr, sleep, vlen, vnorm, vsub, type StrikeArgs } from './_kit';
+import { E, Sparks, animate, facing, flavoredDeath, glint, glintPoint, homeSprite, impactPoint, layer, lerp, playFrom, pose, reseed, rr, sleep, vlen, vnorm, vsub, type StrikeArgs } from './_kit';
 
-/** Eye slit in attack f1 (coiled), frame px. */
-const EYE_F1 = { x: 41, y: 26 };
+/**
+ * Search hint for the eye slit in attack f1 (coiled), frame px. The real point is the sprite's
+ * own white eye pixel, read from the frame at runtime (glintPoint).
+ */
+const EYE_F1 = { x: 41, y: 28 };
 
 function setFacing(u: MonsterUnit, flip: boolean): void {
   const spr = u.sprite;
@@ -96,7 +99,8 @@ async function shadeStrike(s: StrikeArgs): Promise<void> {
   try {
     // ---- coil, eyes flash, the pool opens
     pose(u, 'attack', 1);
-    const eye = u.framePoint(EYE_F1.x, EYE_F1.y);
+    const ef = glintPoint(u, 'attack', 1, [PAL.white], EYE_F1, 5);
+    const eye = u.framePoint(ef.x, ef.y);
     void glint(sc, eye.x, eye.y, { size: 5, ms: 200, color: PAL.void4 });
     s.ctx.sfx('darkPulse', { volume: 0.6, pitch: 1.3 });
     pud = shadowPuddle(sc, home.x, home.y, { openMs: 150 });

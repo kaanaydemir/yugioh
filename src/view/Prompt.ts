@@ -6,7 +6,7 @@
 //   const ins = prompt.instruction('Hedef seç: rakibin bir canavarı');   // top bar with İPTAL
 //   ins.cancelled.then(() => ...);  ins.close();
 //   const ok = await prompt.confirm('Teslim olmak istediğine emin misin?');
-//   await prompt.gameOver(0, 'lp');                                      // resolves on "Tekrar Oyna"
+//   const c = await prompt.gameOver(0, 'lp', { title: false, menu: true }); // 'replay' | 'menu'
 //
 // passDevice: a diagonal wipe in the player's colors covers the whole board (nothing of the
 // previous player's hand stays visible), scrolling stripes + speed lines, the title slams in
@@ -21,6 +21,7 @@ import { sfx } from '../audio/sfx';
 import type { PlayerId, Uid, WinReason } from '../engine/types';
 import { measureText, pixelLetters, pixelText, textMetrics, wrapText, type PixelLetter, type TextSize } from '../ui/text';
 import { TEX, shake, tween, wait } from '../vfx/core';
+import { clearBanners } from '../vfx/banners';
 import { Button } from './Button';
 import { CardSprite } from './CardSprite';
 import { CARD_H, CARD_W, DEPTH, GAME_H, GAME_W, UI } from './layout';
@@ -30,6 +31,19 @@ export interface TrapOption {
   uid: Uid;
   cardId: CardId;
 }
+
+export interface GameOverOpts {
+  /**
+   * false: the cinematic's victory screen (banners.victory) is already up — show only a slim
+   * plate with the result caption and the buttons (no second title, sting or fireworks). The
+   * victory screen is cleared when a button is pressed. Default true (the full victory screen).
+   */
+  title?: boolean;
+  /** Also offer "ANA MENÜ" (Esc). */
+  menu?: boolean;
+}
+
+export type GameOverChoice = 'replay' | 'menu';
 
 export interface InstructionHandle {
   /** Remove the bar (does not resolve `cancelled`). */
@@ -253,6 +267,8 @@ export class Prompt {
       ghost2.y = bandY + bandH / 2 - Math.round(Math.sin(slashT / 700) * 2);
     };
     sc.events.on(Phaser.Scenes.Events.UPDATE, scroll);
+    const offScroll = () => sc.events.off(Phaser.Scenes.Events.UPDATE, scroll);
+    sc.events.once(Phaser.Scenes.Events.SHUTDOWN, offScroll);
     const o = { e: edge };
     await tween(sc, {
       targets: o,
@@ -351,7 +367,8 @@ export class Prompt {
         onUpdate: () => drawWipe(o2.e, GAME_W + 400),
       }),
     ]);
-    sc.events.off(Phaser.Scenes.Events.UPDATE, scroll);
+    offScroll();
+    sc.events.off(Phaser.Scenes.Events.SHUTDOWN, offScroll);
     for (const ob of objs) ob.destroy();
   }
 
@@ -544,7 +561,13 @@ export class Prompt {
     /** Widest bar that stays clear of the inspect panel (left) and the P2 panel (right). */
     const MAX_W = 2 * (UI.p2Panel.x - 4 - GAME_W / 2);
 
+    let loops: Phaser.Tweens.Tween[] = [];
+    const stopLoops = () => {
+      for (const t of loops) t.stop();
+      loops = [];
+    };
     const build = (s: string, animate: boolean) => {
+      stopLoops();
       bar?.destroy();
       const extra = 20 + (showCancel ? 58 : 10);
       // md when it fits, else the small font, wrapped onto two lines if it must
@@ -566,8 +589,10 @@ export class Prompt {
       const textTop = Math.floor((H - ((lines - 1) * tm.lineHeight + tm.capHeight)) / 2);
       label = pixelText(sc, 16, capY(size, textTop), s, { size, color: PAL.white, maxWidth: size === 'sm' ? MAX_W - extra : undefined });
       bar.add([glow, bg, arrow, label]);
-      sc.tweens.add({ targets: arrow, x: 9, duration: 300, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
-      sc.tweens.add({ targets: glow, alpha: { from: 0.25, to: 0.7 }, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+      loops.push(
+        sc.tweens.add({ targets: arrow, x: 9, duration: 300, yoyo: true, repeat: -1, ease: 'Sine.InOut' }),
+        sc.tweens.add({ targets: glow, alpha: { from: 0.25, to: 0.7 }, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.InOut' }),
+      );
       if (showCancel) {
         cancelBtn = new Button(sc, w - 52, Math.round(H / 2) - 7, { w: 48, h: 15, label: 'İPTAL', size: 'sm', icon: ICON.close, style: 'neutral' });
         cancelBtn.onClick = () => doCancel();
@@ -592,8 +617,12 @@ export class Prompt {
       closed = true;
       this.removeKeys(keyFn);
       const b = bar;
-      if (b) sc.tweens.add({ targets: b, y: -H - 8, duration: 180, ease: 'Quad.In', onComplete: () => root.destroy() });
-      else root.destroy();
+      const end = () => {
+        stopLoops();
+        root.destroy();
+      };
+      if (b && b.active) sc.tweens.add({ targets: b, y: -H - 8, duration: 180, ease: 'Quad.In', onComplete: end, onStop: end });
+      else end();
     };
     const doCancel = () => {
       if (closed) return;
@@ -673,8 +702,18 @@ export class Prompt {
 
   // ================================================================ game over
 
-  /** Victory screen: "KAZANAN / OYUNCU 1", sunburst, gold fireworks. Resolves on "Tekrar Oyna". */
-  async gameOver(winner: PlayerId, reason?: WinReason): Promise<void> {
+  /**
+   * Game over. Resolves 'replay' on "Tekrar Oyna" (Enter) or 'menu' on "Ana Menü" (Esc; offered
+   * with opts.menu).
+   *
+   * title (default true): the full victory screen — "KAZANAN / OYUNCU 1", crown, sunburst, gold
+   *   fireworks and the victory sting.
+   * title: false: the cinematic's victory screen (banners.victory) is already up — no second
+   *   title, fanfare or fireworks: only a slim plate under it with a one-line result caption and
+   *   the buttons. Any victory screen still up is cleared when a button is pressed.
+   */
+  async gameOver(winner: PlayerId, reason?: WinReason, opts: GameOverOpts = {}): Promise<GameOverChoice> {
+    if (opts.title === false) return this.gameOverButtons(winner, reason, !!opts.menu);
     const sc = this.scene;
     const R = UI_RAMP[playerStyle(winner)];
     const root = sc.add.container(0, 0).setDepth(DEPTH.OVERLAY).setScrollFactor(0);
@@ -727,9 +766,11 @@ export class Prompt {
     sc.tweens.add({ targets: dim, alpha: 0.62, duration: 500 });
     sc.tweens.add({ targets: rays, alpha: 1, duration: 800, delay: 200 });
     const spin = (_t: number, dt: number) => {
-      rays.rotation += (dt * sc.time.timeScale) / 9000;
+      if (rays.active) rays.rotation += (dt * sc.time.timeScale) / 9000;
     };
     sc.events.on(Phaser.Scenes.Events.UPDATE, spin);
+    const offSpin = () => sc.events.off(Phaser.Scenes.Events.UPDATE, spin);
+    sc.events.once(Phaser.Scenes.Events.SHUTDOWN, offSpin);
     await wait(sc, 250);
     sc.tweens.add({ targets: band, alpha: 1, duration: 200 });
     kaz.y -= 16;
@@ -741,42 +782,114 @@ export class Prompt {
     crown.setScale(4);
     sc.tweens.add({ targets: crown, alpha: 1, scale: 2, duration: 260, ease: 'Back.Out' });
     // the crown keeps a slow bob + an occasional sparkle on its tips
-    sc.tweens.add({ targets: crown, y: crown.y - 2, duration: 900, ease: 'Sine.InOut', yoyo: true, repeat: -1, delay: 300 });
+    const bob = sc.tweens.add({ targets: crown, y: crown.y - 2, duration: 900, ease: 'Sine.InOut', yoyo: true, repeat: -1, delay: 300 });
     if (why) sc.tweens.add({ targets: why, alpha: 1, duration: 300, delay: 200 });
     void this.glint(title.letters, PAL.gold4);
     const glintEv = sc.time.addEvent({ delay: 2200, loop: true, callback: () => void this.glint(title.letters, PAL.gold4) });
 
-
     await wait(sc, 600);
-    const again = new Button(sc, Math.round(cx - 64), cy + 74, { w: 128, h: 25, label: 'TEKRAR OYNA', icon: ICON.replay, style: 'gold' });
-    root.add(again);
-    again.setAlpha(0);
-    again.y += 10;
-    await tween(sc, { targets: again, alpha: 1, y: again.y - 10, duration: 260, ease: 'Back.Out' });
-    again.setAttention(true);
-    await new Promise<void>((resolve) => {
+    const buttons = this.gameOverRow(root, cy + 74, !!opts.menu);
+    const choice = await this.waitGameOverChoice(buttons);
+    fw.remove();
+    glintEv.remove();
+    bob.stop();
+    await tween(sc, { targets: root, alpha: 0, duration: 320 });
+    offSpin();
+    sc.events.off(Phaser.Scenes.Events.SHUTDOWN, offSpin);
+    root.destroy();
+    return choice;
+  }
+
+  /** title: false — only the buttons (and a one-line caption) under the cinematic's victory screen. */
+  private async gameOverButtons(winner: PlayerId, reason: WinReason | undefined, menu: boolean): Promise<GameOverChoice> {
+    const sc = this.scene;
+    const R = UI_RAMP[playerStyle(winner)];
+    const root = sc.add.container(0, 0).setDepth(DEPTH.OVERLAY).setScrollFactor(0);
+    // eats clicks on the board below; invisible
+    const blocker = sc.add.zone(0, 0, GAME_W, GAME_H).setOrigin(0).setInteractive();
+    root.add(blocker);
+    // a calm dim UNDER the banner layer: it darkens the board (whether or not the victory screen
+    // is still up) but never the victory title itself
+    const dim = sc.add.rectangle(0, 0, GAME_W, GAME_H, PAL.ink).setOrigin(0).setScrollFactor(0).setDepth(DEPTH.BANNER - 3).setAlpha(0);
+    sc.tweens.add({ targets: dim, alpha: 0.5, duration: 420 });
+    // a slim plate under the victory band (UI.bannerY ± 29): caption + buttons
+    const top = 192;
+    const plateH = 64;
+    const plate = sc.add.graphics();
+    plate.fillStyle(PAL.ink, 0.72).fillRect(0, top, GAME_W, plateH);
+    plate.fillStyle(PAL.gold3).fillRect(0, top, GAME_W, 1).fillRect(0, top + plateH - 1, GAME_W, 1);
+    plate.fillStyle(PAL.gold1).fillRect(0, top + 2, GAME_W, 1).fillRect(0, top + plateH - 3, GAME_W, 1);
+    root.add(plate);
+    // caption: "OYUNCU 1 KAZANDI · Rakibin LP'si sıfırlandı" (the winner in their colour)
+    const who = `${NAME[winner]} KAZANDI`;
+    const rest = reason ? ` · ${REASON[reason]}` : '';
+    const capTop = top + 9;
+    const cw = measureText(who + rest, 'sm').w;
+    const x0 = Math.round(GAME_W / 2 - cw / 2);
+    const a = pixelText(sc, x0, capY('sm', capTop), who, { size: 'sm', color: R[3] });
+    const b = pixelText(sc, x0 + measureText(who, 'sm').w, capY('sm', capTop), rest, { size: 'sm', color: PAL.mist });
+    root.add([a, b]);
+    root.setAlpha(0);
+    sc.tweens.add({ targets: root, alpha: 1, duration: 260 });
+    const buttons = this.gameOverRow(root, top + 27, menu);
+    const choice = await this.waitGameOverChoice(buttons);
+    // the victory screen leaves with the plate
+    clearBanners(sc, 320);
+    await Promise.all([tween(sc, { targets: root, alpha: 0, duration: 300 }), tween(sc, { targets: dim, alpha: 0, duration: 300 })]);
+    root.destroy();
+    dim.destroy();
+    return choice;
+  }
+
+  /** "TEKRAR OYNA" (+ "ANA MENÜ") centred on row y; they rise in. */
+  private gameOverRow(root: Phaser.GameObjects.Container, y: number, menu: boolean): { again: Button; back: Button | null } {
+    const sc = this.scene;
+    const cx = GAME_W / 2;
+    const wA = 128;
+    const wB = 104;
+    const gap = 8;
+    const total = menu ? wA + gap + wB : wA;
+    const x0 = Math.round(cx - total / 2);
+    const again = new Button(sc, x0, y, { w: wA, h: 25, label: 'TEKRAR OYNA', icon: ICON.replay, style: 'gold' });
+    const back = menu ? new Button(sc, x0 + wA + gap, y, { w: wB, h: 25, label: 'ANA MENÜ', icon: ICON.close, style: 'neutral' }) : null;
+    for (const [i, btn] of [again, back].entries()) {
+      if (!btn) continue;
+      root.add(btn);
+      btn.setAlpha(0);
+      btn.y += 10;
+      sc.tweens.add({ targets: btn, alpha: 1, y: btn.y - 10, duration: 260, delay: i * 70, ease: 'Back.Out' });
+    }
+    sc.time.delayedCall(260, () => {
+      if (again.active) again.setAttention(true);
+    });
+    return { again, back };
+  }
+
+  /** Enter / click "Tekrar Oyna" → 'replay'; Esc / click "Ana Menü" → 'menu'. */
+  private waitGameOverChoice(b: { again: Button; back: Button | null }): Promise<GameOverChoice> {
+    return new Promise<GameOverChoice>((resolve) => {
       let done = false;
-      const finish = () => {
+      const finish = (v: GameOverChoice) => {
         if (done) return;
         done = true;
         this.removeKeys(keyFn);
-        resolve();
+        resolve(v);
       };
-      again.onClick = finish;
+      b.again.onClick = () => finish('replay');
+      if (b.back) b.back.onClick = () => finish('menu');
       const keyFn = (e: KeyboardEvent) => {
         if (e.key === 'Enter') {
-          again.click();
+          b.again.click();
+          return true;
+        }
+        if (e.key === 'Escape' && b.back) {
+          b.back.click();
           return true;
         }
         return false;
       };
       this.addKeys(keyFn);
     });
-    fw.remove();
-    glintEv.remove();
-    await tween(sc, { targets: root, alpha: 0, duration: 320 });
-    sc.events.off(Phaser.Scenes.Events.UPDATE, spin);
-    root.destroy();
   }
 
   // ================================================================ shared effects
@@ -846,6 +959,8 @@ export class Prompt {
 
   private firework(layer: Phaser.GameObjects.Container, accent: number): void {
     const sc = this.scene;
+    // the screen may already be gone (a late timer): never add into a destroyed container
+    if (!layer.active) return;
     const x0 = 60 + this.rnd() * (GAME_W - 120);
     const tx = x0 + (this.rnd() - 0.5) * 80;
     const ty = 40 + this.rnd() * 110;
@@ -857,6 +972,10 @@ export class Prompt {
       delay: 30,
       loop: true,
       callback: () => {
+        if (!layer.active || !rocket.active) {
+          trail.remove();
+          return;
+        }
         const t = sc.add.image(rocket.x, rocket.y + 2, TEX.px1).setTint(PAL.gold2).setBlendMode(ADD);
         layer.add(t);
         sc.tweens.add({ targets: t, alpha: 0, y: t.y + 4, duration: 260, onComplete: () => t.destroy() });
@@ -871,7 +990,7 @@ export class Prompt {
       onComplete: () => {
         trail.remove();
         rocket.destroy();
-        this.burst(layer, tx, ty, main);
+        if (layer.active) this.burst(layer, tx, ty, main);
       },
     });
   }
@@ -910,7 +1029,7 @@ export class Prompt {
           // twinkle late in life
           if (t > 0.55) p.setVisible(((t * 60) | 0) % 3 !== 0);
           // sparse falling glitter trail
-          if (big && t - last > 0.08 && t < 0.8) {
+          if (big && t - last > 0.08 && t < 0.8 && layer.active) {
             last = t;
             const g = sc.add.image(px, py, TEX.px1).setTint(PAL.gold4).setBlendMode(ADD);
             layer.add(g);

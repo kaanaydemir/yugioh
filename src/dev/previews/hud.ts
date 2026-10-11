@@ -6,6 +6,7 @@
 //          gameover        victory screen with fireworks
 //          confirm | instruction (&text=long|xlong) | log | swap | draw | inspect | heal | hover
 //          still (static layout, drive with --eval) | icons
+//          hint     guidance line above the hand: idle → menu → flash (a "why not" reason)
 //   &active=1|2      active player (default 1)
 //   &loop=0          run the demo once
 //   &sync=1          film t=0 = demo start (tools/shot.mjs --film)
@@ -120,11 +121,25 @@ const STATES: Record<string, (c: Ctx) => Promise<void>> = {
       const id = await c.menu.open(xy.x, xy.y - 46, [
         { id: 'summon', label: 'Çağır' },
         { id: 'set', label: 'Kapalı Koy' },
-        { id: 'activate', label: 'Aktive Et', enabled: false },
+        { id: 'activate', label: 'Aktive Et', enabled: false, reason: 'Canavar kartları aktive edilmez' },
       ], { style: c.active === 0 ? 'p1' : 'p2', title: 'Kor Kurdu' });
       (window.__neon.results as string[]).push(`menu:${id}`);
       c.log.add(`Menü: ${id ?? 'iptal'}`, c.active);
       await wait(c.scene, 300);
+    });
+  },
+  async hint(c) {
+    await repeat(c, async () => {
+      c.hud.setHint("Bir kart seç ya da SAVAŞ'a geç", { player: c.active });
+      await wait(c.scene, 1600);
+      c.hud.setHint('Ne yapacağını seç · Esc: vazgeç', { player: c.active });
+      await wait(c.scene, 1200);
+      c.hud.flashHint('Bu tur zaten bir canavar çağırdın ya da kapalı koydun (turda 1 hak)', { ms: 1600 });
+      await wait(c.scene, 2000);
+      c.hud.setHint('Kurban edilecek canavarlarına tıkla · Esc: geri', { style: 'gold' });
+      await wait(c.scene, 1400);
+      c.hud.setHint(null);
+      await wait(c.scene, 600);
     });
   },
   async trap(c) {
@@ -264,6 +279,7 @@ const preview: DevPreview = {
     hud.setCounts(0, { deck: 14, hand: 4, grave: 2 }, false);
     hud.setCounts(1, { deck: 13, hand: 5, grave: 1 }, false);
     hud.setButtons({ battle: true, endTurn: true });
+    if (state !== 'hint') hud.setHint("Bir kart seç ya da SAVAŞ'a geç", { player: active });
     const hand = new HandView(scene, { owner: active });
     hand.setCards(active === 0 ? HAND0 : HAND1, active);
     hand.setCards(active === 0 ? HAND1 : HAND0, active === 0 ? 1 : 0);

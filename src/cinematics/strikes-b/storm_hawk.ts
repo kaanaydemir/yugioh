@@ -28,6 +28,7 @@ import {
   facing,
   flavoredDeath,
   glint,
+  glintPoint,
   groundRing,
   homeSprite,
   layer,
@@ -50,8 +51,11 @@ import {
 
 const WIND = [PAL.teal2, PAL.teal3, PAL.teal4, PAL.white] as const;
 const FEATHER = [PAL.leaf4, PAL.leaf3, PAL.teal3, PAL.leaf2] as const;
-/** The hawk's eye in the attack climb frames (frame px). */
-const EYE = { x: 37, y: 17 };
+/**
+ * Search hint for the hawk's eye in the climb frame (attack f2). The real point is the sprite's
+ * own white eye glint, read from the frame at runtime (glintPoint).
+ */
+const EYE_HINT = { x: 27, y: 17 };
 
 /** Feathers that flutter down (slow fall, tumbling). */
 function feathers(sp: Sparks, at: XY, n: number, o: { up?: number; spread?: number; floor?: number } = {}): void {
@@ -248,7 +252,8 @@ async function hawkStrike(s: StrikeArgs): Promise<void> {
     const a0 = spr.angle;
     await animate(sc, 45, (t) => place({ x: diveFrom.x, y: diveFrom.y - 3 * E.outQ(t) }, lerp(a0, -10 * d, t)));
     pose(u, 'attack', 2);
-    const eye = u.framePoint(EYE.x, EYE.y);
+    const ef = glintPoint(u, 'attack', 2, [PAL.white], EYE_HINT, 4);
+    const eye = u.framePoint(ef.x, ef.y);
     void glint(sc, eye.x, eye.y, { size: 6, ms: 200, color: PAL.teal4 });
     s.ctx.sfx('whoosh', { volume: 0.7, pitch: 1.5 });
     await animate(sc, 50, (t) => place({ x: diveFrom.x, y: diveFrom.y - 3 + 2 * t }, -10 * d));

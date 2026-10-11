@@ -20,9 +20,11 @@ import {
   spellShowcase,
   trapReveal,
   cardToGraveyard,
+  directImpact,
   duelistPoint,
   hitReact,
   lpPoint,
+  playBattleTriggers,
   presentDamage,
   presentHeal,
   shatterUnit,
@@ -154,9 +156,12 @@ registerEvent(
       if (impacted) return;
       impacted = true;
       resolveImpact();
-      const p = at ?? to;
+      let p = at ?? to;
       if (direct) {
-        pending.push(directHit(sc, defender, { at: p }));
+        // directHit draws on the un-zoomed UI camera: project the world point once
+        const hit = directImpact(ctx, p, to);
+        p = hit.world;
+        pending.push(directHit(sc, defender, { at: hit.screen }));
         void ctx.views.duelists?.get(defender).jolt();
       } else if (blocked) {
         pending.push(blockClang(sc, p.x - (ev.player === 0 ? 6 : -6), p.y, { from: attacker?.core() }));
@@ -212,6 +217,7 @@ registerEvent(
     // any other battle destroy (should not happen) still plays
     for (const i of destroyIdx) if (i !== tDestroy && i !== aDestroy) pending.push(ctx.play(i));
     await all(pending);
+    await playBattleTriggers(ctx, [ev.attackerUid, ev.targetUid]);
     await ctx.unfocus(260);
   },
   P,

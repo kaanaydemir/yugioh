@@ -111,6 +111,18 @@ export class LogView {
     const maxW = w - 18;
     const top = 19;
     const bottom = h - 6;
+    if (!this.entries.length) {
+      // empty state: say what will appear here instead of an empty box
+      const t = pixelText(this.scene, Math.round(w / 2), top + 14, 'Henüz kayıt yok. Hamleler burada listelenir.', {
+        size: 'sm',
+        color: PAL.steel,
+        maxWidth: maxW,
+        align: 'center',
+        originX: 0.5,
+      });
+      L.add(t);
+      return;
+    }
     // lay out from the newest upward
     let yb = bottom;
     for (let i = this.entries.length - 1; i >= 0; i--) {

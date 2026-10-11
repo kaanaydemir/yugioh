@@ -210,6 +210,7 @@ export class MainMenu {
     this.rows.forEach((r, k) => {
       const sel = k === i;
       this.scene.tweens.killTweensOf(r.label);
+      if (this.shown && this.enabled) r.label.setAlpha(1);
       const tx = sel ? (this.pressed === k ? 46 : 44) : 40;
       if (instant) r.label.x = tx;
       else void tween(this.scene, { targets: r.label, x: tx, duration: 110, ease: 'Cubic.Out' });
@@ -302,16 +303,18 @@ export class MainMenu {
     void tween(s, { targets: this.glow, alpha: 0.35, duration: 300 });
     this.header.setAlpha(1);
     this.sep.setAlpha(1);
+    // rows slide in one after another; wait for the actual tweens (a fixed delay raced them
+    // on slow frames / hit-stops, and layout() then killed half-faded labels for good)
+    const slides: Promise<unknown>[] = [];
     this.rows.forEach((r, i) => {
       for (const o of [r.icon, r.label, r.num]) {
         const x1 = o.x;
         o.x = x1 - 14;
-        void wait(s, i * 40).then(() =>
-          tween(s, { targets: o, x: x1, alpha: 1, duration: 180, ease: 'Cubic.Out' }),
-        );
+        slides.push(wait(s, i * 40).then(() => tween(s, { targets: o, x: x1, alpha: 1, duration: 180, ease: 'Cubic.Out' })));
       }
     });
-    await wait(s, this.rows.length * 40 + 120);
+    await Promise.race([Promise.all(slides), wait(s, this.rows.length * 40 + 900)]);
+    for (const r of this.rows) for (const o of [r.icon, r.label, r.num]) o.setAlpha(1);
     this.bar.setAlpha(1);
     this.caret.setAlpha(1);
     this.barFlash.y = this.bar.y;

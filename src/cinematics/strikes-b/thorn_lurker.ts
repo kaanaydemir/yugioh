@@ -15,6 +15,7 @@
 
 import Phaser from 'phaser';
 import { PAL, RAMPS } from '../../art/palette';
+import { VINE_ROOT } from '../../art/monsters/thorn_lurker';
 import { DEPTH, type XY, unitDepth, zoneXY } from '../../view/layout';
 import { shake, tween } from '../../vfx/core';
 import { impact, slash, whiteFlash } from '../../vfx/combat';
@@ -51,8 +52,8 @@ import {
   impactPoint,
 } from './_kit';
 
-/** Vine root in the soil, frame px. */
-const ROOT = { x: 36, y: 41 };
+/** Where the whip vine leaves the soil (frame px), exported by the lurker's art. */
+const ROOT = VINE_ROOT;
 const THORN = [PAL.white, PAL.mag4, PAL.mag3, PAL.mag2] as const;
 const LEAF = [PAL.leaf4, PAL.leaf3, PAL.leaf2, PAL.leaf1] as const;
 const DIRT = [PAL.earth3, PAL.earth2, PAL.earth1] as const;

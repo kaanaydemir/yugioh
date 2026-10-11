@@ -833,7 +833,12 @@ export class BoardView {
     if (!this.lavaTex) {
       const texKey = `arena:lava:${this.id}`;
       if (this.scene.textures.exists(texKey)) this.scene.textures.remove(texKey);
-      this.lavaTex = this.scene.textures.createCanvas(texKey, SLAB_RECT.w, SLAB_RECT.h);
+      // CPU-backed canvas (repainted with putImageData every few frames; see PixelCanvas.toCanvas)
+      const cv = document.createElement('canvas');
+      cv.width = SLAB_RECT.w;
+      cv.height = SLAB_RECT.h;
+      cv.getContext('2d', { willReadFrequently: true });
+      this.lavaTex = this.scene.textures.addCanvas(texKey, cv);
       if (!this.lavaTex) throw new Error('arena: cannot create lava canvas');
       this.lavaImgData = this.lavaTex.getContext().createImageData(SLAB_RECT.w, SLAB_RECT.h);
       this.lavaImg = this.img(SLAB_RECT.x, SLAB_RECT.y, texKey, D.lava);

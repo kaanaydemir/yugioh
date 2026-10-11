@@ -29,6 +29,7 @@ import {
   facing,
   flavoredDeath,
   glint,
+  glintPoint,
   groundRing,
   homeSprite,
   layer,
@@ -49,9 +50,14 @@ import {
 const ROCK_KEY = 'sb:rock';
 const ROCK_N = 8;
 const ROCK_S = 17;
-/** Frame points of the sentinel art (attack): the digging hand and the eye. */
+/** Frame point of the sentinel art (attack f1): the digging hand. */
 const DIG = { x: 13, y: 57 };
-const EYE = { x: 35, y: 20 };
+/**
+ * Search hint for the visor glint in the wind-up frame (attack f4): the front of the eye slit.
+ * The real point is read from the frame (glintPoint: the sprite's own gold-white spark).
+ */
+const EYE_HINT = { x: 31, y: 20 };
+const EYE_GLINT = [PAL.white, PAL.gold4] as const;
 const DIRT = [PAL.earth3, PAL.earth2, PAL.earth1] as const;
 const DUST = [PAL.earth4, PAL.earth3, PAL.stone3, PAL.stone2] as const;
 
@@ -203,7 +209,8 @@ async function sentinelStrike(s: StrikeArgs): Promise<void> {
     pose(u, 'attack', 3);
     await sleep(sc, 90);
     pose(u, 'attack', 4);
-    const eye = u.framePoint(EYE.x, EYE.y);
+    const ef = glintPoint(u, 'attack', 4, EYE_GLINT, EYE_HINT, 5);
+    const eye = u.framePoint(ef.x, ef.y);
     void glint(sc, eye.x, eye.y, { size: 6, ms: 240, color: PAL.gold4 });
     s.ctx.sfx('summonCharge', { volume: 0.35, pitch: 0.7 });
     await animate(sc, 150, (t, el) => {

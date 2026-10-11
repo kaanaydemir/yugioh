@@ -95,8 +95,17 @@ export class Director {
     return this.lastEvents;
   }
 
-  /** Play a batch. Never rejects. */
+  /**
+   * Play a batch. Never rejects. Once the duel is stopped (its scene shut down / restarted) the
+   * promise never settles: nothing of the stopped duel may run on (Phaser reuses the scene's
+   * plugins, so code resuming after a restart would act on destroyed views of the next duel).
+   */
   async play(events: readonly GameEvent[], before: GameState, after: GameState): Promise<void> {
+    await this.playBatch(events, before, after);
+    if (this.stopped) await new Promise<never>(() => undefined);
+  }
+
+  private async playBatch(events: readonly GameEvent[], before: GameState, after: GameState): Promise<void> {
     this.playing++;
     this.lastEvents = [...events];
     const batch: Batch = {
@@ -313,11 +322,17 @@ export class Director {
       play: (i, h = {}) => {
         if (i < 0 || i >= b.events.length) return Promise.resolve();
         if (b.started[i]) return Promise.resolve();
+        // a cinematic of a stopped duel (scene shut down / restarted) may still be awaiting
+        // something: it must never start more events — they would run in the next duel
+        if (!dir.alive) {
+          b.started[i] = true;
+          return Promise.resolve();
+        }
         return dir.runEvent(b, i, h);
       },
       base: () => {
         const l = chain[link++];
-        if (!l) return Promise.resolve();
+        if (!l || !dir.alive) return Promise.resolve();
         try {
           const r = l.handler(ctx as never);
           return Promise.resolve(r).catch((e) => {

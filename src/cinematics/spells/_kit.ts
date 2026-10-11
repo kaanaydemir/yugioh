@@ -13,8 +13,13 @@
 //   set:  the face-down tile flashes, a thin teal column bursts out of it, the card springs
 //         upright on its tile and turns face-up (revealed on the board first), then lifts off to
 //         the middle at 2× — a visibly different "trap-like" opening.
-//   Both: the caster's duelist commands, the name plate wipes in under the card ("YILDIRIM
-//   HÜKMÜ"), motes converge into the card, it hovers ~0.5 s; the camera pushes in a touch.
+//   Both: the caster's duelist commands, the name plate wipes in under the card as it arrives
+//   ("YILDIRIM HÜKMÜ"), motes converge into the card, it hovers ~0.3 s; the camera pushes in a
+//   touch. The plate stays up a little into the release so it is readable for ~0.5 s in all.
+//
+// Timing (speed 1): hand ≈ 50 dip + 230 flight + hold (default 300); set ≈ 180 stand-up + 230
+// flight + hold − 110. The release inhale takes ~160 ms before the energy orb launches. Spells
+// pick their hold so the whole activation fits the 2.5 s budget (§5).
 //
 // Everything runs on scene time (speed / hit-stop aware) and cleans itself up.
 
@@ -274,9 +279,9 @@ function namePlate(scene: Phaser.Scene, cardId: CardId, at: XY): Plate {
     });
   const stop = onFrame(scene, (dt) => {
     if (dead) return false;
-    open = Math.min(1, open + dt / 90);
+    open = Math.min(1, open + dt / 80);
     if (open >= 1 && shown < total) {
-      shown = Math.min(total, shown + dt / 10);
+      shown = Math.min(total, shown + dt / 7);
       revealText(txt, Math.floor(shown));
       // the newest letters flash white
       txt.setTint(shown < total ? PAL.white : PAL.teal4);
@@ -436,7 +441,7 @@ export interface Opening {
 }
 
 export interface OpeningOpts {
-  /** Hover time at full size (default 480 ms). */
+  /** Hover time at full size (default 300 ms; a set card that was already revealed hovers 110 ms less). */
   hold?: number;
   /** Camera push-in during the hold (default true). */
   push?: boolean;
@@ -482,7 +487,7 @@ export async function spellOpening(
   const field = ctx.views.field;
   const center = SHOW_AT;
   // a set card was already revealed on its tile: it hovers a little less
-  const hold = (o.hold ?? 420) - (o.from === 'set' ? 60 : 0);
+  const hold = Math.max(120, (o.hold ?? 300) - (o.from === 'set' ? 110 : 0));
   const duelist = ctx.views.duelists?.get(o.player);
   bg(Promise.resolve(duelist?.play('command')));
 
@@ -499,20 +504,19 @@ export async function spellOpening(
     bg(floorRing(sc, home.x, home.y, { r0: 6, r1: 40, ms: 380, ramp: TEAL_FX, depth: DEPTH.TILE_FX + 2 }));
     bg(tileColumn(sc, home));
     void shake(sc, 120, 1);
-    await tile.standUp(340, { reveal: true });
+    await tile.standUp(180, { reveal: true });
     ctx.sfx('spellActivate', { volume: 0.55, pitch: 1.2 });
     const p = standCenter(tile);
     card = new CardSprite(sc, p.x, p.y, o.cardId, { faceUp: true, player: o.player }).setDepth(DEPTH.FX_TOP + 10);
     field.release(o.uid);
     tile.destroy();
     void card.pulse(PAL.teal4, 200);
-    await wait(sc, 70);
   } else {
     card = fx.takeHandCard(ctx, o.player, o.uid, o.cardId);
     card.setDepth(DEPTH.FX_TOP + 10);
     // anticipation: a little dip with a teal glint before the launch
     void card.pulse(PAL.teal3, 220);
-    await tween(sc, { targets: card, y: card.y + 4, scaleX: card.scaleX * 1.04, scaleY: card.scaleY * 0.96, duration: 70, ease: 'Quad.Out' });
+    await tween(sc, { targets: card, y: card.y + 4, scaleX: card.scaleX * 1.04, scaleY: card.scaleY * 0.96, duration: 50, ease: 'Quad.Out' });
   }
   card.setCard(o.cardId);
   card.setHighlight(PAL.teal3);
@@ -543,14 +547,18 @@ export async function spellOpening(
   });
   ctx.sfx('whoosh', { volume: 0.45, pitch: 1.2 });
   const fromCard = card.faceUp;
-  await card.flyTo(center.x, center.y, { ms: 300, arc: 34, scale: SHOW_SCALE, anticipate: false, land: false, reveal: !fromCard, ease: 'Cubic.Out' });
+  // the name plate wipes in under the arriving card (~90 ms before it lands), so the name is
+  // fully spelled out a beat after the arrival
+  const FLY = 230;
+  let plate: Plate | null = null;
+  const plateP = wait(sc, FLY - 90).then(() => (plate = namePlate(sc, o.cardId, { x: center.x, y: center.y + 82 })));
+  await card.flyTo(center.x, center.y, { ms: FLY, arc: 34, scale: SHOW_SCALE, anticipate: false, land: false, reveal: !fromCard, ease: 'Cubic.Out' });
   card.setFaceUp(true);
-  // arrival: squash, sparkle ring, the activation chord, the name plate
+  // arrival: squash, sparkle ring, the activation chord
   ctx.sfx('spellActivate', { volume: 0.9 });
   bg(card.punch(0.1, 200));
   card.playSweep(true);
   bg(sparkleBurst(sc, center.x, center.y, { ramp: TEAL, count: 16, depth: DEPTH.FX_TOP + 11 }));
-  const plate = namePlate(sc, o.cardId, { x: center.x, y: center.y + 82 });
   if (o.push !== false) bg(ctx.focus(center, { zoom: 1.03, ms: hold + 200, pan: 0 }));
 
   // ---- 3. hover (bob) while the motes pour in
@@ -574,7 +582,9 @@ export async function spellOpening(
     // (CardSprite.setHighlight(null) fades over 120 ms and then touches its children: only
     // safe when the card outlives it — release() destroys the card sooner)
     if (mode === 'dismiss') card.setHighlight(null);
-    bg(plate.hide());
+    // the plate lingers a beat into the release (the orb flies away from it): more reading time
+    // at no cost to the timeline
+    bg(plateP.then(() => wait(sc, mode === 'implode' ? 170 : 0)).then(() => (plate as Plate | null)?.hide()));
     bg(veil.remove(220));
     bg(tween(sc, { targets: glow, alpha: 0, scale: mode === 'implode' ? 0.4 : 4.4, duration: mode === 'implode' ? 150 : 240 }).then(() => glow.destroy()));
     await (mode === 'implode' ? seal.implode(150) : seal.dismiss(220));
@@ -587,13 +597,13 @@ export async function spellOpening(
       // inhale: the card swells and whitens, then collapses into a sliver of light → an orb
       seal.spin(3);
       void card.pulse(PAL.white, 200);
-      await tween(sc, { targets: card, scaleX: SHOW_SCALE * 1.08, scaleY: SHOW_SCALE * 1.08, duration: 80, ease: 'Quad.Out' });
+      await tween(sc, { targets: card, scaleX: SHOW_SCALE * 1.08, scaleY: SHOW_SCALE * 1.08, duration: 70, ease: 'Quad.Out' });
       ctx.sfx('whoosh', { volume: 0.6, pitch: 1.5 });
       bg(cleanup('implode'));
       // a sliver of light, then a point
       void card.pulse(PAL.white, 240);
-      await tween(sc, { targets: card, scaleX: 0.1, scaleY: SHOW_SCALE * 1.04, duration: 60, ease: 'Quad.In' });
-      await tween(sc, { targets: card, scaleY: 0.12, duration: 50, ease: 'Quad.In' });
+      await tween(sc, { targets: card, scaleX: 0.1, scaleY: SHOW_SCALE * 1.04, duration: 50, ease: 'Quad.In' });
+      await tween(sc, { targets: card, scaleY: 0.12, duration: 40, ease: 'Quad.In' });
       card.destroy();
       bg(starFlare(sc, center, 220));
       bg(sparkleBurst(sc, center.x, center.y, { ramp: TEAL, count: 10, depth: DEPTH.FX_TOP + 11, speed: 1.4 }));
@@ -604,7 +614,7 @@ export async function spellOpening(
       bg(cleanup('dismiss'));
       const at = zoneXY(o.player, l.spot, l.index);
       void card.pulse(PAL.teal4, 200);
-      await card.flyTo(at.x, at.y - 30, { ms: 200, arc: 14, scale: 1, anticipate: false, land: false, ease: 'Quad.In' });
+      await card.flyTo(at.x, at.y - 30, { ms: 170, arc: 14, scale: 1, anticipate: false, land: false, ease: 'Quad.In' });
       ctx.sfx('cardSlam', { volume: 0.75 });
       const t = await fx.slamToZone(ctx, card, { player: o.player, spot: l.spot, index: l.index, uid: o.uid, cardId: o.cardId, faceUp: true, ms: 220, shake: 1 });
       bg(t.pulse(PAL.teal3, 360));

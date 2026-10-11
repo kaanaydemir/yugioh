@@ -2,20 +2,21 @@
 // No registrations here — this module is only imported by the handler files.
 //
 //   AttackHold         the attack declaration kept across events / a trap decision ('attack')
-//   guardRemap(u)      a DEFENSE-position unit never snaps into its upright 'hit' pose
-//   guardReact(...)    the guard-pose hit: white flash, 2–3 px knock-back, hex-shield glint, hit-stop
+//   guardReact(...)    the guard-pose hit: sparks + hit-stop + MonsterUnit.guardHit (white flash,
+//                      2–3 px knock-back, hex-shield glint). The guard-pose rule itself (never the
+//                      upright 'hit' frames in defense) lives in MonsterUnit.
 //   setCardPulse(...)  the defender's set cards breathing magenta while a trap window is open
 
 import Phaser from 'phaser';
 import type { GameEvent, GameEventType, PlayerId } from '../../engine/types';
 import { PAL, RAMPS, type Ramp } from '../../art/palette';
-import { monsterAnimKey, monsterFrameName } from '../../art/textures';
+import { monsterFrameName } from '../../art/textures';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { Disposable, DuelViews } from '../../duel/types';
 import type { TileCard } from '../../view/TileCard';
 import { DEPTH, type XY, unitDepth } from '../../view/layout';
-import { tween, wait } from '../../vfx/core';
-import { impact as combatImpact, stopTime, whiteFlash } from '../../vfx/combat';
+import { wait } from '../../vfx/core';
+import { impact as combatImpact, stopTime } from '../../vfx/combat';
 import { Raster, Sparks, onFrame, run } from '../../vfx/setpieces';
 import type { CinematicContext } from '../api';
 
@@ -109,69 +110,28 @@ export function takeAttack(ctx: AnyCtx | CinematicContext<never>): { hold: Attac
 
 // ================================================================ guard pose: never snap into 'hit'
 
-const PATCHED = new WeakSet<object>();
-type PlayFn = (key: string | Phaser.Types.Animations.PlayAnimationConfig, ignoreIfPlaying?: boolean) => Phaser.GameObjects.Sprite;
-type SetFrameFn = (frame: string | number | Phaser.Textures.Frame, updateSize?: boolean, updateOrigin?: boolean) => Phaser.GameObjects.Sprite;
-
 /**
  * Art-review rule: a DEFENSE-position monster that takes a hit never snaps from its guard pose
- * into the upright 'hit' recoil. Patches this unit's sprite (once): while the unit is in defense
- * position, playing its 'hit' anim keeps the guard pose (completion is still reported on time so
- * awaiting code moves on), and showing a 'hit:N' frame shows the current guard frame instead.
- * Attack-position units are untouched; the check is made at call time.
+ * into the upright 'hit' recoil. This now lives in MonsterUnit itself (UnitSprite + guardHit):
+ * unit.play('hit'), sprite.play(<hit anim>) and setFrame('hit:N') all answer from the guard pose
+ * for every unit, in and out of battle. Kept as a no-op so older imports keep working.
+ * @deprecated nothing to install any more
  */
-export function guardRemap(u: MonsterUnit): void {
-  const s = u.sprite;
-  if (!s.active || PATCHED.has(s)) return;
-  PATCHED.add(s);
-  const hitKey = monsterAnimKey(u.cardId, 'hit');
-  const guardKey = monsterAnimKey(u.cardId, 'guard');
-  const origPlay = s.play as unknown as PlayFn;
-  const origSetFrame = s.setFrame as unknown as SetFrameFn;
-  const guarding = () => u.position === 'defense' && !u.retired && u.scene.anims.exists(guardKey);
-  const guardFrame = () => {
-    const f = String(s.frame?.name ?? '');
-    return f.startsWith('guard:') ? f : monsterFrameName('guard', 0);
-  };
-  const patched = s as unknown as { play: PlayFn; setFrame: SetFrameFn };
-  patched.setFrame = function (this: Phaser.GameObjects.Sprite, frame, updateSize, updateOrigin) {
-    if (guarding()) {
-      const name = typeof frame === 'string' ? frame : frame instanceof Phaser.Textures.Frame ? String(frame.name) : null;
-      if (name && name.startsWith('hit:')) frame = guardFrame();
-    }
-    return origSetFrame.call(this, frame, updateSize, updateOrigin);
-  };
-  patched.play = function (this: Phaser.GameObjects.Sprite, key, ignoreIfPlaying) {
-    const k = typeof key === 'string' ? key : key?.key;
-    if (k === hitKey && guarding()) {
-      // stay in guard; keep its loop breathing if nothing else holds a frame
-      if (!this.anims.isPlaying || String(this.frame?.name ?? '').indexOf('guard:') !== 0) origPlay.call(this, { key: guardKey, repeat: -1 });
-      const spec = u.art.anims.hit;
-      const ms = (spec.frames / Math.max(1, spec.fps)) * 1000;
-      const anim = u.scene.anims.get(hitKey);
-      u.scene.time.delayedCall(ms, () => {
-        if (this.active) this.emit(Phaser.Animations.Events.ANIMATION_COMPLETE_KEY + hitKey, anim, anim?.frames[anim.frames.length - 1], this, '');
-      });
-      return this;
-    }
-    return origPlay.call(this, key, ignoreIfPlaying);
-  };
+export function guardRemap(_u: MonsterUnit): void {
+  /* handled by MonsterUnit (guard-pose rule) */
 }
 
-/** Patch every unit on the field (cheap; idempotent). */
-export function guardRemapAll(views: DuelViews): void {
-  try {
-    for (const e of views.field.tiles()) if (e.unit) guardRemap(e.unit);
-  } catch {
-    /* never break an event over cosmetics */
-  }
+/** @deprecated see guardRemap — a no-op. */
+export function guardRemapAll(_views: DuelViews): void {
+  /* handled by MonsterUnit (guard-pose rule) */
 }
 
 /**
  * A defense-position monster takes a blow WITHOUT leaving its guard pose: impact sparks + shake,
- * a 1–2 frame white silhouette, a hex-shield glint on the side the blow came from, a hit-stop,
- * then a 2–3 px knock-back along the blow. `survive` springs it back home; otherwise it stays
- * pushed (the shatter follows). Resolves after the knock-back beat (~0.2–0.35 s).
+ * then MonsterUnit.guardHit — white silhouette frames, a hex-shield glint on the side the blow
+ * came from and a 2–3 px knock-back along the blow — under a hit-stop. `survive` springs it back
+ * home; otherwise it stays pushed (the shatter follows). Resolves after the knock-back beat
+ * (~0.2–0.35 s).
  */
 export async function guardReact(
   ctx: AnyCtx | CinematicContext<never>,
@@ -180,34 +140,14 @@ export async function guardReact(
 ): Promise<void> {
   const sc = (ctx as AnyCtx).scene;
   if (!live(u)) return;
-  guardRemap(u);
-  const s = u.sprite;
   const dir = norm(o.dir ?? { x: u.player === 0 ? -1 : 1, y: u.player === 0 ? 0.5 : -0.5 });
-  const core = u.core();
-  const at = o.at ?? core;
-  // the guard frame stays; make sure it is the guard loop that shows (never 'hit')
-  const cur = String(s.frame?.name ?? '');
-  if (!cur.startsWith('guard:')) void u.play('guard');
+  const at = o.at ?? u.core();
   // sparks / star / ring + camera shake (our own hit-stop below)
   void combatImpact(sc, at.x, at.y, { power: o.power, ramp: o.ramp, dir, noStop: true });
-  void whiteFlash(sc, s, o.power >= 3 ? 3 : 2);
-  // hex-shield glint on the face the blow came from
-  const glint = { x: core.x - dir.x * 7, y: core.y - dir.y * 7 - 2 };
-  void hexGlint(sc, glint.x, glint.y, -dir.x, o.survive ? PAL.water3 : PAL.water2);
+  // flash + glint + knock-back from the guard pose (its tweens wait out the hit-stop)
+  const react = u.guardHit({ dir, power: o.power, hold: !o.survive });
   if (!o.noStop) await stopTime(sc, [0, 60, 80, 100][o.power]);
-  if (!s.active) return;
-  // knock-back 2–3 px (integer), along the blow
-  const k = o.power >= 2 ? 3 : 2;
-  const r0 = u.rest0;
-  const kb = { x: Math.round(r0.x + dir.x * k), y: Math.round(r0.y + dir.y * k * 0.6) };
-  u.posed = true;
-  sc.tweens.killTweensOf(s);
-  await tween(sc, { targets: s, x: kb.x, y: kb.y, duration: 60, ease: 'Quad.Out' });
-  if (o.survive) {
-    await tween(sc, { targets: s, x: r0.x, y: r0.y, duration: 240, ease: 'Back.Out' });
-    if (s.active) s.setPosition(r0.x, r0.y);
-    u.posed = false;
-  }
+  await react;
 }
 
 /**

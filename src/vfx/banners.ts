@@ -40,6 +40,11 @@ export interface BannerOpts {
   dir?: 1 | -1;
   /** Extra: letter fill color (default white; gold for 'big'). */
   textColor?: number;
+  /**
+   * Extra: delay between letters in ms for the slam styles ('trap' and 'big'; default 40, 48 for
+   * 'big'). Lower values land the word faster. The sweep styles ignore it.
+   */
+  stagger?: number;
 }
 
 const TAU = Math.PI * 2;
@@ -378,7 +383,7 @@ async function sweepBanner(scene: Phaser.Scene, text: string, sp: StyleSpec, ram
 
 // =================================================================================== slam
 
-async function slamBanner(scene: Phaser.Scene, text: string, sp: StyleSpec, ramp: Ramp, o: BannerOpts & { punch?: boolean; keep?: boolean; stagger?: number; letterTint?: (l: PixelLetter) => number }): Promise<Built> {
+async function slamBanner(scene: Phaser.Scene, text: string, sp: StyleSpec, ramp: Ramp, o: BannerOpts & { punch?: boolean; keep?: boolean; letterTint?: (l: PixelLetter) => number }): Promise<Built> {
   const textColor = o.textColor ?? (ramp === RAMPS.gold ? PAL.gold3 : PAL.white);
   const b = buildBanner(scene, text, sp, ramp, textColor);
   const { state, letters } = b;

@@ -3,17 +3,20 @@
 //
 //   0       common opening (hand / set tile)
 //   +0      release: the card's energy dives into the chosen graveyard (either player's)
-//   +~300   the graveyard bursts open in cyan: a ring, spirit flames, the pile loses its card;
+//   +~200   the graveyard bursts open in cyan: a ring, spirit flames, the pile loses its card;
 //           the translucent cyan ghost of the monster rises out of the pile (cropped by the floor)
-//   +~560   it floats along an arc (afterimages, ectoplasm) to the destination tile, where a cyan
+//   +~400   it floats along an arc (afterimages, ectoplasm) to the destination tile, where a cyan
 //           summoning circle has opened
-//   +~980   arrival: a CYAN pillar slams up through the ghost; the ghost melts into it and the
-//           real monster materializes inside it (hologram scan, cyan palette), the pillar
-//           collapses, the monster roars, cyan shockwave, the ATK/DEF badge pops
+//   +~780   arrival: a CYAN pillar slams up through the ghost (tile flash, shockwave); the ghost
+//           melts into the light and the pillar pinches out …
+//   +~950   … and the revived monster makes its OWN signature entrance: the special summon event
+//           is played through its summon hook with hints { noCard: true, ghost: true } (summon-a /
+//           summon-b honour both: no card flight, cyan tile flash) — the wolf's fire run, the
+//           serpent's whirlpool, the hawk's tornado, the wyrm's light column…
 //   then    the spent card drops into its owner's graveyard; on-summon effects (Magma Titanı's
 //           burn) follow as their own events
-//
-// The special summon event is owned here (a revived monster always re-materializes in cyan).
+// Whole spell ≈ 2.85–3.15 s at speed 1 (≤ 3.2 s). QA: `&recall=generic` in the URL plays the
+// older generic cyan rematerialization instead of the signature entrance (for comparison films).
 
 import Phaser from 'phaser';
 import { CARDS, isMonster, type CardId, type MonsterId } from '../../data/cards';
@@ -167,6 +170,16 @@ async function soulRise(ctx: AnyCtx, from: XY, to: XY, id: MonsterId, player: Pl
   };
 }
 
+/** QA switch (?recall=generic): the old generic cyan rematerialization instead of the signature entrance. */
+function recallStyle(): 'signature' | 'generic' {
+  try {
+    if (new URLSearchParams(location.search).get('recall') === 'generic') return 'generic';
+  } catch {
+    /* no location (tests) */
+  }
+  return 'signature';
+}
+
 /** Stats of the revived monster right after its summon event. */
 function statsAt(s: GameState, uid: Uid, id: CardId): { atk: number; def: number } {
   const d = CARDS[id];
@@ -225,6 +238,32 @@ async function rematerialize(ctx: AnyCtx, ev: Extract<GameEvent, { type: 'summon
   unit.show();
 }
 
+/**
+ * The cyan pillar takes the ghost (tile, circle burst, shockwave, the ghost melts into the light)
+ * and pinches out — the stage for the revived monster's OWN signature entrance, which the caller
+ * then plays through its summon hook. Resolves as the pillar starts to collapse.
+ */
+async function pillarHandoff(ctx: AnyCtx, ev: Extract<GameEvent, { type: 'summon' }>, ghost: Ghost): Promise<void> {
+  const sc = ctx.scene;
+  const field = ctx.views.field;
+  const home = zoneXY(ev.player, 'monster', ev.zone);
+  // the tile is placed now (cyan), so the summon hook only refreshes it (no card flight)
+  if (!field.tileOf(ev.uid)) {
+    const tile = field.placeCard(ev.player, 'monster', ev.zone, ev.uid, ev.cardId, true, 'up');
+    tile.tileFlash(PAL.cyan3, 380);
+    tile.ringBurst(PAL.cyan4, 380);
+  }
+  ctx.sfx('summonBurst', { volume: 0.9 });
+  const pillar = createPillar(sc, home.x, home.y, { attribute: 'LIGHT', ramp: CYAN, style: 'beam', height: 150, width: 20, riseMs: 100 });
+  bg(shockwave(sc, home.x, home.y, { ramp: CYAN, radius: 44, ms: 360 }));
+  void shake(sc, 120, 1);
+  bg(ghost.melt(200));
+  await wait(sc, 160);
+  pillar.pulse(80);
+  bg(pillar.collapse(170));
+  await wait(sc, 40);
+}
+
 registerCardHook('soul_recall', 'activate', async (ctx) => {
   const ev = ctx.ev;
   const field = ctx.views.field;
@@ -235,7 +274,7 @@ registerCardHook('soul_recall', 'activate', async (ctx) => {
   const sEv = evAt(ctx, si, 'summon');
   const gi = idxOf(ctx, run0, (e) => e.type === 'toGraveyard' && e.from === 'resolved' && e.uid === ev.uid);
   const set = setTileOf(ctx);
-  const op = await spellOpening(ctx, { uid: ev.uid, cardId: ev.cardId, player: ev.player, from: set ? 'set' : 'hand', zone: ev.zone, hold: 380 });
+  const op = await spellOpening(ctx, { uid: ev.uid, cardId: ev.cardId, player: ev.player, from: set ? 'set' : 'hand', zone: ev.zone, hold: 260 });
   const gUid = tEv?.graveyardUid;
   if (!tEv || !sEv || gUid === undefined || !isMonster(CARDS[sEv.cardId])) {
     await op.close();
@@ -244,7 +283,10 @@ registerCardHook('soul_recall', 'activate', async (ctx) => {
     return;
   }
   ctx.consumeAt(ti);
-  ctx.consumeAt(si);
+  // the special summon itself is played below through its own summon hook (the revived monster's
+  // signature entrance); it is only consumed here for the generic cyan rematerialization
+  const signature = recallStyle() === 'signature';
+  if (!signature) ctx.consumeAt(si);
   const owner = ctx.owner(gUid);
   const pile = field.pile(owner, 'graveyard');
   const gyAt = pile.topXY();
@@ -269,7 +311,12 @@ registerCardHook('soul_recall', 'activate', async (ctx) => {
   const ghost = await (await ghostP).g;
   // the spent card heads for its graveyard while the pillar rises
   const send = sendResolved(ctx, gi, { x: dest.x, y: dest.y - 70 }, 200);
-  await rematerialize(ctx, sEv, ghost, stats);
+  if (signature) {
+    await pillarHandoff(ctx, sEv, ghost);
+    // the monster's own entrance (summon-a / summon-b hooks honour noCard + ghost: no card
+    // flight, cyan tile flash); without a hook the default summon plays
+    await ctx.play(si, { noCard: true, ghost: true });
+  } else await rematerialize(ctx, sEv, ghost, stats);
   relax(ctx, 360);
   await fx.playRun(ctx, fx.resolutionRun(ctx));
   await send;

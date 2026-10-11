@@ -10,6 +10,13 @@
 //            └ inner (lift/flip/squash — owned by the card's own effects)
 //                └ glow ring + running comets (highlight), face, sheen/foil, flash
 // All animations are promise-based and respect scene time (fast-forward, hit-stop).
+//
+// Lifecycle: the card may be destroyed at ANY moment, even in the middle of its own effects
+// (a fast cinematic destroys a freshly taken hand card while its highlight fades out, or while
+// a flyTo reveal flip is still running). Every tween / timer the card starts is tracked and
+// stopped on destroy (so awaiting code resumes instead of hanging), and every callback and
+// async continuation bails out once the card is dead — nothing ever throws inside Phaser's
+// TweenManager / Clock update (an exception there kills the game loop for good).
 
 import Phaser from 'phaser';
 import type { CardId } from '../data/cards';
@@ -33,7 +40,7 @@ import {
 import { PAL, PLAYER_COLOR } from '../art/palette';
 import type { PixelCanvas } from '../art/pixel';
 import { mix } from '../art/pixel';
-import { TEX, tween, tweenValue } from '../vfx/core';
+import { TEX, tweenValue } from '../vfx/core';
 import { CARD_H, CARD_W } from './layout';
 
 export interface FlyOpts {
@@ -208,6 +215,9 @@ export class CardSprite extends Phaser.GameObjects.Container {
   private foilEvent: Phaser.Time.TimerEvent | null = null;
   private lifted = false;
   private seed = 0x9e3779b9;
+  /** Tweens / timers started by the card itself (stopped on destroy). */
+  private readonly ownTweens = new Set<Phaser.Tweens.Tween>();
+  private readonly ownTimers = new Set<Phaser.Time.TimerEvent>();
 
   constructor(scene: Phaser.Scene, x: number, y: number, cardId: CardId | null, opts: { faceUp?: boolean; player?: PlayerId } = {}) {
     super(scene, x, y);
@@ -229,6 +239,58 @@ export class CardSprite extends Phaser.GameObjects.Container {
     this.sheen.on(Phaser.Animations.Events.ANIMATION_COMPLETE, () => this.sheen.setVisible(false));
     this.once(Phaser.GameObjects.Events.DESTROY, () => this.cleanup());
     scene.add.existing(this);
+  }
+
+  // ------------------------------------------------------------ lifecycle
+
+  /** True once the card has been destroyed (or its scene shut down). */
+  get dead(): boolean {
+    return !this.scene || !this.active;
+  }
+
+  /** scene.tweens.add, tracked: the tween is stopped (its promise resolves) if the card dies. */
+  private addTween(config: Phaser.Types.Tweens.TweenBuilderConfig): Phaser.Tweens.Tween | null {
+    if (this.dead) return null;
+    const t = this.scene.tweens.add(config);
+    this.ownTweens.add(t);
+    const drop = () => this.ownTweens.delete(t);
+    t.once(Phaser.Tweens.Events.TWEEN_COMPLETE, drop);
+    t.once(Phaser.Tweens.Events.TWEEN_STOP, drop);
+    return t;
+  }
+
+  /** Promise of a tracked tween (resolves on complete or stop; at once when the card is dead). */
+  private tw(config: Phaser.Types.Tweens.TweenBuilderConfig): Promise<void> {
+    return new Promise((resolve) => {
+      const t = this.addTween(config);
+      if (!t) return resolve();
+      t.once(Phaser.Tweens.Events.TWEEN_COMPLETE, () => resolve());
+      t.once(Phaser.Tweens.Events.TWEEN_STOP, () => resolve());
+    });
+  }
+
+  /** Tracked tween of a plain number (onUpdate is skipped once the card is dead). */
+  private tv(from: number, to: number, duration: number, onUpdate: (v: number) => void, ease = 'Linear'): Promise<void> {
+    const o = { v: from };
+    return this.tw({
+      targets: o,
+      v: to,
+      duration,
+      ease,
+      onUpdate: () => {
+        if (!this.dead) onUpdate(o.v);
+      },
+    });
+  }
+
+  /** Tracked scene-time callback (skipped once the card is dead). */
+  private later(ms: number, fn: () => void): void {
+    if (this.dead) return;
+    const ev = this.scene.time.delayedCall(ms, () => {
+      this.ownTimers.delete(ev);
+      if (!this.dead) fn();
+    });
+    this.ownTimers.add(ev);
   }
 
   // ------------------------------------------------------------ state
@@ -264,6 +326,7 @@ export class CardSprite extends Phaser.GameObjects.Container {
   }
 
   private refreshFace(): void {
+    if (this.dead || !this.face.active) return;
     this.face.setTexture(this.textureKey);
     // Aces shimmer with a periodic holo-foil sweep while face-up.
     if (this.faceUp && this.isAce) {
@@ -273,7 +336,9 @@ export class CardSprite extends Phaser.GameObjects.Container {
           delay: 3200,
           startAt: 3200 - first,
           loop: true,
-          callback: () => this.playSweep(true),
+          callback: () => {
+            if (!this.dead) this.playSweep(true);
+          },
         });
       }
     } else if (this.foilEvent) {
@@ -284,7 +349,7 @@ export class CardSprite extends Phaser.GameObjects.Container {
 
   /** Play one light sweep across the card (foil = rainbow holo sweep). */
   playSweep(foil = false): void {
-    if (!this.active) return;
+    if (this.dead || !this.sheen.active) return;
     this.sheen.setTexture(foil ? CARD_FOIL : CARD_SHEEN, 's:0').setVisible(true).setAlpha(foil ? 0.75 : 0.6);
     this.sheen.play(foil ? ANIM_FOIL : ANIM_SHEEN);
   }
@@ -297,13 +362,15 @@ export class CardSprite extends Phaser.GameObjects.Container {
     this.highlight = color;
     this.glowTween?.stop();
     this.glowTween = null;
+    if (this.dead) return this;
     if (color === null) {
-      this.scene.tweens.add({
+      this.addTween({
         targets: [this.glow, this.glowRun],
         alpha: 0,
         duration: 120,
         onComplete: () => {
-          if (this.highlight !== null) return;
+          // the card may have been destroyed during the fade (glowRun.anims is gone then)
+          if (this.dead || this.highlight !== null || !this.glowRun.active) return;
           this.glow.setVisible(false);
           this.glowRun.setVisible(false).stop();
         },
@@ -313,7 +380,7 @@ export class CardSprite extends Phaser.GameObjects.Container {
     this.glow.setVisible(true).setTint(color).setAlpha(0.7);
     this.glowRun.setVisible(true).setTint(mix(color, PAL.white, 0.55)).setAlpha(1);
     if (!this.glowRun.anims.isPlaying) this.glowRun.play(ANIM_GLOW_RUN);
-    this.glowTween = this.scene.tweens.add({
+    this.glowTween = this.addTween({
       targets: this.glow,
       alpha: { from: 1, to: 0.45 },
       duration: 480,
@@ -326,18 +393,19 @@ export class CardSprite extends Phaser.GameObjects.Container {
 
   /** Lift the card a few px (hover). A light sweep plays on the way up. */
   hoverLift(on: boolean): Promise<void> {
-    if (on === this.lifted) return Promise.resolve();
+    if (on === this.lifted || this.dead) return Promise.resolve();
     this.lifted = on;
     if (on) this.playSweep(false);
     return Promise.all([
-      tween(this.scene, { targets: this.inner, y: on ? -6 : 0, duration: on ? 150 : 130, ease: on ? 'Back.Out' : 'Quad.Out' }),
-      tween(this.scene, { targets: this.shadow, alpha: on ? 0.38 : 0, x: on ? 3 : 2, y: on ? 5 : 3, duration: 140 }),
+      this.tw({ targets: this.inner, y: on ? -6 : 0, duration: on ? 150 : 130, ease: on ? 'Back.Out' : 'Quad.Out' }),
+      this.tw({ targets: this.shadow, alpha: on ? 0.38 : 0, x: on ? 3 : 2, y: on ? 5 : 3, duration: 140 }),
     ]).then(() => undefined);
   }
 
   /** Player color for the trail, default highlight and a faint rim light. null clears. */
   setPlayerTint(player: PlayerId | null): this {
     this.player = player;
+    if (this.dead) return this;
     if (player === null) this.rim.setVisible(false);
     else this.rim.setVisible(true).setTint(PLAYER_COLOR[player]).setAlpha(0.28);
     return this;
@@ -360,14 +428,14 @@ export class CardSprite extends Phaser.GameObjects.Container {
       this.trailEvent = null;
       return this;
     }
-    if (this.trailEvent) return this;
+    if (this.trailEvent || this.dead) return this;
     let lastX = NaN;
     let lastY = NaN;
     this.trailEvent = this.scene.time.addEvent({
       delay: 26,
       loop: true,
       callback: () => {
-        if (!this.active || !this.visible) return;
+        if (this.dead || !this.visible || !this.face.active) return;
         const m = this.face.getWorldTransformMatrix().decomposeMatrix();
         const moved = Math.hypot(m.translateX - lastX, m.translateY - lastY);
         lastX = m.translateX;
@@ -420,8 +488,8 @@ export class CardSprite extends Phaser.GameObjects.Container {
    * bright glint → swap → unsquash with overshoot and settle.
    */
   async flip(toFaceUp: boolean, ms = 260): Promise<void> {
+    if (this.dead) return;
     if (toFaceUp && this.cardId === null) toFaceUp = false;
-    const sc = this.scene;
     const b = this.inner;
     const baseY = this.lifted ? -6 : 0;
     const t1 = ms * 0.16;
@@ -429,22 +497,25 @@ export class CardSprite extends Phaser.GameObjects.Container {
     const t3 = ms * 0.5;
     this.shadow.setAlpha(0.3);
     // anticipation: tiny widen + dip
-    await tween(sc, { targets: b, scaleX: 1.06, scaleY: 0.97, y: baseY + 1, duration: t1, ease: 'Quad.Out' });
+    await this.tw({ targets: b, scaleX: 1.06, scaleY: 0.97, y: baseY + 1, duration: t1, ease: 'Quad.Out' });
+    if (this.dead) return;
     // close to an edge, rising, flash building
     await Promise.all([
-      tween(sc, { targets: b, scaleX: 0.045, scaleY: 1.06, y: baseY - 7, duration: t2, ease: 'Quad.In' }),
-      tween(sc, { targets: this.flashImg, alpha: 0.85, duration: t2, ease: 'Quad.In' }),
-      tween(sc, { targets: this.shadow, scaleX: 0.15, alpha: 0.18, duration: t2, ease: 'Quad.In' }),
+      this.tw({ targets: b, scaleX: 0.045, scaleY: 1.06, y: baseY - 7, duration: t2, ease: 'Quad.In' }),
+      this.tw({ targets: this.flashImg, alpha: 0.85, duration: t2, ease: 'Quad.In' }),
+      this.tw({ targets: this.shadow, scaleX: 0.15, alpha: 0.18, duration: t2, ease: 'Quad.In' }),
     ]);
+    if (this.dead) return;
     this.faceUp = toFaceUp;
     this.refreshFace();
     // open with overshoot, drop back, flash decays
     await Promise.all([
-      tween(sc, { targets: b, scaleX: 1, duration: t3, ease: 'Back.Out', easeParams: [2.6] }),
-      tween(sc, { targets: b, scaleY: 1, y: baseY, duration: t3, ease: 'Quad.In' }),
-      tween(sc, { targets: this.flashImg, alpha: 0, duration: t3 * 1.2, ease: 'Quad.Out' }),
-      tween(sc, { targets: this.shadow, scaleX: 1, alpha: this.lifted ? 0.38 : 0, duration: t3, ease: 'Quad.Out' }),
+      this.tw({ targets: b, scaleX: 1, duration: t3, ease: 'Back.Out', easeParams: [2.6] }),
+      this.tw({ targets: b, scaleY: 1, y: baseY, duration: t3, ease: 'Quad.In' }),
+      this.tw({ targets: this.flashImg, alpha: 0, duration: t3 * 1.2, ease: 'Quad.Out' }),
+      this.tw({ targets: this.shadow, scaleX: 1, alpha: this.lifted ? 0.38 : 0, duration: t3, ease: 'Quad.Out' }),
     ]);
+    if (this.dead) return;
     if (toFaceUp) {
       this.playSweep(this.isAce);
       this.burst(this.cardId ? cardAccent(this.cardId) : PAL.cyan3);
@@ -453,6 +524,8 @@ export class CardSprite extends Phaser.GameObjects.Container {
 
   /** Ring of sparkles shooting out from the card edges (reveals). */
   burst(color: number, n = 12): void {
+    if (this.dead || !this.inner.active) return;
+    const sc = this.scene;
     const m = this.inner.getWorldTransformMatrix().decomposeMatrix();
     const depth = rootDepth(this) + 1;
     const sx = Math.abs(m.scaleX);
@@ -466,13 +539,14 @@ export class CardSprite extends Phaser.GameObjects.Container {
       const x0 = m.translateX + ex * k * sx;
       const y0 = m.translateY + ey * k * sy;
       const big = i % 3 === 0;
-      const sp = this.scene.add
+      const sp = sc.add
         .image(Math.round(x0), Math.round(y0), big ? TEX.spark : TEX.px2)
         .setTint(big ? PAL.white : color)
         .setBlendMode(Phaser.BlendModes.ADD)
         .setDepth(depth);
       const dist = (10 + this.rnd() * 14) * Math.max(sx, sy);
-      this.scene.tweens.add({
+      // scene-root sparks: they outlive the card and clean themselves up
+      sc.tweens.add({
         targets: sp,
         x: x0 + ex * dist,
         y: y0 + ey * dist,
@@ -488,9 +562,10 @@ export class CardSprite extends Phaser.GameObjects.Container {
   /**
    * Fly along a quadratic arc to (x, y) in the parent's space: anticipation pull-back,
    * eased travel leaning into the motion (and puffing toward the camera mid-arc), landing squash.
+   * Resolves early (without throwing) if the card is destroyed on the way.
    */
   async flyTo(x: number, y: number, opts: FlyOpts = {}): Promise<void> {
-    const sc = this.scene;
+    if (this.dead) return;
     const ms = opts.ms ?? 420;
     const arc = opts.arc ?? 40;
     const s1 = opts.scale ?? this.scaleX;
@@ -507,7 +582,7 @@ export class CardSprite extends Phaser.GameObjects.Container {
     const dir = Math.sign(dx) || 1;
     if (anticipate) {
       const a = Math.min(ms * 0.16, 90);
-      await tween(sc, {
+      await this.tw({
         targets: this,
         x: x0 - (dx / len) * 4,
         y: y0 - (dy / len) * 4 + 2,
@@ -517,6 +592,7 @@ export class CardSprite extends Phaser.GameObjects.Container {
         duration: a,
         ease: 'Quad.Out',
       });
+      if (this.dead) return;
       x0 = this.x;
       y0 = this.y;
     }
@@ -528,10 +604,10 @@ export class CardSprite extends Phaser.GameObjects.Container {
     const lean = Math.min(0.32, (Math.abs(dx) / 400) * 0.3 + 0.06) * dir;
     if (opts.reveal && !this.faceUp && this.cardId) {
       const flipMs = Math.max(160, travel * 0.42);
-      sc.time.delayedCall(travel * 0.3, () => void this.flip(true, flipMs));
+      // tracked: skipped (and cancelled) if the card is destroyed before / during the flip
+      this.later(travel * 0.3, () => void this.flip(true, flipMs));
     }
-    await tweenValue(
-      sc,
+    await this.tv(
       0,
       1,
       travel,
@@ -546,29 +622,33 @@ export class CardSprite extends Phaser.GameObjects.Container {
       },
       opts.ease ?? (anticipate ? 'Cubic.Out' : 'Sine.InOut'),
     );
+    if (this.dead) return;
     this.setPosition(x, y).setRotation(r1).setScale(s1);
     if (opts.land ?? true) {
       this.inner.setScale(1.08, 0.9);
-      await tween(sc, { targets: this.inner, scaleX: 1, scaleY: 1, duration: 160, ease: 'Back.Out', easeParams: [3] });
+      await this.tw({ targets: this.inner, scaleX: 1, scaleY: 1, duration: 160, ease: 'Back.Out', easeParams: [3] });
     }
   }
 
   /** Short squash-and-stretch punch (landing in hand, selection). */
   punch(amount = 0.12, ms = 180): Promise<void> {
+    if (this.dead) return Promise.resolve();
     this.inner.setScale(1 + amount, 1 - amount);
-    return tween(this.scene, { targets: this.inner, scaleX: 1, scaleY: 1, duration: ms, ease: 'Back.Out', easeParams: [3] });
+    return this.tw({ targets: this.inner, scaleX: 1, scaleY: 1, duration: ms, ease: 'Back.Out', easeParams: [3] });
   }
 
   /** Flash the card with a color (ADD silhouette) — reveals, power-ups. */
   pulse(color: number = PAL.white, ms = 320): Promise<void> {
+    if (this.dead) return Promise.resolve();
     this.flashImg.setTint(color).setAlpha(0.95);
-    return tween(this.scene, { targets: this.flashImg, alpha: 0, duration: ms, ease: 'Quad.Out' }).then(() => {
-      this.flashImg.clearTint();
+    return this.tw({ targets: this.flashImg, alpha: 0, duration: ms, ease: 'Quad.Out' }).then(() => {
+      if (!this.dead) this.flashImg.clearTint();
     });
   }
 
   /** Burn the card into rising pixel embers (discard / spell resolution). Hides the card. */
   async dissolve(ms = 650): Promise<void> {
+    if (this.dead) return;
     const ember = this.faceUp && this.cardId ? cardAccent(this.cardId) : PAL.cyan3;
     this.setHighlight(null);
     this.sheen.setVisible(false);
@@ -576,18 +656,36 @@ export class CardSprite extends Phaser.GameObjects.Container {
     this.rim.setVisible(false);
     // a white-hot edge flash right before it goes
     this.flashImg.setTint(ember).setAlpha(0.6);
-    this.scene.tweens.add({ targets: this.flashImg, alpha: 0, duration: ms * 0.3 });
+    this.addTween({ targets: this.flashImg, alpha: 0, duration: ms * 0.3 });
+    // the embers live at the scene root and finish on their own even if the card goes away
     await burnAway(this.scene, this.face, this.pixels, ms, ember, { seed: (this.cardId?.length ?? 7) * 97 });
+    if (this.dead) return;
     this.setVisible(false);
     this.face.setVisible(true);
     this.flashImg.setAlpha(0);
   }
 
+  /** DESTROY: stop everything that could still call back into the (now dead) card. */
   private cleanup(): void {
     this.trailEvent?.remove();
     this.foilEvent?.remove();
-    this.glowTween?.stop();
     this.trailEvent = null;
     this.foilEvent = null;
+    this.glowTween?.stop();
+    this.glowTween = null;
+    for (const ev of this.ownTimers) ev.remove(false);
+    this.ownTimers.clear();
+    const own = [...this.ownTweens];
+    this.ownTweens.clear();
+    const sc = this.scene;
+    // Scene shutdown / restart: resolve NOTHING. The TweenManager kills every tween anyway, and
+    // waking the awaiting cinematic would let it carry on into the next run of the scene (Phaser
+    // reuses the same TweenManager), adding tweens on destroyed objects there.
+    if (!sc?.sys?.isActive()) return;
+    // a normal destroy: stop (not kill) — a stopped tween resolves its promise, so awaiting code
+    // moves on (and finds the card dead)
+    for (const t of own) t.stop();
+    const parts = [this, this.inner, this.shadow, this.face, this.flashImg, this.glow, this.glowRun, this.sheen, this.rim];
+    for (const t of sc.tweens.getTweensOf(parts)) t.stop();
   }
 }

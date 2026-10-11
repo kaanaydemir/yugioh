@@ -14,7 +14,7 @@ import type { Attribute, MonsterId } from '../data/cards';
 import { monsterArt } from '../art/monsters';
 import { ATTRIBUTE_RAMP, PAL } from '../art/palette';
 import { mulberry32 } from '../art/pixel';
-import { monsterFrame } from '../art/textures';
+import { addStaticCanvas, monsterFrame } from '../art/textures';
 import type { MonsterAnim } from '../art/types';
 import { MONSTER_ANIMS } from '../art/types';
 import { DEPTH, type XY } from '../view/layout';
@@ -38,6 +38,32 @@ export interface ShatterOpts {
 }
 
 let seed = 1;
+
+// Slices and bricks are sub-frames of the cached `shatter:<id>:<anim>:<frame>` texture. Their
+// rects are random per shatter, so they are added for the effect and removed again once no
+// running shatter uses them (refcounted: two monsters of the same kind can break at once).
+// Before, every shatter left ~150–230 new Frame objects on the cached texture for good.
+const frameUses = new Map<string, number>();
+
+function useFrame(tex: Phaser.Textures.Texture, name: string, x: number, y: number, w: number, h: number, used: string[]): void {
+  if (!tex.has(name)) tex.add(name, 0, x, y, w, h);
+  const k = `${tex.key}|${name}`;
+  frameUses.set(k, (frameUses.get(k) ?? 0) + 1);
+  used.push(name);
+}
+
+function releaseFrames(tex: Phaser.Textures.Texture, used: string[]): void {
+  for (const name of used.splice(0)) {
+    const k = `${tex.key}|${name}`;
+    const n = (frameUses.get(k) ?? 1) - 1;
+    if (n > 0) {
+      frameUses.set(k, n);
+      continue;
+    }
+    frameUses.delete(k);
+    if (tex.manager && tex.has(name)) tex.remove(name);
+  }
+}
 
 function currentFrame(sprite: Phaser.GameObjects.Sprite | Phaser.GameObjects.Image): { anim: MonsterAnim; frame: number } {
   const name = String(sprite.frame?.name ?? '');
@@ -70,7 +96,7 @@ export async function shatter(scene: Phaser.Scene, sprite: Phaser.GameObjects.Sp
 
   // texture of exactly these pixels, with sub-frames for slices / bricks
   const key = `shatter:${opts.monsterId}:${anim}:${fi}`;
-  if (!scene.textures.exists(key)) scene.textures.addCanvas(key, pc.toCanvas());
+  if (!scene.textures.exists(key)) addStaticCanvas(scene, key, pc.toCanvas());
   const tex = scene.textures.get(key);
   const W = pc.w;
   const H = pc.h;
@@ -89,10 +115,12 @@ export async function shatter(scene: Phaser.Scene, sprite: Phaser.GameObjects.Sp
   const glitchMs = opts.glitchMs ?? 150;
   sprite.setVisible(false);
   const slices: { img: Phaser.GameObjects.Image; ghost: Phaser.GameObjects.Image; y0: number; h: number }[] = [];
+  const sliceFrames: string[] = [];
+  const brickFrames: string[] = [];
   for (let y = bounds.y; y < bounds.y + bounds.h; ) {
     const h = Math.min(bounds.y + bounds.h - y, 2 + Math.floor(rnd() * 3));
     const name = `gl:${y}:${h}`;
-    if (!tex.has(name)) tex.add(name, 0, 0, y, W, h);
+    useFrame(tex, name, 0, y, W, h, sliceFrames);
     const c = toWorld(W / 2, y + h / 2);
     const ghost = scene.add.image(c.x, c.y, key, name).setFlipX(flip).setScale(sx, sy).setDepth(depth - 0.01).setTintFill(PAL.mag3).setAlpha(0).setBlendMode(Phaser.BlendModes.ADD);
     const img = scene.add.image(c.x, c.y, key, name).setFlipX(flip).setScale(sx, sy).setDepth(depth);
@@ -134,6 +162,9 @@ export async function shatter(scene: Phaser.Scene, sprite: Phaser.GameObjects.Sp
     s.img.destroy();
     s.ghost.destroy();
   }
+  releaseFrames(tex, sliceFrames);
+  // the scene shut down (duel restarted) during the glitch: don't burst into the next duel
+  if (!scene.sys.isActive()) return;
 
   // ------------------------------------------------------------ 2. burst into bricks
   try {
@@ -156,7 +187,7 @@ export async function shatter(scene: Phaser.Scene, sprite: Phaser.GameObjects.Sp
       for (let yy = y; yy < y + bh; yy++) for (let xx = x; xx < x + bw; xx++) if (pc.isOpaque(xx, yy)) n++;
       if (n >= 2) {
         const name = `br:${x}:${y}:${bw}:${bh}`;
-        if (!tex.has(name)) tex.add(name, 0, x, y, bw, bh);
+        useFrame(tex, name, x, y, bw, bh, brickFrames);
         const c = toWorld(x + bw / 2, y + bh / 2);
         const img = scene.add.image(c.x, c.y, key, name).setFlipX(flip).setScale(sx, sy).setDepth(depth).setTintFill(PAL.white);
         const dx = c.x - core.x;
@@ -236,6 +267,7 @@ export async function shatter(scene: Phaser.Scene, sprite: Phaser.GameObjects.Sp
       return alive > 0;
     }, () => {
       for (const b of bricks) if (b.img.active) b.img.destroy();
+      releaseFrames(tex, brickFrames);
       resolve();
     });
   });

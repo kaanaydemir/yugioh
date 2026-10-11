@@ -254,8 +254,14 @@ export async function cutIn(scene: Phaser.Scene, o: CutInOpts): Promise<void> {
     restX = p1 ? 70 + (w * scale) / 2 : GAME_W - 70 - (w * scale) / 2;
     restY = 180 + (band.slope * (restX - GAME_W / 2));
     if (scene.anims.exists(cutKey)) portrait.play(cutKey);
-    const lastFrame = scene.textures.get(cutKey).getFrameNames().sort().pop() ?? 'f0';
-    eyes = findEyes(scene, cutKey, lastFrame).map((e) => ({ x: (e.x - w / 2) * scale, y: (e.y - h / 2) * scale }));
+    // last portrait frame (numeric order: 'f10' comes after 'f9')
+    const frameNo = (n: string) => {
+      const m = /(\d+)$/.exec(n);
+      return m ? Number(m[1]) : -1;
+    };
+    const lastFrame = scene.textures.get(cutKey).getFrameNames().sort((a, b) => frameNo(a) - frameNo(b) || (a < b ? -1 : a > b ? 1 : 0)).pop() ?? 'f0';
+    // eye offset from the sprite centre, mirrored for player 2 (flipX)
+    eyes = findEyes(scene, cutKey, lastFrame).map((e) => ({ x: (e.x - w / 2) * scale * (p1 ? 1 : -1), y: (e.y - h / 2) * scale }));
   } else {
     const art = monsterArt(o.monsterId);
     scale = 3;

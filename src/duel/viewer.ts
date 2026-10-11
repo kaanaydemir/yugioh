@@ -30,6 +30,8 @@ export class ViewerPolicy {
   userWait: <T>(p: Promise<T>) => Promise<T> = (p) => p;
   /** Called when the viewer changed (controller refreshes highlights). */
   onChange: ((p: PlayerId) => void) | null = null;
+  /** The pass-device curtain went up (true) / came down (false) — whoever asked for it. */
+  onCurtain: ((on: boolean) => void) | null = null;
 
   constructor(o: { mode: DuelMode; cpu: PlayerId[]; curtain: boolean; hand: HandView; hud: HudView; prompt: Prompt }) {
     this.mode = o.mode;
@@ -67,11 +69,16 @@ export class ViewerPolicy {
     if (target === this.hand.owner && !this.hand.isFaceDown) return;
     const useCurtain = this.mode === 'hotseat' && this.curtain && !this.auto && this.isHuman(target);
     if (useCurtain) {
-      await this.userWait(
-        this.prompt.passDevice(target, async () => {
-          await this.hand.setOwner(target, true);
-        }),
-      );
+      this.onCurtain?.(true);
+      try {
+        await this.userWait(
+          this.prompt.passDevice(target, async () => {
+            await this.hand.setOwner(target, true);
+          }),
+        );
+      } finally {
+        this.onCurtain?.(false);
+      }
       await this.hand.setFaceDown(false);
     } else {
       await this.hand.setOwner(target, false);

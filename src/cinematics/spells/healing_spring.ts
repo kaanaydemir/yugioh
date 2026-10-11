@@ -4,8 +4,9 @@
 //   0       common opening (hand / set tile)
 //   +0      release: the card's energy arcs down onto the caster's side and sinks into the floor
 //           (its own tile when it was set, else the middle spell/trap zone) — ripples open
-//   +220    the teal spring ERUPTS (healingFountain): geyser, spray, floor rings, tiny shake
-//   +500    glowing droplets arc into the caster's LP panel with green-gold sparkle trails
+//   +210    the orb lands and the teal spring ERUPTS (setpieces.healingFountain): geyser, spray,
+//           floor rings, tiny shake
+//   +400    glowing droplets arc into the caster's LP panel with green-gold sparkle trails
 //   first   droplet lands → the panel glows, "+1000" pops and the LP rolls up (lpGain event)
 //   then    the spent card drops into the graveyard; the geyser collapses on its own
 
@@ -26,7 +27,7 @@ registerCardHook('healing_spring', 'activate', async (ctx) => {
   const gi = idxOf(ctx, run0, (e) => e.type === 'toGraveyard' && e.from === 'resolved' && e.uid === ev.uid);
   const set = setTileOf(ctx);
   const spring: XY = set ? { ...set.home } : zoneXY(ev.player, 'spellTrap', 1);
-  const op = await spellOpening(ctx, { uid: ev.uid, cardId: ev.cardId, player: ev.player, from: set ? 'set' : 'hand', zone: ev.zone, hold: 380 });
+  const op = await spellOpening(ctx, { uid: ev.uid, cardId: ev.cardId, player: ev.player, from: set ? 'set' : 'hand', zone: ev.zone, hold: 190 });
   // the droplets fly on the (un-zoomed) HUD camera: the world camera must be at rest before they launch
   relax(ctx, 300);
   let healed: Promise<void> = Promise.resolve();
@@ -34,7 +35,7 @@ registerCardHook('healing_spring', 'activate', async (ctx) => {
   const first = new Promise<void>((r) => (arrived = r));
   // the spring's ripples start under the falling orb, so the eruption (fountain +150 ms) lands
   // exactly when the orb hits the floor
-  const STREAK = 260;
+  const STREAK = 210;
   // (boxed: resolving a promise with a promise would adopt it)
   let fountainStarted!: (f: { p: Promise<void> }) => void;
   const fountainP = new Promise<{ p: Promise<void> }>((r) => (fountainStarted = r));

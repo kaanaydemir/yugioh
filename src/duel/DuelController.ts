@@ -12,6 +12,8 @@
 import Phaser from 'phaser';
 import { actingPlayer, apply, chooseAction, isLegal } from '../engine';
 import type { Action, GameEvent, GameState, PlayerId } from '../engine/types';
+import { sfx } from '../audio/sfx';
+import { loadSettings } from '../scenes/launch';
 import { wait } from '../vfx/core';
 import type { Director } from '../cinematics/_core/Director';
 import type { DuelViews } from './types';
@@ -62,6 +64,12 @@ export class DuelController {
     this.opts = opts;
     this.input = new HumanInput(scene, views);
     this.input.setState(state);
+    this.input.onQuit = () => this.quit();
+    views.info.onCurtain = (on) => this.input.setCurtain(on);
+    // the toolbar's sound switch starts from what is actually audible
+    views.hud.setSoundOn(!sfx.isMuted() && loadSettings().sound);
+    // vs CPU: say who the computer is
+    if (views.info.mode === 'vsBot') for (const p of opts.cpu) views.hud.setPlayerName(p, 'BİLGİSAYAR');
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.stop());
   }
 
@@ -72,6 +80,16 @@ export class DuelController {
 
   isCpu(p: PlayerId): boolean {
     return this.auto || this.cpu.has(p);
+  }
+
+  /** Leave the duel for the title menu (düello menüsü → Ana Menüye Dön). */
+  quit(): void {
+    if (this.stopped || !this.scene.sys.isActive()) return;
+    sfx.play('uiBack');
+    this.stop();
+    this.director.dropKept();
+    this.views.hud.setHint(null);
+    this.scene.scene.start('Title', { from: 'duel' });
   }
 
   stop(): void {
@@ -127,6 +145,7 @@ export class DuelController {
       const mailArrived = new Promise<null>((r) => (this.wakeMail = () => r(null)));
       if (this.isCpu(p)) {
         this.views.hud.setButtons({ battle: false, endTurn: false, attention: null });
+        this.cpuHint(p);
         const think = wait(this.scene, this.state.pending ? 380 : 520).then(() => 'go' as const);
         const r = await Promise.race([think, mailArrived]);
         if (r === null || this.stopped) return null;
@@ -166,7 +185,7 @@ export class DuelController {
     this.input.setState(res.state);
     this.lastEvents = res.events;
     this.playing = true;
-    this.lock(true);
+    this.lock(true, action.player);
     try {
       await this.director.play(res.events, before, res.state);
     } finally {
@@ -176,11 +195,22 @@ export class DuelController {
     mail?.resolve();
   }
 
-  private lock(b: boolean): void {
+  /** The guidance line while the CPU decides (vs CPU) or while the demo plays. */
+  private cpuHint(p: PlayerId): void {
+    const v = this.views;
+    if (v.info.mode === 'demo' || this.auto) v.hud.setHint('İzleme modu · Esc: menü', { style: 'gold' });
+    else v.hud.setHint(this.state.pending ? 'Bilgisayar düşünüyor…' : 'Sıra bilgisayarda…', { player: p });
+  }
+
+  private lock(b: boolean, actor?: PlayerId): void {
     const v = this.views;
     v.hand.setEnabled(!b);
     v.hud.setLocked(b);
     if (b) v.hud.setButtons({ battle: false, endTurn: false, attention: null });
+    // cinematics speak for themselves; the demo keeps its "how to leave" line and the CPU's
+    // turn keeps "Sıra bilgisayarda…" (no flicker between its moves)
+    const cpuTurnGoesOn = actor !== undefined && this.isCpu(actor) && this.state.winner === null && this.isCpu(actingPlayer(this.state));
+    if (b && (this.state.winner !== null || (v.info.mode !== 'demo' && !this.auto && !cpuTurnGoesOn))) v.hud.setHint(null);
     v.speed.canHold = () => this.busy;
   }
 
@@ -192,6 +222,7 @@ export class DuelController {
     const w = this.state.winner;
     if (w === null) return;
     this.views.hud.setButtons({ battle: false, endTurn: false, attention: null });
+    this.views.hud.setHint(null);
     await this.opts.onGameOver?.(w);
   }
 }

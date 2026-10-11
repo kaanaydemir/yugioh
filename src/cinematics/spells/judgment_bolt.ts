@@ -17,10 +17,10 @@
 import Phaser from 'phaser';
 import type { GameEvent } from '../../engine/types';
 import { PAL } from '../../art/palette';
-import { DEPTH, GAME_H, GAME_W, type XY, zoneXY } from '../../view/layout';
+import { DEPTH, type XY, zoneXY } from '../../view/layout';
 import { TEX, wait } from '../../vfx/core';
 import { shatter } from '../../vfx/shatter';
-import { E, Raster, Sparks, boltPath, rnd, rr, run, seg, spriteBox, stormStrike } from '../../vfx/setpieces';
+import { Raster, Sparks, boltPath, rnd, rr, run, spriteBox, stormStrike } from '../../vfx/setpieces';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { fx, registerCardHook, type CinematicContext } from '../api';
 import { TEAL_FX, bg, evAt, idxOf, relax, sendResolved, setTileOf, spellOpening } from './_kit';
@@ -28,26 +28,6 @@ import { TEAL_FX, bg, evAt, idxOf, relax, sendResolved, setTileOf, spellOpening 
 type DestroyCtx = CinematicContext<Extract<GameEvent, { type: 'destroy' }>>;
 
 const ADD = Phaser.BlendModes.ADD;
-
-/**
- * stormStrike's darkness is exactly the 640×360 screen; a zoomed / shaking world camera would
- * show its edges. Four border strips follow the same curve outside it.
- */
-function darkBorder(scene: Phaser.Scene): void {
-  const P = 90;
-  const rects = [
-    scene.add.rectangle(-P, -P, GAME_W + 2 * P, P, PAL.ink, 1),
-    scene.add.rectangle(-P, GAME_H, GAME_W + 2 * P, P, PAL.ink, 1),
-    scene.add.rectangle(-P, 0, P, GAME_H, PAL.ink, 1),
-    scene.add.rectangle(GAME_W, 0, P, GAME_H, PAL.ink, 1),
-  ].map((r) => r.setOrigin(0).setDepth(DEPTH.SHADOW - 2).setAlpha(0));
-  bg(
-    run(scene, 1600, (_t, el) => {
-      const k = el < 1050 ? E.outQuad(seg(el, 0, 300)) : 1 - seg(el, 1050, 1450);
-      for (const r of rects) r.setAlpha(0.62 * k);
-    }).then(() => rects.forEach((r) => r.destroy())),
-  );
-}
 
 registerCardHook('judgment_bolt', 'activate', async (ctx) => {
   const ev = ctx.ev;
@@ -72,7 +52,6 @@ registerCardHook('judgment_bolt', 'activate', async (ctx) => {
   const stormGo = new Promise<void>((r) => (stormStarted = r));
   const startStorm = () => {
     if (!ground0) return;
-    darkBorder(sc);
     bg(ctx.focus({ x: ground0.x, y: ground0.y - 40 }, { zoom: 1.06, ms: 560, pan: 0.3 }));
     storm = stormStrike(sc, ground0.x, ground0.y, {
       onImpact: () => {

@@ -7,7 +7,7 @@
 //   decision          trapResponse: the defender's set cards breathe magenta ('trapPulse' kept).
 //   responseDeclined  the set cards cool down and a small "Geç" pops over the defender's row.
 //   attackNegated     the arrow shatters, the attacker is shoved back with a clang, "SAVAŞ BİTTİ".
-// Plus an observer that installs the guard-pose rule (guardRemap) on every unit.
+// (The guard-pose rule — a defense-position unit never shows its upright 'hit' — is MonsterUnit's.)
 
 import { PAL, PLAYER_COLOR, PLAYER_RAMP } from '../../art/palette';
 import { pixelText } from '../../ui/text';
@@ -16,14 +16,12 @@ import { tween, wait } from '../../vfx/core';
 import { attackArrow, blockClang, lockOn } from '../../vfx/combat';
 import { Sparks, addGlow, floorRing, onFrame } from '../../vfx/setpieces';
 import { banner, type BannerOpts } from '../../vfx/banners';
-import { fx, registerEvent, registerObserver } from '../api';
+import { fx, registerEvent } from '../api';
 import {
   ADD,
   TAU,
   type AttackHold,
   duelist,
-  guardRemap,
-  guardRemapAll,
   hexGlint,
   isSetPulse,
   lerpXY,
@@ -37,9 +35,6 @@ import {
   sub,
   takeAttack,
 } from './_kit';
-
-// every unit gets the guard-pose rule before anything can hit it
-registerObserver((_ev, ctx) => guardRemapAll(ctx.views));
 
 // ================================================================ attackDeclare
 
@@ -59,7 +54,6 @@ registerEvent(
     const home = zoneXY(ev.player, 'monster', ev.attackerZone);
     const from: XY = attacker ? attacker.core() : { x: home.x, y: home.y - 12 };
     const to: XY = target ? target.core() : tTile ? { x: tTile.home.x, y: tTile.home.y - 8 } : fx.duelistPoint(ctx, defender);
-    if (target) guardRemap(target);
 
     // camera leans in between attacker and target
     void ctx.focus(lerpXY(from, to, 0.5), { zoom: 1.05, ms: 380, pan: 0.32 });

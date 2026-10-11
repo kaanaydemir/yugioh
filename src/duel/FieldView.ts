@@ -216,7 +216,8 @@ export class FieldView {
         const cardId = state.cards[slot.uid].cardId;
         const orient: CardOrientation = slot.position === 'defense' ? 'side' : 'up';
         let e = this.entries.get(k) ?? null;
-        if (e && (e.uid !== slot.uid || e.cardId !== cardId)) {
+        // a tile destroyed behind the field's back (a cinematic that forgot release()) is rebuilt
+        if (e && (e.uid !== slot.uid || e.cardId !== cardId || !e.tile.active)) {
           this.dispose(e, false);
           e = null;
         }
@@ -298,7 +299,7 @@ export class FieldView {
 
   private syncCard(k: string, p: PlayerId, spot: FieldSpot, i: number, uid: Uid, cardId: CardId, faceUp: boolean): void {
     let e = this.entries.get(k) ?? null;
-    if (e && (e.uid !== uid || e.cardId !== cardId)) {
+    if (e && (e.uid !== uid || e.cardId !== cardId || !e.tile.active)) {
       this.dispose(e, false);
       e = null;
     }
@@ -325,9 +326,9 @@ export class FieldView {
       Math.abs(t.y - t.home.y) < 0.5 &&
       t.scaleX === 1 &&
       t.scaleY === 1;
-    if (ok) return;
-    this.scene.tweens.killTweensOf(t);
-    t.setPosition(t.home.x, t.home.y).setScale(1);
+    if (ok || !t.active) return;
+    // TileCard.sync stops its running animations and any tween on the container (stop, not
+    // kill: awaiting code resumes instead of hanging) and puts it back home at scale 1
     t.sync(cardId, faceUp, o);
   }
 

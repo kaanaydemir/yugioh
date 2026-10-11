@@ -14,7 +14,7 @@ import { sfx, type SfxName } from '../../audio/sfx';
 import type { PlayerId } from '../../engine/types';
 import { DEPTH, unitDepth, zoneXY } from '../../view/layout';
 import { TileCard } from '../../view/TileCard';
-import { safe, tween, wait } from '../../vfx/core';
+import { realWait, safe, setSpeed, tween, wait } from '../../vfx/core';
 import {
   attackArrow,
   beam,
@@ -106,6 +106,8 @@ export class Showcase {
   private actTimer: Phaser.Time.TimerEvent | null = null;
   private clashing = false;
   private summoning = false;
+  /** The summon currently playing (its VFX own the sprite until it resolves). */
+  private inFlight: Promise<void> | null = null;
   private sinceClash = 0;
   /** Fired on every summon beat (e.g. to sync the logo). */
   onBeat: ((id: MonsterId, beat: string) => void) | null = null;
@@ -144,6 +146,25 @@ export class Showcase {
   /** Stop and clear the board (monsters glitch out). */
   async clear(ms = 380): Promise<void> {
     this.stop();
+    // A summon in flight still drives its sprite from the shared summon VFX: destroying the
+    // sprite under it threw (materialize → renderer, roar → anims). Fast-forward it to the
+    // end instead (≤ ~0.5 s even for an ace with its cut-in), then dismiss everything.
+    // (a clash in progress gets the same treatment, so no beam / impact residue lands on the
+    // sub-screen panel that opens next)
+    if (this.inFlight || this.clashing) {
+      setSpeed(this.scene, 8);
+      try {
+        const clashDone = (async () => {
+          while (this.clashing) await realWait(this.scene, 20);
+        })();
+        await Promise.race([Promise.all([this.inFlight ?? Promise.resolve(), clashDone]), realWait(this.scene, 1500)]);
+        // decorative tails (falling feathers, embers) keep spawning after the summon resolves:
+        // let ~2 s of game time pass at 8× so they are done before a panel opens over them
+        await realWait(this.scene, 250);
+      } finally {
+        setSpeed(this.scene, 1);
+      }
+    }
     const all = [...this.units];
     await Promise.all(all.map((u, i) => wait(this.scene, i * 40).then(() => this.dismiss(u, ms, false))));
   }
@@ -227,10 +248,13 @@ export class Showcase {
     const unit: Unit = { id, slot, sprite, shadow, card: null, busy: true, born: s.time.now };
     this.units.push(unit);
     this.summoning = true;
+    const run = this.summonInto(unit, at, flip);
+    this.inFlight = run;
     try {
-      await this.summonInto(unit, at, flip);
+      await run;
     } finally {
       this.summoning = false;
+      if (this.inFlight === run) this.inFlight = null;
     }
   }
 

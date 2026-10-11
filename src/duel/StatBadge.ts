@@ -35,6 +35,8 @@ export class StatBadge {
   def: number;
   private flashT = 0;
   private rollToken = 0;
+  /** Bumped whenever a pop is cut short (hide / a new pop / a roll / destroy). */
+  private popToken = 0;
   private shown = true;
 
   constructor(scene: Phaser.Scene, x: number, y: number, o: { player: PlayerId; position: Position; atk: number; def: number; baseAtk: number; baseDef: number }) {
@@ -70,20 +72,48 @@ export class StatBadge {
     return this.shown;
   }
 
+  /**
+   * Show / hide. Showing a badge that is already up keeps whatever it is doing (a running pop()
+   * or roll is NOT cut short — unit.show() right after the summon's badge pop used to kill it);
+   * a badge left off-scale with nothing animating it is straightened.
+   */
   setVisible(b: boolean): void {
+    if (b && this.shown && this.image.visible) {
+      if (this.image.active && !this.scene.tweens.isTweening(this.image)) this.image.setScale(1).setAlpha(1);
+      return;
+    }
     this.shown = b;
-    this.scene.tweens.killTweensOf(this.image);
+    this.popToken++;
+    this.stopTweens();
     this.image.setVisible(b).setScale(1).setAlpha(1);
+  }
+
+  /**
+   * Stop (not kill) the image's tweens: awaiting code resumes instead of hanging. On a scene
+   * shutdown nothing is resolved (the TweenManager kills them; waking awaiting code would carry
+   * an old cinematic into the next run of the scene).
+   */
+  private stopTweens(): void {
+    if (!this.image.active) return;
+    const tws = this.scene.tweens.getTweensOf(this.image);
+    if (!this.scene.sys.isActive()) {
+      this.scene.tweens.killTweensOf(this.image);
+      return;
+    }
+    for (const t of tws) t.stop();
   }
 
   /** Pop in (summon impact beat): scale overshoot. */
   async pop(): Promise<void> {
+    if (!this.image.active) return;
     this.shown = true;
-    this.scene.tweens.killTweensOf(this.image);
+    const token = ++this.popToken;
+    this.stopTweens();
     this.image.setVisible(true).setAlpha(1).setScale(0.2);
     this.flashT = 1;
     this.render();
     await tween(this.scene, { targets: this.image, scale: 1.35, duration: 120, ease: 'Quad.Out' });
+    if (token !== this.popToken || !this.image.active) return;
     this.flashT = 0;
     this.render();
     await tween(this.scene, { targets: this.image, scale: 1, duration: 160, ease: 'Back.Out' });
@@ -103,7 +133,8 @@ export class StatBadge {
     const a0 = this.shownAtk;
     const d0 = this.shownDef;
     if (a0 === atk && d0 === def) return;
-    this.scene.tweens.killTweensOf(this.image);
+    this.popToken++;
+    this.stopTweens();
     void tween(this.scene, { targets: this.image, scale: 1.3, duration: 110, ease: 'Quad.Out' });
     await tweenValue(this.scene, 0, 1, 520, (k) => {
       if (token !== this.rollToken) return;
@@ -117,12 +148,14 @@ export class StatBadge {
     this.shownDef = def;
     this.flashT = 0;
     this.render();
+    if (!this.image.active) return;
     await tween(this.scene, { targets: this.image, scale: 1, duration: 180, ease: 'Back.Out' });
   }
 
   destroy(): void {
     this.rollToken++;
-    this.scene.tweens.killTweensOf(this.image);
+    this.popToken++;
+    this.stopTweens();
     this.image.destroy();
     if (this.tex) {
       this.tex.destroy();

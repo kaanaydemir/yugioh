@@ -134,11 +134,13 @@ export class LiveRaster {
     this.oy = Math.round(oy);
     this.key = `fx:raster:${++rasterSeq}`;
     this.pc = new PixelCanvas(w, h);
-    this.tex = scene.textures.createCanvas(this.key, this.pc.w, this.pc.h)!;
+    // a CPU-backed canvas (see PixelCanvas.toCanvas): redrawn with putImageData every frame and
+    // read back once by the CanvasTexture constructor — both plain memory copies this way
+    this.tex = scene.textures.addCanvas(this.key, this.pc.toCanvas())!;
     this.imageData = new ImageData(this.pc.data as Uint8ClampedArray<ArrayBuffer>, this.pc.w, this.pc.h);
     this.img = scene.add.image(0, 0, this.key).setOrigin(0, 0).setDepth(depth);
     this.moveTo(x, y);
-    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroy());
+    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, this.destroy, this);
   }
 
   get alive(): boolean {
@@ -162,6 +164,8 @@ export class LiveRaster {
   destroy(): void {
     if (this.dead) return;
     this.dead = true;
+    // drop the shutdown hook too, or every raster of a duel stays referenced until the scene ends
+    this.scene.events.off(Phaser.Scenes.Events.SHUTDOWN, this.destroy, this);
     this.img.destroy();
     if (this.scene.textures.exists(this.key)) this.scene.textures.remove(this.key);
   }
@@ -606,6 +610,10 @@ interface Managed {
   hardEnd: number;
 }
 
+// One ticker per running scene drains its list. Phaser REUSES the Scene instance on
+// scene.restart() / scene.start(), and the ticker dies with the SHUTDOWN, so the entry is dropped
+// on shutdown too — otherwise every emitter of the next run would be queued on a list nobody
+// ticks any more (never stopped, never destroyed: a per-restart emitter leak).
 const managed = new WeakMap<Phaser.Scene, Managed[]>();
 
 function manage(scene: Phaser.Scene, e: Emitter, stopAt: number, maxLife: number): void {
@@ -614,6 +622,15 @@ function manage(scene: Phaser.Scene, e: Emitter, stopAt: number, maxLife: number
     const l: Managed[] = [];
     list = l;
     managed.set(scene, l);
+    // whichever fires first (or the ticker noticing the scene is gone) unhooks both
+    const drop = () => {
+      scene.events.off(Phaser.Scenes.Events.SHUTDOWN, drop);
+      scene.events.off(Phaser.Scenes.Events.DESTROY, drop);
+      if (managed.get(scene) === l) managed.delete(scene);
+      l.length = 0;
+    };
+    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, drop);
+    scene.events.once(Phaser.Scenes.Events.DESTROY, drop);
     onTick(scene, (dt) => {
       const ts = scene.tweens.timeScale;
       for (let i = l.length - 1; i >= 0; i--) {
@@ -631,7 +648,7 @@ function manage(scene: Phaser.Scene, e: Emitter, stopAt: number, maxLife: number
         }
       }
       if (!scene.sys.isActive() && !scene.sys.isPaused()) {
-        managed.delete(scene);
+        drop();
         return true;
       }
       return false;

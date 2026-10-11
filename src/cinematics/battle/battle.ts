@@ -22,7 +22,7 @@ import { wait } from '../../vfx/core';
 import { blockClang, directHit, whiteFlash } from '../../vfx/combat';
 import { genericStrike } from '../_defaults/strikes';
 import { fx, registerEvent, strikeFor, type StrikeArgs } from '../api';
-import { type EvOf, all, duelist, guardReact, guardRemap, guardRemapAll, lerpXY, live, norm, other, sub, takeAttack } from './_kit';
+import { type EvOf, all, duelist, guardReact, lerpXY, live, norm, other, sub, takeAttack } from './_kit';
 
 /** Events that end the "consequences" run of a battle. */
 function isBreak(e: GameEvent): boolean {
@@ -39,10 +39,8 @@ registerEvent(
   async (ctx) => {
     const ev = ctx.ev;
     const sc = ctx.scene;
-    guardRemapAll(ctx.views);
     const attacker = ctx.unit(ev.attackerUid);
     const target = ev.targetUid !== null ? ctx.unit(ev.targetUid) : null;
-    if (target) guardRemap(target);
     // ---- the consequences that belong to this battle
     const dmgIdx = ctx.findType('damage', (e) => e.source === 'battle', { until: isBreak });
     const destroyIdx: number[] = [];
@@ -75,10 +73,14 @@ registerEvent(
     void ctx.focus(focusAt, { zoom, ms: 360, pan: 0.32 });
 
     const pending: Promise<unknown>[] = [];
+    /** The damage number + LP roll: the triggers below need not wait for the counter to settle. */
+    const rolls: Promise<unknown>[] = [];
+    let dmgQueued = false;
     const playDamageAt = (at: XY, delay = 0) => {
-      if (dmgIdx < 0 || ctx.isConsumed(dmgIdx)) return;
+      if (dmgIdx < 0 || dmgQueued || ctx.isConsumed(dmgIdx)) return;
+      dmgQueued = true;
       const job = delay > 0 ? wait(sc, delay).then(() => ctx.play(dmgIdx, { at, battle: true })) : ctx.play(dmgIdx, { at, battle: true });
-      pending.push(job);
+      rolls.push(job);
     };
     /** Where a number over a unit goes (just above its head). */
     const overHead = (u: typeof attacker): XY => {
@@ -101,14 +103,18 @@ registerEvent(
       impacted = true;
       resolveImpact();
       const p = at ?? to;
-      // impact-frame camera punch
-      void ctx.focus(focusAt, { zoom: Math.min(1.08, zoom + 0.02), ms: 70, pan: 0.34 }).then(() => ctx.focus(focusAt, { zoom, ms: 260, pan: 0.32 }));
       if (direct) {
-        pending.push(directHit(sc, defender, { at: p }));
+        // the burst lives on the un-zoomed UI camera: project the world hit point once, as the
+        // camera stands on the impact frame (before the punch-in below starts moving it)
+        const hit = fx.directImpact(ctx, p, to);
+        void ctx.focus(focusAt, { zoom: Math.min(1.08, zoom + 0.02), ms: 70, pan: 0.34 }).then(() => ctx.focus(focusAt, { zoom, ms: 260, pan: 0.32 }));
+        pending.push(directHit(sc, defender, { at: hit.screen }));
         void duelist(ctx, defender)?.jolt();
-        if (dmgEv && dmgEv.player === defender) playDamageAt({ x: p.x, y: p.y - 22 });
+        if (dmgEv && dmgEv.player === defender) playDamageAt({ x: hit.world.x, y: hit.world.y - 22 });
         return;
       }
+      // impact-frame camera punch
+      void ctx.focus(focusAt, { zoom: Math.min(1.08, zoom + 0.02), ms: 70, pan: 0.34 }).then(() => ctx.focus(focusAt, { zoom, ms: 260, pan: 0.32 }));
       const tu = live(target);
       if (blocked) {
         if (tu && defense) {
@@ -193,6 +199,10 @@ registerEvent(
     // any other battle destroy (should not happen) still plays
     for (const i of destroyIdx) if (i !== tDestroy && i !== aDestroy && !ctx.isConsumed(i)) pending.push(ctx.play(i));
     await all(pending);
+    // the triggers this battle sets off (counter-splash, howl, discharge) play while the camera
+    // is still on the clash — no dead beat between the blow and the answer (the LP roll of the
+    // battle damage finishes alongside)
+    await all([...rolls, fx.playBattleTriggers(ctx, [ev.attackerUid, ev.targetUid], { skip: dmgIdx >= 0 ? [dmgIdx] : [] })]);
     await ctx.unfocus(300);
   },
   { name: 'tb:battle' },

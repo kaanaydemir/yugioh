@@ -17,7 +17,7 @@
 
 import Phaser from 'phaser';
 import { PAL, PLAYER_COLOR, RAMPS, type Ramp } from '../art/palette';
-import { mix } from '../art/pixel';
+import { PixelCanvas, mix } from '../art/pixel';
 import { sfx } from '../audio/sfx';
 import type { Phase, PlayerId } from '../engine/types';
 import { START_LP } from '../engine/types';
@@ -38,6 +38,7 @@ import {
   panelTex,
   playerStyle,
   silTex,
+  type UiStyle,
 } from './ui-textures';
 
 export type SpeedLevel = 1 | 2 | 3;
@@ -128,12 +129,32 @@ interface Panel {
   lpTint: number;
 }
 
+/** Guidance line: top edge of its plate (centered on the screen, above the resting hand). */
+const HINT_Y = 252;
+const GAME_CX = 320;
+
+/** ≡ toolbar icon (white bars, ink outline; tinted by Button). */
+function menuIconTex(scene: Phaser.Scene): string {
+  const key = 'hud:icon:menu';
+  if (scene.textures.exists(key)) return key;
+  const p = new PixelCanvas(11, 11);
+  for (const y of [2, 5, 8]) p.rect(2, y, 7, 2, y === 2 ? PAL.white : PAL.mist);
+  p.outline(PAL.ink);
+  scene.textures.addCanvas(key, p.toCanvas());
+  return key;
+}
+
 export class HudView {
   onBattle: (() => void) | null = null;
   onEndTurn: (() => void) | null = null;
   onSpeed: ((k: SpeedLevel) => void) | null = null;
   onSound: ((muted: boolean) => void) | null = null;
   onLog: (() => void) | null = null;
+  /** The ≡ toolbar button (pause menu: devam / teslim ol / ana menü). */
+  onMenu: (() => void) | null = null;
+  /** A disabled SAVAŞ / TURU BİTİR was clicked (say why in the hint line). */
+  onBattleBlocked: (() => void) | null = null;
+  onEndTurnBlocked: (() => void) | null = null;
 
   readonly battleButton: Button;
   readonly endTurnButton: Button;
@@ -165,6 +186,15 @@ export class HudView {
   private readonly speedButton: Button;
   private readonly soundButton: Button;
   private readonly logButton: Button;
+  readonly menuButton: Button;
+  // guidance line above the hand
+  private readonly hintRoot: Phaser.GameObjects.Container;
+  private hintBase: { text: string; style: UiStyle } | null = null;
+  private hintKey = '';
+  private tip: { owner: Button; root: Phaser.GameObjects.Container } | null = null;
+  /** Real milliseconds left on a flashed hint (not scaled by the animation speed). */
+  private hintFlashLeft = 0;
+  private soundOn = !sfx.isMuted();
   private readonly updateFn: (t: number, dt: number) => void;
   private sheenEvent: Phaser.Time.TimerEvent | null = null;
   private glintEvent: Phaser.Time.TimerEvent | null = null;
@@ -244,6 +274,8 @@ export class HudView {
     );
     this.battleButton.setScrollFactor(0);
     this.endTurnButton.setScrollFactor(0);
+    this.battleButton.onBlocked = () => this.onBattleBlocked?.();
+    this.endTurnButton.onBlocked = () => this.onEndTurnBlocked?.();
 
     // ---- toolbar (top-left)
     this.speedButton = this.track(
@@ -259,7 +291,19 @@ export class HudView {
       }),
     );
     this.logButton = this.track(new Button(scene, 59, 4, { w: 17, h: 16, icon: ICON.log, depth: DEPTH.HUD, onClick: () => this.onLog?.() }));
-    for (const btn of [this.speedButton, this.soundButton, this.logButton]) btn.setScrollFactor(0);
+    this.menuButton = this.track(new Button(scene, 78, 4, { w: 17, h: 16, icon: menuIconTex(scene), depth: DEPTH.HUD, onClick: () => this.onMenu?.() }));
+    for (const btn of [this.speedButton, this.soundButton, this.logButton, this.menuButton]) btn.setScrollFactor(0);
+    // the toolbar is icons only: name each one on hover
+    const tips: [Button, () => string][] = [
+      [this.speedButton, () => `Animasyon hızı: ${this.speed}× (tıkla: değiştir)`],
+      [this.soundButton, () => (this.soundOn ? 'Sesi kapat' : 'Sesi aç')],
+      [this.logButton, () => 'Savaş günlüğü'],
+      [this.menuButton, () => 'Düello menüsü (Esc)'],
+    ];
+    for (const [btn, text] of tips) btn.onHover = (on) => (on ? this.showTip(btn, text()) : this.hideTip(btn));
+
+    // ---- guidance line (what the acting player can do now), just above the hand
+    this.hintRoot = this.track(scene.add.container(GAME_CX, HINT_Y).setDepth(DEPTH.HUD + 4).setScrollFactor(0).setAlpha(0));
 
     this.setActive(this.activePlayer, false);
     // idle: a glint runs across the phase marker every few seconds
@@ -611,6 +655,39 @@ export class HudView {
     return this.speed;
   }
 
+  /**
+   * The guidance line above the hand ("Bir kart seç...", "Saldıracak canavarını seç..."):
+   * colored by the acting player. null hides it. Same text → no re-animation.
+   */
+  setHint(text: string | null, o: { player?: PlayerId; style?: UiStyle } = {}): void {
+    const style = o.style ?? (o.player !== undefined ? playerStyle(o.player) : 'neutral');
+    this.hintBase = text ? { text, style } : null;
+    if (this.hintFlashLeft > 0) return; // a flash is showing; it falls back to the new base line
+    this.renderHint(this.hintBase, false);
+  }
+
+  /** A short message in the hint line (why something cannot be done...), then the hint again. */
+  flashHint(text: string, o: { style?: UiStyle; ms?: number } = {}): void {
+    this.renderHint({ text, style: o.style ?? 'fire' }, true);
+    this.hintFlashLeft = o.ms ?? 2400;
+  }
+
+  /** Current hint text (QA). */
+  get hintText(): string {
+    return this.hintKey.split('|').slice(1).join('|');
+  }
+
+  /** Sound toggle state shown on the toolbar (sound effects + music master switch). */
+  setSoundOn(on: boolean): void {
+    this.soundOn = on;
+    this.soundButton.setIcon(on ? ICON.soundOn : ICON.soundOff);
+  }
+
+  /** Rename a player's panel (e.g. 'BİLGİSAYAR' in vs-CPU duels). */
+  setPlayerName(player: PlayerId, name: string): void {
+    this.panels[player].name.setText(name);
+  }
+
   /** Screen point at the center of a player's LP number (effects fly here). */
   lpXY(player: PlayerId): XY {
     const P = this.panels[player];
@@ -659,6 +736,7 @@ export class HudView {
       P.dangerTween?.stop();
       P.shakeTween?.stop();
     }
+    this.hideTip();
     for (const o of this.objects) o.destroy();
     this.objects.length = 0;
   }
@@ -1123,18 +1201,96 @@ export class HudView {
     const k = (this.speed === 3 ? 1 : this.speed + 1) as SpeedLevel;
     this.setSpeed(k);
     this.onSpeed?.(k);
+    if (this.tip?.owner === this.speedButton) this.showTip(this.speedButton, `Animasyon hızı: ${k}× (tıkla: değiştir)`);
   }
 
   private toggleSound(): void {
-    const muted = !sfx.isMuted();
-    sfx.setMuted(muted);
-    this.soundButton.setIcon(muted ? ICON.soundOff : ICON.soundOn);
-    this.onSound?.(muted);
+    // the icon follows the switch, not sfx.isMuted(): "Ses efektleri: kapalı" in the settings
+    // silences effects through the volume, so the old mute-only toggle could show ON while silent
+    const on = !this.soundOn;
+    if (on) {
+      sfx.setMuted(false);
+      sfx.setVolume(1);
+    } else sfx.setMuted(true);
+    this.setSoundOn(on);
+    this.onSound?.(!on);
+    if (this.tip?.owner === this.soundButton) this.showTip(this.soundButton, on ? 'Sesi kapat' : 'Sesi aç');
+  }
+
+  // ================================================================ toolbar tooltips
+
+  private showTip(owner: Button, text: string): void {
+    this.hideTip();
+    const sc = this.scene;
+    const t = pixelText(sc, 5, capY('sm', 3), text, { size: 'sm', color: PAL.white });
+    const w = Math.ceil(t.width) + 10;
+    const root = sc.add.container(owner.x, owner.y + owner.h + 3).setDepth(DEPTH.HUD + 8).setScrollFactor(0);
+    root.add([sc.add.image(0, 0, panelTex(sc, 'neutral', w, 11, { alpha: 235, chamfer: 2, scan: false })).setOrigin(0), t]);
+    root.setAlpha(0);
+    sc.tweens.add({ targets: root, alpha: 1, duration: 120, delay: 150 });
+    this.tip = { owner, root };
+  }
+
+  private hideTip(owner?: Button): void {
+    if (!this.tip || (owner && this.tip.owner !== owner)) return;
+    const r = this.tip.root;
+    this.tip = null;
+    this.scene.tweens.killTweensOf(r);
+    r.destroy();
+  }
+
+  // ================================================================ hint line
+
+  private renderHint(h: { text: string; style: UiStyle } | null, flash: boolean): void {
+    const sc = this.scene;
+    const root = this.hintRoot;
+    if (!root.active) return;
+    const key = h ? `${h.style}|${h.text}` : '';
+    if (key === this.hintKey && !flash) return;
+    this.hintKey = key;
+    sc.tweens.killTweensOf(root);
+    for (const o of root.list) sc.tweens.killTweensOf(o);
+    if (!h) {
+      sc.tweens.add({ targets: root, alpha: 0, duration: 160, onComplete: () => root.removeAll(true) });
+      return;
+    }
+    root.removeAll(true);
+    const R = UI_RAMP[h.style];
+    const t = pixelText(sc, 16, capY('md', 5), h.text, { size: 'md', color: PAL.white });
+    const w = Math.ceil(t.width) + 24;
+    const H = 17;
+    const glow = sc.add.image(-GLOW_PAD, -GLOW_PAD, glowTex(sc, w, H)).setOrigin(0).setBlendMode(ADD).setTint(R[3]).setAlpha(0.35);
+    const bg = sc.add.image(0, 0, panelTex(sc, h.style, w, H, { alpha: 228, chamfer: 2, scan: false })).setOrigin(0);
+    const caret = sc.add.image(6, 4, ICON.caret).setOrigin(0).setTint(R[4]);
+    root.add([glow, bg, caret, t]);
+    const x = Math.round(GAME_CX - w / 2);
+    root.setPosition(x, HINT_Y + 3).setAlpha(0);
+    sc.tweens.add({ targets: root, y: HINT_Y, alpha: 1, duration: 150, ease: 'Cubic.Out' });
+    sc.tweens.add({ targets: caret, x: 8, duration: 320, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+    sc.tweens.add({ targets: glow, alpha: { from: 0.2, to: 0.55 }, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+    if (flash) {
+      t.setTint(R[4]);
+      const o = { t: 0 };
+      sc.tweens.add({
+        targets: o,
+        t: 1,
+        duration: 260,
+        onUpdate: () => root.active && root.setX(x + Math.round(Math.sin(o.t * Math.PI * 6) * 2 * (1 - o.t))),
+        onComplete: () => root.active && root.setX(x),
+      });
+    }
   }
 
   // ================================================================ per-frame
 
   private tick(dt: number): void {
+    if (this.hintFlashLeft > 0) {
+      this.hintFlashLeft -= dt; // raw loop time: readable at any animation speed
+      if (this.hintFlashLeft <= 0) {
+        this.hintFlashLeft = 0;
+        this.renderHint(this.hintBase, false);
+      }
+    }
     const k = this.scene.time.timeScale;
     for (const P of this.panels) {
       if (!P.active || P.path.length === 0) continue;

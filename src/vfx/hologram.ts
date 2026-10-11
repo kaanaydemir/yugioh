@@ -226,11 +226,56 @@ function worldToScreenY(go: HoloTarget, wx: number, wy: number): number {
   return m.getY(x, y);
 }
 
+/**
+ * Booted pipelines parked for reuse. Every PostFXPipeline instance compiles and links its own
+ * WebGL program and allocates a full-screen render target, and Phaser destroys the instance as
+ * soon as it is removed from its sprite (clearHologram, the end of materialize, sprite.destroy).
+ * Booting one mid-duel cost a 300–430 ms frame in the soak test (synchronous GL calls, see
+ * prewarm()). So a removed pipeline is parked here instead (destroy() below) and setHologram()
+ * hands it to the next sprite: no hologram compiles a shader or builds a framebuffer mid-duel.
+ */
+const pool: HologramPipeline[] = [];
+/** Enough for every sprite that can be a hologram at once (field + effects); extras really die. */
+const POOL_MAX = 16;
+/** Diagnostics (tools/soak.mjs): pipelines booted / handed out from the pool, peak live count. */
+const stats = { booted: 0, reused: 0, live: 0, peak: 0 };
+export function hologramStats(): { booted: number; reused: number; live: number; peak: number; pooled: number } {
+  return { ...stats, pooled: pool.length };
+}
+
 export class HologramPipeline extends Phaser.Renderer.WebGL.Pipelines.PostFXPipeline {
   params: HologramParams = defaultHologram();
 
   constructor(game: Phaser.Game) {
     super({ game, name: HOLOGRAM, fragShader: FRAG });
+    stats.booted++;
+  }
+
+  /** Called by Phaser when the pipeline leaves its sprite: park it for reuse (see `pool`). */
+  destroy(): this {
+    const r = this.renderer as Phaser.Renderer.WebGL.WebGLRenderer | null;
+    const park = this.hasBooted && !!r && !!r.gl && !r.contextLost && !(this.game as unknown as { pendingDestroy?: boolean })?.pendingDestroy && pool.length < POOL_MAX;
+    if (this.gameObject) stats.live = Math.max(0, stats.live - 1);
+    if (!park) {
+      const i = pool.indexOf(this);
+      if (i >= 0) pool.splice(i, 1);
+      return super.destroy();
+    }
+    this.gameObject = null as unknown as Phaser.GameObjects.GameObject;
+    // a fresh params object: anyone still holding the old one (a running tween) can't touch the next user
+    this.params = defaultHologram();
+    if (!pool.includes(this)) pool.push(this);
+    return this;
+  }
+
+  /** Take a parked, booted pipeline of this renderer (or null). */
+  static reuse(renderer: unknown): HologramPipeline | null {
+    for (let i = pool.length - 1; i >= 0; i--) {
+      const p = pool[i];
+      if (!p.renderer || !p.hasBooted) pool.splice(i, 1);
+      else if (p.renderer === renderer) return pool.splice(i, 1)[0];
+    }
+    return null;
   }
 
   onDraw(target: Phaser.Renderer.WebGL.RenderTarget): void {
@@ -284,8 +329,37 @@ export function registerHologram(game: Phaser.Game): boolean {
   if (!(r instanceof Phaser.Renderer.WebGL.WebGLRenderer)) return false;
   // NB: pipelines.getPostPipeline() would instantiate a pipeline — check the class map instead.
   const classes = (r.pipelines as unknown as { postPipelineClasses: { has(k: string): boolean } }).postPipelineClasses;
-  if (!classes.has(HOLOGRAM)) r.pipelines.addPostPipeline(HOLOGRAM, HologramPipeline);
+  if (!classes.has(HOLOGRAM)) {
+    r.pipelines.addPostPipeline(HOLOGRAM, HologramPipeline);
+    prewarm(game, r);
+  }
   return true;
+}
+
+/** Pipelines booted at startup: a summon + tribute pair, a flip, a destroy at the same time. */
+const PREWARM = 4;
+
+/**
+ * Boot the hologram pipelines at startup (while nothing is on screen yet) and park them in the
+ * pool. Booting one compiles its shader and builds a framebuffer: getShaderParameter and
+ * checkFramebufferStatus are synchronous GL calls that wait for the whole GPU queue, so mid-duel
+ * a new instance stalled the frame by 300–430 ms in the headless soak test (on the first summon,
+ * and again whenever more holograms than ever before were up at once). Back-to-back at boot the
+ * queue is empty and only the first one pays for the compile.
+ */
+function prewarm(game: Phaser.Game, r: Phaser.Renderer.WebGL.WebGLRenderer): void {
+  try {
+    for (let i = 0; i < PREWARM; i++) {
+      const p = new HologramPipeline(game);
+      p.name = HOLOGRAM;
+      (p as unknown as { bootFX(): void }).bootFX();
+      // what PipelineManager.getPostPipeline() does, so resize / context restore reach it
+      (r.pipelines as unknown as { postPipelineInstances?: unknown[] }).postPipelineInstances?.push(p);
+      if (p.hasBooted) pool.push(p);
+    }
+  } catch (e) {
+    console.warn('[hologram] prewarm failed', e);
+  }
 }
 
 function webgl(scene: Phaser.Scene): boolean {
@@ -310,8 +384,20 @@ export function setHologram(sprite: HoloTarget, params: Partial<HologramParams> 
   registerHologram(sprite.scene.game);
   let pipe = getHologram(sprite);
   if (!pipe) {
+    const parked = HologramPipeline.reuse(sprite.scene.renderer);
+    if (parked) {
+      // what setPostPipeline() does, minus `new` (no shader compile, no render target allocation)
+      stats.reused++;
+      stats.peak = Math.max(stats.peak, ++stats.live);
+      parked.gameObject = sprite;
+      sprite.postPipelines.push(parked);
+      sprite.hasPostPipeline = true;
+      Object.assign(parked.params, params);
+      return parked.params;
+    }
     sprite.setPostPipeline(HOLOGRAM);
     pipe = getHologram(sprite);
+    if (pipe) stats.peak = Math.max(stats.peak, ++stats.live);
     // Phaser boots post pipelines lazily inside postBatch, so on their first frame no render
     // target is bound and the sprite would draw unprocessed (a 1-frame pop). Boot it now.
     const boot = pipe as unknown as { hasBooted?: boolean; bootFX?: () => void } | null;

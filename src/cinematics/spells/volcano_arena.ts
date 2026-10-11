@@ -172,7 +172,7 @@ async function breakOldField(ctx: AnyCtx, from: XY, di: number): Promise<void> {
     await wait(sc, 60);
     // the new card starts down while the old one is still burning
     bg(tile.dissolve(380).then(() => tile.destroy()));
-    await wait(sc, 200);
+    await wait(sc, 140);
   } else await wait(sc, 220);
   field.forget(d.uid);
   if (g) bg(fx.cardToGraveyard(ctx, { owner: g.owner, cardId: d.cardId, from: { x: at.x, y: at.y - 4 } }));
@@ -184,7 +184,8 @@ registerCardHook('volcano_arena', 'activate', async (ctx) => {
   const oldDi = idxOf(ctx, run0, (e) => e.type === 'destroy' && e.location === 'field');
   const oldFi = idxOf(ctx, run0, (e) => e.type === 'fieldSpell' && !e.active && e.uid !== ev.uid);
   const fi = idxOf(ctx, run0, (e) => e.type === 'fieldSpell' && e.active && e.uid === ev.uid);
-  const op = await spellOpening(ctx, { uid: ev.uid, cardId: ev.cardId, player: ev.player, from: 'hand', zone: null, hold: 420 });
+  // replacing a field spell: the strike on the old card is part of the showcase, so it hovers less
+  const op = await spellOpening(ctx, { uid: ev.uid, cardId: ev.cardId, player: ev.player, from: 'hand', zone: null, hold: oldDi >= 0 ? 200 : 320 });
   if (oldDi >= 0) {
     await breakOldField(ctx, op.center, oldDi);
     // the arena stays hot (a volcano replaces a volcano): its cooling is skipped; anything else

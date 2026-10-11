@@ -11,6 +11,13 @@
 //   await tc.standUp();                        // trap activation pose (reveals by default)
 //
 // Player 2's cards are rotated 180° (their tops face player 1).
+//
+// Lifecycle: the card may be destroyed at any moment, also mid-animation. Every tween / timer it
+// starts is tracked and stopped on destroy (awaiting code resumes instead of hanging) and every
+// callback / async continuation bails out once the card is dead, so nothing ever throws inside
+// Phaser's TweenManager / Clock update (an exception there kills the game loop for good).
+// sync() is authoritative: it stops a running pose animation, and that animation's continuation
+// (which would otherwise re-apply its own end state) is skipped.
 
 import Phaser from 'phaser';
 import type { CardId } from '../data/cards';
@@ -144,6 +151,12 @@ export class TileCard extends Phaser.GameObjects.Container {
   private glowTween: Phaser.Tweens.Tween | null = null;
   private bobTween: Phaser.Tweens.Tween | null = null;
   private rngState: number;
+  /** Bumped by sync(): async animations started before it skip their end state. */
+  private epoch = 0;
+  /** Tweens / timers started by the card itself (stopped on destroy). */
+  private readonly ownTweens = new Set<Phaser.Tweens.Tween>();
+  /** The running pose animations (stopped by sync / destroy). */
+  private readonly poseTweens = new Set<Phaser.Tweens.Tween>();
 
   constructor(
     scene: Phaser.Scene,
@@ -179,6 +192,61 @@ export class TileCard extends Phaser.GameObjects.Container {
     scene.add.existing(this);
   }
 
+  // ------------------------------------------------------------ lifecycle
+
+  /** True once the card has been destroyed (or its scene shut down). */
+  get dead(): boolean {
+    return !this.scene || !this.active;
+  }
+
+  /** scene.tweens.add, tracked (stopped on destroy). Null when the card is dead. */
+  private addTween(config: Phaser.Types.Tweens.TweenBuilderConfig, pose = false): Phaser.Tweens.Tween | null {
+    if (this.dead) return null;
+    const t = this.scene.tweens.add(config);
+    this.ownTweens.add(t);
+    if (pose) this.poseTweens.add(t);
+    const drop = () => {
+      this.ownTweens.delete(t);
+      this.poseTweens.delete(t);
+    };
+    t.once(Phaser.Tweens.Events.TWEEN_COMPLETE, drop);
+    t.once(Phaser.Tweens.Events.TWEEN_STOP, drop);
+    return t;
+  }
+
+  /** Promise of a tracked tween (resolves on complete or stop; at once when the card is dead). */
+  private tw(config: Phaser.Types.Tweens.TweenBuilderConfig, pose = false): Promise<void> {
+    return new Promise((resolve) => {
+      const t = this.addTween(config, pose);
+      if (!t) return resolve();
+      t.once(Phaser.Tweens.Events.TWEEN_COMPLETE, () => resolve());
+      t.once(Phaser.Tweens.Events.TWEEN_STOP, () => resolve());
+    });
+  }
+
+  /** Tracked number tween; onUpdate is skipped once the card is dead. */
+  private tv(from: number, to: number, duration: number, onUpdate: (v: number) => void, pose = false): Promise<void> {
+    const o = { v: from };
+    return this.tw(
+      {
+        targets: o,
+        v: to,
+        duration,
+        onUpdate: () => {
+          if (!this.dead) onUpdate(o.v);
+        },
+      },
+      pose,
+    );
+  }
+
+  /** Stop the running pose animations (their promises resolve; continuations see a new epoch). */
+  private haltPoses(): void {
+    const ts = [...this.poseTweens];
+    this.poseTweens.clear();
+    for (const t of ts) t.stop();
+  }
+
   // ------------------------------------------------------------ state
 
   private get staticKey(): string {
@@ -194,12 +262,21 @@ export class TileCard extends Phaser.GameObjects.Container {
     return this.rngState / 4294967296;
   }
 
-  /** Instantly set what is shown (used by views.sync). Cancels the standing pose. */
+  /** Instantly set what is shown (used by views.sync). Cancels the standing pose and any running animation. */
   sync(cardId: CardId | null, faceUp: boolean, orientation: CardOrientation = this.orientation): this {
+    this.epoch++;
     this.cardId = cardId;
     this.faceUp = faceUp;
     this.orientation = orientation;
     this.standing = false;
+    if (this.dead) return this;
+    if (this.scene.sys.isActive()) {
+      this.haltPoses();
+      // tweens on the container itself (fadeOut / external moves) end now (stop: promises resolve)
+      for (const t of this.scene.tweens.getTweensOf(this)) t.stop();
+    }
+    this.busy = 0;
+    this.setPosition(this.home.x, this.home.y).setScale(1);
     this.setAlpha(1).setVisible(true);
     this.img.setVisible(true);
     this.settle();
@@ -234,15 +311,17 @@ export class TileCard extends Phaser.GameObjects.Container {
   }
 
   private ensureLive(): void {
-    if (this.live) return;
+    if (this.live || this.dead) return;
     this.liveKey = `tilecard:live:${++liveCounter}`;
     this.live = this.scene.textures.createCanvas(this.liveKey, LIVE, LIVE)!;
     this.buf = new PixelCanvas(LIVE, LIVE);
   }
 
   private drawPose(p: Pose): void {
+    if (this.dead) return;
     this.ensureLive();
-    const buf = this.buf!;
+    if (!this.live || !this.buf) return;
+    const buf = this.buf;
     buf.clear();
     const { ex, ey, n } = poseAxes(p.q, p.w, p.h);
     renderCard(buf, LC, LC, ex, ey, n, this.frontMip, cardMip('back'), {
@@ -295,11 +374,12 @@ export class TileCard extends Phaser.GameObjects.Container {
   private settle(): void {
     this.bobTween?.stop();
     this.bobTween = null;
+    if (this.dead) return;
     if (this.standing) {
       this.drawPose(this.restPose());
       this.setDepth(this.liftDepth);
       const y0 = this.img.y;
-      this.bobTween = this.scene.tweens.add({ targets: this.img, y: y0 - 1, duration: 700, ease: 'Sine.InOut', yoyo: true, repeat: -1 });
+      this.bobTween = this.addTween({ targets: this.img, y: y0 - 1, duration: 700, ease: 'Sine.InOut', yoyo: true, repeat: -1 });
     } else {
       this.pose = null;
       this.img.setTexture(this.staticKey).setOrigin(ISO_CX / ISO_TEX_W, ISO_CY / ISO_TEX_H).setPosition(0, 0);
@@ -311,6 +391,7 @@ export class TileCard extends Phaser.GameObjects.Container {
 
   /** Point the glow / sheen / flash overlays at the current resting shape. */
   private placeOverlays(): void {
+    if (this.dead) return;
     if (this.standing) {
       const s = this.standScale;
       const cx = this.img.x;
@@ -335,8 +416,14 @@ export class TileCard extends Phaser.GameObjects.Container {
     return unitDepth(this.home.y) - 1;
   }
 
-  /** Run a pose animation over `ms`; fn(t) returns the pose for t in 0..1. */
-  private animate(ms: number, fn: (t: number) => Pose): Promise<void> {
+  /**
+   * Run a pose animation over `ms`; fn(t) returns the pose for t in 0..1. Resolves true when it
+   * ran to the end on a live card, false when the card died or a sync() superseded it — callers
+   * then skip their end state.
+   */
+  private animate(ms: number, fn: (t: number) => Pose): Promise<boolean> {
+    if (this.dead) return Promise.resolve(false);
+    const epoch = this.epoch;
     this.busy++;
     this.bobTween?.stop();
     this.bobTween = null;
@@ -344,10 +431,18 @@ export class TileCard extends Phaser.GameObjects.Container {
     this.glowRun.setVisible(false);
     this.sheen.setVisible(false);
     this.drawPose(fn(0));
-    return tweenValue(this.scene, 0, 1, ms, (t) => {
-      if (this.active) this.drawPose(fn(t));
-    }).then(() => {
-      this.busy--;
+    return this.tv(
+      0,
+      1,
+      ms,
+      (t) => {
+        if (this.epoch === epoch) this.drawPose(fn(t));
+      },
+      true,
+    ).then(() => {
+      if (this.epoch !== epoch) return false;
+      this.busy = Math.max(0, this.busy - 1);
+      return !this.dead;
     });
   }
 
@@ -359,6 +454,7 @@ export class TileCard extends Phaser.GameObjects.Container {
    * kicks up a dust ring and flashes the tile.
    */
   async slamIn(from: XY, ms = 480, opts: SlamOpts = {}): Promise<void> {
+    if (this.dead) return;
     this.standing = false;
     this.setVisible(true).setAlpha(1);
     this.img.setVisible(true);
@@ -374,7 +470,7 @@ export class TileCard extends Phaser.GameObjects.Container {
     let hit = false;
     let lastSpark = -1;
     this.setDepth(DEPTH.FX);
-    await this.animate(ms, (t) => {
+    const done = await this.animate(ms, (t) => {
       if (t < tHit) {
         const k = t / tHit;
         // travel over to the tile (decelerating), sweeping slightly sideways
@@ -415,12 +511,13 @@ export class TileCard extends Phaser.GameObjects.Container {
       const sq = 1 + 0.16 * spring(k);
       return { ...rest, w: FLAT_W * sq, h: FLAT_H * sq, tint: PAL.white, tintAmt: 0.6 * Math.pow(1 - k, 2) };
     });
+    if (!done) return;
     this.settle();
   }
 
   /** Turn a face-down card face-up: press, hop up while rolling over its long edge with a glint, slam down. */
   async flipUp(ms = 480): Promise<void> {
-    if (this.faceUp) return;
+    if (this.faceUp || this.dead) return;
     const standing = this.standing;
     this.faceUp = true;
     const restUp = this.restPose();
@@ -430,7 +527,7 @@ export class TileCard extends Phaser.GameObjects.Container {
     const hop = standing ? 8 : 16;
     let landed = false;
     this.setDepth(this.liftDepth);
-    await this.animate(ms, (t) => {
+    const done = await this.animate(ms, (t) => {
       if (t < 0.15) {
         const k = t / 0.15;
         const s = 1 - 0.07 * easeOutQuad(k);
@@ -462,26 +559,28 @@ export class TileCard extends Phaser.GameObjects.Container {
       const sq = 1 + 0.12 * spring(k);
       return { ...restUp, w: restUp.w * sq, h: restUp.h * sq, tint: accent, tintAmt: 0.55 * Math.pow(1 - k, 2) };
     });
+    if (!done) return;
     this.faceUp = true;
     this.settle();
   }
 
   /** Turn a face-up card face-down (rare: e.g. effects/sync). */
   async flipDown(ms = 420): Promise<void> {
-    if (!this.faceUp) return;
+    if (!this.faceUp || this.dead) return;
     const base = this.restPose().q;
     this.faceUp = false;
     const restDown = this.restPose();
-    await this.animate(ms, (t) => {
+    const done = await this.animate(ms, (t) => {
       const e = easeInOutCubic(t);
       return { ...restDown, q: qMul(base, qAxis([0, 1, 0], Math.PI * e)), z: restDown.z + 12 * Math.sin(Math.PI * t), light: 0.4 * Math.sin(Math.PI * e) };
     });
+    if (!done) return;
     this.settle();
   }
 
   /** Rotate on the tile to attack ('up') or defense ('side') position, with lift and overshoot. */
   async rotateTo(o: CardOrientation, ms = 340): Promise<void> {
-    if (o === this.orientation) return;
+    if (o === this.orientation || this.dead) return;
     if (this.standing) {
       this.orientation = o;
       return;
@@ -491,7 +590,7 @@ export class TileCard extends Phaser.GameObjects.Container {
     const rest0 = this.restPose();
     let landed = false;
     this.setDepth(this.liftDepth);
-    await this.animate(ms, (t) => {
+    const done = await this.animate(ms, (t) => {
       if (t < 0.12) {
         const k = t / 0.12;
         const s = 1 - 0.05 * easeOutQuad(k);
@@ -513,6 +612,7 @@ export class TileCard extends Phaser.GameObjects.Container {
         light: 0.12 * Math.sin(Math.PI * k),
       };
     });
+    if (!done) return;
     this.orientation = o;
     this.settle();
   }
@@ -522,7 +622,7 @@ export class TileCard extends Phaser.GameObjects.Container {
    * its bottom edge with overshoot and grows to a crisp full-size face hovering over the tile.
    */
   async standUp(ms = 460, opts: StandOpts = {}): Promise<void> {
-    if (this.standing) return;
+    if (this.standing || this.dead) return;
     const flat = this.restPose();
     const front = (opts.reveal ?? true) || this.faceUp;
     const s = opts.scale ?? 1;
@@ -532,7 +632,7 @@ export class TileCard extends Phaser.GameObjects.Container {
     const z1 = h1 / 2 + STAND_HOVER;
     const accent = this.cardId && front ? cardAccent(this.cardId) : PAL.white;
     this.setDepth(this.liftDepth);
-    await this.animate(ms, (t) => {
+    const done = await this.animate(ms, (t) => {
       if (t < 0.16) {
         const k = t / 0.16;
         const sq = 1 - 0.08 * easeOutQuad(k);
@@ -553,6 +653,7 @@ export class TileCard extends Phaser.GameObjects.Container {
         glint: k > 0.15 && k < 0.85 ? lerp(-1.3, 1.3, (k - 0.15) / 0.7) : undefined,
       };
     });
+    if (!done) return;
     this.standing = true;
     this.standScale = s;
     this.faceUp = front;
@@ -561,12 +662,12 @@ export class TileCard extends Phaser.GameObjects.Container {
 
   /** Fall back flat onto the tile from the standing pose (slam + dust). */
   async layDown(ms = 380): Promise<void> {
-    if (!this.standing) return;
+    if (!this.standing || this.dead) return;
     const st = this.restPose();
     this.standing = false;
     const flat = this.restPose();
     let landed = false;
-    await this.animate(ms, (t) => {
+    const done = await this.animate(ms, (t) => {
       if (t < 0.7) {
         const k = t / 0.7;
         const e = easeInQuad(k);
@@ -588,11 +689,13 @@ export class TileCard extends Phaser.GameObjects.Container {
       const sq = 1 + 0.12 * spring(k);
       return { ...flat, w: FLAT_W * sq, h: FLAT_H * sq };
     });
+    if (!done) return;
     this.settle();
   }
 
   /** Flash the card with a color and a ring burst. */
   pulse(color: number, ms = 420): Promise<void> {
+    if (this.dead) return Promise.resolve();
     this.flashImg.setTint(color).setAlpha(0.95);
     const ring = this.scene.add
       .image(this.glow.x, this.glow.y, this.glow.texture.key, 'g:0')
@@ -603,11 +706,11 @@ export class TileCard extends Phaser.GameObjects.Container {
     this.add(ring);
     const s0 = this.glow.scaleX;
     return Promise.all([
-      tween(this.scene, { targets: this.flashImg, alpha: 0, duration: ms, ease: 'Quad.Out' }),
-      tween(this.scene, { targets: ring, scaleX: s0 * 1.35, scaleY: s0 * 1.35, alpha: 0, duration: ms, ease: 'Quad.Out' }),
+      this.tw({ targets: this.flashImg, alpha: 0, duration: ms, ease: 'Quad.Out' }),
+      this.tw({ targets: ring, scaleX: s0 * 1.35, scaleY: s0 * 1.35, alpha: 0, duration: ms, ease: 'Quad.Out' }),
     ]).then(() => {
       ring.destroy();
-      this.flashImg.clearTint();
+      if (!this.dead) this.flashImg.clearTint();
     });
   }
 
@@ -616,9 +719,10 @@ export class TileCard extends Phaser.GameObjects.Container {
     this.highlight = color;
     this.glowTween?.stop();
     this.glowTween = null;
+    if (this.dead) return this;
     if (color === null) {
       this.glow.setVisible(false);
-      this.glowRun.setVisible(false).stop();
+      if (this.glowRun.active) this.glowRun.setVisible(false).stop();
       return this;
     }
     this.applyHighlight(color);
@@ -626,12 +730,12 @@ export class TileCard extends Phaser.GameObjects.Container {
   }
 
   private applyHighlight(color: number): void {
-    if (this.busy > 0) return;
+    if (this.busy > 0 || this.dead) return;
     this.glow.setVisible(true).setTint(color).setAlpha(0.8);
     this.glowRun.setVisible(true).setTint(mix(color, PAL.white, 0.55)).setAlpha(1);
     this.glowRun.play(this.standing ? ANIM_GLOW_RUN : animIsoGlowRun(this.orientation));
     this.glowTween?.stop();
-    this.glowTween = this.scene.tweens.add({
+    this.glowTween = this.addTween({
       targets: this.glow,
       alpha: { from: 1, to: 0.45 },
       duration: 460,
@@ -645,8 +749,8 @@ export class TileCard extends Phaser.GameObjects.Container {
   setSheen(on: boolean): this {
     this.sheenEvent?.remove();
     this.sheenEvent = null;
-    if (!on) {
-      this.sheen.setVisible(false);
+    if (!on || this.dead) {
+      if (!this.dead) this.sheen.setVisible(false);
       return this;
     }
     const period = 3000 + Math.floor(this.rnd() * 1600);
@@ -654,14 +758,16 @@ export class TileCard extends Phaser.GameObjects.Container {
       delay: period,
       startAt: Math.floor(this.rnd() * period * 0.8),
       loop: true,
-      callback: () => this.playSheen(),
+      callback: () => {
+        if (!this.dead) this.playSheen();
+      },
     });
     return this;
   }
 
   /** One sheen sweep now (if resting face-down, or a face-up ace). */
   playSheen(): void {
-    if (!this.active || this.busy > 0 || this.standing || !this.visible) return;
+    if (this.dead || this.busy > 0 || this.standing || !this.visible || !this.sheen.active) return;
     let tint: number;
     if (!this.faceUp) tint = mix(PLAYER_COLOR[this.player], PAL.white, 0.5);
     else {
@@ -674,21 +780,28 @@ export class TileCard extends Phaser.GameObjects.Container {
 
   /** Fade away (sink a pixel); hides the card at the end. */
   async fadeOut(ms = 320): Promise<void> {
+    if (this.dead) return;
     this.setHighlight(null);
-    await tween(this.scene, { targets: this, alpha: 0, y: this.home.y + 2, duration: ms, ease: 'Quad.In' });
+    const epoch = this.epoch;
+    await this.tw({ targets: this, alpha: 0, y: this.home.y + 2, duration: ms, ease: 'Quad.In' });
+    if (this.dead || this.epoch !== epoch) return;
     this.setVisible(false);
     this.y = this.home.y;
   }
 
   /** Burn into rising pixel embers (destroyed spell/trap). Hides the card at the end. */
   async dissolve(ms = 600): Promise<void> {
+    if (this.dead) return;
     this.setHighlight(null);
     this.bobTween?.stop();
     this.sheen.setVisible(false);
     this.shadowG.clear();
     const ember = this.faceUp && this.cardId ? cardAccent(this.cardId) : PLAYER_COLOR[this.player];
     const pc = this.pose ? this.buf!.clone() : isoCanvas(this.faceUp && this.cardId ? this.cardId : 'back', this.orientation, this.player);
+    const epoch = this.epoch;
+    // the embers live at the scene root and finish on their own even if the card goes away
     await burnAway(this.scene, this.img, pc, ms, ember, { keep: 0.8, seed: this.rngState });
+    if (this.dead || this.epoch !== epoch) return;
     this.setVisible(false);
     this.img.setVisible(true);
   }
@@ -696,6 +809,7 @@ export class TileCard extends Phaser.GameObjects.Container {
   // ------------------------------------------------------------ small fx
 
   private spark(x: number, y: number, color: number, spread: number): void {
+    if (this.dead) return;
     for (let i = 0; i < 2; i++) {
       const a = this.rnd() * Math.PI * 2;
       const r = this.rnd() * spread;
@@ -717,6 +831,7 @@ export class TileCard extends Phaser.GameObjects.Container {
 
   /** Vertical speed streak above a falling card. */
   private speedLine(x: number, y: number, color: number): void {
+    if (this.dead) return;
     for (let i = 0; i < 2; i++) {
       const lx = Math.round(x + (this.rnd() - 0.5) * 34);
       const len = 6 + Math.floor(this.rnd() * 10);
@@ -734,6 +849,7 @@ export class TileCard extends Phaser.GameObjects.Container {
 
   /** Expanding glow ring around the resting card shape. */
   ringBurst(color: number, ms = 360): void {
+    if (this.dead) return;
     const o = this.orientation;
     const ox = (ISO_CX + ISO_GLOW_PAD) / (ISO_TEX_W + ISO_GLOW_PAD * 2);
     const oy = (ISO_CY + ISO_GLOW_PAD) / (ISO_TEX_H + ISO_GLOW_PAD * 2);
@@ -748,6 +864,7 @@ export class TileCard extends Phaser.GameObjects.Container {
 
   /** Ring of dust kicked out from under the card. */
   dust(n = 14, power = 1): void {
+    if (this.dead) return;
     const parts: { img: Phaser.GameObjects.Image; vx: number; vy: number; up: number }[] = [];
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2 + this.rnd() * 0.4;
@@ -773,6 +890,7 @@ export class TileCard extends Phaser.GameObjects.Container {
 
   /** Flash the tile diamond (ADD) with an expanding outline. */
   tileFlash(color: number, ms = 300): void {
+    if (this.dead) return;
     const g = this.scene.add.graphics({ x: this.home.x, y: this.home.y }).setDepth(DEPTH.TILE_FX).setBlendMode(Phaser.BlendModes.ADD);
     const hw = TILE_W / 2;
     const hh = TILE_H / 2;
@@ -791,11 +909,30 @@ export class TileCard extends Phaser.GameObjects.Container {
     }).then(() => g.destroy());
   }
 
+  /** DESTROY: stop everything that could still call back into the (now dead) card. */
   private cleanup(): void {
+    this.epoch++;
     this.sheenEvent?.remove();
+    this.sheenEvent = null;
     this.glowTween?.stop();
+    this.glowTween = null;
     this.bobTween?.stop();
-    if (this.liveKey && this.scene?.textures.exists(this.liveKey)) this.scene.textures.remove(this.liveKey);
+    this.bobTween = null;
+    const own = [...this.ownTweens];
+    this.ownTweens.clear();
+    this.poseTweens.clear();
+    const sc = this.scene;
+    if (sc?.sys?.isActive()) {
+      // a normal destroy: stop (not kill) — a stopped tween resolves its promise, so awaiting
+      // code moves on (and finds the card dead). On a scene shutdown / restart NOTHING is
+      // resolved: the TweenManager kills every tween, and waking the awaiting cinematic would let
+      // it carry on into the next run of the scene (same TweenManager) on destroyed objects.
+      for (const t of own) t.stop();
+      const parts = [this, this.img, this.shadowG, this.glow, this.glowRun, this.sheen, this.flashImg];
+      for (const t of sc.tweens.getTweensOf(parts)) t.stop();
+    }
+    if (this.liveKey && sc?.textures?.exists(this.liveKey)) sc.textures.remove(this.liveKey);
+    this.live = null;
   }
 }
 

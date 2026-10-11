@@ -20,6 +20,7 @@ import Phaser from 'phaser';
 import type { PlayerId } from '../engine/types';
 import { PAL, PLAYER_RAMP, RAMPS, type Ramp } from '../art/palette';
 import { PixelCanvas, mulberry32, shade } from '../art/pixel';
+import { addStaticCanvas } from '../art/textures';
 import { DEPTH, GAME_H, GAME_W, duelistXY, unitDepth, type XY } from '../view/layout';
 import { sfx, type SfxName } from '../audio/sfx';
 import { shake } from './core';
@@ -195,17 +196,17 @@ export function stopTime(scene: Phaser.Scene, ms: number): Promise<void> {
 function realFrames(scene: Phaser.Scene, n: number): Promise<void> {
   return new Promise((resolve) => {
     let k = 0;
+    // both paths remove both listeners (a leftover SHUTDOWN hook per flash piled up over a duel)
+    const end = () => {
+      scene.events.off(Phaser.Scenes.Events.POST_UPDATE, fn);
+      scene.events.off(Phaser.Scenes.Events.SHUTDOWN, end);
+      resolve();
+    };
     const fn = () => {
-      if (++k >= n) {
-        scene.events.off(Phaser.Scenes.Events.POST_UPDATE, fn);
-        resolve();
-      }
+      if (++k >= n) end();
     };
     scene.events.on(Phaser.Scenes.Events.POST_UPDATE, fn);
-    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      scene.events.off(Phaser.Scenes.Events.POST_UPDATE, fn);
-      resolve();
-    });
+    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, end);
   });
 }
 
@@ -1994,7 +1995,7 @@ function ensureRock(scene: Phaser.Scene): string {
     p.outline(PAL.ink);
     sheet.blit(p, f * S, 0);
   }
-  const tex = scene.textures.addCanvas(key, sheet.toCanvas())!;
+  const tex = addStaticCanvas(scene, key, sheet.toCanvas());
   for (let f = 0; f < ROCK_FRAMES; f++) tex.add(f, 0, f * S, 0, S, S);
   return key;
 }
@@ -3511,7 +3512,7 @@ function ensureVignette(scene: Phaser.Scene): string {
       if (lvl <= 0) continue;
       if (PixelCanvas.ditherAt(x, y, Math.round(lvl * 16))) p.set(x, y, lvl > 0.75 ? PAL.crim1 : lvl > 0.45 ? PAL.crim2 : PAL.crim3);
     }
-  scene.textures.addCanvas(key, p.toCanvas());
+  addStaticCanvas(scene, key, p.toCanvas());
   return (vignetteKey = key);
 }
 
