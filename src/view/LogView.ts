@@ -7,6 +7,8 @@
 //
 // Closed: each new line pops up as a short-lived toast above the buttons. Open: a panel with
 // the latest lines (newest at the bottom), sliding in from the right edge.
+// Arena v2 (compact HUD): the panel and the toasts live in the free top-right corner under the
+// P2 panel (clear of the board), the toasts sliding in under the P2 mini-hand.
 
 import Phaser from 'phaser';
 import { PAL, PLAYER_COLOR } from '../art/palette';
@@ -14,7 +16,7 @@ import { mix } from '../art/pixel';
 import { sfx } from '../audio/sfx';
 import type { PlayerId } from '../engine/types';
 import { measureText, pixelText, textMetrics, wrapText } from '../ui/text';
-import { DEPTH, GAME_W, UI } from './layout';
+import { ARENA_V2, DEPTH, GAME_W, UI, byArena } from './layout';
 import { GLOW_PAD, glowTex, panelTex } from './ui-textures';
 
 interface Entry {
@@ -29,7 +31,7 @@ const LINE = 10;
 export class LogView {
   private readonly scene: Phaser.Scene;
   private readonly entries: Entry[] = [];
-  private readonly rect = { x: 488, y: 96, w: 148, h: 196 };
+  private readonly rect = byArena({ x: 488, y: 96, w: 148, h: 196 }, { x: 508, y: 60, w: 128, h: 90 });
   private panel: Phaser.GameObjects.Container | null = null;
   private lines: Phaser.GameObjects.Container | null = null;
   private toast: Phaser.GameObjects.Container | null = null;
@@ -149,12 +151,12 @@ export class LogView {
     const sc = this.scene;
     this.toast?.destroy();
     this.toastTimer?.remove();
-    const maxW = 140;
+    const maxW = byArena(140, 116);
     const m = measureText(text, 'sm', maxW);
     const w = m.w + 16;
     const h = m.h + 6;
     const right = UI.buttons.x + UI.buttons.w;
-    const y = UI.buttons.y - h - 6;
+    const y = ARENA_V2 ? this.rect.y : UI.buttons.y - h - 6;
     const c = sc.add.container(right - w, y).setDepth(DEPTH.HUD + 5).setScrollFactor(0);
     const bg = sc.add.image(0, 0, panelTex(sc, 'neutral', w, h, { alpha: 225, scan: false, chamfer: 2 })).setOrigin(0);
     const bar = sc.add.rectangle(3, 3, 2, h - 6, color).setOrigin(0);

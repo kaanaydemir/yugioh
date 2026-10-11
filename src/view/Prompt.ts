@@ -24,7 +24,7 @@ import { TEX, shake, tween, wait } from '../vfx/core';
 import { clearBanners } from '../vfx/banners';
 import { Button } from './Button';
 import { CardSprite } from './CardSprite';
-import { CARD_H, CARD_W, DEPTH, GAME_H, GAME_W, UI } from './layout';
+import { CARD_H, CARD_W, DEPTH, GAME_H, GAME_W, UI, byArena } from './layout';
 import { GLOW_PAD, ICON, UI_RAMP, type UiKeyHandler, crownTex, pushUiKeys, glowTex, haloTex, panelTex, playerStyle, streakTex, stripesTex, typeOn } from './ui-textures';
 
 export interface TrapOption {
@@ -557,7 +557,8 @@ export class Prompt {
     const cancelled = new Promise<void>((r) => (resolveCancel = r));
     let closed = false;
     let H = 21;
-    const Y = 25;
+    // v2: right under the compact phase bar (it ends at y 17)
+    const Y = byArena(25, 21);
     /** Widest bar that stays clear of the inspect panel (left) and the P2 panel (right). */
     const MAX_W = 2 * (UI.p2Panel.x - 4 - GAME_W / 2);
 
@@ -720,7 +721,7 @@ export class Prompt {
     const dim = sc.add.rectangle(0, 0, GAME_W, GAME_H, PAL.ink).setOrigin(0).setAlpha(0).setInteractive();
     root.add(dim);
     const cx = GAME_W / 2;
-    const cy = 150;
+    const cy = UI.bannerY;
     // sunburst rays
     const rays = sc.add.graphics().setPosition(cx, cy).setBlendMode(ADD).setAlpha(0);
     const nr = 14;
@@ -813,7 +814,7 @@ export class Prompt {
     const dim = sc.add.rectangle(0, 0, GAME_W, GAME_H, PAL.ink).setOrigin(0).setScrollFactor(0).setDepth(DEPTH.BANNER - 3).setAlpha(0);
     sc.tweens.add({ targets: dim, alpha: 0.5, duration: 420 });
     // a slim plate under the victory band (UI.bannerY ± 29): caption + buttons
-    const top = 192;
+    const top = UI.bannerY + 42;
     const plateH = 64;
     const plate = sc.add.graphics();
     plate.fillStyle(PAL.ink, 0.72).fillRect(0, top, GAME_W, plateH);

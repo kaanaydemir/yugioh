@@ -445,6 +445,17 @@ export const ICON = {
   caret: 'ui:icon:caret',
   crown: 'ui:icon:crown',
   replay: 'ui:icon:replay',
+  // compact (arena v2) HUD glyphs
+  /** 3×5 caret (SIRA chip, hint plate of the compact HUD). */
+  caretSm: 'ui:icon:caretsm',
+  /** 6–7×6 deck / hand / graveyard count glyphs of the compact player panel (8 px rows). */
+  deckSm: 'ui:icon:decksm',
+  handSm: 'ui:icon:handsm',
+  graveSm: 'ui:icon:gravesm',
+  /** 5×4 level star (inspect panel). */
+  star: 'ui:icon:star',
+  /** 7×7 spell rune (inspect panel kind badge). */
+  spell: 'ui:icon:spell',
 } as const;
 export type IconKey = (typeof ICON)[keyof typeof ICON];
 
@@ -513,6 +524,12 @@ const ICON_ART: Record<keyof typeof ICON, readonly string[] | ((p: PixelCanvas) 
   caret: ['W....', 'WW...', 'WWW..', 'WWWW.', 'WWW..', 'WW...', 'W....'],
   crown: ['W..W..W', 'WW.W.WW', 'WWWWWWW', 'WmWmWmW', 'WWWWWWW'],
   replay: ['..WWWW.W', '.Wm...WW', 'Wm...WWW', 'W.......', 'W......W', 'Wm....mW', '.Wm..mW.', '..WWWW..'],
+  caretSm: ['W..', 'WW.', 'WWW', 'WW.', 'W..'],
+  deckSm: ['.WWWWW', '.WnnnW', 'mWnWnW', 'mWnnnW', 'mWWWWW', 'sssss.'],
+  handSm: ['WWW....', 'WnWWW..', 'WnWnWWW', 'WWWnWnW', '..WWWnW', '....WWW'],
+  graveSm: ['..WWW..', '.WWsWW.', 'WWsssWW', 'WWWsWWW', 'WWWsWWW', 'sssssss'],
+  star: ['..W..', 'WWWWW', '.WWW.', '.W.W.'],
+  spell: ['...W...', '..WmW..', '.WmWmW.', 'WmWWWmW', '.WmWmW.', '..WmW..', '...W...'],
 };
 
 function buildIcon(scene: Phaser.Scene, name: keyof typeof ICON): void {
@@ -604,6 +621,30 @@ export function haloTex(scene: Phaser.Scene, r: number): string {
       const a = Math.pow(1 - d, 1.8);
       const q = Math.round(a * 6) / 6; // stepped bands
       if (q > 0) p.set(x, y, 0xffffff, Math.round(q * 120));
+    }
+  return put(scene, key, p);
+}
+
+/**
+ * Horizontal light strip (white, ADD + tint) rising from the bottom edge: brightest at the
+ * bottom row, stepped + dithered upward, soft at both ends. The v2 hand rests on it.
+ */
+export function trayGlowTex(scene: Phaser.Scene, w: number, h: number): string {
+  w = Math.round(w);
+  h = Math.round(h);
+  const key = `ui:tray:${w}x${h}`;
+  if (scene.textures.exists(key)) return key;
+  const p = new PixelCanvas(w, h);
+  const ends = Math.min(40, Math.floor(w / 4));
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const v = (y + 1) / h; // 0 top → 1 bottom
+      const e = Math.min(1, Math.min(x + 1, w - x) / ends);
+      const a = Math.pow(v, 1.6) * e;
+      const q = Math.round(a * 6) / 6;
+      if (q <= 0) continue;
+      if (!PixelCanvas.ditherAt(x, y, Math.round(6 + q * 10))) continue;
+      p.set(x, y, 0xffffff, Math.round(q * 150));
     }
   return put(scene, key, p);
 }

@@ -9,10 +9,9 @@
 //   &lights=intro    floodlights off, then the intro ignition
 //   &ui=1            outline the HUD regions (hand, panels, inspect, buttons) to check composition
 import Phaser from 'phaser';
-import { cellZone } from '../../art/arena';
 import { PAL } from '../../art/palette';
 import type { PlayerId } from '../../engine/types';
-import { BOARD_COLS, BOARD_ROWS, DEPTH, UI, type Rect, isoToScreen } from '../../view/layout';
+import { ARENA_V2, BOARD_COLS, BOARD_ROWS, DEPTH, UI, type Rect, cellKind, isoToScreen, zoneAtCell } from '../../view/layout';
 import { BoardView } from '../../view/BoardView';
 import type { DevPreview } from '../types';
 
@@ -37,9 +36,9 @@ const preview: DevPreview = {
     if (params.get('labels') === '1') {
       for (let row = 0; row < BOARD_ROWS; row++)
         for (let col = 0; col < BOARD_COLS; col++) {
-          const z = cellZone(col, row);
+          const z = zoneAtCell(col, row);
           const s = isoToScreen(col, row);
-          const txt = z ? `P${z.player + 1} ${SHORT[z.spot]}${z.spot === 'monster' || z.spot === 'spellTrap' ? z.index : ''}` : `${col},${row}`;
+          const txt = z ? `P${z.player + 1} ${SHORT[z.spot]}${z.spot === 'monster' || z.spot === 'spellTrap' ? z.index : ''}` : ARENA_V2 ? `${cellKind(col, row)} ${col},${row}` : `${col},${row}`;
           scene.add
             .text(s.x, s.y, txt, {
               fontFamily: 'monospace',

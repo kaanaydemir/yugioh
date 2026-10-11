@@ -1785,6 +1785,22 @@ function timed<T>(name: string, fn: () => T): T {
   return r;
 }
 
+/**
+ * The small generic arena textures other modules use in both arena variants (AK.glow / AK.dot /
+ * AK.mote for additive VFX, the star sheet and the searchlight beam). Arena v2 builds these
+ * instead of the whole v1 set. Idempotent; buildArenaTextures() still builds them itself.
+ */
+export function buildArenaSharedTextures(scene: Phaser.Scene): void {
+  const add = (key: string, draw: () => PixelCanvas) => {
+    if (!scene.textures.exists(key)) canvasTexture(scene, key, draw());
+  };
+  add(AK.glow, () => radialGlow(48, 2.2));
+  add(AK.dot, () => radialGlow(9, 1.2, 4));
+  add(AK.mote, () => drawMote());
+  add(AK.beam, () => drawBeam());
+  if (!scene.textures.exists(AK.star)) sheetTexture(scene, AK.star, 7, 7, drawStarFrames());
+}
+
 /** Generate every arena texture (idempotent). Called by the boot step and lazily by BoardView. */
 export function buildArenaTextures(scene: Phaser.Scene): void {
   if (scene.textures.exists(AK.slab) && ORIGINS.size) return;

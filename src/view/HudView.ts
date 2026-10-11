@@ -24,7 +24,7 @@ import { START_LP } from '../engine/types';
 import { measureText, pixelText, textMetrics, type TextSize } from '../ui/text';
 import { TEX, tween, tweenValue } from '../vfx/core';
 import { Button } from './Button';
-import { DEPTH, UI, type Rect, type XY, panelRect } from './layout';
+import { ARENA_V2, DEPTH, UI, byArena, type Rect, type XY, panelRect } from './layout';
 import {
   GLOW_PAD,
   ICON,
@@ -33,6 +33,7 @@ import {
   edgePath,
   emblemTex,
   glowTex,
+  typeOn,
   haloTex,
   panelSheenTex,
   panelTex,
@@ -67,18 +68,32 @@ function capY(size: TextSize, capTop: number): number {
   return capTop - textMetrics(size).capTop;
 }
 
-// panel layout (relative to the panel's top-left)
-const PW = 148;
-const PH = 64;
-const HEADER = 15;
-const LP_X = 22;
-const LP_CAP = 19;
-const BAR = { x: 8, y: 37, w: 132, h: 4 };
+// panel layout (relative to the panel's top-left). Two variants (layout ARENA_VARIANT):
+//  v1: 148×64 — header with the name (md), LP (lg) + bar, emblem, count icons along the bottom.
+//  v2: the compact 128×40 corner panel — name (sm) + SIRA chip in an 11px header, LP (lg) + a
+//      slim bar on the left, deck/hand/grave counts stacked in a column on the right (that column
+//      flips away while an LP delta chip shows, like the v1 emblem).
+const PW = byArena(148, 128);
+const PH = byArena(64, 40);
+const HEADER = byArena(15, 11);
+const LP_X = byArena(22, 16);
+const LP_CAP = byArena(19, 14);
+const BAR = byArena({ x: 8, y: 37, w: 132, h: 4 }, { x: 7, y: 31, w: 84, h: 3 });
 const ICON_CY = 50;
-/** Top-left of the 25×23 player emblem. */
+/** Top-left of the 25×23 player emblem (v1). */
 const EMBLEM = { x: PW - 33, y: 13 };
 /** Images per running light: halo + head + tail. */
-const COMET = 14;
+const COMET = byArena(14, 11);
+/** Name line + left column x of the panel text. */
+const NAME = byArena({ size: 'md' as TextSize, x: 8, cap: 5 }, { size: 'sm' as TextSize, x: 7, cap: 4 });
+const LP_LABEL_X = byArena(8, 6);
+/** SIRA chip (header, right end). */
+const CHIP = byArena(
+  { w: 34, h: 11, y: 2, right: 6, caretX: 4, caretY: 2, textX: 12, textCap: 3, caret: ICON.caret as string },
+  { w: 30, h: 9, y: 2, right: 5, caretX: 3, caretY: 1, textX: 9, textCap: 2, caret: ICON.caretSm as string },
+);
+/** v2 count column: groove x, glyph x, first glyph top, row pitch, number x. */
+const SIDE = { groove: 95, iconX: 99, top: 13, pitch: 8, textX: 109, pivot: 112 };
 
 type Kind = 'deck' | 'hand' | 'grave';
 /** Count icon kinds of a player panel (countXY). */
@@ -89,6 +104,8 @@ interface CountUi {
   text: Phaser.GameObjects.BitmapText;
   value: number;
   baseY: number;
+  /** Icon center relative to the panel's top-left (countXY). */
+  at: XY;
 }
 
 interface Panel {
@@ -127,11 +144,30 @@ interface Panel {
   glowTween: Phaser.Tweens.Tween | null;
   dangerTween: Phaser.Tweens.Tween | null;
   lpTint: number;
+  /** v2: 0..1 position of the light glint running along the LP bar fill (−1 = none). */
+  barGlint: number;
 }
 
 /** Guidance line: top edge of its plate (centered on the screen, above the resting hand). */
 const HINT_Y = 252;
 const GAME_CX = 320;
+/** v2: the guidance plate sits right-aligned above the main buttons (bottom edge here). */
+const HINT_V2 = { right: UI.buttons.x + UI.buttons.w, bottom: UI.buttons.y - 4, maxW: 150 };
+
+// phase bar: segment width, marker top, label cap top, separator diamond top
+const SEG_W = byArena(54, 46);
+const MARKER_Y = byArena(3, 2);
+const SEG_CAP = byArena(5, 4);
+const SEP_Y = byArena(7, 6);
+/** Turn badge left of the phase bar. */
+const TURN = byArena(
+  { dx: -46, w: 42, h: 16, labelX: 6, labelCap: 6, numCap: 5, numCx: 33 },
+  { dx: -41, w: 38, h: 14, labelX: 5, labelCap: 5, numCap: 4, numCx: 29 },
+);
+/** Main buttons (inside UI.buttons): height and the two tops. */
+const MAIN_BTN = byArena({ h: 25, y1: 1, y2: 30 }, { h: 19, y1: 0, y2: 21 });
+/** Toolbar row (top-left): top + height. */
+const TOOLBAR = byArena({ y: 4, h: 16 }, { y: 3, h: 14 });
 
 /** ≡ toolbar icon (white bars, ink outline; tinted by Button). */
 function menuIconTex(scene: Phaser.Scene): string {
@@ -198,6 +234,7 @@ export class HudView {
   private readonly updateFn: (t: number, dt: number) => void;
   private sheenEvent: Phaser.Time.TimerEvent | null = null;
   private glintEvent: Phaser.Time.TimerEvent | null = null;
+  private barGlintEvent: Phaser.Time.TimerEvent | null = null;
   private seed = 0x2545f491;
 
   constructor(scene: Phaser.Scene, opts: HudOpts = {}) {
@@ -227,13 +264,13 @@ export class HudView {
     const seps = scene.add.graphics();
     for (let i = 1; i < 4; i++) {
       const x = this.segX(i) - 1;
-      seps.fillStyle(PAL.night4).fillRect(x, 7, 1, 1).fillRect(x - 1, 8, 3, 1).fillRect(x, 9, 1, 1);
-      seps.fillStyle(PAL.steel).fillRect(x, 8, 1, 1);
+      seps.fillStyle(PAL.night4).fillRect(x, SEP_Y, 1, 1).fillRect(x - 1, SEP_Y + 1, 3, 1).fillRect(x, SEP_Y + 2, 1, 1);
+      seps.fillStyle(PAL.steel).fillRect(x, SEP_Y + 1, 1, 1);
     }
     this.phaseRoot.add(seps);
     PHASES.forEach((ph, i) => {
-      const cx = this.segX(i) + 27;
-      const t = pixelText(scene, cx, capY('md', 5), PHASE_LABEL[ph], { size: 'md', color: PAL.steel, originX: 0.5 });
+      const cx = this.segX(i) + SEG_W / 2;
+      const t = pixelText(scene, cx, capY('md', SEG_CAP), PHASE_LABEL[ph], { size: 'md', color: PAL.steel, originX: 0.5 });
       t.x = Math.round(cx - t.width / 2);
       t.setOrigin(0, 0);
       this.phaseLabels.push(t);
@@ -241,17 +278,17 @@ export class HudView {
     });
     const i0 = PHASES.indexOf(this.phase);
     this.markerL = this.segX(i0) + 1;
-    this.markerR = this.segX(i0) + 53;
+    this.markerR = this.segX(i0) + SEG_W - 1;
     this.markerRamp = this.phase === 'battle' ? RAMPS.fire : UI_RAMP[playerStyle(this.phasePlayer)];
     this.drawMarker();
     this.refreshPhaseLabels();
 
     // ---- turn badge (left of the phase bar)
-    const tb = { x: pb.x - 46, y: pb.y, w: 42, h: 16 };
+    const tb = { x: pb.x + TURN.dx, y: pb.y, w: TURN.w, h: TURN.h };
     const turnRoot = this.track(scene.add.container(tb.x, tb.y).setDepth(DEPTH.HUD).setScrollFactor(0));
     turnRoot.add(scene.add.image(0, 0, panelTex(scene, 'neutral', tb.w, tb.h, { scan: false })).setOrigin(0));
-    turnRoot.add(pixelText(scene, 6, capY('sm', 6), 'TUR', { size: 'sm', color: PAL.mist }));
-    this.turnText = pixelText(scene, 25, capY('md', 5) + 3, String(this.turn), { size: 'md', color: PAL.white });
+    turnRoot.add(pixelText(scene, TURN.labelX, capY('sm', TURN.labelCap), 'TUR', { size: 'sm', color: PAL.mist }));
+    this.turnText = pixelText(scene, 25, capY('md', TURN.numCap) + 3, String(this.turn), { size: 'md', color: PAL.white });
     this.turnText.setOrigin(0, 0);
     turnRoot.add(this.turnText);
     this.layoutTurnText();
@@ -259,12 +296,12 @@ export class HudView {
     // ---- main buttons
     const b = UI.buttons;
     this.battleButton = this.track(
-      new Button(scene, b.x, b.y + 1, { w: b.w, h: 25, label: 'SAVAŞ', icon: ICON.swords, style: 'fire', depth: DEPTH.HUD, onClick: () => this.onBattle?.() }),
+      new Button(scene, b.x, b.y + MAIN_BTN.y1, { w: b.w, h: MAIN_BTN.h, label: 'SAVAŞ', icon: ICON.swords, style: 'fire', depth: DEPTH.HUD, onClick: () => this.onBattle?.() }),
     );
     this.endTurnButton = this.track(
-      new Button(scene, b.x, b.y + 30, {
+      new Button(scene, b.x, b.y + MAIN_BTN.y2, {
         w: b.w,
-        h: 25,
+        h: MAIN_BTN.h,
         label: 'TURU BİTİR',
         icon: ICON.endTurn,
         style: playerStyle(this.activePlayer),
@@ -279,19 +316,19 @@ export class HudView {
 
     // ---- toolbar (top-left)
     this.speedButton = this.track(
-      new Button(scene, 4, 4, { w: 32, h: 16, label: `${this.speed}×`, icon: ICON.speed, size: 'sm', depth: DEPTH.HUD, onClick: () => this.cycleSpeed() }),
+      new Button(scene, 4, TOOLBAR.y, { w: 32, h: TOOLBAR.h, label: `${this.speed}×`, icon: ICON.speed, size: 'sm', depth: DEPTH.HUD, onClick: () => this.cycleSpeed() }),
     );
     this.soundButton = this.track(
-      new Button(scene, 38, 4, {
+      new Button(scene, 38, TOOLBAR.y, {
         w: 19,
-        h: 16,
+        h: TOOLBAR.h,
         icon: sfx.isMuted() ? ICON.soundOff : ICON.soundOn,
         depth: DEPTH.HUD,
         onClick: () => this.toggleSound(),
       }),
     );
-    this.logButton = this.track(new Button(scene, 59, 4, { w: 17, h: 16, icon: ICON.log, depth: DEPTH.HUD, onClick: () => this.onLog?.() }));
-    this.menuButton = this.track(new Button(scene, 78, 4, { w: 17, h: 16, icon: menuIconTex(scene), depth: DEPTH.HUD, onClick: () => this.onMenu?.() }));
+    this.logButton = this.track(new Button(scene, 59, TOOLBAR.y, { w: 17, h: TOOLBAR.h, icon: ICON.log, depth: DEPTH.HUD, onClick: () => this.onLog?.() }));
+    this.menuButton = this.track(new Button(scene, 78, TOOLBAR.y, { w: 17, h: TOOLBAR.h, icon: menuIconTex(scene), depth: DEPTH.HUD, onClick: () => this.onMenu?.() }));
     for (const btn of [this.speedButton, this.soundButton, this.logButton, this.menuButton]) btn.setScrollFactor(0);
     // the toolbar is icons only: name each one on hover
     const tips: [Button, () => string][] = [
@@ -335,6 +372,7 @@ export class HudView {
     scene.events.on(Phaser.Scenes.Events.UPDATE, this.updateFn);
     // an occasional light sweep across the active panel keeps the HUD alive
     this.sheenEvent = scene.time.addEvent({ delay: 4600, startAt: 2600, loop: true, callback: () => this.playPanelSheen(this.activePlayer) });
+    if (ARENA_V2) this.barGlintEvent = scene.time.addEvent({ delay: 3700, startAt: 1200, loop: true, callback: () => this.playBarGlints() });
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroy());
   }
 
@@ -539,7 +577,7 @@ export class HudView {
     for (const t of this.markerTweens) t.stop();
     this.markerTweens = [];
     const L1 = this.segX(to) + 1;
-    const R1 = this.segX(to) + 53;
+    const R1 = this.segX(to) + SEG_W - 1;
     this.setBattlePulse(phase === 'battle');
     if (!animate) {
       this.markerRamp = ramp;
@@ -588,7 +626,7 @@ export class HudView {
     );
     this.refreshPhaseLabels();
     const lbl = this.phaseLabels[to];
-    const y0 = capY('md', 5);
+    const y0 = capY('md', SEG_CAP);
     lbl.y = y0 - 2;
     lbl.setTint(PAL.white);
     this.scene.time.delayedCall(60, () => this.refreshPhaseLabels());
@@ -704,7 +742,7 @@ export class HudView {
   countXY(player: PlayerId, kind: Kind): XY {
     const P = this.panels[player];
     const c = P.counts[kind];
-    return { x: P.rect.x + c.icon.x + Math.round(c.icon.width / 2), y: P.rect.y + c.baseY + Math.round(c.icon.height / 2) };
+    return { x: P.rect.x + c.at.x, y: P.rect.y + c.at.y };
   }
 
   /** Flash a panel with a color (ADD silhouette). For effect hits that land on the panel. */
@@ -728,6 +766,7 @@ export class HudView {
     this.scene.events.off(Phaser.Scenes.Events.UPDATE, this.updateFn);
     this.sheenEvent?.remove();
     this.glintEvent?.remove();
+    this.barGlintEvent?.remove();
     this.battleTween?.stop();
     for (const P of this.panels) {
       P.rollTween?.stop();
@@ -765,47 +804,75 @@ export class HudView {
     const sheen = sc.add.image(0, 0, panelSheenTex(sc, PW, PH), 's:0').setOrigin(0).setBlendMode(ADD).setVisible(false).setAlpha(0.55);
     root.add([glow, dim, lit, sheen]);
 
-    const name = pixelText(sc, 8, capY('md', 5), PLAYER_NAME[player], { size: 'md', color: R[3] });
-    const lpLabel = pixelText(sc, 8, capY('sm', LP_CAP + 9), 'LP', { size: 'sm', color: PAL.mist });
+    const name = pixelText(sc, NAME.x, capY(NAME.size, NAME.cap), PLAYER_NAME[player], { size: NAME.size, color: R[3] });
+    const lpLabel = pixelText(sc, LP_LABEL_X, capY('sm', LP_CAP + 9), 'LP', { size: 'sm', color: PAL.mist });
     const lpText = pixelText(sc, LP_X, capY('lg', LP_CAP), String(lp), { size: 'lg', color: PAL.white });
     const bar = sc.add.graphics();
-    // emblem: container centered on the hexagon so it can flip (scaleX) around its middle
-    const emblem = sc.add.container(EMBLEM.x + 12, EMBLEM.y + 11);
-    const emblemImg = sc.add.image(-12, -11, emblemTex(sc, player)).setOrigin(0);
-    const emblemNum = pixelText(sc, 0, capY('md', -3), String(player + 1), { size: 'md', color: R[4] });
-    emblemNum.x = Math.round(0.5 - emblemNum.width / 2);
-    emblem.add([emblemImg, emblemNum]);
-    root.add([name, lpLabel, lpText, bar, emblem]);
-
-    // count groups
     const counts = {} as Record<Kind, CountUi>;
-    const groups: [Kind, string, number][] = [
-      ['deck', ICON.deck, 8],
-      ['hand', ICON.hand, 54],
-      ['grave', ICON.grave, 100],
-    ];
-    for (const [k, key, x] of groups) {
-      const f = sc.textures.getFrame(key);
-      const iy = Math.round(ICON_CY - f.height / 2);
-      const icon = sc.add.image(x, iy, key).setOrigin(0).setTint(mix(R[4], PAL.white, 0.3));
-      const text = pixelText(sc, x + f.width + 3, capY('md', ICON_CY - 3), '0', { size: 'md', color: PAL.white });
-      root.add([icon, text]);
-      counts[k] = { icon, text, value: 0, baseY: iy };
+    let emblem: Phaser.GameObjects.Container;
+    if (!ARENA_V2) {
+      // emblem: container centered on the hexagon so it can flip (scaleX) around its middle
+      emblem = sc.add.container(EMBLEM.x + 12, EMBLEM.y + 11);
+      const emblemImg = sc.add.image(-12, -11, emblemTex(sc, player)).setOrigin(0);
+      const emblemNum = pixelText(sc, 0, capY('md', -3), String(player + 1), { size: 'md', color: R[4] });
+      emblemNum.x = Math.round(0.5 - emblemNum.width / 2);
+      emblem.add([emblemImg, emblemNum]);
+      root.add([name, lpLabel, lpText, bar, emblem]);
+
+      // count groups
+      const groups: [Kind, string, number][] = [
+        ['deck', ICON.deck, 8],
+        ['hand', ICON.hand, 54],
+        ['grave', ICON.grave, 100],
+      ];
+      for (const [k, key, x] of groups) {
+        const f = sc.textures.getFrame(key);
+        const iy = Math.round(ICON_CY - f.height / 2);
+        const icon = sc.add.image(x, iy, key).setOrigin(0).setTint(mix(R[4], PAL.white, 0.3));
+        const text = pixelText(sc, x + f.width + 3, capY('md', ICON_CY - 3), '0', { size: 'md', color: PAL.white });
+        root.add([icon, text]);
+        counts[k] = { icon, text, value: 0, baseY: iy, at: { x: x + Math.round(icon.width / 2), y: iy + Math.round(icon.height / 2) } };
+      }
+    } else {
+      // v2: deck / hand / grave stacked in a column right of a groove; the whole column is the
+      // "emblem" that flips edge-on while an LP delta chip needs the room
+      emblem = sc.add.container(SIDE.pivot, 0);
+      const groove = sc.add.graphics();
+      const gx = SIDE.groove - SIDE.pivot;
+      groove.fillStyle(mix(R[0], PAL.ink, 0.35)).fillRect(gx, HEADER + 3, 1, PH - HEADER - 7);
+      groove.fillStyle(mix(R[1], PAL.night2, 0.3)).fillRect(gx + 1, HEADER + 3, 1, PH - HEADER - 7);
+      // little studs at both ends of the groove
+      groove.fillStyle(R[2]).fillRect(gx, HEADER + 2, 2, 1).fillRect(gx, PH - 5, 2, 1);
+      emblem.add(groove);
+      root.add([name, lpLabel, lpText, bar, emblem]);
+      const groups: [Kind, string][] = [
+        ['deck', ICON.deckSm],
+        ['hand', ICON.handSm],
+        ['grave', ICON.graveSm],
+      ];
+      groups.forEach(([k, key], i) => {
+        const iy = SIDE.top + i * SIDE.pitch;
+        const icon = sc.add.image(SIDE.iconX - SIDE.pivot, iy, key).setOrigin(0).setTint(mix(R[4], PAL.white, 0.3));
+        const text = pixelText(sc, SIDE.textX - SIDE.pivot, capY('sm', iy + 2), '0', { size: 'sm', color: PAL.white });
+        emblem.add([icon, text]);
+        counts[k] = { icon, text, value: 0, baseY: iy, at: { x: SIDE.iconX + Math.round(icon.width / 2), y: iy + Math.round(icon.height / 2) } };
+      });
     }
 
     // SIRA chip (right end of the header)
     const chip = sc.add.container(0, 0);
-    const chipW = 34;
+    const chipW = CHIP.w;
+    const chipH = CHIP.h;
     const chipBg = sc.add.graphics();
-    chipBg.fillStyle(PAL.ink).fillRect(1, 0, chipW - 2, 11).fillRect(0, 1, chipW, 9);
-    chipBg.fillStyle(R[2]).fillRect(1, 1, chipW - 2, 9);
+    chipBg.fillStyle(PAL.ink).fillRect(1, 0, chipW - 2, chipH).fillRect(0, 1, chipW, chipH - 2);
+    chipBg.fillStyle(R[2]).fillRect(1, 1, chipW - 2, chipH - 2);
     chipBg.fillStyle(R[3]).fillRect(1, 1, chipW - 2, 1);
-    chipBg.fillStyle(R[1]).fillRect(1, 9, chipW - 2, 1);
-    const caret = sc.add.image(4, 2, ICON.caret).setOrigin(0).setScale(1).setTint(PAL.white);
-    const chipText = pixelText(sc, 12, capY('sm', 3), 'SIRA', { size: 'sm', color: PAL.white });
+    chipBg.fillStyle(R[1]).fillRect(1, chipH - 2, chipW - 2, 1);
+    const caret = sc.add.image(CHIP.caretX, CHIP.caretY, CHIP.caret).setOrigin(0).setScale(1).setTint(PAL.white);
+    const chipText = pixelText(sc, CHIP.textX, capY('sm', CHIP.textCap), 'SIRA', { size: 'sm', color: PAL.white });
     chip.add([chipBg, caret, chipText]);
-    const chipX = PW - chipW - 6;
-    chip.setData('x', chipX).setPosition(chipX, 2).setVisible(false);
+    const chipX = PW - chipW - CHIP.right;
+    chip.setData('x', chipX).setPosition(chipX, CHIP.y).setVisible(false);
     root.add(chip);
 
     const flash = sc.add.image(0, 0, silTex(sc, PW, PH)).setOrigin(0).setBlendMode(ADD).setAlpha(0);
@@ -862,11 +929,12 @@ export class HudView {
       glowTween: null,
       dangerTween: null,
       lpTint: PAL.white,
+      barGlint: -1,
     };
     this.renderLp(P);
     this.drawBar(P);
     // caret blink
-    sc.tweens.add({ targets: caret, x: 5, duration: 380, ease: 'Sine.InOut', yoyo: true, repeat: -1 });
+    sc.tweens.add({ targets: caret, x: CHIP.caretX + 1, duration: 380, ease: 'Sine.InOut', yoyo: true, repeat: -1 });
     return P;
   }
 
@@ -925,11 +993,50 @@ export class HudView {
       const a = danger ? PAL.crim2 : R[2];
       const b = danger ? PAL.crim3 : R[3];
       const c = danger ? PAL.crim4 : R[4];
-      g.fillStyle(a).fillRect(x, y, fill, h);
-      g.fillStyle(b).fillRect(x, y, fill, h - 2);
-      g.fillStyle(c).fillRect(x, y, fill, 1);
+      if (ARENA_V2) {
+        // slim 3-row bar: lit top, mid tone, shaded bottom
+        g.fillStyle(mix(a, PAL.ink, 0.25)).fillRect(x, y, fill, h);
+        g.fillStyle(b).fillRect(x, y, fill, h - 1);
+        g.fillStyle(c).fillRect(x, y, fill, 1);
+        // idle glint running along the fill
+        if (P.barGlint >= 0 && fill > 6) {
+          const gx = x + Math.round(P.barGlint * (fill - 3));
+          g.fillStyle(PAL.white, 0.9).fillRect(gx + 1, y, 2, 1);
+          g.fillStyle(mix(c, PAL.white, 0.5), 0.85).fillRect(gx, y + 1, 3, 1);
+          g.fillStyle(c, 0.5).fillRect(gx - 2, y, 2, 1);
+        }
+      } else {
+        g.fillStyle(a).fillRect(x, y, fill, h);
+        g.fillStyle(b).fillRect(x, y, fill, h - 2);
+        g.fillStyle(c).fillRect(x, y, fill, 1);
+      }
       g.fillStyle(PAL.white).fillRect(x + fill - 1, y, 1, h - 1);
     }
+  }
+
+  /** v2 idle life: a light glint runs along each LP bar (the active player's first). */
+  private playBarGlints(): void {
+    const order: PlayerId[] = [this.activePlayer, this.activePlayer === 0 ? 1 : 0];
+    order.forEach((pl, i) => {
+      const P = this.panels[pl];
+      if (!P.root.active || P.rollTween) return;
+      const o = { t: 0 };
+      this.scene.tweens.add({
+        targets: o,
+        t: 1,
+        delay: i * 900,
+        duration: 700,
+        ease: 'Sine.InOut',
+        onUpdate: () => {
+          P.barGlint = o.t;
+          this.drawBar(P);
+        },
+        onComplete: () => {
+          P.barGlint = -1;
+          this.drawBar(P);
+        },
+      });
+    });
   }
 
   private shakePanel(P: Panel, px: number, ms: number): void {
@@ -969,7 +1076,7 @@ export class HudView {
     const lpW = measureText(String(Math.max(P.shownLp, P.lp)), 'lg').w;
     const w = measureText(s, 'md').w;
     const gapL = P.rect.x + LP_X + lpW + 4;
-    const gapR = P.rect.x + PW - 7;
+    const gapR = P.rect.x + PW - byArena(7, 5);
     const cx = Math.round(Math.max(gapL + w / 2, (gapL + gapR) / 2));
     const cy = P.rect.y + LP_CAP + 7;
     const t = pixelText(sc, cx, cy, s, { size: 'md', color }).setDepth(DEPTH.HUD + 1).setScrollFactor(0);
@@ -1051,7 +1158,7 @@ export class HudView {
 
   /** Left x of phase segment i (relative to the phase bar). */
   private segX(i: number): number {
-    return 4 + i * 54;
+    return 4 + i * SEG_W;
   }
 
   private drawMarker(): void {
@@ -1062,7 +1169,7 @@ export class HudView {
     const w = Rx - L;
     g.clear();
     if (w < 4) return;
-    const y = 3;
+    const y = MARKER_Y;
     const h = 10;
     const f = this.markerFlash;
     const fill = f > 0 ? mix(R[2], PAL.white, f * 0.7) : R[2];
@@ -1138,7 +1245,7 @@ export class HudView {
     const sc = this.scene;
     const pb = UI.phaseBar;
     for (let i = 0; i < 5; i++) {
-      const y = pb.y + 5 + ((i * 3) % 7);
+      const y = pb.y + MARKER_Y + 2 + ((i * 3) % 7);
       const x0 = pb.x + (right ? this.markerR : this.markerL);
       const s = sc.add
         .image(x0, y, TEX.px1)
@@ -1165,19 +1272,20 @@ export class HudView {
   private arrivalSparks(i: number, R: Ramp): void {
     const sc = this.scene;
     const pb = UI.phaseBar;
-    const cx = pb.x + this.segX(i) + 27;
-    const cy = pb.y + 8;
+    const cx = pb.x + this.segX(i) + SEG_W / 2;
+    const cy = pb.y + MARKER_Y + 5;
+    const r0 = SEG_W / 2 - 1;
     for (let k = 0; k < 10; k++) {
       const a = (k / 10) * Math.PI * 2;
       const sp = sc.add
-        .image(cx + Math.cos(a) * 26, cy + Math.sin(a) * 5, k % 3 === 0 ? TEX.plus : TEX.px1)
+        .image(cx + Math.cos(a) * r0, cy + Math.sin(a) * 5, k % 3 === 0 ? TEX.plus : TEX.px1)
         .setTint(k % 2 ? R[4] : PAL.white)
         .setBlendMode(ADD)
         .setDepth(DEPTH.HUD + 0.5)
         .setScrollFactor(0);
       sc.tweens.add({
         targets: sp,
-        x: cx + Math.cos(a) * 34,
+        x: cx + Math.cos(a) * (r0 + 8),
         y: cy + Math.sin(a) * 11,
         alpha: 0,
         duration: 300,
@@ -1190,8 +1298,8 @@ export class HudView {
   private layoutTurnText(): void {
     const w = this.turnText.width;
     // right half of the badge, centered
-    this.turnText.x = Math.round(27 - w / 2 + 6);
-    this.turnText.y = capY('md', 5);
+    this.turnText.x = Math.round(TURN.numCx - w / 2);
+    this.turnText.y = capY('md', TURN.numCap);
     this.turnText.setOrigin(0, 0);
   }
 
@@ -1256,6 +1364,10 @@ export class HudView {
     }
     root.removeAll(true);
     const R = UI_RAMP[h.style];
+    if (ARENA_V2) {
+      this.renderHintV2(h, flash, R);
+      return;
+    }
     const t = pixelText(sc, 16, capY('md', 5), h.text, { size: 'md', color: PAL.white });
     const w = Math.ceil(t.width) + 24;
     const H = 17;
@@ -1268,6 +1380,45 @@ export class HudView {
     sc.tweens.add({ targets: root, y: HINT_Y, alpha: 1, duration: 150, ease: 'Cubic.Out' });
     sc.tweens.add({ targets: caret, x: 8, duration: 320, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
     sc.tweens.add({ targets: glow, alpha: { from: 0.2, to: 0.55 }, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+    if (flash) {
+      t.setTint(R[4]);
+      const o = { t: 0 };
+      sc.tweens.add({
+        targets: o,
+        t: 1,
+        duration: 260,
+        onUpdate: () => root.active && root.setX(x + Math.round(Math.sin(o.t * Math.PI * 6) * 2 * (1 - o.t))),
+        onComplete: () => root.active && root.setX(x),
+      });
+    }
+  }
+
+  /**
+   * v2 guidance plate: small font, right-aligned above the main buttons (clear of the board and
+   * of the hovered hand card); long lines wrap and the plate grows upward.
+   */
+  private renderHintV2(h: { text: string; style: UiStyle }, flash: boolean, R: Ramp): void {
+    const sc = this.scene;
+    const root = this.hintRoot;
+    const maxW = HINT_V2.maxW;
+    const t = pixelText(sc, 11, capY('sm', 4), h.text, { size: 'sm', color: PAL.white, maxWidth: maxW, lineSpacing: -1 });
+    const H = Math.max(13, Math.round(t.height) + 1);
+    const w = Math.ceil(t.width) + 16;
+    const glow = sc.add.image(-GLOW_PAD, -GLOW_PAD, glowTex(sc, w, H, GLOW_PAD, 2)).setOrigin(0).setBlendMode(ADD).setTint(R[3]).setAlpha(0.35);
+    const bg = sc.add.image(0, 0, panelTex(sc, h.style, w, H, { alpha: 232, chamfer: 2, scan: false })).setOrigin(0);
+    const caret = sc.add.image(5, 3, ICON.caretSm).setOrigin(0).setTint(R[4]);
+    // a lit tick on the plate's right edge, pointing down at the buttons
+    const tick = sc.add.graphics();
+    tick.fillStyle(PAL.ink).fillRect(w - 13, H - 1, 7, 1).fillRect(w - 12, H, 5, 1).fillRect(w - 11, H + 1, 3, 1).fillRect(w - 10, H + 2, 1, 1);
+    tick.fillStyle(R[3]).fillRect(w - 12, H - 1, 5, 1).fillRect(w - 11, H, 3, 1).fillRect(w - 10, H + 1, 1, 1);
+    root.add([glow, bg, tick, caret, t]);
+    const x = HINT_V2.right - w;
+    const y = HINT_V2.bottom - H;
+    root.setPosition(x, y + 3).setAlpha(0);
+    sc.tweens.add({ targets: root, y, alpha: 1, duration: 150, ease: 'Cubic.Out' });
+    sc.tweens.add({ targets: caret, x: 6, duration: 320, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+    sc.tweens.add({ targets: glow, alpha: { from: 0.2, to: 0.55 }, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+    void typeOn(sc, t, 260);
     if (flash) {
       t.setTint(R[4]);
       const o = { t: 0 };

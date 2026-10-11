@@ -37,6 +37,8 @@ import { SCENARIOS } from '../duel/scenarios';
 import { armOnFreeze, installTestClock } from '../duel/testClock';
 import type { DuelViews } from '../duel/types';
 import { loadSettings, saveSettings, type DuelLaunch, type DuelMode, type Settings } from './launch';
+import { ARENA_V2 } from '../view/layout';
+import { ensureLightLayer } from '../view/light';
 
 /** Everything DuelScene accepts (DuelLaunch + QA extras). */
 export interface DuelStart extends DuelLaunch {
@@ -178,6 +180,9 @@ export class DuelScene extends Phaser.Scene {
     const info = new ViewerPolicy({ mode, cpu, curtain, hand, hud, prompt });
     if (L.auto) info.auto = true;
     this.views = { board, field, hud, hand, inspect, prompt, menu, log, camera, duelists, info, speed };
+    // arena v2: the subtle light layer (pools under the monsters, halos, event lights, dim).
+    // It lives with the scene and is destroyed on SHUTDOWN (restart / back to title).
+    if (ARENA_V2) ensureLightLayer(this, { field });
     hud.onSpeed = (k) => {
       this.settings.speed = k;
       saveSettings(this.settings);

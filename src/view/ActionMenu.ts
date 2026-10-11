@@ -19,7 +19,7 @@ import { mix } from '../art/pixel';
 import { sfx } from '../audio/sfx';
 import { measureText, pixelText, textMetrics, type TextSize } from '../ui/text';
 import { TEX, tween } from '../vfx/core';
-import { DEPTH, GAME_H, GAME_W } from './layout';
+import { ARENA_V2, DEPTH, GAME_H, GAME_W, UI } from './layout';
 import { GLOW_PAD, ICON, UI_RAMP, type UiStyle, glowTex, panelTex, pushUiKeys } from './ui-textures';
 
 export interface MenuOption {
@@ -92,6 +92,9 @@ export class ActionMenu {
   /** Open at anchor (x, y). Resolves with the chosen option id, or null when cancelled. */
   open(x: number, y: number, options: MenuOption[], opts: MenuOpts = {}): Promise<string | null> {
     if (this.root) this.finish(null, false);
+    // v2 (compact HUD): a hand card rises into full view while its menu is open, so a menu
+    // anchored in the hand band opens above the raised card instead of over it
+    if (ARENA_V2) y = Math.min(y, UI.handRestTop - 21);
     const sc = this.scene;
     this.style = opts.style ?? 'neutral';
     const R = UI_RAMP[this.style];

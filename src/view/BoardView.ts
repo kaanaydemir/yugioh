@@ -11,6 +11,10 @@
 //
 // Ambient motion runs on scene time scaled by scene.time.timeScale, so hit-stop freezes it and
 // fast-forward speeds it up together with everything else.
+//
+// Arena v2 (ARENA_VARIANT === 'v2', docs/ARENA_V2.md): the same API is served by
+// src/view/board-v2/BoardViewV2.ts — every public method below forwards to it; the v1 code path
+// is unchanged.
 
 import Phaser from 'phaser';
 import {
@@ -45,7 +49,8 @@ import { PAL, PLAYER_COLOR } from '../art/palette';
 import { mix, mulberry32 } from '../art/pixel';
 import type { PlayerId } from '../engine/types';
 import { TEX, shake } from '../vfx/core';
-import { BOARD_COLS, BOARD_ROWS, type BoardSpot, DEPTH, GAME_H, GAME_W, isoToScreen, screenToIso, zoneCell } from './layout';
+import { ARENA_V2, BOARD_COLS, BOARD_ROWS, type BoardSpot, DEPTH, GAME_H, GAME_W, isoToScreen, screenToIso, zoneCell } from './layout';
+import { BoardViewV2 } from './board-v2/BoardViewV2';
 
 export type { ArenaTheme, ZoneHit } from '../art/arena';
 
@@ -189,6 +194,8 @@ let instanceCounter = 0;
 
 export class BoardView {
   readonly scene: Phaser.Scene;
+  /** The arena v2 implementation (null in v1). */
+  private readonly v2: BoardViewV2 | null = null;
   private readonly id = ++instanceCounter;
   private readonly objs: Phaser.GameObjects.GameObject[] = [];
   private readonly rnd = mulberry32(1337);
@@ -252,6 +259,10 @@ export class BoardView {
 
   constructor(scene: Phaser.Scene, opts: BoardViewOptions = {}) {
     this.scene = scene;
+    if (ARENA_V2) {
+      this.v2 = new BoardViewV2(scene, opts, this);
+      return;
+    }
     buildArenaTextures(scene);
     this.buildSky();
     this.buildStadium();
@@ -271,27 +282,32 @@ export class BoardView {
   // ================================================================ public API
 
   get theme(): ArenaTheme {
+    if (this.v2) return this.v2.theme;
     return this.themeName;
   }
 
   get activePlayer(): PlayerId | null {
+    if (this.v2) return this.v2.activePlayer;
     return this.active;
   }
 
   /** Zone under a world-space point (pointer.worldX/worldY), pixel-accurate to the drawn diamonds. */
   zoneAt(x: number, y: number): ZoneHit | null {
+    if (this.v2) return this.v2.zoneAt(x, y);
     const g = screenToIso(Math.floor(x) + 0.5, Math.floor(y) + 0.5);
     return cellZone(Math.round(g.col), Math.round(g.row));
   }
 
   /** The tile image of a zone (for cinematics that want to shake / hide / tint it). */
   tileImage(player: PlayerId, spot: BoardSpot, index = 0): Img | null {
+    if (this.v2) return this.v2.tileImage(player, spot, index);
     const c = zoneCell(player, spot, index);
     return this.tiles.find((t) => t.col === c.col && t.row === c.row)?.img ?? null;
   }
 
   /** Animated glowing outline on a zone (valid targets, selections). color null removes it. */
   highlightZone(player: PlayerId, spot: BoardSpot, index: number, color: number | null): void {
+    if (this.v2) return this.v2.highlightZone(player, spot, index, color);
     const key = `${player}:${spot}:${index}`;
     const cur = this.highlights.get(key);
     if (color === null) {
@@ -334,17 +350,20 @@ export class BoardView {
 
   /** Remove every highlight. */
   clearHighlights(): void {
+    if (this.v2) return this.v2.clearHighlights();
     for (const h of this.highlights.values()) h.dying = true;
   }
 
   /** A bright flash on one tile (impact, set card, effect target). Resolves when it has faded. */
   flashTile(player: PlayerId, spot: BoardSpot, index: number, color: number, ms = 320): Promise<void> {
+    if (this.v2) return this.v2.flashTile(player, spot, index, color, ms);
     const c = zoneCell(player, spot, index);
     return this.flashCell(c.col, c.row, color, ms);
   }
 
   /** Turn-start pulse: a wave of light rolls across `player`'s tiles from their back row forward. */
   async pulseSide(player: PlayerId): Promise<void> {
+    if (this.v2) return this.v2.pulseSide(player);
     const color = this.heatColor(PLAYER_COLOR[player]);
     const jobs: Promise<void>[] = [];
     jobs.push(this.run(760, (k) => (this.sideFlash[player] = 1 - k), 'Quad.Out'));
@@ -385,6 +404,7 @@ export class BoardView {
 
   /** Emphasise the active player's half (brighter trim, livelier tiles). null = neutral. */
   setActivePlayer(player: PlayerId | null, animate = true): void {
+    if (this.v2) return this.v2.setActivePlayer(player, animate);
     this.active = player;
     const target: [number, number] = player === null ? [0.85, 0.85] : player === 0 ? [1, 0.5] : [0.5, 1];
     if (!animate) {
@@ -411,6 +431,7 @@ export class BoardView {
    * embers and ash drift. ~1.2 s when animated (includes a low rumble shake).
    */
   async setTheme(theme: ArenaTheme, animate = true, from: PlayerId | null = null): Promise<void> {
+    if (this.v2) return this.v2.setTheme(theme, animate, from);
     const token = ++this.themeToken;
     if (theme === 'volcano') {
       const origin = from === null ? { col: 2, row: 2 } : zoneCell(from, 'field');
@@ -484,6 +505,7 @@ export class BoardView {
    * fade in — the "stadium lights come on" beat of the duel intro (~1.6 s).
    */
   async setLights(on: boolean, animate = true): Promise<void> {
+    if (this.v2) return this.v2.setLights(on, animate);
     if (!animate) {
       this.towerLevel = TOWERS.map(() => (on ? 1 : 0));
       return;
@@ -517,7 +539,16 @@ export class BoardView {
     await Promise.all(jobs);
   }
 
+  /**
+   * The current turn number, for the arena v2 scoreboard (additive; v1 has no scoreboard). The
+   * board otherwise counts turns from setActivePlayer() changes.
+   */
+  setTurn(turn: number | null): void {
+    if (this.v2) this.v2.setTurn(turn);
+  }
+
   destroy(): void {
+    if (this.v2) return this.v2.destroy();
     if (this.destroyed) return;
     this.destroyed = true;
     this.themeToken++;

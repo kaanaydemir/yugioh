@@ -27,8 +27,8 @@ import { sfx } from '../audio/sfx';
 import type { PlayerId, Uid } from '../engine/types';
 import { TEX, tween, wait } from '../vfx/core';
 import { CardSprite } from './CardSprite';
-import { CARD_H, CARD_W, DEPTH, GAME_H, UI, type XY, panelRect, zoneXY } from './layout';
-import { MINI_CARD_H, MINI_CARD_W, miniCardKey } from './ui-textures';
+import { ARENA_V2, CARD_H, CARD_W, DEPTH, GAME_H, UI, byArena, type XY, panelRect, zoneXY } from './layout';
+import { MINI_CARD_H, MINI_CARD_W, miniCardKey, trayGlowTex } from './ui-textures';
 
 export interface HandCard {
   uid: Uid;
@@ -50,16 +50,24 @@ interface Pose {
 }
 
 const ADD = Phaser.BlendModes.ADD;
-/** Card center y at rest (bottom edge of the card sits on the screen edge). */
-const BASE_Y = 326;
+/**
+ * Card center y at rest. v1: the bottom edge sits on the screen edge (326). v2 (compact HUD):
+ * only the top ~42 px peek up (UI.handRestTop 318 → center 352); hovering lifts the card into
+ * full view.
+ */
+const BASE_Y = byArena(326, UI.handRestTop + CARD_H / 2);
 /** Extra lift of the hovered / selected card (CardSprite.hoverLift adds 6 more). */
-const HOVER_LIFT = 14;
+const HOVER_LIFT = byArena(14, 22);
 /** Neighbours move aside by this much when a card is hovered. */
 const SPREAD = 13;
 const MAX_STEP = 52;
 const MAX_MINIS = 10;
 /** Deepest dip of the outermost cards of the fan. */
-const MAX_DIP = 7;
+const MAX_DIP = byArena(7, 4);
+/** Lift of the cards marked in a multi-select (discard). */
+const MARK_LIFT = byArena(9, 14);
+/** v2: the lit tray strip the peeking hand rests on (screen-bottom glow behind the cards). */
+const TRAY_H = 14;
 
 export class HandView {
   onHover: ((uid: Uid | null) => void) | null = null;
@@ -82,6 +90,10 @@ export class HandView {
   private miniCount: Record<PlayerId, number> = { 0: 0, 1: 0 };
   private pointer: XY | null = null;
   private swapping = false;
+  /** v2 only: soft player-colored light under the peeking cards + its breathing tween. */
+  private tray: Phaser.GameObjects.Image | null = null;
+  private trayTween: Phaser.Tweens.Tween | null = null;
+  private shimmerEvent: Phaser.Time.TimerEvent | null = null;
 
   constructor(scene: Phaser.Scene, opts: { owner?: PlayerId; faceDown?: boolean } = {}) {
     this.scene = scene;
@@ -113,7 +125,38 @@ export class HandView {
       void s.sprite.punch(0.1, 160);
       this.onSelect?.(s.uid);
     });
+    if (ARENA_V2) this.buildTray();
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroy());
+  }
+
+  /**
+   * v2 living detail: the peeking cards stand in a soft strip of their owner's light (ADD,
+   * breathing slowly), and every few seconds a light sweep ripples across the playable cards.
+   */
+  private buildTray(): void {
+    const sc = this.scene;
+    const r = UI.hand;
+    this.tray = sc.add
+      .image(r.x + r.w / 2, GAME_H, trayGlowTex(sc, r.w + 24, TRAY_H))
+      .setOrigin(0.5, 1)
+      .setBlendMode(ADD)
+      .setTint(PLAYER_COLOR[this.ownerId])
+      .setAlpha(0.3)
+      .setDepth(DEPTH.HAND - 1)
+      .setScrollFactor(0);
+    this.trayTween = sc.tweens.add({ targets: this.tray, alpha: { from: 0.22, to: 0.42 }, duration: 1600, ease: 'Sine.InOut', yoyo: true, repeat: -1 });
+    this.shimmerEvent = sc.time.addEvent({ delay: 3400, startAt: 1500, loop: true, callback: () => this.shimmer() });
+  }
+
+  /** A sweep of light travels left → right over the playable (glowing) cards. */
+  private shimmer(): void {
+    if (!this.enabled || this.swapping || this.faceDown) return;
+    let k = 0;
+    for (const s of this.slots) {
+      if (s.busy || !this.playable.has(s.uid) || s.uid === this.hoverUid || s.uid === this.selectedUid) continue;
+      const sprite = s.sprite;
+      this.scene.time.delayedCall(k++ * 90, () => sprite.active && sprite.playSweep(false));
+    }
   }
 
   // ================================================================ state
@@ -362,6 +405,7 @@ export class HandView {
     await wait(this.scene, 200);
     this.ownerId = player;
     this.faceDown = faceDown;
+    this.tray?.setTint(PLAYER_COLOR[player]);
     this.setMiniCount(player, 0, true);
     this.setMiniCount(prev, this.hands[prev].length, true);
     // 3. incoming: rise from below in a wave from the center out, overlapping the exit
@@ -387,6 +431,10 @@ export class HandView {
   }
 
   destroy(): void {
+    this.trayTween?.stop();
+    this.shimmerEvent?.remove();
+    this.tray?.destroy();
+    this.tray = null;
     for (const s of this.slots) s.sprite.destroy();
     this.slots = [];
     for (const p of [0, 1] as PlayerId[]) for (const m of this.minis[p]) m.destroy();
@@ -434,7 +482,7 @@ export class HandView {
       y = BASE_Y - HOVER_LIFT;
       rot = 0;
     } else if (this.marked.size && this.slots[i] && this.marked.has(this.slots[i].uid)) {
-      y = BASE_Y - 9;
+      y = BASE_Y - MARK_LIFT;
       rot *= 0.5;
     }
     return { x: Math.round(x), y: Math.round(y), rot };
