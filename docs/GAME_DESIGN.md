@@ -5,6 +5,18 @@
 
 ---
 
+## 0. Altın Kurallar (Sea of Stars'tan)
+
+Bu üç kural her kararın üstündedir:
+
+1. **Çok fazla animasyon karesi.** Her hareket bol kareli ve akıcıdır; hiçbir şey ölü durmaz (canavarlar, kalabalık, bayraklar, ışıklar, toz).
+2. **Zengin ortam detayı.** Arenanın her köşesinde küçük, canlı detaylar vardır.
+3. **İncelikli ışık.** El çizimi piksellerin üstüne hafif, gerçek zamanlı bir ışık katmanı eklenir (zemine yayılan parıltı, ışık havuzları, haleler). Sprite'ların kendisi düz ve keskin kalır; pikseller asla 3D render görünümüne çevrilmez.
+
+Tarz kuralı: oyunun **orijinal piksel dili** korunur — 640×360, tam sayı büyütme, 1 px kontur, temiz ton bantları, sınırlı palet. Kalite çözünürlükle değil ustalıkla (animasyon, detay, tutarlılık, ışık) artırılır.
+
+---
+
 ## 1. Vizyon
 
 - **Stil:** "Neon Pixel Arena". Gece vakti havada süzülen izometrik bir düello platformu. Koyu lacivert zemin, P1 camgöbeği (cyan), P2 kızıl, büyüler turkuaz, tuzaklar macenta, as kartlar altın.

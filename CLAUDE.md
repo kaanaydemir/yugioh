@@ -4,6 +4,14 @@ Isometric pixel-art, two-player (hot-seat) card duel inspired by Yu-Gi-Oh! Speed
 **The #1 priority is animation quality.** Read `docs/GAME_DESIGN.md` (Turkish) before working:
 rules, the 20 cards, art direction, the animation bible and per-card storyboards live there.
 
+## Golden rules (from Sea of Stars) — above every other decision
+1. Lots of animation frames: every motion is rich and fluid; nothing is ever static.
+2. Rich environment detail: small, living details in every corner of the arena.
+3. Subtle lighting: a soft real-time light layer over the hand-drawn pixels (light pools, glow
+   spilling on the floor, halos). Sprites themselves stay flat and crisp — never a 3D-render look.
+Keep the ORIGINAL pixel language (640×360, integer scaling, 1-px outlines, clean tone bands,
+limited palette). Raise quality through craft, not resolution. (The HD trial in src/hd/ was rejected.)
+
 ## Stack & commands
 - Phaser 3.90 + TypeScript (strict) + Vite. No external image/audio assets: all art is drawn in code
   with `PixelCanvas` (`src/art/pixel.ts`), all sound is synthesized (WebAudio).
