@@ -3,7 +3,8 @@
 //
 //   node tools/shot.mjs "<query>" [options]
 //
-//   <query>            URL query, e.g. "?dev=monster&id=crystal_wyrm" or "?seed=3"
+//   <query>            URL query, e.g. "?dev=monster&id=crystal_wyrm" or "?seed=3"; may start with a page,
+//                      e.g. "trial.html?scene=loop" (default page index.html)
 //   --out FILE         output PNG (default shots/shot.png)
 //   --scale N          zoom (viewport = 640N×360N; default 2, film default 1)
 //   --wait MS          real-time wait after ready before capture (default 400)
@@ -91,9 +92,13 @@ try {
     logs.push(`[pageerror] ${e.message}\n${e.stack ?? ''}`);
   });
 
-  let q = args.query.startsWith('?') ? args.query : '?' + args.query;
+  // The query may start with a page path, e.g. "trial.html?x=1" (default page: index.html).
+  const m = /^([\w./-]+\.html)(.*)$/.exec(args.query);
+  const pagePath = m ? m[1].replace(/^\//, '') : '';
+  const rest = m ? m[2] : args.query;
+  let q = rest.startsWith('?') ? rest : '?' + rest;
   q += (q.length > 1 ? '&' : '') + 'test=1';
-  await page.goto(base + q, { waitUntil: 'load' });
+  await page.goto(base + pagePath + q, { waitUntil: 'load' });
   try {
     await page.waitForFunction(() => window.__neon && window.__neon.ready === true, null, { timeout: Number(args.timeout ?? 30000) });
   } catch {
