@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Neon Düello — Karşılaştırma</title>
+    <link rel="icon" href="data:," />
+    <style>
+      :root {
+        --bg: #05060f;
+        --panel: #0b0d1f;
+        --line: #28356f;
+        --mist: #a3b1da;
+        --cyan: #3fe0ea;
+        --gold: #ffd447;
+        --ink: #f4f7ff;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: var(--bg); color: var(--ink); overflow: hidden; font: 600 14px/1.3 ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
+      #stage { position: fixed; inset: 0; }
+      .panel { position: absolute; }
+      .clip { position: absolute; inset: 0; overflow: hidden; background: var(--panel); border: 1px solid var(--line); }
+      .panel[hidden] { display: none; }
+      .panel iframe { position: absolute; left: 0; top: 0; border: 0; background: #05060f; transform-origin: 0 0; }
+      .tag { position: absolute; left: 0; top: -26px; display: flex; gap: 10px; align-items: baseline; white-space: nowrap; }
+      .tag b { font-size: 16px; letter-spacing: 0.08em; color: var(--cyan); }
+      .tag.right b { color: var(--gold); }
+      .tag span { color: var(--mist); font-weight: 500; font-size: 12px; }
+      #bar { position: fixed; left: 0; right: 0; bottom: 0; height: 30px; display: flex; gap: 18px; align-items: center; justify-content: center; color: var(--mist); font-size: 12px; background: rgba(5, 6, 15, 0.92); border-top: 1px solid var(--line); }
+      #bar kbd { color: var(--ink); background: #12163a; border: 1px solid var(--line); border-radius: 3px; padding: 1px 6px; margin-right: 4px; }
+      #note { color: #ff8a1e; }
+      @media (prefers-color-scheme: light) { :root { --bg: #05060f; } }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <div class="panel" id="pl">
+        <div class="tag"><b>ŞU ANKİ</b><span id="capL">mevcut oyun · 640×360</span></div>
+        <div class="clip"><iframe id="fl" title="ŞU ANKİ" allow="autoplay"></iframe></div>
+      </div>
+      <div class="panel" id="pr">
+        <div class="tag right"><b>HD NEON</b><span id="capR">deneme sürümü · 960×540</span></div>
+        <div class="clip"><iframe id="fr" title="HD NEON" allow="autoplay"></iframe></div>
+      </div>
+    </div>
+    <!-- tools/shot.mjs captures the first <canvas>' box: this transparent full-page one makes it grab the whole page -->
+    <canvas id="decoy" width="1" height="1" style="position: fixed; inset: 0; width: 100%; height: 100%; opacity: 0; pointer-events: none"></canvas>
+    <div id="bar">
+      <span><kbd>1</kbd>ŞU ANKİ</span>
+      <span><kbd>2</kbd>HD NEON</span>
+      <span><kbd>0</kbd>YAN YANA</span>
+      <span><kbd>R</kbd>İKİSİNİ YENİDEN BAŞLAT</span>
+      <span id="note"></span>
+    </div>
+    <script type="module" src="/src/hd/app/compare.ts"></script>
+  </body>
+</html>
