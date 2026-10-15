@@ -12,7 +12,7 @@ import { DEPTH, type XY } from '../../view/layout';
 import { shockwave } from '../../vfx/summon';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { registerEvent } from '../api';
-import { ADD, E, bg, capped, facing, hexPts, liveLayer, loop, roarPeak, run, whenFrame, type AnyCtx } from './_kit';
+import { ADD, E, bg, capped, facing, hexPts, liveLayer, loop, roarPeak, run, whenFrame, fs, lightFlash, type AnyCtx } from './_kit';
 
 const BLUE: Ramp = RAMPS.water;
 
@@ -105,6 +105,8 @@ registerEvent(
         const size = Math.max(10, Math.min(18, Math.round(b.w * 0.24)));
         ctx.sfx('shieldBlock', { volume: 0.45, pitch: 1.2 });
         bg(hexGuard(ctx, { x: Math.round(c.x + facing(unit) * size * 0.7), y: Math.round(c.y) }, size));
+        // (v2) the shield's blue flash on the marble
+        void lightFlash(ctx.scene, Math.round(c.x + facing(unit) * size * 0.7), Math.round(c.y), BLUE[3], fs(24), 360, { floorY: unit.home.y, intensity: 0.7 });
         await capped(ctx.scene, turn, 500);
         await ctx.wait(160);
       } else {
@@ -117,7 +119,8 @@ registerEvent(
         await capped(ctx.scene, whenFrame(unit, 'roar', pk), 900);
         ctx.sfx('roarSmall', { volume: 0.65 });
         const home = unit.home;
-        void shockwave(ctx.scene, home.x, home.y, { ramp: PLAYER_RAMP[unit.player], radius: 38, ms: 360, thickness: 3 });
+        void shockwave(ctx.scene, home.x, home.y, { ramp: PLAYER_RAMP[unit.player], radius: fs(38), ms: 360, thickness: 3 });
+        void lightFlash(ctx.scene, home.x, home.y, PLAYER_RAMP[unit.player][3], fs(26), 320, { ring: true, intensity: 0.6 });
         void unit.badge.pop();
         await capped(ctx.scene, turn, 700);
       }

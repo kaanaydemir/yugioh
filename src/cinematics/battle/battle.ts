@@ -22,7 +22,7 @@ import { wait } from '../../vfx/core';
 import { blockClang, directHit, whiteFlash } from '../../vfx/combat';
 import { genericStrike } from '../_defaults/strikes';
 import { fx, registerEvent, strikeFor, type StrikeArgs } from '../api';
-import { type EvOf, all, duelist, guardReact, lerpXY, live, norm, other, sub, takeAttack } from './_kit';
+import { STRIKE_LIGHT, type EvOf, all, arenaDim, duelist, guardReact, impactLight, lerpXY, live, norm, other, sub, takeAttack } from './_kit';
 
 /** Events that end the "consequences" run of a battle. */
 function isBreak(e: GameEvent): boolean {
@@ -71,6 +71,9 @@ registerEvent(
     const zoom = power >= 3 ? 1.065 : 1.05;
     const focusAt = lerpXY(aCore, to, 0.62);
     void ctx.focus(focusAt, { zoom, ms: 360, pan: 0.32 });
+    // arena v2 light: the stadium dims around the clash (restored when the battle is over)
+    void arenaDim(sc, power >= 3 ? 0.42 : 0.28, 320);
+    const strikeLight = attacker ? STRIKE_LIGHT[attacker.cardId] ?? aRamp[3] : aRamp[3];
 
     const pending: Promise<unknown>[] = [];
     /** The damage number + LP roll: the triggers below need not wait for the counter to settle. */
@@ -107,6 +110,7 @@ registerEvent(
         // the burst lives on the un-zoomed UI camera: project the world hit point once, as the
         // camera stands on the impact frame (before the punch-in below starts moving it)
         const hit = fx.directImpact(ctx, p, to);
+        impactLight(sc, hit.world, toGround.y, strikeLight, power, { k: 1.15 });
         void ctx.focus(focusAt, { zoom: Math.min(1.08, zoom + 0.02), ms: 70, pan: 0.34 }).then(() => ctx.focus(focusAt, { zoom, ms: 260, pan: 0.32 }));
         pending.push(directHit(sc, defender, { at: hit.screen }));
         void duelist(ctx, defender)?.jolt();
@@ -116,6 +120,9 @@ registerEvent(
       // impact-frame camera punch
       void ctx.focus(focusAt, { zoom: Math.min(1.08, zoom + 0.02), ms: 70, pan: 0.34 }).then(() => ctx.focus(focusAt, { zoom, ms: 260, pan: 0.32 }));
       const tu = live(target);
+      // the impact lights the floor under the struck point (a guard that holds flashes shield-blue)
+      if (blocked) impactLight(sc, p, toGround.y, defense ? PAL.water3 : tRamp[3], 1, { k: 0.85 });
+      else impactLight(sc, p, toGround.y, strikeLight, power);
       if (blocked) {
         if (tu && defense) {
           // the guard holds: hex-shield clang, the blow glances off
@@ -191,6 +198,7 @@ registerEvent(
         // the counter blow (attacker lost) / the mirrored blow (both destroyed)
         const hitAt = au2.core();
         pending.push(fx.hitReact(ctx, au2, 2, tRamp, { x: hitAt.x - dir.x * 4, y: hitAt.y - dir.y * 4 }, dir));
+        impactLight(sc, hitAt, au2.home.y, tRamp[3], 2, { k: 0.8 });
       }
       pending.push(wait(sc, au2 ? 120 : 0).then(() => ctx.play(aDestroy, { push: dir, hit: false })));
     } else if (au2 && blocked && dmgEv && dmgEv.player === ev.player) {
@@ -203,6 +211,7 @@ registerEvent(
     // is still on the clash — no dead beat between the blow and the answer (the LP roll of the
     // battle damage finishes alongside)
     await all([...rolls, fx.playBattleTriggers(ctx, [ev.attackerUid, ev.targetUid], { skip: dmgIdx >= 0 ? [dmgIdx] : [] })]);
+    void arenaDim(sc, 0, 420);
     await ctx.unfocus(300);
   },
   { name: 'tb:battle' },

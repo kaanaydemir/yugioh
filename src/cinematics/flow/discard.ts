@@ -16,7 +16,7 @@ import { MINI_CARD_W } from '../../view/ui-textures';
 import { sparkleBurst } from '../../vfx/summon';
 import { run } from '../../vfx/setpieces';
 import { registerEvent } from '../api';
-import { all, bg, cameraAtRest, emberStream, type AnyCtx, type Ctx, type EvOf } from './_kit';
+import { all, bg, cameraAtRest, emberStream, fs, lightFlash, type AnyCtx, type Ctx, type EvOf } from './_kit';
 
 type DiscardEv = EvOf<'discard'>;
 
@@ -82,6 +82,7 @@ async function burnOne(ctx: AnyCtx, ev: DiscardEv, gone: Set<Uid>): Promise<void
       bg(pile.flash(PLAYER_COLOR[owner]));
       ctx.sfx('cardPlace', { volume: 0.45, pitch: 0.9 });
       bg(sparkleBurst(sc, to.x, to.y - 4, { ramp: PLAYER_RAMP[owner], count: 10, depth: DEPTH.CARD_ON_TILE + 8 }));
+      void lightFlash(sc, to.x, to.y, PAL.fire3, fs(24), 360, { intensity: 0.6 });
     },
   });
   card.destroy();

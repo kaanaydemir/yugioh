@@ -20,9 +20,11 @@ import { whiteFlash } from '../../vfx/combat';
 import { panelGlow } from '../../vfx/setpieces';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { GameEvent } from '../../engine/types';
+import { type LightHandle, lightFlash, lightPool } from '../../view/light';
 import { fx, registerCardHook, registerStrike } from '../api';
 import {
   ADD,
+  TK,
   E,
   Sparks,
   animate,
@@ -38,6 +40,7 @@ import {
   reseed,
   rr,
   sleep,
+  travelMs,
   vlen,
   vnorm,
   vsub,
@@ -70,6 +73,10 @@ function waistRing(u: MonsterUnit): { stop(fold?: XY): Promise<void> } {
   let fold: XY | null = null;
   let foldT = 0;
   let alive = true;
+  // arena v2: the ring of light lights the floor under her (it folds into her hands with the ring)
+  const c0 = u.core();
+  const ringLight = lightPool(sc, c0.x, c0.y + 4, { color: PAL.gold4, spill: PAL.gold3, radius: 22, floorY: u.home.y, air: 0.5, intensity: 0.2, anim: 'shimmer', fadeIn: 80 });
+  ringLight.setIntensity(1, 160);
   const upd = (_t: number, delta: number) => {
     if (!alive) return;
     const dt = Math.min(50, delta) * sc.tweens.timeScale;
@@ -104,8 +111,10 @@ function waistRing(u: MonsterUnit): { stop(fold?: XY): Promise<void> } {
     async stop(f?: XY) {
       if (f) {
         fold = f;
+        ringLight.setPosition(f.x, f.y);
         await sleep(sc, 150);
       }
+      void ringLight.fadeOut(160);
       alive = false;
       sc.events.off('postupdate', upd);
       back.g.destroy();
@@ -152,6 +161,8 @@ interface FlightOpts {
   /** Arrival of sparkle i (0-based). */
   onArrive?: (i: number, at: XY) => void;
   stopShort?: number;
+  /** Arena v2: floor y under `from` and `to` — each sparkle carries a little light over the floor. */
+  floor?: { from: number; to: number };
 }
 
 /** n sparkles curving from → to on different arcs. Resolves when the last has arrived. */
@@ -178,6 +189,8 @@ function sparkleFlight(scene: Phaser.Scene, o: FlightOpts): Promise<void> {
   const hist: XY[][] = curves.map(() => []);
   const arrived = curves.map(() => false);
   let frame = 0;
+  const lights: (LightHandle | null)[] = curves.map(() => null);
+  const fl = o.floor;
   return new Promise((resolve) => {
     let finished = false;
     void animate(scene, ms + stagger * (n - 1), (_t, el, dt) => {
@@ -195,12 +208,18 @@ function sparkleFlight(scene: Phaser.Scene, o: FlightOpts): Promise<void> {
         if (u >= 1) {
           if (!arrived[i]) {
             arrived[i] = true;
+            void lights[i]?.fadeOut(120);
             o.onArrive?.(i, to);
           }
           continue;
         }
         const e = E.inOutQ(u);
         const p = cbez(o.from, curves[i].c1, curves[i].c2, to, e);
+        if (fl) {
+          const fy = lerp(fl.from, fl.to, e);
+          if (!lights[i]) lights[i] = lightPool(scene, p.x, p.y, { color: PAL.gold4, spill: PAL.gold3, radius: 14, floorY: fy, air: 0.6, intensity: 0.85, anim: 'shimmer', fadeIn: 60 });
+          else lights[i]!.setPosition(p.x, p.y, fy);
+        }
         const h = hist[i];
         h.unshift(p);
         if (h.length > 9) h.pop();
@@ -210,6 +229,7 @@ function sparkleFlight(scene: Phaser.Scene, o: FlightOpts): Promise<void> {
       }
     }).then(() => {
       for (let i = 0; i < n; i++) if (!arrived[i]) o.onArrive?.(i, to);
+      for (const l of lights) void l?.fadeOut(120);
       px.g.destroy();
       glow.g.destroy();
       sp.release();
@@ -286,18 +306,20 @@ async function lumenStrike(s: StrikeArgs): Promise<void> {
     s.ctx.sfx('holyChime', { volume: 0.7, pitch: 1.1 });
     const from = u.muzzle();
     const back = vnorm(vsub(from, hitPt));
-    const ms = clamp(vlen(vsub(hitPt, from)) * 3, 300, 420);
+    const ms = travelMs(vlen(vsub(hitPt, from)), 0, 3, 300, 420, 560);
     let impacted = false;
     await sparkleFlight(sc, {
       from,
       to: hitPt,
       ms,
       stagger: 70,
-      bend: s.direct ? 36 : 28,
+      bend: (s.direct ? 36 : 28) * TK,
       stopShort: s.blocked ? 7 : 0,
+      floor: { from: u.home.y, to: s.direct ? s.toGround.y : target ? target.home.y : s.toGround.y },
       onArrive: (i, at) => {
         s.ctx.sfx('holyChime', { volume: 0.55, pitch: 1.25 + i * 0.18 });
         pop(sc, at, i, s.blocked, back);
+        if (i < 2) void lightFlash(sc, at.x, at.y, PAL.gold4, 20, 200, { floorY: s.direct ? s.toGround.y : target ? target.home.y : s.toGround.y, intensity: 0.6 });
         if (i === 2 && !impacted) {
           impacted = true;
           s.impact(impactPoint(s, hitPt));
@@ -357,7 +379,8 @@ registerCardHook('lumen_sprite', 'effect', async (ctx) => {
   ctx.sfx('holyChime', { volume: 0.8, pitch: 1.2 });
   const hands = u.framePoint(24, 8);
   const c = u.core();
-  // light column + fountain
+  // light column + fountain (arena v2: it floods her tile with gold light)
+  void lightFlash(sc, c.x, c.y - 20, PAL.gold4, 48, 620, { floorY: u.home.y, ring: true, air: 0.8, intensity: 1.2 });
   const col = layer(sc, spr.depth - 0.4, ADD);
   void animate(sc, 520, (t) => {
     col.clear();

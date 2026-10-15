@@ -17,7 +17,7 @@ import { DEPTH, type XY, unitDepth } from '../../view/layout';
 import { createMagicCircle, sparkleBurst } from '../../vfx/summon';
 import { materialize } from '../../vfx/hologram';
 import { registerCardHook } from '../api';
-import { ADD, E, Sparks, TAU, bg, entrance, lerp, liveLayer, onFloor, pose, rnd, roar, rr, run, seg, star, type Entrance } from './_kit';
+import { ADD, E, Sparks, TAU, bg, entrance, fs, lerp, lightBeam, lightFlash, liveLayer, onFloor, pose, rnd, roar, rr, run, seg, star, type Entrance } from './_kit';
 
 const LIGHT: Ramp = ATTRIBUTE_RAMP.LIGHT;
 /** Materialize palette: one step darker than LIGHT so the body reads gold, not blown-out white. */
@@ -29,6 +29,9 @@ function lightShaft(e: Entrance, topY: number): { fade(ms: number): Promise<void
   const { scene: sc, home } = e;
   const H = home.y - topY;
   const st = { k: 0, fade: 1 };
+  // (v2) the shaft's soft glow (behind the fairy) and the gold pool it lays on the marble
+  const beam = lightBeam(sc, { x: home.x, y: topY }, { x: home.x, y: topY }, PAL.gold4, 0, { width: 12, depth: unitDepth(home.y) - 1.5, intensity: 0.7, shimmer: 0.3 });
+  const pool = e.glow({ color: PAL.gold4, radius: fs(26), intensity: 0, anim: 'breathe', fadeIn: 0 });
   const motes = new Sparks(sc, DEPTH.FX - 3, ADD);
   let acc = 0;
   const layer = liveLayer(
@@ -41,6 +44,10 @@ function lightShaft(e: Entrance, topY: number): { fade(ms: number): Promise<void
     (r, el, dt) => {
       st.k = Math.min(1, st.k + dt / 200);
       const lv = st.k * st.fade;
+      if (beam.alive) {
+        beam.setEnds({ x: home.x, y: topY }, { x: home.x, y: Math.round(lerp(topY, home.y, E.outQ(st.k))) }).setIntensity(0.7 * lv);
+        pool.setIntensity(0.8 * lv * lv);
+      }
       if (lv <= 0.01) return;
       for (let y = topY; y <= home.y - 2; y++) {
         const v = (y - topY) / H; // 0 top → 1 floor
@@ -72,6 +79,8 @@ function lightShaft(e: Entrance, topY: number): { fade(ms: number): Promise<void
       await run(sc, ms, (t) => (st.fade = 1 - t));
       motes.close();
       layer.stop();
+      beam.destroy();
+      pool.destroy();
     },
   };
 }
@@ -83,12 +92,15 @@ async function starSpiral(e: Entrance, from: XY, to: XY, ms: number): Promise<vo
   const head = liveLayer(sc, to.x, (from.y + to.y) / 2, 80, to.y - from.y + 40, DEPTH.FX + 2, () => undefined, ADD);
   let last = 0;
   ctx_chime(e, 1.5);
+  // (v2) the star's own light: an air glow on it, its pool gathering on the tile below
+  const glow = e.glow({ at: from, floorY: e.home.y, color: PAL.gold4, radius: fs(16), intensity: 0.45, air: 0.6, airRadius: 10, anim: 'flicker' });
   await run(sc, ms, (t, el) => {
     const k = E.inOutS(t);
     const R = lerp(16, 0, Math.pow(t, 1.3));
     const th = -Math.PI / 2 + k * 2 * TAU;
     const x = to.x + Math.cos(th) * R * dir;
     const y = lerp(from.y, to.y, k) + Math.sin(th) * R * 0.3;
+    if (glow.alive) glow.setPosition(x, y, e.home.y).setIntensity(0.45 + 0.5 * k);
     head.r.draw((r) => {
       const tw = Math.floor(el / 40) % 3;
       star(r, x, y, tw === 0 ? 5 : 4, PAL.white, PAL.gold3);
@@ -103,6 +115,7 @@ async function starSpiral(e: Entrance, from: XY, to: XY, ms: number): Promise<vo
   });
   head.stop();
   trail.close();
+  glow.destroy();
 }
 
 /** A soft high chime (sparkle twinkle). */
@@ -114,13 +127,13 @@ function ctx_chime(e: Entrance, pitch: number): void {
 function starRing(e: Entrance): Promise<void> {
   const { scene: sc, home } = e;
   const n = 8;
-  const layer = liveLayer(sc, home.x, home.y, 110, 60, DEPTH.TILE_FX + 3, () => undefined, ADD);
+  const layer = liveLayer(sc, home.x, home.y, fs(110), fs(60), DEPTH.TILE_FX + 3, () => undefined, ADD);
   return run(sc, 520, (t) => {
     layer.r.draw((r) => {
       for (let i = 0; i < n; i++) {
         const tt = seg(t, i * 0.035, 0.6 + i * 0.035);
         if (tt <= 0 || tt >= 1) continue;
-        const p = onFloor(home.x, home.y, lerp(14, 38, E.outC(tt)), (i / n) * TAU + 0.2);
+        const p = onFloor(home.x, home.y, lerp(fs(14), fs(38), E.outC(tt)), (i / n) * TAU + 0.2);
         const l = Math.round(3 * Math.sin(Math.PI * tt)) + 1;
         star(r, p.x, p.y, l, PAL.white, i % 2 ? PAL.gold4 : PAL.cyan4, tt < 0.8 ? 1 : 0.5);
       }
@@ -164,6 +177,7 @@ async function lumenPiece(e: Entrance): Promise<void> {
 
   // ---- bloom: she materializes out of the star while her roar spins her round
   void sparkleBurst(sc, heart.x, heart.y, { ramp: LIGHT, count: 16, depth: DEPTH.FX + 2 });
+  void lightFlash(sc, heart.x, heart.y, PAL.white, fs(30), 300, { floorY: home.y, intensity: 0.9 });
   ctx.sfx('materialize', { volume: 0.7, pitch: 1.2 });
   const bloom = liveLayer(sc, heart.x, heart.y, 40, 40, DEPTH.FX + 3, () => undefined, ADD);
   bg(run(sc, 140, (t) => bloom.r.draw((r) => star(r, heart.x, heart.y, Math.round(lerp(10, 2, E.outQ(t))), PAL.white, PAL.gold4, t < 0.6 ? 1 : 0.5))).then(() => bloom.stop()));

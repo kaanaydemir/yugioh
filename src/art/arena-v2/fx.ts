@@ -4,22 +4,28 @@
 import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
 import { HH, HW, tileDV } from './geom';
-import { bayer, linePx } from './util';
+import { bayer, linePx, periodicNoise } from './util';
 
 /** Highlight textures are the 80×40 tile plus a 4px halo. */
 export const HL_W = 88;
 export const HL_H = 48;
 export const MARCH_FRAMES = 16;
 
-export function drawHlOutline(): PixelCanvas {
+/**
+ * Zone highlight outline (tinted at runtime): a solid bright band hugging the tile edge, framed by
+ * dark ink edges on both sides so it reads on white marble, glass and the dark pitch alike.
+ * `hot` (the hovered / chosen candidate) is one pixel thicker.
+ */
+export function drawHlOutline(hot = false): PixelCanvas {
   const p = new PixelCanvas(HL_W, HL_H);
+  const w = hot ? 3 : 2;
   for (let j = 0; j < HL_H; j++)
     for (let i = 0; i < HL_W; i++) {
       const d = tileDV(i - 4, j - 4);
-      if (d >= 0 && d < 1) p.set(i, j, 0xffffff);
-      else if (d >= 1 && d < 2) p.set(i, j, 0xbcbcbc);
-      else if (d >= 2 && d < 4 && bayer(i, j) < (d < 3 ? 8 : 3)) p.set(i, j, 0x787878);
-      else if (d >= -2 && d < 0 && bayer(i, j) < (d >= -1 ? 8 : 3)) p.set(i, j, 0x9a9a9a);
+      if (d >= -2 && d < -1) p.set(i, j, PAL.ink, 190);
+      else if (d >= -1 && d < w - 1) p.set(i, j, 0xffffff);
+      else if (d >= w - 1 && d < w) p.set(i, j, 0xbcbcbc);
+      else if (d >= w && d < w + 1) p.set(i, j, PAL.ink, 110);
     }
   return p;
 }
@@ -44,18 +50,20 @@ export function drawHlMarch(f: number): PixelCanvas {
 /** Chevron hugging a diamond tip: TOP tip (pointing up) or LEFT tip (pointing left). */
 export function drawTip(top: boolean): PixelCanvas {
   if (top) {
-    const p = new PixelCanvas(26, 7);
-    linePx(0, 6, 12, 0, (x, y) => p.set(x, y, 0xffffff));
-    linePx(25, 6, 13, 0, (x, y) => p.set(x, y, 0xffffff));
-    linePx(7, 6, 12, 3, (x, y) => p.set(x, y, 0x9a9a9a));
-    linePx(18, 6, 13, 3, (x, y) => p.set(x, y, 0x9a9a9a));
+    const p = new PixelCanvas(28, 9);
+    linePx(1, 7, 13, 1, (x, y) => p.set(x, y, 0xffffff).set(x, y + 1, 0xffffff));
+    linePx(26, 7, 14, 1, (x, y) => p.set(x, y, 0xffffff).set(x, y + 1, 0xffffff));
+    linePx(8, 7, 13, 4, (x, y) => p.set(x, y, 0x9a9a9a));
+    linePx(19, 7, 14, 4, (x, y) => p.set(x, y, 0x9a9a9a));
+    p.outline(PAL.ink);
     return p;
   }
-  const p = new PixelCanvas(13, 16);
-  linePx(12, 1, 0, 7, (x, y) => p.set(x, y, 0xffffff));
-  linePx(12, 14, 0, 8, (x, y) => p.set(x, y, 0xffffff));
-  linePx(12, 4, 6, 7, (x, y) => p.set(x, y, 0x9a9a9a));
-  linePx(12, 11, 6, 8, (x, y) => p.set(x, y, 0x9a9a9a));
+  const p = new PixelCanvas(15, 18);
+  linePx(13, 2, 1, 8, (x, y) => p.set(x, y, 0xffffff).set(x, y + 1, 0xffffff));
+  linePx(13, 15, 1, 9, (x, y) => p.set(x, y, 0xffffff).set(x, y - 1, 0xffffff));
+  linePx(13, 5, 7, 8, (x, y) => p.set(x, y, 0x9a9a9a));
+  linePx(13, 12, 7, 9, (x, y) => p.set(x, y, 0x9a9a9a));
+  p.outline(PAL.ink);
   return p;
 }
 
@@ -104,6 +112,28 @@ export function drawCone(len: number, top: number, bottom: number): PixelCanvas 
       if (a <= 0) continue;
       if (a < 0.34 && bayer(x, y) >= 10) continue;
       p.set(x, y, 0xffffff, Math.round(a * 255));
+    }
+  }
+  return p;
+}
+
+/**
+ * A smooth floodlight cone for the light layer (no dither; LINEAR filtered and drawn with a
+ * screen blend at low alpha): a soft trapezoid from the lamp (top) to the pool, brightest on its
+ * axis and fading out well before it reaches the marble.
+ */
+export function drawSoftCone(len: number, top: number, bottom: number): PixelCanvas {
+  const W = bottom + 4;
+  const p = new PixelCanvas(W, len);
+  for (let y = 0; y < len; y++) {
+    const t = y / len;
+    const half = (top + (bottom - top) * t) / 2;
+    for (let x = 0; x < W; x++) {
+      const off = Math.abs(x + 0.5 - W / 2);
+      if (off > half) continue;
+      const across = 1 - off / half;
+      const a = Math.pow(across, 1.4) * Math.pow(1 - t, 1.5) * Math.min(1, t / 0.06);
+      if (a > 0.004) p.set(x, y, 0xffffff, Math.round(Math.min(1, a) * 255));
     }
   }
   return p;
@@ -184,3 +214,24 @@ export function drawPinLight(): PixelCanvas {
 }
 
 export { PAL };
+
+export const FOG_W = 256;
+export const FOG_H = 36;
+
+/**
+ * Low ground fog (horizontally tileable): soft banks in three flat alpha levels with hard pixel
+ * edges — drifts over the dark pitch as a light-layer veil (white, tinted at runtime).
+ */
+export function drawFog(seed: number): PixelCanvas {
+  const p = new PixelCanvas(FOG_W, FOG_H);
+  const n = periodicNoise(FOG_W, FOG_H, 7, 2, seed, 3);
+  for (let y = 0; y < FOG_H; y++) {
+    const env = Math.sin(((y + 0.5) / FOG_H) * Math.PI);
+    for (let x = 0; x < FOG_W; x++) {
+      const v = n[y * FOG_W + x] - (1 - env) * 0.45;
+      const a = v > 0.6 ? 190 : v > 0.51 ? 130 : v > 0.43 ? 72 : 0;
+      if (a) p.set(x, y, 0xffffff, a);
+    }
+  }
+  return p;
+}

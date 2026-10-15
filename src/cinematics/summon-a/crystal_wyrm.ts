@@ -28,10 +28,13 @@ import {
   bg,
   bodyBox,
   clamp,
+  fs,
   holdFrame,
   holo,
   isoRing,
   lerp,
+  lightBeam,
+  lightFlash,
   onFrame,
   playSfx,
   run,
@@ -61,7 +64,12 @@ function prismShaft(S: Stage): Shaft {
   const top = Math.min(-40, y - 320);
   const H = Math.ceil(y - top) + 24;
   const r = new Raster(sc, x - W / 2, top, W, H, S.depth - 1);
-  const pool = new Raster(sc, x - 48, y - 18, 96, 36, DEPTH.CARD_ON_TILE + 2, ADD);
+  const PW = fs(96);
+  const PH = fs(36);
+  const pool = new Raster(sc, x - PW / 2, y - PH / 2, PW, PH, DEPTH.CARD_ON_TILE + 2, ADD);
+  // (v2) the shaft's soft glow (behind the dragon) and the white-cyan pool it pours on the marble
+  const beam = lightBeam(sc, { x, y: top }, { x, y: top }, PAL.cyan4, 0, { width: 18, depth: S.depth - 1.5, intensity: 0.9, shimmer: 0.35 });
+  const foot = S.glow({ color: PAL.cyan4, radius: fs(30), intensity: 0, anim: 'shimmer', fadeIn: 0, air: 0.35, airRadius: 18 });
   const st = { tip: top, wk: 1, fade: 1, t: 0, landed: 0 };
   const hw0 = S.big ? 12 : 9;
   const glints = new Sparks(sc, S.depth + 0.5, ADD);
@@ -109,7 +117,7 @@ function prismShaft(S: Stage): Shaft {
       const pulse = Math.sin(st.t * 0.02) * 1.2;
       g.ell(x, y, 9 * k * st.wk + 2, (9 * k * st.wk + 2) / 2, PAL.white, f);
       for (let i = 0; i < RAINBOW.length; i++) {
-        const rad = (12 + i * 3) * k + pulse * (i % 2 ? 1 : -1);
+        const rad = fs(12 + i * 3) * k + pulse * (i % 2 ? 1 : -1);
         isoRing(g, x, y, rad, RAINBOW[i], f * (i < 3 ? 0.9 : 0.6));
       }
     });
@@ -120,19 +128,29 @@ function prismShaft(S: Stage): Shaft {
     }
     return true;
   });
+  const light = (): void => {
+    if (!beam.alive) return;
+    const k = st.fade * (0.35 + 0.65 * st.wk);
+    beam.setEnds({ x, y: top }, { x, y: Math.round(st.tip) }).setIntensity(0.9 * k);
+    foot.setIntensity(1.15 * st.landed * k);
+  };
   return {
     async descend(ms) {
-      await run(sc, ms, (t) => (st.tip = lerp(top, y, E.inQuad(t))));
+      await run(sc, ms, (t) => {
+        st.tip = lerp(top, y, E.inQuad(t));
+        light();
+      });
       st.tip = y;
-      bg(run(sc, 160, (t) => (st.landed = E.outCubic(t))));
+      void lightFlash(sc, x, y - 6, PAL.white, fs(34), 300, { floorY: y, intensity: 0.9 });
+      bg(run(sc, 160, (t) => ((st.landed = E.outCubic(t)), light())));
     },
     width: (k, ms) => {
       const a = st.wk;
-      return run(sc, ms, (t) => (st.wk = lerp(a, k, E.outCubic(t))));
+      return run(sc, ms, (t) => ((st.wk = lerp(a, k, E.outCubic(t))), light()));
     },
     fade: (ms, to = 0) => {
       const a = st.fade;
-      return run(sc, ms, (t) => (st.fade = lerp(a, to, t)));
+      return run(sc, ms, (t) => ((st.fade = lerp(a, to, t)), light()));
     },
     destroy() {
       if (!alive) return;
@@ -141,6 +159,8 @@ function prismShaft(S: Stage): Shaft {
       r.destroy();
       pool.destroy();
       glints.close();
+      void beam.fadeOut(120);
+      void foot.fadeOut(160);
     },
   };
 }
@@ -190,8 +210,11 @@ function rainbowFlare(S: Stage, at: XY): void {
     }),
   );
   // rainbow floor rings (each band a spectral colour), two waves
-  const ras = new Raster(sc, S.home.x - 110, S.home.y - 56, 220, 112, DEPTH.TILE_FX + 3);
-  const R1 = S.big ? 100 : 64;
+  const R1 = fs(S.big ? 100 : 64);
+  const RW = Math.max(110, R1 + 10);
+  const ras = new Raster(sc, S.home.x - RW, S.home.y - Math.ceil(RW / 2) - 1, RW * 2, Math.ceil(RW / 2) * 2 + 2, DEPTH.TILE_FX + 3);
+  // the wings bursting open throw a white flash of prism light over the marble
+  void lightFlash(sc, X, Y, PAL.white, Math.round(R1 * 0.55), 520, { floorY: S.home.y, intensity: 0.9 });
   bg(
     run(sc, 560, (t) => {
       ras.draw((rr) => {

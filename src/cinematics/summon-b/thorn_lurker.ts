@@ -19,7 +19,28 @@ import { DEPTH, type XY, unitDepth } from '../../view/layout';
 import { shake } from '../../vfx/core';
 import { leaves } from '../../vfx/particles';
 import { registerCardHook } from '../api';
-import { E, TAU, bg, bodyBox, burst, clamp01, entrance, holo, holoSettle, lerp, liveLayer, onFloor, pose, roar, rr, run, whenFrame, type Entrance } from './_kit';
+import {
+  E,
+  TAU,
+  bg,
+  bodyBox,
+  burst,
+  clamp01,
+  entrance,
+  holo,
+  holoSettle,
+  lerp,
+  liveLayer,
+  onFloor,
+  pose,
+  roar,
+  rr,
+  run,
+  whenFrame,
+  fs,
+  lightFlash,
+  type Entrance,
+} from './_kit';
 import type { Raster } from './_kit';
 import type Phaser from 'phaser';
 
@@ -53,7 +74,7 @@ function qb(a: XY, c: XY, b: XY, t: number): XY {
 /** Thorny vines erupting from a ring around (x, y) on the floor. */
 export function vineCage(scene: Phaser.Scene, x: number, y: number, o: { n?: number; radius?: number; height?: number; seed?: number } = {}): VineCage {
   const n = o.n ?? 5;
-  const R = o.radius ?? 22;
+  const R = o.radius ?? fs(22);
   const H = o.height ?? 34;
   const vines: Vine[] = [];
   for (let i = 0; i < n; i++) {
@@ -142,16 +163,16 @@ function soilStir(e: Entrance): { stop(ms: number): Promise<void> } {
     const pts: XY[] = [];
     let rr0 = 6;
     let aa = a;
-    while (rr0 < 26) {
+    while (rr0 < fs(26)) {
       pts.push(onFloor(home.x, home.y, rr0, aa));
       rr0 += rr(3, 5);
       aa += rr(-0.4, 0.4);
     }
     cracks.push(pts);
   }
-  const shoots = Array.from({ length: 9 }, (_, i) => ({ p: onFloor(home.x, home.y, rr(18, 28), (i / 9) * TAU + 0.2), d: i * 16, h: rr(3, 6) }));
+  const shoots = Array.from({ length: 9 }, (_, i) => ({ p: onFloor(home.x, home.y, rr(fs(18), fs(28)), (i / 9) * TAU + 0.2), d: i * 16, h: rr(3, 6) }));
   const st = { el: 0, fade: 1 };
-  const layer = liveLayer(sc, home.x, home.y - 4, 90, 50, DEPTH.SHADOW + 2, (r, el) => {
+  const layer = liveLayer(sc, home.x, home.y - 4, fs(90), fs(50), DEPTH.SHADOW + 2, (r, el) => {
     st.el = el;
     const g = clamp01(el / 220);
     for (const pts of cracks) {
@@ -227,6 +248,7 @@ async function thornPiece(e: Entrance): Promise<void> {
     volume: 0.8,
     onPeak: () => {
       bg(cage.burst(380));
+      void lightFlash(sc, home.x, home.y - 14, PAL.mag3, fs(26), 300, { floorY: home.y, intensity: 0.7 });
       e.finale({ ramp: LEAF, radius: 52, shake: 2, dust: PAL.earth3 });
       leaves(sc, home.x, home.y - 14, { count: 12, speed: 1.4, depth: DEPTH.FX - 1 });
       burst(sc, home.x, home.y - 14, 12, { ramp: [PAL.mag4, PAL.mag3, PAL.mag2], speed: [60, 140], up: 30, gravity: 240, life: [240, 420], depth: DEPTH.FX });

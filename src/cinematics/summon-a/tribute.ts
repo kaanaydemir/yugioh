@@ -26,7 +26,7 @@ import { wait } from '../../vfx/core';
 import { sparkleBurst } from '../../vfx/summon';
 import type { CardSprite } from '../../view/CardSprite';
 import { fx, registerEvent } from '../api';
-import { E, beat, bg, bodyBox, defuseCard, settleCamera, glowPop, pixelStream, playSfx, run, seed, softGlow, tileStream } from './_kit';
+import { E, beat, bg, bodyBox, defuseCard, fs, lightFlash, lightPool, settleCamera, glowPop, pixelStream, playSfx, run, seed, softGlow, tileStream, type LightHandle } from './_kit';
 
 type SummonEv = Extract<GameEvent, { type: 'summon' }>;
 type SetEv = Extract<GameEvent, { type: 'setMonster' }>;
@@ -87,6 +87,8 @@ registerEvent(
     }
     const hover: XY = { x: to.x, y: Math.max(52, hoverY) };
     let glow: Phaser.GameObjects.Image | null = null;
+    // (v2) the hovering card's light on the marble below it, brighter with every pixel it drinks
+    let cardLight: LightHandle | null = null;
     let fill = 0;
     const hold: { bob: Phaser.Tweens.Tween | null } = { bob: null };
     const target = (): XY => (card && card.active ? { x: card.x, y: card.y } : { x: to.x, y: to.y - 6 });
@@ -103,6 +105,7 @@ registerEvent(
         c.setDepth(DEPTH.FX + 4);
         c.setHighlight(ramp[3]);
         glow = softGlow(sc, hover.x, hover.y, ramp[3], 0.9, 0.5, DEPTH.FX + 3);
+        cardLight = lightPool(sc, hover.x, hover.y, { color: ramp[3], radius: fs(26), floorY: to.y, air: 0.45, intensity: 0.35, anim: 'breathe', fadeIn: 120 }).follow(c);
         hold.bob = sc.tweens.add({ targets: c, y: hover.y - 2, duration: 260, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
         c.playSweep(true);
       })();
@@ -120,7 +123,10 @@ registerEvent(
           const onArrive = (k: number) => {
             fill = Math.max(fill, (i + k) / rel.length);
             if (glow && glow.active) glow.setScale(0.9 + fill * 1.6).setAlpha(0.5 + fill * 0.5);
+            cardLight?.setIntensity(0.35 + fill * 0.85);
           };
+          // the tribute's last light: its tile flares as the body peels away into the stream
+          void lightFlash(sc, from.x, from.y - 14, ramp[3], fs(30), 560, { floorY: from.y, intensity: 0.8 });
           if (unit && unit.sprite.active && unit.sprite.visible) {
             unit.badge.setVisible(false);
             await pixelStream(sc, unit.sprite, { ramp, target, bend: i % 2 === 0 ? 1 : -1, ms: 440, onArrive });
@@ -158,6 +164,7 @@ registerEvent(
       }
       const g0 = glow as Phaser.GameObjects.Image | null;
       if (g0 && g0.active) bg(run(sc, 160, (t) => g0.setAlpha(0.8 * (1 - t))).then(() => g0.destroy()));
+      void (cardLight as LightHandle | null)?.fadeOut(200);
       const from = c.active ? { x: c.x, y: c.y } : hover;
       const scale = c.active ? c.scaleX : 0.8;
       // (no setHighlight(null) here: its 120 ms fade-out tween touches the card after destroy)
@@ -169,6 +176,7 @@ registerEvent(
       await tile.slamIn(from, 220, { fromScale: scale, arc: 4, shake: 3 });
       beat(sc, 'slammed');
       tile.tileFlash(ramp[3], 380);
+      void lightFlash(sc, to.x, to.y, ramp[3], fs(36), 420, { ring: true, intensity: 0.9 });
       bg(fx.all(side));
     } finally {
       if (card && (card as CardSprite).active) {
@@ -177,6 +185,7 @@ registerEvent(
       }
       const g1 = glow as Phaser.GameObjects.Image | null;
       if (g1 && g1.active) g1.destroy();
+      void (cardLight as LightHandle | null)?.fadeOut(160);
     }
     await ctx.play(di, { tribute: true, noCard: true });
   },

@@ -9,7 +9,7 @@ import { PAL, PLAYER_COLOR, PLAYER_RAMP } from '../../art/palette';
 import { DEPTH, TILE_H, TILE_W } from '../../view/layout';
 import { setPulse } from '../../vfx/summon';
 import { registerEvent, type CinematicContext } from '../api';
-import { E, bg, capped, diamond, liveLayer, loop, run, slamCard } from './_kit';
+import { E, bg, capped, diamond, liveLayer, loop, run, slamCard, fs, lightFlash } from './_kit';
 
 type SetCtx = CinematicContext<Extract<GameEvent, { type: 'setMonster' | 'setSpellTrap' }>>;
 
@@ -56,6 +56,8 @@ async function setCard(ctx: SetCtx, spot: 'monster' | 'spellTrap'): Promise<void
   ctx.sfx('cardSet', { volume: 0.9 });
   tile.dust(10, 0.6);
   const col = PLAYER_COLOR[ev.player];
+  // (v2) the seal's snap lights the tile in the player's colour
+  void lightFlash(ctx.scene, home.x, home.y, col, fs(30), 360, { intensity: 0.65, ring: true });
   await capped(ctx.scene, Promise.all([setPulse(ctx.scene, home.x, home.y, col, { count: 2, ms: 380 }), tile.pulse(col, 360), done]), 700);
   if (tile.active) tile.playSheen();
 }

@@ -12,13 +12,13 @@
 //   · the dome breaks into hex shards, the spent trap card burns out and goes to the graveyard.
 
 import { ATTRIBUTE_RAMP, PLAYER_COLOR, RAMPS } from '../../art/palette';
-import { type XY, isoToScreen, zoneXY } from '../../view/layout';
+import { BOARD_MID_COL, type XY, isoToScreen, monsterRow, zoneXY } from '../../view/layout';
 import { tween, wait } from '../../vfx/core';
 import { afterimages, impact as combatImpact } from '../../vfx/combat';
 import { sparkleBurst } from '../../vfx/summon';
 import { mirrorDomeTB } from './_mirror';
 import { fx, registerCardHook } from '../api';
-import { type EvOf, all, lerpXY, live, norm, other, seed, sub, takeAttack } from '../battle/_kit';
+import { TK, type EvOf, all, lerpXY, live, norm, other, seed, sub, takeAttack } from '../battle/_kit';
 import { trapExit, trapOpening } from './_opening';
 
 registerCardHook(
@@ -46,9 +46,9 @@ registerCardHook(
       const z = zoneXY(e.player, 'monster', e.zone);
       return { x: z.x, y: z.y - 14 };
     });
-    // dome centre (setpieces.mirrorDome: grid (2, 3) for player 1, (2, 1) for player 2)
-    const dome = isoToScreen(2, ev.player === 0 ? 3 : 1);
-    const domeTop = { x: dome.x, y: dome.y - 40 };
+    // dome centre (./_mirror: the board's middle column on the defender's monster row)
+    const dome = isoToScreen(BOARD_MID_COL, monsterRow(ev.player));
+    const domeTop = { x: dome.x, y: dome.y - 40 * TK };
 
     const trapPt = ev.zone !== null ? zoneXY(ev.player, 'spellTrap', ev.zone) : zoneXY(ev.player, 'spellTrap', 1);
     const op = await trapOpening(ctx, { focus: lerpXY({ x: trapPt.x, y: trapPt.y - 30 }, domeTop, 0.5) });

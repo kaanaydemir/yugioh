@@ -26,7 +26,9 @@ import {
   bg,
   bodyBox,
   clamp,
+  fs,
   geyser,
+  lightFlash,
   holo,
   lerp,
   noise1,
@@ -101,7 +103,7 @@ interface Split {
 function lavaSplit(S: Stage): Split {
   const sc = S.scene;
   const { x, y } = S.home;
-  const RAD = S.big ? 76 : 56;
+  const RAD = fs(S.big ? 76 : 56);
   const A = S.big ? 26 : 20;
   const B = S.big ? 8 : 6;
   const cracks = fissures(RAD, S.big ? 9 : 7, Math.floor(R() * 1e6));
@@ -233,11 +235,14 @@ signatureSummon('magma_titan', async (S) => {
   if (S.big) bg(S.ctx.focus({ x: home.x, y: home.y - 32 }, { zoom: 1.05, ms: 520, pan: 0.3 }));
   const circle = S.openCircle();
   const split = S.own(lavaSplit(S));
+  // (v2) the lava's flickering firelight on the marble, swelling as the gash opens
+  const lavaLight = S.glow({ color: PAL.fire3, radius: fs(S.big ? 46 : 38), intensity: 0, anim: 'flicker', fadeIn: 0 });
+  lavaLight.setIntensity(1, 260);
   playSfx('groundCrack', { volume: 0.8 });
   playSfx('summonCharge', { volume: 0.6, pitch: 0.7 });
   bg(shake(sc, 320, 1));
-  embers(sc, home.x, home.y, { radius: 22, duration: 340, frequency: 40, count: 1, speed: 0.6, depth: DEPTH.FX - 1 });
-  smokePuffs(sc, home.x, home.y - 2, { radius: 26, duration: 300, frequency: 90, count: 1, depth: S.depth + 0.5, ramp: RAMPS.stone });
+  embers(sc, home.x, home.y, { radius: fs(22), duration: 340, frequency: 40, count: 1, speed: 0.6, depth: DEPTH.FX - 1 });
+  smokePuffs(sc, home.x, home.y - 2, { radius: fs(26), duration: 300, frequency: 90, count: 1, depth: S.depth + 0.5, ramp: RAMPS.stone });
   await split.grow(260);
   circle.pulse(100);
   circle.spin(2.2);
@@ -256,6 +261,9 @@ signatureSummon('magma_titan', async (S) => {
   split.heave(1);
   const lava = S.own(geyser(S, { height: S.big ? 112 : 86, width: S.big ? 22 : 18, kind: 'lava' }));
   bg(lava.rise(70));
+  // the eruption: a molten flash up the column, the floor pool flares
+  void lightFlash(sc, home.x, home.y - (S.big ? 56 : 44), PAL.fire4, fs(S.big ? 58 : 48), 460, { floorY: home.y, intensity: 1.2, air: 0.6 });
+  lavaLight.setIntensity(1.5, 60);
   let fell = false;
   lavaSpray(S, S.big ? 30 : 18);
   bg(shake(sc, 180, 3));
@@ -280,6 +288,7 @@ signatureSummon('magma_titan', async (S) => {
   unit.lift = 0;
   P.clipY = null;
   split.heave(0);
+  lavaLight.setIntensity(1.05, 240);
   // landing thud
   bg(run(sc, 150, (t) => sprite.setScale(1 + 0.07 * (1 - t) * Math.cos(t * 7), 1 - 0.09 * (1 - t) * Math.cos(t * 7))).then(() => sprite.setScale(1)));
   bg(settleHolo(sc, unit, 300));
@@ -296,6 +305,9 @@ signatureSummon('magma_titan', async (S) => {
       S.finale({ ring: S.big ? 94 : 58, ramp: FIRE, flashColor: S.big ? PAL.fire4 : undefined, flashAlpha: 0.28, freezeMs: S.big ? 60 : 0, sfx: 'summonBurst' });
       playSfx('fireBurst', { volume: 0.8, pitch: 0.8 });
       bg(split.cool(700).then(() => split.destroy()));
+      lavaLight.setIntensity(1.6, 50);
+      void lightFlash(sc, home.x, home.y - 12, PAL.fire3, fs(S.big ? 40 : 32), 520, { floorY: home.y, intensity: 0.9 });
+      bg(S.wait(120).then(() => lavaLight.fadeOut(760)));
       bg(circle.dismiss(420));
       // the chest beats that follow (f5–f7): a thud and an ember puff each
       bg(
@@ -307,6 +319,7 @@ signatureSummon('magma_titan', async (S) => {
             bg(shake(sc, 70, 1));
             playSfx('impactLight', { volume: 0.35, pitch: 0.7 });
             const c: XY = unit.core();
+            void lightFlash(sc, c.x, c.y, PAL.fire3, fs(22), 220, { floorY: home.y, intensity: 0.6 });
             embers(sc, c.x, c.y, { count: 6, speed: 0.8, depth: DEPTH.FX - 1 });
           }
         })(),

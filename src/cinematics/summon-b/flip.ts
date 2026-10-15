@@ -15,13 +15,14 @@ import type { MonsterId } from '../../data/cards';
 import { CARDS, isMonster } from '../../data/cards';
 import { ATTRIBUTE_RAMP, PAL, PLAYER_COLOR, RAMPS, type Ramp } from '../../art/palette';
 import { DEPTH } from '../../view/layout';
+import { attributeLightColor } from '../../view/light';
 import type { TileCard } from '../../view/TileCard';
 import { shake } from '../../vfx/core';
 import { flipBurst, shockwave, sparkleBurst } from '../../vfx/summon';
 import { materialize } from '../../vfx/hologram';
 import { leaves, rocks, shadowWisps } from '../../vfx/particles';
 import { registerEvent } from '../api';
-import { E, bg, burst, capped, pose, roar, run, type AnyCtx } from './_kit';
+import { E, bg, burst, capped, pose, roar, run, fs, lightFlash, type AnyCtx } from './_kit';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { vineCage, type VineCage } from './thorn_lurker';
 
@@ -153,6 +154,8 @@ registerEvent(
     const dfn = ctx.def(ev.uid, flipSummon ? 'after' : 'next');
     const unit = field.addUnit(ev.uid, { hidden: true, atk, def: dfn, position: flipSummon ? 'attack' : 'defense' });
     bg(flipBurst(sc, home.x, home.y, attr));
+    // (v2) the flip bursts open in its attribute's light
+    void lightFlash(sc, home.x, home.y - 20, attributeLightColor(attr), fs(flipSummon ? 40 : 30), flipSummon ? 460 : 340, { floorY: home.y, ring: flipSummon, intensity: flipSummon ? 1 : 0.7 });
     accent(ctx, id, home.x, home.y);
     if (cage) bg(cage.burst(320));
     if (!unit) {
@@ -177,7 +180,8 @@ registerEvent(
           sfx: unit.card.ace ? 'roarBig' : 'roarSmall',
           volume: 0.8,
           onPeak: () => {
-            void shockwave(sc, home.x, home.y, { ramp, radius: 46, ms: 380, thickness: 5 });
+            void shockwave(sc, home.x, home.y, { ramp, radius: fs(46), ms: 380, thickness: 5 });
+            void lightFlash(sc, home.x, home.y - 16, ramp[3], fs(30), 380, { floorY: home.y, ring: true, intensity: 0.8 });
             bg(shake(sc, 140, unit.card.ace ? 3 : 2));
             unit.badge.setVisible(true);
             void unit.badge.pop();

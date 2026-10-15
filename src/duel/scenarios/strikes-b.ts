@@ -25,6 +25,15 @@ function attack(desc: string, player: PlayerId, atk: CardId, defenders: Mon[], t
   };
 }
 
+/** The longest path: `atk` in zone 0 attacks zone `tz` (arena v2: across the whole wide bridge). */
+function wide(desc: string, player: PlayerId, atk: CardId, defenders: Mon[], targetZone: number | null): Scenario {
+  const sc = attack(desc, player, atk, defenders, targetZone);
+  const side = player === 0 ? 'p0' : 'p1';
+  const st = sc.stage as StageSpec;
+  (st[side] as { monsters: Mon[] }).monsters = [atk, null];
+  return { ...sc, steps: [{ type: 'attack', player, attackerZone: 0, targetZone }] };
+}
+
 const down = (id: CardId): Mon => ({ id, faceUp: false, position: 'defense' });
 const def = (id: CardId): Mon => ({ id, position: 'defense' });
 
@@ -126,6 +135,16 @@ const SB: Record<string, Scenario> = {
       { type: 'chooseTarget', player: 1, target: { player: 0, zone: 'monster', index: 1 } },
     ],
   },
+
+  // ------------------------------------------------------------ the longest paths (arena v2)
+  // zone 0 → zone 0: in arena v2 the attack crosses the whole wide bridge on the diagonal.
+  sbHawkWide: wide('hawk glides across the wide bridge and dives (zone 0 → zone 0)', 0, 'storm_hawk', ['lumen_sprite'], 0),
+  sbHawkWideP2: wide('P2 hawk glides across the bridge and dives (zone 0 → zone 0)', 1, 'storm_hawk', ['thorn_lurker'], 0),
+  sbSentinelWide: wide('sentinel lobs its boulder across the wide bridge (zone 0 → zone 0)', 0, 'stone_sentinel', ['lumen_sprite'], 0),
+  sbLumenWide: wide('fairy sparkles curve across the wide bridge (zone 0 → zone 0)', 0, 'lumen_sprite', ['thorn_lurker'], 0),
+  sbShadeWide: wide('shadow pool glides across the wide bridge (zone 0 → zone 0)', 0, 'shade_assassin', ['ember_wolf'], 0),
+  sbVoltWide: wide('lightning tail across the wide bridge (zone 0 → zone 0)', 0, 'volt_lizard', ['storm_hawk'], 0),
+  sbThornWide: wide('thorn vines crawl across the wide bridge (zone 0 → zone 0)', 0, 'thorn_lurker', ['lumen_sprite'], 0),
 };
 
 export default SB;

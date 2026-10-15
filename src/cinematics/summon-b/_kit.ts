@@ -20,7 +20,8 @@ import { ATTRIBUTE_RAMP, PAL, PLAYER_COLOR, type Ramp } from '../../art/palette'
 import { monsterAnimKey, monsterFrameName } from '../../art/textures';
 import type { MonsterAnim } from '../../art/types';
 import type { SfxName } from '../../audio/sfx';
-import { DEPTH, type XY, unitDepth } from '../../view/layout';
+import { DEPTH, TILE_W, type XY, unitDepth } from '../../view/layout';
+import { attributeLightColor, lightBeam, lightDim, lightFlash, lightPool, type BeamHandle, type LightHandle, type PoolOpts } from '../../view/light';
 import { TEX, shake, wait } from '../../vfx/core';
 import { Raster, Sparks, onFrame, run } from '../../vfx/setpieces';
 import { landingDust, shockwave } from '../../vfx/summon';
@@ -30,6 +31,17 @@ import type { TileCard } from '../../view/TileCard';
 import { fx, type CinematicContext, type EventOf } from '../api';
 
 export { Raster, Sparks, onFrame, run };
+// the subtle light layer (arena v2; every call is a no-op in v1)
+export { lightBeam, lightDim, lightFlash, lightPool, type BeamHandle, type LightHandle };
+
+/**
+ * Floor scale of the arena: 1 on the v1 64×32 tiles, 1.25 on the v2 80×40 tiles. Floor pieces
+ * around a tile (shock rings, fissures, wind rings, orbits) are sized with it; body-sized
+ * pieces are not (the sprites are the same in both arenas).
+ */
+export const TS = TILE_W / 64;
+/** A floor size in the current arena (whole pixels; v1 values pass through untouched). */
+export const fs = (v: number): number => (TS === 1 ? v : Math.round(v * TS));
 
 export type SummonCtx = CinematicContext<EventOf<'summon'>>;
 export type AnyCtx = CinematicContext<GameEvent>;
@@ -360,6 +372,13 @@ export interface Entrance {
   /** Impact beat: floor shockwave + dust + shake + ATK/DEF badge pop. Runs once. */
   finale(o?: FinaleOpts): void;
   readonly finaled: boolean;
+  /** Floor-light colour of the monster's attribute (light layer). */
+  lightColor: number;
+  /**
+   * A held light pool (default: on the tile, attribute colour, ≈ a tile wide). Faded out by the
+   * entrance's end if still alive. v1: inert.
+   */
+  glow(o?: PoolOpts & { at?: XY }): LightHandle;
 }
 
 export interface FinaleOpts {
@@ -430,6 +449,11 @@ export async function entrance(ctx: SummonCtx, piece: (e: Entrance) => Promise<v
   let finaled = false;
   const home = unit.home;
   const ramp = ATTRIBUTE_RAMP[unit.attribute];
+  const lights: LightHandle[] = [];
+  const lightColor = attributeLightColor(unit.attribute);
+  // (v2) the card's arrival lights the tile: a small flash in the player's colour (cyan for ghosts)
+  if (slammed) void lightFlash(sc, home.x, home.y, PLAYER_COLOR[ev.player], fs(28), 280, { intensity: 0.6 });
+  else if (ev.from !== 'field') void lightFlash(sc, home.x, home.y, ctx.hints.ghost || ev.from === 'graveyard' ? PAL.cyan3 : PLAYER_COLOR[ev.player], fs(32), 380, { intensity: 0.75, ring: true });
   const e: Entrance = {
     ctx,
     scene: sc,
@@ -447,11 +471,22 @@ export async function entrance(ctx: SummonCtx, piece: (e: Entrance) => Promise<v
     get finaled() {
       return finaled;
     },
+    lightColor,
+    glow(go = {}) {
+      const at = go.at ?? home;
+      const h = lightPool(sc, at.x, at.y, { color: lightColor, radius: fs(32), floorY: home.y, ...go });
+      if (h.alive) lights.push(h);
+      return h;
+    },
     finale(o: FinaleOpts = {}) {
       if (finaled) return;
       finaled = true;
       const r = o.ramp ?? ramp;
-      void shockwave(sc, home.x, home.y, { ramp: r, radius: o.radius ?? 54, ms: 420, thickness: 6 });
+      const radius = fs(o.radius ?? 54);
+      void shockwave(sc, home.x, home.y, { ramp: r, radius, ms: 420, thickness: 6 });
+      // the impact lights the marble (+ a soft bloom behind the body)
+      const c = unit.core();
+      void lightFlash(sc, c.x, c.y, o.ramp ? o.ramp[3] : lightColor, Math.round(radius * 0.6), 440, { floorY: home.y, ring: true, intensity: 0.85 });
       if (o.dust !== null) void landingDust(sc, home.x, home.y, o.dust ?? PAL.stone3, { count: 7 });
       const k = o.shake ?? 2;
       if (k > 0) void shake(sc, 160, k);
@@ -466,6 +501,7 @@ export async function entrance(ctx: SummonCtx, piece: (e: Entrance) => Promise<v
     await piece(e);
   } finally {
     e.finale({ sfx: null, shake: 0, dust: null });
+    for (const l of lights) if (l.alive) void l.fadeOut(300);
     unit.posed = false;
     unit.lift = 0;
     if (s.active && !unit.retired) {

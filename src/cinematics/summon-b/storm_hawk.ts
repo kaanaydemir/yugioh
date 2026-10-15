@@ -26,9 +26,11 @@ import {
   bg,
   clamp01,
   entrance,
+  fs,
   holo,
   holoSettle,
   lerp,
+  lightFlash,
   liveLayer,
   pose,
   rnd,
@@ -48,10 +50,10 @@ const LEAF: Ramp = [PAL.leaf0, PAL.leaf1, PAL.leaf2, PAL.leaf3, PAL.leaf4];
 function floorWind(e: Entrance): { stop(ms: number): Promise<void> } {
   const { scene: sc, home } = e;
   const st = { fade: 1, k: 0, spin: 0 };
-  const layer = liveLayer(sc, home.x, home.y, 110, 60, DEPTH.TILE_FX + 3, (r, _el, dt) => {
+  const layer = liveLayer(sc, home.x, home.y, fs(110), fs(60), DEPTH.TILE_FX + 3, (r, _el, dt) => {
     st.k = Math.min(1, st.k + dt / 300);
     st.spin += dt * (0.007 + 0.01 * st.k) * e.dir;
-    const R = lerp(40, 25, E.outQ(st.k));
+    const R = lerp(fs(40), fs(25), E.outQ(st.k));
     for (let a = 0; a < 3; a++) {
       const a0 = st.spin + (a * TAU) / 3;
       const span = 1.1;
@@ -80,7 +82,7 @@ function suckLeaves(e: Entrance, n: number): void {
   const sp = new Sparks(sc, unitDepth(home.y) + 0.6);
   for (let i = 0; i < n; i++) {
     const a = rnd() * TAU;
-    const r0 = rr(46, 64);
+    const r0 = rr(fs(46), fs(64));
     const x = home.x + Math.cos(a) * r0;
     const y = home.y + Math.sin(a) * r0 * 0.5 - rr(0, 10);
     sp.add({ x, y, life: rr(260, 420), delay: rr(0, 140), ramp: [LEAF[4], LEAF[3], LEAF[2]], tex: undefined, home: { x: home.x, y: home.y - 4, k: 0.12 }, vx: -Math.sin(a) * 60 * e.dir, vy: Math.cos(a) * 30 * e.dir });
@@ -185,6 +187,9 @@ async function hawkPiece(e: Entrance): Promise<void> {
   ctx.sfx('windGust', { volume: 0.5, pitch: 1.3 });
   const from: XY = { x: rest.x - 24 * dir, y: rest.y - 104 };
   bg(skyGlint(e, { x: from.x, y: from.y - 8 }, 300));
+  // (v2) the wind seal's teal light on the marble
+  const sealLight = e.glow({ color: WIND[3], radius: fs(34), intensity: 0, anim: 'sway', fadeIn: 0 });
+  sealLight.setIntensity(0.6, 260);
   await ctx.wait(90);
   const funnel = windFunnel(e, from.y - 6);
   await ctx.wait(190);
@@ -200,6 +205,8 @@ async function hawkPiece(e: Entrance): Promise<void> {
   ctx.sfx('whoosh', { volume: 0.8, pitch: 1.25 });
   let diving = true;
   bg(afterTrail(sc, s, { colors: [WIND[3], WIND[2], PAL.leaf3], every: 45, life: 150, alpha: 0.32, active: () => diving }));
+  // the diving hawk's glow: an air glow on the bird, its light gathering on the tile below
+  const diveLight = e.glow({ at: { x: from.x, y: from.y }, floorY: home.y, color: WIND[4], radius: fs(20), intensity: 0.5, air: 0.5, airRadius: 14 }).follow(s, { dy: -10, floorY: home.y });
   // a short white-teal streak behind the bird
   const trail: XY[] = [];
   const tr = liveLayer(sc, rest.x, (from.y + rest.y) / 2, 120, rest.y - from.y + 70, DEPTH.FX - 3, () => undefined, ADD);
@@ -229,6 +236,9 @@ async function hawkPiece(e: Entrance): Promise<void> {
     drawTrail(1);
   });
   diving = false;
+  void diveLight.fadeOut(200);
+  sealLight.setIntensity(1.1, 60);
+  void lightFlash(sc, home.x, home.y - 10, WIND[4], fs(40), 360, { floorY: home.y, ring: true, intensity: 0.8 });
   // ---- flare: brake right over the tile
   s.setAngle(0).setPosition(rest.x, rest.y + 4);
   u.lift = 0;
@@ -248,6 +258,7 @@ async function hawkPiece(e: Entrance): Promise<void> {
   bg(windBurst(e));
   leaves(sc, home.x, home.y - 12, { count: 12, speed: 1.4, depth: DEPTH.FX - 1 });
   bg(wind.stop(220));
+  bg(ctx.wait(160).then(() => sealLight.fadeOut(360)));
   const r = roar(ctx, u, {
     from: 2,
     sfx: 'roarSmall',
@@ -265,12 +276,12 @@ async function hawkPiece(e: Entrance): Promise<void> {
 /** Wind burst: a dashed ring of wind racing out on the floor + gust lines whipping upward. */
 function windBurst(e: Entrance): Promise<void> {
   const { scene: sc, home } = e;
-  const layer = liveLayer(sc, home.x, home.y - 30, 150, 120, DEPTH.FX - 1, () => undefined, ADD);
+  const layer = liveLayer(sc, home.x, home.y - 30, fs(150), fs(120), DEPTH.FX - 1, () => undefined, ADD);
   const gusts = Array.from({ length: 5 }, (_, i) => ({ x: home.x + (i - 2) * 9 + rr(-3, 3), h: rr(26, 44), d: rr(0, 0.25), w: rr(-4, 4) }));
   return run(sc, 420, (t) => {
     layer.r.draw((r) => {
       const k = E.outC(t);
-      const R = lerp(8, 60, k);
+      const R = lerp(8, fs(60), k);
       const lv = 1 - seg(t, 0.45, 1);
       // dashed floor ring
       for (let i = 0; i < 40; i++) {

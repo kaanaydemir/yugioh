@@ -22,7 +22,7 @@ import { TEX, shake, wait } from '../../vfx/core';
 import { E, Raster, Sparks, addGlow, floorRing, freeze, goldAura, lerp, onFrame, qbez, rnd, rr, run, spriteBox } from '../../vfx/setpieces';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { fx, registerCardHook, registerObserver, type CinematicContext } from '../api';
-import { GOLD_FX, bg, idxOf, relax, setTileOf, spellOpening } from './_kit';
+import { GOLD_FX, bg, idxOf, relax, setTileOf, spellOpening, fs, lightBeam, lightFlash, lightPool } from './_kit';
 
 const ADD = Phaser.BlendModes.ADD;
 const TAU = Math.PI * 2;
@@ -60,6 +60,9 @@ async function forge(ctx: AnyCtx, u: MonsterUnit, from: XY, o: { onImpact?: () =
   const glint = Raster.around(sc, ax, hoverY, 40, SH + 24, DEPTH.FX + 3, ADD);
   let circleOn = 0;
   let glintT = -1;
+  // (v2) the gold rune ring's light: a halo glow over the head, warm light pooling round the feet
+  const ringLight = lightPool(sc, ax, circleY, { color: PAL.gold3, radius: fs(30), floorY: u.home.y, air: 0.45, airRadius: CR, intensity: 0, anim: 'breathe', fadeIn: 0 });
+  ringLight.setIntensity(0.7, 300);
   const stopDraw = onFrame(sc, (_dt, el) => {
     halo.draw((g) => {
       if (circleOn <= 0.01) return;
@@ -160,6 +163,7 @@ async function forge(ctx: AnyCtx, u: MonsterUnit, from: XY, o: { onImpact?: () =
   });
   sword.setScale(SS).setFlipX(false).clearTint();
   bg(run(sc, 200, (t) => (circleOn = 1 - t)));
+  void ringLight.fadeOut(220);
 
   // ---- anticipation: hang, tip glint
   const topY = sword.y;
@@ -181,7 +185,8 @@ async function forge(ctx: AnyCtx, u: MonsterUnit, from: XY, o: { onImpact?: () =
   } catch (e) {
     console.error('[spells] blade impact', e);
   }
-  bg(floorRing(sc, u.home.x, u.home.y, { r0: 8, r1: 62, ms: 460, ramp: [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2, PAL.gold1], depth: DEPTH.SHADOW - 1 }));
+  bg(floorRing(sc, u.home.x, u.home.y, { r0: 8, r1: fs(62), ms: 460, ramp: [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2, PAL.gold1], depth: DEPTH.SHADOW - 1 }));
+  void lightFlash(sc, ax, stabY + SH / 2, PAL.gold4, fs(48), 620, { floorY: u.home.y, ring: true, intensity: 1.2 });
   sparks.burst(26, () => {
     const a = rr(0, TAU);
     const sp = rr(60, 170);
@@ -201,6 +206,7 @@ async function forge(ctx: AnyCtx, u: MonsterUnit, from: XY, o: { onImpact?: () =
   );
   // the blade sinks into the body and vanishes in a column of light
   const column = Raster.around(sc, ax, b.top + b.h / 2 - 20, 30, Math.ceil(b.h) + 60, DEPTH.FX + 1, ADD);
+  bg(lightBeam(sc, { x: ax, y: b.top - 30 }, { x: ax, y: u.home.y - 2 }, PAL.gold4, 260, { width: 12, depth: target.depth - 0.5, intensity: 0.8 }).done);
   await run(sc, 230, (t) => {
     sword.setY(Math.round(stabY + t * 10 * SS));
     sword.setAlpha(t < 0.4 ? 1 : t < 0.7 ? 0.6 : 0.25);
@@ -277,6 +283,7 @@ function burstAura(ctx: AnyCtx, u: MonsterUnit): Promise<void> {
   });
   sp.close();
   ctx.sfx('shatter', { volume: 0.6, pitch: 1.6 });
+  void lightFlash(sc, b.cx, b.cy, PAL.gold4, fs(30), 320, { floorY: u.home.y, intensity: 0.75 });
   return addGlow(sc, u.sprite, PAL.gold3, 260, 0.7);
 }
 
@@ -314,6 +321,7 @@ registerCardHook('dragon_blade', 'destroyed', async (ctx) => {
       await tile.flipUp(200);
     }
     bg(tile.pulse(PAL.gold4, 200));
+    void lightFlash(ctx.scene, home.x, home.y, PAL.gold3, fs(26), 360, { intensity: 0.6 });
     if (ev.reason !== 'rule' || !u) ctx.sfx('shatter', { volume: 0.5, pitch: 1.4 });
     await tile.dissolve(ev.reason === 'rule' ? 380 : 480);
     tile.destroy();

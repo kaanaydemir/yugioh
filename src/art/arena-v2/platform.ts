@@ -1,10 +1,13 @@
-// Arena v2 platform art: the white / light-grey marble deck, zone pads with crisp neon inlays,
-// the energy bridge, the polished marble border with its neon trim, the front faces and the two
-// duelist podiums. Everything is painted in WORLD px into a SLAB_RECT-sized canvas.
+// Arena v2 platform art: the marble deck, zone pads with crisp neon inlays, the energy bridge,
+// the polished marble border with its neon trim, the front faces and the two duelist podiums.
+// Everything is painted in WORLD px into a SLAB_RECT-sized canvas.
 //
-// Value plan (golden rule 3): the marble is drawn as lit by cool night floodlights (white / stone
-// tones, light from the upper left); BoardView adds soft additive light pools, neon halos and the
-// glow pulses on top. The neon itself is 1px crisp lines with a darker inlay groove.
+// Value plan (golden rule 3): the six floodlights land as clean iso ellipses on the marble —
+// between the pools the marble sits one tone down (stone4 pads, stone3 gap tiles), inside a pool
+// it is lit (white pads), and only the small pool cores reach pure white. Each band edge is a
+// 1–2 px checker seam; everything else is flat tone bands (no dither fields). The runtime adds a
+// gentle screen-blended glow over each pool, neon halos and the pulses on top. The neon itself is
+// 1 px crisp lines with a darker inlay groove under them.
 
 import type { PlayerId } from '../../engine/types';
 import { BOARD_COLS, BOARD_ROWS, type BoardSpot, LANE_COLS, cellKind, duelistXY, zoneAtCell } from '../../view/layout';
@@ -22,16 +25,17 @@ import {
   PODIUM,
   SLAB_RECT,
   type TrimClass,
+  type WorldRect,
   frontEdges,
   gridAt,
   insideGrid,
   insidePlatform,
   outlineDist,
+  poolLevel,
   rowClass,
   tileDV,
-  TOWERS,
 } from './geom';
-import { bayer, clamp01, linePx, periodicNoise } from './util';
+import { linePx, periodicNoise } from './util';
 
 export interface TrimMark {
   x: number; // SLAB_RECT local
@@ -40,53 +44,90 @@ export interface TrimMark {
   cls: TrimClass;
 }
 
+/** One pixel of a front-face LED strip (world px), `s` = px along that class's strip. */
+export interface FacePx {
+  x: number;
+  y: number;
+  cls: TrimClass;
+  s: number;
+}
+
 export interface PlatformArt {
-  /** SLAB_RECT-sized: faces, border, podiums, gap tiles, bridge, zone sockets. */
+  /** SLAB_RECT-sized: faces, border, podiums, gap tiles, bridge, zone sockets, contact line. */
   deck: PixelCanvas;
   /** Zone pad tiles (80×40, crisp marble + neon inlay) keyed `${col},${row}`. */
   zoneTiles: Map<string, PixelCanvas>;
-  /** Additive glyph core (white levels) per spot, 80×40. */
+  /** Additive glyph core (white levels) per spot, 80×40 (neon pixels only). */
   glyphGlow: Map<BoardSpot, PixelCanvas>;
-  /** Soft halo (white, dithered alpha) per spot, 88×48 (4px pad), for a tinted light spill. */
+  /** Solid 1-px band hugging the bright neon (white), 88×48 (4px pad): a tinted light spill. */
   glyphHalo: Map<BoardSpot, PixelCanvas>;
   /** Neon trim pixels (border trim, face strips, podium rings). */
   marks: TrimMark[];
   /** Maintenance lights on the faces (world px) with their class. */
   faceLights: { x: number; y: number; cls: TrimClass }[];
+  /** Front-face LED strip pixels, ordered along each class's run (for the runtime chase). */
+  facePx: FacePx[];
+  /** Floor light under the faces (SPILL_RECT-sized, white + alpha): per class neon spill, and a neutral bounce. */
+  spill: [PixelCanvas, PixelCanvas, PixelCanvas];
+  bounce: PixelCanvas;
+  /** The bridge's two energy lines (world px, ordered along the bridge from c = −0.5): P1 side, P2 side. */
+  bridgeLines: [{ x: number; y: number; c: number }[], { x: number; y: number; c: number }[]];
+  /** White masks (SLAB_RECT-sized) of each player's half of the bridge glass (for a faint side tint). */
+  bridgeHalf: [PixelCanvas, PixelCanvas];
 }
 
 export const ZT_W = 80;
 export const ZT_H = 40;
 export const HALO_PAD = 4;
 
+/** Floor-light layers around the platform base: SLAB_RECT grown to hold the bounce band. */
+export const SPILL_RECT: WorldRect = { x: SLAB_RECT.x - 12, y: SLAB_RECT.y, w: SLAB_RECT.w + 24, h: SLAB_RECT.h + 16 };
+
 // ---------------------------------------------------------------- marble
 
-type Tone = 'white' | 'grey' | 'pale';
+type Tone = 'pad' | 'gap';
 
 interface MarbleTones {
   base: Color;
   cloud: Color;
+  /** a deeper cloud core (pads only) */
+  deep: Color | null;
   vein: Color;
-  veinHalo: Color;
-  glint: Color;
 }
 
+/**
+ * Tones as LIT by a floodlight pool. Between the pools the deck drops one tone (SHADE), in a
+ * pool's core it rises one (LIFT): pads stone4 → white → white, gap tiles stone3 → stone4 → white.
+ */
 const TONES: Record<Tone, MarbleTones> = {
-  white: { base: PAL.white, cloud: PAL.stone4, vein: PAL.stone3, veinHalo: PAL.stone4, glint: PAL.white },
-  pale: { base: PAL.white, cloud: PAL.stone4, vein: PAL.stone3, veinHalo: PAL.stone4, glint: PAL.white },
-  grey: { base: PAL.stone4, cloud: PAL.white, vein: PAL.stone3, veinHalo: PAL.stone4, glint: PAL.white },
+  pad: { base: PAL.white, cloud: PAL.stone4, deep: PAL.stone3, vein: PAL.stone3 },
+  gap: { base: PAL.stone4, cloud: PAL.white, deep: null, vein: PAL.white },
 };
 
 /**
- * Paint one marble tile (80×40, tile-local) with clouds, veins, bevels and a polish sheen.
- * `seamRing`: paint the dv<1 ring as grout (deck) or leave it transparent.
+ * Paint one marble tile (80×40, tile-local): flat hard-edged cloud shapes in 2–3 tones, one or two
+ * single-pixel veins, a crisp grout joint and a 1-px bevel lit from the upper left. No dither.
  */
 function marbleTile(tone: Tone, seed: number): PixelCanvas {
   const p = new PixelCanvas(ZT_W, ZT_H);
   const T = TONES[tone];
   const rnd = mulberry32(seed);
-  const n = periodicNoise(ZT_W, ZT_H, 4, 2, seed, 3);
-  const cloudCut = 0.56 + rnd() * 0.08;
+  // streaky clouds: noise sampled in the tile's plane, stretched along one grid axis (marble
+  // drifts in long soft streaks, not blobs); each tile picks its own axis and offset
+  const NS = 64;
+  const n = periodicNoise(NS, NS, 4, 4, seed, 2);
+  const swap = rnd() < 0.5;
+  const ou = Math.floor(rnd() * NS);
+  const ov = Math.floor(rnd() * NS);
+  const cloudCut = 0.6 + rnd() * 0.05;
+  const sample = (i: number, j: number) => {
+    const pa = (i + 0.5 - HW) / HW + (j + 0.5 - HH) / HH;
+    const pb = (j + 0.5 - HH) / HH - (i + 0.5 - HW) / HW;
+    const [s1, s2] = swap ? [pb, pa] : [pa, pb];
+    const u = (((Math.floor(s1 * 9) + ou) % NS) + NS) % NS;
+    const v = (((Math.floor(s2 * 26) + ov) % NS) + NS) % NS;
+    return n[v * NS + u];
+  };
   for (let j = 0; j < ZT_H; j++)
     for (let i = 0; i < ZT_W; i++) {
       const d = tileDV(i, j);
@@ -99,31 +140,44 @@ function marbleTile(tone: Tone, seed: number): PixelCanvas {
         c = top ? PAL.stone2 : PAL.stone3;
       } else if (d < 2) {
         // bevel, light from the upper left
-        c = top ? (left ? PAL.white : tone === 'white' ? PAL.white : PAL.stone4) : left ? PAL.stone3 : PAL.stone2;
-        if (!top && left && tone === 'white') c = PAL.stone4;
+        c = top && left ? (tone === 'pad' ? PAL.white : T.base) : !top && !left ? PAL.stone3 : T.base;
+        if (top && !left && tone === 'pad') c = T.base;
+        if (!top && left) c = tone === 'pad' ? PAL.stone4 : PAL.stone3;
       } else {
-        const v = n[j * ZT_W + i];
+        const v = sample(i, j);
         c = T.base;
-        if (v > cloudCut + 0.035) c = T.cloud;
-        else if (v > cloudCut && bayer(i, j) < 8) c = T.cloud;
-        // soft shading toward the lower-right (polished stone catches the light at the top-left)
-        const shade = (i / ZT_W) * 0.5 + (j / ZT_H) * 0.9;
-        if (shade > 1.05 && d < 5 && !top && bayer(i, j) < 6) c = tone === 'white' ? PAL.stone4 : PAL.stone3;
-        // polish sheen: a clean diagonal band in the upper-left half
-        const s = i - 2 * j;
-        if (top && s > 6 && s < 16 && d > 3) c = tone === 'grey' ? (bayer(i, j) < 9 ? PAL.white : T.base) : T.base === PAL.white ? PAL.white : PAL.white;
-        if (d < 3 && !top && !left) c = tone === 'white' ? PAL.stone4 : PAL.stone3;
+        if (v > cloudCut) c = T.cloud;
+        if (T.deep !== null && v > cloudCut + 0.16) c = T.deep;
+        // the lower-right inner edge sits a tone down (a clean 1-px shade line)
+        if (d < 3 && !top && !left) c = tone === 'pad' ? PAL.stone4 : PAL.stone3;
       }
       p.set(i, j, c);
     }
-  // veins: random walks across the tile in plane coordinates (foreshortened by the projection)
-  const veins = 1 + Math.floor(rnd() * 2.2);
+  // drop single-pixel cloud islands (they read as noise at 1×)
+  const base = T.base;
+  for (let j = 1; j < ZT_H - 1; j++)
+    for (let i = 1; i < ZT_W - 1; i++) {
+      if (tileDV(i, j) < 3) continue;
+      const c = p.get(i, j);
+      if (c === base || c === null) continue;
+      let same = 0;
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ])
+        if (p.get(i + dx, j + dy) === c) same++;
+      if (same === 0) p.set(i, j, base);
+    }
+  // veins: random walks across the tile in plane coordinates (foreshortened by the projection),
+  // a single crisp pixel wide, broken into long dashes (it fades in and out, never a crack)
+  const veins = 1 + Math.floor(rnd() * 1.8);
   for (let k = 0; k < veins; k++) {
     let a = rnd() - 0.5;
     let b = -0.55;
     let ang = Math.PI / 2 + (rnd() - 0.5) * 1.2;
     if (rnd() < 0.5) {
-      // start from the left edge instead
       a = -0.55;
       b = rnd() - 0.5;
       ang = (rnd() - 0.5) * 1.2;
@@ -131,53 +185,27 @@ function marbleTile(tone: Tone, seed: number): PixelCanvas {
     const pts: [number, number][] = [];
     for (let s = 0; s < 90; s++) {
       pts.push([HW + (a - b) * HW, HH + (a + b) * HH]);
-      ang += (rnd() - 0.5) * 0.5;
+      ang += (rnd() - 0.5) * 0.45;
       a += Math.cos(ang) * 0.018;
       b += Math.sin(ang) * 0.018;
       if (Math.abs(a) > 0.6 || Math.abs(b) > 0.6) break;
-      // a short fork now and then
-      if (s > 10 && rnd() < 0.025) {
-        let fa = a;
-        let fb = b;
-        let fang = ang + (rnd() < 0.5 ? 0.9 : -0.9);
-        let last: [number, number] = [HW + (fa - fb) * HW, HH + (fa + fb) * HH];
-        for (let f = 0; f < 12; f++) {
-          fa += Math.cos(fang) * 0.018;
-          fb += Math.sin(fang) * 0.018;
-          fang += (rnd() - 0.5) * 0.4;
-          const q: [number, number] = [HW + (fa - fb) * HW, HH + (fa + fb) * HH];
-          linePx(last[0], last[1], q[0], q[1], (x, y) => {
-            if (tileDV(x, y) >= 3) p.set(x, y, T.veinHalo);
-          });
-          last = q;
-        }
-      }
     }
-    let gap = 0;
+    let run = 0;
+    const on = 18 + Math.floor(rnd() * 10);
     for (let s = 1; s < pts.length; s++) {
       linePx(pts[s - 1][0], pts[s - 1][1], pts[s][0], pts[s][1], (x, y) => {
-        const d = tileDV(x, y);
-        if (d < 2.5) return;
-        // the vein fades in and out along its length (broken, never a hard crack)
-        gap = (gap + 1) % 23;
-        if (gap > 15) {
-          if (bayer(x, y) < 6) p.set(x, y, T.veinHalo);
-          return;
-        }
+        if (tileDV(x, y) < 2.5) return;
+        run = (run + 1) % (on + 7);
+        if (run >= on) return;
         p.set(x, y, T.vein);
-        // halo: a lighter tone beside the vein (dithered)
-        if (tileDV(x, y + 1) >= 2.5 && bayer(x, y + 1) < 8 && p.get(x, y + 1) !== T.vein) p.set(x, y + 1, T.veinHalo);
-        if (tileDV(x + 1, y) >= 2.5 && bayer(x + 1, y) < 5 && p.get(x + 1, y) !== T.vein) p.set(x + 1, y, T.veinHalo);
       });
     }
   }
-  // a couple of glints on the polished surface (tiny crosses near the top corner)
-  const glints = tone === 'white' ? 0 : 1 + Math.floor(rnd() * 2);
-  for (let g = 0; g < glints; g++) {
+  // a glint on the polished surface (tiny cross near the top corner) on some gap tiles
+  if (tone === 'gap' && rnd() < 0.6) {
     const gx = Math.round(HW - 14 + rnd() * 16);
-    const gy = Math.round(7 + rnd() * 6);
-    if (tileDV(gx, gy) < 5) continue;
-    p.set(gx, gy, T.glint).set(gx - 1, gy, PAL.white).set(gx + 1, gy, PAL.white);
+    const gy = Math.round(8 + rnd() * 5);
+    if (tileDV(gx, gy) >= 5) p.set(gx, gy, PAL.white).set(gx - 1, gy, PAL.white).set(gx + 1, gy, PAL.white).set(gx, gy - 1, PAL.white);
   }
   return p;
 }
@@ -382,7 +410,7 @@ function glyphLevels(spot: BoardSpot): Lv {
   return L;
 }
 
-/** Paint a neon level map into a tile: groove under each line, neon tones by level. */
+/** Paint a neon level map into a tile: groove under each line, neon tones by level (all solid). */
 function inlay(p: PixelCanvas, L: Lv, ramp: Ramp): void {
   for (let j = 0; j < L.h; j++)
     for (let i = 0; i < L.w; i++) {
@@ -395,15 +423,17 @@ function inlay(p: PixelCanvas, L: Lv, ramp: Ramp): void {
     for (let i = 0; i < L.w; i++) {
       const l = L.get(i, j);
       if (!l) continue;
+      // level 1: a carved groove without neon (one marble tone down), never a checker
       if (l === 1) {
-        if (bayer(i, j) < 10) p.set(i, j, ramp[1]);
+        const c = p.get(i, j);
+        p.set(i, j, c === PAL.white ? PAL.stone4 : c === PAL.stone4 ? PAL.stone3 : PAL.stone3);
         continue;
       }
       p.set(i, j, l === 2 ? ramp[2] : l === 3 ? ramp[3] : ramp[4]);
     }
 }
 
-/** The banish pad's void vortex (painted before the inlay). */
+/** The banish pad's void vortex (painted before the inlay): flat spiral arms, no dither. */
 function vortex(p: PixelCanvas): void {
   for (let j = 0; j < ZT_H; j++)
     for (let i = 0; i < ZT_W; i++) {
@@ -417,10 +447,11 @@ function vortex(p: PixelCanvas): void {
       if (r < 2.5) p.set(i, j, PAL.void4);
       else if (r < 4.5) p.set(i, j, PAL.void3);
       else if (arm > 0.5) p.set(i, j, r < 9 ? PAL.void2 : PAL.void1);
-      else if (arm > 0.05 && bayer(i, j) < 8) p.set(i, j, r < 10 ? PAL.void1 : PAL.mist);
+      else if (arm > 0.15 && r < 12) p.set(i, j, PAL.void1);
     }
 }
 
+/** Additive glyph core: only the neon pixels (the halo band is a separate light). */
 function glowFromLevels(L: Lv): PixelCanvas {
   const p = new PixelCanvas(ZT_W, ZT_H);
   for (let j = 0; j < L.h; j++)
@@ -428,54 +459,42 @@ function glowFromLevels(L: Lv): PixelCanvas {
       const l = L.get(i, j);
       if (l >= 2) p.set(i, j, l === 4 ? 0xffffff : l === 3 ? 0xd8d8d8 : 0x8c8c8c);
     }
-  // 1px soft fringe around the lines
-  for (let j = 0; j < L.h; j++)
-    for (let i = 0; i < L.w; i++) {
-      if (L.get(i, j) >= 2) continue;
-      const near = L.get(i - 1, j) >= 3 || L.get(i + 1, j) >= 3 || L.get(i, j - 1) >= 3 || L.get(i, j + 1) >= 3;
-      if (near) p.set(i, j, 0x404040);
-    }
   return p;
 }
 
-/** Dilated, dithered alpha halo around the neon (tinted at runtime: light spilling on marble). */
+/**
+ * The neon's light on the marble: a solid 1-px band beside every bright neon pixel (not over the
+ * neon, not over the dark groove under it). White; tinted with the player's light tone at runtime.
+ */
 function haloFromLevels(L: Lv): PixelCanvas {
   const W = ZT_W + HALO_PAD * 2;
   const H = ZT_H + HALO_PAD * 2;
   const p = new PixelCanvas(W, H);
-  const pts: [number, number, number][] = [];
-  for (let j = 0; j < L.h; j++) for (let i = 0; i < L.w; i++) if (L.get(i, j) >= 3) pts.push([i, j, L.get(i, j)]);
-  const R = 4;
-  const best = new Float32Array(W * H).fill(99);
-  for (const [i, j] of pts)
-    for (let dy = -R; dy <= R; dy++)
-      for (let dx = -R * 2; dx <= R * 2; dx++) {
-        const x = i + dx + HALO_PAD;
-        const y = j + dy + HALO_PAD;
-        if (x < 0 || y < 0 || x >= W || y >= H) continue;
-        const d = Math.hypot(dx / 2, dy);
-        const k = y * W + x;
-        if (d < best[k]) best[k] = d;
-      }
-  for (let y = 0; y < H; y++)
-    for (let x = 0; x < W; x++) {
-      const d = best[y * W + x];
-      if (d > R) continue;
-      const a = Math.pow(1 - d / (R + 0.5), 1.6);
-      const lv = Math.round(a * 4) / 4;
-      if (lv <= 0) continue;
-      p.set(x, y, 0xffffff, Math.round(lv * 255));
+  for (let j = -1; j <= L.h; j++)
+    for (let i = -1; i <= L.w; i++) {
+      if (L.get(i, j) >= 2) continue; // the neon itself
+      if (L.get(i, j - 1) >= 2) continue; // the groove under a neon pixel
+      if (tileDV(i, j) < 1.5) continue; // stay on the tile's face
+      const near = L.get(i - 1, j) >= 3 || L.get(i + 1, j) >= 3 || L.get(i, j - 1) >= 3 || L.get(i, j + 1) >= 3;
+      if (near) p.set(i + HALO_PAD, j + HALO_PAD, 0xffffff);
     }
   return p;
 }
 
 // ---------------------------------------------------------------- bridge
 
-/** Bridge-local coords of a grid point: v = row offset from the bridge axis (−1 P2 edge … +1 P1 edge). */
+/** Bridge rows: the band between the two front rows (rows 2..3). */
 const BRIDGE_R0 = 1.5;
 const BRIDGE_R1 = 3.5;
+/** Row offsets (from the bridge axis) of the two energy lines: P1's (+) and P2's (−). */
+export const BRIDGE_LINE_V = 0.3;
 
-function bridgePixel(c: number, r: number, wx: number, wy: number, inCell: number): Color {
+/**
+ * The energy bridge: lit glass (painted one tone up; the pool bands drop it to night3 / night4
+ * between the floodlights) with faint panel seams, a lighter inner glow band, a neon rail along each
+ * marble curb, two thin dim energy lines (the runtime runs pulses along them) and a center seam.
+ */
+function bridgePixel(c: number, r: number, inCell: number): Color {
   const v = (r - (BRIDGE_R0 + BRIDGE_R1) / 2) / ((BRIDGE_R1 - BRIDGE_R0) / 2); // −1..1
   const av = Math.abs(v);
   const ePx = (1 - av) * 40; // vertical px to the long edge
@@ -487,28 +506,25 @@ function bridgePixel(c: number, r: number, wx: number, wy: number, inCell: numbe
     if (ePx < 2) return p1 ? PAL.stone4 : PAL.white;
     if (ePx < 5) return PAL.white;
     if (ePx < 6) return PAL.stone4; // the curb's inner bevel
-    if (ePx < 7) return PAL.stone2; // drop into the channel
-    return PAL.night1; // inner shadow under the curb
+    if (ePx < 7) return PAL.stone3; // drop into the channel
+    return PAL.night3; // shadow line under the curb
   }
-  // the energy rails: a neon line along each side of the channel
+  // the neon rails along each side of the channel
   if (ePx < 9) return ramp[2];
   if (ePx < 10) return ramp[3];
   if (ePx < 11) return ramp[1];
-  // the glass channel: clean tone bands, brightening toward the energy spine
-  const across = (ePx - 11) / 29; // 0 at the rail … 1 at the spine
-  let c0: Color = across < 0.3 ? PAL.night2 : across < 0.62 ? PAL.night3 : across < 0.86 ? PAL.night4 : PAL.steel;
-  // short dithered seams between the bands (2px wide)
-  const bandEdge = [0.3, 0.62, 0.86].some((e) => Math.abs(across - e) < 0.035);
-  if (bandEdge && bayer(wx, wy) < 8) c0 = across < 0.3 + 0.04 ? PAL.night3 : across < 0.62 + 0.04 ? PAL.night4 : PAL.steel;
-  // panel joints: one glass panel per cell
-  if (inCell < 1) c0 = across > 0.86 ? PAL.night4 : PAL.night1;
+  // energy lines and the center seam (1 px each)
+  const linePx_ = Math.abs(av - BRIDGE_LINE_V) * 40;
+  if (linePx_ < 0.5) return ramp[1];
+  if (av * 40 < 0.5) return PAL.mist;
+  // the glass: an outer band and a lighter inner glow band toward the spine
+  let c0: Color = av > 0.55 ? PAL.night4 : PAL.steel;
+  // panel joints: one glass panel per cell (faint)
+  if (inCell < 1) c0 = av > 0.55 ? PAL.night3 : PAL.night4;
   // a faint diagonal glint on each panel
   const u = c + 0.5;
   const fu = u - Math.floor(u);
-  if (Math.abs(fu - 0.28 - (v + 1) * 0.06) < 0.012 && across > 0.15 && across < 0.8) c0 = across < 0.62 ? PAL.night4 : PAL.steel;
-  // the spine: a bright channel along the bridge axis
-  if (av * 40 < 1.0) return PAL.white;
-  if (av * 40 < 2.0) return PAL.mist;
+  if (Math.abs(fu - 0.3 - (v + 1) * 0.05) < 0.012 && av > 0.62 && av < 0.85) c0 = PAL.steel;
   return c0;
 }
 
@@ -553,7 +569,7 @@ export const CHEVRONS: Chevron[] = chevronPixels();
 
 // ---------------------------------------------------------------- deck painting
 
-/** Tone shift for marble / glass in the dimmer areas between the floodlight pools. */
+/** One tone down: the marble / glass between the floodlight pools. */
 const SHADE = new Map<Color, Color>([
   [PAL.white, PAL.stone4],
   [PAL.stone4, PAL.stone3],
@@ -566,18 +582,16 @@ const SHADE = new Map<Color, Color>([
   [PAL.night2, PAL.night1],
 ]);
 
-/** How strongly the floodlights light the marble at grid (c, r): 0 … 1. */
-export function floodLight(c: number, r: number): number {
-  let L = 0;
-  for (const t of TOWERS) {
-    const d = Math.hypot(c - t.aim.c, r - t.aim.r) / 1.9;
-    L = Math.max(L, Math.exp(-d * d));
-  }
-  return L;
-}
+/** One tone up: a pool's white-hot core. */
+const LIFT = new Map<Color, Color>([
+  [PAL.stone4, PAL.white],
+  [PAL.stone3, PAL.stone4],
+  [PAL.stone2, PAL.stone3],
+  [PAL.stone1, PAL.stone2],
+]);
 
 function zoneTone(spot: BoardSpot): Tone {
-  return spot === 'monster' || spot === 'spellTrap' ? 'white' : 'pale';
+  return spot === 'banish' ? 'gap' : 'pad';
 }
 
 export function buildPlatform(): PlatformArt {
@@ -585,6 +599,8 @@ export function buildPlatform(): PlatformArt {
   const deck = new PixelCanvas(R.w, R.h);
   const marks: TrimMark[] = [];
   const faceLights: PlatformArt['faceLights'] = [];
+  const facePx: FacePx[] = [];
+  const faceBottoms: { x: number; y: number; cls: TrimClass }[] = [];
   const mark = (wx: number, wy: number, level: number, cls: TrimClass) => marks.push({ x: Math.round(wx) - R.x, y: Math.round(wy) - R.y, level, cls });
   const setW = (wx: number, wy: number, c: Color) => deck.set(wx - R.x, wy - R.y, c);
 
@@ -610,10 +626,10 @@ export function buildPlatform(): PlatformArt {
       for (let k = 0; k < FACE_T; k++) {
         let c: Color;
         if (k === 0) c = PAL.white;
-        else if (k < 3) c = lit ? PAL.white : PAL.stone4;
-        else if (k < 6) c = lit ? PAL.stone4 : PAL.stone3; // neon strip bed
+        else if (k < 3) c = lit ? PAL.stone4 : PAL.stone3;
+        else if (k < 6) c = lit ? PAL.stone3 : PAL.stone2; // neon strip bed
         else if (k < FACE_T - 3) {
-          c = lit ? (k < 9 && bayer(x, k) < 6 ? PAL.white : PAL.stone4) : k < 9 && bayer(x, k) < 6 ? PAL.stone4 : PAL.stone3;
+          c = lit ? PAL.stone4 : PAL.stone3;
           if (inBlock < 1) c = lit ? PAL.stone3 : PAL.stone2; // block joint
           if (k === 11 && inBlock >= 1) c = lit ? PAL.stone3 : PAL.stone2; // course joint
         } else if (k === FACE_T - 3) c = lit ? PAL.stone3 : PAL.stone2;
@@ -621,12 +637,14 @@ export function buildPlatform(): PlatformArt {
         else c = PAL.ink;
         setW(x, yt + k, c);
       }
-      // neon strip: crisp core with a dithered glow fringe
+      // contact line: the slab sits hard on the floor (solid, no dither)
+      setW(x, yt + FACE_T, PAL.ink);
+      setW(x, yt + FACE_T + 1, PAL.night0);
+      faceBottoms.push({ x, y: yt + FACE_T + 2, cls });
+      // the LED strip: a crisp core over a dark groove
       mark(x, yt + 4, 3, cls);
-      if (bayer(x, yt) < 8) {
-        mark(x, yt + 3, 1, cls);
-        mark(x, yt + 5, 1, cls);
-      }
+      mark(x, yt + 5, 1, cls);
+      facePx.push({ x, y: yt + 4, cls, s: 0 });
       // maintenance lights in every other block (housing baked, the lamp is a runtime sprite)
       if (block % 2 === 0 && Math.abs(inBlock - 15) < 0.5) {
         const ly = yt + 13;
@@ -658,7 +676,7 @@ export function buildPlatform(): PlatformArt {
         t = marbleTile(zoneTone(z.spot), seed);
         if (z.spot === 'banish') vortex(t);
         inlay(t, glyphLevels(z.spot), z.player === 0 ? RAMPS.cyan : RAMPS.crim);
-      } else t = marbleTile('grey', seed);
+      } else t = marbleTile('gap', seed);
       tiles.set(k, t);
     }
     return t;
@@ -677,6 +695,7 @@ export function buildPlatform(): PlatformArt {
   const maxX = Math.ceil(Math.max(...corners.map((q) => q[0])));
   const minY = Math.floor(Math.min(...corners.map((q) => q[1])));
   const maxY = Math.ceil(Math.max(...corners.map((q) => q[1])));
+  const bridgeHalf: [PixelCanvas, PixelCanvas] = [new PixelCanvas(R.w, R.h), new PixelCanvas(R.w, R.h)];
   for (let wy = minY; wy <= maxY; wy++)
     for (let wx = minX; wx <= maxX; wx++) {
       const g = gridAt(wx + 0.5, wy + 0.5);
@@ -689,7 +708,9 @@ export function buildPlatform(): PlatformArt {
         const j = wy - (cy - HH);
         const kind = cellKind(col, row);
         if (kind === 'bridge') {
-          setW(wx, wy, bridgePixel(g.c, g.r, wx, wy, tileDV(i, j)));
+          setW(wx, wy, bridgePixel(g.c, g.r, tileDV(i, j)));
+          const v = g.r - (BRIDGE_R0 + BRIDGE_R1) / 2;
+          if ((1 - Math.abs(v)) * 40 >= 11) bridgeHalf[v > 0 ? 0 : 1].set(wx - R.x, wy - R.y, 0xffffff);
           continue;
         }
         const t = tileAt(col, row);
@@ -715,11 +736,9 @@ export function buildPlatform(): PlatformArt {
       if (!onPodium && outsideGrid && gridD < 1.5) c = PAL.stone3;
       else if (!onPodium && outsideGrid && gridD < 2.5) c = PAL.stone4;
       setW(wx, wy, c);
-      // neon trim line
+      // neon trim line: a crisp 2-tone line (core + a dimmer inner line), no checker fringe
       if (dp >= 4 && dp < 5) mark(wx, wy, 3, cls);
-      else if ((dp >= 3 && dp < 4) || (dp >= 5 && dp < 6)) {
-        if (bayer(wx, wy) < 10) mark(wx, wy, 1, cls);
-      }
+      else if (dp >= 5 && dp < 6) mark(wx, wy, 2, cls);
       // tick marks continuing the tile seams across the border (a ruler)
       if (!onPodium && dp > 6.5 && dp < 9.5) {
         const fc = g.c + 0.5;
@@ -729,7 +748,7 @@ export function buildPlatform(): PlatformArt {
       }
     }
 
-  // ---- corner jewels where the trim lines meet (pylons stand on them)
+  // ---- corner jewels where the trim lines meet
   const GEM = ['...1...', '..131..', '.13431.', '..131..', '...1...'];
   for (const [c, r] of [
     [GC0 + 0.14, GR0 + 0.14],
@@ -769,31 +788,31 @@ export function buildPlatform(): PlatformArt {
       }
   }
 
-  // ---- floodlight tone bands: the marble between the light pools drops one tone (clean bands
-  // with a short dithered seam); the runtime adds soft additive pools on top
-  const shade = (pc: PixelCanvas, ox: number, oy: number, onlyTop: boolean) => {
+  // ---- floodlight tone bands: clean iso ellipses around each tower's aim point. Between the
+  // pools the marble drops one tone, inside a pool it stays lit, a pool's core rises one tone
+  // (the bridge glass only takes the first step: it stays darker than the marble)
+  const band = (pc: PixelCanvas, ox: number, oy: number, onlyTop: boolean) => {
     for (let y = 0; y < pc.h; y++)
       for (let x = 0; x < pc.w; x++) {
         const c = pc.get(x, y);
         if (c === null) continue;
-        const sc = SHADE.get(c);
-        if (sc === undefined) continue;
         const wx = x + ox;
         const wy = y + oy;
         const g = gridAt(wx + 0.5, wy + 0.5);
         if (onlyTop && !insidePlatform(g.c, g.r)) continue;
-        const L = floodLight(g.c, g.r);
-        if (L > 0.47) continue;
-        if (L > 0.33 && bayer(wx, wy) >= ((0.47 - L) / 0.14) * 16) continue;
-        pc.set(x, y, sc);
+        let lv = poolLevel(g.c, g.r, wx, wy);
+        const onBridge = insideGrid(g.c, g.r) && g.r > BRIDGE_R0 && g.r < BRIDGE_R1;
+        if (onBridge) lv = Math.min(lv, 1);
+        const to = lv === 0 ? SHADE.get(c) : lv === 2 ? LIFT.get(c) : undefined;
+        if (to !== undefined) pc.set(x, y, to);
       }
   };
-  shade(deck, R.x, R.y, true);
+  band(deck, R.x, R.y, true);
   for (let row = 0; row < BOARD_ROWS; row++)
     for (let col = 0; col < BOARD_COLS; col++) {
       if (cellKind(col, row) !== 'zone') continue;
       const [cx, cy] = P(col, row);
-      shade(tileAt(col, row), cx - HW, cy - HH, false);
+      band(tileAt(col, row), cx - HW, cy - HH, false);
     }
 
   // ---- zone tiles: crop each pad out of the deck (pixel-identical), leave a dark socket below
@@ -811,7 +830,7 @@ export function buildPlatform(): PlatformArt {
           const wx = cx - HW + i;
           const wy = cy - HH + j;
           // socket: a recessed dark pit with a lit lower lip
-          let c: Color = d < 1 ? PAL.stone2 : d < 3 ? (j < HH ? PAL.stone1 : PAL.stone3) : bayer(wx, wy) < 4 ? PAL.night1 : PAL.night0;
+          let c: Color = d < 1 ? PAL.stone2 : d < 3 ? (j < HH ? PAL.stone1 : PAL.stone3) : PAL.night0;
           if (d >= 3 && j < HH && d < 5) c = PAL.ink;
           setW(wx, wy, c);
         }
@@ -824,12 +843,42 @@ export function buildPlatform(): PlatformArt {
     glyphGlow.set(spot, glowFromLevels(L));
     glyphHalo.set(spot, haloFromLevels(L));
   }
-  return { deck, zoneTiles, glyphGlow, glyphHalo, marks, faceLights };
+
+  // ---- face strip run order: per class, sorted along the run (screen x is monotonic per face)
+  const runS: [number, number, number] = [0, 0, 0];
+  const byCls = [0, 1, 2].map((cls) => facePx.filter((q) => q.cls === cls).sort((a, b) => a.x - b.x || a.y - b.y));
+  const ordered: FacePx[] = [];
+  byCls.forEach((list, cls) => {
+    let last: FacePx | null = null;
+    for (const q of list) {
+      runS[cls] += last ? Math.hypot(q.x - last.x, q.y - last.y) : 0;
+      ordered.push({ ...q, s: runS[cls] });
+      last = q;
+    }
+  });
+
+  // ---- floor light under the faces: neon spill per class and a neutral bounce band
+  const SR = SPILL_RECT;
+  const spill: [PixelCanvas, PixelCanvas, PixelCanvas] = [new PixelCanvas(SR.w, SR.h), new PixelCanvas(SR.w, SR.h), new PixelCanvas(SR.w, SR.h)];
+  const bounce = new PixelCanvas(SR.w, SR.h);
+  const onFloor = (wx: number, wy: number) => deck.alpha(wx - R.x, wy - R.y) === 0;
+  const SPILL_A = [190, 120, 70, 34];
+  for (const fb of faceBottoms) {
+    for (let k = 0; k < 13; k++) {
+      const wx = fb.x;
+      const wy = fb.y + k;
+      if (!onFloor(wx, wy) && wy - R.y < R.h) continue;
+      const x = wx - SR.x;
+      const y = wy - SR.y;
+      if (k < SPILL_A.length) spill[fb.cls].set(x, y, 0xffffff, SPILL_A[k]);
+      bounce.set(x, y, 0xffffff, Math.round(255 * Math.pow(1 - k / 13, 1.4)));
+    }
+  }
+
+  return { deck, zoneTiles, glyphGlow, glyphHalo, marks, faceLights, facePx: ordered, spill, bounce, bridgeLines: bridgeLinePixels(), bridgeHalf };
 }
 
-// ---------------------------------------------------------------- bridge flow (animated overlay)
-
-export const FLOW_FRAMES = 16;
+// ---------------------------------------------------------------- bridge energy lines
 
 /** World rect of the bridge band (rows 2..3, all columns). */
 export const BRIDGE_RECT = (() => {
@@ -842,32 +891,21 @@ export const BRIDGE_RECT = (() => {
   return { x: x0, y: y0, w: Math.ceil(Math.max(a[0], b[0], c[0], d[0])) - x0, h: Math.ceil(Math.max(a[1], b[1], c[1], d[1])) - y0 };
 })();
 
-export function drawBridgeFlow(f: number): PixelCanvas {
+/** The pixels of the two energy lines exactly as bridgePixel paints them, ordered along c. */
+function bridgeLinePixels(): PlatformArt['bridgeLines'] {
+  const out: PlatformArt['bridgeLines'] = [[], []];
   const R = BRIDGE_RECT;
-  const p = new PixelCanvas(R.w, R.h);
-  const ph = f / FLOW_FRAMES;
-  for (let y = 0; y < R.h; y++)
-    for (let x = 0; x < R.w; x++) {
-      const g = gridAt(x + R.x + 0.5, y + R.y + 0.5);
-      if (g.r < BRIDGE_R0 || g.r > BRIDGE_R1 || g.c < -0.5 || g.c > BOARD_COLS - 0.5) continue;
-      const v = (g.r - 2.5) / 1;
-      const av = Math.abs(v);
-      const ePx = (1 - av) * 40;
-      if (ePx < 9) continue;
-      const s = (g.c + 0.5) * 45; // ≈ px along the band
-      // the spine: bright pulses flowing toward +col
-      if (av * 40 < 2.5) {
-        const k = (((s / 30 - ph * 2) % 1) + 1) % 1;
-        if (k < 0.3) p.set(x, y, k < 0.1 ? 0xffffff : k < 0.2 ? 0xc0c0c0 : 0x707070);
-      }
-      // two side streams of sparks flowing the other way
-      if (Math.abs(av - 0.42) < 0.035) {
-        const k = (((s / 20 + ph * (v < 0 ? 2 : 3) + (v < 0 ? 0.5 : 0)) % 1) + 1) % 1;
-        if (k < 0.1) p.set(x, y, k < 0.05 ? 0xd0d0d0 : 0x808080);
-      }
-      // slow shimmer bands across the glass
-      const w = (((s / 140 - ph) % 1) + 1) % 1;
-      if (w < 0.04 && ePx > 11 && bayer(x, y) < 6) p.set(x, y, 0x606060);
+  for (let x = R.x; x < R.x + R.w; x++)
+    for (let y = R.y; y < R.y + R.h; y++) {
+      const g = gridAt(x + 0.5, y + 0.5);
+      if (g.c < -0.5 || g.c > BOARD_COLS - 0.5 || g.r < BRIDGE_R0 || g.r > BRIDGE_R1) continue;
+      const v = g.r - (BRIDGE_R0 + BRIDGE_R1) / 2;
+      if (Math.abs(Math.abs(v) - BRIDGE_LINE_V) * 40 >= 0.5) continue;
+      const col = Math.round(g.c);
+      const row = Math.round(g.r);
+      if (cellKind(col, row) !== 'bridge') continue;
+      out[v > 0 ? 0 : 1].push({ x, y, c: g.c });
     }
-  return p;
+  for (const l of out) l.sort((a, b) => a.c - b.c);
+  return out;
 }

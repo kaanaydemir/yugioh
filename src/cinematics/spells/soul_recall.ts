@@ -23,14 +23,14 @@ import { CARDS, isMonster, type CardId, type MonsterId } from '../../data/cards'
 import { currentAtk, currentDef } from '../../engine';
 import type { GameEvent, GameState, PlayerId, Uid } from '../../engine/types';
 import { PAL, RAMPS } from '../../art/palette';
-import { DEPTH, type XY, unitDepth, zoneXY } from '../../view/layout';
+import { ARENA_V2, DEPTH, type XY, unitDepth, zoneXY } from '../../view/layout';
 import { TEX, flash, shake, wait } from '../../vfx/core';
-import { E, Raster, Sparks, floorRing, ghostTexture, onFrame, qbez, rnd, rr, run } from '../../vfx/setpieces';
+import { E, Raster, Sparks, floorRing, ghostTexture, lerp, onFrame, qbez, rnd, rr, run } from '../../vfx/setpieces';
 import { createMagicCircle, createPillar, landingDust, shockwave } from '../../vfx/summon';
 import { materialize } from '../../vfx/hologram';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { fx, registerCardHook, type CinematicContext } from '../api';
-import { CYAN_FX, bg, evAt, idxOf, relax, sendResolved, setTileOf, spellOpening } from './_kit';
+import { CYAN_FX, bg, evAt, idxOf, relax, sendResolved, setTileOf, spellOpening, fs, lightBeam, lightFlash, lightPool } from './_kit';
 
 const ADD = Phaser.BlendModes.ADD;
 const TAU = Math.PI * 2;
@@ -81,7 +81,10 @@ async function soulRise(ctx: AnyCtx, from: XY, to: XY, id: MonsterId, player: Pl
   graveOn = 1;
   burst = 1;
   ctx.sfx('revive', { volume: 0.9 });
-  bg(floorRing(sc, gx, gy, { r0: 6, r1: 42, ms: 360, ramp: CYAN_FX, depth: DEPTH.SHADOW - 1 }));
+  bg(floorRing(sc, gx, gy, { r0: 6, r1: fs(42), ms: 360, ramp: CYAN_FX, depth: DEPTH.SHADOW - 1 }));
+  // (v2) the open grave's cyan light on the marble
+  void lightFlash(sc, gx, gy - 10, PAL.cyan4, fs(36), 420, { floorY: gy, intensity: 1, ring: true });
+  const graveLight = lightPool(sc, gx, gy, { color: PAL.cyan3, radius: fs(26), intensity: 0.8, anim: 'breathe', fadeIn: 120 });
 
   // ghost sprites (body + additive glow copy)
   let ghost: Phaser.GameObjects.Sprite | null = null;
@@ -122,11 +125,19 @@ async function soulRise(ctx: AnyCtx, from: XY, to: XY, id: MonsterId, player: Pl
   // ---- float along an arc to the tile, afterimages trailing
   const start = { x: gx, y: gy - lift };
   const end = { x: to.x, y: to.y - 16 };
-  const ctrl = { x: (start.x + end.x) / 2, y: Math.min(start.y, end.y) - 46 };
+  // v2: the graveyards sit on the outer pads, far from the zones — the flight takes its time and
+  // arcs higher over the long way (v1 keeps its authored 320 ms / 46 px)
+  const dist = Math.hypot(end.x - start.x, end.y - start.y);
+  const FLOAT = ARENA_V2 ? Math.round(Math.min(560, Math.max(320, 200 + dist * 1.1))) : 320;
+  const ctrl = { x: (start.x + end.x) / 2, y: Math.min(start.y, end.y) - (ARENA_V2 ? Math.round(Math.min(80, 46 + dist * 0.1)) : 46) };
   ctx.sfx('whoosh', { volume: 0.4, pitch: 0.7 });
   let lastEcho = -999;
-  await run(sc, 320, (t, el) => {
+  // the ghost carries a soft cyan light along the floor
+  const ghostLight = lightPool(sc, start.x, start.y - fh * 0.4, { color: PAL.cyan3, radius: fs(20), floorY: gy, air: 0.45, airRadius: 18, intensity: 0.7, anim: 'breathe', fadeIn: 80 });
+  void graveLight.fadeOut(360);
+  await run(sc, FLOAT, (t, el) => {
     const p = qbez(start, ctrl, end, E.inOutSine(t));
+    if (ghostLight.alive) ghostLight.setPosition(p.x, p.y - fh * 0.4, lerp(gy, to.y, E.inOutSine(t)));
     place(p.x, p.y + Math.sin(el * 0.02) * 1.5, null);
     if (ghost && el - lastEcho > 45) {
       lastEcho = el;
@@ -145,6 +156,7 @@ async function soulRise(ctx: AnyCtx, from: XY, to: XY, id: MonsterId, player: Pl
   graveOn = 0;
   // ---- settle over the tile
   await run(sc, 60, (t) => place(end.x, end.y + Math.sin(Math.PI * t) * 2, null));
+  void ghostLight.fadeOut(260);
 
   return {
     async melt(ms = 220) {
@@ -168,6 +180,12 @@ async function soulRise(ctx: AnyCtx, from: XY, to: XY, id: MonsterId, player: Pl
       bg(dest.dismiss(320));
     },
   };
+}
+
+/** (v2) The cyan pillar's light: a column glow behind the tile's unit + a bright pool on the marble. */
+function pillarLight(sc: Phaser.Scene, home: XY): void {
+  void lightFlash(sc, home.x, home.y - 30, PAL.cyan4, fs(48), 560, { floorY: home.y, ring: true, intensity: 1.2, air: 0.4 });
+  bg(lightBeam(sc, { x: home.x, y: home.y - 150 }, { x: home.x, y: home.y - 4 }, PAL.cyan4, 360, { width: 20, depth: unitDepth(home.y) - 1.5, intensity: 0.9 }).done);
 }
 
 /** QA switch (?recall=generic): the old generic cyan rematerialization instead of the signature entrance. */
@@ -203,7 +221,8 @@ async function rematerialize(ctx: AnyCtx, ev: Extract<GameEvent, { type: 'summon
   // the pillar slams up through the ghost
   ctx.sfx('summonBurst', { volume: 0.9 });
   const pillar = createPillar(sc, home.x, home.y, { attribute: 'LIGHT', ramp: CYAN, style: 'beam', height: 150, width: 20, riseMs: 100 });
-  bg(shockwave(sc, home.x, home.y, { ramp: CYAN, radius: 44, ms: 360 }));
+  bg(shockwave(sc, home.x, home.y, { ramp: CYAN, radius: fs(44), ms: 360 }));
+  pillarLight(sc, home);
   void shake(sc, 120, 1);
   bg(ghost.melt(200));
   await wait(sc, 90);
@@ -219,7 +238,8 @@ async function rematerialize(ctx: AnyCtx, ev: Extract<GameEvent, { type: 'summon
     landed = true;
     void unit.play('roar');
     ctx.sfx(fx.isAce(ev.cardId) ? 'roarBig' : 'roarSmall', { volume: 0.85 });
-    bg(shockwave(sc, home.x, home.y, { ramp: CYAN, radius: 60, ms: 420, thickness: 7 }));
+    bg(shockwave(sc, home.x, home.y, { ramp: CYAN, radius: fs(60), ms: 420, thickness: 7 }));
+    void lightFlash(sc, home.x, home.y - 20, PAL.cyan4, fs(40), 420, { floorY: home.y, ring: true, intensity: 0.9 });
     bg(landingDust(sc, home.x, home.y, PAL.cyan3, { count: 8 }));
     void shake(sc, 150, 2);
     ctx.sfx('impactHeavy', { volume: 0.4 });
@@ -255,7 +275,8 @@ async function pillarHandoff(ctx: AnyCtx, ev: Extract<GameEvent, { type: 'summon
   }
   ctx.sfx('summonBurst', { volume: 0.9 });
   const pillar = createPillar(sc, home.x, home.y, { attribute: 'LIGHT', ramp: CYAN, style: 'beam', height: 150, width: 20, riseMs: 100 });
-  bg(shockwave(sc, home.x, home.y, { ramp: CYAN, radius: 44, ms: 360 }));
+  bg(shockwave(sc, home.x, home.y, { ramp: CYAN, radius: fs(44), ms: 360 }));
+  pillarLight(sc, home);
   void shake(sc, 120, 1);
   bg(ghost.melt(200));
   await wait(sc, 160);

@@ -23,7 +23,22 @@ import { shatter } from '../../vfx/shatter';
 import { Raster, Sparks, boltPath, rnd, rr, run, spriteBox, stormStrike } from '../../vfx/setpieces';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { fx, registerCardHook, type CinematicContext } from '../api';
-import { TEAL_FX, bg, evAt, idxOf, relax, sendResolved, setTileOf, spellOpening } from './_kit';
+import {
+  TEAL_FX,
+  bg,
+  evAt,
+  idxOf,
+  relax,
+  sendResolved,
+  setTileOf,
+  spellOpening,
+  fs,
+  lightBeam,
+  lightDim,
+  lightFlash,
+  lightPool,
+  type LightHandle,
+} from './_kit';
 
 type DestroyCtx = CinematicContext<Extract<GameEvent, { type: 'destroy' }>>;
 
@@ -50,12 +65,22 @@ registerCardHook('judgment_bolt', 'activate', async (ctx) => {
   let storm: Promise<void> = Promise.resolve();
   let stormStarted!: () => void;
   const stormGo = new Promise<void>((r) => (stormStarted = r));
+  // (v2) the storm's light: the arena darkens under the gathering clouds, the eye flickers,
+  // the strike blasts white light over the whole lane
+  let eyeLight: LightHandle | null = null;
   const startStorm = () => {
     if (!ground0) return;
     bg(ctx.focus({ x: ground0.x, y: ground0.y - 40 }, { zoom: 1.06, ms: 560, pan: 0.3 }));
+    void lightDim(sc, 0.6, 480);
+    eyeLight = lightPool(sc, ground0.x, Math.max(30, ground0.y - 118) + 6, { color: PAL.teal3, radius: fs(30), floorY: ground0.y, air: 0.5, airRadius: 26, intensity: 0, anim: 'flicker', fadeIn: 0 });
+    eyeLight.setIntensity(0.55, 500);
     storm = stormStrike(sc, ground0.x, ground0.y, {
       onImpact: () => {
         struck = true;
+        void lightFlash(sc, ground0.x, ground0.y - 40, PAL.white, fs(96), 700, { floorY: ground0.y, ring: true, intensity: 1.6, air: 0.7 });
+        void lightFlash(sc, ground0.x, ground0.y, PAL.teal4, fs(50), 900, { intensity: 0.8 });
+        bg(lightBeam(sc, { x: ground0.x, y: Math.max(0, ground0.y - 150) }, { x: ground0.x, y: ground0.y - 6 }, PAL.teal4, 260, { width: 18, intensity: 1.3, shimmer: 0.7, rise: 20 }).done);
+        void eyeLight?.fadeOut(300);
         if (di >= 0) destroyed = ctx.play(di, { hit: false, bolt: true, push: { x: 0, y: -1 } });
       },
     });
@@ -80,10 +105,12 @@ registerCardHook('judgment_bolt', 'activate', async (ctx) => {
   ctx.consumeAt(ti);
   const eye: XY = { x: ground0.x, y: Math.max(30, ground0.y - 118) + 6 };
   await stormGo;
-  await op.release(eye, { path: 'line', ms: 200, size: 2 });
+  await op.release(eye, { path: 'line', ms: 200, size: 2, floorTo: ground0.y });
   // the orb feeds the storm's eye
   bg(spark(sc, eye));
   await storm;
+  void lightDim(sc, 0, 650);
+  void (eyeLight as LightHandle | null)?.fadeOut(200);
   // ---- the spent card drops out of the storm's eye into the graveyard while the victim's
   // debris is still falling and the rest of the run plays (e.g. an equip breaking)
   const send = sendResolved(ctx, gi, { x: eye.x, y: eye.y + 12 });
@@ -138,6 +165,8 @@ async function electrocute(ctx: DestroyCtx, u: MonsterUnit): Promise<void> {
   const sparks = new Sparks(sc, spr.depth + 0.7, ADD);
   const x0 = spr.x;
   ctx.sfx('lightning', { volume: 0.4, pitch: 1.5 });
+  // (v2) the crawling arcs flicker teal light on the floor round the victim
+  const zap = lightPool(sc, box.cx, box.cy, { color: PAL.teal4, radius: fs(28), floorY: u.home.y, air: 0.4, intensity: 0.9, anim: 'flicker', fadeIn: 0 });
   let paths: XY[][] = [];
   let next = 0;
   await run(sc, 230, (t, el) => {
@@ -172,6 +201,7 @@ async function electrocute(ctx: DestroyCtx, u: MonsterUnit): Promise<void> {
     });
   });
   arcs.destroy();
+  void zap.fadeOut(160);
   if (!spr.active) {
     sparks.close();
     return;

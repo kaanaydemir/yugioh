@@ -9,7 +9,7 @@
 // on the left, r < STAND_C on the right) and meet in the back corner (top center).
 
 import type { PlayerId } from '../../engine/types';
-import { BOARD_COLS, BOARD_ROWS, BOARD_OX, BOARD_OY, TILE_H, TILE_W } from '../../view/layout';
+import { BOARD_COLS, BOARD_ROWS, BOARD_OX, BOARD_OY, TILE_H, TILE_W, deckPylonXY } from '../../view/layout';
 
 export const HW = TILE_W / 2; // 40
 export const HH = TILE_H / 2; // 20
@@ -208,16 +208,43 @@ export const TOWERS: Tower[] = (
   return { x: baseX, y: baseY - TOWER_H, baseX, baseY, aim, side };
 });
 
-/** Referee light pylons on the four platform corners (base point on the marble, world px). */
+/** How far the corner pylons' bases sit inside the platform outline (grid units). */
+export const PYLON_INSET = 0.14;
+
+/**
+ * Referee light pylons (base point on the marble, world px): the left and right corners, and
+ * the two deck corners slid along the trim (layout deckPylonXY), so the back pylon no longer
+ * stands on the x = 300 line of P2's lane behind a tall monster's head, and the front one
+ * clears the deck stack / hand. Order: left, back (P2 deck), right, bottom (P1 deck).
+ */
 export const PYLONS: { x: number; y: number }[] = [
-  [GC0 + 0.14, GR1 - 0.14],
-  [GC0 + 0.14, GR0 + 0.14],
-  [GC1 - 0.14, GR0 + 0.14],
-  [GC1 - 0.14, GR1 - 0.14],
-].map(([c, r]) => {
-  const [x, y] = P(c, r);
-  return { x: Math.round(x), y: Math.round(y) };
-});
+  P(GC0 + PYLON_INSET, GR1 - PYLON_INSET),
+  [deckPylonXY(1, BORDER - PYLON_INSET).x, deckPylonXY(1, BORDER - PYLON_INSET).y],
+  P(GC1 - PYLON_INSET, GR0 + PYLON_INSET),
+  [deckPylonXY(0, BORDER - PYLON_INSET).x, deckPylonXY(0, BORDER - PYLON_INSET).y],
+].map(([x, y]) => ({ x: Math.round(x), y: Math.round(y) }));
+
+/** Radius (grid units) of a floodlight pool on the marble and of its white-hot core. */
+export const POOL_R = 1.0;
+export const POOL_CORE_R = 0.42;
+
+/** Distance (grid units) from (c, r) to the nearest floodlight aim point. */
+export function poolDist(c: number, r: number): number {
+  let d = Infinity;
+  for (const t of TOWERS) d = Math.min(d, Math.hypot(c - t.aim.c, r - t.aim.r));
+  return d;
+}
+
+/**
+ * Floodlight level of a marble pixel: 0 between the pools, 1 inside a pool, 2 in a pool's core.
+ * Clean iso ellipses around each tower's aim point with a 1–2 px checker seam at each edge.
+ */
+export function poolLevel(c: number, r: number, wx: number, wy: number): number {
+  const d = poolDist(c, r);
+  const seam = 0.028;
+  const step = (R: number) => (d < R - seam ? 1 : d > R + seam ? 0 : (wx + wy) & 1 ? 1 : 0);
+  return step(POOL_R) + step(POOL_CORE_R);
+}
 
 /** Grid cell → which player half it is on (rows ≥ 4 P1, ≤ 1 P2, else null). */
 export function halfOfRow(r: number): PlayerId | null {

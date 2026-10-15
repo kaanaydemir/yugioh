@@ -15,7 +15,7 @@ import { PAL, RAMPS, type Ramp } from '../../art/palette';
 import { DEPTH, unitDepth } from '../../view/layout';
 import { shadowWisps } from '../../vfx/particles';
 import { registerCardHook } from '../api';
-import { ADD, E, Sparks, TAU, bg, bodyBox, entrance, holo, holoSettle, lerp, liveLayer, pose, roar, rr, run, whenFrame, type Entrance } from './_kit';
+import { ADD, E, Sparks, TAU, bg, bodyBox, entrance, fs, holo, holoSettle, lerp, lightFlash, liveLayer, pose, roar, rr, run, whenFrame, type Entrance } from './_kit';
 
 const VOID: Ramp = RAMPS.void;
 
@@ -91,13 +91,17 @@ function shadowPool(e: Entrance, maxR: number): { open(ms: number): Promise<void
 async function shadePiece(e: Entrance): Promise<void> {
   const { ctx, scene: sc, unit: u, sprite: s, home, rest } = e;
   // ---- the pool spreads and swallows the card
-  const pool = shadowPool(e, 19);
+  const pool = shadowPool(e, fs(19));
   ctx.sfx('darkPulse', { volume: 0.6, pitch: 0.9 });
   bg(pool.open(220));
-  shadowWisps(sc, home.x, home.y, { radius: 16, duration: 700, frequency: 70, count: 1, depth: unitDepth(home.y) + 0.5 });
+  shadowWisps(sc, home.x, home.y, { radius: fs(16), duration: 700, frequency: 70, count: 1, depth: unitDepth(home.y) + 0.5 });
+  // (v2) a faint violet rim light around the shadow pool
+  const rim = e.glow({ color: VOID[3], radius: fs(30), intensity: 0, anim: 'breathe', fadeIn: 0 });
+  rim.setIntensity(0.45, 220);
   await ctx.wait(200);
   // ---- eyes in the dark
   pool.eyes(true);
+  void lightFlash(sc, home.x + 2 * e.dir, home.y - 2, VOID[4], fs(14), 260, { intensity: 0.7 });
   await ctx.wait(210);
 
   // ---- the rise, clipped at the floor line
@@ -122,6 +126,7 @@ async function shadePiece(e: Entrance): Promise<void> {
   streams.close();
   s.y = rest.y;
   P.clipY = null;
+  rim.setIntensity(0.7, 120);
   bg(holoSettle(sc, s, 200, false));
 
   // ---- the dagger flourish → the pool snaps shut
@@ -132,8 +137,9 @@ async function shadePiece(e: Entrance): Promise<void> {
     volume: 0.75,
     onPeak: () => {
       bg(pool.close(110));
+      void rim.fadeOut(140);
       e.finale({ ramp: VOID, radius: 50, shake: 2, dust: null, sfx: 'darkPulse', volume: 0.7 });
-      shadowWisps(sc, home.x, home.y, { radius: 18, count: 10, depth: DEPTH.FX - 1 });
+      shadowWisps(sc, home.x, home.y, { radius: fs(18), count: 10, depth: DEPTH.FX - 1 });
     },
   });
   await whenFrame(u, 'roar', 3);

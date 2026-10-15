@@ -8,7 +8,12 @@
 //   &labels=0   hide zone labels      &hud=0   hide HUD rects + mock hand
 //   &grid=0     hide the schematic grid (e.g. with &board=1)
 //   &board=1    the real BoardView behind (the arena art of the active variant)
+//   &rects=0    keep the mock hand but hide the HUD rect outlines
+//   &corner=1   v2: apply the deck-corner contract (layout pileTagAnchor / deckPylonXY) to the real
+//               art — the preview's piles get their count tag beside the stack and the board's two
+//               deck-corner pylons slide along the trim — i.e. the look once PileView / geom.ts adopt it
 //   &info=1     print geometry numbers on screen (they always go to the console)
+// With the HUD overlay on, the v2 contract spots are outlined too (tags gold, deck pylons mist).
 import Phaser from 'phaser';
 import { CARD_BACK, ISO_CX, ISO_CY, ISO_TEX_H, ISO_TEX_W, cardIsoKey } from '../../art/cards';
 import { DUELIST_ANCHOR, DUELIST_H, DUELIST_W, duelistAnimKey, duelistTextureKey } from '../../art/duelists';
@@ -17,9 +22,11 @@ import { PAL } from '../../art/palette';
 import { monsterAnimKey, monsterTextureKey } from '../../art/textures';
 import type { MonsterAnim } from '../../art/types';
 import { MONSTER_IDS, type MonsterId } from '../../data/cards';
+import { PYLONS } from '../../art/arena-v2/geom';
 import { PileView } from '../../duel/PileView';
 import type { PlayerId } from '../../engine/types';
 import {
+  ARENA_V2,
   ARENA_VARIANT,
   BOARD_BOUNDS,
   BOARD_CENTER,
@@ -33,20 +40,27 @@ import {
   DEPTH,
   GAME_H,
   GAME_W,
+  PILE_TAG_H,
   TILE_H,
   TILE_W,
   UI,
   type BoardSpot,
   type Rect,
   cellKind,
+  deckPylonXY,
   duelistXY,
   isoToScreen,
+  pileTagAnchor,
+  tagLeft,
   unitDepth,
   zoneAtCell,
   zoneXY,
 } from '../../view/layout';
 import { BoardView } from '../../view/BoardView';
 import type { DevPreview } from '../types';
+
+/** How far the v2 referee pylons stand outside the tile grid (art/arena-v2/geom.ts BORDER − 0.14). */
+const PYLON_OUTSET = 0.16;
 
 const SHORT: Record<BoardSpot, string> = { monster: 'M', spellTrap: 'ST', field: 'FLD', graveyard: 'GY', deck: 'DK', banish: 'BAN' };
 const DEFAULT_P1: MonsterId[] = ['stone_sentinel', 'crystal_wyrm', 'magma_titan'];
@@ -67,6 +81,47 @@ function diamond(g: Phaser.GameObjects.Graphics, x: number, y: number, hw: numbe
   g.closePath();
 }
 
+/** Width of a pile count tag for `n` cards (PileView: 4 px per digit + 5). */
+function tagWidth(n: number): number {
+  return String(n).length * 4 + 5;
+}
+
+/**
+ * &corner=1 (v2): what the deck corners look like once PileView and geom.ts adopt the layout
+ * contract. Moves the preview's own pile tags to pileTagAnchor and the board's two deck-corner
+ * pylons (post, beacon, glow) to deckPylonXY. Dev-only: reaches into PileView's tag objects.
+ */
+function applyCornerContract(scene: Phaser.Scene, piles: PileView[]): void {
+  for (const pile of piles) {
+    const pv = pile as unknown as { tag: Phaser.GameObjects.Graphics; label: Phaser.GameObjects.BitmapText };
+    const w = tagWidth(pile.count);
+    const a = pileTagAnchor(pile.player, pile.kind);
+    const x = tagLeft(a, w);
+    // PileView draws the tag graphics at (round(home.x − w/2), round(home.y + 8)): shift it
+    pv.tag.setPosition(x - Math.round(pile.home.x - w / 2), a.y - Math.round(pile.home.y + 8));
+    pv.label.setPosition(x + Math.floor(w / 2), a.y + 5);
+  }
+  let moved = 0;
+  for (const p of [0, 1] as PlayerId[]) {
+    const deck = zoneXY(p, 'deck');
+    const old = PYLONS.reduce((b, q) => (Math.hypot(q.x - deck.x, q.y - deck.y) < Math.hypot(b.x - deck.x, b.y - deck.y) ? q : b));
+    const to = deckPylonXY(p, PYLON_OUTSET);
+    // board-v2/stadium.ts: post at (x − 5, y − 22), beacon at (x − 2, y − 21), glow at (x, y − 17)
+    const spots: [string, number, number][] = [
+      ['arena2:pylon', old.x - 5, old.y - 22],
+      ['arena2:beacon', old.x - 2, old.y - 21],
+      ['arena:glow', old.x, old.y - 17],
+    ];
+    for (const o of scene.children.list) {
+      if (!(o instanceof Phaser.GameObjects.Image)) continue;
+      if (!spots.some(([k, x, y]) => o.texture.key === k && o.x === x && o.y === y)) continue;
+      o.setPosition(o.x + to.x - old.x, o.y + to.y - old.y);
+      moved++;
+    }
+  }
+  console.log(`[layout] corner contract: ${piles.length} pile tags, ${moved}/6 pylon parts moved`);
+}
+
 function label(scene: Phaser.Scene, x: number, y: number, s: string, color: string, bg = '#07070fc0'): Phaser.GameObjects.Text {
   return scene.add
     .text(Math.round(x), Math.round(y), s, { fontFamily: 'monospace', fontSize: '8px', color, backgroundColor: bg, padding: { x: 1, y: 0 } })
@@ -82,6 +137,7 @@ const preview: DevPreview = {
     const showGrid = params.get('grid') !== '0';
     const showLabels = params.get('labels') !== '0';
     const showHud = params.get('hud') !== '0';
+    const showRects = showHud && params.get('rects') !== '0';
     const anim = (params.get('anim') ?? 'idle') as MonsterAnim;
 
     if (params.get('board') === '1') {
@@ -132,9 +188,13 @@ const preview: DevPreview = {
     }
 
     // ------------------------------------------------------------ piles + set cards
+    const piles: PileView[] = [];
     for (const p of [0, 1] as PlayerId[]) {
-      new PileView(scene, p, 'deck').set(30, null);
-      new PileView(scene, p, 'graveyard').set(6, 'judgment_bolt');
+      const deck = new PileView(scene, p, 'deck');
+      deck.set(16, null);
+      const grave = new PileView(scene, p, 'graveyard');
+      grave.set(6, 'judgment_bolt');
+      piles.push(deck, grave);
       // a face-down set card on spell/trap 1 and a face-up field spell
       const st = zoneXY(p, 'spellTrap', 1);
       if (scene.textures.exists(cardIsoKey('back', 'up', p)))
@@ -199,7 +259,7 @@ const preview: DevPreview = {
     }
 
     // ------------------------------------------------------------ HUD rects + mock hand
-    if (showHud) {
+    if (showRects) {
       const g = scene.add.graphics().setDepth(DEPTH.HUD);
       const rects: [string, Rect][] = [
         ['phaseBar', UI.phaseBar],
@@ -216,6 +276,19 @@ const preview: DevPreview = {
       }
       g.lineStyle(1, PAL.gold2, 0.6).lineBetween(0, UI.bannerY + 0.5, GAME_W, UI.bannerY + 0.5);
       label(scene, 2, UI.bannerY - 9, `bannerY ${UI.bannerY}`, '#ffd447', '#00000000');
+      // deck-corner contract spots: pile count tags (2 digits) and, in v2, the deck-corner pylons
+      for (const pile of piles) {
+        const w = tagWidth(10);
+        const a = pileTagAnchor(pile.player, pile.kind);
+        g.lineStyle(1, PAL.gold2, 0.9).strokeRect(tagLeft(a, w) - 0.5, a.y - 0.5, w + 1, PILE_TAG_H + 1);
+      }
+      if (ARENA_V2)
+        for (const p of [0, 1] as PlayerId[]) {
+          const q = deckPylonXY(p, PYLON_OUTSET);
+          g.lineStyle(1, PAL.mist, 0.9).strokeRect(q.x - 5 - 0.5, q.y - 22 - 0.5, 12, 25);
+        }
+    }
+    if (showHud) {
       // mock resting hand: five card backs fanned; the visible strip is what normal play shows
       const n = 5;
       const step = Math.min(52, (UI.hand.w - CARD_W - 8) / (n - 1));
@@ -227,6 +300,8 @@ const preview: DevPreview = {
         scene.add.image(cx, cy, CARD_BACK).setRotation(off * 0.05).setDepth(DEPTH.HAND + i);
       }
     }
+
+    if (params.get('corner') === '1' && ARENA_V2) applyCornerContract(scene, piles);
 
     // ------------------------------------------------------------ numbers
     const m0 = zoneXY(0, 'monster', 0);

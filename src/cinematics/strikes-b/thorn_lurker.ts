@@ -16,13 +16,15 @@
 import Phaser from 'phaser';
 import { PAL, RAMPS } from '../../art/palette';
 import { VINE_ROOT } from '../../art/monsters/thorn_lurker';
-import { DEPTH, type XY, unitDepth, zoneXY } from '../../view/layout';
+import { DEPTH, TILE_H, TILE_W, type XY, unitDepth, zoneXY } from '../../view/layout';
+import { lightBeam, lightFlash, lightPool } from '../../view/light';
 import { shake, tween } from '../../vfx/core';
 import { impact, slash, whiteFlash } from '../../vfx/combat';
 import type { SfxName, SfxOpts } from '../../audio/sfx';
 import type { GameEvent } from '../../engine/types';
 import { fx, registerCardHook, registerStrike } from '../api';
 import {
+  ARENA_V2,
   E,
   Sparks,
   TAU,
@@ -42,6 +44,8 @@ import {
   rr,
   seg,
   sleep,
+  TK,
+  travelMs,
   vlen,
   vlerp,
   vnorm,
@@ -60,9 +64,11 @@ const DIRT = [PAL.earth3, PAL.earth2, PAL.earth1] as const;
 
 /** Unit screen vector lying on the iso floor, perpendicular (on the floor) to screen direction d. */
 function floorPerp(d: XY): XY {
-  const c = (d.x / 32 + d.y / 16) / 2;
-  const r = (d.y / 16 - d.x / 32) / 2;
-  return vnorm({ x: (-r - c) * 32, y: (-r + c) * 16 });
+  const hw = TILE_W / 2;
+  const hh = TILE_H / 2;
+  const c = (d.x / hw + d.y / hh) / 2;
+  const r = (d.y / hh - d.x / hw) / 2;
+  return vnorm({ x: (-r - c) * hw, y: (-r + c) * hh });
 }
 
 interface VineOpts {
@@ -236,9 +242,17 @@ async function thornStrike(s: StrikeArgs): Promise<void> {
     // ---- rear back while the vines crawl out to the target
     pose(u, 'attack', 2);
     const dist = vlen(vsub(floor, root));
-    const grow = clamp(dist * 2.6, 280, 440);
+    // v2's long bridge: the vines take longer to crawl across it
+    const grow = travelMs(dist, 0, 2.6, 280, 440, 620);
     s.ctx.sfx('whoosh', { volume: 0.45, pitch: 0.6 });
     let impactP: Promise<void> | null = null;
+    // arena v2: the magenta thorns along the crawling vines catch the light — a faint glow strip
+    // follows the vine front over the floor
+    const thornGlow = lightBeam(sc, root, root, PAL.mag3, 0, { air: false, floor: { from: root, to: root }, floorWidth: 8, intensity: 0.6, shimmer: 0.5 });
+    if (ARENA_V2) void animate(sc, grow, (t) => {
+      const f = vlerp(root, floor, E.outQ(t));
+      thornGlow.setEnds(root, f, { from: root, to: f });
+    });
     impactP = thornVines(sc, root, hitPt, {
       grow,
       lift,
@@ -251,6 +265,7 @@ async function thornStrike(s: StrikeArgs): Promise<void> {
       onImpact: () => {
         pose(u, 'attack', 4);
         s.impact(impactPoint(s, hitPt));
+        void thornGlow.fadeOut(300);
         s.ctx.sfx('slash', { volume: 0.8, pitch: 0.85 });
         void wait2(sc, 60).then(() => playFrom(u, 'attack', 5));
         if (!s.blocked) void groundRing(sc, floor.x, floor.y, { r0: 6, r1: 32, ms: 380, colors: [PAL.leaf4, PAL.leaf3, PAL.leaf2] });
@@ -496,9 +511,12 @@ function vineCrush(scene: Phaser.Scene, body: CrushBody, sfx: (n: SfxName, o?: S
   const sx = obj.scaleX;
   const sy = obj.scaleY;
   const crushed = (async () => {
-    // ---- the ground splits
+    // ---- the ground splits (arena v2: green-magenta light seeps out of the cracks)
     sfx('groundCrack', { volume: 0.75, pitch: 1.15 });
     void shake(scene, 160, 1);
+    const seep = lightPool(scene, floor.x, floor.y, { color: PAL.leaf3, spill: PAL.mag2, radius: (body.r + 10) * TK, intensity: 0.2, anim: 'flicker', fadeIn: 0 });
+    seep.setIntensity(0.9, 300);
+    void sleep(scene, 640).then(() => seep.fadeOut(300));
     await animate(scene, 150, (t, _e, dt) => {
       crackT = E.outC(t);
       if (dt > 0 && rr(0, 1) < 0.8) sp.add({ x: floor.x + rr(-body.r, body.r), y: floor.y + rr(-3, 3), vx: rr(-25, 25), vy: -rr(40, 90), ay: 380, life: rr(220, 380), colors: DIRT, shape: 'px', floor: floor.y + 4, bounce: 0.3 });
@@ -522,6 +540,7 @@ function vineCrush(scene: Phaser.Scene, body: CrushBody, sfx: (n: SfxName, o?: S
     // ---- CRUSH
     sfx('impactHeavy', { volume: 0.85, pitch: 1.05 });
     const c = { x: cx, y: floor.y - H * 0.45 };
+    void lightFlash(scene, c.x, c.y, PAL.leaf4, 40, 380, { floorY: floor.y, ring: true, intensity: 1.1 });
     for (let i = 0; i < 18; i++) {
       const a = rr(0, TAU);
       const v = rr(60, 170);
@@ -590,9 +609,18 @@ registerCardHook('thorn_lurker', 'effect', async (ctx) => {
   }
   // lock: a green ring tightens on the victim's floor while the soil ridge races to it
   void groundRing(sc, at.x, at.y, { r0: 34, r1: 10, ms: 300, colors: [PAL.leaf2, PAL.leaf3, PAL.leaf4, PAL.white] });
+  void lightFlash(sc, at.x, at.y, PAL.leaf3, 30 * TK, 360, { intensity: 0.7 });
   ctx.sfx('groundCrack', { volume: 0.55, pitch: 0.8 });
   void shake(sc, 260, 1);
-  await burrow(sc, from, at, clamp(vlen(vsub(at, from)) * 2.6, 300, 460));
+  // arena v2: the ridge's cracked furrow glows faintly magenta-green as it races (longer on the
+  // wide bridge)
+  const bMs = travelMs(vlen(vsub(at, from)), 0, 2.6, 300, 460, 640);
+  const ridge = lightPool(sc, from.x, from.y, { color: PAL.mag3, spill: PAL.leaf2, radius: 16, intensity: 0.8, anim: 'flicker', fadeIn: 80 });
+  if (ARENA_V2) void animate(sc, bMs, (t) => {
+    const p = vlerp(from, at, 0.35 * t + 0.65 * t * t);
+    ridge.setPosition(p.x, p.y);
+  }).then(() => ridge.fadeOut(200));
+  await burrow(sc, from, at, bMs);
   void ctx.focus({ x: at.x, y: at.y - 18 }, { zoom: 1.08, ms: 260, pan: 0.35 });
   // erupt, wrap, crush — then it shatters inside the vines
   const di = fx.resolutionRun(ctx).find((i) => {

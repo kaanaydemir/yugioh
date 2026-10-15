@@ -8,13 +8,15 @@
 //   setCardPulse(...)  the defender's set cards breathing magenta while a trap window is open
 
 import Phaser from 'phaser';
+import type { MonsterId } from '../../data/cards';
 import type { GameEvent, GameEventType, PlayerId } from '../../engine/types';
 import { PAL, RAMPS, type Ramp } from '../../art/palette';
 import { monsterFrameName } from '../../art/textures';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { Disposable, DuelViews } from '../../duel/types';
 import type { TileCard } from '../../view/TileCard';
-import { DEPTH, type XY, unitDepth } from '../../view/layout';
+import { ARENA_V2, DEPTH, TILE_W, type XY, unitDepth } from '../../view/layout';
+import { lightDim, lightFlash, lightLayer } from '../../view/light';
 import { wait } from '../../vfx/core';
 import { impact as combatImpact, stopTime } from '../../vfx/combat';
 import { Raster, Sparks, onFrame, run } from '../../vfx/setpieces';
@@ -53,6 +55,95 @@ export function rnd(): number {
 export const rr = (a: number, b: number): number => a + (b - a) * rnd();
 
 export const other = (p: PlayerId): PlayerId => (p === 0 ? 1 : 0);
+
+// ================================================================ arena geometry (v1 / v2)
+
+export { ARENA_V2 };
+/**
+ * Floor scale of the arena: 1 on v1's 64×32 tiles, 1.25 on v2's 80×40 tiles. Floor rings and
+ * magic circles that cover a tile are multiplied by it (v1 sizes stay exactly as tuned).
+ */
+export const TK = TILE_W / 64;
+
+// ================================================================ light layer (arena v2; no-ops in v1)
+//
+// The dim level is shared by every cinematic of a battle: the battle / trap handler sets a BASE
+// (arenaDim) and quick pulses (a beam's glare, an implosion's dark) return to whatever the base
+// is when they end — so a pulse never leaves the arena dimmed after the handler restored it.
+
+const dimBase = new WeakMap<object, number>();
+const pulseRest = new WeakMap<object, number>();
+const pulseN = new WeakMap<object, number>();
+
+/** Where the layer's dim is heading (its ramp target), else its current level. */
+function dimTarget(L: NonNullable<ReturnType<typeof lightLayer>>): number {
+  const ramp = (L as unknown as { dim?: { target?: unknown } }).dim;
+  return typeof ramp?.target === 'number' ? ramp.target : L.dimLevel;
+}
+
+/**
+ * Set the arena's base dim level for the running battle / trap handler (0 normal, 1 dramatic
+ * dark, < 0 brighter), eased over ms. 0 hands the dim back (no base any more).
+ */
+export function arenaDim(scene: Phaser.Scene, level: number, ms = 350): Promise<void> {
+  const L = lightLayer(scene);
+  if (!L) return Promise.resolve();
+  if (level === 0) dimBase.delete(L);
+  else dimBase.set(L, level);
+  return lightDim(scene, level, ms);
+}
+
+/** The base dim level set by the running handler (0 when none). */
+export function arenaDimBase(scene: Phaser.Scene): number {
+  const L = lightLayer(scene);
+  return L ? (dimBase.get(L) ?? 0) : 0;
+}
+
+/**
+ * A dim (level > 0) or glare (level < 0) pulse: ease to `level`, hold, then back to where the
+ * arena was — the handler's base (arenaDim), else the level before the first of overlapping
+ * pulses (so a pulse inside another cinematic's dim gives it back). Fire-and-forget safe; a
+ * no-op in arena v1.
+ */
+export async function dimPulse(scene: Phaser.Scene, level: number, o: { in?: number; hold?: number; out?: number } = {}): Promise<void> {
+  const L = lightLayer(scene);
+  if (!L) return;
+  const n = pulseN.get(L) ?? 0;
+  if (n === 0) pulseRest.set(L, dimBase.has(L) ? dimBase.get(L)! : dimTarget(L));
+  pulseN.set(L, n + 1);
+  await lightDim(scene, level, o.in ?? 60);
+  if (o.hold) await wait(scene, o.hold);
+  const left = Math.max(0, (pulseN.get(L) ?? 1) - 1);
+  pulseN.set(L, left);
+  if (left > 0 || lightLayer(scene) !== L) return;
+  await lightDim(scene, dimBase.has(L) ? dimBase.get(L)! : (pulseRest.get(L) ?? 0), o.out ?? 420);
+}
+
+/** The colour each monster's strike lights the floor with at the impact (its VFX colour). */
+export const STRIKE_LIGHT: Record<MonsterId, number> = {
+  crystal_wyrm: PAL.cyan4,
+  abyss_magus: PAL.void3,
+  magma_titan: PAL.fire3,
+  coral_serpent: PAL.water3,
+  ember_wolf: PAL.fire3,
+  tide_golem: PAL.water3,
+  storm_hawk: PAL.teal3,
+  stone_sentinel: PAL.earth3,
+  lumen_sprite: PAL.gold4,
+  shade_assassin: PAL.void3,
+  volt_lizard: PAL.cyan3,
+  thorn_lurker: PAL.leaf3,
+};
+
+/**
+ * The impact light (§5 "darbe anı"): a flash pool + shock ring on the floor under the struck
+ * point and a bloom around it, scaled by the blow's power. A no-op in arena v1.
+ */
+export function impactLight(scene: Phaser.Scene, at: XY, floorY: number, color: number, power: 1 | 2 | 3 = 2, o: { ring?: boolean; k?: number } = {}): void {
+  if (!ARENA_V2) return;
+  const k = o.k ?? 1;
+  void lightFlash(scene, at.x, at.y, color, (34 + power * 8) * k, 260 + power * 70, { floorY, ring: o.ring ?? true, intensity: (0.75 + power * 0.18) * k });
+}
 
 /** Wait for every promise, never reject (errors are logged). */
 export async function all(ps: Promise<unknown>[]): Promise<void> {

@@ -11,7 +11,7 @@ import { DEPTH } from '../../view/layout';
 import { TEX } from '../../vfx/core';
 import { Sparks, run } from '../../vfx/setpieces';
 import { registerEvent } from '../api';
-import { ADD, bg, cameraAtRest, isoGhost, rr, type Ctx } from './_kit';
+import { ADD, bg, cameraAtRest, isoGhost, rr, fs, lightFlash, type Ctx } from './_kit';
 
 registerEvent(
   'draw',
@@ -42,6 +42,8 @@ registerEvent(
         glint.destroy();
       }),
     );
+    // (v2) a glint of the player's light on the deck pad as the card lifts off
+    void lightFlash(sc, top.x, top.y - 6, R[3], fs(20), 260, { floorY: top.y, intensity: 0.55 });
     const sp = new Sparks(sc, DEPTH.CARD_ON_TILE + 4, ADD);
     sp.burst(6, (i) => ({ x: top.x + rr(-10, 10), y: top.y - 2 + rr(-2, 2), vx: rr(-10, 10), vy: rr(-55, -26), life: rr(220, 320), delay: i * 16, ramp: [PAL.white, R[4], R[3]], tex: TEX.px1 }));
     sp.close();

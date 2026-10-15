@@ -20,7 +20,9 @@ import { whiteFlash } from '../../vfx/combat';
 import { panelGlow } from '../../vfx/setpieces';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { GameEvent, PlayerId, Uid } from '../../engine/types';
+import { type LightHandle, lightBeam, lightFlash, lightPool } from '../../view/light';
 import { fx, registerCardHook, registerStrike } from '../api';
+import { dimPulse } from '../battle/_kit';
 import {
   ADD,
   E,
@@ -207,6 +209,10 @@ async function voltStrike(s: StrikeArgs): Promise<void> {
     }
   };
   sc.events.on('postupdate', crackleFn);
+  // arena v2: the charging crest throws a flickering cyan light that climbs to the jaws
+  const crestLight = lightPool(sc, u.core().x, u.core().y - 8, { color: PAL.cyan4, spill: PAL.cyan3, radius: 22, floorY: u.home.y, air: 0.6, intensity: 0.3, anim: 'flicker', fadeIn: 80 });
+  crestLight.setIntensity(1.2, 470);
+  crestLight.follow(() => (spr.active ? u.muzzle() : null), { floorY: u.home.y });
   try {
     // ---- charge wave climbs the crest (f1–f4), static on the floor
     s.ctx.sfx('beamCharge', { volume: 0.55, pitch: 1.7 });
@@ -232,10 +238,17 @@ async function voltStrike(s: StrikeArgs): Promise<void> {
     s.ctx.sfx('thunder', { volume: 0.45, pitch: 1.4 });
     void flash(sc, 90, PAL.cyan4, 0.16, DEPTH.OVERLAY - 2);
     void shake(sc, 260, s.power >= 3 ? 4 : 3);
+    // arena v2: the bolt lights the whole stadium for a blink and re-strikes; its line of light
+    // crosses the floor between them
+    void crestLight.fadeOut(140);
+    void dimPulse(sc, -0.5, { in: 30, hold: 40, out: 300 });
+    const tFloor = s.direct ? s.toGround : target ? target.home : s.toGround;
+    void lightBeam(sc, m, end, PAL.cyan4, 360, { width: 12, intensity: 1.5, shimmer: 0.9, floor: { from: u.home, to: tFloor }, floorWidth: 12 });
     const bc = layer(sc, DEPTH.FX + 3);
     const bg = layer(sc, DEPTH.FX + 2.9, ADD);
     let bolt = makeBolt(m, end, 3);
     let frame = 0;
+    const restruck = new Set<number>();
     const forks: XY[][] = [];
     if (s.blocked) {
       // the bolt splashes on the guard and forks away into the floor
@@ -258,6 +271,10 @@ async function voltStrike(s: StrikeArgs): Promise<void> {
       if (el < 140 && frame % 2 === 0) bolt = makeBolt(m, end, 3);
       // re-strikes then flicker out
       const restrike = (t > 0.38 && t < 0.46) || (t > 0.6 && t < 0.66);
+      if (restrike && !restruck.has(t > 0.5 ? 2 : 1)) {
+        restruck.add(t > 0.5 ? 2 : 1);
+        void lightFlash(sc, end.x, end.y, PAL.cyan4, 30, 160, { floorY: tFloor.y, intensity: 0.9 });
+      }
       const a = t < 0.3 || restrike ? 1 : frame % 2 ? 0 : 1 - t;
       if (a <= 0) return;
       drawBolt(bc, bg, bolt, el < 34 || restrike ? 3 : 2, a, el < 34);
@@ -273,6 +290,7 @@ async function voltStrike(s: StrikeArgs): Promise<void> {
     bg.g.destroy();
     await sleep(sc, 180);
   } finally {
+    void crestLight.fadeOut(140);
     crackle = false;
     sc.events.off('postupdate', crackleFn);
     arcCore.g.destroy();
@@ -306,6 +324,8 @@ function leaveRemains(scene: Phaser.Scene, uid: Uid, at: XY, lifeMs = 5000): Rem
   let el = 0;
   let alive = true;
   let fizzle = -1;
+  // arena v2: the static ball flickers cyan light over its tile
+  const ballLight: LightHandle = lightPool(scene, at.x, at.y, { color: PAL.cyan4, spill: PAL.cyan3, radius: 18, floorY: at.y + 14, air: 0.7, intensity: 0.8, anim: 'flicker', fadeIn: 120 });
   const r: Remains = {
     at,
     charge: 0,
@@ -321,6 +341,7 @@ function leaveRemains(scene: Phaser.Scene, uid: Uid, at: XY, lifeMs = 5000): Rem
   const kill = () => {
     if (!alive) return;
     alive = false;
+    void ballLight.fadeOut(160);
     scene.events.off('postupdate', upd);
     core.g.destroy();
     glow.g.destroy();
@@ -342,6 +363,7 @@ function leaveRemains(scene: Phaser.Scene, uid: Uid, at: XY, lifeMs = 5000): Rem
     const grow = E.outBack(clamp(el / 200, 0, 1));
     const R = (4 + 3 * r.charge) * grow * k;
     const y = at.y + Math.sin(el * 0.006) * 1.5;
+    ballLight.setIntensity((0.8 + 0.9 * r.charge) * k).setPosition(at.x, y, at.y + 14);
     glow.disc(at.x, y, R + 5, PAL.cyan1, 0.35);
     glow.disc(at.x, y, R + 2, PAL.cyan2, 0.5);
     core.disc(at.x, y, R, PAL.cyan3, 1);
@@ -466,6 +488,7 @@ registerCardHook('volt_lizard', 'effect', async (ctx) => {
     if (!struck) {
       struck = true;
       ball.dispose(false);
+      void lightFlash(sc, from.x, from.y, PAL.cyan4, 40, 360, { floorY: from.y + 14, ring: true, intensity: 1.2 });
       void flash(sc, 110, PAL.white, 0.35, DEPTH.OVERLAY - 2);
       void shake(sc, 200, 2);
       void panelGlow(sc, victim, [PAL.white, PAL.cyan4, PAL.cyan3, PAL.cyan2], 460);

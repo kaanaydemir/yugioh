@@ -21,14 +21,15 @@
 import Phaser from 'phaser';
 import type { GameEvent } from '../../engine/types';
 import { PAL, RAMPS } from '../../art/palette';
-import { DEPTH, type XY, unitDepth, zoneXY } from '../../view/layout';
+import { ARENA_V2, DEPTH, type XY, unitDepth, zoneXY } from '../../view/layout';
+import { lightDimFor } from '../../view/light';
 import { TEX, flash, wait } from '../../vfx/core';
 import { damageNumber } from '../../vfx/numbers';
 import { Raster, Sparks, addGlow, boltPath, explosion, floorRing, glowStroke, rr, run, setVolcanoAmbience, spriteBox } from '../../vfx/setpieces';
 import { flameAura, steamAura } from '../../duel/auras';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { fx, registerCardHook, type CinematicContext } from '../api';
-import { bg, evAt, idxOf, relax, spellOpening } from './_kit';
+import { bg, evAt, idxOf, relax, spellOpening, SHOW_FLOOR, fs, lightBeam, lightFlash } from './_kit';
 
 const ADD = Phaser.BlendModes.ADD;
 const FIRE_FX = [PAL.white, PAL.fire4, PAL.fire3, PAL.fire2, PAL.fire1] as const;
@@ -49,8 +50,13 @@ function takeStatChanges(ctx: AnyCtx): StatEv[] {
   return out;
 }
 
-/** When the lava front (BoardView crack spread, ~0.9 s Sine.Out) reaches a point `d` px away. */
+/**
+ * When the lava front (BoardView crack spread, ~0.9 s Sine.Out) reaches a point `d` px away.
+ * v2: the bigger platform's crack network spreads over the same ~0.9 s, so the front moves
+ * faster in px (tuned against films of the v2 board).
+ */
 function frontDelay(d: number): number {
+  if (ARENA_V2) return Math.round(Math.min(860, 90 + d * 1.55));
   return Math.round(Math.min(760, 110 + d * 2.1));
 }
 
@@ -69,7 +75,9 @@ async function heatUp(ctx: AnyCtx, u: MonsterUnit, e: StatEv, delay: number): Pr
   if (fire) {
     ctx.sfx('fireBurst', { volume: 0.6 });
     bg(explosion(sc, feet.x, feet.y - 3, RAMPS.fire, 0.8, unitDepth(feet.y) + 2));
-    bg(floorRing(sc, feet.x, feet.y, { r0: 6, r1: 34, ms: 360, ramp: FIRE_FX }));
+    bg(floorRing(sc, feet.x, feet.y, { r0: 6, r1: fs(34), ms: 360, ramp: FIRE_FX }));
+    // (v2) the monster bursts into flame: firelight over its tile
+    void lightFlash(sc, feet.x, feet.y - 14, PAL.fire3, fs(40), 560, { floorY: feet.y, ring: true, intensity: 1.1 });
     jobs.push(addGlow(sc, u.sprite, PAL.fire3, 480, 0.85));
     if (!u.hasAura('volcano')) u.setAura('volcano', flameAura(sc, u));
     if (u.position === 'attack') void u.play('roar');
@@ -91,6 +99,7 @@ async function heatUp(ctx: AnyCtx, u: MonsterUnit, e: StatEv, delay: number): Pr
       delay: i * 12,
     }));
     puffs.close();
+    void lightFlash(sc, b.cx, b.cy, PAL.mist, fs(28), 420, { floorY: feet.y, intensity: 0.5 });
     jobs.push(addGlow(sc, u.sprite, PAL.mist, 420, 0.7));
     if (!u.hasAura('volcano')) u.setAura('volcano', steamAura(sc, u));
   }
@@ -146,11 +155,13 @@ async function breakOldField(ctx: AnyCtx, from: XY, di: number): Promise<void> {
   // a fire-teal arc leaps from the hovering card to the old field card
   const ras = new Raster(sc, Math.min(from.x, hit.x) - 30, Math.min(from.y, hit.y) - 30, Math.abs(from.x - hit.x) + 60, Math.abs(from.y - hit.y) + 60, DEPTH.FX_TOP + 6, ADD);
   ctx.sfx('lightning', { volume: 0.6, pitch: 1.3 });
+  bg(lightBeam(sc, from, hit, PAL.fire3, 300, { width: 10, intensity: 1, shimmer: 0.8, floor: { from: { x: from.x, y: SHOW_FLOOR }, to: at } }).done);
   await run(sc, 110, (t) => {
     const pts = boltPath(from, hit, 18, 5);
     ras.draw((gr) => glowStroke(gr, pts.slice(0, Math.max(2, Math.ceil(pts.length * Math.min(1, t * 1.6)))), [PAL.fire1, PAL.fire3, PAL.teal4, PAL.white], 1, 1));
   });
   // crack: white flash, sparks, burn away
+  void lightFlash(sc, hit.x, hit.y, PAL.fire4, fs(36), 420, { floorY: at.y, ring: true, intensity: 1 });
   ctx.sfx('shatter', { volume: 0.8, pitch: 1.1 });
   ctx.sfx('groundCrack', { volume: 0.5 });
   bg(explosion(sc, hit.x, hit.y, RAMPS.fire, 0.7, DEPTH.FX + 4));
@@ -212,6 +223,7 @@ registerCardHook('volcano_arena', 'field', async (ctx) => {
     const stats = takeStatChanges(ctx);
     ctx.sfx('fieldChange', { volume: 0.5, pitch: 1.2 });
     const origin = zoneXY(ev.player, 'field', 0);
+    void lightFlash(sc, origin.x, origin.y, PAL.steel, fs(40), 600, { intensity: 0.5 });
     const jobs: Promise<unknown>[] = [board.setTheme('normal', true), setVolcanoAmbience(sc, false), wait(sc, 600)];
     for (const e of stats) {
       const u = ctx.unit(e.uid);
@@ -231,6 +243,9 @@ registerCardHook('volcano_arena', 'field', async (ctx) => {
   if (tile) bg(tile.pulse(PAL.fire4, 420));
   bg(explosion(sc, origin.x, origin.y - 4, RAMPS.fire, 1.3, unitDepth(origin.y) + 2));
   bg(flash(sc, 110, PAL.fire4, 0.28));
+  // (v2) the eruption blasts firelight over the arena; the floodlights duck under the red sky
+  void lightFlash(sc, origin.x, origin.y - 20, PAL.fire4, fs(84), 900, { floorY: origin.y, ring: true, intensity: 1.2, air: 0.5 });
+  void lightDimFor(sc, 0.35, 500, 200, 700);
   bg(ctx.focus(origin, { zoom: 1.05, ms: 140, pan: 0.2 }).then(() => wait(sc, 120)).then(() => ctx.unfocus(700)));
   const theme = board.setTheme('volcano', true, ev.player);
   bg(setVolcanoAmbience(sc, true));

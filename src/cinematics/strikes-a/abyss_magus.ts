@@ -18,19 +18,25 @@ import { DEPTH, type XY, zoneXY } from '../../view/layout';
 import type { TileCard } from '../../view/TileCard';
 import { lockOn, projectile } from '../../vfx/combat';
 import { tendril } from '../../vfx/setpieces';
+import { lightBeam, lightFlash, lightPool } from '../../view/light';
 import { fx, registerCardHook, registerStrike } from '../api';
+import { dimPulse } from '../battle/_kit';
 import type { StrikeArgs } from '../_core/types';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import {
   ADD,
+  ARENA_V2,
   E,
   RR,
   Sparks,
   TAU,
+  TK,
   animate,
   clamp,
   facing,
   clusterPoint,
+  followLight,
+  qbez,
   flavoredDeath,
   frameMs,
   glow,
@@ -49,6 +55,7 @@ import {
   shatterPx,
   sleep,
   sub,
+  travelMs,
   veil,
   whiteFlash,
   type EvOf,
@@ -73,6 +80,11 @@ function chargeRunes(scene: Phaser.Scene, u: MonsterUnit, ms: number): Promise<v
   const motes = new Sparks(scene, u.sprite.depth + 0.45);
   const halo = glow(scene, 0, 0, PAL.void3, 0.3, 0, u.sprite.depth + 0.3);
   const home = u.home;
+  // arena v2: the growing orb glows violet on the marble, the sigil breathes under the caster
+  const orbLight = followLight(scene, () => orbOf(u), { color: PAL.void4, radius: 20, floorY: home.y, air: 0.9, intensity: 0.2, anim: 'breathe' });
+  orbLight.setIntensity(1.3, ms * 0.8);
+  const sigilLight = lightPool(scene, home.x, home.y, { color: PAL.void3, spill: PAL.void2, radius: 26 * TK, intensity: 0, anim: 'breathe', fadeIn: 0 });
+  sigilLight.setIntensity(0.75, ms * 0.5);
   return new Promise((resolve) => {
     onFrame(
       scene,
@@ -94,7 +106,7 @@ function chargeRunes(scene: Phaser.Scene, u: MonsterUnit, ms: number): Promise<v
           px.stamp(RUNES[i], x, y, Math.floor(el / 70 + i) % 3 === 0 ? PAL.white : PAL.void4, PAL.void4, PAL.void4, k * fade);
         }
         // void sigil on the floor: two counter-rotating dotted rings
-        const rx = 24 * k;
+        const rx = 24 * k * TK;
         for (let i = 0; i < 20; i++) {
           const a = el * 0.003 + (i / 20) * TAU;
           floor.dot(home.x + Math.cos(a) * rx, home.y + Math.sin(a) * rx * 0.45, i % 5 === 0 ? PAL.void4 : PAL.void2, 0.9 * fade);
@@ -113,6 +125,8 @@ function chargeRunes(scene: Phaser.Scene, u: MonsterUnit, ms: number): Promise<v
         floor.g.destroy();
         halo.destroy();
         motes.release();
+        void orbLight.fadeOut(120);
+        void sigilLight.fadeOut(260);
         resolve();
       },
     );
@@ -137,7 +151,7 @@ function vortexPull(scene: Phaser.Scene, s: StrikeArgs, at: XY, ms: number): { r
       t0.setTint(Math.floor(el / 50) % 2 ? PAL.void4 : 0xffffff);
     }
     floor.clear();
-    const rr = 26 * (1 - e) + 4;
+    const rr = (26 * (1 - e) + 4) * TK;
     for (let k = 0; k < 3; k++) {
       const a0 = el * 0.018 + (k * TAU) / 3;
       for (let q = 0; q < 10; q++) {
@@ -180,14 +194,33 @@ registerStrike('abyss_magus', async (s: StrikeArgs) => {
   const muzzle = orbOf(u);
   // release ring at the staff head
   void glowPulse(sc, muzzle.x, muzzle.y, PAL.void3, { from: 0.3, to: 1.2, alpha: 0.9, ms: 200, depth: DEPTH.FX + 1 });
-  const flight = clamp(len(sub(to, muzzle)) * 2.2, 180, 380);
+  // (v2's wide bridge: a long flight may take a little longer)
+  const flight = travelMs(len(sub(to, muzzle)), 0, 2.2, 180, 380, 500);
   const IMPLODE = 230;
+  // arena v2: the orb carries its violet light along the combat.darkOrb path (same curve and
+  // easing), the floor pool sliding under it; the vortex then drinks the stadium's light
+  if (ARENA_V2) void (async () => {
+    await sleep(sc, 16);
+    const mid = { x: (muzzle.x + to.x) / 2, y: (muzzle.y + to.y) / 2 - clamp(len(sub(to, muzzle)) * 0.18, 6, 22) };
+    const g0 = u.home;
+    const g1 = s.target ? s.target.home : s.toGround;
+    const fl = lightPool(sc, muzzle.x, muzzle.y, { color: PAL.void4, spill: PAL.void3, radius: 22, floorY: g0.y, air: 0.9, intensity: 1.2, anim: 'breathe', fadeIn: 40 });
+    await animate(sc, flight, (t) => {
+      const e = 0.35 * t + 0.65 * t * t;
+      const p = qbez(muzzle, mid, to, e);
+      fl.setPosition(p.x, p.y, g0.y + (g1.y - g0.y) * e);
+    });
+    fl.setIntensity(1.8, IMPLODE * 0.8).setRadius(12, 6, IMPLODE);
+    await sleep(sc, IMPLODE);
+    void fl.fadeOut(120);
+  })();
   // the world dims while the vortex drinks the light, then the void bursts
   let pull: { release(): void } | null = null;
   let dimmer: { remove(ms?: number): Promise<void> } | null = null;
   const arrive = sleep(sc, 16 + flight).then(() => {
     pull = vortexPull(sc, s, to, IMPLODE);
     dimmer = veil(sc, 0.35, IMPLODE * 0.8);
+    void dimPulse(sc, 0.75, { in: IMPLODE * 0.8, hold: IMPLODE * 0.2, out: 360 });
     void s.ctx.focus({ x: to.x, y: to.y }, { zoom: 1.08, ms: IMPLODE, pan: 0.36 });
     playSfx('darkPulse', { volume: 0.7, pitch: 0.6 });
   });
@@ -198,6 +231,7 @@ registerStrike('abyss_magus', async (s: StrikeArgs) => {
       (pull as { release(): void } | null)?.release();
       void (dimmer as { remove(ms?: number): Promise<void> } | null)?.remove(120);
       s.impact(to);
+      void lightFlash(sc, to.x, to.y, PAL.void4, s.blocked ? 34 : 52, 420, { floorY: s.target ? s.target.home.y : s.toGround.y, air: 0.7, intensity: 1.1 });
       void screenFlash(sc, PAL.void3, s.blocked ? 0.12 : 0.28, 200);
       voidCracks(sc, to, s.blocked ? 3 : 6);
     },
@@ -292,6 +326,7 @@ registerCardHook('abyss_magus', 'effect', async (ctx) => {
   void ctx.focus({ x: lerp(u ? u.core().x : cardAt.x, cardAt.x, 0.5), y: lerp(u ? u.core().y : cardAt.y, cardAt.y, 0.5) }, { zoom: 1.05, ms: 320, pan: 0.3 });
   let staffGlow: Phaser.GameObjects.Image | null = null;
   let stopGlow: (() => void) | null = null;
+  let staffLight: ReturnType<typeof lightPool> | null = null;
   if (u) {
     // the roar's burst pose (staff raised, orb blazing) is held while the abyss obeys
     void u.play('roar', { hold: true });
@@ -303,6 +338,8 @@ registerCardHook('abyss_magus', 'effect', async (ctx) => {
     sightLine(sc, o, { x: cardAt.x, y: cardAt.y - 4 });
     const g = glow(sc, o.x, o.y, PAL.void3, 0.5, 0.6, u.sprite.depth + 0.3);
     staffGlow = g;
+    void lightBeam(sc, o, { x: cardAt.x, y: cardAt.y - 4 }, PAL.void4, 520, { width: 7, intensity: 0.9, shimmer: 0.6 });
+    staffLight = lightPool(sc, o.x, o.y, { color: PAL.void4, spill: PAL.void3, radius: 22, floorY: u.home.y, air: 0.9, intensity: 1.1, anim: 'breathe' });
     stopGlow = onFrame(sc, (_dt, el) => {
       if (!g.active) return false;
       g.setScale(0.45 + (Math.floor(el / 70) % 2) * 0.08).setAlpha(0.55 + 0.25 * Math.sin(el * 0.02));
@@ -327,10 +364,14 @@ registerCardHook('abyss_magus', 'effect', async (ctx) => {
   const from = u ? u.home : zoneXY(ev.player, 'monster', 1);
   // the card stays visible over the tendril's void pool (under the risers) until it is swallowed
   const pin = tile ? onFrame(sc, () => (tile.active ? void tile.setDepth(DEPTH.SHADOW) : false)) : null;
+  // arena v2: the tendril's path glows faintly violet on the floor while it crosses
+  const path = lightBeam(sc, from, cardAt, PAL.void3, 0, { air: false, floor: { from, to: cardAt }, floorWidth: 10, intensity: 0.8, shimmer: 0.5 });
   await Promise.all([tendril(sc, from, cardAt), flip]);
+  void path.fadeOut(260);
   lock.destroy();
   // the clench: the magus lowers its staff
   stopGlow?.();
+  void staffLight?.fadeOut(200);
   if (staffGlow) {
     const g = staffGlow;
     void animate(sc, 160, (t) => g.active && g.setAlpha(0.6 * (1 - t))).then(() => g.destroy());
@@ -385,11 +426,15 @@ async function swallowCard(ctx: fx_Ctx, dEv: EvOf<'destroy'>, gEv: EvOf<'toGrave
   const motes = new Sparks(sc, DEPTH.FX + 1);
   playSfx('darkPulse', { volume: 0.9, pitch: 0.55 });
   const y0 = tile ? tile.y : at.y;
+  // arena v2: the void's rim glows violet as it opens and drinks the card
+  const rimLight = lightPool(sc, at.x, at.y, { color: PAL.void4, spill: PAL.void2, radius: 22 * TK, intensity: 0, anim: 'breathe', fadeIn: 0 });
+  rimLight.setIntensity(1.2, 160);
+  void sleep(sc, 270).then(() => rimLight.fadeOut(140));
   await animate(sc, 360, (t, el) => {
     const open = E.outBack(Math.min(1, t * 2.2));
     const close = t > 0.75 ? 1 - (t - 0.75) / 0.25 : 1;
     pool.clear();
-    const rx = 18 * open * close;
+    const rx = 18 * open * close * TK;
     pool.ellipse(at.x, at.y + 1, rx + 2, (rx + 2) * 0.45, PAL.void2, 0.5);
     pool.ellipse(at.x, at.y + 1, rx, rx * 0.45, PAL.void0, 1);
     pool.ellipse(at.x, at.y + 1.5, rx * 0.6, rx * 0.27, PAL.ink, 1);
@@ -445,7 +490,7 @@ registerCardHook('abyss_magus', 'destroyed', (ctx) =>
     let closing = 0;
     const stopPool = onFrame(sc, (dt, el) => {
       pool.clear();
-      const rx = 26 * poolK * (1 - closing);
+      const rx = 26 * poolK * (1 - closing) * TK;
       if (rx < 0.5) return !(closing >= 1);
       pool.ellipse(home.x, home.y, rx + 4, (rx + 4) * 0.45, PAL.void2, 0.55);
       pool.ellipse(home.x, home.y, rx, rx * 0.45, PAL.void0, 1);
@@ -464,6 +509,12 @@ registerCardHook('abyss_magus', 'destroyed', (ctx) =>
     // the pool opens; the orb sputters (3 flickers) and pops
     const orb = orbOf(u);
     const spark = glow(sc, orb.x, orb.y, PAL.void4, 0.4, 0.9, u.sprite.depth + 0.4);
+    // arena v2: the abyss glows violet under it; the orb's light sputters and pops
+    const abyssLight = lightPool(sc, home.x, home.y, { color: PAL.void3, spill: PAL.void2, radius: 28 * TK, intensity: 0, anim: 'breathe', fadeIn: 0 });
+    abyssLight.setIntensity(1, 300);
+    const orbLight = lightPool(sc, orb.x, orb.y, { color: PAL.void4, radius: 18, floorY: home.y, air: 0.8, intensity: 1, anim: 'flicker', fadeIn: 0 });
+    void sleep(sc, 300).then(() => orbLight.fadeOut(90));
+    void sleep(sc, 900).then(() => abyssLight.fadeOut(260));
     await animate(sc, 300, (t, el) => {
       poolK = E.outBack(Math.min(1, t * 1.6));
       spark.setAlpha(Math.floor(el / 55) % 2 ? 0.9 : 0.1).setScale(0.3 + 0.3 * t);

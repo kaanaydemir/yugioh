@@ -24,7 +24,7 @@ import { shockwave, sparkleBurst } from '../../vfx/summon';
 import { Sparks, run } from '../../vfx/setpieces';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { registerEvent } from '../api';
-import { ADD, all, beamDrop, bg, other, rnd, rr, type AnyCtx, type Ctx } from './_kit';
+import { ADD, all, beamDrop, bg, other, rnd, rr, fs, lightDim, lightFlash, type AnyCtx, type Ctx } from './_kit';
 import { CARD_BACK } from '../../art/cards';
 
 // ================================================================ deck out
@@ -45,7 +45,13 @@ registerEvent(
     const zero = pixelText(sc, at.x, at.y + 12, '0', { size: 'md', color: PAL.crim3, originX: 0.5, originY: 0.5 }).setDepth(DEPTH.FX + 10);
     ctx.sfx('uiError', { volume: 0.6 });
     ctx.sfx('darkPulse', { volume: 0.3, pitch: 1.4 });
-    const flashes = [0, 170, 340].map((d) => ctx.wait(d).then(() => v.board.flashTile(p, 'deck', 0, PAL.crim3, 260)));
+    const flashes = [0, 170, 340].map((d) =>
+      ctx.wait(d).then(() => {
+        // (v2) each red alarm flash lights the deck pad
+        void lightFlash(sc, at.x, at.y, PAL.crim3, fs(28), 240, { intensity: 0.7 });
+        return v.board.flashTile(p, 'deck', 0, PAL.crim3, 260);
+      }),
+    );
     const H = ghost.height;
     await run(sc, 560, (t, el) => {
       if (!ghost.active) return;
@@ -117,6 +123,8 @@ registerEvent(
         .filter((u) => u.player === loser && !u.retired && u.sprite.active && u.sprite.visible)
         .sort((a, b) => a.home.x - b.home.x);
       const falls = losers.map((u, i) => ctx.wait(60 + i * 140).then(() => collapse(ctx, u)));
+      // (v2) the arena dims on the defeat; the winner's beam lights it back up
+      void lightDim(sc, 0.45, 500);
       const ld = v.duelists?.get(loser);
       if (ld) {
         bg(ctx.wait(120).then(() => ld.play('defeat')));
@@ -138,6 +146,7 @@ registerEvent(
             width: 12,
             depth: wd.sprite.depth - 1,
             onHit: () => {
+              void lightDim(sc, -0.25, 700);
               ctx.sfx('holyChime', { volume: 0.6 });
               bg(wd.play('victory'));
               bg(shockwave(sc, wd.home.x, wd.home.y, { ramp: RAMPS.gold, radius: 34, ms: 460, thickness: 5 }));
@@ -155,6 +164,7 @@ registerEvent(
       if (ctx.settings.music) ctx.music.play('victory');
       await all([victory(sc, winner, { hold: 1300 }), ...falls]);
     } finally {
+      void lightDim(sc, 0, 1100);
       // a slow fade: the game-over prompt's own dim comes up under it (no bare-board flash)
       clearBanners(sc, 1100);
       bg(ctx.unfocus(700));

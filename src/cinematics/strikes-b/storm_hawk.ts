@@ -18,8 +18,10 @@ import { DEPTH, type XY, unitDepth } from '../../view/layout';
 import { wait } from '../../vfx/core';
 import { afterimages, whiteFlash } from '../../vfx/combat';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
+import { lightFlash, lightPool } from '../../view/light';
 import { registerCardHook, registerStrike } from '../api';
 import {
+  ARENA_V2,
   E,
   Sparks,
   vlerp,
@@ -42,6 +44,7 @@ import {
   seg,
   sleep,
   streakCut,
+  travelMs,
   vlen,
   vnorm,
   vsub,
@@ -198,6 +201,7 @@ async function hawkStrike(s: StrikeArgs): Promise<void> {
     s.ctx.sfx('windGust', { volume: 0.9 });
     s.ctx.sfx('whoosh', { volume: 0.6, pitch: 0.8 });
     void groundRing(sc, floor0.x, floor0.y, { r0: 6, r1: 34, ms: 380, colors: [PAL.white, PAL.teal4, PAL.teal3, PAL.teal2] });
+    void lightFlash(sc, floor0.x, floor0.y, PAL.teal3, 36, 420, { ring: true, intensity: 0.7 });
     for (let i = 0; i < 12; i++) {
       const a = rr(0, Math.PI * 2);
       leafy.add({ x: floor0.x + Math.cos(a) * 8, y: floor0.y + Math.sin(a) * 3, vx: Math.cos(a) * rr(50, 110), vy: Math.sin(a) * 30 - rr(20, 70), ay: 90, drag: 2, life: rr(400, 700), rot: rr(0, 6), vrot: rr(-10, 10), colors: [PAL.leaf3, PAL.leaf2, PAL.leaf1], shape: 'shard', size: rr(1.4, 2.2) });
@@ -217,7 +221,9 @@ async function hawkStrike(s: StrikeArgs): Promise<void> {
     const core0 = { x: home.x + rel.x, y: home.y + rel.y };
     const coreC = { x: contact.x + rel.x, y: contact.y + rel.y };
     // climb up and a little back (anticipation): the dive then has room to corkscrew down
-    const apex = s.direct ? { x: core0.x - d * 6, y: core0.y - 46 } : { x: core0.x - d * 8, y: Math.min(core0.y - 40, coreC.y - 24) };
+    // (arena v2, a far target: a lower launch — the glide below climbs on toward it)
+    const longFlight = ARENA_V2 && !s.direct && Math.abs(coreC.x - core0.x) > 90;
+    const apex = s.direct ? { x: core0.x - d * 6, y: core0.y - 46 } : longFlight ? { x: core0.x - d * 8, y: core0.y - 44 } : { x: core0.x - d * 8, y: Math.min(core0.y - 40, coreC.y - 24) };
     await animate(sc, 220, (t) => {
       const e = E.outC(t);
       const st = 1 - seg(t, 0, 0.5);
@@ -238,6 +244,23 @@ async function hawkStrike(s: StrikeArgs): Promise<void> {
       spr.anims.timeScale = 1.6;
       let prev = apex;
       await animate(sc, 400, (t) => {
+        const p = qbez(apex, ctrl, P, E.inOutQ(t));
+        place(p, tiltFor(u, vsub(p, prev), 25) * 0.6);
+        spr.setDepth(Math.max(baseDepth, tDepth) + 2);
+        prev = p;
+      });
+      spr.anims.timeScale = 1;
+      diveFrom = P;
+    } else if (longFlight) {
+      // ---- 2c. arena v2: the bridge is wide — a beating glide closes the gap, high over the
+      // floor, before the corkscrew drops on the target from close range
+      const P = { x: coreC.x - d * 34, y: Math.min(apex.y, coreC.y - 40) };
+      const ctrl = { x: (apex.x + P.x) / 2, y: Math.min(apex.y, P.y) - 16 };
+      void s.ctx.focus({ x: (apex.x + coreC.x) / 2, y: (P.y + coreC.y) / 2 }, { zoom: 1.05, ms: 360, pan: 0.3 });
+      spr.anims.timeScale = 1.7;
+      const gMs = clamp(vlen(vsub(P, apex)) * 1.9, 200, 380);
+      let prev = apex;
+      await animate(sc, gMs, (t) => {
         const p = qbez(apex, ctrl, P, E.inOutQ(t));
         place(p, tiltFor(u, vsub(p, prev), 25) * 0.6);
         spr.setDepth(Math.max(baseDepth, tDepth) + 2);
@@ -268,6 +291,9 @@ async function hawkStrike(s: StrikeArgs): Promise<void> {
     const diveAng = clamp(below - 22, -20, 48) * d;
     const R0 = s.direct ? 9 : 13;
     void afterimages(sc, spr, diveMs, PAL.teal3, { every: 30, alpha: 0.5, life: 170 });
+    // arena v2: the wind wrapped round the diving bird glows teal on the floor beneath it
+    const diveLight = lightPool(sc, start.x, start.y, { color: PAL.teal3, spill: PAL.teal2, radius: 22, floorY: groundOf(start), air: 0.45, intensity: 0.9, anim: 'sway', fadeIn: 60 });
+    diveLight.follow(() => (spr.active ? u.core() : null), { floorY: (p) => groundOf(p) });
     s.ctx.sfx('windGust', { volume: 0.55, pitch: 1.9 });
     await animate(sc, diveMs, (t) => {
       const e = 0.25 * t + 0.75 * t * t;
@@ -285,6 +311,7 @@ async function hawkStrike(s: StrikeArgs): Promise<void> {
     });
 
     // ---- 5. contact
+    void diveLight.fadeOut(220);
     spr.setPosition(contact.x, contact.y).setScale(1);
     if (s.blocked) {
       pose(u, 'hit', 0);
@@ -303,7 +330,7 @@ async function hawkStrike(s: StrikeArgs): Promise<void> {
       void playFrom(u, 'hit', 2, { hold: true });
       // wobbly return home
       const from = { x: spr.x, y: spr.y };
-      await animate(sc, 420, (t) => {
+      await animate(sc, travelMs(vlen(vsub(home, from)), 260, 1.4, 420, 420, 600), (t) => {
         const e = E.inOutQ(t);
         const p = qbez(from, { x: (from.x + home.x) / 2, y: Math.min(from.y, home.y) - 16 }, home, e);
         spr.setPosition(Math.round(p.x + Math.sin(t * 18) * 2 * (1 - t)), Math.round(p.y));
@@ -338,13 +365,14 @@ async function hawkStrike(s: StrikeArgs): Promise<void> {
       });
       // ---- 6. arc back home (f7–f9), over the monsters again on a direct attack
       const from = { x: spr.x, y: spr.y };
-      const lift = s.direct ? 70 : 40;
+      const retDist = vlen(vsub(home, from));
+      const lift = s.direct ? 70 : ARENA_V2 ? Math.max(40, Math.min(64, retDist * 0.3)) : 40;
       const ctrl = { x: (from.x + home.x) / 2 + back.x * 6, y: Math.min(from.y, home.y) - lift };
       void playFrom(u, 'attack', 7, { hold: true }).then(() => {
         if (!u.retired && spr.active) spr.play({ key: `mon:${u.cardId}:idle`, repeat: -1 });
       });
       let pv = from;
-      const retMs = s.direct ? 460 : 380;
+      const retMs = ARENA_V2 ? travelMs(retDist, 200, 1.3, s.direct ? 460 : 380, s.direct ? 460 : 380, 600) : s.direct ? 460 : 380;
       await animate(sc, retMs, (t) => {
         const e = E.inOutQ(t);
         const p = qbez(from, ctrl, home, e);

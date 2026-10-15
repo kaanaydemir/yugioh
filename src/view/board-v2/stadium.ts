@@ -1,22 +1,26 @@
 // Arena v2 stadium runtime: everything around the platform that lives and moves — the night sky
 // (twinkling stars, drifting clouds, sweeping searchlights), the packed crowd (bobbing frames,
-// waving flags, rippling banners, blinking phone lights, camera flashes, a roving follow spot),
-// the LED boards and the scoreboard (scrolling pixel text), the six floodlight banks, camera
-// drones on the sidelines, referee light pylons on the corners, maintenance lights.
+// hand flags, waving flags, rippling banners, blinking phone lights, camera flashes, a roving
+// follow spot, and reactions: cheers, gasps, roars, a wave running round both stands), the LED
+// boards and the scoreboard, the six floodlight banks, camera drones on the sidelines, referee
+// light pylons on the corners, the players' booth and the maintenance lights.
 
 import Phaser from 'phaser';
 import { AK2, BEACON_FRAMES, CLOUD_H, CLOUD_W, CROWD_FRAMES, SKY_RECT, STAD_RECT, arenaV2Layout, texOrigin2 } from '../../art/arena-v2';
 import { PYLONS, TOWERS } from '../../art/arena-v2/geom';
-import { BANNER_FRAMES, BANNER_LEN, FLAG_FRAMES, FLAG_H, PYLON_H, PYLON_LAMP, PYLON_W, SCORE_CABLE, SCORE_SCREEN } from '../../art/arena-v2/props';
-import { type LedBoard, ledText, roofPoint } from '../../art/arena-v2/stands';
+import { BANNER_FRAMES, BANNER_LEN, FLAG_FRAMES, FLAG_H, FLAG_S_FRAMES, FLAG_S_H, PYLON_H, PYLON_LAMP, PYLON_W } from '../../art/arena-v2/props';
+import { CROWD_UP_FRAMES, roofPoint } from '../../art/arena-v2/stands';
 import { PAL, PLAYER_COLOR } from '../../art/palette';
 import { mix, mulberry32 } from '../../art/pixel';
 import type { PlayerId } from '../../engine/types';
 import { TEX } from '../../vfx/core';
-import { type BoardCtx, D2 } from './types';
+import { LIGHT_TEX, LT } from '../light/textures';
+import { LedBoards, Scoreboard } from './led';
+import { type BoardCtx, type CrowdReaction, D2 } from './types';
 
 type Img = Phaser.GameObjects.Image;
 const ADD = Phaser.BlendModes.ADD;
+const SCREEN = Phaser.BlendModes.SCREEN;
 
 /** Parallax scroll factors of the far layers (the stadium itself is the iso world, factor 1). */
 const SF = { sky: 0.2, clouds: 0.3 } as const;
@@ -42,17 +46,16 @@ interface Drone {
   y: number;
 }
 
-interface Led {
-  board: LedBoard;
-  mask: Uint8Array;
-  tex: Phaser.Textures.CanvasTexture;
-  ctx: CanvasRenderingContext2D;
-  data: ImageData;
+interface Chunk {
   img: Img;
-  mode: 'text' | 'chase' | 'flag';
-  text: { w: number; h: number; bits: Uint8Array; start: Int16Array };
-  offset: number;
-  color: PlayerId | null;
+  stand: 0 | 1;
+  a: number;
+  /** order around both stands (left far end → back corner → right far end), 0..1 */
+  ring: number;
+  /** until when (board time) this chunk shows an "up" set, and which */
+  upUntil: number;
+  upSet: '0' | '1' | 'a';
+  upPhase: number;
 }
 
 export class Stadium {
@@ -60,38 +63,37 @@ export class Stadium {
   private clouds: Phaser.GameObjects.TileSprite[] = [];
   private stars: Star[] = [];
   private search: { img: Img; base: number; amp: number; period: number; phase: number; tint: number }[] = [];
-  private stadium: Img;
   private stadiumHot: Img;
-  private crowd: Img;
-  private flags: { img: Img; side: PlayerId; design: number; phase: number; speed: number }[] = [];
+  private chunks: Chunk[] = [];
+  private flags: { img: Img; side: PlayerId; design: number; phase: number; speed: number; small: boolean }[] = [];
   private banners: { img: Img; side: PlayerId; design: number; phase: number }[] = [];
-  private phones: { img: Img; on: number; next: number }[] = [];
+  private phones: { img: Img; on: number; next: number; side: PlayerId }[] = [];
   private roofLights: { img: Img; phase: number }[] = [];
   private lamps: { lit: Img; glow: Img; halo: Img }[] = [];
-  private floorPools: Img[] = [];
   private followSpots: { img: Img; stand: 0 | 1; phase: number }[] = [];
-  private leds: Led[] = [];
-  private scoreTex: Phaser.Textures.CanvasTexture;
-  private scoreCtx: CanvasRenderingContext2D;
-  private scoreData: ImageData;
-  private scoreText = ledText('NEON DÜELLO');
-  private scoreOffset = 0;
+  private leds: LedBoards;
+  private score: Scoreboard;
   private drones: Drone[] = [];
   private pylons: { lamp: Img; glow: Img; phase: number }[] = [];
   private blinkers: { img: Img; phase: number; rate: number; color: number }[] = [];
+  private booth: Phaser.GameObjects.Graphics;
+  private boothLeds: { x: number; y: number }[];
   private flashClock = 0;
-  private stepClock = 0;
   private crowdClock = 0;
   private crowdFrame = 0;
   private excite = 0;
+  /** gasp: the stands dim and the crowd holds still */
+  private hush = 0;
+  private phoneBurst = 0;
   private active: PlayerId | null = null;
-  private keys: string[] = [];
   private readonly r = mulberry32(99);
 
   constructor(private readonly ctx: BoardCtx & { id: number }) {
     const sc = ctx.scene;
     const L = arenaV2Layout();
     const add = <T extends Phaser.GameObjects.GameObject>(o: T) => ctx.add(o);
+    const soft = (x: number, y: number, w: number, h: number, blend: number, depth: number) =>
+      add(sc.add.image(x, y, LT.radial).setScale(w / LIGHT_TEX, h / LIGHT_TEX).setBlendMode(blend).setDepth(depth));
 
     // ---- sky
     add(sc.add.image(SKY_RECT.x, SKY_RECT.y, AK2.sky).setOrigin(0).setDepth(D2.sky).setScrollFactor(SF.sky));
@@ -126,25 +128,31 @@ export class Stadium {
       this.search.push({ img, base, amp, period, phase: i * 0.27, tint });
     });
 
-    // ---- stadium (floor, stands, roof, masts) + crowd
-    this.stadium = add(sc.add.image(STAD_RECT.x, STAD_RECT.y, AK2.stadium).setOrigin(0).setDepth(D2.stadium));
+    // ---- stadium (floor, stands, roof, masts) + the lava-lit version + the crowd chunks
+    add(sc.add.image(STAD_RECT.x, STAD_RECT.y, AK2.stadium).setOrigin(0).setDepth(D2.stadium));
     this.stadiumHot = add(sc.add.image(STAD_RECT.x, STAD_RECT.y, AK2.stadiumHot).setOrigin(0).setDepth(D2.stadiumHot).setAlpha(0));
-    const co = texOrigin2(AK2.crowd);
-    this.crowd = add(sc.add.image(co.x, co.y, AK2.crowd, '0').setOrigin(0).setDepth(D2.crowd));
+    const maxA = Math.max(...L.crowd.map((c) => c.a));
+    for (const ch of L.crowd) {
+      const img = add(sc.add.image(ch.x, ch.y, ch.key, 'i0').setOrigin(0).setDepth(D2.crowd));
+      // left stand: far end (ring 0) → back corner (0.5); right stand: corner (0.5) → far end (1)
+      const ring = ch.stand === 0 ? 0.5 - (0.5 * ch.a) / maxA : 0.5 + (0.5 * ch.a) / maxA;
+      this.chunks.push({ img, stand: ch.stand, a: ch.a, ring, upUntil: -1, upSet: 'a', upPhase: 0 });
+    }
     for (const f of L.stands.flags) {
-      const img = add(sc.add.image(f.x - 1, f.y - FLAG_H + 1, AK2.flags, `${f.side}:${f.design}:0`).setOrigin(0).setDepth(D2.flags + f.row * -0.001));
-      this.flags.push({ img, side: f.side, design: f.design, phase: f.phase, speed: 95 + this.r() * 40 });
+      const img = f.small
+        ? add(sc.add.image(f.x, f.y - FLAG_S_H + 1, AK2.flagsSmall, `${f.side}:0`).setOrigin(0).setDepth(D2.flags + f.row * -0.001))
+        : add(sc.add.image(f.x - 1, f.y - FLAG_H + 1, AK2.flags, `${f.side}:${f.design}:0`).setOrigin(0).setDepth(D2.flags + f.row * -0.001));
+      this.flags.push({ img, side: f.side, design: f.design, phase: f.phase, speed: 95 + this.r() * 40, small: f.small });
     }
     for (const b of L.stands.banners) {
       const key = b.stand === 0 ? AK2.bannersL : AK2.bannersR;
       const y = b.stand === 0 ? b.y - BANNER_LEN / 2 : b.y;
-      const x = b.stand === 0 ? b.x : b.x;
-      const img = add(sc.add.image(x, y, key, `${b.side}:${b.design}:0`).setOrigin(0).setDepth(D2.flags + 0.1));
+      const img = add(sc.add.image(b.x, y, key, `${b.side}:${b.design}:0`).setOrigin(0).setDepth(D2.flags + 0.1));
       this.banners.push({ img, side: b.side, design: b.design, phase: Math.floor(this.r() * BANNER_FRAMES) });
     }
     for (const ph of L.stands.phones) {
       const img = add(sc.add.image(ph.x, ph.y, TEX.px1).setDepth(D2.phones).setTint(this.r() < 0.6 ? PAL.white : ph.side === 0 ? PAL.cyan4 : PAL.crim4).setAlpha(0));
-      this.phones.push({ img, on: 0, next: this.r() * 3000 });
+      this.phones.push({ img, on: 0, next: this.r() * 3000, side: ph.side });
     }
     for (const rl of L.stands.roofLights) {
       const img = add(sc.add.image(rl.x, rl.y, TEX.px1).setDepth(D2.phones).setTint(PAL.gold4));
@@ -152,60 +160,28 @@ export class Stadium {
     }
     // roving follow spots over each stand's crowd
     for (const stand of [0, 1] as const) {
-      const img = add(sc.add.image(0, 0, AK2.poolCore).setDepth(D2.spot).setBlendMode(ADD).setScale(0.55, 0.42));
+      const img = soft(0, 0, 70, 40, SCREEN, D2.spot);
       this.followSpots.push({ img, stand, phase: stand * 0.37 });
     }
-    // floodlight spill on the floor around the platform
-    for (const [x, y, s] of [
-      [70, 250, 1.0],
-      [590, 262, 1.0],
-      [140, 92, 0.8],
-      [520, 112, 0.8],
-    ] as const) {
-      const img = add(sc.add.image(x, y, AK2.pool).setDepth(D2.floorPool).setBlendMode(ADD).setScale(s * 0.9, s * 0.9));
-      this.floorPools.push(img);
-    }
 
-    // ---- floodlight banks (lit lamps shine through the lights-off darkness)
+    // ---- floodlight banks (lit lamps shine through the lights-off darkness): a smooth halo
     const to = texOrigin2(AK2.towers);
     add(sc.add.image(to.x, to.y, AK2.towers).setOrigin(0).setDepth(D2.towers));
     TOWERS.forEach((t, i) => {
-      const halo = add(sc.add.image(t.x, t.y, AK2.pool).setDepth(D2.lamps - 0.05).setBlendMode(ADD).setScale(0.34, 0.4));
+      const halo = soft(t.x, t.y, 120, 74, ADD, D2.lamps - 0.05);
       const lo = L.lampOrigins[i];
       const lit = add(sc.add.image(lo.x, lo.y, AK2.lampLit(i)).setOrigin(0).setDepth(D2.lamps));
-      const glow = add(sc.add.image(t.x, t.y, 'arena:glow').setDepth(D2.lamps + 0.05).setBlendMode(ADD).setScale(1.15, 0.85));
+      const glow = soft(t.x, t.y, 40, 26, ADD, D2.lamps + 0.05);
       this.lamps.push({ lit, glow, halo });
     });
 
-    // ---- LED boards on the stand walls
-    L.stands.boards.forEach((board, i) => {
-      const key = `arena2:led:${ctx.id}:${i}`;
-      this.keys.push(key);
-      if (sc.textures.exists(key)) sc.textures.remove(key);
-      const cv = document.createElement('canvas');
-      cv.width = board.w;
-      cv.height = board.h;
-      const c2 = cv.getContext('2d', { willReadFrequently: true })!;
-      const tex = sc.textures.addCanvas(key, cv)!;
-      const img = add(sc.add.image(board.x, board.y, key).setOrigin(0).setDepth(D2.led));
-      const modes: Led['mode'][] = ['text', 'chase', 'text', 'text', 'flag', 'text'];
-      this.leds.push({ board, mask: L.boardMasks[i], tex, ctx: c2, data: c2.createImageData(board.w, board.h), img, mode: modes[i % modes.length], text: ledText(' NEON DÜELLO • '), offset: i * 37, color: board.stand === 0 ? 0 : 1 });
-    });
+    // ---- LED boards on the stand walls + the scoreboard (letters as images: no repaints)
+    this.leds = new LedBoards(ctx);
+    this.score = new Scoreboard(ctx);
 
-    // ---- scoreboard hung above the left stand, between the towers
-    const sbx = 68;
-    const sby = 20 - SCORE_CABLE;
-    add(sc.add.image(sbx, sby, AK2.scoreboard).setOrigin(0).setDepth(D2.led));
-    const skey = `arena2:score:${ctx.id}`;
-    this.keys.push(skey);
-    if (sc.textures.exists(skey)) sc.textures.remove(skey);
-    const scv = document.createElement('canvas');
-    scv.width = SCORE_SCREEN.w;
-    scv.height = SCORE_SCREEN.h;
-    this.scoreCtx = scv.getContext('2d', { willReadFrequently: true })!;
-    this.scoreTex = sc.textures.addCanvas(skey, scv)!;
-    this.scoreData = this.scoreCtx.createImageData(SCORE_SCREEN.w, SCORE_SCREEN.h);
-    add(sc.add.image(sbx + SCORE_SCREEN.x, sby + SCORE_CABLE + SCORE_SCREEN.y, skey).setOrigin(0).setDepth(D2.led + 0.01));
+    // ---- the players' booth's team LED strip (a slow crimson chase)
+    this.boothLeds = L.stands.boothLeds.slice().sort((p, q) => p.x - q.x);
+    this.booth = add(sc.add.graphics()).setDepth(D2.stadium + 0.6).setBlendMode(ADD);
 
     // ---- drones on the sidelines
     const dr: [number, number, number, number, number, number][] = [
@@ -221,13 +197,13 @@ export class Stadium {
       this.drones.push({ body, red, green, cx, cy, ax, ay, w, phase: i * 1.9, x: cx, y: cy });
     });
 
-    // ---- referee light pylons on the platform corners (beacon shows whose turn it is)
+    // ---- referee light pylons (beacon shows whose turn it is)
     PYLONS.forEach((p, i) => {
       add(sc.add.image(p.x - Math.floor(PYLON_W / 2), p.y - PYLON_H + 2, AK2.pylon).setOrigin(0).setDepth(D2.props));
       const lx = p.x - Math.floor(PYLON_W / 2) + PYLON_LAMP.x - 2;
       const ly = p.y - PYLON_H + 2 + PYLON_LAMP.y - 4 + 1;
       const lamp = add(sc.add.image(lx, ly, AK2.beacon, '0').setOrigin(0).setDepth(D2.props + 0.01));
-      const glow = add(sc.add.image(lx + 2, ly + 4, 'arena:glow').setDepth(D2.props + 0.02).setBlendMode(ADD).setScale(0.45));
+      const glow = soft(lx + 2, ly + 4, 22, 22, ADD, D2.props + 0.02);
       this.pylons.push({ lamp, glow, phase: i * 0.25 });
     });
 
@@ -241,34 +217,79 @@ export class Stadium {
       const img = add(sc.add.image(f.x, f.y, TEX.px1).setDepth(D2.stadium + 0.5).setTint(PAL.leaf3));
       this.blinkers.push({ img, phase: this.r() * 10, rate: 1.2, color: PAL.leaf3 });
     });
-    this.paintScore();
+    this.setActive(null, null);
   }
 
   // ================================================================ hooks from the board
 
   setActive(player: PlayerId | null, turn: number | null): void {
     this.active = player;
-    const who = player === null ? '' : player === 0 ? 'OYUNCU 1' : 'OYUNCU 2';
-    const parts = ['NEON DÜELLO'];
-    if (turn !== null) parts.push(`TUR ${turn}`);
-    if (player !== null) parts.push(`SIRA: ${who}`);
-    this.scoreText = ledText(` ${parts.join(' • ')} •`);
-    for (const l of this.leds) {
-      if (l.mode !== 'text') continue;
-      const own = l.board.stand === 0 ? 'OYUNCU 1' : 'OYUNCU 2';
-      l.text = ledText(l.board.x < 200 && l.board.stand === 0 ? ` NEON DÜELLO • ${turn !== null ? `TUR ${turn} • ` : ''}` : ` ${own} • NEON DÜELLO • `);
-    }
+    this.score.setTurn(turn, player);
+    this.leds.setTexts(` NEON DÜELLO • ${turn !== null ? `TUR ${turn} • ` : ''}`, (stand) => ` ${stand === 0 ? 'OYUNCU 1' : 'OYUNCU 2'} • NEON DÜELLO • `);
   }
 
-  /** A side scores the turn: the crowd jumps, flashes pop, a confetti cannon fires. */
-  cheer(player: PlayerId): void {
-    this.excite = 1;
+  setScore(lp0: number, lp1: number): void {
+    this.score.setScore(lp0, lp1);
+  }
+
+  scoreFlash(text: string, color: number | null, ms: number): void {
+    this.score.flash(text, color, ms);
+  }
+
+  /**
+   * The crowd reacts. 'cheer': that side's fans jump with their arms up, flags at 2×, flashes and
+   * phone lights; 'gasp': phones up, the stands dim and hold still for a beat; 'roar': everyone
+   * up, a wave around both stands, both confetti cannons.
+   */
+  crowd(kind: CrowdReaction, side: PlayerId | null, power = 1): void {
     const c = this.ctx;
-    void c.run(1400, (k) => (this.excite = 1 - k), 'Quad.In');
-    for (let i = 0; i < 6; i++) void c.run(1, () => this.cameraFlash(player), 'Linear', i * 90);
-    // a confetti cannon from that side's stand corner
+    const k = Math.max(0.4, Math.min(2, power));
+    const now = c.t;
+    if (kind === 'gasp') {
+      void c.run(260, (v) => (this.hush = Math.max(this.hush, v)), 'Quad.Out').then(() => c.run(700 * k, (v) => (this.hush = Math.min(this.hush, 1 - v)), 'Quad.In', 420 * k));
+      this.phoneBurst = Math.max(this.phoneBurst, 1400 * k);
+      return;
+    }
+    this.excite = 1;
+    void c.run(1400 * k, (v) => (this.excite = Math.max(0, 1 - v)), 'Quad.In');
+    const set: '0' | '1' | 'a' = kind === 'roar' || side === null ? 'a' : side === 0 ? '0' : '1';
+    const dur = 620 * k;
+    if (kind === 'roar') {
+      // everyone up, then a wave runs around both stands
+      for (const ch of this.chunks) {
+        ch.upUntil = now + dur;
+        ch.upSet = 'a';
+        ch.upPhase = Math.floor(this.r() * CROWD_UP_FRAMES);
+      }
+      const waveMs = 1500;
+      for (const ch of this.chunks) {
+        const at = dur + ch.ring * waveMs;
+        void c.run(1, () => {
+          ch.upUntil = c.t + 300;
+          ch.upSet = 'a';
+        }, 'Linear', at);
+      }
+      this.cannon(0, 22);
+      this.cannon(1, 22);
+      this.phoneBurst = Math.max(this.phoneBurst, 2200);
+    } else {
+      for (const ch of this.chunks) {
+        ch.upUntil = now + dur * (0.85 + this.r() * 0.3);
+        ch.upSet = set;
+        ch.upPhase = Math.floor(this.r() * CROWD_UP_FRAMES);
+      }
+      this.phoneBurst = Math.max(this.phoneBurst, 900 * k);
+      if (side !== null && k >= 0.8) this.cannon(side, Math.round(12 * k));
+    }
+    const flashes = Math.round((kind === 'roar' ? 14 : 7) * k);
+    for (let i = 0; i < flashes; i++) void c.run(1, () => this.cameraFlash(side ?? (this.r() < 0.5 ? 0 : 1)), 'Linear', i * 70);
+  }
+
+  /** A confetti cannon from a side's stand corner. */
+  private cannon(player: PlayerId, n: number): void {
+    const c = this.ctx;
     const [x, y] = player === 0 ? roofPoint(0, 3.2) : roofPoint(1, 3.2);
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < n; i++) {
       const p = c.spawn('confetti', Math.round(x + (c.rnd() - 0.5) * 40), Math.round(y + 10 + c.rnd() * 30), [PAL.gold3, PAL.white, PLAYER_COLOR[player], PAL.gold4][i % 4]);
       if (p) {
         p.vy = 10 + c.rnd() * 10;
@@ -281,14 +302,22 @@ export class Stadium {
   /** A floodlight bank "pops" on (setLights intro). */
   lampPop(i: number): void {
     const t = TOWERS[i];
-    const g = this.ctx.add(this.ctx.scene.add.image(t.x, t.y, 'arena:glow').setDepth(D2.lamps + 0.1).setBlendMode(ADD).setTint(PAL.gold4).setScale(2.2));
-    void this.ctx.run(420, (k) => g.setAlpha(1 - k).setScale(2.2 - k * 1.2), 'Quad.Out').then(() => this.ctx.remove(g));
+    const sc = this.ctx.scene;
+    const g = this.ctx.add(sc.add.image(t.x, t.y, LT.radial).setDepth(D2.lamps + 0.1).setBlendMode(ADD).setTint(PAL.gold4));
+    void this.ctx
+      .run(
+        420,
+        (k) => {
+          const s = (150 - k * 80) / LIGHT_TEX;
+          g.setAlpha(0.9 * (1 - k)).setScale(s, s * 0.7);
+        },
+        'Quad.Out',
+      )
+      .then(() => this.ctx.remove(g));
   }
 
   destroy(): void {
-    const sc = this.ctx.scene;
-    for (const k of this.keys) if (sc.textures.exists(k)) sc.textures.remove(k);
-    this.keys = [];
+    /* every texture here is boot-built and shared; images go with the board's objects */
   }
 
   // ================================================================ tick
@@ -299,34 +328,43 @@ export class Stadium {
     this.skyHot.setAlpha(heat).setVisible(heat > 0.001);
     this.clouds.forEach((c, i) => {
       c.tilePositionX = Math.round(t * (i ? 0.0021 : 0.0034)) % CLOUD_W;
-      c.setTint(mix(PAL.white, PAL.fire2, heat));
+      c.setTint(mix(PAL.white, PAL.crim4, heat * 0.4));
     });
     for (const s of this.stars) {
       const v = 0.5 + 0.5 * Math.sin(t * s.speed + s.phase);
-      s.img.setFrame(String(Math.min(s.maxFrame, Math.floor(v * (s.maxFrame + 0.999))))).setAlpha((0.45 + 0.55 * v) * (1 - 0.75 * heat));
+      s.img.setFrame(String(Math.min(s.maxFrame, Math.floor(v * (s.maxFrame + 0.999))))).setAlpha((0.45 + 0.55 * v) * (1 - 0.3 * heat));
     }
     for (const s of this.search) {
       const ang = s.base + s.amp * Math.sin((t / s.period + s.phase) * Math.PI * 2);
-      s.img.setRotation(ang).setAlpha(light * (0.16 + 0.04 * Math.sin(t / 900 + s.phase * 7)) * (1 - 0.4 * heat)).setTint(mix(s.tint, PAL.fire3, heat));
+      s.img.setRotation(ang).setAlpha(light * (0.16 + 0.04 * Math.sin(t / 900 + s.phase * 7)) * (1 - 0.4 * heat)).setTint(mix(s.tint, PAL.fire3, heat * 0.6));
     }
 
-    // stadium + crowd
+    // stadium + crowd: lava light from the platform warms the walls and the lower tiers
     this.stadiumHot.setAlpha(heat).setVisible(heat > 0.001);
-    // the crowd's frames: a calm loop, twice as fast when cheering
-    this.crowdClock += dt * (1 + this.excite * 1.4);
+    this.crowdClock += dt * (1 + this.excite * 1.4) * (1 - 0.85 * this.hush);
     if (this.crowdClock >= 120) {
       this.crowdClock %= 120;
-      this.crowdFrame = (this.crowdFrame + 1) % CROWD_FRAMES;
-      this.crowd.setFrame(String(this.crowdFrame));
+      this.crowdFrame = (this.crowdFrame + 1) % (CROWD_FRAMES * CROWD_UP_FRAMES);
     }
-    // lava light from below: the crowd darkens to silhouettes with an ember rim (no hue tint:
-    // a warm multiply would turn the cyan fans green)
-    this.crowd.setTint(mix(PAL.white, PAL.stone3, heat * 0.55));
+    // a smooth warm multiply tint under the volcano (no checker), a dim when the crowd gasps
+    const dim = 1 - 0.38 * this.hush;
+    const warm = mix(PAL.white, PAL.fire2, 0.3 * heat);
+    const tint = mix(PAL.ink, warm, dim);
+    for (const ch of this.chunks) {
+      const up = t < ch.upUntil;
+      const f = up ? `u${ch.upSet}:${(this.crowdFrame + ch.upPhase) % CROWD_UP_FRAMES}` : `i${this.crowdFrame % CROWD_FRAMES}`;
+      if (ch.img.frame.name !== f) ch.img.setFrame(f);
+      ch.img.setTint(tint);
+    }
     for (const f of this.flags) {
-      const fr = Math.floor((t * (1 + this.excite)) / f.speed + f.phase) % FLAG_FRAMES;
-      f.img.setFrame(`${f.side}:${f.design}:${fr}`);
+      const speed = (1 + this.excite) * (1 - 0.7 * this.hush);
+      const fr = Math.floor((t * speed) / f.speed + f.phase);
+      f.img.setFrame(f.small ? `${f.side}:${fr % FLAG_S_FRAMES}` : `${f.side}:${f.design}:${fr % FLAG_FRAMES}`);
+      f.img.setTint(tint);
     }
     for (const b of this.banners) b.img.setFrame(`${b.side}:${b.design}:${(Math.floor(t / 170) + b.phase) % BANNER_FRAMES}`);
+    this.phoneBurst = Math.max(0, this.phoneBurst - dt);
+    const burst = this.phoneBurst > 0;
     for (const ph of this.phones) {
       ph.next -= dt;
       if (ph.next <= 0) {
@@ -334,7 +372,7 @@ export class Stadium {
         ph.next = ph.on ? 400 + this.r() * 2600 : 600 + this.r() * 4000 * (1 - this.excite * 0.7);
       }
       const tw = 0.75 + 0.25 * Math.sin(t / 90 + ph.next);
-      ph.img.setAlpha(ph.on * tw);
+      ph.img.setAlpha((burst ? 1 : ph.on) * tw);
     }
     for (const rl of this.roofLights) rl.img.setAlpha(0.55 + 0.45 * Math.sin(t / 700 + rl.phase));
     for (const fs of this.followSpots) {
@@ -342,16 +380,15 @@ export class Stadium {
       const k = 0.5 - 0.5 * Math.cos((t / 7000 + fs.phase) * Math.PI * 2);
       const x = L.a[0] + (L.b[0] - L.a[0]) * k;
       const y = L.a[1] + (L.b[1] - L.a[1]) * k;
-      fs.img.setPosition(Math.round(x), Math.round(y)).setAlpha(light * 0.14 * (1 - heat)).setTint(fs.stand === 0 ? PAL.cyan4 : PAL.crim4);
+      fs.img.setPosition(Math.round(x), Math.round(y)).setAlpha(light * 0.16 * (1 - heat) * dim).setTint(fs.stand === 0 ? PAL.cyan4 : PAL.crim4);
     }
-    for (const fp of this.floorPools) fp.setAlpha(light * 0.07 * (1 - 0.5 * heat)).setTint(mix(PAL.white, PAL.fire3, heat));
 
     // floodlight banks
     this.lamps.forEach((l, i) => {
       const lvl = towerLevel[i];
       l.lit.setAlpha(lvl).setTint(mix(PAL.white, PAL.fire4, heat));
-      l.glow.setAlpha(lvl * (0.55 + 0.05 * Math.sin(t / 300 + i))).setTint(mix(PAL.gold4, PAL.fire3, heat));
-      l.halo.setAlpha(lvl * 0.22).setTint(mix(PAL.white, PAL.fire3, heat));
+      l.glow.setAlpha(lvl * (0.5 + 0.06 * Math.sin(t / 300 + i))).setTint(mix(PAL.gold4, PAL.fire3, heat));
+      l.halo.setAlpha(lvl * 0.24).setTint(mix(PAL.white, PAL.fire3, heat));
     });
 
     // camera flashes in the stands
@@ -361,16 +398,20 @@ export class Stadium {
       this.cameraFlash(this.r() < 0.5 ? 0 : 1);
     }
 
-    // LED boards + scoreboard: scroll 2px along the wall every 90ms
-    this.stepClock += dt;
-    if (this.stepClock >= 90) {
-      this.stepClock %= 90;
-      for (const l of this.leds) {
-        l.offset += 2;
-        this.paintLed(l, t, heat);
+    this.leds.tick(dt, heat);
+    this.score.tick(dt, t, heat);
+
+    // the players' booth strip: a slow crimson chase
+    const g = this.booth;
+    g.clear();
+    const n = this.boothLeds.length;
+    for (let i = 0; i < n; i++) {
+      const q = this.boothLeds[i];
+      const ph = (((q.x - t * 0.02) % 16) + 16) % 16;
+      if (ph < 5) {
+        g.fillStyle(heat > 0.5 ? PAL.fire3 : ph < 1 ? PAL.crim4 : PAL.crim3, ph < 1 ? 0.9 : 0.6);
+        g.fillRect(q.x, q.y, 1, 1);
       }
-      this.scoreOffset += 1;
-      this.paintScore();
     }
 
     // drones: slow patrol loops, bob, tilt into the direction of travel, blinking nav lights
@@ -394,7 +435,7 @@ export class Stadium {
     for (const p of this.pylons) {
       const f = Math.floor(t / 85 + p.phase * BEACON_FRAMES) % BEACON_FRAMES;
       p.lamp.setFrame(String(f)).setTint(col);
-      p.glow.setTint(col).setAlpha(f === 1 || f === 2 ? 0.75 : 0.4);
+      p.glow.setTint(col).setAlpha(f === 1 || f === 2 ? 0.55 : 0.28);
     }
     for (const b of this.blinkers) {
       const v = Math.sin(t * 0.004 * b.rate + b.phase);
@@ -410,14 +451,15 @@ export class Stadium {
     const x = Math.round(L.a[0] + (L.b[0] - L.a[0]) * k + (this.r() - 0.5) * 20);
     const y = Math.round(L.a[1] + (L.b[1] - L.a[1]) * k + (this.r() - 0.5) * 40);
     const c = this.r() < 0.75 ? PAL.white : PAL.gold4;
-    const star = this.ctx.add(this.ctx.scene.add.image(x, y, TEX.spark).setDepth(D2.phones).setBlendMode(ADD).setTint(c));
-    const glow = this.ctx.add(this.ctx.scene.add.image(x, y, 'arena:glow').setDepth(D2.phones).setBlendMode(ADD).setTint(c).setScale(0.35).setAlpha(0.6));
+    const sc = this.ctx.scene;
+    const star = this.ctx.add(sc.add.image(x, y, TEX.spark).setDepth(D2.phones).setBlendMode(ADD).setTint(c));
+    const glow = this.ctx.add(sc.add.image(x, y, LT.radial).setDepth(D2.phones).setBlendMode(ADD).setTint(c).setScale(18 / LIGHT_TEX).setAlpha(0.5));
     void this.ctx
       .run(
         160,
         (kk) => {
           star.setAlpha(1 - kk);
-          glow.setAlpha(0.6 * (1 - kk));
+          glow.setAlpha(0.5 * (1 - kk));
         },
         'Quad.In',
         50,
@@ -426,101 +468,5 @@ export class Stadium {
         this.ctx.remove(star);
         this.ctx.remove(glow);
       });
-  }
-
-  private paintLed(l: Led, t: number, heat: number): void {
-    const d = l.data.data;
-    d.fill(0);
-    const B = l.board;
-    const side = l.color ?? 0;
-    const hot = heat > 0.5;
-    const on = hot ? [255, 138, 30] : side === 0 ? [63, 224, 234] : [255, 77, 94];
-    const hi = hot ? [255, 218, 102] : side === 0 ? [182, 251, 255] : [255, 182, 187];
-    const dim = hot ? [56, 11, 5] : side === 0 ? [5, 50, 65] : [58, 8, 25];
-    const bg = [11, 13, 31];
-    const len = B.cols.length;
-    const put = (x: number, y: number, c: number[]) => {
-      if (x < 0 || y < 0 || x >= B.w || y >= B.h || l.mask[y * B.w + x]) return;
-      const o = (y * B.w + x) * 4;
-      d[o] = c[0];
-      d[o + 1] = c[1];
-      d[o + 2] = c[2];
-      d[o + 3] = 255;
-    };
-    // the dark LED matrix band follows the wall's slope
-    for (const col of B.cols) {
-      for (let k = 0; k < B.rows; k++) {
-        let c = (col.u + k) % 2 === 0 ? dim : bg;
-        if (l.mode === 'chase') {
-          const seg = Math.floor((col.u + l.offset) / 6) % 4;
-          if (seg === 0 && k > 0 && k < B.rows - 1) c = on;
-          else if (seg === 1 && k > 1 && k < B.rows - 2) c = dim;
-        } else if (l.mode === 'flag') {
-          const w = Math.sin((col.u / len) * Math.PI * 4 - t / 300) * 1.5;
-          if (k + w > 3) c = on;
-          else if (k + w > 2) c = hi;
-        }
-        put(col.x - B.x, col.y - B.y + k, c);
-      }
-    }
-    if (l.mode !== 'text') {
-      l.ctx.putImageData(l.data, 0, 0);
-      l.tex.refresh();
-      return;
-    }
-    // text: every letter stays upright; whole letters step along the slope (LED modules)
-    const tw = l.text.w;
-    const slope = B.cols.length > 1 ? (B.cols[B.cols.length - 1].y - B.cols[0].y) / (B.cols.length - 1) : 0;
-    const topAt = (i: number) => {
-      if (i >= 0 && i < B.cols.length) return B.cols[i].y;
-      return B.cols[0].y + Math.round(slope * i);
-    };
-    B.cols.forEach((col, i) => {
-      const u = (((col.u + l.offset) % tw) + tw) % tw;
-      const i0 = i - (u - l.text.start[u]);
-      const top = topAt(i0) - B.y;
-      for (let k = 0; k < B.rows; k++) if (l.text.bits[k * tw + u]) put(col.x - B.x, top + k, k < 2 ? hi : on);
-    });
-    l.ctx.putImageData(l.data, 0, 0);
-    l.tex.refresh();
-  }
-
-  private paintScore(): void {
-    const W = SCORE_SCREEN.w;
-    const H = SCORE_SCREEN.h;
-    const d = this.scoreData.data;
-    const ac = this.active === null ? [163, 177, 218] : this.active === 0 ? [63, 224, 234] : [255, 77, 94];
-    const glow = this.active === null ? [40, 53, 111] : this.active === 0 ? [8, 98, 122] : [118, 16, 48];
-    for (let y = 0; y < H; y++)
-      for (let x = 0; x < W; x++) {
-        const o = (y * W + x) * 4;
-        // dark LED matrix background with a faint grid
-        let c = (x + y) % 2 === 0 ? [18, 22, 58] : [11, 13, 31];
-        // header bar: two little team badges + a pulsing center line
-        if (y === 0 || y === H - 1) c = [27, 35, 82];
-        if (y >= 1 && y <= 6) {
-          if (x >= 2 && x <= 9) c = this.active === 0 ? [63, 224, 234] : [8, 98, 122];
-          if (x >= W - 10 && x <= W - 3) c = this.active === 1 ? [255, 77, 94] : [118, 16, 48];
-          if (x === 5 || x === 6 || x === W - 7 || x === W - 6) if (y >= 3 && y <= 4) c = [244, 247, 255];
-          // centered "VS"
-          const vs = ['#.#.##', '#.#.#.', '#.#.##', '.#...#', '.#..##'];
-          const vx = x - (Math.floor(W / 2) - 3);
-          const vy = y - 1;
-          if (vx >= 0 && vx < 6 && vy >= 0 && vy < 5 && vs[vy][vx] === '#') c = [255, 212, 71];
-        }
-        // scrolling ticker in the lower half
-        if (y >= 9 && y < 16) {
-          const tw = this.scoreText.w;
-          const u = (((x + this.scoreOffset) % tw) + tw) % tw;
-          if (this.scoreText.bits[(y - 9) * tw + u]) c = y - 9 < 2 ? [244, 247, 255] : ac;
-          else if ((x + y) % 2 === 0) c = glow.map((v) => v >> 2);
-        }
-        d[o] = c[0];
-        d[o + 1] = c[1];
-        d[o + 2] = c[2];
-        d[o + 3] = 255;
-      }
-    this.scoreCtx.putImageData(this.scoreData, 0, 0);
-    this.scoreTex.refresh();
   }
 }

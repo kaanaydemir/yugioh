@@ -15,12 +15,13 @@ import type Phaser from 'phaser';
 import { PAL } from '../../art/palette';
 import type { TileCard } from '../../view/TileCard';
 import { DEPTH, type XY, zoneXY } from '../../view/layout';
+import { lightFlash, lightPool } from '../../view/light';
 import { flash, shake, wait } from '../../vfx/core';
 import { stopTime } from '../../vfx/combat';
 import { E, Raster, Sparks, floorRing, onFrame, run, seg, tileFlash } from '../../vfx/setpieces';
 import { banner, type BannerOpts } from '../../vfx/banners';
 import { fx } from '../api';
-import { ADD, TAU, type Ctx, duelist, isSetPulse, rnd, rr } from '../battle/_kit';
+import { ADD, TAU, TK, type Ctx, arenaDim, duelist, isSetPulse, rnd, rr } from '../battle/_kit';
 
 type ActCtx = Ctx<'activate'>;
 
@@ -49,8 +50,11 @@ export function trapBurst(scene: Phaser.Scene, x: number, y: number): Promise<vo
   y = Math.round(y);
   const cy = y - 24;
   void tileFlash(scene, x, y, [...TRAP_RAMP], 420);
-  void floorRing(scene, x, y, { r0: 8, r1: 74, ms: 480, ramp: [...TRAP_RAMP], depth: DEPTH.SHADOW - 1 });
-  void floorRing(scene, x, y, { r0: 4, r1: 42, ms: 340, ramp: [PAL.mag4, PAL.mag3, PAL.mag2], depth: DEPTH.SHADOW - 1 });
+  void floorRing(scene, x, y, { r0: 8, r1: 74 * TK, ms: 480, ramp: [...TRAP_RAMP], depth: DEPTH.SHADOW - 1 });
+  void floorRing(scene, x, y, { r0: 4, r1: 42 * TK, ms: 340, ramp: [PAL.mag4, PAL.mag3, PAL.mag2], depth: DEPTH.SHADOW - 1 });
+  // arena v2: the burst floods the marble magenta (a pool + shock ring, a bloom up the column)
+  void lightFlash(scene, x, cy, PAL.mag3, 70, 650, { floorY: y, ring: true, intensity: 1.2 });
+  void lightFlash(scene, x, cy - 50, PAL.mag4, 34, 420, { floorY: y, air: 0.7, intensity: 0.8 });
   const burst = Raster.around(scene, x, cy, 220, 170, DEPTH.FX + 6);
   const column = new Raster(scene, x - 8, cy - 130, 16, 140, DEPTH.FX + 5, ADD);
   const sparks = new Sparks(scene, DEPTH.FX + 7);
@@ -103,6 +107,8 @@ export function trapBurst(scene: Phaser.Scene, x: number, y: number): Promise<vo
 /** A soft magenta aura breathing behind a standing trap card (until stopped). */
 function cardAura(scene: Phaser.Scene, tile: TileCard): () => void {
   const sp = new Sparks(scene, DEPTH.FX - 3, ADD);
+  // arena v2: the standing card glows on the floor around it
+  const glow = lightPool(scene, tile.home.x, tile.home.y - 26, { color: PAL.mag3, spill: PAL.mag2, radius: 34, floorY: tile.home.y, air: 0.45, airRadius: 22, intensity: 0.85, anim: 'breathe', fadeIn: 200 });
   let stopped = false;
   const stop = onFrame(scene, (dt) => {
     if (stopped || !tile.active || !tile.visible) {
@@ -119,6 +125,7 @@ function cardAura(scene: Phaser.Scene, tile: TileCard): () => void {
     stopped = true;
     stop();
     sp.close();
+    void glow.fadeOut(300);
   };
 }
 
@@ -145,6 +152,8 @@ export async function trapOpening(ctx: ActCtx, o: { focus?: XY } = {}): Promise<
   await wait(sc, 60);
   ctx.sfx('trapActivate', { volume: 1 });
   void trapBurst(sc, at.x, at.y);
+  // arena v2: the stadium darkens around the sprung trap (trapExit brings the floodlights back)
+  void arenaDim(sc, 0.5, 260);
   void flash(sc, 90, PAL.mag3, 0.22, DEPTH.FX_TOP + 40);
   void shake(sc, 180, 2);
   await stopTime(sc, 50);
@@ -170,6 +179,7 @@ export async function trapOpening(ctx: ActCtx, o: { focus?: XY } = {}): Promise<
 export async function trapExit(ctx: ActCtx, op: Opening): Promise<void> {
   const ev = ctx.ev;
   op.stopAura();
+  void arenaDim(ctx.scene, 0, 480);
   const gi = ctx.findType('toGraveyard', (e) => e.uid === ev.uid);
   if (gi < 0) return;
   const gEv = ctx.events[gi] as Extract<typeof ctx.events[number], { type: 'toGraveyard' }>;

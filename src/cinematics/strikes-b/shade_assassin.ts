@@ -16,8 +16,10 @@ import { PAL, RAMPS } from '../../art/palette';
 import { DEPTH, type XY, unitDepth } from '../../view/layout';
 import { shadowPuddle, sinkInto, whiteFlash, xSlash, type Puddle } from '../../vfx/combat';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
+import { lightFlash } from '../../view/light';
 import { registerCardHook, registerStrike } from '../api';
-import { E, Sparks, animate, facing, flavoredDeath, glint, glintPoint, homeSprite, impactPoint, layer, lerp, playFrom, pose, reseed, rr, sleep, vlen, vnorm, vsub, type StrikeArgs } from './_kit';
+import { dimPulse } from '../battle/_kit';
+import { E, Sparks, TK, animate, facing, flavoredDeath, glint, glintPoint, homeSprite, impactPoint, layer, lerp, playFrom, pose, reseed, rr, sleep, travelMs, vlen, vnorm, vsub, type StrikeArgs } from './_kit';
 
 /**
  * Search hint for the eye slit in attack f1 (coiled), frame px. The real point is the sprite's
@@ -51,7 +53,7 @@ async function glide(u: MonsterUnit, pud: Puddle, from: XY, to: XY, ms: number):
     trail.clear();
     for (const m of marks) {
       const age = Math.min(1, (el - m.t) / 320);
-      if (age < 1) trail.ellipse(m.x, m.y, 10 * (1 - age * 0.6), 4 * (1 - age * 0.6), PAL.void1, 0.8 * (1 - age));
+      if (age < 1) trail.ellipse(m.x, m.y, 10 * TK * (1 - age * 0.6), 4 * TK * (1 - age * 0.6), PAL.void1, 0.8 * (1 - age));
     }
     if (dt > 0)
       for (let i = 0; i < 2; i++) wisps.add({ x: p.x + rr(-8, 8), y: p.y + rr(-2, 2), vx: rr(-10, 10), vy: -rr(20, 50), drag: 1, life: rr(250, 450), colors: [PAL.void4, PAL.void3, PAL.void2], shape: 'px' });
@@ -102,6 +104,7 @@ async function shadeStrike(s: StrikeArgs): Promise<void> {
     const ef = glintPoint(u, 'attack', 1, [PAL.white], EYE_F1, 5);
     const eye = u.framePoint(ef.x, ef.y);
     void glint(sc, eye.x, eye.y, { size: 5, ms: 200, color: PAL.void4 });
+    void lightFlash(sc, eye.x, eye.y, PAL.crim3, 14, 240, { floorY: u.home.y, air: 0.9, intensity: 0.7 });
     s.ctx.sfx('darkPulse', { volume: 0.6, pitch: 1.3 });
     pud = shadowPuddle(sc, home.x, home.y, { openMs: 150 });
     await sleep(sc, 140);
@@ -111,7 +114,11 @@ async function shadeStrike(s: StrikeArgs): Promise<void> {
     // ---- the pool glides to the far side of the target
     void s.ctx.focus({ x: (home.x + hitPt.x) / 2, y: (home.y + hitPt.y) / 2 - 10 }, { zoom: 1.06, ms: 300, pan: 0.32 });
     s.ctx.sfx('whoosh', { volume: 0.55, pitch: 0.7 });
-    await glide(u, pud, home, E0, 240);
+    // arena v2: the floodlights seem to fail while he travels unseen through the shadows; v2's
+    // long bridge takes a longer glide
+    const goMs = travelMs(vlen(vsub(E0, home)), 140, 0.8, 240, 240, 420);
+    void dimPulse(sc, 0.6, { in: 120, hold: goMs, out: 300 });
+    await glide(u, pud, home, E0, goMs);
     // ---- rise behind it, facing its back (coiled)
     setFacing(u, dE < 0);
     spr.setPosition(E0.x, E0.y).setDepth(unitDepth(E0.y) + (target ? 0.5 : 0));
@@ -146,7 +153,7 @@ async function shadeStrike(s: StrikeArgs): Promise<void> {
     await sinkInto(sc, spr, { ms: 140 });
     setFacing(u, u.flipX);
     spr.setDepth(unitDepth(u.home.y));
-    await glide(u, pud, at, home, 220);
+    await glide(u, pud, at, home, travelMs(vlen(vsub(home, at)), 120, 0.75, 220, 220, 400));
     spr.setPosition(home.x, home.y);
     u.rest();
     await sinkInto(sc, spr, { ms: 140, reverse: true });

@@ -134,6 +134,17 @@ const scenarios: Record<string, Scenario> = {
   saGolemCounter: duel('Kor Kurdu hits a defending Gelgit Golemi: blocked + counter-splash 300', 'ember_wolf', def('tide_golem')),
   saGolemCounterDead: duel('Magma Titanı breaks a defending Gelgit Golemi: counter-splash from its puddle', 'magma_titan', def('tide_golem')),
   saGolemCounterP2: duel('player 2 Kristal Ejder hits player 1\'s face-down Gelgit Golemi: counter-splash', 'crystal_wyrm', def('tide_golem', false), { p2: true }),
+
+  // ---------------------------------------------------------------- the longest paths (arena v2)
+  // zone 0 → zone 0: in arena v2 the attacker crosses the whole wide bridge on the diagonal
+  // (P1 lane col 1 → P2 lane col 5, ~280 px); in v1 it is the same short cross-lane attack.
+  saWolfWide: duel('Kor Kurdu gallops across the wide bridge (zone 0 → zone 0) onto Işık Perisi', 'ember_wolf', 'lumen_sprite', { az: 0, tz: 0 }),
+  saWolfWideP2: duel('player 2 Kor Kurdu gallops across the bridge (zone 0 → zone 0) onto Taş Muhafız', 'ember_wolf', 'stone_sentinel', { az: 0, tz: 0, p2: true }),
+  saMagusWide: duel('Uçurum Küresi flies across the wide bridge (zone 0 → zone 0)', 'abyss_magus', 'ember_wolf', { az: 0, tz: 0 }),
+  saCoralWide: duel('Gelgit Mızrağı jet across the wide bridge (zone 0 → zone 0)', 'coral_serpent', 'lumen_sprite', { az: 0, tz: 0 }),
+  saGolemWide: duel('Dalga Darbesi rolls across the wide bridge (zone 0 → zone 0)', 'tide_golem', 'lumen_sprite', { az: 0, tz: 0 }),
+  saTitanWideP2: duel('player 2 Magma Titanı lumbers across the bridge (zone 0 → zone 0)', 'magma_titan', 'lumen_sprite', { az: 0, tz: 0, p2: true }),
+  saWolfWideBlocked: duel('Kor Kurdu gallops across the bridge into a defending Taş Muhafız and is knocked back', 'ember_wolf', def('stone_sentinel'), { az: 0, tz: 0 }),
 };
 
 export default scenarios;

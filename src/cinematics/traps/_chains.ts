@@ -11,7 +11,8 @@ import { DEPTH, GAME_H, GAME_W, type XY, unitDepth } from '../../view/layout';
 import { shake } from '../../vfx/core';
 import { stopTime, whiteFlash } from '../../vfx/combat';
 import { E, Raster, Sparks, floorRing, onFrame, qbez, run, spriteBox } from '../../vfx/setpieces';
-import { ADD, TAU, clamp01, lerp, rnd, rr } from '../battle/_kit';
+import { lightBeam, lightFlash, lightPool } from '../../view/light';
+import { ADD, TAU, TK, clamp01, lerp, rnd, rr } from '../battle/_kit';
 
 const GOLD = [PAL.gold2, PAL.gold3, PAL.gold4, PAL.white] as const;
 
@@ -190,8 +191,23 @@ export async function lightChains(scene: Phaser.Scene, from: XY, unit: MonsterUn
       });
     }
   };
+  // arena v2: the chains are light — a gold glow runs along them to the bound monster and a
+  // gold pool lights the floor under it (they follow it while it is hauled home)
+  const dxC = box0.cx - s.x;
+  const floorOff = unit.home.y - unit.rest0.y;
+  const bodyAt = (): XY => ({ x: s.x + dxC, y: s.y + fy(0.5) });
+  const floorFrom = { x: from.x, y: from.y + 36 };
+  const b0 = bodyAt();
+  const chainGlow = lightBeam(scene, from, b0, PAL.gold3, 0, { width: 9, intensity: 0.15, floor: { from: floorFrom, to: { x: b0.x, y: s.y + floorOff } }, floorWidth: 8, shimmer: 0.5 });
+  chainGlow.setIntensity(1.05, 230);
+  const bindGlow = lightPool(scene, b0.x, b0.y, { color: PAL.gold4, spill: PAL.mag3, radius: 30 * TK, floorY: s.y + floorOff, air: 0.5, intensity: 0, anim: 'shimmer', fadeIn: 0 });
   const stopDraw = onFrame(scene, (_dt, el) => {
     phase = Math.floor(el / 55);
+    if (s.active) {
+      const c = bodyAt();
+      chainGlow.setEnds(from, c, { from: floorFrom, to: { x: c.x, y: s.y + floorOff } });
+      bindGlow.setPosition(c.x, c.y, s.y + floorOff);
+    }
     draw();
   });
 
@@ -202,6 +218,7 @@ export async function lightChains(scene: Phaser.Scene, from: XY, unit: MonsterUn
   });
   shoot = rel.map(() => 1);
   // ---- 260–440 coil around it
+  bindGlow.setIntensity(0.8, 160);
   await run(scene, 160, (t, el) => {
     wrap = rel.map((_, i) => E.outCubic(clamp01((el - i * 22) / 120)));
     straight = E.outQuad(t) * 0.5;
@@ -211,6 +228,8 @@ export async function lightChains(scene: Phaser.Scene, from: XY, unit: MonsterUn
   locked = 1;
   o.onLock?.();
   void whiteFlash(scene, s, 2);
+  { const c = bodyAt(); void lightFlash(scene, c.x, c.y, PAL.gold4, 40, 380, { floorY: s.y + floorOff, ring: true, intensity: 1.1 }); }
+  bindGlow.setIntensity(1.2, 60);
   for (let i = 0; i < rel.length; i++) {
     const c = ringCenter(i);
     sparks.burst(7, () => ({ x: c.x + rr(-rel[i].hw, rel[i].hw), y: c.y + 3, vx: rr(-80, 80), vy: rr(-70, 0), ay: 300, drag: 2, life: rr(200, 360), ramp: [PAL.white, PAL.gold4, PAL.gold3, PAL.mag3], trail: true, tex: 'fx:px1' }));
@@ -233,10 +252,12 @@ export async function lightChains(scene: Phaser.Scene, from: XY, unit: MonsterUn
     }
   });
   if (s.active) s.setPosition(o.home.x, o.home.y);
-  void floorRing(scene, unit.home.x, unit.home.y, { r0: 8, r1: 40, ms: 360, ramp: [PAL.gold4, PAL.mag4, PAL.mag3, PAL.mag2], depth: DEPTH.SHADOW - 1 });
+  void floorRing(scene, unit.home.x, unit.home.y, { r0: 8, r1: 40 * TK, ms: 360, ramp: [PAL.gold4, PAL.mag4, PAL.mag3, PAL.mag2], depth: DEPTH.SHADOW - 1 });
   // ---- the chains stay taut a moment, then burst into light (background)
   void (async () => {
     await run(scene, 260, () => undefined);
+    void chainGlow.fadeOut(380);
+    void bindGlow.fadeOut(380);
     await run(scene, 380, (t) => {
       dissolve = E.inQuad(t);
       glow = 1 - t;
@@ -248,6 +269,8 @@ export async function lightChains(scene: Phaser.Scene, from: XY, unit: MonsterUn
       }
     });
     wrap = rel.map(() => 0);
+    chainGlow.destroy();
+    bindGlow.destroy();
     stopDraw();
     fly.destroy();
     backR.destroy();

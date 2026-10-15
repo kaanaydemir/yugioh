@@ -20,8 +20,10 @@ import { DEPTH, type XY } from '../../view/layout';
 import { shake } from '../../vfx/core';
 import { whiteFlash } from '../../vfx/combat';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
+import { lightFlash } from '../../view/light';
 import { registerCardHook, registerStrike } from '../api';
 import {
+  ARENA_V2,
   E,
   Sparks,
   animate,
@@ -40,6 +42,8 @@ import {
   reseed,
   rr,
   sleep,
+  TK,
+  travelMs,
   vlen,
   vnorm,
   vsub,
@@ -111,7 +115,7 @@ function floorCracks(scene: Phaser.Scene, x: number, y: number, o: { n?: number;
   const paths: XY[][] = [];
   for (let i = 0; i < n; i++) {
     const a = (i / n) * Math.PI * 2 + (rnd() - 0.5) * 0.6;
-    const L = (o.len ?? 16) * (0.6 + rnd() * 0.6);
+    const L = (o.len ?? 16) * (0.6 + rnd() * 0.6) * TK;
     const pts: XY[] = [{ x, y }];
     let px = x;
     let py = y;
@@ -212,6 +216,8 @@ async function sentinelStrike(s: StrikeArgs): Promise<void> {
     const ef = glintPoint(u, 'attack', 4, EYE_GLINT, EYE_HINT, 5);
     const eye = u.framePoint(ef.x, ef.y);
     void glint(sc, eye.x, eye.y, { size: 6, ms: 240, color: PAL.gold4 });
+    // arena v2: the visor's gold spark and the rune flare light the stone face for a beat
+    void lightFlash(sc, eye.x, eye.y, PAL.gold4, 22, 300, { floorY: u.home.y, air: 0.8, intensity: 0.8 });
     s.ctx.sfx('summonCharge', { volume: 0.35, pitch: 0.7 });
     await animate(sc, 150, (t, el) => {
       spr.x = home.x + (Math.floor(el / 34) % 2 ? 1 : 0);
@@ -229,8 +235,9 @@ async function sentinelStrike(s: StrikeArgs): Promise<void> {
     const dir = vnorm(vsub(hitPt, from));
     const stopAt = s.blocked ? { x: hitPt.x - dir.x * 6, y: hitPt.y - dir.y * 6 } : hitPt;
     const dist = vlen(vsub(stopAt, from));
-    const ms = clamp(dist * 4, 380, 560);
-    const arc = clamp(dist * 0.42, 26, 56);
+    // v2's long throws across the bridge: a slower, higher lob
+    const ms = travelMs(dist, 0, 4, 380, 560, 720);
+    const arc = clamp(dist * 0.42, 26, ARENA_V2 ? 84 : 56);
     // shadow from the thrower's front to the target's floor
     const g0 = { x: u.home.x + 10 * d, y: u.home.y };
     const g1 = s.direct ? s.toGround : target ? { x: target.home.x - dir.x * 6, y: target.home.y } : s.toGround;

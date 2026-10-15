@@ -16,19 +16,25 @@ import Phaser from 'phaser';
 import { PAL, RAMPS } from '../../art/palette';
 import { DEPTH, type XY } from '../../view/layout';
 import { projectile } from '../../vfx/combat';
+import { lightFlash, lightPool } from '../../view/light';
 import { fx, registerCardHook, registerStrike } from '../api';
+import { impactLight } from '../battle/_kit';
 import type { StrikeArgs } from '../_core/types';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { waterSplash } from './coral_serpent';
 import {
+  ARENA_V2,
   E,
   FloorMarks,
   frameBounds,
   RR,
   Sparks,
   TAU,
+  TK,
   animate,
+  clamp,
   effectDamage,
+  followLight,
   flavoredDeath,
   frameMs,
   glow,
@@ -74,11 +80,11 @@ function foamCrash(scene: Phaser.Scene, at: XY, ground: XY, power: number): void
     foam.add({ x: at.x + RR(-12, 12), y: at.y + RR(-6, 10), vx: RR(-8, 8), vy: RR(-40, -16), drag: 0.5, life: RR(500, 900), colors: [PAL.white, PAL.water4, PAL.water3], shape: 'ring', size: RR(1, 2.5), flicker: true });
   }
   foam.release();
-  for (let i = 0; i < 5; i++) marks.blob(ground.x + RR(-12, 12), ground.y + RR(-3, 4), RR(4, 7), RR(900, 1300), WET);
+  for (let i = 0; i < 5; i++) marks.blob(ground.x + RR(-12, 12) * TK, ground.y + RR(-3, 4), RR(4, 7), RR(900, 1300), WET);
   marks.close();
   void animate(scene, 420, (t) => {
     px.clear();
-    const r = 8 + 26 * E.outC(t);
+    const r = (8 + 26 * E.outC(t)) * TK;
     px.ellipseRing(ground.x, ground.y, r, r * 0.45, t < 0.3 ? 2 : 1, t < 0.25 ? PAL.white : PAL.water4, 1 - t);
     for (let i = 0; i < 16; i++) {
       const a = (i / 16) * TAU;
@@ -92,6 +98,9 @@ function gather(scene: Phaser.Scene, u: MonsterUnit, ms: number): void {
   const drops = new Sparks(scene, u.sprite.depth + 0.4);
   const core = glow(scene, 0, 0, PAL.cyan3, 0.3, 0, u.sprite.depth + 0.3);
   const home = u.home;
+  // arena v2: the heating core's cyan light swells on the marble
+  const coreLight = followLight(scene, () => (u.sprite.active ? u.framePoint(u.art.core.x, u.art.core.y) : null), { color: PAL.cyan4, radius: 22, floorY: home.y, air: 0.6, intensity: 0.1, anim: 'caustic' });
+  coreLight.setIntensity(1.2, ms);
   onFrame(
     scene,
     (dt, el) => {
@@ -108,6 +117,7 @@ function gather(scene: Phaser.Scene, u: MonsterUnit, ms: number): void {
         drops.release();
         void glowPulse(scene, c.x, c.y, PAL.white, { from: 0.4, to: 1.2, alpha: 0.9, ms: 160, depth: u.sprite.depth + 0.35 });
         core.destroy();
+        void coreLight.fadeOut(260);
         return false;
       }
       return true;
@@ -135,9 +145,28 @@ registerStrike('tide_golem', async (s: StrikeArgs) => {
   void shake(sc, 160, 2);
   playSfx('impactHeavy', { volume: 0.5, pitch: 0.7 });
   waterSplash(sc, { x: ground.x, y: ground.y - 2 }, { dir: { x: 0, y: -1 }, floor: ground.y + 2, power: 1 });
+  void lightFlash(sc, ground.x, ground.y, PAL.water4, 32 * TK, 360, { ring: true, intensity: 0.8 });
   const dir = norm(sub(s.toGround, ground));
   // the crash point: the target's tile (or just short of the guard when blocked)
   const crash = s.blocked ? { x: s.toGround.x - dir.x * 10, y: s.toGround.y - dir.y * 10 } : s.toGround;
+  // arena v2: the rolling wave carries a rippling blue light along the floor (combat.wave's own
+  // path and timing: a 120 ms swell, then start → end over clamp(dist·6.5, 380, 720) ms)
+  if (ARENA_V2) void (async () => {
+    const st = { x: ground.x + dir.x * 10, y: ground.y + dir.y * 10 };
+    const en = { x: crash.x - dir.x * 9, y: crash.y - dir.y * 9 };
+    const ms = clamp(Math.hypot(en.x - st.x, en.y - st.y) * 6.5, 380, 720);
+    const wl = lightPool(sc, st.x, st.y - 8, { color: PAL.water4, spill: PAL.water3, radius: 24 * TK, floorY: st.y, air: 0.4, intensity: 0.3, anim: 'caustic', fadeIn: 120 });
+    await sleep(sc, 120);
+    wl.setIntensity(1.15, 200);
+    await animate(sc, ms, (t) => {
+      const k = 0.3 * t + 0.7 * t * t;
+      const x = st.x + (en.x - st.x) * k;
+      const y = st.y + (en.y - st.y) * k;
+      wl.setPosition(x, y - 10, y);
+    });
+    await sleep(sc, 100);
+    void wl.fadeOut(260);
+  })();
   await projectile(sc, ground, crash, 'wave', {
     chargeMs: 120,
     onImpact: () => {
@@ -186,6 +215,9 @@ registerCardHook('tide_golem', 'effect', async (ctx) => {
     const c = u.framePoint(cx, cy + 16);
     const heart = glow(sc, u.core().x, u.core().y, PAL.cyan3, 0.3, 0, u.sprite.depth + 0.25);
     playSfx('waterSplash', { volume: 0.5, pitch: 1.3 });
+    // arena v2: the whirling torrent lights the floor around it
+    const torrent = lightPool(sc, c.x, c.y, { color: PAL.water4, spill: PAL.cyan3, radius: 26, floorY: u.home.y, air: 0.5, intensity: 0.2, anim: 'caustic', fadeIn: 0 });
+    torrent.setIntensity(1.2, 340);
     // the waist ring spins up into a whirling torrent; the core glows (anticipation)
     await animate(sc, 340, (t, el) => {
       ring.clear();
@@ -204,6 +236,7 @@ registerCardHook('tide_golem', 'effect', async (ctx) => {
     });
     ring.g.destroy();
     heart.destroy();
+    void torrent.fadeOut(200);
     void shake(sc, 100, 1);
     void glowPulse(sc, from.x, from.y, PAL.water4, { from: 0.4, to: 1.6, alpha: 1, ms: 200, depth: DEPTH.FX });
   } else {
@@ -211,6 +244,7 @@ registerCardHook('tide_golem', 'effect', async (ctx) => {
     const z = lastSpot(ctx, ev.uid) ?? fx.zoneCenter(ev.player, 'monster', 1);
     void ctx.focus({ x: z.x, y: z.y - 20 }, { zoom: 1.05, ms: 240, pan: 0.3 });
     from = { x: z.x, y: z.y - 30 };
+    void lightFlash(sc, z.x, z.y - 16, PAL.water4, 30, 600, { floorY: z.y, intensity: 0.9 });
     await geyser(sc, z, 30);
   }
   // the blob flies back at the attacker and bursts on it
@@ -225,6 +259,7 @@ registerCardHook('tide_golem', 'effect', async (ctx) => {
         });
       }
       waterSplash(sc, hitAt, { dir: norm(sub(hitAt, from)), floor: attacker ? attacker.home.y : hitAt.y + 18, power: 1 });
+      impactLight(sc, hitAt, attacker ? attacker.home.y : hitAt.y + 18, PAL.water4, 1);
     },
   });
   // the spray streaks on into the attacker's LP panel
@@ -300,7 +335,7 @@ registerCardHook('tide_golem', 'destroyed', (ctx) =>
     const stopPool = onFrame(sc, () => {
       pool.clear();
       if (puddle <= 0.01) return true;
-      const rx = 24 * puddle;
+      const rx = 24 * puddle * TK;
       pool.ellipse(home.x, home.y, rx, rx * 0.42, PAL.water1, 0.85);
       pool.ellipse(home.x - 2, home.y - 1, rx * 0.65, rx * 0.25, PAL.water2, 0.9);
       pool.ellipseRing(home.x, home.y, rx, rx * 0.42, 1, PAL.water4, 0.9);

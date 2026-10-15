@@ -13,11 +13,12 @@
 import type Phaser from 'phaser';
 import { PAL } from '../../art/palette';
 import type { TileCard } from '../../view/TileCard';
-import { DEPTH, type XY, zoneXY } from '../../view/layout';
+import { DEPTH, type XY, unitDepth, zoneXY } from '../../view/layout';
+import { lightBeam, lightFlash, lightPool } from '../../view/light';
 import { shake, wait } from '../../vfx/core';
 import { Raster, Sparks, boltPath, chasm, floorRing, onFrame, run } from '../../vfx/setpieces';
 import { fx, registerCardHook } from '../api';
-import { type EvOf, all, guardRemap, lerpXY, live, rnd, rr, seed } from '../battle/_kit';
+import { ARENA_V2, TK, type EvOf, all, guardRemap, lerpXY, live, rnd, rr, seed } from '../battle/_kit';
 import { trapExit, trapOpening } from './_opening';
 
 /**
@@ -69,15 +70,22 @@ function fissure(scene: Phaser.Scene, from: XY, to: XY, ms = 280): Promise<void>
       }
     });
   const stop = onFrame(scene, () => draw());
+  // arena v2: the split glows — a magenta strip creeps along the floor behind a hot head light
+  const strip = lightBeam(scene, from, from, PAL.mag3, 0, { air: false, floor: { from, to: from }, floorWidth: 9, intensity: 0.85, shimmer: 0.5 });
+  const headLight = lightPool(scene, from.x, from.y, { color: PAL.mag4, spill: PAL.mag2, radius: 16, air: 0, intensity: 1.1, anim: 'flicker', fadeIn: 60 });
   const arrive = run(scene, ms, (t, _el, dt) => {
     head = t * t * (3 - 2 * t);
     const n = Math.max(1, Math.round(head * (main.length - 1)));
     const h = main[n];
+    strip.setEnds(from, h, { from, to: h });
+    headLight.setPosition(h.x, h.y);
     if (dt > 0 && rnd() < 0.7)
       dust.add({ x: h.x + rr(-2, 2), y: h.y, vx: rr(-30, 30), vy: rr(-70, -30), ay: 300, life: rr(220, 380), ramp: rnd() < 0.5 ? [PAL.mag4, PAL.mag3, PAL.mag2] : [PAL.earth3, PAL.earth2, PAL.earth1], tex: 'fx:px1' });
   });
   void arrive.then(async () => {
     head = 1;
+    void headLight.fadeOut(260);
+    void wait(scene, 500).then(() => strip.fadeOut(600));
     await wait(scene, 500);
     await run(scene, 600, (t) => (glow = 1 - t));
     stop();
@@ -142,7 +150,9 @@ registerCardHook(
     if (from) {
       ctx.sfx('groundCrack', { volume: 0.55, pitch: 1.3 });
       void shake(sc, 260, 1);
-      await fissure(sc, { x: from.x, y: from.y + 2 }, home);
+      // (arena v2: the crack has further to run across the wider board)
+      const fd = Math.hypot(home.x - from.x, home.y - from.y);
+      await fissure(sc, { x: from.x, y: from.y + 2 }, home, ARENA_V2 ? Math.min(460, Math.max(280, 140 + fd * 1.1)) : 280);
     }
     // the monster flinches as the ground under it gives way
     if (u) {
@@ -159,11 +169,19 @@ registerCardHook(
     };
     sinkTile(tile);
     if (u) {
+      // arena v2: the abyss glows magenta from below while it is open (setpieces.chasm beats:
+      // 0–300 crack, 300–480 open, 480–960 the fall, 960–1160 it slams shut)
+      const abyss = lightPool(sc, home.x, home.y - 8, { color: PAL.mag3, spill: PAL.mag2, radius: 34 * TK, floorY: home.y, air: 0.5, airRadius: 24, airDepth: unitDepth(home.y) - 1, intensity: 0.15, anim: 'breathe', fadeIn: 0 });
+      abyss.setIntensity(0.6, 300);
+      void wait(sc, 300).then(() => abyss.setIntensity(1.45, 180));
+      void wait(sc, 960).then(() => abyss.fadeOut(200));
+      void wait(sc, 1160).then(() => lightFlash(sc, home.x, home.y, PAL.mag4, 52 * TK, 460, { ring: true, intensity: 0.9 }));
       await chasm(sc, home.x, home.y, u.sprite);
       u.posed = false;
       u.retire();
     } else {
-      void floorRing(sc, home.x, home.y, { r0: 6, r1: 40, ms: 420, ramp: [PAL.mag4, PAL.mag3, PAL.mag2] });
+      void floorRing(sc, home.x, home.y, { r0: 6, r1: 40 * TK, ms: 420, ramp: [PAL.mag4, PAL.mag3, PAL.mag2] });
+      void lightFlash(sc, home.x, home.y, PAL.mag3, 44 * TK, 420, { ring: true });
       await wait(sc, 500);
     }
     field.forget(ev.uid);

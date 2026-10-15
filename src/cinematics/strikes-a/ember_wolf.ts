@@ -17,19 +17,23 @@ import { PixelCanvas } from '../../art/pixel';
 import { DEPTH, type XY } from '../../view/layout';
 import { afterimages, bite } from '../../vfx/combat';
 import { burnFly } from '../../vfx/setpieces';
+import { lightFlash } from '../../view/light';
 import { fx, registerCardHook, registerStrike } from '../api';
 import type { StrikeArgs } from '../_core/types';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import {
+  ARENA_V2,
   E,
   FloorMarks,
   clusterPoint,
   RR,
   Sparks,
   TAU,
+  TK,
   animate,
   clamp,
   contactFeet,
+  followLight,
   currentPixels,
   effectDamage,
   facing,
@@ -53,7 +57,9 @@ import {
   seed,
   shatterPx,
   sleep,
+  strideCount,
   sub,
+  travelMs,
   whiteFlash,
   worldToScreen,
 } from './_kit';
@@ -124,7 +130,11 @@ registerStrike('ember_wolf', async (s: StrikeArgs) => {
   const jaws = u.art.muzzle;
   const feet = contactFeet(u, jaws.x, jaws.y, s.to, s.blocked ? 9 : s.direct ? 0 : 3);
   const dist = Math.hypot(feet.x - home.x, feet.y - home.y);
-  const dashMs = clamp(100 + dist * 0.55, 120, 260);
+  // v1: one flaming leap. v2's wide bridge: a bounding gallop (a bound per ~60 px) that ends in
+  // the same leap, jaws open
+  const dashMs = ARENA_V2 ? travelMs(dist, 110, 1.3, 120, 260, 540) : clamp(100 + dist * 0.55, 120, 260);
+  const bounds = strideCount(dist, 1, 60);
+  const leapH = ARENA_V2 ? 7 * clamp(dist / bounds / 45, 1, 1.5) : 7;
   const marks = new FloorMarks(sc, MARK_DEPTH);
   const set = (p: XY, lift = 0, kx = 1, ky = 1) => {
     if (!spr.active) return;
@@ -143,6 +153,7 @@ registerStrike('ember_wolf', async (s: StrikeArgs) => {
     holdFrame(u, 'attack', 3);
     const mane = maneOf(u);
     void glowPulse(sc, mane.x, mane.y, PAL.fire3, { from: 0.4, to: 1.3, alpha: 0.8, ms: 200, depth: spr.depth + 0.3 });
+    void lightFlash(sc, mane.x, mane.y, PAL.fire3, 30, 260, { floorY: home.y, intensity: 0.9 });
     const eye = clusterPoint(u, [PAL.gold4, PAL.white, PAL.gold3], { x: u.art.muzzle.x - 8, y: u.art.muzzle.y - 5 }, { x0: u.art.core.x + 8, y1: u.art.core.y, r: 1, tag: 'eye' });
     eyeGlint(sc, eye, spr.depth + 0.5);
     await sleep(sc, F);
@@ -153,7 +164,27 @@ registerStrike('ember_wolf', async (s: StrikeArgs) => {
     void afterimages(sc, spr, dashMs + 30, PAL.fire2, { every: 40, alpha: 0.38, life: 150 });
     void bite(sc, s.to.x - sgn * 1, s.to.y + 1, PAL.fire3, { snapAt: dashMs + 10, size: 12 });
     let lastMark = { ...back };
+    // arena v2: its flames light the floor as it runs (the burning trail glows behind it)
+    const runLight = followLight(sc, () => (spr.active ? maneOf(u) : null), { color: PAL.fire3, radius: 24, floorY: () => u.worldPoint('feet').y, air: 0.45, intensity: 1, anim: 'flicker' });
     await animate(sc, dashMs, (t) => {
+      if (bounds > 1) {
+        // gallop: launch (f4) in the air, reach (f6) on each landing; the last bound is the leap
+        const e = 0.35 * t + 0.65 * t * t;
+        const p = lerpXY(back, feet, e);
+        const ph = Math.min(bounds - 0.0001, t * bounds);
+        const b = Math.floor(ph);
+        const local = ph - b;
+        const last = b === bounds - 1;
+        set(p, Math.sin(Math.PI * local) * (last ? leapH : 3.5), 1.12, 0.9);
+        if (last) holdFrame(u, 'attack', local > 0.55 ? 5 : 4);
+        else holdFrame(u, 'attack', local < 0.55 ? 4 : 6);
+        if (Math.hypot(p.x - lastMark.x, p.y - lastMark.y) > 5 * TK) {
+          marks.flame(p.x - sgn * 2, p.y + 1, RR(3, 5), RR(380, 560), FIRE_TRAIL);
+          marks.blob(p.x, p.y + 1, 2.2, 700, [PAL.fire3, PAL.fire2, PAL.fire1, PAL.stone1, PAL.night1]);
+          lastMark = p;
+        }
+        return;
+      }
       const e = E.inQ(t);
       const p = lerpXY(back, feet, e);
       set(p, Math.sin(Math.PI * t) * 7, 1.12, 0.9);
@@ -164,6 +195,7 @@ registerStrike('ember_wolf', async (s: StrikeArgs) => {
         lastMark = p;
       }
     });
+    void runLight.fadeOut(200);
     // 3. SNAP (f6): contact
     holdFrame(u, 'attack', 6);
     set(feet, 2, 0.94, 1.06);
@@ -177,21 +209,24 @@ registerStrike('ember_wolf', async (s: StrikeArgs) => {
     if (s.blocked) {
       // 4b. knocked back off the guard: a yelping tumble, then trot home
       holdFrame(u, 'hit', 0);
-      const kb = lerpXY(feet, home, 0.5);
+      // knocked back a body length (v2: a fixed ~34 px, not half the long bridge)
+      const kb = lerpXY(feet, home, ARENA_V2 ? Math.min(0.5, 34 / Math.max(1, dist)) : 0.5);
       await animate(sc, 180, (t) => {
         set(lerpXY(feet, kb, E.outQ(t)), Math.sin(Math.PI * t) * 9, 1, 1);
         if (spr.active) spr.setAngle(-sgn * 14 * Math.sin(Math.PI * t));
       });
       if (spr.active) spr.setAngle(0);
       void playFrom(u, 'hit', 1);
-      await animate(sc, 240, (t) => set(lerpXY(kb, home, E.inOutQ(t)), Math.sin(Math.PI * t) * 4, 1, 1));
+      await animate(sc, ARENA_V2 ? travelMs(dist, 150, 0.7, 240, 240, 420) : 240, (t) => set(lerpXY(kb, home, E.inOutQ(t)), Math.sin(Math.PI * t) * 4, 1, 1));
     } else {
       // 4. hold the bite, land (f7), hop home (f8–9)
       await animate(sc, 90, (t) => set(feet, 2 * (1 - t), lerp(0.94, 1, t), lerp(1.06, 1, t)));
       holdFrame(u, 'attack', 7);
       await sleep(sc, F);
       void playFrom(u, 'attack', 8);
-      await animate(sc, 280, (t) => set(lerpXY(feet, home, E.inOutQ(t)), Math.sin(Math.PI * t) * 7, 1, t > 0.85 ? 1.05 - (t - 0.85) : 1));
+      // hop home (v2's long way back: a few springy hops instead of one floating leap)
+      const hops = strideCount(dist, 1, 90);
+      await animate(sc, ARENA_V2 ? travelMs(dist, 170, 0.8, 280, 280, 480) : 280, (t) => set(lerpXY(feet, home, E.inOutQ(t)), hops > 1 ? Math.abs(Math.sin(Math.PI * t * hops)) * 6 : Math.sin(Math.PI * t) * (ARENA_V2 ? leapH : 7), 1, t > 0.85 ? 1.05 - (t - 0.85) : 1));
     }
   } finally {
     marks.close();
@@ -249,7 +284,7 @@ registerCardHook('ember_wolf', 'effect', async (ctx) => {
   const ring = layer(sc, MARK_DEPTH + 1);
   void animate(sc, 420, (t) => {
     ring.clear();
-    const r = 6 + 34 * E.outC(t);
+    const r = (6 + 34 * E.outC(t)) * TK;
     ring.ellipseRing(home.x, home.y, r, r * 0.45, t < 0.3 ? 2 : 1, t < 0.25 ? PAL.gold4 : PAL.fire3, 1 - t);
     for (let i = 0; i < 12; i++) {
       const a = (i / 12) * TAU + t;
@@ -265,6 +300,9 @@ registerCardHook('ember_wolf', 'effect', async (ctx) => {
   for (let i = 0; i < 14; i++) embers.add({ x: m0.x + RR(-8, 8), y: m0.y + RR(-4, 6), vx: RR(-20, 20), vy: RR(-90, -40), drag: 1.2, life: RR(400, 800), colors: [PAL.gold4, PAL.fire4, PAL.fire3, PAL.fire2], shape: 'px', flicker: true });
   embers.release();
   void glowPulse(sc, m0.x, m0.y, PAL.fire3, { from: 0.5, to: 1.8, alpha: 0.85, ms: 300, depth: u.sprite.depth + 0.3 });
+  // arena v2: the flame ring rolls a wave of firelight over the marble; the mane blazes
+  void lightFlash(sc, home.x, home.y, PAL.fire3, 46 * TK, 460, { ring: true, intensity: 1 });
+  void lightFlash(sc, m0.x, m0.y, PAL.fire4, 30, 380, { floorY: home.y, air: 0.8, intensity: 0.9 });
   await sleep(sc, F * 1.5);
   // the spirit tears off the mane at the howl's peak and weaves to the panel
   const from = worldToScreen(sc, mane());

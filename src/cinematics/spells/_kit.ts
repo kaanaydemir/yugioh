@@ -32,7 +32,8 @@ import { AK } from '../../art/arena';
 import { STAND_H, isoProject } from '../../art/cards';
 import { CardSprite } from '../../view/CardSprite';
 import type { TileCard } from '../../view/TileCard';
-import { DEPTH, GAME_W, type XY, zoneXY } from '../../view/layout';
+import { BOARD_CENTER, DEPTH, TILE_H, TILE_W, type XY, zoneXY } from '../../view/layout';
+import { lightBeam, lightDim, lightFlash, lightPool, type BeamHandle, type LightHandle } from '../../view/light';
 import { measureText, pixelText, revealText, upper } from '../../ui/text';
 import { TEX, shake, tween, wait } from '../../vfx/core';
 import { E, Raster, Sparks, clamp01, floorRing, lerp, onFrame, qbez, rnd, rr, run, seg, tileFlash } from '../../vfx/setpieces';
@@ -51,8 +52,24 @@ export const TEAL_FX = [PAL.white, PAL.teal4, PAL.teal3, PAL.teal2, PAL.teal1] a
 export const GOLD_FX = [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2, PAL.gold1] as const;
 export const CYAN_FX = [PAL.white, PAL.cyan4, PAL.cyan3, PAL.cyan2, PAL.cyan1] as const;
 
-/** Where the showcase card hangs (middle of the field, above the no-man's-land row). */
-export const SHOW_AT: XY = { x: GAME_W / 2, y: 128 };
+// the subtle light layer (arena v2; every call is a no-op in v1)
+export { lightBeam, lightDim, lightFlash, lightPool, type BeamHandle, type LightHandle };
+
+/**
+ * Floor scale of the arena: 1 on the v1 64×32 tiles, 1.25 on the v2 80×40 tiles (floor rings,
+ * pools and seals around a tile are sized with it).
+ */
+export const TS = TILE_W / 64;
+/** A floor size in the current arena (whole pixels; v1 values pass through untouched). */
+export const fs = (v: number): number => (TS === 1 ? v : Math.round(v * TS));
+
+/**
+ * Where the showcase card hangs: over the middle of the field, a tile's height above the
+ * board centre (the no-man's land / energy bridge). v1 (320, 128), v2 (320, 136).
+ */
+export const SHOW_AT: XY = { x: BOARD_CENTER.x, y: BOARD_CENTER.y - TILE_H };
+/** The floor under the showcase card (where its light lands). */
+export const SHOW_FLOOR = BOARD_CENTER.y + Math.round(TILE_H / 2);
 const SHOW_SCALE = 2;
 
 // ================================================================ small utils
@@ -346,6 +363,13 @@ export interface StreakOpts {
   /** Orb size: 1 small, 2 big. */
   size?: 1 | 2;
   depth?: number;
+  /**
+   * (v2) the floor under the start / end points for the orb's travelling light (default: the
+   * start hangs a tile above its floor, the end lies on the floor). light: false = no light.
+   */
+  floorFrom?: number;
+  floorTo?: number;
+  light?: boolean;
 }
 
 /**
@@ -371,11 +395,16 @@ export async function energyStreak(scene: Phaser.Scene, from: XY, to: XY, o: Str
         ? { x: lerp(from.x, to.x, 0.35), y: Math.min(from.y, to.y) - lift * 1.4 }
         : { x: (from.x + to.x) / 2, y: Math.min(from.y, to.y) - lift };
   let prev = from;
+  // (v2) the orb carries its light: an air glow on it and a pool sliding along the floor below
+  const f0 = o.floorFrom ?? from.y + TILE_H;
+  const f1 = o.floorTo ?? to.y + 2;
+  const light = o.light === false ? null : lightPool(scene, from.x, from.y, { color: ramp[2], radius: fs(big ? 22 : 16), floorY: f0, air: 0.6, airRadius: big ? 16 : 11, intensity: big ? 0.8 : 0.6, fadeIn: 60 });
   await run(scene, ms, (t) => {
     const k = path === 'line' ? E.inQuad(t) * 0.65 + t * 0.35 : E.inOutSine(t);
     const p = qbez(from, ctrl, to, k);
     const x = Math.round(p.x);
     const y = Math.round(p.y);
+    if (light && light.alive) light.setPosition(x, y, Math.max(y, lerp(f0, f1, k)));
     orb.setPosition(x, y);
     core.setPosition(x - 1, y - 1);
     halo.setPosition(x, y);
@@ -392,6 +421,8 @@ export async function energyStreak(scene: Phaser.Scene, from: XY, to: XY, o: Str
   core.destroy();
   halo.destroy();
   trail.close();
+  void light?.fadeOut(140);
+  if (o.light !== false) void lightFlash(scene, to.x, to.y, ramp[2], fs(big ? 30 : 22), 320, { floorY: Math.max(to.y, f1), intensity: big ? 0.9 : 0.7 });
 }
 
 // ================================================================ card → graveyard
@@ -415,6 +446,7 @@ export async function resolvedToGraveyard(ctx: AnyCtx, o: { owner: PlayerId; car
   pile.set(pile.count + 1, o.cardId);
   pile.bump();
   c.burst(PAL.teal3, 8);
+  void lightFlash(sc, to.x, to.y, PAL.teal3, fs(20), 260, { intensity: 0.55 });
   await tween(sc, { targets: c, alpha: 0, scale: 0.18, duration: 110 });
   c.destroy();
 }
@@ -501,8 +533,10 @@ export async function spellOpening(
     ctx.sfx('flipReveal', { volume: 0.8, pitch: 1.1 });
     bg(tile.pulse(PAL.teal4, 340));
     bg(tileFlash(sc, home.x, home.y, TEAL_FX, 380));
-    bg(floorRing(sc, home.x, home.y, { r0: 6, r1: 40, ms: 380, ramp: TEAL_FX, depth: DEPTH.TILE_FX + 2 }));
+    bg(floorRing(sc, home.x, home.y, { r0: 6, r1: fs(40), ms: 380, ramp: TEAL_FX, depth: DEPTH.TILE_FX + 2 }));
     bg(tileColumn(sc, home));
+    // (v2) the column's teal light bursts over the tile
+    void lightFlash(sc, home.x, home.y - 30, PAL.teal4, fs(34), 420, { floorY: home.y, intensity: 1, air: 0.5, ring: true });
     void shake(sc, 120, 1);
     await tile.standUp(180, { reveal: true });
     ctx.sfx('spellActivate', { volume: 0.55, pitch: 1.2 });
@@ -526,6 +560,9 @@ export async function spellOpening(
   const glow = sc.add.image(center.x, center.y, AK.glow).setBlendMode(ADD).setTint(PAL.teal2).setDepth(DEPTH.FX_TOP + 7).setScale(0.3).setAlpha(0);
   void tween(sc, { targets: glow, alpha: 0.75, scale: 3.6, duration: 360, ease: 'Quad.Out' });
   const seal = makeSeal(sc, center, { drawMs: 320 });
+  // (v2) the showcase card's teal light: a soft glow round it, a pool on the marble below
+  const cardLight = lightPool(sc, center.x, center.y, { color: PAL.teal3, radius: fs(40), floorY: SHOW_FLOOR, air: 0.45, airRadius: 34, intensity: 0, anim: 'breathe', fadeIn: 0 });
+  cardLight.setIntensity(0.75, 260);
   const motes = new Sparks(sc, DEPTH.FX_TOP + 11, ADD);
   let gathering = true;
   const stopMotes = onFrame(sc, (dt) => {
@@ -586,6 +623,7 @@ export async function spellOpening(
     // at no cost to the timeline
     bg(plateP.then(() => wait(sc, mode === 'implode' ? 170 : 0)).then(() => (plate as Plate | null)?.hide()));
     bg(veil.remove(220));
+    void cardLight.fadeOut(mode === 'implode' ? 150 : 240);
     bg(tween(sc, { targets: glow, alpha: 0, scale: mode === 'implode' ? 0.4 : 4.4, duration: mode === 'implode' ? 150 : 240 }).then(() => glow.destroy()));
     await (mode === 'implode' ? seal.implode(150) : seal.dismiss(220));
   };
@@ -606,6 +644,7 @@ export async function spellOpening(
       await tween(sc, { targets: card, scaleY: 0.12, duration: 40, ease: 'Quad.In' });
       card.destroy();
       bg(starFlare(sc, center, 220));
+      void lightFlash(sc, center.x, center.y, PAL.white, fs(40), 300, { floorY: SHOW_FLOOR, intensity: 0.9, air: 0.6 });
       bg(sparkleBurst(sc, center.x, center.y, { ramp: TEAL, count: 10, depth: DEPTH.FX_TOP + 11, speed: 1.4 }));
       so.onLaunch?.();
       await energyStreak(sc, center, to, so);
@@ -618,6 +657,7 @@ export async function spellOpening(
       ctx.sfx('cardSlam', { volume: 0.75 });
       const t = await fx.slamToZone(ctx, card, { player: o.player, spot: l.spot, index: l.index, uid: o.uid, cardId: o.cardId, faceUp: true, ms: 220, shake: 1 });
       bg(t.pulse(PAL.teal3, 360));
+      void lightFlash(sc, at.x, at.y, PAL.teal3, fs(32), 420, { intensity: 0.85, ring: true });
       t.tileFlash(PAL.teal3, 320);
       return t;
     },

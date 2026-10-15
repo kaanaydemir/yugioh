@@ -17,7 +17,9 @@ import { PixelCanvas } from '../../art/pixel';
 import type { GameEvent } from '../../engine/types';
 import { DEPTH, type XY } from '../../view/layout';
 import { beam, directHit } from '../../vfx/combat';
+import { lightBeam, lightFlash } from '../../view/light';
 import { fx, registerCardHook, registerStrike } from '../api';
+import { impactLight } from '../battle/_kit';
 import type { CinematicContext } from '../_core/types';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import {
@@ -26,9 +28,11 @@ import {
   RR,
   Sparks,
   TAU,
+  TK,
   animate,
   clamp,
   currentPixels,
+  followLight,
   facing,
   flavoredDeath,
   frameOffset,
@@ -155,14 +159,14 @@ async function jet(a: JetArgs): Promise<void> {
     ripple.clear();
     for (let k = 0; k < 2; k++) {
       const q = (t + k * 0.5) % 1;
-      const r = 28 * (1 - q) + 6;
+      const r = (28 * (1 - q) + 6) * TK;
       ripple.ellipseRing(home.x, home.y, r, r * 0.45, 1, k ? PAL.water3 : PAL.water4, 0.8 * Math.sin(Math.PI * q));
     }
     if (dt > 0) {
       const m = u.framePoint(u.art.muzzle.x - 8, u.art.muzzle.y - 2);
       for (let i = 0; i < 2; i++) {
         const ang = RR(0, TAU);
-        drops.add({ x: home.x + Math.cos(ang) * RR(14, 26), y: home.y + Math.sin(ang) * RR(5, 10), tx: m.x, ty: m.y, curl: RR(-16, 16), life: RR(200, 320), colors: [PAL.water2, PAL.water3, PAL.water4, PAL.white], shape: i ? 'px' : 'sq', size: 1, fadeAt: 1 });
+        drops.add({ x: home.x + Math.cos(ang) * RR(14, 26) * TK, y: home.y + Math.sin(ang) * RR(5, 10) * TK, tx: m.x, ty: m.y, curl: RR(-16, 16), life: RR(200, 320), colors: [PAL.water2, PAL.water3, PAL.water4, PAL.white], shape: i ? 'px' : 'sq', size: 1, fadeAt: 1 });
       }
     }
   }).then(() => {
@@ -170,6 +174,9 @@ async function jet(a: JetArgs): Promise<void> {
     drops.release();
   });
   playSfx('waterSplash', { volume: 0.35, pitch: 1.6 });
+  // arena v2: sea light gathers in the jaws, rippling caustics on the marble under it
+  const jawLight = followLight(sc, () => (spr.active ? u.framePoint(u.art.muzzle.x - 8, u.art.muzzle.y - 2) : null), { color: PAL.water4, radius: 22, floorY: home.y, air: 0.7, intensity: 0.2, anim: 'caustic' });
+  jawLight.setIntensity(1.1, coilMs);
   await sleep(sc, F * 4);
   // frame 4: the snap forward — the beam's short charge sits on the opening jaws
   let pouring = true;
@@ -196,12 +203,17 @@ async function jet(a: JetArgs): Promise<void> {
     through: a.through,
     onFire: () => {
       playSfx('waterSplash', { volume: 0.6, pitch: 0.7 });
+      // arena v2: the jet throws a rippling blue line of light (on through the defender when it pierces)
+      void jawLight.fadeOut(160);
+      const end = a.through ?? a.to;
+      void lightBeam(sc, muzzle(), end, PAL.water4, fireMs + 80, { width: 12, intensity: 1.3, shimmer: 0.5, floor: { from: home, to: { x: end.x, y: end.y + 16 } }, floorWidth: 13 });
       void a.ctx.focus({ x: lerp(muzzle().x, a.to.x, 0.6), y: lerp(muzzle().y, a.to.y, 0.6) }, { zoom: 1.07, ms: 160, pan: 0.34 });
     },
     onImpact: () => a.onImpact(a.to),
     onPierce: a.through ? () => a.onPierce?.(a.through!) : undefined,
   });
   pouring = false;
+  void jawLight.fadeOut(160);
   await pulse;
   void dist;
 }
@@ -278,6 +290,7 @@ registerCardHook('coral_serpent', 'attack', async (ctx: BattleCtx) => {
     blocked: false,
     onImpact: (at) => {
       pending.push(fx.hitReact(ctx, target, 2, [PAL.water1, PAL.water2, PAL.water3, PAL.water4, PAL.white], at, jdir));
+      impactLight(sc, at, target ? target.home.y : at.y + 20, PAL.water3, 2);
       waterSplash(sc, at, { dir: jdir, floor: target ? target.home.y : at.y + 20, power: 2 });
       if (tDestroy >= 0) pending.push(sleep(sc, 90).then(() => ctx.play(tDestroy, { push: jdir, hit: false })));
     },
@@ -285,6 +298,7 @@ registerCardHook('coral_serpent', 'attack', async (ctx: BattleCtx) => {
       // "DELİCİ": the jet bursts out of the defender into the duelist
       playSfx('impactHeavy', { volume: 0.7, pitch: 0.9 });
       pending.push(directHit(sc, defender, { at }));
+      impactLight(sc, at, at.y + 22, PAL.water4, 3);
       waterSplash(sc, at, { dir, floor: at.y + 24, power: 3 });
       void ctx.views.duelists?.get(defender).jolt();
       pending.push(ctx.play(dmgIdx, { at: { x: at.x, y: at.y - 22 }, battle: true }));
@@ -361,6 +375,7 @@ registerCardHook('coral_serpent', 'destroyed', (ctx) =>
     ov.destroy();
     if (spr.active) spr.setScale(1).setY(y0);
     d.burst();
+    void lightFlash(sc, d.home.x, d.home.y - 10, PAL.water4, 34, 380, { floorY: d.home.y, intensity: 0.7 });
     waterSplash(sc, { x: d.home.x, y: d.home.y - 10 }, { dir: d.push ?? { x: 0, y: -1 }, floor: d.home.y, power: 2 });
     await shatterPx(sc, u, {
       pc: foamed,

@@ -16,14 +16,32 @@
 
 import type { GameEvent, PlayerId } from '../../engine/types';
 import { PAL, PLAYER_RAMP, RAMPS } from '../../art/palette';
-import { DEPTH, GAME_H, GAME_W, type XY, isoToScreen } from '../../view/layout';
+import { BOARD_CENTER, DEPTH, GAME_H, GAME_W, type XY } from '../../view/layout';
 import { pixelLetters, pixelText } from '../../ui/text';
 import { duelStart } from '../../vfx/banners';
 import { materialize } from '../../vfx/hologram';
 import { shockwave, sparkleBurst } from '../../vfx/summon';
 import { Raster, run } from '../../vfx/setpieces';
 import { fx, registerEvent } from '../api';
-import { COIN_N, INTENSITY, TAU, all, beamDrop, bg, clamp01, coinFrame, coinTexture, isoGhost, lerp, type AnyCtx, type Ctx, type EvOf } from './_kit';
+import {
+  COIN_N,
+  INTENSITY,
+  TAU,
+  all,
+  beamDrop,
+  bg,
+  clamp01,
+  coinFrame,
+  coinTexture,
+  isoGhost,
+  lerp,
+  fs,
+  lightFlash,
+  lightPool,
+  type AnyCtx,
+  type Ctx,
+  type EvOf,
+} from './_kit';
 
 type DrawEv = EvOf<'draw'>;
 
@@ -94,7 +112,7 @@ async function duelistEnter(ctx: AnyCtx, p: PlayerId): Promise<void> {
     depth: d.sprite.depth - 1,
     onHit: () => {
       ctx.sfx('materialize', { volume: 0.55, pan: p === 0 ? -0.3 : 0.3 });
-      bg(shockwave(sc, home.x, home.y, { ramp: R, radius: 26, ms: 380, thickness: 4 }));
+      bg(shockwave(sc, home.x, home.y, { ramp: R, radius: fs(26), ms: 380, thickness: 4 }));
       mat = materialize(sc, d.sprite, { ramp: R, ms: 460 });
     },
   });
@@ -126,7 +144,8 @@ const COIN_REST = 22; // hover height of the resting coin centre above the floor
 async function coinToss(ctx: AnyCtx, first: PlayerId, onExit?: () => void): Promise<void> {
   const sc = ctx.scene;
   const key = coinTexture(sc);
-  const C = isoToScreen(2, 2);
+  // the middle of the board (v1 cell (2, 2); v2 the middle of the energy bridge)
+  const C = BOARD_CENTER;
   const ground: XY = { x: Math.round(C.x), y: Math.round(C.y + 2) };
   const restY = ground.y - COIN_REST;
   const R = PLAYER_RAMP[first];
@@ -138,6 +157,9 @@ async function coinToss(ctx: AnyCtx, first: PlayerId, onExit?: () => void): Prom
       g.ell(ground.x, ground.y, 6 + 10 * k, 2 + 2.5 * k, PAL.ink, lv * (0.35 + 0.45 * k));
     });
   drawShadow(COIN_REST, 1);
+  // (v2) the hologram coin's gold glow, its light following it up and down over the bridge
+  const coinLight = lightPool(sc, ground.x, restY, { color: PAL.gold4, radius: fs(22), floorY: ground.y, air: 0.5, airRadius: 18, intensity: 0, anim: 'shimmer', fadeIn: 0 });
+  coinLight.setIntensity(0.6, 220);
   bg(ctx.focus({ x: C.x, y: C.y - 28 }, { zoom: 1.06, ms: 420, pan: 0.3 }));
   // the coin is projected by the duel system: a quick hologram build
   ctx.sfx('holyChime', { volume: 0.35, pitch: 1.5 });
@@ -179,6 +201,7 @@ async function coinToss(ctx: AnyCtx, first: PlayerId, onExit?: () => void): Prom
         ctx.sfx('shieldBlock', { volume: 0.32, pitch: 1.9 });
         ctx.sfx('cardPlace', { volume: 0.4, pitch: 1.6 });
         bg(sparkleBurst(sc, ground.x, restY + 12, { ramp: RAMPS.gold, count: 6, depth: DEPTH.FX_TOP + 3 }));
+        void lightFlash(sc, ground.x, ground.y, PAL.gold4, fs(26), 260, { intensity: 0.7 });
       }
       const k = (el - UP - DOWN) / BOUNCE;
       h = 8 * Math.sin(Math.PI * k);
@@ -194,6 +217,7 @@ async function coinToss(ctx: AnyCtx, first: PlayerId, onExit?: () => void): Prom
     }
     coin.y = Math.round(restY - h);
     drawShadow(h + COIN_REST, 1);
+    if (coinLight.alive) coinLight.setPosition(ground.x, coin.y, ground.y).setIntensity(0.6 * (1 - 0.6 * clamp01(h / H)));
   });
   coin.setFrame(first === 0 ? 0 : COIN_N / 2).setScale(1);
   coin.y = restY;
@@ -204,7 +228,9 @@ async function coinToss(ctx: AnyCtx, first: PlayerId, onExit?: () => void): Prom
   ctx.sfx('holyChime', { volume: 0.55, pitch: 1.1 });
   ctx.sfx('impactLight', { volume: 0.45, pitch: 1.2 });
   bg(sparkleBurst(sc, ground.x, restY, { ramp: R, count: 22, depth: DEPTH.FX_TOP + 5 }));
-  bg(shockwave(sc, ground.x, ground.y, { ramp: R, radius: 44, ms: 420, thickness: 5 }));
+  bg(shockwave(sc, ground.x, ground.y, { ramp: R, radius: fs(44), ms: 420, thickness: 5 }));
+  void lightFlash(sc, ground.x, restY, R[3], fs(54), 620, { floorY: ground.y, ring: true, intensity: 1.2 });
+  coinLight.setColor(R[3]).setIntensity(0.9, 120);
   bg(run(sc, 160, (t) => coin.setScale(lerp(1.25, 1, t), lerp(0.85, 1, t))));
   const txt = pixelLetters(sc, ground.x, ground.y + 22, first === 0 ? 'OYUNCU 1 BAŞLIYOR!' : 'OYUNCU 2 BAŞLIYOR!', {
     size: 'lg',
@@ -240,7 +266,9 @@ async function coinToss(ctx: AnyCtx, first: PlayerId, onExit?: () => void): Prom
   await ctx.tween({ targets: coin, scaleX: 0.2, scaleY: 0.2, duration: 100, ease: 'Back.In' });
   const from = { x: coin.x, y: coin.y };
   coin.destroy();
+  void coinLight.fadeOut(160);
   await fx.energyBolt(sc, from, to, R, 240);
+  if (d) void lightFlash(sc, to.x, to.y, R[3], fs(30), 360, { floorY: d.home.y, intensity: 0.9 });
   if (d) {
     bg(d.play('command'));
     ctx.sfx('lockOn', { volume: 0.35, pitch: 1.3 });

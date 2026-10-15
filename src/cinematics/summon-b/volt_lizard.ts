@@ -18,7 +18,32 @@ import { flash, shake } from '../../vfx/core';
 import { freeze } from '../../vfx/setpieces';
 import { opaquePoints } from '../../vfx/hologram';
 import { registerCardHook } from '../api';
-import { ADD, E, Raster, Sparks, TAU, bg, bodyBox, burst, entrance, holo, holoSettle, lerp, liveLayer, onFloor, pose, rnd, roar, rr, run, type Entrance } from './_kit';
+import {
+  ADD,
+  E,
+  Raster,
+  Sparks,
+  TAU,
+  bg,
+  bodyBox,
+  burst,
+  entrance,
+  holo,
+  holoSettle,
+  lerp,
+  liveLayer,
+  onFloor,
+  pose,
+  rnd,
+  roar,
+  rr,
+  run,
+  fs,
+  lightBeam,
+  lightFlash,
+  type BeamHandle,
+  type Entrance,
+} from './_kit';
 
 const CYAN: Ramp = RAMPS.cyan;
 const ARC = [PAL.white, PAL.cyan4, PAL.cyan3, PAL.cyan2] as const;
@@ -134,8 +159,15 @@ function skyStrike(e: Entrance, onStrike: () => void): Promise<void> {
   let frame = 0;
   let struck = false;
   const layer = liveLayer(sc, home.x, (home.y - 20) / 2, 140, home.y + 40, DEPTH.FX_TOP + 5, () => undefined, ADD);
+  // (v2) the bolt's glow: flickers with the strokes (air glow in front of the board)
+  let beam: BeamHandle | null = null;
   return run(sc, MS, (t, el, dt) => {
     if (dt > 0) frame++;
+    if (beam && beam.alive) {
+      const s = (el - LEADER) / (MS - LEADER);
+      const restrike = (s > 0.42 && s < 0.48) || (s > 0.62 && s < 0.66);
+      beam.setIntensity(s < 0.3 || restrike ? 1.1 * (1 - s * 0.5) : Math.floor(frame / 2) % 2 === 0 ? 0.5 * (1 - s) : 0.1);
+    }
     layer.r.draw((r) => {
       if (el < LEADER) {
         // the stepped leader: partial, thin, flickering
@@ -146,6 +178,8 @@ function skyStrike(e: Entrance, onStrike: () => void): Promise<void> {
       if (!struck) {
         struck = true;
         onStrike();
+        beam = lightBeam(sc, { x: top.x, y: Math.max(top.y, home.y - 160) }, { x: to.x, y: to.y - 4 }, PAL.cyan4, 0, { width: 14, intensity: 1.1, shimmer: 0.6, rise: 20 });
+        void lightFlash(sc, to.x, to.y - 10, PAL.white, fs(64), 520, { floorY: home.y, ring: true, intensity: 1.35 });
         ctx.sfx('thunder', { volume: 1 });
         ctx.sfx('lightning', { volume: 0.7 });
       }
@@ -163,7 +197,10 @@ function skyStrike(e: Entrance, onStrike: () => void): Promise<void> {
         r.line(to.x, to.y - L * 0.6, to.x, to.y + L * 0.3, PAL.white);
       }
     });
-  }).then(() => layer.stop());
+  }).then(() => {
+    layer.stop();
+    void beam?.fadeOut(80);
+  });
 }
 
 /** The scorch left on the floor: a dark burn with glowing cracks that cool off. */
@@ -172,13 +209,16 @@ function scorch(e: Entrance): Promise<void> {
   const cracks: XY[][] = [];
   for (let i = 0; i < 7; i++) {
     const a = (i / 7) * TAU + rr(-0.3, 0.3);
-    cracks.push(zigzag(onFloor(home.x, home.y, 5, a), onFloor(home.x, home.y, rr(18, 28), a), 3, 3));
+    cracks.push(zigzag(onFloor(home.x, home.y, 5, a), onFloor(home.x, home.y, rr(fs(18), fs(28)), a), 3, 3));
   }
-  const layer = liveLayer(sc, home.x, home.y, 80, 44, DEPTH.CARD_ON_TILE + 2, () => undefined);
+  const layer = liveLayer(sc, home.x, home.y, fs(80), fs(44), DEPTH.CARD_ON_TILE + 2, () => undefined);
+  // (v2) the glowing scorch cracks light the floor a little while they cool
+  const glow = e.glow({ color: PAL.cyan3, radius: fs(26), intensity: 0.9, anim: 'flicker', fadeIn: 0 });
+  glow.setIntensity(0, 800);
   return run(sc, 800, (t) => {
     layer.r.draw((r) => {
       const heat = 1 - t;
-      r.ell(home.x, home.y, 17, 8.5, PAL.ink, 0.55 * heat + 0.1);
+      r.ell(home.x, home.y, fs(17), fs(17) / 2, PAL.ink, 0.55 * heat + 0.1);
       const c = t < 0.15 ? PAL.white : t < 0.4 ? PAL.cyan4 : t < 0.7 ? PAL.cyan3 : PAL.cyan2;
       for (const pts of cracks) r.path(pts, c, t < 0.7 ? 1 : (1 - t) / 0.3);
     });

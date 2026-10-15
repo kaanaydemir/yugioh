@@ -1,21 +1,31 @@
-// Arena v2 stadium art: the stadium floor around the platform and the two iso stands behind it.
+// Arena v2 stadium art: the stadium floor (the pitch) around the platform and the two iso stands.
 //
 // The stands are a "square bowl": the stand height is a step function of m = min(c, r) — tiers
 // rise going away from the field along both back sides and meet in a mitred corner behind the
 // board's top corner. Each pixel is ray-cast against that heightfield (exact, crisp), so risers,
 // treads, the front wall, the back wall and the roof all line up with the 2:1 projection.
 //
-// The crowd is drawn in CROWD_FRAMES frames (bobbing, cheering, arms up) over the static layer;
-// flags, banners, phone lights and the LED boards are separate (animated at runtime).
+// Value plan: the stands are a calm, dark mass (mostly muted night clothes, the team colours
+// only bright in the two front rows, the back rows deeper in the roof's shadow) so the marble is
+// the brightest area and the monsters the most saturated. Phone lights, flags and the LED boards
+// are the bright accents. The crowd is cut into narrow chunks along each stand (so a wave can
+// run along it), each with idle frames and "arms up" frames per fan side (BoardView.crowd).
+//
+// A dark players' booth breaks the right stand's front behind P2's podium, so P2's duelist
+// reads against it instead of dissolving into the crimson crowd.
 
 import type { PlayerId } from '../../engine/types';
 import { getFont } from '../font';
 import { PAL } from '../palette';
 import { type Color, PixelCanvas, mulberry32 } from '../pixel';
 import { FACE_T, GC0, GC1, GR0, GR1, HH, HW, P, STAD_RECT, STAND, STAND_C, STAND_FAR, TOWERS, gridAt, tierC, tierZ } from './geom';
-import { bayer, clamp01, coarseNoise, linePx } from './util';
+import { linePx } from './util';
 
 export const CROWD_FRAMES = 8;
+/** Frames of the "arms up" sets (per fan side and all). */
+export const CROWD_UP_FRAMES = 4;
+/** Width (px) of one crowd chunk along a stand. */
+export const CROWD_CHUNK_W = 32;
 const N = STAND.tiers;
 const D = STAND.depth;
 const ROOF_Z = (): number => tierZ(N - 1) + STAND.back;
@@ -23,7 +33,12 @@ const ROOF_Z = (): number => tierZ(N - 1) + STAND.back;
 const M_BACK = STAND_C - N * D;
 const ROOF_DEPTH = 0.35;
 
-type HitKind = 'floor' | 'wall' | 'riser' | 'tread' | 'back' | 'roof' | 'sky';
+/** The players' booth in the right stand behind P2's podium: along-stand range and the tiers it replaces. */
+export const BOOTH = { a0: 3.45, a1: 5.05, tiers: 4 } as const;
+const BOOTH_Z = (): number => tierZ(BOOTH.tiers);
+const inBooth = (u: number) => u > 0 && u >= BOOTH.a0 && u <= BOOTH.a1;
+
+type HitKind = 'floor' | 'wall' | 'riser' | 'tread' | 'back' | 'roof' | 'booth' | 'boothTop' | 'sky';
 interface Hit {
   kind: HitKind;
   k: number;
@@ -41,10 +56,16 @@ function cast(x: number, y: number): Hit {
   const zAt = (m: number) => 2 * HH * m + K;
   const mFloor = (-FACE_T - K) / (2 * HH);
   if (mFloor >= STAND_C) return { kind: 'floor', k: -1, m: mFloor, z: -FACE_T, u };
-  // front wall
+  const booth = inBooth(u);
+  // front wall (the booth raises it over the first tiers)
   let z = zAt(STAND_C);
-  if (z <= tierZ(0)) return { kind: 'wall', k: 0, m: STAND_C, z, u };
-  for (let k = 0; k < N; k++) {
+  if (booth && z <= BOOTH_Z()) return { kind: 'booth', k: 0, m: STAND_C, z, u };
+  if (!booth && z <= tierZ(0)) return { kind: 'wall', k: 0, m: STAND_C, z, u };
+  if (booth) {
+    const mTop = (BOOTH_Z() - K) / (2 * HH);
+    if (mTop >= tierC(BOOTH.tiers)) return { kind: 'boothTop', k: BOOTH.tiers, m: mTop, z: BOOTH_Z(), u };
+  }
+  for (let k = booth ? BOOTH.tiers : 0; k < N; k++) {
     const ck = tierC(k);
     const mHit = (tierZ(k) - K) / (2 * HH);
     if (mHit >= ck - D) return { kind: 'tread', k, m: mHit, z: tierZ(k), u };
@@ -69,17 +90,26 @@ function along(h: Hit): number {
   return Math.abs(h.u);
 }
 
-/** Fan color share: the left stand (P1's flank) leans cyan, the right stand (behind P2) crimson. */
-function fanSide(u: number, rnd: () => number): PlayerId {
-  const pLeft = clamp01(0.5 - u * 0.09);
-  return rnd() < pLeft ? 0 : 1;
+export interface CrowdChunk {
+  /** world px of the chunk texture's top-left */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  stand: 0 | 1;
+  /** along-stand position of the chunk's center (grid units from the back corner) */
+  a: number;
+  /** frames: 'i0'..'i7' idle, `u${0|1|'a'}:${f}` arms up (P1 fans / P2 fans / everyone) */
+  frames: [string, PixelCanvas][];
 }
 
 export interface StandsArt {
   base: PixelCanvas;
-  crowd: PixelCanvas[];
-  /** Spots where a flag pole rises (world px of the pole foot) + fan side. */
-  flags: { x: number; y: number; side: PlayerId; design: number; phase: number; row: number }[];
+  /** The stadium as lit by lava from the platform (walls, lower tiers): crossfaded at runtime. */
+  hot: PixelCanvas;
+  crowd: CrowdChunk[];
+  /** Fan flags in the visible stands (world px of the pole foot) + fan side; small = a 6-px hand flag. */
+  flags: { x: number; y: number; side: PlayerId; design: number; phase: number; row: number; small: boolean }[];
   /** Phone-light spots (world px). */
   phones: { x: number; y: number; side: PlayerId }[];
   /** Banners hung on the front wall: world px of the top-left anchor + length (px along x) + stand. */
@@ -90,6 +120,8 @@ export interface StandsArt {
   roofLights: { x: number; y: number }[];
   /** A spotlight path over the crowd (for the roving follow spot): per stand, endpoints in world px. */
   crowdSpan: { a: [number, number]; b: [number, number] }[];
+  /** The players' booth: its LED strip pixels (world px) for a runtime chase. */
+  boothLeds: { x: number; y: number }[];
 }
 
 export interface LedBoard {
@@ -102,27 +134,28 @@ export interface LedBoard {
   cols: { x: number; y: number; u: number }[];
   rows: number;
   stand: 0 | 1;
+  /** what it shows: scrolling text, a running chase, a waving team flag */
+  mode: 'text' | 'chase' | 'flag';
 }
+
+/** LED band rows: a 7-row glyph plus a 1-px margin above and below (letters never leave the band). */
+export const LED_ROWS = 9;
 
 // ---------------------------------------------------------------- floor
 
-function floorColor(c: number, r: number, x: number, y: number, n: number): Color {
-  // big iso checker (2×2 tiles) of a dark rubber floor, a little noise
-  const cc = Math.floor((c + 0.5) / 2);
-  const rr = Math.floor((r + 0.5) / 2);
-  let v = (cc + rr) & 1 ? 1.15 : 0.85;
-  v += (n - 0.5) * 0.5;
-  let col: Color = v > 1.1 ? (bayer(x, y) < 5 ? PAL.night2 : PAL.night1) : v > 0.75 ? PAL.night1 : bayer(x, y) < 8 ? PAL.night1 : PAL.night0;
-  // painted lines: a boundary rectangle around the platform and a center line across
-  const L0c = GC0 - 0.55;
-  const L1c = GC1 + 0.55;
-  const L0r = GR0 - 0.55;
-  const L1r = GR1 + 0.55;
+/** The painted boundary rectangle on the pitch (grid lines at floor level). */
+export const PITCH_LINES = { c0: GC0 - 0.55, c1: GC1 + 0.55, r0: GR0 - 0.55, r1: GR1 + 0.55 } as const;
+
+function floorColor(c: number, r: number): Color {
+  // a dark rubber pitch with broad mowing stripes along the duel axis (flat tones, no noise)
+  const stripe = Math.floor((r + 40) / 1.5) & 1;
+  let col: Color = stripe ? PAL.night1 : PAL.night0;
+  // painted lines: a boundary rectangle around the platform and a dashed one further out
+  const { c0: L0c, c1: L1c, r0: L0r, r1: L1r } = PITCH_LINES;
   const onLine = (a: number, b: number) => Math.abs(a - b) * 2 * HH < 0.9;
   const inR = r > L0r - 0.02 && r < L1r + 0.02;
   const inC = c > L0c - 0.02 && c < L1c + 0.02;
-  if ((inR && (onLine(c, L0c) || onLine(c, L1c))) || (inC && (onLine(r, L0r) || onLine(r, L1r)))) col = bayer(x, y) < 13 ? PAL.steel : PAL.night3;
-  // a second, dashed line further out
+  if ((inR && (onLine(c, L0c) || onLine(c, L1c))) || (inC && (onLine(r, L0r) || onLine(r, L1r)))) col = PAL.night4;
   const dash = ((c + r) * 3) % 1 < 0.55;
   if (dash && ((inR && (onLine(c, L0c - 0.6) || onLine(c, L1c + 0.6))) || (inC && (onLine(r, L0r - 0.6) || onLine(r, L1r + 0.6))))) col = PAL.night3;
   // corner arcs (quarter circles at the line rectangle's corners)
@@ -133,41 +166,51 @@ function floorColor(c: number, r: number, x: number, y: number, n: number): Colo
     [L0c, L1r],
   ] as const) {
     const d = Math.hypot(c - ac, r - ar);
-    if (Math.abs(d - 0.45) * 2 * HH < 0.9 && (c - ac) * (ac === L0c ? 1 : -1) > 0 && (r - ar) * (ar === L0r ? 1 : -1) > 0) col = PAL.steel;
+    if (Math.abs(d - 0.45) * 2 * HH < 0.9 && (c - ac) * (ac === L0c ? 1 : -1) > 0 && (r - ar) * (ar === L0r ? 1 : -1) > 0) col = PAL.night4;
   }
   return col;
 }
 
 // ---------------------------------------------------------------- people
 
-const SKIN = [PAL.skin1, PAL.skin2, PAL.skin2, PAL.skin3, PAL.skin1, PAL.skin3, PAL.skin0];
-const HAIR = [PAL.ink, PAL.earth1, PAL.earth0, PAL.gold2, PAL.stone1, PAL.ink, PAL.earth2, PAL.night1];
+const SKIN = [PAL.skin1, PAL.skin2, PAL.skin2, PAL.skin3, PAL.skin1, PAL.skin2, PAL.skin0];
+const HAIR = [PAL.ink, PAL.earth1, PAL.earth0, PAL.gold1, PAL.stone1, PAL.ink, PAL.earth1, PAL.night1];
 /** Muted night clothes (most of the crowd): [lit top row, body]. */
 const MUTED: [Color, Color][] = [
   [PAL.night3, PAL.night2],
   [PAL.night2, PAL.night1],
   [PAL.stone2, PAL.stone1],
-  [PAL.stone3, PAL.stone2],
+  [PAL.night4, PAL.night3],
   [PAL.earth1, PAL.earth0],
   [PAL.void1, PAL.void0],
-  [PAL.night4, PAL.night3],
+  [PAL.night3, PAL.night2],
   [PAL.water1, PAL.water0],
+  [PAL.stone1, PAL.stone0],
 ];
 const ACCENT: [Color, Color][] = [
-  [PAL.white, PAL.mist],
-  [PAL.gold3, PAL.gold2],
-  [PAL.mist, PAL.steel],
+  [PAL.stone3, PAL.stone2],
+  [PAL.gold2, PAL.gold1],
+  [PAL.steel, PAL.night4],
 ];
-const FAN_SHIRTS: Record<PlayerId, [Color, Color][]> = {
+/** Team shirts: the full neon only in the two front rows; further back a calmer ramp. */
+const FAN_SHIRTS_FRONT: Record<PlayerId, [Color, Color][]> = {
   0: [
     [PAL.cyan3, PAL.cyan2],
     [PAL.cyan2, PAL.cyan1],
-    [PAL.cyan4, PAL.cyan3],
   ],
   1: [
     [PAL.crim3, PAL.crim2],
     [PAL.crim2, PAL.crim1],
-    [PAL.crim4, PAL.crim3],
+  ],
+};
+const FAN_SHIRTS_BACK: Record<PlayerId, [Color, Color][]> = {
+  0: [
+    [PAL.cyan2, PAL.cyan1],
+    [PAL.cyan1, PAL.cyan0],
+  ],
+  1: [
+    [PAL.crim2, PAL.crim1],
+    [PAL.crim1, PAL.crim0],
   ],
 };
 /** One step darker (back rows sit in the roof's shadow). */
@@ -189,6 +232,7 @@ const DARKER = new Map<Color, Color>([
   [PAL.crim1, PAL.crim0],
   [PAL.gold3, PAL.gold2],
   [PAL.gold2, PAL.gold1],
+  [PAL.gold1, PAL.gold0],
   [PAL.stone3, PAL.stone2],
   [PAL.stone2, PAL.stone1],
   [PAL.stone1, PAL.stone0],
@@ -209,6 +253,8 @@ interface Person {
   x: number;
   y: number; // feet
   row: number;
+  a: number;
+  stand: 0 | 1;
   skin: Color;
   hair: Color | null;
   shirt: [Color, Color];
@@ -218,12 +264,16 @@ interface Person {
   phase: number;
   cap: Color | null;
   side: PlayerId;
+  /** holds a tiny hand flag (its colour) */
+  flag: Color | null;
 }
 
-function drawPerson(p: PixelCanvas, q: Person, f: number, ox: number, oy: number): void {
+type Pose = { lift: number; arms: 'none' | 'up' | 'left' | 'clap' | 'right'; flagUp: boolean };
+
+function idlePose(q: Person, f: number): Pose {
   const ph = (f + q.phase) % CROWD_FRAMES;
   let lift = 0;
-  let arms: 'none' | 'up' | 'left' | 'clap' | 'right' = 'none';
+  let arms: Pose['arms'] = 'none';
   switch (q.kind) {
     case 1:
       lift = ph === 0 || ph === 1 ? 1 : 0;
@@ -239,8 +289,17 @@ function drawPerson(p: PixelCanvas, q: Person, f: number, ox: number, oy: number
       arms = ph < 2 ? 'left' : ph < 4 ? 'up' : ph < 6 ? 'right' : 'up';
       break;
   }
+  return { lift, arms, flagUp: ph % 2 === 0 };
+}
+
+function upPose(q: Person, f: number): Pose {
+  const ph = (f + q.phase) % CROWD_UP_FRAMES;
+  return { lift: [1, 2, 1, 0][ph], arms: ph === 3 ? (q.phase & 1 ? 'left' : 'right') : 'up', flagUp: ph % 2 === 0 };
+}
+
+function drawPerson(p: PixelCanvas, q: Person, pose: Pose, ox: number, oy: number): void {
   const x = q.x - ox;
-  const y = q.y - oy - lift;
+  const y = q.y - oy - pose.lift;
   const [s0, s1] = q.shirt;
   // torso 3×3 (top row lit)
   for (let i = -1; i <= 1; i++) {
@@ -251,8 +310,9 @@ function drawPerson(p: PixelCanvas, q: Person, f: number, ox: number, oy: number
   // head 2×2
   const hx = q.headLeft ? x - 1 : x;
   p.set(hx, y - 5, q.cap ?? q.hair ?? q.skin).set(hx + 1, y - 5, q.cap ?? q.hair ?? q.skin);
-  p.set(hx, y - 4, q.skin).set(hx + 1, y - 4, q.hair && !q.cap ? q.skin : q.skin);
+  p.set(hx, y - 4, q.skin).set(hx + 1, y - 4, q.skin);
   // arms
+  const arms = pose.arms;
   if (arms === 'up') {
     p.set(x - 2, y - 4, s0).set(x - 2, y - 5, q.skin);
     p.set(x + 2, y - 4, s0).set(x + 2, y - 5, q.skin);
@@ -263,16 +323,51 @@ function drawPerson(p: PixelCanvas, q: Person, f: number, ox: number, oy: number
   } else if (arms === 'clap') {
     p.set(x, y - 3, q.skin);
   }
+  // a tiny hand flag held over the head: it flicks side to side
+  if (q.flag !== null) {
+    const fx = arms === 'left' ? x - 3 : x + 2;
+    p.set(fx, y - 6, PAL.stone3);
+    if (pose.flagUp) p.set(fx + 1, y - 7, q.flag).set(fx + 1, y - 6, q.flag);
+    else p.set(fx - 1, y - 7, q.flag).set(fx - 1, y - 6, q.flag);
+  }
 }
 
 // ---------------------------------------------------------------- build
 
+/** The lava-lit stadium: walls and the lower tiers turn to warm, darker embers (flat tones). */
+const HEAT_NEAR = new Map<Color, Color>([
+  [PAL.night0, PAL.crim0],
+  [PAL.night1, PAL.fire0],
+  [PAL.night2, PAL.crim0],
+  [PAL.night3, PAL.fire1],
+  [PAL.night4, PAL.crim1],
+  [PAL.steel, PAL.fire2],
+  [PAL.mist, PAL.fire3],
+  [PAL.cyan0, PAL.earth0],
+  [PAL.cyan1, PAL.earth1],
+  [PAL.crim1, PAL.fire1],
+  [PAL.crim0, PAL.fire0],
+  [PAL.gold0, PAL.fire0],
+  [PAL.gold1, PAL.fire2],
+  [PAL.stone1, PAL.earth0],
+  [PAL.stone2, PAL.earth1],
+]);
+/** The middle tiers: the navy only warms a little (dusk tones), the top stays a night match. */
+const HEAT_MID = new Map<Color, Color>([
+  [PAL.night1, PAL.void0],
+  [PAL.night2, PAL.void1],
+  [PAL.night3, PAL.crim0],
+  [PAL.cyan0, PAL.earth0],
+  [PAL.cyan1, PAL.earth1],
+  [PAL.crim1, PAL.crim0],
+]);
+
 export function buildStands(): StandsArt {
   const R = STAD_RECT;
   const base = new PixelCanvas(R.w, R.h);
-  const rnd = mulberry32(4242);
-  const n = coarseNoise(R.w, R.h, 16, 12, 9, 3);
+  const hot = new PixelCanvas(R.w, R.h);
   const roofLights: StandsArt['roofLights'] = [];
+  const boothLeds: StandsArt['boothLeds'] = [];
 
   // ---- per-pixel cast: floor, walls, tiers, roof
   for (let y = 0; y < R.h; y++)
@@ -285,13 +380,16 @@ export function buildStands(): StandsArt {
       const leftStand = h.u < 0;
       const a = along(h);
       let col: Color;
+      // how much the lava below would light this pixel: 2 near, 1 a little, 0 not at all
+      let heat = 0;
       switch (h.kind) {
         case 'floor': {
-          col = floorColor(c, r, wx, wy, n[y * R.w + x]);
-          // a gutter + shadow strip along the stand walls
+          col = floorColor(c, r);
+          // a gutter + shadow strip along the stand walls (solid)
           const toWall = (Math.min(c, r) - STAND_C) * 2 * HH;
           if (toWall < 2) col = PAL.ink;
-          else if (toWall < 5) col = bayer(wx, wy) < 10 ? PAL.night0 : PAL.ink;
+          else if (toWall < 4) col = PAL.night0;
+          heat = 0; // the floor's lava glow is a runtime light (smooth, no remap)
           break;
         }
         case 'wall': {
@@ -300,36 +398,69 @@ export function buildStands(): StandsArt {
           else if (k === 1) col = PAL.night2;
           else if (k >= STAND.wall - 1) col = PAL.ink;
           else col = (Math.floor(a * 10) & 1) === 0 && k > 9 ? PAL.night1 : PAL.night0;
+          heat = 2;
+          break;
+        }
+        case 'booth': {
+          // the players' booth: lit roof lip, a crimson team strip, dark glass, a low wall
+          const k = Math.round(BOOTH_Z() - h.z);
+          const H = BOOTH_Z() + FACE_T;
+          const edge = Math.min(a - BOOTH.a0, BOOTH.a1 - a) * 2 * HH; // px from the booth's ends
+          if (k <= 0) col = PAL.night4;
+          else if (k === 1) col = PAL.night2;
+          else if (k === 2 || k === 4) col = PAL.crim0;
+          else if (k === 3) {
+            col = PAL.crim1;
+            boothLeds.push({ x: wx, y: wy });
+          } else if (k < H - 9) {
+            col = PAL.night0;
+            // mullions + a faint diagonal reflection on the glass
+            if (Math.abs(((a - BOOTH.a0) * 10) % 2) < 0.25) col = PAL.night2;
+            else if ((Math.floor(wx / 2) + k) % 23 === 0) col = PAL.night1;
+          } else if (k < H - 1) col = (k - (H - 9)) % 4 === 0 ? PAL.night2 : PAL.night1;
+          else col = PAL.ink;
+          if (edge < 1) col = PAL.ink;
+          else if (edge < 2 && k > 1) col = PAL.night2;
+          heat = 2;
+          break;
+        }
+        case 'boothTop': {
+          const dm = (STAND_C - h.m) * 2 * HH;
+          col = dm < 1 ? PAL.night3 : PAL.night1;
+          heat = 1;
           break;
         }
         case 'riser': {
           // risers: vertical concrete faces; the right stand's face the light (upper left)
           col = leftStand ? PAL.night1 : PAL.night2;
           if (Math.round(tierZ(h.k) - h.z) === 0) col = leftStand ? PAL.night2 : PAL.night3; // lit nosing
+          heat = h.k <= 1 ? 2 : h.k <= 3 ? 1 : 0;
           break;
         }
         case 'tread': {
-          col = leftStand ? PAL.night2 : PAL.night3;
-          // seat backs (rows of colored seats; the crowd covers most of them)
+          col = leftStand ? PAL.night1 : PAL.night2;
+          // seat backs (rows of dim team-coloured seats; the crowd covers most of them)
           const s = (a * 13.33) % 1;
           if (s < 0.6) {
-            const side = fanSide(h.u, mulberry32(Math.floor(a * 13.33) * 97 + h.k * 13));
-            col = side === 0 ? (leftStand ? PAL.cyan1 : PAL.cyan2) : leftStand ? PAL.crim1 : PAL.crim2;
+            const r2 = mulberry32(Math.floor(a * 13.33) * 97 + h.k * 13)();
+            const side = r2 < 0.5 - (h.u * 0.09) / 1 ? 0 : 1;
+            col = side === 0 ? (leftStand ? PAL.cyan0 : PAL.cyan1) : leftStand ? PAL.crim0 : PAL.crim1;
           }
           // aisles every few metres
-          if (Math.abs(((a + 0.3) % 1.6) - 0.8) < 0.04) col = leftStand ? PAL.night3 : PAL.night4;
+          if (Math.abs(((a + 0.3) % 1.6) - 0.8) < 0.04) col = leftStand ? PAL.night2 : PAL.night3;
+          heat = h.k <= 1 ? 2 : h.k <= 3 ? 1 : 0;
           break;
         }
         case 'back': {
           const k = Math.round(ROOF_Z() - h.z);
           col = k <= 0 ? PAL.night3 : PAL.night0;
           // private boxes: lit windows along the back wall
-          if (k >= 2 && k <= 4 && Math.floor(a * 6) % 3 !== 0 && ((a * 6) % 1) > 0.18) col = k === 2 ? PAL.gold1 : bayer(wx, wy) < 8 ? PAL.gold0 : PAL.night1;
+          if (k >= 2 && k <= 4 && Math.floor(a * 6) % 3 !== 0 && (a * 6) % 1 > 0.18) col = k === 2 ? PAL.gold1 : k === 3 ? PAL.gold0 : PAL.night1;
           break;
         }
         case 'roof': {
           const dm = (M_BACK - h.m) * 2 * HH; // px back from the roof edge
-          col = dm < 1 ? PAL.night4 : dm < 2 ? PAL.night1 : bayer(wx, wy) < 3 ? PAL.night1 : PAL.ink;
+          col = dm < 1 ? PAL.night4 : dm < 2 ? PAL.night1 : PAL.ink;
           // trusses
           if (Math.abs(((a * 2.5) % 1) - 0.5) < 0.04) col = PAL.night1;
           break;
@@ -338,6 +469,8 @@ export function buildStands(): StandsArt {
           col = PAL.ink;
       }
       base.set(x, y, col);
+      const hc = heat === 2 ? HEAT_NEAR.get(col) : heat === 1 ? HEAT_MID.get(col) : undefined;
+      hot.set(x, y, hc ?? col);
     }
 
   // ---- roof edge lamps (small spots, blinking at runtime)
@@ -348,13 +481,13 @@ export function buildStands(): StandsArt {
       const py = Math.round(y) - 1;
       if (px < R.x || px >= R.x + R.w) continue;
       base.set(px - R.x, py - R.y, PAL.night3);
+      hot.set(px - R.x, py - R.y, PAL.night3);
       roofLights.push({ x: px, y: py });
     }
   }
 
   // ---- crowd: people on every tread, drawn back to front
   const people: Person[] = [];
-  const flags: StandsArt['flags'] = [];
   const phones: StandsArt['phones'] = [];
   const pr = mulberry32(777);
   for (let k = N - 1; k >= 0; k--) {
@@ -362,54 +495,106 @@ export function buildStands(): StandsArt {
     for (const stand of [0, 1] as const) {
       for (let a = 0.04 + (k % 2) * 0.035; a < STAND_FAR; a += 0.075) {
         if (pr() < 0.07) continue; // an empty seat
+        if (stand === 1 && k < BOOTH.tiers && a > BOOTH.a0 - 0.04 && a < BOOTH.a1 + 0.04) continue; // the booth
         const [fx, fy] = stand === 0 ? P(mMid, mMid + a, tierZ(k)) : P(mMid + a, mMid, tierZ(k));
         const x = Math.round(fx + (pr() - 0.5) * 0.8);
         const y = Math.round(fy);
-        if (x < R.x + 4 || x > R.x + R.w - 4) continue;
+        if (x < -72 || x > 712) continue; // well outside any camera move
         // fan sections: P1's fans fill the left stand's far end, P2's the right stand; the
         // sections near the back corner are mixed
         const section = Math.floor(a / 1.15);
         const secSide: PlayerId | null = a < 1.6 ? null : stand === 0 ? (section % 4 === 3 ? 1 : 0) : section % 5 === 4 ? 0 : 1;
         const side: PlayerId = secSide ?? (pr() < 0.5 ? 0 : 1);
         const roll = pr();
-        const fanShare = secSide === null ? 0.25 : 0.5;
-        const shirt = roll < fanShare ? FAN_SHIRTS[side][Math.floor(pr() * 3)] : roll < fanShare + 0.08 ? ACCENT[Math.floor(pr() * ACCENT.length)] : MUTED[Math.floor(pr() * MUTED.length)];
+        // ~70 % muted clothes: the team colours are an accent, not the whole stand
+        const fanShare = secSide === null ? 0.12 : 0.24;
+        const front = k <= 1;
+        const shirts = front ? FAN_SHIRTS_FRONT[side] : FAN_SHIRTS_BACK[side];
+        const shirt = roll < fanShare ? shirts[Math.floor(pr() * shirts.length)] : roll < fanShare + 0.06 ? ACCENT[Math.floor(pr() * ACCENT.length)] : MUTED[Math.floor(pr() * MUTED.length)];
         // back rows sit deeper in the roof's shadow
-        const depth = k >= 5 ? 2 : k >= 3 ? 1 : 0;
+        const depth = k >= 4 ? 2 : k >= 2 ? 1 : 0;
         const kindRoll = pr();
         const q: Person = {
           x,
           y,
           row: k,
-          skin: dk(SKIN[Math.floor(pr() * SKIN.length)], depth > 1 ? 1 : 0),
+          a,
+          stand,
+          skin: dk(SKIN[Math.floor(pr() * SKIN.length)], depth),
           hair: pr() < 0.7 ? HAIR[Math.floor(pr() * HAIR.length)] : null,
           shirt: [dk(shirt[0], depth), dk(shirt[1], depth)],
           headLeft: pr() < 0.5,
-          kind: kindRoll < 0.34 ? 0 : kindRoll < 0.62 ? 1 : kindRoll < 0.76 ? 2 : kindRoll < 0.9 ? 3 : 4,
+          kind: kindRoll < 0.24 ? 0 : kindRoll < 0.56 ? 1 : kindRoll < 0.72 ? 2 : kindRoll < 0.88 ? 3 : 4,
           phase: Math.floor(pr() * CROWD_FRAMES),
-          cap: pr() < 0.1 ? dk(side === 0 ? PAL.cyan2 : PAL.crim2, depth) : null,
+          cap: pr() < 0.1 ? dk(side === 0 ? PAL.cyan1 : PAL.crim1, depth) : null,
           side,
+          flag: null,
         };
+        if (secSide !== null && pr() < 0.05) q.flag = side === 0 ? (front ? PAL.cyan3 : PAL.cyan2) : front ? PAL.crim3 : PAL.crim2;
         people.push(q);
-        if (pr() < (secSide === null ? 0.01 : 0.026) && k >= 1) flags.push({ x: x + (pr() < 0.5 ? -2 : 2), y: y - 4, side, design: Math.floor(pr() * 3), phase: Math.floor(pr() * 8), row: k });
         if (pr() < 0.05) phones.push({ x: x + (pr() < 0.5 ? -2 : 2), y: y - 6, side });
       }
     }
   }
-  // crowd frames: same canvas size as the base (cropped by the caller to the union bounds)
-  const crowd: PixelCanvas[] = [];
-  for (let f = 0; f < CROWD_FRAMES; f++) {
-    const p = new PixelCanvas(R.w, R.h);
-    for (const q of people) drawPerson(p, q, f, R.x, R.y);
-    crowd.push(p);
+
+  // ---- fan flags: only where the camera sees them (screen y ≈ 8…140), more under the cones
+  const flags: StandsArt['flags'] = [];
+  const fr = mulberry32(31337);
+  const coneX = TOWERS.map((t) => t.x);
+  const cands = people.filter((q) => q.row >= 1 && q.y - 14 >= 8 && q.y <= 140 && q.x >= 8 && q.x <= 632 && !(q.stand === 1 && q.a > BOOTH.a0 - 0.4 && q.a < BOOTH.a1 + 0.4));
+  const weight = (q: Person) => 1 + 3 * Math.max(...coneX.map((cx) => Math.exp(-(((q.x - cx) / 26) ** 2))));
+  const taken: Person[] = [];
+  const want = 30;
+  for (let guard = 0; taken.length < want && guard < 4000; guard++) {
+    const q = cands[Math.floor(fr() * cands.length)];
+    if (!q || fr() * 4 > weight(q)) continue;
+    if (taken.some((o) => Math.abs(o.x - q.x) < 10 && Math.abs(o.y - q.y) < 8)) continue;
+    taken.push(q);
+    const small = fr() < 0.4;
+    flags.push({ x: q.x + (fr() < 0.5 ? -2 : 2), y: q.y - 4, side: q.side, design: Math.floor(fr() * 3), phase: Math.floor(fr() * 8), row: q.row, small });
+  }
+
+  // ---- crowd chunks: narrow slices along each stand, every frame set
+  const crowd: CrowdChunk[] = [];
+  for (const stand of [0, 1] as const) {
+    const mine = people.filter((q) => q.stand === stand);
+    const byChunk = new Map<number, Person[]>();
+    for (const q of mine) {
+      const ci = Math.floor((q.x + 96) / CROWD_CHUNK_W);
+      const list = byChunk.get(ci) ?? [];
+      list.push(q);
+      byChunk.set(ci, list);
+    }
+    for (const [, list] of [...byChunk.entries()].sort((p1, p2) => p1[0] - p2[0])) {
+      const x0 = Math.min(...list.map((q) => q.x)) - 4;
+      const x1 = Math.max(...list.map((q) => q.x)) + 4;
+      const y0 = Math.min(...list.map((q) => q.y)) - 10;
+      const y1 = Math.max(...list.map((q) => q.y)) + 1;
+      const w = x1 - x0 + 1;
+      const h = y1 - y0 + 1;
+      const frames: [string, PixelCanvas][] = [];
+      for (let f = 0; f < CROWD_FRAMES; f++) {
+        const p = new PixelCanvas(w, h);
+        for (const q of list) drawPerson(p, q, idlePose(q, f), x0, y0);
+        frames.push([`i${f}`, p]);
+      }
+      for (const who of [0, 1, 'a'] as const) {
+        for (let f = 0; f < CROWD_UP_FRAMES; f++) {
+          const p = new PixelCanvas(w, h);
+          for (const q of list) drawPerson(p, q, who === 'a' || q.side === who ? upPose(q, f) : idlePose(q, f * 2), x0, y0);
+          frames.push([`u${who}:${f}`, p]);
+        }
+      }
+      const aMid = list.reduce((s, q) => s + q.a, 0) / list.length;
+      crowd.push({ x: x0, y: y0, w, h, stand, a: aMid, frames });
+    }
   }
 
   // ---- banners over the front wall railing and LED boards along the wall
   const banners: StandsArt['banners'] = [];
   const boards: LedBoard[] = [];
   const wallTop = tierZ(0);
-  const ledRows = 7;
-  const mkBoard = (stand: 0 | 1, a0: number, a1: number) => {
+  const mkBoard = (stand: 0 | 1, a0: number, a1: number, mode: LedBoard['mode']) => {
     const cols: LedBoard['cols'] = [];
     const [xa] = stand === 0 ? P(STAND_C, STAND_C + a0, wallTop) : P(STAND_C + a0, STAND_C, wallTop);
     const [xb] = stand === 0 ? P(STAND_C, STAND_C + a1, wallTop) : P(STAND_C + a1, STAND_C, wallTop);
@@ -423,28 +608,28 @@ export function buildStands(): StandsArt {
       const c = uu >= 0 ? m + uu : m;
       const r = uu >= 0 ? m : m - uu;
       const [, yTop] = P(c, r, wallTop);
-      cols.push({ x, y: Math.round(yTop) + 3, u: x - x0 });
+      cols.push({ x, y: Math.round(yTop) + 2, u: x - x0 });
     }
     const ys = cols.map((q) => q.y);
     const y0 = Math.min(...ys);
-    const y1 = Math.max(...ys) + ledRows;
-    boards.push({ x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1, cols, rows: ledRows, stand });
+    const y1 = Math.max(...ys) + LED_ROWS;
+    boards.push({ x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1, cols, rows: LED_ROWS, stand, mode });
   };
-  mkBoard(0, 0.5, 2.6);
-  mkBoard(0, 3.0, 5.4);
-  mkBoard(0, 5.8, 9.5);
-  mkBoard(1, 0.5, 2.7);
-  mkBoard(1, 3.1, 5.6);
-  mkBoard(1, 6.0, 10.0);
-  // banners hang in the gaps between boards (plus one per stand over a board's end)
+  // (the left stand's near-corner stretch is left to the hanging scoreboard)
+  mkBoard(0, 3.0, 5.4, 'text');
+  mkBoard(0, 5.8, 9.5, 'chase');
+  mkBoard(1, 0.5, 2.7, 'text');
+  mkBoard(1, 5.45, 7.5, 'flag');
+  mkBoard(1, 7.85, 10.0, 'text');
+  // banners hang in the gaps between boards
   const bannerAt = (stand: 0 | 1, a: number, side: PlayerId, design: number) => {
     const [x, y] = stand === 0 ? P(STAND_C, STAND_C + a, wallTop + 2) : P(STAND_C + a, STAND_C, wallTop + 2);
     banners.push({ x: Math.round(x), y: Math.round(y), len: 22, stand, side, design });
   };
   bannerAt(0, 2.9, 0, 0);
   bannerAt(0, 5.7, 0, 1);
-  bannerAt(1, 3.0, 1, 0);
-  bannerAt(1, 5.9, 1, 1);
+  bannerAt(1, 2.85, 1, 0);
+  bannerAt(1, 7.75, 1, 1);
 
   // the follow-spot path over each stand (mid-height of the tiers)
   const kMid = Math.floor(N / 2);
@@ -454,29 +639,36 @@ export function buildStands(): StandsArt {
     { a: P(mm + 0.5, mm, tierZ(kMid)), b: P(mm + 8, mm, tierZ(kMid)) },
   ];
 
-  // ---- contact shadow of the platform on the floor (dark band hugging the front faces)
-  for (let y = 0; y < R.h; y++)
-    for (let x = 0; x < R.w; x++) {
-      const wx = x + R.x;
-      const wy = y + R.y;
-      const g = gridAt(wx + 0.5, wy + 0.5, -FACE_T);
-      const inX = g.c > GC0 && g.c < GC1 + 0.18 && g.r > GR0 && g.r < GR1 + 0.18;
-      if (!inX) continue;
-      const out = Math.max(g.c - GC1, g.r - GR1); // grid units outside the front faces
-      if (out > 0 && out < 0.18 && base.alpha(x, y) > 0) {
-        const lv = out < 0.06 ? 16 : out < 0.12 ? 9 : 4;
-        if (bayer(wx, wy) < lv) base.set(x, y, out < 0.06 ? PAL.ink : PAL.night0);
-      }
-    }
-  return { base, crowd, flags, phones, banners, boards, roofLights, crowdSpan };
+  return { base, hot, crowd, flags, phones, banners, boards, roofLights, crowdSpan, boothLeds };
 }
 
-// ---------------------------------------------------------------- cables on the floor
+// ---------------------------------------------------------------- cables + pitch props on the floor
 
-/** Cable runs on the floor (grid polylines at floor level) drawn into the stadium base. */
-export function drawCables(base: PixelCanvas): { x: number; y: number }[] {
+export interface PitchLayout {
+  /** junction box lights at the cables' far ends (world px) */
+  boxLights: { x: number; y: number }[];
+  /** maintenance LEDs along each cable run (world px), ordered from the platform outward */
+  cableLeds: { x: number; y: number }[][];
+  /** marker lights along the painted boundary line's two front sides (world px, in order) */
+  markers: { x: number; y: number }[];
+  /** the camera dolly's rail (world px of its two ends; the cart rides between them) */
+  rail: { a: [number, number]; b: [number, number] };
+  /** the standing camera operator (world px of the feet) */
+  cameraman: { x: number; y: number };
+  /** little status LEDs on the flight cases + the open case's monitor screen (world px) */
+  caseLeds: { x: number; y: number; color: number }[];
+  monitor: { x: number; y: number; w: number; h: number };
+}
+
+/** Cable runs, the dolly rail and the pitch-side props drawn into the stadium floor. */
+export function drawPitch(base: PixelCanvas, hot: PixelCanvas, props: { cases: PixelCanvas[]; reel: PixelCanvas }): PitchLayout {
   const R = STAD_RECT;
-  const lights: { x: number; y: number }[] = [];
+  const both = (x: number, y: number, c: Color) => {
+    base.set(x - R.x, y - R.y, c);
+    hot.set(x - R.x, y - R.y, c);
+  };
+  const boxLights: PitchLayout['boxLights'] = [];
+  const cableLeds: PitchLayout['cableLeds'] = [];
   const runs: [number, number][][] = [
     // lower left: from the P1 face out toward the screen edge
     [
@@ -527,23 +719,91 @@ export function drawCables(base: PixelCanvas): { x: number; y: number }[] {
       for (let t = 0; t < 1; t += 0.05) pts.push(P(c0 + (c1 - c0) * t, r0 + (r1 - r0) * t, -FACE_T));
     }
     pts.push(P(run[run.length - 1][0], run[run.length - 1][1], -FACE_T));
+    const leds: { x: number; y: number }[] = [];
+    let since = 0;
     for (let i = 1; i < pts.length; i++) {
       linePx(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1], (x, y) => {
-        base.set(x - R.x, y - R.y, PAL.ink);
-        base.set(x - R.x, y + 1 - R.y, PAL.ink);
-        base.set(x - R.x, y - 1 - R.y, bayer(x, y) < 10 ? PAL.night3 : PAL.night2);
+        both(x, y, PAL.ink);
+        both(x, y + 1, PAL.ink);
+        both(x, y - 1, PAL.night2);
+        since++;
+        if (since >= 7) {
+          since = 0;
+          leds.push({ x, y: y - 1 });
+          both(x, y - 1, PAL.night3);
+        }
       });
     }
-    // a small junction box light at the cable's far end
+    cableLeds.push(leds);
+    // a small junction box with a status light at the cable's far end
     const end = pts[pts.length - 1];
-    lights.push({ x: Math.round(end[0]), y: Math.round(end[1]) - 2 });
-    base.rect(Math.round(end[0]) - 2 - R.x, Math.round(end[1]) - 3 - R.y, 5, 3, PAL.night1);
-    base.rect(Math.round(end[0]) - 2 - R.x, Math.round(end[1]) - 4 - R.y, 5, 1, PAL.night3);
+    const ex = Math.round(end[0]);
+    const ey = Math.round(end[1]);
+    boxLights.push({ x: ex, y: ey - 2 });
+    for (let j = 0; j < 3; j++) for (let i = 0; i < 5; i++) both(ex - 2 + i, ey - 3 + j, PAL.night1);
+    for (let i = 0; i < 5; i++) both(ex - 2 + i, ey - 4, PAL.night3);
     // a yellow-black cable ramp across the first boundary line
     const mid = pts[Math.floor(pts.length * 0.42)];
-    for (let i = -3; i <= 3; i++) base.set(Math.round(mid[0]) + i - R.x, Math.round(mid[1]) - R.y, ((i + 9) >> 1) % 2 ? PAL.gold2 : PAL.ink);
+    for (let i = -3; i <= 3; i++) both(Math.round(mid[0]) + i, Math.round(mid[1]), ((i + 9) >> 1) % 2 ? PAL.gold2 : PAL.ink);
   }
-  return lights;
+
+  // ---- marker lights along the boundary line's front sides
+  const markers: PitchLayout['markers'] = [];
+  const { c0, c1, r1 } = PITCH_LINES;
+  for (let c = c0 + 0.5; c < c1; c += 0.5) {
+    const [x, y] = P(c, r1, -FACE_T);
+    markers.push({ x: Math.round(x), y: Math.round(y) - 1 });
+  }
+  for (let r = r1 - 0.5; r > PITCH_LINES.r0; r -= 0.5) {
+    const [x, y] = P(c1, r, -FACE_T);
+    markers.push({ x: Math.round(x), y: Math.round(y) - 1 });
+  }
+  for (const m of markers) {
+    both(m.x - 1, m.y, PAL.ink);
+    both(m.x + 1, m.y, PAL.ink);
+    both(m.x, m.y, PAL.night3);
+  }
+
+  // ---- the camera dolly's rail along the P1 face (two rails on sleepers)
+  const ra = P(-0.7, GR1 + 1.45, -FACE_T);
+  const rb = P(1.55, GR1 + 1.45, -FACE_T);
+  const rail = { a: [Math.round(ra[0]), Math.round(ra[1])] as [number, number], b: [Math.round(rb[0]), Math.round(rb[1])] as [number, number] };
+  let n = 0;
+  linePx(rail.a[0], rail.a[1], rail.b[0], rail.b[1], (x, y) => {
+    if (n++ % 5 === 0) for (let k = -1; k <= 4; k++) both(x - 1, y + k, PAL.night0); // sleepers
+    both(x, y, PAL.steel);
+    both(x, y + 1, PAL.ink);
+    both(x, y + 3, PAL.night4);
+    both(x, y + 4, PAL.ink);
+  });
+
+  // ---- flight cases, a cable reel and a camera operator at the pitch side
+  const stamp = (pc: PixelCanvas, x: number, y: number) => {
+    for (let j = 0; j < pc.h; j++)
+      for (let i = 0; i < pc.w; i++) {
+        const c = pc.get(i, j);
+        if (c !== null) both(x + i, y + j, c);
+      }
+  };
+  const caseAt: [number, number, number][] = [
+    [22, 286, 0],
+    [36, 292, 1],
+    [146, 302, 0],
+    [470, 282, 2],
+    [486, 287, 1],
+    [610, 214, 0],
+  ];
+  const caseLeds: PitchLayout['caseLeds'] = [];
+  for (const [x, y, v] of caseAt) {
+    stamp(props.cases[v], x, y);
+    if (v !== 2) caseLeds.push({ x: x + 11, y: y + 8, color: v === 0 ? PAL.leaf3 : PAL.gold3 });
+  }
+  stamp(props.reel, 112, 300);
+  stamp(props.reel, 590, 232);
+  const monitor = { x: 470 + 4, y: 282 + 1, w: 7, h: 2 };
+  // a short cable from the open case to the cameraman
+  linePx(486, 292, 548, 268, (x, y) => both(x, y, PAL.ink));
+  return { boxLights, cableLeds, markers, rail, cameraman: { x: 556, y: 266 }, caseLeds, monitor };
 }
 
 /** World px of a point on the front edge of a stand's roof, `a` grid units out from the corner. */
@@ -602,7 +862,7 @@ export function drawTowers(): PixelCanvas {
       if (bx2 > xl && bx2 < xr) set(bx2, y, PAL.night2);
       if (j === 0) for (let x = xl + 1; x < xr; x++) set(x, y, PAL.night3);
       // a ladder light every so often
-      if ((y - top) % 23 === 11) set(xl - 1, y, PAL.crim3);
+      if ((y - top) % 23 === 11) set(xl - 1, y, PAL.crim2);
     }
     // concrete footing
     for (let y = t.baseY - 1; y <= t.baseY + 2; y++) for (let x = t.baseX - 6; x <= t.baseX + 6; x++) set(x, y, y === t.baseY - 1 ? PAL.stone2 : y === t.baseY + 2 ? PAL.ink : PAL.stone1);
@@ -637,3 +897,4 @@ export function towerLamps(t: { x: number; y: number; side: 0 | 1 }): { x: numbe
     }
   return out;
 }
+

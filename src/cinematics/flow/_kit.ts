@@ -12,7 +12,8 @@ import type { GameEvent, GameEventType, GameState, Phase, PlayerId } from '../..
 import { PAL, PLAYER_RAMP, type Ramp } from '../../art/palette';
 import { PixelCanvas, shade } from '../../art/pixel';
 import { ISO_CX, ISO_CY, ISO_TEX_H, ISO_TEX_W, cardIsoKey } from '../../art/cards';
-import { DEPTH, type XY } from '../../view/layout';
+import { DEPTH, TILE_W, type XY } from '../../view/layout';
+import { lightBeam, lightDim, lightDimFor, lightFlash, lightPool, type BeamHandle, type LightHandle } from '../../view/light';
 import { TEX } from '../../vfx/core';
 import { Raster, Sparks, onFrame, run } from '../../vfx/setpieces';
 import type { CinematicContext } from '../api';
@@ -23,6 +24,12 @@ export type AnyCtx = CinematicContext<GameEvent>;
 
 export const TAU = Math.PI * 2;
 export const ADD = Phaser.BlendModes.ADD;
+// the subtle light layer (arena v2; every call is a no-op in v1)
+export { lightBeam, lightDim, lightDimFor, lightFlash, lightPool, type BeamHandle, type LightHandle };
+/** Floor scale of the arena: 1 on the v1 64×32 tiles, 1.25 on the v2 80×40 tiles. */
+export const TS = TILE_W / 64;
+/** A floor size in the current arena (whole pixels; v1 values pass through untouched). */
+export const fs = (v: number): number => (TS === 1 ? v : Math.round(v * TS));
 
 export const other = (p: PlayerId): PlayerId => (p === 0 ? 1 : 0);
 export const clamp01 = (t: number): number => (t < 0 ? 0 : t > 1 ? 1 : t);
@@ -229,16 +236,25 @@ export async function beamDrop(
   const top = o.top ?? groundY - 260;
   const W = o.width ?? 11;
   const r = new Raster(scene, x - 16, top, 32, groundY - top + 6, o.depth ?? DEPTH.FX, ADD);
+  // (v2) the beam's glow (just behind it) and the pool it lays on the floor
+  const depth = o.depth ?? DEPTH.FX;
+  const glow = lightBeam(scene, { x, y: top }, { x, y: top }, ramp[4], 0, { width: W + 6, depth: depth - 0.5, intensity: 0.8, shimmer: 0.3 });
+  const pool = lightPool(scene, x, groundY, { color: ramp[3], radius: fs(26), intensity: 0, fadeIn: 0 });
   let hit = false;
   await run(scene, dropMs + holdMs + outMs, (_t, el) => {
     const yHead = el < dropMs ? lerp(top, groundY, (el / dropMs) ** 2) : groundY;
     if (!hit && el >= dropMs) {
       hit = true;
+      if (glow.alive) void lightFlash(scene, x, groundY - 10, ramp[4], fs(34), 420, { floorY: groundY, ring: true, intensity: 1 });
       o.onHit?.();
     }
     const out = el > dropMs + holdMs ? clamp01((el - dropMs - holdMs) / outMs) : 0;
     const w = Math.max(1, W * (1 - out * 0.85) * (el < dropMs ? 0.6 : 1 + 0.25 * Math.sin(el * 0.05)));
     const lv = 1 - out * out;
+    if (glow.alive) {
+      glow.setEnds({ x, y: top }, { x, y: Math.round(yHead) }).setIntensity(0.8 * lv);
+      pool.setIntensity(hit ? 0.9 * lv : 0);
+    }
     r.draw((g) => {
       const tailTop = el < dropMs ? Math.max(top, yHead - 120) : top;
       for (let y = Math.floor(tailTop); y <= yHead; y++) {
@@ -275,6 +291,8 @@ export async function beamDrop(
     });
   });
   r.destroy();
+  glow.destroy();
+  pool.destroy();
 }
 
 // ================================================================ iso card ghost

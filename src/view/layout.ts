@@ -254,6 +254,92 @@ export function duelistXY(player: PlayerId): XY {
   return player === 0 ? isoToScreen(2, 5.35) : isoToScreen(2, -1.35);
 }
 
+// ---------------------------------------------------------------- deck corners (additive)
+//
+// In v2 the deck pads sit on the board's extreme corners: P1's on the bottom corner (340, 286),
+// right above the resting hand, P2's on the back corner (300, 66), right under the phase bar.
+// With the count tag centered under the stack and a referee pylon on the very corner, the deck
+// box, the tag, the pylon and the hand's top edge all stacked on one x (critic: "bottom corner
+// clutter"). The two contracts below spread the corner out, mirrored for P2:
+//
+//      P1 bottom corner (v2):   [pylon]  [deck box]  [16]        P2 back corner:  [16]  [deck box]  [pylon]
+//
+//  - pileTagAnchor: the pile count tag goes BESIDE its stack, on the tile's outer side tip.
+//  - deckPylonXY:   the pylon on each deck corner slides along the trim, away from the deck.
+// v1 values reproduce exactly what is drawn today (tag centered under the stack; v1 has no pylons).
+
+/** Height of a pile count tag (px). */
+export const PILE_TAG_H = 9;
+
+/** How a tag's anchor x is read: its center, its left edge (grows right) or its right edge (grows left). */
+export type TagAlign = 'center' | 'left' | 'right';
+
+export interface TagAnchor {
+  /** 'center': the tag's center x; 'left': its first (leftmost) pixel column; 'right': one past its last column. */
+  x: number;
+  /** The tag's top pixel row (the tag is PILE_TAG_H tall). */
+  y: number;
+  align: TagAlign;
+}
+
+/** v2: horizontal distance (px) from a pile tile's center to the near edge of its side tag (the stack reaches ±21). */
+const PILE_TAG_SIDE_DX = 23;
+
+/**
+ * Where a deck / graveyard pile's count tag goes (integer screen px).
+ *  - v1: centered under the stack on the tile's front corner: { x: home.x, y: round(home.y + 8), 'center' }
+ *    — exactly what PileView draws today.
+ *  - v2: beside the stack on the tile's outer side tip, vertically centered on the tile center:
+ *    P1 right of the stack ('left', grows right), P2 left of it ('right', grows left) — pixel mirror.
+ *    P1 deck {363, 282}, P1 graveyard {403, 262}, P2 deck {277, 62}, P2 graveyard {237, 82}.
+ *    A 2-digit tag (w 13) then covers x 363..375 / 403..415 / 264..276 / 224..236, y a.y..a.y+8.
+ * Use with tagLeft(); the count label's x is tagLeft(a, w) + floor(w / 2), its y a.y + 5 (as today).
+ */
+export function pileTagAnchor(player: PlayerId, kind: 'deck' | 'graveyard'): TagAnchor {
+  const home = zoneXY(player, kind);
+  if (!ARENA_V2) return { x: home.x, y: Math.round(home.y + 8), align: 'center' };
+  const y = Math.round(home.y) - Math.floor(PILE_TAG_H / 2);
+  const x = Math.round(home.x);
+  return player === 0 ? { x: x + PILE_TAG_SIDE_DX, y, align: 'left' } : { x: x - PILE_TAG_SIDE_DX, y, align: 'right' };
+}
+
+/** Left pixel column of a tag `w` px wide placed at anchor `a` (center: round(a.x − w/2), as PileView does today). */
+export function tagLeft(a: TagAnchor, w: number): number {
+  if (a.align === 'center') return Math.round(a.x - w / 2);
+  return a.align === 'left' ? a.x : a.x - w;
+}
+
+/**
+ * v2: how far (grid units, ≈ 44.7 px each along the trim) the referee pylon on each deck corner
+ * slides away from the deck. 0 in v1 (which has no pylons) — the result is just the corner point.
+ */
+export const DECK_PYLON_SLIDE: number = byArena(0, 0.7);
+
+/**
+ * Grid point (fractional) of the referee pylon on a player's deck corner. `outset` = how far the
+ * pylon base sits outside the tile grid edge, in grid units (art/arena-v2/geom.ts: BORDER − 0.14
+ * = 0.16). On the very corner the pylon stood behind the deck stack and its tag, right above the
+ * resting hand (P1) / under the phase bar (P2); it slides DECK_PYLON_SLIDE along the trim instead:
+ * P1 (bottom corner) toward −col (screen up-left), P2 (back corner) toward +col (screen
+ * down-right) — the board's 180° rotation. The other two corner pylons (left, right) stay put.
+ */
+export function deckPylonCell(player: PlayerId, outset: number): { col: number; row: number } {
+  const c = { col: BOARD_COLS - 0.5 + outset - DECK_PYLON_SLIDE, row: BOARD_ROWS - 0.5 + outset };
+  return player === 0 ? c : { col: BOARD_COLS - 1 - c.col, row: BOARD_ROWS - 1 - c.row };
+}
+
+/**
+ * Screen point (whole px) of the deck-corner pylon's base on the trim — the same point
+ * geom.ts PYLONS holds (P() of the grid point, rounded). v2 with outset 0.16: P1 (312, 298),
+ * P2 (328, 54); the 11×24 pylon then spans x 307..317 / 323..333, clear of the deck stacks
+ * (x 319..361 / 279..321), and P2's pylon top drops from y 18 to y 32 (the phase bar ends at y 17).
+ */
+export function deckPylonXY(player: PlayerId, outset: number): XY {
+  const c = deckPylonCell(player, outset);
+  const s = isoToScreen(c.col, c.row);
+  return { x: Math.round(s.x), y: Math.round(s.y) };
+}
+
 // ---------------------------------------------------------------- depth bands
 
 export const DEPTH = {
@@ -338,7 +424,8 @@ const UI_V1: UiLayout = {
  *    top lane reaches up to y ≈ 17).
  *  - inspect fills the free upper-left triangle (the board edge passes (124,134); P1 field pad).
  *  - hand: resting cards should show at most ~40 px (tops at y ≥ 318); the P1 deck pad's
- *    bottom corner is at (340, 306).
+ *    bottom corner is at (340, 306). With the deck-corner contract (pileTagAnchor, deckPylonXY)
+ *    the deck tag ends at y 290 and the deck pylon's foot at y 299, so the resting tops clear both.
  *  - p1Panel / buttons sit under the board's lower edges; p2Panel right of the P2 duelist.
  */
 const UI_V2: UiLayout = {

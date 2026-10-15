@@ -15,6 +15,7 @@
 
 import { PAL, PLAYER_COLOR } from '../../art/palette';
 import { DEPTH, type XY, zoneXY } from '../../view/layout';
+import { lightFlash } from '../../view/light';
 import { shake, tween, wait } from '../../vfx/core';
 import { afterimages, stopTime, whiteFlash } from '../../vfx/combat';
 import { Sparks } from '../../vfx/setpieces';
@@ -98,6 +99,7 @@ registerCardHook(
         void whiteFlash(sc, s, 1);
         void shake(sc, 140, 2);
         const c = attacker.core();
+        void lightFlash(sc, c.x, c.y, PAL.gold4, 44, 420, { floorY: attacker.home.y, ring: true });
         const sp = new Sparks(sc, DEPTH.FX + 4);
         sp.burst(16, () => {
           const a = rr(0, TAU);

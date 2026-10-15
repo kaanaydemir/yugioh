@@ -24,7 +24,9 @@ import {
   bg,
   clamp,
   face,
+  fs,
   holdFrame,
+  lightFlash,
   holo,
   lerp,
   noise1,
@@ -119,8 +121,11 @@ signatureSummon('ember_wolf', async (S) => {
   const sc = S.scene;
   const { unit, sprite, home, rest } = S;
   const circle = S.openCircle();
-  const RAD = S.big ? 42 : 38;
+  const RAD = fs(S.big ? 42 : 38);
   const ring = S.own(fireRing(S, RAD));
+  // (v2) the ring's flickering firelight on the marble
+  const ringLight = S.glow({ color: PAL.fire3, radius: Math.round(RAD * 1.05), intensity: 0, anim: 'flicker', fadeIn: 0 });
+  ringLight.setIntensity(0.85, 230);
   playSfx('fireBurst', { volume: 0.6, pitch: 1.2 });
   embers(sc, home.x, home.y, { radius: RAD * 0.8, duration: 600, frequency: 40, count: 1, speed: 0.7, depth: DEPTH.FX - 1 });
   await ring.ignite(230);
@@ -133,6 +138,8 @@ signatureSummon('ember_wolf', async (S) => {
   const a1 = p2 ? 2 * Math.PI : -Math.PI;
   const P = holo(unit, EMBER, { reveal: 0, gain: 0.8, glitch: 0.12 });
   unit.showSprite();
+  // the flame wolf carries its own light round the ring
+  const runLight = S.glow({ at: { x: sprite.x, y: sprite.y }, floorY: sprite.y, color: PAL.fire2, radius: fs(18), intensity: 0.75, anim: 'flicker', fadeIn: 80 }).follow(sprite, { floorY: (p) => p.y + unit.lift });
   playSfx('whoosh', { volume: 0.5, pitch: 1.3 });
   let lastEcho = -99;
   let lastX = home.x;
@@ -172,13 +179,16 @@ signatureSummon('ember_wolf', async (S) => {
   sprite.setPosition(rest.x, rest.y);
   unit.lift = 0;
   face(unit, unit.flipX);
+  void runLight.fadeOut(160);
+  void lightFlash(sc, home.x, home.y - 8, PAL.fire3, fs(28), 300, { floorY: home.y, intensity: 0.8 });
+  ringLight.setIntensity(1.2, 60);
 
   // ---- landing
   holdFrame(unit, 'attack', 7);
   playSfx('impactLight', { volume: 0.6 });
   bg(shake(sc, 110, 2));
   bg(landingDust(sc, home.x, home.y, PAL.fire2, { count: 8 }));
-  bg(shockwave(sc, home.x, home.y, { ramp: FIRE, radius: 30, ms: 260, thickness: 3 }));
+  bg(shockwave(sc, home.x, home.y, { ramp: FIRE, radius: fs(30), ms: 260, thickness: 3 }));
   embers(sc, home.x, home.y - 4, { count: 14, speed: 1.2, depth: DEPTH.FX - 1 });
   bg(run(sc, 140, (t) => sprite.setScale(1 + 0.1 * (1 - t) * Math.cos(t * 8), 1 - 0.12 * (1 - t) * Math.cos(t * 8))).then(() => sprite.setScale(1)));
   ring.set(1.6, 0.8);
@@ -194,6 +204,8 @@ signatureSummon('ember_wolf', async (S) => {
     lead: 120,
     onPeak: () => {
       bg(ring.erupt(460));
+      ringLight.setIntensity(1.7, 70);
+      bg(S.wait(110).then(() => ringLight.fadeOut(380)));
       embers(sc, home.x, home.y - 8, { count: S.big ? 34 : 22, speed: 1.8, depth: DEPTH.FX - 1, life: 1 });
       S.finale({ ring: S.big ? 80 : 56, ramp: FIRE, sfx: 'fireBurst' });
       bg(circle.dismiss(360));

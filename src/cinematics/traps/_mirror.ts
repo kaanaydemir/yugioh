@@ -7,12 +7,17 @@
 import Phaser from 'phaser';
 import type { PlayerId } from '../../engine/types';
 import { PAL, PLAYER_COLOR } from '../../art/palette';
-import { DEPTH, type XY, isoToScreen, screenToIso } from '../../view/layout';
-import { TEX, flash, shake } from '../../vfx/core';
+import { BOARD_MID_COL, BOARD_OX, BOARD_OY, DEPTH, LANE_COLS, TILE_H, TILE_W, type XY, isoToScreen, monsterRow, screenToIso } from '../../view/layout';
+import { lightBeam, lightFlash, lightPool } from '../../view/light';
+import { TEX, flash, shake, wait } from '../../vfx/core';
 import { E, Raster, Sparks, clamp01, freeze, glowStroke, lerp, onFrame, qbez, rampOf, rnd, rr, run, seg, snd } from '../../vfx/setpieces';
 
 const TAU = Math.PI * 2;
 const TRAP_RAMP = [PAL.white, PAL.mag4, PAL.mag3, PAL.mag2, PAL.mag1];
+/** Half tile in screen px (v1 32×16, v2 40×20) and the floor scale (v1 1, v2 1.25). */
+const HW = TILE_W / 2;
+const HH = TILE_H / 2;
+const TK = TILE_W / 64;
 
 export interface DomeOpts {
   /** Called when the reflected beam reaches attacker i (shatter it here). */
@@ -28,20 +33,23 @@ export interface DomeOpts {
 }
 
 export async function mirrorDomeTB(scene: Phaser.Scene, side: PlayerId, attackers: XY[], opts: DomeOpts = {}): Promise<void> {
-  const a0 = 2;
-  const b0 = side === 0 ? 3 : 1;
-  const ra = 1.78;
+  // the dome stands over the defender's whole monster row: centred on the board's middle column,
+  // spanning the outer lanes (v1 cols 1–3 of 5, v2 cols 1–5 of 7) with 0.78 tiles to spare
+  const a0 = BOARD_MID_COL;
+  const b0 = monsterRow(side);
+  const ra = (LANE_COLS[LANE_COLS.length - 1] - LANE_COLS[0]) / 2 + 0.78;
   const rb = 1.02;
-  const rz = 84;
+  const rz = 84 * TK;
   const fs = side === 0 ? -1 : 1; // forward sign along rows (toward the attacker)
-  const k = 1 / 32;
+  // ray march: a pixel's floor point slides 1/TILE_H grid units per px of height
+  const k = 1 / TILE_H;
   const cScr = isoToScreen(a0, b0);
-  const x0 = Math.floor(cScr.x - (ra + rb) * 32) - 3;
-  const x1 = Math.ceil(cScr.x + (ra + rb) * 32) + 3;
-  const y0 = Math.floor(cScr.y - (ra + rb) * 16 - rz) - 3;
-  const y1 = Math.ceil(cScr.y + (ra + rb) * 16) + 3;
+  const x0 = Math.floor(cScr.x - (ra + rb) * HW) - 3;
+  const x1 = Math.ceil(cScr.x + (ra + rb) * HW) + 3;
+  const y0 = Math.floor(cScr.y - (ra + rb) * HH - rz) - 3;
+  const y1 = Math.ceil(cScr.y + (ra + rb) * HH) + 3;
   // far shell behind the row's units, near shell as glass in front of them
-  const rowTop = cScr.y - 16;
+  const rowTop = cScr.y - HH;
   const far = new Raster(scene, x0, y0, x1 - x0, y1 - y0, DEPTH.UNIT + rowTop - 1);
   const nearR = new Raster(scene, x0, y0, x1 - x0, y1 - y0, DEPTH.FX - 10);
   const base = new Raster(scene, x0, y0, x1 - x0, y1 - y0, DEPTH.SHADOW - 1);
@@ -74,7 +82,9 @@ export async function mirrorDomeTB(scene: Phaser.Scene, side: PlayerId, attacker
   };
   // hex pattern lives on the sphere seen from above-front: (u, v) = (side axis, height) mixed
   // with the row axis so both shells get a full lattice
-  const uvOf = (u: number, _w: number, v: number) => ({ hu: u, hv: v });
+  // (a wider v2 dome keeps its hex cells about a tile-scale wide instead of stretching them)
+  const huK = ra / 1.78;
+  const uvOf = (u: number, _w: number, v: number) => ({ hu: u * huK, hv: v });
 
   // impact point on the shell facing a point, high on the dome
   const toward = (p: XY, el = 0.72) => {
@@ -91,7 +101,7 @@ export async function mirrorDomeTB(scene: Phaser.Scene, side: PlayerId, attacker
     const h = uvOf(u, w, v);
     return { u: h.hu, v: h.hv, x: scr.x, y: scr.y - v * rz };
   };
-  const mean = attackers.length ? { x: attackers.reduce((s2, p) => s2 + p.x, 0) / attackers.length, y: attackers.reduce((s2, p) => s2 + p.y, 0) / attackers.length } : { x: cScr.x - fs * -60, y: cScr.y + fs * 40 };
+  const mean = attackers.length ? { x: attackers.reduce((s2, p) => s2 + p.x, 0) / attackers.length, y: attackers.reduce((s2, p) => s2 + p.y, 0) / attackers.length } : { x: cScr.x - fs * -60 * TK, y: cScr.y + fs * 40 * TK };
   const hit = toward(mean);
 
   let build = 0; // 0..1 materialize wave
@@ -105,9 +115,9 @@ export async function mirrorDomeTB(scene: Phaser.Scene, side: PlayerId, attacker
     nearR.begin();
     const qa = (k * k) / (ra * ra) + (k * k) / (rb * rb) + 1 / (rz * rz);
     for (let sy = y0; sy < y1; sy++) {
-      const q0 = (sy - 96) / 16;
+      const q0 = (sy - BOARD_OY) / HH;
       for (let sx = x0; sx < x1; sx++) {
-        const P = (sx + 0.5 - 320) / 32;
+        const P = (sx + 0.5 - BOARD_OX) / HW;
         const A0 = (P + q0) / 2 - a0;
         const B0 = (q0 - P) / 2 - b0;
         const qb = 2 * k * (A0 / (ra * ra) + B0 / (rb * rb));
@@ -196,24 +206,27 @@ export async function mirrorDomeTB(scene: Phaser.Scene, side: PlayerId, attacker
   };
   const stopDraw = onFrame(scene, (_dt, el) => drawDome(el));
 
-  // ---- 0–380 materialize
+  // ---- 0–380 materialize (arena v2: the glass casts a magenta glow over the row's marble)
+  const domeLight = lightPool(scene, cScr.x, cScr.y - rz * 0.45, { color: PAL.mag3, spill: PAL.mag2, radius: (ra + rb) * HW * 0.85, floorY: cScr.y, air: 0.35, airRadius: rz * 0.6, intensity: 0.05, anim: 'breathe', fadeIn: 0 });
+  domeLight.setIntensity(0.85, 380);
   snd('mirror', 0.9);
   await run(scene, 380, (t) => {
     build = E.outQuad(t);
     if (rnd() < 0.5) {
       const a = rr(-1.2, 1.2);
-      const p = toward({ x: cScr.x + Math.sin(a) * 80, y: cScr.y - fs * 40 });
+      const p = toward({ x: cScr.x + Math.sin(a) * 80 * TK, y: cScr.y - fs * 40 * TK });
       sparks.add({ x: p.x, y: p.y, vx: rr(-20, 20), vy: rr(-30, -10), life: 260, ramp: TRAP_RAMP, tex: TEX.px1 });
     }
   });
   build = 1;
 
   // ---- 450–640 the incoming attack streaks into the shell
-  const src = opts.source ?? attackers[0] ?? { x: cScr.x - fs * 60, y: cScr.y + fs * 60 };
+  const src = opts.source ?? attackers[0] ?? { x: cScr.x - fs * 60 * TK, y: cScr.y + fs * 60 * TK };
   const atk = rampOf(opts.attackColor ?? PLAYER_COLOR[side === 0 ? 1 : 0]);
   const streak = new Raster(scene, Math.min(src.x, hit.x) - 12, Math.min(src.y, hit.y) - 12, Math.abs(src.x - hit.x) + 24, Math.abs(src.y - hit.y) + 24, DEPTH.FX + 4);
   snd('beamFire', 0.6, 1.2);
   opts.onFire?.();
+  void lightBeam(scene, src, hit, atk[3], 240, { width: 12, intensity: 1.2, rise: 40 });
   await run(scene, 140, (t) => {
     const kk = E.inQuad(t);
     const hx = lerp(src.x, hit.x, kk);
@@ -233,6 +246,9 @@ export async function mirrorDomeTB(scene: Phaser.Scene, side: PlayerId, attacker
   snd('impactHeavy', 0.6, 1.3);
   rippleT = 0;
   flashAll = 0.6;
+  void lightFlash(scene, hit.x, hit.y, PAL.white, 50 * TK, 420, { floorY: cScr.y, ring: true, intensity: 1.1 });
+  domeLight.setIntensity(1.5, 60);
+  void wait(scene, 120).then(() => domeLight.setIntensity(1, 260));
   sparks.burst(30, () => {
     const a = rr(0, TAU);
     const sp = rr(60, 200);
@@ -250,6 +266,7 @@ export async function mirrorDomeTB(scene: Phaser.Scene, side: PlayerId, attacker
   snd('beamCharge', 0.7, 1.4);
   // the light gathers at the impact point: a growing white core
   const core = scene.add.image(hit.x, hit.y, TEX.dot5).setDepth(DEPTH.FX + 7).setTint(PAL.mag4).setScale(0.2);
+  domeLight.setIntensity(1.45, 170);
   await run(scene, 170, (t) => {
     charge = E.inQuad(t);
     core.setScale(Math.max(0.2, Math.round(E.inQuad(t) * 6) / 2)).setTint(Math.floor(t * 8) % 2 ? PAL.white : PAL.mag4);
@@ -266,6 +283,8 @@ export async function mirrorDomeTB(scene: Phaser.Scene, side: PlayerId, attacker
   flashAll = 1;
   void flash(scene, 120, PAL.mag4, 0.35);
   core.destroy();
+  domeLight.setIntensity(1.9, 40);
+  void wait(scene, 90).then(() => domeLight.setIntensity(0.9, 300));
   // each reflected beam arcs on its own curve (fanned so a row of attackers never overlaps)
   const nB = attackers.length;
   const beams = attackers.map((p, i) => {
@@ -286,6 +305,8 @@ export async function mirrorDomeTB(scene: Phaser.Scene, side: PlayerId, attacker
     const bx0 = Math.min(...xs) - 14;
     const by0 = Math.min(...ys) - 14;
     const r = new Raster(scene, bx0, by0, Math.max(...xs) - bx0 + 14, Math.max(...ys) - by0 + 14, DEPTH.FX + 5);
+    // arena v2: each reflected beam lights its path (a glow + a strip across the marble)
+    void wait(scene, i * 40).then(() => lightBeam(scene, from, p, PAL.mag4, 380, { width: 13, intensity: 1.25, floor: { from: { x: from.x, y: cScr.y }, to: { x: p.x, y: p.y + 16 } }, floorWidth: 12 }));
     return { from, to: p, curve, r, i, hitDone: false };
   });
   // stray reflections splaying off the dome (anime "many beams")
@@ -335,6 +356,7 @@ export async function mirrorDomeTB(scene: Phaser.Scene, side: PlayerId, attacker
       if (lt >= 1 && !b.hitDone) {
         b.hitDone = true;
         opts.onHit?.(b.i);
+        void lightFlash(scene, b.to.x, b.to.y, PAL.mag4, 40, 360, { floorY: b.to.y + 16, ring: true });
         snd('impactHeavy', 0.8);
         sparks.burst(22, () => {
           const a = rr(0, TAU);
@@ -350,9 +372,10 @@ export async function mirrorDomeTB(scene: Phaser.Scene, side: PlayerId, attacker
   void (async () => {
     snd('shatter', 0.7, 1.4);
     sparks.burst(40, () => {
-      const p = toward({ x: cScr.x + rr(-90, 90), y: cScr.y - fs * rr(20, 60) });
+      const p = toward({ x: cScr.x + rr(-90, 90) * TK, y: cScr.y - fs * rr(20, 60) * TK });
       return { x: p.x + rr(-10, 10), y: p.y + rr(-30, 10), vx: rr(-40, 40), vy: rr(-40, 10), ay: 260, life: rr(380, 700), ramp: [PAL.white, PAL.mag4, PAL.mag3, PAL.mag2], tex: rnd() < 0.4 ? TEX.px2 : TEX.plus };
     });
+    void domeLight.fadeOut(340);
     await run(scene, 340, (t) => (shatter = E.outQuad(t) * 1.15));
     stopDraw();
     far.destroy();

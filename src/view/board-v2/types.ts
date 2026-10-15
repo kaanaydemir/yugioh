@@ -87,3 +87,6 @@ export interface BoardCtx {
   readonly t: number;
 }
 
+
+/** How the crowd reacts (BoardView.crowd). */
+export type CrowdReaction = 'cheer' | 'gasp' | 'roar';

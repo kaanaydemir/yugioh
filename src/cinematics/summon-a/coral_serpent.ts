@@ -24,7 +24,9 @@ import {
   TAU,
   bg,
   bodyBox,
+  fs,
   geyser,
+  lightFlash,
   holo,
   isoRing,
   lerp,
@@ -170,15 +172,18 @@ signatureSummon('coral_serpent', async (S) => {
   const { unit, sprite, home, rest } = S;
   if (S.big) bg(S.ctx.focus({ x: home.x, y: home.y - 34 }, { zoom: 1.05, ms: 520, pan: 0.3 }));
   const circle = S.openCircle();
-  const pool = S.own(whirlPool(S, S.big ? 26 : 20));
+  const pool = S.own(whirlPool(S, fs(S.big ? 26 : 20)));
+  // (v2) rippling water light on the marble around the whirl
+  const waterLight = S.glow({ color: PAL.water3, radius: fs(S.big ? 40 : 34), intensity: 0, anim: 'caustic', fadeIn: 0 });
+  waterLight.setIntensity(0.9, 220);
   playSfx('waterSplash', { volume: 0.5, pitch: 0.8 });
   playSfx('summonCharge', { volume: 0.6 });
-  bubblesSmall(sc, home.x, home.y, { radius: 16, duration: 340, frequency: 50, count: 1, depth: DEPTH.FX - 1 });
+  bubblesSmall(sc, home.x, home.y, { radius: fs(16), duration: 340, frequency: 50, count: 1, depth: DEPTH.FX - 1 });
   // spray drawn inward toward the whirl
   const pull = new Sparks(sc, DEPTH.FX - 1, ADD);
   for (let i = 0; i < (S.big ? 22 : 14); i++) {
     const a = R() * TAU;
-    const d = RR(44, 66);
+    const d = RR(fs(44), fs(66));
     pull.add({ x: home.x + Math.cos(a) * d, y: home.y + Math.sin(a) * d * 0.5 - RR(0, 16), home: { x: home.x, y: home.y, k: 0.4 }, delay: RR(0, 140), life: RR(240, 340), ramp: [PAL.water3, PAL.water4, PAL.white], tex: TEX.px1 });
   }
   pull.close();
@@ -195,6 +200,8 @@ signatureSummon('coral_serpent', async (S) => {
   playSfx('summonBurst', { volume: 0.6, pitch: 1.2 });
   const spout = S.own(geyser(S, { height: S.big ? 150 : 112, width: S.big ? 20 : 16, kind: 'water' }));
   bg(spout.rise(80));
+  void lightFlash(sc, home.x, home.y - (S.big ? 70 : 54), PAL.water4, fs(S.big ? 56 : 46), 480, { floorY: home.y, intensity: 1.1, air: 0.55 });
+  waterLight.setIntensity(1.4, 80);
   let fell = false;
   droplets(sc, home.x, home.y - 40, { count: S.big ? 34 : 22, speed: 1.3, depth: DEPTH.FX - 1 });
   const box0 = bodyBox(unit);
@@ -221,6 +228,7 @@ signatureSummon('coral_serpent', async (S) => {
   droplets(sc, home.x, home.y - 70, { w: 40, h: 30, count: S.big ? 26 : 16, speed: 0.55, depth: DEPTH.FX - 1 });
   bubbles(sc, home.x, home.y - 10, { w: 18, h: 24, count: 6, depth: S.depth + 0.5 });
   bg(settleHolo(sc, unit, 260));
+  waterLight.setIntensity(1, 240);
   await S.wait(60);
 
   // ---- roar: jaws wide on the peak, the water crown bursts
@@ -228,11 +236,12 @@ signatureSummon('coral_serpent', async (S) => {
     from: 1,
     peak: 3,
     onPeak: () => {
-      splashCrown(S, S.big ? 22 : 16, S.big ? 12 : 8);
+      splashCrown(S, fs(S.big ? 22 : 16), S.big ? 12 : 8);
       droplets(sc, home.x, home.y - 6, { radius: 18, count: S.big ? 24 : 14, speed: 1, depth: DEPTH.FX - 1 });
       S.finale({ ring: S.big ? 94 : 58, ramp: WATER, flashColor: S.big ? PAL.water4 : undefined, flashAlpha: 0.28, freezeMs: S.big ? 60 : 0, sfx: 'summonBurst' });
       playSfx('waterSplash', { volume: 0.8, pitch: 1.2 });
       bg(pool.drain(420));
+      void waterLight.fadeOut(520);
       bg(circle.dismiss(420));
     },
   });

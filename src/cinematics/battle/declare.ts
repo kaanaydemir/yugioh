@@ -16,11 +16,15 @@ import { tween, wait } from '../../vfx/core';
 import { attackArrow, blockClang, lockOn } from '../../vfx/combat';
 import { Sparks, addGlow, floorRing, onFrame } from '../../vfx/setpieces';
 import { banner, type BannerOpts } from '../../vfx/banners';
-import { fx, registerEvent } from '../api';
+import { lightBeam, lightFlash } from '../../view/light';
+import { fx, registerEvent, registerObserver } from '../api';
 import {
   ADD,
   TAU,
+  TK,
   type AttackHold,
+  arenaDim,
+  arenaDimBase,
   duelist,
   hexGlint,
   isSetPulse,
@@ -71,7 +75,10 @@ registerEvent(
       sc.tweens.killTweensOf(s);
       coil = tween(sc, { targets: s, x: coilXY.x, y: coilXY.y, scaleY: 0.93, scaleX: 1.05, duration: 210, ease: 'Quad.Out' });
       void addGlow(sc, s, ramp[3], 380, 0.55);
-      void floorRing(sc, attacker.home.x, attacker.home.y, { r0: 4, r1: 30, ms: 420, ramp: [PAL.white, ramp[4], ramp[3], ramp[2]], depth: DEPTH.SHADOW - 1 });
+      void floorRing(sc, attacker.home.x, attacker.home.y, { r0: 4, r1: 30 * TK, ms: 420, ramp: [PAL.white, ramp[4], ramp[3], ramp[2]], depth: DEPTH.SHADOW - 1 });
+      // arena v2: the power-up lights the marble in the player's colour; the stadium holds its breath
+      void lightFlash(sc, attacker.home.x, attacker.home.y - 8, ramp[3], 42, 560, { floorY: attacker.home.y, ring: true, intensity: 0.75 });
+      void arenaDim(sc, 0.2, 380);
       const motes = new Sparks(sc, DEPTH.FX - 1, ADD);
       const h = attacker.home;
       void fx.all([
@@ -95,6 +102,10 @@ registerEvent(
     // ---- the arrow arcs out, the reticle snaps onto the target
     await wait(sc, 70);
     const arrow = attackArrow(sc, from, to, ev.player);
+    // arena v2: the aim lights a faint strip along the floor from the attacker to its target
+    const aimFrom = attacker ? attacker.home : home;
+    const aimTo = target ? target.home : tTile ? tTile.home : { x: to.x, y: to.y + 18 };
+    const aimLight = lightBeam(sc, aimFrom, aimTo, ramp[3], 0, { air: false, floor: { from: aimFrom, to: aimTo }, floorWidth: 9, intensity: 0.55, shimmer: 0.4 });
     const size = target ? Math.max(24, Math.round(target.art.w * 0.42)) : tTile ? 26 : 30;
     const lock = lockOn(sc, to.x, to.y, { color: PLAYER_COLOR[ev.player], size });
     // the target braces as the reticle lands
@@ -134,6 +145,7 @@ registerEvent(
       marksGone = true;
       arrow.destroy();
       lock.destroy();
+      void aimLight.fadeOut(160);
     };
     let released = false;
     const restore = () => {
@@ -171,6 +183,7 @@ registerEvent(
           return { x: to.x, y: to.y, vx: Math.cos(a) * rr(50, 110), vy: Math.sin(a) * rr(50, 110), drag: 3, life: rr(200, 360), ramp: [PAL.white, ramp[4], ramp[3]], tex: 'fx:plus' };
         });
         sp.close();
+        void lightFlash(sc, to.x, to.y, ramp[3], 30, 260, { floorY: to.y + 16, intensity: 0.7 });
         dropMarks();
       },
       async release(ms = 80) {
@@ -216,7 +229,10 @@ registerEvent(
     // a magenta shimmer runs along the defender's spell/trap row once
     for (let i = 0; i < 3; i++) {
       const p = zoneXY(pd.player, 'spellTrap', i);
-      void wait(ctx.scene, i * 70).then(() => floorRing(ctx.scene, p.x, p.y, { r0: 6, r1: 26, ms: 360, ramp: [PAL.mag4, PAL.mag3, PAL.mag2, PAL.mag1], depth: DEPTH.TILE_FX + 2 }));
+      void wait(ctx.scene, i * 70).then(() => {
+        void lightFlash(ctx.scene, p.x, p.y, PAL.mag3, 30, 420, { intensity: 0.6 });
+        return floorRing(ctx.scene, p.x, p.y, { r0: 6, r1: 26 * TK, ms: 360, ramp: [PAL.mag4, PAL.mag3, PAL.mag2, PAL.mag1], depth: DEPTH.TILE_FX + 2 });
+      });
     }
     await ctx.wait(300);
   },
@@ -270,6 +286,7 @@ registerEvent(
       const r = u.rest0;
       const back = u.player === 0 ? { x: -1, y: 0.5 } : { x: 1, y: -0.5 };
       void blockClang(sc, Math.round(c.x - back.x * 8), Math.round(c.y - back.y * 8), { from: { x: c.x - back.x * 30, y: c.y - back.y * 30 }, color: PAL.mag3 });
+      void lightFlash(sc, c.x - back.x * 8, c.y - back.y * 8, PAL.mag3, 36, 320, { floorY: u.home.y, ring: true });
       void u.play('hit');
       u.posed = true;
       await tween(sc, { targets: s, x: Math.round(r.x + back.x * 4), y: Math.round(r.y + back.y * 2), duration: 70, ease: 'Quad.Out' });
@@ -277,9 +294,21 @@ registerEvent(
       u.posed = false;
     } else hold?.destroy();
     void ctx.unfocus(260);
+    void arenaDim(sc, 0, 420);
     ctx.log('Saldırı geçersiz kılındı!', PAL.mag3);
     const o: BannerOpts & { stagger: number } = { style: 'trap', hold: 140, stagger: 18 };
     await banner(sc, 'SAVAŞ BİTTİ', o);
   },
   { name: 'tb:attackNegated' },
 );
+
+// ================================================================ arena v2: never leave the stadium dimmed
+
+/**
+ * Safety net for the battle dim (battle / trap handlers restore it themselves): a new phase, a new
+ * turn or the end of the duel always brings the floodlights back.
+ */
+registerObserver((ev, ctx) => {
+  if (ev.type !== 'phaseChange' && ev.type !== 'turnStart' && ev.type !== 'gameOver') return;
+  if (arenaDimBase(ctx.scene) !== 0) void arenaDim(ctx.scene, 0, 400);
+});

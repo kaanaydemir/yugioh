@@ -144,7 +144,7 @@ export class HandView {
       .setAlpha(0.3)
       .setDepth(DEPTH.HAND - 1)
       .setScrollFactor(0);
-    this.trayTween = sc.tweens.add({ targets: this.tray, alpha: { from: 0.22, to: 0.42 }, duration: 1600, ease: 'Sine.InOut', yoyo: true, repeat: -1 });
+    this.trayTween = sc.tweens.add({ targets: this.tray, alpha: { from: 0.28, to: 0.55 }, duration: 1600, ease: 'Sine.InOut', yoyo: true, repeat: -1 });
     this.shimmerEvent = sc.time.addEvent({ delay: 3400, startAt: 1500, loop: true, callback: () => this.shimmer() });
   }
 

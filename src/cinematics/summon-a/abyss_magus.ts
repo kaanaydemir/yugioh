@@ -26,6 +26,7 @@ import {
   bg,
   bodyBox,
   clamp,
+  fs,
   glowPop,
   holo,
   isoRing,
@@ -252,6 +253,9 @@ signatureSummon('abyss_magus', async (S) => {
   const B = S.big ? 8 : 6;
   const rift = S.own(voidRift(S, A, B));
   const tend = S.own(shadowTendrils(S, S.big ? 7 : 5, A * 0.9, B * 0.9, S.big ? 46 : 36));
+  // (v2) the tear's violet rim light on the marble
+  const riftLight = S.glow({ color: PAL.void3, radius: fs(A + 12), intensity: 0, anim: 'breathe', fadeIn: 0 });
+  riftLight.setIntensity(0.85, 200);
   playSfx('darkPulse', { volume: 0.8 });
   playSfx('summonCharge', { volume: 0.6, pitch: 0.8 });
   // motes sucked into the tear
@@ -261,7 +265,7 @@ signatureSummon('abyss_magus', async (S) => {
     if (!sucking) return false;
     if (dt > 0 && R() < dt / 22) {
       const a = R() * TAU;
-      const d = RR(40, 64);
+      const d = RR(fs(40), fs(64));
       suck.add({ x: home.x + Math.cos(a) * d, y: home.y + Math.sin(a) * d * 0.5 - RR(0, 30), home: { x: home.x, y: home.y, k: 0.35 }, life: RR(320, 480), ramp: [PAL.void3, PAL.void4, PAL.white], tex: R() < 0.25 ? TEX.px2 : TEX.px1 });
     }
     return true;
@@ -285,6 +289,7 @@ signatureSummon('abyss_magus', async (S) => {
   unit.showSprite();
   const bar = S.own(scanBar(sc, VOID, S.depth + 0.6));
   tend.wrap(0.2);
+  riftLight.setIntensity(1.25, 120);
   const T = 380;
   await run(sc, T, (t) => {
     const e = E.outCubic(t);
@@ -298,6 +303,7 @@ signatureSummon('abyss_magus', async (S) => {
   sprite.setY(rest.y);
   P.clipY = null;
   rift.flare(0);
+  riftLight.setIntensity(0.8, 200);
   tend.wrap(0.35);
   bg(settleHolo(sc, unit, 240));
 
@@ -308,8 +314,9 @@ signatureSummon('abyss_magus', async (S) => {
     onPeak: () => {
       sucking = false;
       bg(rift.close(90));
+      void riftLight.fadeOut(180);
       tend.burst();
-      runeRing(S, S.big ? 84 : 56);
+      runeRing(S, fs(S.big ? 84 : 56));
       const c = unit.core();
       bg(glowPop(sc, c.x, c.y, PAL.void3, { from: 0.6, to: 3.4, alpha: 0.9, ms: 340 }));
       S.finale({ ring: S.big ? 92 : 58, ramp: VOID, flashColor: S.big ? PAL.void4 : undefined, flashAlpha: 0.3, freezeMs: S.big ? 60 : 0, sfx: 'summonBurst' });

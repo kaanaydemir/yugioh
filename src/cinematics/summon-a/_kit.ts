@@ -24,7 +24,8 @@ import { mulberry32 } from '../../art/pixel';
 import { AK } from '../../art/arena';
 import { monsterAnimKey, monsterFrameName } from '../../art/textures';
 import type { MonsterAnim } from '../../art/types';
-import { DEPTH, GAME_H, GAME_W, type XY, unitDepth } from '../../view/layout';
+import { DEPTH, GAME_H, GAME_W, TILE_W, type XY, unitDepth } from '../../view/layout';
+import { attributeLightColor, lightBeam, lightDim, lightFlash, lightPool, type BeamHandle, type LightHandle, type PoolOpts } from '../../view/light';
 import { flash, shake, wait } from '../../vfx/core';
 import { E, Raster, Sparks, freeze, onFrame, run } from '../../vfx/setpieces';
 import { createMagicCircle, shockwave, type MagicCircleCtl } from '../../vfx/summon';
@@ -43,6 +44,19 @@ export type SummonCtx = CinematicContext<SummonEv>;
 export const TAU = Math.PI * 2;
 export const ADD = Phaser.BlendModes.ADD;
 export { E, Raster, Sparks, Swarm, onFrame, run, freeze };
+// the subtle light layer (arena v2; every call is a no-op in v1)
+export { lightBeam, lightDim, lightFlash, lightPool, type BeamHandle, type LightHandle };
+
+// ================================================================ arena geometry
+
+/**
+ * Floor scale of the arena: 1 on the v1 64×32 tiles, 1.25 on the v2 80×40 tiles. What lies on
+ * the FLOOR around a tile (shock rings, fissures, whirlpools, fire rings, orbits) is sized with
+ * it; what is sized by the monster's body is not (the sprites are the same in both arenas).
+ */
+export const TS = TILE_W / 64;
+/** A floor size in the current arena (whole pixels; v1 values pass through untouched). */
+export const fs = (v: number): number => (TS === 1 ? v : Math.round(v * TS));
 
 // ================================================================ random / math
 
@@ -387,6 +401,13 @@ export interface Stage {
   wait(ms: number): Promise<void>;
   /** Point above the floor at the unit's core height (resting pose). */
   readonly coreRest: XY;
+  /** Floor-light colour of the monster's attribute (light layer). */
+  readonly lightColor: number;
+  /**
+   * A held light pool on the tile (attribute colour, floor radius ≈ a tile) — the summon's
+   * light on the marble. Owned (destroyed with the stage); fade it out yourself. v1: inert.
+   */
+  glow(o?: PoolOpts & { at?: XY }): LightHandle;
 }
 
 function makeStage(ctx: SummonCtx, unit: MonsterUnit, o: { tribute: boolean; special: boolean; ghost: boolean; cutIn: boolean }): Stage & { dispose(): void } {
@@ -419,11 +440,37 @@ function makeStage(ctx: SummonCtx, unit: MonsterUnit, o: { tribute: boolean; spe
     depth: unitDepth(home.y),
     circle: null,
     coreRest: { x: home.x + (unit.flipX ? -1 : 1) * (core.x - unit.art.anchorX), y: rest.y + (core.y - unit.art.anchorY) },
+    lightColor: attributeLightColor(unit.attribute),
+    glow(go = {}) {
+      const at = go.at ?? home;
+      const h = lightPool(scene, at.x, at.y, { color: S.lightColor, radius: fs(34), floorY: home.y, ...go });
+      if (h.alive) owned.push(h);
+      return h;
+    },
     openCircle(co = {}) {
-      const c = createMagicCircle(scene, home.x, home.y, { attribute: unit.attribute, player: ev.player, size: big ? 'big' : 'normal', appearMs: co.appearMs ?? (big ? 300 : 240), ramp: co.ramp });
-      S.circle = c;
-      owned.push({ destroy: () => void c.dismiss(120) });
-      return c;
+      const appearMs = co.appearMs ?? (big ? 300 : 240);
+      const c = createMagicCircle(scene, home.x, home.y, { attribute: unit.attribute, player: ev.player, size: big ? 'big' : 'normal', appearMs, ramp: co.ramp });
+      // the circle's light on the marble (v2): breathes with it, swells on its pulses
+      const base = big ? 0.6 : 0.5;
+      const cl = S.glow({ color: co.ramp ? co.ramp[3] : S.lightColor, radius: fs(big ? 44 : 36), intensity: base, anim: 'breathe', fadeIn: appearMs });
+      const ctl: MagicCircleCtl = cl.alive
+        ? {
+            ready: c.ready,
+            pulse(ms) {
+              c.pulse(ms);
+              cl.setIntensity(base + 0.45, 40);
+              bg(wait(scene, ms ?? 140).then(() => void cl.setIntensity(base, 200)));
+            },
+            spin: (k) => c.spin(k),
+            dismiss(ms) {
+              void cl.fadeOut(ms ?? 300);
+              return c.dismiss(ms);
+            },
+          }
+        : c;
+      S.circle = ctl;
+      owned.push({ destroy: () => void ctl.dismiss(120) });
+      return ctl;
     },
     async climax() {
       if (climaxed || !o.cutIn) return;
@@ -464,10 +511,14 @@ function makeStage(ctx: SummonCtx, unit: MonsterUnit, o: { tribute: boolean; spe
       }
     },
     finale(f = {}) {
-      const ring = f.ring ?? (big ? 90 : 54);
+      const ring = fs(f.ring ?? (big ? 90 : 54));
       const ramp = f.ramp ?? S.ramp;
       bg(shockwave(scene, home.x, home.y, { ramp, radius: ring, ms: big ? 560 : 440, thickness: big ? 8 : 6 }));
       if (f.playerRing ?? big) bg(shockwave(scene, home.x, home.y, { ramp: PLAYER_RAMP[ev.player], radius: Math.round(ring * 0.72), ms: 600, thickness: 3, from: 2 }));
+      // the burst lights the marble around the tile (+ a soft bloom behind the body)
+      void lightFlash(scene, S.coreRest.x, S.coreRest.y, f.ramp ? f.ramp[3] : S.lightColor, Math.round(ring * 0.6), big ? 620 : 440, { floorY: home.y, ring: true, intensity: big ? 1 : 0.85 });
+      // aces: the floodlights surge for a beat with the white flash
+      if (f.flashColor !== undefined) void lightDim(scene, -0.45, 50).then(() => lightDim(scene, 0, 520));
       bg(shake(scene, big ? 280 : 170, f.shake ?? (big ? 4 : 2)));
       if (f.flashColor !== undefined) bg(screenFlash(scene, f.flashColor, f.flashAlpha ?? 0.3, 180));
       if (f.freezeMs) bg(freeze(scene, f.freezeMs));

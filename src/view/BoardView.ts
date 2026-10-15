@@ -8,6 +8,8 @@
 //   await board.pulseSide(0);                           // turn-start wave across a side
 //   const z = board.zoneAt(pointer.worldX, pointer.worldY);   // { player, spot, index } | null
 //   await board.setTheme('volcano', true, 0);           // lava cracks spread from P1's field zone
+//   board.crowd('roar', 0);                             // v2: the stands erupt (v1: no-op)
+//   board.scoreFlash('TUZAK!');                         // v2: scoreboard ticker flash (v1: no-op)
 //
 // Ambient motion runs on scene time scaled by scene.time.timeScale, so hit-stop freezes it and
 // fast-forward speeds it up together with everything else.
@@ -51,8 +53,10 @@ import type { PlayerId } from '../engine/types';
 import { TEX, shake } from '../vfx/core';
 import { ARENA_V2, BOARD_COLS, BOARD_ROWS, type BoardSpot, DEPTH, GAME_H, GAME_W, isoToScreen, screenToIso, zoneCell } from './layout';
 import { BoardViewV2 } from './board-v2/BoardViewV2';
+import type { CrowdReaction } from './board-v2/types';
 
 export type { ArenaTheme, ZoneHit } from '../art/arena';
+export type { CrowdReaction } from './board-v2/types';
 
 type Img = Phaser.GameObjects.Image;
 type TSprite = Phaser.GameObjects.TileSprite;
@@ -214,7 +218,7 @@ export class BoardView {
   private haze!: Img;
   private stadiumDark!: Phaser.GameObjects.Rectangle;
   private rimHot!: Img;
-  private crowd: Img[] = [];
+  private crowdLayers: Img[] = [];
   private led: Img[] = [];
   private beams: Beam[] = [];
   private towerLevel: number[] = TOWERS.map(() => 1);
@@ -547,6 +551,27 @@ export class BoardView {
     if (this.v2) this.v2.setTurn(turn);
   }
 
+  /**
+   * The crowd reacts (arena v2; a no-op in v1, which has no crowd to animate). Additive.
+   *  - 'cheer': that side's fans jump with their arms up (~600 ms), flags wave at 2×, camera
+   *    flashes and phone lights pop. side null = both sets of fans.
+   *  - 'gasp':  phones come up, the stands dim for a beat, the crowd freezes (trap reveal, a big hit taken).
+   *  - 'roar':  everyone is up, a wave runs around both stands, both confetti cannons fire (ace
+   *    summon, lethal, game over).
+   * `power` (0.5 … 2) scales how long and how big. Returns at once (the reaction plays on its own).
+   */
+  crowd(kind: CrowdReaction, side: PlayerId | null = null, power = 1): void {
+    if (this.v2) this.v2.crowd(kind, side, power);
+  }
+
+  /**
+   * Flash a short message on the arena v2 scoreboard's ticker line (e.g. 'TUZAK!'), then return
+   * to the turn display. Additive; a no-op in v1 (no scoreboard).
+   */
+  scoreFlash(text: string, color: number | null = null, ms = 1600): void {
+    if (this.v2) this.v2.scoreFlash(text, color, ms);
+  }
+
   destroy(): void {
     if (this.v2) return this.v2.destroy();
     if (this.destroyed) return;
@@ -657,7 +682,7 @@ export class BoardView {
       .setDepth(D.rim + 0.5)
       .setScrollFactor(SF.stadium)
       .setAlpha(0);
-    for (let i = 0; i < 3; i++) this.crowd.push(this.layer(AK.crowd(i), D.crowd, SF.stadium));
+    for (let i = 0; i < 3; i++) this.crowdLayers.push(this.layer(AK.crowd(i), D.crowd, SF.stadium));
     for (let i = 0; i < 3; i++) this.led.push(this.layer(AK.led(i), D.led, SF.stadium));
     // fog: far haze at the stadium floor, a bank under the platform, wisps in the foreground
     const fogDefs = [
@@ -1115,7 +1140,7 @@ export class BoardView {
         b.img.setTint(mix(bm.tint, PAL.fire3, heat));
       }
     }
-    this.crowd.forEach((c, i) => c.setAlpha(0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t / (1300 + i * 370) + i * 2.1))));
+    this.crowdLayers.forEach((c, i) => c.setAlpha(0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t / (1300 + i * 370) + i * 2.1))));
     const ledPhase = Math.floor(t / 120) % 3;
     this.led.forEach((l, i) => l.setAlpha(i === ledPhase ? 1 : 0.18));
     // crowd camera flashes

@@ -14,7 +14,9 @@ import * as wyrmArt from '../../art/monsters/crystal_wyrm';
 import { PixelCanvas, mulberry32 } from '../../art/pixel';
 import { DEPTH, type XY } from '../../view/layout';
 import { beam } from '../../vfx/combat';
+import { lightBeam, lightPool } from '../../view/light';
 import { registerCardHook, registerStrike } from '../api';
+import { dimPulse } from '../battle/_kit';
 import type { StrikeArgs } from '../_core/types';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import {
@@ -23,9 +25,11 @@ import {
   RR,
   Sparks,
   TAU,
+  TK,
   animate,
   clamp,
   currentPixels,
+  followLight,
   flavoredDeath,
   glow,
   glowPulse,
@@ -69,7 +73,12 @@ function chargeFx(s: StrikeArgs, ms: number, mouth: () => XY): Promise<void> {
   const floor = layer(sc, DEPTH.TILE_FX + 5, ADD);
   const motes = new Sparks(sc, u.sprite.depth + 0.4);
   const halo = glow(sc, home.x, home.y - 2, PAL.cyan3, 0.2, 0, DEPTH.TILE_FX + 4);
-  halo.setScale(0.9, 0.4);
+  halo.setScale(0.9 * TK, 0.4 * TK);
+  // arena v2: the gathering light — a glow swelling in the jaws, the rune ring lighting the marble
+  const jawLight = followLight(sc, mouth, { color: PAL.cyan4, radius: 18, floorY: home.y, air: 0.85, intensity: 0.15 });
+  jawLight.setIntensity(1.35, ms);
+  const ringLight = lightPool(sc, home.x, home.y, { color: PAL.cyan3, spill: PAL.cyan2, radius: 30 * TK, intensity: 0.1, anim: 'shimmer', fadeIn: 0 });
+  ringLight.setIntensity(0.9, ms);
   return new Promise((resolve) => {
     onFrame(
       sc,
@@ -79,7 +88,7 @@ function chargeFx(s: StrikeArgs, ms: number, mouth: () => XY): Promise<void> {
         if (t >= 1) return false;
         const k = E.outQ(t);
         // a rune ring of prism light on the floor, closing in
-        const rx = 30 - 8 * k;
+        const rx = (30 - 8 * k) * TK;
         const ry = rx * 0.45;
         floor.ellipseRing(home.x, home.y, rx, ry, 1, PAL.cyan2, 0.5 + 0.4 * k);
         for (let i = 0; i < 14; i++) {
@@ -87,7 +96,7 @@ function chargeFx(s: StrikeArgs, ms: number, mouth: () => XY): Promise<void> {
           floor.dot(home.x + Math.cos(a) * rx, home.y + Math.sin(a) * ry, i % 3 === 0 ? PAL.white : RAINBOW[i % RAINBOW.length], 0.9);
         }
         floor.ellipse(home.x, home.y, rx * 0.55 * k, ry * 0.55 * k, PAL.cyan1, 0.5 * k);
-        halo.setAlpha(0.55 * k).setScale(0.9 + 0.5 * k, 0.4 + 0.2 * k);
+        halo.setAlpha(0.55 * k).setScale((0.9 + 0.5 * k) * TK, (0.4 + 0.2 * k) * TK);
         // white-blue motes leave the floor and stream into the mouth
         if (dt > 0) {
           const m = mouth();
@@ -103,6 +112,8 @@ function chargeFx(s: StrikeArgs, ms: number, mouth: () => XY): Promise<void> {
         floor.g.destroy();
         motes.release();
         void animate(sc, 180, (t) => halo.setAlpha(0.55 * (1 - t))).then(() => halo.destroy());
+        void jawLight.fadeOut(260);
+        void ringLight.fadeOut(320);
         resolve();
       },
     );
@@ -153,6 +164,7 @@ export function crystalBurst(scene: Phaser.Scene, at: XY, o: { dir?: XY; floor: 
   sparkle.release();
   if (o.glare !== false) {
     void screenFlash(scene, PAL.cyan4, 0.24 + 0.05 * power, 200);
+    void dimPulse(scene, -0.35 - 0.12 * power, { in: 40, hold: 50, out: 420 });
     void glowPulse(scene, at.x, at.y, PAL.white, { from: 0.8, to: 3.2, alpha: 0.9, ms: 320, depth: DEPTH.FX + 1 });
   }
   playSfx('shatter', { volume: 0.55, pitch: 1.9 });
@@ -281,6 +293,9 @@ registerStrike('crystal_wyrm', async (s) => {
     fireMs: s.blocked ? 320 : 460,
     onFire: () => {
       playSfx('roarBig', { volume: 0.35, pitch: 1.3 });
+      // arena v2: the prism beam casts a bright line of light across the board and its floor
+      const floorTo = s.target ? s.target.home : s.toGround;
+      void lightBeam(sc, mouth(), to, PAL.cyan4, (s.blocked ? 320 : 460) + 90, { width: 15, intensity: 1.45, floor: { from: u.home, to: floorTo }, floorWidth: 14, shimmer: 0.35 });
       // recoil: the whole body kicks back, squashes
       void animate(sc, 360, (t) => {
         if (!spr.active) return;
@@ -361,6 +376,9 @@ registerCardHook('crystal_wyrm', 'destroyed', (ctx) =>
     const glowPc = new PixelCanvas(pc.w, pc.h);
     const ovGlow = overlay(u, glowPc, { blend: ADD, depth: u.sprite.depth + 0.25 });
     const leak = glow(sc, u.core().x, u.core().y, PAL.cyan3, 0.6, 0, u.sprite.depth + 0.3);
+    // arena v2: light leaking from the cracks swells on the floor
+    const leakLight = lightPool(sc, u.core().x, u.core().y, { color: PAL.cyan4, spill: PAL.cyan3, radius: 26, floorY: d.home.y, air: 0.6, intensity: 0.2, anim: 'shimmer', fadeIn: 0 });
+    leakLight.setIntensity(1.3, 380);
     // cracks race out from the chest (≈300 ms): dark fissures with a cyan glow, each step a
     // glassy tick and a 1 px jolt
     const CRACK = 300;
@@ -409,8 +427,10 @@ registerCardHook('crystal_wyrm', 'destroyed', (ctx) =>
     ov.destroy();
     ovGlow.destroy();
     leak.destroy();
+    void leakLight.fadeOut(200);
     d.burst();
     void screenFlash(sc, PAL.cyan4, 0.3, 240);
+    void dimPulse(sc, -0.55, { in: 40, hold: 80, out: 480 });
     void crystalBurst(sc, c, { dir: d.push, floor: d.home.y, power: 2, glare: false, count: 14 });
     // keep the cracks in the broken pieces
     const broken = pc.clone();

@@ -13,7 +13,8 @@ import type { GameEvent, PlayerId } from '../../engine/types';
 import { ATTRIBUTE_RAMP, PAL, type Ramp } from '../../art/palette';
 import { monsterAnimKey, monsterFrame, monsterFrameName } from '../../art/textures';
 import type { MonsterAnim } from '../../art/types';
-import { DEPTH, type XY, unitDepth } from '../../view/layout';
+import { ARENA_V2, DEPTH, TILE_W, type XY, unitDepth } from '../../view/layout';
+import { lightFlash } from '../../view/light';
 import { wait } from '../../vfx/core';
 import { E, Px, Sparks, animate, onFrame, sleep } from '../../vfx/combat';
 import { shatter } from '../../vfx/shatter';
@@ -30,6 +31,24 @@ export type AnyCtx = CinematicContext<GameEvent>;
 
 export const TAU = Math.PI * 2;
 export const ADD = Phaser.BlendModes.ADD;
+
+// ---------------------------------------------------------------- arena geometry (v1 / v2)
+
+export { ARENA_V2 };
+/**
+ * Floor scale of the arena: 1 on v1's 64×32 tiles, 1.25 on v2's 80×40 tiles. Floor rings and
+ * pools that cover a tile are multiplied by it (v1 sizes stay exactly as tuned).
+ */
+export const TK = TILE_W / 64;
+
+/**
+ * Travel time over `dist` px: v1's hand-tuned clamp(base + dist·perPx, min, max) unchanged; arena
+ * v2's long paths across the bridge may take up to `maxV2`.
+ */
+export function travelMs(dist: number, base: number, perPx: number, min: number, max: number, maxV2: number): number {
+  const v = base + dist * perPx;
+  return v < min ? min : v > (ARENA_V2 ? maxV2 : max) ? (ARENA_V2 ? maxV2 : max) : v;
+}
 export const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 export const clamp = (v: number, a: number, b: number): number => (v < a ? a : v > b ? b : v);
 export const clamp01 = (v: number): number => clamp(v, 0, 1);
@@ -321,7 +340,7 @@ export function groundRing(scene: Phaser.Scene, x: number, y: number, o: { r0?: 
   return animate(scene, o.ms ?? 360, (t) => {
     px.clear();
     if (t >= 1) return;
-    const r = lerp(r0, r1, E.outC(t));
+    const r = lerp(r0, r1, E.outC(t)) * TK;
     const c = o.colors[Math.min(o.colors.length - 1, Math.floor(t * o.colors.length))];
     px.ellipseRing(x, y, r, r * 0.5, o.th ?? (t < 0.4 ? 2 : 1), c, 1 - t * t);
   }).then(() => px.g.destroy());
@@ -399,6 +418,8 @@ export interface DeathOpts {
   onBurst?: (u: MonsterUnit, at: XY) => void;
   /** Delay of the tile dissolve after the shatter starts (ms). */
   tileDelay?: number;
+  /** Arena v2 light of the burst on the floor (default: the attribute colour; false = none). */
+  light?: number | false;
 }
 
 /**
@@ -428,6 +449,10 @@ export async function flavoredDeath(ctx: DestroyCtx, o: DeathOpts): Promise<void
   if (unit.sprite.active && unit.sprite.visible) {
     ctx.sfx('shatter', { volume: 0.9 });
     const at = unit.core();
+    if (ARENA_V2 && o.light !== false) {
+      const c = o.light ?? ATTRIBUTE_RAMP[unit.attribute][3];
+      void wait(sc, o.glitchMs ?? 120).then(() => lightFlash(sc, at.x, at.y, c, 46, 460, { floorY: unit.home.y, ring: true, intensity: 0.9 }));
+    }
     const sh = shatter(sc, unit.sprite, {
       monsterId: unit.cardId,
       attribute: unit.attribute,

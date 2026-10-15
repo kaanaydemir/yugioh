@@ -26,7 +26,9 @@ import {
   bg,
   bodyBox,
   clamp,
+  fs,
   isoRing,
+  lightFlash,
   lerp,
   noise1,
   onFrame,
@@ -140,7 +142,7 @@ function inflow(S: Stage, n: number, ms: number): void {
   const { x, y } = S.home;
   for (let i = 0; i < n; i++) {
     const a = R() * TAU;
-    const d = RR(46, 70);
+    const d = RR(fs(46), fs(70));
     sp.add({ x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * 0.5 - RR(0, 10), vx: -Math.sin(a) * 40, vy: Math.cos(a) * 20, home: { x, y: y - 4, k: 0.3 }, delay: RR(0, ms * 0.4), life: RR(ms * 0.45, ms * 0.6), ramp: [PAL.water3, PAL.water4, PAL.white], tex: TEX.px1, trail: true });
   }
   sp.close();
@@ -164,9 +166,12 @@ signatureSummon('tide_golem', async (S) => {
   const { unit, sprite, home } = S;
   const circle = S.openCircle();
   playSfx('waterSplash', { volume: 0.45, pitch: 0.7 });
-  bg(gatherRipples(S, S.big ? 60 : 50, 420));
+  bg(gatherRipples(S, fs(S.big ? 60 : 50), 420));
   inflow(S, S.big ? 30 : 22, 300);
-  bubblesSmall(sc, home.x, home.y, { radius: 14, duration: 300, frequency: 60, count: 1, depth: DEPTH.FX - 1 });
+  bubblesSmall(sc, home.x, home.y, { radius: fs(14), duration: 300, frequency: 60, count: 1, depth: DEPTH.FX - 1 });
+  // (v2) the gathering sea throws rippling light on the marble
+  const waterLight = S.glow({ color: PAL.water3, radius: fs(34), intensity: 0, anim: 'caustic', fadeIn: 0 });
+  waterLight.setIntensity(0.75, 400);
   await S.wait(200);
   circle.pulse(100);
 
@@ -177,6 +182,8 @@ signatureSummon('tide_golem', async (S) => {
   const spout = S.own(waterSpout(S, Hs, halfW * 0.42, halfW * 1.0));
   playSfx('waterSplash', { volume: 0.8 });
   droplets(sc, home.x, home.y - 10, { count: 12, speed: 1, depth: DEPTH.FX - 1 });
+  void lightFlash(sc, home.x, home.y - Math.round(Hs * 0.5), PAL.water4, fs(40), 420, { floorY: home.y, intensity: 0.95, air: 0.5 });
+  waterLight.setIntensity(1.15, 130);
   await spout.rise(130);
   await S.wait(20);
 
@@ -203,7 +210,8 @@ signatureSummon('tide_golem', async (S) => {
     sfx: 'roarSmall',
     lead: 130,
     onPeak: () => {
-      splashRing(S, S.big ? 26 : 20, S.big ? 12 : 9);
+      splashRing(S, fs(S.big ? 26 : 20), S.big ? 12 : 9);
+      void waterLight.fadeOut(480);
       droplets(sc, home.x, home.y - 6, { radius: 16, count: 12, speed: 0.9, depth: DEPTH.FX - 1 });
       S.finale({ ring: S.big ? 80 : 56, ramp: WATER, sfx: 'waterSplash' });
       bg(circle.dismiss(380));

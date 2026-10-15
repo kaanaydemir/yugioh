@@ -5,14 +5,20 @@
 //
 // Ambient motion runs on scene time × scene.time.timeScale through the tick-driven job runner,
 // so it is deterministic under the stepped QA clock and freezes during hit-stop.
+//
+// Light (golden rule 3): the six floodlight pools are baked as clean tone bands into the marble
+// (art/arena-v2/platform.ts); here a gentle SCREEN glow breathes and drifts over each, a follow
+// spot roves across the platform, the neon inlays breathe by band swaps (dim / normal / bright
+// tile variants — crisp tones, not alpha), a sheen sweeps each marble half, the face LED strips
+// run a chase and spill their colour onto the pitch, and energy pulses run along the bridge.
 
 import Phaser from 'phaser';
 import type { ArenaTheme, ZoneHit } from '../../art/arena';
 import { AK2, arenaV2Layout, buildArenaV2Textures, texOrigin2 } from '../../art/arena-v2';
 import { HL_H, HL_W, MARCH_FRAMES, RING_FRAMES } from '../../art/arena-v2/fx';
-import { FACE_T, HH, HW, P, SLAB_RECT, type TrimClass, TOWERS } from '../../art/arena-v2/geom';
-import { BRIDGE_RECT, FLOW_FRAMES, HALO_PAD } from '../../art/arena-v2/platform';
-import { PAL, PLAYER_COLOR } from '../../art/palette';
+import { FACE_T, HH, HW, P, POOL_CORE_R, POOL_R, SLAB_RECT, type TrimClass, TOWERS } from '../../art/arena-v2/geom';
+import { HALO_PAD } from '../../art/arena-v2/platform';
+import { PAL, PLAYER_COLOR, PLAYER_RAMP } from '../../art/palette';
 import { mix, mulberry32 } from '../../art/pixel';
 import type { PlayerId } from '../../engine/types';
 import { TEX, shake } from '../../vfx/core';
@@ -30,15 +36,21 @@ import {
   zoneAtCell,
   zoneCell,
 } from '../layout';
+import { LIGHT_TEX, LT, ensureLightTextures } from '../light/textures';
+import { Floor } from './floor';
 import { Lava } from './lava';
 import { Stadium } from './stadium';
-import { type BoardCtx, D2, type Particle, envelope } from './types';
+import { type BoardCtx, type CrowdReaction, D2, type Particle, envelope } from './types';
 
 type Img = Phaser.GameObjects.Image;
 
 const ADD = Phaser.BlendModes.ADD;
+const SCREEN = Phaser.BlendModes.SCREEN;
+const TAU = Math.PI * 2;
 
 const HOT_TINT = PAL.fire3;
+/** Screen px of a 1-grid-unit radius pool along its long (x) semi-axis: 40·√2. */
+const POOL_PX = 40 * Math.SQRT2;
 
 interface TileRec {
   col: number;
@@ -47,12 +59,16 @@ interface TileRec {
   img: Img;
   glow: Img;
   halo: Img;
+  /** texture keys: neon one tone down / as drawn / one tone up */
+  keys: [string, string, string];
+  state: number;
   phase: number;
   boost: number;
 }
 
 interface Highlight {
   color: number;
+  hot: boolean;
   x: number;
   y: number;
   fill: Img;
@@ -72,6 +88,25 @@ interface Job {
   ease: (v: number) => number;
   fn: (k: number) => void;
   done: () => void;
+}
+
+interface Pool {
+  img: Img;
+  core: Img;
+  x: number;
+  y: number;
+  tower: number;
+  phase: number;
+  humAt: number;
+  humUntil: number;
+}
+
+interface Glint {
+  img: Img;
+  tile: TileRec | null;
+  t: number;
+  dur: number;
+  a0: number;
 }
 
 export interface BoardViewV2Options {
@@ -97,21 +132,27 @@ export class BoardViewV2 implements BoardCtx {
   private jobs: Job[] = [];
 
   private stadium!: Stadium;
+  private floor!: Floor;
   private lava!: Lava;
   // platform
   private trims: { cool: Img; hot: Img; coolGlow: Img; hotGlow: Img }[] = [];
-  private sideLevel: [number, number, number] = [0.85, 0.85, 0.8];
-  private sideFlash: [number, number] = [0, 0];
+  sideLevel: [number, number, number] = [0.85, 0.85, 0.8];
+  sideFlash: [number, number] = [0, 0];
   private runners: { head: Img; trail: Img[]; path: { x: number; y: number }[]; len: number; seg: number[] }[] = [];
-  private faceLights: { img: Img; phase: number; cls: TrimClass; rate: number }[] = [];
   // tiles
   private tiles: TileRec[] = [];
-  private bridgeFlow!: Img;
+  private glints: Glint[] = [];
+  private nextGlint = 600;
+  private bridgeHalf: Img[] = [];
+  private bridgeFx!: Phaser.GameObjects.Graphics;
   private chevrons: { img: Img; player: PlayerId; step: number; col: number }[] = [];
   private highlights = new Map<string, Highlight>();
   // light layer
-  private pools: { img: Img; core: Img; base: number; tower: number; phase: number }[] = [];
-  private cones: { img: Img; tower: number; base: number }[] = [];
+  private pools: Pool[] = [];
+  private cones: { img: Img; tower: number }[] = [];
+  private followSpot!: Img;
+  private sheen!: Phaser.GameObjects.Graphics;
+  private podium: { pool: Img; rim: Img }[] = [];
   private dark!: Phaser.GameObjects.Rectangle;
   private lavaWash!: Img;
   // particles
@@ -126,6 +167,7 @@ export class BoardViewV2 implements BoardCtx {
   towerLevel: number[] = TOWERS.map(() => 1);
   private turn: number | null = null;
   private turnExplicit = false;
+  private probeClock = 0;
 
   constructor(
     scene: Phaser.Scene,
@@ -134,7 +176,9 @@ export class BoardViewV2 implements BoardCtx {
   ) {
     this.scene = scene;
     buildArenaV2Textures(scene);
+    ensureLightTextures(scene);
     this.stadium = new Stadium(this);
+    this.floor = new Floor(this);
     this.buildPlatform();
     this.buildTiles();
     this.buildLights();
@@ -146,15 +190,6 @@ export class BoardViewV2 implements BoardCtx {
     scene.events.on(Phaser.Scenes.Events.UPDATE, this.tick, this);
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, this.destroy, this);
     this.tick(0, 0);
-    // the duel's QA state appears once DuelScene has wired its views: read the turn then
-    void this.wait(400).then(() => {
-      if (this.destroyed || this.turnExplicit) return;
-      const t = this.probeTurn();
-      if (t !== this.turn) {
-        this.turn = t;
-        this.stadium.setActive(this.active, t);
-      }
-    });
   }
 
   // ================================================================ public API
@@ -178,6 +213,13 @@ export class BoardViewV2 implements BoardCtx {
     return this.tiles.find((t) => t.col === c.col && t.row === c.row)?.img ?? null;
   }
 
+  /**
+   * Animated target highlight. On white marble a white or pale outline would vanish, and on an
+   * occupied tile the monster, its base and its stat badge cover most of the diamond — so: a
+   * solid 2-px band framed by ink edges, a pulsing fill, marching dashes and four lock-on
+   * chevrons drawn ABOVE the units. PAL.white (the hovered / chosen candidate) becomes a hot gold
+   * with a 3-px band, a stronger pulse and a ripple when it lights.
+   */
   highlightZone(player: PlayerId, spot: BoardSpot, index: number, color: number | null): void {
     const key = `${player}:${spot}:${index}`;
     const cur = this.highlights.get(key);
@@ -185,26 +227,33 @@ export class BoardViewV2 implements BoardCtx {
       if (cur) cur.dying = true;
       return;
     }
+    const hot = color === PAL.white;
+    const shown = hot ? PAL.gold4 : color;
     if (cur) {
       cur.dying = false;
-      if (cur.color !== color) {
-        cur.color = color;
+      if (cur.color !== shown || cur.hot !== hot) {
+        const becameHot = hot && !cur.hot;
+        cur.color = shown;
+        cur.hot = hot;
+        cur.outline.setTexture(hot ? AK2.hlOutlineHot : AK2.hlOutline);
         this.tintHighlight(cur);
+        if (becameHot) void this.diamondRing(cur.x, cur.y, PAL.gold3, 300, 8);
       }
       return;
     }
     const s = zoneXYi(player, spot, index);
-    // on bright marble an additive outline vanishes: the pieces are opaque color (NORMAL blend)
     const mk = (k: string, depth: number) => this.add(this.scene.add.image(s.x, s.y, k).setDepth(depth));
+    const tipDepth = DEPTH.UNIT + 390;
     const h: Highlight = {
-      color,
+      color: shown,
+      hot,
       x: s.x,
       y: s.y,
       fill: mk(AK2.tileFill, D2.hlFill),
-      outline: mk(AK2.hlOutline, D2.hlOutline),
+      outline: mk(hot ? AK2.hlOutlineHot : AK2.hlOutline, D2.hlOutline),
       march: mk(AK2.hlMarch, D2.hlMarch).setFrame('0'),
       tips: [AK2.hlTipT, AK2.hlTipL, AK2.hlTipT, AK2.hlTipL].map((k, i) => {
-        const img = this.add(this.scene.add.image(0, 0, k).setOrigin(0).setDepth(D2.hlTips));
+        const img = this.add(this.scene.add.image(0, 0, k).setOrigin(0).setDepth(tipDepth));
         if (i === 2) img.setFlipY(true);
         if (i === 3) img.setFlipX(true);
         return img;
@@ -217,6 +266,7 @@ export class BoardViewV2 implements BoardCtx {
     this.tintHighlight(h);
     this.highlights.set(key, h);
     this.updateHighlight(h, 0);
+    if (hot) void this.diamondRing(h.x, h.y, PAL.gold3, 300, 8);
   }
 
   clearHighlights(): void {
@@ -235,7 +285,7 @@ export class BoardViewV2 implements BoardCtx {
     jobs.push(this.run(760, (k) => (this.sideFlash[player] = 1 - k), 'Quad.Out'));
     const pod = player === 0 ? { col: 3, row: 6.25 } : { col: 3, row: -1.25 };
     this.shockwave(pod.col, pod.row, 0, color, 680, 230);
-    this.stadium.cheer(player);
+    this.stadium.crowd('cheer', player, 0.8);
     for (const t of this.tiles) {
       if (t.zone.player !== player) continue;
       const delay = Math.round((Math.hypot(t.col - pod.col, t.row - pod.row) - 1) * 110);
@@ -268,7 +318,7 @@ export class BoardViewV2 implements BoardCtx {
 
   setActivePlayer(player: PlayerId | null, animate = true): void {
     this.active = player;
-    if (!this.turnExplicit) this.turn = this.probeTurn();
+    if (!this.turnExplicit) this.turn = this.probeTurn() ?? this.turn;
     this.stadium.setActive(player, this.turn);
     const target: [number, number] = player === null ? [0.85, 0.85] : player === 0 ? [1, 0.5] : [0.5, 1];
     if (!animate) {
@@ -289,6 +339,18 @@ export class BoardViewV2 implements BoardCtx {
     );
   }
 
+  /** The QA view of the running duel when this board belongs to it (null in previews / title). */
+  private qa(): { state?: () => { turn?: unknown }; views?: { board?: unknown; hud?: { getLp?: (p: PlayerId) => number } } } | null {
+    try {
+      type Qa = { views?: { board?: unknown; hud?: { getLp?: (p: PlayerId) => number } }; state?: () => { turn?: unknown } };
+      const qa = (globalThis as { __neon?: { duel?: Qa } }).__neon?.duel;
+      if (!qa || !this.owner || qa.views?.board !== this.owner) return null;
+      return qa;
+    } catch {
+      return null;
+    }
+  }
+
   /**
    * The duel's current turn when this board belongs to the running DuelScene (read through its
    * public QA state, window.__neon.duel.state()); null when unknown (previews, title screen).
@@ -296,11 +358,23 @@ export class BoardViewV2 implements BoardCtx {
    */
   private probeTurn(): number | null {
     try {
-      type Qa = { views?: { board?: unknown }; state?: () => { turn?: unknown } };
-      const qa = (globalThis as { __neon?: { duel?: Qa } }).__neon?.duel;
-      if (!qa || !this.owner || qa.views?.board !== this.owner || typeof qa.state !== 'function') return null;
+      const qa = this.qa();
+      if (!qa || typeof qa.state !== 'function') return null;
       const t = qa.state().turn;
       return typeof t === 'number' && t > 0 ? t : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Life points as the HUD shows them right now (null when there is no duel). */
+  private probeLp(): [number, number] | null {
+    try {
+      const hud = this.qa()?.views?.hud;
+      if (!hud || typeof hud.getLp !== 'function') return null;
+      const a = hud.getLp(0);
+      const b = hud.getLp(1);
+      return Number.isFinite(a) && Number.isFinite(b) ? [a, b] : null;
     } catch {
       return null;
     }
@@ -313,10 +387,22 @@ export class BoardViewV2 implements BoardCtx {
     this.stadium.setActive(this.active, this.turn);
   }
 
+  /** The crowd reacts: see BoardView.crowd. */
+  crowd(kind: CrowdReaction, side: PlayerId | null = null, power = 1): void {
+    if (this.destroyed) return;
+    this.stadium.crowd(kind, side, power);
+  }
+
+  /** A short message on the scoreboard's ticker line (e.g. 'TUZAK!'). */
+  scoreFlash(text: string, color: number | null = null, ms = 1600): void {
+    if (this.destroyed) return;
+    this.stadium.scoreFlash(text, color, ms);
+  }
+
   /**
    * 'volcano': lava glows up through cracks in the marble from `from`'s field pad (or the board
-   * center), the night sky turns to embers, the neon overheats to orange. ~1.2 s animated
-   * (includes its own low rumble shake). 'normal': the lava cools to stone and the night returns.
+   * center), the lower stands and the pitch catch its glow, the neon overheats to orange. ~1.2 s
+   * animated (includes its own low rumble shake). 'normal': the lava cools to stone and the night returns.
    */
   async setTheme(theme: ArenaTheme, animate = true, from: PlayerId | null = null): Promise<void> {
     const token = ++this.themeToken;
@@ -333,6 +419,7 @@ export class BoardViewV2 implements BoardCtx {
       void this.flashCell(Math.round(origin.col), Math.round(origin.row), PAL.fire4, 380);
       this.shockwave(origin.col, origin.row, 0, PAL.fire4, 640, 220);
       this.shockwave(origin.col, origin.row, 130, PAL.fire2, 760, 190);
+      this.stadium.crowd('gasp', null, 1);
       const jobs = [
         this.lava.erupt(origin, true),
         this.tweenNum(120, this.heat, 1, 1050, (v) => token === this.themeToken && (this.heat = v), 'Sine.InOut'),
@@ -462,6 +549,14 @@ export class BoardViewV2 implements BoardCtx {
     this.jobs = keep.concat(this.jobs);
   }
 
+  /** A soft light-layer image (smooth radial falloff) sized to `w`×`h` screen px. */
+  lightImg(x: number, y: number, w: number, h: number, blend: number, depth: number, tex: string = LT.radial): Img {
+    return this.add(this.scene.add.image(x, y, tex))
+      .setScale(w / LIGHT_TEX, h / LIGHT_TEX)
+      .setBlendMode(blend)
+      .setDepth(depth);
+  }
+
   // ================================================================ building
 
   private img(x: number, y: number, key: string, depth: number): Img {
@@ -501,15 +596,23 @@ export class BoardViewV2 implements BoardCtx {
         const zone = zoneAtCell(col, row);
         if (!zone) continue;
         const s = isoToScreen(col, row);
-        const img = this.add(this.scene.add.image(s.x, s.y, AK2.zoneTile(col, row))).setDepth(D2.tile);
+        const keys: [string, string, string] = [AK2.zoneTileD(col, row), AK2.zoneTile(col, row), AK2.zoneTileB(col, row)];
+        const img = this.add(this.scene.add.image(s.x, s.y, keys[1])).setDepth(D2.tile);
         const color = PLAYER_COLOR[zone.player];
-        const halo = this.add(this.scene.add.image(s.x, s.y, AK2.glyphHalo(zone.spot))).setDepth(D2.halo).setTint(color).setAlpha(0);
-        const glow = this.add(this.scene.add.image(s.x, s.y, AK2.glyphGlow(zone.spot))).setDepth(D2.tileGlow).setBlendMode(ADD).setTint(color);
+        const halo = this.add(this.scene.add.image(s.x, s.y, AK2.glyphHalo(zone.spot))).setDepth(D2.halo).setBlendMode(SCREEN).setTint(PLAYER_RAMP[zone.player][4]).setAlpha(0);
+        const glow = this.add(this.scene.add.image(s.x, s.y, AK2.glyphGlow(zone.spot))).setDepth(D2.tileGlow).setBlendMode(ADD).setTint(color).setAlpha(0);
+        // the breath travels across the lanes (and from the back row to the front)
+        const lane = Math.round(col / 2);
         const back = zone.player === 0 ? BOARD_ROWS - 1 - row : row;
-        this.tiles.push({ col, row, zone, img, glow, halo, phase: back * 1.1 + Math.abs(col - 3) * 0.4, boost: 0 });
+        this.tiles.push({ col, row, zone, img, glow, halo, keys, state: 1, phase: lane * 0.95 + back * 0.6, boost: 0 });
       }
-    const B = BRIDGE_RECT;
-    this.bridgeFlow = this.img(B.x, B.y, AK2.bridgeFlow, D2.bridgeFlow).setFrame('0').setBlendMode(ADD).setTint(PAL.mist);
+    for (let i = 0; i < 3; i++) {
+      const img = this.add(this.scene.add.image(0, 0, AK2.pin)).setDepth(D2.tileGlow + 0.1).setBlendMode(ADD).setVisible(false);
+      this.glints.push({ img, tile: null, t: 0, dur: 1, a0: 0 });
+    }
+    // the bridge: a faint tint of each player's colour over their half of the glass, energy pulses
+    for (const p of [0, 1] as const) this.bridgeHalf.push(this.layer(AK2.bridgeHalf(p), D2.bridgeFlow - 0.1).setBlendMode(ADD).setTint(PLAYER_RAMP[p][2]).setAlpha(0.1));
+    this.bridgeFx = this.add(this.scene.add.graphics()).setDepth(D2.bridgeFlow).setBlendMode(ADD);
     // lane chevrons on the bridge (they chase toward the opponent of the active player)
     for (const ch of arenaV2Layout().chevrons) {
       const img = this.add(this.scene.add.image(ch.x, ch.y, ch.key).setOrigin(0).setDepth(D2.chevron).setBlendMode(ADD).setAlpha(0));
@@ -521,25 +624,38 @@ export class BoardViewV2 implements BoardCtx {
     // the lights-off darkness (the intro): everything below the emissive layers
     this.dark = this.add(this.scene.add.rectangle(-200, -500, GAME_W + 400, GAME_H + 900, PAL.ink)).setOrigin(0).setDepth(D2.dark).setAlpha(0);
     // volcano: the lava's warm light washing over the marble
-    this.lavaWash = this.add(this.scene.add.image(320, 186, AK2.pool)).setDepth(D2.pools - 0.1).setBlendMode(ADD).setScale(2.1, 2.3).setTint(PAL.fire3).setAlpha(0);
-    // floodlight pools on the marble: one per tower, where its cone lands
+    this.lavaWash = this.lightImg(320, 186, 640, 300, SCREEN, D2.pools - 0.1).setTint(PAL.fire3).setAlpha(0);
+    // floodlight pools on the marble: a soft screen glow over each baked pool band
     TOWERS.forEach((tw, i) => {
       const [x, y] = P(tw.aim.c, tw.aim.r);
-      const img = this.add(this.scene.add.image(Math.round(x), Math.round(y), AK2.pool)).setDepth(D2.pools).setBlendMode(ADD);
-      const core = this.add(this.scene.add.image(Math.round(x), Math.round(y), AK2.poolCore)).setDepth(D2.pools).setBlendMode(ADD);
-      this.pools.push({ img, core, base: 0.1, tower: i, phase: i * 1.3 });
-      // the cone from the lamp down to the pool
+      const w = POOL_R * POOL_PX * 2 * 1.32;
+      const wc = POOL_CORE_R * POOL_PX * 2 * 1.45;
+      const img = this.lightImg(Math.round(x), Math.round(y), w, w / 2, SCREEN, D2.pools);
+      const core = this.lightImg(Math.round(x), Math.round(y), wc, wc / 2, SCREEN, D2.pools);
+      this.pools.push({ img, core, x: Math.round(x), y: Math.round(y), tower: i, phase: i * 1.3, humAt: 2500 + i * 1700, humUntil: 0 });
+      // the cone from the lamp down to the pool (smooth; it fades out before the marble)
       const dx = x - tw.x;
       const dy = y - tw.y;
       const len = Math.hypot(dx, dy);
-      const cone = this.add(this.scene.add.image(tw.x, tw.y, AK2.cone))
+      const cone = this.add(this.scene.add.image(tw.x, tw.y, AK2.coneSoft))
         .setOrigin(0.5, 0)
         .setDepth(D2.cones)
-        .setBlendMode(ADD)
+        .setBlendMode(SCREEN)
         .setRotation(Math.atan2(dy, dx) - Math.PI / 2)
         .setScale(1, len / 220);
-      this.cones.push({ img: cone, tower: i, base: 0.05 });
+      this.cones.push({ img: cone, tower: i });
     });
+    // a roving follow spot that crosses the platform every ~10 s
+    this.followSpot = this.lightImg(0, 0, 96, 48, SCREEN, D2.pools + 0.1).setTint(PAL.gold4).setAlpha(0);
+    // a slow sheen sweeping each marble half
+    this.sheen = this.add(this.scene.add.graphics()).setDepth(D2.pools + 0.5).setBlendMode(SCREEN);
+    // each duelist stands in a soft podium light, with a faint rim halo behind them
+    for (const p of [0, 1] as PlayerId[]) {
+      const s = duelistXY(p);
+      const pool = this.lightImg(Math.round(s.x), Math.round(s.y), 92, 44, SCREEN, D2.pools + 0.2).setTint(PLAYER_RAMP[p][4]);
+      const rim = this.lightImg(Math.round(s.x), Math.round(s.y) - 17, 34, 52, ADD, DEPTH.UNIT + s.y - 0.5).setTint(PLAYER_COLOR[p]);
+      this.podium.push({ pool, rim });
+    }
   }
 
   private buildParticles(): void {
@@ -568,20 +684,20 @@ export class BoardViewV2 implements BoardCtx {
       return false;
     }
     const age = this.t - h.born;
-    const w = 0.5 + 0.5 * Math.sin(age / 150);
-    h.fill.setAlpha(h.k * (0.16 + 0.1 * w));
-    h.outline.setAlpha(h.k * (0.85 + 0.15 * w));
-    h.march.setAlpha(h.k).setFrame(String(Math.floor(age / 55) % MARCH_FRAMES));
+    const w = 0.5 + 0.5 * Math.sin(age / (h.hot ? 90 : 150));
+    h.fill.setAlpha(h.k * (h.hot ? 0.3 + 0.16 * w : 0.18 + 0.1 * w));
+    h.outline.setAlpha(h.k * (0.88 + 0.12 * w));
+    h.march.setAlpha(h.k).setFrame(String(Math.floor(age / (h.hot ? 35 : 55)) % MARCH_FRAMES));
     const settle = Math.max(0, 1 - age / 220);
-    const off = Math.round(1 - Math.cos(age / 190) + settle * settle * 9);
+    const off = Math.round((h.hot ? 1.5 : 1) * (1 - Math.cos(age / (h.hot ? 110 : 190))) + settle * settle * 9);
     const [tt, tl, tb, tr] = h.tips;
-    tt.setPosition(h.x - 13, h.y - HH - 2 - off - 6);
-    tb.setPosition(h.x - 13, h.y + HH + 2 + off);
-    tl.setPosition(h.x - HW - 2 - 2 * off - 12, h.y - 8);
-    tr.setPosition(h.x + HW + 2 + 2 * off, h.y - 8);
+    tt.setPosition(h.x - 14, h.y - HH - 2 - off - 8);
+    tb.setPosition(h.x - 14, h.y + HH + 2 + off);
+    tl.setPosition(h.x - HW - 2 - 2 * off - 14, h.y - 9);
+    tr.setPosition(h.x + HW + 2 + 2 * off, h.y - 9);
     for (const t of h.tips) t.setAlpha(h.k);
     if (!h.dying && this.t >= h.sparkAt) {
-      h.sparkAt = this.t + 150 + this.rnd() * 150;
+      h.sparkAt = this.t + (h.hot ? 90 : 150) + this.rnd() * 150;
       const a = this.rnd() * Math.PI * 2;
       const r = 0.82 + this.rnd() * 0.12;
       this.spawn('spark', Math.round(h.x + Math.cos(a) * HW * r), Math.round(h.y + Math.sin(a) * HH * r), mix(h.color, PAL.white, 0.3));
@@ -803,6 +919,10 @@ export class BoardViewV2 implements BoardCtx {
     return this.towerLevel.reduce((a, b) => a + b, 0) / this.towerLevel.length;
   }
 
+  get activeSide(): PlayerId | null {
+    return this.active;
+  }
+
   private tick(_time: number, delta: number): void {
     if (this.destroyed) return;
     const dt = Math.min(50, delta) * this.scene.time.timeScale;
@@ -813,22 +933,56 @@ export class BoardViewV2 implements BoardCtx {
     const heat = this.heat;
     const light = this.lightAvg();
 
+    // the scoreboard follows the duel (turn + life points as the HUD shows them)
+    this.probeClock -= dt;
+    if (this.probeClock <= 0) {
+      this.probeClock = 150;
+      if (!this.turnExplicit) {
+        const tn = this.probeTurn();
+        if (tn !== null && tn !== this.turn) {
+          this.turn = tn;
+          this.stadium.setActive(this.active, tn);
+        }
+      }
+      const lp = this.probeLp();
+      if (lp) this.stadium.setScore(lp[0], lp[1]);
+    }
+
     this.stadium.tick(dt, t, heat, this.towerLevel);
+    this.floor.tick(dt, t, heat, light);
 
     // ---- lights-off darkness and the floodlight layer
     this.dark.setAlpha((1 - light) * 0.62).setVisible(light < 0.999);
-    this.lavaWash.setAlpha(heat * (0.16 + 0.04 * Math.sin(t / 520))).setVisible(heat > 0.001);
+    this.lavaWash.setAlpha(heat * (0.2 + 0.05 * Math.sin(t / 520))).setVisible(heat > 0.001);
+    const poolTint = mix(PAL.white, PAL.fire4, heat);
     for (const pl of this.pools) {
       const lvl = this.towerLevel[pl.tower];
       const breathe = 0.5 + 0.5 * Math.sin(t / 2300 + pl.phase);
-      const tint = mix(PAL.white, PAL.fire4, heat);
-      pl.img.setAlpha(lvl * (0.11 + 0.025 * breathe) * (1 - 0.45 * heat)).setTint(tint);
-      pl.core.setAlpha(lvl * (0.09 + 0.025 * breathe) * (1 - 0.45 * heat)).setTint(tint);
+      // the lamp hums: now and then the pool dips for two frames
+      if (t >= pl.humAt) {
+        pl.humUntil = t + 70;
+        pl.humAt = t + 3000 + this.rnd() * 6000;
+      }
+      const hum = t < pl.humUntil ? 0.55 : 1;
+      // slow drift of the light on the marble
+      const dx = Math.round(2 * Math.sin(t / 6100 + pl.phase));
+      const dy = Math.round(Math.sin(t / 7900 + pl.phase * 1.7));
+      const k = lvl * hum * (1 - 0.45 * heat);
+      pl.img.setPosition(pl.x + dx, pl.y + dy).setAlpha(k * (0.2 + 0.05 * breathe)).setTint(poolTint);
+      pl.core.setPosition(pl.x + dx, pl.y + dy).setAlpha(k * (0.17 + 0.05 * breathe)).setTint(poolTint);
     }
     for (const c of this.cones) {
       const lvl = this.towerLevel[c.tower];
-      c.img.setAlpha(lvl * (0.26 + 0.05 * Math.sin(t / 1700 + c.tower))).setTint(mix(PAL.white, PAL.fire3, heat));
+      c.img.setAlpha(lvl * (0.16 + 0.03 * Math.sin(t / 1700 + c.tower))).setTint(mix(PAL.white, PAL.fire3, heat));
     }
+    this.updateFollowSpot(t, light, heat);
+    this.updateSheen(t, light, heat);
+    this.podium.forEach((pd, p) => {
+      const isActive = this.active === p;
+      const w = 0.5 + 0.5 * Math.sin(t / 900 + p * 2);
+      pd.pool.setAlpha(light * (isActive ? 0.34 + 0.08 * w : 0.24 + 0.04 * w)).setTint(this.heatColor(PLAYER_RAMP[p as PlayerId][4]));
+      pd.rim.setAlpha(light * (isActive ? 0.3 + 0.08 * w : 0.2 + 0.04 * w)).setTint(this.heatColor(PLAYER_COLOR[p as PlayerId]));
+    });
 
     // ---- trim (per side)
     const th = this.trimHeat;
@@ -845,21 +999,28 @@ export class BoardViewV2 implements BoardCtx {
     });
     this.updateRunners();
 
-    // ---- tiles: neon inlays pulse; the halo spills colored light on the marble
+    // ---- tiles: the neon inlays breathe by band swaps; the halo band spills light on the marble
     for (const tile of this.tiles) {
       const pl = tile.zone.player;
       const isActive = this.active === pl;
-      const w = 0.5 + 0.5 * Math.sin(t / 420 - tile.phase);
+      const w = Math.sin((t / 2400) * TAU - tile.phase);
       const lvl = this.sideLevel[pl];
-      const base = isActive ? 0.22 : this.active === null ? 0.16 : 0.1;
-      const amp = isActive ? 0.3 : 0.16;
-      const color = this.heatColor(PLAYER_COLOR[pl]);
-      tile.glow.setAlpha(Math.min(1, base + amp * w + tile.boost)).setTint(color);
-      tile.halo.setAlpha(Math.min(0.6, (0.1 + 0.07 * w) * lvl + tile.boost * 0.3)).setTint(color);
+      let st = 1;
+      if (isActive) st = w > 0.42 ? 2 : w < -0.42 ? 0 : 1;
+      else if (this.active === null) st = w > 0.62 ? 2 : w < -0.62 ? 0 : 1;
+      else st = w < -0.15 ? 0 : 1;
+      if (tile.boost > 0.25) st = 2;
+      if (st !== tile.state) {
+        tile.state = st;
+        tile.img.setTexture(tile.keys[st]);
+      }
+      tile.glow.setAlpha(Math.min(1, tile.boost * 0.9 + (isActive && st === 2 ? 0.1 : 0))).setTint(this.heatColor(PLAYER_COLOR[pl]));
+      const ha = isActive ? 0.42 + 0.2 * w : this.active === null ? 0.32 + 0.1 * w : 0.2 + 0.06 * w;
+      tile.halo.setAlpha(Math.min(0.85, ha * lvl + tile.boost * 0.35)).setTint(this.heatColor(PLAYER_RAMP[pl][4]));
       tile.boost = Math.max(0, tile.boost - dt / 600);
     }
-    this.bridgeFlow.setFrame(String(Math.floor(t / 70) % FLOW_FRAMES)).setTint(mix(PAL.mist, PAL.fire3, heat));
-    this.bridgeFlow.setAlpha(0.7 + 0.25 * Math.sin(t / 800));
+    this.updateGlints(dt);
+    this.updateBridge(t, heat);
     // lane chevrons chase toward the opponent of the active player
     for (const ch of this.chevrons) {
       const on = this.active === ch.player;
@@ -873,6 +1034,158 @@ export class BoardViewV2 implements BoardCtx {
     // ---- highlights & particles
     for (const [k, h] of this.highlights) if (!this.updateHighlight(h, dt)) this.highlights.delete(k);
     this.updateParticles(dt);
+  }
+
+  /** A travelling glint now and then along a pad's ring (more often on the active side). */
+  private updateGlints(dt: number): void {
+    this.nextGlint -= dt;
+    if (this.nextGlint <= 0) {
+      this.nextGlint = 500 + this.rnd() * 900;
+      const g = this.glints.find((q) => !q.tile);
+      const pool = this.active === null || this.rnd() < 0.25 ? this.tiles : this.tiles.filter((q) => q.zone.player === this.active);
+      if (g && pool.length) {
+        g.tile = pool[Math.floor(this.rnd() * pool.length)];
+        g.t = 0;
+        g.dur = 700 + this.rnd() * 400;
+        g.a0 = this.rnd();
+        g.img.setVisible(true).setTint(mix(PLAYER_RAMP[g.tile.zone.player][4], PAL.white, 0.5));
+      }
+    }
+    for (const g of this.glints) {
+      if (!g.tile) continue;
+      g.t += dt;
+      const k = g.t / g.dur;
+      if (k >= 1) {
+        g.tile = null;
+        g.img.setVisible(false);
+        continue;
+      }
+      const s = isoToScreen(g.tile.col, g.tile.row);
+      const u = (g.a0 + k * 0.5) % 1;
+      let x: number;
+      let y: number;
+      if (g.tile.zone.spot === 'monster') {
+        // the summoning ring (rx 22, ry 11)
+        const a = u * TAU;
+        x = s.x - 0.5 + Math.cos(a) * 22;
+        y = s.y - 0.5 + Math.sin(a) * 11;
+      } else {
+        // the pad's diamond frame (inset 5 px)
+        const hw = 2 * (HH - 5);
+        const hh = HH - 5;
+        const q = u * 4;
+        const side = Math.floor(q);
+        const f = q - side;
+        const pts = [
+          [0, -hh],
+          [hw, 0],
+          [0, hh],
+          [-hw, 0],
+        ];
+        const a = pts[side];
+        const b = pts[(side + 1) % 4];
+        x = s.x + a[0] + (b[0] - a[0]) * f;
+        y = s.y + a[1] + (b[1] - a[1]) * f;
+      }
+      g.img.setPosition(Math.round(x), Math.round(y)).setAlpha(Math.sin(Math.PI * k) * 0.95);
+    }
+  }
+
+  /** The bridge: pulses run along both energy lines from the bridge's ends and meet in the middle. */
+  private updateBridge(t: number, heat: number): void {
+    const L = arenaV2Layout().bridgeLines;
+    const g = this.bridgeFx;
+    g.clear();
+    const speed = 0.024; // px per ms
+    const spacing = 58;
+    this.bridgeHalf.forEach((im, p) => {
+      const isActive = this.active === p;
+      im.setAlpha((isActive ? 0.13 : 0.08) + 0.03 * Math.sin(t / 1300 + p * 2)).setTint(this.heatColor(PLAYER_RAMP[p as PlayerId][2]));
+    });
+    L.forEach((line, p) => {
+      const n = line.length;
+      if (n < 4) return;
+      let mid = 0;
+      while (mid < n - 1 && line[mid].c < 3) mid++;
+      const ramp = PLAYER_RAMP[p as PlayerId];
+      const head = this.heatColor(mix(ramp[4], PAL.white, 0.4));
+      const body = this.heatColor(ramp[3]);
+      const isActive = this.active === p;
+      const amp = isActive ? 1 : 0.7;
+      let arrive = 0;
+      for (const dir of [1, -1] as const) {
+        const span = dir > 0 ? mid : n - 1 - mid;
+        if (span < 8) continue;
+        for (let k = 0; k * spacing < span + spacing; k++) {
+          const pos = (t * speed + k * spacing + (dir < 0 ? spacing / 2 : 0) + p * 17) % (Math.ceil(span / spacing) * spacing);
+          if (pos > span) continue;
+          const idx = dir > 0 ? Math.floor(pos) : n - 1 - Math.floor(pos);
+          if (span - pos < 6) arrive = Math.max(arrive, 1 - (span - pos) / 6);
+          for (let j = 0; j < 8; j++) {
+            const i = idx - dir * j;
+            if (i < 0 || i >= n) break;
+            const q = line[i];
+            g.fillStyle(j === 0 ? head : body, amp * (j === 0 ? 1 : 0.85 * (1 - j / 8)));
+            g.fillRect(q.x, q.y, 1, 1);
+          }
+        }
+      }
+      // where the two flows meet: a small flare on the line
+      if (arrive > 0) {
+        const q = line[mid];
+        g.fillStyle(head, 0.7 * arrive * amp);
+        g.fillRect(q.x - 1, q.y, 3, 1);
+        g.fillRect(q.x, q.y - 1, 1, 3);
+      }
+    });
+  }
+
+  /** A follow spot roving across the platform: ~4 s crossing every 10 s, alternating direction. */
+  private updateFollowSpot(t: number, light: number, heat: number): void {
+    const cycle = 10000;
+    const n = Math.floor(t / cycle);
+    const u = (t % cycle) / 4200;
+    if (u >= 1) {
+      this.followSpot.setAlpha(0);
+      return;
+    }
+    const e = u * u * (3 - 2 * u);
+    const A = P(-0.2, 4.6);
+    const B = P(6.2, 0.4);
+    const [a, b] = n % 2 ? [B, A] : [A, B];
+    const x = a[0] + (b[0] - a[0]) * e;
+    const y = a[1] + (b[1] - a[1]) * e + Math.sin(e * Math.PI) * -18;
+    const fade = Math.min(1, u / 0.12, (1 - u) / 0.12);
+    this.followSpot.setPosition(Math.round(x), Math.round(y)).setAlpha(light * (1 - heat) * 0.32 * fade);
+  }
+
+  /** Every ~7 s a slow sheen (a 3-px band, about one tone up) sweeps across each marble half. */
+  private updateSheen(t: number, light: number, heat: number): void {
+    const g = this.sheen;
+    g.clear();
+    if (light < 0.5) return;
+    const cycle = 7000;
+    const dur = 2600;
+    for (const p of [0, 1] as PlayerId[]) {
+      const u = (((t + (p ? cycle / 2 : 0)) % cycle) + cycle) % cycle / dur;
+      if (u >= 1) continue;
+      const e = u * u * (3 - 2 * u);
+      const c = -0.9 + e * (BOARD_COLS - 1 + 1.8);
+      const [r0, r1] = p === 0 ? [3.56, 5.74] : [-0.74, 1.44];
+      const [x0, y0] = P(c, r0);
+      const rows = Math.round((r1 - r0) * HH);
+      const fade = Math.min(1, u / 0.1, (1 - u) / 0.1) * light * (1 - heat);
+      const col = mix(PAL.white, PAL.gold4, 0.25);
+      for (let k = 0; k <= rows; k++) {
+        const x = Math.round(x0) - 2 * k;
+        const y = Math.round(y0) + k;
+        g.fillStyle(col, 0.42 * fade);
+        g.fillRect(x - 1, y, 3, 1);
+        g.fillStyle(col, 0.18 * fade);
+        g.fillRect(x - 2, y, 1, 1);
+        g.fillRect(x + 2, y, 1, 1);
+      }
+    }
   }
 
   private updateRunners(): void {

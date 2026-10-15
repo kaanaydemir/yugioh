@@ -17,7 +17,7 @@ import { wait } from '../../vfx/core';
 import { floorRing } from '../../vfx/setpieces';
 import { quickFountain } from './_fountain';
 import { fx, registerCardHook } from '../api';
-import { TEAL_FX, bg, idxOf, relax, sendResolved, setTileOf, spellOpening } from './_kit';
+import { TEAL_FX, bg, idxOf, relax, sendResolved, setTileOf, spellOpening, fs, lightFlash, lightPool } from './_kit';
 
 registerCardHook('healing_spring', 'activate', async (ctx) => {
   const ev = ctx.ev;
@@ -43,6 +43,12 @@ registerCardHook('healing_spring', 'activate', async (ctx) => {
     fountainStarted({
       p: quickFountain(sc, ev.player, fx.lpPoint(ctx, ev.player), {
         at: spring,
+        // (v2) the spring's rippling teal light on the marble, a flash as it erupts
+        onErupt: () => {
+          void lightFlash(sc, spring.x, spring.y - 30, PAL.teal4, fs(40), 460, { floorY: spring.y, intensity: 1, air: 0.5 });
+          const pool = lightPool(sc, spring.x, spring.y, { color: PAL.teal3, radius: fs(34), intensity: 0.9, anim: 'caustic', fadeIn: 80 });
+          bg(wait(sc, 700).then(() => pool.fadeOut(500)));
+        },
         onArrive: () => {
           if (li >= 0) healed = ctx.play(li, { delivered: true });
           arrived();
@@ -51,7 +57,7 @@ registerCardHook('healing_spring', 'activate', async (ctx) => {
     });
   await op.release({ x: spring.x, y: spring.y - 2 }, { path: 'arc', lift: 46, ms: STREAK, size: 2, onLaunch: () => bg(wait(sc, STREAK - 150).then(startFountain)) });
   ctx.sfx('waterSplash', { volume: 0.45, pitch: 1.3 });
-  bg(floorRing(sc, spring.x, spring.y, { r0: 4, r1: 30, ms: 260, ramp: TEAL_FX }));
+  bg(floorRing(sc, spring.x, spring.y, { r0: 4, r1: fs(30), ms: 260, ramp: TEAL_FX }));
   const fountain = (await fountainP).p;
   // the duelist feels the spring: a small cheer when the first drop lands
   bg(

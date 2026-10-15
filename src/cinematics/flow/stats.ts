@@ -14,7 +14,7 @@ import { Sparks, addGlow, run, spriteBox } from '../../vfx/setpieces';
 import { flameAura, steamAura } from '../../duel/auras';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { registerEvent } from '../api';
-import { ADD, all, bg, chevronTexture, rr, type AnyCtx, type Ctx, type EvOf } from './_kit';
+import { ADD, all, bg, chevronTexture, rr, fs, lightFlash, type AnyCtx, type Ctx, type EvOf } from './_kit';
 
 type StatEv = EvOf<'statChange'>;
 
@@ -87,6 +87,8 @@ registerEvent(
       const to = atkSide ? e.atk : e.def;
       const top = u.worldPoint('top');
       const parts: Promise<unknown>[] = [u.setStats(e.atk, e.def, true)];
+      // (v2) a soft green (raised) / red (lowered) light under the monster
+      void lightFlash(ctx.scene, u.home.x, u.home.y, up ? PAL.leaf3 : PAL.crim3, fs(28), 520, { intensity: 0.6 });
       if (up) {
         parts.push(addGlow(ctx.scene, u.sprite, PAL.leaf3, 460, 0.7));
         chevrons(ctx, u, true);

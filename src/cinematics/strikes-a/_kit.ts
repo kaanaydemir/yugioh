@@ -14,7 +14,8 @@ import { AK } from '../../art/arena';
 import { monsterAnimKey, monsterFrame, monsterFrameName } from '../../art/textures';
 import type { MonsterAnim } from '../../art/types';
 import { MONSTER_ANIMS } from '../../art/types';
-import { DEPTH, GAME_H, GAME_W, type XY, unitDepth, zoneXY } from '../../view/layout';
+import { ARENA_V2, DEPTH, GAME_H, GAME_W, TILE_W, type XY, unitDepth, zoneXY } from '../../view/layout';
+import { lightFlash, lightPool, type LightHandle } from '../../view/light';
 import type { TileCard } from '../../view/TileCard';
 import { shake } from '../../vfx/core';
 import { E, Px, Sparks, animate, framePointToWorld, onFrame, sleep, stopTime, whiteFlash } from '../../vfx/combat';
@@ -76,6 +77,43 @@ export function lerpXY(a: XY, b: XY, t: number): XY {
 export function qbez(a: XY, c: XY, b: XY, t: number): XY {
   const u = 1 - t;
   return { x: u * u * a.x + 2 * u * t * c.x + t * t * b.x, y: u * u * a.y + 2 * u * t * c.y + t * t * b.y };
+}
+
+// ================================================================ arena geometry (v1 / v2)
+
+export { ARENA_V2 };
+/**
+ * Floor scale of the arena: 1 on v1's 64×32 tiles, 1.25 on v2's 80×40 tiles. Floor rings, magic
+ * circles and pools that cover a tile are multiplied by it (v1 sizes stay exactly as tuned).
+ */
+export const TK = TILE_W / 64;
+
+/**
+ * Travel time over `dist` px: v1's hand-tuned clamp(base + dist·perPx, min, max) unchanged; arena
+ * v2's long paths across the bridge may take up to `maxV2` (a real run, not a teleport).
+ */
+export function travelMs(dist: number, base: number, perPx: number, min: number, max: number, maxV2: number): number {
+  return clamp(base + dist * perPx, min, ARENA_V2 ? maxV2 : max);
+}
+
+/** Strides of a run over `dist` px: v1 keeps its count; v2 takes one stride per `stride` px. */
+export function strideCount(dist: number, v1: number, stride: number): number {
+  return ARENA_V2 ? Math.max(v1, Math.round(dist / stride)) : v1;
+}
+
+// ================================================================ light layer (arena v2; no-ops in v1)
+
+/** A held light pool that follows a point each frame (charging glows, projectiles, burning trails). */
+export function followLight(scene: Phaser.Scene, at: () => XY | null, o: { color: number; radius?: number; floorY?: number | ((p: XY) => number); air?: number; intensity?: number; anim?: 'steady' | 'shimmer' | 'breathe' | 'flicker' | 'caustic' | 'sway'; fadeIn?: number }): LightHandle {
+  const p0 = at() ?? { x: 0, y: 0 };
+  const fy = typeof o.floorY === 'function' ? o.floorY(p0) : (o.floorY ?? p0.y);
+  const h = lightPool(scene, p0.x, p0.y, { color: o.color, radius: o.radius ?? 30, floorY: fy, air: o.air ?? 0.6, intensity: o.intensity ?? 1, anim: o.anim, fadeIn: o.fadeIn ?? 120 });
+  return h.follow(at, { floorY: o.floorY });
+}
+
+/** A death burst lighting the floor around the monster (attribute / flavour colour). */
+export function burstLight(scene: Phaser.Scene, at: XY, floorY: number, color: number, k = 1): void {
+  void lightFlash(scene, at.x, at.y, color, 46 * k, 460, { floorY, ring: true, intensity: 0.9 * k });
 }
 
 // ================================================================ drawing layers
@@ -421,6 +459,8 @@ export interface ShatterPxOpts {
   attract?: { x: number; y: number; after: number; k?: number };
   /** The burst ring + star at the core (default true; off for crumbling rock / melting). */
   ring?: boolean;
+  /** Arena v2 light of the burst on the floor (default ramp[3]; false = none). */
+  light?: number | false;
 }
 
 let shSeq = 0;
@@ -507,6 +547,7 @@ export async function shatterPx(scene: Phaser.Scene, u: MonsterUnit, o: ShatterP
   }
   // ---- bricks
   if (o.sound !== false) playSfx('shatter', { volume: 0.9 });
+  if (o.light !== false) burstLight(scene, core, u.home.y, o.light ?? ramp[3], o.ring === false ? 0.75 : 1);
   const push = o.push ? norm(o.push) : { x: 0, y: 0 };
   const spd = o.speed ?? 1;
   const up = o.up ?? [15, 60];

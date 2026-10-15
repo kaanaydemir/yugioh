@@ -43,6 +43,8 @@ import {
   run,
   whenFrame,
   type Entrance,
+  fs,
+  lightFlash,
 } from './_kit';
 
 const EARTH: Ramp = RAMPS.earth;
@@ -81,11 +83,14 @@ function makeCracks(x: number, y: number, n: number, r0: number, r1: number): Cr
 /** The floor splits: fissures grow out from the tile, gold rune-light seeping from them. */
 function earthCracks(e: Entrance): { flare(): void; cool(ms: number): Promise<void> } {
   const { scene: sc, home } = e;
-  const cracks = makeCracks(home.x, home.y, 8, 6, 44);
+  const cracks = makeCracks(home.x, home.y, 8, 6, fs(44));
   const st = { g: 0, heat: 1, flare: 0 };
-  const layer = liveLayer(sc, home.x, home.y, 110, 60, DEPTH.TILE_FX + 2, (r, _el, dt) => {
+  // (v2) rune-gold light seeping up out of the fissures onto the marble
+  const seep = e.glow({ color: GOLD[3], radius: fs(30), intensity: 0, anim: 'flicker', fadeIn: 0 });
+  seep.setIntensity(0.75, 300);
+  const layer = liveLayer(sc, home.x, home.y, fs(110), fs(60), DEPTH.TILE_FX + 2, (r, _el, dt) => {
     st.flare = Math.max(0, st.flare - dt / 220);
-    const reach = st.g * 46;
+    const reach = st.g * fs(46);
     for (const c of cracks) {
       for (let i = 1; i < c.pts.length; i++) {
         if (c.len[i] > reach) break;
@@ -105,8 +110,11 @@ function earthCracks(e: Entrance): { flare(): void; cool(ms: number): Promise<vo
   return {
     flare() {
       st.flare = 1;
+      seep.setIntensity(1.4, 40);
+      seep.setRadius(fs(40), undefined, 120);
     },
     async cool(ms: number) {
+      void seep.fadeOut(ms);
       await run(sc, ms, (t) => (st.heat = 1 - t));
       layer.stop();
     },
@@ -138,7 +146,7 @@ function orbitRocks(e: Entrance, n: number): { rocks: Rock[]; speed(k: number): 
       .image(0, 0, big ? STEX.boulder : PTEX.rock, String(i % (big ? 3 : 4)))
       .setVisible(false)
       .setFlipX(rnd() < 0.5);
-    rocks.push({ img, a: (i / n) * TAU + rr(-0.15, 0.15), r: rr(25, 30), h: 0, hT: rr(14, 24), w: rr(2.6, 3.2) * e.dir, bob: rnd() * TAU, delay: 40 + i * 34, age: 0, fly: null, done: false });
+    rocks.push({ img, a: (i / n) * TAU + rr(-0.15, 0.15), r: rr(fs(25), fs(30)), h: 0, hT: rr(14, 24), w: rr(2.6, 3.2) * e.dir, bob: rnd() * TAU, delay: 40 + i * 34, age: 0, fly: null, done: false });
   }
   let speedK = 1;
   let el = 0;
@@ -192,7 +200,7 @@ async function sentinelPiece(e: Entrance): Promise<void> {
   ctx.sfx('earthQuake', { volume: 0.55, pitch: 1.15 });
   ctx.sfx('groundCrack', { volume: 0.4 });
   bg(shake(sc, 380, 1));
-  dustFx(sc, home.x, home.y, { ramp: EARTH, radius: 26, count: 10, speed: 0.7, depth: unitDepth(home.y) + 0.5 });
+  dustFx(sc, home.x, home.y, { ramp: EARTH, radius: fs(26), count: 10, speed: 0.7, depth: unitDepth(home.y) + 0.5 });
   const orbit = orbitRocks(e, 8);
   bg(run(sc, 380, (t) => orbit.speed(1 + 1.8 * t)));
   await ctx.wait(400);
@@ -262,6 +270,7 @@ async function sentinelPiece(e: Entrance): Promise<void> {
   ctx.sfx('roarSmall', { volume: 0.8, pitch: 0.75 });
   // the rune and eye blaze: gold sparks rise off the chest
   const c = u.core();
+  void lightFlash(sc, c.x, c.y, GOLD[4], fs(24), 360, { floorY: home.y, intensity: 0.7 });
   const sp = new Sparks(sc, DEPTH.FX + 1, Phaser.BlendModes.ADD);
   for (let i = 0; i < 12; i++) sp.add({ x: c.x + rr(-6, 6), y: c.y + rr(-8, 2), vx: rr(-14, 14), vy: rr(-70, -30), drag: 1.2, life: rr(320, 560), delay: i * 18, ramp: [PAL.white, GOLD[4], GOLD[3], GOLD[2]] });
   sp.close();
