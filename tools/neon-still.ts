@@ -7,8 +7,11 @@
 //   still-640x360.png       the scene at 1× (true pixels)
 //   crop-dragon-x6.png, crop-wizard-x6.png   scene crops around each monster ×6
 //   compare-wyrm.png, compare-magus.png      ORIGINAL game frame | refined frame, ×1 and ×6, on the floor tone
-// and prints per-monster metrics: frame size, opaque bbox, opaque pixels, colours, and the alpha-mask
-// IoU between the original and the refined frame (silhouette preservation).
+//   compare-wyrm-x3.png, compare-magus-x3.png   the same pair at ×3 (the scale the monsters have in the 1920×1080 still)
+// and prints per-monster metrics: frame size, opaque bbox, opaque pixels, colours, isolated pixels
+// (opaque pixels with no same-coloured 4-neighbour: a speckle / mosaic measure), the alpha-mask IoU
+// between the original and the refined frame (silhouette preservation) and how many of the shared
+// opaque pixels were recoloured.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -111,12 +114,46 @@ function iou(a: PixelCanvas, b: PixelCanvas): number {
     }
   return uni ? inter / uni : 1;
 }
+/** Opaque pixels whose opaque 4-neighbours all have a different colour (speckle / mosaic measure). */
+function isolated(p: PixelCanvas): number {
+  let n = 0;
+  for (let y = 0; y < p.h; y++)
+    for (let x = 0; x < p.w; x++) {
+      const c = p.get(x, y);
+      if (c === null) continue;
+      let same = false;
+      let any = false;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const d = p.get(x + dx, y + dy);
+        if (d === null) continue;
+        any = true;
+        if (d === c) same = true;
+      }
+      if (any && !same) n++;
+    }
+  return n;
+}
+/** Pixels opaque in both frames whose colour differs (how much of the drawing was repainted). */
+function recoloured(a: PixelCanvas, b: PixelCanvas): { n: number; of: number } {
+  let n = 0;
+  let of = 0;
+  for (let y = 0; y < a.h; y++)
+    for (let x = 0; x < a.w; x++) {
+      const A = a.get(x, y);
+      const B = b.get(x, y);
+      if (A === null || B === null) continue;
+      of++;
+      if (A !== B) n++;
+    }
+  return { n, of };
+}
 function report(name: string, g: { w: number; h: number }, orig: PixelCanvas, ref: PixelCanvas) {
   const so = stats(orig);
   const sr = stats(ref);
   const bb = (b: typeof so.bbox) => (b ? `${b.w}x${b.h}@${b.x},${b.y}` : '-');
+  const rc = recoloured(orig, ref);
   console.log(
-    `${name}: frame ${g.w}x${g.h} | original bbox ${bb(so.bbox)} px ${so.n} colours ${so.colors} | refined bbox ${bb(sr.bbox)} px ${sr.n} colours ${sr.colors} | silhouette IoU ${iou(orig, ref).toFixed(3)}`,
+    `${name}: frame ${g.w}x${g.h} | original bbox ${bb(so.bbox)} px ${so.n} colours ${so.colors} isolated ${isolated(orig)} | refined bbox ${bb(sr.bbox)} px ${sr.n} colours ${sr.colors} isolated ${isolated(ref)} | silhouette IoU ${iou(orig, ref).toFixed(3)} | recoloured ${rc.n}/${rc.of} (${((100 * rc.n) / Math.max(1, rc.of)).toFixed(1)}%)`,
   );
 }
 
@@ -158,8 +195,15 @@ function compare(orig: PixelCanvas, ref: PixelCanvas, flip: boolean, file: strin
   big.blit(o.scaled(k), gap, h + gap * 2);
   big.blit(r.scaled(k), gap * 2 + w * k, h + gap * 2);
   png(big, 1, PAL.night1, file);
+  // the deliverable's scale (the 1920×1080 still shows the monsters ×3): ORIGINAL | refined
+  const k3 = 3;
+  const mid = new PixelCanvas(2 * w * k3 + gap * 3, h * k3 + gap * 2);
+  mid.rect(0, 0, mid.w, mid.h, PAL.night1);
+  mid.blit(o.scaled(k3), gap, gap);
+  mid.blit(r.scaled(k3), gap * 2 + w * k3, gap);
+  png(mid, 1, PAL.night1, file.replace('.png', '-x3.png'));
 }
 compare(wyrmO, wyrm, false, 'compare-wyrm.png');
 compare(magusO, magus, true, 'compare-magus.png');
 
-console.log(`[neon-still] wrote ${path.relative(root, OUT)}/still-1920x1080.png (scene 640x360 ×3), still-640x360.png, crop-*-x6.png, compare-*.png`);
+console.log(`[neon-still] wrote ${path.relative(root, OUT)}/still-1920x1080.png (scene 640x360 ×3), still-640x360.png, crop-*-x6.png, compare-*.png, compare-*-x3.png`);

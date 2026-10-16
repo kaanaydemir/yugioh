@@ -1,21 +1,39 @@
 // Neon Düello still preview — the refined crystal wyrm, idle frame 0, as a hand-placed pixel map.
-// Same 96×96 frame and anchor (50,91) as the game sprite (src/art/monsters/crystal_wyrm.ts) and the
-// exact same silhouette and ink contour: the map started as a copy of the original pixels and only
-// interior pixels were repainted, region by region:
-//   face   — heavier brow (steel ends, night3 over the eye), 4-px almond eye with a dark front corner and
-//            a steel lower lid, 1-px night1 mouth line with a thinner lip shadow, one fang, jaw-hinge
-//            corner cleaned, cast shadow of the jaw on the throat; horns get a gold2 underside line.
-//   neck   — the lit white facet now tapers down into the chest; a throat crease (steel → night3)
-//            explains where the neck tucks into the chest; two neck-crest shards cleaned to lit/shadow faces.
-//   wings  — near wing: membrane re-cut into the original's facet fan (outer e/d, mid d/c, inner d/c),
-//            finger struts as white/mist bones with a cyan1 seam on the membrane side, forearm and humerus
-//            shaded as lit tubes, a wrist knuckle, the elbow crystal spur re-drawn, one cyan4 fold line and
-//            one softer cyan3 vein on the inner panel, cyan1 occlusion where the wing root meets the body;
-//            far wing: same facet fan in its darker ramp with plain 1-px struts (less stripe noise).
-//   arm    — elbow pit as one clean night1 wedge, near paw with two white claw tips, far paw claw tip.
-//   legs   — cyan4 ice half-tone on the thigh terminator and kneecap, knee crease, groin crease darkened,
-//            foot with a lit top edge, a toe gap and mist→white claws, far-foot claws in steel/mist, hip underside simplified.
-//   tail   — glints on the crystal blade edge and the largest ridge shard (body bands left as original).
+// Same 96×96 frame and anchor (50,91) as the game sprite (src/art/monsters/crystal_wyrm.ts), the same
+// silhouette and ink contour (two interior ink pixels added: the gaps between two toe claws and between two
+// paw claws). The interior is repainted in decisive value planes under one key light from the frame's top-left
+// (lit plane / mid plane / shadow plane per form):
+//   head   — white top plane on cranium and snout, flat mist side plane; ONE long night3 brow ridge from the
+//            horn root over the eye, its front end dropping in front of it; eye = a night2 socket on all
+//            sides + cyan3 iris + one white glint under the brow; a steel cheek plane under the cheekbone,
+//            wide at the jaw hinge; night1 mouth line ending in an up-turned hook at the corner; the lower
+//            jaw one value darker (steel) with a night3 underside and a lit chin; one nostril pixel; gold
+//            horns with a gold4 top edge, gold3 body, gold2 underside and gold1 root.
+//   neck   — white lit plane | mist | steel shadow plane that follows the turn of the neck (2 px under the
+//            jaw's night3 cast shadow, 3 px mid-neck, 4 px at the base where it runs into the night3/night2
+//            throat wedge) | cyan2 rim; one 1-px steel throat-plate seam across the lit plane.
+//   collar — one night3 crease where the neck base disappears behind the chest plate and the shoulder:
+//            along the chest's top edge into the throat wedge and up the neck's left side.
+//   root   — bone, crystal and neck read as three things: humerus (white edge, mist, steel), a flat cyan0
+//            channel with 2-value crest shards (one glint, on the nape shard), then the neck; a night3
+//            wing-root shadow on the shoulder.
+//   wings  — near wing: flat cyan3 cells (the spike's glass sliver included), one flat cyan2 sheet under the
+//            forearm split by ONE cyan3 fold line (elbow to trailing rim), the inner panel, cyan1 at the root;
+//            one 2-px cyan4 highlight at the wrist knuckle;
+//            the spike's finger-0 bone white/mist; finger 1 white top row + mist; finger 2 one mist line;
+//            the forearm: ONE white leading edge (stops before the elbow knuckle), mist body, ONE cyan1
+//            underside line; white rim on up/left-facing free edges, cyan4 glass rim on down-left edges.
+//            Far wing: one value darker — ONE steel strut (short mist lit edge) between two flat cells
+//            (cyan2 above, cyan1 below with a cyan2 rim); the leading edge one 1-px steel line.
+//   body   — big calm white lit plane, the cyan2 keel exactly on the lit/mid break, mist mid plane, steel
+//            under the raised arm; the belly turns under in steel/night3.
+//   legs   — a night3 crease around the thigh: 1 px on the top arc, 2 px down the back, 3 px at the bottom
+//            where the belly passes behind it; a steel shadow plane on the thigh, a night3 crease behind the
+//            knee; ONE night1 line against the far leg, which is one value darker (night3 / steel, mist knee
+//            edge); shin lit from the left like the thigh; feet with a lit top edge and a dark sole (near night3,
+//            far night2), claws with pale tips and an ink gap between the toes. Raised forearm: white top plane,
+//            flat steel underside, a night3 wrist crease; mist paw knuckles, steel claws, white tips, ink gap.
+//   tail   — white top plane, mist, steel underside band, cyan2 bounce rim; 2-value spikes, two glints.
 // One character per pixel; '.' is transparent. Colours come only from PAL (see WYRM_KEY).
 
 import { PAL } from '../art/palette';
@@ -47,92 +65,92 @@ export const WYRM_MAP: readonly string[] = [
   '..................................................kmk...........................................',
   '......................k...........................kmk...........................................',
   '.....................kwk...................k....k.kmk...........................................',
-  '.....................kwk..................kmk..kjkkmk...........................................',
-  '......................kwk.................kmk..kiibsk...........................................',
-  '......................kwk..................kmk..kiiikk..........................................',
-  '......................kwwk.................kmdkkkbshiikkk.......................................',
-  '......................kwwk..................kmddddmkhiijjkkk....................................',
-  '......................kwewk.................kmcccddmkkhiijjjkkk.................................',
-  '..........kk.........kweewkk............k...kdmccddmk.khiiiijjikk...............................',
-  '.........kwwkkkkkkkkkweeeewmk..........kmkkkkdmccdmdk..kkhhiiiijjkkkkk..........................',
-  '..........kkwwwwwwwwwdeeeewmk...........kmdddccmcdmdk....kkhhiiiiiiswwkkkk......................',
-  '............kkwwdddddddeeeewmk..........kdmmbbcmccmdk......kkhhiiigswwwwwwkk....................',
-  '..............kwwwddddddeeewmk...........kdcmbbcmcmmk.......ksshhgsmmmmwwwwwk...................',
-  '...............kwdwwwddddeeewmk..........kdccmbbmcmmk......kmwmsssmmmmmmmmwwwk..................',
-  '...............kwbmmdwwdddeewmk..........kdcccmmbmmmk.....kmmmmmmmmmmsss333swwkkkk..............',
-  '................kwbbmmdwwddeewmk..........kdcccmmmmmbk....kmmmmmmmmmmdewww3mmwwwwwkkk...........',
-  '................kwddbbmmmwwdewmkk.........kdccccmmmmsk...kk2sssmmmmmmmseww3mmmmwwwwwwkkk........',
-  '.................kwcdddbbmmwwwwmmk........kdccccmmmmsk.kkjjjjjh2smmmmmmssssmmmmmmmmwwwwwk.......',
-  '................kwcccccccbbmwwwmmk.........kdccccmss2kkiiiiiiih2sssmmmmmmmmmmmmmmmmmmmwwwk......',
-  '................kwcccccccwwwwmmmswk........kdccccmms2jjiikb0222ssssssmmmmmmmmmmmmmmmm32mmk......',
-  '................kwccccwwwmmmmssmmmwk.......kdccccms2jjcccecs2222ssssssmmmmmmmmmmmmmssssmmk......',
-  '...............kwcwwwwmmmddbbdssmmmwk......kdcccbb2j20ccecwsmmmm2221111111ssssssssssssssk.......',
-  '............kkkwwwdmmddbbbbdddessmmmwkk.....kdccbbs222kcbwwsmmmmmmmmmmmmmm1111111111ssssk.......',
-  '...........kwwwddddbbbbdddddddecssmmmwwk....kdcbbadeeeecwwwwsmmmmmmmmmmmmmmmmmmmmmwm111k........',
-  '............kkwwbbbdddddddddddeccssmmmwwk...kdbbbweeeecwwwwwsmssssmmmmmmmmmmmmmmmmmsmmmk........',
-  '..............kkwddddddddddddeccccssmmmwwk..kdbbbbccccbwwwwsssssssssssssssssssssssssskk.........',
-  '................kwwddddddddddecccccssmmmwwkkkbbbbbbbbcwwwwws33sbkkkkkkkkkkkkkkkkkkkkk...........',
-  '.................kkwdddddddddeccccccssmmmmwweeddbbbbcwwwwws33sck................................',
-  '...................kwddddddddecccccccssmmmwedcbbdeeecwwwwwsmm3ck................................',
-  '....................kwdddddddeccccccccssmmsscceeeeecwwwwwmsmmck.................................',
-  '.....................kwdddddeccccccccdcswmmsckdccccbwwwwwmmmck..................................',
-  '......................kwddddecccccccdcccwmmmskdbba0wwwwwmmmmck..................................',
-  '.......................kwdddecccccccdcccbwmmssbbaacwwwwwmmm3ck..................................',
-  '........................kwddcccccccdccccbwmmmsbaeecwwwwmmmmck...................................',
-  '.........................kwdcccccccdcccccbwmmmseecwwwwwmmmmck...................................',
-  '..........................kwccccccdccccccbwmmmsccbwwwwwmmmsck...................................',
-  '...........................kwcccccdccccccbwmmmsbcbwwwwwmmmsck...................................',
-  '............................kwcccdcccccccbwmmmmsa0wwwwwmmmsck...................................',
-  '............................kwcccdccccccccbwmmmms0wwwwwmmmsck...................................',
-  '.............................kwcccccccccccbmmmmmsswwwwwmmmsssk..................................',
-  '..............................kwccccccccccbmmmmmssmwwwmmmmmssk..................................',
-  '..............................kwccccccccccbbmmmms2mwwwmmmmmsssk.................................',
-  '...............................kwcccccccccbbsmmms2mmwwmmmmmssbk.................................',
-  '................................kwccccccccbbsmss22mmwwmmmmmssbk.................................',
-  '................................kwccccccccbb332sssmmmwmmmmmmsbk.................................',
-  '.................................kwcccccccccsssswwsmmmmmmmss1ck.................................',
-  '.................................kwccccccccswwwwwwsmmmmmss33bk..................................',
-  '..................................kwccccccawwwwwwwmsmmss3322ssk.................................',
-  '..................................kwcccccbbwwcwwmmmm22wssssssck.....kkkk........................',
-  '.................................kkkwccccawwwwcmmmmswwwwmssssck...kkmmssk.......................',
-  '................................keecccccckwwwwcwmmmswwwwmm2ssck..kssss3kmk......................',
-  '................................kccbcccccwwwwwwcmmmswwwmmm2s331kkwwms33sk.......................',
-  '.................................kccbcbbwwwwwwwcmmsmwwmmms3111swwwmmswkk........................',
-  '..................................kkcbbwwwwwwwwmcmmsmmmss3111wwwwmmskwk.........................',
-  '.................................kkkkkwwwwwwwwmmcmmsssss3mwwwwwmwmmmwk..........................',
-  '................................keecwwwwwwwwwmmmmcmm2mmmmmwwwmmmmmkkk...........................',
-  '...............................kccbwwwwwwwwwwmmmmcmss2mmmmwwmmscck..............................',
-  '................................kbwwwwwwwwwwmmmmmmccs1mmmmmmssckk...............................',
-  '................................kwwwwwwwwwwwwmmmmmssc3bmmmmscck.................................',
-  '......k........................kwwwwwwwwwwssssssssss3ckmmssckk..................................',
-  '.....kek.......................kwwwwwwwwsswwwwwwsss332sk3cck....................................',
-  '.....keckk................kk..kwwwwwwwwswwwwwwwwee2ss2sskkk.....................................',
-  '.....kwccck.............kkwekkkwwwwwwwwswwwwwwweem2s32sssk......................................',
-  '.....kwecck............kceeeecswwwwwwmswwwwwwweemmm232ssssk.....................................',
-  '.....keeccck............kccccwsmwwmmmmswwwwwweecmmm132ssssskk...................................',
-  '.....keeecck........kk...kcbwwsmmmmmmmswwwwweeecmmmm1ssssssssk..................................',
-  '.....keeeccck......keekkkkkkwwwsmmmmmmswwweeeemmcmmm1sssssmms3k.................................',
-  '.....keeeccck..k..k.kceeeekwwwwsmmmmmmsmmeeeeemmcmmmm1ssssmss3k.................................',
-  '......keeeck..kekkckkkccecwwwwww2mmmmmsmmeemmmmmcmmmm133smss32k.................................',
-  '......keemmk..keckecckkbbwwwwwws2ssssss3mmmmmmmmmcmmmm13mss332k.................................',
-  '.......kmmmmkkeeckeeckkwwwwwwwsss22ssss3mmmmmmmmmcmmmmkmmss32k..................................',
-  '.......kmmmmwkccckccbbwwwwwwsssss2cccc2311smmmmmmmmmmmmsms333k..................................',
-  '........kmmmwwwwbkwwwwwwwwwsssss2ckkkkk3ccbsmmmmmmmmeemsss32k...................................',
-  '........kmmmmmwwwwwwwwwwwsssssscck.....kkkkkkmmmmmmmmems232k....................................',
-  '.........ksmmmwwwwwwwwwssssss2ckk............kmmmmmssmss232k....................................',
-  '..........ksmmmmmmmmmssssss2cck..............kwwmmmmmss312k.....................................',
-  '...........ksmmmmmmmmssss2cckk..............kwwwwmmsss32ssk.....................................',
-  '............kkk3cccmmccccckk...............kwwwmmmsscc2ssssk....................................',
-  '...............kkkkkkkkkkk................kwwmmmsscckk3sssssk...................................',
-  '.........................................kwwwmmssckk..k3ssssskkk................................',
-  '.........................................kmmsmwwwk.....k3ssssmmsk...............................',
-  '..........................................ksmmmwwmk.....k33sssmm3k..............................',
-  '...........................................ksmmmmwmkkkk..kk3ss332kk.............................',
-  '............................................ksmmmwwwwwmk...k2222kkmk............................',
-  '.............................................kksmmmw3wmsk...ksmksmk.............................',
-  '...............................................ksmmm3mwck....kk.kk..............................',
-  '................................................kscc3cckwk......................................',
-  '.................................................kkmwkmwk.......................................',
+  '.....................kwk..................kck..kikkmk...........................................',
+  '......................kwk.................kck..kiissk...........................................',
+  '......................kwk..................kck..kiiikk..........................................',
+  '......................kwwk.................kcckkkssiiikkk.......................................',
+  '......................kwwk..................kcccccckhiijjkkk....................................',
+  '......................kwwwk.................kccccccskkhiijjjkkk.................................',
+  '..........kk.........kwddwkk............k...kccccccsk.khhiiijjjkk...............................',
+  '.........kwwkkkkkkkkkwwdddwmk..........kskkkkccccccsk..kkhhiiiijjkkkkk..........................',
+  '..........kkwwwwwwwwwwddddwmk...........kssmmccccccsk....kkhhiiiijjswwkkkk......................',
+  '............kkwwdddddddddddwmk..........kbbssccccccsk......kkhhiiggswwwwwwkk....................',
+  '..............kwwwdddddddddwmk...........kcbbscccccsk.......ksshhgswwwwwwwwwk...................',
+  '...............kmmwwddddddddwmk..........kcbbscccccsk......kmmmsssswwwwwwwwwwk..................',
+  '...............kwwmmwwddddddwmk..........kcbbbsccccsk.....kmmmmmm3333333333wwwkkkk..............',
+  '................kwddmmwwdddeewmk..........kcbbsccsss3k....kmmmmmmmm22wddd33wwwwwwwkkk...........',
+  '................kwddddmmwwdddwmkk.........kcbbbsssss3k...kk2sssmmmm22ddd2mmwwwwwwwwwwkkk........',
+  '.................kddddddmmwwwmmmwk........kcbbbbbsss2k.kkjjjjji2mmmm22222mmmmmmmwwwwwwwwk.......',
+  '................kwddddddddmmmmmmwk.........kcbbbbss22kkiiiiiihh2ssssssssmmmmmmmmmmmmwwwwwk......',
+  '................kwdddddddddmmbmmwwk........kcbbbbbss2jjiik22222sssssssmmmmmmmmmmmmmmmm2mmk......',
+  '................kwdddddmmmmdcbbmmwwk.......kcbbbbbb2jjeeccc3223s11111mmmmmmmmmmmmmmmmmmmmk......',
+  '...............kdddmmmmdddddccbbmmwwk......kcbbbbb2j20ecccw3ssss1111111111mmmmmmmmmmmmmmk.......',
+  '............kkkmmmmdddddddddcccbbmmwwkk.....kbbbbbb222kcbwwsssssssssssssss1111111111mmmmk.......',
+  '...........kmmmdddddddddddddccccbbmmmwwk....kbbbbaaaweebwwwwssssssssssssssssssssssss111k........',
+  '............kkwwddddddddddddcccccbbmmmmmk...kbbbaeeeeebwwwwwssssssssssssssssssssssssmmmk........',
+  '..............kkwwddddddddddccccccbbmmmmmk..kbbbbaacccbwwwww3333333333333333333333333kk.........',
+  '................kwwwddddddddcccccccbbmmmmmkkkbaaaaaaabwwwwwm3333kkkkkkkkkkkkkkkkkkkkk...........',
+  '.................kkwdddddddccccccccccbbmmwwwwaaaaaaaawwwwwmms33k................................',
+  '...................keddddddcccccccccccsmmmmmmsaaaeeeawwwwwmmssck................................',
+  '....................kedddddccccccccccdcswmmsaaaeeecawwwwwmmssck.................................',
+  '.....................keddddccccccccccdccwmmsakaacccawwwwmmssck..................................',
+  '......................kedddcccccccccdcccwmmmskaaaaawwwwwmmssck..................................',
+  '.......................keddcccccccccdccccwmmmsaaaaawwwwmmmssck..................................',
+  '........................kedccccccccdcccccwmmmsaaeeassswmmssck...................................',
+  '.........................keccccccccdccccccwmmsaecawwwwsssssck...................................',
+  '..........................keccccccdcccccccwmmmsacawwwmmssssck...................................',
+  '...........................kecccccdcccccccwmmmsaaawwwmmssssck...................................',
+  '............................kecccdccccccccwmmmsaaawwwmmssssck...................................',
+  '............................kecccdcccccccccwmmmsaawwwmmssssck...................................',
+  '.............................kecdccccccccccwmmmsaswwwmmssssssk..................................',
+  '..............................kedccccccccccwmmmmsswwmmmsssss3k..................................',
+  '..............................keccccccccccccwmmms3wmmmmssss333k.................................',
+  '...............................kecccccccccccwmmms3mmmmssss3332k.................................',
+  '................................kcccccccccccwmss33mmmmsss33322k.................................',
+  '................................kbccccccccccc3223smmmsss333222k.................................',
+  '.................................kbccccccccc3333ww3mmmss333222k.................................',
+  '.................................kbbcccccccswwwwww3mmmmss3322k..................................',
+  '..................................kbbcccccawwwwwww3333333332ssk.................................',
+  '..................................kbbbcccbbwwwwwmmmmwwwssssssck.....kkkk........................',
+  '.................................kkkbbbccawwwwcmmmmswwwwmssssck...kkmmswk.......................',
+  '................................keebbbbbckwwwwcmmmmswwwwmm2ssck..kw3mmkkwk......................',
+  '................................kccbbbbbcwwwwwwcmmmswwwmmm33111kkwww3mswk.......................',
+  '.................................kccbbbbwwwwwwwcmmsmwwmmms3111swwwwww1kk........................',
+  '..................................kkcbbwwwwwwwwwcmmsmmmss3111wwwwwwwkmk.........................',
+  '.................................kkkkkwwwwwwwwwwcmmsssss3mwwwwwssssssk..........................',
+  '................................keecwwwwwwwwwwwwwcmm2mmmmmwwwmmssskkk...........................',
+  '...............................kccbwwwwwwwwwwwwwwcmss2mmmmwwmsscck..............................',
+  '................................kbwwwwwwwwwwwwwwwwccs1mmmmmmssckk...............................',
+  '................................kwwwwwwwwwwwwwwwwwsss3bmmmmscck.................................',
+  '......k........................kwwwwwwwwww333333ssss3ckmmssckk..................................',
+  '.....kek.......................kwwwwwwww33wwwwwwmms3323k3cck....................................',
+  '.....kwckk................kk..kwwwwwww33wwwwwwwmmm1ss233kkk.....................................',
+  '.....keccck.............kkwekkkwwwwwww33wwwwwwwmms1s32333k......................................',
+  '.....keecck............keeeccwswwwwww33wwwwwwwmmsss1323333k.....................................',
+  '.....keeccck............kcccwwsmmmmmm33wwwwwwmmmsss1323333skk...................................',
+  '.....keeecck........kk...kcwwwsmmmmm333wwwwwmmmmmsss13333ssssk..................................',
+  '.....keeeccck......keekkkkkkwmwsmmmm333wwwmmmmmmmsss133sssmms3k.................................',
+  '.....keeeccck..k..k.keeecckwmmwsmmmm333mmmmmmmmmmssss13sssmss3k.................................',
+  '......keeeck..kekkekkkcccwwmmmwwsmmm333mmmmmmmmmmmsss133smss32k.................................',
+  '......keemmk..keckecckkwwwwmmmmwssss3332mmmmmmmmmmssss13mss332k.................................',
+  '.......kmmmmkkeeckeeckkwwwwmmmmmsssss3322mmmmmmmmmsssskmmss32k..................................',
+  '.......kmmmmwkwwckwwwwwwwmmmmmmms233333333smmmmmmmssssmsms333k..................................',
+  '........kmmmwwwwwkwwwwwmmmmmmmss2ckkkkk333bsmmmmmmssssssss32k...................................',
+  '........ksmmmwwwwwwwwwwmmmmmssscck.....kkkkkkmmmmmmsssss232k....................................',
+  '.........ksmmmmmmwmmmmmmmmssssckk............k3333ssssss232k....................................',
+  '..........kssssssssssssssssscck..............kwwmmmmmss312k.....................................',
+  '...........kcccssssssssssscckk..............kwwwwmmsss32ssk.....................................',
+  '............kkkccccccccccckk...............kwwwmmmsscc2ssssk....................................',
+  '...............kkkkkkkkkkk................kwwmmmsscckk33ssssk...................................',
+  '.........................................kwwwmmssskk..k3ssss3kkk................................',
+  '.........................................kwwmmmssk.....k3ssssmmmk...............................',
+  '..........................................kwmmmmssk.....k33sssss3k..............................',
+  '...........................................kmmmmmsskkkk..kk3ss332kk.............................',
+  '............................................kssmmmmwwwwk...k2222kksk............................',
+  '.............................................kksmmmwmmmsk...ksskssk.............................',
+  '...............................................ksmmmmsssk....kk.kk..............................',
+  '................................................kss33k3kwk......................................',
+  '.................................................kkwwkwwk.......................................',
   '...................................................kk.kk........................................',
   '................................................................................................',
   '................................................................................................',

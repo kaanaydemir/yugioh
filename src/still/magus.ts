@@ -3,8 +3,10 @@
 // silhouette as the game's sprite; only the drawing craft changes. Nothing in the game imports it.
 //
 // The refined frame is an explicit pixel map (src/still/magus-map.ts): the original frame dumped
-// 1:1 and then repainted region by region (helm + face, pauldrons, chest / arm / hand, robe and cape
-// folds, staff + orb). No automatic shading or smoothing passes run on it.
+// 1:1, silhouette kept, and the interior repainted region by region with planned value planes (helm +
+// face, pauldrons, collar / chest, arms / hands, robe, tabard and cape folds, staff + orb), lit from the
+// frame's top-right so that the mirrored sprite is lit from the screen's top-left like the wyrm.
+// No automatic shading or smoothing passes run on it.
 
 import type { PixelCanvas } from '../art/pixel';
 import { monsterArt } from '../art/monsters';

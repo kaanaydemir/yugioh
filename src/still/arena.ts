@@ -1,12 +1,21 @@
 // Neon Düello still preview — a calm, simplified version of the ORIGINAL v1 arena: the same board
 // geometry (5×5 grid of 64×32 tiles from src/view/layout.ts, the same 20 zones + the bridge row, the
-// original slab outline with its two notched podium pads, slab thickness and stepped hull — see
-// arena-geom.ts) drawn as a dark matte slab with thin side-coloured zone outlines, ONE neon trim
-// along the platform edge, and a dark low-contrast stadium behind it.
+// original slab outline with its two notched podium pads, slab thickness and stepped hull + keel —
+// see arena-geom.ts) drawn as a dark matte slab: flat navy zone pads with ONE thin player-coloured
+// outline each (cyan P1 / bordeaux P2), anthracite border + bridge, darker recessed pile pads, ONE
+// neon trim along the platform edge (full strength on the camera-facing edges, one tone down on the
+// back edges), a lit top rim, side faces darker than the top (a lit lip on the left faces), and a
+// hull that darkens away from the light: one lit tier band over a darker keel spike.
+// Background: an ink sky with one violet haze band on the stadium roof, the roof as one ink band, the
+// stadium ring as two calm masses (a lighter upper tier over a darker lower tier that runs on into
+// the inner wall), and the arena floor far below as one dark disc whose far rim sits under the keel,
+// so the hull and the keel's lit facet hang against the ink ground and read as shapes.
 //
-// Removed from the original: tile icons / nested frames / crosses, the dotted bridge stream, corner
-// jewels, face indicator lights + vents, the energy core + light shaft, crowd lights, LED ribbon,
-// searchlight beams, lit lamp banks, aurora, nebula + star field, the floor's dashed glow ring.
+// Removed from the original: tile icons / nested frames / crosses, the dotted bridge stream, ruler
+// ticks, corner jewels, podium hologram rings, face indicator lights + vents + panel seams, the energy
+// core + light shaft, crowd lights, seat rows + aisles, LED ribbon, searchlight beams, floodlight
+// masts + lamp banks, aurora, nebula + star field, the floor's dashed glow ring, radial floor lines
+// and cyan / red floor glows.
 // Every colour is a PAL entry; no blending, no dithering — flat tone bands only.
 
 import { PAL } from '../art/palette';
@@ -17,7 +26,6 @@ import {
   G1,
   HULL,
   KEEL_TIP,
-  MASTS,
   OUTLINE,
   SLAB_T,
   WALL_H,
@@ -38,42 +46,34 @@ export const SLOTS: { dragon: XY; wizard: XY } = { dragon: zoneXY(0, 'monster', 
 // ---------------------------------------------------------------- tones (all PAL)
 
 const T = {
-  // background
-  skyHigh: PAL.ink,
-  sky: PAL.night0,
+  // background: ink sky with one violet haze band on the roof, the roof as one ink band, the stadium
+  // as two calm masses (lighter upper tier, darker lower tier that runs on down into the inner wall)
+  sky: PAL.ink,
   haze: PAL.void0,
   canopy: PAL.ink,
-  canopyLip: PAL.night1,
   stands: PAL.night1,
-  tierBreak: PAL.night0,
-  aisle: PAL.night0,
-  wallShadow: PAL.ink,
-  wall: PAL.night0,
-  wallLip: PAL.night1,
-  ground: PAL.night0,
-  groundShadow: PAL.ink,
-  ringP1: PAL.cyan0,
-  ringP2: PAL.crim0,
-  mast: PAL.night1,
-  mastLip: PAL.night2,
-  // hull (under the slab) — kept dark, it reads as a silhouette
-  hullL: PAL.night1,
-  hullR: PAL.night0,
-  hullEdge: PAL.ink,
-  keelL: PAL.night0,
+  standsLow: PAL.night0,
+  ground: PAL.ink,
+  floorDisc: PAL.night0,
+  // hull (under the slab) — kept dark, it reads as a silhouette, and darkens away from the light as in
+  // the original: tier 1 is the one lit band, tier 2 + the keel spike sit one step darker
+  hullL: PAL.night1, // tier 1, lit side
+  hullR: PAL.ink, // the shadow side: it sinks into the ink ground (a lost edge, as the light demands)
+  hullRLip: PAL.night0,
+  hullEdge: PAL.ink, // 1-px ink bottom edge: keeps the keel's point outlined where it dips into the floor disc
+  keelL: PAL.night0, // tier 2 + keel spike, lit facet
   keelR: PAL.ink,
-  keelRidge: PAL.night1,
-  // slab side faces: the lower-left faces catch the top-left key light, the lower-right ones don't
-  faceLLip: PAL.night3,
-  faceL: PAL.night2,
-  faceLLow: PAL.night1,
-  faceRLip: PAL.night2,
-  faceR: PAL.night1,
-  faceRLow: PAL.night0,
+  keelRidge: PAL.night2,
+  // slab side faces: the lower-left faces catch the top-left key light (a 1-px lit lip under the rim),
+  // the lower-right ones don't; both stay darker than the top so the top reads as the lit plane
+  faceLLip: PAL.night2,
+  faceL: PAL.night1,
+  faceR: PAL.night0,
   faceBottom: PAL.ink,
-  // top surface
-  rimBackL: PAL.night4, // edge facing the light
-  rimBackR: PAL.night3,
+  // top surface. Rim: the 1-px outer edge; brightest on the camera-facing (front) edges, one step
+  // down on the back edges so nothing bright runs behind the monsters' heads.
+  rimBackL: PAL.night3, // edge facing the light
+  rimBackR: PAL.night2,
   rimFrontL: PAL.night3,
   rimFrontR: PAL.night2,
   border: PAL.stone0,
@@ -81,8 +81,9 @@ const T = {
   pad: PAL.night1,
   pile: PAL.night0,
   bridge: PAL.stone0,
-  // neon (never brighter than the monsters)
+  // neon (never brighter than the monsters): full strength on the front edges, one tone down behind
   trim: [PAL.cyan2, PAL.crim2, PAL.night3] as const,
+  trimBack: [PAL.cyan1, PAL.crim1, PAL.night2] as const,
   line: [PAL.cyan1, PAL.crim1] as const,
 };
 
@@ -113,49 +114,19 @@ function insetOutline(poly: readonly (readonly [number, number])[], d: number): 
   return out;
 }
 
+/** Grid rows of the gutters along the bridge row (between rows 1|2 and 2|3). */
+const BRIDGE_SEAMS = [1.5, 2.5];
+
 /** Trim band: between these insets (vertical px from the outer edge). */
 const TRIM_IN = insetOutline(OUTLINE, 3 / 32);
 const TRIM_OUT = insetOutline(OUTLINE, 4 / 32);
 
-function polyS(p: PixelCanvas, pts: readonly Pt[], c: Color): void {
-  p.poly(pts, c);
-}
-
-/** Bresenham walk calling fn(x, y, t). */
-function walk(x0: number, y0: number, x1: number, y1: number, fn: (x: number, y: number, t: number) => void): void {
-  x0 = Math.round(x0);
-  y0 = Math.round(y0);
-  x1 = Math.round(x1);
-  y1 = Math.round(y1);
-  const dx = Math.abs(x1 - x0);
-  const dy = -Math.abs(y1 - y0);
-  const sx = x0 < x1 ? 1 : -1;
-  const sy = y0 < y1 ? 1 : -1;
-  const n = Math.max(dx, -dy) || 1;
-  let err = dx + dy;
-  let k = 0;
-  for (;;) {
-    fn(x0, y0, k / n);
-    if (x0 === x1 && y0 === y1) break;
-    const e2 = 2 * err;
-    if (e2 >= dy) {
-      err += dy;
-      x0 += sx;
-    }
-    if (e2 <= dx) {
-      err += dx;
-      y0 += sy;
-    }
-    k++;
-  }
-}
-
 // ---------------------------------------------------------------- top surface
 
-export type TopKind = 'rim' | 'border' | 'trim' | 'join' | 'pad' | 'pile' | 'line' | 'bridge';
+export type TopKind = 'rim' | 'border' | 'trim' | 'join' | 'gap' | 'pad' | 'pile' | 'line' | 'bridge';
 
-/** What the platform top shows at screen pixel (x, y), or null off the top surface. */
-export function topAt(x: number, y: number): { kind: TopKind; color: Color } | null {
+/** The platform top at (x, y) before the trim-tip clean-up (see topAt). */
+function rawTop(x: number, y: number): { kind: TopKind; color: Color } | null {
   const g = pixelGrid(x, y);
   if (!insideOutline(g.col, g.row)) return null;
   if (inGrid(g.col, g.row)) {
@@ -168,17 +139,53 @@ export function topAt(x: number, y: number): { kind: TopKind; color: Color } | n
     if (kind === 'bridge') return { kind: 'bridge', color: T.bridge };
     const z = zoneAtCell(col, row)!;
     const main = z.spot === 'monster' || z.spot === 'spellTrap';
-    if (dv >= 2 && dv < 3) return { kind: 'line', color: T.line[z.player] };
-    return main ? { kind: 'pad', color: T.pad } : { kind: 'pile', color: T.pile };
+    const fill = main ? T.pad : T.pile;
+    // the 1-px ring between the join and the zone line is pad-coloured but its own kind, so a light
+    // pool on the pad stops at the line instead of speckling the ring outside it
+    const gap = { kind: 'gap' as const, color: fill };
+    if (dv < 2) return gap;
+    if (dv < 3) {
+      // the zone line's left / right tip ends in a 1-px wide, 2-row point (not a 2×2 block)
+      if (Math.abs(y + 0.5 - c.y) === 0.5 && Math.abs(x + 0.5 - c.x) > 26) return gap;
+      return { kind: 'line', color: T.line[z.player] };
+    }
+    return main ? { kind: 'pad', color: fill } : { kind: 'pile', color: fill };
   }
   const { d, nx, ny } = outlineDist(g.col, g.row);
   if (d * 32 < 1) {
     const color = nx < 0 ? T.rimBackL : ny < 0 ? T.rimBackR : ny > 0 ? T.rimFrontL : T.rimFrontR;
     return { kind: 'rim', color };
   }
-  if (insidePoly(TRIM_IN, g.col, g.row) && !insidePoly(TRIM_OUT, g.col, g.row))
-    return { kind: 'trim', color: T.trim[rowSide(g.row)] };
+  // two large panel joins per side: the bridge row's gutters run on across the border to the rim,
+  // so the trim changes colour (player / neutral / player) at a physical seam, not mid-line
+  if ((g.col < -0.5 || g.col > 4.5) && BRIDGE_SEAMS.some((r) => Math.abs(g.row - r) * 32 < 1)) return { kind: 'join', color: T.join };
+  if (insidePoly(TRIM_IN, g.col, g.row) && !insidePoly(TRIM_OUT, g.col, g.row)) {
+    const back = nx < 0 || ny < 0; // nearest edge faces away from the camera
+    return { kind: 'trim', color: (back ? T.trimBack : T.trim)[rowSide(g.row)] };
+  }
   return { kind: 'border', color: T.border };
+}
+
+const isTrim = (x: number, y: number): boolean => rawTop(x, y)?.kind === 'trim';
+
+/**
+ * Where the trim turns at a left / right tip it rasterises as a 2×2 block. The outer column of that
+ * block is dropped, so every tip ends in a 1-px wide point that still joins both stairs diagonally.
+ */
+function trimTipOuter(x: number, y: number): boolean {
+  if (!isTrim(x, y - 1) && !isTrim(x, y + 1)) return false;
+  const l = isTrim(x - 1, y);
+  const r = isTrim(x + 1, y);
+  if (r && !l) return !isTrim(x - 1, y - 1) && !isTrim(x - 1, y + 1);
+  if (l && !r) return !isTrim(x + 1, y - 1) && !isTrim(x + 1, y + 1);
+  return false;
+}
+
+/** What the platform top shows at screen pixel (x, y), or null off the top surface. */
+export function topAt(x: number, y: number): { kind: TopKind; color: Color } | null {
+  const t = rawTop(x, y);
+  if (t && t.kind === 'trim' && trimTipOuter(x, y)) return { kind: 'border', color: T.border };
+  return t;
 }
 
 /** True on the platform's top surface (where floor light / contact shadows may fall). */
@@ -188,9 +195,22 @@ export function onPlatformTop(x: number, y: number): boolean {
 
 // ---------------------------------------------------------------- background
 
-/** A gentle, large-scale undulation (integer px) for hand-shaped band edges. */
+/** Depth of the violet haze band above the stadium roof (px at the roof's peak). */
+const HAZE_H = 36;
+
+/**
+ * The arena floor far below, as one ellipse (screen px). Its far rim passes just above the keel's tip:
+ * the hull and the keel's lit facet hang against the ink ground (so the night0 facet reads), only the
+ * last px of the point reach the disc, where the ink shadow facet reads against it.
+ */
+const FLOOR = { cx: 320, cy: 353, rx: 310, ry: 51 } as const;
+
+/**
+ * A gentle, large-scale undulation (fractional px) for hand-shaped band edges. Sum the terms and
+ * round ONCE: rounding each term on its own makes the edge flick up and down by 1 px.
+ */
 function wave(x: number, amp: number, period: number, phase: number): number {
-  return Math.round(amp * Math.sin((x / period + phase) * Math.PI * 2));
+  return amp * Math.sin((x / period + phase) * Math.PI * 2);
 }
 
 function drawBackground(p: PixelCanvas): void {
@@ -198,54 +218,49 @@ function drawBackground(p: PixelCanvas): void {
     const top = rimY(x + 0.5);
     const bot = standsBottomY(x + 0.5);
     const yTop = Math.round(top) - 4;
-    // sky bands: deepest at the top, a faint violet haze sitting on the stadium roof
-    const hazeTop = yTop - 18 - wave(x, 3, 210, 0.15) - wave(x, 2, 97, 0.6);
-    const highTop = yTop - 64 - wave(x, 4, 300, 0.4);
+    // the sky is one ink field with a faint violet haze sitting on the stadium roof. The haze is
+    // deep enough that its upper edge stays above the monsters' horns (no band edge across a face).
+    const hazeTop = Math.round(top - 4 - HAZE_H - wave(x, 3, 210, 0.15) - wave(x, 2, 97, 0.6));
     for (let y = 0; y < p.h; y++) {
       let c: Color;
-      if (y < yTop) c = y < highTop ? T.skyHigh : y < hazeTop ? T.sky : T.haze;
-      else if (y < top) c = y === yTop ? T.canopyLip : T.canopy;
-      else if (y < bot) {
+      if (y < yTop) c = y < hazeTop ? T.sky : T.haze;
+      else if (y < top) c = T.canopy; // the roof: one ink band, no lip line
+      else if (y < bot + WALL_H) {
+        // the stands as two flat masses: a lighter upper tier over a darker lower tier; the inner
+        // wall below the stands is part of the lower mass (no shadow line, no seam)
         const t = (y + 0.5 - top) / (bot - top);
-        const u = (x + 0.5 - 320) / (440 + (380 - 440) * t);
-        const aisle = Math.abs(u * 5 - Math.round(u * 5)) < 0.008 + 0.004 * t && Math.abs(u) > 0.1;
-        c = Math.abs(t - 0.47) < 0.03 ? T.tierBreak : aisle ? T.aisle : T.stands;
-      } else if (y < bot + WALL_H) {
-        const k = y - Math.floor(bot);
-        c = k <= 1 ? T.wallShadow : k === WALL_H - 1 ? T.wallLip : T.wall;
+        c = t < 0.47 ? T.stands : T.standsLow;
       } else {
-        c = T.ground;
-        // the arena floor ring (one thin, dim line; player tints left / right)
-        const ex = (x + 0.5 - 320) / 300;
-        const ey = (y + 0.5 - 318) / 74;
-        const er = Math.sqrt(ex * ex + ey * ey);
-        if (Math.abs(er - 1) < 0.0105) c = x < 320 ? T.ringP1 : T.ringP2;
+        // the arena floor far below: one large, slightly lighter disc (no ring line, no glow)
+        const ex = (x + 0.5 - FLOOR.cx) / FLOOR.rx;
+        const ey = (y + 0.5 - FLOOR.cy) / FLOOR.ry;
+        c = ex * ex + ey * ey <= 1 ? T.floorDisc : T.ground;
       }
       p.set(x, y, c);
     }
   }
-  // two faint unlit floodlight masts on each side (tall shapes only; no lamps, no beams)
-  for (const m of MASTS) {
-    for (let y = m.lampY + 3; y < m.baseY; y++) {
-      p.set(m.x - 1, y, T.mast).set(m.x, y, T.mast);
-    }
-    p.rect(m.x - 5, m.lampY - 2, 11, 5, T.mast);
-    p.hline(m.x - 5, m.x + 5, m.lampY - 3, T.mastLip);
+}
+
+// ---------------------------------------------------------------- platform: hull, faces
+
+/** Pixel row of the 2:1 edge A→B at column x (rounded so a run of columns forms clean stairs). */
+function rowAt(A: Pt, B: Pt, x: number): number {
+  return Math.round(A[1] + ((B[1] - A[1]) * (x + 0.5 - A[0])) / (B[0] - A[0]) - 0.5);
+}
+
+/** A vertical band hanging under the edge A→B, filled column by column (row k → colour). */
+function band(p: PixelCanvas, A: Pt, B: Pt, h: number, colour: (k: number) => Color, lead = 0): void {
+  const [L, R] = A[0] < B[0] ? [A, B] : [B, A];
+  for (let x = Math.round(L[0]); x < Math.round(R[0]); x++) {
+    const yt = rowAt(L, R, x);
+    for (let k = -lead; k < h; k++) p.set(x, yt + k, colour(Math.max(0, k)));
   }
 }
 
-// ---------------------------------------------------------------- platform: ground shadow, hull, faces
+const rp = (q: Pt): Pt => [Math.round(q[0]), Math.round(q[1])];
 
-function drawGroundShadow(p: PixelCanvas): void {
-  // the floating platform's shadow on the arena floor, nudged away from the top-left key light
-  for (let y = 0; y < p.h; y++)
-    for (let x = 0; x < p.w; x++) {
-      if (p.get(x, y) !== T.ground && p.get(x, y) !== T.ringP1 && p.get(x, y) !== T.ringP2) continue;
-      const ex = (x + 0.5 - 334) / 168;
-      const ey = (y + 0.5 - 300) / 50;
-      if (ex * ex + ey * ey <= 1) p.set(x, y, T.groundShadow);
-    }
-}
+/** The keel ridge ends this many px above the spike's tip. */
+const RIDGE_GAP = 12;
 
 function drawHull(p: PixelCanvas): void {
   let depth = SLAB_T;
@@ -257,28 +272,39 @@ function drawHull(p: PixelCanvas): void {
     depth = top + h.t;
     prevInset = h.inset;
   }
+  // keel spike under the last tier: two dark facets meeting in a lit ridge (no energy core, no beam)
   const last = tiers[tiers.length - 1];
-  const a0 = G0 + last.inset;
-  const a1 = G1 - last.inset;
   const spikeTop = last.top + last.t;
+  const lft = rp(gp(G0 + last.inset, G1 - last.inset, spikeTop));
+  const bot = rp(gp(G1 - last.inset, G1 - last.inset, spikeTop));
+  const rgt = rp(gp(G1 - last.inset, G0 + last.inset, spikeTop));
   const apex: Pt = [KEEL_TIP.x, KEEL_TIP.y];
-  {
-    const lft = gp(a0, a1, spikeTop);
-    const bot = gp(a1, a1, spikeTop);
-    const rgt = gp(a1, a0, spikeTop);
-    polyS(p, [lft, bot, apex], T.keelL);
-    polyS(p, [bot, rgt, apex], T.keelR);
-    walk(bot[0], bot[1], apex[0], apex[1], (x, y) => p.set(x, y, T.keelRidge));
+  // (the outer edge row of each facet is ink: the point stays outlined where it dips into the floor disc)
+  for (let x = lft[0]; x < bot[0]; x++) {
+    const yb = rowAt(lft, apex, x);
+    for (let y = rowAt(lft, bot, x) - 2; y <= yb; y++) p.set(x, y, y === yb ? T.hullEdge : T.keelL);
   }
+  // the ridge stops RIDGE_GAP px short of the tip: the point itself is where both facets' edges meet
+  // in ink, so no lone lit line runs on into the floor
+  const ridgeEnd = apex[1] - RIDGE_GAP;
+  for (let x = bot[0]; x < rgt[0]; x++) {
+    const yb = rowAt(apex, rgt, x);
+    for (let y = rowAt(bot, rgt, x) - 2; y <= yb; y++)
+      p.set(x, y, y === yb ? T.hullEdge : x === bot[0] && y < ridgeEnd ? T.keelRidge : T.keelR);
+  }
+  // stepped hull tiers (back one first). Only ONE step shows: tier 1 is the lit band right under the
+  // slab; the last tier takes the keel's tones with no edge, so tier 2 + keel read as one darker
+  // spike. No ink lines between the bands — the tone change is the step.
   for (let k = tiers.length - 1; k >= 0; k--) {
     const { inset, top, t } = tiers[k];
-    const lft = gp(G0 + inset, G1 - inset, top);
-    const bot = gp(G1 - inset, G1 - inset, top);
-    const rgt = gp(G1 - inset, G0 + inset, top);
-    polyS(p, [lft, bot, [bot[0], bot[1] + t], [lft[0], lft[1] + t]], T.hullL);
-    polyS(p, [bot, rgt, [rgt[0], rgt[1] + t], [bot[0], bot[1] + t]], T.hullR);
-    walk(lft[0], lft[1] + t - 1, bot[0], bot[1] + t - 1, (x, y) => p.set(x, y, T.hullEdge));
-    walk(bot[0], bot[1] + t - 1, rgt[0], rgt[1] + t - 1, (x, y) => p.set(x, y, T.hullEdge));
+    const l = rp(gp(G0 + inset, G1 - inset, top));
+    const b = rp(gp(G1 - inset, G1 - inset, top));
+    const r = rp(gp(G1 - inset, G0 + inset, top));
+    const keel = k === tiers.length - 1;
+    // `lead` rows reach up under the tier / slab above so rounding never opens a 1px gap
+    band(p, l, b, t, () => (keel ? T.keelL : T.hullL), 2);
+    band(p, b, r, t, (j) => (keel ? T.keelR : j === 0 ? T.hullRLip : T.hullR), 2);
+    if (keel) for (let y = b[1] - 2; y < b[1] + t; y++) p.set(b[0], y, T.keelRidge);
   }
 }
 
@@ -294,18 +320,11 @@ function drawFaces(p: PixelCanvas): void {
   }
   faces.sort((f, g) => f.a[0] + f.a[1] + f.b[0] + f.b[1] - (g.a[0] + g.a[1] + g.b[0] + g.b[1]));
   for (const f of faces) {
-    const A = gp(f.a[0], f.a[1]);
-    const B = gp(f.b[0], f.b[1]);
-    polyS(p, [A, B, [B[0], B[1] + SLAB_T], [A[0], A[1] + SLAB_T]], f.lit ? T.faceL : T.faceR);
-    const x0 = Math.min(A[0], B[0]);
-    const x1 = Math.max(A[0], B[0]);
-    const yAt = (x: number) => A[1] + ((B[1] - A[1]) * (x - A[0])) / (B[0] - A[0]);
-    for (let x = Math.ceil(x0); x < Math.floor(x1); x++) {
-      const yt = Math.round(yAt(x + 0.5) - 0.5);
-      p.set(x, yt, f.lit ? T.faceLLip : T.faceRLip);
-      p.set(x, yt + SLAB_T - 2, f.lit ? T.faceLLow : T.faceRLow);
-      p.set(x, yt + SLAB_T - 1, T.faceBottom);
-    }
+    const A = rp(gp(f.a[0], f.a[1]));
+    const B = rp(gp(f.b[0], f.b[1]));
+    // flat faces, no panel seams: the lit face has a 1-px lip right under the rim, both end in ink
+    if (f.lit) band(p, A, B, SLAB_T, (k) => (k === SLAB_T - 1 ? T.faceBottom : k === 0 ? T.faceLLip : T.faceL));
+    else band(p, A, B, SLAB_T, (k) => (k === SLAB_T - 1 ? T.faceBottom : T.faceR));
   }
 }
 
@@ -325,7 +344,6 @@ function drawTop(p: PixelCanvas): void {
 /** Draw background + board onto the 640×360 scene canvas. */
 export function drawArena(p: PixelCanvas): void {
   drawBackground(p);
-  drawGroundShadow(p);
   drawHull(p);
   drawFaces(p);
   drawTop(p);

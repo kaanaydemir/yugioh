@@ -1,26 +1,44 @@
 // Neon Düello still preview — the refined Abyss Magus idle frame as an explicit, hand-placed pixel map.
 //
-// Started from the untouched game frame (src/art/monsters/abyss_magus.ts, idle 0, dumped 1:1) and
-// repainted region by region; the outer silhouette, frame, anchor and proportions are the original's.
-// One character = one pixel of the 80x80 frame, drawn facing right (the scene mirrors it). Rows are
-// frame y (see the comment), columns start at frame x = MAP_X0. Key light: top-left (top-right on screen).
+// Started from the untouched game frame (src/art/monsters/abyss_magus.ts, idle 0, dumped 1:1); the
+// outer silhouette, frame, anchor, hover and proportions are the original's (IoU 1.0). The INTERIOR is
+// repainted from scratch with planned value planes. One character = one pixel of the 80x80 frame, drawn
+// facing right; the scene mirrors it. Rows are frame y (see the comment), columns start at x = MAP_X0.
 //
-//   helm     crown as hard planes (one white peak glint, mist back edge, steel/night4/dark facets), brow
-//            ridge with lit top / front face / dark underside shading the visor; cheek plate in the
-//            horn's cast shadow at the top; slanted profile eye (white core, mag falloff, 1px spill).
-//   horns    near horn: lit top band (2px mid, one void4 glint), two underside ridges, metal collar;
-//            far horn kept a step darker for depth.
-//   staff    claw narrowed on the face side so a 1px gap of floor separates helm and staff head;
-//            smaller unoutlined orb (1 white core, void4 → void3 → void2); socket collar; shaft lit on
-//            its light side with four glint wraps; metal ferrule.
-//   armour   pauldrons as faceted caps + lames (crisp plane edges, single glints, dark gaps) instead of
-//            round dome highlights; the near cap now overlaps the sleeve, which starts in its shadow;
-//            cuirass with a crisp keel, lit left plane, darker right plane; belt with a metal buckle.
-//   cloth    cowl folds converge on a small metal clasp + gem; sleeves: lit plane, elbow fold, cuff band
-//            framing a dark mouth, bell droop; skirt: broad lit ridge + one fold valley (no sine pleats);
-//            tabard: one tube fold with a fading sheen around the original sigil; cape: violet lining,
-//            rim only on its upper half, one tapered groove fanning to a hem notch; hem tatters calmed.
-//   energy   eye, orb, gem, sigil and two rune glyphs only: small saturated cores, 1–2 step falloff.
+// LIGHT: one key for the whole still, from the SCREEN top-left. This frame is mirrored on screen, so it
+// is lit from the FRAME's top-RIGHT (the staff / face side): that side carries the lit planes, the frame
+// left (back, cape) is the shadow side. Materials are kept apart:
+//   metal  hard flat planes with crisp breaks + one edge glint (mist ridge, at most one white pixel)
+//   cloth  broad flat bands, fold valleys that open downward (no steel/white, no chrome lines)
+//   magic  a small saturated core with a 1–2 step falloff (eyes, orb, gem, sigil)
+//
+//   helm     crown: white peak glint, mist ridge along the lit edge, a flat 3px steel plane, night4 on the
+//            far facet; brow = night2 underside (one mag1 spill), visor slot = ink. Under the eye slits the
+//            face is a dark cavity (night0, night1 lower lip) behind a 1px night3 rim on the lit edge, so
+//            the eye (mag3/mag4/white, unchanged) is the only bright thing in the helm. Side plate: night4
+//            upper plane, night3 below, night2 under the horn. Horns: lit top edge, void2 body, void1 below.
+//   staff    orb = a flat void3 disc, 2x1 void4 highlight at its lit top corner, a 2px void2 crescent on the
+//            far-bottom side, void1 bottom row; cradle prongs single-value night3 with a night4 tip each.
+//   armour   pauldrons as angular plates, each = a 2-row top plane + a 2-row side plane, no bevel rows.
+//            Near plate (y27-30, the original dome's rows): mist edge + white corner, flat steel top | flat
+//            night3 side, a 1px steel rim on its outer end facing the key; under it an ink lame on the inner
+//            part only and a void0 cast shadow over the sleeve. Far plate: night4 top with steel on its 2
+//            inner px | flat night2 side | ink lame that drops a row at the outer end (shoulder slope) |
+//            night2 lame. Cowl wedges converge on a 2x2 gem (mag4/mag3 over mag3/mag2, mag1 below).
+//            Breastplate + abdomen plate: flat steel lit plane (one mist glint) | night3 | night2 far edge,
+//            split by night2 lines; sash: void2 top.
+//   cloth    staff-arm sleeve starts right under the near plate (as in the original): void0 separator |
+//            void2 body side | 3px void3 lit plane on the orb side, one void2 elbow fold; bell drape:
+//            void3 | void2 | void1; fists: steel knuckle row, night1 finger gap. Lit (screen-left) skirt: a
+//            flat void3 plane 3-5px wide down to the hem band, one void1 fold valley that opens downward,
+//            void2 mid plane toward the tabard. Tabard = CLOTH (no steel): 3px night4 lit plane on the
+//            screen-left | night3 | night2 edge; the lit plane widens by a px below the sigil and narrows
+//            again under the hem band; void3 cross with a void4 centre; a night2 hem band across it. Far
+//            skirt: 1px void3 edge, a flat void2 plane, one void1 fold wedge. Cape = the shadow side:
+//            night4 plane where it leaves the body, then ONE step down to a night3 outer plane (it starts
+//            as a wedge under the shoulder and follows the flare); the void3 rim its only accent,
+//            night3/night2 on the hem underside. Hem flaps: one lit void3 plane per flap, void2 body,
+//            void1/void0 between flaps.
 //
 // Key: . empty | k ink outline | 0-4 night0-4 | s steel | m mist | w white
 //      a-e void0-4 | A-D mag1-4
@@ -58,75 +76,75 @@ export const MAGUS_MAP: readonly string[] = [
   /* 2*/ '............................................................',
   /* 3*/ '............................................................',
   /* 4*/ '........................k...................................',
-  /* 5*/ '.................k.....kdk..................................',
-  /* 6*/ '................kek....kdbk.................................',
-  /* 7*/ '................kedk....kcbk................................',
-  /* 8*/ '.................kcdk...kccbkkk.............................',
-  /* 9*/ '.................kbcdkk..kbcccckkk..kk......................',
-  /*10*/ '..................kbcddkkkkabbbba0kkwsk.....................',
-  /*11*/ '...................kbccdeddkkkkkkkkmss3k....................',
-  /*12*/ '....................kbcdddddddmsdddkms43k...................',
-  /*13*/ '.....................kbcbcccccs4ccccks443k..................',
-  /*14*/ '......................kbbaccbc43ccccks443kkk................',
-  /*15*/ '.......................kkkbbab32ccbbk444ss43k.........k.....',
-  /*16*/ '..........................kkbb21bbbak433332k..k...c..kmk....',
-  /*17*/ '............................kkk1aaak2221111k.kmk.cdc.ksk....',
-  /*18*/ '............................k33kkkk2kkkBCkkk.kskcdedck4k....',
-  /*19*/ '............................k344332kkkBCDwDk.k4kdewdck43k...',
-  /*20*/ '............................kmss44k444333Adk.k4kcdddck3k....',
-  /*21*/ '............................kmss4k44433333dk.k34kcdck33k....',
-  /*22*/ '.............................ks44k4433332dkk..k34kkk43k.....',
-  /*23*/ '.............................k443k433332ck.....k34443k......',
-  /*24*/ '............................kk1332k3332ck......ksm43k.......',
-  /*25*/ '...........................kddc0333222ck.......k4s32k.......',
-  /*26*/ '.........................kkcddccb222100ckkk.....kdck........',
-  /*27*/ '.......................kk00cdddccbaabb00sm4k....kdck........',
-  /*28*/ '......................kmss40cddcccbbc0ssss44dk..kdck........',
-  /*29*/ '.....................kmsss430bcdcs4c0mss44443dk.kedk........',
-  /*30*/ '....................ks44443330bc3BD20s444433221kkdck........',
-  /*31*/ '....................k433332220bb2AB104sss4433221kdck........',
-  /*32*/ '.....................k1111110sabb11ba0abbbbaa32kkedk........',
-  /*33*/ '.....................k4ss4320ss4baab30acdccbb21kkdck........',
-  /*34*/ '.....................k233210ss44s23332acddcbcbk.kdck........',
-  /*35*/ '....................kds0000433332111112cddcbck..kdck........',
-  /*36*/ '....................kds43aa4sss44s22333cdcbbck..kdck........',
-  /*37*/ '...................kds443aa4sss44s22333bddcbckk.kdck........',
-  /*38*/ '...................kds43aca4ss444s22322acddcbcckkdck........',
-  /*39*/ '..................kds43adcba22222211112aacdddcddkdck........',
-  /*40*/ '.................kds443adcbbbbbbbmsaaaadkccdcdaakdck........',
-  /*41*/ '.................kds43adccbbaaaaa43aaadkkbccdaaakdck........',
-  /*42*/ '................kds43adccbbacaaaaaaaaadkkbccdaa3sm4k........',
-  /*43*/ '................kds443acaabaca4ss4332ack.kdcdaa44s2k........',
-  /*44*/ '...............kds4433as4aadca4ss4332abdkkdcdak2331k........',
-  /*45*/ '..............kds4443a4m43adca4s44322abckkccdkk1221k........',
-  /*46*/ '..............kds4433a343addba4s44322abcckbck..kkdck........',
-  /*47*/ '.............kds4443a3a32addba4s43232abbckkbk...kdck........',
-  /*48*/ '.............kds44333a3aacdcba4s43232abbck.k....kdck........',
-  /*49*/ '............kds444333332addcba44ddd32acbbck....kdck.........',
-  /*50*/ '............kds44433333acddbba4d4e3d2acbbck....kdck.........',
-  /*51*/ '...........kds444433333adddbca44ddd32acbbck....kdck.........',
-  /*52*/ '...........kds44432333acddcbca4s4d232accbbck...kdck.........',
-  /*53*/ '..........kdc444432333adddbcca4s43232abcbbck...kdck.........',
-  /*54*/ '..........kd444432333acddcbcba4s4c232abccbbck..kedk.........',
-  /*55*/ '..........kd444432333adddbbcba4s43232abbcbbck..kdck.........',
-  /*56*/ '.........kd4444432333addcbcdba444c332abbccbbck.kdck.........',
-  /*57*/ '.........kd444432333acddcbcdba4443232abbbcbbck.kdck.........',
-  /*58*/ '........kdc444432233adddbbcdba4443232abbbccbck.kedk.........',
-  /*59*/ '........kd444432233acddcbcdcba4443232abbbbcbbckkdck.........',
-  /*60*/ '........kd444432233accccccccca4443242acccccccdkkdck.........',
-  /*61*/ '.......kd4444432233abbbdbbbbba4443232abbbbdbbbkkdck.........',
-  /*62*/ '.......kd444432233abbbdedbbbba444232abbbbdedbbdkdck.........',
-  /*63*/ '......kd4444432233abbbbdbbbbba444232abbbbbdbbbbkdck.........',
-  /*64*/ '.....kdc4444432233aaaaaaaaaaaaa44232aaaaaaabaaakdck.........',
-  /*65*/ '.....kdcc44432233acdcbbcddddcba43232accbbbckbbckdck.........',
-  /*66*/ '....kdckdc443223babdbaabcddcbba4322aabccbck.kbckdck.........',
-  /*67*/ '...kdckkdc433233bbac22abddcaabaa422aabccck...kbkdck.........',
-  /*68*/ '...kck.kckc332bbbbkacb1bacdbabaa42abbabck.....kkdck.........',
-  /*69*/ '....k.kbkkcbbkcbbk.kbkkbabckkkkba3abkkkk.......kdck.........',
-  /*70*/ '.....kbk..kbkkcbk...k..kkkbk...kbkkk...........k43k.........',
-  /*71*/ '......k....k..kk..........k.....k..............ksk..........',
+  /* 5*/ '.................k.....kck..................................',
+  /* 6*/ '................kek....kcdk.................................',
+  /* 7*/ '................kcdk....kbdk................................',
+  /* 8*/ '.................kcdk...kbcdkkk.............................',
+  /* 9*/ '.................kbcdkk..kabccckkk..kk......................',
+  /*10*/ '..................kbcddkkkkaabbcc0kkmwk.....................',
+  /*11*/ '...................kbccddddkkkkkkkk4ssmk....................',
+  /*12*/ '....................kbcccccddddddddk4ssmk...................',
+  /*13*/ '.....................kbbcccccc3scccdk4ssmk..................',
+  /*14*/ '......................kbbbccccc3cccck4ssmkkk................',
+  /*15*/ '.......................kkkbbbcc3bccck444sssmk...kkk...k.....',
+  /*16*/ '..........................kkbbb2bbbbk4444ssk4kkkdddkkk4k....',
+  /*17*/ '............................kkkbbbbk22A2222k3kcddddddk3k....',
+  /*18*/ '............................k22kkkk2kkkkkkkk3kcdddeedk3k....',
+  /*19*/ '............................k222222kkwwDkDCk3kccdddddk33k...',
+  /*20*/ '............................k23444k00000003k3kccdddddk3k....',
+  /*21*/ '............................k2344k000000003k3kcccddddk3k....',
+  /*22*/ '.............................k233k1111111dkk33kbbccck33k....',
+  /*23*/ '.............................k233k111111dk..k33kbbbk33k.....',
+  /*24*/ '............................kk2222k2333dk....k33kkk33k......',
+  /*25*/ '...........................kccd0222233dk......kk333kk.......',
+  /*26*/ '.........................kkbcccb0222222dkkk....k223k........',
+  /*27*/ '.......................kk00bcccbb0000c00mmwkk...kkkk........',
+  /*28*/ '......................k44ss0bbcccdddd0ssssssmk..kcbk........',
+  /*29*/ '.....................k4444ss0bcc0CDd033333333sk.kcdk........',
+  /*30*/ '....................k222222220bc0BCc3333333333skkcdk........',
+  /*31*/ '....................k222222220bb0A0b0kkkkaaaaaakkcdk........',
+  /*32*/ '.....................k22kkkk01aaaaaaa0acccccdddkkcdk........',
+  /*33*/ '.....................kkk222s02333ssss0acccccdddkkcdk........',
+  /*34*/ '.....................k022221122333ssssaccccdddk.kcdk........',
+  /*35*/ '....................kd30000222222222222accdddk..kcdk........',
+  /*36*/ '....................kd444aa2233333sssmmaccdddk..kcdk........',
+  /*37*/ '...................kd4444aa2223333sssssacccddkk.kcdk........',
+  /*38*/ '...................kd44acca1223333sssssabcccdddkkadk........',
+  /*39*/ '..................kd444abcca22222222222aaccccddddddk........',
+  /*40*/ '.................kd4444abccabbbbbdeccccdkbcccddbaadk........',
+  /*41*/ '.................kd444abbcccaaaaacdbbbdkkbccddbaaadk........',
+  /*42*/ '................kd344abbbccadaaaaaaaaadkkbccddasssdk........',
+  /*43*/ '................kd3344aaabcada2333444adk.kbcdda333dk........',
+  /*44*/ '...............kd33334a44aacda2333444addkkbcddk211dk........',
+  /*45*/ '..............kd33334a2333acda2333444addkkbcdkk222dk........',
+  /*46*/ '..............kd33334a211accda2333444acddkbck..kkadk........',
+  /*47*/ '.............kd3333444a22accda2333444acddkkck...kcdk........',
+  /*48*/ '.............kd333344aaaacccda2333444acddk.k....kcdk........',
+  /*49*/ '............kd3333344444acccda233d444acdddk....kcdk.........',
+  /*50*/ '............kd333344444accccda23ded44accddk....kcdk.........',
+  /*51*/ '...........kd3333344444accccda233d444accddk....kcdk.........',
+  /*52*/ '...........kd333344444acccccda2334444accdddk...kcdk.........',
+  /*53*/ '..........kd3333344444acccccda2334444accdddk...kcdk.........',
+  /*54*/ '..........kd333334444acbccccda2334444acbddddk..kcdk.........',
+  /*55*/ '..........kd333344444acbccccda2334444acbddddk..kcdk.........',
+  /*56*/ '.........kd3333344444acbccccda2334444acbdddddk.kcdk.........',
+  /*57*/ '.........kd333334444acbbccccda2334444acbbddddk.kcdk.........',
+  /*58*/ '........kd3333344444acbbccccda2334444acbbddddk.kcdk.........',
+  /*59*/ '........kd333334444acbbcccccda2334444acbbdddddkkcdk.........',
+  /*60*/ '........kd333334444acbbcccccda2334444accbbddddkkcdk.........',
+  /*61*/ '.......kd3333344444acbbcccccda2334444accbbddddkkcdk.........',
+  /*62*/ '.......kd333334444acbbccccccda233444acccbbdddddkcdk.........',
+  /*63*/ '......kd3333344444acbbccccccda233444acccbbdddddkcdk.........',
+  /*64*/ '.....kd33333344444aaaaaaaaaaaaa22222aaaaaaaaaaakcdk.........',
+  /*65*/ '.....kd3333344444abccccbccccdda23344bcccdddkccdkcdk.........',
+  /*66*/ '....kd4kd2333332babcccabbccddaa2334abcccddk.kcdkcdk.........',
+  /*67*/ '...kd3kkdcc2333bbbaaa22bbcddaaaa234abccddk...kdkcdk.........',
+  /*68*/ '...kbk.kbkcc33bbcckac22bbcddaaaa23abcccdk.....kkcdk.........',
+  /*69*/ '....k.kbkkccckbcck.kckkbbcckkkkbb3abkkkk.......kcdk.........',
+  /*70*/ '.....kbk..kbkkbck...k..kkkck...kbkkk...........k4dk.........',
+  /*71*/ '......k....k..kk..........k.....k..............k4k..........',
   /*72*/ '...............................................kmk..........',
-  /*73*/ '...............................................k3k..........',
+  /*73*/ '...............................................k4k..........',
   /*74*/ '................................................k...........',
   /*75*/ '............................................................',
   /*76*/ '............................................................',

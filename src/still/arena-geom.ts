@@ -113,10 +113,15 @@ export function tileDV(i: number, j: number): number {
 
 // ---------------------------------------------------------------- stadium (screen px)
 
-/** Top of the stadium roof rim at screen x (an ellipse arc peaking behind the platform). */
+/**
+ * Top of the stadium roof rim at screen x (an ellipse arc peaking behind the platform). The original
+ * arc (220 - 140·√…, peak y 80) ran right through both monsters' eyes; the still drops it 16 px so
+ * its peak (y 96) passes behind the dragon's neck and is hidden behind the slab under the wizard.
+ */
+export const RIM_DROP = 16;
 export function rimY(x: number): number {
   const u = (x - 320) / 440;
-  return 220 - 140 * Math.sqrt(Math.max(0, 1 - u * u));
+  return 220 + RIM_DROP - 140 * Math.sqrt(Math.max(0, 1 - u * u));
 }
 /** Bottom of the stands (top of the inner wall) at screen x. */
 export function standsBottomY(x: number): number {
@@ -124,16 +129,3 @@ export function standsBottomY(x: number): number {
   return 238 - 106 * Math.sqrt(Math.max(0, 1 - u * u));
 }
 export const WALL_H = 11;
-
-/** The original floodlight masts (x, lamp-bank height above the rim) — the still keeps four, unlit. */
-export const MASTS: readonly { x: number; baseY: number; lampY: number }[] = (
-  [
-    [58, 52],
-    [146, 56],
-    [494, 56],
-    [582, 52],
-  ] as const
-).map(([x, h]) => {
-  const baseY = Math.round(rimY(x)) - 4;
-  return { x, baseY, lampY: baseY - h };
-});
