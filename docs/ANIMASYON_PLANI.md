@@ -184,7 +184,7 @@ tasarımı, çevrimiçi oyun, kural değişiklikleri.
 | Aşama | Durum | Not |
 |---|---|---|
 | Sabit görsel (stil hedefi) | tamam | `src/still/`, `tools/neon-still.ts` |
-| A0 Envanter ve ölçüm | bekliyor | |
+| A0 Envanter ve ölçüm | tamam | `docs/v3/A0_ENVANTER.md` + `docs/v3/a0/*.md` |
 | A1 Altyapı | bekliyor | |
 | A2 Dikey dilim | bekliyor | onay kapısı |
 | A3 Rehber | bekliyor | |
