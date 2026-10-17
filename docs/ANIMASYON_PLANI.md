@@ -147,6 +147,30 @@ deckOut, gameOver. Arayüz tarafında: kart seçme / hover, hedef seçme, geçer
 Küçük işlemler kısa ve net, önemli çağırmalar ve bitirici saldırılar gösterişli. Hızlandırma
 seçenekleri korunur; normal hızdaki sanat kalitesi düşürülmez.
 
+## 5b. Ses (kullanıcı isteğiyle eklendi)
+
+Oyunda 59 sentezlenmiş ses var (WebAudio; kayıtlı ses dosyası kullanılmaz, CLAUDE.md). Bugün çoğu
+ortak: her canavar aynı `impactHeavy`, `roarBig`, `shatter`... sesini kullanıyor. v3 hedefi:
+
+- **Animasyonla senkron:** her ses pozun işaretine bağlanır (hazırlık sesi `charge` karesinde,
+  bırakma sesi `release`, darbe sesi `contact` karesinde, ölüm sesi `dissolve` ile). Ses ile görsel
+  arasında kayma ≤ 1 kare.
+- **Karaktere özgü ses kimliği:** her canavarın kendi tınısı (kristal ejder: cam / kristal
+  rezonansı, derin kükreme; büyücü: alçak uğultu, asa vınlaması, karanlık nabız; ateş: çıtırtı;
+  su: dalga; taş: gürleme...). Ortak sentez tarifleri parametreli olur, her canavar kendi
+  parametre setini taşır (`src/audio`'da yalnız ekleme; `sfx.ts` API'si korunur).
+- **Malzemeye göre darbe:** kristal, taş, metal, kumaş, su, ateş, gölge darbeleri ayrı tınıda.
+  Hafif / ağır / büyüsel darbe ses olarak da ayrışır.
+- **Karışım:** aynı anda çalan sesler birbirini boğmaz; büyük anlarda müzik kısılır (ducking);
+  kırpılma yok; ses seviyeleri dengeli; hızlandırmada sesler bozulmadan kısalır.
+- **Doğrulama:** ajanlar sesi duyamaz. Ses zamanlaması `tools/measure.mjs` ile ölçülür; tını,
+  seviye ve kırpılma çevrimdışı işlenmiş dalga / spektrum analiziyle kontrol edilir. Son karar
+  kullanıcının kulağındadır: her aşamada oyun içinden **sesli kısa video (MP4)** gönderilir
+  (kareler + aynı zaman çizelgesinin çevrimdışı işlenmiş sesi, ffmpeg ile birleştirilir).
+- **Zamanlama:** A2'nin sonunda dilim için ses geçişi (Ejder + Büyücü + Yıldırım + Zincirler) ve
+  sesli video aracı; A4'te her canavar çifti kendi sesleriyle; A5 büyü / tuzak sesleri; A6 arayüz
+  sesleri; A7 genel karışım ve seviye kontrolü.
+
 ## 6. Aşamalar
 
 Her aşama: iş → çekim şeritleri (filmstrip) ve oynanış üzerinden eleştiri / düzeltme turları →
