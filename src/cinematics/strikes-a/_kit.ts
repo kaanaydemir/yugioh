@@ -12,18 +12,19 @@ import { ATTRIBUTE_RAMP, PAL, type Ramp } from '../../art/palette';
 import { PixelCanvas, mulberry32 } from '../../art/pixel';
 import { AK } from '../../art/arena';
 import { monsterAnimKey, monsterFrame, monsterFrameName } from '../../art/textures';
-import type { MonsterAnim } from '../../art/types';
+import type { AnyMonsterAnim, MonsterAnim } from '../../art/types';
 import { MONSTER_ANIMS } from '../../art/types';
 import { ARENA_V2, DEPTH, GAME_H, GAME_W, TILE_W, type XY, unitDepth, zoneXY } from '../../view/layout';
 import { lightFlash, lightPool, type LightHandle } from '../../view/light';
 import type { TileCard } from '../../view/TileCard';
-import { shake } from '../../vfx/core';
+import { flashRect, shake } from '../../vfx/core';
 import { E, Px, Sparks, animate, framePointToWorld, onFrame, sleep, stopTime, whiteFlash } from '../../vfx/combat';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { sfx, type SfxName, type SfxOpts } from '../../audio/sfx';
 import { listHandlers } from '../_core/registry';
 import type { CinematicContext } from '../_core/types';
 import { cardToGraveyard } from '../_core/helpers';
+import { onDuelStart } from '../../duel/seeds';
 
 export type AnyCtx = CinematicContext<GameEvent>;
 export type Ctx<T extends GameEvent['type']> = CinematicContext<Extract<GameEvent, { type: T }>>;
@@ -36,6 +37,7 @@ export { E, Px, Sparks, animate, onFrame, sleep, stopTime, whiteFlash };
 // ================================================================ random
 
 let rand = mulberry32(0x5a17a);
+onDuelStart(() => (rand = mulberry32(0x5a17a)));
 /** Re-seed (each strike seeds from its uids, so films are repeatable). */
 export function seed(n: number): void {
   rand = mulberry32((n * 2654435761) >>> 0);
@@ -140,9 +142,9 @@ export function glowPulse(scene: Phaser.Scene, x: number, y: number, color: numb
   }).then(() => g.destroy());
 }
 
-/** Full-screen tinted flash on the overlay band (ADD), stepped fall-off. */
+/** Full-screen tinted flash over the world (not the HUD; ADD), stepped fall-off. */
 export function screenFlash(scene: Phaser.Scene, color: number, alpha: number, ms: number): Promise<void> {
-  const r = scene.add.rectangle(0, 0, GAME_W, GAME_H, color, alpha).setOrigin(0).setScrollFactor(0).setDepth(DEPTH.OVERLAY - 1).setBlendMode(ADD);
+  const r = flashRect(scene, color, alpha, DEPTH.OVERLAY, { blend: ADD });
   return animate(scene, ms, (t) => r.setAlpha(alpha * Math.pow(1 - t, 2))).then(() => r.destroy());
 }
 
@@ -170,40 +172,30 @@ export function worldToScreen(scene: Phaser.Scene, p: XY): XY {
 
 // ================================================================ sprite frames
 
-/** Stop the sprite's animation and show one frame of `anim`. */
-export function holdFrame(u: MonsterUnit, anim: MonsterAnim, frame: number): void {
-  const s = u.sprite;
-  if (!s.active) return;
-  const n = u.art.anims[anim].frames;
-  s.anims.stop();
-  s.setFrame(monsterFrameName(anim, Math.max(0, Math.min(n - 1, frame))));
+/** Stop the sprite's animation and show one frame of `anim` (MonsterUnit.pose). */
+export function holdFrame(u: MonsterUnit, anim: AnyMonsterAnim, frame: number): void {
+  u.pose(anim, frame);
 }
 
-/** Play `anim` starting at `frame`; resolves on completion, then idles (unless hold). */
-export function playFrom(u: MonsterUnit, anim: MonsterAnim, frame: number, o: { hold?: boolean } = {}): Promise<void> {
-  const s = u.sprite;
-  const key = monsterAnimKey(u.cardId, anim);
-  if (!s.active || !u.scene.anims.exists(key)) return Promise.resolve();
-  const spec = u.art.anims[anim];
-  s.play({ key, repeat: 0, startFrame: Math.max(0, Math.min(spec.frames - 1, frame)) });
-  return new Promise<void>((resolve) => {
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      s.off(Phaser.Animations.Events.ANIMATION_COMPLETE_KEY + key, finish);
-      if (!o.hold && !u.retired && s.active && u.frameInfo().anim === anim) u.rest();
-      resolve();
-    };
-    s.once(Phaser.Animations.Events.ANIMATION_COMPLETE_KEY + key, finish);
-    const ms = ((spec.frames - frame) / spec.fps) * 1000;
-    void sleep(u.scene, ms * 1.5 + 200).then(finish);
+/**
+ * Play `anim` starting at `frame`; resolves on completion, then idles (unless hold) — only while
+ * the sprite still shows `anim`. A thin wrapper over MonsterUnit.playRange with this kit's
+ * original contract: a side play (no play-slot takeover) whose safety net is the combat clock,
+ * (remaining length) × 1.5 + 200 ms.
+ */
+export function playFrom(u: MonsterUnit, anim: AnyMonsterAnim, frame: number, o: { hold?: boolean } = {}): Promise<void> {
+  return u.playRange(anim, frame, undefined, {
+    hold: o.hold,
+    exclusive: false,
+    restIfCurrent: true,
+    restOnTimeout: true,
+    safety: (ms) => sleep(u.scene, ms * 1.5 + 200),
   });
 }
 
-/** ms per frame of an animation. */
-export function frameMs(u: MonsterUnit, anim: MonsterAnim): number {
-  return 1000 / u.art.anims[anim].fps;
+/** ms per frame of an animation (frame 0 by default; per-frame holds aware). */
+export function frameMs(u: MonsterUnit, anim: AnyMonsterAnim, frame = 0): number {
+  return u.frameMs(anim, frame);
 }
 
 /** Facing sign: +1 faces right (player 1), −1 faces left (player 2). */
@@ -464,6 +456,9 @@ export interface ShatterPxOpts {
 }
 
 let shSeq = 0;
+/** Seeds the shatter randomness (reset at duel start; shSeq only keeps texture keys unique). */
+let shRand = 0;
+onDuelStart(() => (shRand = 0));
 
 /**
  * Break a monster sprite into its own pixels (2–4 px bricks). Same look as vfx/shatter but
@@ -476,7 +471,8 @@ export async function shatterPx(scene: Phaser.Scene, u: MonsterUnit, o: ShatterP
   const pc = o.pc ?? currentPixels(u).pc;
   const ramp = o.ramp ?? ATTRIBUTE_RAMP[u.attribute];
   const depth = o.depth ?? sprite.depth + 0.5;
-  const rnd = mulberry32(++shSeq * 7919 + u.uid * 31);
+  ++shSeq;
+  const rnd = mulberry32(++shRand * 7919 + u.uid * 31);
   const rr = (a: number, b: number) => a + (b - a) * rnd();
   const key = `sa:sh:${u.cardId}:${shSeq}`;
   scene.textures.addCanvas(key, pc.toCanvas());

@@ -22,7 +22,7 @@ import Phaser from 'phaser';
 import type { Phase, PlayerId } from '../engine/types';
 import { PAL, PLAYER_RAMP, RAMPS, type Ramp } from '../art/palette';
 import { DEPTH, GAME_H, GAME_W, UI } from '../view/layout';
-import { TEX, shake } from './core';
+import { TEX, WORLD_FLASH_DEPTH, shake } from './core';
 import { pixelLetters, pixelText, upper, type PixelLetter, type TextSize } from '../ui/text';
 import { E, Raster, Sparks, bayer, clamp01, lerp, onFrame, rampOf, rnd, rr, run, seg, sleep, snd } from './setpieces';
 
@@ -574,7 +574,13 @@ export async function duelStart(scene: Phaser.Scene): Promise<void> {
 
 // ---------------------------------------------------------------- red edge pulse (battle phase)
 
-function vignetteKey(scene: Phaser.Scene, color: number): string {
+/**
+ * The stepped edge vignette texture of a color (cached `set:vignette:<hex>`). Exported for the
+ * first-use warming (src/duel/warm.ts). The canvas is CPU-backed (willReadFrequently): addCanvas()
+ * reads it back with getImageData(), which on a GPU canvas was a ~0.5 s stall on the first battle
+ * phase in the headless test (see PixelCanvas.toCanvas).
+ */
+export function vignetteKey(scene: Phaser.Scene, color: number): string {
   const key = `set:vignette:${color.toString(16)}`;
   if (scene.textures.exists(key)) return key;
   const W = 320;
@@ -582,7 +588,7 @@ function vignetteKey(scene: Phaser.Scene, color: number): string {
   const c = document.createElement('canvas');
   c.width = W;
   c.height = Hh;
-  const ctx = c.getContext('2d')!;
+  const ctx = c.getContext('2d', { willReadFrequently: true })!;
   const img = ctx.createImageData(W, Hh);
   const r = (color >> 16) & 255;
   const gg = (color >> 8) & 255;
@@ -605,9 +611,9 @@ function vignetteKey(scene: Phaser.Scene, color: number): string {
   return key;
 }
 
-/** Two quick colored pulses on the screen edges (stepped alpha). */
+/** Two quick colored pulses on the screen edges (stepped alpha). World only: the HUD is never washed. */
 export function edgePulse(scene: Phaser.Scene, color: number = PAL.crim2, ms = 700): Promise<void> {
-  const img = scene.add.image(0, 0, vignetteKey(scene, color)).setOrigin(0).setScale(2).setScrollFactor(0).setDepth(D - 3).setAlpha(0);
+  const img = scene.add.image(0, 0, vignetteKey(scene, color)).setOrigin(0).setScale(2).setScrollFactor(0).setDepth(WORLD_FLASH_DEPTH - 1).setAlpha(0);
   return run(scene, ms, (t) => {
     const p = Math.max(0, Math.sin(t * Math.PI * 2 - 0.2)) * (1 - t * 0.5);
     img.setAlpha(p > 0.75 ? 0.6 : p > 0.45 ? 0.4 : p > 0.15 ? 0.2 : 0);

@@ -9,6 +9,7 @@
 // bursts out of them, time slows, and it shatters into glass and pixels.
 
 import type Phaser from 'phaser';
+import { onDuelStart } from '../../duel/seeds';
 import { PAL } from '../../art/palette';
 import * as wyrmArt from '../../art/monsters/crystal_wyrm';
 import { PixelCanvas, mulberry32 } from '../../art/pixel';
@@ -121,6 +122,7 @@ function chargeFx(s: StrikeArgs, ms: number, mouth: () => XY): Promise<void> {
 }
 
 let r3 = 0;
+onDuelStart(() => (r3 = 0));
 function R3(): boolean {
   return ++r3 % 3 === 0;
 }

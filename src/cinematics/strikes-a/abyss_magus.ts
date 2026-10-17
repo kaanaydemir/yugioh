@@ -182,7 +182,7 @@ registerStrike('abyss_magus', async (s: StrikeArgs) => {
   const sc = s.scene;
   seed(u.uid * 71 + (s.target?.uid ?? 5));
   const F = frameMs(u, 'attack'); // 100 ms
-  const launchAt = u.art.attackImpactFrame * F; // frame 5: staff thrust, orb released
+  const launchAt = u.impactMs; // frame 5: staff thrust, orb released
   const to: XY = s.blocked ? { x: s.to.x - norm(sub(s.to, u.core())).x * 8, y: s.to.y - norm(sub(s.to, u.core())).y * 8 } : s.to;
   void u.play('attack');
   void s.ctx.focus({ x: lerp(u.core().x, to.x, 0.35), y: lerp(u.core().y, to.y, 0.35) - 8 }, { zoom: 1.06, ms: 300, pan: 0.32 });

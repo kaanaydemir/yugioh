@@ -20,6 +20,7 @@ import type { Attribute } from '../data/cards';
 import { ATTRIBUTE_RAMP, PAL, type Ramp } from '../art/palette';
 import { Swarm, animate, onTick, rampFrom, rnd, rrange } from './particles';
 import { wait } from './core';
+import { showFxTimeMs } from '../duel/showclock';
 
 export const HOLOGRAM = 'Hologram';
 
@@ -296,7 +297,11 @@ export class HologramPipeline extends Phaser.Renderer.WebGL.Pipelines.PostFXPipe
     }
     this.set2f('uResolution', target.width, target.height);
     this.set1f('uFlipY', HOLO_FLIP_Y ? 1 : 0);
-    this.set1f('uTime', ((this.game.loop.time / 1000) % 600) + 0.001);
+    // scan / glitch time follows the scene's show clock (src/duel/showclock.ts): 3× speeds it up,
+    // the duel menu pause holds it, and in the v3 look a hit-stop freezes it. v1 at 1×: exactly
+    // game.loop.time, as before.
+    const now = go && go.scene ? showFxTimeMs(go.scene, this.game.loop.time) : this.game.loop.time;
+    this.set1f('uTime', ((now / 1000) % 600) + 0.001);
     this.set1f('uReveal', P.reveal);
     this.set2f('uSpan', Math.round(top), Math.round(bottom));
     this.set1f('uScan', P.scan);

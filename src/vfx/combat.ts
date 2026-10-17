@@ -23,11 +23,14 @@ import { PixelCanvas, mulberry32, shade } from '../art/pixel';
 import { addStaticCanvas } from '../art/textures';
 import { DEPTH, GAME_H, GAME_W, duelistXY, unitDepth, type XY } from '../view/layout';
 import { sfx, type SfxName } from '../audio/sfx';
-import { shake } from './core';
+import { WORLD_FLASH_DEPTH, flashRect, shake } from './core';
+import { showClock } from '../duel/showclock';
+import { onDuelStart } from '../duel/seeds';
 
 // ==================================================================================== random
 
 let rng = mulberry32(0xc0ffee);
+onDuelStart(() => (rng = mulberry32(0xc0ffee)));
 /** Re-seed the combat VFX random stream (previews/films call this for repeatable frames). */
 export function seedCombatFx(seed: number): void {
   rng = mulberry32(seed);
@@ -142,54 +145,15 @@ export function sleep(scene: Phaser.Scene, ms: number): Promise<void> {
   return animate(scene, ms, () => undefined);
 }
 
-interface FreezeState {
-  remaining: number;
-  saved: { tw: number; tm: number; an: number };
-  waiters: (() => void)[];
-}
-const freezes = new WeakMap<Phaser.Scene, FreezeState>();
-
 /**
  * Nesting-safe hit-stop: freezes tweens, timers, animations (and every combat effect) for `ms` of
- * REAL time. Overlapping calls extend one freeze instead of stacking save/restore pairs, so
- * several impacts in the same beat can never leave the scene stuck at timeScale 0.
+ * REAL time. Delegates to the scene's show clock (src/duel/showclock.ts), the same freeze as
+ * core.hitStop: overlapping calls extend one freeze instead of stacking save/restore pairs, so
+ * several impacts in the same beat can never leave the scene stuck at timeScale 0, and a stop that
+ * starts inside another one never "restores" 1× (the speed comes back from the clock, as set).
  */
 export function stopTime(scene: Phaser.Scene, ms: number): Promise<void> {
-  if (ms <= 0) return Promise.resolve();
-  const cur = freezes.get(scene);
-  if (cur) {
-    cur.remaining = Math.max(cur.remaining, ms);
-    return new Promise((r) => cur.waiters.push(r));
-  }
-  const st: FreezeState = {
-    remaining: ms,
-    saved: { tw: scene.tweens.timeScale, tm: scene.time.timeScale, an: scene.anims.globalTimeScale },
-    waiters: [],
-  };
-  // started inside someone else's freeze: never "restore" to a frozen clock
-  if (st.saved.tw === 0) st.saved = { tw: 1, tm: 1, an: 1 };
-  freezes.set(scene, st);
-  scene.tweens.timeScale = 0;
-  scene.time.timeScale = 0;
-  scene.anims.globalTimeScale = 0;
-  return new Promise((resolve) => {
-    st.waiters.push(resolve);
-    const end = () => {
-      scene.events.off(Phaser.Scenes.Events.UPDATE, upd);
-      scene.events.off(Phaser.Scenes.Events.SHUTDOWN, end);
-      freezes.delete(scene);
-      scene.tweens.timeScale = st.saved.tw;
-      scene.time.timeScale = st.saved.tm;
-      scene.anims.globalTimeScale = st.saved.an;
-      for (const w of st.waiters) w();
-    };
-    const upd = (_t: number, delta: number) => {
-      st.remaining -= delta;
-      if (st.remaining <= 0) end();
-    };
-    scene.events.on(Phaser.Scenes.Events.UPDATE, upd);
-    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, end);
-  });
+  return showClock(scene).freeze(ms);
 }
 
 /** Wait `n` rendered frames of REAL time (ignores hitStop) — used for 1–2 frame flashes. */
@@ -1277,7 +1241,7 @@ export function beam(scene: Phaser.Scene, from: XY | (() => XY), to: XY, style: 
           sp.add({ x: A.x, y: A.y, vx: Math.cos(a) * RR(60, 140), vy: Math.sin(a) * RR(60, 140), drag: 5, life: RR(150, 260), colors: sprayColors, shape: 'streak', len: 0.03 });
         }
         if (style === 'prism') {
-          const fl = scene.add.rectangle(0, 0, GAME_W, GAME_H, PAL.cyan4, 0.22).setOrigin(0).setScrollFactor(0).setDepth(DEPTH.OVERLAY - 1);
+          const fl = flashRect(scene, PAL.cyan4, 0.22); // world only (the HUD is never washed)
           void animate(scene, 90, (t) => fl.setAlpha(0.22 * (1 - t) * (1 - t))).then(() => fl.destroy());
         }
       }
@@ -1664,7 +1628,7 @@ function darkOrb(scene: Phaser.Scene, fromFn: () => XY, to: XY, opts: Projectile
         burst = true;
         snd('darkPulse', 1, 0.8);
         opts.onImpact?.();
-        const fl = scene.add.rectangle(0, 0, GAME_W, GAME_H, PAL.void2, 0.3).setOrigin(0).setScrollFactor(0).setDepth(DEPTH.OVERLAY - 1).setBlendMode(Phaser.BlendModes.ADD);
+        const fl = flashRect(scene, PAL.void2, 0.3, DEPTH.OVERLAY, { blend: Phaser.BlendModes.ADD });
         void animate(scene, 160, (t) => fl.setAlpha(0.3 * (1 - t))).then(() => fl.destroy());
         for (let i = 0; i < 26; i++) {
           const a = (i / 26) * Math.PI * 2 + RR(-0.1, 0.1);
@@ -3182,7 +3146,7 @@ export function lightning(scene: Phaser.Scene, from: XY, to: XY, opts: Lightning
   opts.onImpact?.();
   const fa = opts.flash ?? 0.3;
   if (fa > 0) {
-    const fl = scene.add.rectangle(0, 0, GAME_W, GAME_H, ramp[4], fa).setOrigin(0).setScrollFactor(0).setDepth(DEPTH.OVERLAY - 1);
+    const fl = flashRect(scene, ramp[4], fa);
     void animate(scene, 130, (t) => fl.setAlpha(fa * (1 - t) * (1 - t))).then(() => fl.destroy());
   }
   for (let i = 0; i < 14; i++) {
@@ -3252,7 +3216,7 @@ export function skyBolt(scene: Phaser.Scene, x: number, y: number, opts: { color
         snd('thunder', 1);
         opts.onImpact?.();
         void shake(scene, 260, 4);
-        const fl = scene.add.rectangle(0, 0, GAME_W, GAME_H, PAL.white, 0.7).setOrigin(0).setScrollFactor(0).setDepth(DEPTH.OVERLAY - 1);
+        const fl = flashRect(scene, PAL.white, 0.7);
         void animate(scene, 180, (t) => fl.setAlpha(0.7 * (1 - t) * (1 - t))).then(() => fl.destroy());
         for (let i = 0; i < 26; i++) {
           const a = -Math.PI / 2 + RR(-1.5, 1.5);
@@ -3301,6 +3265,12 @@ export interface ImpactOpts {
   /** Skip the hit-stop (when several impacts land in the same beat). */
   noStop?: boolean;
   depth?: number;
+  /** v3 (A1.5, src/duel/motion.ts): hit-stop ms instead of the power table (60 / 80 / 100). */
+  stopMs?: number;
+  /** v3: camera shake px instead of the power table (1.5 / 3 / 5). */
+  shakePx?: number;
+  /** v3: target jitter px during the hit-stop instead of the power table (0.5 / 1 / 1); 0 = still. */
+  jitterPx?: number;
 }
 
 /**
@@ -3311,8 +3281,8 @@ export async function impact(scene: Phaser.Scene, x: number, y: number, opts: Im
   const power = opts.power ?? 2;
   const ramp = opts.ramp ?? RAMP_LIGHT;
   const depth = opts.depth ?? DEPTH.FX;
-  const stopMs = [0, 60, 80, 100][power];
-  const shakePx = [0, 1.5, 3, 5][power];
+  const stopMs = opts.stopMs ?? [0, 60, 80, 100][power];
+  const shakePx = opts.shakePx ?? [0, 1.5, 3, 5][power];
   const shakeMs = [0, 140, 220, 320][power];
   x = Math.round(x);
   y = Math.round(y);
@@ -3389,7 +3359,7 @@ export async function impact(scene: Phaser.Scene, x: number, y: number, opts: Im
     // anime impact frame: the stage drops to black behind the white silhouette for 3 frames,
     // then one white flash that falls off as time resumes
     const dark = scene.add.rectangle(0, 0, GAME_W, GAME_H, PAL.ink, 0.62).setOrigin(0).setScrollFactor(0).setDepth(DEPTH.SHADOW + 1);
-    const fl = scene.add.rectangle(0, 0, GAME_W, GAME_H, PAL.white, 0).setOrigin(0).setScrollFactor(0).setDepth(DEPTH.OVERLAY - 1);
+    const fl = flashRect(scene, PAL.white, 0);
     void realFrames(scene, 3)
       .then(() => {
         dark.destroy();
@@ -3406,11 +3376,12 @@ export async function impact(scene: Phaser.Scene, x: number, y: number, opts: Im
   if (spr && spr.active) {
     void whiteFlash(scene, spr, power >= 3 ? 3 : 2);
     const ox = spr.x;
+    const jpx = opts.jitterPx ?? (power >= 2 ? 1 : 0.5);
     let f = 0;
     const jit = () => {
       f++;
       if (!spr.active) return;
-      spr.x = ox + (f % 2 === 0 ? 1 : -1) * (power >= 2 ? 1 : 0.5);
+      spr.x = ox + (f % 2 === 0 ? 1 : -1) * jpx;
     };
     scene.events.on(Phaser.Scenes.Events.POST_UPDATE, jit);
     jitterStop = () => {
@@ -3524,10 +3495,11 @@ export async function directHit(scene: Phaser.Scene, player: PlayerId, opts: { a
   const p = opts.at ?? duelistXY(player);
   const key = ensureVignette(scene);
   snd('directHit');
-  const vig = scene.add.image(0, 0, key).setOrigin(0).setScale(2).setScrollFactor(0).setDepth(DEPTH.OVERLAY - 2).setAlpha(0);
-  const red = scene.add.rectangle(0, 0, GAME_W, GAME_H, PAL.crim2, 0).setOrigin(0).setScrollFactor(0).setDepth(DEPTH.OVERLAY - 3);
-  const white = scene.add.rectangle(0, 0, GAME_W, GAME_H, PAL.white, 0.7).setOrigin(0).setScrollFactor(0).setDepth(DEPTH.OVERLAY - 1);
-  const lines = layer(scene, DEPTH.OVERLAY - 4);
+  // (world only, under the HUD band: the HUD is never washed)
+  const vig = scene.add.image(0, 0, key).setOrigin(0).setScale(2).setScrollFactor(0).setDepth(WORLD_FLASH_DEPTH - 1).setAlpha(0);
+  const red = flashRect(scene, PAL.crim2, 0, WORLD_FLASH_DEPTH - 2);
+  const white = flashRect(scene, PAL.white, 0.7, WORLD_FLASH_DEPTH);
+  const lines = layer(scene, WORLD_FLASH_DEPTH - 3);
   lines.g.setScrollFactor(0);
   // speed lines converging on the hit point
   const rays: { a: number; r0: number; w: number }[] = [];
@@ -3549,7 +3521,7 @@ export async function directHit(scene: Phaser.Scene, player: PlayerId, opts: { a
     white.destroy();
     red.setAlpha(0.42);
   });
-  void impact(scene, p.x, p.y, { power: 3, ramp: RAMPS.crim, noStop: true, depth: DEPTH.OVERLAY - 5 });
+  void impact(scene, p.x, p.y, { power: 3, ramp: RAMPS.crim, noStop: true, depth: WORLD_FLASH_DEPTH - 4 });
   void shake(scene, 420, 6);
   await stopTime(scene, 110);
   // vignette double pulse

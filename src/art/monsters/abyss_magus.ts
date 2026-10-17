@@ -1160,6 +1160,8 @@ const art: MonsterArt = {
     guard: { frames: ANIMS.guard.poses.length, fps: ANIMS.guard.fps, loop: true },
   },
   attackImpactFrame: IMPACT_FRAME,
+  // motion character (plan §2; src/duel/motion.ts)
+  weight: 'caster',
   draw(p, anim, frame) {
     const poses = ANIMS[anim].poses;
     drawMagus(p, poses[Math.max(0, Math.min(poses.length - 1, frame))]);

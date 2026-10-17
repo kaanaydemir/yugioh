@@ -33,12 +33,14 @@ import type { PlayerId } from '../engine/types';
 import { PAL, PLAYER_COLOR, RAMPS, type Ramp } from '../art/palette';
 import { PixelCanvas, mix, mulberry32 } from '../art/pixel';
 import { monsterFrame } from '../art/textures';
+import { holdOf } from '../art/animtime';
 import { monsterArt } from '../art/monsters';
 import { sfx, type SfxName } from '../audio/sfx';
 import { DEPTH, GAME_H, GAME_W, type XY, isoToScreen, panelRect, screenToIso, unitDepth } from '../view/layout';
 import { TEX, flash, shake, wait } from './core';
 import { stopTime } from './combat';
 import { pixelText } from '../ui/text';
+import { onDuelStart } from '../duel/seeds';
 
 export type Unit = Phaser.GameObjects.Sprite | Phaser.GameObjects.Image;
 
@@ -48,6 +50,7 @@ const ADD = Phaser.BlendModes.ADD;
 // =================================================================================== kit: rng
 
 let rng = mulberry32(0x5e7f1);
+onDuelStart(() => (rng = mulberry32(0x5e7f1)));
 /** Re-seed the set-piece randomness (dev previews / films use this for determinism). */
 export function seedSetFx(seed: number): void {
   rng = mulberry32(seed);
@@ -1504,7 +1507,9 @@ export function ghostTexture(scene: Phaser.Scene, id: MonsterId): { key: string;
       const tex = scene.textures.addCanvas(key, sheet.toCanvas())!;
       for (let f = 0; f < frames; f++) tex.add(`g${f}`, 0, f * art.w, 0, art.w, art.h);
       if (!scene.anims.exists(key)) {
-        scene.anims.create({ key, frames: Array.from({ length: frames }, (_, f) => ({ key, frame: `g${f}` })), frameRate: spec.fps, repeat: -1 });
+        // per-frame holds (v3) carry over as frame durations; without them the frames are as before
+        const fr = Array.from({ length: frames }, (_, f) => (holdOf(spec, f) ? { key, frame: `g${f}`, duration: holdOf(spec, f) } : { key, frame: `g${f}` }));
+        scene.anims.create({ key, frames: fr, frameRate: spec.fps, repeat: -1 });
       }
     } catch (e) {
       console.warn('[vfx-set] ghost texture failed', e);

@@ -23,10 +23,10 @@ import { ATTRIBUTE_RAMP, PAL, PLAYER_COLOR, PLAYER_RAMP, type Ramp } from '../..
 import { mulberry32 } from '../../art/pixel';
 import { AK } from '../../art/arena';
 import { monsterAnimKey, monsterFrameName } from '../../art/textures';
-import type { MonsterAnim } from '../../art/types';
+import type { AnyMonsterAnim, MonsterAnim } from '../../art/types';
 import { DEPTH, GAME_H, GAME_W, TILE_W, type XY, unitDepth } from '../../view/layout';
 import { attributeLightColor, lightBeam, lightDim, lightFlash, lightPool, type BeamHandle, type LightHandle, type PoolOpts } from '../../view/light';
-import { flash, shake, wait } from '../../vfx/core';
+import { flash, flashRect, shake, wait } from '../../vfx/core';
 import { E, Raster, Sparks, freeze, onFrame, run } from '../../vfx/setpieces';
 import { createMagicCircle, shockwave, type MagicCircleCtl } from '../../vfx/summon';
 import { Swarm } from '../../vfx/particles';
@@ -36,6 +36,7 @@ import { sfx, type SfxName, type SfxOpts } from '../../audio/sfx';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { CardSprite } from '../../view/CardSprite';
 import { fx, registerCardHook, type CinematicContext } from '../api';
+import { onDuelStart } from '../../duel/seeds';
 
 export type AnyCtx = CinematicContext<GameEvent>;
 export type SummonEv = Extract<GameEvent, { type: 'summon' }>;
@@ -61,6 +62,7 @@ export const fs = (v: number): number => (TS === 1 ? v : Math.round(v * TS));
 // ================================================================ random / math
 
 let rand = mulberry32(0x5a11);
+onDuelStart(() => (rand = mulberry32(0x5a11)));
 /** Re-seed (every summon seeds from its uid so films are repeatable). */
 export function seed(n: number): void {
   rand = mulberry32((Math.imul(n | 0, 2654435761) ^ 0x51ab) >>> 0);
@@ -113,39 +115,30 @@ export const RAINBOW: readonly number[] = [PAL.crim3, PAL.fire3, PAL.gold4, PAL.
 
 // ================================================================ sprite helpers
 
-/** Stop the sprite's animation and show one frame of `anim`. */
-export function holdFrame(u: MonsterUnit, anim: MonsterAnim, frame: number): void {
-  const s = u.sprite;
-  if (!s.active) return;
-  const n = u.art.anims[anim].frames;
-  s.anims.stop();
-  s.setFrame(monsterFrameName(anim, clamp(Math.round(frame), 0, n - 1)));
+/** Stop the sprite's animation and show one frame of `anim` (MonsterUnit.pose). */
+export function holdFrame(u: MonsterUnit, anim: AnyMonsterAnim, frame: number): void {
+  u.pose(anim, frame);
 }
 
-/** Play `anim` from `frame` (one-shot); resolves on completion, then idles (unless hold). */
-export function playFrom(u: MonsterUnit, anim: MonsterAnim, frame: number, o: { hold?: boolean } = {}): Promise<void> {
-  const s = u.sprite;
-  const key = monsterAnimKey(u.cardId, anim);
-  if (!s.active || !u.scene.anims.exists(key)) return Promise.resolve();
-  const spec = u.art.anims[anim];
-  const f0 = clamp(Math.round(frame), 0, spec.frames - 1);
-  s.play({ key, repeat: 0, startFrame: f0 });
-  return new Promise<void>((resolve) => {
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      s.off(Phaser.Animations.Events.ANIMATION_COMPLETE_KEY + key, finish);
-      if (!o.hold && !u.retired && s.active && u.frameInfo().anim === anim) u.rest();
-      resolve();
-    };
-    s.once(Phaser.Animations.Events.ANIMATION_COMPLETE_KEY + key, finish);
-    void wait(u.scene, (((spec.frames - f0) / spec.fps) * 1000) * 1.5 + 200).then(finish);
+/**
+ * Play `anim` from `frame` (one-shot); resolves on completion, then idles (unless hold) — only
+ * while the sprite still shows `anim`. A thin wrapper over MonsterUnit.playRange with this kit's
+ * original contract: a side play (no play-slot takeover), safety net (remaining length) × 1.5 +
+ * 200 ms of scene time.
+ */
+export function playFrom(u: MonsterUnit, anim: AnyMonsterAnim, frame: number, o: { hold?: boolean } = {}): Promise<void> {
+  const f0 = clamp(Math.round(frame), 0, u.frameCount(anim) - 1);
+  return u.playRange(anim, f0, undefined, {
+    hold: o.hold,
+    exclusive: false,
+    restIfCurrent: true,
+    restOnTimeout: true,
+    safety: (ms) => wait(u.scene, ms * 1.5 + 200),
   });
 }
 
 /** Resolve when the sprite's current `anim` reaches `frame` (or after a safety timeout). */
-export function untilFrame(u: MonsterUnit, anim: MonsterAnim, frame: number): Promise<void> {
+export function untilFrame(u: MonsterUnit, anim: AnyMonsterAnim, frame: number): Promise<void> {
   const s = u.sprite;
   return new Promise<void>((resolve) => {
     let done = false;
@@ -162,14 +155,14 @@ export function untilFrame(u: MonsterUnit, anim: MonsterAnim, frame: number): Pr
     const fi = u.frameInfo();
     if (!s.active || fi.anim !== anim || fi.frame >= frame) return finish();
     s.on(Phaser.Animations.Events.ANIMATION_UPDATE, onUpd);
-    const spec = u.art.anims[anim];
-    void wait(u.scene, ((frame - fi.frame + 1) / spec.fps) * 1000 * 1.5 + 150).then(finish);
+    // safety net: until frame `frame` would have ended (per-frame holds aware)
+    void wait(u.scene, u.rangeMs(anim, fi.frame, frame + 1) * 1.5 + 150).then(finish);
   });
 }
 
-/** ms per frame of an animation (read from the art at runtime). */
-export function frameMs(u: MonsterUnit, anim: MonsterAnim): number {
-  return 1000 / u.art.anims[anim].fps;
+/** ms per frame of an animation (frame 0 by default; per-frame holds aware). */
+export function frameMs(u: MonsterUnit, anim: AnyMonsterAnim, frame = 0): number {
+  return u.frameMs(anim, frame);
 }
 
 /** Face left/right (keeps the origin on the art anchor). The unit's own facing is u.flipX. */
@@ -223,9 +216,9 @@ export function isoRing(r: Raster, cx: number, cy: number, rad: number, c: numbe
   r.ring(cx, cy, rad, rad / 2, c, level, from, to);
 }
 
-/** A full-screen flash on the overlay band with stepped fall-off (additive tint). */
+/** A full-screen flash over the world (not the HUD) with stepped fall-off (additive tint). */
 export function screenFlash(scene: Phaser.Scene, color: number, alpha: number, ms: number): Promise<void> {
-  const r = scene.add.rectangle(0, 0, GAME_W, GAME_H, color, alpha).setOrigin(0).setScrollFactor(0).setDepth(DEPTH.OVERLAY - 1).setBlendMode(ADD);
+  const r = flashRect(scene, color, alpha, DEPTH.OVERLAY, { blend: ADD });
   return run(scene, ms, (t) => r.setAlpha(alpha * (t < 0.25 ? 1 : t < 0.5 ? 0.6 : t < 0.75 ? 0.3 : 0.12))).then(() => r.destroy());
 }
 
@@ -491,11 +484,10 @@ function makeStage(ctx: SummonCtx, unit: MonsterUnit, o: { tribute: boolean; spe
       beat(scene, 'cut-in done');
     },
     async roar(r) {
-      const spec = unit.art.anims.roar;
-      const fms = 1000 / spec.fps;
-      const from = clamp(r.from ?? 0, 0, spec.frames - 1);
-      const peak = clamp(r.peak, from, spec.frames - 1);
-      const toPeak = (peak - from) * fms;
+      const n = unit.frameCount('roar');
+      const from = clamp(r.from ?? 0, 0, n - 1);
+      const peak = clamp(r.peak, from, n - 1);
+      const toPeak = unit.rangeMs('roar', from, peak);
       const name = r.sfx ?? (big ? 'roarBig' : 'roarSmall');
       const lead = r.lead ?? (name === 'roarBig' ? 280 : 150);
       const vol = r.volume ?? (big ? 1 : 0.85);

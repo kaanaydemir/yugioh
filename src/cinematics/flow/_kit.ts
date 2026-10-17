@@ -17,6 +17,7 @@ import { lightBeam, lightDim, lightDimFor, lightFlash, lightPool, type BeamHandl
 import { TEX } from '../../vfx/core';
 import { Raster, Sparks, onFrame, run } from '../../vfx/setpieces';
 import type { CinematicContext } from '../api';
+import { onDuelStart } from '../../duel/seeds';
 
 export type EvOf<T extends GameEventType> = Extract<GameEvent, { type: T }>;
 export type Ctx<T extends GameEventType> = CinematicContext<EvOf<T>>;
@@ -45,7 +46,9 @@ export async function all(ps: Promise<unknown>[]): Promise<void> {
   await Promise.all(ps.map((p) => p.catch((e) => console.error('[flow]', e))));
 }
 
-let seedState = 0x51f0a3c7;
+const SEED0 = 0x51f0a3c7;
+let seedState = SEED0;
+onDuelStart(() => (seedState = SEED0));
 export function seed(n: number): void {
   seedState = (n * 2654435761) >>> 0 || 1;
 }

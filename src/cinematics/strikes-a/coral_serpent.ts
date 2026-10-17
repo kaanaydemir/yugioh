@@ -12,6 +12,7 @@
 // it bursts into a spray of pixels and droplets.
 
 import Phaser from 'phaser';
+import { onDuelStart } from '../../duel/seeds';
 import { PAL } from '../../art/palette';
 import { PixelCanvas } from '../../art/pixel';
 import type { GameEvent } from '../../engine/types';
@@ -124,6 +125,7 @@ export function waterSplash(scene: Phaser.Scene, at: XY, o: { dir: XY; floor: nu
 }
 
 let r2 = 0;
+onDuelStart(() => (r2 = 0));
 function R2(): boolean {
   return ++r2 % 2 === 0;
 }

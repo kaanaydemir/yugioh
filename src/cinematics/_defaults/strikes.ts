@@ -37,7 +37,8 @@ async function chargeWindow(s: StrikeArgs, tracksMouth: boolean): Promise<number
   void u.play('attack');
   const ms = u.impactMs;
   if (tracksMouth) return ms;
-  const charge = Math.min(ms, 1000 / u.art.anims.attack.fps + 20);
+  // one frame of the wind-up (the frame before impact) + a hair
+  const charge = Math.min(ms, u.frameMs('attack', u.impactFrame - 1) + 20);
   await wait(s.scene, ms - charge);
   return charge;
 }
@@ -84,9 +85,10 @@ function throughPoint(s: StrikeArgs): XY {
 const darkOrbStrike: StrikeFn = async (s) => {
   const u = s.attacker;
   void u.play('attack');
-  const fps = u.art.anims.attack.fps;
-  await wait(s.scene, Math.max(0, ((u.art.attackImpactFrame - 1) / fps) * 1000 - 120));
-  await projectile(s.scene, mouth(s), s.to, 'darkOrb', { chargeMs: 120 + 1000 / fps, onImpact: () => s.impact() });
+  // the orb gathers over the frame before impact (+120 ms) and leaves on the impact frame
+  const pre = u.impactFrame - 1;
+  await wait(s.scene, Math.max(0, u.rangeMs('attack', 0, pre) - 120));
+  await projectile(s.scene, mouth(s), s.to, 'darkOrb', { chargeMs: 120 + u.frameMs('attack', pre), onImpact: () => s.impact() });
   settleSoon(s);
 };
 

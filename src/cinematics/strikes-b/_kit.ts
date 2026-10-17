@@ -12,7 +12,7 @@ import type { CardId } from '../../data/cards';
 import type { GameEvent, PlayerId } from '../../engine/types';
 import { ATTRIBUTE_RAMP, PAL, type Ramp } from '../../art/palette';
 import { monsterAnimKey, monsterFrame, monsterFrameName } from '../../art/textures';
-import type { MonsterAnim } from '../../art/types';
+import type { AnyMonsterAnim, MonsterAnim } from '../../art/types';
 import { ARENA_V2, DEPTH, TILE_W, type XY, unitDepth } from '../../view/layout';
 import { lightFlash } from '../../view/light';
 import { wait } from '../../vfx/core';
@@ -21,6 +21,7 @@ import { shatter } from '../../vfx/shatter';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { TileCard } from '../../view/TileCard';
 import { listHandlers, type CinematicContext, type StrikeArgs } from '../api';
+import { onDuelStart } from '../../duel/seeds';
 
 export { E, Px, Sparks, animate, onFrame, sleep };
 export type { StrikeArgs };
@@ -82,7 +83,9 @@ export function cbez(a: XY, c1: XY, c2: XY, b: XY, t: number): XY {
 
 // ---------------------------------------------------------------- deterministic random
 
-let seed = 0x5b17ab;
+const SEED0 = 0x5b17ab;
+let seed = SEED0;
+onDuelStart(() => (seed = SEED0));
 /** Small LCG so films are repeatable (independent of the library streams). */
 export function rnd(): number {
   seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
@@ -108,40 +111,26 @@ export function facing(u: MonsterUnit): 1 | -1 {
   return u.sprite.flipX ? -1 : 1;
 }
 
-/** Hold one frame of an animation (stops the animation: full manual control). */
-export function pose(u: MonsterUnit, anim: MonsterAnim, frame: number): void {
-  const s = u.sprite;
-  if (!s.active) return;
-  const n = u.art.anims[anim].frames;
-  s.anims.stop();
-  s.setFrame(monsterFrameName(anim, clamp(Math.round(frame), 0, n - 1)));
+/** Hold one frame of an animation (stops the animation: full manual control). MonsterUnit.pose. */
+export function pose(u: MonsterUnit, anim: AnyMonsterAnim, frame: number): void {
+  u.pose(anim, frame);
 }
 
 /**
  * Play `anim` from frame `from`. Resolves when it completes (then back to idle/guard unless
  * hold). Safe against hit-stops and supersession (resolves anyway after a generous timeout).
+ * A thin wrapper over MonsterUnit.playRange with this kit's original contract: a side play (no
+ * play-slot takeover) at o.timeScale (default 1, back to 1 at the end); the safety net,
+ * (remaining length) × 1.6 + 250 ms of scene time, resolves without returning to rest.
  */
-export function playFrom(u: MonsterUnit, anim: MonsterAnim, from: number, o: { hold?: boolean; timeScale?: number } = {}): Promise<void> {
-  const s = u.sprite;
-  const key = monsterAnimKey(u.cardId, anim);
-  if (!s.active || !u.scene.anims.exists(key)) return Promise.resolve();
-  const spec = u.art.anims[anim];
-  s.anims.timeScale = o.timeScale ?? 1;
-  s.play({ key, repeat: 0, startFrame: clamp(from, 0, spec.frames - 1) });
-  return new Promise<void>((resolve) => {
-    let done = false;
-    const fin = (rest: boolean) => {
-      if (done) return;
-      done = true;
-      s.off(Phaser.Animations.Events.ANIMATION_COMPLETE_KEY + key, onDone);
-      if (s.active) s.anims.timeScale = 1;
-      if (rest && !o.hold && !u.retired && s.active) u.rest();
-      resolve();
-    };
-    const onDone = () => fin(true);
-    s.once(Phaser.Animations.Events.ANIMATION_COMPLETE_KEY + key, onDone);
-    const ms = ((spec.frames - from) / spec.fps) * 1000;
-    void wait(u.scene, ms * 1.6 + 250).then(() => fin(false));
+export function playFrom(u: MonsterUnit, anim: AnyMonsterAnim, from: number, o: { hold?: boolean; timeScale?: number } = {}): Promise<void> {
+  return u.playRange(anim, from, undefined, {
+    hold: o.hold,
+    timeScale: o.timeScale ?? 1,
+    exclusive: false,
+    restIfCurrent: false,
+    restOnTimeout: false,
+    safety: (ms) => wait(u.scene, ms * 1.6 + 250),
   });
 }
 
@@ -190,7 +179,7 @@ export function framePixelsOf(u: MonsterUnit, anim: MonsterAnim, frame: number, 
  * when nothing matches. Frame coords (facing right), cached per unit art / frame.
  */
 export function glintPoint(u: MonsterUnit, anim: MonsterAnim, frame: number, colors: readonly number[], near: XY, radius = 6): XY {
-  const n = u.art.anims[anim].frames;
+  const n = u.frameCount(anim);
   const f = clamp(Math.round(frame), 0, n - 1);
   const key = `${u.cardId}|${anim}|${f}|${colors.join(',')}|${near.x},${near.y}|${radius}`;
   const hit = glintCache.get(key);

@@ -15,6 +15,10 @@
 //   --start MS         game time to advance before the first film frame (default 0)
 //   --cols C           contact sheet columns (default 4)
 //   --clip x,y,w,h     crop to a region in GAME pixels (640×360 space)
+//   --fresh            "?dev=duel&s=<key>" only: freeze, then restart the duel on that scenario under the
+//                      frozen clock (__neon.duel.scenario) before the capture. The real-time duel before
+//                      the freeze no longer leaks in, so a --film / --step capture is a function of the
+//                      code alone: pixel-identical between runs (v3 plan A1.12)
 //   --timeout MS       ready timeout (default 30000); page loads wait at least 120 s
 //   console.log / console.error output from the page (and from --eval) is printed
 //
@@ -111,6 +115,24 @@ try {
       await page.evaluate(`(async () => { ${args.eval} })()`);
     } catch (e) {
       logs.push(`[eval error] ${e.message}`);
+      failed = true;
+    }
+  }
+
+  if (args.fresh) {
+    const key = new URLSearchParams(q).get('s');
+    try {
+      await page.evaluate(async (key) => {
+        const N = window.__neon;
+        if (Array.isArray(N.__duelArmed)) N.__duelArmed.splice(0); // the real-time duel's armed start
+        N.freeze();
+        let done = false;
+        N.duel.scenario(key, { film: true }).then(() => (done = true));
+        for (let k = 0; !done && k < 3000; k++) await N.step(1000 / 60);
+        if (!done) throw new Error('the restarted duel never became ready');
+      }, key);
+    } catch (e) {
+      logs.push(`[fresh error] ${e.message}`);
       failed = true;
     }
   }

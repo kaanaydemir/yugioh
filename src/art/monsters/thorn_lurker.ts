@@ -831,6 +831,8 @@ const art: MonsterArt = {
     guard: { frames: ANIMS.guard.poses.length, fps: ANIMS.guard.fps, loop: true },
   },
   attackImpactFrame: IMPACT,
+  // motion character (plan §2; src/duel/motion.ts)
+  weight: 'medium',
   draw(p: Canvas, anim: MonsterAnim, frame: number) {
     const poses = ANIMS[anim].poses;
     drawLurker(p, poses[Math.max(0, Math.min(poses.length - 1, frame))]);

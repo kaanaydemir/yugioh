@@ -108,6 +108,12 @@ interface LiveVoice extends Built {
 }
 
 const MAX_VOICES = 40;
+/**
+ * Audio's own randomness (pitch / noise variance): the real Math.random, captured at load. Whether a
+ * sound plays depends on the AudioContext's clock (gap / cap checks), so sounds must not draw from
+ * the stream the visuals use — the frozen QA clock (main.ts) seeds Math.random for repeatable films.
+ */
+const audioRandom: () => number = Math.random.bind(Math);
 const active: LiveVoice[] = [];
 const lastPlay = new Map<SfxName, number>();
 const MUTE_KEY = 'neon.muted';
@@ -166,10 +172,10 @@ function playLive(name: SfxName, opts: SfxOpts): void {
   if (same.length >= (r.cap ?? 4)) kill(same[0], now);
   if (active.length >= MAX_VOICES) kill(active[0], now);
   const vary = r.vary ?? 0;
-  const pitch = (opts.pitch ?? 1) * (1 + (Math.random() * 2 - 1) * vary);
+  const pitch = (opts.pitch ?? 1) * (1 + (audioRandom() * 2 - 1) * vary);
   const volume = (opts.volume ?? 1) * sfxVolume;
   const t0 = now + 0.004;
-  const b = build(a.chain, name, t0, { volume, pitch, pan: opts.pan }, Math.random);
+  const b = build(a.chain, name, t0, { volume, pitch, pan: opts.pan }, audioRandom);
   if (!b) return;
   lastPlay.set(name, now);
   const end = t0 + b.voice.end / b.voice.pm + 0.1;

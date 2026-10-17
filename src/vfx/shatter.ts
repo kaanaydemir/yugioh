@@ -14,13 +14,14 @@ import type { Attribute, MonsterId } from '../data/cards';
 import { monsterArt } from '../art/monsters';
 import { ATTRIBUTE_RAMP, PAL } from '../art/palette';
 import { mulberry32 } from '../art/pixel';
-import { addStaticCanvas, monsterFrame } from '../art/textures';
-import type { MonsterAnim } from '../art/types';
+import { addStaticCanvas, monsterFrame, monsterP2TextureKey } from '../art/textures';
+import type { DrawOpts, MonsterAnim } from '../art/types';
 import { MONSTER_ANIMS } from '../art/types';
 import { DEPTH, type XY } from '../view/layout';
 import { sfx } from '../audio/sfx';
 import { shake } from './core';
 import { E, Sparks, framePointToWorld, onFrame, stopTime } from './combat';
+import { onDuelStart } from '../duel/seeds';
 
 export interface ShatterOpts {
   monsterId: MonsterId;
@@ -38,6 +39,7 @@ export interface ShatterOpts {
 }
 
 let seed = 1;
+onDuelStart(() => (seed = 1));
 
 // Slices and bricks are sub-frames of the cached `shatter:<id>:<anim>:<frame>` texture. Their
 // rects are random per shatter, so they are added for the effect and removed again once no
@@ -72,6 +74,27 @@ function currentFrame(sprite: Phaser.GameObjects.Sprite | Phaser.GameObjects.Ima
   return { anim: 'idle', frame: 0 };
 }
 
+/**
+ * The cached `shatter:<id>:<anim>:<frame>` texture (`…:p2` for a P2 'relight' sheet): exactly the
+ * pixels of that monster frame. Created on first use; warmShatter() makes it ahead of time.
+ */
+function shatterTexture(scene: Phaser.Scene, id: MonsterId, anim: MonsterAnim, frame: number, relit = false) {
+  const o: DrawOpts | undefined = relit ? { lightFrom: 'right' } : undefined;
+  const pc = monsterFrame(id, anim, frame, o);
+  const key = `shatter:${id}:${anim}:${frame}${relit ? ':p2' : ''}`;
+  if (!scene.textures.exists(key)) addStaticCanvas(scene, key, pc.toCanvas());
+  return { key, pc };
+}
+
+/**
+ * Warm (v3 A1 item 11): create the shatter texture of a frame (clamped to the anim) before the
+ * first death needs it; src/duel/warm.ts passes the frame the default death breaks. Returns its key.
+ */
+export function warmShatter(scene: Phaser.Scene, id: MonsterId, anim: MonsterAnim = 'hit', frame = 1, relit = false): string {
+  const f = Math.max(0, Math.min(frame, monsterArt(id).anims[anim].frames - 1));
+  return shatterTexture(scene, id, anim, f, relit).key;
+}
+
 interface Brick {
   img: Phaser.GameObjects.Image;
   vx: number;
@@ -88,15 +111,15 @@ export async function shatter(scene: Phaser.Scene, sprite: Phaser.GameObjects.Sp
   const anim = opts.anim ?? cur.anim;
   const fi = opts.frame ?? cur.frame;
   const art = monsterArt(opts.monsterId);
-  const pc = monsterFrame(opts.monsterId, anim, fi);
+  // a P2 'relight' sheet on screen (v3): shatter its pixels, lit the same way
+  const relit = sprite.texture?.key === monsterP2TextureKey(opts.monsterId);
   const ramp = ATTRIBUTE_RAMP[opts.attribute];
   const depth = opts.depth ?? sprite.depth + 0.5;
   const rnd = mulberry32(++seed * 7919);
   const RR = (a: number, b: number) => a + (b - a) * rnd();
 
   // texture of exactly these pixels, with sub-frames for slices / bricks
-  const key = `shatter:${opts.monsterId}:${anim}:${fi}`;
-  if (!scene.textures.exists(key)) addStaticCanvas(scene, key, pc.toCanvas());
+  const { key, pc } = shatterTexture(scene, opts.monsterId, anim, fi, relit);
   const tex = scene.textures.get(key);
   const W = pc.w;
   const H = pc.h;

@@ -21,10 +21,12 @@ import { PixelCanvas, mix, mulberry32 } from '../art/pixel';
 import { sheetTexture } from '../art/textures';
 import { DEPTH } from '../view/layout';
 import { TEX } from './core';
+import { onDuelStart } from '../duel/seeds';
 
 // ================================================================ random
 
 let rng = mulberry32(0x5eed);
+onDuelStart(() => (rng = mulberry32(0x5eed)));
 /** Deterministic VFX random in [0, 1). Re-seed with seedFx() for repeatable previews. */
 export function rnd(): number {
   return rng();

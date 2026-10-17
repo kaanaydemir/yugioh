@@ -19,6 +19,15 @@
 // Everything runs on scene time × scene.time.timeScale (fast-forward speeds it up, hit-stop
 // freezes it). One layer per scene, created on demand (index.ts: lightLayer / ensureLightLayer)
 // and destroyed on SHUTDOWN.
+//
+// STEPPED mode (the v3 look, ?look=v3; docs/v3/A0_ENVANTER.md §6.1 item 9): the same API, drawn in
+// the still preview's light language instead (./stepped.ts): every light becomes flat stamps on
+// the floor — inside the matte pad mask each pixel moves one (core: two) tones toward the light's
+// hue through a fixed table, opaque, at whole pixels, faded by a 2×2 ordered dither instead of
+// alpha. No soft glow textures, no air glows / halos / spill / tint washes / caustics, no dim veil
+// (its ramp still runs, so lightDim keeps its timing). Monsters get one flat seat of their own
+// light on their pad (the still's drawLights); flashes, pools and beam floor strips step the floor
+// locally, an expanding ring steps a 1–2 px iso ring.
 
 import Phaser from 'phaser';
 import { CARDS, isMonster, type MonsterId } from '../../data/cards';
@@ -26,7 +35,9 @@ import { PAL } from '../../art/palette';
 import { monsterFrame, monsterTextureKey } from '../../art/textures';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { ZoneEntry } from '../../duel/FieldView';
-import { DEPTH, GAME_H, GAME_W, type XY } from '../layout';
+import { DEPTH, GAME_H, GAME_W, LOOK_V3, type XY } from '../layout';
+import { onDuelStart } from '../../duel/seeds';
+import { type Stamp, StepPatch, quantize } from './stepped';
 import { CAUSTIC_FRAMES, LIGHT_TEX, LT, ensureLightTextures } from './textures';
 import { ATTRIBUTE_LIGHT, MONSTER_GLOW, type LightAnim } from './profiles';
 import { GLOW_SCALE, glowSheet, type GlowSheet } from './glow';
@@ -219,7 +230,9 @@ class Ramp {
   }
 }
 
-let phaseSeed = 0x2545f491;
+const PHASE_SEED0 = 0x2545f491;
+let phaseSeed = PHASE_SEED0;
+onDuelStart(() => (phaseSeed = PHASE_SEED0));
 function nextPhase(): number {
   phaseSeed = (phaseSeed * 1664525 + 1013904223) >>> 0;
   return (phaseSeed / 4294967296) * Math.PI * 2;
@@ -232,6 +245,8 @@ abstract class LightBase implements LightHandle {
   readonly layer: LightLayer;
   readonly group: LightGroup;
   protected readonly imgs: Img[] = [];
+  /** Stepped mode: this light's floor pixels (null in the soft mode). */
+  protected patch: StepPatch | null = null;
   protected readonly level = new Ramp(0);
   protected readonly intensity: Ramp;
   protected dead = false;
@@ -329,6 +344,8 @@ abstract class LightBase implements LightHandle {
     this.dead = true;
     for (const im of this.imgs) if (im.active) im.destroy();
     this.imgs.length = 0;
+    this.patch?.destroy();
+    this.patch = null;
     this.level.flush();
     this.intensity.flush();
     const w = this.doneWaiters.splice(0);
@@ -338,6 +355,12 @@ abstract class LightBase implements LightHandle {
 
   setVisibleAll(on: boolean): void {
     for (const im of this.imgs) im.setVisible(on);
+    this.patch?.setShown(on);
+  }
+
+  /** Lit pad pixels of the stepped patch (QA). */
+  steppedPixels(): number {
+    return this.patch?.pixels ?? 0;
   }
 }
 
@@ -405,8 +428,8 @@ export class PoolLight extends LightBase {
   anim: LightAnim | undefined;
   spillScale: number;
   readonly ph = nextPhase();
-  protected core: Img;
-  protected spill: Img | null;
+  protected core: Img | null = null;
+  protected spill: Img | null = null;
   protected tintImg: Img | null = null;
   tint: number;
   protected airImg: Img | null = null;
@@ -432,6 +455,12 @@ export class PoolLight extends LightBase {
     const depth = o.depth ?? (statik ? LIGHT_DEPTH.STATIC : LIGHT_DEPTH.FLOOR);
     const blend = o.blend ?? 'screen';
     this.tint = o.tint ?? (group === 'fx' ? 0.5 : 0);
+    if (layer.stepped) {
+      // stepped: the floor stamps only (no core / spill / tint / air images)
+      this.patch = layer.makePatch();
+      void this.level.set(1, o.fadeIn ?? 160);
+      return;
+    }
     if (this.tint > 0) this.tintImg = this.img(LT.wide, depth - 0.02, 'multiply');
     this.spill = this.spillColor !== null ? this.img(LT.wide, depth - 0.01, blend) : null;
     this.core = this.img(LT.radial, depth, blend);
@@ -471,11 +500,18 @@ export class PoolLight extends LightBase {
     this.ry.step(dt);
     const m = animMod(this.anim, t, this.ph);
     const kk = Math.max(0, k * m.k * this.env);
+    if (this.patch) {
+      // stepped: one flat stamp on the floor (whole-pixel centre and radii, quarter-step level;
+      // the light's motion only modulates the level, never the shape)
+      this.patch.draw([...this.stamps(kk), ...this.extraStamps(k)]);
+      return;
+    }
     const rs = m.r * this.envR;
     const fx = this.x + m.dx;
     const fy = this.floorY + m.dy;
     const rx = this.rx.v * rs;
     const ry = this.ry.v * rs;
+    if (!this.core) return;
     place(this.core, fx, fy, rx, ry, this.color, A.core * kk * this.coreGain());
     if (this.spill) place(this.spill, fx, fy, rx * this.spillScale, ry * this.spillScale, this.spillColor ?? this.color, A.spill * kk * this.coreGain());
     if (this.tintImg) place(this.tintImg, fx, fy, rx * 1.5, ry * 1.5, this.color, A.tint * this.tint * Math.min(1.5, kk));
@@ -485,6 +521,25 @@ export class PoolLight extends LightBase {
   /** Subclasses scale the floor alphas (flash budgets). */
   protected coreGain(): number {
     return 1;
+  }
+
+  /** Stepped mode: steps per unit of light (a flash's peak lifts its core two steps). */
+  protected stepGain(): number {
+    return 1;
+  }
+
+  /** Stepped mode: the floor stamp of this pool at intensity `kk`. */
+  protected stamps(kk: number): Stamp[] {
+    const level = quantize(kk * this.stepGain());
+    const rx = Math.max(0, Math.round(this.rx.v * this.envR));
+    const ry = Math.max(0, Math.round(this.ry.v * this.envR));
+    if (level <= 0 || rx < 1 || ry < 1) return [];
+    return [{ kind: 'ellipse', cx: Math.round(this.x), cy: Math.round(this.floorY), rx, ry, level, hue: this.color }];
+  }
+
+  /** Stepped mode: more stamps (a flash's ring). */
+  protected extraStamps(_k: number): Stamp[] {
+    return [];
   }
 }
 
@@ -540,12 +595,32 @@ export class FlashLight extends PoolLight {
     this.rise = o.rise ?? Math.min(40, this.dur * 0.12);
     this.peak = o.intensity ?? 1;
     this.baseR = radius;
-    this.ringImg = o.ring ? this.img(LT.ring, LIGHT_DEPTH.FLOOR + 0.02, 'add') : null;
+    this.ring = !!o.ring;
+    this.ringImg = o.ring && !layer.stepped ? this.img(LT.ring, LIGHT_DEPTH.FLOOR + 0.02, 'add') : null;
     this.env = 0;
   }
 
+  private readonly ring: boolean;
+
   protected coreGain(): number {
     return A.flashCore / A.core;
+  }
+
+  /** A flash at its peak (intensity 1) lifts its core two steps, then decays through the dither. */
+  protected stepGain(): number {
+    return 1.8;
+  }
+
+  /** The expanding shock ring: a 2 px (then 1 px) iso ring one step up, while it is strong enough. */
+  protected extraStamps(k: number): Stamp[] {
+    if (!this.ring) return [];
+    const x = this.age / this.dur;
+    const r = this.baseR * (0.45 + 1.35 * (1 - Math.pow(1 - x, 2)));
+    const level = quantize(1.6 * this.peak * k * (1 - x) * (1 - x));
+    const rx = Math.round(r);
+    const ry = Math.round(r / 2);
+    if (level <= 0 || rx < 2 || ry < 1) return [];
+    return [{ kind: 'ring', cx: Math.round(this.x), cy: Math.round(this.floorY), rx, ry, width: x < 0.4 ? 2 : 1, level: Math.min(1, level), hue: this.color }];
   }
 
   protected render(dt: number, t: number, k: number): void {
@@ -630,7 +705,11 @@ export class BeamLight extends LightBase implements BeamHandle {
     this.floorAlpha = alphas.floor;
     const statik = group === 'flood' || group === 'neon' || group === 'ambient';
     const fd = statik ? LIGHT_DEPTH.STATIC : LIGHT_DEPTH.FLOOR;
-    if (this.floor) {
+    if (layer.stepped) {
+      // stepped: only the floor strip (if any), as stamps; no air glow
+      this.fBody = this.fCapA = this.fCapB = null;
+      if (this.floor) this.patch = layer.makePatch();
+    } else if (this.floor) {
       this.fBody = this.img(LT.line, fd, 'screen');
       this.fCapA = this.img(LT.radial, fd, 'screen');
       this.fCapB = this.img(LT.radial, fd, 'screen');
@@ -638,7 +717,9 @@ export class BeamLight extends LightBase implements BeamHandle {
       this.fBody = this.fCapA = this.fCapB = null;
     }
     const ad = o.depth ?? (statik ? LIGHT_DEPTH.STATIC + 0.1 : LIGHT_DEPTH.AIR);
-    if (o.air !== false) {
+    if (layer.stepped) {
+      this.body = this.capA = this.capB = null; // no air glow in the stepped mode
+    } else if (o.air !== false) {
       this.body = this.img(LT.line, ad, 'add');
       this.capA = this.img(LT.radial, ad, 'add');
       this.capB = this.img(LT.radial, ad, 'add');
@@ -692,6 +773,16 @@ export class BeamLight extends LightBase implements BeamHandle {
     }
     const sh = 1 + this.shimmer * (0.6 * Math.sin(t * 17.3 + this.ph) + 0.4 * Math.sin(t * 29.1 + 2 * this.ph)) * 0.5;
     const kk = k * env * sh;
+    if (this.patch) {
+      const f = this.floor;
+      const level = quantize(k * env);
+      this.patch.draw(
+        f && level > 0
+          ? [{ kind: 'strip', ax: Math.round(f.from.x), ay: Math.round(f.from.y), bx: Math.round(f.to.x), by: Math.round(f.to.y), width: Math.max(2, Math.round(this.floorW)), level, hue: this.color }]
+          : [],
+      );
+      return;
+    }
     if (this.body && this.capA && this.capB) line(this.body, this.capA, this.capB, this.from, this.to, this.width, this.color, this.airAlpha * kk, false);
     if (this.floor && this.fBody && this.fCapA && this.fCapB) line(this.fBody, this.fCapA, this.fCapB, this.floor.from, this.floor.to, this.floorW, this.color, this.floorAlpha * kk, true);
   }
@@ -893,6 +984,80 @@ class UnitLight {
   }
 }
 
+/**
+ * Stepped mode: a monster's own light is ONE flat seat on its pad (the still's drawLights: the
+ * wyrm's cyan seat, the magus' violet one) — its glow colour (MONSTER_GLOW spill, else the
+ * attribute light), one step, centred under the sprite's ground point at whole pixels. It fades in
+ * / out through the dither as the unit appears / leaves, weakens as the unit rises off the floor
+ * (lift / hover) and follows it when it moves.
+ */
+class SteppedUnitLight {
+  readonly unit: MonsterUnit;
+  private readonly patch: StepPatch;
+  private readonly lvl = new Ramp(0);
+  private readonly color: number;
+  private readonly rx: number;
+  private readonly ry: number;
+  dead = false;
+
+  constructor(layer: LightLayer, unit: MonsterUnit) {
+    this.unit = unit;
+    const al = ATTRIBUTE_LIGHT[unit.attribute];
+    this.color = MONSTER_GLOW[unit.cardId]?.spill ?? al.color;
+    let ow = opaqueW.get(unit.cardId);
+    if (!ow) {
+      const b = monsterFrame(unit.cardId, 'idle', 0).bounds();
+      ow = b ? { w: b.w, h: b.h } : { w: 32, h: 32 };
+      opaqueW.set(unit.cardId, ow);
+    }
+    // the still: wyrm (≈ 60 px wide) 22 × 8, magus (≈ 40 px) 16 × 6
+    this.rx = Math.round(Math.max(12, Math.min(24, ow.w * 0.36)));
+    this.ry = Math.max(4, Math.round(this.rx * 0.37));
+    this.patch = layer.makePatch();
+  }
+
+  tick(dt: number, _t: number, gain: number, onField: boolean, layer: LightLayer): boolean {
+    const u = this.unit;
+    const s = u.sprite;
+    let vis = 0;
+    if ((onField || (s.active && !u.retired)) && s.active && !u.retired && s.visible) vis = Math.min(1, s.alpha);
+    if (Math.abs(this.lvl.target - vis) > 0.01) void this.lvl.set(vis, vis > this.lvl.v ? 240 : 200, (x) => x);
+    this.lvl.step(dt);
+    const lv = this.lvl.v;
+    if (!onField && lv <= 0.003 && vis <= 0.003) return false;
+    if (!s.active) {
+      this.patch.draw([]);
+      return lv > 0.003 && onField;
+    }
+    const air = u.art.hover + u.lift;
+    const level = quantize(gain * layer.groupGain('unit') * lv / (1 + air / 45));
+    const groundY = s.y + u.art.hover * Math.abs(s.scaleY) + u.lift;
+    // lit from the top-left: the seat sits a hair right of the anchor, like the still's seats
+    const cx = Math.round(s.x + (u.flipX ? -1 : 1) * 2);
+    const cy = Math.round(groundY - 1);
+    this.patch.draw(level > 0 ? [{ kind: 'ellipse', cx, cy, rx: this.rx, ry: this.ry, level: Math.min(1, level), hue: this.color, core: 0 }] : []);
+    return true;
+  }
+
+  images(): Img[] {
+    return [this.patch.img];
+  }
+
+  setShown(on: boolean): void {
+    this.patch.setShown(on);
+  }
+
+  pixels(): number {
+    return this.patch.pixels;
+  }
+
+  destroy(): void {
+    this.dead = true;
+    this.patch.destroy();
+    this.lvl.flush();
+  }
+}
+
 /** World point of a frame pixel of a plain (container-less) sprite. */
 function framePoint(s: Phaser.GameObjects.Sprite, fx: number, fy: number): XY {
   const f = s.frame;
@@ -948,12 +1113,17 @@ export interface LightLayerOpts {
   enabled?: boolean;
   /** Overall gain (default 1; ?lightgain=k). */
   gain?: number;
+  /** Stepped mode (flat tone steps on the pads, no alpha; see the header). Default: the v3 look. */
+  stepped?: boolean;
 }
 
 export class LightLayer {
   readonly scene: Phaser.Scene;
   private readonly lights = new Set<LightBase>();
   private readonly unitLights = new Map<MonsterUnit, UnitLight>();
+  private readonly steppedUnits = new Map<MonsterUnit, SteppedUnitLight>();
+  /** Stepped mode (v3 look): flat tone steps on the pads instead of soft blended light. */
+  readonly stepped: boolean;
   private readonly tileLights = new Map<ZoneEntry, TileLight>();
   private field: LightFieldSource | null = null;
   private readonly dim = new Ramp(0);
@@ -979,7 +1149,9 @@ export class LightLayer {
 
   constructor(scene: Phaser.Scene, o: LightLayerOpts = {}) {
     this.scene = scene;
-    ensureLightTextures(scene);
+    this.stepped = o.stepped ?? LOOK_V3;
+    // the soft glow textures exist only for the soft mode
+    if (!this.stepped) ensureLightTextures(scene);
     this.on = o.enabled ?? true;
     this.gain = o.gain ?? 1;
     const pad = 48;
@@ -1003,8 +1175,10 @@ export class LightLayer {
     this.excludeUi(this.wash);
     // raw frame time (not Phaser's smoothed delta: its history spikes after a stall / under the
     // stepped test clock, while tweens run on their own clock)
+    // (While the loop sleeps — the stepped QA clock of main.ts / tools/measure.mjs — the step's
+    // own delta is exact: use it, so films do not depend on the clock's absolute values.)
     this.onUpdate = (time, delta) => {
-      const raw = this.lastTime < 0 ? delta : time - this.lastTime;
+      const raw = this.lastTime < 0 || !scene.game.loop.running ? delta : time - this.lastTime;
       this.lastTime = time;
       this.update(raw);
     };
@@ -1041,6 +1215,9 @@ export class LightLayer {
     } else {
       for (const im of this.allImages()) im.setVisible(true);
     }
+    // stepped patches show only when they hold pixels
+    for (const l of this.lights) l.setVisibleAll(on);
+    for (const u of this.steppedUnits.values()) u.setShown(on);
   }
 
   /** Current dim level (−1 brighten … 0 normal … 1 dramatic dim). */
@@ -1095,6 +1272,14 @@ export class LightLayer {
     this.lights.delete(l);
   }
 
+  /** Internal (stepped mode): a light's floor patch (hidden until its light draws it). */
+  makePatch(): StepPatch {
+    const p = new StepPatch(this.scene);
+    this.excludeUi(p.img);
+    if (!this.on) p.setShown(false);
+    return p;
+  }
+
   /** Internal: a light image at `depth` (hidden until its light renders it). */
   makeImage(tex: string, depth: number, blend: LightBlend, frame?: string | number): Img {
     const im = this.scene.add
@@ -1117,6 +1302,7 @@ export class LightLayer {
     const out: Img[] = [];
     for (const l of this.lights) out.push(...(l as unknown as { imgs: Img[] }).imgs);
     for (const u of this.unitLights.values()) out.push(...u.images());
+    for (const u of this.steppedUnits.values()) out.push(...u.images());
     for (const tl of this.tileLights.values()) out.push((tl as unknown as { img: Img }).img);
     return out;
   }
@@ -1133,6 +1319,11 @@ export class LightLayer {
     for (const g of Object.values(this.groups)) g.step(dt);
     const gain = this.gain;
     for (const l of [...this.lights]) l.tick(dt, t, gain);
+    if (this.stepped) {
+      // stepped: monster seats only (no tile glows, no dim veil / wash: no alpha anywhere)
+      this.updateSteppedUnits(dt, t, gain);
+      return;
+    }
     this.updateUnits(dt, t, gain);
     this.updateTiles(dt, t, gain);
     // dim veil / brighten wash
@@ -1175,6 +1366,39 @@ export class LightLayer {
     }
   }
 
+  private updateSteppedUnits(dt: number, t: number, gain: number): void {
+    let units: MonsterUnit[] = [];
+    try {
+      units = this.field?.units() ?? [];
+    } catch {
+      units = [];
+    }
+    const seen = new Set<MonsterUnit>(units);
+    for (const u of units) {
+      if (!this.steppedUnits.has(u) && u.sprite?.active && !u.retired) {
+        try {
+          const sl = new SteppedUnitLight(this, u);
+          if (!this.on) sl.setShown(false);
+          this.steppedUnits.set(u, sl);
+        } catch (e) {
+          console.error('[light] stepped unit light failed', e);
+        }
+      }
+    }
+    for (const [u, sl] of this.steppedUnits) {
+      let alive = false;
+      try {
+        alive = sl.tick(dt, t, gain, seen.has(u), this);
+      } catch (e) {
+        console.error('[light] stepped unit light failed', e);
+      }
+      if (!alive) {
+        sl.destroy();
+        this.steppedUnits.delete(u);
+      }
+    }
+  }
+
   private updateTiles(dt: number, t: number, gain: number): void {
     let tiles: ZoneEntry[] = [];
     try {
@@ -1199,9 +1423,22 @@ export class LightLayer {
     }
   }
 
-  /** Debug / QA numbers. */
-  stats(): { enabled: boolean; lights: number; units: number; tiles: number; dim: number; gain: number } {
-    return { enabled: this.on, lights: this.lights.size, units: this.unitLights.size, tiles: this.tileLights.size, dim: this.dim.v, gain: this.gain };
+  /** Debug / QA numbers (stepped: steppedPx = lit pad pixels of event lights / unit seats). */
+  stats(): { enabled: boolean; stepped: boolean; lights: number; units: number; tiles: number; dim: number; gain: number; steppedPx: { lights: number; units: number } } {
+    let lp = 0;
+    for (const l of this.lights) lp += l.steppedPixels();
+    let up = 0;
+    for (const u of this.steppedUnits.values()) up += u.pixels();
+    return {
+      enabled: this.on,
+      stepped: this.stepped,
+      lights: this.lights.size,
+      units: this.stepped ? this.steppedUnits.size : this.unitLights.size,
+      tiles: this.tileLights.size,
+      dim: this.dim.v,
+      gain: this.gain,
+      steppedPx: { lights: lp, units: up },
+    };
   }
 
   destroy(): void {
@@ -1215,6 +1452,8 @@ export class LightLayer {
     this.lights.clear();
     for (const ul of this.unitLights.values()) ul.destroy();
     this.unitLights.clear();
+    for (const sl of this.steppedUnits.values()) sl.destroy();
+    this.steppedUnits.clear();
     for (const tl of this.tileLights.values()) tl.destroy();
     this.tileLights.clear();
     this.dim.flush();

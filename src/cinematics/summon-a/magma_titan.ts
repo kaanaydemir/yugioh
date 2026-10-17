@@ -313,7 +313,7 @@ signatureSummon('magma_titan', async (S) => {
       bg(
         (async () => {
           for (const f of [5, 6, 7]) {
-            if (f >= unit.art.anims.roar.frames) break;
+            if (f >= unit.frameCount('roar')) break;
             await untilFrame(unit, 'roar', f);
             if (unit.frameInfo().anim !== 'roar') break;
             bg(shake(sc, 70, 1));

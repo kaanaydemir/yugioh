@@ -5,10 +5,13 @@
 //   await Promise.all([shake(scene, 180, 3), flash(scene, 120, PAL.white, 0.6)]);
 //
 // Timing uses scene time (scaled by the global speed), except hitStop which freezes it.
+// Speed, hit-stop and pause live in ONE place, the scene's show clock (src/duel/showclock.ts):
+// setSpeed / hitStop / shake below delegate to it.
 
 import Phaser from 'phaser';
 import { DEPTH, GAME_H, GAME_W } from '../view/layout';
 import { PixelCanvas } from '../art/pixel';
+import { showClock } from '../duel/showclock';
 
 /** Wait `ms` of scene time (respects speed/fast-forward). */
 export function wait(scene: Phaser.Scene, ms: number): Promise<void> {
@@ -54,43 +57,80 @@ export function tweenValue(
   return tween(scene, { targets: o, v: to, duration, ease, onUpdate: () => onUpdate(o.v) });
 }
 
-/** Camera shake. `px` is the max offset in game pixels. */
+/**
+ * Camera shake. `px` is the max offset in game pixels; `ms` is show-clock time: 3× speed makes it
+ * a third as long and the duel menu pause holds it (v3 look: a hit-stop holds it too; v1 keeps
+ * shaking through a hit-stop, as before). See src/duel/showclock.ts.
+ */
 export function shake(scene: Phaser.Scene, ms: number, px: number): Promise<void> {
+  const cam = scene.cameras.main;
+  showClock(scene).bindShake(cam);
   return new Promise((resolve) => {
-    scene.cameras.main.shake(ms, px / GAME_W, true, (_cam: unknown, progress: number) => {
+    cam.shake(ms, px / GAME_W, true, (_cam: unknown, progress: number) => {
       if (progress >= 1) resolve();
     });
   });
 }
 
-/** Full-screen color flash that fades out. */
-export function flash(scene: Phaser.Scene, ms: number, color = 0xffffff, alpha = 0.8, depth: number = DEPTH.OVERLAY): Promise<void> {
-  const r = scene.add.rectangle(0, 0, GAME_W, GAME_H, color, alpha).setOrigin(0).setDepth(depth).setScrollFactor(0);
+/**
+ * The top of the world depth band: a full-screen flash here covers the whole world (board, units,
+ * every FX band) but stays under the HUD band (depth ≥ DEPTH.HUD: HUD, hand, inspect, menus,
+ * banners, cut-ins, overlays), which CameraRig draws with its UI camera on top of the world.
+ */
+export const WORLD_FLASH_DEPTH = DEPTH.HUD - 1;
+
+/** World flashes reach this far past the frame (shake offsets, a 2× close-up around the centre). */
+const FLASH_PAD = 48;
+
+export interface FlashOpts {
+  /**
+   * Wash the HUD band too (the old behaviour: the flash sits at its `depth` even when that is in
+   * the HUD band). Default false: world only — the HUD is never washed by a flash.
+   */
+  hud?: boolean;
+  /** Blend mode of the flash rectangle (default NORMAL). */
+  blend?: Phaser.BlendModes | number;
+}
+
+/**
+ * A full-screen flash rectangle (alpha `alpha`) that only lights the WORLD: at `depth` clamped
+ * under the HUD band (WORLD_FLASH_DEPTH), screen-space, padded so camera shake / a close-up never
+ * shows an unflashed edge. The caller animates and destroys it (see flash()).
+ */
+export function flashRect(scene: Phaser.Scene, color: number, alpha: number, depth: number = DEPTH.OVERLAY, o: FlashOpts = {}): Phaser.GameObjects.Rectangle {
+  const d = o.hud ? depth : Math.min(depth, WORLD_FLASH_DEPTH);
+  const pad = o.hud ? 0 : FLASH_PAD;
+  const r = scene.add
+    .rectangle(-pad, -pad, GAME_W + pad * 2, GAME_H + pad * 2, color, alpha)
+    .setOrigin(0)
+    .setDepth(d)
+    .setScrollFactor(0);
+  if (o.blend !== undefined) r.setBlendMode(o.blend);
+  return r;
+}
+
+/**
+ * Full-screen color flash that fades out. World only by default (A1.9): `depth` is clamped under
+ * the HUD band, so the HUD, hand, banners and cut-ins are never washed; `{ hud: true }` restores
+ * the old full-screen behaviour.
+ */
+export function flash(scene: Phaser.Scene, ms: number, color = 0xffffff, alpha = 0.8, depth: number = DEPTH.OVERLAY, o: FlashOpts = {}): Promise<void> {
+  const r = flashRect(scene, color, alpha, depth, o);
   return tween(scene, { targets: r, alpha: 0, duration: ms, ease: 'Quad.Out' }).then(() => r.destroy());
 }
 
 /**
- * Hit-stop: freeze tweens, timers and sprite animations for `ms` of real time —
- * the classic "impact frame" pause that sells heavy hits. Keep it short (40–120 ms).
+ * Hit-stop: freeze tweens, timers, sprite animations and every custom frame clock for `ms` of
+ * real time — the classic "impact frame" pause that sells heavy hits. Keep it short (40–120 ms).
+ * Nesting-safe (the show clock merges overlapping stops; same as combat.stopTime).
  */
-export async function hitStop(scene: Phaser.Scene, ms: number): Promise<void> {
-  const tweens = scene.tweens.timeScale;
-  const time = scene.time.timeScale;
-  const anims = scene.anims.globalTimeScale;
-  scene.tweens.timeScale = 0;
-  scene.time.timeScale = 0;
-  scene.anims.globalTimeScale = 0;
-  await realWait(scene, ms);
-  scene.tweens.timeScale = tweens;
-  scene.time.timeScale = time;
-  scene.anims.globalTimeScale = anims;
+export function hitStop(scene: Phaser.Scene, ms: number): Promise<void> {
+  return showClock(scene).freeze(ms);
 }
 
-/** Global playback speed (fast-forward). 1 = normal. */
+/** Global playback speed (fast-forward). 1 = normal. Kept through hit-stops and pauses. */
 export function setSpeed(scene: Phaser.Scene, k: number): void {
-  scene.tweens.timeScale = k;
-  scene.time.timeScale = k;
-  scene.anims.globalTimeScale = k;
+  showClock(scene).setSpeed(k);
 }
 
 /** Fire-and-forget helper that never lets an effect's error break a cinematic. */

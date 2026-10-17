@@ -1468,6 +1468,8 @@ const crystalWyrm: MonsterArt = {
   core: { x: 48, y: 58 },
   anims: ANIMS,
   attackImpactFrame: IMPACT,
+  // motion character (plan §2; src/duel/motion.ts)
+  weight: 'mediumHeavy',
   draw(p: PixelCanvas, anim: MonsterAnim, frame: number) {
     drawDragon(p, framePose(anim, frame));
   },

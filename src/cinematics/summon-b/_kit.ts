@@ -18,7 +18,7 @@ import type { CardId, MonsterId } from '../../data/cards';
 import type { GameEvent, PlayerId } from '../../engine/types';
 import { ATTRIBUTE_RAMP, PAL, PLAYER_COLOR, type Ramp } from '../../art/palette';
 import { monsterAnimKey, monsterFrameName } from '../../art/textures';
-import type { MonsterAnim } from '../../art/types';
+import type { AnyMonsterAnim, MonsterAnim } from '../../art/types';
 import type { SfxName } from '../../audio/sfx';
 import { DEPTH, TILE_W, type XY, unitDepth } from '../../view/layout';
 import { attributeLightColor, lightBeam, lightDim, lightFlash, lightPool, type BeamHandle, type LightHandle, type PoolOpts } from '../../view/light';
@@ -29,6 +29,7 @@ import { clearHologram, getHologram, holoRamp, opaqueBox, setHologram, type Holo
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { TileCard } from '../../view/TileCard';
 import { fx, type CinematicContext, type EventOf } from '../api';
+import { onDuelStart } from '../../duel/seeds';
 
 export { Raster, Sparks, onFrame, run };
 // the subtle light layer (arena v2; every call is a no-op in v1)
@@ -69,7 +70,9 @@ export const E = {
 
 // ---------------------------------------------------------------- deterministic random
 
-let seed = 0x5b0b5;
+const SEED0 = 0x5b0b5;
+let seed = SEED0;
+onDuelStart(() => (seed = SEED0));
 /** Small LCG so films are repeatable (independent of the library random streams). */
 export function rnd(): number {
   seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
@@ -115,52 +118,37 @@ export const ROAR_PEAK: Partial<Record<MonsterId, number>> = {
 };
 
 export function roarPeak(u: MonsterUnit): number {
-  const n = u.art.anims.roar.frames;
+  const n = u.frameCount('roar');
   return clamp(ROAR_PEAK[u.cardId] ?? Math.round(n * 0.35), 0, n - 1);
 }
 
-/** ms from frame `from` to frame `to` of `anim` (live fps). */
-export function frameMs(u: MonsterUnit, anim: MonsterAnim, from: number, to: number): number {
-  return ((to - from) / u.art.anims[anim].fps) * 1000;
+/** ms from frame `from` to frame `to` of `anim` (per-frame holds aware; MonsterUnit.rangeMs). */
+export function frameMs(u: MonsterUnit, anim: AnyMonsterAnim, from: number, to: number): number {
+  return u.rangeMs(anim, from, to);
 }
 
-/** Hold one frame of an animation (stops the animation: full manual control). */
-export function pose(u: MonsterUnit, anim: MonsterAnim, frame: number): void {
-  const s = u.sprite;
-  if (!s.active) return;
-  const n = u.art.anims[anim].frames;
-  s.anims.stop();
-  s.setFrame(monsterFrameName(anim, clamp(Math.round(frame), 0, n - 1)));
+/** Hold one frame of an animation (stops the animation: full manual control). MonsterUnit.pose. */
+export function pose(u: MonsterUnit, anim: AnyMonsterAnim, frame: number): void {
+  u.pose(anim, frame);
 }
 
 /**
  * Play `anim` from frame `from`. Resolves when it completes (then back to idle/guard unless
- * hold). Safe against hit-stops and supersession (resolves anyway after a generous timeout).
+ * hold, and only if nobody started another one-shot meanwhile). Safe against hit-stops and
+ * supersession (resolves anyway after a generous timeout). A thin wrapper over
+ * MonsterUnit.playRange with this kit's original contract: a side play (no play-slot takeover)
+ * at timeScale 1; the safety net, (remaining length) × 1.6 + 250 ms of scene time, resolves
+ * without returning to rest.
  */
-export function playFrom(u: MonsterUnit, anim: MonsterAnim, from = 0, o: { hold?: boolean } = {}): Promise<void> {
+export function playFrom(u: MonsterUnit, anim: AnyMonsterAnim, from = 0, o: { hold?: boolean } = {}): Promise<void> {
   const s = u.sprite;
-  const key = monsterAnimKey(u.cardId, anim);
-  if (!s.active || !u.scene.anims.exists(key)) return Promise.resolve();
-  const spec = u.art.anims[anim];
-  s.anims.timeScale = 1;
-  s.play({ key, repeat: 0, startFrame: clamp(from, 0, spec.frames - 1) });
-  return new Promise<void>((resolve) => {
-    let done = false;
-    const fin = (rest: boolean) => {
-      if (done) return;
-      done = true;
-      s.off(Phaser.Animations.Events.ANIMATION_COMPLETE_KEY + key, onDone);
-      if (rest && !o.hold && !u.retired && s.active) {
-        const cur = u.frameInfo().anim;
-        // only return to the loop if nobody started another one-shot meanwhile
-        if (cur === anim) u.rest();
-      }
-      resolve();
-    };
-    const onDone = () => fin(true);
-    s.once(Phaser.Animations.Events.ANIMATION_COMPLETE_KEY + key, onDone);
-    const ms = ((spec.frames - from) / spec.fps) * 1000;
-    void wait(u.scene, ms * 1.6 + 250).then(() => fin(false));
+  if (s.active && u.scene.anims.exists(monsterAnimKey(u.cardId, anim))) s.anims.timeScale = 1;
+  return u.playRange(anim, from, undefined, {
+    hold: o.hold,
+    exclusive: false,
+    restIfCurrent: true,
+    restOnTimeout: false,
+    safety: (ms) => wait(u.scene, ms * 1.6 + 250),
   });
 }
 
@@ -168,7 +156,7 @@ export function playFrom(u: MonsterUnit, anim: MonsterAnim, from = 0, o: { hold?
  * Resolve when the sprite's running `anim` reaches `frame` (0-based). Call it right AFTER
  * starting the animation. Resolves at once if already there, and on any change of animation.
  */
-export function whenFrame(u: MonsterUnit, anim: MonsterAnim, frame: number): Promise<void> {
+export function whenFrame(u: MonsterUnit, anim: AnyMonsterAnim, frame: number): Promise<void> {
   const s = u.sprite;
   const key = monsterAnimKey(u.cardId, anim);
   return new Promise<void>((resolve) => {
@@ -191,8 +179,8 @@ export function whenFrame(u: MonsterUnit, anim: MonsterAnim, frame: number): Pro
     if (cur.anim === anim && cur.frame >= frame) return fin();
     s.on(Phaser.Animations.Events.ANIMATION_UPDATE, onUpd);
     s.once(Phaser.Animations.Events.ANIMATION_COMPLETE_KEY + key, fin);
-    const spec = u.art.anims[anim];
-    void wait(u.scene, ((frame + 1) / spec.fps) * 1000 * 1.6 + 300).then(fin);
+    // safety net: until frame `frame` would have ended (per-frame holds aware)
+    void wait(u.scene, u.rangeMs(anim, 0, frame + 1) * 1.6 + 300).then(fin);
   });
 }
 

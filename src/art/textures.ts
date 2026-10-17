@@ -3,14 +3,26 @@
 // Conventions:
 //   texture `mon:<id>`          — monster sheet, frame names `<anim>:<i>`
 //   animation `mon:<id>:<anim>` — Phaser animation (repeat -1 when loop)
+//
+// v3 (A1): a sheet holds every animation of `animList(art)` — the five base anims in
+// MONSTER_ANIMS order (so the old monsters' sheets are unchanged), then the optional extras
+// (`extraAnims` / `drawExtra`). Frames with an AnimSpec hold get it as the Phaser frame
+// `duration` (Phaser plays `frame.duration || msPerFrame`); frames without one keep the
+// frameRate timing, exactly as before. Read timings through src/art/animtime.ts, and never pass
+// `frameRate` / `duration` to play() for such an anim: Phaser then ignores the frame durations.
+// A sheet can also be built under another key with DrawOpts (`SheetOpts`), e.g. a P2 'relight'
+// variant drawn with { lightFrom: 'right' }.
 
 import Phaser from 'phaser';
 import type { MonsterId } from '../data/cards';
 import { MONSTER_IDS } from '../data/cards';
+import { animList, animSpec, hasAnim, holdOf, isExtraAnim } from './animtime';
 import { monsterArt } from './monsters';
 import { PixelCanvas } from './pixel';
-import type { MonsterAnim, MonsterArt } from './types';
+import type { AnyMonsterAnim, DrawOpts, MonsterArt } from './types';
 import { MONSTER_ANIMS } from './types';
+
+export { animList, animSpec, hasAnim } from './animtime';
 
 /**
  * Register a finished canvas as a STATIC texture (frames can be added as usual). Unlike
@@ -53,53 +65,182 @@ export function sheetTexture(scene: Phaser.Scene, key: string, w: number, h: num
   return key;
 }
 
-// ---------------------------------------------------------------- monsters
+// ---------------------------------------------------------------- monster frames
 
+/** Frames of the registry arts (monsterArt(id)), keyed by id — shared by sheets, shatter, card art. */
 const frameCache = new Map<string, PixelCanvas>();
+/** Frames of other art objects (dev / test arts passed to buildMonster), per object. */
+const otherCaches = new WeakMap<MonsterArt, Map<string, PixelCanvas>>();
 
-/** Rendered pixels of a monster frame (cached). Used by shatter VFX and card art. */
-export function monsterFrame(id: MonsterId, anim: MonsterAnim, frame: number): PixelCanvas {
-  const k = `${id}|${anim}|${frame}`;
-  let pc = frameCache.get(k);
+function cacheOf(art: MonsterArt): Map<string, PixelCanvas> {
+  if (monsterArt(art.id) === art) return frameCache;
+  let m = otherCaches.get(art);
+  if (!m) otherCaches.set(art, (m = new Map()));
+  return m;
+}
+
+/**
+ * Draw one frame of any animation the art has into `p` (already cleared, w×h): base anims via
+ * `draw`, extras via `drawExtra`. The frame is clamped to the last one; an animation the art
+ * does not have draws idle frame 0. `o` is passed on only when given (old arts see 3 args).
+ */
+export function drawMonsterFrame(p: PixelCanvas, art: MonsterArt, anim: AnyMonsterAnim, frame: number, o?: DrawOpts): void {
+  const spec = animSpec(art, anim);
+  if (!spec) {
+    if (o) art.draw(p, 'idle', 0, o);
+    else art.draw(p, 'idle', 0);
+    return;
+  }
+  const f = Math.min(frame, spec.frames - 1);
+  if (isExtraAnim(anim)) art.drawExtra!(p, anim, f, o);
+  else if (o) art.draw(p, anim, f, o);
+  else art.draw(p, anim, f);
+}
+
+/** Rendered pixels of one frame of `art` (cached). */
+export function artFrame(art: MonsterArt, anim: AnyMonsterAnim, frame: number, o?: DrawOpts): PixelCanvas {
+  const cache = cacheOf(art);
+  const k = `${art.id}|${anim}|${frame}${o?.lightFrom === 'right' ? '|r' : ''}`;
+  let pc = cache.get(k);
   if (!pc) {
-    const art = monsterArt(id);
     pc = new PixelCanvas(art.w, art.h);
-    art.draw(pc, anim, Math.min(frame, art.anims[anim].frames - 1));
-    frameCache.set(k, pc);
+    drawMonsterFrame(pc, art, anim, frame, o);
+    cache.set(k, pc);
   }
   return pc;
+}
+
+/** Rendered pixels of a monster frame (cached). Used by shatter VFX and card art. */
+export function monsterFrame(id: MonsterId, anim: AnyMonsterAnim, frame: number, o?: DrawOpts): PixelCanvas {
+  return artFrame(monsterArt(id), anim, frame, o);
+}
+
+/** Does this monster draw the animation (base anims always; extras when its art defines them)? */
+export function hasMonsterAnim(id: MonsterId, anim: AnyMonsterAnim): boolean {
+  return hasAnim(monsterArt(id), anim);
 }
 
 export function monsterTextureKey(id: MonsterId): string {
   return `mon:${id}`;
 }
 
-export function monsterAnimKey(id: MonsterId, anim: MonsterAnim): string {
-  return `mon:${id}:${anim}`;
+// ---------------------------------------------------------------- P2 lighting (v3, A1 item 10)
+//
+// Monsters are drawn facing right with the key light from the frame's top-left; player 2 shows
+// the same sheet mirrored (flipX), so by default ('mirror') its light comes from the screen's
+// top-RIGHT. An art with `p2: 'relight'` also gets a second sheet `mon:<id>:p2`, drawn with
+// DrawOpts { lightFrom: 'right' } (same layout, frame names and anims `mon:<id>:p2:<anim>`):
+// mirrored, it is lit from the screen top-left again. MonsterUnit picks the sheet from its
+// controller (monsterSheetKey; applyFacing / setController) and keeps the sprite on it whatever
+// anim key is played, so the anim keys and their events stay `mon:<id>:<anim>`.
+// monsterTextureKey(id) stays the P1 / default sheet (cut-ins, card art, gallery...).
+
+/** Key of a monster's optional P2 'relight' sheet (exists only when one was built). */
+export function monsterP2TextureKey(id: MonsterId): string {
+  return `mon:${id}:p2`;
 }
 
-export function monsterFrameName(anim: MonsterAnim, frame: number): string {
+/** Does this art ask for a P2 'relight' sheet? (Default 'mirror': P2 flips the P1 sheet.) */
+export function relightsP2(art: MonsterArt): boolean {
+  return art.p2 === 'relight';
+}
+
+/**
+ * The sheet a monster controlled by `player` shows: player 2 gets `mon:<id>:p2` when such a sheet
+ * was built or prepared here (art.p2 === 'relight' at boot, or a dev / test sheet built with
+ * SheetOpts.key = monsterP2TextureKey(id)); everything else the default `mon:<id>`.
+ */
+export function monsterSheetKey(id: MonsterId, player: 0 | 1): string {
+  if (player === 1) {
+    const k = monsterP2TextureKey(id);
+    if (knownSheets.has(k)) return k;
+  }
+  return monsterTextureKey(id);
+}
+
+export function monsterAnimKey(id: MonsterId, anim: AnyMonsterAnim): string {
+  return sheetAnimKey(monsterTextureKey(id), anim);
+}
+
+/** Animation key of `anim` on a monster sheet registered under texture `key`. */
+export function sheetAnimKey(key: string, anim: AnyMonsterAnim): string {
+  return `${key}:${anim}`;
+}
+
+export function monsterFrameName(anim: AnyMonsterAnim, frame: number): string {
   return `${anim}:${frame}`;
 }
 
-export function buildMonster(scene: Phaser.Scene, art: MonsterArt): void {
-  const frames: [string, PixelCanvas][] = [];
-  for (const anim of MONSTER_ANIMS) {
-    for (let f = 0; f < art.anims[anim].frames; f++) frames.push([monsterFrameName(anim, f), monsterFrame(art.id, anim, f)]);
-  }
-  const key = monsterTextureKey(art.id);
-  sheetTexture(scene, key, art.w, art.h, frames);
-  for (const anim of MONSTER_ANIMS) {
-    const spec = art.anims[anim];
-    const animKey = monsterAnimKey(art.id, anim);
+// ---------------------------------------------------------------- sheet layout + anims
+
+/** Where and how a monster sheet is built (defaults: `mon:<id>`, the art's default lighting). */
+export interface SheetOpts {
+  /** Texture key; its animations are `<key>:<anim>`. Default monsterTextureKey(art.id). */
+  key?: string;
+  /** Passed to every draw call (e.g. { lightFrom: 'right' } for a P2 relight sheet). */
+  draw?: DrawOpts;
+}
+
+interface Cell {
+  anim: AnyMonsterAnim;
+  f: number;
+  x: number;
+  y: number;
+}
+
+/** Grid of a sheet: every frame of animList(art) in order, ≤ 4096 px wide (as sheetTexture). */
+function layoutSheet(art: MonsterArt): { cols: number; rows: number; cells: Cell[] } {
+  const names: { anim: AnyMonsterAnim; f: number }[] = [];
+  for (const anim of animList(art)) for (let f = 0; f < animSpec(art, anim)!.frames; f++) names.push({ anim, f });
+  const cols = Math.max(1, Math.min(names.length, Math.floor(4096 / art.w)));
+  const rows = Math.ceil(names.length / cols);
+  const cells = names.map((n, i) => ({ ...n, x: (i % cols) * art.w, y: Math.floor(i / cols) * art.h }));
+  return { cols, rows, cells };
+}
+
+/** (Re)create the Phaser animations of a sheet. Holds become per-frame `duration`s. */
+function createSheetAnims(scene: Phaser.Scene, art: MonsterArt, key: string): void {
+  for (const anim of animList(art)) {
+    const spec = animSpec(art, anim)!;
+    const animKey = sheetAnimKey(key, anim);
     if (scene.anims.exists(animKey)) scene.anims.remove(animKey);
     scene.anims.create({
       key: animKey,
-      frames: Array.from({ length: spec.frames }, (_, f) => ({ key, frame: monsterFrameName(anim, f) })),
+      frames: Array.from({ length: spec.frames }, (_, f) => {
+        const d = holdOf(spec, f);
+        // no `duration` at all without a hold: the old anims are created exactly as before
+        return d ? { key, frame: monsterFrameName(anim, f), duration: d } : { key, frame: monsterFrameName(anim, f) };
+      }),
       frameRate: spec.fps,
       repeat: spec.loop ? -1 : 0,
     });
   }
+}
+
+/** Pixels of one sheet cell. Base frames of the default sheet share the frame cache; extras and
+ *  DrawOpts variants are drawn fresh (not cached: they would double the cache for frames that
+ *  only the sheet needs — monsterFrame() still caches them on request). */
+function cellPixels(art: MonsterArt, c: Cell, o: DrawOpts | undefined): PixelCanvas {
+  if (!o && !isExtraAnim(c.anim)) return artFrame(art, c.anim, c.f);
+  const pc = new PixelCanvas(art.w, art.h);
+  drawMonsterFrame(pc, art, c.anim, c.f, o);
+  return pc;
+}
+
+/** Build a monster sheet + its animations synchronously (painted right now). */
+export function buildMonster(scene: Phaser.Scene, art: MonsterArt, o: SheetOpts = {}): void {
+  const key = o.key ?? monsterTextureKey(art.id);
+  dropPending(key);
+  const { cells } = layoutSheet(art);
+  sheetTexture(
+    scene,
+    key,
+    art.w,
+    art.h,
+    cells.map((c) => [monsterFrameName(c.anim, c.f), cellPixels(art, c, o.draw)]),
+  );
+  createSheetAnims(scene, art, key);
+  knownSheets.add(key);
 }
 
 // ---------------------------------------------------------------- deferred monster sheets
@@ -109,132 +250,333 @@ export function buildMonster(scene: Phaser.Scene, art: MonsterArt): void {
 // once — blank canvas, frame rects and animations, so keys, frames and anims all exist — and the
 // frames are painted afterwards in small time slices (setTimeout, ~6 ms each). Anything that
 // looks a sheet up through the texture manager (sprite creation, setTexture, textures.get(...)
-// for pixel reads) first finishes that sheet synchronously, so no consumer ever sees an unpainted
-// frame; usually the background slices are long done by then. With ?test (screenshot tooling)
-// everything is built synchronously at boot, as before, so films stay deterministic.
+// for pixel reads) first finishes that sheet's BASE animations synchronously, so no consumer
+// ever sees an unpainted frame; usually the background slices are long done by then. With ?test
+// (screenshot tooling) everything is built synchronously at boot, as before, so films stay
+// deterministic.
+//
+// Per-animation laziness (v3): a sheet tracks which animations are painted and uploaded. The
+// base animations (MONSTER_ANIMS) are finished together on first access — one canvas upload,
+// exactly the old behaviour (and old monsters have nothing else). The optional extra animations
+// are painted later in the background, or on demand the first time one is played
+// (anims.get('<key>:<extra>')) or one of its frames is set by name (texture.get('<extra>:<i>')),
+// each costing its own frames plus one upload — so a bigger v3 sheet does not make the first
+// summon wait for its death / revive / victory poses.
+
+interface Group {
+  anim: AnyMonsterAnim;
+  /** cell range [start, end) */
+  start: number;
+  end: number;
+  /** cells of the group not painted yet */
+  left: number;
+  /** painted AND uploaded */
+  ready: boolean;
+}
 
 interface PendingSheet {
   art: MonsterArt;
   key: string;
+  draw: DrawOpts | undefined;
   tex: Phaser.Textures.Texture;
   ctx: CanvasRenderingContext2D;
-  cells: { anim: MonsterAnim; f: number; x: number; y: number }[];
+  cells: Cell[];
+  painted: Uint8Array;
+  groups: Map<AnyMonsterAnim, Group>;
+  /** cells not painted yet */
+  left: number;
+  /** background cursor */
   next: number;
+  /** a cell was painted since the last upload */
+  dirty: boolean;
+  /** registered by buildAllMonsters (whenMonstersBuilt waits for these) */
+  boot: boolean;
+  /** extra anims of this sheet (have lazy hooks) */
+  extras: AnyMonsterAnim[];
+  /** every base anim is painted + uploaded */
+  baseReady: boolean;
 }
 
 const pendingSheets = new Map<string, PendingSheet>();
+/** anim key → sheet, for the extra anims of pending sheets (AnimationManager.get hook) */
+const pendingExtraAnims = new Map<string, { ps: PendingSheet; anim: AnyMonsterAnim }>();
 const whenDone: (() => void)[] = [];
+/** keys of every monster sheet built or prepared here (monsterSheetPending) */
+const knownSheets = new Set<string>();
 /** Main-thread budget of one background painting slice (ms). */
 const SLICE_MS = 6;
 
-/** Resolves once every monster sheet is painted (immediately when nothing is pending). */
+function bootPending(): boolean {
+  for (const ps of pendingSheets.values()) if (ps.boot) return true;
+  return false;
+}
+
+/** Resolves once every monster sheet built at boot is painted (immediately when nothing is pending). */
 export function whenMonstersBuilt(): Promise<void> {
-  if (!pendingSheets.size) return Promise.resolve();
+  if (!bootPending()) return Promise.resolve();
   return new Promise((r) => whenDone.push(r));
 }
 
-/** Paint up to `budgetMs` of pending frames of one sheet; true when the sheet is complete. */
-function paintSheet(ps: PendingSheet, budgetMs: number): boolean {
+/**
+ * Animations of a sheet that are not painted + uploaded yet ([] when the sheet is complete or
+ * was built synchronously; null when no such sheet was ever registered as deferred).
+ */
+export function monsterSheetPending(key: string): AnyMonsterAnim[] | null {
+  const ps = pendingSheets.get(key);
+  if (!ps) return knownSheets.has(key) ? [] : null;
+  return [...ps.groups.values()].filter((g) => !g.ready).map((g) => g.anim);
+}
+
+function paintCell(ps: PendingSheet, i: number): void {
+  if (ps.painted[i]) return;
+  const c = ps.cells[i];
+  const pc = cellPixels(ps.art, c, ps.draw);
+  ps.ctx.putImageData(new ImageData(pc.data as Uint8ClampedArray<ArrayBuffer>, ps.art.w, ps.art.h), c.x, c.y);
+  ps.painted[i] = 1;
+  ps.left--;
+  ps.groups.get(c.anim)!.left--;
+  ps.dirty = true;
+}
+
+/** Upload the canvas (if anything changed); every fully painted group becomes ready. */
+function upload(ps: PendingSheet): void {
+  if (ps.dirty) {
+    ps.dirty = false;
+    try {
+      if (ps.tex.manager) ps.tex.source[0]?.update();
+    } catch (e) {
+      console.error(`[art] monster sheet ${ps.key} upload failed`, e);
+    }
+  }
+  for (const g of ps.groups.values()) if (!g.left) g.ready = true;
+  ps.baseReady = MONSTER_ANIMS.every((a) => ps.groups.get(a)!.ready);
+}
+
+/** Drop a fully painted sheet from the pending set (and its lazy hooks). */
+function settle(ps: PendingSheet): void {
+  if (ps.left) return;
+  upload(ps);
+  if (pendingSheets.get(ps.key) === ps) pendingSheets.delete(ps.key);
+  for (const a of ps.extras) {
+    const k = sheetAnimKey(ps.key, a);
+    if (pendingExtraAnims.get(k)?.ps === ps) pendingExtraAnims.delete(k);
+  }
+  // restore the prototype Texture.get (see hookTextureFrames)
+  if (Object.prototype.hasOwnProperty.call(ps.tex, 'get')) delete (ps.tex as { get?: unknown }).get;
+  if (ps.boot && !bootPending()) for (const r of whenDone.splice(0)) r();
+}
+
+/** Paint + upload the given animations of a pending sheet right now (no-op for ready ones). */
+function ensureAnims(ps: PendingSheet, anims: readonly AnyMonsterAnim[]): void {
+  let todo = false;
+  for (const a of anims) {
+    const g = ps.groups.get(a);
+    if (!g || g.ready) continue;
+    for (let i = g.start; i < g.end; i++) paintCell(ps, i);
+    todo = true;
+  }
+  if (!todo) return;
+  upload(ps);
+  settle(ps);
+}
+
+/**
+ * Paint up to `budgetMs` of pending cells of one sheet, in sheet order, up to cell `limit`;
+ * true when that range is done (the sheet settles once every cell is painted).
+ */
+function paintSlice(ps: PendingSheet, budgetMs: number, limit: number): boolean {
   const t0 = performance.now();
-  const { art } = ps;
-  while (ps.next < ps.cells.length) {
-    const c = ps.cells[ps.next++];
-    const pc = monsterFrame(art.id, c.anim, c.f);
-    ps.ctx.putImageData(new ImageData(pc.data as Uint8ClampedArray<ArrayBuffer>, art.w, art.h), c.x, c.y);
-    if (performance.now() - t0 > budgetMs && ps.next < ps.cells.length) return false;
+  while (ps.next < limit) {
+    const i = ps.next++;
+    if (ps.painted[i]) continue;
+    paintCell(ps, i);
+    if (performance.now() - t0 > budgetMs && ps.next < limit) return false;
   }
-  // all frames painted: upload once
-  pendingSheets.delete(ps.key);
-  try {
-    if (ps.tex.manager) ps.tex.source[0]?.update();
-  } catch (e) {
-    console.error(`[art] monster sheet ${ps.key} upload failed`, e);
-  }
-  if (!pendingSheets.size) for (const r of whenDone.splice(0)) r();
+  settle(ps);
   return true;
 }
 
-/** Finish a pending sheet right now (called on first access through the texture manager). */
-function finishSheet(key: string): void {
+/** Finish a pending sheet's base animations right now (first access through the texture manager). */
+function finishBase(key: string): void {
   const ps = pendingSheets.get(key);
-  if (ps) paintSheet(ps, Infinity);
+  if (ps) ensureAnims(ps, MONSTER_ANIMS);
 }
 
-/** Register a monster sheet with blank frames + its animations; painting happens later. */
-function prepareMonster(scene: Phaser.Scene, art: MonsterArt): void {
-  const key = monsterTextureKey(art.id);
-  const names: { anim: MonsterAnim; f: number }[] = [];
-  for (const anim of MONSTER_ANIMS) for (let f = 0; f < art.anims[anim].frames; f++) names.push({ anim, f });
+/**
+ * Paint (and upload) some animations of a deferred sheet now — or all of them when `anims` is
+ * omitted. For warming ahead of a cinematic; a no-op for complete / synchronous sheets.
+ */
+export function finishMonsterSheet(key: string, anims?: readonly AnyMonsterAnim[]): void {
+  const ps = pendingSheets.get(key);
+  if (!ps) return;
+  ensureAnims(ps, anims ?? [...ps.groups.keys()]);
+}
+
+function dropPending(key: string): void {
+  const ps = pendingSheets.get(key);
+  if (!ps) return;
+  ps.left = 0;
+  for (const g of ps.groups.values()) g.left = 0;
+  settle(ps);
+}
+
+/**
+ * Register a monster sheet with blank frames + its animations; painting happens later (in the
+ * background once paintSheetsInBackground() runs, or on first use — see above).
+ */
+export function prepareMonsterSheet(scene: Phaser.Scene, art: MonsterArt, o: SheetOpts = {}, boot = false): string {
+  const key = o.key ?? monsterTextureKey(art.id);
+  dropPending(key);
+  const { cols, rows, cells } = layoutSheet(art);
   const w = art.w;
   const h = art.h;
-  const cols = Math.max(1, Math.min(names.length, Math.floor(4096 / w)));
-  const rows = Math.ceil(names.length / cols);
   const cv = document.createElement('canvas');
   cv.width = cols * w;
   cv.height = rows * h;
   const ctx = cv.getContext('2d', { willReadFrequently: true })!;
   const tex = addStaticCanvas(scene, key, cv);
-  const cells = names.map((n, i) => {
-    const x = (i % cols) * w;
-    const y = Math.floor(i / cols) * h;
-    tex.add(monsterFrameName(n.anim, n.f), 0, x, y, w, h);
-    return { ...n, x, y };
+  for (const c of cells) tex.add(monsterFrameName(c.anim, c.f), 0, c.x, c.y, w, h);
+  createSheetAnims(scene, art, key);
+  const groups = new Map<AnyMonsterAnim, Group>();
+  cells.forEach((c, i) => {
+    const g = groups.get(c.anim);
+    if (g) {
+      g.end = i + 1;
+      g.left++;
+    } else groups.set(c.anim, { anim: c.anim, start: i, end: i + 1, left: 1, ready: false });
   });
-  for (const anim of MONSTER_ANIMS) {
-    const spec = art.anims[anim];
-    const animKey = monsterAnimKey(art.id, anim);
-    if (scene.anims.exists(animKey)) scene.anims.remove(animKey);
-    scene.anims.create({
-      key: animKey,
-      frames: Array.from({ length: spec.frames }, (_, f) => ({ key, frame: monsterFrameName(anim, f) })),
-      frameRate: spec.fps,
-      repeat: spec.loop ? -1 : 0,
-    });
-  }
-  pendingSheets.set(key, { art, key, tex, ctx, cells, next: 0 });
+  const extras = [...groups.keys()].filter(isExtraAnim);
+  const ps: PendingSheet = {
+    art,
+    key,
+    draw: o.draw,
+    tex,
+    ctx,
+    cells,
+    painted: new Uint8Array(cells.length),
+    groups,
+    left: cells.length,
+    next: 0,
+    dirty: false,
+    boot,
+    extras,
+    baseReady: false,
+  };
+  pendingSheets.set(key, ps);
+  knownSheets.add(key);
+  for (const a of extras) pendingExtraAnims.set(sheetAnimKey(key, a), { ps, anim: a });
+  // anims are created: from here on, lookups of a pending sheet paint what they need first
+  hookTextureManager(scene.textures);
+  hookAnimationManager(scene.anims);
+  if (extras.length) hookTextureFrames(ps);
+  return key;
 }
 
 const hooked = new WeakSet<object>();
 
-/** Make textures.get('mon:<id>') finish that sheet first (once per game). */
+/** Make textures.get('mon:<id>') finish that sheet's base anims first (once per game). */
 function hookTextureManager(tm: Phaser.Textures.TextureManager): void {
   if (hooked.has(tm)) return;
   hooked.add(tm);
   const get = tm.get.bind(tm);
   tm.get = ((key: string | Phaser.Textures.Texture) => {
-    if (pendingSheets.size && typeof key === 'string' && pendingSheets.has(key)) finishSheet(key);
+    if (pendingSheets.size && typeof key === 'string') {
+      const ps = pendingSheets.get(key);
+      if (ps && !ps.baseReady) finishBase(key);
+    }
     return get(key);
   }) as typeof tm.get;
 }
 
-export function buildAllMonsters(scene: Phaser.Scene): void {
-  const sync = typeof location === 'undefined' || new URLSearchParams(location.search).has('test');
-  if (sync) {
-    for (const id of MONSTER_IDS) buildMonster(scene, monsterArt(id));
-    return;
-  }
-  for (const id of MONSTER_IDS) {
-    try {
-      prepareMonster(scene, monsterArt(id));
-    } catch (e) {
-      // fall back to the synchronous path for this one
-      console.error(`[art] deferred monster ${id} failed, building now`, e);
-      pendingSheets.delete(monsterTextureKey(id));
-      buildMonster(scene, monsterArt(id));
+/** Make anims.get('<key>:<extra anim>') (every play() goes through it) paint that anim first. */
+function hookAnimationManager(am: Phaser.Animations.AnimationManager): void {
+  if (hooked.has(am)) return;
+  hooked.add(am);
+  const get = am.get.bind(am);
+  am.get = ((key: string) => {
+    if (pendingExtraAnims.size) {
+      const e = pendingExtraAnims.get(key);
+      if (e) ensureAnims(e.ps, [...MONSTER_ANIMS, e.anim]);
     }
-  }
-  // anims are created: from here on, a texture lookup of a pending sheet paints it first
-  hookTextureManager(scene.textures);
-  // paint in short slices between frames (requestIdleCallback starves under load: 40+ s in the
-  // headless test); a frame is ~2–8 ms of drawing, so a slice may overrun its budget a bit
-  const queue = [...pendingSheets.values()];
+    return get(key);
+  }) as typeof am.get;
+}
+
+/**
+ * Only on sheets with extra anims, until they are complete: setFrame('<extra>:<i>') (poses) goes
+ * through Texture.get(name), so paint that anim first. Installed after the anims were created
+ * (anims.create resolves its frames through Texture.get too).
+ */
+function hookTextureFrames(ps: PendingSheet): void {
+  const tex = ps.tex;
+  const get = Phaser.Textures.Texture.prototype.get;
+  tex.get = function (this: Phaser.Textures.Texture, name?: string | number) {
+    if (typeof name === 'string' && pendingSheets.get(ps.key) === ps) {
+      const anim = name.slice(0, name.lastIndexOf(':')) as AnyMonsterAnim;
+      const g = ps.groups.get(anim);
+      if (g && !g.ready) ensureAnims(ps, [...MONSTER_ANIMS, anim]);
+    }
+    return get.call(this, name);
+  };
+}
+
+/**
+ * Paint the given pending sheets in short slices between frames (requestIdleCallback starves
+ * under load: 40+ s in the headless test); a frame is ~2–8 ms of drawing, so a slice may overrun
+ * its budget a bit. Base anims of every sheet first, then the extras.
+ */
+function paintSheetsInBackground(sheets: PendingSheet[]): void {
+  const baseEnd = (ps: PendingSheet) => (ps.extras.length ? ps.groups.get(ps.extras[0])!.start : ps.cells.length);
+  const queue: { ps: PendingSheet; limit: number }[] = [
+    ...sheets.map((ps) => ({ ps, limit: baseEnd(ps) })),
+    ...sheets.filter((ps) => ps.extras.length).map((ps) => ({ ps, limit: ps.cells.length })),
+  ];
   const tick = () => {
     const t0 = performance.now();
     while (queue.length && performance.now() - t0 < SLICE_MS) {
-      const ps = queue[0];
-      if (!pendingSheets.has(ps.key) || paintSheet(ps, SLICE_MS - (performance.now() - t0))) queue.shift();
+      const { ps, limit } = queue[0];
+      if (pendingSheets.get(ps.key) !== ps || paintSlice(ps, SLICE_MS - (performance.now() - t0), limit)) queue.shift();
     }
     if (queue.length) setTimeout(tick, 0);
   };
   setTimeout(tick, 0);
+}
+
+/** Options of the optional P2 'relight' sheet of `art` (see monsterSheetKey). */
+function p2SheetOpts(art: MonsterArt): SheetOpts {
+  return { key: monsterP2TextureKey(art.id), draw: { lightFrom: 'right' } };
+}
+
+export function buildAllMonsters(scene: Phaser.Scene): void {
+  const sync = typeof location === 'undefined' || new URLSearchParams(location.search).has('test');
+  // P2 'relight' sheets (opt-in per art) come after every default sheet
+  const jobs: { art: MonsterArt; o: SheetOpts }[] = [
+    ...MONSTER_IDS.map((id) => ({ art: monsterArt(id), o: {} })),
+    ...MONSTER_IDS.map((id) => monsterArt(id))
+      .filter(relightsP2)
+      .map((art) => ({ art, o: p2SheetOpts(art) })),
+  ];
+  if (sync) {
+    for (const j of jobs) buildMonster(scene, j.art, j.o);
+    return;
+  }
+  const sheets: PendingSheet[] = [];
+  for (const { art, o } of jobs) {
+    const key = o.key ?? monsterTextureKey(art.id);
+    try {
+      prepareMonsterSheet(scene, art, o, true);
+      sheets.push(pendingSheets.get(key)!);
+    } catch (e) {
+      // fall back to the synchronous path for this one
+      console.error(`[art] deferred monster sheet ${key} failed, building now`, e);
+      dropPending(key);
+      buildMonster(scene, art, o);
+    }
+  }
+  paintSheetsInBackground(sheets);
+}
+
+/** Start background painting of deferred sheets registered with prepareMonsterSheet (by key). */
+export function paintMonsterSheets(keys: readonly string[]): void {
+  paintSheetsInBackground(keys.map((k) => pendingSheets.get(k)).filter((ps): ps is PendingSheet => !!ps));
 }

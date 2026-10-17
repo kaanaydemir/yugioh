@@ -37,7 +37,8 @@ import { SCENARIOS } from '../duel/scenarios';
 import { armOnFreeze, installTestClock } from '../duel/testClock';
 import type { DuelViews } from '../duel/types';
 import { loadSettings, saveSettings, type DuelLaunch, type DuelMode, type Settings } from './launch';
-import { ARENA_V2 } from '../view/layout';
+import { ARENA_V2, LOOK_V3 } from '../view/layout';
+import { resetAtDuelStart } from '../duel/seeds';
 import { ensureLightLayer } from '../view/light';
 
 /** Everything DuelScene accepts (DuelLaunch + QA extras). */
@@ -127,6 +128,9 @@ export class DuelScene extends Phaser.Scene {
   }
 
   async create(): Promise<void> {
+    // every duel starts from the initial module-level random streams (and, frozen, the QA clock's
+    // base): the same scenario after a restart plays (and films) exactly as on a fresh page
+    resetAtDuelStart();
     const params = (this.registry.get('params') as URLSearchParams | undefined) ?? new URLSearchParams(location.search);
     if (params.has('test')) installTestClock();
     const L = this.launchData;
@@ -180,9 +184,10 @@ export class DuelScene extends Phaser.Scene {
     const info = new ViewerPolicy({ mode, cpu, curtain, hand, hud, prompt });
     if (L.auto) info.auto = true;
     this.views = { board, field, hud, hand, inspect, prompt, menu, log, camera, duelists, info, speed };
-    // arena v2: the subtle light layer (pools under the monsters, halos, event lights, dim).
+    // arena v2: the subtle light layer (pools under the monsters, halos, event lights, dim); the
+    // v3 look: the same layer in its stepped mode (flat tone steps on the pads, no alpha).
     // It lives with the scene and is destroyed on SHUTDOWN (restart / back to title).
-    if (ARENA_V2) ensureLightLayer(this, { field });
+    if (ARENA_V2 || LOOK_V3) ensureLightLayer(this, { field });
     hud.onSpeed = (k) => {
       this.settings.speed = k;
       saveSettings(this.settings);

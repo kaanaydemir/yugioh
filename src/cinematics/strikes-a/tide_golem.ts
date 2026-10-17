@@ -13,6 +13,7 @@
 // and bursts in a splash of pixels.
 
 import Phaser from 'phaser';
+import { onDuelStart } from '../../duel/seeds';
 import { PAL, RAMPS } from '../../art/palette';
 import { DEPTH, type XY } from '../../view/layout';
 import { projectile } from '../../vfx/combat';
@@ -61,6 +62,7 @@ const MARK_DEPTH = DEPTH.CARD_ON_TILE + 2;
 const WET = [PAL.water4, PAL.water3, PAL.water2, PAL.water1] as const;
 
 let r2 = 0;
+onDuelStart(() => (r2 = 0));
 function R2(): boolean {
   return ++r2 % 2 === 0;
 }

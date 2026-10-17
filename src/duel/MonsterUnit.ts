@@ -5,6 +5,10 @@
 //   await u.attackToImpact();          // plays 'attack', resolves on attackImpactFrame
 //   const m = u.worldPoint('muzzle');  // frame point → world (flip / origin / scale aware)
 //   await u.play('roar');              // one-shot, resolves on complete, then back to idle/guard
+//   u.pose('attack', 3);               // stop and hold one frame (manual control)
+//   await u.playRange('attack', 4);    // frames 4…end, then rest (to: stop and hold frame `to`)
+//   const p = u.tryPlay('death');      // false when the art lacks a v3 extra anim → own fallback
+//   await wait(scene, u.impactMs);     // timings: impactMs / frameMs / rangeMs / animMs / markMs
 //   await u.setStats(3500, 2300);      // badge rolls green
 //   await u.setPosition('defense');    // guard loop + the tile card turns sideways
 //
@@ -12,6 +16,12 @@
 // takes a sprite (lunge, shatter, materialize, chainsBind, chasm, swordForge...) works on it
 // directly. Its origin sits on the art anchor (mirrored for player 2, who uses flipX); the
 // sprite is lifted by `art.hover`. Depth = unitDepth(ground y).
+//
+// P2 lighting (v3): a monster whose art has `p2: 'relight'` shows its second sheet
+// `mon:<id>:p2` (drawn lit from the frame's top-right) while player 2 controls it, so the
+// mirrored sprite is still lit from the screen's top-left; applyFacing picks the sheet and
+// UnitSprite.syncSheet keeps every frame on it (anim keys and events stay `mon:<id>:<anim>`).
+// 'mirror' monsters (all of today's) keep one sheet: nothing changes for them.
 //
 // `lift` (px, default 0): set it while you move the sprite UP off the ground (jumps, dives) so
 // the shadow stays on the floor and shrinks instead of following the sprite into the air.
@@ -21,16 +31,25 @@
 // sprite.play(<hit anim>), sprite.setFrame('hit:N') (e.g. a death holding a hit frame) — is
 // answered from the guard pose instead: guard frames, a white flash frame, a small hex-shield
 // glint on the side the blow came from and a 2–3 px knock-back away from the attacker
-// (unit.guardHit). The sprite is a UnitSprite (a plain Sprite subclass) so this lives in one
-// place and holds for every cinematic, shatter and death flavour.
+// (unit.guardHit; with the v3 weight profiles the knock-back follows the monster's weight class,
+// src/duel/motion.ts). The sprite is a UnitSprite (a plain Sprite subclass) so this lives in one
+// place and holds for every cinematic, shatter and death flavour (also for the v3 'hitHeavy' /
+// 'hitMagic' recoils).
+//
+// Timing unity (v3 A1): every animation duration — the attack impact, the safety nets, the
+// kits' pose / playFrom helpers (thin wrappers over pose / playRange) — is read through the
+// helpers in the "animation timing" section (src/art/animtime.ts), so per-frame AnimSpec.holds
+// are honoured everywhere. Without holds every value is bit-identical to the old
+// `(frames / fps) * 1000` arithmetic, so the old monsters keep their exact timings.
 
 import Phaser from 'phaser';
 import { CARDS, isMonster, type Attribute, type MonsterCardDef, type MonsterId } from '../data/cards';
 import { monsterArt } from '../art/monsters';
 import { PAL } from '../art/palette';
 import { PixelCanvas } from '../art/pixel';
-import { monsterAnimKey, monsterFrame, monsterFrameName, monsterTextureKey } from '../art/textures';
-import type { MonsterAnim, MonsterArt } from '../art/types';
+import { monsterAnimKey, monsterFrame, monsterFrameName, monsterP2TextureKey, monsterSheetKey, monsterTextureKey } from '../art/textures';
+import type { AnimMark, AnimSpec, AnyMonsterAnim, MonsterAnim, MonsterArt } from '../art/types';
+import { animLengthMs, animSpec, artMarkFrame, frameMs as specFrameMs, frameStartMs, impactFrame as artImpactFrame, impactMs as artImpactMs, rangeMs as specRangeMs } from '../art/animtime';
 import type { PlayerId, Position, Uid } from '../engine/types';
 import { DEPTH, type XY, unitDepth, zoneXY } from '../view/layout';
 import type { TileCard } from '../view/TileCard';
@@ -40,6 +59,8 @@ import { clearHologram, getHologram } from '../vfx/hologram';
 import { Raster, run } from '../vfx/setpieces';
 import type { Disposable } from './types';
 import { StatBadge } from './StatBadge';
+import { reactGuardPushPx, reactGuardReturnEase } from './motion';
+import { onDuelStart } from './seeds';
 
 export type UnitPoint = 'muzzle' | 'core' | 'anchor' | 'top' | 'feet';
 
@@ -80,10 +101,42 @@ function opaqueWidth(id: MonsterId): number {
   return w;
 }
 
-let unitSeed = 0x9e3779b1;
+/** Drop-shadow half-width of a monster (from its idle silhouette). */
+function shadowRx(id: MonsterId): number {
+  return Math.max(7, Math.round(opaqueWidth(id) * 0.36));
+}
+
+/**
+ * Warm (v3 A1 item 11): create a monster's drop-shadow texture (`duel:shadow:<rx>x<ry>`) ahead of
+ * its first unit. Returns the key.
+ */
+export function warmUnitShadow(scene: Phaser.Scene, id: MonsterId): string {
+  return shadowKey(scene, shadowRx(id));
+}
+
+const UNIT_SEED0 = 0x9e3779b1;
+let unitSeed = UNIT_SEED0;
+onDuelStart(() => (unitSeed = UNIT_SEED0));
 function rnd(): number {
   unitSeed = (unitSeed * 1664525 + 1013904223) >>> 0;
   return unitSeed / 4294967296;
+}
+
+/** The recoil animations: in DEFENSE position they are answered from the guard pose (see the header). */
+const HIT_ANIMS: readonly AnyMonsterAnim[] = ['hit', 'hitHeavy', 'hitMagic'];
+
+function isHitAnim(anim: AnyMonsterAnim): boolean {
+  return HIT_ANIMS.includes(anim);
+}
+
+/** A frame name of one of the recoil animations ('hit:N', 'hitHeavy:N', 'hitMagic:N')? */
+function isHitFrameName(name: string): boolean {
+  return name.startsWith('hit:') || name.startsWith('hitHeavy:') || name.startsWith('hitMagic:');
+}
+
+function clampFrame(v: number, last: number): number {
+  const f = Math.round(v);
+  return f < 0 ? 0 : f > last ? last : f;
 }
 
 /** Frame name of a setFrame() argument (null for numeric indices). */
@@ -102,10 +155,42 @@ export class UnitSprite extends Phaser.GameObjects.Sprite {
   /** Set by MonsterUnit right after construction. */
   unit: MonsterUnit | null = null;
 
+  constructor(scene: Phaser.Scene, x: number, y: number, texture: string, frame?: string | number) {
+    super(scene, x, y, texture, frame);
+    // P2 relight (v3): every animation frame change (play, update, chain, repeat...) goes through
+    // AnimationState.setCurrentFrame, which sets the frame of the anim's own sheet (`mon:<id>`):
+    // swap it to the same-named frame of the unit's sheet right after (see syncSheet).
+    const anims = this.anims;
+    const set = anims.setCurrentFrame.bind(anims);
+    anims.setCurrentFrame = (f: Phaser.Animations.AnimationFrame) => {
+      const r = set(f);
+      this.syncSheet();
+      return r;
+    };
+  }
+
+  /**
+   * Keep the sprite on its unit's sheet (MonsterUnit.sheetKey: the P2 'relight' sheet or the
+   * default one). Both sheets share frame names and sizes, so only the texture changes; the anim
+   * keys and their events stay `mon:<id>:<anim>`. A no-op for 'mirror' monsters (one sheet) and
+   * while the sprite shows some other texture.
+   */
+  syncSheet(): void {
+    const u = this.unit;
+    const cur = this.texture?.key;
+    if (!u || !this.scene || !this.frame || cur === u.sheetKey || (cur !== u.p1Key && cur !== u.p2Key)) return;
+    const name = this.frame.name;
+    const tex = this.scene.textures.get(u.sheetKey);
+    if (!tex.has(name)) return;
+    this.texture = tex;
+    super.setFrame(name, false, false); // the base setFrame: frame + crop UVs (no guard rule)
+  }
+
   override play(key: string | Phaser.Animations.Animation | Phaser.Types.Animations.PlayAnimationConfig, ignoreIfPlaying?: boolean): this {
     const u = this.unit;
-    if (u && u.guarding && u.isHitKey(key)) {
-      u.guardHitFromSprite();
+    const hit = u && u.guarding ? u.hitAnimOfKey(key) : null;
+    if (u && hit) {
+      u.guardHitFromSprite(hit);
       return this;
     }
     return super.play(key, ignoreIfPlaying);
@@ -115,9 +200,11 @@ export class UnitSprite extends Phaser.GameObjects.Sprite {
     const u = this.unit;
     if (u && u.guarding) {
       const name = frameNameOf(frame);
-      if (name && name.startsWith('hit:')) frame = u.guardFrameName();
+      if (name && isHitFrameName(name)) frame = u.guardFrameName();
     }
-    return super.setFrame(frame, updateSize, updateOrigin);
+    super.setFrame(frame, updateSize, updateOrigin);
+    this.syncSheet();
+    return this;
   }
 }
 
@@ -187,10 +274,61 @@ export interface GuardHitOpts {
   dir?: XY;
   /** Where the blow comes from (used for the direction when `dir` is not given). */
   from?: XY;
-  /** 1 light (2 px knock-back) · 2–3 heavy (3 px, longer flash). Default 2. */
+  /**
+   * 1 light (2 px knock-back) · 2–3 heavy (3 px, longer flash). Default 2. With the weight
+   * profiles on (v3) the knock-back is also scaled by this monster's class (motion.ts).
+   */
   power?: 1 | 2 | 3;
   /** Stay pushed (a death follows) instead of springing back. */
   hold?: boolean;
+}
+
+/** Options of MonsterUnit.play(). */
+export interface PlayOpts extends GuardHitOpts {
+  /** Stay on the last frame instead of returning to idle/guard (also the guard-hit hold). */
+  hold?: boolean;
+  /**
+   * Played instead when this monster's art lacks `anim` (e.g. 'special' → 'roar', 'hitHeavy' →
+   * 'hit'). Without it a missing anim resolves at once. See also tryPlay().
+   */
+  fallback?: AnyMonsterAnim;
+}
+
+/**
+ * Options of MonsterUnit.playRange(). The defaults behave like play(); the cinematic kits'
+ * playFrom wrappers pass their own (historical) settings so their timing stays identical.
+ */
+export interface PlayRangeOpts {
+  /** Without `to`: stay on the last frame instead of returning to idle/guard. */
+  hold?: boolean;
+  /** sprite.anims.timeScale for this play (set when it starts, back to 1 when it ends). Default: untouched. */
+  timeScale?: number;
+  /**
+   * Default true: the play owns the unit like play() — pending play() / playToFrame() promises
+   * resolve now, and an earlier one-shot can no longer send the sprite back to rest when it ends.
+   * false: a side play that leaves them alone (what the kits' playFrom helpers always did).
+   */
+  exclusive?: boolean;
+  /** Return to rest at the end only while the sprite still shows `anim`. Default false. */
+  restIfCurrent?: boolean;
+  /** Also return to rest when the safety timeout ends the wait. Default true. */
+  restOnTimeout?: boolean;
+  /**
+   * Safety net that ends the wait if the end never comes (superseded, stopped). Gets the
+   * hold-aware ms still to play; default `wait(scene, ms × 1.6 + 300)` (scene time).
+   */
+  safety?: (ms: number) => Promise<unknown>;
+}
+
+/** Internal: how a one-shot wait ends (see MonsterUnit.untilComplete). */
+interface OneShotCtl {
+  hold: boolean;
+  /** play-slot token (exclusive plays) or null (side plays) */
+  token: number | null;
+  restIfCurrent: boolean;
+  restOnTimeout: boolean;
+  timeScale: number | undefined;
+  safety: (ms: number) => Promise<unknown>;
 }
 
 export interface MonsterUnitOpts {
@@ -231,6 +369,14 @@ export class MonsterUnit {
    * (and call settle()) when done.
    */
   posed = false;
+  /** The default sheet `mon:<id>` and the optional P2 'relight' sheet key `mon:<id>:p2`. */
+  readonly p1Key: string;
+  readonly p2Key: string;
+  /**
+   * The sheet the sprite shows (UnitSprite.syncSheet keeps it there): `mon:<id>:p2` while player 2
+   * controls a monster that has a P2 relight sheet, else `mon:<id>`. Set by applyFacing.
+   */
+  sheetKey: string;
   private readonly auras = new Map<string, Disposable>();
   private shown = true;
   private playToken = 0;
@@ -254,8 +400,11 @@ export class MonsterUnit {
     this.player = o.player;
     this.zone = o.zone;
     this.position = o.position;
+    this.p1Key = monsterTextureKey(o.cardId);
+    this.p2Key = monsterP2TextureKey(o.cardId);
+    this.sheetKey = this.p1Key;
     const home = this.home;
-    const rx = Math.max(7, Math.round(opaqueWidth(o.cardId) * 0.36));
+    const rx = shadowRx(o.cardId);
     this.shadowBase = this.art.hover > 0 ? Math.max(0.55, 1 - this.art.hover / 30) : 1;
     this.shadow = scene.add.image(home.x, home.y, shadowKey(scene, rx)).setDepth(DEPTH.SHADOW).setAlpha(0.5).setScale(this.shadowBase);
     const sprite = new UnitSprite(scene, home.x, home.y - this.art.hover, monsterTextureKey(o.cardId), monsterFrameName('idle', 0));
@@ -301,11 +450,11 @@ export class MonsterUnit {
   }
 
   /** Current animation name and frame index (0-based) of the sprite. */
-  frameInfo(): { anim: MonsterAnim | null; frame: number } {
+  frameInfo(): { anim: AnyMonsterAnim | null; frame: number } {
     const name = String(this.sprite.frame?.name ?? '');
     const i = name.indexOf(':');
     if (i < 0) return { anim: null, frame: 0 };
-    return { anim: name.slice(0, i) as MonsterAnim, frame: Number(name.slice(i + 1)) || 0 };
+    return { anim: name.slice(0, i) as AnyMonsterAnim, frame: Number(name.slice(i + 1)) || 0 };
   }
 
   /** A frame point of the art in world space (follows the sprite's current position/flip/scale). */
@@ -361,56 +510,136 @@ export class MonsterUnit {
   }
 
   /**
-   * Play an animation. Looping anims resolve immediately. One-shots resolve on completion and
-   * then return to idle/guard (opts.hold = stay on the last frame). Superseded plays resolve.
-   * 'hit' in DEFENSE position is the guard-pose reaction (guardHit; opts.dir / from / power
-   * steer it) — the upright recoil frames are never shown then.
+   * Play an animation (any MonsterAnim or, when this monster's art has it, an extra one).
+   * Looping anims resolve immediately. One-shots resolve on completion and then return to
+   * idle/guard (opts.hold = stay on the last frame). Superseded plays resolve. A recoil ('hit',
+   * 'hitHeavy', 'hitMagic') in DEFENSE position is the guard-pose reaction (guardHit;
+   * opts.dir / from / power steer it) — the upright recoil frames are never shown then.
+   * An anim the art lacks plays opts.fallback instead, or resolves at once (see tryPlay).
    */
-  play(anim: MonsterAnim, opts: { hold?: boolean } & GuardHitOpts = {}): Promise<void> {
+  play(anim: AnyMonsterAnim, opts: PlayOpts = {}): Promise<void> {
+    if (opts.fallback && !this.has(anim) && this.has(opts.fallback)) anim = opts.fallback;
     const key = monsterAnimKey(this.cardId, anim);
-    if (!this.scene.anims.exists(key) || !this.sprite.active) return Promise.resolve();
-    if (anim === 'hit' && this.guarding) return this.guardHit(opts);
+    const spec = this.spec(anim);
+    if (!spec || !this.scene.anims.exists(key) || !this.sprite.active) return Promise.resolve();
+    if (isHitAnim(anim) && this.guarding) return this.guardHit(opts);
     this.flushWaiters();
     const token = ++this.playToken;
-    const spec = this.art.anims[anim];
     if (spec.loop) {
       this.sprite.play({ key, repeat: -1 });
       return Promise.resolve();
     }
     this.sprite.play({ key, repeat: 0 });
-    return new Promise<void>((resolve) => {
-      let done = false;
-      const finish = () => {
-        if (done) return;
-        done = true;
-        this.sprite.off(Phaser.Animations.Events.ANIMATION_COMPLETE_KEY + key, onComplete);
-        resolve();
-      };
-      const onComplete = () => {
-        if (token === this.playToken && !opts.hold && !this.retired) this.rest();
-        finish();
-      };
-      this.waiters.push(finish);
-      this.sprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE_KEY + key, onComplete);
-      // safety net (scene time follows speed / hit-stop like the animation clock)
-      const ms = (spec.frames / spec.fps) * 1000;
-      void wait(this.scene, ms * 1.6 + 300).then(() => {
-        if (done) return;
-        if (token === this.playToken && !opts.hold && !this.retired) this.rest();
-        finish();
-      });
+    // safety net: scene time follows speed / hit-stop like the animation clock
+    return this.untilComplete(key, anim, animLengthMs(spec), {
+      hold: !!opts.hold,
+      token,
+      restIfCurrent: false,
+      restOnTimeout: true,
+      timeScale: undefined,
+      safety: (ms) => wait(this.scene, ms * 1.6 + 300),
     });
   }
 
-  /** Resolve when the current animation `anim` reaches `frame` (0-based). Starts it if needed. */
-  playToFrame(anim: MonsterAnim, frame: number): Promise<void> {
+  /**
+   * play() if this monster draws `anim`, else `false` and nothing happens — the caller runs its
+   * own fallback (hologram summon, shatter death...):
+   *   const p = u.tryPlay('death', { hold: true });
+   *   if (p) await p; else await shatterDeath(u);
+   */
+  tryPlay(anim: AnyMonsterAnim, opts: Omit<PlayOpts, 'fallback'> = {}): Promise<void> | false {
+    if (!this.has(anim)) return false;
+    return this.play(anim, opts);
+  }
+
+  /**
+   * Play frames `from`…`to` of `anim` (indices clamped; one-shot whatever the spec's loop).
+   *  - `to` omitted: play to the end; resolves on completion, then back to idle/guard unless
+   *    o.hold — the kits' playFrom(u, anim, from).
+   *  - `to` given: stops ON frame `to` (the sprite holds it, like pose()) and resolves when it
+   *    shows; to <= from just poses `to`.
+   * Timing (and the safety net) follows the spec's per-frame holds. A recoil on a guarding unit
+   * is answered from the guard pose (UnitSprite). See PlayRangeOpts for the options.
+   */
+  playRange(anim: AnyMonsterAnim, from = 0, to?: number, o: PlayRangeOpts = {}): Promise<void> {
+    const s = this.sprite;
     const key = monsterAnimKey(this.cardId, anim);
-    if (!this.scene.anims.exists(key) || !this.sprite.active) return Promise.resolve();
-    if (anim === 'hit' && this.guarding) {
+    const spec = this.spec(anim);
+    if (!spec || !s.active || !this.scene.anims.exists(key)) return Promise.resolve();
+    const last = spec.frames - 1;
+    const f0 = clampFrame(from, last);
+    const exclusive = o.exclusive ?? true;
+    if (exclusive) this.flushWaiters();
+    const token = exclusive ? ++this.playToken : null;
+    const safety = o.safety ?? ((ms: number) => wait(this.scene, ms * 1.6 + 300));
+    if (to === undefined) {
+      if (o.timeScale !== undefined) s.anims.timeScale = o.timeScale;
+      s.play({ key, repeat: 0, startFrame: f0 });
+      return this.untilComplete(key, anim, specRangeMs(spec, from, spec.frames), {
+        hold: !!o.hold,
+        token,
+        restIfCurrent: o.restIfCurrent ?? false,
+        restOnTimeout: o.restOnTimeout ?? true,
+        timeScale: o.timeScale,
+        safety,
+      });
+    }
+    const f1 = clampFrame(to, last);
+    if (f1 <= f0) {
+      this.pose(anim, f1);
+      return Promise.resolve();
+    }
+    if (isHitAnim(anim) && this.guarding) {
+      void this.guardHit();
+      return wait(this.scene, specRangeMs(spec, f0, f1));
+    }
+    if (o.timeScale !== undefined) s.anims.timeScale = o.timeScale;
+    s.play({ key, repeat: 0, startFrame: f0 });
+    return new Promise<void>((resolve) => {
+      let done = false;
+      const close = () => {
+        if (done) return;
+        done = true;
+        s.off(Phaser.Animations.Events.ANIMATION_UPDATE, onUpdate);
+        if (o.timeScale !== undefined && s.active) s.anims.timeScale = 1;
+        resolve();
+      };
+      const onUpdate = (a: Phaser.Animations.Animation, f: Phaser.Animations.AnimationFrame) => {
+        if (a.key !== key) return close();
+        if (f.index - 1 < f1) return;
+        s.anims.stop();
+        close();
+      };
+      s.on(Phaser.Animations.Events.ANIMATION_UPDATE, onUpdate);
+      if (token !== null) this.waiters.push(close);
+      void safety(specRangeMs(spec, f0, f1)).then(close);
+    });
+  }
+
+  /**
+   * Stop the animation and show one frame of `anim` (rounded, clamped) — full manual control.
+   * false when the art lacks `anim`. A pending play() is NOT cancelled (as the kit helpers this
+   * replaces); a 'hit:N' frame on a guarding unit shows the guard pose (UnitSprite.setFrame).
+   */
+  pose(anim: AnyMonsterAnim, frame: number): boolean {
+    const s = this.sprite;
+    if (!s.active) return false;
+    const n = this.frameCount(anim);
+    if (!n) return false;
+    s.anims.stop();
+    s.setFrame(monsterFrameName(anim, clampFrame(frame, n - 1)));
+    return true;
+  }
+
+  /** Resolve when the current animation `anim` reaches `frame` (0-based). Starts it if needed. */
+  playToFrame(anim: AnyMonsterAnim, frame: number): Promise<void> {
+    const key = monsterAnimKey(this.cardId, anim);
+    const spec = this.spec(anim);
+    if (!spec || !this.scene.anims.exists(key) || !this.sprite.active) return Promise.resolve();
+    if (isHitAnim(anim) && this.guarding) {
       // guard pose: react, and resolve when that hit frame would have shown
       void this.guardHit();
-      const spec = this.art.anims.hit;
-      return wait(this.scene, (Math.max(0, frame) / Math.max(1, spec.fps)) * 1000);
+      return wait(this.scene, frameStartMs(spec, Math.max(0, frame)));
     }
     const cur = this.frameInfo();
     if (cur.anim !== anim || !this.sprite.anims.isPlaying) void this.play(anim);
@@ -429,20 +658,115 @@ export class MonsterUnit {
       if (this.frameInfo().anim === anim && this.frameInfo().frame >= frame) return finish();
       this.sprite.on(Phaser.Animations.Events.ANIMATION_UPDATE, onUpdate);
       this.waiters.push(finish);
-      const spec = this.art.anims[anim];
-      void wait(this.scene, ((frame + 1) / spec.fps) * 1000 * 1.6 + 300).then(finish);
+      // safety net: until frame `frame` would have ended
+      void wait(this.scene, specRangeMs(spec, 0, frame + 1) * 1.6 + 300).then(finish);
     });
   }
 
-  /** Play 'attack' and resolve on the art's attackImpactFrame (the rest plays on). */
+  /** Play 'attack' and resolve on its impact frame (impactFrame; the rest plays on). */
   attackToImpact(): Promise<void> {
     void this.play('attack');
-    return this.playToFrame('attack', this.art.attackImpactFrame);
+    return this.playToFrame('attack', this.impactFrame);
+  }
+
+  /**
+   * Wait for a one-shot `key` that was just started: complete → rest (per `c`) and resolve; the
+   * safety net resolves anyway (resting only with c.restOnTimeout). An exclusive play (token) is
+   * also resolved by flushWaiters() — rest() itself flushes, which ends it first, as before.
+   */
+  private untilComplete(key: string, anim: AnyMonsterAnim, ms: number, c: OneShotCtl): Promise<void> {
+    const s = this.sprite;
+    const ev = Phaser.Animations.Events.ANIMATION_COMPLETE_KEY + key;
+    return new Promise<void>((resolve) => {
+      let done = false;
+      const release = () => {
+        s.off(ev, onComplete);
+        if (c.timeScale !== undefined && s.active) s.anims.timeScale = 1;
+      };
+      const close = () => {
+        if (done) return;
+        done = true;
+        release();
+        resolve();
+      };
+      const end = (mayRest: boolean) => {
+        if (done) return;
+        release();
+        if (mayRest && this.mayRest(anim, c)) this.rest();
+        close();
+      };
+      const onComplete = () => end(true);
+      if (c.token !== null) this.waiters.push(close);
+      s.once(ev, onComplete);
+      void c.safety(ms).then(() => end(c.restOnTimeout));
+    });
+  }
+
+  private mayRest(anim: AnyMonsterAnim, c: OneShotCtl): boolean {
+    if (c.hold || this.retired || !this.sprite.active) return false;
+    if (c.token !== null && c.token !== this.playToken) return false;
+    return !c.restIfCurrent || this.frameInfo().anim === anim;
+  }
+
+  // ================================================================ animation timing
+  //
+  // Read every animation duration through these (src/art/animtime.ts): they follow the
+  // AnimSpec's per-frame `holds` (v3) and fall back to 1000/fps per frame — for the old
+  // monsters (no holds) every value is bit-identical to the `(n / fps) * 1000` it replaces.
+  // Missing anims give 0.
+
+  /** The AnimSpec of one of this monster's animations (undefined when its art lacks it). */
+  spec(anim: AnyMonsterAnim): AnimSpec | undefined {
+    return animSpec(this.art, anim);
+  }
+
+  /** Does this monster's art draw `anim`? (The five base anims always; extras when defined.) */
+  has(anim: AnyMonsterAnim): boolean {
+    return !!this.spec(anim);
+  }
+
+  /** Number of frames of `anim` (0 when missing). */
+  frameCount(anim: AnyMonsterAnim): number {
+    return this.spec(anim)?.frames ?? 0;
+  }
+
+  /** How long frame `frame` of `anim` stays on screen (ms; its hold, else 1000/fps). */
+  frameMs(anim: AnyMonsterAnim, frame = 0): number {
+    const spec = this.spec(anim);
+    return spec ? specFrameMs(spec, frame) : 0;
+  }
+
+  /** ms from the start of frame `from` to the start of frame `to` of `anim` (to = frames: the end). */
+  rangeMs(anim: AnyMonsterAnim, from: number, to: number): number {
+    const spec = this.spec(anim);
+    return spec ? specRangeMs(spec, from, to) : 0;
+  }
+
+  /** Total length of one pass of `anim` (ms). */
+  animMs(anim: AnyMonsterAnim): number {
+    const spec = this.spec(anim);
+    return spec ? animLengthMs(spec) : 0;
+  }
+
+  /** Frame of a named beat of `anim` (spec.marks; attack 'impact' → attackImpactFrame; else `fallback` ?? 0). */
+  markFrame(anim: AnyMonsterAnim, mark: AnimMark, fallback?: number): number {
+    return artMarkFrame(this.art, anim, mark, fallback);
+  }
+
+  /** ms from the start of `anim` to a named beat (see markFrame). */
+  markMs(anim: AnyMonsterAnim, mark: AnimMark, fallback?: number): number {
+    const spec = this.spec(anim);
+    return spec ? frameStartMs(spec, this.markFrame(anim, mark, fallback)) : 0;
+  }
+
+  /** The attack's impact frame: marks.impact of 'attack', else the art's attackImpactFrame. */
+  get impactFrame(): number {
+    return artImpactFrame(this.art);
   }
 
   /** ms from the start of 'attack' to its impact frame. */
   get impactMs(): number {
-    return (this.art.attackImpactFrame / this.art.anims.attack.fps) * 1000;
+    return artImpactMs(this.art);
   }
 
   // ================================================================ guard pose
@@ -454,11 +778,16 @@ export class MonsterUnit {
 
   /** Is `key` (a play() argument) this unit's 'hit' animation? */
   isHitKey(key: string | Phaser.Animations.Animation | Phaser.Types.Animations.PlayAnimationConfig): boolean {
-    const hitKey = monsterAnimKey(this.cardId, 'hit');
-    if (typeof key === 'string') return key === hitKey;
-    if (key instanceof Phaser.Animations.Animation) return key.key === hitKey;
-    const k = key?.key;
-    return typeof k === 'string' ? k === hitKey : k instanceof Phaser.Animations.Animation ? k.key === hitKey : false;
+    return this.hitAnimOfKey(key) === 'hit';
+  }
+
+  /** The recoil anim ('hit' / 'hitHeavy' / 'hitMagic') a play() argument names, else null. */
+  hitAnimOfKey(key: string | Phaser.Animations.Animation | Phaser.Types.Animations.PlayAnimationConfig): AnyMonsterAnim | null {
+    const k = typeof key === 'string' ? key : key instanceof Phaser.Animations.Animation ? key.key : key?.key;
+    const name = typeof k === 'string' ? k : k instanceof Phaser.Animations.Animation ? k.key : null;
+    if (name === null) return null;
+    for (const a of HIT_ANIMS) if (name === monsterAnimKey(this.cardId, a)) return a;
+    return null;
   }
 
   /** The guard frame to show instead of a 'hit:N' frame (the current guard frame, else guard:0). */
@@ -477,6 +806,9 @@ export class MonsterUnit {
    * upright 'hit' recoil), a 2–3 frame white flash, a small hex-shield glint on the face the
    * blow came from and a 2–3 px knock-back along the blow that springs back (opts.hold: stays
    * pushed — a death follows). Resolves when the motion is done (~0.3 s; ~60 ms with hold).
+   * With the weight profiles on (src/duel/motion.ts, v3 look) the knock-back and its spring-back
+   * follow this monster's weight class: a heavy guard (Taş Muhafız) holds still, at most 1 px;
+   * a light one is knocked 3 px. Timings are the same either way.
    */
   guardHit(o: GuardHitOpts = {}): Promise<void> {
     const s = this.sprite;
@@ -500,7 +832,8 @@ export class MonsterUnit {
     this.kbTween?.stop();
     const base = this.kbBase ?? { x: s.x, y: s.y };
     this.kbBase = base;
-    const k = power >= 2 ? 3 : 2;
+    const k = reactGuardPushPx(this.art, power); // legacy: power >= 2 ? 3 : 2
+    const backEase = reactGuardReturnEase(this.art); // legacy: 'Back.Out'
     const to = { x: Math.round(base.x + blow.x * k), y: Math.round(base.y + blow.y * k * 0.6) };
     return new Promise<void>((resolve) => {
       let done = false;
@@ -522,7 +855,7 @@ export class MonsterUnit {
         onStop: finish,
         onComplete: () => {
           if (o.hold || !s.active || token !== this.kbToken) return finish();
-          this.kbTween = sc.tweens.add({ targets: s, x: base.x, y: base.y, duration: 240, ease: 'Back.Out', onComplete: finish, onStop: finish });
+          this.kbTween = sc.tweens.add({ targets: s, x: base.x, y: base.y, duration: 240, ease: backEase, onComplete: finish, onStop: finish });
         },
       });
       // safety net: settle() / killTweensOf may remove the tweens without any event
@@ -531,13 +864,12 @@ export class MonsterUnit {
   }
 
   /** sprite.play(<hit anim>) on a guarding unit: react, then report the hit anim's completion. */
-  guardHitFromSprite(): void {
+  guardHitFromSprite(hit: AnyMonsterAnim = 'hit'): void {
     void this.guardHit();
     const s = this.sprite;
-    const key = monsterAnimKey(this.cardId, 'hit');
-    const spec = this.art.anims.hit;
+    const key = monsterAnimKey(this.cardId, hit);
     const anim = this.scene.anims.get(key);
-    void wait(this.scene, (spec.frames / Math.max(1, spec.fps)) * 1000).then(() => {
+    void wait(this.scene, this.animMs(hit)).then(() => {
       if (s.active) s.emit(Phaser.Animations.Events.ANIMATION_COMPLETE_KEY + key, anim, anim?.frames[anim.frames.length - 1], s, '');
     });
   }
@@ -645,7 +977,8 @@ export class MonsterUnit {
     const want: MonsterAnim = this.position === 'defense' ? 'guard' : 'idle';
     const cur = this.frameInfo().anim;
     if (cur !== want || !s.anims.isPlaying) {
-      const busyOneShot = s.anims.isPlaying && (cur === 'roar' || cur === 'hit' || cur === 'attack');
+      // a one-shot still running (roar / attack / hit, or a v3 extra anim) plays out first
+      const busyOneShot = s.anims.isPlaying && cur !== null && cur !== 'idle' && cur !== 'guard';
       if (!busyOneShot) this.rest();
     }
     this.badge.setPosition(this.position);
@@ -688,9 +1021,17 @@ export class MonsterUnit {
 
   // ================================================================ internals
 
+  /**
+   * Facing and sheet follow the controller (construction, setController, settle): player 2 is
+   * mirrored (flipX, origin on the mirrored anchor) and shows the P2 'relight' sheet when the
+   * monster has one (art.p2 === 'relight'; see textures.monsterSheetKey), else the P1 sheet.
+   */
   private applyFacing(): void {
     const a = this.art;
     const flip = this.flipX;
+    const key = monsterSheetKey(this.cardId, this.player);
+    this.sheetKey = key !== this.p1Key && this.scene.textures.exists(key) ? key : this.p1Key;
+    if (this.sprite instanceof UnitSprite) this.sprite.syncSheet();
     this.sprite.setFlipX(flip);
     this.sprite.setOrigin((flip ? a.w - a.anchorX : a.anchorX) / a.w, a.anchorY / a.h);
   }

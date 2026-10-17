@@ -1,14 +1,18 @@
 // SpeedControl — global animation speed = Settings.speed (HUD 1×/2×/3× button) × 3 while
-// Space (or a pointer on an empty spot) is held. Applied through core.setSpeed; re-applied each
-// frame after hit-stops (which save/restore the time scale) so a freeze can never lose it.
+// Space (or a pointer on an empty spot) is held, × slow motion (slowMo). It feeds the scene's show
+// clock (src/duel/showclock.ts) every frame; the clock owns the time scales, so a hit-stop or the
+// menu pause holds the speed and gives it back as set (no save / restore, no one-frame drift).
+// The slow-motion countdown is real time, like before, but waits while the duel menu pauses.
 
 import Phaser from 'phaser';
-import { setSpeed } from '../vfx/core';
+import { showClock, type ShowClock } from './showclock';
 
 export const FAST_FORWARD = 3;
 
 export class SpeedControl {
   readonly scene: Phaser.Scene;
+  /** The scene's show clock (speed, hit-stop, pause). */
+  readonly clock: ShowClock;
   base: number;
   private keyHeld = false;
   private pointerHeld = false;
@@ -29,6 +33,7 @@ export class SpeedControl {
   constructor(scene: Phaser.Scene, base: number) {
     this.scene = scene;
     this.base = base;
+    this.clock = showClock(scene);
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
     window.addEventListener('blur', this.release);
@@ -41,7 +46,7 @@ export class SpeedControl {
     scene.input.on(Phaser.Input.Events.POINTER_UP, this.release);
     scene.input.on(Phaser.Input.Events.GAME_OUT, this.release);
     const upd = (_t: number, dt: number) => {
-      if (this.slowLeft > 0) {
+      if (this.slowLeft > 0 && !this.clock.paused) {
         this.slowLeft -= dt;
         if (this.slowLeft <= 0) this.slow = 1;
         else if (this.slowLeft < 250) this.slow = Math.min(1, this.slow + (1 - this.slow) * (dt / Math.max(16, this.slowLeft)));
@@ -55,7 +60,8 @@ export class SpeedControl {
       window.removeEventListener('keyup', this.onKeyUp);
       window.removeEventListener('blur', this.release);
       this.holdTimer?.remove();
-      setSpeed(scene, 1);
+      // the clock disposed itself on this SHUTDOWN already: this is a plain reset to 1×
+      this.clock.setSpeed(1);
     });
     this.apply();
   }
@@ -86,12 +92,15 @@ export class SpeedControl {
     this.holdTimer = null;
   };
 
+  /** The player's part of the speed (setting × fast-forward, no slow motion). */
+  get userValue(): number {
+    return this.base * (this.fastForward ? FAST_FORWARD : 1);
+  }
+
   private apply(): void {
-    const s = this.scene;
-    // frozen by a hit-stop: leave it alone, re-apply when it thaws
-    if (s.tweens.timeScale === 0 || s.time.timeScale === 0) return;
+    // during a hit-stop / the menu pause the clock stays at 0 and uses this when time flows again
     const k = this.value;
-    if (s.tweens.timeScale !== k || s.time.timeScale !== k || s.anims.globalTimeScale !== k) setSpeed(s, k);
+    this.clock.setSpeed(k, this.userValue);
     if (k !== this.last) {
       this.last = k;
       this.onChange?.(k);

@@ -12,6 +12,7 @@
 // eyes go dark) and the cold body breaks apart into ash-grey pixels.
 
 import Phaser from 'phaser';
+import { onDuelStart } from '../../duel/seeds';
 import { PAL } from '../../art/palette';
 import { PixelCanvas } from '../../art/pixel';
 import { DEPTH, type XY } from '../../view/layout';
@@ -69,6 +70,7 @@ const FIRE_SET = new Set<number>([PAL.fire1, PAL.fire2, PAL.fire3, PAL.fire4, PA
 const MARK_DEPTH = DEPTH.CARD_ON_TILE + 2;
 
 let r2 = 0;
+onDuelStart(() => (r2 = 0));
 function R2(): boolean {
   return ++r2 % 2 === 0;
 }

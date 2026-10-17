@@ -1,5 +1,7 @@
-// The subtle light layer (golden rule 3) — public API. Arena v2 only: in v1 every call is a
-// no-op (handles are inert, promises resolve at once), so cinematics can call it freely.
+// The subtle light layer (golden rule 3) — public API. Arena v2 (soft light) and the v3 look
+// (?look=v3: the same API in the STEPPED mode — flat tone steps on the pads, see LightLayer.ts /
+// stepped.ts). In v1 every call is a no-op (handles are inert, promises resolve at once), so
+// cinematics can call it freely.
 //
 //   import { lightFlash, lightPool, lightBeam, lightDim, addLight } from '../view/light';
 //
@@ -27,7 +29,7 @@
 
 import type Phaser from 'phaser';
 import type { Attribute } from '../../data/cards';
-import { ARENA_V2, type XY } from '../layout';
+import { ARENA_V2, LOOK_V3, type XY } from '../layout';
 import {
   type BeamHandle,
   type BeamOpts,
@@ -57,6 +59,7 @@ export {
 } from './LightLayer';
 export { ATTRIBUTE_LIGHT, MONSTER_GLOW, type LightAnim } from './profiles';
 export { ensureLightTextures } from './textures';
+export { STEP_DEPTH, StepPatch, stepTone } from './stepped';
 
 const layers = new WeakMap<Phaser.Scene, LightLayer>();
 
@@ -69,13 +72,14 @@ function urlParams(): URLSearchParams | null {
 }
 
 /**
- * The scene's light layer — created on first use in arena v2 (null in v1, unless a layer was
- * forced with ensureLightLayer(scene, { force: true })). Destroyed with the scene (SHUTDOWN).
+ * The scene's light layer — created on first use in arena v2 and the v3 look (null in v1, unless
+ * a layer was forced with ensureLightLayer(scene, { force: true })). Destroyed with the scene
+ * (SHUTDOWN).
  */
 export function lightLayer(scene: Phaser.Scene): LightLayer | null {
   const have = layers.get(scene);
   if (have) return have;
-  if (!ARENA_V2) return null;
+  if (!ARENA_V2 && !LOOK_V3) return null;
   return ensureLightLayer(scene);
 }
 
@@ -83,7 +87,7 @@ export function lightLayer(scene: Phaser.Scene): LightLayer | null {
 export function ensureLightLayer(scene: Phaser.Scene, o: { force?: boolean; field?: LightFieldSource | null } = {}): LightLayer | null {
   let layer = layers.get(scene) ?? null;
   if (!layer) {
-    if (!ARENA_V2 && !o.force) return null;
+    if (!ARENA_V2 && !LOOK_V3 && !o.force) return null;
     const p = urlParams();
     const gainParam = Number(p?.get('lightgain'));
     layer = new LightLayer(scene, { enabled: p?.get('light') !== '0', gain: Number.isFinite(gainParam) && gainParam > 0 ? gainParam : 1 });

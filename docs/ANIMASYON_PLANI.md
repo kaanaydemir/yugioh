@@ -93,6 +93,20 @@ deckOut, gameOver. Arayüz tarafında: kart seçme / hover, hedef seçme, geçer
   doku belleği bütçelenir.
 - **Işık katmanı** hafif tutulur: dar, kontrollü neon yayılması; saldırı ve çağırmada kısa yerel
   aydınlatma; bloom yok, aynı anda bütün ekran parlamaz.
+- **P2 ışığı (A1 kararı).** Varsayılan `p2: 'mirror'` kalır: P2 aynı sayfayı `flipX` ile gösterir,
+  bugünkü 12 canavar birebir aynı çalışır. Yeni çizilen canavar `p2: 'relight'` derse ikinci bir
+  sayfa (`mon:<id>:p2`, `DrawOpts.lightFrom = 'right'`) üretilir; `MonsterUnit` sayfayı denetleyen
+  oyuncuya göre seçer (`applyFacing` / `setController`, Ruh Çağrısı ile taraf değişince de), anim
+  anahtarları ve olaylar değişmez. Yalnız geliştirmeye ait şimle (`?dev=relight`; büyücünün P2
+  idle'ı `still/magus-map.ts` karesi) P2'de ışık ekranda sol üste geçti (iç gölgeleme ölçütü
+  `litBias`: aynalı −45,5 → relight +19,6; `shots/v3/a1/relight/`). Bedel: canavar başına kendi
+  sayfası kadar doku (büyücü 2880×80 = 0,9 MB; 12 canavarın hepsi bugünkü sayfalarla +9,3 MB, A2
+  pozlarıyla ~+19 MB) ve o kadar arka plan boyaması (büyücü eşzamanlı 236 ms; ertelenmiş kayıt
+  4,6 ms, P2 sayfaları P1'lerden sonra boyanır). **Karar:** A2'den itibaren yeni çizilen canavarlar
+  `relight` kullanır (sakin arenanın kazandırdığı ~12 MB bunu karşılar); eski stildeki canavarlar
+  `mirror` kalır. `shatter` P2 sayfasındaki kareyi ışığı çevrilmiş çizer; cut-in portresi, kart
+  resmi, hayalet (`set:ghost`) ve v2 ışık katmanının kare analizi henüz P1 sayfasını kullanıyor
+  (A2/A5'te ele alınacak).
 
 ## 4. Hareket kuralları
 

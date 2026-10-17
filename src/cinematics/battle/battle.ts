@@ -13,12 +13,12 @@
 //   both destroyed                the target shatters at contact, the attacker takes the mirrored
 //                                 blow and shatters a beat later (double shatter)
 //   direct                        red vignette, heavy shake, the duelist jolts, number at the hit
-// Camera: leans toward the clash, punches in a hair on the impact frame, eases back out after.
+// Camera: leans toward the clash (whole-pixel pan), the impact frame shakes + hit-stops, eases back after.
 
 import type { GameEvent } from '../../engine/types';
 import { ATTRIBUTE_RAMP, PAL, RAMPS, type Ramp } from '../../art/palette';
 import { GAME_W, type XY } from '../../view/layout';
-import { wait } from '../../vfx/core';
+import { shake, wait } from '../../vfx/core';
 import { blockClang, directHit, whiteFlash } from '../../vfx/combat';
 import { genericStrike } from '../_defaults/strikes';
 import { fx, registerEvent, strikeFor, type StrikeArgs } from '../api';
@@ -108,18 +108,20 @@ registerEvent(
       const p = at ?? to;
       if (direct) {
         // the burst lives on the un-zoomed UI camera: project the world hit point once, as the
-        // camera stands on the impact frame (before the punch-in below starts moving it)
+        // camera stands on the impact frame
         const hit = fx.directImpact(ctx, p, to);
         impactLight(sc, hit.world, toGround.y, strikeLight, power, { k: 1.15 });
-        void ctx.focus(focusAt, { zoom: Math.min(1.08, zoom + 0.02), ms: 70, pan: 0.34 }).then(() => ctx.focus(focusAt, { zoom, ms: 260, pan: 0.32 }));
+        // the impact frame: directHit's heavy shake + hit-stop (no zoom punch: integer camera)
         pending.push(directHit(sc, defender, { at: hit.screen }));
         void duelist(ctx, defender)?.jolt();
         if (dmgEv && dmgEv.player === defender) playDamageAt({ x: hit.world.x, y: hit.world.y - 22 });
         return;
       }
-      // impact-frame camera punch
-      void ctx.focus(focusAt, { zoom: Math.min(1.08, zoom + 0.02), ms: 70, pan: 0.34 }).then(() => ctx.focus(focusAt, { zoom, ms: 260, pan: 0.32 }));
+      // the impact frame is sold by shake + hit-stop, not a zoom punch (integer camera, v3 A1.2):
+      // every reaction below shakes the world camera and freezes time — combat impact (hitReact /
+      // guardReact) or blockClang. Only a strike into an empty tile has none: a plain shake then.
       const tu = live(target);
+      if (!blocked && !tu) void shake(sc, 100 + power * 30, power);
       // the impact lights the floor under the struck point (a guard that holds flashes shield-blue)
       if (blocked) impactLight(sc, p, toGround.y, defense ? PAL.water3 : tRamp[3], 1, { k: 0.85 });
       else impactLight(sc, p, toGround.y, strikeLight, power);

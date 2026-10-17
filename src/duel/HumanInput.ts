@@ -34,6 +34,7 @@ import { playerStyle, uiKeysActive } from '../view/ui-textures';
 import type { InstructionHandle } from '../view/Prompt';
 import type { DuelViews } from './types';
 import { pickCard } from './CardPicker';
+import { showClock } from './showclock';
 
 type Choice =
   | { kind: 'battle' }
@@ -291,7 +292,19 @@ export class HumanInput {
       this.views.hud.flashHint(this.zoneCancel ? 'Önce seçimini bitir ya da Esc ile geri dön' : 'Önce seçimini bitir', { style: 'neutral', ms: 1600 });
   }
 
-  private async pauseMenu(canSurrender: boolean): Promise<'resume' | 'surrender' | 'quit'> {
+  /**
+   * The duel menu pauses the show (src/duel/showclock.ts): the cinematic, idle life, timers,
+   * hit-stops and slow motion stop while it is open; the menu and its confirm prompt (made after
+   * the pause starts) keep animating. The Director's watchdog waits too (userWait).
+   */
+  private pauseMenu(canSurrender: boolean): Promise<'resume' | 'surrender' | 'quit'> {
+    const resume = showClock(this.scene).pause();
+    const p = this.pauseMenuBody(canSurrender);
+    void p.then(resume, resume);
+    return this.views.info.userWait(p);
+  }
+
+  private async pauseMenuBody(canSurrender: boolean): Promise<'resume' | 'surrender' | 'quit'> {
     this.pauseOpen = true;
     const prev = this.mode;
     if (canSurrender) this.setMode('pause');

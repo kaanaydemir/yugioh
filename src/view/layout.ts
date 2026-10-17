@@ -34,6 +34,44 @@
 
 import type { PlayerId, ZoneKind } from '../engine/types';
 
+// ---------------------------------------------------------------- look (additive, v3 plan A1.7)
+//
+// The look switch of the v3 visual overhaul (docs/ANIMASYON_PLANI.md, docs/v3/A0_ENVANTER.md
+// §5.5 / §6.1 item 7). It is separate from the arena variant below:
+//   'v1' (default) — the game exactly as it was (v1 board, or the v2 arena with ?arena=v2).
+//   'v3'           — the new look: always the v1 board geometry (so ?arena=v2 / __NEON_ARENA are
+//                    ignored and every board / HUD constant here keeps its v1 value), the calm
+//                    arena and the v1 HUD. A monster with new (v3) art uses it, one without keeps
+//                    its old sheet.
+// Decided once at module init, like the arena variant: `globalThis.__NEON_LOOK` ('v1' | 'v3'),
+// else the URL param `?look=v3`, else 'v1'.
+
+export type Look = 'v1' | 'v3';
+
+/** The active look (decided once at module init). */
+export const LOOK: Look = detectLook();
+/** Shorthand for `LOOK === 'v3'`. */
+export const LOOK_V3: boolean = LOOK === 'v3';
+
+function detectLook(): Look {
+  try {
+    const g = (globalThis as { __NEON_LOOK?: unknown }).__NEON_LOOK;
+    if (g === 'v1' || g === 'v3') return g;
+    if (typeof location !== 'undefined' && typeof URLSearchParams !== 'undefined') {
+      const p = new URLSearchParams(location.search).get('look');
+      if (p === 'v1' || p === 'v3') return p;
+    }
+  } catch {
+    /* no globals (tests, workers): fall through */
+  }
+  return 'v1';
+}
+
+/** Pick the v1 (today's look) or the v3 value (for module-level constants elsewhere). */
+export function byLook<T>(v1: T, v3: T): T {
+  return LOOK_V3 ? v3 : v1;
+}
+
 // ---------------------------------------------------------------- arena variant
 
 export type ArenaVariant = 'v1' | 'v2';
@@ -41,12 +79,14 @@ export type ArenaVariant = 'v1' | 'v2';
 /**
  * Which arena is active. Decided once at module init from `globalThis.__NEON_ARENA`
  * (demo.html sets it to 'v2' before booting), else the URL param `?arena=v2`, else 'v1'.
+ * The v3 look (LOOK_V3) forces 'v1': the new look is built on the v1 board geometry.
  */
 export const ARENA_VARIANT: ArenaVariant = detectArenaVariant();
 /** Shorthand for `ARENA_VARIANT === 'v2'`. */
 export const ARENA_V2: boolean = ARENA_VARIANT === 'v2';
 
 function detectArenaVariant(): ArenaVariant {
+  if (LOOK_V3) return 'v1';
   try {
     const g = (globalThis as { __NEON_ARENA?: unknown }).__NEON_ARENA;
     if (g === 'v1' || g === 'v2') return g;

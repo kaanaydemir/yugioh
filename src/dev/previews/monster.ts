@@ -1,13 +1,15 @@
-// ?dev=monster&id=<monster_id>[&mode=sheet|live|board][&anim=<anim>][&scale=N][&markers=1]
+// ?dev=monster&id=<monster_id>[&mode=sheet|live|board|holds][&anim=<anim>][&scale=N][&markers=1]
 //   sheet (default): every frame of every animation, side by side (or one anim with &anim=)
 //   live: all animations playing at once, P1 facing + P2 flipped
 //   board: the monster at 1× on iso tiles next to the tile grid (in-game scale check)
+//   holds: v3 contract test (A1) — a TEST-ONLY extra anim with per-frame holds (see holdsMode)
 import Phaser from 'phaser';
 import type { MonsterId } from '../../data/cards';
 import { MONSTER_IDS, cardDef } from '../../data/cards';
 import { monsterArt } from '../../art/monsters';
 import { PAL } from '../../art/palette';
 import { monsterAnimKey, monsterFrameName, monsterTextureKey } from '../../art/textures';
+import { holdsMode } from '../monster-holds';
 import type { MonsterAnim } from '../../art/types';
 import { MONSTER_ANIMS } from '../../art/types';
 import type { DevPreview } from '../types';
@@ -41,12 +43,13 @@ function markers(scene: Phaser.Scene, ox: number, oy: number, s: number, id: Mon
 
 const preview: DevPreview = {
   name: 'monster',
-  description: 'one monster: &id=<id>&mode=sheet|live|board&anim=&scale=&markers=1',
+  description: 'one monster: &id=<id>&mode=sheet|live|board|holds&anim=&scale=&markers=1',
   create(scene, params) {
     const id = (params.get('id') ?? 'crystal_wyrm') as MonsterId;
     if (!MONSTER_IDS.includes(id)) throw new Error(`unknown monster ${id}`);
     const art = monsterArt(id);
     const mode = params.get('mode') ?? 'sheet';
+    if (mode === 'holds') return holdsMode(scene, params, id);
     const showMarkers = params.get('markers') === '1';
     const key = monsterTextureKey(id);
     scene.cameras.main.setBackgroundColor(PAL.night1);

@@ -12,7 +12,10 @@ import type { MonsterId } from '../../data/cards';
 import type { GameEvent, GameEventType, PlayerId } from '../../engine/types';
 import { PAL, RAMPS, type Ramp } from '../../art/palette';
 import { monsterFrameName } from '../../art/textures';
+import type { AnyMonsterAnim } from '../../art/types';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
+import { WEIGHT_MOTION, reactShakePx, reactStopMs, type WeightSource } from '../../duel/motion';
+import { blowSource } from '../_core/helpers';
 import type { Disposable, DuelViews } from '../../duel/types';
 import type { TileCard } from '../../view/TileCard';
 import { ARENA_V2, DEPTH, TILE_W, type XY, unitDepth } from '../../view/layout';
@@ -21,6 +24,7 @@ import { wait } from '../../vfx/core';
 import { impact as combatImpact, stopTime } from '../../vfx/combat';
 import { Raster, Sparks, onFrame, run } from '../../vfx/setpieces';
 import type { CinematicContext } from '../api';
+import { onDuelStart } from '../../duel/seeds';
 
 export type EvOf<T extends GameEventType> = Extract<GameEvent, { type: T }>;
 export type Ctx<T extends GameEventType> = CinematicContext<EvOf<T>>;
@@ -44,7 +48,9 @@ export const lerpXY = (a: XY, b: XY, t: number): XY => ({ x: a.x + (b.x - a.x) *
 export const clamp01 = (t: number): number => (t < 0 ? 0 : t > 1 ? 1 : t);
 export const rint = (p: XY): XY => ({ x: Math.round(p.x), y: Math.round(p.y) });
 
-let seedState = 0x2545f491;
+const SEED0 = 0x2545f491;
+let seedState = SEED0;
+onDuelStart(() => (seedState = SEED0));
 export function seed(n: number): void {
   seedState = (n * 2654435761) >>> 0 || 1;
 }
@@ -155,13 +161,9 @@ export function live(u: MonsterUnit | null | undefined): MonsterUnit | null {
   return u && !u.retired && u.sprite.active && u.sprite.visible ? u : null;
 }
 
-/** Stop the sprite's animation and show one frame of an anim (clamped). */
-export function holdFrame(u: MonsterUnit, anim: 'idle' | 'attack' | 'roar' | 'hit' | 'guard', frame: number): void {
-  const s = u.sprite;
-  if (!s.active) return;
-  const n = u.art.anims[anim].frames;
-  s.anims.stop();
-  s.setFrame(monsterFrameName(anim, Math.max(0, Math.min(n - 1, Math.round(frame)))));
+/** Stop the sprite's animation and show one frame of an anim (rounded, clamped). MonsterUnit.pose. */
+export function holdFrame(u: MonsterUnit, anim: AnyMonsterAnim, frame: number): void {
+  u.pose(anim, frame);
 }
 
 // ================================================================ the attack declaration hold
@@ -223,21 +225,25 @@ export function guardRemapAll(_views: DuelViews): void {
  * came from and a 2–3 px knock-back along the blow — under a hit-stop. `survive` springs it back
  * home; otherwise it stays pushed (the shatter follows). Resolves after the knock-back beat
  * (~0.2–0.35 s).
+ * Weight profiles (src/duel/motion.ts; on in the v3 look): the knock-back follows the guard's
+ * weight class (MonsterUnit.guardHit), the hit-stop and shake those of the blow's source `by`
+ * (default: the other monster of the battle). Off, or without a source: the old power tables.
  */
 export async function guardReact(
   ctx: AnyCtx | CinematicContext<never>,
   u: MonsterUnit,
-  o: { power: 1 | 2 | 3; dir?: XY; at?: XY; ramp?: Ramp; survive: boolean; noStop?: boolean },
+  o: { power: 1 | 2 | 3; dir?: XY; at?: XY; ramp?: Ramp; survive: boolean; noStop?: boolean; by?: WeightSource },
 ): Promise<void> {
   const sc = (ctx as AnyCtx).scene;
   if (!live(u)) return;
   const dir = norm(o.dir ?? { x: u.player === 0 ? -1 : 1, y: u.player === 0 ? 0.5 : -0.5 });
   const at = o.at ?? u.core();
+  const by = o.by !== undefined ? o.by : WEIGHT_MOTION ? blowSource(ctx as AnyCtx, u) : null;
   // sparks / star / ring + camera shake (our own hit-stop below)
-  void combatImpact(sc, at.x, at.y, { power: o.power, ramp: o.ramp, dir, noStop: true });
+  void combatImpact(sc, at.x, at.y, { power: o.power, ramp: o.ramp, dir, noStop: true, shakePx: reactShakePx(o.power, by) });
   // flash + glint + knock-back from the guard pose (its tweens wait out the hit-stop)
   const react = u.guardHit({ dir, power: o.power, hold: !o.survive });
-  if (!o.noStop) await stopTime(sc, [0, 60, 80, 100][o.power]);
+  if (!o.noStop) await stopTime(sc, reactStopMs(o.power, by)); // legacy: [0, 60, 80, 100][power]
   await react;
 }
 

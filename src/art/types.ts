@@ -15,12 +15,82 @@ import type { PixelCanvas } from './pixel';
 export type MonsterAnim = 'idle' | 'roar' | 'attack' | 'hit' | 'guard';
 export const MONSTER_ANIMS: MonsterAnim[] = ['idle', 'roar', 'attack', 'hit', 'guard'];
 
+/**
+ * v3 (A1) OPTIONAL extra animations — a monster draws only the ones it has (`extraAnims` +
+ * `drawExtra`); for the rest the cinematics keep their current fallbacks (hologram summon,
+ * shatter death, roar...). Usually one-shots (their AnimSpec.loop says). Frame names on the sheet
+ * are `<anim>:<i>` like the base ones; check with animtime.hasAnim / textures.hasMonsterAnim.
+ *  - summon:    its own entrance poses (curled → unfurl → land → shake out).      marks: land
+ *  - death:     continues from hit: stagger → collapse → the body erodes.          marks: dissolve
+ *  - revive:    soul recall: re-forms from fragments, first breath.                marks: land
+ *  - special:   on-field effect / targeted cast (point, channel, release).         marks: charge, release
+ *  - hitHeavy:  big recoil (lethal-ish or heavy attacker).                          marks: impact, recover
+ *  - hitMagic:  recoil from a spell / beam (flinch, singe).                         marks: impact, recover
+ *  - victory:   short celebration ending in a held pose.
+ *  - toGuard:   attack → defense transition (ends on guard frame 0).
+ *  - fromGuard: defense → attack transition (ends on idle frame 0).
+ */
+export type MonsterAnimExtra =
+  | 'summon'
+  | 'death'
+  | 'revive'
+  | 'special'
+  | 'hitHeavy'
+  | 'hitMagic'
+  | 'victory'
+  | 'toGuard'
+  | 'fromGuard';
+/** Canonical order of the extra animations (sheet layout order after MONSTER_ANIMS). */
+export const MONSTER_ANIMS_EXTRA: MonsterAnimExtra[] = ['summon', 'death', 'revive', 'special', 'hitHeavy', 'hitMagic', 'victory', 'toGuard', 'fromGuard'];
+/** Any animation a monster may have: the five base ones (always) plus the optional extras. */
+export type AnyMonsterAnim = MonsterAnim | MonsterAnimExtra;
+
+/**
+ * Motion character (src/duel/motion.ts maps it to curves, anticipation / recovery times,
+ * hit-stop and shake). Absent → 'medium'.
+ */
+export type WeightClass = 'heavy' | 'mediumHeavy' | 'medium' | 'mediumLight' | 'light' | 'floater' | 'caster';
+export const WEIGHT_CLASSES: WeightClass[] = ['heavy', 'mediumHeavy', 'medium', 'mediumLight', 'light', 'floater', 'caster'];
+
+/**
+ * Named beats of an animation → frame index (see AnimSpec.marks). The battle timeline syncs to
+ * these: 'impact' (the strike lands / beam fires; on `attack` it falls back to
+ * MonsterArt.attackImpactFrame), 'release' (projectile leaves), 'contact' (body touches target),
+ * 'land' (feet hit the floor), 'dissolve' (erosion starts), 'recover' (first recovery frame),
+ * 'charge' (gathering starts).
+ */
+export type AnimMark = 'impact' | 'release' | 'contact' | 'land' | 'dissolve' | 'recover' | 'charge';
+export const ANIM_MARKS: AnimMark[] = ['impact', 'release', 'contact', 'land', 'dissolve', 'recover', 'charge'];
+
 export interface AnimSpec {
   frames: number;
-  /** Frames per second. */
+  /** Frames per second. Without `holds` every frame lasts 1000/fps ms (and it stays the fallback). */
   fps: number;
   loop: boolean;
+  /**
+   * OPTIONAL per-frame hold times in ms (length === frames): long anticipation, short strike.
+   * A missing / non-positive entry falls back to 1000/fps. Read timings only through
+   * src/art/animtime.ts (Phaser's Animation.duration ignores holds).
+   */
+  holds?: number[];
+  /** OPTIONAL named beats → frame index (see AnimMark). */
+  marks?: Partial<Record<AnimMark, number>>;
 }
+
+/** Options for drawing a frame (v3). Old monsters ignore them. */
+export interface DrawOpts {
+  /**
+   * Frame edge the key light comes from. Default 'left' (lit from the screen top-left as drawn,
+   * facing right). The optional P2 sheet ('relight') is drawn with 'right': mirrored by flipX it
+   * is lit from the screen top-left again.
+   */
+  lightFrom: 'left' | 'right';
+}
+
+/** Named points of interest of one frame (frame pixels, as drawn facing right). */
+export type MonsterPointName = 'muzzle' | 'core' | 'head' | 'hand' | 'staff' | 'claw' | 'feet' | 'grip';
+export const MONSTER_POINT_NAMES: MonsterPointName[] = ['muzzle', 'core', 'head', 'hand', 'staff', 'claw', 'feet', 'grip'];
+export type MonsterPoints = Partial<Record<MonsterPointName, { x: number; y: number }>>;
 
 export interface MonsterArt {
   id: MonsterId;
@@ -43,13 +113,33 @@ export interface MonsterArt {
   /**
    * Draw one frame onto `p` (already cleared, size w×h). Must be deterministic.
    * Include the 1px dark outline (PAL.ink) yourself — e.g. call p.outline(PAL.ink) at the end.
+   * `o` (v3, optional): see DrawOpts; old monsters ignore it.
    */
-  draw(p: PixelCanvas, anim: MonsterAnim, frame: number): void;
+  draw(p: PixelCanvas, anim: MonsterAnim, frame: number, o?: DrawOpts): void;
   /**
    * Optional card artwork (CARD_ART_W × CARD_ART_H) — a framed close-up for the card face.
    * If omitted, the card renderer crops the idle frame 0 around `core`.
    */
   portrait?(p: PixelCanvas): void;
+
+  // ---- v3 (A1) optional extensions — absent on the old monsters, which render unchanged ----
+
+  /** Extra animations this monster draws (see MonsterAnimExtra). Needs `drawExtra`. */
+  extraAnims?: Partial<Record<MonsterAnimExtra, AnimSpec>>;
+  /** Draw one frame of an extra animation (same rules as `draw`). */
+  drawExtra?(p: PixelCanvas, anim: MonsterAnimExtra, frame: number, o?: DrawOpts): void;
+  /** Motion character; absent → 'medium'. */
+  weight?: WeightClass;
+  /**
+   * Per-frame points of interest (frame pixels, facing right). Missing names fall back to the
+   * fixed `muzzle` / `core` (and the anchor for 'feet').
+   */
+  points?(anim: AnyMonsterAnim, frame: number): MonsterPoints;
+  /**
+   * How player 2 sees it: 'mirror' (default, today's flipX of the P1 sheet) or 'relight' (a
+   * second sheet drawn with { lightFrom: 'right' }, then flipped, so the light stays top-left).
+   */
+  p2?: 'mirror' | 'relight';
 }
 
 /** Card artwork window size (pixels) used by the card renderer and portraits. */

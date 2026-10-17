@@ -12,6 +12,7 @@
 // crumbles into heavy rubble that bounces on the floor.
 
 import Phaser from 'phaser';
+import { onDuelStart } from '../../duel/seeds';
 import { PAL, type Ramp } from '../../art/palette';
 import { PixelCanvas } from '../../art/pixel';
 import { DEPTH, type XY } from '../../view/layout';
@@ -378,6 +379,7 @@ registerCardHook('magma_titan', 'effect', async (ctx) => {
 });
 
 let r2 = 0;
+onDuelStart(() => (r2 = 0));
 function R2(): boolean {
   return ++r2 % 2 === 0;
 }

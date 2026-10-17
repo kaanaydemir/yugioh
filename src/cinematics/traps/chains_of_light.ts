@@ -69,7 +69,7 @@ registerCardHook(
       let bound = false;
       const lunge = tween(sc, { targets: s, x: dash.x, y: dash.y, duration: 320, ease: 'Quad.Out' }).then(() => {
         // caught: it hangs in the chains, struggling on its attack frame
-        if (s.active && !bound) holdFrame(attacker, 'attack', attacker.art.attackImpactFrame);
+        if (s.active && !bound) holdFrame(attacker, 'attack', attacker.impactFrame);
       });
       await wait(sc, 70);
       // ---- the chains shoot from the standing card and bind it

@@ -28,12 +28,17 @@ export interface FindOpts {
 }
 
 export interface FocusOpts {
-  /** Camera zoom (1 = none). Default 1.06. The bible allows 1.0 → 1.08. */
+  /**
+   * Legacy camera zoom (the bible's 1.0 → 1.08 lean). Since v3 A1.2 it is accepted and IGNORED:
+   * the world camera pans by whole pixels at zoom 1 (duel/CameraRig.ts). Use `closeUp` instead.
+   */
   zoom?: number;
   /** Tween time (default 260 ms). */
   ms?: number;
   /** How far toward the point to pan (0..1 of the offset from the screen centre, default 0.35). */
   pan?: number;
+  /** Cut (no tween) to an exact 2× close-up centred on the point (additive, v3 A1.2). */
+  closeUp?: boolean;
 }
 
 export interface CinematicContext<E extends GameEvent = GameEvent> {

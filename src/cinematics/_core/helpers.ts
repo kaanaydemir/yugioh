@@ -10,6 +10,7 @@
 //   summonEntrance(ctx, unit, { big })          → attribute summon set piece + roar + badge pop
 //   shatterUnit(ctx, unit, { push })            → hit flash + shatter into its pixels (retires the unit)
 //   hitReact(ctx, unit, power, ramp?)           → impact sparks + white silhouette + 'hit'
+//                                                 (hit-stop / shake / jitter: weight profiles)
 //   hexShield(scene, x, y, color?)              → hexagonal guard flash (defense position)
 // Spells / traps
 //   spellShowcase(ctx, …) → Showcase            → card rises to the centre at 2× with an aura
@@ -46,6 +47,9 @@ import { Raster, Sparks, onFrame, rnd, trapSpring } from '../../vfx/setpieces';
 import { trapBanner } from '../../vfx/banners';
 import { cutIn } from '../../vfx/cutin';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
+import { WEIGHT_MOTION, blowSourceUid, reactHitJitterPx, reactShakePx, reactStopMs, type WeightSource } from '../../duel/motion';
+import { monsterArt } from '../../art/monsters';
+import type { MonsterArt } from '../../art/types';
 import type { CinematicContext } from './types';
 
 type AnyCtx = CinematicContext<GameEvent>;
@@ -183,14 +187,45 @@ export async function tileToGraveyard(ctx: AnyCtx, uid: Uid, owner: PlayerId, ca
 // ================================================================ monsters
 
 /**
+ * The art of the monster whose blow `unit` is reacting to — the weight-profile source of the
+ * reaction's hit-stop and shake (src/duel/motion.ts): the other monster of the battle being
+ * presented (attacker → target, target → attacker on a counter blow), or null (spells, effects).
+ */
+export function blowSource(ctx: AnyCtx, unit: MonsterUnit | null): MonsterArt | null {
+  if (!unit) return null;
+  const uid = blowSourceUid(ctx.ev, unit.uid);
+  if (uid === null) return null;
+  const u = ctx.unit(uid);
+  if (u) return u.art;
+  try {
+    const id = ctx.cardId(uid);
+    return isMonster(CARDS[id]) ? monsterArt(id as MonsterId) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Impact on a unit: sparks, hit-stop, shake (by power), white silhouette, 'hit' recoil. A unit in
  * DEFENSE position reacts from its guard pose instead (MonsterUnit.guardHit: knock-back along
  * `dir`, hex-shield glint) — never the upright recoil.
+ * Weight profiles (motion.ts; on in the v3 look): the hit-stop and shake are those of the blow's
+ * source `by` (default: blowSource — the other monster of the battle), the jitter while frozen is
+ * the target's own (a heavy body stands firm). Off, or without a source: the old power tables.
  */
-export function hitReact(ctx: AnyCtx, unit: MonsterUnit | null, power: 1 | 2 | 3, ramp?: Ramp, at?: XY, dir?: XY): Promise<void> {
+export function hitReact(ctx: AnyCtx, unit: MonsterUnit | null, power: 1 | 2 | 3, ramp?: Ramp, at?: XY, dir?: XY, by?: WeightSource): Promise<void> {
   const p = at ?? (unit ? unit.core() : { x: GAME_W / 2, y: GAME_H / 2 });
   if (unit && unit.sprite.active && unit.sprite.visible) void unit.play('hit', { dir, power });
-  return combatImpact(ctx.scene, p.x, p.y, { power, ramp, sprite: unit?.sprite.visible ? unit.sprite : undefined, dir });
+  const src = by !== undefined ? by : WEIGHT_MOTION ? blowSource(ctx, unit) : null;
+  return combatImpact(ctx.scene, p.x, p.y, {
+    power,
+    ramp,
+    sprite: unit?.sprite.visible ? unit.sprite : undefined,
+    dir,
+    stopMs: reactStopMs(power, src),
+    shakePx: reactShakePx(power, src),
+    jitterPx: reactHitJitterPx(unit, power),
+  });
 }
 
 /**
