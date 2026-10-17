@@ -60,7 +60,9 @@ const WYRM_RAMP = [PAL.cyan1, PAL.cyan2, PAL.cyan3, PAL.cyan4, PAL.white] as con
 function mouthOf(u: MonsterUnit): () => XY {
   return () => {
     const fi = u.frameInfo();
-    const m = MOUTH && fi.anim === 'attack' && MOUTH[fi.frame] ? MOUTH[fi.frame] : u.art.muzzle;
+    // v3 art carries the mouth of every frame in points() (the v1 art has none: its table below)
+    const pt = u.art.points && fi.anim ? u.art.points(fi.anim, fi.frame).muzzle : undefined;
+    const m = pt ?? (MOUTH && fi.anim === 'attack' && MOUTH[fi.frame] ? MOUTH[fi.frame] : u.art.muzzle);
     return u.framePoint(m.x, m.y);
   };
 }

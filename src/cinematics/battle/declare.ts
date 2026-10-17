@@ -8,10 +8,20 @@
 //   responseDeclined  the set cards cool down and a small "Geç" pops over the defender's row.
 //   attackNegated     the arrow shatters, the attacker is shoved back with a clang, "SAVAŞ BİTTİ".
 // (The guard-pose rule — a defense-position unit never shows its upright 'hit' — is MonsterUnit's.)
+//
+// The v3 look (?look=v3; A0 §6.2 item 4 "İlan = hazırlık"): attackDeclareV3 below. The wind-up IS
+// the strike's own first anticipation frames — the attack anim plays from frame 0 up to its
+// 'charge' mark (marks.charge; without one, the first wind-up frame) and holds there, so the
+// strike that follows continues the same motion. No squash / stretch (no fractional scale), no
+// half-pixel tremble, no silhouette glow; the arrow, the reticle and the floor light carry the
+// beat. The whole declaration ends in ≤ 0.3 s (_v3/budget.ts DECLARE_MAX_MS).
 
 import { PAL, PLAYER_COLOR, PLAYER_RAMP } from '../../art/palette';
 import { pixelText } from '../../ui/text';
-import { DEPTH, type XY, zoneXY } from '../../view/layout';
+import { DEPTH, LOOK_V3, type XY, zoneXY } from '../../view/layout';
+import type { MonsterUnit } from '../../duel/MonsterUnit';
+import { DECLARE_MAX_MS } from '../_v3/budget';
+import { declarePoseFrame, type HandOver } from '../_v3/clash';
 import { tween, wait } from '../../vfx/core';
 import { attackArrow, blockClang, lockOn } from '../../vfx/combat';
 import { Sparks, addGlow, floorRing, onFrame } from '../../vfx/setpieces';
@@ -23,6 +33,7 @@ import {
   TAU,
   TK,
   type AttackHold,
+  type Ctx,
   arenaDim,
   arenaDimBase,
   duelist,
@@ -45,6 +56,7 @@ import {
 registerEvent(
   'attackDeclare',
   async (ctx) => {
+    if (LOOK_V3) return attackDeclareV3(ctx);
     const ev = ctx.ev;
     const sc = ctx.scene;
     seed(ev.attackerUid * 31 + (ev.targetUid ?? 7));
@@ -312,3 +324,149 @@ registerObserver((ev, ctx) => {
   if (ev.type !== 'phaseChange' && ev.type !== 'turnStart' && ev.type !== 'gameOver') return;
   if (arenaDimBase(ctx.scene) !== 0) void arenaDim(ctx.scene, 0, 400);
 });
+
+// ================================================================ attackDeclare, the v3 look
+
+/** Longest the wind-up frames may take inside the declaration (ms); longer holds play faster. */
+const DECLARE_POSE_MS = 180;
+
+async function attackDeclareV3(ctx: Ctx<'attackDeclare'>): Promise<void> {
+  const ev = ctx.ev;
+  const sc = ctx.scene;
+  seed(ev.attackerUid * 31 + (ev.targetUid ?? 7));
+  ctx.take('attack')?.destroy();
+  const attacker = live(ctx.unit(ev.attackerUid));
+  const target = ev.targetUid !== null ? live(ctx.unit(ev.targetUid)) : null;
+  const tTile = ev.targetUid !== null ? ctx.tile(ev.targetUid) : null;
+  const defender = other(ev.player);
+  const ramp = PLAYER_RAMP[ev.player];
+  const home = zoneXY(ev.player, 'monster', ev.attackerZone);
+  const from: XY = attacker ? attacker.core() : { x: home.x, y: home.y - 12 };
+  const to: XY = target ? target.core() : tTile ? { x: tTile.home.x, y: tTile.home.y - 8 } : fx.duelistPoint(ctx, defender);
+  const back = norm(sub(from, to));
+
+  void ctx.focus(lerpXY(from, to, 0.5), { zoom: 1.05, ms: 280, pan: 0.32 });
+  void duelist(ctx, ev.player)?.play('command');
+  ctx.sfx('attackDeclare', { volume: 0.85 });
+
+  // ---- the wind-up: the strike's own first frames, up to its charge pose, held there
+  let posed: Promise<void> = Promise.resolve();
+  if (attacker) {
+    const s = attacker.sprite;
+    attacker.posed = true;
+    sc.tweens.killTweensOf(s);
+    const r = attacker.rest0;
+    s.setPosition(r.x, r.y);
+    const f = declarePoseFrame(attacker);
+    const ms = attacker.rangeMs('attack', 0, f);
+    posed = f > 0 ? attacker.playRange('attack', 0, f, ms > DECLARE_POSE_MS ? { timeScale: ms / DECLARE_POSE_MS } : {}) : Promise.resolve(void attacker.pose('attack', 0));
+    void floorRing(sc, attacker.home.x, attacker.home.y, { r0: 4, r1: 30 * TK, ms: 420, ramp: [PAL.white, ramp[4], ramp[3], ramp[2]], depth: DEPTH.SHADOW - 1 });
+    // the power-up lights the floor in the player's colour (the v3 stepped light); the arena holds its breath
+    void lightFlash(sc, attacker.home.x, attacker.home.y - 8, ramp[3], 36, 420, { floorY: attacker.home.y, ring: true, intensity: 0.7 });
+    void arenaDim(sc, 0.2, 280);
+    const motes = new Sparks(sc, DEPTH.FX - 1, ADD);
+    const h = attacker.home;
+    onFrame(sc, (dt, el) => {
+      if (el > 420) {
+        motes.close();
+        return false;
+      }
+      if (dt > 0 && rnd() < dt / 26) {
+        const a = rr(0, TAU);
+        motes.add({ x: h.x + Math.cos(a) * rr(8, 16), y: h.y + Math.sin(a) * rr(3, 7), vy: rr(-70, -40), drag: 1, life: rr(240, 420), ramp: [PAL.white, ramp[4], ramp[3], ramp[2]], tex: rnd() < 0.25 ? 'fx:plus' : 'fx:px1' });
+      }
+      return true;
+    });
+  }
+
+  // ---- the arrow arcs out at once, the reticle snaps onto the target
+  const arrow = attackArrow(sc, from, to, ev.player);
+  const aimFrom = attacker ? attacker.home : home;
+  const aimTo = target ? target.home : tTile ? tTile.home : { x: to.x, y: to.y + 18 };
+  const aimLight = lightBeam(sc, aimFrom, aimTo, ramp[3], 0, { air: false, floor: { from: aimFrom, to: aimTo }, floorWidth: 9, intensity: 0.55, shimmer: 0.4 });
+  const size = target ? Math.max(24, Math.round(target.art.w * 0.42)) : tTile ? 26 : 30;
+  const lock = lockOn(sc, to.x, to.y, { color: PLAYER_COLOR[ev.player], size });
+  // the target braces as the reticle lands (whole pixels only)
+  void wait(sc, 200).then(() => {
+    if (target && target.sprite.active) {
+      if (target.position === 'defense') void hexGlint(sc, to.x + back.x * 8, to.y + back.y * 8 - 2, back.x, PAL.water3, 300);
+      else if (!target.posed) {
+        const s = target.sprite;
+        const r = target.rest0;
+        const away = norm(sub(to, from));
+        sc.tweens.killTweensOf(s);
+        s.setPosition(r.x + Math.sign(Math.round(away.x * 1.5)), r.y);
+        void wait(sc, 110).then(() => {
+          if (s.active && !target.posed) s.setPosition(r.x, r.y);
+        });
+      }
+    } else if (tTile && tTile.active && !tTile.faceUp) void tTile.pulse(PLAYER_COLOR[ev.player], 280);
+    else if (ev.targetUid === null) void duelist(ctx, defender)?.jolt();
+  });
+
+  let marksGone = false;
+  const dropMarks = () => {
+    if (marksGone) return;
+    marksGone = true;
+    arrow.destroy();
+    lock.destroy();
+    void aimLight.fadeOut(160);
+  };
+  let released = false;
+  /** Back to the idle / guard loop unless something else already took the sprite. */
+  const unpose = () => {
+    if (!attacker) return;
+    attacker.posed = false;
+    if (attacker.retired || !attacker.sprite.active) return;
+    if (attacker.frameInfo().anim === 'attack' && !attacker.sprite.anims.isPlaying) attacker.rest();
+  };
+  const hold: AttackHold & HandOver = {
+    kind: 'attackHold',
+    attackerUid: ev.attackerUid,
+    targetUid: ev.targetUid,
+    player: ev.player,
+    from,
+    to,
+    dropMarks,
+    handOver() {
+      if (released) return;
+      released = true;
+      if (attacker) attacker.posed = false;
+    },
+    shatterMarks() {
+      if (marksGone) return;
+      const sp = new Sparks(sc, DEPTH.FX_TOP + 1);
+      const mid = { x: (from.x + to.x) / 2, y: Math.min(from.y, to.y) - Math.min(46, Math.max(14, Math.hypot(to.x - from.x, to.y - from.y) * 0.32)) };
+      for (let i = 0; i <= 16; i++) {
+        const t = i / 16;
+        const u = 1 - t;
+        const p = { x: u * u * from.x + 2 * u * t * mid.x + t * t * to.x, y: u * u * from.y + 2 * u * t * mid.y + t * t * to.y };
+        sp.add({ x: p.x, y: p.y, vx: rr(-40, 40), vy: rr(-50, 10), ay: 240, drag: 1.5, life: rr(220, 420), ramp: [PAL.white, ramp[4], ramp[3], ramp[2]], tex: rnd() < 0.3 ? 'fx:px2' : 'fx:px1' });
+      }
+      sp.burst(10, () => {
+        const a = rr(0, TAU);
+        return { x: to.x, y: to.y, vx: Math.cos(a) * rr(50, 110), vy: Math.sin(a) * rr(50, 110), drag: 3, life: rr(200, 360), ramp: [PAL.white, ramp[4], ramp[3]], tex: 'fx:plus' };
+      });
+      sp.close();
+      void lightFlash(sc, to.x, to.y, ramp[3], 30, 260, { floorY: to.y + 16, intensity: 0.7 });
+      dropMarks();
+    },
+    // the strike starts from this very pose (its attack anim plays on in the same frame): no
+    // tween back; anything that does not take the sprite gets the idle / guard loop back
+    async release() {
+      if (released) return;
+      released = true;
+      unpose();
+    },
+    destroy() {
+      dropMarks();
+      if (!released) {
+        released = true;
+        unpose();
+      }
+    },
+  };
+  ctx.keep('attack', hold);
+  // the reticle snaps at ~230 ms; the declaration never runs past the budget
+  await Promise.race([Promise.all([lock.done, posed]), wait(sc, DECLARE_MAX_MS - 50)]);
+}

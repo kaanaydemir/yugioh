@@ -3,7 +3,7 @@ import { CARDS, isMonster, type CardId } from '../../data/cards';
 import type { GameEvent, PlayerId, Uid } from '../../engine/types';
 import { other } from '../../engine/types';
 import { ATTRIBUTE_RAMP, PAL, PLAYER_COLOR, RAMPS, type Ramp } from '../../art/palette';
-import { GAME_W, type XY, zoneXY } from '../../view/layout';
+import { GAME_W, LOOK_V3, type XY, zoneXY } from '../../view/layout';
 import { tween, wait } from '../../vfx/core';
 import { attackArrow, blockClang, directHit, lockOn } from '../../vfx/combat';
 import { damageNumber, statPop } from '../../vfx/numbers';
@@ -32,6 +32,7 @@ import {
 } from '../_core/helpers';
 import { genericStrike } from './strikes';
 import { flameAura, steamAura } from '../../duel/auras';
+import { destroyV3 } from '../_v3/death';
 
 const P = { priority: DEFAULT_PRIORITY };
 
@@ -264,10 +265,13 @@ registerEvent(
  * crack and dissolve (rule destroys just fade). Then the card arcs into its owner's graveyard
  * (the following toGraveyard of the same card is consumed).
  * hints: push (XY) burst direction, hit (false = no recoil flash first).
+ * v3 look: _v3/death.ts destroyV3 (the death kit; the card is born from its tile, no dissolve).
  */
 registerEvent(
   'destroy',
   async (ctx) => {
+    // v3 look: the death kit + card continuity (_v3/death.ts destroyV3)
+    if (LOOK_V3) return destroyV3(ctx);
     const ev = ctx.ev;
     const field = ctx.views.field;
     const gi = ctx.findType('toGraveyard', (e) => e.uid === ev.uid, { until: (e) => e.type !== 'toGraveyard' && e.type !== 'destroy' && e.type !== 'fieldSpell' && e.type !== 'statChange' });

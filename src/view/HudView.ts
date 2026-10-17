@@ -388,7 +388,7 @@ export class HudView {
    * draining ghost on the LP bar plus a floating "-N" chip; gain = green glow, rising
    * sparkles and a "+N" chip. Resolves when the counter lands.
    */
-  async setLp(player: PlayerId, value: number, animate = true): Promise<void> {
+  async setLp(player: PlayerId, value: number, animate = true, o: { maxMs?: number } = {}): Promise<void> {
     const P = this.panels[player];
     value = Math.max(0, Math.round(value));
     const from = P.shownLp;
@@ -407,7 +407,11 @@ export class HudView {
     }
     const loss = value < from;
     const amount = Math.abs(delta || value - from);
-    const ms = Math.min(1100, Math.max(420, 320 + amount * 0.32));
+    // o.maxMs (v3 look: LP roll ≤ 400 ms, plan §5) caps the roll and the bar's ghost drain
+    const cap = o.maxMs;
+    const ms = cap !== undefined ? Math.min(cap, Math.min(1100, Math.max(420, 320 + amount * 0.32))) : Math.min(1100, Math.max(420, 320 + amount * 0.32));
+    const ghostDelay = cap !== undefined ? Math.min(320, Math.round(cap * 0.3)) : 320;
+    const ghostMs = cap !== undefined ? Math.max(60, Math.min(420, cap - ghostDelay)) : 420;
     sfx.play(loss ? 'lpDown' : 'lpUp');
     this.flashPanel(player, loss ? PAL.crim3 : PAL.leaf3, loss ? 0.72 : 0.6, loss ? 340 : 520);
     if (loss) this.shakePanel(P, Math.min(5, 2 + amount / 600), 360);
@@ -429,8 +433,8 @@ export class HudView {
       P.ghostTween = this.scene.tweens.add({
         targets: g,
         v: value,
-        delay: 320,
-        duration: 420,
+        delay: ghostDelay,
+        duration: ghostMs,
         ease: 'Quad.In',
         onUpdate: () => {
           P.ghostLp = g.v;

@@ -12,6 +12,10 @@
 //   end      the unit is settled to its canonical pose; the camera eases back.
 // Monster art is read at RUNTIME (unit.art: anchor, hover, core, muzzle, fps, frame counts) —
 // the sprites keep being polished, so nothing here hard-codes frame geometry.
+// v3 look (?look=v3; the shared summon base, _v3/summon.ts): a monster whose art has a `summon`
+// pose enters on it (opts.v3 piece, else the generic poseEntrance: circle-less light column, the
+// body formed in ≤ 300 ms, the finale on the landing); the old monsters keep their pieces, with
+// the hologram settle capped (HOLO_SETTLE_V3_MS).
 
 import Phaser from 'phaser';
 import type { CardId, MonsterId } from '../../data/cards';
@@ -20,7 +24,7 @@ import { ATTRIBUTE_RAMP, PAL, PLAYER_COLOR, type Ramp } from '../../art/palette'
 import { monsterAnimKey, monsterFrameName } from '../../art/textures';
 import type { AnyMonsterAnim, MonsterAnim } from '../../art/types';
 import type { SfxName } from '../../audio/sfx';
-import { DEPTH, TILE_W, type XY, unitDepth } from '../../view/layout';
+import { DEPTH, LOOK_V3, TILE_W, type XY, unitDepth } from '../../view/layout';
 import { attributeLightColor, lightBeam, lightDim, lightFlash, lightPool, type BeamHandle, type LightHandle, type PoolOpts } from '../../view/light';
 import { TEX, shake, wait } from '../../vfx/core';
 import { Raster, Sparks, onFrame, run } from '../../vfx/setpieces';
@@ -30,6 +34,8 @@ import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { TileCard } from '../../view/TileCard';
 import { fx, type CinematicContext, type EventOf } from '../api';
 import { onDuelStart } from '../../duel/seeds';
+import { HOLO_SETTLE_V3_MS, poseEntrance } from '../_v3/summon';
+import { matterRamp } from '../_v3/death';
 
 export { Raster, Sparks, onFrame, run };
 // the subtle light layer (arena v2; every call is a no-op in v1)
@@ -289,6 +295,8 @@ export function holo(s: Phaser.GameObjects.Sprite, ramp: Ramp, p: Partial<Hologr
 export async function holoSettle(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite, ms = 220, flashWhite = true): Promise<void> {
   const pipe = getHologram(s);
   if (!pipe) return;
+  // v3: the hologram never lingers (the body is the show)
+  if (LOOK_V3) ms = Math.min(ms, HOLO_SETTLE_V3_MS);
   const P = pipe.params;
   const tm = P.tintMix;
   const sc = P.scan;
@@ -382,7 +390,7 @@ export interface FinaleOpts {
  * Run a signature summon: the card arrival (slam / flash / flip), a hidden unit, then `piece`
  * (which reveals the monster and calls e.finale() on its impact beat), then a clean settle.
  */
-export async function entrance(ctx: SummonCtx, piece: (e: Entrance) => Promise<void>, opts: { seed?: number } = {}): Promise<void> {
+export async function entrance(ctx: SummonCtx, piece: (e: Entrance) => Promise<void>, opts: { seed?: number; v3?: (e: Entrance) => Promise<void> } = {}): Promise<void> {
   const ev = ctx.ev;
   const v = ctx.views;
   const field = v.field;
@@ -486,7 +494,22 @@ export async function entrance(ctx: SummonCtx, piece: (e: Entrance) => Promise<v
   // the camera leans in a touch toward the tile while the monster arrives (bible: 1.0 → 1.08)
   void ctx.focus({ x: home.x, y: home.y - 28 }, { zoom: e.big ? 1.06 : 1.04, ms: 420, pan: 0.22 });
   try {
-    await piece(e);
+    if (LOOK_V3 && unit.has('summon')) {
+      // v3: the body enters on its own summon pose
+      if (opts.v3) await opts.v3(e);
+      else
+        await poseEntrance({
+          scene: sc,
+          unit,
+          home,
+          player: ev.player,
+          ramp: matterRamp(unit.cardId),
+          big: e.big,
+          cutIn: false,
+          lightColor: matterRamp(unit.cardId)[3],
+          finale: () => e.finale({ shake: e.big ? 3 : 2 }),
+        });
+    } else await piece(e);
   } finally {
     e.finale({ sfx: null, shake: 0, dust: null });
     for (const l of lights) if (l.alive) void l.fadeOut(300);

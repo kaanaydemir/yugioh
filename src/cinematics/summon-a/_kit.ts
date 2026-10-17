@@ -15,6 +15,13 @@
 // choreography already slammed it: hints.noCard; or a tile flash for graveyard / ghost arrivals),
 // creates the hidden unit, runs the entrance, and always heals the unit (show, hologram off,
 // facing, badge) even if the entrance throws. Everything runs on the scaled scene clock.
+//
+// v3 look (?look=v3; the shared summon base, _v3/summon.ts): a monster whose art has a `summon`
+// pose enters on it — its signature file may pass its own v3 entrance (signatureSummon(id, e,
+// { v3 })) built on S.pose(); otherwise the generic poseEntrance runs (attribute circle + light
+// column, the body formed in ≤ 300 ms, the cut-in on the pose's peak, the finale as the band
+// leaves). Every ace cut-in is the v3 one (_v3/cutin.ts, ≤ 1.0 s, band only), the camera is not
+// waited for, and the old entrances' hologram settle is capped (HOLO_SETTLE_V3_MS).
 
 import Phaser from 'phaser';
 import type { MonsterId } from '../../data/cards';
@@ -24,7 +31,7 @@ import { mulberry32 } from '../../art/pixel';
 import { AK } from '../../art/arena';
 import { monsterAnimKey, monsterFrameName } from '../../art/textures';
 import type { AnyMonsterAnim, MonsterAnim } from '../../art/types';
-import { DEPTH, GAME_H, GAME_W, TILE_W, type XY, unitDepth } from '../../view/layout';
+import { DEPTH, GAME_H, GAME_W, LOOK_V3, TILE_W, type XY, unitDepth } from '../../view/layout';
 import { attributeLightColor, lightBeam, lightDim, lightFlash, lightPool, type BeamHandle, type LightHandle, type PoolOpts } from '../../view/light';
 import { flash, flashRect, flashTopDepth, shake, wait } from '../../vfx/core';
 import { E, Raster, Sparks, freeze, onFrame, run } from '../../vfx/setpieces';
@@ -37,6 +44,9 @@ import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { CardSprite } from '../../view/CardSprite';
 import { fx, registerCardHook, type CinematicContext } from '../api';
 import { onDuelStart } from '../../duel/seeds';
+import { cutInV3 } from '../_v3/cutin';
+import { HOLO_SETTLE_V3_MS, poseEntrance, summonPose, type SummonPose } from '../_v3/summon';
+import { matterRamp } from '../_v3/death';
 
 export type AnyCtx = CinematicContext<GameEvent>;
 export type SummonEv = Extract<GameEvent, { type: 'summon' }>;
@@ -401,6 +411,13 @@ export interface Stage {
    * light on the marble. Owned (destroyed with the stage); fade it out yourself. v1: inert.
    */
   glow(o?: PoolOpts & { at?: XY }): LightHandle;
+  /** v3 look (?look=v3). */
+  readonly v3: boolean;
+  /**
+   * v3: play the art's `summon` pose with the short hologram onset (≤ 300 ms; _v3/summon.ts
+   * summonPose): beats land / solid / peak / done. null when the art has no summon pose.
+   */
+  pose(o?: { onLand?: () => void; onPeak?: () => void; ramp?: Ramp; hologram?: boolean }): SummonPose | null;
 }
 
 function makeStage(ctx: SummonCtx, unit: MonsterUnit, o: { tribute: boolean; special: boolean; ghost: boolean; cutIn: boolean }): Stage & { dispose(): void } {
@@ -434,6 +451,10 @@ function makeStage(ctx: SummonCtx, unit: MonsterUnit, o: { tribute: boolean; spe
     circle: null,
     coreRest: { x: home.x + (unit.flipX ? -1 : 1) * (core.x - unit.art.anchorX), y: rest.y + (core.y - unit.art.anchorY) },
     lightColor: attributeLightColor(unit.attribute),
+    v3: LOOK_V3,
+    pose(po = {}) {
+      return summonPose(scene, unit, { ramp: po.ramp ?? S.ramp, onLand: po.onLand, onPeak: po.onPeak, hologram: po.hologram });
+    },
     glow(go = {}) {
       const at = go.at ?? home;
       const h = lightPool(scene, at.x, at.y, { color: S.lightColor, radius: fs(34), floorY: home.y, ...go });
@@ -468,6 +489,14 @@ function makeStage(ctx: SummonCtx, unit: MonsterUnit, o: { tribute: boolean; spe
     async climax() {
       if (climaxed || !o.cutIn) return;
       climaxed = true;
+      if (LOOK_V3) {
+        // v3: the band-only cut-in (≤ 1.0 s); the climax goes on as the band starts to leave
+        beat(scene, 'cut-in');
+        const c = cutInV3(scene, { monsterId: unit.cardId, name: unit.card.name, attribute: unit.attribute, player: ev.player });
+        await Promise.race([c.exit, wait(scene, 1000)]);
+        beat(scene, 'cut-in done');
+        return;
+      }
       let p: Promise<void>;
       try {
         p = cutIn(scene, { monsterId: unit.cardId, name: unit.card.name, attribute: unit.attribute, player: ev.player }).catch((e) => {
@@ -573,13 +602,15 @@ function heal(unit: MonsterUnit): void {
  * The whole summon: card part (unless the tribute choreography / a spell already placed it),
  * the hidden unit, the signature entrance, then heal. Hints: { tribute, noCard, ghost, cutIn }.
  */
-export async function runSummon(ctx: SummonCtx, entrance: (S: Stage) => Promise<void>): Promise<void> {
+export async function runSummon(ctx: SummonCtx, entrance: (S: Stage) => Promise<void>, v3Entrance?: (S: Stage) => Promise<void>): Promise<void> {
   const ev = ctx.ev;
   const v = ctx.views;
   const field = v.field;
   seed(ev.uid * 31 + ev.zone * 7 + ev.player);
   beat(ctx.scene, ctx.hints.tribute ? 'summon' : 'start');
-  await settleCamera(ctx);
+  // v3: the camera eases back while the summon already starts (never a dead beat)
+  if (LOOK_V3) void settleCamera(ctx);
+  else await settleCamera(ctx);
   const hints = ctx.hints as { tribute?: boolean; noCard?: boolean; ghost?: boolean; cutIn?: boolean };
   const atk = ctx.atk(ev.uid, 'next');
   const def = ctx.def(ev.uid, 'next');
@@ -609,7 +640,11 @@ export async function runSummon(ctx: SummonCtx, entrance: (S: Stage) => Promise<
   });
   try {
     beat(ctx.scene, 'entrance');
-    await entrance(S);
+    if (LOOK_V3 && unit.has('summon')) {
+      // v3: the body enters on its own summon pose
+      if (v3Entrance) await v3Entrance(S);
+      else await poseEntrance(poseStage(S));
+    } else await entrance(S);
     beat(ctx.scene, 'end');
   } finally {
     heal(unit);
@@ -619,17 +654,38 @@ export async function runSummon(ctx: SummonCtx, entrance: (S: Stage) => Promise<
   }
 }
 
-/** Register a monster's signature summon (flip summons fall through to the flip handler / defaults). */
-export function signatureSummon(id: MonsterId, entrance: (S: Stage) => Promise<void>): void {
+/**
+ * Register a monster's signature summon (flip summons fall through to the flip handler / defaults).
+ * o.v3: the entrance for the v3 look when the monster's art has its `summon` pose (built on
+ * S.pose(); without it the generic poseEntrance runs).
+ */
+export function signatureSummon(id: MonsterId, entrance: (S: Stage) => Promise<void>, o: { v3?: (S: Stage) => Promise<void> } = {}): void {
   registerCardHook(
     id,
     'summon',
     async (ctx) => {
       if (ctx.ev.from === 'field') return ctx.base();
-      await runSummon(ctx, entrance);
+      await runSummon(ctx, entrance, o.v3);
     },
     { name: `summon-a:${id}` },
   );
+}
+
+/** The generic v3 entrance's view of a Stage (_v3/summon.ts PoseStage). */
+function poseStage(S: Stage): Parameters<typeof poseEntrance>[0] {
+  return {
+    scene: S.scene,
+    unit: S.unit,
+    home: S.home,
+    player: S.player,
+    ramp: matterRamp(S.unit.cardId),
+    big: S.big,
+    cutIn: S.cutIn,
+    lightColor: matterRamp(S.unit.cardId)[3],
+    finale: (big) => S.finale({ ring: big ? 90 : 54, flashColor: undefined, freezeMs: big ? 50 : 0 }),
+    climax: () => S.climax(),
+    openCircle: () => S.openCircle(),
+  };
 }
 
 // ================================================================ hologram helpers
@@ -648,6 +704,8 @@ export function holo(u: MonsterUnit, ramp: Ramp, o: Partial<HologramParams> = {}
 export async function settleHolo(scene: Phaser.Scene, u: MonsterUnit, ms = 220): Promise<void> {
   const s = u.sprite;
   if (!s.active) return;
+  // v3: the hologram never lingers (the body is the show)
+  if (LOOK_V3) ms = Math.min(ms, HOLO_SETTLE_V3_MS);
   const P = setHologram(s, {});
   P.white = 0.55;
   await wait(scene, 34);

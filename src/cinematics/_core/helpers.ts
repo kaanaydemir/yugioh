@@ -10,7 +10,11 @@
 //   summonEntrance(ctx, unit, { big })          → attribute summon set piece + roar + badge pop
 //   shatterUnit(ctx, unit, { push })            → hit flash + shatter into its pixels (retires the unit)
 //   hitReact(ctx, unit, power, ramp?)           → impact sparks + white silhouette + 'hit'
-//                                                 (hit-stop / shake / jitter: weight profiles)
+//                                                 (hit-stop / shake / jitter: weight profiles;
+//                                                 v3 look: the hit-reaction kit, _v3/react.ts —
+//                                                 hit / hitHeavy / hitMagic, direction-aware
+//                                                 knock-back, contact flash ≤ half the body)
+//   guardReact(ctx, unit, { power, dir, survive }) → the same for a DEFENSE-position unit
 //   hexShield(scene, x, y, color?)              → hexagonal guard flash (defense position)
 // Spells / traps
 //   spellShowcase(ctx, …) → Showcase            → card rises to the centre at 2× with an aura
@@ -36,10 +40,10 @@ import type { CardOrientation } from '../../art/cards';
 import { sfx } from '../../audio/sfx';
 import { CardSprite } from '../../view/CardSprite';
 import type { TileCard } from '../../view/TileCard';
-import { DEPTH, GAME_H, GAME_W, type BoardSpot, type XY, panelRect, zoneXY } from '../../view/layout';
+import { DEPTH, GAME_H, GAME_W, LOOK_V3, type BoardSpot, type XY, panelRect, zoneXY } from '../../view/layout';
 import { MINI_CARD_W } from '../../view/ui-textures';
 import { TEX, flash, safe, shake, tween, wait } from '../../vfx/core';
-import { impact as combatImpact, whiteFlash } from '../../vfx/combat';
+import { impact as combatImpact, stopTime, whiteFlash } from '../../vfx/combat';
 import { shatter } from '../../vfx/shatter';
 import { attributeSummon, sparkleBurst } from '../../vfx/summon';
 import { damageNumber } from '../../vfx/numbers';
@@ -48,6 +52,10 @@ import { trapBanner } from '../../vfx/banners';
 import { cutIn } from '../../vfx/cutin';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { WEIGHT_MOTION, blowSourceUid, reactHitJitterPx, reactShakePx, reactStopMs, type WeightSource } from '../../duel/motion';
+import { reactGuard, reactHit, type BlowKind } from '../_v3/react';
+import { LP_ROLL_MAX_MS } from '../_v3/budget';
+import { impactNumber } from '../_v3/number';
+import { cardLeaves } from '../_v3/card';
 import { monsterArt } from '../../art/monsters';
 import type { MonsterArt } from '../../art/types';
 import type { CinematicContext } from './types';
@@ -155,8 +163,13 @@ export async function slamToZone(
   return tile;
 }
 
-/** A small card arcs from `from` into `owner`'s graveyard pile (count + top card update on landing). */
+/**
+ * A small card arcs from `from` into `owner`'s graveyard pile (count + top card update on landing).
+ * v3 look: card continuity (_v3/card.ts cardLeaves) — the pile's own iso card at scale 1 is born
+ * at `from` and arcs onto the pile on whole pixels (no rotation, `scale` is ignored).
+ */
 export async function cardToGraveyard(ctx: AnyCtx, o: { owner: PlayerId; cardId: CardId; from: XY; delay?: number; scale?: number; ms?: number }): Promise<void> {
+  if (LOOK_V3) return cardLeaves(ctx, { owner: o.owner, cardId: o.cardId, from: o.from, delay: o.delay, ms: o.ms });
   const sc = ctx.scene;
   if (o.delay) await wait(sc, o.delay);
   const pile = ctx.views.field.pile(o.owner, 'graveyard');
@@ -173,10 +186,14 @@ export async function cardToGraveyard(ctx: AnyCtx, o: { owner: PlayerId; cardId:
   c.destroy();
 }
 
-/** The TileCard of `uid` (released from the field) lifts, shrinks and flies to the graveyard. */
+/**
+ * The TileCard of `uid` (released from the field) lifts, shrinks and flies to the graveyard.
+ * v3 look: the card lifts off its own tile (born there, _v3/card.ts) and arcs onto the pile.
+ */
 export async function tileToGraveyard(ctx: AnyCtx, uid: Uid, owner: PlayerId, cardId: CardId): Promise<void> {
   const field = ctx.views.field;
   const { tile } = field.release(uid);
+  if (LOOK_V3) return cardLeaves(ctx, { owner, cardId, from: tile ? tile.home : zoneXY(owner, 'graveyard'), tile });
   const from = tile ? { x: tile.home.x, y: tile.home.y - 4 } : zoneXY(owner, 'graveyard');
   if (tile && tile.active) {
     void tile.fadeOut(160).then(() => tile.destroy());
@@ -213,7 +230,12 @@ export function blowSource(ctx: AnyCtx, unit: MonsterUnit | null): MonsterArt | 
  * source `by` (default: blowSource — the other monster of the battle), the jitter while frozen is
  * the target's own (a heavy body stands firm). Off, or without a source: the old power tables.
  */
-export function hitReact(ctx: AnyCtx, unit: MonsterUnit | null, power: 1 | 2 | 3, ramp?: Ramp, at?: XY, dir?: XY, by?: WeightSource): Promise<void> {
+export function hitReact(ctx: AnyCtx, unit: MonsterUnit | null, power: 1 | 2 | 3, ramp?: Ramp, at?: XY, dir?: XY, by?: WeightSource, o: HitReactOpts = {}): Promise<void> {
+  if (LOOK_V3) {
+    // v3: the hit-reaction kit (pose by size / kind, direction-aware knock-back, contact flash)
+    const src = by !== undefined ? by : WEIGHT_MOTION ? blowSource(ctx, unit) : null;
+    return reactHit(ctx, unit, { power, ramp, at, dir, by: src, ...o });
+  }
   const p = at ?? (unit ? unit.core() : { x: GAME_W / 2, y: GAME_H / 2 });
   if (unit && unit.sprite.active && unit.sprite.visible) void unit.play('hit', { dir, power });
   const src = by !== undefined ? by : WEIGHT_MOTION ? blowSource(ctx, unit) : null;
@@ -226,6 +248,46 @@ export function hitReact(ctx: AnyCtx, unit: MonsterUnit | null, power: 1 | 2 | 3
     shakePx: reactShakePx(power, src),
     jitterPx: reactHitJitterPx(unit, power),
   });
+}
+
+/** v3-only extras of hitReact (ignored by the old look). */
+export interface HitReactOpts {
+  /** physical / magic (default: from the source monster's strike; no source → magic). */
+  kind?: BlowKind;
+  /** The blow destroys the unit: heavy pose, the knock-back stays (the death starts there). */
+  lethal?: boolean;
+  /** false: do not move the sprite (a strike still drives it). */
+  knock?: boolean;
+  /** false: flash + sparks only, the caller owns the pose. */
+  pose?: boolean;
+  /** Skip the hit-stop (another impact of the same beat freezes time). */
+  noStop?: boolean;
+}
+
+/**
+ * A DEFENSE-position unit takes a blow without leaving its guard pose: sparks + shake, then
+ * MonsterUnit.guardHit (flash, hex glint on the face the blow came from, weight-scaled
+ * knock-back) under a hit-stop. `survive` springs it back; otherwise it stays pushed (a death
+ * follows). The v3 look: the kit's version (_v3/react.ts reactGuard: sparks on the contact face,
+ * contact flash ≤ half the body). The old look's battle handler keeps battle/_kit.ts guardReact;
+ * this one behaves the same there.
+ */
+export async function guardReact(
+  ctx: AnyCtx,
+  u: MonsterUnit,
+  o: { power: 1 | 2 | 3; dir?: XY; at?: XY; ramp?: Ramp; survive: boolean; noStop?: boolean; by?: WeightSource },
+): Promise<void> {
+  const by = o.by !== undefined ? o.by : WEIGHT_MOTION ? blowSource(ctx, u) : null;
+  if (LOOK_V3) return reactGuard(ctx, u, { ...o, by });
+  if (!u.sprite.active || !u.sprite.visible || u.retired) return;
+  const d = o.dir ?? { x: u.player === 0 ? -1 : 1, y: u.player === 0 ? 0.5 : -0.5 };
+  const l = Math.hypot(d.x, d.y) || 1;
+  const dir = { x: d.x / l, y: d.y / l };
+  const at = o.at ?? u.core();
+  void combatImpact(ctx.scene, at.x, at.y, { power: o.power, ramp: o.ramp, dir, noStop: true, shakePx: reactShakePx(o.power, by) });
+  const react = u.guardHit({ dir, power: o.power, hold: !o.survive });
+  if (!o.noStop) await stopTime(ctx.scene, reactStopMs(o.power, by));
+  await react;
 }
 
 /**
@@ -494,10 +556,13 @@ export async function presentDamage(ctx: AnyCtx, ev: Extract<GameEvent, { type: 
   const lp = lpPoint(ctx, ev.player);
   const at = o.at ?? { x: lp.x, y: lp.y + (ev.player === 0 ? -30 : 26) };
   const size = o.size ?? (ev.amount >= 1000 ? 2 : 1);
-  const jobs: Promise<unknown>[] = [damageNumber(sc, at.x, at.y, ev.amount, 'damage', { size, depth: o.at ? DEPTH.FX_TOP + 50 : DEPTH.HUD + 20 })];
+  const depth = o.at ? DEPTH.FX_TOP + 50 : DEPTH.HUD + 20;
+  // v3: the impact number (visible on the frame it is created, whole-pixel pop; _v3/number.ts)
+  const jobs: Promise<unknown>[] = [LOOK_V3 ? impactNumber(sc, at.x, at.y, ev.amount, { size, depth }) : damageNumber(sc, at.x, at.y, ev.amount, 'damage', { size, depth })];
   const d = ctx.views.duelists?.get(ev.player);
   if (d) jobs.push(d.play('hurt'), d.jolt());
-  jobs.push(ctx.views.hud.setLp(ev.player, ev.lpAfter, true));
+  // v3: the LP roll stays within the plan's ~0.4 s
+  jobs.push(LOOK_V3 ? ctx.views.hud.setLp(ev.player, ev.lpAfter, true, { maxMs: LP_ROLL_MAX_MS }) : ctx.views.hud.setLp(ev.player, ev.lpAfter, true));
   if (ev.lpAfter <= 1000) ctx.music.setIntensity(1);
   await all(jobs);
 }
@@ -507,7 +572,9 @@ export async function presentHeal(ctx: AnyCtx, ev: Extract<GameEvent, { type: 'l
   const lp = lpPoint(ctx, ev.player);
   const at = o.at ?? { x: lp.x, y: lp.y + (ev.player === 0 ? -30 : 26) };
   sfx.play('heal', { volume: 0.7 });
-  await all([damageNumber(sc, at.x, at.y, ev.amount, 'heal', { depth: o.at ? DEPTH.FX_TOP + 50 : DEPTH.HUD + 20 }), ctx.views.hud.setLp(ev.player, ev.lpAfter, true)]);
+  const num = damageNumber(sc, at.x, at.y, ev.amount, 'heal', { depth: o.at ? DEPTH.FX_TOP + 50 : DEPTH.HUD + 20 });
+  // v3: the LP roll stays within the plan's ~0.4 s
+  await all([num, LOOK_V3 ? ctx.views.hud.setLp(ev.player, ev.lpAfter, true, { maxMs: LP_ROLL_MAX_MS }) : ctx.views.hud.setLp(ev.player, ev.lpAfter, true)]);
 }
 
 // ================================================================ resolution runs

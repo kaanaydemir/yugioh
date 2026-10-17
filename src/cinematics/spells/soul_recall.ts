@@ -17,13 +17,27 @@
 //           burn) follow as their own events
 // Whole spell ≈ 2.85–3.15 s at speed 1 (≤ 3.2 s). QA: `&recall=generic` in the URL plays the
 // older generic cyan rematerialization instead of the signature entrance (for comparison films).
+//
+// v3 look (?look=v3; docs/v3/A0_ENVANTER.md §6.2 item 5, plan §4 "Diriltme normal çağırmanın aynısı
+// değildir ve onunla üst üste oynatılmaz"): recallV3 — the revive is NEVER the summon entrance
+// replayed (no ctx.play of the summon with { noCard, ghost }): the summon event is consumed here.
+//   0      the opening (short hold), the energy dives into the chosen graveyard
+//   +~200  the grave opens, the ghost tears free (shorter rise) and glides to the tile
+//   arrive the revived card is born on the tile (cyan flash); the ghost breaks into the body:
+//          with the art's `revive` pose the body reassembles on that pose (the matter gathers back:
+//          crystal shards, dark motes…) — without it (the old monsters) a ≤ 300 ms cyan rebuild of
+//          the body (bottom → top) — never a roar, a cut-in or an on-summon effect
+//   land   the body has re-formed: cyan ring, the badge pops, and only now does the spent card
+//          leave — born on the grave the energy went into, flying on whole pixels to its owner's pile
+//   end    resolves once the card has landed and the body stands (its last breath plays on)
+// Budget ≤ 2.1 s (suRevive, spRecallSet, sliceMagusRevive…).
 
 import Phaser from 'phaser';
 import { CARDS, isMonster, type CardId, type MonsterId } from '../../data/cards';
 import { currentAtk, currentDef } from '../../engine';
 import type { GameEvent, GameState, PlayerId, Uid } from '../../engine/types';
 import { PAL, RAMPS } from '../../art/palette';
-import { ARENA_V2, DEPTH, type XY, unitDepth, zoneXY } from '../../view/layout';
+import { ARENA_V2, DEPTH, LOOK_V3, type XY, unitDepth, zoneXY } from '../../view/layout';
 import { TEX, flash, shake, wait } from '../../vfx/core';
 import { E, Raster, Sparks, floorRing, ghostTexture, lerp, onFrame, qbez, rnd, rr, run } from '../../vfx/setpieces';
 import { createMagicCircle, createPillar, landingDust, shockwave } from '../../vfx/summon';
@@ -31,6 +45,10 @@ import { materialize } from '../../vfx/hologram';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { fx, registerCardHook, type CinematicContext } from '../api';
 import { CYAN_FX, bg, evAt, idxOf, relax, sendResolved, setTileOf, spellOpening, fs, lightBeam, lightFlash, lightPool } from './_kit';
+import { summonPose } from '../_v3/summon';
+import { Sparks as PxSparks } from '../../vfx/combat';
+import { matterRamp } from '../_v3/death';
+import { clearHologram, holoRamp, setHologram } from '../../vfx/hologram';
 
 const ADD = Phaser.BlendModes.ADD;
 const TAU = Math.PI * 2;
@@ -47,7 +65,7 @@ interface Ghost {
  * The graveyard glows; the monster's cyan ghost rises out of the pile and floats to `to`.
  * Resolves when it hovers over the tile. `onLeave` fires the moment it leaves the pile.
  */
-async function soulRise(ctx: AnyCtx, from: XY, to: XY, id: MonsterId, player: PlayerId, onLeave: () => void): Promise<Ghost> {
+async function soulRise(ctx: AnyCtx, from: XY, to: XY, id: MonsterId, player: PlayerId, onLeave: () => void, tm: { rise?: number; float?: number; settle?: number } = {}): Promise<Ghost> {
   const sc = ctx.scene;
   const flip = player === 1;
   const gx = Math.round(from.x);
@@ -114,7 +132,7 @@ async function soulRise(ctx: AnyCtx, from: XY, to: XY, id: MonsterId, player: Pl
 
   // ---- rise out of the pile (crop at the floor line)
   const lift = 20;
-  await run(sc, 200, (t, el) => {
+  await run(sc, tm.rise ?? 200, (t, el) => {
     const k = E.outCubic(t);
     place(gx + Math.sin(el * 0.02) * 1.2, gy + (1 - k) * fh * 0.95 - k * lift, gy);
     if (rnd() < 0.6) mist.add({ x: gx + rr(-10, 10), y: gy - rr(0, 4), vy: rr(-34, -12), life: rr(260, 420), ramp: [PAL.white, PAL.cyan4, PAL.cyan3], flicker: true });
@@ -128,7 +146,7 @@ async function soulRise(ctx: AnyCtx, from: XY, to: XY, id: MonsterId, player: Pl
   // v2: the graveyards sit on the outer pads, far from the zones — the flight takes its time and
   // arcs higher over the long way (v1 keeps its authored 320 ms / 46 px)
   const dist = Math.hypot(end.x - start.x, end.y - start.y);
-  const FLOAT = ARENA_V2 ? Math.round(Math.min(560, Math.max(320, 200 + dist * 1.1))) : 320;
+  const FLOAT = tm.float ?? (ARENA_V2 ? Math.round(Math.min(560, Math.max(320, 200 + dist * 1.1))) : 320);
   const ctrl = { x: (start.x + end.x) / 2, y: Math.min(start.y, end.y) - (ARENA_V2 ? Math.round(Math.min(80, 46 + dist * 0.1)) : 46) };
   ctx.sfx('whoosh', { volume: 0.4, pitch: 0.7 });
   let lastEcho = -999;
@@ -155,7 +173,7 @@ async function soulRise(ctx: AnyCtx, from: XY, to: XY, id: MonsterId, player: Pl
   });
   graveOn = 0;
   // ---- settle over the tile
-  await run(sc, 60, (t) => place(end.x, end.y + Math.sin(Math.PI * t) * 2, null));
+  if ((tm.settle ?? 60) > 0) await run(sc, tm.settle ?? 60, (t) => place(end.x, end.y + Math.sin(Math.PI * t) * 2, null));
   void ghostLight.fadeOut(260);
 
   return {
@@ -165,9 +183,11 @@ async function soulRise(ctx: AnyCtx, from: XY, to: XY, id: MonsterId, player: Pl
         const a = t < 0.3 ? 0.9 : t < 0.6 ? 0.55 : 0.2;
         for (const s of [ghost, glow]) {
           if (!s) continue;
-          s.setTintFill(PAL.white).setAlpha(s === glow ? a * 0.5 : a);
+          // v3: the ghost thins into cyan (no full-body white flash over the re-forming body)
+          s.setTintFill(LOOK_V3 ? (t < 0.3 ? PAL.cyan4 : PAL.cyan3) : PAL.white).setAlpha(s === glow ? a * 0.5 : LOOK_V3 ? a * 0.7 : a);
           s.setY(Math.round(end.y + E.inQuad(t) * 10));
-          s.setScale(1 + t * 0.15, 1 - t * 0.1);
+          // v3: no fractional squash (the body takes over from the ghost)
+          if (!LOOK_V3) s.setScale(1 + t * 0.15, 1 - t * 0.1);
         }
       });
       ghost?.destroy();
@@ -295,7 +315,7 @@ registerCardHook('soul_recall', 'activate', async (ctx) => {
   const sEv = evAt(ctx, si, 'summon');
   const gi = idxOf(ctx, run0, (e) => e.type === 'toGraveyard' && e.from === 'resolved' && e.uid === ev.uid);
   const set = setTileOf(ctx);
-  const op = await spellOpening(ctx, { uid: ev.uid, cardId: ev.cardId, player: ev.player, from: set ? 'set' : 'hand', zone: ev.zone, hold: 260 });
+  const op = await spellOpening(ctx, { uid: ev.uid, cardId: ev.cardId, player: ev.player, from: set ? 'set' : 'hand', zone: ev.zone, hold: LOOK_V3 ? 120 : 260 });
   const gUid = tEv?.graveyardUid;
   if (!tEv || !sEv || gUid === undefined || !isMonster(CARDS[sEv.cardId])) {
     await op.close();
@@ -304,6 +324,7 @@ registerCardHook('soul_recall', 'activate', async (ctx) => {
     return;
   }
   ctx.consumeAt(ti);
+  if (LOOK_V3) return recallV3(ctx, { op, run0, si, sEv, gi, gUid });
   // the special summon itself is played below through its own summon hook (the revived monster's
   // signature entrance); it is only consumed here for the generic cyan rematerialization
   const signature = recallStyle() === 'signature';
@@ -342,3 +363,138 @@ registerCardHook('soul_recall', 'activate', async (ctx) => {
   await fx.playRun(ctx, fx.resolutionRun(ctx));
   await send;
 });
+
+// ================================================================ the v3 look
+
+type Opening = Awaited<ReturnType<typeof spellOpening>>;
+type SummonEv = Extract<GameEvent, { type: 'summon' }>;
+
+/** v3: the ghost's timings (shorter rise, a quick glide, no hover: the body takes over at once). */
+const GHOST_V3 = { rise: 140, float: 200, settle: 0 };
+
+/** v3 (no revive pose): a ≤ 300 ms cyan rebuild of the body, bottom → top, then its true colours. */
+function rebuild(sc: Phaser.Scene, u: MonsterUnit, ms = 280): Promise<void> {
+  const s = u.sprite;
+  u.rest();
+  u.showSprite();
+  const P = setHologram(s, { reveal: 0, scan: 1, glitch: 0.1, tint: PAL.cyan4, ramp: holoRamp(CYAN), tintMix: 0.85, gain: 0.75, flicker: 0.05, alpha: 1, white: 0, clipY: null });
+  const rev = Math.round(ms * 0.6);
+  return run(sc, ms, (_t, el) => {
+    if (!s.active) return;
+    if (el < rev) P.reveal = el / rev;
+    else {
+      P.reveal = 1;
+      const k = Math.min(1, (el - rev) / Math.max(1, ms - rev));
+      const step = Math.min(3, Math.floor(k * 3) + 1) / 3;
+      P.white = step <= 1 / 3 ? 0.35 : 0;
+      P.tintMix = 0.85 * (1 - step);
+      P.scan = 1 - step;
+    }
+  }).then(() => {
+    if (s.active) clearHologram(s);
+  });
+}
+
+/** Matter motes streaming from the ghost into the re-forming body (crisp pixels, the matter's tones). */
+function gather(sc: Phaser.Scene, u: MonsterUnit, from: XY, ms: number): void {
+  const ramp = matterRamp(u.cardId);
+  const sp = new PxSparks(sc, u.sprite.depth + 0.5);
+  const to = u.core();
+  for (let i = 0; i < 22; i++) {
+    const a = (i / 22) * TAU;
+    const sx = Math.round(from.x + Math.cos(a) * rr(8, 20));
+    const sy = Math.round(from.y + Math.sin(a) * rr(6, 14));
+    sp.add({ x: sx, y: sy, tx: Math.round(to.x + rr(-8, 8)), ty: Math.round(to.y + rr(-12, 10)), curl: rr(-14, 14), delay: rr(0, ms * 0.35), life: rr(ms * 0.45, ms * 0.65), colors: [ramp[2], ramp[3], ramp[4], PAL.white], shape: i % 4 === 0 ? 'plus' : 'px', fadeAt: 1 });
+  }
+  sp.release();
+}
+
+/**
+ * v3 Ruh Çağrısı (see the header): the ghost glides to the tile and the body reassembles there —
+ * on its `revive` pose when the art has one, else a short cyan rebuild. The summon event is
+ * consumed (never the entrance replayed); the spent card leaves once the body has re-formed.
+ */
+async function recallV3(ctx: CinematicContext<Extract<GameEvent, { type: 'activate' }>>, o: { op: Opening; run0: number[]; si: number; sEv: SummonEv; gi: number; gUid: Uid }): Promise<void> {
+  const { op, si, sEv, gi, gUid } = o;
+  const sc = ctx.scene;
+  const field = ctx.views.field;
+  ctx.consumeAt(si);
+  const owner = ctx.owner(gUid);
+  const pile = field.pile(owner, 'graveyard');
+  const gyAt = pile.topXY();
+  const dest = zoneXY(sEv.player, 'monster', sEv.zone);
+  const stats = statsAt(ctx.stateAt(si + 1), sEv.uid, sEv.cardId);
+  bg(ctx.focus({ x: (gyAt.x + dest.x) / 2, y: Math.min(gyAt.y, dest.y) - 10 }, { zoom: 1.03, ms: 420, pan: 0.22 }));
+  // ---- the energy dives into the grave; the ghost tears free and glides to the tile
+  const DIVE = 180;
+  let risen!: (g: { g: Promise<Ghost> }) => void;
+  const ghostP = new Promise<{ g: Promise<Ghost> }>((r) => (risen = r));
+  const rise = () =>
+    risen({
+      g: soulRise(
+        ctx,
+        gyAt,
+        dest,
+        sEv.cardId as MonsterId,
+        sEv.player,
+        () => {
+          const g = ctx.stateAt(si + 1).players[owner].graveyard;
+          pile.set(g.length, g.length ? ctx.stateAt(si + 1).cards[g[g.length - 1]].cardId : null);
+          pile.bump();
+        },
+        GHOST_V3,
+      ),
+    });
+  await op.release({ x: gyAt.x, y: gyAt.y - 4 }, { path: 'dive', lift: 30, ms: DIVE, ramp: CYAN_FX, onLaunch: () => bg(wait(sc, DIVE - 40).then(rise)) });
+  bg(pile.flash(PAL.cyan4));
+  const ghost = await (await ghostP).g;
+  // ---- arrival: the revived card is born on its tile; the ghost breaks into the body
+  const tile = field.placeCard(sEv.player, 'monster', sEv.zone, sEv.uid, sEv.cardId, true, sEv.position === 'defense' ? 'side' : 'up');
+  tile.tileFlash(PAL.cyan3, 300);
+  tile.ringBurst(PAL.cyan4, 300);
+  ctx.sfx('materialize', { volume: 0.8 });
+  void lightFlash(sc, dest.x, dest.y - 12, PAL.cyan4, fs(34), 360, { floorY: dest.y, ring: true, intensity: 0.85 });
+  bg(ghost.melt(160));
+  const unit: MonsterUnit | null = field.addUnit(sEv.uid, { hidden: true, atk: stats.atk, def: stats.def, position: sEv.position });
+  let landed!: () => void;
+  const landP = new Promise<void>((r) => (landed = r));
+  const land = () => {
+    bg(shockwave(sc, dest.x, dest.y, { ramp: CYAN, radius: fs(44), ms: 360, thickness: 4 }));
+    void lightFlash(sc, dest.x, dest.y - 16, PAL.cyan4, fs(30), 300, { floorY: dest.y, ring: true, intensity: 0.7 });
+    bg(landingDust(sc, dest.x, dest.y, PAL.cyan3, { count: 7 }));
+    ctx.sfx('impactLight', { volume: 0.55 });
+    if (unit) {
+      unit.badge.setVisible(true);
+      bg(unit.badge.pop());
+    }
+    landed();
+  };
+  let body: Promise<void> = Promise.resolve();
+  if (unit) {
+    unit.badge.setVisible(false);
+    unit.sprite.setPosition(unit.rest0.x, unit.rest0.y);
+    const pose = summonPose(sc, unit, { anim: 'revive', ramp: matterRamp(unit.cardId), hologram: false, onLand: land });
+    if (pose) {
+      // the matter gathers back into the collapsed body while its pose re-forms it
+      gather(sc, unit, { x: dest.x, y: dest.y - 16 }, pose.ms.land);
+      // the stand is enough: the last breath plays on while the game moves on
+      body = Promise.all([pose.land, wait(sc, 300)]).then(() => undefined);
+    } else {
+      gather(sc, unit, { x: dest.x, y: dest.y - 16 }, 260);
+      body = rebuild(sc, unit, 280).then(land);
+    }
+  } else land();
+  await landP;
+  // ---- only now does the spent card leave (born on the grave its energy went into)
+  const g = evAt(ctx, gi, 'toGraveyard');
+  let send: Promise<void> = Promise.resolve();
+  if (g && !ctx.isConsumed(gi)) {
+    ctx.consumeAt(gi);
+    send = fx.cardToGraveyard(ctx, { owner: g.owner, cardId: g.cardId, from: { x: gyAt.x, y: gyAt.y } });
+  }
+  await body;
+  if (unit && !unit.retired) unit.show();
+  relax(ctx, 300);
+  await fx.playRun(ctx, fx.resolutionRun(ctx));
+  await send;
+}

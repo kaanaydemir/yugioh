@@ -13,7 +13,7 @@ import type { GameEvent, PlayerId } from '../../engine/types';
 import { ATTRIBUTE_RAMP, PAL, type Ramp } from '../../art/palette';
 import { monsterAnimKey, monsterFrame, monsterFrameName } from '../../art/textures';
 import type { AnyMonsterAnim, MonsterAnim } from '../../art/types';
-import { ARENA_V2, DEPTH, TILE_W, type XY, unitDepth } from '../../view/layout';
+import { ARENA_V2, DEPTH, LOOK_V3, TILE_W, type XY, unitDepth } from '../../view/layout';
 import { lightFlash } from '../../view/light';
 import { wait } from '../../vfx/core';
 import { E, Px, Sparks, animate, onFrame, sleep } from '../../vfx/combat';
@@ -22,6 +22,7 @@ import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { TileCard } from '../../view/TileCard';
 import { listHandlers, type CinematicContext, type StrikeArgs } from '../api';
 import { onDuelStart } from '../../duel/seeds';
+import { deathMaterial, deathV3 } from '../_v3/death';
 
 export { E, Px, Sparks, animate, onFrame, sleep };
 export type { StrikeArgs };
@@ -416,10 +417,44 @@ export interface DeathOpts {
  * dissolve the tile, then hand over to the base handler for the graveyard flight (it finds
  * nothing left on the field). Falls back to base() when the unit is not on screen or the
  * destroying card animates it itself.
+ * v3 look: the one death kit (_v3/death.ts deathV3) — the death pose + the flavour as a preset
+ * when the art has the pose; else this flavour, then the body breaks as its material (vfx/shatter
+ * presets) and the card is born on its tile on the burst frame.
  */
 export async function flavoredDeath(ctx: DestroyCtx, o: DeathOpts): Promise<void> {
   const ev = ctx.ev;
   if (ev.location !== 'monster' || sourceOwnsDeath(ctx)) return ctx.base();
+  if (LOOK_V3) {
+    return deathV3(ctx, {
+      fallback: () => ctx.base(),
+      legacy: async (d) => {
+        const unit = d.unit;
+        const sc = ctx.scene;
+        const push = d.push ?? null;
+        try {
+          if (o.flavor) await o.flavor(unit, { push, hit: d.hit });
+        } catch (e) {
+          console.error('[strikes-b] death flavour failed', e);
+        }
+        if (!unit.sprite.active || !unit.sprite.visible) return;
+        ctx.sfx('shatter', { volume: 0.6 });
+        const at = unit.core();
+        if (o.light !== false) void lightFlash(sc, at.x, at.y, o.light ?? ATTRIBUTE_RAMP[unit.attribute][3], 46, 460, { floorY: unit.home.y, ring: true, intensity: 0.9 });
+        const sh = shatter(sc, unit.sprite, {
+          monsterId: unit.cardId,
+          attribute: unit.attribute,
+          material: deathMaterial(unit.cardId),
+          floorY: d.home.y,
+          push: o.push ? o.push(unit, push) : (push ?? undefined),
+          onBurst: () => {
+            d.burst();
+            o.onBurst?.(unit, at);
+          },
+        });
+        void sh.then(() => unit.retire(0));
+      },
+    });
+  }
   const field = ctx.views.field;
   const unit = field.unit(ev.uid);
   if (!unit || unit.retired || !unit.sprite.active || !unit.sprite.visible) return ctx.base();

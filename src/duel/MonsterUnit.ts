@@ -51,7 +51,7 @@ import { monsterAnimKey, monsterFrame, monsterFrameName, monsterP2TextureKey, mo
 import type { AnimMark, AnimSpec, AnyMonsterAnim, MonsterAnim, MonsterArt } from '../art/types';
 import { animLengthMs, animSpec, artMarkFrame, frameMs as specFrameMs, frameStartMs, impactFrame as artImpactFrame, impactMs as artImpactMs, rangeMs as specRangeMs } from '../art/animtime';
 import type { PlayerId, Position, Uid } from '../engine/types';
-import { DEPTH, type XY, unitDepth, zoneXY } from '../view/layout';
+import { DEPTH, LOOK_V3, type XY, unitDepth, zoneXY } from '../view/layout';
 import type { TileCard } from '../view/TileCard';
 import { wait } from '../vfx/core';
 import { framePointToWorld } from '../vfx/combat';
@@ -61,6 +61,7 @@ import type { Disposable } from './types';
 import { StatBadge } from './StatBadge';
 import { reactGuardPushPx, reactGuardReturnEase } from './motion';
 import { onDuelStart } from './seeds';
+import { contactFlash } from '../cinematics/_v3/flash';
 
 export type UnitPoint = 'muzzle' | 'core' | 'anchor' | 'top' | 'feet';
 
@@ -822,8 +823,10 @@ export class MonsterUnit {
     const blow = { x: d.x / l, y: d.y / l };
     // 1. the guard pose holds (the loop keeps breathing; a held non-guard frame goes back to it)
     if (this.frameInfo().anim !== 'guard' || !s.anims.isPlaying) this.rest();
-    // 2. white silhouette frame(s) (an overlay: never fights another flash over the tint)
-    flashOverlay(sc, s, power >= 3 ? 3 : 2);
+    // 2. white silhouette frame(s) (an overlay: never fights another flash over the tint); the
+    //    v3 look lights only the face the blow lands on (≤ half the silhouette, A0 §6.2 item 1)
+    if (LOOK_V3) contactFlash(sc, s, blow, { frames: power >= 3 ? 3 : 2, coverage: power >= 3 ? 0.45 : 0.4 });
+    else flashOverlay(sc, s, power >= 3 ? 3 : 2);
     // 3. hex-shield glint on the side the blow came from (bigger for heavier blows)
     const c = this.core();
     guardGlint(sc, c.x - blow.x * 6, c.y - blow.y * 6 - 2, -blow.x, s.depth + 0.5, 9 + power * 2);

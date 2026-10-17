@@ -12,6 +12,7 @@
 //   --scenarios a,b,c  scenario keys (src/duel/scenarios.ts + src/duel/scenarios/*.ts), or a preset:
 //                      ref (the 10 reference scenarios of A0 §6.1 item 1), baseline (ref + 5 more),
 //                      all (every scenario; slow). Presets and keys can be mixed: ref,tbMirror
+//                      A trailing * selects every key with that prefix: 'slice*' (the A2 slice pack)
 //   --look v3          adds &look=v3 (the v3 look switch)
 //   --arena v2         adds &arena=v2
 //   --speed N          adds &speed=N (default: the game default, 1×)
@@ -716,6 +717,7 @@ async function scenarioKeys() {
   for (const w of want) {
     if (PRESETS[w]) keys.push(...PRESETS[w]);
     else if (w === 'all') keys.push(...all);
+    else if (w.endsWith('*')) keys.push(...all.filter((k) => k.startsWith(w.slice(0, -1))));
     else keys.push(w);
   }
   const unknown = keys.filter((k) => !all.includes(k));
