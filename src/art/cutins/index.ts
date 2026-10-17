@@ -20,6 +20,7 @@ import { ATTRIBUTE_RAMP, PAL } from '../palette';
 import { PixelCanvas, shade } from '../pixel';
 import type { CutinArt } from '../types';
 import { monsterArt } from '../monsters';
+import { LOOK_V3 } from '../../view/layout';
 
 // ================================================================== kit
 
@@ -564,6 +565,17 @@ for (const mod of Object.values(modules)) {
   const d = mod.default;
   const art = typeof d === 'function' ? d(KIT) : d;
   if (art && art.id) REGISTRY.set(art.id, art);
+}
+
+// v3 look: a redrawn portrait lives in src/art/cutins-v3/<monster_id>.ts (same contract: a CutinArt
+// or a CutinFactory as `export default`) and replaces the old one under ?look=v3 only.
+const v3Modules = import.meta.glob<{ default: CutinArt | CutinFactory }>(['../cutins-v3/*.ts', '!../cutins-v3/_*.ts'], { eager: true });
+if (LOOK_V3) {
+  for (const mod of Object.values(v3Modules)) {
+    const d = mod.default;
+    const art = typeof d === 'function' ? d(KIT) : d;
+    if (art && art.id) REGISTRY.set(art.id, art);
+  }
 }
 
 /** True when a hand-made portrait exists for this monster. */
