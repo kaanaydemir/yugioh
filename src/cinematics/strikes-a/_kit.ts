@@ -17,7 +17,7 @@ import { MONSTER_ANIMS } from '../../art/types';
 import { ARENA_V2, DEPTH, GAME_H, GAME_W, TILE_W, type XY, unitDepth, zoneXY } from '../../view/layout';
 import { lightFlash, lightPool, type LightHandle } from '../../view/light';
 import type { TileCard } from '../../view/TileCard';
-import { flashRect, shake } from '../../vfx/core';
+import { flashRect, flashTopDepth, shake } from '../../vfx/core';
 import { E, Px, Sparks, animate, framePointToWorld, onFrame, sleep, stopTime, whiteFlash } from '../../vfx/combat';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { sfx, type SfxName, type SfxOpts } from '../../audio/sfx';
@@ -142,9 +142,9 @@ export function glowPulse(scene: Phaser.Scene, x: number, y: number, color: numb
   }).then(() => g.destroy());
 }
 
-/** Full-screen tinted flash over the world (not the HUD; ADD), stepped fall-off. */
+/** Full-screen tinted flash over the world in the v3 look (not the HUD; v1 / v2: the overlay band, as before; ADD), stepped fall-off. */
 export function screenFlash(scene: Phaser.Scene, color: number, alpha: number, ms: number): Promise<void> {
-  const r = flashRect(scene, color, alpha, DEPTH.OVERLAY, { blend: ADD });
+  const r = flashRect(scene, color, alpha, flashTopDepth(), { blend: ADD });
   return animate(scene, ms, (t) => r.setAlpha(alpha * Math.pow(1 - t, 2))).then(() => r.destroy());
 }
 

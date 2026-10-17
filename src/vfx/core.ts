@@ -9,7 +9,7 @@
 // setSpeed / hitStop / shake below delegate to it.
 
 import Phaser from 'phaser';
-import { DEPTH, GAME_H, GAME_W } from '../view/layout';
+import { DEPTH, GAME_H, GAME_W, LOOK_V3 } from '../view/layout';
 import { PixelCanvas } from '../art/pixel';
 import { showClock } from '../duel/showclock';
 
@@ -58,9 +58,9 @@ export function tweenValue(
 }
 
 /**
- * Camera shake. `px` is the max offset in game pixels; `ms` is show-clock time: 3× speed makes it
- * a third as long and the duel menu pause holds it (v3 look: a hit-stop holds it too; v1 keeps
- * shaking through a hit-stop, as before). See src/duel/showclock.ts.
+ * Camera shake. `px` is the max offset in game pixels. The v3 look: `ms` is show-clock time — 3×
+ * speed makes it a third as long, a hit-stop and the duel menu pause hold it. Without the look
+ * switch (v1 / v2) it is `ms` of real time, exactly as before. See src/duel/showclock.ts.
  */
 export function shake(scene: Phaser.Scene, ms: number, px: number): Promise<void> {
   const cam = scene.cameras.main;
@@ -79,13 +79,31 @@ export function shake(scene: Phaser.Scene, ms: number, px: number): Promise<void
  */
 export const WORLD_FLASH_DEPTH = DEPTH.HUD - 1;
 
+/**
+ * Do flashes wash the HUD band by default? The v3 look (A1.9): no — a flash only lights the world.
+ * Without the look switch (v1, and the v2 arena) the game stays exactly as it was: a flash sits at
+ * the depth its caller gives, so one in the HUD band washes the HUD, hand and banners as before.
+ */
+export const FLASH_WASHES_HUD: boolean = !LOOK_V3;
+
+/**
+ * The depth of the old full-screen flashes, which sat on the overlay band (DEPTH.OVERLAY − 1),
+ * for the active look: v1 / v2 keep that; the v3 look puts them at WORLD_FLASH_DEPTH (the world
+ * only). `below` steps down from it, for layered flashes (directHit: white, vignette, red, lines).
+ */
+export function flashTopDepth(below = 0): number {
+  return (FLASH_WASHES_HUD ? DEPTH.OVERLAY - 1 : WORLD_FLASH_DEPTH) - below;
+}
+
 /** World flashes reach this far past the frame (shake offsets, a 2× close-up around the centre). */
 const FLASH_PAD = 48;
 
 export interface FlashOpts {
   /**
    * Wash the HUD band too (the old behaviour: the flash sits at its `depth` even when that is in
-   * the HUD band). Default false: world only — the HUD is never washed by a flash.
+   * the HUD band, exactly the frame-sized rectangle of old). Default FLASH_WASHES_HUD: true without
+   * the look switch (v1 / v2, unchanged), false in the v3 look — world only, the HUD is never
+   * washed by a flash.
    */
   hud?: boolean;
   /** Blend mode of the flash rectangle (default NORMAL). */
@@ -93,26 +111,28 @@ export interface FlashOpts {
 }
 
 /**
- * A full-screen flash rectangle (alpha `alpha`) that only lights the WORLD: at `depth` clamped
- * under the HUD band (WORLD_FLASH_DEPTH), screen-space, padded so camera shake / a close-up never
- * shows an unflashed edge. The caller animates and destroys it (see flash()).
+ * A full-screen flash rectangle (alpha `alpha`), screen-space; the caller animates and destroys it
+ * (see flash()). World only (the v3 look's default): `depth` is clamped under the HUD band
+ * (WORLD_FLASH_DEPTH) and the rectangle is padded so camera shake / a close-up never shows an
+ * unflashed edge. With `hud` (the v1 / v2 default): the old rectangle — the frame at `depth`.
  */
 export function flashRect(scene: Phaser.Scene, color: number, alpha: number, depth: number = DEPTH.OVERLAY, o: FlashOpts = {}): Phaser.GameObjects.Rectangle {
-  const d = o.hud ? depth : Math.min(depth, WORLD_FLASH_DEPTH);
-  const pad = o.hud ? 0 : FLASH_PAD;
-  const r = scene.add
-    .rectangle(-pad, -pad, GAME_W + pad * 2, GAME_H + pad * 2, color, alpha)
-    .setOrigin(0)
-    .setDepth(d)
-    .setScrollFactor(0);
+  const hud = o.hud ?? FLASH_WASHES_HUD;
+  const r = hud
+    ? scene.add.rectangle(0, 0, GAME_W, GAME_H, color, alpha).setOrigin(0).setDepth(depth).setScrollFactor(0)
+    : scene.add
+        .rectangle(-FLASH_PAD, -FLASH_PAD, GAME_W + FLASH_PAD * 2, GAME_H + FLASH_PAD * 2, color, alpha)
+        .setOrigin(0)
+        .setDepth(Math.min(depth, WORLD_FLASH_DEPTH))
+        .setScrollFactor(0);
   if (o.blend !== undefined) r.setBlendMode(o.blend);
   return r;
 }
 
 /**
- * Full-screen color flash that fades out. World only by default (A1.9): `depth` is clamped under
- * the HUD band, so the HUD, hand, banners and cut-ins are never washed; `{ hud: true }` restores
- * the old full-screen behaviour.
+ * Full-screen color flash that fades out. In the v3 look it is world only (A1.9): `depth` is
+ * clamped under the HUD band, so the HUD, hand, banners and cut-ins are never washed. Without the
+ * look switch it is the old full-screen flash at `depth` (pass `{ hud: false }` for world only).
  */
 export function flash(scene: Phaser.Scene, ms: number, color = 0xffffff, alpha = 0.8, depth: number = DEPTH.OVERLAY, o: FlashOpts = {}): Promise<void> {
   const r = flashRect(scene, color, alpha, depth, o);
@@ -125,7 +145,8 @@ export function flash(scene: Phaser.Scene, ms: number, color = 0xffffff, alpha =
  * Nesting-safe (the show clock merges overlapping stops; same as combat.stopTime).
  */
 export function hitStop(scene: Phaser.Scene, ms: number): Promise<void> {
-  return showClock(scene).freeze(ms);
+  // 'hit': without the look switch the speed comes back as the old hitStop gave it back
+  return showClock(scene).freeze(ms, 'hit');
 }
 
 /** Global playback speed (fast-forward). 1 = normal. Kept through hit-stops and pauses. */

@@ -26,7 +26,7 @@ import { monsterAnimKey, monsterFrameName } from '../../art/textures';
 import type { AnyMonsterAnim, MonsterAnim } from '../../art/types';
 import { DEPTH, GAME_H, GAME_W, TILE_W, type XY, unitDepth } from '../../view/layout';
 import { attributeLightColor, lightBeam, lightDim, lightFlash, lightPool, type BeamHandle, type LightHandle, type PoolOpts } from '../../view/light';
-import { flash, flashRect, shake, wait } from '../../vfx/core';
+import { flash, flashRect, flashTopDepth, shake, wait } from '../../vfx/core';
 import { E, Raster, Sparks, freeze, onFrame, run } from '../../vfx/setpieces';
 import { createMagicCircle, shockwave, type MagicCircleCtl } from '../../vfx/summon';
 import { Swarm } from '../../vfx/particles';
@@ -216,9 +216,9 @@ export function isoRing(r: Raster, cx: number, cy: number, rad: number, c: numbe
   r.ring(cx, cy, rad, rad / 2, c, level, from, to);
 }
 
-/** A full-screen flash over the world (not the HUD) with stepped fall-off (additive tint). */
+/** A full-screen flash over the world in the v3 look (not the HUD; v1 / v2: the overlay band, as before) with stepped fall-off (additive tint). */
 export function screenFlash(scene: Phaser.Scene, color: number, alpha: number, ms: number): Promise<void> {
-  const r = flashRect(scene, color, alpha, DEPTH.OVERLAY, { blend: ADD });
+  const r = flashRect(scene, color, alpha, flashTopDepth(), { blend: ADD });
   return run(scene, ms, (t) => r.setAlpha(alpha * (t < 0.25 ? 1 : t < 0.5 ? 0.6 : t < 0.75 ? 0.3 : 0.12))).then(() => r.destroy());
 }
 

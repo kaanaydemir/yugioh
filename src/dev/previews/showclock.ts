@@ -6,8 +6,10 @@
 //      300  hit-stop 300 ms + shake 300 ms / 3 px
 //             v3 (&look=v3): the hologram, the marker and the shake (on its first offset) hold
 //             v1: the marker holds; hologram and shake run on through the stop, as before
-//      900  pause 400 ms (what the duel menu does): everything holds, in both looks
-//     1500  speed 3× + shake 300 ms / 3 px (lasts 100 ms), hologram 3× fast
+//      900  pause 400 ms (what the duel menu does in v3): v3: everything holds; v1: the marker
+//             holds, hologram and shake run on (v1 / v2 never pause: the duel menu does not call it)
+//     1500  speed 3× + shake 300 ms / 3 px: v3: it lasts 100 ms and the hologram runs 3× fast;
+//             v1: both stay on real time, as before
 //     2300  back to 1×
 //   node tools/shot.mjs "?dev=showclock&look=v3" --film 16 --every 50 --start 250
 //   &hold=MS changes the hit-stop / pause length (default 300 / 400); &shake=0 leaves the shakes out

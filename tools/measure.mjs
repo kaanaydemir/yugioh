@@ -56,6 +56,21 @@
 // every event, sound, number and unit anim frame). A0's scratch hooks moved by 1–6 frames between
 // runs of the same code (suWyrm 3733–3817 ms).
 //
+// Baselines: shots/v3/a1/baseline/measure-baseline.json was measured BEFORE A1. Two A1 items move v1
+// numbers on purpose, so a --compare against it still flags them (A1 fix round 1 traced every one):
+//   - integer camera (A1.2): zoom.max is 1 (2 in a close-up) instead of 1.06–1.08, and an effect
+//     that starts from a world point's SCREEN position starts elsewhere (the ember wolf's howl-burn
+//     wisp: saWolfP2 / saGolemBlocked / sbThornDies end one frame earlier);
+//   - duel-start seed reset (A1.12): the restarted duel this tool measures now starts from a fresh
+//     page's random streams instead of continuing the first duel's, so each unit's random idle start
+//     frame differs, and tributeStream (which streams the sacrificed unit's current frame) moves
+//     12 tribute scenarios (suMagus, suCoral, spBladeBreak, saMagusEffect …) by ±1 frame.
+// The other 262 scenarios match the pre-A1 code (events, sounds, numbers, one-shot anim frames),
+// and with both causes neutralised (old camera zoom + the carried unit seed) those 15 matched it
+// frame for frame too. Late 'fireBurst' sounds (victory fireworks) drew from Math.random before
+// A1, so they are not comparable with pre-A1 runs. The same presets re-measured after A1:
+// shots/v3/a1/fix1/measure-baseline-refreshed.json (v1), measure-baseline-v2.json (?arena=v2).
+//
 // Per scenario the JSON holds:
 //   events[]        every cinematic event the Director runs: {batch, i, type, start, end, dur, ...
 //                   primitive event fields} (start/end in game ms; end = its handler resolved)

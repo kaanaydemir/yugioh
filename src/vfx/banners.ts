@@ -22,7 +22,7 @@ import Phaser from 'phaser';
 import type { Phase, PlayerId } from '../engine/types';
 import { PAL, PLAYER_RAMP, RAMPS, type Ramp } from '../art/palette';
 import { DEPTH, GAME_H, GAME_W, UI } from '../view/layout';
-import { TEX, WORLD_FLASH_DEPTH, shake } from './core';
+import { FLASH_WASHES_HUD, TEX, WORLD_FLASH_DEPTH, shake } from './core';
 import { pixelLetters, pixelText, upper, type PixelLetter, type TextSize } from '../ui/text';
 import { E, Raster, Sparks, bayer, clamp01, lerp, onFrame, rampOf, rnd, rr, run, seg, sleep, snd } from './setpieces';
 
@@ -611,9 +611,9 @@ export function vignetteKey(scene: Phaser.Scene, color: number): string {
   return key;
 }
 
-/** Two quick colored pulses on the screen edges (stepped alpha). World only: the HUD is never washed. */
+/** Two quick colored pulses on the screen edges (stepped alpha). v3 look: world only, the HUD is never washed (v1 / v2: on the banner band, as before). */
 export function edgePulse(scene: Phaser.Scene, color: number = PAL.crim2, ms = 700): Promise<void> {
-  const img = scene.add.image(0, 0, vignetteKey(scene, color)).setOrigin(0).setScale(2).setScrollFactor(0).setDepth(WORLD_FLASH_DEPTH - 1).setAlpha(0);
+  const img = scene.add.image(0, 0, vignetteKey(scene, color)).setOrigin(0).setScale(2).setScrollFactor(0).setDepth(FLASH_WASHES_HUD ? D - 3 : WORLD_FLASH_DEPTH - 1).setAlpha(0);
   return run(scene, ms, (t) => {
     const p = Math.max(0, Math.sin(t * Math.PI * 2 - 0.2)) * (1 - t * 0.5);
     img.setAlpha(p > 0.75 ? 0.6 : p > 0.45 ? 0.4 : p > 0.15 ? 0.2 : 0);

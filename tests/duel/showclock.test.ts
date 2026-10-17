@@ -196,11 +196,17 @@ class FakeScene {
   }
 }
 
-function mk(opts: { strictFx?: boolean } = {}) {
+function mk(opts: { strictFx?: boolean; legacyThaw?: boolean } = {}) {
   const sc = new FakeScene();
   const clock = showClock(sc.asScene());
   if (opts.strictFx !== undefined) clock.strictFx = opts.strictFx;
+  if (opts.legacyThaw !== undefined) clock.legacyThaw = opts.legacyThaw;
   return { sc, clock };
+}
+
+/** SpeedControl's part of a frame: it writes the speed it wants every PRE_UPDATE. */
+function speedControl(sc: FakeScene, clock: ShowClock, value: () => number) {
+  sc.events.on('preupdate', () => clock.setSpeed(value(), 1));
 }
 
 /** Loop time (ms) at which a promise resolves, stepping frames. */
@@ -288,13 +294,51 @@ describe('ShowClock: nested hit-stops', () => {
     expect(sc.scales).toEqual([2, 2, 2]); // not 1, not 0
   });
 
-  it('a speed change during a freeze is kept and applied the moment time flows (no 1-frame drift)', async () => {
-    const { sc, clock } = mk();
+  it('v3: a speed change during a freeze is kept and applied the moment time flows (no 1-frame drift)', async () => {
+    const { sc, clock } = mk({ legacyThaw: false });
     const p = clock.freeze(50);
     clock.setSpeed(0.35, 1); // e.g. slowMo starting inside the stop
     expect(sc.scales).toEqual([0, 0, 0]);
     await resolvesAt(sc, p);
     expect(sc.scales).toEqual([0.35, 0.35, 0.35]);
+  });
+
+  it('v1 / v2 (legacyThaw): a stop gives back the speed it began with until SpeedControl writes again (the old one-frame drift)', () => {
+    const { sc, clock } = mk({ legacyThaw: true });
+    let want = 1;
+    speedControl(sc, clock, () => want);
+    sc.frame();
+    void clock.freeze(50); // combat.stopTime at 1×
+    sc.frame();
+    want = 0.7; // gameOver's slowMo inside the stop
+    const seen: number[] = [];
+    let ended = -1;
+    for (let i = 0; i < 6; i++) {
+      sc.frame();
+      if (ended < 0 && !clock.frozen) {
+        ended = i;
+        seen.push(sc.tweens.timeScale); // the rest of the frame the stop ended in
+      } else if (ended >= 0) seen.push(sc.tweens.timeScale);
+    }
+    expect(ended).toBeGreaterThanOrEqual(0);
+    // the frame it ends in: 1× (saved), the next frames: 0.7 (written at their PRE_UPDATE)
+    expect(seen[0]).toBe(1);
+    expect(seen.slice(1).every((k) => k === 0.7)).toBe(true);
+  });
+
+  it('v1 / v2 (legacyThaw): core.hitStop keeps 0 to the end of the frame it ends in, then its saved speed', async () => {
+    const { sc, clock } = mk({ legacyThaw: true });
+    clock.setSpeed(2);
+    let resolved = false;
+    void clock.freeze(40, 'hit').then(() => (resolved = true));
+    let n = 0;
+    while (clock.frozen && n++ < 10) sc.frame();
+    expect(clock.frozen).toBe(false);
+    expect(sc.scales).toEqual([0, 0, 0]); // still the frame the stop ended in (old: before `await` returned)
+    await Promise.resolve();
+    expect(sc.scales).toEqual([2, 2, 2]);
+    await Promise.resolve();
+    expect(resolved).toBe(true);
   });
 
   it('stopped scene clocks really stop: timers and tweens do not advance during the freeze', async () => {
@@ -404,22 +448,30 @@ describe('ShowClock: shake and hologram time', () => {
     return n;
   }
 
-  it('at 3× a shake lasts a third of its frames (both looks)', () => {
-    for (const strictFx of [false, true]) {
-      const a = mk({ strictFx });
-      const n1 = shakeFrames(a.sc, a.clock, 300);
-      const b = mk({ strictFx });
-      b.clock.setSpeed(3);
-      const n3 = shakeFrames(b.sc, b.clock, 300);
-      expect(n1).toBe(18); // 300 ms at 60 fps
-      expect(n3).toBe(6); // 100 ms
-    }
+  it('v3: at 3× a shake lasts a third of its frames', () => {
+    const a = mk({ strictFx: true });
+    const n1 = shakeFrames(a.sc, a.clock, 300);
+    const b = mk({ strictFx: true });
+    b.clock.setSpeed(3);
+    const n3 = shakeFrames(b.sc, b.clock, 300);
+    expect(n1).toBe(18); // 300 ms at 60 fps
+    expect(n3).toBe(6); // 100 ms
   });
 
-  it('v1 (no look switch): a shake runs through a hit-stop exactly as before; the pause holds it', () => {
-    const { sc, clock } = mk({ strictFx: false });
-    expect(shakeFrames(sc, clock, 300, () => void clock.freeze(100))).toBe(18);
+  it('v1 / v2 (no look switch): a shake is real time exactly as before — any speed, hit-stop or pause', () => {
+    const a = mk({ strictFx: false });
+    expect(shakeFrames(a.sc, a.clock, 300, () => void a.clock.freeze(100))).toBe(18);
     const b = mk({ strictFx: false });
+    b.clock.setSpeed(3);
+    expect(shakeFrames(b.sc, b.clock, 300)).toBe(18);
+    const c = mk({ strictFx: false });
+    const r = c.clock.pause();
+    expect(shakeFrames(c.sc, c.clock, 300)).toBe(18);
+    r();
+  });
+
+  it('v3: the pause holds a shake', () => {
+    const b = mk({ strictFx: true });
     const r = b.clock.pause();
     b.clock.bindShake(b.sc.cameras.main as unknown as Phaser.Cameras.Scene2D.Camera);
     b.sc.cameras.main.shake(100, 0, true, () => undefined);
@@ -468,19 +520,28 @@ describe('ShowClock: shake and hologram time', () => {
     expect(v3.clock.fxNow).toBeGreaterThan(t0);
   });
 
-  it('hologram time: 3× runs it 3× fast and the pause holds it (both looks)', () => {
-    for (const strictFx of [false, true]) {
-      const { sc, clock } = mk({ strictFx });
-      clock.setSpeed(3);
-      const t0 = clock.fxNow;
-      sc.frames(60);
-      expect(clock.fxNow - t0).toBeCloseTo(3000, 6);
-      const r = clock.pause();
-      const t1 = clock.fxNow;
-      sc.frames(60);
-      expect(clock.fxNow).toBeCloseTo(t1, 6);
-      r();
-    }
+  it('hologram time, v3: 3× runs it 3× fast and the pause holds it', () => {
+    const { sc, clock } = mk({ strictFx: true });
+    clock.setSpeed(3);
+    const t0 = clock.fxNow;
+    sc.frames(60);
+    expect(clock.fxNow - t0).toBeCloseTo(3000, 6);
+    const r = clock.pause();
+    const t1 = clock.fxNow;
+    sc.frames(60);
+    expect(clock.fxNow).toBeCloseTo(t1, 6);
+    r();
+  });
+
+  it('hologram time, v1 / v2: game.loop.time at any speed and through a pause, as before', () => {
+    const { sc, clock } = mk({ strictFx: false });
+    clock.setSpeed(3);
+    sc.frames(60);
+    expect(clock.fxNow).toBe(sc.game.loop.time);
+    const r = clock.pause();
+    sc.frames(60);
+    expect(clock.fxNow).toBe(sc.game.loop.time);
+    r();
   });
 
   it('slow motion: v1 keeps the user speed for shake / hologram, v3 follows it', () => {

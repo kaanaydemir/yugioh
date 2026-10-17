@@ -297,8 +297,8 @@ export class HologramPipeline extends Phaser.Renderer.WebGL.Pipelines.PostFXPipe
     }
     this.set2f('uResolution', target.width, target.height);
     this.set1f('uFlipY', HOLO_FLIP_Y ? 1 : 0);
-    // scan / glitch time follows the scene's show clock (src/duel/showclock.ts): 3× speeds it up,
-    // the duel menu pause holds it, and in the v3 look a hit-stop freezes it. v1 at 1×: exactly
+    // scan / glitch time follows the scene's show clock (src/duel/showclock.ts): in the v3 look
+    // 3× speeds it up and a hit-stop / the duel menu pause freezes it. v1 / v2: exactly
     // game.loop.time, as before.
     const now = go && go.scene ? showFxTimeMs(go.scene, this.game.loop.time) : this.game.loop.time;
     this.set1f('uTime', ((now / 1000) % 600) + 0.001);

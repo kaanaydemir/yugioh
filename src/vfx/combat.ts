@@ -23,7 +23,7 @@ import { PixelCanvas, mulberry32, shade } from '../art/pixel';
 import { addStaticCanvas } from '../art/textures';
 import { DEPTH, GAME_H, GAME_W, duelistXY, unitDepth, type XY } from '../view/layout';
 import { sfx, type SfxName } from '../audio/sfx';
-import { WORLD_FLASH_DEPTH, flashRect, shake } from './core';
+import { flashRect, flashTopDepth, shake } from './core';
 import { showClock } from '../duel/showclock';
 import { onDuelStart } from '../duel/seeds';
 
@@ -1241,7 +1241,7 @@ export function beam(scene: Phaser.Scene, from: XY | (() => XY), to: XY, style: 
           sp.add({ x: A.x, y: A.y, vx: Math.cos(a) * RR(60, 140), vy: Math.sin(a) * RR(60, 140), drag: 5, life: RR(150, 260), colors: sprayColors, shape: 'streak', len: 0.03 });
         }
         if (style === 'prism') {
-          const fl = flashRect(scene, PAL.cyan4, 0.22); // world only (the HUD is never washed)
+          const fl = flashRect(scene, PAL.cyan4, 0.22, flashTopDepth()); // v3 look: world only (the HUD is never washed)
           void animate(scene, 90, (t) => fl.setAlpha(0.22 * (1 - t) * (1 - t))).then(() => fl.destroy());
         }
       }
@@ -1628,7 +1628,7 @@ function darkOrb(scene: Phaser.Scene, fromFn: () => XY, to: XY, opts: Projectile
         burst = true;
         snd('darkPulse', 1, 0.8);
         opts.onImpact?.();
-        const fl = flashRect(scene, PAL.void2, 0.3, DEPTH.OVERLAY, { blend: Phaser.BlendModes.ADD });
+        const fl = flashRect(scene, PAL.void2, 0.3, flashTopDepth(), { blend: Phaser.BlendModes.ADD });
         void animate(scene, 160, (t) => fl.setAlpha(0.3 * (1 - t))).then(() => fl.destroy());
         for (let i = 0; i < 26; i++) {
           const a = (i / 26) * Math.PI * 2 + RR(-0.1, 0.1);
@@ -3146,7 +3146,7 @@ export function lightning(scene: Phaser.Scene, from: XY, to: XY, opts: Lightning
   opts.onImpact?.();
   const fa = opts.flash ?? 0.3;
   if (fa > 0) {
-    const fl = flashRect(scene, ramp[4], fa);
+    const fl = flashRect(scene, ramp[4], fa, flashTopDepth());
     void animate(scene, 130, (t) => fl.setAlpha(fa * (1 - t) * (1 - t))).then(() => fl.destroy());
   }
   for (let i = 0; i < 14; i++) {
@@ -3216,7 +3216,7 @@ export function skyBolt(scene: Phaser.Scene, x: number, y: number, opts: { color
         snd('thunder', 1);
         opts.onImpact?.();
         void shake(scene, 260, 4);
-        const fl = flashRect(scene, PAL.white, 0.7);
+        const fl = flashRect(scene, PAL.white, 0.7, flashTopDepth());
         void animate(scene, 180, (t) => fl.setAlpha(0.7 * (1 - t) * (1 - t))).then(() => fl.destroy());
         for (let i = 0; i < 26; i++) {
           const a = -Math.PI / 2 + RR(-1.5, 1.5);
@@ -3359,7 +3359,7 @@ export async function impact(scene: Phaser.Scene, x: number, y: number, opts: Im
     // anime impact frame: the stage drops to black behind the white silhouette for 3 frames,
     // then one white flash that falls off as time resumes
     const dark = scene.add.rectangle(0, 0, GAME_W, GAME_H, PAL.ink, 0.62).setOrigin(0).setScrollFactor(0).setDepth(DEPTH.SHADOW + 1);
-    const fl = flashRect(scene, PAL.white, 0);
+    const fl = flashRect(scene, PAL.white, 0, flashTopDepth());
     void realFrames(scene, 3)
       .then(() => {
         dark.destroy();
@@ -3495,11 +3495,12 @@ export async function directHit(scene: Phaser.Scene, player: PlayerId, opts: { a
   const p = opts.at ?? duelistXY(player);
   const key = ensureVignette(scene);
   snd('directHit');
-  // (world only, under the HUD band: the HUD is never washed)
-  const vig = scene.add.image(0, 0, key).setOrigin(0).setScale(2).setScrollFactor(0).setDepth(WORLD_FLASH_DEPTH - 1).setAlpha(0);
-  const red = flashRect(scene, PAL.crim2, 0, WORLD_FLASH_DEPTH - 2);
-  const white = flashRect(scene, PAL.white, 0.7, WORLD_FLASH_DEPTH);
-  const lines = layer(scene, WORLD_FLASH_DEPTH - 3);
+  // v1 / v2: on the overlay band as always; the v3 look: world only, under the HUD band (the HUD
+  // is never washed)
+  const vig = scene.add.image(0, 0, key).setOrigin(0).setScale(2).setScrollFactor(0).setDepth(flashTopDepth(1)).setAlpha(0);
+  const red = flashRect(scene, PAL.crim2, 0, flashTopDepth(2));
+  const white = flashRect(scene, PAL.white, 0.7, flashTopDepth());
+  const lines = layer(scene, flashTopDepth(3));
   lines.g.setScrollFactor(0);
   // speed lines converging on the hit point
   const rays: { a: number; r0: number; w: number }[] = [];
@@ -3521,7 +3522,7 @@ export async function directHit(scene: Phaser.Scene, player: PlayerId, opts: { a
     white.destroy();
     red.setAlpha(0.42);
   });
-  void impact(scene, p.x, p.y, { power: 3, ramp: RAMPS.crim, noStop: true, depth: WORLD_FLASH_DEPTH - 4 });
+  void impact(scene, p.x, p.y, { power: 3, ramp: RAMPS.crim, noStop: true, depth: flashTopDepth(4) });
   void shake(scene, 420, 6);
   await stopTime(scene, 110);
   // vignette double pulse

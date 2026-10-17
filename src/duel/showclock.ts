@@ -4,7 +4,7 @@
 //   const clock = showClock(scene);          // one per scene, made on first use, gone on SHUTDOWN
 //   clock.setSpeed(3);                       // 1× / 2× / 3× × fast-forward × slow motion (SpeedControl)
 //   await clock.freeze(80);                  // hit-stop (core.hitStop, combat.stopTime, setpieces.freeze)
-//   const resume = clock.pause(); … resume(); // the duel menu (HumanInput)
+//   const resume = clock.pause(); … resume(); // the duel menu (HumanInput; the v3 look only)
 //
 // It is the only writer of Phaser's three time scales (tweens.timeScale, time.timeScale,
 // anims.globalTimeScale). Every tween, timer, sprite anim and custom frame clock of the game reads
@@ -17,14 +17,21 @@
 //            again, and it is never lost (no save / restore pairs).
 // • freeze — hit-stop for `ms` of REAL time (unscaled loop delta, like before). Overlapping calls
 //            merge into ONE freeze that ends when the longest is over, and every caller resolves
-//            then. So hit-stops nest safely: none can restore a 0 (stuck scene) or a stale speed.
-//            (The old stopTime restored the speed saved when it began — 1× inside core.hitStop, or
-//            1× when slowMo was called during the stop — for the rest of the frame it ended in, until
-//            SpeedControl re-applied the real one: a one-frame drift. Now the current speed returns.)
+//            then. So hit-stops nest safely: none can restore a 0 (stuck scene).
 //            The countdown runs in an UPDATE listener added when the freeze starts — the same
-//            listener order as the old stopTime, so cinematic timings do not move otherwise.
-// • pause  — the duel menu (Esc / ≡). Nested-safe (counted). The show stops: scales 0, the
-//            hit-stop countdown and SpeedControl's slow-motion countdown wait, show time stops.
+//            listener order as the old stopTime / core.hitStop, so cinematic timings do not move.
+//            How the speed comes back (`legacyThaw`):
+//              v3 look (false): the current speed, at once.
+//              v1 / v2 (no look switch, true): exactly the old save / restore pair. The speed the
+//              stop BEGAN with comes back — for combat.stopTime at once (the rest of that frame),
+//              for core.hitStop at the end of that frame (its `await` continuation) — and holds
+//              until SpeedControl writes the current one at the next frame's PRE_UPDATE. So a
+//              slowMo called during a stop (gameOver's 0.7 inside directHit's 110 ms stop) starts
+//              one frame late, as it always did: the "one-frame drift" of A0 §5.2, kept in v1 so
+//              old monsters keep identical timings.
+// • pause  — the duel menu (Esc / ≡; only the v3 look pauses, v1 / v2 never do). Nested-safe
+//            (counted). The show stops: scales 0, the hit-stop countdown and SpeedControl's
+//            slow-motion countdown wait, show time stops.
 //            Tweens and timers CREATED while paused (the menu itself, its confirm prompt, button
 //            feedback) are stepped by the clock at 1× real time, so the menu stays alive.
 //
@@ -32,10 +39,10 @@
 // time of the two effects that used to ignore the clock — the hologram shader's uTime and camera
 // shake — and advances by the loop time × `fxScale`:
 //   • v3 look (`strictFx`, default LOOK_V3): fxScale = scale. Hit-stop freezes the hologram scan
-//     and holds the shake (the freeze frame keeps the shake's first offset: the impact "kick").
-//   • v1 (no look switch): fxScale = paused ? 0 : user speed (setting × fast-forward, NOT slow
-//     motion, NOT hit-stop), so at 1× the hologram and shake are exactly as before (fxNow ===
-//     game.loop.time), while 3× shortens a shake to 1/3 and the menu pause stops both.
+//     and holds the shake (the freeze frame keeps the shake's first offset: the impact "kick");
+//     3× shortens a shake to 1/3 and the menu pause stops both.
+//   • v1 / v2 (no look switch): fxScale = 1 — real time, exactly as before (fxNow ===
+//     game.loop.time; a shake lasts its ms of real time at any speed and runs through hit-stops).
 //
 // No runtime Phaser import (type-only), so the clock is unit-tested in node (tests/duel/showclock.test.ts).
 
@@ -90,10 +97,16 @@ export interface ShowClockSnapshot {
   strictFx: boolean;
 }
 
+/** Who started a freeze: combat.stopTime / setpieces.freeze ('stop') or core.hitStop ('hit'). */
+export type FreezeKind = 'stop' | 'hit';
+
 interface FreezeState {
   remaining: number;
   waiters: (() => void)[];
   end: () => void;
+  /** The scale when it began (0 → 1, as the old stopTime saved it): what legacyThaw restores. */
+  saved: number;
+  kind: FreezeKind;
 }
 
 interface PauseState {
@@ -110,11 +123,21 @@ export class ShowClock {
    * of real time × the user speed (v1: unchanged at 1×). See the header.
    */
   strictFx: boolean = LOOK_V3;
+  /**
+   * v1 / v2 (default without the look switch): when a freeze ends, the speed it began with comes
+   * back until the next setSpeed — the old stopTime / hitStop save-restore, see the header. The v3
+   * look: the current speed comes back at once.
+   */
+  legacyThaw: boolean = !LOOK_V3;
   /** Show time (ms): frame delta × scale. Starts at game.loop.time. */
   now: number;
   private _speed = 1;
   private _userSpeed = 1;
   private fz: FreezeState | null = null;
+  /** legacyThaw: the scale written after a freeze ended, until the next setSpeed (null = none). */
+  private thaw: number | null = null;
+  /** Identifies the pending end-of-frame restore of a core.hitStop thaw. */
+  private thawToken: object | null = null;
   private pauses = 0;
   private ps: PauseState | null = null;
   private fxOffset = 0;
@@ -139,16 +162,16 @@ export class ShowClock {
 
   /** The time scale every Phaser clock runs at now (0 while frozen or paused). */
   get scale(): number {
-    return this.pauses > 0 || this.fz ? 0 : this._speed;
+    if (this.pauses > 0 || this.fz) return 0;
+    return this.thaw ?? this._speed;
   }
 
   /** The scale of the hologram time and camera shakes (see the header). */
   get fxScale(): number {
-    if (this.strictFx) return this.scale;
-    return this.pauses > 0 ? 0 : this._userSpeed;
+    return this.strictFx ? this.scale : 1;
   }
 
-  /** Hologram / shake time (ms). v1 at 1×: exactly game.loop.time. */
+  /** Hologram / shake time (ms). v1 / v2: exactly game.loop.time. */
   get fxNow(): number {
     return this.s.game.loop.time + this.fxOffset;
   }
@@ -201,6 +224,8 @@ export class ShowClock {
     }
     this._speed = v;
     this._userSpeed = Number.isFinite(user) && user >= 0 ? user : v;
+    this.thaw = null;
+    this.thawToken = null;
     this.write();
   }
 
@@ -208,9 +233,10 @@ export class ShowClock {
 
   /**
    * Hit-stop: freeze the show for `ms` of real time. Nesting-safe — a call during a freeze extends
-   * it to the longer of the two and resolves with it. A pause stops the countdown.
+   * it to the longer of the two and resolves with it. A pause stops the countdown. `kind` only
+   * matters with legacyThaw: when the old pair would have restored the speed (see the header).
    */
-  freeze(ms: number): Promise<void> {
+  freeze(ms: number, kind: FreezeKind = 'stop'): Promise<void> {
     if (!(ms > 0) || this.disposed) return Promise.resolve();
     const cur = this.fz;
     if (cur) {
@@ -223,17 +249,23 @@ export class ShowClock {
       st.remaining -= delta;
       if (st.remaining <= 0) st.end();
     };
+    const saved = this.scale;
     const st: FreezeState = {
       remaining: ms,
       waiters: [],
+      saved: saved > 0 ? saved : 1,
+      kind,
       end: () => {
         if (this.fz !== st) return;
         ev.off(EV_UPDATE, upd);
         this.fz = null;
+        if (this.legacyThaw && !this.disposed) this.legacyRestore(st);
         this.write();
         for (const w of st.waiters.splice(0)) w();
       },
     };
+    this.thaw = null;
+    this.thawToken = null;
     this.fz = st;
     this.write();
     return new Promise((resolve) => {
@@ -284,6 +316,28 @@ export class ShowClock {
   }
 
   // ---------------------------------------------------------------- internals
+
+  /**
+   * legacyThaw: the old restore of a freeze that just ended. combat.stopTime restored the speed it
+   * saved right in its UPDATE listener; core.hitStop restored it after `await realWait()`, i.e.
+   * once the frame's synchronous work was over (a microtask) — the rest of that frame stays at 0.
+   * Either holds until the next setSpeed (SpeedControl, next PRE_UPDATE).
+   */
+  private legacyRestore(st: FreezeState): void {
+    if (st.kind === 'stop') {
+      this.thaw = st.saved;
+      return;
+    }
+    this.thaw = 0;
+    const token = {};
+    this.thawToken = token;
+    queueMicrotask(() => {
+      if (this.thawToken !== token || this.disposed || this.fz) return;
+      this.thawToken = null;
+      this.thaw = st.saved;
+      this.write();
+    });
+  }
 
   private write(): void {
     if (this.disposed) return;
@@ -368,6 +422,8 @@ export class ShowClock {
     this.pauses = 0;
     this.ps = null;
     this._speed = this._userSpeed = 1;
+    this.thaw = null;
+    this.thawToken = null;
     this.write();
     this.disposed = true;
     if (clocks.get(this.scene) === this) clocks.delete(this.scene);

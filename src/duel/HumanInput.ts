@@ -27,7 +27,7 @@ import { freeMonsterZones, freeSpellTrapZones } from '../engine/query';
 import type { Action, GameState, PlayerId, Uid, ZoneKind, ZoneRef } from '../engine/types';
 import { PAL, PLAYER_COLOR } from '../art/palette';
 import { sfx } from '../audio/sfx';
-import { GAME_W, type BoardSpot } from '../view/layout';
+import { GAME_W, LOOK_V3, type BoardSpot } from '../view/layout';
 import type { InspectStats } from '../view/InspectPanel';
 import type { MenuOption } from '../view/ActionMenu';
 import { playerStyle, uiKeysActive } from '../view/ui-textures';
@@ -293,11 +293,13 @@ export class HumanInput {
   }
 
   /**
-   * The duel menu pauses the show (src/duel/showclock.ts): the cinematic, idle life, timers,
-   * hit-stops and slow motion stop while it is open; the menu and its confirm prompt (made after
-   * the pause starts) keep animating. The Director's watchdog waits too (userWait).
+   * The v3 look: the duel menu pauses the show (src/duel/showclock.ts): the cinematic, idle life,
+   * timers, hit-stops and slow motion stop while it is open; the menu and its confirm prompt (made
+   * after the pause starts) keep animating. The Director's watchdog waits too (userWait).
+   * Without the look switch (v1 / v2) the menu is exactly as before: the show runs on behind it.
    */
   private pauseMenu(canSurrender: boolean): Promise<'resume' | 'surrender' | 'quit'> {
+    if (!LOOK_V3) return this.pauseMenuBody(canSurrender);
     const resume = showClock(this.scene).pause();
     const p = this.pauseMenuBody(canSurrender);
     void p.then(resume, resume);
