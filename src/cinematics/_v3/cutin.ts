@@ -28,7 +28,9 @@ import { DEPTH, GAME_W } from '../../view/layout';
 import { TEX, shake } from '../../vfx/core';
 import { pixelText, upper } from '../../ui/text';
 import { Sparks, onFrame, sleep } from '../../vfx/combat';
+import { Raster } from '../../vfx/setpieces';
 import { sfx, type SfxName } from '../../audio/sfx';
+import { cutInRhythm } from './presets';
 
 export interface CutInV3Opts {
   monsterId: MonsterId;
@@ -45,38 +47,7 @@ export interface CutInV3 {
   done: Promise<void>;
 }
 
-/** The whole cut-in never exceeds this (ms). */
-export const CUTIN_V3_MAX_MS = 900;
-
-interface Rhythm {
-  /** Eye flare + roar (ms from the start). */
-  flare: number;
-  /** Name plate slam. */
-  slam: number;
-  /** The band starts to close. */
-  exit: number;
-  /** Closing time. */
-  close: number;
-}
-
-const DEFAULT_RHYTHM: Rhythm = { flare: 290, slam: 370, exit: 700, close: 120 };
-
-/** Per-ace rhythm: the wyrm's gaze holds, the magus is quick and cold, the heavy ones slam late. */
-const RHYTHM: Partial<Record<MonsterId, Partial<Rhythm>>> = {
-  crystal_wyrm: { flare: 320, slam: 410, exit: 740 },
-  abyss_magus: { flare: 250, slam: 320, exit: 660 },
-  magma_titan: { flare: 300, slam: 430, exit: 740 },
-  tide_golem: { flare: 290, slam: 410, exit: 720 },
-};
-
-function rhythmOf(id: MonsterId): Rhythm {
-  const r = { ...DEFAULT_RHYTHM, ...(RHYTHM[id] ?? {}) };
-  // the budget wins over any table entry
-  r.exit = Math.min(r.exit, CUTIN_V3_MAX_MS - r.close);
-  r.slam = Math.min(r.slam, r.exit - 200);
-  r.flare = Math.min(r.flare, r.slam - 40);
-  return r;
-}
+export { CUTIN_V3_MAX_MS } from './presets';
 
 /** Deep band tones per attribute: [deep, wedge, glow]. */
 const BAND_TONES: Record<Attribute, [number, number, number]> = {
@@ -161,7 +132,7 @@ export function cutInV3(scene: Phaser.Scene, o: CutInV3Opts): CutInV3 {
 }
 
 async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Promise<void> {
-  const R = rhythmOf(o.monsterId);
+  const R = cutInRhythm(o.monsterId);
   const p1 = o.player === 0;
   const dir = p1 ? 1 : -1;
   const ramp = ATTRIBUTE_RAMP[o.attribute];
@@ -170,12 +141,30 @@ async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Pro
   const slope = p1 ? -0.13 : 0.13;
   const top = (x: number) => Math.round(MID_Y - H_BAND / 2 + (x - GAME_W / 2) * slope);
   const objs: { destroy(): void }[] = [];
-  const g = scene.add.graphics().setDepth(D + 1).setScrollFactor(0);
-  const fx = scene.add.graphics().setDepth(D + 4).setScrollFactor(0);
-  objs.push(g, fx);
+  // the band is one pixel raster (crisp, palette tones only), redrawn every frame
+  const yMin = Math.min(top(0), top(GAME_W)) - 8;
+  const yMax = Math.max(top(0), top(GAME_W)) + H_BAND + 8;
+  const bandR = new Raster(scene, 0, yMin, GAME_W, yMax - yMin, D + 1);
+  bandR.img.setScrollFactor(0);
+  objs.push(bandR);
   // ---- state
   let wipe = 0; // 0…1 band reveal along x (from the owner's side)
   let close = 0; // 0…1 the band closing onto its centre line
+  let burst = 0; // 0…1 the focus-line burst behind the portrait
+  let flashLv = 0; // the band's tones step up on the slam (band only, never the screen)
+  const focus = { x: p1 ? 200 : GAME_W - 200, y: MID_Y - 6 };
+  // polar map of the band for the focus-line burst (computed once)
+  const BW = bandR.w;
+  const BH = bandR.h;
+  const ang = new Float32Array(BW * BH);
+  const rad = new Float32Array(BW * BH);
+  for (let y = 0; y < BH; y++)
+    for (let x = 0; x < BW; x++) {
+      const dx = x - focus.x;
+      const dy = y + yMin - focus.y;
+      ang[y * BW + x] = Math.atan2(dy, dx);
+      rad[y * BW + x] = Math.hypot(dx, dy);
+    }
   const lines = Array.from({ length: 34 }, (_, i) => ({
     v: ((i * 37) % 97) / 97,
     len: 20 + ((i * 53) % 110),
@@ -186,47 +175,71 @@ async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Pro
   const edgeX = () => (dir > 0 ? Math.round(-20 + (GAME_W + 40) * wipe) : Math.round(GAME_W + 20 - (GAME_W + 40) * wipe));
   const inWipe = (x: number) => (dir > 0 ? x <= edgeX() : x >= edgeX());
   const drawBand = (el: number, dt: number) => {
-    g.clear();
-    if (wipe <= 0) return;
-    const shrink = Math.round((H_BAND / 2) * close);
-    for (let x = 0; x < GAME_W; x++) {
-      if (!inWipe(x)) continue;
-      const t0 = top(x) + shrink;
-      const h = H_BAND - shrink * 2;
-      if (h <= 0) continue;
-      // deep body with a lighter wedge toward the owner's side (flat tones, no gradient)
-      const k = dir > 0 ? x / GAME_W : 1 - x / GAME_W;
-      g.fillStyle(k < 0.38 ? wedge : deep, 1).fillRect(x, t0, 1, h);
-      // borders: white + attribute light, thin echo
-      g.fillStyle(PAL.white, 1).fillRect(x, t0 - 1, 1, 1).fillRect(x, t0 + h, 1, 1);
-      g.fillStyle(ramp[3], 1).fillRect(x, t0 - 2, 1, 1).fillRect(x, t0 + h + 1, 1, 1);
-      if (close <= 0) g.fillStyle(ramp[1], 1).fillRect(x, t0 - 5, 1, 1).fillRect(x, t0 + h + 4, 1, 1);
-    }
-    // speed lines along the band
     for (const l of lines) {
       l.x -= dir * l.speed * (dt / 1000);
       if (dir > 0 && l.x + l.len < 0) l.x += GAME_W + l.len;
       if (dir < 0 && l.x > GAME_W) l.x -= GAME_W + l.len;
-      const x0 = Math.round(l.x);
-      for (let i = 0; i < l.len; i += 2) {
-        const x = x0 + i;
-        if (x < 0 || x >= GAME_W || !inWipe(x)) continue;
+    }
+    bandR.draw((g) => {
+      if (wipe <= 0) return;
+      const shrink = Math.round((H_BAND / 2) * close);
+      const rot = el * 0.0005 * dir;
+      for (let x = 0; x < GAME_W; x++) {
+        if (!inWipe(x)) continue;
         const t0 = top(x) + shrink;
         const h = H_BAND - shrink * 2;
-        const y = t0 + 3 + Math.round(l.v * (h - 6));
-        if (h < 8) continue;
-        const head = dir > 0 ? i / l.len : 1 - i / l.len;
-        g.fillStyle(head < 0.3 ? l.c : head < 0.6 ? ramp[2] : glow, 1).fillRect(x, y, 2, 1);
+        if (h <= 0) continue;
+        for (let y = t0; y < t0 + h; y++) {
+          const i = (y - yMin) * BW + x;
+          let c: number = deep;
+          if (burst > 0) {
+            // 36 alternating wedges radiating from behind the portrait, a glowing core
+            const wdg = Math.floor((((ang[i] + rot) / (Math.PI * 2)) * 36 + 36) % 36);
+            const r = rad[i];
+            if (wdg % 2 === 0) c = r < 90 * burst ? glow : wedge;
+            else if (r < 50 * burst) c = wedge;
+            if (r < 30 * burst) c = (x + y) % 2 === 0 ? ramp[1] : glow;
+          }
+          if (flashLv > 0.4) c = c === deep ? glow : ramp[3];
+          else if (flashLv > 0.1) c = c === deep ? wedge : c === wedge ? glow : ramp[3];
+          g.px(x, y, c);
+        }
+        // borders: white + attribute light, thin outer echo
+        g.px(x, t0 - 1, PAL.white);
+        g.px(x, t0 + h, PAL.white);
+        g.px(x, t0 - 2, ramp[3]);
+        g.px(x, t0 + h + 1, ramp[3]);
+        if (close <= 0) {
+          g.px(x, t0 - 5, ramp[1]);
+          g.px(x, t0 + h + 4, ramp[1]);
+        }
       }
-    }
-    // the leading edge of the wipe: a white slash
-    if (wipe < 1) {
-      const ex = edgeX();
-      for (let y = top(ex); y < top(ex) + H_BAND; y++) g.fillStyle(PAL.white, 1).fillRect(ex + Math.round((y - MID_Y) * 0.3 * dir), y, 2, 1);
-    }
-    // closing: the seam
-    if (close > 0 && close < 1) for (let x = 0; x < GAME_W; x += 1) g.fillStyle(PAL.white, 1).fillRect(x, top(x) + H_BAND / 2, 1, 1);
-    void el;
+      // speed lines along the band
+      for (const l of lines) {
+        const x0 = Math.round(l.x);
+        for (let k = 0; k < l.len; k += 1) {
+          const x = x0 + k;
+          if (x < 0 || x >= GAME_W || !inWipe(x)) continue;
+          const t0 = top(x) + shrink;
+          const h = H_BAND - shrink * 2;
+          if (h < 8) continue;
+          const y = t0 + 3 + Math.round(l.v * (h - 6));
+          const head = dir > 0 ? k / l.len : 1 - k / l.len;
+          g.px(x, y, head < 0.3 ? l.c : head < 0.65 ? ramp[2] : ramp[1]);
+        }
+      }
+      // the leading edge of the wipe: a white slash
+      if (wipe < 1) {
+        const ex = edgeX();
+        for (let y = top(ex); y < top(ex) + H_BAND; y++) {
+          const xx = ex + Math.round((y - MID_Y) * 0.3 * dir);
+          g.px(xx, y, PAL.white);
+          g.px(xx - dir, y, ramp[4]);
+        }
+      }
+      // closing: the seam
+      if (close > 0 && close < 1) for (let x = 0; x < GAME_W; x++) g.px(x, top(x) + H_BAND / 2, PAL.white);
+    });
   };
 
   // ---- portrait (integer scale, masked by the band)
@@ -308,6 +321,13 @@ async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Pro
       wipe = 1;
     })();
     await at(60);
+    // the burst opens behind the portrait in 3 steps
+    void (async () => {
+      for (let i = 1; i <= 3; i++) {
+        burst = i / 3;
+        await sleep(scene, 40);
+      }
+    })();
     portrait.setVisible(true);
     snd('whoosh', 0.8, 0.8);
     // slide (outQuart) then a slow whole-pixel drift
@@ -382,6 +402,8 @@ async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Pro
     snd('cardSlam', 1);
     snd('impactHeavy', 0.7, 0.9);
     drawPlate(PAL.white);
+    flashLv = 0.5;
+    void sleep(scene, 50).then(() => (flashLv = 0.2)).then(() => sleep(scene, 50)).then(() => (flashLv = 0));
     void shake(scene, 160, 2);
     for (let i = 0; i < 18; i++) {
       const a = (i / 18) * Math.PI * 2;

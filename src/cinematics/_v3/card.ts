@@ -26,10 +26,8 @@ import type { CinematicContext } from '../_core/types';
 
 type AnyCtx = CinematicContext<GameEvent>;
 
-/** Flight time (ms) over a distance: a short hop for near piles, never a teleport. */
-export function flightMs(dist: number): number {
-  return Math.round(Math.max(200, Math.min(360, 160 + dist * 0.75)));
-}
+export { flightMs } from './presets';
+import { flightMs } from './presets';
 
 export interface CardLeaveOpts {
   owner: PlayerId;

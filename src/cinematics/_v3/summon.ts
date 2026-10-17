@@ -28,6 +28,8 @@ import { lightBeam, lightFlash, lightPool, type LightHandle } from '../../view/l
 import { clearHologram, holoRamp, setHologram } from '../../vfx/hologram';
 import { Px, Sparks, onFrame, sleep } from '../../vfx/combat';
 import { sfx, type SfxName } from '../../audio/sfx';
+import type { ShatterMaterial } from '../../vfx/shatter';
+import { deathPreset } from './presets';
 
 /** Hologram phase of a summon with a summon pose (ms; A0 §6.2 item 4). */
 export const HOLO_MAX_MS = 300;
@@ -165,27 +167,63 @@ export interface PoseStage {
   lightColor: number;
 }
 
+/** The prism's spectral fringe tones (red side → violet side), palette only. */
+const PRISM_L = [PAL.gold4, PAL.fire3, PAL.crim3] as const;
+const PRISM_R = [PAL.leaf3, PAL.cyan3, PAL.void3] as const;
+
 /**
- * A light column on the tile while the body forms (a narrow crisp shaft in the attribute ramp +
- * its floor pool), pinched out at the landing.
+ * The entry light on the tile while the body forms, in the monster's matter (pinched out at the
+ * landing):
+ *   crystal  a prism shaft from above — white core, cyan body, red → violet spectral fringes;
+ *   shadow   a rift opening in the floor — a dithered void mouth with a turning rim, wisps rising
+ *            (the body climbs out of it; no light from the sky);
+ *   others   a narrow light column in the matter's tones.
  */
-function column(S: PoseStage): { pinch(ms: number): Promise<void>; destroy(): void } {
+function column(S: PoseStage, matter: ShatterMaterial): { pinch(ms: number): Promise<void>; destroy(): void } {
   const sc = S.scene;
   const { x, y } = S.home;
-  const g = new Px(sc.add.graphics().setDepth(S.unit.sprite.depth - 1));
+  const rift = matter === 'shadow';
+  const prism = matter === 'crystal';
+  const g = new Px(sc.add.graphics().setDepth(rift ? DEPTH.TILE_FX + 6 : S.unit.sprite.depth - 1));
+  const wisps = rift ? new Sparks(sc, S.unit.sprite.depth + 0.4) : null;
   const r = S.ramp;
   let w = 0;
   let alive = true;
   let grow = true;
   let t = 0;
   const top = Math.max(-10, y - 190);
-  const beam = lightBeam(sc, { x, y: top }, { x, y }, S.lightColor, 0, { width: 14, depth: S.unit.sprite.depth - 1.5, intensity: 0.7, shimmer: 0.3 });
-  const pool: LightHandle = lightPool(sc, x, y, { color: S.lightColor, radius: 30, floorY: y, intensity: 0.8, anim: 'shimmer', fadeIn: 80 });
-  const stop = onFrame(sc, (dt) => {
+  const beam = rift ? null : lightBeam(sc, { x, y: top }, { x, y }, S.lightColor, 0, { width: 14, depth: S.unit.sprite.depth - 1.5, intensity: 0.7, shimmer: 0.3 });
+  const pool: LightHandle = lightPool(sc, x, y, { color: S.lightColor, radius: 30, floorY: y, intensity: rift ? 0.6 : 0.8, anim: rift ? 'breathe' : 'shimmer', fadeIn: 80 });
+  let acc = 0;
+  const stop = onFrame(sc, (dt, el) => {
     if (!alive) return false;
     t += dt;
-    if (grow) w = Math.min(1, w + dt / 90);
+    if (grow) w = Math.min(1, w + dt / (rift ? 140 : 90));
     g.clear();
+    if (rift) {
+      // the rift: a void mouth on the floor, its rim turning, wisps climbing out
+      const rx = Math.round(18 * w);
+      if (rx < 2) return true;
+      const ry = Math.max(1, Math.round(rx * 0.45));
+      for (let yy = -ry - 1; yy <= ry + 1; yy++)
+        for (let xx = -rx - 2; xx <= rx + 2; xx++) {
+          const d = (xx * xx) / ((rx + 2) * (rx + 2)) + (yy * yy) / ((ry + 1) * (ry + 1));
+          if (d > 1) continue;
+          const di = (xx * xx) / (rx * rx) + (yy * yy) / (ry * ry);
+          const c = di > 1 ? ((xx + yy) % 2 === 0 ? r[1] : -1) : di > 0.78 ? r[3] : di > 0.35 ? r[0] : PAL.ink;
+          if (c >= 0) g.dot(x + xx, y + yy, c, 1);
+        }
+      for (let i = 0; i < 4; i++) {
+        const a = el * 0.01 + (i / 4) * Math.PI * 2;
+        g.dot(Math.round(x + Math.cos(a) * rx), Math.round(y + Math.sin(a) * ry), r[4], 1);
+      }
+      acc += dt;
+      if (wisps && acc > 30 && grow) {
+        acc = 0;
+        wisps.add({ x: x + Math.round((Math.sin(el * 0.37) * 0.8) * rx), y: y - 1, vx: 0, vy: -40 - (el % 20), drag: 0.5, life: 360, colors: [r[4], r[3], r[2]], shape: 'px', flicker: true, fadeAt: 1 });
+      }
+      return true;
+    }
     const hw = Math.round(5 * w);
     if (hw <= 0) return true;
     for (let yy = top; yy <= y; yy += 1) {
@@ -193,6 +231,13 @@ function column(S: PoseStage): { pinch(ms: number): Promise<void>; destroy(): vo
       g.rect(x - hw, yy, hw * 2 + 1, 1, flow ? r[4] : r[2], 0.55);
       g.rect(x, yy, 1, 1, PAL.white, 1);
       if (hw >= 3) g.rect(x - 1, yy, 3, 1, flow ? PAL.white : r[4], 0.9);
+      if (prism) {
+        // the spectral fringes, one pixel each, dimmer outward
+        for (let k = 0; k < 3; k++) {
+          g.dot(x - hw - 1 - k, yy, PRISM_L[k], 0.85 - k * 0.2);
+          g.dot(x + hw + 1 + k, yy, PRISM_R[k], 0.85 - k * 0.2);
+        }
+      }
     }
     return true;
   });
@@ -201,7 +246,8 @@ function column(S: PoseStage): { pinch(ms: number): Promise<void>; destroy(): vo
     alive = false;
     stop();
     g.g.destroy();
-    void beam.fadeOut(120);
+    wisps?.release();
+    if (beam) void beam.fadeOut(120);
     void pool.fadeOut(200);
   };
   return {
@@ -234,7 +280,7 @@ export async function poseEntrance(S: PoseStage): Promise<boolean> {
   const u = S.unit;
   if (!u.has('summon')) return false;
   const circle = S.openCircle?.() ?? null;
-  const col = column(S);
+  const col = column(S, deathPreset(u.cardId).material);
   snd('summonCharge', 0.7);
   let finaled = false;
   const finale = () => {

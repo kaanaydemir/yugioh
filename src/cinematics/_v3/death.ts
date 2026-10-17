@@ -26,9 +26,8 @@
 // the flight ≈ 0.3 s).
 
 import type Phaser from 'phaser';
-import type { MonsterId } from '../../data/cards';
 import type { GameEvent } from '../../engine/types';
-import { PAL, RAMPS, type Ramp } from '../../art/palette';
+import { PAL } from '../../art/palette';
 import type { PixelCanvas } from '../../art/pixel';
 import { monsterFrame } from '../../art/textures';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
@@ -43,59 +42,10 @@ import { contactFlash } from './flash';
 type DestroyCtx = CinematicContext<Extract<GameEvent, { type: 'destroy' }>>;
 type ToGraveyardEv = Extract<GameEvent, { type: 'toGraveyard' }>;
 
-// ================================================================ presets
+// ================================================================ presets (pure: ./presets.ts)
 
-export interface DeathPreset {
-  /** How the body breaks (vfx/shatter material preset). */
-  material: ShatterMaterial;
-  /** The death flavour kept as an accent (a material's look; see ACCENTS). */
-  accent: ShatterMaterial;
-}
-
-/**
- * Every monster's death flavour (A0 §1.3 "Ölüm tatları") as a preset: crystal crack, pulled into
- * the void, cooling + rubble, foam, the flame dying, melting, short circuit, fading, feather storm,
- * crumbling, shadow pool, withering.
- */
-export const DEATH_PRESETS: Record<MonsterId, DeathPreset> = {
-  crystal_wyrm: { material: 'crystal', accent: 'crystal' },
-  abyss_magus: { material: 'shadow', accent: 'shadow' },
-  magma_titan: { material: 'stone', accent: 'fire' },
-  coral_serpent: { material: 'water', accent: 'water' },
-  ember_wolf: { material: 'fire', accent: 'fire' },
-  tide_golem: { material: 'water', accent: 'water' },
-  storm_hawk: { material: 'plant', accent: 'plant' },
-  stone_sentinel: { material: 'stone', accent: 'stone' },
-  lumen_sprite: { material: 'light', accent: 'light' },
-  shade_assassin: { material: 'shadow', accent: 'shadow' },
-  volt_lizard: { material: 'light', accent: 'crystal' },
-  thorn_lurker: { material: 'plant', accent: 'plant' },
-};
-
-export function deathPreset(id: MonsterId): DeathPreset {
-  return DEATH_PRESETS[id] ?? { material: 'crystal', accent: 'crystal' };
-}
-
-/** The tones of each matter (hologram onsets, light columns, reassembly motes). */
-const MATTER_RAMP: Record<ShatterMaterial, Ramp> = {
-  crystal: [PAL.night2, PAL.cyan1, PAL.cyan2, PAL.cyan3, PAL.cyan4],
-  shadow: RAMPS.void,
-  stone: RAMPS.stone,
-  light: [PAL.gold1, PAL.gold2, PAL.gold3, PAL.gold4, PAL.white],
-  plant: RAMPS.leaf,
-  fire: RAMPS.fire,
-  water: RAMPS.water,
-};
-
-/** A monster's matter tones (its death material's ramp): the crystal wyrm is cyan glass, not gold. */
-export function matterRamp(id: MonsterId): Ramp {
-  return MATTER_RAMP[deathPreset(id).material];
-}
-
-/** The material a monster breaks as (vfx/shatter), e.g. for strikes-b's legacy flavours. */
-export function deathMaterial(id: MonsterId): ShatterMaterial {
-  return deathPreset(id).material;
-}
+export { DEATH_PRESETS, deathMaterial, deathPreset, matterRamp, type DeathPreset } from './presets';
+import { deathPreset } from './presets';
 
 // ================================================================ accents
 

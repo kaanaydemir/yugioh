@@ -24,7 +24,7 @@ import { BUST, EYE, FIST_B, FIST_F, HELM, MAP_KEY, PAUL_B, PAUL_F, type PartMap 
 export type Light = 'left' | 'right';
 
 /** Frame (v1 80×80 + margin). OX / OY = where the v1 frame's (0, 0) sits in this frame. */
-export const W = 100;
+export const W = 112;
 export const H = 98;
 export const OX = 10;
 export const OY = 14;
@@ -89,6 +89,41 @@ export interface Pose {
   lagB: number;
   /** Near pauldron lift (px, + = up) when the staff arm rises. */
   paulY: number;
+
+  // ---- part 2 (extra anims); all 0 in the base anims, which they leave pixel-identical ----
+
+  /**
+   * Collapse: the upper body (helm, bust, pauldrons, arms, the cape's top) sinks this many px into
+   * the robe while the hem stays on the floor (the skirt shortens: an emptying cloak); ≤ 22.
+   */
+  sink: number;
+  /** The lower robe and the cape pool outward on the floor 0..1 (a heap is wider). */
+  pool: number;
+  /** The pauldrons fold in toward the chest (px): the shoulders cave in. */
+  hunch: number;
+  /**
+   * The staff is out of the hand (1): it stands / falls on its own, pivoting on the ferrule's end
+   * at (fpx, fpy) (v1 frame px, not carried by dx / bob) at angle sa; the empty front fist is at
+   * (fx, fy) (v1 px, before dx / bob / sink).
+   */
+  free: number;
+  fpx: number;
+  fpy: number;
+  fx: number;
+  fy: number;
+  /**
+   * Dark dissolve 0..1: the body erodes in 2-px clusters from the horns down (a void0 front, then
+   * gone, dark motes rising off it); the staff never dissolves. Revive runs it backwards.
+   */
+  diss: number;
+  /** Revive: dark motes spiralling in from far out (0) onto the body (1); 0 = none. */
+  gather: number;
+  /** Summon: the rift on the floor under the body, open 0..1; while open the body is cut at its lip. */
+  rift: number;
+  /** Special: the tendril's first span leaving the orb along the staff 0..1 (the cinematic draws the rest). */
+  tendril: number;
+  /** hitMagic: magenta crackle over the plates 0..1 (its phase is t). */
+  zap: number;
 }
 
 export const NEUTRAL: Pose = {
@@ -132,6 +167,19 @@ export const NEUTRAL: Pose = {
   lagF: 0,
   lagB: 0,
   paulY: 0,
+  sink: 0,
+  pool: 0,
+  hunch: 0,
+  free: 0,
+  fpx: 55,
+  fpy: 73,
+  fx: 55,
+  fy: 44,
+  diss: 0,
+  gather: 0,
+  rift: 0,
+  tendril: 0,
+  zap: 0,
 };
 
 export const pose = (o: Partial<Pose>): Pose => ({ ...NEUTRAL, ...o });
@@ -385,9 +433,22 @@ export function orbReach(k: number): number {
   return STAFF_UP + 3.2 + 3.9 * k;
 }
 
-/** Staff grip (front hand) in frame px — whole pixels: the staff, fist and orb hang on it. */
+/** Ferrule end to grip along the shaft (px): STAFF_DOWN + the iron ferrule. */
+const FERRULE = STAFF_DOWN + 3;
+
+/**
+ * Staff grip in frame px — whole pixels: the staff, cradle and orb hang on it. In the hand it is
+ * the front fist; a free staff (o.free) hangs on its ferrule's end instead.
+ */
 export function gripPoint(o: Pose): Pt {
-  return [Math.round(o.gx + OX + o.dx), Math.round(o.gy + OY + o.bob)];
+  if (o.free) return [Math.round(o.fpx + OX + Math.sin(o.sa) * FERRULE), Math.round(o.fpy + OY - Math.cos(o.sa) * FERRULE)];
+  return [Math.round(o.gx + OX + o.dx), Math.round(o.gy + OY + o.bob + o.sink)];
+}
+
+/** The front fist in frame px (on the grip, or empty beside a free staff). */
+export function handPoint(o: Pose): Pt {
+  if (o.free) return [Math.round(o.fx + OX + o.dx), Math.round(o.fy + OY + o.bob + o.sink)];
+  return gripPoint(o);
 }
 
 /** Centre of the staff orb (frame px) for a pose. */
@@ -399,7 +460,7 @@ export function orbCenter(o: Pose): Pt {
 
 /** Head anchor (frame px, integer): the v1 head stamp origin. */
 export function headAnchor(o: Pose): Pt {
-  return [32 + OX + Math.round(o.dx + o.lean * HEAD_K + o.hx), 10 + OY + Math.round(o.bob + o.hy)];
+  return [32 + OX + Math.round(o.dx + o.lean * HEAD_K + o.hx), 10 + OY + Math.round(o.bob + o.hy + o.sink)];
 }
 
 /** Eye point (frame px): the near eye slit. */
@@ -412,9 +473,14 @@ export function eyePoint(o: Pose): Pt {
 function rigid(o: Pose) {
   const dx = Math.round(o.dx);
   const bob = Math.round(o.bob);
+  const sk = Math.round(o.sink);
+  const hu = Math.round(o.hunch);
   return {
-    bust: [OX + Math.round(o.dx + o.lean * BUST_K), OY + bob] as Pt,
-    paul: [OX + Math.round(o.dx + o.lean * PAUL_K), OY + bob] as Pt,
+    bust: [OX + Math.round(o.dx + o.lean * BUST_K), OY + bob + sk] as Pt,
+    paul: [OX + Math.round(o.dx + o.lean * PAUL_K), OY + bob + sk] as Pt,
+    /** Pauldron fold-in: the near one moves back and down, the far one forward. */
+    paulF: [OX + Math.round(o.dx + o.lean * PAUL_K) - hu, OY + bob + sk + Math.round(o.hunch * 0.5)] as Pt,
+    paulB: [OX + Math.round(o.dx + o.lean * PAUL_K) + Math.round(o.hunch * 0.6), OY + bob + sk + Math.round(o.hunch * 0.3)] as Pt,
     head: headAnchor(o),
     dx,
     bob,
@@ -432,16 +498,33 @@ export function drawMagus(p: PixelCanvas, o: Pose, light: Light): void {
   const T = (x: number, y: number): Pt => [x + bustX, y + bustY];
   const topShift = bustX - OX - o.dx;
   const hemShift = o.sway - o.lean * 0.3;
-  /** Lower robe: the top rides with the bust, the hem sways and lags. */
+  /**
+   * Lower robe: the top rides with the bust, the hem sways and lags. A collapse (sink) lowers the
+   * top while the hem stays on the floor; pooling spreads the lower robe outward.
+   */
+  const sinkI = Math.round(o.sink);
+  const poolX = 40 + OX + o.dx;
   const L = (x: number, y: number): Pt => {
     const s = clamp((y - WAIST_Y) / 26, 0, 1.3);
-    return [x + OX + o.dx + lerp(topShift, hemShift, s), y + OY + o.bob];
+    const px = x + OX + o.dx + lerp(topShift, hemShift, s);
+    const py = y + OY + o.bob;
+    if (!sinkI && !o.pool) return [px, py];
+    const s1 = Math.min(1, s);
+    return [poolX + (px - poolX) * (1 + o.pool * 0.45 * s1), py + sinkI * (1 - s1)];
   };
   /** Rest-frame y of a frame row (for plane rules measured on the still). */
-  const restY = (y: number) => y - OY - o.bob;
+  const restY = (y: number) => {
+    const yy = y - OY - o.bob;
+    if (!sinkI) return yy;
+    // undo the collapse (L above): the band rules keep their place on the shortened robe
+    if (yy <= WAIST_Y + sinkI) return yy - sinkI;
+    if (yy >= WAIST_Y + 26) return yy;
+    return (yy - sinkI * (1 + WAIST_Y / 26)) / (1 - sinkI / 26);
+  };
 
   // staff geometry
   const gripI = gripPoint(o);
+  const handI = handPoint(o);
   const dir: Pt = [Math.sin(o.sa), -Math.cos(o.sa)];
   const nrm: Pt = [-dir[1], dir[0]];
   const top: Pt = [gripI[0] + dir[0] * STAFF_UP, gripI[1] + dir[1] * STAFF_UP];
@@ -593,8 +676,9 @@ export function drawMagus(p: PixelCanvas, o: Pose, light: Light): void {
   }
 
   // ------------------------------------------------ back arm (far sleeve + gauntlet)
-  const bShoulder = T(32, 31);
-  const bHand: Pt = [Math.round(o.bx + OX + o.dx), Math.round(o.by + OY + o.bob)];
+  const huB = Math.round(o.hunch * 0.6);
+  const bShoulder = T(32 + huB, 31 + Math.round(o.hunch * 0.3));
+  const bHand: Pt = [Math.round(o.bx + OX + o.dx), Math.round(o.by + OY + o.bob + o.sink)];
   const drawBackArm = () => {
     const q = new PixelCanvas(W, H);
     const el = ik(bShoulder[0], bShoulder[1], bHand[0], bHand[1], 8, 8, -1);
@@ -759,14 +843,23 @@ export function drawMagus(p: PixelCanvas, o: Pose, light: Light): void {
   // gathered at the belly by the free hand (its turned edge shows the violet lining)
   if (o.wrap > 0) {
     const q = new PixelCanvas(W, H);
-    const e0 = T(28.5, 40);
-    const e1 = L(41.5, 45);
-    const e2 = L(54.5, 55);
-    const shape: Pt[] = [e0, e1, e2, L(55.2, 62), L(53.5, 66), L(51.5, 71), L(48, 67.5), L(44, 72), L(40, 68), L(36, 72), L(32, 67.5), L(28, 71), L(25, 66.5), L(25.5, 56), L(27, 47)];
+    // a partial wrap (toGuard / fromGuard / summon): the panel swings round from the back, its
+    // points sliding from a sliver along the body's back edge (x 26) to their closed place
+    const wk = clamp(o.wrap, 0, 1);
+    const WR = (fn: (x: number, y: number) => Pt, x: number, y: number): Pt => {
+      const c = fn(x, y);
+      if (wk >= 1) return c;
+      const t = fn(26 + (x - 26) * 0.12, y);
+      return [lerp(t[0], c[0], wk), lerp(t[1], c[1], wk)];
+    };
+    const e0 = WR(T, 28.5, 40);
+    const e1 = WR(L, 41.5, 45);
+    const e2 = WR(L, 54.5, 55);
+    const shape: Pt[] = [e0, e1, e2, ...([[55.2, 62], [53.5, 66], [51.5, 71], [48, 67.5], [44, 72], [40, 68], [36, 72], [32, 67.5], [28, 71], [25, 66.5], [25.5, 56], [27, 47]] as const).map(([x, y]) => WR(L, x, y))];
     q.poly(shape, PAL.night3);
     const src = q.clone();
     const foldA = e1;
-    const foldB = L(36.5, 69);
+    const foldB = WR(L, 36.5, 69);
     for (let y = 0; y < H; y++)
       for (let x = 0; x < W; x++) {
         if (!src.isOpaque(x, y)) continue;
@@ -780,6 +873,8 @@ export function drawMagus(p: PixelCanvas, o: Pose, light: Light): void {
         if (up === 0) c = PAL.void3;
         else if (up === 1) c = PAL.void2;
         else if (!src.isOpaque(x, y + 1)) c = PAL.night2;
+        // still swinging: its leading edge turns and shows the violet lining
+        if (wk < 1 && up > 1 && !src.isOpaque(x + 1, y)) c = PAL.void2;
         q.set(x, y, c);
       }
     comp(f, q, Part.wrap, { out: PAL.void0 });
@@ -799,7 +894,7 @@ export function drawMagus(p: PixelCanvas, o: Pose, light: Light): void {
   // ------------------------------------------------ far pauldron (rigid)
   {
     const q = new PixelCanvas(W, H);
-    stampMap(q, PAUL_B[light], rg.paul[0], rg.paul[1]);
+    stampMap(q, PAUL_B[light], rg.paulB[0], rg.paulB[1]);
     comp(f, q, Part.paulB, { out: PAL.night0 });
   }
 
@@ -813,13 +908,17 @@ export function drawMagus(p: PixelCanvas, o: Pose, light: Light): void {
   }
 
   // ------------------------------------------------ staff shaft (lower half only while the head is swung back)
-  drawShaft(o.orbBack ? 'lower' : 'all');
+  if (!o.free) drawShaft(o.orbBack ? 'lower' : 'all');
 
   // ------------------------------------------------ front arm: bell sleeve (cloth)
-  const fShoulder = T(47.5, 31.5);
+  const huF = Math.round(o.hunch);
+  const huFy = Math.round(o.hunch * 0.5);
+  /** The near shoulder (folds in with the pauldron). */
+  const TF = (x: number, y: number): Pt => T(x - huF, y + huFy);
+  const fShoulder = TF(47.5, 31.5);
   {
     const q = new PixelCanvas(W, H);
-    const hand: Pt = [gripI[0], gripI[1]];
+    const hand: Pt = [handI[0], handI[1]];
     const el = ik(fShoulder[0], fShoulder[1], hand[0], hand[1], 7.5, 8, 1);
     const cd: Pt = [hand[0] - el[0], hand[1] - el[1]];
     const cl = Math.hypot(cd[0], cd[1]) || 1;
@@ -832,7 +931,7 @@ export function drawMagus(p: PixelCanvas, o: Pose, light: Light): void {
     const kb = clamp(0.5 + 0.75 * uy, 0.55, 1);
     q.poly(sleevePoly(fShoulder, el, cuff, 5, 5.5, 8 * (0.75 + 0.25 * kb), 4 * kb, lag), PAL.void2);
     // the sleeve's crown under the near plate (rides with the shoulder)
-    q.poly([T(44, 31), T(53, 31), T(53, 33.5), T(51.6, 35), T(51.4, 38), T(45.5, 38), T(45.5, 34), T(44, 33)], PAL.void2);
+    q.poly([TF(44, 31), TF(53, 31), TF(53, 33.5), TF(51.6, 35), TF(51.4, 38), TF(45.5, 38), TF(45.5, 34), TF(44, 33)], PAL.void2);
     const src = q.clone();
     for (let y = 0; y < H; y++)
       for (let x = 0; x < W; x++) {
@@ -855,7 +954,7 @@ export function drawMagus(p: PixelCanvas, o: Pose, light: Light): void {
   // ------------------------------------------------ near pauldron (rigid) over the sleeve, its shadow on it
   {
     const q = new PixelCanvas(W, H);
-    const cast = stampMap(q, PAUL_F[light], rg.paul[0], rg.paul[1] - Math.round(o.paulY));
+    const cast = stampMap(q, PAUL_F[light], rg.paulF[0], rg.paulF[1] - Math.round(o.paulY));
     comp(f, q, Part.paulF, { out: PAL.night0, outSkip: [Part.sleeve, Part.bust] });
     castShadow(f, cast, PAL.void0);
   }
@@ -863,7 +962,7 @@ export function drawMagus(p: PixelCanvas, o: Pose, light: Light): void {
   // ------------------------------------------------ front gauntlet on the grip
   {
     const q = new PixelCanvas(W, H);
-    stampMap(q, FIST_F[light], gripI[0], gripI[1]);
+    stampMap(q, FIST_F[light], handI[0], handI[1]);
     comp(f, q, Part.fist);
   }
 
@@ -871,16 +970,181 @@ export function drawMagus(p: PixelCanvas, o: Pose, light: Light): void {
   if (o.bFront) drawBackArm();
 
   // ------------------------------------------------ staff head (cradle) + orb
+  // (a free staff — slipping, falling, lying, rising — is drawn last: it is on the near side)
+  if (o.free) drawShaft('all');
   if (!o.orbBack) {
     drawHead();
     drawOrb();
   }
 
+  // ------------------------------------------------ summon: the body is cut at the rift's lip
+  const riftY = 77 + OY;
+  if (o.rift > 0)
+    for (let y = riftY; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        if (!p.isOpaque(x, y)) continue;
+        p.erase(x, y);
+        f.id[y * W + x] = Part.none;
+      }
+
   // ------------------------------------------------ outline
   p.outline(PAL.ink);
 
+  // ------------------------------------------------ dark dissolve (death / revive)
+  if (o.diss > 0) dissolvePass(f, o, rg, restY);
+
+  // ------------------------------------------------ the rift (summon)
+  if (o.rift > 0) riftPass(p, o, riftY);
+
   // ------------------------------------------------ glow pass (unoutlined light on empty pixels)
   glowPass(p, o, orbC);
+  if (o.zap > 0) zapPass(f, o, rg);
+}
+
+// ---------------------------------------------------------------- part 2 passes
+
+/** Deterministic 0..1 hash of an integer cell. */
+function hash2(x: number, y: number, s = 0): number {
+  let h = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(s | 0, 2147483647)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+
+/** Rest (v1 frame) coordinates of a pixel through the part that owns it (parts move by whole px). */
+function restOf(id: Part, x: number, y: number, o: Pose, rg: ReturnType<typeof rigid>, restY: (y: number) => number): Pt | null {
+  switch (id) {
+    case Part.shaft:
+    case Part.head:
+    case Part.orb:
+      return null;
+    case Part.helm:
+      return [x - (rg.head[0] - 32), y - (rg.head[1] - 10)];
+    case Part.bust:
+    case Part.sleeve:
+    case Part.backArm:
+    case Part.fist:
+      return [x - rg.bust[0], y - rg.bust[1]];
+    case Part.paulF:
+      return [x - rg.paulF[0], y - rg.paulF[1]];
+    case Part.paulB:
+      return [x - rg.paulB[0], y - rg.paulB[1]];
+    default:
+      return [x - OX - Math.round(o.dx), restY(y)];
+  }
+}
+
+/**
+ * Dark dissolve: the body erodes in 2×2 clusters (in its own part space, so the pattern rides the
+ * parts and never crawls) from the horns down — a void0 front, then gone — and dark motes rise
+ * off what is gone. The staff stays whole. Revive runs `diss` backwards (and gathers instead).
+ */
+function dissolvePass(f: Frame, o: Pose, rg: ReturnType<typeof rigid>, restY: (y: number) => number): void {
+  const { p, id } = f;
+  const gone: number[] = [];
+  const dark: number[] = [];
+  const motes: number[] = [];
+  const front = 0.1;
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      if (!p.isOpaque(x, y)) continue;
+      let part = id[y * W + x] as Part;
+      if (part === Part.none) {
+        // an outline pixel: it belongs to the part it hugs
+        for (const [ddx, ddy] of DIR4) {
+          const n = id[(y + ddy) * W + x + ddx];
+          if (x + ddx >= 0 && x + ddx < W && y + ddy >= 0 && y + ddy < H && n !== Part.none) {
+            part = n as Part;
+            break;
+          }
+        }
+      }
+      const r = restOf(part, x, y, o, rg, restY);
+      if (!r) continue;
+      const cx = Math.floor(r[0] / 2);
+      const cy = Math.floor(r[1] / 2);
+      const u = clamp((r[1] - 4) / 70, 0, 1);
+      const thr = 0.9 * u + 0.1 * hash2(cx, cy, 7);
+      if (thr < o.diss - front) {
+        gone.push(x, y);
+        // one mote per cluster (its top-left pixel), rising off it as the front moves on
+        if (!o.gather && (r[0] & 1) === 0 && (r[1] & 1) === 0 && hash2(cx, cy, 11) < 0.14) {
+          const rise = 2 + (o.diss - front - thr) * 80;
+          if (rise < 18) motes.push(x + Math.round(Math.sin(cy * 1.7 + rise * 0.3)), y - Math.round(rise), rise < 8 ? PAL.void2 : PAL.void1);
+        }
+      } else if (thr < o.diss && p.get(x, y) !== PAL.ink) dark.push(x, y);
+    }
+  for (let i = 0; i < gone.length; i += 2) {
+    p.erase(gone[i], gone[i + 1]);
+    id[gone[i + 1] * W + gone[i]] = Part.none;
+  }
+  for (let i = 0; i < dark.length; i += 2) p.set(dark[i], dark[i + 1], PAL.void0);
+  for (let i = 0; i < motes.length; i += 3) if (!p.isOpaque(motes[i], motes[i + 1])) p.set(motes[i], motes[i + 1], motes[i + 2]);
+}
+
+/**
+ * The rift on the floor (summon): a dark lens under the body, its back wall lit by the abyss, a
+ * void4 hot spot when it is wide open; the body (cut at the lip) rises out of it — the back half
+ * only fills empty pixels, the front lip covers the body's cut.
+ */
+function riftPass(p: PixelCanvas, o: Pose, riftY: number): void {
+  const cx = 39.5 + OX;
+  const a = 4 + 15 * o.rift;
+  const b = 1 + 3 * o.rift;
+  const inside = (x: number, y: number, ka: number, kb: number) => {
+    const u = (x + 0.5 - cx) / ka;
+    const v = (y + 0.5 - riftY) / kb;
+    return u * u + v * v < 1;
+  };
+  for (let y = Math.floor(riftY - b - 1); y <= riftY + b + 1; y++)
+    for (let x = Math.floor(cx - a - 1); x <= cx + a + 1; x++) {
+      if (!inside(x, y, a, b)) continue;
+      const rim = !inside(x, y, a - 1.4, b - 1);
+      const back = y + 0.5 < riftY;
+      let c: number;
+      if (rim) c = back ? (o.rift > 0.7 && Math.abs(x + 0.5 - cx) < a * 0.35 ? PAL.void4 : PAL.void3) : PAL.void2;
+      // the back wall just under the lit lip, then the dark: void0 around an ink throat
+      else if (back && !inside(x, y - 1, a - 1.4, b - 1)) c = PAL.void2;
+      else c = inside(x, y, a * 0.7, b * 0.45) ? PAL.ink : PAL.void0;
+      if (back) {
+        if (!p.isOpaque(x, y)) p.set(x, y, c);
+      } else p.set(x, y, c);
+    }
+  // dark motes welling up out of it
+  if (o.rift > 0.25) {
+    const n = 4;
+    for (let i = 0; i < n; i++) {
+      const k = (o.t * 1.6 + i / n + hash2(i, 3)) % 1;
+      const x = Math.round(cx - a * 0.6 + (i / (n - 1)) * a * 1.2 + Math.sin((k + i) * 5) * 1);
+      const y = Math.round(riftY - 2 - k * 20 * o.rift);
+      if (!p.isOpaque(x, y)) p.set(x, y, k < 0.45 ? PAL.void3 : PAL.void2);
+    }
+  }
+}
+
+/** hitMagic: short magenta crackles over the plates (helm, near pauldron, breastplate). */
+function zapPass(f: Frame, o: Pose, rg: ReturnType<typeof rigid>): void {
+  const { p, id } = f;
+  const starts: [Pt, number, number][] = [
+    [[rg.paulF[0] + 49, rg.paulF[1] + 26], 0.6 * Math.PI, 0],
+    [[rg.head[0] + 9, rg.head[1] + 3], 0.35 * Math.PI, 1],
+    [[rg.bust[0] + 36, rg.bust[1] + 34], 0.15 * Math.PI, 2],
+  ];
+  const ph = Math.floor(o.t * 16);
+  for (const [[x0, y0], a0, k] of starts) {
+    const len = Math.round(2 + 5 * o.zap);
+    let x = x0;
+    let y = y0;
+    for (let i = 0; i < len; i++) {
+      const j = hash2(i, ph, k * 13 + 5);
+      const a = a0 + (j - 0.5) * 1.6;
+      x += Math.round(Math.cos(a) * 1.4);
+      y += Math.round(Math.sin(a) * 1.4);
+      const part = id[y * W + x] as Part;
+      if (!p.isOpaque(x, y) || part === Part.orb || part === Part.head) continue;
+      p.set(x, y, i === 0 || (i === len - 1 && o.zap > 0.6) ? PAL.white : i % 2 ? PAL.mag4 : PAL.mag3);
+    }
+  }
 }
 
 /** Eye slits under the visor: brightness from o.eye, squint, flare. */
@@ -1037,6 +1301,45 @@ function glowPass(p: PixelCanvas, o: Pose, orbC: Pt): void {
       }
     }
     put(hx + sway - 1, hy - h - 1.5, PAL.void3);
+  }
+  if (o.tendril > 0) {
+    // special: the tendril's first span leaving the orb along the staff — a writhing void cord,
+    // white-hot where it leaves, thinning to a void2 tail (the cinematic carries it to the target)
+    const ux = Math.sin(o.sa);
+    const uy = -Math.cos(o.sa);
+    const len = 5 + 9 * o.tendril;
+    const s0 = r + 0.5;
+    for (let d = 0; d <= len; d += 0.5) {
+      const k = d / len;
+      const wob = Math.sin(d * 0.75 - o.t * TAU * 2) * 1.6 * k;
+      const x = ox + ux * (s0 + d) - uy * wob;
+      const y = oy + uy * (s0 + d) + ux * wob;
+      const c = d < 2.5 ? PAL.white : k < 0.5 ? PAL.void4 : k < 0.82 ? PAL.void3 : PAL.void2;
+      put(x, y, c);
+      // a 2-px cord for most of its length (a dark void2 underside), thinning to 1 px at the tip
+      if (k < 0.75) put(x - uy * 1, y + ux * 1, k < 0.25 ? PAL.void4 : PAL.void2);
+    }
+    if (o.tendril > 0.5) put(ox + ux * (s0 + len * 0.55) + uy * 2.5, oy + uy * (s0 + len * 0.55) - ux * 2.5, PAL.mag3);
+  }
+  if (o.gather > 0 && o.gather < 1) {
+    // revive: dark motes spiralling in onto the body (a 2-px streak: void3 head, void1 tail)
+    const gx = 40 + OX + o.dx;
+    const gy = 56 + OY + o.bob + o.sink * 0.4;
+    const N = 16;
+    const at = (i: number, g: number): Pt => {
+      const a = i * 2.39996 + (1 - g) * 2.4;
+      const rr = (18 + (i % 4) * 5) * Math.pow(1 - g, 1.15) + 2;
+      // a squashed spiral (the floor plane), kept off the frame edges
+      return [clamp(gx + Math.cos(a) * rr * 1.25, 3, W - 4), clamp(gy + Math.sin(a) * rr * 0.6, 3, H - 4)];
+    };
+    for (let i = 0; i < N; i++) {
+      const g = clamp(o.gather - (i % 3) * 0.05, 0, 1);
+      if (g >= 0.97) continue;
+      const [hx, hy] = at(i, g);
+      const [tx, ty] = at(i, Math.max(0, g - 0.07));
+      put(tx, ty, PAL.void1);
+      put(hx, hy, i % 4 === 0 ? PAL.void4 : PAL.void3);
+    }
   }
   if (o.ward > 0) {
     // ward: a 1-px shell of abyssal light in front of the body; a bright crest slides along it

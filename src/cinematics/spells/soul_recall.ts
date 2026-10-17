@@ -46,6 +46,8 @@ import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { fx, registerCardHook, type CinematicContext } from '../api';
 import { CYAN_FX, bg, evAt, idxOf, relax, sendResolved, setTileOf, spellOpening, fs, lightBeam, lightFlash, lightPool } from './_kit';
 import { summonPose } from '../_v3/summon';
+import { monsterArt } from '../../art/monsters';
+import { artMarkMs, hasAnim } from '../../art/animtime';
 import { Sparks as PxSparks } from '../../vfx/combat';
 import { matterRamp } from '../_v3/death';
 import { clearHologram, holoRamp, setHologram } from '../../vfx/hologram';
@@ -371,6 +373,17 @@ type SummonEv = Extract<GameEvent, { type: 'summon' }>;
 
 /** v3: the ghost's timings (shorter rise, a quick glide, no hover: the body takes over at once). */
 const GHOST_V3 = { rise: 140, float: 200, settle: 0 };
+/** v3: the revive pose's `land` the timings above are cut for (ms; the wyrm's). A later land shortens
+ *  the glide by the difference, down to GHOST_FLOAT_MIN, so every revive stays ≤ 2.1 s (A0 §6.2 5). */
+const REVIVE_LAND_REF = 330;
+const GHOST_FLOAT_MIN = 140;
+
+/** The ghost's timings for a monster: a revive pose that lands late gets a shorter glide. */
+function ghostTimings(id: MonsterId): typeof GHOST_V3 {
+  const art = monsterArt(id);
+  const late = hasAnim(art, 'revive') ? Math.max(0, artMarkMs(art, 'revive', 'land') - REVIVE_LAND_REF) : 0;
+  return { ...GHOST_V3, float: Math.max(GHOST_FLOAT_MIN, GHOST_V3.float - late) };
+}
 
 /** v3 (no revive pose): a ≤ 300 ms cyan rebuild of the body, bottom → top, then its true colours. */
 function rebuild(sc: Phaser.Scene, u: MonsterUnit, ms = 280): Promise<void> {
@@ -442,7 +455,7 @@ async function recallV3(ctx: CinematicContext<Extract<GameEvent, { type: 'activa
           pile.set(g.length, g.length ? ctx.stateAt(si + 1).cards[g[g.length - 1]].cardId : null);
           pile.bump();
         },
-        GHOST_V3,
+        ghostTimings(sEv.cardId as MonsterId),
       ),
     });
   await op.release({ x: gyAt.x, y: gyAt.y - 4 }, { path: 'dive', lift: 30, ms: DIVE, ramp: CYAN_FX, onLaunch: () => bg(wait(sc, DIVE - 40).then(rise)) });

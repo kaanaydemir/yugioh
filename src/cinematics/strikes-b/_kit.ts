@@ -439,7 +439,6 @@ export async function flavoredDeath(ctx: DestroyCtx, o: DeathOpts): Promise<void
         if (!unit.sprite.active || !unit.sprite.visible) return;
         ctx.sfx('shatter', { volume: 0.6 });
         const at = unit.core();
-        if (o.light !== false) void lightFlash(sc, at.x, at.y, o.light ?? ATTRIBUTE_RAMP[unit.attribute][3], 46, 460, { floorY: unit.home.y, ring: true, intensity: 0.9 });
         const sh = shatter(sc, unit.sprite, {
           monsterId: unit.cardId,
           attribute: unit.attribute,
