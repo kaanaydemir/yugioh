@@ -199,7 +199,7 @@ tasarımı, çevrimiçi oyun, kural değişiklikleri.
 |---|---|---|
 | Sabit görsel (stil hedefi) | tamam | `src/still/`, `tools/neon-still.ts` |
 | A0 Envanter ve ölçüm | tamam | `docs/v3/A0_ENVANTER.md` + `docs/v3/a0/*.md` |
-| A1 Altyapı | bekliyor | |
+| A1 Altyapı | tamam | `?look=v3`, sakin arena, tam sayı kamera, kare süreleri + yeni poz türleri, P2 yeniden ışık, ağırlık profilleri, tek gösteri saati, basamaklı ışık; `tools/measure.mjs`, `tools/sheet-hash.ts`; kabul: 2. tur geçti |
 | A2 Dikey dilim | bekliyor | onay kapısı |
 | A3 Rehber | bekliyor | |
 | A4 Kalan canavarlar | bekliyor | |
