@@ -15,6 +15,7 @@
 //   --start MS         game time to advance before the first film frame (default 0)
 //   --cols C           contact sheet columns (default 4)
 //   --clip x,y,w,h     crop to a region in GAME pixels (640×360 space)
+//   --frames DIR       with --film: also write every film frame as DIR/fNNNN.png (for GIF / video)
 //   --fresh            "?dev=duel&s=<key>" only: freeze, then restart the duel on that scenario under the
 //                      frozen clock (__neon.duel.scenario) before the capture. The real-time duel before
 //                      the freeze no longer leaks in, so a --film / --step capture is a function of the
@@ -150,11 +151,13 @@ try {
     const cols = Number(args.cols ?? 4);
     await page.evaluate(() => window.__neon.freeze());
     if (start > 0) await page.evaluate((ms) => window.__neon.step(ms), start);
+    if (args.frames) fs.mkdirSync(args.frames, { recursive: true });
     const frames = [];
     for (let i = 0; i < film; i++) {
       if (i > 0) await page.evaluate((ms) => window.__neon.step(ms), every);
       const buf = await page.screenshot({ clip });
       frames.push({ t: start + i * every, b64: buf.toString('base64') });
+      if (args.frames) fs.writeFileSync(path.join(args.frames, `f${String(i).padStart(4, '0')}.png`), buf);
     }
     const sheet = await browser.newPage({ viewport: { width: 400, height: 300 }, deviceScaleFactor: 1 });
     const w = clip.width;
