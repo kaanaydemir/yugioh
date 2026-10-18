@@ -36,9 +36,10 @@ import { monsterFrame } from '../art/textures';
 import { holdOf } from '../art/animtime';
 import { monsterArt } from '../art/monsters';
 import { sfx, type SfxName } from '../audio/sfx';
-import { DEPTH, GAME_H, GAME_W, type XY, isoToScreen, panelRect, screenToIso, unitDepth } from '../view/layout';
+import { DEPTH, GAME_H, GAME_W, LOOK_V3, type XY, isoToScreen, panelRect, screenToIso, unitDepth } from '../view/layout';
+import { lightBeam, lightFlash } from '../view/light';
 import { TEX, flash, shake, wait } from './core';
-import { stopTime } from './combat';
+import { Sparks as PxSparks, stopTime } from './combat';
 import { pixelText } from '../ui/text';
 import { onDuelStart } from '../duel/seeds';
 
@@ -828,8 +829,19 @@ export interface StormOpts {
   target?: Unit;
   /** Called on the impact frame (before hit-stop) — trigger the shatter here or after the promise. */
   onImpact?: () => void;
-  /** Cloud height above the target point (default 118 px, clamped to the screen). */
+  /** Cloud height above the target point (default 118 px, clamped to the screen; v3 96). */
   height?: number;
+  // ---- v3 look only (?look=v3, stormStrikeV3); the v1 storm ignores them
+  /** Where the bolt lands on the victim's body (world y; default the floor point − 3). */
+  hitY?: number;
+  /** ms from the start to the strike (default 380: the cloud has gathered in ≤ 0.4 s). */
+  strikeAt?: number;
+  /** Hit-stop on the strike frame (default 80 ms; 0 = none, the caller freezes). */
+  stopMs?: number;
+  /** The victim's lane on the floor: the stepped light of the strike lights this strip (and the victim's pad) only. */
+  lane?: { from: XY; to: XY };
+  /** Called at the lock-on (the sigil snaps white, ~strikeAt − 100). */
+  onLock?: () => void;
 }
 
 const BOLT_RAMP = [PAL.teal2, PAL.teal4, PAL.white, PAL.white];
@@ -841,6 +853,7 @@ const BOLT_RAMP = [PAL.teal2, PAL.teal4, PAL.white, PAL.white];
  * Resolves ~500 ms after the impact (call your shatter after it, or in onImpact).
  */
 export async function stormStrike(scene: Phaser.Scene, x: number, y: number, opts: StormOpts = {}): Promise<void> {
+  if (LOOK_V3) return stormStrikeV3(scene, x, y, opts);
   x = Math.round(x);
   y = Math.round(y);
   const cx = x;
@@ -1206,6 +1219,458 @@ export async function stormStrike(scene: Phaser.Scene, x: number, y: number, opt
     for (const o of [clouds, sigil, boltR, ground]) o.destroy();
     dark.destroy();
     sparks.close();
+  });
+}
+
+// ------------------------------------------------------------------ Yıldırım Hükmü — the v3 storm
+
+/**
+ * The v3 bolt's flicker after the hit-stop (34 ms steps; drawBoltV3's states): ≥ 0.9 the strike
+ * (a white 3-px core in a 5-px teal body), ≥ 0.3 an after-strike (teal, 3 px), below that a broken
+ * 1-px trace. The full white bolt is the strike frame + the 80 ms hit-stop, ≈ 100 ms (≤ 120 ms).
+ */
+const BOLT_V3_FLICKER = [0.6, 0.2, 0.6, 0.2, 0] as const;
+
+// ---- the v3 bolt's strokes (A2 art review r2 #1: a crisp bolt, never a dithered haze over the victim)
+
+/**
+ * A hand-drawn style zig-zag from a to b on whole pixels: `n` segments whose joints alternate
+ * sides of the a → b line by amp × (0.35…1); the ends are exact.
+ */
+function zigzag(a: XY, b: XY, n: number, amp: number): XY[] {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len;
+  const ny = dx / len;
+  const pts: XY[] = [{ x: Math.round(a.x), y: Math.round(a.y) }];
+  let side = rnd() < 0.5 ? -1 : 1;
+  for (let k = 1; k < n; k++) {
+    const t = (k + rr(-0.22, 0.22)) / n;
+    const off = side * rr(amp * 0.35, amp);
+    pts.push({ x: Math.round(a.x + dx * t + nx * off), y: Math.round(a.y + dy * t + ny * off) });
+    side = -side;
+  }
+  pts.push({ x: Math.round(b.x), y: Math.round(b.y) });
+  return pts;
+}
+
+/** Walk the whole pixels of a polyline (Bresenham), with the run length so far and whether the step is steep. */
+function walkPx(pts: readonly XY[], fn: (x: number, y: number, along: number, steep: boolean) => void): number {
+  let along = 0;
+  for (let i = 1; i < pts.length; i++) {
+    let x0 = Math.round(pts[i - 1].x);
+    let y0 = Math.round(pts[i - 1].y);
+    const x1 = Math.round(pts[i].x);
+    const y1 = Math.round(pts[i].y);
+    const ddx = Math.abs(x1 - x0);
+    const ddy = -Math.abs(y1 - y0);
+    const sx = x0 < x1 ? 1 : -1;
+    const sy = y0 < y1 ? 1 : -1;
+    const steep = -ddy >= ddx;
+    let err = ddx + ddy;
+    for (let guard = 0; guard < 2000; guard++) {
+      if (i === 1 || guard > 0) fn(x0, y0, along, steep);
+      if (x0 === x1 && y0 === y1) break;
+      const e2 = 2 * err;
+      if (e2 >= ddy) {
+        err += ddy;
+        x0 += sx;
+      }
+      if (e2 <= ddx) {
+        err += ddx;
+        y0 += sy;
+      }
+      along++;
+    }
+  }
+  return along;
+}
+
+/** A solid stroke `w` px thick (odd) across each segment's minor axis — crisp at any slope. */
+function spanStroke(g: Raster, pts: readonly XY[], w: number, c: number): void {
+  const h = (w - 1) >> 1;
+  walkPx(pts, (x, y, _a, steep) => {
+    for (let o = -h; o <= h; o++) {
+      if (steep) g.px(x + o, y, c);
+      else g.px(x, y + o, c);
+    }
+  });
+}
+
+/**
+ * A 1-px fork: bright at its root (white on the strike), teal4 along, teal3 toward the tip, and
+ * only its last third breaks up into a dither.
+ */
+function forkStroke(g: Raster, pts: readonly XY[], full: boolean): void {
+  let total = 0;
+  for (let i = 1; i < pts.length; i++) total += Math.max(Math.abs(pts[i].x - pts[i - 1].x), Math.abs(pts[i].y - pts[i - 1].y));
+  total = Math.max(1, total);
+  walkPx(pts, (x, y, along) => {
+    const f = along / total;
+    if (f < 0.3) g.px(x, y, full ? PAL.white : PAL.teal4);
+    else if (f < 0.66) g.px(x, y, full ? PAL.teal4 : PAL.teal3);
+    else g.dpx(x, y, full ? PAL.teal3 : PAL.teal2, 1 - (f - 0.66) * 1.9);
+  });
+}
+
+/**
+ * The storm of the v3 look (?look=v3; docs/v3/A0_ENVANTER.md §6.2 item 9). Local and quick, no
+ * screen washes: a small cloud vortex gathers over the victim in ≤ 0.4 s (core puffs first), a
+ * teal sigil locks on its floor, two stepped leaders flicker, then the bolt hits the body's top
+ * (`hitY`): a crisp pixel zig-zag (solid white 3-px core in a 5-px teal body, 1-px forks off its
+ * upper half that end ≥ 8 px above the body; dither only at fork tips and on the floor splash) —
+ * full brightness for ≤ 120 ms (the strike frame + the hit-stop), the strike's stepped
+ * light only on the victim's pad and its lane (opts.lane), never on the HUD — and flickers out;
+ * ground arcs crawl on the scorched floor. The victim itself is not touched (no silhouette fill):
+ * the caller plays its reaction in onImpact. Resolves ~0.36 s after the strike; the cloud
+ * disperses on its own.
+ */
+async function stormStrikeV3(scene: Phaser.Scene, x: number, y: number, opts: StormOpts): Promise<void> {
+  x = Math.round(x);
+  y = Math.round(y);
+  const T_STRIKE = Math.max(160, Math.round(opts.strikeAt ?? 380));
+  const GATHER = Math.min(380, T_STRIKE - 20);
+  const T_LOCK = T_STRIKE - 100;
+  const cx = x;
+  const hitY = Math.round(opts.hitY ?? y - 3);
+  // the cloud floats high enough over a tall body that the bolt never shrinks to a blob (≥ ~40 px)
+  const cy = Math.max(26, Math.min(y - (opts.height ?? 96), hitY - 40));
+  const eye = { x: cx, y: cy + 5 };
+
+  const clouds = Raster.around(scene, cx, cy, 184, 72, DEPTH.FX + 4);
+  const sigil = Raster.around(scene, x, y, 96, 52, DEPTH.SHADOW - 1);
+  const boltR = new Raster(scene, cx - 70, cy - 8, 140, Math.max(16, hitY - cy + 24), DEPTH.FX + 6);
+  const ground = Raster.around(scene, x, y, 150, 76, DEPTH.SHADOW - 1);
+  const sparks = new PxSparks(scene, DEPTH.FX + 8);
+
+  // cloud puffs: a small iso vortex that spirals in (core ring first)
+  const puffs: Puff[] = [];
+  const NP = 30;
+  for (let i = 0; i < NP; i++) {
+    const ring = i < 8 ? 0 : i < 19 ? 1 : 2;
+    puffs.push({
+      ang: ((i * 2.399) % TAU) + rr(-0.2, 0.2),
+      rad: [rr(0, 22), rr(26, 46), rr(50, 78)][ring],
+      size: [rr(13, 17), rr(10, 14), rr(7, 10)][ring],
+      ph: rr(0, TAU),
+      layer: ring,
+    });
+  }
+  let cloudFlash = 0;
+  let flashX = cx;
+  let strikeLight = 0;
+  let gather = 0;
+  let disperse = 0;
+  let eyeGlow = 0;
+
+  const CW = clouds.w;
+  const CH = clouds.h;
+  const zb = new Float32Array(CW * CH);
+  const nxb = new Float32Array(CW * CH);
+  const nyb = new Float32Array(CW * CH);
+  const idb = new Int16Array(CW * CH);
+  const drawClouds = (el: number) => {
+    clouds.draw((g) => {
+      zb.fill(-1e9);
+      idb.fill(-1);
+      const fade = 1 - disperse;
+      puffs.forEach((p, id) => {
+        const g0 = clamp01(gather * 1.6 - p.layer * 0.3);
+        const spiral = (1 - gather) * 1.2;
+        const a = p.ang + spiral + el * 0.0006 * (p.layer === 0 ? 1.8 : p.layer === 1 ? 1.2 : 1);
+        const rad = p.rad * (1 + (1 - gather) * 0.45 + disperse * 0.8);
+        const qx = cx + Math.cos(a) * rad;
+        const qy = cy + Math.sin(a) * rad * 0.28 - (2 - p.layer) * 3 + Math.sin(el * 0.003 + p.ph);
+        const s0 = p.size * E.outCubic(g0) * (1 - disperse * 0.4);
+        if (s0 < 1.5) return;
+        const sy = s0 * (p.layer === 2 ? 0.55 : 0.75);
+        const x0 = Math.max(0, Math.floor(qx - s0 - clouds.x));
+        const x1 = Math.min(CW - 1, Math.ceil(qx + s0 - clouds.x));
+        const y0 = Math.max(0, Math.floor(qy - sy - clouds.y));
+        const y1 = Math.min(CH - 1, Math.ceil(qy + sy - clouds.y));
+        for (let ly = y0; ly <= y1; ly++) {
+          const dy = (ly + clouds.y + 0.5 - qy) / sy;
+          for (let lx = x0; lx <= x1; lx++) {
+            const dx = (lx + clouds.x + 0.5 - qx) / s0;
+            const d2 = dx * dx + dy * dy;
+            if (d2 > 1) continue;
+            if (fade < 1 && bayer(lx + clouds.x, ly + clouds.y) > fade * (1.25 - d2 * 0.5)) continue;
+            const z = qy * 0.6 + Math.sqrt(1 - d2) * s0;
+            const i = ly * CW + lx;
+            if (z > zb[i]) {
+              zb[i] = z;
+              nxb[i] = dx;
+              nyb[i] = dy;
+              idb[i] = id;
+            }
+          }
+        }
+      });
+      for (let ly = 0; ly < CH; ly++) {
+        for (let lx = 0; lx < CW; lx++) {
+          const i = ly * CW + lx;
+          const id = idb[i];
+          if (id < 0) continue;
+          const wx = lx + clouds.x;
+          const wy = ly + clouds.y;
+          const dx = nxb[i];
+          const dy = nyb[i];
+          const l = -(dx * 0.4 + dy * 0.9); // moonlight from the upper left
+          let c: number;
+          if (l > 0.62) c = PAL.night2;
+          else if (l > -0.45) c = PAL.night1;
+          else c = PAL.night0;
+          const up = ly > 0 ? idb[i - CW] : -1;
+          if (up >= 0 && up !== id && zb[i - CW] > zb[i] + 1.5) c = PAL.night0;
+          if (up < 0) c = l > 0.3 ? PAL.night4 : PAL.night3;
+          else if (ly > 1 && idb[i - 2 * CW] < 0 && l > 0.3) c = PAL.night3;
+          if (ly + 1 < CH && idb[i + CW] < 0) c = PAL.ink;
+          const near = Math.max(0, 1 - Math.hypot(wx - eye.x, (wy - eye.y) * 2.4) / 52);
+          const fl = cloudFlash * Math.max(0, 1 - Math.abs(wx - flashX) / 52) * (0.55 + l * 0.6);
+          const under = dy > 0 ? dy : 0;
+          const prox = Math.max(0, 1 - Math.hypot(wx - eye.x, (wy - eye.y) * 1.8) / 96);
+          const lit = Math.max(fl, strikeLight * (0.15 + under * 0.9) * (0.35 + prox * 0.9), eyeGlow * near * (0.35 + under) * 1.5);
+          if (lit > 0.85) c = l > 0.1 ? PAL.white : PAL.teal4;
+          else if (lit > 0.62) c = l > 0.1 ? PAL.teal4 : PAL.mist;
+          else if (lit > 0.42) c = l > 0.1 ? PAL.mist : PAL.steel;
+          else if (lit > 0.24) c = l > 0 ? PAL.steel : PAL.night4;
+          else if (lit > 0.12 && c !== PAL.ink) c = PAL.night3;
+          g.px(wx, wy, c);
+        }
+      }
+      if (eyeGlow > 0.05) {
+        // the eye: solid tone bands that grow with the charge (no dithered halo)
+        const r = 2 + eyeGlow * 5;
+        if (eyeGlow > 0.3) g.ell(eye.x, eye.y, r * 1.8, r * 0.6, PAL.teal2);
+        if (eyeGlow > 0.15) g.ell(eye.x, eye.y, r * 1.1, r * 0.4, PAL.teal4);
+        if (eyeGlow > 0.5) g.ell(eye.x, eye.y, r * 0.55, Math.max(0.6, r * 0.22), PAL.white);
+      }
+    });
+  };
+
+  // the sigil on the victim's floor: shrinks onto it, snaps white at the lock
+  let sigilT = 0;
+  let sigilLock = 0;
+  let sigilOn = 0;
+  const drawSigil = (el: number) => {
+    sigil.draw((g) => {
+      if (sigilOn <= 0.01) return;
+      const k = E.outCubic(sigilT);
+      const r = Math.round(lerp(40, 20, k));
+      const col = sigilLock > 0.5 ? PAL.white : PAL.teal3;
+      g.ring(x, y, r, r / 2, col, sigilOn);
+      g.ring(x, y, r + 3, r / 2 + 1.5, PAL.teal1, sigilOn * 0.7);
+      const n = 8;
+      for (let i = 0; i < n; i++) {
+        const a0 = (i / n) * TAU - el * 0.004;
+        g.ring(x, y, r * 0.62, r * 0.31, sigilLock > 0.5 ? PAL.teal4 : PAL.teal2, sigilOn, a0, a0 + TAU / n / 2);
+      }
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * TAU + el * 0.0025 + Math.PI / 4;
+        const px = x + Math.cos(a) * (r + 6);
+        const py = y + Math.sin(a) * (r + 6) * 0.5;
+        const ix = -Math.cos(a);
+        const iy = -Math.sin(a) * 0.5;
+        g.line(px - iy * 3, py + ix * 3, px + ix * 4, py + iy * 4, col, sigilOn);
+        g.line(px + iy * 3, py - ix * 3, px + ix * 4, py + iy * 4, col, sigilOn);
+      }
+    });
+  };
+
+  // the bolt: eye → the body's top, a crisp zig-zag (solid 3–5 px core, no halo: the light layer
+  // carries the glow); 1-px forks leave its upper half sideways and stay above the body (their
+  // tips end ≥ 8 px over the hit point), so the victim is never under a haze
+  let bolt: XY[] = [];
+  let branches: XY[][] = [];
+  let boltI = 0;
+  let leaders: XY[][] = [];
+  const boltLen = Math.max(1, hitY - eye.y);
+  const newBolt = () => {
+    bolt = zigzag(eye, { x, y: hitY }, Math.max(4, Math.min(9, Math.round(boltLen / 11))), Math.min(8, 3 + boltLen / 16));
+    branches = [];
+    const nb = ri(2, 3);
+    let side = rnd() < 0.5 ? -1 : 1;
+    const floorY = hitY - 8;
+    for (let i = 0; i < nb; i++) {
+      const at = 1 + Math.floor(rr(0.05, 0.5) * Math.max(1, bolt.length - 2));
+      const p = bolt[at];
+      if (p.y > floorY - 4) continue;
+      const end = { x: p.x + side * rr(12, 24), y: Math.max(p.y + 3, Math.min(floorY, p.y + rr(5, 15))) };
+      const fork = zigzag(p, end, 3, 3);
+      branches.push(fork);
+      // a twig off the fork's first joint
+      if (rnd() < 0.6) {
+        const q = fork[1];
+        branches.push(zigzag(q, { x: q.x + side * rr(4, 9), y: Math.max(q.y + 2, Math.min(floorY, q.y + rr(4, 9))) }, 2, 2));
+      }
+      side = -side;
+    }
+  };
+  const drawBolt = () => {
+    boltR.draw((g) => {
+      for (const l of leaders) g.path(l, PAL.teal3, 1);
+      if (boltI <= 0.02) return;
+      if (boltI >= 0.9) {
+        // the strike: a white 3-px core in a 5-px teal body, white-rooted forks
+        for (const b of branches) forkStroke(g, b, true);
+        spanStroke(g, bolt, 5, PAL.teal4);
+        spanStroke(g, bolt, 3, PAL.white);
+        // the contact on the body's top: a small crisp splash (this frame and the hit-stop only)
+        for (let o = -3; o <= 3; o++) g.px(x + o, hitY, Math.abs(o) <= 1 ? PAL.white : PAL.teal4);
+        for (let o = -1; o <= 1; o++) g.px(x + o, hitY - 1, o === 0 ? PAL.white : PAL.teal4);
+        g.px(x - 4, hitY - 2, PAL.teal4);
+        g.px(x + 4, hitY - 2, PAL.teal4);
+      } else if (boltI >= 0.3) {
+        // an after-strike: teal, 3 px
+        for (const b of branches) forkStroke(g, b, false);
+        spanStroke(g, bolt, 3, PAL.teal3);
+        spanStroke(g, bolt, 1, PAL.teal4);
+      } else {
+        // the trace breaks up: every other segment, 1 px
+        for (let i = 1; i < bolt.length; i += 2) spanStroke(g, [bolt[i - 1], bolt[i]], 1, PAL.teal2);
+      }
+    });
+  };
+
+  // the floor under the victim: scorch, a burst ring, crawling arcs
+  let impactT = -1;
+  const arcs: XY[][] = [];
+  const drawGround = () => {
+    ground.draw((g) => {
+      if (impactT < 0) return;
+      const t = impactT;
+      g.ell(x, y, 18, 8, PAL.ink, Math.max(0, 0.7 - t * 0.6));
+      const k = E.outCubic(seg(t, 0, 0.35));
+      if (t < 0.45) {
+        g.ring(x, y, 8 + k * 24, 4 + k * 12, PAL.teal4, 1 - seg(t, 0.1, 0.45));
+        g.ell(x, y, 3 + k * 8, 1.5 + k * 4, PAL.white, 1 - seg(t, 0, 0.2));
+      }
+      if (t < 0.7) {
+        for (const a of arcs) {
+          if (rnd() < 0.35) continue;
+          const n = Math.max(2, Math.floor(a.length * Math.min(1, t * 4)));
+          g.path(a.slice(0, n), rnd() < 0.5 ? PAL.teal4 : PAL.white, 1 - seg(t, 0.4, 0.7));
+        }
+      }
+      if (t > 0.2) for (let i = 0; i < 5; i++) g.dpx(x + Math.sin(i * 2.3) * 9, y + Math.cos(i * 1.7) * 3, PAL.teal3, 0.6 - t * 0.6);
+    });
+  };
+
+  const stopDraw = onFrame(scene, (_dt, el) => {
+    drawClouds(el);
+    drawSigil(el);
+    drawBolt();
+    drawGround();
+  });
+
+  // ---------------------------------------------------------------- timeline
+  snd('spellActivate', 0.4, 0.8);
+  const END = T_STRIKE + 760;
+  const timeline = run(scene, END, (_t, el, dt) => {
+    gather = E.outCubic(seg(el, 0, GATHER));
+    disperse = E.inQuad(seg(el, T_STRIKE + 280, END));
+    sigilOn = el < T_STRIKE ? seg(el, 60, 140) : Math.max(0, 1 - seg(el, T_STRIKE, T_STRIKE + 100));
+    sigilT = seg(el, 60, T_LOCK);
+    sigilLock = el >= T_LOCK ? 1 : 0;
+    eyeGlow = el < T_STRIKE ? E.inQuad(seg(el, T_STRIKE * 0.35, T_STRIKE)) : Math.max(0, 1 - seg(el, T_STRIKE, T_STRIKE + 360));
+    cloudFlash = Math.max(0, cloudFlash - dt / 110);
+    strikeLight = Math.max(0, strikeLight - dt / 420);
+    if (impactT >= 0) impactT = Math.min(1, impactT + dt / 560);
+  });
+
+  // intra-cloud flickers while it gathers
+  const flick = async (at: number) => {
+    await sleep(scene, at);
+    cloudFlash = 1;
+    flashX = cx + rr(-40, 40);
+    snd('thunder', 0.16, 1.5);
+  };
+  void flick(Math.round(T_STRIKE * 0.25));
+  void flick(Math.round(T_STRIKE * 0.55));
+
+  // two stepped leaders feel for the target
+  void (async () => {
+    await sleep(scene, T_STRIKE - 80);
+    for (let i = 0; i < 2; i++) {
+      const full = zigzag(eye, { x: x + rr(-10, 10), y: hitY }, 6, 5);
+      leaders = [full.slice(0, Math.max(2, Math.floor(full.length * rr(0.35, 0.6))))];
+      await sleep(scene, 30);
+      leaders = [];
+      await sleep(scene, 10);
+    }
+  })();
+
+  // the lock + a crackle of static on the target
+  void (async () => {
+    await sleep(scene, 60);
+    snd('lockOn', 0.55);
+    await sleep(scene, T_LOCK - 60);
+    snd('lockOn', 0.8, 1.4);
+    try {
+      opts.onLock?.();
+    } catch (e) {
+      console.error('[setpieces] storm onLock', e);
+    }
+    for (let i = 0; i < 8; i++) {
+      sparks.add({ x: x + Math.round(rr(-12, 12)), y: hitY + Math.round(rr(0, 24)), vx: rr(-30, 30), vy: rr(-60, -10), life: rr(110, 200), colors: [PAL.white, PAL.teal4, PAL.teal3], shape: 'px', delay: rr(0, 90), fadeAt: 1 });
+    }
+  })();
+
+  await sleep(scene, T_STRIKE);
+  // ---------------------------------------------------------------- STRIKE
+  newBolt();
+  boltI = 1;
+  strikeLight = 1;
+  cloudFlash = 1;
+  flashX = cx;
+  impactT = 0;
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * TAU + rr(-0.3, 0.3);
+    const len = rr(20, 40);
+    arcs.push(boltPath({ x, y }, { x: x + Math.cos(a) * len, y: y + Math.sin(a) * len * 0.5 }, 4, 3));
+  }
+  drawBolt();
+  drawGround();
+  snd('lightning', 1);
+  snd('thunder', 1, 0.8);
+  // the strike's light: the victim's pad and its lane only (stepped; full for the hit-stop + one step)
+  void lightFlash(scene, x, y, PAL.teal4, 44, 460, { floorY: y, ring: true, intensity: 1.25, rise: 0 });
+  if (opts.lane) void lightBeam(scene, opts.lane.from, opts.lane.to, PAL.teal3, 300, { air: false, floor: opts.lane, floorWidth: 14, intensity: 1.1, rise: 0, fall: 200, shimmer: 0 }).done;
+  try {
+    opts.onImpact?.();
+  } catch (e) {
+    console.error('[setpieces] storm onImpact', e);
+  }
+  sparks.add({ x, y: hitY - 1, life: 70, size: 3, shape: 'star', colors: [PAL.white], fadeAt: 1, rot: 0 });
+  for (let i = 0; i < 24; i++) {
+    const a = rr(Math.PI * 1.05, Math.PI * 1.95);
+    const sp = rr(60, 200);
+    sparks.add({ x: x + Math.round(rr(-3, 3)), y: y - Math.round(rr(0, 4)), vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.8, ay: 480, drag: 1.2, life: rr(220, 520), colors: [PAL.white, PAL.teal4, PAL.teal3, PAL.teal2], shape: 'px', fadeAt: 1 });
+  }
+  void floorRing(scene, x, y, { r0: 8, r1: 64, ms: 420, ramp: [PAL.white, PAL.teal4, PAL.teal3, PAL.teal2, PAL.teal1], depth: DEPTH.SHADOW - 1 });
+  void shake(scene, 200, 2);
+  const stopMs = opts.stopMs ?? 80;
+  if (stopMs > 0) await freeze(scene, stopMs);
+
+  // the bolt flickers out (full for one more step, then dimmer re-strikes)
+  void (async () => {
+    for (let i = 0; i < BOLT_V3_FLICKER.length; i++) {
+      if (i === 2) newBolt();
+      boltI = BOLT_V3_FLICKER[i];
+      await sleep(scene, 34);
+    }
+    const smoke = new PxSparks(scene, DEPTH.FX + 3);
+    for (let i = 0; i < 7; i++)
+      smoke.add({ x: x + Math.round(rr(-9, 9)), y: y - Math.round(rr(0, 5)), vx: rr(-6, 6), vy: rr(-24, -10), life: rr(420, 760), delay: i * 30, size: rr(1.5, 3), shape: 'puff', colors: [PAL.night4, PAL.night3, PAL.night2], fadeAt: 1 });
+    smoke.release();
+  })();
+
+  await sleep(scene, 280);
+  void timeline.then(() => {
+    stopDraw();
+    for (const o of [clouds, sigil, boltR, ground]) o.destroy();
+    sparks.release();
   });
 }
 

@@ -15,9 +15,15 @@
 //     monster's ACCENT starts (its old death flavour as a preset: crystal light leaking out, the
 //     void pool opening, embers dying, drips, motes, leaves, dust), and from the LAST frame the body
 //     breaks as its MATERIAL (vfx/shatter material presets: crisp, no hologram glitch);
-//   - without one (the 10 old monsters): the monster's own legacy flavour runs as before (strikes-a
-//     flavours end in their own shatter, strikes-b flavours get the material shatter), or — the
-//     default handler — its reaction pose holds a beat and breaks as its material.
+//   - without one (the 10 old monsters, until A4 draws their poses): its reaction pose holds a
+//     beat while its flavour's ACCENT (the preset above: embers, drips, dust, motes...) plays, then
+//     it breaks as its material. The old full-length flavours (1.4–1.7 s, fractional squash /
+//     rotation) are not run in the v3 look: every monster keeps the ≤ 1.4 s destroy rule.
+// The start (posematch.ts): the death pose starts on the frame that continues the recoil on screen
+// without a jump — the lethal recoil stopped on its planned frame (react.ts), or the death frame
+// (≤ 3 skipped) closest to whatever the body shows when the death begins.
+// A claimed unit (MonsterUnit.claim: a losing attacker whose legacy strike still runs) is driven
+// through asClaimant only.
 // The card (card continuity, ./card.ts): the tile card stays under the body for the whole death
 // and is born as the flying card ON the burst frame — the moment the body breaks, so there is no
 // empty frame between them — then arcs onto the owner's graveyard pile at scale 1.
@@ -36,8 +42,10 @@ import { lightFlash, lightPool, type LightHandle } from '../../view/light';
 import { Px, Sparks, onFrame, sleep } from '../../vfx/combat';
 import { shatter, type ShatterMaterial } from '../../vfx/shatter';
 import type { CinematicContext } from '../_core/types';
-import { cardLeaves } from './card';
+import { behindBodies, cardLeaves } from './card';
 import { contactFlash } from './flash';
+import { deathStartFrom, takePlannedEntry } from './posematch';
+import { planGuardBreak, runGuardBreak, showsGuard } from './guardbreak';
 
 type DestroyCtx = CinematicContext<Extract<GameEvent, { type: 'destroy' }>>;
 type ToGraveyardEv = Extract<GameEvent, { type: 'toGraveyard' }>;
@@ -250,8 +258,13 @@ export interface V3DeathArgs {
 }
 
 export interface DeathV3Opts {
-  /** The monster's old flavour (used when its art has no death pose). Must hide the sprite and should call d.burst() as the body breaks. */
+  /**
+   * The monster's old flavour. Kept for the kits' API; the v3 look no longer runs it (its accent
+   * preset plays instead, see the header) — A4 replaces it with the monster's death pose.
+   */
   legacy?: (d: V3DeathArgs) => Promise<void>;
+  /** Extra debris / remains of the monster's flavour on the burst frame (e.g. the volt lizard's static ball). */
+  onBurst?: (u: MonsterUnit, at: XY) => void;
   /** Cases the kit does not animate (not a visible monster): the chain's next handler. */
   fallback: () => Promise<void>;
 }
@@ -283,9 +296,18 @@ export async function deathV3(ctx: DestroyCtx, o: DeathV3Opts): Promise<void> {
   unit.posed = true;
   // ---- the card: born on the tile on the burst frame, then off to the graveyard
   let leave: Promise<void> | null = null;
+  // hints.onBorn: the caller (the battle) eases its camera out from the card's birth on
+  const onBorn = typeof ctx.hints.onBorn === 'function' ? (ctx.hints.onBorn as () => void) : null;
   const burst = () => {
     if (leave) return;
-    if (gEv) leave = cardLeaves(ctx, { owner, cardId: ev.cardId, from: home, tile }).catch((e) => console.error('[death] card', e));
+    try {
+      onBorn?.();
+      if (o.onBurst && unit.sprite.active) o.onBurst(unit, unit.core());
+    } catch (e) {
+      console.error('[death] onBorn', e);
+    }
+    // the card flies over the board but never in front of a body standing nearer the camera
+    if (gEv) leave = cardLeaves(ctx, { owner, cardId: ev.cardId, from: home, tile, depthAt: behindBodies(ctx, unit) }).catch((e) => console.error('[death] card', e));
     else if (tile && tile.active)
       leave = tile
         .dissolve(420)
@@ -296,10 +318,11 @@ export async function deathV3(ctx: DestroyCtx, o: DeathV3Opts): Promise<void> {
     else leave = Promise.resolve();
   };
   const d: V3DeathArgs = { ctx, unit, push: ctx.hints.push as XY | undefined, hit: ctx.hints.hit !== false, home, burst };
+  // released from the field: the timing tools follow its death frames through these
+  ctx.scene.events.emit('v3:dying', unit);
   try {
     if (unit.has('death')) await posedDeath(d);
-    else if (o.legacy) await o.legacy(d);
-    else await reactionDeath(d);
+    else await reactionDeath(d, LEGACY_BEAT_MS);
   } catch (e) {
     console.error('[death] v3 death failed', e);
   } finally {
@@ -307,6 +330,7 @@ export async function deathV3(ctx: DestroyCtx, o: DeathV3Opts): Promise<void> {
     unit.posed = false;
     if (!unit.retired) unit.retire();
     field.forget(ev.uid);
+    ctx.scene.events.emit('v3:dead', unit);
   }
   await leave;
 }
@@ -330,21 +354,64 @@ function breakBody(d: V3DeathArgs, accent: Accent | null, pushK: number): Promis
   }).finally(() => accent?.end());
 }
 
+/** The accent beat of a monster without a death pose: its reaction holds while the accent plays. */
+const LEGACY_BEAT_MS = 130;
+
+/** Resolve once `cond` holds, or after `ms` of scene time. */
+function until(sc: Phaser.Scene, cond: () => boolean, ms: number): Promise<void> {
+  if (cond()) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    onFrame(sc, (_dt, el) => {
+      if (cond() || el >= ms) {
+        resolve();
+        return false;
+      }
+      return true;
+    });
+  });
+}
+
 /** The death pose → accent from its dissolve mark → the material break from its last frame. */
 async function posedDeath(d: V3DeathArgs): Promise<void> {
   const u = d.unit;
   const sc = d.ctx.scene;
   const n = u.frameCount('death');
   if (d.hit) contactFlash(sc, u.sprite, d.push ?? { x: u.player === 0 ? -1 : 1, y: 0 }, { frames: 2, coverage: 0.4 });
+  const inDeath = () => u.frameInfo().anim === 'death';
+  // a lethal recoil hands over to the pose by itself (react.ts): join it where it is; if the
+  // recoil is still on its way to the matching frame, give it that long
+  let planned = takePlannedEntry(u);
+  // a guard that dies without a planned break (a destroy with no blow, a reaction that left it in
+  // its guard): it breaks open into the death pose here (./guardbreak.ts), never pops out of it
+  if (!planned && !inDeath() && u.sprite.active && showsGuard(u)) {
+    const g = planGuardBreak(u);
+    if (g) {
+      runGuardBreak(u, g);
+      planned = takePlannedEntry(u);
+    }
+  }
+  if (planned && !inDeath()) await until(sc, inDeath, Math.min(700, (planned.leadMs ?? u.rangeMs(planned.anim, 0, planned.hold)) + 40));
+  if (!inDeath() && u.sprite.active) {
+    // no plan (a guard, a blow from behind...): the death frame that continues the shown frame best
+    const start = Math.max(0, Math.min(n - 2, planned ? planned.start : deathStartFrom(u)));
+    u.asClaimant(() => void u.playRange('death', start, undefined, { hold: true }));
+  }
+  /** Until the pose shows frame `f` (never restarts a pose that already passed it or ended). */
+  const untilFrame = (f: number): Promise<void> => {
+    const fi = u.frameInfo();
+    if (!u.sprite.active || fi.anim !== 'death' || fi.frame >= f) return Promise.resolve();
+    if (!u.sprite.anims.isPlaying) return Promise.resolve();
+    return u.asClaimant(() => u.playToFrame('death', f));
+  };
   const dissolveF = u.markFrame('death', 'dissolve', Math.max(0, n - 3));
   const box: { accent: Accent | null } = { accent: null };
   const startAccent = () => {
     if (!box.accent && u.sprite.active) box.accent = runAccent(sc, u, deathPreset(u.cardId).accent, d.home);
   };
-  const play = u.playRange('death', 0, undefined, { hold: true });
-  if (dissolveF > 0) void u.playToFrame('death', dissolveF).then(startAccent);
-  else startAccent();
-  await play;
+  void untilFrame(dissolveF).then(startAccent);
+  await untilFrame(n - 1);
+  // the last frame stays its own hold before the body breaks
+  if (u.sprite.active && u.frameInfo().anim === 'death') await sleep(sc, u.frameMs('death', n - 1));
   startAccent();
   if (!u.sprite.active || !u.sprite.visible) {
     box.accent?.burst();
@@ -355,19 +422,22 @@ async function posedDeath(d: V3DeathArgs): Promise<void> {
   d.burst();
 }
 
-/** No death pose and no legacy flavour (the default handler): the reaction holds a beat, then the body breaks. */
-async function reactionDeath(d: V3DeathArgs): Promise<void> {
+/**
+ * No death pose (the old monsters): the reaction holds a beat while the flavour's accent plays
+ * (embers, drips, dust...), then the body breaks as its material. `beat`: the accent's beat.
+ */
+async function reactionDeath(d: V3DeathArgs, beat = 90): Promise<void> {
   const u = d.unit;
   const sc = d.ctx.scene;
   if (d.hit) {
     const anim = u.has('hitHeavy') ? 'hitHeavy' : 'hit';
-    void u.play(anim, { hold: true });
+    u.asClaimant(() => void u.play(anim, { hold: true }));
     contactFlash(sc, u.sprite, d.push ?? { x: u.player === 0 ? -1 : 1, y: 0 }, { frames: 2, coverage: 0.45 });
     await sleep(sc, 120);
   }
   if (!u.sprite.active || !u.sprite.visible) return;
   const accent = runAccent(sc, u, deathPreset(u.cardId).accent, d.home);
-  await sleep(sc, 90);
+  await sleep(sc, beat);
   void breakBody(d, accent, 1).then(() => !u.retired && u.retire(0));
   d.burst();
 }

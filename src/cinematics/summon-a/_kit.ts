@@ -47,6 +47,7 @@ import { onDuelStart } from '../../duel/seeds';
 import { cutInV3 } from '../_v3/cutin';
 import { HOLO_SETTLE_V3_MS, poseEntrance, summonPose, type SummonPose } from '../_v3/summon';
 import { matterRamp } from '../_v3/death';
+import { warmPoses } from '../_v3/warm';
 
 export type AnyCtx = CinematicContext<GameEvent>;
 export type SummonEv = Extract<GameEvent, { type: 'summon' }>;
@@ -210,11 +211,17 @@ export function bodyBox(u: MonsterUnit): { left: number; right: number; top: num
 
 /** Soft additive glow (arena glow texture). Caller animates / destroys. */
 export function softGlow(scene: Phaser.Scene, x: number, y: number, color: number, scale: number, alpha: number, depth: number = DEPTH.FX - 1): Phaser.GameObjects.Image {
-  return scene.add.image(Math.round(x), Math.round(y), AK.glow).setBlendMode(ADD).setTint(color).setScale(scale).setAlpha(alpha).setDepth(depth);
+  const img = scene.add.image(Math.round(x), Math.round(y), AK.glow).setBlendMode(ADD).setTint(color).setScale(scale).setAlpha(alpha).setDepth(depth);
+  // v3: no soft glow sprite (its fractionally scaled bands read as a grey wash around the card);
+  // the stepped light layer (the caller's lightPool / glowPop's lightFlash) carries the light.
+  // The image stays (hidden) so callers can keep scaling / fading / destroying it.
+  if (LOOK_V3) img.setVisible(false);
+  return img;
 }
 
-/** A glow that swells and fades (fire-and-forget). */
+/** A glow that swells and fades (fire-and-forget). v3: a stepped light flash on the floor instead. */
 export function glowPop(scene: Phaser.Scene, x: number, y: number, color: number, o: { from?: number; to?: number; alpha?: number; ms?: number; depth?: number } = {}): Promise<void> {
+  if (LOOK_V3) return lightFlash(scene, Math.round(x), Math.round(y), color, Math.round(12 * (o.to ?? 2.4)), o.ms ?? 300, { intensity: Math.min(1, o.alpha ?? 0.8) });
   const g = softGlow(scene, x, y, color, o.from ?? 0.4, o.alpha ?? 0.8, o.depth);
   const a0 = o.alpha ?? 0.8;
   return run(scene, o.ms ?? 300, (t) => g.setScale(lerp(o.from ?? 0.4, o.to ?? 2.4, E.outCubic(t))).setAlpha(a0 * (1 - t) * (1 - t))).then(() => g.destroy());
@@ -228,6 +235,11 @@ export function isoRing(r: Raster, cx: number, cy: number, rad: number, c: numbe
 
 /** A full-screen flash over the world in the v3 look (not the HUD; v1 / v2: the overlay band, as before) with stepped fall-off (additive tint). */
 export function screenFlash(scene: Phaser.Scene, color: number, alpha: number, ms: number): Promise<void> {
+  // v3: never a world-wide wash (A2 tech review r2 #14) — a stepped floor light at the view's centre
+  if (LOOK_V3) {
+    const c = scene.cameras.main.midPoint;
+    return lightFlash(scene, Math.round(c.x), Math.round(c.y + 20), color, 110, ms, { intensity: Math.min(1, 0.4 + alpha * 2), ring: false });
+  }
   const r = flashRect(scene, color, alpha, flashTopDepth(), { blend: ADD });
   return run(scene, ms, (t) => r.setAlpha(alpha * (t < 0.25 ? 1 : t < 0.5 ? 0.6 : t < 0.75 ? 0.3 : 0.12))).then(() => r.destroy());
 }
@@ -490,9 +502,12 @@ function makeStage(ctx: SummonCtx, unit: MonsterUnit, o: { tribute: boolean; spe
       if (climaxed || !o.cutIn) return;
       climaxed = true;
       if (LOOK_V3) {
-        // v3: the band-only cut-in (≤ 1.0 s); the climax goes on as the band starts to leave
+        // v3: the band-only cut-in (≤ 1.0 s); the climax goes on as the band starts to leave.
+        // The band passes UNDER the summoned monster (its feet and badge, where the camera shows
+        // them now): its summon pose lands, spreads and settles in full view above the band
         beat(scene, 'cut-in');
-        const c = cutInV3(scene, { monsterId: unit.cardId, name: unit.card.name, attribute: unit.attribute, player: ev.player });
+        const clear = fx.screenPoint(ctx, { x: home.x, y: home.y + 22 });
+        const c = cutInV3(scene, { monsterId: unit.cardId, name: unit.card.name, attribute: unit.attribute, player: ev.player, clear });
         await Promise.race([c.exit, wait(scene, 1000)]);
         beat(scene, 'cut-in done');
         return;
@@ -607,6 +622,8 @@ export async function runSummon(ctx: SummonCtx, entrance: (S: Stage) => Promise<
   const v = ctx.views;
   const field = v.field;
   seed(ev.uid * 31 + ev.zone * 7 + ev.player);
+  // v3: the entrance pose is painted now, in the background (the card / tributes come first)
+  warmPoses(ev.cardId as MonsterId, ev.player, ['summon']);
   beat(ctx.scene, ctx.hints.tribute ? 'summon' : 'start');
   // v3: the camera eases back while the summon already starts (never a dead beat)
   if (LOOK_V3) void settleCamera(ctx);

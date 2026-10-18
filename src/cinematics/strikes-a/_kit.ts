@@ -146,8 +146,20 @@ export function glowPulse(scene: Phaser.Scene, x: number, y: number, color: numb
 
 /** Full-screen tinted flash over the world in the v3 look (not the HUD; v1 / v2: the overlay band, as before; ADD), stepped fall-off. */
 export function screenFlash(scene: Phaser.Scene, color: number, alpha: number, ms: number): Promise<void> {
+  // v3: never a world-wide wash (A2 tech review r2 #14) — a stepped floor light at the view's centre
+  if (LOOK_V3) return stepFlash(scene, color, alpha, ms);
   const r = flashRect(scene, color, alpha, flashTopDepth(), { blend: ADD });
   return animate(scene, ms, (t) => r.setAlpha(alpha * Math.pow(1 - t, 2))).then(() => r.destroy());
+}
+
+/**
+ * v3 stand-in for a full-screen flash: a broad stepped floor light (src/view/light, stepped in the
+ * v3 look: flat tone steps on the pads, no alpha) under the middle of the view, its strength from
+ * the old wash's alpha.
+ */
+export function stepFlash(scene: Phaser.Scene, color: number, alpha: number, ms: number): Promise<void> {
+  const c = scene.cameras.main.midPoint;
+  return lightFlash(scene, Math.round(c.x), Math.round(c.y + 20), color, 110, ms, { intensity: Math.min(1, 0.4 + alpha * 2), ring: false });
 }
 
 /** Dark veil over the world (below the units' FX, above the board) — focus on one moment. */
@@ -742,8 +754,10 @@ export interface DeathArgs {
  * the owner's graveyard. Falls back to the chain (ctx.base) for spell/trap destroys, face-down
  * monsters, and destroys owned by the source card's own choreography.
  * v3 look: the one death kit (_v3/death.ts deathV3) — the monster's death pose + its flavour as a
- * preset + the material break when the art has the pose, else this `flavor` as before; either
- * way the card is born on its tile on the burst frame and flies on whole pixels.
+ * preset + the material break when the art has the pose; without one (until A4) its reaction holds
+ * a beat under the flavour's accent preset and breaks as its material (`flavor` is not run: it
+ * overran the ≤ 1.4 s destroy budget). Either way the card is born on its tile on the burst frame
+ * and flies on whole pixels.
  */
 export async function flavoredDeath(ctx: Ctx<'destroy'>, flavor: (d: DeathArgs) => Promise<void>): Promise<void> {
   const ev = ctx.ev;

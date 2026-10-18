@@ -16,7 +16,9 @@ const sin = Math.sin;
 //
 // Three overlapping rhythms that never line up into a dead loop:
 //   body  — two breaths per loop (period 10): the hip sinks 1 px on the exhale and the knees take
-//           the weight (planted feet, IK), the chest leans back a hair on the inhale;
+//           the weight (planted feet, IK); the step ripples on: the head and the near wing's hand
+//           follow it a frame later, the far hand and the tail tip two frames later (the upper body
+//           never steps as one block);
 //   wings — follow the breath one, two, three frames late (shoulder → forearm → finger tips) and
 //           the membranes billow later still (scallop depth), the far wing a frame behind the near;
 //   head  — rides the breath 1.5 frames late, plus a slow sway once per loop;
@@ -26,6 +28,13 @@ const sin = Math.sin;
 const IDLE_N = 20;
 const IDLE_SPARKS: Record<number, [number, number][]> = { 3: [[0, 1]], 4: [[0, 2]], 5: [[0, 1]], 11: [[1, 1]], 12: [[1, 2]], 13: [[1, 1]] };
 
+/** The 1-px body sink of the breath (frames 4–7 and 14–17: it leads the exhale a little, and idle
+ *  f0 sits two frames into a rest plateau, so the lagging parts are at rest there too). */
+function idleDip(f: number): number {
+  const g = ((f % IDLE_N) + IDLE_N) % IDLE_N;
+  return (g >= 4 && g <= 7) || (g >= 14 && g <= 17) ? 1 : 0;
+}
+
 export function idlePose(f: number): Pose {
   const t = (((f % IDLE_N) + IDLE_N) % IDLE_N) / IDLE_N;
   const br = (lag: number) => sin(2 * TAU * t - lag); // breath (period 10 frames)
@@ -33,16 +42,20 @@ export function idlePose(f: number): Pose {
   const b = br(0);
   const blink = f === 15 ? 0.5 : f === 16 ? 0 : f === 17 ? 0.5 : 1;
   // the hip sinks 1 px on the exhale; nothing on the body rotates by a fraction of a pixel (that
-  // would make the shading crawl) — parts either move together or hold still
-  const dip = b < -0.4 ? 1 : 0;
+  // would make the shading crawl) — parts either move together or hold still. The step ripples
+  // through the body (overlap): the head (and with it the upper neck) and the near wing's hand
+  // follow it one frame late, the far wing's hand and the tail tip two frames late.
+  const dip = idleDip(f);
+  const late = (n: number) => idleDip(f - n) - dip;
   return pose({
     hy: dip,
     lean: 0,
-    headY: -1 + Math.round(-0.65 * br(0.94) - 0.1),
+    tailLag: [late(1), late(2)],
+    headY: -1 + Math.round(-0.65 * br(0.94) - 0.1) + late(1),
     headX: Math.round(0.7 * sin(TAU * t + 0.5) - 0.2),
     // (the extra lags are measured from frame 0, so frame 0 stays the approved still's pose)
-    nw: { a1: -108 - 4 * b, a2: -138 - 3.5 * br(Math.PI / 6), a3: -118 - 4 * br(Math.PI / 3), scal: 1 + 0.1 * rel(1.6) },
-    fw: { a1: -84 - 4 * rel(0.35), a2: -108 - 4 * rel(Math.PI / 6 + 0.35), a3: -87.67 - 5 * rel(Math.PI / 3 + 0.35), scal: 1 + 0.1 * rel(2) },
+    nw: { a1: -108 - 4 * b, a2: -138 - 3.5 * br(Math.PI / 6), a3: -118 - 4 * br(Math.PI / 3), scal: 1 + 0.1 * rel(1.6), lag: late(1) },
+    fw: { a1: -84 - 4 * rel(0.35), a2: -108 - 4 * rel(Math.PI / 6 + 0.35), a3: -87.67 - 5 * rel(Math.PI / 3 + 0.35), scal: 1 + 0.1 * rel(2), lag: late(2) },
     tail: t,
     tailAmp: 4,
     arm: br(1.2) > 0.3 ? 3 : 0,
@@ -222,7 +235,7 @@ function mix(a: Pose, b: Pose, t: number, wt: number, d: PoseDelta = {}): Pose {
   return over({ ...body, nw: w.nw, fw: w.fw }, d);
 }
 
-// ------------------------------------------------------------------ toGuard (6 frames, 390 ms)
+// ------------------------------------------------------------------ toGuard (7 frames, 390 ms)
 //
 // anticipation (the wings lift back a little, the weight drops) → the sweep (the wings fold shut
 // as they swing forward over the shoulders, the body sinks, the head ducks) → the wrap closes →
@@ -231,33 +244,43 @@ function mix(a: Pose, b: Pose, t: number, wt: number, d: PoseDelta = {}): Pose {
 const TO_GUARD: Pose[] = [
   // 0 anticipation: the wings lift back and open a little, the weight starts down
   mix(IDLE0, GUARD0, 0.1, 0, { guard: false, nw: { a1: -111, a2: -147, a3: -116, fan: -44 }, fw: { a1: -86, a2: -116, a3: -94, fan: -30 } }),
-  // 1 the wings swing up and forward, still open; the body sinks, the head ducks
-  mix(IDLE0, GUARD0, 0.35, 0, { guard: false, wrap: 0.25, nw: { a1: -100, a2: -110, a3: -100, fan: -34, scal: 0.85 }, fw: { a1: -80, a2: -92, a3: -82, fan: -24, scal: 0.9 } }),
-  // 2 the sweep: over the top, folding down in front of the chest
-  mix(IDLE0, GUARD0, 0.65, 0, { guard: false, wrap: 0.65, nw: { a1: -82, a2: -24, a3: 24, fan: 8, scal: 0.8 }, fw: { a1: -64, a2: -6, a3: 34, fan: 6, scal: 0.9 } }),
-  // 3 the wrap closes
+  // 1 the wings swing up and forward, still open; the body sinks, the head starts down
+  mix(IDLE0, GUARD0, 0.3, 0, { guard: false, wrap: 0.2, nw: { a1: -100, a2: -110, a3: -100, fan: -34, scal: 0.85 }, fw: { a1: -80, a2: -92, a3: -82, fan: -24, scal: 0.9 } }),
+  // 2 mid-sweep: the forearms come over to ~45°, the fingers trail folded behind them; the head
+  //   ducks forward, clear below the wing's edge
+  mix(IDLE0, GUARD0, 0.5, 0, { guard: false, wrap: 0.42, headX: 1, headY: 7, ha: 0.24, nw: { a1: -92, a2: -52, a3: -84, fan: 14, span: 0.92, scal: 0.75 }, fw: { a1: -72, a2: -40, a3: -60, fan: 12, scal: 0.85 } }),
+  // 3 folding down in front of the chest; the head settles onto the forearm's edge
+  mix(IDLE0, GUARD0, 0.72, 0, { guard: false, wrap: 0.72, headX: -2, headY: 10, ha: 0.3, nw: { a1: -76, a2: 4, a3: 50, fan: 16, scal: 0.8 }, fw: { a1: -60, a2: 20, a3: 60, fan: 12, scal: 0.9 } }),
+  // 4 the wrap closes
   mix(IDLE0, GUARD0, 0.92, 0.95, { guard: true, nw: { scal: 0.9 } }),
-  // 4 settle 1 px past the crouch, the membranes billow
+  // 5 settle 1 px past the crouch, the membranes billow
   over(GUARD0, { hy: GUARD0.hy + 1, headY: GUARD0.headY + 1, ha: GUARD0.ha + 0.04, nw: { scal: 1.2 }, fw: { scal: 1.15 } }),
   GUARD0,
 ];
-const TO_GUARD_HOLDS = [50, 60, 60, 70, 70, 80];
+const TO_GUARD_HOLDS = [40, 50, 50, 50, 60, 70, 70];
 
-// ------------------------------------------------------------------ fromGuard (6 frames, 390 ms)
+// ------------------------------------------------------------------ fromGuard (7 frames, 390 ms)
 //
 // push-off (1 px deeper, head down) → the wings lift off the front (folded, over the top) → they
 // swing up and back, opening, the head leads the body up → nearly home → overshoot (the wings
 // flare a little past rest, the membranes billow, the chest lifts) → idle f0.
 
 const FROM_GUARD: Pose[] = [
+  // 0 push-off: 1 px deeper, the head down
   over(GUARD0, { hy: GUARD0.hy + 1, headY: GUARD0.headY + 2, ha: GUARD0.ha + 0.06, nw: { scal: 0.9 }, fw: { scal: 0.9 } }),
-  mix(GUARD0, IDLE0, 0.3, 0, { guard: false, wrap: 0.65, nw: { a1: -80, a2: -22, a3: 28, fan: 4, scal: 0.85 }, fw: { a1: -62, a2: -4, a3: 36, fan: 4 } }),
-  mix(GUARD0, IDLE0, 0.62, 0, { guard: false, wrap: 0.3, nw: { a1: -98, a2: -100, a3: -96, fan: -32, scal: 0.85 }, fw: { a1: -78, a2: -86, a3: -76, fan: -22 } }),
+  // 1 the wings lift off the front (the forearm comes level, the fingers still hang); the head rises
+  mix(GUARD0, IDLE0, 0.25, 0, { guard: false, wrap: 0.7, headX: -1, headY: 9, ha: 0.26, nw: { a1: -78, a2: 2, a3: 52, fan: 14, scal: 0.82 }, fw: { a1: -62, a2: 16, a3: 58, fan: 10, scal: 0.9 } }),
+  // 2 mid-sweep: the forearms swing up past 45°, the fingers trail folded; the head leads up, clear
+  mix(GUARD0, IDLE0, 0.45, 0, { guard: false, wrap: 0.45, headX: 0, headY: 4, ha: 0.18, nw: { a1: -92, a2: -56, a3: -86, fan: 14, span: 0.92, scal: 0.75 }, fw: { a1: -72, a2: -44, a3: -62, fan: 12, scal: 0.85 } }),
+  // 3 up and back, opening
+  mix(GUARD0, IDLE0, 0.66, 0, { guard: false, wrap: 0.25, nw: { a1: -100, a2: -108, a3: -98, fan: -32, scal: 0.85 }, fw: { a1: -78, a2: -88, a3: -78, fan: -22 } }),
+  // 4 nearly home
   mix(GUARD0, IDLE0, 0.9, 0, { guard: false, nw: { a1: -110, a2: -134, a3: -112, fan: -41, scal: 1.0 }, fw: { a1: -84, a2: -106, a3: -90, fan: -27 } }),
+  // 5 overshoot: the wings flare a little past rest, the membranes billow, the chest lifts
   over(IDLE0, { lean: -0.04, headY: IDLE0.headY - 1, nw: { a1: -112, a2: -143, fan: -44, scal: 1.15 }, fw: { a1: -87, a2: -114, scal: 1.1 }, tail: 0.95 }),
   IDLE0,
 ];
-const FROM_GUARD_HOLDS = [60, 60, 60, 70, 70, 70];
+const FROM_GUARD_HOLDS = [50, 50, 50, 50, 60, 60, 70];
 
 // ------------------------------------------------------------------ hitHeavy (7 frames, 680 ms)
 //
@@ -312,7 +335,7 @@ const HIT_MAGIC_KEYS: PoseDelta[] = [
 ];
 const HIT_MAGIC_HOLDS = [60, 60, 50, 50, 60, 100, 110, 120];
 
-// ------------------------------------------------------------------ summon (15 frames, 1.32 s)
+// ------------------------------------------------------------------ summon (15 frames, 1.31 s)
 //
 // Wrapped in its wings (the guard wrap pulled tighter, head tucked, eyes shut, legs drawn up) it
 // drops onto the tile → [land] the feet strike, the knees take it in a deep crouch, the wrap
@@ -344,17 +367,23 @@ const C0 = over(GUARD0, COCOON);
 const LANDED = over(C0, { tuck: 0, lift: 0, hy: 5, lean: 0.24, headY: 17, nw: { scal: 1.25 }, fw: { scal: 1.2 }, tailLift: -23 });
 const SPREAD = over(fromIdle({ hy: 0, lean: -0.18, headX: -2, headY: 0, ha: -0.1, jaw: 0.15, tailLift: 8, arm: 20, glow: 0.9 }), { nw: SPREAD_NW, fw: SPREAD_FW });
 
+// The frame indices of the spread (7) and its hold (8) are beats of the summon kit
+// (src/cinematics/summon-a/crystal_wyrm.ts SPREAD_F / CUT_F): the drop is three frames so the
+// unfurl gets two in-betweens (crack → the wings at 45° with the head rising clear of their edge →
+// nearly open) without moving them.
+const UNFURL: Pose = mix(LANDED, SPREAD, 0.7, 0.75, { guard: false, wrap: 0.2, eye: 1, nw: { a1: -110, a2: -126, a3: -104, fan: -42, scal: 0.82 }, fw: { a1: -60, a2: -50, a3: -66, fan: 12, span: 1.15, at: [5, 1] } });
 const SUMMON: Pose[] = [
   over(C0, { lift: -16 }),
-  over(C0, { lift: -12, nw: { scal: 1.05 }, fw: { scal: 1.05 } }),
-  over(C0, { lift: -7, tuck: 0.55, hy: 2 }),
-  over(C0, { lift: -2, tuck: 0.15, hy: 2, nw: { scal: 0.95 } }),
-  // 4 [land]
+  over(C0, { lift: -11, tuck: 0.6, hy: 2, nw: { scal: 1.05 }, fw: { scal: 1.05 } }),
+  over(C0, { lift: -4, tuck: 0.2, hy: 2, nw: { scal: 0.95 } }),
+  // 3 [land]
   LANDED,
-  // 5 the crouch holds, the eyes open, the wrap cracks
+  // 4 the crouch holds, the eyes open, the wrap cracks
   mix(LANDED, SPREAD, 0.12, 0.2, { guard: false, wrap: 0.8, eye: 1, headY: 14, ha: 0.45, glow: 0.85 }),
-  // 6 unfurl
-  mix(LANDED, SPREAD, 0.6, 0.62, { guard: false, wrap: 0.35, eye: 1, nw: { a1: -100, a2: -105, a3: -100, fan: -36, scal: 0.85 }, fw: { a1: -86, a2: -112, a3: -92, fan: -28, span: 1, at: undefined } }),
+  // 5 the torso half risen, the wings swing up to ~45° (folded), the head rises clear of their edge
+  mix(LANDED, SPREAD, 0.36, 0.4, { guard: false, wrap: 0.55, eye: 1, headX: 0, headY: 5, ha: 0.2, nw: { a1: -95, a2: -58, a3: -64, fan: -24, span: 0.9, scal: 0.75 }, fw: { a1: -70, a2: -45, a3: -50, fan: -10, scal: 0.85, at: undefined } }),
+  // 6 nearly open
+  UNFURL,
   // 7 full spread
   over(SPREAD, { sparkles: [[0, 2], [2, 1]] }),
   // 8 the spread holds; the membranes billow, the head levels
@@ -371,11 +400,11 @@ const SUMMON: Pose[] = [
   fromIdle({ headY: -1, ha: 0.12, eye: 0.5, nw: { a1: -109, scal: 1.05 }, tail: 0.1 }),
   IDLE0,
 ];
-const SUMMON_HOLDS = [90, 90, 70, 60, 100, 110, 70, 90, 110, 70, 70, 70, 80, 110, 130];
+const SUMMON_HOLDS = [100, 90, 70, 100, 100, 70, 60, 80, 110, 70, 70, 70, 80, 110, 130];
 
-// ------------------------------------------------------------------ death (10 frames, 850 ms)
+// ------------------------------------------------------------------ death (10 frames, 690 ms)
 //
-// From the hit pose: the first crack opens at the keel with the crystal's light behind it → the
+// From the magic recoil: the first crack opens at the keel with the crystal's light behind it → the
 // body rears in agony as the cracks run up the neck, down the belly, across the wing → the knees
 // start to go → [dissolve] they buckle, the near wing drops and hangs, the head droops, the light
 // drains from the extremities into the core → the light is out → the cold crystal splits along the
@@ -385,7 +414,7 @@ const DEATH_KEYS: PoseDelta[] = [
   // 0 [impact] from the hit pose: the first crack opens at the keel, light behind it
   { hx: -3, hy: 1, lean: -0.2, headX: -8, headY: 1, ha: -0.22, jaw: 0.4, eye: 0, nw: { a1: -96, a2: -122, a3: -114, fan: -32, scal: 0.85 }, fw: { a1: -92, a2: -118, fan: -22 }, tailLift: 4, arm: 24, armF: 8, glow: 0.6, cracks: 0.12 },
   // 1 agony: it rears, jaws wide, the cracks run (glowing)
-  { hx: -2, lean: -0.24, headX: -7, headY: -1, ha: -0.42, jaw: 0.7, eye: 0, nw: { a1: -118, a2: -150, a3: -110, fan: -47, scal: 0.8 }, fw: { a1: -92, a2: -122 }, tailLift: 8, arm: 34, armF: 10, glow: 1, pulse: 1, cracks: 0.45, sparkles: [[0, 1]] },
+  { hx: -1, hy: -1, lean: -0.22, headX: -6, headY: -2, ha: -0.4, jaw: 0.7, eye: 0, nw: { a1: -118, a2: -150, a3: -110, fan: -47, scal: 0.8 }, fw: { a1: -92, a2: -122 }, tailLift: 8, arm: 30, armF: 9, glow: 1, pulse: 1, cracks: 0.45, sparkles: [[0, 1]] },
   // 2 the knees start to go
   { hx: -1, hy: 3, lean: -0.04, headX: -4, headY: 5, ha: 0.1, jaw: 0.4, eye: 0, nw: { a1: -106, a2: -132, a3: -124, fan: -36, scal: 1.1 }, fw: { a1: -88, a2: -114, a3: -96 }, tailLift: 0, arm: 14, glow: 0.8, pulse: 0.4, cracks: 0.7, drain: 0.1 },
   // 3 [dissolve] they buckle; the near wing starts to fall, the light starts to leave
@@ -399,16 +428,29 @@ const DEATH_KEYS: PoseDelta[] = [
 ];
 const DEATH_REST = fromIdle(DEATH_KEYS[DEATH_KEYS.length - 1]);
 const DEATH_P = DEATH_KEYS.map(fromIdle);
+/** The last whole pose of the death (the revive gathers the fragments back into it). */
+const DEATH_END: Pose = over(DEATH_REST, { headY: DEATH_REST.headY + 1, nw: { a3: DEATH_REST.nw.a3 - 22, fan: DEATH_REST.nw.fan - 6 }, fw: { a3: DEATH_REST.fw.a3 - 10 }, tailLift: -15 });
+// Death f0 continues the reaction the kit shows when a blow is lethal. The pose diff is all or
+// nothing (any 1-px offset changes the whole silhouette), so f0 continues one of them exactly: the
+// magic recoil on the frame the destroy event interrupts it (hitMagic f1 in saWyrmBlocked: rigid,
+// chest up, wings flung open — prism breath, spells, the orb, light and lightning kill the wyrm in
+// the slice), eyes shut, the first crack opened at the keel with the light still behind it.
+const DEATH_0: Pose = over(fromIdle(HIT_MAGIC_KEYS[1]), { eye: 0, cracks: 0.12, sparkles: [] });
 const DEATH: Pose[] = [
-  DEATH_P[0],
+  DEATH_0,
   DEATH_P[1],
   // the agony lets go (in-between: the head comes down first, the wings a beat later)
   mix(DEATH_P[1], DEATH_P[2], 0.5, 0.35, { cracks: 0.6, drain: 0.02, ha: -0.08, headY: 3 }),
-  ...DEATH_P.slice(2),
-  over(DEATH_REST, { split: 0.5 }),
-  over(DEATH_REST, { split: 1 }),
+  ...DEATH_P.slice(2, 6),
+  // 7 the last light leaves the core; the head settles the last pixel, the hanging wing tip and the
+  //   tail tip sink after it
+  over(DEATH_P[6], { headY: DEATH_P[6].headY + 1, nw: { a3: DEATH_P[6].nw.a3 - 5 }, fw: { a3: DEATH_P[6].fw.a3 - 3 }, tailLift: -12 }),
+  // 8–9 the cold crystal splits; the hanging wing's fingers fall on through it (accelerating), the
+  //   tail tip sinks
+  over(DEATH_END, { nw: { a3: DEATH_END.nw.a3 + 9, fan: DEATH_END.nw.fan + 3 }, fw: { a3: DEATH_END.fw.a3 + 4 }, tailLift: -14, split: 0.5 }),
+  over(DEATH_END, { split: 1 }),
 ];
-const DEATH_HOLDS = [60, 90, 60, 90, 80, 80, 90, 100, 80, 120];
+const DEATH_HOLDS = [60, 90, 60, 90, 80, 70, 60, 60, 50, 70];
 
 // ------------------------------------------------------------------ revive (13 frames, 1.23 s)
 //
@@ -418,16 +460,16 @@ const DEATH_HOLDS = [60, 90, 60, 90, 80, 80, 90, 100, 80, 120];
 // first breath (chest up, jaws part, the wings stretch) → exhale → idle f0.
 
 const REVIVE: Pose[] = [
-  over(DEATH_REST, { gather: 0.12 }),
-  over(DEATH_REST, { gather: 0.32 }),
-  over(DEATH_REST, { gather: 0.55 }),
-  over(DEATH_REST, { gather: 0.8 }),
+  over(DEATH_END, { gather: 0.12 }),
+  over(DEATH_END, { gather: 0.32 }),
+  over(DEATH_END, { gather: 0.55 }),
+  over(DEATH_END, { gather: 0.8 }),
   // 4 [land] locked
-  over(DEATH_REST, { drain: 0.92, pulse: 1 }),
-  mix(DEATH_REST, IDLE0, 0.12, 0.1, { drain: 0.62, cracks: 0.75, eye: 0.5, glow: 0.6, pulse: 0.6 }),
-  mix(DEATH_REST, IDLE0, 0.33, 0.3, { drain: 0.4, cracks: 0.48, eye: 0.5, glow: 0.7 }),
-  mix(DEATH_REST, IDLE0, 0.58, 0.6, { drain: 0.2, cracks: 0.25, eye: 1, glow: 0.7 }),
-  mix(DEATH_REST, IDLE0, 0.82, 0.86, { drain: 0.04, cracks: 0.06, eye: 1, glow: 0.7 }),
+  over(DEATH_END, { drain: 0.92, pulse: 1 }),
+  mix(DEATH_END, IDLE0, 0.12, 0.1, { drain: 0.62, cracks: 0.75, eye: 0.5, glow: 0.6, pulse: 0.6 }),
+  mix(DEATH_END, IDLE0, 0.33, 0.3, { drain: 0.4, cracks: 0.48, eye: 0.5, glow: 0.7 }),
+  mix(DEATH_END, IDLE0, 0.58, 0.6, { drain: 0.2, cracks: 0.25, eye: 1, glow: 0.7 }),
+  mix(DEATH_END, IDLE0, 0.82, 0.86, { drain: 0.04, cracks: 0.06, eye: 1, glow: 0.7 }),
   // 8 the first breath
   fromIdle({ hy: -1, lean: -0.12, headX: -1, headY: -3, ha: 0, jaw: 0.25, nw: { a1: -114, a2: -145, scal: 0.85 }, fw: { a1: -88, a2: -114 }, tailLift: 4, arm: 8, pulse: 1, glow: 0.8 }),
   // 9 exhale
@@ -471,7 +513,7 @@ const EXTRA_POSES: Partial<Record<MonsterAnimExtra, Pose[]>> = {
 const spec = (holds: number[], marks?: AnimSpec['marks']): AnimSpec => ({ frames: holds.length, fps: 10, loop: false, holds, ...(marks ? { marks } : {}) });
 
 export const EXTRA_ANIMS: Partial<Record<MonsterAnimExtra, AnimSpec>> = {
-  summon: spec(SUMMON_HOLDS, { land: 4 }),
+  summon: spec(SUMMON_HOLDS, { land: 3 }),
   death: spec(DEATH_HOLDS, { impact: 0, dissolve: 4 }),
   revive: spec(REVIVE_HOLDS, { land: 4 }),
   hitHeavy: spec(HIT_HEAVY_HOLDS, { impact: 0, contact: 0, recover: 4 }),

@@ -160,7 +160,19 @@ export interface CutinArt {
   /** Ramp-ish accent colors for the runtime background (speed lines, burst). */
   accent: number;
   accentDark: number;
-  draw(p: PixelCanvas, frame: number): void;
+  /** `o` (v3, optional): see DrawOpts — a 'relight' portrait honours `lightFrom`; old ones ignore it. */
+  draw(p: PixelCanvas, frame: number, o?: DrawOpts): void;
+  /**
+   * Optional card-specific rhythm (v3 look): ms each frame shows, played ONCE and ending held on
+   * the last frame (length = frames). Absent: the shared cutinSequence timeline.
+   */
+  holds?: readonly number[];
+  /**
+   * How player 2 sees it (v3 look, like MonsterArt.p2): 'mirror' (default, the P1 frames flipped)
+   * or 'relight' (a second set of frames drawn with { lightFrom: 'right' }, texture
+   * `cutin:<id>:p2`, then flipped, so the key light stays on the screen's top-left).
+   */
+  p2?: 'mirror' | 'relight';
 }
 
 /** Artwork for spell/trap cards (CARD_ART_W × CARD_ART_H). */

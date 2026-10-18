@@ -2,7 +2,8 @@
 //   (no id)            all portraits in a 2×2 grid, animating (anim `cutin:<id>`, restarted every 2.2 s)
 //   &id=<monster_id>   one portrait at real cut-in size over a mock diagonal speed-line band in its
 //                      accent colours, placed exactly like src/vfx/cutin.ts places it
-//   &player=2          mirrored (player 2: band slant, side and facing flip)
+//   &player=2          mirrored (player 2: band slant, side and facing flip); a v3 'relight' portrait
+//                      shows its relit P2 frames (`cutin:<id>:p2`), as the v3 cut-in does (also &sheet=1)
 //   &frame=N           freeze on frame N instead of playing the timeline
 //   &sheet=1           every frame of &id side by side (3 per row)
 //   &eyes=1            mark where cutin.ts will put the lens glint (brightest isolated pixel of the
@@ -10,7 +11,7 @@
 import Phaser from 'phaser';
 import type { MonsterId } from '../../data/cards';
 import { MONSTER_IDS, cardDef } from '../../data/cards';
-import { cutinAnimKey, cutinArt, cutinFrame, cutinFrameName, cutinIds, cutinTextureKey, hasCutin, whenCutinsBuilt } from '../../art/cutins';
+import { cutinAnimKey, cutinArt, cutinFrame, cutinFrameName, cutinIds, cutinP2Key, cutinTextureKey, hasCutin, whenCutinsBuilt } from '../../art/cutins';
 import { PAL } from '../../art/palette';
 import { shade, type PixelCanvas } from '../../art/pixel';
 import { GAME_W } from '../../view/layout';
@@ -104,8 +105,8 @@ function mockBand(scene: Phaser.Scene, id: MonsterId, p1: boolean) {
   return { top, BH, slope };
 }
 
-function playLooping(scene: Phaser.Scene, spr: Phaser.GameObjects.Sprite, id: MonsterId, period: number) {
-  const k = cutinAnimKey(id);
+function playLooping(scene: Phaser.Scene, spr: Phaser.GameObjects.Sprite, id: MonsterId, period: number, key?: string) {
+  const k = key ?? cutinAnimKey(id);
   if (!scene.anims.exists(k)) return;
   spr.play(k);
   scene.time.addEvent({ delay: period, loop: true, callback: () => spr.play(k) });
@@ -144,13 +145,15 @@ const preview: DevPreview = {
 
     const id = idParam;
     const art = cutinArt(id);
+    const p2 = params.get('player') === '2';
+    const relitKey = p2 && scene.textures.exists(cutinP2Key(id)) ? cutinP2Key(id) : null;
     if (params.get('sheet') === '1') {
-      label(scene, 4, 2, `${id}${hasCutin(id) ? '' : ' (placeholder)'} — all ${art.frames} frames`);
+      label(scene, 4, 2, `${id}${hasCutin(id) ? '' : ' (placeholder)'} — all ${art.frames} frames${relitKey ? '  P2 (relit, flipped)' : ''}`);
       for (let f = 0; f < art.frames; f++) {
         const x = 8 + (f % 3) * (art.w + 8);
         const y = 14 + Math.floor(f / 3) * (art.h + 14);
         scene.add.rectangle(x, y, art.w, art.h, art.accentDark).setOrigin(0);
-        scene.add.image(x, y, cutinTextureKey(id), cutinFrameName(f)).setOrigin(0).setDepth(2);
+        scene.add.image(x, y, relitKey ?? cutinTextureKey(id), cutinFrameName(f)).setOrigin(0).setDepth(2).setFlipX(!!relitKey);
         label(scene, x + 2, y + art.h + 1, `f${f}`);
       }
       return;
@@ -163,15 +166,16 @@ const preview: DevPreview = {
     const scale = Math.max(1, Math.floor((band.BH + 40) / art.h));
     const restX = p1 ? 70 + (art.w * scale) / 2 + 5 : GAME_W - 70 - (art.w * scale) / 2 - 5;
     const restY = 180 + band.slope * (restX - GAME_W / 2);
-    const spr = scene.add.sprite(Math.round(restX), Math.round(restY), cutinTextureKey(id), cutinFrameName(0)).setScale(scale).setFlipX(!p1).setDepth(2);
+    const texKey = !p1 && relitKey ? relitKey : cutinTextureKey(id);
+    const spr = scene.add.sprite(Math.round(restX), Math.round(restY), texKey, cutinFrameName(0)).setScale(scale).setFlipX(!p1).setDepth(2);
     // mask to the band like the real cut-in
     const mg = scene.make.graphics({ x: 0, y: 0 }, false);
     mg.fillStyle(0xffffff, 1);
     mg.fillPoints([new Phaser.Math.Vector2(0, band.top(0)), new Phaser.Math.Vector2(GAME_W, band.top(GAME_W)), new Phaser.Math.Vector2(GAME_W, band.top(GAME_W) + band.BH), new Phaser.Math.Vector2(0, band.top(0) + band.BH)], true);
     spr.setMask(mg.createGeometryMask());
     if (frameParam !== null) spr.setFrame(cutinFrameName(Math.min(art.frames - 1, Number(frameParam))));
-    else playLooping(scene, spr, id, 2200);
-    label(scene, 4, 2, `${id} — ${cardDef(id).name}${hasCutin(id) ? '' : ' (placeholder)'}  ${art.w}×${art.h} ×${scale}  ${art.frames}f  P${p1 ? 1 : 2}`);
+    else playLooping(scene, spr, id, 2200, texKey);
+    label(scene, 4, 2, `${id} — ${cardDef(id).name}${hasCutin(id) ? '' : ' (placeholder)'}  ${art.w}×${art.h} ×${scale}  ${art.frames}f  P${p1 ? 1 : 2}${relitKey && !p1 ? ' relit' : ''}`);
     label(scene, 4, 12, 'timeline: f0 400ms · build · peak ~540ms (eye flare) · roar hold flicker → 2.1 s', '#a3b1da');
     if (showEyes) {
       const g = findGlint(cutinFrame(id, art.frames - 1));

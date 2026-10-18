@@ -16,20 +16,25 @@
 // half-pixel tremble, no silhouette glow; the arrow, the reticle and the floor light carry the
 // beat. The whole declaration ends in ≤ 0.3 s (_v3/budget.ts DECLARE_MAX_MS).
 
+import type Phaser from 'phaser';
 import { PAL, PLAYER_COLOR, PLAYER_RAMP } from '../../art/palette';
 import { pixelText } from '../../ui/text';
 import { DEPTH, LOOK_V3, type XY, zoneXY } from '../../view/layout';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { DECLARE_MAX_MS } from '../_v3/budget';
-import { declarePoseFrame, type HandOver } from '../_v3/clash';
+import { canHandOver, declarePoseFrame, type HandOver } from '../_v3/clash';
+import { resultPlate } from '../traps/_opening';
 import { tween, wait } from '../../vfx/core';
 import { attackArrow, blockClang, lockOn } from '../../vfx/combat';
-import { Sparks, addGlow, floorRing, onFrame } from '../../vfx/setpieces';
+import { E, Sparks, addGlow, floorRing, onFrame, run } from '../../vfx/setpieces';
 import { banner, type BannerOpts } from '../../vfx/banners';
 import { lightBeam, lightFlash } from '../../view/light';
 import { fx, registerEvent, registerObserver } from '../api';
+import { REACTION_POSES, warmPoses } from '../_v3/warm';
+import { alignStart, frameDelta, idleDelta } from '../_v3/posematch';
 import {
   ADD,
+  STRIKE_LIGHT,
   TAU,
   TK,
   type AttackHold,
@@ -263,8 +268,30 @@ registerEvent(
     const row = zoneXY(p, 'spellTrap', 1);
     const at = { x: row.x, y: row.y - 22 };
     const t = pixelText(sc, at.x, at.y, 'Geç', { size: 'md', color: PAL.mist, originX: 0.5, originY: 0.5 }).setDepth(DEPTH.FX_TOP + 5);
-    t.setScale(1.4, 0.7);
     ctx.sfx('uiBack', { volume: 0.5, pitch: 0.9 });
+    if (LOOK_V3) {
+      // v3: never squashed — it drops in on whole pixels (2 px, a dim tone, then lit), holds and
+      // rises out the same way, dimming in palette steps (as trapWord / resultPlate)
+      const x = Math.round(at.x);
+      const y = Math.round(at.y);
+      t.setPosition(x, y - 2).setTint(PAL.steel);
+      void (async () => {
+        await run(sc, 50, (k) => t.active && t.setY(y - 2 + Math.min(2, Math.floor(k * 3))));
+        if (t.active) t.setY(y).setTint(PAL.white);
+        await wait(sc, 40);
+        if (t.active) t.setTint(PAL.mist);
+        await wait(sc, 300);
+        await run(sc, 120, (k) => {
+          if (!t.active) return;
+          t.setY(y - Math.min(3, Math.floor(k * 4)));
+          t.setTint(k < 0.5 ? PAL.steel : PAL.night4);
+        });
+        t.destroy();
+      })();
+      await wait(sc, 300);
+      return;
+    }
+    t.setScale(1.4, 0.7);
     void (async () => {
       await tween(sc, { targets: t, scaleX: 1, scaleY: 1, duration: 120, ease: 'Back.Out' });
       await wait(sc, 260);
@@ -285,6 +312,7 @@ registerEvent(
 registerEvent(
   'attackNegated',
   async (ctx) => {
+    if (LOOK_V3) return attackNegatedV3(ctx);
     const ev = ctx.ev;
     const sc = ctx.scene;
     const { hold, other: kept } = takeAttack(ctx);
@@ -337,6 +365,9 @@ async function attackDeclareV3(ctx: Ctx<'attackDeclare'>): Promise<void> {
   ctx.take('attack')?.destroy();
   const attacker = live(ctx.unit(ev.attackerUid));
   const target = ev.targetUid !== null ? live(ctx.unit(ev.targetUid)) : null;
+  // the poses the clash may need (recoils, guard brace / break, deaths) are painted now, in the
+  // background — never synchronously on the contact frame (_v3/warm.ts)
+  for (const u of [attacker, target]) if (u) warmPoses(u.cardId, u.player, REACTION_POSES);
   const tTile = ev.targetUid !== null ? ctx.tile(ev.targetUid) : null;
   const defender = other(ev.player);
   const ramp = PLAYER_RAMP[ev.player];
@@ -347,7 +378,7 @@ async function attackDeclareV3(ctx: Ctx<'attackDeclare'>): Promise<void> {
 
   void ctx.focus(lerpXY(from, to, 0.5), { zoom: 1.05, ms: 280, pan: 0.32 });
   void duelist(ctx, ev.player)?.play('command');
-  ctx.sfx('attackDeclare', { volume: 0.85 });
+  // (the 'attackDeclare' cue is the arrow's own: attackArrow plays it — one cue, not two)
 
   // ---- the wind-up: the strike's own first frames, up to its charge pose, held there
   let posed: Promise<void> = Promise.resolve();
@@ -359,6 +390,8 @@ async function attackDeclareV3(ctx: Ctx<'attackDeclare'>): Promise<void> {
     s.setPosition(r.x, r.y);
     const f = declarePoseFrame(attacker);
     const ms = attacker.rangeMs('attack', 0, f);
+    // a hovering body starts the charge where its idle bob left it (no first-frame jump)
+    alignStart(attacker, 'attack', 0);
     posed = f > 0 ? attacker.playRange('attack', 0, f, ms > DECLARE_POSE_MS ? { timeScale: ms / DECLARE_POSE_MS } : {}) : Promise.resolve(void attacker.pose('attack', 0));
     void floorRing(sc, attacker.home.x, attacker.home.y, { r0: 4, r1: 30 * TK, ms: 420, ramp: [PAL.white, ramp[4], ramp[3], ramp[2]], depth: DEPTH.SHADOW - 1 });
     // the power-up lights the floor in the player's colour (the v3 stepped light); the arena holds its breath
@@ -413,6 +446,12 @@ async function attackDeclareV3(ctx: Ctx<'attackDeclare'>): Promise<void> {
     void aimLight.fadeOut(160);
   };
   let released = false;
+  /** Ends the held charge's tremble (keepCharging) — before anything else takes the sprite. */
+  let stopCharging: (() => void) | null = null;
+  const settleCharge = () => {
+    stopCharging?.();
+    stopCharging = null;
+  };
   /** Back to the idle / guard loop unless something else already took the sprite. */
   const unpose = () => {
     if (!attacker) return;
@@ -431,6 +470,7 @@ async function attackDeclareV3(ctx: Ctx<'attackDeclare'>): Promise<void> {
     handOver() {
       if (released) return;
       released = true;
+      settleCharge();
       if (attacker) attacker.posed = false;
     },
     shatterMarks() {
@@ -456,17 +496,133 @@ async function attackDeclareV3(ctx: Ctx<'attackDeclare'>): Promise<void> {
     async release() {
       if (released) return;
       released = true;
+      settleCharge();
       unpose();
     },
     destroy() {
       dropMarks();
       if (!released) {
         released = true;
+        settleCharge();
         unpose();
       }
     },
   };
   ctx.keep('attack', hold);
+  // held past the declaration (a flip, a trap prompt, the defender's decision): the charge stays alive
+  if (attacker) void posed.then(() => (stopCharging = released ? null : keepCharging(sc, attacker)));
   // the reticle snaps at ~230 ms; the declaration never runs past the budget
   await Promise.race([Promise.all([lock.done, posed]), wait(sc, DECLARE_MAX_MS - 50)]);
+}
+
+/** Holds of the held charge's tremble (ms): the charge pose, the tenser frame, … — uneven, never a metronome. */
+const CHARGE_HOLDS = [150, 80, 130, 70, 170, 90] as const;
+/** The tremble starts once the charge has held this long (a battle that goes on at once never sees it). */
+const CHARGE_IDLE_MS = 140;
+
+/**
+ * The declaration's charge pose while the attack is held (A2 fix: a frozen frame for 0.7–0.8 s
+ * through a flip or a trap prompt broke "nothing is ever static"): a two-frame tremble between the
+ * charge pose and the next wind-up frame (art with a `charge` mark; the old monsters breathe one
+ * whole pixel instead), and on each tenser beat the charge light pulses at the muzzle / staff orb
+ * (the stepped light layer). Stops the moment the hold is handed over or released, or when
+ * anything else takes the sprite.
+ */
+function keepCharging(sc: Phaser.Scene, u: MonsterUnit): () => void {
+  const f = declarePoseFrame(u);
+  const spec = u.spec('attack');
+  // the drawn charge pair alternates only when it is a tremble: a pair more than 2 × idleΔ apart
+  // (the wyrm's 3.5 ×, the magus's 4.2 ×: the whole staff / head swings) reads as pumping, so the
+  // frame holds and only the breath and the light pulse run (A2 motion review r2 #8)
+  const idle = idleDelta(u);
+  const pair = frameDelta(u, `attack:${f}`, `attack:${f + 1}`);
+  const small = idle !== null && pair !== null && pair / idle <= 2;
+  const tremble = typeof spec?.marks?.charge === 'number' && f + 1 < u.impactFrame && small;
+  const s = u.sprite;
+  const y0 = s.y;
+  const color = STRIKE_LIGHT[u.cardId] ?? PLAYER_RAMP[u.player][3];
+  let el = 0;
+  let next = CHARGE_IDLE_MS;
+  let k = 0;
+  const shows = () => {
+    const fi = u.frameInfo();
+    return fi.anim === 'attack' && !s.anims.isPlaying && (fi.frame === f || fi.frame === f + 1);
+  };
+  let stopped = false;
+  const stop = () => {
+    if (stopped) return;
+    stopped = true;
+    if (!s.active || u.retired) return;
+    // the tremble's frame stays (a strike continues forward from it: strikeStartFrame); the
+    // breath goes back to its whole-pixel rest line
+    if (!tremble && s.y === y0 - 1) s.setY(y0);
+  };
+  onFrame(sc, (dt) => {
+    if (stopped) return false;
+    if (u.retired || !s.active || !shows()) {
+      stopped = true;
+      return false;
+    }
+    el += dt;
+    if (el < next) return true;
+    k++;
+    const tense = k % 2 === 1;
+    if (tremble) u.pose('attack', tense ? f + 1 : f);
+    // the 1-px breath only for a body that floats (a grounded one keeps its feet planted)
+    else if (u.art.hover > 0 || !u.has('death')) s.setY(tense ? y0 - 1 : y0);
+    if (tense) {
+      // the charge gathers at the point the strike will leave from
+      const fi = u.frameInfo();
+      const pts = u.art.points && fi.anim ? u.art.points(fi.anim, fi.frame) : undefined;
+      const fp = pts?.staff ?? pts?.muzzle ?? u.art.muzzle;
+      const p = u.framePoint(fp.x, fp.y);
+      void lightFlash(sc, Math.round(p.x), Math.round(p.y), color, 14, 150, { floorY: u.home.y, intensity: 0.55 });
+    }
+    next = el + CHARGE_HOLDS[(k - 1) % CHARGE_HOLDS.length];
+    return true;
+  });
+  return stop;
+}
+
+// ================================================================ attackNegated, the v3 look
+
+/**
+ * A negated attack without its own card presentation, v3 (A0 §6.2 item 10; the bound chains play
+ * their own): the arrow breaks, the attacker is stopped in front of its tile — a clang, its own
+ * recoil, a whole-pixel shove and spring back (no scale) — and the short result plate drops out
+ * from under the phase bar ("SAVAŞ BİTTİ"; never a full-width band).
+ */
+async function attackNegatedV3(ctx: Ctx<'attackNegated'>): Promise<void> {
+  const ev = ctx.ev;
+  const sc = ctx.scene;
+  const { hold, other: kept } = takeAttack(ctx);
+  kept?.destroy();
+  hold?.shatterMarks();
+  const u = live(ctx.unit(ev.attackerUid));
+  if (u && u.sprite.active) {
+    // the hold hands the pose over (no trip back to idle first): the recoil plays from it
+    if (canHandOver(hold)) hold.handOver();
+    else hold?.destroy();
+    const s = u.sprite;
+    const r = u.rest0;
+    const back = u.player === 0 ? { x: -1, y: 0.5 } : { x: 1, y: -0.5 };
+    const c = u.core();
+    void blockClang(sc, Math.round(c.x - back.x * 8), Math.round(c.y - back.y * 8), { from: { x: c.x - back.x * 30, y: c.y - back.y * 30 }, color: PAL.mag3 });
+    void lightFlash(sc, Math.round(c.x), u.home.y, PAL.mag3, 32, 320, { floorY: u.home.y, ring: true });
+    u.posed = true;
+    sc.tweens.killTweensOf(s);
+    s.setPosition(r.x, r.y);
+    void u.play('hit', { dir: { x: back.x, y: back.y } });
+    await run(sc, 70, (t) => s.active && s.setPosition(Math.round(r.x + back.x * 4 * t), Math.round(r.y + back.y * 2 * t)));
+    await run(sc, 220, (t) => {
+      const k = 1 - E.outCubic(t);
+      if (s.active) s.setPosition(Math.round(r.x + back.x * 4 * k), Math.round(r.y + back.y * 2 * k));
+    });
+    if (s.active) s.setPosition(r.x, r.y);
+    u.posed = false;
+  } else hold?.destroy();
+  void ctx.unfocus(260);
+  void arenaDim(sc, 0, 420);
+  ctx.log('Saldırı geçersiz kılındı!', PAL.mag3);
+  await resultPlate(sc, 'SAVAŞ BİTTİ');
 }

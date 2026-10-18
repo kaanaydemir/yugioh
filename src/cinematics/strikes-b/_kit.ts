@@ -418,8 +418,10 @@ export interface DeathOpts {
  * nothing left on the field). Falls back to base() when the unit is not on screen or the
  * destroying card animates it itself.
  * v3 look: the one death kit (_v3/death.ts deathV3) — the death pose + the flavour as a preset
- * when the art has the pose; else this flavour, then the body breaks as its material (vfx/shatter
- * presets) and the card is born on its tile on the burst frame.
+ * when the art has the pose; without one (until A4) the reaction holds a beat under the flavour's
+ * accent preset (o.flavor is not run: it overran the ≤ 1.4 s destroy budget), the body breaks as
+ * its material (vfx/shatter presets) and o.onBurst still adds its debris / remains; the card is
+ * born on its tile on the burst frame.
  */
 export async function flavoredDeath(ctx: DestroyCtx, o: DeathOpts): Promise<void> {
   const ev = ctx.ev;
@@ -427,6 +429,7 @@ export async function flavoredDeath(ctx: DestroyCtx, o: DeathOpts): Promise<void
   if (LOOK_V3) {
     return deathV3(ctx, {
       fallback: () => ctx.base(),
+      onBurst: o.onBurst,
       legacy: async (d) => {
         const unit = d.unit;
         const sc = ctx.scene;

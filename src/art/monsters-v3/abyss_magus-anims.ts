@@ -9,7 +9,7 @@
 // its last frame, so the cloth never freezes and the loop seams stay clean.
 
 import type { AnimSpec, AnyMonsterAnim, MonsterAnim, MonsterAnimExtra, MonsterPoints } from '../types';
-import { OX, OY, eyePoint, handPoint, orbCenter, orbReach, pose, type Pose } from './abyss_magus-rig';
+import { OX, OY, eyePoint, handPoint, orbCenter, orbReach, pose, toppleAxis, type Pose } from './abyss_magus-rig';
 
 const TAU = Math.PI * 2;
 const sin = Math.sin;
@@ -18,7 +18,8 @@ const cos = Math.cos;
 // ------------------------------------------------------------------ idle (16 frames, 1.94 s)
 //
 // The hover, with every part on its own delay:
-//   body   — one slow float per loop, 3 px of travel (whole pixels, eased by the holds);
+//   body   — one slow float per loop, ±1 px round the anims' baseline (whole pixels, eased by
+//            the holds: it lingers up and down);
 //   staff  — the hand follows the body half a frame late; the orb drifts in its cradle a quarter
 //            of a loop behind (±1 px);
 //   robe   — the hem sways a fifth of a loop behind the body, the cape's hem lifts and trails
@@ -35,9 +36,11 @@ export function idlePose(f: number): Pose {
   const s = sin(t * TAU);
   const c = cos(t * TAU);
   const lag = sin((t - 0.22) * TAU);
-  const bob = Math.round(-0.5 - 1.4 * s);
+  // the float is centred on the one-shots' baseline (bob 0 = idle f0 = every anim's key): one
+  // pixel up, one down, so an anim starting from any idle frame moves the body by ≤ 1 px
+  const bob = Math.round(-1.2 * s);
   // the grip trails the body by half a frame
-  const gripY = 44 + Math.round(-0.5 - 1.4 * sin((t - 1 / 32) * TAU));
+  const gripY = 44 + Math.round(-1.2 * sin((t - 1 / 32) * TAU));
   return pose({
     bob,
     gy: gripY - bob,
@@ -103,24 +106,32 @@ function place(p: Pose, k: Key): void {
   }
 }
 
-// ------------------------------------------------------------------ guard (8 frames, 1.28 s loop)
+// ------------------------------------------------------------------ guard (6 frames, 0.95 s loop)
 //
-// Closed: the cape is drawn around the front, the staff held diagonally across the body in both
-// hands (the orb out in front at chest height), head lowered, eyes steady and bright behind it,
-// a thin ward shell in front with a crest sliding along it. It floats lower and slower than idle.
+// Closed: the cape is drawn around the front (falling open below the gathering fist: a wedge of
+// the violet front panel shows), the staff held diagonally across the body in both hands (the orb
+// out in front at chest height), head lowered, eyes steady and bright behind it, a short ward
+// shell concentric with the chest in front of the body (clear of the staff) with a crest sliding
+// along it. Braced: the hover holds still (the
+// body never leaves the guard baseline, so fromGuard can start from any guard frame) and the
+// guard breathes in its parts, each on its own delay — the head bows a pixel on the out-breath,
+// the orb (settling in its cradle) and the free hand follow it a frame later, the cloak's hem
+// drifts, the ward's crest runs along it (the shell itself holds still), the orb's glow and the
+// sigil pulse; the staff hand stays braced.
+// Uneven holds: the held in-breath and the low point linger.
 
-const GUARD_N = 8;
+const GUARD_N = 6;
 
 export function guardPose(f: number): Pose {
   const t = ((((f % GUARD_N) + GUARD_N) % GUARD_N) / GUARD_N) % 1;
   const s = sin(t * TAU);
-  // a slow 1-px float (calmer than idle); the hands and the staff follow a frame later
-  const bob = s < -0.4 ? 1 : 0;
-  const late = sin((t - 0.125) * TAU) < -0.4 ? 1 : 0;
+  // the head bows on the out-breath; the hands (and the staff, the orb) a frame later
+  const nod = s < -0.5 ? 1 : 0;
+  const late = sin((t - 1 / 6) * TAU) < -0.5 ? 1 : 0;
   const p = pose({
-    bob,
+    bob: 0,
     lean: 1,
-    hy: 1,
+    hy: 1 + nod,
     sa: 0.7,
     orb: 0.95,
     orbLift: 0,
@@ -139,25 +150,28 @@ export function guardPose(f: number): Pose {
     capeT: t,
     hemT: t,
   });
-  place(p, { gripAt: [51, 43 + late] });
-  // the free hand gathers the cape at the belly
+  // the staff hand is braced (the staff never moves); the orb settles a pixel in its cradle
+  p.orbLift = late;
+  place(p, { gripAt: [51, 43] });
+  // the free hand gathers the cape at the belly (it gives with the out-breath)
   p.bx = 41 - p.dx;
   p.by = 45 + late - p.bob;
   return p;
 }
 
-const GUARD_HOLDS = [160, 160, 160, 160, 160, 160, 160, 160];
+const GUARD_HOLDS = [140, 180, 150, 130, 190, 160];
 
 // ------------------------------------------------------------------ roar (11 frames)
 //
-// drop (the weight sinks) → gather (crouched, staff pulled in, free hand at the chest, long) →
+// drop (the head and the weight start down) → gather (crouched, staff pulled in, free hand at
+// the chest, long) →
 // explode (in-between, 60 ms) → BURST: head thrown back, the staff hoisted with a star on the
 // orb, the free hand flung up with a void flame, the cape flaring (frame 3: the effect cinematic
 // holds it) → the aura ring rolls out (3 frames) → the arms come down, the robe settles → idle.
 
 const ROAR_KEYS: Key[] = [
-  { bob: 1, lean: 1, gripAt: [55, 46], sa: 0, orbLift: 0, cy: -1, cx: 0, sway: -0.4, eye: 1.1, rune: 0.75, glow: 0.55 },
-  { bob: 3, lean: 3, hy: 1, gripAt: [54, 48], sa: -0.05, orbLift: 0, bx: 34, by: 46, cx: 2, cy: -2, sway: 1.2, charge: 0.6, glow: 0.8, eye: 1.4, rune: 1, lagF: 1 },
+  { bob: 0, lean: 1, hy: 1, gripAt: [55, 45], sa: 0, orbLift: 0, cy: -1, cx: 0, sway: -0.4, eye: 1.1, rune: 0.75, glow: 0.55 },
+  { bob: 2, lean: 3, hy: 1, gripAt: [54, 48], sa: -0.05, orbLift: 0, bx: 34, by: 46, cx: 2, cy: -2, sway: 1.2, charge: 0.6, glow: 0.8, eye: 1.4, rune: 1, lagF: 1 },
   { bob: 0, lean: -2, hx: -1, hy: -1, gripAt: [56, 40], sa: 0.15, orb: 1.1, orbLift: 0, bx: 25, by: 33, cx: 0, cy: -3, flare: 0.4, ripple: 1.3, sway: -1, glow: 1, eye: 2, rune: 1.5, charge: 1, lagF: -1 },
   { bob: -2, lean: -4, hx: -2, hy: -2, gripAt: [57, 35], sa: 0.3, orb: 1.2, orbLift: 0, bx: 19, by: 25, cx: -3, cy: -3, flare: 0.8, ripple: 1.6, glow: 1, eye: 2.5, rune: 2, flame: 1, star: 1, flash: 1, sway: -2, lagF: -1.5 },
   { bob: -2, lean: -4, hx: -2, hy: -2, gripAt: [57, 35], sa: 0.32, orb: 1.2, orbLift: 0, bx: 18, by: 24, cx: -3, cy: -5, flare: 1, ripple: 1.8, glow: 1, eye: 2.5, rune: 1.6, flame: 1, star: 0.6, aura: 0.05, sway: -2.5, lagF: -1.5 },
@@ -199,23 +213,25 @@ const ATTACK_KEYS: Key[] = [
 export const IMPACT = 6;
 const ATTACK_HOLDS = [60, 90, 100, 170, 90, 50, 70, 80, 100, 110, 120, 140];
 
-// ------------------------------------------------------------------ hit (6 frames)
+// ------------------------------------------------------------------ hit (6 frames, 590 ms)
 //
-// The blow lands on the head and chest: on the first frame only the upper body reacts (the helm
-// snaps back, the visor squeezes shut, the orb dims, the staff tips) while the robe, the cape and
-// the hem still hold the idle pose; the body is shoved back a frame later and the cloth trails
-// (cape and hem whip forward, the sleeve bells lag); then a readable recovery onto idle f0.
+// The blow lands on the head and chest: on the first, short frame only the upper body reacts (the
+// helm snaps back, the visor squeezes shut, the orb dims, the staff tips) while the robe, the cape
+// and the hem still hold the idle pose; the body is shoved back a frame later and, a floater
+// with nothing to brace on, keeps drifting back a beat (the longest frame) while the cloth trails
+// (cape and hem whip forward, the sleeve bells lag); it floats back in and is home a frame
+// before its robe, which swings behind it and settles last (drape) onto idle f0.
 
 const HIT_KEYS: Key[] = [
   { hx: -2, squint: 1, gripAt: [55, 44], sa: -0.04, glow: 0.2, eye: 0.6, rune: 0.2, lagF: 0.4 },
   { dx: -3, bob: -1, lean: -4, hx: -1, squint: 1, gripAt: [51, 43], sa: -0.1, bx: 27, by: 44, cx: 3, cy: -2, flare: 0.2, ripple: 1.3, sway: 2, lagF: 1.5, lagB: 1, glow: 0.2, eye: 0.6, rune: 0.2 },
-  { dx: -3, bob: 0, lean: -2, squint: 1, gripAt: [52, 44], sa: -0.04, cx: 5, cy: -3, flare: 0.3, ripple: 1.5, sway: 3, lagF: 2, lagB: 1.5, glow: 0.3, eye: 0.7, rune: 0.3 },
+  { dx: -4, bob: 0, lean: -2, squint: 1, gripAt: [51, 44], sa: -0.04, bx: 28, by: 45, cx: 5, cy: -3, flare: 0.3, ripple: 1.5, sway: 3, lagF: 2, lagB: 1.5, glow: 0.3, eye: 0.7, rune: 0.3 },
   { dx: -2, lean: -1, squint: 0.5, gripAt: [53, 44], sa: 0, cx: 2, cy: -2, sway: 1.5, lagF: 1, glow: 0.35, eye: 0.9, rune: 0.4 },
-  { dx: -1, gripAt: [54, 44], cx: 0, cy: -1, sway: -0.3, lagF: 0.3, glow: 0.4 },
+  // the body is home; the robe still swings behind it
+  { gripAt: [55, 44], cx: -2, cy: -1, sway: -1.2, lagF: -0.8, lagB: -0.4, glow: 0.4, eye: 1 },
   {},
 ];
-const HIT_HOLDS = [60, 80, 90, 110, 120, 130];
-
+const HIT_HOLDS = [50, 70, 120, 110, 110, 130];
 
 // ================================================================== part 2: the extra anims
 //
@@ -239,7 +255,7 @@ const guardKeep: Key = { lagF: GUARD0.lagF, lagB: GUARD0.lagB };
 // the guard float → guard f0. The hover stays over its spot (dx 0).
 
 const TO_GUARD_KEYS: Key[] = [
-  { bob: -1, gripAt: [54, 43], sa: 0.08, bx: 34, by: 45, wrap: 0.12, eye: 1.2, sway: -0.4, lagF: 0.3 },
+  { bob: 0, hy: -1, gripAt: [54, 43], sa: 0.08, bx: 34, by: 45, wrap: 0.12, eye: 1.2, sway: -0.4, lagF: 0.3 },
   { bob: 0, lean: 0.5, hy: 0, gripAt: [53, 43], sa: 0.32, orb: 0.98, bx: 37, by: 45, bFront: 1, wrap: 0.45, cx: 1, sway: 0.6, eye: 1.35, glow: 0.5, lagF: 0.6, lagB: 0.4 },
   { bob: 1, lean: 1, hy: 1, gripAt: [52, 44], sa: 0.56, orb: 0.96, bx: 40, by: 46, bFront: 1, wrap: 0.82, cx: 0, cy: -1, sway: 0.3, ripple: 0.7, ward: 0.15, eye: 1.45, glow: 0.52, lagF: 0.2 },
   { bob: 1, lean: 1, hy: 1, gripAt: [51, 45], sa: 0.74, orb: 0.95, bx: 41, by: 46, bFront: 1, wrap: 1, cy: -1, sway: -0.8, ripple: 0.5, ward: 0.3, eye: 1.45, glow: 0.55, rune: 0.5, lagF: -0.6 },
@@ -249,43 +265,56 @@ const TO_GUARD_HOLDS = [60, 60, 70, 80, 90];
 
 // ------------------------------------------------------------------ fromGuard (5 frames, 380 ms)
 //
-// push-off (a 1-px dip, the head ducks, the ward fades) → the cloak opens off the front and the
-// free hand lets go of it → the staff swings back upright, the body rises, the hem trails → the
-// staff overshoots a hair, the robe swings past rest (drape) → idle f0.
+// push-off (from the guard's own baseline: the head ducks, the staff is drawn in) → the dip: the
+// cloak opens off the front, the free hand lets go of it, the ward goes → the staff swings back
+// upright, the body rises past its float, the hem trails → the staff overshoots a hair, the robe
+// swings past rest (drape) → idle f0.
 
 const FROM_GUARD: Pose[] = [
-  gkey({ bob: 1, hy: 2, gripAt: [51, 45], ward: 0.2 }, 0, 5),
-  gkey({ bob: 0, lean: 0.5, hy: 1, gripAt: [53, 43], sa: 0.4, orb: 0.98, bx: 37, by: 45, wrap: 0.6, ward: 0, cx: 0, cy: 0, sway: 0.4, ripple: 0.8, eye: 1.35, lagF: 0.2 }, 1, 5),
+  // push-off from the braced guard (its baseline, so every guard frame is next to it): the head
+  // ducks, the staff is drawn in, the cloak's hem gathers
+  gkey({ hy: 2, orbLift: 1, by: 46, cy: 0, sway: 0 }, 0, 5),
+  // the dip: the cloak opens off the front, the free hand lets go of it
+  gkey({ bob: 1, lean: 0.5, hy: 1, gripAt: [53, 44], sa: 0.4, orb: 0.98, bx: 37, by: 46, wrap: 0.6, ward: 0, cx: 0, cy: 0, sway: 0.4, ripple: 0.8, eye: 1.35, lagF: 0.2 }, 1, 5),
+  // up: the staff swings back upright, the body rises past its float, the hem trails
   key({ bob: -1, gripAt: [55, 43], sa: 0.1, bx: 33, by: 46, wrap: 0.2, cx: 1, sway: 0.9, eye: 1.25, lagF: 0.8, lagB: 0.4 }, 2, 5),
-  key({ bob: -1, gripAt: [55, 44], sa: -0.06, bx: 30, by: 46, cx: -1, sway: -0.7, lagF: -0.5, lagB: -0.3 }, 3, 5),
+  // the staff overshoots a hair, the robe swings past rest (drape)
+  key({ bob: 0, gripAt: [55, 44], sa: -0.06, bx: 30, by: 46, cx: -1, sway: -0.7, lagF: -0.5, lagB: -0.3 }, 3, 5),
   IDLE0,
 ];
-const FROM_GUARD_HOLDS = [60, 60, 70, 90, 100];
+const FROM_GUARD_HOLDS = [60, 70, 70, 80, 100];
 
-// ------------------------------------------------------------------ hitHeavy (7 frames, 680 ms)
+// ------------------------------------------------------------------ hitHeavy (8 frames, 740 ms)
 //
-// The blow lands on the helm and the chest first (head snapped back, visor shut, the orb gutters;
-// the robe still holds) → the whole body is flung back and up, the staff arm and the free arm left
-// behind, the cape and the hem whipped forward → it drifts on back → the hover gives (it drops
-// 3 px, bowed) → it floats back in; the robe swings past rest and settles → idle f0.
+// A caster's rhythm (not the wyrm's): a very short contact — the blow lands on the helm and the
+// chest first (head snapped back, visor shut, the orb gutters; the robe still holds) → the whole
+// body is flung back and up, the staff arm and the free arm left behind, the cape and the hem
+// whipped forward → it drifts on back on the air, sinking (long) → the hover gives (it drops
+// 3 px, bowed; the longest frame) → it floats back in → the body is home while the robe still
+// trails behind it → the robe swings past rest → settles: idle f0 (the robe 2 frames after the body).
 
 const HIT_HEAVY_KEYS: Key[] = [
   { hx: -3, hy: -1, squint: 1, gripAt: [55, 44], sa: -0.06, glow: 0.15, eye: 0.5, rune: 0.2 },
   { dx: -4, bob: -2, lean: -6, hx: -2, squint: 1, gripAt: [50, 42], sa: -0.22, bx: 24, by: 42, cx: 2, cy: -1, flare: 0.15, ripple: 1.0, sway: 2.5, lagF: 2, lagB: 1.5, glow: 0.1, eye: 0.5, rune: 0.2 },
   { dx: -6, bob: 0, lean: -4, hx: -1, squint: 1, gripAt: [50, 44], sa: -0.12, bx: 25, by: 44, cx: 3, cy: -1, flare: 0.2, ripple: 1.0, sway: 3, lagF: 2.5, lagB: 2, glow: 0.12, eye: 0.5, rune: 0.25 },
   { dx: -6, bob: 3, lean: 2, hy: 1, squint: 0.5, gripAt: [52, 47], sa: 0.06, bx: 28, by: 47, cx: 2, cy: 0, flare: 0.1, ripple: 1.3, sway: 1.5, lagF: 1, lagB: 0.6, glow: 0.25, eye: 0.8, rune: 0.35 },
-  { dx: -4, bob: 1, lean: 1, gripAt: [53, 45], sa: 0.04, bx: 29, by: 46, cx: 1, sway: 0, lagF: 0.2, glow: 0.3, eye: 0.9, rune: 0.45 },
-  { dx: -2, bob: 0, gripAt: [54, 44], sa: 0.02, cx: -1, sway: -1, lagF: -0.5, lagB: -0.3, glow: 0.4 },
+  { dx: -3, bob: 1, lean: 1, gripAt: [53, 45], sa: 0.04, bx: 29, by: 46, cx: 1, sway: 0, lagF: 0.2, glow: 0.3, eye: 0.9, rune: 0.45 },
+  // the body is home; the robe, a frame behind, still trails back
+  { dx: 0, bob: 0, gripAt: [55, 44], sa: 0.02, cx: -2, cy: -1, sway: -1.5, lagF: -0.8, lagB: -0.5, glow: 0.38, eye: 1 },
+  // the robe swings past rest
+  { cx: 1, sway: 0.8, lagF: 0.4, lagB: 0.2, glow: 0.42 },
   {},
 ];
-const HIT_HEAVY_HOLDS = [60, 80, 90, 110, 100, 110, 130];
+const HIT_HEAVY_HOLDS = [40, 70, 120, 130, 100, 80, 90, 110];
 
-// ------------------------------------------------------------------ hitMagic (8 frames, 610 ms)
+// ------------------------------------------------------------------ hitMagic (8 frames, 660 ms)
 //
-// A spell / beam: the chest and the helm react first (the eyes flare white, the sigil burns, the
-// orb gutters, a crackle runs over the plates) → the charge runs through the whole body: rigid,
-// jolted up, the arms flung out, the cape flared → it shudders 1 px a few short frames (the cloth a
-// frame behind) → the charge lets go: it sags 2 px below its float, bowed, eyes dim → recovers.
+// A spell / beam: the chest and the helm react first (a very short frame: the eyes flare white,
+// the sigil burns, the orb gutters, a crackle runs over the plates) → the charge runs through the
+// whole body: rigid, jolted up off its float, the arms flung out, the cape flared → it shudders
+// 1 px a few short frames (the cloth a frame behind) → the charge lets go and the floater drifts
+// down 2 px below its float, bowed, eyes dim (the longest frame) → the body is back at its float
+// while the robe still sags and swings (drape) → idle f0.
 
 const RIGID: Key = { bob: -2, lean: -3, hx: -1, hy: -2, gripAt: [57, 42], sa: 0.18, bx: 24, by: 38, flare: 0.7, cy: -4, ripple: 1.5, eye: 1.45, rune: 2, glow: 0.2, zap: 1 };
 const HIT_MAGIC_KEYS: Key[] = [
@@ -295,10 +324,11 @@ const HIT_MAGIC_KEYS: Key[] = [
   { ...RIGID, dx: -1, gripAt: [56, 42], cx: 1, zap: 0.8, sway: -0.6, lagF: -1.2 },
   { ...RIGID, dx: 0, zap: 0.45, eye: 1.4, flare: 0.6, rune: 1.5, cx: 1, sway: -0.8 },
   { bob: 2, lean: 3, hy: 2, squint: 0.5, eye: 0.6, gripAt: [54, 46], sa: 0.05, bx: 29, by: 48, flare: 0.2, cx: -1, sway: 1, lagF: 0.8, lagB: 0.5, glow: 0.25, rune: 0.3 },
-  { bob: 1, lean: 1, hy: 1, eye: 0.9, gripAt: [55, 45], cx: 0, sway: -0.5, lagF: -0.3, glow: 0.35, rune: 0.45 },
+  // the body is back at its float; the robe still sags and swings
+  { gripAt: [55, 44], eye: 0.9, cx: 1, cy: 1, sway: -0.9, lagF: -0.6, lagB: -0.3, glow: 0.35, rune: 0.45 },
   {},
 ];
-const HIT_MAGIC_HOLDS = [60, 60, 50, 50, 60, 100, 110, 120];
+const HIT_MAGIC_HOLDS = [40, 70, 50, 50, 70, 150, 110, 120];
 
 // ------------------------------------------------------------------ special (12 frames, 1.29 s)
 //
@@ -316,9 +346,9 @@ const HIT_MAGIC_HOLDS = [60, 60, 50, 50, 60, 100, 110, 120];
 
 const SPECIAL_KEYS: Key[] = [
   { lean: 1, hx: 1, eye: 1.6, gripAt: [55, 44], glow: 0.55, sway: -0.3 },
-  { dx: -1, bob: 1, lean: -2, gripAt: [54, 41], sa: -0.12, orb: 1.08, bx: 34, by: 38, flame: 0.35, charge: 0.4, glow: 0.7, eye: 1.5, rune: 0.9, cx: 1, sway: 0.6, lagF: 0.6 },
-  { dx: -1, bob: 1, lean: -4, gripAt: [53, 39], sa: -0.2, orb: 1.2, bx: 33, by: 36, flame: 0.6, charge: 0.75, glow: 0.9, eye: 1.8, rune: 1.2, cx: 2, cy: -1, sway: 1.2, lagF: 1, lagB: 0.4 },
-  { dx: -1, bob: 1, lean: -4, hx: 1, gripAt: [53, 39], sa: -0.2, orb: 1.32, bx: 33, by: 36, flame: 0.75, charge: 1, glow: 1, eye: 2, rune: 1.4, cx: 2, cy: -1, sway: 1.4, lagF: 1.2, lagB: 0.6 },
+  { dx: -1, bob: 1, lean: -2, gripAt: [55, 41], sa: -0.08, orb: 1.08, bx: 34, by: 38, flame: 0.35, charge: 0.4, glow: 0.7, eye: 1.5, rune: 0.9, cx: 1, sway: 0.6, lagF: 0.6 },
+  { dx: -1, bob: 1, lean: -4, gripAt: [55, 39], sa: -0.15, orb: 1.2, bx: 33, by: 36, flame: 0.6, charge: 0.75, glow: 0.9, eye: 1.8, rune: 1.2, cx: 2, cy: -1, sway: 1.2, lagF: 1, lagB: 0.4 },
+  { dx: -1, bob: 1, lean: -4, hx: 1, gripAt: [55, 39], sa: -0.15, orb: 1.32, bx: 33, by: 36, flame: 0.75, charge: 1, glow: 1, eye: 2, rune: 1.4, cx: 2, cy: -1, sway: 1.4, lagF: 1.2, lagB: 0.6 },
   { dx: 1, bob: 0, lean: 1, gripAt: [54, 41], sa: 0.8, orb: 1.25, bx: 31, by: 42, flame: 0, charge: 0.5, glow: 1, eye: 2, rune: 1.2, cx: 0, cy: -2, flare: 0.2, sway: 0, lagF: 0 },
   { dx: 2, bob: -1, lean: 4, hx: 1, gripAt: [52, 41], sa: 1.45, orb: 1.2, bx: 27, by: 45, cx: -2, cy: -2, flare: 0.3, sway: -1.5, lagF: -1, lagB: -0.6, glow: 1, eye: 2, rune: 1.1, charge: 0.3 },
   { dx: 1, bob: -1, lean: 3, hx: 1, gripAt: [51, 41], sa: 1.36, orb: 1.1, bx: 26, by: 45, cx: -4, cy: -3, flare: 0.6, ripple: 1.6, sway: -2, lagF: -1.5, lagB: -1, glow: 1, eye: 2.2, rune: 1.3, flash: 1, tendril: 0.5 },
@@ -362,24 +392,35 @@ const SUMMON_HOLDS = [70, 80, 110, 80, 70, 70, 90, 130, 100, 100, 110, 130];
 // free hand clutching at the chest, the staff loosening in the grip → the hover fails, it drops
 // and doubles over, the eyes gutter, the staff slips through the open hand onto its foot → the
 // cloak collapses inward (the body inside is going: the shoulders cave, the robe empties and pools
-// on the floor) while the staff topples back across it → [dissolve] the dark dissolve takes the
-// helm and the shoulders first, dark motes rising off them → the staff hits the floor, bounces,
-// lies → the empty cloak, half gone (the death kit's shadow break pulls the rest into the floor).
+// on the floor) while the staff — held on the near side — topples toward the camera and back,
+// falling through depth along the floor's 2:1 diagonal (toppleAxis: it shortens on screen
+// mid-fall and lands across the front of the heap, its orb ~17 px behind and ~15 px below the
+// anchor: on its own tile, pointing at its own back row — never along the duel axis at the
+// opponent, never flat across the neighbour), its foot pushed a pixel forward by the fall →
+// [dissolve] the dark dissolve takes the helm and the shoulders first, dark motes rising off them
+// → the staff hits the floor, its orb end bounces once, lies → the empty cloak, half gone (the
+// death kit's shadow break pulls the rest into the floor).
 
-const DOWN: Key = { dx: -3, bob: 6, lean: 4, hy: 3, squint: 1, free: 1, fpy: 77, fx: 51, fy: 43, orb: 0.6, bx: 38, by: 47, bFront: 1, cy: 1, glow: 0, eye: 0, rune: 0 };
+/** A free staff toppled `phi` rad toward the camera (its foot at fpx on the floor). */
+const fall = (phi: number): Key => ({ free: 1, ...toppleAxis(phi) });
+const LIES = Math.PI / 2;
+
+const DOWN: Key = { dx: -3, bob: 6, lean: 4, hy: 3, squint: 1, fpx: 55, fpy: 74, fx: 51, fy: 43, orb: 0.6, bx: 38, by: 47, bFront: 1, cy: 1, glow: 0, eye: 0, rune: 0, ...fall(LIES) };
 const DEATH_KEYS: Key[] = [
   { hx: -3, hy: -1, squint: 1, gripAt: [55, 44], sa: -0.05, glow: 0.15, eye: 0.6, rune: 0.2 },
   { dx: -3, bob: -1, lean: -5, hx: -1, squint: 1, gripAt: [52, 43], sa: -0.12, bx: 37, by: 37, bFront: 1, cx: 3, cy: -2, flare: 0.3, ripple: 1.4, sway: 2, lagF: 1.5, lagB: 1, glow: 0.1, eye: 0.4, rune: 0.15 },
   // the staff slips through the opening hand onto its foot (it rights itself as it drops)
-  { dx: -3, bob: 3, lean: 2, hy: 2, squint: 0.5, free: 1, fpx: 52, fpy: 77, sa: 0.02, fx: 51, fy: 43, orb: 0.75, bx: 38, by: 40, bFront: 1, cx: 2, cy: -1, flare: 0.15, sway: 1.2, lagF: 0.8, glow: 0.05, eye: 0.3, rune: 0.1 },
-  // it topples forward, its foot sliding back under the collapsing robe
-  { ...DOWN, bob: 5, lean: 3, hy: 2, sink: 7, hunch: 1, pool: 0.25, squint: 0.5, fpx: 50, sa: 0.32, orb: 0.7, by: 44, cy: 1, sway: 0.5, lagF: 0.4, eye: 0.2 },
-  { ...DOWN, sink: 12, hunch: 2, pool: 0.5, fpx: 46.5, sa: 0.72, by: 46, cy: 1, sway: 0.2, diss: 0.1 },
-  { ...DOWN, sink: 16, hunch: 3, pool: 0.7, fpx: 42, sa: 1.12, diss: 0.18 },
-  { ...DOWN, sink: 19, hunch: 3, pool: 0.85, fpx: 38, sa: 1.47, diss: 0.26 },
-  { ...DOWN, sink: 20, hunch: 3, pool: 0.9, fpx: 38, sa: 1.38, diss: 0.34 },
-  { ...DOWN, sink: 21, hunch: 3, pool: 0.9, fpx: 38, sa: 1.47, diss: 0.42 },
-  { ...DOWN, sink: 21, hunch: 3, pool: 0.92, fpx: 38, sa: 1.47, diss: 0.5 },
+  { dx: -3, bob: 3, lean: 2, hy: 2, squint: 0.5, ...fall(0.03), fpx: 52, fpy: 77, fx: 51, fy: 43, orb: 0.75, bx: 38, by: 40, bFront: 1, cx: 2, cy: -1, flare: 0.15, sway: 1.2, lagF: 0.8, glow: 0.05, eye: 0.3, rune: 0.1 },
+  // it topples toward the camera and back (accelerating: 0.3 → 0.95 → lies), its foot pushed a
+  // pixel forward; the top crosses the collapsing body in one 80-ms frame
+  { ...DOWN, bob: 5, lean: 3, hy: 2, sink: 7, hunch: 1, pool: 0.25, squint: 0.5, fpx: 53, fpy: 77, ...fall(0.32), orb: 0.7, by: 44, cy: 1, sway: 0.5, lagF: 0.4, eye: 0.2 },
+  { ...DOWN, sink: 12, hunch: 2, pool: 0.5, fpx: 54, fpy: 76, ...fall(0.95), by: 46, cy: 1, sway: 0.2, diss: 0.1 },
+  // it hits the floor; the orb end bounces once and lies
+  { ...DOWN, sink: 16, hunch: 3, pool: 0.7, diss: 0.18 },
+  { ...DOWN, sink: 19, hunch: 3, pool: 0.85, ...fall(1.45), diss: 0.26 },
+  { ...DOWN, sink: 20, hunch: 3, pool: 0.9, diss: 0.34 },
+  { ...DOWN, sink: 21, hunch: 3, pool: 0.9, diss: 0.42 },
+  { ...DOWN, sink: 21, hunch: 3, pool: 0.92, diss: 0.5 },
 ];
 const DEATH_HOLDS = [60, 90, 80, 80, 80, 70, 60, 60, 80, 120];
 
@@ -399,12 +440,13 @@ const REVIVE_KEYS: Key[] = [
   { ...HEAP, diss: 0.42, gather: 0.72 },
   { ...HEAP, diss: 0.2, gather: 0.9 },
   { ...HEAP, diss: 0, eye: 0.4, rune: 0.3 },
-  // the cloak refills, the staff rises on its foot toward the hand
-  { ...HEAP, diss: 0, bob: 5, sink: 13, hunch: 2, pool: 0.55, lean: 3, hy: 2, fpx: 43, sa: 1.0, eye: 0.6, rune: 0.4, glow: 0.15, orb: 0.65 },
-  { ...HEAP, diss: 0, dx: -2, bob: 3, sink: 6, hunch: 1, pool: 0.25, lean: 2, hy: 1, fpx: 49, sa: 0.5, fx: 54, fy: 44, bx: 36, by: 45, eye: 0.9, rune: 0.5, glow: 0.3, orb: 0.7, cy: 1 },
-  { ...HEAP, diss: 0, dx: -1, bob: 1, sink: 0, hunch: 0, pool: 0, lean: -1, hy: 0, fpx: 54, sa: 0.12, fx: 58, fy: 47, bx: 33, by: 44, bFront: 0, eye: 1.3, rune: 0.6, glow: 0.4, orb: 0.8, cy: 0, cx: 1, sway: 0.6, lagF: 0.5 },
+  // the cloak refills, the staff rises on its foot toward the hand (the fall's path backwards:
+  // up out of the floor's diagonal through depth, the foot drawn out from under the robe)
+  { ...HEAP, diss: 0, bob: 5, sink: 13, hunch: 2, pool: 0.55, lean: 3, hy: 2, fpx: 55, fpy: 75, ...fall(1.05), eye: 0.6, rune: 0.4, glow: 0.15, orb: 0.65 },
+  { ...HEAP, diss: 0, dx: -2, bob: 3, sink: 6, hunch: 1, pool: 0.25, lean: 2, hy: 1, fpx: 54, fpy: 76, ...fall(0.55), fx: 54, fy: 44, bx: 36, by: 45, eye: 0.9, rune: 0.5, glow: 0.3, orb: 0.7, cy: 1 },
+  { ...HEAP, diss: 0, dx: -1, bob: 1, sink: 0, hunch: 0, pool: 0, lean: -1, hy: 0, fpx: 54, fpy: 77, ...fall(0.12), fx: 58, fy: 47, bx: 33, by: 44, bFront: 0, eye: 1.3, rune: 0.6, glow: 0.4, orb: 0.8, cy: 0, cx: 1, sway: 0.6, lagF: 0.5 },
   // caught: the first breath
-  { free: 0, bob: -1, lean: -2, hy: -1, gripAt: [54, 44], sa: -0.05, orb: 1.05, bx: 30, by: 45, eye: 2, glow: 0.95, rune: 1.2, flare: 0.3, cx: -1, cy: -2, sway: -0.6, lagF: -0.4 },
+  { free: 0, fs: 1, bob: -1, lean: -2, hy: -1, gripAt: [54, 44], sa: -0.05, orb: 1.05, bx: 30, by: 45, eye: 2, glow: 0.95, rune: 1.2, flare: 0.3, cx: -1, cy: -2, sway: -0.6, lagF: -0.4 },
   { bob: 1, lean: 1, gripAt: [55, 45], sa: 0.02, eye: 1.3, glow: 0.6, flare: 0.1, sway: 0.8, lagF: 0.5 },
   {},
 ];
@@ -419,7 +461,7 @@ const REVIVE_HOLDS = [90, 90, 90, 90, 90, 110, 90, 90, 110, 110, 120, 130];
 
 const PROUD: Key = { bob: -1, lean: -2, hy: -1, gripAt: [57, 42], sa: 0.28, orb: 1.1, glow: 0.9, eye: 1.6, bx: 31, by: 44, flare: 0.25, cy: -1, sway: -0.5, rune: 1 };
 const VICTORY_KEYS: Key[] = [
-  { bob: 1, lean: 1, gripAt: [55, 45], sa: 0.02, bx: 31, by: 47, eye: 1.2, sway: 0.4, lagF: 0.3 },
+  { bob: 0, lean: 1, hy: 1, gripAt: [55, 45], sa: 0.02, bx: 31, by: 47, eye: 1.2, sway: 0.4, lagF: 0.3 },
   { bob: -1, lean: -1, gripAt: [56, 40], sa: 0.08, bx: 28, by: 40, flare: 0.3, glow: 0.7, eye: 1.5, cy: -1, sway: -0.6, lagF: -0.3 },
   { bob: -2, lean: -3, hx: -1, hy: -1, gripAt: [57, 33], sa: 0.12, orb: 1.2, glow: 1, star: 0.8, eye: 2.5, bx: 22, by: 30, flame: 0.6, flare: 0.8, cy: -4, cx: -2, ripple: 1.6, rune: 1.6, sway: -1.5, lagF: -1, lagB: -0.8 },
   { bob: -2, lean: -3, hx: -1, hy: -1, gripAt: [57, 33], sa: 0.12, orb: 1.2, glow: 1, star: 0.4, eye: 2.5, bx: 21, by: 29, flame: 0.8, flare: 0.9, cy: -5, cx: -3, ripple: 1.8, rune: 1.4, aura: 0.3, sway: -2, lagF: -1.3, lagB: -1 },

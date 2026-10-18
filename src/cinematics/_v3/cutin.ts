@@ -15,7 +15,12 @@
 // Portrait: `cutin:<id>` (the cut-in art; the v3 registry src/art/cutins-v3 replaces it under the
 // v3 look) played at its own frame rhythm; otherwise the monster's idle at ×3 framed on its head.
 // Card-specific rhythm: RHYTHM (flare / slam / exit beats per ace), clamped to the 1.0 s budget.
-// Player 2 mirrors the band slant, the entry side, the facing and the plate side.
+// Player 2 mirrors the band slant, the entry side, the facing and the plate side; a portrait with
+// relit P2 frames (CutinArt.p2 'relight') shows those, so its light stays on the screen's top-left.
+// Placement (A2 fix: the band sat across the summoned monster's tile and hid half of its summon
+// pose): with `clear` (the summoned monster's feet + badge, SCREEN space) the band is lowered until
+// its top edge passes under that point — the pose's land, spread and settle play on in full view
+// above it. Without `clear` it crosses the screen's middle as before.
 
 import Phaser from 'phaser';
 import type { Attribute, MonsterId } from '../../data/cards';
@@ -38,6 +43,8 @@ export interface CutInV3Opts {
   name: string;
   attribute: Attribute;
   player: PlayerId;
+  /** Screen point (the summoned monster's feet / badge) the band's top edge must stay below. */
+  clear?: { x: number; y: number };
 }
 
 export interface CutInV3 {
@@ -61,6 +68,18 @@ const BAND_TONES: Record<Attribute, [number, number, number]> = {
 
 const H_BAND = 120;
 const MID_Y = 172;
+/** Gap (px) between the band's top edge and the point it keeps clear of. */
+const CLEAR_GAP = 8;
+/** The lowest the band's centre goes (its bottom part may run off the screen's lower edge). */
+const MID_Y_MAX = 300;
+
+/** The band's centre line for these options (see `clear`). */
+export function bandMidY(player: PlayerId, clear?: { x: number; y: number }): number {
+  if (!clear) return MID_Y;
+  const slope = player === 0 ? -0.13 : 0.13;
+  const need = Math.ceil(clear.y + CLEAR_GAP + H_BAND / 2 - (clear.x - GAME_W / 2) * slope);
+  return Math.max(MID_Y, Math.min(MID_Y_MAX, need));
+}
 
 function snd(name: SfxName, volume = 1, pitch = 1): void {
   try {
@@ -139,7 +158,8 @@ async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Pro
   const [deep, wedge, glow] = BAND_TONES[o.attribute];
   const D = DEPTH.CUTIN;
   const slope = p1 ? -0.13 : 0.13;
-  const top = (x: number) => Math.round(MID_Y - H_BAND / 2 + (x - GAME_W / 2) * slope);
+  const mid = bandMidY(o.player, o.clear);
+  const top = (x: number) => Math.round(mid - H_BAND / 2 + (x - GAME_W / 2) * slope);
   const objs: { destroy(): void }[] = [];
   // the band is one pixel raster (crisp, palette tones only), redrawn every frame
   const yMin = Math.min(top(0), top(GAME_W)) - 8;
@@ -152,7 +172,7 @@ async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Pro
   let close = 0; // 0…1 the band closing onto its centre line
   let burst = 0; // 0…1 the focus-line burst behind the portrait
   let flashLv = 0; // the band's tones step up on the slam (band only, never the screen)
-  const focus = { x: p1 ? 200 : GAME_W - 200, y: MID_Y - 6 };
+  const focus = { x: p1 ? 200 : GAME_W - 200, y: mid - 6 };
   // polar map of the band for the focus-line burst (computed once)
   const BW = bandR.w;
   const BH = bandR.h;
@@ -198,7 +218,8 @@ async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Pro
             const r = rad[i];
             if (wdg % 2 === 0) c = r < 90 * burst ? glow : wedge;
             else if (r < 50 * burst) c = wedge;
-            if (r < 30 * burst) c = (x + y) % 2 === 0 ? ramp[1] : glow;
+            // the core: one flat stepped disc (A2 fix r1: no 50 % checker behind the portrait)
+            if (r < 30 * burst) c = glow;
           }
           if (flashLv > 0.4) c = c === deep ? glow : ramp[3];
           else if (flashLv > 0.1) c = c === deep ? wedge : c === wedge ? glow : ramp[3];
@@ -232,7 +253,7 @@ async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Pro
       if (wipe < 1) {
         const ex = edgeX();
         for (let y = top(ex); y < top(ex) + H_BAND; y++) {
-          const xx = ex + Math.round((y - MID_Y) * 0.3 * dir);
+          const xx = ex + Math.round((y - mid) * 0.3 * dir);
           g.px(xx, y, PAL.white);
           g.px(xx - dir, y, ramp[4]);
         }
@@ -242,8 +263,11 @@ async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Pro
     });
   };
 
-  // ---- portrait (integer scale, masked by the band)
-  const cutKey = `cutin:${o.monsterId}`;
+  // ---- portrait (integer scale, masked by the band). Player 2: the relit frames when the portrait
+  // has them (`cutin:<id>:p2`, drawn lit from the frame's top-right — flipped, lit from the screen's
+  // top-left like P1), else the P1 frames mirrored.
+  const p2Key = `cutin:${o.monsterId}:p2`;
+  const cutKey = !p1 && scene.textures.exists(p2Key) ? p2Key : `cutin:${o.monsterId}`;
   const hasCut = scene.textures.exists(cutKey);
   let portrait: Phaser.GameObjects.Sprite;
   let restX: number;
@@ -256,7 +280,7 @@ async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Pro
     const k = Math.max(1, Math.floor((H_BAND + 30) / h));
     portrait = scene.add.sprite(0, 0, cutKey, fr?.name ?? 0).setOrigin(0.5).setScale(k).setFlipX(!p1);
     restX = Math.round(p1 ? 60 + (w * k) / 2 : GAME_W - 60 - (w * k) / 2);
-    restY = Math.round(MID_Y + slope * (restX - GAME_W / 2));
+    restY = Math.round(mid + slope * (restX - GAME_W / 2));
     if (scene.anims.exists(cutKey)) portrait.play(cutKey);
     const e = findEye(scene, cutKey, fr?.name ?? 'f0');
     eye = e ? { x: (e.x - w / 2) * k * (p1 ? 1 : -1), y: (e.y - h / 2) * k } : null;
@@ -268,7 +292,7 @@ async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Pro
     const e = findEye(scene, monsterTextureKey(o.monsterId), monsterFrameName('idle', 0)) ?? { x: art.core.x + art.w * 0.2, y: art.core.y - art.h * 0.2 };
     eye = { x: (e.x - art.w / 2) * k * (p1 ? 1 : -1), y: (e.y - art.h / 2) * k };
     restX = Math.round((p1 ? 230 : GAME_W - 230) - eye.x);
-    restY = Math.round(MID_Y - 22 - eye.y);
+    restY = Math.round(mid - 22 - eye.y);
   }
   portrait.setDepth(D + 2).setScrollFactor(0).setVisible(false);
   objs.push(portrait);

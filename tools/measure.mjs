@@ -77,7 +77,10 @@
 //                   primitive event fields} (start/end in game ms; end = its handler resolved)
 //   sfx[]           [t, name] of every sfx.play
 //   contactMs       first impact sound (impactHeavy / impactLight / shieldBlock / directHit) = the
-//                   contact frame (A0 convention); contactSfx = its name; impacts[] = all of them
+//                   contact frame (A0 convention); contactSfx = its name; impacts[] = all of them.
+//                   ?look=v3: the battle's own contact mark wins when there is one (contactSfx
+//                   'mark'; contactMarks[] = all of them) — a legacy strike may sound earlier
+//   anims[]         (v3) also the frames of units dying off the field (the death kit releases them)
 //   numbers[]       every damage / heal / stat number popped: {t, text, kind, x, y, depth}
 //   firstNumberMs   first damage number (kind flash/damage); numberAfterContactMs = it − contactMs
 //   lp[]            [t, player, value, animate] of HudView.setLp calls (animated = the LP roll)
@@ -466,6 +469,20 @@ async function measureInPage(o) {
   } catch (e) {
     out.hooks.push(`sfx.play FAILED ${e}`);
   }
+  // 2b. v3 markers (scene events emitted only under ?look=v3): the battle's contact frame
+  //     (battle.ts onImpact: 'v3:contact') — the contact even when a legacy strike plays an impact
+  //     sound earlier (a stomp) — and the units dying off the field (_v3/death.ts 'v3:dying' /
+  //     'v3:dead': released from the field, so the anim log keeps following their death frames)
+  out.contactMarks = [];
+  const dying = new Set();
+  if (sc && sc.events) {
+    sc.events.on('v3:contact', () => {
+      if (T0 !== null) out.contactMarks.push(now());
+    });
+    sc.events.on('v3:dying', (u) => u && dying.add(u));
+    sc.events.on('v3:dead', (u) => dying.delete(u));
+    out.hooks.push('scene v3:contact / v3:dying');
+  }
   // 3. LP panel
   const hud = D.views?.hud;
   if (hud && typeof hud.setLp === 'function') {
@@ -530,6 +547,7 @@ async function measureInPage(o) {
     } catch {
       return;
     }
+    if (dying.size) units = [...units, ...[...dying].filter((u) => !units.includes(u))];
     for (const u of units) {
       const s = u.sprite;
       if (!s) continue;
@@ -644,8 +662,9 @@ async function measureInPage(o) {
   out.measuredMs = now();
   const impacts = out.sfx.filter(([, n]) => o.impactSfx.includes(n)).map(([t, name]) => ({ t, name }));
   out.impacts = impacts;
-  out.contactMs = impacts.length ? impacts[0].t : null;
-  out.contactSfx = impacts.length ? impacts[0].name : null;
+  // a v3 contact mark wins over the first impact sound (see 2b)
+  out.contactMs = out.contactMarks.length ? out.contactMarks[0] : impacts.length ? impacts[0].t : null;
+  out.contactSfx = out.contactMarks.length ? 'mark' : impacts.length ? impacts[0].name : null;
   const dmg = out.numbers.filter((n) => n.kind === 'flash' || n.kind === 'damage');
   out.firstNumberMs = dmg.length ? dmg[0].t : null;
   out.numberAfterContactMs = out.firstNumberMs !== null && out.contactMs !== null ? out.firstNumberMs - out.contactMs : null;

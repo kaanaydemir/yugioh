@@ -91,6 +91,7 @@ export const M = {
   HIDE_D: 9,
   BONE: 10,
   BONE_FAR: 11,
+  GOLD_D: 12,
 } as const;
 
 export const MATS: Mat[] = [];
@@ -99,6 +100,8 @@ MATS[M.HIDE] = { ramp: [PAL.night2, PAL.night3, PAL.steel, PAL.mist, PAL.white],
 // the far side of the body: one value darker
 MATS[M.HIDE_FAR] = { ramp: [PAL.night1, PAL.night2, PAL.night3, PAL.steel, PAL.mist], th: [-0.55, -0.1, 0.3, 0.72] };
 MATS[M.GOLD] = { ramp: [PAL.gold1, PAL.gold2, PAL.gold3, PAL.gold4], th: [-0.5, 0.05, 0.58] };
+// hand-toned gold (horn bands): 0 gold1 root, 1 gold2 underside, 2 gold3 body, 3 gold4 top edge
+MATS[M.GOLD_D] = { ramp: [PAL.gold1, PAL.gold2, PAL.gold3, PAL.gold4], th: [], direct: true };
 MATS[M.CRYS] = { ramp: [PAL.cyan1, PAL.cyan2, PAL.cyan3, PAL.cyan4, PAL.white], th: [], direct: true };
 MATS[M.GLASS] = { ramp: [PAL.cyan0, PAL.cyan1, PAL.cyan2, PAL.cyan3, PAL.cyan4, PAL.white], th: [], direct: true };
 MATS[M.GLASS_FAR] = { ramp: [PAL.night1, PAL.cyan0, PAL.cyan1, PAL.cyan2, PAL.cyan3, PAL.cyan4], th: [], direct: true };
@@ -286,7 +289,7 @@ export function gEll(g: G, c: V, rx: number, ry: number, ang: number, mat: numbe
 }
 
 /** Tapered tube along a polyline with cylinder normals (cross-section v: -1 … 1 across). */
-export function gTube(g: G, path: V[], w0: number, w1: number, mat: number, o: PrimOpt & { biasAt?: (u: number, v: number) => number } = {}) {
+export function gTube(g: G, path: V[], w0: number, w1: number, mat: number, o: PrimOpt & { biasAt?: (u: number, v: number, ox: number, oy: number) => number } = {}) {
   if (path.length < 2) return;
   const lens = [0];
   for (let i = 1; i < path.length; i++) lens.push(lens[i - 1] + len(sub(path[i], path[i - 1])));
@@ -342,7 +345,7 @@ export function gTube(g: G, path: V[], w0: number, w1: number, mat: number, o: P
       const o2 = Math.min(1, ox * ox + oy * oy);
       const hz = Math.sqrt(1 - o2);
       const v = clamp(ox * -bty + oy * btx, -1, 1);
-      const bias = (o.bias ?? 0) + (o.biasAt ? o.biasAt(bu / total, v) : 0);
+      const bias = (o.bias ?? 0) + (o.biasAt ? o.biasAt(bu / total, v, ox, oy) : 0);
       g.put(x, y, mat, ox, oy, hz * flat, z0 + hz * r, bias);
     }
   }
@@ -586,7 +589,7 @@ export function edgePaint(c: PixelCanvas, hi: number | null, lo: number | null, 
  * away from the key light and down): one continuous cyan2 line, only where the edge faces empty
  * space.
  */
-export function rimLight(c: PixelCanvas, dst: PixelCanvas, cols: readonly number[] = [PAL.night2, PAL.night3, PAL.steel], rim = PAL.cyan2) {
+export function rimLight(c: PixelCanvas, dst: PixelCanvas, cols: readonly number[] = [PAL.night2, PAL.night3, PAL.steel], rim = PAL.cyan2, only?: (x: number, y: number) => boolean) {
   const d = c.data;
   const inL = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H && d[(y * W + x) * 4 + 3] > 0;
   const open = (x: number, y: number) => !inL(x, y) && !dst.isOpaque(x, y);
@@ -595,10 +598,11 @@ export function rimLight(c: PixelCanvas, dst: PixelCanvas, cols: readonly number
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
       if (!inL(x, y)) continue;
-      if (!(open(x + s, y) || open(x, y + 1))) continue;
+      // the diagonal corner too: on a staircase contour the rim stays one continuous line
+      if (!(open(x + s, y) || open(x, y + 1) || open(x + s, y + 1))) continue;
       if (!inL(x - s, y) || !inL(x, y - 1)) continue;
       const col = c.get(x, y)!;
-      if (cols.includes(col)) hits.push(x, y);
+      if (cols.includes(col) && (!only || only(x, y))) hits.push(x, y);
     }
   for (let i = 0; i < hits.length; i += 2) c.set(hits[i], hits[i + 1], rim);
 }
@@ -630,6 +634,28 @@ export function distPoly(p: V, pts: readonly V[]): number {
   let d = Infinity;
   for (let i = 1; i < pts.length; i++) d = Math.min(d, distSeg(p, pts[i - 1], pts[i]));
   return d;
+}
+
+/** Arc-length parameter (0..1) of the point of a polyline nearest to p. */
+export function pathU(path: readonly V[], p: V): number {
+  let best = Infinity;
+  let bu = 0;
+  let acc = 0;
+  let total = 0;
+  for (let i = 1; i < path.length; i++) total += len(sub(path[i], path[i - 1]));
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1];
+    const s = sub(path[i], a);
+    const sl = len(s) || 1;
+    const t = clamp(((p[0] - a[0]) * s[0] + (p[1] - a[1]) * s[1]) / (sl * sl), 0, 1);
+    const d = Math.hypot(p[0] - a[0] - s[0] * t, p[1] - a[1] - s[1] * t);
+    if (d < best) {
+      best = d;
+      bu = acc + sl * t;
+    }
+    acc += sl;
+  }
+  return bu / (total || 1);
 }
 
 export function samplePath(path: readonly V[], t: number): { p: V; tan: V } {

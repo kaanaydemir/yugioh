@@ -47,9 +47,12 @@ import { fx, registerCardHook, type CinematicContext } from '../api';
 import { CYAN_FX, bg, evAt, idxOf, relax, sendResolved, setTileOf, spellOpening, fs, lightBeam, lightFlash, lightPool } from './_kit';
 import { summonPose } from '../_v3/summon';
 import { monsterArt } from '../../art/monsters';
-import { artMarkMs, hasAnim } from '../../art/animtime';
+import { artMarkMs, hasAnim, holdOf } from '../../art/animtime';
+import { monsterFrame } from '../../art/textures';
+import { PixelCanvas } from '../../art/pixel';
 import { Sparks as PxSparks } from '../../vfx/combat';
 import { matterRamp } from '../_v3/death';
+import { warmPoses } from '../_v3/warm';
 import { clearHologram, holoRamp, setHologram } from '../../vfx/hologram';
 
 const ADD = Phaser.BlendModes.ADD;
@@ -315,6 +318,8 @@ registerCardHook('soul_recall', 'activate', async (ctx) => {
   const tEv = evAt(ctx, ti, 'target');
   const si = idxOf(ctx, run0, (e) => e.type === 'summon' && e.from === 'graveyard');
   const sEv = evAt(ctx, si, 'summon');
+  // v3: the revive pose is painted from now on, in the background (the opening comes first)
+  if (LOOK_V3 && sEv && isMonster(CARDS[sEv.cardId])) warmPoses(sEv.cardId as MonsterId, sEv.player, ['revive']);
   const gi = idxOf(ctx, run0, (e) => e.type === 'toGraveyard' && e.from === 'resolved' && e.uid === ev.uid);
   const set = setTileOf(ctx);
   const op = await spellOpening(ctx, { uid: ev.uid, cardId: ev.cardId, player: ev.player, from: set ? 'set' : 'hand', zone: ev.zone, hold: LOOK_V3 ? 120 : 260 });
@@ -422,6 +427,337 @@ function gather(sc: Phaser.Scene, u: MonsterUnit, from: XY, ms: number): void {
   sp.release();
 }
 
+// ---------------------------------------------------------------- the v3 ghost
+//
+// The soul is an OPAQUE palette silhouette of the monster's idle loop (A2 art review r2 #1: the old
+// ghost was a 0.82-alpha sprite + an additive glow copy + additive echoes — a translucent smear with
+// the board showing through and ~1000 blended colours). Every pixel is one of five palette tones:
+//   1-px night outline (night0) · lit plane cyan4 · shadow plane cyan2 · deep shadow / inner lines
+//   cyan0 — the planes cut from the art's own values (luminance percentiles of idle f0, so a dark
+//   monster keeps a lit plane too); the lower body thins out through a FIXED 4×4 ordered dither
+//   (frame space: it travels with the body, never crawls).
+// Echoes are 1–2 discrete stepped silhouettes in darker cyan (cyan2 / cyan1 on a checker, then
+// cyan1 / cyan0 on a quarter grid), no blend mode. At arrival the ghost breaks in three dither steps
+// (sinking 2 px a step) while the art's revive frames gather the body on the tile.
+
+/** Tones of a ghost mask cell: 0 empty · 1 outline · 2 lit · 3 shadow · 4 deep. */
+const GHOST_TONE = [0, PAL.night0, PAL.cyan4, PAL.cyan2, PAL.cyan0] as const;
+/** Echo steps (tones per mask tone) and their ordered-dither patterns. */
+const ECHO_TONES = [
+  [0, PAL.cyan1, PAL.cyan2, PAL.cyan1, PAL.cyan1],
+  [0, PAL.cyan0, PAL.cyan1, PAL.cyan0, PAL.cyan0],
+] as const;
+/** Melt steps: share of the body kept (4×4 ordered dither) and the tones (the outline opens). */
+const MELT_KEEP = [0.72, 0.44, 0.18] as const;
+const MELT_TONES = [
+  [0, PAL.night0, PAL.cyan4, PAL.cyan2, PAL.cyan0],
+  [0, 0, PAL.cyan3, PAL.cyan2, PAL.cyan0],
+  [0, 0, PAL.cyan2, PAL.cyan1, PAL.cyan0],
+] as const;
+
+const B4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+/** Fixed 4×4 ordered-dither threshold in (0, 1) (frame space). */
+function b4(x: number, y: number): number {
+  return (B4[((y & 3) << 2) | (x & 3)] + 0.5) / 16;
+}
+
+interface GhostSheetV3 {
+  key: string;
+  frames: number;
+  w: number;
+  h: number;
+  anchorX: number;
+  anchorY: number;
+  /** Per frame: the tone of every pixel (GHOST_TONE index). */
+  masks: Uint8Array[];
+}
+
+const ghostSheets = new Map<string, GhostSheetV3>();
+
+/** The v3 ghost sheet of a monster (P2 with a relight art: drawn lit from the frame's right). */
+function ghostSheetV3(sc: Phaser.Scene, id: MonsterId, relight: boolean): GhostSheetV3 | null {
+  const key = `set:ghost3:${id}${relight ? ':r' : ''}`;
+  const hit = ghostSheets.get(key);
+  if (hit && sc.textures.exists(key) && sc.anims.exists(key)) return hit;
+  try {
+    const art = monsterArt(id);
+    const spec = art.anims.idle;
+    const W = art.w;
+    const H = art.h;
+    const o = relight ? ({ lightFrom: 'right' } as const) : undefined;
+    const lum = (c: number) => (((c >> 16) & 255) * 0.3 + ((c >> 8) & 255) * 0.55 + (c & 255) * 0.15) / 255;
+    // the planes: cut at the art's own value percentiles (≈ half lit, a sixth deep)
+    const f0 = monsterFrame(id, 'idle', 0, o);
+    const ls: number[] = [];
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        const c = f0.get(x, y);
+        if (c !== null && c !== PAL.ink) ls.push(lum(c));
+      }
+    ls.sort((a, b) => a - b);
+    const t1 = ls.length ? ls[Math.floor(ls.length * 0.5)] : 0.6;
+    const t2 = ls.length ? ls[Math.floor(ls.length * 0.17)] : 0.25;
+    const masks: Uint8Array[] = [];
+    const sheet = new PixelCanvas(W * spec.frames, H);
+    for (let f = 0; f < spec.frames; f++) {
+      const src = monsterFrame(id, 'idle', f, o);
+      const m = new Uint8Array(W * H);
+      const b = src.bounds();
+      if (b) {
+        for (let y = 0; y < H; y++) {
+          // the lower body thins out (fixed ordered dither, the last ~third of the body)
+          const v = (y - b.y) / Math.max(1, b.h);
+          const keep = v < 0.7 ? 1 : 1 - (v - 0.7) / 0.34;
+          for (let x = 0; x < W; x++) {
+            const c = src.get(x, y);
+            if (c === null || b4(x, y) >= keep) continue;
+            const edge = !src.isOpaque(x - 1, y) || !src.isOpaque(x + 1, y) || !src.isOpaque(x, y - 1) || !src.isOpaque(x, y + 1);
+            const t = edge ? 1 : c === PAL.ink ? 4 : lum(c) >= t1 ? 2 : lum(c) >= t2 ? 3 : 4;
+            m[y * W + x] = t;
+            sheet.set(f * W + x, y, GHOST_TONE[t]);
+          }
+        }
+      }
+      masks.push(m);
+    }
+    if (sc.textures.exists(key)) sc.textures.remove(key);
+    const tex = sc.textures.addCanvas(key, sheet.toCanvas())!;
+    for (let f = 0; f < spec.frames; f++) tex.add(`g${f}`, 0, f * W, 0, W, H);
+    if (!sc.anims.exists(key)) {
+      const fr = Array.from({ length: spec.frames }, (_, f) => (holdOf(spec, f) ? { key, frame: `g${f}`, duration: holdOf(spec, f) } : { key, frame: `g${f}` }));
+      sc.anims.create({ key, frames: fr, frameRate: spec.fps, repeat: -1 });
+    }
+    const gs: GhostSheetV3 = { key, frames: spec.frames, w: W, h: H, anchorX: art.anchorX, anchorY: art.anchorY, masks };
+    ghostSheets.set(key, gs);
+    return gs;
+  } catch (e) {
+    console.warn('[soul_recall] v3 ghost sheet failed', e);
+    return null;
+  }
+}
+
+/**
+ * Stepped variants of one ghost frame (cells `v0`…): the echo steps or the melt steps. Made on
+ * first use (one frame, a few ms) and cached with the sheet.
+ */
+function ghostVariant(sc: Phaser.Scene, gs: GhostSheetV3, f: number, kind: 'echo' | 'melt'): string {
+  const key = `${gs.key}:${kind}${f}`;
+  if (sc.textures.exists(key)) return key;
+  const steps = kind === 'echo' ? ECHO_TONES.length : MELT_TONES.length;
+  const W = gs.w;
+  const pc = new PixelCanvas(W * steps, gs.h);
+  const m = gs.masks[f] ?? gs.masks[0];
+  for (let s = 0; s < steps; s++)
+    for (let y = 0; y < gs.h; y++)
+      for (let x = 0; x < W; x++) {
+        const t = m[y * W + x];
+        if (!t) continue;
+        let c: number;
+        if (kind === 'echo') {
+          // step 0: a checker (½), step 1: a quarter grid (¼)
+          if (s === 0 ? (x + y) % 2 !== 0 : x % 2 !== 0 || y % 2 !== 0) continue;
+          c = ECHO_TONES[s][t];
+        } else {
+          if (b4(x, y) >= MELT_KEEP[s]) continue;
+          c = MELT_TONES[s][t];
+        }
+        if (c) pc.set(s * W + x, y, c);
+      }
+  const tex = sc.textures.addCanvas(key, pc.toCanvas())!;
+  for (let s = 0; s < steps; s++) tex.add(`v${s}`, 0, s * W, 0, W, gs.h);
+  return key;
+}
+
+/**
+ * v3: the destination circle — opaque iso rings on the tile (no translucent pool, no mixed tones):
+ * it opens in three radius steps, six white runes orbit, pulse() lifts the rings one palette step,
+ * dismiss() closes it in three steps.
+ */
+function tileCircleV3(sc: Phaser.Scene, x: number, y: number): { pulse(ms: number): void; dismiss(ms: number): Promise<void> } {
+  const R = 30;
+  const ras = Raster.around(sc, Math.round(x), Math.round(y), R * 2 + 10, R + 10, DEPTH.TILE_FX);
+  const cx = Math.round(x);
+  const cy = Math.round(y);
+  let k = 0; // 0..3 radius steps
+  let hi = 0;
+  let closing = false;
+  let el = 0;
+  const stop = onFrame(sc, (dt) => {
+    el += dt;
+    if (!closing) k = Math.min(3, Math.floor(el / 80) + 1);
+    if (hi > 0) hi = Math.max(0, hi - dt);
+    ras.draw((g) => {
+      if (k <= 0) return;
+      const r = Math.round((R * k) / 3);
+      const ry = Math.max(1, Math.round(r / 2));
+      const lit = hi > 0;
+      g.ring(cx, cy, r + 2, ry + 1, PAL.cyan0, 1);
+      g.ring(cx, cy, r, ry, lit ? PAL.cyan4 : PAL.cyan3, 1);
+      if (k >= 2) g.ring(cx, cy, Math.round(r * 0.6), Math.round(ry * 0.6), lit ? PAL.cyan3 : PAL.cyan2, 1);
+      if (k >= 3)
+        for (let i = 0; i < 6; i++) {
+          // the runes step around the ring (one whole-pixel position every 50 ms)
+          const a = Math.floor(el / 50) * 0.12 + (i / 6) * TAU;
+          g.px(Math.round(cx + Math.cos(a) * r * 0.8), Math.round(cy + Math.sin(a) * ry * 0.8), PAL.white);
+        }
+    });
+    return true;
+  });
+  return {
+    pulse(ms: number) {
+      hi = ms;
+    },
+    async dismiss(ms: number) {
+      closing = true;
+      const step = Math.max(17, Math.round(ms / 3));
+      for (let s = 2; s >= 0; s--) {
+        k = Math.min(k, s);
+        await wait(sc, step);
+      }
+      stop();
+      ras.destroy();
+    },
+  };
+}
+
+/**
+ * v3 soulRise: the grave opens (opaque rings, crisp spirit flames), the opaque ghost rises out of
+ * the pile (cropped by the floor) and glides to the tile with 1–2 stepped echoes behind it. No
+ * alpha, no blend mode, no soft light over the body (the floor lights are the stepped layer's).
+ */
+async function soulRiseV3(ctx: AnyCtx, from: XY, to: XY, id: MonsterId, player: PlayerId, onLeave: () => void, tm: { rise?: number; float?: number; settle?: number } = {}): Promise<Ghost> {
+  const sc = ctx.scene;
+  const flip = player === 1;
+  const gx = Math.round(from.x);
+  const gy = Math.round(from.y);
+  const art = monsterArt(id);
+  const gs = ghostSheetV3(sc, id, flip && art.p2 === 'relight');
+  const grave = Raster.around(sc, gx, gy, 80, 44, DEPTH.SHADOW - 1);
+  const flames = new PxSparks(sc, unitDepth(gy) - 1);
+  const mist = new PxSparks(sc, DEPTH.FX - 2);
+  let graveOn = 0;
+  let burst = 0;
+  let alive = true;
+  const stopGrave = onFrame(sc, (dt, el) => {
+    if (!alive) return false;
+    burst = Math.max(0, burst - dt / 260);
+    grave.draw((g) => {
+      if (graveOn <= 0.01) return;
+      // whole-pixel radii; the fill is an ordered dither (opaque), the rings are solid
+      const r = Math.round(18 + Math.sin(el * 0.012) * 1.2 + burst * 10);
+      g.ell(gx, gy, r, Math.round(r / 2), PAL.cyan1, 0.5);
+      g.ring(gx, gy, r, Math.round(r / 2), burst > 0.5 ? PAL.white : PAL.cyan3, 1);
+      g.ring(gx, gy, Math.round(r * 0.62), Math.round(r * 0.31), PAL.cyan4, 1);
+      for (let i = 0; i < 6; i++) {
+        const a = el * 0.004 + (i / 6) * TAU;
+        g.px(Math.round(gx + Math.cos(a) * r * 0.82), Math.round(gy + Math.sin(a) * r * 0.41), PAL.white);
+      }
+    });
+    if (dt > 0 && graveOn > 0.3 && rnd() < dt / 26)
+      flames.add({ x: gx + Math.round(rr(-13, 13)), y: gy + Math.round(rr(-3, 3)), vx: rr(-4, 4), vy: rr(-46, -24), life: rr(320, 520), colors: [PAL.cyan4, PAL.cyan3, PAL.cyan2, PAL.cyan1], shape: 'px', fadeAt: 1 });
+    return true;
+  });
+  // the grave bursts open
+  graveOn = 1;
+  burst = 1;
+  ctx.sfx('revive', { volume: 0.9 });
+  bg(floorRing(sc, gx, gy, { r0: 6, r1: fs(42), ms: 360, ramp: CYAN_FX, depth: DEPTH.SHADOW - 1 }));
+  void lightFlash(sc, gx, gy - 10, PAL.cyan4, fs(36), 420, { floorY: gy, intensity: 1, ring: true });
+  const graveLight = lightPool(sc, gx, gy, { color: PAL.cyan3, radius: fs(26), intensity: 0.8, anim: 'breathe', fadeIn: 120 });
+
+  // ---- the ghost: one opaque sprite (no glow copy)
+  let ghost: Phaser.GameObjects.Sprite | null = null;
+  const fh = gs?.h ?? 48;
+  if (gs) {
+    const ox = (flip ? gs.w - gs.anchorX : gs.anchorX) / gs.w;
+    const oy = gs.anchorY / gs.h;
+    ghost = sc.add.sprite(gx, gy + fh, gs.key, 'g0').setOrigin(ox, oy).setFlipX(flip).setDepth(DEPTH.FX);
+    ghost.play(gs.key);
+  }
+  const frameIdx = (): number => (ghost ? Number(String(ghost.frame.name).slice(1)) || 0 : 0);
+  const place = (x: number, y: number, ground: number | null) => {
+    if (!ghost || !gs) return;
+    ghost.setPosition(Math.round(x), Math.round(y));
+    if (ground !== null) {
+      const keep = Math.round(gs.anchorY - (y - ground));
+      ghost.setCrop(0, 0, gs.w, Math.max(0, keep));
+      ghost.setVisible(keep > 0);
+    } else ghost.setCrop();
+  };
+  const dest = tileCircleV3(sc, to.x, to.y);
+  /** Wisps from the dithered tail (behind the body, crisp pixels). */
+  const wisp = (x: number, y: number) =>
+    mist.add({ x: Math.round(x + rr(-9, 9)), y: Math.round(y - rr(0, 5)), vx: rr(-8, 8), vy: rr(-14, 4), life: rr(200, 320), colors: [PAL.cyan3, PAL.cyan2, PAL.cyan1], shape: 'px', fadeAt: 1 });
+
+  // ---- rise out of the pile (cropped at the floor line)
+  const lift = 20;
+  await run(sc, tm.rise ?? 200, (t, el) => {
+    const k = E.outCubic(t);
+    place(gx + Math.round(Math.sin(el * 0.02)), gy + (1 - k) * fh * 0.95 - k * lift, gy);
+    if (rnd() < 0.5) wisp(gx, gy);
+  });
+  place(gx, gy - lift, null);
+  onLeave();
+
+  // ---- glide along an arc to the tile, 1–2 stepped echoes behind
+  const start = { x: gx, y: gy - lift };
+  const end = { x: Math.round(to.x), y: Math.round(to.y - 16) };
+  const dist = Math.hypot(end.x - start.x, end.y - start.y);
+  const FLOAT = tm.float ?? Math.round(Math.min(560, Math.max(320, 200 + dist * 1.1)));
+  const ctrl = { x: (start.x + end.x) / 2, y: Math.min(start.y, end.y) - Math.round(Math.min(80, 46 + dist * 0.1)) };
+  ctx.sfx('whoosh', { volume: 0.4, pitch: 0.7 });
+  const ghostLight = lightPool(sc, start.x, start.y, { color: PAL.cyan3, radius: fs(20), floorY: gy, intensity: 0.6, fadeIn: 80 });
+  void graveLight.fadeOut(360);
+  const ECHO_EVERY = 80;
+  const ECHO_STEP = 60;
+  let lastEcho = -999;
+  await run(sc, FLOAT, (t, el) => {
+    const p = qbez(start, ctrl, end, E.inOutSine(t));
+    if (ghostLight.alive) ghostLight.setPosition(p.x, lerp(gy, to.y, E.inOutSine(t)), lerp(gy, to.y, E.inOutSine(t)));
+    place(p.x, p.y + Math.round(Math.sin(el * 0.02) * 1.5), null);
+    if (ghost && gs && el - lastEcho >= ECHO_EVERY && t < 0.9) {
+      lastEcho = el;
+      const vk = ghostVariant(sc, gs, frameIdx(), 'echo');
+      const echo = sc.add.image(ghost.x, ghost.y, vk, 'v0').setOrigin(ghost.originX, ghost.originY).setFlipX(flip).setDepth(DEPTH.FX - 1);
+      bg(
+        wait(sc, ECHO_STEP)
+          .then(() => echo.active && echo.setFrame('v1'))
+          .then(() => wait(sc, ECHO_STEP))
+          .then(() => echo.destroy()),
+      );
+    }
+    if (rnd() < 0.5) wisp(p.x, p.y);
+  });
+  graveOn = 0;
+  if ((tm.settle ?? 0) > 0) await run(sc, tm.settle ?? 0, (t) => place(end.x, end.y + Math.round(Math.sin(Math.PI * t) * 2), null));
+  void ghostLight.fadeOut(200);
+
+  return {
+    async melt(ms = 160) {
+      dest.pulse(120);
+      if (ghost && gs) {
+        // the ghost breaks in three dither steps, sinking into the body that gathers below it
+        const vk = ghostVariant(sc, gs, frameIdx(), 'melt');
+        ghost.anims.stop();
+        ghost.setTexture(vk, 'v0');
+        const step = Math.max(17, Math.round(ms / MELT_KEEP.length));
+        for (let s = 0; s < MELT_KEEP.length; s++) {
+          if (!ghost.active) break;
+          ghost.setFrame(`v${s}`).setY(end.y + 2 * s);
+          await wait(sc, step);
+        }
+      } else await wait(sc, ms);
+      ghost?.destroy();
+      alive = false;
+      stopGrave();
+      grave.destroy();
+      flames.release();
+      mist.release();
+      bg(dest.dismiss(320));
+    },
+  };
+}
+
 /**
  * v3 Ruh Çağrısı (see the header): the ghost glides to the tile and the body reassembles there —
  * on its `revive` pose when the art has one, else a short cyan rebuild. The summon event is
@@ -444,7 +780,7 @@ async function recallV3(ctx: CinematicContext<Extract<GameEvent, { type: 'activa
   const ghostP = new Promise<{ g: Promise<Ghost> }>((r) => (risen = r));
   const rise = () =>
     risen({
-      g: soulRise(
+      g: soulRiseV3(
         ctx,
         gyAt,
         dest,
@@ -462,12 +798,11 @@ async function recallV3(ctx: CinematicContext<Extract<GameEvent, { type: 'activa
   bg(pile.flash(PAL.cyan4));
   const ghost = await (await ghostP).g;
   // ---- arrival: the revived card is born on its tile; the ghost breaks into the body
-  const tile = field.placeCard(sEv.player, 'monster', sEv.zone, sEv.uid, sEv.cardId, true, sEv.position === 'defense' ? 'side' : 'up');
-  tile.tileFlash(PAL.cyan3, 300);
-  tile.ringBurst(PAL.cyan4, 300);
+  // (the tile's own flash / ring burst are additive washes: the stepped circle pulses instead)
+  field.placeCard(sEv.player, 'monster', sEv.zone, sEv.uid, sEv.cardId, true, sEv.position === 'defense' ? 'side' : 'up');
   ctx.sfx('materialize', { volume: 0.8 });
   void lightFlash(sc, dest.x, dest.y - 12, PAL.cyan4, fs(34), 360, { floorY: dest.y, ring: true, intensity: 0.85 });
-  bg(ghost.melt(160));
+  bg(ghost.melt(120));
   const unit: MonsterUnit | null = field.addUnit(sEv.uid, { hidden: true, atk: stats.atk, def: stats.def, position: sEv.position });
   let landed!: () => void;
   const landP = new Promise<void>((r) => (landed = r));

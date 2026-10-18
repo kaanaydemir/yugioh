@@ -47,7 +47,7 @@ import { CARDS, isMonster, type Attribute, type MonsterCardDef, type MonsterId }
 import { monsterArt } from '../art/monsters';
 import { PAL } from '../art/palette';
 import { PixelCanvas } from '../art/pixel';
-import { monsterAnimKey, monsterFrame, monsterFrameName, monsterP2TextureKey, monsterSheetKey, monsterTextureKey } from '../art/textures';
+import { monsterAnimKey, monsterFrame, monsterFrameName, monsterP2TextureKey, monsterSheetKey, monsterTextureKey, warmMonsterSheet } from '../art/textures';
 import type { AnimMark, AnimSpec, AnyMonsterAnim, MonsterAnim, MonsterArt } from '../art/types';
 import { animLengthMs, animSpec, artMarkFrame, frameMs as specFrameMs, frameStartMs, impactFrame as artImpactFrame, impactMs as artImpactMs, rangeMs as specRangeMs } from '../art/animtime';
 import type { PlayerId, Position, Uid } from '../engine/types';
@@ -59,7 +59,7 @@ import { clearHologram, getHologram } from '../vfx/hologram';
 import { Raster, run } from '../vfx/setpieces';
 import type { Disposable } from './types';
 import { StatBadge } from './StatBadge';
-import { reactGuardPushPx, reactGuardReturnEase } from './motion';
+import { motionProfile, reactGuardPushPx, reactGuardReturnEase } from './motion';
 import { onDuelStart } from './seeds';
 import { contactFlash } from '../cinematics/_v3/flash';
 
@@ -122,6 +122,9 @@ function rnd(): number {
   unitSeed = (unitSeed * 1664525 + 1013904223) >>> 0;
   return unitSeed / 4294967296;
 }
+
+/** v3: extra poses warmed as a unit takes the field (reactions, guard brace / break, death). */
+const WARM_ON_FIELD: readonly AnyMonsterAnim[] = ['hitMagic', 'hitHeavy', 'death', 'toGuard', 'fromGuard'];
 
 /** The recoil animations: in DEFENSE position they are answered from the guard pose (see the header). */
 const HIT_ANIMS: readonly AnyMonsterAnim[] = ['hit', 'hitHeavy', 'hitMagic'];
@@ -189,6 +192,8 @@ export class UnitSprite extends Phaser.GameObjects.Sprite {
 
   override play(key: string | Phaser.Animations.Animation | Phaser.Types.Animations.PlayAnimationConfig, ignoreIfPlaying?: boolean): this {
     const u = this.unit;
+    // v3 claim: a caller outside the claimant (a strike still running) no longer drives the sprite
+    if (u && u.locked) return this;
     const hit = u && u.guarding ? u.hitAnimOfKey(key) : null;
     if (u && hit) {
       u.guardHitFromSprite(hit);
@@ -199,6 +204,7 @@ export class UnitSprite extends Phaser.GameObjects.Sprite {
 
   override setFrame(frame: string | number | Phaser.Textures.Frame, updateSize?: boolean, updateOrigin?: boolean): this {
     const u = this.unit;
+    if (u && u.locked) return this;
     if (u && u.guarding) {
       const name = frameNameOf(frame);
       if (name && isHitFrameName(name)) frame = u.guardFrameName();
@@ -282,6 +288,12 @@ export interface GuardHitOpts {
   power?: 1 | 2 | 3;
   /** Stay pushed (a death follows) instead of springing back. */
   hold?: boolean;
+  /**
+   * Default true: the guard answers with its pose (v3: the brace through the toGuard frames, else
+   * the guard loop holds). false: flash, glint and knock-back only — the caller owns the pose (a
+   * lethal blow that breaks the guard, _v3/guardbreak.ts).
+   */
+  pose?: boolean;
 }
 
 /** Options of MonsterUnit.play(). */
@@ -370,6 +382,11 @@ export class MonsterUnit {
    * (and call settle()) when done.
    */
   posed = false;
+  /**
+   * v3: a lethal blow broke the guard (_v3/guardbreak.ts): the unit no longer answers hits from
+   * its guard pose (guarding is false), so the guard can open into the recoil and the death.
+   */
+  guardBroken = false;
   /** The default sheet `mon:<id>` and the optional P2 'relight' sheet key `mon:<id>:p2`. */
   readonly p1Key: string;
   readonly p2Key: string;
@@ -388,6 +405,13 @@ export class MonsterUnit {
   private kbBase: XY | null = null;
   private kbToken = 0;
   private kbTween: Phaser.Tweens.Tween | null = null;
+  /** v3 guard brace in progress (see brace()): its token. */
+  private braceToken = 0;
+  /** v3 claim (see claim()): the pinned spot (null: not claimed, or claimed without a pin), the pin handler, the claimant call depth. */
+  private claimed_ = false;
+  private claimPin: { x: number; y: number; depth: number; lift: number } | null = null;
+  private claimFn: (() => void) | null = null;
+  private claimDepth = 0;
 
   constructor(scene: Phaser.Scene, o: MonsterUnitOpts) {
     this.scene = scene;
@@ -501,7 +525,7 @@ export class MonsterUnit {
 
   /** Loop idle (attack position) or guard (defense position). */
   rest(randomStart = false): void {
-    if (!this.sprite.active) return;
+    if (!this.sprite.active || this.locked) return;
     const anim: MonsterAnim = this.position === 'defense' ? 'guard' : 'idle';
     const key = monsterAnimKey(this.cardId, anim);
     if (!this.scene.anims.exists(key)) return;
@@ -519,6 +543,7 @@ export class MonsterUnit {
    * An anim the art lacks plays opts.fallback instead, or resolves at once (see tryPlay).
    */
   play(anim: AnyMonsterAnim, opts: PlayOpts = {}): Promise<void> {
+    if (this.locked) return Promise.resolve();
     if (opts.fallback && !this.has(anim) && this.has(opts.fallback)) anim = opts.fallback;
     const key = monsterAnimKey(this.cardId, anim);
     const spec = this.spec(anim);
@@ -563,6 +588,7 @@ export class MonsterUnit {
    * is answered from the guard pose (UnitSprite). See PlayRangeOpts for the options.
    */
   playRange(anim: AnyMonsterAnim, from = 0, to?: number, o: PlayRangeOpts = {}): Promise<void> {
+    if (this.locked) return Promise.resolve();
     const s = this.sprite;
     const key = monsterAnimKey(this.cardId, anim);
     const spec = this.spec(anim);
@@ -624,7 +650,7 @@ export class MonsterUnit {
    */
   pose(anim: AnyMonsterAnim, frame: number): boolean {
     const s = this.sprite;
-    if (!s.active) return false;
+    if (!s.active || this.locked) return false;
     const n = this.frameCount(anim);
     if (!n) return false;
     s.anims.stop();
@@ -634,6 +660,7 @@ export class MonsterUnit {
 
   /** Resolve when the current animation `anim` reaches `frame` (0-based). Starts it if needed. */
   playToFrame(anim: AnyMonsterAnim, frame: number): Promise<void> {
+    if (this.locked) return Promise.resolve();
     const key = monsterAnimKey(this.cardId, anim);
     const spec = this.spec(anim);
     if (!spec || !this.scene.anims.exists(key) || !this.sprite.active) return Promise.resolve();
@@ -774,7 +801,7 @@ export class MonsterUnit {
 
   /** True while hits are answered from the guard pose (defense position, live, has a guard anim). */
   get guarding(): boolean {
-    return this.position === 'defense' && !this.retired && this.sprite.active && this.scene.anims.exists(monsterAnimKey(this.cardId, 'guard'));
+    return this.position === 'defense' && !this.guardBroken && !this.retired && this.sprite.active && this.scene.anims.exists(monsterAnimKey(this.cardId, 'guard'));
   }
 
   /** Is `key` (a play() argument) this unit's 'hit' animation? */
@@ -821,8 +848,13 @@ export class MonsterUnit {
     const d = dir ?? this.defaultBlow();
     const l = Math.hypot(d.x, d.y) || 1;
     const blow = { x: d.x / l, y: d.y / l };
-    // 1. the guard pose holds (the loop keeps breathing; a held non-guard frame goes back to it)
-    if (this.frameInfo().anim !== 'guard' || !s.anims.isPlaying) this.rest();
+    // 1. the guard answers: v3 — the contact zone gives first (the ward / shield wing opens a
+    //    frame or more back along toGuard, by power) and closes again (brace()); else the guard
+    //    pose holds (the loop keeps breathing; a held non-guard frame goes back to it)
+    if (o.pose !== false) {
+      if (LOOK_V3 && !o.hold && this.frameCount('toGuard') >= 3) this.brace(power);
+      else if (this.frameInfo().anim !== 'guard' || !s.anims.isPlaying) this.rest();
+    }
     // 2. white silhouette frame(s) (an overlay: never fights another flash over the tint); the
     //    v3 look lights only the face the blow lands on (≤ half the silhouette, A0 §6.2 item 1)
     if (LOOK_V3) contactFlash(sc, s, blow, { frames: power >= 3 ? 3 : 2, coverage: power >= 3 ? 0.45 : 0.4 });
@@ -838,6 +870,8 @@ export class MonsterUnit {
     const k = reactGuardPushPx(this.art, power); // legacy: power >= 2 ? 3 : 2
     const backEase = reactGuardReturnEase(this.art); // legacy: 'Back.Out'
     const to = { x: Math.round(base.x + blow.x * k), y: Math.round(base.y + blow.y * k * 0.6) };
+    // v3: the knock-back steps whole pixels (the eases leave sub-pixel in-betweens otherwise)
+    const snap = LOOK_V3 ? () => s.setPosition(Math.round(s.x), Math.round(s.y)) : undefined;
     return new Promise<void>((resolve) => {
       let done = false;
       const finish = () => {
@@ -855,10 +889,11 @@ export class MonsterUnit {
         y: to.y,
         duration: 60,
         ease: 'Quad.Out',
+        onUpdate: snap,
         onStop: finish,
         onComplete: () => {
           if (o.hold || !s.active || token !== this.kbToken) return finish();
-          this.kbTween = sc.tweens.add({ targets: s, x: base.x, y: base.y, duration: 240, ease: backEase, onComplete: finish, onStop: finish });
+          this.kbTween = sc.tweens.add({ targets: s, x: base.x, y: base.y, duration: 240, ease: backEase, onUpdate: snap, onComplete: finish, onStop: finish });
         },
       });
       // safety net: settle() / killTweensOf may remove the tweens without any event
@@ -875,6 +910,123 @@ export class MonsterUnit {
     void wait(this.scene, this.animMs(hit)).then(() => {
       if (s.active) s.emit(Phaser.Animations.Events.ANIMATION_COMPLETE_KEY + key, anim, anim?.frames[anim.frames.length - 1], s, '');
     });
+  }
+
+  /**
+   * v3 guard brace (plan §4 "önce temas bölgesi, sonra diğer uzuvlar"): the drawn toGuard frames
+   * played backwards and forwards again — guard → toGuard[n-2] (the ward / shield wing gives at
+   * contact) → deeper by power (n-3, n-4) → back up → toGuard[n-1] (= the guard pose) → the guard
+   * loop. Holds 40 / 60 out, 90 back, 120 on the closing frame, scaled by the weight class's
+   * recovery (motion.ts: a heavy guard settles slower). A later guardHit, any other pose or play,
+   * a claim or a retire ends it where it is.
+   */
+  private brace(power: 1 | 2 | 3): void {
+    const n = this.frameCount('toGuard');
+    const depth = Math.max(1, Math.min(power, n - 2));
+    const k = motionProfile(this.art).recoveryMs / 280;
+    const seq: { f: number; ms: number }[] = [];
+    for (let i = 1; i <= depth; i++) seq.push({ f: n - 1 - i, ms: Math.round((i === 1 ? 40 : 60) * k) });
+    for (let i = depth - 1; i >= 1; i--) seq.push({ f: n - 1 - i, ms: Math.round(90 * k) });
+    seq.push({ f: n - 1, ms: Math.round(120 * k) });
+    const token = ++this.braceToken;
+    const shown = (f: number) => {
+      const fi = this.frameInfo();
+      return fi.anim === 'toGuard' && fi.frame === f && !this.sprite.anims.isPlaying;
+    };
+    const step = (i: number, prev: number | null) => {
+      if (token !== this.braceToken || this.retired || !this.sprite.active || this.locked) return;
+      // something else took the sprite over: leave it alone
+      if (prev !== null && !shown(prev)) return;
+      if (i >= seq.length) {
+        this.rest();
+        return;
+      }
+      if (!this.pose('toGuard', seq[i].f)) return;
+      void wait(this.scene, seq[i].ms).then(() => step(i + 1, seq[i].f));
+    };
+    step(0, null);
+  }
+
+  // ================================================================ claim (v3)
+
+  /**
+   * v3: a cinematic takes the unit over from another one that is still running — a legacy strike
+   * whose attacker loses a melee clash would carry the sprite home, but its death starts where it
+   * was struck, in front of the target (battle/battle.ts). While claimed:
+   *   - the sprite is pinned to the spot it was claimed on (whole pixels, scale 1, no rotation,
+   *     its depth and lift) on every frame, after every tween and per-frame motion (PRE_RENDER);
+   *   - the animation API (play / playRange / pose / playToFrame / rest / settle, and
+   *     UnitSprite.play / setFrame) ignores every caller that does not go through asClaimant() —
+   *     the death and reaction kits (src/cinematics/_v3) call through it.
+   * retire() / destroy() end the claim. Returns false when there is nothing to claim.
+   */
+  claim(o: { pin?: boolean } = {}): boolean {
+    const s = this.sprite;
+    if (this.claimed_ || this.retired || !s.active) return false;
+    this.braceToken++;
+    this.claimed_ = true;
+    // { pin: false }: the animation API is claimed, the position is not (a strike still carries
+    // the sprite: a blocked melee attacker's rebound — battle/battle.ts); it stays on whole pixels,
+    // at scale 1, unrotated (no legacy squash / tumble angle on a claimed sprite)
+    if (o.pin === false) {
+      const keep = () => {
+        if (!s.active) return;
+        if (s.x !== Math.round(s.x) || s.y !== Math.round(s.y)) s.setPosition(Math.round(s.x), Math.round(s.y));
+        if (s.scaleX !== 1 || s.scaleY !== 1) s.setScale(1);
+        if (s.angle !== 0) s.setAngle(0);
+      };
+      keep();
+      this.claimFn = keep;
+      this.scene.events.on(Phaser.Scenes.Events.PRE_RENDER, keep);
+      return true;
+    }
+    this.scene.tweens.killTweensOf(s);
+    this.kbToken++;
+    this.kbBase = null;
+    this.kbTween = null;
+    this.claimPin = { x: Math.round(s.x), y: Math.round(s.y), depth: s.depth, lift: Math.max(0, Math.round(this.lift)) };
+    const pin = () => {
+      const p = this.claimPin;
+      if (!p || !s.active) return;
+      if (s.x !== p.x || s.y !== p.y) s.setPosition(p.x, p.y);
+      if (s.scaleX !== 1 || s.scaleY !== 1) s.setScale(1);
+      if (s.angle !== 0) s.setAngle(0);
+      if (s.depth !== p.depth) s.setDepth(p.depth);
+      this.lift = p.lift;
+      this.update(); // the shadow follows the pinned sprite
+    };
+    pin();
+    this.claimFn = pin;
+    this.scene.events.on(Phaser.Scenes.Events.PRE_RENDER, pin);
+    return true;
+  }
+
+  /** Is the unit claimed (see claim())? */
+  get claimed(): boolean {
+    return this.claimed_;
+  }
+
+  /** True while a caller outside the claimant must be ignored (claimed, not inside asClaimant). */
+  get locked(): boolean {
+    return this.claimed_ && this.claimDepth === 0;
+  }
+
+  /** Run `fn` as the claimant (its MonsterUnit / sprite animation calls go through); unclaimed: just runs it. */
+  asClaimant<T>(fn: () => T): T {
+    this.claimDepth++;
+    try {
+      return fn();
+    } finally {
+      this.claimDepth--;
+    }
+  }
+
+  /** End the claim (the pin stops; the API answers everyone again). */
+  unclaim(): void {
+    if (this.claimFn) this.scene.events.off(Phaser.Scenes.Events.PRE_RENDER, this.claimFn);
+    this.claimFn = null;
+    this.claimPin = null;
+    this.claimed_ = false;
   }
 
   // ================================================================ state
@@ -963,7 +1115,7 @@ export class MonsterUnit {
    * idle or guard looping. Used by FieldView.sync between cinematics.
    */
   settle(): void {
-    if (this.retired || !this.sprite.active) return;
+    if (this.retired || !this.sprite.active || this.claimed_) return;
     const r = this.rest0;
     const s = this.sprite;
     this.scene.tweens.killTweensOf(s);
@@ -1004,6 +1156,7 @@ export class MonsterUnit {
   retire(delayMs = 1600): void {
     if (this.retired) return;
     this.retired = true;
+    this.unclaim();
     for (const k of [...this.auras.keys()]) this.setAura(k, null);
     this.badge.setVisible(false);
     this.sprite.setVisible(false);
@@ -1014,6 +1167,7 @@ export class MonsterUnit {
 
   destroy(): void {
     this.retired = true;
+    this.unclaim();
     this.flushWaiters();
     this.scene.events.off(Phaser.Scenes.Events.POST_UPDATE, this.updateFn);
     for (const k of [...this.auras.keys()]) this.setAura(k, null);
@@ -1034,6 +1188,9 @@ export class MonsterUnit {
     const flip = this.flipX;
     const key = monsterSheetKey(this.cardId, this.player);
     this.sheetKey = key !== this.p1Key && this.scene.textures.exists(key) ? key : this.p1Key;
+    // v3: the poses a blow may need are painted first, in the background, as the unit takes the
+    // field (A2 tech review r2 #12: never painted synchronously on a contact frame)
+    if (LOOK_V3) warmMonsterSheet(this.sheetKey, WARM_ON_FIELD);
     if (this.sprite instanceof UnitSprite) this.sprite.syncSheet();
     this.sprite.setFlipX(flip);
     this.sprite.setOrigin((flip ? a.w - a.anchorX : a.anchorX) / a.w, a.anchorY / a.h);

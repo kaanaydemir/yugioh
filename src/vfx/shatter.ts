@@ -618,10 +618,12 @@ export async function shatterMaterial(scene: Phaser.Scene, sprite: Phaser.GameOb
             }
           }
           b.img.setPosition(Math.round(b.x), Math.round(b.y));
-          // tones: frame 0 true colours (in place), the flash steps, true colours, the late steps
+          // tones: frame 0 true colours (in place), the flash steps, true colours, the late steps.
+          // The flash lights about half of the bricks (by their phase): the burst glints through the
+          // breaking body, never as one flat filled silhouette on its first frames
           const t = age / b.life;
           let tone = -1;
-          if (f >= 2 && f < 2 + M.flash.length) tone = M.flash[f - 2];
+          if (f >= 2 && f < 2 + M.flash.length && b.phase < Math.PI) tone = M.flash[f - 2];
           else if (M.late.length && t >= M.lateAt) tone = M.late[Math.min(M.late.length - 1, Math.floor(((t - M.lateAt) / Math.max(0.01, 1 - M.lateAt)) * M.late.length))];
           if (tone !== b.tone) {
             b.tone = tone;

@@ -36,6 +36,7 @@ import { fx, type CinematicContext, type EventOf } from '../api';
 import { onDuelStart } from '../../duel/seeds';
 import { HOLO_SETTLE_V3_MS, poseEntrance } from '../_v3/summon';
 import { matterRamp } from '../_v3/death';
+import { warmPoses } from '../_v3/warm';
 
 export { Raster, Sparks, onFrame, run };
 // the subtle light layer (arena v2; every call is a no-op in v1)
@@ -396,6 +397,8 @@ export async function entrance(ctx: SummonCtx, piece: (e: Entrance) => Promise<v
   const field = v.field;
   const sc = ctx.scene;
   reseed(opts.seed ?? ev.uid * 31 + ev.zone);
+  // v3: the entrance pose is painted now, in the background (the card comes first)
+  warmPoses(ev.cardId as MonsterId, ev.player, ['summon']);
   void v.camera.unfocus(120);
   const atk = ctx.atk(ev.uid, 'next');
   const def = ctx.def(ev.uid, 'next');

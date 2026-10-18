@@ -25,7 +25,7 @@ export type Light = 'left' | 'right';
 
 /** Frame (v1 80×80 + margin). OX / OY = where the v1 frame's (0, 0) sits in this frame. */
 export const W = 112;
-export const H = 98;
+export const H = 116;
 export const OX = 10;
 export const OY = 14;
 
@@ -112,6 +112,12 @@ export interface Pose {
   fx: number;
   fy: number;
   /**
+   * A free staff's on-screen length factor (1 = upright in the picture plane): a staff toppling
+   * toward the camera is foreshortened (see toppleAxis(): it falls in the floor plane along the
+   * board's 2:1 diagonal, so it lies on its own tile instead of across the neighbour's).
+   */
+  fs: number;
+  /**
    * Dark dissolve 0..1: the body erodes in 2-px clusters from the horns down (a void0 front, then
    * gone, dark motes rising off it); the staff never dissolves. Revive runs it backwards.
    */
@@ -175,6 +181,7 @@ export const NEUTRAL: Pose = {
   fpy: 73,
   fx: 55,
   fy: 44,
+  fs: 1,
   diss: 0,
   gather: 0,
   rift: 0,
@@ -382,15 +389,36 @@ const ORB_MAPS: readonly (readonly string[])[] = [
   ['.ddd.', 'cddhd', 'cdddd', '.bcc.'],
   // 2: the still's orb (7×8)
   ['..ddd..', 'cdddddd', 'cdddhhd', 'ccddddd', 'ccddddd', 'cccdddd', '.bbccc.', '..bbb..'],
-  // 3: swelling (9×9)
+  // 3: swelling — the largest it ever gets (9×9): a charge shows in its core and on its cage's
+  // prong tips (drawHead), never as a bigger bare disc or a second ring
   ['...ddd...', '.cdddddd.', 'cdddddhhd', 'cdddddddd', 'ccddddddd', 'ccddddddd', 'cccdddddd', '.bbccccd.', '..bbbbb..'],
-  // 4: full charge (11×11)
-  ['....ddd....', '..cdddddd..', '.cdddddhhd.', 'cddddddhhdd', 'cdddddddddd', 'ccddddddddd', 'ccddddddddd', 'cccdddddddd', '.cccccdddd.', '..bbbcccc..', '...bbbbb...'],
 ];
+
+/**
+ * The charged core over an orb map (same size, '.' = keep): heat 1 lights a void4 core beside the
+ * highlight, heat 2 widens it, heat 3 (the held full charge) turns its heart white. Drawn for the
+ * key light at the frame's top-right, like the maps.
+ */
+// prettier-ignore
+const ORB_CORES: Record<number, readonly (readonly string[])[]> = {
+  2: [
+    ['.......', '.......', '...e...', '..eee..', '...e...', '.......', '.......', '.......'],
+    ['.......', '...e...', '..ee...', '..eeee.', '..eee..', '...e...', '.......', '.......'],
+    ['.......', '...e...', '..ee...', '..ewee.', '..eee..', '...e...', '.......', '.......'],
+  ],
+  3: [
+    ['.........', '.........', '.....e...', '....eee..', '....ee...', '.........', '.........', '.........', '.........'],
+    ['.........', '....ee...', '...eee...', '...eeeee.', '...eeee..', '....ee...', '.........', '.........', '.........'],
+    ['.........', '....ee...', '...eee...', '...eewee.', '...ewwe..', '....ee...', '.........', '.........', '.........'],
+  ],
+};
+
+/** The largest orb size the rig draws (map 3); a bigger `orb` only heats the core. */
+const ORB_MAX = 1.25;
 
 /** Which orb map a size multiplier uses. */
 export function orbIndex(k: number): number {
-  return k < 0.45 ? 0 : k < 0.8 ? 1 : k < 1.1 ? 2 : k < 1.3 ? 3 : 4;
+  return k < 0.45 ? 0 : k < 0.8 ? 1 : k < 1.1 ? 2 : 3;
 }
 
 /** The orb map for a size multiplier. */
@@ -398,16 +426,28 @@ function orbMap(k: number): readonly string[] {
   return ORB_MAPS[orbIndex(k)];
 }
 
-function drawOrbMap(q: PixelCanvas, cx: number, cy: number, k: number, light: Light, glow: number): void {
-  const m = orbMap(k);
+/**
+ * How charged the orb looks (0 = calm, 1–3 = the core heats up): from the charge and from any
+ * size asked for beyond the largest drawn orb (the swing and the held full charge keep it hot).
+ */
+export function orbHeat(o: Pick<Pose, 'orb' | 'charge'>): number {
+  const h = Math.max(o.charge, (o.orb - 1.12) / 0.2);
+  return o.orb >= 1.38 && o.charge >= 0.95 ? 3 : h >= 0.95 ? 2 : h >= 0.5 ? 1 : 0;
+}
+
+function drawOrbMap(q: PixelCanvas, cx: number, cy: number, k: number, light: Light, glow: number, heat: number): void {
+  const idx = orbIndex(k);
+  const m = ORB_MAPS[idx];
+  const core = heat > 0 ? ORB_CORES[idx]?.[heat - 1] : undefined;
   const h = m.length;
   const w = m[0].length;
   const x0 = Math.round(cx - w / 2);
   const y0 = Math.round(cy - h / 2);
-  const hot = glow > 0.85;
+  const hot = glow > 0.85 || heat > 0;
   for (let j = 0; j < h; j++)
     for (let i = 0; i < w; i++) {
-      const ch = m[j][light === 'right' ? i : w - 1 - i];
+      const mi = light === 'right' ? i : w - 1 - i;
+      const ch = m[j][mi];
       if (ch === '.') continue;
       let c: number = ch === 'd' ? PAL.void3 : ch === 'c' ? PAL.void2 : ch === 'b' ? PAL.void1 : PAL.void4;
       if (ch === 'h' && hot) {
@@ -415,6 +455,9 @@ function drawOrbMap(q: PixelCanvas, cx: number, cy: number, k: number, light: Li
         const outer = light === 'right' ? i === w - 1 || m[j][i + 1] !== 'h' : i === 0 || m[j][w - i] !== 'h';
         if (outer) c = PAL.white;
       }
+      const cc = core?.[j][mi];
+      if (cc === 'e' && ch !== 'h') c = PAL.void4;
+      else if (cc === 'w') c = PAL.white;
       q.set(x0 + i, y0 + j, c);
     }
 }
@@ -428,20 +471,47 @@ const BUST_K = 0.4;
 const PAUL_K = 0.4;
 const HEAD_K = 0.8;
 
-/** Distance from the grip to the orb centre for an orb size. */
+/** Distance from the grip to the orb centre for an orb size (the drawn size: ≤ ORB_MAX). */
 export function orbReach(k: number): number {
-  return STAFF_UP + 3.2 + 3.9 * k;
+  return STAFF_UP + 3.2 + 3.9 * Math.min(k, ORB_MAX);
 }
 
 /** Ferrule end to grip along the shaft (px): STAFF_DOWN + the iron ferrule. */
 const FERRULE = STAFF_DOWN + 3;
 
 /**
+ * The floor's 2:1 diagonal toward the camera and BACK (frame −x, +y) as a falling staff projects
+ * onto it: unit (−2, 1) / √5 times the foreshortening of a length lying on the floor against the
+ * same length standing upright (the board's iso figures stand taller than the floor's metric:
+ * 0.68 lays the 52-px staff 34 px across and 17 px down). Why this diagonal: the staff is held on
+ * the near side, so it topples toward the camera; falling back-left it lies across the front of
+ * the heap and points at the player's own spell / trap row (P1) — never along the duel axis at
+ * the opposing monster (frame +x, +y is that axis on the mirrored P2 sheet) and never flat across
+ * the neighbour (the old screen-plane topple reached 55 px).
+ */
+const LAY_K = 0.68;
+const LAY: Pt = [(-LAY_K * 2) / Math.sqrt(5), LAY_K / Math.sqrt(5)];
+
+/**
+ * A free staff toppled `phi` rad from upright toward the camera along that diagonal: its on-screen
+ * angle (sa: from vertical, + = top forward) and length factor (fs). The top falls through depth,
+ * so on screen it shortens mid-fall and lands on the diagonal (sa ≈ −117°, fs 0.68).
+ */
+export function toppleAxis(phi: number): { sa: number; fs: number } {
+  const vx = Math.sin(phi) * LAY[0];
+  const vy = -Math.cos(phi) + Math.sin(phi) * LAY[1];
+  return { sa: Math.atan2(vx, -vy), fs: Math.hypot(vx, vy) };
+}
+
+/** Staff length factor of a pose (foreshortening applies to a free staff only). */
+const fsOf = (o: Pose): number => (o.free ? o.fs : 1);
+
+/**
  * Staff grip in frame px — whole pixels: the staff, cradle and orb hang on it. In the hand it is
  * the front fist; a free staff (o.free) hangs on its ferrule's end instead.
  */
 export function gripPoint(o: Pose): Pt {
-  if (o.free) return [Math.round(o.fpx + OX + Math.sin(o.sa) * FERRULE), Math.round(o.fpy + OY - Math.cos(o.sa) * FERRULE)];
+  if (o.free) return [Math.round(o.fpx + OX + Math.sin(o.sa) * FERRULE * o.fs), Math.round(o.fpy + OY - Math.cos(o.sa) * FERRULE * o.fs)];
   return [Math.round(o.gx + OX + o.dx), Math.round(o.gy + OY + o.bob + o.sink)];
 }
 
@@ -454,7 +524,8 @@ export function handPoint(o: Pose): Pt {
 /** Centre of the staff orb (frame px) for a pose. */
 export function orbCenter(o: Pose): Pt {
   const g = gripPoint(o);
-  const d = orbReach(o.orb);
+  // a foreshortened staff: the shaft shortens, the cradle and the orb (round) keep their size
+  const d = orbReach(o.orb) - STAFF_UP * (1 - fsOf(o));
   return [g[0] + Math.sin(o.sa) * d, g[1] - Math.cos(o.sa) * d + o.orbLift];
 }
 
@@ -527,8 +598,9 @@ export function drawMagus(p: PixelCanvas, o: Pose, light: Light): void {
   const handI = handPoint(o);
   const dir: Pt = [Math.sin(o.sa), -Math.cos(o.sa)];
   const nrm: Pt = [-dir[1], dir[0]];
-  const top: Pt = [gripI[0] + dir[0] * STAFF_UP, gripI[1] + dir[1] * STAFF_UP];
-  const bot: Pt = [gripI[0] - dir[0] * STAFF_DOWN, gripI[1] - dir[1] * STAFF_DOWN];
+  const fs = fsOf(o);
+  const top: Pt = [gripI[0] + dir[0] * STAFF_UP * fs, gripI[1] + dir[1] * STAFF_UP * fs];
+  const bot: Pt = [gripI[0] - dir[0] * STAFF_DOWN * fs, gripI[1] - dir[1] * STAFF_DOWN * fs];
   const orbC = orbCenter(o);
 
   const drawShaft = (part: 'upper' | 'lower' | 'all') => {
@@ -560,11 +632,15 @@ export function drawMagus(p: PixelCanvas, o: Pose, light: Light): void {
     // night4 tips; the collar's lit pixel faces the key)
     const q = new PixelCanvas(W, H);
     const k = clamp(o.orb, 0.6, 1.6);
-    const sp = 5 * Math.max(1, k * 0.95);
+    // the cage is measured from the orb map drawn this frame: its prongs stand one ink pixel off
+    // the orb's edge at every size (touching it, the orb's own outline would eat them)
+    const hw = orbMap(o.orb)[0].length / 2;
+    const big = Math.max(0, hw - 3.5);
+    const sp = Math.max(5, hw + 1.5);
     const L0: Pt[] = [
-      [3.5 * k, -sp],
-      [-1.5, -sp],
-      [-5.5, -1],
+      [big > 0 ? hw : 3.5 * k, -sp],
+      [-1.5 - big * 0.43, -sp],
+      [-5.5 - big, -1],
     ];
     const toS = ([u, v]: Pt): Pt => [orbC[0] + dir[0] * u + nrm[0] * v, orbC[1] + dir[1] * u + nrm[1] * v];
     for (const side of [-1, 1]) {
@@ -576,23 +652,24 @@ export function drawMagus(p: PixelCanvas, o: Pose, light: Light): void {
       const iy = Math.round(side * nrm[1]);
       q.line(px[1][0], px[1][1] + 1, px[2][0], px[2][1], PAL.night3);
       q.line(px[1][0] + ix, px[1][1] + 1 + iy, px[2][0] + ix, px[2][1] + iy, PAL.night3);
-      q.set(px[0][0], px[0][1], PAL.night4);
+      // the prong tip kindles with the charge (the cage carries it: no second ring round the orb)
+      q.set(px[0][0], px[0][1], o.charge >= 0.95 ? PAL.void4 : o.charge >= 0.5 ? PAL.void3 : PAL.night4);
     }
     // collar: three pixels across the shaft top, then one row of the shaft below it
-    const c0 = toS([-6.5, 0]);
+    const c0 = toS([-6.5 - big, 0]);
     for (let v = -1; v <= 1; v++) {
       const x = Math.round(c0[0] - 0.5 + nrm[0] * v);
       const y = Math.round(c0[1] - 0.5 + nrm[1] * v);
       q.set(x, y, v * ls > 0 ? PAL.night3 : PAL.night2);
     }
-    const c1 = toS([-5.5, 0]);
+    const c1 = toS([-5.5 - big, 0]);
     q.set(Math.round(c1[0] - 0.5), Math.round(c1[1] - 0.5), PAL.night3);
     comp(f, q, Part.head, { out: PAL.ink });
   };
 
   const drawOrb = () => {
     const q = new PixelCanvas(W, H);
-    drawOrbMap(q, orbC[0], orbC[1], o.orb, light, o.glow);
+    drawOrbMap(q, orbC[0], orbC[1], o.orb, light, o.glow, orbHeat(o));
     comp(f, q, Part.orb, { out: PAL.ink, outSkip: [Part.orb] });
   };
 
@@ -762,7 +839,8 @@ export function drawMagus(p: PixelCanvas, o: Pose, light: Light): void {
     const tips = [25.5, 29, 32.5, 36, 39.5, 43, 46.5, 50, 54];
     const hp: Pt[] = tips.map((tx, i) => {
       const tipI = i % 2 === 0;
-      const ph = Math.sin((o.hemT + i * 0.14) * TAU);
+      // (a calmer cloth — ripple < 1, e.g. the braced guard — waves less)
+      const ph = Math.sin((o.hemT + i * 0.14) * TAU) * Math.min(1, o.ripple);
       const y = tipI ? 71.5 - Math.abs(i - 4) * 0.7 : 66.5 - Math.abs(i - 4) * 0.4;
       return L(tx + (tipI ? ph * 0.8 : 0), y + (tipI ? ph * 0.7 : 0));
     });
@@ -852,10 +930,13 @@ export function drawMagus(p: PixelCanvas, o: Pose, light: Light): void {
       const t = fn(26 + (x - 26) * 0.12, y);
       return [lerp(t[0], c[0], wk), lerp(t[1], c[1], wk)];
     };
+    // gathered at one point, the cloak falls open below the hand: its leading edge runs from the
+    // fist down and back, 3–5 px short of the robe's front, so a wedge of the violet front panel
+    // (skirt + hem flaps) shows between them — the guard keeps the magus's violet
     const e0 = WR(T, 28.5, 40);
     const e1 = WR(L, 41.5, 45);
-    const e2 = WR(L, 54.5, 55);
-    const shape: Pt[] = [e0, e1, e2, ...([[55.2, 62], [53.5, 66], [51.5, 71], [48, 67.5], [44, 72], [40, 68], [36, 72], [32, 67.5], [28, 71], [25, 66.5], [25.5, 56], [27, 47]] as const).map(([x, y]) => WR(L, x, y))];
+    const e2 = WR(L, 46.5, 54);
+    const shape: Pt[] = [e0, e1, e2, ...([[48.6, 61], [48.8, 66], [47, 70.5], [44, 72], [40, 68], [36, 72], [32, 67.5], [28, 71], [25, 66.5], [25.5, 56], [27, 47]] as const).map(([x, y]) => WR(L, x, y))];
     q.poly(shape, PAL.night3);
     const src = q.clone();
     const foldA = e1;
@@ -916,6 +997,8 @@ export function drawMagus(p: PixelCanvas, o: Pose, light: Light): void {
   /** The near shoulder (folds in with the pauldron). */
   const TF = (x: number, y: number): Pt => T(x - huF, y + huFy);
   const fShoulder = TF(47.5, 31.5);
+  /** The bracer of a raised forearm (drawn under the fist once the pauldron is down). */
+  let bracer: { a: Pt; b: Pt; n: Pt } | null = null;
   {
     const q = new PixelCanvas(W, H);
     const hand: Pt = [handI[0], handI[1]];
@@ -924,28 +1007,123 @@ export function drawMagus(p: PixelCanvas, o: Pose, light: Light): void {
     const cl = Math.hypot(cd[0], cd[1]) || 1;
     const ux = cd[0] / cl;
     const uy = cd[1] / cl;
-    const cuff: Pt = [hand[0] - ux * 2.2, hand[1] - uy * 2.2];
+    /**
+     * A forearm held level or up (attack / special gathers, roar, victory): the bell slides back
+     * down the arm and bares the gauntlet's bracer; the cloth is shaded by its own planes (lit
+     * top, mid, dark underside) instead of the hanging sleeve's side bands.
+     */
+    const raised = uy < 0.3;
     const lag = o.lagF + o.sway * 0.5 - o.lean * 0.3;
-    // the bell hangs from a lowered forearm; on a raised one the cloth slides back toward the
-    // elbow, so the cuff narrows and the drape shortens (idle: the forearm points down, k = 1)
-    const kb = clamp(0.5 + 0.75 * uy, 0.55, 1);
-    q.poly(sleevePoly(fShoulder, el, cuff, 5, 5.5, 8 * (0.75 + 0.25 * kb), 4 * kb, lag), PAL.void2);
+    /** The raised sleeve's hanging drape (its own planes). */
+    let drape: PixelCanvas | null = null;
+    let cuff: Pt = [hand[0] - ux * 2.2, hand[1] - uy * 2.2];
+    if (!raised) {
+      // the bell hangs from a lowered forearm; the more the forearm rises, the more the cloth
+      // slides back toward the elbow: the cuff narrows and the drape shortens (idle: k = 1)
+      const kb = clamp(0.5 + 0.75 * uy, 0.55, 1);
+      q.poly(sleevePoly(fShoulder, el, cuff, 5, 5.5, 8 * (0.75 + 0.25 * kb), 4 * kb, lag), PAL.void2);
+    } else {
+      // raised: the sleeve has slid down the forearm (all the way to the elbow when it points
+      // up), baring the bracer; its bell opens round the forearm and the slack hangs under the
+      // elbow as one drape that trails with the motion
+      const slide = clamp((-0.2 - uy) / 0.6, 0, 1);
+      const fl = Math.hypot(hand[0] - el[0], hand[1] - el[1]);
+      const reach = lerp(fl - 3.8, 3.2, slide);
+      cuff = [el[0] + ux * reach, el[1] + uy * reach];
+      const n: Pt = [-uy, ux];
+      const nD: Pt = n[1] >= 0 ? n : [-n[0], -n[1]]; // the forearm's normal toward the floor
+      const tube = (a: Pt, b: Pt, wa: number, wb: number) => {
+        const vx = b[0] - a[0];
+        const vy = b[1] - a[1];
+        const l = Math.hypot(vx, vy) || 1;
+        const nx = -vy / l;
+        const ny = vx / l;
+        q.poly(
+          [
+            [a[0] + nx * wa * 0.5, a[1] + ny * wa * 0.5],
+            [b[0] + nx * wb * 0.5, b[1] + ny * wb * 0.5],
+            [b[0] - nx * wb * 0.5, b[1] - ny * wb * 0.5],
+            [a[0] - nx * wa * 0.5, a[1] - ny * wa * 0.5],
+          ],
+          PAL.void2,
+        );
+      };
+      tube(fShoulder, el, 5, 5.5);
+      tube(el, cuff, 5.5, 6.5);
+      // the bell's slack hangs under the forearm, deepest under its mouth (a slanted hem that
+      // trails with the motion); slid down to the elbow it bunches into a short skirt there
+      const droop = 2.5 + 2 * (1 - Math.abs(uy));
+      const A: Pt = [el[0] + ux * 0.8 + nD[0] * 2.5, el[1] + uy * 0.8 + nD[1] * 2.5];
+      const B: Pt = [cuff[0] + nD[0] * 3.3, cuff[1] + nD[1] * 3.3];
+      const yb = Math.max(A[1], B[1]);
+      drape = new PixelCanvas(W, H);
+      drape.poly(
+        [
+          [el[0], el[1]],
+          [cuff[0], cuff[1]],
+          B,
+          [B[0] + lag * 0.4 - 0.6, yb + droop],
+          [lerp(A[0], B[0], 0.35) + lag * 0.3, yb + droop * 0.75],
+          [A[0] + lag * 0.2, Math.max(A[1], yb - 1) + droop * 0.35],
+          A,
+        ],
+        PAL.void2,
+      );
+    }
     // the sleeve's crown under the near plate (rides with the shoulder)
     q.poly([TF(44, 31), TF(53, 31), TF(53, 33.5), TF(51.6, 35), TF(51.4, 38), TF(45.5, 38), TF(45.5, 34), TF(44, 33)], PAL.void2);
+    const arm = q.clone();
+    if (drape) for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (drape.isOpaque(x, y)) q.set(x, y, PAL.void2);
     const src = q.clone();
-    for (let y = 0; y < H; y++)
-      for (let x = 0; x < W; x++) {
-        if (!src.isOpaque(x, y)) continue;
-        // lit: a 3-px band along the side facing the key, and the forearm's top edge (the
-        // crown under the plate stays in the plate's shadow); the edge turned away is void1
-        const side = run(src, x, y, ls, 0, 4);
-        const up = run(src, x, y, 0, -1, 2);
-        const away = run(src, x, y, -ls, 0, 4);
-        let c: number = PAL.void2;
-        if (side < 3 || (up === 0 && y > fShoulder[1] + 6)) c = PAL.void3;
-        else if (away === 0 && y > fShoulder[1] + 6) c = PAL.void1;
-        q.set(x, y, c);
-      }
+    if (!raised) {
+      for (let y = 0; y < H; y++)
+        for (let x = 0; x < W; x++) {
+          if (!src.isOpaque(x, y)) continue;
+          // lit: a 3-px band along the side facing the key, and the forearm's top edge (the
+          // crown under the plate stays in the plate's shadow); the edge turned away is void1
+          const side = run(src, x, y, ls, 0, 4);
+          const up = run(src, x, y, 0, -1, 2);
+          const away = run(src, x, y, -ls, 0, 4);
+          let c: number = PAL.void2;
+          if (side < 3 || (up === 0 && y > fShoulder[1] + 6)) c = PAL.void3;
+          else if (away === 0 && y > fShoulder[1] + 6) c = PAL.void1;
+          q.set(x, y, c);
+        }
+    } else {
+      // the raised sleeve, as the still's sleeve turned up. The arm: a void3 lit plane along its
+      // top and its end facing the key, the void2 body, a void1 underside, the crown under the
+      // plate in the plate's shadow. The drape (the still's bell drape): void3 on the side facing
+      // the key | void2 | void1 on the far side and its lower edge, a void1 fold where it leaves
+      // the arm's underside.
+      const pl = rg.paulF[0];
+      const pt = rg.paulF[1] - Math.round(o.paulY);
+      const underPlate = (x: number, y: number) => x >= pl + 42 && x <= pl + 53 && y <= pt + 31;
+      // the part of the sleeve that shows below the plate (its lit top starts under the plate's
+      // cast shadow, not at the hidden top of the shoulder)
+      const vis = new PixelCanvas(W, H);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (src.isOpaque(x, y) && !underPlate(x, y)) vis.set(x, y, PAL.void2);
+      for (let y = 0; y < H; y++)
+        for (let x = 0; x < W; x++) {
+          if (!src.isOpaque(x, y)) continue;
+          const up = run(vis, x, y, 0, -1, 2);
+          const dn = run(src, x, y, 0, 1, 2);
+          const side = run(src, x, y, ls, 0, 3);
+          let c: number = PAL.void2;
+          if (arm.isOpaque(x, y)) {
+            if (!underPlate(x, y) && (up < 2 || side < 2)) c = PAL.void3;
+            if (dn === 0) c = PAL.void1;
+          } else {
+            // the drape: void1 under the arm (the fold), along its far edge and its hem; the
+            // edge facing the key lit (2 px where the drape is wide, 1 px where it is narrow)
+            const away = run(src, x, y, -ls, 0, 8);
+            const width = side + 1 + away;
+            if (arm.isOpaque(x, y - 1) || away === 0 || dn === 0) c = PAL.void1;
+            else if (side < (width >= 5 ? 2 : width >= 3 ? 1 : 0)) c = PAL.void3;
+          }
+          q.set(x, y, c);
+        }
+      bracer = { a: [hand[0] - ux * 1.2, hand[1] - uy * 1.2], b: [cuff[0] + ux * 1.4, cuff[1] + uy * 1.4], n: [-uy, ux] };
+    }
     // the sleeve mouth: dark opening around the wrist
     q.disc(cuff[0] + ux * 0.6, cuff[1] + uy * 0.6, 1.8, PAL.void0);
     comp(f, q, Part.sleeve, { out: PAL.void0, in: PAL.void0, inDirs: [[-1, 0]] });
@@ -962,6 +1140,17 @@ export function drawMagus(p: PixelCanvas, o: Pose, light: Light): void {
   // ------------------------------------------------ front gauntlet on the grip
   {
     const q = new PixelCanvas(W, H);
+    if (bracer) {
+      // the bared bracer of a raised forearm: three slate lines along the arm, the one facing
+      // the key night4, then night3, the far one night2; a night2 rim where it leaves the sleeve
+      const { a, b, n } = bracer;
+      for (const v of [-1, 0, 1]) {
+        const lit = (n[0] * v * ls - n[1] * v) > 0.3;
+        const dark = (n[0] * v * ls - n[1] * v) < -0.3;
+        const c = lit ? PAL.night4 : dark ? PAL.night2 : PAL.night3;
+        q.line(Math.round(a[0] - 0.5 + n[0] * v), Math.round(a[1] - 0.5 + n[1] * v), Math.round(b[0] - 0.5 + n[0] * v), Math.round(b[1] - 0.5 + n[1] * v), c);
+      }
+    }
     stampMap(q, FIST_F[light], handI[0], handI[1]);
     comp(f, q, Part.fist);
   }
@@ -997,7 +1186,7 @@ export function drawMagus(p: PixelCanvas, o: Pose, light: Light): void {
   if (o.rift > 0) riftPass(p, o, riftY);
 
   // ------------------------------------------------ glow pass (unoutlined light on empty pixels)
-  glowPass(p, o, orbC);
+  glowPass(p, o, orbC, light);
   if (o.zap > 0) zapPass(f, o, rg);
 }
 
@@ -1183,12 +1372,85 @@ function paintEyes(q: PixelCanvas, hx: number, hy: number, o: Pose): void {
   q.set(hx + EYE.brow[0], hy + EYE.brow[1] + 1 - 1, e > 1.35 || o.squint >= 1 ? PAL.mag2 : PAL.mag1);
 }
 
-function glowPass(p: PixelCanvas, o: Pose, orbC: Pt): void {
+/**
+ * The pixels of a 1-px circle (8-connected, no L-corners) round (cx, cy), in angle order, each
+ * with its angle (rad).
+ */
+function ringPixels(cx: number, cy: number, R: number): [number, number, number][] {
+  const n = Math.ceil(TAU * R * 3);
+  const pts: [number, number, number][] = [];
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * TAU;
+    const x = Math.floor(cx + Math.cos(a) * R);
+    const y = Math.floor(cy + Math.sin(a) * R);
+    const l = pts[pts.length - 1];
+    if (l && l[0] === x && l[1] === y) continue;
+    pts.push([x, y, a]);
+  }
+  while (pts.length > 1 && pts[0][0] === pts[pts.length - 1][0] && pts[0][1] === pts[pts.length - 1][1]) pts.pop();
+  // pixel-perfect: drop the inner pixel of every L-corner
+  const out: [number, number, number][] = [];
+  for (let i = 0; i < pts.length; i++) {
+    const a = out.length ? out[out.length - 1] : pts[pts.length - 1];
+    const b = pts[(i + 1) % pts.length];
+    const c = pts[i];
+    if (Math.abs(a[0] - b[0]) === 1 && Math.abs(a[1] - b[1]) === 1 && (c[0] === a[0] || c[1] === a[1])) continue;
+    out.push(c);
+  }
+  return out;
+}
+
+/** Ward shell geometry (frame px): radius of its inner row round the chest, its angular span. */
+const WARD_R = 23;
+const WARD_A0 = -0.32;
+const WARD_A1 = 0.68;
+
+/**
+ * The ward's pixels [x, y, on the lit row, tip] for a pose, measured against the drawn body: a
+ * band pixel within 2 px (8-neighbourhood) of anything opaque is dropped, so the shell never
+ * touches the staff, the orb or the robe. Its length grows with o.ward up to 0.3 (from the middle).
+ */
+function wardPixels(p: PixelCanvas, o: Pose, light: Light): [number, number, boolean, boolean][] {
+  const cx = 40 + OX + o.dx + o.lean * BUST_K + 0.5;
+  const cy = 42 + OY + o.bob + 0.5;
+  const k = clamp(o.ward / 0.3, 0, 1);
+  const mid = (WARD_A0 + WARD_A1) / 2;
+  const half = ((WARD_A1 - WARD_A0) / 2) * k;
+  const a0 = mid - half;
+  const a1 = mid + half;
+  const clear = (x: number, y: number) => {
+    for (let j = -2; j <= 2; j++) for (let i = -2; i <= 2; i++) if (p.isOpaque(x + i, y + j)) return false;
+    return true;
+  };
+  const out: [number, number, boolean, boolean][] = [];
+  const R = WARD_R;
+  for (let y = Math.floor(cy - R - 3); y <= cy + R + 3; y++)
+    for (let x = Math.floor(cx); x <= cx + R + 3; x++) {
+      const dx = x + 0.5 - cx;
+      const dy = y + 0.5 - cy;
+      const d = Math.hypot(dx, dy);
+      if (d < R || d >= R + 2) continue;
+      const a = Math.atan2(dy, dx);
+      if (a < a0 || a > a1) continue;
+      const inner = d < R + 1;
+      // the tips taper to the inner row (the last 1.5 px of arc at each end)
+      const endDist = Math.min(a - a0, a1 - a) * R;
+      if (!inner && endDist < 1.5) continue;
+      if (!clear(x, y)) continue;
+      // the row facing the key light: the inner (concave) one for P1 (light behind, top-left),
+      // the outer one for the P2 relight (light in front, top-right)
+      out.push([x, y, light === 'right' ? !inner : inner, endDist < 1.5]);
+    }
+  return out;
+}
+
+function glowPass(p: PixelCanvas, o: Pose, orbC: Pt, light: Light): void {
   const put = (x: number, y: number, c: number) => {
     if (!p.isOpaque(x, y)) p.set(x, y, c);
   };
+  const ward = o.ward > 0 ? wardPixels(p, o, light) : null;
   const [ox, oy] = orbC;
-  const r = 3.9 * o.orb;
+  const r = 3.9 * Math.min(o.orb, ORB_MAX);
 
   if (!Number.isNaN(o.sfx)) {
     // smear: the orb's path as one curved band (void2 → void3 → void4 core), tapered, behind the body
@@ -1253,12 +1515,28 @@ function glowPass(p: PixelCanvas, o: Pose, orbC: Pt): void {
     const rr = r + 3.2 + Math.sin(o.t * TAU * 2 + i) * 0.5;
     put(Math.round(ox + Math.cos(a) * rr - 0.5), Math.round(oy + Math.sin(a) * rr * 0.75 - 0.5), i % 2 ? PAL.void3 : PAL.void4);
   }
-  if (o.charge > 0) {
-    for (let i = 0; i < 9; i++) {
-      const a = (i / 9) * TAU + o.t * 4;
-      const rr = r + 3 + (1 - o.charge) * 7 + (i % 3) * 1.6;
-      put(ox + Math.cos(a) * rr, oy + Math.sin(a) * rr, i % 3 === 0 ? PAL.mag3 : PAL.void4);
-      put(ox + Math.cos(a - 0.25) * (rr + 1.4), oy + Math.sin(a - 0.25) * (rr + 1.4), PAL.void2);
+  if (o.charge > 0 && o.charge < 0.95) {
+    // the charge: no ring of its own (the cage is the orb's one ring; its prong tips kindle with
+    // the charge in drawHead, the core heats up in the orb map) — three 2-px motes fall in onto
+    // the cage, closing in as the charge builds
+    const hw = orbMap(o.orb)[0].length / 2;
+    const Rc = Math.max(5, hw + 1.5);
+    const cov = clamp(o.charge, 0, 1);
+    const a0 = o.t * TAU;
+    for (let i = 0; i < 3; i++) {
+      const a = -a0 * 1.3 + (i / 3) * TAU + 0.6;
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      const rr = Rc + 2.5 + (1 - cov) * 7;
+      const hx = Math.floor(ox + ca * rr);
+      const hy = Math.floor(oy + sa * rr);
+      const [tx, ty] = Math.abs(ca) >= Math.abs(sa) ? [hx + Math.sign(ca), hy] : [hx, hy + Math.sign(sa)];
+      // never on (or touching) the body: a mote beside the helm would tangle with the horns
+      let near = false;
+      for (let j = -1; j <= 1 && !near; j++) for (let k = -1; k <= 1; k++) if (p.isOpaque(hx + k, hy + j) || p.isOpaque(tx + k, ty + j)) near = true;
+      if (near) continue;
+      put(hx, hy, i === 0 ? PAL.mag3 : PAL.void4);
+      put(tx, ty, PAL.void2);
     }
   }
   if (o.flash > 0) {
@@ -1341,32 +1619,31 @@ function glowPass(p: PixelCanvas, o: Pose, orbC: Pt): void {
       put(hx, hy, i % 4 === 0 ? PAL.void4 : PAL.void3);
     }
   }
-  if (o.ward > 0) {
-    // ward: a 1-px shell of abyssal light in front of the body; a bright crest slides along it
-    const cx = 40 + OX + o.dx + o.lean * BUST_K;
-    const cy = 44 + OY + o.bob;
-    const N = 150;
-    const crestAt = ((o.t % 1) + 1) % 1;
-    // a short shell in front of the chest and the staff (not a full arc: with the diagonal staff
-    // a long one would read as a bow), dotted away from the crest, solid around it
-    for (let i = 0; i <= N; i++) {
-      const fr = i / N;
-      const a = -0.55 + fr * 1.1;
-      const x = cx + Math.cos(a) * 25;
-      const y = cy - 2 + Math.sin(a) * 22;
-      const dc = Math.abs(fr - crestAt) * 30;
-      put(x, y, dc < 0.8 ? PAL.white : dc < 2.5 ? PAL.void4 : PAL.void3);
-    }
+  if (o.ward > 0 && ward) {
+    // ward: a short shell of abyssal light in front of the body, concentric with the chest — a
+    // 2-px band (the row facing the key light lavender, the other violet) with a night outline,
+    // its tips tapering to 1 px, kept ≥ 2 px off the body, the staff and the orb (ward() is
+    // measured before the motes are drawn); a white crest slides along its lit row
+    for (const [x, y, lit, tip] of ward) p.set(x, y, tip ? PAL.void3 : lit ? PAL.void4 : PAL.void3);
+    const n = ward.length;
+    const runs = ward.filter((w) => w[2]);
+    const crest = runs[Math.min(runs.length - 1, Math.floor((((o.t % 1) + 1) % 1) * runs.length))];
+    if (crest && n > 6) p.set(crest[0], crest[1], PAL.white);
+    for (const [x, y] of ward)
+      for (const [ddx, ddy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ])
+        put(x + ddx, y + ddy, PAL.night0);
   }
   if (o.eye > 1.5 && o.squint < 0.5) {
-    // visor flare streaming forward (longer and whiter at a full roar)
+    // the eyes' glare catches the visor's front edge: the helm's outline pixel right after the
+    // far eye turns magenta (a 1-px rim on the silhouette; nothing is drawn past the helm)
     const [hx, hy] = headAnchor(o);
-    const ey = hy + EYE.y;
-    const n = o.eye > 2.2 ? 6 : 3;
-    for (let i = 0; i < n; i++) {
-      const x = hx + 18 + i;
-      put(x, ey, i === 0 ? (n > 3 ? PAL.white : PAL.mag4) : i < n - 2 ? PAL.mag3 : PAL.mag2);
-      if (n > 3 && i < 2) put(x, ey - 1, PAL.mag2);
-    }
+    const x = hx + EYE.far[EYE.far.length - 1] + 1;
+    const y = hy + EYE.y;
+    if (p.get(x, y) === PAL.ink) p.set(x, y, o.eye > 2.2 ? PAL.mag3 : PAL.mag2);
   }
 }

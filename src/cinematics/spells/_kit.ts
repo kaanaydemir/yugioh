@@ -29,15 +29,17 @@ import type { GameEvent, PlayerId, Uid } from '../../engine/types';
 import { PAL, RAMPS, type Ramp } from '../../art/palette';
 import { PixelCanvas } from '../../art/pixel';
 import { AK } from '../../art/arena';
-import { STAND_H, isoProject } from '../../art/cards';
+import { CARD_SIL, STAND_H, isoProject } from '../../art/cards';
 import { CardSprite } from '../../view/CardSprite';
 import type { TileCard } from '../../view/TileCard';
-import { BOARD_CENTER, DEPTH, TILE_H, TILE_W, type XY, zoneXY } from '../../view/layout';
+import { BOARD_CENTER, DEPTH, LOOK_V3, TILE_H, TILE_W, type XY, duelistXY, zoneXY } from '../../view/layout';
 import { lightBeam, lightDim, lightFlash, lightPool, type BeamHandle, type LightHandle } from '../../view/light';
 import { measureText, pixelText, revealText, upper } from '../../ui/text';
 import { TEX, shake, tween, wait } from '../../vfx/core';
 import { E, Raster, Sparks, clamp01, floorRing, lerp, onFrame, qbez, rnd, rr, run, seg, tileFlash } from '../../vfx/setpieces';
 import { sparkleBurst } from '../../vfx/summon';
+import { Sparks as PxSparks } from '../../vfx/combat';
+import { cardLeaves } from '../_v3/card';
 import { fx, type CinematicContext } from '../api';
 
 export type AnyCtx = CinematicContext<GameEvent>;
@@ -377,6 +379,7 @@ export interface StreakOpts {
  * `to` (accelerating). Resolves on arrival (the caller plays the arrival burst / effect).
  */
 export async function energyStreak(scene: Phaser.Scene, from: XY, to: XY, o: StreakOpts = {}): Promise<void> {
+  if (LOOK_V3) return energyStreakV3(scene, from, to, o);
   const ramp = o.ramp ?? TEAL_FX;
   const d = Math.hypot(to.x - from.x, to.y - from.y);
   const ms = o.ms ?? Math.max(200, Math.min(420, d * 1.3));
@@ -432,6 +435,8 @@ export async function energyStreak(scene: Phaser.Scene, from: XY, to: XY, o: Str
  * Use it for `toGraveyard{from:'resolved'}` (consume the event first).
  */
 export async function resolvedToGraveyard(ctx: AnyCtx, o: { owner: PlayerId; cardId: CardId; from: XY; delay?: number; scale?: number }): Promise<void> {
+  // v3: card continuity (_v3/card.ts): the pile's own iso card is born at `from`, whole pixels
+  if (LOOK_V3) return fx.cardToGraveyard(ctx, { owner: o.owner, cardId: o.cardId, from: ip(o.from), delay: o.delay });
   const sc = ctx.scene;
   if (o.delay) await wait(sc, o.delay);
   const pile = ctx.views.field.pile(o.owner, 'graveyard');
@@ -462,7 +467,9 @@ export function sendResolved(ctx: AnyCtx, gi: number, from: XY, delay = 0): Prom
 // ================================================================ the opening
 
 export interface Opening {
-  card: CardSprite;
+  /** The showcase card (v3 look, a set card: its TileCard standing on its own zone). */
+  card: CardSprite | TileCard;
+  /** Where the card hovers (v1: the middle of the field; v3: beside its owner / on its own tile). */
   center: XY;
   /** The card turns into energy and flies to `to` (resolves on arrival). */
   release(to: XY, o?: StreakOpts): Promise<void>;
@@ -470,6 +477,12 @@ export interface Opening {
   land(o: { spot: 'spellTrap' | 'field'; index: number }): Promise<TileCard>;
   /** Nothing to resolve: fade everything. */
   close(): Promise<void>;
+  /**
+   * v3 look with `keepCard`: the spent card (it stayed where it hovered after release()) goes to
+   * its owner's graveyard — consumes the activation's own toGraveyard event `gi` (−1: none, the
+   * card just fades). Without a kept card it re-forms at `from` (v1: sendResolved).
+   */
+  leave?(gi: number, from?: XY): Promise<void>;
 }
 
 export interface OpeningOpts {
@@ -479,6 +492,13 @@ export interface OpeningOpts {
   push?: boolean;
   /** Called when the hover starts with the hold length (start an effect's anticipation early). */
   onHold?: (holdMs: number) => void;
+  /**
+   * v3 look only: release() leaves the spent card where it hovered (no collapse into the orb); the
+   * spell sends it to the graveyard later with op.leave() — card continuity.
+   */
+  keepCard?: boolean;
+  /** v3 look only: where the orb leaves the card — its centre (default) or its top edge (a bolt to the sky). */
+  releaseFrom?: 'center' | 'top';
 }
 
 /** Standing card centre above a tile (TileCard.standUp pose at scale 1). */
@@ -515,6 +535,7 @@ export async function spellOpening(
   ctx: AnyCtx,
   o: { uid: Uid; cardId: CardId; player: PlayerId; from: 'hand' | 'set'; zone: number | null } & OpeningOpts,
 ): Promise<Opening> {
+  if (LOOK_V3) return spellOpeningV3(ctx, o);
   const sc = ctx.scene;
   const field = ctx.views.field;
   const center = SHOW_AT;
@@ -676,3 +697,420 @@ export function relax(ctx: AnyCtx, ms = 320): void {
 
 /** Keep a value in 0..1. */
 export const c01 = clamp01;
+
+// ================================================================ the v3 look (?look=v3)
+//
+// A0 §6.2 item 9 / §4.1 "Büyü açılışı" (plan §4–§5): the opening reaches its release in ≤ 0.45 s and
+// stays on its OWNER's side — never in the middle of the board, never scaled:
+//   hand  the card leaves the hand on whole pixels (no rotation, scale 1) and hovers beside its
+//         owner's duelist (castSpot) while the duelist commands; a hidden hand's card is born
+//         there (an activation is public) out of a streak from the mini-hand;
+//   set   the card springs upright on its own tile (TileCard 3D raster: crisp) and stays there.
+// Arrival: a two-frame teal silhouette, a 1-px settle, a rune ring inking itself in on the floor,
+// motes pouring in, a 1-px rim with a node running round it, the name plate stamped under it.
+// release(): a two-frame white silhouette and a pixel orb leaves the card (its centre, or its top
+// edge with releaseFrom 'top'); the card collapses into the orb as pixels — or, with keepCard,
+// stays where it hovered, spent, and op.leave() sends it to the graveyard later (card continuity).
+// No veil, no camera push, no soft glow textures: the stepped light layer lights the card's tile.
+
+/** Half sizes of a CardSprite at scale 1. */
+const CARD_HW = 24;
+const CARD_HH = 34;
+
+/**
+ * Where a spell cast from the hand hovers (card centre): beside its owner's duelist, on the outer
+ * side of the board — P1 (173, 206) lower left, P2 (467, 114) upper right (mirrored).
+ */
+export function castSpot(player: PlayerId): XY {
+  const d = duelistXY(player);
+  return player === 0 ? { x: Math.round(d.x) - 40, y: Math.round(d.y) - 8 } : { x: Math.round(d.x) + 40, y: Math.round(d.y) + 8 };
+}
+
+/** The floor under a card hovering at `at` (its rune ring and its shadow). */
+function castFloor(at: XY): number {
+  return at.y + CARD_HH + 6;
+}
+
+/** A flat one-colour silhouette of a scale-1 card centred on `at`, for `frames` rendered frames. */
+function cardSil(scene: Phaser.Scene, at: XY, color: number, frames = 2, depth: number = DEPTH.FX_TOP + 10.5): void {
+  const img = scene.add.image(Math.round(at.x), Math.round(at.y), CARD_SIL).setTintFill(color).setDepth(depth);
+  let n = 0;
+  onFrame(scene, () => {
+    if (++n > frames || !img.active) {
+      if (img.active) img.destroy();
+      return false;
+    }
+    return true;
+  });
+}
+
+interface Rim {
+  stop(): void;
+}
+
+/** A 1-px rim round a hovering card with a bright node running round it (follows the card). */
+function cardRim(scene: Phaser.Scene, card: CardSprite, ramp: readonly number[]): Rim {
+  const W = CARD_HW * 2 + 4;
+  const H = CARD_HH * 2 + 4;
+  const ras = new Raster(scene, card.x - W / 2, card.y - H / 2, W, H, card.depth - 0.1);
+  const per = 2 * (W - 1) + 2 * (H - 1);
+  const at = (d: number): XY => {
+    d = ((d % per) + per) % per;
+    if (d < W - 1) return { x: d, y: 0 };
+    d -= W - 1;
+    if (d < H - 1) return { x: W - 1, y: d };
+    d -= H - 1;
+    if (d < W - 1) return { x: W - 1 - d, y: H - 1 };
+    d -= W - 1;
+    return { x: 0, y: H - 1 - d };
+  };
+  let dead = false;
+  const stop = onFrame(scene, (_dt, el) => {
+    if (dead || !card.active) {
+      ras.destroy();
+      return false;
+    }
+    ras.moveTo(Math.round(card.x) - W / 2, Math.round(card.y) - H / 2);
+    ras.draw((g) => {
+      const x0 = ras.x;
+      const y0 = ras.y;
+      g.rect(x0 + 1, y0, W - 2, 1, ramp[2]);
+      g.rect(x0 + 1, y0 + H - 1, W - 2, 1, ramp[2]);
+      g.rect(x0, y0 + 1, 1, H - 2, ramp[2]);
+      g.rect(x0 + W - 1, y0 + 1, 1, H - 2, ramp[2]);
+      // two nodes chase each other round the rim, a 3-px bright tail behind each
+      const head = Math.floor(el * 0.16);
+      for (const off of [0, per / 2]) {
+        for (let k = 0; k < 4; k++) {
+          const p = at(head + off - k);
+          g.px(x0 + p.x, y0 + p.y, k === 0 ? PAL.white : k === 1 ? ramp[1] : ramp[2]);
+        }
+      }
+    });
+    return true;
+  });
+  return {
+    stop() {
+      dead = true;
+      stop();
+      ras.destroy();
+    },
+  };
+}
+
+/** A small rune ring inking itself in on the floor at (x, y) (clockwise), ticks orbiting; dismiss() dithers it out. */
+function floorRune(scene: Phaser.Scene, at: XY, ramp: readonly number[], r = 22): { dismiss(ms?: number): Promise<void> } {
+  const ras = Raster.around(scene, at.x, at.y, r * 2 + 12, r + 12, DEPTH.SHADOW - 1);
+  let p = 0;
+  let level = 1;
+  let dead = false;
+  const stop = onFrame(scene, (dt, el) => {
+    if (dead) return false;
+    p = Math.min(1, p + dt / 160);
+    ras.draw((g) => {
+      if (level <= 0.02) return;
+      const a0 = -Math.PI / 2;
+      g.ring(at.x, at.y, r, r / 2, ramp[2], level, a0, a0 + TAU * p);
+      g.ring(at.x, at.y, r - 4, r / 2 - 2, ramp[3], level * 0.75, a0 - TAU * p, a0);
+      for (let i = 0; i < 6; i++) {
+        const t = el * 0.002 + (i / 6) * TAU;
+        if (i / 6 > p) continue;
+        g.dpx(at.x + Math.cos(t) * (r + 2), at.y + Math.sin(t) * (r / 2 + 1), i % 2 ? ramp[1] : PAL.white, level);
+      }
+    });
+    return true;
+  });
+  const kill = () => {
+    if (dead) return;
+    dead = true;
+    stop();
+    ras.destroy();
+  };
+  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, kill);
+  return {
+    async dismiss(ms = 200) {
+      if (dead) return;
+      await run(scene, ms, (t) => (level = 1 - t));
+      kill();
+    },
+  };
+}
+
+/** The pixels of a card collapse into `to` (the card is gone; the caller destroys the sprite). */
+function collapseInto(scene: Phaser.Scene, card: CardSprite, to: XY, ms = 110): void {
+  const pc = card.pixels;
+  const sp = new PxSparks(scene, DEPTH.FX_TOP + 11);
+  const x0 = Math.round(card.x) - pc.w / 2;
+  const y0 = Math.round(card.y) - pc.h / 2;
+  for (let y = 1; y < pc.h; y += 4)
+    for (let x = (y >> 2) % 2 ? 1 : 3; x < pc.w; x += 4) {
+      const c = pc.get(x, y);
+      if (c === null) continue;
+      sp.add({ x: x0 + x, y: y0 + y, tx: to.x, ty: to.y, curl: rr(-6, 6), life: rr(ms * 0.7, ms), colors: [c, PAL.teal4, PAL.white], shape: 'px', fadeAt: 1 });
+    }
+  sp.release();
+}
+
+/** The v3 energy orb: a whole-pixel orb (no glow textures) with a pixel comet tail; resolves on arrival. */
+async function energyStreakV3(scene: Phaser.Scene, from: XY, to: XY, o: StreakOpts): Promise<void> {
+  const ramp = o.ramp ?? TEAL_FX;
+  const d = Math.hypot(to.x - from.x, to.y - from.y);
+  const ms = o.ms ?? Math.max(160, Math.min(360, d * 1.1));
+  const depth = o.depth ?? DEPTH.FX_TOP + 12;
+  const big = (o.size ?? 2) === 2;
+  const R = big ? 3 : 2;
+  const orb = new Raster(scene, from.x - R - 1, from.y - R - 1, R * 2 + 3, R * 2 + 3, depth);
+  const trail = new PxSparks(scene, depth - 0.5);
+  const path = o.path ?? 'arc';
+  const lift = o.lift ?? Math.min(70, d * 0.35);
+  const ctrl: XY =
+    path === 'line'
+      ? { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 }
+      : path === 'dive'
+        ? { x: lerp(from.x, to.x, 0.35), y: Math.min(from.y, to.y) - lift * 1.4 }
+        : { x: (from.x + to.x) / 2, y: Math.min(from.y, to.y) - lift };
+  const f0 = o.floorFrom ?? from.y + TILE_H;
+  const f1 = o.floorTo ?? to.y + 2;
+  const light = o.light === false ? null : lightPool(scene, from.x, from.y, { color: ramp[2], radius: big ? 20 : 14, floorY: f0, intensity: big ? 0.8 : 0.6, fadeIn: 0 });
+  let prev = { x: Math.round(from.x), y: Math.round(from.y) };
+  await run(scene, ms, (t, el) => {
+    const k = path === 'line' ? E.inQuad(t) * 0.65 + t * 0.35 : E.inOutSine(t);
+    const q = qbez(from, ctrl, to, k);
+    const x = Math.round(q.x);
+    const y = Math.round(q.y);
+    light?.setPosition(x, y, Math.max(y, Math.round(lerp(f0, f1, k))));
+    orb.moveTo(x - R - 1, y - R - 1);
+    orb.draw((g) => {
+      const pulse = Math.floor(el / 50) % 2 === 0;
+      g.disc(x, y, R + (pulse ? 0.5 : 0), ramp[2]);
+      g.disc(x, y, R - 1, ramp[1]);
+      g.rect(x - 1, y - 1, 2, 2, PAL.white);
+    });
+    // the tail: one pixel every 2 px of travel, stepping down the ramp, no fading alpha
+    const steps = Math.max(1, Math.ceil(Math.hypot(x - prev.x, y - prev.y) / 2));
+    for (let i = 0; i < steps; i++) {
+      const px = Math.round(lerp(prev.x, x, i / steps));
+      const py = Math.round(lerp(prev.y, y, i / steps));
+      trail.add({ x: px + Math.round(rr(-1, 1)), y: py + Math.round(rr(-1, 1)), life: rr(110, 200), colors: [ramp[1], ramp[2], ramp[3]], shape: 'px', fadeAt: 1 });
+      if (rnd() < 0.2) trail.add({ x: px, y: py, vx: rr(-24, 24), vy: rr(-24, 24), drag: 3, life: rr(160, 280), colors: [PAL.white, ramp[1], ramp[2]], shape: rnd() < 0.3 ? 'plus' : 'px', flicker: true, fadeAt: 1 });
+    }
+    prev = { x, y };
+  });
+  orb.destroy();
+  trail.release();
+  void light?.fadeOut(120);
+  if (o.light !== false) void lightFlash(scene, to.x, to.y, ramp[2], big ? 28 : 20, 300, { floorY: Math.max(to.y, f1), intensity: big ? 0.9 : 0.7 });
+}
+
+/** The v3 spell opening (see the section header). */
+async function spellOpeningV3(
+  ctx: AnyCtx,
+  o: { uid: Uid; cardId: CardId; player: PlayerId; from: 'hand' | 'set'; zone: number | null } & OpeningOpts,
+): Promise<Opening> {
+  const sc = ctx.scene;
+  const field = ctx.views.field;
+  const hold = Math.min(180, Math.max(70, Math.round((o.hold ?? 300) * 0.5)));
+  const keep = !!o.keepCard;
+  bg(Promise.resolve(ctx.views.duelists?.get(o.player)?.play('command')));
+  const motes = new PxSparks(sc, DEPTH.FX_TOP + 11);
+  let gathering = false;
+  let center: XY;
+  let floorY: number;
+  let card: CardSprite | null = null;
+  const tile = o.from === 'set' && o.zone !== null ? field.tileAt(o.player, 'spellTrap', o.zone) : null;
+  let standing: TileCard | null = null;
+  let rim: Rim | null = null;
+  let cardLight: LightHandle | null = null;
+
+  if (tile && tile.active) {
+    // ---- set: the tile flashes, a thin column bursts out, the card springs upright and turns face-up
+    standing = tile;
+    tile.setCard(o.cardId);
+    const home = ip(tile.home);
+    ctx.sfx('flipReveal', { volume: 0.8, pitch: 1.1 });
+    bg(tileFlash(sc, home.x, home.y, TEAL_FX, 300));
+    bg(floorRing(sc, home.x, home.y, { r0: 6, r1: 34, ms: 320, ramp: TEAL_FX, depth: DEPTH.TILE_FX + 2 }));
+    bg(tileColumn(sc, home, 300));
+    void lightFlash(sc, home.x, home.y, PAL.teal4, 34, 380, { floorY: home.y, ring: true, intensity: 1 });
+    await tile.standUp(180, { reveal: true });
+    ctx.sfx('spellActivate', { volume: 0.8, pitch: 1.1 });
+    center = standCenter(tile);
+    floorY = home.y;
+    cardLight = lightPool(sc, home.x, home.y, { color: PAL.teal3, radius: 26, floorY: home.y, intensity: 0.8, anim: 'breathe', fadeIn: 0 });
+  } else {
+    center = castSpot(o.player);
+    floorY = castFloor(center);
+    const hand = ctx.views.hand;
+    const own = hand.owner === o.player ? hand.takeCard(o.uid) : null;
+    const cam = sc.cameras.main;
+    if (own) {
+      // ---- the viewer's own hand: the card leaves it on whole pixels and flies to its owner's side
+      card = own;
+      card.setRotation(0).setScale(1).setDepth(DEPTH.FX_TOP + 10);
+      card.setCard(o.cardId);
+      card.setFaceUp(true);
+      const p0 = { x: Math.round(card.x + (cam.zoom === 1 ? cam.scrollX : 0)), y: Math.round(card.y + (cam.zoom === 1 ? cam.scrollY : 0)) };
+      card.setPosition(p0.x, p0.y + 2); // anticipation: it dips
+      await wait(sc, 30);
+      ctx.sfx('whoosh', { volume: 0.45, pitch: 1.2 });
+      const trail = new PxSparks(sc, DEPTH.FX_TOP + 9);
+      // it swings out round the board's outer edge (P1: low, under the front corner; P2: up the
+      // right side), never over the middle of the board
+      const ctrl = o.player === 0 ? { x: Math.round((p0.x + center.x) / 2) - 50, y: p0.y + 4 } : { x: center.x + 130, y: p0.y - 10 };
+      const c = card;
+      await run(sc, 170, (t) => {
+        if (!c.active) return;
+        const p = qbez(p0, ctrl, center, E.outCubic(t));
+        const x = Math.round(p.x);
+        const y = Math.round(p.y);
+        c.setPosition(x, y);
+        if (t < 0.9) trail.add({ x: x + Math.round(rr(-CARD_HW, CARD_HW)), y: y + CARD_HH - Math.round(rr(0, 8)), vy: rr(10, 30), life: rr(120, 220), colors: [PAL.teal4, PAL.teal3, PAL.teal2], shape: 'px', fadeAt: 1 });
+      });
+      trail.release();
+    } else {
+      // ---- a hidden hand: a streak leaves the mini-hand and the card is born beside its duelist
+      const remaining = ctx.state.players[o.player].hand.filter((u) => u !== o.uid).map((u) => ({ uid: u, cardId: ctx.state.cards[u].cardId }));
+      if (hand.owner !== o.player) hand.setCards(remaining, o.player);
+      const m = hand.miniXY(o.player, 0);
+      const from = { x: Math.round(m.x + (cam.zoom === 1 ? cam.scrollX : 0)), y: Math.round(m.y + (cam.zoom === 1 ? cam.scrollY : 0)) };
+      ctx.sfx('whoosh', { volume: 0.45, pitch: 1.2 });
+      await energyStreakV3(sc, from, center, { ms: 170, path: 'line', size: 1, light: false });
+      card = new CardSprite(sc, center.x, center.y, o.cardId, { faceUp: true, player: o.player }).setDepth(DEPTH.FX_TOP + 10);
+      cardSil(sc, center, PAL.white, 2);
+    }
+    // ---- arrival: teal silhouette, a 1-px settle, the rune ring on the floor
+    cardSil(sc, center, PAL.teal4, 2);
+    const c = card;
+    void run(sc, 60, (t) => c.active && c.setY(center.y + Math.round(2 * (1 - t))));
+    ctx.sfx('spellActivate', { volume: 0.85 });
+    rim = cardRim(sc, card, TEAL_FX);
+  }
+  const rune = floorRune(sc, { x: center.x, y: floorY }, TEAL_FX, standing ? 24 : 20);
+  const plate = namePlate(sc, o.cardId, { x: center.x, y: standing ? floorY + 16 : center.y + CARD_HH + 14 });
+  bg(sparkleBurst(sc, center.x, center.y, { ramp: TEAL, count: 10, depth: DEPTH.FX_TOP + 11 }));
+
+  // ---- hover: motes pour in, the card breathes by one pixel
+  gathering = true;
+  const hoverY = card ? center.y : 0;
+  const stopHover = onFrame(sc, (dt, el) => {
+    if (!gathering) return false;
+    if (card && card.active) card.setY(hoverY - (Math.floor(el / 140) % 2));
+    if (dt > 0 && rnd() < dt / 30) {
+      const a = rr(0, TAU);
+      const dd = rr(30, 52);
+      motes.add({ x: Math.round(center.x + Math.cos(a) * dd), y: Math.round(center.y + Math.sin(a) * dd * 0.7), tx: center.x, ty: center.y, curl: rr(-10, 10), life: rr(200, 300), colors: [PAL.teal2, PAL.teal3, PAL.teal4, PAL.white], shape: rnd() < 0.25 ? 'plus' : 'px', fadeAt: 1 });
+    }
+    return true;
+  });
+  try {
+    o.onHold?.(hold);
+  } catch (e) {
+    console.error('[spells] onHold', e);
+  }
+  await wait(sc, hold);
+
+  let cleaned = false;
+  const cleanup = (mode: 'release' | 'dismiss') => {
+    if (cleaned) return;
+    cleaned = true;
+    gathering = false;
+    stopHover();
+    motes.release();
+    rim?.stop();
+    if (card && card.active) card.setY(hoverY);
+    bg(wait(sc, mode === 'release' ? 170 : 0).then(() => plate.hide()));
+    bg(rune.dismiss(mode === 'release' ? 160 : 220));
+    void cardLight?.fadeOut(200);
+  };
+  /** The standing set card leaves the field bookkeeping (the spell owns it from now on). */
+  const own = () => {
+    if (standing) field.release(o.uid);
+  };
+  let spentCard: CardSprite | null = null;
+  let spentTile: TileCard | null = null;
+
+  return {
+    card: card ?? (standing as TileCard),
+    center,
+    async release(to, so = {}) {
+      const from = o.releaseFrom === 'top' ? { x: center.x, y: Math.round(center.y - (standing ? 22 : CARD_HH) - 2) } : center;
+      if (card) cardSil(sc, center, PAL.white, 2);
+      ctx.sfx('whoosh', { volume: 0.6, pitch: 1.5 });
+      cleanup('release');
+      own();
+      if (keep) {
+        spentCard = card;
+        spentTile = standing;
+      } else if (card) {
+        collapseInto(sc, card, from);
+        card.destroy();
+      } else if (standing) {
+        const t = standing;
+        bg(t.dissolve(260).then(() => t.active && t.destroy()));
+      }
+      bg(starFlare(sc, from, 180, TEAL_FX, 18));
+      void lightFlash(sc, center.x, center.y, PAL.teal4, 30, 260, { floorY, intensity: 0.9 });
+      so.onLaunch?.();
+      await energyStreakV3(sc, from, to, so);
+    },
+    async land(l) {
+      cleanup('dismiss');
+      const at = zoneXY(o.player, l.spot, l.index);
+      if (standing && l.spot === 'spellTrap' && l.index === o.zone && standing.active) {
+        // a set equip lies back down on its own tile (it stays on the field)
+        await standing.layDown(220);
+        void lightFlash(sc, at.x, at.y, PAL.teal3, 30, 380, { intensity: 0.85, ring: true });
+        standing.tileFlash(PAL.teal3, 300);
+        return standing;
+      }
+      own();
+      if (standing && standing.active) standing.destroy();
+      const t = await fx.slamToZone(ctx, card, { player: o.player, spot: l.spot, index: l.index, uid: o.uid, cardId: o.cardId, faceUp: true, ms: 300, shake: 1 });
+      ctx.sfx('cardSlam', { volume: 0.75 });
+      void lightFlash(sc, at.x, at.y, PAL.teal3, 30, 380, { intensity: 0.85, ring: true });
+      t.tileFlash(PAL.teal3, 300);
+      return t;
+    },
+    async close() {
+      cleanup('dismiss');
+      own();
+      if (card && card.active) {
+        await card.dissolve(320);
+        card.destroy();
+      } else if (standing && standing.active) {
+        await standing.dissolve(320);
+        standing.destroy();
+      }
+    },
+    async leave(gi, from) {
+      const g = evAt(ctx, gi, 'toGraveyard');
+      const sc2 = ctx.scene;
+      if (!g || ctx.isConsumed(gi)) {
+        const c = spentCard as CardSprite | null;
+        const t = spentTile as TileCard | null;
+        if (c && c.active) c.destroy();
+        if (t && t.active) t.destroy();
+        return;
+      }
+      ctx.consumeAt(gi);
+      const c = spentCard as CardSprite | null;
+      const t = spentTile as TileCard | null;
+      spentCard = null;
+      spentTile = null;
+      if (t && t.active) {
+        // the spent set card lies back down on its tile and leaves from there
+        await t.layDown(200);
+        return cardLeaves(ctx, { owner: g.owner, cardId: g.cardId, from: ip(t.home), tile: t });
+      }
+      if (c && c.active) {
+        // the spent card drops to the floor beside its owner; the pile's card is born there
+        const y0 = Math.round(c.y);
+        await run(sc2, 70, (k) => c.active && c.setY(y0 + Math.round(6 * k * k)));
+        const at = { x: Math.round(c.x), y: castFloor(center) - 2 };
+        c.destroy();
+        return cardLeaves(ctx, { owner: g.owner, cardId: g.cardId, from: at });
+      }
+      return fx.cardToGraveyard(ctx, { owner: g.owner, cardId: g.cardId, from: ip(from ?? center) });
+    },
+  };
+}

@@ -10,7 +10,9 @@
 //   cutinSequence(a)  → the frame timeline the boot step turns into the `cutin:<id>` animation
 //
 // Textures: `cutin:<id>` (frames 'f0'…'fN'), animation `cutin:<id>` (one-shot, ~2 s, built by
-// src/boot/25-cutins.ts). The timeline is tuned to src/vfx/cutin.ts: the portrait slides in at
+// src/boot/25-cutins.ts).
+// v3: a portrait with p2: 'relight' also gets `cutin:<id>:p2` (texture + animation, the frames
+// drawn with { lightFrom: 'right' }) for player 2 — see cutinRelit / cutinP2Key. The timeline is tuned to src/vfx/cutin.ts: the portrait slides in at
 // ~180–480 ms, the eyes flare at ~590 ms (lens glint is placed on the brightest eye pixel of the
 // LAST frame), the name plate slams at ~690 ms, the white flash-out comes at ~1.3 s.
 
@@ -18,7 +20,7 @@ import type { MonsterId } from '../../data/cards';
 import { MONSTER_IDS, cardDef } from '../../data/cards';
 import { ATTRIBUTE_RAMP, PAL } from '../palette';
 import { PixelCanvas, shade } from '../pixel';
-import type { CutinArt } from '../types';
+import type { CutinArt, DrawOpts } from '../types';
 import { monsterArt } from '../monsters';
 import { LOOK_V3 } from '../../view/layout';
 
@@ -338,18 +340,20 @@ export function despeckle(c: PixelCanvas, keep?: (col: number) => boolean): void
 /**
  * Composite `layer` over `dst`. Where the layer overlaps parts already drawn, the surface
  * behind gets a contact-shadow seam: `seam` ramp steps darker on the shadow side (right/below
- * the layer edge), one step on the lit side. seam 0 = plain blit.
+ * the layer edge), one step on the lit side. seam 0 = plain blit. `lightFrom` 'right' (a relit
+ * P2 portrait, v3): the shadow side is left/below instead.
  */
-export function composite(dst: PixelCanvas, layer: PixelCanvas, seam = 2, ink = false): void {
+export function composite(dst: PixelCanvas, layer: PixelCanvas, seam = 2, ink = false, lightFrom: DrawOpts['lightFrom'] = 'left'): void {
   if (seam > 0) {
     const W = dst.w;
     const H = dst.h;
+    const sx = lightFrom === 'right' ? -1 : 1;
     const marks: number[] = [];
     for (let y = 0; y < H; y++)
       for (let x = 0; x < W; x++) {
         if (layer.isOpaque(x, y) || !dst.isOpaque(x, y)) continue;
-        const shadow = layer.isOpaque(x - 1, y) || layer.isOpaque(x, y - 1) || layer.isOpaque(x - 1, y - 1);
-        const lit = layer.isOpaque(x + 1, y) || layer.isOpaque(x, y + 1);
+        const shadow = layer.isOpaque(x - sx, y) || layer.isOpaque(x, y - 1) || layer.isOpaque(x - sx, y - 1);
+        const lit = layer.isOpaque(x + sx, y) || layer.isOpaque(x, y + 1);
         if (shadow) marks.push(x, y, ink ? -99 : seam);
         else if (lit) marks.push(x, y, ink ? -99 : 1);
       }
@@ -649,6 +653,8 @@ export interface CutinStep {
  */
 export function cutinSequence(art: CutinArt): CutinStep[] {
   const n = art.frames;
+  // v3: a portrait with its own rhythm (art.holds) plays its frames once and holds the last one
+  if (LOOK_V3 && art.holds && art.holds.length === n) return art.holds.map((ms, frame) => ({ frame, ms: Math.max(1, Math.round(ms)) }));
   const tick = Math.round(1000 / Math.max(1, art.fps));
   if (n < 4) return Array.from({ length: Math.max(1, Math.ceil(2000 / tick)) }, (_, i) => ({ frame: i % n, ms: tick }));
   const out: CutinStep[] = [];
@@ -683,6 +689,19 @@ export function cutinFrameName(frame: number): string {
   return `f${frame}`;
 }
 
+/**
+ * v3: true when player 2 gets a relit set of frames (the portrait declares p2: 'relight'). Its
+ * texture AND one-shot animation are `cutinP2Key(id)` (same frame names / timeline as P1); it is
+ * shown with flipX like the mirrored one, so the key light stays on the screen's top-left.
+ */
+export function cutinRelit(id: MonsterId): boolean {
+  return LOOK_V3 && REGISTRY.get(id)?.p2 === 'relight';
+}
+
+export function cutinP2Key(id: MonsterId): string {
+  return `cutin:${id}:p2`;
+}
+
 let resolveBuilt: () => void = () => {};
 const BUILT = new Promise<void>((r) => (resolveBuilt = r));
 /** Resolves once the boot step has registered every `cutin:<id>` texture + animation. */
@@ -694,15 +713,18 @@ export function markCutinsBuilt(): void {
   resolveBuilt();
 }
 
-/** Rendered frame (cached). */
+/** Rendered frame (cached). `o` (v3): { lightFrom: 'right' } = the relit P2 frame (see cutinRelit). */
 const FRAME_CACHE = new Map<string, PixelCanvas>();
-export function cutinFrame(id: MonsterId, frame: number): PixelCanvas {
-  const k = `${id}|${frame}`;
+export function cutinFrame(id: MonsterId, frame: number, o?: DrawOpts): PixelCanvas {
+  const relit = o?.lightFrom === 'right';
+  const k = relit ? `${id}|${frame}|r` : `${id}|${frame}`;
   let pc = FRAME_CACHE.get(k);
   if (!pc) {
     const art = cutinArt(id);
     pc = new PixelCanvas(art.w, art.h);
-    art.draw(pc, Math.max(0, Math.min(art.frames - 1, frame)));
+    const f = Math.max(0, Math.min(art.frames - 1, frame));
+    if (relit) art.draw(pc, f, { lightFrom: 'right' });
+    else art.draw(pc, f);
     FRAME_CACHE.set(k, pc);
   }
   return pc;

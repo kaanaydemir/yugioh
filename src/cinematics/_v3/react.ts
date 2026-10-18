@@ -16,7 +16,8 @@
 //            pixel on the impact frame itself, the rest after the hit-stop; springs back with the
 //            class's return ease, or stays (hold: a death follows).
 //   time     hit-stop / shake from the SOURCE of the blow (motion.ts contactStopMs / ShakePx).
-//   flash    contactFlash: white only on the side the blow lands on, ≤ ~45 % of the silhouette.
+//   flash    contactFlash: stepped light bands around the contact point (white core, a checkered
+//            band in the blow's light tone, a dithered edge), ≤ ~45 % of the silhouette.
 //   sparks   vfx/combat impact (sparks, star, ring) at the contact point on the body's surface
 //            (not on its core), power capped at 2 for the visuals: power 3's full-screen black /
 //            white frame is a screen wash, which the v3 look does not use.
@@ -36,6 +37,8 @@ import { impact as combatImpact, stopTime } from '../../vfx/combat';
 import { onFrame } from '../../vfx/setpieces';
 import type { CinematicContext } from '../_core/types';
 import { contactFlash } from './flash';
+import { plannedEntry, planDeathEntry, setPlannedEntry } from './posematch';
+import { planGuardBreak, runGuardBreak } from './guardbreak';
 
 type AnyCtx = CinematicContext<GameEvent>;
 
@@ -133,14 +136,20 @@ interface Reaction {
   anim: AnyMonsterAnim;
   el: number;
   hold: boolean;
+  /**
+   * A lethal recoil on a monster with a death pose (posematch.ts): at `switchAt` ms the death pose
+   * takes over on its frame `deathFrom` — the recoil frame it replaces looks the same.
+   */
+  switchAt: number | null;
+  deathFrom: number;
   stop: () => void;
 }
 const reactions = new WeakMap<MonsterUnit, Reaction>();
 
-function track(u: MonsterUnit, anim: AnyMonsterAnim, hold: boolean): void {
+function track(u: MonsterUnit, anim: AnyMonsterAnim, hold: boolean, sw: { at: number; from: number } | null = null): void {
   reactions.get(u)?.stop();
-  const total = u.animMs(anim);
-  const r: Reaction = { anim, el: 0, hold, stop: () => undefined };
+  const total = sw ? sw.at + u.rangeMs('death', sw.from, u.frameCount('death')) : u.animMs(anim);
+  const r: Reaction = { anim, el: 0, hold, switchAt: sw ? sw.at : null, deathFrom: sw ? sw.from : 0, stop: () => undefined };
   r.stop = onFrame(u.scene, (dt) => {
     r.el += dt;
     // a held reaction (a death follows) stays re-assertable on its last frame for a while
@@ -153,23 +162,84 @@ function track(u: MonsterUnit, anim: AnyMonsterAnim, hold: boolean): void {
   reactions.set(u, r);
 }
 
+/** Frame of `anim` reached `el` ms after starting it on `from`, and whether it has ended. */
+function frameAt(u: MonsterUnit, anim: AnyMonsterAnim, from: number, el: number, last: number): { f: number; over: boolean } {
+  let f = from;
+  while (f < last && u.rangeMs(anim, from, f + 1) <= el) f++;
+  return { f, over: el >= u.rangeMs(anim, from, last + 1) };
+}
+
 /**
  * Show the reaction pose again if something else (an attacker's own strike ending, which sends it
  * back to idle) replaced it while it should still be playing: it resumes on the frame it would be
- * on now. Returns true when it did.
+ * on now (a lethal recoil that has handed over: the death pose's frame). Returns true when it did.
  */
 export function reassertReaction(u: MonsterUnit | null): boolean {
   if (!u || u.retired || !u.sprite.active) return false;
   const r = reactions.get(u);
   if (!r) return false;
-  if (u.frameInfo().anim === r.anim && u.sprite.anims.isPlaying) return false;
-  let f = 0;
+  const cur = u.frameInfo().anim;
+  const playing = u.sprite.anims.isPlaying;
+  if (r.switchAt !== null && r.el >= r.switchAt) {
+    // the death pose has taken over
+    if (cur === 'death') return false;
+    const nD = u.frameCount('death');
+    const at = frameAt(u, 'death', r.deathFrom, r.el - r.switchAt, nD - 1);
+    u.asClaimant(() => {
+      if (at.over) u.pose('death', nD - 1);
+      else void u.playRange('death', at.f, undefined, { hold: true });
+    });
+    return true;
+  }
+  if (cur === r.anim && playing) return false;
   const n = u.frameCount(r.anim);
-  while (f < n - 1 && u.rangeMs(r.anim, 0, f + 1) <= r.el) f++;
-  if (r.el >= u.animMs(r.anim)) u.pose(r.anim, n - 1);
-  else void u.playRange(r.anim, f, undefined, { hold: r.hold });
+  const at = frameAt(u, r.anim, 0, r.el, n - 1);
+  u.asClaimant(() => {
+    if (at.over) u.pose(r.anim, n - 1);
+    else void u.playRange(r.anim, at.f, undefined, { hold: r.hold });
+  });
   return true;
 }
+
+/** The recoils a lethal blow may answer with: the blow's own first, then the art's other ones. */
+function lethalRecoils(u: MonsterUnit, own: AnyMonsterAnim): AnyMonsterAnim[] {
+  const out: AnyMonsterAnim[] = [own];
+  for (const a of ['hitMagic', 'hitHeavy', 'hit'] as const) if (a !== own && u.has(a)) out.push(a);
+  return out;
+}
+
+/** Beat after the contact frame within which a lethal recoil hands over to the death pose (ms). */
+const LETHAL_HANDOVER_MS = 140;
+
+/**
+ * Play the recoil of a blow. A LETHAL blow on a monster with a death pose: the recoil plays only
+ * up to the frame its death pose continues from without a jump (posematch.planDeathEntry, the
+ * earliest good match within LETHAL_HANDOVER_MS) and the death pose takes over right there, on
+ * its matching frame — the body never holds a still frame waiting for the destroy event; the
+ * death kit (death.ts) joins the pose already playing.
+ */
+function playRecoil(u: MonsterUnit, anim: AnyMonsterAnim, o: { dir: XY; power: 1 | 2 | 3; lethal: boolean }): void {
+  const plan = o.lethal ? planDeathEntry(u, lethalRecoils(u, anim), LETHAL_HANDOVER_MS) : null;
+  if (plan) {
+    setPlannedEntry(u, plan);
+    const toDeath = () => {
+      if (u.retired || !u.sprite.active) return;
+      const fi = u.frameInfo();
+      // only while the recoil still shows (anything that took the sprite over is re-asserted later)
+      if (fi.anim !== plan.anim && plan.hold > 0) return;
+      u.asClaimant(() => void u.playRange('death', plan.start, undefined, { hold: true }));
+    };
+    if (plan.hold > 0) void u.asClaimant(() => u.playRange(plan.anim, 0, plan.hold)).then(toDeath);
+    else toDeath();
+    track(u, plan.anim, true, { at: u.rangeMs(plan.anim, 0, plan.hold), from: plan.start });
+    return;
+  }
+  u.asClaimant(() => void u.play(anim, { dir: o.dir, power: o.power, hold: o.lethal }));
+  track(u, anim, o.lethal);
+}
+
+/** The lethal recoil's planned death entry of a unit, if one was planned (death.ts consumes it). */
+export { plannedEntry };
 
 // ================================================================ attack position
 
@@ -217,12 +287,8 @@ export function reactHit(ctx: AnyCtx, u: MonsterUnit | null, o: ReactOpts): Prom
     if (u.guarding) return reactGuard(ctx, u, { power: o.power, dir, at: o.at, ramp: o.ramp, by: o.by, survive: !o.lethal, noStop: o.noStop });
     const side = blowSide(u, dir);
     const heavy = isHeavyBlow(o.power, !!o.lethal, by);
-    if (o.pose !== false && side !== 'back') {
-      const anim = hitAnimFor(u, { kind, heavy });
-      void u.play(anim, { dir, power: o.power, hold: !!o.lethal });
-      track(u, anim, !!o.lethal);
-    }
-    contactFlash(sc, u.sprite, dir, { frames: heavy ? 3 : 2, coverage: FLASH_COVER[o.power] });
+    if (o.pose !== false && side !== 'back') playRecoil(u, hitAnimFor(u, { kind, heavy }), { dir, power: o.power, lethal: !!o.lethal });
+    contactFlash(sc, u.sprite, dir, { frames: heavy ? 3 : 2, coverage: FLASH_COVER[o.power], at: p, tint: o.ramp ? o.ramp[4] : undefined });
     if (o.knock !== false) void knock(u, dir, knockPx(u, o.power, side), { hold: !!o.lethal });
   }
   return combatImpact(sc, p.x, p.y, {
@@ -233,7 +299,17 @@ export function reactHit(ctx: AnyCtx, u: MonsterUnit | null, o: ReactOpts): Prom
     stopMs: reactStopMs(o.power, by),
     shakePx: reactShakePx(o.power, by),
     jitterPx: 0,
+    depth: u && live ? behindBody(u) : undefined,
   });
+}
+
+/**
+ * The impact burst (star, rings, sparks) of a blow on a body is drawn just BEHIND that body (A2
+ * motion review r2 #9: "efekt ana karakterin silüetini kapatmaz"): it blooms around the struck
+ * edge; on the body itself only the contact flash (≤ 45 % of the silhouette) lights it.
+ */
+function behindBody(u: MonsterUnit): number {
+  return u.sprite.depth - 0.4;
 }
 
 // ================================================================ defense position
@@ -261,8 +337,12 @@ export async function reactGuard(ctx: AnyCtx | CinematicContext<never>, u: Monst
   const dir = blowDir(u, o.dir);
   const by = weightSrc(o.by);
   const p = contactPoint(u, dir, o.at);
-  void combatImpact(sc, p.x, p.y, { power: Math.min(2, o.power) as 1 | 2, ramp: o.ramp, dir, noStop: true, shakePx: reactShakePx(o.power, by), jitterPx: 0 });
-  const react = u.guardHit({ dir, power: o.power, hold: !o.survive });
+  void combatImpact(sc, p.x, p.y, { power: Math.min(2, o.power) as 1 | 2, ramp: o.ramp, dir, noStop: true, shakePx: reactShakePx(o.power, by), jitterPx: 0, depth: behindBody(u) });
+  // a lethal blow breaks the guard open into the death pose (./guardbreak.ts): the flash, the glint
+  // and the knock-back stay the guard's, the pose is the break's
+  const brk = !o.survive ? planGuardBreak(u) : null;
+  const react = u.guardHit({ dir, power: o.power, hold: !o.survive, pose: !brk });
+  if (brk) runGuardBreak(u, brk);
   if (!o.noStop) await stopTime(sc, reactStopMs(o.power, by));
   await react;
 }

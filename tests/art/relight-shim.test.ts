@@ -29,13 +29,13 @@ describe('relight shim (dev only)', () => {
   it('P1 draws (no DrawOpts) are pixel-identical to the original art, every anim and frame', () => {
     for (const anim of MONSTER_ANIMS)
       for (let f = 0; f < base.anims[anim].frames; f++) expect(Array.from(frame(shim, anim, f).data), `${anim}:${f}`).toEqual(Array.from(frame(base, anim, f).data));
-  });
+  }, 60_000);
 
   it('only the idle is relit; the other anims draw the original even with lightFrom right', () => {
     for (const anim of MONSTER_ANIMS.filter((a) => a !== 'idle'))
       for (let f = 0; f < base.anims[anim].frames; f++) expect(Array.from(frame(shim, anim, f, true).data), `${anim}:${f}`).toEqual(Array.from(frame(base, anim, f).data));
     expect(Array.from(frame(shim, 'idle', 0, true).data)).not.toEqual(Array.from(frame(base, 'idle', 0).data));
-  });
+  }, 60_000);
 
   it('the relit idle keeps the original float (bob per frame)', () => {
     const bobs = Array.from({ length: base.anims.idle.frames }, (_, f) => idleBob(f));

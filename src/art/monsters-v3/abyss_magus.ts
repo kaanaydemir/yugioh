@@ -10,13 +10,26 @@
 //                         lies, rises on its foot), the partial cloak wrap, the dark dissolve (in
 //                         part space), the rift, the gathering motes, the tendril and the crackle;
 //   abyss_magus-anims.ts  every anim as poses with per-frame holds, marks and points.
-// Frame 112×98 = the v1 80×80 frame + a margin (offset 10, 14; 22 px on the right for the special's
-// aim and the fallen staff) so no pose touches the edge; 1 art px = 1 game px. Anchor and hover as
-// v1 (it floats 6 px over the floor).
-// Base anims (holds in the spec): idle 16 f / 1.94 s loop, guard 8 f / 1.28 s loop, roar 11 f /
+// Frame 112×116 = the v1 80×80 frame + a margin (offset 10, 14; 22 px on the right for the special's
+// aim, 25 px under the floor point for the staff lying on the floor) so no pose touches the edge;
+// 1 art px = 1 game px. Anchor and hover as v1 (it floats 6 px over the floor).
+// Base anims (holds in the spec): idle 16 f / 1.94 s loop (a ±1 px float round the one-shots'
+// baseline, so any anim starts within 1 px of the body), guard 6 f / 0.95 s loop (braced: the
+// body holds the guard baseline, the head, orb and hem breathe, a crest runs along the ward), roar 11 f /
 // 1.19 s (charge@1, burst = impact = release@3, recover@7), attack 12 f / 1.18 s (charge@1 = the
 // declare pose, impact = release@6 at 560 ms, recover@8), hit 6 f / 0.59 s (impact = contact@0,
-// recover@3). Every one-shot ends on idle f0.
+// recover@3). Every one-shot ends on idle f0 and starts at the hover baseline (bob 0).
+// The charge (attack / special / roar gathers) never grows the orb past the 9×9 map: its slate
+// cage is its one ring (no second charge ring: with the cage and the horns it tangled into thin
+// crossing lines), the cage's prong tips kindle (void3, void4 at full charge), the core heats up
+// (void4, a white heart at full charge) and three motes fall in onto the cage; the gathered orb
+// keeps a dark gap from the helm (special f1–f3 hold it forward of the crest); a raised staff arm
+// keeps the sleeve's planes (lit top, void2 body, void1 underside and drape, the void0 junction
+// under the plate) and bares the gauntlet's bracer.
+// Guard: the cloak wrapped round the front falls open below the gathering fist, a 3–5 px wedge of
+// the violet front panel showing (the guard keeps the magus's violet); the ward is a short 2-px
+// shell concentric with the chest in front of the body (lit row lavender, other row violet, night
+// outline, tips tapering), kept ≥ 2 px off the staff, the orb and the robe.
 // Extra anims (`extraAnims` + `drawExtra`, part 2):
 //   summon    12 f / 1.14 s  land@6     a rift opens, the helm rises out of it first (horns, then the
 //                                       eyes igniting), the wrapped cloak opens as it clears the rift,
@@ -28,19 +41,28 @@
 //                                       forward), the tendril leaves the staff tip, the aim is held (f8, 200 ms:
 //                                       a cinematic can hold it until the tendril arrives) → idle f0;
 //   death     10 f / 0.78 s  impact = contact@0, dissolve@4 — the helm snaps back, the hover fails,
-//                                       the staff slips onto its foot and topples forward, the cloak
-//                                       collapses inward and pools, the dark dissolve takes the helm
-//                                       and shoulders first (the death kit's shadow break takes the
-//                                       rest from the last frame);
+//                                       the staff slips onto its foot and topples toward the camera
+//                                       and back along the floor's 2:1 diagonal (foreshortened: it
+//                                       lies across the front of the heap, orb ~17 px behind / 15 px
+//                                       below the anchor — on its own tile, never along the duel
+//                                       axis or flat across a neighbour), the cloak collapses inward
+//                                       and pools, the dark dissolve takes the helm and shoulders
+//                                       first (the death kit's shadow break takes the rest from the
+//                                       last frame);
 //   revive    12 f / 1.21 s  land@5     dark motes spiral in, the cloak re-forms from the floor up,
 //                                       [land] whole, then it refills and lifts, the staff rises on
-//                                       its foot into the hand, first breath → idle f0;
-//   hitHeavy   7 f / 0.68 s  impact = contact@0, recover@4 (f0 moves only the helm: 27 % of the
-//                                       idle silhouette) — flung back and up, the hover gives;
-//   hitMagic   8 f / 0.61 s  impact = contact@0, recover@5 — eyes and sigil flare, crackle on the
-//                                       plates, rigid jolt, 1-px shudder, sag;
+//                                       its foot (the fall's path backwards) into the hand, first
+//                                       breath → idle f0;
+//   hitHeavy   8 f / 0.74 s  impact = contact@0, recover@4 (f0 moves only the helm: 27 % of the
+//                                       idle silhouette) — a caster's rhythm: a 40 ms contact,
+//                                       flung back and up, a long drift back, the hover gives,
+//                                       the body home 2 frames before its robe (drape);
+//   hitMagic   8 f / 0.66 s  impact = contact@0, recover@5 — eyes and sigil flare, crackle on the
+//                                       plates, rigid jolt, 1-px shudder, a long sag below the
+//                                       float, the body back a frame before its robe;
 //   toGuard    5 f / 0.36 s  → guard f0; fromGuard 5 f / 0.38 s → idle f0 (the float never slides:
-//                                       dx 0; the cloak swings round / off the front);
+//                                       dx 0; the cloak swings round / off the front; fromGuard f0
+//                                       sits on the guard baseline: ≤ 629 px from any guard frame);
 //   victory    7 f / 0.96 s  ends on a held proud pose (staff planted forward, orb aglow).
 // points(): staff = muzzle = the orb's centre on every frame of every anim (spells, the orb and the
 // tendril leave from it; also while the staff falls or rises on its own), hand = the front fist,

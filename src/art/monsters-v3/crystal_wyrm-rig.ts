@@ -50,6 +50,7 @@ import {
   newCanvas,
   newG,
   norm,
+  pathU,
   polar,
   resetPools,
   rimLight,
@@ -81,6 +82,9 @@ export interface Wing {
   at?: V;
   /** depth of the trailing-edge scallops (1 = rest; >1 billows, <1 pulls taut) */
   scal?: number;
+  /** vertical lag (px) of the hand of the wing (wrist and finger tips): they follow a body step a
+   *  frame late (overlap), the shoulder and elbow move with the body */
+  lag?: number;
 }
 
 export interface Pose {
@@ -145,6 +149,8 @@ export interface Pose {
   split: number;
   /** <1: revive — the body is crystal fragments flying in and locking into place (1 = whole) */
   gather: number;
+  /** vertical lag (px) of the tail's middle and tip: they follow a body step one and two frames late */
+  tailLag: V;
 }
 
 export const NEUTRAL: Pose = {
@@ -181,6 +187,7 @@ export const NEUTRAL: Pose = {
   drain: 0,
   split: 0,
   gather: 1,
+  tailLag: [0, 0],
 };
 
 export type PoseDelta = Partial<Omit<Pose, 'nw' | 'fw'>> & { nw?: Partial<Wing>; fw?: Partial<Wing> };
@@ -199,6 +206,7 @@ export function lerpPose(a: Pose, b: Pose, t: number): Pose {
     span: lerp(x.span, y.span, t),
     at: x.at && y.at ? lerpV(x.at, y.at, t) : y.at ?? x.at,
     scal: lerp(x.scal ?? 1, y.scal ?? 1, t),
+    lag: lerp(x.lag ?? 0, y.lag ?? 0, t),
   });
   return {
     ...b,
@@ -232,6 +240,7 @@ export function lerpPose(a: Pose, b: Pose, t: number): Pose {
     drain: lerp(a.drain, b.drain, t),
     split: lerp(a.split, b.split, t),
     gather: lerp(a.gather, b.gather, t),
+    tailLag: lerpV(a.tailLag, b.tailLag, t),
   };
 }
 
@@ -250,8 +259,9 @@ interface WingRig {
 
 function wingRig(S: V, w: Wing, fingers: number[], l1: number, l2: number, attach: V): WingRig {
   const E = add(S, polar(w.a1, l1 * w.span));
-  const Wr = add(E, polar(w.a2, l2 * w.span));
-  const tips = fingers.map((fl, i) => add(Wr, polar(w.a3 + w.fan * i, fl * w.span)));
+  const lag: V = [0, w.lag ?? 0];
+  const Wr = add(add(E, polar(w.a2, l2 * w.span)), mul(lag, 0.5));
+  const tips = fingers.map((fl, i) => add(add(Wr, polar(w.a3 + w.fan * i, fl * w.span)), mul(lag, 0.5)));
   return { S, E, Wr, tips, attach };
 }
 
@@ -325,15 +335,67 @@ export function neckPath(P: Pose): V[] {
   return bezier(neck0, add(add(neck0, rotV([-3, -12], P.lean * 0.6)), P.nk1), add(add(head, polar(P.ha / DEG + 128, 9)), P.nk2), head, 18);
 }
 
+// ------------------------------------------------------------------ neck value planes
+//
+// The neck's planes are explicit bands across the tube (measured on the approved still), not a
+// lighting result: a white lit plane along the contour that faces the key light (square-ended, it
+// fades out at the base where the neck runs behind the chest), mist, a steel shadow plane that
+// widens toward the base and runs into a night3 / night2 throat wedge, a cyan2 rim on the upper
+// neck. The relit (P2) sheet mirrors the same breaks across the neck (the lit band on the other
+// contour), so P2 shows exactly P1's planes, never a centred highlight.
+
+const NECK_W0 = 10.5;
+const NECK_W1 = 7;
+/** the rim starts above this point of the neck (below it the throat wedge meets the outline) */
+const NECK_RIM_U = 0.17;
+type Tab = readonly (readonly [number, number])[];
+/** band widths (px from a contour, across the neck) along the neck (u: 0 base … 1 head); measured on
+ *  the still: the lit plane fades out at the base, the shadow plane widens downward into the wedge */
+const NECK_LIT: Tab = [[0.04, 0], [0.08, 1], [0.12, 2], [0.15, 3], [0.35, 3], [0.45, 3.5], [0.6, 4], [1, 4]];
+const NECK_SHADE: Tab = [[0, 9], [0.05, 8], [0.08, 7], [0.12, 6], [0.15, 6], [0.19, 5], [0.3, 5], [0.4, 2.8], [0.6, 2.5], [1, 2.5]];
+const NECK_N3: Tab = [[0, 6], [0.01, 5], [0.05, 4], [0.08, 3], [0.12, 1], [0.14, 0]];
+const NECK_N2: Tab = [[0, 3], [0.01, 2], [0.05, 1], [0.07, 0]];
+function tab(t: Tab, u: number): number {
+  if (u <= t[0][0]) return t[0][1];
+  for (let i = 1; i < t.length; i++) if (u <= t[i][0]) return lerp(t[i - 1][1], t[i][1], (u - t[i - 1][0]) / (t[i][0] - t[i - 1][0]));
+  return t[t.length - 1][1];
+}
+
+/** Tone index (HIDE_D: 0 night2 … 4 white) of a neck pixel at (u along, v across: -1 left … 1 right). */
+function neckTone(u: number, v: number): number {
+  const r = lerp(NECK_W0, NECK_W1, u) / 2;
+  const toward = LIGHT.side < 0 ? -v : v;
+  const dl = (1 - toward) * r;
+  const ds = (1 + toward) * r;
+  if (ds < tab(NECK_N2, u)) return 0;
+  if (ds < tab(NECK_N3, u)) return 1;
+  if (dl < tab(NECK_LIT, u)) return 4;
+  if (ds < tab(NECK_SHADE, u)) return 2;
+  return 3;
+}
+
+const NECK_SEAM_U = 0.37;
+/** One steel throat-plate seam across the lit plane (a short square dash from the lit contour). */
+function neckSeam(c: PixelCanvas, path: V[]) {
+  const s = samplePath(path, NECK_SEAM_U);
+  const r = lerp(NECK_W0, NECK_W1, NECK_SEAM_U) / 2;
+  const toLit: V = mul([-s.tan[1], s.tan[0]], LIGHT.side < 0 ? -1 : 1);
+  lineOn(c, add(s.p, mul(toLit, r + 1)), add(s.p, mul(toLit, r - tab(NECK_LIT, NECK_SEAM_U) + 1.2)), PAL.steel, (cur) => cur === PAL.white);
+}
+
 const HIDE_COLS = [PAL.white, PAL.mist, PAL.steel] as const;
 const onHide = (cur: number) => (HIDE_COLS as readonly number[]).includes(cur);
 const FOLD_LEG: Fold = { top: 1, side: 2, bottom: 3 };
+const THIGH_TURN = 0.6;
+const TAIL_UNDER = 0.4;
+const FAR_LEG_BIAS = -0.15;
 const FOLD_NECK: Fold = { top: 1, side: 1, bottom: 2 };
 
 // ------------------------------------------------------------------ the dragon
 
 export function drawDragon(p: PixelCanvas, P: Pose) {
   resetPools();
+  KEEP.fill(0);
   const R = rig(P);
   const { hip, chest, tAng, att, head } = R;
   const { farWing, nearWing } = wings(P);
@@ -347,8 +409,9 @@ export function drawDragon(p: PixelCanvas, P: Pose) {
     const g = newG();
     const j = add(hip, [8, 0]);
     const knee = ik(j, L.ankleF, 10.5, 9.5, -1);
-    gTube(g, [j, knee], 10, 6.5, M.HIDE_FAR, { z: 0 });
-    gTube(g, [knee, L.ankleF], 6, 4.2, M.HIDE_FAR, { z: 1 });
+    // the far leg sits in the body's shadow: a value lower than its own lighting (night3 / steel)
+    gTube(g, [j, knee], 10, 6.5, M.HIDE_FAR, { z: 0, bias: FAR_LEG_BIAS });
+    gTube(g, [knee, L.ankleF], 6, 4.2, M.HIDE_FAR, { z: 1, bias: FAR_LEG_BIAS });
     gTube(g, [L.ankleF, add(L.footF, [-1, 0])], 4.2, 3.8, M.HIDE_FAR, { z: 2 });
     gEll(g, L.footF, 3.4, 2, 0, M.HIDE_FAR, { z: 2 });
     const c = g.render();
@@ -380,6 +443,12 @@ export function drawDragon(p: PixelCanvas, P: Pose) {
       const a = base[i] - P.tailLift * k * k + Math.sin((P.tail - i * 0.07) * Math.PI * 2) * P.tailAmp * (0.3 + k);
       pts.push(add(pts[i], polar(a, 3.45)));
     }
+    // overlap: the middle of the tail follows a body step a frame late, the tip two frames late
+    for (let i = 1; i < pts.length; i++) {
+      const k = i / (pts.length - 1);
+      const dy = k < 0.3 ? 0 : k < 0.65 ? P.tailLag[0] * ((k - 0.3) / 0.35) : lerp(P.tailLag[0], P.tailLag[1], (k - 0.65) / 0.35);
+      if (dy) pts[i] = add(pts[i], [0, dy]);
+    }
     const gs = newG();
     for (let i = 1; i < pts.length - 2; i += 2) {
       const t = norm(sub(pts[i + 1], pts[i]));
@@ -391,7 +460,8 @@ export function drawDragon(p: PixelCanvas, P: Pose) {
     }
     composite(p, gs.render(0, false));
     const g = newG();
-    gTube(g, pts, 10, 2.6, M.HIDE, { flat: 1.15 });
+    // the underside turns under into a steel band (light from above in both sheets)
+    gTube(g, pts, 10, 2.6, M.HIDE, { flat: 1.15, biasAt: (_u, _v, _ox, oy) => (oy > 0 ? -TAIL_UNDER * oy : 0) });
     const tip = pts[pts.length - 1];
     const tdir = norm(sub(tip, pts[pts.length - 3]));
     gShard(g, sub(tip, mul(tdir, 1)), tdir, 8, 2.8, M.CRYS, 6, P.glow);
@@ -445,12 +515,17 @@ export function drawDragon(p: PixelCanvas, P: Pose) {
     footEdges(cl, L.footN, false);
     claws(cl, L.footN, false);
     const g = newG();
-    gTube(g, [j, knee], 13, 7.5, M.HIDE, { z: 2, flat: 1.25 });
+    // the thigh: the side turned away from the key light (its back) drops into a steel shadow plane
+    // (the tube's own lighting would centre the highlight: the light falls almost along the thigh)
+    gTube(g, [j, knee], 13, 7.5, M.HIDE, { z: 2, flat: 1.25, biasAt: (_u, _v, ox) => Math.min(0, THIGH_TURN * ox * LIGHT.side) });
     const c = g.render();
     composite(cl, c, crease, { top: 0, side: 1, bottom: 2 });
     if (P.cracks > 0) cracksOn(cl, P, [{ from: 0.3, pts: zig(lerpV(j, knee, 0.05), lerpV(j, knee, 0.85), 3, 1.6) }], false);
     rimLight(cl, p);
-    composite(p, cl, (x, y, b) => (FAR_MASK[y * W + x] ? PAL.night1 : crease(x, y, b)), FOLD_LEG);
+    // against the far leg: ONE night1 line, then the far leg's own junction shadow (one value down)
+    maskOf(cl, LEG_MASK);
+    const on = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H && LEG_MASK[y * W + x] === 1;
+    composite(p, cl, (x, y, b) => (FAR_MASK[y * W + x] && (on(x - 1, y) || on(x + 1, y) || on(x, y - 1) || on(x, y + 1)) ? PAL.night1 : crease(x, y, b)), FOLD_LEG);
   }
 
   // ---------------- neck (+ crystal crest in its dark channel)
@@ -468,8 +543,9 @@ export function drawDragon(p: PixelCanvas, P: Pose) {
     // the crest sits in a dark cyan0 channel: the glass behind it folds two values down
     composite(p, cs, (x, y, b) => (b === PAL.cyan1 || b === PAL.cyan2 ? PAL.cyan0 : crease(x, y, b)), { top: 2, side: 2, bottom: 2 });
     const g = newG();
-    gTube(g, nPath, 10.5, 7, M.HIDE, { flat: 1.1 });
+    gTube(g, nPath, NECK_W0, NECK_W1, M.HIDE_D, { biasAt: neckTone });
     const c = g.render();
+    neckSeam(c, nPath);
     if (P.cracks > 0) {
       const at = (t: number, k: number) => {
         const sp = samplePath(nPath, t);
@@ -477,11 +553,13 @@ export function drawDragon(p: PixelCanvas, P: Pose) {
       };
       cracksOn(c, P, [{ from: 0.22, pts: [at(0.06, -1), at(0.22, 2), at(0.36, -1.5), at(0.5, 1.5), at(0.62, -0.5)] }], false);
     }
-    rimLight(c, p);
+    // the cool rim only along the upper neck (the base runs into the dark throat wedge, unrimmed)
+    rimLight(c, p, [PAL.steel], PAL.cyan2, (x, y) => pathU(nPath, [x + 0.5, y + 0.5]) > NECK_RIM_U);
     composite(p, c, crease, FOLD_NECK);
   }
 
   // ---------------- head
+  HEAD_MASK.fill(0);
   drawHead(p, head, P);
 
   // ---------------- near arm (raised forearm: white top plane, flat steel underside, wrist crease)
@@ -495,9 +573,13 @@ export function drawDragon(p: PixelCanvas, P: Pose) {
     gTube(g, [s, el, wr], 5.8, 4.2, M.HIDE, { flat: 1.2 });
     gEll(g, add(wr, polar(wa, 1)), 2.6, 2, wa * DEG, M.HIDE, { z: 2, bias: 0.3 });
     const c = g.render();
+    forearmUnderside(c, el, wr);
     rimLight(c, p);
     hand(c, wr, wa, false);
-    composite(p, c, crease);
+    castShadow(p, c);
+    // the crease on the side facing the key light (and above) is one value (steel); behind and under
+    // the arm it is the night3 crease
+    composite(p, c, (x, y, b) => (c.isOpaque(x - LIGHT.side, y) || c.isOpaque(x, y + 1) ? selout(x, y, b) : crease(x, y, b)));
   }
 
   // ---------------- near wing (in front)
@@ -518,6 +600,13 @@ export function drawDragon(p: PixelCanvas, P: Pose) {
     composite(p, c);
   }
 
+  // ---------------- smear frame (attack release): the head and horns are stretched back along their
+  // path by 2 px — matter, attached to the back of the skull and the horn, outlined with the body
+  if (P.smearFrom) smearHead(p, pose(P.smearFrom), P);
+
+  // ---------------- one last calm pass: lone 1-px crumbs inside the body take their surroundings
+  cleanCrumbs(p);
+
   // ---------------- crystal twinkles
   if (P.sparkles.length) {
     const anchors: V[] = [
@@ -536,9 +625,6 @@ export function drawDragon(p: PixelCanvas, P: Pose) {
   if (P.gather < 1) gatherBody(p, P);
 
   p.outline(PAL.ink);
-
-  // motion smear behind the lunging head (light, not matter: unoutlined, only on empty pixels)
-  if (P.smearFrom) smear(p, pose(P.smearFrom), P);
 
   // prism light gathering between the jaws while charging (unoutlined: it is light, not matter)
   if (P.mouth > 0.45 && P.jaw < 0.5) {
@@ -575,6 +661,87 @@ function keel(c: PixelCanvas, R: Rig, P: Pose) {
   lineOn(c, a, b, core, (cur) => onChest(cur) || cur === PAL.cyan3);
 }
 
+/** Deliberate single pixels (eye glint, iris, nostril) that the crumb pass must keep. */
+const KEEP = new Uint8Array(W * H);
+
+/**
+ * A pixel inside the body (4 opaque, non-ink neighbours) with no neighbour of its own colour in any
+ * of the 8 directions is a crumb left where planes, creases and rims meet: it takes the colour its
+ * 4-neighbours share most. 1-px lines (8-connected) and the silhouette are never touched.
+ */
+function cleanCrumbs(p: PixelCanvas) {
+  const hits: number[] = [];
+  for (let y = 1; y < H - 1; y++)
+    for (let x = 1; x < W - 1; x++) {
+      if (KEEP[y * W + x]) continue;
+      const c = p.get(x, y);
+      if (c === null || c === PAL.ink || !p.isOpaque(x, y)) continue;
+      let same = false;
+      for (let dy = -1; dy <= 1 && !same; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && p.isOpaque(x + dx, y + dy) && p.get(x + dx, y + dy) === c) same = true;
+      if (same) continue;
+      const n4: number[] = [];
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const q = p.isOpaque(x + dx, y + dy) ? p.get(x + dx, y + dy) : null;
+        if (q === null || q === PAL.ink) break;
+        n4.push(q);
+      }
+      if (n4.length < 4) continue;
+      let best = n4[0];
+      let bn = 0;
+      for (const q of n4) {
+        const k = n4.filter((v) => v === q).length;
+        if (k > bn) [best, bn] = [q, k];
+      }
+      hits.push(x, y, best);
+    }
+  for (let i = 0; i < hits.length; i += 3) p.set(hits[i], hits[i + 1], hits[i + 2]);
+}
+
+/** The raised forearm's flat steel underside: the lower 2 px of the forearm (elbow → wrist). */
+function forearmUnderside(c: PixelCanvas, el: V, wr: V) {
+  const t = norm(sub(wr, el));
+  let n: V = [-t[1], t[0]];
+  if (n[1] < 0) n = [-n[0], -n[1]];
+  const hits: number[] = [];
+  for (let y = Math.floor(Math.min(el[1], wr[1]) - 4); y <= Math.ceil(Math.max(el[1], wr[1]) + 4); y++)
+    for (let x = Math.floor(Math.min(el[0], wr[0]) - 4); x <= Math.ceil(Math.max(el[0], wr[0]) + 4); x++) {
+      const cur = c.get(x, y);
+      if (cur !== PAL.white && cur !== PAL.mist) continue;
+      const q: V = [x + 0.5, y + 0.5];
+      const along = dot(sub(q, el), t);
+      if (along < 1 || along > len(sub(wr, el)) + 0.5) continue;
+      if (dot(sub(q, el), n) > 0.6) hits.push(x, y);
+    }
+  for (let i = 0; i < hits.length; i += 2) c.set(hits[i], hits[i + 1], PAL.steel);
+}
+
+/** One value down: the shadow a part casts on the hide behind it. */
+const SHADOW: Record<number, number> = {
+  [PAL.white]: PAL.steel,
+  [PAL.mist]: PAL.steel,
+  [PAL.steel]: PAL.night3,
+  [PAL.cyan2]: PAL.cyan1,
+  [PAL.cyan3]: PAL.cyan1,
+  [PAL.cyan4]: PAL.cyan2,
+};
+/**
+ * Cast shadow of a layer (the near arm) on the body already drawn: the layer's shape moved away from
+ * the key light (down, and to the far side), over the hide only, never under the layer itself.
+ */
+function castShadow(p: PixelCanvas, layer: PixelCanvas, off: V = [2, 2]) {
+  const ox = -LIGHT.side * off[0];
+  const oy = off[1];
+  const hits: number[] = [];
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      if (layer.isOpaque(x, y) || !p.isOpaque(x, y)) continue;
+      if (!layer.isOpaque(x - ox, y - oy)) continue;
+      const to = SHADOW[p.get(x, y)!];
+      if (to !== undefined) hits.push(x, y, to);
+    }
+  for (let i = 0; i < hits.length; i += 3) p.set(hits[i], hits[i + 1], hits[i + 2]);
+}
+
 /** Foot: a lit top edge and a dark sole (near night3, far night2). */
 function footEdges(c: PixelCanvas, foot: V, far: boolean) {
   const x0 = Math.floor(foot[0]);
@@ -587,38 +754,37 @@ function footEdges(c: PixelCanvas, foot: V, far: boolean) {
     }
 }
 
+/** The head layer's pixels (skull, jaw, mouth, horns) of the frame being drawn. */
+const HEAD_MASK = new Uint8Array(W * H);
+function orMask(c: PixelCanvas, into: Uint8Array) {
+  for (let i = 0; i < W * H; i++) if (c.data[i * 4 + 3]) into[i] = 1;
+}
+
 /**
- * Motion smear of the lunging head: the paths swept by the brow, the nose and the chin between the
- * previous pose and this one, as light streaks. Only on empty pixels, never outlined.
+ * Smear frame of the lunging head: the head (with its horns) is repeated 1 and 2 px back along its
+ * motion (from the previous pose's head to this one) on the empty pixels behind it, so the back of
+ * the skull and the horn stretch into a short trail that is part of the silhouette (outlined with
+ * it), never a loose stroke in the air.
  */
-function smear(p: PixelCanvas, from: Pose, to: Pose) {
-  const N = 16;
-  const pts = (t: number) => {
-    const P = lerpPose(from, to, t);
-    const { T } = headFrame(rig(P).head, P);
-    return { top: T(5, -6.6), nose: T(18.6, -1.2), chin: T(13, 4.6) };
-  };
-  const sm = newCanvas();
-  const seg = (a: V, b: V, col: number) => sm.line(Math.floor(a[0]), Math.floor(a[1]), Math.floor(b[0]), Math.floor(b[1]), col);
-  let prev = pts(0.3);
-  for (let i = 1; i <= N; i++) {
-    const t = 0.3 + (0.7 * i) / N;
-    const cur = pts(t);
-    if (t > 0.45) seg(prev.top, cur.top, PAL.cyan3);
-    prev = cur;
+function smearHead(p: PixelCanvas, from: Pose, to: Pose) {
+  const d = norm(sub(rig(to).head, rig(from).head));
+  const hits: number[] = [];
+  const taken = new Set<number>();
+  for (const k of [1, 2]) {
+    const o = rnd(mul(d, k));
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        if (!HEAD_MASK[y * W + x]) continue;
+        const tx = x - o[0];
+        const ty = y - o[1];
+        if (tx < 1 || ty < 1 || tx >= W - 1 || ty >= H - 1 || p.isOpaque(tx, ty) || taken.has(ty * W + tx)) continue;
+        const c = p.get(x, y);
+        if (c === null || c === PAL.ink) continue;
+        taken.add(ty * W + tx);
+        hits.push(tx, ty, c);
+      }
   }
-  prev = pts(0.4);
-  for (let i = 1; i <= N; i++) {
-    const t = 0.4 + (0.6 * i) / N;
-    const cur = pts(t);
-    seg(prev.nose, cur.nose, PAL.white);
-    prev = cur;
-  }
-  for (let y = 0; y < H; y++)
-    for (let x = 0; x < W; x++) {
-      const c = sm.get(x, y);
-      if (c !== null && !p.isOpaque(x, y)) p.set(x, y, c);
-    }
+  for (let i = 0; i < hits.length; i += 3) p.set(hits[i], hits[i + 1], hits[i + 2]);
 }
 
 function claws(c: PixelCanvas, foot: V, far: boolean) {
@@ -692,15 +858,20 @@ function drawWing(r: WingRig, far: boolean, P: Pose): PixelCanvas {
     valleys.push(curve[5]);
     const [lead, trail] = cellTone(i);
     const root = (x: number, y: number) => inner && !shield && !far && distSeg([x + 0.5, y + 0.5], attach, S) < 4.2;
+    // flare: one step lighter; a flat cell opens into its two facets (lit lead, trail one value down)
     const up = P.flare >= 0.5 ? 1 : 0;
+    const trailUp = up && lead === trail ? 0 : up;
     gFacet(g, [Wr, ...curve.slice(0, 6)], glass, FLAT_N, 0, (x, y) => (root(x, y) ? rootTone + up : lead + up + glintAt(x, y)));
-    gFacet(g, inner ? [Wr, ...curve.slice(5), S, E] : [Wr, ...curve.slice(5)], glass, FLAT_N, 0, (x, y) => (root(x, y) ? rootTone + up : trail + up + glintAt(x, y)));
+    gFacet(g, inner ? [Wr, ...curve.slice(5), S, E] : [Wr, ...curve.slice(5)], glass, FLAT_N, 0, (x, y) => (root(x, y) ? rootTone + up : trail + trailUp + glintAt(x, y)));
   }
   const c = g.render(0, false);
 
   // trailing-edge rims: free glass edges next to a scallop → one line, coloured by its facing
+  // hitMagic flare: every facet one ramp step lighter, and the lines that separate them step up with
+  // them (the rim facing away and the fold line), so the three planes and their lines survive
+  const flared = P.flare >= 0.5;
   const rimHi = far ? PAL.cyan2 : shield ? PAL.cyan3 : PAL.white;
-  const rimLo = far ? PAL.cyan2 : shield ? PAL.cyan2 : PAL.cyan4;
+  const rimLo = far ? PAL.cyan2 : shield ? PAL.cyan2 : flared ? PAL.white : PAL.cyan4;
   {
     const hits: number[] = [];
     for (let y = 0; y < H; y++)
@@ -723,7 +894,7 @@ function drawWing(r: WingRig, far: boolean, P: Pose): PixelCanvas {
   // ONE fold line across the inner sheet: from the elbow toward the middle of its trailing edge
   if (!shield) {
     const inner = curves[n - 1];
-    const fold = far ? PAL.cyan1 : PAL.cyan3;
+    const fold = far ? (flared ? PAL.cyan2 : PAL.cyan1) : flared ? PAL.cyan4 : PAL.cyan3;
     const from = lerpV(E, Wr, 0.12);
     const to = inner[5];
     const glassCols = new Set(MATS_GLASS(far));
@@ -885,6 +1056,7 @@ const EYE_KEY: Record<string, number> = { '2': PAL.night2, '3': PAL.night3, d: P
 
 const MOUTH_MASK = new Uint8Array(W * H);
 const FAR_MASK = new Uint8Array(W * H);
+const LEG_MASK = new Uint8Array(W * H);
 const JAW_MASK = new Uint8Array(W * H);
 const SKULL_MASK = new Uint8Array(W * H);
 
@@ -924,6 +1096,7 @@ function drawHead(p: PixelCanvas, hp: V, P: Pose) {
         c.set(x, y, col);
       }
     maskOf(c, MOUTH_MASK);
+    orMask(c, HEAD_MASK);
     composite(p, c);
   }
 
@@ -942,6 +1115,7 @@ function drawHead(p: PixelCanvas, hp: V, P: Pose) {
       }
     for (let i = 0; i < hits.length; i += 2) c.set(hits[i], hits[i + 1], PAL.night3);
     maskOf(c, JAW_MASK);
+    orMask(c, HEAD_MASK);
     composite(p, c, (x, y, b) => (MOUTH_MASK[y * W + x] ? PAL.ink : selout(x, y, b)));
   }
 
@@ -965,9 +1139,11 @@ function drawHead(p: PixelCanvas, hp: V, P: Pose) {
   {
     const n0 = flo(T(...NOSTRIL));
     c.paint(n0[0], n0[1], PAL.night2);
+    if (n0[0] >= 0 && n0[1] >= 0 && n0[0] < W && n0[1] < H) KEEP[n0[1] * W + n0[0]] = 1;
   }
   // charged lips: a thread of light leaks between the closed jaws
   if (!open && P.mouth > 0.2) lineOn(c, T(6, 1.0), T(18.5, 0.8), P.mouth > 0.6 ? PAL.cyan4 : PAL.cyan3);
+  orMask(c, HEAD_MASK);
   composite(p, c, (x, y, b) => {
     const i = y * W + x;
     if (MOUTH_MASK[i]) return PAL.ink;
@@ -987,7 +1163,10 @@ function drawHead(p: PixelCanvas, hp: V, P: Pose) {
         if (rows[j][i] === 'd' && P.glow > 0.85) col = PAL.cyan4;
         const x = e[0] + i;
         const y = e[1] + j;
-        if (p.isOpaque(x, y) && p.get(x, y) !== PAL.ink) p.set(x, y, col);
+        if (p.isOpaque(x, y) && p.get(x, y) !== PAL.ink) {
+          p.set(x, y, col);
+          KEEP[y * W + x] = 1;
+        }
       }
   }
 
@@ -1028,12 +1207,16 @@ function drawHead(p: PixelCanvas, hp: V, P: Pose) {
 
   // horns (gold, four bands): the main sweep off the crown and a cheek horn
   {
-    const root = (u: number) => (u < 0.06 ? -0.35 : 0);
+    // four bands by the horn's own geometry (the same for both lights, so P2 never zig-zags):
+    // gold4 along the upper edge, gold3 body, gold2 underside, gold1 at the root
+    const band = (root: number) => (u: number, _v: number, _ox: number, oy: number) => (u < root ? 0 : oy < -0.42 ? 3 : oy > 0.3 ? 1 : 2);
     const g2 = newG();
-    gTube(g2, bezier(T(-1.6, -6.2), T(-6.8, -8.4), T(-11.8, -8.8), T(-16.2, -12), 12), 3.8, 1, M.GOLD, { biasAt: root });
-    composite(p, g2.render(0, false), selout, { top: 1, side: 1, bottom: 1 });
+    gTube(g2, bezier(T(-1.6, -6.2), T(-6.8, -8.4), T(-11.8, -8.8), T(-16.2, -12), 12), 3.8, 1, M.GOLD_D, { biasAt: band(0.035) });
+    const hornC = g2.render(0, false);
+    orMask(hornC, HEAD_MASK);
+    composite(p, hornC, selout, { top: 1, side: 1, bottom: 1 });
     const g3 = newG();
-    gTube(g3, bezier(T(-3.6, -0.4), T(-7, -0.2), T(-9.4, 0.8), T(-11.6, 3), 8), 2.6, 1, M.GOLD, { z: 1, biasAt: root });
+    gTube(g3, bezier(T(-3.6, -0.4), T(-7, -0.2), T(-9.4, 0.8), T(-11.6, 3), 8), 2.6, 1, M.GOLD_D, { z: 1, biasAt: band(-1) });
     composite(p, g3.render(0, false), () => PAL.night2, { top: 1, side: 1, bottom: 1 });
   }
 }

@@ -12,8 +12,9 @@
 //     settles to its true colours — the rest of the pose (land, unfurl, shake out) is the body
 //     itself, so the body is visible for the whole summon (≥ 50 %);
 //   - an ace's cut-in (./cutin.ts, ≤ 1.0 s, band only) comes AFTER the body has formed — on the
-//     pose's big beat (the spread after the landing) — and the finale (ring, light, badge) lands as
-//     the band leaves;
+//     pose's big beat (the spread after the landing) — below the monster's tile, never across it
+//     (the pose's settle stays in view), and the finale (ring, light, badge) lands as the band
+//     leaves;
 //   - the card part (hand slam / tribute slam / tile flash) stays the kits' own.
 // The old monsters (no summon pose) keep their signature entrances; only the cut-in and the
 // hologram settle are shortened for them in the v3 look.
@@ -141,6 +142,39 @@ export function summonPose(scene: Phaser.Scene, u: MonsterUnit, o: { ramp: Ramp;
     }
   });
   return { land, solid, peak, done, ms: { land: landMs, peak: peakMs, total, holo } };
+}
+
+/**
+ * A short hologram onset on whatever pose the unit shows (a flip, a quick entry): the body is
+ * built bottom → top in `ramp` over ~55 % of `ms`, then steps back to its true colours in three
+ * palette steps — no bright full-silhouette frame, no flat fill. Resolves when the body is solid.
+ */
+export function holoOnset(scene: Phaser.Scene, u: MonsterUnit, ramp: Ramp, ms = 160): Promise<void> {
+  const s = u.sprite;
+  if (!s.active) return Promise.resolve();
+  const P = setHologram(s, { reveal: 0, scan: 1, glitch: 0.06, tint: ramp[4], ramp: holoRamp(ramp), tintMix: 0.8, gain: 0.7, flicker: 0, alpha: 1, white: 0, clipY: null });
+  const rev = Math.round(ms * 0.55);
+  return new Promise<void>((resolve) => {
+    onFrame(
+      scene,
+      (_dt, el) => {
+        if (!s.active) return false;
+        if (el < rev) P.reveal = el / rev;
+        else {
+          P.reveal = 1;
+          const step = Math.min(3, Math.floor(((el - rev) / Math.max(1, ms - rev)) * 3) + 1) / 3;
+          P.tintMix = 0.8 * (1 - step);
+          P.scan = 1 - step;
+          P.glitch = 0.06 * (1 - step);
+        }
+        return el < ms;
+      },
+      () => {
+        if (s.active) clearHologram(s);
+        resolve();
+      },
+    );
+  });
 }
 
 // ================================================================ the generic v3 entrance
@@ -271,7 +305,8 @@ function column(S: PoseStage, matter: ShatterMaterial): { pinch(ms: number): Pro
  *   0      the attribute circle opens, a light column stands on the tile
  *   0–300  the body forms in the column (hologram ≤ 300 ms) while the pose's drop / curl plays
  *   land   dust + a small ring, the column pinches out
- *   peak   ace: the cut-in (≤ 1.0 s, band only) — the pose plays on under it
+ *   peak   ace: the cut-in (≤ 1.0 s, band only) — the band passes UNDER the monster's tile
+ *          (summon-a climax: cutInV3 `clear`), so the pose plays on in full view above it
  *   end    the finale: ring, light, badge (an ace's as the band leaves)
  * Resolves when the pose has ended (and, for an ace, the band is leaving).
  */

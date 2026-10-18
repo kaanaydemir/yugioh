@@ -412,6 +412,54 @@ export function finishMonsterSheet(key: string, anims?: readonly AnyMonsterAnim[
   ensureAnims(ps, anims ?? [...ps.groups.keys()]);
 }
 
+/**
+ * (v3 A2 tech review r2 #12, additive) Paint the given animations of a deferred sheet FIRST, in
+ * the background — short slices between frames like the boot painter (SLICE_MS each), one upload
+ * once they are all painted — so a cinematic that will need them (a summon pose, the reactions and
+ * the death of a unit on the field) finds them ready instead of painting them synchronously on its
+ * impact frame. A no-op for complete / synchronous sheets and for anims already painted.
+ */
+export function warmMonsterSheet(key: string, anims: readonly AnyMonsterAnim[]): void {
+  const ps = pendingSheets.get(key);
+  if (!ps) return;
+  const add = anims.map((a) => ps.groups.get(a)).filter((g): g is Group => !!g && !g.ready);
+  if (!add.length) return;
+  // one warm queue per sheet: a later call adds its anims to the running one
+  let todo = warmQueues.get(ps);
+  if (todo) {
+    for (const g of add) if (!todo.includes(g)) todo.push(g);
+    return;
+  }
+  todo = [...add];
+  warmQueues.set(ps, todo);
+  const q = todo;
+  const tick = () => {
+    if (pendingSheets.get(ps.key) !== ps) {
+      warmQueues.delete(ps);
+      return;
+    }
+    const t0 = performance.now();
+    while (q.length && performance.now() - t0 < SLICE_MS) {
+      const g = q[0];
+      let i = g.start;
+      while (i < g.end && ps.painted[i]) i++;
+      if (i >= g.end) q.shift();
+      else paintCell(ps, i);
+    }
+    if (q.length) {
+      setTimeout(tick, 0);
+      return;
+    }
+    warmQueues.delete(ps);
+    upload(ps);
+    settle(ps);
+  };
+  setTimeout(tick, 0);
+}
+
+/** The running warm queue of each sheet (warmMonsterSheet). */
+const warmQueues = new Map<PendingSheet, Group[]>();
+
 function dropPending(key: string): void {
   const ps = pendingSheets.get(key);
   if (!ps) return;

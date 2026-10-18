@@ -13,10 +13,13 @@
 //         4 px shake, ATK/DEF badge pop
 // Budget: special summon ≈ 1.1 s; with the tribute + cut-in ≈ 3.7 s.
 
-import { PAL, RAMPS, type Ramp } from '../../art/palette';
-import { DEPTH, type XY } from '../../view/layout';
-import { TEX } from '../../vfx/core';
-import { STEX, landingDust } from '../../vfx/summon';
+import { PAL, PLAYER_COLOR, RAMPS, type Ramp } from '../../art/palette';
+import { DEPTH, LOOK_V3, type XY } from '../../view/layout';
+import { TEX, shake } from '../../vfx/core';
+import { STEX, landingDust, shockwave } from '../../vfx/summon';
+import { clearHologram, holoRamp, setHologram } from '../../vfx/hologram';
+import type { MonsterUnit } from '../../duel/MonsterUnit';
+import { registerCardHook } from '../api';
 import {
   ADD,
   E,
@@ -41,6 +44,7 @@ import {
   scanBar,
   settleHolo,
   signatureSummon,
+  untilFrame,
   type Stage,
 } from './_kit';
 
@@ -57,7 +61,7 @@ interface Shaft {
   destroy(): void;
 }
 
-function prismShaft(S: Stage): Shaft {
+function prismShaft(S: Stage, o: { hw?: number } = {}): Shaft {
   const sc = S.scene;
   const { x, y } = S.home;
   const W = 96;
@@ -71,7 +75,7 @@ function prismShaft(S: Stage): Shaft {
   const beam = lightBeam(sc, { x, y: top }, { x, y: top }, PAL.cyan4, 0, { width: 18, depth: S.depth - 1.5, intensity: 0.9, shimmer: 0.35 });
   const foot = S.glow({ color: PAL.cyan4, radius: fs(30), intensity: 0, anim: 'shimmer', fadeIn: 0, air: 0.35, airRadius: 18 });
   const st = { tip: top, wk: 1, fade: 1, t: 0, landed: 0 };
-  const hw0 = S.big ? 12 : 9;
+  const hw0 = o.hw ?? (S.big ? 12 : 9);
   const glints = new Sparks(sc, S.depth + 0.5, ADD);
   let alive = true;
   const stop = onFrame(sc, (dt) => {
@@ -166,11 +170,11 @@ function prismShaft(S: Stage): Shaft {
 }
 
 /** The roar-peak payoff: a spectral lens streak with ghost hexes, rainbow floor rings, shards. */
-function rainbowFlare(S: Stage, at: XY): void {
+function rainbowFlare(S: Stage, at: XY, o: { ghosts?: boolean; len?: number; spin?: number } = {}): void {
   const sc = S.scene;
   const X = Math.round(at.x);
   const Y = Math.round(at.y);
-  const L = S.big ? 130 : 80;
+  const L = o.len ?? (S.big ? 130 : 80);
   const g = sc.add.graphics().setDepth(DEPTH.FX + 8);
   // ghost hexes along the line from the flare through the screen centre
   const cx = 320 - X;
@@ -203,7 +207,7 @@ function rainbowFlare(S: Stage, at: XY): void {
         const d = Math.round(l * 0.12);
         for (let i = 1; i <= d; i++) g.fillStyle(PAL.cyan4, 1).fillRect(X + i, Y - i, 1, 1).fillRect(X - i, Y + i, 1, 1).fillRect(X + i, Y + i, 1, 1).fillRect(X - i, Y - i, 1, 1);
       }
-      ghosts.forEach((gh, i) => gh.setVisible(env > 0.2 && Math.floor(t * 20 + i) % 4 !== 0));
+      ghosts.forEach((gh, i) => gh.setVisible(o.ghosts !== false && env > 0.2 && Math.floor(t * 20 + i) % 4 !== 0));
     }).then(() => {
       g.destroy();
       ghosts.forEach((gh) => gh.destroy());
@@ -234,9 +238,79 @@ function rainbowFlare(S: Stage, at: XY): void {
   for (let i = 0; i < (S.big ? 34 : 18); i++) {
     const a = RR(Math.PI * 1.05, Math.PI * 1.95);
     const v = RR(80, 200);
-    sh.add({ x: X + RR(-6, 6), y: Y + RR(-6, 6), vx: Math.cos(a) * v, vy: Math.sin(a) * v, ay: 420, drag: 1.2, life: RR(420, 760), ramp: [PAL.white, PAL.cyan4, PAL.cyan3, PAL.cyan2], tex: i % 3 === 0 ? TEX.plus : i % 3 === 1 ? TEX.px2 : TEX.px1, spin: 9 });
+    sh.add({ x: X + RR(-6, 6), y: Y + RR(-6, 6), vx: Math.cos(a) * v, vy: Math.sin(a) * v, ay: 420, drag: 1.2, life: RR(420, 760), ramp: [PAL.white, PAL.cyan4, PAL.cyan3, PAL.cyan2], tex: i % 3 === 0 ? TEX.plus : i % 3 === 1 ? TEX.px2 : TEX.px1, spin: o.spin ?? 9 });
   }
   sh.close();
+}
+
+// ================================================================ v3 (?look=v3): the entrance on the summon pose
+//
+// "Prizma İnişi" in the new look, on the art's own `summon` pose (src/art/monsters-v3; 15 f /
+// 1.32 s: wrapped in its wings it drops onto the tile, lands in a crouch, unfurls, folds back,
+// shakes out). The prism shaft is kept but the BODY is readable from the start: the shaft is
+// narrow and stands behind the sprite, and the body forms inside it while the drop already plays
+// (crystal hologram ≤ 300 ms, true colours from there on):
+//   0      the circle opens, the narrow prism shaft stabs down onto the tile (70 ms, chime)
+//   0–280  the wrapped body builds bottom → top in the light while it drops (summon f0–3)
+//   land   f4: the feet strike — dust, the rainbow rings pool, the shaft pinches out
+//   spread f7: the wings burst open — the rainbow flare (spectral streak, shards, floor rings)
+//   cut-in f8 (an ace's tribute summon): the band-only cut-in on the spread hold; the fold-back
+//          and shake-out play on under it, the finale (ring, light, badge) lands as it leaves
+// suWyrm: the summon starts ≈ 1.17 s in (after the tribute stream) → true colours ≈ 1.45 s, the
+// whole summon ≤ 3.0 s. No sprite scaling, no full-screen flash.
+
+/** Summon pose beats of the v3 art (src/art/monsters-v3/crystal_wyrm-anims.ts SUMMON). */
+const SPREAD_F = 7;
+const CUT_F = 8;
+
+async function prismLandingV3(S: Stage): Promise<void> {
+  const sc = S.scene;
+  const u = S.unit;
+  const n = u.frameCount('summon');
+  const spreadF = Math.min(n - 1, SPREAD_F);
+  const cutF = Math.min(n - 1, CUT_F);
+  const circle = S.openCircle({ appearMs: 200 });
+  const shaft = S.own(prismShaft(S, { hw: S.big ? 6 : 5 }));
+  playSfx('summonCharge', { volume: 0.7 });
+  bg(
+    shaft.descend(70).then(() => {
+      playSfx('holyChime', { volume: 0.7 });
+      circle.pulse(120);
+    }),
+  );
+  const p = S.pose({
+    ramp: CRYSTAL,
+    onLand: () => {
+      playSfx('impactLight', { volume: 0.6 });
+      bg(landingDust(sc, S.home.x, S.home.y, PAL.cyan3, { big: false, count: S.big ? 9 : 7, radius: 14 }));
+      circle.pulse(100);
+      bg(shaft.width(0.2, 100).then(() => shaft.fade(120)).then(() => shaft.destroy()));
+    },
+  });
+  if (!p) {
+    shaft.destroy();
+    return;
+  }
+  bg(p.solid.then(() => playSfx('materialize', { volume: 0.5 })));
+  // ---- the wings burst open: the prism flare from the chest
+  await untilFrame(u, 'summon', spreadF);
+  const b = bodyBox(u);
+  rainbowFlare(S, { x: Math.round((b.left + b.right) / 2), y: Math.round(lerp(b.top, b.bottom, 0.42)) }, { ghosts: false, len: S.big ? 72 : 52, spin: 0 });
+  playSfx('summonBurst', { volume: 0.55, pitch: 1.15 });
+  playSfx('holyChime', { volume: 0.55, pitch: 1.3 });
+  const finale = () => S.finale({ ring: S.big ? 92 : 60, ramp: RAMPS.cyan, freezeMs: S.big ? 50 : 0, sfx: 'summonBurst' });
+  if (!S.cutIn) {
+    finale();
+    bg(circle.dismiss(420));
+    await p.done;
+    return;
+  }
+  // ---- an ace: the cut-in on the spread hold; the finale as the band leaves
+  await untilFrame(u, 'summon', cutF);
+  await S.climax();
+  finale();
+  bg(circle.dismiss(420));
+  await S.wait(120);
 }
 
 signatureSummon('crystal_wyrm', async (S) => {
@@ -302,4 +376,137 @@ signatureSummon('crystal_wyrm', async (S) => {
     },
   });
   await S.wait(S.big ? 200 : 140);
-});
+}, { v3: prismLandingV3 });
+
+// ================================================================ v3: the flip (a tribute-set wyrm)
+//
+// A face-down Kristal Ejder (tribute-SET on an earlier turn) turning face-up, on its own poses —
+// never the old squash / stretch pop-out (sprite scaling) or the long gold hologram:
+//   flipSummon  the card glows in its owner's colour and jumps over (the paired summon event is
+//               consumed here, as summon-b's flip handler does), a crystal glint bursts from it,
+//               the body forms CROUCHED BEHIND ITS WINGS (guard f0, crystal hologram ≤ 150 ms)
+//               and rises on its `fromGuard` pose into attack position; ring + badge as it stands;
+//   attacked    (flipped in defense by an attack) the card turns over, the body forms in its
+//               guard pose (≤ 120 ms) and holds it — the battle goes on at once.
+// Registered under ?look=v3 only (the old look keeps summon-b's flip handler untouched).
+
+/** Short crystal hologram onset on the frame the unit shows: reveal, one bright frame, 3 steps back. */
+function crystalOnset(sc: Phaser.Scene, u: MonsterUnit, ms: number): Promise<void> {
+  const s = u.sprite;
+  const P = setHologram(s, { reveal: 0, scan: 1, glitch: 0.08, tint: CRYSTAL[4], ramp: holoRamp(CRYSTAL), tintMix: 0.8, gain: 0.7, flicker: 0, alpha: 1, white: 0, clipY: null });
+  const rev = Math.round(ms * 0.45);
+  return run(sc, ms, (t) => {
+    if (!s.active) return;
+    const el = t * ms;
+    if (el < rev) P.reveal = el / rev;
+    else if (el < rev + 34) {
+      P.reveal = 1;
+      P.white = 0.4;
+    } else {
+      P.white = 0;
+      const step = Math.min(3, Math.floor(((el - rev - 34) / Math.max(1, ms - rev - 34)) * 3) + 1) / 3;
+      P.tintMix = 0.8 * (1 - step);
+      P.scan = 1 - step;
+      P.glitch = 0.08 * (1 - step);
+    }
+  }).then(() => {
+    if (s.active) clearHologram(s);
+  });
+}
+
+if (LOOK_V3)
+  registerCardHook(
+    'crystal_wyrm',
+    'flip',
+    async (ctx) => {
+      const ev = ctx.ev;
+      const v = ctx.views;
+      const field = v.field;
+      const sc = ctx.scene;
+      const flipSummon = ev.cause === 'flipSummon';
+      if (flipSummon) {
+        const si = ctx.findType('summon', (e) => e.uid === ev.uid && e.method === 'flip');
+        if (si >= 0) ctx.consumeAt(si);
+        void v.duelists?.get(ev.player).play('command');
+        void v.camera.unfocus(120);
+      }
+      let tile = field.tileOf(ev.uid);
+      if (!tile) tile = field.placeCard(ev.player, 'monster', ev.zone, ev.uid, ev.cardId, false, 'side');
+      tile.setCard(ev.cardId);
+      const home = { x: tile.home.x, y: tile.home.y };
+      ctx.sfx('flipReveal', { volume: 0.9 });
+      // (A2 reviews r2: the flip summon ran 0.88 s, then 0.60 s, over / at the plan's 0.6 s flip
+      // budget. The card now turns AT ONCE — the owner's glow and the one whole-pixel jolt run
+      // inside the turn's own crouch (its first 15 %), never before it — on flipV3's 240 ms turn;
+      // a ≈ 100 ms hologram of the very pose the body rises from, the rise already under way in it.
+      // The flip summon ends ≈ 0.52 s.)
+      const FLIP = flipSummon ? 240 : 220;
+      const flipP = tile.flipUp(FLIP);
+      if (flipSummon) {
+        bg(tile.pulse(PLAYER_COLOR[ev.player], 240));
+        const x0 = tile.home.x;
+        if (tile.active) tile.x = x0 + 1;
+        bg(ctx.wait(30).then(() => (tile && tile.active ? (tile.x = x0) : undefined)));
+        bg(ctx.wait(Math.round(FLIP * 0.7)).then(() => (tile && tile.active && tile.orientation !== 'up' ? tile.rotateTo('up', 200) : undefined)));
+      }
+      await ctx.wait(Math.round(FLIP * (flipSummon ? 0.45 : 0.6)));
+      const atk = ctx.atk(ev.uid, flipSummon ? 'after' : 'next');
+      const dfn = ctx.def(ev.uid, flipSummon ? 'after' : 'next');
+      const unit = field.addUnit(ev.uid, { hidden: true, atk, def: dfn, position: flipSummon ? 'attack' : 'defense' });
+      // a crystal glint bursts from the turning card (light layer + crisp sparks)
+      void lightFlash(sc, home.x, home.y - 12, PAL.cyan4, fs(flipSummon ? 34 : 26), flipSummon ? 380 : 280, { floorY: home.y, ring: flipSummon, intensity: flipSummon ? 0.9 : 0.6 });
+      const sp = new Sparks(sc, DEPTH.FX + 1, ADD);
+      for (let i = 0; i < (flipSummon ? 12 : 7); i++) {
+        const a = Math.PI + (i / (flipSummon ? 11 : 6)) * Math.PI;
+        sp.add({ x: home.x + Math.round(Math.cos(a) * 8), y: home.y - 2, vx: Math.cos(a) * 70, vy: Math.sin(a) * 50 - 20, drag: 3, life: 300, ramp: [PAL.white, PAL.cyan4, PAL.cyan3], tex: i % 3 === 0 ? TEX.plus : TEX.px1 });
+      }
+      sp.close();
+      if (!unit) {
+        await flipP;
+        return;
+      }
+      unit.position = flipSummon ? 'attack' : 'defense';
+      unit.badge.setPosition(unit.position);
+      unit.posed = true;
+      const s = unit.sprite;
+      try {
+        s.setPosition(unit.rest0.x, unit.rest0.y);
+        const rise = flipSummon && unit.has('fromGuard') ? 'fromGuard' : null;
+        // the hologram forms on the frame the body rises from (fromGuard f0), never another pose
+        unit.pose(rise ?? 'guard', 0);
+        unit.showSprite();
+        playSfx('materialize', { volume: 0.5, pitch: 1.2 });
+        const onset = crystalOnset(sc, unit, flipSummon ? 100 : 120);
+        if (flipSummon) {
+          // it rises out of its wing guard into attack position (feet planted) — the rise starts
+          // with the hologram (the body already moves while it forms)
+          const total = rise ? unit.animMs(rise) : 0;
+          const play = rise ? unit.playRange(rise, 0, undefined, { hold: false }) : Promise.resolve();
+          await ctx.wait(Math.round(total * 0.6));
+          void shockwave(sc, home.x, home.y, { ramp: RAMPS.cyan, radius: fs(44), ms: 380, thickness: 5 });
+          void lightFlash(sc, home.x, home.y - 16, PAL.cyan3, fs(30), 360, { floorY: home.y, ring: true, intensity: 0.8 });
+          bg(shake(sc, 120, 1));
+          playSfx('holyChime', { volume: 0.5, pitch: 1.35 });
+          unit.badge.setVisible(true);
+          void unit.badge.pop();
+          await play;
+          await onset;
+        } else {
+          await onset;
+          unit.badge.setVisible(true);
+          void unit.badge.pop();
+          unit.rest();
+        }
+        await Promise.race([flipP, ctx.wait(240)]);
+      } finally {
+        unit.posed = false;
+        unit.lift = 0;
+        if (s.active && !unit.retired) {
+          s.setPosition(unit.rest0.x, unit.rest0.y);
+          unit.show();
+          if (!s.anims.isPlaying) unit.rest();
+        }
+      }
+    },
+    { name: 'summon-a:crystal_wyrm:flip-v3' },
+  );

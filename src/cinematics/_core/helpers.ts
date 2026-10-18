@@ -560,7 +560,11 @@ export async function presentDamage(ctx: AnyCtx, ev: Extract<GameEvent, { type: 
   // v3: the impact number (visible on the frame it is created, whole-pixel pop; _v3/number.ts)
   const jobs: Promise<unknown>[] = [LOOK_V3 ? impactNumber(sc, at.x, at.y, ev.amount, { size, depth }) : damageNumber(sc, at.x, at.y, ev.amount, 'damage', { size, depth })];
   const d = ctx.views.duelists?.get(ev.player);
-  if (d) jobs.push(d.play('hurt'), d.jolt());
+  // v3: the flinch plays on; the presentation ends with the number pop and the LP roll
+  if (d && LOOK_V3) {
+    void d.play('hurt');
+    void d.jolt();
+  } else if (d) jobs.push(d.play('hurt'), d.jolt());
   // v3: the LP roll stays within the plan's ~0.4 s
   jobs.push(LOOK_V3 ? ctx.views.hud.setLp(ev.player, ev.lpAfter, true, { maxMs: LP_ROLL_MAX_MS }) : ctx.views.hud.setLp(ev.player, ev.lpAfter, true));
   if (ev.lpAfter <= 1000) ctx.music.setIntensity(1);
@@ -615,20 +619,11 @@ export async function playRun(ctx: AnyCtx, indices: readonly number[], hints?: (
 const TRIGGER_RUN = new Set<GameEvent['type']>(['damage', 'destroy', 'toGraveyard', 'statChange', 'fieldSpell', 'lpGain', 'target']);
 
 /**
- * Play the monster-effect triggers that answer this battle (Şimşek Kertenkelesi's discharge,
- * Kor Kurdu's howl, Gelgit Golemi's counter-splash...) right away, INSIDE the battle's camera
- * focus — instead of after the battle handler has eased the camera out, which left a dead gap
- * before the trigger. Looks at the events after the battle: its own consequences (damage /
- * destroy / toGraveyard / statChange), then monsterEffect activations of the monsters in
- * `involved` (attacker / target) and their resolution runs. Everything up to the end of the last
- * such run is played in engine order (already consumed events are skipped); anything else
- * (another monster's effect, a decision, gameOver, a phase change) ends the look-ahead and is
- * left to the Director. `skip`: indices the battle handler plays itself (its delayed damage).
- * Resolves when they have played.
+ * Index of the last event of the monster-effect triggers that answer this battle (see
+ * playBattleTriggers), or -1 when the battle sets none off. Pure look-ahead: nothing is played.
  */
-export async function playBattleTriggers(ctx: AnyCtx, involved: readonly (Uid | null)[], o: { skip?: readonly number[] } = {}): Promise<void> {
+export function battleTriggerEnd(ctx: AnyCtx, involved: readonly (Uid | null)[]): number {
   const ids = involved.filter((u): u is Uid => u !== null && u !== undefined);
-  const skip = new Set(o.skip ?? []);
   let end = -1;
   for (let i = ctx.index + 1; i < ctx.events.length; i++) {
     const e = ctx.events[i];
@@ -643,6 +638,24 @@ export async function playBattleTriggers(ctx: AnyCtx, involved: readonly (Uid | 
     if (TRIGGER_RUN.has(e.type)) continue;
     break;
   }
+  return end;
+}
+
+/**
+ * Play the monster-effect triggers that answer this battle (Şimşek Kertenkelesi's discharge,
+ * Kor Kurdu's howl, Gelgit Golemi's counter-splash...) right away, INSIDE the battle's camera
+ * focus — instead of after the battle handler has eased the camera out, which left a dead gap
+ * before the trigger. Looks at the events after the battle: its own consequences (damage /
+ * destroy / toGraveyard / statChange), then monsterEffect activations of the monsters in
+ * `involved` (attacker / target) and their resolution runs. Everything up to the end of the last
+ * such run is played in engine order (already consumed events are skipped); anything else
+ * (another monster's effect, a decision, gameOver, a phase change) ends the look-ahead and is
+ * left to the Director. `skip`: indices the battle handler plays itself (its delayed damage).
+ * Resolves when they have played.
+ */
+export async function playBattleTriggers(ctx: AnyCtx, involved: readonly (Uid | null)[], o: { skip?: readonly number[] } = {}): Promise<void> {
+  const skip = new Set(o.skip ?? []);
+  const end = battleTriggerEnd(ctx, involved);
   for (let i = ctx.index + 1; i <= end; i++) {
     // `skip`: events the battle itself still plays (e.g. a damage number on a delay)
     if (ctx.isConsumed(i) || skip.has(i)) continue;

@@ -25,25 +25,38 @@
 //     attacker when its own player pays (recoil);
 //   - when the attacker loses, it is struck on that same frame where it stands (in front of the
 //     target, or — ranged — by a backlash running back along its own attack) and its death starts
-//     from that reaction once its strike has let go of the sprite; never "flies home and is hit
-//     by nothing";
-//   - a direct hit lands as a local impact at the duelist (no full-screen wash).
+//     from that reaction; never "flies home and is hit by nothing". A MELEE loser is taken over
+//     on the contact frame (MonsterUnit.claim: a legacy strike that would carry it home no longer
+//     drives the sprite) and dies right there, DEATH_AFTER_CONTACT_MS later; a ranged one once
+//     its strike has let go of the sprite. The stronger attack-position target answers the blow
+//     with a short recoil of its own (power 1) — it withstood it;
+//   - a direct hit lands as a local impact at the duelist (no full-screen wash);
+//   - the tail runs in parallel, not in a row: the camera eases back (and the arena light comes
+//     up) as soon as the climax is over — the card of each death is born (its body broke), or,
+//     with no death, the number has popped — while the LP roll and the card flights finish; only a
+//     battle trigger (counter-splash, howl, discharge) keeps the camera on the clash until it has
+//     played.
 
 import type Phaser from 'phaser';
 import type { GameEvent } from '../../engine/types';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { ATTRIBUTE_RAMP, PAL, RAMPS, type Ramp } from '../../art/palette';
-import { GAME_W, LOOK_V3, type XY } from '../../view/layout';
+import { DEPTH, GAME_W, LOOK_V3, type XY } from '../../view/layout';
 import { shake, wait } from '../../vfx/core';
 import { blockClang, directHit, impact as combatImpact, whiteFlash } from '../../vfx/combat';
 import { lightFlash } from '../../view/light';
 import { genericStrike } from '../_defaults/strikes';
 import { fx, registerEvent, strikeFor, type StrikeArgs } from '../api';
-import { contactFlash } from '../_v3/flash';
-import { blowKindOf, contactPoint, reassertReaction } from '../_v3/react';
+import { blowKindOf, contactPoint, hitAnimFor, reassertReaction } from '../_v3/react';
+import type { AnyMonsterAnim } from '../../art/types';
 import { backlash, blowFrom, canHandOver, isMelee } from '../_v3/clash';
 import { DEATH_AFTER_CONTACT_MS } from '../_v3/budget';
+import { onFrame } from '../../vfx/setpieces';
+import { weightOf } from '../../duel/motion';
 import { STRIKE_LIGHT, type Ctx, type EvOf, all, arenaDim, duelist, guardReact, impactLight, lerpXY, live, norm, other, sub, takeAttack } from './_kit';
+
+/** v3: the impact number's pop (slam + settle, _v3/number.ts) before the camera may ease out. */
+const NUMBER_POP_MS = 200;
 
 /** Events that end the "consequences" run of a battle. */
 function isBreak(e: GameEvent): boolean {
@@ -249,6 +262,59 @@ function contactLight(sc: Phaser.Scene, at: XY, floorY: number, color: number, p
 }
 
 /**
+ * A2 motion review r2 #9: an old monster's strike bursts its whole explosion over the struck body
+ * (the Titan's fireball + rings + glow covered the magus's first death frames for ~250 ms). For a
+ * v3 victim, everything that strike adds to the FX band right after the contact call (the same
+ * synchronous step: its burst) is drawn just BEHIND the victim's body instead — the burst still
+ * blooms around it and on the floor, the reaction / guard / death pose stays readable.
+ */
+function burstBehind(sc: Phaser.Scene, victim: MonsterUnit): void {
+  const before = new Set(sc.children.list);
+  queueMicrotask(() => {
+    if (!victim.sprite.active || victim.retired) return;
+    const d = victim.sprite.depth - 0.05;
+    for (const o of sc.children.list) {
+      if (before.has(o)) continue;
+      const g = o as Phaser.GameObjects.GameObject & { depth?: number; setDepth?: (v: number) => unknown };
+      if (typeof g.depth === 'number' && g.depth >= DEPTH.FX && g.depth < DEPTH.FX + 4.5 && g.setDepth) g.setDepth(d);
+    }
+  });
+}
+
+/** The recoil anims (a claimed survivor is handed back once none of them plays any more). */
+const RECOILS = ['hit', 'hitHeavy', 'hitMagic'];
+
+/**
+ * A blocked melee attacker that survives (claimed without a pin on the contact frame): its contact
+ * pose holds through the hit-stop (the blow is seen landing), its recoil starts on the first frame
+ * time runs again; once the recoil has played (or after a safety beat) the claim ends and the unit
+ * rests — the strike, still carrying it home, drives it again.
+ */
+function recoilAfterStop(u: MonsterUnit, anim: AnyMonsterAnim): void {
+  let started = false;
+  let seen = false;
+  onFrame(u.scene, (dt, el) => {
+    if (u.retired || !u.sprite.active) return false;
+    if (!started) {
+      if (dt <= 0 && el < 400) return true; // the hit-stop
+      started = true;
+      u.asClaimant(() => void u.play(anim));
+      return true;
+    }
+    const fi = u.frameInfo();
+    const recoiling = fi.anim !== null && RECOILS.includes(fi.anim) && u.sprite.anims.isPlaying;
+    if (recoiling) seen = true;
+    if ((seen && !recoiling) || el > 1400) {
+      const held = fi.anim !== null && RECOILS.includes(fi.anim) && !u.sprite.anims.isPlaying;
+      u.unclaim();
+      if (held || !seen) u.rest();
+      return false;
+    }
+    return true;
+  });
+}
+
+/**
  * The battle outcome in the v3 look (see the header): same consequences, same strike API, but the
  * blow direction, the reactions, the numbers and the counter-blow are staged on the CONTACT frame.
  */
@@ -287,17 +353,40 @@ async function battleV3(ctx: Ctx<'battle'>): Promise<void> {
   void ctx.focus(lerpXY(aCore0, to, 0.62), { zoom: power >= 3 ? 1.065 : 1.05, ms: 360, pan: 0.32 });
   void arenaDim(sc, power >= 3 ? 0.42 : 0.28, 320);
   const strikeLight = attacker ? STRIKE_LIGHT[attacker.cardId] ?? aRamp[3] : aRamp[3];
+  // a battle trigger (counter-splash, howl, discharge) plays inside the focus: the camera waits for it
+  const hasTriggers = fx.battleTriggerEnd(ctx, [ev.attackerUid, ev.targetUid]) >= 0;
 
   const pending: Promise<unknown>[] = [];
   /** The damage number + LP roll: the triggers below need not wait for the counter to settle. */
   const rolls: Promise<unknown>[] = [];
+  /** The climax beats (a death's card born, the number popped): the camera eases out after them. */
+  const climax: Promise<unknown>[] = [];
+  let eased: Promise<void> | null = null;
+  const easeOut = (): Promise<void> => {
+    if (!eased) {
+      void arenaDim(sc, 0, 420);
+      eased = ctx.unfocus(300);
+    }
+    return eased;
+  };
   let dmgQueued = false;
   /** The number pops NOW (the contact frame): no delay, no waiting for the hit-stop. */
   const playDamageAt = (at: XY) => {
     if (dmgIdx < 0 || dmgQueued || ctx.isConsumed(dmgIdx)) return;
     dmgQueued = true;
     rolls.push(ctx.play(dmgIdx, { at: { x: Math.round(at.x), y: Math.round(at.y) }, battle: true }));
+    climax.push(wait(sc, NUMBER_POP_MS));
   };
+  /** A death after `after`; its climax is the frame its card is born (its body broke). */
+  const death = (i: number, push: XY, after: Promise<unknown>) => {
+    let bornNow!: () => void;
+    const born = new Promise<void>((r) => (bornNow = r));
+    const job = after.then(() => ctx.play(i, { push, hit: false, onBorn: () => bornNow() }));
+    climax.push(Promise.race([born, job]));
+    pending.push(job);
+  };
+  /** The melee loser taken over on the contact frame (its strike no longer drives it). */
+  let cutAttacker = false;
   /** Just above a unit's head, where it stands now. */
   const overHead = (u: MonsterUnit | null): XY => {
     if (!u || !u.sprite.active) return { x: to.x, y: to.y - 22 };
@@ -318,6 +407,18 @@ async function battleV3(ctx: Ctx<'battle'>): Promise<void> {
     if (impacted) return;
     impacted = true;
     resolveImpact();
+    // the contact frame, for the timing tools (tools/measure.mjs: a legacy strike may sound earlier)
+    sc.events.emit('v3:contact', ev.attackerUid);
+    stageImpact(at);
+    // a legacy strike's burst (made right after this call) never covers a v3 body's reaction
+    const tv = live(target);
+    const av = live(attacker);
+    if (tv && av && tv.has('death') && !av.has('death')) burstBehind(sc, tv);
+    // the camera eases out once the climax is over (unless a trigger still has to play)
+    if (!hasTriggers) void Promise.all(climax.length ? climax : [...pending]).then(() => easeOut());
+  };
+  /** The contact frame: reactions, the counter, the number, the deaths. */
+  const stageImpact = (at?: XY) => {
     const p = at ?? to;
     const au = live(attacker);
     // the blow travels from where the attacker stands NOW (not from its home tile)
@@ -339,13 +440,16 @@ async function battleV3(ctx: Ctx<'battle'>): Promise<void> {
     // ---- the struck side
     if (blocked) {
       if (tu && defense) {
-        // the guard holds: hex-shield clang on the face it was struck on, the blow glances off
-        pending.push(fx.guardReact(ctx, tu, { power: 1, dir: blow, at: p, ramp: RAMPS.water, survive: true, noStop: true }));
+        // the guard holds: hex-shield clang on the face it was struck on, the blow glances off; the
+        // ward gives one frame (two under a heavy body's blow: MonsterUnit brace) and closes again
+        const heavyBody = !!au && (weightOf(au.art) === 'heavy' || weightOf(au.art) === 'mediumHeavy');
+        pending.push(fx.guardReact(ctx, tu, { power: heavyBody ? 2 : 1, dir: blow, at: p, ramp: RAMPS.water, survive: true, noStop: true }));
         pending.push(blockClang(sc, Math.round(p.x + back.x * 6), Math.round(p.y + back.y * 6), { from: aNow, color: PAL.water3 }));
       } else {
-        // an attack-position target outclasses the attacker: it takes the blow standing
+        // an attack-position target outclasses the attacker: it takes the blow standing — a short
+        // recoil of its own (power 1, a 1–2 px give) that it shrugs off
         pending.push(blockClang(sc, Math.round(p.x + back.x * 5), Math.round(p.y + back.y * 5), { from: aNow, color: tRamp[3] }));
-        if (tu) contactFlash(sc, tu.sprite, blow, { frames: 1, coverage: 0.3 });
+        if (tu) pending.push(fx.hitReact(ctx, tu, 1, aRamp, p, blow, attacker ? attacker.art : null, { noStop: true }));
       }
     } else if (tu) {
       if (defense) pending.push(fx.guardReact(ctx, tu, { power, dir: blow, at: p, ramp: aRamp, survive: tDestroy < 0 }));
@@ -355,6 +459,12 @@ async function battleV3(ctx: Ctx<'battle'>): Promise<void> {
     if (au && (blocked || ev.result === 'bothDestroyed')) {
       const dies = aDestroy >= 0;
       const melee = isMelee(au, p);
+      // a melee loser dies where it was struck: take it over from its strike now
+      if (dies && melee) cutAttacker = au.claim();
+      // a melee attacker that survives the block recoils ON this frame: its animation is taken
+      // over (not its position — the strike still carries it back off the guard and home) and
+      // handed back once the recoil has played (A2 motion review r2 #5)
+      const recoilClaim = !dies && melee && au.claim({ pin: false });
       const cdir = norm(sub(au.core(), p)); // the counter travels from the clash into the attacker
       const hitAt = contactPoint(au, cdir);
       // ranged: the shock runs back along the attack's own line and lands now
@@ -364,12 +474,14 @@ async function battleV3(ctx: Ctx<'battle'>): Promise<void> {
           kind: melee ? blowKindOf(target) : 'magic',
           lethal: dies,
           // the strike still drives the sprite: no knock-back; it owns the rebound pose unless
-          // the attacker dies here (then the reaction pose is ours, and re-asserted below)
+          // the attacker dies here (then the reaction pose is ours, and re-asserted below) or a
+          // melee survivor's recoil was claimed above
           knock: false,
           pose: dies,
           noStop: !dies,
         }),
       );
+      if (recoilClaim) recoilAfterStop(au, hitAnimFor(au, { kind: melee ? blowKindOf(target) : 'magic', heavy: false }));
       contactLight(sc, hitAt, au.home.y, tRamp[3], dies ? 2 : 1);
     }
     // ---- the number: on the contact frame, over whoever pays
@@ -379,14 +491,15 @@ async function battleV3(ctx: Ctx<'battle'>): Promise<void> {
     }
     // ---- deaths start from the reactions
     if (tDestroy >= 0) {
-      // guard: the knock-back lands first; attack position: right after the hit-stop
-      const delay = defense ? 130 + power * 20 : DEATH_AFTER_CONTACT_MS;
-      pending.push(wait(sc, delay).then(() => ctx.play(tDestroy, { push: blow, hit: false })));
+      // right after the hit-stop — a guard has already started to break open on the contact frame
+      // (_v3/guardbreak.ts), its death joins that ≤ 150 ms after the contact
+      death(tDestroy, blow, wait(sc, DEATH_AFTER_CONTACT_MS));
     }
     if (aDestroy >= 0) {
       const push = au ? norm(sub(au.core(), p)) : back;
-      // from the counter's reaction, once the strike has let go of the sprite
-      pending.push(Promise.all([strikeDone, wait(sc, au ? DEATH_AFTER_CONTACT_MS : 0)]).then(() => ctx.play(aDestroy, { push, hit: false })));
+      // from the counter's reaction: a claimed melee loser right away, else once the strike has
+      // let go of the sprite
+      death(aDestroy, push, Promise.all([cutAttacker ? null : strikeDone, wait(sc, au ? DEATH_AFTER_CONTACT_MS : 0)]));
     }
   };
 
@@ -413,15 +526,16 @@ async function battleV3(ctx: Ctx<'battle'>): Promise<void> {
     await wait(sc, 200);
   }
   // the strike let go of the sprite: a dying attacker keeps its counter-hit pose (a strike that
-  // ends by sending it back to idle would cut it), then its death starts
-  if (aDestroy >= 0) reassertReaction(live(attacker));
+  // ends by sending it back to idle would cut it), then its death starts (a claimed one never lost it)
+  if (aDestroy >= 0 && !cutAttacker) reassertReaction(live(attacker));
   strikeOver();
   onImpact(); // in case the strike never called it
   if (dmgEv && !ctx.isConsumed(dmgIdx)) playDamageAt(dmgEv.player === defender ? overHead(live(target)) : live(attacker) ? overHead(live(attacker)) : overDuelist(ev.player));
   // any other battle destroy (should not happen) still plays
   for (const i of destroyIdx) if (i !== tDestroy && i !== aDestroy && !ctx.isConsumed(i)) pending.push(ctx.play(i));
   await all(pending);
+  // a claimed loser is normally retired by its death; never leave one pinned
+  if (cutAttacker && attacker && !attacker.retired) attacker.unclaim();
   await all([...rolls, fx.playBattleTriggers(ctx, [ev.attackerUid, ev.targetUid], { skip: dmgIdx >= 0 ? [dmgIdx] : [] })]);
-  void arenaDim(sc, 0, 420);
-  await ctx.unfocus(300);
+  await easeOut();
 }

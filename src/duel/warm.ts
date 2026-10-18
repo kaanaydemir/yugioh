@@ -81,6 +81,14 @@ export async function warmJobs(ids: readonly MonsterId[]): Promise<WarmJob[]> {
   for (const id of ids) {
     const f = Math.min(1, monsterArt(id).anims.hit.frames - 1);
     jobs.push({ kind: 'shatter', label: `shatter:${id}:hit:${f}`, run: (s) => shatter.warmShatter(s, id, 'hit', f) });
+    // v3: an art with a death pose breaks from the pose's LAST frame (_v3/death.ts), from the P2
+    // relight sheet too when player 2 controls it
+    const art = monsterArt(id);
+    const dn = art.extraAnims?.death?.frames ?? 0;
+    if (dn > 0) {
+      jobs.push({ kind: 'shatter', label: `shatter:${id}:death:${dn - 1}`, run: (s) => shatter.warmShatter(s, id, 'death', dn - 1) });
+      if (art.p2 === 'relight') jobs.push({ kind: 'shatter', label: `shatter:${id}:death:${dn - 1}:p2`, run: (s) => shatter.warmShatter(s, id, 'death', dn - 1, true) });
+    }
   }
   // the first battle phase's red edge pulse, the stat chevrons
   jobs.push({ kind: 'vignette', label: 'set:vignette crim2', run: (s) => banners.vignetteKey(s, PAL.crim2) });

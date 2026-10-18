@@ -13,6 +13,9 @@
 // flash) — lifts off the tile with a dithered shadow left on the floor, arcs over the board with a
 // short pixel trail in the owner's colour, and lands flat on the pile (count + top card update,
 // bump, a few sparks). Pure presentation: the pile values are the ones the old flight set.
+// The birth flash is a 1-px rim, never a filled slab: the card face stays readable on the frame
+// it is born, ringed white for two frames, then in the owner's tone for one (a solid white card
+// read as a hole in the board).
 
 import type { CardId } from '../../data/cards';
 import type { GameEvent, PlayerId } from '../../engine/types';
@@ -21,6 +24,8 @@ import { PAL, PLAYER_RAMP } from '../../art/palette';
 import { sfx } from '../../audio/sfx';
 import { DEPTH, type XY } from '../../view/layout';
 import type { TileCard } from '../../view/TileCard';
+import type { MonsterUnit } from '../../duel/MonsterUnit';
+import { monsterFrame } from '../../art/textures';
 import { Px, Sparks, animate, onFrame, sleep } from '../../vfx/combat';
 import type { CinematicContext } from '../_core/types';
 
@@ -44,6 +49,11 @@ export interface CardLeaveOpts {
   ms?: number;
   /** The white birth flash (default true; false = it simply lifts off). */
   flash?: boolean;
+  /**
+   * The flying card's depth on each frame of its arc, from its floor point (default DEPTH.FX + 5,
+   * over everything): e.g. behind a body standing in front of the pile it flies to (A2 fix r1).
+   */
+  depthAt?: (floor: XY, at: XY) => number;
 }
 
 /**
@@ -65,10 +75,18 @@ export async function cardLeaves(ctx: AnyCtx, o: CardLeaveOpts): Promise<void> {
   if (o.tile && o.tile.active) o.tile.destroy();
   const ramp = PLAYER_RAMP[o.owner];
   if (o.flash !== false) {
-    // two frames of white silhouette: the card's birth (and the swap from the tile card)
-    img.setTintFill(PAL.white);
+    // the card's birth (and the swap from the tile card): its face inside a 1-px rim — four
+    // silhouette copies one whole pixel out, under the card — white, then the owner's tone
+    const rim = [
+      [-1, 0],
+      [1, 0],
+      [0, -1],
+      [0, 1],
+    ].map(([dx, dy]) => sc.add.image(from.x + dx, from.y + dy, key).setOrigin(img.originX, img.originY).setDepth(img.depth - 0.01).setTintFill(PAL.white));
     await sleep(sc, 30);
-    if (img.active) img.clearTint();
+    for (const r of rim) if (r.active) r.setTintFill(ramp[4]);
+    await sleep(sc, 17);
+    for (const r of rim) if (r.active) r.destroy();
   }
   if (!img.active) return;
   // ---- the floor shadow it leaves behind, and the trail
@@ -116,7 +134,8 @@ export async function cardLeaves(ctx: AnyCtx, o: CardLeaveOpts): Promise<void> {
     const x = Math.round(floor.x);
     const y = Math.round(floor.y - height);
     img.setPosition(x, y);
-    if (el - lastTrail >= 30 && t < 0.9) {
+    if (o.depthAt) img.setDepth(o.depthAt(floor, { x, y }));
+    if (el - lastTrail >= 30 && t < 0.9 && img.depth >= DEPTH.FX) {
       lastTrail = el;
       trail.add({ x: x + (from.x < to.x ? -8 : 8), y: y + 1, vy: 6, life: 180, colors: [ramp[4], ramp[3], ramp[2]], shape: 'px', fadeAt: 1 });
     }
@@ -139,6 +158,32 @@ export async function cardLeaves(ctx: AnyCtx, o: CardLeaveOpts): Promise<void> {
     sp.add({ x: to.x, y: to.y, vx: Math.cos(a) * 46, vy: Math.sin(a) * 22, drag: 4, life: 200, colors: [PAL.white, ramp[4], ramp[3]], shape: 'px', fadeAt: 1 });
   }
   sp.release();
+}
+
+/**
+ * depthAt for a card flight that must not cross IN FRONT of a body standing nearer the camera
+ * (A2 motion review r2 #10: the dead magus's card flew across the attacking wyrm's head): while
+ * the card's screen spot overlaps the opaque idle box of a live unit whose ground is in front of
+ * the card's floor point, the card passes behind that body; elsewhere it flies over everything.
+ */
+export function behindBodies(ctx: AnyCtx, skip?: MonsterUnit | null): (floor: XY, at: XY) => number {
+  return (floor, at) => {
+    let d = DEPTH.FX + 5;
+    for (const u of ctx.views.field.units()) {
+      const s = u.sprite;
+      if (u === skip || u.retired || !s.active || !s.visible) continue;
+      if (u.home.y <= floor.y) continue; // behind the card's floor point: the card is in front of it
+      const b = monsterFrame(u.cardId, 'idle', 0).bounds();
+      if (!b) continue;
+      const fx = u.flipX ? u.art.w - b.x - b.w : b.x;
+      const left = s.x - s.displayOriginX + fx;
+      const top = s.y - s.displayOriginY + b.y;
+      // the card is ~12 px half-wide, ~8 px half-tall around its spot
+      if (at.x + 12 < left || at.x - 12 > left + b.w || at.y + 8 < top || at.y - 8 > top + b.h) continue;
+      d = Math.min(d, s.depth - 0.2);
+    }
+    return d;
+  };
 }
 
 /** A released TileCard's own spot (its tile centre) — where its card is born. */

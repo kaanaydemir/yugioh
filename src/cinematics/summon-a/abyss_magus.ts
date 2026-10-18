@@ -10,9 +10,23 @@
 //   +420  he floats free (hover); the hologram settles; the roar gathers (f1–2: motes rush in)
 //   peak  roar f3 burst — the rift SNAPS SHUT (white seam), the tendrils burst into wisps, a
 //         violet shock ring + rune ring race out, void flash, hit-stop, 4 px shake, badge pop
+//
+// v3 look (?look=v3; magusEntranceV3 below) — the body enters on the art's own `summon` pose
+// (helm first out of a rift, the wrapped cloak opening as it clears it; no hologram, no clip mask):
+//   0     the void circle draws on; the floor TEARS OPEN into the rift lens under the tile
+//   +140  the pose starts: the horns, then the igniting eyes rise out of the rift; motes are sucked
+//         in, shadow tendrils climb the rim and curl round the rising body; the rim flares white
+//         where the body passes
+//   land  (the pose's land mark) the cloak flings open at its float: the tendrils burst into
+//         wisps, a rune ring races out over the floor, the rift closes under it (white seam)
+//   peak  ace tribute summons: the v3 cut-in (band only, ≤ 1.0 s) over the reveal hold; the finale
+//         (shock ring, light, badge) lands as the band leaves. No cut-in: the finale at the land.
 
-import { PAL, RAMPS, type Ramp } from '../../art/palette';
-import { DEPTH } from '../../view/layout';
+import { PAL, PLAYER_COLOR, RAMPS, type Ramp } from '../../art/palette';
+import { DEPTH, LOOK_V3, type XY } from '../../view/layout';
+import { lightFlash } from '../../view/light';
+import { registerCardHook } from '../api';
+import { holoOnset } from '../_v3/summon';
 import { TEX } from '../../vfx/core';
 import { shadowWisps } from '../../vfx/particles';
 import {
@@ -52,7 +66,13 @@ interface Rift {
   destroy(): void;
 }
 
-function voidRift(S: Stage, A: number, B: number): Rift {
+/** Where a rift / rune ring is drawn: a Stage, or (the v3 flip) a scene + floor point. */
+interface Spot {
+  readonly scene: Phaser.Scene;
+  readonly home: XY;
+}
+
+function voidRift(S: Spot, A: number, B: number): Rift {
   const sc = S.scene;
   const { x, y } = S.home;
   const W = A * 2 + 24;
@@ -135,8 +155,8 @@ interface Tendrils {
   grow(ms: number): Promise<void>;
   /** 0 = free swaying, 1 = curled in around the body. */
   wrap(k: number): void;
-  /** Retract fast and burst into wisps. */
-  burst(): void;
+  /** Retract fast and burst into wisps (rim = at the rift's rim, fewer: the v3 entrance). */
+  burst(rim?: boolean): void;
   destroy(): void;
 }
 
@@ -205,8 +225,9 @@ function shadowTendrils(S: Stage, n: number, baseA: number, baseB: number, heigh
   const T: Tendrils = {
     grow: (ms) => run(sc, ms, (t) => (st.ext = E.outCubic(t))),
     wrap: (k) => (st.wrap = k),
-    burst() {
-      shadowWisps(sc, x, y - height * 0.4, { radius: baseA + 6, count: S.big ? 16 : 10, depth: DEPTH.FX - 1 });
+    burst(rim = false) {
+      if (rim) shadowWisps(sc, x, y - 2, { radius: baseA + 4, count: S.big ? 8 : 6, depth: S.depth - 0.6 });
+      else shadowWisps(sc, x, y - height * 0.4, { radius: baseA + 6, count: S.big ? 16 : 10, depth: DEPTH.FX - 1 });
       bg(run(sc, 140, (t) => (st.ext = 1 - E.inQuad(t))).then(() => T.destroy()));
     },
     destroy() {
@@ -221,7 +242,7 @@ function shadowTendrils(S: Stage, n: number, baseA: number, baseB: number, heigh
 }
 
 /** A ring of rune glyphs racing out along the floor (the sorcerer's sigil). */
-function runeRing(S: Stage, R1: number): void {
+function runeRing(S: Spot, R1: number): void {
   const sc = S.scene;
   const { x, y } = S.home;
   const ras = new Raster(sc, x - R1 - 8, y - R1 / 2 - 8, R1 * 2 + 16, R1 + 16, DEPTH.TILE_FX + 3);
@@ -242,6 +263,96 @@ function runeRing(S: Stage, R1: number): void {
       });
     }).then(() => ras.destroy()),
   );
+}
+
+/** The v3 entrance on the art's summon pose (see the header). */
+async function magusEntranceV3(S: Stage): Promise<void> {
+  const sc = S.scene;
+  const { home } = S;
+  if (S.big) bg(S.ctx.focus({ x: home.x, y: home.y - 30 }, { ms: 420, pan: 0.3 }));
+  const circle = S.openCircle();
+  const A = S.big ? 22 : 18;
+  const B = S.big ? 9 : 7;
+  const rift = S.own(voidRift(S, A, B));
+  // the tendrils frame the rift (they lean out and sway; they never cover the rising body)
+  const tend = S.own(shadowTendrils(S, S.big ? 5 : 4, A * 0.95, B * 0.95, S.big ? 26 : 22));
+  const riftLight = S.glow({ color: PAL.void3, radius: fs(A + 12), intensity: 0, anim: 'breathe', fadeIn: 0 });
+  riftLight.setIntensity(0.9, 160);
+  playSfx('darkPulse', { volume: 0.8 });
+  playSfx('summonCharge', { volume: 0.55, pitch: 0.8 });
+  // motes sucked into the tear while the body climbs out of it
+  const suck = new Sparks(sc, DEPTH.FX - 1);
+  let sucking = true;
+  const stopSuck = onFrame(sc, (dt) => {
+    if (!sucking) return false;
+    if (dt > 0 && R() < dt / 26) {
+      const a = R() * TAU;
+      const d = RR(fs(34), fs(56));
+      suck.add({ x: Math.round(home.x + Math.cos(a) * d), y: Math.round(home.y + Math.sin(a) * d * 0.5 - RR(0, 24)), home: { x: home.x, y: home.y, k: 0.35 }, life: RR(300, 440), ramp: [PAL.void3, PAL.void4, PAL.white], tex: TEX.px1 });
+    }
+    return true;
+  });
+  S.own({ destroy: () => ((sucking = false), stopSuck(), suck.close()) });
+  await rift.open(140);
+  circle.pulse(100);
+  circle.spin(2.2);
+  bg(tend.grow(300));
+  rift.flare(1);
+  let landed = false;
+  let finaled = false;
+  const finale = () => {
+    if (finaled) return;
+    finaled = true;
+    const c = S.coreRest;
+    void lightFlash(sc, c.x, c.y, PAL.void4, fs(S.big ? 52 : 40), 520, { floorY: home.y, ring: true, intensity: 0.9 });
+    S.finale({ ring: S.big ? 88 : 56, ramp: VOID, freezeMs: S.big ? 50 : 0, sfx: 'summonBurst' });
+    playSfx('darkPulse', { volume: 0.8, pitch: 0.7 });
+    bg(circle.dismiss(360));
+  };
+  const t0 = sc.time.now;
+  const pose = S.pose({
+    ramp: VOID,
+    hologram: false,
+    onLand: () => {
+      landed = true;
+      sucking = false;
+      rift.flare(0);
+      tend.burst(true);
+      runeRing(S, fs(S.big ? 70 : 50));
+      circle.pulse(120);
+      riftLight.setIntensity(1.2, 60);
+      bg(S.wait(80).then(() => riftLight.fadeOut(260)));
+      // the rift closes under the float a beat after the reveal (the pose's own lip closes with it)
+      bg(S.wait(60).then(() => rift.close(180)));
+      playSfx('darkPulse', { volume: 0.7, pitch: 1.2 });
+      playSfx('materialize', { volume: 0.55 });
+      if (!S.cutIn) finale();
+    },
+  });
+  if (!pose) {
+    // (no summon pose: never for this art; the old entrance is the fallback)
+    rift.destroy();
+    tend.destroy();
+    return;
+  }
+  // the tendrils curl round the body as it rises, loosen as it clears the rift
+  const landMs = pose.ms.land;
+  const stopWrap = onFrame(sc, () => {
+    if (landed) return false;
+    const t = Math.min(1, (sc.time.now - t0) / Math.max(1, landMs));
+    tend.wrap(0.05 + 0.2 * Math.sin(Math.PI * Math.min(1, t * 1.15)));
+    return true;
+  });
+  S.own({ destroy: stopWrap });
+  if (S.cutIn) {
+    await pose.peak;
+    await S.climax();
+    finale();
+    await S.wait(110);
+  } else {
+    await pose.done;
+    finale();
+  }
 }
 
 signatureSummon('abyss_magus', async (S) => {
@@ -325,4 +436,139 @@ signatureSummon('abyss_magus', async (S) => {
     },
   });
   await S.wait(S.big ? 130 : 110);
-});
+}, { v3: magusEntranceV3 });
+
+// ================================================================ v3: the flip (a tribute-set magus)
+//
+// A face-down Uçurum Büyücüsü (tribute-SET on an earlier turn) turning face-up, on its own poses and
+// in the entrance's void language — never the old squash / stretch pop-out (sprite scaling), the
+// roar or the long hologram build:
+//   flipSummon  the card glows in its owner's colour and turns over (the paired summon event is
+//               consumed here, as summon-b's flip handler does); half-way through the turn a small
+//               void rift tears open on the tile and the body forms out of it CROUCHED IN ITS GUARD
+//               (guard f0, a ≤ 150 ms palette-step onset, a few wisps at the rift's rim), then rises
+//               on its `fromGuard` pose into attack position; as it stands the rift snaps shut (white
+//               seam), a rune ring races out over the floor and the badge pops (≤ 0.6 s in all);
+//   attacked    (flipped in defense by an attack) the card turns over, the body forms in its guard
+//               pose (≤ 120 ms, a puff of wisps at its hem) and holds it — the battle goes on at once.
+// Registered under ?look=v3 only (the old look keeps summon-b's flip handler untouched).
+
+if (LOOK_V3)
+  registerCardHook(
+    'abyss_magus',
+    'flip',
+    async (ctx) => {
+      const ev = ctx.ev;
+      const v = ctx.views;
+      const field = v.field;
+      const sc = ctx.scene;
+      const flipSummon = ev.cause === 'flipSummon';
+      if (flipSummon) {
+        const si = ctx.findType('summon', (e) => e.uid === ev.uid && e.method === 'flip');
+        if (si >= 0) ctx.consumeAt(si);
+        void v.duelists?.get(ev.player).play('command');
+        void v.camera.unfocus(120);
+      }
+      let tile = field.tileOf(ev.uid);
+      if (!tile) tile = field.placeCard(ev.player, 'monster', ev.zone, ev.uid, ev.cardId, false, 'side');
+      tile.setCard(ev.cardId);
+      const home = { x: tile.home.x, y: tile.home.y };
+      // the card turns at once (its owner's glow runs alongside, never before it)
+      if (flipSummon) bg(tile.pulse(PLAYER_COLOR[ev.player], 240));
+      ctx.sfx('flipReveal', { volume: 0.9 });
+      const FLIP = flipSummon ? 240 : 200;
+      const flipP = tile.flipUp(FLIP);
+      if (flipSummon) bg(ctx.wait(Math.round(FLIP * 0.7)).then(() => (tile && tile.active && tile.orientation !== 'up' ? tile.rotateTo('up', 200) : undefined)));
+      await ctx.wait(Math.round(FLIP * 0.45));
+      // half-way through the turn: the body forms in the guard the face-down magus held
+      const atk = ctx.atk(ev.uid, flipSummon ? 'after' : 'next');
+      const dfn = ctx.def(ev.uid, flipSummon ? 'after' : 'next');
+      const unit = field.addUnit(ev.uid, { hidden: true, atk, def: dfn, position: flipSummon ? 'attack' : 'defense' });
+      if (!unit) {
+        await flipP;
+        return;
+      }
+      unit.position = flipSummon ? 'attack' : 'defense';
+      unit.badge.setPosition(unit.position);
+      unit.posed = true;
+      const s = unit.sprite;
+      const spot: Spot = { scene: sc, home };
+      const rift = flipSummon ? voidRift(spot, 14, 6) : null;
+      try {
+        s.setScale(1).setPosition(unit.rest0.x, unit.rest0.y);
+        unit.pose('guard', 0);
+        unit.showSprite();
+        ctx.sfx('darkPulse', { volume: flipSummon ? 0.7 : 0.5, pitch: 1.2 });
+        ctx.sfx('materialize', { volume: 0.45, pitch: 1.2 });
+        // a few wisps breathe out at the hem (under the body: they never cover it)
+        shadowWisps(sc, home.x, home.y - 1, { radius: flipSummon ? 14 : 12, count: flipSummon ? 6 : 4, depth: s.depth - 0.6 });
+        const onset = holoOnset(sc, unit, VOID, flipSummon ? 150 : 120);
+        if (flipSummon && rift) {
+          bg(rift.open(90));
+          rift.flare(1);
+          // the rise out of the guard starts while the body is still forming (it already moves)
+          await ctx.wait(60);
+          const rise = unit.has('fromGuard') ? 'fromGuard' : null;
+          const total = rise ? unit.animMs(rise) : 0;
+          const play = rise ? unit.playRange(rise, 0, undefined, { hold: false }) : Promise.resolve();
+          // it stands (fromGuard f3: the staff upright, the robe swinging past rest)
+          await ctx.wait(rise ? unit.rangeMs(rise, 0, 3) : 120);
+          rift.flare(0);
+          bg(rift.close(90));
+          floorRing(spot, unit.sprite.depth - 0.7);
+          void lightFlash(sc, home.x, home.y - 14, PAL.void4, fs(30), 320, { floorY: home.y, ring: true, intensity: 0.8 });
+          ctx.sfx('darkPulse', { volume: 0.7, pitch: 0.75 });
+          unit.badge.setVisible(true);
+          void unit.badge.pop();
+          await capped(sc, play, Math.max(0, total - (rise ? unit.rangeMs(rise, 0, 3) : 0)) + 60);
+        } else {
+          await capped(sc, onset, 140);
+          unit.badge.setVisible(true);
+          void unit.badge.pop();
+          unit.rest();
+        }
+        await capped(sc, onset, 120);
+        await capped(sc, flipP, 120);
+      } finally {
+        rift?.destroy();
+        unit.posed = false;
+        unit.lift = 0;
+        if (s.active && !unit.retired) {
+          s.setScale(1).setPosition(unit.rest0.x, unit.rest0.y);
+          unit.show();
+          if (!s.anims.isPlaying) unit.rest();
+        }
+      }
+    },
+    { name: 'summon-a:abyss_magus:flip-v3' },
+  );
+
+/**
+ * The flip's stand beat on the floor: one iso ring of void light stepping out from the closing rift
+ * in four whole-pixel steps (void4 → void3 → void2), under the body. No glyphs at this size (they
+ * read as letters), no soft glow.
+ */
+function floorRing(S: Spot, depth: number): void {
+  const { x, y } = S.home;
+  const r = new Raster(S.scene, x - 40, y - 22, 80, 44, depth);
+  const RX = [12, 19, 26, 32];
+  const TONE = [PAL.void4, PAL.void4, PAL.void3, PAL.void2];
+  bg(
+    (async () => {
+      for (let i = 0; i < RX.length; i++) {
+        if (!r.alive) return;
+        r.draw((g) => {
+          isoRing(g, x, y, RX[i], TONE[i]);
+          if (i < 2) isoRing(g, x, y, RX[i] - 3, PAL.void2);
+        });
+        await run(S.scene, 45, () => undefined);
+      }
+      r.destroy();
+    })(),
+  );
+}
+
+/** Wait for `p`, at most `ms` (game time). */
+function capped(sc: Phaser.Scene, p: Promise<unknown>, ms: number): Promise<void> {
+  return Promise.race([p.then(() => undefined, () => undefined), run(sc, ms, () => undefined)]);
+}
