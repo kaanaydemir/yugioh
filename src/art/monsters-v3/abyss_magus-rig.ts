@@ -130,6 +130,12 @@ export interface Pose {
   tendril: number;
   /** hitMagic: magenta crackle over the plates 0..1 (its phase is t). */
   zap: number;
+  /**
+   * Breastplate recoil (whole px, − = back): the rigid bust map alone (cowl, gem, plate, sash) is
+   * driven back under the blow while the cloth, the cape and the shoulders around it stay — a hit's
+   * contact frame: the struck zone moves first, the body follows a frame later (0 elsewhere).
+   */
+  chest: number;
 }
 
 export const NEUTRAL: Pose = {
@@ -187,6 +193,7 @@ export const NEUTRAL: Pose = {
   rift: 0,
   tendril: 0,
   zap: 0,
+  chest: 0,
 };
 
 export const pose = (o: Partial<Pose>): Pose => ({ ...NEUTRAL, ...o });
@@ -557,6 +564,8 @@ function rigid(o: Pose) {
   const hu = Math.round(o.hunch);
   return {
     bust: [OX + Math.round(o.dx + o.lean * BUST_K), OY + bob + sk] as Pt,
+    /** The breastplate map (the bust, driven back by a blow's contact: o.chest). */
+    plate: [OX + Math.round(o.dx + o.lean * BUST_K) + Math.round(o.chest), OY + bob + sk] as Pt,
     paul: [OX + Math.round(o.dx + o.lean * PAUL_K), OY + bob + sk] as Pt,
     /** Pauldron fold-in: the near one moves back and down, the far one forward. */
     paulF: [OX + Math.round(o.dx + o.lean * PAUL_K) - hu, OY + bob + sk + Math.round(o.hunch * 0.5)] as Pt,
@@ -979,10 +988,11 @@ export function drawMagus(p: PixelCanvas, o: Pose, light: Light): void {
   // ------------------------------------------------ bust: breastplate + sash + cowl + gem (rigid)
   {
     const q = new PixelCanvas(W, H);
-    stampMap(q, BUST[light], bustX, bustY);
+    const [plateX, plateY] = rg.plate;
+    stampMap(q, BUST[light], plateX, plateY);
     // the gem glows with the orb
-    const gx = bustX + 39;
-    const gy = bustY + 29;
+    const gx = plateX + 39;
+    const gy = plateY + 29;
     if (o.glow > 0.85) q.set(gx + 1, gy, PAL.white);
     comp(f, q, Part.bust, { out: PAL.void0 });
   }
@@ -1225,6 +1235,7 @@ function restOf(id: Part, x: number, y: number, o: Pose, rg: ReturnType<typeof r
     case Part.helm:
       return [x - (rg.head[0] - 32), y - (rg.head[1] - 10)];
     case Part.bust:
+      return [x - rg.plate[0], y - rg.plate[1]];
     case Part.sleeve:
     case Part.backArm:
     case Part.fist:
@@ -1332,7 +1343,7 @@ function zapPass(f: Frame, o: Pose, rg: ReturnType<typeof rigid>): void {
   const starts: [Pt, number, number][] = [
     [[rg.paulF[0] + 49, rg.paulF[1] + 26], 0.6 * Math.PI, 0],
     [[rg.head[0] + 9, rg.head[1] + 3], 0.35 * Math.PI, 1],
-    [[rg.bust[0] + 36, rg.bust[1] + 34], 0.15 * Math.PI, 2],
+    [[rg.plate[0] + 36, rg.plate[1] + 34], 0.15 * Math.PI, 2],
   ];
   const ph = Math.floor(o.t * 16);
   for (const [[x0, y0], a0, k] of starts) {

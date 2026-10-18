@@ -197,16 +197,20 @@ const ATTACK_HOLDS = [60, 90, 100, 160, 110, 70, 90, 100, 100, 100, 110, 120, 14
 
 // ------------------------------------------------------------------ hit (6 frames)
 //
-// The blow lands on the chest and head. f0 is the compressed impact pose — the frame a hit-stop
-// holds, so it must read as struck on its own: the head snapped back from the contact side and
-// pulled in (neck compressed), the chest knocked back about the hip, the shoulders hunched with
-// the wing roots clenched in, the forearms snatched up; the hip, legs and tail still hold the idle
-// pose (the contact zone first). f1 is the in-between of that pose and the reel (the hip starts
-// back, the wings are carried on), so the reel arcs out of the impact instead of jumping; the hip
-// and the wings follow (wings flinch in), the tail whips last; then a readable recovery.
+// The blow lands on the chest and head. f0 is the struck contact frame — the frame a hit-stop
+// holds, so it must read as struck on its own, and only the contact region has moved yet: the head
+// snapped back and up from the contact side, jaw jolted open, eyes squeezed shut, the neck
+// compressed, the chest knocked back about the hip (under the wings: they have not moved yet), the
+// forearms snatched up, the far wing's root clenching, the crest crystals and the keel flaring; the
+// hip, legs, tail and near wing still hold the idle pose. f1: the rest of the body follows — the
+// shoulders hunch, the wing roots clench the wings in, the hip starts back (the in-between of the
+// compressed key and the reel), so the reel arcs out of the impact instead of jumping; the hip and
+// the wings follow on (wings flinch in), the tail whips last; then a readable recovery.
 
+const HIT_STRUCK: PoseDelta = { chestLean: -0.1, headX: -6, headY: 2, ha: -0.24, jaw: 0.3, eye: 0, nk1: [-2, 1], nk2: [3, 1], fw: { a1: -88, a2: -113, a3: -92, fan: -25 }, arm: 20, armF: 7, pulse: 0.5, crestFlare: 1 };
 const HIT_KEYS: PoseDelta[] = [
-  // 0 [impact/contact] compressed: head snapped back and in, chest knocked back, wing roots clenched
+  // the compressed key (reached by the whole body on f1): head snapped back and in, chest knocked
+  // back, wing roots clenched
   { lean: -0.07, headX: -6, headY: 2, ha: -0.24, jaw: 0.3, eye: 0, nk1: [-2, 1], nk2: [3, 1], nw: { a1: -99, a2: -122, a3: -121, fan: -31, scal: 0.78 }, fw: { a1: -93, a2: -119, a3: -97, fan: -21 }, arm: 20, armF: 7, glow: 0.1 },
   // 1 the body follows: hip back, wings flinch in, tail starts
   { hx: -2, hy: 1, lean: -0.16, headX: -6, headY: 1, ha: -0.12, jaw: 0.2, eye: 0, nw: { a1: -98, a2: -122, a3: -116, fan: -32, scal: 0.85 }, fw: { a1: -94, a2: -120, fan: -22 }, tailLift: 3, arm: 22, armF: 8, glow: 0.1, tail: 0.06 },
@@ -235,15 +239,17 @@ function fromIdle(d: PoseDelta): Pose {
 }
 
 /**
- * A recoil's frames: its compressed impact key (f0), then the in-between of that pose and the reel
- * key (the body halfway, the wings a little behind it: they are carried on), then the reel keys.
+ * A recoil's frames: the struck contact frame (f0: `struck` over idle f0 — only the contact region
+ * has moved), then the in-between of the compressed key (keys[0]: the whole body hunched round the
+ * blow) and the reel key (f1: the hip, the wings and the tail follow — the body halfway, the wings a
+ * little behind it: they are carried on), then the reel keys.
  */
-function recoil(keys: PoseDelta[], mid: PoseDelta = {}): Pose[] {
+function recoil(struck: PoseDelta, keys: PoseDelta[], mid: PoseDelta = {}): Pose[] {
   const k = keys.map(fromIdle);
-  return [k[0], mix(k[0], k[1], 0.5, 0.35, mid), ...k.slice(1)];
+  return [fromIdle(struck), mix(k[0], k[1], 0.5, 0.35, mid), ...k.slice(1)];
 }
 
-const HIT_P: Pose[] = recoil(HIT_KEYS, { eye: 0 });
+const HIT_P: Pose[] = recoil(HIT_STRUCK, HIT_KEYS, { eye: 0 });
 
 // ================================================================== part 2: the extra anims
 //
@@ -314,15 +320,20 @@ const FROM_GUARD_HOLDS = [50, 50, 50, 50, 60, 60, 70];
 
 // ------------------------------------------------------------------ hitHeavy (8 frames, 680 ms)
 //
-// The blow lands on the head and chest first (snap back, eyes shut, jaw jolted); the hip follows
+// The blow lands on the head and chest first (f0, the struck contact frame: the head snapped hard
+// back, eyes shut, jaw jolted, the neck compressed, the chest knocked back under the still wings,
+// the forearms snatched up, the far wing's root clenched, crest and keel flaring; hip, legs, tail
+// and near wing still idle); f1 the shoulders hunch and the wings clench in (the in-between of the
+// compressed key and the throw); the hip follows
 // and the wings are left behind (they swing forward, inertia), the near foot comes off the ground;
 // it replants a step back as the wings whip past rest and the tail lashes; the knees absorb, the
 // head drops forward; the foot steps back in (lifted, replanted home) and the body settles.
 
+const HIT_HEAVY_STRUCK: PoseDelta = { chestLean: -0.14, headX: -9, headY: 2, ha: -0.34, jaw: 0.45, eye: 0, nk1: [-3, 1], nk2: [4, 1], fw: { a1: -92, a2: -117, a3: -98, fan: -20 }, arm: 26, armF: 9, pulse: 0.5, crestFlare: 1 };
 const HIT_HEAVY_KEYS: PoseDelta[] = [
-  // 0 [impact/contact] compressed (the frame the hit-stop holds): the head snapped hard back and in,
-  //   the chest knocked back about the hip, the shoulders hunched, the wing roots clenched; the
-  //   hip, legs and tail have not moved yet
+  // the compressed key (the whole body on f1): the head snapped hard back and in, the chest knocked
+  //   back about the hip, the shoulders hunched, the wing roots clenched; the hip, legs and tail
+  //   have not moved yet
   { lean: -0.1, headX: -9, headY: 2, ha: -0.34, jaw: 0.45, eye: 0, nk1: [-3, 1], nk2: [4, 1], nw: { a1: -97, a2: -119, a3: -122, fan: -30, scal: 0.75 }, fw: { a1: -92, a2: -117, a3: -98, fan: -20 }, arm: 26, armF: 9, glow: 0.1 },
   // 1 thrown back: the hip follows, the wings lag (swing forward), the near foot lifts
   { hx: -4, lean: -0.3, headX: -10, headY: 0, ha: -0.2, jaw: 0.35, eye: 0, nk2: [2, 0], nw: { a1: -92, a2: -118, a3: -106, fan: -30, scal: 0.8 }, fw: { a1: -76, a2: -96, fan: -22 }, stepN: [-2, -3], tailLift: 6, arm: 30, armF: 10, glow: 0.1, tail: 0.04 },
@@ -341,8 +352,12 @@ const HIT_HEAVY_HOLDS = [60, 50, 70, 90, 100, 100, 100, 110];
 
 // ------------------------------------------------------------------ hitMagic (9 frames, 610 ms)
 //
-// A spell / beam: the chest and head react first — the jolt clenches the body round the keel (f0,
-// the frame the hit-stop holds) — then (in-between f1) the charge runs through the whole body —
+// A spell / beam: the chest and head react first (f0, the struck contact frame the hit-stop holds:
+// the charge hits the chest — the keel lights white, the crest crystals flare, the chest curls
+// forward round it under the still wings, the head is snapped back into the shoulders, teeth
+// bared, the eyes blaze white, the forearms snatch up, the far wing's root clenches; hip, legs,
+// tail and near wing still idle) — f1 the jolt clenches the whole body round the keel on its way
+// to rigid (in-between), then the charge runs through the whole body —
 // rigid, chest up, the wings flung open and taut, the crystals flare; it shudders 1 px a few short
 // frames (the wings tremble a frame behind the body); the charge lets go — the body sags, the head
 // drops, the wings go slack — and it recovers.
@@ -350,11 +365,12 @@ const HIT_HEAVY_HOLDS = [60, 50, 70, 90, 100, 100, 100, 110];
 const RIGID: PoseDelta = { hy: -1, lean: -0.12, headX: -3, headY: -2, ha: -0.12, jaw: 0, eye: 1, tailLift: 5, arm: 16, armF: 6, glow: 1, flare: 1, pulse: 1 };
 const RIGID_NW: Partial<Wing> = { a1: -116, a2: -147, a3: -112, fan: -47, scal: 0.75 };
 const RIGID_FW: Partial<Wing> = { a1: -90, a2: -118, a3: -86, fan: -32, scal: 0.8 };
+const HIT_MAGIC_STRUCK: PoseDelta = { chestLean: 0.08, headX: -7, headY: 3, ha: 0.12, jaw: 0.25, eye: 1, eyeFlare: 1, nk1: [1, 3], nk2: [-3, 2], fw: { a1: -89, a2: -114, a3: -94, fan: -24 }, arm: 26, armF: 9, pulse: 1, crestFlare: 1 };
 const HIT_MAGIC_KEYS: PoseDelta[] = [
-  // 0 [impact/contact] the jolt (the frame the hit-stop holds): the charge hits the chest and the
-  //   body clenches round it — the keel lights, the chest curls forward, the head is snapped back
-  //   and pulled down into the shoulders (eyes squeezed shut), the wing roots clench the wings in
-  //   tight, the forearms snatch up; the hip, legs and tail have not moved yet
+  // the clenched key (the whole body, f1 on its way to rigid): the body clenches round the keel —
+  //   the keel lights, the chest curls forward, the head is snapped back and pulled down into the
+  //   shoulders (eyes squeezed shut), the wing roots clench the wings in tight, the forearms snatch
+  //   up; the hip, legs and tail have not moved yet
   { lean: 0.05, headX: -5, headY: 4, ha: 0.26, jaw: 0, eye: 0, nk1: [1, 2], nk2: [-2, 2], nw: { a1: -97, a2: -117, a3: -125, fan: -27, scal: 0.72 }, fw: { a1: -95, a2: -121, a3: -101, fan: -19 }, arm: 26, armF: 9, glow: 0.7, pulse: 1 },
   // 1 the charge runs through: rigid, the wings flung open and taut, the crystals flare
   { ...RIGID, nw: RIGID_NW, fw: RIGID_FW },
@@ -370,8 +386,8 @@ const HIT_MAGIC_KEYS: PoseDelta[] = [
   {},
 ];
 const HIT_MAGIC_HOLDS = [60, 40, 50, 50, 50, 60, 90, 100, 110];
-const HIT_HEAVY_P: Pose[] = recoil(HIT_HEAVY_KEYS, { eye: 0 });
-const HIT_MAGIC_P: Pose[] = recoil(HIT_MAGIC_KEYS, { eye: 0.5 });
+const HIT_HEAVY_P: Pose[] = recoil(HIT_HEAVY_STRUCK, HIT_HEAVY_KEYS, { eye: 0 });
+const HIT_MAGIC_P: Pose[] = recoil(HIT_MAGIC_STRUCK, HIT_MAGIC_KEYS, { eye: 0.5 });
 
 // ------------------------------------------------------------------ summon (15 frames, 1.31 s)
 //

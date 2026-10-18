@@ -13,8 +13,11 @@
 // pass removes lone 1-px tone crumbs (crystal_wyrm-rig.ts).
 // Anims (holds in the spec; frames × 2 sheets): idle 20 f / 1.98 s loop, roar 12 f / 1.16 s, attack
 // 13 f / 1.35 s (charge@1, impact = release@5 at 520 ms, contact@6, recover@10), hit 6 f / 0.5 s
-// (impact = contact@0: the compressed struck pose a hit-stop holds; f1 the in-between into the reel;
-// recover@4), guard 8 f / 1.26 s loop (the breath travels: membrane, chest, wings, head — one part
+// (impact = contact@0: the struck contact frame a hit-stop holds — only the contact region has moved:
+// head snapped back, jaw jolted, eyes shut, neck compressed, the chest knocked back under the still
+// wings (Pose.chestLean), forearms up, the far wing's root clenched, crest and keel flaring; hip, legs,
+// tail and near wing still idle; f1 the rest of the body follows — the in-between of the compressed
+// key and the reel; recover@4), guard 8 f / 1.26 s loop (the breath travels: membrane, chest, wings, head — one part
 // per frame). Every one-shot ends on idle f0. One crystal glint per anim at most (idle, roar, guard:
 // 1 px → 3-px cross → 1 px on one pixel at a facet vertex of the lit wing edge).
 // points(): muzzle = the mouth of every frame (the beam leaves the jaws), core, head, claw, feet.
@@ -34,10 +37,12 @@
 //                                  breaks the body from the last frame);
 //   revive 13 f / 1.23 s (land@4)  faceted two-tone shards fly in and lock, the light refills from the
 //                                  core, it rises and takes a first breath → idle f0;
-//   hitHeavy 8 f / 0.68 s, hitMagic 9 f / 0.61 s (contact@0 = the compressed struck pose, the contact
-//                                  zone first — legs and tail hold; f1 the in-between; heavy: a step
-//                                  back and in; magic: clench, then rigid, crystals flare, shudder)
-//                                  → idle f0;
+//   hitHeavy 8 f / 0.68 s, hitMagic 9 f / 0.61 s (contact@0 = the struck contact frame, the contact
+//                                  region only — hip, legs, tail and near wing hold idle f0; magic: the
+//                                  keel white, the eyes blaze (Pose.eyeFlare), teeth bared; f1 the body
+//                                  follows (the in-between of the compressed key and the reel); heavy:
+//                                  a step back and in; magic: clench, then rigid, crystals flare,
+//                                  shudder) → idle f0;
 //   toGuard 7 f / 0.39 s → guard f0, fromGuard 7 f / 0.39 s → idle f0 (feet planted; the wing
 //                                  sweep has a mid-sweep in-between and the head stays clear of it);
 //   victory 8 f / 1.01 s, ends on a held proud pose.

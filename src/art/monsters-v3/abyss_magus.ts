@@ -20,13 +20,18 @@
 // 1.19 s (charge@1, burst = impact = release@3, recover@7), attack 12 f / 1.18 s (charge@1 = the
 // declare pose, impact = release@6 at 560 ms, recover@8), hit 6 f / 0.59 s (impact = contact@0,
 // recover@3). Every one-shot ends on idle f0 and starts at the hover baseline (bob 0).
-// Contact frames (hit / hitHeavy / hitMagic / death f0, the frame a hit-stop freezes) are the STRUCK
-// pose, not a near-idle one: the chest caves back, the helm snaps back past it, the grip is driven
-// back under the staff's head (the staff knocked forward off its line), the free arm flung back,
-// while the robe's hem and the cape still hang where they were (the contact zone moves first: the
-// body is not shifted, ~60 % of the changed pixels lie above the waist); 4.0–4.7 × idleΔ from idle
-// f0. hitHeavy f0 = death f0 (the heavy struck pose), hitMagic f0 is it lit by the spell (eyes,
-// sigil, crackle; Δ 0.06 × idleΔ to death f0), so a lethal blow's recoil hands over without a jump.
+// Contact frames (hit / hitHeavy / hitMagic / death f0, the frame a hit-stop freezes) show the blow
+// WHERE IT LANDS and only there (the struck zone reacts first, the rest follows on f1–f2): the helm
+// snaps back and up off the collar (3 / 4 px), the visor shuts (the spell: the eyes flare white),
+// the breastplate is driven back a pixel (Pose.chest), the shoulders fold in (hunch), the fist is
+// driven back on the staff while its head stays put (the staff knocked forward off its line); the
+// hips, the robe and its hem, the cape and the far arm keep idle f0's pixels (no lean, no sway, no
+// cloth lag on f0). 40–44 % of the idle f0 silhouette changes (acceptance metric; ~72 % of it above
+// the waist, the rest the staff's lower shaft), 2.2–2.3 × idleΔ; f1 then carries the body after its
+// head (5–6 × idleΔ). hitHeavy f0 = death f0 (the heavy struck pose), hitMagic f0 is it lit by the
+// spell (eyes, sigil, crackle; Δ 0.06 × idleΔ to death f0), so a lethal blow's recoil hands over
+// without a jump. (In the game the v3 hit kit also moves the whole sprite 1 px back on the impact
+// frame — src/cinematics/_v3/react.ts knock() — which alone changes ~61 % of these pixels.)
 // The charge (attack / special / roar gathers) never grows the orb past the still's 7×8 map: its slate
 // cage is its one ring (no second charge ring: with the cage and the horns it tangled into thin
 // crossing lines), the cage's prong tips kindle (void3, void4 at full charge), the core heats up

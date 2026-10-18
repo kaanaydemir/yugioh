@@ -158,6 +158,17 @@ export interface Pose {
   /** whole-pixel vertical offset of both wings against the body (a wing that follows a body step a
    *  frame late: the guard breath) */
   wingDy: number;
+  /** extra torso rotation around the hip (rad, negative = knocked back) that only the chest and what
+   *  hangs on it (the neck base, the head, the arms, the keel, the upper back crystals) take: the
+   *  wings, the hip, the legs and the tail hold their pose — a struck frame, where the contact region
+   *  moves first and the rest of the body follows a frame later */
+  chestLean: number;
+  /** 0..1 the crystal crest along the neck flares (≥ 0.75: one tone step up, like `glow` for every
+   *  crystal) — the struck region's crystals light on the contact frame */
+  crestFlare: number;
+  /** 0..1 (≥ 0.5) the open eye blazes — the iris burns white with a cyan4 rim (a magic jolt's
+   *  contact frame: the charge in the eyes) */
+  eyeFlare: number;
 }
 
 export const NEUTRAL: Pose = {
@@ -195,6 +206,9 @@ export const NEUTRAL: Pose = {
   gather: 1,
   tailLag: [0, 0],
   wingDy: 0,
+  chestLean: 0,
+  crestFlare: 0,
+  eyeFlare: 0,
 };
 
 export type PoseDelta = Partial<Omit<Pose, 'nw' | 'fw'>> & { nw?: Partial<Wing>; fw?: Partial<Wing> };
@@ -249,6 +263,9 @@ export function lerpPose(a: Pose, b: Pose, t: number): Pose {
     gather: lerp(a.gather, b.gather, t),
     tailLag: lerpV(a.tailLag, b.tailLag, t),
     wingDy: lerp(a.wingDy, b.wingDy, t),
+    chestLean: lerp(a.chestLean, b.chestLean, t),
+    crestFlare: lerp(a.crestFlare, b.crestFlare, t),
+    eyeFlare: lerp(a.eyeFlare, b.eyeFlare, t),
   };
 }
 
@@ -317,14 +334,16 @@ export interface Rig {
 
 export function rig(P: Pose): Rig {
   const hip: V = [42 + OX + P.hx, 66 + OY + P.hy + P.lift];
-  const tAng = -0.95 + P.lean;
+  const lean = P.lean + P.chestLean;
+  const tAng = -0.95 + lean;
   const chest = add(hip, [Math.cos(tAng) * 18, Math.sin(tAng) * 18]);
-  const att = (o: V): V => add(chest, rotV(o, P.lean));
+  const att = (o: V): V => add(chest, rotV(o, lean));
   return { hip, chest, tAng, att, neck0: att([3, -5]), head: rnd(add(chest, [14 + P.headX, -28 + P.headY])) };
 }
 
 function wings(P: Pose) {
-  const { hip, chest, att } = rig(P);
+  // the wings hang on the body's lean only (a struck chest moves under them; they follow later)
+  const { hip, chest, att } = rig(P.chestLean ? { ...P, chestLean: 0 } : P);
   const backAttach = add(lerpV(hip, chest, 0.3), rotV([-8, -5], P.lean));
   const farWing = wingRig(att([1, -8]), P.fw, FAR_FINGERS, 11, 13, att(P.fw.at ?? [-6, -4]));
   const nearWing = wingRig(att([-6, -6]), P.nw, NEAR_FINGERS, 13, 16, P.nw.at ? att(P.nw.at) : backAttach);
@@ -393,7 +412,7 @@ export function glintPixelFor(P: Pose): V | null {
 
 export function neckPath(P: Pose): V[] {
   const { neck0, head } = rig(P);
-  return bezier(neck0, add(add(neck0, rotV([-3, -12], P.lean * 0.6)), P.nk1), add(add(head, polar(P.ha / DEG + 128, 9)), P.nk2), head, 18);
+  return bezier(neck0, add(add(neck0, rotV([-3, -12], (P.lean + P.chestLean) * 0.6)), P.nk1), add(add(head, polar(P.ha / DEG + 128, 9)), P.nk2), head, 18);
 }
 
 // ------------------------------------------------------------------ neck value planes
@@ -552,7 +571,7 @@ export function drawDragon(p: PixelCanvas, P: Pose) {
     const g = newG();
     // the tube wins wherever it covers: the lit / mid break runs straight along the torso (a plane
     // break, not rings); the two ellipsoids only round off the silhouette
-    gEll(g, hip, 11, 9.5, tAng * 0.3, M.HIDE, { flat: 1.45 });
+    gEll(g, hip, 11, 9.5, (tAng - P.chestLean) * 0.3, M.HIDE, { flat: 1.45 });
     gEll(g, chest, 8.5, 10, tAng, M.HIDE, { flat: 1.45 });
     gTube(g, [hip, chest, att([3, -5])], 17, 13, M.HIDE, { flat: 1.45, z: 6 });
     const c = g.render();
@@ -599,7 +618,7 @@ export function drawDragon(p: PixelCanvas, P: Pose) {
       const dn = dorsal(s.tan);
       const r = lerp(10, 7, t) / 2;
       const b = add(s.p, mul(dn, r - 0.5));
-      gShard(gs, b, add(dn, mul(s.tan, -0.55)), lerp(8, 5, t), lerp(2.4, 1.7, t), M.CRYS, 0, P.glow);
+      gShard(gs, b, add(dn, mul(s.tan, -0.55)), lerp(8, 5, t), lerp(2.4, 1.7, t), M.CRYS, 0, Math.max(P.glow, P.crestFlare));
     }
     const cs = gs.render(0, false);
     // the crest sits in a dark cyan0 channel: the glass behind it folds two values down
@@ -1085,6 +1104,7 @@ const EYE_AT: P2 = hs(67.5, 18.5);
 const EYE_OPEN = ['22wddd', '22ddd2', '.22222'];
 const EYE_HALF = ['223333', '22ddd2', '.22222'];
 const EYE_SHUT = ['223333', '.2222.'];
+const EYE_FLARE = ['22wwwe', '22eww2', '.22222'];
 const EYE_KEY: Record<string, number> = { '2': PAL.night2, '3': PAL.night3, d: PAL.cyan3, w: PAL.white, e: PAL.cyan4 };
 
 const MOUTH_MASK = new Uint8Array(W * H);
@@ -1187,7 +1207,7 @@ function drawHead(p: PixelCanvas, hp: V, P: Pose) {
   // eye
   {
     const e = flo(T(...EYE_AT));
-    const rows = P.eye > 0.75 ? EYE_OPEN : P.eye > 0.25 ? EYE_HALF : EYE_SHUT;
+    const rows = P.eye > 0.75 ? (P.eyeFlare >= 0.5 ? EYE_FLARE : EYE_OPEN) : P.eye > 0.25 ? EYE_HALF : EYE_SHUT;
     for (let j = 0; j < rows.length; j++)
       for (let i = 0; i < rows[j].length; i++) {
         let col = EYE_KEY[rows[j][i]];

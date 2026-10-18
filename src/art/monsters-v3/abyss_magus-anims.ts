@@ -222,18 +222,24 @@ const ATTACK_HOLDS = [60, 90, 100, 170, 90, 50, 70, 80, 100, 110, 120, 140];
 
 // ------------------------------------------------------------------ hit (6 frames, 590 ms)
 //
-// The blow lands on the chest and the helm, and the contact frame already shows it (the hit-stop
-// freezes this frame): the chest caves back, the helm snaps back past it, the visor squeezes shut,
-// the orb dims, and the grip is driven back while the staff's head stays put (it tips forward:
-// knocked off-line); the free hand is flung back; the robe's hem and the cape still hang where they
-// were (the contact zone moves first). Then the body is shoved back after its head and, a floater
-// with nothing to brace on, keeps drifting back a beat (the longest frame) while the cloth trails
-// (cape and hem whip forward, the sleeve bells lag); it floats back in and is home a frame before
-// its robe, which swings behind it and settles last (drape) onto idle f0.
+// The blow lands on the helm, the chest and the staff hand, and the contact frame already shows it
+// there (the hit-stop freezes this frame) — and ONLY there: the helm snaps back and up off the
+// collar, the visor squeezes shut, the breastplate is driven back a pixel under it and the
+// shoulders fold in (compression), the fist is driven back on the staff while the staff's head
+// stays put (it tips forward: knocked off-line); the hips, the robe and its hem, the cape and the
+// far arm still hang exactly as they were (the struck zone moves first; < 50 % of the silhouette
+// changes). Then the body is shoved back after its head (the shoulders still folded, the free hand
+// flung back) and, a floater with nothing to brace on, keeps drifting back a beat (the longest
+// frame) while the cloth trails (cape and hem whip forward, the sleeve bells lag); it floats back
+// in and is home a frame before its robe, which swings behind it and settles last (drape) onto
+// idle f0.
 
 const HIT_KEYS: Key[] = [
-  { lean: -6, hx: -1, hy: -1, squint: 1, gripAt: [53, 44], sa: 0.12, bx: 27, by: 43, sway: -1.8, lagF: 1.2, lagB: 0.8, glow: 0.2, eye: 0.6, rune: 0.2 },
-  { dx: -3, bob: -1, lean: -4, hx: -1, squint: 1, gripAt: [51, 43], sa: -0.02, bx: 27, by: 44, cx: 3, cy: -2, flare: 0.2, ripple: 1.3, sway: 2, lagF: 1.5, lagB: 1, glow: 0.2, eye: 0.6, rune: 0.2 },
+  // contact: helm, breastplate, shoulders and the staff hand only (the robe, the cape and the far
+  // arm keep idle f0's cloth: no lean, no sway, no lag)
+  { hx: -3, hy: -1, chest: -1, hunch: 1, squint: 1, gripAt: [53, 44], sa: 0.08, glow: 0.2, eye: 0.6, rune: 0.2 },
+  // the body follows its head (the shoulders still folded), the cloth a frame behind it
+  { dx: -3, bob: -1, lean: -4, hx: -1, hunch: 1, squint: 1, gripAt: [51, 43], sa: -0.02, bx: 27, by: 44, cx: 3, cy: -2, flare: 0.2, ripple: 1.3, sway: 2, lagF: 1.5, lagB: 1, glow: 0.2, eye: 0.6, rune: 0.2 },
   { dx: -4, bob: 0, lean: -2, squint: 1, gripAt: [51, 44], sa: -0.04, bx: 28, by: 45, cx: 5, cy: -3, flare: 0.3, ripple: 1.5, sway: 3, lagF: 2, lagB: 1.5, glow: 0.3, eye: 0.7, rune: 0.3 },
   { dx: -2, lean: -1, squint: 0.5, gripAt: [53, 44], sa: 0, cx: 2, cy: -2, sway: 1.5, lagF: 1, glow: 0.35, eye: 0.9, rune: 0.4 },
   // the body is home; the robe still swings behind it
@@ -295,20 +301,21 @@ const FROM_GUARD_HOLDS = [60, 70, 70, 80, 100];
 
 // ------------------------------------------------------------------ hitHeavy (8 frames, 740 ms)
 //
-// A caster's rhythm (not the wyrm's): a very short contact that already shows the blow (the
-// hit-stop freezes it) — the chest caves back hard and lifts, the helm snaps back past it, the
-// visor shuts, the orb gutters, the grip is driven back under the staff's head (the staff knocked
-// forward off its line), the free arm flung back; the robe's hem and the cape still hang where they
-// were → the whole body follows, flung back and up, the staff whipped back upright, the cape and
-// the hem whipped forward → it drifts on back on the air, sinking (long) → the hover gives (it
-// drops 3 px, bowed; the longest frame) → it floats back in → the body is home while the robe still
-// trails behind it → the robe swings past rest → settles: idle f0 (the robe 2 frames after the body).
+// A caster's rhythm (not the wyrm's): a very short contact that already shows the blow where it
+// lands (the hit-stop freezes it) — the helm thrown back and up off the collar, the visor shut, the
+// breastplate driven back under it, the shoulders folded in, the fist driven back on the staff
+// (the staff knocked forward off its line, its head where it was); the hips, the robe, its hem,
+// the cape and the far arm still exactly as they were → the whole body follows, flung back and up,
+// the staff whipped back upright, the free arm flung back, the cape and the hem whipped forward →
+// it drifts on back on the air, sinking (long) → the hover gives (it drops 3 px, bowed; the
+// longest frame) → it floats back in → the body is home while the robe still trails behind it →
+// the robe swings past rest → settles: idle f0 (the robe 2 frames after the body).
 
 /** The heavy contact pose (hitHeavy f0; the death starts from it too). */
-const STRUCK_HEAVY: Key = { lean: -8, hx: -1, hy: -2, squint: 1, gripAt: [52, 43], sa: 0.16, bx: 25, by: 41, sway: -2.4, lagF: 1.5, lagB: 1, glow: 0.15, eye: 0.5, rune: 0.2 };
+const STRUCK_HEAVY: Key = { hx: -4, hy: -2, chest: -1, hunch: 1, squint: 1, gripAt: [53, 44], sa: 0.1, glow: 0.15, eye: 0.5, rune: 0.2 };
 const HIT_HEAVY_KEYS: Key[] = [
   STRUCK_HEAVY,
-  { dx: -4, bob: -2, lean: -6, hx: -2, squint: 1, gripAt: [50, 42], sa: -0.08, bx: 24, by: 41, cx: 2, cy: -1, flare: 0.15, ripple: 1.0, sway: 2.5, lagF: 2, lagB: 1.5, glow: 0.1, eye: 0.5, rune: 0.2 },
+  { dx: -4, bob: -2, lean: -6, hx: -2, hunch: 1, squint: 1, gripAt: [50, 42], sa: -0.08, bx: 24, by: 41, cx: 2, cy: -1, flare: 0.15, ripple: 1.0, sway: 2.5, lagF: 2, lagB: 1.5, glow: 0.1, eye: 0.5, rune: 0.2 },
   { dx: -6, bob: 0, lean: -4, hx: -1, squint: 1, gripAt: [50, 44], sa: -0.12, bx: 25, by: 44, cx: 3, cy: -1, flare: 0.2, ripple: 1.0, sway: 3, lagF: 2.5, lagB: 2, glow: 0.12, eye: 0.5, rune: 0.25 },
   { dx: -6, bob: 3, lean: 2, hy: 1, squint: 0.5, gripAt: [52, 47], sa: 0.06, bx: 28, by: 47, cx: 2, cy: 0, flare: 0.1, ripple: 1.3, sway: 1.5, lagF: 1, lagB: 0.6, glow: 0.25, eye: 0.8, rune: 0.35 },
   { dx: -3, bob: 1, lean: 1, gripAt: [53, 45], sa: 0.04, bx: 29, by: 46, cx: 1, sway: 0, lagF: 0.2, glow: 0.3, eye: 0.9, rune: 0.45 },
@@ -322,15 +329,15 @@ const HIT_HEAVY_HOLDS = [40, 70, 120, 130, 100, 80, 90, 110];
 
 // ------------------------------------------------------------------ hitMagic (8 frames, 660 ms)
 //
-// A spell / beam: the contact frame already shows it (the hit-stop freezes it) — the chest and
-// the helm are punched back and up (the chest caves, the helm snaps back past it), the eyes flare
-// white, the sigil burns, the orb gutters, a crackle runs over the plates, the grip is driven back
-// under the staff's head (knocked forward off its line) and the free arm flung back; the robe and
-// the cape still hang where they were → the charge runs through the whole body: rigid, jolted up
-// off its float, the arms flung out, the cape flared → it shudders 1 px a few short frames (the
-// cloth a frame behind) → the charge lets go and the floater drifts down 2 px below its float,
-// bowed, eyes dim (the longest frame) → the body is back at its float while the robe still sags
-// and swings (drape) → idle f0.
+// A spell / beam: the contact frame already shows it where it lands (the hit-stop freezes it) —
+// the heavy struck zone (helm thrown back and up, breastplate driven back, shoulders folded in,
+// the fist driven back on the staff, knocked forward off its line) lit by the spell: the eyes
+// flare white, the sigil burns, a crackle runs over the plates; the robe, the hem, the cape and
+// the far arm still as they were → the charge runs through the whole body: rigid, jolted up off
+// its float, the arms flung out, the cape flared → it shudders 1 px a few short frames (the cloth
+// a frame behind) → the charge lets go and the floater drifts down 2 px below its float, bowed,
+// eyes dim (the longest frame) → the body is back at its float while the robe still sags and
+// swings (drape) → idle f0.
 
 const RIGID: Key = { bob: -2, lean: -3, hx: -1, hy: -2, gripAt: [57, 42], sa: 0.18, bx: 24, by: 38, flare: 0.7, cy: -4, ripple: 1.5, eye: 1.45, rune: 2, glow: 0.2, zap: 1 };
 const HIT_MAGIC_KEYS: Key[] = [
@@ -406,8 +413,9 @@ const SUMMON_HOLDS = [70, 80, 110, 80, 70, 70, 90, 130, 100, 100, 110, 130];
 
 // ------------------------------------------------------------------ death (10 frames, 780 ms)
 //
-// [impact] the heavy struck pose (= hitHeavy f0: chest caved, helm snapped back, the staff knocked
-// forward off its line, the orb guttering) → the reel: the body follows its head back, the free
+// [impact] the heavy struck pose (= hitHeavy f0: helm thrown back off the collar, breastplate driven
+// back, shoulders folded in, the staff knocked forward off its line; the robe, the cape and the far
+// arm still as they were) → the reel: the body follows its head back, the free
 // hand clutching at the chest, the arm left out on the loosening staff → the hover fails, the head
 // drops, the eyes gutter, the staff slips out of the open hand onto its foot, its head kept clear
 // in front of the bowing helm (the body drops under it before it topples) → the
