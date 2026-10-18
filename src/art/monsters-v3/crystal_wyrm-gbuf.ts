@@ -607,20 +607,21 @@ export function rimLight(c: PixelCanvas, dst: PixelCanvas, cols: readonly number
   for (let i = 0; i < hits.length; i += 2) c.set(hits[i], hits[i + 1], rim);
 }
 
-/** 4-point star glint drawn only over the body (never spills past the silhouette). */
+/**
+ * The crystal glint on a facet vertex: size 1 = the vertex pixel alone (white), size 2 = a 3-px
+ * cross (the white vertex + four white 1-px arms). Only over the body (never into the air, never
+ * over the outline).
+ */
 export function twinkle(p: PixelCanvas, at: V, size: number) {
-  const put = (dx: number, dy: number, col: number) => {
+  const put = (dx: number, dy: number) => {
     const x = at[0] + dx;
     const y = at[1] + dy;
     const cur = p.get(x, y);
-    if (cur !== null && cur !== PAL.ink) p.set(x, y, col);
+    if (cur === null || cur === PAL.ink) return;
+    p.set(x, y, PAL.white);
   };
-  put(0, 0, PAL.white);
-  const arm = size >= 2 ? PAL.white : PAL.cyan4;
-  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-    put(dx, dy, arm);
-    if (size >= 2) put(dx * 2, dy * 2, PAL.cyan3);
-  }
+  put(0, 0);
+  if (size >= 2) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) put(dx, dy);
 }
 
 export function distSeg(p: V, a: V, b: V): number {

@@ -123,6 +123,9 @@ function rnd(): number {
   return unitSeed / 4294967296;
 }
 
+/** v3: a monster sprite's scale within this of 1× is shown at 1× (see MonsterUnit.update). */
+const SNAP_SCALE = 0.25;
+
 /** v3: extra poses warmed as a unit takes the field (reactions, guard brace / break, death). */
 const WARM_ON_FIELD: readonly AnyMonsterAnim[] = ['hitMagic', 'hitHeavy', 'death', 'toGuard', 'fromGuard'];
 
@@ -1204,6 +1207,14 @@ export class MonsterUnit {
   private update(): void {
     const s = this.sprite;
     if (!s.active) return;
+    // v3 (A2 tech review r3 #9, interim until the old monsters get their v3 strikes in A4): a monster
+    // sprite is never rotated, and a legacy strike's squash / stretch (an old monster's tweened
+    // 0.97–1.07 scale) shows at 1×, as a claimed sprite does (claim keep()). A grow / shrink well
+    // away from 1× (an exit, a tween from 0) is left alone.
+    if (LOOK_V3) {
+      if (s.angle !== 0) s.setAngle(0);
+      if ((s.scaleX !== 1 || s.scaleY !== 1) && Math.abs(s.scaleX - 1) <= SNAP_SCALE && Math.abs(s.scaleY - 1) <= SNAP_SCALE) s.setScale(1);
+    }
     const vis = s.visible && !this.retired && s.alpha > 0.05;
     this.shadow.setVisible(vis);
     if (!vis) return;

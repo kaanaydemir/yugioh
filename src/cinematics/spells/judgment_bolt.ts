@@ -27,10 +27,15 @@
 //   +190    THE MONSTER'S OWN DEATH: the destroy plays through the monster's own 'destroyed' hook
 //           (the death kit: its death pose, its material) — under v3 this card registers NO
 //           'destroys' hook, because a registered one makes the monsters' deaths step aside
-//           (strikes kits sourceOwnsDestroy) and it would own the death again
-//   cards   one after another: the spent spell card (strike + 160), then whatever the run breaks
-//           with it (an equip, from the death's start), then the victim's card (born on its tile
-//           the frame its body breaks).
+//           (strikes kits sourceOwnsDestroy) and it would own the death again. The death pose
+//           shows ≤ 200 ms after the strike frame whatever bridges into it (a guard break, the
+//           recoil's struck frame): capDeath hands over on the planned frame at the latest.
+//   cards   one after another, their landings ≥ 150 ms apart (A2 motion review r3 #1): the spent
+//           spell card (it drops right after the hit-stop), then what breaks with the victim (an
+//           equip: it cracks on its own tile in gold while the body starts dying and is born from
+//           its tile into its flight — card continuity — landing BEFORE the body breaks), then the
+//           victim's card (born on its tile the frame its body breaks). A victim whose death is
+//           too short to fit the equip in front of it sends its card first; the equip follows.
 
 import Phaser from 'phaser';
 import type { GameEvent } from '../../engine/types';
@@ -40,8 +45,11 @@ import { TEX, wait } from '../../vfx/core';
 import { shatter } from '../../vfx/shatter';
 import { Raster, Sparks, boltPath, rnd, rr, run, spriteBox, stormStrike } from '../../vfx/setpieces';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
+import type { TileCard } from '../../view/TileCard';
 import { Sparks as PxSparks } from '../../vfx/combat';
 import { DEATH_AFTER_CONTACT_MS } from '../_v3/budget';
+import { behindBodies, cardLeaves } from '../_v3/card';
+import { deathStartFrom } from '../_v3/posematch';
 import { plannedEntry, reactHit } from '../_v3/react';
 import { fx, registerCardHook, type CinematicContext } from '../api';
 import {
@@ -290,12 +298,26 @@ type ActCtx = CinematicContext<Extract<GameEvent, { type: 'activate' }>>;
 const STRIKE_AT_V3 = 340;
 /** The hit-stop on the strike frame (60–100 ms). */
 const BOLT_STOP_V3 = 80;
-/** The spent card leaves this long after the strike (first of the cards going to the graveyard). */
-const SPENT_AFTER_V3 = 160;
+/** The spent card leaves this long after the strike's hit-stop (first of the cards going to the graveyard). */
+const SPENT_AFTER_V3 = 0;
 /**
- * What breaks with the victim (an equip's rule destroy) starts this long after the strike: its card
- * dissolves on its tile and flies between the spent spell card and the victim's own card.
+ * The death pose shows at the latest this long after the strike's hit-stop (scene ms; with the
+ * 80 ms stop and the render frame ≈ 200 ms of game time after the strike frame — plan §5, the
+ * battle's DEATH_AFTER_CONTACT_MS beat): a bridge still running then hands over on its planned frame.
  */
+const DEATH_CAP_V3 = 100;
+/**
+ * An equip broken with the victim (its rule destroy) cracks on its own tile this long after the
+ * strike's hit-stop — while the body starts dying — and is born into its flight EQUIP_BEAT_V3 later:
+ * it lands between the spent card and the victim's card, ≥ 150 ms from both, before the body breaks.
+ */
+const EQUIP_AFTER_V3 = 220;
+const EQUIP_BEAT_V3 = 100;
+/** Next equip of the same run (rare): this much later. */
+const EQUIP_STAGGER_V3 = 180;
+/** A death pose at least this long (ms) leaves room for the equip's card before the body breaks. */
+const ROOM_FOR_EQUIP_MS = 600;
+/** Anything else the run holds (not the victim, not its spell / trap row breaks) plays this long after the strike. */
 const REST_AFTER_V3 = 300;
 
 /** The equip aura burnt off a struck body: a ring of gold pixels. */
@@ -385,6 +407,9 @@ const JOLT_MAX_COST = 2;
  * the death pose takes over on the planned frame — a close continuation, never a jump.
  */
 function joltFirst(sc: Phaser.Scene, u: MonsterUnit): void {
+  // a guard break (react.ts → _v3/guardbreak.ts) plays its own bridge and recoil into the death
+  // within its window: no extra jolt hold on top of it (A2 tech review r3 #2)
+  if (u.guardBroken) return;
   const plan = plannedEntry(u);
   if (!plan || plan.anim !== 'hitMagic' || plan.hold !== 0 || plan.cost > JOLT_MAX_COST || !u.has('hitMagic')) return;
   if (!u.asClaimant(() => u.pose('hitMagic', 0))) return;
@@ -395,6 +420,91 @@ function joltFirst(sc: Phaser.Scene, u: MonsterUnit): void {
     if (fi.anim !== 'hitMagic' || fi.frame !== 0) return;
     u.asClaimant(() => void u.playRange('death', plan.start, undefined, { hold: true }));
   });
+}
+
+/**
+ * The death pose shows by now (DEATH_CAP_V3): whatever still bridges into it (a guard break, the
+ * lethal recoil's frames) hands over on its planned start frame — the frame chosen to continue that
+ * bridge — or, unplanned, on the death frame closest to the frame shown. The death kit joins the
+ * pose where it is.
+ */
+function capDeath(u: MonsterUnit): void {
+  if (u.retired || !u.sprite.active || !u.sprite.visible || !u.has('death')) return;
+  if (u.frameInfo().anim === 'death') return;
+  const n = u.frameCount('death');
+  const plan = plannedEntry(u);
+  const start = Math.max(0, Math.min(n - 2, plan ? plan.start : deathStartFrom(u)));
+  u.asClaimant(() => void u.playRange('death', start, undefined, { hold: true }));
+}
+
+/**
+ * An equip losing its holder cracks on its own tile (v3): gold chips spring off the card's edges, a
+ * small gold light on its tile, a 1-px jolt — the card face stays readable (no fill, no glow sprite).
+ */
+async function equipCrack(ctx: ActCtx, tile: TileCard, home: XY): Promise<void> {
+  const sc = ctx.scene;
+  ctx.sfx('shatter', { volume: 0.4, pitch: 1.6 });
+  const s = new PxSparks(sc, DEPTH.FX + 2);
+  for (let i = 0; i < 12; i++) {
+    const a = Math.PI + ((i + 0.5) / 12) * Math.PI;
+    const v = rr(36, 80);
+    s.add({ x: home.x + Math.round(Math.cos(a) * 14), y: home.y - 3 + Math.round(Math.sin(a) * 5), vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.7 - 16, ay: 280, drag: 1, life: rr(200, 340), colors: [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2], shape: i % 4 === 0 ? 'plus' : 'px', fadeAt: 1 });
+  }
+  s.release();
+  void lightFlash(sc, home.x, home.y, PAL.gold3, 26, 240, { floorY: home.y, intensity: 0.7 });
+  if (!tile.active) return;
+  tile.x = home.x + 1;
+  await wait(sc, 50);
+  if (tile.active) tile.x = home.x;
+}
+
+/**
+ * cardLeaves depthAt: behind the field's bodies nearer the camera (behindBodies) and behind the
+ * dying victim too — released from the field by its death, it is no longer one of the field's
+ * units — while the card's spot overlaps its frame and the card's floor point lies behind its home.
+ */
+function behindVictim(ctx: ActCtx, victim: MonsterUnit | null): (floor: XY, at: XY) => number {
+  const base = behindBodies(ctx);
+  return (floor, at) => {
+    const d = base(floor, at);
+    const s = victim?.sprite;
+    if (!victim || !s || !s.active || !s.visible || victim.home.y <= floor.y) return d;
+    const left = s.x - s.displayOriginX;
+    const top = s.y - s.displayOriginY;
+    if (at.x + 12 < left || at.x - 12 > left + s.displayWidth || at.y + 8 < top || at.y - 8 > top + s.displayHeight) return d;
+    return Math.min(d, s.depth - 0.2);
+  };
+}
+
+/**
+ * A spell / trap card broken with the victim (an equip's rule destroy, its toGraveyard): it cracks
+ * on its own tile and is born from it into its flight to its owner's graveyard (card continuity,
+ * _v3/card.ts). Resolves when it has landed.
+ */
+async function equipLeaves(ctx: ActCtx, di: number, gi: number, victim: MonsterUnit | null): Promise<void> {
+  const d = evAt(ctx, di, 'destroy');
+  if (!d || ctx.isConsumed(di)) return;
+  ctx.consumeAt(di);
+  const g = gi >= 0 && !ctx.isConsumed(gi) ? evAt(ctx, gi, 'toGraveyard') : null;
+  if (g) ctx.consumeAt(gi);
+  const sc = ctx.scene;
+  const { tile, unit } = ctx.views.field.release(d.uid);
+  unit?.retire();
+  const home: XY = tile ? { x: tile.home.x, y: tile.home.y } : zoneXY(d.player, 'spellTrap', d.zone);
+  if (tile && tile.active) {
+    if (!tile.faceUp) {
+      tile.setCard(d.cardId);
+      await tile.flipUp(200);
+    }
+    await equipCrack(ctx, tile, home);
+    await wait(sc, Math.max(0, EQUIP_BEAT_V3 - 50));
+  }
+  // it flies over the board but behind a body standing nearer the camera (the dying victim too)
+  if (g) await cardLeaves(ctx, { owner: g.owner, cardId: g.cardId, from: home, tile, depthAt: behindVictim(ctx, victim) });
+  else if (tile && tile.active) {
+    await tile.dissolve(320);
+    if (tile.active) tile.destroy();
+  }
 }
 
 /** The cloud's eye taking the card's orb: a small burst of teal-white pixels. */
@@ -426,6 +536,21 @@ async function boltV3(ctx: ActCtx): Promise<void> {
   // the victim's own trip to the graveyard (its death claims it) and the spell's: not "the rest"
   const vgi = dEv ? idxOf(ctx, run0, (e) => e.type === 'toGraveyard' && e.uid === dEv.uid) : -1;
   const rest = run0.filter((i) => i !== ti && i !== gi && i !== di && i !== vgi);
+  // what breaks with the victim on the spell / trap row (an equip's rule destroy + its card's
+  // toGraveyard): the bolt sends those cards itself, in their slot of the card sequence (header)
+  const breaks: { di: number; gi: number }[] = [];
+  for (const i of rest) {
+    const e = ctx.events[i];
+    if (e.type !== 'destroy' || e.location !== 'spellTrap') continue;
+    const g = rest.find((j) => {
+      const x = ctx.events[j];
+      return x.type === 'toGraveyard' && x.uid === e.uid;
+    });
+    breaks.push({ di: i, gi: g ?? -1 });
+  }
+  const taken = new Set(breaks.flatMap((b) => [b.di, b.gi]));
+  const rest2 = rest.filter((i) => !taken.has(i));
+  let equips: Promise<void> = Promise.resolve();
   let storm: Promise<void> = Promise.resolve();
   let destroyed: Promise<void> = Promise.resolve();
   let spent: Promise<void> = Promise.resolve();
@@ -451,9 +576,20 @@ async function boltV3(ctx: ActCtx): Promise<void> {
     // the cards leave one after another: the spent spell card first …
     spent = wait(sc, SPENT_AFTER_V3).then(() => (leave ? leave(gi) : sendResolved(ctx, gi, ground0 ?? { x: 320, y: 160 })));
     // … the monster's own death after the hit-stop and a beat of its recoil (its card is born on its
-    // tile the frame its body breaks) — and what breaks with it (an equip) from the same moment
+    // tile the frame its body breaks); its pose shows by DEATH_CAP_V3 whatever bridges into it
+    if (victim) void wait(sc, DEATH_CAP_V3).then(() => capDeath(victim));
     destroyed = wait(sc, victim ? DEATH_AFTER_CONTACT_MS : 0).then(() => (di >= 0 && !ctx.isConsumed(di) ? ctx.play(di, { push: { x: 0, y: -1 }, hit: false, bolt: true }) : undefined));
-    others = rest.length ? wait(sc, REST_AFTER_V3).then(() => fx.playRun(ctx, rest)) : Promise.resolve();
+    // … what breaks with it (an equip) between the two: in front of a death pose long enough to
+    // land before the body breaks, else after the victim's card has landed
+    if (breaks.length) {
+      const room = !!victim && victim.has('death') && victim.rangeMs('death', 0, victim.frameCount('death')) >= ROOM_FOR_EQUIP_MS;
+      const dead = destroyed;
+      const slot = room
+        ? wait(sc, EQUIP_AFTER_V3).then(() => (victim && !victim.retired && victim.sprite.visible ? undefined : dead))
+        : dead;
+      equips = slot.then(() => fx.all(breaks.map((b, k) => wait(sc, k * EQUIP_STAGGER_V3).then(() => equipLeaves(ctx, b.di, b.gi, victim))))).then(() => undefined);
+    }
+    others = rest2.length ? wait(sc, REST_AFTER_V3).then(() => fx.playRun(ctx, rest2)) : Promise.resolve();
   };
   const startStorm = () => {
     if (!ground0 || !ref || started) return;
@@ -491,7 +627,7 @@ async function boltV3(ctx: ActCtx): Promise<void> {
   eyeSpark(sc, eye);
   await storm;
   await destroyed;
-  await fx.all([spent, others]);
+  await fx.all([spent, equips, others]);
   if (victim && !victim.retired) {
     victim.posed = false;
     victim.settle();

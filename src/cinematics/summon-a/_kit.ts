@@ -44,7 +44,7 @@ import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { CardSprite } from '../../view/CardSprite';
 import { fx, registerCardHook, type CinematicContext } from '../api';
 import { onDuelStart } from '../../duel/seeds';
-import { cutInV3 } from '../_v3/cutin';
+import { cutInV3, warmCutinP2 } from '../_v3/cutin';
 import { HOLO_SETTLE_V3_MS, poseEntrance, summonPose, type SummonPose } from '../_v3/summon';
 import { matterRamp } from '../_v3/death';
 import { warmPoses } from '../_v3/warm';
@@ -622,8 +622,10 @@ export async function runSummon(ctx: SummonCtx, entrance: (S: Stage) => Promise<
   const v = ctx.views;
   const field = v.field;
   seed(ev.uid * 31 + ev.zone * 7 + ev.player);
-  // v3: the entrance pose is painted now, in the background (the card / tributes come first)
+  // v3: the entrance pose is painted now, in the background (the card / tributes come first) —
+  // player 2's relit sheet and portrait are registered and painted here on first use
   warmPoses(ev.cardId as MonsterId, ev.player, ['summon']);
+  if (LOOK_V3) warmCutinP2(ctx.scene, ev.cardId as MonsterId, ev.player);
   beat(ctx.scene, ctx.hints.tribute ? 'summon' : 'start');
   // v3: the camera eases back while the summon already starts (never a dead beat)
   if (LOOK_V3) void settleCamera(ctx);

@@ -15,7 +15,7 @@
 import Phaser from 'phaser';
 import { onDuelStart } from '../../duel/seeds';
 import { PAL, RAMPS } from '../../art/palette';
-import { DEPTH, type XY } from '../../view/layout';
+import { DEPTH, LOOK_V3, type XY } from '../../view/layout';
 import { projectile } from '../../vfx/combat';
 import { lightFlash, lightPool } from '../../view/light';
 import { fx, registerCardHook, registerStrike } from '../api';
@@ -253,7 +253,11 @@ registerCardHook('tide_golem', 'effect', async (ctx) => {
   const hitAt = atkSpot ?? fx.duelistPoint(ctx, victim);
   await projectile(sc, from, hitAt, 'water', {
     onImpact: () => {
-      if (attacker) {
+      if (attacker && LOOK_V3) {
+        // v3 (A2 motion review r3 #5): the splash is a blow on the body — the hit kit's contact
+        // flash on the struck side and a recoil along the splash, never a full-silhouette tint
+        void fx.hitReact(ctx, attacker, 1, RAMPS.water, hitAt, norm(sub(hitAt, from)), null, { kind: 'physical', noStop: true });
+      } else if (attacker) {
         void attacker.play('hit');
         // drenched for an instant (never leave the tint behind, whatever overlapped it)
         void whiteFlash(sc, attacker.sprite, 2, PAL.water4).then(() => sleep(sc, 120)).then(() => {

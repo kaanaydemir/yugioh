@@ -6,8 +6,8 @@
 // idle never pops; the loops (idle, guard) close on themselves.
 
 import type { AnimSpec, AnyMonsterAnim, MonsterAnim, MonsterAnimExtra, MonsterPoints } from '../types';
-import { legs, lerpPose, mouthPoint, pose, rig, type Pose, type PoseDelta, type Wing } from './crystal_wyrm-rig';
-import { OX, OY, add, polar, rnd } from './crystal_wyrm-gbuf';
+import { glintPixelFor, legs, lerpPose, mouthPoint, pose, rig, type Pose, type PoseDelta, type Wing } from './crystal_wyrm-rig';
+import { LIGHT, OX, OY, add, polar, rnd, type V } from './crystal_wyrm-gbuf';
 
 const TAU = Math.PI * 2;
 const sin = Math.sin;
@@ -23,10 +23,12 @@ const sin = Math.sin;
 //           the membranes billow later still (scallop depth), the far wing a frame behind the near;
 //   head  — rides the breath 1.5 frames late, plus a slow sway once per loop;
 //   tail  — one slow traveling wave per loop (period 20);
-// a blink once per loop and one glint crossing the near wing's glass.
+// a blink once per loop and one glint on the near wing's wrist knuckle.
 
 const IDLE_N = 20;
-const IDLE_SPARKS: Record<number, [number, number][]> = { 3: [[0, 1]], 4: [[0, 2]], 5: [[0, 1]], 11: [[1, 1]], 12: [[1, 2]], 13: [[1, 1]] };
+// the one glint of the loop: the near wing's wrist knuckle (a facet vertex on the lit leading
+// edge) on the three frames it stands still (f2–f4): 1 px → a 3-px cross → 1 px
+const IDLE_SPARKS: Record<number, [number, number][]> = { 2: [[0, 1]], 3: [[0, 2]], 4: [[0, 1]] };
 
 /** The 1-px body sink of the breath (frames 4–7 and 14–17: it leads the exhale a little, and idle
  *  f0 sits two frames into a rest plateau, so the lagging parts are at rest there too). */
@@ -62,7 +64,6 @@ export function idlePose(f: number): Pose {
     armF: br(1.8) > 0.3 ? -2 : 0,
     glow: 0.3 + 0.15 * br(0.6),
     eye: blink,
-    glint: f >= 6 && f <= 10 ? 0.12 + (f - 6) * 0.17 : -1,
     sparkles: IDLE_SPARKS[f] ?? [],
   });
 }
@@ -71,31 +72,43 @@ const IDLE_HOLDS = Array.from({ length: IDLE_N }, (_, f) => (f === 16 ? 80 : 100
 
 // ------------------------------------------------------------------ guard (8 frames, 1.3 s)
 //
-// Crouched behind the wings wrapped forward: the body breathes (1 px), the wing bones flex a frame
-// behind it and the membranes billow two frames behind (every frame differs), the tail sways, the
-// head bobs late, a slow glint crosses the shield glass once per loop.
+// Crouched behind the wings wrapped forward, breathing. One part moves per frame, so the breath
+// travels through the body instead of the whole crouch hopping: the wrapped membrane fills (a 1-px
+// bulge of its scallops), the chest and thighs sink 1 px (the knees take it; the tail's middle and
+// tip follow a frame and two later), the wrapped wings settle onto the chest a frame later, the
+// head a frame after them; the membrane flattens; then the chest rises, the wings, the head. One
+// glint on the shield's peak (the wrapped wing's elbow) while the wings are down (they stand still there).
 
 const GUARD_N = 8;
+// per frame: chest / thigh dip, wrapped-wing dip, head dip (px), membrane bulge (0/1)
+const G_CHEST = [0, 0, 1, 1, 1, 1, 0, 0];
+const G_WING = [0, 0, 0, 1, 1, 1, 1, 0];
+const G_HEAD = [0, 0, 0, 0, 1, 1, 1, 1];
+const G_BULGE = [0, 1, 1, 1, 1, 0, 0, 0];
+const G_SPARKS: Record<number, [number, number][]> = { 4: [[1, 1]], 5: [[1, 2]], 6: [[1, 1]] };
 
 export function guardPose(f: number): Pose {
-  const t = (((f % GUARD_N) + GUARD_N) % GUARD_N) / GUARD_N;
-  const br = (lag: number) => sin(TAU * t - lag);
-  const b = br(0);
+  const g = ((f % GUARD_N) + GUARD_N) % GUARD_N;
+  const at = (a: number[], n: number) => a[(((g - n) % GUARD_N) + GUARD_N) % GUARD_N];
+  const c = at(G_CHEST, 0);
+  const t = g / GUARD_N;
   return pose({
     guard: true,
-    hy: 3 + (b < -0.3 ? 1 : 0),
+    hy: 3 + c,
     lean: 0.16,
     headX: -3,
-    headY: 12 + (br(1.1) < -0.3 ? 1 : 0),
+    headY: 12 + at(G_HEAD, 0) - c,
     ha: 0.34,
-    nw: { a1: -64 + 1.6 * br(0.8), a2: 40 + 2.2 * br(1.3), a3: 76 + 2 * br(1.8), fan: 21 + 1.2 * br(1.8), scal: 1 + 0.16 * br(2.2) },
-    fw: { a1: -50 + 1.4 * br(1.2), a2: 60 + 2 * br(1.7), a3: 85, fan: 15 + 1.2 * br(2.2), scal: 1 + 0.14 * br(2.6) },
-    tailLift: -14 + 1.2 * br(1.6),
+    wingDy: at(G_WING, 0) - c,
+    tailLag: [at(G_CHEST, 1) - c, at(G_CHEST, 2) - c],
+    nw: { a1: -64, a2: 40, a3: 76, fan: 21, scal: G_BULGE[g] ? 1.22 : 0.98 },
+    fw: { a1: -50, a2: 60, a3: 85, fan: 15, scal: G_BULGE[g] ? 1.16 : 0.98 },
+    tailLift: -14,
     tailAmp: 2.5,
     tail: t + 0.1,
-    arm: br(1) < -0.3 ? 26 : 24,
-    glow: 0.35 + 0.18 * br(0.5),
-    glint: f >= 2 && f <= 6 ? 0.3 + (f - 2) * 0.12 : -1,
+    arm: 24,
+    glow: 0.4,
+    sparkles: G_SPARKS[g] ?? [],
   });
 }
 
@@ -107,7 +120,9 @@ const GUARD_HOLDS = [180, 150, 140, 160, 180, 150, 140, 160];
 // with the wings flung open) → trembling roar (short frames) → the far wing folds back through
 // in-betweens → settle on idle f0.
 
-const FW_SPREAD: Partial<Wing> = { a1: -40, a2: -14, a3: -56, fan: 33, span: 1.3, at: [7, 3] };
+// the far wing flung open to the side BELOW the line of the open jaws (a strip of floor between
+// the lower jaw and its leading edge, so the jaw silhouette never merges into the dark membrane)
+const FW_SPREAD: Partial<Wing> = { a1: -29, a2: 6, a3: -36, fan: 29, span: 1.3, at: [7, 3] };
 const NW_SPREAD: Partial<Wing> = { a1: -120, a2: -144, a3: -110, fan: -46, span: 1.05 };
 
 const ROAR_KEYS: PoseDelta[] = [
@@ -118,15 +133,15 @@ const ROAR_KEYS: PoseDelta[] = [
   // 2 deepest crouch (held: the coil)
   { hy: 3, lean: 0.12, headX: -1, headY: 7, ha: 0.55, nw: { a1: -96, a2: -118, a3: -132, fan: -22, scal: 0.8 }, fw: { a1: -94, a2: -118, a3: -104, fan: -18 }, tailLift: -8, arm: -12, glow: 0.6, eye: 0.5, tail: 0.08 },
   // 3 explode: in-between on the way up (the head leads, the wings lag)
-  { hy: 0, lean: -0.22, headX: -4, headY: 4, ha: -0.35, jaw: 0.3, nw: { a1: -112, a2: -132, a3: -122, fan: -36, scal: 0.9 }, fw: { a1: -60, a2: -50, a3: -70, fan: 16, span: 1.15, at: [3, 0] }, tailLift: 6, arm: 30, glow: 0.85, tail: 0.1 },
+  { hy: 0, lean: -0.22, headX: -4, headY: 4, ha: -0.35, jaw: 0.3, nw: { a1: -112, a2: -132, a3: -122, fan: -36, scal: 0.9 }, fw: { a1: -52, a2: -36, a3: -60, fan: 14, span: 1.15, at: [3, 0] }, tailLift: 6, arm: 30, glow: 0.85, tail: 0.1 },
   // 4 full rear: chest high, head thrown back, jaws wide, both wings flung open
-  { hy: -2, lean: -0.47, headX: -7, headY: 3, ha: -0.82, jaw: 0.75, nw: { ...NW_SPREAD, a1: -124, fan: -49, scal: 1.15 }, fw: { ...FW_SPREAD, a1: -44 }, tailLift: 16, arm: 62, glow: 1, tail: 0.14, sparkles: [[0, 2], [2, 1]] },
-  // 5–7 the roar trembles (short frames, 1 px)
-  { hx: 1, hy: -1, lean: -0.43, headX: -6, headY: 2, ha: -0.8, jaw: 0.85, nw: { ...NW_SPREAD, scal: 1.08 }, fw: FW_SPREAD, tailLift: 14, arm: 56, glow: 1, tail: 0.22, sparkles: [[0, 1], [1, 2]] },
-  { hx: 0, hy: -1, lean: -0.44, headX: -7, headY: 2, ha: -0.83, jaw: 0.78, nw: { ...NW_SPREAD, a1: -118, scal: 1.0 }, fw: { ...FW_SPREAD, a1: -38 }, tailLift: 14, arm: 58, glow: 0.85, tail: 0.3, sparkles: [[1, 1], [3, 2]] },
-  { hx: 1, hy: -1, lean: -0.42, headX: -6, headY: 2, ha: -0.8, jaw: 0.84, nw: { ...NW_SPREAD, scal: 1.06 }, fw: FW_SPREAD, tailLift: 13, arm: 55, glow: 1, tail: 0.38, sparkles: [[3, 1], [2, 2]] },
-  // 8 release: the head comes down first, the far wing starts to fold
-  { hx: 0, hy: -1, lean: -0.32, headX: -5, headY: 2, ha: -0.55, jaw: 0.55, nw: { a1: -116, a2: -142, a3: -112, fan: -44 }, fw: { a1: -52, a2: -34, a3: -66, fan: 24, span: 1.2, at: [6, 2] }, tailLift: 11, arm: 42, glow: 0.8, tail: 0.46 },
+  { hy: -2, lean: -0.47, headX: -7, headY: 3, ha: -0.82, jaw: 0.75, nw: { ...NW_SPREAD, a1: -124, fan: -49, scal: 1.15 }, fw: { ...FW_SPREAD, a1: -33 }, tailLift: 16, arm: 62, glow: 1, tail: 0.14 },
+  // 5–7 the roar trembles (short frames, 1 px); the one glint rides the near wrist knuckle
+  { hx: 1, hy: -1, lean: -0.43, headX: -6, headY: 2, ha: -0.8, jaw: 0.85, nw: { ...NW_SPREAD, scal: 1.08 }, fw: FW_SPREAD, tailLift: 14, arm: 56, glow: 1, tail: 0.22, sparkles: [[0, 1]] },
+  { hx: 0, hy: -1, lean: -0.44, headX: -7, headY: 2, ha: -0.83, jaw: 0.78, nw: { ...NW_SPREAD, a1: -118, scal: 1.0 }, fw: { ...FW_SPREAD, a1: -27 }, tailLift: 14, arm: 58, glow: 0.85, tail: 0.3, sparkles: [[0, 2]] },
+  { hx: 1, hy: -1, lean: -0.42, headX: -6, headY: 2, ha: -0.8, jaw: 0.84, nw: { ...NW_SPREAD, scal: 1.06 }, fw: FW_SPREAD, tailLift: 13, arm: 55, glow: 1, tail: 0.38, sparkles: [[0, 1]] },
+  // 8 release: the head comes down first, the far wing starts to fold (still low, under the jaw)
+  { hx: 0, hy: -1, lean: -0.32, headX: -5, headY: 2, ha: -0.55, jaw: 0.55, nw: { a1: -116, a2: -142, a3: -112, fan: -44 }, fw: { a1: -36, a2: 8, a3: -30, fan: 22, span: 1.2, at: [6, 2] }, tailLift: 11, arm: 42, glow: 0.8, tail: 0.46 },
   // 9 folding through
   { hy: 0, lean: -0.15, headX: -2, headY: 1, ha: -0.18, jaw: 0.3, nw: { a1: -111, a2: -140, a3: -115, fan: -41 }, fw: { a1: -72, a2: -88, a3: -88, fan: -24, span: 1.05, at: [1, -2] }, tailLift: 6, arm: 18, glow: 0.6, tail: 0.54 },
   // 10 almost home (the tail still swings)
@@ -155,11 +170,11 @@ const ATTACK_KEYS: PoseDelta[] = [
   // 1 [charge] weight back: hip back/down, the neck starts its S, wings rise
   { hx: -1, hy: 1, lean: -0.07, headX: -5, headY: -1, ha: -0.05, nk1: [2, 0], nk2: [-2, 1], nw: { a1: -114, a2: -146, a3: -114, fan: -44, scal: 0.92 }, fw: { a1: -88, a2: -114 }, glow: 0.5, mouth: 0.3, pulse: 0.1, tailLift: 4, arm: 8, armF: 2, tail: 0.04 },
   // 2 coil deepens
-  { hx: -2, hy: 2, lean: -0.13, headX: -8, headY: -2, ha: -0.16, nk1: [4, -1], nk2: [-5, 2], nw: { a1: -120, a2: -151, a3: -108, fan: -48, scal: 0.86 }, fw: { a1: -92, a2: -118, a3: -88 }, glow: 0.7, mouth: 0.55, pulse: 0.3, tailLift: 8, arm: 16, armF: 4, tail: 0.06, sparkles: [[3, 1]] },
+  { hx: -2, hy: 2, lean: -0.13, headX: -8, headY: -2, ha: -0.16, nk1: [4, -1], nk2: [-5, 2], nw: { a1: -120, a2: -151, a3: -108, fan: -48, scal: 0.86 }, fw: { a1: -92, a2: -118, a3: -88 }, glow: 0.7, mouth: 0.55, pulse: 0.3, tailLift: 8, arm: 16, armF: 4, tail: 0.06 },
   // 3 full coil (held): S-curve, head back and up, wings fully back
-  { hx: -3, hy: 2, lean: -0.19, headX: -11, headY: -3, ha: -0.27, jaw: 0.1, nk1: S_COIL[0], nk2: S_COIL[1], nw: { a1: -124, a2: -156, a3: -104, fan: -51, scal: 0.82 }, fw: { a1: -95, a2: -121, a3: -86 }, glow: 0.9, mouth: 0.85, pulse: 0.6, tailLift: 11, arm: 22, armF: 6, tail: 0.08, sparkles: [[3, 2], [0, 1]] },
+  { hx: -3, hy: 2, lean: -0.19, headX: -11, headY: -3, ha: -0.27, jaw: 0.1, nk1: S_COIL[0], nk2: S_COIL[1], nw: { a1: -124, a2: -156, a3: -104, fan: -51, scal: 0.82 }, fw: { a1: -95, a2: -121, a3: -86 }, glow: 0.9, mouth: 0.85, pulse: 0.6, tailLift: 11, arm: 22, armF: 6, tail: 0.08 },
   // 4 trembling at the top of the charge (1 px), light at its fullest
-  { hx: -3, hy: 2, lean: -0.2, headX: -12, headY: -4, ha: -0.3, jaw: 0.16, nk1: [6, -2], nk2: [-9, 3], nw: { a1: -125, a2: -157, a3: -102, fan: -52, scal: 0.8 }, fw: { a1: -96, a2: -122, a3: -85 }, glow: 1, mouth: 1, pulse: 0.9, tailLift: 12, arm: 25, armF: 6, tail: 0.1, sparkles: [[0, 2], [1, 1], [2, 1]] },
+  { hx: -3, hy: 2, lean: -0.2, headX: -12, headY: -4, ha: -0.3, jaw: 0.16, nk1: [6, -2], nk2: [-9, 3], nw: { a1: -125, a2: -157, a3: -102, fan: -52, scal: 0.8 }, fw: { a1: -96, a2: -122, a3: -85 }, glow: 1, mouth: 1, pulse: 0.9, tailLift: 12, arm: 25, armF: 6, tail: 0.1 },
   // 5 [impact / release] the lunge: head past neutral, jaws flung open, chest in, wings snap back
   { hx: 1, hy: 1, lean: 0.12, headX: 2, headY: 4, ha: 0.02, jaw: 1, nk1: [-3, 1], nk2: [3, -1], nw: { a1: -132, a2: -167, a3: -112, fan: -46, scal: 0.75 }, fw: { a1: -104, a2: -130, a3: -84, fan: -34 }, glow: 1, mouth: 1, pulse: 1, tailLift: -6, tail: 0.18, tailAmp: 6, arm: -14, armF: -10 },
   // 6 [contact] kickback: the beam pushes the head back 1 px, the wings flare open
@@ -180,15 +195,19 @@ const ATTACK_KEYS: PoseDelta[] = [
 export const IMPACT = 5;
 const ATTACK_HOLDS = [60, 90, 100, 160, 110, 70, 90, 100, 100, 100, 110, 120, 140];
 
-// ------------------------------------------------------------------ hit (5 frames)
+// ------------------------------------------------------------------ hit (6 frames)
 //
-// The blow lands on the chest and head: on the first frame only they react (snap back, eyes
-// squeezed shut, jaw jolted) while the legs, wings and tail still hold the idle pose; the hip and
-// the wings follow a frame later (wings flinch in), the tail whips last; then a readable recovery.
+// The blow lands on the chest and head. f0 is the compressed impact pose — the frame a hit-stop
+// holds, so it must read as struck on its own: the head snapped back from the contact side and
+// pulled in (neck compressed), the chest knocked back about the hip, the shoulders hunched with
+// the wing roots clenched in, the forearms snatched up; the hip, legs and tail still hold the idle
+// pose (the contact zone first). f1 is the in-between of that pose and the reel (the hip starts
+// back, the wings are carried on), so the reel arcs out of the impact instead of jumping; the hip
+// and the wings follow (wings flinch in), the tail whips last; then a readable recovery.
 
 const HIT_KEYS: PoseDelta[] = [
-  // 0 contact: head + neck + chest only
-  { headX: -5, headY: 0, ha: -0.22, jaw: 0.3, eye: 0, nk1: [-1, 0], nk2: [2, 0], glow: 0.1 },
+  // 0 [impact/contact] compressed: head snapped back and in, chest knocked back, wing roots clenched
+  { lean: -0.07, headX: -6, headY: 2, ha: -0.24, jaw: 0.3, eye: 0, nk1: [-2, 1], nk2: [3, 1], nw: { a1: -99, a2: -122, a3: -121, fan: -31, scal: 0.78 }, fw: { a1: -93, a2: -119, a3: -97, fan: -21 }, arm: 20, armF: 7, glow: 0.1 },
   // 1 the body follows: hip back, wings flinch in, tail starts
   { hx: -2, hy: 1, lean: -0.16, headX: -6, headY: 1, ha: -0.12, jaw: 0.2, eye: 0, nw: { a1: -98, a2: -122, a3: -116, fan: -32, scal: 0.85 }, fw: { a1: -94, a2: -120, fan: -22 }, tailLift: 3, arm: 22, armF: 8, glow: 0.1, tail: 0.06 },
   // 2 recoil peak in the extremities: wings flare back out, tail whips; the head comes forward
@@ -198,7 +217,7 @@ const HIT_KEYS: PoseDelta[] = [
   // 4 = idle f0
   {},
 ];
-const HIT_HOLDS = [70, 80, 100, 120, 130];
+const HIT_HOLDS = [60, 50, 70, 90, 110, 120];
 
 // ------------------------------------------------------------------ tables
 
@@ -214,6 +233,17 @@ function fromIdle(d: PoseDelta): Pose {
   out.fw = { ...IDLE0.fw, ...(d.fw ?? {}) };
   return out;
 }
+
+/**
+ * A recoil's frames: its compressed impact key (f0), then the in-between of that pose and the reel
+ * key (the body halfway, the wings a little behind it: they are carried on), then the reel keys.
+ */
+function recoil(keys: PoseDelta[], mid: PoseDelta = {}): Pose[] {
+  const k = keys.map(fromIdle);
+  return [k[0], mix(k[0], k[1], 0.5, 0.35, mid), ...k.slice(1)];
+}
+
+const HIT_P: Pose[] = recoil(HIT_KEYS, { eye: 0 });
 
 // ================================================================== part 2: the extra anims
 //
@@ -282,7 +312,7 @@ const FROM_GUARD: Pose[] = [
 ];
 const FROM_GUARD_HOLDS = [50, 50, 50, 50, 60, 60, 70];
 
-// ------------------------------------------------------------------ hitHeavy (7 frames, 680 ms)
+// ------------------------------------------------------------------ hitHeavy (8 frames, 680 ms)
 //
 // The blow lands on the head and chest first (snap back, eyes shut, jaw jolted); the hip follows
 // and the wings are left behind (they swing forward, inertia), the near foot comes off the ground;
@@ -290,8 +320,10 @@ const FROM_GUARD_HOLDS = [50, 50, 50, 50, 60, 60, 70];
 // head drops forward; the foot steps back in (lifted, replanted home) and the body settles.
 
 const HIT_HEAVY_KEYS: PoseDelta[] = [
-  // 0 [impact/contact] head, neck and chest only
-  { headX: -7, headY: 1, ha: -0.3, jaw: 0.45, eye: 0, nk1: [-2, 0], nk2: [3, 0], glow: 0.1 },
+  // 0 [impact/contact] compressed (the frame the hit-stop holds): the head snapped hard back and in,
+  //   the chest knocked back about the hip, the shoulders hunched, the wing roots clenched; the
+  //   hip, legs and tail have not moved yet
+  { lean: -0.1, headX: -9, headY: 2, ha: -0.34, jaw: 0.45, eye: 0, nk1: [-3, 1], nk2: [4, 1], nw: { a1: -97, a2: -119, a3: -122, fan: -30, scal: 0.75 }, fw: { a1: -92, a2: -117, a3: -98, fan: -20 }, arm: 26, armF: 9, glow: 0.1 },
   // 1 thrown back: the hip follows, the wings lag (swing forward), the near foot lifts
   { hx: -4, lean: -0.3, headX: -10, headY: 0, ha: -0.2, jaw: 0.35, eye: 0, nk2: [2, 0], nw: { a1: -92, a2: -118, a3: -106, fan: -30, scal: 0.8 }, fw: { a1: -76, a2: -96, fan: -22 }, stepN: [-2, -3], tailLift: 6, arm: 30, armF: 10, glow: 0.1, tail: 0.04 },
   // 2 the foot replants a step back; the wings whip back past rest, the tail lashes
@@ -305,26 +337,30 @@ const HIT_HEAVY_KEYS: PoseDelta[] = [
   // 6 = idle f0
   {},
 ];
-const HIT_HEAVY_HOLDS = [60, 80, 90, 110, 100, 110, 130];
+const HIT_HEAVY_HOLDS = [60, 50, 70, 90, 100, 100, 100, 110];
 
-// ------------------------------------------------------------------ hitMagic (8 frames, 610 ms)
+// ------------------------------------------------------------------ hitMagic (9 frames, 610 ms)
 //
-// A spell / beam: the chest and head react first (the keel lights, the head jerks up, eyes wide),
-// then the charge runs through the whole body — rigid, chest up, the wings flung open and taut, the
-// crystals flare; it shudders 1 px a few short frames (the wings tremble a frame behind the body);
-// the charge lets go — the body sags, the head drops, the wings go slack — and it recovers.
+// A spell / beam: the chest and head react first — the jolt clenches the body round the keel (f0,
+// the frame the hit-stop holds) — then (in-between f1) the charge runs through the whole body —
+// rigid, chest up, the wings flung open and taut, the crystals flare; it shudders 1 px a few short
+// frames (the wings tremble a frame behind the body); the charge lets go — the body sags, the head
+// drops, the wings go slack — and it recovers.
 
 const RIGID: PoseDelta = { hy: -1, lean: -0.12, headX: -3, headY: -2, ha: -0.12, jaw: 0, eye: 1, tailLift: 5, arm: 16, armF: 6, glow: 1, flare: 1, pulse: 1 };
 const RIGID_NW: Partial<Wing> = { a1: -116, a2: -147, a3: -112, fan: -47, scal: 0.75 };
 const RIGID_FW: Partial<Wing> = { a1: -90, a2: -118, a3: -86, fan: -32, scal: 0.8 };
 const HIT_MAGIC_KEYS: PoseDelta[] = [
-  // 0 [impact/contact] the chest and head first: the keel lights up, the head jerks up, eyes wide
-  { headX: -2, headY: -2, ha: -0.1, jaw: 0, eye: 1, nk1: [-1, 0], nk2: [1, -1], pulse: 1 },
+  // 0 [impact/contact] the jolt (the frame the hit-stop holds): the charge hits the chest and the
+  //   body clenches round it — the keel lights, the chest curls forward, the head is snapped back
+  //   and pulled down into the shoulders (eyes squeezed shut), the wing roots clench the wings in
+  //   tight, the forearms snatch up; the hip, legs and tail have not moved yet
+  { lean: 0.05, headX: -5, headY: 4, ha: 0.26, jaw: 0, eye: 0, nk1: [1, 2], nk2: [-2, 2], nw: { a1: -97, a2: -117, a3: -125, fan: -27, scal: 0.72 }, fw: { a1: -95, a2: -121, a3: -101, fan: -19 }, arm: 26, armF: 9, glow: 0.7, pulse: 1 },
   // 1 the charge runs through: rigid, the wings flung open and taut, the crystals flare
-  { ...RIGID, nw: RIGID_NW, fw: RIGID_FW, sparkles: [[0, 2], [2, 1]] },
+  { ...RIGID, nw: RIGID_NW, fw: RIGID_FW },
   // 2–4 the shudder (1 px), the wings a frame behind
-  { ...RIGID, hx: 1, headX: -2, nw: { ...RIGID_NW, a1: -117 }, fw: RIGID_FW, sparkles: [[3, 1], [1, 1]] },
-  { ...RIGID, hx: -1, headX: -4, nw: { ...RIGID_NW, a1: -114, a2: -145 }, fw: { ...RIGID_FW, a1: -91 }, sparkles: [[0, 1], [4, 1]] },
+  { ...RIGID, hx: 1, headX: -2, nw: { ...RIGID_NW, a1: -117 }, fw: RIGID_FW },
+  { ...RIGID, hx: -1, headX: -4, nw: { ...RIGID_NW, a1: -114, a2: -145 }, fw: { ...RIGID_FW, a1: -91 } },
   { ...RIGID, hx: 0, headX: -3, flare: 0, glow: 0.8, pulse: 0.5, nw: { ...RIGID_NW, a1: -116, a2: -148 }, fw: { ...RIGID_FW, a1: -89 } },
   // 5 [recover] the charge lets go: the body sags, the head drops, the wings go slack
   { hy: 1, lean: 0.05, headX: -2, headY: 2, ha: 0.24, eye: 0.5, nw: { a1: -102, a2: -131, a3: -121, fan: -36, scal: 1.15 }, fw: { a1: -82, a2: -106, scal: 1.1 }, tailLift: -2, arm: 2, glow: 0.45, tail: 0.06 },
@@ -333,7 +369,9 @@ const HIT_MAGIC_KEYS: PoseDelta[] = [
   // 7 = idle f0
   {},
 ];
-const HIT_MAGIC_HOLDS = [60, 60, 50, 50, 60, 100, 110, 120];
+const HIT_MAGIC_HOLDS = [60, 40, 50, 50, 50, 60, 90, 100, 110];
+const HIT_HEAVY_P: Pose[] = recoil(HIT_HEAVY_KEYS, { eye: 0 });
+const HIT_MAGIC_P: Pose[] = recoil(HIT_MAGIC_KEYS, { eye: 0.5 });
 
 // ------------------------------------------------------------------ summon (15 frames, 1.31 s)
 //
@@ -385,9 +423,9 @@ const SUMMON: Pose[] = [
   // 6 nearly open
   UNFURL,
   // 7 full spread
-  over(SPREAD, { sparkles: [[0, 2], [2, 1]] }),
+  over(SPREAD, {}),
   // 8 the spread holds; the membranes billow, the head levels
-  over(SPREAD, { ha: 0, jaw: 0, nw: { scal: 1.1, a1: -120 }, fw: { a1: -48, a2: -24 }, tail: 0.2, sparkles: [[3, 1]] }),
+  over(SPREAD, { ha: 0, jaw: 0, nw: { scal: 1.1, a1: -120 }, fw: { a1: -48, a2: -24 }, tail: 0.2 }),
   // 9 the wings fold back toward rest
   mix(SPREAD, IDLE0, 0.55, 0.6, { tail: 0.3 }),
   // 10 shake out: head to the right with a tilt, eyes shut (the wings still folding)
@@ -414,7 +452,7 @@ const DEATH_KEYS: PoseDelta[] = [
   // 0 [impact] from the hit pose: the first crack opens at the keel, light behind it
   { hx: -3, hy: 1, lean: -0.2, headX: -8, headY: 1, ha: -0.22, jaw: 0.4, eye: 0, nw: { a1: -96, a2: -122, a3: -114, fan: -32, scal: 0.85 }, fw: { a1: -92, a2: -118, fan: -22 }, tailLift: 4, arm: 24, armF: 8, glow: 0.6, cracks: 0.12 },
   // 1 agony: it rears, jaws wide, the cracks run (glowing)
-  { hx: -1, hy: -1, lean: -0.22, headX: -6, headY: -2, ha: -0.4, jaw: 0.7, eye: 0, nw: { a1: -118, a2: -150, a3: -110, fan: -47, scal: 0.8 }, fw: { a1: -92, a2: -122 }, tailLift: 8, arm: 30, armF: 9, glow: 1, pulse: 1, cracks: 0.45, sparkles: [[0, 1]] },
+  { hx: -1, hy: -1, lean: -0.22, headX: -6, headY: -2, ha: -0.4, jaw: 0.7, eye: 0, nw: { a1: -118, a2: -150, a3: -110, fan: -47, scal: 0.8 }, fw: { a1: -92, a2: -122 }, tailLift: 8, arm: 30, armF: 9, glow: 1, pulse: 1, cracks: 0.45 },
   // 2 the knees start to go
   { hx: -1, hy: 3, lean: -0.04, headX: -4, headY: 5, ha: 0.1, jaw: 0.4, eye: 0, nw: { a1: -106, a2: -132, a3: -124, fan: -36, scal: 1.1 }, fw: { a1: -88, a2: -114, a3: -96 }, tailLift: 0, arm: 14, glow: 0.8, pulse: 0.4, cracks: 0.7, drain: 0.1 },
   // 3 [dissolve] they buckle; the near wing starts to fall, the light starts to leave
@@ -432,10 +470,11 @@ const DEATH_P = DEATH_KEYS.map(fromIdle);
 const DEATH_END: Pose = over(DEATH_REST, { headY: DEATH_REST.headY + 1, nw: { a3: DEATH_REST.nw.a3 - 22, fan: DEATH_REST.nw.fan - 6 }, fw: { a3: DEATH_REST.fw.a3 - 10 }, tailLift: -15 });
 // Death f0 continues the reaction the kit shows when a blow is lethal. The pose diff is all or
 // nothing (any 1-px offset changes the whole silhouette), so f0 continues one of them exactly: the
-// magic recoil on the frame the destroy event interrupts it (hitMagic f1 in saWyrmBlocked: rigid,
-// chest up, wings flung open — prism breath, spells, the orb, light and lightning kill the wyrm in
-// the slice), eyes shut, the first crack opened at the keel with the light still behind it.
-const DEATH_0: Pose = over(fromIdle(HIT_MAGIC_KEYS[1]), { eye: 0, cracks: 0.12, sparkles: [] });
+// magic recoil's in-between (hitMagic f1: the clenched jolt opening out — prism breath, spells, the
+// orb, light and lightning kill the wyrm in the slice; the lethal plan holds the jolt f0 and enters
+// here, or plays f0–f1 and continues on this same pose), eyes shut, the first crack opened at the
+// keel with the light still behind it; f1 the agony rears out of it.
+const DEATH_0: Pose = over(HIT_MAGIC_P[1], { eye: 0, cracks: 0.12, sparkles: [] });
 const DEATH: Pose[] = [
   DEATH_0,
   DEATH_P[1],
@@ -483,18 +522,18 @@ const REVIVE_HOLDS = [80, 80, 80, 90, 120, 90, 80, 80, 80, 100, 110, 110, 130];
 //
 // crouch → it rises, the wings opening → a proud cry with the wings spread, the chest high →
 // tremble → the jaws close, the head comes down to a proud angle → settles into the held pose
-// (half-spread wings, chest out; a glint crosses the near wing on the long held frame).
+// (half-spread wings, chest out).
 
 const PROUD = fromIdle({ lean: -0.16, headX: -2, headY: 0, ha: -0.08, nw: { a1: -116, a2: -145, a3: -114, fan: -45, scal: 1.05 }, fw: { a1: -94, a2: -122, a3: -98, fan: -30 }, tailLift: 6, arm: 16, glow: 0.7 });
 const VICTORY: Pose[] = [
   fromIdle({ hy: 1, lean: 0.04, headY: 1, ha: 0.17, nw: { a1: -106, a2: -135, a3: -120, fan: -38, scal: 0.95 }, fw: { a1: -86, a2: -112 }, tailLift: -1, arm: -2 }),
   fromIdle({ hy: 2, lean: 0.08, headX: -1, headY: 3, ha: 0.24, nw: { a1: -104, a2: -132, a3: -122, fan: -36, scal: 0.9 }, fw: { a1: -88, a2: -114 }, tailLift: -3, arm: -4 }),
-  fromIdle({ hy: -1, lean: -0.24, headX: -3, headY: 1, ha: -0.25, jaw: 0.3, nw: { a1: -118, a2: -146, a3: -112, fan: -46 }, fw: { a1: -60, a2: -44, a3: -66, fan: 20, span: 1.15, at: [4, 1] }, tailLift: 8, arm: 30, glow: 0.8 }),
-  fromIdle({ hy: -2, lean: -0.36, headX: -5, headY: 2, ha: -0.55, jaw: 0.65, nw: { a1: -122, a2: -150, a3: -110, fan: -49, scal: 1.1 }, fw: { a1: -42, a2: -14, a3: -56, fan: 33, span: 1.3, at: [7, 3] }, tailLift: 13, arm: 48, glow: 1, sparkles: [[0, 2], [2, 1]] }),
-  fromIdle({ hx: 1, hy: -2, lean: -0.35, headX: -5, headY: 2, ha: -0.53, jaw: 0.7, nw: { a1: -121, a2: -150, a3: -111, fan: -49, scal: 1.0 }, fw: { a1: -41, a2: -14, a3: -56, fan: 33, span: 1.3, at: [7, 3] }, tailLift: 13, arm: 46, glow: 1, tail: 0.1, sparkles: [[1, 1], [3, 2]] }),
+  fromIdle({ hy: -1, lean: -0.24, headX: -3, headY: 1, ha: -0.25, jaw: 0.3, nw: { a1: -118, a2: -146, a3: -112, fan: -46 }, fw: { a1: -50, a2: -30, a3: -58, fan: 18, span: 1.15, at: [4, 1] }, tailLift: 8, arm: 30, glow: 0.8 }),
+  fromIdle({ hy: -2, lean: -0.36, headX: -5, headY: 2, ha: -0.55, jaw: 0.65, nw: { a1: -122, a2: -150, a3: -110, fan: -49, scal: 1.1 }, fw: { ...FW_SPREAD, a1: -31 }, tailLift: 13, arm: 48, glow: 1 }),
+  fromIdle({ hx: 1, hy: -2, lean: -0.35, headX: -5, headY: 2, ha: -0.53, jaw: 0.7, nw: { a1: -121, a2: -150, a3: -111, fan: -49, scal: 1.0 }, fw: { ...FW_SPREAD, a1: -30 }, tailLift: 13, arm: 46, glow: 1, tail: 0.1 }),
   fromIdle({ hy: -1, lean: -0.24, headX: -3, headY: 1, ha: -0.18, jaw: 0.1, nw: { a1: -118, a2: -147, fan: -47 }, fw: { a1: -88, a2: -106, a3: -92, fan: -22, span: 1.05, at: [1, -2] }, tailLift: 9, arm: 26, glow: 0.85, tail: 0.18 }),
   over(PROUD, { tail: 0.24 }),
-  over(PROUD, { tail: 0.28, glint: 0.45 }),
+  over(PROUD, { tail: 0.28 }),
 ];
 const VICTORY_HOLDS = [60, 90, 70, 90, 80, 100, 120, 400];
 
@@ -503,8 +542,8 @@ const EXTRA_POSES: Partial<Record<MonsterAnimExtra, Pose[]>> = {
   summon: SUMMON,
   death: DEATH,
   revive: REVIVE,
-  hitHeavy: HIT_HEAVY_KEYS.map(fromIdle),
-  hitMagic: HIT_MAGIC_KEYS.map(fromIdle),
+  hitHeavy: HIT_HEAVY_P,
+  hitMagic: HIT_MAGIC_P,
   victory: VICTORY,
   toGuard: TO_GUARD,
   fromGuard: FROM_GUARD,
@@ -516,12 +555,22 @@ export const EXTRA_ANIMS: Partial<Record<MonsterAnimExtra, AnimSpec>> = {
   summon: spec(SUMMON_HOLDS, { land: 3 }),
   death: spec(DEATH_HOLDS, { impact: 0, dissolve: 4 }),
   revive: spec(REVIVE_HOLDS, { land: 4 }),
-  hitHeavy: spec(HIT_HEAVY_HOLDS, { impact: 0, contact: 0, recover: 4 }),
-  hitMagic: spec(HIT_MAGIC_HOLDS, { impact: 0, contact: 0, recover: 5 }),
+  hitHeavy: spec(HIT_HEAVY_HOLDS, { impact: 0, contact: 0, recover: 5 }),
+  hitMagic: spec(HIT_MAGIC_HOLDS, { impact: 0, contact: 0, recover: 6 }),
   victory: spec(VICTORY_HOLDS),
   toGuard: spec(TO_GUARD_HOLDS),
   fromGuard: spec(FROM_GUARD_HOLDS),
 };
+
+/** The frame whose glint is the 3-px cross, per anim with a glint: the 1-px frames around it use
+ *  the same pixel (the glint lives on one pixel, it never wanders with the membrane or a tremble). */
+const GLINT_REF: Partial<Record<AnyMonsterAnim, number>> = { idle: 3, roar: 6, guard: 5 };
+const glintCache = new Map<string, V | null>();
+function glintRef(anim: AnyMonsterAnim): V | null {
+  const k = `${anim}|${LIGHT.side}`;
+  if (!glintCache.has(k)) glintCache.set(k, glintPixelFor(framePose(anim, GLINT_REF[anim]!)));
+  return glintCache.get(k)!;
+}
 
 export function framePose(anim: AnyMonsterAnim, f: number): Pose {
   const x = EXTRA_POSES[anim as MonsterAnimExtra];
@@ -536,7 +585,7 @@ export function framePose(anim: AnyMonsterAnim, f: number): Pose {
     case 'attack':
       return fromIdle(ATTACK_KEYS[Math.min(f, ATTACK_KEYS.length - 1)]);
     case 'hit':
-      return fromIdle(HIT_KEYS[Math.min(f, HIT_KEYS.length - 1)]);
+      return { ...HIT_P[Math.min(f, HIT_P.length - 1)] };
   }
 }
 
@@ -544,14 +593,16 @@ export const ANIMS: Record<MonsterAnim, AnimSpec> = {
   idle: { frames: IDLE_N, fps: 10, loop: true, holds: IDLE_HOLDS },
   roar: { frames: ROAR_KEYS.length, fps: 10, loop: false, holds: ROAR_HOLDS, marks: { charge: 1, release: 4, impact: 4, recover: 8 } },
   attack: { frames: ATTACK_KEYS.length, fps: 10, loop: false, holds: ATTACK_HOLDS, marks: { charge: 1, release: IMPACT, impact: IMPACT, contact: IMPACT + 1, recover: 10 } },
-  hit: { frames: HIT_KEYS.length, fps: 10, loop: false, holds: HIT_HOLDS, marks: { impact: 0, contact: 0, recover: 3 } },
+  hit: { frames: HIT_P.length, fps: 10, loop: false, holds: HIT_HOLDS, marks: { impact: 0, contact: 0, recover: 4 } },
   guard: { frames: GUARD_N, fps: 6, loop: true, holds: GUARD_HOLDS },
 };
 
-/** The pose drawn for a frame (attack's release frame carries its smear from the coil). */
+/** The pose drawn for a frame (attack's release frame carries its smear from the coil; a glint
+ *  frame its fixed glint pixel). */
 export function drawPose(anim: AnyMonsterAnim, f: number): Pose {
   const p = framePose(anim, f);
   if (anim === 'attack' && f === IMPACT) p.smearFrom = framePoseDelta(framePose('attack', IMPACT - 1));
+  if (p.sparkles.length && GLINT_REF[anim] !== undefined) p.glintAt = glintRef(anim) ?? undefined;
   return p;
 }
 

@@ -36,7 +36,7 @@ import Phaser from 'phaser';
 import { CARDS, isMonster, type CardId, type MonsterId } from '../../data/cards';
 import { currentAtk, currentDef } from '../../engine';
 import type { GameEvent, GameState, PlayerId, Uid } from '../../engine/types';
-import { PAL, RAMPS } from '../../art/palette';
+import { PAL, RAMPS, type Ramp } from '../../art/palette';
 import { ARENA_V2, DEPTH, LOOK_V3, type XY, unitDepth, zoneXY } from '../../view/layout';
 import { TEX, flash, shake, wait } from '../../vfx/core';
 import { E, Raster, Sparks, floorRing, ghostTexture, lerp, onFrame, qbez, rnd, rr, run } from '../../vfx/setpieces';
@@ -413,6 +413,36 @@ function rebuild(sc: Phaser.Scene, u: MonsterUnit, ms = 280): Promise<void> {
   });
 }
 
+/** Angular shards of the body's matter skidding out along the floor on landing (two tones, no puffs). */
+function landShards(sc: Phaser.Scene, x: number, y: number, ramp: Ramp): void {
+  const sp = new PxSparks(sc, unitDepth(y) + 0.5);
+  const n = 7;
+  for (let i = 0; i < n; i++) {
+    // out to both sides along the floor plane, a few hopping toward the camera
+    const side = i % 2 === 0 ? -1 : 1;
+    const a = side < 0 ? Math.PI + rr(-0.35, 0.25) : rr(-0.25, 0.35);
+    const v = rr(36, 74);
+    sp.add({
+      x: Math.round(x + side * rr(4, 10)),
+      y: Math.round(y - rr(0, 3)),
+      vx: Math.cos(a) * v,
+      vy: Math.sin(a) * v * 0.5 - rr(30, 60),
+      ay: 380,
+      floor: Math.round(y + rr(1, 4)),
+      bounce: 0.25,
+      drag: 1.2,
+      rot: rr(0, TAU),
+      vrot: rr(-10, 10),
+      life: rr(300, 440),
+      colors: [ramp[3], ramp[2]],
+      shape: 'shard',
+      size: rr(2, 3),
+      fadeAt: 1,
+    });
+  }
+  sp.release();
+}
+
 /** Matter motes streaming from the ghost into the re-forming body (crisp pixels, the matter's tones). */
 function gather(sc: Phaser.Scene, u: MonsterUnit, from: XY, ms: number): void {
   const ramp = matterRamp(u.cardId);
@@ -434,31 +464,46 @@ function gather(sc: Phaser.Scene, u: MonsterUnit, from: XY, ms: number): void {
 // the board showing through and ~1000 blended colours). Every pixel is one of five palette tones:
 //   1-px night outline (night0) · lit plane cyan4 · shadow plane cyan2 · deep shadow / inner lines
 //   cyan0 — the planes cut from the art's own values (luminance percentiles of idle f0, so a dark
-//   monster keeps a lit plane too); the lower body thins out through a FIXED 4×4 ordered dither
-//   (frame space: it travels with the body, never crawls).
-// Echoes are 1–2 discrete stepped silhouettes in darker cyan (cyan2 / cyan1 on a checker, then
-// cyan1 / cyan0 on a quarter grid), no blend mode. At arrival the ghost breaks in three dither steps
-// (sinking 2 px a step) while the art's revive frames gather the body on the tile.
+//   monster keeps a lit plane too).
+// A2 art review r3 #1: no dither used as a transparency gradient anywhere on the ghost (the old 4×4
+// ordered dither of the tail, the checker echoes and the dithered melt read as a noisy 50 % checker
+// cloud). What breaks up does so in hard-edged 3×3 CLUSTERS (fixed per cell, frame space: they
+// travel with the body, never crawl):
+//   - the tail: the lowest ~third of the body loses whole clusters, more toward the bottom;
+//   - the echoes: one stepped silhouette at a time behind it — solid, two tones (cyan1 / cyan0),
+//     for one beat;
+//   - the melt at arrival: a row sweep from the head down — every cluster above the sweep line is
+//     gone, the clusters of the band at the line drop out by their fixed rank, the rest holds; two
+//     tones a step (the outline opens), sinking 2 px a step into the body gathering below.
 
 /** Tones of a ghost mask cell: 0 empty · 1 outline · 2 lit · 3 shadow · 4 deep. */
 const GHOST_TONE = [0, PAL.night0, PAL.cyan4, PAL.cyan2, PAL.cyan0] as const;
-/** Echo steps (tones per mask tone) and their ordered-dither patterns. */
-const ECHO_TONES = [
-  [0, PAL.cyan1, PAL.cyan2, PAL.cyan1, PAL.cyan1],
-  [0, PAL.cyan0, PAL.cyan1, PAL.cyan0, PAL.cyan0],
-] as const;
-/** Melt steps: share of the body kept (4×4 ordered dither) and the tones (the outline opens). */
-const MELT_KEEP = [0.72, 0.44, 0.18] as const;
+/** The echo: tones per mask tone (two tones, solid). */
+const ECHO_TONES = [[0, PAL.cyan0, PAL.cyan1, PAL.cyan1, PAL.cyan0]] as const;
+/** Melt steps: where the sweep line stands (share of the body's height from its top) and the two tones. */
+const MELT_SWEEP = [0.3, 0.6, 0.9] as const;
 const MELT_TONES = [
-  [0, PAL.night0, PAL.cyan4, PAL.cyan2, PAL.cyan0],
-  [0, 0, PAL.cyan3, PAL.cyan2, PAL.cyan0],
-  [0, 0, PAL.cyan2, PAL.cyan1, PAL.cyan0],
+  [0, PAL.cyan2, PAL.cyan4, PAL.cyan2, PAL.cyan2],
+  [0, PAL.cyan1, PAL.cyan3, PAL.cyan1, PAL.cyan1],
+  [0, PAL.cyan0, PAL.cyan2, PAL.cyan0, PAL.cyan0],
 ] as const;
+/** Cluster size (px) of everything that breaks up. */
+const CLUSTER = 3;
+/** Rows (in clusters) of the melt's sweep band, where clusters drop out by rank. */
+const SWEEP_BAND = 2;
 
-const B4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-/** Fixed 4×4 ordered-dither threshold in (0, 1) (frame space). */
-function b4(x: number, y: number): number {
-  return (B4[((y & 3) << 2) | (x & 3)] + 0.5) / 16;
+/** Fixed rank in [0, 1) of the 3×3 cluster holding frame pixel (x, y) (an integer hash, no RNG). */
+function clusterRank(x: number, y: number): number {
+  let h = Math.imul(Math.floor(x / CLUSTER) + 0x9e37, 0x85ebca6b) ^ Math.imul(Math.floor(y / CLUSTER) + 0x7f4a, 0xc2b2ae35);
+  h ^= h >>> 15;
+  h = Math.imul(h, 0x27d4eb2d);
+  h ^= h >>> 13;
+  return (h >>> 0) / 4294967296;
+}
+
+/** The top row of the cluster holding frame row y. */
+function clusterRow(y: number): number {
+  return Math.floor(y / CLUSTER) * CLUSTER;
 }
 
 interface GhostSheetV3 {
@@ -505,12 +550,13 @@ function ghostSheetV3(sc: Phaser.Scene, id: MonsterId, relight: boolean): GhostS
       const b = src.bounds();
       if (b) {
         for (let y = 0; y < H; y++) {
-          // the lower body thins out (fixed ordered dither, the last ~third of the body)
-          const v = (y - b.y) / Math.max(1, b.h);
+          // the lower body thins out by whole clusters (the last ~third of the body; a cluster's
+          // share is read at its own top row, so it stays whole)
+          const v = (clusterRow(y) + 1 - b.y) / Math.max(1, b.h);
           const keep = v < 0.7 ? 1 : 1 - (v - 0.7) / 0.34;
           for (let x = 0; x < W; x++) {
             const c = src.get(x, y);
-            if (c === null || b4(x, y) >= keep) continue;
+            if (c === null || clusterRank(x, y) >= keep) continue;
             const edge = !src.isOpaque(x - 1, y) || !src.isOpaque(x + 1, y) || !src.isOpaque(x, y - 1) || !src.isOpaque(x, y + 1);
             const t = edge ? 1 : c === PAL.ink ? 4 : lum(c) >= t1 ? 2 : lum(c) >= t2 ? 3 : 4;
             m[y * W + x] = t;
@@ -537,8 +583,8 @@ function ghostSheetV3(sc: Phaser.Scene, id: MonsterId, relight: boolean): GhostS
 }
 
 /**
- * Stepped variants of one ghost frame (cells `v0`…): the echo steps or the melt steps. Made on
- * first use (one frame, a few ms) and cached with the sheet.
+ * Stepped variants of one ghost frame (cells `v0`…): the echo steps or the melt steps (see the
+ * section header). Made on first use (one frame, a few ms) and cached with the sheet.
  */
 function ghostVariant(sc: Phaser.Scene, gs: GhostSheetV3, f: number, kind: 'echo' | 'melt'): string {
   const key = `${gs.key}:${kind}${f}`;
@@ -547,22 +593,38 @@ function ghostVariant(sc: Phaser.Scene, gs: GhostSheetV3, f: number, kind: 'echo
   const W = gs.w;
   const pc = new PixelCanvas(W * steps, gs.h);
   const m = gs.masks[f] ?? gs.masks[0];
-  for (let s = 0; s < steps; s++)
-    for (let y = 0; y < gs.h; y++)
+  // the body's rows (for the melt's sweep)
+  let top = gs.h;
+  let bottom = -1;
+  for (let y = 0; y < gs.h; y++)
+    for (let x = 0; x < W; x++)
+      if (m[y * W + x]) {
+        top = Math.min(top, y);
+        bottom = Math.max(bottom, y);
+      }
+  const span = Math.max(1, bottom - top + 1);
+  for (let s = 0; s < steps; s++) {
+    const line = top + span * (kind === 'melt' ? MELT_SWEEP[s] : 0);
+    for (let y = 0; y < gs.h; y++) {
+      const row = clusterRow(y);
       for (let x = 0; x < W; x++) {
         const t = m[y * W + x];
         if (!t) continue;
         let c: number;
-        if (kind === 'echo') {
-          // step 0: a checker (½), step 1: a quarter grid (¼)
-          if (s === 0 ? (x + y) % 2 !== 0 : x % 2 !== 0 || y % 2 !== 0) continue;
-          c = ECHO_TONES[s][t];
-        } else {
-          if (b4(x, y) >= MELT_KEEP[s]) continue;
+        if (kind === 'echo') c = ECHO_TONES[s][t];
+        else {
+          // above the sweep band: gone; in it: clusters drop out by rank, deeper ones later
+          if (row + CLUSTER <= line - SWEEP_BAND * CLUSTER) continue;
+          if (row < line) {
+            const k = (line - row) / (SWEEP_BAND * CLUSTER);
+            if (clusterRank(x, y) < k) continue;
+          }
           c = MELT_TONES[s][t];
         }
         if (c) pc.set(s * W + x, y, c);
       }
+    }
+  }
   const tex = sc.textures.addCanvas(key, pc.toCanvas())!;
   for (let s = 0; s < steps; s++) tex.add(`v${s}`, 0, s * W, 0, W, gs.h);
   return key;
@@ -643,9 +705,10 @@ async function soulRiseV3(ctx: AnyCtx, from: XY, to: XY, id: MonsterId, player: 
     burst = Math.max(0, burst - dt / 260);
     grave.draw((g) => {
       if (graveOn <= 0.01) return;
-      // whole-pixel radii; the fill is an ordered dither (opaque), the rings are solid
+      // whole-pixel radii; the fill and the rings are solid
       const r = Math.round(18 + Math.sin(el * 0.012) * 1.2 + burst * 10);
-      g.ell(gx, gy, r, Math.round(r / 2), PAL.cyan1, 0.5);
+      // (A2 art review r3 #1: a solid pit, no 50 % dither field)
+      g.ell(gx, gy, r, Math.round(r / 2), PAL.cyan0, 1);
       g.ring(gx, gy, r, Math.round(r / 2), burst > 0.5 ? PAL.white : PAL.cyan3, 1);
       g.ring(gx, gy, Math.round(r * 0.62), Math.round(r * 0.31), PAL.cyan4, 1);
       for (let i = 0; i < 6; i++) {
@@ -699,7 +762,7 @@ async function soulRiseV3(ctx: AnyCtx, from: XY, to: XY, id: MonsterId, player: 
   place(gx, gy - lift, null);
   onLeave();
 
-  // ---- glide along an arc to the tile, 1–2 stepped echoes behind
+  // ---- glide along an arc to the tile, a stepped echo behind
   const start = { x: gx, y: gy - lift };
   const end = { x: Math.round(to.x), y: Math.round(to.y - 16) };
   const dist = Math.hypot(end.x - start.x, end.y - start.y);
@@ -719,12 +782,7 @@ async function soulRiseV3(ctx: AnyCtx, from: XY, to: XY, id: MonsterId, player: 
       lastEcho = el;
       const vk = ghostVariant(sc, gs, frameIdx(), 'echo');
       const echo = sc.add.image(ghost.x, ghost.y, vk, 'v0').setOrigin(ghost.originX, ghost.originY).setFlipX(flip).setDepth(DEPTH.FX - 1);
-      bg(
-        wait(sc, ECHO_STEP)
-          .then(() => echo.active && echo.setFrame('v1'))
-          .then(() => wait(sc, ECHO_STEP))
-          .then(() => echo.destroy()),
-      );
+      bg(wait(sc, ECHO_STEP).then(() => echo.destroy()));
     }
     if (rnd() < 0.5) wisp(p.x, p.y);
   });
@@ -736,12 +794,12 @@ async function soulRiseV3(ctx: AnyCtx, from: XY, to: XY, id: MonsterId, player: 
     async melt(ms = 160) {
       dest.pulse(120);
       if (ghost && gs) {
-        // the ghost breaks in three dither steps, sinking into the body that gathers below it
+        // the ghost breaks up in three swept cluster steps, sinking into the body gathering below it
         const vk = ghostVariant(sc, gs, frameIdx(), 'melt');
         ghost.anims.stop();
         ghost.setTexture(vk, 'v0');
-        const step = Math.max(17, Math.round(ms / MELT_KEEP.length));
-        for (let s = 0; s < MELT_KEEP.length; s++) {
+        const step = Math.max(17, Math.round(ms / MELT_SWEEP.length));
+        for (let s = 0; s < MELT_SWEEP.length; s++) {
           if (!ghost.active) break;
           ghost.setFrame(`v${s}`).setY(end.y + 2 * s);
           await wait(sc, step);
@@ -809,7 +867,9 @@ async function recallV3(ctx: CinematicContext<Extract<GameEvent, { type: 'activa
   const land = () => {
     bg(shockwave(sc, dest.x, dest.y, { ramp: CYAN, radius: fs(44), ms: 360, thickness: 4 }));
     void lightFlash(sc, dest.x, dest.y - 16, PAL.cyan4, fs(30), 300, { floorY: dest.y, ring: true, intensity: 0.7 });
-    bg(landingDust(sc, dest.x, dest.y, PAL.cyan3, { count: 7 }));
+    // A2 art review r3 #1: a few angular shards of the monster's own matter skid out along the
+    // floor (no round, soft dust puffs under the rising body)
+    landShards(sc, dest.x, dest.y, unit ? matterRamp(unit.cardId) : RAMPS.cyan);
     ctx.sfx('impactLight', { volume: 0.55 });
     if (unit) {
       unit.badge.setVisible(true);

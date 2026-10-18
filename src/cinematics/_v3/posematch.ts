@@ -35,9 +35,12 @@ export interface DeathEntry {
   cost: number;
   /**
    * ms from the plan's start to the death's first frame when more than the recoil plays first (a
-   * guard break, ./guardbreak.ts: the bridge + the recoil); default: the recoil up to `hold`.
+   * guard break, ./guardbreak.ts: the bridge + the recoil; an in-between before the struck frame,
+   * react.ts); default: the recoil up to `hold`.
    */
   leadMs?: number;
+  /** Δ(the frame shown when the blow landed, the recoil's f0) / idleΔ, when it was measured. */
+  into?: number;
 }
 
 /**
@@ -163,15 +166,19 @@ export function idleDelta(u: MonsterUnit): number | null {
  * The lethal recoil's plan (react.ts): among `anims` (the blow's own recoil first), the recoil
  * frame reachable within `windowMs` of scene time and the death frame that continue each other
  * best. The blow's own recoil wins while its entry is GOOD_ENTRY or better; another recoil is
- * used only when it is clearly better (by ≥ 1 idleΔ). null: no death pose, or nothing measurable.
+ * used only when it is clearly better (by ≥ 1 idleΔ). `from` (A2 motion review r3 #4): the frame
+ * the body shows now (e.g. 'attack:6', a thrust) — the jump INTO each recoil's first frame is
+ * part of its cost (the worst step on the way: max(into, entry)), and the plan reports it as
+ * `into`. null: no death pose, or nothing measurable.
  */
-export function planDeathEntry(u: MonsterUnit, anims: readonly AnyMonsterAnim[], windowMs: number): DeathEntry | null {
+export function planDeathEntry(u: MonsterUnit, anims: readonly AnyMonsterAnim[], windowMs: number, from?: string): DeathEntry | null {
   if (!u.has('death') || !u.sprite.active) return null;
   const idle = idleDelta(u);
   if (idle === null) return null;
   const nD = u.frameCount('death');
   let own: DeathEntry | null = null;
   let best: DeathEntry | null = null;
+  const worst = (e: DeathEntry) => Math.max(e.cost, e.into ?? 0);
   for (const anim of anims) {
     const n = u.frameCount(anim);
     if (!n) continue;
@@ -182,13 +189,17 @@ export function planDeathEntry(u: MonsterUnit, anims: readonly AnyMonsterAnim[],
       return d === null ? null : d / idle;
     });
     if (!e) continue;
+    if (from && from !== `${anim}:0`) {
+      const d = frameDelta(u, from, `${anim}:0`);
+      if (d !== null) e.into = d / idle;
+    }
     if (!own) {
       own = e;
-      if (e.cost <= GOOD_ENTRY) return e;
+      if (worst(e) <= GOOD_ENTRY) return e;
     }
-    if (!best || e.cost < best.cost) best = e;
+    if (!best || worst(e) < worst(best)) best = e;
   }
-  if (own && best && best !== own && best.cost > own.cost - 1) return own;
+  if (own && best && best !== own && worst(best) > worst(own) - 1) return own;
   return best ?? own;
 }
 

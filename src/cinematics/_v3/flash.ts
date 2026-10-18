@@ -16,9 +16,17 @@
 // real frames (it keeps flashing through a hit-stop) — the sprite's own tint is never touched.
 //
 // A LIGHT subject (A2 art review r2 #2: the crystal wyrm — a white flash on a white body reads as
-// over-exposure and wipes its value planes) gets the INVERSE flash instead: one frame, a solid
-// night core and a solid cyan band around it, no dithered edge (lightSubject decides it from the
-// frame's own pixels: most of the silhouette in the light tones).
+// over-exposure and wipes its value planes) gets the RIM flash instead (A2 motion review r3 #6: the
+// earlier inverse flash, a solid night core + dark cyan band, read as a bite out of the pale body):
+// a 1-px rim of light just OUTSIDE the silhouette along the struck part (white where the core
+// band meets the edge, the blow's light tone along the rest) and the body's own edge pixels of the
+// core band in the light tone; the last frame keeps only the outer rim in the light tone. The
+// body's planes are never painted over (lightSubject decides it from the frame's own pixels: most
+// of the silhouette in the light tones).
+//
+// Coverage (A2 motion review r3 #4): the bands' whole region — core, checkered band and the
+// dithered edge's extent — stays ≤ `coverage` of the silhouette (a light tint fills the checkered
+// band, so its region is what the eye reads as lit).
 //
 // Pure presentation, no rules; no runtime Phaser import (MonsterUnit.guardHit imports it; the band
 // math flashBands and the older crop math cropFromHist are unit-tested in tests/cinematics/).
@@ -231,8 +239,8 @@ export interface FlashBands {
   painted: number;
 }
 
-/** Share of the coverage given to each band (core / checkered / edge). */
-const BAND_SHARE = [0.4, 0.35, 0.45] as const;
+/** Share of the coverage given to each band (core / checkered / edge): their regions sum to it. */
+const BAND_SHARE = [0.34, 0.29, 0.37] as const;
 
 /** The edge of the silhouette a blow travelling along `d` (frame space) lands on: near the centre line. */
 export function contactEdge(mask: ArrayLike<number>, w: number, h: number, d: XY): XY | null {
@@ -315,12 +323,62 @@ export function flashBands(mask: ArrayLike<number>, w: number, h: number, c: XY,
   return { w, h, band, total, painted };
 }
 
+// ================================================================ the rim flash (light subjects)
+
+/**
+ * The rim flash of a light body into `px` (RGBA, the frame's size): transparent pixels next to the
+ * lit bands get the rim (white beside the core band, `tint` beside the others), the core band's
+ * own edge pixels the tint; `last`: only the outer rim beside the core and checkered bands, in
+ * the tint. Pure.
+ */
+export function paintRim(px: Uint8ClampedArray, b: FlashBands, mask: ArrayLike<number>, core: [number, number, number], tint: [number, number, number], last: boolean): number {
+  const { w, h, band } = b;
+  let n = 0;
+  const put = (i: number, c: [number, number, number]) => {
+    px[i * 4] = c[0];
+    px[i * 4 + 1] = c[1];
+    px[i * 4 + 2] = c[2];
+    px[i * 4 + 3] = 255;
+    n++;
+  };
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      // the strongest lit band among the 4-neighbours, and whether one of them is empty
+      let nb = 0;
+      let open = false;
+      for (const [dx, dy] of NEIGHBOURS) {
+        const xx = x + dx;
+        const yy = y + dy;
+        if (xx < 0 || yy < 0 || xx >= w || yy >= h) {
+          open = true;
+          continue;
+        }
+        const j = yy * w + xx;
+        if (!mask[j]) open = true;
+        else if (band[j] && (!nb || band[j] < nb)) nb = band[j];
+      }
+      if (mask[i]) {
+        if (!last && band[i] === 1 && open) put(i, tint);
+      } else if (nb === 1 || nb === 2) put(i, last || nb === 2 ? tint : core);
+      else if (nb === 3 && !last) put(i, tint);
+    }
+  return n;
+}
+
+const NEIGHBOURS = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+] as const;
+
 // ================================================================ the flash
 
 export interface ContactFlashOpts {
   /** Real frames it stays (2; 3 for a heavy blow). The last one steps the bands down once. */
   frames?: number;
-  /** Share of the silhouette it may cover (default 0.4, never more than 0.5). */
+  /** Share of the silhouette it may cover (default 0.4, never more than 0.5): the lit bands' whole region. */
   coverage?: number;
   /** The core's colour (default white). */
   color?: number;
@@ -343,12 +401,12 @@ function rgb(c: number): [number, number, number] {
  */
 export function contactFlash(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite, dir: XY, o: ContactFlashOpts = {}): void {
   if (!s.active || !s.visible || !s.frame) return;
-  // a light body: the inverse flash (one frame, night core + cyan band, no dithered edge)
-  const inverse = o.color === undefined && lightSubject(s.frame);
-  const frames = inverse ? 1 : Math.max(1, o.frames ?? 2);
+  // a light body: the rim flash (a 1-px rim of light outside the struck part, see the header)
+  const rim = o.color === undefined && lightSubject(s.frame);
+  const frames = Math.max(1, o.frames ?? 2);
   const cover = o.coverage ?? 0.4;
-  const core = rgb(inverse ? PAL.night1 : (o.color ?? PAL.white));
-  const tint = inverse ? rgb(PAL.cyan1) : o.tint !== undefined ? rgb(o.tint) : null;
+  const core = rgb(o.color ?? PAL.white);
+  const tint = o.tint !== undefined ? rgb(o.tint) : rim ? rgb(PAL.cyan4) : null;
   // the contact point stays where the blow landed (frame space is re-derived per frame)
   const atWorld = o.at ? { x: o.at.x, y: o.at.y } : null;
   let key = '';
@@ -358,8 +416,9 @@ export function contactFlash(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite, 
   let th = 0;
   let shown = '';
   let k = 0;
+  let mask: Uint8Array | null = null;
   const bandsOf = (fr: Phaser.Textures.Frame): FlashBands | null => {
-    const mask = frameMask(fr);
+    mask = frameMask(fr);
     if (!mask) return null;
     const w = fr.cutWidth;
     const h = fr.cutHeight;
@@ -382,6 +441,12 @@ export function contactFlash(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite, 
     const ctx = tex.context;
     const im = ctx.createImageData(b.w, b.h);
     const px = im.data;
+    if (rim && mask) {
+      paintRim(px, b, mask, core, tint ?? core, last);
+      ctx.putImageData(im, 0, 0);
+      tex.refresh();
+      return;
+    }
     for (let i = 0; i < b.band.length; i++) {
       const v = b.band[i];
       if (!v) continue;
@@ -390,8 +455,7 @@ export function contactFlash(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite, 
       let col: [number, number, number] | null = null;
       // the last frame steps every band down once (core → checkered, checkered → edge, edge → off)
       const lv = last ? v + 1 : v;
-      if (inverse) col = lv === 1 ? core : lv === 2 ? tint : null; // solid bands, no dither
-      else if (lv === 1) col = core;
+      if (lv === 1) col = core;
       else if (lv === 2) col = (x + y) % 2 === 0 ? core : tint;
       else if (lv === 3) col = x % 2 === 0 && (y + (x >> 1)) % 2 === 0 ? core : null;
       if (!col) continue;

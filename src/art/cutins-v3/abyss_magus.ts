@@ -74,7 +74,7 @@ interface Pose {
   t: number;
 }
 
-const STARE: Pose = { head: [0, 0], bust: [0, 0], grip: [141, 130], sa: 0, eye: 1, heat: 0, free: 0, flame: 0, star: 0, motes: 0, cape: 0, t: 0 };
+const STARE: Pose = { head: [0, 0], bust: [0, 0], grip: [141, 125], sa: 0, eye: 1, heat: 0, free: 0, flame: 0, star: 0, motes: 0, cape: 0, t: 0 };
 
 const POSES: Pose[] = [
   STARE,
@@ -94,10 +94,11 @@ const factory: CutinFactory = (K) => {
   const fill = (c: PixelCanvas, pts: readonly V[], col: number) => c.poly(pts, col);
   /** paint `col` over the opaque pixels of `c` that pass `test` */
   const recolor = (c: PixelCanvas, test: (x: number, y: number, cur: number) => boolean, col: number) => {
+    const d = c.data;
     for (let y = 0; y < H; y++)
       for (let x = 0; x < W; x++) {
-        const cur = c.get(x, y);
-        if (cur !== null && test(x, y, cur)) c.set(x, y, col);
+        const i = (y * W + x) * 4;
+        if (d[i + 3] && test(x, y, (d[i] << 16) | (d[i + 1] << 8) | d[i + 2])) c.set(x, y, col);
       }
   };
   /** inside polygon (pixel centre) */
@@ -120,47 +121,67 @@ const factory: CutinFactory = (K) => {
    * side toward `up`), so the planes run in clean bands along the form.
    */
   function tube(c: PixelCanvas, path: readonly V[], w0: number, w1: number, tone: (s: number, v: number) => number | null, up: V = [0, -1]): void {
-    const lens = [0];
-    for (let i = 1; i < path.length; i++) lens.push(lens[i - 1] + len(sub(path[i], path[i - 1])));
-    const total = lens[lens.length - 1] || 1;
+    // segments as flat numbers (this runs per pixel × segment: no allocations in the loop)
+    const n = path.length - 1;
+    if (n < 1) return;
+    const SX = new Float64Array(n);
+    const SY = new Float64Array(n);
+    const DX = new Float64Array(n);
+    const DY = new Float64Array(n);
+    const L2 = new Float64Array(n);
+    const CUM = new Float64Array(n);
+    let total = 0;
     let x0 = Infinity;
     let y0 = Infinity;
     let x1 = -Infinity;
     let y1 = -Infinity;
-    for (const p of path) {
-      x0 = Math.min(x0, p[0]);
-      y0 = Math.min(y0, p[1]);
-      x1 = Math.max(x1, p[0]);
-      y1 = Math.max(y1, p[1]);
+    for (let i = 0; i < n; i++) {
+      const [ax, ay] = path[i];
+      const [bx, by] = path[i + 1];
+      SX[i] = ax;
+      SY[i] = ay;
+      DX[i] = bx - ax;
+      DY[i] = by - ay;
+      L2[i] = DX[i] * DX[i] + DY[i] * DY[i] || 1;
+      CUM[i] = total;
+      total += Math.sqrt(L2[i]);
+      x0 = Math.min(x0, ax, bx);
+      y0 = Math.min(y0, ay, by);
+      x1 = Math.max(x1, ax, bx);
+      y1 = Math.max(y1, ay, by);
     }
+    total = total || 1;
     const R = Math.max(w0, w1) / 2 + 1;
     for (let y = Math.max(0, Math.floor(y0 - R)); y <= Math.min(H - 1, Math.ceil(y1 + R)); y++)
       for (let x = Math.max(0, Math.floor(x0 - R)); x <= Math.min(W - 1, Math.ceil(x1 + R)); x++) {
-        const q: V = [x + 0.5, y + 0.5];
+        const qx = x + 0.5;
+        const qy = y + 0.5;
         let best = Infinity;
-        let bs = 0;
-        let bn: V = [0, 0];
-        let bd: V = [1, 0];
-        for (let i = 1; i < path.length; i++) {
-          const a = path[i - 1];
-          const d = sub(path[i], a);
-          const l2 = d[0] * d[0] + d[1] * d[1] || 1;
-          const t = clamp(((q[0] - a[0]) * d[0] + (q[1] - a[1]) * d[1]) / l2, 0, 1);
-          const p = add(a, mul(d, t));
-          const dd = len(sub(q, p));
-          if (dd < best) {
-            best = dd;
-            bs = (lens[i - 1] + Math.sqrt(l2) * t) / total;
-            bn = sub(q, p);
-            bd = norm(d);
+        let bi = 0;
+        let bt = 0;
+        for (let i = 0; i < n; i++) {
+          let t = ((qx - SX[i]) * DX[i] + (qy - SY[i]) * DY[i]) / L2[i];
+          t = t < 0 ? 0 : t > 1 ? 1 : t;
+          const ex = qx - (SX[i] + DX[i] * t);
+          const ey = qy - (SY[i] + DY[i] * t);
+          const d2 = ex * ex + ey * ey;
+          if (d2 < best) {
+            best = d2;
+            bi = i;
+            bt = t;
           }
         }
+        const bs = (CUM[bi] + Math.sqrt(L2[bi]) * bt) / total;
         const r = lerp(w0, w1, bs) / 2;
-        if (best > r) continue;
+        if (best > r * r) continue;
         // across: signed by the side of the path's normal that faces `up`
-        const nrm: V = [-bd[1], bd[0]];
-        const sgn = nrm[0] * up[0] + nrm[1] * up[1] >= 0 ? 1 : -1;
-        const v = clamp(-((bn[0] * nrm[0] + bn[1] * nrm[1]) * sgn) / Math.max(0.5, r), -1, 1);
+        const sl = Math.sqrt(L2[bi]);
+        const nx = -DY[bi] / sl;
+        const ny = DX[bi] / sl;
+        const sgn = nx * up[0] + ny * up[1] >= 0 ? 1 : -1;
+        const ex = qx - (SX[bi] + DX[bi] * bt);
+        const ey = qy - (SY[bi] + DY[bi] * bt);
+        const v = clamp(-((ex * nx + ey * ny) * sgn) / Math.max(0.5, r), -1, 1);
         const col = tone(bs, v);
         if (col !== null) c.set(x, y, col);
       }
@@ -268,6 +289,13 @@ const factory: CutinFactory = (K) => {
     const fx = 117 + o[0];
     for (let i = 0; i < 4; i++) c.set(fx + 2 + i, ey - 1, far[i]);
     for (let i = 0; i < 4; i++) c.set(fx + i, ey, far[3 - i]);
+    // flaring: the slits lengthen by a pixel at each end (mag4 tips), never a glow round them
+    if (P.eye === 2) {
+      c.set(nx - 1, ey - 1, PAL.mag4);
+      c.set(nx + 9, ey, PAL.mag4);
+      c.set(fx + 6, ey - 1, PAL.mag4);
+      c.set(fx - 1, ey, PAL.mag3);
+    }
     // the eyes' light on the brow's underside: a 2-px lip (mag1; mag2 when they flare)
     const lip = P.eye === 2 ? PAL.mag2 : PAL.mag1;
     c.set(nx + 1, 53 + o[1], lip);
@@ -326,9 +354,17 @@ const factory: CutinFactory = (K) => {
         else if (d <= 7) marks.push(x, y, PAL.night4);
       }
     for (let i = 0; i < marks.length; i += 3) q.set(marks[i], marks[i + 1], marks[i + 2]);
-    // two folds opening downward (night2) and the violet lining on its inner edge
-    lineOn(q, add(lerpV([58, 104], [46, 104], f), o), add(lerpV([50, 142], [26, 142], f), o), PAL.night2, (cur) => cur === PAL.night3 || cur === PAL.night4);
-    lineOn(q, add([66, 104], o), add(lerpV([62, 142], [52, 142], f), o), PAL.night2, (cur) => cur === PAL.night3);
+    // folds opening downward from the shoulder: a night2 valley with a lit ridge (night4) beside it
+    const folds: [V, V][] = [
+      [lerpV([57, 103], [46, 102], f), lerpV([46, 142], [18, 142], f)],
+      [lerpV([62, 104], [56, 103], f), lerpV([56, 142], [36, 142], f)],
+      [[67, 104], lerpV([64, 142], [54, 142], f)],
+    ];
+    for (const [a, b] of folds) {
+      const ok = (cur: number) => cur === PAL.night3 || cur === PAL.night4;
+      lineOn(q, add(add(a, o), [-2, 2]), add(add(b, o), [-2, 0]), PAL.night4, ok);
+      lineOn(q, add(a, o), add(b, o), PAL.night2, ok);
+    }
     recolor(q, (x, y) => x - o[0] > 69 + (y - o[1] - 100) * 0.05, PAL.void2);
     recolor(q, (x, y) => x - o[0] > 72 + (y - o[1] - 100) * 0.05, PAL.void1);
     over(c, q);
@@ -396,10 +432,14 @@ const factory: CutinFactory = (K) => {
     q.set(93 + o[0], 119 + o[1], PAL.void4);
     q.set(94 + o[0], 119 + o[1], PAL.void4);
     q.set(93 + o[0], 120 + o[1], PAL.void4);
-    // below the belt: the robe (void1) to the band's edge
-    fill(q, T([[74, 123], [110, 122], [112, 144], [72, 144]], o), PAL.void1);
+    // below the belt: the robe (void0) and the slate tabard down its front (lit strip on the left)
+    fill(q, T([[74, 123], [110, 122], [112, 144], [72, 144]], o), PAL.void0);
+    const tab = T([[80, 123], [102, 122], [103, 144], [79, 144]], o);
+    fill(q, tab, PAL.night3);
+    recolor(q, (x, y) => inPoly(tab, x, y) && x - o[0] < 85, PAL.night4);
+    recolor(q, (x, y) => inPoly(tab, x, y) && x - o[0] > 98, PAL.night2);
+    lineOn(q, add([80, 124], o), add([79, 144], o), PAL.steel);
     lineOn(q, add([74, 123], o), add([110, 122], o), PAL.ink);
-    lineOn(q, add([90, 124], o), add([88, 144], o), PAL.void0);
     over(c, q);
   }
 
@@ -502,7 +542,8 @@ const factory: CutinFactory = (K) => {
       }
     // the highlight: a void4 lens at the top left (white only when the orb blazes)
     q.ellipse(o[0] - 4, o[1] - 5, 3.2, 2.2, PAL.void4);
-    if (P.heat >= 2) {
+    // (the white-hot core is the brightest spot then: the highlight stays void4 with it)
+    if (P.heat === 2) {
       q.set(Math.round(o[0] - 6), Math.round(o[1] - 6), PAL.white);
       q.set(Math.round(o[0] - 5), Math.round(o[1] - 6), PAL.white);
     }
@@ -515,9 +556,9 @@ const factory: CutinFactory = (K) => {
   }
 
   // the front sleeve: hanging (stare) → raised with the staff (burst), same vertices
-  const SLEEVE_HANG: V[] = [[104, 90], [134, 90], [136, 108], [148, 120], [143, 128], [117, 127], [109, 117], [105, 103]];
+  const SLEEVE_HANG: V[] = [[104, 90], [134, 90], [136, 106], [147, 116], [143, 124], [118, 125], [109, 115], [105, 103]];
   const SLEEVE_RAISE: V[] = [[100, 86], [130, 86], [141, 88], [153, 95], [152, 106], [139, 109], [118, 104], [102, 98]];
-  const GRIP_HANG: V = [141, 130];
+  const GRIP_HANG: V = [141, 125];
   const GRIP_RAISE: V = [147, 104];
 
   function sleeve(c: PixelCanvas, P: Pose) {
@@ -542,7 +583,6 @@ const factory: CutinFactory = (K) => {
     // a fold valley down the sleeve (void1), opening toward the bell
     lineOn(q, lerpV(pts[0], pts[1], 0.55), lerpV(pts[5], pts[4], 0.35), PAL.void1, (cur) => cur === PAL.void2);
     // the bell: its rim lit (void4 toward the light, void3), the dark opening (void0) at the wrist
-    lineOn(q, pts[6], pts[5], PAL.void4);
     lineOn(q, pts[5], pts[4], PAL.void3);
     lineOn(q, lerpV(pts[5], pts[4], 0.25), lerpV(pts[3], pts[4], 0.5), PAL.void0);
     over(c, q);
@@ -609,11 +649,14 @@ const factory: CutinFactory = (K) => {
         if (!q.isOpaque(x, y)) continue;
         const v = (x + 0.5 - shT[0]) * n[0] + (y + 0.5 - shT[1]) * n[1];
         const vv = n[1] > 0 ? v : -v;
-        q.set(x, y, vv < 4 ? PAL.void3 : vv < 11 ? PAL.void2 : PAL.void1);
+        q.set(x, y, vv < 4 ? PAL.void3 : PAL.void2);
       }
     lineOn(q, add(shT, [-1, 1]), add(hand, [4, 0]), PAL.void4);
-    lineOn(q, add(hand, [3, 5]), hang, PAL.void0);
-    lineOn(q, lerpV(shT, hand, 0.3), lerpV(hang, shB, 0.3), PAL.void1, (cur) => cur === PAL.void2);
+    // the drape: folds falling from the wrist, the bell's hem in shadow, its mouth dark
+    lineOn(q, add(hand, [4, 4]), hang, PAL.void0);
+    lineOn(q, add(hang, [1, -1]), add(lerpV(hang, shB, 0.5), [0, 1]), PAL.void1);
+    lineOn(q, lerpV(hand, shT, 0.25), lerpV(hang, shB, 0.35), PAL.void1, (cur) => cur === PAL.void2);
+    lineOn(q, lerpV(hand, shT, 0.5), lerpV(hang, shB, 0.7), PAL.void1, (cur) => cur === PAL.void2);
     // the open gauntlet, palm up under the flame
     const hq = layer();
     const hp: V[] = [add(hand, [-6, -2]), add(hand, [5, -3]), add(hand, [7, 1]), add(hand, [4, 4]), add(hand, [-4, 4])];

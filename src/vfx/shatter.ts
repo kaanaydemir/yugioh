@@ -22,7 +22,7 @@ import Phaser from 'phaser';
 import type { Attribute, MonsterId } from '../data/cards';
 import { monsterArt } from '../art/monsters';
 import { ATTRIBUTE_RAMP, PAL } from '../art/palette';
-import { mulberry32 } from '../art/pixel';
+import { PixelCanvas, mulberry32 } from '../art/pixel';
 import { addStaticCanvas, monsterFrame, monsterP2TextureKey } from '../art/textures';
 import type { AnyMonsterAnim, DrawOpts } from '../art/types';
 import { MONSTER_ANIMS } from '../art/types';
@@ -328,6 +328,14 @@ export const SHATTER_MATERIALS_LIST: readonly ShatterMaterial[] = ['crystal', 's
 export interface MaterialPreset {
   /** Brick edge range (px; real pixels of the frame). */
   brick: readonly [number, number];
+  /**
+   * Break the body into flat FACETS instead of real-pixel bricks (A2 art review r3 #2: 2–3 px bricks
+   * of a detailed frame drift apart as a 1–2 px speckle field): the body cracks into irregular
+   * angular chips about `cell` px apart (facetBricks), each drawn in two tones of its own value (lit
+   * face toward the top-left, shadow face) with a 1-px dark edge on the shadow side — no
+   * single-pixel fill. `edge`: the crack tone; `tones`: the pairs by value.
+   */
+  facets?: { cell: number; tones: readonly FacetTones[]; edge: number };
   /** Outward burst speed (× the radial base), initial upward kick range (px/s), gravity (px/s²; < 0 rises). */
   speed: number;
   up: readonly [number, number];
@@ -367,10 +375,28 @@ export interface MaterialPreset {
   pitch: number;
 }
 
+/** A facet tone pair for cells up to `lum` (0…1 luminance), and for cyan-dominant cells (`cyan`). */
+export interface FacetTones {
+  lum: number;
+  cyan?: boolean;
+  lit: number;
+  shade: number;
+}
+
+/** The crystal's facet tones: by the cell's value, cyan crystal kept cyan (two tones each). */
+const CRYSTAL_FACETS: readonly FacetTones[] = [
+  { lum: 0.42, cyan: true, lit: PAL.cyan2, shade: PAL.cyan1 },
+  { lum: 1, cyan: true, lit: PAL.cyan4, shade: PAL.cyan3 },
+  { lum: 0.3, lit: PAL.steel, shade: PAL.night3 },
+  { lum: 0.6, lit: PAL.mist, shade: PAL.steel },
+  { lum: 1, lit: PAL.white, shade: PAL.mist },
+];
+
 export const SHATTER_MATERIALS: Record<ShatterMaterial, MaterialPreset> = {
-  // glass: sharp shards fly fast, clink on the floor, the light inside goes out
+  // glass: the body splits into flat two-tone facets that fly, clink on the floor, the light inside
+  // goes out
   crystal: {
-    brick: [2, 3], speed: 0.95, up: [20, 70], gravity: 420, drag: 1.3, life: [440, 680], floor: 'bounce', bounce: 0.25, flutter: 0, attract: 0,
+    brick: [2, 3], facets: { cell: 6, tones: CRYSTAL_FACETS, edge: PAL.night1 }, speed: 0.95, up: [20, 70], gravity: 420, drag: 1.3, life: [440, 680], floor: 'bounce', bounce: 0.25, flutter: 0, attract: 0,
     // the light is already out when it breaks: one pale frame (no white burst), cold shards
     flash: [PAL.mist], late: [PAL.cyan1, PAL.night2], lateAt: 0.5, blinkAt: 0.66,
     shards: 14, shardColors: [PAL.white, PAL.cyan4, PAL.cyan3, PAL.cyan2], shardShape: 'shard',
@@ -485,7 +511,34 @@ export async function shatterMaterial(scene: Phaser.Scene, sprite: Phaser.GameOb
   const motes = new Sparks(scene, depth + 0.1);
   const shards = new Sparks(scene, depth + 0.2);
   const [b0, b1] = M.brick;
-  for (let y = bounds.y; y < bounds.y + bounds.h; ) {
+  const facets = M.facets ? facetBricks(scene, pc, bounds, M.facets, rnd) : null;
+  if (facets) {
+    for (const fb of facets.list) {
+      const c = toWorld(flip ? fb.x + fb.w : fb.x, fb.y);
+      const img = scene.add.image(Math.round(c.x), Math.round(c.y), facets.key, fb.name).setOrigin(0, 0).setFlipX(flip).setScale(sx, sy).setDepth(depth).setVisible(false);
+      const cx = c.x + (fb.w * sx) / 2;
+      const cy = c.y + (fb.h * sy) / 2;
+      const dx = cx - core.x;
+      const dy = cy - core.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const sp = RR(25, 75) * (0.45 + Math.min(1.1, d / 34)) * spd;
+      bricks.push({
+        img,
+        x: Math.round(c.x),
+        y: Math.round(c.y),
+        vx: (dx / d) * sp + push.x * RR(15, 50) * spd + RR(-10, 10),
+        vy: (dy / d) * sp * 0.7 + push.y * RR(10, 35) * spd - RR(M.up[0], M.up[1]),
+        life: RR(M.life[0], M.life[1]),
+        delay: rnd() * 40,
+        floor: floorY + Math.round(RR(-3, 3)),
+        phase: rnd() * Math.PI * 2,
+        rest: false,
+        dead: false,
+        tone: -1,
+      });
+    }
+  }
+  for (let y = bounds.y; !facets && y < bounds.y + bounds.h; ) {
     const bh = Math.min(bounds.y + bounds.h - y, b0 + Math.floor(rnd() * (b1 - b0 + 1)));
     for (let x = bounds.x; x < bounds.x + bounds.w; ) {
       const bw = Math.min(bounds.x + bounds.w - x, b0 + Math.floor(rnd() * (b1 - b0 + 1)));
@@ -637,8 +690,134 @@ export async function shatterMaterial(scene: Phaser.Scene, sprite: Phaser.GameOb
       () => {
         for (const b of bricks) if (b.img.active) b.img.destroy();
         releaseFrames(tex, brickFrames);
+        if (facets && scene.textures.exists(facets.key)) scene.textures.remove(facets.key);
         resolve();
       },
     );
   });
+}
+
+let facetSeq = 0;
+
+interface FacetBrick {
+  name: string;
+  /** Frame-space rect of the shard (its bounding box). */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * The facet shards of a frame (MaterialPreset.facets): the opaque body is cracked into irregular
+ * convex chips — every pixel joins the nearest of a jittered grid of seeds `cell` px apart (a
+ * Voronoi cut: no gaps, no regular lattice, 4–7 sided pieces ~3–7 px across). Each chip keeps the
+ * frame's silhouette and is drawn flat in the tone pair of its own mean colour: the lit face toward
+ * the top-left of a slightly tilted line through its centre, the shadow face beyond, and a 1-px dark
+ * edge on its lower / right border (the crack lines). One canvas texture per break (removed with it).
+ */
+function facetBricks(
+  scene: Phaser.Scene,
+  pc: { w: number; h: number; get(x: number, y: number): number | null; isOpaque(x: number, y: number): boolean },
+  bounds: { x: number; y: number; w: number; h: number },
+  F: NonNullable<MaterialPreset['facets']>,
+  rnd: () => number,
+): { key: string; list: FacetBrick[] } | null {
+  const S = F.cell;
+  const nx = Math.ceil(bounds.w / S) + 1;
+  const ny = Math.ceil(bounds.h / S) + 1;
+  // seeds on a jittered grid (index gy * nx + gx)
+  const seeds: { x: number; y: number }[] = [];
+  for (let gy = 0; gy < ny; gy++)
+    for (let gx = 0; gx < nx; gx++) seeds.push({ x: bounds.x + (gx + 0.5) * S + (rnd() - 0.5) * S * 0.8, y: bounds.y + (gy + 0.5) * S + (rnd() - 0.5) * S * 0.8 });
+  const W = pc.w;
+  const owner = new Int32Array(W * pc.h).fill(-1);
+  const pix: number[][] = seeds.map(() => []);
+  for (let y = bounds.y; y < bounds.y + bounds.h; y++)
+    for (let x = bounds.x; x < bounds.x + bounds.w; x++) {
+      if (!pc.isOpaque(x, y)) continue;
+      const gx = Math.floor((x - bounds.x) / S);
+      const gy = Math.floor((y - bounds.y) / S);
+      let best = -1;
+      let bd = Infinity;
+      for (let j = gy - 1; j <= gy + 1; j++)
+        for (let i = gx - 1; i <= gx + 1; i++) {
+          if (i < 0 || j < 0 || i >= nx || j >= ny) continue;
+          const k = j * nx + i;
+          const d = (seeds[k].x - x - 0.5) ** 2 + (seeds[k].y - y - 0.5) ** 2;
+          if (d < bd) {
+            bd = d;
+            best = k;
+          }
+        }
+      if (best < 0) continue;
+      owner[y * W + x] = best;
+      pix[best].push(y * W + x);
+    }
+  const chips: { k: number; x: number; y: number; w: number; h: number }[] = [];
+  for (let k = 0; k < seeds.length; k++) {
+    const list = pix[k];
+    if (!list.length) continue;
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -1;
+    let y1 = -1;
+    for (const i of list) {
+      const x = i % W;
+      const y = (i - x) / W;
+      x0 = Math.min(x0, x);
+      y0 = Math.min(y0, y);
+      x1 = Math.max(x1, x);
+      y1 = Math.max(y1, y);
+    }
+    chips.push({ k, x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 });
+  }
+  if (!chips.length) return null;
+  const slotW = Math.max(...chips.map((c) => c.w));
+  const slotH = Math.max(...chips.map((c) => c.h));
+  const atlas = new PixelCanvas(slotW * chips.length, slotH);
+  const list: FacetBrick[] = [];
+  chips.forEach((c, i) => {
+    const px = pix[c.k];
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    let mx = 0;
+    let my = 0;
+    for (const p of px) {
+      const v = pc.get(p % W, Math.floor(p / W)) ?? 0;
+      r += (v >> 16) & 255;
+      g += (v >> 8) & 255;
+      b += v & 255;
+      mx += p % W;
+      my += Math.floor(p / W);
+    }
+    const n = px.length;
+    r /= n;
+    g /= n;
+    b /= n;
+    mx /= n;
+    my /= n;
+    const lum = (r * 0.3 + g * 0.55 + b * 0.15) / 255;
+    const cyan = g > r * 1.25 && b > r * 1.25;
+    const pair = F.tones.find((t) => !!t.cyan === cyan && lum <= t.lum) ?? F.tones[F.tones.length - 1];
+    // the lit side: toward the top-left, the line tilted a little per chip
+    const a = Math.PI / 4 + (rnd() - 0.5) * 0.9;
+    const ux = Math.cos(a);
+    const uy = Math.sin(a);
+    const mine = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < pc.h && owner[y * W + x] === c.k;
+    for (const p of px) {
+      const x = p % W;
+      const y = (p - x) / W;
+      const edge = n > 6 && (!mine(x + 1, y) || !mine(x, y + 1));
+      const col = edge ? F.edge : (x - mx) * ux + (y - my) * uy < 0 ? pair.lit : pair.shade;
+      atlas.set(i * slotW + (x - c.x), y - c.y, col);
+    }
+    list.push({ name: `f${i}`, x: c.x, y: c.y, w: c.w, h: c.h });
+  });
+  const key = `shatter:facets:${++facetSeq}`;
+  const tex = scene.textures.addCanvas(key, atlas.toCanvas());
+  if (!tex) return null;
+  list.forEach((fb, i) => tex.add(fb.name, 0, i * slotW, 0, fb.w, fb.h));
+  return { key, list };
 }

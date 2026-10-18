@@ -117,12 +117,14 @@ export async function cardLeaves(ctx: AnyCtx, o: CardLeaveOpts): Promise<void> {
       }
     return true;
   });
-  // ---- lift off the tile
-  img.setDepth(DEPTH.FX + 5);
+  // ---- lift off the tile (depthAt from the first lifted frame: a card born behind a body never
+  // pops in front of it for the lift)
+  img.setDepth(o.depthAt ? o.depthAt(from, from) : DEPTH.FX + 5);
   await animate(sc, 50, (t) => {
     if (!img.active) return;
     height = Math.round(lift * (1 - (1 - t) * (1 - t)));
     img.setPosition(from.x, from.y - height);
+    if (o.depthAt) img.setDepth(o.depthAt(from, { x: from.x, y: from.y - height }));
   });
   // ---- arc to the pile
   let lastTrail = -99;

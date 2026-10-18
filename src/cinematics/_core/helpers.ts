@@ -262,6 +262,8 @@ export interface HitReactOpts {
   pose?: boolean;
   /** Skip the hit-stop (another impact of the same beat freezes time). */
   noStop?: boolean;
+  /** Share of the silhouette the contact flash may light (default: by power). */
+  flash?: number;
 }
 
 /**

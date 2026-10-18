@@ -52,7 +52,7 @@ interface DuelistsModule {
 const CUTINS: CutinModule | null = (Object.values(import.meta.glob('../art/cutins/index.ts', { eager: true }))[0] as CutinModule | undefined) ?? null;
 const DUELISTS: DuelistsModule | null = (Object.values(import.meta.glob('../art/duelists.ts', { eager: true }))[0] as DuelistsModule | undefined) ?? null;
 
-function registerCutin(scene: Phaser.Scene, C: CutinModule, id: MonsterId): void {
+function registerCutin(scene: Phaser.Scene, C: CutinModule, id: MonsterId, withP2 = true): void {
   const art = C.cutinArt(id);
   const frames: [string, PixelCanvas][] = [];
   for (let f = 0; f < art.frames; f++) frames.push([C.cutinFrameName(f), C.cutinFrame(id, f)]);
@@ -69,7 +69,7 @@ function registerCutin(scene: Phaser.Scene, C: CutinModule, id: MonsterId): void
   });
   // v3: player 2's relit frames (drawn lit from the frame's top-right, shown flipped) — same names
   // and timeline; the texture key is also the animation key
-  if (relit(C, id)) {
+  if (withP2 && relit(C, id)) {
     const k2 = C.cutinP2Key!(id);
     const f2: [string, PixelCanvas][] = [];
     for (let f = 0; f < art.frames; f++) f2.push([C.cutinFrameName(f), C.cutinFrame(id, f, { lightFrom: 'right' })]);
@@ -145,14 +145,15 @@ const step: BootStep = {
       done();
       return;
     }
-    // time-sliced: paint ~one frame per tick, register each portrait when complete
-    // (frame -1-f = the relit P2 frame f of a v3 'relight' portrait)
+    // time-sliced: paint ~one frame per tick, register each portrait when complete. A v3 portrait's
+    // relit P2 frames are NOT painted here (A2 tech review r3 #8: 6 × ~60 ms tasks per portrait,
+    // used or not): src/cinematics/_v3/cutin.ts warmCutinP2 paints them when player 2 summons that
+    // ace (until then a P2 cut-in shows the P1 frames mirrored)
     const queue: [MonsterId, number][] = [];
     for (const id of ids) {
       try {
         const n = C.cutinArt(id).frames;
         for (let f = 0; f < n; f++) queue.push([id, f]);
-        if (relit(C, id)) for (let f = 0; f < n; f++) queue.push([id, -1 - f]);
       } catch (err) {
         console.error(`[boot] cut-in ${id} failed`, err);
       }
@@ -162,10 +163,9 @@ const step: BootStep = {
       while (queue.length && performance.now() - t0 < 10) {
         const [id, f] = queue.shift()!;
         try {
-          if (f >= 0) C.cutinFrame(id, f);
-          else C.cutinFrame(id, -1 - f, { lightFrom: 'right' });
+          C.cutinFrame(id, f);
           const last = queue.length === 0 || queue[0][0] !== id;
-          if (last) registerCutin(scene, C, id);
+          if (last) registerCutin(scene, C, id, false);
         } catch (err) {
           // a broken portrait is skipped (its frames too); the others still build
           console.error(`[boot] cut-in ${id} failed`, err);

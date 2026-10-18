@@ -21,7 +21,7 @@ import Phaser from 'phaser';
 import { CARDS, isMonster, type CardId, type MonsterId } from '../../data/cards';
 import type { GameEvent, PlayerId, Uid } from '../../engine/types';
 import { ATTRIBUTE_RAMP, PAL, PLAYER_RAMP, type Ramp } from '../../art/palette';
-import { DEPTH, type XY, zoneXY } from '../../view/layout';
+import { DEPTH, LOOK_V3, type XY, unitDepth, zoneXY } from '../../view/layout';
 import { wait } from '../../vfx/core';
 import { sparkleBurst } from '../../vfx/summon';
 import type { CardSprite } from '../../view/CardSprite';
@@ -157,7 +157,9 @@ registerEvent(
         playSfx('summonCharge', { volume: 0.7 });
         void c.pulse(PAL.white, 220);
         bg(glowPop(sc, c.x, c.y, ramp[4], { from: 0.8, to: 3.2, alpha: 0.9, ms: 260, depth: DEPTH.FX + 3 }));
-        bg(sparkleBurst(sc, c.x, c.y, { ramp, count: 14, speed: 0.8 }));
+        // v3: the swallow sparkles twinkle on behind the monster that forms here (its body is
+        // built while they still live: nothing is drawn over it before its reveal)
+        bg(sparkleBurst(sc, c.x, c.y, { ramp, count: 14, speed: 0.8, depth: LOOK_V3 ? unitDepth(to.y) - 1.5 : undefined }));
         // a short rise before the drop (anticipation)
         const y0 = c.y;
         await run(sc, 80, (t) => c.setY(Math.round(y0 - 6 * E.outCubic(t))));

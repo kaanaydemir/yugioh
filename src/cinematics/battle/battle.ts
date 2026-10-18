@@ -281,6 +281,9 @@ function burstBehind(sc: Phaser.Scene, victim: MonsterUnit): void {
   });
 }
 
+/** Share of the attacker's silhouette a counter-blow's contact flash may light (≤ the kit's 0.45). */
+const COUNTER_FLASH = 0.24;
+
 /** The recoil anims (a claimed survivor is handed back once none of them plays any more). */
 const RECOILS = ['hit', 'hitHeavy', 'hitMagic'];
 
@@ -479,6 +482,9 @@ async function battleV3(ctx: Ctx<'battle'>): Promise<void> {
           knock: false,
           pose: dies,
           noStop: !dies,
+          // the counter lands on the body as it changes pose (the thrust snapped back, the struck
+          // frame): the flash marks the contact, it never covers the motion (A2 motion review r3 #4)
+          flash: COUNTER_FLASH,
         }),
       );
       if (recoilClaim) recoilAfterStop(au, hitAnimFor(au, { kind: melee ? blowKindOf(target) : 'magic', heavy: false }));

@@ -122,10 +122,14 @@ export interface Pose {
   eye: number;
   /** guard: wings wrapped forward (selects the shield wing layout) */
   guard: boolean;
-  /** glint sweep position across the wing glass (0..1, <0 = none) */
-  glint: number;
-  /** crystal twinkles: [anchor index, size 1|2] (anchors: 0/1/3 near-wing glass, 2 far wing, 4 tail) */
+  /** the crystal glint: [anchor index, size 1|2] — at most one, and an anim shows it on three
+   *  frames in a row on the same vertex (size 1, 2, 1: 1 px → 3-px cross → 1 px). Anchors are facet
+   *  vertices on the top-left lit edge: 0 the near wing's wrist knuckle, 1 the near wing's elbow
+   *  (in the guard: the peak of the wrapped shield). */
   sparkles: [number, number][];
+  /** the glint's pixel, fixed for the frames it lives on (crystal_wyrm-anims.ts: taken from the
+   *  frame that shows the cross, glintPixelFor); unset = found on this frame's own vertex */
+  glintAt?: V;
   /** motion smear: the head's path from this pose to the current one is drawn as a light trail */
   smearFrom?: PoseDelta;
 
@@ -151,6 +155,9 @@ export interface Pose {
   gather: number;
   /** vertical lag (px) of the tail's middle and tip: they follow a body step one and two frames late */
   tailLag: V;
+  /** whole-pixel vertical offset of both wings against the body (a wing that follows a body step a
+   *  frame late: the guard breath) */
+  wingDy: number;
 }
 
 export const NEUTRAL: Pose = {
@@ -175,7 +182,6 @@ export const NEUTRAL: Pose = {
   pulse: 0,
   eye: 1,
   guard: false,
-  glint: -1,
   sparkles: [],
   lift: 0,
   tuck: 0,
@@ -188,6 +194,7 @@ export const NEUTRAL: Pose = {
   split: 0,
   gather: 1,
   tailLag: [0, 0],
+  wingDy: 0,
 };
 
 export type PoseDelta = Partial<Omit<Pose, 'nw' | 'fw'>> & { nw?: Partial<Wing>; fw?: Partial<Wing> };
@@ -241,6 +248,7 @@ export function lerpPose(a: Pose, b: Pose, t: number): Pose {
     split: lerp(a.split, b.split, t),
     gather: lerp(a.gather, b.gather, t),
     tailLag: lerpV(a.tailLag, b.tailLag, t),
+    wingDy: lerp(a.wingDy, b.wingDy, t),
   };
 }
 
@@ -327,7 +335,60 @@ function wings(P: Pose) {
     nearWing.attach = lerpV(nearWing.attach, add(hip, [0, 8]), P.wrap);
     farWing.attach = lerpV(farWing.attach, att([12, 10]), P.wrap);
   }
+  const dy = Math.round(P.wingDy);
+  if (dy) for (const w of [farWing, nearWing]) shiftWing(w, dy);
   return { farWing, nearWing };
+}
+
+function shiftWing(w: WingRig, dy: number) {
+  const d: V = [0, dy];
+  w.S = add(w.S, d);
+  w.E = add(w.E, d);
+  w.Wr = add(w.Wr, d);
+  w.attach = add(w.attach, d);
+  w.tips = w.tips.map((t) => add(t, d));
+}
+
+/** The glint's vertex and the direction into the glass facet that meets there: the wrist knuckle
+ *  (0: the corner of the outer cell between fingers 0 and 1) or the elbow (1: the corner of the
+ *  inner sheet; in the guard the peak of the wrapped shield). */
+function glintAnchor(w: WingRig, i: number): { v: V; dir: V } {
+  if (i === 1) return { v: w.E, dir: norm(add(norm(sub(w.Wr, w.E)), norm(sub(w.attach, w.E)))) };
+  return { v: w.Wr, dir: norm(add(norm(sub(w.tips[0], w.Wr)), norm(sub(w.tips[1], w.Wr)))) };
+}
+
+const GLINT_ON = new Set<number>([PAL.cyan1, PAL.cyan2, PAL.cyan3]);
+/** The glint pixel: from the vertex into its facet's corner, the first pixel whose cross (it and its
+ *  four neighbours) lies on glass with a 1-px glass margin round it — the facet catches the light
+ *  right at its corner, and the white cross stays clear of the white spars and rims (white touching
+ *  white would merge into a blob). No such pixel: the vertex itself. */
+function glintOn(p: PixelCanvas, a: { v: V; dir: V }): V {
+  const glass = (x: number, y: number) => {
+    const c = p.get(x, y);
+    return c !== null && GLINT_ON.has(c);
+  };
+  const clear = (x: number, y: number) => {
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (Math.abs(dx) + Math.abs(dy) <= 2 && !glass(x + dx, y + dy)) return false;
+    return true;
+  };
+  for (let k = 1; k <= 9; k += 0.5) {
+    const [x, y] = flo(add(a.v, mul(a.dir, k)));
+    if (clear(x, y)) return [x, y];
+  }
+  return flo(a.v);
+}
+
+/** The glint vertex of a pose (anchor i; see Pose.sparkles). */
+export function glintPixel(P: Pose, i = 0): V {
+  return flo(glintAnchor(wings(P).nearWing, i).v);
+}
+
+/** The pixel the glint of a pose sits on (drawn once without it, then searched like drawDragon). */
+export function glintPixelFor(P: Pose): V | null {
+  if (!P.sparkles.length) return null;
+  const c = newCanvas();
+  drawDragon(c, { ...P, sparkles: [], glintAt: undefined });
+  return glintOn(c, glintAnchor(wings(P).nearWing, P.sparkles[0][0]));
 }
 
 export function neckPath(P: Pose): V[] {
@@ -520,7 +581,8 @@ export function drawDragon(p: PixelCanvas, P: Pose) {
     gTube(g, [j, knee], 13, 7.5, M.HIDE, { z: 2, flat: 1.25, biasAt: (_u, _v, ox) => Math.min(0, THIGH_TURN * ox * LIGHT.side) });
     const c = g.render();
     composite(cl, c, crease, { top: 0, side: 1, bottom: 2 });
-    if (P.cracks > 0) cracksOn(cl, P, [{ from: 0.3, pts: zig(lerpV(j, knee, 0.05), lerpV(j, knee, 0.85), 3, 1.6) }], false);
+    // one straight fracture down the thigh's plane break (its long axis: lit front | shadow back)
+    if (P.cracks > 0) cracksOn(cl, P, [{ from: 0.3, pts: [lerpV(j, knee, 0.12), lerpV(j, knee, 0.8)] }], false);
     rimLight(cl, p);
     // against the far leg: ONE night1 line, then the far leg's own junction shadow (one value down)
     maskOf(cl, LEG_MASK);
@@ -546,13 +608,6 @@ export function drawDragon(p: PixelCanvas, P: Pose) {
     gTube(g, nPath, NECK_W0, NECK_W1, M.HIDE_D, { biasAt: neckTone });
     const c = g.render();
     neckSeam(c, nPath);
-    if (P.cracks > 0) {
-      const at = (t: number, k: number) => {
-        const sp = samplePath(nPath, t);
-        return add(sp.p, mul([-sp.tan[1], sp.tan[0]], k));
-      };
-      cracksOn(c, P, [{ from: 0.22, pts: [at(0.06, -1), at(0.22, 2), at(0.36, -1.5), at(0.5, 1.5), at(0.62, -0.5)] }], false);
-    }
     // the cool rim only along the upper neck (the base runs into the dark throat wedge, unrimmed)
     rimLight(c, p, [PAL.steel], PAL.cyan2, (x, y) => pathU(nPath, [x + 0.5, y + 0.5]) > NECK_RIM_U);
     composite(p, c, crease, FOLD_NECK);
@@ -586,16 +641,9 @@ export function drawDragon(p: PixelCanvas, P: Pose) {
   {
     const c = drawWing(nearWing, false, P);
     if (P.cracks > 0) {
+      // one straight fracture across the inner sheet, from the forearm toward the trailing edge
       const { E, Wr, tips } = nearWing;
-      cracksOn(
-        c,
-        P,
-        [
-          { from: 0.36, pts: zig(lerpV(E, Wr, 0.45), lerpV(lerpV(tips[1], tips[2], 0.5), Wr, 0.3), 3, 1.5) },
-          { from: 0.5, pts: zig(lerpV(Wr, tips[0], 0.25), lerpV(lerpV(tips[0], tips[1], 0.5), Wr, 0.25), 3, 1.2) },
-        ],
-        true,
-      );
+      cracksOn(c, P, [{ from: 0.36, pts: [lerpV(E, Wr, 0.45), lerpV(lerpV(tips[1], tips[2], 0.5), Wr, 0.3)] }], true);
     }
     composite(p, c);
   }
@@ -607,17 +655,8 @@ export function drawDragon(p: PixelCanvas, P: Pose) {
   // ---------------- one last calm pass: lone 1-px crumbs inside the body take their surroundings
   cleanCrumbs(p);
 
-  // ---------------- crystal twinkles
-  if (P.sparkles.length) {
-    const anchors: V[] = [
-      lerpV(nearWing.Wr, nearWing.tips[0], 0.62),
-      lerpV(nearWing.E, nearWing.attach, 0.45),
-      lerpV(farWing.Wr, farWing.tips[1], 0.6),
-      lerpV(nearWing.Wr, nearWing.tips[1], 0.55),
-      add(hip, [-15, 7]),
-    ];
-    for (const [ai, size] of P.sparkles) twinkle(p, rnd(anchors[ai]), size);
-  }
+  // ---------------- the crystal glint: one, on a facet vertex of the lit edge (it rides the vertex)
+  for (const [ai, size] of P.sparkles.slice(0, 1)) twinkle(p, P.glintAt ?? glintOn(p, glintAnchor(nearWing, ai)), size);
 
   // ---------------- part 2: the light drains, the crystal splits, the fragments gather
   if (P.drain > 0) drainLight(p, P);
@@ -839,12 +878,6 @@ function drawWing(r: WingRig, far: boolean, P: Pose): PixelCanvas {
   // sheet keeps its two facets (lit lead facet by the finger, the broad trail sheet one value down)
   const cellTone = (i: number): [number, number] => (shield ? (i < n - 1 ? [3, 2] : [2, 1]) : far ? (i < n - 1 ? [3, 3] : [2, 2]) : i < n - 1 ? [3, 3] : [3, 2]);
   const rootTone = 1;
-  const gx = lerp(-20, 170, P.glint);
-  const glintAt = (x: number, y: number) => {
-    if (P.glint < 0) return 0;
-    const d = (LIGHT.side < 0 ? x : W - x) + y - gx;
-    return d >= 0 && d < 3 ? 1 : 0;
-  };
   const curves: V[][] = [];
   const valleys: V[] = [];
   for (let i = 0; i < n; i++) {
@@ -861,8 +894,8 @@ function drawWing(r: WingRig, far: boolean, P: Pose): PixelCanvas {
     // flare: one step lighter; a flat cell opens into its two facets (lit lead, trail one value down)
     const up = P.flare >= 0.5 ? 1 : 0;
     const trailUp = up && lead === trail ? 0 : up;
-    gFacet(g, [Wr, ...curve.slice(0, 6)], glass, FLAT_N, 0, (x, y) => (root(x, y) ? rootTone + up : lead + up + glintAt(x, y)));
-    gFacet(g, inner ? [Wr, ...curve.slice(5), S, E] : [Wr, ...curve.slice(5)], glass, FLAT_N, 0, (x, y) => (root(x, y) ? rootTone + up : trail + trailUp + glintAt(x, y)));
+    gFacet(g, [Wr, ...curve.slice(0, 6)], glass, FLAT_N, 0, (x, y) => (root(x, y) ? rootTone + up : lead + up));
+    gFacet(g, inner ? [Wr, ...curve.slice(5), S, E] : [Wr, ...curve.slice(5)], glass, FLAT_N, 0, (x, y) => (root(x, y) ? rootTone + up : trail + trailUp));
   }
   const c = g.render(0, false);
 
@@ -1247,36 +1280,42 @@ function drainedAt(P: Pose, x: number, y: number): boolean {
   return Math.hypot(x + 0.5 - CORE.v[0], y + 0.5 - CORE.v[1]) > drainFront(P);
 }
 
-/** A zig-zag polyline from a to b (n segments, alternating perpendicular offsets of `amp` px). */
-function zig(a: V, b: V, n: number, amp: number): V[] {
-  const d = sub(b, a);
-  const nn = norm([-d[1], d[0]]);
-  const out: V[] = [a];
-  for (let i = 1; i < n; i++) out.push(add(lerpV(a, b, i / n), mul(nn, i % 2 ? amp : -amp)));
-  out.push(b);
-  return out;
-}
-
 interface Crack {
   from: number;
   pts: V[];
 }
 
-/** The torso's crack network in torso space: the main crack up from the keel to the neck root and
- *  down to the belly, then two branches. */
+/** The torso's fracture in torso space: ONE straight line through the keel's core, up to the neck
+ *  root and (a moment later) down to the belly — the line the cold crystal splits along. */
+const TORSO_CRACK: [number, number][] = [[0, -7.5], [-5, 5], [-10, 17]];
 function torsoCracks(R: Rig): Crack[] {
-  const a = (pts: [number, number][]) => pts.map((o) => R.att(o));
+  const [up, core, down] = TORSO_CRACK.map((o) => R.att(o));
   return [
-    { from: 0, pts: a([[-5, 5], [-3, 2], [-4.5, -1], [-1.5, -4], [0, -7.5]]) },
-    { from: 0.06, pts: a([[-5, 5], [-7.5, 8], [-6, 11], [-9.5, 13], [-10, 17]]) },
-    { from: 0.3, pts: a([[-7.5, 8], [-11.5, 7], [-14, 10.5]]) },
+    { from: 0, pts: [core, up] },
+    { from: 0.06, pts: [core, down] },
   ];
 }
 
 const HIDE_PX = new Set<number>([PAL.white, PAL.mist, PAL.steel, PAL.night3, PAL.night2, PAL.cyan2]);
 const GLASS_PX = new Set<number>([PAL.cyan0, PAL.cyan1, PAL.cyan2, PAL.cyan3, PAL.cyan4, PAL.white, PAL.mist, PAL.steel]);
 
-/** Draw the visible part of each crack over a part's layer (only over its own surface pixels). */
+/** One value up every ramp: the lit lip of a fracture (the edge that faces the key light). */
+const LIP: Record<number, number> = {
+  [PAL.night2]: PAL.night3,
+  [PAL.night3]: PAL.steel,
+  [PAL.steel]: PAL.mist,
+  [PAL.mist]: PAL.white,
+  [PAL.cyan0]: PAL.cyan1,
+  [PAL.cyan1]: PAL.cyan2,
+  [PAL.cyan2]: PAL.cyan3,
+  [PAL.cyan3]: PAL.cyan4,
+};
+
+/**
+ * Draw the visible part of each crack over a part's layer (only over its own surface pixels): a
+ * straight 1-px groove (glowing while the light is still in the body, dark where it has drained)
+ * with a 1-px lip one value lighter on its side toward the key light.
+ */
 function cracksOn(c: PixelCanvas, P: Pose, list: Crack[], glass: boolean) {
   const surf = glass ? GLASS_PX : HIDE_PX;
   for (const k of list) {
@@ -1286,15 +1325,34 @@ function cracksOn(c: PixelCanvas, P: Pose, list: Crack[], glass: boolean) {
     const lens = [0];
     for (let i = 1; i < k.pts.length; i++) lens.push(lens[i - 1] + len(sub(k.pts[i], k.pts[i - 1])));
     const want = grow * lens[lens.length - 1];
+    const groove = new Map<number, V>();
+    const lips: [number, number][] = [];
     for (let i = 1; i < k.pts.length && lens[i - 1] < want; i++) {
       const t = clamp((want - lens[i - 1]) / (lens[i] - lens[i - 1] || 1), 0, 1);
       const a = k.pts[i - 1];
       const b = lerpV(a, k.pts[i], t);
-      lineOn2(c, a, b, (x, y, cur) => {
-        if (!surf.has(cur)) return null;
-        const dark = drainedAt(P, x, y);
-        return glass ? (dark ? PAL.cyan0 : PAL.white) : dark ? PAL.night2 : PAL.cyan3;
+      const d = norm(sub(k.pts[i], a));
+      let n: V = [-d[1], d[0]];
+      if (dot(n, LIGHT.v2) < 0) n = [-n[0], -n[1]];
+      const o = rnd(n);
+      lineOn2(c, a, b, (x, y) => {
+        groove.set(y * W + x, [x, y]);
+        lips.push([x + o[0], y + o[1]]);
+        return null;
       });
+    }
+    for (const [x, y] of lips) {
+      if (groove.has(y * W + x)) continue;
+      const cur = c.get(x, y);
+      if (cur === null || !surf.has(cur)) continue;
+      const up = LIP[cur];
+      if (up !== undefined) c.set(x, y, up);
+    }
+    for (const [x, y] of groove.values()) {
+      const cur = c.get(x, y);
+      if (cur === null || !surf.has(cur)) continue;
+      const dark = drainedAt(P, x, y);
+      c.set(x, y, glass ? (dark ? PAL.cyan0 : PAL.white) : dark ? PAL.night2 : PAL.cyan3);
     }
   }
 }
@@ -1362,12 +1420,10 @@ function drainLight(p: PixelCanvas, P: Pose) {
 
 /** The main crack, extended through the whole body: the line the cold crystal splits along. */
 function splitLine(R: Rig): V[] {
-  const a = R.att([0, -7.5]);
-  const b = R.att([-10, 17]);
-  const m = R.att([-5, 5]);
+  const [a, m, b] = TORSO_CRACK.map((o) => R.att(o));
   const up = norm(sub(a, m));
   const dn = norm(sub(b, m));
-  return [add(a, mul(up, 80)), a, R.att([-1.5, -4]), R.att([-4.5, -1]), R.att([-3, 2]), m, R.att([-7.5, 8]), R.att([-6, 11]), R.att([-9.5, 13]), b, add(b, mul(dn, 80))];
+  return [add(a, mul(up, 80)), a, m, b, add(b, mul(dn, 80))];
 }
 
 /** The body splits along the main crack: the front piece (head, neck, chest) parts from the back
@@ -1416,8 +1472,10 @@ function splitBody(p: PixelCanvas, R: Rig, P: Pose) {
 
 // Revive: the body is cut into crystal fragments (a fixed jittered-grid Voronoi partition of the
 // frame, 7 px cells); each flies in from outside along a gentle spiral and locks into place, the
-// inner fragments first. While flying a fragment is all glass (its tones mapped onto the crystal
-// ramp); once locked it shows the body.
+// inner fragments first. While flying a fragment is a clean crystal shard (shard()): a straight-
+// edged rhombus on 2:1 or 45° steps, sized by its cell, two flat tones split along its ridge (the
+// face toward the key light cyan3, the other cyan1) inside its own 1-px ink outline, white only
+// along the lit edge of the few largest; once locked it shows the body.
 const CELL = 7;
 const GX = Math.ceil(W / CELL) + 1;
 const GY = Math.ceil(H / CELL) + 1;
@@ -1498,18 +1556,75 @@ function gatherBody(p: PixelCanvas, P: Pose) {
   const N = SEEDS.length;
   const frag = new Array<{ a: number; off: V }>(N);
   for (let i = 0; i < N; i++) frag[i] = fragment(i, SEEDS[i], P.gather);
-  // locked fragments first, the flying ones over them
-  for (const flying of [false, true])
-    for (let y = 0; y < H; y++)
-      for (let x = 0; x < W; x++) {
-        const cur = src.get(x, y);
-        if (cur === null) continue;
-        const f = frag[map[y * W + x]];
-        if (f.a <= 0 || f.a >= 1 === flying) continue;
-        const o = rnd(f.off);
-        const tx = x + o[0];
-        const ty = y + o[1];
-        if (tx < 2 || ty < 2 || tx >= W - 2 || ty >= H - 2) continue;
-        p.set(tx, ty, flying ? SHARD[cur] ?? cur : cur);
-      }
+  // the locked fragments show the body
+  const cnt = new Int32Array(N);
+  const sx = new Float64Array(N);
+  const sy = new Float64Array(N);
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const cur = src.get(x, y);
+      if (cur === null) continue;
+      const i = map[y * W + x];
+      cnt[i]++;
+      sx[i] += x;
+      sy[i] += y;
+      if (frag[i].a >= 1) p.set(x, y, cur);
+    }
+  // the flying ones: one shard each, at the cell's centre carried by its flight (largest last, so
+  // the big lit shards read on top); white edges on the four largest in flight
+  const fly: number[] = [];
+  for (let i = 0; i < N; i++) if (cnt[i] >= 4 && frag[i].a > 0 && frag[i].a < 1) fly.push(i);
+  fly.sort((a, b) => cnt[a] - cnt[b] || a - b);
+  const lit = new Set(fly.slice(-4));
+  for (const i of fly) {
+    const c = rnd(add([sx[i] / cnt[i], sy[i] / cnt[i]], frag[i].off));
+    shard(p, c, Math.max(2, Math.min(5, Math.round(Math.sqrt(cnt[i]) * 0.8))), hash(i, 7), lit.has(i));
+  }
+}
+
+/** Is (x, y) inside a shard of long half-size L: kind 0 a flat rhombus (2:1 edges, ridge across),
+ *  1 a tall rhombus (2:1, ridge up), 2 a 45° diamond (ridge along the diagonal away from the light).
+ *  Returns 0 outside, 1 the lit face, 2 the shadow face. */
+function shardFace(kind: number, L: number, x: number, y: number): number {
+  const s = -LIGHT.side; // +1: the key light is at the frame's left
+  if (kind === 0) {
+    const w = L;
+    const h = Math.ceil(L / 2);
+    if (Math.abs(x) / w + Math.abs(y) / h > 1) return 0;
+    return y <= 0 ? 1 : 2;
+  }
+  if (kind === 1) {
+    const w = Math.ceil(L / 2);
+    const h = L;
+    if (Math.abs(x) / w + Math.abs(y) / h > 1) return 0;
+    return x * s <= 0 ? 1 : 2;
+  }
+  const r = Math.ceil(L * 0.75);
+  if (Math.abs(x) + Math.abs(y) > r) return 0;
+  return x * s + y <= 0 ? 1 : 2;
+}
+
+/** One flying crystal shard (see gatherBody): ink outline ring, two flat faces, a white lit edge. */
+function shard(p: PixelCanvas, c: V, L: number, h: number, whiteEdge: boolean) {
+  const kind = h < 0.4 ? 0 : h < 0.65 ? 1 : 2;
+  const R = L + 1;
+  const inside = (x: number, y: number) => x >= -R && x <= R && y >= -R && y <= R && shardFace(kind, L, x, y) > 0;
+  const put = (x: number, y: number, col: number) => {
+    const X = c[0] + x;
+    const Y = c[1] + y;
+    if (X >= 1 && Y >= 1 && X < W - 1 && Y < H - 1) p.set(X, Y, col);
+  };
+  for (let y = -R; y <= R; y++)
+    for (let x = -R; x <= R; x++)
+      if (!inside(x, y) && (inside(x - 1, y) || inside(x + 1, y) || inside(x, y - 1) || inside(x, y + 1))) put(x, y, PAL.ink);
+  const s = -LIGHT.side;
+  for (let y = -R; y <= R; y++)
+    for (let x = -R; x <= R; x++) {
+      const f = inside(x, y) ? shardFace(kind, L, x, y) : 0;
+      if (!f) continue;
+      // the lit edge: a lit-face pixel whose neighbour toward the light (above, or on the light's
+      // side) is outside the shard
+      const edge = f === 1 && (!inside(x, y - 1) || !inside(x - s, y));
+      put(x, y, f === 2 ? PAL.cyan1 : whiteEdge && edge ? PAL.white : PAL.cyan3);
+    }
 }

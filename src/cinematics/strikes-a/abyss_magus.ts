@@ -1266,7 +1266,7 @@ function surfacePoint(t: MonsterUnit | null, core: XY, from: XY): XY | null {
   }
   if (last < 0) return null;
   // never behind the release point: at least a few px of flight stay visible
-  const k = Math.min(last + ORB_R, reach - 6);
+  const k = Math.max(0, Math.min(last + ORB_R, reach - 6));
   return rnd2({ x: core.x + d.x * k, y: core.y + d.y * k });
 }
 

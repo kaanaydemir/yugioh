@@ -361,6 +361,21 @@ function spans(q: PixelCanvas): { l: Int16Array; r: Int16Array } {
   return { l, r };
 }
 
+/**
+ * Hem teeth at least 2 px wide: every pixel of q from frame row y0 down that has no opaque left or
+ * right neighbour (a 1-px tip or sliver) gets a twin beside it, on the side the row above leans
+ * to (the silhouette only grows; its colour is the pixel's own), top row first.
+ */
+function widenTeeth(q: PixelCanvas, y0: number): void {
+  for (let y = Math.max(1, y0); y < H; y++)
+    for (let x = 1; x < W - 1; x++) {
+      const c = q.get(x, y);
+      if (c === null || q.isOpaque(x - 1, y) || q.isOpaque(x + 1, y)) continue;
+      const side = q.isOpaque(x + 1, y - 1) ? 1 : q.isOpaque(x - 1, y - 1) ? -1 : run(q, x, y - 1, 1, 0, 3) >= run(q, x, y - 1, -1, 0, 3) ? 1 : -1;
+      q.set(x + side, y, c);
+    }
+}
+
 /** Distance from a point to a polyline. */
 function distPoly(x: number, y: number, pts: readonly Pt[]): number {
   let best = Infinity;
@@ -387,11 +402,10 @@ const ORB_MAPS: readonly (readonly string[])[] = [
   ['.dh', 'cdd', '.b.'],
   // 1: small (r ~2.6)
   ['.ddd.', 'cddhd', 'cdddd', '.bcc.'],
-  // 2: the still's orb (7×8)
+  // 2: the still's orb (7×8) — the largest it ever gets: a charge never swells it, it shows in
+  // its core (ORB_CORES), on its cage's prong tips (drawHead) and in the motes falling in onto
+  // the cage (glowPass), never as a bigger disc or a second ring
   ['..ddd..', 'cdddddd', 'cdddhhd', 'ccddddd', 'ccddddd', 'cccdddd', '.bbccc.', '..bbb..'],
-  // 3: swelling — the largest it ever gets (9×9): a charge shows in its core and on its cage's
-  // prong tips (drawHead), never as a bigger bare disc or a second ring
-  ['...ddd...', '.cdddddd.', 'cdddddhhd', 'cdddddddd', 'ccddddddd', 'ccddddddd', 'cccdddddd', '.bbccccd.', '..bbbbb..'],
 ];
 
 /**
@@ -406,19 +420,14 @@ const ORB_CORES: Record<number, readonly (readonly string[])[]> = {
     ['.......', '...e...', '..ee...', '..eeee.', '..eee..', '...e...', '.......', '.......'],
     ['.......', '...e...', '..ee...', '..ewee.', '..eee..', '...e...', '.......', '.......'],
   ],
-  3: [
-    ['.........', '.........', '.....e...', '....eee..', '....ee...', '.........', '.........', '.........', '.........'],
-    ['.........', '....ee...', '...eee...', '...eeeee.', '...eeee..', '....ee...', '.........', '.........', '.........'],
-    ['.........', '....ee...', '...eee...', '...eewee.', '...ewwe..', '....ee...', '.........', '.........', '.........'],
-  ],
 };
 
-/** The largest orb size the rig draws (map 3); a bigger `orb` only heats the core. */
-const ORB_MAX = 1.25;
+/** The largest orb size the rig draws (map 2, the still's); a bigger `orb` only heats the core. */
+const ORB_MAX = 1.08;
 
 /** Which orb map a size multiplier uses. */
 export function orbIndex(k: number): number {
-  return k < 0.45 ? 0 : k < 0.8 ? 1 : k < 1.1 ? 2 : 3;
+  return k < 0.45 ? 0 : k < 0.8 ? 1 : 2;
 }
 
 /** The orb map for a size multiplier. */
@@ -697,27 +706,22 @@ export function drawMagus(p: PixelCanvas, o: Pose, light: Light): void {
       hem.push([x + (i % 2 === 1 ? 0.5 : 0), y + notch]);
     }
     const shape: Pt[] = [T(37, 26), ...edgePts, ...hem, Rc, T(42, 40), T(42, 28)];
-    // underside (lining) peeking out under the hem: violet, darker toward the back
+    // underside (lining) peeking out under the hem: two flat tones only — void2 on its turned
+    // edge right under the cape's hem (painted once the cape is down), void1 beyond it
     {
       const q = new PixelCanvas(W, H);
       q.poly(
-        shape.map(([x, y]) => [x + 2 + fl * 1.5, y + 1.5 + fl * 2] as Pt),
+        shape.map(([x, y]) => [x + 1.5 + fl * 1.5, y + 1.6 + fl * 2] as Pt),
         PAL.void1,
       );
-      // the lining's turned edge shows in the notches of the hem
-      q.poly(
-        shape.map(([x, y]) => [x - 0.5, y + 1.2] as Pt),
-        PAL.void2,
-      );
-      // the lining's own lit fold where the hem turns up (one band, no gradient)
-      const qq = q.clone();
-      for (let y = 0; y < H; y++)
-        for (let x = 0; x < W; x++) if (qq.isOpaque(x, y) && run(qq, x, y, ls, -1, 3) < 2) q.set(x, y, PAL.void2);
+      widenTeeth(q, 0);
       comp(f, q, Part.under);
     }
     {
       const q = new PixelCanvas(W, H);
       q.poly(shape, PAL.night3);
+      // the tatters are teeth at least 2 px wide (no 1-px tips)
+      widenTeeth(q, Math.round(60 + OY + o.bob));
       const src = q.clone();
       // flat bands measured from the outer edge, then a 1-px rim just outside it (the cloth's
       // turned edge). P2 (cape on the shadow side): violet rim | night3 | night4 where it leaves the
@@ -729,8 +733,10 @@ export function drawMagus(p: PixelCanvas, o: Pose, light: Light): void {
           const ry = restY(y);
           const w3 = clamp((ry - 40) * 0.9, 0, 4.6);
           let c: number = w3 > 0 && e < w3 + 0.4 ? (R ? PAL.night3 : PAL.night4) : R ? PAL.night4 : PAL.night3;
-          // the underside of each tatter below the hem line turns away: one step down
-          if (!src.isOpaque(x, y + 1) && ry > 64.5) c = R ? PAL.night2 : PAL.night3;
+          // the underside of each tatter below the hem line turns away: one step down (in runs of
+          // 2+ px: a lone stepped pixel would be a fleck)
+          const under = (xx: number) => src.isOpaque(xx, y) && !src.isOpaque(xx, y + 1);
+          if (under(x) && (under(x - 1) || under(x + 1)) && ry > 64.5) c = R ? PAL.night2 : PAL.night3;
           q.set(x, y, c);
         }
       const sp = spans(src);
@@ -742,6 +748,9 @@ export function drawMagus(p: PixelCanvas, o: Pose, light: Light): void {
         q.set(sp.l[y] - 1, y, R ? PAL.void3 : ry < 40 ? PAL.mist : PAL.steel);
       }
       comp(f, q, Part.cape);
+      // the lining's turned edge: the row right under the cape's hem
+      for (let y = 1; y < H; y++)
+        for (let x = 0; x < W; x++) if (f.id[y * W + x] === Part.under && f.id[(y - 1) * W + x] === Part.cape) p.set(x, y, PAL.void2);
     }
   }
 
@@ -872,14 +881,15 @@ export function drawMagus(p: PixelCanvas, o: Pose, light: Light): void {
         const i = who[y * W + x];
         if (i < 0) continue;
         const t = hp[i];
-        // each flap: a lit plane on the side of its tip facing the key, a void1 fold where it
-        // meets its neighbour on the other side
-        const nb = R ? who[y * W + x - 1] : who[y * W + x + 1];
+        // each flap: two flat tones — a lit plane on the side of its tip facing the key, void2 on
+        // the other (the neighbour's lit plane against this one's shade separates the flaps; no
+        // third-tone fold line, whose diagonal steps were single flecks)
         // the outermost flap on the shadow side stays in shade
         const shadowOuter = R ? i === 0 : i === tips.length - 1;
         const lit = !shadowOuter && (R ? x + 0.5 > t[0] + 0.5 : x + 0.5 < t[0] - 0.5);
-        fq.set(x, y, nb >= 0 && nb !== i ? PAL.void1 : lit ? PAL.void3 : PAL.void2);
+        fq.set(x, y, lit ? PAL.void3 : PAL.void2);
       }
+    widenTeeth(fq, 0);
     comp(f, fq, Part.flap, { in: PAL.void0, inDirs: [[-1, 0]] });
   }
 
@@ -941,6 +951,8 @@ export function drawMagus(p: PixelCanvas, o: Pose, light: Light): void {
     const src = q.clone();
     const foldA = e1;
     const foldB = WR(L, 36.5, 69);
+    /** The leading edge pulled across the body (back shoulder → fist → down to the hem). */
+    const lead: Pt[] = [e0, e1, e2, shape[3]];
     for (let y = 0; y < H; y++)
       for (let x = 0; x < W; x++) {
         if (!src.isOpaque(x, y)) continue;
@@ -950,9 +962,12 @@ export function drawMagus(p: PixelCanvas, o: Pose, light: Light): void {
         const along = clamp(((x + 0.5 - foldA[0]) * (foldB[0] - foldA[0]) + (y + 0.5 - foldA[1]) * (foldB[1] - foldA[1])) / ((foldB[0] - foldA[0]) ** 2 + (foldB[1] - foldA[1]) ** 2), 0, 1);
         const fd = distPoly(x + 0.5, y + 0.5, [foldA, foldB]);
         if (along > 0.15 && fd < 0.75 + along * 1.0) c = PAL.night2;
+        // the turned edge shows the violet lining along the leading edge only (not on every
+        // row's step of the slanted back edge: those were single violet ticks)
         const up = run(src, x, y, 0, -1, 2);
-        if (up === 0) c = PAL.void3;
-        else if (up === 1) c = PAL.void2;
+        const onLead = distPoly(x + 0.5, y + 0.5, lead) < 2.2;
+        if (up === 0 && onLead) c = PAL.void3;
+        else if (up === 1 && onLead) c = PAL.void2;
         else if (!src.isOpaque(x, y + 1)) c = PAL.night2;
         // still swinging: its leading edge turns and shows the violet lining
         if (wk < 1 && up > 1 && !src.isOpaque(x + 1, y)) c = PAL.void2;
@@ -1400,30 +1415,39 @@ function ringPixels(cx: number, cy: number, R: number): [number, number, number]
   return out;
 }
 
-/** Ward shell geometry (frame px): radius of its inner row round the chest, its angular span. */
-const WARD_R = 23;
-const WARD_A0 = -0.32;
-const WARD_A1 = 0.68;
+/**
+ * Ward geometry, relative to the chest centre (v1 px): the circle its inner row runs on — through
+ * the guard's orb cage (just off its lower prong), out in front of the chest and down past the
+ * hem's front — and its angular span (from the cage, sweeping down).
+ */
+const WARD_C: Pt = [2.7, 3.9];
+const WARD_R = 33.4;
+/** The full ward's span (rad; in the guard it runs from −0.53, by the cage, to 1.06). */
+const WARD_A0 = -0.53;
+const WARD_A1 = 1.06;
 
 /**
- * The ward's pixels [x, y, on the lit row, tip] for a pose, measured against the drawn body: a
- * band pixel within 2 px (8-neighbourhood) of anything opaque is dropped, so the shell never
- * touches the staff, the orb or the robe. Its length grows with o.ward up to 0.3 (from the middle).
+ * The ward's pixels [x, y, on the lit row, trailing tail] for a pose, measured against the drawn
+ * body. It is cast from the staff head: it starts at the orb's cage (its first pixels may touch
+ * the cage) and sweeps down in front of the body past the hem, 2 px thick near the staff, thinning
+ * to its inner row over the last third and trailing off at its end; anywhere else a band pixel
+ * within 2 px of anything opaque is dropped (it never touches the staff shaft, the arms or the
+ * robe). Its length grows with o.ward up to 0.3, from the staff head down.
  */
-function wardPixels(p: PixelCanvas, o: Pose, light: Light): [number, number, boolean, boolean][] {
-  const cx = 40 + OX + o.dx + o.lean * BUST_K + 0.5;
-  const cy = 42 + OY + o.bob + 0.5;
+function wardPixels(p: PixelCanvas, o: Pose, orbC: Pt, light: Light): [number, number, boolean, boolean][] {
+  const cx = 40 + OX + o.dx + o.lean * BUST_K + 0.5 + WARD_C[0];
+  const cy = 42 + OY + o.bob + 0.5 + WARD_C[1];
   const k = clamp(o.ward / 0.3, 0, 1);
-  const mid = (WARD_A0 + WARD_A1) / 2;
-  const half = ((WARD_A1 - WARD_A0) / 2) * k;
-  const a0 = mid - half;
-  const a1 = mid + half;
-  const clear = (x: number, y: number) => {
-    for (let j = -2; j <= 2; j++) for (let i = -2; i <= 2; i++) if (p.isOpaque(x + i, y + j)) return false;
+  // it starts just past the cage's lower prong wherever the staff head is (toGuard: on its way)
+  const hw = orbMap(o.orb)[0].length / 2;
+  const a0 = Math.atan2(orbC[1] - cy, orbC[0] - cx) + (Math.max(5, hw + 1.5) + 1.5) / WARD_R;
+  const a1 = a0 + (WARD_A1 - WARD_A0) * k;
+  const R = WARD_R;
+  const clear = (x: number, y: number, r: number) => {
+    for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) if (p.isOpaque(x + i, y + j)) return false;
     return true;
   };
   const out: [number, number, boolean, boolean][] = [];
-  const R = WARD_R;
   for (let y = Math.floor(cy - R - 3); y <= cy + R + 3; y++)
     for (let x = Math.floor(cx); x <= cx + R + 3; x++) {
       const dx = x + 0.5 - cx;
@@ -1433,22 +1457,38 @@ function wardPixels(p: PixelCanvas, o: Pose, light: Light): [number, number, boo
       const a = Math.atan2(dy, dx);
       if (a < a0 || a > a1) continue;
       const inner = d < R + 1;
-      // the tips taper to the inner row (the last 1.5 px of arc at each end)
-      const endDist = Math.min(a - a0, a1 - a) * R;
-      if (!inner && endDist < 1.5) continue;
-      if (!clear(x, y)) continue;
+      const fromHead = (a - a0) * R;
+      const toEnd = (a1 - a) * R;
+      // 2 px thick from the staff head; the last third (of the full ward) is the inner row only
+      if (!inner && (a - a0) / (WARD_A1 - WARD_A0) > 0.66) continue;
+      if (!inner && toEnd < 1.5) continue;
+      // at the cage it may touch the staff head (it is cast from there); elsewhere it keeps clear
+      if (fromHead < 3 ? p.isOpaque(x, y) : !clear(x, y, 2)) continue;
       // the row facing the key light: the inner (concave) one for P1 (light behind, top-left),
       // the outer one for the P2 relight (light in front, top-right)
-      out.push([x, y, light === 'right' ? !inner : inner, endDist < 1.5]);
+      out.push([x, y, light === 'right' ? !inner : inner, toEnd < 3.5]);
     }
   return out;
 }
 
+/**
+ * The void flame on the free hand by size (small / medium / full), top row first, 3 px wide:
+ * t tip, v body (void3), M heart (mag3), o base (void2).
+ */
+// prettier-ignore
+const FLAME_MAPS: readonly (readonly string[])[] = [
+  ['.t.', 'vMv', 'ovo'],
+  ['.t.', 'vv.', 'vMv', 'ovo'],
+  ['.t.', '.v.', '.vv', 'vMv', 'vMv', 'ovo'],
+];
+
 function glowPass(p: PixelCanvas, o: Pose, orbC: Pt, light: Light): void {
+  // nothing glows under the rift's lip while the summon is still rising out of it
+  const below = o.rift > 0 ? 77 + OY - 1 : H;
   const put = (x: number, y: number, c: number) => {
-    if (!p.isOpaque(x, y)) p.set(x, y, c);
+    if (y < below && !p.isOpaque(x, y)) p.set(x, y, c);
   };
-  const ward = o.ward > 0 ? wardPixels(p, o, light) : null;
+  const ward = o.ward > 0 ? wardPixels(p, o, orbC, light) : null;
   const [ox, oy] = orbC;
   const r = 3.9 * Math.min(o.orb, ORB_MAX);
 
@@ -1564,21 +1604,22 @@ function glowPass(p: PixelCanvas, o: Pose, orbC: Pt, light: Light): void {
     }
   }
   if (o.flame > 0) {
-    // a void flame licking up from the raised free hand
-    const hx = o.bx + OX + o.dx;
-    const hy = o.by + OY + o.bob - 2;
-    const h = 3 + 6 * o.flame;
-    const sway = Math.sin(o.t * TAU * 3) * 1.2;
-    for (let y = Math.floor(hy - h); y <= hy; y++) {
-      const v = (hy - y) / h;
-      const cx = hx + sway * v * v;
-      const hw = 2.3 * Math.sin(Math.PI * Math.min(1, 0.25 + v * 0.85)) * (1 - v * 0.55);
-      for (let x = Math.floor(cx - hw); x <= cx + hw; x++) {
-        const k = Math.abs(x + 0.5 - cx) / Math.max(0.5, hw);
-        p.set(x, y, k < 0.4 && v < 0.55 ? PAL.white : k < 0.75 ? PAL.void4 : PAL.void3);
+    // a void flame on the raised free hand: a small hand-drawn teardrop (3-px base, 1-px tip), a
+    // magenta heart in a violet body, its top licking aside with the flicker; never brighter than
+    // the orb's highlight (the orb and the staff lead the read) and only in clear air (put)
+    const m = FLAME_MAPS[o.flame < 0.45 ? 0 : o.flame < 0.7 ? 1 : 2];
+    const x0 = Math.round(o.bx + OX + o.dx) - 1;
+    const y0 = Math.round(o.by + OY + o.bob) - 1 - m.length;
+    const lick = Math.round(Math.sin(o.t * TAU * 3) * 1.2);
+    for (let j = 0; j < m.length; j++) {
+      // the top two rows lean with the flicker (rows stay 8-connected)
+      const sx = j < 2 && m.length > 3 ? lick * (j === 0 ? 1 : 0.5) : 0;
+      for (let i = 0; i < 3; i++) {
+        const ch = m[j][i];
+        if (ch === '.') continue;
+        put(x0 + i + Math.round(sx), y0 + j, ch === 'M' ? PAL.mag3 : ch === 'o' ? PAL.void2 : PAL.void3);
       }
     }
-    put(hx + sway - 1, hy - h - 1.5, PAL.void3);
   }
   if (o.tendril > 0) {
     // special: the tendril's first span leaving the orb along the staff — a writhing void cord,
@@ -1620,11 +1661,12 @@ function glowPass(p: PixelCanvas, o: Pose, orbC: Pt, light: Light): void {
     }
   }
   if (o.ward > 0 && ward) {
-    // ward: a short shell of abyssal light in front of the body, concentric with the chest — a
-    // 2-px band (the row facing the key light lavender, the other violet) with a night outline,
-    // its tips tapering to 1 px, kept ≥ 2 px off the body, the staff and the orb (ward() is
-    // measured before the motes are drawn); a white crest slides along its lit row
-    for (const [x, y, lit, tip] of ward) p.set(x, y, tip ? PAL.void3 : lit ? PAL.void4 : PAL.void3);
+    // ward: a shell of abyssal light cast from the staff head, sweeping down in front of the
+    // body past the hem — a 2-px band (the row facing the key light lavender, the other violet)
+    // with a night outline, thinning to its inner row and trailing off (violet) at its end, kept
+    // ≥ 2 px off the body and the shaft (wardPixels() is measured before the motes are drawn); a
+    // white crest slides along its lit row
+    for (const [x, y, lit, tail] of ward) p.set(x, y, tail ? PAL.void2 : lit ? PAL.void4 : PAL.void3);
     const n = ward.length;
     const runs = ward.filter((w) => w[2]);
     const crest = runs[Math.min(runs.length - 1, Math.floor((((o.t % 1) + 1) % 1) * runs.length))];

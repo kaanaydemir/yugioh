@@ -35,9 +35,10 @@ import { guardPushPx, motionProfile, reactShakePx, reactStopMs, type WeightSourc
 import type { XY } from '../../view/layout';
 import { impact as combatImpact, stopTime } from '../../vfx/combat';
 import { onFrame } from '../../vfx/setpieces';
+import { wait } from '../../vfx/core';
 import type { CinematicContext } from '../_core/types';
 import { contactFlash } from './flash';
-import { plannedEntry, planDeathEntry, setPlannedEntry } from './posematch';
+import { SKIP_COST, frameDelta, idleDelta, plannedEntry, planDeathEntry, setPlannedEntry, type DeathEntry } from './posematch';
 import { planGuardBreak, runGuardBreak } from './guardbreak';
 
 type AnyCtx = CinematicContext<GameEvent>;
@@ -142,14 +143,28 @@ interface Reaction {
    */
   switchAt: number | null;
   deathFrom: number;
+  /** A lethal recoil's lead-in (A2 motion review r3 #4): the in-between frame shown first, until `ms`. */
+  pre: { anim: AnyMonsterAnim; frame: number; ms: number } | null;
+  /** Then the recoil's struck f0 holds until this (ms; 0: the recoil plays from its f0 at once). */
+  struckUntil: number;
   stop: () => void;
 }
 const reactions = new WeakMap<MonsterUnit, Reaction>();
 
-function track(u: MonsterUnit, anim: AnyMonsterAnim, hold: boolean, sw: { at: number; from: number } | null = null): void {
+function track(u: MonsterUnit, anim: AnyMonsterAnim, hold: boolean, sw: { at: number; from: number } | null = null, lead: LethalLead | null = null): void {
   reactions.get(u)?.stop();
   const total = sw ? sw.at + u.rangeMs('death', sw.from, u.frameCount('death')) : u.animMs(anim);
-  const r: Reaction = { anim, el: 0, hold, switchAt: sw ? sw.at : null, deathFrom: sw ? sw.from : 0, stop: () => undefined };
+  const pre = lead?.pre ?? null;
+  const r: Reaction = {
+    anim,
+    el: 0,
+    hold,
+    switchAt: sw ? sw.at : null,
+    deathFrom: sw ? sw.from : 0,
+    pre,
+    struckUntil: lead && lead.struckMs > 0 ? (pre ? pre.ms : 0) + lead.struckMs : 0,
+    stop: () => undefined,
+  };
   r.stop = onFrame(u.scene, (dt) => {
     r.el += dt;
     // a held reaction (a death follows) stays re-assertable on its last frame for a while
@@ -191,9 +206,23 @@ export function reassertReaction(u: MonsterUnit | null): boolean {
     });
     return true;
   }
+  // a lethal recoil's lead-in: the in-between frame, then the struck frame's own beat
+  const shows = (anim: AnyMonsterAnim, f: number) => cur === anim && u.frameInfo().frame === f && !playing;
+  if (r.pre && r.el < r.pre.ms) {
+    const p = r.pre;
+    if (shows(p.anim, p.frame)) return false;
+    u.asClaimant(() => u.pose(p.anim, p.frame));
+    return true;
+  }
+  if (r.el < r.struckUntil) {
+    if (shows(r.anim, 0)) return false;
+    u.asClaimant(() => u.pose(r.anim, 0));
+    return true;
+  }
   if (cur === r.anim && playing) return false;
   const n = u.frameCount(r.anim);
-  const at = frameAt(u, r.anim, 0, r.el, n - 1);
+  const lead = Math.max(r.struckUntil, r.pre ? r.pre.ms : 0);
+  const at = frameAt(u, r.anim, 0, r.el - lead, n - 1);
   u.asClaimant(() => {
     if (at.over) u.pose(r.anim, n - 1);
     else void u.playRange(r.anim, at.f, undefined, { hold: r.hold });
@@ -211,27 +240,104 @@ function lethalRecoils(u: MonsterUnit, own: AnyMonsterAnim): AnyMonsterAnim[] {
 /** Beat after the contact frame within which a lethal recoil hands over to the death pose (ms). */
 const LETHAL_HANDOVER_MS = 140;
 
+/** A jump into the recoil's first frame larger than this (idleΔ) gets a lead-in (see lethalLead). */
+const INTO_MAX = 3;
+/** A step back along the anim shown must make the worst step at least this much smaller (idleΔ). */
+const BACK_GAIN = 0.5;
+/** Frames a lead-in may step back along the anim shown. */
+const BACK_MAX = 2;
+/** A recoil f0 this close to the death's start frame (idleΔ) IS that frame: the death shows it. */
+const SAME_FRAME = 0.5;
+/** Shortest beat of a lead-in frame once time runs (two game frames). */
+const BEAT_MS = 34;
+
+interface LethalLead {
+  /** An in-between frame shown first: the struck attack's follow-through reversed one frame. */
+  pre: { anim: AnyMonsterAnim; frame: number; ms: number } | null;
+  /** The recoil's struck f0 holds this long before the death joins (0: the death shows it / no need). */
+  struckMs: number;
+}
+
+/**
+ * A2 motion review r3 #4: a lethal blow that lands while the body shows a pose far from the
+ * recoil's first frame (a ranged attacker struck on its staff thrust: attack f6 → struck f0,
+ * 6 × idleΔ in one frame, under the counter's flash) is not answered by a one-frame jump:
+ *   - the struck attack steps BACK along its own anim first (its follow-through reversed: the thrust
+ *     is snapped back by the blow) when that frame makes the worst step clearly smaller;
+ *   - the recoil's struck f0 then holds its own beat even when the death would replace it at once
+ *     (hold 0) — unless the death's start frame is the same picture (a shared struck f0).
+ * Nothing changes when the jump into the recoil is already small (≤ INTO_MAX × idleΔ).
+ */
+function lethalLead(u: MonsterUnit, plan: DeathEntry, from: string): LethalLead {
+  const none: LethalLead = { pre: null, struckMs: 0 };
+  const into = plan.into;
+  const idle = idleDelta(u);
+  if (into === undefined || idle === null || into <= INTO_MAX) return none;
+  const entry = plan.cost - SKIP_COST * plan.start;
+  const struckMs = plan.hold === 0 && entry > SAME_FRAME ? Math.max(BEAT_MS, u.frameMs(plan.anim, 0)) : 0;
+  let pre: LethalLead['pre'] = null;
+  const m = /^(attack|special):(\d+)$/.exec(from);
+  if (m) {
+    const a = m[1] as AnyMonsterAnim;
+    const f = Number(m[2]);
+    let best = into - BACK_GAIN;
+    // one or two frames back along the anim (a frame that just changed may still be the one before)
+    for (let k = f - 1; k >= Math.max(0, f - BACK_MAX); k--) {
+      const d1 = frameDelta(u, from, `${a}:${k}`);
+      const d2 = frameDelta(u, `${a}:${k}`, `${plan.anim}:0`);
+      if (d1 === null || d2 === null) continue;
+      const w = Math.max(d1, d2) / idle;
+      if (w <= best) {
+        best = w;
+        pre = { anim: a, frame: k, ms: BEAT_MS };
+      }
+    }
+  }
+  return { pre, struckMs };
+}
+
 /**
  * Play the recoil of a blow. A LETHAL blow on a monster with a death pose: the recoil plays only
  * up to the frame its death pose continues from without a jump (posematch.planDeathEntry, the
  * earliest good match within LETHAL_HANDOVER_MS) and the death pose takes over right there, on
  * its matching frame — the body never holds a still frame waiting for the destroy event; the
- * death kit (death.ts) joins the pose already playing.
+ * death kit (death.ts) joins the pose already playing. A big jump from the pose shown into the
+ * recoil gets a lead-in first (lethalLead). Every step goes on only while the sprite still shows
+ * what the step before posed (a strike that sends it home is answered by reassertReaction).
  */
 function playRecoil(u: MonsterUnit, anim: AnyMonsterAnim, o: { dir: XY; power: 1 | 2 | 3; lethal: boolean }): void {
-  const plan = o.lethal ? planDeathEntry(u, lethalRecoils(u, anim), LETHAL_HANDOVER_MS) : null;
+  const from = String(u.sprite.frame?.name ?? '');
+  const plan = o.lethal ? planDeathEntry(u, lethalRecoils(u, anim), LETHAL_HANDOVER_MS, from) : null;
   if (plan) {
-    setPlannedEntry(u, plan);
+    const lead = lethalLead(u, plan, from);
+    const preMs = lead.pre ? lead.pre.ms : 0;
+    const at = preMs + lead.struckMs + u.rangeMs(plan.anim, 0, plan.hold);
+    setPlannedEntry(u, { ...plan, leadMs: at });
+    const sc = u.scene;
+    const alive = () => !u.retired && u.sprite.active;
+    const shows = (a: AnyMonsterAnim, f: number) => {
+      const fi = u.frameInfo();
+      return fi.anim === a && fi.frame === f;
+    };
     const toDeath = () => {
-      if (u.retired || !u.sprite.active) return;
+      if (!alive()) return;
       const fi = u.frameInfo();
       // only while the recoil still shows (anything that took the sprite over is re-asserted later)
-      if (fi.anim !== plan.anim && plan.hold > 0) return;
+      if (fi.anim !== plan.anim && (plan.hold > 0 || lead.struckMs > 0)) return;
       u.asClaimant(() => void u.playRange('death', plan.start, undefined, { hold: true }));
     };
-    if (plan.hold > 0) void u.asClaimant(() => u.playRange(plan.anim, 0, plan.hold)).then(toDeath);
-    else toDeath();
-    track(u, plan.anim, true, { at: u.rangeMs(plan.anim, 0, plan.hold), from: plan.start });
+    const recoil = () => {
+      if (!alive()) return;
+      if (lead.struckMs > 0) {
+        u.asClaimant(() => u.pose(plan.anim, 0));
+        void wait(sc, lead.struckMs).then(() => alive() && shows(plan.anim, 0) && toDeath());
+      } else if (plan.hold > 0) void u.asClaimant(() => u.playRange(plan.anim, 0, plan.hold)).then(toDeath);
+      else toDeath();
+    };
+    const pre = lead.pre;
+    if (pre && u.asClaimant(() => u.pose(pre.anim, pre.frame))) void wait(sc, pre.ms).then(() => alive() && shows(pre.anim, pre.frame) && recoil());
+    else recoil();
+    track(u, plan.anim, true, { at, from: plan.start }, lead);
     return;
   }
   u.asClaimant(() => void u.play(anim, { dir: o.dir, power: o.power, hold: o.lethal }));
@@ -263,6 +369,12 @@ export interface ReactOpts {
   pose?: boolean;
   /** Skip the hit-stop (several impacts in the same beat). */
   noStop?: boolean;
+  /**
+   * Share of the silhouette the contact flash may light (default by power, FLASH_COVER). A blow
+   * that lands while the body changes pose (a ranged attacker's counter-shock on its thrust) uses
+   * less: the flash marks the contact, it never hides the body's own motion (plan §4).
+   */
+  flash?: number;
 }
 
 function weightSrc(by: ReactOpts['by']): WeightSource {
@@ -284,11 +396,11 @@ export function reactHit(ctx: AnyCtx, u: MonsterUnit | null, o: ReactOpts): Prom
   const live = !!u && u.sprite.active && u.sprite.visible && !u.retired;
   const p = u ? contactPoint(u, dir, o.at) : (o.at ?? { x: 320, y: 180 });
   if (u && live) {
-    if (u.guarding) return reactGuard(ctx, u, { power: o.power, dir, at: o.at, ramp: o.ramp, by: o.by, survive: !o.lethal, noStop: o.noStop });
+    if (u.guarding) return reactGuard(ctx, u, { power: o.power, dir, at: o.at, ramp: o.ramp, by: o.by, kind, survive: !o.lethal, noStop: o.noStop });
     const side = blowSide(u, dir);
     const heavy = isHeavyBlow(o.power, !!o.lethal, by);
     if (o.pose !== false && side !== 'back') playRecoil(u, hitAnimFor(u, { kind, heavy }), { dir, power: o.power, lethal: !!o.lethal });
-    contactFlash(sc, u.sprite, dir, { frames: heavy ? 3 : 2, coverage: FLASH_COVER[o.power], at: p, tint: o.ramp ? o.ramp[4] : undefined });
+    contactFlash(sc, u.sprite, dir, { frames: heavy ? 3 : 2, coverage: Math.min(FLASH_COVER[o.power], o.flash ?? 1), at: p, tint: o.ramp ? o.ramp[4] : undefined });
     if (o.knock !== false) void knock(u, dir, knockPx(u, o.power, side), { hold: !!o.lethal });
   }
   return combatImpact(sc, p.x, p.y, {
@@ -320,6 +432,8 @@ export interface GuardReactOpts {
   at?: XY;
   ramp?: Ramp;
   by?: WeightSource | MonsterUnit | null;
+  /** physical / magic (default: from `by`; no source → magic): the recoil a lethal blow breaks the guard into. */
+  kind?: BlowKind;
   /** The guard holds (springs back); false: it stays pushed — a death follows. */
   survive: boolean;
   /** Skip our own hit-stop (another impact of the same beat freezes time). */
@@ -338,9 +452,10 @@ export async function reactGuard(ctx: AnyCtx | CinematicContext<never>, u: Monst
   const by = weightSrc(o.by);
   const p = contactPoint(u, dir, o.at);
   void combatImpact(sc, p.x, p.y, { power: Math.min(2, o.power) as 1 | 2, ramp: o.ramp, dir, noStop: true, shakePx: reactShakePx(o.power, by), jitterPx: 0, depth: behindBody(u) });
-  // a lethal blow breaks the guard open into the death pose (./guardbreak.ts): the flash, the glint
-  // and the knock-back stay the guard's, the pose is the break's
-  const brk = !o.survive ? planGuardBreak(u) : null;
+  // a lethal blow breaks the guard open into the blow's own recoil and the death pose
+  // (./guardbreak.ts): the flash, the glint and the knock-back stay the guard's, the pose is the break's
+  const recoil = hitAnimFor(u, { kind: o.kind ?? blowKindOf(o.by ?? null), heavy: true });
+  const brk = !o.survive ? planGuardBreak(u, { recoil }) : null;
   const react = u.guardHit({ dir, power: o.power, hold: !o.survive, pose: !brk });
   if (brk) runGuardBreak(u, brk);
   if (!o.noStop) await stopTime(sc, reactStopMs(o.power, by));

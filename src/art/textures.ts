@@ -153,6 +153,9 @@ export function relightsP2(art: MonsterArt): boolean {
 export function monsterSheetKey(id: MonsterId, player: 0 | 1): string {
   if (player === 1) {
     const k = monsterP2TextureKey(id);
+    // a lazy P2 sheet is registered the first time a player-2 unit (or a cinematic warming its
+    // poses) asks for it (A2 tech review r3 #8)
+    if (!knownSheets.has(k)) prepareLazyP2(k);
     if (knownSheets.has(k)) return k;
   }
   return monsterTextureKey(id);
@@ -595,19 +598,45 @@ function p2SheetOpts(art: MonsterArt): SheetOpts {
   return { key: monsterP2TextureKey(art.id), draw: { lightFrom: 'right' } };
 }
 
+// A2 tech review r3 #8: the P2 'relight' sheets (13.6 MB and ~2.8 s of painting for the two v3
+// slice monsters) were allocated at boot and painted in the background in every game, used or
+// not. Outside ?test they are now LAZY: registered (blank canvas, frames, anims) the first time a
+// player-2 unit of that monster needs its sheet — monsterSheetKey(id, 1), which MonsterUnit's sheet
+// selection and the cinematics' pose warming (a summon / revive / steal of player 2 warms its poses
+// before the body appears) go through — then painted in the background like the boot sheets,
+// base anims first (a lookup before they are done paints them synchronously, as for any deferred
+// sheet). With ?test (films, measure) they are still built synchronously at boot.
+
+const lazyP2 = new Map<string, { scene: Phaser.Scene; art: MonsterArt }>();
+
+/** Register (and start painting) a lazy P2 sheet by key; no-op when there is none or it exists. */
+function prepareLazyP2(key: string): void {
+  const job = lazyP2.get(key);
+  if (!job) return;
+  lazyP2.delete(key);
+  try {
+    if (!job.scene.sys?.game) return;
+    prepareMonsterSheet(job.scene, job.art, p2SheetOpts(job.art), false);
+    paintMonsterSheets([key]);
+  } catch (e) {
+    console.error(`[art] lazy P2 sheet ${key} failed`, e);
+    dropPending(key);
+    knownSheets.delete(key);
+  }
+}
+
 export function buildAllMonsters(scene: Phaser.Scene): void {
   const sync = typeof location === 'undefined' || new URLSearchParams(location.search).has('test');
-  // P2 'relight' sheets (opt-in per art) come after every default sheet
-  const jobs: { art: MonsterArt; o: SheetOpts }[] = [
-    ...MONSTER_IDS.map((id) => ({ art: monsterArt(id), o: {} })),
-    ...MONSTER_IDS.map((id) => monsterArt(id))
-      .filter(relightsP2)
-      .map((art) => ({ art, o: p2SheetOpts(art) })),
-  ];
+  // P2 'relight' sheets (opt-in per art) come after every default sheet — lazily outside ?test
+  const p2 = MONSTER_IDS.map((id) => monsterArt(id))
+    .filter(relightsP2)
+    .map((art) => ({ art, o: p2SheetOpts(art) }));
+  const jobs: { art: MonsterArt; o: SheetOpts }[] = [...MONSTER_IDS.map((id) => ({ art: monsterArt(id), o: {} })), ...(sync ? p2 : [])];
   if (sync) {
     for (const j of jobs) buildMonster(scene, j.art, j.o);
     return;
   }
+  for (const { art, o } of p2) lazyP2.set(o.key!, { scene, art });
   const sheets: PendingSheet[] = [];
   for (const { art, o } of jobs) {
     const key = o.key ?? monsterTextureKey(art.id);

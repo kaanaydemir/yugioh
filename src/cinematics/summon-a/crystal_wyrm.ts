@@ -19,6 +19,8 @@ import { TEX, shake } from '../../vfx/core';
 import { STEX, landingDust, shockwave } from '../../vfx/summon';
 import { clearHologram, holoRamp, setHologram } from '../../vfx/hologram';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
+import { framePose } from '../../art/monsters-v3/crystal_wyrm-anims';
+import { headFrame, rig } from '../../art/monsters-v3/crystal_wyrm-rig';
 import { registerCardHook } from '../api';
 import {
   ADD,
@@ -61,7 +63,7 @@ interface Shaft {
   destroy(): void;
 }
 
-function prismShaft(S: Stage, o: { hw?: number } = {}): Shaft {
+function prismShaft(S: Stage, o: { hw?: number; glintDepth?: number } = {}): Shaft {
   const sc = S.scene;
   const { x, y } = S.home;
   const W = 96;
@@ -76,7 +78,7 @@ function prismShaft(S: Stage, o: { hw?: number } = {}): Shaft {
   const foot = S.glow({ color: PAL.cyan4, radius: fs(30), intensity: 0, anim: 'shimmer', fadeIn: 0, air: 0.35, airRadius: 18 });
   const st = { tip: top, wk: 1, fade: 1, t: 0, landed: 0 };
   const hw0 = o.hw ?? (S.big ? 12 : 9);
-  const glints = new Sparks(sc, S.depth + 0.5, ADD);
+  const glints = new Sparks(sc, o.glintDepth ?? S.depth + 0.5, ADD);
   let alive = true;
   const stop = onFrame(sc, (dt) => {
     if (!alive) return false;
@@ -253,7 +255,9 @@ function rainbowFlare(S: Stage, at: XY, o: { ghosts?: boolean; len?: number; spi
 //   0      the circle opens, the narrow prism shaft stabs down onto the tile (70 ms, chime)
 //   0–280  the wrapped body builds bottom → top in the light while it drops (summon f0–3)
 //   land   f4: the feet strike — dust, the rainbow rings pool, the shaft pinches out
-//   spread f7: the wings burst open — the rainbow flare (spectral streak, shards, floor rings)
+//   spread f7: the wings burst open — the prism read on the floor (rainbow ring waves, prism light
+//          on the marble), shards from behind the body, a 2-step glint on the horn tip; nothing
+//          is drawn across the body from the land to the reveal (no lens streak)
 //   cut-in f8 (an ace's tribute summon): the band-only cut-in on the spread hold; the fold-back
 //          and shake-out play on under it, the finale (ring, light, badge) lands as it leaves
 // suWyrm: the summon starts ≈ 1.17 s in (after the tribute stream) → true colours ≈ 1.45 s, the
@@ -263,6 +267,86 @@ function rainbowFlare(S: Stage, at: XY, o: { ghosts?: boolean; len?: number; spi
 const SPREAD_F = 7;
 const CUT_F = 8;
 
+/**
+ * v3 reveal on the wings' spread frame. The prism read lives on the FLOOR only — two waves of
+ * rainbow rings out of the feet and the white prism light on the marble (its air bloom stays
+ * behind the body) — and nothing crosses the silhouette: no lens streak, no ghost hexes, no star
+ * over the chest (A2 art review r3: the horizontal rainbow streak was a camera lens-flare trope
+ * that cut the dragon in half on its hero frame). The one mark on the body is a 2-step 4-point
+ * glint on the horn tip (9 px → 5 px, 40 + 40 ms = the spread frame's 80 ms hold); the crystal
+ * shards are flung from BEHIND the body, so they only show once they clear its outline.
+ */
+function prismRevealV3(S: Stage): void {
+  const sc = S.scene;
+  const u = S.unit;
+  const b = bodyBox(u);
+  const X = Math.round((b.left + b.right) / 2);
+  const Y = Math.round(lerp(b.top, b.bottom, 0.42));
+  const R1 = fs(S.big ? 100 : 64);
+  // the wings bursting open throw prism light on the marble (floor pool + a bloom behind the body)
+  void lightFlash(sc, X, Y, PAL.white, Math.round(R1 * 0.55), 520, { floorY: S.home.y, intensity: 0.9 });
+  // rainbow floor rings (each band a spectral colour), two waves out of the feet
+  const RW = Math.max(110, R1 + 10);
+  const ras = new Raster(sc, S.home.x - RW, S.home.y - Math.ceil(RW / 2) - 1, RW * 2, Math.ceil(RW / 2) * 2 + 2, DEPTH.TILE_FX + 3);
+  bg(
+    run(sc, 560, (t) => {
+      ras.draw((rr) => {
+        for (let w = 0; w < 2; w++) {
+          const tt = clamp((t - w * 0.18) / 0.82, 0, 1);
+          if (tt <= 0 || tt >= 1) continue;
+          const rad = 8 + (R1 - 8) * E.outCubic(tt) * (w ? 0.75 : 1);
+          const lv = tt < 0.5 ? 1 : 1 - (tt - 0.5) / 0.5;
+          for (let i = 0; i < RAINBOW.length; i++) isoRing(rr, S.home.x, S.home.y, rad - i * 1.5, RAINBOW[i], lv * (i === 0 ? 1 : 0.85));
+          isoRing(rr, S.home.x, S.home.y, rad + 1, PAL.white, lv);
+        }
+      });
+    }).then(() => ras.destroy()),
+  );
+  // crystal shards thrown off by the wings: launched from behind the chest, under the sprite
+  const sh = new Sparks(sc, S.depth - 0.5, ADD);
+  for (let i = 0; i < (S.big ? 26 : 16); i++) {
+    const a = RR(Math.PI * 1.05, Math.PI * 1.95);
+    const v = RR(110, 210);
+    sh.add({ x: X + RR(-6, 6), y: Y + RR(-6, 6), vx: Math.cos(a) * v, vy: Math.sin(a) * v, ay: 420, drag: 1.2, life: RR(460, 780), ramp: [PAL.white, PAL.cyan4, PAL.cyan3, PAL.cyan2], tex: i % 3 === 0 ? TEX.plus : i % 3 === 1 ? TEX.px2 : TEX.px1, spin: 0 });
+  }
+  sh.close();
+  hornGlint(S);
+}
+
+/**
+ * A crisp 4-point glint on the horn tip of the frame on screen: arms of 4 px (white, white,
+ * cyan4, cyan3 → 9 px across) for 40 ms, then 2 px (white, cyan4 → 5 px) for 40 ms, then gone.
+ * The tip is the end of the main horn's tube in the v3 rig (crystal_wyrm-rig.ts drawHead: the
+ * gold sweep bezier ends at T(-16.2, -12)); it matches the drawn tip pixel to ≤ 1 px on f6–f9.
+ */
+function hornGlint(S: Stage): void {
+  const u = S.unit;
+  const fi = u.frameInfo();
+  if (fi.anim !== 'summon' || !u.sprite.active) return;
+  const P = framePose('summon', fi.frame);
+  const { T } = headFrame(rig(P).head, P);
+  const tip = T(-16.2, -12);
+  const w = u.framePoint(Math.floor(tip[0]) + 0.5, Math.floor(tip[1]) + 0.5);
+  const x = Math.floor(w.x);
+  const y = Math.floor(w.y);
+  const g = S.own(S.scene.add.graphics().setDepth(DEPTH.FX + 8));
+  const arm = (cols: number[]): void => {
+    g.clear();
+    g.fillStyle(PAL.white, 1).fillRect(x, y, 1, 1);
+    cols.forEach((c, i) => {
+      const k = i + 1;
+      g.fillStyle(c, 1).fillRect(x - k, y, 1, 1).fillRect(x + k, y, 1, 1).fillRect(x, y - k, 1, 1).fillRect(x, y + k, 1, 1);
+    });
+  };
+  arm([PAL.white, PAL.white, PAL.cyan4, PAL.cyan3]);
+  bg(
+    S.wait(40)
+      .then(() => (g.active ? arm([PAL.white, PAL.cyan4]) : undefined))
+      .then(() => S.wait(40))
+      .then(() => g.destroy()),
+  );
+}
+
 async function prismLandingV3(S: Stage): Promise<void> {
   const sc = S.scene;
   const u = S.unit;
@@ -270,7 +354,8 @@ async function prismLandingV3(S: Stage): Promise<void> {
   const spreadF = Math.min(n - 1, SPREAD_F);
   const cutF = Math.min(n - 1, CUT_F);
   const circle = S.openCircle({ appearMs: 200 });
-  const shaft = S.own(prismShaft(S, { hw: S.big ? 6 : 5 }));
+  // (its crystal glints drift behind the body: nothing is drawn over it from the land to the reveal)
+  const shaft = S.own(prismShaft(S, { hw: S.big ? 6 : 5, glintDepth: S.depth - 0.5 }));
   playSfx('summonCharge', { volume: 0.7 });
   bg(
     shaft.descend(70).then(() => {
@@ -292,10 +377,9 @@ async function prismLandingV3(S: Stage): Promise<void> {
     return;
   }
   bg(p.solid.then(() => playSfx('materialize', { volume: 0.5 })));
-  // ---- the wings burst open: the prism flare from the chest
+  // ---- the wings burst open: the prism read on the floor, a glint on the horn tip
   await untilFrame(u, 'summon', spreadF);
-  const b = bodyBox(u);
-  rainbowFlare(S, { x: Math.round((b.left + b.right) / 2), y: Math.round(lerp(b.top, b.bottom, 0.42)) }, { ghosts: false, len: S.big ? 72 : 52, spin: 0 });
+  prismRevealV3(S);
   playSfx('summonBurst', { volume: 0.55, pitch: 1.15 });
   playSfx('holyChime', { volume: 0.55, pitch: 1.3 });
   const finale = () => S.finale({ ring: S.big ? 92 : 60, ramp: RAMPS.cyan, freezeMs: S.big ? 50 : 0, sfx: 'summonBurst' });

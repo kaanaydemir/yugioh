@@ -28,7 +28,9 @@ import { ATTRIBUTE_NAMES, cardDef, isMonster } from '../../data/cards';
 import type { PlayerId } from '../../engine/types';
 import { ATTRIBUTE_RAMP, PAL } from '../../art/palette';
 import { monsterArt } from '../../art/monsters';
-import { monsterAnimKey, monsterFrameName, monsterTextureKey } from '../../art/textures';
+import { monsterAnimKey, monsterFrameName, monsterTextureKey, sheetTexture } from '../../art/textures';
+import { cutinArt, cutinFrame, cutinFrameName, cutinP2Key, cutinRelit, cutinSequence } from '../../art/cutins';
+import type { PixelCanvas } from '../../art/pixel';
 import { DEPTH, GAME_W } from '../../view/layout';
 import { TEX, shake } from '../../vfx/core';
 import { pixelText, upper } from '../../ui/text';
@@ -456,4 +458,43 @@ async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Pro
   }
 }
 
+// ================================================================ the relit P2 portrait (lazy)
 
+const p2Warming = new Set<MonsterId>();
+
+/**
+ * A2 tech review r3 #8: a v3 portrait's relit player-2 frames (`cutin:<id>:p2`) are no longer
+ * painted at boot (src/boot/25-cutins.ts, outside ?test). The summon kits call this as player 2's
+ * ace summon starts (the card and the tributes come first): one frame per background tick, then
+ * the texture + its one-shot animation are registered — same frame names and timeline as the P1
+ * portrait. Until then (or if it is not ready in time) the cut-in shows the P1 frames mirrored.
+ * A no-op for P1, for portraits without relit frames and once registered.
+ */
+export function warmCutinP2(scene: Phaser.Scene, id: MonsterId, player: PlayerId): void {
+  if (player !== 1 || !cutinRelit(id)) return;
+  const key = cutinP2Key(id);
+  if (scene.textures.exists(key) || p2Warming.has(id)) return;
+  p2Warming.add(id);
+  const art = cutinArt(id);
+  const frames: [string, PixelCanvas][] = [];
+  let f = 0;
+  const tick = () => {
+    try {
+      if (!scene.sys?.game || scene.textures.exists(key)) return void p2Warming.delete(id);
+      frames.push([cutinFrameName(f), cutinFrame(id, f, { lightFrom: 'right' })]);
+      if (++f < art.frames) return void setTimeout(tick, 0);
+      sheetTexture(scene, key, art.w, art.h, frames);
+      if (!scene.anims.exists(key))
+        scene.anims.create({
+          key,
+          frames: cutinSequence(art).map((st) => ({ key, frame: cutinFrameName(st.frame), duration: st.ms })),
+          frameRate: art.fps,
+          repeat: 0,
+        });
+    } catch (e) {
+      console.warn('[cutin] relit P2 portrait failed', e);
+    }
+    p2Warming.delete(id);
+  };
+  setTimeout(tick, 0);
+}
