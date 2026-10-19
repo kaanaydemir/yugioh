@@ -187,9 +187,17 @@ doğrulama → commit + push → bu dosyadaki durum güncellenir.
   ejderhanın giriş portresi. Yanında örnek büyü (Yıldırım Hükmü) ve örnek tuzak (Işık
   Zincirleri). Teslim: oynanabilir adres + kısa gösteri kaydı. **Kullanıcı onayı olmadan
   sonraki aşamaya geçilmez.**
-- **A3 — Stil ve hareket rehberi.** Dilimden çıkarılan kurallar (ışık, düzlem planı, malzemeler,
-  gürültü sınırı, hareket karakterleri, süreler, ×3 karşılaştırma ölçütleri).
-- **A4 — Kalan 10 canavar, ikişer ikişer.** Magma Titanı + Mercan Yılanı; Kor Kurdu + Gelgit
+- **A3 — Stil ve hareket rehberi + ölçeklenebilirlik katmanı.** Dilimden çıkarılan kurallar (ışık,
+  düzlem planı, malzemeler, gürültü sınırı, hareket karakterleri, süreler, ses, ×3 karşılaştırma
+  ölçütleri) ve yüzlerce karta büyüyebilmek için: **gövde tipi kütüphanesi** (ejder, cüppeli büyücü,
+  ağır insansı/golem, dört ayaklı, yılan, kuş/uçan, küçük süzülen/peri, bitki, insansı savaşçı —
+  her biri bütün pozlarını parametrelerden üretir; yeni canavar = gövde tipi + oranlar + malzeme /
+  palet + parçalar + gerekirse özel eklentiler), **malzeme kütüphanesi** (çizim, ölüm efekti, darbe
+  efekti ve ses aynı tanımdan beslenir) ve **sunum tarifleri** (kart verisinde saldırı türü, efekt
+  ve ses ön ayarı, çağırma / ölüm tarzı; varsayılan sinematik bunlardan kurulur, özel kod yalnız
+  ana kartlarda). Kalite kapıları değişmez; aynı gövde tipinden çıkan canavarların silüet ve hareket
+  farkı ayrıca ölçülür. Ana kartlar (Ejder, Büyücü gibi) tamamen özel kalır.
+- **A4 — Kalan 10 canavar, ikişer ikişer (A3 katmanının üzerine).** Magma Titanı + Mercan Yılanı; Kor Kurdu + Gelgit
   Golemi; Fırtına Atmacası + Taş Muhafız; Işık Perisi + Gölge Suikastçı; Şimşek Kertenkelesi +
   Dikenli Pusucu. Her çift: yeni stil + tam yaşam döngüsü + efektleri; her çift ayrı commit.
 - **A5 — Kalan büyü ve tuzaklar** (Şifa Pınarı, Ruh Çağrısı, Ejder Kılıcı, Volkan Arenası,
@@ -216,6 +224,13 @@ doğrulama → commit + push → bu dosyadaki durum güncellenir.
 
 Fusion / Extra Deck / oyun dışı alanı / ele veya desteye dönme (sonraki tasarım işi), yeni kart
 tasarımı, çevrimiçi oyun, kural değişiklikleri.
+
+**Sonraki iş (A7'den sonra, yeni kart eklemeden önce): veriye dayalı etki sistemi + Fusion.** Bugün
+her kart etkisi kural motorunda ve bilgisayar rakipte adıyla yazılmış özel bir durum
+(`summonBurn500` gibi). Yüzlerce kart için etkiler yapı taşlarından kurulmalı: tetikleyici → koşul →
+hedef → eylem (hasar, iyileştirme, yok etme, özel çağırma, güç değişimi, engelleme, kart çekme…);
+bilgisayar rakip de kartın adına değil yapı taşlarına göre karar vermeli. Fusion / Extra Deck de
+motor değişikliği gerektirdiği için ikisi birlikte tasarlanır.
 
 ## 9. Durum
 
