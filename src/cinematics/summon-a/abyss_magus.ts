@@ -26,6 +26,7 @@ import { PAL, PLAYER_COLOR, RAMPS, type Ramp } from '../../art/palette';
 import { DEPTH, LOOK_V3, type XY } from '../../view/layout';
 import { lightFlash } from '../../view/light';
 import { registerCardHook } from '../api';
+import { atMark, fade as fadeV3, panAt, play as playV3 } from '../_v3/sound';
 import { holoOnset } from '../_v3/summon';
 import { TEX } from '../../vfx/core';
 import { shadowWisps } from '../../vfx/particles';
@@ -278,8 +279,11 @@ async function magusEntranceV3(S: Stage): Promise<void> {
   const tend = S.own(shadowTendrils(S, S.big ? 5 : 4, A * 0.95, B * 0.95, S.big ? 26 : 22));
   const riftLight = S.glow({ color: PAL.void3, radius: fs(A + 12), intensity: 0, anim: 'breathe', fadeIn: 0 });
   riftLight.setIntensity(0.9, 160);
-  playSfx('darkPulse', { volume: 0.8 });
-  playSfx('summonCharge', { volume: 0.55, pitch: 0.8 });
+  // its presence: the rift tears and the low drone rises with the body (_v3/sound.ts). A tribute's
+  // generic riser still sounding from the swallow gives way to it (sound QA #9: summonCharge held
+  // 96 % of the entrance window over the presence)
+  fadeV3(['summonCharge'], 160);
+  playV3('magusPresence', { volume: 0.9, pan: panAt(home.x) });
   // motes sucked into the tear while the body climbs out of it
   const suck = new Sparks(sc, DEPTH.FX - 1);
   let sucking = true;
@@ -305,8 +309,10 @@ async function magusEntranceV3(S: Stage): Promise<void> {
     finaled = true;
     const c = S.coreRest;
     void lightFlash(sc, c.x, c.y, PAL.void4, fs(S.big ? 52 : 40), 520, { floorY: home.y, ring: true, intensity: 0.9 });
-    S.finale({ ring: S.big ? 88 : 56, ramp: VOID, freezeMs: S.big ? 50 : 0, sfx: 'summonBurst' });
-    playSfx('darkPulse', { volume: 0.8, pitch: 0.7 });
+    // (the generic finale accents stay under the magus' own landing / call: sound QA #9)
+    S.finale({ ring: S.big ? 88 : 56, ramp: VOID, freezeMs: S.big ? 50 : 0, sfx: null });
+    playV3('summonBurst', { volume: S.big ? 0.45 : 0.3 });
+    playSfx('darkPulse', { volume: 0.5, pitch: 0.7 });
     bg(circle.dismiss(360));
   };
   const t0 = sc.time.now;
@@ -324,8 +330,6 @@ async function magusEntranceV3(S: Stage): Promise<void> {
       bg(S.wait(80).then(() => riftLight.fadeOut(260)));
       // the rift closes under the float a beat after the reveal (the pose's own lip closes with it)
       bg(S.wait(60).then(() => rift.close(180)));
-      playSfx('darkPulse', { volume: 0.7, pitch: 1.2 });
-      playSfx('materialize', { volume: 0.55 });
       if (!S.cutIn) finale();
     },
   });
@@ -335,6 +339,8 @@ async function magusEntranceV3(S: Stage): Promise<void> {
     tend.destroy();
     return;
   }
+  // it arrives at its float on the pose's own 'land' frame
+  atMark(S.unit, 'summon', 'land', () => playV3('magusLand', { volume: 0.85, pan: panAt(home.x) }));
   // the tendrils curl round the body as it rises, loosen as it clears the rift
   const landMs = pose.ms.land;
   const stopWrap = onFrame(sc, () => {
@@ -517,7 +523,7 @@ if (LOOK_V3)
           bg(rift.close(90));
           floorRing(spot, unit.sprite.depth - 0.7);
           void lightFlash(sc, home.x, home.y - 14, PAL.void4, fs(30), 320, { floorY: home.y, ring: true, intensity: 0.8 });
-          ctx.sfx('darkPulse', { volume: 0.7, pitch: 0.75 });
+          playV3('magusLand', { volume: 0.75, pan: panAt(home.x) });
           unit.badge.setVisible(true);
           void unit.badge.pop();
           await capped(sc, play, Math.max(0, total - (rise ? unit.rangeMs(rise, 0, 3) : 0)) + 60);

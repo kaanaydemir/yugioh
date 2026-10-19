@@ -17,6 +17,8 @@ import { DEPTH, LOOK_V3, type XY } from '../../view/layout';
 import { beam, type Px } from '../../vfx/combat';
 import { shake } from '../../vfx/core';
 import { strikeStartFrame } from '../_v3/clash';
+import { panAt, play as playV3, start as startV3, takeCharge } from '../_v3/sound';
+import type { SfxHandle } from '../../audio/sfx';
 import { lightBeam, lightPool } from '../../view/light';
 import { registerCardHook, registerStrike } from '../api';
 import { dimPulse } from '../battle/_kit';
@@ -150,7 +152,7 @@ interface Crystal {
 }
 
 /** Crystal shards (faceted rhombi), a prism ring, light rays and a screen-wide glare. */
-export function crystalBurst(scene: Phaser.Scene, at: XY, o: { dir?: XY; floor: number; power?: number; glare?: boolean; count?: number }): Promise<void> {
+export function crystalBurst(scene: Phaser.Scene, at: XY, o: { dir?: XY; floor: number; power?: number; glare?: boolean; count?: number; sound?: boolean }): Promise<void> {
   const power = o.power ?? 3;
   const px = layer(scene, DEPTH.FX + 3);
   const rays = layer(scene, DEPTH.FX + 2, ADD);
@@ -174,8 +176,10 @@ export function crystalBurst(scene: Phaser.Scene, at: XY, o: { dir?: XY; floor: 
     void dimPulse(scene, -0.35 - 0.12 * power, { in: 40, hold: 50, out: 420 });
     void glowPulse(scene, at.x, at.y, PAL.white, { from: 0.8, to: 3.2, alpha: 0.9, ms: 320, depth: DEPTH.FX + 1 });
   }
-  playSfx('shatter', { volume: 0.55, pitch: 1.9 });
-  playSfx('holyChime', { volume: 0.35, pitch: 1.5 });
+  if (o.sound !== false) {
+    playSfx('shatter', { volume: 0.55, pitch: 1.9 });
+    playSfx('holyChime', { volume: 0.35, pitch: 1.5 });
+  }
   const rayAngles = Array.from({ length: 9 }, (_, i) => (i / 9) * TAU + RR(-0.15, 0.15));
   return new Promise((resolve) => {
     onFrame(
@@ -577,8 +581,7 @@ function crystalSplash(scene: Phaser.Scene, at: XY, out: XY, o: { floor: number;
     sparks.add({ x: at.x + o0.x * 2, y: at.y + o0.y * 2, vx: Math.cos(a) * RR(40, 90), vy: Math.sin(a) * RR(30, 70) - 15, drag: 3, life: RR(160, 300), colors: [PAL.white, PAL.cyan4, pick(RAINBOW)], shape: i % 3 === 0 ? 'plus' : 'px', size: 1, flicker: true });
   }
   sparks.release();
-  playSfx('shatter', { volume: 0.5, pitch: 1.9 });
-  playSfx('holyChime', { volume: 0.32, pitch: 1.5 });
+  // (no sound of its own: the strike plays the breath's crystal impact on the contact frame)
   onFrame(
     scene,
     (dt, el) => {
@@ -659,7 +662,18 @@ async function prismBreathV3(s: StrikeArgs): Promise<void> {
   const home = u.home;
   const floorTo = s.target ? s.target.home : s.toGround;
 
-  playSfx('beamCharge', { volume: 0.8 });
+  // sound (v3, _v3/sound.ts): the rising shimmer gathers with the light; the release fades it into
+  // the beam's sustained tone, which fades as the beam is cut
+  const pan = panAt(home.x);
+  // (the declaration's charge pose started it already: the strike takes that voice over — sound
+  // QA S3: it started 10 frames after the charge pose was on screen)
+  const chargeSnd = takeCharge(u, 'wyrmBreathCharge', { volume: 0.85, pan });
+  let fireSnd: SfxHandle | null = null;
+  const endSound = (ms: number) => {
+    chargeSnd.stop(ms);
+    fireSnd?.stop(ms);
+    fireSnd = null;
+  };
   const play = u.playRange('attack', f0);
 
   // ---- one layer, one clock: glyph + motes + orb (charge), beam (release → recover)
@@ -751,6 +765,7 @@ async function prismBreathV3(s: StrikeArgs): Promise<void> {
       if (!beamSt.sec) return false;
     } else if (!onAttack || f >= endF) {
       cut = true;
+      endSound(110);
     } else if (f === relF) {
       beamSt.sec = BEAM_9;
       beamSt.ext = Math.min(1, (Math.floor((sinceRel / Math.max(17, u.frameMs('attack', relF))) * 4) + 1) / 4);
@@ -792,6 +807,7 @@ async function prismBreathV3(s: StrikeArgs): Promise<void> {
     return true;
   }, () => {
     stopped = true;
+    endSound(80);
     floor.g.destroy();
     fxl.g.destroy();
     fadeJaw();
@@ -810,14 +826,15 @@ async function prismBreathV3(s: StrikeArgs): Promise<void> {
   });
   const finish = () => {
     if (!stopped) cut = true;
+    endSound(110);
   };
 
   try {
     // ---- release: the jaws are flung open, the beam leaves the mouth
     await u.playToFrame('attack', relF);
     if (!u.sprite.active || u.frameInfo().anim !== 'attack') return finish();
-    playSfx('beamFire', { volume: 0.9 });
-    playSfx('roarBig', { volume: 0.35, pitch: 1.3 });
+    chargeSnd.stop(30);
+    fireSnd = startV3('wyrmBreathFire', { volume: 0.9, pan });
     void shake(sc, 90, 1);
     beamLight = lightBeam(sc, mouth(), aim, PAL.cyan4, 0, { width: 13, intensity: 1.2, floor: { from: home, to: floorTo }, floorWidth: 12, shimmer: 0.3 });
     fadeJaw();
@@ -826,6 +843,11 @@ async function prismBreathV3(s: StrikeArgs): Promise<void> {
     const hit = struck(snapXY(mouth()));
     beamSt.to = hit;
     s.impact(hit);
+    playV3('wyrmBreathImpact', { volume: s.blocked ? 0.9 : 1, pan: panAt(hit.x) });
+    // the beam is spent on the hit (full for 2 frames, then thinner every 2 down to the thread):
+    // its sustained tone fades with it, so the crystal impact owns the contact (sound QA #11)
+    (fireSnd as SfxHandle | null)?.stop(140);
+    fireSnd = null;
     const floorY = floorTo.y;
     // the shards leave the face back along the beam's last stretch (toward the open side)
     const out = beamSt.path && beamSt.path.pts.length > 1 ? sub(beamSt.path.pts[beamSt.path.pts.length - 2], hit) : sub(from0, hit);
@@ -970,7 +992,8 @@ function crystalBreakV3(ctx: Ctx<'destroy'>): void {
     if (!seen) return true;
     // the body broke (the kit hides the sprite on the burst frame)
     seed(u.uid * 53 + 9);
-    void crystalBurst(sc, { x: Math.round(at.x), y: Math.round(at.y) }, { dir: push ?? { x: u.player === 0 ? -1 : 1, y: -0.4 }, floor: floorY, power: 2, glare: false, count: 16 });
+    // (silent: the death kit plays the wyrm's shatter on the burst frame, _v3/sound.ts)
+    void crystalBurst(sc, { x: Math.round(at.x), y: Math.round(at.y) }, { dir: push ?? { x: u.player === 0 ? -1 : 1, y: -0.4 }, floor: floorY, power: 2, glare: false, count: 16, sound: false });
     return false;
   });
 }

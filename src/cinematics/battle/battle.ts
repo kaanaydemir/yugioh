@@ -54,6 +54,7 @@ import { DEATH_AFTER_CONTACT_MS } from '../_v3/budget';
 import { onFrame } from '../../vfx/setpieces';
 import { weightOf } from '../../duel/motion';
 import { STRIKE_LIGHT, type Ctx, type EvOf, all, arenaDim, duelist, guardReact, impactLight, lerpXY, live, norm, other, sub, takeAttack } from './_kit';
+import { panAt, play as playSnd, quietCombat, soundsOf } from '../_v3/sound';
 
 /** v3: the impact number's pop (slam + settle, _v3/number.ts) before the camera may ease out. */
 const NUMBER_POP_MS = 200;
@@ -431,7 +432,14 @@ async function battleV3(ctx: Ctx<'battle'>): Promise<void> {
     if (direct) {
       // a local impact at the duelist: sparks, shake, hit-stop — no full-screen wash
       const hit = fx.directImpact(ctx, p, to);
-      pending.push(combatImpact(sc, hit.world.x, hit.world.y, { power: 2, ramp: aRamp, dir: blow, stopMs: 110, shakePx: power >= 3 ? 4 : 3 }));
+      const boom = () => combatImpact(sc, hit.world.x, hit.world.y, { power: 2, ramp: aRamp, dir: blow, stopMs: 110, shakePx: power >= 3 ? 4 : 3 });
+      // an attacker with its own impact sound scores this frame itself (_v3/sound.ts): the duelist's
+      // body blow stays under it, 6 dB quieter than before, so the two transients do not stack
+      // (sound QA #1: 0.55 still pushed the direct breath's true peak to −0.18 dBTP)
+      if (soundsOf(au?.cardId)) {
+        pending.push(quietCombat(boom));
+        playSnd('impactHeavy', { volume: 0.28, pan: panAt(hit.world.x) });
+      } else pending.push(boom());
       contactLight(sc, hit.world, toGround.y, strikeLight, power);
       void duelist(ctx, defender)?.jolt();
       if (dmgEv && dmgEv.player === defender) playDamageAt({ x: hit.world.x, y: hit.world.y - 22 });

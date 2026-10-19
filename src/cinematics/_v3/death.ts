@@ -46,6 +46,7 @@ import { behindBodies, cardLeaves } from './card';
 import { contactFlash } from './flash';
 import { deathStartFrom, takePlannedEntry } from './posematch';
 import { planGuardBreak, runGuardBreak, showsGuard } from './guardbreak';
+import { atFrame, hush, panAt, play, soundsOf } from './sound';
 
 type DestroyCtx = CinematicContext<Extract<GameEvent, { type: 'destroy' }>>;
 type ToGraveyardEv = Extract<GameEvent, { type: 'toGraveyard' }>;
@@ -341,17 +342,23 @@ function breakBody(d: V3DeathArgs, accent: Accent | null, pushK: number): Promis
   const sc = d.ctx.scene;
   const P = deathPreset(u.cardId);
   const push = d.push ? { x: d.push.x * pushK, y: d.push.y * pushK } : undefined;
-  return shatter(sc, u.sprite, {
-    monsterId: u.cardId,
-    attribute: u.attribute,
-    material: P.material,
-    floorY: d.home.y,
-    push,
-    onBurst: () => {
-      d.burst();
-      accent?.burst();
-    },
-  }).finally(() => accent?.end());
+  // a character with its own break sound (sound.ts) scores the burst frame itself: the shatter's
+  // generic burst sound (played synchronously on that frame) is skipped
+  const C = soundsOf(u.cardId);
+  const brk = () =>
+    shatter(sc, u.sprite, {
+      monsterId: u.cardId,
+      attribute: u.attribute,
+      material: P.material,
+      floorY: d.home.y,
+      push,
+      onBurst: () => {
+        d.burst();
+        accent?.burst();
+        if (C) play(C.burst, { pan: panAt(d.home.x) });
+      },
+    });
+  return (C ? hush(['shatter'], brk) : brk()).finally(() => accent?.end());
 }
 
 /** The accent beat of a monster without a death pose: its reaction holds while the accent plays. */
@@ -404,6 +411,15 @@ async function posedDeath(d: V3DeathArgs): Promise<void> {
     return u.asClaimant(() => u.playToFrame('death', f));
   };
   const dissolveF = u.markFrame('death', 'dissolve', Math.max(0, n - 3));
+  // the character's death beats on their frames (the blow's own sound is the contact's): the first
+  // beat of the death itself, the dissolve, what follows it (the magus' staff hitting the floor)
+  const C = soundsOf(u.cardId);
+  if (C) {
+    const pan = panAt(d.home.x);
+    if (C.deathStart) atFrame(u, 'death', Math.min(1, n - 1), () => play(C.deathStart!, { pan }), { late: false });
+    atFrame(u, 'death', dissolveF, () => play(C.dissolve, { pan }), { late: false });
+    for (const [off, name, volume] of C.afterDissolve ?? []) atFrame(u, 'death', Math.min(n - 1, dissolveF + off), () => play(name, { volume, pan }), { late: false });
+  }
   const box: { accent: Accent | null } = { accent: null };
   const startAccent = () => {
     if (!box.accent && u.sprite.active) box.accent = runAccent(sc, u, deathPreset(u.cardId).accent, d.home);

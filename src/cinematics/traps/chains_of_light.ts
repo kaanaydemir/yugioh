@@ -59,6 +59,8 @@ import { banner, type BannerOpts } from '../../vfx/banners';
 import { fx, registerCardHook, type CinematicContext } from '../api';
 import { TAU, type EvOf, all, holdFrame, lerpXY, live, other, rnd, rr, seed, takeAttack } from '../battle/_kit';
 import { resultPlate, trapExit, trapOpening } from './_opening';
+import { panAt, play as playV3, soundsOf, takeCharge } from '../_v3/sound';
+import type { SfxHandle } from '../../audio/sfx';
 
 registerCardHook(
   'chains_of_light',
@@ -519,6 +521,7 @@ async function chainsV3(ctx: ActCtx): Promise<void> {
   let lungeDone: Promise<void> = Promise.resolve();
   let launched = false;
   let caught = false;
+  let chargeSnd: SfxHandle | null = null;
   const launch = () => {
     if (!attacker || caught || launched) return;
     launched = true;
@@ -543,7 +546,10 @@ async function chainsV3(ctx: ActCtx): Promise<void> {
     const dash = { x: Math.round(r.x + (dx / d) * dist), y: Math.round(r.y + (dy / d) * dist) };
     reach = dash;
     const ms = Math.max(240, Math.min(420, u.rangeMs('attack', f0, fStop)));
-    ctx.sfx('whoosh', { volume: 0.5, pitch: ranged ? 0.8 : 1.1 });
+    // a monster with its own voice starts its charge (the bind cuts it short: _v3/sound.ts)
+    const voice = soundsOf(u.cardId);
+    if (voice) chargeSnd = takeCharge(u, voice.charge, { volume: 0.8, pan: panAt(u.home.x) });
+    else ctx.sfx('whoosh', { volume: 0.5, pitch: ranged ? 0.8 : 1.1 });
     if (ranged) glow = chargeGlow(sc, u, CHARGE[u.cardId] ?? [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2]);
     const p0 = { x: s.x, y: s.y };
     lungeDone = run(sc, ms, (t) => {
@@ -575,7 +581,11 @@ async function chainsV3(ctx: ActCtx): Promise<void> {
       reach,
       onLock: () => {
         caught = true;
-        ctx.sfx('chains', { volume: 1 });
+        // the bind: the shackles clank shut on this frame and the charge is cut off
+        chargeSnd?.stop(50);
+        // (+2.3 dB over the first mix: the bind is the trap's climax, as big as the other big
+        // moments of the slice — sound QA #11; the v3 output ceiling keeps its transient in check)
+        playV3('chainBind', { volume: 1.3, pan: panAt(s.x) });
         sc.tweens.killTweensOf(s);
         // caught mid-lunge: the pose stops on the frame it reached — and strains on from there, on
         // the quiet pair of key frames there (strainPair: never on a smear)
@@ -594,7 +604,7 @@ async function chainsV3(ctx: ActCtx): Promise<void> {
         if (st && st.el - lastBite >= BITE_GAP_V3 && st.tug('bite', BITE_V3.throw, BITE_V3.settle) !== null) lastBite = st.el;
         const x0 = s.x;
         s.x = x0 - pullDir;
-        ctx.sfx('chains', { volume: 0.25, pitch: 1.3 + i * 0.15 });
+        playV3('chainCoil', { volume: 0.7, pitch: 1 + i * 0.08, pan: panAt(x0) });
         void wait(sc, 40).then(() => {
           if (s.active && caught) s.x = x0;
         });
@@ -608,7 +618,7 @@ async function chainsV3(ctx: ActCtx): Promise<void> {
         if (k < CHAINS_V3.steps - 1) strain?.tug('yank', YANK_V3.throw, YANK_V3.settle);
         else strain?.lean();
         scrape(sc, feet, -pullDir);
-        ctx.sfx('cardSlide', { volume: 0.35, pitch: 0.6 + k * 0.1 });
+        playV3('chainStrain', { volume: 0.9, pitch: 0.92 + k * 0.06, pan: panAt(feet.x) });
       },
     });
     await lungeDone;
@@ -617,8 +627,8 @@ async function chainsV3(ctx: ActCtx): Promise<void> {
     // and it comes down through its own charge frames into idle
     if (s.active) {
       s.setPosition(home.x, home.y);
-      ctx.sfx('chains', { volume: 0.7, pitch: 0.6 });
-      ctx.sfx('shieldBlock', { volume: 0.45, pitch: 0.7 });
+      // home: the chains snap taut (a heavier clank, lower)
+      playV3('chainBind', { volume: 0.9, pitch: 0.82, pan: panAt(home.x) });
       void shake(sc, 120, 1);
       const c = u.core();
       void lightFlash(sc, c.x, u.home.y, PAL.gold4, 30, 360, { floorY: u.home.y, ring: true });
@@ -636,10 +646,16 @@ async function chainsV3(ctx: ActCtx): Promise<void> {
         await wait(sc, SNAP_SETTLE_V3);
         st?.stop();
         if (s.active) s.setPosition(home.x, home.y);
-        await unwind(sc, u, lo, () => chains.release());
+        await unwind(sc, u, lo, () => {
+          // the chains let go on the coil's first unwind frame
+          playV3('chainRelease', { volume: 0.9, pan: panAt(home.x) });
+          chains.release();
+        });
       })();
     } else {
       (strain as Strain | null)?.stop();
+      (chargeSnd as SfxHandle | null)?.stop(60);
+      playV3('chainRelease', { volume: 0.8 });
       chains.release();
       u.posed = false;
     }

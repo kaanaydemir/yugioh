@@ -26,6 +26,7 @@ import { canHandOver, declarePoseFrame, type HandOver } from '../_v3/clash';
 import { resultPlate } from '../traps/_opening';
 import { tween, wait } from '../../vfx/core';
 import { attackArrow, blockClang, lockOn } from '../../vfx/combat';
+import { atFrame, dropCharge, holdCharge, play as playSnd, quietCombat } from '../_v3/sound';
 import { E, Sparks, addGlow, floorRing, onFrame, run } from '../../vfx/setpieces';
 import { banner, type BannerOpts } from '../../vfx/banners';
 import { lightBeam, lightFlash } from '../../view/light';
@@ -393,6 +394,10 @@ async function attackDeclareV3(ctx: Ctx<'attackDeclare'>): Promise<void> {
     // a hovering body starts the charge where its idle bob left it (no first-frame jump)
     alignStart(attacker, 'attack', 0);
     posed = f > 0 ? attacker.playRange('attack', 0, f, ms > DECLARE_POSE_MS ? { timeScale: ms / DECLARE_POSE_MS } : {}) : Promise.resolve(void attacker.pose('attack', 0));
+    // its own charge sound starts on the frame its charge pose is on screen (_v3/sound.ts; the
+    // strike takes the voice over — sound QA S3: it waited for the strike, 10 frames late)
+    const a0 = attacker;
+    atFrame(a0, 'attack', f, () => holdCharge(a0), { maxMs: 1000 });
     void floorRing(sc, attacker.home.x, attacker.home.y, { r0: 4, r1: 30 * TK, ms: 420, ramp: [PAL.white, ramp[4], ramp[3], ramp[2]], depth: DEPTH.SHADOW - 1 });
     // the power-up lights the floor in the player's colour (the v3 stepped light); the arena holds its breath
     void lightFlash(sc, attacker.home.x, attacker.home.y - 8, ramp[3], 36, 420, { floorY: attacker.home.y, ring: true, intensity: 0.7 });
@@ -412,8 +417,10 @@ async function attackDeclareV3(ctx: Ctx<'attackDeclare'>): Promise<void> {
     });
   }
 
-  // ---- the arrow arcs out at once, the reticle snaps onto the target
-  const arrow = attackArrow(sc, from, to, ev.player);
+  // ---- the arrow arcs out at once, the reticle snaps onto the target (its cue a little under the
+  // battle's contact frame, which is the loudest beat of an attack: _v3/sound.ts)
+  const arrow = quietCombat(() => attackArrow(sc, from, to, ev.player));
+  playSnd('attackDeclare', { volume: 0.7 });
   const aimFrom = attacker ? attacker.home : home;
   const aimTo = target ? target.home : tTile ? tTile.home : { x: to.x, y: to.y + 18 };
   const aimLight = lightBeam(sc, aimFrom, aimTo, ramp[3], 0, { air: false, floor: { from: aimFrom, to: aimTo }, floorWidth: 9, intensity: 0.55, shimmer: 0.4 });
@@ -472,6 +479,7 @@ async function attackDeclareV3(ctx: Ctx<'attackDeclare'>): Promise<void> {
       released = true;
       settleCharge();
       if (attacker) attacker.posed = false;
+      // (the charge sound goes on: the strike takes it over, _v3/sound.ts takeCharge)
     },
     shatterMarks() {
       if (marksGone) return;
@@ -498,6 +506,7 @@ async function attackDeclareV3(ctx: Ctx<'attackDeclare'>): Promise<void> {
       released = true;
       settleCharge();
       unpose();
+      if (attacker) dropCharge(attacker);
     },
     destroy() {
       dropMarks();
@@ -505,6 +514,7 @@ async function attackDeclareV3(ctx: Ctx<'attackDeclare'>): Promise<void> {
         released = true;
         settleCharge();
         unpose();
+        if (attacker) dropCharge(attacker);
       }
     },
   };

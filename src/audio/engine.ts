@@ -5,6 +5,8 @@
 // Everything here works on any BaseAudioContext, so the exact same graph renders live
 // (AudioContext) and offline (OfflineAudioContext) — that is how sounds are verified headless.
 
+import { V3_CEILING } from './v3/output';
+
 export type NoiseKind = 'white' | 'pink' | 'brown';
 
 /** The mixing graph every voice and music part plugs into. */
@@ -201,6 +203,33 @@ function safetyCurve(): Float32Array<ArrayBuffer> {
   return c;
 }
 
+/**
+ * An output ceiling for the safety clipper (additive, v3: ./v3/output.ts): transparent below
+ * `knee`, then a tanh knee that never reaches `top`, at 4× oversampling, and an optional lowpass
+ * after it. Null (the old look): the chain is built exactly as before.
+ */
+export interface OutputCeiling {
+  /** Linear level where the soft knee starts (≤ it the clipper is transparent). */
+  knee: number;
+  /** The asymptote the knee approaches (the highest sample the stage can output). */
+  top: number;
+  /** Lowpass (Hz) after the clipper: takes the clipped edges' energy next to Nyquist (inter-sample peaks). 0: none. */
+  lowpass: number;
+}
+
+function ceilingCurve(o: OutputCeiling): Float32Array<ArrayBuffer> {
+  const n = 8192;
+  const c = new Float32Array(n);
+  const room = Math.max(0.01, o.top - o.knee);
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 4 - 2; // input range ±2
+    const a = Math.abs(x);
+    const y = a <= o.knee ? a : o.knee + room * Math.tanh((a - o.knee) / room);
+    c[i] = Math.sign(x) * y;
+  }
+  return c;
+}
+
 // ------------------------------------------------------------------ master chain
 
 /**
@@ -233,8 +262,8 @@ export function buildChain(ctx: BaseAudioContext, dest: AudioNode = ctx.destinat
   limiter.release.value = 0.09;
 
   const clip = ctx.createWaveShaper();
-  clip.curve = safetyCurve();
-  clip.oversample = '2x';
+  clip.curve = V3_CEILING ? ceilingCurve(V3_CEILING) : safetyCurve();
+  clip.oversample = V3_CEILING ? '4x' : '2x';
   // input range of the curve is ±2: scale in by 0.5 so 1.0 maps onto the curve's x = 1.0
   const pre = ctx.createGain();
   pre.gain.value = 0.5;
@@ -254,6 +283,15 @@ export function buildChain(ctx: BaseAudioContext, dest: AudioNode = ctx.destinat
   sfx.connect(glue);
   send.connect(hp).connect(conv).connect(lp).connect(ret).connect(glue);
   music.connect(duck).connect(glue);
+  if (V3_CEILING && V3_CEILING.lowpass > 0) {
+    // the v3 output stage: limiter → clipper (its ceiling) → lowpass → out
+    const post = ctx.createBiquadFilter();
+    post.type = 'lowpass';
+    post.frequency.value = V3_CEILING.lowpass;
+    post.Q.value = 0.5;
+    glue.connect(master).connect(limiter).connect(pre).connect(clip).connect(post).connect(dest);
+    return { ctx, sfx, send, music, duck, master, tap: post };
+  }
   glue.connect(master).connect(limiter).connect(pre).connect(clip).connect(dest);
   return { ctx, sfx, send, music, duck, master, tap: clip };
 }

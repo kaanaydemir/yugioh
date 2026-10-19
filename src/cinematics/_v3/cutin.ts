@@ -38,6 +38,7 @@ import { Sparks, onFrame, sleep } from '../../vfx/combat';
 import { Raster } from '../../vfx/setpieces';
 import { sfx, type SfxName } from '../../audio/sfx';
 import { cutInRhythm } from './presets';
+import { soundsOf, start as startSnd } from './sound';
 
 export interface CutInV3Opts {
   monsterId: MonsterId;
@@ -334,8 +335,14 @@ async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Pro
     }
   };
   // ================================================================ timeline
+  // a monster with its own voice (sound.ts) carries the cut-in: the band's generic sting opens it
+  // and hands the moment to the voice on the eye flare; the slam / exit accents stay under it
+  // (sound QA #1 / #9: cutIn held 67 % of the window over the magus' call, cardSlam + impactHeavy
+  // peaked over −1 dBFS on the wyrm's roar, the exit's summonBurst was the summon's loudest beat)
+  const voice = soundsOf(o.monsterId);
   try {
-    snd('cutIn', 1);
+    const sting = voice ? startSnd('cutIn', { volume: 0.8 }) : null;
+    if (!voice) snd('cutIn', 1);
     const t0 = scene.time.now;
     const at = (ms: number) => sleep(scene, Math.max(0, ms - (scene.time.now - t0)));
     // band wipe (stepped: 6 steps)
@@ -371,7 +378,9 @@ async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Pro
     })();
     // eyes flare
     await at(R.flare);
-    snd('roarBig', 0.9);
+    // the monster's own voice on the eye flare (sound.ts: the wyrm's roar, the magus' dark call)
+    sting?.stop(100);
+    snd(voice?.roar ?? 'roarBig', 0.9);
     if (eye) {
       const ex = Math.round(portrait.x + eye.x);
       const ey = Math.round(portrait.y + eye.y);
@@ -425,8 +434,8 @@ async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Pro
       plate.lineStyle(1, ramp[3], 1).strokePoints(pts, true, true);
       plate.fillStyle(PAL.gold3, 1).fillRect(Math.round(x0 - 4), y0 + h + 2, w, 1);
     };
-    snd('cardSlam', 1);
-    snd('impactHeavy', 0.7, 0.9);
+    snd('cardSlam', voice ? 0.45 : 1);
+    snd('impactHeavy', voice ? 0.2 : 0.7, 0.9);
     drawPlate(PAL.white);
     flashLv = 0.5;
     void sleep(scene, 50).then(() => (flashLv = 0.2)).then(() => sleep(scene, 50)).then(() => (flashLv = 0));
@@ -444,7 +453,7 @@ async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Pro
     // hold, then close
     await at(R.exit);
     onExit();
-    snd('summonBurst', 0.6, 1.25);
+    snd('summonBurst', voice ? 0.3 : 0.6, 1.25);
     title?.setVisible(false);
     sub?.setVisible(false);
     plate.clear();

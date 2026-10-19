@@ -18,6 +18,8 @@ import { DEPTH, LOOK_V3, type XY, zoneXY } from '../../view/layout';
 import { Raster } from '../../vfx/setpieces';
 import { cardLeaves } from '../_v3/card';
 import { strikeStartFrame } from '../_v3/clash';
+import { atFrame, atMark, panAt, play as playV3, start as startV3, takeCharge } from '../_v3/sound';
+import type { SfxHandle } from '../../audio/sfx';
 import type { TileCard } from '../../view/TileCard';
 import { lockOn, projectile } from '../../vfx/combat';
 import { tendril } from '../../vfx/setpieces';
@@ -978,8 +980,24 @@ async function effectV3(ctx: EffectCtx): Promise<void> {
   if (posed) {
     relMs = u.markMs('special', 'release', 6);
     aimHeld = u.playRange('special', 0, AIM_F);
-    playSfx('darkPulse', { volume: 0.7, pitch: 1.1 });
   }
+  // sound (v3): the staff gathers from the special's charge frame (its 'charge' mark — sound QA
+  // S4: it started on frame 0, 5 frames early) to its release frame
+  const effPan = u ? panAt(u.home.x) : 0;
+  let effCharge: SfxHandle | null = null;
+  let tendrilSounded = false;
+  if (posed)
+    atMark(u, 'special', 'charge', () => {
+      if (!tendrilSounded) effCharge = startV3('magusCharge', { volume: 0.8, pan: effPan });
+    }, { fallback: 1 });
+  const tendrilSound = () => {
+    if (tendrilSounded) return;
+    tendrilSounded = true;
+    (effCharge as SfxHandle | null)?.stop(30);
+    playV3('magusOrbRelease', { volume: 0.55, pan: effPan });
+    playV3('magusTendril', { volume: 0.9, pan: effPan });
+  };
+  if (posed) atFrame(u, 'special', u.markFrame('special', 'release', 6), tendrilSound, { late: false });
   const chargeMs = posed ? u.markMs('special', 'charge', 1) : 0;
   await sleep(sc, chargeMs);
   const mark = cardMark(sc, cardAt);
@@ -1009,14 +1027,14 @@ async function effectV3(ctx: EffectCtx): Promise<void> {
   // ---- 2. release: the tendril leaves the staff tip; the aim holds until it has the card
   let ten: Tendril | null = null;
   if (posed && u.sprite.active) {
-    playSfx('whoosh', { volume: 0.6, pitch: 0.7 });
-    playSfx('darkPulse', { volume: 0.8, pitch: 0.9 });
+    tendrilSound(); // (normally already played by the release frame itself)
     const o = staffPoint(u);
     void lightFlash(sc, o.x, o.y, PAL.void4, 20, 220, { floorY: u.home.y, air: 0.9, intensity: 0.9 });
     ten = voidTendril(sc, u, cardAt);
     const dist = Math.hypot(cardAt.x - o.x, cardAt.y - o.y);
     await ten.grow(clamp(dist * 1.6, 170, 250));
   }
+  if (!tendrilSounded) (effCharge as SfxHandle | null)?.stop(80);
   await flip;
   mark.destroy();
   // the aim is held while the tendril has the card: f7 ↔ f8 (both levelled), a slow strain
@@ -1285,19 +1303,31 @@ async function strikeV3(s: StrikeArgs): Promise<void> {
   // the staff keeps pointing at the target until the orb arrives: play to the follow-through frame and hold it
   void u.playRange('attack', f0, FOLLOW);
   void s.ctx.focus({ x: lerp(u.core().x, to.x, 0.35), y: lerp(u.core().y, to.y, 0.35) - 8 }, { ms: 300, pan: 0.32 });
-  playSfx('darkPulse', { volume: 0.5, pitch: 1.2 });
+  // sound (v3, _v3/sound.ts): the staff's rising dark pulse gathers until the release frame; the
+  // swing's smear frame whooshes; the release frame pops the orb off the staff
+  const pan = panAt(u.home.x);
+  // (the declaration's charge pose started it already: the strike takes that voice over — S3)
+  const chargeSnd = takeCharge(u, 'magusCharge', { volume: 0.85, pan });
+  let relSounded = false;
+  const relSound = () => {
+    if (relSounded) return;
+    relSounded = true;
+    chargeSnd.stop(30);
+    playV3('magusOrbRelease', { volume: 0.85, pan });
+  };
+  // (only when the smear frame is really shown: at 3× it can pass inside the release's own tick)
+  if (REL - 1 > f0) atFrame(u, 'attack', REL - 1, () => u.frameInfo().frame === REL - 1 && playV3('magusSwing', { volume: 0.75, pan }), { late: false });
+  atFrame(u, 'attack', REL, relSound, { late: false });
   chargeRunesV3(sc, u, toRel + 40);
   const orbLight = followLight(sc, () => (u.sprite.active ? staffPoint(u) : null), { color: PAL.void4, radius: 18, floorY: u.home.y, air: 0.9, intensity: 0.3, anim: 'breathe', fadeIn: 60 });
   orbLight.setIntensity(1.2, Math.max(60, toRel - 60));
-  const swing = Math.max(0, u.rangeMs('attack', f0, Math.max(f0, REL - 1)));
-  void sleep(sc, swing).then(() => playSfx('whoosh', { volume: 0.5, pitch: 0.8 })); // the swing over (its smear frame)
   await sleep(sc, toRel);
+  relSound(); // (normally already played by the release frame itself)
   // ---- release: the orb leaves the staff tip of the thrust frame — that frame's own point (A2 fix
   // r2: read off the frame shown, the release tick still saw the whip-over, so the orb set off
   // from above the helm while the thrust showed it in the cradle)
   const from = rnd2(releasePoint(u, REL));
   void orbLight.fadeOut(120);
-  playSfx('darkPulse', { volume: 0.7, pitch: 0.9 });
   void lightFlash(sc, from.x, from.y, PAL.void4, 20, 200, { floorY: u.home.y, air: 0.9, intensity: 0.9 });
   // the orb lands ON the body's face toward the magus (A2 fix r2: aimed at / 8 px short of the
   // core, it slid over the wyrm's raised claw or the wolf's head for its last ~15 px before
@@ -1343,7 +1373,9 @@ async function strikeV3(s: StrikeArgs): Promise<void> {
   void fl.fadeOut(160);
   // ---- contact: the orb's arrival (the battle kit pops the number on this frame)
   s.impact(to);
-  playSfx('darkPulse', { volume: 0.9, pitch: 0.6 });
+  // (0.7: the orb lands out of a quiet flight with nothing compressing it — at 1 it was 3 dB over
+  // the wyrm's breath contact, the slice's biggest blow: sound QA #11)
+  playV3('magusOrbBurst', { volume: 0.7, pan: panAt(to.x) });
   void lightFlash(sc, to.x, to.y, PAL.void4, s.blocked ? 24 : 30, 340, { floorY: s.target ? s.target.home.y : s.toGround.y, air: 0.7, intensity: 0.85 });
   const victim = s.target && s.target.sprite.active && s.target.sprite.visible ? s.target.sprite : null;
   implodeV3(sc, to, s.blocked, victim ? victim.depth - 0.5 : DEPTH.FX + 3);

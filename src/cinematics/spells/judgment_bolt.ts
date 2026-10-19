@@ -43,7 +43,8 @@ import { PAL, RAMPS } from '../../art/palette';
 import { DEPTH, LOOK_V3, type XY, zoneXY } from '../../view/layout';
 import { TEX, wait } from '../../vfx/core';
 import { shatter } from '../../vfx/shatter';
-import { Raster, Sparks, boltPath, rnd, rr, run, spriteBox, stormStrike } from '../../vfx/setpieces';
+import { Raster, Sparks, boltPath, rnd, rr, run, setSetFxSfx, sleep as fxSleep, spriteBox, stormStrike } from '../../vfx/setpieces';
+import { panAt, play as playV3, start as startV3 } from '../_v3/sound';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { TileCard } from '../../view/TileCard';
 import { Sparks as PxSparks } from '../../vfx/combat';
@@ -597,7 +598,37 @@ async function boltV3(ctx: ActCtx): Promise<void> {
     bg(ctx.focus({ x: ground0.x, y: ground0.y - 30 }, { ms: 320, pan: 0.25 }));
     const st = zoneXY(ref.player, 'spellTrap', ref.index);
     const lane = { from: st, to: { x: ground0.x * 2 - st.x, y: ground0.y * 2 - st.y } };
-    storm = stormStrike(sc, ground0.x, ground0.y, { strikeAt: STRIKE_AT_V3, stopMs: BOLT_STOP_V3, hitY, lane, onImpact: strike });
+    // sound (v3, _v3/sound.ts): the storm scores its own beats on its own clock — the gather bed
+    // from the first cloud frame, a crackle on each intra-cloud flicker (stormStrike flickers at
+    // 25 % / 55 % of the gather), the lock, then the strike (crack + electric tail) on the strike
+    // frame. The set piece's generic beats are off until that frame (they all play before it).
+    const pan = panAt(ground0.x);
+    let fxSfxOff = true;
+    const fxSfxOn = () => {
+      if (!fxSfxOff) return;
+      fxSfxOff = false;
+      setSetFxSfx(true);
+    };
+    setSetFxSfx(false);
+    const gather = startV3('boltGather', { volume: 0.9, pan });
+    void fxSleep(sc, Math.round(STRIKE_AT_V3 * 0.25)).then(() => playV3('boltCrackle', { volume: 0.75, pan }));
+    void fxSleep(sc, Math.round(STRIKE_AT_V3 * 0.55)).then(() => playV3('boltCrackle', { volume: 0.9, pitch: 0.9, pan }));
+    storm = stormStrike(sc, ground0.x, ground0.y, {
+      strikeAt: STRIKE_AT_V3,
+      stopMs: BOLT_STOP_V3,
+      hitY,
+      lane,
+      onLock: () => playV3('lockOn', { volume: 0.6, pitch: 1.3, pan }),
+      onImpact: () => {
+        gather.stop(20);
+        playV3('boltStrike', { volume: 1, pan });
+        fxSfxOn();
+        strike();
+      },
+    }).finally(() => {
+      gather.stop(60);
+      fxSfxOn();
+    });
     stormStarted();
   };
   const op = await spellOpening(ctx, {

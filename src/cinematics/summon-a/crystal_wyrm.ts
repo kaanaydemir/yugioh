@@ -22,6 +22,7 @@ import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { framePose } from '../../art/monsters-v3/crystal_wyrm-anims';
 import { headFrame, rig } from '../../art/monsters-v3/crystal_wyrm-rig';
 import { registerCardHook } from '../api';
+import { atMark, fade as fadeV3, panAt, play as playV3 } from '../_v3/sound';
 import {
   ADD,
   E,
@@ -356,17 +357,18 @@ async function prismLandingV3(S: Stage): Promise<void> {
   const circle = S.openCircle({ appearMs: 200 });
   // (its crystal glints drift behind the body: nothing is drawn over it from the land to the reveal)
   const shaft = S.own(prismShaft(S, { hw: S.big ? 6 : 5, glintDepth: S.depth - 0.5 }));
-  playSfx('summonCharge', { volume: 0.7 });
+  // the shaft's arrival is the crystal's own chime (no generic riser under it; a tribute's still
+  // sounding from the swallow gives way: sound QA #9, summonCharge held 62 % of this window)
+  fadeV3(['summonCharge'], 160);
   bg(
     shaft.descend(70).then(() => {
-      playSfx('holyChime', { volume: 0.7 });
+      playV3('wyrmChime', { volume: 0.75, pan: panAt(S.home.x) });
       circle.pulse(120);
     }),
   );
   const p = S.pose({
     ramp: CRYSTAL,
     onLand: () => {
-      playSfx('impactLight', { volume: 0.6 });
       bg(landingDust(sc, S.home.x, S.home.y, PAL.cyan3, { big: false, count: S.big ? 9 : 7, radius: 14 }));
       circle.pulse(100);
       bg(shaft.width(0.2, 100).then(() => shaft.fade(120)).then(() => shaft.destroy()));
@@ -376,12 +378,16 @@ async function prismLandingV3(S: Stage): Promise<void> {
     shaft.destroy();
     return;
   }
-  bg(p.solid.then(() => playSfx('materialize', { volume: 0.5 })));
+  // its weight on the marble, on the pose's own 'land' frame (_v3/sound.ts)
+  atMark(u, 'summon', 'land', () => playV3('wyrmLand', { volume: S.big ? 0.9 : 0.75, pan: panAt(S.home.x) }));
+  // (no generic 'materialize' on the solid frame: the land 17 ms before it is the beat)
   // ---- the wings burst open: the prism read on the floor, a glint on the horn tip
   await untilFrame(u, 'summon', spreadF);
   prismRevealV3(S);
-  playSfx('summonBurst', { volume: 0.55, pitch: 1.15 });
-  playSfx('holyChime', { volume: 0.55, pitch: 1.3 });
+  // the generic burst under the crystal's own ring / roar (sound QA #9: it was the summon's loudest beat)
+  playSfx('summonBurst', { volume: 0.35, pitch: 1.15 });
+  // the crystal rings as the wings burst open; without a cut-in (whose eyes roar) it roars here
+  playV3(S.cutIn ? 'wyrmChime' : 'wyrmRoar', { volume: S.cutIn ? 0.6 : 0.75, pan: panAt(S.home.x) });
   const finale = () => S.finale({ ring: S.big ? 92 : 60, ramp: RAMPS.cyan, freezeMs: S.big ? 50 : 0, sfx: 'summonBurst' });
   if (!S.cutIn) {
     finale();
@@ -570,7 +576,7 @@ if (LOOK_V3)
           void shockwave(sc, home.x, home.y, { ramp: RAMPS.cyan, radius: fs(44), ms: 380, thickness: 5 });
           void lightFlash(sc, home.x, home.y - 16, PAL.cyan3, fs(30), 360, { floorY: home.y, ring: true, intensity: 0.8 });
           bg(shake(sc, 120, 1));
-          playSfx('holyChime', { volume: 0.5, pitch: 1.35 });
+          playV3('wyrmChime', { volume: 0.6, pan: panAt(home.x) });
           unit.badge.setVisible(true);
           void unit.badge.pop();
           await play;

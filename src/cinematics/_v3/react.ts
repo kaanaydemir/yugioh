@@ -40,6 +40,7 @@ import type { CinematicContext } from '../_core/types';
 import { contactFlash } from './flash';
 import { SKIP_COST, frameDelta, idleDelta, plannedEntry, planDeathEntry, setPlannedEntry, type DeathEntry } from './posematch';
 import { planGuardBreak, runGuardBreak } from './guardbreak';
+import { hitSoundFor, panAt, play, playHit, quietCombat, soundsOf, sourceCard } from './sound';
 
 type AnyCtx = CinematicContext<GameEvent>;
 
@@ -385,6 +386,17 @@ function weightSrc(by: ReactOpts['by']): WeightSource {
 }
 
 /**
+ * Does the blow's source score this contact frame with its own impact sound? Only an ATTACKER with
+ * a character voice does (its breath / orb lands here): a counter-blow on the attacker itself is
+ * the defender's backlash, which plays no impact of its own (_v3/sound.ts).
+ */
+function strikerScores(ctx: AnyCtx, u: MonsterUnit | null, by: ReactOpts['by']): boolean {
+  const ev = (ctx as { ev?: { type?: string; attackerUid?: unknown } }).ev;
+  if (u && ev && ev.type === 'battle' && ev.attackerUid === u.uid) return false;
+  return !!soundsOf(sourceCard(by));
+}
+
+/**
  * The v3 attack-position hit reaction (see the header). Resolves like the old one: after the
  * hit-stop and the first burst (~0.2–0.3 s).
  */
@@ -395,24 +407,46 @@ export function reactHit(ctx: AnyCtx, u: MonsterUnit | null, o: ReactOpts): Prom
   const kind = o.kind ?? blowKindOf(o.by ?? null);
   const live = !!u && u.sprite.active && u.sprite.visible && !u.retired;
   const p = u ? contactPoint(u, dir, o.at) : (o.at ?? { x: 320, y: 180 });
+  // the struck body's own material sound (crystal / metal armour / cloth + shadow) on this contact
+  // frame, instead of the generic impact (sound.ts; a monster without one keeps the generic sound)
+  let hitSnd: ReturnType<typeof hitSoundFor> = null;
+  let heavyHit = false;
   if (u && live) {
     if (u.guarding) return reactGuard(ctx, u, { power: o.power, dir, at: o.at, ramp: o.ramp, by: o.by, kind, survive: !o.lethal, noStop: o.noStop });
     const side = blowSide(u, dir);
     const heavy = isHeavyBlow(o.power, !!o.lethal, by);
+    heavyHit = heavy;
+    hitSnd = hitSoundFor(u, { kind, heavy });
     if (o.pose !== false && side !== 'back') playRecoil(u, hitAnimFor(u, { kind, heavy }), { dir, power: o.power, lethal: !!o.lethal });
     contactFlash(sc, u.sprite, dir, { frames: heavy ? 3 : 2, coverage: Math.min(FLASH_COVER[o.power], o.flash ?? 1), at: p, tint: o.ramp ? o.ramp[4] : undefined });
     if (o.knock !== false) void knock(u, dir, knockPx(u, o.power, side), { hold: !!o.lethal });
   }
-  return combatImpact(sc, p.x, p.y, {
-    power: Math.min(2, o.power) as 1 | 2,
-    ramp: o.ramp,
-    dir,
-    noStop: o.noStop,
-    stopMs: reactStopMs(o.power, by),
-    shakePx: reactShakePx(o.power, by),
-    jitterPx: 0,
-    depth: u && live ? behindBody(u) : undefined,
-  });
+  const boom = () =>
+    combatImpact(sc, p.x, p.y, {
+      power: Math.min(2, o.power) as 1 | 2,
+      ramp: o.ramp,
+      dir,
+      noStop: o.noStop,
+      stopMs: reactStopMs(o.power, by),
+      shakePx: reactShakePx(o.power, by),
+      jitterPx: 0,
+      depth: u && live ? behindBody(u) : undefined,
+    });
+  if (!hitSnd) {
+    // a body without its own material, struck by a monster that scores the contact frame with its
+    // own impact (the breath, the orb): the generic body blow stays under that accent instead of
+    // stacking on it at full level (sound QA #1 / #10 / #11: impactHeavy 0.9 + the orb burst peaked
+    // over −1 dBFS, doubled the 100–250 Hz weight and made the orb's contact 3 dB louder than the
+    // breath's; −9.5 dB: through the master chain a 0.5 body blow was still as loud as the orb)
+    if (strikerScores(ctx, u, o.by)) {
+      const pw = Math.min(2, o.power);
+      play(pw >= 2 ? 'impactHeavy' : 'impactLight', { volume: pw >= 2 ? 0.3 : 0.28, pan: panAt(p.x) });
+      return quietCombat(boom);
+    }
+    return boom();
+  }
+  playHit(sc, hitSnd, { heavy: heavyHit, volume: heavyHit ? 0.95 : 0.85, pan: panAt(p.x) });
+  return quietCombat(boom);
 }
 
 /**
@@ -451,7 +485,19 @@ export async function reactGuard(ctx: AnyCtx | CinematicContext<never>, u: Monst
   const dir = blowDir(u, o.dir);
   const by = weightSrc(o.by);
   const p = contactPoint(u, dir, o.at);
-  void combatImpact(sc, p.x, p.y, { power: Math.min(2, o.power) as 1 | 2, ramp: o.ramp, dir, noStop: true, shakePx: reactShakePx(o.power, by), jitterPx: 0, depth: behindBody(u) });
+  // the body behind the ward takes it as its material: a light blow while the guard holds, a heavy
+  // one when it breaks (sound.ts; a monster without a material keeps the generic impact)
+  const gSnd = hitSoundFor(u, { kind: o.kind ?? blowKindOf(o.by ?? null), heavy: !o.survive });
+  const boom = () => void combatImpact(sc, p.x, p.y, { power: Math.min(2, o.power) as 1 | 2, ramp: o.ramp, dir, noStop: true, shakePx: reactShakePx(o.power, by), jitterPx: 0, depth: behindBody(u) });
+  if (gSnd) {
+    playHit(sc, gSnd, { heavy: !o.survive, volume: o.survive ? 0.9 : 1, pan: panAt(p.x) });
+    quietCombat(boom);
+  } else if (strikerScores(ctx as AnyCtx, u, o.by)) {
+    // (as reactHit: the generic blow stays under the source monster's own contact accent)
+    const pw = Math.min(2, o.power);
+    play(pw >= 2 ? 'impactHeavy' : 'impactLight', { volume: pw >= 2 ? 0.3 : 0.28, pan: panAt(p.x) });
+    quietCombat(boom);
+  } else boom();
   // a lethal blow breaks the guard open into the blow's own recoil and the death pose
   // (./guardbreak.ts): the flash, the glint and the knock-back stay the guard's, the pose is the break's
   const recoil = hitAnimFor(u, { kind: o.kind ?? blowKindOf(o.by ?? null), heavy: true });

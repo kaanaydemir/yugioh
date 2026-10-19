@@ -40,6 +40,7 @@ import { E, Raster, Sparks, clamp01, floorRing, lerp, onFrame, qbez, rnd, rr, ru
 import { sparkleBurst } from '../../vfx/summon';
 import { Sparks as PxSparks } from '../../vfx/combat';
 import { cardLeaves } from '../_v3/card';
+import { play as playV3 } from '../_v3/sound';
 import { fx, type CinematicContext } from '../api';
 
 export type AnyCtx = CinematicContext<GameEvent>;
@@ -933,7 +934,8 @@ async function spellOpeningV3(
     bg(tileColumn(sc, home, 300));
     void lightFlash(sc, home.x, home.y, PAL.teal4, 34, 380, { floorY: home.y, ring: true, intensity: 1 });
     await tile.standUp(180, { reveal: true });
-    ctx.sfx('spellActivate', { volume: 0.8, pitch: 1.1 });
+    // the v3 spell accent (src/audio/v3/slice.ts spellOpen) as the card stands
+    playV3('spellOpen', { volume: 0.9 });
     center = standCenter(tile);
     floorY = home.y;
     cardLight = lightPool(sc, home.x, home.y, { color: PAL.teal3, radius: 26, floorY: home.y, intensity: 0.8, anim: 'breathe', fadeIn: 0 });
@@ -982,7 +984,8 @@ async function spellOpeningV3(
     cardSil(sc, center, PAL.teal4, 2);
     const c = card;
     void run(sc, 60, (t) => c.active && c.setY(center.y + Math.round(2 * (1 - t))));
-    ctx.sfx('spellActivate', { volume: 0.85 });
+    // the v3 spell accent (src/audio/v3/slice.ts spellOpen) on the arrival frame
+    playV3('spellOpen', { volume: 0.95 });
     rim = cardRim(sc, card, TEAL_FX);
   }
   const rune = floorRune(sc, { x: center.x, y: floorY }, TEAL_FX, standing ? 24 : 20);

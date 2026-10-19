@@ -24,6 +24,7 @@ import { banner, type BannerOpts } from '../../vfx/banners';
 import { measureText, pixelLetters, pixelText, upper } from '../../ui/text';
 import { cardLeaves } from '../_v3/card';
 import { chainRattle } from './_chains';
+import { dropAllCharges, play as playV3 } from '../_v3/sound';
 import { fx } from '../api';
 import { ADD, TAU, TK, type Ctx, arenaDim, duelist, isSetPulse, rnd, rr } from '../battle/_kit';
 
@@ -469,7 +470,10 @@ async function trapOpeningV3(ctx: ActCtx, o: { focus?: XY } = {}): Promise<Openi
   void duelist(ctx, ev.player)?.play('command');
   const stand = live ? live.standUp(220, { reveal: true }) : Promise.resolve();
   await wait(sc, 40);
-  ctx.sfx('trapActivate', { volume: 1 });
+  // the v3 trap accent: a short snap + stab (src/audio/v3/slice.ts trapOpen), on the burst frame;
+  // an attacker's held charge sound (the declaration's, _v3/sound.ts) gives the beat to the trap
+  dropAllCharges(140);
+  playV3('trapOpen', { volume: 1 });
   const face0 = live ? standFace(live) : { x: at.x, y: at.y - 36 };
   trapBurstV3(sc, at, face0);
   void shake(sc, 140, 1);
@@ -480,7 +484,7 @@ async function trapOpeningV3(ctx: ActCtx, o: { focus?: XY } = {}): Promise<Openi
   if (live && live.active) stopAura = cardAuraV3(sc, live);
   // the card's own accent
   if (ev.cardId === 'chains_of_light') {
-    ctx.sfx('chains', { volume: 0.45, pitch: 1.3 });
+    playV3('chainRattle', { volume: 0.85 });
     void chainRattle(sc, face);
   } else if (ev.cardId === 'mirror_barrier') mirrorGlint(sc, face);
   else if (ev.cardId === 'chasm_trap') floorCracks(sc, at);

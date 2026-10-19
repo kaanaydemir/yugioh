@@ -10,7 +10,10 @@
 // WebAudio) — nothing here ever throws. Preview: ?dev=audio.
 //
 // Extras (additive): sfx.setVolume / isRunning, music.setVolume / current, SFX_NAMES, and the
-// offline renderers renderSfx / renderScene. The victory sting (sfx 'victory') and the victory
+// offline renderers renderSfx / renderScene. v3 (additive): sfx.start (a handle that fades a
+// sustained sound out on the mark that ends its picture), sfx.hush (a cinematic that scores a
+// beat itself skips the generic sound a shared effect would play inside it) and sfx.fade (the
+// playing voices of a sound fade out: a character's own voice takes the beat over). The victory sting (sfx 'victory') and the victory
 // track coordinate in either order: started after the sting, the track waits for it and skips
 // its own fanfare; while the track's fanfare plays, the sting is skipped.
 
@@ -18,6 +21,7 @@ import { applyDuck, audio, audioRunning, buildChain, liveAudio, MASTER_LEVEL, pe
 import { musicEngine, musicVolume, scheduleMusic, startPlan, VICTORY_STING_SEC, type MusicRenderOpts } from './music';
 import { RECIPES } from './sounds';
 import { Voice } from './synth';
+import type { V3SfxName } from './v3/slice';
 
 export type SfxName =
   // UI
@@ -39,7 +43,9 @@ export type SfxName =
   // elements
   | 'fireBurst' | 'waterSplash' | 'windGust' | 'earthQuake' | 'darkPulse' | 'holyChime' | 'thunder'
   // results
-  | 'victory' | 'defeat';
+  | 'victory' | 'defeat'
+  // v3 look (additive: src/audio/v3/slice.ts — character, material, slice spell / trap sounds)
+  | V3SfxName;
 
 export interface SfxOpts {
   /** 0..1, default 1. */
@@ -48,6 +54,12 @@ export interface SfxOpts {
   pitch?: number;
   /** -1 (left) .. 1 (right). */
   pan?: number;
+}
+
+/** v3: a started sound (sfx.start). stop() fades it out — a no-op once it has ended. */
+export interface SfxHandle {
+  /** Fade out over `ms` (default 60 ms) and end. */
+  stop(ms?: number): void;
 }
 
 export type MusicTrack = 'title' | 'duel' | 'victory';
@@ -152,6 +164,28 @@ function reap(now: number): void {
   for (let i = active.length - 1; i >= 0; i--) if (active[i].end < now) active.splice(i, 1);
 }
 
+/** The voice the last playLive() made (sfx.start picks it up right after its own play call). */
+let lastVoice: LiveVoice | null = null;
+/** sfx.hush scopes: names skipped while a scope's function runs. */
+const hushed: ReadonlySet<SfxName>[] = [];
+
+/** Fade a live voice out over `ms` and stop its sources (sfx.start's handle). */
+function fadeOut(v: LiveVoice, ms: number): void {
+  const a = peekLive();
+  if (!a) return;
+  const now = a.ctx.currentTime;
+  if (v.end < now) return;
+  const i = active.indexOf(v);
+  if (i >= 0) active.splice(i, 1);
+  const k = Math.max(0.005, ms / 1000);
+  const g = v.out.gain;
+  g.cancelScheduledValues(now);
+  g.setValueAtTime(g.value, now);
+  g.linearRampToValueAtTime(0, now + k);
+  for (const src of v.voice.sources) safe(() => src.stop(now + k + 0.02));
+  v.end = Math.min(v.end, now + k + 0.02);
+}
+
 function playLive(name: SfxName, opts: SfxOpts): void {
   if (muted) return;
   const r = RECIPES[name];
@@ -181,6 +215,7 @@ function playLive(name: SfxName, opts: SfxOpts): void {
   const end = t0 + b.voice.end / b.voice.pm + 0.1;
   const lv: LiveVoice = { ...b, name, start: now, end };
   active.push(lv);
+  lastVoice = lv;
   if (r.duck) musicEngine.duck(r.duck * Math.min(1, volume), t0);
   if (name === 'victory') musicEngine.sting(t0, pitch);
   setTimeout(() => {
@@ -192,7 +227,54 @@ function playLive(name: SfxName, opts: SfxOpts): void {
 
 export const sfx = {
   play(name: SfxName, opts?: SfxOpts): void {
+    if (hushed.length && hushed.some((h) => h.has(name))) return;
     safe(() => playLive(name, opts ?? {}));
+  },
+  /**
+   * v3 extra: play `name` (through sfx.play, so tools that watch it see it) and return a handle
+   * whose stop() fades the voice out — the sustained sounds (a charge, a beam, a gathering) end on
+   * the mark that ends their picture, at any game speed.
+   */
+  start(name: SfxName, opts?: SfxOpts): SfxHandle {
+    let v: LiveVoice | null = null;
+    safe(() => {
+      lastVoice = null;
+      sfx.play(name, opts);
+      v = lastVoice;
+      lastVoice = null;
+    });
+    return {
+      stop(ms = 60) {
+        const lv = v as LiveVoice | null;
+        v = null;
+        if (lv) safe(() => fadeOut(lv, ms));
+      },
+    };
+  },
+  /**
+   * v3 extra: run `fn`; the sounds in `names` it plays synchronously are skipped (a cinematic that
+   * scores that beat itself calls a shared effect that would play its generic sound).
+   */
+  hush<T>(names: readonly SfxName[], fn: () => T): T {
+    hushed.push(new Set(names));
+    try {
+      return fn();
+    } finally {
+      hushed.pop();
+    }
+  },
+  /**
+   * v3 extra: fade out (over `ms`, default 120 ms) every voice of these sounds that is still
+   * playing — a character's own sound takes over a beat a shared choreography's generic riser is
+   * still sounding under (the tribute's summonCharge under the entrance's own voice).
+   */
+  fade(names: readonly SfxName[], ms = 120): void {
+    safe(() => {
+      const a = peekLive();
+      if (!a) return;
+      const set = new Set(names);
+      for (const v of [...active]) if (set.has(v.name)) fadeOut(v, ms);
+    });
   },
   /** Resume the AudioContext after a user gesture (browsers block autoplay). */
   unlock(): void {

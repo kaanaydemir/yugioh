@@ -53,6 +53,7 @@ import { PixelCanvas } from '../../art/pixel';
 import { Sparks as PxSparks } from '../../vfx/combat';
 import { matterRamp } from '../_v3/death';
 import { warmPoses } from '../_v3/warm';
+import { atMark, panAt, play as playV3, soundsOf, start as startV3 } from '../_v3/sound';
 import { clearHologram, holoRamp, setHologram } from '../../vfx/hologram';
 
 const ADD = Phaser.BlendModes.ADD;
@@ -723,7 +724,12 @@ async function soulRiseV3(ctx: AnyCtx, from: XY, to: XY, id: MonsterId, player: 
   // the grave bursts open
   graveOn = 1;
   burst = 1;
-  ctx.sfx('revive', { volume: 0.9 });
+  // a monster with its own revive voice (_v3/sound.ts) gathers in it at the tile: the generic
+  // revive swell opens the grave and fades as the ghost arrives — its bell crest (≈ 1 s in) never
+  // rings over the body's own gather / land (sound QA #9: 89 % of the gather window, a second
+  // accent 14 frames after the land)
+  const reviveSnd = soundsOf(id) ? startV3('revive', { volume: 0.75 }) : null;
+  if (!reviveSnd) ctx.sfx('revive', { volume: 0.9 });
   bg(floorRing(sc, gx, gy, { r0: 6, r1: fs(42), ms: 360, ramp: CYAN_FX, depth: DEPTH.SHADOW - 1 }));
   void lightFlash(sc, gx, gy - 10, PAL.cyan4, fs(36), 420, { floorY: gy, intensity: 1, ring: true });
   const graveLight = lightPool(sc, gx, gy, { color: PAL.cyan3, radius: fs(26), intensity: 0.8, anim: 'breathe', fadeIn: 120 });
@@ -761,6 +767,8 @@ async function soulRiseV3(ctx: AnyCtx, from: XY, to: XY, id: MonsterId, player: 
   });
   place(gx, gy - lift, null);
   onLeave();
+  // (the generic swell is the grave's: it fades as the ghost leaves it)
+  reviveSnd?.stop(240);
 
   // ---- glide along an arc to the tile, a stepped echo behind
   const start = { x: gx, y: gy - lift };
@@ -789,6 +797,7 @@ async function soulRiseV3(ctx: AnyCtx, from: XY, to: XY, id: MonsterId, player: 
   graveOn = 0;
   if ((tm.settle ?? 0) > 0) await run(sc, tm.settle ?? 0, (t) => place(end.x, end.y + Math.round(Math.sin(Math.PI * t) * 2), null));
   void ghostLight.fadeOut(200);
+  reviveSnd?.stop(180);
 
   return {
     async melt(ms = 160) {
@@ -858,19 +867,22 @@ async function recallV3(ctx: CinematicContext<Extract<GameEvent, { type: 'activa
   // ---- arrival: the revived card is born on its tile; the ghost breaks into the body
   // (the tile's own flash / ring burst are additive washes: the stepped circle pulses instead)
   field.placeCard(sEv.player, 'monster', sEv.zone, sEv.uid, sEv.cardId, true, sEv.position === 'defense' ? 'side' : 'up');
-  ctx.sfx('materialize', { volume: 0.8 });
+  // a monster with its own revive sounds (_v3/sound.ts) gathers in its own voice from here (the
+  // generic 'materialize' only without one: below, once the pose is known — same frame)
+  const voice = soundsOf(sEv.cardId);
   void lightFlash(sc, dest.x, dest.y - 12, PAL.cyan4, fs(34), 360, { floorY: dest.y, ring: true, intensity: 0.85 });
   bg(ghost.melt(120));
   const unit: MonsterUnit | null = field.addUnit(sEv.uid, { hidden: true, atk: stats.atk, def: stats.def, position: sEv.position });
   let landed!: () => void;
   const landP = new Promise<void>((r) => (landed = r));
+  let revSound = false;
   const land = () => {
     bg(shockwave(sc, dest.x, dest.y, { ramp: CYAN, radius: fs(44), ms: 360, thickness: 4 }));
     void lightFlash(sc, dest.x, dest.y - 16, PAL.cyan4, fs(30), 300, { floorY: dest.y, ring: true, intensity: 0.7 });
     // A2 art review r3 #1: a few angular shards of the monster's own matter skid out along the
     // floor (no round, soft dust puffs under the rising body)
     landShards(sc, dest.x, dest.y, unit ? matterRamp(unit.cardId) : RAMPS.cyan);
-    ctx.sfx('impactLight', { volume: 0.55 });
+    if (!revSound) ctx.sfx('impactLight', { volume: 0.55 });
     if (unit) {
       unit.badge.setVisible(true);
       bg(unit.badge.pop());
@@ -882,6 +894,17 @@ async function recallV3(ctx: CinematicContext<Extract<GameEvent, { type: 'activa
     unit.badge.setVisible(false);
     unit.sprite.setPosition(unit.rest0.x, unit.rest0.y);
     const pose = summonPose(sc, unit, { anim: 'revive', ramp: matterRamp(unit.cardId), hologram: false, onLand: land });
+    if (!(pose && voice)) ctx.sfx('materialize', { volume: voice ? 0.45 : 0.8 });
+    if (pose && voice) {
+      // the gathering (sustained) ends on the pose's own 'land' frame, where the body locks whole
+      revSound = true;
+      const pan = panAt(dest.x);
+      const gather = startV3(voice.reviveGather, { volume: 1, pan });
+      atMark(unit, 'revive', 'land', () => {
+        gather.stop(40);
+        playV3(voice.reviveLand, { volume: 0.9, pan });
+      });
+    }
     if (pose) {
       // the matter gathers back into the collapsed body while its pose re-forms it
       gather(sc, unit, { x: dest.x, y: dest.y - 16 }, pose.ms.land);
@@ -891,7 +914,10 @@ async function recallV3(ctx: CinematicContext<Extract<GameEvent, { type: 'activa
       gather(sc, unit, { x: dest.x, y: dest.y - 16 }, 260);
       body = rebuild(sc, unit, 280).then(land);
     }
-  } else land();
+  } else {
+    ctx.sfx('materialize', { volume: voice ? 0.45 : 0.8 });
+    land();
+  }
   await landP;
   // ---- only now does the spent card leave (born on the grave its energy went into)
   const g = evAt(ctx, gi, 'toGraveyard');

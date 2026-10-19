@@ -6,6 +6,7 @@
 
 import type { SfxName } from './sfx';
 import { ahr, midiHz, perc, swell, type Pt, type Voice } from './synth';
+import { V3_RECIPES } from './v3/slice';
 
 export interface Recipe {
   /** Reverb send 0..1. */
@@ -1075,4 +1076,7 @@ export const RECIPES: Record<SfxName, Recipe> = {
       v.tone('square', [[0, 220], [0.25, 40, 'e']], { t: 1.75, g: perc(0.06, 0.25), to: v.filt('lowpass', 1200) });
     },
   },
+
+  // ================================================================ v3 (additive: ./v3/slice.ts)
+  ...V3_RECIPES,
 };
