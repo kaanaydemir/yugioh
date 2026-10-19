@@ -197,9 +197,13 @@ doğrulama → commit + push → bu dosyadaki durum güncellenir.
   ve ses ön ayarı, çağırma / ölüm tarzı; varsayılan sinematik bunlardan kurulur, özel kod yalnız
   ana kartlarda). Kalite kapıları değişmez; aynı gövde tipinden çıkan canavarların silüet ve hareket
   farkı ayrıca ölçülür. Ana kartlar (Ejder, Büyücü gibi) tamamen özel kalır.
-- **A4 — Kalan 10 canavar, ikişer ikişer (A3 katmanının üzerine).** Magma Titanı + Mercan Yılanı; Kor Kurdu + Gelgit
-  Golemi; Fırtına Atmacası + Taş Muhafız; Işık Perisi + Gölge Suikastçı; Şimşek Kertenkelesi +
-  Dikenli Pusucu. Her çift: yeni stil + tam yaşam döngüsü + efektleri; her çift ayrı commit.
+- **A4 — Kalan canavarlar, ikişer ikişer (A3 katmanının üzerine; A3 mimarisi §15).** Taş Muhafız
+  A3'ün pilotu olarak yapılır. A4.1: ölçeklenme ön adımı (kırpılmış dokular, toplam bellek kapısı) +
+  Magma Titanı + Mercan Yılanı; A4.2: Kor Kurdu + Şimşek Kertenkelesi (dört ayaklı tip iki üyesiyle
+  birlikte kurulur); A4.3: Gelgit Golemi + Gölge Suikastçı (ağır üçlünün benzerlik denetimi); A4.4:
+  Fırtına Atmacası + Işık Perisi; A4.5: Dikenli Pusucu + 12 canavarlık çapraz benzerlik turu. Her çift:
+  yeni stil + tam yaşam döngüsü + efektler + sesler; her çift ayrı commit. A4, A3 sonundaki kullanıcı
+  onayından sonra başlar.
 - **A5 — Kalan büyü ve tuzaklar** (Şifa Pınarı, Ruh Çağrısı, Ejder Kılıcı, Volkan Arenası,
   Ayna Kalkanı, Yer Yarığı) + kart resimleri ve giriş portrelerinin yeni stile geçişi.
 - **A6 — Küçük oyun olayları:** çekme, hover, oynama, kapalı koyma / açma, pozisyon, hedef seçme,
@@ -240,7 +244,7 @@ motor değişikliği gerektirdiği için ikisi birlikte tasarlanır.
 | A0 Envanter ve ölçüm | tamam | `docs/v3/A0_ENVANTER.md` + `docs/v3/a0/*.md` |
 | A1 Altyapı | tamam | `?look=v3`, sakin arena, tam sayı kamera, kare süreleri + yeni poz türleri, P2 yeniden ışık, ağırlık profilleri, tek gösteri saati, basamaklı ışık; `tools/measure.mjs`, `tools/sheet-hash.ts`; kabul: 2. tur geçti |
 | A2 Dikey dilim | tamam | Kristal Ejder + Uçurum Büyücüsü yeni stil ve tam yaşam döngüsü, ortak v3 kitleri, Yıldırım Hükmü, Işık Zincirleri, yeni giriş portreleri, dilim sesleri (`src/audio/v3/`), `tools/clip.mjs`; kabul: 11/11 (madde 1 düzeltme turuyla) |
-| A3 Rehber | bekliyor | |
+| A3 Rehber + ölçeklenebilirlik katmanı | sürüyor | rehber (`docs/v3/REHBER.md`) ve mimari (`docs/v3/A3_MIMARI.md`: iki bağımsız öneri, hakem, karşıt inceleme) tamam; yapım (Y0–Y10) sürüyor; sonunda kullanıcı onay kapısı (Y11) |
 | A4 Kalan canavarlar | bekliyor | |
 | A5 Büyü / tuzak / kart resimleri | bekliyor | |
 | A6 Küçük olaylar | bekliyor | |
