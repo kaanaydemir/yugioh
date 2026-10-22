@@ -39,7 +39,7 @@ import { DEPTH, GAME_H, GAME_W, LOOK_V3, type XY } from '../layout';
 import { onDuelStart } from '../../duel/seeds';
 import { type Stamp, StepPatch, quantize } from './stepped';
 import { CAUSTIC_FRAMES, LIGHT_TEX, LT, ensureLightTextures } from './textures';
-import { ATTRIBUTE_LIGHT, MONSTER_GLOW, type LightAnim } from './profiles';
+import { ATTRIBUTE_LIGHT, monsterGlow, type LightAnim } from './profiles';
 import { GLOW_SCALE, glowSheet, type GlowSheet } from './glow';
 
 type Img = Phaser.GameObjects.Image;
@@ -844,7 +844,7 @@ class UnitLight {
     this.layer = layer;
     this.unit = unit;
     const al = ATTRIBUTE_LIGHT[unit.attribute];
-    const glow = MONSTER_GLOW[unit.cardId];
+    const glow = monsterGlow(unit.cardId);
     this.color = al.color;
     this.spillColor = glow?.spill ?? al.spill;
     this.anim = al.anim;
@@ -1003,7 +1003,7 @@ class SteppedUnitLight {
   constructor(layer: LightLayer, unit: MonsterUnit) {
     this.unit = unit;
     const al = ATTRIBUTE_LIGHT[unit.attribute];
-    this.color = MONSTER_GLOW[unit.cardId]?.spill ?? al.color;
+    this.color = monsterGlow(unit.cardId)?.spill ?? al.color;
     let ow = opaqueW.get(unit.cardId);
     if (!ow) {
       const b = monsterFrame(unit.cardId, 'idle', 0).bounds();

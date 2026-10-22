@@ -61,6 +61,7 @@ import { TAU, type EvOf, all, holdFrame, lerpXY, live, other, rnd, rr, seed, tak
 import { resultPlate, trapExit, trapOpening } from './_opening';
 import { panAt, play as playV3, soundsOf, takeCharge } from '../_v3/sound';
 import type { SfxHandle } from '../../audio/sfx';
+import { v3Recipe } from '../../presentation/registry';
 
 registerCardHook(
   'chains_of_light',
@@ -195,6 +196,15 @@ const YANK_V3 = { throw: 50, settle: 100 } as const;
 
 /** Strikes that leave the body as a beam / orb / bolt / jet: the attacker leans in, it does not run. */
 const RANGED: ReadonlySet<string> = new Set(['crystal_wyrm', 'abyss_magus', 'stone_sentinel', 'tide_golem', 'volt_lizard', 'lumen_sprite', 'coral_serpent']);
+
+/**
+ * Does this monster's strike leave its body (it leans in under the chains instead of lunging)?
+ * docs/v3/A3_MIMARI.md §6.4: every read of RANGED goes through here (tests/presentation/table-access.test.ts).
+ */
+export function isRanged(id: string): boolean {
+  // A3 bridge: in the v3 look a monster with v3 art and a recipe is ranged when its recipe says so
+  return v3Recipe(id)?.attack.ranged ?? RANGED.has(id);
+}
 
 /** The colour of a ranged strike's charge (breath, orb...) gathering at its muzzle. */
 const CHARGE: Readonly<Record<string, readonly number[]>> = {
@@ -541,7 +551,7 @@ async function chainsV3(ctx: ActCtx): Promise<void> {
     const dx = aim.x - u.home.x;
     const dy = aim.y - u.home.y;
     const d = Math.hypot(dx, dy) || 1;
-    const ranged = RANGED.has(u.cardId);
+    const ranged = isRanged(u.cardId);
     const dist = ranged ? 6 : Math.min(54, d * 0.36);
     const dash = { x: Math.round(r.x + (dx / d) * dist), y: Math.round(r.y + (dy / d) * dist) };
     reach = dash;

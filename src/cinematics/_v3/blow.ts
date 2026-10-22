@@ -5,6 +5,7 @@
 import { CARDS, isMonster, type MonsterId } from '../../data/cards';
 import type { AnyMonsterAnim, MonsterArt } from '../../art/types';
 import { weightOf, type WeightSource } from '../../duel/motion';
+import { v3Recipe } from '../../presentation/registry';
 
 interface XY {
   x: number;
@@ -40,12 +41,17 @@ function idOf(src: BlowSource): string | null {
   return null;
 }
 
-/** The kind of a blow from `src` (a monster art / unit); no monster source (a spell, an effect) → magic. */
+/**
+ * The kind of a blow from `src` (a monster art / unit); no monster source (a spell, an effect) → magic.
+ * A3 bridge (A3_MIMARI §6.4): in the v3 look a monster with v3 art strikes as its recipe's
+ * `attack.blow`; otherwise today's table.
+ */
 export function blowKindOf(src: BlowSource): BlowKind {
   const id = idOf(src);
   if (!id) return 'magic';
   const d = CARDS[id as MonsterId];
-  return d && isMonster(d) ? (STRIKE_KIND[id as MonsterId] ?? 'physical') : 'magic';
+  if (!d || !isMonster(d)) return 'magic';
+  return v3Recipe(id)?.attack.blow ?? STRIKE_KIND[id as MonsterId] ?? 'physical';
 }
 
 /** Where the blow lands relative to the body's facing. */

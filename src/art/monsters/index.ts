@@ -51,6 +51,14 @@ export function hasMonsterArtV3(id: MonsterId): boolean {
   return REGISTRY_V3.has(id);
 }
 
+/**
+ * DEV / TEST ONLY (A3: src/dev/previews/recipe.ts `&fixture=1`): stand a fixture art in as the v3 art
+ * of monster `art.id` for this page — before the boot step builds the sheets. Nothing in the game calls it.
+ */
+export function registerFixtureArtV3(art: MonsterArt): void {
+  REGISTRY_V3.set(art.id, art);
+}
+
 export function hasMonsterArt(id: MonsterId): boolean {
   return REGISTRY.has(id);
 }

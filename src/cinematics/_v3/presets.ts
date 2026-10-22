@@ -8,6 +8,7 @@
 import type { MonsterId } from '../../data/cards';
 import { PAL, RAMPS, type Ramp } from '../../art/palette';
 import type { ShatterMaterial } from '../../vfx/shatter';
+import { v3Recipe } from '../../presentation/registry';
 
 // ================================================================ deaths
 
@@ -38,7 +39,14 @@ export const DEATH_PRESETS: Record<MonsterId, DeathPreset> = {
   thorn_lurker: { material: 'plant', accent: 'plant' },
 };
 
+/**
+ * A monster's death preset. A3 bridge (A3_MIMARI §6.4): in the v3 look a monster with v3 art and a
+ * presentation recipe breaks as its recipe says; otherwise (always in the v1 look, where the old death
+ * flavours call deathMaterial too) today's table.
+ */
 export function deathPreset(id: MonsterId): DeathPreset {
+  const r = v3Recipe(id)?.death;
+  if (r) return { material: r.material, accent: r.accent };
   return DEATH_PRESETS[id] ?? { material: 'crystal', accent: 'crystal' };
 }
 
@@ -58,9 +66,14 @@ export const MATTER_RAMP: Record<ShatterMaterial, Ramp> = {
   water: RAMPS.water,
 };
 
+/** The tones of one matter (a recipe's `summon.matter`, A3). */
+export function rampOfMatter(m: ShatterMaterial): Ramp {
+  return MATTER_RAMP[m];
+}
+
 /** A monster's matter tones (its death material's ramp): the crystal wyrm is cyan glass, not gold. */
 export function matterRamp(id: MonsterId): Ramp {
-  return MATTER_RAMP[deathPreset(id).material];
+  return rampOfMatter(deathPreset(id).material);
 }
 
 // ================================================================ the ace cut-in
@@ -89,9 +102,12 @@ const RHYTHM: Partial<Record<MonsterId, Partial<CutInRhythm>>> = {
   tide_golem: { flare: 290, slam: 410, exit: 720 },
 };
 
-/** The cut-in beats of an ace (the budget wins over any table entry). */
+/**
+ * The cut-in beats of an ace (the budget wins over any table entry). A3 bridge (§6.4): in the v3 look
+ * a monster with v3 art takes its recipe's `cutIn.rhythm` in place of the table entry.
+ */
 export function cutInRhythm(id: MonsterId): CutInRhythm {
-  const r = { ...DEFAULT_RHYTHM, ...(RHYTHM[id] ?? {}) };
+  const r = { ...DEFAULT_RHYTHM, ...(v3Recipe(id)?.cutIn?.rhythm ?? RHYTHM[id] ?? {}) };
   r.exit = Math.min(r.exit, CUTIN_V3_MAX_MS - r.close);
   r.slam = Math.min(r.slam, r.exit - 200);
   r.flare = Math.min(r.flare, r.slam - 40);

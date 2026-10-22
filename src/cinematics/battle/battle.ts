@@ -53,7 +53,7 @@ import { backlash, blowFrom, canHandOver, isMelee } from '../_v3/clash';
 import { DEATH_AFTER_CONTACT_MS } from '../_v3/budget';
 import { onFrame } from '../../vfx/setpieces';
 import { weightOf } from '../../duel/motion';
-import { STRIKE_LIGHT, type Ctx, type EvOf, all, arenaDim, duelist, guardReact, impactLight, lerpXY, live, norm, other, sub, takeAttack } from './_kit';
+import { strikeLight as strikeLightOf, type Ctx, type EvOf, all, arenaDim, duelist, guardReact, impactLight, lerpXY, live, norm, other, sub, takeAttack } from './_kit';
 import { panAt, play as playSnd, quietCombat, soundsOf } from '../_v3/sound';
 
 /** v3: the impact number's pop (slam + settle, _v3/number.ts) before the camera may ease out. */
@@ -109,7 +109,7 @@ registerEvent(
     void ctx.focus(focusAt, { zoom, ms: 360, pan: 0.32 });
     // arena v2 light: the stadium dims around the clash (restored when the battle is over)
     void arenaDim(sc, power >= 3 ? 0.42 : 0.28, 320);
-    const strikeLight = attacker ? STRIKE_LIGHT[attacker.cardId] ?? aRamp[3] : aRamp[3];
+    const strikeLight = attacker ? strikeLightOf(attacker.cardId) ?? aRamp[3] : aRamp[3];
 
     const pending: Promise<unknown>[] = [];
     /** The damage number + LP roll: the triggers below need not wait for the counter to settle. */
@@ -356,7 +356,7 @@ async function battleV3(ctx: Ctx<'battle'>): Promise<void> {
   // ---- camera: lean toward the clash (whole-pixel pan in the v3 look)
   void ctx.focus(lerpXY(aCore0, to, 0.62), { zoom: power >= 3 ? 1.065 : 1.05, ms: 360, pan: 0.32 });
   void arenaDim(sc, power >= 3 ? 0.42 : 0.28, 320);
-  const strikeLight = attacker ? STRIKE_LIGHT[attacker.cardId] ?? aRamp[3] : aRamp[3];
+  const strikeLight = attacker ? strikeLightOf(attacker.cardId) ?? aRamp[3] : aRamp[3];
   // a battle trigger (counter-splash, howl, discharge) plays inside the focus: the camera waits for it
   const hasTriggers = fx.battleTriggerEnd(ctx, [ev.attackerUid, ev.targetUid]) >= 0;
 

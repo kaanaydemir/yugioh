@@ -35,9 +35,20 @@ import { E, bg, burst, capped, pose, roar, run, fs, lightFlash, type AnyCtx } fr
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { vineCage, type VineCage } from './thorn_lurker';
 import { holoOnset } from '../_v3/summon';
+import { v3Recipe } from '../../presentation/registry';
 
 /** Palette of the pop-out hologram when the monster's own language differs from its attribute. */
 const FLIP_RAMP: Partial<Record<MonsterId, Ramp>> = { volt_lizard: RAMPS.cyan };
+
+/**
+ * The pop-out palette override of a monster, if it has one (docs/v3/A3_MIMARI.md §6.4: every read
+ * of FLIP_RAMP goes through here; tests/presentation/table-access.test.ts).
+ */
+export function flipRamp(id: MonsterId): Ramp | undefined {
+  // A3 bridge: in the v3 look a monster with v3 art and a recipe pops out in its recipe's ramp
+  const name = v3Recipe(id)?.flip?.ramp;
+  return name ? RAMPS[name] : FLIP_RAMP[id];
+}
 
 /** Monster-specific accent on the burst (summon-b's six; others get the attribute burst only). */
 function accent(ctx: AnyCtx, id: MonsterId, x: number, y: number): void {
@@ -151,7 +162,7 @@ registerEvent(
     tile.setCard(ev.cardId);
     const home = tile.home;
     const attr = def.attribute;
-    const ramp = FLIP_RAMP[id] ?? ATTRIBUTE_RAMP[attr];
+    const ramp = flipRamp(id) ?? ATTRIBUTE_RAMP[attr];
 
     // Dikenli Pusucu: the vines burst out of the ground first
     let cage: VineCage | null = null;
@@ -241,7 +252,18 @@ registerEvent(
 type FlipCtx = Parameters<Parameters<typeof registerEvent<'flip'>>[1]>[0];
 
 /** The v3 flip (see the header): ≤ 0.6 s, the monster's own poses, whole pixels, no scale. */
-async function flipV3(ctx: FlipCtx): Promise<void> {
+function flipV3(ctx: FlipCtx): Promise<void> {
+  return flipV3With(ctx, accent);
+}
+
+/** The burst accent of a v3 flip: the card's own (accent() above), or a recipe's (A3, recipe/flip.ts). */
+export type FlipAccentFn = (ctx: AnyCtx, id: MonsterId, x: number, y: number) => void;
+
+/**
+ * The v3 flip with a given burst accent (A3: the recipe layer's flip hook, src/cinematics/recipe/flip.ts,
+ * passes the recipe's; the event handler above passes the per-card accent(), exactly as before).
+ */
+export async function flipV3With(ctx: FlipCtx, accentFn: FlipAccentFn): Promise<void> {
   const ev = ctx.ev;
   const v = ctx.views;
   const field = v.field;
@@ -261,7 +283,7 @@ async function flipV3(ctx: FlipCtx): Promise<void> {
   tile.setCard(ev.cardId);
   const home = { x: tile.home.x, y: tile.home.y };
   const attr = def.attribute;
-  const ramp = FLIP_RAMP[id] ?? ATTRIBUTE_RAMP[attr];
+  const ramp = flipRamp(id) ?? ATTRIBUTE_RAMP[attr];
 
   // Dikenli Pusucu: the vines still burst out of the ground first (short)
   let cage: VineCage | null = null;
@@ -284,7 +306,7 @@ async function flipV3(ctx: FlipCtx): Promise<void> {
   const unit = field.addUnit(ev.uid, { hidden: true, atk, def: dfn, position: flipSummon ? 'attack' : 'defense' });
   bg(flipBurst(sc, home.x, home.y, attr));
   void lightFlash(sc, home.x, home.y - 16, attributeLightColor(attr), fs(flipSummon ? 34 : 26), flipSummon ? 360 : 280, { floorY: home.y, ring: flipSummon, intensity: flipSummon ? 0.9 : 0.6 });
-  accent(ctx, id, home.x, home.y);
+  accentFn(ctx, id, home.x, home.y);
   if (cage) bg(cage.burst(260));
   if (!unit) {
     await flipP;

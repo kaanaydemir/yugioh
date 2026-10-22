@@ -25,6 +25,7 @@ import { impact as combatImpact, stopTime } from '../../vfx/combat';
 import { Raster, Sparks, onFrame, run } from '../../vfx/setpieces';
 import type { CinematicContext } from '../api';
 import { onDuelStart } from '../../duel/seeds';
+import { v3Recipe } from '../../presentation/registry';
 
 export type EvOf<T extends GameEventType> = Extract<GameEvent, { type: T }>;
 export type Ctx<T extends GameEventType> = CinematicContext<EvOf<T>>;
@@ -140,6 +141,16 @@ export const STRIKE_LIGHT: Record<MonsterId, number> = {
   volt_lizard: PAL.cyan3,
   thorn_lurker: PAL.leaf3,
 };
+
+/**
+ * The colour a monster's strike lights the floor with (docs/v3/A3_MIMARI.md §6.4: every read of
+ * STRIKE_LIGHT goes through here; tests/presentation/table-access.test.ts). A3 bridge: in the v3 look
+ * a monster with v3 art and a recipe lights it with its recipe's `light.strike` / `attack.tone`.
+ */
+export function strikeLight(id: MonsterId): number | undefined {
+  const r = v3Recipe(id);
+  return (r ? (r.light?.strike ?? r.attack.tone) : undefined) ?? STRIKE_LIGHT[id];
+}
 
 /**
  * The impact light (§5 "darbe anı"): a flash pool + shock ring on the floor under the struck

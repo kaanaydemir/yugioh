@@ -4,6 +4,7 @@
 
 import type { Attribute, MonsterId } from '../../data/cards';
 import { PAL } from '../../art/palette';
+import { v3Recipe } from '../../presentation/registry';
 
 /** Built-in motion of a light: how its intensity / shape lives over time. */
 export type LightAnim = 'steady' | 'shimmer' | 'breathe' | 'flicker' | 'caustic' | 'sway';
@@ -69,3 +70,14 @@ export const MONSTER_GLOW: Record<MonsterId, MonsterGlow> = {
   volt_lizard: { emissive: [T(PAL.white, 1), T(PAL.cyan4, 1), T(PAL.cyan3, 0.8), T(PAL.gold4, 0.45)], halo: 0.7, pool: 1 },
   thorn_lurker: { emissive: [T(PAL.mag3, 0.7), T(PAL.mag4, 1), T(PAL.white, 0.5), T(PAL.leaf4, 1), T(PAL.gold4, 1), T(PAL.leaf3, 0.15)], halo: 0.55, pool: 0.85 },
 };
+
+/**
+ * A monster's emissive glow profile (docs/v3/A3_MIMARI.md §6.4: every read of MONSTER_GLOW goes
+ * through here; tests/presentation/table-access.test.ts). A3 bridge: in the v3 look a monster with
+ * v3 art and a recipe takes its recipe's `light.glow` over the table entry.
+ */
+export function monsterGlow(id: MonsterId): MonsterGlow | undefined {
+  const base = MONSTER_GLOW[id];
+  const r = v3Recipe(id)?.light?.glow;
+  return r ? ({ ...base, ...r } as MonsterGlow) : base;
+}

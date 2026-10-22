@@ -3271,6 +3271,21 @@ export interface ImpactOpts {
   shakePx?: number;
   /** v3: target jitter px during the hit-stop instead of the power table (0.5 / 1 / 1); 0 = still. */
   jitterPx?: number;
+  /**
+   * v3 (A3): what the struck SURFACE throws off — its material's debris (src/art/materials hit.debris),
+   * whole-pixel pieces spawned on the contact frame and thrown back against the blow. Only a plan-built
+   * monster's hit passes it (_v3/react.ts); without it nothing below changes (no extra random draws).
+   */
+  debris?: ImpactDebris;
+}
+
+/** A struck surface's debris (A3, _v3/react.ts from the material library). */
+export interface ImpactDebris {
+  kind: 'shard' | 'chip' | 'drop' | 'leaf' | 'feather' | 'ember' | 'wisp';
+  /** The material's spark tones, dark → light (hit.sparks). */
+  colors: readonly number[];
+  /** World y the pieces bounce on (the struck body's floor); default 14 px under the contact. */
+  floor?: number;
 }
 
 /**
@@ -3324,6 +3339,8 @@ export async function impact(scene: Phaser.Scene, x: number, y: number, opts: Im
     const a = RR(0, Math.PI * 2);
     sp2.add({ x, y, vx: Math.cos(a) * RR(15, 45), vy: Math.sin(a) * RR(15, 45) - 10, drag: 3, life: RR(250, 450), colors: [ramp[3], ramp[2], ramp[1]], shape: 'disc', size: RR(1, 2.2), grow: -3, alpha: 0.6 });
   }
+  // v3 (A3): the struck surface's own debris, on the contact frame (only when the caller passes it)
+  if (opts.debris) surfaceDebris(sp, x, y, dir, power, opts.debris);
   sp.release();
   sp2.release();
 
@@ -3393,6 +3410,65 @@ export async function impact(scene: Phaser.Scene, x: number, y: number, opts: Im
   if (!opts.noStop) await stopTime(scene, stopMs);
   jitterStop?.();
   await sleep(scene, 90 + power * 25);
+}
+
+/**
+ * The struck surface's debris (ImpactOpts.debris): crisp pieces in the material's tones, spawned 3–10 px
+ * around the contact point so the frozen contact frame already shows them, thrown back against the blow
+ * (`dir`) and up; stone chips and crystal shards fall and bounce on the floor and lie still a moment,
+ * drops fall, leaves / feathers drift, embers and wisps rise. The chips start on the material's middle
+ * tone (they read over the white flash of the contact frame AND on the dark floor), the grit one darker.
+ * Palette steps only (no alpha fade: they pop out).
+ */
+function surfaceDebris(sp: Sparks, x: number, y: number, dir: XY | null, power: 1 | 2 | 3, d: ImpactDebris): void {
+  const c = d.colors.length ? d.colors : [PAL.steel, PAL.mist, PAL.white];
+  const lit = [...c].reverse();
+  const mid = c.length >= 3 ? [c[c.length - 2], c[c.length - 2], c[0]] : lit;
+  const grit = [c[Math.max(0, c.length - 3)], c[0]];
+  const floor = d.floor ?? y + 14;
+  const back = dir ? Math.atan2(-dir.y, -dir.x) : -Math.PI / 2;
+  const n = { shard: 6, chip: 7, drop: 6, leaf: 4, feather: 4, ember: 5, wisp: 5 }[d.kind] + power * 2;
+  for (let i = 0; i < n; i++) {
+    const a = back + RR(-1.15, 1.15);
+    const off = RR(3, 10);
+    const p = { x: Math.round(x + Math.cos(a) * off), y: Math.round(y + Math.sin(a) * off * 0.8) };
+    switch (d.kind) {
+      case 'chip':
+      case 'shard': {
+        // the big pieces first (three per blow), then grit; they bounce once or twice and lie a beat
+        const big = i < 3;
+        const v = RR(55, 105 + power * 20);
+        sp.add({
+          x: p.x,
+          y: p.y,
+          vx: Math.cos(a) * v,
+          vy: Math.sin(a) * v * 0.7 - RR(55, 110),
+          ay: 520,
+          life: RR(460, 720),
+          colors: big ? mid : grit,
+          shape: d.kind === 'shard' && big ? 'shard' : 'sq',
+          size: big ? (d.kind === 'shard' ? 2.8 : 2) : 1,
+          rot: RR(0, 6),
+          vrot: d.kind === 'shard' ? RR(-10, 10) : 0,
+          floor: floor + RI(-2, 2),
+          bounce: 0.32,
+          fadeAt: 1,
+        });
+        break;
+      }
+      case 'drop':
+        sp.add({ x: p.x, y: p.y, vx: Math.cos(a) * RR(30, 70), vy: -RR(40, 90), ay: 420, life: RR(300, 480), colors: lit, shape: 'px', floor, bounce: 0, fadeAt: 1 });
+        break;
+      case 'leaf':
+      case 'feather':
+        sp.add({ x: p.x, y: p.y, vx: Math.cos(a) * RR(25, 55), vy: -RR(20, 50), ay: 40, drag: 2.4, life: RR(520, 820), colors: lit, shape: 'sq', size: d.kind === 'leaf' ? 2 : 1, fadeAt: 1 });
+        break;
+      case 'ember':
+      case 'wisp':
+        sp.add({ x: p.x, y: p.y, vx: Math.cos(a) * RR(10, 30), vy: -RR(25, 55), drag: 1.6, life: RR(320, 560), colors: lit, shape: 'px', flicker: d.kind === 'ember', fadeAt: 1 });
+        break;
+    }
+  }
 }
 
 /** Attack bouncing off a defender: hex shield flash, clang star, deflected metal sparks. */

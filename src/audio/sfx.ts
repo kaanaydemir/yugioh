@@ -23,6 +23,7 @@ import { RECIPES } from './sounds';
 import { Voice } from './synth';
 import type { V3SfxName } from './v3/slice';
 import type { V3MaterialSfxName } from './v3/materials';
+import type { V3VoiceSfxName } from './v3/voices';
 
 export type SfxName =
   // UI
@@ -48,7 +49,9 @@ export type SfxName =
   // v3 look (additive: src/audio/v3/slice.ts — character, material, slice spell / trap sounds)
   | V3SfxName
   // v3 material hits (additive: src/audio/v3/materials.ts — the template hit<Material><Light|Heavy|Magic>)
-  | V3MaterialSfxName;
+  | V3MaterialSfxName
+  // v3 character voices from presentation recipes (additive: src/audio/v3/voices.ts — voice:<card>:<role>)
+  | V3VoiceSfxName;
 
 export interface SfxOpts {
   /** 0..1, default 1. */

@@ -14,7 +14,7 @@ import type { MonsterId } from '../../data/cards';
 import { monsterArt } from '../../art/monsters';
 import { monsterFrame, monsterFrameName } from '../../art/textures';
 import { MONSTER_ANIMS } from '../../art/types';
-import { MONSTER_GLOW } from './profiles';
+import { monsterGlow } from './profiles';
 
 export interface GlowFrame {
   /** Emissive weight (≈ number of fully glowing pixels). */
@@ -61,7 +61,7 @@ export function glowSheet(scene: { textures: Phaser.Textures.TextureManager }, i
 
 function buildGlowSheet(scene: { textures: Phaser.Textures.TextureManager }, id: MonsterId): GlowSheet {
   const art = monsterArt(id);
-  const cfg = MONSTER_GLOW[id];
+  const cfg = monsterGlow(id);
   const weights = new Map<number, number>(cfg?.emissive ?? []);
   const nearW = new Map<number, number>(cfg?.near ?? []);
   const NEAR = 3;

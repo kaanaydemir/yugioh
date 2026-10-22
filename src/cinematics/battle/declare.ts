@@ -35,7 +35,6 @@ import { REACTION_POSES, warmPoses } from '../_v3/warm';
 import { alignStart, frameDelta, idleDelta } from '../_v3/posematch';
 import {
   ADD,
-  STRIKE_LIGHT,
   TAU,
   TK,
   type AttackHold,
@@ -53,6 +52,7 @@ import {
   rr,
   seed,
   setCardPulse,
+  strikeLight,
   sub,
   takeAttack,
 } from './_kit';
@@ -550,7 +550,7 @@ function keepCharging(sc: Phaser.Scene, u: MonsterUnit): () => void {
   const tremble = typeof spec?.marks?.charge === 'number' && f + 1 < u.impactFrame && small;
   const s = u.sprite;
   const y0 = s.y;
-  const color = STRIKE_LIGHT[u.cardId] ?? PLAYER_RAMP[u.player][3];
+  const color = strikeLight(u.cardId) ?? PLAYER_RAMP[u.player][3];
   let el = 0;
   let next = CHARGE_IDLE_MS;
   let k = 0;

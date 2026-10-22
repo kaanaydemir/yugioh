@@ -21,6 +21,10 @@ import type { CardId } from '../../data/cards';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { LOOK_V3 } from '../../view/layout';
 import { setCombatSfx } from '../../vfx/combat';
+import { hitSfxName } from '../../audio/v3/materials';
+import { voiceSounds } from '../../audio/v3/voices';
+import type { MaterialId } from '../../art/materials';
+import { v3Recipe } from '../../presentation/registry';
 import type { BlowKind } from './blow';
 
 // ================================================================ play
@@ -203,10 +207,17 @@ export const CHARACTER_SOUNDS: Partial<Record<CardId, CharacterSounds>> = {
   },
 };
 
-/** The character sound set of a card (v3 look only; null: it keeps the generic sounds). */
+/**
+ * The character sound set of a card (v3 look only; null: it keeps the generic sounds). A3 bridge
+ * (A3_MIMARI §6.4): a monster with v3 art and a recipe speaks with its recipe's voice — a VoicePreset's
+ * generated role set (src/audio/v3/voices.ts), or the hand-made set it names (`{ custom }`, the aces);
+ * otherwise today's table.
+ */
 export function soundsOf(id: CardId | null | undefined): CharacterSounds | null {
   if (!LOOK_V3 || !id) return null;
-  return CHARACTER_SOUNDS[id] ?? null;
+  const v = v3Recipe(id)?.voice;
+  if (v && !('custom' in v)) return voiceSounds(id);
+  return CHARACTER_SOUNDS[(v?.custom ?? id) as CardId] ?? null;
 }
 
 /** The card of a blow's source (react.ts `by`: a unit, a monster art, `{ art }`, a weight class). */
@@ -306,27 +317,39 @@ export function playHit(scene: Phaser.Scene, name: SfxName, o: { heavy: boolean;
 
 // ================================================================ materials
 
-export type Material = 'crystal' | 'metal' | 'cloth';
+/** A struck body's material: the slice's three, or (A3) any material-library id a recipe names. */
+export type Material = 'crystal' | 'metal' | 'cloth' | MaterialId;
 
 /**
  * What a body is made of where a blow lands: the wyrm is crystal; the magus is metal armour to a
  * body blow (helm, breastplate, pauldrons) and cloth + shadow to a spell (the robe, the void).
- * Other monsters: null (the generic impact until A4 gives them theirs).
+ * Other monsters: null (the generic impact until A4 gives them theirs). A3 bridge (A3_MIMARI §6.4):
+ * in the v3 look a monster with v3 art and a recipe is what its recipe's `body` says (a spell lands
+ * on `body.magic` when it names one).
  */
 export function materialOf(id: CardId | null | undefined, kind: BlowKind): Material | null {
+  const b = v3Recipe(id)?.body;
+  if (b) return kind === 'magic' ? (b.magic ?? b.physical) : b.physical;
   if (id === 'crystal_wyrm') return 'crystal';
   if (id === 'abyss_magus') return kind === 'magic' ? 'cloth' : 'metal';
   return null;
 }
 
-/** The struck body's impact sound (material × light / heavy / magic), or null for the generic one. */
+/**
+ * The struck body's impact sound (material × light / heavy / magic), or null for the generic one.
+ * The name comes from src/audio/v3/materials.ts hitSfxName: the slice's three materials give exactly
+ * the slice names (hitCrystal* / hitMetal* / hitCloth*), a library material its generated hit
+ * (A3: hitStone*), one without a hit recipe yet null.
+ */
 export function hitSoundFor(u: MonsterUnit | null | undefined, o: { kind: BlowKind; heavy: boolean }): SfxName | null {
   if (!LOOK_V3 || !u) return null;
   const m = materialOf(u.cardId, o.kind);
   if (!m) return null;
-  const w = o.kind === 'magic' ? 'Magic' : o.heavy ? 'Heavy' : 'Light';
-  const base = m === 'crystal' ? 'hitCrystal' : m === 'metal' ? 'hitMetal' : 'hitCloth';
-  return `${base}${w}` as SfxName;
+  try {
+    return hitSfxName(m, o.kind === 'magic' ? 'Magic' : o.heavy ? 'Heavy' : 'Light');
+  } catch {
+    return null; // an unknown material id (tests/presentation/recipes.test.ts keeps them known): the generic impact
+  }
 }
 
 /** Stereo position of a world x (gentle: ±0.35 at the screen edges). */

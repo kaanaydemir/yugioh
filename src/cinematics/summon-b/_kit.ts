@@ -37,6 +37,7 @@ import { onDuelStart } from '../../duel/seeds';
 import { HOLO_SETTLE_V3_MS, poseEntrance } from '../_v3/summon';
 import { matterRamp } from '../_v3/death';
 import { warmPoses } from '../_v3/warm';
+import { v3Recipe } from '../../presentation/registry';
 
 export { Raster, Sparks, onFrame, run };
 // the subtle light layer (arena v2; every call is a no-op in v1)
@@ -124,9 +125,19 @@ export const ROAR_PEAK: Partial<Record<MonsterId, number>> = {
   tide_golem: 3,
 };
 
+/**
+ * The roar-climax frame a monster's table gives (docs/v3/A3_MIMARI.md §6.4: every read of
+ * ROAR_PEAK goes through here; tests/presentation/table-access.test.ts). `roarPeak(u)` below clamps
+ * it to the unit's live frame count.
+ */
+export function roarPeakOf(id: MonsterId): number | undefined {
+  // A3 bridge: in the v3 look a monster with v3 art and a recipe peaks where its recipe says
+  return v3Recipe(id)?.summon.roarPeak ?? ROAR_PEAK[id];
+}
+
 export function roarPeak(u: MonsterUnit): number {
   const n = u.frameCount('roar');
-  return clamp(ROAR_PEAK[u.cardId] ?? Math.round(n * 0.35), 0, n - 1);
+  return clamp(roarPeakOf(u.cardId) ?? Math.round(n * 0.35), 0, n - 1);
 }
 
 /** ms from frame `from` to frame `to` of `anim` (per-frame holds aware; MonsterUnit.rangeMs). */

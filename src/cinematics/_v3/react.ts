@@ -25,6 +25,11 @@
 //   sparks   vfx/combat impact (sparks, star, ring) at the contact point on the body's surface
 //            (not on its core), power capped at 2 for the visuals: power 3's full-screen black /
 //            white frame is a screen wash, which the v3 look does not use.
+//   surface  A3 (A3_MIMARI §5): a plan-built monster (its art carries `bodyPlan`) is struck as its
+//            material — the struck body's recipe material (_v3/sound.ts materialOf) gives the spark
+//            tones (a physical blow), the debris it throws off and the contact flash's tone
+//            (src/art/materials hit.sparks / debris / flash). The aces and the old monsters (no
+//            bodyPlan) keep today's call exactly.
 //
 // Direction: `dir` is the direction the blow TRAVELS (attacker → target) in screen space. The
 // battle handler computes it from where the attacker IS at the contact frame (its current world
@@ -36,7 +41,8 @@ import type { Ramp } from '../../art/palette';
 import type { AnyMonsterAnim, MonsterArt } from '../../art/types';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { guardPushPx, motionProfile, reactShakePx, reactStopMs, type WeightSource } from '../../duel/motion';
-import type { XY } from '../../view/layout';
+import { LOOK_V3, type XY } from '../../view/layout';
+import { hasMaterial, materialOf as materialDef, type MaterialDef } from '../../art/materials';
 import { impact as combatImpact, stopTime } from '../../vfx/combat';
 import { onFrame } from '../../vfx/setpieces';
 import { wait } from '../../vfx/core';
@@ -44,7 +50,7 @@ import type { CinematicContext } from '../_core/types';
 import { contactFlash } from './flash';
 import { SKIP_COST, frameDelta, idleDelta, plannedEntry, planDeathEntry, setPlannedEntry, type DeathEntry } from './posematch';
 import { planGuardBreak, runGuardBreak } from './guardbreak';
-import { hitSoundFor, panAt, play, playHit, quietCombat, soundsOf, sourceCard } from './sound';
+import { hitSoundFor, materialOf, panAt, play, playHit, quietCombat, soundsOf, sourceCard } from './sound';
 
 type AnyCtx = CinematicContext<GameEvent>;
 
@@ -55,6 +61,24 @@ import { blowKindOf, blowSide, hitAnimFor, isHeavyBlow, type BlowKind, type Blow
 
 /** Share of the silhouette the contact flash may cover, by power. */
 const FLASH_COVER = [0, 0.34, 0.4, 0.45] as const;
+
+/**
+ * What the struck surface of a PLAN-BUILT monster gives a blow (A3_MIMARI §5): its material's hit
+ * (spark tones, debris, flash tone) — v3 look and art with `bodyPlan` only, else null (the aces and
+ * the old monsters keep today's sparks and flash exactly).
+ */
+export function struckSurface(u: MonsterUnit, kind: BlowKind): MaterialDef['hit'] | null {
+  if (!LOOK_V3 || !u.art.bodyPlan) return null;
+  const m = materialOf(u.cardId, kind);
+  return m && hasMaterial(m) ? materialDef(m).hit : null;
+}
+
+/** A 5-tone spark ramp from a material's 3–4 spark tones (dark → light; impact() reads ramp[1…4]). */
+function sparkRamp(c: readonly number[]): Ramp {
+  const a = c[0];
+  const z = c[c.length - 1];
+  return c.length >= 4 ? [a, c[0], c[1], c[2], c[3]] : [a, a, c[1] ?? a, z, z];
+}
 
 /** A unit-length blow direction; default: from the opponent's side into the unit's front. */
 export function blowDir(u: MonsterUnit | null, dir?: XY): XY {
@@ -521,6 +545,7 @@ export function reactHit(ctx: AnyCtx, u: MonsterUnit | null, o: ReactOpts): Prom
   // frame, instead of the generic impact (sound.ts; a monster without one keeps the generic sound)
   let hitSnd: ReturnType<typeof hitSoundFor> = null;
   let heavyHit = false;
+  const surf = u && live ? struckSurface(u, kind) : null;
   if (u && live) {
     if (u.guarding) return reactGuard(ctx, u, { power: o.power, dir, at: o.at, ramp: o.ramp, by: o.by, kind, survive: !o.lethal, noStop: o.noStop });
     const side = blowSide(u, dir);
@@ -528,20 +553,21 @@ export function reactHit(ctx: AnyCtx, u: MonsterUnit | null, o: ReactOpts): Prom
     heavyHit = heavy;
     hitSnd = hitSoundFor(u, { kind, heavy });
     if (o.pose !== false && side !== 'back') playRecoil(u, hitAnimFor(u, { kind, heavy }), { dir, power: o.power, lethal: !!o.lethal });
-    contactFlash(sc, u.sprite, dir, { frames: heavy ? 3 : 2, coverage: Math.min(FLASH_COVER[o.power], o.flash ?? 1), at: p, tint: o.ramp ? o.ramp[4] : undefined });
+    contactFlash(sc, u.sprite, dir, { frames: heavy ? 3 : 2, coverage: Math.min(FLASH_COVER[o.power], o.flash ?? 1), at: p, tint: o.ramp ? o.ramp[4] : undefined, ...(surf ? { color: surf.flash } : {}) });
     // the contact frame shows the body where it stands; the shove starts on the next frame change
     if (o.knock !== false) void knock(u, dir, kitKnockPx(u, o.power, side), { hold: !!o.lethal });
   }
   const boom = () =>
     combatImpact(sc, p.x, p.y, {
       power: Math.min(2, o.power) as 1 | 2,
-      ramp: o.ramp,
+      ramp: surf && kind === 'physical' ? sparkRamp(surf.sparks) : o.ramp,
       dir,
       noStop: o.noStop,
       stopMs: reactStopMs(o.power, by),
       shakePx: reactShakePx(o.power, by),
       jitterPx: 0,
       depth: u && live ? behindBody(u) : undefined,
+      ...(surf?.debris && u ? { debris: { kind: surf.debris, colors: surf.sparks, floor: u.home.y } } : {}),
     });
   if (!hitSnd) {
     // a body without its own material, struck by a monster that scores the contact frame with its
@@ -598,8 +624,21 @@ export async function reactGuard(ctx: AnyCtx | CinematicContext<never>, u: Monst
   const p = contactPoint(u, dir, o.at);
   // the body behind the ward takes it as its material: a light blow while the guard holds, a heavy
   // one when it breaks (sound.ts; a monster without a material keeps the generic impact)
-  const gSnd = hitSoundFor(u, { kind: o.kind ?? blowKindOf(o.by ?? null), heavy: !o.survive });
-  const boom = () => void combatImpact(sc, p.x, p.y, { power: Math.min(2, o.power) as 1 | 2, ramp: o.ramp, dir, noStop: true, shakePx: reactShakePx(o.power, by), jitterPx: 0, depth: behindBody(u) });
+  const gKind = o.kind ?? blowKindOf(o.by ?? null);
+  const gSnd = hitSoundFor(u, { kind: gKind, heavy: !o.survive });
+  // a plan-built body behind its ward still throws off its material (A3 §5)
+  const surf = struckSurface(u, gKind);
+  const boom = () =>
+    void combatImpact(sc, p.x, p.y, {
+      power: Math.min(2, o.power) as 1 | 2,
+      ramp: surf && gKind === 'physical' ? sparkRamp(surf.sparks) : o.ramp,
+      dir,
+      noStop: true,
+      shakePx: reactShakePx(o.power, by),
+      jitterPx: 0,
+      depth: behindBody(u),
+      ...(surf?.debris ? { debris: { kind: surf.debris, colors: surf.sparks, floor: u.home.y } } : {}),
+    });
   if (gSnd) {
     playHit(sc, gSnd, { heavy: !o.survive, volume: o.survive ? 0.9 : 1, pan: panAt(p.x) });
     quietCombat(boom);
