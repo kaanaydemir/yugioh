@@ -11,7 +11,8 @@
 //
 //   --scenarios a,b   scenario keys, or the presets 'accept' (the A2 slice scenarios of §10's
 //                     acceptance) and 'kit' (one per kit path the acceptance set lacks: a blow from
-//                     behind P1 / P2, a guard that holds, a guard that breaks); default accept,kit
+//                     behind P1 / P2, a guard that holds, a guard that breaks in battle and under
+//                     a spell); default accept,kit
 //   --look v3|v1      default v3 (&look=v3)
 //   --cap MS          game time filmed per scenario (default 3200)
 //   --out FILE        JSON (default shots/contact-probe.json); --txt FILE the table (default: next to it)
@@ -25,7 +26,9 @@
 //   contact     a unit's first rendered frame of a reaction — its sprite goes from a resting anim
 //               (idle / guard) to hit / hitHeavy / hitMagic / death, or from guard to a toGuard
 //               frame (the guard brace) — or, for a blow that plays no reaction pose (from behind),
-//               the first frame rendered after the battle's 'v3:contact' mark, on its target
+//               the first frame rendered after the battle's 'v3:contact' mark, on its target; or
+//               the first frame rendered after MonsterUnit.guardHit ran on a unit (every guard
+//               reaction: one that holds, one broken open by a battle or by a spell)
 //   resting     the frame before contact showed idle / guard AT the unit's rest position (rest0);
 //               a body struck in the middle of its own pose (a blocked attacker) is reported but
 //               excluded from the verdict (§10: "posematch giriş maliyetiyle denetlenir")
@@ -35,13 +38,20 @@
 //               this transition — screen − frames is what the sprite's MOVE added
 //   page %      HA-21's sheet value: contact frame vs idle f0 in place ÷ idle f0 opaque
 //   phase       frames − page: what the idle phase the blow landed on adds (reported, §10)
+//   bob         how much of that phase is a whole-pixel bob: the vertical shift dy (−3…3) of the
+//               previous frame that lines it up best with the contact frame, and frames % with the
+//               previous frame drawn dy px lower ('-' when no shift helps by ≥ 20 %)
 //   at contact  sprite offset from the previous frame and from rest0 on the contact frame
+//   1st change  the first later frame on which the sprite shows another frame than the contact
+//               frame: ms after contact, that frame
 //   knock       the first later frame whose sprite position differs from the contact frame's:
-//               ms after contact, whether the shown frame changed on that same frame ('chg') or
-//               not ('held': the kit's deadline), its offset; then the largest offset reached
+//               ms after contact, whether that is the first change ('=1st'), another frame change
+//               ('chg') or a frame that changed nothing else ('held': the kit's deadline / a guard's
+//               push), its offset; then the largest offset reached
 //   verdict     resting units: PASS when the sprite is at rest on the contact frame, screen < 50 %
-//               and screen ≤ page + 5 points (§10 acceptance, KK-4); FAIL otherwise
-// The strip (--png): prev | CONTACT | the following frames up to 3 past the knock onset (≤ 10
+//               and screen ≤ page + 5 points (§10 acceptance, KK-4); FAIL otherwise, with the
+//               idle phase noted when the frames alone (no move) exceed the limits
+// The strip (--png): prev | CONTACT | the following frames up to 2 past the knock onset (≤ 13
 // cells), the sprite drawn alone on a dark ground, a dim cross on its rest anchor, changed pixels
 // of each cell vs the cell before tinted red in a second row.
 //
@@ -59,7 +69,7 @@ const PRESETS = {
   // §10 acceptance: the A2 slice scenarios
   accept: ['saWyrmAtk', 'saWyrmDef', 'saWyrmBlocked', 'sliceMagusHitWolf', 'sliceMagusHitTitan', 'sliceMagusHitTitanP2', 'spBoltAce', 'sliceBoltMagus', 'sliceBoltWyrmP2', 'saMagusBlocked'],
   // kit paths the acceptance set lacks: a blow from behind (P2 / P1 target), a guard that holds, a guard that breaks
-  kit: ['sbShadeAtk', 'sbShadeP2', 'sliceMagusGuardWolf', 'sliceMagusGuardTitan'],
+  kit: ['sbShadeAtk', 'sbShadeP2', 'sliceMagusGuardWolf', 'sliceMagusGuardTitan', 'sliceBoltMagusDef'],
 };
 
 function parseArgs(argv) {
@@ -140,6 +150,17 @@ async function probeInPage(o) {
     }
     return [...us, ...[...dying].filter((u) => !us.includes(u))];
   };
+  // every guard reaction (MonsterUnit.guardHit: a guard that holds, one broken open by a battle or a
+  // spell): the first frame rendered after it ran is a contact of that unit
+  const unit0 = unitsNow()[0];
+  const proto = unit0 ? Object.getPrototypeOf(unit0) : null;
+  const guardHit0 = proto && typeof proto.guardHit === 'function' ? proto.guardHit : null;
+  if (guardHit0) {
+    proto.guardHit = function (...a) {
+      marks.push({ at: snaps.length, targetUid: this.uid, how: 'guard' });
+      return guardHit0.apply(this, a);
+    };
+  }
   let frameNo = 0;
   const onRender = () => {
     const row = { frame: frameNo, t: Math.round(frameNo * FRAME), units: {} };
@@ -168,11 +189,20 @@ async function probeInPage(o) {
     snaps.push(row);
   };
   sc.events.on('render', onRender);
-  // ---- t = 0: the armed scenario start runs on this freeze; then one game frame per step
-  N.freeze();
+  // ---- t = 0: the armed scenario start runs on this freeze; then one game frame per step, each
+  // followed by a task boundary (as tools/measure.mjs): every promise-chained continuation runs
+  // between two frames, as between real frames and between shot.mjs film frames (one evaluate
+  // per frame) — an `await` alone advances a chain by one link per frame and lags the cinematics
   const capFrames = Math.ceil(o.cap / FRAME);
-  for (frameNo = 1; frameNo <= capFrames; frameNo++) await N.step(FRAME);
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  N.freeze();
+  await tick();
+  for (frameNo = 1; frameNo <= capFrames; frameNo++) {
+    N.step(FRAME);
+    await tick();
+  }
   sc.events.off('render', onRender);
+  if (guardHit0) proto.guardHit = guardHit0;
 
   // ---- contacts
   const anim = (f) => (f && f.includes(':') ? f.slice(0, f.indexOf(':')) : f);
@@ -198,9 +228,10 @@ async function probeInPage(o) {
   for (const m of marks) {
     const uid = m.targetUid != null ? String(m.targetUid) : null;
     if (!uid || m.at >= snaps.length || !snaps[m.at].units[uid]) continue;
-    // a reaction pose found within a frame of the mark is the same contact
+    // a reaction pose (or another mark) found within a frame of the mark is the same contact
     if ([m.at - 1, m.at, m.at + 1].some((i) => seenAt.has(`${uid}@${i}`))) continue;
-    contacts.push({ uid, i: m.at, how: 'mark' });
+    contacts.push({ uid, i: m.at, how: m.how ?? 'mark' });
+    seenAt.add(`${uid}@${m.at}`);
   }
   contacts.sort((x, y) => x.i - y.i);
 
@@ -285,7 +316,7 @@ async function probeInPage(o) {
     const cur = snaps[c.i].units[c.uid];
     if (!prev || !cur) continue;
     const opaque = opaqueOf(cur.tex, 'idle:0');
-    const box = boxOf([prev, cur]);
+    const box = boxOf([prev, cur], 5);
     const A = drawState(prev, box);
     const B = drawState(cur, box);
     const inPlacePrev = drawState(prev, box, prev.frame, { left: cur.left, top: cur.top });
@@ -293,8 +324,25 @@ async function probeInPage(o) {
     const screen = changed(A, B);
     const frames = changed(inPlacePrev, B);
     const page = changed(idle0, B);
+    // the share of the frames' change that is a whole-pixel bob (the previous frame dy px lower)
+    let bob = null;
+    {
+      let best = frames;
+      let bestDy = 0;
+      for (let dy = -3; dy <= 3; dy++) {
+        if (!dy) continue;
+        const n = changed(drawState(prev, box, prev.frame, { left: cur.left, top: cur.top + dy }), B);
+        if (n < best) {
+          best = n;
+          bestDy = dy;
+        }
+      }
+      if (bestDy && best < frames * 0.8) bob = { dy: bestDy, pct: pct(best, opaque) };
+    }
     const resting = REST.has(anim(prev.frame)) && Math.round(prev.x) === Math.round(prev.rest.x) && Math.round(prev.y) === Math.round(prev.rest.y);
+    // the first change: the first later frame showing another frame than the contact frame
     // the knock: the first later frame whose position differs from the contact frame's
+    let firstChange = null;
     let knock = null;
     let maxOff = { dx: 0, dy: 0, d: 0 };
     let last = c.i;
@@ -303,11 +351,15 @@ async function probeInPage(o) {
       const p = snaps[j - 1].units[c.uid];
       if (!s || !p) break;
       last = j;
+      if (!firstChange && s.frame !== cur.frame) firstChange = { ms: Math.round((j - c.i) * FRAME), frames: j - c.i, frame: s.frame };
       const dx = Math.round(s.x - cur.x);
       const dy = Math.round(s.y - cur.y);
       const d = Math.max(Math.abs(dx), Math.abs(dy));
       if (d > maxOff.d) maxOff = { dx, dy, d };
-      if (!knock && d > 0) knock = { ms: Math.round((j - c.i) * FRAME), frames: j - c.i, dx, dy, frameChanged: s.frame !== p.frame, frame: s.frame, at: snaps[j].t };
+      if (!knock && d > 0) {
+        knock = { ms: Math.round((j - c.i) * FRAME), frames: j - c.i, dx, dy, frameChanged: s.frame !== p.frame, frame: s.frame, at: snaps[j].t };
+        knock.onFirstChange = !!firstChange && firstChange.frames === knock.frames;
+      }
     }
     const r = {
       uid: c.uid,
@@ -326,14 +378,16 @@ async function probeInPage(o) {
       framesPct: pct(frames, opaque),
       pagePct: pct(page, opaque),
       phasePct: pct(frames - page, opaque),
+      bob,
       shiftFromPrev: { dx: Math.round(cur.x - prev.x), dy: Math.round(cur.y - prev.y) },
       shiftFromRest: { dx: Math.round(cur.x - cur.rest.x), dy: Math.round(cur.y - cur.rest.y) },
+      firstChange,
       knock,
       knockMax: maxOff,
     };
-    // ---- the strip (sprite alone): prev, contact, then up to 3 frames past the knock onset
+    // ---- the strip (sprite alone): prev, contact, then up to 2 frames past the knock onset
     if (o.png) {
-      const endJ = Math.min(last, c.i + (knock ? knock.frames + 3 : 4), c.i + 8);
+      const endJ = Math.min(last, c.i + (knock ? knock.frames + 2 : 4), c.i + 11);
       const seq = [];
       for (let j = c.i - 1; j <= endJ; j++) if (snaps[j]?.units[c.uid]) seq.push({ j, st: snaps[j].units[c.uid] });
       const sb = boxOf(seq.map((q) => q.st), 4);
@@ -459,10 +513,13 @@ async function probeOne(key) {
 const verdictOf = (c) => {
   if (!c.resting) return 'excluded';
   const why = [];
-  if (c.shiftFromRest.dx || c.shiftFromRest.dy || c.shiftFromPrev.dx || c.shiftFromPrev.dy) why.push('moved on contact');
+  const moved = !!(c.shiftFromRest.dx || c.shiftFromRest.dy || c.shiftFromPrev.dx || c.shiftFromPrev.dy);
+  if (moved) why.push('moved on contact');
   if (c.screenPct >= 50) why.push('screen ≥ 50');
   if (c.screenPct > c.pagePct + 5) why.push('screen > page + 5');
-  return why.length ? `FAIL (${why.join(', ')})` : 'PASS';
+  if (!why.length) return 'PASS';
+  // the sprite did not move: the excess is the idle phase the blow landed on (§10: reported apart)
+  return `FAIL (${why.join(', ')})${moved ? '' : ` — idle phase +${c.phasePct}`}`;
 };
 
 const results = {};
@@ -494,9 +551,10 @@ const off = (o) => `${o.dx},${o.dy}`;
 const lines = [];
 lines.push(`contact-probe (tools/contact-probe.mjs) — look ${LOOK}, ${new Date().toISOString()}`);
 lines.push('screen = prev → contact as drawn (frame + position); frames = the same two frames in place; page = HA-21 (contact vs idle f0); phase = frames − page; % of idle f0 opaque');
+lines.push('bob = dy:frames % with the previous frame dy px lower (the best whole-pixel line-up); 1st = first frame change after contact; knock onset: =1st on that frame, chg another change, held no change');
 lines.push('');
 lines.push(
-  `${pad('scenario', 22)}${pad('unit', 22)}${pad('how', 5)}${lpad('t', 6)}  ${pad('prev → contact', 30)}${pad('rest', 5)}${lpad('screen', 7)}${lpad('frames', 7)}${lpad('page', 7)}${lpad('phase', 7)}  ${pad('@contact', 9)}${pad('knock onset', 30)}${pad('max', 6)}verdict`,
+  `${pad('scenario', 22)}${pad('unit', 24)}${pad('how', 6)}${lpad('t', 6)}  ${pad('prev → contact', 30)}${pad('rest', 5)}${lpad('screen', 7)}${lpad('frames', 7)}${lpad('page', 7)}${lpad('phase', 7)}  ${pad('bob', 9)}${pad('@contact', 9)}${pad('1st change', 22)}${pad('knock onset', 20)}${pad('max', 7)}verdict`,
 );
 if (PNG) fs.mkdirSync(PNG, { recursive: true });
 for (const key of KEYS) {
@@ -511,9 +569,11 @@ for (const key of KEYS) {
     const v = verdictOf(c);
     c.verdict = v;
     if (v.startsWith('FAIL')) bad++;
-    const k = c.knock ? `+${c.knock.ms}ms ${c.knock.frameChanged ? 'chg' : 'held'} ${off(c.knock)} ${c.knock.frame}` : '-';
+    const k = c.knock ? `+${c.knock.ms}ms ${c.knock.onFirstChange ? '=1st' : c.knock.frameChanged ? 'chg' : 'held'} ${off(c.knock)}` : '-';
+    const fc = c.firstChange ? `+${c.firstChange.ms}ms ${c.firstChange.frame}` : '-';
+    const bb = c.bob ? `${c.bob.dy}:${c.bob.pct}` : '-';
     lines.push(
-      `${pad(key, 22)}${pad(`${c.cardId} P${c.player + 1} z${c.zone}`, 22)}${pad(c.how, 5)}${lpad(c.t, 6)}  ${pad(`${c.prevFrame} → ${c.contactFrame}`, 30)}${pad(c.resting ? 'yes' : 'no', 5)}${lpad(c.screenPct, 7)}${lpad(c.framesPct, 7)}${lpad(c.pagePct, 7)}${lpad(c.phasePct, 7)}  ${pad(off(c.shiftFromPrev), 9)}${pad(k, 30)}${pad(off(c.knockMax), 6)}${v}`,
+      `${pad(key, 22)}${pad(`${c.cardId} P${c.player + 1} z${c.zone}`, 24)}${pad(c.how, 6)}${lpad(c.t, 6)}  ${pad(`${c.prevFrame} → ${c.contactFrame}`, 30)}${pad(c.resting ? 'yes' : 'no', 5)}${lpad(c.screenPct, 7)}${lpad(c.framesPct, 7)}${lpad(c.pagePct, 7)}${lpad(c.phasePct, 7)}  ${pad(bb, 9)}${pad(off(c.shiftFromPrev), 9)}${pad(fc, 22)}${pad(k, 20)}${pad(off(c.knockMax), 7)}${v}`,
     );
     if (PNG && c.png) {
       const f = path.join(PNG, `${key}-${c.cardId}-${c.uid}.png`);

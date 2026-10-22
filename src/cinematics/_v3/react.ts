@@ -12,9 +12,13 @@
 //            (hitAnimFor). A blow from BEHIND (the shadow assassin) never plays the recoil, which
 //            leans back toward the attacker: the body is shoved forward instead.
 //   motion   whole-pixel knock-back along the blow, sized by the TARGET's weight class
-//            (motion.ts guardPushPx + 1; a heavy body barely moves, a light one is thrown), one
-//            pixel on the impact frame itself, the rest after the hit-stop; springs back with the
-//            class's return ease, or stays (hold: a death follows).
+//            (motion.ts guardPushPx + 1; a heavy body barely moves, a light one is thrown). A3 §10:
+//            the CONTACT frame shows the body where it stands (only the struck region changes: the
+//            recoil's f0); the shove starts on the first frame change after it (afterContact: the
+//            recoil's f1, a lethal blow's death pose, the next frame of a body that plays no
+//            recoil) — one pixel on that frame, the rest over ~70 ms; springs back with the class's
+//            return ease, or stays (hold: a death follows). Art with knock: 'pose' draws part of
+//            the travel in its recoil poses; the kit adds only the rest (kitKnockPx).
 //   time     hit-stop / shake from the SOURCE of the blow (motion.ts contactStopMs / ShakePx).
 //   flash    contactFlash: stepped light bands around the contact point (white core, a checkered
 //            band in the blow's light tone, a dithered edge), ≤ ~45 % of the silhouette.
@@ -69,7 +73,21 @@ export function contactPoint(u: MonsterUnit, dir: XY, at?: XY): XY {
 
 // ================================================================ knock-back
 
-const knocks = new WeakMap<Phaser.GameObjects.Sprite, { base: XY; token: number; tween: Phaser.Tweens.Tween | null }>();
+/** Phaser.Animations.Events.ANIMATION_UPDATE / Phaser.Scenes.Events.PRE_RENDER (no runtime Phaser import here). */
+const ANIMATION_UPDATE = 'animationupdate';
+const PRE_RENDER = 'prerender';
+/** One game frame (ms): the slack of afterContact's deadline for a pose that holds. */
+const TICK_MS = 1000 / 60;
+
+interface KnockRec {
+  /** Where the sprite stands when it is not shoved (kept across a knock that interrupts another). */
+  base: XY;
+  token: number;
+  tween: Phaser.Tweens.Tween | null;
+  /** Drops a shove still waiting for its first frame change (afterContact). */
+  cancel: (() => void) | null;
+}
+const knocks = new WeakMap<Phaser.GameObjects.Sprite, KnockRec>();
 
 /** Whole-pixel knock-back in attack position (px for this target and blow). */
 export function knockPx(u: MonsterUnit, power: 1 | 2 | 3, side: BlowSide): number {
@@ -79,24 +97,110 @@ export function knockPx(u: MonsterUnit, power: 1 | 2 | 3, side: BlowSide): numbe
 }
 
 /**
- * Shove the sprite `px` whole pixels along `dir`: one pixel at once (the impact frame shows it,
- * hit-stop or not), the rest over ~70 ms once time runs again, then back to where it stood with
- * the weight class's return ease — or stay there (hold: a death follows from this spot).
+ * The part of knockPx the kit moves the sprite itself (A3 §10.2): all of it for art without
+ * `knock: 'pose'` (the default 'sprite': both slice monsters); with 'pose' the recoil poses draw
+ * `poseKnockPx[power]` px of a FRONT blow's travel and the kit adds only the rest. A blow from
+ * behind (no recoil pose; a struckBack lean draws no travel) or from above (the shove is down, the
+ * recoil poses draw none of it) keeps the whole knockPx.
  */
-export function knock(u: MonsterUnit, dir: XY, px: number, o: { hold?: boolean } = {}): Promise<void> {
+export function kitKnockPx(u: MonsterUnit, power: 1 | 2 | 3, side: BlowSide): number {
+  const k = knockPx(u, power, side);
+  if (u.art.knock !== 'pose' || side !== 'front') return k;
+  const drawn = Math.max(0, Math.round(u.art.poseKnockPx?.[power - 1] ?? 0));
+  return Math.max(0, k - drawn);
+}
+
+/**
+ * A3 §10.1: run `cb` once, on the first frame after the contact frame on which the sprite shows
+ * another frame — whatever anim is on screen: the recoil's f1, a lethal blow's death pose (its
+ * posematch entry frame or its first changing frame), the next frame of a body that plays no
+ * recoil (a blow from behind) — before that frame is drawn. Call it on the contact (the hit).
+ *   - The contact frame is the frame DRAWN next (scene PRE_RENDER), not the one shown at the call:
+ *     the caller may still re-pose the sprite before it is drawn (the bolt's jolt frame, posed
+ *     right after the reaction handed over to the death pose).
+ *   - From then on, the sprite's 'animationupdate', listened to once (its anim stepped to the next
+ *     frame), and each update after the animations stepped (scene UPDATE; the unit's shadow
+ *     follows in POST_UPDATE) a comparison with the contact frame: a play() of another anim (the
+ *     handover into the death pose emits 'animationstart', not 'animationupdate') or a pose()
+ *     (setFrame) changes the frame without that event.
+ *   - A pose that holds (nothing changes): `holdMs` of show time + one tick after the contact —
+ *     show time stands still through the hit-stop, so hit-stop + f0 hold + 1 tick. Default
+ *     holdMs: the hold of the contact frame (of the frame shown at the call until it is drawn).
+ * `onCancel` runs instead when the unit is gone first (retired / destroyed) or when the returned
+ * function is called before `cb` ran.
+ */
+export function afterContact(u: MonsterUnit, cb: () => void, o: { holdMs?: number; onCancel?: () => void } = {}): () => void {
+  const s = u.sprite;
+  const sc = u.scene;
+  const holdOfShown = () => {
+    const fi = u.frameInfo();
+    return Math.max(0, o.holdMs ?? (fi.anim ? u.frameMs(fi.anim, fi.frame) : 0));
+  };
+  let shown = String(s.frame?.name ?? '');
+  let hold = holdOfShown();
+  let drawn = false;
+  let done = false;
+  let stopPoll: () => void = () => undefined;
+  const end = () => {
+    done = true;
+    sc.events.off(PRE_RENDER, onDraw);
+    s.off(ANIMATION_UPDATE, fire);
+    stopPoll();
+  };
+  function fire(): void {
+    if (done) return;
+    end();
+    if (s.active && !u.retired) cb();
+    else o.onCancel?.();
+  }
+  // the contact frame is about to be drawn: that is the frame (and the hold) a change is measured from
+  function onDraw(): void {
+    if (done || drawn) return;
+    drawn = true;
+    shown = String(s.frame?.name ?? '');
+    hold = holdOfShown();
+    s.once(ANIMATION_UPDATE, fire);
+  }
+  sc.events.once(PRE_RENDER, onDraw);
+  stopPoll = onFrame(sc, (_dt, el) => {
+    if (done) return false;
+    if (!s.active || u.retired || (drawn && String(s.frame?.name ?? '') !== shown) || el >= hold + TICK_MS) {
+      fire();
+      return false;
+    }
+    return true;
+  });
+  return () => {
+    if (done) return;
+    end();
+    o.onCancel?.();
+  };
+}
+
+/**
+ * Shove the sprite `px` whole pixels along `dir` (y × 0.6: the foreshortened floor). The contact
+ * frame shows the body where it stands; the shove starts on the first frame change after it
+ * (afterContact; o.holdMs: its deadline for a pose that holds): one pixel on that frame, the rest
+ * over ~70 ms, then back to where it stood with the weight class's return ease — or it stays
+ * there (hold: a death follows from this spot). Something else moving the sprite before the shove
+ * starts (a strike carrying it, settle()) cancels it.
+ */
+export function knock(u: MonsterUnit, dir: XY, px: number, o: { hold?: boolean; holdMs?: number } = {}): Promise<void> {
   const s = u.sprite;
   if (!s.active || px <= 0) return Promise.resolve();
   const sc = u.scene;
   const prev = knocks.get(s);
+  prev?.cancel?.();
   prev?.tween?.stop();
   const base = prev ? prev.base : { x: s.x, y: s.y };
   const token = (prev?.token ?? 0) + 1;
-  const rec = { base, token, tween: null as Phaser.Tweens.Tween | null };
+  const rec: KnockRec = { base, token, tween: null, cancel: null };
   knocks.set(s, rec);
   const to = { x: Math.round(base.x + dir.x * px), y: Math.round(base.y + dir.y * px * 0.6) };
   const first = { x: base.x + Math.sign(to.x - base.x), y: base.y + (to.x === base.x ? Math.sign(to.y - base.y) : 0) };
-  s.setPosition(first.x, first.y);
   const prof = motionProfile(u.art);
+  // where the sprite stands on the contact frame (a knock that interrupts another: mid-way back)
+  const at = { x: s.x, y: s.y };
   return new Promise<void>((resolve) => {
     let done = false;
     const finish = () => {
@@ -105,30 +209,36 @@ export function knock(u: MonsterUnit, dir: XY, px: number, o: { hold?: boolean }
       if (knocks.get(s) === rec) knocks.delete(s);
       resolve();
     };
-    rec.tween = sc.tweens.add({
-      targets: s,
-      x: to.x,
-      y: to.y,
-      duration: 70,
-      ease: 'Quad.Out',
-      onUpdate: () => s.setPosition(Math.round(s.x), Math.round(s.y)),
-      onStop: finish,
-      onComplete: () => {
-        if (o.hold || !s.active || knocks.get(s) !== rec) return finish();
-        rec.tween = sc.tweens.add({
-          targets: s,
-          x: base.x,
-          y: base.y,
-          duration: Math.round(prof.recoveryMs * 0.6),
-          ease: prof.guardReturnEase,
-          onUpdate: () => s.setPosition(Math.round(s.x), Math.round(s.y)),
-          onComplete: finish,
-          onStop: finish,
-        });
-      },
-    });
-    // settle() / killTweensOf may drop the tweens without an event
-    void new Promise<void>((r) => sc.time.delayedCall(o.hold ? 260 : 700, r)).then(finish);
+    const shove = () => {
+      rec.cancel = null;
+      if (knocks.get(s) !== rec || s.x !== at.x || s.y !== at.y) return finish();
+      s.setPosition(first.x, first.y);
+      rec.tween = sc.tweens.add({
+        targets: s,
+        x: to.x,
+        y: to.y,
+        duration: 70,
+        ease: 'Quad.Out',
+        onUpdate: () => s.setPosition(Math.round(s.x), Math.round(s.y)),
+        onStop: finish,
+        onComplete: () => {
+          if (o.hold || !s.active || knocks.get(s) !== rec) return finish();
+          rec.tween = sc.tweens.add({
+            targets: s,
+            x: base.x,
+            y: base.y,
+            duration: Math.round(prof.recoveryMs * 0.6),
+            ease: prof.guardReturnEase,
+            onUpdate: () => s.setPosition(Math.round(s.x), Math.round(s.y)),
+            onComplete: finish,
+            onStop: finish,
+          });
+        },
+      });
+      // settle() / killTweensOf may drop the tweens without an event
+      void new Promise<void>((r) => sc.time.delayedCall(o.hold ? 260 : 700, r)).then(finish);
+    };
+    rec.cancel = afterContact(u, shove, { holdMs: o.holdMs, onCancel: finish });
   });
 }
 
@@ -419,7 +529,8 @@ export function reactHit(ctx: AnyCtx, u: MonsterUnit | null, o: ReactOpts): Prom
     hitSnd = hitSoundFor(u, { kind, heavy });
     if (o.pose !== false && side !== 'back') playRecoil(u, hitAnimFor(u, { kind, heavy }), { dir, power: o.power, lethal: !!o.lethal });
     contactFlash(sc, u.sprite, dir, { frames: heavy ? 3 : 2, coverage: Math.min(FLASH_COVER[o.power], o.flash ?? 1), at: p, tint: o.ramp ? o.ramp[4] : undefined });
-    if (o.knock !== false) void knock(u, dir, knockPx(u, o.power, side), { hold: !!o.lethal });
+    // the contact frame shows the body where it stands; the shove starts on the next frame change
+    if (o.knock !== false) void knock(u, dir, kitKnockPx(u, o.power, side), { hold: !!o.lethal });
   }
   const boom = () =>
     combatImpact(sc, p.x, p.y, {

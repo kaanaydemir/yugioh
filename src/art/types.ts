@@ -140,6 +140,22 @@ export interface MonsterArt {
    * second sheet drawn with { lightFrom: 'right' }, then flipped, so the light stays top-left).
    */
   p2?: 'mirror' | 'relight';
+
+  // ---- v3 (A3) optional extensions (docs/v3/A3_MIMARI.md §3.5) ----
+
+  /**
+   * v3 (A3): how a recoil moves the body (§10). 'sprite' (absent = default): the reaction kit shoves
+   * the sprite whole pixels, starting at the first frame change AFTER contact (never on the contact
+   * frame). 'pose': the recoil poses draw `poseKnockPx[power]` px of the travel themselves (feet
+   * planted, the struck region leads); the kit adds only the rest, by the same trigger.
+   */
+  knock?: 'sprite' | 'pose';
+  /** v3 (A3), with knock 'pose': whole px of body travel the recoil poses draw, for power 1 / 2 / 3. */
+  poseKnockPx?: readonly [number, number, number];
+  /** v3 (A3): the body plan (and its pinned version) the art was built on (sameness groups, gallery). */
+  bodyPlan?: { id: string; version: number };
+  /** v3 (A3): rig joints of one frame in art pixels — read by the sameness tool only, never at runtime. */
+  joints?(anim: AnyMonsterAnim, frame: number): Readonly<Record<string, { x: number; y: number }>>;
 }
 
 /** Card artwork window size (pixels) used by the card renderer and portraits. */

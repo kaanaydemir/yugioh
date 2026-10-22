@@ -6,7 +6,9 @@ export default defineConfig({
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
-  server: { host: '0.0.0.0', port: 5173 },
+  // shots/ holds thousands of film frames written by the dev tools while dev servers run; watching it
+  // exhausts the inotify limit (ENOSPC) when several gate runs overlap. Nothing in it is imported.
+  server: { host: '0.0.0.0', port: 5173, watch: { ignored: ['**/shots/**'] } },
   build: {
     target: 'es2022',
     chunkSizeWarningLimit: 4000,
