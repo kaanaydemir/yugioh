@@ -18,7 +18,9 @@
 //            recoil's f1, a lethal blow's death pose, the next frame of a body that plays no
 //            recoil) — one pixel on that frame, the rest over ~70 ms; springs back with the class's
 //            return ease, or stays (hold: a death follows). Art with knock: 'pose' draws part of
-//            the travel in its recoil poses; the kit adds only the rest (kitKnockPx).
+//            the travel in its recoil poses (measured on its rig per recoil, drawnKnockPx); the
+//            kit adds only the rest (kitKnockPx) — all of it on a lethal blow whose death pose
+//            does not continue the recoil's drawn travel.
 //   time     hit-stop / shake from the SOURCE of the blow (motion.ts contactStopMs / ShakePx).
 //   flash    contactFlash: stepped light bands around the contact point (white core, a checkered
 //            band in the blow's light tone, a dithered edge), ≤ ~45 % of the silhouette.
@@ -48,7 +50,7 @@ import { onFrame } from '../../vfx/setpieces';
 import { wait } from '../../vfx/core';
 import type { CinematicContext } from '../_core/types';
 import { contactFlash } from './flash';
-import { SKIP_COST, frameDelta, idleDelta, plannedEntry, planDeathEntry, setPlannedEntry, type DeathEntry } from './posematch';
+import { SKIP_COST, endSettle, frameDelta, idleDelta, plannedEntry, planDeathEntry, setPlannedEntry, type DeathEntry } from './posematch';
 import { planGuardBreak, runGuardBreak } from './guardbreak';
 import { hitSoundFor, materialOf, panAt, play, playHit, quietCombat, soundsOf, sourceCard } from './sound';
 
@@ -56,8 +58,8 @@ type AnyCtx = CinematicContext<GameEvent>;
 
 // ================================================================ blow classification (pure: ./blow.ts)
 
-export { STRIKE_KIND, blowKindOf, blowSide, hitAnimFor, isHeavyBlow, type BlowKind, type BlowSide } from './blow';
-import { blowKindOf, blowSide, hitAnimFor, isHeavyBlow, type BlowKind, type BlowSide } from './blow';
+export { STRIKE_KIND, blowKindOf, blowSide, hitAnimFor, isHeavyBlow, poseTravelPx, type BlowKind, type BlowSide } from './blow';
+import { blowKindOf, blowSide, hitAnimFor, isHeavyBlow, poseTravelPx, type BlowKind, type BlowSide } from './blow';
 
 /** Share of the silhouette the contact flash may cover, by power. */
 const FLASH_COVER = [0, 0.34, 0.4, 0.45] as const;
@@ -120,18 +122,60 @@ export function knockPx(u: MonsterUnit, power: 1 | 2 | 3, side: BlowSide): numbe
   return Math.max(0, Math.min(4, k));
 }
 
+/** Measured recoil travel per art (poseTravelPx is pure; the rig solve runs once per art × anim × frame). */
+const travels = new WeakMap<MonsterArt, Map<string, number | null>>();
+
+/**
+ * Whole px of a FRONT blow's travel the recoil `anim` draws itself on knock: 'pose' art (A3 §10.2):
+ * measured on the art's own rig when it gives joints() (poseTravelPx: on frame `frame`, else the
+ * most over f1–f2 — the anim that plays is chosen by the blow's kind and heaviness, not its power,
+ * A3 core review F4), else the declared `poseKnockPx[power]`. 0 for 'sprite' art.
+ */
+export function drawnKnockPx(u: MonsterUnit, power: 1 | 2 | 3, anim?: AnyMonsterAnim, frame?: number): number {
+  if (u.art.knock !== 'pose') return 0;
+  if (anim && u.art.joints) {
+    let byArt = travels.get(u.art);
+    if (!byArt) travels.set(u.art, (byArt = new Map()));
+    const key = `${anim}:${frame ?? ''}`;
+    if (!byArt.has(key)) byArt.set(key, poseTravelPx(u.art, anim, frame));
+    const t = byArt.get(key);
+    if (t !== null && t !== undefined) return t;
+  }
+  return Math.max(0, Math.round(u.art.poseKnockPx?.[power - 1] ?? 0));
+}
+
+export interface KitKnockOpts {
+  /** The recoil that plays (hitAnimFor): its drawn travel is what the kit leaves out. */
+  anim?: AnyMonsterAnim;
+  /** The blow destroys the unit: the shove is held into the death pose. */
+  lethal?: boolean;
+  /** A lethal blow's planned death entry (posematch, set by playRecoil), if one was planned. */
+  entry?: DeathEntry | null;
+}
+
 /**
  * The part of knockPx the kit moves the sprite itself (A3 §10.2): all of it for art without
  * `knock: 'pose'` (the default 'sprite': both slice monsters); with 'pose' the recoil poses draw
- * `poseKnockPx[power]` px of a FRONT blow's travel and the kit adds only the rest. A blow from
- * behind (no recoil pose; a struckBack lean draws no travel) or from above (the shove is down, the
- * recoil poses draw none of it) keeps the whole knockPx.
+ * part of a FRONT blow's travel (drawnKnockPx of the recoil that plays) and the kit adds only the
+ * rest. A blow from behind (no recoil pose; a struckBack lean draws no travel) or from above (the
+ * shove is down, the recoil poses draw none of it) keeps the whole knockPx.
+ * A LETHAL blow (A3 core review F1; §10.1 "ölümcülde hold"): the shove is held into the death pose,
+ * which carries none of the recoil's drawn travel when it replaces the recoil from its struck f0
+ * (a planned entry that holds f0 — HA-24: hitHeavy f0 = death f0) or when no entry was planned
+ * (the recoil plays out to its rest pose, then the death) — the kit then moves the whole knockPx.
+ * Only a death that continues from a later recoil frame (its entry is pixel-matched to that frame)
+ * keeps that frame's drawn part. (No plan: while the recoil's f1–f2 show, their drawn travel adds
+ * to the kit's for those frames — a 1–2 px overshoot that settles as the recoil returns to rest.)
  */
-export function kitKnockPx(u: MonsterUnit, power: 1 | 2 | 3, side: BlowSide): number {
+export function kitKnockPx(u: MonsterUnit, power: 1 | 2 | 3, side: BlowSide, o: KitKnockOpts = {}): number {
   const k = knockPx(u, power, side);
   if (u.art.knock !== 'pose' || side !== 'front') return k;
-  const drawn = Math.max(0, Math.round(u.art.poseKnockPx?.[power - 1] ?? 0));
-  return Math.max(0, k - drawn);
+  if (o.lethal) {
+    const e = o.entry ?? null;
+    if (!e || e.hold <= 0) return k;
+    return Math.max(0, k - drawnKnockPx(u, power, e.anim, e.hold));
+  }
+  return Math.max(0, k - drawnKnockPx(u, power, o.anim));
 }
 
 /**
@@ -547,15 +591,21 @@ export function reactHit(ctx: AnyCtx, u: MonsterUnit | null, o: ReactOpts): Prom
   let heavyHit = false;
   const surf = u && live ? struckSurface(u, kind) : null;
   if (u && live) {
+    // A3 Y1b: the blow has landed — a pre-contact idle settle ends here (posematch.ts)
+    endSettle(u);
     if (u.guarding) return reactGuard(ctx, u, { power: o.power, dir, at: o.at, ramp: o.ramp, by: o.by, kind, survive: !o.lethal, noStop: o.noStop });
     const side = blowSide(u, dir);
     const heavy = isHeavyBlow(o.power, !!o.lethal, by);
     heavyHit = heavy;
     hitSnd = hitSoundFor(u, { kind, heavy });
-    if (o.pose !== false && side !== 'back') playRecoil(u, hitAnimFor(u, { kind, heavy }), { dir, power: o.power, lethal: !!o.lethal });
+    const recoil = hitAnimFor(u, { kind, heavy });
+    if (o.pose !== false && side !== 'back') playRecoil(u, recoil, { dir, power: o.power, lethal: !!o.lethal });
     contactFlash(sc, u.sprite, dir, { frames: heavy ? 3 : 2, coverage: Math.min(FLASH_COVER[o.power], o.flash ?? 1), at: p, tint: o.ramp ? o.ramp[4] : undefined, ...(surf ? { color: surf.flash } : {}) });
     // the contact frame shows the body where it stands; the shove starts on the next frame change
-    if (o.knock !== false) void knock(u, dir, kitKnockPx(u, o.power, side), { hold: !!o.lethal });
+    if (o.knock !== false) {
+      const px = kitKnockPx(u, o.power, side, { anim: recoil, lethal: !!o.lethal, entry: o.lethal ? plannedEntry(u) : null });
+      void knock(u, dir, px, { hold: !!o.lethal });
+    }
   }
   const boom = () =>
     combatImpact(sc, p.x, p.y, {

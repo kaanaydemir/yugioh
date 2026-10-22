@@ -19,6 +19,10 @@
 //         the approved still when one exists — wyrm / sentinel as P1, magus as P2 — else v1 idle f0)
 //   KK-4  HA-21 contact frame local: Δ(f0, idle f0) / idle f0 opaque < 50 % for hit, hitHeavy, hitMagic
 //         and death when death marks f0 as contact (the on-screen half of KK-4 is tools/contact-probe.mjs)
+//         · HA-21 phase: the same over EVERY idle frame (max_k Δ(idle k, f0) / idle f0 opaque < 50 %: a
+//         resting target is struck in whatever idle frame it shows; the frozen slice is a known
+//         exemption, A3_MIMARI §10) · HA-11 travel (knock 'pose'): the travel each recoil draws
+//         (measured on the rig, what the hit kit subtracts) against the declared poseKnockPx, ≤ 4 px
 //   KK-5  HA-9 walkers: bottom row and the x range of the lowest 6 rows fixed in every idle, guard,
 //         toGuard, fromGuard frame · HA-10 floaters: points().feet fixed there (dx = 0), idle float
 //         baseline within ±1 px of idle f0
@@ -133,6 +137,9 @@ const relit = art.p2 === 'relight';
 const optsOf = (v: Sheet): DrawOpts | undefined => (v.view === 'P2 relight' ? { lightFrom: 'right' } : undefined);
 const frameOf = (v: Sheet, anim: AnyMonsterAnim, f: number) => store.get(anim, f, optsOf(v));
 const { litBias } = await import('../src/dev/relight-shim');
+// after loadRegistry set the look (layout.ts decides LOOK_V3 at module init; motion.ts reads it)
+const { poseTravelPx } = await import('../src/cinematics/_v3/blow');
+const { guardPushPx } = await import('../src/duel/motion');
 const SLICE = new Set(['crystal_wyrm', 'abyss_magus']);
 
 // ---------------------------------------------------------------- rows
@@ -327,6 +334,69 @@ const animsOf = (v: Sheet) => Object.values(v.anims);
   });
   const knownDeath = views.some((v) => v.anims.death && v.anims.death.marks.contact === undefined);
   add({ kk: 'KK-4', rule: 'HA-21', what: 'temas karesi yerel: Δ(f0, idle f0) / idle f0 opak (sayfa; ekran: contact-probe)', values: h.values, limit: '< %50', status: st(h.ok), note: knownDeath ? 'death without a contact mark is not a contact frame (its f0 continues the reaction); the missing mark is a KK-6 item' : undefined });
+  // A3 core review F2: a resting target is struck in whatever idle frame it shows (the struck f0 is drawn
+  // from idle f0, the blow lands mid-breath; the Y1b settle steers the loop only when the wind-up is long
+  // enough), so the on-screen contact change is bounded by the worst idle phase: max over idle frames k
+  // of Δ(idle k, struck f0) / idle f0 opaque. Gates the idle amplitude while a monster is drawn; the
+  // frozen slice is exempt (A3_MIMARI §10, REHBER KK-4: measured there, recorded, not fixable in its art).
+  const ph = perView((v) => {
+    const op = frameOf(v, 'idle', 0).coverage();
+    const n = v.anims.idle.info.length;
+    const parts: string[] = [];
+    let ok = true;
+    for (const a of ['hit', 'hitHeavy', 'hitMagic', 'death'] as const) {
+      const rep = v.anims[a];
+      if (!rep || (a === 'death' && rep.marks.contact !== 0)) continue;
+      const f0 = frameOf(v, a, 0);
+      let worst = { x: -1, k: 0 };
+      for (let k = 0; k < n; k++) {
+        const x = delta(frameOf(v, 'idle', k), f0) / op;
+        if (x > worst.x) worst = { x, k };
+      }
+      if (worst.x >= 0.5) ok = false;
+      parts.push(`${a} ${pct(worst.x)} (idle f${worst.k})`);
+    }
+    return { text: parts.join(', ') || 'no reaction anims', ok };
+  });
+  add({
+    kk: 'KK-4',
+    rule: 'HA-21 phase',
+    what: 'temas karesi her idle fazında: max_k Δ(idle k, f0) / idle f0 opak (dinlenen hedef idle döngüsünün herhangi bir karesinde vurulur)',
+    values: ph.values,
+    limit: '< %50',
+    status: SLICE.has(first.id) ? (ph.ok ? 'ok' : 'known') : st(ph.ok),
+    note: SLICE.has(first.id) && !ph.ok ? 'slice exemption (A3_MIMARI §10, REHBER KK-4): the struck f0 is drawn against idle f0 and the frozen slice art cannot change; contact-probe records the on-screen values' : undefined,
+  });
+  // A3 core review F4: knock 'pose' — the travel each recoil DRAWS (measured on the rig, what the hit kit
+  // subtracts: _v3/blow.ts poseTravelPx) against the declared poseKnockPx table, and what the kit then adds
+  // per blow power (front: knockPx = guardPushPx + 1, ≤ 4; the kit adds max(0, knockPx − travel)).
+  if (art.knock === 'pose') {
+    const decl = art.poseKnockPx ? art.poseKnockPx.join('/') : '-';
+    const parts: string[] = [];
+    let over = false;
+    let differs = false;
+    for (const a of ['hit', 'hitHeavy', 'hitMagic'] as const) {
+      if (!animSpec(art, a)) continue;
+      const t = poseTravelPx(art, a);
+      if (t === null) {
+        parts.push(`${a} unmeasured (no joints)`);
+        continue;
+      }
+      if (t > 4) over = true;
+      const kit = ([1, 2, 3] as const).map((pw) => Math.max(0, Math.min(4, guardPushPx(art, pw) + 1) - t));
+      if (art.poseKnockPx && [1, 2, 3].some((pw) => art.poseKnockPx![pw - 1] !== t)) differs = true;
+      parts.push(`${a} draws ${t} px, kit +${kit.join('/')}`);
+    }
+    add({
+      kk: 'KK-4',
+      rule: 'HA-11 travel',
+      what: "knock 'pose': tepki pozunun çizdiği yol (kalça, f1–f2; ölçülen) / beyan poseKnockPx; kitin eklediği güç 1/2/3",
+      values: `declared ${decl}; ${parts.join(', ')}`,
+      limit: 'çizilen ≤ 4 px',
+      status: over ? 'FAIL' : differs ? 'info' : 'ok',
+      note: differs ? 'the kit subtracts the MEASURED travel of the recoil that plays; the declared table is only the fallback of an art without joints()' : undefined,
+    });
+  } else add({ kk: 'KK-4', rule: 'HA-11 travel', what: "knock 'pose' yolu", values: `knock ${art.knock ?? 'sprite'}: the kit moves the whole knockPx`, limit: '-', status: 'n/a' });
 }
 
 // KK-5 ---------------------------------------------------------------

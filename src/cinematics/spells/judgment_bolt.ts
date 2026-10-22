@@ -50,7 +50,7 @@ import type { TileCard } from '../../view/TileCard';
 import { Sparks as PxSparks } from '../../vfx/combat';
 import { DEATH_AFTER_CONTACT_MS } from '../_v3/budget';
 import { behindBodies, cardLeaves } from '../_v3/card';
-import { deathStartFrom } from '../_v3/posematch';
+import { deathStartFrom, settleBefore } from '../_v3/posematch';
 import { plannedEntry, reactHit } from '../_v3/react';
 import { fx, registerCardHook, type CinematicContext } from '../api';
 import {
@@ -629,6 +629,9 @@ async function boltV3(ctx: ActCtx): Promise<void> {
       gather.stop(60);
       fxSfxOn();
     });
+    // A3 Y1b: the strike lands STRIKE_AT_V3 from now: a resting victim's idle arrives there on a
+    // frame its struck pose continues (_v3/posematch.ts)
+    if (victim) settleBefore(victim, STRIKE_AT_V3);
     stormStarted();
   };
   const op = await spellOpening(ctx, {

@@ -181,7 +181,7 @@ registerEvent(
     };
     if (attacker && attacker.sprite.visible) {
       kept?.destroy();
-      const strike = strikeFor(attacker.cardId) ?? genericStrike;
+      const strike = strikeFor(attacker.cardId, genericStrike);
       const args: StrikeArgs = {
         ctx,
         scene: sc,

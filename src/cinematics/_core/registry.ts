@@ -173,12 +173,28 @@ export function registerStrike(monsterId: MonsterId, fn: StrikeFn, opts: Registe
   };
 }
 
-/** The winning strike for a monster (null = none registered; the battle handler falls back). */
-export function strikeFor(monsterId: MonsterId): StrikeFn | null {
+/**
+ * The winning strike for a monster (null = none registered; the battle handler falls back).
+ * With `fallback` (the battle handler's generic strike) it is never null: the strike CHAIN — the
+ * winning strike runs with `s.base()` set to the next one by priority, the last registered one's
+ * `base()` runs `fallback`, and `fallback`'s does nothing (A3_MIMARI §6.3.3: a card's partial
+ * override above the recipe's priority 10 falls back to the recipe strike). The chain is fixed when
+ * it is built.
+ */
+export function strikeFor(monsterId: MonsterId): StrikeFn | null;
+export function strikeFor(monsterId: MonsterId, fallback: StrikeFn): StrikeFn;
+export function strikeFor(monsterId: MonsterId, fallback?: StrikeFn): StrikeFn | null {
   const arr = strikes.get(monsterId);
-  if (!arr || !arr.length) return null;
-  const best = [...arr].sort((a, b) => b.priority - a.priority || b.seq - a.seq)[0];
-  return best.fn;
+  const list = [...(arr ?? [])].sort((a, b) => b.priority - a.priority || b.seq - a.seq).map((e) => e.fn);
+  if (!fallback) return list[0] ?? null;
+  const chain = [...list, fallback];
+  // the winning strike gets the handler's own arguments object; a level below runs on a copy with its
+  // own base() (the same impact() / impacted), so every level's base() stays the one below it
+  const run = (i: number, s: StrikeArgs): Promise<void> => {
+    s.base = i + 1 < chain.length ? () => run(i + 1, { ...s }) : () => Promise.resolve();
+    return chain[i](s);
+  };
+  return (s) => run(0, s);
 }
 
 /**

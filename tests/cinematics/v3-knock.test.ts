@@ -12,7 +12,7 @@
 // only captures its start value, a hit-stop sets every time scale to 0 until it has run out in real
 // time, promise continuations run between frames.
 
-import { afterAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 
 const W = vi.hoisted(() => {
   // the v3 look (decided once at module init by src/view/layout.ts): set before any import runs
@@ -331,6 +331,16 @@ vi.mock('../../src/art/textures', () => ({
   warmMonsterSheet: () => undefined,
 }));
 vi.mock('../../src/cinematics/_v3/flash', () => ({ contactFlash: () => undefined }));
+// the fake scene has no sheet pixels, so posematch plans no death entry by itself; a test may plan
+// the lethal recoil's entry (A3 core review F1: the death replaces the recoil from its struck f0)
+const PLAN = vi.hoisted(() => ({ entry: undefined as unknown }));
+vi.mock('../../src/cinematics/_v3/posematch', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../src/cinematics/_v3/posematch')>();
+  return {
+    ...real,
+    planDeathEntry: (...a: Parameters<typeof real.planDeathEntry>) => (PLAN.entry !== undefined ? (PLAN.entry as ReturnType<typeof real.planDeathEntry>) : real.planDeathEntry(...a)),
+  };
+});
 vi.mock('../../src/cinematics/_v3/sound', () => ({
   hitSoundFor: () => null,
   panAt: () => 0,
@@ -342,7 +352,7 @@ vi.mock('../../src/cinematics/_v3/sound', () => ({
 }));
 
 import type { CinematicContext } from '../../src/cinematics/_core/types';
-import { afterContact, blowSide, kitKnockPx, knock, knockPx, reactGuard, reactHit } from '../../src/cinematics/_v3/react';
+import { afterContact, blowSide, drawnKnockPx, kitKnockPx, knock, knockPx, poseTravelPx, reactGuard, reactHit } from '../../src/cinematics/_v3/react';
 import type { GameEvent } from '../../src/engine/types';
 import { animSpec, frameMs } from '../../src/art/animtime';
 import { monsterArtV3 } from '../../src/art/monsters';
@@ -353,6 +363,9 @@ import type { XY } from '../../src/view/layout';
 
 afterAll(() => {
   delete (globalThis as { __NEON_LOOK?: string }).__NEON_LOOK;
+});
+afterEach(() => {
+  PLAN.entry = undefined;
 });
 
 type FakeSprite = InstanceType<typeof W.Sprite>;
@@ -578,6 +591,95 @@ describe('contact frame: the struck sprite stands at rest, the shove starts on t
     expect(kit).toBeGreaterThan(0);
     expect(r.firstMove).toBe(r.firstChange);
     expect(Math.max(...r.seq.map((f) => Math.abs(f.x - rest.x)))).toBe(kit);
+  });
+
+  // A3 core review F1: a lethal blow's shove is held into the death pose (§10.1), which carries none
+  // of the recoil's drawn travel — the kit moves the whole knockPx (the old split left a heavy body
+  // with no shove at all, and a medium one short by its drawn part).
+  for (const weight of ['heavy', 'medium'] as const) {
+    const poseArt = (): MonsterArt => ({ ...monsterArtV3('abyss_magus')!, weight, knock: 'pose', poseKnockPx: [1, 1, 1] });
+
+    it(`lethal + pose (${weight}), no planned entry (the recoil plays out): at rest on contact, shoved on the first frame change, held at knockPx`, async () => {
+      const sc = new W.Scene();
+      const { u, s } = unitOf(sc, 'abyss_magus', { player: 1, art: poseArt() });
+      await sc.step(5);
+      const rest = u.rest0;
+      const dir = FRONT(1);
+      const k = knockPx(u, 2, 'front');
+      expect(k).toBeGreaterThan(kitKnockPx(u, 2, 'front', { anim: 'hitHeavy' })); // the non-lethal split leaves part out
+      void reactHit(ctxOf(sc), u, { power: 2, dir, kind: 'physical', by: null, lethal: true });
+      const r = await follow(sc, s, rest, 90);
+      expect(r.contact.frame).toBe('hitHeavy:0');
+      expect({ x: r.contact.x, y: r.contact.y }).toEqual(rest);
+      expect(r.firstChange).toBeGreaterThan(1);
+      expect(r.firstMove).toBe(r.firstChange);
+      expect(r.seq[r.firstChange].x - rest.x).toBe(Math.sign(dir.x));
+      // held where knock() aims it: whole px along the (unit) blow, y foreshortened × 0.6
+      const l = Math.hypot(dir.x, dir.y);
+      expect({ x: r.last.x - rest.x, y: r.last.y - rest.y }).toEqual({ x: Math.round((dir.x / l) * k) + 0, y: Math.round((dir.y / l) * k * 0.6) + 0 });
+    });
+
+    it(`lethal + pose (${weight}), the death replaces the recoil from its struck f0 (HA-24): the shove lands on the death's first frame change, held at knockPx`, async () => {
+      const sc = new W.Scene();
+      const { u, s } = unitOf(sc, 'abyss_magus', { player: 0, art: poseArt() });
+      await sc.step(3);
+      const rest = u.rest0;
+      const dir = FRONT(0);
+      PLAN.entry = { anim: 'hitHeavy', hold: 0, start: 0, cost: 0 };
+      void reactHit(ctxOf(sc), u, { power: 2, dir, kind: 'physical', by: null, lethal: true });
+      const r = await follow(sc, s, rest, 90);
+      expect(r.contact.frame).toBe('death:0');
+      expect({ x: r.contact.x, y: r.contact.y }).toEqual(rest);
+      expect(r.seq[r.firstChange].frame).toBe('death:1');
+      expect(r.firstMove).toBe(r.firstChange);
+      expect(r.last.x - rest.x).toBe(knockPx(u, 2, 'front') * Math.sign(dir.x));
+      expect(r.last.frame.startsWith('death:')).toBe(true);
+    });
+  }
+
+  it('lethal + pose: a death that continues from a later recoil frame keeps that frame\'s drawn part', () => {
+    const sc = new W.Scene();
+    const travel: Record<string, readonly number[]> = { hitHeavy: [0, 2, 3, 3, 1, 0, 0, 0] };
+    const art: MonsterArt = { ...monsterArtV3('abyss_magus')!, weight: 'medium', knock: 'pose', poseKnockPx: [1, 1, 2], joints: (a, f) => ({ hip: { x: 20 - (travel[a]?.[f] ?? 0), y: 30 } }) };
+    const { u } = unitOf(sc, 'abyss_magus', { player: 1, art });
+    const k = knockPx(u, 2, 'front');
+    expect(kitKnockPx(u, 2, 'front', { lethal: true, entry: null })).toBe(k);
+    expect(kitKnockPx(u, 2, 'front', { lethal: true, entry: { anim: 'hitHeavy', hold: 0, start: 0, cost: 0 } })).toBe(k);
+    expect(kitKnockPx(u, 2, 'front', { lethal: true, entry: { anim: 'hitHeavy', hold: 1, start: 2, cost: 0.4 } })).toBe(Math.max(0, k - 2));
+    // a blow from behind / above is never split
+    expect(kitKnockPx(u, 2, 'back', { lethal: true, entry: { anim: 'hitHeavy', hold: 1, start: 2, cost: 0.4 } })).toBe(knockPx(u, 2, 'back'));
+  });
+
+  // A3 core review F4: the kit leaves out what the recoil that PLAYS draws (measured on the art's rig),
+  // not the declared table by blow power.
+  it("knock: 'pose' with joints(): the kit subtracts the measured travel of the recoil that plays", async () => {
+    const sc = new W.Scene();
+    const travel: Record<string, readonly number[]> = { hit: [0, 1, 1, 1, 0, 0], hitHeavy: [0, 2, 3, 3, 1, 0, 0, 0], hitMagic: [0, 0, 0, 0, 0, 0, 0, 0] };
+    const joints = (a: string, f: number) => ({ hip: { x: 20 - (travel[a]?.[f] ?? 0), y: 30 } });
+    const art: MonsterArt = { ...monsterArtV3('abyss_magus')!, weight: 'medium', knock: 'pose', poseKnockPx: [1, 1, 2], joints };
+    const { u, s } = unitOf(sc, 'abyss_magus', { player: 1, art });
+    expect(poseTravelPx(art, 'hit')).toBe(1);
+    expect(poseTravelPx(art, 'hitHeavy')).toBe(3);
+    expect(poseTravelPx(art, 'hitHeavy', 1)).toBe(2);
+    expect(poseTravelPx(art, 'hitMagic')).toBe(0);
+    expect(poseTravelPx(monsterArtV3('abyss_magus')!, 'hit')).toBeNull(); // no joints: the declared table
+    for (const p of [1, 2, 3] as const) {
+      const k = knockPx(u, p, 'front');
+      expect(kitKnockPx(u, p, 'front', { anim: 'hit' })).toBe(Math.max(0, k - 1));
+      expect(kitKnockPx(u, p, 'front', { anim: 'hitHeavy' })).toBe(Math.max(0, k - 3));
+      expect(kitKnockPx(u, p, 'front', { anim: 'hitMagic' })).toBe(k); // the declared table would drop 1–2 px
+      expect(drawnKnockPx(u, p)).toBe([1, 1, 2][p - 1]); // no recoil named: the declared table
+    }
+    // in the kit: a magic front blow on this art plays hitMagic (no drawn travel) and gets the whole shove
+    await sc.step(2);
+    const rest = u.rest0;
+    void reactHit(ctxOf(sc), u, { power: 2, dir: FRONT(1), kind: 'magic', by: null });
+    const r = await follow(sc, s, rest, 90);
+    expect(r.contact.frame).toBe('hitMagic:0');
+    expect({ x: r.contact.x, y: r.contact.y }).toEqual(rest);
+    expect(r.firstMove).toBe(r.firstChange);
+    expect(Math.max(...r.seq.map((f) => Math.abs(f.x - rest.x)))).toBe(knockPx(u, 2, 'front'));
+    expect({ x: r.last.x, y: r.last.y }).toEqual(rest);
   });
 
   it('a pose that holds: the shove starts one tick past its hold (show time stands still in the hit-stop)', async () => {

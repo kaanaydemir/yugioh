@@ -9,17 +9,19 @@
 //   passes: cracks + drain + split (crystal death), gather (revive) + gatherMotes, dissolve with
 //   rising motes (the cloth mantle's death).
 // The beast faces right (P2: drawn with the light from the frame's right; flipX mirrors it).
+// Lives under src/dev/fixtures (A3 core review F5: game source — the ?dev=recipe preview — imports it,
+// so it is dev source, not a test file); the rigkit tests import it from here.
 
-import { PAL } from '../../../src/art/palette';
-import { PixelCanvas } from '../../../src/art/pixel';
-import { PartComp, castShadow, cleanCrumbs, composite, seamFrom, shadeOf, stepDown, type Fold, type StepTable } from '../../../src/art/rigkit/composite';
-import { edgePaint, glintSize, rimLight, twinkle } from '../../../src/art/rigkit/edges';
-import { add, chain, ik2, mul, norm, rnd, rotV, type V } from '../../../src/art/rigkit/geom';
-import type { Light } from '../../../src/art/rigkit/light';
-import { stamp, type MapPair, type ToneMap } from '../../../src/art/rigkit/maps';
-import { edgeRim, planes, run, widenTeeth } from '../../../src/art/rigkit/cloth';
-import { Raster, Workspace, materialTable, type RasterMat } from '../../../src/art/rigkit/raster';
-import { CellPartition, cracksOn, dissolvePass, drainLight, drainedAt, gatherBody, gatherMotes, splitBody, splitLine, type Crack, type CrackStyle } from '../../../src/art/rigkit/passes';
+import { PAL } from '../../art/palette';
+import { PixelCanvas } from '../../art/pixel';
+import { PartComp, castShadow, cleanCrumbs, composite, seamFrom, shadeOf, stepDown, type Fold, type StepTable } from '../../art/rigkit/composite';
+import { edgePaint, glintSize, rimLight, twinkle } from '../../art/rigkit/edges';
+import { add, chain, ik2, mul, norm, rnd, rotV, type V } from '../../art/rigkit/geom';
+import type { Light } from '../../art/rigkit/light';
+import { stamp, type MapPair, type ToneMap } from '../../art/rigkit/maps';
+import { edgeRim, planes, run, widenTeeth } from '../../art/rigkit/cloth';
+import { Raster, Workspace, materialTable, type RasterMat } from '../../art/rigkit/raster';
+import { CellPartition, cracksOn, dissolvePass, drainLight, drainedAt, gatherBody, gatherMotes, splitBody, splitLine, type Crack, type CrackStyle } from '../../art/rigkit/passes';
 
 export const FX_W = 64;
 export const FX_H = 56;

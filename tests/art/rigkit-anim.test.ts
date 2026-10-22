@@ -10,7 +10,7 @@ import type { AnimSpec, AnyMonsterAnim, MonsterArt } from '../../src/art/types';
 import type { MonsterId } from '../../src/data/cards';
 import wyrmV3 from '../../src/art/monsters-v3/crystal_wyrm';
 import magusV3 from '../../src/art/monsters-v3/abyss_magus';
-import { FX_ANIMS, FX_COMPILED, FX_KIT, fixtureArt } from './fixtures/rigkit-creature-art';
+import { FX_ANIMS, FX_COMPILED, FX_KIT, fixtureArt } from '../../src/dev/fixtures/rigkit-creature-art';
 
 // ------------------------------------------------------------------ a small synthetic pose
 

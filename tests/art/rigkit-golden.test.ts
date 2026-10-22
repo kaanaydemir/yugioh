@@ -15,7 +15,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { PAL } from '../../src/art/palette';
 import { PixelCanvas } from '../../src/art/pixel';
 import { cloth, comp, edges, geom, lightOf, maps, passes, raster, type Light } from './fixtures/rigkit-golden-cases';
-import { FX_H, FX_POSES, FX_W, drawFixture, fixtureWorkspace, fxPose } from './fixtures/rigkit-creature';
+import { FX_H, FX_POSES, FX_W, drawFixture, fixtureWorkspace, fxPose } from '../../src/dev/fixtures/rigkit-creature';
 import golden from './fixtures/rigkit-golden.json';
 
 const GOLDEN_URL = new URL('./fixtures/rigkit-golden.json', import.meta.url);

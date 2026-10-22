@@ -19,6 +19,7 @@
 //   --png DIR         per contact a ×3 strip (see below) as DIR/<scenario>-<card>-<uid>.png
 //   --scale N         strip zoom (default 3)
 //   --jobs N          scenarios in parallel, one browser context each (default 2)
+//   --hist MS         how far back the rest loop before a contact is read (default 1500)
 //
 // What is measured (sprite only: the frame the sprite shows, its flip and its whole-pixel position
 // in WORLD space, drawn from its own texture — camera shake, the contact flash overlay, sparks and
@@ -54,6 +55,21 @@
 // The strip (--png): prev | CONTACT | the following frames up to 2 past the knock onset (≤ 13
 // cells), the sprite drawn alone on a dark ground, a dim cross on its rest anchor, changed pixels
 // of each cell vs the cell before tinted red in a second row.
+//
+// Y1b, the pre-contact idle settle (src/cinematics/_v3/posematch.ts settleBefore, which emits
+// 'v3:settle' with its plan): a second table, one block per resting contact —
+//   settle      the blow's plans (ms before contact, the loop frame aimed at, * = a frame within KK-4,
+//               the hold multiplier); none: the blow had no known contact time / nothing to steer
+//   reach       from the first event of the blow's chain (or the loop's start, if later): the idle
+//               frames within KK-4 of THIS contact frame (< 50 % and ≤ page + 5) and the even loop
+//               speed that would put one on screen just before contact — within ±35 % or not
+//   frames      every rest frame on screen before contact, frame:ms/nominal hold ("|": the first one
+//               on screen after the settle started)
+//   checks      from the settle's start: each frame's time on screen within its hold × 0.65 … × 1.35
+//               (± one rendered frame: frames change on the frame grid; the last one, cut by the
+//               contact, and one already on at the scenario's first render are bounded above only),
+//               and no frame stepped over unless its own change and the merged step are ≤ idleΔ;
+//               a failed check fails the contact. The worst ratios are summed up at the end.
 //
 // Exit code: 0 when every resting contact passes, 2 when one fails, 1 on errors.
 
@@ -93,6 +109,7 @@ const TXT = path.resolve(REPO, args.txt ?? OUT.replace(/\.json$/, '') + '.txt');
 const PNG = args.png ? path.resolve(REPO, args.png) : null;
 const SCALE = Math.max(1, Number(args.scale ?? 3));
 const JOBS = Math.max(1, Number(args.jobs ?? 2));
+const HIST = Math.max(100, Number(args.hist ?? 1500));
 const keys = [];
 for (const w of String(args.scenarios ?? 'accept,kit').split(',').map((s) => s.trim()).filter(Boolean)) keys.push(...(PRESETS[w] ?? [w]));
 const KEYS = [...new Set(keys)];
@@ -127,20 +144,28 @@ async function probeInPage(o) {
   const sc = N.game.scene.getScene('Duel');
   // ---- the battle being presented (the target of a 'v3:contact' mark) and units dying off the field
   let battle = null;
+  /** Every event the director presents: its type and the rendered frame it started on. */
+  const evlog = [];
   const dir = sc.director;
   if (dir && typeof dir.runEvent === 'function') {
     const orig = dir.runEvent.bind(dir);
     dir.runEvent = (b, i, h) => {
       const ev = b.events[i];
       if (ev && ev.type === 'battle') battle = { attackerUid: ev.attackerUid, targetUid: ev.targetUid };
+      if (ev) evlog.push({ type: ev.type, at: snaps.length });
       return orig(b, i, h);
     };
   }
   const snaps = [];
   const marks = [];
   const dying = new Set();
+  /** The pre-contact idle settles (_v3/posematch.ts settleBefore emits 'v3:settle' with its plan). */
+  const settles = [];
   sc.events.on('v3:contact', (attackerUid) => marks.push({ at: snaps.length, attackerUid, targetUid: battle ? battle.targetUid : null }));
   sc.events.on('v3:dying', (u) => u && dying.add(u));
+  sc.events.on('v3:settle', (uid, plan) => settles.push({ at: snaps.length, uid: String(uid), plan: plan ? JSON.parse(JSON.stringify(plan)) : null }));
+  /** Nominal holds (ms) of each unit's rest loops (MonsterUnit.frameMs). */
+  const holdsOf = {};
   const unitsNow = () => {
     let us = [];
     try {
@@ -167,6 +192,11 @@ async function probeInPage(o) {
     for (const u of unitsNow()) {
       const s = u.sprite;
       if (!s || !s.active || !s.frame) continue;
+      if (!holdsOf[u.uid] && typeof u.frameMs === 'function' && typeof u.frameCount === 'function') {
+        const h = {};
+        for (const a of ['idle', 'guard']) h[a] = Array.from({ length: u.frameCount(a) }, (_, f) => u.frameMs(a, f));
+        holdsOf[u.uid] = h;
+      }
       const r = u.rest0;
       row.units[u.uid] = {
         cardId: u.cardId,
@@ -340,6 +370,105 @@ async function probeInPage(o) {
       if (bestDy && best < frames * 0.8) bob = { dy: bestDy, pct: pct(best, opaque) };
     }
     const resting = REST.has(anim(prev.frame)) && Math.round(prev.x) === Math.round(prev.rest.x) && Math.round(prev.y) === Math.round(prev.rest.y);
+    // ---- the rest loop before contact (Y1b, the pre-contact idle settle): every rest frame shown
+    // since the settle started (else over the last o.hist ms), how long it stayed on screen against
+    // its nominal hold, and the frames the loop stepped over
+    const restAnim = anim(prev.frame);
+    // the settle chain of this blow (the declaration's estimate, the battle's re-plan): its window
+    // starts with the first plan, the last one is the plan the contact was aimed by
+    const chain = settles.filter((q) => q.uid === String(c.uid) && q.at <= c.i && c.i - q.at <= Math.ceil(o.hist / FRAME));
+    const settle = chain.length ? chain[0] : null;
+    const lo = Math.max(1, c.i - Math.ceil(o.hist / FRAME));
+    /** ms before contact the settle started (its checks cover the frames on screen from then on). */
+    const settleFrom = settle ? Math.round((c.i - settle.at) * FRAME) : null;
+    const hist = [];
+    if (REST.has(restAnim)) {
+      let j = c.i - 1;
+      while (j >= lo && snaps[j].units[c.uid] && anim(snaps[j].units[c.uid].frame) === restAnim) {
+        const name = snaps[j].units[c.uid].frame;
+        let k = j;
+        while (k - 1 >= 0 && snaps[k - 1].units[c.uid] && snaps[k - 1].units[c.uid].frame === name) k--;
+        hist.unshift({ frame: name, from: k, n: j - k + 1, before: Math.round((c.i - k) * FRAME) });
+        j = k - 1;
+      }
+    }
+    const nominal = holdsOf[c.uid]?.[restAnim] ?? [];
+    const N = nominal.length;
+    const fIdx = (name) => Number(name.slice(name.indexOf(':') + 1));
+    // in place Δ of two rest frames of this sheet, and the loop's mean step (idleΔ)
+    const dIn = (a, b) => {
+      const A = frameImg(cur.tex, a);
+      const B = frameImg(cur.tex, b);
+      if (!A || !B || A.data.length !== B.data.length) return null;
+      let n = 0;
+      for (let i = 0; i < A.data.length; i += 4) {
+        if (A.data[i + 3] === 0 && B.data[i + 3] === 0) continue;
+        if (A.data[i] !== B.data[i] || A.data[i + 1] !== B.data[i + 1] || A.data[i + 2] !== B.data[i + 2] || A.data[i + 3] !== B.data[i + 3]) n++;
+      }
+      return n;
+    };
+    let loopD = null;
+    if (N > 1) {
+      let sum = 0;
+      for (let f = 0; f < N; f++) sum += dIn(`${restAnim}:${f}`, `${restAnim}:${(f + 1) % N}`) ?? 0;
+      loopD = sum / N;
+    }
+    // each segment's time on screen ÷ its nominal hold; the first (it may have started before the
+    // window) and the last (cut by the contact) only count where they are bounded: the last one
+    // may not exceed its stretched hold, the first is left out
+    const segs = hist.map((h, k) => {
+      const f = fIdx(h.frame);
+      const ms = Math.round(h.n * FRAME);
+      const nom = nominal[f] ?? null;
+      // the first frame may have started before the recording did (the scenario's first render): only its upper bound counts
+      return { frame: h.frame, ms, nominal: nom, ratio: nom ? Math.round((ms / nom) * 100) / 100 : null, first: k === 0, cut: k === 0 && h.from === 0, last: k === hist.length - 1, before: h.before, inSettle: settleFrom === null || h.before - ms < settleFrom };
+    });
+    // ---- reach (Y1b): the idle frames this contact frame may follow (KK-4 against THIS contact
+    // frame: < 50 % and ≤ page + 5), and the even loop speed that would have put one of them on screen
+    // just before contact from the first event of the blow's chain (or the loop's start, if later)
+    let reach = null;
+    if (REST.has(restAnim) && N > 1 && hist.length) {
+      const targets = [];
+      for (let f = 0; f < N; f++) {
+        const d = dIn(`${restAnim}:${f}`, cur.frame);
+        const p = d === null ? null : pct(d, opaque);
+        if (p !== null && p < 50 && p <= pct(page, opaque) + 5) targets.push(f);
+      }
+      const ev0 = evlog.find((e) => e.at <= c.i && c.i - e.at <= Math.ceil(o.hist / FRAME));
+      const loopFrom = hist[0].before;
+      const tA = Math.min(ev0 ? Math.round((c.i - ev0.at) * FRAME) : loopFrom, loopFrom);
+      const seg = hist.find((h) => h.before >= tA && h.before - Math.round(h.n * FRAME) < tA) ?? hist[0];
+      const F = fIdx(seg.frame);
+      const into = Math.max(0, seg.before - tA);
+      const starts = [];
+      let L = 0;
+      for (const h of nominal) {
+        starts.push(L);
+        L += h;
+      }
+      let best = null;
+      const T = tA - FRAME / 2;
+      if (T > 0 && L > 0)
+        for (const f of targets)
+          for (let m = 0; m <= 3; m++) {
+            const D = starts[f] + nominal[f] / 2 + m * L - (starts[F] + into);
+            if (D <= 0) continue;
+            const sp = D / T;
+            if (!best || Math.abs(Math.log(sp)) < Math.abs(Math.log(best.s))) best = { f, s: Math.round(sp * 100) / 100 };
+          }
+      reach = { from: ev0 && Math.round((c.i - ev0.at) * FRAME) <= loopFrom ? ev0.type : 'loop start', before: tA, frame: F, into, targets, best, feasible: !!best && best.s >= 1 / 1.35 - 1e-6 && best.s <= 1 / 0.65 + 1e-6 };
+    }
+    const skips = [];
+    for (let k = 1; k < hist.length; k++) {
+      const a = fIdx(hist[k - 1].frame);
+      const b = fIdx(hist[k].frame);
+      if (!N || b === (a + 1) % N) continue;
+      const skipped = [];
+      for (let f = (a + 1) % N; f !== b && skipped.length < N; f = (f + 1) % N) skipped.push(f);
+      const merged = dIn(hist[k - 1].frame, hist[k].frame);
+      const own = skipped.map((f) => dIn(`${restAnim}:${(f + N - 1) % N}`, `${restAnim}:${f}`) ?? 0);
+      skips.push({ from: hist[k - 1].frame, to: hist[k].frame, before: hist[k].before, inSettle: settleFrom === null || hist[k].before <= settleFrom, skipped, merged: loopD && merged !== null ? Math.round((merged / loopD) * 100) / 100 : null, own: own.map((d) => (loopD ? Math.round((d / loopD) * 100) / 100 : null)) });
+    }
     // the first change: the first later frame showing another frame than the contact frame
     // the knock: the first later frame whose position differs from the contact frame's
     let firstChange = null;
@@ -384,6 +513,11 @@ async function probeInPage(o) {
       firstChange,
       knock,
       knockMax: maxOff,
+      settle: settle ? { before: Math.round((c.i - settle.at) * FRAME), plan: chain[chain.length - 1].plan, plans: chain.map((q) => ({ before: Math.round((c.i - q.at) * FRAME), plan: q.plan })) } : null,
+      reach,
+      restLoop: segs,
+      restSkips: skips,
+      events: evlog.filter((e) => e.at <= c.i && c.i - e.at <= Math.ceil(o.hist / FRAME)).map((e) => ({ type: e.type, before: Math.round((c.i - e.at) * FRAME) })),
     };
     // ---- the strip (sprite alone): prev, contact, then up to 2 frames past the knock onset
     if (o.png) {
@@ -500,7 +634,7 @@ async function probeOne(key) {
       await page.goto(base + q, { waitUntil: 'load', timeout: 240000 });
     }
     await page.waitForFunction(() => window.__neon && window.__neon.ready === true && !!window.__neon.duel, null, { timeout: 300000 });
-    res = await page.evaluate(probeInPage, { key, cap: CAP, png: !!PNG, scale: SCALE });
+    res = await page.evaluate(probeInPage, { key, cap: CAP, png: !!PNG, scale: SCALE, hist: HIST });
   } catch (e) {
     res = { failed: String(e && e.message ? e.message : e).slice(0, 500), contacts: [] };
   }
@@ -583,6 +717,67 @@ for (const key of KEYS) {
   }
   for (const e of [...(r.pageErrors ?? []), ...(r.errors ?? [])]) lines.push(`${pad('', 22)}error: ${e}`);
 }
+// ---- the rest loop before each resting contact (Y1b, the pre-contact idle settle)
+const STRETCH = 0.35;
+const restAnimOf = (c) => (c.prevFrame.includes(':') ? c.prevFrame.slice(0, c.prevFrame.indexOf(':')) : c.prevFrame);
+const FRAME_MS = 1000 / 60;
+let worstLo = Infinity;
+let worstHi = -Infinity;
+let worstAt = '';
+let badSkips = 0;
+let badHolds = 0;
+lines.push('');
+lines.push('rest loop before each resting contact (Y1b): frames shown since the settle started (else the last --hist ms) as frame:ms/nominal; ratio = time on screen ÷ nominal hold');
+lines.push(`(each frame bounded on both sides except the last, cut by the contact, and a first one already on at the scenario's first render: ≤ only; a frame may differ by one rendered frame, ${FRAME_MS.toFixed(1)} ms, from its scaled hold);`);
+lines.push('settle = the plans of the blow (ms before contact, the loop frame aimed at, * = a target, the hold multiplier); "|" marks the first frame on screen in the settle window (ratios / skips are checked from there);');
+lines.push('reach = the even loop speed that would put a frame within KK-4 of THIS contact frame on screen before contact, from the first event of the chain');
+lines.push('skip = frames the loop stepped over: the merged step and each skipped frame\'s own change ÷ idleΔ (a skip is allowed only when both are ≤ 1)');
+for (const key of KEYS) {
+  const r = results[key];
+  if (!r || r.failed) continue;
+  for (const c of r.contacts) {
+    if (!c.resting || !c.restLoop) continue;
+    const segs = c.restLoop;
+    let lo = Infinity;
+    let hi = -Infinity;
+    let out = 0;
+    for (const s of segs) {
+      if (!s.nominal || !s.inSettle) continue;
+      const scaledLo = (1 - STRETCH) * s.nominal - FRAME_MS - 0.5;
+      const scaledHi = (1 + STRETCH) * s.nominal + FRAME_MS + 0.5;
+      if (s.ms > scaledHi || (!s.last && !s.cut && s.ms < scaledLo)) out++;
+      if (!s.last && !s.cut) lo = Math.min(lo, s.ratio);
+      hi = Math.max(hi, s.ratio);
+    }
+    const skips = c.restSkips ?? [];
+    const sb = skips.filter((k) => k.inSettle && ((k.merged ?? 9) > 1 || k.own.some((d) => (d ?? 9) > 1))).length;
+    let sv = '';
+    if (c.settle) {
+      if (lo < worstLo) worstLo = lo;
+      if (hi > worstHi) {
+        worstHi = hi;
+        worstAt = `${key} ${c.cardId} P${c.player + 1}`;
+      }
+      badSkips += sb;
+      badHolds += out;
+      if (sb || out) {
+        sv = `  FAIL (${[sb ? `${sb} skip(s) over a change > idleΔ` : '', out ? `${out} hold(s) outside ±35 %` : ''].filter(Boolean).join(', ')})`;
+        bad++;
+      }
+    }
+    const plans = c.settle?.plans ?? [];
+    const pl = plans.map((q) => `−${q.before} f${q.plan?.frame}${q.plan?.target ? '*' : ''} hold×${q.plan ? Math.round(q.plan.hold * 100) / 100 : '?'}`).join(', ');
+    const head = `${pad(key, 22)}${pad(`${c.cardId} P${c.player + 1} z${c.zone}`, 24)}${c.settle ? `settle ${pl}` : 'no settle'}  ratio ${Number.isFinite(lo) ? lo : '-'}…${Number.isFinite(hi) ? hi : '-'}${skips.length ? `  skip ${skips.map((k) => `${k.from}→${k.to} (${k.merged}/${k.own.join(',')})`).join(' ')}` : ''}${sv}`;
+    lines.push(head);
+    const rc = c.reach;
+    if (rc)
+      lines.push(
+        `${pad('', 24)}reach: from ${rc.from} −${rc.before} ms at ${restAnimOf(c)}:${rc.frame}+${rc.into} ms; frames within KK-4 of ${c.contactFrame}: [${rc.targets.join(',')}]; best even speed ${rc.best ? `f${rc.best.f} ×${rc.best.s} (holds ×${Math.round(100 / rc.best.s) / 100})` : '-'} → ${rc.feasible ? 'within ±35 %' : 'OUT of ±35 %'}`,
+      );
+    lines.push(`${pad('', 24)}${segs.map((s, k) => `${c.settle && s.inSettle && (k === 0 || !segs[k - 1].inSettle) ? '| ' : ''}${s.frame.slice(s.frame.indexOf(':') + 1)}:${s.ms}/${s.nominal ?? '?'}`).join(' ')}   events ${c.events.map((e) => `${e.type} −${e.before}`).join(', ')}`);
+  }
+}
+lines.push(`settled contacts: worst hold ratio ${Number.isFinite(worstLo) ? worstLo : '-'}…${Number.isFinite(worstHi) ? worstHi : '-'}${worstAt ? ` (max at ${worstAt})` : ''}; holds outside ±35 %: ${badHolds}; skips over a change > idleΔ: ${badSkips}`);
 lines.push('');
 lines.push(`resting contacts failing: ${bad}`);
 const txt = lines.join('\n');

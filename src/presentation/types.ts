@@ -117,7 +117,12 @@ export interface PresentationRecipe {
     /** Replaces chains_of_light RANGED for this card (v3). */
     ranged?: boolean;
   };
-  summon: { style: SummonStyle; matter?: ShatterMaterial; setPiece?: string; roarPeak?: number };
+  /**
+   * `leadMs`: how long the matter gathers before the summon pose starts ('assemble': default 220 ms);
+   * `shake`: the finale's camera shake in px (default 2) — a heavier or lighter body than the pilot's
+   * tunes its own entrance's weight (A3 core review F8).
+   */
+  summon: { style: SummonStyle; matter?: ShatterMaterial; setPiece?: string; roarPeak?: number; leadMs?: number; shake?: number };
   /** `onBurst`: a named set piece on the burst frame (the lizard's static ball). */
   death: { material: ShatterMaterial; accent: ShatterMaterial; onBurst?: string };
   flip?: { accent: FlipAccent; ramp?: RampName };

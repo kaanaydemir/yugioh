@@ -1,8 +1,14 @@
-// A3 Y5 — presentation never changes outcomes (docs/v3/A3_MIMARI.md §6.1, AGENT rule "rules stay in the
-// engine"). Seeded bot-vs-bot games are played before and after the whole presentation layer is loaded
-// and exercised in the v3 look — every recipe read, a plan-monster stand-in registered (v3 art + recipe),
-// every bridged accessor called for every monster — and the games are identical, action for action
-// and event for event. (The engine does not import presentation at all: engine-boundary.test.ts.)
+// A3 Y5 — loading and exercising the presentation layer leaves the rules' data alone (docs/v3/A3_MIMARI.md
+// §6.1, AGENT rule "rules stay in the engine"). Seeded bot-vs-bot ENGINE games are played before and after
+// the presentation layer is loaded and exercised in the v3 look — every recipe read, a plan-monster
+// stand-in registered (v3 art + recipe), every bridged accessor called for every monster — and the games
+// are identical, action for action and event for event.
+// Scope (A3 core review F7): what this catches is a presentation module MUTATING shared rule data at load
+// or on a read (CARDS, the engine's tables, a shared default) — nothing more. The games run on the engine
+// alone, never through the Director, the controller or the cinematics: that the engine does not import
+// presentation at all is engine-boundary.test.ts's proof; src/duel/DuelController.ts hands the Director
+// the events and the before / after states and takes nothing back into apply(). Not covered here: a
+// cinematic that would mutate the state objects it is handed during a duel.
 
 import { describe, expect, it, vi } from 'vitest';
 
@@ -30,8 +36,8 @@ function game(seed: number): string {
 
 const SEEDS = [3, 11, 42, 97, 2026];
 
-describe('presentation never changes the engine’s outcomes (A3 §6.1)', () => {
-  it('seeded games are identical before and after the presentation layer is loaded and exercised', async () => {
+describe('the presentation layer does not touch the rules’ data (A3 §6.1)', () => {
+  it('seeded engine games are identical before and after the presentation layer is loaded and exercised', async () => {
     const before = SEEDS.map(game);
     // load and exercise everything the presentation layer touches, in the v3 look
     const reg = await import('../../src/presentation/registry');

@@ -9,13 +9,14 @@
 //   0      the voice's 'arrive' (else summonCharge); the matter gathers — pieces of the recipe's
 //          `summon.matter` rise off a ring on the floor around the tile and circle the empty tile
 //          (behind the body on the far half of their orbit, in front on the near half) for
-//          ASSEMBLE_LEAD_MS (a set piece named by `summon.setPiece` replaces this gathering)
+//          `summon.leadMs` (default ASSEMBLE_LEAD_MS; a set piece named by `summon.setPiece` replaces
+//          this gathering)
 //   lead   the summon pose starts (the body forms in ≤ 300 ms of hologram) while the pieces spiral in
 //          and close on it by the pose's 'land'
 //   land   the voice's 'land' (else impactLight): the last pieces lock in, floor dust
 //   peak   the pose's big beat (the pilot's shield slam is its summon pose's peak): the voice's
 //          'roar' (else roarSmall), recipe.hooks.onSummonPeak, the kit's finale (shock ring, light,
-//          shake, the ATK / DEF badge)
+//          `summon.shake` px of shake — default ASSEMBLE_SHAKE_PX —, the ATK / DEF badge)
 //   end    the pose ends on idle 0; the entrance settles the unit.
 // An ace (CardDef.ace) with a recipe summon gets its cut-in in A4.1 (Magma Titanı is the first): A3's
 // pilot is a normal-tier card without one.
@@ -79,8 +80,10 @@ export function setPieceOf(name: string | null | undefined): SetPiece | null {
 
 // ================================================================ 'assemble'
 
-/** How long the matter circles the empty tile before the summon pose starts (ms). */
+/** How long the matter circles the empty tile before the summon pose starts (ms; recipe `summon.leadMs`). */
 export const ASSEMBLE_LEAD_MS = 220;
+/** The finale's camera shake (px; recipe `summon.shake`). */
+export const ASSEMBLE_SHAKE_PX = 2;
 
 interface Piece {
   /** orbit angle at t = 0 (rad), turn speed (rad/s) */
@@ -179,6 +182,8 @@ async function assemble(e: Entrance, r: PresentationRecipe, hooks: RecipeHooks |
   const voice = soundsOf(u.cardId);
   const pan = panAt(e.home.x);
   const ramp: Ramp = r.summon.matter ? rampOfMatter(r.summon.matter) : matterRamp(u.cardId);
+  const lead = Math.max(0, Math.round(r.summon.leadMs ?? ASSEMBLE_LEAD_MS));
+  const shake = Math.max(0, Math.round(r.summon.shake ?? ASSEMBLE_SHAKE_PX));
   if (voice) play(voice.arrive, { volume: 0.8, pan });
   else e.ctx.sfx('summonCharge', { volume: 0.6 });
   const pool = lightPool(sc, e.home.x, e.home.y, { color: ramp[3], radius: 26, floorY: e.home.y, intensity: 0.6, anim: 'steady', fadeIn: 120 });
@@ -194,12 +199,12 @@ async function assemble(e: Entrance, r: PresentationRecipe, hooks: RecipeHooks |
   };
   if (piece) {
     try {
-      void Promise.resolve(piece({ ctx: e.ctx, scene: sc, unit: u, recipe: r, home: e.home, ramp, ...beats, lead: ASSEMBLE_LEAD_MS })).catch((err) => console.error('[recipe] set piece', err));
+      void Promise.resolve(piece({ ctx: e.ctx, scene: sc, unit: u, recipe: r, home: e.home, ramp, ...beats, lead })).catch((err) => console.error('[recipe] set piece', err));
     } catch (err) {
       console.error('[recipe] set piece', err);
     }
-  } else gatherMatter(sc, u, e.home, ramp, ASSEMBLE_LEAD_MS, landMs, u.uid * 53 + 9);
-  await sleep(sc, ASSEMBLE_LEAD_MS);
+  } else gatherMatter(sc, u, e.home, ramp, lead, landMs, u.uid * 53 + 9);
+  if (lead > 0) await sleep(sc, lead);
   let peaked = false;
   const p = summonPose(sc, u, {
     ramp,
@@ -219,7 +224,7 @@ async function assemble(e: Entrance, r: PresentationRecipe, hooks: RecipeHooks |
           console.error('[recipe] summon hook', err);
         }
       }
-      e.finale({ shake: 2, ramp, sfx: voice ? null : undefined });
+      e.finale({ shake, ramp, sfx: voice ? null : undefined });
     },
   });
   if (!p) {
@@ -235,7 +240,7 @@ async function assemble(e: Entrance, r: PresentationRecipe, hooks: RecipeHooks |
   void p.peak.then(beat.peak);
   void p.done.then(beat.done);
   await p.done;
-  if (!peaked) e.finale({ shake: 2, ramp });
+  if (!peaked) e.finale({ shake, ramp });
   void pool.fadeOut(260);
 }
 

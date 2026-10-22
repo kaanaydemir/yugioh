@@ -7,6 +7,8 @@ import { SHEET_BUDGET_MB, delta, feetBand, isolated, missingMarks, noiseClass, s
 import { PAL } from '../../src/art/palette';
 import { PixelCanvas } from '../../src/art/pixel';
 import type { MonsterArt } from '../../src/art/types';
+import { animList, animSpec } from '../../src/art/animtime';
+import { monsterArt, monsterArtV3 } from '../../src/art/monsters';
 
 describe('IŞ-10 frame classes', () => {
   it('attack / special from the charge mark on are effect frames (≤ 20 %), before it body frames', () => {
@@ -66,9 +68,18 @@ describe('frame metrics', () => {
     expect(sizeClass(plan, 64, true)).toBe('medium');
     expect(sizeClass(plan, 48, true)).toBe('small');
     expect(sizeClass(art, 64, false)).toBe('medium');
-    // the slice: 116 × 104 × 4 × 136 = 6.56 MB and 112 × 116 × 4 × 130 = 6.76 MB, both in the ace budget
-    expect((116 * 104 * 4 * 136) / 1e6).toBeCloseTo(6.56, 2);
-    expect((112 * 116 * 4 * 130) / 1e6).toBeLessThanOrEqual(SHEET_BUDGET_MB.ace);
+    // the slice, computed from its v3 art as monster-gates does (w × h × 4 × every anim's frames, per
+    // side): 6.56 MB and 6.76 MB, both in the ace budget (A3 core review F7: no longer literals)
+    const bytes = (id: 'crystal_wyrm' | 'abyss_magus') => {
+      const a = monsterArtV3(id)!;
+      return (a.w * a.h * 4 * animList(a).reduce((n, k) => n + animSpec(a, k)!.frames, 0)) / 1e6;
+    };
+    expect(bytes('crystal_wyrm')).toBeCloseTo(6.56, 2);
+    expect(bytes('abyss_magus')).toBeCloseTo(6.76, 2);
+    for (const id of ['crystal_wyrm', 'abyss_magus'] as const) {
+      expect(sizeClass(monsterArtV3(id)!, monsterArt(id).w, true)).toBe('ace');
+      expect(bytes(id)).toBeLessThanOrEqual(SHEET_BUDGET_MB.ace);
+    }
     expect(SHEET_BUDGET_MB).toEqual({ ace: 7, large: 5, medium: 3.6, small: 2.2 });
   });
 });

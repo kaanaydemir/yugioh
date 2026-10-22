@@ -313,3 +313,347 @@ export function alignStart(u: MonsterUnit, anim: AnyMonsterAnim, frame = 0): voi
   };
   sc.events.on('postupdate', step);
 }
+
+// ================================================================ the pre-contact idle settle (A3 Y1b)
+//
+// A blow on a RESTING body lands on whatever idle frame the loop shows, while the struck pose's f0
+// was drawn from idle f0 (REHBER HA-21): the whole body snaps from its idle phase into the struck
+// pose on the contact frame (A3_MIMARI §10, contact-probe: 56–74 % on screen against a sheet value
+// of 39–44 %). When the blow's contact time is known ahead — a battle strike whose attack marks its
+// 'contact' frame (strikeContactIn), a spell's own strike time — the target's idle loop is steered
+// so that the frame on screen just before contact is one the struck poses continue:
+//   - targets: idle f0 and every idle frame within KK-4 of each LOCALISED struck f0 (hit, hitHeavy,
+//     hitMagic, death f0 under LOCAL_MAX % of idle f0), read off the unit's own sheet (settleGoal);
+//   - one even time scale over the wind-up: every hold × 0.65 … × 1.35 (SETTLE_STRETCH), the
+//     smallest change that puts the middle of a target frame on the frame before contact. No frame
+//     is skipped, repeated or held beyond that, nothing plays backward;
+//   - nothing changes when the loop lands on a target anyway, when no struck f0 is localised (the
+//     old art) or measurable yet (a sheet frame not painted), or when no target is in reach — then a
+//     frame that makes the contact local (< LOCAL_MAX) and BEST_EFFORT_GAIN points closer, if any;
+//   - the steering ends with the contact (the struck pose starts: 'animationstart'; react.ts also
+//     ends it), when anything else takes the sprite (another anim starts or stops, a re-plan), when
+//     the unit leaves, or one tick after the planned contact.
+// planSettle is pure (unit-tested); settleBefore applies a plan through sprite.anims.timeScale and
+// emits 'v3:settle' (uid, plan) for tools/contact-probe.mjs.
+
+/** Holds may stretch or shrink this much while the idle is steered toward a contact (×0.65 … ×1.35). */
+export const SETTLE_STRETCH = 0.35;
+/** KK-4: a contact frame may change this many points (% of idle f0's opaque pixels) more than its sheet value. */
+export const KK4_SLACK = 5;
+/** HA-21: a struck f0 is localised when it changes less than this share (%) of idle f0. */
+export const LOCAL_MAX = 50;
+/** No target in reach: a frame that makes the contact local and this many points closer is still worth steering to. */
+export const BEST_EFFORT_GAIN = 5;
+/** One game frame (ms). */
+const SETTLE_TICK = 1000 / 60;
+/** Whole loops a plan may pass on its way to the target. */
+const SETTLE_LOOPS = 3;
+/** The struck poses whose f0 the settle measures (their f0 is drawn from idle f0, HA-21). */
+const STRUCK: readonly AnyMonsterAnim[] = ['hit', 'hitHeavy', 'hitMagic', 'death'];
+
+/** A rest loop as it plays now: its frames' nominal holds (ms), the frame shown, ms already spent on it. */
+export interface SettleLoop {
+  holds: readonly number[];
+  frame: number;
+  into: number;
+}
+
+/** Which loop frames a blow may land on, and (optionally) what landing on each costs. */
+export interface SettleGoal {
+  isTarget(f: number): boolean;
+  /** Points (% of idle f0) the contact frame changes when the loop shows `f` before it. */
+  cost?(f: number): number;
+}
+
+export interface SettlePlan {
+  /** The loop frame on screen just before contact. */
+  frame: number;
+  /** Whole loops passed on the way (0: still this one). */
+  loops: number;
+  /** sprite.anims.timeScale over the wind-up (1: untouched). */
+  speed: number;
+  /** Every hold's multiplier: 1 / speed (SETTLE_STRETCH bounds it). */
+  hold: number;
+  /** `frame` is a target (a blow landing on it passes KK-4). */
+  target: boolean;
+  /** Cost of `frame` (null: unknown). */
+  cost: number | null;
+  /** The frame the untouched loop would show before contact, and its cost. */
+  base: number;
+  baseCost: number | null;
+  /** ms from the plan to the contact it aims at. */
+  contactIn: number;
+}
+
+/**
+ * The gentlest even time scale (speed) that puts the middle of a target frame of `loop` on screen
+ * just before a contact `contactIn` ms away: the contact frame is drawn within a tick of
+ * contactIn, so the frame before it is aimed at contactIn − tick / 2. Speeds are bounded by
+ * SETTLE_STRETCH (holds × (1 − s) … × (1 + s)). No target in reach: the frame in reach with the
+ * smallest cost, when it is under LOCAL_MAX and `gain` points better than the untouched one (best
+ * effort, plan.target false). Returns the untouched plan (speed 1) when the loop lands on a target
+ * anyway with a tick to spare on both sides, or when nothing in reach is better;
+ * null when the wind-up is too short to plan (< 3 ticks) or the loop has one frame.
+ */
+export function planSettle(loop: SettleLoop, contactIn: number, goal: SettleGoal, o: { tick?: number; stretch?: number; gain?: number } = {}): SettlePlan | null {
+  const n = loop.holds.length;
+  const tick = o.tick ?? SETTLE_TICK;
+  const stretch = o.stretch ?? SETTLE_STRETCH;
+  const gain = o.gain ?? BEST_EFFORT_GAIN;
+  const T = contactIn - tick / 2;
+  if (n < 2 || !(T >= 3 * tick) || loop.frame < 0 || loop.frame >= n) return null;
+  const holds = loop.holds.map((h) => Math.max(1, h));
+  const starts: number[] = [];
+  let L = 0;
+  for (const h of holds) {
+    starts.push(L);
+    L += h;
+  }
+  const p0 = starts[loop.frame] + Math.max(0, Math.min(holds[loop.frame], loop.into));
+  const frameAt = (p: number): { f: number; lo: number; hi: number } => {
+    const q = ((p % L) + L) % L;
+    let f = 0;
+    while (f < n - 1 && starts[f + 1] <= q) f++;
+    return { f, lo: q - starts[f], hi: starts[f] + holds[f] - q };
+  };
+  const cost = (f: number): number | null => (goal.cost ? goal.cost(f) : null);
+  const at = frameAt(p0 + T);
+  const base = at.f;
+  const baseCost = cost(base);
+  const untouched = (): SettlePlan => ({ frame: base, loops: Math.floor((p0 + T) / L), speed: 1, hold: 1, target: goal.isTarget(base), cost: baseCost, base, baseCost, contactIn });
+  // landing on a target anyway, a tick or more inside it: leave the loop alone
+  if (goal.isTarget(base) && Math.min(at.lo, at.hi) >= tick) return untouched();
+  const sMin = 1 / (1 + stretch);
+  const sMax = 1 / (1 - stretch);
+  interface Cand {
+    f: number;
+    m: number;
+    s: number;
+  }
+  const cands: Cand[] = [];
+  for (let m = 0; m <= SETTLE_LOOPS; m++)
+    for (let f = 0; f < n; f++) {
+      const D = starts[f] + holds[f] / 2 + m * L - p0;
+      if (D <= 0) continue;
+      const s = D / T;
+      if (s >= sMin - 1e-9 && s <= sMax + 1e-9) cands.push({ f, m, s });
+    }
+  const gentler = (a: Cand, b: Cand) => Math.abs(Math.log(a.s)) < Math.abs(Math.log(b.s)) - 1e-9;
+  let best: Cand | null = null;
+  for (const c of cands) if (goal.isTarget(c.f) && (!best || gentler(c, best))) best = c;
+  let target = !!best;
+  if (!best && goal.cost && baseCost !== null) {
+    // no target in reach: the frame closest to the struck poses, when that makes the contact local
+    // (under LOCAL_MAX) and is clearly closer than the untouched frame
+    for (const c of cands) {
+      const k = goal.cost(c.f);
+      if (k >= LOCAL_MAX || k > baseCost - gain) continue;
+      if (!best || k < goal.cost(best.f) - 1e-9 || (Math.abs(k - goal.cost(best.f)) <= 1e-9 && gentler(c, best))) best = c;
+    }
+    target = false;
+  }
+  if (!best) return untouched();
+  return { frame: best.f, loops: best.m, speed: best.s, hold: 1 / best.s, target, cost: cost(best.f), base, baseCost, contactIn };
+}
+
+// ---------------------------------------------------------------- the goal, read off the sheet
+
+interface StruckGoal extends SettleGoal {
+  /** Every struck f0 the art has was painted when this was measured (cacheable). */
+  complete: boolean;
+}
+
+const goals = new Map<string, StruckGoal>();
+
+function opaqueOf(px: Uint8ClampedArray): number {
+  let k = 0;
+  for (let i = 3; i < px.length; i += 4) if (px[i]) k++;
+  return k;
+}
+
+/**
+ * The settle's goal from frame pixels (RGBA, all of one size): `idle` = the idle loop's frames, `struck`
+ * = the struck f0s (hit, hitHeavy, hitMagic, death) known so far. Only the LOCALISED struck f0s count
+ * (under LOCAL_MAX % of idle f0's opaque pixels changed: drawn from idle f0, HA-21; a struck pose that
+ * changes half the body is not — the old art). Targets: idle f0 and every idle frame f with, for each
+ * of them, Δ(f, struck) < LOCAL_MAX and ≤ Δ(f0, struck) + KK4_SLACK (KK-4); cost(f): the largest
+ * Δ(f, struck) in points. null: no localised struck f0.
+ */
+export function struckGoal(idle: readonly Uint8ClampedArray[], struck: readonly Uint8ClampedArray[]): SettleGoal | null {
+  const n = idle.length;
+  if (n < 2) return null;
+  const opaque = opaqueOf(idle[0]);
+  if (!opaque) return null;
+  const pct = (d: number) => (100 * d) / opaque;
+  const local = struck.map((px) => ({ px, page: pct(diff(idle[0], px)) })).filter((x) => x.page < LOCAL_MAX);
+  if (!local.length) return null;
+  const costs: number[] = [];
+  const ok: boolean[] = [];
+  for (let f = 0; f < n; f++) {
+    let worst = 0;
+    let pass = true;
+    for (const x of local) {
+      const d = pct(diff(idle[f], x.px));
+      worst = Math.max(worst, d);
+      if (d >= LOCAL_MAX || d > x.page + KK4_SLACK) pass = false;
+    }
+    costs.push(worst);
+    ok.push(f === 0 || pass);
+  }
+  return { isTarget: (f) => !!ok[f], cost: (f) => costs[f] ?? Infinity };
+}
+
+/** The settle's goal for `u`'s idle loop measured on sheet `key` (null: nothing localised / painted). */
+function measureGoal(u: MonsterUnit, key: string): StruckGoal | null {
+  const n = u.frameCount('idle');
+  if (n < 2) return null;
+  const idle: Uint8ClampedArray[] = [];
+  for (let f = 0; f < n; f++) {
+    const px = framePixels(u.scene, key, `idle:${f}`);
+    if (!px) return null;
+    idle.push(px);
+  }
+  const has = STRUCK.filter((a) => u.has(a));
+  const painted: Uint8ClampedArray[] = [];
+  for (const a of has) {
+    const px = framePixels(u.scene, key, `${a}:0`);
+    if (px) painted.push(px);
+  }
+  const g = struckGoal(idle, painted);
+  return g ? { isTarget: g.isTarget, cost: g.cost, complete: painted.length === has.length } : null;
+}
+
+/**
+ * Which idle frames a blow on `u` may land on and what each costs (see the section header), from
+ * the unit's own sheet, else from its other light side's sheet (the P1 / P2 sheets differ only in
+ * light: the same frames qualify); cached once every struck f0 was painted. null: the art's struck
+ * poses are not drawn from idle f0, or not painted yet.
+ */
+export function settleGoal(u: MonsterUnit): SettleGoal | null {
+  const keys = [u.sheetKey, u.sheetKey === u.p1Key ? u.p2Key : u.p1Key].filter((k, i, a) => !!k && a.indexOf(k) === i);
+  for (const key of keys) {
+    const hit = goals.get(key);
+    if (hit) return hit;
+    const g = measureGoal(u, key);
+    if (!g) continue;
+    if (g.complete) goals.set(key, g);
+    return g;
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------- applying a plan
+
+/** Phaser.Animations.Events / Phaser.Scenes.Events names (no runtime Phaser import here). */
+const ANIM_START = 'animationstart';
+const ANIM_STOP = 'animationstop';
+const SCENE_UPDATE = 'update';
+const SCENE_SHUTDOWN = 'shutdown';
+
+/** The part of Phaser's AnimationState the settle reads and steers. */
+interface AnimState {
+  isPlaying: boolean;
+  forward: boolean;
+  timeScale: number;
+  accumulator: number;
+  currentAnim: { key: string } | null;
+}
+
+const steering = new WeakMap<MonsterUnit, () => void>();
+
+/** The idle loop of a resting attack-position unit as it plays now (null: not resting / not idling). */
+function restLoop(u: MonsterUnit): SettleLoop | null {
+  const s = u.sprite;
+  if (!s.active || !s.visible || u.retired || u.position !== 'attack' || u.guarding) return null;
+  const fi = u.frameInfo();
+  const a = s.anims as unknown as AnimState;
+  if (fi.anim !== 'idle' || !a.isPlaying || !a.forward || !a.currentAnim || a.timeScale !== 1) return null;
+  const n = u.frameCount('idle');
+  if (n < 2 || fi.frame >= n) return null;
+  const holds = Array.from({ length: n }, (_, f) => u.frameMs('idle', f));
+  return { holds, frame: fi.frame, into: Math.max(0, Math.min(holds[fi.frame], a.accumulator || 0)) };
+}
+
+/** Ends `u`'s settle (if one is steering): the loop plays at its own speed again. */
+export function endSettle(u: MonsterUnit | null): void {
+  if (u) steering.get(u)?.();
+}
+
+/**
+ * A blow will land on `u` in `contactIn` ms (show time): if `u` rests in attack position on its
+ * idle loop, plan the settle and steer the loop until then (a new call re-plans from where the
+ * loop is: the battle's exact contact after the declaration's estimate). Returns the plan (speed 1:
+ * nothing to change), or null when the unit does not rest, the wind-up is too short or the art's
+ * struck poses are not drawn from idle f0. `goalOf` replaces the goal read off the sheet (tests).
+ */
+export function settleBefore(u: MonsterUnit | null, contactIn: number, goalOf: SettleGoal | null = null): SettlePlan | null {
+  if (!u) return null;
+  endSettle(u);
+  const loop = restLoop(u);
+  if (!loop) return null;
+  const goal = goalOf ?? settleGoal(u);
+  if (!goal) return null;
+  const plan = planSettle(loop, contactIn, goal);
+  if (!plan) return null;
+  const sc = u.scene;
+  sc.events.emit('v3:settle', u.uid, plan);
+  if (plan.speed === 1) return plan;
+  const s = u.sprite;
+  const a = s.anims as unknown as AnimState;
+  const key = a.currentAnim!.key;
+  const speed = plan.speed;
+  a.timeScale = speed;
+  let el = 0;
+  let done = false;
+  const end = () => {
+    if (done) return;
+    done = true;
+    s.off(ANIM_START, end);
+    s.off(ANIM_STOP, end);
+    sc.events.off(SCENE_UPDATE, tick);
+    sc.events.off(SCENE_SHUTDOWN, end);
+    if (steering.get(u) === end) steering.delete(u);
+    // (a play that set its own time scale keeps it)
+    if (s.active && a.timeScale === speed) a.timeScale = 1;
+  };
+  function tick(_t: number, delta: number): void {
+    el += Math.min(50, delta) * ((sc as unknown as { tweens?: { timeScale?: number } }).tweens?.timeScale ?? 1);
+    if (el >= contactIn + SETTLE_TICK || !s.active || u!.retired || a.currentAnim?.key !== key || !a.isPlaying) end();
+  }
+  // the struck pose (or anything else) starting / stopping an anim ends it before its first update
+  s.on(ANIM_START, end);
+  s.on(ANIM_STOP, end);
+  sc.events.on(SCENE_UPDATE, tick);
+  sc.events.once(SCENE_SHUTDOWN, end);
+  steering.set(u, end);
+  return plan;
+}
+
+/**
+ * ms from now until a battle strike's blow lands, from its attacker's marks: the attack's
+ * 'contact' frame (the body / beam touches the target, src/art/types.ts AnimMark) — counted from
+ * the attack frame the attacker shows now, or from `from` (the frame the strike will start on,
+ * e.g. the one after the declaration's charge pose). null when the attack has no 'contact' mark (a
+ * thrown or fired strike: its flight is its own) or is already past it.
+ */
+export function strikeContactIn(attacker: MonsterUnit | null, from?: number): number | null {
+  if (!attacker || !attacker.sprite.active) return null;
+  const c = attacker.spec('attack')?.marks?.contact;
+  if (typeof c !== 'number' || !Number.isFinite(c)) return null;
+  let f: number;
+  let into = 0;
+  let speed = 1;
+  if (from !== undefined) f = from;
+  else {
+    const fi = attacker.frameInfo();
+    if (fi.anim !== 'attack') return null;
+    f = fi.frame;
+    const a = attacker.sprite.anims as unknown as AnimState;
+    if (a.isPlaying) {
+      into = Math.max(0, a.accumulator || 0);
+      speed = a.timeScale > 0 ? a.timeScale : 1;
+    }
+  }
+  if (c <= f) return null;
+  return Math.max(0, attacker.rangeMs('attack', f, c) - into) / speed;
+}

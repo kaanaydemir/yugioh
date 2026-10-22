@@ -4,7 +4,7 @@
 // the flip — and the struck-surface particles of a plan-built body (_v3/react.ts).
 //
 //   &fixture=1   a fixture stands in for <monster> (default stone_sentinel) for this page: the rigkit
-//                fixture creature (tests/art/fixtures/rigkit-creature-art.ts, a full compiled MonsterArt,
+//                fixture creature (src/dev/fixtures/rigkit-creature-art.ts, a full compiled MonsterArt,
 //                with a `bodyPlan` tag) as its v3 art, and FIXTURE_RECIPE (stone body, 'throw' from its
 //                jaws — the fixture has no hand — 'assemble' in stone, stone death, dust flip, the rumble
 //                reference voice) as its recipe. Registered when this module loads (before the boot step
@@ -15,6 +15,9 @@
 //                the grey chips + the stone-toned contact flash are the struck stone body's (_v3/react.ts).
 //   &plain=1     the fixture WITHOUT its `bodyPlan` tag: the struck-surface particles stay off (today's
 //                call) — the A/B of the stone-hit films.
+//   &projectile=1  a demo drawing (a faceted shard in the recipe material's tones) registered as the
+//                fixture recipe's projectile (`attack.vfx` 'boulder', recipe/strike.ts registerProjectile)
+//                for this page only: the throw flies it instead of the default lump (A3 core review F3).
 //   &s=<name>    stage that scenario (src/duel/scenarios.ts, or one of PREVIEW_SCENARIOS below, added to
 //                the table only while this preview runs) — without it: the list.
 //   Films:  node tools/shot.mjs "?dev=recipe&id=stone_sentinel&fixture=1&look=v3&s=sbSentinelAtk" --fresh --film 48 --every 33
@@ -23,6 +26,8 @@
 import type { DevPreview } from '../types';
 import { MONSTER_IDS, type MonsterId } from '../../data/cards';
 import { PAL } from '../../art/palette';
+import { PixelCanvas } from '../../art/pixel';
+import type { ProjectileDraw } from '../../cinematics/recipe/strike';
 import { registerFixtureArtV3 } from '../../art/monsters';
 import { RUMBLE_REFERENCE } from '../../audio/v3/voices';
 import { presentationOf, registerFixtureRecipe, v3Recipe } from '../../presentation/registry';
@@ -31,7 +36,7 @@ import { measureText, pixelText } from '../../ui/text';
 import { DEPTH, LOOK_V3 } from '../../view/layout';
 import { SCENARIOS, type Scenario } from '../../duel/scenarios';
 import { duelReady } from '../../scenes/DuelScene';
-import { fixtureArt } from '../../../tests/art/fixtures/rigkit-creature-art';
+import { fixtureArt } from '../fixtures/rigkit-creature-art';
 
 /** The fixture's recipe: the pilot's draft (A3_MIMARI §6.1) on the fixture creature. */
 export function fixtureRecipe(id: string): PresentationRecipe {
@@ -68,6 +73,30 @@ if (STRIKER_ID) {
 }
 
 const down = (id: MonsterId) => ({ id, faceUp: false });
+
+/**
+ * &projectile=1: a long faceted shard, turned a step per turn around its centre and lit from the top-left
+ * whatever the turn (the lit facet is the one whose outward normal faces the light), in the material's tones.
+ */
+const demoShard: ProjectileDraw = ({ mat, turn, turns }) => {
+  const S = 15;
+  const c = (S - 1) / 2;
+  const a = (turn / turns) * Math.PI * 2;
+  const ramp = mat ? mat.draw.ramp : [PAL.stone1, PAL.stone2, PAL.stone3, PAL.stone4];
+  const at = (x: number, y: number): [number, number] => [c + x * Math.cos(a) - y * Math.sin(a), c + x * Math.sin(a) + y * Math.cos(a)];
+  const tip = at(6.5, 0);
+  const tail = at(-6, 0);
+  const up = at(1, -2.6);
+  const down = at(1, 2.6);
+  const q = new PixelCanvas(S, S);
+  // the two long facets: the one facing the light (top-left) lit, the other in shadow
+  // the 'up' facet's outward normal is (sin a, −cos a); the light comes from (−1, −1.2)
+  const upLit = -Math.sin(a) + 1.2 * Math.cos(a) > 0;
+  q.poly([tip, up, tail], upLit ? ramp[ramp.length - 1] : ramp[Math.max(1, ramp.length - 3)]);
+  q.poly([tip, down, tail], upLit ? ramp[Math.max(1, ramp.length - 3)] : ramp[ramp.length - 1]);
+  q.outline(PAL.ink);
+  return q;
+};
 
 /** Scenarios of this preview (a flip summon and attack-position physical hits on the monster). */
 function previewScenarios(id: MonsterId): Record<string, Scenario> {
@@ -118,6 +147,11 @@ const preview: DevPreview = {
   description: 'recipe default cinematic: &id=<monster>&look=v3[&fixture=1][&s=<scenario>]',
   async create(scene, params) {
     const id = (params.get('id') ?? 'stone_sentinel') as MonsterId;
+    if (FIXTURE_ID && params.has('projectile')) {
+      // loaded here, not at module init: the strike module stays out of the boot order of every other page
+      const { registerProjectile } = await import('../../cinematics/recipe/strike');
+      registerProjectile('boulder', demoShard);
+    }
     if (!MONSTER_IDS.includes(id)) throw new Error(`unknown monster ${id}`);
     for (const [k, v] of Object.entries(previewScenarios(id))) SCENARIOS[k] ??= v;
     const name = params.get('s') ?? '';

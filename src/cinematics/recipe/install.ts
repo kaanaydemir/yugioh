@@ -2,7 +2,8 @@
 // (src/cinematics/index.ts: the glob covers recipe/**). For each presentation recipe it registers the
 // default cinematic of every part the card does not draw itself (`custom`) — at priority 10, so it wins
 // over the old per-card files (priority 0) and a card can still take one part back above it (priority
-// > 10, falling back with ctx.base()) — and ONLY under the bridge rule: the v3 look and a monster with
+// > 10, falling back with ctx.base(); a strike with s.base(), registry strikeFor's chain) — and ONLY
+// under the bridge rule: the v3 look and a monster with
 // v3 art (presentation/registry v3Recipe). In the v1 look, and for every monster without v3 art,
 // nothing is registered: the game plays exactly as before.
 //

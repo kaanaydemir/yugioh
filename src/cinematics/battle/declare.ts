@@ -32,7 +32,7 @@ import { banner, type BannerOpts } from '../../vfx/banners';
 import { lightBeam, lightFlash } from '../../view/light';
 import { fx, registerEvent, registerObserver } from '../api';
 import { REACTION_POSES, warmPoses } from '../_v3/warm';
-import { alignStart, frameDelta, idleDelta } from '../_v3/posematch';
+import { alignStart, frameDelta, idleDelta, settleBefore, strikeContactIn } from '../_v3/posematch';
 import {
   ADD,
   TAU,
@@ -358,6 +358,8 @@ registerObserver((ev, ctx) => {
 
 /** Longest the wind-up frames may take inside the declaration (ms); longer holds play faster. */
 const DECLARE_POSE_MS = 180;
+/** A3 Y1b: the declaration's length until the battle starts (the reticle's 230-ms lock on the frame grid). */
+const DECLARE_SETTLE_MS = 233;
 
 async function attackDeclareV3(ctx: Ctx<'attackDeclare'>): Promise<void> {
   const ev = ctx.ev;
@@ -369,6 +371,13 @@ async function attackDeclareV3(ctx: Ctx<'attackDeclare'>): Promise<void> {
   // the poses the clash may need (recoils, guard brace / break, deaths) are painted now, in the
   // background — never synchronously on the contact frame (_v3/warm.ts)
   for (const u of [attacker, target]) if (u) warmPoses(u.cardId, u.player, REACTION_POSES);
+  // A3 Y1b: a resting target's idle starts arriving on a frame its struck pose continues: the
+  // declaration + the strike from the frame after the charge pose to the attack's 'contact' mark
+  // (the battle re-plans on the strike's own first frame, _v3/posematch.ts)
+  if (attacker && target) {
+    const lead = strikeContactIn(attacker, declarePoseFrame(attacker) + 1);
+    if (lead !== null) settleBefore(target, DECLARE_SETTLE_MS + lead);
+  }
   const tTile = ev.targetUid !== null ? ctx.tile(ev.targetUid) : null;
   const defender = other(ev.player);
   const ramp = PLAYER_RAMP[ev.player];

@@ -121,6 +121,7 @@ src/presentation/                  YALNIZ SUNUM VERİSİ; Phaser'sız; motor iç
 src/cinematics/recipe/             tariften varsayılan sinematik (yükleyici glob'u bunu da yükler)
   strike.ts summon.ts death.ts flip.ts install.ts        (A3; effect.ts A4.1'de, ilk kullanıcısı Titan)
   setpieces/<ad>.ts                adla paylaşılan sahne parçaları (registerSetPiece)
+  projectiles/<vfx>.ts             fırlatanın kendi mermisi, `attack.vfx` adıyla (registerProjectile; süs bütçesine sayılır)
   hooks/<id>.ts                    kartın süs kancaları (yan etkisiz modül; süs bütçesi §6.2)
 src/audio/v3/
   materials.ts   MaterialDef.sound → hit<Malzeme><Light|Heavy|Magic> tarifleri (slice.ts'e dokunmaz)
@@ -129,6 +130,7 @@ tools/
   sheet-hash.ts (+ --look v3)  sameness.ts  monster-gates.ts  contact-probe.mjs  filmdiff.mjs  lib/*.ts
 src/dev/previews/bodyplan.ts       ?dev=bodyplan&plan=biped (plan üyeleri yan yana, P1/P2, iskelet, eklem izleri)
 src/dev/previews/recipe.ts         ?dev=recipe&id=… (tariften kurulan olaylar, fikstür canavarla)
+src/dev/fixtures/rigkit-creature{,-art}.ts   çekirdeğin fikstür yaratığı (geliştirme kaynağı: önizleme ve rigkit testleri buradan alır)
 ```
 
 Dilim dosyaları (`crystal_wyrm*`, `abyss_magus*`), v1 canavarları ve kitlerin bugünkü davranışı
@@ -556,7 +558,8 @@ export interface PresentationRecipe {
     ranged?: boolean;                                    // replaces chains_of_light RANGED for this card (v3)
   };
   summon: { style: 'column' | 'rift' | 'fissure' | 'vortex' | 'assemble' | 'bloom' | 'swoop' | 'surge' | 'strike' | 'pool';
-            matter?: ShatterMaterial; setPiece?: string; roarPeak?: number };
+            matter?: ShatterMaterial; setPiece?: string; roarPeak?: number;
+            leadMs?: number; shake?: number };                // 'assemble': gathering before the pose (220), finale shake px (2)
   death: { material: ShatterMaterial; accent: ShatterMaterial; onBurst?: string };  // onBurst: lizard's static ball
   flip?: { accent: 'vines' | 'sparks' | 'dust' | 'mist' | 'drop'; ramp?: string };
   effects?: readonly { on: EngineAction; anim: 'special' | 'roar' | 'attack' | 'death'; from: MonsterPointName;
@@ -624,7 +627,11 @@ A4.1'de Titan'la, `beam` Yılan'la, etki teslimatları (`effect.ts`) Titan'ın y
 
 `throw` türünün kendisi şunları taşır (her kullanıcıda ortak, malzemeden parametreli): mermi her karede
 `points[from]`'dan çıkar; parabol; dönme; zeminde kayan gölge; temasta malzemenin döküntüsüyle seken
-parçalar ve alçak toz; bloklanınca `blocked` biçimi; doğrudan saldırıda düellocuya iniş.
+parçalar ve alçak toz; bloklanınca `blocked` biçimi; doğrudan saldırıda düellocuya iniş. **Mermi
+fırlatanındır:** `attack.vfx` adıyla kayıtlı bir çizim varsa (`registerProjectile(vfx, draw)`,
+`recipe/projectiles/<vfx>.ts`; sanatın kendi parça boyacısıyla çizilir, böylece elde tutulan kaya ile uçan
+kaya tek çizimdir; kartın süs bütçesine sayılır) uçan odur, temas yarıçapı onun opak kapsamından gelir;
+yoksa malzemenin tonlarında yontulmuş bir kaya (çekirdek incelemesi, bulgu 3).
 
 **Sahne parçaları** (`setpieces/<ad>.ts`, `registerSetPiece(name, fn)`) adla paylaşılan bir kütüphanedir:
 lav yarığı, girdap, kaya montajı, tomurcuk kafesi, gölge havuzu (A0 §1.3 "karakterli girişler" korunur).
@@ -661,7 +668,10 @@ evet / hayır:
    v3 görünümünde de girer (§6.4).
 2. `hooks`: zaman çizgisi tarifte kalır, vuruşlara süs eklenir (Titan'ın göğüs çekirdeği parlaması).
 3. Kısmi ezme: bir normal kart tek kancayı elle yazmak isterse aynı kartı **öncelik > 10** ile kaydeder
-   ve gerektiğinde `await ctx.base()` ile tarifin varsayılanına düşer.
+   ve gerektiğinde `await ctx.base()` ile tarifin varsayılanına düşer. Saldırıda (`registerStrike`) aynı
+   iş `return s.base?.()` ile olur: savaş işleyicisi vuruşu `strikeFor(id, genericStrike)` zinciriyle
+   çalıştırır; her vuruşun `base()`'i önceliğe göre bir sonrakini, en sonuncununki genel vuruşu çalıştırır
+   (çekirdek incelemesi, bulgu 6).
 
 ### 6.4 Köprü kuralı ve erişimciler (v1 ve dilim değişmez)
 
@@ -984,6 +994,15 @@ normalize** yapılır.
    farkı korunur; ağır sınıfta kalan çoğunlukla 0'dır (güç 3'te 1), orta ve hafif sınıfta 1–3 px.
    Gövde tipi bunu sözcük olarak verir: `helpers.recoilPush(weight, power)` (f0 / f1 / f2) ve
    `plan.poseKnockPx(build, weight)`.
+   **Çekirdek incelemesi düzeltmeleri.** (a) Çizilen yol **ölçülür**: kit, oynayan tepkinin (`hitAnimFor`:
+   türe ve ağırlığa göre seçilir, güce göre değil) kendi rig'inde çizdiği kalça yolunu çıkarır
+   (`_v3/blow.ts poseTravelPx`: `joints().hip`, f1–f2'de f0'a göre en büyük geri kayma); `joints()`
+   vermeyen sanatta beyan edilen `poseKnockPx[güç]` geçerlidir (bulgu 4; pilotta beyan 1/1/1, ölçülen
+   hit 1, hitHeavy 3, hitMagic 0 px). (b) **Ölümcül darbede** ölüm pozu tepkinin çizdiği yolu taşımaz:
+   ölüm tepkinin yerini vurulma f0'ından alıyorsa (planlı giriş `hold 0`, HA-24) ya da giriş planı yoksa
+   (tepki dinlenme pozunda biter) kit `knockPx`'in **tamamını** ekler ve tutar; yalnız ölüm tepkinin
+   sonraki bir karesinden devam ediyorsa (piksel eşli giriş, `hold > 0`) o karenin çizdiği yolu düşer
+   (bulgu 1; ağır pilot eskiden ölümcül darbede hiç itilmiyordu).
 3. **Arkadan darbe** (`side 'back'`): plan sözcüğü `struckBack` varsa 1–2 karelik öne eğilme oynar;
    kit ileri itmeyi aynı tetikle yapar. **Yukarıdan darbe** (`side 'above'`, yıldırım): `struckAbove`
    (kalça iner, baş eğilir); kit itmesi geri değil **aşağı**dır (güç 3'te 1 px, bugünkü `knockPx`).
@@ -1012,6 +1031,24 @@ karesinde ve bir önceki gösterilen karede hedefin kutusunu kırpar, değişen 
   kite değil.
 - REHBER HA-11, HA-21, §10.3 ve KK-4 bu tasarıma göre güncellendi: KK-4 artık sayfa değeriyle birlikte
   **ekrandaki** `contact-probe` değerini ister.
+- **Dilim muafiyeti** (çekirdek incelemesi, bulgu 2; Y1b ölçüsü `shots/v3/a3/y1b/probe-y1b.txt`). Dilimin
+  vurulma f0'ı idle f0'a karşı çizilmiştir; dinlenen hedef ise idle'ın ortasında vurulur ve dilim sanatı
+  donmuştur. Y1b'nin temas öncesi idle yerleştirmesi (`_v3/posematch.ts settleBefore`: idle döngüsünü
+  ±%35 hızla vurulma f0'ına yakın bir hedef kareye getirir) on kabul temasından üçünü sınırın altına
+  indirdi: `saWyrmBlocked` P2 %48,1, `spBoltAce` %48,1, `sliceBoltWyrmP2` %47,9 (sayfa %43,8). Kalan yedisi
+  dilim için **muaftır**; ekrandaki değerleri kayıttır: `saWyrmAtk` büyücü %68,0, `saWyrmDef` ejder %63,1,
+  `sliceMagusHitWolf` %67,1, `sliceMagusHitTitan` %66,7, `sliceMagusHitTitanP2` %69,7, `sliceBoltMagus`
+  %74,3 — bu altısında hazırlık süresi bir hedef kareye ±%35 içinde ulaşmaya yetmez (gereken döngü hızı
+  ×1,68–×3,17) — ve `saMagusBlocked`'ın savunan ejderi %55,7 (büyücünün küre vuruşu `contact` işareti
+  yayımlamaz, yerleştirme zamanlanamaz; döngü ×0,93 ile ulaşabilirdi: açık iş, dilim film tabanı
+  yenilenerek yapılabilir). Bu yedisinin sayfa değerleri sınırın içindedir (HA-21 %38–44).
+- **Yeni canavarlarda kapı sanattadır:** `monster-gates` satırı **HA-21 phase** = her idle karesi k için
+  en büyük `Δ(idle k, vurulma f0) / idle f0 opak` < %50 (hit, hitHeavy, hitMagic ve temas işaretli death;
+  P1 ve P2). Dinlenen hedef idle'ın herhangi bir karesinde vurulabildiği için ekrandaki değer bununla
+  sınırlanır (yerleştirme yalnız uzun hazırlıkta yardım eder). Dilimde bu değer ejderde %67,9 (idle f14),
+  büyücüde %74,3'tür (idle f6; `contact-probe`'un `sliceBoltMagus` ekran değeriyle aynı) ve "known"
+  yazılır. Pilot ve A4 canavarları bu satırı geçmeden kabul edilmez (düzeltme sanattadır: idle genliği
+  ya da vurulan bölgelerin idle fazıyla uyumu).
 
 ---
 
@@ -1098,7 +1135,8 @@ A4.1'in **ilk** işidir, A3'ün değil.
   aktarmıyor.
 - **Vuruş kiti:** temas karesinde sprite konumu = dinlenme konumu (düz, ölümcül, arkadan, yukarıdan,
   savunma); itme temastan sonraki ilk kare değişiminde başlıyor (ölüm animi dahil); `knock: 'pose'` iken
-  kitin eklediği = `knockPx − poseKnockPx[güç]`; yukarıdan darbe aşağı itiyor; v1'de `guardHit` aynı.
+  kitin eklediği = `knockPx − ` oynayan tepkinin ölçülen yolu (ölçü yoksa `poseKnockPx[güç]`); ölümcül
+  darbede (ağır ve orta sınıf) tutulan itme `knockPx`; yukarıdan darbe aşağı itiyor; v1'de `guardHit` aynı.
 - **Benzerlik metrikleri:** IoU simetrik; sentetik izlerde `MOT` bilinen değerler; DTW ±60 ms'de
   değişmez; döngüsel kaydırma faz bağımsız; `RHYTHM` tolerans sınırları ve döngü imzası; kör sayfa
   anahtarıyla puanlama (sentetik form).

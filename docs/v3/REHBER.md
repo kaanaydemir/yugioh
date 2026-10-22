@@ -274,8 +274,11 @@ Plan §4'teki zincir şudur: hazırlık → bırakma → temas → ikincil harek
     sprite kımıldamaz.** İtme temastan sonraki ilk kare değişiminde başlar, ekranda hangi anim varsa
     (tepkinin f1'i, ölümcül devirde ölüm animinin ilk değişen karesi). Toplam ≤ 4 px, güç ve tarafa
     bağlı (`knockPx`; arkadan +1 ve ileri, yukarıdan yalnız güç 3'te 1 px aşağı), sınıfın dönüş
-    eğrisiyle eve döner. Plan canavarında (`knock: 'pose'`) itmenin `poseKnockPx[güç]` kadarını
-    tepki pozları çizer, kalanını kit ekler.
+    eğrisiyle eve döner. Plan canavarında (`knock: 'pose'`) itmenin bir kısmını tepki pozları çizer,
+    kalanını kit ekler: kit, oynayan tepkinin rig'de ölçülen kalça yolunu düşer (`joints()` yoksa
+    `poseKnockPx[güç]`). Ölümcül darbede ölüm pozu bu çizilen yolu taşımaz; kit `knockPx`'in tamamını
+    ekler ve ölüm itilmiş yerde sürer (ölüm tepkinin sonraki bir karesinden devam ediyorsa o karenin
+    yolu düşülür).
   - Sinematikteki yer değiştirme (atılma, uçuş) tam pikselle ve yalnız pozun kendisi de hareket
     ederken yapılabilir.
   - `setScale` ve `setAngle` kullanılmaz (denetim: değişen dosyalarda `grep -n "setScale\|setAngle"`,
@@ -312,6 +315,10 @@ dahil). Dilimde ejder 738,6 px (opağın %21,7'si), büyücü 390,3 px (%18,7).
   - Ölçü **sayfa karesinde ve ekranda** yapılır: ekranda `tools/contact-probe.mjs` dinlenen hedefte
     temas karesini bir önceki gösterilen kareyle karşılaştırır; < %50 ve sayfa değerinin en çok 5
     puan üstü (A3'te kit itmesi temas karesinden çıkarıldı, §10.3).
+  - **Her idle fazında** < %50: dinlenen hedef idle'ın herhangi bir karesinde vurulur, bu yüzden
+    `monster-gates` "HA-21 phase" satırı her idle karesi k için `Δ(idle k, f0) / idle f0 opak` değerinin
+    en büyüğünü ister. Dilim bunu geçmez (ejder %67,9, büyücü %74,3) ve donmuş sanatı yüzünden
+    muaftır (`docs/v3/A3_MIMARI.md` §10, dilim muafiyeti); yeni canavarlar geçer.
 - **HA-22 f1 bir ara karedir:** sıkışmış anahtar poz ile savrulma arasında durur. Böylece
   savrulma temastan sıçramadan yay çizer (`recoil(struck, keys)`: `mix(k0, k1, 0.5, 0.35)`).
 - **HA-23 Tepki türü okunur:**
@@ -470,7 +477,7 @@ Her madde **evet / hayır** olarak işaretlenir. Kanıt `shots/v3/<aşama>/<cana
 | KK-1 | **Referans kare kapısı:** yeni stil idle f0, referansın (v1 idle f0 ya da onaylı still) yanında ×3 incelendi ve onaylandı. Sonra anim çizildi. | `monster-sheet --still` (still varsa) / v1 ile v3 sayfası yan yana | Sİ-5, IŞ-10, IŞ-11 |
 | KK-2 | **×3 sayfalar, P1 + P2,** her animin her karesi en az 3 eleştiri turunda incelendi (sanat, hareket, teknik; A2'deki gibi). Bulgular kural kimliğiyle yazıldı. | `monster-sheet --anims all --scale 3` ve `--p2` | §1, §2, §4 |
 | KK-3 | **Sayfa sayıları:** pay ≥ 2, kenar pikseli 0; out ≤ 1,2; in ≤ 2,0; döngü dikişi ≤ 1,4; idle en büyük Δ ≤ 1,8 × idleΔ; canlılık ≥ %15; guard 0,3–0,8 × idleΔ; gürültü bütçesi. | `monster-sheet` .txt / .json | Sİ-2, HA-14…HA-20, IŞ-10 |
-| KK-4 | **Temas karesi yerel:** hit / hitHeavy / hitMagic / death f0 sayfada < %50 **ve ekranda** (dinlenen hedef) < %50 ve sayfanın ≤ +5 puanı; önce vurulan bölge tepki veriyor (fark haritası); temas karesinde sprite dinlenme konumunda, itme sonraki kare değişiminde (ölümcül darbe dahil). | `popIn × idleΔ / opaque`, fark haritası; `contact-probe` (A3) | HA-11, HA-21 |
+| KK-4 | **Temas karesi yerel:** hit / hitHeavy / hitMagic / death f0 sayfada < %50, **her idle fazına karşı** < %50 (`monster-gates` "HA-21 phase") **ve ekranda** (dinlenen hedef) < %50 ve sayfanın ≤ +5 puanı; önce vurulan bölge tepki veriyor (fark haritası); temas karesinde sprite dinlenme konumunda, itme sonraki kare değişiminde (ölümcül darbe dahil, tutulan itme `knockPx`). Dilim, idle fazı ve ekran değerlerinden muaftır; yedi temasın ekran değeri `docs/v3/A3_MIMARI.md` §10'da kayıtlıdır. | `popIn × idleΔ / opaque`, fark haritası; `monster-gates` (HA-21, HA-21 phase, HA-11 travel); `contact-probe` (A3) | HA-11, HA-21 |
 | KK-5 | **Ayak ve süzülme:** ayak satırı ve x aralığı idle / guard / geçişlerde sabit; süzülende yer noktası sabit, `dx = 0`. | sayfa kareleri, satır taraması | HA-9, HA-10 |
 | KK-6 | **İşaretler ve noktalar:** §4.1'deki zorunlu işaretler var. `points().muzzle` her karede ağız / kaynak üzerinde (`--points` ile ×3'te görülür). | `monster-sheet --points` | HA-1, HA-25 |
 | KK-7 | **Süre bütçesi:** canavarın bütün senaryoları (summon, attack, direct, blocked, death, revive, position, flip, effect; P1 ve P2) §5 sınırında. Sayı = temas ±1 kare, yok olma ≤ 1,4 sn, ilan ≤ 0,3 sn, LP ≤ 0,4 sn. | `measure --look v3` + bütçe denetimi | §5 |

@@ -151,4 +151,12 @@ export interface StrikeArgs {
   impact(at?: XY): void;
   /** Resolves when impact() has been called. */
   readonly impacted: Promise<void>;
+  /**
+   * Run the strike BELOW this one with the same arguments (A3_MIMARI §6.3.3; A3 core review F6): the
+   * next registered strike by priority, after the last one the battle handler's generic strike, then
+   * nothing. A card that overrides part of its recipe strike above priority 10 (say, only its direct
+   * attack) falls back to the recipe's with `return s.base?.()`. Set by the battle handler's strike
+   * chain (registry strikeFor with a fallback); absent on arguments built by hand (previews, tests).
+   */
+  base?(): Promise<void>;
 }

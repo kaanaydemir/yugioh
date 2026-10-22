@@ -4,6 +4,7 @@
 
 import { CARDS, isMonster, type MonsterId } from '../../data/cards';
 import type { AnyMonsterAnim, MonsterArt } from '../../art/types';
+import { animSpec } from '../../art/animtime';
 import { weightOf, type WeightSource } from '../../duel/motion';
 import { v3Recipe } from '../../presentation/registry';
 
@@ -84,4 +85,39 @@ export function hitAnimFor(u: { has(anim: AnyMonsterAnim): boolean }, o: { kind:
   if (o.kind === 'magic' && u.has('hitMagic')) return 'hitMagic';
   if (o.heavy && u.has('hitHeavy')) return 'hitHeavy';
   return 'hit';
+}
+
+/**
+ * Whole px of a FRONT blow's travel that the recoil `anim` draws itself (knock: 'pose' art,
+ * A3_MIMARI §10.2), measured on the art's own rig: the backward travel of the hips (joints().hip,
+ * art space, drawn facing right: back = −x) relative to f0 — on frame `frame`, or the most over
+ * f1–f2 when no frame is given (§10.2: by f2 the hips have travelled). A3 core review F4: the anim
+ * that plays is chosen by the blow's kind and heaviness, not its power, and a hand-keyed recoil
+ * draws what it draws, so the kit subtracts what THAT anim shows, not a table by power.
+ * null: the art gives no joints() (or no hip joint, or the frame does not exist) — the caller keeps
+ * the declared poseKnockPx. Pure (the reaction kit caches it per art).
+ */
+export function poseTravelPx(art: MonsterArt, anim: AnyMonsterAnim, frame?: number): number | null {
+  if (!art.joints) return null;
+  const n = animSpec(art, anim)?.frames ?? 0;
+  if (n < 1 || (frame !== undefined && (frame < 0 || frame >= n))) return null;
+  if (frame === 0) return 0;
+  const hipX = (f: number): number | null => {
+    try {
+      const j = art.joints!(anim, f);
+      const h = j.hip ?? j.pelvis;
+      return h && Number.isFinite(h.x) ? h.x : null;
+    } catch {
+      return null;
+    }
+  };
+  const x0 = hipX(0);
+  if (x0 === null) return null;
+  let back = 0;
+  for (const f of frame !== undefined ? [frame] : [1, 2].filter((k) => k < n)) {
+    const x = hipX(f);
+    if (x === null) return null;
+    back = Math.max(back, x0 - x);
+  }
+  return Math.max(0, Math.round(back));
 }

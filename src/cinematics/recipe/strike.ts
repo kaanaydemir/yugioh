@@ -16,7 +16,10 @@
 // 'throw' (shared by every thrower, parametrised by the material): the projectile leaves points[from]
 // of the release frame (the art draws what the hand holds up to that frame: the hand and the rock are
 // one picture until it lets go); a parabola; it spins (8 whole-pixel turns, lit from the top-left
-// whatever its turn); its shadow slides over the floor from the thrower to the target, shrinking and
+// whatever its turn) — the thrower's OWN projectile when one is registered under its `attack.vfx`
+// (registerProjectile, `recipe/projectiles/<vfx>.ts`: drawn with the art's own part painter, so the
+// rock it holds and the rock that flies are one drawing), else a faceted lump in its material's
+// tones; its shadow slides over the floor from the thrower to the target, shrinking and
 // thinning with height (dithered, never alpha); on contact it bursts into its material's pieces that
 // bounce on the floor and a low dust cloud rolls out; blocked, `attack.blocked` ('shatter': it breaks
 // on the guard and the pieces fly back; 'rebound': it glances off, falls short and breaks on the floor);
@@ -145,16 +148,97 @@ function projectileMaterial(r: PresentationRecipe): MaterialDef | null {
 const TURNS = 8;
 const ROCK_R = 6;
 const ROCK_S = ROCK_R * 2 + 5;
+/** A registered projectile drawing is centred in a frame of at most this size (px; cropped beyond). */
+const PROJ_MAX = 32;
 
 /**
- * The spinning projectile's sheet: an irregular faceted lump in the material's tones, TURNS rotations,
- * each facet toned by where it faces the key light (top-left) on that turn — the light stays put while
- * the rock turns — a 1-px edge highlight on the lit rim, an ink outline.
+ * A thrower's own projectile (A3 core review F3: without one every thrower would throw the same
+ * lump): turn `turn` of `turns` in `mat`'s tones. Turn 0 is the projectile as the art holds it on
+ * the release frame; every turn stays lit from the top-left whatever its rotation (the light stays
+ * put while it spins). Any size up to PROJ_MAX × PROJ_MAX, drawn centred on the flight point; its
+ * opaque extent is the contact radius. Paint it with the art's own part painter (exported by the
+ * art's -parts module) so the held rock and the thrown rock are one drawing. Deterministic.
  */
-function ensureProjectile(scene: Phaser.Scene, vfx: string, mat: MaterialDef | null): string {
+export type ProjectileDraw = (a: { mat: MaterialDef | null; turn: number; turns: number }) => PixelCanvas;
+
+const PROJECTILES = new Map<string, ProjectileDraw>();
+/** Registrations per name (the texture key carries it: a re-registered drawing never reuses a stale sheet). */
+const PROJ_VERSION = new Map<string, number>();
+
+/**
+ * Register the projectile a recipe names by `attack.vfx` (`recipe/projectiles/<vfx>.ts` at module load:
+ * the cinematics loader loads it with every other cinematics file, before anything plays). It counts in
+ * its first user's ornament budget (A3_MIMARI §6.2, ≤ 250 lines with the hooks and set pieces).
+ * Returns its unregister.
+ */
+export function registerProjectile(vfx: string, draw: ProjectileDraw): () => void {
+  PROJECTILES.set(vfx, draw);
+  PROJ_VERSION.set(vfx, (PROJ_VERSION.get(vfx) ?? 0) + 1);
+  return () => {
+    if (PROJECTILES.get(vfx) === draw) PROJECTILES.delete(vfx);
+  };
+}
+
+/** The registered projectile of `attack.vfx`, or null (the throw draws its default faceted lump). */
+export function projectileOf(vfx: string | null | undefined): ProjectileDraw | null {
+  return (vfx && PROJECTILES.get(vfx)) || null;
+}
+
+/** A projectile's sheet: TURNS frames of `size` px, and its contact radius (px). */
+export interface ProjectileSheet {
+  key: string;
+  size: number;
+  r: number;
+}
+
+/** The projectile sheets built so far (key → size and radius; the texture itself lives in the scene's manager). */
+const SHEETS = new Map<string, ProjectileSheet>();
+
+/**
+ * The TURNS frames of a registered drawing, each centred in a square frame (the largest turn's size,
+ * ≤ PROJ_MAX), and the contact radius: the farthest opaque pixel from the frame's centre over all turns.
+ */
+export function projectileFrames(draw: ProjectileDraw, mat: MaterialDef | null): { frames: PixelCanvas[]; size: number; r: number } {
+  const turns = Array.from({ length: TURNS }, (_, turn) => draw({ mat, turn, turns: TURNS }));
+  const size = Math.min(PROJ_MAX, Math.max(3, ...turns.map((q) => Math.max(q.w, q.h))));
+  let r2 = 0;
+  const frames = turns.map((q) => {
+    const f = new PixelCanvas(size, size);
+    f.blit(q, Math.floor((size - q.w) / 2), Math.floor((size - q.h) / 2));
+    for (let y = 0; y < size; y++)
+      for (let x = 0; x < size; x++) if (f.isOpaque(x, y)) r2 = Math.max(r2, (x + 0.5 - size / 2) ** 2 + (y + 0.5 - size / 2) ** 2);
+    return f;
+  });
+  return { frames, size, r: Math.max(1, Math.round(Math.sqrt(r2))) };
+}
+
+/**
+ * The spinning projectile's sheet. A registered drawing (projectileOf(vfx)) when there is one; else an
+ * irregular faceted lump in the material's tones, TURNS rotations, each facet toned by where it faces
+ * the key light (top-left) on that turn — the light stays put while the rock turns — a 1-px edge
+ * highlight on the lit rim, an ink outline.
+ */
+function ensureProjectile(scene: Phaser.Scene, vfx: string, mat: MaterialDef | null): ProjectileSheet {
   const id = mat?.id ?? 'stone';
-  const key = `recipe:proj:${vfx}:${id}`;
-  if (scene.textures.exists(key)) return key;
+  const own = projectileOf(vfx);
+  const key = `recipe:proj:${vfx}:${id}${own ? `:own${PROJ_VERSION.get(vfx) ?? 0}` : ''}`;
+  const cached = SHEETS.get(key);
+  if (cached && scene.textures.exists(key)) return cached;
+  if (own) {
+    const { frames, size, r } = projectileFrames(own, mat);
+    const sheet = new PixelCanvas(size * TURNS, size);
+    frames.forEach((f, i) => sheet.blit(f, i * size, 0));
+    if (!scene.textures.exists(key)) {
+      const tex = scene.textures.addCanvas(key, sheet.toCanvas())!;
+      for (let f = 0; f < TURNS; f++) tex.add(f, 0, f * size, 0, size, size);
+    }
+    const out = { key, size, r };
+    SHEETS.set(key, out);
+    return out;
+  }
+  const out = { key, size: ROCK_S, r: ROCK_R };
+  SHEETS.set(key, out);
+  if (scene.textures.exists(key)) return out;
   const ramp = mat ? mat.draw.ramp : [PAL.stone0, PAL.stone1, PAL.stone2, PAL.stone3];
   const hi = mat?.draw.edge.hi ?? PAL.stone4;
   const crease = ramp[0];
@@ -195,7 +279,7 @@ function ensureProjectile(scene: Phaser.Scene, vfx: string, mat: MaterialDef | n
   }
   const tex = scene.textures.addCanvas(key, sheet.toCanvas())!;
   for (let f = 0; f < TURNS; f++) tex.add(f, 0, f * ROCK_S, 0, ROCK_S, ROCK_S);
-  return key;
+  return out;
 }
 
 /** The house shadow (MonsterUnit's): a solid ink core, a checkered band, a sparse rim — whole pixels. */
@@ -255,7 +339,7 @@ export function materialBurst(scene: Phaser.Scene, at: XY, floorY: number, dir: 
  */
 function flyThrow(s: StrikeArgs, r: PresentationRecipe, mat: MaterialDef | null, from: XY, to: XY, g0: XY, g1: XY, rnd: () => number): { arrived: Promise<void>; clear(): void } {
   const sc = s.scene;
-  const key = ensureProjectile(sc, r.attack.vfx, mat);
+  const { key } = ensureProjectile(sc, r.attack.vfx, mat);
   const dist = len(sub(to, from));
   const ms = r.attack.travel?.ms ?? clamp(Math.round(230 + dist * 1.45), 300, 560);
   const arc = r.attack.travel?.arc ?? clamp(Math.round(dist * 0.38), 16, 52);
@@ -349,7 +433,7 @@ async function throwStrike(s: StrikeArgs, r: PresentationRecipe, hooks: RecipeHo
   runHook(hooks?.onRelease, s, r, from, REL);
   // ---- the flight: to the body's face (a guard's face when blocked), or the duelist
   const target = s.direct ? null : s.target;
-  const face = surfaceToward(target, from, s.blocked ? 1 : ROCK_R - 1);
+  const face = surfaceToward(target, from, s.blocked ? 1 : ensureProjectile(sc, r.attack.vfx, mat).r - 1);
   const dirIn = norm(sub(s.to, from));
   const to = face ?? (s.blocked ? rint({ x: s.to.x - dirIn.x * 8, y: s.to.y - dirIn.y * 8 }) : rint(s.to));
   const g0 = { x: u.home.x + (target ? norm(sub(target.home, u.home)).x * 10 : 0), y: u.home.y };
@@ -384,7 +468,7 @@ async function throwStrike(s: StrikeArgs, r: PresentationRecipe, hooks: RecipeHo
 /** 'rebound': the projectile glances back off the guard in a short hop and breaks on the floor. */
 async function bounceOff(s: StrikeArgs, r: PresentationRecipe, mat: MaterialDef | null, at: XY, dir: XY, floorY: number, seed: number): Promise<void> {
   const sc = s.scene;
-  const key = ensureProjectile(sc, r.attack.vfx, mat);
+  const { key } = ensureProjectile(sc, r.attack.vfx, mat);
   const rock = sc.add.image(at.x, at.y, key, 0).setDepth(DEPTH.FX - 4);
   const back = { x: -dir.x, y: -dir.y };
   const land = rint({ x: at.x + back.x * 16, y: floorY - 2 });

@@ -1,14 +1,15 @@
 // The rigkit fixture creature as a full MonsterArt (A3 Y3): hand-keyed anim tables compiled by
 // src/art/rigkit/anim.ts (normal tier: every mandatory anim, the draft guard transitions), drawn by
 // the Y2 fixture painter. Used by tests/art/rigkit-anim.test.ts (compiler + validateArt on a clean
-// art) and by the ×3 review strips.
+// art), by the ×3 review strips and by the ?dev=recipe preview's &fixture=1 stand-in (src/dev/fixtures:
+// dev source, A3 core review F5).
 
-import type { MonsterId } from '../../../src/data/cards';
-import { compileAnims, draftGuardTransitions, toMonsterArt, type AnimDefs, type Beat } from '../../../src/art/rigkit/anim';
-import { glintSize } from '../../../src/art/rigkit/edges';
-import { lightOf } from '../../../src/art/rigkit/light';
-import { definePose, type PoseDelta, type PoseKit } from '../../../src/art/rigkit/pose';
-import type { MonsterArt } from '../../../src/art/types';
+import type { MonsterId } from '../../data/cards';
+import { compileAnims, draftGuardTransitions, toMonsterArt, type AnimDefs, type Beat } from '../../art/rigkit/anim';
+import { glintSize } from '../../art/rigkit/edges';
+import { lightOf } from '../../art/rigkit/light';
+import { definePose, type PoseDelta, type PoseKit } from '../../art/rigkit/pose';
+import type { MonsterArt } from '../../art/types';
 import { FX_ANCHOR, FX_H, FX_NEUTRAL, FX_W, drawFixture, fixtureWorkspace, type FxPose } from './rigkit-creature';
 
 export const FX_KIT: PoseKit<FxPose> = definePose<FxPose>(
