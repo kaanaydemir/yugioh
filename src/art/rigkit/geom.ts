@@ -3,7 +3,10 @@
 // COPIED from the slice (src/art/monsters-v3/crystal_wyrm-gbuf.ts vector helpers, ik, dorsal,
 // samplePath, pathU, distSeg / distPoly, fillPoly; the magus' ik guard) and generalised: nothing
 // here knows a frame size, a light or a monster. Pure and deterministic; every formula keeps the
-// slice's floating-point order so the outputs stay byte-identical (tests/art/rigkit-fidelity*.test.ts).
+// slice's floating-point order so the outputs stay byte-identical (the Y2 copy-fidelity proof
+// rendered every slice frame through this core; tests/art/rigkit-golden.test.ts pins it since).
+
+export { bezier } from '../pixel';
 
 /** A 2-D point / vector in art pixels (x right, y down). */
 export type V = readonly [number, number];
@@ -103,7 +106,7 @@ export function ik2(a: V, b: V, l1: number, l2: number, bend: number): V {
 }
 
 /** "Up and back" for a creature facing right: the side a crest / ridge grows on (the wyrm's ref). */
-export const DORSAL_REF: V = [-0.45, -0.89];
+export const DORSAL_REF: V = Object.freeze([-0.45, -0.89]) as V;
 
 /** The dorsal side of a tangent: of its two normals, the one closer to `ref`. */
 export function dorsal(t: V, ref: V = DORSAL_REF): V {

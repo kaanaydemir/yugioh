@@ -6,3 +6,4 @@ export * from './drain';
 export * from './split';
 export * from './gather';
 export * from './dissolve';
+export * from './motes';

@@ -5,6 +5,8 @@
 // generalised to any frame size; planes() and edgeRim() are the loops the magus writes inline for
 // every cloth part (cape, skirt, sleeves, tabard): a snapshot of the part's mask, a tone per opaque
 // pixel chosen from distances to its edges, then a 1-px turned edge just outside the lit side.
+// (Y2 proof: the magus' cape and back-sleeve loops rewritten as planes() / edgeRim() calls render
+// every slice frame byte-identically — shots/v3/a3/y2/fidelity.txt.)
 
 import type { PixelCanvas } from '../pixel';
 import { lerp, type V } from './geom';

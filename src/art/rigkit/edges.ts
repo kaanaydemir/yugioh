@@ -162,3 +162,13 @@ export function twinkle(p: PixelCanvas, at: V, size: number, col: number = PAL.w
 
 /** The glint's three frames on its fixed pixel (IŞ-8): 1 px → 3-px cross → 1 px. */
 export const GLINT_SIZES: readonly number[] = Object.freeze([1, 2, 1]);
+
+/**
+ * Size of an anim's ONE glint (IŞ-8: at most one per anim, on one fixed pixel) at frame `f` when it
+ * starts at frame `start`: 1, 2, 1 over three frames, else 0 (no glint on this frame). Draw it with
+ * twinkle(p, pixel, size) — the pixel is chosen once per anim (a facet vertex on the lit edge).
+ */
+export function glintSize(f: number, start: number): number {
+  const k = f - start;
+  return k >= 0 && k < GLINT_SIZES.length ? GLINT_SIZES[k] : 0;
+}

@@ -4,7 +4,8 @@
 // gShard, the canvas pools) and made instance-scoped: the frame size, the light and the material
 // table belong to the Raster (no module W / H, LIGHT, MATS), and the pools belong to a Workspace the
 // caller owns. Every formula keeps the slice's order, so with the A2 CraftOpts (the default) the
-// output is byte-identical to the slice (tests/art/rigkit-fidelity*.test.ts).
+// output is byte-identical to the slice (Y2 copy-fidelity proof: every slice frame rendered through
+// this core, shots/v3/a3/y2/fidelity.txt; pinned since by tests/art/rigkit-golden.test.ts).
 //
 // How a part is drawn: primitives write (material, normal, depth, bias) per pixel — the nearest
 // surface wins — and render() lights each pixel with the key light, quantizes it into the

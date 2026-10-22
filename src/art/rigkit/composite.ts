@@ -194,10 +194,26 @@ export interface CastShadowOpts {
 }
 
 /**
+ * The shadow table of a material (§3.1 castShadow's `mat`): every tone of its ramp one step down;
+ * the ramp's darkest tone and colours that are not on the ramp receive no shadow (A2's SHADOW_A2
+ * is the wyrm's hand-made table over its hide and glass).
+ */
+export function shadeOf(m: { readonly draw: { readonly ramp: readonly number[] } }): StepTable {
+  const r = m.draw.ramp;
+  const t: Record<number, number> = {};
+  for (let i = 1; i < r.length; i++) t[r[i]] = r[i - 1];
+  return Object.freeze(t);
+}
+
+/**
  * Cast shadow of a front part (`caster`: its layer, or a mask of dst's size) on what is already
  * drawn in dst: the caster's shape moved away from the key light (down, and to the far side),
  * painted one value down over existing pixels only (never under the caster, never growing the
  * silhouette). A2: the wyrm's raised near arm.
+ *
+ * Deviation from §3.1 (`castShadow(c, caster, onto, dir, mat)`): the direction comes from the
+ * Light (`off` is authored for the P1 light and mirrored for P2, IŞ-2) and the material enters as
+ * its shade table (`shade: shadeOf(mat)`); `onto` is an option.
  */
 export function castShadow(dst: PixelCanvas, caster: PixelCanvas | Uint8Array, light: Light, o: CastShadowOpts = {}) {
   const W = dst.w;
@@ -337,6 +353,16 @@ export class PartComp {
         id[y * W + x] = part;
       }
     for (let i = 0; i < ins.length; i += 2) p.set(ins[i], ins[i + 1], o.in!);
+  }
+
+  /**
+   * Record q's opaque pixels as owned by `part` without drawing anything — for a part laid with
+   * composite() (seams / creases), so part-space passes (dissolvePass) still know who owns a pixel.
+   */
+  mark(q: PixelCanvas, part: number): void {
+    const n = Math.min(q.w * q.h, this.id.length);
+    if (q.w !== this.p.w) throw new Error('rigkit: PartComp.mark needs a layer of the frame size');
+    for (let i = 0; i < n; i++) if (q.data[i * 4 + 3]) this.id[i] = part;
   }
 
   /** Paint stamped cast-shadow pixels (maps' 'x', see maps.ts stamp) over pixels already there. */

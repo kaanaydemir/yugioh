@@ -9,6 +9,8 @@ export type PassId = 'cracks' | 'drain' | 'split' | 'gather' | 'dissolve' | 'mot
 
 /** The A3 pass names (the core's; a later pass adds its name here). */
 export const PASS_IDS: readonly PassId[] = Object.freeze(['cracks', 'drain', 'split', 'gather', 'dissolve', 'motes']);
+// 'motes' = the shadow revive's spiralling motes (motes.ts gatherMotes); the shadow death's rising
+// motes are part of 'dissolve' (dissolvePass motes: true).
 
 /** Integer hash → [0, 1) (abyss_magus-rig.ts hash2): cluster noise in part space. */
 export function hash2(x: number, y: number, s = 0): number {
