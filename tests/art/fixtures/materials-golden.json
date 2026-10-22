@@ -1,0 +1,8 @@
+{
+  "_note": "sha256 of the canonical JSON of every verified material definition (src/art/materials/defs). A verified definition is frozen: a change is a new definition (defs/<id>@2.ts), A3_MIMARI §3.6.",
+  "cloth": "e9d50c1ec2a26350528d0ac05d97f6a140bc52e66d119eb538688ab8f42b03de",
+  "crystal": "914ef3f38ae43b36e179d51229938bc4f46bb63f95699cca4e075a61a460decf",
+  "hide": "97230b0cca830394c6c80ee2c29de5ed98e1c15149d5515b26513a4a13846dc9",
+  "metal": "82ddfea7230d1b09b37cfa6d3dc9cff3966c5e3f7c1f37436be5c8282982e61f",
+  "shadow": "f59b57bc4d27bda4f67dad0493efe189b3e68334c349ab572525ab694b97dc05"
+}

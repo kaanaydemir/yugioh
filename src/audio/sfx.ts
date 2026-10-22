@@ -22,6 +22,7 @@ import { musicEngine, musicVolume, scheduleMusic, startPlan, VICTORY_STING_SEC, 
 import { RECIPES } from './sounds';
 import { Voice } from './synth';
 import type { V3SfxName } from './v3/slice';
+import type { V3MaterialSfxName } from './v3/materials';
 
 export type SfxName =
   // UI
@@ -45,7 +46,9 @@ export type SfxName =
   // results
   | 'victory' | 'defeat'
   // v3 look (additive: src/audio/v3/slice.ts — character, material, slice spell / trap sounds)
-  | V3SfxName;
+  | V3SfxName
+  // v3 material hits (additive: src/audio/v3/materials.ts — the template hit<Material><Light|Heavy|Magic>)
+  | V3MaterialSfxName;
 
 export interface SfxOpts {
   /** 0..1, default 1. */
