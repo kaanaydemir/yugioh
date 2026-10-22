@@ -12,7 +12,12 @@
 //   head            offset (px), tilt a (rad, + = nod), lag 0…1 = the share of the spine's bend the
 //                   head has not followed yet (the rig's "head lag")
 //   armN / armF     hand: offset (px) from the rest hand, carried by its shoulder; bend +1 = elbow
-//                   back, −1 = forward; grip (painters read it)
+//                   back, −1 = forward; grip (painters read it); aim (additive, A3 Y9 request R2):
+//                   the fist's own angle — a screen angle `a` (rad, atan2 in frame px) blended in by the
+//                   weight `w` (0 = along the forearm, today's fist; 1 = exactly `a`); the rig hands it
+//                   to the painters as BipedLimb.dir. Neutral { a: 0, w: 0 }, so the compiler interpolates
+//                   it like any other number. P2 needs no flip: a v3 P2 sheet is the same geometry relit
+//                   (p2: 'relight'), mirrored only on screen.
 //   footN / footF   step: the planted place's offset (px); lift: px in the air. A foot stays exactly
 //                   on its place unless stepped or lifted; the pelvis yields to keep it reachable.
 //   props           named props: at a hand, on the floor (`off` from the figure's ground point) or at
@@ -32,6 +37,8 @@ export interface BipedArm {
   hand: V;
   bend: 1 | -1;
   grip: 'fist' | 'open' | 'hold';
+  /** the fist's angle (additive, R2): screen angle a (rad), blend weight w (0 = along the forearm) */
+  aim?: { a: number; w: number };
 }
 
 export interface BipedFoot {
@@ -81,8 +88,8 @@ export function bipedNeutral(b: BipedBuild): BipedPose {
     twist: 0,
     breath: 0,
     head: { x: 0, y: 0, a: 0, lag: 0 },
-    armN: { hand: [0, 0], bend: 1, grip: 'fist' },
-    armF: { hand: [0, 0], bend: 1, grip: b.farArm === 'shield' ? 'hold' : 'fist' },
+    armN: { hand: [0, 0], bend: 1, grip: 'fist', aim: { a: 0, w: 0 } },
+    armF: { hand: [0, 0], bend: 1, grip: b.farArm === 'shield' ? 'hold' : 'fist', aim: { a: 0, w: 0 } },
     footN: { step: [0, 0], lift: 0 },
     footF: { step: [0, 0], lift: 0 },
     props: b.farArm === 'shield' ? { shield: { at: 'handF', a: 0, show: 1 } } : {},

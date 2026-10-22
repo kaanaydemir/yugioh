@@ -2,13 +2,13 @@
 //
 // A pass works on a finished frame in PART space (the pattern rides the parts, never crawls). The
 // crystal passes (cracks, drain, split, gather) are the wyrm's, the shadow pass (dissolve + motes)
-// the magus'; crumble / reassemble (stone) arrive with the pilot (Y8).
+// the magus'; crumble / reassemble (stone) came with the pilot (Y8: crumble.ts, reassemble.ts).
 
 /** Name of a death / revive pass (MaterialDef.death.pass / .revive). */
 export type PassId = 'cracks' | 'drain' | 'split' | 'gather' | 'dissolve' | 'motes' | 'crumble' | 'reassemble' | (string & {});
 
 /** The A3 pass names (the core's; a later pass adds its name here). */
-export const PASS_IDS: readonly PassId[] = Object.freeze(['cracks', 'drain', 'split', 'gather', 'dissolve', 'motes']);
+export const PASS_IDS: readonly PassId[] = Object.freeze(['cracks', 'drain', 'split', 'gather', 'dissolve', 'motes', 'crumble', 'reassemble']);
 // 'motes' = the shadow revive's spiralling motes (motes.ts gatherMotes); the shadow death's rising
 // motes are part of 'dissolve' (dissolvePass motes: true).
 

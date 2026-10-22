@@ -97,9 +97,10 @@ describe('biped v1: the plan object', () => {
       ankle: 4,
       farRise: 2,
       hands: { N: [0, 0], F: [0, 0] },
+      knee: -1,
     };
     expect(paramCount(full)).toBeLessThanOrEqual(40);
-    expect(paramCount(full)).toBe(29);
+    expect(paramCount(full)).toBe(30);
   });
 
   it('slots: far → near with one outline; the near arm under its pauldron, the far pauldron behind the chest; stations empty', () => {
@@ -262,6 +263,41 @@ describe('biped v1: the skeleton solve', () => {
     expect(dist(held.head, rest.head)).toBeLessThan(1e-9);
     expect(rest.props.shield.at).toEqual(rest.armF.end);
     expect(rest.props.shield.hand).toBe('F');
+  });
+
+  it('plan request R1: build.knee breaks the knees back (+1); absent = −1 = today, the feet and lengths stay', () => {
+    const b = PAPER.titan.build;
+    const fwd = rigOf(b, { hip: { x: 0, y: 3, tilt: 0 } });
+    const same = rigOf({ ...b, knee: -1 }, { hip: { x: 0, y: 3, tilt: 0 } });
+    const back = rigOf({ ...b, knee: 1 }, { hip: { x: 0, y: 3, tilt: 0 } });
+    const { build: _b1, rest: _r1, ...joints1 } = same;
+    const { build: _b2, rest: _r2, ...joints2 } = fwd;
+    expect(joints1).toEqual(joints2);
+    for (const s of ['legN', 'legF'] as const) {
+      // facing right (+x forward): a forward knee sits in front of the hip → ankle line, a back knee behind it
+      const side = (l: { root: V; mid: V; end: V }) => (l.end[0] - l.root[0]) * (l.mid[1] - l.root[1]) - (l.end[1] - l.root[1]) * (l.mid[0] - l.root[0]);
+      expect(Math.sign(side(back[s]))).toBe(-Math.sign(side(fwd[s])));
+      expect(back[s].end).toEqual(fwd[s].end);
+      expect(dist(back[s].root, back[s].mid)).toBeCloseTo(b.leg[0], 6);
+    }
+    expect(back.footN).toEqual(fwd.footN);
+    expect(checkBuild({ ...b, knee: 0 as unknown as 1 })).toEqual([expect.stringMatching(/knee/)]);
+  });
+
+  it('plan request R2: armN.aim turns the fist (rig dir) by its weight; w 0 = along the forearm', () => {
+    const b = PAPER.titan.build;
+    const arm = { hand: [6, -4] as V, bend: 1 as const, grip: 'fist' as const };
+    const along = rigOf(b, { armN: arm });
+    const fore = Math.atan2(along.armN.end[1] - along.armN.mid[1], along.armN.end[0] - along.armN.mid[0]);
+    expect(along.armN.dir).toBeCloseTo(fore, 9);
+    expect(rigOf(b, { armN: { ...arm, aim: { a: 2, w: 0 } } }).armN.dir).toBeCloseTo(fore, 9);
+    expect(rigOf(b, { armN: { ...arm, aim: { a: 2, w: 1 } } }).armN.dir).toBeCloseTo(2, 9);
+    const half = rigOf(b, { armN: { ...arm, aim: { a: fore + 0.6, w: 0.5 } } });
+    expect(half.armN.dir).toBeCloseTo(fore + 0.3, 9);
+    // the shorter way round across ±π, and the joints never move
+    const wrap = rigOf(b, { armN: { ...arm, aim: { a: fore + 2 * Math.PI - 0.2, w: 1 } } });
+    expect(wrap.armN.dir).toBeCloseTo(fore - 0.2, 9);
+    expect([wrap.armN.mid, wrap.armN.end]).toEqual([along.armN.mid, along.armN.end]);
   });
 });
 

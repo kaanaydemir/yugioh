@@ -12,9 +12,7 @@
 import { describe, expect, it } from 'vitest';
 
 /** Version directories waiting for their first member (only ever the newest version of a plan). */
-const AWAITING_FIRST_MEMBER: Readonly<Record<string, string>> = {
-  'biped/v1': 'A3 Y8: the pilot Taş Muhafız (src/art/monsters-v3/stone_sentinel.ts) is its first member; Y9 adds the draft Magma Titanı',
-};
+const AWAITING_FIRST_MEMBER: Readonly<Record<string, string>> = {};
 
 const DIR_KEYS = Object.keys(import.meta.glob('../../src/art/bodyplans/*/v*/index.ts'));
 const INDEXES = import.meta.glob<Record<string, unknown>>('../../src/art/bodyplans/*/index.ts', { eager: true });

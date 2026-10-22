@@ -21,7 +21,7 @@
 //   shoulders `shoulder` px apart on the chest line (near / far by lead), the far one farRise px higher
 //   hands    hanging under their shoulders (hang × arm length; heavy 0.9, lithe 0.8) + hands.N / .F
 //
-// Plan parameter ceiling (§4.2): ≤ 40 — paramCount() counts the leaves of a full build (29 today).
+// Plan parameter ceiling (§4.2): ≤ 40 — paramCount() counts the leaves of a full build (30 today).
 // The preset only fills geometry defaults (lead, spine, ankle, pelvis, head, hang); it carries no
 // motion: there is no default period, pose or rhythm anywhere in the plan (§0 items 1–3).
 
@@ -75,6 +75,11 @@ export interface BipedBuild {
   readonly farRise?: number;
   /** rest hand offsets from the hanging place (px) */
   readonly hands?: { readonly N: readonly [x: number, y: number]; readonly F: readonly [x: number, y: number] };
+  /**
+   * (additive, A3 Y9 plan request R1) which way the knees break: −1 forward (default: every v1 member
+   * so far), +1 back (v1's bow-legged titan). Only the leg IK reads it; 'spout' builds have no legs.
+   */
+  readonly knee?: 1 | -1;
 }
 
 /** Geometry defaults of a preset (no motion values). */
@@ -197,6 +202,7 @@ export function checkBuild(b: BipedBuild, frame?: BipedFrameRef): string[] {
   for (const [n, v] of [['arm[0]', b.arm[0]], ['arm[1]', b.arm[1]], ['leg[0]', b.leg[0]], ['leg[1]', b.leg[1]], ['height', b.height]] as const) if (v <= 0) out.push(`${n} must be > 0 (got ${v})`);
   for (const [n, v] of [['shoulder', b.shoulder], ['hip', b.hip], ['stance', b.stance]] as const) if (v < 0) out.push(`${n} must be ≥ 0 (got ${v})`);
   if (b.hunch < 0 || b.hunch > 0.4) out.push(`hunch ${b.hunch} outside 0…0.4`);
+  if (b.knee !== undefined && b.knee !== 1 && b.knee !== -1) out.push(`knee ${String(b.knee)} is not 1 (back) or −1 (forward)`);
   if (out.length) return out;
   const r = restOf(b);
   if (!(r.torso >= 3)) out.push(`the torso resolves to ${r.torso.toFixed(2)} px (height ${b.height} leaves no room between the pelvis and the head)`);

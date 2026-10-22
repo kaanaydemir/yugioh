@@ -6,12 +6,13 @@
 //   pelvis   rest + figure offset + hip; if a PLANTED foot is out of its leg's reach the pelvis
 //            yields (moves the least distance that brings the hip back into reach): the feet never
 //            slide and the legs never tear (rig.yield reports how far it moved; 0 in a sound pose)
-//   legs     two-bone IK hip → knee → ankle, knees forward; limb lengths exact
+//   legs     two-bone IK hip → knee → ankle, knees forward (build.knee +1: back); limb lengths exact
 //   spine    pelvis → waist (lean) → chest (lean + chestLean) + breath; shoulders and the head
 //            ride the chest, rotated by the bend from rest; twist rolls the near shoulder
 //   head     carried by the chest, `lag` × the spine's bend held back, + head.x / y
 //   arms     two-bone IK shoulder → elbow → wrist; the target is the rest hand carried by the
-//            shoulder (not rotated: arms hang) + armN.hand; out of reach → clamped, lengths exact
+//            shoulder (not rotated: arms hang) + armN.hand; out of reach → clamped, lengths exact;
+//            dir = the fist's screen angle: the forearm's, turned toward armN.aim.a by aim.w
 //   spout    (lower 'spout') a column from the ground between the feet to the pelvis
 //   props    resolved to frame px (at a wrist, on the floor, or an offset from the ground point)
 // joints() is what the sameness gate tracks (§9.1 MOT): head, hip, handN, handF, footN, footF, prop*.
@@ -27,6 +28,11 @@ export interface BipedLimb {
   readonly end: V;
   /** the IK target was out of reach (the limb is straight toward it) */
   readonly clamped: boolean;
+  /**
+   * (additive, R2) the screen angle (rad, atan2 in frame px) the end of the limb points: the end bone's
+   * direction, turned toward the pose's aim by its weight (arms; legs: the shin's direction)
+   */
+  readonly dir: number;
 }
 
 export interface BipedPropAt {
@@ -85,13 +91,24 @@ const fin = (v: number | undefined) => (typeof v === 'number' && Number.isFinite
 const finV = (v: V | undefined): V => [fin(v?.[0]), fin(v?.[1])];
 
 /** Two-bone limb toward `target`: lengths exact; an unreachable target clamps 0.01 px short of straight. */
-function limb(root: V, target: V, l1: number, l2: number, bend: number): BipedLimb {
+function limb(root: V, target: V, l1: number, l2: number, bend: number, aim?: { a: number; w: number }): BipedLimb {
   const d = sub(target, root);
   const len = Math.hypot(d[0], d[1]);
   const max = l1 + l2 - 0.01;
   const clamped = len > max;
   const end: V = clamped ? add(root, [(d[0] * max) / len, (d[1] * max) / len]) : target;
-  return { root, mid: ik2(root, end, l1, l2, bend), end, clamped };
+  const mid = ik2(root, end, l1, l2, bend);
+  return { root, mid, end, clamped, dir: aimed(Math.atan2(end[1] - mid[1], end[0] - mid[0]), aim) };
+}
+
+/** A bone's angle turned toward aim.a by aim.w (the shorter way round; w clamped to 0…1). */
+function aimed(along: number, aim?: { a: number; w: number }): number {
+  const w = clamp(fin(aim?.w), 0, 1);
+  if (w === 0) return along;
+  let d = fin(aim?.a) - along;
+  while (d > Math.PI) d -= 2 * Math.PI;
+  while (d < -Math.PI) d += 2 * Math.PI;
+  return along + d * w;
 }
 
 /** Solve the skeleton of one pose. */
@@ -134,7 +151,7 @@ export function bipedRig(b: BipedBuild, pose: BipedPose): BipedRig {
 
   // ---- legs (a LIFTED foot out of reach is pulled up under its leg; a planted one never moves)
   const leg = (hip: V, foot: V, down: boolean): [BipedLimb, V] => {
-    const l = limb(hip, ankleOf(foot), b.leg[0], b.leg[1], -1);
+    const l = limb(hip, ankleOf(foot), b.leg[0], b.leg[1], b.knee === 1 ? 1 : -1);
     return [l, l.clamped && !down ? [l.end[0], l.end[1] + r.ankle] : foot];
   };
   const [legN, fN] = leg(hipN, footN, planted.N);
@@ -163,7 +180,7 @@ export function bipedRig(b: BipedBuild, pose: BipedPose): BipedRig {
   const neck = lerpV(chest, head, 0.45);
 
   // ---- arms
-  const arm = (sh: V, rest: V, a: BipedPose['armN'] | undefined) => limb(sh, add(add(sh, rest), finV(a?.hand)), b.arm[0], b.arm[1], a?.bend === -1 ? -1 : 1);
+  const arm = (sh: V, rest: V, a: BipedPose['armN'] | undefined) => limb(sh, add(add(sh, rest), finV(a?.hand)), b.arm[0], b.arm[1], a?.bend === -1 ? -1 : 1, a?.aim);
   const armN = arm(shoulderN, r.handN, pose.armN);
   const armF = arm(shoulderF, r.handF, pose.armF);
 
