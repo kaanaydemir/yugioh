@@ -7,13 +7,16 @@
 //       [--seed N] [--out DIR] [--json] [--thresholds FILE] [--source joints|points|proxy]
 //       [--overlays warn|all|none]
 //   npx vite-node tools/sameness.ts --score DIR/form.json --key KEYDIR/key.json [--note FILE]
-//   npx vite-node tools/sameness.ts --calib [--out DIR]
+//   npx vite-node tools/sameness.ts --calib [--art FILE]… [--cross FILE:ID]… [--out DIR]
 //
 // Members: --plan P = every registry art (under --look) whose MonsterArt.bodyPlan.id is P; --ids a,b
 // names them ('id' = the art the look draws, 'id:v1' / 'id:v3' forces one); --art FILE adds an
-// unregistered draft (its default export; tag '<id>:draft'). Every member pair (different ids) is a
-// gate pair. --against all adds every member × every other registry art as an OUT-OF-PLAN pair:
-// measured the same way, a KALIR there counts as UYARI (blind eye test), it never blocks.
+// unregistered draft (its default export; tag '<id>:draft'). A member pair (different ids) of ONE body
+// plan — or of two hand-made arts without a plan, like the slice pair — is a gate pair; members of
+// different plans (biped × serpent, a plan member × a hand-made ace) are an OUT-OF-PLAN pair (A4.1).
+// --against all adds every member × every other registry art as an OUT-OF-PLAN pair. Out of plan: measured
+// the same way, a KALIR there counts as UYARI (blind eye test), it never blocks; the matrix marks the
+// metrics that reached the KALIR line with '!' (e.g. "0.820U!").
 //
 // Metrics (tools/lib/sameness-metrics.ts, tools/lib/tracks.ts): KEY, MOT (sig / loop / avg, per anim),
 // SI (+ SIloop, reported), RHYTHM, SIL0, HEAT, PAL; bands of §9.3 (GEÇER / UYARI / KALIR). The MOT track
@@ -21,31 +24,39 @@
 // else the silhouette proxy (v1).
 //
 // Output (--out, default shots/v3/a3/sameness): sameness.txt / .json (pair matrix, per-anim MOT +
-// rhythm table, reasons, controls, the A4 target check), and for every UYARI / KALIR pair one overlay
-// PNG <a>__<b>.png ×3: the key-pose silhouettes (A red, B blue, both light), the HEAT masks and the
-// track paths of both monsters on a neutral skeleton (time runs dark → bright). LOOK at them.
+// rhythm table, reasons, controls, the A4 target check with its margins), and for every UYARI / KALIR
+// pair one overlay PNG <a>__<b>.png ×3: the key-pose silhouettes (A red, B blue, both light), the HEAT
+// masks and the track paths of both monsters on a neutral skeleton (time runs dark → bright; a panel
+// whose motion is small — loops, hits — is magnified by a whole-number gain, "×g" in its title). LOOK
+// at them.
 //
 // --controls (§9.4): (a) colour — each member × its ramp-shifted copy; (c) ±60 ms — each member × itself
 // with every hold moved ±60 ms; (b) cross build — --cross FILE:ID, FILE default-exporting the synthetic
 // member built with member ID's anims on another member's build / parts (planArt; Y9), compared with
-// ID (+ its ±60 ms version). A control that does not come out KALIR on its metrics → exit 3 ("the
-// metric is blind": the gate cannot be used with that definition).
+// ID (+ its ±60 ms version). A control holds when it comes out KALIR on its metrics AND sits in the upper
+// half of the KALIR band on each band metric (value ≥ fail + CONTROL_MARGIN × (1 − fail): KEY / MOTavg ≥ 0.85,
+// MOTsig ≥ 0.90, MOTloop ≥ 0.925; A4.1); else exit 3 ("the metric is blind": the gate cannot be used with
+// that definition). "depth" = where a control sits in the band, worst metric (1 = a perfect copy).
 //
 // --blind DIR (§9.5): ref.png (each member's NAMED idle f0, one tone, 56 px, ×3), sil.png (shuffled
 // CODED silhouettes: attack release, roar peak, hit f0, guard f0), motion.png (coded PAIRS of strips:
-// attack and idle loop on a common neutral stick body driven by each member's tracks; some pairs are
-// controls: one member twice, one strip with ±60 ms holds), form.json (blank answers). The answer key
-// goes to --key-out KEYDIR (a separate directory the reviewer never sees). --score scores a filled form.
+// attack, roar (A4.1: MOTsig is max(attack, roar), so a roar-driven UYARI is put in front of the eye too)
+// and idle loop on a common neutral stick body driven by each member's tracks; some pairs are controls:
+// one member twice, one strip with ±60 ms holds), form.json (blank answers). The answer key goes to
+// --key-out KEYDIR (a separate directory the reviewer never sees). --score scores a filled form.
 //
 // --calib: the §9.2 calibration (12 v1 monsters + the slice): reproduces the silhouette and proxy
-// tables, checks the acceptance controls (a), (c)–(g) ((b) needs plan members: Y9) and prints the gate
-// definition's values; exit 3 when one fails.
+// tables, checks the acceptance controls (a), (c)–(g) and prints the gate definition's values; then the
+// A4.1 recalibration on the v3 members (the registered v3 arts + every --art draft; --cross FILE:ID adds
+// control (b)): their pair matrix, same-character v1 → v3 rows, the controls with their margins and the
+// distribution against the §9.3 bands. Exit 3 when a check fails.
 //
 // Exit: 0 clean · 1 a UYARI · 2 a KALIR · 3 a control did not hold. --score: 0 pass · 2 a pair failed
 // (KALIR) · 3 the reviewer failed the control pairs (the test is void).
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { frameMs } from '../src/art/animtime';
 import { PAL } from '../src/art/palette';
 import { PixelCanvas } from '../src/art/pixel';
 import type { MonsterArt } from '../src/art/types';
@@ -61,11 +72,18 @@ import {
   type PairMetrics,
   type Thresholds,
   type Verdict,
+  BAND_METRICS,
+  CONTROL_MARGIN,
+  METRICS,
+  controlFloor,
   controlHeld,
+  controlMargin,
   exitCode,
   iou,
   judgePair,
   median,
+  outOfPlan,
+  panelGain,
   scoreBlind,
   withThresholds,
   worst,
@@ -80,6 +98,7 @@ import {
   keyMasks,
   makeEntity,
   measurePair,
+  pairSource,
   profileOf,
   releaseFrame,
 } from './lib/tracks';
@@ -113,6 +132,8 @@ function usage(msg?: string): never {
 }
 
 const T: Thresholds = withThresholds(arg('thresholds') ? JSON.parse(fs.readFileSync(path.resolve(arg('thresholds')!), 'utf8')) : null);
+/** The lowest values that keep a control held (upper half of each KALIR band), for the report. */
+const FLOORS = BAND_METRICS.filter((k) => k !== 'SI').map((k) => `${k} ≥ ${+controlFloor(k, T).toFixed(3)}`).join(', ');
 const OUT = path.resolve(ROOT, arg('out') ?? (flag('calib') ? 'shots/v3/a3/sameness/calib' : 'shots/v3/a3/sameness'));
 const SOURCE = arg('source') as MotSource | undefined;
 if (SOURCE && !['joints', 'points', 'proxy'].includes(SOURCE)) usage(`--source must be joints, points or proxy (got ${SOURCE})`);
@@ -268,7 +289,7 @@ function overlayPng(a: Profile, b: Profile, m: PairMetrics, j: PairJudgement, fi
   const cols = 4;
   const rowsT = Math.ceil(anims.length / cols);
   const title = `${a.tag} (red) × ${b.tag} (blue): ${j.overall}  KEY ${m.KEY.toFixed(3)} SI ${m.SI.toFixed(3)} HEAT ${m.HEAT.toFixed(3)}  MOT ${src} sig ${m.MOTsig.toFixed(2)} loop ${m.MOTloop.toFixed(2)} avg ${m.MOTavg.toFixed(2)}`;
-  const legend = 'silhouettes: red = A only, blue = B only, light = both · tracks on a neutral body: A red, B blue, time dark → bright · gold title = same rhythm';
+  const legend = 'silhouettes: red = A only, blue = B only, light = both · tracks on a neutral body: A red, B blue, time dark → bright, ×g magnified · gold title = same rhythm';
   const W = Math.max(4 + 3 * (GRID_W + 6), 4 + cols * (PW + 4), 8 + textWidth(title), 8 + textWidth(legend));
   const H = 4 + 3 * 9 + 2 * (GRID_H + 12) + rowsT * (PH + 12) + 8;
   const p = new PixelCanvas(W, H);
@@ -299,7 +320,16 @@ function overlayPng(a: Profile, b: Profile, m: PairMetrics, j: PairJudgement, fi
     const tb = b.anims[an]!.tracks[src]!;
     const names = ta.names.filter((n) => tb.names.includes(n));
     const r = m.rhythm[an];
-    text(p, x, yy, `${an} MOT ${f2(m.mot[an])}`, r?.same ? PAL.gold3 : DIM);
+    // small motions (loops, hits) are magnified by a whole-number gain so their paths can be read
+    let maxPx = 0;
+    for (const t of [ta, tb])
+      for (const row of t.data)
+        for (const n of names) {
+          const k = t.names.indexOf(n);
+          maxPx = Math.max(maxPx, Math.hypot(row[2 * k], row[2 * k + 1]) * NORM_H);
+        }
+    const gain = panelGain(maxPx, 16);
+    text(p, x, yy, `${an} MOT ${f2(m.mot[an])}${gain > 1 ? ` ×${gain}` : ''}`, r?.same ? PAL.gold3 : DIM);
     // each panel on its own canvas: paths that leave it are clipped, not drawn over the next one
     const q = new PixelCanvas(PW, PH);
     q.rect(0, 0, PW, PH, PAL.ink);
@@ -312,7 +342,7 @@ function overlayPng(a: Profile, b: Profile, m: PairMetrics, j: PairJudgement, fi
         const S = t.data.length;
         let prev: [number, number] | null = null;
         for (let s = 0; s < S; s++) {
-          const pt = poseAt(t, [n], s, src).get(n)!;
+          const pt = poseAt(t, [n], s, src, gain).get(n)!;
           const c = ramp[Math.min(3, Math.floor((s / S) * 4))];
           const X = Math.round(ox + pt[0]);
           const Y = Math.round(oy + pt[1]);
@@ -335,8 +365,16 @@ interface PairRow {
   control?: { id: 'a' | 'b' | 'c'; required: Metric[] };
   m: PairMetrics;
   j: PairJudgement;
+  /** the verdicts before the out-of-plan rule turned a KALIR into UYARI */
+  raw: PairJudgement['v'];
   keyV1: number | null;
-  a4: { met: boolean; misses: string[] } | null;
+  a4: { met: boolean; misses: string[]; margins: string[] } | null;
+}
+
+/** The rhythm components (index → name) of an anim kind, for "differs on …" notes. */
+function rhythmDiffs(an: Anim, ra: number[], rb: number[]): string[] {
+  const names = an === 'idle' || an === 'guard' ? ['total', 'head period', 'body period', 'head lag'] : ['charge→release', 'release→recover', 'total'];
+  return ra.map((x, i) => (Math.abs(x - rb[i]) > Math.max(T.RHYTHM.ms, T.RHYTHM.pct * Math.max(Math.abs(x), Math.abs(rb[i]))) ? `${names[i] ?? i} ${Math.round(x)}/${Math.round(rb[i])}` : '')).filter(Boolean);
 }
 
 function runPair(a: Entity, b: Entity, o: { outOfPlan?: boolean; control?: PairRow['control'] } = {}): PairRow {
@@ -344,9 +382,11 @@ function runPair(a: Entity, b: Entity, o: { outOfPlan?: boolean; control?: PairR
   const newCard = !reg.MONSTER_IDS.includes(a.id) || !reg.MONSTER_IDS.includes(b.id);
   const jo: JudgeOpts = { t: T, outOfPlan: o.outOfPlan, newCard };
   const j = judgePair(m, jo);
+  const raw = o.outOfPlan ? judgePair(m, { ...jo, outOfPlan: false }).v : j.v;
   const kv1 = o.control ? null : keyV1(a, b);
   let a4: PairRow['a4'] = null;
-  if (!o.control && !o.outOfPlan) {
+  // the A4 absolute target (§9.3) is for the members of one body plan (the heavy trio, the quadrupeds)
+  if (!o.control && !o.outOfPlan && a.plan !== null && a.plan === b.plan) {
     const misses: string[] = [];
     if (!(m.MOTsig < T.MOTsig.warn)) misses.push(`MOTsig ${m.MOTsig.toFixed(3)} ≥ ${T.MOTsig.warn}`);
     if (!(m.MOTloop < T.MOTloop.warn)) misses.push(`MOTloop ${m.MOTloop.toFixed(3)} ≥ ${T.MOTloop.warn}`);
@@ -358,9 +398,19 @@ function runPair(a: Entity, b: Entity, o: { outOfPlan?: boolean; control?: PairR
     if (!(m.KEY < T.KEY.fail)) misses.push(`KEY ${m.KEY.toFixed(3)} ≥ ${T.KEY.fail}`);
     if (kv1 !== null && !(m.KEY < kv1)) misses.push(`KEY ${m.KEY.toFixed(3)} not below its v1 value ${kv1.toFixed(3)}`);
     misses.push('(+ blind eye test 100 %, §9.5)');
-    a4 = { met: misses.length === 1, misses };
+    // how far inside each condition the pair sits: a thin margin is a design risk the numbers alone hide
+    const margins = [
+      `MOTsig ${(T.MOTsig.warn - m.MOTsig).toFixed(3)}`,
+      `MOTloop ${(T.MOTloop.warn - m.MOTloop).toFixed(3)}`,
+      `MOTavg ${(T.MOTavg.warn - m.MOTavg).toFixed(3)}`,
+      `SI ${(T.SI.warn - m.SI).toFixed(3)}`,
+      `KEY ${(T.KEY.fail - m.KEY).toFixed(3)} below ${T.KEY.fail}${kv1 !== null ? `, ${(kv1 - m.KEY).toFixed(3)} below its v1 value` : ''}`,
+      `HEAT ${(T.HEAT.warn - m.HEAT).toFixed(3)}`,
+      ...(['attack', 'idle'] as const).filter((an) => m.rhythm[an]).map((an) => `RHYTHM ${an} differs on ${rhythmDiffs(an, m.rhythm[an]!.a, m.rhythm[an]!.b).join(', ') || 'nothing'}`),
+    ];
+    a4 = { met: misses.length === 1, misses, margins };
   }
-  return { a, b, outOfPlan: !!o.outOfPlan, control: o.control, m, j, keyV1: kv1, a4 };
+  return { a, b, outOfPlan: !!o.outOfPlan, control: o.control, m, j, raw, keyV1: kv1, a4 };
 }
 
 function matrixLines(rows: PairRow[]): string[] {
@@ -368,10 +418,12 @@ function matrixLines(rows: PairRow[]): string[] {
   out.push(`  ${'pair'.padEnd(46)} ${'src'.padEnd(6)} ${['KEY', 'MOTsig', 'MOTloop', 'MOTavg', 'SI', 'RHYTHM', 'SIL0', 'HEAT'].map((h) => h.padEnd(8)).join('')}${'PAL'.padEnd(6)} verdict`);
   for (const r of rows) {
     const v = r.j.v;
-    const cell = (x: number, k: Metric) => `${f3(x)}${VCH[v[k]]}`.padEnd(8);
+    // '!' = out of plan, this metric reached the KALIR line (counted as UYARI: blind eye test)
+    const bang = (k: Metric) => (r.raw[k] === 'KALIR' && v[k] !== 'KALIR' ? '!' : '');
+    const cell = (x: number, k: Metric) => `${f3(x)}${VCH[v[k]]}${bang(k)}`.padEnd(8);
     const rh = `${r.m.rhythm.attack?.same ? 'att' : ''}${r.m.rhythm.idle?.same ? (r.m.rhythm.attack?.same ? '+' : '') + 'idl' : ''}` || 'diff';
     out.push(
-      `  ${`${r.a.tag} × ${r.b.tag}${r.outOfPlan ? ' (out of plan)' : ''}`.padEnd(46)} ${r.m.source.padEnd(6)} ${cell(r.m.KEY, 'KEY')}${cell(r.m.MOTsig, 'MOTsig')}${cell(r.m.MOTloop, 'MOTloop')}${cell(r.m.MOTavg, 'MOTavg')}${cell(r.m.SI, 'SI')}${`${rh} ${VCH[v.RHYTHM]}`.padEnd(8)}${cell(r.m.SIL0, 'SIL0')}${cell(r.m.HEAT, 'HEAT')}${f2(r.m.PAL).padEnd(6)} ${r.j.overall}`,
+      `  ${`${r.a.tag} × ${r.b.tag}${r.outOfPlan ? ' (out of plan)' : ''}`.padEnd(46)} ${r.m.source.padEnd(6)} ${cell(r.m.KEY, 'KEY')}${cell(r.m.MOTsig, 'MOTsig')}${cell(r.m.MOTloop, 'MOTloop')}${cell(r.m.MOTavg, 'MOTavg')}${cell(r.m.SI, 'SI')}${`${rh} ${VCH[v.RHYTHM]}${bang('RHYTHM')}`.padEnd(8)}${cell(r.m.SIL0, 'SIL0')}${cell(r.m.HEAT, 'HEAT')}${f2(r.m.PAL).padEnd(6)} ${r.j.overall}${METRICS.some((k) => bang(k)) ? ' (KALIR line reached out of plan → UYARI, blind eye test)' : ''}`,
     );
   }
   return out;
@@ -386,7 +438,10 @@ function detailLines(rows: PairRow[]): string[] {
       out.push(`      ${an.padEnd(9)} MOT ${f3(r.m.mot[an])}${AVG_ANIMS.includes(an) ? ' ' : '*'}  rhythm ${rh.a.map((x) => Math.round(x)).join('/')} | ${rh.b.map((x) => Math.round(x)).join('/')} ${rh.same ? 'SAME' : 'diff'}`);
     }
     if (r.j.why.length) out.push(`      → ${r.j.overall}: ${r.j.why.join('; ')}`);
-    if (r.a4) out.push(`      A4 target (§9.3, absolute): ${r.a4.met ? 'met by the numbers' : 'NOT met'} — ${r.a4.misses.join('; ')}`);
+    if (r.a4) {
+      out.push(`      A4 target (§9.3, absolute): ${r.a4.met ? 'met by the numbers' : 'NOT met'} — ${r.a4.misses.join('; ')}`);
+      out.push(`      A4 margins (how far inside each condition): ${r.a4.margins.join('; ')}`);
+    }
   }
   out.push('  (* = reported, not in MOTavg; rhythm parts: swing charge→release / release→recover / total, reaction impact→recover / total, death impact→dissolve / total, summon start→land / total, loop total / head period / body period / head lag, ms)');
   return out;
@@ -396,10 +451,11 @@ const pairJson = (r: PairRow) => ({
   a: r.a.tag,
   b: r.b.tag,
   outOfPlan: r.outOfPlan,
-  control: r.control ?? null,
+  control: r.control ? { ...r.control, margin: controlMargin(r.m, r.control.required, T), held: controlHeld(r.j, r.control.required, r.m, { t: T }) } : null,
   versions: [versionOf(r.a), versionOf(r.b)],
   metrics: r.m,
   verdicts: r.j.v,
+  rawVerdicts: r.raw,
   overall: r.j.overall,
   why: r.j.why,
   keyV1: r.keyV1,
@@ -415,6 +471,11 @@ if (flag('calib')) {
   const ents: Entity[] = [];
   for (const id of reg.MONSTER_IDS) ents.push(regEntity(`${id}:v1`));
   for (const id of reg.MONSTER_IDS) if (reg.monsterArtV3(id)) ents.push(regEntity(`${id}:v3`));
+  // A4.1: unregistered v3 drafts (--art) join the v3 population of the recalibration (tag '<id>:draft')
+  for (const file of args('art')) {
+    const art = await loadArtFile(file);
+    if (!ents.some((x) => x.tag === `${art.id}:draft`)) ents.push(makeEntity(`${art.id}:draft`, art));
+  }
   const byTag = new Map(ents.map((e) => [e.tag, e]));
   const L: string[] = [];
   const checks: { what: string; ok: boolean; detail: string }[] = [];
@@ -509,7 +570,7 @@ if (flag('calib')) {
   ];
   const focusRows = focus.map(([a, b]) => {
     const p = find(a, b);
-    return { a: p.a, b: p.b, outOfPlan: false, m: p.gate, j: p.j, keyV1: null, a4: null } as PairRow;
+    return { a: p.a, b: p.b, outOfPlan: false, m: p.gate, j: p.j, raw: p.j.v, keyV1: null, a4: null } satisfies PairRow;
   });
   L.push(...matrixLines(focusRows));
   L.push(...detailLines(focusRows.slice(-1)));
@@ -535,28 +596,53 @@ if (flag('calib')) {
   };
   L.push(`  66 v1 pairs: MOTsig ${dist('MOTsig')} [15 / 3], MOTloop ${dist('MOTloop')} [8 / 3], MOTavg ${dist('MOTavg')} [13 / 0]; overall ${['GEÇER', 'UYARI', 'KALIR'].map((v) => `${v} ${v1.filter((p) => p.j.overall === v).length}`).join(', ')}`);
   // --- acceptance controls
-  L.push('', '--- calibration acceptance (§9.2 (a)–(g)); (b) needs plan members (Y9)');
+  L.push(
+    '',
+    `--- calibration acceptance (§9.2 (a)–(g)); a control holds when it is KALIR AND in the upper half of the KALIR band on every band metric it names (depth ≥ ${CONTROL_MARGIN}: ${FLOORS}; A4.1), on its gate source and on the proxy; (b) cross builds in the A4.1 section (--cross)`,
+  );
   const ctlRows: PairRow[] = [];
+  const REQ4: Metric[] = ['KEY', 'MOTsig', 'MOTloop', 'MOTavg'];
+  const REQ3: Metric[] = ['MOTsig', 'MOTloop', 'MOTavg'];
+  const heldM = (r: PairRow) => controlHeld(r.j, r.control!.required, r.m, { t: T });
+  const marginOf = (r: PairRow) => controlMargin(r.m, r.control!.required, T);
+  // the 14 arts §9.2 measured its "(c) proxy MOTsig 1,00, MOTloop ≥ 0,99, MOTavg ≥ 0,97" on (12 v1 + the slice)
+  const obsPop = (e: Entity) => e.tag.endsWith(':v1') || e.tag === 'crystal_wyrm:v3' || e.tag === 'abyss_magus:v3';
+  const obsNotes: string[] = [];
+  const minHold = (e: Entity) => Math.min(...BASE5.flatMap((an) => {
+    const s = e.spec(an);
+    return s ? Array.from({ length: s.frames }, (_, f) => frameMs(s, f)) : [];
+  }));
   for (const e of ents) {
     const ca = colourShifted(e);
     const cc = jittered(e);
-    const ra = runPair(e, ca, { control: { id: 'a', required: ['KEY', 'MOTsig', 'MOTloop', 'MOTavg'] } });
-    const rc = runPair(e, cc, { control: { id: 'c', required: ['KEY', 'MOTsig', 'MOTloop', 'MOTavg'] } });
+    const ra = runPair(e, ca, { control: { id: 'a', required: REQ4 } });
+    const rc = runPair(e, cc, { control: { id: 'c', required: REQ4 } });
     ctlRows.push(ra, rc);
     const pc = measurePair(prof(e), prof(cc), { source: 'proxy', anims: BASE5, t: T });
     const pa = measurePair(prof(e), prof(ca), { source: 'proxy', t: T });
+    const pcHeld = controlHeld(judgePair(pc, { t: T }), REQ3, pc, { t: T });
+    const paHeld = controlHeld(judgePair(pa, { t: T }), REQ3, pa, { t: T });
     L.push(
-      `  ${e.tag.padEnd(18)} (a) colour [${ra.m.source}] KEY ${ra.m.KEY.toFixed(3)} sig ${ra.m.MOTsig.toFixed(3)} loop ${ra.m.MOTloop.toFixed(3)} avg ${ra.m.MOTavg.toFixed(3)} → ${controlHeld(ra.j, ra.control!.required) ? 'KALIR ok' : 'NOT KALIR'}` +
+      `  ${e.tag.padEnd(19)} (a) colour [${ra.m.source}] KEY ${ra.m.KEY.toFixed(3)} sig ${ra.m.MOTsig.toFixed(3)} loop ${ra.m.MOTloop.toFixed(3)} avg ${ra.m.MOTavg.toFixed(3)} → ${heldM(ra) ? 'KALIR ok' : 'NOT HELD'} (depth ${marginOf(ra).toFixed(3)})` +
         ` (proxy ${pa.MOTsig.toFixed(2)}/${pa.MOTloop.toFixed(2)}/${pa.MOTavg.toFixed(2)})` +
-        ` | (c) ±60 ms [${rc.m.source}] KEY ${rc.m.KEY.toFixed(3)} sig ${rc.m.MOTsig.toFixed(3)} loop ${rc.m.MOTloop.toFixed(3)} avg ${rc.m.MOTavg.toFixed(3)} → ${controlHeld(rc.j, rc.control!.required) ? 'KALIR ok' : 'NOT KALIR'}` +
-        ` (proxy sig ${pc.MOTsig.toFixed(3)} loop ${pc.MOTloop.toFixed(3)} avg ${pc.MOTavg.toFixed(3)})`,
+        ` | (c) ±60 ms [${rc.m.source}] KEY ${rc.m.KEY.toFixed(3)} sig ${rc.m.MOTsig.toFixed(3)} loop ${rc.m.MOTloop.toFixed(3)} avg ${rc.m.MOTavg.toFixed(3)} → ${heldM(rc) ? 'KALIR ok' : 'NOT HELD'} (depth ${marginOf(rc).toFixed(3)})` +
+        ` (proxy sig ${pc.MOTsig.toFixed(3)} loop ${pc.MOTloop.toFixed(3)} avg ${pc.MOTavg.toFixed(3)}, depth ${controlMargin(pc, REQ3, T).toFixed(3)})`,
     );
-    check(`(a) colour change ${e.tag} → KALIR`, controlHeld(ra.j, ra.control!.required), ra.j.overall);
-    check(`(c) ±60 ms holds ${e.tag} → KALIR`, controlHeld(rc.j, rc.control!.required), rc.j.overall);
-    // §9.2 states these to two decimals ("MOTsig 1,00, MOTloop ≥ 0,99, MOTavg ≥ 0,97"): compared at that precision
+    check(`(a) colour change ${e.tag} → KALIR, depth ≥ ${CONTROL_MARGIN}`, heldM(ra), `${ra.j.overall}, depth ${marginOf(ra).toFixed(3)}`);
+    check(`(a) colour change ${e.tag}, proxy → KALIR, depth ≥ ${CONTROL_MARGIN}`, paHeld, `depth ${controlMargin(pa, REQ3, T).toFixed(3)}`);
+    check(`(c) ±60 ms holds ${e.tag} → KALIR, depth ≥ ${CONTROL_MARGIN}`, heldM(rc), `${rc.j.overall}, depth ${marginOf(rc).toFixed(3)}`);
+    check(`(c) ±60 ms holds ${e.tag}, proxy → KALIR, depth ≥ ${CONTROL_MARGIN}`, pcHeld, `${pc.MOTsig.toFixed(3)} / ${pc.MOTloop.toFixed(3)} / ${pc.MOTavg.toFixed(3)}, depth ${controlMargin(pc, REQ3, T).toFixed(3)}`);
+    // §9.2's observation, stated to two decimals ("MOTsig 1,00, MOTloop ≥ 0,99, MOTavg ≥ 0,97"), stays the
+    // regression check of the 14 arts it was measured on. It is no tolerance for later art (A3 open item 3):
+    // ±60 ms on a 50 ms hold is +120 % (or the 40 ms floor), beyond the DTW band (±3 of 24 samples ≈ ±12 %),
+    // so a v3 art with very short holds reads 0.98–0.99 — the metric working, KALIR with a wide margin.
     const r2 = (x: number) => Math.round(x * 100) / 100;
-    check(`(c) proxy ${e.tag}: MOTsig 1.00, MOTloop ≥ 0.99, MOTavg ≥ 0.97 (2 decimals)`, r2(pc.MOTsig) >= 1 && r2(pc.MOTloop) >= 0.99 && r2(pc.MOTavg) >= 0.97, `${pc.MOTsig.toFixed(3)} / ${pc.MOTloop.toFixed(3)} / ${pc.MOTavg.toFixed(3)}`);
+    const obs = r2(pc.MOTsig) >= 1 && r2(pc.MOTloop) >= 0.99 && r2(pc.MOTavg) >= 0.97;
+    const obsTxt = `${pc.MOTsig.toFixed(3)} / ${pc.MOTloop.toFixed(3)} / ${pc.MOTavg.toFixed(3)}`;
+    if (obsPop(e)) check(`(c) §9.2 observation ${e.tag}: proxy MOTsig 1.00, MOTloop ≥ 0.99, MOTavg ≥ 0.97 (2 decimals)`, obs, obsTxt);
+    else obsNotes.push(`  (c) ${e.tag}: the §9.2 proxy observation (1.00 / ≥ 0.99 / ≥ 0.97) ${obs ? 'also holds' : `is not reached (shortest hold ${minHold(e)} ms) — reported, not a calibration failure: the control is KALIR with margin`} (${obsTxt})`);
   }
+  if (obsNotes.length) L.push('  arts after the §9.2 calibration population (12 v1 + the slice):', ...obsNotes);
   for (const id of ['crystal_wyrm', 'abyss_magus']) {
     const p = find(`${id}:v1`, `${id}:v3`);
     L.push(`  (d) ${id} v1 → v3 [${p.gate.source}] MOTavg ${p.gate.MOTavg.toFixed(3)} (need ≥ 0.70)`);
@@ -583,6 +669,74 @@ if (flag('calib')) {
     check(`(g) slice pair GEÇER on the three MOT values, ${p.gate.source} tracks`, okG && p.gate.source === 'points', `${p.gate.MOTsig.toFixed(3)} / ${p.gate.MOTloop.toFixed(3)} / ${p.gate.MOTavg.toFixed(3)}`);
     check('(g) slice pair GEÇER on the three MOT values, proxy', okP, `${pr.MOTsig.toFixed(3)} / ${pr.MOTloop.toFixed(3)} / ${pr.MOTavg.toFixed(3)}`);
   }
+  // --- A4.1: the recalibration on the v3 members (§9.3 "A4.1 sonunda v3 çiftleriyle yeniden kalibre")
+  const V3 = ents.filter((e) => e.tag.endsWith(':v3') || e.tag.endsWith(':draft'));
+  let a41: Record<string, unknown> | null = null;
+  if (V3.length >= 2) {
+    L.push('', `--- A4.1 recalibration on the v3 members (${V3.map((e) => `${e.tag}${e.plan ? ` [${e.plan}]` : ''}`).join(', ')}): gate source per pair (§9.1); members of different body plans are out of plan (§9.3: a KALIR there counts as UYARI, '!')`);
+    const v3rows: PairRow[] = [];
+    for (let i = 0; i < V3.length; i++)
+      for (let k = i + 1; k < V3.length; k++) if (V3[i].id !== V3[k].id) v3rows.push(runPair(V3[i], V3[k], { outOfPlan: outOfPlan(V3[i].plan, V3[k].plan) }));
+    L.push(...matrixLines(v3rows), ...detailLines(v3rows));
+    // same character, v1 → v3: the wyrm and the magus kept their v1 motion (control (d)); the others were
+    // re-choreographed on purpose (A3 / A4), so their rows only show how far the redesign moved
+    const KEPT = ['crystal_wyrm', 'abyss_magus'];
+    const same = V3.filter((e) => reg.MONSTER_IDS.includes(e.id)).map((e) => {
+      const a = regEntity(`${e.id}:v1`);
+      const m = measurePair(prof(a), prof(e), { t: T });
+      return { a, b: e, m, j: judgePair(m, { t: T }), kept: KEPT.includes(e.id) };
+    });
+    L.push('', '  same character, v1 → v3 (motion kept: wyrm, magus — control (d); the others re-choreographed on purpose, reported):');
+    for (const s of same)
+      L.push(`    ${`${s.a.tag} → ${s.b.tag}`.padEnd(40)} [${s.m.source}] KEY ${s.m.KEY.toFixed(3)} SIL0 ${s.m.SIL0.toFixed(3)} MOTsig ${s.m.MOTsig.toFixed(3)} MOTloop ${s.m.MOTloop.toFixed(3)} MOTavg ${s.m.MOTavg.toFixed(3)} SI ${s.m.SI.toFixed(3)} HEAT ${s.m.HEAT.toFixed(3)} → ${s.j.overall}${s.kept ? ' (motion kept)' : ''}`);
+    // control (b): one member's anims on another member's build (--cross FILE:ID), and its ±60 ms version
+    const crossRows: PairRow[] = [];
+    const used = new Set(ents.map((e) => e.tag));
+    for (const spec of args('cross')) {
+      const [file, id] = spec.split(':');
+      const of = V3.find((m) => m.tag === id) ?? V3.find((m) => m.id === id && m.tag.endsWith(':draft')) ?? V3.find((m) => m.id === id) ?? usage(`--cross FILE:ID: no v3 member '${id}'`);
+      const art = await loadArtFile(file);
+      let tag = `${art.id}:cross`;
+      for (let n = 2; used.has(tag); n++) tag = `${art.id}:cross${n}`;
+      used.add(tag);
+      const cross = makeEntity(tag, art, { control: 'b', of: of.tag });
+      crossRows.push(runPair(of, cross, { control: { id: 'b', required: ['MOTsig', 'MOTloop'] } }));
+      crossRows.push(runPair(of, jittered(cross), { control: { id: 'c', required: ['MOTsig', 'MOTloop'] } }));
+    }
+    if (crossRows.length) {
+      L.push('', `  control (b) cross builds (a member's anims on another member's body) and their ±60 ms versions: KALIR with depth ≥ ${CONTROL_MARGIN} on MOTsig, MOTloop`);
+      L.push(...matrixLines(crossRows));
+      for (const r of crossRows) {
+        L.push(`    (${r.control!.id}) ${r.a.tag} × ${r.b.tag}: depth ${marginOf(r).toFixed(3)} → ${heldM(r) ? 'held' : 'NOT HELD'}`);
+        check(`(${r.control!.id}) cross build ${r.a.tag} × ${r.b.tag} → KALIR, depth ≥ ${CONTROL_MARGIN}`, heldM(r), `MOTsig ${r.m.MOTsig.toFixed(3)} MOTloop ${r.m.MOTloop.toFixed(3)}, depth ${marginOf(r).toFixed(3)}`);
+      }
+    } else L.push('', '  control (b) cross builds: not run (--cross FILE:ID, a planArt-built synthetic member)');
+    // the distribution against the §9.3 bands
+    const v3ctl = ctlRows.filter((r) => V3.some((e) => e.tag === r.a.tag)).concat(crossRows);
+    const fmt = (xs: number[]) => (xs.length ? xs.map((x) => x.toFixed(3)).join(' ') : '-');
+    const mx = (xs: number[]) => (xs.length ? Math.max(...xs).toFixed(3) : '-');
+    const mn = (xs: number[]) => (xs.length ? Math.min(...xs).toFixed(3) : '-');
+    const inPlan = v3rows.filter((r) => !r.outOfPlan);
+    const oop = v3rows.filter((r) => r.outOfPlan);
+    const vx = V3.flatMap((e) => reg.MONSTER_IDS.filter((id) => id !== e.id).map((id) => find(e.tag, `${id}:v1`)));
+    const cnt = (vs: Verdict[]) => `${vs.filter((v) => v === 'UYARI').length} U / ${vs.filter((v) => v === 'KALIR').length} K`;
+    L.push('', `  distribution against the §9.3 bands (raw verdicts: an out-of-plan KALIR is counted as KALIR here); in plan = ${inPlan.map((r) => `${r.a.tag} × ${r.b.tag}`).join(', ') || '-'}; ${oop.length} out-of-plan v3 pairs; ${vx.length} v3 × other v1 pairs (the --against all population, proxy); controls = (a), (c) of the v3 members + (b):`);
+    const dist: Record<string, unknown> = {};
+    for (const k of ['KEY', 'MOTsig', 'MOTloop', 'MOTavg', 'SI', 'HEAT', 'SIL0'] as const) {
+      const band = k === 'HEAT' ? `warn ${T.HEAT.warn}` : k === 'SIL0' ? `warn ${T.SIL0.warn}, new ${T.SIL0.failNew}` : `${T[k].warn} / ${T[k].fail}`;
+      const ctl = v3ctl.filter((r) => r.control!.required.includes(k)).map((r) => r.m[k]);
+      const kept = same.filter((s) => s.kept).map((s) => s.m[k]);
+      const o = oop.map((r) => r.m[k]);
+      const x = vx.map((p) => p.gate[k] as number);
+      L.push(
+        `    ${k.padEnd(8)} [${band}]  in plan ${fmt(inPlan.map((r) => r.m[k]))} (${cnt(inPlan.map((r) => r.raw[k]))}) · v3 out of plan max ${mx(o)} median ${o.length ? median(o).toFixed(3) : '-'} (${cnt(oop.map((r) => r.raw[k]))}) · v3 × v1 max ${mx(x)} median ${x.length ? median(x).toFixed(3) : '-'} (${cnt(vx.map((p) => p.j.v[k]))}) · same character, motion kept: min ${mn(kept)} · controls min ${mn(ctl)}`,
+      );
+      dist[k] = { inPlan: inPlan.map((r) => r.m[k]), outOfPlan: o, v3xv1: x, keptMin: kept.length ? Math.min(...kept) : null, controlsMin: ctl.length ? Math.min(...ctl) : null };
+    }
+    L.push(`    RHYTHM   same-rhythm anims in plan: ${inPlan.map((r) => `${r.a.tag} × ${r.b.tag}: ${(Object.keys(r.m.rhythm) as Anim[]).filter((an) => r.m.rhythm[an]!.same).join(', ') || 'none'}`).join('; ') || '-'}; out of plan: ${oop.map((r) => `${r.a.tag} × ${r.b.tag}: ${(Object.keys(r.m.rhythm) as Anim[]).filter((an) => r.m.rhythm[an]!.same).join(', ') || 'none'}`).join('; ')}`);
+    L.push(`    overall  v3 pairs (raw): ${(['GEÇER', 'UYARI', 'KALIR'] as const).map((v) => `${v} ${v3rows.filter((r) => worst(METRICS.map((k) => r.raw[k])) === v).length}`).join(', ')}; v3 × v1 (raw): ${(['GEÇER', 'UYARI', 'KALIR'] as const).map((v) => `${v} ${vx.filter((p) => p.j.overall === v).length}`).join(', ')}`);
+    a41 = { members: V3.map((e) => ({ tag: e.tag, plan: e.plan })), pairs: v3rows.map(pairJson), same: same.map((s) => ({ a: s.a.tag, b: s.b.tag, kept: s.kept, metrics: s.m, overall: s.j.overall })), cross: crossRows.map(pairJson), distribution: dist };
+  }
   const failed = checks.filter((c) => !c.ok);
   L.push('', `checks: ${checks.length}, failed ${failed.length}${failed.length ? ':\n  ' + failed.map((c) => `${c.what} (${c.detail})`).join('\n  ') : ''}`);
   L.push(`[sameness --calib] ${profiles.size} profiles, ${pairs.length} pairs + ${ctlRows.length} controls in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
@@ -591,7 +745,7 @@ if (flag('calib')) {
   fs.writeFileSync(path.join(OUT, 'calib.txt'), txt + '\n');
   fs.writeFileSync(
     path.join(OUT, 'calib.json'),
-    JSON.stringify({ tool: 'tools/sameness.ts --calib', thresholds: T, checks, pairs: pairs.map((p) => ({ a: p.a.tag, b: p.b.tag, proxy5: p.proxy, gate: p.gate, verdicts: p.j.v, overall: p.j.overall })), controls: ctlRows.map(pairJson) }, null, 1),
+    JSON.stringify({ tool: 'tools/sameness.ts --calib', thresholds: T, controlMargin: CONTROL_MARGIN, checks, pairs: pairs.map((p) => ({ a: p.a.tag, b: p.b.tag, proxy5: p.proxy, gate: p.gate, verdicts: p.j.v, overall: p.j.overall })), controls: ctlRows.map(pairJson), a41 }, null, 1),
   );
   console.log(`[sameness] → ${rel(path.join(OUT, 'calib.txt'))}, calib.json`);
   process.exit(failed.length ? 3 : 0);
@@ -623,7 +777,7 @@ if (arg('thresholds')) L.push(`  thresholds overridden from ${arg('thresholds')}
 
 const rows: PairRow[] = [];
 for (let i = 0; i < members.length; i++)
-  for (let k = i + 1; k < members.length; k++) if (members[i].id !== members[k].id) rows.push(runPair(members[i], members[k]));
+  for (let k = i + 1; k < members.length; k++) if (members[i].id !== members[k].id) rows.push(runPair(members[i], members[k], { outOfPlan: outOfPlan(members[i].plan, members[k].plan) }));
 if (arg('against') === 'all') {
   const ids = new Set(members.map((m) => m.id));
   for (const m of members) for (const id of reg.MONSTER_IDS) if (!ids.has(id)) rows.push(runPair(m, regEntity(id), { outOfPlan: true }));
@@ -637,16 +791,22 @@ if (flag('controls')) {
     ctlRows.push(runPair(m, colourShifted(m), { control: { id: 'a', required: ['KEY', 'MOTsig', 'MOTloop', 'MOTavg'] } }));
     ctlRows.push(runPair(m, jittered(m), { control: { id: 'c', required: ['KEY', 'MOTsig', 'MOTloop', 'MOTavg'] } }));
   }
+  const used = new Set(members.map((m) => m.tag));
   for (const spec of args('cross')) {
     const [file, id] = spec.split(':');
     const of = members.find((m) => m.tag === id || m.id === id) ?? (id ? regEntity(id) : usage(`--cross FILE:ID (got ${spec})`));
     const art = await loadArtFile(file);
-    const cross = makeEntity(`${art.id}:cross`, art, { control: 'b', of: of.tag });
+    // a unique tag per cross build: profiles are cached by tag
+    let tag = `${art.id}:cross`;
+    for (let n = 2; used.has(tag); n++) tag = `${art.id}:cross${n}`;
+    used.add(tag);
+    const cross = makeEntity(tag, art, { control: 'b', of: of.tag });
     ctlRows.push(runPair(of, cross, { control: { id: 'b', required: ['MOTsig', 'MOTloop'] } }));
     ctlRows.push(runPair(of, jittered(cross), { control: { id: 'c', required: ['MOTsig', 'MOTloop'] } }));
   }
 }
-const controlsHeld = ctlRows.every((r) => controlHeld(r.j, r.control!.required));
+const ctlHeld = (r: PairRow) => controlHeld(r.j, r.control!.required, r.m, { t: T });
+const controlsHeld = ctlRows.every(ctlHeld);
 
 // ---------------------------------------------------------------- report
 
@@ -654,9 +814,13 @@ L.push('', 'pair matrix (G GEÇER · U UYARI · K KALIR; §9.3 bands):');
 L.push(...(rows.length ? matrixLines(rows) : ['  (no pair: fewer than two members with different ids)']));
 if (rows.length) L.push('', 'per anim: MOT and rhythm', ...detailLines(rows));
 if (flag('controls')) {
-  L.push('', `controls (§9.4: each must come out KALIR on its metrics, else exit 3): ${controlsHeld ? 'all held' : 'NOT ALL HELD — the metric is blind'}`);
+  L.push('', `controls (§9.4: each must come out KALIR on its metrics, in the upper half of the KALIR band (${FLOORS}), else exit 3): ${controlsHeld ? 'all held' : 'NOT ALL HELD — the metric is blind'}`);
   L.push(...matrixLines(ctlRows));
-  for (const r of ctlRows) L.push(`  (${r.control!.id}) ${r.a.tag} × ${r.b.tag}: needs KALIR on ${r.control!.required.join(', ')} → ${controlHeld(r.j, r.control!.required) ? 'held' : `NOT HELD (${r.control!.required.filter((k) => r.j.v[k] !== 'KALIR').map((k) => `${k} ${r.j.v[k]}`).join(', ')})`}`);
+  for (const r of ctlRows) {
+    const mg = controlMargin(r.m, r.control!.required, T);
+    const short = r.control!.required.filter((k) => r.j.v[k] !== 'KALIR' || ((BAND_METRICS as readonly string[]).includes(k) && (r.m[k as 'KEY'] as number) < controlFloor(k as 'KEY', T) - 1e-9));
+    L.push(`  (${r.control!.id}) ${r.a.tag} × ${r.b.tag}: needs KALIR on ${r.control!.required.join(', ')} (depth ≥ ${CONTROL_MARGIN}) → ${ctlHeld(r) ? `held (depth ${mg.toFixed(3)})` : `NOT HELD (${short.map((k) => `${k} ${r.j.v[k]}${(BAND_METRICS as readonly string[]).includes(k) ? ` ${(r.m[k as 'KEY'] as number).toFixed(3)}` : ''}`).join(', ')}; margin ${mg.toFixed(3)})`}`);
+  }
   if (!args('cross').length) L.push('  (b) cross build: not run (needs --cross FILE:ID with a planArt-built synthetic member, Y9)');
 }
 
@@ -730,21 +894,21 @@ if (arg('blind')) {
   // motion.png: coded strip pairs on a neutral stick body
   const pairKey: BlindKey['pairs'] = {};
   {
-    const all = members.map((m) => prof(m));
-    const src: MotSource = (['joints', 'points'] as const).find((s) => all.every((p) => p.sources.includes(s))) ?? 'proxy';
-    const names = (anim: Anim) => all.reduce<string[]>((acc, p) => acc.filter((n) => p.anims[anim]?.tracks[src]?.names.includes(n)), all[0].anims[anim]!.tracks[src]!.names);
     const items: { left: Entity; right: Entity; control: boolean }[] = [];
     for (let i = 0; i < members.length; i++) for (let k = i + 1; k < members.length; k++) if (members[i].id !== members[k].id) items.push({ left: members[i], right: members[k], control: false });
     for (const m of members) items.push({ left: m, right: jittered(m), control: true });
     const order = shuffled(items, rnd).map((it) => (rnd() < 0.5 ? it : { left: it.right, right: it.left, control: it.control }));
     const POSES = [1, 4, 7, 10, 13, 16, 19, 22];
+    // A4.1: the roar joins the attack (MOTsig = max(attack, roar): a roar-driven UYARI must reach the eye)
+    const BLIND_ANIMS: Anim[] = ['attack', 'roar', 'idle'];
+    const LABEL: Partial<Record<Anim, string>> = { attack: 'atk', roar: 'roar', idle: 'idle' };
     // idle loops move a few px: both strips of a pair get the same ×IDLE_GAIN so the motion is readable
     const IDLE_GAIN = 3;
     const CW = 64;
     const CH = 74;
     const stripH = CH + 2;
-    const pairH = 12 + 4 * stripH + 8;
-    const head1 = `motion: her kodlu çift iki şerittir (1, 2): attack ve idle döngüsü, ortak çöp gövdede (${src})`;
+    const pairH = 12 + 2 * BLIND_ANIMS.length * stripH + 8;
+    const head1 = `motion: her kodlu çift iki şerittir (1, 2): ${BLIND_ANIMS.join(', ')} (döngü), çiftin iki şeridi ortak bir çöp gövdede`;
     const head2 = `idle hareketi ×${IDLE_GAIN} büyütüldü (iki şeritte de aynı) — iki şerit aynı üyenin hareketi mi? "aynı" / "farklı"`;
     const W = Math.max(4 + 22 + POSES.length * CW, 8 + textWidth(head1), 8 + textWidth(head2));
     const p = new PixelCanvas(W, 23 + order.length * pairH);
@@ -757,19 +921,18 @@ if (arg('blind')) {
       pairKey[code] = { left: tagOf(it.left), right: tagOf(it.right), same: tagOf(it.left) === tagOf(it.right), control: it.control };
       const y0 = 23 + i * pairH;
       text(p, 4, y0, code, TXT);
-      const strips: [string, Entity, Anim][] = [
-        ['1', it.left, 'attack'],
-        ['2', it.right, 'attack'],
-        ['1', it.left, 'idle'],
-        ['2', it.right, 'idle'],
-      ];
+      // each pair on the track source its gate measures (joints for two plan members, points, the proxy)
+      const pl = prof(it.left);
+      const pr = prof(it.right);
+      const src = pairSource(pl, pr);
+      const strips = BLIND_ANIMS.flatMap((an) => [['1', it.left, an], ['2', it.right, an]] as [string, Entity, Anim][]);
       strips.forEach(([lab, e, anim], si) => {
         const y = y0 + 10 + si * stripH;
         text(p, 4, y + 2, `${lab}`, TXT);
-        text(p, 4, y + 11, anim === 'attack' ? 'atk' : 'idle', DIM);
+        text(p, 4, y + 11, LABEL[anim] ?? anim, DIM);
         if (anim === 'idle') text(p, 4, y + 20, `×${IDLE_GAIN}`, DIM);
         const t = prof(e).anims[anim]!.tracks[src]!;
-        const ns = names(anim);
+        const ns = pl.anims[anim]!.tracks[src]!.names.filter((n) => pr.anims[anim]!.tracks[src]!.names.includes(n));
         const bones = bonesOf(src, ns);
         POSES.forEach((s, c) => {
           const x = 4 + 22 + c * CW;
@@ -783,7 +946,7 @@ if (arg('blind')) {
   const form: BlindForm & { tool: string; talimat: string } = {
     tool: 'tools/sameness.ts --blind',
     talimat:
-      'ref.png her üyenin adlı idle f0 silüetini gösterir. sil.png içindeki her kodu (S01…) bir üye adıyla doldur. motion.png içindeki her çift (M01…) iki şerittir (1 ve 2: attack ve idle döngüsü, aynı çöp gövdede); aynı üyenin hareketi ise "aynı", değilse "farklı" yaz.',
+      'ref.png her üyenin adlı idle f0 silüetini gösterir. sil.png içindeki her kodu (S01…) bir üye adıyla doldur. motion.png içindeki her çift (M01…) iki şerittir (1 ve 2: attack, roar ve idle döngüsü, aynı çöp gövdede); aynı üyenin hareketi ise "aynı", değilse "farklı" yaz.',
     members: members.map((m) => m.tag),
     silhouettes: Object.fromEntries(Object.keys(silKey).map((c) => [c, ''])),
     pairs: Object.fromEntries(Object.keys(pairKey).map((c) => [c, ''])),

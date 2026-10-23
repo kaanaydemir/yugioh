@@ -574,15 +574,39 @@ silüet vekilinden **geçicidir**, A3'te eklem / nokta izleri ve negatif kontrol
   değerinin altında (Titan × Muhafız 0,662; Golem × Muhafız 0,658; Titan × Golem 0,615), kör göz testi %100.
   Kurt × Kertenkele: `SI` < 0,35, `MOTsig` < 0,55, `MOTloop` < 0,65.
 - **Ölçünün kör olmadığı kanıtlanır** (`sameness.ts --controls`, çıkış 3 = ölçü kör): renk değişimi, ±60 ms
-  oynatılmış beklemeler ve "bir üyenin hareketleri öbürünün gövdesinde" çapraz kurulumu KALIR çıkmalıdır;
-  aynı karakter v1 → v3 `MOTavg` ≥ 0,70; v1 golem × muhafız GEÇER olamaz; kullanıcının ayrı bulduğu dilim
-  çifti GEÇER. Biri tutmazsa ölçünün tanımı değişir, kontrol değil.
+  oynatılmış beklemeler ve "bir üyenin hareketleri öbürünün gövdesinde" çapraz kurulumu KALIR çıkmalıdır,
+  **adlandırdıkları her bant ölçüsünde KALIR bandının üst yarısında** (değer ≥ eşik + ½ × (1 − eşik): `KEY` ve
+  `MOTavg` ≥ 0,85, `MOTsig` ≥ 0,90, `MOTloop` ≥ 0,925; A4.1 sıkılaştırması — çizginin hemen üstündeki bir
+  kontrol "neredeyse kör" bir ölçüdür); aynı karakter v1 → v3 `MOTavg` ≥ 0,70; v1 golem × muhafız GEÇER
+  olamaz; kullanıcının ayrı bulduğu dilim çifti GEÇER. Biri tutmazsa ölçünün tanımı değişir, kontrol değil.
+  §9.2'deki "(c) vekilde `MOTsig` 1,00" bir gözlemdir, tolerans değil: 50–60 ms'lik beklemelerde ±60 ms
+  DTW bandını (±3 / 24 örnek ≈ ±%12) aşar; Muhafız'ın 0,986 (eklem) / 0,987 (vekil) değeri ölçünün çalıştığını
+  gösterir (bant derinliği 0,92 / 0,91). Gözlem, ölçüldüğü 14 sanatın (12 v1 + dilim) gerileme denetimi
+  olarak kalır (A3 açık nokta 3 kapandı).
 - Eşikler A3 (pilot + taslak Titan + kontroller) ve A4.1 sonunda v3 çiftleriyle yeniden kalibre edilir.
   Gevşetme kullanıcı onayı ister; sıkılaştırma bu bölüme yazılarak yapılır.
+- **A4.1 yeniden kalibrasyonu** (v3 üyeleri: Ejder, Büyücü, Muhafız + kayıt dışı Titan ve Yılan; `sameness.ts
+  --calib --art … --cross …`: 121 denetim, 0 kalan; kanıt `shots/v3/a4/sameness/calib/`). Plan dışı = farklı
+  gövde tipinden iki üye (ya da plan üyesi × elle yapılmış as); "en düşük / en çok" değerler:
+
+  | Küme | `KEY` | `MOTsig` | `MOTloop` | `MOTavg` | `SI` |
+  |---|---|---|---|---|---|
+  | Kontroller: (a) renk, (c) ±60 ms; (b) Titan ↔ Muhafız çapraz kurulumu ve ±60 ms'si (yalnız `MOTsig` / `MOTloop`) — en düşük | 1,000 | 0,975 | 0,977 | 0,977 | — |
+  | Aynı karakter, hareketi korunan (Ejder, Büyücü v1 → v3) — en düşük | 0,830 | 0,932 | 0,985 | 0,789 | 0,579 |
+  | Plan içi farklı çiftler: dilim çifti / Muhafız × Titan | 0,509 / 0,659 | 0,536 / 0,439 | 0,256 / 0,389 | 0,370 / 0,344 | 0,199 / 0,112 |
+  | Plan dışı v3 çiftleri (8) — en çok | 0,492 | 0,820 | 0,792 | 0,486 | 0,244 |
+  | v3 üyeleri × öteki canavarların v1 sanatı (55, vekil) — en çok | 0,673 | 0,818 | 0,980 | 0,592 | 0,236 |
+
+  Karar: **bantlar korunur, tek sıkılaştırma kontrol kuralıdır** (yukarıda; en yakın kontrol bandın 0,85
+  derinliğinde). Bantlar sıkılaştırılamaz: `MOTsig`'in KALIR çizgisini plan dışı v3 kükremeleri zaten aşıyor
+  (Titan × Büyücü 0,820, Titan × Yılan 0,810: kükremede "dikilip baş geri, kollar açık" ortak bir dil), `KEY`'in
+  UYARI bandı ağır üçlünün mirası (Sİ-5 idle f0 + HA-21 yerel hit f0: Muhafız × Titan 0,659, `SIL0` 0,723);
+  `MOTloop`, `MOTavg`, `SI` için plan içinde çizgiye yaklaşan çift yok, sıkılaştırmanın kanıtı da yok.
 
 **Kör göz testi.** `sameness.ts --blind DIR` adlı tek referans satırı (her üyenin idle f0'ı), karıştırılmış
 kodlu silüetler (attack `release`, roar tepesi, hit f0, guard f0) ve ortak nötr bir gövdeye aktarılmış
-hareket şeridi çiftleri (bir kısmı aynı üyenin kontrol çiftleri) yazar; hepsi renksiz, boyu 56 px'e
+hareket şeridi çiftleri (attack, roar ve idle döngüsü — roar A4.1'de eklendi: `MOTsig` attack ile roar'un
+büyüğüdür; her çift kendi ölçü kaynağında; bir kısmı aynı üyenin kontrol çiftleri) yazar; hepsi renksiz, boyu 56 px'e
 normalize, ×3. Cevap anahtarı ayrı bir dizine yazılır. İnceleyen, canavarları yapmayan **ayrı bir
 ajandır**; sanat dosyalarını, ayrışma kartlarını ve anahtarı görmez. `--score` puanlar: silüet kodlarının
 her çift için %100'ü doğru üyeye, farklı üye hareket çiftlerinin hepsi "farklı", kontrol çiftlerinin

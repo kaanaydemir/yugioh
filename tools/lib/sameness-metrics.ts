@@ -22,6 +22,11 @@
 //   RHYTHM attack / roar / special [charge→release, release→recover, total]; hit* [impact→recover,
 //          total]; death [impact→dissolve, total]; loops [total, head period, body period, head lag]
 //          (ms). "Same" in an anim when every component is within max(40 ms, 8 %).
+//
+// Negative controls (§9.4 --controls): a control holds when every metric it names is KALIR AND, for the
+// band metrics, in the upper half of the KALIR band (CONTROL_MARGIN; A4.1: the bare "KALIR" check let a
+// control pass on the line; the §9.2 "(c) MOTsig 1.00" observation of the v1 proxy is no tolerance —
+// ±60 ms on a 50 ms hold is +120 %, beyond the DTW band, so the sentinel's 0.987 is the metric working).
 
 // ---------------------------------------------------------------- basic vector math
 
@@ -429,9 +434,60 @@ export function exitCode(overall: readonly Verdict[], controlsHeld = true): 0 | 
   return w === 'KALIR' ? 2 : w === 'UYARI' ? 1 : 0;
 }
 
-/** A negative control holds when every metric it names comes out KALIR. */
-export function controlHeld(j: PairJudgement, required: readonly Metric[]): boolean {
-  return required.every((k) => j.v[k] === 'KALIR');
+/** The metrics judged on a GEÇER / UYARI / KALIR band of one value (the others are combined rules). */
+export const BAND_METRICS = ['KEY', 'MOTsig', 'MOTloop', 'MOTavg', 'SI'] as const;
+export type BandMetric = (typeof BAND_METRICS)[number];
+const isBand = (k: Metric): k is BandMetric => (BAND_METRICS as readonly string[]).includes(k);
+
+/**
+ * How deep into the KALIR band a negative control must sit on every band metric it names (A4.1
+ * recalibration, A3 open item 3), as a share of the band's headroom: value ≥ fail + CONTROL_MARGIN ×
+ * (1 − fail) — with the §9.3 bands KEY ≥ 0.85, MOTsig ≥ 0.90, MOTloop ≥ 0.925, MOTavg ≥ 0.85, SI ≥ 0.75.
+ * A control at KALIR + 0.003 would pass a bare "KALIR" check while the metric is all but blind; the margin
+ * makes such a control fail (exit 3). Relative, not absolute: the KALIR bands differ in width (MOTloop has
+ * 0.15 of headroom, MOTavg 0.30). The A4.1 population (5 v3 members, 12 v1 arts, gate source and proxy,
+ * + the two titan / sentinel cross builds) sits at ≥ 0.85 of the headroom (closest: MOTloop 0.977 of the
+ * ±60 ms cross build); a synthetic art with a 4-frame guard reads 0.53 (tests/tools/sameness.test.ts).
+ */
+export const CONTROL_MARGIN = 0.5;
+
+/**
+ * Where a control sits in the KALIR band, worst band metric it names: (value − fail) / (1 − fail) —
+ * 1 a perfect copy, 0 on the KALIR line, < 0 not KALIR. Infinity when it names no band metric.
+ */
+export function controlMargin(m: PairMetrics, required: readonly Metric[], t: Thresholds = THRESHOLDS): number {
+  let worst = Infinity;
+  for (const k of required) if (isBand(k)) worst = Math.min(worst, (m[k] - t[k].fail) / Math.max(1e-9, 1 - t[k].fail));
+  return worst;
+}
+
+/**
+ * A negative control holds when every metric it names comes out KALIR; given the pair's metrics, every
+ * band metric it names must also sit at least `margin` (default CONTROL_MARGIN) deep into the KALIR band.
+ */
+export function controlHeld(j: PairJudgement, required: readonly Metric[], m?: PairMetrics, o: { t?: Thresholds; margin?: number } = {}): boolean {
+  if (!required.every((k) => j.v[k] === 'KALIR')) return false;
+  return !m || controlMargin(m, required, o.t) >= (o.margin ?? CONTROL_MARGIN) - 1e-9;
+}
+
+/** The lowest value of a band metric that keeps a control held: fail + CONTROL_MARGIN × (1 − fail). */
+export function controlFloor(k: BandMetric, t: Thresholds = THRESHOLDS, margin = CONTROL_MARGIN): number {
+  return t[k].fail + margin * (1 - t[k].fail);
+}
+
+/**
+ * Whether two arts compared as members are an OUT-OF-PLAN pair (§9.3): their body plans differ (a plan
+ * member × another plan's member or a hand-made art without a plan). Two arts of one plan, or two
+ * hand-made arts (the slice pair of control (g)), are gate pairs.
+ */
+export function outOfPlan(planA: string | null, planB: string | null): boolean {
+  return planA !== planB;
+}
+
+/** Whole-number gain (1…maxGain) that makes a motion of `maxPx` fill about `roomPx` (track overlays). */
+export function panelGain(maxPx: number, roomPx: number, maxGain = 6): number {
+  if (!(maxPx > 0)) return 1;
+  return Math.max(1, Math.min(maxGain, Math.floor(roomPx / maxPx)));
 }
 
 /** Median (the lower middle for an even count, like judge/calib.ts xs[33] of 66). */

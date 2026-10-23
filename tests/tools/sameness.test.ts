@@ -10,8 +10,11 @@ import {
   type BlindForm,
   type BlindKey,
   type PairMetrics,
+  CONTROL_MARGIN,
   THRESHOLDS,
+  controlFloor,
   controlHeld,
+  controlMargin,
   cosAligned,
   cycCos,
   dominantPeriodMs,
@@ -23,6 +26,8 @@ import {
   lagMs,
   loopSignature,
   median,
+  outOfPlan,
+  panelGain,
   pearson,
   sameRhythm,
   scoreBlind,
@@ -185,6 +190,44 @@ describe('verdicts (§9.3)', () => {
     expect(controlHeld(judgePair({ ...base, KEY: 1, MOTsig: 1, MOTloop: 1, MOTavg: 1 }, { t: blind }), ['KEY', 'MOTsig'])).toBe(false);
     expect(median([5, 1, 3, 2])).toBe(3);
   });
+  it('a control holds only in the upper half of the KALIR band (A4.1 margin, A3 open item 3)', () => {
+    const REQ = ['KEY', 'MOTsig', 'MOTloop', 'MOTavg'] as const;
+    // on the KALIR line: a bare "KALIR" check (no metrics given) passes it, the margin does not
+    const line: PairMetrics = { ...base, KEY: 0.7, MOTsig: 0.8, MOTloop: 0.85, MOTavg: 0.7 };
+    expect(controlHeld(judgePair(line), REQ)).toBe(true);
+    expect(controlHeld(judgePair(line), REQ, line)).toBe(false);
+    expect(controlMargin(line, REQ)).toBeCloseTo(0, 12);
+    // the floors: fail + ½ × (1 − fail)
+    expect(CONTROL_MARGIN).toBe(0.5);
+    expect(controlFloor('KEY')).toBeCloseTo(0.85, 12);
+    expect(controlFloor('MOTsig')).toBeCloseTo(0.9, 12);
+    expect(controlFloor('MOTloop')).toBeCloseTo(0.925, 12);
+    expect(controlFloor('MOTavg')).toBeCloseTo(0.85, 12);
+    const floor: PairMetrics = { ...base, KEY: 0.85, MOTsig: 0.9, MOTloop: 0.925, MOTavg: 0.85 };
+    expect(controlHeld(judgePair(floor), REQ, floor)).toBe(true);
+    const below = { ...floor, MOTloop: 0.92 };
+    expect(controlHeld(judgePair(below), REQ, below)).toBe(false);
+    // the sentinel's ±60 ms control (A3: "0.987 instead of 1.00"): deep in the band, it holds
+    const sentinel: PairMetrics = { ...base, KEY: 1, MOTsig: 0.986, MOTloop: 0.999, MOTavg: 0.977 };
+    expect(controlMargin(sentinel, REQ)).toBeGreaterThan(0.9);
+    expect(controlHeld(judgePair(sentinel), REQ, sentinel)).toBe(true);
+    // a perfect copy sits at depth 1; only band metrics have a depth (RHYTHM needs KALIR only)
+    expect(controlMargin({ ...base, KEY: 1, MOTsig: 1, MOTloop: 1, MOTavg: 1 }, REQ)).toBeCloseTo(1, 12);
+    expect(controlMargin(base, ['RHYTHM'])).toBe(Infinity);
+  });
+  it('member pairs of different body plans are out of plan; two hand-made arts are a gate pair', () => {
+    expect(outOfPlan('biped', 'biped')).toBe(false);
+    expect(outOfPlan('biped', 'serpent')).toBe(true);
+    expect(outOfPlan('biped', null)).toBe(true);
+    expect(outOfPlan(null, null)).toBe(false);
+  });
+  it('track overlays magnify small motions by a whole-number gain', () => {
+    expect(panelGain(0, 16)).toBe(1);
+    expect(panelGain(2, 16)).toBe(6); // capped
+    expect(panelGain(3, 16)).toBe(5);
+    expect(panelGain(8, 16)).toBe(2);
+    expect(panelGain(20, 16)).toBe(1);
+  });
 });
 
 describe('blind eye test scoring (§9.5)', () => {
@@ -313,7 +356,23 @@ describe('art → profile → pair (tracks.ts)', () => {
     const m = measurePair(pa, profileOf(jittered(a)));
     expect(m.KEY).toBe(1);
     expect(m.MOTsig).toBeGreaterThan(0.95);
-    expect(controlHeld(judgePair(m), ['KEY', 'MOTsig', 'MOTloop', 'MOTavg'])).toBe(true);
+    expect(controlHeld(judgePair(m), ['KEY', 'MOTsig', 'MOTloop', 'MOTavg'], m)).toBe(true);
+    // the box's 4-frame guard is the weak spot of the loop metric (no DTW in loops): ±60 ms moves its
+    // 140–160 ms holds by ±40 %, the best cyclic shift cannot re-align them — MOTloop ≈ 0.93, still in the
+    // upper half of the KALIR band (REHBER §4.9 asks ≥ 6 guard / ≥ 12 idle frames; real v3 art reads ≥ 0.98)
+    expect(m.MOTloop).toBeLessThan(0.95);
+    expect(controlMargin(m, ['MOTloop'])).toBeGreaterThan(CONTROL_MARGIN);
+  });
+  it('control (c) on 50–60 ms holds (the sentinel case): the swing anims stay deep in the KALIR band', () => {
+    const art = boxArt(1);
+    const short: MonsterArt = {
+      ...art,
+      anims: { ...art.anims, attack: { ...art.anims.attack, holds: [50, 50, 60, 50, 50, 50, 60, 50] }, roar: { ...art.anims.roar, holds: [50, 50, 60, 50, 50, 60] } },
+    };
+    const s = makeEntity('box-short', short);
+    const m = measurePair(profileOf(s), profileOf(jittered(s)));
+    expect(m.MOTsig).toBeGreaterThan(controlFloor('MOTsig'));
+    expect(controlHeld(judgePair(m), ['KEY', 'MOTsig', 'MOTloop', 'MOTavg'], m)).toBe(true);
   });
   it('the opposite strike reads as different motion, the same strike with a lift as related', () => {
     const back = measurePair(pa, profileOf(makeEntity('box-back', boxArt(-1))));
