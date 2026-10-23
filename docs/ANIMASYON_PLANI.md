@@ -245,7 +245,7 @@ motor değişikliği gerektirdiği için ikisi birlikte tasarlanır.
 | A1 Altyapı | tamam | `?look=v3`, sakin arena, tam sayı kamera, kare süreleri + yeni poz türleri, P2 yeniden ışık, ağırlık profilleri, tek gösteri saati, basamaklı ışık; `tools/measure.mjs`, `tools/sheet-hash.ts`; kabul: 2. tur geçti |
 | A2 Dikey dilim | tamam | Kristal Ejder + Uçurum Büyücüsü yeni stil ve tam yaşam döngüsü, ortak v3 kitleri, Yıldırım Hükmü, Işık Zincirleri, yeni giriş portreleri, dilim sesleri (`src/audio/v3/`), `tools/clip.mjs`; kabul: 11/11 (madde 1 düzeltme turuyla) |
 | A3 Rehber + ölçeklenebilirlik katmanı | tamam | rehber (`docs/v3/REHBER.md`), mimari (`docs/v3/A3_MIMARI.md`), çekirdek (rigkit, malzemeler, `biped/v1`, sunum tarifleri, darbe kiti, araçlar), pilot Taş Muhafız oyunda; kabul özeti `docs/v3/A3_KABUL.md` (bütün kapılar geçti; bilinen açıklar orada) |
-| A4 Kalan canavarlar | bekliyor | |
-| A5 Büyü / tuzak / kart resimleri | bekliyor | |
-| A6 Küçük olaylar | bekliyor | |
+| A4 Kalan canavarlar | kısmen, beklemede | A4.1: ölçeklenme ön adımı tamam (kırpılmış atlas, aşamalı boyama, `tools/texmem.mjs`); Magma Titanı ve Mercan Yılanı çizimleri tamam (13 anim, eleştiri + düzeltme, benzerlik kapısı), oyuna henüz bağlanmadı (`src/art/monsters-v3/_magma_titan.ts`, `_coral_serpent.ts`). 23 Ekim kullanıcı kararı: kalan 7 canavarın yeniden çizimi bekletiliyor, A5 ve A6 öne alındı |
+| A5 Büyü / tuzak / kart resimleri | planlanıyor | plan `docs/v3/A5_PLAN.md`; kart resimleri şimdilik 8 büyü / tuzak + yeni çizilen 5 canavar |
+| A6 Küçük olaylar | planlanıyor | plan `docs/v3/A6_PLAN.md` |
 | A7 Bütünlük / çıkış adayı | bekliyor | |
