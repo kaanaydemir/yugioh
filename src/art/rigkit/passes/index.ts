@@ -9,3 +9,4 @@ export * from './dissolve';
 export * from './motes';
 export * from './crumble';
 export * from './reassemble';
+export * from './foam'; // A4.1: the water death / revive (foam, surge)

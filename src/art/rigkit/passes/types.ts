@@ -5,10 +5,12 @@
 // the magus'; crumble / reassemble (stone) came with the pilot (Y8: crumble.ts, reassemble.ts).
 
 /** Name of a death / revive pass (MaterialDef.death.pass / .revive). */
-export type PassId = 'cracks' | 'drain' | 'split' | 'gather' | 'dissolve' | 'motes' | 'crumble' | 'reassemble' | (string & {});
+export type PassId = 'cracks' | 'drain' | 'split' | 'gather' | 'dissolve' | 'motes' | 'crumble' | 'reassemble' | 'foam' | 'surge' | (string & {});
 
 /** The A3 pass names (the core's; a later pass adds its name here). */
-export const PASS_IDS: readonly PassId[] = Object.freeze(['cracks', 'drain', 'split', 'gather', 'dissolve', 'motes', 'crumble', 'reassemble']);
+export const PASS_IDS: readonly PassId[] = Object.freeze(['cracks', 'drain', 'split', 'gather', 'dissolve', 'motes', 'crumble', 'reassemble',
+  'foam', 'surge', // A4.1: the water death / revive (foam.ts)
+]);
 // 'motes' = the shadow revive's spiralling motes (motes.ts gatherMotes); the shadow death's rising
 // motes are part of 'dissolve' (dissolvePass motes: true).
 

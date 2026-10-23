@@ -195,6 +195,13 @@ export interface PlanMonster<Build, P, R, Fx extends Record<string, number> = {}
   post?: readonly ((p: PixelCanvas, ctx: PartCtx<PlanPose<P, Fx>, R>) => void)[];
   /** L2: a hand retouch of one frame, lit for P1 and P2 */
   retouch?: Partial<Record<`${AnyMonsterAnim}:${number}`, MapPair>>;
+  /**
+   * (A4.1, additive) marks a beat name cannot set, per anim (mark → frame index), merged over the
+   * compiled marks: a member's own beats its recipe reads (the titan's attack 'stomp' / 'drive'), or a
+   * base mark on a frame whose beat already carries another name (contact on the release frame of a
+   * punch that lands in the anim). AnimSpec.marks carries them as extra keys.
+   */
+  marks?: Partial<Record<AnyMonsterAnim, Readonly<Record<string, number>>>>;
   /** default 'pose' (§10) */
   knock?: 'pose' | 'sprite';
   /** every v3 monster (IŞ-1) */
@@ -303,6 +310,12 @@ export function planArt<B, P extends object, R, Fx extends Record<string, number
   regions.extra = [...((regions.extra ?? []) as readonly (keyof PP)[]), 'fx' as keyof PP];
   const kit: PoseKit<PP> = definePose<PP>(neutral, plan.groups as Record<string, readonly (keyof PP)[]>, regions);
   const compiled: CompiledAnims<PP> = compileAnims(kit, m.anims);
+  for (const [a, extra] of Object.entries(m.marks ?? {}) as [AnyMonsterAnim, Readonly<Record<string, number>>][]) {
+    const c = compiled.anims[a];
+    if (!c) fail(`marks: no anim ${a}`);
+    for (const [k, f] of Object.entries(extra)) if (!Number.isInteger(f) || f < 0 || f >= c!.spec.frames) fail(`marks: ${a} ${k} = ${f} outside 0…${c!.spec.frames - 1}`);
+    (c!.spec as { marks?: Record<string, number> }).marks = { ...(c!.spec.marks ?? {}), ...extra };
+  }
   const withFx = (p: PP): PP => ({ ...p, fx: { ...m.fx, ...(p as { fx?: Fx }).fx } });
 
   // ---- drawing

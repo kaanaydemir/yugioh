@@ -15,6 +15,14 @@
 // ("soğuma": `drain`), then the basalt breaks; a blow on a seam lands on the rock (sound = basalt).
 // Light: the glow the light layer picks up = today's MONSTER_GLOW.magma_titan top emissive tone; the
 // strike's impact pool = today's STRIKE_LIGHT.magma_titan (the lava fist).
+//
+// MATERIAL DECISION (A4.1, binding — src/still/titan-map.ts and src/art/monsters-v3/magma_titan-parts.ts
+// heatStep follow it): at rest the lava keeps EXACTLY ONE gold4 pixel — the glint in the chest core's
+// fire4 heart (38,40). Everything else at rest, and in every idle / guard / hit frame, tops out at
+// fire4: the idle's core swell grows the fire4 heart outward (never gold), the seams' travelling pulse
+// steps fire2 ↔ fire3 ↔ fire4. More gold and white come ONLY at full heat: the core ≥ 1.8 (gold), its
+// 2×2 centre ≥ 2.3 (white) on a charge's peak and the release; the striking fist ≥ 1.8 (white knuckle
+// face, gold4 · fire4 · fire3 bands melting back from it) on contact; the roar's vent flames' base.
 
 import { PAL } from '../../palette';
 import type { MaterialDef } from '../types';
