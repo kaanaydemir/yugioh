@@ -11,14 +11,17 @@
 //           plane), water3 = lit plane (the largest), water2 = mid, water1 = shadow, water0 = underside /
 //           crease. The far coil is drawn one value darker (edge water3, lit water2, mid water1, crease water0).
 //           Scale rows are 2-px teeth of the darker band, every 5 px, only on the mid / shadow boundary of
-//           the coil; the lit planes stay calm.
+//           the coil; the lit planes stay calm (a correction of the REHBER §2.3 draft's 1-px notches every
+//           3–4 px: at this size 1-px notches read as speckle).
 //   BELLY   ventral plates, a lighter material in shadow: mist = the plate edge facing forward, steel = plate,
 //           night3 = the far side; a one-step-darker seam across the steel / night3 every 3 rows.
 //   CORAL   opaque branches, mag ramp: mag4 = crisp tips and the horn's lit top edge, mag3 = lit side,
 //           mag2 = shadow side / underside.
 //   MEMBR.  fins and the crown's webs, translucent read through value: mag1 body, a 1-px mag2 rim on the
 //           thin free edge, a mag0 crease where they meet the body / the horn / a spine's shadow side;
-//           the fin's rays are mag3 with a mag4 tip on the rim.
+//           the fin's rays are mag3 with a mag4 tip on the rim. The web between spine 0 and the crescent
+//           (rows 14-15) is one 2-row mag1 plane with no rim against the ink, so the horn's mag4 edge is the
+//           only bright line in that stack and the crescent separates from spine 0.
 //   EYE     the brightest point of the head: cyan3 / cyan4 / white glint toward the snout, in a water0
 //           socket under the horn's root. Teeth white, the mouth's inside mag0. WATER: v1's one falling drop
 //           (water4 top, water3 body, water2 underside).
@@ -31,7 +34,8 @@
 //           underside, one mag0 row of cast shadow on the webs below it); four staghorn spines fanned out
 //           behind the skull (spine 0 up, 1 up-left, 2 left, 3 left-down), each forking into two mag4 tips.
 //   neck    lit band on the dorsal (left) side with a water4 edge while the tube faces up-left (upper S),
-//           the edge turning water2 where the lower S faces down-left; one water2 seam to the belly; a
+//           the edge turning water2 where the lower S faces down-left; a water2 band before the belly that
+//           turns the tube like the coil's mid band — 2 px on the upper S, 3 px on the lower S —; a
 //           water1 / water0 crease under the head's back and the jaw (2 steps below the plane it falls on).
 //   fin     the dorsal fin behind the neck: mag2 rim, mag1 web, mag0 crease along the neck, two mag3 rays.
 //   coil    one continuous tube: near front arc (edge / lit / mid / shadow / underside, measured from its own
@@ -82,7 +86,7 @@ export const SERPENT_MAP: readonly string[] = [
   /*11*/ '.................................kDDkk......kEkk................................',
   /*12*/ '.................................kEDDDk......kDEk...............................',
   /*13*/ '..................................kACCDkkkkkkkDCk...............................',
-  /*14*/ '.............................k....kCAACDCCCCCCDk................................',
+  /*14*/ '.............................k....kCAACDBBBBBBDk................................',
   /*15*/ '............................kEk...kCBBBBBBBBBBDCk...............................',
   /*16*/ '............................kDk.kkkCAEEEEEEEEEkkk...............................',
   /*17*/ '..........................kkkCDkkCBBBACCCCDDDDEEEkk.............................',
@@ -101,27 +105,27 @@ export const SERPENT_MAP: readonly string[] = [
   /*30*/ '.................................kkk41222222kkkk111111112222222221k.............',
   /*31*/ '................................kCA4331000001111kkkkkkkk1111111111k.............',
   /*32*/ '...............................kCBA4331222222222111kkkkAkkkkkwkkk1k.............',
-  /*33*/ '..............................kCBA433320sss222222221111kkkwkkwkAkk..............',
-  /*34*/ '..............................kCBA43332q000ssssss2222221111kkkkAk...............',
-  /*35*/ '.............................kCBBA43332sqqkkkkkkksssssssss11111k................',
-  /*36*/ '............................kCBBA433332msqk......kkkkkkkkksssssk................',
-  /*37*/ '...........................kCBBBA433332mqqk...............kkkkk.................',
-  /*38*/ '..........................kCBBBBA433332msqk.....................................',
-  /*39*/ '.........................kEDDDDDA433332msqk.....................................',
-  /*40*/ '.........................kCBBBBBBA433332mqqk....................................',
-  /*41*/ '..........................kCBBBBBA333332msqk....................................',
-  /*42*/ '.........................k.kCBBBBA233332mssqk...................................',
-  /*43*/ '........................k4k.kCBBBBA233332mqqqk..................................',
-  /*44*/ '........................k4k.kCBBBBA233332mssqk..................................',
-  /*45*/ '.......................k332k.kCBBBBA233332mssqk.................................',
-  /*46*/ '........................k2k...kCBDDA233332mqqqk.................................',
-  /*47*/ '.........................k...kCDDBBBA233332mssqk................................',
-  /*48*/ '.............................kEBBBBBA233332mssqk................................',
-  /*49*/ '..............................kCBBBBBA233332mqqqk...............................',
-  /*50*/ '..............................kCBBBkk2333332mssqk...............................',
-  /*51*/ '..............................kCBBk.k2333332mssqk...............................',
-  /*52*/ '..............................kCBk.k33333332mqqqk...............................',
-  /*53*/ '..........................kkkkkAAkk333333332msqk................................',
+  /*33*/ '..............................kCBA433220sss222222221111kkkwkkwkAkk..............',
+  /*34*/ '..............................kCBA43322q000ssssss2222221111kkkkAk...............',
+  /*35*/ '.............................kCBBA43322sqqkkkkkkksssssssss11111k................',
+  /*36*/ '............................kCBBA433322msqk......kkkkkkkkksssssk................',
+  /*37*/ '...........................kCBBBA433322mqqk...............kkkkk.................',
+  /*38*/ '..........................kCBBBBA433322msqk.....................................',
+  /*39*/ '.........................kEDDDDDA433322msqk.....................................',
+  /*40*/ '.........................kCBBBBBBA433322mqqk....................................',
+  /*41*/ '..........................kCBBBBBA333322msqk....................................',
+  /*42*/ '.........................k.kCBBBBA233222mssqk...................................',
+  /*43*/ '........................k4k.kCBBBBA233222mqqqk..................................',
+  /*44*/ '........................k4k.kCBBBBA233222mssqk..................................',
+  /*45*/ '.......................k332k.kCBBBBA233222mssqk.................................',
+  /*46*/ '........................k2k...kCBDDA233222mqqqk.................................',
+  /*47*/ '.........................k...kCDDBBBA233222mssqk................................',
+  /*48*/ '.............................kEBBBBBA233222mssqk................................',
+  /*49*/ '..............................kCBBBBBA233222mqqqk...............................',
+  /*50*/ '..............................kCBBBkk2333222mssqk...............................',
+  /*51*/ '..............................kCBBk.k2333222mssqk...............................',
+  /*52*/ '..............................kCBk.k33333222mqqqk...............................',
+  /*53*/ '..........................kkkkkAAkk333333222msqk................................',
   /*54*/ '...................kkkkkkk33333333333333332msqqk................................',
   /*55*/ '................kkk33333332222222233333332mqqqqk................................',
   /*56*/ '..............kk3332222222222222222333332msqqqk.................................',
@@ -140,7 +144,7 @@ export const SERPENT_MAP: readonly string[] = [
   /*69*/ '.......k122222333333333333333333333333333332222222110k..........................',
   /*70*/ '........k1112222233333333333333333333333222222221100k...........................',
   /*71*/ '.........k1111222222223333333333333222222111111100kk............................',
-  /*72*/ '..........k1111112222122222222222222112211111000kk..............................',
+  /*72*/ '..........k1111112222112222222222222112211111000kk..............................',
   /*73*/ '...........k001111111112221122211221111111100kkk................................',
   /*74*/ '............kk00011111111111111111111111000kk...................................',
   /*75*/ '..............kkk00000111111111111100000kkk.....................................',
