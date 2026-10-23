@@ -83,9 +83,10 @@ deckOut, gameOver. Arayüz tarafında: kart seçme / hover, hedef seçme, geçer
   ölüm, diriltme, özel efekt). Eski canavarlar değişmeden çalışmaya devam eder.
 - **Poz hızı ve ekran hızı ayrı.** Ekran 60 FPS; pozlar değişken sürelerle (kabaca saniyede 8–16);
   efektler her karede güncellenir. Sprite konumları tam sayı piksel.
-- **Kamera.** Bugünkü 1.06–1.08 kesirli yakınlaşma piksel ızgarasını bozar; yerine büyük anlarda
-  tam sayı 2× yakın çekim ya da yalnızca kaydırma kullanılır. Sarsıntı yalnızca dünya
-  kamerasını etkiler, arayüz sabit kalır.
+- **Kamera.** Bugünkü 1.06–1.08 kesirli yakınlaşma piksel ızgarasını bozar; v3'te kaldırıldı.
+  23 Ekim kullanıcı kararı ("Kamerayı değiştirme böyle iyi"): zoom her zaman 1, yeni yakın çekim,
+  kaydırma ya da takip eklenmez; bugünkü kamera davranışı olduğu gibi kalır. Sarsıntı yalnızca
+  dünya kamerasını etkiler, arayüz sabit kalır.
 - **Zaman.** Tek gösteri saati: duraklatma, hız (1× / 2× / 3×, basılı tutunca hızlandırma) ve
   hit-stop her alt sistemi aynı etkiler; sekmeden dönünce biriken zaman efektleri topluca
   tetiklemez; sahne kapanınca zamanlayıcı, tween, dinleyici ve parçacıklar temizlenir.
