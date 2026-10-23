@@ -446,7 +446,7 @@ const isBand = (k: Metric): k is BandMetric => (BAND_METRICS as readonly string[
  * A control at KALIR + 0.003 would pass a bare "KALIR" check while the metric is all but blind; the margin
  * makes such a control fail (exit 3). Relative, not absolute: the KALIR bands differ in width (MOTloop has
  * 0.15 of headroom, MOTavg 0.30). The A4.1 population (5 v3 members, 12 v1 arts, gate source and proxy,
- * + the two titan / sentinel cross builds) sits at ≥ 0.85 of the headroom (closest: MOTloop 0.977 of the
+ * + the two titan / sentinel cross builds) sits at ≥ 0.849 of the headroom (closest: MOTloop 0.977 of the
  * ±60 ms cross build); a synthetic art with a 4-frame guard reads 0.53 (tests/tools/sameness.test.ts).
  */
 export const CONTROL_MARGIN = 0.5;
