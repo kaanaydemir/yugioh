@@ -244,7 +244,7 @@ motor değişikliği gerektirdiği için ikisi birlikte tasarlanır.
 | A0 Envanter ve ölçüm | tamam | `docs/v3/A0_ENVANTER.md` + `docs/v3/a0/*.md` |
 | A1 Altyapı | tamam | `?look=v3`, sakin arena, tam sayı kamera, kare süreleri + yeni poz türleri, P2 yeniden ışık, ağırlık profilleri, tek gösteri saati, basamaklı ışık; `tools/measure.mjs`, `tools/sheet-hash.ts`; kabul: 2. tur geçti |
 | A2 Dikey dilim | tamam | Kristal Ejder + Uçurum Büyücüsü yeni stil ve tam yaşam döngüsü, ortak v3 kitleri, Yıldırım Hükmü, Işık Zincirleri, yeni giriş portreleri, dilim sesleri (`src/audio/v3/`), `tools/clip.mjs`; kabul: 11/11 (madde 1 düzeltme turuyla) |
-| A3 Rehber + ölçeklenebilirlik katmanı | sürüyor | rehber (`docs/v3/REHBER.md`) ve mimari (`docs/v3/A3_MIMARI.md`: iki bağımsız öneri, hakem, karşıt inceleme) tamam; yapım (Y0–Y10) sürüyor; sonunda kullanıcı onay kapısı (Y11) |
+| A3 Rehber + ölçeklenebilirlik katmanı | tamam | rehber (`docs/v3/REHBER.md`), mimari (`docs/v3/A3_MIMARI.md`), çekirdek (rigkit, malzemeler, `biped/v1`, sunum tarifleri, darbe kiti, araçlar), pilot Taş Muhafız oyunda; kabul özeti `docs/v3/A3_KABUL.md` (bütün kapılar geçti; bilinen açıklar orada) |
 | A4 Kalan canavarlar | bekliyor | |
 | A5 Büyü / tuzak / kart resimleri | bekliyor | |
 | A6 Küçük olaylar | bekliyor | |
