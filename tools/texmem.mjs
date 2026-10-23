@@ -8,8 +8,9 @@
 //   node tools/texmem.mjs [--look v1|v3|both] [--boot] [--scenario a,b] [--demo 9,2] [options]
 //
 //   --look v1|v3|both  which look(s) to measure (default both)
-//   --boot             the game's boot: index.html (title screen) until every monster sheet the boot
-//                      queued is painted and the first-use warming is done (default when no run is given)
+//   --boot             the game's boot: index.html (title screen) until the background painting the boot
+//                      queued is done and the first-use warming is done (default when no run is given;
+//                      a P2 relit sheet is then painted up to its entrance poses: `paint.deferred`)
 //   --scenario KEYS    ?dev=duel&s=<key>&test=1 (what films / measure pages hold): its boot (staged
 //                      sheets painted synchronously), then the scenario played in real time to the end
 //   --demo SEEDS       ?mode=demo&seed=<s>&speed=<speed>&skipIntro=1: a CPU-vs-CPU game played in real time
@@ -34,10 +35,16 @@
 // over every live WebGL texture (render targets included). `heapMB` is the JS heap after a forced GC
 // (ArrayBuffer backing stores, e.g. PixelCanvas frame caches, are NOT in it: see `frameCache`).
 // Painting: `paint` comes from src/art/textures.ts sheetPaintStats() when the served code has it
-// (CPU ms in the painters per sheet, when each sheet finished); `bootToPaintedMs` is the wall time
-// from navigation start until every queued sheet is painted (whenMonstersBuilt() on older code, which
-// does not paint P2 sheets ahead); `longtasks` are the main-thread tasks ≥ 50 ms (PerformanceObserver),
-// with the cinematic event that was playing.
+// (CPU ms in the painters per sheet, when each sheet finished); `paintedAt` is the page time when the
+// background painting queue is empty (whenSheetsPainted(); whenMonstersBuilt() on older code, which
+// does not paint P2 sheets ahead — the A4.1 review fix paints them ahead only up to base + 'summon',
+// the rest when player 2 first uses the monster: `paint.deferred` lists those still waiting);
+// `longtasks` are the main-thread tasks ≥ 50 ms (PerformanceObserver),
+// with the cinematic event that was playing. Long tasks are split at the end of the boot (`bootAt`):
+// a demo run's first `gameStart` event (else the duel's ready time), a scenario page's ready time, a
+// boot run's end of painting. `boot longest` is the longest task that ended by then (the synchronous
+// boot block); `longest` / `>50ms` / "long tasks after boot" count only the tasks that end after it
+// (in play: a task overlapping the boundary counts as in play).
 //
 // Categories (by texture key): monP1 `mon:<id>`, monP2 `mon:<id>:p2`, monOther (other `mon:` keys),
 // cutin `cutin:*`, cards (`card*`, `tilecard*`, `cardart*`, `pile*`, `hand*`), arena (`arena*`, `board*`,
@@ -133,7 +140,7 @@ function categoryOf(key) {
 
 /** Installed before any page script: long tasks, the RAF clock and the cinematic event in play. */
 const INIT = () => {
-  window.__tm = { longtasks: [], ev: '', raf0: 0 };
+  window.__tm = { longtasks: [], ev: '', raf0: 0, events: [] };
   try {
     new PerformanceObserver((l) => {
       for (const e of l.getEntries()) window.__tm.longtasks.push({ start: Math.round(e.startTime), ms: Math.round(e.duration), ev: window.__tm.ev });
@@ -146,7 +153,11 @@ const INIT = () => {
 const HOOK_EVENTS = async () => {
   try {
     const m = await import('/src/cinematics/_core/registry.ts');
-    m.registerObserver((ev) => (window.__tm.ev = ev.type));
+    m.registerObserver((ev) => {
+      window.__tm.ev = ev.type;
+      // the boundary between the boot and play (each game of a --repeat run starts with one)
+      if (ev.type === 'gameStart' || ev.type === 'gameOver') window.__tm.events.push({ type: ev.type, at: Math.round(performance.now()) });
+    });
     return true;
   } catch {
     return false;
@@ -200,6 +211,7 @@ const SNAPSHOT = async () => {
   } catch {}
   out.scenes = g.scene.getScenes(true).map((s) => s.sys.settings.key);
   out.longtasks = window.__tm ? window.__tm.longtasks.slice() : [];
+  out.events = window.__tm ? window.__tm.events.slice() : [];
   out.errors = (window.__neon.errors || []).slice(0, 20);
   out.at = Math.round(performance.now());
   return out;
@@ -396,6 +408,7 @@ async function measureRun(run) {
     } else {
       await page.waitForFunction(() => window.__neon.ready === true && !!window.__neon.duel, null, { timeout: 300000 });
       rec.t.readyWall = Date.now() - wall0;
+      rec.t.readyAt = await page.evaluate(() => Math.round(performance.now()));
       rec.games = [];
       for (let g = 0; g < REPEAT; g++) {
         if (g > 0) {
@@ -419,6 +432,11 @@ async function measureRun(run) {
     }
     await page.waitForTimeout(SETTLE);
     rec.snap = await page.evaluate(SNAPSHOT);
+    if (run.kind === 'demo') {
+      // page ms of every game's gameStart (the long-task windows of the report)
+      rec.t.gameStarts = gameStartsOf(rec.snap);
+      rec.games.forEach((gm, i) => (gm.startAt = rec.t.gameStarts[i] ?? null));
+    }
   } catch (e) {
     rec.failed = String(e && e.message ? e.message : e).slice(0, 600);
   }
@@ -441,6 +459,22 @@ async function measureRun(run) {
 
 const MB = (b) => +(b / 1048576).toFixed(2);
 
+/** The game starts the page saw (gameStart events, page ms), in order. */
+const gameStartsOf = (snap) => (snap?.events ?? []).filter((e) => e.type === 'gameStart').map((e) => e.at);
+
+/**
+ * Where a run's boot ends for its long tasks (page ms; see the header): a demo run's first
+ * gameStart (else the duel's ready time), a scenario page's ready time, a boot run's end of painting.
+ */
+function bootEndOf(rec) {
+  const t = rec.t ?? {};
+  if (rec.kind === 'demo') return gameStartsOf(rec.snap)[0] ?? t.readyAt ?? 0;
+  if (rec.kind === 'scenario') return t.readyAt ?? 0;
+  return t.paintedAt > 0 ? t.paintedAt : t.readyAt ?? 0;
+}
+
+const fmtTask = (t) => `${t.ms}ms@${t.start}${t.ev ? `(${t.ev})` : ''}`;
+
 function summarize(rec) {
   if (!rec.snap) return null;
   const cats = Object.fromEntries(CATS.map((c) => [c, 0]));
@@ -454,6 +488,10 @@ function summarize(rec) {
     total += r.bytes;
   }
   const lt = rec.snap.longtasks ?? [];
+  // in play / after the boot: every task that ends after the boundary (one overlapping it counts)
+  const bootAt = bootEndOf(rec);
+  const after = lt.filter((t) => t.start + t.ms > bootAt);
+  const boot = lt.filter((t) => t.start + t.ms <= bootAt);
   return {
     totalMB: MB(total),
     textures: rec.snap.rows.length,
@@ -463,10 +501,22 @@ function summarize(rec) {
     glMB: MB(rec.snap.gl.bytes),
     glTextures: rec.snap.gl.textures,
     heapMB: rec.snap.heapMB,
-    longtasks: lt.length,
-    longestTask: Math.max(0, ...lt.map((t) => t.ms)),
-    longtasksAfterBoot: lt.filter((t) => t.start > (rec.t.paintedAt > 0 ? rec.t.paintedAt : rec.t.readyAt ?? 0)).map((t) => `${t.ms}ms@${t.start}${t.ev ? `(${t.ev})` : ''}`),
+    bootAt,
+    bootLongtasks: boot.length,
+    bootLongest: Math.max(0, ...boot.map((t) => t.ms)),
+    longtasks: after.length,
+    longestTask: Math.max(0, ...after.map((t) => t.ms)),
+    longtasksAfterBoot: after.map(fmtTask),
   };
+}
+
+/** Long tasks of game `i` of a demo run: from its gameStart to the next game's (or the end). */
+function gameTasks(rec, i) {
+  const starts = gameStartsOf(rec.snap);
+  if (starts[i] === undefined) return null;
+  const end = starts[i + 1] ?? Infinity;
+  const lt = (rec.snap.longtasks ?? []).filter((t) => t.start + t.ms > starts[i] && t.start + t.ms <= end);
+  return { startAt: starts[i], n: lt.length, longest: Math.max(0, ...lt.map((t) => t.ms)), list: lt.map(fmtTask) };
 }
 
 const results = [];
@@ -493,7 +543,7 @@ try {
     const s = rec.summary;
     if (rec.failed || rec.pageErrors.length || rec.timedOut) failed++;
     log(
-      `${run.look} ${run.kind}${run.arg !== null ? ` ${run.arg}` : ''}: ${rec.failed ? `FAILED ${rec.failed}` : `total ${s.totalMB} MB (mon P1 ${s.catsMB.monP1} / P2 ${s.catsMB.monP2}), gl ${s.glMB} MB, heap ${s.heapMB} MB, longest task ${s.longestTask} ms`}${rec.pageErrors.length ? `, ${rec.pageErrors.length} page errors` : ''} [${Math.round(rec.wallMs / 1000)} s]`,
+      `${run.look} ${run.kind}${run.arg !== null ? ` ${run.arg}` : ''}: ${rec.failed ? `FAILED ${rec.failed}` : `total ${s.totalMB} MB (mon P1 ${s.catsMB.monP1} / P2 ${s.catsMB.monP2}), gl ${s.glMB} MB, heap ${s.heapMB} MB, longest task after boot ${s.longestTask} ms (boot ${s.bootLongest} ms)`}${rec.pageErrors.length ? `, ${rec.pageErrors.length} page errors` : ''} [${Math.round(rec.wallMs / 1000)} s]`,
     );
   }
 } finally {
@@ -509,7 +559,7 @@ fs.writeFileSync(OUT, JSON.stringify(out, null, 1));
 const L = [];
 L.push(`texmem ${out.date}  root ${out.root}  ${out.git ? `${out.git.head.slice(0, 8)}${out.git.srcDirty ? ' + uncommitted src' : ''}${out.git.snapshot ? ' (snapshot)' : ''}` : ''}${out.label ? `  — ${out.label}` : ''}`);
 L.push('');
-L.push('run                         total   monP1   monP2  monOth   cutin   cards   arena     vfx      ui   other |  #tex   gl MB  heap |  paint→ms  warm→ms  firstScene  longest  >50ms');
+L.push('run                         total   monP1   monP2  monOth   cutin   cards   arena     vfx      ui   other |  #tex   gl MB  heap |  paint→ms  warm→ms  firstScene  boot longest |  longest  >50ms');
 for (const r of results) {
   const s = r.summary;
   const name = `${r.look} ${r.kind}${r.arg !== null ? ` ${r.arg}` : ''}`.padEnd(26);
@@ -521,7 +571,7 @@ for (const r of results) {
   const f = (v) => String(v.toFixed(2)).padStart(7);
   const paintAt = r.t.paintedAt ?? -1;
   L.push(
-    `${name} ${f(s.totalMB)} ${f(c.monP1)} ${f(c.monP2)} ${f(c.monOther)} ${f(c.cutin)} ${f(c.cards)} ${f(c.arena)} ${f(c.vfx)} ${f(c.ui)} ${f(c.other)} | ${String(s.textures).padStart(5)} ${f(s.glMB)} ${String(s.heapMB).padStart(5)} | ${String(paintAt >= 0 ? paintAt : '-').padStart(8)} ${String(r.t.warmAt ?? '-').padStart(8)} ${String(r.t.firstSceneWall ?? '-').padStart(11)} ${String(s.longestTask).padStart(8)} ${String(s.longtasks).padStart(6)}`,
+    `${name} ${f(s.totalMB)} ${f(c.monP1)} ${f(c.monP2)} ${f(c.monOther)} ${f(c.cutin)} ${f(c.cards)} ${f(c.arena)} ${f(c.vfx)} ${f(c.ui)} ${f(c.other)} | ${String(s.textures).padStart(5)} ${f(s.glMB)} ${String(s.heapMB).padStart(5)} | ${String(paintAt >= 0 ? paintAt : '-').padStart(8)} ${String(r.t.warmAt ?? '-').padStart(8)} ${String(r.t.firstSceneWall ?? '-').padStart(11)} ${String(s.bootLongest).padStart(13)} | ${String(s.longestTask).padStart(8)} ${String(s.longtasks).padStart(6)}`,
   );
 }
 L.push('');
@@ -534,22 +584,27 @@ for (const r of results) {
   L.push(`  largest others: ${top.map((x) => `${x.key} ${MB(x.bytes)}`).join(', ')}`);
   if (r.snap.paint) {
     const p = r.snap.paint;
-    L.push(`  paint: ${JSON.stringify({ sheets: p.sheets?.length ?? 0, cpuMs: p.cpuMs, packMs: p.packMs, uploads: p.uploads, firstAt: p.firstAt, doneAt: p.doneAt, pending: p.pending })}`);
+    L.push(`  paint: ${JSON.stringify({ sheets: p.sheets?.length ?? 0, cpuMs: p.cpuMs, packMs: p.packMs, uploads: p.uploads, firstAt: p.firstAt, doneAt: p.doneAt, pending: p.pending, ...(p.deferred ? { deferred: p.deferred } : {}) })}`);
   }
   if (r.snap.frameCache) {
     const fc = r.snap.frameCache;
     L.push(`  frame cache: grid ${fc.grid.frames} frames ${MB(fc.grid.bytes)} MB, pinned ${fc.pinned.frames} ${MB(fc.pinned.bytes)} MB, lru ${fc.lru.frames} ${MB(fc.lru.bytes)} MB (budget ${MB(fc.lru.budget)}); ${JSON.stringify(fc.counts)}`);
   }
   if (r.profileMs) L.push(`  profile (inclusive ms): ${Object.entries(r.profileMs).filter(([, v]) => v > 0).map(([k, v]) => `${k} ${v}`).join(', ')}`);
-  if (r.summary?.longtasksAfterBoot?.length) L.push(`  long tasks after boot: ${r.summary.longtasksAfterBoot.slice(0, 30).join(' ')}`);
+  if (r.summary) {
+    const what = r.kind === 'demo' ? (gameStartsOf(r.snap).length ? 'the first gameStart' : 'the duel ready') : r.kind === 'scenario' ? 'the page ready' : 'the end of painting';
+    L.push(`  long tasks: boot (until ${what}, ${r.summary.bootAt} ms) ${r.summary.bootLongtasks}, longest ${r.summary.bootLongest} ms; after boot ${r.summary.longtasks}, longest ${r.summary.longestTask} ms`);
+    if (r.summary.longtasksAfterBoot.length) L.push(`  long tasks after boot: ${r.summary.longtasksAfterBoot.slice(0, 30).join(' ')}`);
+  }
   if (r.winner !== undefined) L.push(`  game: winner P${r.winner + 1} (${r.reason}) turn ${r.turns}, lp ${r.lp}`);
   if (r.games && r.games.length > 1)
     for (const [i, g] of r.games.entries()) {
       if (!g.snap) continue;
       const gs = summarize({ snap: g.snap, t: {} });
       const fc = g.snap.frameCache;
+      const gt = gameTasks(r, i);
       L.push(
-        `  game ${i + 1}: P${(g.winner ?? -2) + 1} turn ${g.turns}  total ${gs.totalMB} MB (mon P1 ${gs.catsMB.monP1} / P2 ${gs.catsMB.monP2}, vfx ${gs.catsMB.vfx}, ui ${gs.catsMB.ui}), ${gs.textures} textures, gl ${gs.glMB} MB, heap ${gs.heapMB} MB${fc ? `, frame cache ${MB(fc.grid.bytes + fc.pinned.bytes + fc.lru.bytes)} MB (grid ${fc.grid.frames}, pinned ${fc.pinned.frames}, lru ${fc.lru.frames})` : ''}`,
+        `  game ${i + 1}: P${(g.winner ?? -2) + 1} turn ${g.turns}  total ${gs.totalMB} MB (mon P1 ${gs.catsMB.monP1} / P2 ${gs.catsMB.monP2}, vfx ${gs.catsMB.vfx}, ui ${gs.catsMB.ui}), ${gs.textures} textures, gl ${gs.glMB} MB, heap ${gs.heapMB} MB${fc ? `, frame cache ${MB(fc.grid.bytes + fc.pinned.bytes + fc.lru.bytes)} MB (grid ${fc.grid.frames}, pinned ${fc.pinned.frames}, lru ${fc.lru.frames})` : ''}${gt ? `, from gameStart @${gt.startAt}: ${gt.n} long tasks, longest ${gt.longest} ms` : ''}`,
       );
     }
   if (r.notes.length) L.push(`  notes: ${r.notes.join(' | ')}`);

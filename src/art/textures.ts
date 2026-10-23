@@ -23,7 +23,10 @@
 //     staged scenario's monsters and the ones in its decks, or the decks' monsters in a real game;
 //     the P2 'relight' sheets only for monsters player 2 can control); every other sheet is
 //     registered (frames + anims exist) and painted on first use, synchronously (?test:
-//     deterministic under the frozen clock).
+//     deterministic under the frozen clock). In a real game a P2 'relight' sheet is painted ahead
+//     only as far as a player-2 unit's entrance needs it (base anims + 'summon'); the rest of it is
+//     queued when the first player-2 unit of that monster appears (monsterSheetKey(id, 1)), or as
+//     player 2 sets it face-down (warmP2Sheet: its flip comes with no lead time).
 //   - FRAME CACHE LIMIT: the v3 arts' frames requested through monsterFrame() live in an LRU of
 //     FRAME_CACHE_BUDGET bytes (a miss reads the frame back from its atlas canvas, or draws it);
 //     only the frames the boot warming and the card art need are kept for good (idle 0, the
@@ -286,12 +289,32 @@ export function relightsP2(art: MonsterArt): boolean {
 export function monsterSheetKey(id: MonsterId, player: 0 | 1): string {
   if (player === 1) {
     const k = monsterP2TextureKey(id);
-    // a lazy P2 sheet is registered the first time a player-2 unit (or a cinematic warming its
-    // poses) asks for it (A2 tech review r3 #8)
-    if (!knownSheets.has(k)) prepareLazyP2(k);
+    noteP2Use(k);
     if (knownSheets.has(k)) return k;
   }
   return monsterTextureKey(id);
+}
+
+/**
+ * A player-2 unit of a monster exists or is coming: a lazy P2 sheet is registered (and painted in
+ * the background) the first time (A2 tech review r3 #8); a P2 sheet painted ahead only up to its
+ * entrance poses gets the rest of its anims queued (A4.1 review, see p2Rest).
+ */
+function noteP2Use(key: string): void {
+  if (!knownSheets.has(key)) prepareLazyP2(key);
+  else if (p2Rest.size) queueP2Rest(key);
+}
+
+/**
+ * (A4.1 review) A player-2 unit of this monster will appear WITHOUT a warm-up: player 2 set it
+ * face-down, and its flip comes with no lead (the flip summon's rise starts ~60 ms after the unit
+ * appears, an attack's blow on it right after). src/boot/50-warm.ts calls this on player 2's
+ * setMonster event, a turn ahead: what the first monsterSheetKey(id, 1) does — the remaining anims
+ * of its P2 'relight' sheet are queued (a lazy one is registered and painted). A no-op for
+ * monsters without such a sheet, once done, and with ?test (painted synchronously on use there).
+ */
+export function warmP2Sheet(id: MonsterId): void {
+  if (!syncMode) noteP2Use(monsterP2TextureKey(id));
 }
 
 export function monsterAnimKey(id: MonsterId, anim: AnyMonsterAnim): string {
@@ -460,14 +483,12 @@ interface PendingSheet {
   groups: Map<AnyMonsterAnim, Group>;
   /** cells not painted yet */
   left: number;
-  /** background cursor */
-  next: number;
   /** a cell was painted since the last upload */
   dirty: boolean;
   /** registered by buildAllMonsters (whenMonstersBuilt waits for these) */
   boot: boolean;
-  /** in a background paint queue (whenSheetsPainted waits for these) */
-  queued: boolean;
+  /** jobs of this sheet in the background painting queue (whenSheetsPainted waits for the queue) */
+  jobs: number;
   /** extra anims of this sheet (have lazy hooks) */
   extras: AnyMonsterAnim[];
   /** every base anim is painted + uploaded */
@@ -507,6 +528,12 @@ export interface SheetStats {
 const pendingSheets = new Map<string, PendingSheet>();
 /** anim key → sheet, for the extra anims of pending sheets (AnimationManager.get hook) */
 const pendingExtraAnims = new Map<string, { ps: PendingSheet; anim: AnyMonsterAnim }>();
+/**
+ * (A4.1 review) P2 'relight' sheets painted ahead only up to a player-2 unit's entrance (base anims
+ * + 'summon', buildAllMonsters): the rest waits here for the first player-2 unit of that monster
+ * (monsterSheetKey(id, 1) → queueP2Rest), so a sheet player 2 never fields never paints it.
+ */
+const p2Rest = new Map<string, PendingSheet>();
 const whenDone: (() => void)[] = [];
 const whenAllDone: (() => void)[] = [];
 /** keys of every monster sheet built or prepared here (monsterSheetPending) */
@@ -539,8 +566,23 @@ function sheetBytes(tex: Phaser.Textures.Texture | null | undefined): number {
   return b;
 }
 
-/** Painting statistics of every monster sheet (tools/texmem.mjs). */
-export function sheetPaintStats(): { sheets: SheetStats[]; cpuMs: number; packMs: number; uploads: number; firstAt: number; doneAt: number; pending: string[]; queuedPending: string[] } {
+/**
+ * Painting statistics of every monster sheet (tools/texmem.mjs). `pending`: sheets not complete;
+ * `queuedPending`: those with work in the background queue; `deferred`: P2 sheets whose remaining
+ * anims wait for the first player-2 unit of their monster; `queue`: background jobs left.
+ */
+export function sheetPaintStats(): {
+  sheets: SheetStats[];
+  cpuMs: number;
+  packMs: number;
+  uploads: number;
+  firstAt: number;
+  doneAt: number;
+  pending: string[];
+  queuedPending: string[];
+  deferred: string[];
+  queue: number;
+} {
   const sheets = [...sheetStats.values()].map((s) => ({ ...s, cpuMs: +s.cpuMs.toFixed(1), packMs: +s.packMs.toFixed(1) }));
   return {
     sheets,
@@ -550,17 +592,14 @@ export function sheetPaintStats(): { sheets: SheetStats[]; cpuMs: number; packMs
     firstAt: Math.round(firstPaintAt),
     doneAt: Math.round(lastPaintAt),
     pending: [...pendingSheets.keys()],
-    queuedPending: [...pendingSheets.values()].filter((p) => p.queued).map((p) => p.key),
+    queuedPending: [...pendingSheets.values()].filter((p) => p.jobs > 0).map((p) => p.key),
+    deferred: [...p2Rest.entries()].filter(([k, ps]) => pendingSheets.get(k) === ps).map(([k]) => k),
+    queue: paintQueue.length,
   };
 }
 
 function bootPending(): boolean {
   for (const ps of pendingSheets.values()) if (ps.boot) return true;
-  return false;
-}
-
-function queuedPending(): boolean {
-  for (const ps of pendingSheets.values()) if (ps.queued) return true;
   return false;
 }
 
@@ -571,11 +610,13 @@ export function whenMonstersBuilt(): Promise<void> {
 }
 
 /**
- * (A4.1) Resolves once every sheet queued for background painting — the boot's P1 sheets AND the
- * P2 'relight' sheets painted ahead — is painted (immediately when nothing is queued).
+ * (A4.1) Resolves once the background painting queue is empty — everything the boot queued (the
+ * P1 sheets, the P2 'relight' sheets' entrance poses) and anything queued since (a P2 sheet's
+ * remaining anims after its first player-2 unit, a lazy P2 sheet) is painted (immediately when
+ * nothing is queued). Warm-ups (warmMonsterSheet) run on their own and are not waited for.
  */
 export function whenSheetsPainted(): Promise<void> {
-  if (!queuedPending()) return Promise.resolve();
+  if (!paintQueue.length && !painting) return Promise.resolve();
   return new Promise((r) => whenAllDone.push(r));
 }
 
@@ -696,7 +737,6 @@ function settle(ps: PendingSheet): void {
   if (!ps.stats.doneAt) ps.stats.doneAt = performance.now();
   if (!ps.crop) ps.stats.bytes = sheetBytes(ps.tex);
   if (ps.boot && !bootPending()) for (const r of whenDone.splice(0)) r();
-  if (ps.queued && !queuedPending()) for (const r of whenAllDone.splice(0)) r();
 }
 
 /** Paint + upload the given animations of a pending sheet right now (no-op for ready ones). */
@@ -717,18 +757,19 @@ function ensureAnims(ps: PendingSheet, anims: readonly AnyMonsterAnim[]): void {
 }
 
 /**
- * Paint up to `budgetMs` of pending cells of one sheet, in sheet order, up to cell `limit`;
- * true when that range is done (the sheet settles once every cell is painted). A cropped sheet
- * commits each group as soon as its last cell is painted.
+ * Paint up to `budgetMs` of the pending cells of a job, in sheet order; true when the job's range
+ * is done (the sheet settles once every cell is painted). A cropped sheet commits each group as
+ * soon as its last cell is painted.
  */
-function paintSlice(ps: PendingSheet, budgetMs: number, limit: number): boolean {
+function paintSlice(j: PaintJob, budgetMs: number): boolean {
+  const { ps } = j;
   const t0 = performance.now();
-  while (ps.next < limit) {
-    const i = ps.next++;
+  while (j.at < j.end) {
+    const i = j.at++;
     if (ps.painted[i]) continue;
     paintCell(ps, i);
     if (ps.crop && !ps.crop.packOf.get(ps.cells[i].anim)!.left) upload(ps);
-    if (performance.now() - t0 > budgetMs && ps.next < limit) return false;
+    if (performance.now() - t0 > budgetMs && j.at < j.end) return false;
   }
   settle(ps);
   return true;
@@ -757,9 +798,21 @@ export function finishMonsterSheet(key: string, anims?: readonly AnyMonsterAnim[
  * the death of a unit on the field) finds them ready instead of painting them synchronously on its
  * impact frame. A no-op for complete / synchronous sheets and for anims already painted, and with
  * ?test (the sheets a page did not stage are painted synchronously on first use there).
+ *
+ * (A4.1 review) A P2 'relight' key (`mon:<id>:p2`) warms the same anims of the P1 sheet `mon:<id>`
+ * too: a player-2 unit shows the relit sheet but plays the P1 sheet's anim keys (`mon:<id>:<anim>`,
+ * MonsterUnit's UnitSprite), and their AnimationManager.get hook would paint a still-pending P1 pack
+ * synchronously.
  */
 export function warmMonsterSheet(key: string, anims: readonly AnyMonsterAnim[]): void {
   if (syncMode) return;
+  warmSheet(key, anims);
+  const p1 = /^(mon:[^:]+):p2$/.exec(key)?.[1];
+  if (p1) warmSheet(p1, anims);
+}
+
+/** warmMonsterSheet for one sheet. */
+function warmSheet(key: string, anims: readonly AnyMonsterAnim[]): void {
   const ps = pendingSheets.get(key);
   if (!ps) return;
   const add = anims.map((a) => ps.groups.get(a)).filter((g): g is Group => !!g && !g.ready);
@@ -892,10 +945,9 @@ export function prepareMonsterSheet(scene: Phaser.Scene, art: MonsterArt, o: She
     painted: new Uint8Array(cells.length),
     groups,
     left: cells.length,
-    next: 0,
     dirty: false,
     boot,
-    queued: false,
+    jobs: 0,
     extras,
     baseReady: false,
     crop: cropState,
@@ -961,32 +1013,86 @@ function hookTextureFrames(ps: PendingSheet): void {
   };
 }
 
+// ---------------------------------------------------------------- background painting queue
+//
+// One painter for every deferred sheet: a queue of jobs (a cell range of one sheet each), painted
+// in short slices between frames — setTimeout, SLICE_MS each (requestIdleCallback starves under
+// load: 40+ s in the headless test); a frame is ~2–8 ms of drawing, so a slice may overrun its
+// budget a bit. Later work (a P2 sheet's remaining anims, a lazy P2 sheet) joins the end of the
+// same queue instead of running a second painter next to it. Warm-ups (warmMonsterSheet) keep their
+// own short queues: a cinematic is waiting for those.
+
+/** One background painting job: the cells [at, end) of a pending sheet (painted cells are skipped). */
+interface PaintJob {
+  ps: PendingSheet;
+  at: number;
+  end: number;
+}
+
+const paintQueue: PaintJob[] = [];
+/** a painting tick is scheduled */
+let painting = false;
+
+/** End of a sheet's base cells (the base anims come first in the sheet order, then the extras). */
+function baseEnd(ps: PendingSheet): number {
+  return ps.extras.length ? ps.groups.get(ps.extras[0])!.start : ps.cells.length;
+}
+
+const baseJob = (ps: PendingSheet): PaintJob => ({ ps, at: 0, end: baseEnd(ps) });
+const extrasJob = (ps: PendingSheet): PaintJob => ({ ps, at: baseEnd(ps), end: ps.cells.length });
+
+/** Add jobs to the end of the background queue (and start the painter when it is idle). */
+function queueJobs(jobs: readonly PaintJob[]): void {
+  for (const j of jobs) {
+    j.ps.jobs++;
+    j.ps.stats.queued = true;
+    paintQueue.push(j);
+  }
+  if (painting || !paintQueue.length) return;
+  painting = true;
+  setTimeout(paintTick, 0);
+}
+
+function paintTick(): void {
+  const t0 = performance.now();
+  while (paintQueue.length && performance.now() - t0 < SLICE_MS) {
+    const j = paintQueue[0];
+    let done = true;
+    try {
+      done = pendingSheets.get(j.ps.key) !== j.ps || paintSlice(j, SLICE_MS - (performance.now() - t0));
+    } catch (e) {
+      // one failing art must not stop the painter for every other sheet: drop the job (its cells
+      // are painted on first use, as for any pending sheet)
+      console.error(`[art] background painting of ${j.ps.key} failed`, e);
+    }
+    if (done) {
+      paintQueue.shift();
+      j.ps.jobs--;
+    }
+  }
+  if (paintQueue.length) {
+    setTimeout(paintTick, 0);
+    return;
+  }
+  painting = false;
+  for (const r of whenAllDone.splice(0)) r();
+}
+
 /**
- * Paint the given pending sheets in short slices between frames (requestIdleCallback starves
- * under load: 40+ s in the headless test); a frame is ~2–8 ms of drawing, so a slice may overrun
- * its budget a bit. Base anims of every sheet first (the `first` sheets', then the `then` ones'),
- * then the extras in the same order.
+ * Paint the given pending sheets in the background: base anims of every sheet first (the `first`
+ * sheets', then the `then` ones'), then the extras in the same order.
  */
 function paintSheetsInBackground(first: PendingSheet[], then: PendingSheet[] = []): void {
   const sheets = [...first, ...then];
-  for (const ps of sheets) {
-    ps.queued = true;
-    ps.stats.queued = true;
-  }
-  const baseEnd = (ps: PendingSheet) => (ps.extras.length ? ps.groups.get(ps.extras[0])!.start : ps.cells.length);
-  const queue: { ps: PendingSheet; limit: number }[] = [
-    ...sheets.map((ps) => ({ ps, limit: baseEnd(ps) })),
-    ...sheets.filter((ps) => ps.extras.length).map((ps) => ({ ps, limit: ps.cells.length })),
-  ];
-  const tick = () => {
-    const t0 = performance.now();
-    while (queue.length && performance.now() - t0 < SLICE_MS) {
-      const { ps, limit } = queue[0];
-      if (pendingSheets.get(ps.key) !== ps || paintSlice(ps, SLICE_MS - (performance.now() - t0), limit)) queue.shift();
-    }
-    if (queue.length) setTimeout(tick, 0);
-  };
-  setTimeout(tick, 0);
+  queueJobs([...sheets.map(baseJob), ...sheets.filter((ps) => ps.extras.length).map(extrasJob)]);
+}
+
+/** (A4.1 review) The first player-2 unit of a monster: queue the rest of its P2 sheet (see p2Rest). */
+function queueP2Rest(key: string): void {
+  const ps = p2Rest.get(key);
+  if (!ps) return;
+  p2Rest.delete(key);
+  if (pendingSheets.get(key) === ps) queueJobs([extrasJob(ps)]);
 }
 
 /** Options of the optional P2 'relight' sheet of `art` (see monsterSheetKey). */
@@ -1003,6 +1109,18 @@ function p2SheetOpts(art: MonsterArt): SheetOpts {
 // poses before the body appears) go through — then painted in the background like the boot sheets,
 // base anims first (a lookup before they are done paints them synchronously, as for any deferred
 // sheet). With ?test a lazy P2 sheet is only registered: it is painted synchronously on first use.
+//
+// A4.1 review: a planned P2 sheet is painted ahead only as far as a player-2 unit's ENTRANCE needs
+// it — the base anims (any unit on the field) and 'summon' (warmed only as the summon starts) —
+// because those are what froze on first use (a 535–602 ms base pack, a 75–91 ms summon pack). Its
+// other anims are queued at the first monsterSheetKey(id, 1) of that monster (p2Rest): by then a
+// player-2 unit exists and the warmers cover what comes next — MonsterUnit warms the reactions and
+// the death as the unit takes the field, attackDeclare warms them again, Ruh Çağrısı warms 'revive'
+// — while the queued rest brings what no warmer names ('special', 'victory'). The one entrance with
+// no lead time is a FLIP (the flip summon's 'fromGuard' rise ~60 ms after the unit appears, an
+// attack's blow on a face-down monster): its monster was set face-down a turn earlier, and player 2's
+// setMonster event queues the rest then (src/boot/50-warm.ts → warmP2Sheet). A sheet player 2 never
+// fields never paints them (~half of a relit sheet's painting).
 
 const lazyP2 = new Map<string, { scene: Phaser.Scene; art: MonsterArt }>();
 
@@ -1027,9 +1145,10 @@ function prepareLazyP2(key: string): void {
  * monsters and its decks', or the decks' monsters in a real game — src/art/atlas.ts stagePlan / deckPlan) only
  * the plan's sheets are painted ahead: every other default sheet is registered and painted on
  * first use, every other P2 'relight' sheet registered on first use. ?test paints the plan's
- * sheets synchronously right here; a real game paints them in the background, the P1 sheets'
- * base anims first, then the P2 sheets' base anims, then the extras. Without a plan: every default
- * sheet (and with ?test every P2 'relight' sheet), as before A4.1.
+ * sheets synchronously right here (P2 sheets whole); a real game paints them in the background:
+ * the P1 sheets' base anims, the P2 sheets' base anims, the P1 sheets' extras, then the P2 sheets'
+ * 'summon' — their other anims wait for the first player-2 unit of the monster (p2Rest, above).
+ * Without a plan: every default sheet (and with ?test every P2 'relight' sheet), as before A4.1.
  */
 export function buildAllMonsters(scene: Phaser.Scene, plan?: SheetPlan): void {
   const sync = typeof location === 'undefined' || new URLSearchParams(location.search).has('test');
@@ -1074,7 +1193,13 @@ export function buildAllMonsters(scene: Phaser.Scene, plan?: SheetPlan): void {
     if (p2Want.has(art.id)) prepare(art, o, false, then);
     else lazyP2.set(o.key!, { scene, art });
   }
-  paintSheetsInBackground(first, then);
+  const jobs: PaintJob[] = [...first.map(baseJob), ...then.map(baseJob), ...first.filter((ps) => ps.extras.length).map(extrasJob)];
+  for (const ps of then) {
+    const summon = ps.groups.get('summon');
+    if (summon) jobs.push({ ps, at: summon.start, end: summon.end });
+    if (ps.extras.some((a) => a !== 'summon')) p2Rest.set(ps.key, ps);
+  }
+  queueJobs(jobs);
 }
 
 /** Start background painting of deferred sheets registered with prepareMonsterSheet (by key). */
