@@ -129,6 +129,22 @@ Mantık dilimle aynıdır: rampa başına 3 düzlem, en çok 1 kıvrım tonu ve 
 | **Bitki** (Dikenli Pusucu) | `leaf0…leaf4` + `earth` | Yaprak 2 tondur, orta damar boyunca ayrılır. Sarmaşık ≥ 2 px kalınlıktadır ve 1 px aydınlık kenarı vardır. Diken 2 px diştir. | — | `plant` (solar) | Kopma + hışırtı |
 | **Işık varlığı** (Işık Perisi) | `gold1…gold4 + white` | Küçük gövde, ışıklı çekirdek. Kanat hücreleri cam kuralıyla çizilir. | IŞ-8 parıltı kuralı | `light` (zerreler yükselir) | Çan benzeri sinüs pırıltısı |
 
+**A4.1 sabit kare kararları (Magma Titanı ve Mercan Yılanı, 23 Ekim 2026).** Sabit kareler
+`src/still/titan-map.ts` ve `src/still/serpent-map.ts`. Malzeme tanımları bu kararlarla güncellenir:
+
+- **Bazalt (Titan):** taştan bir değer koyu. Cam kenar `stone3`, en çok 4 px'lik parçalar halinde, yalnız
+  büyük yakın blokların ışığa bakan kenarında. Tek parıltı `stone4`. Mavi (`steel`) kenar kullanılmaz:
+  canavarı mavi golem gibi gösteriyordu.
+- **Bazaltın uzak yüzü:** gölge düzlemleri `stone0`. Gölgeye bakan konturun hemen içinde 1 px `stone1`
+  arka kenar vardır, böylece koyu gövde koyu zeminden 1×'te ayrılır. `night0` yalnız 1–2 px'lik
+  kesiklerde kullanılır. Tabanlar temas gölgesi olarak `stone0` kalır.
+- **Lav:** dinlenmede çekirdekte tam bir `gold4` parıltı vardır. Daha fazla altın ya da beyaz yalnız tam
+  ısıda (hazırlığın tepesi, temas) görünür. Çatlaklar çekirdekten dışa doğru kırık çizgiler olarak açılır.
+  Düz "+" biçimli dikişler kullanılmaz; bunlar taş duvar örgüsü gibi okunur.
+- **Pullu deri (Yılan):** pul sıraları yalnız orta ve gölge düzleminin sınırında, yaklaşık 5 px arayla
+  2 px'lik dişlerdir. Aydınlık düzlem sakin kalır. Bu, yukarıdaki satırın "1 px çentik, 3–4 px aralık"
+  kuralını yılan için düzeltir.
+
 ---
 
 ## 3. Silüet ve oran
