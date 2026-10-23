@@ -27,6 +27,7 @@ import type { Attribute, MonsterId } from '../../data/cards';
 import { ATTRIBUTE_NAMES, cardDef, isMonster } from '../../data/cards';
 import type { PlayerId } from '../../engine/types';
 import { ATTRIBUTE_RAMP, PAL } from '../../art/palette';
+import { frameRGBA } from '../../art/atlas';
 import { monsterArt } from '../../art/monsters';
 import { monsterAnimKey, monsterFrameName, monsterTextureKey, sheetTexture } from '../../art/textures';
 import { cutinArt, cutinFrame, cutinFrameName, cutinP2Key, cutinRelit, cutinSequence } from '../../art/cutins';
@@ -97,15 +98,11 @@ function findEye(scene: Phaser.Scene, key: string, frameName: string | number): 
   try {
     const fr = scene.textures.getFrame(key, frameName);
     if (!fr) return null;
-    const src = fr.source.image as HTMLCanvasElement | HTMLImageElement;
-    const c = document.createElement('canvas');
-    c.width = fr.cutWidth;
-    c.height = fr.cutHeight;
-    const g = c.getContext('2d', { willReadFrequently: true })!;
-    g.drawImage(src, fr.cutX, fr.cutY, fr.cutWidth, fr.cutHeight, 0, 0, fr.cutWidth, fr.cutHeight);
-    const d = g.getImageData(0, 0, c.width, c.height).data;
-    const W = c.width;
-    const H = c.height;
+    // the frame's full pixels (A4.1: a cropped v3 monster sheet stores it trimmed; frameRGBA rebuilds it)
+    const d = frameRGBA(fr);
+    if (!d) return null;
+    const W = fr.realWidth;
+    const H = fr.realHeight;
     const lum = (x: number, y: number) => {
       if (x < 0 || y < 0 || x >= W || y >= H) return 0;
       const i = (y * W + x) * 4;

@@ -32,6 +32,7 @@
 // math flashBands and the older crop math cropFromHist are unit-tested in tests/cinematics/).
 
 import type Phaser from 'phaser';
+import { frameRGBA } from '../../art/atlas';
 import { PAL } from '../../art/palette';
 import type { XY } from '../../view/layout';
 
@@ -50,7 +51,6 @@ export interface Hist {
 
 const hists = new WeakMap<object, Map<string, Hist>>();
 const masks = new WeakMap<object, Map<string, Uint8Array>>();
-let scratch: HTMLCanvasElement | null = null;
 
 function frameHist(frame: Phaser.Textures.Frame): Hist | null {
   const src = frame.source;
@@ -60,7 +60,7 @@ function frameHist(frame: Phaser.Textures.Frame): Hist | null {
   if (hit) return hit;
   const data = framePixels(frame);
   if (!data) return null;
-  const out = histOf(data, frame.cutWidth, frame.cutHeight);
+  const out = histOf(data, frame.realWidth, frame.realHeight);
   // a sheet frame is painted lazily: never cache a blank one
   if (!out.total) return null;
   byName.set(frame.name, out);
@@ -76,7 +76,7 @@ function frameMask(frame: Phaser.Textures.Frame): Uint8Array | null {
   if (hit) return hit;
   const data = framePixels(frame);
   if (!data) return null;
-  const m = new Uint8Array(frame.cutWidth * frame.cutHeight);
+  const m = new Uint8Array(frame.realWidth * frame.realHeight);
   let any = false;
   for (let i = 0; i < m.length; i++)
     if (data[i * 4 + 3] >= 128) {
@@ -122,31 +122,9 @@ function lightSubject(frame: Phaser.Textures.Frame): boolean {
   return v;
 }
 
-/** RGBA of a frame (frame space), or null. */
+/** RGBA of a frame (frame space: realWidth × realHeight, a trimmed atlas frame rebuilt — A4.1), or null. */
 function framePixels(frame: Phaser.Textures.Frame): Uint8ClampedArray | null {
-  const src = frame.source;
-  const w = frame.cutWidth;
-  const h = frame.cutHeight;
-  if (w <= 0 || h <= 0) return null;
-  let data: Uint8ClampedArray;
-  try {
-    const img = src.image as HTMLCanvasElement | HTMLImageElement;
-    let ctx: CanvasRenderingContext2D | null = null;
-    if (typeof HTMLCanvasElement !== 'undefined' && img instanceof HTMLCanvasElement) ctx = img.getContext('2d', { willReadFrequently: true });
-    if (ctx) data = ctx.getImageData(frame.cutX, frame.cutY, w, h).data;
-    else {
-      scratch ??= document.createElement('canvas');
-      scratch.width = w;
-      scratch.height = h;
-      const c = scratch.getContext('2d', { willReadFrequently: true })!;
-      c.clearRect(0, 0, w, h);
-      c.drawImage(img as CanvasImageSource, frame.cutX, frame.cutY, w, h, 0, 0, w, h);
-      data = c.getImageData(0, 0, w, h).data;
-    }
-  } catch {
-    return null;
-  }
-  return data;
+  return frameRGBA(frame);
 }
 
 /**
@@ -420,8 +398,8 @@ export function contactFlash(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite, 
   const bandsOf = (fr: Phaser.Textures.Frame): FlashBands | null => {
     mask = frameMask(fr);
     if (!mask) return null;
-    const w = fr.cutWidth;
-    const h = fr.cutHeight;
+    const w = fr.realWidth;
+    const h = fr.realHeight;
     // the blow in frame space (a flipped sprite shows the frame mirrored)
     const d = { x: s.flipX ? -dir.x : dir.x, y: dir.y };
     let c: XY | null = null;
@@ -470,8 +448,8 @@ export function contactFlash(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite, 
   const sync = (): boolean => {
     if (!s.active || !s.frame) return false;
     const fr = s.frame;
-    const w = fr.cutWidth;
-    const h = fr.cutHeight;
+    const w = fr.realWidth;
+    const h = fr.realHeight;
     if (!tex || w !== tw || h !== th) {
       if (img) img.destroy();
       if (key && scene.textures.exists(key)) scene.textures.remove(key);

@@ -17,6 +17,7 @@
 
 import Phaser from 'phaser';
 import type { Attribute } from '../data/cards';
+import { frameRGBA } from '../art/atlas';
 import { ATTRIBUTE_RAMP, PAL, type Ramp } from '../art/palette';
 import { Swarm, animate, onTick, rampFrom, rnd, rrange } from './particles';
 import { wait } from './core';
@@ -434,7 +435,6 @@ export interface FramePixels {
 }
 
 const pixCache = new WeakMap<object, Map<string, FramePixels>>();
-let scratch: HTMLCanvasElement | null = null;
 
 /** RGBA pixels of a sprite's current frame (cached per texture source + frame). */
 export function framePixels(sprite: HoloTarget): FramePixels | null {
@@ -450,15 +450,11 @@ export function framePixels(sprite: HoloTarget): FramePixels | null {
   const key = `${frame.cutX},${frame.cutY},${frame.cutWidth},${frame.cutHeight}`;
   let fp = m.get(key);
   if (fp) return fp;
-  const w = frame.cutWidth;
-  const h = frame.cutHeight;
-  if (!scratch) scratch = document.createElement('canvas');
-  scratch.width = w;
-  scratch.height = h;
-  const ctx = scratch.getContext('2d', { willReadFrequently: true })!;
-  ctx.clearRect(0, 0, w, h);
-  ctx.drawImage(src, frame.cutX, frame.cutY, w, h, 0, 0, w, h);
-  const data = ctx.getImageData(0, 0, w, h).data;
+  // the frame's full pixels (A4.1: a cropped v3 sheet stores the frame trimmed; frameRGBA rebuilds it)
+  const w = frame.realWidth;
+  const h = frame.realHeight;
+  const data = frameRGBA(frame);
+  if (!data) return null;
   let x0 = w;
   let y0 = h;
   let x1 = -1;

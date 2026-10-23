@@ -14,6 +14,7 @@
 // death on 0). The pure chooser (chooseEntry) is unit-tested.
 
 import type Phaser from 'phaser';
+import { frameRGBA } from '../../art/atlas';
 import type { AnyMonsterAnim } from '../../art/types';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 
@@ -64,7 +65,6 @@ export function chooseEntry(anim: AnyMonsterAnim, reach: number, deathFrames: nu
 // ================================================================ frame pixels (the unit's sheet)
 
 const pixels = new WeakMap<object, Map<string, Uint8ClampedArray>>();
-let scratch: HTMLCanvasElement | null = null;
 
 /**
  * The sheet frame WITHOUT the lazy-paint hooks of src/art/textures.ts (textures.get(key) finishes a
@@ -87,27 +87,9 @@ function framePixels(scene: Phaser.Scene, key: string, name: string): Uint8Clamp
   if (!byName) pixels.set(src, (byName = new Map()));
   const hit = byName.get(name);
   if (hit) return hit;
-  const w = fr.cutWidth;
-  const h = fr.cutHeight;
-  if (w <= 0 || h <= 0) return null;
-  let data: Uint8ClampedArray;
-  try {
-    const img = src.image as HTMLCanvasElement | HTMLImageElement;
-    let c2: CanvasRenderingContext2D | null = null;
-    if (typeof HTMLCanvasElement !== 'undefined' && img instanceof HTMLCanvasElement) c2 = img.getContext('2d', { willReadFrequently: true });
-    if (c2) data = c2.getImageData(fr.cutX, fr.cutY, w, h).data;
-    else {
-      scratch ??= document.createElement('canvas');
-      scratch.width = w;
-      scratch.height = h;
-      const c = scratch.getContext('2d', { willReadFrequently: true })!;
-      c.clearRect(0, 0, w, h);
-      c.drawImage(img as CanvasImageSource, fr.cutX, fr.cutY, w, h, 0, 0, w, h);
-      data = c.getImageData(0, 0, w, h).data;
-    }
-  } catch {
-    return null;
-  }
+  // the frame's full pixels (A4.1: a cropped v3 sheet stores it trimmed; frameRGBA rebuilds it)
+  const data = frameRGBA(fr);
+  if (!data) return null;
   // a lazily painted sheet frame may still be blank: never cache that
   let any = false;
   for (let i = 3; i < data.length; i += 4)
@@ -256,8 +238,8 @@ export function bobShift(u: MonsterUnit, anim: AnyMonsterAnim, frame = 0): numbe
   const b = framePixels(u.scene, u.sheetKey, to);
   const fr = rawFrame(u.scene, u.sheetKey, to);
   if (!a || !b || !fr || a.length !== b.length) return 0;
-  const w = fr.cutWidth;
-  const h = fr.cutHeight;
+  const w = fr.realWidth;
+  const h = fr.realHeight;
   const at = (d: Uint8ClampedArray, x: number, y: number) => (y < 0 || y >= h ? -1 : y * w + x);
   const cost = (dy: number): number => {
     let n = 0;

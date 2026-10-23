@@ -33,6 +33,7 @@ import type { PlayerId } from '../engine/types';
 import { PAL, PLAYER_COLOR, RAMPS, type Ramp } from '../art/palette';
 import { PixelCanvas, mix, mulberry32 } from '../art/pixel';
 import { monsterFrame } from '../art/textures';
+import { frameRGBA } from '../art/atlas';
 import { holdOf } from '../art/animtime';
 import { monsterArt } from '../art/monsters';
 import { sfx, type SfxName } from '../audio/sfx';
@@ -568,36 +569,22 @@ interface FrameBox {
   rows: Array<[number, number] | null>;
 }
 const boxCache = new Map<string, FrameBox | null>();
-const sourceCache = new Map<string, ImageData | null>();
-
-function sourceData(scene: Phaser.Scene, key: string): ImageData | null {
-  if (sourceCache.has(key)) return sourceCache.get(key)!;
-  let data: ImageData | null = null;
-  try {
-    const src = scene.textures.get(key).getSourceImage() as HTMLCanvasElement | HTMLImageElement;
-    const w = src.width;
-    const h = src.height;
-    let ctx: CanvasRenderingContext2D | null = null;
-    if (src instanceof HTMLCanvasElement) ctx = src.getContext('2d', { willReadFrequently: true });
-    if (!ctx) {
-      const c = document.createElement('canvas');
-      c.width = w;
-      c.height = h;
-      ctx = c.getContext('2d', { willReadFrequently: true });
-      ctx?.drawImage(src, 0, 0);
-    }
-    data = ctx ? ctx.getImageData(0, 0, w, h) : null;
-  } catch {
-    data = null;
-  }
-  sourceCache.set(key, data);
-  return data;
-}
 
 function frameBox(scene: Phaser.Scene, frame: Phaser.Textures.Frame): FrameBox | null {
   const k = `${frame.texture.key}|${frame.name}`;
   if (boxCache.has(k)) return boxCache.get(k)!;
-  const data = sourceData(scene, frame.texture.key);
+  // the frame's full pixels (realWidth × realHeight) from its OWN texture source (A4.1: a cropped v3
+  // monster sheet keeps each animation group in a source of its own and stores the frames trimmed;
+  // frameRGBA rebuilds the full frame — an untrimmed frame reads exactly its cut rect, as before)
+  let data: Uint8ClampedArray | null = null;
+  try {
+    scene.textures.get(frame.texture.key); // a deferred monster sheet finishes its base anims first
+    data = frameRGBA(frame);
+  } catch {
+    data = null;
+  }
+  const W = frame.realWidth;
+  const H = frame.realHeight;
   let box: FrameBox | null = null;
   if (data) {
     const rows: Array<[number, number] | null> = [];
@@ -605,13 +592,12 @@ function frameBox(scene: Phaser.Scene, frame: Phaser.Textures.Frame): FrameBox |
     let y0 = Infinity;
     let x1 = -1;
     let y1 = -1;
-    for (let y = 0; y < frame.cutHeight; y++) {
+    for (let y = 0; y < H; y++) {
       let a = -1;
       let b = -1;
-      const sy = frame.cutY + y;
-      for (let x = 0; x < frame.cutWidth; x++) {
-        const i = (sy * data.width + frame.cutX + x) * 4 + 3;
-        if (data.data[i] > 0) {
+      for (let x = 0; x < W; x++) {
+        const i = (y * W + x) * 4 + 3;
+        if (data[i] > 0) {
           if (a < 0) a = x;
           b = x;
         }
