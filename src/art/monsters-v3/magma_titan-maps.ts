@@ -162,11 +162,12 @@ export const LAVA: readonly number[] = Object.freeze([PAL.fire0, PAL.fire1, PAL.
 const LAVA_STEP = new Map<number, number>(LAVA.map((c, i) => [c, i]));
 export const lavaStep = (c: number): number => LAVA_STEP.get(c) ?? -1;
 
-export type LavaKind = 'core' | 'seam' | 'eye' | 'mouth' | 'vent' | 'finger' | 'fingerF' | 'armN' | 'armF' | 'legN' | 'legF' | 'knuckle' | 'knuckleF' | 'melt' | 'meltF';
+export type LavaKind = 'core' | 'seam' | 'eye' | 'mouth' | 'vent' | 'finger' | 'fingerF' | 'armN' | 'armF' | 'legN' | 'legF' | 'knuckle' | 'knuckleF' | 'melt' | 'meltF' | 'cleft';
 
 /** The core pool's centre (the heart, up-left of the pool's middle) and its socket box. */
 export const CORE_AT: readonly [number, number] = [38.5, 41.5];
-const inCore = (x: number, y: number) => (x >= 35 && x <= 42 && y >= 38 && y <= 46) || (x === 43 && y >= 41 && y <= 44);
+/** Is (x, y) (rest frame px) in the core's socket box? (the special's parting plates leave it in place) */
+export const inCore = (x: number, y: number) => (x >= 35 && x <= 42 && y >= 38 && y <= 46) || (x === 43 && y >= 41 && y <= 44);
 
 function kindOf(part: PartKey, x: number, y: number): LavaKind {
   switch (part) {

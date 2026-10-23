@@ -17,22 +17,21 @@
 //            set of rows every frame (fx.flicker).
 
 import { PAL } from '../palette';
-import { clamp, type V } from '../rigkit/geom';
+import { clamp } from '../rigkit/geom';
 import { foamPass, surgePass, hash2, type FoamStyle } from '../rigkit/passes';
 import { FRAME, TONES } from './coral_serpent-build';
-import { BACK, BODY, CROWN, FAN, FIN, HEAD, JAW, MATTER, NO_PATTERN, PATTERN, STILL_TUBE, WATER, type Ctx, type Part } from './coral_serpent-parts';
+import { BACK, BODY, CROWN, FAN, FIN, HEAD, JAW, MATTER, NO_PATTERN, PATTERN, WATER, type Ctx, type Part } from './coral_serpent-parts';
 
 const [W0, W1, W2, W3, W4] = TONES.scale;
 
 // ------------------------------------------------------------------ the foam pass (death / revive)
 
-/** the water's foam: white crests on water4 (REHBER §2.3 Su: foam white / water4 in ≥ 2-px clusters) */
-const FOAM_STYLE: FoamStyle = { foam: [PAL.white, W4], crest: 0.42 };
-/** the rest silhouette's span the foam runs down (still px rows: the skull's top … the coil's foot) */
-const FOAM_SPAN = { top: 20, bottom: 79 };
-const FOAM = { band: 0.24, jitter: 0.28, keep: 0.16, seed: 17 };
+/** the water's foam crest: white over water4, the meltwater running down in water3 (REHBER §2.3 Su) */
+const FOAM_STYLE: FoamStyle = { crest: [PAL.white, W4], drip: W3 };
+/** the water line's rows: above the fallen head (progress 0) … the low heap's top (1: what the death kit breaks) */
+const FOAM_LINE = { top: 52, floor: 77, wave: { amp: 1.6, len: 21 }, drips: { share: 0.16, len: 4 }, seed: 17 };
 
-/** part ids (1-based in the parts table's order) that never foam: the coral crown (stone), matter */
+/** part ids (1-based in the parts table's order) that never melt: the coral crown (stone), matter */
 let NEVER: ReadonlySet<number> = new Set();
 
 function foamPart(ctx: Ctx): null {
@@ -40,19 +39,19 @@ function foamPart(ctx: Ctx): null {
   const t = pass.foam ?? 0;
   const surge = pass.surge;
   if (!(t > 0) && !(surge !== undefined && surge < 1)) return null;
-  const W = FRAME.w;
-  const restOf = (part: number, x: number, y: number): V | null => {
-    if (NEVER.has(part)) return null;
-    const i = y * W + x;
-    const sx = PATTERN.x[i];
-    return sx === NO_PATTERN ? null : [sx, PATTERN.y[i]];
+  const o = {
+    top: FOAM_LINE.top,
+    floor: FOAM_LINE.floor,
+    style: FOAM_STYLE,
+    keep: (part: number) => NEVER.has(part),
+    drips: FOAM_LINE.drips,
+    seed: FOAM_LINE.seed,
   };
-  const order = (r: V): number =>
-    // a tube place without a still sample (a stretched neck) goes by its place along the neck
-    r[0] >= STILL_TUBE - 50 ? clamp(0.75 - (r[0] - STILL_TUBE) / 80, 0, 1) : clamp((r[1] - FOAM_SPAN.top) / (FOAM_SPAN.bottom - FOAM_SPAN.top), 0, 1);
-  const o = { restOf, order, style: FOAM_STYLE, band: FOAM.band, jitter: FOAM.jitter, keep: FOAM.keep, seed: FOAM.seed };
-  if (t > 0) foamPass(ctx.comp, { ...o, t });
-  else surgePass(ctx.comp, { ...o, t: surge as number });
+  if (t > 0) foamPass(ctx.comp, { ...o, t, wave: { ...FOAM_LINE.wave, phase: t * 0.6 } });
+  else {
+    const u = surge as number;
+    surgePass(ctx.comp, { ...o, t: u, wave: { ...FOAM_LINE.wave, phase: (1 - u) * 0.6 } });
+  }
   return null;
 }
 

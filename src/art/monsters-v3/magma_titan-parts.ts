@@ -22,8 +22,9 @@ import { bipedNeutral, bipedRig } from '../bodyplans/biped/v1';
 import type { PartCtx, PlanPose } from '../bodyplans/types';
 import type { V } from '../rigkit/geom';
 import { BUILD, type TitanFx } from './magma_titan-build';
-import { CORE_AT as CORE_C, LAVA, PART_ORDER, SLOT_OF, STILL_DRIP, STILL_EMBERS, cutParts, type LavaKind, type PartKey } from './magma_titan-maps';
+import { CORE_AT as CORE_C, LAVA, PART_ORDER, SLOT_OF, STILL_DRIP, STILL_EMBERS, cutParts, inCore, type LavaKind, type PartCut, type PartKey } from './magma_titan-maps';
 import { armTurned, block, cutBand, fist, snapDir, type BlockOut } from './magma_titan-limbs';
+import { crumblePart, debrisPart, extrasLight, moltenLevels, moltenPart } from './magma_titan-fx';
 
 export type Pose = PlanPose<BipedPose, TitanFx>;
 export type Ctx = PartCtx<Pose, BipedRig>;
@@ -106,8 +107,26 @@ function lavaList(ctx: Ctx): LavaAt[] {
 
 /** Part index (1-based in the member's parts order, as planArt marks the part-id buffer). */
 let PART_INDEX: Readonly<Record<string, number>> = {};
+let PART_NAMES: readonly string[] = [];
 export function setPartIndex(names: readonly string[]): void {
   PART_INDEX = Object.freeze(Object.fromEntries(names.map((n, i) => [n, i + 1])));
+  PART_NAMES = Object.freeze([...names]);
+}
+/** The part name of a part id (1-based), '' for none. */
+export const partName = (id: number): string => PART_NAMES[id - 1] ?? '';
+
+/**
+ * The frame's lava pixels re-toned from its channels where their part still owns them — what the glow
+ * slot does after the outline; a pass that works on the frame BEFORE the outline (the crumble) runs it
+ * first, so the matter it breaks off carries the lava's tone of this frame (a cold groove in a death).
+ */
+export function retoneLava(ctx: Ctx): void {
+  const fx = ctx.pose.fx;
+  for (const l of FRAME_LAVA.get(ctx.comp) ?? []) {
+    if (ctx.comp.owner(l.x, l.y) !== l.part) continue;
+    const t = heatStep(l, fx);
+    if (t !== null) ctx.dst.set(l.x, l.y, toneOfStep(t));
+  }
 }
 
 /** Record lava pixels drawn this frame (frame px) for the glow pass. */
@@ -142,12 +161,39 @@ function rigid(key: PartKey): Part {
       const p2 = ctx.light.from === 'right';
       for (const f of cut.fringe) fringe(ctx.dst, f.x + dx, f.y + dy, f.c);
       const q = ctx.canvas();
-      for (const b of cut.body) q.set(b.x + dx, b.y + dy, p2 ? b.c2 : b.c);
+      const split = key === 'C' ? Math.round(ctx.pose.fx.split) : 0;
+      if (split > 0) splitPlates(ctx, q, cut, dx, dy, split, p2);
+      else {
+        for (const b of cut.body) q.set(b.x + dx, b.y + dy, p2 ? b.c2 : b.c);
+        recordLava(ctx, cut.lava, dx, dy);
+      }
       clipGround(q, ctx.rig.ground);
-      recordLava(ctx, cut.lava, dx, dy);
       return q;
     },
   };
+}
+
+/**
+ * The special's parting chest plates: the core's socket stays where it is while the near pec slides `split`
+ * px toward the near side and the far pec as far toward the far side (whole pixels, the still's planes
+ * kept); the cleft they open around the socket is lava (kind 'cleft', re-toned by the core's heat) — the
+ * core pushing out between them.
+ */
+function splitPlates(ctx: Ctx, q: PixelCanvas, cut: PartCut, dx: number, dy: number, split: number, p2: boolean): void {
+  const shiftOf = (x: number, y: number) => (inCore(x, y) ? 0 : x < CORE_C[0] ? -split : split);
+  const lava: { x: number; y: number; t: number; kind: LavaKind; d: number }[] = [];
+  for (const b of cut.body) q.set(b.x + dx + shiftOf(b.x, b.y), b.y + dy, p2 ? b.c2 : b.c);
+  for (const l of cut.lava) lava.push({ ...l, x: l.x + shiftOf(l.x, l.y), y: l.y });
+  // the cleft: every pixel of the plate's rest place the shifted plates no longer cover
+  for (const b of cut.body) {
+    const x = b.x + dx;
+    const y = b.y + dy;
+    if (q.isOpaque(x, y)) continue;
+    const d = Math.hypot(b.x + 0.5 - CORE_C[0], b.y + 0.5 - CORE_C[1]);
+    q.set(x, y, PAL.fire3);
+    lava.push({ x: b.x, y: b.y, t: d < 5.5 ? 4 : 3, kind: 'cleft', d });
+  }
+  recordLava(ctx, lava, dx, dy);
 }
 
 /** Nothing is drawn under the ground line (a sunk foot, the summon's rise). */
@@ -166,8 +212,34 @@ const clampStep = (t: number, max: number) => Math.max(-1, Math.min(max, t));
 /** The idle's travelling pulse on the seam network: ±1 step in bands 18 px apart, moving out with fx.wave. */
 const pulseOf = (d: number, fx: Readonly<TitanFx>) => (fx.waveAmp > 0 ? Math.round(fx.waveAmp * Math.cos(2 * Math.PI * (d / 18 - fx.wave))) : 0);
 
+/** The seam-like kinds the part-2 light fields (fx.lit, fx.surge) run along. */
+const SEAMLIKE: ReadonlySet<LavaKind> = new Set<LavaKind>(['seam', 'vent', 'finger', 'fingerF', 'armN', 'armF', 'legN', 'legF']);
+/** px from the core the body's farthest seams lie (the feet, the vents): fx.lit and fx.surge are shares of it. */
+export const SEAM_REACH = 44;
+
 export function heatStep(l: { t: number; kind: LavaKind; d: number; y?: number }, fx: Readonly<TitanFx>): number | null {
-  const full = (v: number) => (v >= 2.3 ? 6 : v >= 1.8 ? 5 : 4);
+  const t = heatBase(l, fx);
+  if (t === null || !SEAMLIKE.has(l.kind)) return t;
+  let s = t;
+  // hitMagic: a surge of light runs IN along the seams — its front burns two steps hot (gold4 at most), the
+  // seams it has passed stay one step up (stiff and bright) until it lets go
+  if (fx.surge > 0) {
+    const front = fx.surge * SEAM_REACH;
+    if (Math.abs(l.d - front) <= 2.5) s = Math.min(5, s + 2);
+    else if (l.d > front) s = Math.min(4, s + 1);
+  }
+  // the light radius (death drains it inward, the summon / revive fill it outward): past it a seam is a cold
+  // groove — its hot body night0, its edges and lips the basalt's shadow stone0 —, and in the 5 px inside its
+  // edge the dying (or kindling) glow two steps down
+  if (fx.lit < 1) {
+    const R = fx.lit * SEAM_REACH;
+    if (l.d > R) return l.t >= 3 ? -1 : -2;
+    if (l.d > R - 5) s = Math.max(0, s - 2);
+  }
+  return s;
+}
+
+function heatBase(l: { t: number; kind: LavaKind; d: number; y?: number }, fx: Readonly<TitanFx>): number | null {
   switch (l.kind) {
     case 'knuckle':
     case 'knuckleF': {
@@ -200,7 +272,11 @@ export function heatStep(l: { t: number; kind: LavaKind; d: number; y?: number }
       return clampStep(l.t + step, fx.core >= 2.3 && l.d < 1.2 ? 6 : fx.core >= 1.8 ? 5 : 4);
     }
     case 'eye':
-      return clampStep(l.t + Math.round((fx.eye - 1) * 2), fx.eye >= 1.8 ? 5 : 4);
+      // white only when a spell burns through them (hitMagic, eye ≥ 2.4); gold4 from 1.8
+      return clampStep(l.t + Math.round((fx.eye - 1) * 2), fx.eye >= 2.4 ? 6 : fx.eye >= 1.8 ? 5 : 4);
+    case 'cleft':
+      // the lava between the parting chest plates (special): as hot as the core lets it
+      return clampStep(l.t + Math.round((fx.core - 1) * 0.8), fx.core >= 1.8 ? 5 : 4);
     case 'mouth':
       return clampStep(l.t + Math.round((fx.mouth - 1) * 2), fx.mouth >= 1.8 ? 5 : 4);
     case 'vent':
@@ -234,7 +310,8 @@ export function heatStep(l: { t: number; kind: LavaKind; d: number; y?: number }
   }
 }
 
-const toneOfStep = (t: number) => (t < 0 ? PAL.night0 : LAVA[t]);
+/** Step → tone: −2 a cold seam's edge (the basalt's shadow), −1 a cold groove, 0 fire0 … 6 white. */
+export const toneOfStep = (t: number) => (t === -2 ? PAL.stone0 : t < 0 ? PAL.night0 : LAVA[t]);
 
 function emberTone(h: number): number | null {
   if (h < 0.4) return PAL.fire4;
@@ -463,9 +540,12 @@ function glow(ctx: Ctx): null {
   const p = ctx.dst;
   const fx = ctx.pose.fx;
   const list = FRAME_LAVA.get(ctx.comp) ?? [];
+  // (summon) a seam in molten rock burns fire4, in the red crust fire3 (./magma_titan-fx.ts moltenPart)
+  const molten = moltenLevels(ctx);
   for (const l of list) {
     if (ctx.comp.owner(l.x, l.y) !== l.part) continue;
-    const t = heatStep(l, fx);
+    const m = molten?.get(l.part) ?? 0;
+    const t = m >= 2 ? 4 : m === 1 ? 3 : heatStep(l, fx);
     if (t !== null) p.set(l.x, l.y, toneOfStep(t));
   }
   face(p, ctx);
@@ -613,7 +693,13 @@ for (const k of PART_ORDER) {
   if (k === 'f') table.armF = { layer: 'armF', seam: 'none', paint: (ctx) => posedArm(ctx, 'F') };
   if (k === 'F') table.armN = { layer: 'armN', seam: 'none', paint: (ctx) => posedArm(ctx, 'N') };
 }
+// part 2 (./magma_titan-fx.ts): the summon's molten re-tone and the death / revive crumble work on the
+// frame before the outline; the broken-off chunks and the extras' light come after it
+table.molten = { layer: 'front', seam: 'none', paint: moltenPart };
+table.crumble = { layer: 'front', seam: 'none', paint: crumblePart };
 table.glow = { layer: 'glow', seam: 'none', paint: glow };
+table.debris = { layer: 'fx', seam: 'none', paint: debrisPart };
+table.extras = { layer: 'fx', seam: 'none', paint: extrasLight };
 
 export const PARTS: Readonly<Record<string, Part>> = Object.freeze(table);
 setPartIndex(Object.keys(PARTS));
