@@ -7,11 +7,12 @@
 // `top` at progress 0 to `floor` at 1. Everything that melts above the line is gone (erased, its part id
 // cleared: the outline then runs round the melted edge, IŞ-9); the body's new top, where the line cuts
 // it, FOAMS — a 2-px crest (the style's top tone, then its under tone: white over water4), flat bands,
-// never speckle (MA-2, IŞ-4); a few columns run meltwater down the body under the crest (1-px streaks).
+// never speckle (MA-2, IŞ-4: a 1-px sliver left under the line takes the under tone, never a lone white);
+// a few columns run meltwater down the body under the crest (1-px streaks).
 // Parts that do not melt (`keep`: a stone crown, glow, matter) stay whole. Run on the frame BEFORE the
 // outline, as a "pass part" in the member's front slot (like crumble / dissolve).
-// Pure: the same progress gives the same frame; for a body that stays put, a px gone at t is gone at
-// every later t.
+// Pure: the same progress gives the same frame; for a body that stays put under a held wave phase (and
+// floor − top > 9 × amp, so the lumps never outrun the line), a px gone at t is gone at every later t.
 
 import { clamp } from '../geom';
 import type { PartComp } from '../composite';
@@ -22,6 +23,8 @@ export interface FoamStyle {
   readonly crest: readonly [top: number, under: number];
   /** the meltwater streaks' tone (default: the under tone) */
   readonly drip?: number;
+  /** share of the crest's 2-column runs whose top row takes the under tone (the froth breaks up). Default 0. */
+  readonly broken?: number;
 }
 
 export interface FoamOpts {
@@ -73,6 +76,7 @@ export function foamPass(f: PartComp, o: FoamOpts): FoamResult {
   const share = o.drips?.share ?? 0.12;
   const maxLen = o.drips?.len ?? 4;
   const seed = o.seed ?? 0;
+  const broken = clamp(o.style.broken ?? 0, 0, 1);
   let gone = 0;
   let crest = 0;
   for (let x = 0; x < W; x++) {
@@ -102,7 +106,9 @@ export function foamPass(f: PartComp, o: FoamOpts): FoamResult {
         from = -2;
         continue;
       }
-      p.set(x, y, k === 0 ? crestTop : k === 1 ? crestUnder : drip);
+      // the froth breaks up in 2-column runs; a 1-px sliver (nothing under its top) is wet water, not a lone white speck
+      const top = k === 0 && (hash2(x >> 1, 2, seed + 5) < broken || y + 1 >= H || !melts(x, y + 1)) ? crestUnder : crestTop;
+      p.set(x, y, k === 0 ? top : k === 1 ? crestUnder : drip);
       crest++;
     }
   }

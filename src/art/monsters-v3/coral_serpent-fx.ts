@@ -3,10 +3,11 @@
 // and gets nothing; nothing heavy at load).
 //
 //   FOAM     (front slot, before the outline: a "pass part") the water death and revive — rigkit foamPass /
-//            surgePass in the frame's pattern space (./coral_serpent-parts PATTERN: every painted pixel's
-//            still px), so the foam rides the body. Order: the top of the rest silhouette first (the
-//            head, the neck, then the coil — the body melts down into the floor). The coral crown is
-//            stone: it never foams (it sinks onto the heap, fx.sink); matter (drops, spray) never foams.
+//            surgePass (pose.pass.foam / .surge): a lumpy water line runs down the frame (gravity: frame
+//            rows FOAM_LINE.top → floor, its lumps creeping with the progress), the hide above it melts
+//            away and the new top foams (white over water4, the froth broken in 2-column runs, 1-px
+//            water3 meltwater streaks) — the body melts down into the floor. The coral crown is stone: it
+//            never melts (it sinks onto the heap, fx.sink); matter (drops, spray) never melts.
 //   FLOOR    (fx slot, after the outline, only on EMPTY pixels: the floor is behind everything standing
 //            on it, and the body keeps its own outline) the summon's whirlpool (fx.whirl), the shed
 //            water's splash ring (fx.ring), the death's puddle and the revive's currents running back
@@ -20,14 +21,15 @@ import { PAL } from '../palette';
 import { clamp } from '../rigkit/geom';
 import { foamPass, surgePass, hash2, type FoamStyle } from '../rigkit/passes';
 import { FRAME, TONES } from './coral_serpent-build';
-import { BACK, BODY, CROWN, FAN, FIN, HEAD, JAW, MATTER, NO_PATTERN, PATTERN, WATER, type Ctx, type Part } from './coral_serpent-parts';
+import { BACK, BODY, FAN, FIN, MATTER, NO_PATTERN, PATTERN, WATER, type Ctx, type Part } from './coral_serpent-parts';
+import { CROWN, HEAD, JAW } from './coral_serpent-head';
 
 const [W0, W1, W2, W3, W4] = TONES.scale;
 
 // ------------------------------------------------------------------ the foam pass (death / revive)
 
 /** the water's foam crest: white over water4, the meltwater running down in water3 (REHBER §2.3 Su) */
-const FOAM_STYLE: FoamStyle = { crest: [PAL.white, W4], drip: W3 };
+const FOAM_STYLE: FoamStyle = { crest: [PAL.white, W4], drip: W3, broken: 0.3 };
 /** the water line's rows: above the fallen head (progress 0) … the low heap's top (1: what the death kit breaks) */
 const FOAM_LINE = { top: 52, floor: 77, wave: { amp: 1.6, len: 21 }, drips: { share: 0.16, len: 4 }, seed: 17 };
 
@@ -110,14 +112,15 @@ function paintPuddle(put: Put, p: number, inflow: number, lit: number): void {
     for (let k = 0; k < len; k++) if (floorD(x + k, y, rx, ry) < 0.85) put(x + k, y, W4);
   }
   if (inflow > 0) {
-    // currents: dashes on four bearings, each sliding inward along its ray as the phase grows
-    for (let a = 0; a < 6; a++) {
-      const ang = (a / 6) * Math.PI * 2 + 0.4;
-      const along = ((1 - ((inflow * 1.6 + a * 0.37) % 1)) * 0.75 + 0.25) * 1; // 1 → 0.25 of the radius
+    // currents: dashes on eight bearings in the puddle's outer band (where it shows past the coil), each
+    // running inward along its ray (≥ 1 px a frame) and slipping under the coil — the water going home
+    for (let a = 0; a < 8; a++) {
+      const ang = (a / 8) * Math.PI * 2 + 0.2;
+      const along = 0.97 - 0.3 * ((inflow * 1.7 + a * 0.37) % 1);
       const x = Math.round(FLOOR.c[0] + Math.cos(ang) * rx * along);
       const y = Math.round(FLOOR.c[1] + Math.sin(ang) * ry * along);
-      const dx = Math.cos(ang) > 0 ? -1 : 1; // the dash trails away from the coil
-      for (let k = 0; k < 3; k++) if (floorD(x + k * dx, y, rx, ry) < 0.92) put(x + k * dx, y, k ? W3 : W4);
+      const dx = Math.cos(ang) > 0 ? 1 : -1; // the dash's tail points back out, its head toward the coil
+      for (let k = 0; k < 3; k++) if (floorD(x + k * dx, y, rx, ry) < 0.97) put(x + k * dx, y, k ? W3 : W4);
     }
   }
 }
@@ -128,7 +131,7 @@ function paintPuddle(put: Put, p: number, inflow: number, lit: number): void {
  * rises into the body; its rim foams in white dashes.
  */
 function paintWhirl(put: Put, p: number): void {
-  const open = clamp(p / 0.3, 0, 1);
+  const open = clamp(p / 0.22, 0, 1);
   const close = clamp((p - 0.62) / 0.38, 0, 1);
   const R = (6 + (FLOOR.rx - 4 - 6) * open) * (1 - 0.55 * close);
   if (R < 2) return;
@@ -161,7 +164,7 @@ function paintWhirl(put: Put, p: number): void {
 
 /** The shed water's splash ring (summon land): a foam ring that runs out from the coil's foot, thins and breaks up. */
 function paintRing(put: Put, p: number): void {
-  const rx = 19 + 8 * clamp(p, 0, 1);
+  const rx = 22 + 7 * clamp(p, 0, 1);
   const ry = rx * (FLOOR.ry / FLOOR.rx);
   const thick = p < 0.45 ? 2 : 1;
   const x0 = Math.floor(FLOOR.c[0] - rx - 2);
@@ -182,8 +185,8 @@ function paintRing(put: Put, p: number): void {
 
 // ------------------------------------------------------------------ the spell in the scales (hitMagic)
 
-/** the scale rows' burn: rows are 5-px bands of the still (the teeth's period); half of them burn a frame */
-const FLICKER = { row: 5, share: 0.5 };
+/** the scale rows' burn: rows are 5-px bands of the still (the teeth's period); 60 % of them burn a frame */
+const FLICKER = { row: 5, share: 0.6 };
 
 function flickerPart(ctx: Ctx): ReturnType<Part['paint']> {
   const n = ctx.pose.fx.flicker;

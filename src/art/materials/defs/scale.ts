@@ -22,9 +22,27 @@
 // and its light-facing side lit, the front (0.46) on the lit / mid border, a 45° turn down mid, the
 // underside (−0.74) shadow, cuts by bias only. Creases at most two steps below the plane they fall on,
 // seams one step, never ink inside the hide (IŞ-9; the open mouth is the one interior ink, the gape).
-// Hit: a wet slap — water sparks and drops, the flash a pale water tone. Death: the serpent breaks as
-// water (DEATH_PRESETS.coral_serpent: water / water); the passes are drafts until part 2 (dissolve into
-// spray, gather for the revive). Sound: a blow on wet scales is a short noise slap — the 'slosh' ring
+// A4.1 FIX ROUND decisions (binding for the serpent, the hide in motion):
+//   BANDS ≥ 2 px across the tube in every pose: a 1-px run across the tube joins the neighbouring band
+//   nearer its value; only edges and the plate seams stay 1 px. A fold's deformation crumbs are cleaned
+//   (despeckle × 2 + the IŞ-4 crumb pass), but the still's own deliberate single pixels are kept.
+//   SCALE ROWS stay 2-px teeth at their stations along the contour, also on the far arc where the
+//   stations crowd (never 1-px dots). The VENTRAL PLATES are keyed by the contour, so in a fold their
+//   seams keep the 3-px spacing and their bands their widths.
+//   P2 RELIGHT: the normals are continuous across the tube's section joins (the planes never break into
+//   segments where tail, near arc, far arc and neck meet); the relit coral caps its lit plane at mag3,
+//   mag4 only on edges and tips (never a mag4 slab); the plates' night3 far line is kept, and the plates
+//   step up to mist at most (white is never a plate tone in a frame: a relit throat read as a white slab).
+//   THE OPEN MOUTH (inside the coral's magenta ramp, never crimson: crimson is player 2's): mag1 palate,
+//   mag2 tongue (the floor faces the key light), mag0 only as the 2-px throat crease at the hinge, white
+//   teeth — 3 per jaw at 3-px spacing, 2 px long — wherever the gape is ≥ 3 px.
+// Hit: a wet slap — water sparks and drops, the flash a pale water tone. Death (A4.1 part 2): the hide is
+// water, so it MELTS — pass 'foam' (src/art/rigkit/passes/foam.ts): a lumpy water line runs down the
+// frame, the hide above it is gone, the new top foams (a 2-px crest, white over water4, the froth broken
+// in 2-px runs) and a few columns run 1-px water3 meltwater; the coral crown is stone and never melts
+// (it sinks onto the heap); the water pools on the tile as a puddle (water1 body, water2 / water3 lip,
+// water4 glints) and the kit's shatter (water / water) takes the heap. Revive: 'surge' — the same line
+// run back up while the puddle's water runs back into the coil (inflow dashes). Sound: a blow on wet scales is a short noise slap — the 'slosh' ring
 // (REHBER §2.3 water) has no interpreter yet (src/audio/v3/materials.ts RING_KINDS), so the draft uses
 // the interpretable noise flutter as its stand-in until the audio step brings one; nothing plays it yet.
 
@@ -50,7 +68,7 @@ export default {
     noiseMax: 0.1,
   },
   hit: { sparks: [PAL.water2, PAL.water3, PAL.water4], debris: 'drop', flash: PAL.water4 },
-  death: { shatter: 'water', accent: 'water', pass: 'dissolve', revive: 'gather' },
+  death: { shatter: 'water', accent: 'water', pass: 'foam', revive: 'surge' },
   matter: [PAL.water0, PAL.water1, PAL.water2, PAL.water3, PAL.water4],
   sound: {
     thump: [130, 48, 0.42, 0.18],

@@ -29,10 +29,11 @@ export const CORAL: SerpentMember<SerpentFx> = {
     rhythm:
       'wave-driven: every move rolls up the spine with a lag (coil, then the S, then the head) while the fin ripples on its own period; a strike is a long coil-back, a 60 ms snap and a held, recoiling jet',
     idle: 'the S-breath: the far arc lifts a pixel at a time and the neck takes each lift, the head held steady like a hunting snake and swaying back a pixel only as the breath ends; the tail sways, the fin ripples, a drop falls off the fin',
-    guard: 'drawn in: the coil rises and tips back, the neck folds the head down and back behind it, the fin lies flat and the eye narrows; it breathes slowly, held tight',
-    signaturePart: 'the coral crown, stone that never bends (it rides the skull and flares a pixel in the roar), and the dorsal fin carried in its own space along the neck',
-    material: 'scaled hide on the water ramp (2-px scale-row teeth only on the mid / shadow boundary, calm lit planes, steel and mist ventral plates), coral and fin membrane on the magenta ramp, water light in the mouth',
-    signatureMove: 'the water jet: the neck coils back into a tight S, the throat swells and water gathers into an orb in the open jaws, then a 60 ms snap into the firing pose and a held jet that drives the body back along the coil',
+    guard: 'drawn in: the coil rises and tips back, the head tucks down and back until the snout rests over the far arc (the crown riding the skull, unturned), the fin lies flat and the eye narrows; it breathes slowly and never all at once: the arc, the tail, the head, the fin, one a frame',
+    signaturePart: 'the coral crown, stone that never bends (it rides the skull and turns with it: up to ~40° in the roar\'s rear), and the dorsal fin carried in its own space along the neck',
+    material:
+      'scaled hide on the water ramp (2-px scale-row teeth only on the mid / shadow boundary, calm lit planes, steel and mist ventral plates), coral and fin membrane on the magenta ramp, water light in the mouth; under the hide it is water: the summon pours the coil out of a whirlpool tail first and the hide closes over it from the crown down, the death melts it under a foam line into a puddle with the stone crown left on top',
+    signatureMove: 'the water jet: the neck coils back into a tight S with the chin tucked, the throat swells and water gathers into an orb in the open jaws (palate, tongue, teeth), then a 60 ms snap that brings the head up level on the target and a held jet that drives the body back along the coil while the tail answers late',
   },
 };
 

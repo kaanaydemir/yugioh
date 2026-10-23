@@ -22,7 +22,19 @@
 // fire4: the idle's core swell grows the fire4 heart outward (never gold), the seams' travelling pulse
 // steps fire2 ↔ fire3 ↔ fire4. More gold and white come ONLY at full heat: the core ≥ 1.8 (gold), its
 // 2×2 centre ≥ 2.3 (white) on a charge's peak and the release; the striking fist ≥ 1.8 (white knuckle
-// face, gold4 · fire4 · fire3 bands melting back from it) on contact; the roar's vent flames' base.
+// face, gold4 · fire4 · fire3 bands melting back from it) on contact; the roar's vent flames' core on the
+// release (the crater's pool under them tops out at fire4: a gold pool under a dark lip read as a lit eye).
+// The extras (A4.1 step 2, part 2) keep the decision. Their full-heat moments: the summon's ignition (the
+// core 2.1 inside its flare ring), the special (the core ≥ 1.8 through the charge, the fireball drawn like
+// the core with ONE white 2×2 heart on the swing out, the lava cleft between the parted chest plates up to
+// gold4), the victory's ignition (the raised fist's knuckles white for one frame, then smouldering down to
+// the knuckle row), the revive's first breath (core 1.85) and the death's last heave (the eyes gold4 once
+// before the light drains). ONE deliberate exception: hitMagic, a spell overloading the seams, runs a surge
+// front up to gold4 along them, burns the eyes white (eye ≥ 2.4) and flickers the core gold / white: a hit
+// above fire4 because the spell's light IS the blow. The light radius (fx.lit: death 1 → 0, summon /
+// revive 0 → 1) turns a seam past it into a cold groove (night0 body, stone0 edges), and a dropped jaw's
+// throat dims with the mouth; the summon's molten body takes the still's planes in fire tones (fire0 …
+// fire4, no gold) until it cools into basalt.
 
 import { PAL } from '../../palette';
 import type { MaterialDef } from '../types';

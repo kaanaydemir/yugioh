@@ -212,6 +212,8 @@ const clampStep = (t: number, max: number) => Math.max(-1, Math.min(max, t));
 /** The idle's travelling pulse on the seam network: ±1 step in bands 18 px apart, moving out with fx.wave. */
 const pulseOf = (d: number, fx: Readonly<TitanFx>) => (fx.waveAmp > 0 ? Math.round(fx.waveAmp * Math.cos(2 * Math.PI * (d / 18 - fx.wave))) : 0);
 
+/** A posed fist's own pixels (its basalt, recorded so the heat can melt it from the knuckles back). */
+const MELT: ReadonlySet<LavaKind> = new Set<LavaKind>(['melt', 'meltF', 'knuckle', 'knuckleF']);
 /** The seam-like kinds the part-2 light fields (fx.lit, fx.surge) run along. */
 const SEAMLIKE: ReadonlySet<LavaKind> = new Set<LavaKind>(['seam', 'vent', 'finger', 'fingerF', 'armN', 'armF', 'legN', 'legF']);
 /** px from the core the body's farthest seams lie (the feet, the vents): fx.lit and fx.surge are shares of it. */
@@ -225,7 +227,7 @@ export function heatStep(l: { t: number; kind: LavaKind; d: number; y?: number }
   // seams it has passed stay one step up (stiff and bright) until it lets go
   if (fx.surge > 0) {
     const front = fx.surge * SEAM_REACH;
-    if (Math.abs(l.d - front) <= 2.5) s = Math.min(5, s + 2);
+    if (Math.abs(l.d - front) <= 4) s = Math.min(5, s + 2);
     else if (l.d > front) s = Math.min(4, s + 1);
   }
   // the light radius (death drains it inward, the summon / revive fill it outward): past it a seam is a cold
@@ -244,21 +246,24 @@ function heatBase(l: { t: number; kind: LavaKind; d: number; y?: number }, fx: R
     case 'knuckle':
     case 'knuckleF': {
       const h = l.kind === 'knuckle' ? fx.heatN : fx.heatF;
-      // the striking face lights only as the punch heats (a lit face at rest or in the drive read as
-      // a glowing bar across the fist): fire3 at 1.4, white-hot at full heat
-      return h < 1.4 ? null : h < 1.8 ? 3 : 6;
+      // the striking face (2 px: t 0 its outer column, 1 the inner one, 2 a finger-gap notch cut into it)
+      // lights only as the punch heats (a lit face at rest read as a glowing bar across the fist): fire4 /
+      // fire3 from 1.4, white / gold4 at full heat; the notches stay a step under the face, so the lit
+      // face reads as three knuckles
+      // a fist warming up (1.1 … 1.4) lights its outer knuckle ROW only (fire3, fire4 from 1.25): the face's
+      // inner row and the notches stay basalt — a held, smouldering fist, never a lit slab
+      if (h < 1.1) return null;
+      if (h < 1.4) return l.t === 0 ? (h >= 1.25 ? 4 : 3) : null;
+      if (h >= 1.8) return l.t === 2 ? 3 : l.t === 0 ? 6 : 5;
+      return l.t === 2 ? 2 : l.t === 0 ? 4 : 3;
     }
     case 'melt':
     case 'meltF': {
-      // the fist melts from the striking face back: t = −1 − px behind the face, d = its plane (2 = the
-      // lit back of the hand, whose basalt crust holds longest). Full heat (≥ 1.8): gold4 · fire4 ·
-      // fire3 bands 2 px each behind the white face; 1.4: fire4 · fire3; 1.0: a fire2 lip; cold: basalt
+      // TWO bands, never a gradient (t = −1 − px behind the face): the face above, then ONE rim pixel
+      // behind it — fire4 at full heat, fire2 from 1.4 —, and the rest of the fist keeps its basalt planes
       const h = l.kind === 'melt' ? fx.heatN : fx.heatF;
-      const behind = -1 - l.t;
-      const lit = l.d === 2;
-      if (h >= 1.8) return lit ? (behind < 1 ? 4 : behind < 3 ? 3 : null) : behind < 2 ? 5 : behind < 4 ? 4 : behind < 6 ? 3 : null;
-      if (h >= 1.4) return lit ? (behind < 1 ? 3 : null) : behind < 1 ? 4 : behind < 3 ? 3 : null;
-      return null;
+      if (-1 - l.t >= 1 || h < 1.4) return null;
+      return h >= 1.8 ? 4 : 2;
     }
     case 'core': {
       // a heat RADIUS, not a uniform step: heating grows the heart outward (the inner pixels step
@@ -267,26 +272,42 @@ function heatBase(l: { t: number; kind: LavaKind; d: number; y?: number }, fx: R
       // stays the only gold —, white only on the 2×2 centre at peak heat (≥ 2.3).
       const h = fx.core - 1;
       if (h === 0) return l.t;
+      // a dead socket (the death, the summon's cooled statue, the revive's heap): black, the heart's
+      // innermost pixels a faint ember (fire0 → fire1 → fire2) as it wakes
+      if (fx.core < 0.25) {
+        // out cold (core < 0.05): not a punched hole but the collapsed socket — stone0 plates with a night0
+        // cut only through its heart (the still's hottest rings), a dying fire1 ember at the centre while the
+        // heap still sheds embers (fx.ash: the death), none in the summon's cooled statue
+        if (fx.core < 0.05) return l.d < 1 && fx.ash > 0 ? 1 : l.t >= 4 && l.d < 2 ? -1 : -2;
+        if (l.d < 1.6) return fx.core < 0.12 ? 0 : fx.core < 0.2 ? 1 : 2;
+        return fx.core < 0.12 ? -1 : 0;
+      }
       const step = h > 0 ? Math.max(0, Math.round(h * (3 - 0.5 * l.d))) : Math.min(0, Math.round(h * (1.2 + 0.45 * l.d)));
       if (l.t === 5) return fx.core < 0.8 ? clampStep(4 + step, 4) : 5;
-      return clampStep(l.t + step, fx.core >= 2.3 && l.d < 1.2 ? 6 : fx.core >= 1.8 ? 5 : 4);
+      // (while a fireball sits on the core its own white-hot heart is the frame's one white: the core stops at gold4)
+      return clampStep(l.t + step, fx.core >= 2.3 && l.d < 1.2 && !(fx.ball > 0) ? 6 : fx.core >= 1.8 ? 5 : 4);
     }
     case 'eye':
-      // white only when a spell burns through them (hitMagic, eye ≥ 2.4); gold4 from 1.8
+      // white only when a spell burns through them (hitMagic, eye ≥ 2.4); gold4 from 1.8; out (≤ 0.15): dark sockets
+      if (fx.eye <= 0.15) return -1;
       return clampStep(l.t + Math.round((fx.eye - 1) * 2), fx.eye >= 2.4 ? 6 : fx.eye >= 1.8 ? 5 : 4);
     case 'cleft':
       // the lava between the parting chest plates (special): as hot as the core lets it
       return clampStep(l.t + Math.round((fx.core - 1) * 0.8), fx.core >= 1.8 ? 5 : 4);
     case 'mouth':
+      if (fx.mouth <= 0.15) return -1;
       return clampStep(l.t + Math.round((fx.mouth - 1) * 2), fx.mouth >= 1.8 ? 5 : 4);
     case 'vent':
-      return clampStep(l.t + Math.round((fx.vent - 1) * 2), fx.vent >= 1.8 ? 5 : 4);
+      // the crater's pool tops out at fire4: the gold is the flame's core on the release, never the pool
+      if (fx.vent <= 0.15) return l.t >= 3 ? -1 : -2;
+      return clampStep(l.t + Math.round((fx.vent - 1) * 2), 4);
     case 'finger':
     case 'fingerF': {
-      // the finger gaps warm first (fire4 at most until the punch is at full heat: gold / white only then)
+      // the finger gaps warm first and top out at fire4 (the white-hot face is the only white on a fist:
+      // gaps that went gold / white with it melted the whole fist into a gradient)
       const h = l.kind === 'finger' ? fx.heatN : fx.heatF;
       const c = l.kind === 'finger' ? fx.clenchN : fx.clenchF;
-      return clampStep(l.t + Math.round(h * 1.2 + c * 0.6), h >= 2 ? 6 : h >= 1.8 ? 5 : 4);
+      return clampStep(l.t + Math.round(h * 1.2 + c * 0.6), 4);
     }
     case 'armN':
     case 'armF': {
@@ -376,21 +397,28 @@ function drip(p: PixelCanvas, ctx: Ctx): void {
 
 const inFrame = (p: PixelCanvas, x: number, y: number) => x >= 2 && x < p.w - 2 && y >= 2 && y < p.h - 2;
 
-/** Vent flames (fx.vent > 1.3): a tongue out of each notch, taller with the vent, flickering by frame. */
+/**
+ * Vent flames (fx.vent > 1.3): a tongue out of each notch, taller with the vent, a different silhouette every
+ * frame (three shapes, the far vent a frame out of step). The tongue rises out of the crater's pool OVER its
+ * back lip (the lip's ink stays only beside the tongue: a bright pool under an ink bar under a bright flame
+ * read as a lit eye), in flat bands from the outside in: fire2 skin (fire3 at the hot base), fire3, a fire4
+ * core — gold4 only in the core's base on the release frame (fx.flash), never in the pool.
+ */
 function flames(p: PixelCanvas, ctx: Ctx): void {
   const fx = ctx.pose.fx;
   if (fx.vent <= 1.3) return;
   const pl = placesOf(ctx.rig, fx);
-  const h = Math.min(7, Math.round((fx.vent - 1.3) * 6));
-  // three flame shapes by frame (a column of widths and a sway), the far vent a frame out of step
-  const SHAPES: readonly (readonly [w: number, dx: number][])[] = [
-    [[3, 0], [3, 0], [2, 0], [2, 1], [1, 1], [1, 0], [1, 0]],
-    [[3, 0], [2, 0], [2, -1], [1, -1], [1, 0], [1, 1], [1, 1]],
-    [[3, 0], [3, 1], [2, 1], [1, 0], [1, -1], [1, -1], [1, 0]],
+  const h = Math.min(8, Math.round((fx.vent - 1.3) * 6) + 1);
+  // [width, x offset] per row from the base (the lip row) up: a 3-px base, a 2-px body, a 1-px tip that
+  // sways; shape 2 forks (two 1-px tips)
+  const SHAPES: readonly (readonly (readonly [w: number, dx: number])[])[] = [
+    [[3, 0], [3, 0], [3, 0], [2, 1], [2, 1], [1, 1], [1, 0], [1, 0]],
+    [[3, 0], [3, 0], [2, -1], [2, -1], [1, -1], [1, 0], [1, 1], [1, 1]],
+    [[3, 0], [3, 0], [3, 0], [2, 0], [3, 0], [1, -1], [1, -1], [1, 0]],
   ];
   const vents: readonly { at: V; k: number }[] = [
-    { at: [21 + pl.B[0], 21 + pl.B[1]], k: ctx.frame },
-    { at: [50 + pl.b[0], 21 + pl.b[1]], k: ctx.frame + 1 },
+    { at: [21 + pl.B[0], 22 + pl.B[1]], k: ctx.frame },
+    { at: [50 + pl.b[0], 22 + pl.b[1]], k: ctx.frame + 1 },
   ];
   for (const v of vents) {
     // at full eruption sparks leave the flame's tip: three embers on fixed arcs, a frame apart
@@ -401,21 +429,71 @@ function flames(p: PixelCanvas, ctx: Ctx): void {
         const y = Math.round(v.at[1] - h - 1 - ph * 6);
         if (inFrame(p, x, y)) p.set(x, y, ph < 0.4 ? PAL.fire4 : ph < 0.75 ? PAL.fire3 : PAL.fire2);
       }
-    const shape = SHAPES[((v.k % 3) + 3) % 3];
+    const si = ((v.k % 3) + 3) % 3;
+    const shape = SHAPES[si];
+    // the tongue's pixels (row i = 0 at the lip), then each toned by its band
+    const px = new Set<number>();
+    const key = (x: number, y: number) => y * p.w + x;
     for (let i = 0; i < h; i++) {
       const [w, dx] = shape[i];
       const y = v.at[1] - i;
-      const frac = i / Math.max(1, h - 1);
-      const tone = i === 0 && fx.vent >= 2 ? PAL.gold4 : frac < 0.34 ? PAL.fire4 : frac < 0.7 ? PAL.fire3 : PAL.fire2;
-      for (let j = 0; j < w; j++) {
-        const x = Math.round(v.at[0] + dx - (w - 1) / 2 + j);
-        if (inFrame(p, x, y)) p.set(x, y, tone);
+      // the forked shape: its tip splits round a 1-px gap
+      if (si === 2 && i === h - 1 && h >= 5) {
+        px.add(key(v.at[0] - 1, y));
+        px.add(key(v.at[0] + 1, y));
+        continue;
       }
+      for (let j = 0; j < w; j++) px.add(key(Math.round(v.at[0] + dx - (w - 1) / 2 + j), y));
+    }
+    for (const k of px) {
+      const x = k % p.w;
+      const y = Math.floor(k / p.w);
+      const i = v.at[1] - y;
+      const edge = !px.has(key(x - 1, y)) || !px.has(key(x + 1, y)) || !px.has(key(x, y - 1));
+      const tone = edge ? (i <= 1 ? PAL.fire3 : PAL.fire2) : fx.flash > 0 && fx.vent >= 2 && i <= 1 ? PAL.gold4 : i <= h / 2 ? PAL.fire4 : PAL.fire3;
+      if (inFrame(p, x, y)) p.set(x, y, tone);
     }
   }
 }
 
-/** The core's flare ring on a release (fx.flash): eight short arcs on a 7-px ring, gold4 at full flash. */
+/**
+ * A 4-connected 1-px ring of radius r round (cx, cy): per angle step the pixel nearest the circle, and where
+ * two of them only touch at a corner, the corner pixel nearer the circle between them (a clean stair, never
+ * a dotted ring: IŞ-10 / the magic-light rule's ONE hard ring).
+ */
+export function ring4(cx: number, cy: number, r: number): V[] {
+  const out: V[] = [];
+  const seen = new Set<number>();
+  const push = (x: number, y: number) => {
+    const k = (y + 64) * 256 + x + 64;
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push([x, y]);
+  };
+  const off = (x: number, y: number) => Math.abs(Math.hypot(x + 0.5 - cx, y + 0.5 - cy) - r);
+  const n = Math.ceil(2 * Math.PI * r * 4);
+  let prev: V | null = null;
+  for (let i = 0; i <= n; i++) {
+    const a = (i / n) * 2 * Math.PI;
+    const x = Math.floor(cx + Math.cos(a) * r);
+    const y = Math.floor(cy + Math.sin(a) * r);
+    if (prev && prev[0] !== x && prev[1] !== y) {
+      const c = off(x, prev[1]) <= off(prev[0], y) ? [x, prev[1]] : [prev[0], y];
+      push(c[0], c[1]);
+    }
+    push(x, y);
+    prev = [x, y];
+  }
+  return out;
+}
+
+const WARM_LIGHT: ReadonlySet<number> = new Set<number>([PAL.fire2, PAL.fire3, PAL.fire4, PAL.gold4, PAL.white]);
+
+/**
+ * The core's flare ring on a release (fx.flash): ONE continuous 1-px ring hugging the socket (gold4 at full
+ * flash, fire4 below), broken only where a seam leaves the core — the seams carry the light out through the
+ * gaps — never a dotted halo.
+ */
 function flashRing(p: PixelCanvas, ctx: Ctx): void {
   const fx = ctx.pose.fx;
   if (fx.flash <= 0) return;
@@ -423,14 +501,9 @@ function flashRing(p: PixelCanvas, ctx: Ctx): void {
   const cx = CORE_C[0] + d[0];
   const cy = CORE_C[1] + d[1];
   const tone = fx.flash >= 0.8 ? PAL.gold4 : PAL.fire4;
-  for (let k = 0; k < 8; k++) {
-    const a = (k * Math.PI) / 4 + Math.PI / 8;
-    for (const da of [-0.12, 0.12]) {
-      const x = Math.round(cx + Math.cos(a + da) * 7);
-      const y = Math.round(cy + Math.sin(a + da) * 7);
-      if (inFrame(p, x, y)) p.set(x, y, tone);
-    }
-  }
+  const warm = (x: number, y: number) => WARM_LIGHT.has(p.get(x, y) as number);
+  const pts = ring4(cx, cy, 6.5).filter(([x, y]) => inFrame(p, x, y) && !warm(x, y) && !warm(x + 1, y) && !warm(x - 1, y) && !warm(x, y + 1) && !warm(x, y - 1));
+  for (const [x, y] of pts) p.set(x, y, tone);
 }
 
 /** Magma off the far (lava) fist's knuckles after contact (fx.burst = phase 0…1): five drops thrown on, cooling, falling. */
@@ -471,13 +544,13 @@ function chips(p: PixelCanvas, ctx: Ctx): void {
   }
 }
 
-/** The stomp's dust at the far foot (fx.dust = phase): two low puffs rolling out along the floor. */
+/** The stomp's dust at the far foot (fx.dust = phase; fx.dustN: at the near foot): two low puffs rolling out along the floor. */
 function dust(p: PixelCanvas, ctx: Ctx): void {
   const fx = ctx.pose.fx;
   if (fx.dust <= 0 || fx.dust >= 1) return;
   const ph = fx.dust;
   const g = ctx.rig.ground - 1;
-  const fx0 = Math.round(ctx.rig.footF[0]);
+  const fx0 = Math.round(fx.dustN >= 0.5 ? ctx.rig.footN[0] : ctx.rig.footF[0]);
   const tone = ph < 0.4 ? PAL.stone2 : ph < 0.75 ? PAL.stone1 : PAL.stone0;
   const out = Math.round(6 + ph * 6);
   for (const side of [-1, 1]) {
@@ -509,7 +582,7 @@ function glint(p: PixelCanvas, ctx: Ctx): void {
  * The face by fx.expr (the still's sockets at rows 34–36, H's pixels): 1 narrowed (the outer pixel of each
  * 2×1 ember eye shut: a glare), 3 struck (both eyes squeezed to a fire1 crease), 4 roaring (the throat
  * between the mouth slit and the dropped jaw, fire4 with fire3 corners, and two basalt fangs hanging from
- * the jaw's top). A dropped jaw always shows its molten throat.
+ * the jaw's top). A dropped jaw shows its molten throat at the mouth's light (dark when the mouth is out).
  */
 function face(p: PixelCanvas, ctx: Ctx): void {
   const fx = ctx.pose.fx;
@@ -530,8 +603,11 @@ function face(p: PixelCanvas, ctx: Ctx): void {
   }
   const jaw = Math.round(fx.jaw);
   if (jaw >= 1) {
+    // the throat burns with the mouth's light (the still's level and up: fire4, fire3 corners); a dying
+    // mouth (death) dims it two steps at a time, and an unlit one leaves the slack jaw over a dark gap
+    const [body, corner] = fx.mouth >= 0.9 ? [PAL.fire4, PAL.fire3] : fx.mouth >= 0.5 ? [PAL.fire2, PAL.fire1] : fx.mouth > 0.15 ? [PAL.fire1, PAL.fire0] : [PAL.night0, PAL.night0];
     for (let y = 37; y < 37 + jaw; y++)
-      for (let x = 44; x <= 51; x++) p.set(x + dx, y + dy, x === 44 || x === 51 ? PAL.fire3 : PAL.fire4);
+      for (let x = 44; x <= 51; x++) p.set(x + dx, y + dy, x === 44 || x === 51 ? corner : body);
     if (ex === 4) for (const x of [45, 50]) p.set(x + dx, 36 + jaw + dy, PAL.stone2);
   }
 }
@@ -544,8 +620,10 @@ function glow(ctx: Ctx): null {
   const molten = moltenLevels(ctx);
   for (const l of list) {
     if (ctx.comp.owner(l.x, l.y) !== l.part) continue;
-    const m = molten?.get(l.part) ?? 0;
-    const t = m >= 2 ? 4 : m === 1 ? 3 : heatStep(l, fx);
+    // the fist's melt / knuckle pixels are its basalt (already molten-toned); the core, eyes and mouth in molten
+    // rock are molten rock too (the core only lights when the basalt has cooled: it ignites LAST)
+    const m = molten && !MELT.has(l.kind) ? (molten.get(l.part) ?? 0) : 0;
+    const t = m === 0 ? heatStep(l, fx) : SEAMLIKE.has(l.kind) ? (m >= 2 ? 4 : 3) : m >= 2 ? 3 : 1;
     if (t !== null) p.set(l.x, l.y, toneOfStep(t));
   }
   face(p, ctx);
@@ -603,7 +681,6 @@ const STILL_FIST = { N: { centre: [20, 58] as V, knuckles: [23, 63] as V }, F: {
 
 export function fistAt(rig: BipedRig, fx: Readonly<TitanFx>, side: 'N' | 'F'): FistAt {
   const arm = side === 'N' ? rig.armN : rig.armF;
-  const off: V = side === 'N' ? [Math.round(fx.fistNx), Math.round(fx.fistNy)] : [Math.round(fx.fistFx), Math.round(fx.fistFy)];
   if (!armTurned(rig, REST_RIG, side)) {
     const d = placesOf(rig, fx)[side === 'N' ? 'F' : 'f'];
     const s = STILL_FIST[side];
@@ -611,8 +688,25 @@ export function fistAt(rig: BipedRig, fx: Readonly<TitanFx>, side: 'N' | 'F'): F
   }
   const u = snapDir([Math.cos(arm.dir), Math.sin(arm.dir)]);
   const flen = (side === 'F' ? 12 : 13) - (u[1] < -0.7 ? 3 : 0);
-  const centre: V = [arm.end[0] + off[0], arm.end[1] + off[1]];
+  const g = armGeom(arm, fx, side, u, flen);
+  const centre: V = [g.wrist[0] + u[0] * (flen / 2), g.wrist[1] + u[1] * (flen / 2)];
   return { centre, knuckles: [centre[0] + u[0] * (flen / 2 - 1), centre[1] + u[1] * (flen / 2 - 1)], dir: u, posed: true };
+}
+
+/**
+ * A posed arm's drawn geometry: its joints ridden by whole pixels (fx.rideN / rideF: the bones are not
+ * re-solved, so a 1-px ride translates the arm's pixels exactly) and the wrist — on a stacked fist (fx.stackN /
+ * stackF) the hand itself (the forearm runs the whole bone, the fist beyond it), else half a fist short of
+ * the hand along the fist (the fist centred on the hand).
+ */
+function armGeom(arm: BipedRig['armN'], fx: Readonly<TitanFx>, side: 'N' | 'F', u: V, flen: number): { root: V; mid: V; end: V; wrist: V } {
+  const ride = Math.round(side === 'N' ? fx.rideN : fx.rideF);
+  const stack = (side === 'N' ? fx.stackN : fx.stackF) >= 0.5;
+  const off: V = side === 'N' ? [Math.round(fx.fistNx), Math.round(fx.fistNy)] : [Math.round(fx.fistFx), Math.round(fx.fistFy)];
+  const mv = (p: V): V => [p[0], p[1] + ride];
+  const end = mv(arm.end);
+  const wrist: V = stack ? [end[0] + off[0], end[1] + off[1]] : [end[0] - u[0] * (flen / 2) + off[0], end[1] - u[1] * (flen / 2) + off[1]];
+  return { root: mv(arm.root), mid: mv(arm.mid), end, wrist };
 }
 
 /**
@@ -622,24 +716,28 @@ export function fistAt(rig: BipedRig, fx: Readonly<TitanFx>, side: 'N' | 'F'): F
 function posedArm(ctx: Ctx, side: 'N' | 'F'): PixelCanvas | null {
   const rig = ctx.rig;
   if (!armTurned(rig, REST_RIG, side)) return null;
-  const arm = side === 'N' ? rig.armN : rig.armF;
+  const arm0 = side === 'N' ? rig.armN : rig.armF;
   const far = side === 'F';
   const fx = ctx.pose.fx;
-  const off: V = side === 'N' ? [fx.fistNx, fx.fistNy] : [fx.fistFx, fx.fistFy];
   const light = ctx.light;
   const q = ctx.canvas();
-  // the still's proportions: a bulky upper arm, a short forearm, a huge fist centred on the hand point
+  const kind: LavaKind = far ? 'armF' : 'armN';
+  const u = snapDir([Math.cos(arm0.dir), Math.sin(arm0.dir)]);
+  // a fist raised knuckles-up (the guard) is seen foreshortened: 3 px shorter
+  const flen = (far ? 12 : 13) - (u[1] < -0.7 ? 3 : 0);
+  const fwid = far ? 12 : 13;
+  // the joints as drawn (ridden by whole pixels) and the wrist (stacked fist: the hand; else half a fist short)
+  const g = armGeom(arm0, fx, side, u, flen);
+  const arm = { ...arm0, root: g.root, mid: g.mid, end: g.end };
+  const wrist = g.wrist;
   // the still's proportions: a bulky upper arm, a club forearm that thickens toward the wrist, and a
   // huge fist (13 px near, 12 far: the still's fists are ~14 across) centred on the hand point
   const up = block(q, arm.root, arm.mid, light, { w: far ? [9, 7] : [11, 9], far, cap: [0, 2], glass: !far, chamfer: [0, 2] });
   const qf = ctx.canvas();
-  const kind: LavaKind = far ? 'armF' : 'armN';
-  const u = snapDir([Math.cos(arm.dir), Math.sin(arm.dir)]);
-  // a fist raised knuckles-up (the guard) is seen foreshortened: 3 px shorter
-  const flen = (far ? 12 : 13) - (u[1] < -0.7 ? 3 : 0);
-  const fwid = far ? 12 : 13;
-  const wrist: V = [arm.end[0] - u[0] * (flen / 2) + Math.round(off[0]), arm.end[1] - u[1] * (flen / 2) + Math.round(off[1])];
-  const fore = block(qf, arm.mid, wrist, light, { w: far ? [7, 8] : [8, 10], far, cap: [1, 1], glass: !far, chamfer: [1, 0], crack: { t: 2, kind, from: 0.15, to: 0.9, off: 0, jog: false } });
+  // the forearm's lava crack: a broken stair (a 1-px step every 4 px), never a ruler line
+  // a far forearm raised in front of the chest (fx.litF) takes the key light: the near values on its shape
+  const lit = far && fx.litF >= 0.5;
+  const fore = block(qf, arm.mid, wrist, light, { w: far ? [7, 8] : [8, 10], far, lit, cap: [1, 1], glass: !far, chamfer: [1, 0], crack: { t: 2, kind, from: 0.15, to: 0.9, off: 0, every: 4 } });
   // HA-12: on the release frame the fist drags a 2-px smear behind it along its travel (matter: outlined
   // with the body), the fist's own mid tone
   if (ctx.smearRig) {
@@ -651,13 +749,13 @@ function posedArm(ctx: Ctx, side: 'N' | 'F'): PixelCanvas | null {
     const dv: V = [arm.end[0] - prev[0], arm.end[1] - prev[1]];
     if (mine > 3 && mine >= other) {
       const back = snapDir([-dv[0], -dv[1]]);
-      for (const k of [2, 1]) fist(qf, [wrist[0] + back[0] * k, wrist[1] + back[1] * k], u, light, { len: flen, wid: fwid, far, kind: far ? 'fingerF' : 'finger' });
+      for (const k of [2, 1]) fist(qf, [wrist[0] + back[0] * k, wrist[1] + back[1] * k], u, light, { len: flen, wid: fwid, far, lit, kind: far ? 'fingerF' : 'finger' });
     }
   }
   // the fist over the forearm: the still's short wrist crease, a night0 cut on the forearm's shadow /
   // mid side only (a full band read as a bracelet)
   const qh = ctx.canvas();
-  const fi = fist(qh, wrist, u, light, { len: flen, wid: fwid, far, kind: far ? 'fingerF' : 'finger' });
+  const fi = fist(qh, wrist, u, light, { len: flen, wid: fwid, far, lit, kind: far ? 'fingerF' : 'finger' });
   const foreDark = new Map([...fore.mask].filter(([, pl]) => pl !== 2));
   for (const i of fi.mask.keys()) {
     const x = i % q.w;
@@ -684,6 +782,22 @@ setArmModes(
   (_p, rig) => armTurned(rig, REST_RIG, 'F'),
 );
 
+/** The posed far arm's stone1 back edge on its shadow-side contour (runs in 'front': the silhouette is final). */
+function farBackEdge(ctx: Ctx): null {
+  const id = PART_INDEX.armF;
+  if (!id || !armTurned(ctx.rig, REST_RIG, 'F')) return null;
+  const p = ctx.dst;
+  const side = ctx.light.from === 'right' ? -1 : 1;
+  const edge: V[] = [];
+  for (let y = 0; y < p.h; y++)
+    for (let x = 0; x < p.w; x++) {
+      if (ctx.comp.owner(x, y) !== id || p.get(x, y) !== PAL.stone0) continue;
+      if (!p.isOpaque(x + side, y) || !p.isOpaque(x, y + 1)) edge.push([x, y]);
+    }
+  for (const [x, y] of edge) p.set(x, y, PAL.stone1);
+  return null;
+}
+
 // ------------------------------------------------------------------ the parts table
 
 const table: Record<string, Part> = {};
@@ -693,6 +807,11 @@ for (const k of PART_ORDER) {
   if (k === 'f') table.armF = { layer: 'armF', seam: 'none', paint: (ctx) => posedArm(ctx, 'F') };
   if (k === 'F') table.armN = { layer: 'armN', seam: 'none', paint: (ctx) => posedArm(ctx, 'N') };
 }
+// the posed far arm's back edge (basalt MATERIAL DECISION 'far'): once every part is down, its shadow
+// planes that meet the silhouette on the side away from the light (P1 the right and the bottom, P2 the
+// left and the bottom) take the still's 1-px stone1 back edge just inside the ink — the extended lava arm
+// keeps the edge that separates the dark far side from the dark floor at 1×
+table.backEdge = { layer: 'front', seam: 'none', paint: farBackEdge };
 // part 2 (./magma_titan-fx.ts): the summon's molten re-tone and the death / revive crumble work on the
 // frame before the outline; the broken-off chunks and the extras' light come after it
 table.molten = { layer: 'front', seam: 'none', paint: moltenPart };

@@ -11,8 +11,10 @@
 //                 far forearm forward; release = the front foot stomps a step forward and the whole
 //                 mass DROPS into it (hips 3 px down, chest held back, boulders slammed down, the fist
 //                 driving out of the turn at belly height, the far arm torn back behind the body), then
-//                 the fist drives out LEVEL at chest height on contact (drafts/magma_titan-anims.ts,
-//                 attack f3 → f5 / f6).
+//                 the fist drives out LEVEL at chest height on contact (the A3 draft, attack f3 → f5 /
+//                 f6; the draft is gone — A4.1 built the titan in monsters-v3/_magma_titan.ts, whose
+//                 `distinction` card is the one to measure against: there the FAR lava fist punches
+//                 after a stomp and a held drive, and the effect is a fireball from the parted chest).
 //   Taş Muhafız   ONE arm + the shield. Reaches DOWN to its near foot and digs, tears a boulder from
 //                 the floor and heaves it OVERHEAD (the tall vertical silhouette), then throws it on an
 //                 arc (`throw`; monsters-v3/_stone_sentinel.ts, release f12).

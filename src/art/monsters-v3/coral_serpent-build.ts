@@ -90,7 +90,10 @@ export const TONES = Object.freeze({
  *   flicker the hitMagic spell in the scales: 0 none, else a count — which scale rows burn this frame
  *   sink    px the coral crown has sunk below its seat on the skull (death: the body foams away
  *           under the stone crown, which comes down onto the heap; never foams itself)
- *   flow    the water's current phase (moves the water body's current lines ≥ 1 px a frame)
+ *   flow    the water's current phase (moves the water body's current lines ≥ 1 px a frame; the jet's
+ *           current dashes advance 2 px per step)
+ *   fall    the coral crown tipped over onto the heap (death, revive): 0 upright on the skull … 1 fallen —
+ *           turned onto its back about its own middle, its lower part sunk under a water4 lap line
  */
 export interface SerpentFx extends Record<string, number> {
   eye: number;
@@ -111,9 +114,10 @@ export interface SerpentFx extends Record<string, number> {
   flicker: number;
   sink: number;
   flow: number;
+  fall: number;
 }
 
 export const FX: SerpentFx = Object.freeze({
   eye: 1, squint: 0, glint: 0, drip: 0.34, swell: 0, water: 0, spout: 0, spray: 0, splash: 0,
-  form: 1, skin: 1, whirl: 0, ring: 0, puddle: 0, inflow: 0, flicker: 0, sink: 0, flow: 0,
+  form: 1, skin: 1, whirl: 0, ring: 0, puddle: 0, inflow: 0, flicker: 0, sink: 0, flow: 0, fall: 0,
 }) as SerpentFx;

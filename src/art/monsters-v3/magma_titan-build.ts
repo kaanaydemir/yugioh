@@ -103,6 +103,9 @@ export const MATERIALS: Readonly<Record<string, MaterialId>> = Object.freeze({ b
  *            the core (→ 0); 0 = none. The front burns two steps hot, the seams it passed one step
  *   split    px the chest plates part around the core (special): the cleft between them is lava
  *   ball     the fireball forming AT the core (special): its radius px (0 none)
+ *   ballX    px the fireball sits in front of the core (it pushes out as it grows; on the release frame
+ *            the point it leaves from): points().core follows it, so step 3's burnFly starts on the ball
+ *   launch   the release frame's trail: the ball's streak from the chest to where it left (0 none, 1)
  *   gather   sparks converging on the core while the fireball forms (0 none, else phase 0…1)
  *   splash   lava squirted out of the struck seams (hitHeavy, death): 0 none, else phase 0…1
  *   molten   (summon) the fresh magma body's heat 0…1: a molten part is the still's planes in fire tones
@@ -112,6 +115,17 @@ export const MATERIALS: Readonly<Record<string, MaterialId>> = Object.freeze({ b
  *   pool     (summon) the magma welling up around the feet: 0 none … 1 the full pool (≥ 1: it drains
  *            back into the crack and cools: 1 → 2)
  *   ash      (death) embers rising off the cooled, breaking body: 0 none, else phase 0…1
+ *   clash    (victory) sparks bursting off the igniting knuckles: 0 none, else phase 0…1
+ * Fix round (A4.1 critique; neutral = off, so every earlier frame is unchanged):
+ *   stackN stackF  a posed fist STACKED on its forearm (1): the forearm runs the whole bone to the hand and
+ *            the fist sits beyond it along its aim — the guard's knuckles-up fists over two diagonal
+ *            forearms that cross as an X (0: the fist centred on the hand, the forearm ending at its wrist)
+ *   rideN rideF  whole px a posed arm rides down (− up) WITHOUT re-solving its bones: a loop's 1-px arm
+ *            motion translates the arm's pixels (IŞ-12) instead of re-snapping its slopes (the guard blink)
+ *   dustN    the dust puffs at the NEAR foot (1: the hitHeavy's rear foot stepping back) instead of the far one
+ *   litF     the posed far forearm and fist raised into the key light (1: the near arm's values on the far
+ *            arm's shape — the guard's far forearm crossing in front of the chest reads as a forearm, not
+ *            as more dark torso; 0: the far arm one value darker, the still's depth rule)
  */
 export interface TitanFx extends Record<string, number> {
   core: number;
@@ -153,6 +167,8 @@ export interface TitanFx extends Record<string, number> {
   surge: number;
   split: number;
   ball: number;
+  ballX: number;
+  launch: number;
   gather: number;
   splash: number;
   molten: number;
@@ -160,6 +176,13 @@ export interface TitanFx extends Record<string, number> {
   fissure: number;
   pool: number;
   ash: number;
+  clash: number;
+  stackN: number;
+  stackF: number;
+  rideN: number;
+  rideF: number;
+  litF: number;
+  dustN: number;
 }
 
 export const FX: TitanFx = Object.freeze({
@@ -202,6 +225,8 @@ export const FX: TitanFx = Object.freeze({
   surge: 0,
   split: 0,
   ball: 0,
+  ballX: 0,
+  launch: 0,
   gather: 0,
   splash: 0,
   molten: 0,
@@ -209,4 +234,11 @@ export const FX: TitanFx = Object.freeze({
   fissure: 0,
   pool: 0,
   ash: 0,
+  clash: 0,
+  stackN: 0,
+  stackF: 0,
+  rideN: 0,
+  rideF: 0,
+  litF: 0,
+  dustN: 0,
 }) as TitanFx;

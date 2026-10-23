@@ -137,6 +137,8 @@ export function checkSerpent(b: SerpentBuild, frame?: PlanFrame): string[] {
  *   tail    per-segment angle offsets, root → tip; lag: the tail's ChainLag (px at the middle / tip along
  *           `dir` degrees) — the secondary follow of a body move
  *   head    px the head assembly sits off the neck's end (whole px are drawn); jaw 0 = the rest gape … 1
+ *   tilt    degrees the head assembly (skull, jaw, crown) turns about the head joint, + = snout up (the
+ *           neck's locked top turns with it); 0 = the still's own pixels, else the member re-samples them
  *   fin     h: the dorsal fin's height scale (1 rest, 0 flattened, > 1 flared); ph: its ripple phase 0…1
  *   fan     the tail fan's spread (0 rest, + open, − folded); crown: the coral crown's flare (0 rest … 1)
  *   slots   per-frame stations (part → slot); pass: death / revive pass progress (part 2)
@@ -149,6 +151,7 @@ export interface SerpentPose {
   lag: { mid: number; tip: number; dir: number };
   head: { x: number; y: number };
   jaw: number;
+  tilt: number;
   fin: { h: number; ph: number };
   fan: number;
   crown: number;
@@ -167,6 +170,7 @@ export function serpentNeutral(b: SerpentBuild): SerpentPose {
     lag: { mid: 0, tip: 0, dir: 90 },
     head: { x: 0, y: 0 },
     jaw: 0,
+    tilt: 0,
     fin: { h: 1, ph: 0 },
     fan: 0,
     crown: 0,
@@ -179,7 +183,7 @@ export function serpentNeutral(b: SerpentBuild): SerpentPose {
 export const SERPENT_GROUPS: Readonly<Record<string, readonly (keyof SerpentPose)[]>> = Object.freeze({
   coil: ['coil'],
   neck: ['neck', 'reach'],
-  head: ['head', 'jaw', 'crown'],
+  head: ['head', 'jaw', 'crown', 'tilt'],
   tail: ['tail', 'lag', 'fan'],
   fin: ['fin'],
 });
@@ -190,7 +194,7 @@ export const SERPENT_GROUPS: Readonly<Record<string, readonly (keyof SerpentPose
  * tail and its fan; wingN = the dorsal fin (a serpent's "wing"); extra = passes (+ the member's channels).
  */
 export const SERPENT_REGIONS: Readonly<Partial<Record<RegionId, readonly (keyof SerpentPose)[]>>> = Object.freeze({
-  head: ['head', 'jaw', 'crown'],
+  head: ['head', 'jaw', 'crown', 'tilt'],
   chest: ['neck', 'reach'],
   lower: ['coil'],
   tail: ['tail', 'lag', 'fan'],
@@ -220,6 +224,9 @@ export interface SerpentRig {
   readonly joint: V;
   /** whole px the head assembly sits off its rest place */
   readonly shift: V;
+  /** the head assembly's turn (rad, screen: − = snout up) about `pivot` (the rest head joint), before the shift */
+  readonly turn: number;
+  readonly pivot: V;
   /** the jaw's shear angle over the rest gape (rad, + = open): a column dx px in front of the hinge drops dx · tan(jawA) */
   readonly jawA: number;
   readonly hinge: V;
@@ -263,14 +270,17 @@ function ringOf(b: SerpentBuild, p: SerpentPose): { c: V; rx: number; ry: number
   };
 }
 
-/** The neck's posed segment angles: rest + offsets, the top segments locked to the head (build.neck.lock). */
-export function neckAngles(b: SerpentBuild, offs: readonly number[]): number[] {
+/**
+ * The neck's posed segment angles: rest + offsets, the top segments locked to the head (build.neck.lock):
+ * they take the head's tilt (degrees, + = snout up) instead of the offsets, the ramp a blend of both.
+ */
+export function neckAngles(b: SerpentBuild, offs: readonly number[], tilt = 0): number[] {
   const n = b.neck.angles.length;
   const { full, ramp } = b.neck.lock;
   return b.neck.angles.map((a, i) => {
     const fromTop = n - 1 - i; // 0 = the last segment
     const k = fromTop < full ? 0 : fromTop < full + ramp ? (fromTop - full + 1) / (ramp + 1) : 1;
-    return a + (offs[i] ?? 0) * k;
+    return a + (offs[i] ?? 0) * k - tilt * (1 - k);
   });
 }
 
@@ -302,7 +312,7 @@ export function serpentRig(b: SerpentBuild, p: SerpentPose): SerpentRig {
   const front = [...coilPts.slice(0, iSplit + 1), splitPt];
   const back = [splitPt, ...coilPts.slice(iSplit + 1)];
   // the neck: a chain off the far arc's end
-  const neck = chain(back[back.length - 1], neckAngles(b, p.neck), b.neck.step + p.reach);
+  const neck = chain(back[back.length - 1], neckAngles(b, p.neck, p.tilt), b.neck.step + p.reach);
   // the tail: a chain off the near arc's start, with its secondary lag
   const angT = b.tail.angles.map((a, i) => a + (p.tail[i] ?? 0));
   const lagDir: V = [Math.cos((p.lag.dir * Math.PI) / 180), Math.sin((p.lag.dir * Math.PI) / 180)];
@@ -320,14 +330,21 @@ export function serpentRig(b: SerpentBuild, p: SerpentPose): SerpentRig {
   const joint = neck[neck.length - 1];
   const rj = restJoint(b);
   const shift: V = [Math.round(joint[0] - rj[0] + p.head.x), Math.round(joint[1] - rj[1] + p.head.y)];
-  const add = (v: V): V => [v[0] + shift[0], v[1] + shift[1]];
-  // the lower jaw SHEARS down about the hinge column — whole pixel columns, no rotation resampling (the
-  // still's jaw keeps its pixels): a column dx px in front of the hinge drops dx · tan(jawA)
+  // the head assembly turns about the rest head joint by the tilt (screen: snout up = counter-clockwise),
+  // then sits `shift` whole px off its rest place
+  const turn = (-(p.tilt ?? 0) * Math.PI) / 180;
+  const ct = Math.cos(turn);
+  const st = Math.sin(turn);
+  const add = (v: V): V => [rj[0] + (v[0] - rj[0]) * ct - (v[1] - rj[1]) * st + shift[0], rj[1] + (v[0] - rj[0]) * st + (v[1] - rj[1]) * ct + shift[1]];
+  // the lower jaw turns down about the hinge by jawA (in head space)
   const jawA = p.jaw * b.head.open;
   const hinge = add(b.head.hinge);
   const upperTip = add(b.head.upperTip);
-  const lt = add(b.head.lowerTip);
-  const lowerTip: V = [lt[0], lt[1] + Math.max(0, lt[0] - hinge[0]) * Math.tan(Math.max(0, jawA))];
+  const lj = b.head.lowerTip;
+  const ja = Math.max(0, jawA);
+  const hx = b.head.hinge[0];
+  const hy = b.head.hinge[1];
+  const lowerTip = add([hx + (lj[0] - hx) * Math.cos(ja) - (lj[1] - hy) * Math.sin(ja), hy + (lj[0] - hx) * Math.sin(ja) + (lj[1] - hy) * Math.cos(ja)]);
   // the mouth: between the two tips, a pixel back inside the gape
   const mid: V = [(upperTip[0] + lowerTip[0]) / 2, (upperTip[1] + lowerTip[1]) / 2];
   const back2hinge: V = [hinge[0] - mid[0], hinge[1] - mid[1]];
@@ -346,6 +363,8 @@ export function serpentRig(b: SerpentBuild, p: SerpentPose): SerpentRig {
     radius,
     joint,
     shift,
+    turn,
+    pivot: rj,
     jawA,
     hinge,
     upperTip,
@@ -503,6 +522,19 @@ export function tubeField(rig: SerpentRig, w: number, h: number, o: TubeOpts = {
   let y1 = -1;
   const backK = SECTIONS.indexOf('back');
   const neckK = SECTIONS.indexOf('neck');
+  // the joints' caps: every section end but the tail's tip is a joint with the next section, so its round
+  // cap must shade as the tube going on (the cylinder normal of the end's lateral offset), not as a dome
+  // whose normals turn along the axis — under the P2 light those turned the joints into notches
+  const ends = SECTIONS.map((id) => {
+    const p = paths[id];
+    const a = p[0];
+    const b = p[1] ?? a;
+    const c = p[p.length - 2] ?? a;
+    const d = p[p.length - 1];
+    const ta = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    const tb = Math.hypot(d[0] - c[0], d[1] - c[1]) || 1;
+    return { start: [(b[0] - a[0]) / ta, (b[1] - a[1]) / ta] as V, end: [(d[0] - c[0]) / tb, (d[1] - c[1]) / tb] as V, tip: id === 'tail' };
+  });
   for (let i = 0; i < w * h; i++) {
     let best = -1;
     let bz = -Infinity;
@@ -529,9 +561,18 @@ export function tubeField(rig: SerpentRig, w: number, h: number, o: TubeOpts = {
     f.s[i] = rig.s0[id] + sl;
     f.v[i] = vv * rad;
     f.r[i] = rad;
-    f.nx[i] = win.nx[i];
-    f.ny[i] = win.ny[i];
-    f.nz[i] = win.nz[i];
+    const e = ends[best];
+    if ((u < 0 && !e.tip) || u > 1) {
+      const t = u < 0 ? e.start : e.end;
+      const vn = Math.max(-1, Math.min(1, vv));
+      f.nx[i] = -t[1] * vn;
+      f.ny[i] = t[0] * vn;
+      f.nz[i] = Math.sqrt(1 - vn * vn);
+    } else {
+      f.nx[i] = win.nx[i];
+      f.ny[i] = win.ny[i];
+      f.nz[i] = win.nz[i];
+    }
     const x = i % w;
     const y = (i - x) / w;
     if (x < x0) x0 = x;
@@ -666,7 +707,7 @@ function needPower(word: string, p: number): asserts p is Power {
  */
 export interface SerpentHelpers extends PlanHelpers<SerpentBuild, SerpentPose> {
   wave(o: { periodMs: number; phase: number; amp: number; lag: number }): (tMs: number) => SerpentDelta;
-  reach(target: V, o?: { curl?: number; from?: readonly number[]; coil?: Partial<SerpentPose['coil']>; stretch?: number; keep?: 'lower' | 'middle' | 'upper' }): number[];
+  reach(target: V, o?: { curl?: number; from?: readonly number[]; coil?: Partial<SerpentPose['coil']>; stretch?: number; keep?: 'lower' | 'middle' | 'upper'; tilt?: number }): number[];
   bend(lower: number, middle: number, upper: number): number[];
 }
 
@@ -686,7 +727,7 @@ export function serpentHelpers(b: SerpentBuild): SerpentHelpers {
     });
   const endOf = (offs: readonly number[], p: SerpentPose): V => {
     const ring = ringOf(b, p);
-    const pts = chain(ring.at(b.coil.ph1), neckAngles(b, offs), b.neck.step + p.reach);
+    const pts = chain(ring.at(b.coil.ph1), neckAngles(b, offs, p.tilt), b.neck.step + p.reach);
     return pts[pts.length - 1];
   };
   const struck = (region: RegionId, power: Power): SerpentDelta => {
@@ -761,7 +802,7 @@ export function serpentHelpers(b: SerpentBuild): SerpentHelpers {
       const base = o.from ? [...o.from] : b.neck.angles.map(() => 0);
       const curl = o.curl ? bend(-o.curl, o.curl, -o.curl * 0.5) : base.map(() => 0);
       const n0 = serpentNeutral(b);
-      const neutral: SerpentPose = { ...n0, coil: { ...n0.coil, ...o.coil }, reach: o.stretch ?? 0 };
+      const neutral: SerpentPose = { ...n0, coil: { ...n0.coil, ...o.coil }, reach: o.stretch ?? 0, tilt: o.tilt ?? 0 };
       let c = [0, 0, 0];
       const offs = (cc: readonly number[]) => base.map((v, i) => {
         const [w0, w1, w2] = thirds(n, i);

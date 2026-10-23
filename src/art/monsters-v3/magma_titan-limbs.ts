@@ -69,14 +69,21 @@ export interface BlockOpts {
   /** width across the bone at a and at b (px) */
   w: readonly [number, number];
   far?: boolean;
+  /** a far limb raised into the key light (the guard's far forearm crossing in front of the chest): the
+   *  near ramp's values on the far limb's shape (its width, lava kinds and tones stay the far limb's) */
+  lit?: boolean;
   /** extend past a / b along the bone (px) */
   cap?: readonly [number, number];
   /** lit / shadow band shares of the width (the front takes the rest) */
   bands?: readonly [number, number];
   /** a short stone3 run on the lit edge near a (near blocks only) */
   glass?: boolean;
-  /** a lava crack along the front face: its still tone step (2 fire2 …) and kind */
-  crack?: { t: number; kind: LavaKind; from: number; to: number; off: number; jog?: boolean };
+  /**
+   * a lava crack along the front face: its still tone step (2 fire2 …) and kind; `jog` one 1-px step at its
+   * middle (false: none), `every` a broken fracture instead — a 1-px step across the bone every `every` px,
+   * alternating side, so even a level forearm's crack is the still's broken stair, never a ruler line
+   */
+  crack?: { t: number; kind: LavaKind; from: number; to: number; off: number; jog?: boolean; every?: number };
   /** an end face at b this many px thick (the fist's knuckles): its own plane (normal along the bone) */
   endFace?: number;
   /** px cut off the four end corners (a rock chunk, not a beam): [at a, at b] */
@@ -102,7 +109,7 @@ export function block(q: PixelCanvas, a: V, b: V, light: Light, o: BlockOpts): B
   if (n[0] * ld[0] + n[1] * ld[1] < 0) n = [-n[0], -n[1]];
   const [c0, c1] = o.cap ?? [0, 0];
   const [bl, bs] = o.bands ?? [0.3, 0.3];
-  const ramp = o.far ? FAR : NEAR;
+  const ramp = o.far && !o.lit ? FAR : NEAR;
   const wAt = (t: number) => o.w[0] + (o.w[1] - o.w[0]) * Math.max(0, Math.min(1, t / L));
   const wMax = Math.max(o.w[0], o.w[1]);
   const x0 = Math.floor(Math.min(a[0], a[0] + u[0] * (L + c1)) - wMax - 2);
@@ -154,24 +161,27 @@ export function block(q: PixelCanvas, a: V, b: V, light: Light, o: BlockOpts): B
       }
     }
   }
-  // the lava crack on the front face: a 1-px line along the bone with one 1-px jog across it
+  // the lava crack on the front face: a 1-px line along the bone with 1-px jogs across it (one at the middle,
+  // or a broken stair every `every` px)
   if (o.crack) {
     const k0 = Math.round(o.crack.from * L);
     const k1 = Math.round(o.crack.to * L);
     const jog = o.crack.jog === false ? Infinity : Math.round((k0 + k1) / 2);
+    const every = o.crack.every;
+    const offAt = (k: number) => o.crack!.off + (every ? Math.floor((k - k0) / every) % 2 : k >= jog ? 1 : 0);
     for (let k = k0; k <= k1; k++) {
-      const off = o.crack.off + (k >= jog ? 1 : 0);
+      const off = offAt(k);
       const px = Math.floor(a[0] + u[0] * (k + 0.5) + n[0] * off);
       const py = Math.floor(a[1] + u[1] * (k + 0.5) + n[1] * off);
       const i = py * q.w + px;
       if (mask.get(i) !== 1) continue;
       lava.push({ x: px, y: py, t: o.crack.t, kind: o.crack.kind, d: 0 });
       q.set(px, py, PAL.fire2);
-      // the jog: both pixels of the step, so the crack stays 4-connected
-      if (k === jog) {
+      // a jog: both pixels of the step, so the crack stays 4-connected
+      if (k > k0 && offAt(k - 1) !== off) {
         const qx = Math.floor(a[0] + u[0] * (k - 0.5) + n[0] * off);
         const qy = Math.floor(a[1] + u[1] * (k - 0.5) + n[1] * off);
-        if (mask.get(qy * q.w + qx) === 1) {
+        if (mask.get(qy * q.w + qx) === 1 && !lava.some((l) => l.x === qx && l.y === qy)) {
           lava.push({ x: qx, y: qy, t: o.crack.t, kind: o.crack.kind, d: 0 });
           q.set(qx, qy, PAL.fire2);
         }
@@ -189,12 +199,12 @@ export function block(q: PixelCanvas, a: V, b: V, light: Light, o: BlockOpts): B
  * the fingers toward the knuckles; a ≤ 3-px glass run on the lit corner. The knuckle face (the last
  * 2 px) is recorded as light: basalt at rest, fire3 → fire4 → white-hot with the arm's heat.
  */
-export function fist(q: PixelCanvas, wrist: V, dir: V, light: Light, o: { len: number; wid: number; far?: boolean; kind: LavaKind }): BlockOut {
+export function fist(q: PixelCanvas, wrist: V, dir: V, light: Light, o: { len: number; wid: number; far?: boolean; lit?: boolean; kind: LavaKind }): BlockOut {
   const u = snapDir(dir);
   let n: V = [-u[1], u[0]];
   const ld = lightDir(light);
   if (n[0] * ld[0] + n[1] * ld[1] < 0) n = [-n[0], -n[1]];
-  const ramp = o.far ? FAR : NEAR;
+  const ramp = o.far && !o.lit ? FAR : NEAR;
   const L = o.len;
   const w = o.wid;
   const mask = new Map<number, number>();
@@ -269,20 +279,30 @@ export function fist(q: PixelCanvas, wrist: V, dir: V, light: Light, o: { len: n
       }
     }
   }
-  // the heat: the knuckle face is light, and every other fist pixel records how far behind the face it
-  // sits (t = −1 − px) and its plane (d), so the glow pass melts the fist from the striking face back —
-  // white-hot only at full heat, the lit back of the hand keeping its basalt crust longest
+  // the finger gaps cut 1 px into the striking face (its inner column, where a gap meets the face): the
+  // notches that make the lit face three knuckles, not a bar
+  const notch = new Set<number>();
+  for (const [s0] of GAPS) {
+    const ss = s0 * (w / 2);
+    for (let tt = L - 1.5; tt <= L - 0.5; tt += 0.5) {
+      const i = Math.floor(wrist[1] + u[1] * tt + n[1] * ss) * q.w + Math.floor(wrist[0] + u[0] * tt + n[0] * ss);
+      if (mask.get(i) === 3) notch.add(i);
+    }
+  }
+  // the heat: the knuckle face is light — t 0 its outer column, 1 its inner one, 2 a notch — and every
+  // other fist pixel records how far behind the face it sits (t = −1 − px) and its plane (d): the glow pass
+  // lights the face and ONE rim pixel behind it (two bands, never a gradient), the rest stays basalt
   const gaps = new Set(lava.map((l) => l.y * q.w + l.x));
   for (const [i, plane] of mask) {
     if (gaps.has(i)) continue;
     const x = i % q.w;
     const y = Math.floor(i / q.w);
+    const t = (x + 0.5 - wrist[0]) * u[0] + (y + 0.5 - wrist[1]) * u[1];
     if (plane === 3) {
-      lava.push({ x, y, t: 0, kind: o.far ? 'knuckleF' : 'knuckle', d: 3 });
+      lava.push({ x, y, t: notch.has(i) ? 2 : L - t < 1 ? 0 : 1, kind: o.far ? 'knuckleF' : 'knuckle', d: 3 });
       continue;
     }
-    const t = (x + 0.5 - wrist[0]) * u[0] + (y + 0.5 - wrist[1]) * u[1];
-    lava.push({ x, y, t: -1 - Math.max(0, Math.round(L - 2 - t)), kind: o.far ? 'meltF' : 'melt', d: plane });
+    lava.push({ x, y, t: -1 - Math.max(0, Math.floor(L - 2 - t)), kind: o.far ? 'meltF' : 'melt', d: plane });
   }
   return { mask, lava };
 }
