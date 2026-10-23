@@ -1,5 +1,6 @@
-// Taş Muhafız (stone_sentinel) — v3 art, the A3 pilot on the biped body plan (Y8). NOT REGISTERED
-// YET: the registry skips files starting with "_" (integration renames it to stone_sentinel.ts).
+// Taş Muhafız (stone_sentinel) — v3 art, the A3 pilot on the biped body plan (Y8). Registered: under
+// ?look=v3 monsterArt('stone_sentinel') is this art, and its presentation recipe
+// (src/presentation/cards/stone_sentinel.ts) plays it on the default recipe path (normal tier).
 
 import { v1 as biped } from '../bodyplans/biped';
 import type { BipedMember } from '../bodyplans/biped/v1';
@@ -7,7 +8,7 @@ import { planArt } from '../bodyplans/types';
 import { BUILD, FRAME, FX, MATERIALS, OX, OY, type SentinelFx } from './stone_sentinel-build';
 import { ANIMS } from './stone_sentinel-anims';
 import { LIP_Y } from './stone_sentinel-fx';
-import { PARTS, armShift, placesOf } from './stone_sentinel-parts';
+import { PARTS, armShift, nearArmShift, placesOf } from './stone_sentinel-parts';
 
 export const SENTINEL: BipedMember<SentinelFx> = {
   id: 'stone_sentinel',
@@ -39,11 +40,11 @@ export const SENTINEL: BipedMember<SentinelFx> = {
       const r = rig.props.rock;
       // in the floor only its top shows above the hole's lip: the point stays on what is seen
       if (r && r.show > 0) return { x: Math.round(r.at[0]), y: r.hand === null ? Math.min(Math.round(r.at[1]), LIP_Y - 3) : Math.round(r.at[1]) };
-      const [ux, uy] = armShift(p.fx);
+      const [ux, uy] = nearArmShift(p.fx);
       return { x: rig.armN.end[0] + ux, y: Math.min(rig.ground, rig.armN.end[1] + uy) };
     },
     hand: (rig, p) => {
-      const [ux, uy] = armShift(p.fx);
+      const [ux, uy] = nearArmShift(p.fx);
       return { x: rig.armN.end[0] + ux, y: Math.min(rig.ground, rig.armN.end[1] + uy) };
     },
     // the far hand holds the shield; it comes up with the chest block in the summon's column
@@ -62,11 +63,13 @@ export const SENTINEL: BipedMember<SentinelFx> = {
       'settle 90 / 110 / 130 / 140. Roar: a 390 ms shield heave (90 / 130 / 170) then a 50 ms drop onto a 60 ms slam. ' +
       'Titan: escalating holds 80 → 190 into a stomp; golem: rise, crest, crash, ripple',
     idle:
-      '12 f, 1.68 s, holds 120–170 ms: a stack of stone blocks that settles one block at a time — the courses and chest ' +
-      'plate lift first, the pauldrons with them, the helm and the hanging fist a frame late; one weight shift forward and ' +
-      'one back per loop (hips ±1 px over planted feet, the upper body a frame behind them); the ᛉ pulses twice a loop ' +
-      '(light leads the stone), the eye slit flares at the top of the breath and dims in the sag; the planted shield and ' +
-      'the feet never move. Titan: the core leads from the centre out; golem: spout → body → mask, sideways sway',
+      '12 f, 1.70 s, holds 120–170 ms: a stack of stone blocks that breathes one block at a time, never the whole torso — ' +
+      'a ripple runs up the masonry (courses → chest plate → hanging arm, each up a pixel, home, a pixel low, home; twice a ' +
+      'loop), lifts the near then the far pauldron and crowns the helm, each held two frames, the fist and the moss caps a ' +
+      'frame behind their blocks; at the top the helm turns a pixel toward the foe with the eye flare, settles a pixel low, ' +
+      'then draws back with the eye dimmed while the shield leans its top a pixel in under the sentinel\'s weight; the ᛉ ' +
+      'pulses ahead of each ripple; the feet and the shield\'s foot never move. Titan: the core leads from the centre out; ' +
+      'golem: spout → body → mask, sideways sway',
     guard:
       '6 f, 1.04 s, holds 150–200 ms: hunkered into the planted shield — hips 3 px down and 1 forward over the planted ' +
       'feet, the spine leaning 0.12 into the slab so the far pauldron tucks in behind its rim and the helm peers over it, ' +

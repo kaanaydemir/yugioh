@@ -23,6 +23,13 @@ describe('character voices from recipes (SE-3)', () => {
     expect(voiceRecipes({ palette: 'chime', key: 80, register: 'high', brightness: 1 })).toBeNull();
   });
 
+  it("rumble's extra: the rip (the rock torn out of the floor), a playable recipe of its own", () => {
+    const set = voiceRecipes(RUMBLE_REFERENCE)!;
+    expect(Object.keys(set).filter((k) => !(VOICE_ROLES as readonly string[]).includes(k))).toEqual(['rip']);
+    expect(typeof set.rip?.play).toBe('function');
+    expect(set.rip).not.toBe(set.land);
+  });
+
   it('rumble fills every role with a playable recipe (SE-7 duck range, sane caps)', () => {
     const set = voiceRecipes(RUMBLE_REFERENCE)!;
     expect(set).not.toBeNull();
@@ -40,14 +47,21 @@ describe('character voices from recipes (SE-3)', () => {
   });
 
   it('names are generated for the recipe files with an interpreted preset, and only for them', () => {
-    const want = RECIPE_IDS.filter((id) => {
+    const gen = RECIPE_IDS.filter((id) => {
       const v = presentationOf(id)!.voice;
       return !('custom' in v) && !!voiceRecipes(v);
-    }).flatMap((id) => VOICE_ROLES.map((role) => voiceSfxName(id, role)));
+    });
+    // every role, and the palette's extras (the rumble's 'rip') beside them
+    const extrasOf = (id: string): string[] => {
+      const v = presentationOf(id)!.voice;
+      return 'custom' in v ? [] : Object.keys(voiceRecipes(v)!).filter((k) => !(VOICE_ROLES as readonly string[]).includes(k));
+    };
+    const want = gen.flatMap((id) => [...VOICE_ROLES.map((role) => voiceSfxName(id, role)), ...extrasOf(id).map((x) => `voice:${id}:${x}`)]);
     expect(Object.keys(V3_VOICE_RECIPES).sort()).toEqual([...want].sort());
     for (const id of RECIPE_IDS) {
       const s = voiceSounds(id);
-      if (want.some((n) => n.startsWith(`voice:${id}:`))) expect(s && Object.keys(s).sort()).toEqual([...VOICE_ROLES].sort());
+      // (a recipe's `drops` add the death's landing knocks: afterDissolve, not a role; the extras are named too)
+      if (gen.includes(id)) expect(s && Object.keys(s).filter((k) => k !== 'afterDissolve').sort()).toEqual([...VOICE_ROLES, ...extrasOf(id)].sort());
       else expect(s).toBeNull();
     }
     expect(voiceSfxName('stone_sentinel', 'roar')).toBe('voice:stone_sentinel:roar');

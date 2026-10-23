@@ -89,6 +89,11 @@ export const looseBlock = (i: number, fx?: Readonly<SentinelFx>): boolean => !!f
 export function armShift(fx?: Readonly<SentinelFx>): V {
   return [Math.round(fx?.upperX ?? 0) + stackDX(ARM_BLOCK, fx), stackDY(ARM_BLOCK, fx)];
 }
+/** The near arm's shift: the arms' shift and its own lag behind the chest (armY; the far hand stays on the shield's grip). */
+export function nearArmShift(fx?: Readonly<SentinelFx>): V {
+  const [x, y] = armShift(fx);
+  return [x, y + Math.round(fx?.armY ?? 0)];
+}
 
 export function placesOf(rig: BipedRig, fx?: Readonly<SentinelFx>): Places {
   const r = REST_RIG;
@@ -105,7 +110,7 @@ export function placesOf(rig: BipedRig, fx?: Readonly<SentinelFx>): Places {
     helm: [hd[0] + ux + sx('helm'), hd[1] + sd('helm')],
     pauldronN: [pn[0] + ux + Math.round(fx?.padNX ?? 0) + sx('pauldronN'), pn[1] + Math.round(fx?.padN ?? 0) + sd('pauldronN')],
     pauldronF: [pf[0] + ux + Math.round(fx?.padFX ?? 0) + sx('pauldronF'), pf[1] + Math.round(fx?.padF ?? 0) + sd('pauldronF')],
-    chest: [ch[0] + ux + sx('chest'), ch[1] + sd('chest')],
+    chest: [ch[0] + ux + sx('chest'), ch[1] + sd('chest') + Math.round(fx?.chestY ?? 0)],
     abdomen: [ab[0] + sx('abdomen'), ab[1] + Math.round(fx?.courseY ?? 0) + sd('abdomen')],
     belt: [pelvis[0] + sx('belt'), pelvis[1] + sd('belt')],
     tassets: [pelvis[0] + sx('tassets'), pelvis[1] + sd('tassets')],
@@ -258,13 +263,19 @@ export function shieldShear(tilt: number): ((row: number) => number) | undefined
   return (j) => Math.round((t * (H - 1 - j)) / (H - 1));
 }
 
+/** A block's own moss cap channel (the cap a frame behind its block), on top of mossY. */
+const MOSS_OF: Partial<Record<keyof Places, 'mossN' | 'mossF' | 'mossH' | 'mossS'>> = { pauldronN: 'mossN', pauldronF: 'mossF', helm: 'mossH', shield: 'mossS' };
+
 // every rigid part is clipped at the ground line: the shield stands planted in the floor, and the
 // summon's blocks come up out of it
 const rigid = (layer: string, map: MapPair, key: keyof Places): Part => ({
   layer,
   seam: 'none',
   paint: (ctx) => {
-    const q = stampMap(ctx, map, placesOf(ctx.rig, ctx.pose.fx)[key], ctx.rig.ground, Math.round(ctx.pose.fx.mossY ?? 0), key === 'shield' ? shieldShear(ctx.pose.fx.tilt) : undefined);
+    const fx = ctx.pose.fx;
+    const own = MOSS_OF[key];
+    const moss = Math.round((fx.mossY ?? 0) + (own ? (fx[own] ?? 0) : 0));
+    const q = stampMap(ctx, map, placesOf(ctx.rig, fx)[key], ctx.rig.ground, moss, key === 'shield' ? shieldShear(fx.tilt) : undefined);
     if (detached(key, ctx.pose)) separate(ctx.dst, q);
     return q;
   },
@@ -570,7 +581,7 @@ const AXIS_SNAP = 30;
 function nearArm(ctx: Ctx): PixelCanvas {
   const rig = ctx.rig;
   const light = ctx.light;
-  const [ux, uy] = armShift(ctx.pose.fx);
+  const [ux, uy] = nearArmShift(ctx.pose.fx);
   const sh: V = [rig.armN.root[0] + ux, rig.armN.root[1] + uy];
   const el: V = [rig.armN.mid[0] + ux, rig.armN.mid[1] + uy];
   const hand: V = [rig.armN.end[0] + ux, rig.armN.end[1] + uy];
@@ -769,13 +780,14 @@ const DEBRIS = new WeakMap<PixelCanvas, Debris>();
 function restOfParts(ctx: Ctx): (part: number, x: number, y: number) => V | null {
   const pl = placesOf(ctx.rig, ctx.pose.fx) as unknown as Record<string, V>;
   const [ax, ay] = armShift(ctx.pose.fx);
+  const [nx, ny] = nearArmShift(ctx.pose.fx);
   const shN = disp(ctx.rig.shoulderN, REST_RIG.shoulderN);
   const shF = disp(ctx.rig.shoulderF, REST_RIG.shoulderF);
   const byPart: (V | null)[] = [];
   // the shield never crumbles: the slab stands whole while its guardian falls apart behind it (the
   // death kit's shatter breaks it with the rest after the last frame)
   for (const [name, i] of Object.entries(PART_INDEX))
-    byPart[i] = name === 'shield' ? null : (pl[name] ?? (name === 'armN' ? [shN[0] + ax, shN[1] + ay] : name === 'armF' ? [shF[0] + ax, shF[1] + ay] : null));
+    byPart[i] = name === 'shield' ? null : (pl[name] ?? (name === 'armN' ? [shN[0] + nx, shN[1] + ny] : name === 'armF' ? [shF[0] + ax, shF[1] + ay] : null));
   return (part, x, y) => {
     const d = byPart[part];
     return d ? [x - d[0], y - d[1]] : null;

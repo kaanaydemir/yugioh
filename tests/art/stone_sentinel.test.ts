@@ -1,16 +1,22 @@
-// A3 Y8 — the pilot Taş Muhafız v3 on biped/v1 (src/art/monsters-v3/_stone_sentinel.ts, still
-// unregistered): idle f0 is the approved still on v1's outline, P2 is a relight (same silhouette),
+// A3 Y8 — the pilot Taş Muhafız v3 on biped/v1 (src/art/monsters-v3/stone_sentinel.ts, registered
+// under ?look=v3): idle f0 is the approved still on v1's outline, P2 is a relight (same silhouette),
 // the throw leaves from the rock, every anim (the five base ones and, part 2, the eight extras)
 // carries its marks and hold rules, the feet stay planted except for hitHeavy's lifted step, the
 // stone death crumbles low and the revive is its own anim; the crumble / reassemble passes (rigkit)
 // are pure and mirror each other.
+// A3 core review (art layer): A1 — a resting sentinel is struck in whatever idle frame it shows, so
+// every idle frame stays within 50 % of every struck f0 (monster-gates "HA-21 phase", P1 and P2) while
+// the idle stays alive (HA-18 ≥ 15 %); A2 — hitHeavy's drawn travel stays within the heavy class's
+// front shove (≤ 2 px), the step taken in the air; A4 — the thrown rock is the held rock (turn 0 is the
+// hand's drawing, every turn ≤ 32 px and lit from the top-left).
 
 import { describe, expect, it } from 'vitest';
-import art, { SENTINEL } from '../../src/art/monsters-v3/_stone_sentinel';
+import art, { SENTINEL } from '../../src/art/monsters-v3/stone_sentinel';
 import v1 from '../../src/art/monsters/stone_sentinel';
 import { PixelCanvas } from '../../src/art/pixel';
 import { PAL } from '../../src/art/palette';
-import { drawFrame, validateArt } from '../../src/art/rigkit';
+import { drawFrame, frameDelta, validateArt } from '../../src/art/rigkit';
+import { boulderTurn, heldBoulder } from '../../src/art/monsters-v3/stone_sentinel-fx';
 import { PartComp } from '../../src/art/rigkit/composite';
 import { lightOf } from '../../src/art/rigkit/light';
 import { CRUMBLE_STONE, crumblePass, drawDebris, reassemblePass } from '../../src/art/rigkit/passes';
@@ -95,10 +101,15 @@ describe('stone_sentinel v3 (biped/v1 pilot)', () => {
     const findings = validateArt(art, { tier: 'normal', attack: 'projectile' });
     expect(findings.map((x) => `${x.severity} ${x.rule} ${x.anim}: ${x.message}`)).toEqual([]);
     const a = art.anims.attack;
-    expect(a.marks!.charge).toBe(0);
-    expect(a.holds![a.marks!.release!]).toBeLessThanOrEqual(70);
-    const longest = Math.max(...a.holds!);
-    expect(a.holds!.indexOf(longest)).toBe(a.marks!.release! - 2); // the overhead hold, then the whip, then the release
+    // the charge is the dig (pilot fix): the declaration plays look → bend → reach → dig and holds it
+    expect(a.marks!.charge).toBe(3);
+    const rel = a.marks!.release!;
+    expect(a.holds![rel]).toBeLessThanOrEqual(70);
+    // the overhead hold — three 60-ms tremble beats, then the whip, then the release — is the longest beat
+    // of the wind-up (180 ms; the strain's 140 ms is the longest single frame before it)
+    const hold = a.holds!.slice(rel - 4, rel - 1);
+    expect(hold).toEqual([60, 60, 60]);
+    expect(hold.reduce((x, y) => x + y, 0)).toBeGreaterThan(Math.max(...a.holds!.slice(0, rel - 4), ...a.holds!.slice(rel)));
   });
 
   it('pins biped v1, keeps the feet planted and fills its distinction card', () => {
@@ -123,6 +134,60 @@ describe('stone_sentinel v3 (biped/v1 pilot)', () => {
     expect(moved).toBeGreaterThanOrEqual(2);
     expect(art.rig('hitHeavy', n - 1).footN).toEqual(home[0]);
     for (const v of Object.values(SENTINEL.distinction)) if (typeof v === 'string') expect(v.length).toBeGreaterThan(40);
+  });
+});
+
+describe('stone_sentinel v3 — A3 core review, art layer (A1 / A2 / A4)', () => {
+  it('A1: every idle frame stays within 50 % of every struck f0 (HA-21 phase), and the idle stays alive (HA-18)', () => {
+    const n = specOf('idle').frames;
+    for (const side of ['left', 'right'] as const) {
+      const idle = Array.from({ length: n }, (_, k) => drawFrame(art, 'idle', k, side));
+      const op = idle[0].coverage();
+      for (const a of ['hit', 'hitHeavy', 'hitMagic', 'death'] as const) {
+        const f0 = drawFrame(art, a, 0, side);
+        for (let k = 0; k < n; k++) expect(frameDelta(idle[k], f0) / op, `${side} idle f${k} → ${a} f0`).toBeLessThan(0.5);
+      }
+      // never the whole torso: no idle frame carries more than a fifth of the body off idle f0
+      for (let k = 1; k < n; k++) expect(frameDelta(idle[0], idle[k]) / op, `${side} idle f${k}`).toBeLessThan(0.2);
+      const mean = idle.reduce((s, p, k) => s + frameDelta(idle[(k + n - 1) % n], p), 0) / n;
+      expect(mean / op, side).toBeGreaterThanOrEqual(0.15);
+    }
+  });
+
+  it('A2: hitHeavy draws at most the heavy class\'s front shove (2 px of hip travel), the step taken in the air', () => {
+    const n = specOf('hitHeavy').frames;
+    const hip0 = art.joints('hitHeavy', 0).hip.x;
+    const travel = Math.max(...Array.from({ length: n }, (_, f) => hip0 - art.joints('hitHeavy', f).hip.x));
+    expect(travel).toBe(2);
+    expect(Math.min(...Array.from({ length: n }, (_, f) => art.rig('hitHeavy', f).footN[0] - art.rig('idle', 0).footN[0]))).toBe(-2);
+  });
+
+  it('A4: the thrown rock is the held rock — turn 0 is the hand\'s drawing, every turn ≤ 32 px and lit from the top-left', () => {
+    const held = heldBoulder();
+    const hb = held.bounds()!;
+    for (let t = 0; t < 8; t++) {
+      const q = boulderTurn(t, 8);
+      expect(Math.max(q.w, q.h)).toBeLessThanOrEqual(32);
+      const b = q.bounds()!;
+      if (t === 0) {
+        expect([b.w, b.h]).toEqual([hb.w, hb.h]);
+        for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) expect(q.get(b.x + x, b.y + y), `(${x}, ${y})`).toBe(held.get(hb.x + x, hb.y + y));
+      }
+      // the light stays put while the rock turns: the earth tones of its top-left half outshine the bottom-right
+      const ramp: number[] = [PAL.earth0, PAL.earth1, PAL.earth2, PAL.earth3, PAL.earth4];
+      let tl = 0;
+      let br = 0;
+      const cx = b.x + b.w / 2;
+      const cy = b.y + b.h / 2;
+      for (let y = b.y; y < b.y + b.h; y++)
+        for (let x = b.x; x < b.x + b.w; x++) {
+          const i = ramp.indexOf(q.get(x, y) as number);
+          if (i < 0) continue;
+          if (x + 0.5 - cx + (y + 0.5 - cy) < -2) tl += i;
+          else if (x + 0.5 - cx + (y + 0.5 - cy) > 2) br += i;
+        }
+      expect(tl, `turn ${t}`).toBeGreaterThan(br);
+    }
   });
 });
 

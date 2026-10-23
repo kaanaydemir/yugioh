@@ -1,8 +1,8 @@
 // Taş Muhafız v3 (A3 pilot, Y8) — the BUILD on biped v1: frame, proportions, materials, channels.
 //
-// The art is still UNREGISTERED: its default export lives in ./_stone_sentinel.ts (the registry skips
-// files whose name starts with "_"); this helper file has no default export, so the registry, which
-// imports every file of this directory, gets nothing from it.
+// The art's default export lives in ./stone_sentinel.ts (registered under ?look=v3); this helper file
+// has no default export, so the registry, which imports every file of this directory, gets nothing
+// from it.
 //
 // Frame 72×80 = the v1 64×64 frame + a margin (offset OX = 4, OY = 12: 12 px above the helm for the
 // boulder held overhead, 4 px on each side for the dig and the follow-through, 4 px under the floor
@@ -77,7 +77,8 @@ export const MATERIALS: Readonly<Record<string, MaterialId>> = Object.freeze({ b
  *           chest by a frame (HA-6 overlap: the stone settles one block at a time)
  *   fistY   px the hanging fist sits off the hand (y; + down): the fist's own lag
  *   upperX  px the upper body (chest plate, pauldrons, helm, both arms) is held off the spine (x): the
- *           torso a frame behind the hips in a weight shift (a slide, not a turn of the shoulder line)
+ *           whole upper stack slid a pixel (hitMagic's rattle; a slide, not a turn of the shoulder line) —
+ *           never in the idle, where it would carry ~20 % of the body off idle f0 (HA-21 phase)
  *   courseY px the masonry courses sit off the waist (y; + down): the first block of a breath wave
  * (part 2: the extras)
  *   rise    px the whole stack sits under its place (summon: the blocks come up out of the floor; the
@@ -99,6 +100,13 @@ export const MATERIALS: Readonly<Record<string, MaterialId>> = Object.freeze({ b
  *           step out by whole pixels from the foot up (0 upright … 2), the Ψ with them
  *   vein    the spell's light running out of the ᛉ along the masonry joints (hitMagic): 0 none … 1 the
  *           cracks' full length (their heads travel outward as it grows; `crackle` is their brightness)
+ * (A1 idle re-key: one block a frame, by its own pixels — never the whole torso)
+ *   chestY  px the chest plate (and its ᛉ) sits off its place (y; + down): the chest block's own beat
+ *   armY    px the near arm (upper arm, bracer, fist) sits off the rig (y; + down): the arm a frame
+ *           behind the chest it hangs from
+ *   mossN / mossF / mossH / mossS   px the moss caps of the near pauldron / far pauldron / helm / shield
+ *           sit off their blocks (y), on top of mossY: a cap a frame behind its own block (squashed as
+ *           the block lifts under it, floating as it drops away)
  * The death's crumble and the revive's reassembly are the pose's pass progress (BipedPose.pass:
  * crumble / reassemble, rigkit passes), not channels.
  */
@@ -137,9 +145,15 @@ export interface SentinelFx extends Record<string, number> {
   dustTone: number;
   tilt: number;
   vein: number;
+  chestY: number;
+  armY: number;
+  mossN: number;
+  mossF: number;
+  mossH: number;
+  mossS: number;
 }
 
-export const FX: SentinelFx = Object.freeze({ rune: 1, slit: 1, srune: 0, glint: 0, crack: 0, crater: 0, dirt: 0, dust: 0, chips: 0, spikes: 0, spark: 0, smear: 0, padN: 0, padF: 0, fistY: 0, upperX: 0, courseY: 0, crackAt: 0, dirtAt: 0, dustAt: 0, chipsAt: 2, rise: 0, gap: 0, lock: 6, mossY: 0, padNX: 0, padFX: 0, crackle: 0, pit: 0, flare: 0, wobble: 0, dustTone: 0, tilt: 0, vein: 0 }) as SentinelFx;
+export const FX: SentinelFx = Object.freeze({ rune: 1, slit: 1, srune: 0, glint: 0, crack: 0, crater: 0, dirt: 0, dust: 0, chips: 0, spikes: 0, spark: 0, smear: 0, padN: 0, padF: 0, fistY: 0, upperX: 0, courseY: 0, crackAt: 0, dirtAt: 0, dustAt: 0, chipsAt: 2, rise: 0, gap: 0, lock: 6, mossY: 0, padNX: 0, padFX: 0, crackle: 0, pit: 0, flare: 0, wobble: 0, dustTone: 0, tilt: 0, vein: 0, chestY: 0, armY: 0, mossN: 0, mossF: 0, mossH: 0, mossS: 0 }) as SentinelFx;
 
 /** Where the dig happens (v1 px, on the floor beside the near foot): the crack, the crater, the boulder's bed. */
 export const DIG: readonly [number, number] = [10, 58];

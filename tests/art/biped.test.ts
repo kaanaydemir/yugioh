@@ -1,8 +1,9 @@
 // A3 Y7 — the biped body plan, version v1 (docs/v3/A3_MIMARI.md §4.2, §12 "Gövde tipi (biped)"):
 // the four paper members resolve, the foot invariants hold, IK is NaN-free and keeps limb lengths,
 // joints() is defined on every frame, ≤ 40 parameters, the loop words cannot be called without a
-// period / phase / amplitude, poseKnockPx agrees with the recoil words and the reaction kit, and
-// planArt builds a plain MonsterArt with the plan fields (+ the cross build of control (b)).
+// period / phase / amplitude, poseKnockPx agrees with the recoil words (recoilPush; the declared table —
+// the reaction kit measures a plan art's drawn travel from joints() instead, _v3/blow.ts poseTravelPx),
+// and planArt builds a plain MonsterArt with the plan fields (+ the cross build of control (b)).
 
 import { describe, expect, it } from 'vitest';
 import { v1 as biped } from '../../src/art/bodyplans/biped';
@@ -430,6 +431,8 @@ describe('biped v1: the vocabulary', () => {
 });
 
 describe('biped v1: poseKnockPx (§10.2)', () => {
+  // the DECLARED table (what recoilPush draws; the hit kit's fallback for an art without joints() — a
+  // plan art's kit subtracts the hip travel its recoils measurably draw, _v3/blow.ts poseTravelPx)
   it('whole px, never above the kit knockPx of the class (guardPushPx + 1): the kit adds the rest', () => {
     for (const w of WEIGHT_CLASSES) {
       const k = biped.poseKnockPx(PAPER.sentinel.build, w);

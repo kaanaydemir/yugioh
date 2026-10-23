@@ -6,13 +6,14 @@
 // v3 art. A3 builds ONE style, the pilot's 'assemble'; the others arrive with their first user.
 //
 // 'assemble' (A0 §1.3 "karakterli girişler": the body put together from its matter)
-//   0      the voice's 'arrive' (else summonCharge); the matter gathers — pieces of the recipe's
+//   0      the voice's 'arrive' (sustained: it fades on 'land', else summonCharge); the matter gathers — pieces of the recipe's
 //          `summon.matter` rise off a ring on the floor around the tile and circle the empty tile
 //          (behind the body on the far half of their orbit, in front on the near half) for
 //          `summon.leadMs` (default ASSEMBLE_LEAD_MS; a set piece named by `summon.setPiece` replaces
 //          this gathering)
-//   lead   the summon pose starts (the body forms in ≤ 300 ms of hologram) while the pieces spiral in
-//          and close on it by the pose's 'land'
+//   lead   the summon pose starts — no hologram (A3 pilot fix: the body is put together OUT OF its matter;
+//          its pose's own first frames show it rising out of the floor in true colours, a hologram tint
+//          turned them into a white cloud) — while the pieces spiral in and close on it by the pose's 'land'
 //   land   the voice's 'land' (else impactLight): the last pieces lock in, floor dust
 //   peak   the pose's big beat (the pilot's shield slam is its summon pose's peak): the voice's
 //          'roar' (else roarSmall), recipe.hooks.onSummonPeak, the kit's finale (shock ring, light,
@@ -33,12 +34,13 @@ import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { PresentationRecipe, RecipeHooks } from '../../presentation/types';
 import { DEPTH, type XY } from '../../view/layout';
 import { lightPool } from '../../view/light';
+import { stepTone } from '../../view/light/stepped';
 import { Sparks, onFrame, sleep } from '../../vfx/combat';
 import { Raster } from '../../vfx/setpieces';
 import type { CinematicContext } from '../_core/types';
 import { matterRamp, rampOfMatter } from '../_v3/presets';
 import { summonPose } from '../_v3/summon';
-import { panAt, play, soundsOf } from '../_v3/sound';
+import { panAt, play, soundsOf, start } from '../_v3/sound';
 import { entrance, type Entrance, type SummonCtx } from '../summon-b/_kit';
 import { hooksOf } from './strike';
 
@@ -79,6 +81,18 @@ export function setPieceOf(name: string | null | undefined): SetPiece | null {
 }
 
 // ================================================================ 'assemble'
+
+const lum = (c: number): number => 0.2126 * ((c >> 16) & 255) + 0.7152 * ((c >> 8) & 255) + 0.0722 * (c & 255);
+
+/**
+ * A floor light colour that reads as LIGHT on the v3 night floor (A3 pilot fix, REHBER EF-6): the stepped
+ * light lifts a pad one tone toward the light's ramp, and a warm or earthen ramp's first tone (gold0,
+ * earth0, stone0) on night1 is a mud stain, not light. Such a colour gives way to the neutral white, whose
+ * steps are night1 → night2 → night3 (a cool, clean light); a luminous one (violet, cyan…) is kept.
+ */
+export function floorLightColor(c: number): number {
+  return lum(stepTone(PAL.night1, c, 1)) >= lum(PAL.night2) ? c : PAL.white;
+}
 
 /** How long the matter circles the empty tile before the summon pose starts (ms; recipe `summon.leadMs`). */
 export const ASSEMBLE_LEAD_MS = 220;
@@ -184,9 +198,10 @@ async function assemble(e: Entrance, r: PresentationRecipe, hooks: RecipeHooks |
   const ramp: Ramp = r.summon.matter ? rampOfMatter(r.summon.matter) : matterRamp(u.cardId);
   const lead = Math.max(0, Math.round(r.summon.leadMs ?? ASSEMBLE_LEAD_MS));
   const shake = Math.max(0, Math.round(r.summon.shake ?? ASSEMBLE_SHAKE_PX));
-  if (voice) play(voice.arrive, { volume: 0.8, pan });
-  else e.ctx.sfx('summonCharge', { volume: 0.6 });
-  const pool = lightPool(sc, e.home.x, e.home.y, { color: ramp[3], radius: 26, floorY: e.home.y, intensity: 0.6, anim: 'steady', fadeIn: 120 });
+  // the gathering's voice is sustained: it ends with its picture, on the pose's 'land' (SE-2)
+  const arrive = voice ? start(voice.arrive, { volume: 0.8, pan }) : null;
+  if (!voice) e.ctx.sfx('summonCharge', { volume: 0.6 });
+  const pool = lightPool(sc, e.home.x, e.home.y, { color: floorLightColor(ramp[3]), radius: 26, floorY: e.home.y, intensity: 0.6, anim: 'steady', fadeIn: 120 });
   // the matter circles the empty tile first (the default gathering; a set piece brings its own and gets
   // the pose's beats as they come)
   const piece = setPieceOf(r.summon.setPiece);
@@ -208,7 +223,9 @@ async function assemble(e: Entrance, r: PresentationRecipe, hooks: RecipeHooks |
   let peaked = false;
   const p = summonPose(sc, u, {
     ramp,
+    hologram: false,
     onLand: () => {
+      arrive?.stop(60);
       lockDust(sc, e.home, ramp);
       if (voice) play(voice.land, { volume: 0.85, pan });
       else e.ctx.sfx('impactLight', { volume: 0.6 });
@@ -229,6 +246,7 @@ async function assemble(e: Entrance, r: PresentationRecipe, hooks: RecipeHooks |
   });
   if (!p) {
     // no summon pose (cannot happen for v3 art with a recipe; kept safe): the plain finale
+    arrive?.stop(120);
     beat.land();
     beat.peak();
     beat.done();

@@ -2,7 +2,9 @@
 // geçişlerinde poz sıçraması olmaz", "Hasar tepkisi … savunma pozisyonunu yansıtır"). A monster in
 // DEFENSE position that dies never jumps from its crouched, wrapped guard straight into the death,
 // and never rises out of its guard first either (r3 #3: climbing fromGuard to its last, idle-like
-// frame read as the lethal blow FREEING the body). The blow breaks the guard:
+// frame read as the lethal blow FREEING the body; A3 pilot fix: an art that gives joints() is MEASURED
+// — no bridge, recoil or death-entry frame of it stands taller than its crouch, RISE_PX below). The
+// blow breaks the guard:
 //
 //   contact ─ fromGuard f0          the ward / shield wing is thrown open, the body still low —
 //             (held through the     shown on the impact frame and frozen by the hit-stop
@@ -48,6 +50,40 @@ const SHOW_LAG_MS = 20;
 const UNKNOWN_COST = 99;
 /** A recoil f0 this close to the death's start frame (idleΔ) IS that frame: the death shows it. */
 const SAME_FRAME = 0.5;
+/**
+ * A3 pilot fix (HA-24 "never rises out of its guard", pilot critique): an art that gives joints() (a body-
+ * plan art) is MEASURED against its crouch (guard f0: its hips and its head) — the bridge stops at fromGuard
+ * f0 when f1 already stands taller, a recoil whose struck frame stands more than RISE_PX taller is not
+ * played, and the death starts on its first frame (≤ MAX_SKIP) no taller than the crouch. An art without
+ * joints() (the slice: its bridges were accepted by eye) keeps the A2 planner exactly as it was.
+ */
+const RISE_PX = 1;
+
+/** The hips' and the head's height (art y) on a frame, from the art's joints() (null: none). */
+function heightOf(u: MonsterUnit, anim: AnyMonsterAnim, f: number): { hip: number; head: number } | null {
+  const j = u.art.joints?.(anim, f);
+  return j && j.hip && j.head ? { hip: j.hip.y, head: j.head.y } : null;
+}
+
+/** Does frame `f` of `anim` stand taller than the crouch (hips or head more than RISE_PX higher)? */
+function rises(u: MonsterUnit, anim: AnyMonsterAnim, f: number, crouch: { hip: number; head: number } | null): boolean {
+  if (!crouch) return false;
+  const h = heightOf(u, anim, f);
+  return !!h && (h.hip < crouch.hip - RISE_PX || h.head < crouch.head - RISE_PX);
+}
+
+/** The first death frame (≤ MAX_SKIP) no taller than the crouch; the lowest of them when all rise. */
+function lowStart(u: MonsterUnit, nD: number, crouch: { hip: number; head: number }): number {
+  const jMax = Math.max(0, Math.min(MAX_SKIP, nD - 2));
+  let best = 0;
+  let bestY = -Infinity;
+  for (let j = 0; j <= jMax; j++) {
+    if (!rises(u, 'death', j, crouch)) return j;
+    const h = heightOf(u, 'death', j);
+    if (h && h.hip > bestY) [best, bestY] = [j, h.hip];
+  }
+  return best;
+}
 
 export interface GuardBreak {
   /** The last bridge frame shown at most (fromGuard f0 … f[bridge]; f1 only when it fits). */
@@ -81,12 +117,15 @@ export function showsGuard(u: MonsterUnit): boolean {
  */
 export function planGuardBreak(u: MonsterUnit, o: { recoil?: AnyMonsterAnim | null } = {}): GuardBreak | null {
   if (!u.has('death') || !u.has('fromGuard') || !u.sprite.active) return null;
-  const bridge = Math.min(BRIDGE_MAX_FRAME, u.frameCount('fromGuard') - 1);
+  // a plan art measures its crouch (A3 pilot fix, RISE_PX): null for an art without joints()
+  const crouch = u.art.joints ? heightOf(u, u.has('guard') ? 'guard' : 'fromGuard', 0) : null;
+  let bridge = Math.min(BRIDGE_MAX_FRAME, u.frameCount('fromGuard') - 1);
+  while (bridge > 0 && rises(u, 'fromGuard', bridge, crouch)) bridge--;
   const nD = u.frameCount('death');
   let R: AnyMonsterAnim | null = null;
   if (o.recoil) {
     for (const a of [o.recoil, 'hitHeavy', 'hit'] as const)
-      if (u.has(a)) {
+      if (u.has(a) && !rises(u, a, 0, crouch)) {
         R = a;
         break;
       }
@@ -94,12 +133,15 @@ export function planGuardBreak(u: MonsterUnit, o: { recoil?: AnyMonsterAnim | nu
   const idle = idleDelta(u);
   const from = `fromGuard:${bridge}`;
   if (!R) {
-    // no blow: the death from the frame that continues the opened guard best
+    // no blow (or only recoils that would stand up out of the crouch): the death from the frame that
+    // continues the opened guard best — never one taller than the crouch on a plan art
     const e = idle === null ? null : chooseEntry('death', 1, nD, (_r, j) => {
+      if (rises(u, 'death', j, crouch)) return null;
       const d = frameDelta(u, from, `death:${j}`);
       return d === null ? null : d / idle;
     });
-    return { bridge, recoil: null, hold: 0, struck: false, start: e ? e.start : 0, cost: e ? e.cost : UNKNOWN_COST, leadMs: BREAK_WINDOW_MS + MIN_FRAME_MS };
+    const start = e ? e.start : crouch ? lowStart(u, nD, crouch) : 0;
+    return { bridge, recoil: null, hold: 0, struck: false, start, cost: e ? e.cost : UNKNOWN_COST, leadMs: BREAK_WINDOW_MS + MIN_FRAME_MS };
   }
   // the recoil frames reachable before the hand-over, and the death frame that continues them
   const n = u.frameCount(R);
@@ -110,6 +152,7 @@ export function planGuardBreak(u: MonsterUnit, o: { recoil?: AnyMonsterAnim | nu
     idle === null
       ? null
       : chooseEntry(rec, reach, nD, (r, j) => {
+          if (rises(u, 'death', j, crouch) || rises(u, rec, r, crouch)) return null;
           const d = frameDelta(u, `${rec}:${r}`, `death:${j}`);
           return d === null ? null : d / idle;
         });

@@ -260,10 +260,22 @@ function flipV3(ctx: FlipCtx): Promise<void> {
 export type FlipAccentFn = (ctx: AnyCtx, id: MonsterId, x: number, y: number) => void;
 
 /**
+ * Options of flipV3With (A3 pilot fix, additive; omitted = exactly the flip as before). The recipe layer's
+ * flip (recipe/flip.ts) passes them for a recipe monster:
+ *   burst: false   no generic flipBurst (the 80-px light pillar, the sparkles, the attribute preset) and no
+ *                  attribute-coloured light flash: the recipe's accent is the burst
+ *   rise           the sound on the rise's peak (default: roarBig / roarSmall, a beast's growl)
+ */
+export interface FlipV3Opts {
+  burst?: boolean;
+  rise?: (ctx: AnyCtx, unit: MonsterUnit) => void;
+}
+
+/**
  * The v3 flip with a given burst accent (A3: the recipe layer's flip hook, src/cinematics/recipe/flip.ts,
  * passes the recipe's; the event handler above passes the per-card accent(), exactly as before).
  */
-export async function flipV3With(ctx: FlipCtx, accentFn: FlipAccentFn): Promise<void> {
+export async function flipV3With(ctx: FlipCtx, accentFn: FlipAccentFn, o: FlipV3Opts = {}): Promise<void> {
   const ev = ctx.ev;
   const v = ctx.views;
   const field = v.field;
@@ -304,8 +316,10 @@ export async function flipV3With(ctx: FlipCtx, accentFn: FlipAccentFn): Promise<
   const atk = ctx.atk(ev.uid, flipSummon ? 'after' : 'next');
   const dfn = ctx.def(ev.uid, flipSummon ? 'after' : 'next');
   const unit = field.addUnit(ev.uid, { hidden: true, atk, def: dfn, position: flipSummon ? 'attack' : 'defense' });
-  bg(flipBurst(sc, home.x, home.y, attr));
-  void lightFlash(sc, home.x, home.y - 16, attributeLightColor(attr), fs(flipSummon ? 34 : 26), flipSummon ? 360 : 280, { floorY: home.y, ring: flipSummon, intensity: flipSummon ? 0.9 : 0.6 });
+  if (o.burst !== false) {
+    bg(flipBurst(sc, home.x, home.y, attr));
+    void lightFlash(sc, home.x, home.y - 16, attributeLightColor(attr), fs(flipSummon ? 34 : 26), flipSummon ? 360 : 280, { floorY: home.y, ring: flipSummon, intensity: flipSummon ? 0.9 : 0.6 });
+  }
   accentFn(ctx, id, home.x, home.y);
   if (cage) bg(cage.burst(260));
   if (!unit) {
@@ -332,7 +346,8 @@ export async function flipV3With(ctx: FlipCtx, accentFn: FlipAccentFn): Promise<
       const play = unit.playRange(rise, 0, undefined, { hold: false });
       await ctx.wait(Math.round(total * 0.55));
       void shockwave(sc, home.x, home.y, { ramp, radius: fs(40), ms: 340, thickness: 4 });
-      ctx.sfx(unit.card.ace ? 'roarBig' : 'roarSmall', { volume: 0.55 });
+      if (o.rise) o.rise(ctx, unit);
+      else ctx.sfx(unit.card.ace ? 'roarBig' : 'roarSmall', { volume: 0.55 });
       unit.badge.setVisible(true);
       void unit.badge.pop();
       await capped(sc, play, Math.round(total * 0.5) + 120);

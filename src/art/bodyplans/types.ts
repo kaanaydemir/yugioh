@@ -1,8 +1,8 @@
 // Body plans — the layer between the rigkit core and a monster file (docs/v3/A3_MIMARI.md §2, §3.3,
 // §3.4, §3.6, §8).
 //
-// A plan gives a skeleton, slots, planted feet, joints() (the sameness gate's tracks), poseKnockPx()
-// and a helper vocabulary. It gives NO choreography: the monster keys its own poses and holds; the
+// A plan gives a skeleton, slots, planted feet, joints() (the sameness gate's tracks; the hit kit also
+// measures each recoil's hip travel from them), poseKnockPx() and a helper vocabulary. It gives NO choreography: the monster keys its own poses and holds; the
 // rigkit compiler only enforces the grammar (§0 items 1–3). planArt() turns a plan member into a
 // plain MonsterArt (registry, textures, kits and tools see no difference), plus `levels` (anim → the
 // escape level it is drawn with, §8) for tools/monster-gates.ts.
@@ -70,9 +70,14 @@ export interface BodyPlan<Build, P, R> {
   readonly order: readonly string[];
   /** muzzle / core / head / hand / feet / grip… (frame px) */
   points(b: Build, rig: R, pose: P): MonsterPoints;
-  /** handN, handF, head, hip, footN, footF, prop*… (frame px; the sameness tool, §9) */
+  /** handN, handF, head, hip, footN, footF, prop*… (frame px; the sameness tool, §9; the hit kit's recoil travel, §10.2) */
   joints(b: Build, rig: R, pose: P): Readonly<Record<string, V>>;
-  /** px of body travel the recoil words draw, power 1 / 2 / 3 (§10) */
+  /**
+   * px of body travel the recoil words draw, power 1 / 2 / 3 (§10): the documentation of
+   * helpers.recoilPush. planArt publishes it as the art's declared poseKnockPx; the hit kit reads that
+   * only for an art without joints() — a plan art's kit subtracts the hip travel the recoil that plays
+   * measurably draws (_v3/blow.ts poseTravelPx), whatever the member keyed.
+   */
   poseKnockPx(b: Build, weight: WeightClass): readonly [number, number, number];
   /** the vocabulary bound to a build: words, not choreography; each returns a delta */
   helpers(b: Build): PlanHelpers<Build, P>;
@@ -204,6 +209,7 @@ export type EscapeLevel = 0 | 1 | 2 | 3 | 4 | 5;
 /** What planArt returns: a plain MonsterArt, with the plan fields always set (P / R: the member's pose and rig). */
 export type PlanArt<P = unknown, R = unknown> = MonsterArt & {
   readonly knock: 'pose' | 'sprite';
+  /** the plan's declared recoil travel (documentation of recoilPush; the hit kit measures joints() instead) */
   readonly poseKnockPx?: readonly [number, number, number];
   readonly bodyPlan: { readonly id: string; readonly version: number };
   joints(anim: AnyMonsterAnim, frame: number): Readonly<Record<string, { x: number; y: number }>>;
@@ -421,6 +427,8 @@ export function planArt<B, P extends object, R, Fx extends Record<string, number
 
   return Object.assign(art, {
     knock,
+    // the declared table stays (tools print it, an art copied without joints() falls back to it); with
+    // joints() the hit kit subtracts the travel each recoil measurably draws (A3 core review F4)
     ...(knock === 'pose' ? { poseKnockPx: [...plan.poseKnockPx(m.build, m.weight)] as unknown as readonly [number, number, number] } : {}),
     bodyPlan: { id: plan.id, version: plan.version },
     joints,

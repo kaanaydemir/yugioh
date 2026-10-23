@@ -265,6 +265,60 @@ const SLICE: Record<string, Scenario> = {
     2,
     2,
   ),
+
+  // ------------------------------------------------------------ A3 pilot: Taş Muhafız (the default recipe path)
+  // The life-cycle paths of the pilot that strikes-b / summon-b do not cover (A3_MIMARI §14 Y8): its
+  // revive, both position changes, the flip of a set sentinel, the wyrm's breath and the bolt (magic)
+  // on it, and the player-2 sides of its blocked and direct throws.
+  sliceSentinelRevive: {
+    desc: 'Ruh Çağrısı revives Taş Muhafız from P1 graveyard (its reassembly from the heap, no entrance replay)',
+    stage: sides(0, { hand: ['soul_recall'], graveyard: ['stone_sentinel'] }, { monsters: [null, 'ember_wolf'] }),
+    steps: [recall(0, 'stone_sentinel', 0, 1)],
+  },
+  sliceSentinelReviveP2: {
+    desc: 'player 2 revives its own Taş Muhafız (mirrored side, P2 sheet)',
+    stage: sides(1, { hand: ['soul_recall'], graveyard: ['stone_sentinel'] }, { monsters: [null, 'tide_golem'] }),
+    steps: [recall(1, 'stone_sentinel', 1, 1)],
+  },
+  sliceSentinelPos: posBoth('P1: Taş Muhafız attack → defense (zone 0), a second Muhafız defense → attack (zone 2)', 'stone_sentinel', 0, { monsters: [null, 'ember_wolf'] }),
+  sliceSentinelPosP2: posBoth('P2: Taş Muhafız attack → defense, a second Muhafız defense → attack (mirrored)', 'stone_sentinel', 1, { monsters: [null, 'tide_golem'] }),
+  sliceSentinelFlip: {
+    desc: 'flip summon of a face-down Taş Muhafız: the tile turns, the body forms in its guard pose and rises out of it',
+    stage: sides(0, { monsters: [null, down('stone_sentinel')] }, { monsters: [null, 'ember_wolf'] }),
+    steps: [flip(0, 1)],
+  },
+  sliceSentinelFlipP2: {
+    desc: 'P2 flip summons a face-down Taş Muhafız (mirrored)',
+    stage: sides(1, { monsters: [null, null, down('stone_sentinel')] }, { monsters: ['tide_golem'] }),
+    steps: [flip(1, 2)],
+  },
+  sliceBoltSentinel: {
+    desc: 'Yıldırım Hükmü from the hand on P2 Taş Muhafız (a magic blow on stone: the crumbling death)',
+    stage: sides(0, { hand: ['judgment_bolt'], monsters: [null, 'ember_wolf'] }, { monsters: [null, 'stone_sentinel'] }),
+    steps: [bolt(0, mon(1, 1))],
+  },
+  sliceBoltSentinelP2: {
+    desc: 'player 2 casts Yıldırım Hükmü on a defending P1 Taş Muhafız (it dies out of its guard)',
+    stage: sides(1, { hand: ['judgment_bolt'] }, { monsters: [def('stone_sentinel'), 'lumen_sprite'] }),
+    steps: [bolt(1, mon(0, 0))],
+  },
+  sliceWyrmBreathSentinel: battle(
+    'Kristal Ejder (2500) breathes on Taş Muhafız in attack position (500): magic blow on stone, destroyed, −2000 to P2',
+    0,
+    { monsters: [null, 'crystal_wyrm'] },
+    { monsters: [null, 'stone_sentinel'] },
+    1,
+    1,
+  ),
+  sliceSentinelBlockedP2: battle(
+    'P2 Taş Muhafız throws its boulder at a defending Gelgit Golemi (DEF 2000): it shatters on the guard, −1500 to P2',
+    1,
+    { monsters: [null, 'stone_sentinel'] },
+    { monsters: [def('tide_golem')] },
+    1,
+    0,
+  ),
+  sliceSentinelDirectP2: battle('P2 Taş Muhafız throws its boulder straight at player 1 (direct attack)', 1, { monsters: [null, null, 'stone_sentinel'] }, {}, 2, null),
 };
 
 export default SLICE;

@@ -29,6 +29,7 @@ import { DEATH_PRESETS, MATTER_RAMP, cutInRhythm, deathPreset, matterRamp } from
 import { STRIKE_KIND, blowKindOf } from '../../src/cinematics/_v3/blow';
 import { CHARACTER_SOUNDS, hitSoundFor, materialOf, soundsOf } from '../../src/cinematics/_v3/sound';
 import { registerFixtureRecipe, v3Recipe } from '../../src/presentation/registry';
+import { voiceSounds } from '../../src/audio/v3/voices';
 import type { PresentationRecipe } from '../../src/presentation/types';
 import type { MonsterUnit } from '../../src/duel/MonsterUnit';
 
@@ -157,7 +158,16 @@ describe('the bridge on a plan monster stand-in (v3 art + recipe) and on a recip
     expect(s.material).toEqual(['stone', 'runeGold']);
     // the struck body plays its material's hit (runeGold sounds like the stone it is carved in)
     expect(s.hits).toEqual(['hitStoneLight', 'hitStoneHeavy', 'hitStoneMagic', 'hitStoneMagic']);
-    // a recipe registered at run time has no generated voice set: the generic sounds
-    expect(s.sounds).toBeNull();
+    // the voice sets are generated at load from the recipe FILES (src/audio/v3/voices.ts): the pilot's
+    // file (Y8) has its rumble set, and a fixture registered at run time neither adds nor changes one
+    expect(s.sounds).toEqual(voiceSounds('stone_sentinel'));
+    expect(s.sounds?.charge).toBe('voice:stone_sentinel:charge');
+  });
+
+  it('a recipe registered at run time for a card without a recipe file has no generated voice set: the generic sounds', () => {
+    registerFixtureArtV3({ ...monsterArt('storm_hawk'), id: 'storm_hawk' });
+    undo.push(registerFixtureRecipe({ ...PILOT, id: 'storm_hawk' }));
+    expect(v3Recipe('storm_hawk')?.id).toBe('storm_hawk');
+    expect(soundsOf('storm_hawk')).toBeNull();
   });
 });

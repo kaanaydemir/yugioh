@@ -52,6 +52,12 @@ export interface VoicePreset {
   brightness: number;
   growl?: GrowlParams;
   tail?: 'shimmer' | 'embers' | 'spray' | 'dust' | null;
+  /**
+   * What falls to the floor after the death's 'dissolve' (A3 pilot fix, additive): [death frames after the
+   * 'dissolve' mark, volume] — each scored with the voice's own 'land' (the sentinel's helm and pauldron hit
+   * the floor and bounce). Becomes the generated set's afterDissolve (src/audio/v3/voices.ts).
+   */
+  drops?: readonly (readonly [frames: number, volume: number])[];
 }
 
 /** What a strike flourish hook gets (the beat it decorates: charge / release / contact / recover). */

@@ -111,6 +111,99 @@ function boulder(ctx: Ctx): PixelCanvas | null {
   return q;
 }
 
+const RAMPS_EARTH = [PAL.earth0, PAL.earth1, PAL.earth2, PAL.earth3, PAL.earth4] as const;
+const RAMPS_LEAF = [PAL.leaf0, PAL.leaf1, PAL.leaf2, PAL.leaf3, PAL.leaf4] as const;
+/** The rock's ramps by map letter (BKEY's tones): the earth ramp for the stone, the leaf ramp for its moss tuft. */
+const BOULDER_RAMP: Readonly<Record<string, readonly [ramp: readonly number[], step: number]>> = Object.freeze({
+  '0': [RAMPS_EARTH, 0],
+  '1': [RAMPS_EARTH, 1],
+  '2': [RAMPS_EARTH, 2],
+  '3': [RAMPS_EARTH, 3],
+  '4': [RAMPS_EARTH, 4],
+  f: [RAMPS_LEAF, 1],
+  g: [RAMPS_LEAF, 2],
+  h: [RAMPS_LEAF, 3],
+});
+/** The key light (screen top-left) the thrown rock keeps on every turn. */
+const ROCK_LIGHT: V = ((x: number, y: number): V => [x / Math.hypot(x, y), y / Math.hypot(x, y)])(-1, -1.15);
+/** How many ramp steps a rim pixel moves per unit of facing turned toward / away from the light. */
+const RELIGHT = 2.2;
+
+/** The rock as the near hand carries it (`boulder`'s stamp, unclipped, no smear) with the ink edge the body's outline gives it. */
+export function heldBoulder(): PixelCanvas {
+  const q = new PixelCanvas(BOULDER_W + 2, BOULDER_H + 2);
+  stampRock(q, BOULDER_P1, [BOULDER_C[0] + 1, BOULDER_C[1] + 1], Infinity);
+  return q.outline(PAL.ink);
+}
+
+/**
+ * The boulder as a drawing of its own: the rock the attack frames carry in the near hand — the SAME map
+ * and tones `boulder` stamps (BOULDER_P1: on screen both sides show it, P2's map being its mirror shown
+ * flipped) with the edge the body's outline pass gives it there (1-px ink, 4-connected) — turned `turn`
+ * of `turns` steps of a clockwise revolution (the throw's spin). The shape and its features turn (the
+ * moss tuft goes round, the crack with it); the light does not: every pixel is re-lit from the screen's
+ * top-left, stepped up or down its ramp by how far its outward facing (from the rock's centre, a rim
+ * pixel the most, the faces in the middle the least) turned toward or away from the light; the crack
+ * stays a crease. Turn 0 is the held rock exactly. Whole pixels only, never scaled: a quarter turn maps
+ * pixels onto pixels, an eighth takes each pixel's letter from the majority of its 4 × 4 sub-samples
+ * (clean edges, whole tone patches). The recipe throw flies it (src/cinematics/recipe/projectiles/boulder.ts).
+ */
+export function boulderTurn(turn: number, turns = 8): PixelCanvas {
+  const rows = BOULDER_P1;
+  const S = 17; // a 13 × 11 rock turned 45° fits in 15 × 15
+  const q = new PixelCanvas(S + 2, S + 2);
+  const a = ((((Math.round(turn) % turns) + turns) % turns) / turns) * Math.PI * 2;
+  const [cs, sn] = [Math.cos(a), Math.sin(a)];
+  const at = (i: number, j: number) => rows[j]?.[i] ?? '.';
+  // the crack: an earth0 pixel inside the rock (all four neighbours rock) stays a crease whatever its turn
+  const crease = (i: number, j: number) => at(i, j) === '0' && [[1, 0], [-1, 0], [0, 1], [0, -1]].every(([u, v]) => at(i + u, j + v) !== '.');
+  // target → source by the inverse turn, about the rock's centre pixel (BOULDER_C)
+  const src = (x: number, y: number): V => {
+    const dx = x - (S + 2) / 2;
+    const dy = y - (S + 2) / 2;
+    return [cs * dx + sn * dy + BOULDER_C[0] + 0.5, -sn * dx + cs * dy + BOULDER_C[1] + 0.5];
+  };
+  const lit = (n: V) => n[0] * ROCK_LIGHT[0] + n[1] * ROCK_LIGHT[1];
+  const R = 6;
+  const SUB = 4;
+  for (let y = 0; y < q.h; y++)
+    for (let x = 0; x < q.w; x++) {
+      // the letter most of the pixel's 4 × 4 sub-samples land on (rock if at least half of them do; a
+      // crease if 7 of 16 fall on the crack, so a turned crack stays one pixel wide)
+      const votes = new Map<string, number>();
+      let rock = 0;
+      let creases = 0;
+      for (let v = 0; v < SUB; v++)
+        for (let u = 0; u < SUB; u++) {
+          const [sx, sy] = src(x + (u + 0.5) / SUB, y + (v + 0.5) / SUB);
+          const i = Math.floor(sx);
+          const j = Math.floor(sy);
+          const ch = at(i, j);
+          if (ch === '.') continue;
+          rock++;
+          if (crease(i, j)) creases++;
+          votes.set(ch, (votes.get(ch) ?? 0) + 1);
+        }
+      if (rock * 2 < SUB * SUB) continue;
+      if (creases * 16 >= SUB * SUB * 7) {
+        q.set(x, y, PAL.earth0);
+        continue;
+      }
+      let ch = '';
+      let best = -1;
+      for (const [c, n] of votes) if (n > best || (n === best && c > ch)) [ch, best] = [c, n];
+      const [ramp, step] = BOULDER_RAMP[ch];
+      // re-lit from the top-left: the facing of this pixel's place on the rock before and after the turn
+      const [ox, oy] = src(x + 0.5, y + 0.5);
+      const n0: V = [(ox - BOULDER_C[0] - 0.5) / R, (oy - BOULDER_C[1] - 0.5) / R];
+      const n1: V = [cs * n0[0] - sn * n0[1], sn * n0[0] + cs * n0[1]];
+      const s = step + Math.round((lit(n1) - lit(n0)) * RELIGHT);
+      q.set(x, y, ramp[Math.max(0, Math.min(ramp.length - 1, s))]);
+    }
+  q.outline(PAL.ink);
+  return q;
+}
+
 // ------------------------------------------------------------------ floor work: crack, crater
 
 /** Set a pixel only where the frame is still empty (the floor behind the body). */
@@ -234,7 +327,7 @@ function pitCracks(p: PixelCanvas, c: number): void {
  * near (back) heel, 4 the front foot, 5 the summon's hole (the body's centre on the floor), 6 the
  * chest (the heap's top), 7 the near heel stepped back (hitHeavy).
  */
-export const SPOTS: readonly V[] = [DIG_AT, f1(50, 60), f1(48, 42), f1(16, 60), f1(34, 60), PIT_AT, f1(30, 40), f1(13, 60)];
+export const SPOTS: readonly V[] = [DIG_AT, f1(50, 60), f1(48, 42), f1(16, 60), f1(34, 60), PIT_AT, f1(30, 40), f1(14, 60)];
 
 const spotOf = (i: number): V => SPOTS[Math.max(0, Math.min(SPOTS.length - 1, Math.round(i)))];
 

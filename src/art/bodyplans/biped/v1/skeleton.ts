@@ -277,8 +277,11 @@ export function bipedPoints(b: BipedBuild, rig: BipedRig, _pose: BipedPose): Mon
 
 /**
  * Whole px of body travel the recoil words draw (helpers.recoilPush: the pelvis by f2), power 1 / 2 / 3
- * (§10.2). The reaction kit adds max(0, knockPx − this): heavy keeps 0 / 0 / 1 for the kit, the
- * lighter classes 1–3 px. Never above the kit's front knockPx (guardPushPx + 1) of the class.
+ * (§10.2). Never above the kit's front knockPx (guardPushPx + 1) of the class. The documentation of
+ * recoilPush and the art's declared poseKnockPx: the reaction kit falls back on it only for an art
+ * without joints(); a plan art's kit adds max(0, knockPx − the hip travel the recoil that plays
+ * measurably draws) (_v3/blow.ts poseTravelPx, A3 core review F4) — a member that keys its own recoils
+ * owns their travel.
  */
 export function bipedPoseKnockPx(_b: BipedBuild, weight: WeightClass): readonly [number, number, number] {
   switch (weight) {

@@ -56,6 +56,7 @@ import { onFrame } from '../../vfx/setpieces';
 import { weightOf } from '../../duel/motion';
 import { strikeLight as strikeLightOf, type Ctx, type EvOf, all, arenaDim, duelist, guardReact, impactLight, lerpXY, live, norm, other, sub, takeAttack } from './_kit';
 import { panAt, play as playSnd, quietCombat, soundsOf } from '../_v3/sound';
+import { v3Recipe } from '../../presentation/registry';
 
 /** v3: the impact number's pop (slam + settle, _v3/number.ts) before the camera may ease out. */
 const NUMBER_POP_MS = 200;
@@ -286,6 +287,27 @@ function burstBehind(sc: Phaser.Scene, victim: MonsterUnit): void {
 /** Share of the attacker's silhouette a counter-blow's contact flash may light (≤ the kit's 0.45). */
 const COUNTER_FLASH = 0.24;
 
+/**
+ * A3 pilot fix (v3 look only, recipe-built strikes only — the slice's own strikes never get here): a
+ * card whose strike is the recipe layer's physical 'throw' (Taş Muhafız's boulder). Such a throw is
+ * never a melee clash however close the two stand (it flew: P1 = P2), and a guard answers it with the
+ * rock itself — the pieces rebound onto the thrower (recipe/strike.ts materialBurst) — not with the
+ * ranged spell's backlash bolt (A2's magus-orb rule).
+ */
+function physicalThrow(id: string | null | undefined): boolean {
+  const r = v3Recipe(id);
+  return !!r && !r.custom?.strike && r.attack.type === 'throw' && r.attack.blow === 'physical';
+}
+/**
+ * A thrown rock's sparks and flash (its blows on the struck body and the rebound on the thrower): stone greys
+ * up to white — not the attribute ramp (EARTH: earth tones, whose ring and floor ellipse fade through earth2 to
+ * brown smudges on the night floor) and never a spell's hue.
+ */
+const THROWN_RAMP: Ramp = [PAL.stone1, PAL.stone2, PAL.stone3, PAL.stone4, PAL.white];
+/** A number this close (px) to the contact would cover it: it moves to the payer's far side by this much. */
+const NUMBER_CLEAR_PX = 28;
+const NUMBER_SIDE_PX = 46;
+
 /** The recoil anims (a claimed survivor is handed back once none of them plays any more). */
 const RECOILS = ['hit', 'hitHeavy', 'hitMagic'];
 
@@ -345,7 +367,7 @@ async function battleV3(ctx: Ctx<'battle'>): Promise<void> {
   const blocked = ev.result === 'attackerDestroyed' || (ev.result === 'noDestroy' && defense && (ev.targetValue ?? 0) > ev.attackerAtk);
   const power = battlePower(ev, dmgEv?.amount ?? 0);
   const { hold, other: kept } = takeAttack(ctx);
-  const aRamp: Ramp = attacker ? ATTRIBUTE_RAMP[attacker.attribute] : RAMPS.gold;
+  const aRamp: Ramp = attacker ? (physicalThrow(attacker.cardId) ? THROWN_RAMP : ATTRIBUTE_RAMP[attacker.attribute]) : RAMPS.gold;
   const tRamp: Ramp = target ? ATTRIBUTE_RAMP[target.attribute] : RAMPS.gold;
   const tTile = ev.targetUid !== null ? ctx.tile(ev.targetUid) : null;
   const to: XY = direct ? fx.duelistPoint(ctx, defender) : live(target) ? target!.core() : tTile ? { x: tTile.home.x, y: tTile.home.y - 10 } : { x: GAME_W / 2, y: 140 };
@@ -470,7 +492,8 @@ async function battleV3(ctx: Ctx<'battle'>): Promise<void> {
     // ---- the attacker answers for it on this same frame, where it stands
     if (au && (blocked || ev.result === 'bothDestroyed')) {
       const dies = aDestroy >= 0;
-      const melee = isMelee(au, p);
+      const thrown = physicalThrow(au.cardId);
+      const melee = !thrown && isMelee(au, p);
       // a melee loser dies where it was struck: take it over from its strike now
       if (dies && melee) cutAttacker = au.claim();
       // a melee attacker that survives the block recoils ON this frame: its animation is taken
@@ -479,11 +502,12 @@ async function battleV3(ctx: Ctx<'battle'>): Promise<void> {
       const recoilClaim = !dies && melee && au.claim({ pin: false });
       const cdir = norm(sub(au.core(), p)); // the counter travels from the clash into the attacker
       const hitAt = contactPoint(au, cdir);
-      // ranged: the shock runs back along the attack's own line and lands now
-      if (!melee) void backlash(sc, p, hitAt, tRamp);
+      // ranged: the shock runs back along the attack's own line and lands now (a thrown rock: its own
+      // pieces rebound onto the thrower instead — a physical blow, in the stone's tones)
+      if (!melee && !thrown) void backlash(sc, p, hitAt, tRamp);
       pending.push(
-        fx.hitReact(ctx, au, dies ? 2 : 1, tRamp, hitAt, cdir, target ? target.art : null, {
-          kind: melee ? blowKindOf(target) : 'magic',
+        fx.hitReact(ctx, au, dies ? 2 : 1, thrown ? THROWN_RAMP : tRamp, hitAt, cdir, target ? target.art : null, {
+          kind: thrown ? 'physical' : melee ? blowKindOf(target) : 'magic',
           lethal: dies,
           // the strike still drives the sprite: no knock-back; it owns the rebound pose unless
           // the attacker dies here (then the reaction pose is ours, and re-asserted below) or a
@@ -497,12 +521,17 @@ async function battleV3(ctx: Ctx<'battle'>): Promise<void> {
         }),
       );
       if (recoilClaim) recoilAfterStop(au, hitAnimFor(au, { kind: melee ? blowKindOf(target) : 'magic', heavy: false }));
-      contactLight(sc, hitAt, au.home.y, tRamp[3], dies ? 2 : 1);
+      contactLight(sc, hitAt, au.home.y, thrown ? PAL.white : tRamp[3], dies ? 2 : 1);
     }
     // ---- the number: on the contact frame, over whoever pays
     if (dmgEv) {
       if (dmgEv.player === defender) playDamageAt(overHead(tu ?? target));
-      else playDamageAt(au ? overHead(au) : overDuelist(ev.player));
+      else if (au && physicalThrow(au.cardId)) {
+        // a thrower struck at point-blank range: its head is under the guard it hit — a number over it
+        // would cover the rock breaking on the shield; it goes to the thrower's far side instead
+        const o = overHead(au);
+        playDamageAt(Math.hypot(o.x - p.x, o.y - p.y) > NUMBER_CLEAR_PX ? o : { x: Math.round(o.x - Math.sign(blow.x || 1) * NUMBER_SIDE_PX), y: o.y });
+      } else playDamageAt(au ? overHead(au) : overDuelist(ev.player));
     }
     // ---- deaths start from the reactions
     if (tDestroy >= 0) {

@@ -5,7 +5,9 @@
 // ./kit blocks; no new DSP). The roles are the ones every character fills:
 //   roar · arrive · land · charge (sustained: faded on 'release') · release · impact · dissolve · burst
 //   · reviveGather (sustained: faded on the revive's 'land') · reviveLand
-// (swing, deathStart and afterDissolve are optional extras of a hand-made set).
+// (swing, deathStart and afterDissolve are optional extras of a hand-made set). A palette may add EXTRAS
+// beside the roles (VoiceExtra, A3 pilot fix): a beat of its character the shared role set has no name
+// for — the rumble's 'rip', the rock torn out of the floor (the strike's hooks play it).
 //
 // Names: `voice:<cardId>:<role>`, generated at load for every recipe FILE (src/presentation/cards/*.ts)
 // that has a VoicePreset of a palette interpreted here; src/audio/sounds.ts spreads V3_VOICE_RECIPES into
@@ -34,11 +36,18 @@ import { crack, puff, scaled, sweep, thump } from './kit';
 
 export type VoiceRole = 'roar' | 'arrive' | 'land' | 'charge' | 'release' | 'impact' | 'dissolve' | 'burst' | 'reviveGather' | 'reviveLand';
 export const VOICE_ROLES: readonly VoiceRole[] = Object.freeze(['roar', 'arrive', 'land', 'charge', 'release', 'impact', 'dissolve', 'burst', 'reviveGather', 'reviveLand'] as const);
-/** The sustained roles (started with sfx.start, faded on the mark that ends their picture, SE-2). */
-export const SUSTAINED_ROLES: readonly VoiceRole[] = Object.freeze(['charge', 'reviveGather'] as const);
+/**
+ * The sustained roles (started with sfx.start, faded on the mark that ends their picture, SE-2): the strike's
+ * gathering (faded on 'release'), the summon's gathering ('arrive': faded on the pose's 'land' — A3 pilot
+ * fix, its swell outlived the picture) and the revive's (faded on the revive's 'land').
+ */
+export const SUSTAINED_ROLES: readonly VoiceRole[] = Object.freeze(['charge', 'arrive', 'reviveGather'] as const);
+
+/** A palette's extra beats beside the roles (see the header): the rumble's 'rip'. */
+export type VoiceExtra = 'rip';
 
 /** The names this module adds to SfxName. */
-export type V3VoiceSfxName = `voice:${MonsterId}:${VoiceRole}`;
+export type V3VoiceSfxName = `voice:${MonsterId}:${VoiceRole | VoiceExtra}`;
 
 export function voiceSfxName(id: string, role: VoiceRole): SfxName {
   return `voice:${id}:${role}` as SfxName;
@@ -46,6 +55,9 @@ export function voiceSfxName(id: string, role: VoiceRole): SfxName {
 
 /** A character's role set: every role's sound name. */
 export type VoiceSet = Readonly<Record<VoiceRole, SfxName>>;
+
+/** A palette's recipes: every role's, and its extras. */
+export type PaletteSet = Record<VoiceRole, Recipe> & Partial<Record<VoiceExtra, Recipe>>;
 
 // ================================================================ rumble (stone)
 
@@ -94,36 +106,47 @@ function dustTail(v: Voice, P: Rumble, t: number, d: number, g: number): void {
   v.noise('pink', { t, g: [[0, 0], [0.06, g], [d, 0.0001, 'e']], to: v.filt('highpass', [[0, P.grit * 0.8], [d, P.grit * 1.1, 'e']], 0.7, { t }) });
 }
 
-function rumbleVoice(p: VoicePreset): Record<VoiceRole, Recipe> {
+function rumbleVoice(p: VoicePreset): PaletteSet {
   const P = rumbleOf(p);
   return {
-    /** The call (cut-in eye flare / summon roar): the whole body grinds up and settles, gravel pours off. */
+    /**
+     * The call (the summon's shield slam: its pose's peak): the whole body grinds up and settles, gravel pours
+     * off. A3 pilot fix: it ends with the pose (D 0.6 s, not a 1.25-s grind into the idle) and its second
+     * thump falls on the eye lighting up (+0.13 s), not on an empty frame after the pose.
+     */
     roar: {
       cap: 1,
       gap: 0.3,
       verb: 0.45,
       duck: 0.6,
       play(v) {
-        const D = 1.25;
-        grind(v, P, 0, D, [[0, 0], [0.14, 0.55], [0.6, 0.42], [D, 0.0001, 'e']], [[0, 2], [0.35, P.top, 'e'], [D, 1.5, 'e']], { rate: 9 });
-        knock(v, P, 0.02, 0.5, 0.7, { up: 3 });
-        thump(v, 0.32, P.f * 1.6, P.f * 0.8, 0.32, 0.6, { drive: 1.6 });
-        gravel(v, P, 0.05, 1.05, 46, 0.22, 1.3);
-        gravel(v, P, 0.3, 0.7, 18, 0.14, 1.1, 1.35);
-        dustTail(v, P, 0.45, 0.9, 0.07);
+        const D = 0.6;
+        grind(v, P, 0, D, [[0, 0], [0.08, 0.55], [0.32, 0.4], [D, 0.0001, 'e']], [[0, 2], [0.2, P.top, 'e'], [D, 1.5, 'e']], { rate: 9 });
+        knock(v, P, 0.02, 0.5, 0.6, { up: 3 });
+        thump(v, 0.13, P.f * 1.6, P.f * 0.8, 0.26, 0.4, { drive: 1.6 });
+        gravel(v, P, 0.04, 0.5, 30, 0.22, 1.3);
+        gravel(v, P, 0.16, 0.36, 12, 0.14, 1.1, 1.35);
+        dustTail(v, P, 0.25, 0.4, 0.07);
       },
     },
-    /** The summon opens: the rocks gather — a rumble swelling from the floor, pebbles drawn together. */
+    /**
+     * The summon opens (sustained: faded on the pose's 'land', SE-2): the floor splits — a crack and a knock on
+     * the first frame — then the rocks gather, a rumble swelling from the floor to its peak ~0.55 s in (the
+     * pose lands at ~0.65 s), pebbles drawn together (A3 pilot fix: it peaked 250 ms after the land before).
+     */
     arrive: {
       cap: 1,
       gap: 0.3,
       verb: 0.4,
       duck: 0.35,
       play(v) {
-        const D = 1.3;
-        grind(v, P, 0, D, [[0, 0], [0.9, 0.42], [D, 0.0001, 'e']], [[0, 1.6], [0.9, P.top * 0.8, 'e'], [D, 2, 'e']], { rate: 7 });
-        gravel(v, P, 0.05, 1.15, 34, 0.18, 0.55);
-        v.tone('sine', [[0, P.f], [1, P.f * 1.5, 'e']], { g: [[0, 0], [0.9, 0.18], [D, 0.0001, 'e']] });
+        const D = 0.55;
+        const E = 1.05;
+        crack(v, 0, 0.32, { hp: P.grit * 0.65, dec: 0.012, n: 3, gap: 0.016 });
+        knock(v, P, 0, 0.42, 0.42, { up: 2.2, click: 0.5 });
+        grind(v, P, 0.03, E, [[0, 0], [0.12, 0.2], [D, 0.46], [E, 0.0001, 'e']], [[0, 1.6], [D, P.top * 0.85, 'e'], [E, 2, 'e']], { rate: 7 });
+        gravel(v, P, 0.05, D + 0.1, 34, 0.2, 0.7);
+        v.tone('sine', [[0, P.f], [D, P.f * 1.5, 'e']], { g: [[0, 0], [D, 0.18], [E, 0.0001, 'e']] });
       },
     },
     /** Feet on the floor ('land' mark): a heavy knock, the floor's dust, a few pebbles. */
@@ -139,7 +162,11 @@ function rumbleVoice(p: VoicePreset): Record<VoiceRole, Recipe> {
         dustTail(v, P, 0.05, 0.45, 0.05);
       },
     },
-    /** The strike's gathering (sustained; faded on 'release'): the ground grinds open, gravel trickles. */
+    /**
+     * The strike's gathering (sustained; faded on 'release'): the ground grinds open, gravel trickles. A3 pilot
+     * fix: it starts on the dig (the declaration's held charge frame), so it opens with the fingers biting into
+     * the floor — a dry crunch of stone and a burst of grit (the dig was silent).
+     */
     charge: {
       cap: 2,
       gap: 0.1,
@@ -149,12 +176,21 @@ function rumbleVoice(p: VoicePreset): Record<VoiceRole, Recipe> {
         const D = 0.55;
         const H = D + 0.9;
         const E = H + 0.2;
+        crack(v, 0, 0.3, { hp: P.grit * 0.55, dec: 0.012, n: 3, gap: 0.012 });
+        knock(v, P, 0, 0.22, 0.2, { up: 3.4, click: 0.8 });
+        gravel(v, P, 0.01, 0.16, 14, 0.24, 2.2);
         grind(v, P, 0, E, [[0, 0], [0.08, 0.2], [D, 0.38], [H, 0.38], [E, 0.0001, 'e']], [[0, 1.5], [D, P.top * 0.7, 'e'], [E, P.top * 0.7]], { rate: 13 });
         gravel(v, P, 0.04, H, 40, 0.13, 0.8);
         v.tone('sine', [[0, P.f], [D, P.f * 1.35, 'e'], [E, P.f * 1.35]], { g: [[0, 0], [D, 0.16], [H, 0.16], [E, 0.0001, 'e']] });
       },
     },
-    /** The throw: the stone's grunt leaving the hand (a low knock and grind), a deep swing, a spray of grit. */
+    /**
+     * The throw: the stone's grunt leaving the hand (a low knock and grind), a deep swing, a spray of grit. A3
+     * pilot fix: the swing's air HIGH up (1.6 → 3.2 → 2 kHz, white: the throw is heard on a laptop / phone
+     * speaker too, not only as sub-bass — a mid-band swoosh made it the wyrm's breath, SE-4 10 dB) and the
+     * boulder's tumble under the flight (≈ 0.35 s, falling slowly: its weight turning over, a low fluttering
+     * grind, and grit falling off it) so it never goes quiet before the impact. The middle stays hollow.
+     */
     release: {
       cap: 2,
       gap: 0.05,
@@ -162,9 +198,34 @@ function rumbleVoice(p: VoicePreset): Record<VoiceRole, Recipe> {
       duck: 0.3,
       play(v) {
         sweep(v, 0, 0.28, [90, 260, 80], 0.7, { q: 0.8, kind: 'brown', peakAt: 0.3 });
+        sweep(v, 0, 0.2, [1600, 3200, 2000], 0.5, { q: 0.9, kind: 'white', peakAt: 0.35 });
         knock(v, P, 0, 0.5, 0.3, { up: 2.2, click: 0.6 });
         grind(v, P, 0, 0.24, perc(0.5, 0.2, 0.01), [[0, P.top * 0.7], [0.22, 1.6, 'e']], { rate: 15 });
         gravel(v, P, 0.015, 0.22, 16, 0.24, 1.4);
+        // the tumble: the boulder's weight turning over (a low grind, fluttering) and grit falling off it
+        const tumble = v.filt('lowpass', [[0, P.f * 4.5], [0.34, P.f * 3, 'e']], 1.6, { t: 0.06 });
+        const turn = v.flutter(11, 0.65, { t: 0.06, d: 0.34, base: 0.5, to: tumble });
+        v.noise('brown', { t: 0.06, d: 0.34, g: [[0, 0], [0.04, 0.6], [0.22, 0.45], [0.34, 0.0001, 'e']], to: turn });
+        gravel(v, P, 0.06, 0.32, 20, 0.2, 1.0);
+      },
+    },
+    /**
+     * EXTRA 'rip' (the strike's rip beat: its hooks play it): the rock torn out of the floor — a tearing crack
+     * high up, a short scrape of stone on stone in the mid band (heard on a laptop / phone speaker: the feet's
+     * 'land' the rip reused was sub-bass only), a spray of grit, the boulder's weight coming free under it.
+     */
+    rip: {
+      cap: 1,
+      gap: 0.1,
+      verb: 0.35,
+      duck: 0.35,
+      play(v) {
+        crack(v, 0, 0.8, { hp: 1800, lp: 7000, dec: 0.014, n: 3, gap: 0.017 });
+        const scrape = v.filt('bandpass', [[0, 600], [0.05, 1500, 'e'], [0.16, 700, 'e']], 0.8, { t: 0.004 });
+        v.noise('white', { t: 0.004, g: [[0, 0], [0.008, 1.8], [0.06, 0.58], [0.16, 0.0001, 'e']], to: scrape });
+        knock(v, P, 0.012, 0.5, 0.26, { up: 2.4, click: 0 });
+        gravel(v, P, 0.02, 0.3, 26, 0.26, 2);
+        dustTail(v, P, 0.06, 0.45, 0.05);
       },
     },
     /** The strike's own accent on the contact frame (the struck body adds its material): the stone lands. */
@@ -181,7 +242,11 @@ function rumbleVoice(p: VoicePreset): Record<VoiceRole, Recipe> {
         dustTail(v, P, 0.08, 0.6, 0.06);
       },
     },
-    /** Death 'dissolve': the body crumbles — cracks running, rubble sliding off, a low groan. */
+    /**
+     * Death 'dissolve': the body crumbles — the stack slumps (a dull knock on the frame), cracks running,
+     * rubble sliding off, a low groan. A3 pilot fix: louder (and the slump), so the death arc climbs to its
+     * break instead of the break jumping 9–11 dB over a whisper.
+     */
     dissolve: {
       cap: 1,
       gap: 0.2,
@@ -189,40 +254,51 @@ function rumbleVoice(p: VoicePreset): Record<VoiceRole, Recipe> {
       duck: 0.35,
       play(v) {
         const D = 0.9;
-        v.crackle({ t: 0, d: D * 0.8, n: 26, g: 0.2, f: P.grit, q: 1.2, curve: 0.9, dec: 0.008 });
-        grind(v, P, 0.02, D, [[0, 0], [0.12, 0.4], [D, 0.0001, 'e']], [[0, P.top * 0.8], [D, 1.2, 'e']], { rate: 8 });
-        v.tone('sine', [[0, P.f * 1.25], [D, P.f * 0.8, 'e']], { g: [[0, 0], [0.1, 0.14], [D, 0.0001, 'e']] });
+        knock(v, P, 0, 0.26, 0.38, { up: 1.8, click: 0.5 });
+        v.crackle({ t: 0, d: D * 0.8, n: 30, g: 0.35, f: P.grit, q: 1.2, curve: 0.9, dec: 0.008 });
+        grind(v, P, 0.02, D, [[0, 0], [0.12, 0.6], [D, 0.0001, 'e']], [[0, P.top * 0.8], [D, 1.2, 'e']], { rate: 8 });
+        v.tone('sine', [[0, P.f * 1.25], [D, P.f * 0.8, 'e']], { g: [[0, 0], [0.1, 0.2], [D, 0.0001, 'e']] });
       },
     },
-    /** The body breaks: a rubble crash, chunks falling one after the other, gravel, dust. */
+    /**
+     * The body breaks: a rubble crash, chunks falling one after the other, gravel, dust. A3 pilot fix: ~8 dB
+     * down, at the slice's death level (it was the loudest beat of any clip and held the output knee ~20 ms):
+     * the heap that is left collapses, it does not explode — the arc climbs crumble → helm drop → break.
+     */
     burst: {
       cap: 1,
       gap: 0.2,
       verb: 0.5,
       duck: 0.55,
       play(v) {
-        crack(v, 0, 0.5, { hp: P.grit * 0.7, dec: 0.012, n: 3, gap: 0.01 });
-        knock(v, P, 0, 0.7, 0.8, { up: 3, click: 0 });
+        crack(v, 0, 0.19, { hp: P.grit * 0.7, dec: 0.012, n: 3, gap: 0.01 });
+        knock(v, P, 0, 0.22, 0.7, { up: 3, click: 0 });
         const chunks = [0.12, 0.2, 0.31, 0.43, 0.58, 0.74];
-        v.bursts(chunks, chunks.map((_, i) => 0.2 * (1 - i * 0.12)), { dec: 0.02, f: P.grit * 0.8, q: 1.6, drive: 1.6 });
-        for (let i = 0; i < 3; i++) thump(v, chunks[i * 2], P.f * 2.2, P.f, 0.22 - i * 0.05, 0.25, { drive: 1.5 });
-        grind(v, P, 0, 1.1, perc(0.45, 0.9, 0.01), [[0, P.top], [1, 1.2, 'e']], { rate: 9 });
-        gravel(v, P, 0.02, 1, 40, 0.2, 1.8);
-        dustTail(v, P, 0.15, 1, 0.08);
+        v.bursts(chunks, chunks.map((_, i) => 0.064 * (1 - i * 0.12)), { dec: 0.02, f: P.grit * 0.8, q: 1.6, drive: 1.6 });
+        for (let i = 0; i < 3; i++) thump(v, chunks[i * 2], P.f * 2.2, P.f, (0.22 - i * 0.05) * 0.32, 0.25, { drive: 1.5 });
+        grind(v, P, 0, 1.1, perc(0.19, 0.9, 0.01), [[0, P.top], [1, 1.2, 'e']], { rate: 9 });
+        gravel(v, P, 0.02, 1, 40, 0.1, 1.8);
+        dustTail(v, P, 0.15, 1, 0.05);
       },
     },
-    /** Revive: the stones roll back together (sustained; faded on the revive's 'land'). */
+    /**
+     * Revive: the stones roll back together (sustained; faded on the revive's 'land'). A3 pilot fix: sized to
+     * its picture as the slice's gatherings are (the chunks fly from the first frame and lock ~0.38 s later):
+     * a 0.36-s rise, a held top, the gravel front-loaded, at the slice gatherings' level under the music's —
+     * it was a 1.1-s swell cut at a third.
+     */
     reviveGather: {
       cap: 1,
       gap: 0.2,
       verb: 0.45,
       duck: 0.3,
       play(v) {
-        const D = 1.1;
-        const E = D + 0.3;
-        grind(v, P, 0, E, [[0, 0], [D, 0.44], [E, 0.0001, 'e']], [[0, 1.2], [D, P.top * 0.9, 'e'], [E, P.top * 0.9]], { rate: 6 });
-        gravel(v, P, 0, D, 44, 0.18, 0.45, 1.1);
-        v.tone('sine', [[0, P.f * 0.8], [D, P.f * 1.5, 'e']], { g: scaled([[0, 0], [D, 0.2], [E, 0.0001, 'e']], 1) });
+        const D = 0.36;
+        const H = D + 0.3;
+        const E = H + 0.12;
+        grind(v, P, 0, E, [[0, 0.03], [D, 0.19], [H, 0.19], [E, 0.0001, 'e']], [[0, 1.4], [D, P.top * 0.9, 'e'], [E, P.top * 0.9]], { rate: 6 });
+        gravel(v, P, 0, H, 44, 0.09, 1.0, 1.1);
+        v.tone('sine', [[0, P.f * 0.8], [D, P.f * 1.5, 'e'], [E, P.f * 1.5]], { g: scaled([[0, 0], [D, 0.2], [H, 0.2], [E, 0.0001, 'e']], 0.4) });
       },
     },
     /** Revive 'land': the blocks lock — a deep knock and two stone clacks. */
@@ -244,14 +320,14 @@ function rumbleVoice(p: VoicePreset): Record<VoiceRole, Recipe> {
 // ================================================================ palettes
 
 /** The palettes this module interprets (the others arrive with their first user). */
-const PALETTES: Partial<Record<VoicePalette, (p: VoicePreset) => Record<VoiceRole, Recipe>>> = {
+const PALETTES: Partial<Record<VoicePalette, (p: VoicePreset) => PaletteSet>> = {
   rumble: rumbleVoice,
 };
 
 export const VOICE_PALETTES: readonly VoicePalette[] = Object.freeze(Object.keys(PALETTES) as VoicePalette[]);
 
 /** A preset's role recipes, or null when its palette has no interpreter yet. */
-export function voiceRecipes(p: VoicePreset): Record<VoiceRole, Recipe> | null {
+export function voiceRecipes(p: VoicePreset): PaletteSet | null {
   return PALETTES[p.palette]?.(p) ?? null;
 }
 
@@ -261,6 +337,8 @@ export const RUMBLE_REFERENCE: VoicePreset = Object.freeze({ palette: 'rumble', 
 // ================================================================ the generated set
 
 const GENERATED = new Set<string>();
+/** The extras each generated card's palette adds. */
+const EXTRAS = new Map<string, VoiceExtra[]>();
 
 function generate(): Record<V3VoiceSfxName, Recipe> {
   const out: Record<string, Recipe> = {};
@@ -271,16 +349,34 @@ function generate(): Record<V3VoiceSfxName, Recipe> {
     if (!set) continue;
     GENERATED.add(id);
     for (const role of VOICE_ROLES) out[voiceSfxName(id, role)] = set[role];
+    const extras = (Object.keys(set) as (VoiceRole | VoiceExtra)[]).filter((k): k is VoiceExtra => !VOICE_ROLES.includes(k as VoiceRole));
+    for (const x of extras) out[`voice:${id}:${x}`] = set[x]!;
+    if (extras.length) EXTRAS.set(id, extras);
   }
   return out as Record<V3VoiceSfxName, Recipe>;
 }
 
 export const V3_VOICE_RECIPES: Record<V3VoiceSfxName, Recipe> = generate();
 
-/** The generated role set of a card (null: its recipe file has no interpreted VoicePreset). */
-export function voiceSounds(id: string | null | undefined): VoiceSet | null {
+/**
+ * A generated set: every role's sound, the death's landing knocks when the recipe names them, and the
+ * palette's extras (the rumble's `rip`).
+ */
+export type GeneratedVoice = VoiceSet & { afterDissolve?: readonly (readonly [number, SfxName, number])[] } & Partial<Record<VoiceExtra, SfxName>>;
+
+/**
+ * The generated role set of a card (null: its recipe file has no interpreted VoicePreset). A preset's
+ * `drops` (A3 pilot fix: what falls to the floor after the death's 'dissolve' — the sentinel's helm and
+ * pauldron) become the set's afterDissolve beats, scored with its own 'land' (the death kit plays them,
+ * _v3/death.ts).
+ */
+export function voiceSounds(id: string | null | undefined): GeneratedVoice | null {
   if (!id || !GENERATED.has(id)) return null;
   const out = {} as Record<VoiceRole, SfxName>;
   for (const role of VOICE_ROLES) out[role] = voiceSfxName(id, role);
-  return out;
+  const v = presentationOf(id)?.voice;
+  const drops = v && !('custom' in v) ? v.drops : undefined;
+  const extras: Partial<Record<VoiceExtra, SfxName>> = {};
+  for (const x of EXTRAS.get(id) ?? []) extras[x] = `voice:${id}:${x}` as SfxName;
+  return { ...out, ...extras, ...(drops?.length ? { afterDissolve: drops.map(([f, vol]) => [f, out.land, vol] as const) } : {}) };
 }

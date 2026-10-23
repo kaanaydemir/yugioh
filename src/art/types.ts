@@ -146,15 +146,24 @@ export interface MonsterArt {
   /**
    * v3 (A3): how a recoil moves the body (§10). 'sprite' (absent = default): the reaction kit shoves
    * the sprite whole pixels, starting at the first frame change AFTER contact (never on the contact
-   * frame). 'pose': the recoil poses draw `poseKnockPx[power]` px of the travel themselves (feet
-   * planted, the struck region leads); the kit adds only the rest, by the same trigger.
+   * frame). 'pose': the recoil poses draw part of a front blow's travel themselves (feet planted, the
+   * struck region leads); the kit adds only the rest, by the same trigger. What the kit leaves out is
+   * the travel the recoil that plays MEASURABLY draws when the art gives `joints()` (the hips' backward
+   * travel over f1–f2, _v3/blow.ts poseTravelPx), else the declared `poseKnockPx[power]`.
    */
   knock?: 'sprite' | 'pose';
-  /** v3 (A3), with knock 'pose': whole px of body travel the recoil poses draw, for power 1 / 2 / 3. */
+  /**
+   * v3 (A3), with knock 'pose': whole px of body travel the recoil poses are declared to draw, for
+   * power 1 / 2 / 3. The hit kit reads it only for an art without `joints()`; an art with `joints()`
+   * is measured instead (the recoil that plays is chosen by the blow's kind and heaviness, not its power).
+   */
   poseKnockPx?: readonly [number, number, number];
   /** v3 (A3): the body plan (and its pinned version) the art was built on (sameness groups, gallery). */
   bodyPlan?: { id: string; version: number };
-  /** v3 (A3): rig joints of one frame in art pixels — read by the sameness tool only, never at runtime. */
+  /**
+   * v3 (A3): rig joints of one frame in art pixels — read by the sameness tool and, for the recoils'
+   * hip travel, by the hit kit (_v3/blow.ts poseTravelPx, cached per art × recoil anim × frame).
+   */
   joints?(anim: AnyMonsterAnim, frame: number): Readonly<Record<string, { x: number; y: number }>>;
 }
 

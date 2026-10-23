@@ -3,7 +3,7 @@
 // choreography is this file's (A3_MIMARI §4.2: no default motion anywhere in the plan). Every number
 // is a whole-pixel decision: a stone block either moves a pixel or it does not (REHBER IŞ-12).
 //
-// Base (part 1): idle 12 f / 1.68 s · guard 6 f / 1.04 s · attack (Kaya Fırlatma) 17 f / 1.48 s (charge →
+// Base (part 1): idle 12 f / 1.70 s · guard 6 f / 1.04 s · attack (Kaya Fırlatma) 17 f / 1.48 s (charge →
 // release 950 ms) · roar 12 f / 1.30 s · hit 6 f / 0.60 s.
 // Extras (part 2), every one ending on its exact end pose (out 0):
 //   summon    15 f / 1.13 s  land@7 (470 ms)  the floor breaks open, a LOOSE column of blocks comes up out
@@ -44,66 +44,83 @@ const at1 = (x: number, y: number): V => [x + OX, y + OY];
 const REST_SHIELD = REST_RIG.props.shield!.at;
 const planted = (d: V = [0, 0]): BipedProp => ({ at: 'floor', a: 0, show: 1, off: [REST_SHIELD[0] - REST_RIG.root[0] + d[0], REST_SHIELD[1] - REST_RIG.ground + d[1]] });
 
-// ------------------------------------------------------------------ idle: the wall breathes
+// ------------------------------------------------------------------ idle: the wall breathes, one block at a time
 //
-// The shield stays planted in the floor; above it the body is a stack of stone blocks that moves one
-// block at a time (HA-6 overlap), every frame a whole-pixel move, long holds between them:
-//   f1   the torso (courses, chest plate, pauldrons, the arm hanging from them) lifts a pixel — the
-//        inhale; the helm and the hanging fist stay a frame behind
-//   f2   the helm and the fist catch up while the hips start onto the front foot (a pixel forward);
-//   f3   the upper body follows the hips — the top of the breath, the weight forward
-//   f4   the pauldrons settle first (the shoulders let go) while the upper body sways on a pixel past
-//        the hips; f5 the torso follows the pauldrons down, the helm a frame behind
-//   f6   the helm settles while the hips go back; f7 the upper body follows them home
-//   f8   the stone sags a pixel past rest as the weight goes onto the back foot (hips a pixel back,
-//        the upper body a frame behind them); f9 the helm and fist sag, the upper body follows;
-//   f10  the torso rises back while the pauldrons hang a frame; f11 they and the fist follow, the
-//        hips come home with the upper body a frame behind; the helm rises last (f0)
-// The light leads the stone: the ᛉ pulses twice a loop (every 6 frames), the eye slit flares at the
-// top of the breath — the helm glancing a pixel toward the foe with it — and dims in the sag.
+// A3 core review A1 (HA-21 phase): a resting sentinel is struck in whatever idle frame it shows, and its
+// struck poses are drawn from idle f0, so no idle frame may carry the whole torso off idle f0 (lifting
+// the torso a pixel moves ~20 % of the body's pixels; with the weight shift it was 44 %). The breath is
+// therefore never the whole stack: every block of the masonry moves by ITS OWN pixel, one or two blocks
+// a frame, and the struck regions (the helm, the shield) carry the larger moves. The shield and the
+// feet stay planted (the slab only leans its top a pixel in at the end, the sentinel's weight on it).
+//   f1   the ᛉ pulses and a ripple starts up the stack: the courses tick up while the helm settles a
+//        pixel (the gather before the breath)
+//   f2–f3  the chest plate, then the hanging arm tick up as the courses below them settle a pixel low
+//        (each inner block: up a pixel, home, a pixel low, home — a frame each); the fist follows the arm
+//        a frame late
+//   f4–f5  the near pauldron, then the far one lift a pixel and HOLD two frames (the breath fills the
+//        shoulders), each settling through a pixel low after it (f7, f8), their moss caps a frame behind
+//        (squashed as the block lifts under them, floating as it drops away)
+//   f6–f8  the helm crowns the breath: up a pixel and held; the ᛉ pulses again and a second, smaller
+//        ripple ticks through the courses, chest and arm; at the top the helm turns a pixel toward the
+//        foe and the eye slit flares (the watch)
+//   f9   the helm settles a pixel low, still watching
+//   f10–f11  the helm turns back, draws a pixel away from the foe and the eye dims; the shield's top
+//        leans a pixel in toward the body (the weight on the slab) — f0: every block home
+// Two periods (the inner masonry ticks twice a loop, the shoulders and helm breathe once), every
+// follower a frame late (fist, moss caps), no frame moves every part (HA-6).
 
-/**
- * Per frame, px: courses up, chest up, pauldrons up, helm up, fist up, hips forward, upper body held
- * back (−) / still forward (+) of the hips.
- */
-const IDLE_BLOCKS: readonly (readonly [number, number, number, number, number, number, number])[] = [
+/** Per frame, whole px (+ = up / toward the foe): courses, chest plate, arm, near pauldron, far pauldron, helm up, helm forward. */
+// prettier-ignore
+const IDLE_STACK: readonly (readonly [course: number, chest: number, arm: number, padN: number, padF: number, helmUp: number, helmFwd: number])[] = [
   [0, 0, 0, 0, 0, 0, 0],
-  [1, 1, 1, 0, 0, 0, 0],
-  [1, 1, 1, 1, 1, 1, -1],
-  [1, 1, 1, 1, 1, 1, 0],
-  [1, 1, 0, 1, 1, 1, 1],
-  [0, 0, 0, 1, 1, 1, 1],
-  [0, 0, 0, 0, 0, 0, 1],
-  [0, 0, 0, 0, 0, 0, 0],
-  [-1, -1, -1, 0, 0, -1, 1],
-  [-1, -1, -1, -1, -1, -1, 0],
-  [0, 0, -1, -1, -1, -1, 0],
-  [0, 0, 0, -1, 0, 0, -1],
+  [1, 0, 0, 0, 0, -1, 0],
+  [0, 1, 0, 0, 0, 0, 0],
+  [-1, 0, 1, 0, 0, 0, 0],
+  [0, -1, 0, 1, 0, 0, 0],
+  [0, 0, -1, 1, 1, 0, 0],
+  [1, 0, 0, 0, 1, 1, 0],
+  [0, 1, 0, -1, 0, 1, 1],
+  [-1, 0, 1, 0, -1, 0, 1],
+  [0, -1, 0, 0, 0, -1, 1],
+  [0, 0, -1, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, -1],
 ];
-const IDLE_RUNE = [1, 1.6, 1.6, 1, 1, 1, 1, 1.6, 1.6, 1, 1, 1];
-/** The helm glances a pixel toward the foe at the top of the breath (with the eye's flare) and back. */
-const IDLE_LOOK = [0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0];
-const IDLE_SLIT = [1, 1, 2, 2, 1.4, 1, 1, 1, 1, 0.6, 0.8, 1];
-const IDLE_HOLDS = [170, 130, 120, 150, 140, 130, 120, 150, 130, 160, 130, 150];
+/** The shield's top rim leaning in (px, − toward the body) at the end of the loop. */
+const IDLE_LEAN = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1];
+/** The ᛉ pulses ahead of each ripple (light leads the stone); the eye flares with the watch and dims as the helm draws back. */
+const IDLE_RUNE = [1, 1.6, 1.6, 1, 1, 1, 1.6, 1.6, 1, 1, 1, 1];
+const IDLE_SLIT = [1, 1, 1, 1, 1, 1, 1.4, 2, 2, 1.4, 1, 0.6];
+const IDLE_HOLDS = [170, 130, 120, 120, 130, 140, 150, 170, 150, 130, 140, 150];
 
-/** Stagger the blocks: the plan carries courses, pauldrons, helm and hand with the chest / hips; these keys hold them back. */
-function blocks(course: number, chest: number, pad: number, helm: number, fist: number, hipX: number, upper: number): D {
-  return {
-    props: { shield: planted() },
-    breath: chest,
-    hip: { x: hipX, y: 0, tilt: 0 },
-    head: { x: 0, y: chest - helm, a: 0, lag: 0 },
-    armN: { hand: [0, 0] as V, bend: 1, grip: 'fist' },
-    fx: { padN: chest - pad, padF: chest - pad, fistY: chest - fist, courseY: -course, upperX: upper },
-  };
-}
+/** px block column `i` of IDLE_STACK moved this frame (+ up): what its follower (fist, moss cap) is a frame behind. */
+const stepOf = (f: number, i: number): number => IDLE_STACK[f][i] - IDLE_STACK[(f + IDLE_STACK.length - 1) % IDLE_STACK.length][i];
 
 const idle: LoopDef<Pose> = {
-  n: IDLE_BLOCKS.length,
+  n: IDLE_STACK.length,
   holds: IDLE_HOLDS,
   at: (f) => {
-    const b = blocks(...IDLE_BLOCKS[f]);
-    return { ...b, head: { ...b.head!, x: IDLE_LOOK[f] }, fx: { ...b.fx, rune: IDLE_RUNE[f], slit: IDLE_SLIT[f] } } as D;
+    const [course, chest, arm, padN, padF, helmUp, helmFwd] = IDLE_STACK[f];
+    // a follower is held where its block was a frame ago (f0 is the still: nothing lags into it)
+    const behind = (i: number) => (f === 0 ? 0 : stepOf(f, i));
+    return {
+      props: { shield: planted() },
+      head: { x: helmFwd, y: -helmUp, a: 0, lag: 0 },
+      armN: { hand: [0, 0] as V, bend: 1, grip: 'fist' },
+      fx: {
+        courseY: -course,
+        chestY: -chest,
+        armY: -arm,
+        fistY: behind(2),
+        padN: -padN,
+        padF: -padF,
+        mossN: behind(3),
+        mossF: behind(4),
+        mossH: behind(5),
+        tilt: IDLE_LEAN[f],
+        rune: IDLE_RUNE[f],
+        slit: IDLE_SLIT[f],
+      },
+    } as D;
   },
 };
 
@@ -172,17 +189,20 @@ const hit: AnimDef<Pose> = {
 //
 // The v1 throw's beats, re-keyed on the plan (A3_MIMARI §6.2 checklist; fix round 1: the v1 f1 dig, a
 // strain hold, an accelerating lift, the shield's counterweight swing, the follow-through under the helm):
-//   look   the helm dips toward the dig spot (the charge: the declaration holds here)
+//   look   the helm dips toward the dig spot
 //   dig    the hips sink, the near arm hangs straight down beside the near foot — upper arm under its
 //          pauldron, bracer and fist below it, never an arch out to the side — the fingers bite into the
-//          floor (it cracks, the boulder's top shows)
+//          floor (it cracks, the boulder's top shows). The CHARGE (pilot fix): the declaration plays look →
+//          bend → reach → dig in its own 233 ms and holds here, the voice's charge starting on the dig's
+//          crunch; the strike goes on from the strain (it held the still look frame before: ~180 ms saved)
 //   STRAIN the earth holds: the body heaves a pixel against it, the arm straight, the rock shaken 1 px
 //          up, the crack widening, the lip heaving (the second-longest hold)
 //   rip    out of the floor in one fast frame (the crater opens under it, dirt bursts); then the lift
 //          accelerates — the wrist curls under it at the belt, the catch at the shoulder, up past the
 //          helm, overhead — the rock's centre rising 3 → 12 → 14 → 12 → 4 px a frame (the release: 18)
-//   hold   leaning back, the rock trembling over the helm, the eye's glint; the shield SWUNG OUT the
-//          other way, lifted and leaning (the counterweight)
+//   hold   leaning back, the rock trembling over the helm — three 60-ms beats, the fist and the rock a
+//          pixel down and back up under the weight, the eye's glint flickering (pilot fix: one 180-ms frozen
+//          frame before) —; the shield SWUNG OUT the other way, lifted and leaning (the counterweight)
 //   throw  the whip over the top (one 50 ms in-between, the shield pulled back in), the RELEASE with the
 //          hand opening forward-up, the rock just off the fingertips (a 2-px smear)
 //   follow the arm swings through BELOW the helm (forearm across the chest, fist at the far side), the
@@ -249,14 +269,15 @@ const attack: AnimDef<Pose> = {
   base: 'idle0',
   beats: pinned([
     // look: the eyes go to the ground first — the helm dips toward the dig spot, the near pauldron drops
-    // a pixel, the fist tightens (the declaration holds this frame)
-    { name: 'charge', ms: 50, key: { head: { x: -1, y: 1, a: 0, lag: 0 }, fx: { rune: 1.3, padN: 1, fistY: -1 } } },
+    // a pixel, the fist tightens
+    { ms: 50, key: { head: { x: -1, y: 1, a: 0, lag: 0 }, fx: { rune: 1.3, padN: 1, fistY: -1 } } },
     // the bend begins: hips down, the spine tipping a little to the near side, the arm hanging
     { ms: 50, key: { hip: { x: 0, y: 2, tilt: 0 }, lean: -0.05, head: { x: -1, y: 1, a: 0, lag: 0.45 }, armN: { hand: [-1, 1], bend: 1, grip: 'fist' }, fx: { rune: 1.35, padN: 1 } } },
     // the reach: hips 4 px down over the planted feet, the arm straight down beside the near foot, the hand opening over the floor
     { ms: 60, key: { hip: { x: 0, y: 4, tilt: 0 }, lean: -0.1, head: { x: -1, y: 1, a: 0, lag: 0.35 }, armN: { hand: [-1.5, 3], bend: 1, grip: 'open' }, fx: { rune: 1.4, padN: 1 } } },
-    // the dig: the fingers bite into the floor, it cracks; the boulder's top shows in the crack
-    { ms: 70, key: { hip: { x: 0, y: 5, tilt: 0 }, lean: -0.12, head: { x: -1, y: 2, a: 0, lag: 0.2 }, armN: { hand: [-1.5, 3], bend: 1, grip: 'fist' }, props: { rock: rockInFloor(2) }, fx: { rune: 1.5, padN: 1, crack: 0.6, dirt: 0.15, dust: 0.2 } } },
+    // the dig: the fingers bite into the floor, it cracks; the boulder's top shows in the crack (the
+    // declaration holds this frame: the charge)
+    { name: 'charge', ms: 70, key: { hip: { x: 0, y: 5, tilt: 0 }, lean: -0.12, head: { x: -1, y: 2, a: 0, lag: 0.2 }, armN: { hand: [-1.5, 3], bend: 1, grip: 'fist' }, props: { rock: rockInFloor(2) }, fx: { rune: 1.5, padN: 1, crack: 0.6, dirt: 0.15, dust: 0.2 } } },
     // the STRAIN: the earth holds — the body heaves a pixel against it, the arm straight, the rock shaken
     // a pixel up in its bed, the crack widening, the lip of the crater heaving
     { ms: 140, key: { hip: { x: 0, y: 4, tilt: 0 }, lean: -0.11, head: { x: -1, y: 1, a: 0, lag: 0.3 }, armN: { hand: [-1.5, 3], bend: 1, grip: 'fist' }, props: { rock: rockInFloor(1) }, fx: { rune: 1.6, padN: 0, crack: 1, crater: 0.35, dirt: 0.3, dust: 0.4 } } },
@@ -272,9 +293,10 @@ const attack: AnimDef<Pose> = {
     { ms: 60, key: reach({ hip: { x: -1, y: 1, tilt: 0 }, lean: -0.08, head: { x: -1, y: 0, a: 0, lag: 0.3 }, props: { rock: rockInHand([0, -5]), shield: shieldAt([3, -1]) }, fx: { rune: 1.85, slit: 1.3, crack: 1, crater: 1, padN: -2 } }, [10, 23], 'hold', 1) },
     // heaved overhead: leaning back, the shield shoved out and up the other way, leaning (the counterweight)
     { ms: 80, key: reach({ hip: { x: -1, y: 2, tilt: 0 }, lean: -0.13, head: { x: -1, y: -1, a: 0, lag: 0 }, props: { rock: rockInHand([1, -6]), shield: shieldAt([6, -3]) }, fx: { rune: 1.9, slit: 1.6, glint: 1, crack: 1, crater: 1, padN: -2, tilt: 1 } }, [12, 15], 'hold', -1) },
-    // the hold, the longest frame right before the throw: the rock trembles back a pixel over the helm,
-    // the knees take the load, the slab swung furthest out and leaning, the eye's glint
-    { ms: 180, key: reach({ hip: { x: -1, y: 2, tilt: 0 }, lean: -0.14, head: { x: -1, y: -1, a: 0, lag: 0 }, props: { rock: rockInHand([0, -7]), shield: shieldAt([7, -3]) }, fx: { rune: 2, slit: 2, glint: 2, crack: 1, crater: 1, padN: -2, tilt: 2 } }, [11, 15], 'hold', -1) },
+    // the hold, the longest beat right before the throw (3 × 60 ms): the rock held back over the helm, the
+    // knees taking the load, the slab swung furthest out and leaning — and the weight tells: the fist and the
+    // rock sag a pixel and are heaved back up, the eye's glint flickering with the effort
+    ...([[15, 2], [16, 1], [15, 2]] as const).map(([hy, glint]): Beat<Pose> => ({ ms: 60, key: reach({ hip: { x: -1, y: 2, tilt: 0 }, lean: -0.14, head: { x: -1, y: -1, a: 0, lag: 0 }, props: { rock: rockInHand([0, -7]), shield: shieldAt([7, -3]) }, fx: { rune: 2, slit: 2, glint, crack: 1, crater: 1, padN: -2, tilt: 2 } }, [11, hy], 'hold', -1) })),
     // the whip: hips drive forward, the arm comes over the top in front of its pauldron, the shield pulled back in
     { ms: 50, key: reach({ hip: { x: 1, y: 1, tilt: 0 }, lean: 0.04, twist: 0.15, head: { x: 0, y: 0, a: 0, lag: 0.3 }, slots: { pauldronN: 'head' }, props: { rock: rockInHand([1, -6]), shield: shieldAt([2, -1]) }, fx: { rune: 2, slit: 2, glint: 1, crack: 1, crater: 1, padN: -2, tilt: 1 } }, [21, 13], 'hold', -1) },
     // RELEASE: the hand opens forward-up toward the foe, the rock just off the fingertips (the muzzle),
@@ -337,16 +359,18 @@ const HEAVY_STRUCK: D = { props: { shield: planted([-3, -1]) }, head: { x: -2, y
 // A harder blow than hit: the shield slammed back, then the whole statue rocks back on its heels, the
 // near (back) foot comes up and plants a step behind (dust off the heel), the knees take the load, the
 // weight comes forward again over the planted feet and the back foot lifts and steps home. The feet
-// only move in the air (HA-9).
+// only move in the air (HA-9). The step is 2 px and so is the hips' travel: a heavy body's whole front
+// travel (REHBER §4.4: the heavy class is shoved 1 / 1 / 2 px) — the hit kit measures it from joints()
+// and adds nothing on top (A3 core review A2: the 3-px step of fix round 1 out-travelled the class).
 const hitHeavy: AnimDef<Pose> = {
   base: 'idle0',
   struck: { regions: ['propF', 'head', 'extra'] },
   beats: [
     beat(50, HEAVY_STRUCK, 'struck'),
     beat(60, { props: { shield: planted([-3, 0]) }, hip: { x: -2, y: 0, tilt: 0 }, lean: -0.08, head: { x: -2, y: 0, a: 0, lag: 0.4 }, armN: { hand: [1, -1], bend: 1, grip: 'fist' }, fx: { slit: 0.2, rune: 0.4, chips: 0.45 } }),
-    beat(80, { props: { shield: planted([-2, 0]) }, footN: { step: [-3, 0], lift: 2 }, hip: { x: -3, y: 0, tilt: 0 }, lean: -0.1, head: { x: -2, y: 0, a: 0, lag: 0.3 }, armN: { hand: [2, 0], bend: 1, grip: 'fist' }, fx: { slit: 0.3, rune: 0.5, chips: 0.7 } }),
-    beat(90, { props: { shield: planted([-1, 0]) }, footN: { step: [-3, 0], lift: 0 }, hip: { x: -3, y: 2, tilt: 0 }, lean: -0.06, head: { x: -1, y: 1, a: 0, lag: 0.3 }, armN: { hand: [1, 0], bend: 1, grip: 'fist' }, fx: { slit: 0.5, rune: 0.7, chips: 0.95, dust: 0.3, dustAt: 7 } }),
-    beat(110, { props: { shield: planted() }, footN: { step: [-3, 0], lift: 0 }, hip: { x: -1, y: 1, tilt: 0 }, lean: 0.02, head: { x: 0, y: 1, a: 0, lag: 0.2 }, armN: { hand: [-1, 0], bend: 1, grip: 'fist' }, fx: { slit: 0.8, rune: 0.9, dust: 0.6, dustAt: 7 } }, 'recover'),
+    beat(80, { props: { shield: planted([-2, 0]) }, footN: { step: [-2, 0], lift: 2 }, hip: { x: -2, y: 0, tilt: 0 }, lean: -0.1, head: { x: -2, y: 0, a: 0, lag: 0.3 }, armN: { hand: [2, 0], bend: 1, grip: 'fist' }, fx: { slit: 0.3, rune: 0.5, chips: 0.7 } }),
+    beat(90, { props: { shield: planted([-1, 0]) }, footN: { step: [-2, 0], lift: 0 }, hip: { x: -2, y: 2, tilt: 0 }, lean: -0.06, head: { x: -1, y: 1, a: 0, lag: 0.3 }, armN: { hand: [1, 0], bend: 1, grip: 'fist' }, fx: { slit: 0.5, rune: 0.7, chips: 0.95, dust: 0.3, dustAt: 7 } }),
+    beat(110, { props: { shield: planted() }, footN: { step: [-2, 0], lift: 0 }, hip: { x: -1, y: 1, tilt: 0 }, lean: 0.02, head: { x: 0, y: 1, a: 0, lag: 0.2 }, armN: { hand: [-1, 0], bend: 1, grip: 'fist' }, fx: { slit: 0.8, rune: 0.9, dust: 0.6, dustAt: 7 } }, 'recover'),
     beat(110, { props: { shield: planted() }, footN: { step: [-1, 0], lift: 2 }, hip: { x: 0, y: 0, tilt: 0 }, lean: 0.04, armN: { hand: [0, 0], bend: 1, grip: 'fist' }, fx: { dust: 0.85, dustAt: 7 } }),
     beat(120, { props: { shield: planted() }, hip: { x: 0, y: 1, tilt: 0 }, lean: 0.01, fx: { fistY: 1 } }),
   ],

@@ -15,15 +15,20 @@
 //
 // 'throw' (shared by every thrower, parametrised by the material): the projectile leaves points[from]
 // of the release frame (the art draws what the hand holds up to that frame: the hand and the rock are
-// one picture until it lets go); a parabola; it spins (8 whole-pixel turns, lit from the top-left
+// one picture until it lets go); a parabola (point-blank: a flat snap into the body); it spins (8 whole-pixel turns, lit from the top-left
 // whatever its turn) — the thrower's OWN projectile when one is registered under its `attack.vfx`
 // (registerProjectile, `recipe/projectiles/<vfx>.ts`: drawn with the art's own part painter, so the
 // rock it holds and the rock that flies are one drawing), else a faceted lump in its material's
-// tones; its shadow slides over the floor from the thrower to the target, shrinking and
-// thinning with height (dithered, never alpha); on contact it bursts into its material's pieces that
-// bounce on the floor and a low dust cloud rolls out; blocked, `attack.blocked` ('shatter': it breaks
-// on the guard and the pieces fly back; 'rebound': it glances off, falls short and breaks on the floor);
-// a direct attack lands it on the duelist.
+// tones; the flight takes over one tick in (no pop at the hand-over) and the contact is staged in the
+// very update that puts it on the body (no frozen frame before the blow); its shadow slides over the
+// floor from the thrower to the target, shrinking and thinning with height (dithered, never alpha,
+// under the cards on the tiles); on contact it bursts (materialBurst, A3 pilot fix): its own drawing
+// cut in four cracks in place through the hit-stop, the pieces tumble out sideways and toward the
+// camera, bounce on the struck body's floor line, lie still a moment and blink out; a low dust cloud of
+// dithered puffs in the matter's mid tones rolls out — all in the struck body's floor band; blocked,
+// `attack.blocked` ('shatter': it breaks on the guard and the pieces fly back at the thrower;
+// 'rebound': it glances off, falls short and breaks on the floor); a direct attack lands it on the
+// duelist.
 //
 // Hooks (the card's flourishes, recipe.hooks → src/cinematics/recipe/hooks/<id>.ts, the normal tier's
 // ornament budget): onCharge (the strike starts), onRelease, onContact, onRecover — each gets the beat's
@@ -36,7 +41,7 @@ import { hasMaterial, materialOf as materialDef, type MaterialDef } from '../../
 import type { MonsterPointName } from '../../art/types';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { AttackType, PresentationRecipe, RecipeHooks, StrikeHook } from '../../presentation/types';
-import { DEPTH, type XY } from '../../view/layout';
+import { DEPTH, type XY, unitDepth } from '../../view/layout';
 import { Sparks, onFrame, sleep } from '../../vfx/combat';
 import { Raster } from '../../vfx/setpieces';
 import type { StrikeArgs } from '../_core/types';
@@ -166,22 +171,44 @@ const PROJECTILES = new Map<string, ProjectileDraw>();
 const PROJ_VERSION = new Map<string, number>();
 
 /**
+ * What a registered projectile is made of (Y8, additive): `tones` (dark → light) are the tones its
+ * pieces, grit, dust and flight grains take — the thrown thing's own matter, which need not be the
+ * thrower's body (the pilot's grey stone body throws a brown earth boulder); `accent` the odd bits that
+ * fly off it (the boulder's moss tuft: two shards). Without it the pieces take the body's material.
+ */
+export interface ProjectileMatter {
+  tones: readonly number[];
+  accent?: readonly number[];
+}
+
+const PROJ_MATTER = new Map<string, ProjectileMatter>();
+
+/**
  * Register the projectile a recipe names by `attack.vfx` (`recipe/projectiles/<vfx>.ts` at module load:
  * the cinematics loader loads it with every other cinematics file, before anything plays). It counts in
  * its first user's ornament budget (A3_MIMARI §6.2, ≤ 250 lines with the hooks and set pieces).
  * Returns its unregister.
  */
-export function registerProjectile(vfx: string, draw: ProjectileDraw): () => void {
+export function registerProjectile(vfx: string, draw: ProjectileDraw, matter?: ProjectileMatter): () => void {
   PROJECTILES.set(vfx, draw);
+  if (matter) PROJ_MATTER.set(vfx, matter);
+  else PROJ_MATTER.delete(vfx);
   PROJ_VERSION.set(vfx, (PROJ_VERSION.get(vfx) ?? 0) + 1);
   return () => {
-    if (PROJECTILES.get(vfx) === draw) PROJECTILES.delete(vfx);
+    if (PROJECTILES.get(vfx) !== draw) return;
+    PROJECTILES.delete(vfx);
+    PROJ_MATTER.delete(vfx);
   };
 }
 
 /** The registered projectile of `attack.vfx`, or null (the throw draws its default faceted lump). */
 export function projectileOf(vfx: string | null | undefined): ProjectileDraw | null {
   return (vfx && PROJECTILES.get(vfx)) || null;
+}
+
+/** The matter a registered projectile breaks into, or null (its pieces take the thrower's body material). */
+export function projectileMatter(vfx: string | null | undefined): ProjectileMatter | null {
+  return (vfx && PROJECTILES.has(vfx) && PROJ_MATTER.get(vfx)) || null;
 }
 
 /** A projectile's sheet: TURNS frames of `size` px, and its contact radius (px). */
@@ -282,8 +309,13 @@ function ensureProjectile(scene: Phaser.Scene, vfx: string, mat: MaterialDef | n
   return out;
 }
 
-/** The house shadow (MonsterUnit's): a solid ink core, a checkered band, a sparse rim — whole pixels. */
-function floorShadow(g: Raster, cx: number, cy: number, rx: number): void {
+/**
+ * The house shadow (MonsterUnit's): a solid ink core, a checkered band, a sparse rim — whole pixels.
+ * `faint` (the projectile high in the air) thins it one dither step instead of fading it: the band
+ * checkered, no rim — but the solid core stays at every height (A3 pilot fix: a shadow of rx ≥ 4 that
+ * reads as one, never a 3-px glyph).
+ */
+function floorShadow(g: Raster, cx: number, cy: number, rx: number, faint = false): void {
   const ry = Math.max(1, Math.round(rx * 0.42));
   for (let y = -ry; y <= ry; y++)
     for (let x = -rx; x <= rx; x++) {
@@ -293,110 +325,348 @@ function floorShadow(g: Raster, cx: number, cy: number, rx: number): void {
       if (d > 1) continue;
       const X = cx + x;
       const Y = cy + y;
-      if (d < 0.45 || (d < 0.75 && (X + Y) % 2 === 0) || (d >= 0.75 && X % 2 === 0 && Y % 2 === 0)) g.px(X, Y, PAL.ink);
+      const checker = (X + Y) % 2 === 0;
+      const sparse = X % 2 === 0 && Y % 2 === 0;
+      const on = faint ? d < 0.4 || (d < 0.8 && checker) : d < 0.6 || (d < 0.85 && checker) || sparse;
+      if (on) g.px(X, Y, PAL.ink);
     }
 }
 
-/** The burst of a thrown body of `mat` at `at`: its pieces bounce on `floorY`, a low dust cloud rolls out. */
-export function materialBurst(scene: Phaser.Scene, at: XY, floorY: number, dir: XY, mat: MaterialDef | null, o: { rebound?: boolean; big?: number; seed?: number } = {}): void {
-  const rnd = mulberry32(o.seed ?? 11);
-  const rr = (a: number, b: number) => a + (b - a) * rnd();
-  const k = o.big ?? 1;
-  const ramp = mat ? mat.draw.ramp : [PAL.stone0, PAL.stone1, PAL.stone2, PAL.stone3];
-  const lit = [mat?.draw.edge.hi ?? ramp[ramp.length - 1], ...[...ramp].reverse()];
-  const dust = [ramp[ramp.length - 1], ramp[Math.max(0, ramp.length - 2)], ramp[Math.max(0, ramp.length - 3)]];
-  const sp = new Sparks(scene, DEPTH.FX + 2);
-  const low = new Sparks(scene, DEPTH.FX + 1);
-  const base = Math.atan2(dir.y, dir.x) + (o.rebound ? Math.PI : 0);
-  // the big pieces (lit facet first, so they read on the dark floor)
-  for (let i = 0; i < Math.round(7 * k); i++) {
-    const a = base + rr(-1.3, 1.3);
-    const v = rr(60, 140);
-    sp.add({ x: Math.round(at.x + rr(-3, 3)), y: Math.round(at.y + rr(-3, 3)), vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.6 - rr(60, 120), ay: 520, rot: rr(0, 6), vrot: rr(-12, 12), life: rr(560, 860), colors: lit, shape: 'shard', size: rr(2.6, 3.8), floor: floorY + Math.round(rr(-2, 3)), bounce: 0.33, fadeAt: 1 });
-  }
-  // grit
-  for (let i = 0; i < Math.round(12 * k); i++) {
-    const a = rr(0, Math.PI * 2);
-    const v = rr(50, 150);
-    sp.add({ x: Math.round(at.x), y: Math.round(at.y), vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.6 - 60, ay: 600, life: rr(300, 560), colors: lit.slice(1), shape: i % 3 ? 'px' : 'sq', size: 2, floor: floorY + Math.round(rr(-2, 4)), bounce: 0.25, fadeAt: 1 });
-  }
-  // the low dust cloud rolls out along the floor, then lifts a little
-  for (let i = 0; i < Math.round(7 * k); i++) {
-    const a = rr(0, Math.PI * 2);
-    const r = rr(3, 9);
-    low.add({ x: Math.round(at.x + Math.cos(a) * r), y: Math.round(floorY - 2 + Math.sin(a) * r * 0.4), vx: Math.cos(a) * rr(28, 56), vy: Math.sin(a) * rr(5, 12) - rr(3, 9), drag: 2.6, life: rr(520, 760), colors: dust, shape: 'puff', size: rr(2.2, 3.4), grow: 5, fadeAt: 1, delay: rr(10, 80) });
-  }
-  sp.release();
-  low.release();
+// ================================================================ the burst (rock-throw item 6)
+
+/** A projectile's pieces per drawing version: per piece its tumble poses (see projectileChunks). */
+const CHUNKS = new Map<string, PixelCanvas[][]>();
+
+/** `q` mirrored vertically (a tumble pose: whole pixels, never rotated by a fraction). */
+function flippedY(q: PixelCanvas): PixelCanvas {
+  return new PixelCanvas(q.w, q.h).blit(q, 0, 0, { flipY: true });
 }
 
 /**
- * Fly the projectile from `from` to `to` along a parabola: whole-pixel positions, TURNS-step spin, the
- * shadow sliding over the floor from `g0` to `g1`, grains falling off. Resolves on arrival with the
- * projectile still drawn on its contact point (that frame shows it touching the body); `clear()` removes
- * it — call it once the contact is staged, it takes effect on the next update (the contact frame's), so
- * no frame shows neither the rock nor the blow.
+ * The pieces a registered projectile breaks into (A3 pilot fix, rock-throw item 6: real chunks of the
+ * thing thrown, not specks): its turn-0 drawing — the held rock — without its ink rim, cut in four
+ * along a jagged cross through its centre; each piece trimmed, with its own 1-px ink rim. Per piece four
+ * whole-pixel tumble poses: as drawn (lit from the top-left: the pose it lies in), mirrored, upside
+ * down, both. Pieces are listed top-left, top-right, bottom-left, bottom-right, each with its offset
+ * from the drawing's centre (so the rock first cracks in place). null without a registered drawing.
  */
-function flyThrow(s: StrikeArgs, r: PresentationRecipe, mat: MaterialDef | null, from: XY, to: XY, g0: XY, g1: XY, rnd: () => number): { arrived: Promise<void>; clear(): void } {
+export function projectileChunks(vfx: string, mat: MaterialDef | null): { poses: PixelCanvas[]; off: XY }[] | null {
+  const own = projectileOf(vfx);
+  if (!own) return null;
+  const key = `${vfx}:${mat?.id ?? '-'}:${PROJ_VERSION.get(vfx) ?? 0}`;
+  let set = CHUNKS.get(key);
+  const src = own({ mat, turn: 0, turns: TURNS }).clone().map((c) => (c === PAL.ink ? null : c));
+  const b = src.bounds();
+  if (!b) return null;
+  const cx = b.x + Math.floor(b.w / 2);
+  const cy = b.y + Math.floor(b.h / 2);
+  // a jagged cross: each cut steps a pixel either way along its length
+  const cutX = (y: number) => cx + ((y * 5) % 3) - 1;
+  const cutY = (x: number) => cy + ((x * 7) % 3) - 1;
+  const offs: XY[] = [];
+  const pieces: PixelCanvas[] = [];
+  for (let q = 0; q < 4; q++) {
+    const piece = new PixelCanvas(src.w + 2, src.h + 2);
+    for (let y = 0; y < src.h; y++)
+      for (let x = 0; x < src.w; x++) {
+        const c = src.get(x, y);
+        if (c === null || (x >= cutX(y) ? 1 : 0) + (y >= cutY(x) ? 2 : 0) !== q) continue;
+        piece.set(x + 1, y + 1, c);
+      }
+    const pb = piece.bounds();
+    if (!pb || pb.w * pb.h < 4) continue;
+    pieces.push(piece.crop(pb.x - 1, pb.y - 1, pb.w + 2, pb.h + 2).outline(PAL.ink));
+    // the piece's centre relative to the drawing's centre (frame px; the canvas carries a 1-px margin)
+    offs.push({ x: pb.x - 1 + (pb.w + 2) / 2 - (src.w + 2) / 2, y: pb.y - 1 + (pb.h + 2) / 2 - (src.h + 2) / 2 });
+  }
+  if (!set) {
+    set = pieces.map((t) => [t, t.flippedX(), flippedY(t.flippedX()), flippedY(t)]);
+    CHUNKS.set(key, set);
+  }
+  return set.map((poses, i) => ({ poses, off: offs[i] }));
+}
+
+/** Options of materialBurst. */
+export interface BurstOpts {
+  /** Blocked: the pieces are thrown back toward the thrower. */
+  rebound?: boolean;
+  /** Size of the burst (1: a hit). */
+  big?: number;
+  seed?: number;
+  /** A registered projectile's own matter (ProjectileMatter): its tones take the material's place. */
+  matter?: ProjectileMatter | null;
+  /** The registered projectile that breaks (its own drawing is cut into the pieces, projectileChunks). */
+  vfx?: string | null;
+  /** The floor band everything is drawn in (default DEPTH.FX + 1): the struck body's (unitDepth + 0.6). */
+  depth?: number;
+}
+
+/** A burst piece: a ground point (gx, gy) on the floor, its height h over it; screen = (gx, gy − h). */
+interface Piece {
+  poses: PixelCanvas[];
+  gx: number;
+  gy: number;
+  h: number;
+  vgx: number;
+  vgy: number;
+  vh: number;
+  bounces: number;
+  /** ms it has lain still (−1: still moving). */
+  rest: number;
+  spin: number;
+}
+
+/** Pieces lie still this long, then blink out over BLINK_MS (stepped: whole, dithered, sparse). */
+const REST_MS = 110;
+const BLINK_MS = 90;
+/** Pieces fall at this gravity (px/s²) and keep this much of their speed on a bounce. */
+const PIECE_G = 1150;
+const PIECE_BOUNCE = 0.36;
+
+/**
+ * The burst of a thrown body of `mat` at `at` (rock-throw item 6, A3 pilot fix): the projectile's own
+ * pieces — its drawing cut in four (projectileChunks; without a drawing, faceted lumps of its tones) —
+ * crack apart where it struck and are thrown out sideways and toward the camera, tumbling; they land on
+ * the floor line in front of the struck body (`floorY`), bounce once or twice, lie still a moment and
+ * blink out. Blocked (`rebound`) they fly back toward the thrower. A little grit; the odd bits of its
+ * matter (the boulder's moss) drop from just under the contact; a low dust cloud rolls out along the
+ * floor in the matter's mid tones (dithered puffs that grow a little, lift a few pixels and thin out in
+ * dither steps — never an opaque disc, never the lightest tone). Everything in the struck body's floor
+ * band (`o.depth`): a body standing in front of it hides it.
+ */
+export function materialBurst(scene: Phaser.Scene, at: XY, floorY: number, dir: XY, mat: MaterialDef | null, o: BurstOpts = {}): void {
+  const rnd = mulberry32(o.seed ?? 11);
+  const rr = (a: number, b: number) => a + (b - a) * rnd();
+  const k = o.big ?? 1;
+  const ramp = o.matter?.tones ?? (mat ? mat.draw.ramp : [PAL.stone0, PAL.stone1, PAL.stone2, PAL.stone3]);
+  const lit = [o.matter ? ramp[ramp.length - 1] : (mat?.draw.edge.hi ?? ramp[ramp.length - 1]), ...[...ramp].reverse()];
+  const depth = o.depth ?? DEPTH.FX + 1;
+  const d = norm(dir);
+  const back = { x: -d.x, y: -d.y };
+  const floor = Math.round(floorY);
+  const h0 = Math.max(2, floor - at.y);
+  // ---- the pieces (the rock cracks in place on the frame after the contact, then they fly)
+  const chunks = o.vfx ? projectileChunks(o.vfx, mat) : null;
+  const pieces: Piece[] = [];
+  const lump = (n: number) => {
+    // no drawing of its own: lumps of the material (a lit facet, a mid face, an ink rim), 3–4 px
+    const q = new PixelCanvas(n + 2, n + 1);
+    q.rect(1, 1, n, n - 1, ramp[Math.max(0, ramp.length - 2)]);
+    q.rect(1, 1, n - 1, 1, lit[0]);
+    q.set(n, n - 1, ramp[Math.max(0, ramp.length - 3)]);
+    q.outline(PAL.ink);
+    return [q, q.flippedX(), flippedY(q.flippedX()), flippedY(q)];
+  };
+  const parts = chunks ?? [3, 4, 3, 4].map((n, i) => ({ poses: lump(n), off: { x: (i % 2 ? 2 : -2), y: i < 2 ? -2 : 2 } }));
+  parts.forEach((c, i) => {
+    const s = i % 2 === 0 ? -1 : 1;
+    const low = i >= 2;
+    // a hit: off the struck face sideways and toward the camera, a little back; blocked: back at the thrower
+    const vgx = o.rebound ? back.x * rr(45, 80) + s * rr(8, 24) : s * rr(26, 52) * (low ? 1.25 : 1) + back.x * rr(10, 24);
+    const vgy = o.rebound ? back.y * rr(45, 80) + rr(10, 22) : rr(14, 30) + back.y * rr(4, 12);
+    // it starts where that piece of the rock was: its bottom edge over the floor by the contact's height
+    const gy = floor + (low ? 1 : 0);
+    pieces.push({ poses: c.poses, gx: at.x + c.off.x, gy, h: Math.max(0, gy - (at.y + c.off.y + c.poses[0].h / 2)), vgx: vgx * k, vgy: vgy * k, vh: rr(35, 70) * (low ? 0.8 : 1), bounces: 0, rest: -1, spin: rr(55, 85) });
+  });
+  // in the air the pieces fly over everything (the guard's own hex glint included: the rock is seen breaking
+  // on it); near the floor they are in the struck body's floor band (a body in front of it hides them)
+  const span = 150;
+  const air = Raster.around(scene, at.x, (at.y + floor) / 2, span, h0 + 70, DEPTH.FX + 3);
+  const ras = Raster.around(scene, at.x, (at.y + floor) / 2, span, h0 + 70, depth);
+  let first = true;
+  onFrame(
+    scene,
+    (dt, el) => {
+      // the contact frame still shows the whole rock: the pieces take over on the next update
+      if (first) {
+        first = false;
+        return true;
+      }
+      const s = dt / 1000;
+      ras.begin();
+      air.begin();
+      let alive = false;
+      for (const p of pieces) {
+        if (p.rest < 0) {
+          p.vh -= PIECE_G * s;
+          p.gx += p.vgx * s;
+          p.gy += p.vgy * s;
+          p.h += p.vh * s;
+          if (p.h <= 0) {
+            p.h = 0;
+            if (p.bounces < 2 && -p.vh > 90) {
+              p.bounces++;
+              p.vh = -p.vh * PIECE_BOUNCE;
+              p.vgx *= 0.55;
+              p.vgy *= 0.55;
+            } else p.rest = 0;
+          }
+        } else p.rest += dt;
+        if (p.rest > REST_MS + BLINK_MS) continue;
+        alive = true;
+        // tumbling in the air (a pose every `spin` ms), lit side up once it lies still
+        const pose = p.rest >= 0 || p.h <= 0 ? p.poses[0] : p.poses[Math.floor(el / p.spin) % p.poses.length];
+        const x = Math.round(p.gx - pose.w / 2);
+        const y = Math.round(p.gy - p.h - pose.h + 1);
+        const fade = p.rest > REST_MS ? (p.rest - REST_MS) / BLINK_MS : 0;
+        const level = fade <= 0 ? 1 : fade < 0.34 ? 0.75 : fade < 0.67 ? 0.5 : 0.25;
+        const g = p.h >= 6 ? air : ras;
+        for (let yy = 0; yy < pose.h; yy++)
+          for (let xx = 0; xx < pose.w; xx++) {
+            const c = pose.get(xx, yy);
+            if (c !== null) g.dpx(x + xx, y + yy, c, level);
+          }
+      }
+      ras.end();
+      air.end();
+      return alive;
+    },
+    () => (ras.destroy(), air.destroy()),
+  );
+  // ---- grit and the odd bits of its matter (the boulder's moss: from just under the contact, never across the face)
+  const sp = new Sparks(scene, depth + 0.01);
+  for (let i = 0; i < Math.round(8 * k); i++) {
+    const s = i % 2 === 0 ? -1 : 1;
+    sp.add({ x: Math.round(at.x + rr(-2, 2)), y: Math.round(at.y + rr(-1, 3)), vx: (o.rebound ? back.x * rr(40, 90) : s * rr(30, 80)) + back.x * 10, vy: -rr(30, 80), ay: 600, life: rr(260, 420), colors: lit.slice(1), shape: 'px', floor: floor + Math.round(rr(0, 5)), bounce: 0.25, fadeAt: 1 });
+  }
+  const acc = o.matter?.accent;
+  if (acc?.length)
+    for (let i = 0; i < 2; i++) {
+      const s = i === 0 ? -1 : 1;
+      sp.add({ x: Math.round(at.x + s * 2), y: Math.round(at.y + 4), vx: (o.rebound ? back.x * rr(30, 60) : s * rr(20, 45)) + back.x * 8, vy: -rr(20, 45), ay: 520, rot: rr(0, 6), vrot: rr(-10, 10), life: rr(420, 560), colors: acc, shape: 'shard', size: 2, floor: floor + 2 + i, bounce: 0.3, fadeAt: 1 });
+    }
+  sp.release();
+  // ---- the low dust cloud rolls out along the floor, lifting a little, thinning in dither steps
+  dustCloud(scene, { x: at.x, y: floor }, ramp, k, depth - 0.01, rnd);
+}
+
+/**
+ * A low dust cloud at a floor point `foot` in a ramp's mid tones (light → mid → dark of the three below
+ * its lightest: earth3 → earth2 → earth1 for the boulder): `7 × k` dithered puffs (Raster bayer dither,
+ * world-aligned, so overlapping puffs never thicken into a disc) that roll out along the floor, grow by
+ * at most 2 px/s, lift 6–14 px/s and thin out 3/4 → 1/2 → 1/4 → gone over 300–480 ms.
+ */
+function dustCloud(scene: Phaser.Scene, foot: XY, ramp: readonly number[], k: number, depth: number, rnd: () => number): void {
+  const rr = (a: number, b: number) => a + (b - a) * rnd();
+  const n = ramp.length;
+  const tones = [ramp[Math.max(0, n - 2)], ramp[Math.max(0, n - 3)], ramp[Math.max(0, n - 4)]];
+  const puffs = Array.from({ length: Math.round(7 * k) }, () => {
+    const a = rr(0, Math.PI * 2);
+    const r = rr(3, 9);
+    return { x: foot.x + Math.cos(a) * r, y: foot.y - 1 + Math.sin(a) * r * 0.4, vx: Math.cos(a) * rr(24, 48), vy: Math.sin(a) * rr(4, 10), lift: rr(6, 14), r: rr(2.2, 3), life: rr(300, 480), delay: rr(10, 80) };
+  });
+  const ras = Raster.around(scene, foot.x, foot.y - 6, 100, 36, depth);
+  onFrame(
+    scene,
+    (_dt, el) => {
+      ras.begin();
+      let alive = false;
+      for (const p of puffs) {
+        const age = el - p.delay;
+        if (age >= p.life) continue;
+        alive = true;
+        if (age < 0) continue;
+        const t = age / p.life;
+        const s = age / 1000;
+        const roll = (1 - Math.exp(-2.6 * s)) / 2.6; // drag 2.6: it rolls out and slows
+        const r = p.r + 2 * s;
+        ras.ell(p.x + p.vx * roll, p.y + p.vy * roll - p.lift * s, r, Math.max(1, r * 0.6), tones[t < 0.34 ? 0 : t < 0.67 ? 1 : 2], t < 0.4 ? 0.75 : t < 0.7 ? 0.5 : 0.25);
+      }
+      ras.end();
+      return alive;
+    },
+    () => ras.destroy(),
+  );
+}
+
+/** Below this distance (px) a throw is a flat snap into the body, not an arcing flight. */
+const THROW_SNAP_DIST = 30;
+
+/** The game's frame (ms): the flight's hand-over lead and its arrival snap are counted in it. */
+const FRAME_MS = 1000 / 60;
+
+/**
+ * Fly the projectile from `from` to `to` along a parabola: whole-pixel positions, TURNS-step spin, the
+ * shadow sliding over the floor from `g0` to `g1`, grains falling off. `arrive()` runs IN the update that
+ * puts it on its contact point (A3 pilot fix: the contact is staged on that very frame — no frame of the
+ * rock frozen on the body before the blow); the rock is still drawn there on that frame and goes on the
+ * next update (the pieces of the burst take over). Resolves after `arrive()`.
+ */
+function flyThrow(s: StrikeArgs, r: PresentationRecipe, mat: MaterialDef | null, from: XY, to: XY, g0: XY, g1: XY, rnd: () => number, lead: number, arrive: () => void): Promise<void> {
   const sc = s.scene;
   const { key } = ensureProjectile(sc, r.attack.vfx, mat);
   const dist = len(sub(to, from));
-  const ms = r.attack.travel?.ms ?? clamp(Math.round(230 + dist * 1.45), 300, 560);
-  const arc = r.attack.travel?.arc ?? clamp(Math.round(dist * 0.38), 16, 52);
+  // a point-blank shot (the two stand close: the body is already at the hand) is hurled flat into it
+  // (≈ 80–120 ms, as the A2 magus orb's snap), not a lob that hangs in front of it; a long one arcs
+  const snap = dist < THROW_SNAP_DIST;
+  const ms = r.attack.travel?.ms ?? (snap ? clamp(Math.round(70 + dist * 1.6), 80, 120) : clamp(Math.round(110 + dist * 1.1), 200, 380));
+  const arc = r.attack.travel?.arc ?? (snap ? Math.round(dist * 0.25) : clamp(Math.round(dist * 0.38), 16, 52));
   const spin = to.x >= from.x ? 1 : -1;
   const rock = sc.add.image(from.x, from.y, key, 0).setDepth(DEPTH.FX - 4);
   const x0 = Math.floor(Math.min(g0.x, g1.x) - 12);
   const y0 = Math.floor(Math.min(g0.y, g1.y) - 6);
-  const shadow = new Raster(sc, x0, y0, Math.ceil(Math.abs(g1.x - g0.x) + 24), Math.ceil(Math.abs(g1.y - g0.y) + 12), DEPTH.SHADOW + 0.5);
-  const ramp = mat ? mat.draw.ramp : [PAL.stone0, PAL.stone1, PAL.stone2, PAL.stone3];
+  // the shadow lies on the floor: over the stepped floor light, UNDER the cards on the tiles (it never
+  // paints ink over a card it passes)
+  const shadow = new Raster(sc, x0, y0, Math.ceil(Math.abs(g1.x - g0.x) + 24), Math.ceil(Math.abs(g1.y - g0.y) + 12), DEPTH.CARD_ON_TILE - 1);
+  const ramp = projectileMatter(r.attack.vfx)?.tones ?? (mat ? mat.draw.ramp : [PAL.stone0, PAL.stone1, PAL.stone2, PAL.stone3]);
   const grains = new Sparks(sc, DEPTH.FX - 5);
-  let cleared = false;
-  const clear = () => {
-    if (cleared) return;
-    cleared = true;
-    onFrame(sc, () => {
-      rock.destroy();
-      shadow.destroy();
-      return false;
-    });
+  const gone = () => {
+    rock.destroy();
+    shadow.destroy();
   };
-  const arrived = new Promise<void>((resolve) => {
+  return new Promise<void>((resolve) => {
     let done = false;
-    const end = () => {
+    const end = (hit: boolean) => {
       if (done) return;
       done = true;
       grains.release();
+      if (hit) {
+        // the contact frame still shows the rock touching the body; it goes with the next update
+        sc.events.once('update', gone);
+        try {
+          arrive();
+        } catch (e) {
+          console.error('[recipe] throw contact', e);
+        }
+      } else gone();
       resolve();
     };
+    // `lead`: ms the projectile has already flown when the flight takes over (it is placed there at once)
+    const place = (el: number, dt: number): { p: XY; t: number } => {
+      // the last step snaps onto the contact point when less than half a frame of flight is left (no
+      // frame of the rock still a pixel short of the body)
+      const t = ms - (el + lead) < dt * 0.5 ? 1 : Math.min(1, (el + lead) / ms);
+      const p = rint({ x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t - arc * 4 * t * (1 - t) });
+      rock.setPosition(p.x, p.y);
+      const f = Math.floor((el + lead) / 55) % TURNS;
+      rock.setFrame(spin > 0 ? f : (TURNS - f) % TURNS);
+      // the shadow: a dithered ellipse sliding thrower → target, smaller and thinner the higher the rock
+      // flies — opaque and stepped (a 50 % shadow vanishes on the v3 night floor), never under rx 4
+      const gp = { x: g0.x + (g1.x - g0.x) * t, y: g0.y + (g1.y - g0.y) * t };
+      const h = Math.max(0, gp.y - p.y);
+      const rx = clamp(Math.round(6 - h / 14), 4, 6);
+      shadow.draw((g) => floorShadow(g, Math.round(gp.x), Math.round(gp.y), rx, h > 34));
+      return { p, t };
+    };
+    if (lead > 0) place(0, 0);
     onFrame(
       sc,
       (dt, el) => {
         if (!rock.active) {
-          end();
+          end(false);
           return false;
         }
-        const t = Math.min(1, el / ms);
-        const p = rint({ x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t - arc * 4 * t * (1 - t) });
-        rock.setPosition(p.x, p.y);
-        const f = Math.floor(el / 55) % TURNS;
-        rock.setFrame(spin > 0 ? f : (TURNS - f) % TURNS);
-        // the shadow: a dithered ellipse sliding thrower → target, smaller and fainter the higher the rock flies
-        const gp = { x: g0.x + (g1.x - g0.x) * t, y: g0.y + (g1.y - g0.y) * t };
-        const h = Math.max(0, gp.y - p.y);
-        const rx = clamp(Math.round(6 - h / 14), 3, 6);
-        shadow.draw((g) => floorShadow(g, Math.round(gp.x), Math.round(gp.y), rx));
-        shadow.img.setAlpha(0.5 * Math.max(0.35, 1 - h / 80));
+        const { p, t } = place(el, dt);
         if (dt > 0 && t < 0.92 && rnd() < 0.45) grains.add({ x: p.x + Math.round(rnd() * 6 - 3), y: p.y + Math.round(rnd() * 5 - 2), vx: rnd() * 16 - 8, vy: 6 + rnd() * 14, ay: 300, life: 220 + rnd() * 160, colors: [ramp[ramp.length - 1], ramp[Math.max(0, ramp.length - 2)]], shape: 'px', fadeAt: 1 });
         if (t >= 1) {
-          end();
+          end(true);
           return false;
         }
         return true;
       },
-      end,
+      () => end(false),
     );
   });
-  return { arrived, clear };
 }
 
 // ================================================================ 'throw'
@@ -412,50 +682,81 @@ async function throwStrike(s: StrikeArgs, r: PresentationRecipe, hooks: RecipeHo
   const pan = panAt(u.home.x);
   const mat = projectileMaterial(r);
   const n = u.frameCount('attack');
-  const f0 = strikeStartFrame(u);
   const REL = clamp(u.markFrame('attack', 'release', u.impactFrame), 0, Math.max(0, n - 1));
+  // the declaration held its charge frame (the hand-over): the strike goes on from the NEXT frame, as
+  // the slice's strikes do — that frame's own hold has been shown already, and longer
+  const held = strikeStartFrame(u);
+  const f0 = u.frameInfo().anim === 'attack' && !u.sprite.anims.isPlaying ? Math.min(held + 1, REL) : held;
   // ---- the gathering goes on from the declaration's held charge pose (its voice taken over)
   const charge = voice ? takeCharge(u, voice.charge, { volume: 0.85, pan }) : null;
   runHook(hooks?.onCharge, s, r, originPoint(u, r.attack.from), u.frameInfo().frame);
   void u.playRange('attack', f0);
-  // ---- the release frame: the projectile leaves the origin point drawn on THAT frame
-  if (f0 < REL) {
-    let fire!: () => void;
-    const reached = new Promise<void>((ok) => (fire = ok));
-    const cancel = atFrame(u, 'attack', REL, () => fire(), { maxMs: 4000 });
-    await Promise.race([reached, sleep(sc, u.rangeMs('attack', f0, REL) + 400)]);
-    cancel();
-  }
-  charge?.stop(30);
-  if (voice) play(voice.release, { volume: 0.85, pan });
-  else s.ctx.sfx('whoosh', { volume: 0.7, pitch: 0.6 });
-  const from = originPoint(u, r.attack.from, REL);
-  runHook(hooks?.onRelease, s, r, from, REL);
-  // ---- the flight: to the body's face (a guard's face when blocked), or the duelist
+  // ---- the release frame: its voice and hook play IN the frame update that shows it (d = 0), and the
+  // projectile leaves the origin point drawn on THAT frame. A thrower's OWN projectile is drawn in the hand
+  // through the release frame (ProjectileDraw: turn 0 is that drawing): the flight takes over in the update
+  // that shows the next frame — never two rocks on screen, never a frame without one — its clock one tick
+  // in (the rock left during the release frame: A3 pilot fix, a first step of ≈ 7 px, near the lob's own
+  // 5–6 px a frame, not a 13-px pop)
+  const own = !!projectileOf(r.attack.vfx);
+  const relHold = own && REL < n - 1 ? u.rangeMs('attack', REL, REL + 1) : 0;
+  const matter = projectileMatter(r.attack.vfx);
   const target = s.direct ? null : s.target;
-  const face = surfaceToward(target, from, s.blocked ? 1 : ensureProjectile(sc, r.attack.vfx, mat).r - 1);
-  const dirIn = norm(sub(s.to, from));
-  const to = face ?? (s.blocked ? rint({ x: s.to.x - dirIn.x * 8, y: s.to.y - dirIn.y * 8 }) : rint(s.to));
-  const g0 = { x: u.home.x + (target ? norm(sub(target.home, u.home)).x * 10 : 0), y: u.home.y };
-  const g1 = target ? { x: target.home.x - dirIn.x * 6, y: target.home.y } : s.toGround;
-  const fly = flyThrow(s, r, mat, from, to, g0, g1, rnd);
-  await fly.arrived;
-  // ---- contact: the battle handler stages the hit-stop, the number and the reactions on this frame
-  s.impact(to);
-  fly.clear();
-  if (voice) play(voice.impact, { volume: 0.8, pan: panAt(to.x) });
-  else s.ctx.sfx('earthQuake', { volume: 0.75 });
-  const floorY = target ? target.home.y + 2 : s.toGround.y + 2;
-  const dir = norm(sub(to, from));
-  const blocked = s.blocked ? (r.attack.blocked ?? 'shatter') : null;
-  if (blocked === 'rebound') {
-    // it glances off the guard, drops short and breaks on the floor
-    void bounceOff(s, r, mat, to, dir, floorY, u.uid);
-  } else {
-    // 'shatter' (and, until their first user, 'clang' / 'splash'): it breaks where it lands
-    materialBurst(sc, to, floorY, dir, mat, { rebound: !!blocked, big: s.direct ? 1.2 : blocked ? 0.8 : 1, seed: u.uid * 13 + 5 });
-  }
-  runHook(hooks?.onContact, s, r, to, u.frameInfo().frame);
+  let from = originPoint(u, r.attack.from, REL);
+  let to = from;
+  // ---- contact, staged IN the update that puts the projectile on the body (flyThrow): the battle
+  // handler's hit-stop, number and reactions, the impact voice, the burst and the hook on that frame
+  const contact = () => {
+    s.impact(to);
+    if (voice) play(voice.impact, { volume: 0.8, pan: panAt(to.x) });
+    else s.ctx.sfx('earthQuake', { volume: 0.75 });
+    const floorY = target ? target.home.y + 2 : s.toGround.y + 2;
+    const dir = norm(sub(to, from));
+    const blocked = s.blocked ? (r.attack.blocked ?? 'shatter') : null;
+    // the pieces and the dust lie in the struck body's floor band: a body standing in front of it (the
+    // thrower itself at point-blank range) is drawn over them
+    const depth = target ? unitDepth(target.home.y) + 0.6 : DEPTH.FX + 1;
+    if (blocked === 'rebound') {
+      // it glances off the guard, drops short and breaks on the floor
+      void bounceOff(s, r, mat, to, dir, floorY, u.uid, depth);
+    } else {
+      // 'shatter' (and, until their first user, 'clang' / 'splash'): it breaks where it lands
+      materialBurst(sc, to, floorY, dir, mat, { rebound: !!blocked, big: s.direct ? 1.2 : blocked ? 0.8 : 1, seed: u.uid * 13 + 5, matter, vfx: own ? r.attack.vfx : null, depth });
+    }
+    runHook(hooks?.onContact, s, r, to, u.frameInfo().frame);
+  };
+  let fly: Promise<void> | null = null;
+  await new Promise<void>((go) => {
+    let released = false;
+    const launch = () => {
+      if (fly) return;
+      // the flight: to the body's face (a guard's face when blocked), or the duelist
+      const face = surfaceToward(target, from, s.blocked ? 1 : ensureProjectile(sc, r.attack.vfx, mat).r - 1);
+      const dirIn = norm(sub(s.to, from));
+      to = face ?? (s.blocked ? rint({ x: s.to.x - dirIn.x * 8, y: s.to.y - dirIn.y * 8 }) : rint(s.to));
+      const g0 = { x: u.home.x + (target ? norm(sub(target.home, u.home)).x * 10 : 0), y: u.home.y };
+      const g1 = target ? { x: target.home.x - dirIn.x * 6, y: target.home.y } : s.toGround;
+      fly = flyThrow(s, r, mat, from, to, g0, g1, rnd, Math.min(relHold, FRAME_MS), contact);
+      go();
+    };
+    const release = () => {
+      if (released) return;
+      released = true;
+      charge?.stop(30);
+      if (voice) play(voice.release, { volume: 0.85, pan });
+      else s.ctx.sfx('whoosh', { volume: 0.7, pitch: 0.6 });
+      from = originPoint(u, r.attack.from, REL);
+      runHook(hooks?.onRelease, s, r, from, REL);
+      if (!(relHold > 0 && u.frameInfo().anim === 'attack' && u.frameInfo().frame <= REL)) return launch();
+      const off = atFrame(u, 'attack', REL + 1, launch, { maxMs: 2000 });
+      void sleep(sc, relHold + 100).then(() => (off(), launch()));
+    };
+    if (f0 >= REL) return release();
+    const off = atFrame(u, 'attack', REL, release, { maxMs: 4000 });
+    void sleep(sc, u.rangeMs('attack', f0, REL) + 400).then(() => (off(), release()));
+  });
+  const flight = fly as Promise<void> | null;
+  if (!flight) return;
+  await flight;
   if (loses) return; // the handler answers on this frame and owns the body from here
   // ---- recover: the follow-through plays on; the strike ends with the attack
   const rec = u.spec('attack')?.marks?.recover;
@@ -466,7 +767,7 @@ async function throwStrike(s: StrikeArgs, r: PresentationRecipe, hooks: RecipeHo
 }
 
 /** 'rebound': the projectile glances back off the guard in a short hop and breaks on the floor. */
-async function bounceOff(s: StrikeArgs, r: PresentationRecipe, mat: MaterialDef | null, at: XY, dir: XY, floorY: number, seed: number): Promise<void> {
+async function bounceOff(s: StrikeArgs, r: PresentationRecipe, mat: MaterialDef | null, at: XY, dir: XY, floorY: number, seed: number, depth: number): Promise<void> {
   const sc = s.scene;
   const { key } = ensureProjectile(sc, r.attack.vfx, mat);
   const rock = sc.add.image(at.x, at.y, key, 0).setDepth(DEPTH.FX - 4);
@@ -488,7 +789,7 @@ async function bounceOff(s: StrikeArgs, r: PresentationRecipe, mat: MaterialDef 
       },
     );
   });
-  materialBurst(sc, land, floorY, back, mat, { big: 0.7, seed: seed * 17 + 3 });
+  materialBurst(sc, land, floorY, back, mat, { big: 0.7, seed: seed * 17 + 3, matter: projectileMatter(r.attack.vfx), vfx: projectileOf(r.attack.vfx) ? r.attack.vfx : null, depth });
 }
 
 // ================================================================ kinds
