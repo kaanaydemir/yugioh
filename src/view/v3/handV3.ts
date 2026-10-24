@@ -448,8 +448,9 @@ function upOf(side: PixelCanvas): UpScaled {
 /**
  * `side` (a card side, or a flip's turn frame) leaning `deg` (whole degrees, clockwise) with its rim
  * ring, baked RotSprite style about the card's centre (CardV3's origin: the pixel floor(w / 2),
- * floor(h / 2)). `glyphs` (a monster's face): its ATK / DEF line moves glyph by glyph, each whole
- * (glyphsOf). Cached (LRU); at 0° it is the composite pixel for pixel.
+ * floor(h / 2)). `glyphs` (a monster's face): its ATK / DEF rows are phase-kept (tiltShift) and the
+ * line moves glyph by glyph, each whole (glyphsOf); any other side is phased about its middle.
+ * Cached (LRU); at 0° it is the composite pixel for pixel.
  */
 export function tiltBake(side: PixelCanvas, deg: number, glyphs = false): TiltBake {
   const key = `${sideId(side)}:${deg}${glyphs ? ':g' : ''}`;
@@ -463,7 +464,10 @@ export function tiltBake(side: PixelCanvas, deg: number, glyphs = false): TiltBa
   const r = (deg * Math.PI) / 180;
   const cos = Math.cos(r);
   const sin = Math.sin(r);
-  const map = rotMap(upOf(side), deg, [TILT_IN + Math.floor(side.w / 2), TILT_IN + Math.floor(side.h / 2)], [tiltShift(deg, side.h), 0]);
+  // the sampling phase: a monster face keeps its ATK / DEF rows between two row steps (tiltShift);
+  // any other side keeps its middle whole (a back's emblem, a spell's art: phase 0 centres the plateau)
+  const shift = glyphs ? tiltShift(deg, side.h) : 0;
+  const map = rotMap(upOf(side), deg, [TILT_IN + Math.floor(side.w / 2), TILT_IN + Math.floor(side.h / 2)], [shift, 0]);
   const line = glyphs ? glyphsOf(side) : null;
   if (line) holdGlyphs(map, line, g.W);
   // the ring in walking order: the output pixels that show a ring pixel, by that pixel's place on the
@@ -577,6 +581,8 @@ export interface Glyphs {
   readonly x1: number;
   /** Per composite row y0 … y1: a composite index of that row's ground (what a moved glyph leaves). */
   readonly ground: Int32Array;
+  /** Composite pixels of bare ground just above / below the line (2 rows): a glyph may land there too. */
+  readonly bare: Uint8Array;
 }
 
 const glyphLines = new WeakMap<PixelCanvas, Glyphs | null>();
@@ -618,15 +624,19 @@ function findGlyphs(side: PixelCanvas): Glyphs | null {
     const c = side.get(x, y);
     return c !== null && c !== B && c !== S;
   };
-  // a row of the line: some ink, and at least a quarter of it bare ground (a frame bar is not)
+  // ink lives in x0 … xi; x1 is a shadow column only (the last digit's shadow, beside the frame's own
+  // pixels — a corner ornament, an inner frame line — which stay where the turn puts them)
+  const xi = x1 - 1;
+  // a row of the line: some glyph ink (3+ px), and at least an eighth of it bare ground (a frame bar
+  // has none; four dense digits with dark counters leave ~ a fifth)
   const lineRow = (y: number): boolean => {
-    let inked = false;
+    let inked = 0;
     let ground = 0;
     for (let x = x0; x <= x1; x++) {
       if (side.get(x, y) === B) ground++;
-      else if (ink(x, y)) inked = true;
+      else if (x <= xi && ink(x, y)) inked++;
     }
-    return inked && ground * 4 >= x1 - x0 + 1;
+    return inked >= 3 && ground * 8 >= x1 - x0 + 1;
   };
   if (!lineRow(k)) return null;
   let r0 = k;
@@ -643,22 +653,23 @@ function findGlyphs(side: PixelCanvas): Glyphs | null {
     for (let y = r0; y <= r1; y++) if (ink(x, y)) return true;
     return false;
   };
-  for (let x = x0; x <= x1; ) {
+  for (let x = x0; x <= xi; ) {
     if (!inkCol(x)) {
       x++;
       continue;
     }
     const a = x;
-    while (x + 1 <= x1 && inkCol(x + 1)) x++;
+    while (x + 1 <= xi && inkCol(x + 1)) x++;
     const b = x;
     x++;
     if (b - a + 1 > 7) continue; // a bar, not a glyph
-    // the glyph: its ink and its shadow in the line, its shadow alone in the row under it
+    // the glyph: its columns' ink, counters and shadow in the line; the shadow alone beside it
+    // (column b + 1) and in the row under it
     const px: number[] = [];
     for (let y = r0; y <= rs; y++)
       for (let xx = a; xx <= Math.min(x1, b + 1); xx++) {
         const c = side.get(xx, y);
-        if (c !== null && (y <= r1 ? c !== B : c === S)) px.push(at(xx, y));
+        if (c !== null && (y <= r1 && xx <= b ? c !== B : c === S)) px.push(at(xx, y));
       }
     if (!px.length) continue;
     for (const i of px) of[i] = blocks.length;
@@ -682,13 +693,18 @@ function findGlyphs(side: PixelCanvas): Glyphs | null {
       for (const x of [(w >> 1) - d, (w >> 1) + d]) if (gx < 0 && x >= x0 && x <= x1 && side.get(x, y) === G && of[at(x, y)] < 0) gx = x;
     ground[y - r0] = at(gx, y);
   }
-  return { blocks, of, y0: r0 + TILT_IN, y1: rs + TILT_IN, x0: x0 + TILT_IN, x1: x1 + TILT_IN, ground };
+  // a steep lean takes an upright glyph's corner a row past the turned line: bare ground there takes it
+  const bare = new Uint8Array(of.length);
+  for (const y of [r0 - 2, r0 - 1, rs + 1, rs + 2])
+    if (y >= 0 && y < h) for (let x = x0; x <= x1; x++) if (side.get(x, y) === B) bare[at(x, y)] = 1;
+  return { blocks, of, y0: r0 + TILT_IN, y1: rs + TILT_IN, x0: x0 + TILT_IN, x1: x1 + TILT_IN, ground, bare };
 }
 
 /**
  * Re-letter a turned map: every output pixel showing a glyph pixel shows that row's ground instead,
  * then each glyph is set down whole — shifted by the (rounded) mean of where the turn took its pixels —
- * onto the line only (never the frame, the ring or outside the card).
+ * onto the line or the bare ground right by it only (never the frame, the ring or outside the card:
+ * a pixel that would land there — a shadow corner at a steep lean on the a5=off face — is left out).
  */
 function holdGlyphs(m: RotMap, gl: Glyphs, W: number): void {
   const n = gl.blocks.length;
@@ -719,7 +735,7 @@ function holdGlyphs(m: RotMap, gl: Glyphs, W: number): void {
       if (cur < 0) continue;
       const cx = cur % W;
       const cy = Math.floor(cur / W);
-      if (cy < gl.y0 || cy > gl.y1 || cx < gl.x0 || cx > gl.x1) continue;
+      if (cx < gl.x0 || cx > gl.x1 || ((cy < gl.y0 || cy > gl.y1) && !gl.bare[cur])) continue;
       idx[k] = i;
     }
   }

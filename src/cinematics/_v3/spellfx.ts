@@ -536,6 +536,11 @@ export interface RimOpts {
   depth?: number;
   /** The top step's first frame: the beat for the single number (EF-9). */
   onPeak?: () => void;
+  /**
+   * Where the light starts: 'feet' (default — it climbs to the head: a stat raised, the ATEŞ edge) or
+   * 'head' (it runs down to the feet: a stat lowered, the light draining off the body; A5 A-3b).
+   */
+  from?: 'feet' | 'head';
 }
 
 /**
@@ -579,11 +584,14 @@ export function rimClimb(scene: Phaser.Scene, s: Unit, o: RimOpts = {}): Promise
     // the lit part: feet up to this step's line; the colour: this step's tone, then down the ramp
     const fadeK = el > steps * stepMs + holdMs ? Math.floor(((el - steps * stepMs - holdMs) / fadeMs) * steps) : 0;
     const tone = ramp[Math.max(0, Math.min(steps - 1, k - 1 - fadeK))];
-    const line = sil.bottom - Math.ceil(((sil.bottom - sil.top + 1) * k) / steps);
+    const reach = Math.ceil(((sil.bottom - sil.top + 1) * k) / steps);
+    const down = o.from === 'head';
+    // feet → head: lit at or below the line; head → feet: lit at or above it
+    const line = down ? sil.top - 1 + reach : sil.bottom - reach;
     ras.begin();
     if (k - 1 - fadeK >= 0) {
       const pts = o.where === 'contour' ? sil.contour() : sil.outside();
-      for (const q of pts) if (q.y >= line) ras.px(q.x, q.y, tone);
+      for (const q of pts) if (down ? q.y <= line : q.y >= line) ras.px(q.x, q.y, tone);
     }
     ras.end();
     return true;

@@ -461,7 +461,7 @@ describe('A6-A A2 — the v3 hand (K1), pure parts', { timeout: 60_000 }, () => 
 
   it('lean: a monster face keeps its ATK / DEF lettering whole — every glyph moves as one block, every pixel shown once (v3 face and a5=off face)', async () => {
     for (const flags of [undefined, { a5: 'off' }]) {
-      const { cards } = await load('v3', flags);
+      const { cards, palette } = await load('v3', flags);
       const h = await import('../../src/view/v3/handV3');
       for (const id of ['ember_wolf', 'storm_hawk', 'tide_golem', 'crystal_wyrm'] as const) {
         const side = cards.cardFaceCanvas(id);
@@ -471,24 +471,55 @@ describe('A6-A A2 — the v3 hand (K1), pure parts', { timeout: 60_000 }, () => 
         expect(gl!.blocks.length, id).toBeGreaterThanOrEqual(8);
         for (const px of gl!.blocks) expect(px.length).toBeGreaterThan(3);
         const W = side.w + 2 * h.TILT_IN;
+        const shadow = palette.PAL.ink; // the digits' drop shadow (the face's darkest tone)
         for (let deg = -7; deg <= 7; deg++) {
           if (deg === 0) continue;
           const b = h.tiltBake(side, deg, true);
           const offs = gl!.blocks.map(() => new Set<string>());
-          const seen = gl!.blocks.map(() => 0);
+          const seen = gl!.blocks.map(() => new Map<number, number>());
           for (let k = 0; k < b.map.idx.length; k++) {
             const i = b.map.idx[k];
             if (i < 0 || gl!.of[i] < 0) continue;
             offs[gl!.of[i]].add(`${(k % b.map.w) - (i % W)},${Math.floor(k / b.map.w) - Math.floor(i / W)}`);
-            seen[gl!.of[i]]++;
+            seen[gl!.of[i]].set(i, (seen[gl!.of[i]].get(i) ?? 0) + 1);
           }
+          const shade = (i: number) => side.get((i % W) - h.TILT_IN, Math.floor(i / W) - h.TILT_IN) === shadow;
           gl!.blocks.forEach((px, g) => {
             expect(offs[g].size, `${id} ${deg}° glyph ${g}: one shift`).toBe(1);
-            expect(seen[g], `${id} ${deg}° glyph ${g}: every pixel once`).toBe(px.length);
+            for (const i of px) {
+              const n = seen[g].get(i) ?? 0;
+              // the ink exactly once; a drop-shadow pixel at most once (a steep lean may clip a corner)
+              if (shade(i)) expect(n, `${id} ${deg}° glyph ${g} shadow`).toBeLessThanOrEqual(1);
+              else expect(n, `${id} ${deg}° glyph ${g} ink at ${i}`).toBe(1);
+            }
+            expect([...seen[g].values()].length, `${id} ${deg}° glyph ${g}`).toBeGreaterThanOrEqual(px.length - 2);
           });
           // the plain bake (a back, a spell) is another map: the flag is part of the cache key
           expect(h.tiltBake(side, deg)).not.toBe(b);
         }
+      }
+    }
+  });
+
+  it('lean: a side without an ATK / DEF line (a back, a spell) is phased about its middle — no row step cuts rows 32..36 (the emblem, the art)', async () => {
+    const { cards } = await load('v3');
+    const h = await import('../../src/view/v3/handV3');
+    for (const side of [cards.cardBackCanvas(0), cards.cardBackCanvas(1), cards.cardFaceCanvas('judgment_bolt')]) {
+      const W = side.w + 2 * h.TILT_IN;
+      for (let deg = -7; deg <= 7; deg++) {
+        if (deg === 0) continue;
+        const b = h.tiltBake(side, deg);
+        const perCol = new Map<number, Set<number>>();
+        for (let k = 0; k < b.map.idx.length; k++) {
+          const i = b.map.idx[k];
+          if (i < 0) continue;
+          const sx = (i % W) - h.TILT_IN;
+          const sy = Math.floor(i / W) - h.TILT_IN;
+          if (sy < 32 || sy > 36 || sx < 8 || sx > side.w - 9) continue;
+          if (!perCol.has(sx)) perCol.set(sx, new Set());
+          perCol.get(sx)!.add((k % b.map.w) - sx);
+        }
+        for (const [sx, offs] of perCol) expect(offs.size, `${deg}° column ${sx}`).toBe(1);
       }
     }
   });
