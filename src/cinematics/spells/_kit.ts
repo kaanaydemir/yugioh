@@ -29,7 +29,7 @@ import type { GameEvent, PlayerId, Uid } from '../../engine/types';
 import { PAL, RAMPS, type Ramp } from '../../art/palette';
 import { PixelCanvas } from '../../art/pixel';
 import { AK } from '../../art/arena';
-import { CARD_SIL, STAND_H, cardIsoKey, isoProject } from '../../art/cards';
+import { CARD_SIL, STAND_H, isoProject } from '../../art/cards';
 import { CardSprite } from '../../view/CardSprite';
 import type { TileCard } from '../../view/TileCard';
 import { BOARD_CENTER, DEPTH, LOOK_V3, TILE_H, TILE_W, type XY, duelistXY, zoneXY } from '../../view/layout';
@@ -978,6 +978,30 @@ async function energyStreakV3(scene: Phaser.Scene, from: XY, to: XY, o: StreakOp
   if (o.light !== false) void lightFlash(scene, to.x, to.y, ramp[2], big ? 28 : 20, 300, { floorY: Math.max(to.y, f1), intensity: big ? 0.9 : 0.7 });
 }
 
+/**
+ * TileCard.layDown without its blank last frame (landV3 only). layDown's final tween step computes
+ * k = (1 - 0.7) / 0.3 = 1.0000000000000002, and spring(k) = cos(..) * Math.pow(1 - k, 2.2) is NaN, so the
+ * card draws an empty pose for one rendered frame before its settle() (TileCard.ts is lane A6-A's:
+ * reported, not edited here). A counter of the same duration, added right after it to the same tween
+ * manager, ends on that same step — after the NaN draw, before the render — and settles the card flat
+ * with sync(); layDown then skips its own settle (its epoch moved on). The look is layDown's own end
+ * state, one frame earlier than the blank would have cleared.
+ */
+function layDownCrisp(sc: Phaser.Scene, tile: TileCard, ms: number): Promise<void> {
+  if (!tile.active || !tile.standing) return tile.layDown(ms);
+  const cardId = tile.cardId;
+  const done = tile.layDown(ms);
+  sc.tweens.addCounter({
+    from: 0,
+    to: 1,
+    duration: ms,
+    onComplete: () => {
+      if (tile.active && !tile.standing && tile.cardId === cardId) tile.sync(cardId, tile.faceUp, tile.orientation);
+    },
+  });
+  return done;
+}
+
 /** The v3 spell opening (see the section header). */
 async function spellOpeningV3(
   ctx: AnyCtx,
@@ -1162,18 +1186,13 @@ async function spellOpeningV3(
       cleanup('dismiss');
       if (standing && l.spot === 'spellTrap' && l.index === o.zone && standing.active) {
         // a set equip is already standing on its own tile: it lies back down (it stays on the field)
-        await standing.layDown(l.lieMs ?? 160);
+        await layDownCrisp(sc, standing, l.lieMs ?? 160);
         l.onLand?.();
         return standing;
       }
       own();
       if (standing && standing.active) standing.destroy();
       const at = zoneXY(o.player, l.spot, l.index);
-      // TEMP A-3 probe: warm the flat card's static iso texture off-screen (GPU upload before first use)
-      if ((globalThis as unknown as { __a3dbg?: Record<string, boolean> }).__a3dbg?.warm) {
-        const wk = sc.add.image(-80, -80, cardIsoKey(o.cardId, 'up', o.player)).setDepth(-1);
-        bg(wait(sc, 120).then(() => wk.destroy()));
-      }
       // where the card stands on its zone (TileCard's standing pose at scale 1: the same 48×68 face)
       const [, py] = isoProject([0, 0, STAND_H / 2 + 2]);
       const dest = { x: Math.round(at.x), y: Math.round(at.y + py) };
@@ -1198,20 +1217,9 @@ async function spellOpeningV3(
       }
       // it appears standing on its tile (drawn in that pose at once: no flat frame first) and lies down
       const tile = field.placeCard(o.player, l.spot, l.index, o.uid, o.cardId, true, 'up');
-      if ((globalThis as unknown as { __a3dbg?: Record<string, boolean> }).__a3dbg?.log2) {
-        // TEMP A-3 probe
-        let n = 0;
-        const tc = tile as unknown as { img: Phaser.GameObjects.Image; visible: boolean; alpha: number; depth: number; list: Phaser.GameObjects.GameObject[]; active: boolean };
-        onFrame(sc, () => {
-          const im = tc.img;
-          const src = im.frame?.source as unknown as { glTexture?: unknown; width: number; height: number } | undefined;
-          console.log('A3P', n, sc.time.now.toFixed(0), tc.active, tc.visible, tc.alpha, tc.depth, im.texture.key, im.frame?.name, im.visible, im.alpha, im.x, im.y, im.displayOriginX, im.displayOriginY, im.width, im.height, src ? `${src.width}x${src.height}:${src.glTexture ? 'gl' : 'nogl'}` : '-', tc.list.map((c) => (c as Phaser.GameObjects.Image).visible ? 1 : 0).join(''));
-          return ++n < 30;
-        });
-      }
       tile.standing = true;
       tile.setCard(o.cardId);
-      await tile.layDown(l.lieMs ?? 120);
+      await layDownCrisp(sc, tile, l.lieMs ?? 120);
       l.onLand?.();
       return tile;
     },

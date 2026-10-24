@@ -280,8 +280,9 @@ function build(scene: Phaser.Scene): Amb {
     else if (a.level < a.target) a.level = Math.min(a.target, a.level + dt / RAMP_IN);
     else if (a.level > a.target) a.level = Math.max(a.target, a.level - dt / RAMP_OUT);
     const L = a.level;
-    // ---- the pad light follows the level (faint: the pad keeps a little of the eruption's fire)
-    if (a.pad && a.target === 1 && L > 0 && !a.padLight) {
+    // ---- the pad light: lit as soon as the field is on (also during delayMs: it takes over from the
+    // eruption's flash on the pad with no dark gap; faint — the pad keeps a little of that fire)
+    if (a.pad && a.target === 1 && !a.padLight) {
       a.padLight = lightPool(scene, a.pad.x, a.pad.y, { color: PAL.fire3, spill: PAL.fire1, radius: 18, floorY: a.pad.y, intensity: 0.55, anim: 'breathe', fadeIn: 360 });
     }
     if (a.target === 0 && a.padLight) {

@@ -493,21 +493,11 @@ async function activateV3(ctx: CinematicContext<Extract<GameEvent, { type: 'acti
   const land = () => {
     // the pad burns three steps of the fire ramp under the card lying down
     playV3('volcanoSlam', { volume: 0.85, pan: panAt(pad.x) }); // mark `land`
-    if (!(globalThis as unknown as { __a3dbg?: Record<string, boolean> }).__a3dbg?.noFlash) bg(ctx.views.board.flashTile(ev.player, 'field', 0, PAL.fire3, 150));
-    if ((globalThis as unknown as { __a3dbg?: Record<string, boolean> }).__a3dbg?.log) {
-      let n = 0;
-      onFrame(sc, (dt) => {
-        const tl = ctx.views.field.tileAt(ev.player, 'field', 0) as unknown as { active: boolean; visible: boolean; alpha: number; depth: number; x: number; y: number; img: Phaser.GameObjects.Image; standing: boolean; list: Phaser.GameObjects.GameObject[] } | null;
-        // TEMP A-3 debug
-        console.log('A3DBG', n, dt.toFixed(1), tl ? [tl.active, tl.visible, tl.alpha, tl.depth, tl.x, tl.y, tl.img.texture.key, tl.img.visible, tl.img.alpha, tl.img.x, tl.img.y, tl.img.originX, tl.img.originY, tl.standing, tl.list.length].join(',') : 'none');
-        return ++n < 6;
-      });
-    }
+    bg(ctx.views.board.flashTile(ev.player, 'field', 0, PAL.fire3, 150));
   };
-  if (op.landV3) await op.landV3({ spot: 'field', index: 0, ms: 90, lieMs: (globalThis as unknown as { __a3lie?: number }).__a3lie ?? 90, onLand: land });
+  if (op.landV3) await op.landV3({ spot: 'field', index: 0, ms: 90, lieMs: 90, onLand: land });
   else await op.land({ spot: 'field', index: 0 });
-  if ((globalThis as unknown as { __a3dbg?: Record<string, boolean> }).__a3dbg?.noField) await wait(sc, 600); // TEMP A-3 debug
-  else if (fi >= 0) await ctx.play(fi);
+  if (fi >= 0) await ctx.play(fi);
   await fx.playRun(ctx, fx.resolutionRun(ctx));
   relax(ctx, 400);
 }
@@ -591,18 +581,17 @@ async function fieldV3(ctx: CinematicContext<Extract<GameEvent, { type: 'fieldSp
     return;
   }
   const stats = takeStatChanges(ctx);
-  const DBG = ((globalThis as unknown as { __a3dbg?: Record<string, boolean> }).__a3dbg ?? {}); // TEMP A-3 debug
   // ---- ERUPT (mark `erupt`)
   playV3('volcanoErupt', { volume: 1, pan: panAt(pad.x) });
   const creep = startV3('lavaCreep', { volume: 0.8, pan: panAt(pad.x) });
-  if (!DBG.noLight) void lightFlash(sc, pad.x, pad.y - 10, PAL.fire4, fs(44), 460, { floorY: pad.y, intensity: 1.1 });
+  void lightFlash(sc, pad.x, pad.y - 10, PAL.fire4, fs(44), 460, { floorY: pad.y, intensity: 1.1 });
   // today's lean at this beat (kept by the user's decision: same call, same target, same timing)
-  if (!DBG.noFocus) bg(ctx.focus(origin, { zoom: 1.05, ms: 140, pan: 0.2 }).then(() => wait(sc, 120)).then(() => ctx.unfocus(700)));
-  const theme = DBG.noTheme ? Promise.resolve() : board.setTheme('volcano', true, ev.player);
+  bg(ctx.focus(origin, { zoom: 1.05, ms: 140, pan: 0.2 }).then(() => wait(sc, 120)).then(() => ctx.unfocus(700)));
+  const theme = board.setTheme('volcano', true, ev.player);
   bg(theme);
   // the ambience (embers off the seams, ash, the pad's lasting light) once the lava has spread
-  if (!DBG.noAmb) bg(volcanoAmbienceV3(sc, true, { pad: ev.player, delayMs: 600 }));
-  if (!DBG.noCol) bg(eruptOnPad(sc, pad, ev.uid * 17 + 5));
+  bg(volcanoAmbienceV3(sc, true, { pad: ev.player, delayMs: 600 }));
+  bg(eruptOnPad(sc, pad, ev.uid * 17 + 5));
   // ---- the front: each FIRE / WATER monster's beat as the lava reaches its zone
   const items = stats.map((e) => ({ e, u: ctx.unit(e.uid) }));
   const times = beatTimes(items.map((x) => (x.u ? frontArrivalMs(ev.player, x.u.player, x.u.zone) : 0)));
