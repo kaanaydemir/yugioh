@@ -14,9 +14,9 @@ import { PAL } from '../../src/art/palette';
 import { PixelCanvas } from '../../src/art/pixel';
 import { ISO_TEX_H, ISO_TEX_W } from '../../src/art/cards';
 import { greatSwordMotif, type GreatSwordOpts, type MotifFacing, type SwordAngle } from '../../src/art/spellmotifs-v3';
-import { anchorFromFrame, ringPixels, swordShardPoints } from '../../src/duel/auras-v3';
-import { DRAW_STEPS, FORGE, bladeLost, bondPosePlan, forgeLayout, inArtWindow, sinkLook, type StatEv } from '../../src/cinematics/spells/_blade_v3';
-import { FORGE_OLD, TURN_K, forgeSizeFor, forgeSwordGeom, forgeSwordMotif, turnAt, type ForgeSize, type ForgeSwordOpts, type ForgeTurn } from '../../src/cinematics/spells/_blade_sword';
+import { BOND_RING_RX, BREAK_CRACK_FRAMES, anchorFromFrame, breakRing, ringPixels, swordShardPoints } from '../../src/duel/auras-v3';
+import { BREAK, DRAW_STEPS, FORGE, SINK_COOL_FRAMES, bladeLost, bondPosePlan, forgeLayout, inArtWindow, numberSpot, shardTone, sinkLook, type StatEv } from '../../src/cinematics/spells/_blade_v3';
+import { FORGE_OLD, TURN_K, forgeSizeFor, forgeSwordChunks, forgeSwordGeom, forgeSwordMotif, turnAt, type ForgeSize, type ForgeSwordOpts, type ForgeTurn } from '../../src/cinematics/spells/_blade_sword';
 import type { MonsterUnit } from '../../src/duel/MonsterUnit';
 
 const PALETTE = new Set<number>(Object.values(PAL));
@@ -286,8 +286,99 @@ describe('bigsword: the forged sword (the old forge path in v3 pixels)', () => {
     expect([DRAW_STEPS * FORGE.drawStep, FORGE.cool, FORGE.spin, FORGE.hang, FORGE.plunge, FORGE.stop, FORGE.sink]).toEqual([64, 33, 210, 60, 70, 70, 230]);
     expect(toStab).toBeGreaterThanOrEqual(780);
     expect(toStab).toBeLessThanOrEqual(870);
+    // (fix round 2: the stab's white-hot flash cools through SINK_COOL_FRAMES of gold4 first, so the sink
+    // itself goes planes → light: full, ember, ghost, gone)
     const seq = [0, 0.2, 0.4, 0.6, 0.8, 0.95].map(sinkLook);
-    expect(seq).toEqual(['full', 'full', 'cool', 'ember', 'ghost', null]);
+    expect(seq).toEqual(['full', 'full', 'full', 'ember', 'ghost', null]);
+    expect(SINK_COOL_FRAMES).toBe(2);
+  });
+});
+
+describe('fix round 2: the break (the forged blade tears out, cracks and shatters) and the number', () => {
+  const SIZES: ForgeSize[] = ['big', 'mid'];
+  const mask = (p: PixelCanvas): string => {
+    let s = '';
+    for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) s += p.alpha(x, y) > 0 ? '1' : '0';
+    return s;
+  };
+
+  it('the cracked drawing: palette-only, deterministic, the same silhouette as the sword, white crack lines with dark lips', () => {
+    for (const size of SIZES) {
+      const full = forgeSwordMotif({ size }).px;
+      const cracked = forgeSwordMotif({ size, crack: true }).px;
+      expect(paletteOnly(cracked)).toEqual([]);
+      expect(hash(cracked)).toBe(hash(forgeSwordMotif({ size, crack: true }).px));
+      expect(mask(cracked)).toBe(mask(full));
+      expect(count(cracked, PAL.white)).toBeGreaterThan(count(full, PAL.white) + (size === 'big' ? 20 : 8));
+      expect(count(cracked, PAL.gold1)).toBeGreaterThan(count(full, PAL.gold1));
+      expect(count(cracked, PAL.ink)).toBe(count(full, PAL.ink));
+    }
+  });
+
+  it('the chunks tile the cracked drawing exactly (every pixel once, its own colour), 3–8 px chips, deterministic', () => {
+    for (const size of SIZES) {
+      const m = forgeSwordMotif({ size, crack: true }).px;
+      const chunks = forgeSwordChunks(size, 7);
+      const seen = new Map<string, number>();
+      for (const ch of chunks)
+        for (const q of ch.px) {
+          const k = `${q.x},${q.y}`;
+          expect(seen.has(k)).toBe(false);
+          seen.set(k, q.c);
+          expect(m.get(q.x, q.y)).toBe(q.c);
+        }
+      expect(seen.size).toBe(count(m));
+      // a fair number of pieces: the big blade breaks into tens of chips, the small one into ≥ 12
+      expect(chunks.length).toBeGreaterThanOrEqual(size === 'big' ? 30 : 12);
+      const sizes = chunks.map((c) => c.px.length).sort((a, b) => a - b);
+      expect(sizes[Math.floor(sizes.length / 2)]).toBeGreaterThanOrEqual(size === 'big' ? 15 : 8);
+      for (const c of chunks) expect(c.bottom).toBe(Math.max(...c.px.map((q) => q.y)));
+      expect(JSON.stringify(forgeSwordChunks(size, 7))).toBe(JSON.stringify(chunks));
+      // a coarser cut (reduced motion) gives fewer pieces
+      expect(forgeSwordChunks(size, 7, 3).length).toBeLessThan(chunks.length);
+    }
+  });
+
+  it('the pieces fade by palette steps (white → gold, the crimson grip down its ramp, ink holds) and go out after 4 steps', () => {
+    expect(shardTone(PAL.white, 0)).toBe(PAL.white);
+    expect(shardTone(PAL.white, 1)).toBe(PAL.gold4);
+    expect(shardTone(PAL.gold4, 2)).toBe(PAL.gold2);
+    expect(shardTone(PAL.crim4, 1)).toBe(PAL.crim3);
+    expect(shardTone(PAL.ink, 3)).toBe(PAL.ink);
+    for (const c of [PAL.white, PAL.gold2, PAL.crim2, PAL.ink]) expect(shardTone(c, 4)).toBeNull();
+    for (let k = 0; k < 4; k++) for (const c of [PAL.white, PAL.gold3, PAL.crim1]) expect(PALETTE.has(shardTone(c, k)!)).toBe(true);
+  });
+
+  it('the break beat: out of the body, a hang, the crack — ≤ 260 ms to the shatter at 1×; the ring flares to the bond size', () => {
+    const toShatter = BREAK.eject + (BREAK.hangFrames + BREAK_CRACK_FRAMES) * (1000 / 60);
+    expect(toShatter).toBeGreaterThanOrEqual(150);
+    expect(toShatter).toBeLessThanOrEqual(260);
+    expect(breakRing({ rx: 12 })).toEqual({ rx: BOND_RING_RX, ry: Math.round(BOND_RING_RX / 2) });
+    expect(breakRing({ rx: 40 }).rx).toBe(40);
+    expect(breakRing({ rx: 12 }).rx * 2).toBeGreaterThanOrEqual(64);
+  });
+
+  it('the number beside the sword: off the blade where its slam misses the guard, off the guard where it reaches it, on screen', () => {
+    const big = forgeSwordGeom('big');
+    const mid = forgeSwordGeom('mid');
+    // P1, big: the guard far above the head (the old placement: blade edge + 36)
+    const a = numberSpot({ x: 300, swordTop: 60, headY: 150, side: 1, travel: 20, geo: big });
+    expect(a).toEqual({ x: 300 + big.bladeHw + 36, y: 146 });
+    // P2, mid: the slam's rows reach the guard's band → off the guard's edge (no contact even at 2×)
+    const top = 100;
+    const headY = top + mid.guardRow + 4;
+    const b = numberSpot({ x: 400, swordTop: top, headY, side: -1, travel: 10, geo: mid });
+    expect(b.x).toBe(400 - (mid.guardHw + 36 + 2));
+    // the slammed number's ink (measured in game: 31 px left of its x, 33 px right — the glyph cells'
+    // outline / shadow sit right) keeps the same 3 px of air from the guard's ink on either side
+    const c = numberSpot({ x: 400, swordTop: top, headY, side: 1, travel: 10, geo: mid });
+    const airLeft = 400 - (mid.guardHw + 1) - (b.x + 33) - 1;
+    const airRight = c.x - 31 - (400 + mid.guardHw + 1) - 1;
+    expect(airLeft).toBe(3);
+    expect(airRight).toBe(3);
+    // kept on screen
+    expect(numberSpot({ x: 620, swordTop: 60, headY: 150, side: 1, geo: big }).x).toBeLessThanOrEqual(604);
+    expect(numberSpot({ x: 10, swordTop: 60, headY: 150, side: -1, geo: big }).x).toBeGreaterThanOrEqual(36);
   });
 });
 

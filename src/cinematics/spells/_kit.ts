@@ -989,6 +989,9 @@ async function energyStreakV3(scene: Phaser.Scene, from: XY, to: XY, o: StreakOp
   if (o.light !== false) void lightFlash(scene, to.x, to.y, ramp[2], big ? 28 : 20, 300, { floorY: Math.max(to.y, f1), intensity: big ? 0.9 : 0.7 });
 }
 
+/** TileCard.layDown's flat point: its tween value from which it draws the card lying flat (t ≥ 0.7). */
+const LIE_FLAT_AT = 0.7;
+
 /**
  * TileCard.layDown without its blank last frame (landV3 only). layDown's final tween step computes
  * k = (1 - 0.7) / 0.3 = 1.0000000000000002, and spring(k) = cos(..) * Math.pow(1 - k, 2.2) is NaN, so the
@@ -997,9 +1000,20 @@ async function energyStreakV3(scene: Phaser.Scene, from: XY, to: XY, o: StreakOp
  * manager, ends on that same step — after the NaN draw, before the render — and settles the card flat
  * with sync(); layDown then skips its own settle (its epoch moved on). The look is layDown's own end
  * state, one frame earlier than the blank would have cleared.
+ * `onFlat` (the scene's 'land' mark: its sound and light) fires on the frame the card first lies flat:
+ * layDown draws the flat card (+ its dust) from t ≥ LIE_FLAT_AT of its linear tween and spends the rest
+ * on a squash spring, so its promise resolves ≈ 2 frames after the impact (A-8 sync check: Volkan's
+ * volcanoSlam played 33 ms after the card hit the pad). A third counter of the same duration and ease,
+ * added right after it, reaches LIE_FLAT_AT on that same step.
  */
-function layDownCrisp(sc: Phaser.Scene, tile: TileCard, ms: number): Promise<void> {
-  if (!tile.active || !tile.standing) return tile.layDown(ms);
+function layDownCrisp(sc: Phaser.Scene, tile: TileCard, ms: number, onFlat?: () => void): Promise<void> {
+  let flat = false;
+  const fire = () => {
+    if (flat) return;
+    flat = true;
+    onFlat?.();
+  };
+  if (!tile.active || !tile.standing) return tile.layDown(ms).then(fire);
   const cardId = tile.cardId;
   const done = tile.layDown(ms);
   sc.tweens.addCounter({
@@ -1010,7 +1024,18 @@ function layDownCrisp(sc: Phaser.Scene, tile: TileCard, ms: number): Promise<voi
       if (tile.active && !tile.standing && tile.cardId === cardId) tile.sync(cardId, tile.faceUp, tile.orientation);
     },
   });
-  return done;
+  if (onFlat) {
+    sc.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: ms,
+      onUpdate: (tw) => {
+        if ((tw.getValue() ?? 0) >= LIE_FLAT_AT) fire();
+      },
+      onComplete: fire,
+    });
+  }
+  return done.then(fire);
 }
 
 /** The v3 spell opening (see the section header). */
@@ -1199,8 +1224,8 @@ async function spellOpeningV3(
       cleanup('dismiss');
       if (standing && l.spot === 'spellTrap' && l.index === o.zone && standing.active) {
         // a set equip is already standing on its own tile: it lies back down (it stays on the field)
-        await layDownCrisp(sc, standing, l.lieMs ?? 160);
-        l.onLand?.();
+        // onLand on the frame the card first lies flat (the impact), not after its squash spring
+        await layDownCrisp(sc, standing, l.lieMs ?? 160, l.onLand);
         return standing;
       }
       own();
@@ -1232,8 +1257,7 @@ async function spellOpeningV3(
       const tile = field.placeCard(o.player, l.spot, l.index, o.uid, o.cardId, true, 'up');
       tile.standing = true;
       tile.setCard(o.cardId);
-      await layDownCrisp(sc, tile, l.lieMs ?? 120);
-      l.onLand?.();
+      await layDownCrisp(sc, tile, l.lieMs ?? 120, l.onLand);
       return tile;
     },
     async close() {

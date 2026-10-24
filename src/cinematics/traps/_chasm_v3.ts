@@ -83,6 +83,17 @@ export const RADIAL_LEAD = 40;
 export const RADIAL_MS = 160;
 /** The abyss opens (whole steps, a small overshoot; the old one: 180 ms). */
 export const OPEN_MS = 150;
+/**
+ * The abyss's opening on open frame t ∈ (0, 1]: a small overshoot past 1 (outBack). With reduced motion
+ * (A5 §3.0 / §6.4, step A-8): none — eased in, never past 1, on the very same frames.
+ */
+export function abyssOpenAt(t: number, reduced: boolean = REDUCED_MOTION): number {
+  return reduced ? E.outCubic(t) : E.outBack(t);
+}
+/** The victim's 1-px shiver (x offset) on open frame k while the ground gives way; reduced motion: none. */
+export function openShiver(k: number, reduced: boolean = REDUCED_MOTION): number {
+  return reduced ? 0 : k % 4 === 0 ? 1 : k % 4 === 2 ? -1 : 0;
+}
 /** The fall: at most this many rendered frames (≈ 400 ms at 1×, as the old one's 480 ms inQuad fall) … */
 export const FALL_FRAMES = 24;
 /** … it ends 2 frames after the body has passed under the lip; then the open abyss stands this long (its deep glow breathing). */
@@ -722,13 +733,11 @@ export async function swallowV3(ctx: DestroyCtx): Promise<void> {
   const openFrames = Math.max(2, Math.round(OPEN_MS / (1000 / 60)));
   await eachFrame(sc, openFrames, (k) => {
     const t = (k + 1) / openFrames;
-    // (reduced motion: no overshoot — the same frames, eased in without passing 1)
-    const open = REDUCED_MOTION ? E.outCubic(t) : E.outBack(t);
+    const open = abyssOpenAt(t);
     abyss.set({ open });
     mask.update(abyssLip(shape, Math.max(0.05, Math.min(1, open))));
     // the body trembles 1 px (not with reduced motion) and sinks 3 px as the ground gives way (whole pixels)
-    const shiver = REDUCED_MOTION ? 0 : k % 4 === 0 ? 1 : k % 4 === 2 ? -1 : 0;
-    if (s && s.active) s.setPosition(sx0 + shiver, sy0 + Math.round(t * 3));
+    if (s && s.active) s.setPosition(sx0 + openShiver(k), sy0 + Math.round(t * 3));
     if (cardRas && cardRas.alive) cardRas.moveTo(cardRas.x, cardRas.y + (k % 3 === 0 ? 1 : 0));
   });
   abyss.set({ open: 1 });

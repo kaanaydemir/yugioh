@@ -7,14 +7,14 @@
 // (flow/end.ts:41) and the game-over lean toward the winner's chest on the winner's beat (flow/end.ts:143);
 // today's unfocus safeties too (end.ts:86 / :119 / :173). The two leans are the lines marked `keep-lean`.
 //
-// deckOut (handler 1383 ms — today 2650; A6_MS.deckOut ≤ 1400)
+// deckOut (handler 1340 ms of scene time — today 2650; A6_MS.deckOut ≤ 1400)
 //   0        today's lean (pan 0.45, 320 ms); the duelist reaches (command); ui3DeckOut
 //   0–200    the empty deck pad's count tag reads "0" in crimson and blinks 3 × (2 frames on, 2 dim); the pad
 //            flashes crimson in steps (calm board) and a small crimson pool lights it
 //   200–700  8 px over the pad the dashed 1-px outline of the card that is not there rises in (2 px a frame,
 //            stepping up the crimson ramp), its dashes march; at 520 it breaks into 6 pieces that fall onto
 //            the pad stepping down to nothing; the duelist recoils (hurt)
-//   700–1383 the crimson "DESTE BİTTİ" plate on the player's side (TurnPlate: 12-px slide, letters stamp);
+//   700–1340 the crimson "DESTE BİTTİ" plate on the player's side (TurnPlate: 12-px slide, letters stamp);
 //            900 today's unfocus(500) safety. The plate stays: at the game over it hops into the result plate.
 // gameOver (handler 3100 ms of scene time = 3250 ms of game time with today's 0.7 slow motion — today 3450;
 //           A6_MS.gameOver 3000–3500)
@@ -31,9 +31,10 @@
 //   900–1500 the result plate (ResultPlate) opens over the top centre, the lines stamp, three pixel
 //            fireworks in the winner's half; ui3Victory (a person beaten by the computer: ui3Defeat) and the
 //            fanfare as today
-//   …3100    hold; the handler ends; Prompt.gameOver v3 adds the button row under the plate; today's
-//            unfocus(700) eases the lean back
-// Reduced motion (KO-9): no wave, stagger, beam drop or fireworks; the plates are there at once.
+//   …3100    hold: tiny gold motes rise off the winner's podium; the loser's dead neon trim sputters one
+//            step up for two frames now and then (a dying tube); the handler ends; Prompt.gameOver v3 adds
+//            the button row under the plate; today's unfocus(700) eases the lean back
+// Reduced motion (KO-9): no wave, stagger, beam drop, fireworks, motes or sputter; the plates are there at once.
 
 import type Phaser from 'phaser';
 import { PAL, RAMPS } from '../../art/palette';
@@ -89,7 +90,7 @@ export const END_V3_MS = Object.freeze({
 });
 
 /** The beam's frames (60 fps): drop, hold, out. */
-const BEAM = Object.freeze({ dropFrames: 3, holdFrames: 16, outFrames: 4, width: 5 });
+export const BEAM = Object.freeze({ dropFrames: 3, holdFrames: 16, outFrames: 4, width: 5 });
 
 // ================================================================ deck-out pieces
 
@@ -264,6 +265,8 @@ export const SHADE_BOX = Object.freeze({ x: 136, y: 60, w: 368, h: 204 });
 interface ShadeMap {
   color: Int32Array;
   front: Uint8Array;
+  /** The neon trim's pixels (the dying tube's sputter). */
+  trim: Uint8Array;
   /** Rows done (the map is built a few rows a frame: topAt costs ~2.5 µs a pixel). */
   rows: number;
 }
@@ -274,7 +277,7 @@ const shadeMaps: Partial<Record<PlayerId, ShadeMap>> = {};
 export function buildShadeMap(player: PlayerId, maxRows: number = SHADE_BOX.h): boolean {
   const { x: bx, y: by, w, h } = SHADE_BOX;
   let m = shadeMaps[player];
-  if (!m) m = shadeMaps[player] = { color: new Int32Array(w * h).fill(-1), front: new Uint8Array(w * h), rows: 0 };
+  if (!m) m = shadeMaps[player] = { color: new Int32Array(w * h).fill(-1), front: new Uint8Array(w * h), trim: new Uint8Array(w * h), rows: 0 };
   const stop = Math.min(h, m.rows + Math.max(1, maxRows));
   for (let y = m.rows; y < stop; y++)
     for (let x = 0; x < w; x++) {
@@ -288,6 +291,7 @@ export function buildShadeMap(player: PlayerId, maxRows: number = SHADE_BOX.h): 
       m.color[i] = t.color;
       // the front row (the one facing the bridge) goes first: P1 row 3, P2 row 1
       m.front[i] = t.kind !== 'trim' && (player === 0 ? row < 3.5 : row > 0.5) ? 1 : 0;
+      m.trim[i] = t.kind === 'trim' ? 1 : 0;
     }
   m.rows = stop;
   return m.rows >= h;
@@ -334,7 +338,69 @@ async function shadeSide(ctx: AnyCtx, player: PlayerId): Promise<Phaser.GameObje
     await ctx.wait(END_V3_MS.shadeSteps[i] - END_V3_MS.shadeSteps[i - 1]);
     if (img.active) img.setTexture(key(frames[i]));
   }
+  if (img.active) sputter(sc, player, img);
   return img;
+}
+
+/** The dying tube's schedule: frames (a loop of `loop`) the dead trim sputters on, and which part of it. */
+export const SPUTTER = Object.freeze({
+  loop: 240,
+  frames: 2,
+  at: Object.freeze([
+    { f: 22, part: 'all' },
+    { f: 26, part: 'all' },
+    { f: 98, part: 'l' },
+    { f: 152, part: 'all' },
+    { f: 157, part: 'r' },
+    { f: 206, part: 'r' },
+  ] as const),
+});
+
+/** The loser's dead trim one step up (instead of two) — `part` of it: all, left or right of the screen's middle. Pure. */
+export function sputterCanvas(player: PlayerId, part: 'all' | 'l' | 'r'): PixelCanvas {
+  const { x: bx, w, h } = SHADE_BOX;
+  buildShadeMap(player);
+  const m = shadeMaps[player]!;
+  const p = new PixelCanvas(w, h);
+  const mid = 320 - bx;
+  for (let i = 0; i < w * h; i++) {
+    if (!m.trim[i] || m.color[i] < 0) continue;
+    const x = i % w;
+    if ((part === 'l' && x >= mid) || (part === 'r' && x < mid)) continue;
+    const c = shadeTone(m.color[i], 1);
+    if (c !== m.color[i]) p.set(x, Math.floor(i / w), c);
+  }
+  return p;
+}
+
+/** Which sputter shows at frame f of the loop (null: none). Pure. */
+export function sputterAt(f: number): 'all' | 'l' | 'r' | null {
+  const k = ((f % SPUTTER.loop) + SPUTTER.loop) % SPUTTER.loop;
+  for (const s of SPUTTER.at) if (k >= s.f && k < s.f + SPUTTER.frames) return s.part;
+  return null;
+}
+
+/** Runs the dead tube's sputter over the shade (on the scene's clock) for as long as the shade is there. */
+function sputter(sc: Phaser.Scene, player: PlayerId, shade: Phaser.GameObjects.Image): void {
+  if (REDUCED_MOTION) return;
+  const img = sc.add.image(SHADE_BOX.x, SHADE_BOX.y, '__DEFAULT').setOrigin(0, 0).setDepth(shade.depth + 0.01).setVisible(false);
+  let ms = 0;
+  let shown: string | null = null;
+  const onUpdate = (_t: number, dt: number) => {
+    if (!shade.active || !img.active) return off();
+    ms += dt * sc.tweens.timeScale;
+    const part = sputterAt(Math.floor(ms / FRAME));
+    if (part === shown) return;
+    shown = part;
+    if (part) img.setTexture(canvasTexture(sc, `ui3:sputter:${player}:${part}`, () => sputterCanvas(player, part)));
+    img.setVisible(!!part);
+  };
+  const off = () => {
+    sc.events.off('update', onUpdate);
+    if (img.active) img.destroy();
+  };
+  sc.events.on('update', onUpdate);
+  sc.events.once('shutdown', off);
 }
 
 // ================================================================ the loser's monsters fall
@@ -446,6 +512,72 @@ async function goldRing(ctx: AnyCtx, at: XY, frontDepth: number): Promise<void> 
   }
 }
 
+/** The podium's motes: one every `every` frames, each living `life` frames (a 1-px tail while young). */
+export const MOTE = Object.freeze({ every: 7, life: 42, tailFrames: 16 });
+
+/**
+ * Mote n at `age` frames (pure): its offset from the podium's foot point, its tone and its tail's tone
+ * (the pixel under it; null: none), or null. They rise 1 px every two frames from a spread of ±11 px,
+ * sway a pixel now and then, and step down the gold ramp.
+ */
+export function moteAt(n: number, age: number): { dx: number; dy: number; tone: number; tail: number | null } | null {
+  if (age < 0 || age >= MOTE.life) return null;
+  const sway = Math.floor(age / 12 + (n % 2)) % 2 === 0 ? 0 : n % 3 === 0 ? -1 : 1;
+  const dx = ((n * 7) % 23) - 11 + sway;
+  const dy = -(n % 3) - Math.floor(age / 2);
+  const tone = age < 10 ? PAL.gold4 : age < 22 ? PAL.gold3 : age < 34 ? PAL.gold2 : PAL.gold1;
+  const tail = age < MOTE.tailFrames ? (age < 10 ? PAL.gold2 : PAL.gold1) : null;
+  return { dx, dy, tone, tail };
+}
+
+/** Tiny gold motes rising off the winner's podium (half behind the duelist, half before), until destroyed. */
+function podiumMotes(sc: Phaser.Scene, at: XY, depth: number): { destroy(): void } {
+  if (REDUCED_MOTION) return { destroy() {} };
+  const back = sc.add.graphics().setDepth(depth - 1);
+  const front = sc.add.graphics().setDepth(depth + 0.03);
+  const x0 = Math.round(at.x);
+  const y0 = Math.round(at.y) - 1;
+  let ms = 0;
+  let last = -1;
+  const draw = () => {
+    if (!back.active || !front.active) return;
+    const f = Math.floor(ms / FRAME);
+    if (f === last) return;
+    last = f;
+    back.clear();
+    front.clear();
+    const n1 = Math.floor(f / MOTE.every);
+    for (let n = Math.max(0, n1 - Math.ceil(MOTE.life / MOTE.every)); n <= n1; n++) {
+      const m = moteAt(n, f - n * MOTE.every);
+      if (!m) continue;
+      const g = n % 2 ? front : back;
+      g.fillStyle(m.tone, 1);
+      g.fillRect(x0 + m.dx, y0 + m.dy, 1, 1);
+      if (m.tail !== null) {
+        g.fillStyle(m.tail, 1);
+        g.fillRect(x0 + m.dx, y0 + m.dy + 1, 1, 1);
+      }
+    }
+  };
+  const onUpdate = (_t: number, dt: number) => {
+    ms += dt * sc.tweens.timeScale;
+    draw();
+  };
+  let done = false;
+  const destroy = () => {
+    if (done) return;
+    done = true;
+    sc.events.off('update', onUpdate);
+    sc.events.off('shutdown', destroy);
+    if (back.active) back.destroy();
+    if (front.active) front.destroy();
+  };
+  sc.events.on('update', onUpdate);
+  sc.events.once('shutdown', destroy);
+  draw();
+  return { destroy };
+}
+
 /** A 2-frame gold contour on a monster as it strikes its pose (KO-3: never a whole-sprite flare). */
 async function goldContour(ctx: AnyCtx, u: MonsterUnit): Promise<void> {
   if (REDUCED_MOTION) return;
@@ -495,8 +627,9 @@ async function deckOutV3(ctx: Ctx<'deckOut'>): Promise<void> {
   await ctx.wait(END_V3_MS.deckOut - END_V3_MS.unfocusAt);
 }
 
-/** The gold pool on the winner's podium (it leaves with the result plate). */
+/** The gold pool and motes on the winner's podium (they leave with the result plate). */
 let poolHandle: ReturnType<typeof lightPool> | null = null;
+let motesHandle: { destroy(): void } | null = null;
 
 async function gameOverV3(ctx: Ctx<'gameOver'>): Promise<void> {
   const sc = ctx.scene;
@@ -539,6 +672,7 @@ async function gameOverV3(ctx: Ctx<'gameOver'>): Promise<void> {
         void lightFlash(sc, pod.x, pod.y - 16, PAL.gold3, fs(44), 520, { floorY: pod.y, ring: true, intensity: 0.9 });
         const pool = lightPool(sc, pod.x, pod.y, { color: PAL.gold3, radius: fs(30), intensity: 0.75, anim: REDUCED_MOTION ? 'steady' : 'breathe' });
         poolHandle = pool;
+        motesHandle = podiumMotes(sc, pod, depth);
         bg(goldRing(ctx, pod, depth + 0.02));
         bg(v.board.pulseSide(winner));
       }),
@@ -568,7 +702,10 @@ async function gameOverV3(ctx: Ctx<'gameOver'>): Promise<void> {
     if (keepDeck && keepDeck.active) bg(keepDeck.shrinkTo(resultPlateRect(), ['DESTE BİTTİ']));
     if (keepDeck) await ctx.wait(END_V3_MS.hopLead);
     const plate = ResultPlate.show(sc, { winner, reason: ctx.ev.reason, viewerWon });
-    if (poolHandle) plate.attach({ destroy: () => void poolHandle?.fadeOut(300) });
+    const pool = poolHandle;
+    if (pool) plate.attach({ destroy: () => void pool.fadeOut(300) });
+    const motes = motesHandle;
+    if (motes) plate.attach(motes);
     if (viewerWon === false) ui3Sfx('ui3Defeat', {}, 'defeat', { volume: 0.6 });
     else ui3Sfx('ui3Victory', {}, 'victory', { volume: 0.8 });
     if (ctx.settings.music) ctx.music.play('victory');
@@ -580,6 +717,7 @@ async function gameOverV3(ctx: Ctx<'gameOver'>): Promise<void> {
     await ctx.wait(END_V3_MS.gameOver - END_V3_MS.releaseAt);
   } finally {
     poolHandle = null;
+    motesHandle = null;
     bg(ctx.unfocus(700)); // today's safety (flow/end.ts:173)
   }
 }

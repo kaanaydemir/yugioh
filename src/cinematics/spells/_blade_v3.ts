@@ -16,33 +16,52 @@
 //   +0       eight gold runes leave the lying card's art (its art window drops to night tones for two
 //            frames: its light left it) and arc up over the monster; the forge ring — one 1-px ring as
 //            wide as the old one's outer ring (88 / 72 px), its back arc behind the head — draws itself
-//            round in three steps and its dashes creep; a gold pool lies under the monster — bladeFly
+//            round in three steps, then runs as a continuous line whose lit dashes creep over dim joints,
+//            twelve 1 × 3 rune marks riding it (fix round 2: it read thin at phone size); a gold pool
+//            lies under the monster — bladeFly
 //   +270     the runes orbit a beat, then converge into a vertical spine over the ring
 //   +383     the SWORD draws itself top → bottom white-hot in four steps (_blade_sword.ts: 'big' 33×96
 //            over a medium+ monster with head room, 'mid' 17×49 otherwise — the old forge's own size
 //            choice, never smaller than its 30×92 / 15×46), cools through gold4 to its planes, the
 //            runes in its fuller glowing — bladeForge, mark `forge`
-//   +483     it SPINS 1.5 turns while it rises 8 px — pre-drawn turn drawings, no fractional scale; the
-//            ring steps down the gold ramp and goes out; a light streak runs down the blade
-//   +700     it HANGS (5 px higher, a beat), a star on its point
+//   +483     it SPINS 1.5 turns while it rises 8 px — pre-drawn turn drawings, no fractional scale; a
+//            light streak runs down the blade
+//   +700     it HANGS (5 px higher, a beat), a star on its point; the ring steps down the gold ramp
+//            through the hang and the plunge (gone at the stab, as the old ring faded)
 //   +766     it PLUNGES (inQuad, a one-frame trail of light lines over it) — bladeFly
-//   +850     IMPACT (mark `bond`): its point in the body's middle; hit-stop 70 ms; the struck part
-//            flashes white with a gold band (EF-3 contact flash, the heavy 3 frames) and the body's
-//            1-px edge lights white, then gold runs down it from the stab; the single "+700" (EF-9),
-//            the badge rolls; the floor rings (≥ the old 62 px) and 26 gold sparks; v3 art in attack
-//            position plays `victory` to its peak and back (no new frames) — bladeBond (duck 0.45)
-//   +920     the blade SINKS 20 / 10 px into the body (cut at the stab line), down the gold ramp to
-//            light, in a stepped column of light
+//   +850     IMPACT (mark `bond`): its point in the body's middle; hit-stop 70 ms. The old forge flashed
+//            the WHOLE body white then gold; v3 keeps EF-3 (the body lights only where struck) and
+//            carries the flash with the effect (fix round 2): the blade itself goes WHITE-HOT through
+//            the hit-stop, gold4 for two frames after; a crisp star bursts round the blade's entry
+//            just behind the body; the struck part flashes white with a gold band (contact flash, the
+//            heavy 3 frames, 45 %) and the body's 1-px edge lights white, then gold runs down it from
+//            the stab (≈ the old 520 ms glow); the single "+700" (EF-9) beside the sword, off the
+//            guard's edge where its slam would reach the guard (numberSpot), the badge rolls; the floor
+//            rings (≥ the old 62 px) and 26 gold sparks; v3 art in attack position plays `victory` to
+//            its peak and back (no new frames) — bladeBond (duck 0.45)
+//   +920     the blade SINKS 20 / 10 px into the body (cut at the stab line), its planes, then down the
+//            gold ramp to light, in a stepped column of light that never stands above the sword's top
+//            row (fix round 2: on a tall body it stood over the pommel like a pole)
 //   +1150    the persistent aura takes over (auras-v3 equipAuraV3 { bond }): the small sword at the
 //            monster's back with one frame of a white rim, the waist ring closing round it
 //   +1283    the input comes back (measured at 1×, equip at 517: ready 1800 ms in spBlade / Def / P2,
 //            1733 for the set card, 1850–1867 where the v3 pose plays — +450…+483 over the old v3)
 // BREAK (bladeBreakBeat: the blade's loss reaches the monster — flow/stats.ts's v3 statChange, or this
-// file's 'destroyed' hook): the aura's destroy (a two-frame white crack across the blade with the ring
-// drawn tight and bright, then the burst — the blade's shards, the ring snapped into pieces and star
-// sparks thrown up and out, falling and fading by palette steps: at least the old aura burst), the
-// holder's 1-px edge white through the crack then down the gold ramp, and on the crack's first frame the single
-// "−700", the badge rolls back — bladeBreak, mark `break`. The card leaves its tile with cardLeaves.
+// file's 'destroyed' hook; fix round 2: the old break turned the whole holder gold for ~300 ms, v3 answers
+// with the big blade itself, never a tint), +ms from the beat:
+//   +0       the forged blade the forge sank into the body TEARS OUT of it white-hot (cut at the body's
+//            middle: it slides out of the wound, sparks spraying off it) and rises to the forge's hover
+//            over the head (83 ms, white → gold4 → its planes) — bladeForge, lower ("shiing")
+//   +83      it hangs three frames, trembling a whole pixel side to side, a star on its point
+//   +133     CRACK (mark `break`): white crack lines across the blade and the guard, the aura's small
+//            sword cracks too while its ring flares out to the bond's size (≥ 68 px) white then gold4;
+//            the single "−700" beside the sword, the badge rolls back, the holder's 1-px edge white —
+//            bladeBreak
+//   +167     SHATTER: the blade bursts into its chips (3–8 px pieces of its own pixels, white on the
+//            burst frame), they fly out along the cut, fall to the floor, bounce once, lie and fade by
+//            palette steps; the aura bursts (its shards, the big ring snapped into 24 pieces, star
+//            sparks); the gold drains down the holder's edge from the head
+// The card leaves its tile with cardLeaves.
 // Nothing here adds a camera move, a full-screen flash, a dim, or a whole-sprite tint.
 
 import type Phaser from 'phaser';
@@ -58,14 +77,15 @@ import { wait } from '../../vfx/core';
 import { E, Raster, freeze, lerp, onFrame, qbez, run, spriteBox } from '../../vfx/setpieces';
 import { Sparks as PxSparks } from '../../vfx/combat';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
-import { BREAK_CRACK_FRAMES, equipAuraV3, equipSwordAt, ringPixels } from '../../duel/auras-v3';
+import { BREAK_CRACK_FRAMES, equipAuraV3, ringPixels } from '../../duel/auras-v3';
 import { fx, type CinematicContext } from '../api';
-import { fxCount, fxRng, motifImage, rimClimb, rimFlash, setMotif } from '../_v3/spellfx';
+import { fxCount, fxRng, motifImage, rimClimb, rimFlash, setMotif, silhouetteOf } from '../_v3/spellfx';
 import { contactFlash } from '../_v3/flash';
 import { panAt, play as playV3 } from '../_v3/sound';
 import { impactNumber } from '../_v3/number';
 import { cardLeaves } from '../_v3/card';
-import { type ForgeLook, type ForgeSize, forgeSizeFor, forgeSwordGeom, forgeSwordKey, turnAt } from './_blade_sword';
+import { REDUCED_MOTION } from '../../view/v3/motion';
+import { type ForgeLook, type ForgeSize, forgeSizeFor, forgeSwordChunks, forgeSwordGeom, forgeSwordKey, turnAt } from './_blade_sword';
 import { bg, evAt, fs, idxOf, ip, lightBeam, lightFlash, lightPool, relax, setTileOf, spellOpening, type ActCtx, type AnyCtx } from './_kit';
 
 type EquipCtx = CinematicContext<Extract<GameEvent, { type: 'equip' }>>;
@@ -110,11 +130,40 @@ const HANG_PX = 5;
 /** How far the blade sinks into the body after the stab (the old 10·SS). */
 const SINK_PX: Readonly<Record<ForgeSize, number>> = { big: 20, mid: 10 };
 /**
- * The impact number's centre, in px off the blade's edge: "+700" is 31 px of glyphs (+1 px ink a
+ * The impact number's centre, in px off the sword's edge: "+700" is 31 px of glyphs (+1 px ink a
  * side) and slams at 2× for its first two frames (_v3/number.ts), so 32–34 px reach each way from
- * its centre then; 36 keeps even the slam clear of the blade's ink (~17 px of air once it settles).
+ * its centre then; 36 keeps even the slam clear of the sword's ink (~17 px of air once it settles).
+ * The edge is the guard's when the slam's rows reach the guard's (numberSpot), else the blade's.
  */
 const NUMBER_CLEAR = 36;
+/**
+ * The slammed number's ink is not centred on its x: every glyph cell carries its outline / shadow on the
+ * right (_v3/number.ts), so the 2× slam reaches 31 px left of x but 33 px right (measured in game,
+ * fix round 2). A number LEFT of the sword (P2) stands this much further off, so both sides keep the
+ * same 3 px of air from the guard's ink at the slam.
+ */
+const NUMBER_SHADOW = 2;
+/** Half the slammed number's height (2× glyphs: 28 px) — the rows it may touch. */
+const SLAM_HALF_H = 14;
+/** The forge ring's fade: one step down the ramp every this many ms from the hang (gone at the stab). */
+const RING_FADE_STEP = 66;
+/** Rune marks round the forge ring (the old ring's 12 lit dots, as 1 × 3 marks through the one ring). */
+const RING_RUNES = 12;
+/** One rendered frame at 1× (the hit-stop runs on real time: the show clock's freeze counts real ms). */
+const FRAME_MS = 1000 / 60;
+/**
+ * The break (fix round 2, the user's rule: the break is never duller than the old whole-wolf gold
+ * flash): the forged blade tears out of the body (`eject` ms, white-hot → gold4 → its planes), hangs
+ * `hangFrames` rendered frames, cracks for BREAK_CRACK_FRAMES with the aura's sword, then shatters.
+ */
+export const BREAK = { eject: 83, hangFrames: 3 } as const;
+/** The broken blade's pieces: gravity (px/s²), rest on the floor before fading, one fade step, air cap. */
+const SHARD_G = 900;
+/** How much a piece's offset across the blade counts against its offset along it (the burst's spread). */
+const SHARD_SPREAD = 4;
+const SHARD_REST = 150;
+const SHARD_STEP = 60;
+const SHARD_AIR_CAP = 1400;
 /** The bond pose (v3 art): the peak's hold, the step back, the cap on a forward frame. */
 export const PEAK_HOLD = 160;
 const BACK_STEP = 40;
@@ -150,6 +199,40 @@ function frames(scene: Phaser.Scene, n: number): Promise<void> {
 /** Wait `ms` of scene time, but at least one rendered frame (a stepped beat never skips a step at 3×). */
 function step(scene: Phaser.Scene, ms: number): Promise<void> {
   return Promise.all([wait(scene, ms), frames(scene, 1)]).then(() => undefined);
+}
+
+/**
+ * Call `fn(k)` on this frame (k = 0) and on each of the next rendered frames of REAL time (they tick
+ * through a hit-stop too) until it returns false or the scene shuts down.
+ */
+function eachTick(scene: Phaser.Scene, fn: (k: number) => boolean): void {
+  let k = 0;
+  const end = (): void => {
+    scene.events.off('postupdate', tick);
+    scene.events.off('shutdown', end);
+  };
+  const tick = (): void => {
+    if (!fn(++k)) end();
+  };
+  if (!fn(0)) return;
+  scene.events.on('postupdate', tick);
+  scene.events.once('shutdown', end);
+}
+
+/**
+ * Where the single number stands beside the sword (pure; tested): over the head (`headY` − 4), toward
+ * the field's middle (`side`), its centre NUMBER_CLEAR px off the sword's edge at the number's rows —
+ * the guard's when the slam's rows (± SLAM_HALF_H) reach the guard's band (its wing tips lift 3 rows;
+ * `travel`: the rows the sword still sinks), else the blade's — NUMBER_SHADOW further on the left side
+ * (its ink reaches further right), kept on screen.
+ */
+export function numberSpot(o: { x: number; swordTop: number; headY: number; side: 1 | -1; travel?: number; geo: { guardRow: number; guardH: number; guardHw: number; bladeHw: number } }): XY {
+  const y = Math.round(o.headY) - 4;
+  const g0 = o.swordTop + o.geo.guardRow - 3;
+  const g1 = o.swordTop + o.geo.guardRow + o.geo.guardH + 1 + (o.travel ?? 0);
+  const onGuard = y + SLAM_HALF_H >= g0 && y - SLAM_HALF_H <= g1;
+  const x = o.x + o.side * ((onGuard ? o.geo.guardHw : o.geo.bladeHw) + NUMBER_CLEAR + (o.side < 0 ? NUMBER_SHADOW : 0));
+  return { x: Math.max(36, Math.min(604, Math.round(x))), y };
 }
 
 /** The direction and size of a stat change. */
@@ -324,8 +407,11 @@ export function forgeLayout(box: { cx: number; top: number; h: number }): ForgeL
 
 /**
  * The forge ring (one 1-px ring, EF-7): `shown` thirds drawn clockwise from the front (1…3, a white
- * head while it draws), its dashes creeping by `creep`; `fade` steps it down the ramp (0 bright … 3 gone).
- * The back arc (above the centre) behind the body, the front arc in front.
+ * head while it draws), then a CONTINUOUS line whose lit dashes creep by `creep` over dim gold1 joints
+ * (fix round 2: the old dashed ring with gaps read thin at phone size), with RING_RUNES rune marks
+ * (1 × 3 through the line, the old ring's 12 lit dots) creeping with it; `fade` steps it all down the
+ * ramp (0 bright … 3 gone). The back arc (above the centre) behind the body, a tone darker; the front
+ * arc in front.
  */
 function drawHalo(back: Raster, front: Raster, L: ForgeLayout, shown: number, creep: number, fade: number): void {
   back.begin();
@@ -333,15 +419,23 @@ function drawHalo(back: Raster, front: Raster, L: ForgeLayout, shown: number, cr
   if (fade < 3) {
     const pts = ringPixels(L.x, L.ringY, L.rx, L.ry, Math.PI / 2);
     const n = Math.ceil((pts.length * Math.min(3, shown)) / 3);
+    const tone = (lv: number, behind: boolean): number => G[Math.max(1, Math.min(4, lv - fade - (behind ? 1 : 0)))];
     for (let i = 0; i < n; i++) {
       const q = pts[i];
       const behind = q.y < L.ringY;
       const d = (i + creep) % 6;
-      let c: number | null;
-      if (shown < 3) c = i === n - 1 ? PAL.white : G[4 - fade];
-      else c = d >= 4 ? null : d === 0 ? G[Math.max(1, 4 - fade)] : behind ? G[Math.max(1, 2 - fade)] : G[Math.max(1, 3 - fade)];
-      if (c !== null) (behind ? back : front).px(q.x, q.y, c);
+      const c = shown < 3 ? (i === n - 1 ? PAL.white : tone(4, false)) : tone(d === 0 ? 4 : d <= 3 ? 3 : 1, behind);
+      (behind ? back : front).px(q.x, q.y, c);
     }
+    if (shown >= 3)
+      for (let r = 0; r < RING_RUNES; r++) {
+        const q = pts[(Math.floor((r * pts.length) / RING_RUNES) + creep) % pts.length];
+        const behind = q.y < L.ringY;
+        const ras = behind ? back : front;
+        ras.px(q.x, q.y - 1, tone(4, behind));
+        ras.px(q.x, q.y, fade === 0 && !behind ? PAL.white : tone(4, behind));
+        ras.px(q.x, q.y + 1, tone(2, behind));
+      }
   }
   back.end();
   front.end();
@@ -384,9 +478,160 @@ function floorBurst(scene: Phaser.Scene, at: XY, depth: number): Promise<void> {
   });
 }
 
-/** The sink's look by its progress (the old alpha 1 → 0.6 → 0.25 as palette steps), null = gone. */
+/**
+ * The sink's look by its progress (the old alpha 1 → 0.6 → 0.25 as palette steps), null = gone. Its
+ * first SINK_COOL_FRAMES frames are gold4 ('cool': the stab's white-hot flash cooling, bladeEquipV3).
+ */
 export function sinkLook(t: number): ForgeLook | null {
-  return t < 0.3 ? 'full' : t < 0.5 ? 'cool' : t < 0.7 ? 'ember' : t < 0.9 ? 'ghost' : null;
+  return t < 0.45 ? 'full' : t < 0.7 ? 'ember' : t < 0.9 ? 'ghost' : null;
+}
+/** Frames of gold4 after the white-hot stab (the old white → gold silhouette's two gold frames). */
+export const SINK_COOL_FRAMES = 2;
+
+/**
+ * The stab's star where the blade enters the body (fix round 2, the rule-compliant answer to the old
+ * whole-body white flash — EF-3 lets the body itself light only where it is struck): a crisp 4-point
+ * star drawn just BEHIND the body (it blooms round the struck edge, A2 motion review r2 #9), its long
+ * arms along the shoulders, short ones up and down, diagonal sparks on its first frames, stepping out
+ * through the hit-stop and back down the gold ramp — STAR_STEPS real frames, whole pixels, no alpha.
+ */
+const STAR_STEPS: readonly { r: number; t: number }[] = [
+  { r: 0.7, t: 0 },
+  { r: 1.1, t: 0 },
+  { r: 1.4, t: 0 },
+  { r: 1.6, t: 1 },
+  { r: 1.6, t: 2 },
+  { r: 1.3, t: 3 },
+  { r: 0.9, t: 4 },
+];
+function entryStar(scene: Phaser.Scene, at: XY, size: ForgeSize, depth: number): void {
+  const R = size === 'big' ? 15 : 10;
+  const ras = Raster.around(scene, at.x, at.y, Math.ceil(R * 1.6) * 2 + 6, Math.ceil(R * 1.6) + 8, depth);
+  // tones along an arm (inner → tip) per step down the ramp
+  const ARM: readonly (readonly (number | null)[])[] = [
+    [PAL.white, PAL.gold4, PAL.gold3],
+    [PAL.white, PAL.gold4, PAL.gold3],
+    [PAL.gold4, PAL.gold3, PAL.gold2],
+    [PAL.gold3, PAL.gold2, PAL.gold1],
+    [PAL.gold2, PAL.gold1, null],
+  ];
+  const arm = (dx: number, dy: number, len: number, t: number, thick: boolean): void => {
+    for (let i = 1; i <= len; i++) {
+      const c = ARM[t][Math.min(2, Math.floor((i * 3) / (len + 1)))];
+      if (c === null) continue;
+      const x = at.x + dx * i;
+      const y = at.y + dy * i;
+      ras.px(x, y, c);
+      // the inner half of the long arms is 3 px thick (a pixel star's waist)
+      if (thick && i <= len / 2) {
+        ras.px(x - dy, y - dx, c);
+        ras.px(x + dy, y + dx, c);
+      }
+    }
+  };
+  eachTick(scene, (k) => {
+    const s = STAR_STEPS[k];
+    if (!s || !ras.alive) {
+      ras.destroy();
+      return false;
+    }
+    ras.begin();
+    const L = Math.round(R * s.r);
+    arm(1, 0, L, s.t, s.t <= 1);
+    arm(-1, 0, L, s.t, s.t <= 1);
+    arm(0, -1, Math.round(L * 0.55), s.t, false);
+    arm(0, 1, Math.round(L * 0.45), s.t, false);
+    if (s.t <= 1) for (const [dx, dy] of [[1, -1], [-1, -1], [1, 1], [-1, 1]] as const) arm(dx, dy, Math.round(L * 0.3), s.t + 1, false);
+    if (s.t <= 2) ras.px(at.x, at.y, PAL.white);
+    ras.end();
+    return true;
+  });
+}
+
+/** The tone `k` steps down its ramp (white → gold, the crimson grip), null when it has gone out; ink holds. */
+const SHARD_RAMPS: readonly (readonly number[])[] = [
+  [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2, PAL.gold1, PAL.gold0],
+  [PAL.crim4, PAL.crim3, PAL.crim2, PAL.crim1, PAL.crim0],
+];
+export function shardTone(c: number, k: number): number | null {
+  if (k <= 0) return c;
+  if (k >= 4) return null;
+  for (const r of SHARD_RAMPS) {
+    const i = r.indexOf(c);
+    if (i >= 0) return r[Math.min(r.length - 1, i + k)];
+  }
+  return c;
+}
+
+/**
+ * The forged blade shatters (the break, fix round 2): its pieces (forgeSwordChunks: the cracked drawing
+ * cut into 3–8 px chips that tile it) burst from where it hangs — all white on the burst frame, their
+ * own tones after — thrown up and out from the blade's line, fall to `floor`, bounce once and lie
+ * there, then step down their ramps (shardTone) and blink out: whole pixels, never rotated (EF-7), no
+ * alpha. `at`: the drawing's top-left (world). Resolves when the last piece is gone.
+ */
+function bladeShatter(scene: Phaser.Scene, size: ForgeSize, at: XY, o: { cx: number; floor: number; depth: number; seed: number }): Promise<void> {
+  const chunks = forgeSwordChunks(size, o.seed, REDUCED_MOTION ? 3 : 0);
+  const geo = forgeSwordGeom(size);
+  const rnd = fxRng(o.seed * 11 + 5);
+  const big = size === 'big';
+  // a burst from the crack's middle: the pieces fly out along the cut (sideways first — the blade is
+  // narrow, so its across-offset counts SHARD_SPREAD times), a little up, and drop fast
+  const midY = geo.h * 0.45;
+  const parts = chunks.map((ch, i) => {
+    let dx = (at.x + ch.cx - o.cx) * SHARD_SPREAD;
+    if (Math.abs(dx) < 2) dx = (i % 2 === 0 ? -1 : 1) * (2 + rnd() * 4);
+    const a = Math.atan2(ch.cy - midY, dx) + (rnd() - 0.5) * 0.6;
+    const v = (big ? 80 : 62) + rnd() * (big ? 90 : 60);
+    return { ch, x: 0, y: 0, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.6 - (40 + rnd() * 40), floor: o.floor - (i % 4), bounced: false, restAt: -1 };
+  });
+  const SPAN = big ? 120 : 80;
+  const y0 = Math.min(at.y - 30, o.floor - geo.h - 30);
+  const ras = new Raster(scene, at.x - SPAN, y0, geo.w + SPAN * 2, o.floor - y0 + 6, o.depth);
+  let el = 0;
+  let frame = -1;
+  return new Promise((resolve) => {
+    onFrame(scene, (dt) => {
+      frame++;
+      el += dt;
+      const s = Math.min(0.05, dt / 1000);
+      ras.begin();
+      let live = false;
+      for (const p of parts) {
+        if (frame > 0 && p.restAt < 0) {
+          p.vy += SHARD_G * s;
+          p.x += p.vx * s;
+          p.y += p.vy * s;
+          if (at.y + p.ch.bottom + p.y >= p.floor && p.vy > 0) {
+            p.y = p.floor - at.y - p.ch.bottom;
+            if (!p.bounced) {
+              p.bounced = true;
+              p.vy = -p.vy * 0.28;
+              p.vx *= 0.55;
+            } else p.restAt = el;
+          } else if (el >= SHARD_AIR_CAP) p.restAt = el;
+        }
+        const k = p.restAt < 0 ? 0 : Math.floor(Math.max(0, el - p.restAt - SHARD_REST) / SHARD_STEP) + (el - p.restAt >= SHARD_REST ? 1 : 0);
+        if (k >= 4) continue;
+        live = true;
+        // the last step blinks (stepped, never an alpha ramp)
+        if (k === 3 && Math.floor(el / 50) % 2 === 1) continue;
+        const ox = Math.round(p.x);
+        const oy = Math.round(p.y);
+        for (const q of p.ch.px) {
+          const c = frame === 0 ? PAL.white : shardTone(q.c, k);
+          if (c !== null) ras.px(at.x + q.x + ox, at.y + q.y + oy, c);
+        }
+      }
+      ras.end();
+      if (!live || !ras.alive) {
+        ras.destroy();
+        resolve();
+        return false;
+      }
+      return true;
+    });
+  });
 }
 
 /** The forge, the v3 look (see the header). */
@@ -430,10 +675,23 @@ export async function bladeEquipV3(ctx: EquipCtx): Promise<void> {
   let ringShown = 0;
   let ringFade = 0;
   let creep = 0;
+  // the ring stays bright through the spin and steps down the ramp from the hang (gone at the stab: the
+  // old ring faded over the hang and the plunge — fix round 2)
+  let haloEl = 0;
+  let ringFadeAt = -1;
+  const haloGone = (): void => {
+    haloBack.destroy();
+    haloFront.destroy();
+  };
   const stopHalo = onFrame(sc, (dt, el) => {
+    haloEl = el;
     if (el >= FORGE.ringAt) ringShown = Math.min(3, Math.floor((el - FORGE.ringAt) / FORGE.ringStep) + 1, ringShown + 1);
     if (dt > 0 && ringShown >= 3) creep++;
+    if (ringFadeAt >= 0) ringFade = Math.min(3, Math.floor((el - ringFadeAt) / RING_FADE_STEP) + 1, ringFade + 1);
     drawHalo(haloBack, haloFront, L, ringShown, creep, ringFade);
+    if (ringFade < 3) return true;
+    haloGone();
+    return false;
   });
   const nb = fxCount(10);
   for (let i = 0; i < nb; i++)
@@ -514,14 +772,10 @@ export async function bladeEquipV3(ctx: EquipCtx): Promise<void> {
     show({ size: L.size, turn: d.turn, back: d.back, runesLit: true, glint: d.turn === 0 && !d.back ? g : undefined });
     top = L.top - Math.round(E.outQuad(t) * RISE_PX);
     sword.setPosition(L.x, top);
-    ringFade = Math.min(3, Math.floor(t * 4));
     if (Math.floor(el / 34) % 2 === 0 && rnd() < 0.5)
       sparks.add({ x: L.x + Math.round((rnd() - 0.5) * 12), y: top + Math.round(L.h * (0.3 + rnd() * 0.5)), vy: 10 + rnd() * 20, life: 300, colors: RUNE_TRAIL, shape: 'px', fadeAt: 1 });
   });
-  ringFade = 3;
-  stopHalo();
-  haloBack.destroy();
-  haloFront.destroy();
+  ringFadeAt = haloEl;
   void ringLight.fadeOut(220);
 
   // ---- anticipation: it hangs a beat higher, a star on its point. v3 art in attack position rises to
@@ -560,21 +814,27 @@ export async function bladeEquipV3(ctx: EquipCtx): Promise<void> {
   });
   trail.destroy();
 
-  // ---- IMPACT (mark `bond`): the stab frame
+  // ---- IMPACT (mark `bond`): the stab frame. The old forge flashed the WHOLE body white, then gold;
+  // v3 lights the body only where it is struck (EF-3) and carries the flash with the effect itself
+  // (fix round 2): the blade discharges WHITE-HOT through the hit-stop (gold4 for the two frames after:
+  // the old white → gold), a star bursts round the blade's entry behind the body, the struck part
+  // flashes (contact flash, the heavy 45 %), the body's 1-px edge lights white, then gold runs down it
   const alive = !u.retired && target.active;
   const tip: XY = { x: L.x, y: top + L.tipRow };
   playV3('bladeBond', { volume: 1, pan: panAt(L.x) });
+  show({ size: L.size, look: 'hot' });
   if (alive) {
     contactFlash(sc, target, { x: 0, y: 1 }, { frames: 3, coverage: 0.45, tint: PAL.gold4, at: tip });
-    bg(rimFlash(sc, target, { ramp: STAB_RIM, hold: 2 }).then(() => (target.active && !u.retired ? rimClimb(sc, target, { ramp: [PAL.gold2, PAL.gold3, PAL.gold4], stepMs: 50, holdMs: 140, fadeMs: 150, from: 'head' }) : undefined)));
+    const entry = silhouetteOf(target)?.topAt(L.x) ?? Math.round(b.top);
+    entryStar(sc, { x: L.x, y: entry - 3 }, L.size, target.depth - 0.4);
+    bg(rimFlash(sc, target, { ramp: STAB_RIM, hold: 2 }).then(() => (target.active && !u.retired ? rimClimb(sc, target, { ramp: [PAL.gold2, PAL.gold3, PAL.gold4], stepMs: 50, holdMs: 240, fadeMs: 180, from: 'head' }) : undefined)));
     if (st) {
-      // the single number (EF-9) over the head beside the blade, toward the field's middle (the old
-      // count's glyphs). It never covers the blade, not even in its two slam frames at 2×: its centre
-      // stands NUMBER_CLEAR px off the blade's edge (half the slammed "+700" plus the ink and air)
+      // the single number (EF-9) over the head beside the sword, toward the field's middle (the old
+      // count's glyphs). It never covers the sword, not even in its two slam frames at 2× (numberSpot:
+      // off the guard's edge where the slam reaches the guard's rows, else off the blade's)
       const { up, delta } = statDelta(st);
-      const head = u.worldPoint('top');
-      const side = u.player === 0 ? 1 : -1;
-      if (delta > 0) bg(impactNumber(sc, L.x + side * (geo.bladeHw + NUMBER_CLEAR), Math.round(head.y) - 4, delta, { kind: up ? 'heal' : 'damage' }));
+      const n = numberSpot({ x: L.x, swordTop: top, headY: u.worldPoint('top').y, side: u.player === 0 ? 1 : -1, travel: SINK_PX[L.size], geo });
+      if (delta > 0) bg(impactNumber(sc, n.x, n.y, delta, { kind: up ? 'heal' : 'damage' }));
       void u.setStats(st.atk, st.def, true);
     }
   } else if (st) void u.setStats(st.atk, st.def, false);
@@ -588,29 +848,36 @@ export async function bladeEquipV3(ctx: EquipCtx): Promise<void> {
   }
   await freeze(sc, FORGE.stop);
 
-  // ---- the blade sinks into the body (cut at the stab line) and turns to light in a stepped column
+  // ---- the blade sinks into the body (cut at the stab line) and turns to light in a stepped column:
+  // gold4 for SINK_COOL_FRAMES (the white-hot flash cooling), its planes, then down the ramp to light
   const cutRow = tip.y;
   const sinkPx = SINK_PX[L.size];
   const column = new Raster(sc, L.x - 4, Math.round(b.top) - 30, 9, Math.max(8, Math.round(u.home.y - b.top) + 28), target.depth + 0.6);
   bg(lightBeam(sc, { x: L.x, y: b.top - 30 }, { x: L.x, y: u.home.y - 2 }, PAL.gold4, 260, { width: 12, depth: target.depth - 0.5, intensity: 0.8 }).done);
-  await run(sc, FORGE.sink, (t) => {
+  let sunk = 0;
+  await run(sc, FORGE.sink, (t, _el, dt) => {
+    if (dt > 0) sunk++;
     top = stabTop + Math.round(t * sinkPx);
-    const look = sinkLook(t);
+    const look = sunk < SINK_COOL_FRAMES ? 'cool' : sinkLook(t);
     if (look) {
       show({ size: L.size, look });
       sword.setPosition(L.x, top).setCrop(0, 0, geo.w, Math.max(0, Math.min(geo.h, cutRow - top + 1))).setVisible(true);
     } else sword.setVisible(false);
-    // the column: 7 → 5 → 3 → 1 px, white core first, down the ramp
+    // the column: 7 → 5 → 3 → 1 px, white core first, down the ramp — never above the sword's top row
+    // (behind the sword, it is the blade's light running down into the floor; fix round 2: on a tall
+    // body it stood 20–35 px over the pommel like a pole)
     const k = Math.min(3, Math.floor(t * 4));
     const hw = 3 - k;
     column.begin();
-    for (let y = column.y; y < column.y + column.h; y++)
+    for (let y = Math.max(column.y, top); y < column.y + column.h; y++)
       for (let x = -hw; x <= hw; x++) column.px(L.x + x, y, Math.abs(x) === hw && hw > 0 ? PAL.gold2 : k === 0 && Math.abs(x) <= 1 ? PAL.white : k <= 1 ? PAL.gold4 : PAL.gold3);
     column.end();
   });
   column.destroy();
   sword.destroy();
   sparks.release();
+  stopHalo();
+  haloGone();
 
   // ---- the persistent aura takes over: the small sword at the back, the waist ring closing
   if (u.retired || !target.active) return;
@@ -632,25 +899,81 @@ export function bladeLost(state: { players: readonly { spellTraps: readonly ({ e
 }
 
 /**
- * The break beat (see the header): the aura's destroy draws the white crack on this very frame, the
- * single number shares it, the badge rolls back, the body's edge lights; resolves after the crack's
- * frames (the burst, the edge light and the badge go on by themselves).
+ * The break beat (see the header; fix round 2 — the old break turned the whole holder gold for ~300 ms:
+ * v3 answers with the big forged blade itself, never a tint): the blade the forge sank into the body
+ * TEARS OUT of it white-hot (the forge's draw "shiing", lower; cut at the body's middle so it slides out
+ * of the wound, sparks spraying off it) and rises to the forge's hover over the head (BREAK.eject),
+ * hangs, then CRACKS white together with the aura's small sword (mark `break`: `bladeBreak`, the single
+ * "−700" beside it, the badge rolls back, the body's 1-px edge white) and SHATTERS — its pieces burst
+ * white, fall to the floor and fade (bladeShatter), with the aura's own burst and star sparks; the gold
+ * then drains down the body's edge. Resolves on the shatter's frame (the rest goes on by itself).
  */
 export async function bladeBreakBeat(ctx: AnyCtx, e: StatEv, u: MonsterUnit): Promise<void> {
   const sc = ctx.scene;
-  const at = equipSwordAt(u);
-  playV3('bladeBreak', { volume: 0.9, pan: panAt(at.x) }); // mark `break`
+  const target = u.sprite;
+  const L = forgeLayout(spriteBox(sc, target));
+  const geo = forgeSwordGeom(L.size);
+  const cut = L.stabTop + L.tipRow;
+  const from = L.stabTop + SINK_PX[L.size];
+  const rnd = fxRng(u.uid * 19 + 3);
+  const sparks = new PxSparks(sc, DEPTH.FX + 3);
+  // ---- the blade tears out of the body and rises over the head
+  playV3('bladeForge', { volume: 0.75, pitch: 0.85, pan: panAt(L.x) });
+  const sword = motifImage(sc, ...forgeSwordKey({ size: L.size, look: 'hot' }), L.x, from, DEPTH.FX + 2);
+  const place = (y: number): void => void sword.setPosition(L.x, y).setCrop(0, 0, geo.w, Math.max(0, Math.min(geo.h, cut - y + 1)));
+  place(from);
+  let top = from;
+  let f = 0;
+  const perFrame = fxCount(2);
+  await run(sc, BREAK.eject, (t, _el, dt) => {
+    if (dt > 0) f++;
+    top = Math.round(lerp(from, L.top, E.outCubic(t)));
+    // white-hot for two rendered frames (the first tick is not drawn yet; one white frame was lost at 30 fps),
+    // gold4 for the last one; its planes come back at the hang
+    setMotif(sword, ...forgeSwordKey({ size: L.size, look: f < 3 ? 'hot' : 'cool' }));
+    place(top);
+    if (dt > 0 && cut - top > 2)
+      for (let i = 0; i < perFrame; i++)
+        sparks.add({ x: L.x + Math.round((rnd() - 0.5) * (geo.bladeHw * 2 + 2)), y: cut - 1, vx: (rnd() - 0.5) * 100, vy: -50 - rnd() * 90, ay: 320, life: 200 + Math.round(rnd() * 140), colors: SPARK_FX, shape: i === 0 ? 'plus' : 'px', fadeAt: 1 });
+  });
+  setMotif(sword, ...forgeSwordKey({ size: L.size }));
+  place(top);
+  // ---- it hangs a beat, a star on its point, trembling a whole pixel side to side (a local tremble, K1:
+  // no screen shake) before it cracks
+  sparks.add({ x: L.x, y: top + L.tipRow, life: 140, colors: [PAL.white, PAL.gold4], shape: 'plus', fadeAt: 1 });
+  for (let h = 0; h < BREAK.hangFrames; h++) {
+    if (!REDUCED_MOTION) sword.setX(L.x + (h % 2 === 0 ? 1 : -1));
+    await frames(sc, 1);
+  }
+  sword.setX(L.x);
+  // ---- the CRACK (mark `break`): both swords crack white on this frame (the aura's destroy draws its
+  // own crack now and bursts after BREAK_CRACK_FRAMES); the single number shares it
+  playV3('bladeBreak', { volume: 0.9, pan: panAt(L.x) });
+  setMotif(sword, ...forgeSwordKey({ size: L.size, crack: true }));
   u.setAura('equip', null);
   const { up, delta } = statDelta(e);
-  const top = u.worldPoint('top');
-  if (delta > 0) bg(impactNumber(sc, Math.round(top.x), Math.round(top.y) - 4, delta, { kind: up ? 'heal' : 'damage' }));
+  if (delta > 0) {
+    const n = numberSpot({ x: L.x, swordTop: top, headY: u.worldPoint('top').y, side: u.player === 0 ? 1 : -1, geo });
+    bg(impactNumber(sc, n.x, n.y, delta, { kind: up ? 'heal' : 'damage' }));
+  }
   void u.setStats(e.atk, e.def, true);
-  // the gold leaves the body: its 1-px edge white through the crack, then down the gold ramp as the blade
-  // bursts (the old burst's white → gold glow, crisp), and the old burst's light flash on the body
-  bg(rimFlash(sc, u.sprite, { ramp: BREAK_RIM, hold: BREAK_CRACK_FRAMES }));
-  const c = u.core();
-  void lightFlash(sc, c.x, c.y, PAL.gold4, fs(30), 320, { floorY: u.home.y, intensity: 0.75 });
-  await frames(sc, BREAK_CRACK_FRAMES + 1);
+  // the gold leaves the body: its 1-px edge white through the crack, down the gold ramp as the blade
+  // bursts, then the gold drains down it from the head; the burst's light on the floor
+  bg(rimFlash(sc, target, { ramp: BREAK_RIM, hold: BREAK_CRACK_FRAMES }).then(() => (target.active && !u.retired ? rimClimb(sc, target, { ramp: [PAL.gold2, PAL.gold3, PAL.gold4], stepMs: 60, holdMs: 160, fadeMs: 180, from: 'head' }) : undefined)));
+  void lightFlash(sc, L.x, top + L.tipRow, PAL.gold4, fs(40), 420, { floorY: u.home.y, intensity: 0.9 });
+  await frames(sc, BREAK_CRACK_FRAMES);
+  // ---- the SHATTER: the pieces burst white and fall; star sparks leave the blade's middle
+  sword.destroy();
+  bg(bladeShatter(sc, L.size, { x: L.x - geo.cx, y: top }, { cx: L.x, floor: Math.round(u.home.y) + 2, depth: DEPTH.FX + 2, seed: u.uid }));
+  const mid = top + Math.round(geo.h * 0.55);
+  const ns = fxCount(14);
+  for (let i = 0; i < ns; i++) {
+    const a = (i / ns) * Math.PI * 2 + rnd() * 0.5;
+    const v = 70 + rnd() * 90;
+    sparks.add({ x: L.x, y: mid, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.7 - 30, ay: 220, drag: 1.5, life: 240 + Math.round(rnd() * 200), colors: SPARK_FX, shape: i % 2 === 0 ? 'plus' : 'px', fadeAt: 1 });
+  }
+  sparks.release();
+  await frames(sc, 1);
 }
 
 /** The equip leaves the field, the v3 look: its card cracks and leaves; a standing holder's blade breaks. */

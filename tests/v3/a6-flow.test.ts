@@ -2,7 +2,9 @@
 // palette and on frameRectV3's geometry; the baked text lays out exactly like pixelText(); the style →
 // trim table matches F10; the v3 HUD is handed out only under V3_A6_B and offers HudView's whole API;
 // A6-B's files hold no off-palette colour constant and no ADD blend (source scan). Later B steps add
-// the odometer, target-corner, A6_MS and decision tests here.
+// the odometer, target-corner, A6_MS and decision tests here; B5 the deck-out (F8) and the result plate /
+// victory / defeat (F9): the plate's Turkish lines and geometry, its painters, the fireworks' place, the
+// loser's stepped shade (one side only), the motes, the dying tube and the timings against A6_MS.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -867,10 +869,10 @@ describe('B1 registration audit (§6.4): lane B fills only its own hooks, only u
     return filledV3Hooks();
   }
 
-  it('v1: none; v3 lane B on: turnStart + phaseChange + duelPlate + hudIn + presentHeal + target + decision (and nothing outside lane B); lane B off: none of B’s', async () => {
+  it('v1: none; v3 lane B on: turnStart + phaseChange + duelPlate + hudIn + presentHeal + target + decision + deckOut + gameOver (and nothing outside lane B); lane B off: none of B’s', async () => {
     expect(await filled('v1')).toEqual([]);
     const b = await filled('v3', 'b');
-    expect(b).toEqual(expect.arrayContaining(['turnStart', 'phaseChange', 'duelPlate', 'hudIn', 'presentHeal', 'target', 'decision']));
+    expect(b).toEqual(expect.arrayContaining(['turnStart', 'phaseChange', 'duelPlate', 'hudIn', 'presentHeal', 'target', 'decision', 'deckOut', 'gameOver']));
     expect(b.filter((h) => !LANE_B_HOOKS.includes(h))).toEqual([]);
     for (const a6 of ['off', 'a']) expect((await filled('v3', a6)).filter((h) => LANE_B_HOOKS.includes(h)), `a6=${a6}`).toEqual([]);
   }, 120000);
@@ -1033,6 +1035,274 @@ describe('B4: the trap window marks (S-4), the prompt plate, the curtain, the bl
   });
 });
 
+describe('B5: the deck-out (F8), the result plate, victory / defeat (F9)', () => {
+  const FRAME = 1000 / 60;
+
+  it('the plate says who won and why, in Turkish: hot-seat "KAZANAN: OYUNCU n", vsBot "KAZANDIN!" / "KAYBETTİN" (no crown, the person’s own reason)', async () => {
+    const { RESULT_REASON, RESULT_REASON_LOST, resultText } = await import('../../src/view/v3/ResultPlate');
+    const line1 = (t: { line1: { text: string }[] }) => t.line1.map((s) => s.text).join('');
+    for (const w of [0, 1] as const) {
+      const t = resultText({ winner: w, reason: 'lp', viewerWon: null });
+      expect(line1(t)).toBe(`KAZANAN: OYUNCU ${w + 1}`);
+      expect(t.line1[0].color).toBe(PAL.gold4);
+      expect(t.line1[1].color).toBe(PLAYER_RAMP[w][3]);
+      expect(t.win).toBe(true);
+    }
+    expect(RESULT_REASON).toEqual({ lp: "Rakibin LP'si sıfırlandı", deckout: 'Rakibin destesi bitti', surrender: 'Rakip teslim oldu' });
+    expect(RESULT_REASON_LOST).toEqual({ lp: "LP'n sıfırlandı", deckout: 'Desten bitti', surrender: 'Teslim oldun' });
+    for (const r of ['lp', 'deckout', 'surrender'] as const) {
+      expect(resultText({ winner: 1, reason: r, viewerWon: null }).line2).toBe(RESULT_REASON[r]);
+      const won = resultText({ winner: 0, reason: r, viewerWon: true });
+      expect([line1(won), won.line2, won.win]).toEqual(['KAZANDIN!', RESULT_REASON[r], true]);
+      const lost = resultText({ winner: 1, reason: r, viewerWon: false });
+      expect([line1(lost), lost.line2, lost.win]).toEqual(['KAYBETTİN', RESULT_REASON_LOST[r], false]);
+      expect(lost.line1[0].color).toBe(PAL.crim3);
+    }
+    expect(resultText({ winner: 0, reason: null, viewerWon: null }).line2).toBe('');
+  });
+
+  it('every letter is in the font, and the lines (crown included) fit between the duelists’ marks', async () => {
+    const { RESULT, RESULT_REASON, RESULT_REASON_LOST, resultText } = await import('../../src/view/v3/ResultPlate');
+    const glyphs = (s: string) => [...s].filter((c) => c !== ' ').length;
+    const lines1: string[] = ['KAZANAN: OYUNCU 1', 'KAZANAN: OYUNCU 2', 'KAZANDIN!', 'KAYBETTİN'];
+    for (const s of lines1) expect(layoutLine(s, 'md').glyphs.length, s).toBe(glyphs(s));
+    for (const s of [...Object.values(RESULT_REASON), ...Object.values(RESULT_REASON_LOST)]) {
+      const L = layoutLine(s, 'sm');
+      expect(L.glyphs.length, s).toBe(glyphs(s));
+      expect(L.w, s).toBeLessThanOrEqual(RESULT.w - 2 * (RESULT.markInset + 9 + 3));
+    }
+    const crown = 9 + RESULT.crownGap; // the crown icon is ≤ 9 px wide
+    for (const w of [0, 1] as const)
+      for (const v of [null, true, false] as const) {
+        const t = resultText({ winner: w, reason: 'lp', viewerWon: v });
+        const W = layoutLine(t.line1.map((s) => s.text).join(''), 'md').w + (t.win ? crown : 0);
+        const x0 = Math.round((RESULT.w - W) / 2);
+        expect(x0, `${w} ${v}`).toBeGreaterThanOrEqual(RESULT.markInset + 9 + 3);
+        expect(x0 + W, `${w} ${v}`).toBeLessThanOrEqual(RESULT.w - RESULT.markInset - 9 - 3);
+      }
+  });
+
+  it('the plate stands where the "DÜELLO!" plate stood: centred, 3 px under the phase bar, clear of both panels; the button row under it', async () => {
+    const { RESULT, resultButtonRects, resultPlateRect } = await import('../../src/view/v3/ResultPlate');
+    const { UI } = await import('../../src/view/layout');
+    const r = resultPlateRect();
+    expect(Number.isInteger(r.x) && Number.isInteger(r.y)).toBe(true);
+    expect(r.x + r.w / 2).toBe(320);
+    expect(r.y).toBe(UI.phaseBar.y + UI.phaseBar.h + RESULT.gapBelowBar);
+    const apart = (a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) =>
+      a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y;
+    for (const q of [UI.p1Panel, UI.p2Panel, UI.phaseBar, UI.buttons]) expect(apart(r, q)).toBe(true);
+    for (const menu of [true, false]) {
+      const bs = resultButtonRects(r, menu);
+      expect(bs.length).toBe(menu ? 2 : 1);
+      for (const b of bs) {
+        expect(Number.isInteger(b.x) && Number.isInteger(b.y)).toBe(true);
+        expect(b.y).toBe(r.y + r.h + RESULT.btnGap);
+        expect(b.h).toBe(RESULT.btnH);
+        for (const q of [UI.p1Panel, UI.p2Panel, UI.phaseBar]) expect(apart(b, q)).toBe(true);
+      }
+      const left = bs[0].x;
+      const right = bs[bs.length - 1].x + bs[bs.length - 1].w;
+      expect(Math.abs((left + right) / 2 - 320)).toBeLessThanOrEqual(0.5);
+      if (menu) expect(bs[1].x - (bs[0].x + bs[0].w)).toBe(RESULT.btnSpace);
+    }
+  });
+
+  it('the plate’s bodies are opaque palette pixels in its three opening heights (2 frames each), then rest; reduced motion: at rest at once', async () => {
+    const { RESULT, resultBody, resultOpening } = await import('../../src/view/v3/ResultPlate');
+    for (const h of RESULT.openH)
+      for (const step of [-2, -1, 0]) {
+        const p = resultBody(h, step);
+        expect([p.w, p.h]).toEqual([RESULT.w, h]);
+        expect(offPalette(p), `${h} ${step}`).toEqual([]);
+        // the 1-px ink outline (the corners are cut)
+        expect(p.get(RESULT.w >> 1, 0)).toBe(PAL.ink);
+        expect(p.get(RESULT.w >> 1, h - 1)).toBe(PAL.ink);
+      }
+    const seq = [0, 1, 2, 3, 4, 5, 6, 40].map((f) => resultOpening(f, false));
+    expect(seq.map((o) => o.h)).toEqual([6, 6, 20, 20, 40, 40, 40, 40]);
+    expect(seq.map((o) => o.step)).toEqual([-2, -2, -1, -1, 0, 0, 0, 0]);
+    expect(resultOpening(0, true)).toEqual({ h: RESULT.h, step: 0 });
+  });
+
+  it('fireworks: palette pixels only, ≤ 31 px across, over in FIREWORK_FRAMES; three in the winner’s half, clear of the plate, the panels and the phase bar', async () => {
+    const { FIREWORK_FRAMES, RESULT, fireworkPixels, fireworkPoints, resultPlateRect } = await import('../../src/view/v3/ResultPlate');
+    const { UI } = await import('../../src/view/layout');
+    const { RAMPS } = await import('../../src/art/palette');
+    let maxR = 0;
+    let maxDrop = 0;
+    for (const ramp of [PLAYER_RAMP[0], PLAYER_RAMP[1], RAMPS.gold])
+      for (const size of RESULT.fireworkSizes) {
+        for (let f = 0; f < FIREWORK_FRAMES; f++) {
+          const px = fireworkPixels(f, ramp, size);
+          expect(px, `${f}`).not.toBeNull();
+          for (const q of px!) {
+            expect(PAL_SET.has(q.c)).toBe(true);
+            expect(Number.isInteger(q.x) && Number.isInteger(q.y)).toBe(true);
+            if (f >= 5) {
+              maxR = Math.max(maxR, Math.abs(q.x));
+              maxDrop = Math.max(maxDrop, q.y);
+            }
+          }
+        }
+        expect(fireworkPixels(FIREWORK_FRAMES, ramp, size)).toBeNull();
+      }
+    expect(2 * maxR + 1).toBeLessThanOrEqual(31);
+    const plate = resultPlateRect();
+    for (const w of [0, 1] as const) {
+      const pts = fireworkPoints(w, plate);
+      expect(pts.length).toBe(RESULT.fireworksAt.length);
+      for (const p of pts) {
+        expect(Number.isInteger(p.x) && Number.isInteger(p.y)).toBe(true);
+        // the winner's half: P1 left of the plate, P2 right of it
+        if (w === 0) expect(p.x + maxR).toBeLessThan(plate.x);
+        else expect(p.x - maxR).toBeGreaterThan(plate.x + plate.w);
+        const box = { x: p.x - maxR - 1, y: p.y - maxR - 1, w: 2 * maxR + 3, h: 2 * maxR + 3 + maxDrop };
+        expect(box.x).toBeGreaterThanOrEqual(0);
+        expect(box.x + box.w).toBeLessThanOrEqual(640);
+        expect(box.y).toBeGreaterThanOrEqual(0);
+        for (const q of [UI.p1Panel, UI.p2Panel, UI.phaseBar, UI.inspect, plate])
+          expect(box.x + box.w <= q.x || q.x + q.w <= box.x || box.y + box.h <= q.y || q.y + q.h <= box.y, JSON.stringify([w, p, q])).toBe(true);
+      }
+      // mirrored about the screen's middle column
+      const other = fireworkPoints((1 - w) as 0 | 1, plate);
+      pts.forEach((p, i) => expect(p.x + other[i].x).toBe(640));
+    }
+  });
+
+  it('deck-out pieces: the crimson "0" tag, the missing card’s outline (each pixel once, round its centre), the falling pieces — palette only', async () => {
+    const { emptyTagCanvas, missingCardPath, pieceFrame, dashOn } = await import('../../src/cinematics/v3small/end');
+    for (const s of ['on', 'dim', 'rest'] as const) {
+      const t = emptyTagCanvas(s);
+      expect([t.w, t.h]).toEqual([9, 9]);
+      expect(offPalette(t), s).toEqual([]);
+    }
+    for (const p of [0, 1] as const) {
+      const path = missingCardPath(p);
+      expect(path.length).toBeGreaterThan(40);
+      expect(new Set(path.map((q) => `${q[0]},${q[1]}`)).size).toBe(path.length);
+    }
+    // 2 on / 2 off, marching one pixel every two frames
+    expect([0, 1, 2, 3].map((i) => dashOn(i, 0))).toEqual([true, true, false, false]);
+    expect([0, 1, 2, 3].map((i) => dashOn(i, 2))).toEqual([true, false, false, true]);
+    for (let b = 0; b < 11; b++) {
+      const f = pieceFrame({ x: 0.6, y: 0.8 }, b);
+      expect(f.tone !== null && PAL_SET.has(f.tone)).toBe(true);
+      expect(Number.isInteger(f.dx) && Number.isInteger(f.dy)).toBe(true);
+    }
+    expect(pieceFrame({ x: 1, y: 0 }, 11).tone).toBeNull();
+  });
+
+  it('the deck-out plate: "DESTE BİTTİ" in white on the crimson plate (TurnPlate kind deckOut)', async () => {
+    const { deckOutPlateText, plateWidth, plateRect } = await import('../../src/view/v3/TurnPlate');
+    const seg = deckOutPlateText();
+    expect(seg.map((s) => s.text).join('')).toBe('DESTE BİTTİ');
+    expect(seg.every((s) => s.color === PAL.white)).toBe(true);
+    for (const p of [0, 1] as const) {
+      const r = plateRect(p, plateWidth(seg, 'deckOut'));
+      expect(r.x).toBeGreaterThanOrEqual(0);
+      expect(r.x + r.w).toBeLessThanOrEqual(640);
+    }
+  });
+
+  it('the loser’s shade: one palette step down a ramp at a time (a dead tube ends on night1), only that side’s pads / lines / trim, stepped front row first', async () => {
+    const { SHADE_BOX, shadeTone, sideShadeCanvas } = await import('../../src/cinematics/v3small/end');
+    const { RAMPS } = await import('../../src/art/palette');
+    const { screenToIso } = await import('../../src/view/layout');
+    expect(shadeTone(PAL.night3, 1)).toBe(PAL.night2);
+    expect(shadeTone(PAL.night1, 2)).toBe(PAL.ink);
+    expect(shadeTone(PAL.cyan3, 2)).toBe(PAL.cyan1);
+    expect(shadeTone(PAL.crim1, 2)).toBe(PAL.night1);
+    expect(shadeTone(PAL.gold3, 0)).toBe(PAL.gold3);
+    for (const p of [0, 1] as const) {
+      const full = sideShadeCanvas(p, 2, 2);
+      const front = sideShadeCanvas(p, 1, 0);
+      expect([full.w, full.h]).toEqual([SHADE_BOX.w, SHADE_BOX.h]);
+      expect(offPalette(full)).toEqual([]);
+      let n = 0;
+      let nFront = 0;
+      for (let y = 0; y < full.h; y++)
+        for (let x = 0; x < full.w; x++) {
+          if (front.isOpaque(x, y)) nFront++;
+          if (!full.isOpaque(x, y)) continue;
+          n++;
+          const c = full.get(x, y)!;
+          const own = (p === 0 ? RAMPS.cyan : RAMPS.crim) as readonly number[];
+          const otherRamp = (p === 0 ? RAMPS.crim : RAMPS.cyan) as readonly number[];
+          expect(otherRamp.includes(c) && !own.includes(c), `${p} ${x},${y}`).toBe(false);
+          const row = screenToIso(SHADE_BOX.x + x + 0.5, SHADE_BOX.y + y + 0.5).row;
+          // its side of the bridge, or its own neon trim
+          if (!(own.includes(c) || c === PAL.night1)) expect(p === 0 ? row > 2.5 : row < 1.5, `${p} ${x},${y} row ${row}`).toBe(true);
+        }
+      expect(n).toBeGreaterThan(2000);
+      expect(nFront).toBeGreaterThan(0);
+      expect(nFront).toBeLessThan(n);
+    }
+  }, 60000);
+
+  it('the dying tube: two-frame sputters on a fixed 4-s loop, one step up, on the loser’s trim only', async () => {
+    const { SPUTTER, sputterAt, sputterCanvas, sideShadeCanvas } = await import('../../src/cinematics/v3small/end');
+    const on = [];
+    for (let f = 0; f < SPUTTER.loop; f++) if (sputterAt(f)) on.push(f);
+    expect(on.length).toBe(SPUTTER.at.length * SPUTTER.frames);
+    expect(sputterAt(SPUTTER.at[0].f + SPUTTER.loop)).toBe(sputterAt(SPUTTER.at[0].f));
+    expect(sputterAt(0)).toBeNull();
+    for (const p of [0, 1] as const) {
+      const dead = sideShadeCanvas(p, 2, 2);
+      for (const part of ['all', 'l', 'r'] as const) {
+        const s = sputterCanvas(p, part);
+        expect(offPalette(s)).toEqual([]);
+        let n = 0;
+        for (let y = 0; y < s.h; y++)
+          for (let x = 0; x < s.w; x++) {
+            if (!s.isOpaque(x, y)) continue;
+            n++;
+            // a pixel the shade darkened (the tube), one step brighter than its dead tone
+            expect(dead.isOpaque(x, y)).toBe(true);
+            if (part === 'l') expect(x).toBeLessThan(320 - 136);
+            if (part === 'r') expect(x).toBeGreaterThanOrEqual(320 - 136);
+          }
+        if (part === 'all') expect(n).toBeGreaterThan(50);
+      }
+    }
+  }, 60000);
+
+  it('podium motes: gold only, rising (never sinking) 1 px every two frames within ±12 px, gone after their life', async () => {
+    const { MOTE, moteAt } = await import('../../src/cinematics/v3small/end');
+    const { RAMPS } = await import('../../src/art/palette');
+    const gold = RAMPS.gold as readonly number[];
+    for (let n = 0; n < 40; n++) {
+      let lastY = Infinity;
+      for (let a = 0; a < MOTE.life; a++) {
+        const m = moteAt(n, a)!;
+        expect(gold.includes(m.tone)).toBe(true);
+        if (m.tail !== null) expect(gold.includes(m.tail)).toBe(true);
+        expect(Math.abs(m.dx)).toBeLessThanOrEqual(12);
+        expect(m.dy).toBeLessThanOrEqual(Math.min(lastY, 0));
+        lastY = m.dy;
+      }
+      expect(moteAt(n, MOTE.life)).toBeNull();
+      expect(moteAt(n, -1)).toBeNull();
+    }
+  });
+
+  it('timings inside A6_MS: deck-out ≤ 1400 ms; game over 3000–3500 ms with today’s slow motion; the beam lands before the plate', async () => {
+    const { BEAM, END_V3_MS } = await import('../../src/cinematics/v3small/end');
+    const { A6_MS } = await import('../../src/view/v3/motion');
+    const T = END_V3_MS;
+    expect(T.deckOut).toBeLessThanOrEqual(A6_MS.deckOut.max);
+    expect(T.cardFrom < T.breakAt && T.breakAt < T.deckPlateAt && T.deckPlateAt < T.unfocusAt && T.unfocusAt < T.deckOut).toBe(true);
+    // the shown blinks fit before the card rises
+    expect(T.blinks * 2 * T.blinkFrames * FRAME).toBeLessThanOrEqual(T.cardFrom);
+    const game = T.gameOver + T.slowMoMs * (1 - T.slowMo); // today's slowMo(0.7, 500): 150 ms longer in game time
+    expect(game).toBeGreaterThanOrEqual(A6_MS.gameOver.min!);
+    expect(game).toBeLessThanOrEqual(A6_MS.gameOver.max);
+    expect(T.winnerAt + BEAM.dropFrames * FRAME).toBeLessThan(T.plateAt - T.hopLead);
+    expect(T.plateAt < T.releaseAt && T.releaseAt < T.gameOver).toBe(true);
+    expect(T.shadeSteps[T.shadeSteps.length - 1]).toBeLessThan(T.winnerAt);
+  });
+});
+
 describe('A6-B source scan (§6.4)', () => {
   const SOURCES = import.meta.glob<string>(
     [
@@ -1050,6 +1320,8 @@ describe('A6-B source scan (§6.4)', () => {
       '../../src/view/v3/CurtainV3.ts',
       '../../src/cinematics/v3small/decision.ts',
       '../../src/cinematics/v3small/block.ts',
+      '../../src/view/v3/ResultPlate.ts',
+      '../../src/cinematics/v3small/end.ts',
     ],
     {
       eager: true,
@@ -1058,19 +1330,24 @@ describe('A6-B source scan (§6.4)', () => {
     },
   );
 
-  it('no new camera call in the lane\u2019s new files (KO-10, §6.3)', () => {
+  it('no new camera call in the lane\u2019s new files (KO-10, §6.3); end.ts keeps exactly today\u2019s two leans', () => {
     for (const [f, src] of Object.entries(SOURCES)) {
-      if (!/TurnPlate|odometer|v3small|TargetMarks|TrapPromptV3|CurtainV3/.test(f)) continue;
-      const code = src
-        .split('\n')
-        .filter((l) => !/^\s*\/\//.test(l))
-        .join('\n');
+      if (!/TurnPlate|odometer|v3small|TargetMarks|TrapPromptV3|CurtainV3|ResultPlate/.test(f)) continue;
+      const lines = src.split('\n').filter((l) => !/^\s*\/\//.test(l));
+      // today's deck-out and game-over leans are kept at their beats (the user's decision): marked `keep-lean`
+      const kept = lines.filter((l) => l.includes('keep-lean'));
+      if (/v3small\/end\.ts$/.test(f)) {
+        expect(kept.length, f).toBe(2);
+        expect(kept[0]).toMatch(/ctx\.focus\(\{ x: at\.x, y: at\.y - 10 \}, \{ zoom: 1\.07, ms: 320, pan: 0\.45 \}\)/);
+        expect(kept[1]).toMatch(/ctx\.focus\(\{ x: chest\.x, y: chest\.y \}, \{ zoom: 1\.07, ms: 520, pan: 0\.35 \}\)/);
+      } else expect(kept, f).toEqual([]);
+      const code = lines.filter((l) => !l.includes('keep-lean')).join('\n');
       expect(/\bfocus\(|closeUp|setZoom|\.pan\(|descend\(/.test(code), f).toBe(false);
     }
   });
 
   it('no colour constant outside the palette, no ADD blend, no alpha fade in A6-B files', () => {
-    expect(Object.keys(SOURCES).length).toBe(14);
+    expect(Object.keys(SOURCES).length).toBe(16);
     for (const [f, src] of Object.entries(SOURCES)) {
       const hexes = [...src.matchAll(/0x[0-9a-fA-F]{6}\b/g)].map((m) => Number(m[0]));
       expect(

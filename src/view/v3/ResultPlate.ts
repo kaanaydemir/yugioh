@@ -12,17 +12,20 @@
 //            "KAZANDIN!" (gold) / "KAYBETTİN" (crimson); a gold crown before a win
 //   line 2   sm glyphs, mist: the reason — "Rakibin LP'si sıfırlandı" / "Rakibin destesi bitti" / "Rakip
 //            teslim oldu" (vsBot, the person lost: "LP'n sıfırlandı" / "Desten bitti" / "Teslim oldun")
+//   marks    the duelists' marks at the plate's ends (P1 cyan left, P2 crimson right — the "DÜELLO!"
+//            plate's): the winner's lit, its centre blinking every 24 frames; the loser's dim
 //   life     after the stamps: one white trim frame and a 1-px drop (the small object shakes, never the
 //            screen); a white glint runs over line 1 one letter a frame; a light node runs the trim
-//   fireworks three small crisp bursts (≤ 21 px across) in the winner's half beside the plate: a 1-px shell
-//            rises 4 px a frame, then 8 rays grow to r 10 stepping down the winner's ramp, the last pixels fall
+//   fireworks (a win only) three small crisp bursts (≤ 31 px across) in the winner's half beside the plate: a 1-px shell
+//            climbs 5 px a frame, then 12 rays open to r 11–15 stepping down the winner's ramp (gold for
+//            the middle one), each head trailing back to the heart; the heads fall (drips), then crackle
 // Placement: centred on the screen's middle column, 3 px under the phase bar — where the opening's
 // "DÜELLO!" plate stood (the duel's two bookends) — above the board; the button row 5 px under it.
 // Motion (frames at 60 fps, on the scene's tween clock: speed aware):
 //   f0–5     opens in three steps (h 6 → 20 → 40 about its middle row, two frames each; the trim steps
 //            gold1/gold2 → gold2/gold3 → rest)
-//   f6…      line 1 stamps one letter a frame (a white frame 1 px high, then its tone), the crown with
-//            the first letter; then line 2, two letters a frame (one white frame each)
+//   f6…      line 1 stamps one letter a frame (a white frame 1 px high, then its tone), the crown and
+//            the marks with the first letter; then line 2, two letters a frame (one white frame each)
 //   +1       the thump (white trim, 1 px down for two frames); the glint; the node starts
 //   leave    two palette steps out (letters one tone down, then only the dark frame), then gone
 // Reduced motion (KO-9): there at once, no node, glint, thump or fireworks; it leaves in the same steps.
@@ -72,6 +75,8 @@ export const RESULT = Object.freeze({
   exitFrames: 2,
   /** Fireworks: launch delays after the plate opens (ms) — three, in the winner's half. */
   fireworksAt: Object.freeze([60, 240, 420]),
+  /** Their sizes (× the burst radius 13): the gold middle one the biggest. */
+  fireworkSizes: Object.freeze([1, 1.15, 0.85]),
   /** The marks' inset from the plate's ends and the winner's blink (frames). */
   markInset: 6,
   blinkFrames: 24,
@@ -156,15 +161,18 @@ export function resultOpening(f: number, reduced = REDUCED_MOTION): { h: number;
 /** Frames of a firework's climb, and the burst's radius per frame (whole px). */
 const FW_LAUNCH = 5;
 const FW_R = [2, 4, 6, 8, 10, 11, 12, 13, 13, 13, 13, 13] as const;
+/** The head's tone per burst frame: −1 white, else the ramp index. */
+const FW_HEAD = [-1, -1, 4, 4, 4, 3, 3, 3, 2, 2, 1, 1] as const;
 
 /**
  * One firework at frame f (pure): pixels relative to its burst point, palette tones; null once over.
  * The shell climbs 5 px a frame from 24 px below (a white head, a 2-px tail); the burst opens 12 rays
- * to r 13 (a white plus at its heart for two frames), each ray's head stepping down the ramp with a
- * 1-px streak behind it while it opens; from frame 6 the heads fall 1 px more each frame, and the last
- * four frames crackle (alternate rays on alternate frames).
+ * to r 13 × `size` (a white plus at its heart for two frames): each ray a head with a trail back toward
+ * the heart (3 px while it opens, stepping down the ramp); from frame 6 the heads fall 1 px more each
+ * frame, their trails turn into drips above them, and the last four frames crackle (alternate rays on
+ * alternate frames).
  */
-export function fireworkPixels(f: number, ramp: Ramp): { x: number; y: number; c: number }[] | null {
+export function fireworkPixels(f: number, ramp: Ramp, size = 1): { x: number; y: number; c: number }[] | null {
   if (f < 0) return [];
   const out: { x: number; y: number; c: number }[] = [];
   if (f < FW_LAUNCH) {
@@ -174,16 +182,26 @@ export function fireworkPixels(f: number, ramp: Ramp): { x: number; y: number; c
   }
   const b = f - FW_LAUNCH;
   if (b >= FW_R.length) return null;
-  const tones = [PAL.white, PAL.white, ramp[4], ramp[4], ramp[4], ramp[3], ramp[3], ramp[3], ramp[2], ramp[2], ramp[1], ramp[1]];
-  const r = FW_R[b];
+  const r = Math.max(1, Math.round(FW_R[b] * size));
+  const head = FW_HEAD[b];
+  const tone = (i: number) => (i < 0 ? PAL.white : ramp[Math.max(1, Math.min(4, i))]);
   const drop = b >= 6 ? b - 5 : 0;
+  const trail = b <= 3 ? 3 : b <= 6 ? 2 : 1;
+  const falling = b >= 6;
   for (let k = 0; k < 12; k++) {
     if (b >= 8 && (k + b) % 2 === 1) continue; // the crackle
     const a = (k / 12) * Math.PI * 2;
     const dx = Math.cos(a);
     const dy = Math.sin(a);
-    out.push({ x: Math.round(dx * r), y: Math.round(dy * r) + drop, c: tones[b] });
-    if (b >= 2 && b <= 6) out.push({ x: Math.round(dx * (r - 2)), y: Math.round(dy * (r - 2)) + drop, c: tones[Math.min(tones.length - 1, b + 3)] });
+    const hx = Math.round(dx * r);
+    const hy = Math.round(dy * r) + drop;
+    out.push({ x: hx, y: hy, c: tone(head) });
+    for (let t = 1; t <= trail; t++) {
+      // the trail tone: a white head's trail starts at the ramp's top
+      const c = tone(head < 0 ? 5 - t : head - t);
+      if (falling) out.push({ x: hx, y: hy - t, c });
+      else if (r - t > 0) out.push({ x: Math.round(dx * (r - t)), y: Math.round(dy * (r - t)), c });
+    }
   }
   if (b <= 1) for (const [x, y] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]] as const) out.push({ x, y, c: PAL.white });
   return out;
@@ -405,7 +423,8 @@ export class ResultPlate {
       this.marks.forEach((m, pl) => m.setVisible(true).setTexture(this.markKey(pl as PlayerId, pl === this.spec.winner ? 'rest' : 'dim')));
       return Promise.resolve();
     }
-    this.fireworks();
+    // a person beaten by the computer gets no fireworks (no crown either): the plate stays sober
+    if (this.text.win) this.fireworks();
     let nodeOn = false;
     const frame = (ms: number) => {
       if (!this.alive || this.leaving) return;
@@ -465,6 +484,7 @@ export class ResultPlate {
     const sc = this.scene;
     const pts = fireworkPoints(this.spec.winner, this.rect);
     const ramps: Ramp[] = [PLAYER_RAMP[this.spec.winner], RAMPS.gold, PLAYER_RAMP[this.spec.winner]];
+    const sizes = RESULT.fireworkSizes;
     const total = RESULT.fireworksAt[RESULT.fireworksAt.length - 1] + FIREWORK_FRAMES * FRAME + FRAME;
     const popped = new Set<number>();
     const g = this.fx;
@@ -482,7 +502,7 @@ export class ResultPlate {
             popped.add(i);
             sfx.play('fireBurst', { volume: 0.18, pitch: 1.7 + 0.15 * i });
           }
-          const px = fireworkPixels(f, ramps[i]);
+          const px = fireworkPixels(f, ramps[i], sizes[i]);
           if (!px) return;
           for (const q of px) {
             g.fillStyle(q.c, 1);

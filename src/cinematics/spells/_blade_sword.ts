@@ -14,8 +14,11 @@
 // 0 face-on … 3 edge-on (every part's half-width × TURN_K, shaded again from the screen's light),
 // `back` = the back face (no gems, no runes: the turn reads as red → gold → red).
 // Looks (the old tint / alpha steps as palette drawings): 'full' (matter, ink outline), 'hot' (the
-// white-hot draw-in), 'cool' (gold4: cooling), 'ember' / 'ghost' (the sink: down the gold ramp, no
-// outline — the blade turns to light inside the body). `glint` lays the light streak across the blade.
+// white-hot draw-in and the stab's discharge), 'cool' (gold4: cooling), 'ember' / 'ghost' (the sink:
+// down the gold ramp, no outline — the blade turns to light inside the body). `glint` lays the light
+// streak across the blade. The break (fix round 2): `crack` draws white crack lines with dark gold1
+// lips across the blade and through the guard (same silhouette), and forgeSwordChunks cuts that
+// cracked drawing into the 3–8 px chips the blade shatters into (a seeded Voronoi cut that tiles it).
 
 import { PAL } from '../../art/palette';
 import { PixelCanvas } from '../../art/pixel';
@@ -41,6 +44,8 @@ export interface ForgeSwordOpts {
   runesLit?: boolean;
   /** The light streak across the blade: 0 just under the guard … 1 at the point (whole-row steps). */
   glint?: number;
+  /** The break (fix round 2): white crack lines across the blade and through the guard block (face-on). */
+  crack?: boolean;
 }
 
 interface Geom {
@@ -94,10 +99,10 @@ function rowsOf(g: Geom): Rows {
 }
 
 /** Canvas size of a drawing (with its 1-px outline) and the rows of its parts (canvas rows). */
-export function forgeSwordGeom(size: ForgeSize): { w: number; h: number; cx: number; guardRow: number; bladeRow: number; tipRow: number; guardHw: number; bladeHw: number } {
+export function forgeSwordGeom(size: ForgeSize): { w: number; h: number; cx: number; guardRow: number; bladeRow: number; tipRow: number; guardHw: number; bladeHw: number; guardH: number } {
   const g = GEOM[size];
   const r = rowsOf(g);
-  return { w: g.guardHw * 2 + 3, h: r.total + 2, cx: g.guardHw + 1, guardRow: r.guard + 1, bladeRow: r.ricasso + 1, tipRow: r.total, guardHw: g.guardHw, bladeHw: g.bladeHw };
+  return { w: g.guardHw * 2 + 3, h: r.total + 2, cx: g.guardHw + 1, guardRow: r.guard + 1, bladeRow: r.ricasso + 1, tipRow: r.total, guardHw: g.guardHw, bladeHw: g.bladeHw, guardH: g.guard };
 }
 
 const W = PAL.white;
@@ -154,6 +159,36 @@ function fullerFloor(w: number): number {
   if (!t) return -1;
   const i = t.indexOf(G1);
   return w >= 5 && i >= 0 ? (w >= 7 ? i + 1 : i) : -1;
+}
+
+/**
+ * The break's crack lines (ForgeSwordOpts.crack) as [x off the centre, part row] pixels: a 4-connected
+ * zig-zag down across the upper blade ("\"), one up across the lower blade ("/") and one down through
+ * the guard block, jogging once. Fixed shapes (pure, no randomness): the same crack every break.
+ */
+function crackPixels(g: Geom, rows: Rows, big: boolean): [number, number][] {
+  const out: [number, number][] = [];
+  /** From column x0 to x1 (inclusive) starting on row r0; after column i the row moves by steps[i % n]. */
+  const walk = (x0: number, r0: number, x1: number, steps: readonly number[]): void => {
+    let r = r0;
+    const dir = x1 >= x0 ? 1 : -1;
+    for (let x = x0, i = 0; dir > 0 ? x <= x1 : x >= x1; x += dir, i++) {
+      out.push([x, r]);
+      const s = steps[i % steps.length];
+      if (s !== 0) {
+        r += s;
+        out.push([x, r]);
+      }
+    }
+  };
+  const hw = g.bladeHw;
+  walk(-hw - 1, rows.blade + (big ? 9 : 4), hw + 1, big ? [1, 0, 1, 1, 0, 1, 0] : [1, 0, 1]);
+  walk(-hw - 1, rows.blade + (big ? 31 : 15), hw + 1, big ? [0, -1, 0, -1, -1, 0, -1] : [0, -1, 0]);
+  // the guard block: down its middle with one jog (the gem splits)
+  const gx = big ? 1 : 0;
+  for (let r = 0; r < g.guard; r++) out.push([r < g.guard / 2 ? gx : gx - 1, rows.guard + r]);
+  if (big) out.push([gx - 1, rows.guard + Math.floor(g.guard / 2) - 1]);
+  return out;
 }
 
 /**
@@ -331,6 +366,23 @@ export function forgeSwordMotif(o: ForgeSwordOpts): Motif {
     }
   }
 
+  // ---- the crack (the break): white lines over the drawn pixels only — the silhouette never changes —
+  // each with a dark gold1 lip on the drawn pixel under it (a white line alone vanishes on the lit planes)
+  if (o.crack) {
+    const cracks = crackPixels(g, rows, o.size === 'big');
+    const onCrack = new Set(cracks.map(([x, row]) => `${x},${row}`));
+    for (const [x, row] of cracks) {
+      const X = cx + x;
+      const Y = row + 1;
+      if (X < 0 || Y < 0 || X >= CW || Y >= CH) continue;
+      const m = mat[Y * CW + X];
+      if (m === M.None) continue;
+      put(x, row, W, m);
+      const below = Y + 1 < CH ? mat[(Y + 1) * CW + X] : M.None;
+      if (below !== M.None && !onCrack.has(`${x},${row + 1}`)) put(x, row + 1, G1, below);
+    }
+  }
+
   // ---- the look
   if (look === 'full') {
     p.outline(PAL.ink);
@@ -367,7 +419,71 @@ export function forgeSwordMotif(o: ForgeSwordOpts): Motif {
 /** The motif cache key of a drawing (spellfx.motifTexture builds it once per key). */
 export function forgeSwordKey(o: ForgeSwordOpts): [string, () => Motif] {
   const glint = o.glint === undefined ? '-' : Math.round(o.glint * 100);
-  return [`fsword:${o.size}:${o.look ?? 'full'}:${o.turn ?? 0}:${o.back ? 1 : 0}:${o.runesLit ? 1 : 0}:${glint}`, () => forgeSwordMotif(o)];
+  return [`fsword:${o.size}:${o.look ?? 'full'}:${o.turn ?? 0}:${o.back ? 1 : 0}:${o.runesLit ? 1 : 0}:${glint}${o.crack ? ':x' : ''}`, () => forgeSwordMotif(o)];
+}
+
+/** One piece of the broken sword: its pixels (canvas x, y of the cracked drawing, colour) and centre. */
+export interface SwordChunk {
+  px: readonly { x: number; y: number; c: number }[];
+  cx: number;
+  cy: number;
+  /** Its lowest canvas row (it lands on the floor with it). */
+  bottom: number;
+}
+
+/** The chunk cell of each size (px between the cut's seeds). */
+export const CHUNK_CELL: Readonly<Record<ForgeSize, number>> = { big: 7, mid: 5 };
+
+/**
+ * The pieces the cracked sword breaks into (the break, fix round 2): every opaque pixel of the cracked
+ * face-on drawing joins the nearest seed of a jittered grid CHUNK_CELL px apart (+ `extra` for a coarser
+ * cut) — a Voronoi cut, so the pieces tile the drawing exactly (no gaps, no pixel twice), 3–8 px chips
+ * of the blade, the guard and the hilt with their own tones and ink. Deterministic for a seed (pure).
+ */
+export function forgeSwordChunks(size: ForgeSize, seed = 1, extra = 0): SwordChunk[] {
+  const m = forgeSwordMotif({ size, crack: true });
+  const cell = CHUNK_CELL[size] + extra;
+  let s = (Math.imul(Math.abs(Math.round(seed)) + 1, 2654435761) >>> 0) || 1;
+  const rnd = (): number => {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+  const seeds: { x: number; y: number }[] = [];
+  for (let gy = 0; gy < m.px.h + cell; gy += cell)
+    for (let gx = 0; gx < m.px.w + cell; gx += cell) seeds.push({ x: gx + (rnd() - 0.5) * cell * 0.8, y: gy + (rnd() - 0.5) * cell * 0.8 });
+  const groups = new Map<number, { x: number; y: number; c: number }[]>();
+  for (let y = 0; y < m.px.h; y++)
+    for (let x = 0; x < m.px.w; x++) {
+      if (m.px.alpha(x, y) === 0) continue;
+      let best = 0;
+      let bd = Infinity;
+      for (let i = 0; i < seeds.length; i++) {
+        const dx = x + 0.5 - seeds[i].x;
+        const dy = (y + 0.5 - seeds[i].y) * 0.8;
+        const d = dx * dx + dy * dy;
+        if (d < bd) {
+          bd = d;
+          best = i;
+        }
+      }
+      let gp = groups.get(best);
+      if (!gp) groups.set(best, (gp = []));
+      gp.push({ x, y, c: m.px.get(x, y) ?? PAL.ink });
+    }
+  const out: SwordChunk[] = [];
+  for (const k of [...groups.keys()].sort((a, b) => a - b)) {
+    const px = groups.get(k)!;
+    let sx = 0;
+    let sy = 0;
+    let bottom = 0;
+    for (const q of px) {
+      sx += q.x;
+      sy += q.y;
+      bottom = Math.max(bottom, q.y);
+    }
+    out.push({ px, cx: sx / px.length, cy: sy / px.length, bottom });
+  }
+  return out;
 }
 
 /**

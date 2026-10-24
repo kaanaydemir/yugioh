@@ -23,6 +23,10 @@
 // a6CurtainTrap — the trap question's curtain ("TUZAK SORUSU: OYUNCU 2"), the prompt, GEÇ, and the
 // curtain back to P1. The prompt's cards / buttons are UI targets { trapPrompt: i | 'open' | 'pass' }
 // (src/view/v3/TrapPromptV3.ts; skipped in v1 — the keys answer there too).
+// B5 (F8 / F9): a6Defeat — run with &mode=vsBot: the person (P1) attacks Kristal Ejder with Kor Kurdu at
+// 1000 LP and loses to the computer (the result plate's "KAYBETTİN" / "LP'n sıfırlandı"); the deck-out and
+// victory scenarios are flow.ts's (flowDeckOut, flowDeckOutP1, flowLethal, flowLethalP2, flowSurrender).
+// The game-over buttons are UI targets { result: 'replay' | 'menu' } (src/view/v3/ResultPlate.ts).
 //   node tools/shot.mjs "?dev=duel&s=a6TargetAttack&look=v3" --fresh --film 36 --every 50 --cols 12
 import type { Action } from '../../engine/types';
 import type { Scenario, Step, UiTarget } from '../scenarios';
@@ -208,6 +212,11 @@ const PACK: Record<string, Scenario> = {
     desc: 'turn start while P1 is under 1000 LP (the low-LP pulse on the bottom panel; the mirror of flowTurnLowLp)',
     stage: { active: 1, p1: { monsters: ['ember_wolf'] }, p0: { lp: 800, deck: ['crystal_wyrm'] } },
     steps: [{ type: 'endTurn', player: 1 }],
+  },
+  a6Defeat: {
+    desc: 'vsBot (&mode=vsBot): P1 (the person) attacks Kristal Ejder with Kor Kurdu at 1000 LP and loses to the computer — "KAYBETTİN"',
+    stage: { phase: 'battle', p0: { lp: 1000, monsters: ['ember_wolf', { id: 'stone_sentinel', position: 'defense' }, 'lumen_sprite'] }, p1: { monsters: [null, 'crystal_wyrm'] } },
+    steps: [{ type: 'attack', player: 0, attackerZone: 0, targetZone: 1 }],
   },
 };
 

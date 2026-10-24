@@ -95,6 +95,15 @@ export const SPRING_V3 = Object.freeze({
   rim: [PAL.teal1, PAL.teal2, PAL.teal3] as readonly number[],
 });
 
+/**
+ * The jet's height on rise frame `i` (one height per rendered frame). With reduced motion (A5 §3.0 / §6.4,
+ * step A-8) it never passes the full FOUNTAIN_H — no crest overshoot — on the very same frames.
+ */
+export function riseHeight(i: number, reduced: boolean = REDUCED_MOTION): number {
+  const h = SPRING_V3.rise[Math.max(0, Math.min(SPRING_V3.rise.length - 1, i))];
+  return reduced ? Math.min(FOUNTAIN_H, h) : h;
+}
+
 /** The drops' pitch ladder: A minor pentatonic upward from the recipe's A5 (semitones). */
 export const DROP_STEPS: readonly number[] = [0, 3, 5, 7, 10, 12];
 
@@ -226,8 +235,7 @@ function springFountain(sc: Phaser.Scene, at: XY, seed: number): Fountain {
     if (!settling) {
       // the rise: one height per rendered frame from the eruption (frame 0 = the first height)
       const i = Math.min(S.rise.length - 1, frame);
-      // (reduced motion, A5 §6.4: the crest never passes the full height — no overshoot; same frames)
-      h = REDUCED_MOTION ? Math.min(FOUNTAIN_H, S.rise[i]) : S.rise[i];
+      h = riseHeight(i);
       if (i >= S.dropFrame) resolveCrest();
       if (i === S.rise.length - 1) resolveRisen();
       poolR = S.pool[Math.min(S.pool.length - 1, Math.floor(frame / 2))];

@@ -181,12 +181,14 @@ export function steamAuraV3(scene: Phaser.Scene, unit: MonsterUnit): Disposable 
 //               into the dashes (A5 §3.1 BAĞ).
 //   the light   one faint gold tone at the monster's feet (the light layer: a stepped floor pool).
 // destroy() is the break (A5 §3.1 "Kırılma"; also a bolt burning the aura off, a death, a sync that
-// finds the blade gone): two frames of a white crack across the blade while the ring is drawn tight
-// and bright (gold4), then the burst — at least as big as the old aura burst (22 gold sparks; the
-// user's rule of 24 Oct): the blade's 7–8 shards, the ring snapped into 16 pieces flung off round the
-// waist and 10 star sparks, all thrown up and out; they fall to the floor and fade by palette steps
-// (EF-7); the light goes out. Silent: the scene that breaks it scores the beat (and lights the body's
-// edge). Nothing here tints, scales or moves the sprite; palette tones, whole pixels, no alpha.
+// finds the blade gone): two frames of a white crack across the blade while the ring flares back out
+// to the bond's size (breakRing: ≥ 68 px across; white, then gold4 — fix round 2), then the burst — at
+// least as big as the old aura burst (22 gold sparks; the user's rule of 24 Oct): the blade's 7–8
+// shards, the big ring snapped into 24 pieces flung off round the waist and 10 star sparks, all thrown
+// up and out; they fall to the floor and fade by palette steps (EF-7); the light goes out. Silent: the
+// scene that breaks it scores the beat (and lights the body's edge; _blade_v3.ts bladeBreakBeat also
+// tears the forged blade out of the body and shatters it). Nothing here tints, scales or moves the
+// sprite; palette tones, whole pixels, no alpha.
 
 const GOLD_RAMP = [PAL.gold1, PAL.gold2, PAL.gold3, PAL.gold4] as const;
 /** The aura sword's blade length (spellmotifs-v3 default: the ≈ 7×20 aura sword). */
@@ -206,7 +208,7 @@ export const BREAK_CRACK_FRAMES = 2;
  * The burst (≥ the old aura burst's 22 gold sparks flung 50–140 px/s): the blade's shards, the ring
  * snapped into BREAK_RING_BITS pieces, BREAK_SPARKS star sparks — thrown at these speeds (spellfx.shards).
  */
-export const BREAK_RING_BITS = 16;
+export const BREAK_RING_BITS = 24;
 const BREAK_SPARKS = 10;
 const BREAK_BLADE_SPEED = 1.8;
 const BREAK_RING_SPEED = 2;
@@ -312,6 +314,12 @@ export interface EquipAuraOpts {
 
 /** The bond's big ring (at least the old forge ring's 64 px across) and its tightening steps. */
 export const BOND_RING_RX = 34;
+
+/** The ring of the break: flared back out to the bond's size (≥ the waist ring), 2:1 (pure; tested). */
+export function breakRing(an: { rx: number }): { rx: number; ry: number } {
+  const rx = Math.max(BOND_RING_RX, an.rx);
+  return { rx, ry: Math.max(4, Math.round(rx / 2)) };
+}
 const RING_TIGHTEN_STEPS = 3;
 /** The bond's glint down the new sword's edge starts this long after the bond. */
 const BOND_GLINT_AT = 120;
@@ -402,7 +410,8 @@ export function equipAuraV3(scene: Phaser.Scene, unit: MonsterUnit, o: EquipAura
     const floor = Math.round(unit.home.y) + 2;
     const depth = (s.active ? s.depth : DEPTH.FX) + 1;
     void shards(scene, { from: swordShardPoints(gx, gy, unit.uid), ramp: GOLD_RAMP, mode: 'fall', floor, restMs: 90, depth, seed: unit.uid * 31 + 9, speed: BREAK_BLADE_SPEED });
-    const ring = ringPixels(rcx, rcy, an.rx, an.ry, 0);
+    const br = breakRing(an);
+    const ring = ringPixels(rcx, rcy, br.rx, br.ry, 0);
     const bits = Array.from({ length: BREAK_RING_BITS }, (_, i) => {
       const q = ring[Math.floor((i * ring.length) / BREAK_RING_BITS)];
       return { x: q.x, y: q.y, c: i % 2 === 0 ? PAL.gold4 : PAL.gold3 };
@@ -455,10 +464,14 @@ export function equipAuraV3(scene: Phaser.Scene, unit: MonsterUnit, o: EquipAura
         kill();
         return false;
       }
-      if (loopFrame() - breakFrame < BREAK_CRACK_FRAMES) {
+      const crackF = loopFrame() - breakFrame;
+      if (crackF < BREAK_CRACK_FRAMES) {
         setMotif(sword, ...drawing());
         sword.setPosition(gx, gy).setVisible(true);
-        for (const q of ringPixels(rcx, rcy, an.rx, an.ry, 0)) (q.y < rcy ? back : front).px(q.x, q.y, PAL.gold4);
+        // the ring flares back out to the bond's size (fix round 2: the old break lit the whole body; the
+        // ring is the bond that snaps) — white on the crack's first frame, gold4 after
+        const br = breakRing(an);
+        for (const q of ringPixels(rcx, rcy, br.rx, br.ry, 0)) (q.y < rcy ? back : front).px(q.x, q.y, crackF === 0 ? PAL.white : PAL.gold4);
         back.end();
         front.end();
         return true;
