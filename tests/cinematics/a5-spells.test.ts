@@ -3,11 +3,12 @@
 // (src/cinematics/_v3/spellfx.ts). Step A-3: Volkan Arenası — the lava front's timing against the calm
 // arena's own crack field, the beat spacing, the v3 ambience (palette pixels only, no full-screen
 // object, nothing left behind) and the v3 field auras' cleanup. Step A-3b: the generic statChange's
-// beats (≥ 150 ms apart). Step A-4: Ayna Kalkanı — the struck cell, the reflection order (by distance),
-// the beam schedule (220 ms after each contact; graveyard landings ≥ 150 ms apart) and the panel's size.
-// Step A-5: Yer Yarığı — the beat times (crack ≈ 150 ms, ≤ 250 ms run, open ≈ 400, shut ≈ 750), the
-// whole-pixel fall, the crack's entry cut, the pad geometry and drawing (palette only; closed = cuts
-// only; one magenta tone on the rim), the trap card's landing after the victim's (≥ 150 ms).
+// beats (≥ 150 ms apart). Step A-4: Ayna Kalkanı — the big dome (user decision 24 Oct: every pixel of
+// the old dome's shells, see-through: palette-only seams and a quarter-step tint, under half over its row), the reflection order
+// (by distance), the beam schedule (220 ms after each contact; graveyard landings ≥ 150 ms apart) and the
+// old beats (build, ripple, charge, break). Step A-5: Yer Yarığı — the beat times (crack ≈ 150 ms, ≤ 250 ms
+// run, the old under-cracks / open / shut), the whole-pixel fall, the wide abyss (as wide as the old one),
+// its lip and drawing (palette only), the trap card's landing after the victim's (≥ 150 ms).
 // Later steps add their checks here.
 
 import { describe, expect, it, vi } from 'vitest';
@@ -481,20 +482,91 @@ describe('A-3b generic statChange (v3)', () => {
   });
 });
 
-describe('A-4 Ayna Kalkanı (v3): panel, order, schedule', () => {
-  it('the attack meets the cell on its own side: middle row by default, top / bottom row by height', async () => {
-    const { struckCell } = await import('../../src/cinematics/traps/_mirror_v3');
-    const at = { x: 320, y: 130 };
-    expect(struckCell(at, { x: 260, y: 132 })).toBe(2); // from the left, level
-    expect(struckCell(at, { x: 390, y: 128 })).toBe(4); // from the right, level
-    expect(struckCell(at, { x: 260, y: 110 })).toBe(0); // from above-left
-    expect(struckCell(at, { x: 390, y: 150 })).toBe(6); // from below-right
-    expect(struckCell(at, { x: 321, y: 131 })).toBe(3); // head-on
-    // every answer is one of the 7 cells of the 2-3-2 panel
-    for (let x = 200; x <= 440; x += 20) for (let y = 60; y <= 200; y += 20) expect(M.HONEYCOMB_7[struckCell(at, { x, y })]).toBeDefined();
+describe('A-4 Ayna Kalkanı (v3): the big dome, the order, the schedule', () => {
+  it('the dome is the old one (user decision 24 Oct): every pixel of the old shells over the defender row, never smaller', async () => {
+    const { domeShape, domeField } = await import('../../src/cinematics/traps/_mirror_v3');
+    const { BOARD_OX, BOARD_OY, TILE_W, TILE_H } = await import('../../src/view/layout');
+    for (const side of [0, 1] as const) {
+      const s = domeShape(side);
+      const f = domeField(s);
+      // the old dome's ray march (./_mirror.ts mirrorDomeTB): glass where a shell crosses the pixel above the floor
+      const k = 1 / TILE_H;
+      const qa = (k * k) / (s.ra * s.ra) + (k * k) / (s.rb * s.rb) + 1 / (s.rz * s.rz);
+      let oldN = 0;
+      let newN = 0;
+      let miss = 0;
+      let x0 = Infinity;
+      let x1 = -Infinity;
+      let y0 = Infinity;
+      let y1 = -Infinity;
+      for (let j = 0; j < f.h; j++)
+        for (let i = 0; i < f.w; i++) {
+          const sx = s.x0 + i;
+          const sy = s.y0 + j;
+          const q0 = (sy - BOARD_OY) / (TILE_H / 2);
+          const P = (sx + 0.5 - BOARD_OX) / (TILE_W / 2);
+          const A0 = (P + q0) / 2 - s.a0;
+          const B0 = (q0 - P) / 2 - s.b0;
+          const qb = 2 * k * (A0 / (s.ra * s.ra) + B0 / (s.rb * s.rb));
+          const qc = (A0 * A0) / (s.ra * s.ra) + (B0 * B0) / (s.rb * s.rb) - 1;
+          const disc = qb * qb - 4 * qa * qc;
+          const old = disc >= 0 && (-qb + Math.sqrt(disc)) / (2 * qa) >= 0;
+          const now = f.near.cell[j * f.w + i] >= 0 || f.far.cell[j * f.w + i] >= 0;
+          if (old) {
+            oldN++;
+            x0 = Math.min(x0, sx);
+            x1 = Math.max(x1, sx);
+            y0 = Math.min(y0, sy);
+            y1 = Math.max(y1, sy);
+          }
+          if (now) newN++;
+          if (old && !now) miss++;
+        }
+      expect(miss).toBe(0);
+      expect(newN).toBe(oldN);
+      // ≈ 131 × 119 px on the board: over the whole monster row, far bigger than any monster
+      expect(x1 - x0 + 1).toBeGreaterThanOrEqual(120);
+      expect(y1 - y0 + 1).toBeGreaterThanOrEqual(110);
+    }
   });
 
-  it('the reflections go nearest to the panel first (ties keep the event order)', async () => {
+  it('the dome is see-through (EF-2): palette-only 1-px seams and outline, quarter-step glass — under half of its monster row covered, at any heat', async () => {
+    const { domeShape, domeField, domeLook, paintDomeShell } = await import('../../src/cinematics/traps/_mirror_v3');
+    const f = domeField(domeShape(1));
+    const cover = (heat: number) => {
+      const L = domeLook(f.cells.length);
+      L.heat.fill(heat);
+      const near = new PixelCanvas(f.w, f.h);
+      paintDomeShell(near, f, 'near', L);
+      const far = new PixelCanvas(f.w, f.h);
+      paintDomeShell(far, f, 'far', L);
+      expect(paletteOnly(near).ok, `near heat ${heat}`).toBe(true);
+      expect(paletteOnly(far).ok, `far heat ${heat}`).toBe(true);
+      const again = new PixelCanvas(f.w, f.h);
+      paintDomeShell(again, f, 'near', L);
+      expect(hash(again)).toBe(hash(near));
+      // where the row's monsters stand: the middle of the dome, from their feet up 50 px
+      let glass = 0;
+      let painted = 0;
+      const cx = f.shape.c.x - f.shape.x0;
+      const cy = f.shape.c.y - f.shape.y0;
+      for (let j = cy - 50; j < cy; j++)
+        for (let i = cx - 40; i <= cx + 40; i++) {
+          if (f.near.cell[j * f.w + i] < 0) continue;
+          glass++;
+          if (near.alpha(i, j)) painted++;
+        }
+      expect(glass).toBeGreaterThan(1000);
+      return painted / glass;
+    };
+    const covers = [0, 1, 2].map(cover);
+    for (const k of covers) expect(k).toBeLessThan(0.5);
+    // and it is glass, not a wire frame: the tint and the glow show (the old dome's pink glass)
+    expect(covers[0]).toBeGreaterThan(0.1);
+    expect(covers[2]).toBeGreaterThan(covers[0] + 0.1);
+  });
+
+  it('the reflections go nearest to the struck point first (ties keep the event order)', async () => {
     const { reflectionOrder } = await import('../../src/cinematics/traps/_mirror_v3');
     const cell = { x: 320, y: 130 };
     expect(reflectionOrder(cell, [{ x: 250, y: 150 }, { x: 290, y: 150 }, { x: 330, y: 170 }])).toEqual([1, 2, 0]);
@@ -517,98 +589,118 @@ describe('A-4 Ayna Kalkanı (v3): panel, order, schedule', () => {
     }
   });
 
-  it('the panel is small and upright: 25 × 24 px (≤ 40 px high, EF-2), built before the earliest contact', async () => {
-    const { PANEL_AT, CATCH_AT } = await import('../../src/cinematics/traps/_mirror_v3');
-    expect(M.HONEYCOMB_7_SIZE.h).toBeLessThanOrEqual(40);
-    // 4 build steps 50 ms apart + the last faces' frame fit between the raise and the catch
-    expect(CATCH_AT - PANEL_AT).toBeGreaterThanOrEqual(4 * 50 + 17);
+  it('the old beats come back: the dome is built (380 ms) before the earliest contact; ripple, charge and break as the old dome', async () => {
+    const { DOME_AT, BUILD_MS, CATCH_AT, RIPPLE_MS, CHARGE_AT, CHARGE_MS, SHATTER_MS } = await import('../../src/cinematics/traps/_mirror_v3');
+    expect(DOME_AT).toBe(250);
+    expect(BUILD_MS).toBeGreaterThanOrEqual(380);
+    expect(CATCH_AT - DOME_AT).toBeGreaterThanOrEqual(BUILD_MS);
+    expect(RIPPLE_MS).toBe(190);
+    expect(SHATTER_MS).toBe(340);
+    // the first reflection leaves ≤ 270 ms after the contact's hit-stop (the old dome: 360)
+    expect(CHARGE_AT + CHARGE_MS).toBeLessThanOrEqual(270);
   });
 });
 
-describe('A-5 Yer Yarığı (v3): timing, geometry, the pad drawing', () => {
-  it('the crack leaves ≈ 150 ms after activate (with the 40 ms burst stop), runs ≤ 250 ms; the slabs shut at ≈ 750', async () => {
-    const { CRACK_AT, CRACK_MS, PAD_CRACK_MS, SHUT_AFTER } = await import('../../src/cinematics/traps/_chasm_v3');
+describe('A-5 Yer Yarığı (v3): timing, the wide abyss, the fall', () => {
+  it('the crack leaves ≈ 150 ms after activate, runs ≤ 250 ms; the old beats follow (under-cracks, open, fall, shut)', async () => {
+    const { CRACK_AT, CRACK_MS, RADIAL_LEAD, RADIAL_MS, OPEN_MS, SHUT_MS, SHUT_AFTER } = await import('../../src/cinematics/traps/_chasm_v3');
     // game time = show clock + the opening's burst stop (3 frames) + the destroy's dispatch frame
-    // (A5 §3.4: YARIK 150, AÇILMA ≈ 400, KAPANMA 750; measured in the lane run: 150 / 416 / 767)
     const crack = CRACK_AT + 50 + 17;
     expect(crack).toBeLessThanOrEqual(151);
     expect(CRACK_MS).toBeLessThanOrEqual(250);
-    expect(crack + CRACK_MS + PAD_CRACK_MS + 17).toBeGreaterThanOrEqual(370);
-    expect(crack + CRACK_MS + PAD_CRACK_MS + 17).toBeLessThanOrEqual(430);
-    expect(crack + SHUT_AFTER).toBeGreaterThanOrEqual(720);
-    expect(crack + SHUT_AFTER).toBeLessThanOrEqual(780);
+    expect(RADIAL_LEAD).toBeLessThan(CRACK_MS);
+    // the old beats, each readable (the old ones: 300 / 180 / 200 ms)
+    expect(RADIAL_MS).toBeGreaterThanOrEqual(150);
+    expect(OPEN_MS).toBeGreaterThanOrEqual(150);
+    expect(SHUT_MS).toBeGreaterThanOrEqual(150);
+    // the shut lands within 1.3 s of the crack (the old fissure + abyss took ≈ 1.44 s)
+    expect(SHUT_AFTER).toBeLessThanOrEqual(1300);
     // the S-15 target: a fast decision (≤ 120 ms) + the crack's start stays within 300 ms of the summon's end
     expect(120 + crack + 17).toBeLessThanOrEqual(300);
   });
 
-  it('the fall is whole-pixel steps, one per frame, accelerating (2, 4, 7, 11, 16 …)', async () => {
-    const { FALL_STEPS, fallOffsets } = await import('../../src/cinematics/traps/_chasm_v3');
-    expect(FALL_STEPS.slice(0, 5)).toEqual([2, 4, 7, 11, 16]);
-    const off = fallOffsets();
-    for (let k = 0; k < off.length; k++) {
-      expect(Number.isInteger(off[k])).toBe(true);
-      if (k > 0) expect(off[k] - off[k - 1]).toBeGreaterThan(k > 1 ? off[k - 1] - off[k - 2] : 0);
+  it('the fall is whole pixels, one step per frame, accelerating (the old inQuad drop), deep enough for the tallest body', async () => {
+    const { FALL_FRAMES, fallOffsets } = await import('../../src/cinematics/traps/_chasm_v3');
+    for (const depth of [110, 140]) {
+      const off = fallOffsets(depth);
+      expect(off.length).toBe(FALL_FRAMES);
+      for (let k = 0; k < off.length; k++) {
+        expect(Number.isInteger(off[k])).toBe(true);
+        if (k > 0) expect(off[k]).toBeGreaterThanOrEqual(off[k - 1]);
+        if (k > 1) expect(off[k] - off[k - 1]).toBeGreaterThanOrEqual(off[k - 1] - off[k - 2] - 1);
+      }
+      expect(off[off.length - 1]).toBe(depth);
+      expect(off[off.length - 1] - off[off.length - 2]).toBeGreaterThan(off[1] - off[0]);
     }
-    // deep enough to take the tallest body (≈ 90 px) under the lip
-    expect(off[off.length - 1]).toBeGreaterThanOrEqual(90);
   });
 
-  it('the crack enters the pad on the slab cut that faces the trap', async () => {
-    const { entryCut, padGeom } = await import('../../src/cinematics/traps/_chasm_v3');
-    const g = padGeom(288, 176, 0);
-    const [A, B, D] = g.cuts;
-    expect(entryCut(g, { x: 352, y: 112 })).toEqual(B); // the trap up and to the right (tbChasm)
-    expect(entryCut(g, { x: 220, y: 230 })).toEqual(D); // down and to the left
-    expect(entryCut(g, { x: 230, y: 130 })).toEqual(A); // up and to the left
+  it('the abyss is as wide as the old one (max(30, 0.55 × body width) half width, the same jagged rim)', async () => {
+    const { abyssHalfWidth, abyssShape, abyssRim } = await import('../../src/cinematics/traps/_chasm_v3');
+    for (const w of [20, 40, 55, 70, 90, 120]) expect(abyssHalfWidth(w)).toBeGreaterThanOrEqual(Math.max(30, Math.round(w * 0.55)));
+    for (const w of [40, 60, 90]) {
+      const s = abyssShape({ x: 200, y: 120 }, w, 7);
+      const rim = abyssRim(s, 1);
+      const xs = rim.map((q) => q.x);
+      const ys = rim.map((q) => q.y);
+      // the old hole: RX × RY scaled by its jag (0.86 … 1.16) — ≥ 1.7 RX across, about half as tall
+      expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThanOrEqual(Math.floor(1.7 * Math.max(30, Math.round(w * 0.55))));
+      expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThanOrEqual(Math.floor(0.8 * s.ry));
+      // the cracks run out to 0.9 … 1.5 half widths
+      for (const c of s.cracks) {
+        const end = c[c.length - 1];
+        const r = Math.hypot(end.x - s.x, (end.y - s.y) * 2);
+        expect(r).toBeGreaterThanOrEqual(0.85 * s.rx);
+        expect(r).toBeLessThanOrEqual(1.55 * s.rx);
+      }
+    }
   });
 
-  it('the pad: closed has no hole, the hole opens in two steps inside the slabs, the fall lip runs past any body', async () => {
-    const { padGeom, fallLip, HOLE_OPEN, PAD_HW, PAD_HH } = await import('../../src/cinematics/traps/_chasm_v3');
-    expect(padGeom(100, 50, 0).hole.rx).toBe(0);
-    const g1 = padGeom(100, 50, 1);
-    const g2 = padGeom(100, 50, 2);
-    expect(g1.hole.rx).toBeGreaterThan(0);
-    expect(g2.hole.rx).toBeGreaterThan(g1.hole.rx);
-    expect(g2.hole.rx).toBe(Math.round(PAD_HW * HOLE_OPEN[2]));
-    // the slabs keep a visible ring round the open hole
-    expect(PAD_HW - g2.hole.rx).toBeGreaterThanOrEqual(8);
-    expect(PAD_HH - g2.hole.ry).toBeGreaterThanOrEqual(3);
-    const lip = fallLip(g2);
+  it('the lip runs left → right past any body; its middle is the hole’s front rim, at the floor line outside it', async () => {
+    const { abyssShape, abyssLip } = await import('../../src/cinematics/traps/_chasm_v3');
+    const s = abyssShape({ x: 100, y: 50 }, 60, 3);
+    const lip = abyssLip(s, 1);
     expect(lip[0].x).toBeLessThanOrEqual(100 - 150);
     expect(lip[lip.length - 1].x).toBeGreaterThanOrEqual(100 + 150);
     for (let i = 1; i < lip.length; i++) expect(lip[i].x).toBeGreaterThanOrEqual(lip[i - 1].x);
-    // the middle of the lip is the hole's lower rim
-    expect(Math.max(...lip.map((q) => q.y))).toBe(g2.hole.y + g2.hole.ry);
+    for (const q of lip) expect(q.y).toBeGreaterThanOrEqual(50);
+    expect(Math.max(...lip.map((q) => q.y))).toBeGreaterThanOrEqual(50 + Math.floor(0.8 * s.ry));
   });
 
-  it('the pad drawing is palette-only and deterministic; closed it shows only the cuts; the seam frame is white', async () => {
-    const { paintPadV3 } = await import('../../src/cinematics/traps/_chasm_v3');
-    const draw = (look: Parameters<typeof paintPadV3>[3]) => {
-      const p = new PixelCanvas(60, 32);
-      paintPadV3(p, 30, 15, look);
+  it('the abyss drawing is palette-only and deterministic; it opens as wide as its rim; the slam frame lights the cracks white', async () => {
+    const { abyssShape, paintAbyss } = await import('../../src/cinematics/traps/_chasm_v3');
+    const s = abyssShape({ x: 100, y: 60 }, 56, 11);
+    const draw = (look: Parameters<typeof paintAbyss>[2]) => {
+      const p = new PixelCanvas(200, 120);
+      paintAbyss(p, s, look, 0, 0);
       return p;
     };
-    for (const look of [{ step: 0, crack: 0.5 }, { step: 0, crack: 0.5, lip: PAL.mag3 }, { step: 0, crack: 1, seam: true }, { step: 1, crack: 1, lip: PAL.mag2 }, { step: 2, crack: 1 }, { step: 2, crack: 1, rim: PAL.mag1, lip: PAL.mag3 }] as const) {
+    const base = { crack: 1, open: 0, glow: 3, breath: 0, seam: false };
+    for (const look of [{ ...base, crack: 0.4 }, base, { ...base, open: 0.5 }, { ...base, open: 1 }, { ...base, open: 1.08, breath: 1 }, { ...base, seam: true }, { ...base, glow: 1 }, { ...base, glow: 0 }]) {
       const p = draw(look);
       expect(paletteOnly(p).ok, JSON.stringify(look)).toBe(true);
       expect(hash(draw(look))).toBe(hash(p));
     }
-    const closed = draw({ step: 0, crack: 1 });
-    const colours = new Set<number>();
-    for (let y = 0; y < closed.h; y++) for (let x = 0; x < closed.w; x++) if (closed.alpha(x, y)) colours.add(closed.get(x, y)!);
-    expect([...colours]).toEqual([PAL.ink]);
-    const seam = draw({ step: 0, crack: 1, seam: true });
-    const seamColours = new Set<number>();
-    for (let y = 0; y < seam.h; y++) for (let x = 0; x < seam.w; x++) if (seam.alpha(x, y)) seamColours.add(seam.get(x, y)!);
-    expect([...seamColours]).toEqual([PAL.white]);
-    // open: the hole (ink), one magenta tone on its far rim, the slab faces
-    const open = draw({ step: 2, crack: 1 });
-    const mags = new Set<number>();
-    for (let y = 0; y < open.h; y++) for (let x = 0; x < open.w; x++) {
-      const c = open.get(x, y);
-      if (c !== null && ([PAL.mag0, PAL.mag1, PAL.mag2, PAL.mag3, PAL.mag4] as number[]).includes(c)) mags.add(c);
-    }
-    expect([...mags]).toEqual([PAL.mag2]);
+    // open: the ink hole and its deep glow span ≥ 1.7 half widths along the centre row
+    const open = draw({ ...base, crack: 0, open: 1 });
+    let xa = Infinity;
+    let xb = -Infinity;
+    for (let x = 0; x < open.w; x++) if (open.alpha(x, 60)) ((xa = Math.min(xa, x)), (xb = Math.max(xb, x)));
+    expect(xb - xa + 1).toBeGreaterThanOrEqual(Math.floor(1.7 * s.rx));
+    const tones = new Set<number>();
+    for (let y = 0; y < open.h; y++) for (let x = 0; x < open.w; x++) if (open.alpha(x, y)) tones.add(open.get(x, y)!);
+    for (const c of [PAL.ink, PAL.mag1, PAL.mag2, PAL.mag3, PAL.steel, PAL.night4]) expect(tones.has(c), c.toString(16)).toBe(true);
+    // the slam frame: the closed scar's cracks are white (core) on mag3 lips
+    const seam = draw({ ...base, seam: true });
+    const seamTones = new Set<number>();
+    for (let y = 0; y < seam.h; y++) for (let x = 0; x < seam.w; x++) if (seam.alpha(x, y)) seamTones.add(seam.get(x, y)!);
+    expect([...seamTones].sort()).toEqual([PAL.mag3, PAL.white].sort());
+    // cooled to bare ink, then gone
+    const ink = draw({ ...base, glow: 0 });
+    const inkTones = new Set<number>();
+    for (let y = 0; y < ink.h; y++) for (let x = 0; x < ink.w; x++) if (ink.alpha(x, y)) inkTones.add(ink.get(x, y)!);
+    expect([...inkTones]).toEqual([PAL.ink]);
+    const gone = draw({ ...base, glow: -1 });
+    expect(gone.bounds()).toBeNull();
   });
 
   it('the trap card lands ≥ 150 ms after the victim card, never before its own flight allows', async () => {

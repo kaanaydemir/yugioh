@@ -26,6 +26,11 @@ import { Button } from './Button';
 import { CardSprite } from './CardSprite';
 import { CARD_H, CARD_W, DEPTH, GAME_H, GAME_W, UI, byArena } from './layout';
 import { GLOW_PAD, ICON, UI_RAMP, type UiKeyHandler, crownTex, pushUiKeys, glowTex, haloTex, panelTex, playerStyle, streakTex, stripesTex, typeOn } from './ui-textures';
+import { V3_A6_B } from './v3flags';
+import { REDUCED_MOTION } from './v3/motion';
+import { PalText, TrimGfx, canvasTexture, capYV3, iconTexture, plateBodyV3, styleTone, styleTrim, textWidthV3 } from './v3/hudSkin';
+import { trapPromptV3, type TrapPromptOpts } from './v3/TrapPromptV3';
+import { curtainV3, type CurtainHand, type CurtainKind } from './v3/CurtainV3';
 
 export interface TrapOption {
   uid: Uid;
@@ -44,6 +49,12 @@ export interface GameOverOpts {
 }
 
 export type GameOverChoice = 'replay' | 'menu';
+
+/** v3 (A6-B, F7): what the hot-seat curtain covers and why (the trap question says so). Ignored in v1. */
+export interface PassDeviceOpts {
+  hand?: CurtainHand | null;
+  kind?: CurtainKind;
+}
 
 export interface InstructionHandle {
   /** Remove the bar (does not resolve `cancelled`). */
@@ -103,7 +114,9 @@ export class Prompt {
    * Full-screen "pass the device" curtain. Resolves after the player clicked and the curtain
    * has wiped away. `onCovered` is awaited while the screen is fully covered (swap the hand there).
    */
-  async passDevice(player: PlayerId, onCovered?: () => void | Promise<void>): Promise<void> {
+  async passDevice(player: PlayerId, onCovered?: () => void | Promise<void>, opts: PassDeviceOpts = {}): Promise<void> {
+    // v3 (lane A6-B, F7 / S1): the board stays visible, only the hand is covered (src/view/v3/CurtainV3.ts)
+    if (V3_A6_B) return curtainV3(this.scene, player, { kind: opts.kind, hand: opts.hand, onCovered });
     const sc = this.scene;
     const style = playerStyle(player);
     const R = UI_RAMP[style];
@@ -378,8 +391,10 @@ export class Prompt {
    * "Oyuncu 2: Tuzak kartı açmak ister misin?" — pick one of the set traps (AÇ) or decline
    * (GEÇ). Resolves with the chosen uid or null. Keys: 1–9 select, Enter = AÇ, Esc = GEÇ.
    */
-  async trapResponse(player: PlayerId, options: TrapOption[]): Promise<Uid | null> {
+  async trapResponse(player: PlayerId, options: TrapOption[], opts: TrapPromptOpts = {}): Promise<Uid | null> {
     if (options.length === 0) return null;
+    // v3 (lane A6-B, F7): no dimming — a small plate on the defender's side (src/view/v3/TrapPromptV3.ts)
+    if (V3_A6_B) return trapPromptV3(this.scene, player, options, opts);
     const sc = this.scene;
     const R = RAMPS.mag;
     const root = sc.add.container(0, 0).setDepth(DEPTH.OVERLAY).setScrollFactor(0);
@@ -545,6 +560,7 @@ export class Prompt {
 
   /** Top bar with an instruction (target selection etc.) and an İPTAL button. */
   instruction(text: string, opts: { cancel?: boolean; style?: 'gold' | 'p1' | 'p2' | 'trap' | 'spell' } = {}): InstructionHandle {
+    if (V3_A6_B) return this.instructionV3(text, opts);
     const sc = this.scene;
     const style = opts.style ?? 'gold';
     const R = UI_RAMP[style];
@@ -624,6 +640,185 @@ export class Prompt {
       };
       if (b && b.active) sc.tweens.add({ targets: b, y: -H - 8, duration: 180, ease: 'Quad.In', onComplete: end, onStop: end });
       else end();
+    };
+    const doCancel = () => {
+      if (closed) return;
+      sfx.play('uiBack');
+      close();
+      resolveCancel();
+    };
+    this.addKeys(keyFn);
+    build(text, true);
+    sfx.play('uiConfirm', { volume: 0.4, pitch: 1.3 });
+    return {
+      close,
+      cancelled,
+      setText: (s: string) => {
+        if (!closed) build(s, false);
+      },
+    };
+  }
+
+  /**
+   * v3 (lane A6-B, F4 "Talimat"): the instruction as a plate of the HUD family — the dark two-band body,
+   * one trim in the style's tone with a light node running it (KO-3), the caret stepping 1 px, the text
+   * stamped six glyphs per frame (~130 ms for a long one), the v3 İPTAL button. It appears in two palette steps dropping
+   * 2 → 0 px and leaves the same way rising (no ADD glow, no Back.Out: whole pixels, KO-1 / KO-2). The
+   * hint line no longer repeats it (HumanInput). Same handle and keys as today's bar.
+   */
+  private instructionV3(text: string, opts: { cancel?: boolean; style?: 'gold' | 'p1' | 'p2' | 'trap' | 'spell' }): InstructionHandle {
+    const sc = this.scene;
+    const style = opts.style ?? 'gold';
+    const showCancel = opts.cancel ?? true;
+    const root = sc.add.container(0, 0).setDepth(DEPTH.BANNER - 1).setScrollFactor(0);
+    const Y = 25;
+    const MAX_W = 2 * (UI.p2Panel.x - 4 - GAME_W / 2);
+    const FRAME = 1000 / 60;
+    let resolveCancel: () => void = () => undefined;
+    const cancelled = new Promise<void>((r) => (resolveCancel = r));
+    let closed = false;
+    let seq = 0;
+    let bar: Phaser.GameObjects.Container | null = null;
+    let body: Phaser.GameObjects.Image | null = null;
+    let trim: TrimGfx | null = null;
+    let caret: Phaser.GameObjects.Image | null = null;
+    let lines: PalText[] = [];
+    let cancelBtn: Button | null = null;
+    let w = 0;
+    let H = 21;
+    let stamp = Infinity;
+    let caretT = 0;
+    let caretStep = 0;
+    const plateKey = (pw: number, ph: number, step: number) => canvasTexture(sc, `ui3:ins:${pw}x${ph}:${step}`, () => plateBodyV3(pw, ph, step));
+    const setStep = (step: number) => {
+      if (!bar || !body) return;
+      body.setTexture(plateKey(w, H, step));
+      trim?.set(styleTrim(style, step));
+      bar.y = Y - (step === 0 ? 0 : step === -1 ? 1 : 2);
+      const on = step === 0;
+      caret?.setVisible(on);
+      for (const l of lines) l.setVisible(on);
+      cancelBtn?.setVisible(step >= -1);
+    };
+    const build = (s: string, animate: boolean) => {
+      bar?.destroy();
+      trim?.destroy();
+      lines = [];
+      const extra = 20 + (showCancel ? 58 : 10);
+      // md when it fits, else the small font, on two lines if it must
+      let size: TextSize = 'md';
+      let parts = [s];
+      if (textWidthV3(s, 'md') > MAX_W - extra) {
+        size = 'sm';
+        if (textWidthV3(s, 'sm') > MAX_W - extra) {
+          const words = s.split(' ');
+          let best = 1;
+          let bestW = Infinity;
+          for (let i = 1; i < words.length; i++) {
+            const a = textWidthV3(words.slice(0, i).join(' '), 'sm');
+            const b = textWidthV3(words.slice(i).join(' '), 'sm');
+            if (Math.max(a, b) < bestW) {
+              bestW = Math.max(a, b);
+              best = i;
+            }
+          }
+          parts = [words.slice(0, best).join(' '), words.slice(best).join(' ')];
+        }
+      }
+      const tm = textMetrics(size);
+      H = parts.length > 1 ? 9 + parts.length * tm.lineHeight : 21;
+      const tw = Math.max(...parts.map((t) => textWidthV3(t, size)));
+      w = extra + tw;
+      const x = Math.round(GAME_W / 2 - w / 2);
+      bar = sc.add.container(x, Y);
+      body = sc.add.image(0, 0, plateKey(w, H, 0)).setOrigin(0);
+      bar.add(body);
+      trim = new TrimGfx(sc, bar, 0, 0, w, H).set(styleTrim(style, 0));
+      trim.setNode(REDUCED_MOTION ? null : { head: PAL.white, tail: [styleTone(style, 2), styleTone(style, 1)], lapMs: 2400, restMs: 700 });
+      const ct = styleTone(style, 2);
+      const ck = iconTexture(sc, ICON.caret, { w: ct, m: ct, s: ct, n: ct }) ?? ICON.caret;
+      caret = sc.add.image(7, Math.round(H / 2) - 4, ck).setOrigin(0);
+      bar.add(caret);
+      const textTop = Math.floor((H - ((parts.length - 1) * tm.lineHeight + tm.capHeight)) / 2);
+      parts.forEach((t, i) => {
+        const l = new PalText(sc, 16, capYV3(size, textTop + i * tm.lineHeight), t, { size, color: PAL.white });
+        lines.push(l);
+        bar!.add(l.root);
+      });
+      cancelBtn = null;
+      if (showCancel) {
+        cancelBtn = new Button(sc, w - 52, Math.round(H / 2) - 7, { w: 48, h: 15, label: 'İPTAL', size: 'sm', icon: ICON.close, style: 'neutral' });
+        cancelBtn.onClick = () => doCancel();
+        bar.add(cancelBtn);
+      }
+      root.add(bar);
+      caretT = 0;
+      caretStep = 0;
+      const my = ++seq;
+      if (!animate) {
+        stamp = Infinity;
+        setStep(0);
+        return;
+      }
+      // appear: two palette steps dropping 2 → 0 px (2 frames each), then the letters stamp in
+      stamp = REDUCED_MOTION ? Infinity : 0;
+      for (const l of lines) l.reveal(stamp);
+      setStep(-2);
+      sc.time.delayedCall(2 * FRAME, () => {
+        if (my !== seq || closed) return;
+        setStep(-1);
+        sc.time.delayedCall(2 * FRAME, () => {
+          if (my !== seq || closed) return;
+          setStep(0);
+        });
+      });
+    };
+    const tick = (_t: number, dt: number) => {
+      if (closed || !bar) return;
+      const k = sc.time.timeScale;
+      trim?.tick(dt * k);
+      if (stamp !== Infinity && bar.y === Y) {
+        stamp += 6;
+        let left = stamp;
+        for (const l of lines) {
+          l.reveal(left);
+          left -= l.glyphCount;
+        }
+        if (left > 0) stamp = Infinity;
+      }
+      caretT += dt * k;
+      if (!REDUCED_MOTION && caretT >= 380) {
+        caretT -= 380;
+        caretStep ^= 1;
+        caret?.setX(7 + caretStep);
+      }
+    };
+    sc.events.on(Phaser.Scenes.Events.UPDATE, tick);
+    const keyFn = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showCancel) {
+        cancelBtn?.click();
+        return true;
+      }
+      return false;
+    };
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      this.removeKeys(keyFn);
+      sc.events.off(Phaser.Scenes.Events.UPDATE, tick);
+      const my = ++seq;
+      const end = () => {
+        trim?.destroy();
+        if (root.active) root.destroy();
+      };
+      if (!bar || !bar.active || REDUCED_MOTION) return end();
+      // leave: two palette steps rising 1 → 2 px, then gone
+      setStep(-1);
+      sc.time.delayedCall(2 * FRAME, () => {
+        if (my !== seq) return end();
+        setStep(-2);
+        sc.time.delayedCall(2 * FRAME, end);
+      });
     };
     const doCancel = () => {
       if (closed) return;

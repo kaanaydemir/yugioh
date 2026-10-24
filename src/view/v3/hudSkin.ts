@@ -31,6 +31,8 @@ import { getFont } from '../../art/font';
 import { PAL, RAMPS, type Ramp } from '../../art/palette';
 import { PixelCanvas, type Pt } from '../../art/pixel';
 import type { PlayerId } from '../../engine/types';
+import { sfx, type SfxName, type SfxOpts } from '../../audio/sfx';
+import { UI_FLOW_RECIPES, type UiFlowSfxName } from '../../audio/v3/ui-flow';
 import { sanitizeText, textMetrics, type TextSize } from '../../ui/text';
 import type { ButtonState, UiStyle } from '../ui-textures';
 import { REDUCED_MOTION } from './motion';
@@ -452,6 +454,17 @@ export class PalText {
     return this;
   }
 
+  /** Glyph images (letters and marks; spaces have none). */
+  get glyphCount(): number {
+    return this.glyphs.length;
+  }
+
+  /** Show only the first `n` glyphs (a letter stamp: one more per frame); Infinity = all. */
+  reveal(n: number): this {
+    this.glyphs.forEach((g, i) => g.setVisible(i < n));
+    return this;
+  }
+
   destroy(): void {
     this.root.destroy();
     this.glyphs = [];
@@ -651,6 +664,8 @@ export class ButtonSkinV3 {
   private attention = false;
   /** Frames left of a flat white trim (hover-in / click), counted on the scene clock. */
   private flashMs = 0;
+  /** ms left of the flat crimson reject trim (F5: a disabled button clicked; shown in every state). */
+  private rejectMs = 0;
   private readonly updateFn: (t: number, dt: number) => void;
 
   constructor(host: ButtonHost, opts: { label?: string; icon?: string | null; style?: UiStyle; size?: TextSize }) {
@@ -697,6 +712,12 @@ export class ButtonSkinV3 {
   /** A flat white trim for `ms` (hover-in: one frame; click / wake: two frames). */
   flash(ms = 17): void {
     this.flashMs = Math.max(this.flashMs, ms);
+    this.drawTrim();
+  }
+
+  /** F5 (B3): the trim two crimson frames — also on a disabled button (the click it refused). */
+  reject(ms = 34): void {
+    this.rejectMs = Math.max(this.rejectMs, ms);
     this.drawTrim();
   }
 
@@ -755,6 +776,13 @@ export class ButtonSkinV3 {
         this.drawTrim();
       }
     }
+    if (this.rejectMs > 0) {
+      this.rejectMs -= dt; // raw frames: the refusal reads at any animation speed
+      if (this.rejectMs <= 0) {
+        this.rejectMs = 0;
+        this.drawTrim();
+      }
+    }
     this.trim.tick(dt * k);
   }
 
@@ -763,6 +791,7 @@ export class ButtonSkinV3 {
   }
 
   private drawTrim(): void {
+    if (this.rejectMs > 0) return void this.trim.set(flatTrim(PAL.crim3));
     this.trim.set(this.flashMs > 0 && this.state !== 'd' ? flatTrim(PAL.white) : styleTrim(this.style, this.lift()));
   }
 
@@ -825,4 +854,22 @@ export class ButtonSkinV3 {
     }
     this.toneContent();
   }
+}
+
+// ================================================================ ui3 sounds (KO-7)
+
+/**
+ * Play a ui3 flow sound (KO-7, placed by lane A6-B). While its recipe is still the A56.0 skeleton
+ * (silent `play() {}` — lane A6-A writes the family in A7), today's `fallback` plays instead, so no
+ * beat goes silent in between. A recipe that makes sound takes the voice: play.length ≥ 1.
+ */
+export function ui3Sfx(name: UiFlowSfxName, opts: SfxOpts = {}, fallback: SfxName | null = null, fallbackOpts: SfxOpts = opts): void {
+  if (ui3Ready(name)) sfx.play(name, opts);
+  else if (fallback) sfx.play(fallback, fallbackOpts);
+}
+
+/** The ui3 flow recipe `name` has been written (it takes the voice), i.e. it is no longer A56.0's silent skeleton. */
+export function ui3Ready(name: UiFlowSfxName): boolean {
+  const r = UI_FLOW_RECIPES[name] as { play: (...a: unknown[]) => void } | undefined;
+  return !!r && r.play.length >= 1;
 }

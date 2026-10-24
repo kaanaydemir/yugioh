@@ -41,8 +41,6 @@ import { sfx } from '../../audio/sfx';
 import type { Phase, PlayerId } from '../../engine/types';
 import { START_LP } from '../../engine/types';
 import { Button } from '../Button';
-import { UI_FLOW_RECIPES, type UiFlowSfxName } from '../../audio/v3/ui-flow';
-import type { SfxName, SfxOpts } from '../../audio/sfx';
 import { LP_WHEELS, LpCounter, Odometer } from './odometer';
 import type { HudCountKind, HudCounts, HudOpts, HudView, SpeedLevel } from '../HudView';
 import { DEPTH, UI, panelRect, type Rect, type XY } from '../layout';
@@ -65,27 +63,20 @@ import {
   styleTone,
   styleTrim,
   textWidthV3,
+  ui3Ready,
+  ui3Sfx,
   type TrimNode,
 } from './hudSkin';
 
 /** HudView's public surface (fields, methods, getters): HudV3 must offer all of it. */
 export type HudApi = { [K in keyof HudView]: HudView[K] };
 
-/**
- * Play a ui3 flow sound (KO-7, placed by lane A6-B). While its recipe is still the A56.0 skeleton
- * (silent `play() {}` — lane A6-A writes the family in A7), today's `fallback` plays instead, so no
- * beat goes silent in between. A recipe that makes sound takes the voice: play.length ≥ 1.
- */
-export function ui3Sfx(name: UiFlowSfxName, opts: SfxOpts = {}, fallback: SfxName | null = null, fallbackOpts: SfxOpts = opts): void {
-  if (ui3Ready(name)) sfx.play(name, opts);
-  else if (fallback) sfx.play(fallback, fallbackOpts);
-}
+// ui3Sfx / ui3Ready live in ./hudSkin.ts (Button uses them too, without importing this module);
+// re-exported here for the flow bodies that import them from the HUD.
+export { ui3Ready, ui3Sfx };
 
-/** The ui3 flow recipe `name` has been written (it takes the voice), i.e. it is no longer A56.0's silent skeleton. */
-export function ui3Ready(name: UiFlowSfxName): boolean {
-  const r = UI_FLOW_RECIPES[name] as { play: (...a: unknown[]) => void } | undefined;
-  return !!r && r.play.length >= 1;
-}
+/** F5 (B3): the hint line's 1-px shake under a refused click's reason (30 ms per step). */
+const HINT_SHAKE = Object.freeze([1, -1, 1, 0]) as readonly number[];
 
 /** The SAVAŞ cell's fill steps (F2: two steps in, two steps out). */
 const BATTLE_FILL = [PAL.crim0, PAL.crim1] as const;
@@ -333,6 +324,8 @@ export class HudV3 implements HudApi {
   private hintWiggle: Phaser.Tweens.Tween | null = null;
   /** Real milliseconds left on a flashed hint (not scaled by the animation speed, as v1). */
   private hintFlashLeft = 0;
+  /** The hint plate has reached its full step (a flash then swaps in place). */
+  private hintFull = false;
   private tip: { owner: Button; root: Phaser.GameObjects.Container; trim: TrimGfx; text: PalText; timer: Phaser.Time.TimerEvent } | null = null;
   private soundOn = !sfx.isMuted();
   private readonly updateFn: (t: number, dt: number) => void;
@@ -1427,8 +1420,12 @@ export class HudV3 implements HudApi {
 
   /**
    * The guidance plate: a dark plate with a neutral trim (a 'fire' flash: crimson), the caret in
-   * the style's tone stepping one pixel, white text (a flash: crim4, a 2-px whole-pixel wiggle).
-   * It appears in two palette steps rising 2 → 0 px, and leaves the same way.
+   * the style's tone stepping one pixel, white text (a flash: crim4). It appears in two palette
+   * steps rising 2 → 0 px, and leaves the same way.
+   * A flash (F5, B3: the reason of a refused click) burns its trim two frames bright crimson (crim4),
+   * then wears the crimson trim; the plate shakes 1 px (+1 −1 +1 0, 30-ms steps; none with reduced
+   * motion). When the line is already up, the flash swaps it in place on the click's frame — no
+   * re-appear — so the reason is there at once.
    */
   private renderHint(h: { text: string; style: UiStyle } | null, flash: boolean): void {
     const sc = this.scene;
@@ -1438,8 +1435,10 @@ export class HudV3 implements HudApi {
     if (key === this.hintKey && !flash) return;
     this.hintKey = key;
     const seq = ++this.hintSeq;
+    const wasFull = this.hintFull;
     this.hintWiggle?.stop();
     this.hintWiggle = null;
+    this.hintFull = false;
     if (!h) {
       // leave: two palette steps, then gone
       const body = this.hintBody;
@@ -1472,17 +1471,42 @@ export class HudV3 implements HudApi {
     const w = HUD3.hint.padL + tw + HUD3.hint.padR;
     const x = Math.round(HUD3.hint.cx - w / 2);
     const y = HUD3.hint.y;
-    const body = sc.add.image(0, 0, this.hintPlateKey(w, H, -2)).setOrigin(0);
+    const inPlace = flash && wasFull && this.visible;
+    const body = sc.add.image(0, 0, this.hintPlateKey(w, H, inPlace ? 0 : -2)).setOrigin(0);
     root.add(body);
     this.hintBody = body;
-    this.hintTrim = new TrimGfx(sc, root, 0, 0, w, H).set(this.hintTrimFor(h.style, -2, flash));
+    this.hintTrim = new TrimGfx(sc, root, 0, 0, w, H).set(inPlace ? flatTrim(PAL.crim4) : this.hintTrimFor(h.style, -2, flash));
     const caretTone = flash ? PAL.crim3 : styleTone(h.style, 1);
     const caretKey = iconTexture(sc, ICON.caret, { w: caretTone, m: caretTone, s: caretTone, n: caretTone }) ?? ICON.caret;
-    this.hintCaret = sc.add.image(6, 4, caretKey).setOrigin(0).setVisible(false);
+    this.hintCaret = sc.add.image(6, 4, caretKey).setOrigin(0).setVisible(inPlace);
     this.hintText_ = new PalText(sc, HUD3.hint.padL, capYV3('md', 5), h.text, { size: 'md', color: flash ? PAL.crim4 : PAL.white });
-    this.hintText_.setVisible(false);
+    this.hintText_.setVisible(inPlace);
     root.add([this.hintCaret, this.hintText_.root]);
-    root.setPosition(x, y + 2).setVisible(this.visible);
+    root.setPosition(x, inPlace ? y : y + 2).setVisible(this.visible);
+    /** At full: a flash burns two frames, then wears the crimson trim, and the plate shakes 1 px. */
+    const full = () => {
+      this.hintFull = true;
+      if (!flash) return;
+      this.hintTrim?.set(flatTrim(PAL.crim4));
+      sc.time.delayedCall(2 * FRAME_MS, () => {
+        if (seq !== this.hintSeq) return;
+        this.hintTrim?.set(this.hintTrimFor(h.style, 0, true));
+      });
+      if (REDUCED_MOTION) return;
+      const steps = HINT_SHAKE;
+      let i = 0;
+      const next = () => {
+        if (seq !== this.hintSeq || !root.active) return;
+        if (i >= steps.length) return void root.setX(x);
+        root.setX(x + steps[i++]);
+        sc.time.delayedCall(30, next);
+      };
+      next();
+    };
+    if (inPlace) {
+      full();
+      return;
+    }
     sc.time.delayedCall(2 * FRAME_MS, () => {
       if (seq !== this.hintSeq) return;
       body.setTexture(this.hintPlateKey(w, H, -1));
@@ -1495,14 +1519,7 @@ export class HudV3 implements HudApi {
         root.y = y;
         this.hintCaret?.setVisible(true);
         this.hintText_?.setVisible(true);
-        if (flash && !REDUCED_MOTION) {
-          void run(
-            sc,
-            260,
-            (k) => root.active && root.setX(x + Math.round(Math.sin(k * Math.PI * 6) * 2 * (1 - k))),
-            (t) => (this.hintWiggle = t),
-          ).then(() => root.active && root.setX(x));
-        }
+        full();
       });
     });
   }

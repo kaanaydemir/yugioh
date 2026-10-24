@@ -1,54 +1,70 @@
-// Ayna Kalkanı — the v3 look (lane A5-A step A-4; docs/v3/A5_PLAN.md §3.3 "çok hedef, okunur sıra").
-// Behind V3_A5_A only: mirror_barrier.ts hands over on its first line; v1 and the plain v3 look keep
-// the dome (./_mirror.ts) unchanged. No registrations here.
+// Ayna Kalkanı — the v3 look (lane A5-A step A-4; reworked by the user's decision of 24 Oct: "the old
+// mirror shield was huge and beautiful" — docs/v3/A5_PLAN.md top note, REHBER EF-2). Behind V3_A5_A only:
+// mirror_barrier.ts hands over on its first line; v1 and the plain v3 look keep the dome of ./_mirror.ts
+// (mirrorDomeTB) byte-identical. No registrations here.
 //
-// Instead of the soft dome over the whole row: a small, crisp honeycomb panel in the attack lane,
-// and the reflections one by one — every victim dies its own death, in a readable order.
-//   0        the trap opening (trapOpeningV3: the card springs up, burst, "TUZAK!", Ayna's glint);
-//            its lean stays as it is. The attacker waits in its declaration's charge hold.
-//   LAUNCH   the attacker lets its own attack go (the hold is handed over: no snap to idle) — timed so
-//            that it meets the panel just after the panel is complete
-//   250      PANEL — `raise`: 7 cells (2-3-2, ≈ 9×10 px each) build in the attack lane, in the
-//            defender's third (a direct attack: in front of the defending duelist), from the middle
-//            out in 4 steps 50 ms apart (frame first, the face one frame later); a magenta light pool
-//            on the floor under it; magenta motes rise off its foot while it stands. 25×24 px — it
-//            never covers more than half of the defender (EF-2). Today's dome lean
-//            (mirror_barrier.ts:57) is called here, at the matching beat, with the same target and
-//            options (user decision: the camera does not change). mirrorRaise (4 glass ticks, 50 ms)
-//   ≈ 480    CATCH — `catch`: the attack meets the panel on its contact frame — a ranged strike's
-//            bolt (attribute colours, white core) leaves the muzzle on the attack's own release frame;
-//            a melee body lunges in on whole pixels and its impact frame touches the panel. 60 ms
-//            hit-stop, the struck cell white for 2 frames, its rings one tone up / down (the wave),
-//            pixel sparks, a magenta floor flash. The body is thrown back home. mirrorCatch (duck 0.45)
-//   +60…     REFLECTION, one by one — `beam:<i>`, right after the hit-stop: for every attack-position
-//            monster of the attacking side, nearest to the panel first, a beam leaves the struck cell
-//            (3 px mag3 body, 1 px white core, a hard white head) and reaches the monster's core in
-//            120 ms; its contact is that monster's own death (the v3 death kit: the v3 art's death
-//            pose, the old art's reaction + material break), a 1-px white / magenta rim on its
-//            silhouette, a 2-frame white star, a short floor strip of light. The next beam leaves
-//            220 ms after the previous contact (later when two graveyard landings would come closer
-//            than 150 ms). mirrorBeam on each contact, one step up per victim
-//   last+120 BREAK — `break`: every cell splits into 2–3 whole-pixel shards that slide 8–14 px outward
-//            and fade by palette steps; the light pool goes out. mirrorBreak (duck 0.4)
+// The old dome's shape and size come back as the centrepiece — an ellipsoid of hex glass over the
+// defender's WHOLE monster row (the same geometry as ./_mirror.ts, so the same bounding box) — drawn in the
+// v3 pixel language: 1-px hex seams and a 1-px outline in palette tones, clear cells (EF-2 is met by the
+// see-through honeycomb, never by shrinking it), the glass seen edge-on as a 2×2 checker band, a crisp
+// specular streak; no dithered haze, no full-screen flash, no camera shake. What v3 made better stays:
+// the v3 trap opening, the attacker's own strike, every victim's own v3 death in a readable order, the
+// card continuity, the v3 sounds and today's camera calls.
+//   0        the trap opening (trapOpeningV3: the card springs up, burst, "TUZAK!", Ayna's glint); its
+//            lean stays as it is. The attacker waits in its declaration's charge hold.
+//   250      DOME — `raise`: the floor ring draws itself round the defender's row from the front, then
+//            the hex cells materialize from the floor up (each cell: 2 frames white seams + a glass
+//            flash, 2 frames mag4, then its own tone) — ≈ 380 ms, like the old build; the magenta light
+//            pool spreads under the dome; while it stands a sheen band slides over the cells. Today's
+//            dome lean (mirror_barrier.ts:57) is called here, same target and options (user decision:
+//            the camera does not change). mirrorRaise (4 plate ticks spread over the build)
+//   ≈ 650    CATCH — `catch`: the attack meets the shell high on the side facing the attacker (the old
+//            streak's 0.72 rad), on its contact frame — a ranged strike's bolt (5 px, attribute colours,
+//            white core) leaves the muzzle on the attack's own release frame; a melee body steps 10 px
+//            toward the dome on whole pixels into its own impact frame and its blow streaks off its muzzle
+//            (as the old dome's streak did for every attacker). 60 ms hit-stop; the struck cell flares as a
+//            white checker for 2 frames (still glass); a ripple of lit seams runs over the whole dome
+//            (190 ms); a big whole-pixel star, pixel sparks, a magenta floor flash; the dome itself trembles
+//            1 px (local, never the camera). The body steps back home. mirrorCatch
+//   +60…+210 CHARGE: the seams heat up cell by cell, the light gathers at the struck point (a growing
+//            whole-pixel star, motes drawn in) — the old charge beat
+//   +210     REFLECTION, one by one — `beam:<i>`: the first departure lights every seam for a frame
+//            (white round the struck point, mag4 further out: EF-4) and splays 7 stray 1-px reflections
+//            off the dome (the old "many beams"); then for every
+//            attack-position monster of the attacking side, nearest to the struck point first, a beam
+//            arcs from the struck point to the monster's core in 120 ms (5 px: mag3 / mag4 / white core,
+//            a hard white head; fanned apart like the old ones); its contact is that monster's own death
+//            (the v3 death kit: the v3 art's death pose, the old art's reaction + material break), a 1-px
+//            white / magenta rim on its silhouette, a 2-frame white star; the beam swells to 7 px for 2
+//            frames, then thins out by steps (EF-13); a short floor strip of light. The next beam leaves
+//            220 ms after the previous contact (later when two graveyard landings would come closer than
+//            150 ms); each departure sends a small ripple over the dome. mirrorBeam, one step up per victim
+//   last+120 BREAK — `break`: the dome breaks out from the struck point (340 ms, as the old one): every
+//            cell into 2–3 whole-pixel shards of its seams that fall to the floor under them, rest and
+//            fade by palette steps; the floor ring steps out, the light pool goes out. mirrorBreak
 //   then     EXIT — `exit`: the trap card lies down on its tile and leaves for the graveyard from there
 //            (card continuity), landing ≥ 150 ms after the last victim's card; the camera relaxes
 //            (ctx.unfocus(320), as today).
-// Nothing here adds a full-screen flash, a dim, a whole-sprite tint or a camera move (A5 §0 K1–K2).
-// Under REDUCED_MOTION the particles are halved (fxCount); there is no local tremble here.
+// Depths: the far shell is drawn behind the defender row's units (as the old one), the near glass in
+// front of them but behind anything standing in front of the dome (the old near glass covered every unit).
+// Under REDUCED_MOTION the particles and shards are halved (fxCount) and the dome does not tremble.
 
 import type Phaser from 'phaser';
+import type { PlayerId } from '../../engine/types';
 import { ATTRIBUTE_RAMP, PAL, RAMPS } from '../../art/palette';
+import type { PixelCanvas } from '../../art/pixel';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
-import { BOARD_MID_COL, DEPTH, type XY, isoToScreen, monsterRow, unitDepth, zoneXY } from '../../view/layout';
+import { BOARD_MID_COL, BOARD_OX, BOARD_OY, DEPTH, LANE_COLS, TILE_H, TILE_W, type XY, isoToScreen, monsterRow, screenToIso, zoneXY } from '../../view/layout';
 import { lightBeam, lightFlash, lightPool, type LightHandle } from '../../view/light';
+import { REDUCED_MOTION } from '../../view/v3/motion';
 import { wait } from '../../vfx/core';
 import { Sparks as PxSparks, stopTime } from '../../vfx/combat';
-import { Raster, onFrame, run } from '../../vfx/setpieces';
+import { E, Raster, onFrame, qbez, run } from '../../vfx/setpieces';
 import { fx, type CinematicContext } from '../api';
 import { TK, type EvOf, all, lerpXY, live, norm, other, sub, takeAttack } from '../battle/_kit';
 import { canHandOver, strikeStartFrame } from '../_v3/clash';
 import { cardLeaves, flightMs } from '../_v3/card';
-import { fxCount, fxRng, honeycombPanel, rimFlash, silhouetteOf, type HoneyPanel } from '../_v3/spellfx';
+import { fxCount, fxRng, rimFlash } from '../_v3/spellfx';
 import { atFrame, panAt, play as playV3, soundsOf, takeCharge } from '../_v3/sound';
 import type { SfxHandle } from '../../audio/sfx';
 import { isRanged } from './chains_of_light';
@@ -58,19 +74,20 @@ type ActCtx = CinematicContext<EvOf<'activate'>>;
 
 // ================================================================ timing (ms, scene clock, t = 0 at activate)
 
-/** The panel starts to build: the trap card is standing (trapOpeningV3: standUp 220 ms + its 40 ms hit-stop). */
-export const PANEL_AT = 250;
-/** The build: 4 steps (middle → out), this far apart. */
-const BUILD_GAP = 50;
-/** The earliest contact: the panel is complete (4 steps + the last faces' frame). */
-export const CATCH_AT = PANEL_AT + 4 * BUILD_GAP + 34;
+/** The dome starts to build: the trap card is standing (trapOpeningV3: standUp 220 ms + its 40 ms hit-stop). */
+export const DOME_AT = 250;
+/** The build: the floor ring, then the cells from the floor up (the old dome's 380 ms). */
+export const BUILD_MS = 380;
+/** The earliest contact: the dome is complete (every cell shown and settled). */
+export const CATCH_AT = DOME_AT + BUILD_MS + 17;
+/** Kept for the old name (the v3 panel of A-4 started here). */
+export const PANEL_AT = DOME_AT;
 /**
  * The attacker may let go from the trap's first frame on: its attack was declared and is already
- * coming (the slow wind-ups of the v3 art — Kristal Ejder's 460 ms from its charge pose to the
- * breath — still meet the panel only after it is complete).
+ * coming (the slow wind-ups of the v3 art still meet the dome only after it is complete).
  */
 const LAUNCH_MIN = 0;
-/** A ranged strike's bolt: muzzle → panel (4 frames). */
+/** A ranged strike's bolt: muzzle → shell (4 frames). */
 const PROJ_MS = 66;
 /** A melee lunge never takes less than this (whole-pixel steps you can read). */
 const LUNGE_MIN = 160;
@@ -78,13 +95,19 @@ const LUNGE_MIN = 160;
 const CATCH_STOP = 60;
 /** The melee body thrown back home after the catch. */
 const BOUNCE_MS = 150;
-/** After the hit-stop the first reflection leaves at once (the frame after the stop). */
-const FIRST_BEAM_AFTER = 0;
+/** The ripple of lit seams over the dome after the catch (the old dome's 190 ms). */
+export const RIPPLE_MS = 190;
+/** The charge (seams heat up, the light gathers at the struck point): starts this long after the hit-stop … */
+export const CHARGE_AT = 60;
+/** … and lasts this long; the first reflection leaves when it is full. */
+export const CHARGE_MS = 150;
 /** A reflection: the head's travel, and the gap from one contact to the next beam (A5 §3.3). */
 export const BEAM_MS = 120;
 export const BEAM_GAP = 220;
-/** The panel breaks this long after the last contact. */
+/** The dome breaks this long after the last contact. */
 const BREAK_AFTER = 120;
+/** The break-out of the cells (the old dome's 340 ms). */
+export const SHATTER_MS = 340;
 /** Two graveyard landings are at least this far apart (A5 §3.0 EF-12). */
 export const LAND_GAP = 150;
 /**
@@ -94,27 +117,17 @@ export const LAND_GAP = 150;
  * times decide the trap card's own exit.
  */
 const DEATH_EST = { pose: 1220, legacy: 520 } as const;
+/**
+ * Where the attack meets the shell: high on the dome (the old streak's 0.72 rad), on the side facing the
+ * attacker — the reflections then fan down from it to every victim, over the units in front.
+ */
+const STRUCK_EL = 0.72;
+/** A melee body's step toward the dome before its blow streaks off (the old lunge: 8 px). */
+const MELEE_STEP = 10;
 
-// ================================================================ placement
+// ================================================================ pure helpers (tested)
 
-/** The panel's place in the lane, from the attacker toward the defender: the defender's third. */
-const LANE_T = 0.68;
-/** A direct attack: nearer the defending duelist ("düellocunun önünde"). */
-const LANE_T_DIRECT = 0.74;
-/** Height of the panel's centre over the floor: its foot floats ≈ 6 px above it. */
-const PANEL_LIFT = 18;
-
-/** The cell a strike from `from` meets: the attacker's side of the middle row, or the top / bottom row by height. */
-export function struckCell(panelAt: XY, from: XY): number {
-  const dx = from.x - panelAt.x;
-  const dy = from.y - panelAt.y;
-  const side = Math.abs(dx) < 4 ? 0 : dx < 0 ? -1 : 1;
-  if (dy < -7) return side > 0 ? 1 : 0;
-  if (dy > 7) return side > 0 ? 6 : 5;
-  return side === 0 ? 3 : side < 0 ? 2 : 4;
-}
-
-/** Victims in reflection order: nearest to the struck cell first (A5 §3.3); ties keep the event order. */
+/** Victims in reflection order: nearest to the struck point first (A5 §3.3); ties keep the event order. */
 export function reflectionOrder(cell: XY, cores: readonly XY[]): number[] {
   return cores
     .map((p, i) => ({ i, d: Math.hypot(p.x - cell.x, p.y - cell.y) }))
@@ -146,6 +159,692 @@ export function beamSchedule(deathMs: readonly number[], o: { beamMs?: number; g
     lands.push(at + beamMs + d);
   });
   return out;
+}
+
+// ================================================================ the dome: shape and pixel field (pure)
+
+const HW = TILE_W / 2;
+const HH = TILE_H / 2;
+const SQ3 = Math.sqrt(3);
+/** The old dome's hex size in lattice units (./_mirror.ts HEX). */
+const HEX = 0.13;
+
+/** The old dome's ellipsoid (./_mirror.ts mirrorDomeTB, unchanged): over the defender's whole monster row. */
+export interface DomeShape {
+  /** Grid centre (the board's middle column, the defender's monster row) and the half axes (grid units / px). */
+  a0: number;
+  b0: number;
+  ra: number;
+  rb: number;
+  rz: number;
+  /** The hex lattice's side stretch (a wider v2 dome keeps its cells about a tile-scale wide). */
+  huK: number;
+  /** Screen centre of the floor ellipse. */
+  c: XY;
+  /** The old dome's raster box (x0 / y0 inclusive, x1 / y1 exclusive). */
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+export function domeShape(side: PlayerId): DomeShape {
+  const a0 = BOARD_MID_COL;
+  const b0 = monsterRow(side);
+  // spanning the outer lanes (v1 cols 1–3 of 5, v2 cols 1–5 of 7) with 0.78 tiles to spare
+  const ra = (LANE_COLS[LANE_COLS.length - 1] - LANE_COLS[0]) / 2 + 0.78;
+  const rb = 1.02;
+  const rz = 84 * TK;
+  const c = isoToScreen(a0, b0);
+  return {
+    a0,
+    b0,
+    ra,
+    rb,
+    rz,
+    huK: ra / 1.78,
+    c,
+    x0: Math.floor(c.x - (ra + rb) * HW) - 3,
+    x1: Math.ceil(c.x + (ra + rb) * HW) + 3,
+    y0: Math.floor(c.y - (ra + rb) * HH - rz) - 3,
+    y1: Math.ceil(c.y + (ra + rb) * HH) + 3,
+  };
+}
+
+/** The hex cell of a lattice point (./_mirror.ts hexAt): its axial coordinates and centre. */
+function hexAt(u: number, v: number): { rx: number; rz: number; cu: number; cv: number } {
+  const q = ((SQ3 / 3) * u - (1 / 3) * v) / HEX;
+  const r = ((2 / 3) * v) / HEX;
+  let rx = Math.round(q);
+  let rz = Math.round(r);
+  const ry = Math.round(-q - r);
+  const dx = Math.abs(rx - q);
+  const dy = Math.abs(ry - (-q - r));
+  const dz = Math.abs(rz - r);
+  if (dx > dy && dx > dz) rx = -ry - rz;
+  else if (dy <= dz) rz = -rx - ry;
+  return { rx, rz, cu: HEX * SQ3 * (rx + rz / 2), cv: HEX * 1.5 * rz };
+}
+
+/** A deterministic 0…1 hash (./_mirror.ts). */
+function hash01(n: number): number {
+  const x = Math.sin(n * 12.9898) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+/** What a dome pixel is. */
+export const DOME_PX = { none: 0, glass: 1, seam: 2, rim: 3, spec: 4, spec2: 5, foot: 6 } as const;
+
+export interface DomeCell {
+  /** Lattice centre (u · huK, v: the side axis and the height). */
+  cu: number;
+  cv: number;
+  /** 0…1: when it materializes in the build (the floor first, a little random). */
+  born: number;
+  /** 0…1 random: its place in the break (with its distance from the struck point). */
+  brk: number;
+  /** On the near (front) glass, or the far one. */
+  near: boolean;
+  /** Its seam pixels (world) and the floor y under each (where a shard of it lands). */
+  seams: { x: number; y: number; f: number }[];
+}
+
+export interface DomeShell {
+  /** DOME_PX per pixel (row-major over the box). */
+  kind: Uint8Array;
+  /** The pixel's cell (index into DomeField.cells), −1 = no glass here. */
+  cell: Int32Array;
+  /** Grazing level 0…3 (3 = the glass seen edge-on, along the outline). */
+  fres: Uint8Array;
+}
+
+export interface DomeField {
+  shape: DomeShape;
+  w: number;
+  h: number;
+  near: DomeShell;
+  far: DomeShell;
+  cells: DomeCell[];
+}
+
+/**
+ * Every pixel of the old dome's two shells (the same ray march as ./_mirror.ts: a pixel's floor point
+ * slides 1/TILE_H grid units per px of height), classified once: the 1-px seams between hex cells (a
+ * pixel whose right or lower neighbour lies in another cell), the 1-px outline of the near glass (and the
+ * far glass's foot on the floor), the specular streak (the old one, light from the screen's upper left),
+ * and the clear glass with its grazing level. The animation only picks tones per cell afterwards.
+ */
+export function domeField(shape: DomeShape): DomeField {
+  const { a0, b0, ra, rb, rz, huK, x0, y0, x1, y1 } = shape;
+  const w = x1 - x0;
+  const h = y1 - y0;
+  const n = w * h;
+  const k = 1 / TILE_H;
+  const qa = (k * k) / (ra * ra) + (k * k) / (rb * rb) + 1 / (rz * rz);
+  const keyOf = [new Int32Array(n).fill(-1), new Int32Array(n).fill(-1)];
+  const thick = new Float32Array(n);
+  const U = [new Float32Array(n), new Float32Array(n)];
+  const V = [new Float32Array(n), new Float32Array(n)];
+  const Wr = [new Float32Array(n), new Float32Array(n)];
+  const Z = [new Float32Array(n), new Float32Array(n)];
+  const cellOf = new Map<number, number>();
+  const cells: DomeCell[] = [];
+  for (let j = 0; j < h; j++) {
+    const q0 = (y0 + j - BOARD_OY) / HH;
+    for (let i = 0; i < w; i++) {
+      const P = (x0 + i + 0.5 - BOARD_OX) / HW;
+      const A0 = (P + q0) / 2 - a0;
+      const B0 = (q0 - P) / 2 - b0;
+      const qb = 2 * k * (A0 / (ra * ra) + B0 / (rb * rb));
+      const qc = (A0 * A0) / (ra * ra) + (B0 * B0) / (rb * rb) - 1;
+      const disc = qb * qb - 4 * qa * qc;
+      if (disc < 0) continue;
+      const sq = Math.sqrt(disc);
+      const idx = j * w + i;
+      thick[idx] = sq / (2 * qa) / rz;
+      for (let pass = 0; pass < 2; pass++) {
+        // pass 0: the near shell (the larger height on this pixel's view ray), 1: the far one
+        const z = pass === 0 ? (-qb + sq) / (2 * qa) : (-qb - sq) / (2 * qa);
+        if (z < 0) continue;
+        const u = (A0 + z * k) / ra;
+        const wv = (B0 + z * k) / rb;
+        const v = z / rz;
+        const hx = hexAt(u * huK, v);
+        const key = ((hx.rx + 512) * 1024 + (hx.rz + 512)) * 2 + pass;
+        let c = cellOf.get(key);
+        if (c === undefined) {
+          c = cells.length;
+          cellOf.set(key, c);
+          const id = hx.rx * 131 + hx.rz * 17;
+          cells.push({ cu: hx.cu, cv: hx.cv, born: Math.max(0, Math.min(1, hx.cv * 0.8 + hash01(id) * 0.2)), brk: hash01(id + 7 + pass * 3), near: pass === 0, seams: [] });
+        }
+        keyOf[pass][idx] = c;
+        U[pass][idx] = u;
+        V[pass][idx] = v;
+        Wr[pass][idx] = wv;
+        Z[pass][idx] = z;
+      }
+    }
+  }
+  const shell = (): DomeShell => ({ kind: new Uint8Array(n), cell: new Int32Array(n).fill(-1), fres: new Uint8Array(n) });
+  const near = shell();
+  const far = shell();
+  for (let pass = 0; pass < 2; pass++) {
+    const S = pass === 0 ? near : far;
+    const K = keyOf[pass];
+    const at = (i: number, j: number): number => (i < 0 || j < 0 || i >= w || j >= h ? -1 : K[j * w + i]);
+    for (let j = 0; j < h; j++)
+      for (let i = 0; i < w; i++) {
+        const idx = j * w + i;
+        const c = K[idx];
+        if (c < 0) continue;
+        S.cell[idx] = c;
+        const fr = 1 - Math.min(1, thick[idx] * 2.2);
+        S.fres[idx] = fr >= 0.85 ? 3 : fr >= 0.7 ? 2 : fr >= 0.45 ? 1 : 0;
+        const r = at(i + 1, j);
+        const d = at(i, j + 1);
+        const edge = r < 0 || d < 0 || at(i - 1, j) < 0 || at(i, j - 1) < 0;
+        let kind: number = DOME_PX.glass;
+        if (edge) kind = pass === 0 ? DOME_PX.rim : DOME_PX.foot;
+        else if (r !== c || d !== c) kind = DOME_PX.seam;
+        const u = U[pass][idx];
+        const v = V[pass][idx];
+        if (pass === 0 && kind !== DOME_PX.rim && Wr[pass][idx] > 0) {
+          // the old specular streaks on the near glass (light from the upper left)
+          if (Math.abs(u + 0.44 - (v - 0.62) * 0.35) < 0.025 && v > 0.42 && v < 0.86) kind = DOME_PX.spec;
+          else if (Math.abs(u + 0.36 - (v - 0.62) * 0.35) < 0.012 && v > 0.55 && v < 0.75) kind = DOME_PX.spec2;
+        }
+        S.kind[idx] = kind;
+        if (kind === DOME_PX.seam || kind === DOME_PX.foot) cells[c].seams.push({ x: x0 + i, y: y0 + j, f: Math.round(y0 + j + Z[pass][idx]) });
+      }
+  }
+  return { shape, w, h, near, far, cells };
+}
+
+/** One frame's look of the dome, per cell. */
+export interface DomeLook {
+  /** 0 not yet, 1 shown, 2 broken. */
+  vis: Uint8Array;
+  /** 0 its own tone, 1 one step up, 2 white seams, 3 the whole cell white (seams + glass). */
+  heat: Uint8Array;
+  /** Materializing: 2 = white seams + a glass flash, 1 = mag4 seams, 0 settled. */
+  fresh: Uint8Array;
+}
+
+export function domeLook(cells: number, shown = true): DomeLook {
+  return { vis: new Uint8Array(cells).fill(shown ? 1 : 0), heat: new Uint8Array(cells), fresh: new Uint8Array(cells) };
+}
+
+/**
+ * Paint one shell of the dome into `p` (its pixel (0, 0) = the box's top left): palette tones only, no
+ * alpha; the glass is lit in 2×2 Bayer quarter steps (REHBER EF-6), never more than half its pixels.
+ * Near glass: outline mag4, seams mag3 at grazing angles / mag2 where you look straight through, the old
+ * dome's pink glass tint (mag2 on a quarter of the pixels where the glass is seen edge-on, half of them
+ * along the outline, mag1 further in, clear in the middle), the white streak. Heat lights the seams by
+ * steps (mag4, white) and the glass with them (a quarter mag3 / mag4: the old dome's glow on the catch
+ * and the charge). Far glass: seams mag1 / mag2, its foot on the floor mag2, a quarter mag1 tint edge-on.
+ */
+export function paintDomeShell(p: PixelCanvas, f: DomeField, which: 'near' | 'far', L: DomeLook): void {
+  const S = which === 'near' ? f.near : f.far;
+  const { w, h } = f;
+  const { x0, y0 } = f.shape;
+  const near = which === 'near';
+  for (let j = 0; j < h; j++)
+    for (let i = 0; i < w; i++) {
+      const idx = j * w + i;
+      const c = S.cell[idx];
+      if (c < 0 || L.vis[c] !== 1) continue;
+      const kind = S.kind[idx];
+      const heat = L.heat[c];
+      const fresh = L.fresh[c];
+      const fr = S.fres[idx];
+      // the 2×2 Bayer quarter pixels: b0 = the first quarter, b1 = its diagonal partner (b0 + b1 = the checker)
+      const ex = ((x0 + i) & 1) === 0;
+      const ey = ((y0 + j) & 1) === 0;
+      const b0 = ex && ey;
+      const b1 = !ex && !ey;
+      let col = -1;
+      if (near) {
+        if (kind === DOME_PX.rim) col = heat >= 2 || fresh >= 2 ? PAL.white : PAL.mag4;
+        else if (kind === DOME_PX.seam) col = heat >= 2 || fresh >= 2 ? PAL.white : heat === 1 || fresh === 1 ? PAL.mag4 : fr >= 2 ? PAL.mag3 : PAL.mag2;
+        else if (kind === DOME_PX.spec) col = PAL.white;
+        else if (kind === DOME_PX.spec2) col = heat >= 2 ? PAL.white : PAL.mag4;
+        // the struck panel flares as a white checker (every other pixel): still glass, what is behind shows through
+        else if (heat >= 3) col = b0 || b1 ? PAL.white : -1;
+        else if (fresh >= 2) col = b0 || b1 ? PAL.mag3 : -1;
+        // the glass glows with its seams on the catch / ripple / charge (a quarter of its pixels)
+        else if (b0 && heat >= 1) col = heat >= 2 ? PAL.mag4 : PAL.mag3;
+        // the pink glass tint, brighter where the glass is seen edge-on
+        else if (b0) col = fr >= 2 ? PAL.mag2 : fr === 1 ? PAL.mag1 : -1;
+        else if (b1 && fr >= 3) col = PAL.mag2;
+      } else {
+        if (kind === DOME_PX.seam || kind === DOME_PX.foot) col = heat >= 2 || fresh >= 2 ? PAL.mag4 : heat === 1 || fresh === 1 ? PAL.mag3 : kind === DOME_PX.foot || fr >= 2 ? PAL.mag2 : PAL.mag1;
+        else if (heat >= 3) col = b0 || b1 ? PAL.mag4 : -1;
+        else if (fresh >= 2) col = b0 || b1 ? PAL.mag1 : -1;
+        else if (b0 && heat >= 2) col = PAL.mag2;
+        else if (b0 && fr >= 2) col = PAL.mag1;
+      }
+      if (col >= 0) p.set(i, j, col);
+    }
+}
+
+/** The dome's floor ellipse (its foot on the floor), whole pixels, front first (the old base ring). */
+export function domeRing(shape: DomeShape, scale = 1): XY[] {
+  const { a0, b0, ra, rb } = shape;
+  const out: XY[] = [];
+  const seen = new Set<number>();
+  const n = 720;
+  // the front: the ellipse's lowest point on screen (screen y grows with col + row)
+  const front = Math.atan2(rb, ra);
+  for (let i = 0; i < n; i++) {
+    // from the front round both sides to the back
+    const k = i / n;
+    const side = i % 2 === 0 ? 1 : -1;
+    const t = front + side * k * Math.PI;
+    const p = isoToScreen(a0 + Math.cos(t) * ra * scale, b0 + Math.sin(t) * rb * scale);
+    const x = Math.round(p.x);
+    const y = Math.round(p.y);
+    const key = y * 4096 + x;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ x, y });
+  }
+  return out;
+}
+
+// ================================================================ the dome at runtime
+
+/** Where the attack meets the shell. */
+interface DomeHit {
+  x: number;
+  y: number;
+  /** Lattice point (u · huK, v). */
+  hu: number;
+  hv: number;
+  /** Floor y under it. */
+  floorY: number;
+  /** On the near glass (facing the viewer) or the far one. */
+  near: boolean;
+  /** Its cell (−1: none found). */
+  cell: number;
+}
+
+interface Shard {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  /** The floor y it lands on. */
+  f: number;
+  /** Its tone: an index into SHARD_RAMP. */
+  ci: number;
+  shape: number;
+  /** ms since it landed (−1 in the air). */
+  landed: number;
+}
+
+/** Shard tones, dark → light (a landed shard steps down one tone every 60 ms after a 100 ms rest). */
+const SHARD_RAMP = [PAL.mag1, PAL.mag2, PAL.mag3, PAL.mag4, PAL.white] as const;
+const SHARD_SHAPES: readonly (readonly [number, number][])[] = [[[0, 0]], [[0, 0], [1, 0]], [[0, 0], [0, 1]], [[0, 0], [1, 0], [0, 1]]];
+
+/** Whole-pixel shards that fall to their own floor y, rest, and fade down SHARD_RAMP (no alpha). */
+class ShardLayer {
+  private readonly r: Raster;
+  private readonly list: Shard[] = [];
+  private dead = false;
+  private stopFn: () => void;
+  constructor(scene: Phaser.Scene, box: { x: number; y: number; w: number; h: number }, depth: number) {
+    this.r = new Raster(scene, box.x, box.y, box.w, box.h, depth);
+    this.stopFn = onFrame(scene, (dt) => this.tick(dt));
+  }
+  add(s: Shard): void {
+    if (!this.dead) this.list.push(s);
+  }
+  get size(): number {
+    return this.list.length;
+  }
+  private tick(dt: number): boolean {
+    if (this.dead) return false;
+    const s = dt / 1000;
+    this.r.begin();
+    for (let i = this.list.length - 1; i >= 0; i--) {
+      const p = this.list[i];
+      let ci = p.ci;
+      if (p.landed < 0) {
+        p.vy += 420 * s;
+        p.x += p.vx * s;
+        p.y += p.vy * s;
+        if (p.y >= p.f) {
+          p.y = p.f;
+          p.landed = 0;
+        }
+      } else {
+        p.landed += dt;
+        ci -= Math.floor(Math.max(0, p.landed - 100) / 60);
+        if (ci < 0) {
+          this.list.splice(i, 1);
+          continue;
+        }
+      }
+      const c = SHARD_RAMP[ci];
+      for (const [ox, oy] of SHARD_SHAPES[p.shape]) this.r.px(Math.round(p.x) + ox, Math.round(p.y) + oy, c);
+    }
+    this.r.end();
+    return true;
+  }
+  destroy(): void {
+    if (this.dead) return;
+    this.dead = true;
+    this.stopFn();
+    this.r.destroy();
+  }
+}
+
+/**
+ * The dome on the board: the field painted on three rasters (far glass behind the defender row's units,
+ * near glass in front of them, the floor ring on the floor), animated per cell on the scene clock.
+ */
+class DomeV3 {
+  readonly shape: DomeShape;
+  readonly field: DomeField;
+  private readonly scene: Phaser.Scene;
+  private readonly nearR: Raster;
+  private readonly farR: Raster;
+  private readonly baseR: Raster;
+  private readonly look: DomeLook;
+  private readonly appear: Int32Array;
+  private readonly ring: XY[];
+  private readonly ringIn: XY[];
+  private readonly nearShards: ShardLayer;
+  private readonly farShards: ShardLayer;
+  private readonly sparks: PxSparks;
+  private readonly rnd: () => number;
+  private frame = 0;
+  private el = 0;
+  private buildAt = -1;
+  private ringK = 0;
+  private ringFade = 0;
+  private ripple: { at: number; hu: number; hv: number; ms: number; reach: number } | null = null;
+  private struck: { cell: number; at: number } | null = null;
+  private charge = 0;
+  private flashAt = -1;
+  private flashHit: DomeHit | null = null;
+  private brk: { at: number; hu: number; hv: number } | null = null;
+  private trembleFrom = -1;
+  private dead = false;
+  private readonly stopFn: () => void;
+
+  constructor(scene: Phaser.Scene, side: PlayerId, seed: number) {
+    this.scene = scene;
+    this.shape = domeShape(side);
+    this.field = domeField(this.shape);
+    const { x0, y0, c } = this.shape;
+    const { w, h } = this.field;
+    this.rnd = fxRng(seed);
+    // the far glass behind the row's units (the old depth); the near glass in front of the row but
+    // behind anything standing in front of the dome (the attacker's row)
+    this.farR = new Raster(scene, x0, y0, w, h, DEPTH.UNIT + c.y - HH - 1);
+    this.nearR = new Raster(scene, x0, y0, w, h, DEPTH.UNIT + c.y + HH + 0.5);
+    this.baseR = new Raster(scene, x0, y0, w, h + 4, DEPTH.SHADOW - 1);
+    this.look = domeLook(this.field.cells.length, false);
+    this.appear = new Int32Array(this.field.cells.length).fill(-1);
+    this.ring = domeRing(this.shape);
+    this.ringIn = domeRing(this.shape, 0.93);
+    const shardBox = { x: x0 - 40, y: y0 - 20, w: w + 80, h: h + 60 };
+    this.farShards = new ShardLayer(scene, shardBox, DEPTH.UNIT + c.y - HH - 0.5);
+    this.nearShards = new ShardLayer(scene, shardBox, DEPTH.UNIT + c.y + HH + 0.6);
+    this.sparks = new PxSparks(scene, DEPTH.FX + 6);
+    this.stopFn = onFrame(scene, (dt) => this.tick(dt));
+  }
+
+  /** The point of the shell facing `from` (a floor point) at elevation `el` (0 floor … π/2 crown). */
+  point(from: XY, el: number): DomeHit {
+    const { a0, b0, ra, rb, rz, huK, x0, y0 } = this.shape;
+    const g = screenToIso(from.x, from.y);
+    let du = (g.col - a0) / ra;
+    let dw = (g.row - b0) / rb;
+    const l = Math.hypot(du, dw) || 1;
+    du /= l;
+    dw /= l;
+    const u = du * Math.cos(el);
+    const w = dw * Math.cos(el);
+    const v = Math.sin(el);
+    const scr = isoToScreen(a0 + u * ra, b0 + w * rb);
+    const x = Math.round(scr.x);
+    const y = Math.round(scr.y - v * rz);
+    // it faces the viewer when its normal leans toward the view ray (+col, +row, up)
+    const near = (u / ra + w / rb) / TILE_H + v / rz > 0;
+    const S = near ? this.field.near : this.field.far;
+    let cell = -1;
+    for (let r = 0; r < 4 && cell < 0; r++)
+      for (let dy = -r; dy <= r && cell < 0; dy++)
+        for (let dx = -r; dx <= r && cell < 0; dx++) {
+          const i = x + dx - x0;
+          const j = y + dy - y0;
+          if (i < 0 || j < 0 || i >= this.field.w || j >= this.field.h) continue;
+          cell = S.cell[j * this.field.w + i];
+        }
+    return { x, y, hu: u * huK, hv: v, floorY: Math.round(scr.y), near, cell };
+  }
+
+  /** Materialize (BUILD_MS): the floor ring, then the cells from the floor up. Resolves when every cell is shown. */
+  build(): Promise<void> {
+    this.buildAt = this.el;
+    return new Promise((resolve) => {
+      onFrame(this.scene, () => {
+        if (this.dead || this.look.vis.every((v) => v !== 0)) {
+          resolve();
+          return false;
+        }
+        return true;
+      });
+    });
+  }
+
+  /** The catch: the struck cell a white checker, a ripple of lit seams over the dome, a 1-px local tremble. */
+  strike(hit: DomeHit): void {
+    if (hit.cell >= 0) this.struck = { cell: hit.cell, at: this.frame };
+    this.ripple = { at: this.el, hu: hit.hu, hv: hit.hv, ms: RIPPLE_MS, reach: 2.2 };
+    if (!REDUCED_MOTION) this.trembleFrom = this.frame;
+  }
+
+  /** A small ripple from the struck point (each reflection leaving). */
+  pulse(hit: DomeHit): void {
+    this.ripple = { at: this.el, hu: hit.hu, hv: hit.hv, ms: 150, reach: 1.2 };
+    if (hit.cell >= 0) this.struck = { cell: hit.cell, at: this.frame - 2 };
+  }
+
+  /** 0…1: the seams heat up cell by cell. */
+  setCharge(k: number): void {
+    this.charge = Math.max(0, Math.min(1, k));
+  }
+
+  /**
+   * The first reflection leaving: every seam lights up for a frame — white round the struck point, mag4
+   * further out (EF-4: never a white sheet) — and mag4 the next frame.
+   */
+  flash(hit: DomeHit): void {
+    this.flashAt = this.frame;
+    this.flashHit = hit;
+  }
+
+  /**
+   * Break: the cells break out from the struck point over SHATTER_MS, each into 2–3 whole-pixel shards of
+   * its seams that fall to the floor under them; the floor ring steps out. Resolves when the cells are gone.
+   */
+  shatter(hit: DomeHit): Promise<void> {
+    this.brk = { at: this.el, hu: hit.hu, hv: hit.hv };
+    const { c } = this.shape;
+    const n = fxCount(28);
+    for (let i = 0; i < n; i++) {
+      const a = this.rnd() * Math.PI * 2;
+      const sp = 40 + this.rnd() * 90;
+      const p = { x: Math.round(c.x + (this.rnd() - 0.5) * 120 * TK), y: Math.round(c.y - this.shape.rz * (0.3 + this.rnd() * 0.6)) };
+      this.sparks.add({ x: p.x, y: p.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.6 - 30, ay: 260, drag: 1.5, life: 300 + Math.floor(this.rnd() * 300), delay: Math.floor(this.rnd() * SHATTER_MS * 0.7), colors: [PAL.white, PAL.mag4, PAL.mag3, PAL.mag2], shape: i % 3 === 0 ? 'plus' : 'px', fadeAt: 1 });
+    }
+    return new Promise((resolve) => {
+      const stop = onFrame(this.scene, () => {
+        if (this.dead || this.look.vis.every((v) => v === 2)) {
+          resolve();
+          stop();
+          return false;
+        }
+        return true;
+      });
+    });
+  }
+
+  private emitShards(ci: number): void {
+    const cell = this.field.cells[ci];
+    const layer = cell.near ? this.nearShards : this.farShards;
+    const seams = cell.seams;
+    if (!seams.length) return;
+    const k = fxCount(cell.near ? 2 + Math.floor(this.rnd() * 2) : 1 + Math.floor(this.rnd() * 2));
+    const { c } = this.shape;
+    // its brightest shard keeps the cell's tone at the moment it breaks (4 white, 3 mag4, 2 mag3)
+    const top = this.look.heat[ci] >= 2 ? 4 : cell.near ? 3 : 2;
+    for (let j = 0; j < k; j++) {
+      const q = seams[Math.floor(this.rnd() * seams.length)];
+      const dx = q.x - c.x;
+      const l = Math.abs(dx) || 1;
+      layer.add({
+        x: q.x,
+        y: q.y,
+        vx: (dx / l) * (14 + this.rnd() * 30) + (this.rnd() - 0.5) * 16,
+        vy: -(16 + this.rnd() * 46),
+        f: Math.max(q.y, q.f) + Math.floor(this.rnd() * 3),
+        ci: j === 0 ? top : 2,
+        shape: Math.floor(this.rnd() * SHARD_SHAPES.length),
+        landed: -1,
+      });
+    }
+  }
+
+  private tick(dt: number): boolean {
+    if (this.dead) return false;
+    if (dt > 0) this.frame++;
+    this.el += dt;
+    const F = this.field;
+    const L = this.look;
+    const cells = F.cells;
+    // build: the ring first (the first 30 %), the cells from the floor up (born ≤ progress)
+    if (this.buildAt >= 0) {
+      const t = Math.min(1, (this.el - this.buildAt) / BUILD_MS);
+      this.ringK = Math.min(1, t / 0.3);
+      const prog = (t - 0.08) / 0.8;
+      for (let i = 0; i < cells.length; i++)
+        if (this.appear[i] < 0 && cells[i].born <= prog) {
+          this.appear[i] = this.frame;
+          L.vis[i] = 1;
+        }
+    }
+    // the break: cells go from the struck point out (and in a random order), each into shards
+    if (this.brk) {
+      const tb = ((this.el - this.brk.at) / SHATTER_MS) * 1.15;
+      for (let i = 0; i < cells.length; i++) {
+        if (L.vis[i] === 2) continue;
+        const d = Math.hypot(cells[i].cu - this.brk.hu, cells[i].cv - this.brk.hv);
+        if (cells[i].brk * 0.7 + d * 0.3 < tb) {
+          if (L.vis[i] === 1) this.emitShards(i);
+          L.vis[i] = 2;
+        }
+      }
+      this.ringFade = Math.min(4, Math.floor(Math.max(0, this.el - this.brk.at) / 70));
+    }
+    // per-cell tones
+    const rip = this.ripple;
+    const rt = rip ? (this.el - rip.at) / rip.ms : 2;
+    if (rip && rt >= 1) this.ripple = null;
+    const sheenT = this.buildAt >= 0 ? ((this.el - this.buildAt) / 1500) % 1 : -1;
+    const flashF = this.flashAt >= 0 ? this.frame - this.flashAt : 99;
+    for (let i = 0; i < cells.length; i++) {
+      const cl = cells[i];
+      const age = this.appear[i] < 0 ? -1 : this.frame - this.appear[i];
+      L.fresh[i] = age < 0 ? 0 : age < 2 ? 2 : age < 4 ? 1 : 0;
+      let heat = 0;
+      if (rip && rt >= 0 && rt < 1) {
+        const d = Math.hypot(cl.cu - rip.hu, cl.cv - rip.hv);
+        const r = Math.max(0, 1 - Math.abs(d - rt * rip.reach) / 0.25) * (1 - rt);
+        heat = r > 0.55 ? 2 : r > 0.2 ? 1 : 0;
+      }
+      if (this.charge > 0) {
+        const pulse = this.charge * (0.55 + 0.45 * Math.sin(this.el * 0.03 + cl.cu * 9 + cl.cv * 5));
+        heat = Math.max(heat, pulse > 0.75 ? 2 : pulse > 0.35 ? 1 : 0);
+      }
+      if (flashF === 0) heat = Math.max(heat, this.flashHit && Math.hypot(cl.cu - this.flashHit.hu, cl.cv - this.flashHit.hv) < 0.9 ? 2 : 1);
+      else if (flashF === 1) heat = Math.max(heat, 1);
+      if (heat === 0 && sheenT >= 0 && age >= 4) {
+        // a sheen band slides over the glass (living detail): a diagonal of cells one tone up
+        const s = cl.cu * 0.55 - cl.cv * 0.45;
+        if (Math.abs(s - (sheenT * 3.2 - 1.6)) < 0.07) heat = 1;
+      }
+      L.heat[i] = heat;
+    }
+    if (this.struck) {
+      const sf = this.frame - this.struck.at;
+      if (sf < 6) L.heat[this.struck.cell] = sf < 2 ? 3 : sf < 4 ? 2 : Math.max(1, L.heat[this.struck.cell]);
+      else this.struck = null;
+    }
+    // the local tremble after the catch: ±1 px on whole pixels for 4 frames
+    const tf = this.trembleFrom >= 0 ? this.frame - this.trembleFrom : 99;
+    const off = tf < 4 ? [1, 0, -1, 0][tf] : 0;
+    this.nearR.moveTo(this.shape.x0 + off, this.shape.y0);
+    this.farR.moveTo(this.shape.x0 + off, this.shape.y0);
+    this.nearR.begin();
+    paintDomeShell(this.nearR.pc, F, 'near', L);
+    this.nearR.end();
+    this.farR.begin();
+    paintDomeShell(this.farR.pc, F, 'far', L);
+    this.farR.end();
+    this.drawRing();
+    return true;
+  }
+
+  /** The floor ring: drawn round from the front while building; steps out on the break. */
+  private drawRing(): void {
+    const r = this.baseR;
+    r.begin();
+    const tones = [
+      [PAL.mag3, PAL.mag1, PAL.mag1],
+      [PAL.mag2, PAL.mag1, PAL.mag0],
+      [PAL.mag1, PAL.mag0, -1],
+      [PAL.mag0, -1, -1],
+    ];
+    if (this.ringFade < 4 && this.ringK > 0) {
+      const [main, under, inner] = tones[this.ringFade];
+      const nOuter = Math.round(this.ring.length * this.ringK);
+      for (let i = 0; i < nOuter; i++) {
+        const q = this.ring[i];
+        r.px(q.x, q.y, main);
+        if (under >= 0) r.px(q.x, q.y + 1, under);
+      }
+      if (inner >= 0) {
+        const nIn = Math.round(this.ringIn.length * this.ringK);
+        for (let i = 0; i < nIn; i += 2) r.px(this.ringIn[i].x, this.ringIn[i].y, inner);
+      }
+    }
+    r.end();
+  }
+
+  destroy(): void {
+    if (this.dead) return;
+    this.dead = true;
+    this.stopFn();
+    this.nearR.destroy();
+    this.farR.destroy();
+    this.baseR.destroy();
+    this.sparks.release();
+    // shards finish on their own clock; cleaned up once quiet (or on scene shutdown)
+    const layers = [this.nearShards, this.farShards];
+    const quiet = onFrame(this.scene, () => {
+      if (layers.every((l) => l.size === 0)) {
+        layers.forEach((l) => l.destroy());
+        quiet();
+        return false;
+      }
+      return true;
+    });
+  }
 }
 
 // ================================================================ small pieces
@@ -186,92 +885,103 @@ function bres(x0: number, y0: number, x1: number, y1: number, put: (x: number, y
   }
 }
 
-/** A 3-px stroke: body tone on the two neighbours across the line's main axis, core tone on the line. */
-function stroke3(r: Raster, a: XY, b: XY, body: number | null, core: number): void {
-  const flat = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y);
-  if (body !== null)
-    bres(a.x, a.y, b.x, b.y, (x, y) => {
-      if (flat) {
-        r.px(x, y - 1, body);
-        r.px(x, y + 1, body);
-      } else {
-        r.px(x - 1, y, body);
-        r.px(x + 1, y, body);
-      }
+/** A whole-pixel path through points (connected, no duplicates). */
+function pixelPath(pts: readonly XY[]): XY[] {
+  const out: XY[] = [];
+  let last = '';
+  for (let i = 1; i < pts.length; i++)
+    bres(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y, (x, y) => {
+      const k = `${x},${y}`;
+      if (k === last) return;
+      last = k;
+      out.push({ x, y });
     });
-  bres(a.x, a.y, b.x, b.y, (x, y) => r.px(x, y, core));
-}
-
-/** A small hard star (contact / head): a white plus with tone tips. */
-function star(r: Raster, p: XY, arm: number, tip: number): void {
-  const x = Math.round(p.x);
-  const y = Math.round(p.y);
-  for (let k = -arm; k <= arm; k++) {
-    const c = Math.abs(k) === arm ? tip : PAL.white;
-    r.px(x + k, y, c);
-    r.px(x, y + k, c);
-  }
-}
-
-/** Magenta motes rising off the panel's foot while it stands (living detail; whole pixels, palette steps). */
-function panelMotes(scene: Phaser.Scene, foot: XY, w: number, depth: number, seed: number): () => void {
-  const rnd = fxRng(seed);
-  const sp = new PxSparks(scene, depth);
-  let acc = 0;
-  let stopped = false;
-  const every = 70 * (fxCount(2) === 2 ? 1 : 2);
-  const stop = onFrame(scene, (dt) => {
-    if (stopped) return false;
-    acc += dt;
-    if (acc >= every) {
-      acc = 0;
-      sp.add({ x: Math.round(foot.x - w / 2 + rnd() * w), y: Math.round(foot.y), vy: -(18 + rnd() * 14), vx: (rnd() - 0.5) * 6, life: 280 + Math.floor(rnd() * 160), colors: [PAL.mag4, PAL.mag3, PAL.mag2, PAL.mag1], shape: rnd() < 0.2 ? 'plus' : 'px', fadeAt: 1 });
-    }
-    return true;
-  });
-  return () => {
-    if (stopped) return;
-    stopped = true;
-    stop();
-    sp.release();
-  };
+  return out;
 }
 
 /**
- * A ranged strike's bolt from the muzzle into the panel (attribute colours, white core, whole pixels).
- * Resolves on its contact frame.
+ * A stroke along a whole-pixel path: `bands` from the outside in (the last one is the 1-px core), laid
+ * across the path's local direction (vertical offsets on flat runs, horizontal on steep ones).
+ */
+function strokePath(r: Raster, path: readonly XY[], from: number, to: number, bands: readonly number[]): void {
+  const half = bands.length - 1;
+  for (let b = 0; b <= half; b++) {
+    const col = bands[b];
+    const off = half - b;
+    for (let i = Math.max(0, from); i < Math.min(path.length, to); i++) {
+      const q = path[i];
+      const a = path[Math.max(0, i - 2)];
+      const c = path[Math.min(path.length - 1, i + 2)];
+      const flat = Math.abs(c.x - a.x) >= Math.abs(c.y - a.y);
+      if (off === 0) r.px(q.x, q.y, col);
+      else if (flat) {
+        r.px(q.x, q.y - off, col);
+        r.px(q.x, q.y + off, col);
+      } else {
+        r.px(q.x - off, q.y, col);
+        r.px(q.x + off, q.y, col);
+      }
+    }
+  }
+}
+
+/** A hard star (contact / head / gathering light): a white plus with tone tips. */
+function star(r: Raster, p: XY, arm: number, tip: number, core: number = PAL.white): void {
+  const x = Math.round(p.x);
+  const y = Math.round(p.y);
+  for (let k = -arm; k <= arm; k++) {
+    const c = Math.abs(k) === arm ? tip : core;
+    r.px(x + k, y, c);
+    r.px(x, y + k, c);
+  }
+  if (arm >= 3) {
+    // short diagonals for the big ones
+    for (const [dx, dy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]] as const) r.px(x + dx, y + dy, tip);
+  }
+}
+
+/**
+ * A ranged strike's bolt from the muzzle into the shell (attribute colours, white core, whole pixels,
+ * 5 px like the old streak's body). Resolves on its contact frame.
  */
 function strikeBolt(scene: Phaser.Scene, from: XY, to: XY, ramp: readonly number[], depth: number): Promise<void> {
   const a = { x: Math.round(from.x), y: Math.round(from.y) };
   const b = { x: Math.round(to.x), y: Math.round(to.y) };
-  const r = new Raster(scene, Math.min(a.x, b.x) - 6, Math.min(a.y, b.y) - 6, Math.abs(a.x - b.x) + 13, Math.abs(a.y - b.y) + 13, depth);
-  const L = Math.max(1, Math.hypot(b.x - a.x, b.y - a.y));
+  const path = pixelPath([a, b]);
+  const r = new Raster(scene, Math.min(a.x, b.x) - 8, Math.min(a.y, b.y) - 8, Math.abs(a.x - b.x) + 17, Math.abs(a.y - b.y) + 17, depth);
   return run(scene, PROJ_MS, (t) => {
-    const k = Math.min(1, t);
-    const head = { x: Math.round(a.x + (b.x - a.x) * k), y: Math.round(a.y + (b.y - a.y) * k) };
-    // a short tail: ramp[2] → ramp[3] → white core near the head
-    const tail = (d: number) => ({ x: Math.round(head.x - ((b.x - a.x) / L) * d), y: Math.round(head.y - ((b.y - a.y) / L) * d) });
+    const head = Math.max(1, Math.round(Math.min(1, t) * (path.length - 1)) + 1);
     r.begin();
-    const t3 = tail(Math.min(14, L * k));
-    const t2 = tail(Math.min(8, L * k));
-    const t1 = tail(Math.min(4, L * k));
-    stroke3(r, t3, t2, null, ramp[2]);
-    stroke3(r, t2, t1, ramp[2], ramp[3]);
-    stroke3(r, t1, head, ramp[3], PAL.white);
-    star(r, head, 1, ramp[4]);
+    // a tail of 18 px behind the head: ramp[1] edge → ramp[3] body → white core near the head
+    strokePath(r, path, head - 18, head - 9, [ramp[1], ramp[2]]);
+    strokePath(r, path, head - 9, head, [ramp[2], ramp[3], PAL.white]);
+    star(r, path[head - 1], 2, ramp[4]);
     r.end();
   }).then(() => r.destroy());
 }
 
 /**
- * One reflected beam (A5 §3.3): from the struck cell to a victim's core in BEAM_MS — 3 px mag3 body,
- * 1 px white core, a hard head; on contact a 2-frame white star, then the beam steps down its ramp
- * (mag3/white → mag2/mag4 → mag3 core → gone). `onContact` runs on the contact frame.
+ * One reflected beam: a gentle fanned arc (as the old ones) from the struck point to a victim's core in
+ * BEAM_MS — 5 px (mag3 / mag4 / white core) with a hard white head; on contact a white star, the beam
+ * swells to 7 px for 2 frames, then thins by steps (5 → 3 → 1 px) and is gone (EF-13). `onContact`
+ * runs on the contact frame.
  */
-function reflectBeam(scene: Phaser.Scene, from: XY, to: XY, onContact: () => void): Promise<void> {
+function arcBeam(scene: Phaser.Scene, from: XY, to: XY, fan: number, onContact: () => void): Promise<void> {
   const a = { x: Math.round(from.x), y: Math.round(from.y) };
   const b = { x: Math.round(to.x), y: Math.round(to.y) };
-  const r = new Raster(scene, Math.min(a.x, b.x) - 8, Math.min(a.y, b.y) - 8, Math.abs(a.x - b.x) + 17, Math.abs(a.y - b.y) + 17, DEPTH.FX + 5);
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const l = Math.hypot(dx, dy) || 1;
+  const ctrl = { x: (a.x + b.x) / 2 + (-dy / l) * fan, y: (a.y + b.y) / 2 + (dx / l) * fan - 7 - Math.abs(fan) * 0.2 };
+  const knots: XY[] = [];
+  for (let k = 0; k <= 24; k++) {
+    const q = qbez(a, ctrl, b, k / 24);
+    knots.push({ x: Math.round(q.x), y: Math.round(q.y) });
+  }
+  const path = pixelPath(knots);
+  const xs = path.map((q) => q.x);
+  const ys = path.map((q) => q.y);
+  const r = new Raster(scene, Math.min(...xs) - 9, Math.min(...ys) - 9, Math.max(...xs) - Math.min(...xs) + 19, Math.max(...ys) - Math.min(...ys) + 19, DEPTH.FX + 5);
   let hitFrame = -1;
   let frame = 0;
   return new Promise((resolve) => {
@@ -287,20 +997,21 @@ function reflectBeam(scene: Phaser.Scene, from: XY, to: XY, onContact: () => voi
           console.error('[mirror] contact', e);
         }
       }
-      const head = hitFrame < 0 ? { x: Math.round(a.x + (b.x - a.x) * k), y: Math.round(a.y + (b.y - a.y) * k) } : b;
+      const head = hitFrame < 0 ? Math.max(1, Math.round(k * (path.length - 1)) + 1) : path.length;
       const after = hitFrame < 0 ? -1 : frame - hitFrame;
       r.begin();
       if (after < 0) {
-        stroke3(r, a, head, PAL.mag3, PAL.white);
-        star(r, head, 1, PAL.mag4);
+        strokePath(r, path, 0, head, [PAL.mag3, PAL.mag4, PAL.white]);
+        star(r, path[head - 1], 2, PAL.mag4);
       } else if (after < 2) {
-        stroke3(r, a, b, PAL.mag3, PAL.white);
-        star(r, b, 3, PAL.mag4);
-      } else if (after < 4) stroke3(r, a, b, PAL.mag2, PAL.mag4);
-      else if (after < 6) stroke3(r, a, b, null, PAL.mag3);
+        strokePath(r, path, 0, head, [PAL.mag2, PAL.mag3, PAL.mag4, PAL.white]);
+        star(r, b, 4, PAL.mag4);
+      } else if (after < 4) strokePath(r, path, 0, head, [PAL.mag2, PAL.mag3, PAL.mag4]);
+      else if (after < 6) strokePath(r, path, 0, head, [PAL.mag2, PAL.mag4]);
+      else if (after < 8) strokePath(r, path, 0, head, [PAL.mag3]);
       r.end();
-      // done after the steps (6 rendered frames past contact; a hit-stop holds them)
-      if (after >= 6) {
+      // done after the steps (8 rendered frames past contact; a hit-stop holds them)
+      if (after >= 8) {
         r.destroy();
         resolve();
         return false;
@@ -310,17 +1021,21 @@ function reflectBeam(scene: Phaser.Scene, from: XY, to: XY, onContact: () => voi
   });
 }
 
-/** The catch on the struck cell: white star, pixel sparks, the magenta floor flash. */
+/**
+ * The catch on the shell: a big whole-pixel star (white, then mag4, then mag3), pixel sparks, the magenta
+ * floor flash under it.
+ */
 function catchBurst(scene: Phaser.Scene, at: XY, floorY: number, seed: number): void {
-  const r = Raster.around(scene, at.x, at.y, 24, 24, DEPTH.FX + 6);
+  const r = Raster.around(scene, at.x, at.y, 30, 30, DEPTH.FX + 6);
   let f = 0;
   onFrame(scene, (dt) => {
     if (dt > 0) f++;
     r.begin();
-    if (f < 2) star(r, at, 3, PAL.mag4);
-    else if (f < 4) star(r, at, 2, PAL.mag3);
+    if (f < 2) star(r, at, 6, PAL.mag4);
+    else if (f < 4) star(r, at, 4, PAL.mag3, PAL.mag4);
+    else if (f < 6) star(r, at, 2, PAL.mag2, PAL.mag3);
     r.end();
-    if (f >= 4) {
+    if (f >= 6) {
       r.destroy();
       return false;
     }
@@ -328,17 +1043,81 @@ function catchBurst(scene: Phaser.Scene, at: XY, floorY: number, seed: number): 
   });
   const rnd = fxRng(seed);
   const sp = new PxSparks(scene, DEPTH.FX + 7);
-  const n = fxCount(10);
+  const n = fxCount(22);
   for (let i = 0; i < n; i++) {
     const ang = (i / n) * Math.PI * 2 + rnd() * 0.4;
-    const v = 50 + rnd() * 70;
-    sp.add({ x: Math.round(at.x), y: Math.round(at.y), vx: Math.cos(ang) * v, vy: Math.sin(ang) * v * 0.7 - 10, drag: 3, ay: 60, life: 200 + Math.floor(rnd() * 160), colors: [PAL.white, PAL.mag4, PAL.mag3, PAL.mag2], shape: i % 3 === 0 ? 'plus' : 'px', fadeAt: 1 });
+    const v = 60 + rnd() * 110;
+    sp.add({ x: Math.round(at.x), y: Math.round(at.y), vx: Math.cos(ang) * v, vy: Math.sin(ang) * v * 0.7 - 10, drag: 3, ay: 80, life: 220 + Math.floor(rnd() * 220), colors: [PAL.white, PAL.mag4, PAL.mag3, PAL.mag2], shape: i % 3 === 0 ? 'plus' : 'px', fadeAt: 1 });
   }
   sp.release();
-  void lightFlash(scene, at.x, floorY, PAL.mag4, 30, 320, { floorY, ring: true, intensity: 1, air: 0 });
+  void lightFlash(scene, at.x, floorY, PAL.mag4, 50 * TK, 420, { floorY, ring: true, intensity: 1.1, air: 0 });
 }
 
-// ================================================================ the strike into the panel
+/**
+ * The light gathering at the struck point while the dome charges: a whole-pixel star growing in steps
+ * (white / mag4 alternating every 2 frames) and motes drawn in. Returns a stopper.
+ */
+function gatherLight(scene: Phaser.Scene, at: XY, ms: number, seed: number): () => void {
+  const r = Raster.around(scene, at.x, at.y, 40, 40, DEPTH.FX + 6);
+  const rnd = fxRng(seed);
+  const sp = new PxSparks(scene, DEPTH.FX + 6);
+  const n = fxCount(12);
+  for (let i = 0; i < n; i++) {
+    const a = rnd() * Math.PI * 2;
+    const d = 18 + rnd() * 20;
+    sp.add({ x: Math.round(at.x + Math.cos(a) * d), y: Math.round(at.y + Math.sin(a) * d * 0.6), tx: Math.round(at.x), ty: Math.round(at.y), life: Math.max(60, ms - Math.floor(rnd() * 60)), delay: Math.floor(rnd() * 50), colors: [PAL.mag4, PAL.white], shape: 'px', fadeAt: 1 });
+  }
+  sp.release();
+  let f = 0;
+  let stopped = false;
+  const stop = onFrame(scene, (dt, el) => {
+    if (stopped) return false;
+    if (dt > 0) f++;
+    const t = Math.min(1, el / ms);
+    r.begin();
+    star(r, at, 1 + Math.round(t * 4), Math.floor(f / 2) % 2 ? PAL.mag3 : PAL.mag4, Math.floor(f / 2) % 2 ? PAL.mag4 : PAL.white);
+    r.end();
+    return true;
+  });
+  return () => {
+    if (stopped) return;
+    stopped = true;
+    stop();
+    r.destroy();
+  };
+}
+
+/**
+ * Stray reflections splaying off the dome when the first beam leaves (the old "many beams"): 7 1-px
+ * lines that shoot out 60–130 px (white while growing, mag3 after) and are drawn in again, ≈ 300 ms.
+ */
+function strayRays(scene: Phaser.Scene, at: XY, side: PlayerId, seed: number): void {
+  const rnd = fxRng(seed);
+  const rays = Array.from({ length: fxCount(7) }, (_, i) => ({
+    a: -Math.PI / 2 + (i - 3) * 0.42 + (rnd() - 0.5) * 0.2 + (side === 0 ? 0.35 : -0.35),
+    len: 60 + rnd() * 70,
+    d: Math.floor(rnd() * 60),
+  }));
+  const r = Raster.around(scene, at.x, at.y, 300, 300, DEPTH.FX + 4);
+  void run(scene, 300, (t, el) => {
+    r.begin();
+    for (const s of rays) {
+      // each ray shoots out and keeps flying while its tail catches up (no dash left hanging still)
+      const lt = Math.max(0, (el - s.d) / 150);
+      if (lt <= 0 || t > 0.95) continue;
+      const r0 = s.len * Math.max(0, lt - 0.42) * 1.55;
+      const r1 = s.len * (E.outQuad(Math.min(1, lt)) + Math.max(0, lt - 1) * 0.5);
+      if (r1 - r0 < 1) continue;
+      const ca = Math.cos(s.a);
+      const sa = Math.sin(s.a);
+      const col = lt < 0.55 ? PAL.white : lt < 0.85 ? PAL.mag3 : PAL.mag2;
+      bres(at.x + ca * r0, at.y + sa * r0, at.x + ca * r1, at.y + sa * r1, (x, y) => r.px(x, y, col));
+    }
+    r.end();
+  }).then(() => r.destroy());
+}
+
+// ================================================================ the strike into the dome
 
 interface StrikePlan {
   u: MonsterUnit;
@@ -346,7 +1125,7 @@ interface StrikePlan {
   /** Attack frame it starts from (the declaration's held pose) and the contact / release frame. */
   f0: number;
   hit: number;
-  /** From its launch to its contact with the panel. */
+  /** From its launch to its contact with the shell (its bolt / blow streak included). */
   lead: number;
 }
 
@@ -366,7 +1145,7 @@ function planStrike(u: MonsterUnit | null): StrikePlan | null {
   const f0 = strikeStartFrame(u);
   const hit = Math.max(f0, ranged ? u.markFrame('attack', 'release', u.impactFrame) : u.impactFrame);
   const toHit = u.rangeMs('attack', f0, hit);
-  return { u, ranged, f0, hit, lead: ranged ? toHit + PROJ_MS : Math.max(LUNGE_MIN, toHit) };
+  return { u, ranged, f0, hit, lead: (ranged ? toHit : Math.max(LUNGE_MIN, toHit)) + PROJ_MS };
 }
 
 // ================================================================ the exit
@@ -413,31 +1192,20 @@ export async function mirrorV3(ctx: ActCtx): Promise<void> {
   const attackerSide = attacker?.player ?? killEvs[0]?.player ?? other(ev.player);
   const { hold, other: kept } = takeAttack(ctx);
   kept?.destroy();
-  const targetUid = hold?.targetUid ?? trig?.targetUid ?? null;
-  const defender = targetUid !== null ? live(ctx.unit(targetUid)) : null;
 
   // ---- today's two camera calls, kept (user decision): the trap opening's lean (its own target) and
   // the dome lean of mirror_barrier.ts:57 — same targets and options, computed before anything moves
-  const dome = isoToScreen(BOARD_MID_COL, monsterRow(ev.player));
-  const domeTop = { x: dome.x, y: dome.y - 40 * TK };
+  const domeC = isoToScreen(BOARD_MID_COL, monsterRow(ev.player));
+  const domeTop = { x: domeC.x, y: domeC.y - 40 * TK };
   const trapPt = ev.zone !== null ? zoneXY(ev.player, 'spellTrap', ev.zone) : zoneXY(ev.player, 'spellTrap', 1);
   const aCore0 = attacker?.core() ?? domeTop;
   const leanAt = { x: (domeTop.x * 2 + aCore0.x) / 3, y: (domeTop.y * 2 + aCore0.y) / 3 };
 
-  // ---- the lane and the panel's place in it
-  const laneFrom = attacker ? { x: attacker.home.x, y: attacker.home.y } : zoneXY(attackerSide, 'monster', 1);
-  const direct = !defender;
-  const laneTo = defender ? { x: defender.home.x, y: defender.home.y } : (ctx.views.duelists?.get(ev.player)?.home ?? zoneXY(ev.player, 'spellTrap', 1));
-  const foot0 = lerpXY(laneFrom, laneTo, direct ? LANE_T_DIRECT : LANE_T);
-  const foot = { x: Math.round(foot0.x), y: Math.round(foot0.y) };
-  const panelAt = { x: foot.x, y: foot.y - PANEL_LIFT };
-  const panelDepth = unitDepth(foot.y) + 0.5;
+  // ---- the dome (exists from the start, shows nothing until it builds) and the point the attack meets
+  const dome = new DomeV3(sc, ev.player, ev.uid * 7 + 1);
   const plan = planStrike(attacker);
-  const muzzle0 = attacker ? attacker.worldPoint('muzzle') : laneFrom;
-  const cellIdx = struckCell(panelAt, muzzle0);
-  // the panel exists from the start but shows nothing until it builds
-  const panel = honeycombPanel(sc, { at: panelAt, depth: panelDepth, seed: ev.uid * 7 + 1 });
-  const cell = panel.cellPoint(cellIdx);
+  const aHome = attacker ? { x: attacker.home.x, y: attacker.home.y } : zoneXY(attackerSide, 'monster', 1);
+  const hit = dome.point(aHome, STRUCK_EL);
 
   // ---- victims, in reflection order
   const victims = kills.map((i, k) => {
@@ -446,21 +1214,22 @@ export async function mirrorV3(ctx: ActCtx): Promise<void> {
     const z = zoneXY(e.player, 'monster', e.zone);
     return { i, e, u, core: u ? u.core() : { x: z.x, y: z.y - 14 } };
   });
-  const order = reflectionOrder(cell, victims.map((v) => v.core)).map((k) => victims[k]);
+  const order = reflectionOrder(hit, victims.map((v) => v.core)).map((k) => victims[k]);
   const departs = beamSchedule(order.map((v) => (v.u && v.u.has('death') ? DEATH_EST.pose : DEATH_EST.legacy)));
 
-  // ---- PANEL (parallel with the opening): raise at PANEL_AT, built before CATCH_AT
-  const lights: { pool: LightHandle | null; stopMotes: () => void } = { pool: null, stopMotes: () => undefined };
+  // ---- DOME (parallel with the opening): raise at DOME_AT, complete before CATCH_AT
+  const { ra, rb, rz } = dome.shape;
+  const lights: { pool: LightHandle | null } = { pool: null };
   const built = (async () => {
-    await wait(sc, PANEL_AT);
+    await wait(sc, DOME_AT);
     void ctx.focus(leanAt, { zoom: 1.04, ms: 420, pan: 0.3 });
-    playV3('mirrorRaise', { volume: 0.9, pan: panAt(panelAt.x) }); // mark `raise`
-    lights.pool = lightPool(sc, foot.x, foot.y, { color: PAL.mag3, spill: PAL.mag2, radius: 20, floorY: foot.y, intensity: 0.75, anim: 'breathe', fadeIn: 120 });
-    lights.stopMotes = panelMotes(sc, { x: foot.x, y: foot.y - 6 }, 20, panelDepth + 0.1, ev.uid * 13 + 5);
-    await panel.build(BUILD_GAP);
+    playV3('mirrorRaise', { volume: 0.9, pan: panAt(domeC.x) }); // mark `raise`
+    lights.pool = lightPool(sc, domeC.x, domeC.y - rz * 0.45, { color: PAL.mag3, spill: PAL.mag2, radius: (ra + rb) * (TILE_W / 2) * 0.85, floorY: domeC.y, intensity: 0.05, anim: 'breathe', fadeIn: 0 });
+    lights.pool.setIntensity(0.85, BUILD_MS);
+    await dome.build();
   })();
 
-  // ---- the attacker lets its attack go so that it meets the panel just after the panel is complete;
+  // ---- the attacker lets its attack go so that it meets the shell just after the dome is complete;
   // `caught` resolves on the contact frame with what the body does after the hit-stop
   const launchAt = plan ? Math.max(LAUNCH_MIN, CATCH_AT - plan.lead) : CATCH_AT;
   const caught = (async (): Promise<() => Promise<void>> => {
@@ -492,25 +1261,24 @@ export async function mirrorV3(ctx: ActCtx): Promise<void> {
       await Promise.race([rel, wait(sc, plan.lead - PROJ_MS + 120)]);
       charge?.stop(60);
       if (voice) playV3(voice.release, { volume: 0.85, pan: panAt(u.home.x) }); // mark `release`
-      await strikeBolt(sc, u.worldPoint('muzzle'), cell, strikeRamp(u), DEPTH.FX + 4);
+      await strikeBolt(sc, u.worldPoint('muzzle'), hit, strikeRamp(u), DEPTH.FX + 4);
       return async () => {
         u.posed = false;
       };
     }
-    // melee: the body lunges into the panel; its front edge meets the panel on the impact frame
+    // melee: the body steps toward the dome on whole pixels into its own impact frame, and the blow's
+    // energy streaks off its muzzle into the shell (the old dome's streak, for every attacker)
     void u.playRange('attack', Math.min(f0, plan.hit), plan.hit);
     const r0 = { x: u.rest0.x, y: u.rest0.y };
-    const sil = silhouetteOf(s);
-    const halfW = sil ? Math.round((sil.right - sil.left) / 2) : 14;
-    const dash = Math.max(0, Math.min(90, Math.hypot(foot.x - u.home.x, foot.y - u.home.y) - (halfW + 10)));
-    const dir = norm(sub(foot, u.home));
-    await run(sc, plan.lead, (t) => {
+    const dir = norm(sub({ x: hit.x, y: hit.floorY }, u.home));
+    await run(sc, plan.lead - PROJ_MS, (t) => {
       if (!s.active) return;
       const e = t * t;
-      s.setPosition(Math.round(r0.x + dir.x * dash * e), Math.round(r0.y + dir.y * dash * e));
+      s.setPosition(Math.round(r0.x + dir.x * MELEE_STEP * e), Math.round(r0.y + dir.y * MELEE_STEP * e));
     });
     charge?.stop(60);
-    // after the hit-stop the panel throws it back home while its attack finishes
+    await strikeBolt(sc, u.worldPoint('muzzle'), hit, strikeRamp(u), DEPTH.FX + 4);
+    // after the hit-stop the dome throws it back home while its attack finishes
     return async () => {
       if (!s.active || u.retired) return;
       void u.playRange('attack', plan.hit);
@@ -529,33 +1297,49 @@ export async function mirrorV3(ctx: ActCtx): Promise<void> {
   await built;
 
   // ---- CATCH — `catch`
-  panel.wave(cellIdx);
-  catchBurst(sc, cell, foot.y, ev.uid * 31 + 3);
-  playV3('mirrorCatch', { volume: 1, pan: panAt(cell.x) }); // mark `catch`
+  dome.strike(hit);
+  catchBurst(sc, hit, hit.floorY, ev.uid * 31 + 3);
+  playV3('mirrorCatch', { volume: 1, pan: panAt(hit.x) }); // mark `catch`
   sc.events.emit('v3:contact', attackerUid);
-  lights.pool?.setIntensity(1.3, 40);
+  lights.pool?.setIntensity(1.5, 60);
   await stopTime(sc, CATCH_STOP);
-  void wait(sc, 120).then(() => lights.pool?.setIntensity(0.75, 200));
+  void wait(sc, 120).then(() => lights.pool?.setIntensity(1, 260));
   const bounced = after();
 
+  // ---- CHARGE: the seams heat up, the light gathers at the struck point
+  await wait(sc, CHARGE_AT);
+  lights.pool?.setIntensity(1.45, CHARGE_MS);
+  const stopGather = gatherLight(sc, hit, CHARGE_MS, ev.uid * 11 + 5);
+  await run(sc, CHARGE_MS, (t) => dome.setCharge(E.inQuad(t)));
+
   // ---- REFLECTION, one by one — `beam:<i>`
+  stopGather();
+  dome.flash(hit);
+  strayRays(sc, hit, ev.player, ev.uid * 19 + 7);
+  lights.pool?.setIntensity(1.9, 40);
+  void wait(sc, 90).then(() => lights.pool?.setIntensity(0.9, 300));
+  void run(sc, 190, (t) => dome.setCharge(1 - t));
   const deaths: Promise<unknown>[] = [];
   const landings: Promise<number | null>[] = [];
-  if (FIRST_BEAM_AFTER > 0) await wait(sc, FIRST_BEAM_AFTER);
   const t0 = clock.now();
+  const nB = order.length;
   for (let k = 0; k < order.length; k++) {
     const v = order[k];
     const lag = departs[k] - (clock.now() - t0);
     if (lag > 0) await wait(sc, lag);
     const to = v.u && !v.u.retired && v.u.sprite.active ? v.u.core() : v.core;
-    const dir = norm(sub(to, cell));
+    const dir = norm(sub(to, hit));
     const home = v.u ? { x: v.u.home.x, y: v.u.home.y } : zoneXY(v.e.player, 'monster', v.e.zone);
-    panel.wave(cellIdx);
+    // the beams leave the struck point fanned apart (as the old ones), so a row of them never overlaps
+    const spread = nB > 1 ? (k - (nB - 1) / 2) * 7 : 0;
+    const from = { x: hit.x + spread, y: hit.y + Math.round(Math.abs(spread) * 0.4) };
+    const fan = (k - (nB - 1) / 2) * 14;
+    if (k > 0) dome.pulse(hit);
     // the beam's light falls on the floor in a short strip under its lane (no air glow)
-    void lightBeam(sc, cell, to, PAL.mag3, 260, { air: false, floor: { from: { x: cell.x, y: foot.y }, to: home }, floorWidth: 8, intensity: 0.8 });
+    void lightBeam(sc, from, to, PAL.mag3, 300, { air: false, floor: { from: { x: hit.x, y: hit.floorY }, to: home }, floorWidth: 10, intensity: 0.9 });
     let born!: (t: number | null) => void;
     landings.push(new Promise<number | null>((r) => (born = r)));
-    await reflectBeam(sc, cell, to, () => {
+    await arcBeam(sc, from, to, fan, () => {
       playV3('mirrorBeam', { volume: 0.9, pitch: Math.pow(2, (2 * k) / 12), pan: panAt(to.x) }); // mark `beam:<k>`
       // the victim's card is born on its burst frame: its landing = birth + flash + lift + arc
       const onBorn = () => {
@@ -569,6 +1353,7 @@ export async function mirrorV3(ctx: ActCtx): Promise<void> {
         void rimFlash(sc, v.u.sprite, { ramp: [PAL.white, PAL.mag4, PAL.mag3, PAL.mag2], hold: 2 });
         if (!v.u.has('death')) void v.u.play(v.u.has('hitHeavy') ? 'hitHeavy' : 'hit', { hold: true });
       }
+      void lightFlash(sc, to.x, home.y, PAL.mag4, 40 * TK, 360, { floorY: home.y, ring: true, air: 0 });
       const p = ctx.isConsumed(v.i) ? Promise.resolve() : ctx.play(v.i, { hit: false, push: dir, onBorn });
       deaths.push(p.then(() => born(null)));
     });
@@ -576,10 +1361,9 @@ export async function mirrorV3(ctx: ActCtx): Promise<void> {
 
   // ---- BREAK — `break`
   await wait(sc, BREAK_AFTER);
-  playV3('mirrorBreak', { volume: 0.9, pan: panAt(panelAt.x) }); // mark `break`
-  lights.stopMotes();
-  void lights.pool?.fadeOut(220);
-  const broken = panel.break();
+  playV3('mirrorBreak', { volume: 0.9, pan: panAt(domeC.x) }); // mark `break`
+  void lights.pool?.fadeOut(SHATTER_MS);
+  const broken = dome.shatter(hit).then(() => dome.destroy());
 
   // ---- EXIT — `exit`: the trap card lands ≥ LAND_GAP after the last victim's card
   void ctx.unfocus(320);

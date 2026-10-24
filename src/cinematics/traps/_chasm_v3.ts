@@ -1,67 +1,69 @@
-// Yer Yarığı — the v3 look (lane A5-A step A-5; docs/v3/A5_PLAN.md §3.4 "çağrılanı yer yutar", right
-// after the summon). Behind V3_A5_A only: chasm_trap.ts hands over on the first line of its activate and
-// destroys hooks; v1 and the plain v3 look keep the glowing fissure and setpieces.chasm unchanged. No
-// registrations here.
+// Yer Yarığı — the v3 look (lane A5-A step A-5; reworked by the user's decision of 24 Oct: "Yer Yarığı
+// seemed huge too" — docs/v3/A5_PLAN.md top note, REHBER EF-2). Behind V3_A5_A only: chasm_trap.ts hands
+// over on the first line of its activate and destroys hooks; v1 and the plain v3 look keep the glowing
+// fissure and setpieces.chasm byte-identical. No registrations here.
 //
-// Instead of the soft glowing abyss: a sharp crack runs from the trap to the summoned monster's pad, the
-// pad breaks into three flat slabs round an ink hole, the body drops into it on whole pixels behind the
-// hole's front lip (no fade), the slabs slam back and the card comes out of the scar.
-// t = activate, in GAME ms at 1× (the show clock below runs ≈ 67 ms behind: the opening's burst stop
-// and the destroy's dispatch frame):
+// The old scene's centrepiece comes back — the magenta crack from the trap to the summoned monster, the
+// cracks racing out from under it, the WIDE glowing abyss (as wide as the old one: the same half width,
+// max(30, 0.55 × the body's width) plus a little, with the same jagged rim), the body sinking into it,
+// the rocks tumbling after it, the slam and the ring — drawn in the v3 pixel language: flat palette
+// tones and hard 1-px lines (no dithered haze, no whole-sprite tint, no camera shake), the fall on whole
+// pixels behind the hole's front lip (no fade). What v3 made better stays: the v3 trap opening (in
+// parallel), the victim's own struck frame, its card going down with the floor and the new one born on
+// the scar (card continuity), the v3 sounds and today's camera calls.
+// t = activate, show-clock ms (game ms ≈ + 67 at 1×: the opening's burst stop and the destroy's dispatch frame):
 //   0        the trap opening (trapOpeningV3: the card springs up, burst, "TUZAK!"), its lean as today
-//            (same target as chasm_trap.ts:118). Its Yer Yarığı accent (hairline floor cracks round the
-//            tile) is not drawn under V3_A5_A: the crack's own root is that accent (A5 §3.4: "floorCracks
-//            aksanı yarığın başlangıcı olur; ayrı bir vuruş değildir").
-//   150      CRACK — `crack`: the destroy plays (the victim's own death hooks step aside, sourceOwnsDeath:
-//            its death is the fall). From the trap tile's edge a sharp crack runs to the victim's pad in
-//            200 ms: a 1-px ink core, 1-px mag3 lips, the newest pixels mag4, a broken whole-pixel path,
-//            three short root spurs at the start, stone pixels kicked up at its head, a stepped magenta
-//            floor strip following it. The victim waits in its idle. chasmCrack
-//   350      the crack reaches the pad (at the slab cut that faces the trap); the pad's own cracks split it
-//            into three slabs (2 frames)
-//   ≈ 400    OPEN — `open`: the slabs tilt in (2 steps, 1 frame apart: back slab lighter, front darker,
-//            ink sides) round an ink hole with a 1-tone magenta light on its far rim and a lit front lip;
-//            the body takes it — v3 art: its hitHeavy struck frame, held 2 frames; old art: its v1 hit —
-//            and its card under it goes with the floor. Today's victim lean (chasm_trap.ts:153, :148 before
-//            A-5) is called here, same target and options (user decision: the camera does not change).
-//            chasmOpen (duck 0.6) + the body's material thud
-//   ≈ 450    FALL: the body drops on whole pixels (2, 4, 7, 11, 16, 22, 29, 37 px per frame, one step per
-//            rendered frame) behind the hole's front lip — a geometry mask: no fade, no tint; v3 art goes
-//            on to hitHeavy f1 / f2 (the footing lost, the wings left behind). Rock bits from the rim
-//            tumble in after it, stepped dust puffs rise off the lip. chasmFall
-//   750      SHUT — `shut`: the slabs slam back in 2 steps, the seams flash white for one frame, a 2-step
-//            dust ring, a 1-px tremble of the pad (local, never the camera). The card is born on the scar
-//            (cardLeaves: a 2-frame 1-px white rim) and flies to the graveyard (lands ≈ 1.15 s; measured); the
-//            scar steps out (ink → night0 → gone). chasmShut (duck 0.5)
-//   then     EXIT — `exit`: once the slabs have shut (at any game speed: the fall is frame-stepped, so at
-//            3× the shut can come later than CRACK_AT + SHUT_AFTER), the trap card lies down on its tile
-//            and leaves for the graveyard from there, landing ≥ 150 ms after the victim's card (≈ 1.33 s);
-//            the camera relaxes (ctx.unfocus(320)).
-// The slabs are drawn only on the calm pad's matte pixels (view/light/stepped padColorAt): the zone's
-// neon inlay and the gap ring stay as they are. Nothing here adds a full-screen flash, a dim, a
-// whole-sprite tint or a camera move (A5 §0 K1–K2). Under REDUCED_MOTION particles are halved (fxCount)
-// and the pad does not tremble (jitter).
+//            (same target as chasm_trap.ts:118).
+//   84       CRACK — `crack`: the destroy plays (the victim's own death hooks step aside, sourceOwnsDeath:
+//            its death is the fall). From the trap tile's edge a glowing crack runs to the victim's tile in
+//            220 ms (5 px across like the old fissure: mag1 glow, mag3 lip, 1-px ink split, mag4 inner lip;
+//            the newest pixels white / mag4, a hard head, stone bits kicked up), four short branches crackle
+//            off it, a stepped magenta floor strip follows it. chasmCrack
+//   ≈ 264    the ground under the victim cracks: 7 glowing cracks race out from under it (as the old ones,
+//            up to 1.5 half widths long); the body flinches — v3 art: its hitHeavy struck frame; the old
+//            art: its v1 hit — stone dust rises off the cracks
+//   ≈ 424    OPEN — `open`: the abyss opens in whole steps with a small overshoot (150 ms): a jagged ink
+//            hole, its back wall in strata (a 1-px steel lip, night bands, the glow climbing the lowest
+//            band as a 2×2 checker), the magenta deep in two flat bands, a lit front lip (mag3 over mag1);
+//            the body trembles 1 px and sinks 3 px, stone chips fly off the rim; its card under it goes with
+//            the floor. Today's victim lean (chasm_trap.ts:153, :148 before A-5) is called here, same
+//            target and options (user decision: the camera does not change). chasmOpen + the body's thud
+//   ≈ 574    FALL: the body drops on whole pixels (an accelerating ≈ 400 ms fall, as the old one) behind
+//            the hole's front lip — a geometry mask: no fade, no tint; v3 art goes on to hitHeavy f1 / f2;
+//            seven rocks break off the back rim and tumble in after it (masked too); the deep glow breathes
+//            one tone. chasmFall
+//   ≈ 1067   SHUT — `shut`: the abyss slams shut in whole steps (180 ms); the scar's cracks flash white for
+//            a frame; a two-ring shock ring runs out over the floor (mag4 → mag3 → mag2 → earth, whole
+//            pixels), dust puffs and magenta sparks; the scar trembles 1 px (local, never the camera); the
+//            card is born on the scar (cardLeaves) and flies to the graveyard; the cracks cool down by
+//            palette steps. chasmShut
+//   then     EXIT — `exit`: once the abyss has shut (at any speed), the trap card lies down on its tile and
+//            leaves for the graveyard from there, landing ≥ 150 ms after the victim's card; the camera
+//            relaxes (ctx.unfocus(320)).
+// Nothing here adds a full-screen flash, a dim, a whole-sprite tint or a camera move (A5 §0 K1–K2). Under
+// REDUCED_MOTION particles are halved (fxCount) and nothing trembles (jitter).
 
 import type Phaser from 'phaser';
 import { PAL } from '../../art/palette';
 import type { PixelCanvas } from '../../art/pixel';
-import { chasmGeometry, crackPath, paintCrack, type ChasmGeom } from '../../art/spellmotifs-v3';
+import { crackPath } from '../../art/spellmotifs-v3';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { DEPTH, type XY, unitDepth, zoneXY } from '../../view/layout';
 import { lightBeam, lightFlash, lightPool, type BeamHandle, type LightHandle } from '../../view/light';
-import { padColorAt } from '../../view/light/stepped';
 import { wait } from '../../vfx/core';
 import { Sparks as PxSparks } from '../../vfx/combat';
-import { Raster, onFrame, run } from '../../vfx/setpieces';
+import { E, Raster, onFrame, run, spriteBox } from '../../vfx/setpieces';
 import { fx, type CinematicContext } from '../api';
 import { type EvOf, all, lerpXY, live } from '../battle/_kit';
 import { cardLeaves, flightMs } from '../_v3/card';
-import { frontEdgeMask, fxCount, fxRng, jitter, runCrack, type EdgeMask } from '../_v3/spellfx';
+import { frontEdgeMask, fxCount, fxRng, jitter } from '../_v3/spellfx';
 import { hitSoundFor, panAt, play as playV3, playHit } from '../_v3/sound';
 import { trapOpening, type Opening } from './_opening';
 
 type ActCtx = CinematicContext<EvOf<'activate'>>;
 type DestroyCtx = CinematicContext<EvOf<'destroy'>>;
+
+const TAU = Math.PI * 2;
 
 // ================================================================ timing (show-clock ms)
 
@@ -71,68 +73,48 @@ type DestroyCtx = CinematicContext<EvOf<'destroy'>>;
  * end → crack" ≤ 300 ms with lane A6-B's fast decision (S-15, ≤ 120 ms).
  */
 export const CRACK_AT = 84;
-/** The crack's run, trap tile → the victim's pad (A5 §3.4: ≤ 250 ms). */
-export const CRACK_MS = 200;
-/** The pad's own cracks split it into three slabs (2 frames). */
-export const PAD_CRACK_MS = 34;
-/** The fall: whole-pixel steps, one per rendered frame (A5 §3.4 DÜŞÜŞ). */
-export const FALL_STEPS: readonly number[] = Object.freeze([2, 4, 7, 11, 16, 22, 29, 37]);
-/** The slabs slam back this long after the crack left (A5 §3.4: KAPANMA at 750, the crack at 150). */
-export const SHUT_AFTER = 600;
+/** The crack's run, trap tile → the victim's tile (A5 §3.4: ≤ 250 ms; the old fissure took 280). */
+export const CRACK_MS = 220;
+/** The cracks under the victim start this long before the crack arrives … */
+export const RADIAL_LEAD = 40;
+/** … and race out in this long (the old ones: 300 ms, before the hole). */
+export const RADIAL_MS = 160;
+/** The abyss opens (whole steps, a small overshoot; the old one: 180 ms). */
+export const OPEN_MS = 150;
+/** The fall: at most this many rendered frames (≈ 400 ms at 1×, as the old one's 480 ms inQuad fall) … */
+export const FALL_FRAMES = 24;
+/** … it ends 2 frames after the body has passed under the lip; then the open abyss stands this long (its deep glow breathing). */
+export const HOLD_MS = 100;
+/** The abyss slams shut (whole steps; the old one: 200 ms). */
+export const SHUT_MS = 180;
+/**
+ * When the shut lands at 1× at the latest (show ms after the crack left): crack + under-cracks + open + the
+ * longest fall + hold + shut (a short body is under the lip sooner; the exit also waits for the real shut).
+ */
+export const SHUT_AFTER = CRACK_MS - RADIAL_LEAD + RADIAL_MS + OPEN_MS + Math.round((FALL_FRAMES * 1000) / 60) + HOLD_MS + SHUT_MS;
 /**
  * The running crack's depth: over the trap opening's floor ring (DEPTH.SHADOW − 1), which would hide its
  * first ≈ 20 px for 2–3 frames after the crack sound, and under the shadows and the units.
  */
 export const CRACK_DEPTH = DEPTH.SHADOW - 0.5;
+/** The abyss lies on the floor under everything that stands (the old one's depth). */
+export const ABYSS_DEPTH = DEPTH.SHADOW - 1;
 /** Two graveyard landings at least this far apart (A5 §3.0 EF-12). */
 export const LAND_GAP = 150;
-
-/** The slabs' half sizes: just inside the calm pad's neon inlay (its interior is ≈ 26 × 13). */
+/** A zone tile's iso half sizes (the calm pad's interior is ≈ 26 × 13): where the crack leaves the trap tile. */
 export const PAD_HW = 25;
 export const PAD_HH = 12;
 
 // ================================================================ pure helpers (tested)
 
-/** Cumulative fall offsets (px), one per rendered frame. */
-export function fallOffsets(steps: readonly number[] = FALL_STEPS): number[] {
-  let y = 0;
-  return steps.map((s) => (y += s));
-}
-
 /**
- * Where the crack from `from` enters the pad: the slab cut (A, B or D of chasmGeometry) whose direction
- * from the pad's centre best matches the direction to `from` — the running crack ends on a slab seam,
- * so the pad splits along the line it arrived on.
+ * The fall's offsets (px below the start), one per rendered frame: an accelerating whole-pixel drop
+ * (the old one's inQuad) deep enough for the tallest body to pass under the lip.
  */
-export function entryCut(g: ChasmGeom, from: XY): XY {
-  const C = g.slabs[0][0];
-  const dx = from.x - C.x;
-  const dy = from.y - C.y;
-  const l = Math.hypot(dx, dy) || 1;
-  let best = g.cuts[0];
-  let bestDot = -Infinity;
-  for (const q of g.cuts) {
-    const qx = q.x - C.x;
-    const qy = q.y - C.y;
-    const ql = Math.hypot(qx, qy) || 1;
-    const dot = (qx * dx + qy * dy) / (ql * l);
-    if (dot > bestDot) {
-      bestDot = dot;
-      best = q;
-    }
-  }
-  return { x: best.x, y: best.y };
-}
-
-/**
- * The front lip a falling body disappears behind: the hole's lower rim (left → right), extended
- * sideways along the floor line far past any body (the kit's lip stops 8 px past the pad, which would
- * clip a wide body's wings while still above the floor).
- */
-export function fallLip(g: ChasmGeom, reach = 160): XY[] {
-  const pts = g.lip.slice(1, -1);
-  const y = g.hole.y;
-  return [{ x: g.hole.x - reach, y }, ...pts, { x: g.hole.x + reach, y }];
+export function fallOffsets(depth = 120, frames = FALL_FRAMES): number[] {
+  const out: number[] = [];
+  for (let k = 1; k <= frames; k++) out.push(Math.round(depth * (k / frames) * (k / frames)));
+  return out;
 }
 
 /**
@@ -150,6 +132,167 @@ export function footOffset(u: XY): number {
  */
 export function exitDelay(now: number, fly: number, target: number | null): number {
   return target === null ? 0 : Math.max(0, Math.ceil(target - (now + fly)));
+}
+
+/** The abyss: its centre, half sizes, jagged rim and the cracks that run out from under the victim. */
+export interface AbyssShape {
+  x: number;
+  y: number;
+  /** Half width / half height of the open hole (the old one: RX = max(30, 0.55 × body width), RY = RX / 2). */
+  rx: number;
+  ry: number;
+  /** The rim's jag factor per angle step (NJ steps round the hole). */
+  jag: number[];
+  /** The 7 cracks from the centre outward (whole-pixel paths). */
+  cracks: XY[][];
+}
+
+/** Angle steps round the rim (the old one's 40). */
+const NJ = 40;
+
+/** The old abyss's half width for a body of this opaque width (setpieces.chasm), + 2 px: never narrower. */
+export function abyssHalfWidth(bodyW: number): number {
+  return Math.max(30, Math.round(bodyW * 0.55)) + 2;
+}
+
+export function abyssShape(at: XY, bodyW: number, seed: number): AbyssShape {
+  const rnd = fxRng(seed);
+  const x = Math.round(at.x);
+  const y = Math.round(at.y);
+  const rx = abyssHalfWidth(bodyW);
+  const ry = Math.round(rx / 2);
+  const jag = Array.from({ length: NJ }, (_, i) => 0.86 + rnd() * 0.22 + (i % 3 === 0 ? 0.08 : 0));
+  const cracks = Array.from({ length: 7 }, (_, i) => {
+    const a = (i / 7) * TAU + (rnd() - 0.5) * 0.5;
+    const len = rx * (0.9 + rnd() * 0.6);
+    return crackPath({ x, y }, { x: Math.round(x + Math.cos(a) * len), y: Math.round(y + Math.sin(a) * len * 0.5) }, Math.floor(rnd() * 1e6) + 1, 3);
+  });
+  return { x, y, rx, ry, jag, cracks };
+}
+
+/** A point of the rim at angle `an` (0 = screen right, π/2 = front) for opening `open` (0…~1.1). */
+export function abyssRimAt(s: AbyssShape, an: number, open: number): XY {
+  const i = ((Math.round((an / TAU) * NJ) % NJ) + NJ) % NJ;
+  const j = s.jag[i];
+  return { x: s.x + Math.cos(an) * s.rx * open * j, y: s.y + Math.sin(an) * s.ry * open * j };
+}
+
+/** The hole's rim polygon (whole pixels). */
+export function abyssRim(s: AbyssShape, open: number): XY[] {
+  const out: XY[] = [];
+  for (let i = 0; i < NJ; i++) {
+    const p = abyssRimAt(s, (i / NJ) * TAU, open);
+    out.push({ x: Math.round(p.x), y: Math.round(p.y) });
+  }
+  return out;
+}
+
+/**
+ * The front lip a falling body disappears behind: the hole's lower rim (left → right), extended sideways
+ * along the floor line far past any body — below it, the body is under the floor (the old mask).
+ */
+export function abyssLip(s: AbyssShape, open: number, reach = 160): XY[] {
+  const pts: XY[] = [{ x: s.x - reach, y: s.y }];
+  for (let i = 0; i <= 20; i++) {
+    const an = Math.PI - (i / 20) * Math.PI; // π → 0 along the front lip (left → right)
+    const p = abyssRimAt(s, an, open);
+    // (the jagged rim can step back a pixel near its ends: keep the lip a left → right line)
+    pts.push({ x: Math.max(pts[pts.length - 1].x, Math.round(p.x)), y: Math.round(Math.max(s.y, p.y)) });
+  }
+  pts.push({ x: s.x + reach, y: s.y });
+  return pts;
+}
+
+export interface AbyssLook {
+  /** The cracks under the victim grown so far (0…1). */
+  crack: number;
+  /** The hole's opening (0 closed … 1 open; up to ≈ 1.1 in the overshoot). */
+  open: number;
+  /** The cracks' light: 3 full (mag4 inner, mag3), 2 (mag3 / mag2), 1 (mag2 / mag1), 0 bare ink, −1 gone. */
+  glow: number;
+  /** The deep glow's breath (0 / 1: one tone up). */
+  breath: number;
+  /** The slam frame: the scar's cracks drawn white. */
+  seam: boolean;
+}
+
+/** One crack of the abyss: a 1-px core with 1-px lips across the local direction (the old 3-px glow). */
+function paintRadial(p: PixelCanvas, path: readonly XY[], n: number, core: number, lip: number | null, inner: number | null): void {
+  const m = Math.max(0, Math.min(path.length, Math.round(n)));
+  for (let i = 0; i < m; i++) {
+    const q = path[i];
+    const a = path[Math.max(0, i - 1)];
+    const b = path[Math.min(m - 1, i + 1)];
+    const flat = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y);
+    if (lip !== null) {
+      if (flat) {
+        p.set(q.x, q.y - 1, lip);
+        p.set(q.x, q.y + 1, lip);
+      } else {
+        p.set(q.x - 1, q.y, lip);
+        p.set(q.x + 1, q.y, lip);
+      }
+    }
+  }
+  for (let i = 0; i < m; i++) p.set(path[i].x, path[i].y, inner !== null && i < m * 0.6 ? inner : core);
+}
+
+/**
+ * Paint the abyss in canvas coordinates (`ox`, `oy` = the canvas's world top left): the cracks under
+ * the victim, then the open hole (ink, the back wall's strata and glow, the deep glow in two flat bands,
+ * the lit front lip, the night4 back rim). Palette tones only, no alpha.
+ */
+export function paintAbyss(p: PixelCanvas, s: AbyssShape, L: AbyssLook, ox: number, oy: number): void {
+  const local = (q: XY): XY => ({ x: q.x - ox, y: q.y - oy });
+  // the cracks: 3-px glowing lines (mag1 lips, mag3 core, mag4 on their inner 60 %), cooling by steps
+  if (L.crack > 0 && L.glow >= 0) {
+    const tones: Record<number, [number, number | null, number | null]> = {
+      3: [PAL.mag3, PAL.mag1, PAL.mag4],
+      2: [PAL.mag3, PAL.mag1, null],
+      1: [PAL.mag2, null, null],
+      0: [PAL.ink, null, null],
+    };
+    const [core, lip, inner] = L.seam ? [PAL.white, PAL.mag3, PAL.white] : tones[Math.max(0, Math.min(3, L.glow))];
+    for (const c of s.cracks) paintRadial(p, c.map(local), Math.max(2, Math.round(c.length * Math.min(1, L.crack))), core, lip as number | null, inner as number | null);
+  }
+  if (L.open <= 0.02) return;
+  const rim = abyssRim(s, L.open).map(local);
+  p.poly(rim.map((q) => [q.x, q.y] as [number, number]), PAL.ink);
+  const cx = s.x - ox;
+  const cy = s.y - oy;
+  // the back wall under the far rim: a 1-px steel lip, then night bands, the deep glow climbing the
+  // lowest band as a 2×2 checker (one magenta step)
+  for (let i = 0; i < NJ; i++) {
+    const an = (i / NJ) * TAU;
+    if (Math.sin(an) > -0.05) continue; // the back half only
+    const wallH = Math.round(13 * Math.min(1, L.open) * Math.pow(-Math.sin(an), 0.8));
+    const a = local(abyssRimAt(s, an, L.open));
+    const b = local(abyssRimAt(s, ((i + 1) / NJ) * TAU, L.open));
+    const steps = Math.max(1, Math.ceil(Math.abs(b.x - a.x)));
+    for (let k = 0; k <= steps; k++) {
+      const xx = Math.round(a.x + ((b.x - a.x) * k) / steps);
+      const yy = Math.round(a.y + ((b.y - a.y) * k) / steps);
+      for (let d = 0; d < wallH; d++) {
+        const f = d / Math.max(1, wallH);
+        let c: number = d < 1 ? PAL.steel : f < 0.3 ? PAL.night2 : f < 0.55 ? PAL.night1 : PAL.night0;
+        if ((d + Math.floor(xx * 0.3)) % 4 === 0 && d > 1 && f < 0.55) c = PAL.night0;
+        if (f >= 0.7 && ((xx + yy + d) & 1) === 0) c = L.breath ? PAL.mag2 : PAL.mag1;
+        if (p.get(xx, yy + d) === PAL.ink) p.set(xx, yy + d, c);
+      }
+    }
+  }
+  // the deep glow: two flat iso bands, the inner one breathing one tone
+  const o = Math.min(1, L.open);
+  p.ellipse(cx + 0.5, cy + 0.5 + Math.round(s.ry * 0.25 * o), Math.max(1, s.rx * 0.55 * o), Math.max(1, s.ry * 0.4 * o), PAL.mag1);
+  p.ellipse(cx + 0.5, cy + 0.5 + Math.round(s.ry * 0.3 * o), Math.max(1, s.rx * 0.3 * o), Math.max(0.5, s.ry * 0.22 * o), L.breath ? PAL.mag3 : PAL.mag2);
+  // the rim: the lit front lip (mag3 over mag1), the back rim night4
+  for (let i = 0; i < NJ; i++) {
+    const a = rim[i];
+    const b = rim[(i + 1) % NJ];
+    const front = Math.sin((i / NJ) * TAU) > 0;
+    p.line(a.x, a.y, b.x, b.y, front ? PAL.mag3 : PAL.night4);
+    if (front) p.line(a.x, a.y + 1, b.x, b.y + 1, PAL.mag1);
+  }
 }
 
 // ================================================================ small pieces
@@ -175,189 +318,168 @@ function nextFrame(scene: Phaser.Scene): Promise<void> {
   });
 }
 
-interface PadLook {
-  step: 0 | 1 | 2;
-  /** The slab cuts growing in from the centre (0…1; step 0 only). */
-  crack: number;
-  /** The seam frame of the shut: the cuts drawn white. */
-  seam?: boolean;
-  /** The scar fading after the shut: 0 ink, 1 night0, 2 gone. */
-  scar?: 0 | 1 | 2;
-  /** The far rim's light this frame (one magenta tone; it breathes while the hole stands open). */
-  rim?: number;
-  /**
-   * The seams' lips (the running crack's look carried into the pad: ink core, 1-px light on its lips),
-   * or null for bare cuts (the seam frame, the scar).
-   */
-  lip?: number | null;
-}
-
-/** The hole's half width per opening step, as a share of the slab half width (smaller than the kit's 0.4 / 0.7: the slabs stay readable round it). */
-export const HOLE_OPEN: readonly [number, number, number] = [0, 0.36, 0.62];
-
-/** The slabs of chasmGeometry round this scene's hole (see HOLE_OPEN), and its front lip. */
-export function padGeom(cx: number, cy: number, step: 0 | 1 | 2, hw = PAD_HW, hh = PAD_HH): ChasmGeom {
-  const g = chasmGeometry(cx, cy, hw, hh, step);
-  const C = g.slabs[0][0];
-  const rx = Math.round(hw * HOLE_OPEN[step]);
-  const ry = Math.round(rx / 2);
-  const lip: XY[] = [{ x: Math.round(cx) - hw - 8, y: C.y }];
-  if (rx > 0)
-    for (let i = 0; i <= 12; i++) {
-      const an = Math.PI - (i / 12) * Math.PI;
-      lip.push({ x: Math.round(C.x + Math.cos(an) * rx), y: Math.round(C.y + Math.sin(an) * ry) });
-    }
-  lip.push({ x: Math.round(cx) + hw + 8, y: C.y });
-  return { ...g, hole: { x: C.x, y: C.y, rx, ry }, lip };
-}
-
-/**
- * The pad, open (A5 §3.4 AÇILMA): three flat slabs (back lighter — it tilts toward the light — left
- * mid, front-right darker), ink cuts between them (2 px once pulled apart: the slab's side), the ink
- * hole, its far rim lit by one magenta tone, the back slab's inner lip lit 1 px (night4) and the front
- * lip 1 px (night2) — the edge a body sinks behind. Closed (step 0): only the cuts (the slab faces are
- * the pad's own night1). Local canvas coordinates.
- */
-export function paintPadV3(p: PixelCanvas, cx: number, cy: number, look: PadLook): void {
-  const g = padGeom(cx, cy, look.step);
-  const C = g.slabs[0][0];
-  if (look.step > 0) g.slabs.forEach((poly, i) => p.poly(poly.map((q) => [q.x, q.y] as [number, number]), g.faces[i]));
-  const k = look.step === 0 ? Math.max(0, Math.min(1, look.crack)) : 1;
-  const cut = look.seam ? PAL.white : look.scar === 1 ? PAL.night0 : PAL.ink;
-  const lip = look.seam || look.scar ? null : (look.lip ?? null);
-  if (k > 0)
-    for (const end of g.cuts) {
-      const ex = Math.round(C.x + (end.x - C.x) * k);
-      const ey = Math.round(C.y + (end.y - C.y) * k);
-      if (lip !== null) {
-        // the running crack goes on into the pad: an ink core with light pixels on its lips (the newest
-        // pixels brightest while the cut still grows)
-        const path = crackPath(C, end, 1, 0);
-        paintCrack(p, path, Math.round(path.length * k), { light: lip, head: k < 1 ? PAL.mag4 : lip });
-      } else p.line(C.x, C.y, ex, ey, cut);
-      if (look.step === 2) p.line(C.x, C.y + 1, ex, ey + 1, PAL.ink);
-    }
-  const { x, y, rx, ry } = g.hole;
-  if (rx <= 0) return;
-  const er = Math.max(1, ry);
-  p.ellipse(x + 0.5, y + 0.5, rx, er, PAL.ink);
-  const rim = look.rim ?? (look.step === 2 ? PAL.mag2 : PAL.mag1);
-  for (let px = x - rx + 1; px <= x + rx - 1; px++) {
-    const dx = (px + 0.5 - (x + 0.5)) / rx;
-    if (Math.abs(dx) >= 1) continue;
-    const h = er * Math.sqrt(1 - dx * dx);
-    const top = Math.ceil(y + 0.5 - h - 0.5);
-    const bottom = Math.floor(y + 0.5 + h - 0.5);
-    // the far wall catches the trap's light (one tone): a crescent, 2 px deep in the middle once fully
-    // open; the back slab's lip above it is lit
-    if (p.get(px, top + 1) === PAL.ink) p.set(px, top + 1, rim);
-    if (look.step === 2 && Math.abs(dx) < 0.62 && p.get(px, top + 2) === PAL.ink) p.set(px, top + 2, rim);
-    const above = p.get(px, top - 1);
-    if (above !== null && above !== PAL.ink && Math.abs(dx) < 0.92) p.set(px, top - 1, look.step === 2 ? PAL.night4 : PAL.night3);
-    // the front lip
-    const below = p.get(px, bottom + 1);
-    if (below !== null && below !== PAL.ink && Math.abs(dx) < 0.95) p.set(px, bottom + 1, PAL.night2);
-  }
-}
-
-/**
- * The victim's pad (A5 §3.4): flat slabs round an ink hole, painted with the kit's chasm motif and
- * finished for the board — the far rim's light one tone up at the full opening (mag2), the front lip
- * lit 1 px (night2) so the edge the body sinks behind reads, the seam / scar tones, and everything kept
- * to the calm pad's matte pixels (the neon inlay and the gap ring are never painted over).
- */
-class PadRaster {
-  readonly r: Raster;
-  private readonly cx: number;
-  private readonly cy: number;
-  private readonly matte: Uint8Array;
-  private look: PadLook = { step: 0, crack: 0 };
-
-  constructor(scene: Phaser.Scene, at: XY, depth: number) {
-    this.cx = Math.round(at.x);
-    this.cy = Math.round(at.y);
-    this.r = new Raster(scene, this.cx - PAD_HW - 2, this.cy - PAD_HH - 2, PAD_HW * 2 + 5, PAD_HH * 2 + 5, depth);
-    // the calm pad's matte pixels (fallback: everything, if the board is not the calm arena)
-    const { w, h, x, y } = this.r;
-    this.matte = new Uint8Array(w * h);
-    let n = 0;
-    for (let j = 0; j < h; j++)
-      for (let i = 0; i < w; i++) {
-        const ok = padColorAt(x + i, y + j) !== null;
-        this.matte[j * w + i] = ok ? 1 : 0;
-        if (ok) n++;
+/** Run `fn(k)` once per rendered frame for `n` frames (k = 0 … n − 1); resolves after the last. */
+function eachFrame(scene: Phaser.Scene, n: number, fn: (k: number) => void): Promise<void> {
+  return new Promise((resolve) => {
+    let k = 0;
+    onFrame(scene, (dt) => {
+      if (dt <= 0) return true;
+      fn(k++);
+      if (k >= n) {
+        resolve();
+        return false;
       }
-    if (n < (w * h) / 4) this.matte.fill(1);
-    this.draw();
-  }
+      return true;
+    });
+  });
+}
 
-  get geom(): ChasmGeom {
-    return padGeom(this.cx, this.cy, this.look.step);
+/** The abyss on the floor: one raster, repainted when its look changes. */
+class AbyssRaster {
+  readonly r: Raster;
+  private look: AbyssLook = { crack: 0, open: 0, glow: 3, breath: 0, seam: false };
+  constructor(
+    scene: Phaser.Scene,
+    readonly shape: AbyssShape,
+    depth: number,
+  ) {
+    const span = Math.ceil(shape.rx * 1.6) + 6;
+    this.r = new Raster(scene, shape.x - span, shape.y - Math.ceil(span / 2) - 4, span * 2 + 1, span + 24, depth);
   }
-
-  set(look: Partial<PadLook>): void {
+  get state(): AbyssLook {
+    return this.look;
+  }
+  set(look: Partial<AbyssLook>): void {
     this.look = { ...this.look, ...look };
-    this.draw();
-  }
-
-  private draw(): void {
     const r = this.r;
     if (!r.alive) return;
-    const L = this.look;
     r.begin();
-    if (L.scar !== 2) paintPadV3(r.pc, this.cx - r.x, this.cy - r.y, L);
-    // keep to the matte pad
-    const { w, h } = r;
-    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) if (!this.matte[j * w + i]) r.pc.erase(i, j);
+    paintAbyss(r.pc, this.shape, this.look, r.x, r.y);
     r.end();
   }
-
-  /** The 1-px local tremble of the shut (the pad raster only; off under reduced motion). */
+  /** The 1-px local tremble of the slam (this raster only; off under reduced motion). */
   tremble(scene: Phaser.Scene, ms: number): Promise<void> {
     const r = this.r;
     return jitter(scene, { x: r.x, y: r.y, setPosition: (x: number, y: number) => r.moveTo(x, y) }, ms);
   }
-
   destroy(): void {
     this.r.destroy();
   }
 }
 
-/** Three short root spurs where the crack leaves the trap tile (the accent the opening no longer draws). */
-function rootSpurs(scene: Phaser.Scene, at: XY, dir: XY, seed: number): ReturnType<typeof runCrack>[] {
-  const rnd = fxRng(seed);
-  const base = Math.atan2(dir.y * 2, dir.x); // in floor space (iso y ×2)
-  return [-2.2, 2.0, 3.14].map((da, i) => {
-    const a = base + da + (rnd() - 0.5) * 0.4;
-    const len = 6 + Math.floor(rnd() * 4);
-    const to = { x: Math.round(at.x + Math.cos(a) * len), y: Math.round(at.y + (Math.sin(a) * len) / 2) };
-    return runCrack(scene, at, to, { ms: 60 + i * 20, seed: seed + i * 7 + 1, light: PAL.mag2, depth: CRACK_DEPTH });
+/**
+ * The glowing crack from the trap to the victim (the old fissure in v3 pixels): 5 px across — mag1 glow,
+ * mag3 upper lip, a 1-px ink split, mag4 lower lip (lit from inside), mag1 glow — the newest pixels white
+ * / mag4 with a hard head; four short branches crackle off it; stone bits are kicked up at its head.
+ * `done` resolves on arrival; `cool()` steps it down to bare ink and out.
+ */
+function fissureV3(scene: Phaser.Scene, from: XY, to: XY, o: { ms: number; seed: number; depth: number }): { done: Promise<void>; cool(ms?: number): Promise<void> } {
+  const rnd = fxRng(o.seed);
+  const path = crackPath(from, to, o.seed, 4);
+  const branches = Array.from({ length: 4 }, (_, i) => {
+    const k = 0.2 + i * 0.18 + (rnd() - 0.5) * 0.1;
+    const at = path[Math.min(path.length - 1, Math.floor(k * (path.length - 1)))];
+    const a = rnd() * TAU;
+    const l = 6 + rnd() * 7;
+    return { k, pts: crackPath(at, { x: Math.round(at.x + Math.cos(a) * l), y: Math.round(at.y + Math.sin(a) * l * 0.5) }, o.seed + i * 17 + 3, 2) };
   });
+  const xs = [...path, ...branches.flatMap((b) => b.pts)].map((q) => q.x);
+  const ys = [...path, ...branches.flatMap((b) => b.pts)].map((q) => q.y);
+  const ras = new Raster(scene, Math.min(...xs) - 4, Math.min(...ys) - 4, Math.max(...xs) - Math.min(...xs) + 9, Math.max(...ys) - Math.min(...ys) + 9, o.depth);
+  const debris = new PxSparks(scene, o.depth + 0.1);
+  let shown = 0;
+  let level = 3; // 3 lit, 2 dimmer, 1 dim, 0 ink, −1 gone
+  const draw = () => {
+    ras.begin();
+    if (level >= 0) {
+      const n = Math.min(path.length, shown);
+      const lit = level >= 3;
+      const halo = level >= 2 ? PAL.mag1 : null;
+      const upper = level >= 3 ? PAL.mag3 : level >= 2 ? PAL.mag2 : level >= 1 ? PAL.mag1 : null;
+      const lower = level >= 3 ? PAL.mag4 : level >= 2 ? PAL.mag3 : level >= 1 ? PAL.mag2 : null;
+      for (let i = 0; i < n; i++) {
+        const q = path[i];
+        const a = path[Math.max(0, i - 2)];
+        const b = path[Math.min(n - 1, i + 2)];
+        const flat = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y);
+        const [dx, dy] = flat ? [0, 1] : [1, 0];
+        const fresh = lit && i >= n - 5 && shown < path.length;
+        if (halo !== null && (i % 2 === 0 || i >= n - 12)) {
+          ras.px(q.x - dx * 2, q.y - dy * 2, halo);
+          ras.px(q.x + dx * 2, q.y + dy * 2, halo);
+        }
+        if (upper !== null) ras.px(q.x - dx, q.y - dy, fresh ? PAL.white : upper);
+        if (lower !== null) ras.px(q.x + dx, q.y + dy, fresh ? PAL.mag4 : lower);
+      }
+      for (let i = 0; i < n; i++) ras.px(path[i].x, path[i].y, PAL.ink);
+      // the branches crackle off once the head has passed them
+      for (const br of branches) {
+        if (n < br.k * path.length) continue;
+        for (const q of br.pts) ras.px(q.x, q.y, level >= 2 ? PAL.mag2 : level >= 1 ? PAL.mag1 : PAL.ink);
+      }
+      // the head: a hard white star while it runs
+      if (lit && shown < path.length && n > 0) {
+        const h = path[n - 1];
+        for (let k = -2; k <= 2; k++) {
+          ras.px(h.x + k, h.y, Math.abs(k) === 2 ? PAL.mag4 : PAL.white);
+          ras.px(h.x, h.y + k, Math.abs(k) === 2 ? PAL.mag4 : PAL.white);
+        }
+      }
+    }
+    ras.end();
+  };
+  const done = new Promise<void>((resolve) => {
+    onFrame(scene, (dt, el) => {
+      if (!ras.alive) {
+        resolve();
+        return false;
+      }
+      const before = shown;
+      // at most one … several whole pixels per frame, never skipping the head's last frame
+      shown = Math.min(path.length, Math.max(shown + (dt > 0 ? 1 : 0), Math.floor((el / o.ms) * path.length)));
+      if (shown > before && dt > 0 && rnd() < 0.6) {
+        const h = path[Math.max(0, shown - 1)];
+        debris.add({ x: h.x, y: h.y, vx: (rnd() * 2 - 1) * 30, vy: -40 - rnd() * 50, ay: 280, life: 240 + Math.floor(rnd() * 120), colors: rnd() < 0.5 ? [PAL.mag4, PAL.mag3, PAL.mag2] : [PAL.stone3, PAL.stone2, PAL.stone1], shape: 'px', fadeAt: 1 });
+      }
+      draw();
+      if (shown >= path.length) {
+        resolve();
+        return false;
+      }
+      return true;
+    });
+  });
+  return {
+    done,
+    async cool(ms = 600) {
+      // lit → dimmer → dim → bare ink → gone, in palette steps
+      await run(scene, ms, (t) => {
+        const lv = 3 - Math.min(4, Math.floor(t * 4.999));
+        if (lv !== level) {
+          level = lv;
+          draw();
+        }
+      });
+      ras.destroy();
+      debris.release();
+    },
+  };
 }
 
 /**
- * Rock bits from the hole's far rim that tumble in after the body (whole pixels, masked by the lip).
- * kill() removes what is still falling (the slabs shut over them).
+ * Rocks breaking off the back rim and tumbling into the hole after the body (the old seven, whole-pixel
+ * 2–3 px chunks: a lit stone3 top-left, stone2, a stone1 bottom-right), masked by the lip.
  */
-function rockBits(scene: Phaser.Scene, g: ChasmGeom, mask: EdgeMask, depth: number, seed: number): { done: Promise<void>; kill(): void } {
+function tumblingRocks(scene: Phaser.Scene, s: AbyssShape, mask: ReturnType<typeof frontEdgeMask>, depth: number, seed: number): { done: Promise<void>; kill(): void } {
   const rnd = fxRng(seed);
-  const n = fxCount(5);
-  const { x, y, rx, ry } = g.hole;
-  const bits = Array.from({ length: n }, (_, i) => {
-    // spread over the far (upper) rim and the sides: the bits break off and drop in
-    const an = Math.PI + (i + 0.5) * (Math.PI / n) + (rnd() - 0.5) * 0.3;
-    return {
-      x0: Math.round(x + Math.cos(an) * (rx - 1)),
-      y0: Math.round(y + Math.sin(an) * Math.max(1, ry - 1)),
-      delay: 2 + i * 2 + Math.floor(rnd() * 2), // frames after the body starts to fall
-      vx: Math.round((x - (x + Math.cos(an) * rx)) / 6),
-      c: [PAL.stone2, PAL.stone1, PAL.night3, PAL.stone2, PAL.night2][i % 5],
-      big: rnd() < 0.5,
-    };
+  const n = fxCount(7);
+  const rocks = Array.from({ length: n }, (_, i) => {
+    const an = Math.PI * (1.05 + rnd() * 0.9);
+    const p = abyssRimAt(s, an, 1);
+    return { x: p.x, y: p.y - 2, vx: (s.x - p.x) * (0.8 + rnd() * 0.8), vy: -(10 + rnd() * 40), delay: 60 + i * 55, big: rnd() < 0.5 };
   });
-  const ras = new Raster(scene, x - rx - 6, y - ry - 6, rx * 2 + 12, ry * 2 + 90, depth);
+  const ras = new Raster(scene, s.x - s.rx * 2, s.y - s.ry * 2 - 10, s.rx * 4, s.ry * 4 + 140, depth);
   mask.apply(ras.img);
-  let f = 0;
   let dead = false;
   const kill = () => {
     if (dead) return;
@@ -366,32 +488,37 @@ function rockBits(scene: Phaser.Scene, g: ChasmGeom, mask: EdgeMask, depth: numb
     ras.destroy();
   };
   const done = new Promise<void>((resolve) => {
-    onFrame(scene, (dt) => {
+    onFrame(scene, (dt, el) => {
       if (dead) {
         resolve();
         return false;
       }
-      if (dt > 0) f++;
+      const sdt = dt / 1000;
       ras.begin();
-      let live = false;
-      for (const b of bits) {
-        const k = f - b.delay;
-        if (k < 0) {
-          live = true;
-          ras.px(b.x0, b.y0, b.c);
+      let alive = false;
+      for (const r of rocks) {
+        if (el < r.delay) {
+          alive = true;
           continue;
         }
-        // whole-pixel gravity steps: 1, 2, 3, 5, 7 … and a sideways drift toward the centre
-        const dy = Math.round(0.9 * k * k);
-        const px = b.x0 + Math.round(b.vx * Math.min(k, 4) * 0.5);
-        const py = b.y0 + dy;
-        if (py > y + ry + 40) continue;
-        live = true;
-        ras.px(px, py, b.c);
-        if (b.big) ras.px(px + 1, py, b.c === PAL.stone2 ? PAL.stone1 : PAL.night1);
+        if (el > r.delay + 520) continue;
+        alive = true;
+        r.vy += 520 * sdt;
+        r.x += r.vx * sdt;
+        r.y += r.vy * sdt;
+        const x = Math.round(r.x);
+        const y = Math.round(r.y);
+        ras.px(x, y, PAL.stone3);
+        ras.px(x + 1, y, PAL.stone2);
+        ras.px(x, y + 1, PAL.stone2);
+        ras.px(x + 1, y + 1, PAL.stone1);
+        if (r.big) {
+          ras.px(x + 2, y, PAL.stone2);
+          ras.px(x + 2, y + 1, PAL.stone1);
+        }
       }
       ras.end();
-      if (!live) {
+      if (!alive) {
         kill();
         resolve();
         return false;
@@ -402,90 +529,71 @@ function rockBits(scene: Phaser.Scene, g: ChasmGeom, mask: EdgeMask, depth: numb
   return { done, kill };
 }
 
-/** Stepped dust puffs rising off the hole's lip (palette steps, no alpha). */
-function lipDust(scene: Phaser.Scene, g: ChasmGeom, depth: number, seed: number, n = 6): void {
+/** Stone dust rising off the cracks under the victim (stepped puffs, no alpha). */
+function crackDust(scene: Phaser.Scene, s: AbyssShape, depth: number, seed: number): void {
   const rnd = fxRng(seed);
   const sp = new PxSparks(scene, depth);
-  const { x, y, rx, ry } = g.hole;
-  const k = fxCount(n);
-  for (let i = 0; i < k; i++) {
-    const an = (i / k) * Math.PI * 2 + rnd() * 0.5;
-    sp.add({
-      x: Math.round(x + Math.cos(an) * (rx + 1)),
-      y: Math.round(y + Math.sin(an) * (ry + 1)),
-      vx: Math.cos(an) * (6 + rnd() * 8),
-      vy: -(10 + rnd() * 14),
-      drag: 2,
-      life: 300 + Math.floor(rnd() * 160),
-      delay: Math.floor(rnd() * 60),
-      size: 1 + Math.floor(rnd() * 2),
-      shape: 'puff',
-      colors: [PAL.stone2, PAL.night3, PAL.night2, PAL.night1],
-      fadeAt: 1,
-    });
-  }
-  sp.release();
-}
-
-/** The floor breaking: stone chips thrown up off the hole's rim at the open, falling back (whole pixels). */
-function rimChips(scene: Phaser.Scene, g: ChasmGeom, depth: number, seed: number): void {
-  const rnd = fxRng(seed);
-  const sp = new PxSparks(scene, depth);
-  const { x, y, rx, ry } = g.hole;
-  const n = fxCount(8);
+  const n = fxCount(10);
   for (let i = 0; i < n; i++) {
-    const an = (i / n) * Math.PI * 2 + rnd() * 0.6;
-    const ox = Math.cos(an);
-    sp.add({
-      x: Math.round(x + ox * (rx + 1)),
-      y: Math.round(y + Math.sin(an) * (ry + 1)),
-      vx: ox * (14 + rnd() * 22),
-      vy: -(70 + rnd() * 50),
-      ay: 420,
-      life: 300 + Math.floor(rnd() * 120),
-      size: rnd() < 0.4 ? 2 : 1,
-      shape: 'px',
-      colors: [PAL.stone3, PAL.stone2, PAL.stone2, PAL.stone1],
-      fadeAt: 1,
-    });
+    const c = s.cracks[i % s.cracks.length];
+    const q = c[Math.floor(rnd() * c.length)];
+    sp.add({ x: q.x, y: q.y, vx: (rnd() - 0.5) * 16, vy: -(14 + rnd() * 22), ay: 30, drag: 1.5, life: 260 + Math.floor(rnd() * 160), delay: Math.floor(rnd() * RADIAL_MS), size: 1 + Math.floor(rnd() * 2), shape: 'puff', colors: [PAL.stone2, PAL.night3, PAL.night2, PAL.night1], fadeAt: 1 });
   }
   sp.release();
 }
 
-/** The shut's 2-step dust ring round the pad (an iso ring of dust pixels: stone2 near, night3 out, gone). */
-function dustRing(scene: Phaser.Scene, at: XY, depth: number, seed: number): Promise<void> {
+/** The floor breaking at the open: stone chips and magenta sparks thrown up off the rim (whole pixels). */
+function rimBurst(scene: Phaser.Scene, s: AbyssShape, depth: number, seed: number): void {
   const rnd = fxRng(seed);
-  const ras = Raster.around(scene, at.x, at.y, PAD_HW * 2 + 24, PAD_HH * 2 + 14, depth);
-  // the two rings' pixels, chosen once (a broken ring of dust grains, stable over its two frames)
-  const ring = (rx: number, ry: number, keep: number): XY[] => {
-    const out: XY[] = [];
-    const n = Math.round(2 * Math.PI * Math.max(rx, ry));
+  const sp = new PxSparks(scene, depth);
+  const n = fxCount(18);
+  for (let i = 0; i < n; i++) {
+    const p = abyssRimAt(s, rnd() * TAU, 1);
+    const mag = i % 2 === 0;
+    sp.add({ x: Math.round(p.x), y: Math.round(p.y), vx: (rnd() - 0.5) * 60, vy: -(40 + rnd() * 50), ay: 300, life: 300 + Math.floor(rnd() * 200), size: !mag && rnd() < 0.4 ? 2 : 1, shape: 'px', colors: mag ? [PAL.mag4, PAL.mag3, PAL.mag2] : [PAL.stone3, PAL.stone2, PAL.stone1], fadeAt: 1 });
+  }
+  sp.release();
+}
+
+/**
+ * The slam's shock ring over the floor (the old floorRing, whole pixels): two iso rings running out to
+ * rx + 30, their tone stepping down mag4 → mag3 → mag2 → earth3 → gone. Resolves when gone.
+ */
+function slamRing(scene: Phaser.Scene, s: AbyssShape, depth: number, ms = 420): Promise<void> {
+  const r1 = s.rx + 30;
+  const ras = Raster.around(scene, s.x, s.y, r1 * 2 + 8, r1 + 8, depth);
+  const ramp = [PAL.mag4, PAL.mag3, PAL.mag2, PAL.earth3];
+  const ring = (rx: number, c: number) => {
+    const n = Math.max(24, Math.round(TAU * rx));
     for (let i = 0; i < n; i++) {
-      if (rnd() > keep) continue;
-      const an = (i / n) * Math.PI * 2;
-      out.push({ x: Math.round(at.x + Math.cos(an) * rx), y: Math.round(at.y + Math.sin(an) * ry) });
+      const an = (i / n) * TAU;
+      ras.px(Math.round(s.x + Math.cos(an) * rx), Math.round(s.y + (Math.sin(an) * rx) / 2), c);
     }
-    return out;
   };
-  const near = ring(PAD_HW + 2, PAD_HH + 1, 0.7);
-  const far = ring(PAD_HW + 6, PAD_HH + 3, 0.45);
-  let f = 0;
-  return new Promise((resolve) => {
-    onFrame(scene, (dt) => {
-      if (dt > 0) f++;
-      ras.begin();
-      // two steps of two frames each: near and light, then further out and darker, then gone
-      if (f <= 2) for (const q of near) ras.px(q.x, q.y, PAL.stone2);
-      else if (f <= 4) for (const q of far) ras.px(q.x, q.y, PAL.night3);
-      ras.end();
-      if (f > 4) {
-        ras.destroy();
-        resolve();
-        return false;
-      }
-      return true;
-    });
-  });
+  return run(scene, ms, (t) => {
+    const k = E.outCubic(t);
+    ras.begin();
+    const tone = ramp[Math.min(ramp.length - 1, Math.floor(t * ramp.length))];
+    ring(Math.round(6 + (r1 - 6) * k), tone);
+    if (t > 0.12) ring(Math.round(6 + (r1 - 6) * E.outCubic(t - 0.12) * 0.82), ramp[Math.min(ramp.length - 1, Math.floor(t * ramp.length) + 1)]);
+    ras.end();
+  }).then(() => ras.destroy());
+}
+
+/** Dust puffs and sparks at the slam (stepped tones). */
+function slamDust(scene: Phaser.Scene, s: AbyssShape, depth: number, seed: number): void {
+  const rnd = fxRng(seed);
+  const dust = new PxSparks(scene, depth);
+  const n = fxCount(18);
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * TAU;
+    dust.add({ x: Math.round(s.x + Math.cos(a) * s.rx * 0.5), y: Math.round(s.y + Math.sin(a) * s.ry * 0.5 - 2), vx: Math.cos(a) * (30 + rnd() * 40), vy: Math.sin(a) * 18 - (10 + rnd() * 20), drag: 2.5, life: 400 + Math.floor(rnd() * 300), size: 1 + Math.floor(rnd() * 2), shape: 'puff', colors: [PAL.earth3, PAL.stone2, PAL.night3, PAL.night2], fadeAt: 1 });
+  }
+  dust.release();
+  const sp = new PxSparks(scene, DEPTH.FX + 3);
+  const m = fxCount(14);
+  for (let i = 0; i < m; i++) sp.add({ x: Math.round(s.x + (rnd() - 0.5) * s.rx * 1.2), y: Math.round(s.y + (rnd() - 0.5) * 6), vx: (rnd() - 0.5) * 60, vy: -(50 + rnd() * 70), ay: 200, life: 240 + Math.floor(rnd() * 180), shape: 'px', colors: [PAL.white, PAL.mag4, PAL.mag3, PAL.mag2], fadeAt: 1 });
+  sp.release();
 }
 
 // ================================================================ the swallow (the destroy)
@@ -496,15 +604,15 @@ export interface ChasmHints {
   from?: XY;
   /** Called with the show time (activate clock) the victim's card will land, or null (no card). */
   onLand?: (t: number | null) => void;
-  /** Called on the shut frame (the slabs slam back): the trap card only lies down after it, at any speed. */
+  /** Called on the shut frame (the abyss slams shut): the trap card only lies down after it, at any speed. */
   onShut?: () => void;
   /** The activate's show clock (the victim's landing is reported on it). */
   clock?: { now(): number };
 }
 
 /**
- * Yer Yarığı's destroys hook, the v3 look (see the header): crack → open → fall → shut → the card from
- * the scar. Resolves when the victim's card has landed on the graveyard.
+ * Yer Yarığı's destroys hook, the v3 look (see the header): crack → the ground cracks → the abyss opens →
+ * the fall → the slam → the card from the scar. Resolves when the victim's card has landed on the graveyard.
  */
 export async function swallowV3(ctx: DestroyCtx): Promise<void> {
   const ev = ctx.ev;
@@ -524,10 +632,12 @@ export async function swallowV3(ctx: DestroyCtx): Promise<void> {
   }
   const { tile, unit } = field.release(ev.uid);
   // (today's victim lean targets the tile's home exactly: chasm_trap.ts:153, :148 before A-5)
-  const lean = tile ? { x: tile.home.x, y: tile.home.y - 18 } : (() => {
-    const z = zoneXY(ev.player, 'monster', ev.zone);
-    return { x: z.x, y: z.y - 18 };
-  })();
+  const lean = tile
+    ? { x: tile.home.x, y: tile.home.y - 18 }
+    : (() => {
+        const z = zoneXY(ev.player, 'monster', ev.zone);
+        return { x: z.x, y: z.y - 18 };
+      })();
   const home = { x: Math.round(lean.x), y: Math.round(lean.y + 18) };
   const u: MonsterUnit | null = live(unit);
   if (unit) unit.badge.setVisible(false);
@@ -536,40 +646,49 @@ export async function swallowV3(ctx: DestroyCtx): Promise<void> {
     sc.events.emit('v3:dying', u); // (measure keeps logging a unit released from the field)
   }
   const seed = ev.uid * 31 + 7;
-  const pad = new PadRaster(sc, home, DEPTH.TILE_FX + 2);
-  const g0 = pad.geom;
-  const C = g0.slabs[0][0];
+  // the abyss as wide as the old one: its half width from the body's own width (setpieces.chasm)
+  const bodyW = u && u.sprite.active ? spriteBox(sc, u.sprite).w : 48;
+  const shape = abyssShape(home, bodyW, seed);
+  const abyss = new AbyssRaster(sc, shape, ABYSS_DEPTH);
   const lights: { strip: BeamHandle | null; hole: LightHandle | null } = { strip: null, hole: null };
-  const cracks: ReturnType<typeof runCrack>[] = [];
+  const v3 = !!u && u.has('hitHeavy') && u.has('death');
 
-  // ---- CRACK — `crack`: trap tile → the slab cut that faces it
-  const entry = from ? entryCut(g0, from) : null;
-  if (from && entry) {
-    const dir = { x: entry.x - from.x, y: entry.y - from.y };
+  // ---- CRACK — `crack`: trap tile → the victim's tile
+  let fissure: ReturnType<typeof fissureV3> | null = null;
+  if (from) {
+    const dir = { x: home.x - from.x, y: home.y - from.y };
     const dl = Math.hypot(dir.x, dir.y) || 1;
     // the crack leaves the trap tile at its edge: the opening's burst still covers the tile itself for
     // the first frames, and the crack must show on the frame after its sound
     const out = footOffset({ x: dir.x / dl, y: dir.y / dl });
     const foot = { x: Math.round(from.x + (dir.x / dl) * out), y: Math.round(from.y + (dir.y / dl) * out) };
     playV3('chasmCrack', { volume: 0.9, pan: panAt((foot.x + home.x) / 2) }); // mark `crack`
-    cracks.push(...rootSpurs(sc, foot, { x: dir.x / dl, y: dir.y / dl }, seed));
-    const main = runCrack(sc, foot, entry, { ms: CRACK_MS, seed: seed + 3, depth: CRACK_DEPTH });
-    cracks.push(main);
+    fissure = fissureV3(sc, foot, home, { ms: CRACK_MS, seed: seed + 3, depth: CRACK_DEPTH });
     // the stepped magenta floor strip follows the crack's head (light on the matte pads it crosses)
-    lights.strip = lightBeam(sc, foot, foot, PAL.mag3, 0, { air: false, floor: { from: foot, to: foot }, floorWidth: 6, intensity: 0.8, shimmer: 0 });
+    lights.strip = lightBeam(sc, foot, foot, PAL.mag3, 0, { air: false, floor: { from: foot, to: foot }, floorWidth: 8, intensity: 0.85, shimmer: 0 });
     const strip = lights.strip;
     void run(sc, CRACK_MS, (t) => {
-      const h = lerpXY(foot, entry, Math.min(1, t));
+      const h = lerpXY(foot, home, Math.min(1, t));
       strip.setEnds(foot, h, { from: foot, to: h });
     });
-    await main.done;
+    await wait(sc, CRACK_MS - RADIAL_LEAD);
   } else {
     playV3('chasmCrack', { volume: 0.9, pan: panAt(home.x) }); // mark `crack` (no trap tile on screen)
-    await wait(sc, CRACK_MS);
+    await wait(sc, CRACK_MS - RADIAL_LEAD);
   }
-  // the pad's own cracks split it into three slabs
-  await run(sc, PAD_CRACK_MS, (t) => pad.set({ crack: Math.min(1, t), lip: PAL.mag3 }));
-  pad.set({ crack: 1, lip: PAL.mag3 });
+
+  // ---- the ground under the victim cracks; the body flinches
+  if (u) {
+    if (v3) u.pose('hitHeavy', 0);
+    else void u.play('hit', { hold: true });
+  }
+  lights.hole = lightPool(sc, home.x, home.y, { color: PAL.mag3, spill: PAL.mag2, radius: Math.round(shape.rx * 1.1), floorY: home.y, intensity: 0.2, anim: 'breathe', fadeIn: 0 });
+  lights.hole.setIntensity(0.6, RADIAL_MS);
+  crackDust(sc, shape, unitDepth(home.y) + 1, seed + 5);
+  await run(sc, RADIAL_MS, (t) => abyss.set({ crack: E.outCubic(t) }));
+  abyss.set({ crack: 1 });
+  void fissure?.cool(600);
+  void lights.strip?.fadeOut(300);
 
   // ---- OPEN — `open`
   void ctx.focus(lean, { zoom: 1.07, ms: 320, pan: 0.36 }); // today's victim lean (chasm_trap.ts:153, :148 before A-5), kept
@@ -577,61 +696,65 @@ export async function swallowV3(ctx: DestroyCtx): Promise<void> {
   const thud = hitSoundFor(u, { kind: 'physical', heavy: true });
   if (thud) playHit(sc, thud, { heavy: true, volume: 0.7, pan: panAt(home.x) });
   else if (u) playV3('impactLight', { volume: 0.45, pan: panAt(home.x) });
-  pad.set({ step: 1 });
-  for (const c of cracks) void c.fade(160);
-  void lights.strip?.fadeOut(200);
-  // the hole's magenta spills one tone onto the pad's rim and the floor round it (stepped light, under
-  // the slabs: only the matte pixels outside them show it)
-  lights.hole = lightPool(sc, C.x, C.y, { color: PAL.mag3, spill: null, radius: 32, floorY: C.y, intensity: 0.6, air: 0, fadeIn: 0 });
-  void lightFlash(sc, C.x, C.y, PAL.mag3, 46, 260, { floorY: C.y, ring: true, intensity: 0.9, air: 0 });
-  // the body takes it: v3 art its hitHeavy struck frame, the old art its v1 hit
-  const v3 = !!u && u.has('hitHeavy') && u.has('death');
-  if (u) {
-    if (v3) u.pose('hitHeavy', 0);
-    else void u.play('hit', { hold: true });
-  }
-  // its card under it goes down with the floor: the tile's pixels on a raster, same place and depth
+  lights.hole.setIntensity(1.45, OPEN_MS);
+  void lightFlash(sc, home.x, home.y, PAL.mag3, Math.round(shape.rx * 1.3), 300, { floorY: home.y, ring: true, intensity: 0.9, air: 0 });
+  rimBurst(sc, shape, DEPTH.FX + 2, seed + 19);
+  // its card under it goes down with the floor: the tile's pixels on a raster over the hole
   let cardRas: Raster | null = null;
   if (tile && tile.active) {
     const cp = tile.currentPixels();
-    cardRas = new Raster(sc, cp.x, cp.y, cp.px.w, cp.px.h, DEPTH.CARD_ON_TILE);
+    cardRas = new Raster(sc, cp.x, cp.y, cp.px.w, cp.px.h, ABYSS_DEPTH + 0.5);
     cardRas.pc.blit(cp.px, 0, 0);
     cardRas.end();
     tile.destroy();
   }
-  await nextFrame(sc);
-  pad.set({ step: 2 });
-  const g2 = pad.geom;
-  lights.hole.setIntensity(1, 40);
-  rimChips(sc, g2, unitDepth(g2.hole.y + g2.hole.ry) + 0.6, seed + 19);
-  const mask = frontEdgeMask(sc, fallLip(g2));
+  const mask = frontEdgeMask(sc, abyssLip(shape, 0.05));
   const s = u ? u.sprite : null;
   if (u && s) {
     mask.apply(s);
     mask.apply(u.shadow);
   }
   if (cardRas) mask.apply(cardRas.img);
-  // the struck pose holds 2 frames on the opening hole (the open frame and this one), then it drops
-  await nextFrame(sc);
+  const sx0 = s ? s.x : 0;
+  const sy0 = s ? s.y : 0;
+  const openFrames = Math.max(2, Math.round(OPEN_MS / (1000 / 60)));
+  await eachFrame(sc, openFrames, (k) => {
+    const t = (k + 1) / openFrames;
+    const open = E.outBack(t);
+    abyss.set({ open });
+    mask.update(abyssLip(shape, Math.max(0.05, Math.min(1, open))));
+    // the body trembles 1 px and sinks 3 px as the ground gives way (whole pixels)
+    if (s && s.active) s.setPosition(sx0 + (k % 4 === 0 ? 1 : k % 4 === 2 ? -1 : 0), sy0 + Math.round(t * 3));
+    if (cardRas && cardRas.alive) cardRas.moveTo(cardRas.x, cardRas.y + (k % 3 === 0 ? 1 : 0));
+  });
+  abyss.set({ open: 1 });
+  mask.update(abyssLip(shape, 1));
 
   // ---- FALL
   playV3('chasmFall', { volume: 0.85, pan: panAt(home.x) });
-  const offs = fallOffsets();
+  const rocks = tumblingRocks(sc, shape, mask, ABYSS_DEPTH + 0.6, seed + 11);
+  const bodyH = s && s.active ? spriteBox(sc, s).h : 60;
+  const offs = fallOffsets(Math.max(110, Math.round(bodyH) + 40), FALL_FRAMES);
   const y0 = s ? s.y : 0;
   const cy0 = cardRas ? cardRas.y : 0;
-  const rocks = rockBits(sc, g2, mask, DEPTH.SHADOW + 1, seed + 11);
-  lipDust(sc, g2, unitDepth(g2.hole.y + g2.hole.ry) + 0.5, seed + 13);
   if (u && v3) u.pose('hitHeavy', 1);
+  let breath = 0;
+  // the lip's lowest line: a body whose top is below it has gone under the floor
+  const lipY = shape.y + shape.ry + 2;
   await new Promise<void>((resolve) => {
     let k = 0;
+    let goneAt = -1;
     onFrame(sc, (dt) => {
       if (dt <= 0) return true;
       const dy = offs[Math.min(k, offs.length - 1)];
-      if (s && s.active) s.setY(Math.round(y0 + dy));
+      if (s && s.active) s.setPosition(sx0, Math.round(y0 + dy));
       if (cardRas && cardRas.alive) cardRas.moveTo(cardRas.x, cy0 + Math.min(dy, 40));
-      if (u && v3 && k === 3) u.pose('hitHeavy', 2);
+      if (u && v3 && k === 6) u.pose('hitHeavy', 2);
+      // the deep glow breathes one tone while the body goes down
+      if (k % 6 === 0) abyss.set({ breath: (breath = 1 - breath) });
+      if (goneAt < 0 && (!s || !s.active || spriteBox(sc, s).top > lipY)) goneAt = k;
       k++;
-      if (k >= offs.length) {
+      if (k >= offs.length || (goneAt >= 0 && k >= goneAt + 2)) {
         resolve();
         return false;
       }
@@ -649,38 +772,29 @@ export async function swallowV3(ctx: DestroyCtx): Promise<void> {
     mask.clear(cardRas.img);
     cardRas.destroy();
   }
-
-  // the hole stands open: its far rim breathes one magenta tone (mag2 ↔ mag1, 100 ms) until the shut
-  let breathing = true;
-  void (async () => {
-    let lit = true;
-    while (breathing) {
-      await wait(sc, 100);
-      if (!breathing) break;
-      lit = !lit;
-      pad.set({ rim: lit ? PAL.mag2 : PAL.mag1, lip: lit ? PAL.mag3 : PAL.mag2 });
-    }
-  })();
+  await wait(sc, HOLD_MS);
 
   // ---- SHUT — `shut`
-  const lag = SHUT_AFTER - clock.now();
-  if (lag > 0) await wait(sc, lag);
-  breathing = false;
   rocks.kill();
   mask.destroy();
-  void lights.hole?.fadeOut(80);
-  pad.set({ step: 1, rim: undefined, lip: PAL.mag2 });
-  await nextFrame(sc);
+  void lights.hole.fadeOut(SHUT_MS + 60);
+  const shutFrames = Math.max(2, Math.round(SHUT_MS / (1000 / 60)));
+  await eachFrame(sc, shutFrames, (k) => {
+    const t = (k + 1) / shutFrames;
+    abyss.set({ open: Math.max(0, 1 - E.inCubic(t)), breath: 0, glow: 3 });
+  });
   playV3('chasmShut', { volume: 1, pan: panAt(home.x) }); // mark `shut`
   hints.onShut?.();
-  pad.set({ step: 0, crack: 1, seam: true, lip: null });
-  void dustRing(sc, home, DEPTH.SHADOW + 1, seed + 17);
-  void pad.tremble(sc, 120);
+  abyss.set({ open: 0, seam: true });
+  void slamRing(sc, shape, ABYSS_DEPTH + 0.2);
+  slamDust(sc, shape, unitDepth(home.y) + 1, seed + 17);
+  void lightFlash(sc, home.x, home.y, PAL.mag4, Math.round(shape.rx * 1.7), 460, { floorY: home.y, ring: true, intensity: 0.9, air: 0 });
+  void abyss.tremble(sc, 120);
   await nextFrame(sc);
-  pad.set({ seam: false });
+  abyss.set({ seam: false });
   field.forget(ev.uid);
   if (unit) sc.events.emit('v3:dead', unit);
-  // the card is born on the scar and flies to its graveyard; the scar steps out behind it
+  // the card is born on the scar and flies to its graveyard; the scar's cracks cool down by steps
   const land = (async () => {
     if (!gEv) {
       hints.onLand?.(null);
@@ -693,10 +807,11 @@ export async function swallowV3(ctx: DestroyCtx): Promise<void> {
     await cardLeaves(ctx, { owner: gEv.owner, cardId: ev.cardId, from: home });
   })();
   void (async () => {
-    await wait(sc, 260);
-    pad.set({ scar: 1 });
-    await wait(sc, 120);
-    pad.destroy();
+    for (const g of [2, 1, 0, -1]) {
+      await wait(sc, 150);
+      abyss.set({ glow: g });
+    }
+    abyss.destroy();
   })();
   await land;
   clock.stop();
@@ -744,8 +859,8 @@ export async function chasmV3(ctx: ActCtx): Promise<void> {
   // the victim's card landing (reported by the swallow on this clock), for the trap card's own landing
   let landed!: (t: number | null) => void;
   const victimLand = new Promise<number | null>((r) => (landed = r));
-  // the slabs' shut (reported by the swallow): the trap card lies down only after it — at 1× the shut
-  // comes at CRACK_AT + SHUT_AFTER, at a higher game speed the frame-stepped fall can push it later
+  // the abyss's shut (reported by the swallow): the trap card lies down only after it — at 1× the shut
+  // comes at CRACK_AT + SHUT_AFTER, at a higher game speed the frame-stepped beats can push it later
   let shut!: () => void;
   const shutDone = new Promise<void>((r) => (shut = r));
   // ---- the swallow starts with the crack, while the opening is still on
@@ -765,7 +880,7 @@ export async function chasmV3(ctx: ActCtx): Promise<void> {
   // today's opening lean, the same target (chasm_trap.ts:118)
   const op = await trapOpening(ctx, { focus: lerpXY({ x: trapAt.x, y: trapAt.y - 30 }, { x: vAt.x, y: vAt.y - 20 }, 0.35) });
 
-  // ---- EXIT — `exit`: the card lies down once the slabs have shut, and lands ≥ LAND_GAP after the victim's
+  // ---- EXIT — `exit`: the card lies down once the abyss has shut, and lands ≥ LAND_GAP after the victim's
   const exit = (async () => {
     const lag = CRACK_AT + SHUT_AFTER - clock.now();
     if (lag > 0) await wait(sc, lag);

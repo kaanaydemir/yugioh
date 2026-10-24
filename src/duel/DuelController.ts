@@ -169,7 +169,8 @@ export class DuelController {
       }
       // a human acts: make sure their hand is the one on screen (hot-seat curtain)
       const pd = this.state.pending;
-      if (!pd || pd.kind !== 'chooseTarget') await this.director.userWait(this.views.info.ensureViewer(p));
+      // (v3 A6-B, F7: a trap question's curtain says so)
+      if (!pd || pd.kind !== 'chooseTarget') await this.director.userWait(this.views.info.ensureViewer(p, { trap: pd?.kind === 'trapResponse' }));
       if (this.mail.length || this.stopped) return null;
       this.input.setState(this.state);
       const a = await Promise.race([this.director.userWait(this.input.waitAction(this.state, p)), mailArrived]);

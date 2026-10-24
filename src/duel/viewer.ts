@@ -15,6 +15,7 @@ import type { DuelMode } from '../scenes/launch';
 import type { HandView } from '../view/HandView';
 import type { HudView } from '../view/HudView';
 import type { Prompt } from '../view/Prompt';
+import { V3_A6_B } from '../view/v3flags';
 
 export class ViewerPolicy {
   readonly mode: DuelMode;
@@ -63,8 +64,12 @@ export class ViewerPolicy {
     return p;
   }
 
-  /** Hand the screen to the right viewer for `p`. Curtain in hot-seat (if enabled). */
-  async ensureViewer(p: PlayerId): Promise<void> {
+  /**
+   * Hand the screen to the right viewer for `p`. Curtain in hot-seat (if enabled). v3 (lane A6-B, F7):
+   * the curtain covers only the hand (src/view/v3/CurtainV3.ts); `trap` = the hand-over is for a trap
+   * question ("TUZAK SORUSU: OYUNCU n").
+   */
+  async ensureViewer(p: PlayerId, opts: { trap?: boolean } = {}): Promise<void> {
     const target = this.viewerFor(p);
     if (target === this.hand.owner && !this.hand.isFaceDown) return;
     const useCurtain = this.mode === 'hotseat' && this.curtain && !this.auto && this.isHuman(target);
@@ -72,9 +77,13 @@ export class ViewerPolicy {
       this.onCurtain?.(true);
       try {
         await this.userWait(
-          this.prompt.passDevice(target, async () => {
-            await this.hand.setOwner(target, true);
-          }),
+          this.prompt.passDevice(
+            target,
+            async () => {
+              await this.hand.setOwner(target, true);
+            },
+            V3_A6_B ? { hand: this.hand, kind: opts.trap ? 'trap' : 'turn' } : undefined,
+          ),
         );
       } finally {
         this.onCurtain?.(false);

@@ -247,7 +247,7 @@ export const V3_SPELL_RECIPES = {
 
   // ================================================================ Ayna Kalkanı
   /**
-   * The panel builds cell by cell: four whole-tone glass-plate ticks, 50 ms apart, on a thick plate
+   * The dome builds from the floor up: four whole-tone glass-plate ticks, 100 ms apart, on a thick plate
    * (C5 D5 E5 F#5 on plate ratios: an octave under the beam's E6 and under the wyrm's E6–B7 glass —
    * LSD ≥ 10 dB against its glass roles, measured in A-4).
    */
@@ -256,12 +256,14 @@ export const V3_SPELL_RECIPES = {
     gap: 0.15,
     verb: 0.4,
     play(v) {
+      // (24 Oct, the big dome back: the ticks follow its cells rising from the floor to the crown over
+      // the 380 ms build — 100 ms apart instead of the 7-cell panel's 50)
       MIRROR.forEach((m, i) => {
-        plateBell(v, midiHz(m - 12), i * 0.05, 0.12 - i * 0.008, 0.2, { modes: 4 });
+        plateBell(v, midiHz(m - 12), i * 0.1, 0.12 - i * 0.008, 0.2, { modes: 4 });
         // the tick itself: a dry plate click (band-passed, no airy hiss on top) on a short low "thock"
-        // of the thick panel settling into place (the body the wyrm's ringing glass never has)
-        v.noise('white', { t: i * 0.05, g: perc(0.035, 0.005, 0.0002), to: v.filt('bandpass', 2400, 1.4) });
-        thump(v, i * 0.05, 300, 210, 0.08, 0.06);
+        // of the thick glass settling into place (the body the wyrm's ringing glass never has)
+        v.noise('white', { t: i * 0.1, g: perc(0.035, 0.005, 0.0002), to: v.filt('bandpass', 2400, 1.4) });
+        thump(v, i * 0.1, 300, 210, 0.08, 0.06);
       });
     },
   },

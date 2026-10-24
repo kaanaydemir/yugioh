@@ -16,7 +16,8 @@ import { sfx } from '../audio/sfx';
 import { measureText, pixelText, type TextSize } from '../ui/text';
 import { TEX } from '../vfx/core';
 import { rootDepth } from './CardSprite';
-import { ButtonSkinV3 } from './v3/hudSkin';
+import { ButtonSkinV3, ui3Sfx } from './v3/hudSkin';
+import { REDUCED_MOTION } from './v3/motion';
 import { V3_A6_B } from './v3flags';
 import {
   BUTTON_PRESS,
@@ -79,6 +80,8 @@ export class Button extends Phaser.GameObjects.Container {
   private attentionEvent: Phaser.Time.TimerEvent | null = null;
   private sheenTween: Phaser.Tweens.Tween | null = null;
   private locked = false;
+  /** v3: a disabled-click shake is running (a second click joins it). */
+  private buzzing = false;
 
   constructor(scene: Phaser.Scene, x: number, y: number, opts: ButtonOpts) {
     super(scene, Math.round(x), Math.round(y));
@@ -441,6 +444,7 @@ export class Button extends Phaser.GameObjects.Container {
   /** Disabled-click feedback: short horizontal wiggle + error blip. */
   private buzz(): void {
     this.onBlocked?.();
+    if (this.v3) return this.buzzV3();
     if (this.sound) sfx.play('uiError', { volume: 0.5 });
     const x0 = this.x;
     const o = { t: 0 };
@@ -456,4 +460,33 @@ export class Button extends Phaser.GameObjects.Container {
       },
     });
   }
+
+  /**
+   * v3 (A6-B, F5 "Kapalı düğme"): the trim two crimson frames, the button 1 px +1 −1 +1 0 in 30-ms
+   * steps (no shake with reduced motion), ui3Error (today's uiError while A6-A's recipe is silent).
+   */
+  private buzzV3(): void {
+    const skin = this.v3!;
+    skin.reject();
+    if (this.sound) ui3Sfx('ui3Error', {}, 'uiError', { volume: 0.5 });
+    if (REDUCED_MOTION || this.buzzing) return;
+    this.buzzing = true;
+    const x0 = this.x;
+    const steps = BUZZ_V3;
+    let i = 0;
+    const next = () => {
+      if (!this.active) return;
+      if (i >= steps.length) {
+        this.x = x0;
+        this.buzzing = false;
+        return;
+      }
+      this.x = x0 + steps[i++];
+      this.scene.time.delayedCall(30, next);
+    };
+    next();
+  }
 }
+
+/** The v3 disabled-click shake (F5): 1 px each way, 30 ms per step. */
+const BUZZ_V3 = Object.freeze([1, -1, 1, 0]) as readonly number[];

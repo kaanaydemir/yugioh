@@ -558,6 +558,11 @@ export interface OpeningOpts {
    * hand card's do — collapseTileInto). Nothing passes 'flow' yet (lane A5-A step A-7 does).
    */
   setRelease?: 'dissolve' | 'flow';
+  /**
+   * v3 look only: how long after release() the name plate starts stepping out (default 170 ms). A5
+   * §3.5: the spring erupts where the plate lies, so its plate goes at once (0).
+   */
+  plateOut?: number;
 }
 
 /** Standing card centre above a tile (TileCard.standUp pose at scale 1). */
@@ -786,7 +791,7 @@ export function castSpot(player: PlayerId): XY {
 }
 
 /** The floor under a card hovering at `at` (its rune ring and its shadow). */
-function castFloor(at: XY): number {
+export function castFloor(at: XY): number {
   return at.y + CARD_HH + 6;
 }
 
@@ -1120,7 +1125,7 @@ async function spellOpeningV3(
     motes.release();
     rim?.stop();
     if (card && card.active) card.setY(hoverY);
-    bg(wait(sc, mode === 'release' ? 170 : 0).then(() => plate.hide()));
+    bg(wait(sc, mode === 'release' ? (o.plateOut ?? 170) : 0).then(() => plate.hide()));
     bg(rune.dismiss(mode === 'release' ? 160 : 220));
     void cardLight?.fadeOut(200);
   };
@@ -1139,7 +1144,8 @@ async function spellOpeningV3(
         o.releaseFrom === 'top'
           ? { x: center.x, y: Math.round(center.y - (standing ? 22 : CARD_HH) - 2) }
           : o.releaseFrom === 'bottom'
-            ? { x: center.x, y: Math.round(center.y + CARD_HH - 1) }
+            ? // a set card stands ON its tile: its bottom edge is the tile's floor (A5 §3.5)
+              { x: center.x, y: standing ? Math.round(ip(standing.home).y) - 2 : Math.round(center.y + CARD_HH - 1) }
             : center;
       if (card) cardSil(sc, center, PAL.white, 2);
       ctx.sfx('whoosh', { volume: 0.6, pitch: 1.5 });

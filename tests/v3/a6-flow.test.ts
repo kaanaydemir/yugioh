@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('phaser', async () => (await import('../presentation/_phaser-stub')).phaserStub());
 
 import { FRAME_V3, frameRectV3 } from '../../src/art/frame-v3';
-import { PAL } from '../../src/art/palette';
+import { PAL, PLAYER_RAMP } from '../../src/art/palette';
 import { PixelCanvas } from '../../src/art/pixel';
 import { measureText } from '../../src/ui/text';
 import {
@@ -731,6 +731,126 @@ describe('B2: the LP counter, the bar and the gain (F3)', () => {
   });
 });
 
+describe('B3: target corners (F4), the reject (F5), the engine lock', () => {
+  const BOX = { x0: 300, y0: 120, x1: 339, y1: 159 };
+  /** World pixels of one corner image drawn at cornerXY: [x, y, colour]. */
+  async function cornerPixels(c: 'tl' | 'tr' | 'bl' | 'br', box: typeof BOX, gap: number, tone: number) {
+    const { cornerCanvas, cornerXY } = await import('../../src/view/v3/TargetMarks');
+    const p = cornerCanvas(c, tone);
+    const at = cornerXY(c, box, gap);
+    const out: [number, number, number][] = [];
+    for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) if (p.alpha(x, y)) out.push([at.x + x, at.y + y, p.get(x, y)!]);
+    return { p, at, out };
+  }
+
+  it('the corner images are palette pixels: an L of AIM.leg (≥ 4 px) per arm, its 1-px ink outline (every tone the marks use)', async () => {
+    const { AIM, CORNERS, cornerCanvas } = await import('../../src/view/v3/TargetMarks');
+    expect(AIM.leg).toBeGreaterThanOrEqual(4);
+    for (const tone of [PAL.gold1, PAL.gold2, PAL.gold3, PAL.gold4, PAL.white, PAL.crim3])
+      for (const c of CORNERS) {
+        const p = cornerCanvas(c, tone);
+        expect(offPalette(p), `${c} ${tone.toString(16)}`).toEqual([]);
+        let lit = 0;
+        let ink = 0;
+        for (let y = 0; y < p.h; y++)
+          for (let x = 0; x < p.w; x++) {
+            if (!p.alpha(x, y)) continue;
+            if (p.get(x, y) === tone) lit++;
+            else if (p.get(x, y) === PAL.ink) ink++;
+          }
+        expect(lit, `${c}: corner + 2 legs`).toBe(2 * AIM.leg - 1);
+        expect(ink).toBeGreaterThan(lit);
+      }
+  });
+
+  it('cornerXY puts each corner pixel `gap` px outside the box, whole pixels, arms pointing along the box edges', async () => {
+    const { AIM } = await import('../../src/view/v3/TargetMarks');
+    for (const gap of [AIM.gap + 4, AIM.gap, AIM.gap - 2, 0, -3])
+      for (const c of ['tl', 'tr', 'bl', 'br'] as const) {
+        const { at, out } = await cornerPixels(c, BOX, gap, PAL.gold3);
+        expect(Number.isInteger(at.x) && Number.isInteger(at.y)).toBe(true);
+        const lit = out.filter((q) => q[2] === PAL.gold3);
+        const left = c === 'tl' || c === 'bl';
+        const top = c === 'tl' || c === 'tr';
+        const cx = left ? BOX.x0 - gap : BOX.x1 + gap;
+        const cy = top ? BOX.y0 - gap : BOX.y1 + gap;
+        expect(lit.some(([x, y]) => x === cx && y === cy), `${c} gap ${gap}: corner pixel`).toBe(true);
+        // the arms run from the corner pixel towards the box, AIM.leg long
+        const row = lit.filter(([, y]) => y === cy).map(([x]) => x);
+        const col = lit.filter(([x]) => x === cx).map(([, y]) => y);
+        expect(Math.max(...row) - Math.min(...row) + 1).toBe(AIM.leg);
+        expect(Math.max(...col) - Math.min(...col) + 1).toBe(AIM.leg);
+        expect(left ? Math.min(...row) : Math.max(...row)).toBe(cx);
+        expect(top ? Math.min(...col) : Math.max(...col)).toBe(cy);
+      }
+  });
+
+  it('closing in, the corners never cross (minGap keeps ≥ 2 px between facing legs)', async () => {
+    const { AIM, minGap } = await import('../../src/view/v3/TargetMarks');
+    for (let w = 6; w <= 90; w += 3)
+      for (let h = 6; h <= 70; h += 4) {
+        const b = { x0: 100, y0: 100, x1: 100 + w - 1, y1: 100 + h - 1 };
+        const g = minGap(b);
+        expect(g).toBeLessThanOrEqual(0);
+        // tl's horizontal arm ends at x0 − g + leg − 1; tr's starts at x1 + g − (leg − 1)
+        const tlEnd = b.x0 - g + AIM.leg - 1;
+        const trStart = b.x1 + g - (AIM.leg - 1);
+        const tlFoot = b.y0 - g + AIM.leg - 1;
+        const blTop = b.y1 + g - (AIM.leg - 1);
+        if (g < 0) {
+          expect(trStart - tlEnd, `${w}×${h}`).toBeGreaterThanOrEqual(2);
+          expect(blTop - tlFoot, `${w}×${h}`).toBeGreaterThanOrEqual(2);
+        }
+      }
+  });
+
+  it('arrival 4 → 2 → 1 → 0 px in 30-ms steps, settled within A6_MS.targetsVisible; breathing 1 px, staggered; reduced: none', async () => {
+    const { AIM, arriveExtra, breathIn } = await import('../../src/view/v3/TargetMarks');
+    const { A6_MS } = await import('../../src/view/v3/motion');
+    expect([0, 29, 30, 59, 60, 89, 90, 400].map((t) => arriveExtra(t, false))).toEqual([4, 4, 2, 2, 1, 1, 0, 0]);
+    expect(AIM.stepMs * AIM.arrive.length).toBeLessThanOrEqual(A6_MS.targetsVisible.max);
+    expect([0, 90].map((t) => arriveExtra(t, true))).toEqual([0, 0]);
+    expect([0, 419, 420, 839, 840].map((t) => breathIn(t, 0, false))).toEqual([0, 0, -1, -1, 0]);
+    expect([0, 139, 140, 559, 560].map((t) => breathIn(t, 1, false))).toEqual([0, 0, 0, 0, -1]);
+    for (const t of [0, 500, 1000]) expect(breathIn(t, 0, true)).toBe(0);
+  });
+
+  it('the reject stamp: ±2 px three times in 30-ms steps, two palette steps down, gone by A6_MS.invalidClick; reduced: colour only', async () => {
+    const { REJECT, rejectStep } = await import('../../src/view/v3/TargetMarks');
+    const { A6_MS } = await import('../../src/view/v3/motion');
+    const { rejectStamp } = await import('../../src/view/v3/ui-kit');
+    const seq = [0, 30, 60, 90, 120, 150].map((t) => rejectStep(t, false));
+    expect(seq.map((s) => s?.dx)).toEqual([0, 2, -2, 2, 0, 0]);
+    expect(seq.map((s) => s?.tone)).toEqual([0, 0, 0, 0, 1, 2]);
+    expect(rejectStep(REJECT.totalMs, false)).toBeNull();
+    expect(REJECT.totalMs).toBeLessThanOrEqual(A6_MS.invalidClick.max);
+    expect(REJECT.tileFrames).toBe(2);
+    for (let t = 0; t < REJECT.totalMs; t += 10) expect(rejectStep(t, true)?.dx).toBe(0);
+    for (const tone of [0, 1, 2]) expect(offPalette(rejectStamp(new PixelCanvas(9, 9), 4, 4, { tone })), `tone ${tone}`).toEqual([]);
+  });
+
+  it('the engine lock (V3HOOKS.target): 4 → 2 → 0 px by the lock frame, then a palette step down, 240 ms in all', async () => {
+    const { LOCK, lockGap } = await import('../../src/view/v3/TargetMarks');
+    expect([0, 39, 40, 79, 80, 239].map(lockGap)).toEqual([4, 4, 2, 2, 0, 0]);
+    expect(LOCK.lockAt).toBe(80);
+    expect(LOCK.fadeAt).toBeGreaterThan(LOCK.lockAt);
+    expect(LOCK.ms).toBe(240);
+  });
+
+  it('opaque boxes: the union of the rest frames (what the corners frame) and their union', async () => {
+    const { opaqueBox, unionBox } = await import('../../src/view/v3/TargetMarks');
+    const w = 7;
+    const h = 5;
+    const d = new Uint8ClampedArray(w * h * 4);
+    expect(opaqueBox(d, w, h)).toBeNull();
+    d[(1 * w + 2) * 4 + 3] = 255;
+    d[(3 * w + 5) * 4 + 3] = 255;
+    expect(opaqueBox(d, w, h)).toEqual({ x0: 2, y0: 1, x1: 5, y1: 3 });
+    expect(unionBox({ x0: 2, y0: 1, x1: 5, y1: 3 }, { x0: 0, y0: 2, x1: 3, y1: 4 })).toEqual({ x0: 0, y0: 1, x1: 5, y1: 4 });
+    expect(unionBox(null, null)).toBeNull();
+  });
+});
+
 describe('B1 registration audit (§6.4): lane B fills only its own hooks, only under V3_A6_B', () => {
   const LANE_B_HOOKS = ['duelPlate', 'hudIn', 'turnStart', 'phaseChange', 'deckOut', 'gameOver', 'decision', 'target', 'presentHeal'];
   async function filled(look: 'v1' | 'v3', a6?: string): Promise<string[]> {
@@ -747,13 +867,170 @@ describe('B1 registration audit (§6.4): lane B fills only its own hooks, only u
     return filledV3Hooks();
   }
 
-  it('v1: none; v3 lane B on: turnStart + phaseChange + duelPlate + hudIn + presentHeal (and nothing outside lane B); lane B off: none of B’s', async () => {
+  it('v1: none; v3 lane B on: turnStart + phaseChange + duelPlate + hudIn + presentHeal + target + decision (and nothing outside lane B); lane B off: none of B’s', async () => {
     expect(await filled('v1')).toEqual([]);
     const b = await filled('v3', 'b');
-    expect(b).toEqual(expect.arrayContaining(['turnStart', 'phaseChange', 'duelPlate', 'hudIn', 'presentHeal']));
+    expect(b).toEqual(expect.arrayContaining(['turnStart', 'phaseChange', 'duelPlate', 'hudIn', 'presentHeal', 'target', 'decision']));
     expect(b.filter((h) => !LANE_B_HOOKS.includes(h))).toEqual([]);
     for (const a6 of ['off', 'a']) expect((await filled('v3', a6)).filter((h) => LANE_B_HOOKS.includes(h)), `a6=${a6}`).toEqual([]);
   }, 120000);
+});
+
+describe('B4 registration (§6.4): the block wrapper is lane B’s only event handler, v3 lane B only, first on `damage`', () => {
+  async function damageChain(look: 'v1' | 'v3', a6?: string): Promise<string[]> {
+    vi.resetModules();
+    G.__NEON_LOOK = look;
+    if (a6 !== undefined) G.__NEON_V3FLAGS = { a6 };
+    else delete G.__NEON_V3FLAGS;
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { loadCinematics } = await import('../../src/cinematics');
+    await loadCinematics();
+    errors.mockRestore();
+    const { listHandlers } = await import('../../src/cinematics/_core/registry');
+    return listHandlers().events.damage ?? [];
+  }
+  it('v1 and lanes a / off: no a6:block; v3 lane B: a6:block (p10) runs first, today’s tb:damage after it', async () => {
+    for (const [look, a6] of [['v1', undefined], ['v3', 'off'], ['v3', 'a']] as const) expect((await damageChain(look, a6)).some((n) => n.startsWith('a6:block')), `${look} ${a6}`).toBe(false);
+    const chain = await damageChain('v3', 'b');
+    expect(chain[0]).toBe('a6:block (p10)');
+    expect(chain).toContain('tb:damage (p0)');
+  }, 120000);
+});
+
+describe('B4: the trap window marks (S-4), the prompt plate, the curtain, the block (F6 / F7)', () => {
+  it('contourPath: the 1-px outline of the card, each pixel once, clockwise from the left; outerRing one pixel further out', async () => {
+    const { contourPath, outerRing } = await import('../../src/view/v3/TrapPromptV3');
+    // a little iso card: a parallelogram, as TileCard.currentPixels() gives it
+    const px = new PixelCanvas(20, 10);
+    for (let y = 0; y < 10; y++) for (let x = 0; x < 12; x++) px.set(x + Math.floor(y / 1.25), y, PAL.night1);
+    const path = contourPath(px, 100, 50);
+    const key = (p: readonly number[]) => `${p[0]},${p[1]}`;
+    expect(new Set(path.map(key)).size).toBe(path.length);
+    const op = (x: number, y: number) => px.isOpaque(x - 100, y - 50);
+    for (const [x, y] of path) {
+      expect(op(x, y), `${x},${y} outside the card`).toBe(false);
+      expect(op(x - 1, y) || op(x + 1, y) || op(x, y - 1) || op(x, y + 1), `${x},${y} touches the card`).toBe(true);
+    }
+    // clockwise (screen y down): the angle round the centre never decreases
+    const cx = path.reduce((a, p) => a + p[0], 0) / path.length;
+    const cy = path.reduce((a, p) => a + p[1], 0) / path.length;
+    const ang = path.map(([x, y]) => Math.atan2(y - cy, x - cx));
+    for (let i = 1; i < ang.length; i++) expect(ang[i]).toBeGreaterThanOrEqual(ang[i - 1] - 1e-9);
+    const ring = outerRing(px, 100, 50);
+    const onPath = new Set(path.map(key));
+    for (const p of ring) {
+      expect(onPath.has(key(p))).toBe(false);
+      expect(op(p[0], p[1])).toBe(false);
+    }
+    expect(ring.length).toBeGreaterThan(path.length);
+  });
+
+  it('rimFrame: hidden before its stagger, traces in traceMs with the tip as the node, whole + running node, settles in three palette steps; reduced motion: whole at once, no node', async () => {
+    const { TRAP_MARK, rimFrame } = await import('../../src/view/v3/TrapPromptV3');
+    const L = 80;
+    expect(rimFrame(0, 1, L, null, false)).toMatchObject({ drawn: 0, tone: null });
+    const mid = rimFrame(TRAP_MARK.traceMs / 2, 0, L, null, false);
+    expect(mid.drawn).toBe(L / 2);
+    expect(mid.head).toBe(mid.drawn - 1);
+    expect(mid.outer).toBeNull();
+    const whole = rimFrame(TRAP_MARK.traceMs + 10, 0, L, null, false);
+    expect(whole).toMatchObject({ drawn: L, tone: PAL.mag3, outer: PAL.mag1 });
+    expect(whole.head).toBeGreaterThanOrEqual(0);
+    // card i starts i × stagger later
+    expect(rimFrame(TRAP_MARK.staggerMs - 1, 1, L, null, false).drawn).toBe(0);
+    expect(rimFrame(TRAP_MARK.staggerMs + TRAP_MARK.traceMs, 1, L, null, false).drawn).toBe(L);
+    // the node laps the rim
+    const heads = new Set<number>();
+    for (let t = 0; t < TRAP_MARK.lapMs; t += 1000 / 60) heads.add(rimFrame(TRAP_MARK.traceMs + t, 0, L, null, false).head);
+    expect(heads.size).toBeGreaterThan(20);
+    // settle at 500: mag2, mag1, mag0, then gone — no node, no outer line
+    const tones = [0, 1, 2, 3].map((k) => rimFrame(500 + k * TRAP_MARK.settleStepMs + 1, 0, L, 500, false));
+    expect(tones.map((f) => f.tone)).toEqual([PAL.mag2, PAL.mag1, PAL.mag0, null]);
+    expect(tones.every((f) => f.head === -1 && f.outer === null)).toBe(true);
+    // reduced motion (KO-9): whole at once, still, for every card
+    expect(rimFrame(0, 2, L, null, true)).toMatchObject({ drawn: L, tone: PAL.mag3, head: -1 });
+  });
+
+  it('the prompt plate: on the defender’s side (P2 under its panel, P1 above the action buttons), on screen, clear of the board’s spell / trap row, whole pixels; it slides 12 px with a 1-px overshoot and rests', async () => {
+    const { TRAP_Q, trapCardXY, trapPromptRect, trapPromptWidth, trapPromptX } = await import('../../src/view/v3/TrapPromptV3');
+    const { UI, zoneXY } = await import('../../src/view/layout');
+    for (const p of [0, 1] as const)
+      for (const n of [1, 2, 3]) {
+        const r = trapPromptRect(p, n);
+        expect(Number.isInteger(r.x) && Number.isInteger(r.y)).toBe(true);
+        expect(r.x).toBeGreaterThanOrEqual(0);
+        expect(r.x + r.w).toBeLessThanOrEqual(640);
+        expect(r.y).toBeGreaterThanOrEqual(0);
+        expect(r.y + r.h).toBeLessThanOrEqual(360);
+        if (p === 1) expect(r.y).toBeGreaterThanOrEqual(UI.p2Panel.y + UI.p2Panel.h);
+        else expect(r.y + r.h).toBeLessThanOrEqual(UI.buttons.y);
+        // never over a spell / trap zone (the cards being asked about) nor the inspect column
+        for (const q of [0, 1] as const) for (let i = 0; i < 3; i++) expect(zoneXY(q, 'spellTrap', i).x + 32).toBeLessThan(r.x);
+        expect(r.x).toBeGreaterThan(UI.inspect.x + UI.inspect.w);
+        expect(r.w).toBe(trapPromptWidth(n));
+        for (let i = 0; i < n; i++) {
+          const c = trapCardXY(i, n, r.w);
+          expect(Number.isInteger(c.x) && Number.isInteger(c.y)).toBe(true);
+          expect(c.x - 24).toBeGreaterThanOrEqual(TRAP_Q.padX - 1);
+          expect(c.x + 24).toBeLessThanOrEqual(r.w - TRAP_Q.padX + 1);
+        }
+      }
+    const xs: number[] = [];
+    for (let t = 0; t <= TRAP_Q.settledMs + 20; t += 1000 / 60) xs.push(trapPromptX(500, t, false));
+    expect(xs[0]).toBe(500 + TRAP_Q.slide);
+    expect(Math.min(...xs)).toBe(500 - TRAP_Q.over);
+    expect(xs[xs.length - 1]).toBe(500);
+    expect(xs.every(Number.isInteger)).toBe(true);
+    expect(trapPromptX(500, 0, true)).toBe(500);
+  });
+
+  it('the curtain plate: centred over the hand band (the board stays visible), Turkish lines, whole pixels; it rises 6 px and rests', async () => {
+    const { CURTAIN, CURTAIN_LINE2, curtainLine1, curtainRect, curtainY } = await import('../../src/view/v3/CurtainV3');
+    const { UI } = await import('../../src/view/layout');
+    for (const kind of ['turn', 'trap'] as const)
+      for (const p of [0, 1] as const) {
+        const r = curtainRect(kind, p);
+        expect(Number.isInteger(r.x) && Number.isInteger(r.y)).toBe(true);
+        expect(Math.abs(r.x + r.w / 2 - 320)).toBeLessThanOrEqual(1);
+        expect(r.y + r.h).toBeLessThanOrEqual(UI.handRestTop);
+        expect(r.h).toBeLessThan(60); // a plate, not a curtain over the screen
+      }
+    expect(curtainLine1('turn', 1).map((s) => s.text).join('')).toBe('SIRA: OYUNCU 2');
+    expect(curtainLine1('trap', 0).map((s) => s.text).join('')).toBe('TUZAK SORUSU: OYUNCU 1');
+    expect(CURTAIN_LINE2).toBe('Hazır olunca dokun');
+    const ys: number[] = [];
+    for (let t = 0; t <= CURTAIN.riseMs + 20; t += 1000 / 60) ys.push(curtainY(252, t, false));
+    expect(ys[0]).toBe(252 + CURTAIN.rise);
+    expect(ys[ys.length - 1]).toBe(252);
+    expect(ys.every((y, i) => Number.isInteger(y) && (i === 0 || y <= ys[i - 1]))).toBe(true);
+    expect(CURTAIN.waveMs).toBe(30);
+    expect(CURTAIN.fold.length * CURTAIN.foldStepMs).toBeLessThanOrEqual(110); // "90 ms'de katlanır" (3 steps × 2 frames)
+  });
+
+  it('the block (F6): only a blocked attack’s recoil (defence, DEF > ATK, the attacker’s owner pays); the shield is palette pixels over the DEF digits', async () => {
+    const { BLOCK_V3, SHIELD_H, SHIELD_W, blockOf, shieldCanvas, shieldXY } = await import('../../src/cinematics/v3small/block');
+    const battle = (o: Record<string, unknown>) => ({ type: 'battle', player: 0, attackerUid: 6, attackerZone: 2, targetUid: 12, targetZone: 0, attackerAtk: 400, targetPosition: 'defense', targetValue: 2100, result: 'noDestroy', ...o }) as never;
+    const dmg = (o: Record<string, unknown>) => ({ type: 'damage', player: 0, amount: 1700, source: 'battle', sourceUid: 12, lpAfter: 2300, ...o }) as never;
+    const decl = { type: 'attackDeclare', player: 0, attackerUid: 6, attackerZone: 2, targetUid: 12, targetZone: 0 } as never;
+    expect(blockOf([decl, battle({}), dmg({})], 2, dmg({}))).toBeTruthy(); // atkBlocked
+    expect(blockOf([decl, battle({}), dmg({ player: 1 })], 2, dmg({ player: 1 }))).toBeNull(); // the defender pays: not a block's recoil
+    expect(blockOf([decl, battle({ targetPosition: 'attack' }), dmg({})], 2, dmg({}))).toBeNull(); // a lost battle, not a block
+    expect(blockOf([decl, battle({ result: 'direct', targetUid: null })], 1, dmg({}))).toBeNull();
+    expect(blockOf([decl, battle({}), dmg({ source: 'effect' })], 2, dmg({ source: 'effect' }))).toBeNull(); // a counter / burn
+    expect(blockOf([dmg({})], 0, dmg({}))).toBeNull();
+    for (const p of [0, 1] as const)
+      for (const step of [0, 1, 2, 'white'] as const) {
+        const c = shieldCanvas(PLAYER_RAMP[p], step);
+        expect([c.w, c.h]).toEqual([SHIELD_W, SHIELD_H]);
+        expect(offPalette(c), `${p} ${step}`).toEqual([]);
+      }
+    const at = shieldXY({ x: 320, y: 203 }, 500, 2100);
+    expect(Number.isInteger(at.x) && Number.isInteger(at.y)).toBe(true);
+    expect(at.y + SHIELD_H + BLOCK_V3.gapBadge).toBeLessThanOrEqual(203 - 4);
+    expect(at.x).toBeGreaterThan(320 - 4); // over the right (DEF) half of the badge
+    expect(BLOCK_V3.shieldHoldMs).toBe(260);
+    expect(BLOCK_V3.wordHoldMs).toBe(400);
+  });
 });
 
 describe('A6-B source scan (§6.4)', () => {
@@ -767,6 +1044,12 @@ describe('A6-B source scan (§6.4)', () => {
       '../../src/cinematics/v3small/turn.ts',
       '../../src/cinematics/v3small/opening-flow.ts',
       '../../src/cinematics/v3small/heal.ts',
+      '../../src/view/v3/TargetMarks.ts',
+      '../../src/cinematics/v3small/target.ts',
+      '../../src/view/v3/TrapPromptV3.ts',
+      '../../src/view/v3/CurtainV3.ts',
+      '../../src/cinematics/v3small/decision.ts',
+      '../../src/cinematics/v3small/block.ts',
     ],
     {
       eager: true,
@@ -777,7 +1060,7 @@ describe('A6-B source scan (§6.4)', () => {
 
   it('no new camera call in the lane\u2019s new files (KO-10, §6.3)', () => {
     for (const [f, src] of Object.entries(SOURCES)) {
-      if (!/TurnPlate|odometer|v3small/.test(f)) continue;
+      if (!/TurnPlate|odometer|v3small|TargetMarks|TrapPromptV3|CurtainV3/.test(f)) continue;
       const code = src
         .split('\n')
         .filter((l) => !/^\s*\/\//.test(l))
@@ -787,7 +1070,7 @@ describe('A6-B source scan (§6.4)', () => {
   });
 
   it('no colour constant outside the palette, no ADD blend, no alpha fade in A6-B files', () => {
-    expect(Object.keys(SOURCES).length).toBe(8);
+    expect(Object.keys(SOURCES).length).toBe(14);
     for (const [f, src] of Object.entries(SOURCES)) {
       const hexes = [...src.matchAll(/0x[0-9a-fA-F]{6}\b/g)].map((m) => Number(m[0]));
       expect(

@@ -37,6 +37,7 @@ import {
   SPRING_W,
   chasmGeometry,
   crackPath,
+  greatSwordMotif,
   hexCenter,
   hexFacePixels,
   hexRing,
@@ -47,6 +48,7 @@ import {
   paintSpringColumn,
   swordDir,
   swordMotif,
+  type GreatSwordOpts,
   type HexCellState,
   type Motif,
   type MotifFacing,
@@ -168,6 +170,12 @@ export function setMotif(img: Phaser.GameObjects.Image, key: string, make: () =>
 export function swordKey(o: SwordOpts): [string, () => Motif] {
   const k = `sword:${o.angle ?? 'up'}:${o.facing ?? 1}:${o.len ?? 11}:${o.stage ?? 3}:${o.rim ?? 'ink'}:${o.crack ? 1 : 0}:${o.glint ?? '-'}:${o.glintCross ? 1 : 0}`;
   return [k, () => swordMotif(o)];
+}
+
+/** Ejder Kılıcı's signature great sword (spellmotifs-v3 greatSwordMotif) as a motif key / maker pair. */
+export function greatSwordKey(o: GreatSwordOpts): [string, () => Motif] {
+  const k = `gsword:${o.angle ?? 'up'}:${o.facing ?? 1}:${o.stage ?? 3}:${o.rim ?? 'ink'}:${o.crack ? 1 : 0}:${o.glint ?? '-'}:${o.glintCross ? 1 : 0}:${o.runesLit ? 1 : 0}`;
+  return [k, () => greatSwordMotif(o)];
 }
 
 /** Index of the direction in `dirs` closest to (dx, dy) (largest cosine); 0 for a zero vector. */
@@ -306,6 +314,16 @@ export interface DropArcOpts {
   seed?: number;
   /** Each drop's landing (its index and point): the beat for a sound or a sparkle. */
   onLand?: (i: number, at: XY) => void;
+  /**
+   * Water only: the trail's length in pixels (default 1, as before). Longer trails step down
+   * teal4 → teal3 → teal2 behind the drop (Şifa Pınarı's drops read as a stream at 1×, A-6).
+   */
+  trail?: number;
+  /**
+   * Water only: 'square' (default, as before: 2×2, white core + water4) or 'gem' (a 5-px plus lit
+   * from the top left — white top / left / centre, water4 right / bottom: a drop that reads at 1×).
+   */
+  drop?: 'square' | 'gem';
 }
 
 /**
@@ -325,8 +343,10 @@ export function dropArcs(scene: Phaser.Scene, o: DropArcOpts): Promise<void> {
   const drops = Array.from({ length: n }, (_, i) => {
     const t = targets[i % targets.length];
     const to = { x: Math.round(t.x + (rnd() * 2 - 1) * spread), y: Math.round(t.y + (rnd() * 2 - 1) * spread * 0.5) };
-    return { i, to, start: i * gap, landed: false, prev: null as XY | null, ember: -1 };
+    return { i, to, start: i * gap, landed: false, prev: null as XY | null, ember: -1, tail: [] as XY[] };
   });
+  const trailN = Math.max(1, Math.round(o.trail ?? 1));
+  const TAIL = [PAL.teal4, PAL.teal3, PAL.teal2, PAL.teal1] as const;
   // the raster covers every arc (+ margins)
   const xs = [o.from.x, ...drops.map((d) => d.to.x)];
   const ys = [o.from.y, ...drops.map((d) => d.to.y)];
@@ -375,8 +395,34 @@ export function dropArcs(scene: Phaser.Scene, o: DropArcOpts): Promise<void> {
       const cy = 2 * hi - (o.from.y + d.to.y) / 2;
       const x = Math.round(o.from.x + (d.to.x - o.from.x) * t);
       const y = Math.round((1 - t) * (1 - t) * o.from.y + 2 * (1 - t) * t * cy + t * t * d.to.y);
-      if (d.prev && (d.prev.x !== x || d.prev.y !== y)) ras.px(d.prev.x, d.prev.y, water ? PAL.teal3 : PAL.fire2);
-      if (water) {
+      if (water && trailN > 1) {
+        // a longer trail: a streak back along the drop's last positions, `trail` px long, stepping
+        // down the teal ramp every third pixel (a drop that moves several px a frame still reads)
+        if (d.prev && (d.prev.x !== x || d.prev.y !== y)) {
+          d.tail.unshift(d.prev);
+          if (d.tail.length > 4) d.tail.length = 4;
+        }
+        let px0 = x;
+        let py0 = y;
+        let len = 0;
+        for (const q of d.tail) {
+          const n = Math.max(Math.abs(q.x - px0), Math.abs(q.y - py0));
+          for (let k = 1; k <= n && len < trailN; k++) {
+            len++;
+            ras.px(Math.round(px0 + ((q.x - px0) * k) / n), Math.round(py0 + ((q.y - py0) * k) / n), TAIL[Math.min(TAIL.length - 1, Math.floor((len - 1) / 3))]);
+          }
+          px0 = q.x;
+          py0 = q.y;
+          if (len >= trailN) break;
+        }
+      } else if (d.prev && (d.prev.x !== x || d.prev.y !== y)) ras.px(d.prev.x, d.prev.y, water ? PAL.teal3 : PAL.fire2);
+      if (water && o.drop === 'gem') {
+        ras.px(x, y - 1, PAL.white);
+        ras.px(x - 1, y, PAL.white);
+        ras.px(x, y, PAL.white);
+        ras.px(x + 1, y, PAL.water4);
+        ras.px(x, y + 1, PAL.water4);
+      } else if (water) {
         ras.px(x, y, PAL.white);
         ras.px(x + 1, y, PAL.water4);
         ras.px(x, y + 1, PAL.water4);
@@ -822,7 +868,12 @@ export interface ShardOpts {
   restMs?: number;
   depth?: number;
   seed?: number;
+  /** 'fall': the throw's speed, a multiplier on the outward and upward launch (default 1; A-2's blade burst flings them wider). */
+  speed?: number;
 }
+
+/** 'fall': a shard still in the air at this age lies down where it is (none hangs in mid-air for ever). */
+const FALL_CAP_MS = 1500;
 
 /**
  * Whole-pixel shards (A5 §3.1 sword, §3.3 mirror cells, §3.2 old field card): 1–3-pixel pieces that
@@ -839,6 +890,7 @@ export function shards(scene: Phaser.Scene, o: ShardOpts): Promise<void> {
   const c0 = o.centre ?? { x: src.reduce((s, q) => s + q.x, 0) / src.length, y: src.reduce((s, q) => s + q.y, 0) / src.length };
   const [d0, d1] = o.dist ?? [8, 14];
   const restMs = o.restMs ?? 120;
+  const sp = o.speed ?? 1;
   const SHAPES: readonly (readonly [number, number][])[] = [[[0, 0]], [[0, 0], [1, 0]], [[0, 0], [0, 1]], [[0, 0], [1, 0], [0, 1]]];
   const parts = src.map((q) => {
     let dx = q.x - c0.x;
@@ -858,8 +910,8 @@ export function shards(scene: Phaser.Scene, o: ShardOpts): Promise<void> {
       c: q.c,
       shape: SHAPES[Math.floor(rnd() * SHAPES.length)],
       // fall: an outward throw with gravity; slide: a straight ease-out run
-      vx: dx * (20 + rnd() * 30),
-      vy: -30 - rnd() * 50,
+      vx: dx * (20 + rnd() * 30) * sp,
+      vy: (-30 - rnd() * 50) * sp,
       dist: d0 + rnd() * (d1 - d0),
       dx,
       dy,
@@ -867,11 +919,17 @@ export function shards(scene: Phaser.Scene, o: ShardOpts): Promise<void> {
       endAt: -1,
     };
   });
-  const span = 40;
+  const flyMs = mode === 'fall' ? 420 : 160;
+  // the raster reaches as far as the furthest throw (the old 40-px margin at the least)
+  const landS = (p: (typeof parts)[number]): number => {
+    const disc = p.vy * p.vy + 840 * (p.floor - p.y0);
+    return disc < 0 ? Infinity : (-p.vy + Math.sqrt(disc)) / 420;
+  };
+  const reach = mode === 'fall' ? Math.max(...parts.map((p) => Math.max(Math.abs(p.vx) * Math.min(Math.max(flyMs / 1000, landS(p)), FALL_CAP_MS / 1000), p.vy < 0 ? (p.vy * p.vy) / 840 : 0))) : d1;
+  const span = Math.max(40, Math.ceil(reach) + 4);
   const xs = parts.map((p) => p.x0);
   const ys = parts.map((p) => p.y0);
   const ras = new Raster(scene, Math.min(...xs) - span, Math.min(...ys) - span, Math.max(...xs) - Math.min(...xs) + span * 2, Math.max(...ys, ...parts.map((p) => p.floor)) - Math.min(...ys) + span * 2, o.depth ?? DEPTH.FX + 4);
-  const flyMs = mode === 'fall' ? 420 : 160;
   return frames(scene, (_dt, el) => {
     ras.begin();
     let live = false;
@@ -887,11 +945,14 @@ export function shards(scene: Phaser.Scene, o: ShardOpts): Promise<void> {
         still = t >= 1;
         if (still && p.endAt < 0) p.endAt = el;
       } else {
-        const s = Math.min(el, flyMs) / 1000;
+        // landed within flyMs it slides on along the floor to flyMs (as it always did); one still in the
+        // air at flyMs flies on until it lands, then lies where it landed (FALL_CAP_MS at most)
+        const tFly = p.endAt > flyMs ? p.endAt : p.endAt >= 0 || el <= flyMs ? Math.min(el, flyMs) : Math.min(el, FALL_CAP_MS);
+        const s = tFly / 1000;
         x = p.x0 + p.vx * s;
         y = p.y0 + p.vy * s + 0.5 * 420 * s * s;
-        if (y >= p.floor) {
-          y = p.floor;
+        if (y >= p.floor || tFly >= FALL_CAP_MS) {
+          y = Math.min(y, p.floor);
           still = true;
           if (p.endAt < 0) p.endAt = el;
         }

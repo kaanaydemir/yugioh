@@ -18,8 +18,12 @@ import { floorRing } from '../../vfx/setpieces';
 import { quickFountain } from './_fountain';
 import { fx, registerCardHook } from '../api';
 import { TEAL_FX, bg, idxOf, relax, sendResolved, setTileOf, spellOpening, fs, lightFlash, lightPool } from './_kit';
+// ---- the v3 look (lane A5-A step A-6, V3_A5_A): ./_spring_v3.ts (docs/v3/A5_PLAN.md §3.5)
+import { V3_A5_A } from '../../view/v3flags';
+import { springActivateV3 } from './_spring_v3';
 
 registerCardHook('healing_spring', 'activate', async (ctx) => {
+  if (V3_A5_A) return springActivateV3(ctx); // A5-A: the signature fountain beside the duelist, drops into him (./_spring_v3.ts)
   const ev = ctx.ev;
   const sc = ctx.scene;
   const run0 = fx.resolutionRun(ctx);

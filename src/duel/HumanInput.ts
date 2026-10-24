@@ -156,7 +156,11 @@ export class HumanInput {
       if (hit.spot === 'monster' || hit.spot === 'spellTrap' || hit.spot === 'field') this.onChoice({ kind: 'zone', ref: { player: hit.player, zone: hit.spot as ZoneKind, index: hit.index } });
       else if (V3_A6_B) this.rejectHit(hit); // F5: a deck / an empty pile has nothing to do
     });
-    scene.input.on(Phaser.Input.Events.POINTER_MOVE, (p: Phaser.Input.Pointer) => this.hover(p.x, p.y));
+    scene.input.on(Phaser.Input.Events.POINTER_MOVE, (p: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) => {
+      // v3 (F7): over the trap prompt's plate the board under it is not hovered (its cards show in the inspect panel)
+      if (V3_A6_B && this.mode === 'trap' && over && over.length) return;
+      this.hover(p.x, p.y);
+    });
     const onKey = (e: KeyboardEvent) => {
       if (!scene.sys.isActive()) return;
       // modal UI (menus, prompts, pickers) holds the keys through pushUiKeys and swallows them
@@ -230,6 +234,8 @@ export class HumanInput {
         const uid = await this.views.prompt.trapResponse(
           player,
           pd.options.map((u) => ({ uid: u, cardId: state.cards[u].cardId })),
+          // v3 (F7): a card hovered / picked on the prompt plate is read in the inspect panel
+          V3_A6_B ? { onFocus: (id) => (id ? this.views.inspect.show(id) : this.views.inspect.hide()) } : undefined,
         );
         this.trapOpen = false;
         if (token !== this.token) return null;
@@ -730,14 +736,15 @@ export class HumanInput {
   private pickZone(refs: ZoneRef[], text: string, o: { cancel: boolean; color: number }): Promise<ZoneRef | null> {
     const board = this.views.board;
     const token = this.token;
-    for (const r of refs) board.highlightZone(r.player, r.zone, r.index, o.color);
-    const ins = this.views.prompt.instruction(text, { cancel: o.cancel, style: this.player === 0 ? 'p1' : 'p2' });
-    this.instruction = ins;
-    this.zoneHover = { refs, color: o.color, hot: '' };
-    // v3 (F4): target corners on the candidates that are monsters on screen
+    // v3 (F4): target corners on the candidates that are monsters on screen; the floor highlight
+    // stays for the candidates without one (it would only blur the corners' bottom legs)
     const aim = V3_A6_B ? new AimMarks(this.scene, this.views, refs) : null;
     this.aim?.cancel();
     this.aim = aim;
+    for (const r of refs) if (!aim?.has(r)) board.highlightZone(r.player, r.zone, r.index, o.color);
+    const ins = this.views.prompt.instruction(text, { cancel: o.cancel, style: this.player === 0 ? 'p1' : 'p2' });
+    this.instruction = ins;
+    this.zoneHover = { refs, color: o.color, hot: '' };
     const prevMode = this.mode;
     return new Promise<ZoneRef | null>((resolve) => {
       let done = false;
@@ -773,7 +780,9 @@ export class HumanInput {
         } else {
           if (aim) this.rejectHit(h);
           else sfx.play('uiError', { volume: 0.4 });
-          this.views.hud.flashHint('Parlayan alanlardan birine tıkla', { style: 'neutral', ms: 1200 });
+          // v3: candidates with corners are "marked", not lit (the floor highlight is theirs only without a monster)
+          const why = !aim || !aim.size ? 'Parlayan alanlardan birine tıkla' : aim.size === refs.length ? 'İşaretli hedeflerden birine tıkla' : 'İşaretli ya da parlayan alanlardan birine tıkla';
+          this.views.hud.flashHint(why, { style: 'neutral', ms: 1200 });
         }
       };
       // keep a cancel path for programmatic aborts
@@ -795,10 +804,12 @@ export class HumanInput {
     const zoneOf = (uid: Uid) => s.players[p].monsters.findIndex((m) => m?.uid === uid);
     const chosen = new Set<Uid>();
     const refs = pool.map((uid) => ({ player: p, zone: 'monster' as ZoneKind, index: zoneOf(uid) })).filter((r) => r.index >= 0);
+    // v3: candidates with corners skip the floor / tile highlight (the corners and their tag say it)
+    let cornered: (i: number) => boolean = () => false;
     const paint = () => {
       for (const uid of pool) {
         const i = zoneOf(uid);
-        if (i < 0) continue;
+        if (i < 0 || cornered(i)) continue;
         board.highlightZone(p, 'monster', i, chosen.has(uid) ? PAL.white : PAL.gold3);
         field.tileAt(p, 'monster', i)?.setHighlight(chosen.has(uid) ? PAL.white : null);
       }
@@ -807,11 +818,12 @@ export class HumanInput {
     const ins = this.views.prompt.instruction(label(), { cancel: true, style: 'gold' });
     this.instruction = ins;
     this.zoneHover = { refs, color: PAL.gold3, hot: '' };
-    paint();
     // v3 (F4 "Kurban seçimi"): corners on the pool; a chosen tribute's turn white beside a "1/2" counter
     const aim = V3_A6_B ? new AimMarks(this.scene, this.views, refs) : null;
     this.aim?.cancel();
     this.aim = aim;
+    if (aim) cornered = (i) => aim.has({ player: p, zone: 'monster', index: i });
+    paint();
     const refOf = (uid: Uid) => ({ player: p, zone: 'monster' as ZoneKind, index: zoneOf(uid) });
     return new Promise<Uid[] | null>((resolve) => {
       let done = false;
@@ -1086,11 +1098,12 @@ export class HumanInput {
       if (k !== zh.hot) {
         const prev = zh.refs.find((r) => refKey(r) === zh.hot);
         const board = this.views.board;
-        if (prev && this.mode !== 'tribute') board.highlightZone(prev.player, prev.zone, prev.index, zh.color);
-        if (hot && this.mode !== 'tribute') board.highlightZone(hot.player, hot.zone, hot.index, PAL.white);
-        zh.hot = k;
-        // v3 (F4): the candidate's corners settle in under the pointer (they say ui3Aim themselves)
+        // v3 (F4): a candidate with corners has no floor highlight to light; its corners settle in
+        // under the pointer instead (and say ui3Aim themselves)
         const aim = this.aim;
+        if (prev && this.mode !== 'tribute' && !aim?.has(prev)) board.highlightZone(prev.player, prev.zone, prev.index, zh.color);
+        if (hot && this.mode !== 'tribute' && !aim?.has(hot)) board.highlightZone(hot.player, hot.zone, hot.index, PAL.white);
+        zh.hot = k;
         if (aim) aim.setHot(hot && aim.has(hot) ? hot : null);
         if (hot && !(aim && aim.has(hot))) sfx.play('uiHover', { volume: 0.3, pitch: 1.3 });
       }

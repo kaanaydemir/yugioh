@@ -49,6 +49,20 @@ const PACK: Record<string, Scenario> = {
       (D) => ({ type: 'respond', player: 0, uid: D.uid('chasm_trap', 0) }),
     ],
   },
+  // A-2 (§3.1): Ejder Kılıcı on v3-drawn monsters. P2 equips its Kristal Ejder from the hand (mirrored:
+  // the great sword rises from P2's far spell zone, binds behind the wyrm's back on the screen's right,
+  // the wyrm's victory peak is held; its drawings stay lit from the screen's top left).
+  a5BladeWyrmP2: {
+    desc: 'P2 Ejder Kılıcı on its Kristal Ejder (mirrored; v3 bond pose, the sword on the right)',
+    stage: { active: 1, p1: { hand: ['dragon_blade'], monsters: [null, null, 'crystal_wyrm'] }, p0: { monsters: [null, 'ember_wolf'] } },
+    steps: [(D) => ({ type: 'activateSpell', player: 1, uid: D.uid('dragon_blade', 1), zone: 2, target: { kind: 'monster', ref: { player: 1, zone: 'monster', index: 2 } } })],
+  },
+  // A-2 (§3.1): P1 equips Uçurum Büyücüsü (v3 art: its own victory peak, the orb star) from the hand.
+  a5BladeMagus: {
+    desc: 'Ejder Kılıcı from the hand on Uçurum Büyücüsü (v3 bond pose)',
+    stage: { p0: { hand: ['dragon_blade'], monsters: [null, 'abyss_magus'] }, p1: { monsters: [null, 'tide_golem'] } },
+    steps: [(D) => ({ type: 'activateSpell', player: 0, uid: D.uid('dragon_blade', 0), zone: 1, target: { kind: 'monster', ref: { player: 0, zone: 'monster', index: 1 } } })],
+  },
 };
 
 export default PACK;

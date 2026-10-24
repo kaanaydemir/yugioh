@@ -102,7 +102,7 @@ registerCardHook(
   'chasm_trap',
   'activate',
   async (ctx) => {
-    if (V3_A5_A) return chasmV3(ctx); // A5-A: crack, slabs, the fall behind the lip (./_chasm_v3.ts)
+    if (V3_A5_A) return chasmV3(ctx); // A5-A: the crack, the wide abyss in v3 pixels, the fall behind its lip (./_chasm_v3.ts)
     const ev = ctx.ev;
     seed(ev.uid * 13 + 5);
     const runIdx = fx.resolutionRun(ctx);

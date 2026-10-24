@@ -28,7 +28,7 @@ registerCardHook(
   'mirror_barrier',
   'activate',
   async (ctx) => {
-    if (V3_A5_A) return mirrorV3(ctx); // A5-A: the panel, the reflections one by one (./_mirror_v3.ts)
+    if (V3_A5_A) return mirrorV3(ctx); // A5-A: the big honeycomb dome in v3 pixels, the reflections one by one (./_mirror_v3.ts)
     const ev = ctx.ev;
     const sc = ctx.scene;
     seed(ev.uid * 17 + 3);

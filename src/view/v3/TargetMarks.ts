@@ -41,10 +41,10 @@ import { UI_CARD_RECIPES, type UiCardSfxName } from '../../audio/v3/ui-cards';
 import type { DuelViews } from '../../duel/types';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { PlayerId, ZoneRef } from '../../engine/types';
-import { lightFlash } from '../light';
+import { lightFlash, lightPool, type LightHandle } from '../light';
 import { DEPTH, zoneXY, type BoardSpot, type XY } from '../layout';
-import { PalText, canvasTexture, hex } from './hudSkin';
-import { ui3Sfx } from './hudV3';
+import { frameRectV3 } from '../../art/frame-v3';
+import { PalText, canvasTexture, capYV3, hex, textWidthV3, ui3Sfx } from './hudSkin';
 import { REDUCED_MOTION } from './motion';
 import { brackets, rejectStamp, showContour } from './ui-kit';
 
@@ -369,7 +369,7 @@ interface AimEntry {
   age: number;
   /** A one-frame tone (e.g. the reject's crimson), frames left. */
   flash: { tone: number; frames: number } | null;
-  label: PalText | null;
+  label: CounterTag | null;
   /** The confirm's white contour frame was shown. */
   contoured: boolean;
 }
@@ -387,6 +387,8 @@ export class AimMarks {
   private readonly flashes: Flashes;
   private readonly stop: () => void;
   private hot: AimEntry | null = null;
+  /** The warm floor pool under the candidate under the pointer (stepped light layer, G4). */
+  private pool: LightHandle | null = null;
   private ended = false;
   private dead = false;
 
@@ -428,6 +430,7 @@ export class AimMarks {
     const prev = this.hot;
     this.hot = e;
     if (prev && prev.state === 'hot') this.enter(prev, 'unhot');
+    this.setPool(e);
     if (!e) return;
     if (e.state === 'marked') return;
     this.enter(e, 'hot');
@@ -448,10 +451,8 @@ export class AimMarks {
       if (sound) ui3CardSfx('ui3Unmark', {}, 'uiClick', { volume: 0.7 });
       return;
     }
-    if (!e.label) {
-      e.label = new PalText(this.scene, 0, 0, label, { size: 'sm', color: PAL.white });
-      e.label.root.setDepth(AIM.depth + 1);
-    } else e.label.setText(label);
+    if (!e.label) e.label = new CounterTag(this.scene, label);
+    else e.label.setText(label);
     if (e.state !== 'marked') {
       this.enter(e, 'marked');
       if (sound) ui3CardSfx('ui3Mark', {}, 'uiClick', { volume: 0.7 });
@@ -474,12 +475,20 @@ export class AimMarks {
       this.enter(e, list.some((r) => sameRef(r, e.ref)) ? 'close' : 'leave');
     }
     if (sound) ui3Sfx('ui3Lock', {}, 'uiClick', { volume: 0.7 });
+    // the lock lights the chosen floor once (gold, stepped); the pointer's pool goes with it
+    this.setPool(null);
+    for (const e of this.entries) {
+      if (!list.some((r) => sameRef(r, e.ref))) continue;
+      const h = e.unit.home;
+      void lightFlash(this.scene, h.x, h.y, PAL.gold3, 24, 220, { intensity: 0.9 });
+    }
   }
 
   /** The pick ended without a choice (Esc, İPTAL, a QA dispatch): every corner steps out and fades. */
   cancel(): void {
     if (this.ended) return;
     this.ended = true;
+    this.setPool(null);
     for (const e of this.entries) {
       e.label?.destroy();
       e.label = null;
@@ -493,11 +502,24 @@ export class AimMarks {
     this.ended = true;
     this.stop();
     this.flashes.clear();
+    this.pool?.destroy();
+    this.pool = null;
     for (const e of this.entries) {
       e.set.destroy();
       e.label?.destroy();
       e.state = 'dead';
     }
+  }
+
+  /** A warm gold pool on the floor under `e` (null: the current one fades). */
+  private setPool(e: AimEntry | null): void {
+    const old = this.pool;
+    this.pool = null;
+    if (old?.alive) void old.fadeOut(100);
+    if (!e) return;
+    const h = e.unit.home;
+    this.pool = lightPool(this.scene, h.x, h.y, { color: PAL.gold3, radius: 22, intensity: 0, fadeIn: 0 });
+    this.pool.setIntensity(0.75, REDUCED_MOTION ? 0 : 60);
   }
 
   private enter(e: AimEntry, s: AimState): void {
@@ -594,7 +616,11 @@ export class AimMarks {
       e.flash.frames--;
     }
     e.set.draw(box, gap, tone, joint ?? tone);
-    if (e.label && box) e.label.setPosition(box.x1 + Math.max(minGap(box), gap) + 2, box.y0 - Math.max(minGap(box), gap) - 3);
+    // the counter tag sits just off the top-right corner, its middle on the corner's top leg
+    if (e.label && box) {
+      const g = Math.max(minGap(box), gap);
+      e.label.setPosition(box.x1 + g + 3, box.y0 - g - Math.floor(TAG_H / 2));
+    }
   }
 
   private kill(e: AimEntry): void {
@@ -602,6 +628,47 @@ export class AimMarks {
     e.set.destroy();
     e.label?.destroy();
     e.label = null;
+  }
+}
+
+/** The tribute counter tag's height (a dark plate, 1-px ink outline, white trim, sm digits). */
+const TAG_H = 11;
+
+/** "1/2" beside a chosen tribute (F4 "Kurban seçimi"): a tiny v3 plate with white digits. */
+class CounterTag {
+  private readonly scene: Phaser.Scene;
+  private readonly root: Phaser.GameObjects.Container;
+  private readonly bg: Phaser.GameObjects.Image;
+  private readonly text: PalText;
+  private label = '';
+
+  constructor(scene: Phaser.Scene, label: string) {
+    this.scene = scene;
+    this.root = scene.add.container(0, 0).setDepth(AIM.depth + 1);
+    this.bg = scene.add.image(0, 0, '__WHITE').setOrigin(0, 0);
+    this.text = new PalText(scene, 3, capYV3('sm', 3), '', { size: 'sm', color: PAL.white });
+    this.root.add([this.bg, this.text.root]);
+    this.setText(label);
+  }
+
+  setText(label: string): void {
+    if (label === this.label) return;
+    this.label = label;
+    const w = textWidthV3(label, 'sm') + 6;
+    const key = canvasTexture(this.scene, `ui3:aim:tag:${w}`, () =>
+      frameRectV3(new PixelCanvas(w, TAG_H), 0, 0, w, TAG_H, { light: PAL.white, dark: PAL.mist }),
+    );
+    this.bg.setTexture(key);
+    this.text.setText(label);
+  }
+
+  setPosition(x: number, y: number): void {
+    this.root.setPosition(Math.round(x), Math.round(y));
+  }
+
+  destroy(): void {
+    this.text.destroy();
+    if (this.root.active) this.root.destroy();
   }
 }
 
@@ -700,7 +767,7 @@ export function rejectClick(scene: Phaser.Scene, views: DuelViews, at: XY, o: Re
     const pad = views.board.tileImage(o.tile.player, o.tile.spot, o.tile.index);
     if (pad && pad.visible) flashes.add(showContour(scene, pad as unknown as Phaser.GameObjects.Image, PAL.crim3), REJECT.tileFrames);
     const c = zoneXY(o.tile.player, o.tile.spot, o.tile.index);
-    void lightFlash(scene, c.x, c.y, PAL.crim2, 18, 160, { intensity: 0.7 });
+    void lightFlash(scene, c.x, c.y, PAL.crim3, 14, 160, { intensity: 0.45 });
   }
   if (o.unit && unitBox(o.unit)) flashes.add(showContour(scene, o.unit.sprite, PAL.crim3, { depth: o.unit.sprite.depth + 0.02 }));
   o.selected?.flash(PAL.crim3, 1);
@@ -778,7 +845,8 @@ export function lockTargets(scene: Phaser.Scene, views: DuelViews, refs: readonl
     };
     const draw = () => {
       const g = REDUCED_MOTION ? 0 : lockGap(t);
-      const lockFrame = t >= LOCK.lockAt && t < LOCK.lockAt + FRAME_MS;
+      // the lock frame is the first frame drawn at or past lockAt (exactly one, whatever the frame length)
+      const lockFrame = !locked && t >= LOCK.lockAt;
       const tone = t >= LOCK.fadeAt ? PAL.gold2 : lockFrame ? PAL.white : PAL.gold3;
       for (const m of marks) {
         const b = m.unit ? unitBox(m.unit) : tileBox(m.r.player, m.r.zone, m.r.index);
@@ -788,7 +856,7 @@ export function lockTargets(scene: Phaser.Scene, views: DuelViews, refs: readonl
           flashes.add(showContour(scene, m.unit.sprite, PAL.white, { depth: m.unit.sprite.depth + 0.02 }));
         }
       }
-      if (!locked && t >= LOCK.lockAt) {
+      if (lockFrame) {
         locked = true;
         ui3Sfx('ui3Lock', {}, 'lockOn', { volume: 0.7 });
         for (const m of marks) {

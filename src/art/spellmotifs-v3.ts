@@ -10,6 +10,8 @@
 //     (HONEYCOMB_7, hexCenter, hexRing, hexFacePixels: its layout, the wave's rings, shard sources)
 //   chainLinkMotif / paintChain       Işık Zincirleri card art: gold2–gold4 planed links, ink outline
 //   paintSpringColumn / paintPool     Şifa Pınarı: the 5-px stepped water column, the 2-ring iso pool
+//   paintFountain / paintFountainPool Şifa Pınarı's signature (A-6): the 80-px fountain (7-px jet,
+//                                     crown, curtains) and its pool with the light band and glints
 //   paintLavaColumn                   Volkan Arenası: the 8-px lava column (light: no outline)
 //   paintFlameTongue                  Volkan Arenası aura: a 3-frame flame tongue (+ 3 cooling steps)
 //   chasmGeometry / paintChasm        Yer Yarığı: a pad split into 3 slabs, the hole, its front lip
@@ -340,6 +342,151 @@ export function swordDir(angle: SwordAngle, facing: MotifFacing): XY {
   return angle === 'up' ? { x: 0, y: -1 } : angle === 'flat' ? { x: facing, y: 0 } : { x: facing * Math.SQRT1_2, y: -Math.SQRT1_2 };
 }
 
+// =================================================================================== great sword
+
+/**
+ * Ejder Kılıcı's SIGNATURE blade (A-2; the user's decision of 24 Oct: a signature effect is never
+ * smaller than the old one — the old forge showed a 15×46 sword): ≈ 17×47 px with its outline. A 5-px
+ * blade in planes (the lit edge white, gold4, a dark fuller groove with three rune pixels, gold3, gold2),
+ * a tapered tip, a 15-px guard with a crimson gem, a wrapped crimson grip and a gem pommel; 1-px ink
+ * outline. Pre-drawn at the same three angles as swordMotif (up, 45°, flat × 2 facings; anchor = the
+ * guard centre), the forge stages for 'up', a white bond rim, the break crack and the glint.
+ */
+export const GREAT_BLADE = 32;
+
+export interface GreatSwordOpts {
+  angle?: SwordAngle;
+  facing?: MotifFacing;
+  /** 'up' only: 1 = a 1-px gold line (light), 2 = + guard, grip and pommel, 3 = finished (default). */
+  stage?: 1 | 2 | 3;
+  rim?: 'ink' | 'white';
+  crack?: boolean;
+  /** A glint on the lit edge: 0 at the tip … 1 at the guard. */
+  glint?: number;
+  glintCross?: boolean;
+  /** The engraved runes lit (the forge: they glow as the blade forms). */
+  runesLit?: boolean;
+}
+
+/** The great sword in blade space: (u along the blade from the guard, v across; v < 0 faces the light). */
+function greatSwordPixels(o: GreatSwordOpts): { matter: [number, number, number][]; light: [number, number, number][] } {
+  // the 45° drawing is as long on screen as the upright one: √2 longer per row, so fewer rows
+  const diag = (o.angle ?? 'up') === 'diag';
+  const L = diag ? Math.round(GREAT_BLADE * 0.72) : GREAT_BLADE;
+  const gripEnd = diag ? -6 : -8;
+  const stage = (o.angle ?? 'up') === 'up' ? (o.stage ?? 3) : 3;
+  const matter: [number, number, number][] = [];
+  const light: [number, number, number][] = [];
+  const R = [PAL.crim0, PAL.crim1, PAL.crim2, PAL.crim3, PAL.crim4] as const;
+  if (stage === 3) {
+    for (let u = 1; u <= L; u++) {
+      const fuller = u >= 3 && u <= L - 7;
+      const rune = fuller && (u - 5) % 7 === 0;
+      let row: number[];
+      if (u <= 2) row = [G[4], G[4], G[3], G[3], G[2]];
+      else if (u <= L - 3) row = [W, G[4], fuller ? (rune ? (o.runesLit ? W : G[4]) : G[1]) : G[3], G[3], G[2]];
+      else row = [];
+      if (row.length) for (let v = -2; v <= 2; v++) matter.push([u, v, row[v + 2]]);
+    }
+    // the tip: 3 → 1 → the white point
+    for (const [u, v, c] of [
+      [L - 2, -1, W], [L - 2, 0, G[4]], [L - 2, 1, G[2]],
+      [L - 1, -1, W], [L - 1, 0, G[3]], [L - 1, 1, G[2]],
+      [L, 0, W], [L + 1, 0, W],
+    ] as [number, number, number][])
+      matter.push([u, v, c]);
+  }
+  if (stage >= 2) {
+    // guard: 15 px, its blade-side face lit; the quillon ends turn toward the blade; the gem in the middle
+    for (let v = -7; v <= 7; v++) {
+      const end = Math.abs(v) >= 6;
+      matter.push([0, v, end ? G[3] : v < 0 ? G[4] : v < 4 ? G[3] : G[2]]);
+      matter.push([-1, v, end ? G[2] : v < 0 ? G[2] : G[1]]);
+    }
+    if (!diag) matter.push([1, -7, G[3]], [1, 7, G[2]]);
+    matter.push([0, -1, R[4]], [0, 0, R[3]], [0, 1, R[2]], [-1, -1, R[3]], [-1, 0, R[2]], [-1, 1, R[1]]);
+    // grip: crimson wraps on a diagonal
+    for (let u = -2; u >= gripEnd; u--) {
+      const k = (-u) % 2;
+      matter.push([u, -1, k ? R[3] : R[2]], [u, 0, k ? R[2] : R[1]], [u, 1, k ? R[1] : R[0]]);
+    }
+    // pommel: a gold ring round a gem
+    const p0 = gripEnd - 1;
+    for (const [u, v, c] of [
+      [p0, -1, G[4]], [p0, 0, G[3]], [p0, 1, G[2]],
+      [p0 - 1, -2, G[4]], [p0 - 1, -1, R[4]], [p0 - 1, 0, R[3]], [p0 - 1, 1, R[2]], [p0 - 1, 2, G[1]],
+      [p0 - 2, -1, G[3]], [p0 - 2, 0, G[2]], [p0 - 2, 1, G[1]],
+    ] as [number, number, number][])
+      matter.push([u, v, c]);
+  }
+  if (stage <= 2) {
+    // the forge line: light drawing itself up the blade (no outline)
+    for (let u = stage === 1 ? gripEnd - 3 : 1; u <= L + 1; u++) light.push([u, 0, u >= L ? W : stage === 1 && u < -1 ? G[3] : G[4]]);
+  }
+  if (o.crack && stage === 3) {
+    const u0 = Math.round(L * 0.45);
+    for (let v = -2; v <= 2; v++) light.push([u0 + (v % 2 === 0 ? 0 : 1), v, W]);
+  }
+  if (o.glint !== undefined && stage === 3) {
+    const u = Math.max(3, Math.min(L - 2, Math.round(L - o.glint * (L - 4))));
+    light.push([u, -2, W]);
+    if (o.glintCross) light.push([u + 1, -2, W], [u - 1, -2, W], [u, -3, W], [u, -1, G[4]]);
+  }
+  return { matter, light };
+}
+
+/** The great sword drawing (anchor: the guard centre). */
+export function greatSwordMotif(o: GreatSwordOpts = {}): Motif {
+  const angle = o.angle ?? 'up';
+  const f: MotifFacing = o.facing ?? 1;
+  const { matter, light } = greatSwordPixels(o);
+  // blade space → screen. up: the blade up, v to the right. flat: the blade toward `f`, v down (the top
+  // edge lit for both facings). 45°: every blade / grip row is a run sheared along x — x = f·(u + v),
+  // y = −u (as swordMotif's 45°) — so the up-left drawing (f = −1) carries its lit edge on the upper
+  // right (gold4, no white: it faces the light only half); the guard is a 2-px diagonal bar across it.
+  const place = (u: number, v: number, c: number): [number, number, number] => {
+    if (angle === 'up') return [v, -u, c];
+    if (angle === 'flat') return [f * u, v, c];
+    const cc = f === -1 && c === W ? G[4] : c;
+    if (u === 0 || u === -1) {
+      // the guard: a solid 2-px diagonal bar across the blade (its blade-side pixel lit)
+      const j = Math.round((v * 5) / 7);
+      const near = f === 1 ? 1 : 0; // which of the pair lies on the blade's side
+      return [j + (u === 0 ? near : 1 - near), f * j, cc];
+    }
+    return [f * (u + v), -u, cc];
+  };
+  const s = new Sketch();
+  for (const [u, v, c] of matter) {
+    const [x, y, cc] = place(u, v, c);
+    s.set(x, y, cc);
+  }
+  for (const [u, v, c] of light) {
+    const [x, y] = place(u, v, c);
+    if (!s.has(x, y)) s.set(x, y, c);
+  }
+  const m = s.toMotif(2);
+  const keep = new Set<string>();
+  for (const [u, v, c] of light) {
+    const [x, y] = place(u, v, c);
+    keep.add(`${x + m.ax},${y + m.ay}`);
+  }
+  const lifted: [number, number, number][] = [];
+  for (const k of keep) {
+    const [x, y] = k.split(',').map(Number);
+    const c = m.px.get(x, y);
+    if (c !== null) lifted.push([x, y, c]);
+    m.px.erase(x, y);
+  }
+  outline4(m.px, o.rim === 'white' ? W : PAL.ink);
+  for (const [x, y, c] of lifted) m.px.set(x, y, c);
+  for (const [u, v, c] of light) {
+    const [x, y] = place(u, v, c);
+    m.px.set(x + m.ax, y + m.ay, c);
+  }
+  return m;
+}
+
 // =================================================================================== honeycomb mirror
 
 /** One mirror cell: a pointy-top hexagon 9×10; lattice steps 8 (across) and 7 (rows, offset by 4). */
@@ -667,6 +814,238 @@ export function paintPool(p: PixelCanvas, cx: number, cy: number, rx: number, o:
     const ex = rx - 3 * (rings - 1 - r);
     if (ex < 2) continue;
     p.ellipseRing(cx + 0.5, cy + 0.5, ex, ex / 2, ramp[Math.min(ramp.length - 1, r)]);
+  }
+}
+
+// =================================================================================== spring fountain (the signature)
+
+/**
+ * Şifa Pınarı's SIGNATURE fountain (A5 §3.5 at the size of the user's rule of 24 Oct: a signature
+ * effect is never smaller than the old one — the old geyser stood 82 px tall with water curtains
+ * down to a 26-px floor ring). The jet is A5 §3.5's stepped column widened to 7 px: a water4 lit edge
+ * on the screen's left, a 1-px white core, teal4, teal4, teal3, teal2 and a teal1 shadow edge; no
+ * outline (water / light). Its edges ripple and flow notches climb it, a foam skirt churns at its
+ * foot, a crown folds over at its top, and 1-px water curtains arc from the crown down to a ring on
+ * the floor — two behind the jet, two in front, flow dashes falling along them.
+ */
+export const FOUNTAIN_W = 7;
+/** The fountain's full height (the old geyser: 82 px). */
+export const FOUNTAIN_H = 80;
+/** Curtain landing angles on the floor ring (screen radians: 0 = right, π/2 = toward the viewer). */
+const DEG = Math.PI / 180;
+const CURTAINS_BACK = [200 * DEG, 248 * DEG, 292 * DEG, 340 * DEG] as const;
+const CURTAINS_FRONT = [152 * DEG, 112 * DEG, 68 * DEG, 28 * DEG] as const;
+
+export interface FountainOpts {
+  /** Flow phase (any integer, e.g. the frame count): notches climb, dashes fall, the crown churns. */
+  phase?: number;
+  /** The floor ring the curtains land on (rx; ry = rx / 2). Default round(h × 0.3). 0: no curtains. */
+  reach?: number;
+  /** How far down the curtains have fallen from the crown (0..1, default 1: they reach the floor). */
+  fall?: number;
+  /** The curtains have drained from the crown down to here (0..1, default 0: still fed). */
+  drain?: number;
+  /** The crown (default: on once the jet is 16 px tall). */
+  crown?: boolean;
+  /** Draw the curtains behind the jet ('back'), in front of it ('front') or both (default). */
+  curtains?: 'back' | 'front' | 'both' | 'none';
+  /**
+   * The jet height the curtains hang from (default h): while the jet sinks, the water already in the
+   * air keeps falling along the arcs of the full fountain (pass its full height with `drain`).
+   */
+  curtainH?: number;
+}
+
+/** The top of the fountain's crown (its cap's highest row) for a jet `h` tall on `baseY` — where drops leave from. */
+export function fountainTop(baseY: number, h: number): number {
+  return Math.round(baseY) - Math.round(h) + 1 - 4;
+}
+
+/** One water curtain from the crown's side down to its point on the floor ring (whole pixels). */
+function paintCurtain(p: PixelCanvas, s: XY, e: XY, base: number, lit: number, ph: number, fall: number, drain: number): void {
+  const len = Math.hypot(e.x - s.x, e.y - s.y);
+  const n = Math.max(4, Math.ceil(len * 1.4));
+  let prev: XY | null = null;
+  let along = 0;
+  for (let i = 0; i <= n; i++) {
+    const u = i / n;
+    // outward first, then down (the old geyser's curtain shape): x on √u, y on u², a 5-px rise
+    const x = Math.round(s.x + (e.x - s.x) * Math.sqrt(u));
+    const y = Math.round(s.y + (e.y - s.y) * u * u - Math.sin(Math.PI * u) * 5);
+    if (prev && prev.x === x && prev.y === y) continue;
+    if (prev) along += Math.max(Math.abs(x - prev.x), Math.abs(y - prev.y));
+    prev = { x, y };
+    if (u > fall || u < drain) continue;
+    // past the arc's top the sheet breaks into falling drops: 2 px on, 1 off, moving down
+    const d = (((along - ph * 3) % 9) + 9) % 9;
+    if (u > 0.42 && d % 3 === 2) continue;
+    // flow dashes falling along the sheet: a white head, a lit tail, then the sheet's own tone
+    p.set(x, y, d === 0 ? W : d <= 2 ? lit : base);
+  }
+  // the splash where it meets the floor (two frames of drops jumping off it)
+  if (fall >= 1 && drain < 0.98) {
+    const alt = ph % 2 === 0;
+    p.set(e.x + (alt ? -1 : 1), e.y - 1, alt ? W : lit);
+    p.set(e.x + (alt ? 1 : -1), e.y - (alt ? 2 : 1), lit);
+  }
+}
+
+/** The jet's bands at its widths (the 1-px white core stays on x = cx − 1 at every width). */
+const JET_BANDS: Readonly<Record<number, readonly number[]>> = {
+  11: [PAL.water4, PAL.water4, PAL.teal4, PAL.teal4, W, PAL.teal4, PAL.teal3, PAL.teal3, PAL.teal2, PAL.teal2, PAL.teal1],
+  9: [PAL.water4, PAL.teal4, PAL.teal4, W, PAL.teal4, PAL.teal3, PAL.teal3, PAL.teal2, PAL.teal1],
+  7: [PAL.water4, PAL.teal4, W, PAL.teal4, PAL.teal3, PAL.teal2, PAL.teal1],
+  5: [PAL.water4, W, PAL.teal4, PAL.teal3, PAL.teal2],
+};
+
+/**
+ * The healing spring's signature fountain, jet `h` px tall standing on (cx, baseY) (see the section
+ * header). A pure function of its arguments (no randomness, palette only): the scene animates it
+ * by its arguments (rising h, the curtains' fall / drain, the phase); the card art may paint it
+ * small (h ≥ 8 reads as a jet).
+ */
+export function paintFountain(p: PixelCanvas, cx: number, baseY: number, h: number, o: FountainOpts = {}): void {
+  h = Math.round(h);
+  if (h <= 0) return;
+  cx = Math.round(cx);
+  const by = Math.round(baseY);
+  const ph = Math.round(o.phase ?? 0);
+  const top = by - h + 1;
+  const crown = (o.crown ?? h >= 16) && h >= 8;
+  const reach = Math.max(0, Math.round(o.reach ?? h * 0.3));
+  const fall = Math.max(0, Math.min(1, o.fall ?? 1));
+  const drain = Math.max(0, Math.min(1, o.drain ?? 0));
+  const which = o.curtains ?? 'both';
+  const ctop = by - Math.round(o.curtainH ?? h) + 1;
+  const curtains = (angles: readonly number[], back: boolean) => {
+    if ((o.curtainH ?? (crown ? h : 0)) < 16 || reach < 4 || fall <= 0 || drain >= 1) return;
+    for (const a of angles) {
+      const side = Math.cos(a) < 0 ? -1 : 1;
+      const s = { x: cx - 1 + side * 8, y: ctop + 1 };
+      const e = { x: Math.round(cx + Math.cos(a) * reach), y: Math.round(by + Math.sin(a) * reach * 0.5) };
+      // the lit (left) sheets one tone up; the sheets behind the jet one tone down
+      const base = side < 0 ? (back ? PAL.teal2 : PAL.teal3) : back ? PAL.teal1 : PAL.teal2;
+      const lit = side < 0 ? (back ? PAL.teal3 : PAL.teal4) : back ? PAL.teal2 : PAL.teal3;
+      paintCurtain(p, s, e, base, lit, ph, fall, drain);
+    }
+  };
+  if (which === 'back' || which === 'both') curtains(CURTAINS_BACK, true);
+
+  // ---- the jet: 11 px at its foot, 9 in the middle, 7 under the crown (it thins as it climbs)
+  for (let i = 0; i < h; i++) {
+    const y = by - i;
+    const fromTop = h - 1 - i;
+    const w = h < 12 ? (fromTop < 2 ? 5 : 7) : h < 24 ? (fromTop < 3 ? 7 : 9) : i < Math.round(h * 0.2) ? 11 : fromTop < Math.round(h * 0.22) ? 7 : 9;
+    // no crown on it yet: the top row narrows to the white core and its neighbours
+    const bands = !crown && fromTop === 0 ? [PAL.teal4, W, PAL.teal4] : JET_BANDS[w];
+    const x0 = cx - 1 - bands.indexOf(W);
+    const last = bands.length - 1;
+    for (let k = 0; k <= last; k++) {
+      let c: number = bands[k];
+      // the edges ripple: a gap climbs each side (2 px per phase step)
+      if (k === 0 && (i + ph * 2) % 7 === 0 && i > 2 && fromTop > 2) continue;
+      if (k === last && (i + ph * 2 + 3) % 6 === 0 && i > 2 && fromTop > 2) continue;
+      // flow notches climbing 3 px per phase step: a dark dash in the lit bands, a white fleck
+      const f = (i + ph * 3) % 10;
+      if (i > 2 && fromTop > 1 && last >= 4) {
+        const core = bands.indexOf(W);
+        if (f === 0 && (k === core + 1 || k === core + 2)) c = k === core + 1 ? PAL.teal3 : PAL.teal2;
+        else if (f === 1 && k === core + 1) c = PAL.teal3;
+        else if (f === 6 && k === core + 1) c = W;
+        else if (f === 5 && k === core) c = PAL.teal4;
+      }
+      p.set(x0 + k, y, c);
+    }
+    // swells travelling up the sides (one pixel out)
+    if (i > 3 && fromTop > 3) {
+      if ((i + ph * 2) % 9 === 4) p.set(x0 - 1, y, PAL.water4);
+      if ((i + ph * 2 + 5) % 10 === 0) p.set(x0 + last + 1, y, PAL.teal1);
+    }
+  }
+  // ---- the foam skirt at its foot (churning: the tones walk sideways with the phase)
+  const FOAM = [W, PAL.teal4, PAL.water4, PAL.teal4] as const;
+  for (let x = cx - 8; x <= cx + 6; x++) p.set(x, by, x <= cx - 7 || x >= cx + 5 ? (x < cx ? PAL.teal3 : PAL.teal2) : FOAM[(((x + ph) % 4) + 4) % 4]);
+  if (h >= 3) {
+    p.set(cx - 7, by - 1, (ph & 1) === 0 ? W : PAL.teal4);
+    p.set(cx - 8, by - 1, PAL.teal3);
+    p.set(cx + 5, by - 1, PAL.teal2);
+    p.set(cx + 6, by - 1, (ph & 1) === 1 ? PAL.teal3 : PAL.teal1);
+    p.set(cx - 6 + (ph % 3), by - 2, W);
+    p.set(cx + 2 - (ph % 3), by - 2, PAL.teal4);
+  }
+
+  // ---- the crown: the jet opens into an umbrella that folds over (4 churning frames), drops jump off it
+  if (crown) {
+    const f = ((ph % 4) + 4) % 4;
+    const sway = f === 1 ? -1 : f === 3 ? 1 : 0;
+    // the cap: rows above the jet's top, widening downward (lit left, shadow right)
+    const cap = [
+      { dy: -4, hw: 2 },
+      { dy: -3, hw: 4 },
+      { dy: -2, hw: 6 },
+      { dy: -1, hw: 7 },
+      { dy: 0, hw: 8 },
+    ];
+    for (const r of cap) {
+      const y = top + r.dy;
+      for (let dx = -r.hw; dx <= r.hw; dx++) {
+        const x = cx - 1 + dx + (r.dy <= -3 ? sway : 0);
+        const t = (dx + r.hw) / (2 * r.hw || 1);
+        let c: number = t < 0.16 ? PAL.water4 : t < 0.42 ? W : t < 0.66 ? PAL.teal4 : t < 0.86 ? PAL.teal3 : PAL.teal2;
+        // the underside of the umbrella is in its own shade (the fold), its middle still the jet
+        if (r.dy === 0 && Math.abs(dx) > 2) c = dx < 0 ? PAL.teal3 : PAL.teal1;
+        // churn: a darker fleck walks across the cap
+        if (r.dy === -2 && dx === ((f * 3) % 9) - 4) c = PAL.teal3;
+        p.set(x, y, c);
+      }
+    }
+    // the fold curls down and out on both sides, breaking into drips
+    p.set(cx - 10, top + 1, PAL.teal4);
+    p.set(cx - 10, top + 2, f % 2 === 0 ? W : PAL.water4);
+    p.set(cx - 11, top + 3, PAL.teal3);
+    p.set(cx + 8, top + 1, PAL.teal3);
+    p.set(cx + 8, top + 2, PAL.teal2);
+    p.set(cx + 9, top + 3, f % 2 === 1 ? PAL.teal3 : PAL.teal1);
+    // drops thrown off the crown (they alternate height with the frame)
+    const up = f % 2 === 0;
+    p.set(cx - 3 + sway, top - (up ? 6 : 7), W);
+    p.set(cx + sway, top - (up ? 8 : 6), PAL.teal4);
+    p.set(cx + 3, top - (up ? 5 : 6), PAL.teal3);
+    p.set(cx - 6, top - (up ? 4 : 5), PAL.water4);
+  }
+  if (which === 'front' || which === 'both') curtains(CURTAINS_FRONT, false);
+}
+
+/**
+ * The fountain's pool on the floor at (cx, cy): a dark water disc (teal1) inside two stepped rings
+ * (teal2, then the teal3 rim), a teal0 band of the spring's light on the floor round it (`halo` px
+ * wide, 0 = none), and 3–4 white glints on the surface that move with `phase`. Iso 2:1, whole pixels.
+ */
+export function paintFountainPool(p: PixelCanvas, cx: number, cy: number, rx: number, o: { phase?: number; halo?: number; rim?: number; inner?: number; fill?: number } = {}): void {
+  cx = Math.round(cx);
+  cy = Math.round(cy);
+  rx = Math.round(rx);
+  if (rx < 2) return;
+  const ph = Math.round(o.phase ?? 0);
+  const halo = Math.max(0, Math.round(o.halo ?? 0));
+  if (halo > 0) p.ellipse(cx + 0.5, cy + 0.5, rx + halo, (rx + halo) / 2, PAL.teal0);
+  p.ellipse(cx + 0.5, cy + 0.5, rx, rx / 2, o.fill ?? PAL.teal1);
+  if (rx >= 6) p.ellipseRing(cx + 0.5, cy + 0.5, rx - 3, (rx - 3) / 2, o.inner ?? PAL.teal2);
+  p.ellipseRing(cx + 0.5, cy + 0.5, rx, rx / 2, o.rim ?? PAL.teal3);
+  // glints on the water (the light's top left side is brighter: more of them there)
+  if (rx >= 8) {
+    const g = [
+      [-0.55, -0.15],
+      [-0.25, 0.25],
+      [0.3, -0.2],
+      [0.6, 0.15],
+    ];
+    for (let i = 0; i < g.length; i++) {
+      if ((ph + i) % 3 === 0) continue;
+      const gx = cx + Math.round(g[i][0] * (rx - 4) + ((ph + i * 2) % 3) - 1);
+      const gy = cy + Math.round(g[i][1] * (rx - 4) * 0.5);
+      p.set(gx, gy, i < 2 ? W : PAL.teal4);
+    }
   }
 }
 

@@ -18,12 +18,13 @@
 
 import type Phaser from 'phaser';
 import { PAL } from '../art/palette';
-import { paintFlameTongue, swordMotif, type SwordOpts } from '../art/spellmotifs-v3';
+import { greatSwordMotif, paintFlameTongue, swordMotif, type Motif } from '../art/spellmotifs-v3';
 import { monsterFrame } from '../art/textures';
-import { fxRng, motifImage, setMotif, shards, silhouetteOf, steamEmitter, swordKey } from '../cinematics/_v3/spellfx';
+import { fxCount, fxRng, greatSwordKey, motifImage, setMotif, shards, silhouetteOf, steamEmitter, swordKey } from '../cinematics/_v3/spellfx';
 import { DEPTH, type XY } from '../view/layout';
 import { lightPool, type LightHandle } from '../view/light';
 import { REDUCED_MOTION } from '../view/v3/motion';
+import { Sparks as PxSparks } from '../vfx/combat';
 import { Raster, onFrame } from '../vfx/setpieces';
 import type { Disposable } from './types';
 import type { MonsterUnit } from './MonsterUnit';
@@ -177,10 +178,12 @@ export function steamAuraV3(scene: Phaser.Scene, unit: MonsterUnit): Disposable 
 //               into the dashes (A5 §3.1 BAĞ).
 //   the light   one faint gold tone at the monster's feet (the light layer: a stepped floor pool).
 // destroy() is the break (A5 §3.1 "Kırılma"; also a bolt burning the aura off, a death, a sync that
-// finds the blade gone): two frames of a white crack across the blade, then 6–8 whole-pixel gold
-// shards fall to the floor and fade by palette steps (EF-7), the ring snaps open at the front and its
-// halves drop away stepping down the ramp, the light goes out. Silent: the scene that breaks it scores
-// the beat. Nothing here tints, scales or moves the sprite; palette tones, whole pixels, no alpha.
+// finds the blade gone): two frames of a white crack across the blade while the ring is drawn tight
+// and bright (gold4), then the burst — at least as big as the old aura burst (22 gold sparks; the
+// user's rule of 24 Oct): the blade's 7–8 shards, the ring snapped into 16 pieces flung off round the
+// waist and 10 star sparks, all thrown up and out; they fall to the floor and fade by palette steps
+// (EF-7); the light goes out. Silent: the scene that breaks it scores the beat (and lights the body's
+// edge). Nothing here tints, scales or moves the sprite; palette tones, whole pixels, no alpha.
 
 const GOLD_RAMP = [PAL.gold1, PAL.gold2, PAL.gold3, PAL.gold4] as const;
 /** The aura sword's blade length (spellmotifs-v3 default: the ≈ 7×20 aura sword). */
@@ -194,9 +197,17 @@ const GLINT_STEP = 70;
 export const RING_CLOSE_STEP = 20;
 const RING_HOLD = 60;
 const RING_SETTLE_STEP = 60;
-/** The break: frames of the white crack before the blade shatters; the ring's snap steps. */
+/** The break: frames of the white crack (the ring drawn tight and bright) before the blade shatters. */
 export const BREAK_CRACK_FRAMES = 2;
-const RING_SNAP_STEP = 60;
+/**
+ * The burst (≥ the old aura burst's 22 gold sparks flung 50–140 px/s): the blade's shards, the ring
+ * snapped into BREAK_RING_BITS pieces, BREAK_SPARKS star sparks — thrown at these speeds (spellfx.shards).
+ */
+export const BREAK_RING_BITS = 16;
+const BREAK_SPARKS = 10;
+const BREAK_BLADE_SPEED = 1.8;
+const BREAK_RING_SPEED = 2;
+const BREAK_FX = [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2] as const;
 
 /** Where the equip sword floats, relative to the sprite's position (rest pose; whole pixels). */
 export interface EquipAnchor {
@@ -287,50 +298,64 @@ export function ringPixels(cx: number, cy: number, rx: number, ry: number, start
   return out;
 }
 
-/** 7 gold shard sources off the sword drawn with its guard at (gx, gy) (its own pixels; white → gold4). */
-export function swordShardPoints(gx: number, gy: number, seed = 1): { x: number; y: number; c: number }[] {
-  const m = swordMotif({ len: AURA_SWORD_LEN });
+export interface EquipAuraOpts {
+  /**
+   * Start on the forge's bond frame (A5 §3.1 BAĞ): the signature great sword stands at the anchor
+   * (one frame of a white rim), the big waist ring closes clockwise in three steps and tightens, then
+   * after CONDENSE_AT the great sword condenses into the small floating one (three frames).
+   */
+  bond?: boolean;
+}
+
+/** The bond's big ring (at least the old forge ring's 64 px across) and its tightening steps. */
+export const BOND_RING_RX = 34;
+const RING_TIGHTEN_STEPS = 3;
+/** When the great sword condenses into the small aura sword (ms after the bond), one step per frame. */
+export const CONDENSE_AT = 400;
+const CONDENSE_STEPS = 3;
+
+/** 7 gold shard sources off a sword drawing placed with its guard at (gx, gy) (its own pixels; white → gold4). */
+export function swordShardPoints(gx: number, gy: number, seed = 1, great = false): { x: number; y: number; c: number }[] {
+  const m = great ? greatSwordMotif({}) : swordMotif({ len: AURA_SWORD_LEN });
   const pts: { x: number; y: number; c: number }[] = [];
   for (let y = 0; y < m.px.h; y++)
     for (let x = 0; x < m.px.w; x++) {
       const c = m.px.get(x, y);
       if (c === null || c === PAL.ink) continue;
-      pts.push({ x: gx + x - m.ax, y: gy + y - m.ay, c: c === PAL.white ? PAL.gold4 : c });
+      pts.push({ x: gx + x - m.ax, y: gy + y - m.ay, c: c === PAL.white ? PAL.gold4 : GOLD_RAMP.includes(c as (typeof GOLD_RAMP)[number]) ? c : PAL.gold2 });
     }
-  const n = 7;
+  const n = great ? 8 : 7;
   const out: { x: number; y: number; c: number }[] = [];
   const stride = pts.length / n;
-  for (let i = 0; i < n && pts.length; i++) out.push(pts[Math.min(pts.length - 1, Math.floor((i + ((seed * 0.37) % 1)) * stride))]);
+  const off = (Math.abs(seed) * 0.37) % 1;
+  for (let i = 0; i < n && pts.length; i++) out.push(pts[Math.min(pts.length - 1, Math.floor((i + off) * stride))]);
   return out;
-}
-
-export interface EquipAuraOpts {
-  /** Start on the forge's bond frame: the white rim on the sword, the ring closing (A5 §3.1 BAĞ). */
-  bond?: boolean;
 }
 
 /** Ejder Kılıcı's persistent state (see the section header). */
 export function equipAuraV3(scene: Phaser.Scene, unit: MonsterUnit, o: EquipAuraOpts = {}): Disposable {
   const s = unit.sprite;
   const glintPhase = (unit.uid * 577) % GLINT_EVERY;
-  const sword = motifImage(scene, ...swordKey({ len: AURA_SWORD_LEN, rim: o.bond ? 'white' : 'ink' }), -100, -100, s.depth - 0.4).setVisible(false);
-  const RW = 64;
-  const RH = 40;
+  const sword = motifImage(scene, ...swordKey({ len: AURA_SWORD_LEN }), -100, -100, s.depth - 0.4).setVisible(false);
+  const RW = BOND_RING_RX * 2 + 10;
+  const RH = BOND_RING_RX + 12;
   const back = new Raster(scene, 0, 0, RW, RH, s.depth - 0.5);
   const front = new Raster(scene, 0, 0, RW, RH, s.depth + 0.5);
   let light: LightHandle | null = null;
   let killed = false;
   let el = 0;
-  /** The game loop's frame counter: a step of it is one rendered frame (also under the tools' stepped clock). */
+  /** The game loop's frame counter: one step of it is one rendered frame (also under the tools' stepped clock). */
   const loopFrame = (): number => scene.game.loop.frame;
   const madeAt = loopFrame();
-  // the break (destroy): the time and loop frame it was asked on, the snapped ring
+  // the bond phases: the great sword, then the condense (one step per rendered frame), then the small one
+  let condense = o.bond ? -1 : CONDENSE_STEPS;
+  let condenseFrame = 0;
+  // the break (destroy): the time and loop frame it was asked on
   let breakAt = -1;
   let breakFrame = 0;
-  let snapped: { pts: XY[]; side: number[]; cx: number; cy: number } | null = null;
-  let shattered = false;
   // stepped timelines: at most one new step per rendered frame (SÜ-3)
   let ringShown = 0;
+  let tightShown = 0;
   let glintCycle = -1;
   let glintShown = -1;
   let stop: () => void = () => undefined;
@@ -347,21 +372,63 @@ export function equipAuraV3(scene: Phaser.Scene, unit: MonsterUnit, o: EquipAura
     if (l && l.alive) void l.fadeOut(200);
   };
 
-  /** The sword's drawing for this frame (cached textures: rim / glint / crack variants). */
-  const drawing = (): SwordOpts => {
-    if (breakAt >= 0) return { len: AURA_SWORD_LEN, crack: true };
-    if (o.bond && loopFrame() - madeAt < 1) return { len: AURA_SWORD_LEN, rim: 'white' };
+  /** The great sword is shown (the bond, before it condenses). */
+  const great = (): boolean => condense < 2;
+
+  /** The sword's drawing for this frame (cached textures: rim / glint / crack / condense variants). */
+  const drawing = (): [string, () => Motif] => {
+    if (breakAt >= 0) return great() ? greatSwordKey({ crack: true }) : swordKey({ len: AURA_SWORD_LEN, crack: true });
+    if (o.bond && condense < 0) {
+      // the bond: one frame of the white rim, the runes flare, then one glint down the lit edge
+      if (loopFrame() - madeAt < 1) return greatSwordKey({ rim: 'white', runesLit: true });
+      if (el < 200) return greatSwordKey({ runesLit: true });
+      const g = el - 200;
+      if (g < GLINT_STEP * 3) return greatSwordKey(g < GLINT_STEP ? { glint: 0.15 } : g < GLINT_STEP * 2 ? { glint: 0.5, glintCross: true } : { glint: 0.85 });
+      return greatSwordKey({});
+    }
+    if (condense === 0) return greatSwordKey({ rim: 'white' });
+    if (condense === 1) return swordKey({ len: AURA_SWORD_LEN, rim: 'white' });
     const g = (el + glintPhase) % GLINT_EVERY;
     const cycle = Math.floor((el + glintPhase) / GLINT_EVERY);
-    if (el > 500 && g < GLINT_STEP * 3) {
+    if (el > CONDENSE_AT + 500 && g < GLINT_STEP * 3) {
       if (cycle !== glintCycle) {
         glintCycle = cycle;
         glintShown = -1;
       }
       glintShown = Math.min(Math.floor(g / GLINT_STEP), glintShown + 1);
-      return glintShown === 1 ? { len: AURA_SWORD_LEN, glint: 0.5, glintCross: true } : { len: AURA_SWORD_LEN, glint: glintShown <= 0 ? 0.15 : 0.85 };
+      return glintShown === 1 ? swordKey({ len: AURA_SWORD_LEN, glint: 0.5, glintCross: true }) : swordKey({ len: AURA_SWORD_LEN, glint: glintShown <= 0 ? 0.15 : 0.85 });
     }
-    return { len: AURA_SWORD_LEN };
+    return swordKey({ len: AURA_SWORD_LEN });
+  };
+
+  /**
+   * The break's burst (the frame after the crack): the blade flies apart in whole-pixel shards, the ring
+   * snaps into BREAK_RING_BITS pieces flung off round the waist, star sparks leave the blade's middle —
+   * all thrown up and out, they fall to the floor and fade by palette steps (EF-7). The light goes out.
+   */
+  const breakBurst = (gx: number, gy: number, rcx: number, rcy: number, an: EquipAnchor): void => {
+    const floor = Math.round(unit.home.y) + 2;
+    const depth = (s.active ? s.depth : DEPTH.FX) + 1;
+    void shards(scene, { from: swordShardPoints(gx, gy, unit.uid, great()), ramp: GOLD_RAMP, mode: 'fall', floor, restMs: 90, depth, seed: unit.uid * 31 + 9, speed: BREAK_BLADE_SPEED });
+    const ring = ringPixels(rcx, rcy, an.rx, an.ry, 0);
+    const bits = Array.from({ length: BREAK_RING_BITS }, (_, i) => {
+      const q = ring[Math.floor((i * ring.length) / BREAK_RING_BITS)];
+      return { x: q.x, y: q.y, c: i % 2 === 0 ? PAL.gold4 : PAL.gold3 };
+    });
+    void shards(scene, { from: bits, ramp: GOLD_RAMP, mode: 'fall', centre: { x: rcx, y: rcy }, floor, restMs: 60, depth, seed: unit.uid * 17 + 3, speed: BREAK_RING_SPEED });
+    const rnd = fxRng(unit.uid * 7 + 29);
+    const sp = new PxSparks(scene, DEPTH.FX + 3);
+    const my = gy - (great() ? 14 : 6);
+    const n = fxCount(BREAK_SPARKS);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + rnd() * 0.6;
+      const v = 70 + rnd() * 60;
+      sp.add({ x: gx, y: my, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.7 - 20, ay: 140, drag: 2, life: 200 + Math.round(rnd() * 90), colors: BREAK_FX, shape: i % 2 === 0 ? 'plus' : 'px', fadeAt: 1 });
+    }
+    sp.release();
+    const l = light;
+    light = null;
+    if (l && l.alive) void l.fadeOut(240);
   };
 
   const draw = (): boolean => {
@@ -374,11 +441,19 @@ export function equipAuraV3(scene: Phaser.Scene, unit: MonsterUnit, o: EquipAura
     const an = equipAnchor(unit);
     const sx = Math.round(s.x);
     const sy = Math.round(s.y);
-    const bob = breakAt < 0 && Math.floor(el / (BOB_MS / 2)) % 2 === 1 ? -1 : 0;
+    // the condense: one step per rendered frame from CONDENSE_AT on
+    if (o.bond && breakAt < 0 && condense < CONDENSE_STEPS && el >= CONDENSE_AT) {
+      const f = loopFrame();
+      if (condense < 0 || f > condenseFrame) {
+        condense++;
+        condenseFrame = f;
+      }
+    }
+    const bob = !REDUCED_MOTION && breakAt < 0 && !great() && Math.floor(el / (BOB_MS / 2)) % 2 === 1 ? -1 : 0;
     const gx = sx + an.dx;
     const gy = sy + an.dy + bob;
-    const rcx = snapped ? snapped.cx : sx + an.ringDx;
-    const rcy = snapped ? snapped.cy : sy + an.ringDy;
+    const rcx = sx + an.ringDx;
+    const rcy = sy + an.ringDy;
     if (s.active) {
       sword.setDepth(s.depth - 0.4);
       back.img.setDepth(s.depth - 0.5);
@@ -389,46 +464,26 @@ export function equipAuraV3(scene: Phaser.Scene, unit: MonsterUnit, o: EquipAura
     back.begin();
     front.begin();
     if (breakAt >= 0) {
-      // ---- the break: two frames of the crack, then the shards; the ring snaps and drops away
-      if (!shattered) {
-        if (!shown) {
-          back.end();
-          front.end();
-          kill();
-          return false;
-        }
-        setMotif(sword, ...swordKey(drawing()));
-        sword.setPosition(gx, gy).setVisible(true);
-        if (loopFrame() - breakFrame >= BREAK_CRACK_FRAMES) {
-          shattered = true;
-          sword.setVisible(false);
-          void shards(scene, { from: swordShardPoints(gx, gy, unit.uid), ramp: GOLD_RAMP, mode: 'fall', floor: Math.round(unit.home.y) + 2, restMs: 90, depth: (s.active ? s.depth : DEPTH.FX) + 1, seed: unit.uid * 31 + 9 });
-          const l = light;
-          light = null;
-          if (l && l.alive) void l.fadeOut(240);
-        }
-      }
-      if (!snapped) {
-        const pts = ringPixels(rcx, rcy, an.rx, an.ry, Math.PI / 2);
-        snapped = { pts, side: pts.map((q) => (q.x < rcx ? -1 : 1)), cx: rcx, cy: rcy };
-      }
-      const k = Math.floor((el - breakAt) / RING_SNAP_STEP);
-      const tone = [PAL.gold3, PAL.gold2, PAL.gold1][k];
-      if (tone !== undefined) {
-        const sn = snapped;
-        sn.pts.forEach((q, i) => {
-          // a 3-px gap at the front centre; the halves slide apart and sink a pixel per step
-          if (Math.abs(q.x - sn.cx) <= 1 && q.y > sn.cy) return;
-          (q.y < sn.cy ? back : front).px(q.x + sn.side[i] * k, q.y + k, tone);
-        });
-      }
-      back.end();
-      front.end();
-      if (shattered && tone === undefined) {
+      // ---- the break: two frames of the crack with the ring drawn tight and bright, then the burst
+      if (!shown) {
+        back.end();
+        front.end();
         kill();
         return false;
       }
-      return true;
+      if (loopFrame() - breakFrame < BREAK_CRACK_FRAMES) {
+        setMotif(sword, ...drawing());
+        sword.setPosition(gx, gy).setVisible(true);
+        for (const q of ringPixels(rcx, rcy, an.rx, an.ry, 0)) (q.y < rcy ? back : front).px(q.x, q.y, PAL.gold4);
+        back.end();
+        front.end();
+        return true;
+      }
+      back.end();
+      front.end();
+      breakBurst(gx, gy, rcx, rcy, an);
+      kill();
+      return false;
     }
     // ---- the living state
     if (!shown) {
@@ -442,19 +497,33 @@ export function equipAuraV3(scene: Phaser.Scene, unit: MonsterUnit, o: EquipAura
       light = lightPool(scene, h.x, h.y, { color: PAL.gold3, spill: PAL.gold1, radius: 15, floorY: h.y, intensity: o.bond ? 0.9 : 0.4, anim: 'breathe', fadeIn: o.bond ? 0 : 200 });
       if (o.bond) light.setIntensity(0.4, 260);
     }
-    setMotif(sword, ...swordKey(drawing()));
+    setMotif(sword, ...drawing());
     sword.setPosition(gx, gy).setVisible(true);
-    // the ring: on the bond frame it closes clockwise from the sword's side in three steps (bright),
-    // holds, then settles into the dashes that creep round (one pixel every 150 ms)
-    const pts = ringPixels(rcx, rcy, an.rx, an.ry, an.side < 0 ? Math.PI : 0);
+    // the ring. The bond: it closes clockwise from the sword's side in three steps, big (≥ the old
+    // forge ring) and bright, holds, then tightens round the waist in three steps, stepping down to
+    // the dashes that creep round (one pixel every 150 ms)
     const closeMs = RING_CLOSE_STEP * 3;
+    const bondRing = o.bond && el < closeMs + RING_HOLD + RING_SETTLE_STEP * (RING_TIGHTEN_STEPS + 1);
+    let rx = an.rx;
     let solid = 0;
     let tone: number = PAL.gold3;
-    if (o.bond && el < closeMs + RING_HOLD + RING_SETTLE_STEP * 2) {
-      ringShown = Math.min(3, Math.floor(el / RING_CLOSE_STEP) + 1, ringShown + 1);
-      solid = ringShown;
-      tone = el < closeMs + RING_HOLD ? PAL.gold4 : el < closeMs + RING_HOLD + RING_SETTLE_STEP ? PAL.gold3 : PAL.gold2;
+    if (bondRing) {
+      const big = Math.max(BOND_RING_RX, an.rx);
+      if (el < closeMs + RING_HOLD) {
+        ringShown = Math.min(3, Math.floor(el / RING_CLOSE_STEP) + 1, ringShown + 1);
+        solid = ringShown;
+        tone = PAL.gold4;
+        rx = big;
+      } else {
+        const t = Math.min(RING_TIGHTEN_STEPS, Math.floor((el - closeMs - RING_HOLD) / RING_SETTLE_STEP) + 1);
+        tightShown = Math.min(t, tightShown + 1);
+        solid = 3;
+        rx = Math.round(big + ((an.rx - big) * tightShown) / RING_TIGHTEN_STEPS);
+        tone = tightShown <= 1 ? PAL.gold4 : tightShown === 2 ? PAL.gold3 : PAL.gold2;
+      }
     }
+    const ry = Math.max(4, Math.round(rx / 2));
+    const pts = ringPixels(rcx, rcy, rx, ry, an.side < 0 ? Math.PI : 0);
     if (solid > 0) {
       const n = Math.ceil((pts.length * solid) / 3);
       for (let i = 0; i < n; i++) {
