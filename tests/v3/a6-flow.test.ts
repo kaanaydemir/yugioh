@@ -680,6 +680,28 @@ describe('B2: the LP counter, the bar and the gain (F3)', () => {
     expect(PANEL_DEPTH).toBeLessThan(DEPTH.HUD + 6);
   });
 
+  it('the bar: LP past 4000 is a second lap from the left, so a gain from 4000 still shows a slice', async () => {
+    const { lpBarPx } = await import('../../src/view/v3/hudV3');
+    const { HUD3 } = await import('../../src/view/v3/hudSkin');
+    const w = HUD3.bar.w;
+    expect(lpBarPx(0, w)).toEqual({ main: 0, over: 0 });
+    expect(lpBarPx(-50, w)).toEqual({ main: 0, over: 0 });
+    expect(lpBarPx(2000, w)).toEqual({ main: Math.round(w / 2), over: 0 });
+    expect(lpBarPx(4000, w)).toEqual({ main: w, over: 0 });
+    // lumenGain (4000 → 4500): a slice at least one 4-px step wide on the second lap
+    expect(lpBarPx(4500, w).main).toBe(w);
+    expect(lpBarPx(4500, w).over).toBeGreaterThanOrEqual(4 * 4);
+    expect(lpBarPx(99999, w)).toEqual({ main: w, over: w });
+    // monotonic across both laps
+    let last = -1;
+    for (let v = 0; v <= 8000; v += 50) {
+      const b = lpBarPx(v, w);
+      expect(b.main + b.over).toBeGreaterThanOrEqual(last);
+      expect(b.over === 0 || b.main === w).toBe(true);
+      last = b.main + b.over;
+    }
+  });
+
   it('the gain (presentHeal, S-14): the handler ends within A6_MS.lpGain; the number sits outside its panel', async () => {
     const { A6_MS } = await import('../../src/view/v3/motion');
     const { HEAL_V3 } = await import('../../src/cinematics/v3small/heal');

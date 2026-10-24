@@ -17,6 +17,8 @@
 //                  wheel lands white for a frame; the bar: a loss leaves the lost slice white for 2
 //                  frames, then crimson, eroding in 4-px steps (140–340 ms); a gain fills the new
 //                  slice in 4-px steps in leaf with a 1-px white lead and 3 pixels rising off it.
+//                  LP past 4000 is the bar's second lap (lpBarPx): leaf over the full bar from the
+//                  left, so a gain from 4000 still fills a visible slice (and a loss erodes it).
 //                  setLp still resolves when today's would (callers' timings stay identical)
 //   low LP         (< 1000, F3) the digits rest crimson and pulse one tone up every 1200 ms; the bar's
 //                  remaining slice blinks slowly (600 ms); with reduced motion both hold still
@@ -205,6 +207,22 @@ export function tickGate(gap: number): (now: number) => boolean {
 /** Low LP (F3): above 0 and under 1000. */
 export function isLowLp(lp: number): boolean {
   return lp > 0 && lp < 1000;
+}
+
+/**
+ * The LP bar's two laps in whole px (F3): `main` fills a `w`-px bar up to START_LP; LP past START_LP
+ * is a second lap (`over`, leaf) laid over the full bar from the left — so a gain from 4000 still
+ * fills a visible slice. `main + over` is the bar position the fill / erosion steps work on.
+ */
+export function lpBarPx(v: number, w: number): { main: number; over: number } {
+  const px = (u: number) => Math.max(0, Math.min(w, Math.round((Math.min(Math.max(u, 0), START_LP) / START_LP) * w)));
+  return { main: px(v), over: px(v - START_LP) };
+}
+
+/** The bar position of `v` across both laps (0 … 2w). */
+function lpBarPos(v: number, w: number): number {
+  const b = lpBarPx(v, w);
+  return b.main + b.over;
 }
 
 /** The LP change timings (F3, ms at 1×; LpCounter rolls ≤ 360). */
@@ -540,6 +558,8 @@ export class HudV3 implements HudApi {
     P.gainFrom = null;
     P.leadWhite = false;
     P.ghostLp = Math.max(P.ghostLp, from);
+    // a loss that leaves the second lap drops that lap at once: only the first lap's slice erodes
+    if (to < START_LP) P.ghostLp = Math.min(P.ghostLp, START_LP);
     P.ghostTop = P.ghostLp;
     P.barLp = to;
     P.ghostColor = PAL.white;
@@ -570,7 +590,8 @@ export class HudV3 implements HudApi {
     P.leadWhite = true;
     P.sparks = [];
     const { x, y, w } = HUD3.bar;
-    const px = (v: number) => Math.max(0, Math.min(w, Math.round((Math.min(v, START_LP) / START_LP) * w)));
+    // positions across both laps (past w: the second lap, drawn from the bar's left end)
+    const px = (v: number) => lpBarPos(v, w);
     const p0 = px(from);
     const p1 = px(to);
     const born: number[] = [];
@@ -592,7 +613,8 @@ export class HudV3 implements HudApi {
         const age = t - b;
         if (age >= life || REDUCED_MOTION) return;
         const step = Math.floor(age / S.sparkStepMs);
-        const sx = x + p0 + Math.round((p1 - p0) * S.sparkAt[i]) - 1;
+        const at = p0 + Math.round((p1 - p0) * S.sparkAt[i]);
+        const sx = x + (at > w ? at - w : at) - 1;
         const c = step < 2 ? PAL.leaf4 : step < 4 ? PAL.leaf3 : PAL.leaf2;
         P.sparks.push({ x: sx, y: y - 2 - Math.min(S.sparkRise, step), c });
       });
@@ -1219,13 +1241,15 @@ export class HudV3 implements HudApi {
    * LP bar: 1-px ink frame, night1 track with quarter ticks, flat owner-tone fill, its lead pixel one
    * tone up (low LP: crimson, blinking crim3 / crim2 on the beat). A lost slice erodes and a gained
    * one fills in 4-px steps (F3); a gain's slice is leaf behind a 1-px white lead; rising pixels.
+   * LP past START_LP is the second lap (lpBarPx): leaf3 over the full bar from the left, lead leaf4.
    */
   private drawBar(P: PanelV3): void {
     const g = P.bar;
     const R = this.rampOf(P.player);
     const { x, y, w, h } = HUD3.bar;
     const S = LP_V3.barStep;
-    const k = (v: number) => Math.max(0, Math.min(w, Math.round((Math.min(v, START_LP) / START_LP) * w)));
+    // positions across both laps (0 … 2w): the steps below work on them
+    const k = (v: number) => lpBarPos(v, w);
     let fill = k(P.barLp);
     const gain0 = P.gainFrom !== null ? Math.min(k(P.gainFrom), fill) : fill;
     // a gain fills in 4-px steps (exact once the count has landed)
@@ -1238,15 +1262,27 @@ export class HudV3 implements HudApi {
     g.fillStyle(PAL.night1, 1).fillRect(x, y, w, h);
     g.fillStyle(PAL.night3, 1);
     for (let i = 1; i < 4; i++) g.fillRect(x + Math.round((w * i) / 4), y, 1, h);
-    if (ghost > fill) g.fillStyle(P.ghostColor, 1).fillRect(x + fill, y, ghost - fill, h);
-    if (fill > 0) {
-      const low = isLowLp(P.lp) || (P.lp === 0 && fill > 0);
+    // the first lap (up to START_LP)
+    const f1 = Math.min(fill, w);
+    const g1 = Math.min(gain0, w);
+    const h1 = Math.min(ghost, w);
+    if (h1 > f1) g.fillStyle(P.ghostColor, 1).fillRect(x + f1, y, h1 - f1, h);
+    if (f1 > 0) {
+      const low = isLowLp(P.lp) || (P.lp === 0 && f1 > 0);
       const dim = low && P.lowDim && P.rollTone === null;
       const body = low ? (dim ? PAL.crim2 : PAL.crim3) : R[3];
       const lead = low ? (dim ? PAL.crim3 : PAL.crim4) : R[4];
-      if (gain0 > 0) g.fillStyle(body, 1).fillRect(x, y, gain0, h);
-      if (fill > gain0) g.fillStyle(PAL.leaf3, 1).fillRect(x + gain0, y, fill - gain0, h);
-      g.fillStyle(fill > gain0 ? (P.leadWhite ? PAL.white : PAL.leaf4) : lead, 1).fillRect(x + fill - 1, y, 1, h);
+      if (g1 > 0) g.fillStyle(body, 1).fillRect(x, y, g1, h);
+      if (f1 > g1) g.fillStyle(PAL.leaf3, 1).fillRect(x + g1, y, f1 - g1, h);
+      g.fillStyle(f1 > g1 ? (P.leadWhite && fill <= w ? PAL.white : PAL.leaf4) : lead, 1).fillRect(x + f1 - 1, y, 1, h);
+    }
+    // the second lap (past START_LP), over the full bar from its left end
+    const f2 = Math.max(0, fill - w);
+    const h2 = Math.max(0, ghost - w);
+    if (h2 > f2) g.fillStyle(P.ghostColor, 1).fillRect(x + f2, y, h2 - f2, h);
+    if (f2 > 0) {
+      g.fillStyle(PAL.leaf3, 1).fillRect(x, y, f2, h);
+      g.fillStyle(P.leadWhite && fill > gain0 ? PAL.white : PAL.leaf4, 1).fillRect(x + f2 - 1, y, 1, h);
     }
     for (const s of P.sparks) g.fillStyle(s.c, 1).fillRect(s.x, s.y, 1, 1);
   }

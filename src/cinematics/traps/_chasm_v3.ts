@@ -62,17 +62,15 @@ type DestroyCtx = CinematicContext<EvOf<'destroy'>>;
 // ================================================================ timing (show-clock ms)
 
 /**
- * The crack leaves the trap tile: activate + 110 show-ms = 150 game-ms at 1× (the opening's 40 ms
- * burst stop is inside it). Keeps "summon handler end → crack" ≤ 300 ms with lane A6-B's fast
- * decision (S-15, ≤ 120 ms).
+ * The crack leaves the trap tile: activate + 100 show-ms = 150 game-ms at 1× (the opening's 40 ms
+ * burst stop is inside it, the timer lands on the next whole frame). Keeps "summon handler end →
+ * crack" ≤ 300 ms with lane A6-B's fast decision (S-15, ≤ 120 ms).
  */
-export const CRACK_AT = 110;
+export const CRACK_AT = 100;
 /** The crack's run, trap tile → the victim's pad (A5 §3.4: ≤ 250 ms). */
-export const CRACK_MS = 220;
+export const CRACK_MS = 200;
 /** The pad's own cracks split it into three slabs (2 frames). */
 export const PAD_CRACK_MS = 34;
-/** The struck pose holds on the open hole before the fall (2 frames). */
-export const OPEN_HOLD = 34;
 /** The fall: whole-pixel steps, one per rendered frame (A5 §3.4 DÜŞÜŞ). */
 export const FALL_STEPS: readonly number[] = Object.freeze([2, 4, 7, 11, 16, 22, 29, 37]);
 /** The slabs slam back this long after the crack left (A5 §3.4: KAPANMA at 750, the crack at 150). */
@@ -221,8 +219,10 @@ export function paintPadV3(p: { set(x: number, y: number, c: number): unknown; g
     const h = er * Math.sqrt(1 - dx * dx);
     const top = Math.ceil(y + 0.5 - h - 0.5);
     const bottom = Math.floor(y + 0.5 + h - 0.5);
-    // the far wall catches the trap's light (one tone), the back slab's lip above it is lit
+    // the far wall catches the trap's light (one tone): a crescent, 2 px deep in the middle once fully
+    // open; the back slab's lip above it is lit
     if (p.get(px, top + 1) === PAL.ink) p.set(px, top + 1, rim);
+    if (look.step === 2 && Math.abs(dx) < 0.62 && p.get(px, top + 2) === PAL.ink) p.set(px, top + 2, rim);
     const above = p.get(px, top - 1);
     if (above !== null && above !== PAL.ink && Math.abs(dx) < 0.92) p.set(px, top - 1, look.step === 2 ? PAL.night4 : PAL.night3);
     // the front lip
@@ -398,6 +398,31 @@ function lipDust(scene: Phaser.Scene, g: ChasmGeom, depth: number, seed: number,
   sp.release();
 }
 
+/** The floor breaking: stone chips thrown up off the hole's rim at the open, falling back (whole pixels). */
+function rimChips(scene: Phaser.Scene, g: ChasmGeom, depth: number, seed: number): void {
+  const rnd = fxRng(seed);
+  const sp = new PxSparks(scene, depth);
+  const { x, y, rx, ry } = g.hole;
+  const n = fxCount(8);
+  for (let i = 0; i < n; i++) {
+    const an = (i / n) * Math.PI * 2 + rnd() * 0.6;
+    const ox = Math.cos(an);
+    sp.add({
+      x: Math.round(x + ox * (rx + 1)),
+      y: Math.round(y + Math.sin(an) * (ry + 1)),
+      vx: ox * (14 + rnd() * 22),
+      vy: -(70 + rnd() * 50),
+      ay: 420,
+      life: 300 + Math.floor(rnd() * 120),
+      size: rnd() < 0.4 ? 2 : 1,
+      shape: 'px',
+      colors: [PAL.stone3, PAL.stone2, PAL.stone2, PAL.stone1],
+      fadeAt: 1,
+    });
+  }
+  sp.release();
+}
+
 /** The shut's 2-step dust ring round the pad (an iso ring of dust pixels: stone2 near, night3 out, gone). */
 function dustRing(scene: Phaser.Scene, at: XY, depth: number, seed: number): Promise<void> {
   const rnd = fxRng(seed);
@@ -544,6 +569,7 @@ export async function swallowV3(ctx: DestroyCtx): Promise<void> {
   pad.set({ step: 2 });
   const g2 = pad.geom;
   lights.hole.setIntensity(1, 40);
+  rimChips(sc, g2, unitDepth(g2.hole.y + g2.hole.ry) + 0.6, seed + 19);
   const mask = frontEdgeMask(sc, fallLip(g2));
   const s = u ? u.sprite : null;
   if (u && s) {
@@ -551,7 +577,8 @@ export async function swallowV3(ctx: DestroyCtx): Promise<void> {
     mask.apply(u.shadow);
   }
   if (cardRas) mask.apply(cardRas.img);
-  await wait(sc, Math.max(0, OPEN_HOLD - 17));
+  // the struck pose holds 2 frames on the opening hole (the open frame and this one), then it drops
+  await nextFrame(sc);
 
   // ---- FALL
   playV3('chasmFall', { volume: 0.85, pan: panAt(home.x) });

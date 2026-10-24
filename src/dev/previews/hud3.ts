@@ -4,8 +4,8 @@
 //          states          every Button state per style (normal / hover / pressed / disabled /
 //                          attention) + panels at LP ≤ 1000 and 0 + a flashed hint (a static sheet)
 //          lp              LP loss / gain on both panels, looping (F3, B2: the trim, the counter's
-//                          mechanical count, the bar's 4-px steps and rising pixels, then P2 under
-//                          1000 for the low-LP pulse)
+//                          mechanical count, the bar's 4-px steps and rising pixels, a P1 gain past
+//                          4000 onto the bar's second lap, then P2 under 1000 for the low-LP pulse)
 //          turn            the turn passes: setActive + setTurn + phase cycle, looping
 //          hint            hint line: set → change → flash ("why not") → clear, looping
 //          buttons         a button hovered, pressed, released, disabled-clicked, attention on
@@ -114,6 +114,8 @@ const STATES: Record<string, (c: Ctx) => Promise<void>> = {
       await c.hud.setLp(0, 2500, true, { maxMs: 400 });
       await wait(c.scene, 300);
       await c.hud.setLp(0, 3300, true, { maxMs: 400 });
+      await wait(c.scene, 300);
+      await c.hud.setLp(0, 4600, true, { maxMs: 400 });
       await wait(c.scene, 300);
       c.hud.shake(1, 5, 420);
       await c.hud.setLp(1, 800, true, { maxMs: 400 });

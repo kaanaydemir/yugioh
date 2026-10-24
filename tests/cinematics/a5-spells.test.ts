@@ -5,6 +5,9 @@
 // object, nothing left behind) and the v3 field auras' cleanup. Step A-3b: the generic statChange's
 // beats (≥ 150 ms apart). Step A-4: Ayna Kalkanı — the struck cell, the reflection order (by distance),
 // the beam schedule (220 ms after each contact; graveyard landings ≥ 150 ms apart) and the panel's size.
+// Step A-5: Yer Yarığı — the beat times (crack ≈ 150 ms, ≤ 250 ms run, open ≈ 400, shut ≈ 750), the
+// whole-pixel fall, the crack's entry cut, the pad geometry and drawing (palette only; closed = cuts
+// only; one magenta tone on the rim), the trap card's landing after the victim's (≥ 150 ms).
 // Later steps add their checks here.
 
 import { describe, expect, it, vi } from 'vitest';
@@ -519,5 +522,96 @@ describe('A-4 Ayna Kalkanı (v3): panel, order, schedule', () => {
     expect(M.HONEYCOMB_7_SIZE.h).toBeLessThanOrEqual(40);
     // 4 build steps 50 ms apart + the last faces' frame fit between the raise and the catch
     expect(CATCH_AT - PANEL_AT).toBeGreaterThanOrEqual(4 * 50 + 17);
+  });
+});
+
+describe('A-5 Yer Yarığı (v3): timing, geometry, the pad drawing', () => {
+  it('the crack leaves ≈ 150 ms after activate (with the 40 ms burst stop), runs ≤ 250 ms; the slabs shut at ≈ 750', async () => {
+    const { CRACK_AT, CRACK_MS, PAD_CRACK_MS, SHUT_AFTER } = await import('../../src/cinematics/traps/_chasm_v3');
+    // show clock + the opening's 40 ms hit-stop = game time (A5 §3.4: YARIK 150, AÇILMA ≈ 400, KAPANMA 750)
+    expect(CRACK_AT + 40).toBeLessThanOrEqual(150);
+    expect(CRACK_MS).toBeLessThanOrEqual(250);
+    expect(Math.abs(CRACK_AT + 40 + CRACK_MS + PAD_CRACK_MS - 400)).toBeLessThanOrEqual(34);
+    expect(CRACK_AT + 40 + SHUT_AFTER).toBe(740);
+    // the S-15 target: a fast decision (≤ 120 ms) + the crack's start stays within 300 ms of the summon's end
+    expect(120 + CRACK_AT + 40 + 17).toBeLessThanOrEqual(300);
+  });
+
+  it('the fall is whole-pixel steps, one per frame, accelerating (2, 4, 7, 11, 16 …)', async () => {
+    const { FALL_STEPS, fallOffsets } = await import('../../src/cinematics/traps/_chasm_v3');
+    expect(FALL_STEPS.slice(0, 5)).toEqual([2, 4, 7, 11, 16]);
+    const off = fallOffsets();
+    for (let k = 0; k < off.length; k++) {
+      expect(Number.isInteger(off[k])).toBe(true);
+      if (k > 0) expect(off[k] - off[k - 1]).toBeGreaterThan(k > 1 ? off[k - 1] - off[k - 2] : 0);
+    }
+    // deep enough to take the tallest body (≈ 90 px) under the lip
+    expect(off[off.length - 1]).toBeGreaterThanOrEqual(90);
+  });
+
+  it('the crack enters the pad on the slab cut that faces the trap', async () => {
+    const { entryCut, padGeom } = await import('../../src/cinematics/traps/_chasm_v3');
+    const g = padGeom(288, 176, 0);
+    const [A, B, D] = g.cuts;
+    expect(entryCut(g, { x: 352, y: 112 })).toEqual(B); // the trap up and to the right (tbChasm)
+    expect(entryCut(g, { x: 220, y: 230 })).toEqual(D); // down and to the left
+    expect(entryCut(g, { x: 230, y: 130 })).toEqual(A); // up and to the left
+  });
+
+  it('the pad: closed has no hole, the hole opens in two steps inside the slabs, the fall lip runs past any body', async () => {
+    const { padGeom, fallLip, HOLE_OPEN, PAD_HW, PAD_HH } = await import('../../src/cinematics/traps/_chasm_v3');
+    expect(padGeom(100, 50, 0).hole.rx).toBe(0);
+    const g1 = padGeom(100, 50, 1);
+    const g2 = padGeom(100, 50, 2);
+    expect(g1.hole.rx).toBeGreaterThan(0);
+    expect(g2.hole.rx).toBeGreaterThan(g1.hole.rx);
+    expect(g2.hole.rx).toBe(Math.round(PAD_HW * HOLE_OPEN[2]));
+    // the slabs keep a visible ring round the open hole
+    expect(PAD_HW - g2.hole.rx).toBeGreaterThanOrEqual(8);
+    expect(PAD_HH - g2.hole.ry).toBeGreaterThanOrEqual(3);
+    const lip = fallLip(g2);
+    expect(lip[0].x).toBeLessThanOrEqual(100 - 150);
+    expect(lip[lip.length - 1].x).toBeGreaterThanOrEqual(100 + 150);
+    for (let i = 1; i < lip.length; i++) expect(lip[i].x).toBeGreaterThanOrEqual(lip[i - 1].x);
+    // the middle of the lip is the hole's lower rim
+    expect(Math.max(...lip.map((q) => q.y))).toBe(g2.hole.y + g2.hole.ry);
+  });
+
+  it('the pad drawing is palette-only and deterministic; closed it shows only the cuts; the seam frame is white', async () => {
+    const { paintPadV3 } = await import('../../src/cinematics/traps/_chasm_v3');
+    const draw = (look: Parameters<typeof paintPadV3>[3]) => {
+      const p = new PixelCanvas(60, 32);
+      paintPadV3(p, 30, 15, look);
+      return p;
+    };
+    for (const look of [{ step: 0, crack: 0.5 }, { step: 0, crack: 1, seam: true }, { step: 1, crack: 1 }, { step: 2, crack: 1 }, { step: 2, crack: 1, rim: PAL.mag1 }] as const) {
+      const p = draw(look);
+      expect(paletteOnly(p).ok, JSON.stringify(look)).toBe(true);
+      expect(hash(draw(look))).toBe(hash(p));
+    }
+    const closed = draw({ step: 0, crack: 1 });
+    const colours = new Set<number>();
+    for (let y = 0; y < closed.h; y++) for (let x = 0; x < closed.w; x++) if (closed.alpha(x, y)) colours.add(closed.get(x, y)!);
+    expect([...colours]).toEqual([PAL.ink]);
+    const seam = draw({ step: 0, crack: 1, seam: true });
+    const seamColours = new Set<number>();
+    for (let y = 0; y < seam.h; y++) for (let x = 0; x < seam.w; x++) if (seam.alpha(x, y)) seamColours.add(seam.get(x, y)!);
+    expect([...seamColours]).toEqual([PAL.white]);
+    // open: the hole (ink), one magenta tone on its far rim, the slab faces
+    const open = draw({ step: 2, crack: 1 });
+    const mags = new Set<number>();
+    for (let y = 0; y < open.h; y++) for (let x = 0; x < open.w; x++) {
+      const c = open.get(x, y);
+      if (c !== null && [PAL.mag0, PAL.mag1, PAL.mag2, PAL.mag3, PAL.mag4].includes(c)) mags.add(c);
+    }
+    expect([...mags]).toEqual([PAL.mag2]);
+  });
+
+  it('the trap card lands ≥ 150 ms after the victim card, never before its own flight allows', async () => {
+    const { exitDelay, LAND_GAP } = await import('../../src/cinematics/traps/_chasm_v3');
+    expect(LAND_GAP).toBe(150);
+    expect(exitDelay(800, 400, null)).toBe(0);
+    expect(exitDelay(800, 400, 1100 + LAND_GAP)).toBe(50);
+    expect(exitDelay(800, 600, 1100 + LAND_GAP)).toBe(0);
   });
 });
