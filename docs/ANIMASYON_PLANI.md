@@ -11,6 +11,8 @@ güncellenir ve iş commit + push edilir.
 | Commit | Her aşama sonunda commit + push (`claude/yugioh-card-game-tgi7td`). |
 | Arena | Sabit görseldeki **sakin arena** (`src/still/`) temel alınır: v1 geometrisi, koyu mat zemin, ince cyan / kırmızı bölge çizgileri, tek neon kenar şeridi. |
 | Sıra | Önce görsel geçiş, sonra çıkış. Oyun her aşamada oynanabilir ve çıkarılabilir kalır. |
+| Hedef (24 Ekim, kullanıcı) | Oyun **en kısa sürede Steam'de** çıkacak. Önce eldeki işler biter, sonra ön sürüm (pre-release); kart sayısı 60–80'e çıkmalı. Token bütçesi dikkatli kullanılır. |
+| 3D (24 Ekim, kullanıcı) | **3D yok.** Görünüm 2.5D (izometrik) piksel sanatı olarak kalır. 3D ancak oyun para kazanırsa yeniden düşünülür. |
 
 ## 1. Altın kural
 
