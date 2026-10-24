@@ -20,6 +20,9 @@ import { Raster, Sparks, boltPath, chasm, floorRing, onFrame, run } from '../../
 import { fx, registerCardHook } from '../api';
 import { ARENA_V2, TK, type EvOf, all, guardRemap, lerpXY, live, rnd, rr, seed } from '../battle/_kit';
 import { trapExit, trapOpening } from './_opening';
+// ---- the v3 look (lane A5-A step A-5, V3_A5_A): ./_chasm_v3.ts (docs/v3/A5_PLAN.md §3.4)
+import { V3_A5_A } from '../../view/v3flags';
+import { chasmV3, swallowV3 } from './_chasm_v3';
 
 /**
  * A glowing fissure races along the floor from `from` to `to` (~280 ms), branches crackle off it,
@@ -99,6 +102,7 @@ registerCardHook(
   'chasm_trap',
   'activate',
   async (ctx) => {
+    if (V3_A5_A) return chasmV3(ctx); // A5-A: crack, slabs, the fall behind the lip (./_chasm_v3.ts)
     const ev = ctx.ev;
     seed(ev.uid * 13 + 5);
     const runIdx = fx.resolutionRun(ctx);
@@ -129,6 +133,7 @@ registerCardHook(
   'chasm_trap',
   'destroys',
   async (ctx) => {
+    if (V3_A5_A) return swallowV3(ctx); // A5-A: the v3 swallow (./_chasm_v3.ts)
     const ev = ctx.ev;
     if (ev.location !== 'monster') return ctx.base();
     const sc = ctx.scene;

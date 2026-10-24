@@ -2,7 +2,7 @@
 // HandView keeps its state and API; with lane A6-A on (V3_A6_A) its v3 branches use this module:
 //   - the cards sit on v1's gentle arc (user decision, 24 Oct: "el yay şeklinde, kartlar hafif
 //     dönük"): the outer cards dip up to 7 px and lean outwards a little (v1's angles, ≤ ~6°) — but
-//     never rotated at runtime: each lean is BAKED in whole-degree steps the pixel-art way
+//     never rotated at runtime: each lean is BAKED in half-degree steps the pixel-art way
 //     (RotSprite, src/art/rotsprite.ts, on the card + its rim ring), cached lazily and shown unrotated
 //     on whole pixels (TiltView); a hovered / selected card turns upright through the steps (90 ms)
 //     and is then the plain crisp CardV3; every card breathes 0 / −1 px (2400 ms, phase +300 ms/card)
@@ -126,7 +126,7 @@ export function fanDip(i: number, n: number): number {
 }
 
 /**
- * The lean of card i of n (degrees, clockwise; whole `degStep` steps): v1's turn off · dRot, the
+ * The lean of card i of n (degrees, clockwise; `degStep` steps): v1's turn off · dRot, the
  * left cards leaning left, the right ones right — at most ~6° for the outermost of a full hand.
  */
 export function fanDeg(i: number, n: number): number {
@@ -535,7 +535,7 @@ export function isTurnFrame(side: PixelCanvas): boolean {
 }
 
 /**
- * `side` (a card side, or a flip's turn frame) leaning `deg` (whole degrees, clockwise) with its rim
+ * `side` (a card side, or a flip's turn frame) leaning `deg` (degrees on the `degStep` grid, clockwise) with its rim
  * ring, baked RotSprite style about the card's centre (CardV3's origin: the pixel floor(w / 2),
  * floor(h / 2)). `glyphs` (a monster's face): its ATK / DEF rows are phase-kept (tiltShift) and the
  * line moves glyph by glyph, each whole (glyphsOf); any other side is phased about its middle.
@@ -681,7 +681,7 @@ export function tiltPhaseY(deg: number, gapX: number, pivotX: number): number {
   return v - Math.round(v);
 }
 
-/** Bake every whole-degree step between 0 and `deg` of a side ahead (a hover then turns without a stall). */
+/** Bake every `degStep` step between 0 and `deg` of a side ahead (a tool for previews and tests; the hand bakes on demand). */
 export function prebakeTilt(side: PixelCanvas, deg: number, glyphs = false): void {
   const n = Math.round(Math.abs(deg) / HAND3.degStep);
   const step = Math.sign(deg) * HAND3.degStep;
@@ -1008,7 +1008,7 @@ export class HandMotion {
     return this.map.get(sprite)?.state ?? null;
   }
 
-  /** The lean a card shows now (whole degrees; 0: upright or not leaning). */
+  /** The lean a card shows now (degrees on the `degStep` grid; 0: upright or not leaning). */
   leanOf(sprite: Phaser.GameObjects.Container): number {
     return this.views.get(sprite)?.deg ?? 0;
   }
@@ -1145,7 +1145,7 @@ export class HandMotion {
     this.views.delete(sprite);
   }
 
-  /** Show a card leaning `deg` (whole degrees): its TiltView, made on the first lean. */
+  /** Show a card leaning `deg` (on the `degStep` grid): its TiltView, made on the first lean. */
   private show(sprite: Phaser.GameObjects.Container, deg: number): void {
     let v = this.views.get(sprite);
     if (!v) {
@@ -1292,7 +1292,7 @@ class TiltView {
     card.once('destroy', this.onDestroy);
   }
 
-  /** Lean `deg` whole degrees (0: upright, the CardV3 draws itself). */
+  /** Lean `deg` degrees (0: upright, the CardV3 draws itself). */
   show(deg: number): void {
     if (this.dead || deg === this.deg) return;
     this.deg = deg;

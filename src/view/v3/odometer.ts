@@ -271,7 +271,7 @@ export const LP_WHEELS = Object.freeze({
   /** Rows at the inside's top and bottom drawn one tone down while a wheel turns. */
   edge: 2,
   /** The window frame, the inside, a leading zero and its turning edge. */
-  frame: PAL.night3,
+  frame: PAL.night4,
   inside: PAL.ink,
   lead: PAL.night3,
   leadEdge: PAL.night2,

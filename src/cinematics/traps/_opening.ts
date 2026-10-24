@@ -520,7 +520,8 @@ async function trapOpeningV3(ctx: ActCtx, o: { focus?: XY } = {}): Promise<Openi
     if (V3_A5_A && live && live.active) mirrorGlintV3(sc, live);
     else mirrorGlint(sc, face);
   }
-  else if (ev.cardId === 'chasm_trap') floorCracks(sc, at);
+  // (A5-A, V3_A5_A: Yer Yarığı's crack root is drawn by its scene — traps/_chasm_v3.ts — not as a separate accent)
+  else if (ev.cardId === 'chasm_trap' && !V3_A5_A) floorCracks(sc, at);
   // ONE short local "TUZAK!" over the card
   const word = trapWord(sc, { x: at.x, y: face.y - 36 });
   await wait(sc, 100);

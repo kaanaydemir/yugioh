@@ -28,6 +28,27 @@ const PACK: Record<string, Scenario> = {
     stage: { phase: 'battle', active: 0, p0: { monsters: ['ember_wolf', 'shade_assassin', 'volt_lizard'] }, p1: { monsters: [{ id: 'tide_golem', position: 'defense' }, 'stone_sentinel'], spellTraps: [null, 'mirror_barrier'] } },
     steps: [{ type: 'attack', player: 0, attackerZone: 1, targetZone: 1 }, (D) => ({ type: 'respond', player: 1, uid: D.uid('mirror_barrier', 1) })],
   },
+  // A-5 (§3.4): Yer Yarığı on a v3-drawn victim. P1 tribute-summons Kristal Ejder (2 tributes) into the
+  // middle zone; P2's Yer Yarığı (middle S/T) answers: the crack runs straight down the board, the wyrm
+  // takes its hitHeavy struck frame as the floor gives way and sinks behind the hole's front lip.
+  a5ChasmWyrm: {
+    desc: 'Yer Yarığı (P2) swallows a tribute-summoned Kristal Ejder: v3 struck frame, the fall behind the lip',
+    stage: { p0: { hand: ['crystal_wyrm'], monsters: ['stone_sentinel', null, 'lumen_sprite'] }, p1: { spellTraps: [null, 'chasm_trap'] } },
+    steps: [
+      (D) => ({ type: 'normalSummon', player: 0, uid: D.uid('crystal_wyrm', 0), zone: 1, tributes: [D.uid('stone_sentinel', 0), D.uid('lumen_sprite', 0)] }),
+      (D) => ({ type: 'respond', player: 1, uid: D.uid('chasm_trap', 1) }),
+    ],
+  },
+  // A-5 (§3.4, P2 mirrored): P2 tribute-summons Uçurum Büyücüsü (v3 art); P1's Yer Yarığı swallows it before
+  // its tribute effect (destroy a spell / trap) can resolve — the trap window comes first (engine).
+  a5ChasmMagusP2: {
+    desc: 'P2 tribute-summons Uçurum Büyücüsü, P1 Yer Yarığı swallows it (mirrored; its effect never resolves)',
+    stage: { active: 1, p1: { hand: ['abyss_magus'], monsters: [null, null, 'thorn_lurker'] }, p0: { spellTraps: [null, null, 'chasm_trap'] } },
+    steps: [
+      (D) => ({ type: 'normalSummon', player: 1, uid: D.uid('abyss_magus', 1), zone: 1, tributes: [D.uid('thorn_lurker', 1)] }),
+      (D) => ({ type: 'respond', player: 0, uid: D.uid('chasm_trap', 0) }),
+    ],
+  },
 };
 
 export default PACK;

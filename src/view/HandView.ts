@@ -52,7 +52,7 @@ interface Pose {
   x: number;
   y: number;
   rot: number;
-  /** v3: the slot's resting lean in whole degrees (baked, never a runtime rotation). */
+  /** v3: the slot's resting lean in degrees, half-degree steps (baked, never a runtime rotation). */
   deg?: number;
 }
 

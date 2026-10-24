@@ -24,8 +24,8 @@
 //   slabs     matter: two floor plates broken and tilted up at the crater's rim (night4 lit top face, night2 side,
 //             night0 crack lines across the top, the edge facing the strike lit teal2 by it) — stone, not water.
 // The small picture (44×34) is a second drawing of the same composition (KART_RESIMLERI §1 (2)): the backdrop and
-// the bolt by the same code at 1× density (a 3-px bolt — 1-px white core in teal4 —, kinks ≥ 4 px, no forks), the
-// cloud as two rounded heads lit only on their upper-left shoulders, the slabs as small hand shapes.
+// the bolt by the same code at 1× density (a 3-px bolt — 1-px white core in teal4 —, kinks ≥ 4 px, ONE 2-px fork),
+// the cloud as two rounded heads lit only on their upper-left shoulders, the slabs at half size.
 // Living art (A5_PLAN §3.7.6 "şimşek titrer"): 6 frames × 125 ms, palette only — the channel flickers (core
 // white ↔ teal4), the forks strike in turn, the belly's light and the star pulse with it.
 
