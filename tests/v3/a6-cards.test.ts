@@ -635,6 +635,42 @@ describe('A6-A A2 — the v3 hand (K1), pure parts', { timeout: 60_000 }, () => 
     expect(whole / all).toBeGreaterThan(0.78);
   });
 
+  it('lean: a bake made ahead part by part (tiltBakeStep: lettering, step costs, each search pass, up-scale, the turn) is the bake made at once', async () => {
+    const cases = [
+      ['ember_wolf', true, true],
+      ['judgment_bolt', false, true],
+      ['back', false, false],
+    ] as const;
+    const degs = [1.5, -3, 4.5, -6.5, 10];
+    // at once, in a fresh module (nothing cached)
+    let { cards } = await load('v3');
+    let h = await import('../../src/view/v3/handV3');
+    const want = new Map<string, { idx: number[]; ring: number[] }>();
+    for (const [id, glyphs, face] of cases)
+      for (const deg of degs) {
+        const b = h.tiltBake(id === 'back' ? cards.cardBackCanvas(0) : cards.cardFaceCanvas(id), deg, glyphs, face);
+        want.set(`${id} ${deg}`, { idx: Array.from(b.map.idx), ring: Array.from(b.ring) });
+      }
+    // part by part, in another fresh module
+    ({ cards } = await load('v3'));
+    h = await import('../../src/view/v3/handV3');
+    for (const [id, glyphs, face] of cases)
+      for (const deg of degs) {
+        const side = id === 'back' ? cards.cardBackCanvas(0) : cards.cardFaceCanvas(id);
+        expect(h.hasTiltBake(side, deg, glyphs, face)).toBe(false);
+        let parts = 0;
+        while (h.tiltBakeStep(side, deg, glyphs, face)) parts++;
+        expect(h.hasTiltBake(side, deg, glyphs, face)).toBe(true);
+        // a side's first lean: [its lettering,] its step costs, three passes, its up-scale, the turn; a
+        // later one: three passes and the turn; one steeper than the search: the turn alone
+        const first = deg === degs[0];
+        expect(parts, `${id} ${deg}°`).toBe(Math.abs(deg) > 7 ? 1 : first ? (glyphs ? 7 : 6) : 4);
+        const b = h.tiltBake(side, deg, glyphs, face);
+        expect(Array.from(b.map.idx), `${id} ${deg}°`).toEqual(want.get(`${id} ${deg}`)!.idx);
+        expect(Array.from(b.ring), `${id} ${deg}°`).toEqual(want.get(`${id} ${deg}`)!.ring);
+      }
+  });
+
   it("lean: a flip's narrow turn frames turn plain nearest; a full-width side is known by its pixels (a flip's last frame shares the side's bake)", async () => {
     const { cards } = await load('v3');
     const h = await import('../../src/view/v3/handV3');

@@ -21,6 +21,7 @@
 
 import Phaser from 'phaser';
 import type { CardId } from '../data/cards';
+import { cardFaceCanvas } from '../art/cards';
 import { PAL, PLAYER_COLOR } from '../art/palette';
 import { mix } from '../art/pixel';
 import { sfx } from '../audio/sfx';
@@ -794,6 +795,9 @@ export class HandView {
     // re-fanned the hand under the rising cards — they glide to their new slots and lean through
     // the baked steps instead of jumping there in one frame (nothing changed: nothing moves)
     this.layout(true);
+    // a hand that rose face-down is turned up next (its player's "ready"): each face's lean bakes
+    // ahead in the frames before, part by part, so the wave lands on ready bakes
+    if (faceDown) for (const s of this.slots) if (s.sprite.cardId) mo.expect(s.sprite, cardFaceCanvas(s.sprite.cardId), true);
     this.updateHover();
   }
 
