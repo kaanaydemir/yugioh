@@ -1,0 +1,12 @@
+{
+  "title": "A56.K kontrol noktası — önce | sonra (1×)",
+  "look": "v3",
+  "note": "docs/v3/A6_PLAN.md §5.0.5: five pairs at 1× (640×360). 'before' = the A56.0 frames (node tools/sbs.mjs --spec tools/sbs/a56k.json --capture shots/v3/a56/before/a56k); 'after' = now. Moments: a6Hover's UI steps move onto hand card 1 at 200 ms (hover +120 ms = 320); the set landing is the cardSet sound (+40 ms) — if a lane renames that sound, give the pair an atAfter.",
+  "pairs": [
+    { "name": "idle", "label": "boşta ekran (el + HUD + saha)", "query": "?dev=duel&s=a6Hover", "at": 0 },
+    { "name": "hover", "label": "el üzerine gelme (+120 ms)", "query": "?dev=duel&s=a6Hover", "at": 320 },
+    { "name": "turn", "label": "tur başı (+300 ms)", "query": "?dev=duel&s=flowTurnP1", "at": { "event": "turnStart", "plus": 300 } },
+    { "name": "set", "label": "kapalı koyma (iniş +40 ms; yeni arka yüz)", "query": "?dev=duel&s=smbSetMonster", "at": { "sfx": "cardSet", "plus": 40 } },
+    { "name": "lp", "label": "LP kaybı (+150 ms; yeni HUD kabuğu)", "query": "?dev=duel&s=atkTargetDestroyed", "at": { "lp": true, "plus": 150 } }
+  ]
+}

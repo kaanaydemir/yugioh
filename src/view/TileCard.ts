@@ -58,7 +58,7 @@ import {
   type CardOrientation,
   type Quat,
 } from '../art/cards';
-import { PAL, PLAYER_COLOR } from '../art/palette';
+import { PAL, PLAYER_COLOR, PLAYER_RAMP } from '../art/palette';
 import { PixelCanvas, mix } from '../art/pixel';
 import { TEX, shake, tween, tweenValue } from '../vfx/core';
 import { burnAway } from './CardSprite';
@@ -83,6 +83,8 @@ interface Pose {
   light: number;
   tint?: number;
   tintAmt?: number;
+  /** v3 crisp poses (slamIn `crisp`): the floor shadow is a whole-pixel ink dither, not a blend. */
+  dither?: boolean;
 }
 
 export interface SlamOpts {
@@ -96,6 +98,21 @@ export interface SlamOpts {
   trail?: boolean;
   /** Dust puff + tile flash on impact (default true). */
   impact?: boolean;
+  /**
+   * v3 crisp slam (lane A6-A, docs/v3/A6_PLAN.md K3 / K4; only the v3 bodies pass it, behind
+   * V3_A6_A): today's arc and turn, but no grow, no light / glint / white tint, a dithered (not
+   * blended) floor shadow, an owner-toned pixel trail (`trail`; palette steps, NORMAL blend) instead
+   * of the ADD sparks and speed lines, and the flight ends ON the rest pose — the whole `ms` is the
+   * flight and the card shows its static texture on the landing frame (no squash spring). `impact`
+   * and `shake` are ignored: the caller lands it. Default false (today's slam, v1 unchanged).
+   */
+  crisp?: boolean;
+  /**
+   * Crisp slam only: called once, synchronously, inside the update of the landing frame (the first
+   * frame that shows the rest pose), so landing effects made here show on that very frame (a promise
+   * continuation would show them a frame or two later). Not called if the flight is cut short.
+   */
+  onLand?: () => void;
 }
 
 export interface StandOpts {
@@ -254,7 +271,7 @@ export class TileCard extends Phaser.GameObjects.Container {
   }
 
   private get frontMip() {
-    return cardMip(this.cardId ?? 'back');
+    return cardMip(this.cardId ?? 'back', this.player);
   }
 
   private rnd(): number {
@@ -324,7 +341,7 @@ export class TileCard extends Phaser.GameObjects.Container {
     const buf = this.buf;
     buf.clear();
     const { ex, ey, n } = poseAxes(p.q, p.w, p.h);
-    renderCard(buf, LC, LC, ex, ey, n, this.frontMip, cardMip('back'), {
+    renderCard(buf, LC, LC, ex, ey, n, this.frontMip, cardMip('back', this.player), {
       light: p.light,
       tint: p.tint,
       tintAmt: p.tintAmt,
@@ -357,6 +374,10 @@ export class TileCard extends Phaser.GameObjects.Container {
       pts.push(new Phaser.Math.Vector2(Math.round(p.off[0] + sx), Math.round(p.off[1] + sy)));
     }
     const near = clamp01(1 - Math.hypot(p.off[0], p.off[1]) / 48);
+    if (p.dither) {
+      this.ditherShadow(pts, near, p.z);
+      return;
+    }
     const alpha = Math.max(0.12, 0.42 - p.z * 0.006) * near;
     if (alpha < 0.02) return;
     // footprint (lifted flat cards) or contact ellipse (standing / edge-on cards)
@@ -368,6 +389,55 @@ export class TileCard extends Phaser.GameObjects.Container {
       const wdt = Math.max(10, Math.max(...xs) - Math.min(...xs)) + 6;
       g.fillEllipse(Math.round(p.off[0]), Math.round(p.off[1]) + 1, wdt, Math.max(5, wdt * 0.32));
     }
+  }
+
+  /**
+   * The crisp (v3) floor shadow: the card's footprint as opaque ink pixels on a world-aligned
+   * checker — every fourth pixel while the card is high or still far from its tile, every other
+   * pixel just before it touches down, nothing further out (KO-1: no alpha). `pts` are the
+   * footprint's corners relative to the tile centre (convex, whole pixels); `z` the card's height.
+   */
+  private ditherShadow(pts: Phaser.Math.Vector2[], near: number, z: number): void {
+    const g = this.shadowG;
+    if (near < 0.3 || pts.length < 3) return;
+    const sparse = near < 0.65 || z > 12;
+    const hx = Math.round(this.home.x);
+    const hy = Math.round(this.home.y);
+    let x0 = Infinity;
+    let x1 = -Infinity;
+    let y0 = Infinity;
+    let y1 = -Infinity;
+    for (const q of pts) {
+      x0 = Math.min(x0, q.x);
+      x1 = Math.max(x1, q.x);
+      y0 = Math.min(y0, q.y);
+      y1 = Math.max(y1, q.y);
+    }
+    // orientation of the polygon (the edge test below accepts either winding)
+    let sgn = 0;
+    for (let i = 0; i < pts.length && sgn === 0; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % pts.length];
+      const c = pts[(i + 2) % pts.length];
+      sgn = Math.sign((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
+    }
+    if (sgn === 0) return;
+    g.fillStyle(PAL.ink, 1);
+    for (let y = y0; y < y1; y++)
+      for (let x = x0; x < x1; x++) {
+        const wx = hx + x;
+        const wy = hy + y;
+        if (sparse ? (wx & 1) !== 0 || (wy & 1) !== 0 : ((wx + wy) & 1) !== 0) continue;
+        const px = x + 0.5;
+        const py = y + 0.5;
+        let inside = true;
+        for (let i = 0; i < pts.length && inside; i++) {
+          const a = pts[i];
+          const b = pts[(i + 1) % pts.length];
+          if (Math.sign((b.x - a.x) * (py - a.y) - (b.y - a.y) * (px - a.x)) === -sgn) inside = false;
+        }
+        if (inside) g.fillRect(x, y, 1, 1);
+      }
   }
 
   /** Back to the resting look (static texture when flat, live canvas when standing). */
@@ -458,6 +528,7 @@ export class TileCard extends Phaser.GameObjects.Container {
     this.standing = false;
     this.setVisible(true).setAlpha(1);
     this.img.setVisible(true);
+    if (opts.crisp) return this.slamInCrisp(from, ms, opts);
     const rest = this.restPose();
     const s0 = opts.fromScale ?? 1;
     const qStart = this.faceUp ? standQuat() : qMul(standQuat(), qAxis([0, 1, 0], Math.PI));
@@ -513,6 +584,80 @@ export class TileCard extends Phaser.GameObjects.Container {
     });
     if (!done) return;
     this.settle();
+  }
+
+  /**
+   * The v3 crisp slam (slamIn `crisp`; lane A6-A, K3 / K4): today's arc, sideways sweep and turn
+   * over the whole `ms`, ending exactly on the rest pose, then the static texture on the landing
+   * frame. Every frame is the pixel renderer's own crisp raster (no grow, light, glint or tint); the
+   * shadow is dithered; the trail is one owner-toned 2-px dot every 30 ms of flight that steps down
+   * the owner's ramp (ramp 3 → 2 → 1, 30 ms each) and is gone — at most three behind the card.
+   */
+  private async slamInCrisp(from: XY, ms: number, opts: SlamOpts): Promise<void> {
+    const rest = this.restPose();
+    const s0 = opts.fromScale ?? 1;
+    const qStart = this.faceUp ? standQuat() : qMul(standQuat(), qAxis([0, 1, 0], Math.PI));
+    const start: [number, number] = [from.x - this.home.x, from.y - this.home.y];
+    const apex = (opts.arc ?? 34) / ZS;
+    const side = start[0] >= 0 ? -1 : 1;
+    const ramp = PLAYER_RAMP[this.player];
+    const trail = opts.trail !== false;
+    let lastDot = 0;
+    let landed = false;
+    const land = () => {
+      if (landed || this.dead) return;
+      landed = true;
+      this.setDepth(DEPTH.CARD_ON_TILE);
+      opts.onLand?.();
+    };
+    this.setDepth(DEPTH.FX);
+    const done = await this.animate(ms, (k) => {
+      const tr = easeOutCubic(clamp01(k / 0.66));
+      const bulge = Math.sin(Math.PI * tr) * 14 * side;
+      const off: [number, number] = [start[0] * (1 - tr) + bulge, start[1] * (1 - tr)];
+      const z = k < 0.66 ? apex * easeOutQuad(k / 0.66) : apex * (1 - easeInCubic((k - 0.66) / 0.34));
+      const o = easeInOutSine(clamp01(k / 0.82));
+      const el = k * ms;
+      if (trail && k < 1 && el - lastDot >= 30) {
+        lastDot = el;
+        const [, zy] = isoProject([0, 0, z]);
+        this.trailDot(this.home.x + off[0], this.home.y + off[1] + zy, ramp);
+      }
+      if (k >= 1) land();
+      return {
+        q: qSlerp(qStart, rest.q, o),
+        w: lerp(STAND_W * s0, FLAT_W, o),
+        h: lerp(STAND_H * s0, FLAT_H, o),
+        z,
+        off,
+        light: 0,
+        dither: true,
+      };
+    });
+    if (!done) return;
+    land();
+    this.settle();
+  }
+
+  /** One crisp trail dot (2 px, NORMAL blend) stepping down `ramp` 3 → 2 → 1 over 90 ms, then gone. */
+  private trailDot(x: number, y: number, ramp: readonly number[]): void {
+    if (this.dead) return;
+    const dot = this.scene.add
+      .image(Math.round(x) - 1, Math.round(y) - 1, TEX.px2)
+      .setOrigin(0, 0)
+      .setTint(ramp[3])
+      .setDepth(DEPTH.FX - 1);
+    const o = { v: 0 };
+    this.scene.tweens.add({
+      targets: o,
+      v: 1,
+      duration: 90,
+      onUpdate: () => {
+        if (dot.active) dot.setTint(o.v < 1 / 3 ? ramp[3] : o.v < 2 / 3 ? ramp[2] : ramp[1]);
+      },
+      onComplete: () => dot.destroy(),
+      onStop: () => dot.destroy(),
+    });
   }
 
   /** Turn a face-down card face-up: press, hop up while rolling over its long edge with a glint, slam down. */
@@ -787,6 +932,21 @@ export class TileCard extends Phaser.GameObjects.Container {
     if (this.dead || this.epoch !== epoch) return;
     this.setVisible(false);
     this.y = this.home.y;
+  }
+
+  /**
+   * S-3 (A56.0): a copy of what the card shows right now — the current 3D pose's pixels, or the
+   * static iso pixels at rest — and the world position of its top-left pixel (whole pixels; the
+   * pixels are unscaled, as the card is at its rest scale 1 on the board).
+   */
+  currentPixels(): { px: PixelCanvas; x: number; y: number } {
+    const px = this.pose && this.buf ? this.buf.clone() : isoCanvas(this.faceUp && this.cardId ? this.cardId : 'back', this.orientation, this.player).clone();
+    const img = this.img;
+    return {
+      px,
+      x: Math.round(this.x + (img.x - img.displayOriginX) * this.scaleX),
+      y: Math.round(this.y + (img.y - img.displayOriginY) * this.scaleY),
+    };
   }
 
   /** Burn into rising pixel embers (destroyed spell/trap). Hides the card at the end. */

@@ -5,17 +5,60 @@
 //   await __neon.duel.scenario('trapMirror', { film: true })  // steps start on the next freeze()
 //   node tools/shot.mjs "?dev=duel&s=trapMirror" --film 24 --every 120   // same, from a URL
 //
-// A step is an Action, or a function (D) => Action that can look up uids with D.uid(cardId, owner).
+// A step is an Action, or a function (D) => Action that can look up uids with D.uid(cardId, owner),
+// or (A56.0, docs/v3/A6_PLAN.md §4.1) a UI step: the mouse / keyboard of a person — move, click,
+// key, wait — on the screen's targets, run by src/duel/qaInput.ts, so films and measurements also
+// cover hovering, clicking and invalid clicks:
+//   { ui: 'move', at: { hand: 2 }, ms: 120 }            // hover the 3rd hand card, then 120 ms
+//   { ui: 'click', at: { menu: 'activateSpell' } }      // a row of the open action menu
+//   { ui: 'click', at: { zone: [1, 'monster', 1] } }    // a board tile (its centre)
+//   { ui: 'key', key: 'Escape' }   { ui: 'wait', ms: 300 }
 
 import type { CardId } from '../data/cards';
 import type { Action, PlayerId } from '../engine/types';
+import type { BoardSpot } from '../view/layout';
 import type { StageSpec } from './scenario';
 
 export interface ScenarioApi {
   uid(cardId: CardId, owner?: PlayerId): number;
 }
 
-export type Step = Action | ((D: ScenarioApi) => Action | null);
+/** Where a UI step points (screen space; resolved when the step runs: src/duel/qaInput.ts uiPoint). */
+export type UiTarget =
+  /** The viewer's hand card i (left → right), at its resting place. */
+  | { hand: number }
+  /** A board spot's centre: [player, spot, index]. */
+  | { zone: [PlayerId, BoardSpot, number] }
+  /** The body of the monster in [player, zone]. */
+  | { unit: [PlayerId, number] }
+  /** A deck / graveyard pile's top. */
+  | { pile: [PlayerId, 'deck' | 'graveyard'] }
+  /** A HUD button. */
+  | { button: 'battle' | 'endTurn' | 'menu' }
+  /** The row of the open action menu with this option id (e.g. 'activateSpell', 'setMonster'). */
+  | { menu: string }
+  /** A raw game-pixel point (640×360). */
+  | { xy: [number, number] }
+  /** Card i of the open graveyard panel (lane A6-A registers the resolver; skipped without one). */
+  | { panel: number };
+
+/** One step of a person at the screen (A56.0). `ms`: wait after it (game ms; for 'wait' the wait). */
+export interface UiStep {
+  ui: 'move' | 'click' | 'key' | 'wait';
+  at?: UiTarget;
+  /** 'key': the KeyboardEvent key ('Escape', 'Enter', ' ', '1', 'b' …). */
+  key?: string;
+  ms?: number;
+  /** 'click': the mouse button (default left). */
+  button?: 'left' | 'right';
+}
+
+export type Step = Action | ((D: ScenarioApi) => Action | null) | UiStep;
+
+/** Is this step a UI step? */
+export function isUiStep(st: Step): st is UiStep {
+  return typeof st === 'object' && st !== null && 'ui' in st;
+}
 
 export interface Scenario {
   desc: string;

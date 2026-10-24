@@ -33,6 +33,26 @@
 //   --note "text"      free-form note stored in the JSON (e.g. which commit a --root snapshot is)
 //   --delta MS|exact   per-frame delta of every clock (default 16.666666666666664 = one float step
 //                      below 1000/60, see Method; "exact" = 16.666666666666668 = 1000/60)
+//   --launch a,b       also measure duel LAUNCHES (no scenario: a URL that starts a duel with its
+//                      opening, held for the tool's clock with &holdIntro=1): the presets opening
+//                      (?mode=hotseat&seed=1&holdIntro=1&curtain=0, gameStart …) and openingSkip (the
+//                      same + &skipIntro=1), or name=?query pairs. Stored under scenarios[name] with
+//                      launch = the query. The duel is restarted from the launch data under the
+//                      tool's clock and t = 0 is the start of its held opening (no --warm); input
+//                      ready = the first wait for the player. Only --launch (no --scenarios) skips
+//                      the scenario list
+//   --camera-trace     also store camera.trace: [t, scrollX, scrollY, zoom] of every frame (the
+//                      opening camera trace of docs/v3/A6_PLAN.md §6.3); --diff compares traces
+//   --camera-gate BASE.json   the fixed-camera gate (docs/v3/A5_PLAN.md §0 K1 / §6.4, A6_PLAN.md
+//                      §6.3; the user's decision: the camera does not change — no new move, no
+//                      removed move). Per measured scenario: zoom.max = 1, camera.closeUpCalls = 0,
+//                      and against BASE.json (the same key): camera.focusCalls EQUAL, and
+//                      camera.maxScrollPx equal within one frame of camera motion (± the larger
+//                      maxScrollStepPx of the two). A key the base does not have is checked on the
+//                      first two only (NOBASE); a base without camera fields is refused (exit 1).
+//                      Exit code 3 when any scenario fails (it wins over --compare's 2). Offline:
+//                      node tools/measure.mjs --camera-gate BASE.json NOW.json (no browser)
+//   --help             this text
 //
 // Method (deterministic: the same code gives the same numbers, whatever the CPU load):
 // each scenario loads ?dev=duel&s=<key>&test=1 in a fresh browser context. Once the duel is ready
@@ -86,11 +106,30 @@
 //   lp[]            [t, player, value, animate] of HudView.setLp calls (animated = the LP roll)
 //   zoom            {max, min, maxAt, hist: {zoom: frames}, fracScrollFrames, maxScrollFrac} of
 //                   the world camera (cameras.main); otherCamsMaxZoom = max zoom of the others
+//   camera          (A56.0) the world camera's moves, t ≥ 0:
+//                     maxScrollPx      largest |scrollX| or |scrollY| of any frame (whole px);
+//                                      maxScrollX / maxScrollY per axis; maxScrollAt its first t
+//                     maxScrollStepPx  how far that measure moved in the frame that first reached
+//                                      the maximum (one frame of camera motion: the gate's tolerance)
+//                     scrolledFrames   frames with a scroll ≠ 0
+//                     focusCalls       CameraRig.focus calls (leans and close-ups; counted by
+//                                      wrapping CameraRig.prototype in the page, no game code
+//                                      change); closeUpCalls those with { closeUp: true }
+//                     unfocusCalls / descendCalls / resetCalls   the other CameraRig moves
+//                     focus[]          [t, x, y, pan, ms, closeUp 0|1, dx, dy] per focus call: the
+//                                      target, the options and the lean's whole-px destination
+//                     trace[]          with --camera-trace: [t, scrollX, scrollY, zoom] per frame
+//   lights          (A56.0, A6_PLAN.md §6.3) calls of the light layer, t ≥ 0: lightCalls
+//                   {flash, pool, beam, dim} and lights[] [t, kind, x, y] (dim: [t, 'dim', level])
+//                   (LightLayer.prototype wrapped in the page; absent when the layer is off)
 //   busy            {first, last}: first / last frame the controller was busy (input locked);
 //                   busyMs = last − first
 //   inputReadyMs    when the game waits for the player again (HumanInput.waitAction called after
 //                   the last scenario action finished) or the game-over prompt opened
-//                   (inputReadyKind: action | gameOver); busyToInputMs = inputReadyMs − busy.first
+//                   (inputReadyKind: action | gameOver); busyToInputMs = inputReadyMs − busy.first.
+//                   A scenario of UI steps (A56.0: uiSteps[] = {ui, target, start, end}) that never
+//                   asks for a new action (a hover, an open menu) is ready when its last step ended
+//                   and nothing ran for 3 frames after it (inputReadyKind: uiSteps)
 //   endMs           when the last cinematic event finished; totalMs = endMs − first event start
 //   anims[]         [t, unitUid, cardId, animKey, frameName, visible] unit sprite changes
 //   errors          page errors, console errors / warnings, cinematic handler errors, watchdog
@@ -102,6 +141,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { UNSAFE_PORTS } from './lib/pagekit.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(path.join(REPO, 'package.json'));
@@ -151,6 +191,23 @@ function parseArgs(argv) {
 
 const args = parseArgs(process.argv.slice(2));
 const TOL = Number(args.tol ?? 17);
+
+if (args.help || args.h) {
+  const src = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n');
+  const out = [];
+  for (const l of src.slice(1)) {
+    if (!l.startsWith('//')) break;
+    out.push(l.replace(/^\/\/ ?/, ''));
+  }
+  console.log(out.join('\n'));
+  process.exit(0);
+}
+
+/** --launch presets (docs/v3/A6_PLAN.md §5.1: the two opening films of the a6v1 / a6v3 sets). */
+const LAUNCHES = {
+  opening: '?mode=hotseat&seed=1&holdIntro=1&curtain=0',
+  openingSkip: '?mode=hotseat&seed=1&holdIntro=1&curtain=0&skipIntro=1',
+};
 
 // ---------------------------------------------------------------- compare
 
@@ -210,6 +267,50 @@ function diffScenario(a, b, tol) {
   const errA = countErrors(a);
   const errB = countErrors(b);
   if (errB > errA) lines.push(`errors: ${errA} → ${errB}`);
+  // camera fields (A56.0): compared when both runs have them (older files do not)
+  if (a.camera && b.camera) lines.push(...cameraDiff(a.camera, b.camera));
+  return lines;
+}
+
+/** The tolerance of maxScrollPx: one frame of camera motion (the larger step into either maximum). */
+function scrollTol(ca, cb) {
+  return Math.max(ca?.maxScrollStepPx ?? 0, cb?.maxScrollStepPx ?? 0);
+}
+
+/** Lines describing how camera fields `b` differ from `a` (counts exact, maxScrollPx within one frame). */
+function cameraDiff(a, b) {
+  const lines = [];
+  for (const k of ['focusCalls', 'closeUpCalls', 'unfocusCalls', 'descendCalls']) {
+    if ((a[k] ?? null) !== (b[k] ?? null)) lines.push(`camera.${k}: ${a[k] ?? '-'} → ${b[k] ?? '-'}`);
+  }
+  const tol = scrollTol(a, b);
+  if (Math.abs((a.maxScrollPx ?? 0) - (b.maxScrollPx ?? 0)) > tol) lines.push(`camera.maxScrollPx: ${a.maxScrollPx} → ${b.maxScrollPx} (±${tol} px = one frame of motion)`);
+  // the leans one by one: destination (dx, dy) and close-up flag (times move with retimed scenes)
+  const fa = a.focus ?? [];
+  const fb = b.focus ?? [];
+  const n = Math.min(fa.length, fb.length);
+  for (let i = 0; i < n; i++) {
+    const x = fa[i];
+    const y = fb[i];
+    if (x[5] !== y[5] || x[6] !== y[6] || x[7] !== y[7]) {
+      lines.push(`camera.focus #${i}: t ${x[0]} → ${y[0]}, lean (${x[6]},${x[7]})${x[5] ? ' close-up' : ''} → (${y[6]},${y[7]})${y[5] ? ' close-up' : ''}`);
+      break;
+    }
+  }
+  if (a.trace && b.trace) {
+    const m = Math.min(a.trace.length, b.trace.length);
+    let first = -1;
+    let count = Math.abs(a.trace.length - b.trace.length);
+    for (let i = 0; i < m; i++) {
+      const p = a.trace[i];
+      const q = b.trace[i];
+      if (p[1] !== q[1] || p[2] !== q[2] || p[3] !== q[3]) {
+        count++;
+        if (first < 0) first = i;
+      }
+    }
+    if (count) lines.push(`camera.trace: ${count} of ${Math.max(a.trace.length, b.trace.length)} frames differ${first >= 0 ? `; first at t=${a.trace[first][0]}: ${JSON.stringify(a.trace[first].slice(1))} → ${JSON.stringify(b.trace[first].slice(1))}` : ' (lengths differ)'}`);
+  }
   return lines;
 }
 
@@ -222,6 +323,8 @@ function countErrors(s) {
 function diffFiles(a, b, tol) {
   let bad = 0;
   const keys = [...new Set([...Object.keys(a.scenarios ?? {}), ...Object.keys(b.scenarios ?? {})])];
+  const hasCam = (d) => Object.values(d.scenarios ?? {}).some((s) => s && s.camera);
+  if (hasCam(a) !== hasCam(b)) console.log(`[measure] note: camera fields only in the ${hasCam(a) ? 'first' : 'second'} file (measured before tools/measure.mjs had them) — not compared`);
   for (const k of keys) {
     const x = a.scenarios?.[k];
     const y = b.scenarios?.[k];
@@ -246,6 +349,74 @@ if (args.diff) {
   process.exit(bad ? 2 : 0);
 }
 
+/**
+ * The fixed-camera gate (--camera-gate): every scenario of `now` against the same key of `base`.
+ * Returns the number of failing scenarios, or −1 when the base has no camera fields at all.
+ */
+function cameraGate(base, now, baseName) {
+  const baseHasCam = Object.values(base.scenarios ?? {}).some((s) => s && s.camera);
+  if (!baseHasCam) {
+    console.log(`[measure] camera gate: ${baseName} has no camera fields (measured before tools/measure.mjs recorded them) — re-measure the base with this version`);
+    return -1;
+  }
+  console.log(`[measure] camera gate against ${baseName}: zoom.max = 1, closeUpCalls = 0, focusCalls = base, maxScrollPx = base ± one frame of motion`);
+  if ((base.query ?? '') !== (now.query ?? '')) console.log(`[measure] camera gate: note: base query "${base.query ?? ''}", now "${now.query ?? ''}"`);
+  let bad = 0;
+  let nobase = 0;
+  let pass = 0;
+  for (const [k, s] of Object.entries(now.scenarios ?? {})) {
+    const fails = [];
+    const notes = [];
+    if (s.failed) fails.push(`the run failed: ${s.failed}`);
+    const z = s.zoom?.max;
+    if (z == null || Math.abs(z - 1) > 0.0005) fails.push(`zoom.max ${z ?? '-'} ≠ 1`);
+    const c = s.camera;
+    const b = base.scenarios?.[k]?.camera ?? null;
+    if (!c) fails.push('no camera fields in this run');
+    else {
+      if (c.closeUpCalls !== 0) fails.push(`closeUpCalls ${c.closeUpCalls} ≠ 0`);
+      if (b) {
+        if (c.focusCalls !== b.focusCalls) fails.push(`focusCalls ${b.focusCalls} → ${c.focusCalls} (must equal the base: no camera move added or removed)`);
+        const tol = scrollTol(b, c);
+        if (Math.abs(c.maxScrollPx - b.maxScrollPx) > tol) fails.push(`maxScrollPx ${b.maxScrollPx} → ${c.maxScrollPx} (±${tol} px allowed)`);
+        else notes.push(`focus ${c.focusCalls}, maxScroll ${c.maxScrollPx}${c.maxScrollPx !== b.maxScrollPx ? ` (base ${b.maxScrollPx}, ±${tol})` : ''}`);
+        // informational: a lean that now goes elsewhere
+        const fa = b.focus ?? [];
+        const fb = c.focus ?? [];
+        for (let i = 0; i < Math.min(fa.length, fb.length); i++) {
+          if (fa[i][6] !== fb[i][6] || fa[i][7] !== fb[i][7]) {
+            notes.push(`note: lean #${i} destination (${fa[i][6]},${fa[i][7]}) → (${fb[i][6]},${fb[i][7]})`);
+            break;
+          }
+        }
+      } else notes.push(`NOBASE (${k} is not in the base: only zoom and close-ups checked); focus ${c.focusCalls}, maxScroll ${c.maxScrollPx}`);
+    }
+    if (fails.length) {
+      bad++;
+      console.log(`${k}: CAMERA FAIL — ${fails.join('; ')}${notes.length ? `  [${notes.join('; ')}]` : ''}`);
+    } else {
+      if (!b) nobase++;
+      else pass++;
+      console.log(`${k}: camera ok — ${notes.join('; ')}`);
+    }
+  }
+  console.log(`[measure] camera gate: ${pass} ok, ${nobase} ok without a base (NOBASE), ${bad} FAIL`);
+  return bad;
+}
+
+const CAMERA_GATE = args['camera-gate'] && args['camera-gate'] !== 'true' ? args['camera-gate'] : null;
+if (CAMERA_GATE && !args.scenarios && !args.launch) {
+  // offline: --camera-gate BASE.json NOW.json
+  if (!args._[0]) {
+    console.error('usage: node tools/measure.mjs --camera-gate BASE.json NOW.json   (or with --scenarios / --launch to measure first)');
+    process.exit(1);
+  }
+  const base = JSON.parse(fs.readFileSync(path.resolve(CAMERA_GATE), 'utf8'));
+  const now = JSON.parse(fs.readFileSync(path.resolve(args._[0]), 'utf8'));
+  const bad = cameraGate(base, now, CAMERA_GATE);
+  process.exit(bad < 0 ? 1 : bad ? 3 : 0);
+}
+
 // ---------------------------------------------------------------- run setup
 
 const ROOT = path.resolve(args.root ?? REPO);
@@ -258,6 +429,23 @@ const DELTA = args.delta === 'exact' ? 1000 / 60 : args.delta ? Number(args.delt
 const JOBS = Math.max(1, Number(args.jobs ?? 1));
 const NORENDER = args.norender === 'true';
 const ALL_ANIMS = args.anims === 'all';
+const CAMERA_TRACE = args['camera-trace'] === 'true';
+/** --launch: [{ name, query }] (presets or name=?query; holdIntro=1 is added when missing). */
+const LAUNCH_LIST = (args.launch && args.launch !== 'true' ? args.launch.split(',') : [])
+  .map((s) => s.trim())
+  .filter(Boolean)
+  .map((s) => {
+    const eq = s.indexOf('=');
+    const isPair = eq > 0 && !s.startsWith('?') && s.slice(eq + 1).startsWith('?');
+    const name = isPair ? s.slice(0, eq) : s;
+    let query = isPair ? s.slice(eq + 1) : LAUNCHES[s];
+    if (!query) {
+      console.error(`[measure] unknown --launch ${s} (presets: ${Object.keys(LAUNCHES).join(', ')}, or name=?query)`);
+      process.exit(1);
+    }
+    if (!/[?&]holdIntro=1(&|$)/.test(query)) query += '&holdIntro=1';
+    return { name, query };
+  });
 let extraQuery = '';
 if (args.look) extraQuery += `&look=${encodeURIComponent(args.look)}`;
 if (args.arena) extraQuery += `&arena=${encodeURIComponent(args.arena)}`;
@@ -302,14 +490,17 @@ async function measureInPage(o) {
   if (o.norender) N.game.scene.render = () => undefined;
 
   let scenario = null;
-  try {
-    const scs = await import('/src/duel/scenarios.ts');
-    scenario = scs.SCENARIOS[o.key] ?? null;
-  } catch {
-    /* listed below as a hook failure */
+  if (!o.launch) {
+    try {
+      const scs = await import('/src/duel/scenarios.ts');
+      scenario = scs.SCENARIOS[o.key] ?? null;
+    } catch {
+      /* listed below as a hook failure */
+    }
   }
-  out.desc = scenario?.desc ?? null;
+  out.desc = o.launch ? `launch ${o.launch}` : scenario?.desc ?? null;
   out.steps = scenario?.steps?.length ?? null;
+  if (o.launch) out.launch = o.launch;
 
   // ---------------------------------------------------------------- the clock
   //
@@ -401,7 +592,18 @@ async function measureInPage(o) {
 
   // ---------------------------------------------------------------- deterministic restart
   let held = null;
-  if (scenario && N.duel && typeof N.duel.restart === 'function') {
+  if (o.launch && N.duel && typeof N.duel.restart === 'function') {
+    // --launch: restart the same duel launch (seed, first player; the URL's holdIntro=1 holds the
+    // opening again) under the tool's clock; t = 0 is the held opening's start. The restart
+    // promise resolves only after the opening, so wait for the opening to be armed instead.
+    const L = N.duel.launch ?? {};
+    N.duel.restart({ seed: L.seed, firstPlayer: L.firstPlayer });
+    let k = 0;
+    while (!(Array.isArray(N.__duelArmed) && N.__duelArmed.length) && k++ < 1800) await step();
+    out.restartFrames = k;
+    if (!(Array.isArray(N.__duelArmed) && N.__duelArmed.length)) throw new Error('the restarted launch never armed its opening (is holdIntro=1 in the query?)');
+    held = N.__duelArmed.splice(0);
+  } else if (scenario && N.duel && typeof N.duel.restart === 'function') {
     let ready = false;
     N.duel.restart({ stage: scenario.stage, scenario: o.key, filmScenario: true }).then(() => (ready = true));
     let k = 0;
@@ -524,6 +726,105 @@ async function measureInPage(o) {
     );
     return p;
   };
+  // UI steps (A56.0: runSteps looks D.ui up on every step, like D.dispatch): a scenario of UI
+  // steps (src/duel/scenarios/a6-base.ts …) is done when its last step is
+  out.uiSteps = [];
+  if (typeof D.ui === 'function') {
+    const ui = D.ui;
+    D.ui = (st) => {
+      const rec = { ui: st?.ui ?? null, target: st?.at ? JSON.stringify(st.at) : st?.key ?? null, start: now(), end: null };
+      out.uiSteps.push(rec);
+      const p = ui(st);
+      Promise.resolve(p).then(
+        () => (rec.end = now()),
+        () => (rec.end = now()),
+      );
+      return p;
+    };
+    out.hooks.push('duel.ui');
+  }
+  // 5. camera moves (A56.0, the fixed-camera gate): CameraRig is the only camera API the
+  //    cinematics use (ctx.focus / unfocus → views.camera). Its prototype is wrapped in the page
+  //    (the game's own module instance), so every rig — the restarted duel's too — is counted.
+  const camCalls = { focus: [], unfocus: 0, descend: 0, reset: 0 };
+  try {
+    const cr = await import('/src/duel/CameraRig.ts');
+    const P = cr.CameraRig && cr.CameraRig.prototype;
+    if (!P || typeof P.focus !== 'function') throw new Error('no CameraRig.prototype.focus');
+    if (!P.__measureCam) {
+      const orig = { focus: P.focus, unfocus: P.unfocus, descend: P.descend, reset: P.reset };
+      P.__measureCam = { orig, sink: null };
+      P.focus = function (xy, opts) {
+        const s = P.__measureCam.sink;
+        if (s) s.focus(this, xy, opts ?? {});
+        return orig.focus.call(this, xy, opts);
+      };
+      for (const k of ['unfocus', 'descend', 'reset']) {
+        if (typeof orig[k] !== 'function') continue;
+        P[k] = function (...a) {
+          const s = P.__measureCam.sink;
+          if (s) s.other(k);
+          return orig[k].apply(this, a);
+        };
+      }
+    }
+    // whole-px lean destination exactly as CameraRig.focus computes it (GAME_W × GAME_H = 640 × 360)
+    const clampInt = (v, lim) => {
+      const r = Math.round(v);
+      return r > lim ? lim : r < -lim ? -lim : r === 0 ? 0 : r;
+    };
+    P.__measureCam.sink = {
+      focus: (rig, xy, opts) => {
+        if (T0 === null) return;
+        const pan = opts.pan ?? 0.35;
+        const lim = rig.panLimit ?? { x: 48, y: 32 };
+        const dx = opts.closeUp ? null : clampInt((xy.x - 320) * pan, lim.x);
+        const dy = opts.closeUp ? null : clampInt((xy.y - 180) * pan, lim.y);
+        camCalls.focus.push([now(), Math.round(xy.x), Math.round(xy.y), pan, opts.ms ?? 260, opts.closeUp ? 1 : 0, dx, dy]);
+      },
+      other: (k) => {
+        if (T0 !== null) camCalls[k]++;
+      },
+    };
+    out.hooks.push('CameraRig.focus/unfocus/descend/reset');
+  } catch (e) {
+    out.hooks.push(`CameraRig FAILED ${String(e).slice(0, 120)}`);
+    camCalls.failed = true;
+  }
+  // 6. light-layer calls (A6_PLAN.md §6.3: every small event lights the floor at least once)
+  const lights = { calls: { flash: 0, pool: 0, beam: 0, dim: 0 }, list: [] };
+  try {
+    const lm = await import('/src/view/light/LightLayer.ts');
+    const P = lm.LightLayer && lm.LightLayer.prototype;
+    if (!P || typeof P.flash !== 'function') throw new Error('no LightLayer.prototype.flash');
+    if (!P.__measureLight) {
+      const orig = { flash: P.flash, pool: P.pool, beam: P.beam, setDim: P.setDim };
+      P.__measureLight = { sink: null };
+      for (const k of ['flash', 'pool', 'beam', 'setDim']) {
+        if (typeof orig[k] !== 'function') continue;
+        P[k] = function (...a) {
+          const s = P.__measureLight.sink;
+          if (s) s(k, a);
+          return orig[k].apply(this, a);
+        };
+      }
+    }
+    P.__measureLight.sink = (k, a) => {
+      if (T0 === null) return;
+      if (k === 'setDim') {
+        lights.calls.dim++;
+        lights.list.push([now(), 'dim', a[0]]);
+      } else {
+        lights.calls[k]++;
+        const at = k === 'beam' ? a[0] : { x: a[0], y: a[1] };
+        lights.list.push([now(), k, Math.round(at?.x ?? 0), Math.round(at?.y ?? 0)]);
+      }
+    };
+    out.hooks.push('LightLayer.flash/pool/beam/setDim');
+  } catch (e) {
+    out.hooks.push(`LightLayer FAILED ${String(e).slice(0, 120)}`);
+    lights.failed = true;
+  }
 
   // ---------------------------------------------------------------- per-frame probes
   const seen = new WeakSet();
@@ -587,10 +888,27 @@ async function measureInPage(o) {
       zoom.maxScrollFrac = Math.max(zoom.maxScrollFrac, Math.round(Math.max(fx, fy) * 1000) / 1000);
     }
     for (const c of sc.cameras.cameras) if (c !== cam) otherCamsMaxZoom = Math.max(otherCamsMaxZoom, c.zoom);
+    // whole-px scroll extent of the world camera (A56.0): the lean / descend reach, and the step
+    // of the frame that first reached the maximum (one frame of motion: the gate's tolerance)
+    const ax = Math.round(Math.abs(cam.scrollX));
+    const ay = Math.round(Math.abs(cam.scrollY));
+    const m = Math.max(ax, ay);
+    if (ax > scroll.maxScrollX) scroll.maxScrollX = ax;
+    if (ay > scroll.maxScrollY) scroll.maxScrollY = ay;
+    if (m > scroll.maxScrollPx) {
+      scroll.maxScrollPx = m;
+      scroll.maxScrollAt = t;
+      scroll.maxScrollStepPx = m - scroll.prev;
+    }
+    if (m > 0) scroll.scrolledFrames++;
+    scroll.prev = m;
+    if (scroll.trace) scroll.trace.push([t, Math.round(cam.scrollX), Math.round(cam.scrollY), Math.round(z * 10000) / 10000]);
   };
+  const scroll = { maxScrollPx: 0, maxScrollX: 0, maxScrollY: 0, maxScrollAt: null, maxScrollStepPx: 0, scrolledFrames: 0, prev: 0, trace: o.cameraTrace ? [] : null };
 
   // ---------------------------------------------------------------- settle, then t = 0
-  const warmFrames = held ? Math.round(o.warm / FRAME) : 0;
+  // (a --launch opening starts as soon as it is armed, like tools/shot.mjs --fresh films it)
+  const warmFrames = held && !o.launch ? Math.round(o.warm / FRAME) : 0;
   for (let k = 0; k < warmFrames; k++) await step();
   out.warmMs = Math.round(warmFrames * FRAME);
   scanNumbers(false); // whatever exists before t = 0 is not part of the action
@@ -603,6 +921,9 @@ async function measureInPage(o) {
   if (held) for (const f of held) f();
   else N.freeze(); // fallback: the armed start (if any) runs on this freeze
   scanUnits();
+  // the scroll extent the camera already has at t = 0 (the opening starts 300 px up): the first
+  // frame's step is measured from it
+  scroll.prev = Math.max(Math.round(Math.abs(cam.scrollX)), Math.round(Math.abs(cam.scrollY)));
 
   // ---------------------------------------------------------------- run
   const busy = { first: null, last: null };
@@ -610,6 +931,7 @@ async function measureInPage(o) {
   const capFrames = Math.ceil(o.cap / FRAME);
   let readyAt = null;
   let readyKind = null;
+  let uiIdleSince = null;
   let quietSince = null;
   let stopReason = 'cap';
   for (let k = 0; k < capFrames; k++) {
@@ -629,14 +951,26 @@ async function measureInPage(o) {
       (out.trace ??= []).push([t, sc.children.list.length, (sc.tweens.getTweens?.() ?? []).length, (sc.time._active ?? []).length, sc.events.listenerCount('update'), Math.round(sc.time.now * 1000) / 1000, loop.delta]);
     }
     // input-ready: the first wait for the human after the last scenario action finished
-    if (readyAt === null && out.dispatches.length) {
-      const open = out.dispatches.some((d) => d.end === null);
-      const lastEnd = Math.max(...out.dispatches.map((d) => d.end ?? -1));
+    if (readyAt === null && (out.dispatches.length || out.uiSteps.length || o.launch)) {
+      // (a --launch has no scenario actions: the first wait for the player after t = 0)
+      const acts = out.uiSteps.length ? [...out.dispatches, ...out.uiSteps] : out.dispatches;
+      const open = acts.some((d) => d.end === null);
+      const lastEnd = acts.length ? Math.max(...acts.map((d) => d.end ?? -1)) : 0;
       if (!open) {
         const w = out.inputWaits.find(([tw]) => tw >= lastEnd);
         if (w) {
           readyAt = w[0];
           readyKind = w[1];
+        } else if (out.uiSteps.length) {
+          // UI steps (A56.0): the person's pointer may never ask for a new action (a hover, an
+          // open menu) — the scenario is done when nothing ran for 3 frames after its last step
+          if (!b && !out.events.some((e) => e.end === null)) {
+            if (uiIdleSince === null) uiIdleSince = t;
+            if (t - uiIdleSince >= 50) {
+              readyAt = lastEnd;
+              readyKind = 'uiSteps';
+            }
+          } else uiIdleSince = null;
         }
       }
     }
@@ -672,6 +1006,25 @@ async function measureInPage(o) {
   zoom.min = Math.round(zoom.min * 10000) / 10000;
   out.zoom = zoom;
   out.otherCamsMaxZoom = Math.round(otherCamsMaxZoom * 10000) / 10000;
+  out.camera = {
+    maxScrollPx: scroll.maxScrollPx,
+    maxScrollX: scroll.maxScrollX,
+    maxScrollY: scroll.maxScrollY,
+    maxScrollAt: scroll.maxScrollAt,
+    maxScrollStepPx: scroll.maxScrollStepPx,
+    scrolledFrames: scroll.scrolledFrames,
+    focusCalls: camCalls.failed ? null : camCalls.focus.length,
+    closeUpCalls: camCalls.failed ? null : camCalls.focus.filter((f) => f[5]).length,
+    unfocusCalls: camCalls.failed ? null : camCalls.unfocus,
+    descendCalls: camCalls.failed ? null : camCalls.descend,
+    resetCalls: camCalls.failed ? null : camCalls.reset,
+    focus: camCalls.focus,
+  };
+  if (scroll.trace) out.camera.trace = scroll.trace;
+  if (!lights.failed) {
+    out.lightCalls = lights.calls;
+    out.lights = lights.list;
+  }
   out.busy = busy;
   out.busyMs = busy.first !== null ? busy.last - busy.first : null;
   out.inputReadyMs = readyAt;
@@ -698,16 +1051,27 @@ async function measureInPage(o) {
 const { createServer } = await import(pathToFileURL(require.resolve('vite')).href);
 const { chromium } = require('playwright-core');
 
-const server = await createServer({
-  root: ROOT,
-  configFile: fs.existsSync(path.join(ROOT, 'vite.config.ts')) ? path.join(ROOT, 'vite.config.ts') : false,
-  logLevel: 'error',
-  // a separate dep-optimizer cache for another checkout (a snapshot shares node_modules)
-  cacheDir: ROOT === REPO ? undefined : path.join(ROOT, '.vite-cache'),
-  server: { port: 6200 + Math.floor(Math.random() * 700), host: '127.0.0.1', strictPort: false, hmr: false },
-  clearScreen: false,
-});
-await server.listen();
+// (a port Chromium refuses — 6566, 6665–6669, 6679, 6697 lie in this range — made a run fail
+// with net::ERR_UNSAFE_PORT about once in a hundred: pick again, also when Vite moved the port)
+let server = null;
+for (let attempt = 0; attempt < 6 && !server; attempt++) {
+  let port;
+  do port = 6200 + Math.floor(Math.random() * 700);
+  while (UNSAFE_PORTS.has(port));
+  const s = await createServer({
+    root: ROOT,
+    configFile: fs.existsSync(path.join(ROOT, 'vite.config.ts')) ? path.join(ROOT, 'vite.config.ts') : false,
+    logLevel: 'error',
+    // a separate dep-optimizer cache for another checkout (a snapshot shares node_modules)
+    cacheDir: ROOT === REPO ? undefined : path.join(ROOT, '.vite-cache'),
+    server: { port, host: '127.0.0.1', strictPort: false, hmr: false },
+    clearScreen: false,
+  });
+  await s.listen();
+  if (UNSAFE_PORTS.has(Number(new URL(s.resolvedUrls.local[0]).port))) await s.close();
+  else server = s;
+}
+if (!server) throw new Error('no port Chromium accepts');
 const base = server.resolvedUrls.local[0];
 const browser = await chromium.launch({
   executablePath: chromePath(),
@@ -725,6 +1089,8 @@ async function gotoRetry(page, url, waitUntil = 'load') {
 }
 
 async function scenarioKeys() {
+  // only --launch (no --scenarios): no scenario list
+  if (LAUNCH_LIST.length && !args.scenarios) return [];
   const want = String(args.scenarios ?? 'ref').split(',').map((s) => s.trim()).filter(Boolean);
   // the scenario list of the served checkout (also catches typos before minutes of measuring)
   const ctx = await browser.newContext({ viewport: { width: 640, height: 360 } });
@@ -744,7 +1110,7 @@ async function scenarioKeys() {
   return [...new Set(keys)];
 }
 
-async function measureOne(key) {
+async function measureOne(key, launch = null) {
   const ctx = await browser.newContext({ viewport: { width: 640, height: 360 }, deviceScaleFactor: 1 });
   const page = await ctx.newPage();
   page.setDefaultTimeout(600000);
@@ -758,9 +1124,9 @@ async function measureOne(key) {
   const wall0 = Date.now();
   let res;
   try {
-    await gotoRetry(page, `${base}?dev=duel&s=${encodeURIComponent(key)}${extraQuery}&test=1`);
+    await gotoRetry(page, launch ? `${base}${launch}${extraQuery}&test=1` : `${base}?dev=duel&s=${encodeURIComponent(key)}${extraQuery}&test=1`);
     await page.waitForFunction(() => window.__neon && window.__neon.ready === true && !!window.__neon.duel, null, { timeout: 300000 });
-    res = await page.evaluate(measureInPage, { key, cap: CAP, settle: SETTLE, norender: NORENDER, allAnims: ALL_ANIMS, impactSfx: IMPACT_SFX, debug: args.debug === 'true', warm: WARM, seeders: SEEDERS, delta: DELTA });
+    res = await page.evaluate(measureInPage, { key, launch, cap: CAP, settle: SETTLE, norender: NORENDER, allAnims: ALL_ANIMS, impactSfx: IMPACT_SFX, debug: args.debug === 'true', warm: WARM, seeders: SEEDERS, delta: DELTA, cameraTrace: CAMERA_TRACE });
   } catch (e) {
     res = { failed: String(e && e.message ? e.message : e).slice(0, 600) };
   }
@@ -776,23 +1142,26 @@ let runKeys = [];
 let failed = 0;
 try {
   const keys = await scenarioKeys();
-  runKeys = keys;
-  console.log(`[measure] ${keys.length} scenario(s), root ${path.relative(REPO, ROOT) || '.'}${extraQuery ? `, query ${extraQuery}` : ''}${NORENDER ? ', no render' : ''}, jobs ${JOBS}`);
-  const queue = [...keys];
+  for (const l of LAUNCH_LIST) if (keys.includes(l.name)) throw new Error(`--launch name ${l.name} is also a scenario key`);
+  runKeys = [...keys, ...LAUNCH_LIST.map((l) => l.name)];
+  console.log(`[measure] ${keys.length} scenario(s)${LAUNCH_LIST.length ? ` + ${LAUNCH_LIST.length} launch(es) (${LAUNCH_LIST.map((l) => l.name).join(', ')})` : ''}, root ${path.relative(REPO, ROOT) || '.'}${extraQuery ? `, query ${extraQuery}` : ''}${NORENDER ? ', no render' : ''}${CAMERA_TRACE ? ', camera trace' : ''}, jobs ${JOBS}`);
+  const queue = [...keys.map((k) => ({ key: k, launch: null })), ...LAUNCH_LIST.map((l) => ({ key: l.name, launch: l.query }))];
   const worker = async () => {
     for (;;) {
-      const key = queue.shift();
-      if (!key) return;
-      const r = await measureOne(key);
+      const job = queue.shift();
+      if (!job) return;
+      const { key } = job;
+      const r = await measureOne(key, job.launch);
       results[key] = r;
       const nErr = countErrors(r);
       if (r.failed || nErr) failed++;
+      const cam = r.camera ? `  cam ${fmt(r.camera.focusCalls)}f/${fmt(r.camera.maxScrollPx)}px` : '';
       console.log(
-        `${key.padEnd(20)} ${r.failed ? `FAILED ${r.failed}` : `events ${fmt(r.events?.length).padStart(2)}  contact ${fmt(r.contactMs).padStart(5)}  number ${fmt(r.firstNumberMs).padStart(5)}  zoom ${fmt(r.zoom?.max).padStart(6)}  end ${fmt(r.endMs).padStart(5)}  total ${fmt(r.totalMs).padStart(5)}  ready ${fmt(r.inputReadyMs).padStart(5)}${r.inputReadyKind === 'gameOver' ? '(gameOver)' : ''}  errors ${nErr}`}  [${Math.round(r.wallMs / 1000)} s]`,
+        `${key.padEnd(20)} ${r.failed ? `FAILED ${r.failed}` : `events ${fmt(r.events?.length).padStart(2)}  contact ${fmt(r.contactMs).padStart(5)}  number ${fmt(r.firstNumberMs).padStart(5)}  zoom ${fmt(r.zoom?.max).padStart(6)}${cam}  end ${fmt(r.endMs).padStart(5)}  total ${fmt(r.totalMs).padStart(5)}  ready ${fmt(r.inputReadyMs).padStart(5)}${r.inputReadyKind === 'gameOver' ? '(gameOver)' : ''}  errors ${nErr}`}  [${Math.round(r.wallMs / 1000)} s]`,
       );
     }
   };
-  await Promise.all(Array.from({ length: Math.min(JOBS, keys.length) }, worker));
+  await Promise.all(Array.from({ length: Math.min(JOBS, queue.length) }, worker));
 } finally {
   await browser.close();
   await server.close();
@@ -808,7 +1177,7 @@ const doc = {
   git: gitInfo(ROOT),
   note: args.note ?? null,
   query: extraQuery,
-  options: { cap: CAP, settle: SETTLE, warm: WARM, delta: DELTA, norender: NORENDER, anims: ALL_ANIMS ? 'all' : 'changes' },
+  options: { cap: CAP, settle: SETTLE, warm: WARM, delta: DELTA, norender: NORENDER, anims: ALL_ANIMS ? 'all' : 'changes', cameraTrace: CAMERA_TRACE },
   scenarios: ordered,
 };
 fs.mkdirSync(path.dirname(OUT), { recursive: true });
@@ -827,5 +1196,11 @@ if (args.compare) {
   const sub = { scenarios: Object.fromEntries(Object.keys(doc.scenarios).filter((k) => prev.scenarios?.[k]).map((k) => [k, prev.scenarios[k]])) };
   const bad = diffFiles(sub, doc, TOL);
   if (bad) code = 2;
+}
+if (CAMERA_GATE) {
+  const base = JSON.parse(fs.readFileSync(path.resolve(CAMERA_GATE), 'utf8'));
+  const bad = cameraGate(base, doc, CAMERA_GATE);
+  if (bad < 0) code = Math.max(code, 1);
+  else if (bad) code = 3;
 }
 process.exit(code);

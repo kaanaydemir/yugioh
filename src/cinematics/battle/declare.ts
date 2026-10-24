@@ -33,6 +33,7 @@ import { lightBeam, lightFlash } from '../../view/light';
 import { fx, registerEvent, registerObserver } from '../api';
 import { REACTION_POSES, warmPoses } from '../_v3/warm';
 import { alignStart, frameDelta, idleDelta, settleBefore, strikeContactIn } from '../_v3/posematch';
+import { V3HOOKS } from '../v3small/_hooks';
 import {
   ADD,
   TAU,
@@ -240,6 +241,7 @@ registerEvent(
   async (ctx) => {
     const pd = ctx.ev.pending;
     if (pd.kind !== 'trapResponse') return ctx.base();
+    const h = V3HOOKS.decision; if (h) return h(ctx); // v3 lane A6-B (S-8; keeps 'trapPulse', S-4)
     ctx.take('trapPulse')?.destroy();
     const pulse = setCardPulse(ctx, pd.player);
     ctx.keep('trapPulse', pulse);

@@ -24,6 +24,8 @@ import { START_LP } from '../engine/types';
 import { measureText, pixelText, textMetrics, type TextSize } from '../ui/text';
 import { TEX, tween, tweenValue } from '../vfx/core';
 import { Button } from './Button';
+import { HudV3 } from './v3/hudV3';
+import { V3_A6_B } from './v3flags';
 import { ARENA_V2, DEPTH, UI, byArena, type Rect, type XY, panelRect } from './layout';
 import {
   GLOW_PAD,
@@ -180,7 +182,7 @@ function menuIconTex(scene: Phaser.Scene): string {
   return key;
 }
 
-export class HudView {
+class HudViewV1 {
   onBattle: (() => void) | null = null;
   onEndTurn: (() => void) | null = null;
   onSpeed: ((k: SpeedLevel) => void) | null = null;
@@ -1467,6 +1469,15 @@ export class HudView {
     return this.seed / 4294967296;
   }
 }
+
+/** The HUD's type: its public API (the v1 class below; the v3 HUD offers the same surface). */
+export type HudView = HudViewV1;
+
+/**
+ * `new HudView(scene, opts)`: today's HUD, or — under V3_A6_B (lane A6-B, docs/v3/A6_PLAN.md F10) —
+ * the v3 HUD (src/view/v3/hudV3.ts): the same API, layout and hit areas in the v3 frame language.
+ */
+export const HudView: typeof HudViewV1 = V3_A6_B ? (HudV3 as unknown as typeof HudViewV1) : HudViewV1;
 
 /** Player color helper re-exported for convenience. */
 export function playerColor(p: PlayerId): number {

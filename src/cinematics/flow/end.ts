@@ -26,12 +26,14 @@ import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { registerEvent } from '../api';
 import { ADD, all, beamDrop, bg, other, rnd, rr, fs, lightDim, lightFlash, type AnyCtx, type Ctx } from './_kit';
 import { CARD_BACK } from '../../art/cards';
+import { V3HOOKS } from '../v3small/_hooks';
 
 // ================================================================ deck out
 
 registerEvent(
   'deckOut',
   async (ctx: Ctx<'deckOut'>) => {
+    const h = V3HOOKS.deckOut; if (h) return h(ctx); // v3 lane A6-B (S-8); empty: today's deck out
     const p = ctx.ev.player;
     const sc = ctx.scene;
     const v = ctx.views;
@@ -108,6 +110,7 @@ async function collapse(ctx: AnyCtx, u: MonsterUnit): Promise<void> {
 registerEvent(
   'gameOver',
   async (ctx: Ctx<'gameOver'>) => {
+    const h = V3HOOKS.gameOver; if (h) return h(ctx); // v3 lane A6-B (S-8); empty: today's game over
     const sc = ctx.scene;
     const v = ctx.views;
     const winner: PlayerId = ctx.ev.winner;

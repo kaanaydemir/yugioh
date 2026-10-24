@@ -42,6 +42,7 @@ import {
   type Ctx,
   type EvOf,
 } from './_kit';
+import { V3HOOKS } from '../v3small/_hooks';
 
 type DrawEv = EvOf<'draw'>;
 
@@ -279,6 +280,7 @@ async function coinToss(ctx: AnyCtx, first: PlayerId, onExit?: () => void): Prom
 
 /** Riffle shuffle on each deck pile: the top half splits off both sides and interleaves back. */
 export async function riffle(ctx: AnyCtx, players: PlayerId[], rounds = 2): Promise<void> {
+  const h = V3HOOKS.riffle; if (h) return h(ctx, players, rounds); // v3 lane A6-A (S-8)
   const sc = ctx.scene;
   ctx.sfx('shuffle', { volume: 0.8 });
   const jobs = players.map(async (p) => {
@@ -307,6 +309,7 @@ export async function riffle(ctx: AnyCtx, players: PlayerId[], rounds = 2): Prom
 
 /** Opening hands: alternating staggered arcs from the deck piles into the hands. */
 async function deal(ctx: AnyCtx, draws: DrawEv[], step: number): Promise<void> {
+  const h = V3HOOKS.deal; if (h) return h(ctx, draws, step); // v3 lane A6-A (S-8)
   const v = ctx.views;
   const piles = { 0: v.field.pile(0, 'deck'), 1: v.field.pile(1, 'deck') };
   const counts = { 0: piles[0].count, 1: piles[1].count };
@@ -343,7 +346,7 @@ registerEvent(
     if (ctx.skipIntro) {
       ctx.music.setIntensity(INTENSITY.calm);
       void v.board.setLights(true, false);
-      v.hud.setVisible(true);
+      if (V3HOOKS.hudIn) V3HOOKS.hudIn(ctx, 'skip'); else v.hud.setVisible(true); // v3 lane A6-B (S-8)
       v.duelists?.setVisible(true);
       await riffle(ctx, [0, 1], 1);
       await deal(ctx, draws, 70);
@@ -377,16 +380,16 @@ registerEvent(
         shuffled = riffle(ctx, [0, 1], 2);
       });
       // 4. "DÜELLO!" — the HUD comes on under its flash; the deal starts as the letters land
-      v.hud.setVisible(true);
+      if (V3HOOKS.hudIn) V3HOOKS.hudIn(ctx, 'duel'); else v.hud.setVisible(true); // v3 lane A6-B (S-8)
       skip.hideHint();
       ctx.music.setIntensity(INTENSITY.calm);
-      const duel = duelStart(sc);
+      const duel = V3HOOKS.duelPlate ? V3HOOKS.duelPlate(ctx) : duelStart(sc); // v3 lane A6-B (S-8)
       await all([ctx.wait(420), shuffled]);
       await deal(ctx, draws, 80);
       await all([duel, lights, entrance]);
     } finally {
       skip.dispose();
-      v.hud.setVisible(true);
+      if (V3HOOKS.hudIn) V3HOOKS.hudIn(ctx, 'finally'); else v.hud.setVisible(true); // v3 lane A6-B (S-8)
       v.duelists?.setVisible(true);
       for (const p of [0, 1] as PlayerId[]) v.duelists?.get(p).sprite.setVisible(true);
     }

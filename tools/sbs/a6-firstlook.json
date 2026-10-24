@@ -1,0 +1,18 @@
+{
+  "title": "A6 — ilk bakış testi: eski | yeni (1×)",
+  "look": "v3",
+  "note": "docs/v3/A6_PLAN.md §1.4: the eleven moments at 1×. Opening: the plan says +3.9 s, but today the DÜELLO band only stamps its first letter at 3.9 s (band in 3.78 s, letters 3.86-4.25 s, white slam 4.3 s); 4.4 s shows the whole word with its burst (the plan's intent, the \"DÜELLO!\" moment). A lane that moves the plate sets atAfter. 'before' = the A56.0 frames (node tools/sbs.mjs --spec tools/sbs/a6-firstlook.json --capture shots/v3/a56/before/a6-firstlook). UI-step moments follow src/duel/scenarios/a6-base.ts (a6TargetSpell: target picking open 633–783 ms, pointer on the candidate; a6Invalid: the invalid click at 733 ms; a6Grave: the graveyard clicked at 200 ms, pointer on the 2nd card at 500 ms).",
+  "pairs": [
+    { "name": "opening", "label": "0. açılış (+4,4 sn, \"DÜELLO!\" anı)", "query": "?mode=hotseat&seed=1&holdIntro=1&curtain=0", "at": 4400 },
+    { "name": "idle", "label": "1. ana aşamada boşta el + HUD", "query": "?dev=duel&s=a6Hover", "at": 0 },
+    { "name": "hover", "label": "2. bir kartın üzerine gelme (+120 ms)", "query": "?dev=duel&s=a6Hover", "at": 320 },
+    { "name": "turn", "label": "3. tur başı (+300 ms)", "query": "?dev=duel&s=flowTurnP1", "at": { "event": "turnStart", "plus": 300 } },
+    { "name": "battle", "label": "4. Savaş Aşaması (+150 ms)", "query": "?dev=duel&s=flowBattle", "at": { "event": "phaseChange", "plus": 150 } },
+    { "name": "lp", "label": "5. LP kaybı (rulo ortası)", "query": "?dev=duel&s=atkTargetDestroyed", "at": { "lp": true, "plus": 200 } },
+    { "name": "target", "label": "6. hedef seçme (adaylar + imleç altı)", "query": "?dev=duel&s=a6TargetSpell", "at": 720 },
+    { "name": "invalid", "label": "7. geçersiz tıklama (+60 ms)", "query": "?dev=duel&s=a6Invalid", "at": 793 },
+    { "name": "set", "label": "8. kapalı koyma (iniş +40 ms)", "query": "?dev=duel&s=smbSetMonster", "at": { "sfx": "cardSet", "plus": 40 } },
+    { "name": "grave", "label": "9. mezarlık paneli açık", "query": "?dev=duel&s=a6Grave", "at": 650 },
+    { "name": "victory", "label": "10. zafer (+1,2 sn)", "query": "?dev=duel&s=flowLethal", "at": { "event": "gameOver", "plus": 1200 } }
+  ]
+}

@@ -21,6 +21,7 @@ import { phaseBanner, turnBanner } from '../../vfx/banners';
 import { addGlow } from '../../vfx/setpieces';
 import { registerEvent, registerObserver } from '../api';
 import { all, bg, cameraAtRest, intensityFor, fs, lightDimFor, lightFlash, type AnyCtx, type Ctx } from './_kit';
+import { V3HOOKS } from '../v3small/_hooks';
 
 /** The face-up monsters of `p` on screen. */
 function unitsOf(ctx: AnyCtx, p: PlayerId) {
@@ -32,6 +33,7 @@ function unitsOf(ctx: AnyCtx, p: PlayerId) {
 registerEvent(
   'turnStart',
   async (ctx: Ctx<'turnStart'>) => {
+    const h = V3HOOKS.turnStart; if (h) return h(ctx); // v3 lane A6-B (S-8); empty: today's turn start
     const { player, turn } = ctx.ev;
     const v = ctx.views;
     const sc = ctx.scene;
@@ -83,6 +85,7 @@ function waveDelayV2(pod: { x: number; y: number }, at: { x: number; y: number }
 registerEvent(
   'phaseChange',
   async (ctx: Ctx<'phaseChange'>) => {
+    const h = V3HOOKS.phaseChange; if (h) return h(ctx); // v3 lane A6-B (S-8); empty: today's phase change
     const { phase, player } = ctx.ev;
     const v = ctx.views;
     const sc = ctx.scene;

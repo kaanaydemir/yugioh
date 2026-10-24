@@ -29,6 +29,11 @@ import { TEX, tween, wait } from '../vfx/core';
 import { CardSprite } from './CardSprite';
 import { ARENA_V2, CARD_H, CARD_W, DEPTH, GAME_H, UI, byArena, type XY, panelRect, zoneXY } from './layout';
 import { MINI_CARD_H, MINI_CARD_W, miniCardKey, trayGlowTex } from './ui-textures';
+import { V3_A6_A } from './v3flags';
+import { miniHandBackKey } from './v3/cardBack';
+import { createCardV3, type CardV3 } from './v3/CardV3';
+import { EASE, HAND3, HandMotion, type LiftState, fanPose, handRim, hoverPitch, overshootEase, pxMove } from './v3/handV3';
+import { REDUCED_MOTION } from './v3/motion';
 
 export interface HandCard {
   uid: Uid;
@@ -94,11 +99,18 @@ export class HandView {
   private tray: Phaser.GameObjects.Image | null = null;
   private trayTween: Phaser.Tweens.Tween | null = null;
   private shimmerEvent: Phaser.Time.TimerEvent | null = null;
+  /** v3 lane A6-A (K1): the whole-pixel stepper of the hand's cards (null: today's tweens). */
+  private readonly motion: HandMotion | null = null;
+  /** v3: when each card's last reject started (a second call within a frame or two joins it). */
+  private readonly rejectAt = new Map<Uid, number>();
+  /** v3: a face-down / face-up wave is turning the cards (rims off meanwhile). */
+  private waving = false;
 
   constructor(scene: Phaser.Scene, opts: { owner?: PlayerId; faceDown?: boolean } = {}) {
     this.scene = scene;
     this.ownerId = opts.owner ?? 0;
     this.faceDown = opts.faceDown ?? false;
+    if (V3_A6_A) this.motion = new HandMotion(scene);
     const r = UI.hand;
     this.zone = scene.add
       .zone(r.x, r.y - 18, r.w, r.h + 18)
@@ -121,6 +133,7 @@ export class HandView {
       if (!this.enabled || this.swapping || this.hoverUid === null) return;
       const s = this.slot(this.hoverUid);
       if (!s) return;
+      if (this.motion) return this.clickV3(s);
       sfx.play('uiClick', { volume: 0.6 });
       void s.sprite.punch(0.1, 160);
       this.onSelect?.(s.uid);
@@ -215,6 +228,7 @@ export class HandView {
   setEnabled(b: boolean): void {
     this.enabled = b;
     this.updateHover();
+    if (this.motion) this.applyHighlights(); // v3: a locked hand dims its rims and holds the nodes
   }
 
   /**
@@ -333,6 +347,7 @@ export class HandView {
       this.onHover?.(null);
     }
     if (this.selectedUid === uid) this.selectedUid = null;
+    this.motion?.release(s.sprite);
     this.scene.tweens.killTweensOf(s.sprite);
     s.sprite.setHighlight(null);
     void s.sprite.hoverLift(false);
@@ -345,7 +360,16 @@ export class HandView {
   async removeCard(uid: Uid, how: 'dissolve' | 'fade' = 'dissolve'): Promise<void> {
     const c = this.takeCard(uid);
     if (!c) return;
-    if (how === 'dissolve') {
+    if (this.motion) {
+      // v3: whole-pixel moves, no fade (the dissolve itself is the card's)
+      if (how === 'dissolve') {
+        await pxMove(this.scene, c, { y: c.y - 16 }, 160, EASE.outQuad);
+        await c.dissolve(620);
+      } else {
+        await pxMove(this.scene, c, { y: c.y + 20 }, 220, EASE.inQuad);
+        c.setVisible(false);
+      }
+    } else if (how === 'dissolve') {
       await tween(this.scene, { targets: c, y: c.y - 16, rotation: 0, duration: 160, ease: 'Quad.Out' });
       await c.dissolve(620);
     } else await tween(this.scene, { targets: c, alpha: 0, y: c.y + 20, duration: 220 });
@@ -354,6 +378,7 @@ export class HandView {
 
   /** Flip the whole hand face-down / face-up in a left-to-right wave. */
   async setFaceDown(faceDown: boolean): Promise<void> {
+    if (this.motion) return this.waveFaceDown(faceDown, HAND3.waveStepMs); // v3: sharp turn frames
     if (faceDown === this.faceDown) return;
     this.faceDown = faceDown;
     if (!faceDown) sfx.play('cardFlip');
@@ -362,6 +387,55 @@ export class HandView {
       await s.sprite.flip(!faceDown, 240);
     });
     await Promise.all(jobs);
+    this.applyHighlights();
+  }
+
+  // ---------------------------------------------------------------- v3 lane interfaces (S-9)
+  // A56.0 stubs with frozen signatures (docs/v3/A6_PLAN.md §4.1): today's behaviour. Lane A6-A
+  // (step A2) fills them behind V3_A6_A; lane A6-B calls them from day one (F5 reject, F7 curtain).
+
+  /**
+   * Refuse a click on hand card `uid` (K1 / F5): x +2 −2 +1 −1 0 in 30 ms steps (150 ms) with two
+   * crimson frames on its rim, uiError. Never locks. A second call within 60 ms joins the running
+   * one (the hand already refuses clicks on unplayable cards itself). Lane A6-A off: nothing (today).
+   */
+  async reject(uid: Uid): Promise<void> {
+    const mo = this.motion;
+    if (!mo) return;
+    const s = this.slot(uid);
+    if (!s || s.busy || !s.sprite.active) return;
+    const now = this.scene.time.now;
+    const last = this.rejectAt.get(uid);
+    if (last !== undefined && now - last >= 0 && now - last < 60) return;
+    this.rejectAt.set(uid, now);
+    sfx.play('uiError', { volume: 0.4 });
+    (s.sprite as CardV3).flashRim(PAL.crim3, REDUCED_MOTION ? HAND3.flashMs * 2 : HAND3.flashMs);
+    mo.reject(s.sprite);
+    await wait(this.scene, HAND3.rejectStepMs * HAND3.reject.length);
+  }
+
+  /**
+   * Turn the whole hand face-down / face-up in a wave, `msPerCard` apart (F7 curtain: 30 ms), each
+   * card in its sharp turn frames (S-9). Lane A6-A off: today's setFaceDown wave.
+   */
+  async waveFaceDown(down: boolean, msPerCard = 30): Promise<void> {
+    if (!this.motion) {
+      void msPerCard;
+      await this.setFaceDown(down);
+      return;
+    }
+    if (down === this.faceDown) return;
+    this.faceDown = down;
+    if (!down) sfx.play('cardFlip');
+    this.waving = true;
+    this.applyHighlights();
+    const jobs = this.slots.map(async (s, i) => {
+      if (i > 0) await wait(this.scene, i * Math.max(0, msPerCard));
+      if (!s.sprite.active) return;
+      await s.sprite.flip(!down, HAND3.turnMs);
+    });
+    await Promise.all(jobs);
+    this.waving = false;
     this.applyHighlights();
   }
 
@@ -374,6 +448,7 @@ export class HandView {
       await this.setFaceDown(faceDown);
       return;
     }
+    if (this.motion) return this.setOwnerV3(player, faceDown);
     this.swapping = true;
     if (this.hoverUid !== null) {
       this.hoverUid = null;
@@ -431,6 +506,7 @@ export class HandView {
   }
 
   destroy(): void {
+    this.motion?.destroy();
     this.trayTween?.stop();
     this.shimmerEvent?.remove();
     this.tray?.destroy();
@@ -448,10 +524,13 @@ export class HandView {
   }
 
   private makeSlot(c: HandCard): Slot {
-    const sprite = new CardSprite(this.scene, UI.hand.x + UI.hand.w / 2, GAME_H + CARD_H, c.cardId, {
-      faceUp: !this.faceDown,
-      player: this.ownerId,
-    });
+    const at = { x: UI.hand.x + UI.hand.w / 2, y: GAME_H + CARD_H };
+    const sprite = this.motion
+      ? createCardV3(this.scene, c.cardId, { x: at.x, y: at.y, faceUp: !this.faceDown, player: this.ownerId }) // v3 (K1, KO-1)
+      : new CardSprite(this.scene, at.x, at.y, c.cardId, {
+          faceUp: !this.faceDown,
+          player: this.ownerId,
+        });
     sprite.setDepth(DEPTH.HAND).setScrollFactor(0);
     return { uid: c.uid, cardId: c.cardId, sprite, busy: false };
   }
@@ -463,6 +542,7 @@ export class HandView {
 
   /** Resting fan pose of card i of n, with card h raised (−1 = none). */
   private pose(i: number, n: number, h: number): Pose {
+    if (this.motion) return { ...fanPose(i, n, h, UI.hand, CARD_W), rot: 0 }; // v3: straight, y curve only
     const r = UI.hand;
     const cx = r.x + r.w / 2;
     const step = n <= 1 ? 0 : Math.min(MAX_STEP, (r.w - CARD_W - 8) / (n - 1));
@@ -490,6 +570,7 @@ export class HandView {
 
   /** Move every card to its fan pose. */
   private layout(animate: boolean): void {
+    if (this.motion) return this.layoutV3(animate);
     const n = this.slots.length;
     const h = this.hoverIndex();
     this.slots.forEach((s, i) => {
@@ -515,6 +596,7 @@ export class HandView {
   }
 
   private applyHighlights(): void {
+    if (this.motion) return this.applyRimsV3();
     const col = PLAYER_COLOR[this.ownerId];
     for (const s of this.slots) {
       if (this.faceDown) s.sprite.setHighlight(null);
@@ -533,7 +615,7 @@ export class HandView {
       const { x, y } = this.pointer;
       const first = this.pose(0, n, -1);
       const last = this.pose(n - 1, n, -1);
-      const top = BASE_Y - CARD_H / 2 - (this.hoverUid !== null ? HOVER_LIFT + 6 : 0);
+      const top = BASE_Y - CARD_H / 2 - (this.hoverUid !== null ? (this.motion ? HAND3.lift : HOVER_LIFT + 6) : 0);
       if (x >= first.x - CARD_W / 2 - 2 && x <= last.x + CARD_W / 2 + 2 && y >= top) {
         let best = Infinity;
         for (let i = 0; i < n; i++) {
@@ -550,9 +632,175 @@ export class HandView {
     this.hoverUid = next;
     // a hand card under the pointer is clickable: show it
     this.scene.input.setDefaultCursor(next !== null ? 'pointer' : 'default');
-    if (next !== null) sfx.play('uiHover', { volume: 0.35, pitch: 1.2 });
+    if (next !== null) {
+      // v3: the hover ticks climb a pentatonic ladder across the hand (K1)
+      const i = this.motion ? this.slots.findIndex((s) => s.uid === next) : -1;
+      sfx.play('uiHover', { volume: 0.35, pitch: this.motion ? hoverPitch(i, n) : 1.2 });
+    }
     this.layout(true);
     this.onHover?.(next);
+  }
+
+  // ---------------------------------------------------------------- v3 (lane A6-A, K1)
+
+  /** v3: every card to its fan slot through HandMotion (whole pixels, never rotated), rims refreshed. */
+  private layoutV3(animate: boolean): void {
+    const mo = this.motion!;
+    const n = this.slots.length;
+    const h = this.hoverIndex();
+    this.slots.forEach((s, i) => {
+      if (s.busy) {
+        mo.release(s.sprite);
+        return;
+      }
+      const p = this.pose(i, n, h);
+      const selected = s.uid === this.selectedUid;
+      const raised = i === h;
+      s.sprite.setDepth(raised || selected ? DEPTH.HAND + 20 : DEPTH.HAND + i);
+      const state: LiftState = selected ? 'select' : raised ? 'hover' : this.marked.has(s.uid) ? 'mark' : 'rest';
+      const was = mo.stateOf(s.sprite);
+      mo.place(s.sprite, p.x, p.y, state, animate, i * HAND3.breathStep);
+      // the settle (K1 "Oturma"): two white frames on the rim as the card lands on its lift
+      if (animate && state === 'hover' && was !== null && was !== 'hover' && was !== 'select' && !REDUCED_MOTION) {
+        const card = s.sprite as CardV3;
+        mo.cue(card, HAND3.riseMs, () => card.flashRim(PAL.white, HAND3.flashMs, 'style'));
+      }
+    });
+    this.applyRimsV3();
+  }
+
+  /** v3: the rims (KO-3) — playable / hovered / selected / marked / locked (handRim). */
+  private applyRimsV3(): void {
+    for (const s of this.slots) {
+      const c = s.sprite as CardV3;
+      if (!c.active || typeof c.setRim !== 'function') continue;
+      if (s.busy || this.waving) {
+        c.setRim(null);
+        continue;
+      }
+      c.setRim(
+        handRim({
+          owner: this.ownerId,
+          faceDown: this.faceDown,
+          playable: this.playable.has(s.uid),
+          hover: s.uid === this.hoverUid,
+          selected: s.uid === this.selectedUid,
+          marked: this.marked.has(s.uid),
+          markColor: this.markColor,
+          locked: !this.enabled,
+        }),
+      );
+    }
+  }
+
+  /**
+   * v3 click (K1 / F5): a card that can be played now is pressed (two white rim frames, −16 → −13 →
+   * −17 → −16) and selected; any other is refused where it is (reject). The choice goes on to the
+   * input either way (it shows the reason in the hint line, as today).
+   */
+  private clickV3(s: Slot): void {
+    if (this.faceDown || s.busy) {
+      this.onSelect?.(s.uid);
+      return;
+    }
+    if (this.playable.has(s.uid) || s.uid === this.selectedUid) {
+      sfx.play('uiClick', { volume: 0.6 });
+      (s.sprite as CardV3).flashRim(PAL.white, HAND3.flashMs);
+      this.motion!.press(s.sprite);
+    } else void this.reject(s.uid);
+    this.onSelect?.(s.uid);
+  }
+
+  /**
+   * v3 hot-seat swap: today's choreography and timing (the outgoing hand drops in a wave from the
+   * outside in, the incoming one rises from the centre out), straight and on whole pixels — no
+   * rotation; the rise lands with a 2-px overshoot (KO-2).
+   */
+  private async setOwnerV3(player: PlayerId, faceDown: boolean): Promise<void> {
+    const mo = this.motion!;
+    this.swapping = true;
+    if (this.hoverUid !== null) {
+      this.hoverUid = null;
+      this.onHover?.(null);
+    }
+    this.selectedUid = null;
+    const old = this.slots;
+    const prev = this.ownerId;
+    sfx.play('cardSlide');
+    const mid = (old.length - 1) / 2;
+    const outgoing = Promise.all(
+      old.map(async (s, i) => {
+        mo.release(s.sprite);
+        s.sprite.setHighlight(null);
+        await wait(this.scene, Math.abs(i - mid) * 40);
+        if (!s.sprite.active) return;
+        await pxMove(this.scene, s.sprite, { y: s.sprite.y - 6 }, 90, EASE.outQuad);
+        if (!s.sprite.active) return;
+        await pxMove(this.scene, s.sprite, { y: GAME_H + CARD_H }, 230, EASE.inCubic);
+        s.sprite.destroy();
+      }),
+    );
+    await wait(this.scene, 200);
+    this.ownerId = player;
+    this.faceDown = faceDown;
+    this.setMiniCount(player, 0, true);
+    this.setMiniCount(prev, this.hands[prev].length, true);
+    this.slots = this.hands[player].map((c) => this.makeSlot(c));
+    const n = this.slots.length;
+    const m2 = (n - 1) / 2;
+    sfx.play('cardSlide', { pitch: 1.15 });
+    const incoming = Promise.all(
+      this.slots.map(async (s, i) => {
+        const p = this.pose(i, n, -1);
+        s.busy = true;
+        s.sprite.setPosition(p.x, GAME_H + CARD_H).setFaceUp(!faceDown);
+        await wait(this.scene, 90 + Math.abs(i - m2) * 50);
+        const dist = Math.max(1, GAME_H + CARD_H - p.y);
+        if (s.sprite.active) await pxMove(this.scene, s.sprite, { x: p.x, y: p.y }, 340, REDUCED_MOTION ? EASE.outCubic : overshootEase(2 / dist));
+        s.busy = false;
+      }),
+    );
+    await Promise.all([outgoing, incoming]);
+    this.swapping = false;
+    this.applyHighlights();
+    this.layout(false);
+    this.updateHover();
+  }
+
+  /**
+   * v3 mini-hand (K1 "P2"): the owner's v3 backs (S-2) tucked behind the panel edge; a new card
+   * slides out of the panel, a leaving one slides back in, the rest re-fan — whole pixels, no
+   * scale pop, no tint flash, no ADD sparks.
+   */
+  private setMiniCountV3(player: PlayerId, n: number, animate: boolean): void {
+    n = Math.max(0, n);
+    const list = this.minis[player];
+    const shown = Math.min(n, MAX_MINIS);
+    this.miniCount[player] = n;
+    const move = animate && !REDUCED_MOTION;
+    // P1's minis sit above its panel (they tuck down into it), P2's below its panel (up into it)
+    const tuck = player === 0 ? 6 : -6;
+    while (list.length > shown) {
+      const img = list.pop()!;
+      if (move) void pxMove(this.scene, img, { y: img.y + tuck }, 100, EASE.inQuad).then(() => img.active && img.destroy());
+      else img.destroy();
+    }
+    const first = list.length;
+    while (list.length < shown) {
+      const i = list.length;
+      const p = this.miniPos(player, i, shown);
+      const img = this.scene.add
+        .image(p.x, p.y + (move ? tuck : 0), miniHandBackKey(this.scene, player))
+        .setOrigin(Math.floor(MINI_CARD_W / 2) / MINI_CARD_W, Math.floor(MINI_CARD_H / 2) / MINI_CARD_H)
+        .setDepth(DEPTH.HUD - 1 + i * 0.01)
+        .setScrollFactor(0);
+      list.push(img);
+    }
+    list.forEach((img, i) => {
+      const p = this.miniPos(player, i, shown);
+      if (!move) img.setPosition(p.x, p.y);
+      else void pxMove(this.scene, img, { x: p.x, y: p.y }, 160, EASE.outCubic, i >= first ? (i - first) * 30 : 0);
+    });
   }
 
   // ---------------------------------------------------------------- mini-hands
@@ -571,6 +819,7 @@ export class HandView {
   }
 
   private setMiniCount(player: PlayerId, n: number, animate: boolean): void {
+    if (this.motion) return this.setMiniCountV3(player, n, animate);
     n = Math.max(0, n);
     const list = this.minis[player];
     const shown = Math.min(n, MAX_MINIS);
@@ -595,7 +844,7 @@ export class HandView {
       const i = list.length;
       const p = this.miniPos(player, i, shown);
       const img = this.scene.add
-        .image(p.x, p.y, miniCardKey(player))
+        .image(p.x, p.y, V3_A6_A ? miniHandBackKey(this.scene, player) : miniCardKey(player)) // v3 A6-A: the owner's v3 back (S-2)
         .setDepth(DEPTH.HUD - 1 + i * 0.01)
         .setScrollFactor(0);
       list.push(img);

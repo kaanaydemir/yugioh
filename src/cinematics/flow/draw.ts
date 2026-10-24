@@ -12,10 +12,12 @@ import { TEX } from '../../vfx/core';
 import { Sparks, run } from '../../vfx/setpieces';
 import { registerEvent } from '../api';
 import { ADD, bg, cameraAtRest, isoGhost, rr, fs, lightFlash, type Ctx } from './_kit';
+import { V3HOOKS } from '../v3small/_hooks';
 
 registerEvent(
   'draw',
   async (ctx: Ctx<'draw'>) => {
+    const h = V3HOOKS.draw; if (h) return h(ctx); // v3 lane A6-A (S-8); empty: today's draw
     const { player, uid, cardId } = ctx.ev;
     const v = ctx.views;
     const sc = ctx.scene;

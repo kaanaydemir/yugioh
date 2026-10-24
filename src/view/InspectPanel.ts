@@ -22,11 +22,16 @@ import { measureText, pixelText, textMetrics, type TextSize } from '../ui/text';
 import { TEX, tween } from '../vfx/core';
 import { CardSprite } from './CardSprite';
 import { ARENA_V2, DEPTH, UI } from './layout';
+import type { PlayerId } from '../engine/types';
+import { V3_A6_A } from './v3flags';
+import { InspectPanelV3, type PileKind } from './v3/inspectV3';
 import { GLOW_PAD, ICON, SHEEN_FRAMES, type UiStyle, glowTex, ovalHaloTex, panelSheenTex, panelTex, typeOn } from './ui-textures';
 
 export interface InspectStats {
   atk?: number;
   def?: number;
+  /** v3 (lane A6-A): a face-down card's owner — its back is shown in that player's tone (S-2). */
+  owner?: PlayerId;
 }
 
 const ADD = Phaser.BlendModes.ADD;
@@ -867,12 +872,13 @@ class InspectPanelV2 {
   }
 }
 
-/** Common surface of the two inspect panel variants. */
+/** Common surface of the inspect panel variants (v3 adds the pile view). */
 interface InspectImpl {
   readonly visible: boolean;
   show(cardId: CardId | null, stats?: InspectStats): void;
   hide(immediate?: boolean): void;
   destroy(): void;
+  showPile?(kind: PileKind, player: PlayerId, count: number): boolean;
 }
 
 /**
@@ -883,7 +889,8 @@ export class InspectPanel {
   private readonly impl: InspectImpl;
 
   constructor(scene: Phaser.Scene) {
-    this.impl = ARENA_V2 ? new InspectPanelV2(scene) : new InspectPanelV1(scene);
+    // v3 lane A6-A (K12): the crisp panel; the v3 look always runs on the v1 geometry
+    this.impl = V3_A6_A ? new InspectPanelV3(scene) : ARENA_V2 ? new InspectPanelV2(scene) : new InspectPanelV1(scene);
   }
 
   get visible(): boolean {
@@ -898,6 +905,15 @@ export class InspectPanel {
   /** Hide after a short grace delay (moving between cards does not flicker). */
   hide(immediate = false): void {
     this.impl.hide(immediate);
+  }
+
+  /**
+   * A pile in the panel (S-9, K12): "Deste · 12 kart" / "Rakibin eli · 4 kart" — hidden information
+   * stays hidden. False when the panel has no pile view (lane A6-A off): the caller keeps its path.
+   * Use the frozen entry point src/view/v3/inspectV3.ts showPile(inspect, kind, player, count).
+   */
+  showPile(kind: PileKind, player: PlayerId, count: number): boolean {
+    return this.impl.showPile?.(kind, player, count) ?? false;
   }
 
   destroy(): void {

@@ -17,6 +17,7 @@ import { sparkleBurst } from '../../vfx/summon';
 import { run } from '../../vfx/setpieces';
 import { registerEvent } from '../api';
 import { all, bg, cameraAtRest, emberStream, fs, lightFlash, type AnyCtx, type Ctx, type EvOf } from './_kit';
+import { V3HOOKS } from '../v3small/_hooks';
 
 type DiscardEv = EvOf<'discard'>;
 
@@ -111,6 +112,7 @@ registerEvent(
       if (e.type === 'toGraveyard' && e.from === 'hand') continue;
       break;
     }
+    const h = V3HOOKS.discard; if (h) return h(ctx, group); // v3 lane A6-A (S-8); empty: today's burn
     if (!cameraAtRest(ctx)) await ctx.unfocus(140);
     const gone = new Set<Uid>();
     await all(group.map((ev, k) => ctx.wait(k * 190).then(() => burnOne(ctx, ev, gone))));

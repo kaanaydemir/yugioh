@@ -10,6 +10,7 @@ import { DEPTH, TILE_H, TILE_W } from '../../view/layout';
 import { setPulse } from '../../vfx/summon';
 import { registerEvent, type CinematicContext } from '../api';
 import { E, bg, capped, diamond, liveLayer, loop, run, slamCard, fs, lightFlash } from './_kit';
+import { V3HOOKS } from '../v3small/_hooks';
 
 type SetCtx = CinematicContext<Extract<GameEvent, { type: 'setMonster' | 'setSpellTrap' }>>;
 
@@ -31,6 +32,7 @@ function sealClose(ctx: SetCtx, x: number, y: number, ms: number): Promise<void>
 }
 
 async function setCard(ctx: SetCtx, spot: 'monster' | 'spellTrap'): Promise<void> {
+  const h = V3HOOKS.set; if (h) return h(ctx, spot); // v3 lane A6-A (S-8); empty: today's set
   const ev = ctx.ev;
   void ctx.views.camera.unfocus(120);
   const cardId = ctx.state.cards[ev.uid]?.cardId;

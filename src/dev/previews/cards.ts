@@ -3,23 +3,36 @@
 //   &mode=big   &page=0..3 — 5 cards at 2× per page (face + art window at 2×)
 //   &mode=art   all 20 artwork windows at 2×
 //   &mode=iso   every card lying on a tile (up/side, P1/P2, face-down)
-import type Phaser from 'phaser';
+// v3 card faces (lane A5-B; open with &look=v3 — the pages show whatever faces the look builds):
+//   &mode=frame   the frame of each kind at 3× (ace monster, monster, spell, trap), their 18×26 mini
+//                 levels at 4× and the flat iso cards at 2×
+//   &mode=glint   every frame of card:sheen (over a spell) and card:foil (over an ace) at 1×: row 1
+//                 as CardSprite shows them (its blend and alpha), row 2 at alpha 1 (the pixels)
+//   &mode=x3&page=0..4   4 faces per page at 3×
+import Phaser from 'phaser';
 import { ALL_CARD_IDS, type CardId, type MonsterId } from '../../data/cards';
 import { hasMonsterArt } from '../../art/monsters';
 import { PAL } from '../../art/palette';
 import {
   CARD_BACK,
+  CARD_FOIL,
+  CARD_SHEEN,
   ISO_CX,
   ISO_CY,
   ISO_TEX_H,
   ISO_TEX_W,
+  MINI_H,
+  MINI_W,
+  SHEEN_FRAMES,
   cardArtKey,
   cardFaceKey,
   cardIsoKey,
+  cardMip,
   monsterCropArt,
   type CardOrientation,
 } from '../../art/cards';
 import type { PlayerId } from '../../engine/types';
+import { cardOverlayBlend } from '../../view/v3flags';
 import type { DevPreview } from '../types';
 import { drawIsoTile } from './monster';
 
@@ -41,6 +54,74 @@ const preview: DevPreview = {
   create(scene, params) {
     const mode = params.get('mode') ?? 'all';
     scene.cameras.main.setBackgroundColor(PAL.night0);
+
+    if (mode === 'frame') {
+      // the four kinds of frame at 3×
+      const kinds: [CardId, string][] = [
+        ['crystal_wyrm', 'as canavar'],
+        ['ember_wolf', 'canavar'],
+        ['judgment_bolt', 'büyü'],
+        ['mirror_barrier', 'tuzak'],
+      ];
+      kinds.forEach(([id, name], i) => {
+        const x = 6 + i * 158;
+        scene.add.image(x, 4, cardFaceKey(id)).setOrigin(0).setScale(3);
+        label(scene, x, 209, `${name} · ${id}`);
+      });
+      // their 18×26 mini levels at 4× (the iso textures are rendered from these 1:1)
+      kinds.forEach(([id], i) => {
+        const key = `dev:mini:${id}`;
+        if (!scene.textures.exists(key)) scene.textures.addCanvas(key, cardMip(id).levels[2].toCanvas());
+        scene.add.image(6 + i * (MINI_W * 4 + 6), 224, key).setOrigin(0).setScale(4);
+      });
+      label(scene, 6, 334, `mini ${MINI_W}×${MINI_H} ×4`);
+      // the flat cards on tiles at 2×
+      const g = scene.add.graphics().setScale(2);
+      kinds.forEach(([id], i) => {
+        const tx = 175 + (i % 2) * 52;
+        const ty = 122 + Math.floor(i / 2) * 30;
+        tile(g, tx, ty, i < 2 ? 0 : 1);
+        isoCard(scene, tx * 2, ty * 2, id, 'up', i < 2 ? 0 : 1).setScale(2);
+      });
+      label(scene, 330, 334, 'iso ×2 (P1 · P2)');
+      return;
+    }
+
+    if (mode === 'glint') {
+      // every frame of the two overlay sweeps over a face, as CardSprite shows them and as pixels
+      const rows: [CardId, string, number, string][] = [
+        ['judgment_bolt', CARD_SHEEN, 0.6, 'card:sheen'],
+        ['crystal_wyrm', CARD_FOIL, 0.75, 'card:foil'],
+      ];
+      const blend = cardOverlayBlend();
+      rows.forEach(([id, tex, alpha, name], r) => {
+        for (let pass = 0; pass < 2; pass++) {
+          const y = 4 + (r * 2 + pass) * 88;
+          for (let f = 0; f < SHEEN_FRAMES; f++) {
+            const x = 4 + f * 45;
+            if (x + 48 > 640) break;
+            scene.add.image(x, y, cardFaceKey(id)).setOrigin(0);
+            scene.add
+              .image(x, y, tex, `s:${f}`)
+              .setOrigin(0)
+              .setBlendMode(pass === 0 ? blend : Phaser.BlendModes.NORMAL)
+              .setAlpha(pass === 0 ? alpha : 1);
+          }
+          label(scene, 4, y + 70, `${name} ${pass === 0 ? `CardSprite (blend ${blend === Phaser.BlendModes.NORMAL ? 'NORMAL' : 'ADD'}, alpha ${alpha})` : 'pikseller (alpha 1)'}`);
+        }
+      });
+      return;
+    }
+
+    if (mode === 'x3') {
+      const page = Math.max(0, Math.min(4, Number(params.get('page') ?? 0)));
+      ALL_CARD_IDS.slice(page * 4, page * 4 + 4).forEach((id, i) => {
+        const x = 6 + i * 158;
+        scene.add.image(x, 4, cardFaceKey(id)).setOrigin(0).setScale(3);
+        label(scene, x, 209, id);
+      });
+      return;
+    }
 
     if (mode === 'big') {
       const page = Number(params.get('page') ?? 0);

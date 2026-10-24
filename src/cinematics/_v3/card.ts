@@ -16,6 +16,10 @@
 // The birth flash is a 1-px rim, never a filled slab: the card face stays readable on the frame
 // it is born, ringed white for two frames, then in the owner's tone for one (a solid white card
 // read as a hole in the board).
+// A56.0 (A6 §2.3): the count the pile shows on landing comes from the engine state (landingCount),
+// never a blind +1 — the Director may have synced the pile to a state that already holds this card
+// while it was in the air (a tribute set: 1 → 2 → 1 flicker). The landing itself is the
+// V3HOOKS.pileAccept hook (lane A6-A, K9) when one is set.
 
 import type { CardId } from '../../data/cards';
 import type { GameEvent, PlayerId } from '../../engine/types';
@@ -28,6 +32,7 @@ import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { monsterFrame } from '../../art/textures';
 import { Px, Sparks, animate, onFrame, sleep } from '../../vfx/combat';
 import type { CinematicContext } from '../_core/types';
+import { V3HOOKS } from '../v3small/_hooks';
 
 type AnyCtx = CinematicContext<GameEvent>;
 
@@ -54,6 +59,17 @@ export interface CardLeaveOpts {
    * over everything): e.g. behind a body standing in front of the pile it flies to (A2 fix r1).
    */
   depthAt?: (floor: XY, at: XY) => number;
+}
+
+/**
+ * The count a graveyard pile shows when a card lands on it (A6 §2.3): one more than it shows now,
+ * but never more than the owner's graveyard holds in the engine state at the end of the batch
+ * (`stateLen`, ctx.after) — the pile may already have been synced to a state that counts this
+ * card — and never fewer than it shows now (a later batch may have added more).
+ */
+export function landingCount(pileCount: number, stateLen: number | null | undefined): number {
+  if (stateLen === null || stateLen === undefined || !Number.isFinite(stateLen)) return pileCount + 1;
+  return Math.max(pileCount, Math.min(pileCount + 1, stateLen));
 }
 
 /**
@@ -145,13 +161,20 @@ export async function cardLeaves(ctx: AnyCtx, o: CardLeaveOpts): Promise<void> {
   stopShadow();
   shadow.destroy();
   trail.release();
-  // ---- land on the pile
+  // ---- land on the pile (the count from the engine state: A6 §2.3)
+  const count = landingCount(pile.count, ctx.after?.players?.[o.owner]?.graveyard?.length);
+  const accept = V3HOOKS.pileAccept;
+  if (accept) {
+    pile.set(count, o.cardId);
+    accept(ctx, { owner: o.owner, cardId: o.cardId, pile, at: to, count, card: img }); // v3 lane A6-A (S-8, K9)
+    return;
+  }
   try {
     sfx.play('cardPlace', { volume: 0.45, pitch: 0.9 });
   } catch {
     /* no audio */
   }
-  pile.set(pile.count + 1, o.cardId);
+  pile.set(count, o.cardId);
   pile.bump();
   if (img.active) img.destroy();
   const sp = new Sparks(sc, DEPTH.FX + 4);

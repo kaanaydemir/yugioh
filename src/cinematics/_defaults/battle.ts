@@ -33,6 +33,7 @@ import {
 import { genericStrike } from './strikes';
 import { flameAura, steamAura } from '../../duel/auras';
 import { destroyV3 } from '../_v3/death';
+import { V3HOOKS } from '../v3small/_hooks';
 
 const P = { priority: DEFAULT_PRIORITY };
 
@@ -451,6 +452,7 @@ registerEvent(
 registerEvent(
   'target',
   async (ctx) => {
+    const h = V3HOOKS.target; if (h) return h(ctx); // v3 lane A6-B (S-8); empty: today's lock-on
     const ev = ctx.ev;
     const color = PLAYER_COLOR[ev.player];
     const handles = ev.targets.map((r) => {

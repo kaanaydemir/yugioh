@@ -3,7 +3,8 @@
 //
 // Texture keys (built at boot by src/boot/30-cards.ts → buildCardTextures):
 //   card:face:<id>              48×68 upright face           cardFaceKey(id)
-//   card:back                   48×68 upright back           CARD_BACK
+//   card:back                   48×68 upright back           CARD_BACK (cardBackKey(player))
+//   card:back:p2                v3 only: player 2's back     CARD_BACK_P2 (S-2; same pixels until A6-A)
 //   card:art:<id>               44×34 artwork window         cardArtKey(id)
 //   card:iso:<id|back>:<o>[:p2] flat card on a tile          cardIsoKey(id | 'back', 'up' | 'side', player)
 //   card:sil / card:glow / card:glowrun / card:sheen / card:foil   upright overlays
@@ -22,6 +23,13 @@ import { ATTRIBUTE_RAMP, PAL, RAMPS, type Ramp } from './palette';
 import { PixelCanvas, mix, mulberry32, rgb } from './pixel';
 import { addStaticCanvas, monsterFrame } from './textures';
 import { CARD_ART_H, CARD_ART_W } from './types';
+import { LOOK_V3 } from '../view/layout';
+import { V3_A6_A } from '../view/v3flags';
+import { cardBackMipV3, cardBackV3, provideTodayBack } from '../view/v3/cardBack';
+// lane A5-B (V3_CARDS only): the v3 face / mini level / overlays and the v3 art registry
+import { V3_CARDS, setCardOverlaysOpaque } from '../view/v3flags';
+import { foilFramesV3, paintFaceV3, paintMiniFaceV3, sheenFramesV3 } from './cardface-v3/frame';
+import { cardArtV3, cardIconV3 } from './cardface-v3/index';
 
 export const FACE_W = 48;
 export const FACE_H = 68;
@@ -31,6 +39,18 @@ export const FACE_H = 68;
 export type CardOrientation = 'up' | 'side';
 
 export const CARD_BACK = 'card:back';
+/** v3 (S-2): player 2's upright back texture (built only in the v3 look). */
+export const CARD_BACK_P2 = 'card:back:p2';
+/**
+ * S-2 (A56.0, frozen): the v3 look keeps one back per player (`card:back:p2`, its own mip level
+ * cache); v1 has the one back of today for both players.
+ */
+const BACK_PER_PLAYER = LOOK_V3;
+
+/** S-2: texture key of `player`'s upright back. v1: always CARD_BACK. */
+export function cardBackKey(player: PlayerId = 0): string {
+  return BACK_PER_PLAYER && player === 1 ? CARD_BACK_P2 : CARD_BACK;
+}
 /** White card silhouette (48×68) — tint/ADD for flashes. */
 export const CARD_SIL = 'card:sil';
 /** Glow ring around the upright card: (FACE_W + 2*GLOW_PAD) × (FACE_H + 2*GLOW_PAD), white. */
@@ -549,7 +569,12 @@ export function cardArtCanvas(id: CardId): PixelCanvas {
   let p = artCache.get(id);
   if (!p) {
     const d = cardDef(id);
-    if (isMonster(d)) p = monsterArtCanvas(d);
+    // A5-B: a registered v3 artwork replaces today's (none in step B-1)
+    const v3 = V3_CARDS ? cardArtV3(id) : null;
+    if (v3) {
+      p = new PixelCanvas(CARD_ART_W, CARD_ART_H);
+      v3(p);
+    } else if (isMonster(d)) p = monsterArtCanvas(d);
     else {
       const a = cardArtwork(id);
       if (a) {
@@ -733,6 +758,8 @@ function drawLevelRow(p: PixelCanvas, def: CardDef, ramp: Ramp): void {
 }
 
 function drawFace(id: CardId): PixelCanvas {
+  // A5-B: the v3 face (dark body, one kind trim) around the card's art — src/art/cardface-v3/frame.ts
+  if (V3_CARDS) return paintFaceV3(id, cardArtCanvas(id));
   const def = cardDef(id);
   const p = new PixelCanvas(FACE_W, FACE_H);
   const ramp = kindRamp(def.kind);
@@ -881,6 +908,16 @@ export const MINI_W = 18;
 export const MINI_H = 26;
 
 function drawMiniFace(id: CardId): PixelCanvas {
+  // A5-B: the v3 mini level (night body, kind trim) around the field icon or today's downsample
+  if (V3_CARDS) {
+    const icon = cardIconV3(id);
+    let art16: PixelCanvas;
+    if (icon) {
+      art16 = new PixelCanvas(16, 12);
+      icon(art16);
+    } else art16 = downsample(cardArtCanvas(id), 16, 12);
+    return paintMiniFaceV3(id, art16);
+  }
   const def = cardDef(id);
   const ramp = kindRamp(def.kind);
   const accent = cardAccentRamp(id);
@@ -945,7 +982,7 @@ export interface CardMip {
 }
 
 const faceCache = new Map<CardId, PixelCanvas>();
-const mipCache = new Map<CardId | 'back', CardMip>();
+const mipCache = new Map<string, CardMip>();
 let backCanvas: PixelCanvas | null = null;
 
 /** Upright face pixels (48×68), cached. */
@@ -958,24 +995,58 @@ export function cardFaceCanvas(id: CardId): PixelCanvas {
   return p;
 }
 
-/** Upright back pixels (48×68), cached. */
-export function cardBackCanvas(): PixelCanvas {
+/**
+ * S-13 (lane A5-B): the living-art frame of `id` at show time `tMs` — the face texture
+ * `card:face:<id>` shows this frame. Until the living art (A5_PLAN §3.7.6, step B-5) every card has
+ * the one static frame 0; v1 always 0.
+ */
+export function cardLifeFrame(id: CardId, tMs: number): number {
+  void id;
+  void tMs;
+  return 0;
+}
+
+/**
+ * S-13 (lane A5-B): the face pixels (48×68) of `id` at living-art frame `f` — for a caller that keeps
+ * its own copy of the face (A6-A's CardV3 / LOD face). Until step B-5 every frame is the static face.
+ */
+export function cardFaceCanvasAt(id: CardId, f: number): PixelCanvas {
+  void f;
+  return cardFaceCanvas(id);
+}
+
+/** Today's upright back (48×68), cached: v1, and the source of the A56.0 cardBackV3 stub. */
+function todayBackCanvas(): PixelCanvas {
   if (!backCanvas) backCanvas = drawBack();
   return backCanvas;
 }
+provideTodayBack(todayBackCanvas);
 
-/** Multi-resolution sources for the pose renderer. */
-export function cardMip(id: CardId | 'back'): CardMip {
-  let m = mipCache.get(id);
+/**
+ * S-2: upright back pixels (48×68) of `player`'s cards. v1: today's back for both players. Lane
+ * A6-A on (V3_A6_A): the one v3 source, cardBackV3(player) (src/view/v3/cardBack.ts).
+ */
+export function cardBackCanvas(player: PlayerId = 0): PixelCanvas {
+  return V3_A6_A ? cardBackV3(player) : todayBackCanvas();
+}
+
+/**
+ * Multi-resolution sources for the pose renderer. S-2: `player` picks whose back ('back' only;
+ * faces ignore it); v1 shares one back mip between the players.
+ */
+export function cardMip(id: CardId | 'back', player: PlayerId = 0): CardMip {
+  const key = id === 'back' && BACK_PER_PLAYER && player === 1 ? 'back:p2' : id;
+  let m = mipCache.get(key);
   if (!m) {
     if (id === 'back') {
-      const full = cardBackCanvas();
-      m = { levels: [full, halve(full), drawMiniBack()], edge: PAL.night1 };
+      const full = cardBackCanvas(player);
+      const v3 = V3_A6_A ? cardBackMipV3(player) : null;
+      m = v3 ? { levels: [full, ...v3.levels], edge: v3.edge } : { levels: [full, halve(full), drawMiniBack()], edge: PAL.night1 };
     } else {
       const full = cardFaceCanvas(id);
       m = { levels: [full, halve(full), drawMiniFace(id)], edge: kindRamp(cardDef(id).kind)[0] };
     }
-    mipCache.set(id, m);
+    mipCache.set(key, m);
   }
   return m;
 }
@@ -1307,8 +1378,8 @@ export function renderFlat(id: CardId | 'back', orientation: CardOrientation, pl
   const faceUp = id !== 'back';
   const q = restQuat(player, orientation, faceUp);
   const { ex, ey, n } = poseAxes(q, FLAT_W, FLAT_H);
-  const front = cardMip(id === 'back' ? 'back' : id);
-  const back = cardMip('back');
+  const front = cardMip(id, player);
+  const back = cardMip('back', player);
   renderCard(p, ISO_CX, ISO_CY, ex, ey, n, front, back, opts);
   return p;
 }
@@ -1447,8 +1518,9 @@ export function buildCardTextures(scene: Phaser.Scene): void {
     addTex(scene, cardArtKey(id), cardArtCanvas(id));
     addTex(scene, cardFaceKey(id), cardFaceCanvas(id));
   }
-  addTex(scene, CARD_BACK, cardBackCanvas());
-  const sil = silhouette(cardBackCanvas());
+  addTex(scene, CARD_BACK, cardBackCanvas(0));
+  if (BACK_PER_PLAYER) addTex(scene, CARD_BACK_P2, cardBackCanvas(1));
+  const sil = silhouette(cardBackCanvas(0));
   addTex(scene, CARD_SIL, sil);
   const glow = glowRing(sil, GLOW_PAD);
   const run = runFrames(glow.inner, GLOW_RUN_FRAMES, 2, 0.1);
@@ -1460,12 +1532,15 @@ export function buildCardTextures(scene: Phaser.Scene): void {
   );
   addAnim(scene, ANIM_GLOW_RUN, CARD_GLOW_RUN, run.map((_, i) => `run:${i}`), 18, -1);
   const inner = sil.clone().map((c, x, y) => (x < 1 || y < 1 || x > FACE_W - 2 || y > FACE_H - 2 ? null : c));
-  const sheen = sweepFrames(inner, SHEEN_FRAMES, false, 7);
+  // A5-B (V3_CARDS): crisp 1–2 px glints of opaque palette pixels instead of the soft sweeps (S-5)
+  const sheen = V3_CARDS ? sheenFramesV3(inner, SHEEN_FRAMES) : sweepFrames(inner, SHEEN_FRAMES, false, 7);
   addSheet(scene, CARD_SHEEN, sheen.map((p, i) => [`s:${i}`, p] as [string, PixelCanvas]));
   addAnim(scene, ANIM_SHEEN, CARD_SHEEN, sheen.map((_, i) => `s:${i}`), 30, 0);
-  const foil = sweepFrames(inner, SHEEN_FRAMES, true, 10);
+  const foil = V3_CARDS ? foilFramesV3(inner, SHEEN_FRAMES) : sweepFrames(inner, SHEEN_FRAMES, true, 10);
   addSheet(scene, CARD_FOIL, foil.map((p, i) => [`s:${i}`, p] as [string, PixelCanvas]));
   addAnim(scene, ANIM_FOIL, CARD_FOIL, foil.map((_, i) => `s:${i}`), 24, 0);
+  // S-5: the overlays are opaque palette pixels now → CardSprite blends them NORMAL
+  if (V3_CARDS) setCardOverlaysOpaque(true);
 
   // iso
   for (const o of ['up', 'side'] as CardOrientation[]) {

@@ -27,6 +27,7 @@ import { sparkleBurst } from '../../vfx/summon';
 import type { CardSprite } from '../../view/CardSprite';
 import { fx, registerEvent } from '../api';
 import { E, beat, bg, bodyBox, defuseCard, fs, lightFlash, lightPool, settleCamera, glowPop, pixelStream, playSfx, run, seed, softGlow, tileStream, type LightHandle } from './_kit';
+import { V3HOOKS } from '../v3small/_hooks';
 
 type SummonEv = Extract<GameEvent, { type: 'summon' }>;
 type SetEv = Extract<GameEvent, { type: 'setMonster' }>;
@@ -114,17 +115,31 @@ registerEvent(
     // ---- the tributes pour into it
     playSfx('tribute', { volume: 0.9 });
     const streams: Promise<void>[] = [];
+    // stream i's progress k (0..1): the hovering card glows brighter with every pixel it drinks
+    const arrive = (i: number) => (k: number) => {
+      fill = Math.max(fill, (i + k) / rel.length);
+      if (glow && glow.active) glow.setScale(0.9 + fill * 1.6).setAlpha(0.5 + fill * 0.5);
+      cardLight?.setIntensity(0.35 + fill * 0.85);
+    };
     rel.forEach(({ g, tile, unit }, i) => {
       const from = tile ? tile.home : zoneXY(g.owner, 'monster', g.zone);
+      // v3 lane A6-A (S-8): the tributed body, its tile card and its card's flight; empty: today's
+      const tb = V3HOOKS.tributeBody;
+      if (tb) {
+        const args = { index: i, count: rel.length, uid: g.uid, cardId: g.cardId, owner: g.owner, unit, tile, from, ramp, target, onArrive: arrive(i) };
+        streams.push(
+          tb(ctx, args).then(() => {
+            unit?.retire();
+            field.forget(g.uid);
+          }),
+        );
+        return;
+      }
       streams.push(
         (async () => {
           await wait(sc, 80 + i * 90);
           if (tile) bg(tile.dissolve(480).then(() => tile.destroy()));
-          const onArrive = (k: number) => {
-            fill = Math.max(fill, (i + k) / rel.length);
-            if (glow && glow.active) glow.setScale(0.9 + fill * 1.6).setAlpha(0.5 + fill * 0.5);
-            cardLight?.setIntensity(0.35 + fill * 0.85);
-          };
+          const onArrive = arrive(i);
           // the tribute's last light: its tile flares as the body peels away into the stream
           void lightFlash(sc, from.x, from.y - 14, ramp[3], fs(30), 560, { floorY: from.y, intensity: 0.8 });
           if (unit && unit.sprite.active && unit.sprite.visible) {

@@ -43,6 +43,8 @@ import { TEX, flash, shake, wait } from './core';
 import { Sparks as PxSparks, stopTime } from './combat';
 import { pixelText } from '../ui/text';
 import { onDuelStart } from '../duel/seeds';
+import { V3_A5_A } from '../view/v3flags'; // A5-A redirect (A5_PLAN §4.5): the v3 volcano ambience
+import { volcanoAmbienceOnV3, volcanoAmbienceV3 } from '../cinematics/spells/_volcano_v3'; // (leaf module)
 
 export type Unit = Phaser.GameObjects.Sprite | Phaser.GameObjects.Image;
 
@@ -2402,6 +2404,7 @@ interface Mote {
  * The lava floor itself belongs to the board view (BoardView.setTheme('volcano')).
  */
 export function setVolcanoAmbience(scene: Phaser.Scene, on: boolean): Promise<void> {
+  if (V3_A5_A) return volcanoAmbienceV3(scene, on); // A5-A: palette embers + ash, no full-screen wash / heat rasters
   let v = volcanoes.get(scene);
   if (v && !v.alive) {
     volcanoes.delete(scene);
@@ -2422,6 +2425,7 @@ export function setVolcanoAmbience(scene: Phaser.Scene, on: boolean): Promise<vo
 
 /** True while a volcano ambience exists in the scene (fading in, on, or fading out). */
 export function volcanoAmbienceOn(scene: Phaser.Scene): boolean {
+  if (V3_A5_A) return volcanoAmbienceOnV3(scene); // A5-A
   return volcanoes.has(scene);
 }
 

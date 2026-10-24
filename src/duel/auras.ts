@@ -10,6 +10,8 @@ import { TEX } from '../vfx/core';
 import { Raster, Sparks, goldAura, onFrame, rnd, rr, spriteBox } from '../vfx/setpieces';
 import type { Disposable } from './types';
 import type { MonsterUnit } from './MonsterUnit';
+import { V3_A5_A } from '../view/v3flags'; // A5-A redirect (A5_PLAN §4.4): the v3 auras
+import { flameAuraV3, steamAuraV3 } from './auras-v3';
 
 export function equipAura(scene: Phaser.Scene, unit: MonsterUnit): Disposable {
   return goldAura(scene, unit.sprite);
@@ -17,6 +19,7 @@ export function equipAura(scene: Phaser.Scene, unit: MonsterUnit): Disposable {
 
 /** Flames licking up the silhouette + hot floor glow (FIRE on the volcano field). */
 export function flameAura(scene: Phaser.Scene, unit: MonsterUnit): Disposable {
+  if (V3_A5_A) return flameAuraV3(scene, unit); // A5-A: pixel flame tongues on the top edge
   return silhouetteAura(scene, unit, {
     every: 70,
     make: (x, y, right) => ({
@@ -36,6 +39,7 @@ export function flameAura(scene: Phaser.Scene, unit: MonsterUnit): Disposable {
 
 /** Steam wisps rising off the body (WATER on the volcano field). */
 export function steamAura(scene: Phaser.Scene, unit: MonsterUnit): Disposable {
+  if (V3_A5_A) return steamAuraV3(scene, unit); // A5-A: 1-px steam threads
   return silhouetteAura(scene, unit, {
     every: 120,
     make: (x, y, right) => ({

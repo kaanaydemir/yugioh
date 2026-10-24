@@ -16,6 +16,8 @@ import { sfx } from '../audio/sfx';
 import { measureText, pixelText, type TextSize } from '../ui/text';
 import { TEX } from '../vfx/core';
 import { rootDepth } from './CardSprite';
+import { ButtonSkinV3 } from './v3/hudSkin';
+import { V3_A6_B } from './v3flags';
 import {
   BUTTON_PRESS,
   type ButtonState,
@@ -56,10 +58,13 @@ export class Button extends Phaser.GameObjects.Container {
   readonly h: number;
   private style: UiStyle;
   private readonly bg: Phaser.GameObjects.Image;
-  private readonly glow: Phaser.GameObjects.Image;
-  private readonly sheen: Phaser.GameObjects.Image;
-  private readonly flashImg: Phaser.GameObjects.Image;
+  // v1 only (null in the v3 skin, A6-B F10: no glow, sheen or ADD flash)
+  private readonly glow: Phaser.GameObjects.Image | null;
+  private readonly sheen: Phaser.GameObjects.Image | null;
+  private readonly flashImg: Phaser.GameObjects.Image | null;
   private readonly content: Phaser.GameObjects.Container;
+  /** The v3 look (V3_A6_B, docs/v3/A6_PLAN.md F10): draws every state; null in v1. */
+  private readonly v3: ButtonSkinV3 | null = null;
   private label: Phaser.GameObjects.BitmapText | null = null;
   private icon: Phaser.GameObjects.Image | null = null;
   private labelText: string;
@@ -86,6 +91,21 @@ export class Button extends Phaser.GameObjects.Container {
     this.labelText = opts.label ?? '';
     this.iconKey = opts.icon ?? null;
 
+    if (V3_A6_B) {
+      // A6-B (F10): the v3 skin — dark body + one trim, label / icon in the trim tone (src/view/v3/hudSkin.ts)
+      this.v3 = new ButtonSkinV3(this, { label: this.labelText, icon: this.iconKey, style: this.style, size: this.size });
+      this.bg = this.v3.hit;
+      this.content = this.v3.content;
+      this.glow = null;
+      this.sheen = null;
+      this.flashImg = null;
+      this.applyStyle();
+      if (opts.depth !== undefined) this.setDepth(opts.depth);
+      this.wireInput();
+      scene.add.existing(this);
+      return;
+    }
+
     this.glow = scene.add
       .image(-GLOW_PAD, -GLOW_PAD, glowTex(scene, this.w, this.h))
       .setOrigin(0)
@@ -108,6 +128,12 @@ export class Button extends Phaser.GameObjects.Container {
     this.applyStyle();
     if (opts.depth !== undefined) this.setDepth(opts.depth);
 
+    this.wireInput();
+    scene.add.existing(this);
+  }
+
+  /** Pointer input on the face + teardown (both looks). */
+  private wireInput(): void {
     this.bg.setInteractive({ useHandCursor: true });
     this.bg.on(Phaser.Input.Events.POINTER_OVER, () => this.setHover(true));
     this.bg.on(Phaser.Input.Events.POINTER_OUT, () => {
@@ -131,8 +157,8 @@ export class Button extends Phaser.GameObjects.Container {
       this.glowTween?.stop();
       this.sheenTween?.stop();
       this.attentionEvent?.remove();
+      this.v3?.destroy();
     });
-    scene.add.existing(this);
   }
 
   get enabled(): boolean {
@@ -148,10 +174,11 @@ export class Button extends Phaser.GameObjects.Container {
       this.setAttention(false);
     }
     this.applyStyle();
-    if (b) {
+    if (b && this.v3) this.v3.flash(34); // waking up: two frames of white trim (v3)
+    else if (b) {
       // waking up: quick light sweep + flash
       this.playSheen();
-      this.flashImg.setTint(UI_RAMP[this.style][4]).setAlpha(0.5);
+      this.flashImg!.setTint(UI_RAMP[this.style][4]).setAlpha(0.5);
       this.scene.tweens.add({ targets: this.flashImg, alpha: 0, duration: 220, ease: 'Quad.Out' });
     }
     return this;
@@ -171,6 +198,7 @@ export class Button extends Phaser.GameObjects.Container {
   setStyle(style: UiStyle): this {
     if (style === this.style) return this;
     this.style = style;
+    this.v3?.setStyle(style);
     this.applyStyle();
     return this;
   }
@@ -191,11 +219,15 @@ export class Button extends Phaser.GameObjects.Container {
     return this;
   }
 
-  /** "Press me": breathing outer glow and a light sweep every ~1.8 s. */
+  /** "Press me": breathing outer glow and a light sweep every ~1.8 s (v3: a light node runs the trim). */
   setAttention(on: boolean): this {
     if (on && !this._enabled) on = false;
     if (on === this.attention) return this;
     this.attention = on;
+    if (this.v3) {
+      this.v3.setAttention(on);
+      return this;
+    }
     this.attentionEvent?.remove();
     this.attentionEvent = null;
     if (on) {
@@ -222,6 +254,11 @@ export class Button extends Phaser.GameObjects.Container {
   // ------------------------------------------------------------ internals
 
   private buildContent(): void {
+    if (this.v3) {
+      this.v3.setLabel(this.labelText);
+      this.v3.setIcon(this.iconKey);
+      return;
+    }
     this.content.removeAll(true);
     this.label = null;
     this.icon = null;
@@ -262,22 +299,28 @@ export class Button extends Phaser.GameObjects.Container {
 
   private applyStyle(): void {
     const st = this.visualState();
+    if (this.v3) {
+      this.v3.apply(st);
+      this.bg.input && (this.bg.input.cursor = this._enabled && !this.locked ? 'pointer' : 'default');
+      return;
+    }
     this.bg.setTexture(buttonTex(this.scene, this.style, st, this.w, this.h));
     this.content.y = st === 'p' ? BUTTON_PRESS : st === 'h' ? -1 : 0;
-    this.sheen.y = st === 'p' ? BUTTON_PRESS : 0;
-    this.flashImg.y = st === 'p' ? BUTTON_PRESS : 0;
+    this.sheen!.y = st === 'p' ? BUTTON_PRESS : 0;
+    this.flashImg!.y = st === 'p' ? BUTTON_PRESS : 0;
     const R = UI_RAMP[this.style];
     const textCol = st === 'd' ? PAL.stone3 : PAL.white;
     // icon art is white/mist/steel: tint warm-to-the-ramp so it never reads cold on hot faces
     const iconCol = st === 'd' ? PAL.stone2 : st === 'h' ? mix(R[4], PAL.white, 0.65) : mix(R[4], PAL.white, 0.35);
     this.label?.setTint(textCol);
     this.icon?.setTint(iconCol);
-    this.glow.setTint(R[3]);
+    this.glow!.setTint(R[3]);
     this.bg.input && (this.bg.input.cursor = this._enabled && !this.locked ? 'pointer' : 'default');
     this.updateGlow();
   }
 
   private updateGlow(): void {
+    if (this.v3) return;
     this.glowTween?.stop();
     this.glowTween = null;
     const st = this.visualState();
@@ -290,7 +333,7 @@ export class Button extends Phaser.GameObjects.Container {
       return;
     }
     if (this.attention) {
-      this.glow.setAlpha(Math.max(this.glow.alpha, 0.2));
+      this.glow!.setAlpha(Math.max(this.glow!.alpha, 0.2));
       this.glowTween = this.scene.tweens.add({
         targets: this.glow,
         alpha: { from: 0.2, to: 0.75 },
@@ -322,24 +365,33 @@ export class Button extends Phaser.GameObjects.Container {
   }
 
   private playSheen(): void {
+    if (this.v3) {
+      this.v3.flash(17); // v3: one frame of white trim instead of the light sweep
+      return;
+    }
     if (!this.active) return;
     this.sheenTween?.stop();
     const o = { f: 0 };
-    this.sheen.setVisible(true).setFrame('s:0');
+    this.sheen!.setVisible(true).setFrame('s:0');
     this.sheenTween = this.scene.tweens.add({
       targets: o,
       f: SHEEN_FRAMES - 1,
       duration: 340,
       ease: 'Sine.InOut',
-      onUpdate: () => this.sheen.setFrame(`s:${Math.round(o.f)}`),
-      onComplete: () => this.sheen.setVisible(false),
+      onUpdate: () => this.sheen!.setFrame(`s:${Math.round(o.f)}`),
+      onComplete: () => this.sheen!.setVisible(false),
     });
   }
 
   private fire(): void {
     if (this.sound) sfx.play('uiConfirm', { volume: 0.7 });
+    if (this.v3) {
+      this.v3.flash(34); // v3: two frames of white trim, no ADD flash / sparks
+      this.onClick?.();
+      return;
+    }
     const R = UI_RAMP[this.style];
-    this.flashImg.setTint(PAL.white).setAlpha(0.9);
+    this.flashImg!.setTint(PAL.white).setAlpha(0.9);
     this.scene.tweens.add({ targets: this.flashImg, alpha: 0, duration: 200, ease: 'Quad.Out' });
     this.sparks(R[4]);
     this.onClick?.();

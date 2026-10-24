@@ -33,7 +33,8 @@ import { FieldView } from '../duel/FieldView';
 import { SpeedControl } from '../duel/speed';
 import { ViewerPolicy } from '../duel/viewer';
 import { buildStage, uidOf, type StageSpec } from '../duel/scenario';
-import { SCENARIOS } from '../duel/scenarios';
+import { SCENARIOS, isUiStep, type UiStep } from '../duel/scenarios';
+import { runUiStep } from '../duel/qaInput';
 import { armOnFreeze, installTestClock } from '../duel/testClock';
 import type { DuelViews } from '../duel/types';
 import { loadSettings, saveSettings, type DuelLaunch, type DuelMode, type Settings } from './launch';
@@ -85,6 +86,8 @@ export interface DuelQa {
   uid(cardId: CardId, owner?: PlayerId): number;
   /** Stage a named scenario (src/duel/scenarios.ts) and play its steps (film: on the next freeze). */
   scenario(name: string, opts?: { film?: boolean; speed?: number }): Promise<void>;
+  /** A56.0: run one UI step (a person's mouse / keyboard: src/duel/qaInput.ts); runSteps calls it. */
+  ui(step: UiStep): Promise<void>;
   /** Names + descriptions of the scenarios. */
   scenarios(): Record<string, string>;
   /** Cinematic handler errors / watchdog timeouts so far. */
@@ -106,6 +109,11 @@ async function runSteps(name: string): Promise<void> {
   if (!sc) throw new Error(`unknown scenario ${name}`);
   for (const st of sc.steps) {
     const D = (window.__neon as unknown as { duel: DuelQa }).duel;
+    if (isUiStep(st)) {
+      // A56.0: a UI step (looked up on every step, like dispatch, so QA tools can wrap D.ui)
+      await D.ui(st);
+      continue;
+    }
     const a = typeof st === 'function' ? st(D) : st;
     if (a) await D.dispatch(a);
   }
@@ -382,6 +390,7 @@ export class DuelScene extends Phaser.Scene {
         else await runSteps(name);
       },
       scenarios: () => Object.fromEntries(Object.entries(SCENARIOS).map(([k, v]) => [k, v.desc])),
+      ui: (step) => runUiStep(scene, scene.views, step),
       errors: () => ({ handlers: [...scene.director.errors], timeouts: [...scene.director.timeouts] }),
       handlers: () => listHandlers(),
       views: scene.views,

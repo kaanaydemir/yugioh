@@ -59,6 +59,7 @@ import { cardLeaves } from '../_v3/card';
 import { monsterArt } from '../../art/monsters';
 import type { MonsterArt } from '../../art/types';
 import type { CinematicContext } from './types';
+import { V3HOOKS } from '../v3small/_hooks';
 
 type AnyCtx = CinematicContext<GameEvent>;
 
@@ -574,6 +575,7 @@ export async function presentDamage(ctx: AnyCtx, ev: Extract<GameEvent, { type: 
 }
 
 export async function presentHeal(ctx: AnyCtx, ev: Extract<GameEvent, { type: 'lpGain' }>, o: { at?: XY } = {}): Promise<void> {
+  const h = V3HOOKS.presentHeal; if (h) return h(ctx, ev, o); // v3 lane A6-B (S-8, S-14)
   const sc = ctx.scene;
   const lp = lpPoint(ctx, ev.player);
   const at = o.at ?? { x: lp.x, y: lp.y + (ev.player === 0 ? -30 : 26) };

@@ -1,0 +1,343 @@
+{
+ "title": "A5 — büyü / tuzak imza kareleri: önce | sonra",
+ "look": "v3",
+ "note": "docs/v3/A5_PLAN.md §1.2 sbs-<senaryo>.png: three moments of each scene, P1 and P2, anchored on the card's own 'activate' event (opening +250 ms, its middle, its end −100 ms) so a retimed scene is compared at the same beat. The lanes replace a moment with their signature frame (atAfter) when they know it. 'before' = node tools/sbs.mjs --spec tools/sbs/a5-scenes.json --capture shots/v3/a56/before/a5-scenes; one page per scene: --only heal-open,heal-peak,…",
+ "pairs": [
+  {
+   "name": "heal-open",
+   "label": "Şifa Pınarı P1 — açılış (activate +250 ms)",
+   "query": "?dev=duel&s=spHeal",
+   "at": {
+    "event": "activate",
+    "plus": 250
+   }
+  },
+  {
+   "name": "heal-peak",
+   "label": "Şifa Pınarı P1 — doruk (activate ortası)",
+   "query": "?dev=duel&s=spHeal",
+   "at": {
+    "event": "activate",
+    "frac": 0.5
+   }
+  },
+  {
+   "name": "heal-result",
+   "label": "Şifa Pınarı P1 — sonuç (activate sonu −100 ms)",
+   "query": "?dev=duel&s=spHeal",
+   "at": {
+    "event": "activate",
+    "edge": "end",
+    "plus": -100
+   }
+  },
+  {
+   "name": "healP2-open",
+   "label": "Şifa Pınarı P2 — açılış (activate +250 ms)",
+   "query": "?dev=duel&s=spHealP2",
+   "at": {
+    "event": "activate",
+    "plus": 250
+   }
+  },
+  {
+   "name": "healP2-peak",
+   "label": "Şifa Pınarı P2 — doruk (activate ortası)",
+   "query": "?dev=duel&s=spHealP2",
+   "at": {
+    "event": "activate",
+    "frac": 0.5
+   }
+  },
+  {
+   "name": "healP2-result",
+   "label": "Şifa Pınarı P2 — sonuç (activate sonu −100 ms)",
+   "query": "?dev=duel&s=spHealP2",
+   "at": {
+    "event": "activate",
+    "edge": "end",
+    "plus": -100
+   }
+  },
+  {
+   "name": "blade-open",
+   "label": "Ejder Kılıcı P1 — açılış (activate +250 ms)",
+   "query": "?dev=duel&s=spBlade",
+   "at": {
+    "event": "activate",
+    "plus": 250
+   }
+  },
+  {
+   "name": "blade-peak",
+   "label": "Ejder Kılıcı P1 — doruk (activate ortası)",
+   "query": "?dev=duel&s=spBlade",
+   "at": {
+    "event": "activate",
+    "frac": 0.5
+   }
+  },
+  {
+   "name": "blade-result",
+   "label": "Ejder Kılıcı P1 — sonuç (activate sonu −100 ms)",
+   "query": "?dev=duel&s=spBlade",
+   "at": {
+    "event": "activate",
+    "edge": "end",
+    "plus": -100
+   }
+  },
+  {
+   "name": "bladeP2-open",
+   "label": "Ejder Kılıcı P2 — açılış (activate +250 ms)",
+   "query": "?dev=duel&s=spBladeP2",
+   "at": {
+    "event": "activate",
+    "plus": 250
+   }
+  },
+  {
+   "name": "bladeP2-peak",
+   "label": "Ejder Kılıcı P2 — doruk (activate ortası)",
+   "query": "?dev=duel&s=spBladeP2",
+   "at": {
+    "event": "activate",
+    "frac": 0.5
+   }
+  },
+  {
+   "name": "bladeP2-result",
+   "label": "Ejder Kılıcı P2 — sonuç (activate sonu −100 ms)",
+   "query": "?dev=duel&s=spBladeP2",
+   "at": {
+    "event": "activate",
+    "edge": "end",
+    "plus": -100
+   }
+  },
+  {
+   "name": "volcano-open",
+   "label": "Volkan Arenası P1 — açılış (activate +250 ms)",
+   "query": "?dev=duel&s=spVolcano",
+   "at": {
+    "event": "activate",
+    "plus": 250
+   }
+  },
+  {
+   "name": "volcano-peak",
+   "label": "Volkan Arenası P1 — doruk (activate ortası)",
+   "query": "?dev=duel&s=spVolcano",
+   "at": {
+    "event": "activate",
+    "frac": 0.5
+   }
+  },
+  {
+   "name": "volcano-result",
+   "label": "Volkan Arenası P1 — sonuç (activate sonu −100 ms)",
+   "query": "?dev=duel&s=spVolcano",
+   "at": {
+    "event": "activate",
+    "edge": "end",
+    "plus": -100
+   }
+  },
+  {
+   "name": "volcanoP2-open",
+   "label": "Volkan Arenası P2 — açılış (activate +250 ms)",
+   "query": "?dev=duel&s=spVolcanoP2",
+   "at": {
+    "event": "activate",
+    "plus": 250
+   }
+  },
+  {
+   "name": "volcanoP2-peak",
+   "label": "Volkan Arenası P2 — doruk (activate ortası)",
+   "query": "?dev=duel&s=spVolcanoP2",
+   "at": {
+    "event": "activate",
+    "frac": 0.5
+   }
+  },
+  {
+   "name": "volcanoP2-result",
+   "label": "Volkan Arenası P2 — sonuç (activate sonu −100 ms)",
+   "query": "?dev=duel&s=spVolcanoP2",
+   "at": {
+    "event": "activate",
+    "edge": "end",
+    "plus": -100
+   }
+  },
+  {
+   "name": "mirror-open",
+   "label": "Ayna Kalkanı P1 — açılış (activate +250 ms)",
+   "query": "?dev=duel&s=tbMirror",
+   "at": {
+    "event": "activate",
+    "plus": 250
+   }
+  },
+  {
+   "name": "mirror-peak",
+   "label": "Ayna Kalkanı P1 — doruk (activate ortası)",
+   "query": "?dev=duel&s=tbMirror",
+   "at": {
+    "event": "activate",
+    "frac": 0.5
+   }
+  },
+  {
+   "name": "mirror-result",
+   "label": "Ayna Kalkanı P1 — sonuç (activate sonu −100 ms)",
+   "query": "?dev=duel&s=tbMirror",
+   "at": {
+    "event": "activate",
+    "edge": "end",
+    "plus": -100
+   }
+  },
+  {
+   "name": "mirrorP2-open",
+   "label": "Ayna Kalkanı P2 — açılış (activate +250 ms)",
+   "query": "?dev=duel&s=tbMirrorP2",
+   "at": {
+    "event": "activate",
+    "plus": 250
+   }
+  },
+  {
+   "name": "mirrorP2-peak",
+   "label": "Ayna Kalkanı P2 — doruk (activate ortası)",
+   "query": "?dev=duel&s=tbMirrorP2",
+   "at": {
+    "event": "activate",
+    "frac": 0.5
+   }
+  },
+  {
+   "name": "mirrorP2-result",
+   "label": "Ayna Kalkanı P2 — sonuç (activate sonu −100 ms)",
+   "query": "?dev=duel&s=tbMirrorP2",
+   "at": {
+    "event": "activate",
+    "edge": "end",
+    "plus": -100
+   }
+  },
+  {
+   "name": "chasm-open",
+   "label": "Yer Yarığı P1 — açılış (activate +250 ms)",
+   "query": "?dev=duel&s=tbChasm",
+   "at": {
+    "event": "activate",
+    "plus": 250
+   }
+  },
+  {
+   "name": "chasm-peak",
+   "label": "Yer Yarığı P1 — doruk (activate ortası)",
+   "query": "?dev=duel&s=tbChasm",
+   "at": {
+    "event": "activate",
+    "frac": 0.5
+   }
+  },
+  {
+   "name": "chasm-result",
+   "label": "Yer Yarığı P1 — sonuç (activate sonu −100 ms)",
+   "query": "?dev=duel&s=tbChasm",
+   "at": {
+    "event": "activate",
+    "edge": "end",
+    "plus": -100
+   }
+  },
+  {
+   "name": "chasmP2-open",
+   "label": "Yer Yarığı P2 — açılış (activate +250 ms)",
+   "query": "?dev=duel&s=tbChasmP2",
+   "at": {
+    "event": "activate",
+    "plus": 250
+   }
+  },
+  {
+   "name": "chasmP2-peak",
+   "label": "Yer Yarığı P2 — doruk (activate ortası)",
+   "query": "?dev=duel&s=tbChasmP2",
+   "at": {
+    "event": "activate",
+    "frac": 0.5
+   }
+  },
+  {
+   "name": "chasmP2-result",
+   "label": "Yer Yarığı P2 — sonuç (activate sonu −100 ms)",
+   "query": "?dev=duel&s=tbChasmP2",
+   "at": {
+    "event": "activate",
+    "edge": "end",
+    "plus": -100
+   }
+  },
+  {
+   "name": "recall-open",
+   "label": "Ruh Çağrısı P1 — açılış (activate +250 ms)",
+   "query": "?dev=duel&s=spRecall",
+   "at": {
+    "event": "activate",
+    "plus": 250
+   }
+  },
+  {
+   "name": "recall-peak",
+   "label": "Ruh Çağrısı P1 — doruk (activate ortası)",
+   "query": "?dev=duel&s=spRecall",
+   "at": {
+    "event": "activate",
+    "frac": 0.5
+   }
+  },
+  {
+   "name": "recall-result",
+   "label": "Ruh Çağrısı P1 — sonuç (activate sonu −100 ms)",
+   "query": "?dev=duel&s=spRecall",
+   "at": {
+    "event": "activate",
+    "edge": "end",
+    "plus": -100
+   }
+  },
+  {
+   "name": "recallP2-open",
+   "label": "Ruh Çağrısı P2 — açılış (activate +250 ms)",
+   "query": "?dev=duel&s=spRecallP2",
+   "at": {
+    "event": "activate",
+    "plus": 250
+   }
+  },
+  {
+   "name": "recallP2-peak",
+   "label": "Ruh Çağrısı P2 — doruk (activate ortası)",
+   "query": "?dev=duel&s=spRecallP2",
+   "at": {
+    "event": "activate",
+    "frac": 0.5
+   }
+  },
+  {
+   "name": "recallP2-result",
+   "label": "Ruh Çağrısı P2 — sonuç (activate sonu −100 ms)",
+   "query": "?dev=duel&s=spRecallP2",
+   "at": {
+    "event": "activate",
+    "edge": "end",
+    "plus": -100
+   }
+  }
+ ]
+}

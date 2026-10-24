@@ -34,6 +34,7 @@ import {
   CARD_SIL,
   cardAccent,
   cardBackCanvas,
+  cardBackKey,
   cardFaceCanvas,
   cardFaceKey,
 } from '../art/cards';
@@ -42,6 +43,7 @@ import type { PixelCanvas } from '../art/pixel';
 import { mix } from '../art/pixel';
 import { TEX, tweenValue } from '../vfx/core';
 import { CARD_H, CARD_W } from './layout';
+import { V3_A6_A, cardOverlayBlend } from './v3flags';
 
 export interface FlyOpts {
   /** Flight time (default 420). */
@@ -201,23 +203,23 @@ export class CardSprite extends Phaser.GameObjects.Container {
   faceUp: boolean;
   /** Inner container: flip / hover lift / squash live here. */
   readonly inner: Phaser.GameObjects.Container;
-  private readonly face: Phaser.GameObjects.Image;
-  private readonly shadow: Phaser.GameObjects.Image;
-  private readonly glow: Phaser.GameObjects.Image;
-  private readonly glowRun: Phaser.GameObjects.Sprite;
-  private readonly sheen: Phaser.GameObjects.Sprite;
-  private readonly flashImg: Phaser.GameObjects.Image;
-  private readonly rim: Phaser.GameObjects.Image;
-  private glowTween: Phaser.Tweens.Tween | null = null;
-  private highlight: number | null = null;
-  private player: PlayerId | null = null;
-  private trailEvent: Phaser.Time.TimerEvent | null = null;
-  private foilEvent: Phaser.Time.TimerEvent | null = null;
-  private lifted = false;
+  protected readonly face: Phaser.GameObjects.Image;
+  protected readonly shadow: Phaser.GameObjects.Image;
+  protected readonly glow: Phaser.GameObjects.Image;
+  protected readonly glowRun: Phaser.GameObjects.Sprite;
+  protected readonly sheen: Phaser.GameObjects.Sprite;
+  protected readonly flashImg: Phaser.GameObjects.Image;
+  protected readonly rim: Phaser.GameObjects.Image;
+  protected glowTween: Phaser.Tweens.Tween | null = null;
+  protected highlight: number | null = null;
+  protected player: PlayerId | null = null;
+  protected trailEvent: Phaser.Time.TimerEvent | null = null;
+  protected foilEvent: Phaser.Time.TimerEvent | null = null;
+  protected lifted = false;
   private seed = 0x9e3779b9;
   /** Tweens / timers started by the card itself (stopped on destroy). */
-  private readonly ownTweens = new Set<Phaser.Tweens.Tween>();
-  private readonly ownTimers = new Set<Phaser.Time.TimerEvent>();
+  protected readonly ownTweens = new Set<Phaser.Tweens.Tween>();
+  protected readonly ownTimers = new Set<Phaser.Time.TimerEvent>();
 
   constructor(scene: Phaser.Scene, x: number, y: number, cardId: CardId | null, opts: { faceUp?: boolean; player?: PlayerId } = {}) {
     super(scene, x, y);
@@ -229,11 +231,12 @@ export class CardSprite extends Phaser.GameObjects.Container {
     this.glow = scene.add.image(0, 0, CARD_GLOW, 'g:0').setVisible(false).setBlendMode(Phaser.BlendModes.ADD);
     this.glowRun = scene.add.sprite(0, 0, CARD_GLOW_RUN, 'run:0').setVisible(false).setBlendMode(Phaser.BlendModes.ADD);
     this.face = scene.add.image(0, 0, CARD_BACK);
-    this.sheen = scene.add.sprite(0, 0, CARD_SHEEN, 's:0').setVisible(false).setBlendMode(Phaser.BlendModes.ADD);
+    this.sheen = scene.add.sprite(0, 0, CARD_SHEEN, 's:0').setVisible(false).setBlendMode(cardOverlayBlend());
     this.flashImg = scene.add.image(0, 0, CARD_SIL).setAlpha(0).setBlendMode(Phaser.BlendModes.ADD);
     this.inner.add([this.rim, this.glow, this.glowRun, this.face, this.sheen, this.flashImg]);
     this.add([this.shadow, this.inner]);
     this.setSize(CARD_W, CARD_H);
+    this.player = opts.player ?? null; // the back's owner before the first face (S-2); setPlayerTint below as before
     this.refreshFace();
     if (opts.player !== undefined) this.setPlayerTint(opts.player);
     this.sheen.on(Phaser.Animations.Events.ANIMATION_COMPLETE, () => this.sheen.setVisible(false));
@@ -249,7 +252,7 @@ export class CardSprite extends Phaser.GameObjects.Container {
   }
 
   /** scene.tweens.add, tracked: the tween is stopped (its promise resolves) if the card dies. */
-  private addTween(config: Phaser.Types.Tweens.TweenBuilderConfig): Phaser.Tweens.Tween | null {
+  protected addTween(config: Phaser.Types.Tweens.TweenBuilderConfig): Phaser.Tweens.Tween | null {
     if (this.dead) return null;
     const t = this.scene.tweens.add(config);
     this.ownTweens.add(t);
@@ -260,7 +263,7 @@ export class CardSprite extends Phaser.GameObjects.Container {
   }
 
   /** Promise of a tracked tween (resolves on complete or stop; at once when the card is dead). */
-  private tw(config: Phaser.Types.Tweens.TweenBuilderConfig): Promise<void> {
+  protected tw(config: Phaser.Types.Tweens.TweenBuilderConfig): Promise<void> {
     return new Promise((resolve) => {
       const t = this.addTween(config);
       if (!t) return resolve();
@@ -270,7 +273,7 @@ export class CardSprite extends Phaser.GameObjects.Container {
   }
 
   /** Tracked tween of a plain number (onUpdate is skipped once the card is dead). */
-  private tv(from: number, to: number, duration: number, onUpdate: (v: number) => void, ease = 'Linear'): Promise<void> {
+  protected tv(from: number, to: number, duration: number, onUpdate: (v: number) => void, ease = 'Linear'): Promise<void> {
     const o = { v: from };
     return this.tw({
       targets: o,
@@ -284,7 +287,7 @@ export class CardSprite extends Phaser.GameObjects.Container {
   }
 
   /** Tracked scene-time callback (skipped once the card is dead). */
-  private later(ms: number, fn: () => void): void {
+  protected later(ms: number, fn: () => void): void {
     if (this.dead) return;
     const ev = this.scene.time.delayedCall(ms, () => {
       this.ownTimers.delete(ev);
@@ -311,21 +314,21 @@ export class CardSprite extends Phaser.GameObjects.Container {
 
   /** Texture key currently shown. */
   get textureKey(): string {
-    return this.faceUp && this.cardId ? cardFaceKey(this.cardId) : CARD_BACK;
+    return this.faceUp && this.cardId ? cardFaceKey(this.cardId) : cardBackKey(this.player ?? 0);
   }
 
   /** Pixels of the shown side (for custom VFX). */
   get pixels(): PixelCanvas {
-    return this.faceUp && this.cardId ? cardFaceCanvas(this.cardId) : cardBackCanvas();
+    return this.faceUp && this.cardId ? cardFaceCanvas(this.cardId) : cardBackCanvas(this.player ?? 0);
   }
 
-  private get isAce(): boolean {
+  protected get isAce(): boolean {
     if (!this.cardId) return false;
     const d = cardDef(this.cardId);
     return isMonster(d) && d.ace;
   }
 
-  private refreshFace(): void {
+  protected refreshFace(): void {
     if (this.dead || !this.face.active) return;
     this.face.setTexture(this.textureKey);
     // Aces shimmer with a periodic holo-foil sweep while face-up.
@@ -404,19 +407,22 @@ export class CardSprite extends Phaser.GameObjects.Container {
 
   /** Player color for the trail, default highlight and a faint rim light. null clears. */
   setPlayerTint(player: PlayerId | null): this {
+    const was = this.player;
     this.player = player;
     if (this.dead) return this;
+    // v3 lane A6-A (S-2): the back is the owner's — a face-down card follows its new owner
+    if (V3_A6_A && was !== player && !(this.faceUp && this.cardId)) this.refreshFace();
     if (player === null) this.rim.setVisible(false);
     else this.rim.setVisible(true).setTint(PLAYER_COLOR[player]).setAlpha(0.28);
     return this;
   }
 
-  private rnd(): number {
+  protected rnd(): number {
     this.seed = (this.seed * 1664525 + 1013904223) >>> 0;
     return this.seed / 4294967296;
   }
 
-  private get trailColor(): number {
+  protected get trailColor(): number {
     if (this.player !== null) return PLAYER_COLOR[this.player];
     return this.faceUp && this.cardId ? cardAccent(this.cardId) : PAL.cyan3;
   }
@@ -666,7 +672,7 @@ export class CardSprite extends Phaser.GameObjects.Container {
   }
 
   /** DESTROY: stop everything that could still call back into the (now dead) card. */
-  private cleanup(): void {
+  protected cleanup(): void {
     this.trailEvent?.remove();
     this.foilEvent?.remove();
     this.trailEvent = null;

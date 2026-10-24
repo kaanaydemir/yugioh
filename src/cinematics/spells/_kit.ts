@@ -29,7 +29,7 @@ import type { GameEvent, PlayerId, Uid } from '../../engine/types';
 import { PAL, RAMPS, type Ramp } from '../../art/palette';
 import { PixelCanvas } from '../../art/pixel';
 import { AK } from '../../art/arena';
-import { CARD_SIL, STAND_H, isoProject } from '../../art/cards';
+import { CARD_SIL, STAND_H, cardIsoKey, isoProject } from '../../art/cards';
 import { CardSprite } from '../../view/CardSprite';
 import type { TileCard } from '../../view/TileCard';
 import { BOARD_CENTER, DEPTH, LOOK_V3, TILE_H, TILE_W, type XY, duelistXY, zoneXY } from '../../view/layout';
@@ -261,19 +261,48 @@ function makeSeal(scene: Phaser.Scene, c: XY, o: { drawMs?: number; r?: number }
 
 // ================================================================ name plate
 
-interface Plate {
+/** A spell's name plate (S-11: exported for lane A5-B's entry stamp, A5 §3.8 B-8). */
+export interface Plate {
   hide(ms?: number): Promise<void>;
 }
 
-function namePlate(scene: Phaser.Scene, cardId: CardId, at: XY): Plate {
+/**
+ * Options of namePlate (A5 §4.3 / S-11). Every field defaults to the spell plate as it has always
+ * been (teal, 7 ms per letter, FX_TOP + 12): calls without options behave exactly as before.
+ */
+export interface NamePlateOpts {
+  /** The plate's top / bottom line and the end caps' outer pixels (default teal3). */
+  line?: number;
+  /** The inner hairline under the top line (default teal1). */
+  inner?: number;
+  /** The letters and the end caps' centre pixel (default teal4; the newest letters flash white). */
+  text?: number;
+  /** Reveal pace: ms per letter (default 7). */
+  msPerLetter?: number;
+  /** Reveal one letter per rendered frame instead (an entry stamp: "harfler kare başına bir gelir"). */
+  perFrame?: boolean;
+  /** Depth of the plate (the letters go 1 above; default DEPTH.FX_TOP + 12). */
+  depth?: number;
+}
+
+/**
+ * The name plate stamped under a card (A2 spell opening): an ink band wipes open, the name types in
+ * letter by letter, the newest letters white. hide() steps it out.
+ */
+export function namePlate(scene: Phaser.Scene, cardId: CardId, at: XY, po: NamePlateOpts = {}): Plate {
+  const cLine = po.line ?? PAL.teal3;
+  const cInner = po.inner ?? PAL.teal1;
+  const cText = po.text ?? PAL.teal4;
+  const msPerLetter = po.msPerLetter ?? 7;
+  const depth = po.depth ?? DEPTH.FX_TOP + 12;
   const name = upper(CARDS[cardId].name);
   const tm = measureText(name, 'md');
   const W = tm.w + 22;
   const H = 15;
   const x0 = Math.round(at.x - W / 2);
   const y0 = Math.round(at.y - H / 2);
-  const ras = new Raster(scene, x0 - 6, y0 - 2, W + 12, H + 4, DEPTH.FX_TOP + 12);
-  const txt = pixelText(scene, Math.round(at.x), Math.round(at.y), name, { size: 'md', color: PAL.teal4, originX: 0.5, originY: 0.5 }).setDepth(DEPTH.FX_TOP + 13);
+  const ras = new Raster(scene, x0 - 6, y0 - 2, W + 12, H + 4, depth);
+  const txt = pixelText(scene, Math.round(at.x), Math.round(at.y), name, { size: 'md', color: cText, originX: 0.5, originY: 0.5 }).setDepth(depth + 1);
   const total = revealText(txt, 0);
   let open = 0;
   let level = 1;
@@ -285,26 +314,26 @@ function namePlate(scene: Phaser.Scene, cardId: CardId, at: XY): Plate {
       const w = Math.max(2, Math.round(W * open));
       const l = Math.round(at.x - w / 2);
       g.rect(l, y0 + 1, w, H - 2, PAL.ink, level >= 1 ? 0.88 : level * 0.8);
-      g.rect(l, y0, w, 1, PAL.teal3, level);
-      g.rect(l, y0 + H - 1, w, 1, PAL.teal3, level);
-      g.rect(l + 2, y0 + 2, w - 4, 1, PAL.teal1, level * 0.6);
+      g.rect(l, y0, w, 1, cLine, level);
+      g.rect(l, y0 + H - 1, w, 1, cLine, level);
+      g.rect(l + 2, y0 + 2, w - 4, 1, cInner, level * 0.6);
       // end caps: little diamonds
       for (const ex of [l - 3, l + w + 2]) {
-        g.px(ex, y0 + 7, PAL.teal4, level);
-        g.px(ex - 1, y0 + 7, PAL.teal3, level);
-        g.px(ex + 1, y0 + 7, PAL.teal3, level);
-        g.px(ex, y0 + 6, PAL.teal3, level);
-        g.px(ex, y0 + 8, PAL.teal3, level);
+        g.px(ex, y0 + 7, cText, level);
+        g.px(ex - 1, y0 + 7, cLine, level);
+        g.px(ex + 1, y0 + 7, cLine, level);
+        g.px(ex, y0 + 6, cLine, level);
+        g.px(ex, y0 + 8, cLine, level);
       }
     });
   const stop = onFrame(scene, (dt) => {
     if (dead) return false;
     open = Math.min(1, open + dt / 80);
     if (open >= 1 && shown < total) {
-      shown = Math.min(total, shown + dt / 7);
+      shown = Math.min(total, shown + (po.perFrame ? (dt > 0 ? 1 : 0) : dt / msPerLetter));
       revealText(txt, Math.floor(shown));
       // the newest letters flash white
-      txt.setTint(shown < total ? PAL.white : PAL.teal4);
+      txt.setTint(shown < total ? PAL.white : cText);
     }
     draw();
     return true;
@@ -476,6 +505,14 @@ export interface Opening {
   release(to: XY, o?: StreakOpts): Promise<void>;
   /** Equip / field spells: the card flies down onto its zone and lies there (TileCard). */
   land(o: { spot: 'spellTrap' | 'field'; index: number }): Promise<TileCard>;
+  /**
+   * v3 look only (A5 §4.3 landV3): equip / field spells land WITHOUT rotation — the card flies on
+   * whole pixels at scale 1 to its own zone, appears standing on its tile (TileCard) and lies down
+   * (A5 §3.1 İNİŞ, §3.2). A set card already standing on that tile just lies down. No sound and no
+   * light of its own: `onLand` fires on the frame the card lies flat (the scene's 'land' mark).
+   * Resolves with the TileCard lying on the zone. Absent in the old look (use land()).
+   */
+  landV3?(o: LandV3Opts): Promise<TileCard>;
   /** Nothing to resolve: fade everything. */
   close(): Promise<void>;
   /**
@@ -484,6 +521,18 @@ export interface Opening {
    * card just fades). Without a kept card it re-forms at `from` (v1: sendResolved).
    */
   leave?(gi: number, from?: XY): Promise<void>;
+}
+
+/** landV3 options (A5 §4.3). */
+export interface LandV3Opts {
+  spot: 'spellTrap' | 'field';
+  index: number;
+  /** Flight to the zone (default 110 ms). */
+  ms?: number;
+  /** The lie-down on the tile (default 120 ms; a set card: 160 ms). */
+  lieMs?: number;
+  /** The frame the card lies flat (the 'land' mark: the scene's sound and light). */
+  onLand?: () => void;
 }
 
 export interface OpeningOpts {
@@ -498,8 +547,17 @@ export interface OpeningOpts {
    * spell sends it to the graveyard later with op.leave() — card continuity.
    */
   keepCard?: boolean;
-  /** v3 look only: where the orb leaves the card — its centre (default) or its top edge (a bolt to the sky). */
-  releaseFrom?: 'center' | 'top';
+  /**
+   * v3 look only: where the orb leaves the card — its centre (default), its top edge (a bolt to the
+   * sky) or its bottom edge (A5 §3.5: the spring's orb drops to the rune ring under the card).
+   */
+  releaseFrom?: 'center' | 'top' | 'bottom';
+  /**
+   * v3 look only, a set card's release(): 'dissolve' (default, as before: the 260 ms noise block) or
+   * 'flow' (A5 §3.6 / §4.3: the card's own pixels, TileCard.currentPixels(), pour into the orb like a
+   * hand card's do — collapseTileInto). Nothing passes 'flow' yet (lane A5-A step A-7 does).
+   */
+  setRelease?: 'dissolve' | 'flow';
 }
 
 /** Standing card centre above a tile (TileCard.standUp pose at scale 1). */
@@ -852,6 +910,23 @@ function collapseInto(scene: Phaser.Scene, card: CardSprite, to: XY, ms = 110): 
   sp.release();
 }
 
+/**
+ * A set card's pixels pour into `to` (A5 §3.6: collapseInto's TileCard version). The pixels are the
+ * card's pose on screen right now (TileCard.currentPixels(), contract S-3); the caller removes the
+ * tile on the same frame.
+ */
+export function collapseTileInto(scene: Phaser.Scene, tile: TileCard, to: XY, ms = 110): void {
+  const { px: pc, x: x0, y: y0 } = tile.currentPixels();
+  const sp = new PxSparks(scene, DEPTH.FX_TOP + 11);
+  for (let y = 1; y < pc.h; y += 4)
+    for (let x = (y >> 2) % 2 ? 1 : 3; x < pc.w; x += 4) {
+      const c = pc.get(x, y);
+      if (c === null) continue;
+      sp.add({ x: x0 + x, y: y0 + y, tx: to.x, ty: to.y, curl: rr(-6, 6), life: rr(ms * 0.7, ms), colors: [c, PAL.teal4, PAL.white], shape: 'px', fadeAt: 1 });
+    }
+  sp.release();
+}
+
 /** The v3 energy orb: a whole-pixel orb (no glow textures) with a pixel comet tail; resolves on arrival. */
 async function energyStreakV3(scene: Phaser.Scene, from: XY, to: XY, o: StreakOpts): Promise<void> {
   const ramp = o.ramp ?? TEAL_FX;
@@ -1036,7 +1111,12 @@ async function spellOpeningV3(
     card: card ?? (standing as TileCard),
     center,
     async release(to, so = {}) {
-      const from = o.releaseFrom === 'top' ? { x: center.x, y: Math.round(center.y - (standing ? 22 : CARD_HH) - 2) } : center;
+      const from =
+        o.releaseFrom === 'top'
+          ? { x: center.x, y: Math.round(center.y - (standing ? 22 : CARD_HH) - 2) }
+          : o.releaseFrom === 'bottom'
+            ? { x: center.x, y: Math.round(center.y + CARD_HH - 1) }
+            : center;
       if (card) cardSil(sc, center, PAL.white, 2);
       ctx.sfx('whoosh', { volume: 0.6, pitch: 1.5 });
       cleanup('release');
@@ -1047,6 +1127,10 @@ async function spellOpeningV3(
       } else if (card) {
         collapseInto(sc, card, from);
         card.destroy();
+      } else if (standing && o.setRelease === 'flow') {
+        // A5 §3.6: the set card's own pixels pour into the orb (no noise block)
+        collapseTileInto(sc, standing, from);
+        standing.destroy();
       } else if (standing) {
         const t = standing;
         bg(t.dissolve(260).then(() => t.active && t.destroy()));
@@ -1073,6 +1157,63 @@ async function spellOpeningV3(
       void lightFlash(sc, at.x, at.y, PAL.teal3, 30, 380, { intensity: 0.85, ring: true });
       t.tileFlash(PAL.teal3, 300);
       return t;
+    },
+    async landV3(l) {
+      cleanup('dismiss');
+      if (standing && l.spot === 'spellTrap' && l.index === o.zone && standing.active) {
+        // a set equip is already standing on its own tile: it lies back down (it stays on the field)
+        await standing.layDown(l.lieMs ?? 160);
+        l.onLand?.();
+        return standing;
+      }
+      own();
+      if (standing && standing.active) standing.destroy();
+      const at = zoneXY(o.player, l.spot, l.index);
+      // TEMP A-3 probe: warm the flat card's static iso texture off-screen (GPU upload before first use)
+      if ((globalThis as unknown as { __a3dbg?: Record<string, boolean> }).__a3dbg?.warm) {
+        const wk = sc.add.image(-80, -80, cardIsoKey(o.cardId, 'up', o.player)).setDepth(-1);
+        bg(wait(sc, 120).then(() => wk.destroy()));
+      }
+      // where the card stands on its zone (TileCard's standing pose at scale 1: the same 48×68 face)
+      const [, py] = isoProject([0, 0, STAND_H / 2 + 2]);
+      const dest = { x: Math.round(at.x), y: Math.round(at.y + py) };
+      const c = card;
+      if (c && c.active) {
+        // the flight: whole pixels, no rotation, scale 1, a 6-px arc, a 1-px teal trail under it
+        const p0 = { x: Math.round(c.x), y: Math.round(c.y) };
+        c.setRotation(0).setScale(1);
+        const trail = new PxSparks(sc, DEPTH.FX_TOP + 9);
+        let last = p0;
+        await run(sc, l.ms ?? 110, (t) => {
+          if (!c.active) return;
+          const k = E.inOutSine(t);
+          const x = Math.round(p0.x + (dest.x - p0.x) * k);
+          const y = Math.round(p0.y + (dest.y - p0.y) * k - Math.sin(Math.PI * t) * 6);
+          c.setPosition(x, y);
+          if (x !== last.x || y !== last.y) trail.add({ x, y: y + CARD_HH, life: 120, colors: [PAL.teal3, PAL.teal2, PAL.teal1], shape: 'px', fadeAt: 1 });
+          last = { x, y };
+        });
+        trail.release();
+        c.destroy();
+      }
+      // it appears standing on its tile (drawn in that pose at once: no flat frame first) and lies down
+      const tile = field.placeCard(o.player, l.spot, l.index, o.uid, o.cardId, true, 'up');
+      if ((globalThis as unknown as { __a3dbg?: Record<string, boolean> }).__a3dbg?.log2) {
+        // TEMP A-3 probe
+        let n = 0;
+        const tc = tile as unknown as { img: Phaser.GameObjects.Image; visible: boolean; alpha: number; depth: number; list: Phaser.GameObjects.GameObject[]; active: boolean };
+        onFrame(sc, () => {
+          const im = tc.img;
+          const src = im.frame?.source as unknown as { glTexture?: unknown; width: number; height: number } | undefined;
+          console.log('A3P', n, sc.time.now.toFixed(0), tc.active, tc.visible, tc.alpha, tc.depth, im.texture.key, im.frame?.name, im.visible, im.alpha, im.x, im.y, im.displayOriginX, im.displayOriginY, im.width, im.height, src ? `${src.width}x${src.height}:${src.glTexture ? 'gl' : 'nogl'}` : '-', tc.list.map((c) => (c as Phaser.GameObjects.Image).visible ? 1 : 0).join(''));
+          return ++n < 30;
+        });
+      }
+      tile.standing = true;
+      tile.setCard(o.cardId);
+      await tile.layDown(l.lieMs ?? 120);
+      l.onLand?.();
+      return tile;
     },
     async close() {
       cleanup('dismiss');

@@ -3,20 +3,69 @@
 // The stack is a column of iso card images (one layer per ~2 cards, 1 px apart) so its height
 // reads the count at a glance; the top layer is the card back (deck) or the latest card face
 // (graveyard). A small count tag sits on the tile's front corner.
+//
+// v3 (lane A6-A, V3_A6_A; docs/v3/A6_PLAN.md K4 "not confused with the deck"): the stack reads as a
+// block of card edges, never as one card lying on a pad — one layer per card (up to V3_MAX_LAYERS),
+// each lower layer a flat silhouette in paper-edge tones (lit left face, shaded right face, the two
+// alternating card by card) instead of a darkened copy of the card, an ink contact line under it,
+// and an opaque count tag. The top layer is the same S-2 back (or face) as before.
 
 import Phaser from 'phaser';
 import type { CardId } from '../data/cards';
-import { ISO_CX, ISO_CY, ISO_TEX_H, ISO_TEX_W, cardIsoKey } from '../art/cards';
+import { ISO_CX, ISO_CY, ISO_TEX_H, ISO_TEX_W, cardIsoKey, isoCanvas } from '../art/cards';
 import { PAL, PLAYER_RAMP } from '../art/palette';
-import { mix } from '../art/pixel';
+import { PixelCanvas, mix } from '../art/pixel';
+import { addStaticCanvas } from '../art/textures';
 import type { PlayerId } from '../engine/types';
 import { pixelText } from '../ui/text';
 import { DEPTH, type XY, zoneXY } from '../view/layout';
+import { V3_A6_A } from '../view/v3flags';
 import { tween, wait } from '../vfx/core';
 
 export type PileKind = 'deck' | 'graveyard';
 
 const MAX_LAYERS = 9;
+/** v3: one layer per card up to this many (the stack's height reads the count card by card). */
+const V3_MAX_LAYERS = 8;
+
+/**
+ * v3: the paper-edge tones of the stack's layers, from the layer right under the top card down:
+ * [lit (left face), shaded (right face)], alternating card by card; the lowest layer is the ink
+ * contact line.
+ */
+const V3_EDGES: readonly (readonly [number, number])[] = [
+  [PAL.mist, PAL.steel],
+  [PAL.night3, PAL.night2],
+];
+
+/**
+ * v3: a lower layer of the stack — the resting iso card's silhouette, flat, split at its bottom
+ * vertex into a lit left and a shaded right face (only its bottom edge shows under the layer above).
+ */
+function pileEdgeKey(scene: Phaser.Scene, player: PlayerId, lit: number, shade: number): string {
+  const key = `v3pile:edge:p${player + 1}:${lit.toString(16)}:${shade.toString(16)}`;
+  if (scene.textures.exists(key)) return key;
+  const src = isoCanvas('back', 'up', player);
+  // the bottom vertex: the middle of the lowest opaque row
+  let vx = src.w / 2;
+  for (let y = src.h - 1; y >= 0; y--) {
+    let x0 = -1;
+    let x1 = -1;
+    for (let x = 0; x < src.w; x++)
+      if (src.isOpaque(x, y)) {
+        if (x0 < 0) x0 = x;
+        x1 = x;
+      }
+    if (x0 >= 0) {
+      vx = (x0 + x1) / 2;
+      break;
+    }
+  }
+  const p = new PixelCanvas(src.w, src.h);
+  for (let y = 0; y < src.h; y++) for (let x = 0; x < src.w; x++) if (src.isOpaque(x, y)) p.set(x, y, x + 0.5 < vx ? lit : shade);
+  addStaticCanvas(scene, key, p.toCanvas());
+  return key;
+}
 
 export class PileView {
   readonly scene: Phaser.Scene;
@@ -94,6 +143,7 @@ export class PileView {
 
   private layerCount(n: number): number {
     if (n <= 0) return 0;
+    if (V3_A6_A) return Math.min(V3_MAX_LAYERS, n);
     return Math.min(MAX_LAYERS, Math.ceil(n / 2));
   }
 
@@ -105,6 +155,14 @@ export class PileView {
     const oy = ISO_CY / ISO_TEX_H;
     for (let i = 0; i < L; i++) {
       const isTop = i === L - 1;
+      if (V3_A6_A && !isTop) {
+        // v3: a paper edge (the layer right under the top card is the lit one; the lowest is ink)
+        const k = L - 2 - i;
+        const [lit, shade] = i === 0 && L > 2 ? [PAL.ink, PAL.ink] : V3_EDGES[k % 2];
+        const edge = this.scene.add.image(this.home.x, this.home.y - i, pileEdgeKey(this.scene, this.player, lit, shade)).setOrigin(ox, oy).setDepth(DEPTH.CARD_ON_TILE + i * 0.01);
+        this.layers.push(edge);
+        continue;
+      }
       const key = isTop && this.kind === 'graveyard' && this.top ? cardIsoKey(this.top, 'up', this.player) : cardIsoKey('back', 'up', this.player);
       const img = this.scene.add.image(this.home.x, this.home.y - i, key).setOrigin(ox, oy).setDepth(DEPTH.CARD_ON_TILE + i * 0.01);
       if (!isTop) {
@@ -122,7 +180,7 @@ export class PileView {
     const y = Math.round(this.home.y + 8);
     this.tag.clear();
     if (this.n > 0) {
-      this.tag.fillStyle(PAL.ink, 0.85).fillRect(x, y, w, 9);
+      this.tag.fillStyle(PAL.ink, V3_A6_A ? 1 : 0.85).fillRect(x, y, w, 9);
       this.tag.fillStyle(R[1], 1).fillRect(x + 1, y, w - 2, 1);
       this.tag.fillStyle(R[0], 1).fillRect(x + 1, y + 8, w - 2, 1);
     }

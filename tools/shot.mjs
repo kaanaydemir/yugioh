@@ -16,11 +16,16 @@
 //   --cols C           contact sheet columns (default 4)
 //   --clip x,y,w,h     crop to a region in GAME pixels (640×360 space)
 //   --frames DIR       with --film: also write every film frame as DIR/fNNNN.png (for GIF / video)
-//   --fresh            "?dev=duel&s=<key>" only: freeze, then restart the duel on that scenario under the
+//   --fresh            "?dev=duel&s=<key>": freeze, then restart the duel on that scenario under the
 //                      frozen clock (__neon.duel.scenario) before the capture. The real-time duel before
 //                      the freeze no longer leaks in, so a --film / --step capture is a function of the
-//                      code alone: pixel-identical between runs (v3 plan A1.12)
+//                      code alone: pixel-identical between runs (v3 plan A1.12).
+//                      A duel launch ("?mode=hotseat&seed=1&holdIntro=1&curtain=0" …, A56.0): freeze,
+//                      restart the same launch (seed, first player) under the frozen clock and wait
+//                      until its opening is held again (holdIntro=1); the film starts the opening at
+//                      t = 0 (tools/lib/pagekit.mjs freshLaunchInPage)
 //   --timeout MS       ready timeout (default 30000); page loads wait at least 120 s
+//   --help             this text
 //   console.log / console.error output from the page (and from --eval) is printed
 //
 // Prints page errors / console errors. Exit code 1 if the page threw.
@@ -30,6 +35,7 @@ import { chromium } from 'playwright-core';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { freshLaunchInPage } from './lib/pagekit.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -48,6 +54,15 @@ function parseArgs(argv) {
 }
 
 const args = parseArgs(process.argv.slice(2));
+if (args.help) {
+  const out = [];
+  for (const l of fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1)) {
+    if (!l.startsWith('//')) break;
+    out.push(l.replace(/^\/\/ ?/, ''));
+  }
+  console.log(out.join('\n'));
+  process.exit(0);
+}
 const film = args.film ? Number(args.film) : 0;
 const scale = Number(args.scale ?? (film ? 1 : 2));
 const out = path.resolve(root, args.out ?? 'shots/shot.png');
@@ -120,7 +135,15 @@ try {
     }
   }
 
-  if (args.fresh) {
+  if (args.fresh && !new URLSearchParams(q).get('s') && new URLSearchParams(q).get('mode')) {
+    // a duel launch (the opening films of tools/filmdiff.mjs a6v1 / a6v3): restart it frozen
+    try {
+      await page.evaluate(freshLaunchInPage);
+    } catch (e) {
+      logs.push(`[fresh error] ${e.message}`);
+      failed = true;
+    }
+  } else if (args.fresh) {
     const key = new URLSearchParams(q).get('s');
     try {
       await page.evaluate(async (key) => {

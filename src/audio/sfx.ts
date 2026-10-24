@@ -24,6 +24,9 @@ import { Voice } from './synth';
 import type { V3SfxName } from './v3/slice';
 import type { V3MaterialSfxName } from './v3/materials';
 import type { V3VoiceSfxName } from './v3/voices';
+import type { V3SpellSfxName } from './v3/spells';
+import type { UiCardSfxName } from './v3/ui-cards';
+import type { UiFlowSfxName } from './v3/ui-flow';
 
 export type SfxName =
   // UI
@@ -51,7 +54,12 @@ export type SfxName =
   // v3 material hits (additive: src/audio/v3/materials.ts — the template hit<Material><Light|Heavy|Magic>)
   | V3MaterialSfxName
   // v3 character voices from presentation recipes (additive: src/audio/v3/voices.ts — voice:<card>:<role>)
-  | V3VoiceSfxName;
+  | V3VoiceSfxName
+  // A5 / A6 (additive, A56.0): spell / trap sounds (src/audio/v3/spells.ts) and the UI family
+  // (src/audio/v3/ui-cards.ts, ui-flow.ts)
+  | V3SpellSfxName
+  | UiCardSfxName
+  | UiFlowSfxName;
 
 export interface SfxOpts {
   /** 0..1, default 1. */
