@@ -33,8 +33,10 @@
 //            dust ring, a 1-px tremble of the pad (local, never the camera). The card is born on the scar
 //            (cardLeaves: a 2-frame 1-px white rim) and flies to the graveyard (lands ≈ 1.15 s; measured); the
 //            scar steps out (ink → night0 → gone). chasmShut (duck 0.5)
-//   then     EXIT — `exit`: the trap card lies down on its tile and leaves for the graveyard from there,
-//            landing ≥ 150 ms after the victim's card (≈ 1.35 s); the camera relaxes (ctx.unfocus(320)).
+//   then     EXIT — `exit`: once the slabs have shut (at any game speed: the fall is frame-stepped, so at
+//            3× the shut can come later than CRACK_AT + SHUT_AFTER), the trap card lies down on its tile
+//            and leaves for the graveyard from there, landing ≥ 150 ms after the victim's card (≈ 1.33 s);
+//            the camera relaxes (ctx.unfocus(320)).
 // The slabs are drawn only on the calm pad's matte pixels (view/light/stepped padColorAt): the zone's
 // neon inlay and the gap ring stay as they are. Nothing here adds a full-screen flash, a dim, a
 // whole-sprite tint or a camera move (A5 §0 K1–K2). Under REDUCED_MOTION particles are halved (fxCount)
@@ -494,6 +496,8 @@ export interface ChasmHints {
   from?: XY;
   /** Called with the show time (activate clock) the victim's card will land, or null (no card). */
   onLand?: (t: number | null) => void;
+  /** Called on the shut frame (the slabs slam back): the trap card only lies down after it, at any speed. */
+  onShut?: () => void;
   /** The activate's show clock (the victim's landing is reported on it). */
   clock?: { now(): number };
 }
@@ -668,6 +672,7 @@ export async function swallowV3(ctx: DestroyCtx): Promise<void> {
   pad.set({ step: 1, rim: undefined, lip: PAL.mag2 });
   await nextFrame(sc);
   playV3('chasmShut', { volume: 1, pan: panAt(home.x) }); // mark `shut`
+  hints.onShut?.();
   pad.set({ step: 0, crack: 1, seam: true, lip: null });
   void dustRing(sc, home, DEPTH.SHADOW + 1, seed + 17);
   void pad.tremble(sc, 120);
@@ -739,16 +744,22 @@ export async function chasmV3(ctx: ActCtx): Promise<void> {
   // the victim's card landing (reported by the swallow on this clock), for the trap card's own landing
   let landed!: (t: number | null) => void;
   const victimLand = new Promise<number | null>((r) => (landed = r));
+  // the slabs' shut (reported by the swallow): the trap card lies down only after it — at 1× the shut
+  // comes at CRACK_AT + SHUT_AFTER, at a higher game speed the frame-stepped fall can push it later
+  let shut!: () => void;
+  const shutDone = new Promise<void>((r) => (shut = r));
   // ---- the swallow starts with the crack, while the opening is still on
   const swallow = (async () => {
-    await wait(sc, CRACK_AT);
-    if (di === undefined || ctx.isConsumed(di)) {
+    try {
+      await wait(sc, CRACK_AT);
+      if (di === undefined || ctx.isConsumed(di)) return;
+      const hints: ChasmHints = { from: trapAt, clock, onLand: (t) => landed(t), onShut: () => shut() };
+      await ctx.play(di, { ...hints, owned: true });
+    } finally {
+      // (no-ops when the swallow reported them)
       landed(null);
-      return;
+      shut();
     }
-    const hints: ChasmHints = { from: trapAt, clock, onLand: (t) => landed(t) };
-    await ctx.play(di, { ...hints, owned: true });
-    landed(null); // (no-op when the swallow reported its landing)
   })();
 
   // today's opening lean, the same target (chasm_trap.ts:118)
@@ -758,6 +769,7 @@ export async function chasmV3(ctx: ActCtx): Promise<void> {
   const exit = (async () => {
     const lag = CRACK_AT + SHUT_AFTER - clock.now();
     if (lag > 0) await wait(sc, lag);
+    await shutDone;
     void ctx.unfocus(320);
     await exitAfter(ctx, op, clock, async () => {
       const t = await victimLand;

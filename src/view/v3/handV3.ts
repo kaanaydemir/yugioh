@@ -747,7 +747,7 @@ const PHASE_MAX_DEG = 7;
  * column step inside a number (LETTER_JOG). Cached per side (and flags).
  */
 export function stepCostOf(side: PixelCanvas, line: Glyphs | null, face: boolean): StepCost {
-  const key = `${sideId(side)}${line ? ':g' : ''}${face ? ':f' : ''}`;
+  const key = stepKey(side, line, face);
   let sc = stepCosts.get(key);
   if (sc) return sc;
   const { W, H } = ringGeo(side.w, side.h);
@@ -787,6 +787,31 @@ export function stepCostOf(side: PixelCanvas, line: Glyphs | null, face: boolean
   return sc;
 }
 
+function stepKey(side: PixelCanvas, line: Glyphs | null, face: boolean): string {
+  return `${sideId(side)}${line ? ':g' : ''}${face ? ':f' : ''}`;
+}
+
+/**
+ * Make the next missing part of a lean's bake (tiltBake, searched): the ATK / DEF lettering, the
+ * step costs, each pass of the phase search, the up-scale, then the turn itself — each a fraction
+ * of the whole, so a bake made ahead spreads over frames (HandMotion.bakeAhead). False: it is
+ * baked (nothing done).
+ */
+export function tiltBakeStep(side: PixelCanvas, deg: number, glyphs = false, face = glyphs): boolean {
+  if (hasTiltBake(side, deg, glyphs, face)) return false;
+  if (!isTurnFrame(side)) {
+    if (glyphs && !glyphLines.has(sideId(side))) return glyphsOf(side), true;
+    const line = glyphs ? glyphsOf(side) : null;
+    if (searchable(deg)) {
+      if (!stepCosts.has(stepKey(side, line, face))) return stepCostOf(side, line, face), true;
+      if (tiltPhaseStep(side, deg, line, face)) return true;
+    }
+    if (!ups.has(sideId(side))) return upOf(side), true;
+  }
+  tiltBake(side, deg, glyphs, face);
+  return true;
+}
+
 /**
  * A side's small symbols: in each of its symbol boxes, every 4-connected piece neither the box's
  * ground (its commonest tone) nor its ink (the darkest tone off the ground) — a star's gold, the
@@ -797,80 +822,89 @@ function symbolsOf(side: PixelCanvas, face: boolean, lettered: boolean): SmallSy
   const out: SmallSymbol[] = [];
   const boxes = face ? HAND3.symbolBoxes.slice(0, lettered ? 2 : 3) : HAND3.backSymbolBoxes;
   const lim = HAND3.symbolMax;
+  const col = colorsOf(side);
   for (const [bx0, by0, bx1, by1] of boxes) {
     const x0 = Math.max(0, bx0);
     const y0 = Math.max(0, by0);
     const x1 = Math.min(side.w - 1, bx1);
     const y1 = Math.min(side.h - 1, by1);
+    if (x1 < x0 || y1 < y0) continue;
+    const bw = x1 - x0 + 1;
+    const bh = y1 - y0 + 1;
+    const N = bw * bh;
+    // the box's tones (−1: empty), its ground (the commonest, the first counted on a tie) and ink
+    const at = new Int32Array(N);
+    for (let y = 0; y < bh; y++) at.set(col.subarray((y + y0) * side.w + x0, (y + y0) * side.w + x1 + 1), y * bw);
     const tally = new Map<number, number>();
-    for (let y = y0; y <= y1; y++)
-      for (let x = x0; x <= x1; x++) {
-        const c = side.get(x, y);
-        if (c !== null) tally.set(c, (tally.get(c) ?? 0) + 1);
-      }
+    for (let k = 0; k < N; k++) if (at[k] >= 0) tally.set(at[k], (tally.get(at[k]) ?? 0) + 1);
     let ground = -1;
     let most = 0;
     for (const [c, n] of tally) if (n > most) [ground, most] = [c, n];
     let ink = -1;
     for (const c of tally.keys()) if (c !== ground && lum(c) < lum(ground) && (ink < 0 || lum(c) < lum(ink))) ink = c;
-    const at = (x: number, y: number): number => side.get(x, y) ?? -1;
-    const core = (x: number, y: number): boolean => {
-      const c = at(x, y);
-      return c >= 0 && c !== ground && c !== ink;
-    };
-    const bw = x1 - x0 + 1;
-    const seen = new Uint8Array(bw * (y1 - y0 + 1));
-    for (let y = y0; y <= y1; y++)
-      for (let x = x0; x <= x1; x++) {
-        if (seen[(y - y0) * bw + x - x0] || !core(x, y)) continue;
-        // the piece (4-connected), then the ink touching it
-        const px: number[] = [];
-        const stack = [x, y];
-        seen[(y - y0) * bw + x - x0] = 1;
-        while (stack.length) {
-          const b = stack.pop()!;
-          const a = stack.pop()!;
-          px.push(a, b);
-          for (const [u, v] of [
-            [a - 1, b],
-            [a + 1, b],
-            [a, b - 1],
-            [a, b + 1],
-          ]) {
-            if (u < x0 || u > x1 || v < y0 || v > y1 || seen[(v - y0) * bw + u - x0] || !core(u, v)) continue;
-            seen[(v - y0) * bw + u - x0] = 1;
-            stack.push(u, v);
-          }
-        }
-        const n = px.length;
-        const inked = new Set<number>();
-        for (let k = 0; k < n; k += 2)
-          for (let dy = -1; dy <= 1; dy++)
-            for (let dx = -1; dx <= 1; dx++) {
-              const u = px[k] + dx;
-              const v = px[k + 1] + dy;
-              if (u >= x0 && u <= x1 && v >= y0 && v <= y1 && ink >= 0 && at(u, v) === ink && !inked.has(v * side.w + u)) {
-                inked.add(v * side.w + u);
-                px.push(u, v);
-              }
-            }
-        let sx0 = Infinity;
-        let sy0 = Infinity;
-        let sx1 = -Infinity;
-        let sy1 = -Infinity;
-        for (let k = 0; k < px.length; k += 2) {
-          sx0 = Math.min(sx0, px[k]);
-          sx1 = Math.max(sx1, px[k]);
-          sy0 = Math.min(sy0, px[k + 1]);
-          sy1 = Math.max(sy1, px[k + 1]);
-        }
-        if (px.length < 6 || sx1 - sx0 + 1 > lim || sy1 - sy0 + 1 > lim) continue;
-        const mw = sx1 - sx0 + 1;
-        const member = new Uint8Array(mw * (sy1 - sy0 + 1));
-        for (let k = 0; k < px.length; k += 2) member[(px[k + 1] - sy0) * mw + px[k] - sx0] = 1;
-        const count = px.length / 2;
-        out.push({ x0: sx0 + TILT_IN, y0: sy0 + TILT_IN, x1: sx1 + TILT_IN, y1: sy1 + TILT_IN, member, count, weight: Math.max(0.5, Math.min(3, count / 25)) });
+    const core = (k: number): boolean => at[k] >= 0 && at[k] !== ground && at[k] !== ink;
+    const seen = new Uint8Array(N);
+    // (box indices: a piece's pixels, then its ink; the ink each piece took, by the piece's serial)
+    const px = new Int32Array(2 * N);
+    const stack = new Int32Array(N);
+    const inkOf = new Int32Array(N);
+    let serial = 0;
+    for (let k0 = 0; k0 < N; k0++) {
+      if (seen[k0] || !core(k0)) continue;
+      // the piece (4-connected)
+      let n = 0;
+      let sp = 0;
+      stack[sp++] = k0;
+      seen[k0] = 1;
+      let sx0 = bw;
+      let sy0 = bh;
+      let sx1 = -1;
+      let sy1 = -1;
+      while (sp) {
+        const k = stack[--sp];
+        px[n++] = k;
+        const x = k % bw;
+        const y = (k - x) / bw;
+        if (x < sx0) sx0 = x;
+        if (x > sx1) sx1 = x;
+        if (y < sy0) sy0 = y;
+        if (y > sy1) sy1 = y;
+        if (x > 0 && !seen[k - 1] && core(k - 1)) (seen[k - 1] = 1), (stack[sp++] = k - 1);
+        if (x < bw - 1 && !seen[k + 1] && core(k + 1)) (seen[k + 1] = 1), (stack[sp++] = k + 1);
+        if (y > 0 && !seen[k - bw] && core(k - bw)) (seen[k - bw] = 1), (stack[sp++] = k - bw);
+        if (y < bh - 1 && !seen[k + bw] && core(k + bw)) (seen[k + bw] = 1), (stack[sp++] = k + bw);
       }
+      // too big already: no symbol (its ink would only widen it)
+      if (sx1 - sx0 + 1 > lim || sy1 - sy0 + 1 > lim) continue;
+      // the ink touching it (a contour two stars share belongs to both)
+      serial++;
+      let m = n;
+      if (ink >= 0)
+        for (let j = 0; j < n; j++) {
+          const k = px[j];
+          const x = k % bw;
+          const y = (k - x) / bw;
+          for (let v = Math.max(0, y - 1); v <= Math.min(bh - 1, y + 1); v++)
+            for (let u = Math.max(0, x - 1); u <= Math.min(bw - 1, x + 1); u++) {
+              const q = v * bw + u;
+              if (at[q] !== ink || inkOf[q] === serial) continue;
+              inkOf[q] = serial;
+              px[m++] = q;
+              if (u < sx0) sx0 = u;
+              if (u > sx1) sx1 = u;
+              if (v < sy0) sy0 = v;
+              if (v > sy1) sy1 = v;
+            }
+        }
+      if (m < 3 || sx1 - sx0 + 1 > lim || sy1 - sy0 + 1 > lim) continue;
+      const mw = sx1 - sx0 + 1;
+      const member = new Uint8Array(mw * (sy1 - sy0 + 1));
+      for (let j = 0; j < m; j++) {
+        const x = px[j] % bw;
+        member[((px[j] - x) / bw - sy0) * mw + x - sx0] = 1;
+      }
+      out.push({ x0: x0 + sx0 + TILT_IN, y0: y0 + sy0 + TILT_IN, x1: x0 + sx1 + TILT_IN, y1: y0 + sy1 + TILT_IN, member, count: m, weight: Math.max(0.5, Math.min(3, m / 25)) });
+    }
   }
   return out;
 }
@@ -1050,30 +1084,81 @@ export function phaseCosts(sc: StepCost, W: number, H: number, cx: number, cy: n
  * A lettered face's ATK / DEF line takes no row step, and a column step only between its numbers
  * up to FLAT_DEG. Rows, columns, rows again, each from a grid of phases with the preferred one first
  * (kept on a tie, and pulling: PHASE_PULL): a lettered face's tiltShift / tiltPhaseY, else 0. ≈ 0.3 ms,
- * so the hand searches only the lean a card comes to rest at (`search` false: the preferred phase).
+ * so the hand searches only the lean a card comes to rest at (`search` false: the preferred phase),
+ * ahead of time and a pass a frame where it can (tiltPhaseStep); a search is kept (phaseJobs).
  */
 export function tiltPhase(side: PixelCanvas, deg: number, line: Glyphs | null, face: boolean, search = true): readonly [number, number] {
-  const pivotX = TILT_IN + Math.floor(side.w / 2);
-  const pref = line ? ([tiltShift(deg, side.h), tiltPhaseY(deg, line.gapX, pivotX)] as const) : ([0, 0] as const);
-  const s = Math.abs(Math.sin((deg * Math.PI) / 180));
-  if (!search || s === 0 || Math.abs(deg) > PHASE_MAX_DEG) return pref;
+  const pref = preferredPhase(side, deg, line);
+  if (!search || !searchable(deg)) return pref;
+  const job = phaseJob(side, deg, line, face, pref);
+  while (job.pass < 3) phasePass(side, deg, line, face, pref, job);
+  return [job.fx, job.fy];
+}
+
+/** One more pass of a lean's phase search (tiltBakeStep: a bake made ahead, part by part). False: searched already, or not searched at all. */
+export function tiltPhaseStep(side: PixelCanvas, deg: number, line: Glyphs | null, face: boolean): boolean {
+  if (!searchable(deg)) return false;
+  const pref = preferredPhase(side, deg, line);
+  const job = phaseJob(side, deg, line, face, pref);
+  if (job.pass >= 3) return false;
+  phasePass(side, deg, line, face, pref, job);
+  return true;
+}
+
+/** A lean's phase search so far: passes done (rows, columns, rows again) and the phases found. */
+interface PhaseJob {
+  pass: number;
+  fx: number;
+  fy: number;
+}
+
+const phaseJobs = new Map<string, PhaseJob>();
+/** Phase searches kept (a few numbers each: a bake the bake cache let go of is made again without searching). */
+const PHASE_CAP = 1024;
+
+function searchable(deg: number): boolean {
+  return Math.sin((deg * Math.PI) / 180) !== 0 && Math.abs(deg) <= PHASE_MAX_DEG;
+}
+
+/** The phase a lean keeps unsearched: a lettered face's tiltShift / tiltPhaseY (its digits off the steps), else 0. */
+function preferredPhase(side: PixelCanvas, deg: number, line: Glyphs | null): readonly [number, number] {
+  return line ? ([tiltShift(deg, side.h), tiltPhaseY(deg, line.gapX, TILT_IN + Math.floor(side.w / 2))] as const) : ([0, 0] as const);
+}
+
+function phaseJob(side: PixelCanvas, deg: number, line: Glyphs | null, face: boolean, pref: readonly [number, number]): PhaseJob {
+  const key = `${stepKey(side, line, face)}@${deg}`;
+  let job = phaseJobs.get(key);
+  if (!job) {
+    phaseJobs.set(key, (job = { pass: 0, fx: pref[0], fy: pref[1] }));
+    if (phaseJobs.size > PHASE_CAP) phaseJobs.delete(phaseJobs.keys().next().value!);
+  }
+  return job;
+}
+
+/**
+ * The next pass of a phase search: the rows with the columns at their preferred phase, the columns
+ * over those rows, then the rows again over those columns (a symbol is whole only when no step of
+ * either axis crosses it). Each pass picks from a grid of n phases with the preferred one first
+ * (kept on a tie, and pulling: PHASE_PULL), cheapest jogs first, each then paying for the symbols it
+ * breaks (only while it can still win).
+ */
+function phasePass(side: PixelCanvas, deg: number, line: Glyphs | null, face: boolean, pref: readonly [number, number], job: PhaseJob): void {
   const sc = stepCostOf(side, line, face);
   const { W, H } = ringGeo(side.w, side.h);
-  const cx = pivotX;
+  const cx = TILT_IN + Math.floor(side.w / 2);
   const cy = TILT_IN + Math.floor(side.h / 2);
-  const n = Math.max(8, Math.min(PHASES, Math.ceil(PHASE_DENSITY / s)));
-  const letter = line !== null && Math.abs(deg) <= FLAT_DEG;
-  // the preferred phase first (kept on a tie), then n spread over (−0.5, 0.5)
   const r = (deg * Math.PI) / 180;
   const sin = Math.sin(r);
   const cos = Math.cos(r);
+  const n = Math.max(8, Math.min(PHASES, Math.ceil(PHASE_DENSITY / Math.abs(sin))));
+  const letter = line !== null && Math.abs(deg) <= FLAT_DEG;
   const pick = (rows: boolean, other: number, p: number): number => {
+    // the preferred phase first (kept on a tie), then n spread over (−0.5, 0.5)
     const phases = new Float64Array(n + 1);
     phases[0] = p;
     for (let k = 0; k < n; k++) phases[k + 1] = -0.5 + (k + 0.5) / n;
     const cost = phaseCosts(sc, W, H, cx, cy, deg, other, rows, letter, phases);
     for (let k = 1; k <= n; k++) cost[k] += PHASE_PULL * Math.abs(phases[k] - p);
-    // cheapest first; each then pays for the symbols it breaks (only while it can still win)
     const order = Array.from(phases.keys()).sort((a, b) => cost[a] - cost[b] || a - b);
     let best = order[0];
     let bv = Infinity;
@@ -1090,11 +1175,10 @@ export function tiltPhase(side: PixelCanvas, deg: number, line: Glyphs | null, f
     }
     return phases[best];
   };
-  // rows with the columns at their preferred phase, the columns, then the rows again over those columns
-  // (a symbol whole only when no step of either axis crosses it)
-  const fx = pick(true, pref[1], pref[0]);
-  const fy = pick(false, fx, pref[1]);
-  return [pick(true, fy, pref[0]), fy];
+  if (job.pass === 0) job.fx = pick(true, pref[1], pref[0]);
+  else if (job.pass === 1) job.fy = pick(false, job.fx, pref[1]);
+  else job.fx = pick(true, job.fy, pref[0]);
+  job.pass++;
 }
 
 /**
@@ -1666,32 +1750,34 @@ export class HandMotion {
   }
 
   /**
-   * Bake ahead, in what is left of the frame (at least one bake, then up to AHEAD_MS), the leans
-   * cards are about to come to rest at: where a moving lean track ends (a re-fan, a mark, the swap's
-   * rise) and the side a held card turns to (expect). A card then lands on a ready bake — the phase
-   * search (≈ 0.5 ms; more for a side seen the first time, or while the code is not warm yet) never
-   * piles up on the frame a whole hand settles in together.
+   * Bake ahead, in what is left of the frame (one part of a bake — tiltBakeStep — then more up to
+   * AHEAD_MS), the leans cards are about to come to rest at: where a moving lean track ends (a
+   * re-fan, a mark, the swap's rise) and the side a held card turns to (expect). A card then lands
+   * on a ready bake: a new side's step costs, up-scale and phase search (≈ 1.5 ms in all; more while
+   * the code is not warm yet) never pile up on the frame a whole hand settles in together.
    */
   private bakeAhead(): void {
     const t0 = performance.now();
-    let baked = false;
-    const spent = (): boolean => baked && performance.now() - t0 > AHEAD_MS;
-    const ahead = (sprite: Phaser.GameObjects.Container, end: number, side: PixelCanvas | null, faceUp: boolean): void => {
+    let worked = false;
+    const spent = (): boolean => worked && performance.now() - t0 > AHEAD_MS;
+    // a lean's bake, part by part (tiltBakeStep) while the frame allows; true: baked (or nothing to bake)
+    const ahead = (sprite: Phaser.GameObjects.Container, end: number, side: PixelCanvas | null, faceUp: boolean): boolean => {
       const deg = quantizeDeg(end, HAND3.degStep);
-      if (deg === 0 || Math.abs(deg) > PHASE_MAX_DEG || !sprite.active || !isTiltCard(sprite)) return;
+      if (deg === 0 || Math.abs(deg) > PHASE_MAX_DEG || !sprite.active || !isTiltCard(sprite)) return true;
       const px = side ?? sprite.shownPixels();
       // (only a card shown at its texture size leans; a flip's turn frame is never searched)
-      if ((side === null && (sprite.displayW !== px.w || sprite.displayH !== px.h)) || isTurnFrame(px)) return;
+      if ((side === null && (sprite.displayW !== px.w || sprite.displayH !== px.h)) || isTurnFrame(px)) return true;
       const { glyphs, face } = leanFlags(sprite, faceUp);
-      if (hasTiltBake(px, deg, glyphs, face)) return;
-      tiltBake(px, deg, glyphs, face);
-      baked = true;
+      while (!spent()) {
+        if (!tiltBakeStep(px, deg, glyphs, face)) return true;
+        worked = true;
+      }
+      return false;
     };
     for (const [sprite, e] of this.expected) {
       if (spent()) return;
-      this.expected.delete(sprite);
       const m = this.map.get(sprite);
-      if (m) ahead(sprite, m.tilt.end, e.side, e.faceUp);
+      if (!m || ahead(sprite, m.tilt.end, e.side, e.faceUp)) this.expected.delete(sprite);
     }
     for (const [sprite, m] of this.map) {
       if (spent()) return;
@@ -1705,7 +1791,7 @@ export class HandMotion {
 }
 
 /** Bake-ahead's share of a frame (ms) once it has made one bake (HandMotion.bakeAhead). */
-const AHEAD_MS = 2;
+const AHEAD_MS = 1;
 
 /** A card's lean flags (tiltBake): a face up (`faceUp`) of a known card; a monster's: its ATK / DEF line lettered. */
 function leanFlags(card: TiltCard, faceUp: boolean): { glyphs: boolean; face: boolean } {
