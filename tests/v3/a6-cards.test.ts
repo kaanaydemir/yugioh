@@ -537,28 +537,102 @@ describe('A6-A A2 — the v3 hand (K1), pure parts', { timeout: 60_000 }, () => 
     }
   });
 
-  it('lean: a side without an ATK / DEF line (a back, a spell) is phased about its middle — no row step cuts rows 32..36 (the emblem, the art)', async () => {
+  it('lean: the phase search counts every jog exactly — phaseCosts walks only the steps, yet matches every output pixel pair', async () => {
     const { cards } = await load('v3');
     const h = await import('../../src/view/v3/handV3');
-    for (const side of [cards.cardBackCanvas(0), cards.cardBackCanvas(1), cards.cardFaceCanvas('judgment_bolt')]) {
+    const sides = [
+      { side: cards.cardBackCanvas(0), glyphs: false, face: false },
+      { side: cards.cardFaceCanvas('judgment_bolt'), glyphs: false, face: true },
+      { side: cards.cardFaceCanvas('ember_wolf'), glyphs: true, face: true },
+    ];
+    for (const { side, glyphs, face } of sides) {
+      const sc = h.stepCostOf(side, glyphs ? h.glyphsOf(side) : null, face);
       const W = side.w + 2 * h.TILT_IN;
-      for (let d2 = -14; d2 <= 14; d2++) {
+      const H = side.h + 2 * h.TILT_IN;
+      const cx = h.TILT_IN + Math.floor(side.w / 2);
+      const cy = h.TILT_IN + Math.floor(side.h / 2);
+      for (const deg of [-6.5, -3, -1.5, 0.5, 2.5, 4.5, 14])
+        for (const [fx, fy] of [
+          [0, 0],
+          [0.31, -0.27],
+          [-0.49, 0.12],
+        ])
+          for (const rows of [true, false]) {
+            // rotMap's sampling: output pixel (u, v) from the pivot shows the source (cx + fx + u·c + v·s, cy + fy − u·s + v·c)
+            const r = (deg * Math.PI) / 180;
+            const sn = Math.sin(r);
+            const cs = Math.cos(r);
+            const src = (u: number, v: number) => [Math.floor(cx + fx + u * cs + v * sn), Math.floor(cy + fy - u * sn + v * cs)];
+            let want = 0;
+            for (let a = -70; a < 70; a++)
+              for (let b = -70; b < 70; b++) {
+                // a vertical (rows) / horizontal (columns) neighbour pair whose source moves on in both coordinates
+                const [xa, ya] = rows ? src(a + 0.5, b - 0.5) : src(b - 0.5, a + 0.5);
+                const [xb, yb] = rows ? src(a + 0.5, b + 0.5) : src(b + 0.5, a + 0.5);
+                if (rows ? Math.min(ya, yb) < 0 || Math.max(ya, yb) >= H : Math.min(xa, xb) < 0 || Math.max(xa, xb) >= W) continue;
+                if (xa === xb || ya === yb) continue;
+                const bx = Math.max(xa, xb);
+                const by = Math.max(ya, yb);
+                if (bx > 0 && bx < W && by > 0 && by < H) want += (rows ? sc.row : sc.col)[by * W + bx];
+              }
+            expect(h.phaseCosts(sc, W, H, cx, cy, deg, rows ? fy : fx, rows, false, [rows ? fx : fy])[0], `${deg}° ${fx},${fy} ${rows ? 'rows' : 'columns'}`).toBeCloseTo(want, 6);
+          }
+    }
+  });
+
+  it("lean: the steps fall off the small symbols — a spell's / trap's type icon at every hand lean, the back's N up to ±3.5°, every symbol at ±0.5°…±1°, most of them always", async () => {
+    const { cards } = await load('v3');
+    const h = await import('../../src/view/v3/handV3');
+    const data = await import('../../src/data/cards');
+    const sides = [
+      ...data.ALL_CARDS.map((c) => ({ side: cards.cardFaceCanvas(c.id), glyphs: data.isMonster(c), face: true, id: c.id as string })),
+      ...([0, 1] as const).map((p) => ({ side: cards.cardBackCanvas(p), glyphs: false, face: false, id: `back ${p}` })),
+    ];
+    let whole = 0;
+    let all = 0;
+    let stars = 0;
+    for (const { side, glyphs, face, id } of sides) {
+      const W = side.w + 2 * h.TILT_IN;
+      const syms = h.stepCostOf(side, glyphs ? h.glyphsOf(side) : null, face).symbols;
+      // a monster's stars, a spell's / trap's type icon, the back's N are all found
+      if (face) expect(syms.some((q) => q.y0 - h.TILT_IN === 11), id).toBe(true);
+      else expect(syms.some((q) => q.x0 - h.TILT_IN === 20 && q.y0 - h.TILT_IN === 30), id).toBe(true);
+      if (glyphs) stars += syms.filter((q) => q.y0 - h.TILT_IN === 11).length;
+      for (let d2 = -13; d2 <= 13; d2++) {
         const deg = d2 / 2;
         if (deg === 0) continue;
-        const b = h.tiltBake(side, deg);
-        const perCol = new Map<number, Set<number>>();
-        for (let k = 0; k < b.map.idx.length; k++) {
-          const i = b.map.idx[k];
+        const m = h.tiltBake(side, deg, glyphs, face).map;
+        const where = new Map<number, number[]>();
+        for (let k = 0; k < m.idx.length; k++) {
+          const i = m.idx[k];
           if (i < 0) continue;
-          const sx = (i % W) - h.TILT_IN;
-          const sy = Math.floor(i / W) - h.TILT_IN;
-          if (sy < 32 || sy > 36 || sx < 8 || sx > side.w - 9) continue;
-          if (!perCol.has(sx)) perCol.set(sx, new Set());
-          perCol.get(sx)!.add((k % b.map.w) - sx);
+          const at = where.get(i);
+          if (at) at.push(k);
+          else where.set(i, [k]);
         }
-        for (const [sx, offs] of perCol) expect(offs.size, `${deg}° column ${sx}`).toBe(1);
+        for (const q of syms) {
+          // whole: every pixel of it shown exactly once, all moved alike
+          const mw = q.x1 - q.x0 + 1;
+          let good = true;
+          let off: string | null = null;
+          for (let y = q.y0; y <= q.y1 && good; y++)
+            for (let x = q.x0; x <= q.x1 && good; x++) {
+              if (!q.member[(y - q.y0) * mw + x - q.x0]) continue;
+              const ks = where.get(y * W + x) ?? [];
+              const o = ks.length === 1 ? `${(ks[0] % m.w) - x},${Math.floor(ks[0] / m.w) - y}` : null;
+              if (o === null || (off !== null && o !== off)) good = false;
+              off = o;
+            }
+          all++;
+          if (good) whole++;
+          const icon = face && !glyphs && q.y0 - h.TILT_IN === 11;
+          const n = !face && q.x0 - h.TILT_IN === 20 && q.y0 - h.TILT_IN === 30;
+          if (Math.abs(deg) <= 1 || icon || (n && Math.abs(deg) <= 3.5)) expect(good, `${id} ${deg}° symbol at ${q.x0 - h.TILT_IN},${q.y0 - h.TILT_IN}`).toBe(true);
+        }
       }
     }
+    expect(stars).toBeGreaterThanOrEqual(4 * 12);
+    expect(whole / all).toBeGreaterThan(0.78);
   });
 
   it("lean: a flip's narrow turn frames turn plain nearest; a full-width side is known by its pixels (a flip's last frame shares the side's bake)", async () => {

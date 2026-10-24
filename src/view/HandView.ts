@@ -448,6 +448,9 @@ export class HandView {
     const jobs = this.slots.map(async (s, i) => {
       if (i > 0) await wait(this.scene, i * Math.max(0, msPerCard));
       if (!s.sprite.active) return;
+      // the side it turns to (the turn's last frame) leaning as the card rests, baked while it turns
+      const frames = s.sprite.faceUp === down ? (s.sprite as CardV3).flipFrames() : [];
+      if (frames.length) this.motion!.expect(s.sprite, frames[frames.length - 1], !down);
       await s.sprite.flip(!down, HAND3.turnMs);
     });
     await Promise.all(jobs);

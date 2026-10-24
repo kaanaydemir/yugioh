@@ -864,9 +864,14 @@ export class HudV3 implements HudApi {
     this.panels[player].name.setText(name);
   }
 
+  /**
+   * Where effects fly into the LP readout (burn / heal streams, stars …): kept on B0's (= today's)
+   * point, the centre of the plain LP number at HUD3.lp.x, not the counter's windows — so other
+   * lanes' particle paths, and the shared random stream they draw from, stay identical (B2 identity).
+   */
   lpXY(player: PlayerId): XY {
     const P = this.panels[player];
-    return { x: P.rect.x + HUD3.lpCounter.x + Math.round(P.counter.width / 2), y: P.rect.y + HUD3.lp.cap + 7 };
+    return { x: P.rect.x + HUD3.lp.x + Math.round(textWidthV3(String(P.counter.shown), 'lg') / 2), y: P.rect.y + HUD3.lp.cap + 7 };
   }
 
   panelXY(player: PlayerId): XY {

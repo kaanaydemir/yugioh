@@ -67,6 +67,29 @@ export const HAND3 = Object.freeze({
    * falls above or below them, never through them.
    */
   keepRow: 61,
+  /**
+   * What a lean's 1-px step costs where it jogs a face's edges (tiltPhase), per region (face pixels
+   * x0, y0, x1, y1, later ones over earlier ones; src/art/cardface-v3/frame.ts): a kink reads least in
+   * the painting (art x 3..44, y 18..49) and the greeked name / rules text, most in a small symbol — the
+   * attribute / kind orb, the star / type icon row, a spell's or trap's kind emblem. Elsewhere 1.
+   */
+  jogWeights: Object.freeze([
+    Object.freeze({ box: Object.freeze([3, 18, 44, 49] as const), w: 0.25 }),
+    Object.freeze({ box: Object.freeze([3, 52, 44, 65] as const), w: 0.25 }),
+    Object.freeze({ box: Object.freeze([2, 2, 35, 9] as const), w: 0.5 }),
+    Object.freeze({ box: Object.freeze([36, 2, 45, 10] as const), w: 4 }),
+    Object.freeze({ box: Object.freeze([3, 11, 44, 15] as const), w: 4 }),
+    Object.freeze({ box: Object.freeze([36, 56, 44, 64] as const), w: 4 }),
+  ]),
+  /**
+   * Where a side's small symbols are found (face / back pixels x0, y0, x1, y1): each piece there off
+   * the box's ground, at most symbolMax px across, is kept whole by a lean when its phase allows
+   * (tiltPhase) — the face's orb, star / icon row and (not on a lettered face: its DEF digits) kind
+   * emblem; the back's pins and corner marks (its upper and lower field) and the N on its emblem.
+   */
+  symbolBoxes: Object.freeze([Object.freeze([36, 2, 45, 10] as const), Object.freeze([3, 11, 44, 15] as const), Object.freeze([36, 56, 44, 64] as const)]),
+  backSymbolBoxes: Object.freeze([Object.freeze([4, 4, 43, 33] as const), Object.freeze([4, 34, 43, 63] as const), Object.freeze([19, 29, 29, 39] as const)]),
+  symbolMax: 11,
   /** Hot-seat swap (v1's): a falling card leans this much further out (0.25 rad), a rising one closes from 3× its lean (≤ 20°). */
   swapLean: 14,
   swapFan: 3,
@@ -537,12 +560,13 @@ export function isTurnFrame(side: PixelCanvas): boolean {
 /**
  * `side` (a card side, or a flip's turn frame) leaning `deg` (degrees on the `degStep` grid, clockwise) with its rim
  * ring, baked RotSprite style about the card's centre (CardV3's origin: the pixel floor(w / 2),
- * floor(h / 2)). `glyphs` (a monster's face): its ATK / DEF rows are phase-kept (tiltShift) and the
- * line moves glyph by glyph, each whole (glyphsOf); any other side is phased about its middle.
- * Cached (LRU); at 0° it is the composite pixel for pixel.
+ * floor(h / 2)), its 1-px steps slid off its symbols (tiltPhase; `search` false: a lean shown in
+ * passing keeps the preferred phase). `glyphs` (a monster's face): its ATK / DEF line moves glyph by
+ * glyph, each whole (glyphsOf); `face` (a face up, not a back): its layout's regions weigh the steps
+ * (HAND3.jogWeights, symbolBoxes). Cached (LRU); at 0° it is the composite pixel for pixel.
  */
-export function tiltBake(side: PixelCanvas, deg: number, glyphs = false): TiltBake {
-  const key = `${sideId(side)}:${deg}${glyphs ? ':g' : ''}`;
+export function tiltBake(side: PixelCanvas, deg: number, glyphs = false, face = glyphs, search = true): TiltBake {
+  const key = bakeKey(side, deg, glyphs, face, search);
   let b = bakes.get(key);
   if (b) {
     bakes.delete(key);
@@ -556,17 +580,26 @@ export function tiltBake(side: PixelCanvas, deg: number, glyphs = false): TiltBa
   // a flip's narrow turn frame: plain nearest, no lettering (its digits are squeezed anyway)
   const turn = isTurnFrame(side);
   const line = glyphs && !turn ? glyphsOf(side) : null;
-  // the sampling phase: a monster face keeps its ATK / DEF rows between two row steps (tiltShift) and
-  // drops the line by a row between its two numbers (tiltPhaseY); any other side keeps its middle
-  // whole (a back's emblem, a spell's art: phase 0 centres the plateau)
+  // the sampling phase: where the turn's 1-px steps fall (tiltPhase: where they jog the fewest edges)
   const pivot = [TILT_IN + Math.floor(side.w / 2), TILT_IN + Math.floor(side.h / 2)] as const;
-  const shift = line ? ([tiltShift(deg, side.h), tiltPhaseY(deg, line.gapX, pivot[0])] as const) : ([0, 0] as const);
+  const shift = turn ? ([0, 0] as const) : tiltPhase(side, deg, line, face, search);
   const map = rotMap(turn ? nearOf(side) : upOf(side), deg, pivot, shift);
   if (line) holdGlyphs(map, line, g.W);
   b = { deg, map, ring: ringWalk(map, g, side.w, side.h, cos, sin), geo: g, w: side.w, h: side.h };
   bakes.set(key, b);
   if (bakes.size > BAKE_CAP) bakes.delete(bakes.keys().next().value!);
   return b;
+}
+
+/** A bake's cache key (a lean steeper than PHASE_MAX_DEG is never searched: one entry either way). */
+function bakeKey(side: PixelCanvas, deg: number, glyphs: boolean, face: boolean, search: boolean): string {
+  const q = !search || Math.abs(deg) > PHASE_MAX_DEG;
+  return `${sideId(side)}:${deg}${glyphs ? ':g' : ''}${face ? ':f' : ''}${q ? ':q' : ''}`;
+}
+
+/** Is this lean of `side` baked (tiltBake's cache, same flags)? */
+export function hasTiltBake(side: PixelCanvas, deg: number, glyphs = false, face = glyphs, search = true): boolean {
+  return bakes.has(bakeKey(side, deg, glyphs, face, search));
 }
 
 /**
@@ -657,6 +690,411 @@ export function paintTilt(b: TiltBake, side: PixelCanvas, tl: number | null, br:
     d[o + 3] = 255;
   }
   return out;
+}
+
+/** A side's step costs: what a lean's 1-px shear step jogs where it falls (stepCostOf). */
+export interface StepCost {
+  /** A row step between composite rows y − 1 | y, where it meets the column boundary x − 1 | x (index y · W + x). */
+  readonly row: Float32Array;
+  /** A column step between composite columns x − 1 | x, where it meets the row boundary y − 1 | y. */
+  readonly col: Float32Array;
+  /** A lettered face: the column steps inside its ATK (2) or DEF (1) number, on the line's rows; else null. */
+  readonly inNumber: Uint8Array | null;
+  /** The side's small symbols (symbolsOf). */
+  readonly symbols: readonly SmallSymbol[];
+}
+
+/** A small symbol: its composite box (x0, y0 … x1, y1) and which of the box's pixels are the symbol's. */
+export interface SmallSymbol {
+  readonly x0: number;
+  readonly y0: number;
+  readonly x1: number;
+  readonly y1: number;
+  readonly member: Uint8Array;
+  readonly count: number;
+  /** What breaking it costs, in SYMBOL_BREAKs: its size (a back's N before a corner mark). */
+  readonly weight: number;
+}
+
+const stepCosts = new Map<string, StepCost>();
+/** Step costs kept (≈ 30 KB each). */
+const STEP_CAP = 32;
+/** Phases tried per axis: PHASE_DENSITY / sin(deg) — about one per place a step can fall — at most PHASES. */
+const PHASES = 32;
+const PHASE_DENSITY = 1;
+/** A phase's pull to the preferred one (jogged edges per px of phase): a lean moves its steps only for a real gain. */
+const PHASE_PULL = 1;
+/** A row step through the ATK / DEF line, or a column step inside its ATK number (up to FLAT_DEG; half that in DEF): per jog. */
+const LETTER_JOG = 100;
+/**
+ * Up to this lean each number of the ATK / DEF line keeps one row — its column steps fall between the
+ * numbers; where the slope leaves no room for both (3°), the DEF number takes the drop, not the ATK.
+ */
+const FLAT_DEG = 3;
+/** A symbol a lean breaks (brokenSymbols): as many jogged edges, times its weight (25 px: 1). */
+const SYMBOL_BREAK = 20;
+/**
+ * Leans steeper than this (a hot-seat swap's fall and rise: a frame or two each, in motion) keep the
+ * preferred phase — no search (the hand's own leans, rest and hover, stay within ±6.5°).
+ */
+const PHASE_MAX_DEG = 7;
+
+/**
+ * Where a step of the turn costs, on a side's own pixels: a row step shears two rows apart, so every
+ * vertical edge running through both jogs a pixel; a column step does the same to horizontal edges
+ * (the ring's and frame's long lines cost alike wherever a step falls). A face weighs its regions
+ * (HAND3.jogWeights); a lettered face's ATK / DEF line takes no row step and, up to FLAT_DEG, no
+ * column step inside a number (LETTER_JOG). Cached per side (and flags).
+ */
+export function stepCostOf(side: PixelCanvas, line: Glyphs | null, face: boolean): StepCost {
+  const key = `${sideId(side)}${line ? ':g' : ''}${face ? ':f' : ''}`;
+  let sc = stepCosts.get(key);
+  if (sc) return sc;
+  const { W, H } = ringGeo(side.w, side.h);
+  const P = compositeOf(side, false);
+  const row = new Float32Array(W * H);
+  const col = new Float32Array(W * H);
+  // per composite pixel boundary (the 2 × 2 block ending at x, y): the weight of a jog there
+  const wt = new Float32Array(W * H).fill(1);
+  const mark = (box: readonly number[], v: number): void => {
+    const [x0, y0, x1, y1] = box.map((q) => q + TILT_IN);
+    for (let y = y0 + 1; y <= y1; y++) for (let x = x0 + 1; x <= x1; x++) wt[y * W + x] = v;
+  };
+  if (face) for (const { box, w } of HAND3.jogWeights) mark(box, w);
+  for (let y = 1; y < H; y++)
+    for (let x = 1; x < W; x++) {
+      const a = P[(y - 1) * W + x - 1];
+      const b = P[(y - 1) * W + x];
+      const c = P[y * W + x - 1];
+      const d = P[y * W + x];
+      const w = wt[y * W + x];
+      // a b   a row step: the edge between a | b running on into c | d jogs
+      // c d   a column step: the edge between a / c running on into b / d jogs
+      if (a !== b && c !== d && (a === c || b === d)) row[y * W + x] = w;
+      if (a !== c && b !== d && (a === b || c === d)) col[y * W + x] = w;
+    }
+  let inNumber: Uint8Array | null = null;
+  if (line) {
+    for (let y = line.y0 + 1; y <= line.y1; y++) for (let x = line.x0; x <= line.x1 + 1; x++) row[y * W + x] += LETTER_JOG;
+    inNumber = new Uint8Array(W * H);
+    numberSpans(line, W).forEach(([lo, hi], n) => {
+      for (let y = line.y0; y <= line.y1 + 1; y++) for (let x = lo + 1; x <= hi; x++) inNumber![y * W + x] = n === 0 ? 2 : 1;
+    });
+  }
+  sc = { row, col, inNumber, symbols: symbolsOf(side, face, line !== null) };
+  stepCosts.set(key, sc);
+  if (stepCosts.size > STEP_CAP) stepCosts.delete(stepCosts.keys().next().value!);
+  return sc;
+}
+
+/**
+ * A side's small symbols: in each of its symbol boxes, every 4-connected piece neither the box's
+ * ground (its commonest tone) nor its ink (the darkest tone off the ground) — a star's gold, the
+ * sigil's green, the orb's fire — with the ink round it (a contour two stars share belongs to both);
+ * 3+ px, at most symbolMax across.
+ */
+function symbolsOf(side: PixelCanvas, face: boolean, lettered: boolean): SmallSymbol[] {
+  const out: SmallSymbol[] = [];
+  const boxes = face ? HAND3.symbolBoxes.slice(0, lettered ? 2 : 3) : HAND3.backSymbolBoxes;
+  const lim = HAND3.symbolMax;
+  for (const [bx0, by0, bx1, by1] of boxes) {
+    const x0 = Math.max(0, bx0);
+    const y0 = Math.max(0, by0);
+    const x1 = Math.min(side.w - 1, bx1);
+    const y1 = Math.min(side.h - 1, by1);
+    const tally = new Map<number, number>();
+    for (let y = y0; y <= y1; y++)
+      for (let x = x0; x <= x1; x++) {
+        const c = side.get(x, y);
+        if (c !== null) tally.set(c, (tally.get(c) ?? 0) + 1);
+      }
+    let ground = -1;
+    let most = 0;
+    for (const [c, n] of tally) if (n > most) [ground, most] = [c, n];
+    let ink = -1;
+    for (const c of tally.keys()) if (c !== ground && lum(c) < lum(ground) && (ink < 0 || lum(c) < lum(ink))) ink = c;
+    const at = (x: number, y: number): number => side.get(x, y) ?? -1;
+    const core = (x: number, y: number): boolean => {
+      const c = at(x, y);
+      return c >= 0 && c !== ground && c !== ink;
+    };
+    const bw = x1 - x0 + 1;
+    const seen = new Uint8Array(bw * (y1 - y0 + 1));
+    for (let y = y0; y <= y1; y++)
+      for (let x = x0; x <= x1; x++) {
+        if (seen[(y - y0) * bw + x - x0] || !core(x, y)) continue;
+        // the piece (4-connected), then the ink touching it
+        const px: number[] = [];
+        const stack = [x, y];
+        seen[(y - y0) * bw + x - x0] = 1;
+        while (stack.length) {
+          const b = stack.pop()!;
+          const a = stack.pop()!;
+          px.push(a, b);
+          for (const [u, v] of [
+            [a - 1, b],
+            [a + 1, b],
+            [a, b - 1],
+            [a, b + 1],
+          ]) {
+            if (u < x0 || u > x1 || v < y0 || v > y1 || seen[(v - y0) * bw + u - x0] || !core(u, v)) continue;
+            seen[(v - y0) * bw + u - x0] = 1;
+            stack.push(u, v);
+          }
+        }
+        const n = px.length;
+        const inked = new Set<number>();
+        for (let k = 0; k < n; k += 2)
+          for (let dy = -1; dy <= 1; dy++)
+            for (let dx = -1; dx <= 1; dx++) {
+              const u = px[k] + dx;
+              const v = px[k + 1] + dy;
+              if (u >= x0 && u <= x1 && v >= y0 && v <= y1 && ink >= 0 && at(u, v) === ink && !inked.has(v * side.w + u)) {
+                inked.add(v * side.w + u);
+                px.push(u, v);
+              }
+            }
+        let sx0 = Infinity;
+        let sy0 = Infinity;
+        let sx1 = -Infinity;
+        let sy1 = -Infinity;
+        for (let k = 0; k < px.length; k += 2) {
+          sx0 = Math.min(sx0, px[k]);
+          sx1 = Math.max(sx1, px[k]);
+          sy0 = Math.min(sy0, px[k + 1]);
+          sy1 = Math.max(sy1, px[k + 1]);
+        }
+        if (px.length < 6 || sx1 - sx0 + 1 > lim || sy1 - sy0 + 1 > lim) continue;
+        const mw = sx1 - sx0 + 1;
+        const member = new Uint8Array(mw * (sy1 - sy0 + 1));
+        for (let k = 0; k < px.length; k += 2) member[(px[k + 1] - sy0) * mw + px[k] - sx0] = 1;
+        const count = px.length / 2;
+        out.push({ x0: sx0 + TILT_IN, y0: sy0 + TILT_IN, x1: sx1 + TILT_IN, y1: sy1 + TILT_IN, member, count, weight: Math.max(0.5, Math.min(3, count / 25)) });
+      }
+  }
+  return out;
+}
+
+const symbolHits = new Int32Array(HAND3.symbolMax * HAND3.symbolMax);
+
+/**
+ * How much of a side's symbols (by weight) a lean at phase (fx, fy) breaks — rotMap's sampling round each: a
+ * symbol is whole when every pixel of it shows exactly once, all moved alike (no step, and no step
+ * crossing where a pixel doubles or drops, falls in it).
+ */
+function brokenSymbols(syms: readonly SmallSymbol[], cx: number, cy: number, s: number, c: number, fx: number, fy: number, upTo = Infinity): number {
+  let broken = 0;
+  for (const sym of syms) {
+    if (broken > upTo) break;
+    const mw = sym.x1 - sym.x0 + 1;
+    const hits = symbolHits;
+    hits.fill(0, 0, sym.member.length);
+    // where the symbol's middle turns to (output, from the pivot), and a margin round it
+    const dX = (sym.x0 + sym.x1 + 1) / 2 - cx - fx;
+    const dY = (sym.y0 + sym.y1 + 1) / 2 - cy - fy;
+    const uc = dX * c - dY * s;
+    const vc = dX * s + dY * c;
+    const mh = sym.y1 - sym.y0 + 1;
+    const ru = (mw * Math.abs(c) + mh * Math.abs(s)) / 2 + 1;
+    const rv = (mw * Math.abs(s) + mh * Math.abs(c)) / 2 + 1;
+    let ox = NaN;
+    let oy = NaN;
+    let whole = true;
+    let n = 0;
+    for (let iv = Math.floor(vc - rv); iv <= Math.ceil(vc + rv) && whole; iv++)
+      for (let iu = Math.floor(uc - ru); iu <= Math.ceil(uc + ru); iu++) {
+        const u = iu + 0.5;
+        const v = iv + 0.5;
+        const x = Math.floor(cx + fx + u * c + v * s);
+        const y = Math.floor(cy + fy - u * s + v * c);
+        if (x < sym.x0 || x > sym.x1 || y < sym.y0 || y > sym.y1) continue;
+        const k = (y - sym.y0) * mw + x - sym.x0;
+        if (!sym.member[k]) continue;
+        if (hits[k]++ || (n++ && (iu - x !== ox || iv - y !== oy))) {
+          whole = false;
+          break;
+        }
+        ox = iu - x;
+        oy = iv - y;
+      }
+    if (!whole || n !== sym.count) broken += sym.weight;
+  }
+  return broken;
+}
+
+/** The ATK and the DEF number's ink columns (composite x, first and last): the line's glyphs either side of its widest gap. */
+function numberSpans(line: Glyphs, W: number): [number, number][] {
+  const spans: [number, number][] = [];
+  for (const left of [true, false]) {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const px of line.blocks)
+      for (const i of px) {
+        const x = i % W;
+        if (line.shade[i] || x < line.gapX !== left) continue;
+        lo = Math.min(lo, x);
+        hi = Math.max(hi, x);
+      }
+    if (lo < hi) spans.push([lo, hi]);
+  }
+  return spans;
+}
+
+/**
+ * The edges a lean's row steps (`rows`) or column steps jog, for each phase in `phases` of that axis
+ * (the other axis's phase: `other`) — rotMap's sampling: the output pixel (u, v) from the pivot shows
+ * the source pixel at (cx + fx + u·c + v·s, cy + fy − u·s + v·c). Walks only the steps: along each
+ * output column the source column moves on (a row step), along each output row the source row does (a
+ * column step); a step's boundary looks its cost up. `letter`: a column step inside a number costs
+ * LETTER_JOG more.
+ */
+export function phaseCosts(sc: StepCost, W: number, H: number, cx: number, cy: number, deg: number, other: number, rows: boolean, letter: boolean, phases: ArrayLike<number>): Float64Array {
+  const out = new Float64Array(phases.length);
+  const r = (deg * Math.PI) / 180;
+  const s = Math.sin(r);
+  const c = Math.cos(r);
+  if (s === 0) return out;
+  const tbl = rows ? sc.row : sc.col;
+  const extra = !rows && letter ? sc.inNumber : null;
+  const ext = rows ? W : H; // the moving coordinate's extent
+  const lim = rows ? H : W; // the cross coordinate's
+  const m0 = rows ? cx : cy;
+  const n0 = rows ? cy + other : cx + other;
+  const dm = rows ? s : -s;
+  const dn = rows ? -s : s;
+  // the lines whose moving coordinate comes near the composite (for any phase), and per line the
+  // pixels i whose cross coordinate lies in it — with that cross coordinate's row / column (q) and
+  // whether it moves on between i − 1 and i (a step there shows: else it repeats a pixel)
+  const reach = Math.abs(s) * lim + 3;
+  const k0 = Math.floor((-reach - m0) / c - 0.5);
+  const k1 = Math.ceil((ext + reach - m0) / c - 0.5);
+  // per line (an output column for rows, an output row for columns): its moving coordinate at phase 0,
+  // its pixel range, and per pixel the cross row / column a step there lands on (−1: none, the pixel
+  // repeats its neighbour's or lies outside)
+  const nl = Math.max(0, k1 - k0 + 1);
+  const span = Math.ceil(lim / c) + 3;
+  const LM = new Float64Array(nl);
+  const LLo = new Int32Array(nl);
+  const LHi = new Int32Array(nl);
+  const Q = new Int32Array(nl * span).fill(-1);
+  let m = 0;
+  for (let k = k0; k <= k1; k++) {
+    const t = k + 0.5;
+    const N0 = n0 + t * dn;
+    const lo = Math.ceil(-N0 / c - 0.5);
+    const hi = Math.min(lo + span - 1, Math.ceil((lim - N0) / c - 0.5) - 1);
+    if (hi <= lo) continue;
+    LM[m] = m0 + t * c;
+    LLo[m] = lo;
+    LHi[m] = hi;
+    const o = m * span - lo;
+    let prev = Math.floor(N0 + (lo + 0.5) * c);
+    for (let i = lo + 1; i <= hi; i++) {
+      const v = Math.floor(N0 + (i + 0.5) * c);
+      if (v !== prev && v > 0 && v < lim) Q[o + i] = v;
+      prev = v;
+    }
+    m++;
+  }
+  const inv = 1 / dm;
+  for (let j = 0; j < phases.length; j++) {
+    const f = phases[j];
+    let cost = 0;
+    for (let l = 0; l < m; l++) {
+      const M0 = LM[l] + f;
+      const lo = LLo[l];
+      const hi = LHi[l];
+      const a = Math.floor(M0 + (lo + 0.5) * dm);
+      const b = Math.floor(M0 + (hi + 0.5) * dm);
+      if (a === b) continue;
+      const base = l * span - lo;
+      if (b > a) {
+        for (let n = a + 1; n <= b; n++) {
+          if (n <= 0 || n >= ext) continue;
+          // the first pixel reaching n (the estimate, made exact)
+          let i = Math.ceil((n - M0) * inv - 0.5);
+          while (Math.floor(M0 + (i - 0.5) * dm) >= n) i--;
+          while (Math.floor(M0 + (i + 0.5) * dm) < n) i++;
+          const v = Q[base + i];
+          if (v < 0) continue;
+          const at = rows ? v * W + n : n * W + v;
+          cost += tbl[at];
+          if (extra !== null && extra[at]) cost += (LETTER_JOG * extra[at]) / 2;
+        }
+      } else {
+        for (let n = a; n > b; n--) {
+          if (n <= 0 || n >= ext) continue;
+          // the first pixel below n
+          let i = Math.ceil((n - M0) * inv - 0.5);
+          while (Math.floor(M0 + (i - 0.5) * dm) < n) i--;
+          while (Math.floor(M0 + (i + 0.5) * dm) >= n) i++;
+          const v = Q[base + i];
+          if (v < 0) continue;
+          const at = rows ? v * W + n : n * W + v;
+          cost += tbl[at];
+          if (extra !== null && extra[at]) cost += (LETTER_JOG * extra[at]) / 2;
+        }
+      }
+    }
+    out[j] = cost;
+  }
+  return out;
+}
+
+/**
+ * The sampling phase (source px, both |·| < 0.5) of a lean of `side`: a small turn shears whole rows
+ * a pixel every 1 / sin(deg) rows and drops columns a pixel every 1 / sin(deg) columns; the phase
+ * slides those steps, and each step jogs every edge it crosses — so they are slid to where they jog
+ * the fewest (stepCostOf, phaseCosts) and break no small symbol if they can help it (brokenSymbols:
+ * a star, the type sigil, the orb, a back's pins): between the star row and the art, past the sigil.
+ * A lettered face's ATK / DEF line takes no row step, and a column step only between its numbers
+ * up to FLAT_DEG. Rows, columns, rows again, each from a grid of phases with the preferred one first
+ * (kept on a tie, and pulling: PHASE_PULL): a lettered face's tiltShift / tiltPhaseY, else 0. ≈ 0.3 ms,
+ * so the hand searches only the lean a card comes to rest at (`search` false: the preferred phase).
+ */
+export function tiltPhase(side: PixelCanvas, deg: number, line: Glyphs | null, face: boolean, search = true): readonly [number, number] {
+  const pivotX = TILT_IN + Math.floor(side.w / 2);
+  const pref = line ? ([tiltShift(deg, side.h), tiltPhaseY(deg, line.gapX, pivotX)] as const) : ([0, 0] as const);
+  const s = Math.abs(Math.sin((deg * Math.PI) / 180));
+  if (!search || s === 0 || Math.abs(deg) > PHASE_MAX_DEG) return pref;
+  const sc = stepCostOf(side, line, face);
+  const { W, H } = ringGeo(side.w, side.h);
+  const cx = pivotX;
+  const cy = TILT_IN + Math.floor(side.h / 2);
+  const n = Math.max(8, Math.min(PHASES, Math.ceil(PHASE_DENSITY / s)));
+  const letter = line !== null && Math.abs(deg) <= FLAT_DEG;
+  // the preferred phase first (kept on a tie), then n spread over (−0.5, 0.5)
+  const r = (deg * Math.PI) / 180;
+  const sin = Math.sin(r);
+  const cos = Math.cos(r);
+  const pick = (rows: boolean, other: number, p: number): number => {
+    const phases = new Float64Array(n + 1);
+    phases[0] = p;
+    for (let k = 0; k < n; k++) phases[k + 1] = -0.5 + (k + 0.5) / n;
+    const cost = phaseCosts(sc, W, H, cx, cy, deg, other, rows, letter, phases);
+    for (let k = 1; k <= n; k++) cost[k] += PHASE_PULL * Math.abs(phases[k] - p);
+    // cheapest first; each then pays for the symbols it breaks (only while it can still win)
+    const order = Array.from(phases.keys()).sort((a, b) => cost[a] - cost[b] || a - b);
+    let best = order[0];
+    let bv = Infinity;
+    for (const k of order) {
+      if (cost[k] >= bv) break;
+      const f = phases[k];
+      // (counting stops once this one cannot win any more)
+      const upTo = bv === Infinity ? Infinity : (bv - cost[k]) / SYMBOL_BREAK;
+      const v = cost[k] + SYMBOL_BREAK * brokenSymbols(sc.symbols, cx, cy, sin, cos, rows ? f : other, rows ? other : f, upTo);
+      if (v < bv) {
+        bv = v;
+        best = k;
+      }
+    }
+    return phases[best];
+  };
+  // rows with the columns at their preferred phase, the columns, then the rows again over those columns
+  // (a symbol whole only when no step of either axis crosses it)
+  const fx = pick(true, pref[1], pref[0]);
+  const fy = pick(false, fx, pref[1]);
+  return [pick(true, fy, pref[0]), fy];
 }
 
 /**
@@ -987,6 +1425,8 @@ export class HandMotion {
   private readonly map = new Map<Phaser.GameObjects.Container, Motion>();
   private readonly loose = new Map<Phaser.GameObjects.Container, Loose>();
   private readonly views = new Map<Phaser.GameObjects.Container, TiltView>();
+  /** The side a held card turns to (a wave's turn: expect), its lean to bake ahead. */
+  private readonly expected = new Map<Phaser.GameObjects.Container, { side: PixelCanvas; faceUp: boolean }>();
   /** The hand's own clock (scaled ms; breathing reads it). */
   private clock = 0;
   private alive = true;
@@ -1104,7 +1544,7 @@ export class HandMotion {
     }
     const tilt = new Track(from);
     tilt.play([{ at: ms, v: deg, ease: EASE.outCubic }]);
-    this.show(sprite, quantizeDeg(from, HAND3.degStep));
+    this.showTrack(sprite, tilt);
     return new Promise((done) => this.loose.set(sprite, { tilt, done }));
   }
 
@@ -1119,8 +1559,18 @@ export class HandMotion {
     this.dropView(sprite);
   }
 
+  /**
+   * A held card is about to turn to `side` (`faceUp`: its face; e.g. a flip's last frame, the side
+   * at full width): its lean of that side is baked ahead while it turns (bakeAhead), so the turn
+   * lands on a ready bake.
+   */
+  expect(sprite: Phaser.GameObjects.Container, side: PixelCanvas, faceUp: boolean): void {
+    if (this.map.has(sprite)) this.expected.set(sprite, { side, faceUp });
+  }
+
   /** Let go of every card (all upright). */
   clear(): void {
+    this.expected.clear();
     this.map.clear();
     for (const s of [...this.loose.keys()]) this.settleLoose(s);
     for (const s of [...this.views.keys()]) this.dropView(s);
@@ -1145,15 +1595,25 @@ export class HandMotion {
     this.views.delete(sprite);
   }
 
-  /** Show a card leaning `deg` (on the `degStep` grid): its TiltView, made on the first lean. */
-  private show(sprite: Phaser.GameObjects.Container, deg: number): void {
+  /**
+   * Show a card leaning `deg` (on the `degStep` grid): its TiltView, made on the first lean. `rest`:
+   * the lean it comes to rest at — baked with its steps searched off its symbols (tiltPhase); a lean
+   * shown in passing (a hover's turn, the swap's fall and rise) keeps the preferred phase, cheap.
+   */
+  private show(sprite: Phaser.GameObjects.Container, deg: number, rest = true): void {
     let v = this.views.get(sprite);
     if (!v) {
       if (deg === 0 || !isTiltCard(sprite) || !sprite.active) return;
       v = new TiltView(this.scene, sprite, this.px1, () => this.views.delete(sprite));
       this.views.set(sprite, v);
     }
-    v.show(deg);
+    v.show(deg, rest);
+  }
+
+  /** Show a lean track's value; at rest where the track ends. */
+  private showTrack(sprite: Phaser.GameObjects.Container, tilt: Track): void {
+    const deg = quantizeDeg(tilt.value, HAND3.degStep);
+    this.show(sprite, deg, deg === quantizeDeg(tilt.end, HAND3.degStep));
   }
 
   private apply(m: Motion): void {
@@ -1161,7 +1621,7 @@ export class HandMotion {
     const dx = m.shake === null ? 0 : rejectOffset(m.shake);
     const breath = m.y.moving ? 0 : breathOf(this.clock, m.phase);
     s.setPosition(Math.round(m.x.value) + dx, Math.round(m.y.value) + breath);
-    this.show(s, quantizeDeg(m.tilt.value, HAND3.degStep));
+    this.showTrack(s, m.tilt);
   }
 
   private tick(rawDt: number): void {
@@ -1197,12 +1657,61 @@ export class HandMotion {
         continue;
       }
       l.tilt.step(dt);
-      this.show(sprite, quantizeDeg(l.tilt.value, HAND3.degStep));
+      this.showTrack(sprite, l.tilt);
       if (!l.tilt.moving) this.settleLoose(sprite);
     }
     // every leaning card follows its CardV3's look (side, rim, flash, light node, sweep)
     for (const v of this.views.values()) v.update();
+    this.bakeAhead();
   }
+
+  /**
+   * Bake ahead, in what is left of the frame (at least one bake, then up to AHEAD_MS), the leans
+   * cards are about to come to rest at: where a moving lean track ends (a re-fan, a mark, the swap's
+   * rise) and the side a held card turns to (expect). A card then lands on a ready bake — the phase
+   * search (≈ 0.5 ms; more for a side seen the first time, or while the code is not warm yet) never
+   * piles up on the frame a whole hand settles in together.
+   */
+  private bakeAhead(): void {
+    const t0 = performance.now();
+    let baked = false;
+    const spent = (): boolean => baked && performance.now() - t0 > AHEAD_MS;
+    const ahead = (sprite: Phaser.GameObjects.Container, end: number, side: PixelCanvas | null, faceUp: boolean): void => {
+      const deg = quantizeDeg(end, HAND3.degStep);
+      if (deg === 0 || Math.abs(deg) > PHASE_MAX_DEG || !sprite.active || !isTiltCard(sprite)) return;
+      const px = side ?? sprite.shownPixels();
+      // (only a card shown at its texture size leans; a flip's turn frame is never searched)
+      if ((side === null && (sprite.displayW !== px.w || sprite.displayH !== px.h)) || isTurnFrame(px)) return;
+      const { glyphs, face } = leanFlags(sprite, faceUp);
+      if (hasTiltBake(px, deg, glyphs, face)) return;
+      tiltBake(px, deg, glyphs, face);
+      baked = true;
+    };
+    for (const [sprite, e] of this.expected) {
+      if (spent()) return;
+      this.expected.delete(sprite);
+      const m = this.map.get(sprite);
+      if (m) ahead(sprite, m.tilt.end, e.side, e.faceUp);
+    }
+    for (const [sprite, m] of this.map) {
+      if (spent()) return;
+      if (m.tilt.moving && isTiltCard(sprite)) ahead(sprite, m.tilt.end, null, sprite.faceUp);
+    }
+    for (const [sprite, l] of this.loose) {
+      if (spent()) return;
+      if (l.tilt.moving && isTiltCard(sprite)) ahead(sprite, l.tilt.end, null, sprite.faceUp);
+    }
+  }
+}
+
+/** Bake-ahead's share of a frame (ms) once it has made one bake (HandMotion.bakeAhead). */
+const AHEAD_MS = 2;
+
+/** A card's lean flags (tiltBake): a face up (`faceUp`) of a known card; a monster's: its ATK / DEF line lettered. */
+function leanFlags(card: TiltCard, faceUp: boolean): { glyphs: boolean; face: boolean } {
+  const id = card.cardId;
+  const face = faceUp && id !== null;
+  return { face, glyphs: face && isMonster(cardDef(id)) };
 }
 
 // ================================================================ TiltView (a leaning card, drawn)
@@ -1274,6 +1783,7 @@ class TiltView {
   private key = '';
   private readonly nodes: Phaser.GameObjects.Image[] = [];
   private sig = '';
+  private rest = true;
   private bake: TiltBake | null = null;
   private buf: PixelCanvas | undefined;
   /** An ImageData over `buf`'s own pixels (no copy per paint), and the size last put on the texture. */
@@ -1292,10 +1802,11 @@ class TiltView {
     card.once('destroy', this.onDestroy);
   }
 
-  /** Lean `deg` degrees (0: upright, the CardV3 draws itself). */
-  show(deg: number): void {
-    if (this.dead || deg === this.deg) return;
+  /** Lean `deg` degrees (0: upright, the CardV3 draws itself); `rest`: the lean it rests at (tiltBake's search). */
+  show(deg: number, rest = true): void {
+    if (this.dead || (deg === this.deg && rest === this.rest)) return;
     this.deg = deg;
+    this.rest = rest;
     if (deg === 0) this.hide();
     else this.update();
   }
@@ -1328,7 +1839,7 @@ class TiltView {
         sweep = `${sh.texture.key}#${sh.frame.name}@${sh.alpha}`;
       }
     }
-    const sig = `${sideId(side)}|${this.deg}|${tl}|${br}|${sweep}`;
+    const sig = `${sideId(side)}|${this.deg}|${this.rest}|${tl}|${br}|${sweep}`;
     if (sig !== this.sig) {
       this.sig = sig;
       this.paint(side, tl, br, over);
@@ -1342,11 +1853,11 @@ class TiltView {
   }
 
   private paint(side: PixelCanvas, tl: number | null, br: number | null, over: TiltOverlay | null): void {
-    const id = this.card.cardId;
-    const glyphs = this.card.faceUp && id !== null && isMonster(cardDef(id));
-    // one bake per new step, when it is first shown (≈ 0.3 ms; a hover's turn shows two or three, one a
-    // frame) — nothing baked ahead: a fresh hand paints each card once, not every step to upright
-    const b = (this.bake = tiltBake(side, this.deg, glyphs));
+    const { glyphs, face } = leanFlags(this.card, this.card.faceUp);
+    // one bake per new step, when it is first shown (a passing step ≈ 0.15 ms; a hover's turn shows
+    // two or three, one a frame) — only the lean a card comes to rest at, searched, is baked ahead
+    // (HandMotion.bakeAhead): a fresh hand paints each card once, not every step to upright
+    const b = (this.bake = tiltBake(side, this.deg, glyphs, face, this.rest));
     this.buf = paintTilt(b, side, tl, br, over, this.buf);
     const { w, h } = b.map;
     const sc = this.scene;

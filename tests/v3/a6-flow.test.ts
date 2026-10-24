@@ -702,13 +702,32 @@ describe('B2: the LP counter, the bar and the gain (F3)', () => {
     }
   });
 
-  it('the gain (presentHeal, S-14): the handler ends within A6_MS.lpGain; the number sits outside its panel', async () => {
+  it('the gain (presentHeal, S-14): the handler ends within A6_MS.lpGain; the number never touches its panel', async () => {
     const { A6_MS } = await import('../../src/view/v3/motion');
     const { HEAL_V3 } = await import('../../src/cinematics/v3small/heal');
     const { LP_WHEELS } = await import('../../src/view/v3/odometer');
+    const { textMetrics } = await import('../../src/ui/text');
+    const { panelRect } = await import('../../src/view/layout');
     expect(HEAL_V3.handlerMs).toBeLessThanOrEqual(A6_MS.lpGain.max - 17);
     expect(HEAL_V3.handlerMs).toBeGreaterThanOrEqual(LP_WHEELS.rollMs);
-    expect(HEAL_V3.gap).toBeGreaterThanOrEqual(8); // a size-1 number's half height + 1: clear of the panel
+    // the number's ink (centred on its cap band, 1-px outline × scale): lg on its first frame, md after,
+    // then the jump + float
+    const ink = (size: 'md' | 'lg', y0: number) => {
+      const m = textMetrics(size);
+      const top = y0 - Math.floor(m.capHeight / 2) - m.scale;
+      return { top, bottom: top + m.capHeight + 2 * m.scale - 1 };
+    };
+    const p1 = panelRect(0);
+    const p2 = panelRect(1);
+    const y1 = p1.y - HEAL_V3.gapP1;
+    expect(ink('lg', y1).bottom).toBeLessThanOrEqual(p1.y - 2); // P1: above its panel, 1 px clear
+    const y2 = p2.y + p2.h + HEAL_V3.gapP2;
+    expect(ink('lg', y2).top).toBeGreaterThanOrEqual(p2.y + p2.h + 1); // P2: below its panel, 1 px clear …
+    expect(ink('md', y2).top - HEAL_V3.jump - HEAL_V3.riseP2).toBeGreaterThanOrEqual(p2.y + p2.h + 1); // … after its float too
+    // a palette fade (two steps), gone within its life; the jump settles inside the count
+    expect(HEAL_V3.fade1).toBeLessThan(HEAL_V3.fade2);
+    expect(HEAL_V3.fade2).toBeLessThan(HEAL_V3.lifeMs);
+    expect(HEAL_V3.jumpMs).toBeLessThanOrEqual(HEAL_V3.handlerMs);
   });
 });
 

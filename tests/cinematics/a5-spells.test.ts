@@ -528,13 +528,17 @@ describe('A-4 Ayna Kalkanı (v3): panel, order, schedule', () => {
 describe('A-5 Yer Yarığı (v3): timing, geometry, the pad drawing', () => {
   it('the crack leaves ≈ 150 ms after activate (with the 40 ms burst stop), runs ≤ 250 ms; the slabs shut at ≈ 750', async () => {
     const { CRACK_AT, CRACK_MS, PAD_CRACK_MS, SHUT_AFTER } = await import('../../src/cinematics/traps/_chasm_v3');
-    // show clock + the opening's 40 ms hit-stop = game time (A5 §3.4: YARIK 150, AÇILMA ≈ 400, KAPANMA 750)
-    expect(CRACK_AT + 40).toBeLessThanOrEqual(150);
+    // game time = show clock + the opening's burst stop (3 frames) + the destroy's dispatch frame
+    // (A5 §3.4: YARIK 150, AÇILMA ≈ 400, KAPANMA 750; measured in the lane run: 150 / 416 / 767)
+    const crack = CRACK_AT + 50 + 17;
+    expect(crack).toBeLessThanOrEqual(151);
     expect(CRACK_MS).toBeLessThanOrEqual(250);
-    expect(Math.abs(CRACK_AT + 40 + CRACK_MS + PAD_CRACK_MS - 400)).toBeLessThanOrEqual(34);
-    expect(CRACK_AT + 40 + SHUT_AFTER).toBe(740);
+    expect(crack + CRACK_MS + PAD_CRACK_MS + 17).toBeGreaterThanOrEqual(370);
+    expect(crack + CRACK_MS + PAD_CRACK_MS + 17).toBeLessThanOrEqual(430);
+    expect(crack + SHUT_AFTER).toBeGreaterThanOrEqual(720);
+    expect(crack + SHUT_AFTER).toBeLessThanOrEqual(780);
     // the S-15 target: a fast decision (≤ 120 ms) + the crack's start stays within 300 ms of the summon's end
-    expect(120 + CRACK_AT + 40 + 17).toBeLessThanOrEqual(300);
+    expect(120 + crack + 17).toBeLessThanOrEqual(300);
   });
 
   it('the fall is whole-pixel steps, one per frame, accelerating (2, 4, 7, 11, 16 …)', async () => {
@@ -584,7 +588,7 @@ describe('A-5 Yer Yarığı (v3): timing, geometry, the pad drawing', () => {
       paintPadV3(p, 30, 15, look);
       return p;
     };
-    for (const look of [{ step: 0, crack: 0.5 }, { step: 0, crack: 1, seam: true }, { step: 1, crack: 1 }, { step: 2, crack: 1 }, { step: 2, crack: 1, rim: PAL.mag1 }] as const) {
+    for (const look of [{ step: 0, crack: 0.5 }, { step: 0, crack: 0.5, lip: PAL.mag3 }, { step: 0, crack: 1, seam: true }, { step: 1, crack: 1, lip: PAL.mag2 }, { step: 2, crack: 1 }, { step: 2, crack: 1, rim: PAL.mag1, lip: PAL.mag3 }] as const) {
       const p = draw(look);
       expect(paletteOnly(p).ok, JSON.stringify(look)).toBe(true);
       expect(hash(draw(look))).toBe(hash(p));
@@ -602,7 +606,7 @@ describe('A-5 Yer Yarığı (v3): timing, geometry, the pad drawing', () => {
     const mags = new Set<number>();
     for (let y = 0; y < open.h; y++) for (let x = 0; x < open.w; x++) {
       const c = open.get(x, y);
-      if (c !== null && [PAL.mag0, PAL.mag1, PAL.mag2, PAL.mag3, PAL.mag4].includes(c)) mags.add(c);
+      if (c !== null && ([PAL.mag0, PAL.mag1, PAL.mag2, PAL.mag3, PAL.mag4] as number[]).includes(c)) mags.add(c);
     }
     expect([...mags]).toEqual([PAL.mag2]);
   });
@@ -613,5 +617,22 @@ describe('A-5 Yer Yarığı (v3): timing, geometry, the pad drawing', () => {
     expect(exitDelay(800, 400, null)).toBe(0);
     expect(exitDelay(800, 400, 1100 + LAND_GAP)).toBe(50);
     expect(exitDelay(800, 600, 1100 + LAND_GAP)).toBe(0);
+  });
+
+  it('the crack starts just past the trap tile (outside the opening burst), over the floor ring', async () => {
+    const { CRACK_DEPTH, PAD_HH, PAD_HW, footOffset } = await import('../../src/cinematics/traps/_chasm_v3');
+    const { DEPTH } = await import('../../src/view/layout');
+    const s = Math.SQRT1_2;
+    for (const u of [{ x: 0, y: 1 }, { x: 1, y: 0 }, { x: -s, y: s }, { x: s, y: -s }]) {
+      const d = footOffset(u);
+      // outside the tile's iso diamond (|x| / hw + |y| / hh > 1) by ≥ 1 px, and not far past it
+      expect(Math.abs(u.x * d) / (PAD_HW + 1) + Math.abs(u.y * d) / (PAD_HH + 1)).toBeGreaterThan(1);
+      expect(d).toBeLessThanOrEqual(PAD_HW + 4);
+    }
+    expect(footOffset({ x: 0, y: 1 })).toBe(PAD_HH + 3);
+    expect(footOffset({ x: 1, y: 0 })).toBe(PAD_HW + 3);
+    // above the trap opening's floor ring (DEPTH.SHADOW − 1), below the shadows and every unit
+    expect(CRACK_DEPTH).toBeGreaterThan(DEPTH.SHADOW - 1);
+    expect(CRACK_DEPTH).toBeLessThan(DEPTH.SHADOW);
   });
 });

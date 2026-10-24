@@ -6,31 +6,32 @@
 // Instead of the soft glowing abyss: a sharp crack runs from the trap to the summoned monster's pad, the
 // pad breaks into three flat slabs round an ink hole, the body drops into it on whole pixels behind the
 // hole's front lip (no fade), the slabs slam back and the card comes out of the scar.
-// t = activate, in GAME ms at 1× (the show clock below is 40 ms behind it: the opening's burst stop):
+// t = activate, in GAME ms at 1× (the show clock below runs ≈ 67 ms behind: the opening's burst stop
+// and the destroy's dispatch frame):
 //   0        the trap opening (trapOpeningV3: the card springs up, burst, "TUZAK!"), its lean as today
-//            (same target as chasm_trap.ts:114). Its Yer Yarığı accent (hairline floor cracks round the
+//            (same target as chasm_trap.ts:118). Its Yer Yarığı accent (hairline floor cracks round the
 //            tile) is not drawn under V3_A5_A: the crack's own root is that accent (A5 §3.4: "floorCracks
 //            aksanı yarığın başlangıcı olur; ayrı bir vuruş değildir").
 //   150      CRACK — `crack`: the destroy plays (the victim's own death hooks step aside, sourceOwnsDeath:
-//            its death is the fall). From the trap tile's foot a sharp crack runs to the victim's pad in
-//            220 ms: a 1-px ink core, 1-px mag3 lips, the newest pixels mag4, a broken whole-pixel path,
+//            its death is the fall). From the trap tile's edge a sharp crack runs to the victim's pad in
+//            200 ms: a 1-px ink core, 1-px mag3 lips, the newest pixels mag4, a broken whole-pixel path,
 //            three short root spurs at the start, stone pixels kicked up at its head, a stepped magenta
 //            floor strip following it. The victim waits in its idle. chasmCrack
-//   370      the crack reaches the pad (at the slab cut that faces the trap); the pad's own cracks split it
+//   350      the crack reaches the pad (at the slab cut that faces the trap); the pad's own cracks split it
 //            into three slabs (2 frames)
 //   ≈ 400    OPEN — `open`: the slabs tilt in (2 steps, 1 frame apart: back slab lighter, front darker,
 //            ink sides) round an ink hole with a 1-tone magenta light on its far rim and a lit front lip;
 //            the body takes it — v3 art: its hitHeavy struck frame, held 2 frames; old art: its v1 hit —
-//            and its card under it goes with the floor. Today's victim lean (chasm_trap.ts:148) is called
-//            here, same target and options (user decision: the camera does not change). chasmOpen
-//            (duck 0.6) + the body's material thud
-//   ≈ 435    FALL: the body drops on whole pixels (2, 4, 7, 11, 16, 22, 29, 37 px per frame, one step per
+//            and its card under it goes with the floor. Today's victim lean (chasm_trap.ts:153, :148 before
+//            A-5) is called here, same target and options (user decision: the camera does not change).
+//            chasmOpen (duck 0.6) + the body's material thud
+//   ≈ 450    FALL: the body drops on whole pixels (2, 4, 7, 11, 16, 22, 29, 37 px per frame, one step per
 //            rendered frame) behind the hole's front lip — a geometry mask: no fade, no tint; v3 art goes
 //            on to hitHeavy f1 / f2 (the footing lost, the wings left behind). Rock bits from the rim
 //            tumble in after it, stepped dust puffs rise off the lip. chasmFall
 //   750      SHUT — `shut`: the slabs slam back in 2 steps, the seams flash white for one frame, a 2-step
 //            dust ring, a 1-px tremble of the pad (local, never the camera). The card is born on the scar
-//            (cardLeaves: a 2-frame 1-px white rim) and flies to the graveyard (lands ≈ 1.05–1.1 s); the
+//            (cardLeaves: a 2-frame 1-px white rim) and flies to the graveyard (lands ≈ 1.15 s; measured); the
 //            scar steps out (ink → night0 → gone). chasmShut (duck 0.5)
 //   then     EXIT — `exit`: the trap card lies down on its tile and leaves for the graveyard from there,
 //            landing ≥ 150 ms after the victim's card (≈ 1.35 s); the camera relaxes (ctx.unfocus(320)).
@@ -41,7 +42,8 @@
 
 import type Phaser from 'phaser';
 import { PAL } from '../../art/palette';
-import { chasmGeometry, type ChasmGeom } from '../../art/spellmotifs-v3';
+import type { PixelCanvas } from '../../art/pixel';
+import { chasmGeometry, crackPath, paintCrack, type ChasmGeom } from '../../art/spellmotifs-v3';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { DEPTH, type XY, unitDepth, zoneXY } from '../../view/layout';
 import { lightBeam, lightFlash, lightPool, type BeamHandle, type LightHandle } from '../../view/light';
@@ -62,11 +64,11 @@ type DestroyCtx = CinematicContext<EvOf<'destroy'>>;
 // ================================================================ timing (show-clock ms)
 
 /**
- * The crack leaves the trap tile: activate + 100 show-ms = 150 game-ms at 1× (the opening's 40 ms
- * burst stop is inside it, the timer lands on the next whole frame). Keeps "summon handler end →
- * crack" ≤ 300 ms with lane A6-B's fast decision (S-15, ≤ 120 ms).
+ * The crack leaves the trap tile: activate + 84 show-ms ≈ 150 game-ms at 1× (the opening's 40 ms burst
+ * stop — 3 frames — and the destroy's dispatch frame come on top; measured). Keeps "summon handler
+ * end → crack" ≤ 300 ms with lane A6-B's fast decision (S-15, ≤ 120 ms).
  */
-export const CRACK_AT = 100;
+export const CRACK_AT = 84;
 /** The crack's run, trap tile → the victim's pad (A5 §3.4: ≤ 250 ms). */
 export const CRACK_MS = 200;
 /** The pad's own cracks split it into three slabs (2 frames). */
@@ -75,6 +77,11 @@ export const PAD_CRACK_MS = 34;
 export const FALL_STEPS: readonly number[] = Object.freeze([2, 4, 7, 11, 16, 22, 29, 37]);
 /** The slabs slam back this long after the crack left (A5 §3.4: KAPANMA at 750, the crack at 150). */
 export const SHUT_AFTER = 600;
+/**
+ * The running crack's depth: over the trap opening's floor ring (DEPTH.SHADOW − 1), which would hide its
+ * first ≈ 20 px for 2–3 frames after the crack sound, and under the shadows and the units.
+ */
+export const CRACK_DEPTH = DEPTH.SHADOW - 0.5;
 /** Two graveyard landings at least this far apart (A5 §3.0 EF-12). */
 export const LAND_GAP = 150;
 
@@ -127,6 +134,15 @@ export function fallLip(g: ChasmGeom, reach = 160): XY[] {
 }
 
 /**
+ * How far from the trap tile's centre the crack starts along the unit direction `u`: just past the
+ * tile's iso diamond (half sizes PAD_HW + 1, PAD_HH + 1), + 2 px.
+ */
+export function footOffset(u: XY): number {
+  const k = Math.abs(u.x) / (PAD_HW + 1) + Math.abs(u.y) / (PAD_HH + 1);
+  return Math.ceil(1 / Math.max(k, 1e-6)) + 2;
+}
+
+/**
  * When the trap card's flight must start for it to land at `target` (ms on the same clock as `now`):
  * its flash + lift + arc take `fly`. Never in the past.
  */
@@ -167,6 +183,11 @@ interface PadLook {
   scar?: 0 | 1 | 2;
   /** The far rim's light this frame (one magenta tone; it breathes while the hole stands open). */
   rim?: number;
+  /**
+   * The seams' lips (the running crack's look carried into the pad: ink core, 1-px light on its lips),
+   * or null for bare cuts (the seam frame, the scar).
+   */
+  lip?: number | null;
 }
 
 /** The hole's half width per opening step, as a share of the slab half width (smaller than the kit's 0.4 / 0.7: the slabs stay readable round it). */
@@ -195,17 +216,23 @@ export function padGeom(cx: number, cy: number, step: 0 | 1 | 2, hw = PAD_HW, hh
  * lip 1 px (night2) — the edge a body sinks behind. Closed (step 0): only the cuts (the slab faces are
  * the pad's own night1). Local canvas coordinates.
  */
-export function paintPadV3(p: { set(x: number, y: number, c: number): unknown; get(x: number, y: number): number | null; poly(pts: readonly [number, number][], c: number): unknown; line(x0: number, y0: number, x1: number, y1: number, c: number): unknown; ellipse(cx: number, cy: number, rx: number, ry: number, c: number): unknown }, cx: number, cy: number, look: PadLook): void {
+export function paintPadV3(p: PixelCanvas, cx: number, cy: number, look: PadLook): void {
   const g = padGeom(cx, cy, look.step);
   const C = g.slabs[0][0];
   if (look.step > 0) g.slabs.forEach((poly, i) => p.poly(poly.map((q) => [q.x, q.y] as [number, number]), g.faces[i]));
   const k = look.step === 0 ? Math.max(0, Math.min(1, look.crack)) : 1;
   const cut = look.seam ? PAL.white : look.scar === 1 ? PAL.night0 : PAL.ink;
+  const lip = look.seam || look.scar ? null : (look.lip ?? null);
   if (k > 0)
     for (const end of g.cuts) {
       const ex = Math.round(C.x + (end.x - C.x) * k);
       const ey = Math.round(C.y + (end.y - C.y) * k);
-      p.line(C.x, C.y, ex, ey, cut);
+      if (lip !== null) {
+        // the running crack goes on into the pad: an ink core with light pixels on its lips (the newest
+        // pixels brightest while the cut still grows)
+        const path = crackPath(C, end, 1, 0);
+        paintCrack(p, path, Math.round(path.length * k), { light: lip, head: k < 1 ? PAL.mag4 : lip });
+      } else p.line(C.x, C.y, ex, ey, cut);
       if (look.step === 2) p.line(C.x, C.y + 1, ex, ey + 1, PAL.ink);
     }
   const { x, y, rx, ry } = g.hole;
@@ -302,7 +329,7 @@ function rootSpurs(scene: Phaser.Scene, at: XY, dir: XY, seed: number): ReturnTy
     const a = base + da + (rnd() - 0.5) * 0.4;
     const len = 6 + Math.floor(rnd() * 4);
     const to = { x: Math.round(at.x + Math.cos(a) * len), y: Math.round(at.y + (Math.sin(a) * len) / 2) };
-    return runCrack(scene, at, to, { ms: 60 + i * 20, seed: seed + i * 7 + 1, light: PAL.mag2 });
+    return runCrack(scene, at, to, { ms: 60 + i * 20, seed: seed + i * 7 + 1, light: PAL.mag2, depth: CRACK_DEPTH });
   });
 }
 
@@ -492,7 +519,7 @@ export async function swallowV3(ctx: DestroyCtx): Promise<void> {
     if (loc && loc.zone === 'spellTrap') from = zoneXY(loc.player, 'spellTrap', loc.index);
   }
   const { tile, unit } = field.release(ev.uid);
-  // (today's victim lean targets the tile's home exactly: chasm_trap.ts:148)
+  // (today's victim lean targets the tile's home exactly: chasm_trap.ts:153, :148 before A-5)
   const lean = tile ? { x: tile.home.x, y: tile.home.y - 18 } : (() => {
     const z = zoneXY(ev.player, 'monster', ev.zone);
     return { x: z.x, y: z.y - 18 };
@@ -516,10 +543,13 @@ export async function swallowV3(ctx: DestroyCtx): Promise<void> {
   if (from && entry) {
     const dir = { x: entry.x - from.x, y: entry.y - from.y };
     const dl = Math.hypot(dir.x, dir.y) || 1;
-    const foot = { x: Math.round(from.x + (dir.x / dl) * 7), y: Math.round(from.y + (dir.y / dl) * 7) };
+    // the crack leaves the trap tile at its edge: the opening's burst still covers the tile itself for
+    // the first frames, and the crack must show on the frame after its sound
+    const out = footOffset({ x: dir.x / dl, y: dir.y / dl });
+    const foot = { x: Math.round(from.x + (dir.x / dl) * out), y: Math.round(from.y + (dir.y / dl) * out) };
     playV3('chasmCrack', { volume: 0.9, pan: panAt((foot.x + home.x) / 2) }); // mark `crack`
     cracks.push(...rootSpurs(sc, foot, { x: dir.x / dl, y: dir.y / dl }, seed));
-    const main = runCrack(sc, foot, entry, { ms: CRACK_MS, seed: seed + 3 });
+    const main = runCrack(sc, foot, entry, { ms: CRACK_MS, seed: seed + 3, depth: CRACK_DEPTH });
     cracks.push(main);
     // the stepped magenta floor strip follows the crack's head (light on the matte pads it crosses)
     lights.strip = lightBeam(sc, foot, foot, PAL.mag3, 0, { air: false, floor: { from: foot, to: foot }, floorWidth: 6, intensity: 0.8, shimmer: 0 });
@@ -534,11 +564,11 @@ export async function swallowV3(ctx: DestroyCtx): Promise<void> {
     await wait(sc, CRACK_MS);
   }
   // the pad's own cracks split it into three slabs
-  await run(sc, PAD_CRACK_MS, (t) => pad.set({ crack: Math.min(1, t) }));
-  pad.set({ crack: 1 });
+  await run(sc, PAD_CRACK_MS, (t) => pad.set({ crack: Math.min(1, t), lip: PAL.mag3 }));
+  pad.set({ crack: 1, lip: PAL.mag3 });
 
   // ---- OPEN — `open`
-  void ctx.focus(lean, { zoom: 1.07, ms: 320, pan: 0.36 }); // today's victim lean (chasm_trap.ts:148), kept
+  void ctx.focus(lean, { zoom: 1.07, ms: 320, pan: 0.36 }); // today's victim lean (chasm_trap.ts:153, :148 before A-5), kept
   playV3('chasmOpen', { volume: 1, pan: panAt(home.x) }); // mark `open`
   const thud = hitSoundFor(u, { kind: 'physical', heavy: true });
   if (thud) playHit(sc, thud, { heavy: true, volume: 0.7, pan: panAt(home.x) });
@@ -624,7 +654,7 @@ export async function swallowV3(ctx: DestroyCtx): Promise<void> {
       await wait(sc, 100);
       if (!breathing) break;
       lit = !lit;
-      pad.set({ rim: lit ? PAL.mag2 : PAL.mag1 });
+      pad.set({ rim: lit ? PAL.mag2 : PAL.mag1, lip: lit ? PAL.mag3 : PAL.mag2 });
     }
   })();
 
@@ -635,10 +665,10 @@ export async function swallowV3(ctx: DestroyCtx): Promise<void> {
   rocks.kill();
   mask.destroy();
   void lights.hole?.fadeOut(80);
-  pad.set({ step: 1, rim: undefined });
+  pad.set({ step: 1, rim: undefined, lip: PAL.mag2 });
   await nextFrame(sc);
   playV3('chasmShut', { volume: 1, pan: panAt(home.x) }); // mark `shut`
-  pad.set({ step: 0, crack: 1, seam: true });
+  pad.set({ step: 0, crack: 1, seam: true, lip: null });
   void dustRing(sc, home, DEPTH.SHADOW + 1, seed + 17);
   void pad.tremble(sc, 120);
   await nextFrame(sc);
@@ -721,7 +751,7 @@ export async function chasmV3(ctx: ActCtx): Promise<void> {
     landed(null); // (no-op when the swallow reported its landing)
   })();
 
-  // today's opening lean, the same target (chasm_trap.ts:114)
+  // today's opening lean, the same target (chasm_trap.ts:118)
   const op = await trapOpening(ctx, { focus: lerpXY({ x: trapAt.x, y: trapAt.y - 30 }, { x: vAt.x, y: vAt.y - 20 }, 0.35) });
 
   // ---- EXIT — `exit`: the card lies down once the slabs have shut, and lands ≥ LAND_GAP after the victim's
