@@ -18,12 +18,18 @@
 //   Ayna Kalkanı   glass PLATE: whole-tone ticks on plate ratios (1 : 1.59 : 2.14 : 2.65), short and
 //                  dry — not the wyrm's ringing bar modes: the build ticks C5–F#5 over a low "thock",
 //                  the beam on E6, the break a dry plate crack with C5–F#6 shards (LSD vs the wyrm's
-//                  glass roles and the crystal hits ≥ 10.8 dB, measured in A-4; A-8 re-checks).
+//                  glass roles and the crystal hits ≥ 10.8 dB, measured in A-4; ≥ 11.4 dB after A-8).
 //   Yer Yarığı     earth: crackle trains, hollow low "whoomp", gravel bursts, a heavy slam and dust.
 // Levels follow the slice (src/audio/v3/slice.ts): the big beats duck the music ≥ 0.55, small ones
 // ≤ 0.3 (SE-7, the §4.6 table). Sounds that land on the victim's own death frame (mirrorBeam,
-// chasmFall) sit an octave away from its body and stay short (SE-5 spirit). Final levels and the
-// separation are tuned in A5-A step A-8 (measured offline, SE-8).
+// chasmFall) sit an octave away from its body and stay short (SE-5 spirit).
+// A5-A step A-8 (the sound pass, measured offline on the game's own renders — SE-8): the mirror's beats
+// were 7–12 dB under the slice's trap climax (Işık Zincirleri chainBind −10.4 / −7.9 LUFS 400 / 100 ms
+// in its scene), so its catch, beams, build and break got more weight (catch +3, break +7.6, build +2.7,
+// beams +2.6 dB at 100 ms); the sword's break +3.9, the spring's rise +2, the grave's opening +1.1 dB; the
+// eruption carries more of its fire (a brighter crackle) and now sits ≥ 10 dB LSD from the chasm's
+// hollow opening and fall. Every recipe peaks ≤ −1.46 dBFS through the v3 chain (0 clipped samples);
+// the mirror's glass stays ≥ 11.4 dB LSD from the wyrm's glass roles and the crystal hits.
 
 import type { Recipe } from '../sounds';
 import { midiHz, perc, swell, type Voice } from '../synth';
@@ -61,12 +67,12 @@ export const V3_SPELL_RECIPES = {
     verb: 0.4,
     duck: 0.3,
     play(v) {
-      sweep(v, 0, 0.36, [700, 2600, 1300], 0.22, { kind: 'white', q: 1.1, peakAt: 0.3 });
-      puff(v, 0.01, 0.16, 0.3, 1400, { kind: 'pink' });
-      v.tone('sine', [[0, 110], [0.22, 165, 'e']], { g: perc(0.14, 0.32, 0.02) });
+      sweep(v, 0, 0.36, [700, 2600, 1300], 0.26, { kind: 'white', q: 1.1, peakAt: 0.3 });
+      puff(v, 0.01, 0.2, 0.3, 1400, { kind: 'pink' });
+      v.tone('sine', [[0, 110], [0.22, 165, 'e']], { g: perc(0.17, 0.32, 0.02) });
       [SPRING[0], SPRING[1], SPRING[3]].forEach((m, i) => {
         const f = midiHz(m);
-        v.tone('sine', [[0, f * 0.86], [0.035, f, 'e']], { t: 0.03 + i * 0.06, g: perc(0.11, 0.13, 0.003) });
+        v.tone('sine', [[0, f * 0.86], [0.035, f, 'e']], { t: 0.03 + i * 0.06, g: perc(0.17, 0.13, 0.003) });
       });
     },
   },
@@ -103,9 +109,9 @@ export const V3_SPELL_RECIPES = {
     verb: 0.55,
     duck: 0.3,
     play(v) {
-      growl(v, 0, { d: 0.7, f: [62, 74, 70, 58, 46], formants: [280, 620, 1500], g: 0.28, grit: 1.2, rasp: 18 });
-      clank(v, midiHz(72), 0.05, 0.07, 1.1, { ratio: 2, index: 1.1, click: 0 });
-      v.noise('pink', { g: [[0, 0], [0.12, 0.08], [0.7, 0.0001, 'e']], to: v.filt('lowpass', [[0, 300], [0.7, 900, 'e']], 0.9) });
+      growl(v, 0, { d: 0.7, f: [62, 74, 70, 58, 46], formants: [280, 620, 1500], g: 0.33, grit: 1.2, rasp: 18 });
+      clank(v, midiHz(72), 0.05, 0.09, 1.1, { ratio: 2, index: 1.1, click: 0 });
+      v.noise('pink', { g: [[0, 0], [0.12, 0.1], [0.7, 0.0001, 'e']], to: v.filt('lowpass', [[0, 300], [0.7, 900, 'e']], 0.9) });
     },
   },
   /**
@@ -167,9 +173,9 @@ export const V3_SPELL_RECIPES = {
     verb: 0.4,
     duck: 0.3,
     play(v) {
-      crack(v, 0, 0.45, { hp: 2400, n: 2, gap: 0.014 });
-      clank(v, 740, 0, 0.07, 0.35, { ratio: 1.41, index: 2.4, click: 0 });
-      for (let i = 0; i < 6; i++) link(v, 3400 - i * 260 + v.r(-90, 90), 0.06 + i * 0.05 + v.r(0, 0.02), 0.06 * (1 - i * 0.08), 0.07);
+      crack(v, 0, 0.6, { hp: 2400, n: 2, gap: 0.014 });
+      clank(v, 740, 0, 0.13, 0.45, { ratio: 1.41, index: 2.4, click: 0 });
+      for (let i = 0; i < 6; i++) link(v, 3400 - i * 260 + v.r(-90, 90), 0.06 + i * 0.05 + v.r(0, 0.02), 0.09 * (1 - i * 0.08), 0.07);
     },
   },
 
@@ -196,7 +202,7 @@ export const V3_SPELL_RECIPES = {
       thump(v, 0, 78, 30, 0.8, 0.8, { drive: 2 });
       v.noise('brown', { g: [[0, 0], [0.05, 0.5], [0.55, 0.3], [1.2, 0.0001, 'e']], to: v.filt('lowpass', [[0, 520], [1.2, 150, 'e']], 0.9) });
       puff(v, 0.005, 0.3, 0.35, 1600, { kind: 'pink' });
-      v.crackle({ t: 0.02, d: 0.9, n: 32, g: 0.16, f: 3000, q: 0.8, curve: 1.7, dec: 0.004 });
+      v.crackle({ t: 0.02, d: 0.9, n: 44, g: 0.24, f: 5200, q: 0.8, curve: 1.7, dec: 0.004 });
     },
   },
   /** The lava front creeping over the board (SUSTAINED: started at the eruption, stopped 120 ms after the last blow). */
@@ -262,11 +268,11 @@ export const V3_SPELL_RECIPES = {
       // (24 Oct, the big dome back: the ticks follow its cells rising from the floor to the crown over
       // the 380 ms build — 100 ms apart instead of the 7-cell panel's 50)
       MIRROR.forEach((m, i) => {
-        plateBell(v, midiHz(m - 12), i * 0.1, 0.12 - i * 0.008, 0.2, { modes: 4 });
+        plateBell(v, midiHz(m - 12), i * 0.1, 0.17 - i * 0.01, 0.2, { modes: 4 });
         // the tick itself: a dry plate click (band-passed, no airy hiss on top) on a short low "thock"
         // of the thick glass settling into place (the body the wyrm's ringing glass never has)
-        v.noise('white', { t: i * 0.1, g: perc(0.035, 0.005, 0.0002), to: v.filt('bandpass', 2400, 1.4) });
-        thump(v, i * 0.1, 300, 210, 0.08, 0.06);
+        v.noise('white', { t: i * 0.1, g: perc(0.05, 0.005, 0.0002), to: v.filt('bandpass', 2400, 1.4) });
+        thump(v, i * 0.1, 300, 210, 0.12, 0.06);
       });
     },
   },
@@ -277,10 +283,10 @@ export const V3_SPELL_RECIPES = {
     verb: 0.5,
     duck: 0.45,
     play(v) {
-      crack(v, 0, 0.42, { hp: 3200, n: 1, dec: 0.01 });
-      plateBell(v, midiHz(79), 0, 0.12, 0.8);
-      plateBell(v, midiHz(86), 0.003, 0.05, 0.45, { modes: 2 });
-      thump(v, 0, 190, 80, 0.28, 0.14);
+      crack(v, 0, 0.5, { hp: 3200, n: 1, dec: 0.01 });
+      plateBell(v, midiHz(79), 0, 0.2, 0.8);
+      plateBell(v, midiHz(86), 0.003, 0.08, 0.45, { modes: 2 });
+      thump(v, 0, 190, 80, 0.5, 0.18);
     },
   },
   /** One reflected beam (×n, one step up per victim): a short zap and a falling ring. */
@@ -291,11 +297,11 @@ export const V3_SPELL_RECIPES = {
     duck: 0.3,
     play(v) {
       const zap = v.filt('bandpass', [[0, 3400], [0.09, 700, 'e']], 2.2);
-      v.tone('sawtooth', [[0, 2400], [0.09, 600, 'e']], { g: perc(0.15, 0.1, 0.002), to: zap });
-      v.noise('white', { g: perc(0.14, 0.05, 0.001), to: zap });
+      v.tone('sawtooth', [[0, 2400], [0.09, 600, 'e']], { g: perc(0.19, 0.1, 0.002), to: zap });
+      v.noise('white', { g: perc(0.17, 0.05, 0.001), to: zap });
       const f = midiHz(MIRROR[2]);
-      v.tone('sine', [[0, f], [0.25, f * 0.94, 'e']], { t: 0.01, g: perc(0.1, 0.25, 0.003) });
-      v.tone('sine', [[0, f * 1.594], [0.2, f * 1.5, 'e']], { t: 0.01, g: perc(0.04, 0.16, 0.003) });
+      v.tone('sine', [[0, f], [0.25, f * 0.94, 'e']], { t: 0.01, g: perc(0.14, 0.25, 0.003) });
+      v.tone('sine', [[0, f * 1.594], [0.2, f * 1.5, 'e']], { t: 0.01, g: perc(0.055, 0.16, 0.003) });
     },
   },
   /**
@@ -309,12 +315,13 @@ export const V3_SPELL_RECIPES = {
     verb: 0.5,
     duck: 0.4,
     play(v) {
-      crack(v, 0, 0.45, { hp: 1400, lp: 6000, n: 2, gap: 0.016, dec: 0.012 });
-      plateBell(v, midiHz(MIRROR[0] - 12), 0.003, 0.1, 0.32, { modes: 4 });
+      crack(v, 0, 0.62, { hp: 1400, lp: 6000, n: 2, gap: 0.016, dec: 0.012 });
+      plateBell(v, midiHz(MIRROR[0] - 12), 0.003, 0.2, 0.32, { modes: 4 });
+      thump(v, 0, 160, 70, 0.4, 0.22);
       const pans = [v.panner(-0.4), v.panner(0), v.panner(0.4)];
       for (let i = 0; i < 7; i++) {
         const m = MIRROR[i % MIRROR.length] - (i % 2 ? 0 : 12);
-        plateBell(v, midiHz(m) * v.r(0.997, 1.003), 0.03 + i * 0.045 + v.r(0, 0.02), 0.04 * (1 - i * 0.07), v.r(0.08, 0.18), { to: pans[i % 3], modes: 2 });
+        plateBell(v, midiHz(m) * v.r(0.997, 1.003), 0.03 + i * 0.045 + v.r(0, 0.02), 0.065 * (1 - i * 0.07), v.r(0.08, 0.18), { to: pans[i % 3], modes: 2 });
       }
     },
   },

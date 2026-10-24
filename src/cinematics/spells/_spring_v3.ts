@@ -33,6 +33,8 @@
 // broken 1-px curtains (EF-2: never > 50 % of a body). P2: castSpot / castFloor mirrored (upper right);
 // the drawings are not mirrored (their light stays at the screen's top left).
 // No camera move (only today's relax() safety), no full-screen wash, no whole-sprite tint.
+// REDUCED_MOTION (A5 §3.0 / §6.4, step A-8): the jet stops at its full 80 px (no crest overshoot), the spray
+// and the crown's splash are halved; every time stays the same.
 
 import type Phaser from 'phaser';
 import type { PlayerId } from '../../engine/types';
@@ -224,7 +226,8 @@ function springFountain(sc: Phaser.Scene, at: XY, seed: number): Fountain {
     if (!settling) {
       // the rise: one height per rendered frame from the eruption (frame 0 = the first height)
       const i = Math.min(S.rise.length - 1, frame);
-      h = S.rise[i];
+      // (reduced motion, A5 §6.4: the crest never passes the full height — no overshoot; same frames)
+      h = REDUCED_MOTION ? Math.min(FOUNTAIN_H, S.rise[i]) : S.rise[i];
       if (i >= S.dropFrame) resolveCrest();
       if (i === S.rise.length - 1) resolveRisen();
       poolR = S.pool[Math.min(S.pool.length - 1, Math.floor(frame / 2))];

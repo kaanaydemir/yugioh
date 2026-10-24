@@ -1,7 +1,8 @@
 // TurnPlate — the small v3 plate that announces a flow moment on its owner's side (docs/v3/A6_PLAN.md
 // F1 / F2, lane A6-B step B1; KO-4: never a full-width band). One component for every plate of the
-// lane: the turn plate ("OYUNCU 2 · TUR 4"), the battle plate ("SAVAŞ AŞAMASI"); later the
-// "DÜELLO!" plate (large), the deck-out, curtain and result plates. V3_A6_B only (the callers gate).
+// lane: the turn plate ("OYUNCU 2 · TUR 4"), the battle plate ("SAVAŞ AŞAMASI"), the deck-out plate
+// ("DESTE BİTTİ", B5); the "DÜELLO!" plate (large) below; the curtain and result plates are their own
+// files (CurtainV3.ts, ResultPlate.ts) on the same frame language. V3_A6_B only (the callers gate).
 //
 //   const plate = TurnPlate.show(scene, { player: 1, kind: 'turn', segments: turnPlateText(…) });
 //   await plate.settled;                         // 450 ms: slid in, stamped, settled back 1 px
@@ -9,7 +10,7 @@
 //
 // Look (S-1 frame language, palette only, whole pixels, no alpha / ADD / scale / rotation — KO-1/2/3):
 //   body     frameRectV3 bands (night1 over night0), 1-px ink outline, corners cut
-//   trim     the owner's tone (P1 cyan, P2 crimson; the battle plate crimson), one tone up at rest;
+//   trim     the owner's tone (P1 cyan, P2 crimson; the battle and deck-out plates crimson), one tone up at rest;
 //            it appears in two palette steps (trim two tones down + night0 body → one down → rest)
 //   text     md glyphs with an ink outline, stamped one letter per frame: a letter's first frame is
 //            white and 1 px high, then it drops into place in its own tone (the "damga")
@@ -41,7 +42,7 @@ export interface PlateSegment {
   color: number;
 }
 
-export type PlateKind = 'turn' | 'battle';
+export type PlateKind = 'turn' | 'battle' | 'deckOut';
 
 export interface PlateSpec {
   /** Whose side the plate sits on (its trim tone for 'turn'). */
@@ -93,13 +94,13 @@ export function plateRect(player: PlayerId, w: number): Rect {
 /** The plate's width for its text (and the battle plate's icon, `iconW` px wide). */
 export function plateWidth(segments: readonly PlateSegment[], kind: PlateKind, iconW = ICON_W): number {
   const textW = layoutLine(segments.map((s) => s.text).join(''), 'md').w;
-  const icon = kind === 'battle' ? iconW + PLATE.iconGap : 0;
+  const icon = kind === 'battle' || kind === 'deckOut' ? iconW + PLATE.iconGap : 0;
   return Math.max(PLATE.minW, textW + icon + 2 * PLATE.padX);
 }
 
 /** The ramp a plate's trim steps on. */
 export function plateRamp(spec: Pick<PlateSpec, 'player' | 'kind'>): Ramp {
-  if (spec.kind === 'battle') return RAMPS.crim;
+  if (spec.kind === 'battle' || spec.kind === 'deckOut') return RAMPS.crim;
   return spec.player === 0 ? RAMPS.cyan : RAMPS.crim;
 }
 
@@ -128,6 +129,11 @@ export function turnPlateText(o: { mode: 'hotseat' | 'vsBot' | 'demo'; human: bo
     { text: ' · ', color: PAL.steel },
     { text: `TUR ${o.turn}`, color: PAL.white },
   ];
+}
+
+/** The deck-out plate's text (F8, B5). */
+export function deckOutPlateText(): PlateSegment[] {
+  return [{ text: 'DESTE BİTTİ', color: PAL.white }];
 }
 
 /** The battle plate's text (F2). */
@@ -197,7 +203,8 @@ export class TurnPlate {
     this.scene = scene;
     this.spec = spec;
     this.ramp = plateRamp(spec);
-    const iconKey = spec.kind === 'battle' ? iconTexture(scene, ICON.swords, iconTones('fire', 1)) : null;
+    // the battle plate's crossed swords, the deck-out plate's deck (both re-toned to the crimson trim)
+    const iconKey = spec.kind === 'battle' ? iconTexture(scene, ICON.swords, iconTones('fire', 1)) : spec.kind === 'deckOut' ? iconTexture(scene, ICON.deck, iconTones('fire', 1)) : null;
     const iconW = iconKey ? scene.textures.getFrame(iconKey).width : 0;
     this.w = plateWidth(spec.segments, spec.kind, iconW);
     this.rect = plateRect(spec.player, this.w);
@@ -207,7 +214,7 @@ export class TurnPlate {
     this.body = scene.add.image(0, 0, this.bodyKey(this.w, this.h, -2)).setOrigin(0, 0);
     this.root.add(this.body);
     this.trim = new TrimGfx(scene, this.root, 0, 0, this.w, this.h);
-    // the battle plate's crossed swords (re-toned to the crimson trim)
+    // the icon before the text
     let tx = PLATE.padX;
     if (iconKey) {
       const img = scene.add.image(PLATE.padX, 0, iconKey).setOrigin(0, 0).setVisible(false);

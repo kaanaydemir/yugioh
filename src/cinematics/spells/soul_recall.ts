@@ -57,10 +57,15 @@ import { atMark, panAt, play as playV3, soundsOf, start as startV3 } from '../_v
 // ---- lane A5-A step A-7 (V3_A5_A, docs/v3/A5_PLAN.md §3.6): a set card's own pixels pour into the orb
 // (no noise block) and the spell's own sounds — recallOpen as the grave opens, recallGlide as the soul glides
 import { V3_A5_A } from '../../view/v3flags';
+// (step A-8: the reduced-motion profile, A5 §3.0 — the particles of the v3 recall halved; lane A5-A only)
+import { REDUCED_MOTION } from '../../view/v3/motion';
+import { fxCount } from '../_v3/spellfx';
 import { clearHologram, holoRamp, setHologram } from '../../vfx/hologram';
 
 const ADD = Phaser.BlendModes.ADD;
 const TAU = Math.PI * 2;
+/** Reduced motion in the v3 recall (lane A5-A's switch on: A5 §3.0, particles × 0.5; times unchanged). */
+const RM = V3_A5_A && REDUCED_MOTION;
 const CYAN = RAMPS.cyan;
 
 type AnyCtx = CinematicContext<GameEvent>;
@@ -420,7 +425,7 @@ function rebuild(sc: Phaser.Scene, u: MonsterUnit, ms = 280): Promise<void> {
 /** Angular shards of the body's matter skidding out along the floor on landing (two tones, no puffs). */
 function landShards(sc: Phaser.Scene, x: number, y: number, ramp: Ramp): void {
   const sp = new PxSparks(sc, unitDepth(y) + 0.5);
-  const n = 7;
+  const n = fxCount(7, RM);
   for (let i = 0; i < n; i++) {
     // out to both sides along the floor plane, a few hopping toward the camera
     const side = i % 2 === 0 ? -1 : 1;
@@ -452,8 +457,9 @@ function gather(sc: Phaser.Scene, u: MonsterUnit, from: XY, ms: number): void {
   const ramp = matterRamp(u.cardId);
   const sp = new PxSparks(sc, u.sprite.depth + 0.5);
   const to = u.core();
-  for (let i = 0; i < 22; i++) {
-    const a = (i / 22) * TAU;
+  const n = fxCount(22, RM);
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * TAU;
     const sx = Math.round(from.x + Math.cos(a) * rr(8, 20));
     const sy = Math.round(from.y + Math.sin(a) * rr(6, 14));
     sp.add({ x: sx, y: sy, tx: Math.round(to.x + rr(-8, 8)), ty: Math.round(to.y + rr(-12, 10)), curl: rr(-14, 14), delay: rr(0, ms * 0.35), life: rr(ms * 0.45, ms * 0.65), colors: [ramp[2], ramp[3], ramp[4], PAL.white], shape: i % 4 === 0 ? 'plus' : 'px', fadeAt: 1 });
@@ -720,7 +726,7 @@ async function soulRiseV3(ctx: AnyCtx, from: XY, to: XY, id: MonsterId, player: 
         g.px(Math.round(gx + Math.cos(a) * r * 0.82), Math.round(gy + Math.sin(a) * r * 0.41), PAL.white);
       }
     });
-    if (dt > 0 && graveOn > 0.3 && rnd() < dt / 26)
+    if (dt > 0 && graveOn > 0.3 && rnd() < dt / (RM ? 52 : 26))
       flames.add({ x: gx + Math.round(rr(-13, 13)), y: gy + Math.round(rr(-3, 3)), vx: rr(-4, 4), vy: rr(-46, -24), life: rr(320, 520), colors: [PAL.cyan4, PAL.cyan3, PAL.cyan2, PAL.cyan1], shape: 'px', fadeAt: 1 });
     return true;
   });
@@ -772,7 +778,7 @@ async function soulRiseV3(ctx: AnyCtx, from: XY, to: XY, id: MonsterId, player: 
   await run(sc, tm.rise ?? 200, (t, el) => {
     const k = E.outCubic(t);
     place(gx + Math.round(Math.sin(el * 0.02)), gy + (1 - k) * fh * 0.95 - k * lift, gy);
-    if (rnd() < 0.5) wisp(gx, gy);
+    if (rnd() < (RM ? 0.25 : 0.5)) wisp(gx, gy);
   });
   place(gx, gy - lift, null);
   onLeave();
@@ -803,7 +809,7 @@ async function soulRiseV3(ctx: AnyCtx, from: XY, to: XY, id: MonsterId, player: 
       const echo = sc.add.image(ghost.x, ghost.y, vk, 'v0').setOrigin(ghost.originX, ghost.originY).setFlipX(flip).setDepth(DEPTH.FX - 1);
       bg(wait(sc, ECHO_STEP).then(() => echo.destroy()));
     }
-    if (rnd() < 0.5) wisp(p.x, p.y);
+    if (rnd() < (RM ? 0.25 : 0.5)) wisp(p.x, p.y);
   });
   graveOn = 0;
   if ((tm.settle ?? 0) > 0) await run(sc, tm.settle ?? 0, (t) => place(end.x, end.y + Math.round(Math.sin(Math.PI * t) * 2), null));

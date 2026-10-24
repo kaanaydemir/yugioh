@@ -31,6 +31,7 @@ import { REDUCED_MOTION } from './v3/motion';
 import { PalText, TrimGfx, canvasTexture, capYV3, iconTexture, plateBodyV3, styleTone, styleTrim, textWidthV3 } from './v3/hudSkin';
 import { trapPromptV3, type TrapPromptOpts } from './v3/TrapPromptV3';
 import { curtainV3, type CurtainHand, type CurtainKind } from './v3/CurtainV3';
+import { gameOverV3 } from './v3/ResultPlate';
 
 export interface TrapOption {
   uid: Uid;
@@ -909,6 +910,8 @@ export class Prompt {
    *   the buttons. Any victory screen still up is cleared when a button is pressed.
    */
   async gameOver(winner: PlayerId, reason?: WinReason, opts: GameOverOpts = {}): Promise<GameOverChoice> {
+    // v3 (lane A6-B, F9): the result plate the cinematic opened (or a new one) + a thin button row under it
+    if (V3_A6_B) return gameOverV3(this.scene, winner, reason, { menu: !!opts.menu });
     if (opts.title === false) return this.gameOverButtons(winner, reason, !!opts.menu);
     const sc = this.scene;
     const R = UI_RAMP[playerStyle(winner)];

@@ -42,6 +42,12 @@ import { Sparks as PxSparks } from '../../vfx/combat';
 import { cardLeaves } from '../_v3/card';
 import { play as playV3 } from '../_v3/sound';
 import { fx, type CinematicContext } from '../api';
+// (lane A5-A step A-8: the reduced-motion profile of the v3 opening, A5 §3.0 — behind V3_A5_A only)
+import { V3_A5_A } from '../../view/v3flags';
+import { REDUCED_MOTION } from '../../view/v3/motion';
+
+/** Reduced motion in the v3 spell opening (A5 §3.0: particles × 0.5, no 1-px breath / settle; same times). */
+const RM_OPEN = V3_A5_A && REDUCED_MOTION;
 
 export type AnyCtx = CinematicContext<GameEvent>;
 export type ActCtx = CinematicContext<Extract<GameEvent, { type: 'activate' }>>;
@@ -1070,7 +1076,7 @@ async function spellOpeningV3(
         const x = Math.round(p.x);
         const y = Math.round(p.y);
         c.setPosition(x, y);
-        if (t < 0.9) trail.add({ x: x + Math.round(rr(-CARD_HW, CARD_HW)), y: y + CARD_HH - Math.round(rr(0, 8)), vy: rr(10, 30), life: rr(120, 220), colors: [PAL.teal4, PAL.teal3, PAL.teal2], shape: 'px', fadeAt: 1 });
+        if (t < 0.9 && (!RM_OPEN || rnd() < 0.5)) trail.add({ x: x + Math.round(rr(-CARD_HW, CARD_HW)), y: y + CARD_HH - Math.round(rr(0, 8)), vy: rr(10, 30), life: rr(120, 220), colors: [PAL.teal4, PAL.teal3, PAL.teal2], shape: 'px', fadeAt: 1 });
       });
       trail.release();
     } else {
@@ -1087,22 +1093,23 @@ async function spellOpeningV3(
     // ---- arrival: teal silhouette, a 1-px settle, the rune ring on the floor
     cardSil(sc, center, PAL.teal4, 2);
     const c = card;
-    void run(sc, 60, (t) => c.active && c.setY(center.y + Math.round(2 * (1 - t))));
+    if (RM_OPEN) c.setY(center.y);
+    else void run(sc, 60, (t) => c.active && c.setY(center.y + Math.round(2 * (1 - t))));
     // the v3 spell accent (src/audio/v3/slice.ts spellOpen) on the arrival frame
     playV3('spellOpen', { volume: 0.95 });
     rim = cardRim(sc, card, TEAL_FX);
   }
   const rune = floorRune(sc, { x: center.x, y: floorY }, TEAL_FX, standing ? 24 : 20);
   const plate = namePlate(sc, o.cardId, { x: center.x, y: standing ? floorY + 16 : center.y + CARD_HH + 14 });
-  bg(sparkleBurst(sc, center.x, center.y, { ramp: TEAL, count: 10, depth: DEPTH.FX_TOP + 11 }));
+  bg(sparkleBurst(sc, center.x, center.y, { ramp: TEAL, count: RM_OPEN ? 5 : 10, depth: DEPTH.FX_TOP + 11 }));
 
-  // ---- hover: motes pour in, the card breathes by one pixel
+  // ---- hover: motes pour in, the card breathes by one pixel (reduced motion: it holds still, half the motes)
   gathering = true;
   const hoverY = card ? center.y : 0;
   const stopHover = onFrame(sc, (dt, el) => {
     if (!gathering) return false;
-    if (card && card.active) card.setY(hoverY - (Math.floor(el / 140) % 2));
-    if (dt > 0 && rnd() < dt / 30) {
+    if (card && card.active) card.setY(hoverY - (RM_OPEN ? 0 : Math.floor(el / 140) % 2));
+    if (dt > 0 && rnd() < dt / (RM_OPEN ? 60 : 30)) {
       const a = rr(0, TAU);
       const dd = rr(30, 52);
       motes.add({ x: Math.round(center.x + Math.cos(a) * dd), y: Math.round(center.y + Math.sin(a) * dd * 0.7), tx: center.x, ty: center.y, curl: rr(-10, 10), life: rr(200, 300), colors: [PAL.teal2, PAL.teal3, PAL.teal4, PAL.white], shape: rnd() < 0.25 ? 'plus' : 'px', fadeAt: 1 });

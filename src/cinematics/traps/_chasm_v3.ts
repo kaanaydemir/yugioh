@@ -41,7 +41,8 @@
 //            leaves for the graveyard from there, landing ≥ 150 ms after the victim's card; the camera
 //            relaxes (ctx.unfocus(320)).
 // Nothing here adds a full-screen flash, a dim, a whole-sprite tint or a camera move (A5 §0 K1–K2). Under
-// REDUCED_MOTION particles are halved (fxCount) and nothing trembles (jitter).
+// REDUCED_MOTION (A5 §3.0 / §6.4; lane A5-A step A-8): particles are halved (fxCount), nothing trembles (jitter,
+// the body's 1-px shiver while the ground gives way) and the abyss opens without its overshoot; times unchanged.
 
 import type Phaser from 'phaser';
 import { PAL } from '../../art/palette';
@@ -49,6 +50,7 @@ import type { PixelCanvas } from '../../art/pixel';
 import { crackPath } from '../../art/spellmotifs-v3';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { DEPTH, type XY, unitDepth, zoneXY } from '../../view/layout';
+import { REDUCED_MOTION } from '../../view/v3/motion';
 import { lightBeam, lightFlash, lightPool, type BeamHandle, type LightHandle } from '../../view/light';
 import { wait } from '../../vfx/core';
 import { Sparks as PxSparks } from '../../vfx/combat';
@@ -720,11 +722,13 @@ export async function swallowV3(ctx: DestroyCtx): Promise<void> {
   const openFrames = Math.max(2, Math.round(OPEN_MS / (1000 / 60)));
   await eachFrame(sc, openFrames, (k) => {
     const t = (k + 1) / openFrames;
-    const open = E.outBack(t);
+    // (reduced motion: no overshoot — the same frames, eased in without passing 1)
+    const open = REDUCED_MOTION ? E.outCubic(t) : E.outBack(t);
     abyss.set({ open });
     mask.update(abyssLip(shape, Math.max(0.05, Math.min(1, open))));
-    // the body trembles 1 px and sinks 3 px as the ground gives way (whole pixels)
-    if (s && s.active) s.setPosition(sx0 + (k % 4 === 0 ? 1 : k % 4 === 2 ? -1 : 0), sy0 + Math.round(t * 3));
+    // the body trembles 1 px (not with reduced motion) and sinks 3 px as the ground gives way (whole pixels)
+    const shiver = REDUCED_MOTION ? 0 : k % 4 === 0 ? 1 : k % 4 === 2 ? -1 : 0;
+    if (s && s.active) s.setPosition(sx0 + shiver, sy0 + Math.round(t * 3));
     if (cardRas && cardRas.alive) cardRas.moveTo(cardRas.x, cardRas.y + (k % 3 === 0 ? 1 : 0));
   });
   abyss.set({ open: 1 });
