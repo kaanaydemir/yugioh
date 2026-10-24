@@ -23,6 +23,9 @@ import { E, Raster, Sparks, addGlow, floorRing, freeze, goldAura, lerp, onFrame,
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { fx, registerCardHook, registerObserver, type CinematicContext } from '../api';
 import { GOLD_FX, bg, idxOf, relax, setTileOf, spellOpening, fs, lightBeam, lightFlash, lightPool } from './_kit';
+// ---- the v3 look (lane A5-A step A-2, V3_A5_A): ./_blade_v3.ts (docs/v3/A5_PLAN.md §3.1)
+import { V3_A5_A } from '../../view/v3flags';
+import { bladeActivateV3, bladeDestroyedV3, bladeEquipV3 } from './_blade_v3';
 
 const ADD = Phaser.BlendModes.ADD;
 const TAU = Math.PI * 2;
@@ -225,6 +228,7 @@ async function forge(ctx: AnyCtx, u: MonsterUnit, from: XY, o: { onImpact?: () =
 }
 
 registerCardHook('dragon_blade', 'activate', async (ctx) => {
+  if (V3_A5_A) return bladeActivateV3(ctx); // A5-A: land without rotation, forge, flight, bond (./_blade_v3.ts)
   const ev = ctx.ev;
   const run0 = fx.resolutionRun(ctx);
   const ti = idxOf(ctx, run0, (e) => e.type === 'target');
@@ -246,6 +250,7 @@ registerCardHook('dragon_blade', 'activate', async (ctx) => {
 
 /** The forge itself (also when someone else plays the equip event). */
 registerCardHook('dragon_blade', 'equip', async (ctx) => {
+  if (V3_A5_A) return bladeEquipV3(ctx); // A5-A: the forge out of the card, the flight, the bond (./_blade_v3.ts)
   const ev = ctx.ev;
   const sc = ctx.scene;
   const u = ctx.unit(ev.targetUid);
@@ -292,7 +297,7 @@ function burstAura(ctx: AnyCtx, u: MonsterUnit): Promise<void> {
  * the ATK roll-back of a monster that just lost its blade bursts the gold aura off it.
  */
 registerObserver((ev, ctx) => {
-  if (ev.type !== 'statChange') return;
+  if (ev.type !== 'statChange' || V3_A5_A) return; // A5-A: flow/stats.ts's v3 statChange plays the break (bladeBreakBeat)
   const u = ctx.unit(ev.uid);
   if (!u || u.retired || !u.hasAura('equip')) return;
   const still = ctx.stateNext.players.some((p) => p.spellTraps.some((st) => st && st.equippedTo === ev.uid));
@@ -301,6 +306,7 @@ registerObserver((ev, ctx) => {
 
 /** The equip leaves the field: its card shatters in gold; a still-standing monster loses the aura. */
 registerCardHook('dragon_blade', 'destroyed', async (ctx) => {
+  if (V3_A5_A) return bladeDestroyedV3(ctx); // A5-A: the card cracks and leaves, a standing holder's blade breaks
   const ev = ctx.ev;
   if (ev.location !== 'spellTrap') return ctx.base();
   const field = ctx.views.field;

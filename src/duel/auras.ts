@@ -11,9 +11,10 @@ import { Raster, Sparks, goldAura, onFrame, rnd, rr, spriteBox } from '../vfx/se
 import type { Disposable } from './types';
 import type { MonsterUnit } from './MonsterUnit';
 import { V3_A5_A } from '../view/v3flags'; // A5-A redirect (A5_PLAN §4.4): the v3 auras
-import { flameAuraV3, steamAuraV3 } from './auras-v3';
+import { equipAuraV3, flameAuraV3, steamAuraV3 } from './auras-v3';
 
 export function equipAura(scene: Phaser.Scene, unit: MonsterUnit): Disposable {
+  if (V3_A5_A) return equipAuraV3(scene, unit); // A5-A (A-2): the floating sword, the waist ring, one gold tone
   return goldAura(scene, unit.sprite);
 }
 

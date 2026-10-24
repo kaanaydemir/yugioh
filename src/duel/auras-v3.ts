@@ -18,8 +18,10 @@
 
 import type Phaser from 'phaser';
 import { PAL } from '../art/palette';
-import { paintFlameTongue } from '../art/spellmotifs-v3';
-import { fxRng, silhouetteOf, steamEmitter } from '../cinematics/_v3/spellfx';
+import { paintFlameTongue, swordMotif, type SwordOpts } from '../art/spellmotifs-v3';
+import { monsterFrame } from '../art/textures';
+import { fxRng, motifImage, setMotif, shards, silhouetteOf, steamEmitter, swordKey } from '../cinematics/_v3/spellfx';
+import { DEPTH, type XY } from '../view/layout';
 import { lightPool, type LightHandle } from '../view/light';
 import { REDUCED_MOTION } from '../view/v3/motion';
 import { Raster, onFrame } from '../vfx/setpieces';
@@ -319,10 +321,12 @@ export function equipAuraV3(scene: Phaser.Scene, unit: MonsterUnit, o: EquipAura
   let light: LightHandle | null = null;
   let killed = false;
   let el = 0;
-  let frame = 0;
-  // the break (destroy): the time it was asked, the crack frames shown, the snapped ring
+  /** The game loop's frame counter: a step of it is one rendered frame (also under the tools' stepped clock). */
+  const loopFrame = (): number => scene.game.loop.frame;
+  const madeAt = loopFrame();
+  // the break (destroy): the time and loop frame it was asked on, the snapped ring
   let breakAt = -1;
-  let crackFrames = 0;
+  let breakFrame = 0;
   let snapped: { pts: XY[]; side: number[]; cx: number; cy: number } | null = null;
   let shattered = false;
   // stepped timelines: at most one new step per rendered frame (SÜ-3)
@@ -346,7 +350,7 @@ export function equipAuraV3(scene: Phaser.Scene, unit: MonsterUnit, o: EquipAura
   /** The sword's drawing for this frame (cached textures: rim / glint / crack variants). */
   const drawing = (): SwordOpts => {
     if (breakAt >= 0) return { len: AURA_SWORD_LEN, crack: true };
-    if (o.bond && frame <= 1) return { len: AURA_SWORD_LEN, rim: 'white' };
+    if (o.bond && loopFrame() - madeAt < 1) return { len: AURA_SWORD_LEN, rim: 'white' };
     const g = (el + glintPhase) % GLINT_EVERY;
     const cycle = Math.floor((el + glintPhase) / GLINT_EVERY);
     if (el > 500 && g < GLINT_STEP * 3) {
@@ -395,7 +399,7 @@ export function equipAuraV3(scene: Phaser.Scene, unit: MonsterUnit, o: EquipAura
         }
         setMotif(sword, ...swordKey(drawing()));
         sword.setPosition(gx, gy).setVisible(true);
-        if (++crackFrames > BREAK_CRACK_FRAMES) {
+        if (loopFrame() - breakFrame >= BREAK_CRACK_FRAMES) {
           shattered = true;
           sword.setVisible(false);
           void shards(scene, { from: swordShardPoints(gx, gy, unit.uid), ramp: GOLD_RAMP, mode: 'fall', floor: Math.round(unit.home.y) + 2, restMs: 90, depth: (s.active ? s.depth : DEPTH.FX) + 1, seed: unit.uid * 31 + 9 });
@@ -474,16 +478,18 @@ export function equipAuraV3(scene: Phaser.Scene, unit: MonsterUnit, o: EquipAura
 
   // drawn on the frame it is made (the bond frame shows the sword already in place)
   draw();
-  stop = onFrame(scene, (dt, e) => {
+  stop = onFrame(scene, (_dt, e) => {
     if (killed) return false;
     el = e;
-    if (dt > 0) frame++;
     return draw();
   });
   return {
     destroy() {
       if (breakAt >= 0 || killed) return;
       breakAt = el;
+      breakFrame = loopFrame();
+      // the crack is on screen on the frame the break is asked (the beat's number shares it)
+      draw();
     },
   };
 }

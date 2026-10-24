@@ -22,6 +22,7 @@ import { Sparks as PxSparks } from '../../vfx/combat';
 import { fxCount, fxRng, rimClimb, silhouetteOf } from '../_v3/spellfx';
 import { impactNumber } from '../_v3/number';
 import { panAt, play as playV3 } from '../_v3/sound';
+import { bladeBreakBeat, bladeLost } from '../spells/_blade_v3';
 
 type StatEv = EvOf<'statChange'>;
 
@@ -226,6 +227,11 @@ async function statChangeV3(ctx: Ctx<'statChange'>, group: StatEv[], volcano: bo
     if (!u || u.retired) return;
     if (volcano && (u.attribute === 'FIRE' || u.attribute === 'WATER') && !u.hasAura('volcano'))
       u.setAura('volcano', u.attribute === 'FIRE' ? flameAura(ctx.scene, u) : steamAura(ctx.scene, u));
+    // Ejder Kılıcı's loss (A-2, A5 §3.1 Kırılma): the sword breaks on this beat, its number on the crack frame
+    if (bladeLost(k === 0 ? ctx.stateNext : ctx.after, e, u)) {
+      if (!u.sprite.visible || !u.sprite.active) u.setAura('equip', null);
+      else return bladeBreakBeat(ctx, e, u);
+    }
     if (!u.sprite.visible || !u.sprite.active) {
       await u.setStats(e.atk, e.def, false);
       return;
