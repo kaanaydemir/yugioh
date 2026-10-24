@@ -39,7 +39,7 @@ import { dropArcs, embers, rimClimb, shards, silhouetteOf, steamThreads, stepped
 import { panAt, play as playV3, start as startV3 } from '../_v3/sound';
 import { impactNumber } from '../_v3/number';
 import { cardLeaves } from '../_v3/card';
-import { FRONT_SPREAD_MS, beatTimes, frontArrivalMs, volcanoAmbienceV3 } from './_volcano_v3';
+import { FRONT_SPREAD_MS, beatTimes, frontArrivalMs, volcanoAmbienceOnV3, volcanoAmbienceV3 } from './_volcano_v3';
 
 const ADD = Phaser.BlendModes.ADD;
 const FIRE_FX = [PAL.white, PAL.fire4, PAL.fire3, PAL.fire2, PAL.fire1] as const;
@@ -302,8 +302,9 @@ registerCardHook('volcano_arena', 'field', async (ctx) => {
 //   end      when the spread has covered the board (erupt + 900 ms, FRONT_SPREAD_MS) and the last
 //            beat + 120 ms: lavaCreep stops in 120 ms, the input comes back
 // COOL ('field' inactive: Uçurum Büyücüsü swallows the arena): volcanoCool; the lava cools on the
-// calm arena (unchanged); by distance, ≥ 150 ms apart, each monster's flames shrink to smoke / its
-// steam stops (the auras' own end) and its badge rolls back with a single number.
+// calm arena (unchanged); from its first visible step on (COOL_FIRST), by distance, ≥ 150 ms apart,
+// each monster's flames shrink to smoke / its steam stops (the auras' own end) and its badge rolls
+// back with a single number.
 // Nothing here adds a full-screen flash, a dim, a whole-sprite tint or a camera move.
 
 const ASH_FX = [PAL.night2, PAL.stone1, PAL.stone2, PAL.stone3] as const;
@@ -311,6 +312,13 @@ const ASH_FX = [PAL.night2, PAL.stone1, PAL.stone2, PAL.stone3] as const;
 const REPLACE_MS = 300;
 /** After the last front beat the creep sound and the scene run this much longer. */
 const AFTER_LAST_BEAT = 120;
+/**
+ * The first cooling beat (ms after the cooling starts): with the calm arena's own first visible cooling
+ * step — its neon trims cool at 250 ms, its lava then steps down at ≈ 400 / 570 / 700 / 800 ms
+ * (BoardViewCalm: Quad.In, 900 ms) — so the flames gutter out as the arena cools, not before it; the
+ * last badge roll (520 + 180 ms) still ends inside today's cooling time.
+ */
+const COOL_FIRST = 250;
 
 /** Resolve after `n` rendered frames (never fewer, at any speed). */
 function renderedFrames(scene: Phaser.Scene, n: number): Promise<void> {
@@ -340,6 +348,28 @@ async function poseRun(u: MonsterUnit, anim: AnyMonsterAnim, frames: readonly nu
   if (u.retired || !u.sprite.active) return;
   u.posed = false;
   u.settle();
+}
+
+/**
+ * Where a beat's number goes: its monster's top, moved sideways when it would land on a number of
+ * this scene already up (two neighbours' "+500" / "−300" side by side, never on top of each other;
+ * a 4-glyph number is ≈ 23 px wide, 9 px high). Records the spot.
+ */
+function numberSpot(spots: XY[], x: number, y: number): XY {
+  const p = { x: Math.round(x), y: Math.round(y) };
+  for (let pass = 0; pass < 3; pass++) {
+    let moved = false;
+    for (const q of spots) {
+      if (Math.abs(p.x - q.x) < 24 && Math.abs(p.y - q.y) < 10) {
+        p.x = q.x + (p.x >= q.x ? 24 : -24);
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  p.x = Math.max(16, Math.min(624, p.x));
+  spots.push(p);
+  return p;
 }
 
 /** The direction and size of a stat change. */
@@ -464,8 +494,10 @@ async function replaceOldV3(ctx: AnyCtx, di: number): Promise<void> {
       }
     bg(shards(sc, { from: pts.slice(0, 28), ramp: ASH_FX, mode: 'fall', floor: home.y + 7, restMs: 60, depth: DEPTH.CARD_ON_TILE + 9, seed: d.uid * 13 + 1 }));
   }
-  // the card leaves for its owner's graveyard (card continuity; born on its tile)
+  // the card leaves for its owner's graveyard (card continuity; born on its tile); an old volcano's pad
+  // stops glowing with it (the ambience itself stays: the new volcano keeps the arena hot)
   const leaving = g ? cardLeaves(ctx, { owner: g.owner, cardId: d.cardId, from: home, tile }) : Promise.resolve();
+  if (d.cardId === 'volcano_arena' && volcanoAmbienceOnV3(sc)) bg(volcanoAmbienceV3(sc, true, { pad: null }));
   if (!g && tile && tile.active) tile.destroy();
   field.forget(d.uid);
   await wait(sc, REPLACE_MS - 34);
@@ -503,7 +535,7 @@ async function activateV3(ctx: CinematicContext<Extract<GameEvent, { type: 'acti
 }
 
 /** One monster's beat as the lava front reaches it (see the section header). */
-async function frontBeatV3(ctx: AnyCtx, u: MonsterUnit, e: StatEv): Promise<void> {
+async function frontBeatV3(ctx: AnyCtx, u: MonsterUnit, e: StatEv, spots: XY[]): Promise<void> {
   const sc = ctx.scene;
   const { up, delta } = statDelta(e);
   const fire = u.attribute === 'FIRE' || (u.attribute !== 'WATER' && up);
@@ -527,7 +559,8 @@ async function frontBeatV3(ctx: AnyCtx, u: MonsterUnit, e: StatEv): Promise<void
       if (peaked) return;
       peaked = true;
       const t = u.worldPoint('top');
-      bg(impactNumber(sc, t.x, t.y - 4, delta, { kind: up ? 'heal' : 'damage' }));
+      const n = numberSpot(spots, t.x, t.y - 4);
+      bg(impactNumber(sc, n.x, n.y, delta, { kind: up ? 'heal' : 'damage' }));
       void u.setStats(e.atk, e.def, true);
       if (!u.retired && !u.hasAura('volcano')) u.setAura('volcano', flameAura(sc, u));
     };
@@ -541,20 +574,24 @@ async function frontBeatV3(ctx: AnyCtx, u: MonsterUnit, e: StatEv): Promise<void
     bg(steamThreads(sc, u.sprite, { n: 4, life: 420, seed: u.uid * 29 + 3 }));
     if (v3art) bg(poseRun(u, 'hit', [0, 1, 0]));
     const t = u.worldPoint('top');
-    bg(impactNumber(sc, t.x, t.y - 4, delta, { kind: up ? 'heal' : 'damage' }));
+    const n = numberSpot(spots, t.x, t.y - 4);
+    bg(impactNumber(sc, n.x, n.y, delta, { kind: up ? 'heal' : 'damage' }));
     void u.setStats(e.atk, e.def, true);
     if (!u.retired && !u.hasAura('volcano')) u.setAura('volcano', steamAura(sc, u));
   }
 }
 
 /** One monster as the arena cools: its aura ends (flames → smoke, steam stops), its badge rolls back. */
-function coolBeatV3(ctx: AnyCtx, u: MonsterUnit, e: StatEv): Promise<void> {
+function coolBeatV3(ctx: AnyCtx, u: MonsterUnit, e: StatEv, spots: XY[]): Promise<void> {
   const sc = ctx.scene;
   const { up, delta } = statDelta(e);
   u.setAura('volcano', null);
   if (u.retired || !u.sprite.active || !u.sprite.visible) return u.setStats(e.atk, e.def, false);
   const t = u.worldPoint('top');
-  if (delta > 0) bg(impactNumber(sc, t.x, t.y - 4, delta, { kind: up ? 'heal' : 'damage' }));
+  if (delta > 0) {
+    const n = numberSpot(spots, t.x, t.y - 4);
+    bg(impactNumber(sc, n.x, n.y, delta, { kind: up ? 'heal' : 'damage' }));
+  }
   return u.setStats(e.atk, e.def, true);
 }
 
@@ -576,7 +613,8 @@ async function fieldV3(ctx: CinematicContext<Extract<GameEvent, { type: 'fieldSp
     const jobs: Promise<unknown>[] = [board.setTheme('normal', true)];
     const items = stats.map((e) => ({ e, u: ctx.unit(e.uid) }));
     const times = beatTimes(items.map((x) => (x.u ? Math.round(frontArrivalMs(ev.player, x.u.player, x.u.zone) / 2) : 0)));
-    items.forEach((x, i) => jobs.push(x.u ? wait(sc, 80 + times[i]).then(() => coolBeatV3(ctx, x.u!, x.e)) : Promise.resolve()));
+    const spots: XY[] = [];
+    items.forEach((x, i) => jobs.push(x.u ? wait(sc, COOL_FIRST + times[i]).then(() => coolBeatV3(ctx, x.u!, x.e, spots)) : Promise.resolve()));
     await fx.all(jobs);
     return;
   }
@@ -595,7 +633,8 @@ async function fieldV3(ctx: CinematicContext<Extract<GameEvent, { type: 'fieldSp
   // ---- the front: each FIRE / WATER monster's beat as the lava reaches its zone
   const items = stats.map((e) => ({ e, u: ctx.unit(e.uid) }));
   const times = beatTimes(items.map((x) => (x.u ? frontArrivalMs(ev.player, x.u.player, x.u.zone) : 0)));
-  const beats = items.map((x, i) => (x.u ? wait(sc, times[i]).then(() => frontBeatV3(ctx, x.u!, x.e)) : Promise.resolve()));
+  const spots: XY[] = [];
+  const beats = items.map((x, i) => (x.u ? wait(sc, times[i]).then(() => frontBeatV3(ctx, x.u!, x.e, spots)) : Promise.resolve()));
   const last = items.length ? Math.max(...times) : 0;
   await wait(sc, Math.max(FRONT_SPREAD_MS, last + AFTER_LAST_BEAT));
   creep.stop(120);

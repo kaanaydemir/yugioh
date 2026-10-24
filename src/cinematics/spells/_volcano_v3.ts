@@ -13,10 +13,13 @@
 // untouched).
 //
 // What the v3 ambience draws — palette tones on whole pixels, no alpha, no full-screen object:
-//   seam embers  sparks boil off the lava seams between the zones and rise 8–22 px, cooling by
+//   seam embers  sparks boil off the lava seams between the zones and rise 14–26 px, cooling by
 //                palette steps fire4 → fire3 → fire2 → stone1 (REHBER §2.3 lava); a hot one has a
 //                1-px fire2 tail for its first frames; sorted by their seam's screen y, so a monster
 //                in front hides them;
+//   air embers   a few embers drift in the hot air over the whole arena (left with the wind, swaying
+//                on whole pixels), flickering fire4 / fire3, then cooling fire2 → fire1 → gone; one
+//                born in mid-air steps in from fire1, never pops in bright;
 //   ash          grey flakes (stone3 / stone2, a few night4) drift down over the arena, swaying on
 //                whole pixels and tumbling 1×1 → 2×1 → 1×2;
 //   the pad      on the volcano's own field pad: a faint fire light (the stepped light layer,
@@ -97,9 +100,14 @@ export function beatTimes(arrivals: readonly number[], gap = 150): number[] {
 // =================================================================================== the ambience
 
 /** Particle counts at full level (REDUCED_MOTION: halved). */
-export const AMBIENCE_COUNTS = { embers: 24, ash: 18 } as const;
+export const AMBIENCE_COUNTS = { embers: 36, drift: 12, ash: 28 } as const;
 
 const EMBER = [PAL.fire4, PAL.fire3, PAL.fire2, PAL.stone1] as const;
+/** Where a seam ember's life turns to the next EMBER tone (the hot first step lasts longest). */
+const EMBER_AT = [0.36, 0.62, 0.84] as const;
+/** An air ember's step-in (born mid-air) and cooling tones. */
+const DRIFT_IN = [PAL.fire1, PAL.fire2, PAL.fire3] as const;
+const DRIFT_OUT = [PAL.fire2, PAL.fire1] as const;
 const ASH = [PAL.stone3, PAL.stone2, PAL.night4] as const;
 /** Level ramps (ms of scene time from 0 to 1 and back). */
 const RAMP_IN = 600;
@@ -119,6 +127,22 @@ interface Ember {
   life: number;
   /** a pad pop: thrown up, falls back with gravity onto `floor` */
   pop: boolean;
+}
+
+interface Drift {
+  img: Phaser.GameObjects.Image;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  ph: number;
+  age: number;
+  life: number;
+  /** the next flicker (ms of age) and whether the ember shows its hot tone now */
+  flickAt: number;
+  hot: boolean;
+  /** born in mid-air: steps in from fire1 */
+  stepIn: boolean;
 }
 
 interface Flake {
@@ -146,6 +170,7 @@ interface Amb {
   waiters: (() => void)[];
   rnd: () => number;
   embers: Ember[];
+  drift: Drift[];
   ash: Flake[];
   pad: XY | null;
   padLight: LightHandle | null;
@@ -200,6 +225,7 @@ function build(scene: Phaser.Scene): Amb {
     waiters: [],
     rnd: mulberry32(0x0a5e3b1),
     embers: [],
+    drift: [],
     ash: [],
     pad: null,
     padLight: null,
@@ -209,6 +235,7 @@ function build(scene: Phaser.Scene): Amb {
     stop: () => undefined,
   };
   const nEmbers = REDUCED_MOTION ? Math.ceil(AMBIENCE_COUNTS.embers / 2) : AMBIENCE_COUNTS.embers;
+  const nDrift = REDUCED_MOTION ? Math.ceil(AMBIENCE_COUNTS.drift / 2) : AMBIENCE_COUNTS.drift;
   const nAsh = REDUCED_MOTION ? Math.ceil(AMBIENCE_COUNTS.ash / 2) : AMBIENCE_COUNTS.ash;
   const rr = (lo: number, hi: number) => lo + a.rnd() * (hi - lo);
 
@@ -226,12 +253,29 @@ function build(scene: Phaser.Scene): Amb {
       y: at.y,
       floor: at.y,
       vx: pop ? rr(-22, 22) : rr(-3, 3),
-      vy: pop ? rr(-62, -44) : rr(-38, -18),
+      vy: pop ? rr(-62, -44) : rr(-46, -24),
       sway: pop ? 0 : rr(1, 2.5),
       ph: rr(0, Math.PI * 2),
       age: 0,
-      life: pop ? 900 : rr(620, 1000),
+      life: pop ? 900 : rr(640, 1000),
       pop,
+    });
+  };
+  const spawnDrift = (anywhere: boolean): void => {
+    const img = px(scene).setDepth(DEPTH.FX - 1);
+    a.drift.push({
+      img,
+      // over the arena; at full level a lost one comes back from the right-hand side
+      x: anywhere ? rr(110, 590) : rr(560, 600),
+      y: anywhere ? rr(40, 250) : rr(40, 220),
+      vx: rr(-14, -6),
+      vy: rr(-7, 4),
+      ph: rr(0, Math.PI * 2),
+      age: 0,
+      life: rr(1500, 2500),
+      flickAt: rr(60, 160),
+      hot: a.rnd() < 0.5,
+      stepIn: true,
     });
   };
   const spawnFlake = (anywhere: boolean): void => {
@@ -263,6 +307,8 @@ function build(scene: Phaser.Scene): Amb {
       e.tail.destroy();
     }
     a.embers.length = 0;
+    for (const d of a.drift) d.img.destroy();
+    a.drift.length = 0;
     for (const f of a.ash) f.img.destroy();
     a.ash.length = 0;
     const l = a.padLight;
@@ -293,7 +339,10 @@ function build(scene: Phaser.Scene): Amb {
     // ---- spawn while on
     if (a.target === 1 && L > 0 && dt > 0) {
       const live = a.embers.filter((e) => !e.pop).length;
-      if (live < Math.round(nEmbers * L) && a.rnd() < dt / 40) spawnEmber(false);
+      const want = Math.round(nEmbers * L);
+      if (live < want && a.rnd() < dt / 22) spawnEmber(false);
+      if (live + 1 < want && a.rnd() < dt / 44) spawnEmber(false);
+      if (a.drift.length < Math.round(nDrift * L) && a.rnd() < dt / 120) spawnDrift(L < 1 || a.rnd() < 0.5);
       const flakes = a.ash.filter((f) => f.dying < 0).length;
       // while the level rises the flakes appear all over the arena (stepping in from the dark);
       // at full level a lost flake is replaced at the top
@@ -330,7 +379,8 @@ function build(scene: Phaser.Scene): Amb {
         continue;
       }
       // cooling by palette steps (fire4 → fire3 → fire2 → stone1); no alpha
-      const tone = EMBER[Math.min(EMBER.length - 1, Math.floor(k * EMBER.length))];
+      const step = k < EMBER_AT[0] ? 0 : k < EMBER_AT[1] ? 1 : k < EMBER_AT[2] ? 2 : 3;
+      const tone = EMBER[step];
       const x = Math.round(e.x);
       const y = Math.round(e.y);
       e.head.setPosition(x, y).setTint(tone);
@@ -338,6 +388,30 @@ function build(scene: Phaser.Scene): Amb {
       const tailOn = k < 0.3 && e.vy < -12;
       e.tail.setVisible(tailOn);
       if (tailOn) e.tail.setPosition(x, y + 1).setTint(PAL.fire2);
+    }
+    // ---- air embers
+    for (let i = a.drift.length - 1; i >= 0; i--) {
+      const d = a.drift[i];
+      d.age += dt;
+      if (a.target === 0 && d.age < d.life * 0.7) d.age = d.life * 0.7;
+      d.x += (d.vx + Math.sin(d.ph + d.age * 0.004) * 4) * s;
+      d.y += (d.vy + Math.cos(d.ph + d.age * 0.003) * 3) * s;
+      const k = d.age / d.life;
+      if (k >= 1 || d.x < 96 || d.y < 8 || d.y > 300) {
+        d.img.destroy();
+        a.drift.splice(i, 1);
+        continue;
+      }
+      let tone: number;
+      if (d.stepIn && d.age < 3 * 70) tone = DRIFT_IN[Math.floor(d.age / 70)];
+      else if (k < 0.7) {
+        if (d.age >= d.flickAt) {
+          d.hot = !d.hot;
+          d.flickAt = d.age + 70 + a.rnd() * 110;
+        }
+        tone = d.hot ? PAL.fire4 : PAL.fire3;
+      } else tone = DRIFT_OUT[Math.min(DRIFT_OUT.length - 1, Math.floor(((k - 0.7) / 0.3) * DRIFT_OUT.length))];
+      d.img.setPosition(Math.round(d.x), Math.round(d.y)).setTint(tone);
     }
     // ---- ash
     for (let i = a.ash.length - 1; i >= 0; i--) {
@@ -377,7 +451,7 @@ function build(scene: Phaser.Scene): Amb {
       a.waiters.splice(0).forEach((w) => w());
     }
     if (a.level !== a.target) a.reported = -1;
-    if (a.target === 0 && a.level === 0 && a.embers.length === 0 && a.ash.length === 0) {
+    if (a.target === 0 && a.level === 0 && a.embers.length === 0 && a.drift.length === 0 && a.ash.length === 0) {
       teardown();
       return false;
     }
@@ -443,7 +517,7 @@ export function volcanoAmbienceOnV3(scene: Phaser.Scene): boolean {
 }
 
 /** Test / preview probe: the ambience's live objects (embers count head + tail). */
-export function volcanoAmbienceProbe(scene: Phaser.Scene): { level: number; embers: number; ash: number; pad: XY | null } | null {
+export function volcanoAmbienceProbe(scene: Phaser.Scene): { level: number; embers: number; drift: number; ash: number; pad: XY | null } | null {
   const a = ambs.get(scene);
-  return a && a.alive ? { level: a.level, embers: a.embers.length, ash: a.ash.length, pad: a.pad } : null;
+  return a && a.alive ? { level: a.level, embers: a.embers.length, drift: a.drift.length, ash: a.ash.length, pad: a.pad } : null;
 }

@@ -148,7 +148,7 @@ export function flameAuraV3(scene: Phaser.Scene, unit: MonsterUnit): Disposable 
 
 /** WATER on the volcano field (see the header). */
 export function steamAuraV3(scene: Phaser.Scene, unit: MonsterUnit): Disposable {
-  const em = steamEmitter(scene, unit.sprite, { everyMs: 600, life: 480, seed: unit.uid * 97 + 5 });
+  const em = steamEmitter(scene, unit.sprite, { everyMs: 600, life: 560, seed: unit.uid * 97 + 5 });
   return {
     destroy() {
       em.stop(true);

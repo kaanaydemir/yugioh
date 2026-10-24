@@ -594,6 +594,28 @@ export function rimClimb(scene: Phaser.Scene, s: Unit, o: RimOpts = {}): Promise
 
 const STEAM = [PAL.white, PAL.mist, PAL.steel] as const;
 
+/**
+ * The world columns whose top edge lies in the upper `frac` of the silhouette's height — the body's
+ * "top" (head, shoulders, back), not a hand, a tail tip or a foot that happens to be a column's
+ * highest pixel. Never empty for a non-empty silhouette (falls back to the single highest column).
+ */
+function upperColumns(sil: Silhouette, frac = 0.34): number[] {
+  const lim = sil.top + Math.max(2, Math.round((sil.bottom - sil.top) * frac));
+  const out: number[] = [];
+  let best = sil.left;
+  let bestY = Infinity;
+  for (let x = sil.left; x < sil.right; x++) {
+    const t = sil.topAt(x);
+    if (t === null) continue;
+    if (t <= lim) out.push(x);
+    if (t < bestY) {
+      bestY = t;
+      best = x;
+    }
+  }
+  return out.length ? out : [best];
+}
+
 /** One steam thread: a 1-px column 3–5 px long rising from (x, y) on whole-pixel steps, fading by steps. */
 function steamThread(ras: Raster, x: number, y: number, len: number, age: number, life: number, wob: number): void {
   const k = age / life;
@@ -619,8 +641,9 @@ export function steamThreads(scene: Phaser.Scene, s: Unit, o: { n?: number; life
   const rnd = fxRng(o.seed ?? seedAt({ x: sil.left, y: sil.top }, 7));
   const n = fxCount(o.n ?? 4);
   const life = o.life ?? 420;
+  const cols = upperColumns(sil);
   const threads = Array.from({ length: n }, (_, i) => {
-    const x = Math.round(sil.left + ((i + 0.5 + (rnd() - 0.5) * 0.6) / n) * (sil.right - sil.left));
+    const x = cols[Math.min(cols.length - 1, Math.max(0, Math.floor(((i + 0.5 + (rnd() - 0.5) * 0.6) / n) * cols.length)))];
     const y = (sil.topAt(x) ?? sil.top) - 1;
     return { x, y, len: 3 + Math.floor(rnd() * 3), delay: Math.floor(rnd() * 90), wob: Math.floor(rnd() * 3) };
   });
@@ -670,7 +693,9 @@ export function steamEmitter(scene: Phaser.Scene, s: Unit, o: { everyMs?: number
     const sil = s.active && s.visible ? silhouetteOf(s) : null;
     if (sil && !ending && el >= next) {
       next = el + every;
-      const x = Math.round(sil.left + 2 + rnd() * Math.max(1, sil.right - sil.left - 4));
+      // off the body's top (head / shoulders / back), never off a hand or a tail tip
+      const cols = upperColumns(sil);
+      const x = cols[Math.floor(rnd() * cols.length)];
       live.push({ x, y: (sil.topAt(x) ?? sil.top) - 1, len: 3 + Math.floor(rnd() * 3), born: el, wob: Math.floor(rnd() * 3) });
     }
     for (let i = live.length - 1; i >= 0; i--) if (el - live[i].born >= life) live.splice(i, 1);

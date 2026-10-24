@@ -1,6 +1,8 @@
 // Lane A5-A (docs/v3/A5_PLAN.md §6.5). Step A-1: the shared kit — the motif contract S-12
 // (src/art/spellmotifs-v3.ts, read by lane A5-B's card art) and the pure helpers of the effect kit
-// (src/cinematics/_v3/spellfx.ts). Later steps add the scene checks of §6.5 to this file.
+// (src/cinematics/_v3/spellfx.ts). Step A-3: Volkan Arenası — the lava front's timing against the calm
+// arena's own crack field, the beat spacing, the v3 ambience (palette pixels only, no full-screen
+// object, nothing left behind) and the v3 field auras' cleanup. Later steps add their checks here.
 
 import { describe, expect, it, vi } from 'vitest';
 
@@ -10,6 +12,23 @@ import { PAL } from '../../src/art/palette';
 import { PixelCanvas } from '../../src/art/pixel';
 import * as M from '../../src/art/spellmotifs-v3';
 import { fxCount, fxRng, nearestDir, stepDown, swordFor } from '../../src/cinematics/_v3/spellfx';
+import { SLAB_RECT, buildCrackField, tileDV } from '../../src/art/arena';
+import { zoneCell, zoneXY } from '../../src/view/layout';
+import { TEX } from '../../src/vfx/core';
+import {
+  AMBIENCE_COUNTS,
+  FRONT_DIST,
+  FRONT_MOST,
+  FRONT_SPREAD_MS,
+  beatTimes,
+  frontArrivalMs,
+  frontMsAt,
+  volcanoAmbienceOnV3,
+  volcanoAmbienceProbe,
+  volcanoAmbienceV3,
+} from '../../src/cinematics/spells/_volcano_v3';
+import { flameAuraV3, steamAuraV3 } from '../../src/duel/auras-v3';
+import type { MonsterUnit } from '../../src/duel/MonsterUnit';
 
 const PALETTE = new Set<number>(Object.values(PAL));
 
@@ -205,5 +224,244 @@ describe('A-1 effect kit: pure helpers', () => {
     const ramp = [PAL.gold1, PAL.gold2, PAL.gold3];
     expect(stepDown(ramp, PAL.gold3)).toBe(PAL.gold2);
     expect(stepDown(ramp, PAL.gold1)).toBeNull();
+  });
+});
+
+// ================================================================== A-3: Volkan Arenası
+
+/** A stand-in scene for the v3 ambience / auras: images, canvas textures and the update loop, counted. */
+interface FakeObj {
+  key: string;
+  x: number;
+  y: number;
+  depth: number;
+  tint: number | null;
+  sx: number;
+  sy: number;
+  visible: boolean;
+  alive: boolean;
+}
+type Handler = { fn: (...a: unknown[]) => unknown; ctx?: unknown };
+function fakeScene() {
+  const objs: FakeObj[] = [];
+  const updates = new Set<Handler>();
+  const shutdowns = new Set<Handler>();
+  const textures = new Map<string, unknown>();
+  const isShutdown = (k: unknown) => String((k as { toString(): string }).toString()).endsWith('SHUTDOWN');
+  const image = (x: number, y: number, key: string) => {
+    const o: FakeObj = { key, x, y, depth: 0, tint: null, sx: 1, sy: 1, visible: true, alive: true };
+    objs.push(o);
+    const api = {
+      active: true,
+      get depth() {
+        return o.depth;
+      },
+      setOrigin: () => api,
+      setBlendMode: () => api,
+      setDepth: (d: number) => ((o.depth = d), api),
+      setPosition: (px: number, py: number) => ((o.x = px), (o.y = py), api),
+      setTint: (c: number) => ((o.tint = c), api),
+      setVisible: (v: boolean) => ((o.visible = v), api),
+      setScale: (a: number, b?: number) => ((o.sx = a), (o.sy = b ?? a), api),
+      destroy: () => {
+        o.alive = false;
+        api.active = false;
+      },
+    };
+    return api;
+  };
+  const scene = {
+    add: { image },
+    events: {
+      on: (k: unknown, fn: Handler['fn'], ctx?: unknown) => (isShutdown(k) ? shutdowns : updates).add({ fn, ctx }),
+      once: (k: unknown, fn: Handler['fn'], ctx?: unknown) => (isShutdown(k) ? shutdowns : updates).add({ fn, ctx }),
+      off: (_k: unknown, fn: Handler['fn']) => {
+        for (const set of [updates, shutdowns]) for (const h of [...set]) if (h.fn === fn) set.delete(h);
+      },
+    },
+    tweens: { timeScale: 1 },
+    time: { timeScale: 1 },
+    textures: {
+      createCanvas: (key: string) => {
+        const t = { context: { putImageData: () => undefined }, refresh: () => undefined };
+        textures.set(key, t);
+        return t;
+      },
+      exists: (k: string) => textures.has(k),
+      remove: (k: string) => textures.delete(k),
+    },
+    sys: { isActive: () => true },
+  };
+  const DT = 1000 / 60;
+  const step = (ms: number) => {
+    for (let t = 0; t < ms; t += DT) for (const h of [...updates]) h.fn.call(h.ctx, 0, DT);
+  };
+  return { scene: scene as unknown as Phaser.Scene, objs, updates, textures, step, live: () => objs.filter((o) => o.alive) };
+}
+
+/** A stand-in sprite: an opaque w × h block (feet at x, y; origin 0.5 / 1), readable like a canvas frame. */
+function fakeSprite(x: number, y: number, w = 20, h = 24) {
+  const data = new Uint8ClampedArray(w * h * 4);
+  for (let i = 0; i < w * h; i++) data.set([120, 120, 140, 255], i * 4);
+  const image = { getContext: () => ({ getImageData: () => ({ data }) }) };
+  return {
+    active: true,
+    visible: true,
+    alpha: 1,
+    depth: 120,
+    x,
+    y,
+    width: w,
+    height: h,
+    originX: 0.5,
+    originY: 1,
+    scaleX: 1,
+    scaleY: 1,
+    flipX: false,
+    frame: { texture: { key: 'fake' }, name: 'f0', cutX: 0, cutY: 0, cutWidth: w, cutHeight: h, x: 0, y: 0, realWidth: w, realHeight: h, source: { image } },
+  };
+}
+
+// node has no ImageData (Raster uploads through one); a minimal stand-in
+if (typeof (globalThis as { ImageData?: unknown }).ImageData === 'undefined') {
+  (globalThis as { ImageData?: unknown }).ImageData = class {
+    constructor(
+      public data: Uint8ClampedArray,
+      public width: number,
+      public height: number,
+    ) {}
+  };
+}
+
+describe('A-3 Volkan Arenası: the lava front', () => {
+  it("the front table is the calm arena's own crack field (buildCrackField, default seed; seam ring of each zone)", () => {
+    const W = SLAB_RECT.w;
+    for (const origin of [0, 1] as const) {
+      const f = buildCrackField(zoneCell(origin, 'field'));
+      expect(FRONT_MOST[origin]).toBe(f.mostDist);
+      const ring = (p: { x: number; y: number }) => {
+        let best = Infinity;
+        for (let k = 0; k < f.core.length; k++) {
+          const i = f.core[k];
+          const d = tileDV((i % W) + SLAB_RECT.x - (p.x - 32), Math.floor(i / W) + SLAB_RECT.y - (p.y - 16));
+          if (d >= -1 && d < 1.5) best = Math.min(best, f.coreDist[k]);
+        }
+        return best;
+      };
+      for (const player of [0, 1] as const)
+        for (let zone = 0; zone < 3; zone++) expect(FRONT_DIST[origin][player][zone], `origin ${origin} → P${player + 1} m${zone}`).toBe(ring(zoneXY(player, 'monster', zone)));
+    }
+  });
+
+  it('arrival follows the spread (Sine.Out over 900 ms to mostDist), mirrored for P2, never past the spread', () => {
+    expect(frontMsAt(0, 187)).toBe(0);
+    expect(frontMsAt(187, 187)).toBe(FRONT_SPREAD_MS);
+    expect(frontMsAt(400, 187)).toBe(FRONT_SPREAD_MS);
+    let last = -1;
+    for (let d = 0; d <= 187; d += 3) {
+      const t = frontMsAt(d, 187);
+      expect(t).toBeGreaterThanOrEqual(last);
+      last = t;
+    }
+    for (let zone = 0; zone < 3; zone++) {
+      // each origin mirrors the other (P2's field is P1's, turned round the board centre)
+      expect(FRONT_DIST[1][1][zone]).toBe(FRONT_DIST[0][0][zone]);
+      expect(FRONT_DIST[1][0][zone]).toBe(FRONT_DIST[0][1][zone]);
+      for (const origin of [0, 1] as const) for (const player of [0, 1] as const) expect(frontArrivalMs(origin, player, zone)).toBeLessThanOrEqual(FRONT_SPREAD_MS);
+    }
+    // the zone next to the field pad is reached at once, the far corner last
+    expect(frontArrivalMs(0, 0, 0)).toBe(0);
+    expect(frontArrivalMs(0, 1, 0)).toBe(Math.max(...[0, 1].flatMap((p) => [0, 1, 2].map((z) => frontArrivalMs(0, p as 0 | 1, z)))));
+  });
+
+  it('beats come by distance, ≥ 150 ms apart, never before their own arrival', () => {
+    const arrivals = [300, 0, 300, 120, 900, 95];
+    const t = beatTimes(arrivals);
+    t.forEach((v, i) => expect(v).toBeGreaterThanOrEqual(arrivals[i]));
+    const sorted = [...t].sort((a, b) => a - b);
+    for (let i = 1; i < sorted.length; i++) expect(sorted[i] - sorted[i - 1]).toBeGreaterThanOrEqual(150);
+    // the order of arrival is kept (ties: input order)
+    expect(t[1]).toBeLessThan(t[5]);
+    expect(t[5]).toBeLessThan(t[3]);
+    expect(t[0]).toBeLessThan(t[2]);
+    // spVolcano (wolf + golem on the caster's side, serpent + titan across): the last beat lands inside the spread
+    const sp = beatTimes([frontArrivalMs(0, 0, 0), frontArrivalMs(0, 0, 1), frontArrivalMs(0, 1, 0), frontArrivalMs(0, 1, 1)]);
+    expect(Math.max(...sp)).toBeLessThanOrEqual(FRONT_SPREAD_MS);
+  });
+});
+
+describe('A-3 Volkan Arenası: the v3 ambience and field auras', () => {
+  it('the ambience draws only 1-px palette particles (no full-screen wash, no heat raster), bounded, on whole pixels', () => {
+    const S = fakeScene();
+    void volcanoAmbienceV3(S.scene, true, { pad: 0 });
+    expect(volcanoAmbienceOnV3(S.scene)).toBe(true);
+    S.step(3000);
+    const live = S.live();
+    expect(live.length).toBeGreaterThan(AMBIENCE_COUNTS.ash);
+    // embers (head + tail), air embers, ash and the pad's pops (head + tail)
+    expect(live.length).toBeLessThanOrEqual(2 * AMBIENCE_COUNTS.embers + AMBIENCE_COUNTS.drift + AMBIENCE_COUNTS.ash + 2 * 8);
+    expect(S.textures.size).toBe(0); // no canvas textures: no raster of any kind
+    for (const o of S.objs) {
+      expect(o.key).toBe(TEX.px1);
+      if (o.tint !== null) expect(PALETTE.has(o.tint), o.tint.toString(16)).toBe(true);
+      expect(Number.isInteger(o.x) && Number.isInteger(o.y)).toBe(true);
+      expect([1, 2]).toContain(o.sx);
+      expect([1, 2]).toContain(o.sy);
+    }
+    const probe = volcanoAmbienceProbe(S.scene)!;
+    expect(probe.level).toBe(1);
+    expect(probe.pad).toEqual({ x: Math.round(zoneXY(0, 'field', 0).x), y: Math.round(zoneXY(0, 'field', 0).y) });
+  });
+
+  it('switched off, the ambience cools out and leaves nothing behind (objects, listeners)', async () => {
+    const S = fakeScene();
+    void volcanoAmbienceV3(S.scene, true, { pad: 1, delayMs: 600 });
+    S.step(2500);
+    expect(S.live().length).toBeGreaterThan(0);
+    let resolved = false;
+    void volcanoAmbienceV3(S.scene, false).then(() => (resolved = true));
+    S.step(2500);
+    await Promise.resolve();
+    expect(resolved).toBe(true);
+    expect(S.live().length).toBe(0);
+    expect(S.updates.size).toBe(0);
+    expect(volcanoAmbienceOnV3(S.scene)).toBe(false);
+    expect(volcanoAmbienceProbe(S.scene)).toBeNull();
+  });
+
+  it('the flame tongues and the steam follow the sprite, and are gone after destroy (nothing left)', () => {
+    const S = fakeScene();
+    const sprite = fakeSprite(200, 150);
+    const unit = { sprite, uid: 7, retired: false, home: { x: 200, y: 150 } } as unknown as MonsterUnit;
+    const flame = flameAuraV3(S.scene, unit);
+    const steam = steamAuraV3(S.scene, unit);
+    S.step(1500);
+    // the flame aura's two rasters (in front of / behind the body) + the steam raster
+    expect(S.textures.size).toBe(3);
+    const before = S.live().length;
+    // the sprite moves: the rasters move with it (they are redrawn round the top edge every frame)
+    sprite.x = 260;
+    S.step(200);
+    expect(S.live().length).toBe(before);
+    expect(S.live().some((o) => o.x >= 260 - 20)).toBe(true);
+    flame.destroy();
+    steam.destroy();
+    S.step(1000);
+    expect(S.textures.size).toBe(0);
+    expect(S.live().length).toBe(0);
+    expect(S.updates.size).toBe(0);
+  });
+
+  it('a retired unit takes its auras with it at once', () => {
+    const S = fakeScene();
+    const sprite = fakeSprite(300, 170);
+    const unit = { sprite, uid: 9, retired: false, home: { x: 300, y: 170 } } as unknown as MonsterUnit & { retired: boolean };
+    flameAuraV3(S.scene, unit);
+    S.step(400);
+    expect(S.textures.size).toBe(2);
+    (unit as { retired: boolean }).retired = true;
+    S.step(50);
+    expect(S.textures.size).toBe(0);
+    expect(S.updates.size).toBe(0);
   });
 });
