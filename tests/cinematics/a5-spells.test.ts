@@ -2,7 +2,10 @@
 // (src/art/spellmotifs-v3.ts, read by lane A5-B's card art) and the pure helpers of the effect kit
 // (src/cinematics/_v3/spellfx.ts). Step A-3: Volkan Arenası — the lava front's timing against the calm
 // arena's own crack field, the beat spacing, the v3 ambience (palette pixels only, no full-screen
-// object, nothing left behind) and the v3 field auras' cleanup. Later steps add their checks here.
+// object, nothing left behind) and the v3 field auras' cleanup. Step A-3b: the generic statChange's
+// beats (≥ 150 ms apart). Step A-4: Ayna Kalkanı — the struck cell, the reflection order (by distance),
+// the beam schedule (220 ms after each contact; graveyard landings ≥ 150 ms apart) and the panel's size.
+// Later steps add their checks here.
 
 import { describe, expect, it, vi } from 'vitest';
 
@@ -463,5 +466,58 @@ describe('A-3 Volkan Arenası: the v3 ambience and field auras', () => {
     S.step(50);
     expect(S.textures.size).toBe(0);
     expect(S.updates.size).toBe(0);
+  });
+});
+
+describe('A-3b generic statChange (v3)', () => {
+  it('a group of stat changes beats in order, ≥ 150 ms apart, the first at once', async () => {
+    const { statBeatMs, STAT_BEAT_GAP } = await import('../../src/cinematics/flow/stats');
+    expect(STAT_BEAT_GAP).toBeGreaterThanOrEqual(150);
+    expect(statBeatMs(0)).toBe(0);
+    for (let k = 1; k < 6; k++) expect(statBeatMs(k) - statBeatMs(k - 1)).toBeGreaterThanOrEqual(150);
+  });
+});
+
+describe('A-4 Ayna Kalkanı (v3): panel, order, schedule', () => {
+  it('the attack meets the cell on its own side: middle row by default, top / bottom row by height', async () => {
+    const { struckCell } = await import('../../src/cinematics/traps/_mirror_v3');
+    const at = { x: 320, y: 130 };
+    expect(struckCell(at, { x: 260, y: 132 })).toBe(2); // from the left, level
+    expect(struckCell(at, { x: 390, y: 128 })).toBe(4); // from the right, level
+    expect(struckCell(at, { x: 260, y: 110 })).toBe(0); // from above-left
+    expect(struckCell(at, { x: 390, y: 150 })).toBe(6); // from below-right
+    expect(struckCell(at, { x: 321, y: 131 })).toBe(3); // head-on
+    // every answer is one of the 7 cells of the 2-3-2 panel
+    for (let x = 200; x <= 440; x += 20) for (let y = 60; y <= 200; y += 20) expect(M.HONEYCOMB_7[struckCell(at, { x, y })]).toBeDefined();
+  });
+
+  it('the reflections go nearest to the panel first (ties keep the event order)', async () => {
+    const { reflectionOrder } = await import('../../src/cinematics/traps/_mirror_v3');
+    const cell = { x: 320, y: 130 };
+    expect(reflectionOrder(cell, [{ x: 250, y: 150 }, { x: 290, y: 150 }, { x: 330, y: 170 }])).toEqual([1, 2, 0]);
+    expect(reflectionOrder(cell, [{ x: 300, y: 130 }, { x: 340, y: 130 }])).toEqual([0, 1]);
+    expect(reflectionOrder(cell, [])).toEqual([]);
+  });
+
+  it('each beam leaves 220 ms after the last contact, later only to keep the graveyard landings ≥ 150 ms apart', async () => {
+    const { beamSchedule, BEAM_MS, BEAM_GAP, LAND_GAP } = await import('../../src/cinematics/traps/_mirror_v3');
+    expect(BEAM_MS).toBe(120);
+    expect(BEAM_GAP).toBe(220);
+    // equal deaths: exactly the storyboard's rhythm
+    expect(beamSchedule([520, 520, 520])).toEqual([0, 340, 680]);
+    // mixed deaths (a long v3 death first, then two short ones): every landing keeps clear of the others
+    for (const deaths of [[1220, 520, 520], [520, 1220, 520], [1220, 1220], [520, 900, 300, 1100]]) {
+      const t = beamSchedule(deaths);
+      for (let k = 1; k < t.length; k++) expect(t[k] - t[k - 1]).toBeGreaterThanOrEqual(BEAM_MS + BEAM_GAP);
+      const lands = t.map((d, k) => d + BEAM_MS + deaths[k]);
+      for (let i = 0; i < lands.length; i++) for (let j = i + 1; j < lands.length; j++) expect(Math.abs(lands[i] - lands[j]), `${deaths} ${i}/${j}`).toBeGreaterThanOrEqual(LAND_GAP);
+    }
+  });
+
+  it('the panel is small and upright: 25 × 24 px (≤ 40 px high, EF-2), built before the earliest contact', async () => {
+    const { PANEL_AT, CATCH_AT } = await import('../../src/cinematics/traps/_mirror_v3');
+    expect(M.HONEYCOMB_7_SIZE.h).toBeLessThanOrEqual(40);
+    // 4 build steps 50 ms apart + the last faces' frame fit between the raise and the catch
+    expect(CATCH_AT - PANEL_AT).toBeGreaterThanOrEqual(4 * 50 + 17);
   });
 });

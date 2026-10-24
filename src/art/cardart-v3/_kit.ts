@@ -10,7 +10,13 @@
 //   autoSmall / asciiMap / patch                CORRECTS BY HAND (an ASCII map stamped with patch)
 //                                               and judges at 1×
 //   artStats / isolatedRatio / checkerCount     the numbers the render script prints (colours, isolated
-//                                               pixels, checkerboards, subject fill, outline, focus)
+//                                               pixels, checkerboards, subject fill, outline, focus, the
+//                                               lead room in front of the head, the bright centroid's
+//                                               distance to the focus)
+//   leadRoom / brightCentroid                   those two checks on their own
+//   foreignBackdropTones                        the recipe check: a backdrop uses its recipe's colours only
+//   valueLayout / valueLayoutMatch /            the 1× silhouette checks: does a picture read as another
+//   brightMaskIoU                               card's in the hand (value layout, bright shape)
 //
 // Every helper works on either size: geometry is given in BIG pixels (88×68) and halved on the small
 // canvas (44×34), so one call paints the same composition at both densities. Pure: no Phaser, no
@@ -203,8 +209,11 @@ export function spikes(p: PixelCanvas, cx: number, cy: number, n: number, r0: nu
 /** What a card's backdrop says: the monster's attribute, or the card kind for spells / traps. */
 export type BackdropKind = Attribute | 'SPELL' | 'TRAP';
 
-/** The one light shape of a recipe. */
-export type LightShape = 'halo' | 'eclipse' | 'furnace' | 'shaft' | 'sun' | 'gust' | 'portal' | 'diamond';
+/**
+ * The one light shape of a recipe. 'sigil' is no recipe's default: a spell / trap whose effect strikes the
+ * floor asks for it (`as: 'sigil'`) — its recipe's lit rim and inner step as two thin rings flat on the floor.
+ */
+export type LightShape = 'halo' | 'eclipse' | 'furnace' | 'shaft' | 'sun' | 'gust' | 'portal' | 'diamond' | 'sigil';
 
 export interface BackdropRecipe {
   readonly kind: BackdropKind;
@@ -253,7 +262,22 @@ export interface BackdropOpts {
    * column): its own stepped light then stands in for the recipe's shape (still ONE light shape)
    */
   readonly shape?: boolean;
+  /**
+   * Paint the recipe's tones in another stock shape (e.g. SPELL as a floor 'sigil' under a strike). The
+   * tones always come from the recipe: a card never picks its own light colours (the attribute / kind
+   * colour is mandatory — the light shape is the only attribute cue a dark backdrop has at 1×).
+   */
+  readonly as?: LightShape;
+  /** 'halo' only: its short flat rays (default true) */
+  readonly rays?: boolean;
+  /** x range (BIG px, inclusive) where the 1-px horizon line is left out: an effect that crosses it */
+  readonly horizonGap?: readonly [number, number];
+  /** first row of the lower sky band (BIG px, default the recipe's): put it under a cloud's base */
+  readonly split?: number;
 }
+
+/** The halo's rays: 8 short flat wedges on clean slopes (0°, 45°, 90° …), at most RAY_LEN px past the disc. */
+export const RAY_LEN = 7;
 
 /** The step between two tones of a light shape: 4 px big / 2 px small (a band, never a 1-px line). */
 export const LIGHT_STEP = 4;
@@ -269,13 +293,14 @@ export function paintBackdrop(p: PixelCanvas, kind: BackdropKind | BackdropRecip
   // 1. two sky bands
   bands(p, [
     [0, R.sky[0]],
-    [R.split, R.sky[1]],
+    [o.split ?? R.split, R.sky[1]],
   ]);
   // 2. the one light shape
-  switch (o.shape === false ? null : R.shape) {
+  switch (o.shape === false ? null : (o.as ?? R.shape)) {
     case 'halo':
-      // a stepped sun disc behind the head with 8 short flat rays in its outer tone
-      spikes(p, fx, fy, 8, r - 6, r + 6, 3, t[0], 22.5);
+      // a stepped sun disc behind the head; 8 short flat rays in its outer tone on clean slopes (a longer
+      // or odd-angled ray steps unevenly and reads as a crack)
+      if (o.rays !== false) spikes(p, fx, fy, 8, r - 8, r - 4 + RAY_LEN, 3, t[0], 0);
       steppedDisc(p, fx, fy, r - 4, t, S + 4);
       break;
     case 'eclipse':
@@ -325,6 +350,9 @@ export function paintBackdrop(p: PixelCanvas, kind: BackdropKind | BackdropRecip
       // the trap's angular frame: a stepped diamond, its rim lit
       steppedDiamond(p, fx, fy, r + 6, t, S, 0.85);
       break;
+    case 'sigil':
+      // drawn ON the floor, after it (step 4)
+      break;
   }
   // 3. EARTH's far ridge: a flat band with stepped mesa tops, between the sun and the floor
   if (R.ridge !== undefined && hz < ART_BIG.h) {
@@ -345,11 +373,41 @@ export function paintBackdrop(p: PixelCanvas, kind: BackdropKind | BackdropRecip
   if (hz < ART_BIG.h) {
     const y0 = px(p, hz);
     for (let y = y0; y < p.h; y++) p.hline(0, p.w - 1, y, R.floor);
-    p.hline(0, p.w - 1, y0, R.horizonLine);
+    const gap = o.horizonGap;
+    for (let x = 0; x < p.w; x++) if (!gap || x < px(p, gap[0]) || x > px(p, gap[1])) p.set(x, y0, R.horizonLine);
     if (o.pool) steppedEllipse(p, fx, hz + 8, r * 0.8, 4, [R.horizonLine, t[0]], 8);
+  }
+  // 5. a floor sigil: a strike's lock-on circle flat on the floor around the focus — the lit rim (t[0]) and
+  // one inner ring (t[1]), 1 px each, the floor's own dark between them: rings, never a filled pool (a
+  // filled bright ellipse under a column reads as a fountain's basin)
+  if (o.shape !== false && (o.as ?? R.shape) === 'sigil') {
+    const cx = px(p, fx) + 0.5;
+    const cy = px(p, fy) + 0.5;
+    const gap = S + 2;
+    p.ellipseRing(cx, cy, px(p, r), Math.max(1, px(p, r * SIGIL_FLAT)), t[0]);
+    p.ellipseRing(cx, cy, px(p, r - gap), Math.max(1, px(p, (r - gap) * SIGIL_FLAT)), t[1] ?? t[0]);
   }
   return R;
 }
+
+/**
+ * The recipe check (the attribute / kind colour is mandatory): the tones of a backdrop layer that its recipe
+ * does not own (sky, floor, horizon line, light tones). [] = the backdrop speaks its recipe's colours only.
+ */
+export function foreignBackdropTones(backdrop: PixelCanvas, kind: BackdropKind): number[] {
+  const R = BACKDROPS[kind];
+  const own = new Set<number>([...R.sky, R.floor, R.horizonLine, ...R.tones, ...(R.ridge !== undefined ? [R.ridge] : [])]);
+  const out = new Set<number>();
+  for (let y = 0; y < backdrop.h; y++)
+    for (let x = 0; x < backdrop.w; x++) {
+      const c = backdrop.get(x, y);
+      if (c !== null && !own.has(c)) out.add(c);
+    }
+  return [...out];
+}
+
+/** A floor sigil's depth: its ring's ry / rx (the floor seen from the card's low camera). */
+export const SIGIL_FLAT = 0.22;
 
 // ================================================================ subject helpers
 
@@ -636,6 +694,18 @@ export interface ArtStats {
   readonly outlineInk: number;
   /** the painter's focus lies in the focus box */
   readonly focusOk: boolean;
+  /**
+   * Air in front of the head (px): visible columns between the subject's front — its rightmost pixel in
+   * the rows around the focus — and the window's visible right edge. §2 asks ≥ 4 (big) / 2 (small) for a
+   * monster; NaN without a focus.
+   */
+  readonly lead: number;
+  /**
+   * How far the eye is pulled from the focus (px): the distance from the centroid of the picture's
+   * brightest 5 % to the focus (§3 "the brightest single point is the focus"). Worth a look above ~15 px
+   * (big) / ~8 px (small); NaN without a focus.
+   */
+  readonly brightOff: number;
 }
 
 /** Isolated pixels / opaque pixels of a canvas (IŞ-10's measure). */
@@ -736,7 +806,116 @@ export function artStats(l: ArtLayers, pic: PixelCanvas, focus?: readonly [numbe
     subjectCover: cover / visArea,
     outlineInk: edge ? edgeInk / edge : 0,
     focusOk: f ? f[0] >= fb.x0 && f[0] <= fb.x1 && f[1] >= fb.y0 && f[1] <= fb.y1 : true,
+    lead: f ? leadRoom(l.subject, l.size, f[1]) : NaN,
+    brightOff: f ? Math.hypot(...((c) => [c.x - f[0], c.y - f[1]] as const)(brightCentroid(pic))) : NaN,
   };
+}
+
+/**
+ * Lead room: visible columns between the subject's front (its rightmost opaque pixel in the rows
+ * focusY ± band, own pixels; band default 12 big / 6 small) and the visible right edge. Negative when the
+ * subject runs under the bezel (or off the window) there.
+ */
+export function leadRoom(subject: PixelCanvas, size: ArtSize, focusY: number, band?: number): number {
+  const g = ART_GEOM[size];
+  const b = band ?? 6 * g.k;
+  let front = -1;
+  for (let y = Math.max(0, focusY - b); y <= Math.min(subject.h - 1, focusY + b); y++)
+    for (let x = subject.w - 1; x > front; x--)
+      if (subject.isOpaque(x, y)) {
+        front = x;
+        break;
+      }
+  return front < 0 ? g.visible.x1 - g.visible.x0 + 1 : g.visible.x1 - front;
+}
+
+/**
+ * The centroid of the brightest `frac` of a picture's opaque pixels (Rec.601 luma). Pixels tie in whole flat
+ * tones: when the tone at the cut would more than double the set (a big flat plane of one value), only the
+ * tones strictly brighter than it count — the eye goes to the few brightest pixels, not to a whole plane.
+ */
+export function brightCentroid(pic: PixelCanvas, frac = 0.05): { x: number; y: number } {
+  const ls: number[] = [];
+  for (let y = 0; y < pic.h; y++)
+    for (let x = 0; x < pic.w; x++) {
+      const c = pic.get(x, y);
+      if (c !== null) ls.push(lumOf(c));
+    }
+  if (!ls.length) return { x: NaN, y: NaN };
+  const want = Math.max(1, Math.floor(ls.length * frac));
+  const sorted = [...ls].sort((a, b) => b - a);
+  const cut = sorted[want - 1];
+  const withTies = sorted.filter((v) => v >= cut).length;
+  const above = sorted.filter((v) => v > cut).length;
+  const strict = withTies > 2 * want && above > 0;
+  let sx = 0;
+  let sy = 0;
+  let n = 0;
+  for (let y = 0; y < pic.h; y++)
+    for (let x = 0; x < pic.w; x++) {
+      const c = pic.get(x, y);
+      if (c === null) continue;
+      const l = lumOf(c);
+      if (strict ? l > cut : l >= cut) {
+        sx += x + 0.5;
+        sy += y + 0.5;
+        n++;
+      }
+    }
+  return { x: sx / n, y: sy / n };
+}
+
+/**
+ * A picture's 1× value layout for silhouette comparisons: the mean luma of every `cell`×`cell` block
+ * (default 4: 11×8 blocks on a 44×34 picture), normalised to mean 0 / deviation 1. Two pictures whose
+ * layouts correlate strongly (valueLayoutMatch ≳ 0.75) read as the same shape in the hand.
+ */
+export function valueLayout(pic: PixelCanvas, cell = 4): number[] {
+  const out: number[] = [];
+  for (let by = 0; by + cell <= pic.h; by += cell)
+    for (let bx = 0; bx + cell <= pic.w; bx += cell) {
+      let s = 0;
+      let n = 0;
+      for (let y = by; y < by + cell; y++)
+        for (let x = bx; x < bx + cell; x++) {
+          const c = pic.get(x, y);
+          if (c === null) continue;
+          s += lumOf(c);
+          n++;
+        }
+      out.push(n ? s / n : 0);
+    }
+  const m = out.reduce((a, b) => a + b, 0) / out.length;
+  const sd = Math.sqrt(out.reduce((a, b) => a + (b - m) ** 2, 0) / out.length) || 1;
+  return out.map((v) => (v - m) / sd);
+}
+
+/** Correlation (−1…1) of two value layouts (valueLayout) of same-size pictures. */
+export function valueLayoutMatch(a: PixelCanvas, b: PixelCanvas, cell = 4): number {
+  const la = valueLayout(a, cell);
+  const lb = valueLayout(b, cell);
+  let s = 0;
+  for (let i = 0; i < Math.min(la.length, lb.length); i++) s += la[i] * lb[i];
+  return s / Math.min(la.length, lb.length);
+}
+
+/**
+ * IoU of two pictures' bright masks (luma ≥ `cut`, default 120: the effect, the lit planes): the shape a
+ * picture shows at 1× once the eye drops the dark backdrop. Spell / trap pictures must stay apart (§6).
+ */
+export function brightMaskIoU(a: PixelCanvas, b: PixelCanvas, cut = 120): number {
+  let inter = 0;
+  let uni = 0;
+  for (let y = 0; y < Math.min(a.h, b.h); y++)
+    for (let x = 0; x < Math.min(a.w, b.w); x++) {
+      const ca = a.get(x, y);
+      const cb = b.get(x, y);
+      const ia = ca !== null && lumOf(ca) >= cut;
+      const ib = cb !== null && lumOf(cb) >= cut;
+      if (ia && ib) inter++;
+      if (ia || ib) uni++;
+    }
+  return uni ? inter / uni : 0;
 }
 
 /** Pixels that differ between two same-size pictures / their area (small vs. its blind reduction). */

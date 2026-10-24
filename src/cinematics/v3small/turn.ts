@@ -41,7 +41,7 @@ import { REDUCED_MOTION } from '../../view/v3/motion';
 import { showContour } from '../../view/v3/ui-kit';
 import { HudV3, ui3Ready, ui3Sfx } from '../../view/v3/hudV3';
 import { canvasTexture, hex } from '../../view/v3/hudSkin';
-import { PLATE, TurnPlate, battlePlateText, turnPlateText } from '../../view/v3/TurnPlate';
+import { DuelPlate, PLATE, TurnPlate, battlePlateText, turnPlateText } from '../../view/v3/TurnPlate';
 import { bg, cameraAtRest, fs, intensityFor, lightFlash, type AnyCtx, type Ctx } from '../flow/_kit';
 import { V3HOOKS } from './_hooks';
 
@@ -207,6 +207,8 @@ async function turnStartV3(ctx: Ctx<'turnStart'>): Promise<void> {
   const { player, turn } = ctx.ev;
   const v = ctx.views;
   const sc = ctx.scene;
+  // the opening's "DÜELLO!" plate (F0) leaves in its two palette steps as the first turn starts
+  DuelPlate.leaveAll();
   if (!cameraAtRest(ctx)) await v.camera.unfocus(120); // today's safety (flow/turn.ts:38)
   // a plate of the turn before that never landed (e.g. no main phase) lands now, at once
   if (turnPlate) {

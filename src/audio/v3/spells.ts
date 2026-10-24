@@ -15,8 +15,10 @@
 //   Ruh Çağrısı    a hollow soft formant (a gentle growl, no grit), one soft bell, pink air.
 //   Ejder Kılıcı   gold metal: FM clanks (ratio 1.41) and rising narrow sweeps; the bond is an anvil.
 //   Volkan Arenası fire / stone: low thumps, brown rumble, crackle; steam is falling white noise.
-//   Ayna Kalkanı   glass PLATE: whole-tone ticks C6–F#6 on plate ratios (1 : 1.59 : 2.14 : 2.65),
-//                  short and dry — not the wyrm's ringing bar modes (LSD ≥ 10 dB, measured in A-8).
+//   Ayna Kalkanı   glass PLATE: whole-tone ticks on plate ratios (1 : 1.59 : 2.14 : 2.65), short and
+//                  dry — not the wyrm's ringing bar modes: the build ticks C5–F#5 over a low "thock",
+//                  the beam on E6, the break a dry plate crack with C5–F#6 shards (LSD vs the wyrm's
+//                  glass roles and the crystal hits ≥ 10.8 dB, measured in A-4; A-8 re-checks).
 //   Yer Yarığı     earth: crackle trains, hollow low "whoomp", gravel bursts, a heavy slam and dust.
 // Levels follow the slice (src/audio/v3/slice.ts): the big beats duck the music ≥ 0.55, small ones
 // ≤ 0.3 (SE-7, the §4.6 table). Sounds that land on the victim's own death frame (mirrorBeam,
@@ -244,15 +246,22 @@ export const V3_SPELL_RECIPES = {
   },
 
   // ================================================================ Ayna Kalkanı
-  /** The panel builds cell by cell: four whole-tone glass-plate ticks, 50 ms apart (C6 D6 E6 F#6). */
+  /**
+   * The panel builds cell by cell: four whole-tone glass-plate ticks, 50 ms apart, on a thick plate
+   * (C5 D5 E5 F#5 on plate ratios: an octave under the beam's E6 and under the wyrm's E6–B7 glass —
+   * LSD ≥ 10 dB against its glass roles, measured in A-4).
+   */
   mirrorRaise: {
     cap: 1,
     gap: 0.15,
     verb: 0.4,
     play(v) {
       MIRROR.forEach((m, i) => {
-        plateBell(v, midiHz(m), i * 0.05, 0.11 - i * 0.008, 0.22, { modes: 3 });
-        v.noise('white', { t: i * 0.05, g: perc(0.03, 0.004, 0.0002), to: v.filt('highpass', 5000) });
+        plateBell(v, midiHz(m - 12), i * 0.05, 0.12 - i * 0.008, 0.2, { modes: 4 });
+        // the tick itself: a dry plate click (band-passed, no airy hiss on top) on a short low "thock"
+        // of the thick panel settling into place (the body the wyrm's ringing glass never has)
+        v.noise('white', { t: i * 0.05, g: perc(0.035, 0.005, 0.0002), to: v.filt('bandpass', 2400, 1.4) });
+        thump(v, i * 0.05, 300, 210, 0.08, 0.06);
       });
     },
   },
@@ -284,19 +293,23 @@ export const V3_SPELL_RECIPES = {
       v.tone('sine', [[0, f * 1.594], [0.2, f * 1.5, 'e']], { t: 0.01, g: perc(0.04, 0.16, 0.003) });
     },
   },
-  /** The mirror breaks: glass shatter and a sparse rain of plate shards. */
+  /**
+   * The mirror breaks: a dry plate crack — lower and shorter than the wyrm's crystal shatter, no
+   * cascade, no ringing tail — the plate's own last knock (C5), then a sparse glitter of plate shards
+   * (C5–F#6; LSD ≥ 10 dB against the wyrm's glass roles, measured in A-4).
+   */
   mirrorBreak: {
     cap: 1,
     gap: 0.15,
     verb: 0.5,
     duck: 0.4,
     play(v) {
-      crack(v, 0, 0.5, { hp: 2800, n: 3, gap: 0.012, dec: 0.014 });
-      v.noise('white', { g: perc(0.14, 0.12, 0.002), to: v.filt('highpass', 4500) });
+      crack(v, 0, 0.45, { hp: 1400, lp: 6000, n: 2, gap: 0.016, dec: 0.012 });
+      plateBell(v, midiHz(MIRROR[0] - 12), 0.003, 0.1, 0.32, { modes: 4 });
       const pans = [v.panner(-0.4), v.panner(0), v.panner(0.4)];
-      for (let i = 0; i < 9; i++) {
-        const m = MIRROR[i % MIRROR.length] + (i % 2 ? 12 : 0);
-        plateBell(v, midiHz(m) * v.r(0.997, 1.003), 0.02 + i * 0.035 + v.r(0, 0.02), 0.035 * (1 - i * 0.06), v.r(0.1, 0.22), { to: pans[i % 3], modes: 2 });
+      for (let i = 0; i < 7; i++) {
+        const m = MIRROR[i % MIRROR.length] - (i % 2 ? 0 : 12);
+        plateBell(v, midiHz(m) * v.r(0.997, 1.003), 0.03 + i * 0.045 + v.r(0, 0.02), 0.04 * (1 - i * 0.07), v.r(0.08, 0.18), { to: pans[i % 3], modes: 2 });
       }
     },
   },

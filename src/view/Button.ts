@@ -161,6 +161,18 @@ export class Button extends Phaser.GameObjects.Container {
     });
   }
 
+  /** v3 (A6-B F0, the HUD's arrival): the skin's appear step (0 trim, 1 body, 2 all). No-op in v1. */
+  appearStep(step: 0 | 1 | 2): this {
+    this.v3?.appear(step);
+    return this;
+  }
+
+  /** v3 (A6-B F0, skipIntro): the skin's wake step (white frame, one tone up, null = rest). No-op in v1. */
+  wakeStep(w: 'white' | 'up' | null): this {
+    this.v3?.wake(w);
+    return this;
+  }
+
   get enabled(): boolean {
     return this._enabled;
   }

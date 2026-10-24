@@ -7,9 +7,19 @@
 //   LP panels      the owner's trim (P1 cyan, P2 crimson), one tone up on the active panel, where a
 //                  light node runs the trim (2.4 s lap); "OYUNCU n" in the owner's tone; white LP
 //                  digits; a flat LP bar in an ink frame; today's count glyphs re-toned
-//   LP change      only the trim lights (2 frames white, then crimson / leaf 120 ms); no panel fill,
-//                  no chip; the digits roll exactly as long as v1's (same resolve time: callers'
-//                  timings stay identical); the odometer comes with B2 (F3)
+//   LP number      a mechanical counter (./odometer.ts LpCounter, F3 / B2): every digit on its own
+//                  wheel behind its own window (1-px frame, cut corners, ink inside; four windows at
+//                  least, a leading zero dim)
+//   LP change      (F3) only the trim lights (2 frames white, then crimson / leaf 120 ms) — no panel
+//                  fill, no chip; a loss shakes the panel 1–2 px (3 px from 1500) for 120 ms; the
+//                  counter COUNTS (≤ 360 ms: the finest wheel clicks digit by digit, the upper ones
+//                  turn on the carry; a tick per click, ≥ 34 ms apart) in the change's tone, its last
+//                  wheel lands white for a frame; the bar: a loss leaves the lost slice white for 2
+//                  frames, then crimson, eroding in 4-px steps (140–340 ms); a gain fills the new
+//                  slice in 4-px steps in leaf with a 1-px white lead and 3 pixels rising off it.
+//                  setLp still resolves when today's would (callers' timings stay identical)
+//   low LP         (< 1000, F3) the digits rest crimson and pulse one tone up every 1200 ms; the bar's
+//                  remaining slice blinks slowly (600 ms); with reduced motion both hold still
 //   phase bar      neutral trim; mist cells, the active cell a pill framed in the turn player's tone;
 //                  the pill moves on whole pixels (1-px pull-back, slide, 1-px overshoot — 2 px into
 //                  SAVAŞ —, settle; F2, B1); the SAVAŞ cell fills crimson in two steps while the
@@ -31,7 +41,7 @@ import { START_LP } from '../../engine/types';
 import { Button } from '../Button';
 import { UI_FLOW_RECIPES, type UiFlowSfxName } from '../../audio/v3/ui-flow';
 import type { SfxName, SfxOpts } from '../../audio/sfx';
-import { Odometer } from './odometer';
+import { LP_WHEELS, LpCounter, Odometer } from './odometer';
 import type { HudCountKind, HudCounts, HudOpts, HudView, SpeedLevel } from '../HudView';
 import { DEPTH, UI, panelRect, type Rect, type XY } from '../layout';
 import { ICON, type UiStyle } from '../ui-textures';
@@ -78,6 +88,42 @@ export function ui3Ready(name: UiFlowSfxName): boolean {
 /** The SAVAŞ cell's fill steps (F2: two steps in, two steps out). */
 const BATTLE_FILL = [PAL.crim0, PAL.crim1] as const;
 
+/**
+ * F0 (hudIn, lane A6-B step B-open): how the HUD arrives instead of appearing in one frame. Each piece
+ * comes from its own screen edge — `dx` / `dy` is where it starts, toward that edge — `stagger` ms after
+ * the one before, sliding `slideMs` on whole pixels with a 1-px overshoot. Total 3 × 40 + 120 = 240 ms
+ * (A6_MS.hudIn: 160–240, never locks the input).
+ */
+export const HUD_ARRIVAL = Object.freeze({
+  stagger: 40,
+  slideMs: 120,
+  overshoot: 1,
+  /** P1's panel from the bottom left, P2's from the top right, the bar from the top, the buttons from the right. */
+  p1: Object.freeze({ dx: -12, dy: 12 }),
+  p2: Object.freeze({ dx: 12, dy: -12 }),
+  top: Object.freeze({ dx: 0, dy: -12 }),
+  buttons: Object.freeze({ dx: 16, dy: 0 }),
+  /** 'wake' (skipIntro, the HUD already on screen): one white trim frame, then one tone up until this ms. */
+  wakeUpMs: 50,
+});
+
+/** 'slide': the opening's HUD arrival (hidden before); 'wake': the HUD is already up (skipIntro). */
+export type ArrivalMode = 'slide' | 'wake';
+
+interface ArrivalPiece {
+  /** What moves together, and where it rests. */
+  objs: { o: { x: number; y: number; setVisible(b: boolean): unknown }; x: number; y: number }[];
+  dx: number;
+  dy: number;
+  delay: number;
+  /** 0 = the trim alone (the frame lights first), 1 = the body with the trim one tone up, 2 = all, at rest. */
+  stage(s: 0 | 1 | 2): void;
+  /** 'wake': one white trim frame, then one tone up; null = back to rest. */
+  wake(w: 'white' | 'up' | null): void;
+  /** The stage / wake step shown (−1 = not started). */
+  shown: number;
+}
+
 const PHASES: Phase[] = ['draw', 'main', 'battle', 'end'];
 const PHASE_LABEL_V3: Record<Phase, string> = { draw: 'ÇEKME', main: 'ANA', battle: 'SAVAŞ', end: 'BİTİŞ' };
 const PLAYER_NAME: Record<PlayerId, string> = { 0: 'OYUNCU 1', 1: 'OYUNCU 2' };
@@ -98,32 +144,83 @@ interface PanelV3 {
   player: PlayerId;
   rect: Rect;
   root: Phaser.GameObjects.Container;
+  /** The panel body (outline + bands): the arrival's second frame (F0 hudIn). */
+  body: Phaser.GameObjects.Image;
   trim: TrimGfx;
   name: PalText;
-  lpText: PalText;
-  lpY: number;
+  /** The LP number: a mechanical counter (F3). */
+  counter: LpCounter;
   bar: Phaser.GameObjects.Graphics;
   chip: Phaser.GameObjects.Image;
   chipX: number;
   counts: Record<Kind, CountV3>;
   active: boolean;
+  /** The LP (the last setLp's value). */
   lp: number;
-  shownLp: number;
+  /** The bar's fill (LP; during a gain it follows the count), the lost slice's end and its start (LP). */
   barLp: number;
   ghostLp: number;
+  ghostTop: number;
   ghostColor: number;
+  /** A gain in progress: the LP its leaf slice starts at (null = none); its lead pixel white. */
+  gainFrom: number | null;
+  leadWhite: boolean;
+  /** The pixels rising off a gaining bar (panel coordinates, tone). */
+  sparks: { x: number; y: number; c: number }[];
   /** The digits' tone while an LP change plays (null = the resting tone). */
   rollTone: number | null;
-  rollTween: Phaser.Tweens.Tween | null;
-  ghostTween: Phaser.Tweens.Tween | null;
+  /** The newest setLp (an older one's landing steps aside). */
+  lpSeq: number;
+  /** The bar's running jobs (erosion, gain fill). */
+  barTweens: Phaser.Tweens.Tween[];
   shakeTween: Phaser.Tweens.Tween | null;
   /** A trim override (LP flash, flashPanel) and its sequence number (a newer one cancels it). */
   trimOverride: Trim | null;
   trimSeq: number;
-  /** Danger pulse (LP ≤ 1000): one palette step every 600 ms. */
-  danger: Phaser.Time.TimerEvent | null;
-  dangerHi: boolean;
+  /** Low LP (< 1000, F3): a 600-ms beat — the digits pulse one tone up on every other beat, the bar blinks. */
+  low: Phaser.Time.TimerEvent | null;
+  lowPulse: boolean;
+  lowDim: boolean;
 }
+
+/**
+ * The LP panels' depth: above today's panelGlow setpiece (vfx/setpieces.ts — the lumen_sprite gain
+ * delivery, the volt_lizard burn, burnFly; files outside lane B), which paints an ADD fill over the
+ * panel rect at DEPTH.HUD + 4.5 and its outline raster at + 5: the opaque v3 panel hides the fill
+ * (F3: no panel fill; only the trim lights), while the effects that fly INTO the panel (+ 6 and up)
+ * and the numbers (+ 20) stay above it.
+ */
+export const PANEL_DEPTH = DEPTH.HUD + 5.5;
+
+/** Low LP (F3): above 0 and under 1000. */
+export function isLowLp(lp: number): boolean {
+  return lp > 0 && lp < 1000;
+}
+
+/** The LP change timings (F3, ms at 1×; LpCounter rolls ≤ 360). */
+export const LP_V3 = Object.freeze({
+  /** The trim: 2 white frames, then the change's tone this long. */
+  trimMs: 120,
+  /** A loss shakes the panel this long: 1 px, 2 px from 500, 3 px from 1500. */
+  shakeMs: 120,
+  /** The digits stay white for two frames before they take the change's tone. */
+  whiteMs: 34,
+  /** The lost slice erodes in 4-px steps from erodeAt for erodeMs. */
+  erodeAt: 140,
+  erodeMs: 200,
+  barStep: 4,
+  /** After the landing the digits hold one tone up this long, then rest. */
+  landMs: 60,
+  /** Ticks at least this far apart (real ms: at 2× / 3× the tick stream thins). */
+  tickGapMs: 34,
+  /** Low LP: the beat (the digits pulse on every other beat for pulseMs; the bar blinks every beat). */
+  lowBeatMs: 600,
+  lowPulseMs: 150,
+  /** The 3 pixels rising off a gaining bar: where on the new slice (0–1), how far, how fast. */
+  sparkAt: Object.freeze([0.2, 0.5, 0.8]),
+  sparkRise: 4,
+  sparkStepMs: 34,
+});
 
 /** A counter tween on the scene clock (speed / hit-stop): fn(k) for k 0 → 1 over ms; resolves at the end. */
 function run(scene: Phaser.Scene, ms: number, fn: (k: number) => void, track?: (t: Phaser.Tweens.Tween) => void): Promise<void> {
@@ -172,6 +269,7 @@ export class HudV3 implements HudApi {
   private speed: SpeedLevel;
   // phase bar
   private readonly phaseRoot: Phaser.GameObjects.Container;
+  private readonly phaseBody: Phaser.GameObjects.Image;
   private readonly phaseTrim: TrimGfx;
   private readonly pill: Phaser.GameObjects.Graphics;
   private readonly phaseLabels: PalText[] = [];
@@ -185,6 +283,7 @@ export class HudV3 implements HudApi {
   private battleFillSeq = 0;
   // turn badge
   private readonly turnRoot: Phaser.GameObjects.Container;
+  private readonly turnBody: Phaser.GameObjects.Image;
   private readonly turnTrim: TrimGfx;
   private readonly turnOdo: Odometer;
   /** While a turn plate carries the new number, setTurn only records it (landTurn shows it). */
@@ -215,6 +314,10 @@ export class HudV3 implements HudApi {
   private caretT = 0;
   private visible = true;
   private destroyed = false;
+  /** F0 (hudIn): the running arrival and the child visibility it borrowed (restored at its end). */
+  private arrival: { tween: Phaser.Tweens.Tween | null; pieces: ArrivalPiece[]; mode: ArrivalMode } | null = null;
+  private arrived = false;
+  private readonly borrowed = new Map<Phaser.GameObjects.Container, Map<Phaser.GameObjects.GameObject & { visible: boolean; setVisible(b: boolean): unknown }, boolean>>();
 
   constructor(scene: Phaser.Scene, opts: HudOpts = {}) {
     this.scene = scene;
@@ -240,7 +343,8 @@ export class HudV3 implements HudApi {
       }
       return p;
     });
-    this.phaseRoot.add(scene.add.image(0, 0, barKey).setOrigin(0));
+    this.phaseBody = scene.add.image(0, 0, barKey).setOrigin(0);
+    this.phaseRoot.add(this.phaseBody);
     this.phaseTrim = new TrimGfx(scene, this.phaseRoot, 0, 0, pb.w, pb.h).set(styleTrim('neutral'));
     this.pill = scene.add.graphics();
     this.phaseRoot.add(this.pill);
@@ -261,7 +365,8 @@ export class HudV3 implements HudApi {
     const T = HUD3.turn;
     this.turnRoot = this.track(scene.add.container(pb.x + T.dx, pb.y).setDepth(DEPTH.HUD).setScrollFactor(0));
     const badgeKey = canvasTexture(scene, `ui3:hud:turnbadge:${T.w}x${T.h}`, () => plateBodyV3(T.w, T.h));
-    this.turnRoot.add(scene.add.image(0, 0, badgeKey).setOrigin(0));
+    this.turnBody = scene.add.image(0, 0, badgeKey).setOrigin(0);
+    this.turnRoot.add(this.turnBody);
     this.turnTrim = new TrimGfx(scene, this.turnRoot, 0, 0, T.w, T.h).set(styleTrim('neutral'));
     const tur = new PalText(scene, T.labelX, capYV3('sm', T.labelCap), 'TUR', { size: 'sm', color: PAL.mist });
     this.turnRoot.add(tur.root);
@@ -330,129 +435,180 @@ export class HudV3 implements HudApi {
   }
 
   /**
-   * Set a player's LP. Animated: only the panel's trim lights (2 frames white, then crimson / leaf
-   * for 120 ms), the digits roll (crimson / leaf while rolling), the bar's lost slice shows white
-   * then crimson and drains; a loss shakes the panel 1–3 whole pixels. Resolves exactly when v1's
-   * setLp would (roll + 140 ms), so every caller's timing is unchanged.
+   * Set a player's LP (F3). Animated: the panel's trim lights (2 frames white, then crimson / leaf for
+   * 120 ms; no fill), a loss shakes the panel 1–3 whole pixels for 120 ms, the counter COUNTS
+   * (LpCounter.count, ≤ 360 ms, in the change's tone after two white frames; a tick per click, ≥ 34 ms
+   * apart; its last wheel lands white for one frame, then the digits hold one tone up for 60 ms), the
+   * bar takes the change in 4-px steps (a loss: the lost slice white for 2 frames, then crimson, eroding
+   * 140–340 ms; a gain: the new slice fills with the count in leaf behind a 1-px white lead, 3 pixels
+   * rising off it). All on the scene clock (speed / hit-stop). The promise still resolves when v1's
+   * setLp would (roll + 140 ms; maxMs 400 → 540 ms), so no caller's timing moves; a newer call counts
+   * on from the number shown.
    */
   async setLp(player: PlayerId, value: number, animate = true, o: { maxMs?: number } = {}): Promise<void> {
     const P = this.panels[player];
     value = Math.max(0, Math.round(value));
-    const from = P.shownLp;
+    const from = P.counter.halt();
     const delta = value - P.lp;
     P.lp = value;
-    P.rollTween?.stop();
-    P.rollTween = null;
-    if (!animate || value === from) {
-      P.shownLp = value;
+    const seq = ++P.lpSeq;
+    this.stopBar(P);
+    if (!animate || value === from || this.destroyed) {
+      P.counter.set(value);
       P.barLp = value;
       P.ghostLp = value;
+      P.ghostTop = value;
+      P.gainFrom = null;
+      P.leadWhite = false;
       P.rollTone = null;
-      P.ghostTween?.stop();
+      P.counter.setUnitTone(null);
       this.renderLp(P);
       this.drawBar(P);
       return;
     }
     const loss = value < from;
     const amount = Math.abs(delta || value - from);
-    // the same durations as v1 (o.maxMs: the v3 LP roll cap, ≤ 400 ms)
+    // v1's resolve time (o.maxMs: the v3 LP roll cap, 400 ms): every caller keeps its timing
     const cap = o.maxMs;
     const base = Math.min(1100, Math.max(420, 320 + amount * 0.32));
-    const ms = cap !== undefined ? Math.min(cap, base) : base;
-    const ghostDelay = cap !== undefined ? Math.min(320, Math.round(cap * 0.3)) : 320;
-    const ghostMs = cap !== undefined ? Math.max(60, Math.min(420, cap - ghostDelay)) : 420;
-    sfx.play(loss ? 'lpDown' : 'lpUp');
-    // F10 / F3: only the trim lights — 2 frames white, then the change's tone for 120 ms
-    this.trimFlash(P, loss ? { light: PAL.crim4, dark: PAL.crim3 } : { light: PAL.leaf4, dark: PAL.leaf3 }, 120);
-    if (loss) this.shakePanel(P, amount >= 1500 ? 3 : amount >= 500 ? 2 : 1, 120);
-
-    // LP bar: loss → fill drops now, the lost slice white for 2 frames then crimson, drains after a
-    // beat; gain → the new slice leads in leaf, the fill grows with the digits
-    P.ghostTween?.stop();
-    if (loss) {
-      P.ghostLp = Math.max(P.ghostLp, from);
-      P.barLp = value;
-      P.ghostColor = PAL.white;
-      this.drawBar(P);
-      this.scene.time.delayedCall(2 * FRAME_MS, () => {
-        // crimson; on P2's crimson bar one tone lighter, so the lost slice still reads
-        P.ghostColor = P.player === 0 ? PAL.crim3 : PAL.crim4;
-        this.drawBar(P);
-      });
-      const g = { v: P.ghostLp };
-      P.ghostTween = this.scene.tweens.add({
-        targets: g,
-        v: value,
-        delay: ghostDelay,
-        duration: ghostMs,
-        ease: 'Quad.In',
-        onUpdate: () => {
-          P.ghostLp = g.v;
-          this.drawBar(P);
-        },
-      });
-    } else {
-      P.ghostLp = value;
-      P.ghostColor = PAL.leaf3;
-      this.drawBar(P);
-    }
-
-    // digits: a white frame, then the change's tone while rolling
+    const resolveMs = (cap !== undefined ? Math.min(cap, base) : base) + 140;
+    // the edge (0–34 ms): only the trim — 2 white frames, then the change's tone; a loss shakes
+    ui3Sfx(loss ? 'ui3LpLoss' : 'ui3LpGain', {}, loss ? 'lpDown' : 'lpUp');
+    this.trimFlash(P, loss ? { light: PAL.crim4, dark: PAL.crim3 } : { light: PAL.leaf4, dark: PAL.leaf3 }, LP_V3.trimMs);
+    if (loss) this.shakePanel(P, amount >= 1500 ? 3 : amount >= 500 ? 2 : 1, LP_V3.shakeMs);
+    // the digits: white for two frames, then the change's tone while the counter counts
     P.rollTone = PAL.white;
+    P.counter.setUnitTone(null);
     this.renderLp(P);
-    this.scene.time.delayedCall(50, () => {
-      if (P.rollTween) {
-        P.rollTone = loss ? PAL.crim3 : PAL.leaf3;
-        this.renderLp(P);
-      }
-    });
-    let lastTick = -1e9;
-    let lastShown = from;
-    const roll = { v: from };
-    await new Promise<void>((resolve) => {
-      P.rollTween = this.scene.tweens.add({
-        targets: roll,
-        v: value,
-        duration: ms,
-        ease: 'Cubic.Out',
-        onUpdate: (tw) => {
-          const v = Math.round(roll.v);
-          P.shownLp = v;
-          if (!loss) P.barLp = Math.min(value, v);
-          if (v !== lastShown) {
-            lastShown = v;
-            this.renderLp(P);
-            if (!loss) this.drawBar(P);
-            const now = tw.elapsed;
-            if (now - lastTick > 48) {
-              lastTick = now;
-              sfx.play('lpTick', { volume: 0.35, pitch: loss ? 0.9 + 0.2 * (1 - tw.progress) : 1 + 0.3 * tw.progress });
-            }
-          }
-        },
-        onComplete: () => resolve(),
-        onStop: () => resolve(),
-      });
-    });
-    if (P.lp !== value) return; // superseded by a newer call
-    P.rollTween = null;
-    P.shownLp = value;
-    P.barLp = value;
-    if (!loss) P.ghostLp = value;
-    // landing: one tone up for 60 ms, the digits 1 px up and back (whole pixels; v1's 140 ms punch)
-    P.rollTone = loss ? PAL.crim4 : PAL.leaf4;
-    this.renderLp(P);
-    this.drawBar(P);
-    this.scene.time.delayedCall(60, () => {
-      if (P.rollTween) return;
-      P.rollTone = null;
+    this.scene.time.delayedCall(LP_V3.whiteMs, () => {
+      if (P.lpSeq !== seq || P.rollTone === null) return;
+      P.rollTone = loss ? PAL.crim3 : PAL.leaf3;
       this.renderLp(P);
     });
-    const y0 = P.lpY;
-    await run(this.scene, 140, (k) => {
-      if (!P.lpText.root.active) return;
-      P.lpText.setPosition(P.lpText.x, REDUCED_MOTION || k >= 0.5 ? y0 : y0 - 1);
+    let lastTick = -1e9;
+    void P.counter.count(value, {
+      maxMs: cap,
+      onLand: () => this.landLp(P, seq, loss),
+      onClick: (i, n) => {
+        if (P.lpSeq !== seq || this.destroyed) return;
+        // one tick per click, at least 34 ms apart in real time (at 2× / 3× the stream thins)
+        const now = this.scene.game.loop.time;
+        if (now - lastTick < LP_V3.tickGapMs) return;
+        lastTick = now;
+        const k = n > 1 ? i / n : 1;
+        const pitch = loss ? 0.9 + 0.2 * (1 - k) : 1 + 0.3 * k;
+        ui3Sfx('ui3LpTick', { pitch }, 'lpTick', { volume: 0.35, pitch });
+      },
     });
+    // the bar
+    if (loss) this.barLoss(P, from, value, seq);
+    else this.barGain(P, from, value, seq);
+    await run(this.scene, resolveMs, () => undefined);
+  }
+
+  /** The counter landed (F3): its last wheel white for one frame, the digits one tone up for 60 ms, then rest. */
+  private landLp(P: PanelV3, seq: number, loss: boolean): void {
+    if (P.lpSeq !== seq || this.destroyed) return;
+    P.rollTone = loss ? PAL.crim4 : PAL.leaf4;
+    P.counter.setUnitTone(PAL.white);
+    P.leadWhite = false;
+    this.renderLp(P);
+    this.drawBar(P);
+    // (half a frame: the white shows on exactly one rendered frame)
+    this.scene.time.delayedCall(FRAME_MS / 2, () => {
+      if (P.lpSeq === seq && !this.destroyed) P.counter.setUnitTone(null);
+    });
+    this.scene.time.delayedCall(LP_V3.landMs, () => {
+      if (P.lpSeq !== seq || this.destroyed) return;
+      P.rollTone = null;
+      P.gainFrom = null;
+      this.renderLp(P);
+      this.drawBar(P);
+    });
+  }
+
+  /** The bar on a loss (F3): the fill drops at once; the lost slice white for 2 frames, then crimson; it erodes in 4-px steps. */
+  private barLoss(P: PanelV3, from: number, to: number, seq: number): void {
+    P.gainFrom = null;
+    P.leadWhite = false;
+    P.ghostLp = Math.max(P.ghostLp, from);
+    P.ghostTop = P.ghostLp;
+    P.barLp = to;
+    P.ghostColor = PAL.white;
+    this.drawBar(P);
+    this.scene.time.delayedCall(2 * FRAME_MS, () => {
+      if (P.lpSeq !== seq || this.destroyed) return;
+      // crimson; on P2's crimson bar one tone lighter, so the lost slice still reads
+      P.ghostColor = P.player === 0 ? PAL.crim3 : PAL.crim4;
+      this.drawBar(P);
+    });
+    const g0 = P.ghostLp;
+    this.barJob(P, LP_V3.erodeAt, LP_V3.erodeMs, (k) => {
+      P.ghostLp = g0 + (to - g0) * k;
+      this.drawBar(P);
+    });
+  }
+
+  /**
+   * The bar on a gain (F3): the new slice fills with the count in 4-px steps, leaf behind a 1-px white
+   * lead; as the lead passes 20 / 50 / 80 % of the slice a pixel rises off it (4 px in 34-ms steps,
+   * leaf4 → leaf3 → leaf2). At the landing the lead goes, 60 ms later the slice takes the owner's tone.
+   */
+  private barGain(P: PanelV3, from: number, to: number, seq: number): void {
+    P.ghostLp = 0;
+    P.ghostTop = 0;
+    P.gainFrom = from;
+    P.barLp = from;
+    P.leadWhite = true;
+    P.sparks = [];
+    const { x, y, w } = HUD3.bar;
+    const px = (v: number) => Math.max(0, Math.min(w, Math.round((Math.min(v, START_LP) / START_LP) * w)));
+    const p0 = px(from);
+    const p1 = px(to);
+    const born: number[] = [];
+    const S = LP_V3;
+    const life = (S.sparkRise + 1) * S.sparkStepMs;
+    const dur = LP_WHEELS.rollMs + life;
+    this.drawBar(P);
+    this.barJob(P, 0, dur, (k) => {
+      if (P.lpSeq !== seq) return;
+      const t = k * dur;
+      P.barLp = P.counter.counting ? P.counter.shown : to;
+      const fill = px(P.barLp);
+      S.sparkAt.forEach((at, i) => {
+        if (born[i] === undefined && p1 > p0 && fill >= p0 + Math.round((p1 - p0) * at)) born[i] = t;
+      });
+      P.sparks = [];
+      born.forEach((b, i) => {
+        if (b === undefined) return;
+        const age = t - b;
+        if (age >= life || REDUCED_MOTION) return;
+        const step = Math.floor(age / S.sparkStepMs);
+        const sx = x + p0 + Math.round((p1 - p0) * S.sparkAt[i]) - 1;
+        const c = step < 2 ? PAL.leaf4 : step < 4 ? PAL.leaf3 : PAL.leaf2;
+        P.sparks.push({ x: sx, y: y - 2 - Math.min(S.sparkRise, step), c });
+      });
+      this.drawBar(P);
+    });
+  }
+
+  /** A bar job on the scene clock (stopped by the next LP change). */
+  private barJob(P: PanelV3, delay: number, ms: number, fn: (k: number) => void): void {
+    const t = this.scene.tweens.addCounter({
+      from: 0,
+      to: 1,
+      delay,
+      duration: Math.max(1, ms),
+      onUpdate: (tw) => fn(tw.getValue() ?? 0),
+      onComplete: () => fn(1),
+    });
+    P.barTweens.push(t);
+  }
+
+  private stopBar(P: PanelV3): void {
+    for (const t of P.barTweens) t.stop();
+    P.barTweens = [];
+    if (P.sparks.length) P.sparks = [];
   }
 
   /** Deck / hand / graveyard counters: a changed number takes one tone (gold4 up) for 70 ms; the glyph hops 2 px. */
@@ -680,7 +836,7 @@ export class HudV3 implements HudApi {
 
   lpXY(player: PlayerId): XY {
     const P = this.panels[player];
-    return { x: P.rect.x + HUD3.lp.x + Math.round(P.lpText.width / 2), y: P.rect.y + HUD3.lp.cap + 7 };
+    return { x: P.rect.x + HUD3.lpCounter.x + Math.round(P.counter.width / 2), y: P.rect.y + HUD3.lp.cap + 7 };
   }
 
   panelXY(player: PlayerId): XY {
@@ -706,6 +862,79 @@ export class HudV3 implements HudApi {
     this.shakePanel(this.panels[player], Math.min(3, px), Math.min(160, ms));
   }
 
+  /** The HUD is shown (setVisible). */
+  get isShown(): boolean {
+    return this.visible;
+  }
+
+  /**
+   * F0 (hudIn): the HUD arrives. 'slide' (the opening, the HUD hidden until now): each piece slides
+   * in from its own screen edge on whole pixels (HUD_ARRIVAL), its first frame the trim alone, its
+   * second the body with the trim one tone up, then everything at rest. 'wake' (skipIntro: the HUD is
+   * already on screen, so nothing moves): each piece's trim flashes white for one frame, then one tone
+   * up, in the same order. REDUCED_MOTION: no slide and no stagger, the same two palette steps. Never
+   * locks the input. Idempotent: one arrival per HUD; settleArrival() ends it at once.
+   */
+  arrive(mode: ArrivalMode = 'slide'): void {
+    if (this.destroyed || this.arrival || this.arrived) return;
+    if (mode === 'slide') this.setVisible(true);
+    const A = HUD_ARRIVAL;
+    const reduced = REDUCED_MOTION;
+    const pieces = this.arrivalPieces();
+    // KO-9: no slide and no stagger with reduced motion (the palette steps stay)
+    if (reduced) for (const pc of pieces) pc.delay = 0;
+    const last = Math.max(...pieces.map((p) => p.delay));
+    const total = mode === 'wake' ? last + A.wakeUpMs : reduced ? 2 * FRAME_MS : last + A.slideMs;
+    const curve = overshootCurve(A.overshoot);
+    const frame = (ms: number) => {
+      for (const pc of pieces) {
+        const local = ms - pc.delay;
+        if (mode === 'wake') {
+          const w = local < 0 ? -1 : local < FRAME_MS - 0.5 ? 0 : local < A.wakeUpMs - 0.5 ? 1 : 2;
+          if (w !== pc.shown && w >= 0) pc.wake(w === 0 ? 'white' : w === 1 ? 'up' : null);
+          pc.shown = w;
+          continue;
+        }
+        if (local < 0) {
+          for (const o of pc.objs) o.o.setVisible(false);
+          continue;
+        }
+        const st = reduced ? (local < 2 * FRAME_MS - 0.5 ? 1 : 2) : local < FRAME_MS - 0.5 ? 0 : local < 2 * FRAME_MS - 0.5 ? 1 : 2;
+        if (pc.shown < 0) for (const o of pc.objs) o.o.setVisible(this.visible);
+        if (st !== pc.shown) pc.stage(st as 0 | 1 | 2);
+        pc.shown = st;
+        const k = reduced ? 1 : Math.min(1, local / A.slideMs);
+        for (const o of pc.objs) {
+          o.o.x = pc.dx ? curve(o.x + pc.dx, o.x, k) : o.x;
+          o.o.y = pc.dy ? curve(o.y + pc.dy, o.y, k) : o.y;
+        }
+      }
+    };
+    const arrival: { tween: Phaser.Tweens.Tween | null; pieces: ArrivalPiece[]; mode: ArrivalMode } = { tween: null, pieces, mode };
+    this.arrival = arrival;
+    void run(this.scene, total, (k) => frame(k * total), (t) => (arrival.tween = t)).then(() => {
+      if (this.arrival === arrival) this.settleArrival();
+    });
+  }
+
+  /** End a running arrival at once: every piece home, at rest, shown as the HUD is (idempotent). */
+  settleArrival(): void {
+    const a = this.arrival;
+    this.arrived = true;
+    if (!a) return;
+    this.arrival = null;
+    a.tween?.stop();
+    for (const pc of a.pieces) {
+      for (const o of pc.objs) {
+        o.o.x = o.x;
+        o.o.y = o.y;
+        o.o.setVisible(this.visible);
+      }
+      if (a.mode === 'wake') pc.wake(null);
+      else pc.stage(2);
+    }
+  }
+
   setVisible(b: boolean): void {
     this.visible = b;
     for (const o of this.objects) o.setVisible(b);
@@ -715,21 +944,113 @@ export class HudV3 implements HudApi {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.arrival?.tween?.stop();
+    this.arrival = null;
     this.scene.events.off(Phaser.Scenes.Events.UPDATE, this.updateFn);
     for (const t of this.timers) t.remove();
     this.pillTween?.stop();
     this.turnOdo.destroy();
     this.hintWiggle?.stop();
     for (const P of this.panels) {
-      P.rollTween?.stop();
-      P.ghostTween?.stop();
+      this.stopBar(P);
+      P.counter.destroy();
       P.shakeTween?.stop();
-      P.danger?.remove();
+      P.low?.remove();
+      P.low = null;
       P.trim.destroy();
     }
     this.hideTip();
     for (const o of this.objects) o.destroy();
     this.objects.length = 0;
+  }
+
+  // ================================================================ arrival (F0 hudIn)
+
+  /** The pieces of the arrival in their order (HUD_ARRIVAL): P1 panel, P2 panel, the top bar, the buttons. */
+  private arrivalPieces(): ArrivalPiece[] {
+    const A = HUD_ARRIVAL;
+    const panel = (P: PanelV3, off: { dx: number; dy: number }, delay: number): ArrivalPiece => {
+      const st = playerStyleV3(P.player);
+      return {
+        objs: [{ o: P.root, x: P.rect.x, y: P.rect.y }],
+        dx: off.dx,
+        dy: off.dy,
+        delay,
+        shown: -1,
+        stage: (s) => {
+          this.borrowVisible(P.root, s === 2 ? null : s === 0 ? [P.trim.g] : [P.trim.g, P.body]);
+          if (s === 0) P.trim.set(this.restTrim(P));
+          else if (s === 1) P.trim.set(styleTrim(st, P.active ? 2 : 1));
+          else this.applyTrim(P);
+        },
+        wake: (w) => P.trim.set(w === 'white' ? flatTrim(PAL.white) : w === 'up' ? styleTrim(st, P.active ? 2 : 1) : (P.trimOverride ?? this.restTrim(P))),
+      };
+    };
+    const pb = UI.phaseBar;
+    const T = HUD3.turn;
+    const plates: [Phaser.GameObjects.Container, Phaser.GameObjects.Image, TrimGfx][] = [
+      [this.phaseRoot, this.phaseBody, this.phaseTrim],
+      [this.turnRoot, this.turnBody, this.turnTrim],
+    ];
+    const toolbar = [this.speedButton, this.soundButton, this.logButton, this.menuButton];
+    const top: ArrivalPiece = {
+      objs: [
+        { o: this.phaseRoot, x: pb.x, y: pb.y },
+        { o: this.turnRoot, x: pb.x + T.dx, y: pb.y },
+        ...toolbar.map((b) => ({ o: b, x: b.x, y: b.y })),
+      ],
+      dx: A.top.dx,
+      dy: A.top.dy,
+      delay: 2 * A.stagger,
+      shown: -1,
+      stage: (s) => {
+        for (const [root, body, trim] of plates) {
+          this.borrowVisible(root, s === 2 ? null : s === 0 ? [trim.g] : [trim.g, body]);
+          trim.set(styleTrim('neutral', s === 1 ? 1 : 0));
+        }
+        for (const b of toolbar) b.appearStep(s);
+      },
+      wake: (w) => {
+        for (const [, , trim] of plates) trim.set(w === 'white' ? flatTrim(PAL.white) : styleTrim('neutral', w === 'up' ? 1 : 0));
+        for (const b of toolbar) b.wakeStep(w);
+      },
+    };
+    const mains = [this.battleButton, this.endTurnButton];
+    const buttons: ArrivalPiece = {
+      objs: mains.map((b) => ({ o: b, x: b.x, y: b.y })),
+      dx: A.buttons.dx,
+      dy: A.buttons.dy,
+      delay: 3 * A.stagger,
+      shown: -1,
+      stage: (s) => {
+        for (const b of mains) b.appearStep(s);
+      },
+      wake: (w) => {
+        for (const b of mains) b.wakeStep(w);
+      },
+    };
+    return [panel(this.panels[0], A.p1, 0), panel(this.panels[1], A.p2, A.stagger), top, buttons];
+  }
+
+  /**
+   * Show only `keep` of a container's children (their own visibility kept), remembering what each
+   * child was; null gives every child back its remembered visibility (the arrival's end).
+   */
+  private borrowVisible(root: Phaser.GameObjects.Container, keep: Phaser.GameObjects.GameObject[] | null): void {
+    type Vis = Phaser.GameObjects.GameObject & { visible: boolean; setVisible(b: boolean): unknown };
+    let rec = this.borrowed.get(root);
+    if (keep === null) {
+      if (!rec) return;
+      for (const [c, v] of rec) if (c.active) c.setVisible(v);
+      this.borrowed.delete(root);
+      return;
+    }
+    if (!rec) {
+      rec = new Map();
+      for (const c of root.list as Vis[]) rec.set(c, c.visible);
+      this.borrowed.set(root, rec);
+    }
+    for (const [c, v] of rec) if (c.active) c.setVisible(v && keep.includes(c));
   }
 
   // ================================================================ panels
@@ -758,14 +1079,16 @@ export class HudV3 implements HudApi {
     const rect = panelRect(player);
     const st = playerStyleV3(player);
     const { w, h } = HUD3.panel;
-    const root = this.track(sc.add.container(rect.x, rect.y).setDepth(DEPTH.HUD).setScrollFactor(0));
-    root.add(sc.add.image(0, 0, canvasTexture(sc, `ui3:hud:panel:${player}`, () => panelBodyV3(player))).setOrigin(0));
+    const root = this.track(sc.add.container(rect.x, rect.y).setDepth(PANEL_DEPTH).setScrollFactor(0));
+    const body = sc.add.image(0, 0, canvasTexture(sc, `ui3:hud:panel:${player}`, () => panelBodyV3(player))).setOrigin(0);
+    root.add(body);
     const trim = new TrimGfx(sc, root, 0, 0, w, h);
     const name = new PalText(sc, HUD3.name.x, capYV3('md', HUD3.name.cap), PLAYER_NAME[player], { size: 'md', color: styleTone(st, 0) });
-    const lpY = capYV3('lg', HUD3.lp.cap);
-    const lpText = new PalText(sc, HUD3.lp.x, lpY, String(lp), { size: 'lg', color: PAL.white });
+    root.add(name.root);
+    // the LP number: a mechanical counter, its glyph boxes where today's digits stood (F3)
+    const counter = new LpCounter(sc, root, HUD3.lpCounter.x, capYV3(LP_WHEELS.size, HUD3.lp.cap), lp);
     const bar = sc.add.graphics();
-    root.add([name.root, lpText.root, bar]);
+    root.add(bar);
     // counts: today's glyphs re-toned to the owner's ramp, white numbers
     const counts = {} as Record<Kind, CountV3>;
     const groups: [Kind, string, number][] = [
@@ -790,28 +1113,32 @@ export class HudV3 implements HudApi {
       player,
       rect,
       root,
+      body,
       trim,
       name,
-      lpText,
-      lpY,
+      counter,
       bar,
       chip,
       chipX,
       counts,
       active: false,
       lp,
-      shownLp: lp,
       barLp: lp,
       ghostLp: lp,
+      ghostTop: lp,
       ghostColor: PAL.crim3,
+      gainFrom: null,
+      leadWhite: false,
+      sparks: [],
       rollTone: null,
-      rollTween: null,
-      ghostTween: null,
+      lpSeq: 0,
+      barTweens: [],
       shakeTween: null,
       trimOverride: null,
       trimSeq: 0,
-      danger: null,
-      dangerHi: false,
+      low: null,
+      lowPulse: false,
+      lowDim: false,
     };
     this.applyTrim(P);
     this.renderLp(P);
@@ -846,38 +1173,58 @@ export class HudV3 implements HudApi {
     });
   }
 
-  /** The LP digits: the change's tone while rolling, else white / a crimson pulse at ≤ 1000 / crim2 at 0. */
+  /**
+   * The counter's tone: the change's while it plays, else white / low LP (< 1000) crimson with a
+   * one-tone pulse every other beat (F3) / crim2 at 0. Starts / stops the low-LP beat.
+   */
   private renderLp(P: PanelV3): void {
-    P.lpText.setText(String(P.shownLp));
-    const danger = P.lp > 0 && P.lp <= 1000;
-    if (danger && !P.danger) {
-      P.danger = this.scene.time.addEvent({
-        delay: 600,
-        loop: true,
-        callback: () => {
-          P.dangerHi = !P.dangerHi;
-          if (P.rollTone === null) P.lpText.setColor(P.dangerHi ? PAL.crim4 : PAL.crim3);
-        },
-      });
-    } else if (!danger && P.danger) {
-      P.danger.remove();
-      P.danger = null;
-      P.dangerHi = false;
+    const low = isLowLp(P.lp);
+    if (low && !P.low && !REDUCED_MOTION) {
+      P.low = this.scene.time.addEvent({ delay: LP_V3.lowBeatMs, loop: true, callback: () => this.lowBeat(P) });
+    } else if (!low && P.low) {
+      P.low.remove();
+      P.low = null;
+      P.lowPulse = false;
+      P.lowDim = false;
     }
-    if (P.rollTone !== null) P.lpText.setColor(P.rollTone);
-    else if (P.lp === 0) P.lpText.setColor(PAL.crim2);
-    else if (danger) P.lpText.setColor(P.dangerHi ? PAL.crim4 : PAL.crim3);
-    else P.lpText.setColor(PAL.white);
+    const tone = P.rollTone !== null ? P.rollTone : P.lp === 0 ? PAL.crim2 : low ? (P.lowPulse ? PAL.crim4 : PAL.crim3) : PAL.white;
+    P.counter.setTone(tone);
   }
 
-  /** LP bar: 1-px ink frame, night1 track with quarter ticks, flat owner-tone fill, its lead pixel one tone up. */
+  /** Low LP's beat (F3): the bar's slice blinks every beat (600 ms); every other beat the digits pulse one tone up. */
+  private lowBeat(P: PanelV3): void {
+    if (this.destroyed || !P.low) return;
+    P.lowDim = !P.lowDim;
+    if (!P.lowDim) {
+      P.lowPulse = true;
+      this.scene.time.delayedCall(LP_V3.lowPulseMs, () => {
+        if (this.destroyed) return;
+        P.lowPulse = false;
+        this.renderLp(P);
+      });
+    }
+    this.renderLp(P);
+    this.drawBar(P);
+  }
+
+  /**
+   * LP bar: 1-px ink frame, night1 track with quarter ticks, flat owner-tone fill, its lead pixel one
+   * tone up (low LP: crimson, blinking crim3 / crim2 on the beat). A lost slice erodes and a gained
+   * one fills in 4-px steps (F3); a gain's slice is leaf behind a 1-px white lead; rising pixels.
+   */
   private drawBar(P: PanelV3): void {
     const g = P.bar;
     const R = this.rampOf(P.player);
     const { x, y, w, h } = HUD3.bar;
+    const S = LP_V3.barStep;
     const k = (v: number) => Math.max(0, Math.min(w, Math.round((Math.min(v, START_LP) / START_LP) * w)));
-    const fill = k(P.barLp);
-    const ghost = k(P.ghostLp);
+    let fill = k(P.barLp);
+    const gain0 = P.gainFrom !== null ? Math.min(k(P.gainFrom), fill) : fill;
+    // a gain fills in 4-px steps (exact once the count has landed)
+    if (P.gainFrom !== null && P.barLp !== P.lp) fill = gain0 + S * Math.floor((fill - gain0) / S);
+    // a lost slice erodes in 4-px steps, never past where it began
+    const lost = k(P.ghostLp) - fill;
+    const ghost = lost > 0 ? Math.min(Math.max(k(P.ghostTop), k(P.ghostLp)), fill + S * Math.ceil(lost / S)) : fill;
     g.clear();
     g.fillStyle(PAL.ink, 1).fillRect(x - 1, y - 1, w + 2, h + 2);
     g.fillStyle(PAL.night1, 1).fillRect(x, y, w, h);
@@ -885,10 +1232,15 @@ export class HudV3 implements HudApi {
     for (let i = 1; i < 4; i++) g.fillRect(x + Math.round((w * i) / 4), y, 1, h);
     if (ghost > fill) g.fillStyle(P.ghostColor, 1).fillRect(x + fill, y, ghost - fill, h);
     if (fill > 0) {
-      const danger = P.lp <= 1000;
-      g.fillStyle(danger ? PAL.crim3 : R[3], 1).fillRect(x, y, fill, h);
-      g.fillStyle(danger ? PAL.crim4 : R[4], 1).fillRect(x + fill - 1, y, 1, h);
+      const low = isLowLp(P.lp) || (P.lp === 0 && fill > 0);
+      const dim = low && P.lowDim && P.rollTone === null;
+      const body = low ? (dim ? PAL.crim2 : PAL.crim3) : R[3];
+      const lead = low ? (dim ? PAL.crim3 : PAL.crim4) : R[4];
+      if (gain0 > 0) g.fillStyle(body, 1).fillRect(x, y, gain0, h);
+      if (fill > gain0) g.fillStyle(PAL.leaf3, 1).fillRect(x + gain0, y, fill - gain0, h);
+      g.fillStyle(fill > gain0 ? (P.leadWhite ? PAL.white : PAL.leaf4) : lead, 1).fillRect(x + fill - 1, y, 1, h);
     }
+    for (const s of P.sparks) g.fillStyle(s.c, 1).fillRect(s.x, s.y, 1, 1);
   }
 
   private shakePanel(P: PanelV3, px: number, ms: number): void {

@@ -27,6 +27,8 @@ import { chainRattle } from './_chains';
 import { dropAllCharges, play as playV3 } from '../_v3/sound';
 import { fx } from '../api';
 import { ADD, TAU, TK, type Ctx, arenaDim, duelist, isSetPulse, rnd, rr } from '../battle/_kit';
+// lane A5-A (A5_PLAN §3.3): Ayna Kalkanı's accent in the v3 scene language, behind V3_A5_A only
+import { V3_A5_A } from '../../view/v3flags';
 
 type ActCtx = Ctx<'activate'>;
 
@@ -313,6 +315,34 @@ function mirrorGlint(scene: Phaser.Scene, face: XY): void {
   }).then(() => ras.destroy());
 }
 
+/**
+ * Ayna Kalkanı's accent, lane A5-A (V3_A5_A; A5_PLAN §3.3): the glint sweeps the standing card like
+ * light over glass — a 2-px white band with a 1-px mist edge on each side, only over the card's own
+ * pixels (never past its edges), in the mirror's tones (no cyan), ≈ 200 ms, whole pixels.
+ */
+function mirrorGlintV3(scene: Phaser.Scene, tile: TileCard): void {
+  const cp = tile.currentPixels();
+  const W = cp.px.w;
+  const H = cp.px.h;
+  // just over the card itself — a body standing in front of the card stays in front of its glint
+  const ras = new Raster(scene, cp.x, cp.y, W, H, tile.depth + 0.01);
+  const slope = 0.45;
+  const span = W + Math.ceil(H * slope) + 4;
+  void run(scene, 220, (t) => {
+    const gx = Math.round(-Math.ceil(H * slope) - 2 + span * E.inOutSine(t));
+    ras.begin();
+    for (let y = 0; y < H; y++) {
+      const x0 = gx + Math.round(y * slope);
+      for (let d = -1; d <= 2; d++) {
+        const x = x0 + d;
+        if (x < 0 || x >= W || cp.px.alpha(x, y) === 0) continue;
+        ras.px(cp.x + x, cp.y + y, d === 0 || d === 1 ? PAL.white : PAL.mist);
+      }
+    }
+    ras.end();
+  }).then(() => ras.destroy());
+}
+
 /** Yer Yarığı's accent: hairline cracks race out over the floor round the tile, a little dust (≈ 300 ms). */
 function floorCracks(scene: Phaser.Scene, at: XY): void {
   const ras = Raster.around(scene, at.x, at.y, 110, 56, DEPTH.SHADOW - 1);
@@ -486,7 +516,10 @@ async function trapOpeningV3(ctx: ActCtx, o: { focus?: XY } = {}): Promise<Openi
   if (ev.cardId === 'chains_of_light') {
     playV3('chainRattle', { volume: 0.85 });
     void chainRattle(sc, face);
-  } else if (ev.cardId === 'mirror_barrier') mirrorGlint(sc, face);
+  } else if (ev.cardId === 'mirror_barrier') {
+    if (V3_A5_A && live && live.active) mirrorGlintV3(sc, live);
+    else mirrorGlint(sc, face);
+  }
   else if (ev.cardId === 'chasm_trap') floorCracks(sc, at);
   // ONE short local "TUZAK!" over the card
   const word = trapWord(sc, { x: at.x, y: face.y - 36 });

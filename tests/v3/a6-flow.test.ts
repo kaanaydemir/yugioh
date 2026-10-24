@@ -430,6 +430,132 @@ describe('B1: turn plate, odometer, turn / phase timings (F1, F2)', () => {
   }, 60000);
 });
 
+describe('B-open: the "DÜELLO!" plate and the HUD arrival (F0)', () => {
+  it('the display face: 13-px caps, letters 2 px apart, the word and the marks fit inside the trim', async () => {
+    const T = await import('../../src/view/v3/TurnPlate');
+    const { letters, w } = T.duelWordLayout();
+    expect(letters.map((l) => l.ch).join('')).toBe('DÜELLO!');
+    for (let i = 1; i < letters.length; i++) expect(letters[i].x - (letters[i - 1].x + letters[i - 1].w)).toBe(2);
+    expect(w).toBe(letters[letters.length - 1].x + letters[letters.length - 1].w);
+    for (const L of letters) for (const [c, r] of T.duelLetterPixels(L.ch)) {
+      expect(c >= 0 && c < L.w, `${L.ch} col ${c}`).toBe(true);
+      expect(r >= (L.dots ? -3 : 0) && r < T.DUEL_CAP, `${L.ch} row ${r}`).toBe(true);
+    }
+    const lay = T.duelPlateLayout();
+    const { w: W, h: H } = T.DUEL_PLATE;
+    for (const v of [lay.wordX, lay.capY, lay.markY, ...lay.marks]) expect(Number.isInteger(v)).toBe(true);
+    // inside the trim (rows / columns 2 … size − 3): the Ü's dots + outline above, the sparks below
+    expect(lay.capY - 3 - 1).toBeGreaterThanOrEqual(2);
+    expect(lay.capY + T.DUEL_CAP + 2).toBeLessThanOrEqual(H - 3);
+    expect(lay.marks[0]).toBeGreaterThanOrEqual(3);
+    expect(lay.marks[1] + 9).toBeLessThanOrEqual(W - 3);
+    expect(lay.wordX - 1).toBeGreaterThan(lay.marks[0] + 9);
+    expect(lay.marks[1]).toBeGreaterThan(lay.wordX + lay.wordW);
+    // centred (± 1 px) and symmetric marks
+    expect(Math.abs(lay.wordX - (W - lay.wordX - lay.wordW))).toBeLessThanOrEqual(1);
+    expect(Math.abs(lay.marks[0] - (W - lay.marks[1] - 9))).toBeLessThanOrEqual(1);
+  });
+
+  it('letters, marks and bodies are opaque palette pixels with an ink outline; the stamp steps white → gold4 → bands → one down', async () => {
+    const T = await import('../../src/view/v3/TurnPlate');
+    for (const ch of 'DÜELO!')
+      for (const st of ['white', 'hot', 'rest', 'dim'] as const) {
+        const c = T.duelLetterCanvas(ch, st);
+        expect(offPalette(c), `${ch}:${st}`).toEqual([]);
+        // the canvas border is outline or empty: never fill
+        for (let x = 0; x < c.w; x++) for (const y of [0, c.h - 1]) expect([null, PAL.ink]).toContain(c.get(x, y));
+        for (let y = 0; y < c.h; y++) for (const x of [0, c.w - 1]) expect([null, PAL.ink]).toContain(c.get(x, y));
+      }
+    // D's left stem, cap rows 0 / 6 / 12 at canvas (1, 1 + r)
+    const at = (st: 'white' | 'hot' | 'rest' | 'dim', r: number) => T.duelLetterCanvas('D', st).get(1, 1 + r);
+    expect([at('rest', 0), at('rest', 6), at('rest', 12)]).toEqual([PAL.gold4, PAL.gold3, PAL.gold2]);
+    expect([at('dim', 0), at('dim', 6), at('dim', 12)]).toEqual([PAL.gold3, PAL.gold2, PAL.gold1]);
+    expect([at('white', 6), at('hot', 6)]).toEqual([PAL.white, PAL.gold4]);
+    // the Ü keeps its dots 3 rows above its caps, an ink row between them (never touching the U)
+    const u = T.duelLetterCanvas('Ü', 'rest');
+    expect(u.get(1 + 2, 1)).toBe(PAL.gold4);
+    expect(u.get(1 + 2, 3)).toBe(PAL.ink);
+    expect(u.get(1 + 5, 6)).toBe(null); // the U's open inside
+    for (const p of [0, 1] as const) for (const st of ['white', 'rest', 'blink', 'dim'] as const) expect(offPalette(T.duelMarkCanvas(p, st)), `mark ${p} ${st}`).toEqual([]);
+    expect(T.duelMarkCanvas(0, 'rest').get(4, 4)).toBe(PAL.white);
+    expect(T.duelMarkCanvas(1, 'rest').get(4, 3)).toBe(PAL.crim3);
+    for (const step of [-2, -1, 0]) {
+      const b = T.duelPlateBody(step);
+      expect(offPalette(b), `body ${step}`).toEqual([]);
+      expect(b.get(2, 0)).toBe(PAL.ink); // the outline, its 2-px corner cut
+      expect(b.get(0, 0)).toBe(null);
+    }
+  });
+
+  it('the plate sits centred under the phase bar, above the board, clear of every deal path (P1 or P2 first)', async () => {
+    const T = await import('../../src/view/v3/TurnPlate');
+    const L = await import('../../src/view/layout');
+    const r = T.duelPlateRect();
+    for (const v of [r.x, r.y, r.w, r.h]) expect(Number.isInteger(v)).toBe(true);
+    expect(Math.abs(r.x + r.w / 2 - L.BOARD_CENTER.x)).toBeLessThanOrEqual(1);
+    const bar = L.UI.phaseBar;
+    expect(r.y + Math.min(...T.DUEL_PLATE.drop)).toBeGreaterThanOrEqual(bar.y + bar.h); // the drop never enters the bar
+    expect(r.h).toBeGreaterThanOrEqual(12);
+    // CardSprite.flyTo: quadratic arc (control = midpoint − arc), scale × (1 + 0.1 sin πt), lean ≤ 0.32 rad
+    const deck = L.zoneXY(1, 'deck');
+    const from = { x: deck.x, y: deck.y - 6 - 4 }; // the pile top (≤ 6 layers) − 4 (flow/opening.ts deal)
+    const flight = (to: { x: number; y: number }, arc: number, s0: number, s1: number) => {
+      let gap = Infinity;
+      const cx = (from.x + to.x) / 2;
+      const cy = (from.y + to.y) / 2 - arc;
+      const lean = Math.min(0.32, (Math.abs(to.x - from.x) / 400) * 0.3 + 0.06);
+      for (let i = 0; i <= 200; i++) {
+        const t = i / 200;
+        const u = 1 - t;
+        const x = u * u * from.x + 2 * u * t * cx + t * t * to.x;
+        const y = u * u * from.y + 2 * u * t * cy + t * t * to.y;
+        const b = Math.sin(Math.PI * t);
+        const s = (s0 + (s1 - s0) * t) * (1 + 0.1 * b);
+        const rot = lean * b;
+        const hw = 24 * s * Math.cos(rot) + 34 * s * Math.sin(rot);
+        const hh = 24 * s * Math.sin(rot) + 34 * s * Math.cos(rot);
+        const gx = Math.max(r.x - (x + hw), x - hw - (r.x + r.w));
+        const gy = Math.max(r.y - (y + hh), y - hh - (r.y + r.h));
+        gap = Math.min(gap, Math.max(gx, gy));
+      }
+      return gap;
+    };
+    // P1 starts: P2's opening cards arc into its mini row (HandView.miniPos: panel centre ± 7 px a card, 5 px under it)
+    const p2 = L.panelRect(1);
+    for (let i = 0; i < 4; i++) {
+      const to = { x: Math.round(p2.x + p2.w / 2 + (i - 1.5) * 7), y: p2.y + p2.h + 5 };
+      expect(flight(to, 30, 0.5, 9 / 48), `mini ${i}`).toBeGreaterThanOrEqual(1);
+    }
+    // P2 starts (hot-seat): its full cards fly down the middle column into the hand (always below the deck)
+    for (const x of [230, 320, 410]) expect(flight({ x, y: L.UI.handRestTop + 34 }, 54, 0.5, 1), `hand ${x}`).toBeGreaterThanOrEqual(1);
+  });
+
+  it('timings: the HUD arrives in 160–240 ms (A6_MS.hudIn, never locking), the plate enters well before the deal, the ripple reaches every pad by 360 ms', async () => {
+    const { HUD_ARRIVAL } = await import('../../src/view/v3/hudV3');
+    const { A6_MS } = await import('../../src/view/v3/motion');
+    const total = 3 * HUD_ARRIVAL.stagger + HUD_ARRIVAL.slideMs;
+    expect(total).toBeGreaterThanOrEqual(A6_MS.hudIn.min ?? 0);
+    expect(total).toBeLessThanOrEqual(A6_MS.hudIn.max);
+    for (const o of [HUD_ARRIVAL.p1, HUD_ARRIVAL.p2, HUD_ARRIVAL.top, HUD_ARRIVAL.buttons]) {
+      // 2–3 whole pixels a frame on average (F0: "2–3 tam piksel adımla")
+      const perFrame = Math.hypot(o.dx, o.dy) / (HUD_ARRIVAL.slideMs / (1000 / 60));
+      expect(perFrame).toBeGreaterThanOrEqual(1.5);
+      expect(perFrame).toBeLessThanOrEqual(3);
+    }
+    expect(HUD_ARRIVAL.overshoot).toBeLessThanOrEqual(2); // KO-2
+    const T = await import('../../src/view/v3/TurnPlate');
+    const P = T.DUEL_PLATE;
+    const glintFrames = Math.ceil((T.duelWordLayout().w + 2 * T.DUEL_CAP) / P.glintStep) + 1;
+    expect(((P.glintFrame + glintFrames) * 1000) / 60).toBeLessThan(600); // entered long before the plate leaves (deal +420 …)
+    expect(((P.stampFrame + 6) * 1000) / 60).toBeLessThanOrEqual(200); // the last letter stamps by 200 ms
+    const { rippleZones, OPENING_V3 } = await import('../../src/cinematics/v3small/opening-flow');
+    const z = rippleZones();
+    expect(z.length).toBe(18);
+    expect(Math.max(...z.map((q) => q.at))).toBeLessThanOrEqual(360);
+    expect(z[0].at).toBeLessThanOrEqual(OPENING_V3.sidesAt);
+  });
+});
+
 describe('B1 registration audit (§6.4): lane B fills only its own hooks, only under V3_A6_B', () => {
   const LANE_B_HOOKS = ['duelPlate', 'hudIn', 'turnStart', 'phaseChange', 'deckOut', 'gameOver', 'decision', 'target', 'presentHeal'];
   async function filled(look: 'v1' | 'v3', a6?: string): Promise<string[]> {
@@ -446,10 +572,10 @@ describe('B1 registration audit (§6.4): lane B fills only its own hooks, only u
     return filledV3Hooks();
   }
 
-  it('v1: none; v3 lane B on: turnStart + phaseChange (and nothing outside lane B); lane B off: none of B’s', async () => {
+  it('v1: none; v3 lane B on: turnStart + phaseChange + duelPlate + hudIn (and nothing outside lane B); lane B off: none of B’s', async () => {
     expect(await filled('v1')).toEqual([]);
     const b = await filled('v3', 'b');
-    expect(b).toEqual(expect.arrayContaining(['turnStart', 'phaseChange']));
+    expect(b).toEqual(expect.arrayContaining(['turnStart', 'phaseChange', 'duelPlate', 'hudIn']));
     expect(b.filter((h) => !LANE_B_HOOKS.includes(h))).toEqual([]);
     for (const a6 of ['off', 'a']) expect((await filled('v3', a6)).filter((h) => LANE_B_HOOKS.includes(h)), `a6=${a6}`).toEqual([]);
   }, 120000);
@@ -464,6 +590,7 @@ describe('A6-B source scan (§6.4)', () => {
       '../../src/view/v3/TurnPlate.ts',
       '../../src/view/v3/odometer.ts',
       '../../src/cinematics/v3small/turn.ts',
+      '../../src/cinematics/v3small/opening-flow.ts',
     ],
     {
       eager: true,
@@ -484,7 +611,7 @@ describe('A6-B source scan (§6.4)', () => {
   });
 
   it('no colour constant outside the palette, no ADD blend, no alpha fade in A6-B files', () => {
-    expect(Object.keys(SOURCES).length).toBe(6);
+    expect(Object.keys(SOURCES).length).toBe(7);
     for (const [f, src] of Object.entries(SOURCES)) {
       const hexes = [...src.matchAll(/0x[0-9a-fA-F]{6}\b/g)].map((m) => Number(m[0]));
       expect(

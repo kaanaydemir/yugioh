@@ -7,6 +7,8 @@
 //          turn            the turn passes: setActive + setTurn + phase cycle, looping
 //          hint            hint line: set → change → flash ("why not") → clear, looping
 //          buttons         a button hovered, pressed, released, disabled-clicked, attention on
+//          duel            F0 (B-open): the HUD arrives (once) and the "DÜELLO!" plate drops in, holds,
+//                          leaves (looping); &wake=1: the HUD's skipIntro wake instead of the slide
 //   &active=1|2      active player (default 1)
 //   &loop=0          run once
 //   &sync=1          film t = 0 = demo start (tools/shot.mjs --film)
@@ -25,6 +27,8 @@ import { HandView, type HandCard } from '../../view/HandView';
 import { HudView } from '../../view/HudView';
 import { DEPTH } from '../../view/layout';
 import { ICON, type UiStyle } from '../../view/ui-textures';
+import { HudV3 } from '../../view/v3/hudV3';
+import { DuelPlate } from '../../view/v3/TurnPlate';
 import { wait } from '../../vfx/core';
 import type { DevPreview } from '../types';
 import { installVirtualClock } from './cardfx';
@@ -46,6 +50,8 @@ interface Ctx {
   hud: HudView;
   active: PlayerId;
   loop: boolean;
+  /** state=duel: the skipIntro wake instead of the slide (&wake=1). */
+  wake: boolean;
 }
 
 /** Drive a Button's private state like the pointer would (dev page only). */
@@ -144,6 +150,20 @@ const STATES: Record<string, (c: Ctx) => Promise<void>> = {
       await wait(c.scene, 500);
     });
   },
+  async duel(c) {
+    const h = c.hud as unknown;
+    if (h instanceof HudV3) {
+      if (!c.wake) h.setVisible(false);
+      h.arrive(c.wake ? 'wake' : 'slide');
+    }
+    await repeat(c, async () => {
+      const plate = DuelPlate.show(c.scene);
+      await plate.entered;
+      await wait(c.scene, 900);
+      await plate.leave();
+      await wait(c.scene, 400);
+    });
+  },
   async buttons(c) {
     const b = c.hud.battleButton;
     const e = c.hud.endTurnButton;
@@ -167,7 +187,7 @@ const STATES: Record<string, (c: Ctx) => Promise<void>> = {
 
 const preview: DevPreview = {
   name: 'hud3',
-  description: 'v3 HUD (A6-B F10; add &look=v3): &state=still|states|lp|turn|hint|buttons &active=1|2 &loop=0 &sync=1 &noboard=1 &nohand=1',
+  description: 'v3 HUD (A6-B F10, F0; add &look=v3): &state=still|states|lp|turn|hint|buttons|duel &active=1|2 &loop=0 &sync=1 &noboard=1 &nohand=1 &wake=1',
   async create(scene, params) {
     installVirtualClock();
     const state = params.get('state') ?? 'still';
@@ -177,13 +197,13 @@ const preview: DevPreview = {
     hud.setCounts(0, { deck: 14, hand: 4, grave: 2 }, false);
     hud.setCounts(1, { deck: 13, hand: 3, grave: 1 }, false);
     hud.setButtons({ battle: true, endTurn: true });
-    if (state !== 'hint' && state !== 'states') hud.setHint("Bir kart seç ya da SAVAŞ'a geç", { player: active });
+    if (state !== 'hint' && state !== 'states' && state !== 'duel') hud.setHint("Bir kart seç ya da SAVAŞ'a geç", { player: active });
     if (params.get('nohand') !== '1') {
       const hand = new HandView(scene, { owner: active });
       hand.setCards(active === 0 ? HAND0 : HAND1, active);
       hand.setCards(active === 0 ? HAND1 : HAND0, active === 0 ? 1 : 0);
     }
-    const ctx: Ctx = { scene, hud, active, loop: params.get('loop') !== '0' };
+    const ctx: Ctx = { scene, hud, active, loop: params.get('loop') !== '0', wake: params.get('wake') === '1' };
     Object.assign(window.__neon as Record<string, unknown>, { hud });
     const runState = STATES[state];
     if (!runState) throw new Error(`unknown state ${state}`);

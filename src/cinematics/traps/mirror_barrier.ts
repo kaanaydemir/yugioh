@@ -20,11 +20,15 @@ import { mirrorDomeTB } from './_mirror';
 import { fx, registerCardHook } from '../api';
 import { TK, type EvOf, all, lerpXY, live, norm, other, seed, sub, takeAttack } from '../battle/_kit';
 import { trapExit, trapOpening } from './_opening';
+// ---- the v3 look (lane A5-A step A-4, V3_A5_A): ./_mirror_v3.ts (docs/v3/A5_PLAN.md §3.3)
+import { V3_A5_A } from '../../view/v3flags';
+import { mirrorV3 } from './_mirror_v3';
 
 registerCardHook(
   'mirror_barrier',
   'activate',
   async (ctx) => {
+    if (V3_A5_A) return mirrorV3(ctx); // A5-A: the panel, the reflections one by one (./_mirror_v3.ts)
     const ev = ctx.ev;
     const sc = ctx.scene;
     seed(ev.uid * 17 + 3);

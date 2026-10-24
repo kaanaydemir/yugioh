@@ -783,7 +783,10 @@ export class HandView {
     await Promise.all([outgoing, incoming]);
     this.swapping = false;
     this.applyHighlights();
-    this.layout(false);
+    // animated: a card drawn while the hand rose (the v3 turn runs the handover in the background)
+    // re-fanned the hand under the rising cards — they glide to their new slots and lean through
+    // the baked steps instead of jumping there in one frame (nothing changed: nothing moves)
+    this.layout(true);
     this.updateHover();
   }
 

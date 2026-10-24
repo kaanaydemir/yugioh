@@ -9,8 +9,8 @@
 // The Scale2x decisions are taken on the `col` values given (−1 = empty), so a caller can decide on
 // stand-in colours (e.g. one marker for a rim that is drawn in several tones) and colour later.
 //
-//   const up = upscale8(colorsOf(px), px.w, px.h);           // once per source (≈ 1 ms for a card)
-//   const m = rotMap(up, 3, [24, 34]);                         // per angle (≈ 0.2 ms): indices + pivot
+//   const up = upscale8(colorsOf(px), px.w, px.h);           // once per source (≈ 0.3 ms for a card)
+//   const m = rotMap(up, 3, [24, 34]);                         // per angle (≈ 0.06 ms): indices + pivot
 //   const out = paintMap(m, (i) => colourOfSourcePixel(i));   // colours through the map
 //   const { px: turned, x, y } = rotSprite(px, 3);             // all three in one (x, y: the pivot)
 //   upscale8(edgeDecisions(colorsOf(px), px.w, px.h), …)       // smooth the outline band only
@@ -21,7 +21,11 @@
 // outline and the rim while the inside (art, digits) is sampled plain nearest, intact.
 //
 // Only the samples under output pixel centres are ever read, so the last (biggest) Scale2x pass is
-// evaluated on demand at those points; the first two are kept (4× and 16× the source).
+// evaluated on demand at those points; the 4× level is kept as source indices only (an up-scaled
+// pixel's colour is its source pixel's), and a source pixel inside a 3 × 3 of one decision colour —
+// most of a card, its inside being one stand-in — is read straight from the source grid (no
+// Scale2x choice reaches it). nearest8: the same turn without Scale2x (plain nearest), for frames
+// too brief for its corners to matter.
 // Angle: degrees, positive = clockwise on screen (y down), as a Phaser rotation. Pure (no Phaser).
 
 import { PixelCanvas } from './pixel';
@@ -39,6 +43,12 @@ export interface UpScaled {
   readonly h: number;
   /** The index of the source pixel the up-scaled pixel (bx, by) shows (−1 = empty or outside). */
   at(bx: number, by: number): number;
+  /**
+   * Per source pixel: 1 when its 3 × 3 neighbourhood is one decision colour (then every up-scaled
+   * pixel inside it shows it — no Scale2x choice reaches in), 2 when it is all empty (all show
+   * nothing), else 0. A turn reads such pixels straight from the source grid.
+   */
+  readonly flat?: Uint8Array;
 }
 
 /** A turned source: per output pixel the index of the source pixel it shows (−1 = empty). */
@@ -69,82 +79,181 @@ export function colorsOf(px: PixelCanvas): Int32Array {
  *     A          E0 = C==A && C!=D && A!=B ? A : P      E1 = A==B && A!=C && B!=D ? B : P
  *   C P B        E2 = D==C && D!=B && C!=A ? C : P      E3 = B==D && B!=A && D!=C ? D : P
  *     D
+ * (A == D or B == C rules all four out — the uniform inside of a sprite costs one test.)
  */
 export function scale2x(col: Int32Array, idx: Int32Array, w: number, h: number): { col: Int32Array; idx: Int32Array } {
-  const W = w * 2;
-  const oc = new Int32Array(W * h * 2);
-  const oi = new Int32Array(W * h * 2);
-  for (let y = 0; y < h; y++) {
-    const row = y * w;
-    for (let x = 0; x < w; x++) {
-      const k = row + x;
-      const o = y * 2 * W + x * 2;
-      for (let q = 0; q < 4; q++) {
-        const r = pick(col, w, h, x, y, k, q);
-        const e = r < 0 ? -1 : col[r];
-        const oq = o + (q & 1) + (q >> 1) * W;
-        oc[oq] = e;
-        oi[oq] = e < 0 ? -1 : idx[r];
-      }
-    }
-  }
+  const oc = new Int32Array(w * h * 4);
+  const oi = new Int32Array(w * h * 4);
+  pass2x(col, idx, w, h, oc, oi);
   return { col: oc, idx: oi };
 }
 
 /**
- * The Scale2x choice for quadrant q (0 top-left, 1 top-right, 2 bottom-left, 3 bottom-right) of
- * pixel (x, y) (k = y · w + x): the array position of the pixel whose colour it takes, or −1 when
- * it takes an empty neighbour.
+ * scale2x into `oc` / `oi` (2w × 2h). `oc` null: the colours are not kept — an up-scaled pixel's
+ * colour is its source pixel's (each one shows exactly one source pixel), so the last kept level
+ * stores indices only.
  */
-function pick(col: Int32Array, w: number, h: number, x: number, y: number, k: number, q: number): number {
-  const P = col[k];
-  const A = y > 0 ? col[k - w] : -1;
-  const D = y < h - 1 ? col[k + w] : -1;
-  const C = x > 0 ? col[k - 1] : -1;
-  const B = x < w - 1 ? col[k + 1] : -1;
-  switch (q) {
-    case 0:
-      if (C === A && C !== D && A !== B) return A < 0 ? -1 : k - w;
-      break;
-    case 1:
-      if (A === B && A !== C && B !== D) return B < 0 ? -1 : k + 1;
-      break;
-    case 2:
-      if (D === C && D !== B && C !== A) return C < 0 ? -1 : k - 1;
-      break;
-    default:
-      if (B === D && B !== A && D !== C) return D < 0 ? -1 : k + w;
+function pass2x(col: Int32Array, idx: ArrayLike<number>, w: number, h: number, oc: Int32Array | null, oi: Int32Array | Int16Array): void {
+  const W = w * 2;
+  for (let y = 0; y < h; y++) {
+    const row = y * w;
+    const o0 = y * 2 * W;
+    for (let x = 0; x < w; x++) {
+      const k = row + x;
+      const P = col[k];
+      const pi = P < 0 ? -1 : idx[k];
+      const A = y > 0 ? col[k - w] : -1;
+      const D = y < h - 1 ? col[k + w] : -1;
+      const C = x > 0 ? col[k - 1] : -1;
+      const B = x < w - 1 ? col[k + 1] : -1;
+      let e0 = P;
+      let e1 = P;
+      let e2 = P;
+      let e3 = P;
+      let i0 = pi;
+      let i1 = pi;
+      let i2 = pi;
+      let i3 = pi;
+      if (A !== D && C !== B) {
+        // with A != D and C != B, each rule's other two tests hold by themselves
+        if (C === A) {
+          e0 = A;
+          i0 = A < 0 ? -1 : idx[k - w];
+        }
+        if (A === B) {
+          e1 = B;
+          i1 = B < 0 ? -1 : idx[k + 1];
+        }
+        if (D === C) {
+          e2 = C;
+          i2 = C < 0 ? -1 : idx[k - 1];
+        }
+        if (B === D) {
+          e3 = D;
+          i3 = D < 0 ? -1 : idx[k + w];
+        }
+      }
+      const o = o0 + 2 * x;
+      if (oc) {
+        oc[o] = e0;
+        oc[o + 1] = e1;
+        oc[o + W] = e2;
+        oc[o + W + 1] = e3;
+      }
+      oi[o] = i0;
+      oi[o + 1] = i1;
+      oi[o + W] = i2;
+      oi[o + W + 1] = i3;
+    }
   }
-  return P < 0 ? -1 : k;
 }
 
-/** The source (`col`: w × h decision colours, −1 empty) scaled up 8× by three Scale2x passes. */
+/**
+ * The source (`col`: w × h decision colours, −1 empty) scaled up 8× by three Scale2x passes. Kept:
+ * the 4× level's source indices (16-bit for a source up to 32767 px: ≈ 120 KB for a 52 × 72 card)
+ * and the source's decision colours; the 8× pass is read at the samples only.
+ */
 export function upscale8(col: Int32Array, w: number, h: number): UpScaled {
-  let c: Int32Array = col;
-  let i: Int32Array = new Int32Array(w * h);
-  for (let k = 0; k < i.length; k++) i[k] = c[k] < 0 ? -1 : k;
-  let cw = w;
-  let ch = h;
-  for (let p = 0; p < 2; p++) {
-    ({ col: c, idx: i } = scale2x(c, i, cw, ch));
-    cw *= 2;
-    ch *= 2;
-  }
-  const c2 = c;
-  const i2 = i;
-  const w2 = cw;
-  const h2 = ch;
+  const src = Int32Array.from(col);
+  const i0 = new Int32Array(w * h);
+  for (let k = 0; k < i0.length; k++) i0[k] = src[k] < 0 ? -1 : k;
+  const w1 = w * 2;
+  const h1 = h * 2;
+  const c1 = new Int32Array(w1 * h1);
+  const x1 = new Int32Array(w1 * h1);
+  pass2x(src, i0, w, h, c1, x1);
+  const w2 = w1 * 2;
+  const h2 = h1 * 2;
+  const x2: Int16Array | Int32Array = w * h <= 32767 ? new Int16Array(w2 * h2) : new Int32Array(w2 * h2);
+  pass2x(c1, x1, w1, h1, null, x2);
+  // a 4× pixel's decision colour: its source pixel's
+  const c2 = (k: number): number => {
+    const i = x2[k];
+    return i < 0 ? -1 : src[i];
+  };
+  const W8 = w2 * 2;
+  const H8 = h2 * 2;
   return {
     sw: w,
     sh: h,
-    w: w2 * 2,
-    h: h2 * 2,
+    w: W8,
+    h: H8,
+    flat: flatOf(src, w, h),
     at(bx: number, by: number): number {
-      if (bx < 0 || by < 0 || bx >= w2 * 2 || by >= h2 * 2) return -1;
+      if (bx < 0 || by < 0 || bx >= W8 || by >= H8) return -1;
       const x = bx >> 1;
       const y = by >> 1;
-      const r = pick(c2, w2, h2, x, y, y * w2 + x, (bx & 1) + ((by & 1) << 1));
-      return r < 0 ? -1 : i2[r];
+      const k = y * w2 + x;
+      const pi = x2[k];
+      const A = y > 0 ? c2(k - w2) : -1;
+      const D = y < h2 - 1 ? c2(k + w2) : -1;
+      const C = x > 0 ? c2(k - 1) : -1;
+      const B = x < w2 - 1 ? c2(k + 1) : -1;
+      if (A !== D && C !== B)
+        switch ((bx & 1) + ((by & 1) << 1)) {
+          case 0:
+            if (C === A) return A < 0 ? -1 : x2[k - w2];
+            break;
+          case 1:
+            if (A === B) return B < 0 ? -1 : x2[k + 1];
+            break;
+          case 2:
+            if (D === C) return C < 0 ? -1 : x2[k - 1];
+            break;
+          default:
+            if (B === D) return D < 0 ? -1 : x2[k + w2];
+        }
+      return pi;
+    },
+  };
+}
+
+/**
+ * The source pixels no Scale2x choice can change (UpScaled.flat): a 3 × 3 of one decision colour,
+ * outside the canvas counting as empty — 1 (shows itself), 2 (all empty), else 0.
+ */
+function flatOf(src: Int32Array, w: number, h: number): Uint8Array {
+  // per pixel: its row neighbours match it; then the rows above and below must match it too
+  const row = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const k = y * w + x;
+      const c = src[k];
+      row[k] = (x > 0 ? src[k - 1] : -1) === c && (x < w - 1 ? src[k + 1] : -1) === c ? 1 : 0;
+    }
+  const flat = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const k = y * w + x;
+      if (!row[k]) continue;
+      const c = src[k];
+      const up = y > 0 ? row[k - w] === 1 && src[k - w] === c : c < 0;
+      const dn = y < h - 1 ? row[k + w] === 1 && src[k + w] === c : c < 0;
+      if (up && dn) flat[k] = c < 0 ? 2 : 1;
+    }
+  return flat;
+}
+
+/**
+ * The source on the 8× grid WITHOUT Scale2x: a turn of it is plain nearest sampling (every pixel
+ * flat). For frames shown too briefly for RotSprite's corners to matter — a flip's narrow turn
+ * frames (≈ 35 ms each): a card's long straight edges step the same either way; Scale2x only
+ * shapes its cut corners.
+ */
+export function nearest8(col: Int32Array, w: number, h: number): UpScaled {
+  const src = Int32Array.from(col);
+  const flat = new Uint8Array(w * h);
+  for (let k = 0; k < flat.length; k++) flat[k] = src[k] < 0 ? 2 : 1;
+  return {
+    sw: w,
+    sh: h,
+    w: w * ROT_K,
+    h: h * ROT_K,
+    flat,
+    at(bx: number, by: number): number {
+      const x = Math.floor(bx / ROT_K);
+      const y = Math.floor(by / ROT_K);
+      return x < 0 || y < 0 || x >= w || y >= h || src[y * w + x] < 0 ? -1 : y * w + x;
     },
   };
 }
@@ -196,12 +305,30 @@ export function rotMap(up: UpScaled, deg: number, pivot: readonly [number, numbe
   const h = Math.ceil(py + maxY - eps) + 1;
   const idx = new Int32Array(w * h).fill(-1);
   const K = ROT_K;
+  const flat = up.flat;
+  const sw = up.sw;
+  const sh = up.sh;
   for (let j = 0; j < h; j++) {
     const dy = j + 0.5 - py;
     for (let i = 0; i < w; i++) {
       const dx = i + 0.5 - px;
       // back through the turn (the inverse rotation), into the up-scaled grid
-      idx[j * w + i] = up.at(Math.floor((cx + sx0 + dx * cos + dy * sin) * K), Math.floor((cy + sy0 - dx * sin + dy * cos) * K));
+      const bx = Math.floor((cx + sx0 + dx * cos + dy * sin) * K);
+      const by = Math.floor((cy + sy0 - dx * sin + dy * cos) * K);
+      if (flat) {
+        // inside a source pixel no Scale2x choice reaches: the source grid answers
+        const x = bx >> 3;
+        const y = by >> 3;
+        if (x >= 0 && y >= 0 && x < sw && y < sh) {
+          const f = flat[y * sw + x];
+          if (f === 1) {
+            idx[j * w + i] = y * sw + x;
+            continue;
+          }
+          if (f === 2) continue;
+        }
+      }
+      idx[j * w + i] = up.at(bx, by);
     }
   }
   return { w, h, deg, px, py, sw: up.sw, idx };

@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { PixelCanvas } from '../../src/art/pixel';
-import { INTERIOR, colorsOf, edgeDecisions, paintMap, quantizeDeg, rotMap, rotSprite, scale2x, upscale8 } from '../../src/art/rotsprite';
+import { INTERIOR, colorsOf, edgeDecisions, nearest8, paintMap, quantizeDeg, rotMap, rotSprite, scale2x, upscale8, type UpScaled } from '../../src/art/rotsprite';
 
 const X = 0xd8a040;
 const Y = 0x203048;
@@ -188,5 +188,114 @@ describe('rotsprite — edge-band decisions', () => {
     expect([2.86, -2.86, 0.4, -0.4, 6.3, 1.5].map((d) => quantizeDeg(d))).toEqual([3, -3, 0, 0, 6, 2]);
     expect(Object.is(quantizeDeg(-0.2), 0)).toBe(true);
     expect(quantizeDeg(4.2, 1.5)).toBe(4.5);
+    // half degrees (the hand's grid)
+    expect([1.43, -1.43, 4.3, -4.3, 5.73, 0.2].map((d) => quantizeDeg(d, 0.5))).toEqual([1.5, -1.5, 4.5, -4.5, 5.5, 0]);
+  });
+});
+
+// ---------------------------------------------------------------- the fast paths, against the plain algorithm
+
+/** One Scale2x pass the plain way: every quadrant through the full rule (outside the canvas = empty). */
+function plainPass(c: Int32Array, i: Int32Array, cw: number, ch: number): { col: Int32Array; idx: Int32Array } {
+  const W2 = cw * 2;
+  const oc = new Int32Array(W2 * ch * 2);
+  const oi = new Int32Array(W2 * ch * 2);
+  for (let y = 0; y < ch; y++)
+    for (let x = 0; x < cw; x++) {
+      const at = (xx: number, yy: number) => (xx < 0 || yy < 0 || xx >= cw || yy >= ch ? -1 : yy * cw + xx);
+      const P = y * cw + x;
+      const A = at(x, y - 1);
+      const D = at(x, y + 1);
+      const C = at(x - 1, y);
+      const B = at(x + 1, y);
+      const v = (r: number) => (r < 0 ? -1 : c[r]);
+      const pick = [
+        v(C) === v(A) && v(C) !== v(D) && v(A) !== v(B) ? A : P,
+        v(A) === v(B) && v(A) !== v(C) && v(B) !== v(D) ? B : P,
+        v(D) === v(C) && v(D) !== v(B) && v(C) !== v(A) ? C : P,
+        v(B) === v(D) && v(B) !== v(A) && v(D) !== v(C) ? D : P,
+      ];
+      pick.forEach((r, q) => {
+        const o = y * 2 * W2 + x * 2 + (q & 1) + (q >> 1) * W2;
+        oc[o] = v(r);
+        oi[o] = v(r) < 0 ? -1 : i[r];
+      });
+    }
+  return { col: oc, idx: oi };
+}
+
+/** Scale2x ×3 the plain way, nothing lazy or skipped: the source index at each 8× pixel. */
+function plainUp8(col: Int32Array, w: number, h: number): (bx: number, by: number) => number {
+  let c = Int32Array.from(col);
+  let i = Int32Array.from(col, (v, k) => (v < 0 ? -1 : k));
+  let cw = w;
+  let ch = h;
+  for (let pass = 0; pass < 3; pass++) {
+    ({ col: c, idx: i } = plainPass(c, i, cw, ch));
+    cw *= 2;
+    ch *= 2;
+  }
+  return (bx, by) => (bx < 0 || by < 0 || bx >= cw || by >= ch ? -1 : i[by * cw + bx]);
+}
+
+describe('rotsprite — the fast paths are the plain algorithm', () => {
+  const sources = (): [Int32Array, number, number][] => {
+    let s = 4242;
+    const rnd = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+    const out: [Int32Array, number, number][] = [];
+    for (let t = 0; t < 12; t++) {
+      const w = 1 + Math.floor(rnd() * 14);
+      const h = 1 + Math.floor(rnd() * 14);
+      out.push([Int32Array.from({ length: w * h }, () => (rnd() < 0.3 ? -1 : [0x10, 0x20, 0x30][Math.floor(rnd() * 3)])), w, h]);
+    }
+    const card = cardLike(30, 40);
+    out.push([colorsOf(card), 30, 40], [edgeDecisions(colorsOf(card), 30, 40, 2), 30, 40]);
+    return out;
+  };
+
+  it('upscale8 (inlined passes, 16-bit 4× level, the last pass read on demand) = three plain Scale2x passes', () => {
+    for (const [col, w, h] of sources()) {
+      const up = upscale8(col, w, h);
+      const ref = plainUp8(col, w, h);
+      for (let by = -2; by <= up.h + 1; by++) for (let bx = -2; bx <= up.w + 1; bx++) if (up.at(bx, by) !== ref(bx, by)) expect(up.at(bx, by), `${w}x${h} ${bx},${by}`).toBe(ref(bx, by));
+      // scale2x itself (the A == D / B == C shortcut, inlined rules), against one plain pass
+      const idx = Int32Array.from(col, (v, k) => (v < 0 ? -1 : k));
+      const one = scale2x(col, idx, w, h);
+      const plain = plainPass(col, idx, w, h);
+      expect([...one.col]).toEqual([...plain.col]);
+      expect([...one.idx]).toEqual([...plain.idx]);
+    }
+  });
+
+  it("rotMap's flat shortcut (3 × 3 of one decision colour read from the source grid) changes no sample", () => {
+    for (const [col, w, h] of sources()) {
+      const up = upscale8(col, w, h);
+      const slow: UpScaled = { sw: up.sw, sh: up.sh, w: up.w, h: up.h, at: (x, y) => up.at(x, y) };
+      for (const deg of [-17, -6.5, -1.5, 1, 2.5, 4.5, 30, 90])
+        for (const shift of [[0, 0], [0.3, -0.4]] as const) {
+          const a = rotMap(up, deg, [w / 2, h / 2], shift);
+          const b = rotMap(slow, deg, [w / 2, h / 2], shift);
+          expect([...a.idx]).toEqual([...b.idx]);
+        }
+    }
+  });
+
+  it('nearest8 turns plain nearest: every output pixel shows the source pixel under its centre, nothing else', () => {
+    const card = cardLike(30, 40);
+    const col = colorsOf(card);
+    const up = nearest8(col, 30, 40);
+    for (const deg of [-5, 3.5, 12]) {
+      const m = rotMap(up, deg, [15, 20]);
+      const r = (deg * Math.PI) / 180;
+      for (let j = 0; j < m.h; j++)
+        for (let i = 0; i < m.w; i++) {
+          const dx = i + 0.5 - m.px;
+          const dy = j + 0.5 - m.py;
+          const x = Math.floor(15 + dx * Math.cos(r) + dy * Math.sin(r));
+          const y = Math.floor(20 - dx * Math.sin(r) + dy * Math.cos(r));
+          const want = x < 0 || y < 0 || x >= 30 || y >= 40 || col[y * 30 + x] < 0 ? -1 : y * 30 + x;
+          expect(m.idx[j * m.w + i], `${deg}° ${i},${j}`).toBe(want);
+        }
+    }
   });
 });

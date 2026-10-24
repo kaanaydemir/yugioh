@@ -20,12 +20,12 @@ const PACK: Record<string, Scenario> = {
     stage: { phase: 'battle', active: 1, p1: { monsters: ['crystal_wyrm', 'abyss_magus'] }, p0: { monsters: [null, 'stone_sentinel'], spellTraps: [null, 'mirror_barrier'] } },
     steps: [{ type: 'attack', player: 1, attackerZone: 0, targetZone: 1 }, (D) => ({ type: 'respond', player: 0, uid: D.uid('mirror_barrier', 0) })],
   },
-  // A-4 (§3.3, §6.3): three victims — the 2.6 s ceiling. P1's Kristal Ejder (the declared attacker,
-  // centre lane) attacks P2's Taş Muhafız; Kor Kurdu and Fırtına Şahini stand next to it, all three
-  // in attack position, so all three are reflected (the defenders, Muhafız and Gelgit Golemi, stay).
+  // A-4 (§3.3, §6.3): three victims — the 2.6 s ceiling. P1's Suikastçı (the declared attacker, centre
+  // lane, melee: its lunge into the panel is in plain sight) attacks P2's Taş Muhafız; Kor Kurdu and
+  // Volt Kertenkele stand next to it, all three in attack position, so all three are reflected.
   a5MirrorTriple: {
-    desc: 'Ayna Kalkanı vs three attack-position monsters (Kurt, Ejder, Şahin): three reflections in order, ≤ 2.6 s',
-    stage: { phase: 'battle', active: 0, p0: { monsters: ['ember_wolf', 'crystal_wyrm', 'storm_hawk'] }, p1: { monsters: [{ id: 'tide_golem', position: 'defense' }, 'stone_sentinel'], spellTraps: [null, 'mirror_barrier'] } },
+    desc: 'Ayna Kalkanı vs three attack-position monsters (Kurt, Suikastçı, Kertenkele): three reflections in order, ≤ 2.6 s',
+    stage: { phase: 'battle', active: 0, p0: { monsters: ['ember_wolf', 'shade_assassin', 'volt_lizard'] }, p1: { monsters: [{ id: 'tide_golem', position: 'defense' }, 'stone_sentinel'], spellTraps: [null, 'mirror_barrier'] } },
     steps: [{ type: 'attack', player: 0, attackerZone: 1, targetZone: 1 }, (D) => ({ type: 'respond', player: 1, uid: D.uid('mirror_barrier', 1) })],
   },
 };

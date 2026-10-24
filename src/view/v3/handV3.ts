@@ -33,7 +33,7 @@ import type Phaser from 'phaser';
 import { frameRGBA, type FrameLike } from '../../art/atlas';
 import { PAL, PLAYER_RAMP, RAMPS, type Ramp } from '../../art/palette';
 import { PixelCanvas, mix } from '../../art/pixel';
-import { colorsOf, edgeDecisions, quantizeDeg, rotMap, upscale8, type RotMap, type UpScaled } from '../../art/rotsprite';
+import { colorsOf, edgeDecisions, nearest8, quantizeDeg, rotMap, upscale8, type RotMap, type UpScaled } from '../../art/rotsprite';
 import { cardDef, isMonster, type CardId } from '../../data/cards';
 import type { PlayerId } from '../../engine/types';
 import type { RimStyle } from './CardV3';
@@ -50,10 +50,13 @@ export const HAND3 = Object.freeze({
    */
   maxDip: 7,
   dipK: 1.4,
-  /** … and leans off · min(rotStep, rotSpan / (n − 1)) rad outwards, shown in whole `degStep` steps. */
+  /**
+   * … and leans off · min(rotStep, rotSpan / (n − 1)) rad outwards, baked in `degStep` steps (half
+   * degrees: every lean within 0.25° of v1's — the four-card hand's ±1.43° / ±4.30° are ±1.5° / ±4.5°).
+   */
   rotStep: 0.05,
   rotSpan: 0.22,
-  degStep: 1,
+  degStep: 0.5,
   /** A raised card turns upright through the baked steps (and back when it sinks), in this time. */
   tiltMs: 90,
   /** RotSprite smooths only the card's outer band of this many px (edgeDecisions): digits stay whole. */
@@ -367,8 +370,12 @@ export function liftKeys(prev: LiftState, next: LiftState, base: number, reduced
 export const TILT_IN = 2;
 /** The ring's stand-in decision colour (not an RGB value: whatever tone the rim takes, it turns the same). */
 const RING_MARK = 0x1000001;
-/** Up-scales kept (≈ 0.5 MB each: the costly ≈ 1.5 ms step) and baked leans kept (≈ 20 KB each). */
-const UP_CAP = 4;
+/**
+ * Up-scales kept (≈ 140 KB each, ≈ 0.3 ms to make: every side a hot-seat swap, a wave or a fresh hand
+ * turns at once fits — the old hand's faces, the new hand's sides, a wave's turn frames — so none is
+ * made twice in one move) and baked leans kept (≈ 25 KB each).
+ */
+const UP_CAP = 16;
 const BAKE_CAP = 160;
 
 /** A card size's composite: per pixel its rim edge (0 none, 1 top / left = tl, 2 bottom / right = br) and walking position. */
@@ -417,32 +424,114 @@ export interface TiltBake {
 
 let sideSeq = 0;
 const sideIds = new WeakMap<PixelCanvas, number>();
-/** A stable id per side canvas (the caches and the TiltView's change check). */
+/** Full-width sides by content (size + hash → the first one's pixels and id); ≈ 13 KB each. */
+const contentIds = new Map<string, { data: Uint8ClampedArray; id: number }>();
+const CONTENT_CAP = 128;
+
+/** FNV-1a over a canvas's pixels (32-bit words). */
+function hashOf(d: Uint8ClampedArray): number {
+  let hsh = 0x811c9dc5;
+  const n = d.length >> 2;
+  const words = d.byteOffset % 4 === 0 ? new Uint32Array(d.buffer, d.byteOffset, n) : null;
+  for (let i = 0; i < n; i++) {
+    hsh ^= words ? words[i] : d[i * 4] | (d[i * 4 + 1] << 8) | (d[i * 4 + 2] << 16) | (d[i * 4 + 3] << 24);
+    hsh = Math.imul(hsh, 0x01000193);
+  }
+  return hsh >>> 0;
+}
+
+function samePixels(a: Uint8ClampedArray, b: Uint8ClampedArray): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+/**
+ * A stable id per side (the caches and the TiltView's change check). A full-width side is known by
+ * its pixels: a flip's last frame (a clone of the side it turns to) and that side itself, or one
+ * card's back and the next card's, share one id — one up-scale, one lettering, the same bakes, and
+ * no repaint when the flip hands over to the side. A flip's narrow turn frames: one id each.
+ */
 function sideId(p: PixelCanvas): number {
   let id = sideIds.get(p);
-  if (id === undefined) sideIds.set(p, (id = ++sideSeq));
+  if (id !== undefined) return id;
+  if (!isTurnFrame(p)) {
+    const key = `${p.w}x${p.h}:${hashOf(p.data)}`;
+    const hit = contentIds.get(key);
+    if (hit && samePixels(hit.data, p.data)) id = hit.id;
+    else if (!hit) {
+      contentIds.set(key, { data: p.data, id: (id = ++sideSeq) });
+      if (contentIds.size > CONTENT_CAP) contentIds.delete(contentIds.keys().next().value!);
+    }
+  }
+  if (id === undefined) id = ++sideSeq;
+  sideIds.set(p, id);
   return id;
 }
 
-const ups = new Map<PixelCanvas, UpScaled>();
+const ups = new Map<number, UpScaled>();
 const bakes = new Map<string, TiltBake>();
 
+/** A side's composite decision colours (the ring as RING_MARK); `band`: RotSprite's edge-band decisions. */
+function compositeOf(side: PixelCanvas, band: boolean): Int32Array {
+  const g = ringGeo(side.w, side.h);
+  const col = new Int32Array(g.W * g.H).fill(-1);
+  const src = colorsOf(side);
+  const dec = band ? edgeDecisions(src, side.w, side.h, HAND3.tiltBand) : src;
+  for (let y = 0; y < side.h; y++) col.set(dec.subarray(y * side.w, (y + 1) * side.w), (y + TILT_IN) * g.W + TILT_IN);
+  for (let i = 0; i < col.length; i++) if (g.edge[i]) col[i] = RING_MARK;
+  return col;
+}
+
 function upOf(side: PixelCanvas): UpScaled {
-  let u = ups.get(side);
+  const id = sideId(side);
+  let u = ups.get(id);
   if (u) {
-    ups.delete(side);
-    ups.set(side, u);
+    ups.delete(id);
+    ups.set(id, u);
     return u;
   }
   const g = ringGeo(side.w, side.h);
-  const col = new Int32Array(g.W * g.H).fill(-1);
-  const dec = edgeDecisions(colorsOf(side), side.w, side.h, HAND3.tiltBand);
-  for (let y = 0; y < side.h; y++) col.set(dec.subarray(y * side.w, (y + 1) * side.w), (y + TILT_IN) * g.W + TILT_IN);
-  for (let i = 0; i < col.length; i++) if (g.edge[i]) col[i] = RING_MARK;
-  u = upscale8(col, g.W, g.H);
-  ups.set(side, u);
+  u = upscale8(compositeOf(side, true), g.W, g.H);
+  ups.set(id, u);
   if (ups.size > UP_CAP) ups.delete(ups.keys().next().value!);
   return u;
+}
+
+const nears = new WeakMap<PixelCanvas, UpScaled>();
+
+/** A flip's narrow turn frame on the 8× grid without Scale2x (nearest8: no up-scale to make). */
+function nearOf(side: PixelCanvas): UpScaled {
+  let u = nears.get(side);
+  if (!u) {
+    const g = ringGeo(side.w, side.h);
+    nears.set(side, (u = nearest8(compositeOf(side, false), g.W, g.H)));
+  }
+  return u;
+}
+
+const squeezes = new WeakMap<PixelCanvas, boolean>();
+
+/**
+ * Is `side` a flip's narrow turn frame — a card squeezed narrower than its canvas (the first or the
+ * last column empty)? Shown ≈ 35 ms each, they turn plain nearest (nearest8): a card's long straight
+ * edges step alike either way, RotSprite's Scale2x only shapes the cut corners, and a wave turns
+ * five such frames per card. Every full-width side (a face, a back, a flip's last frame) is RotSprite.
+ */
+export function isTurnFrame(side: PixelCanvas): boolean {
+  let s = squeezes.get(side);
+  if (s === undefined) {
+    let left = false;
+    let right = false;
+    const d = side.data;
+    for (let y = 0; y < side.h && !(left && right); y++) {
+      if (d[y * side.w * 4 + 3]) left = true;
+      if (d[(y * side.w + side.w - 1) * 4 + 3]) right = true;
+    }
+    squeezes.set(side, (s = !(left && right)));
+  }
+  return s;
 }
 
 /**
@@ -464,30 +553,60 @@ export function tiltBake(side: PixelCanvas, deg: number, glyphs = false): TiltBa
   const r = (deg * Math.PI) / 180;
   const cos = Math.cos(r);
   const sin = Math.sin(r);
-  // the sampling phase: a monster face keeps its ATK / DEF rows between two row steps (tiltShift);
-  // any other side keeps its middle whole (a back's emblem, a spell's art: phase 0 centres the plateau)
-  const shift = glyphs ? tiltShift(deg, side.h) : 0;
-  const map = rotMap(upOf(side), deg, [TILT_IN + Math.floor(side.w / 2), TILT_IN + Math.floor(side.h / 2)], [shift, 0]);
-  const line = glyphs ? glyphsOf(side) : null;
+  // a flip's narrow turn frame: plain nearest, no lettering (its digits are squeezed anyway)
+  const turn = isTurnFrame(side);
+  const line = glyphs && !turn ? glyphsOf(side) : null;
+  // the sampling phase: a monster face keeps its ATK / DEF rows between two row steps (tiltShift) and
+  // drops the line by a row between its two numbers (tiltPhaseY); any other side keeps its middle
+  // whole (a back's emblem, a spell's art: phase 0 centres the plateau)
+  const pivot = [TILT_IN + Math.floor(side.w / 2), TILT_IN + Math.floor(side.h / 2)] as const;
+  const shift = line ? ([tiltShift(deg, side.h), tiltPhaseY(deg, line.gapX, pivot[0])] as const) : ([0, 0] as const);
+  const map = rotMap(turn ? nearOf(side) : upOf(side), deg, pivot, shift);
   if (line) holdGlyphs(map, line, g.W);
-  // the ring in walking order: the output pixels that show a ring pixel, by that pixel's place on the
-  // walk (two showing the same ring pixel: in the walking direction, turned with the card)
-  const { w, h } = side;
-  const dir = (p: number): [number, number] => (p < w ? [1, 0] : p < w + h ? [0, 1] : p < 2 * w + h ? [-1, 0] : [0, -1]);
-  const ks: number[] = [];
-  for (let k = 0; k < map.idx.length; k++) {
-    const i = map.idx[k];
-    if (i >= 0 && g.pos[i] >= 0) ks.push(k);
-  }
-  const along = (k: number) => {
-    const [dx, dy] = dir(g.pos[map.idx[k]]);
-    return (k % map.w) * (dx * cos - dy * sin) + Math.floor(k / map.w) * (dx * sin + dy * cos);
-  };
-  ks.sort((a, c) => g.pos[map.idx[a]] - g.pos[map.idx[c]] || along(a) - along(c));
-  b = { deg, map, ring: Int32Array.from(ks), geo: g, w, h };
+  b = { deg, map, ring: ringWalk(map, g, side.w, side.h, cos, sin), geo: g, w: side.w, h: side.h };
   bakes.set(key, b);
   if (bakes.size > BAKE_CAP) bakes.delete(bakes.keys().next().value!);
   return b;
+}
+
+/**
+ * The output pixels of a turned map that show a ring pixel, in walking order: by that ring pixel's
+ * place on the walk (a bucket per place, filled in output order), two showing the same ring pixel
+ * by their place along the walking direction turned with the card (w × h: the side's size).
+ */
+function ringWalk(map: RotMap, g: RingGeo, w: number, h: number, cos: number, sin: number): Int32Array {
+  const L = g.len;
+  const idx = map.idx;
+  const start = new Int32Array(L + 1);
+  for (let k = 0; k < idx.length; k++) {
+    const i = idx[k];
+    if (i >= 0 && g.pos[i] >= 0) start[g.pos[i] + 1]++;
+  }
+  for (let p = 0; p < L; p++) start[p + 1] += start[p];
+  const ring = new Int32Array(start[L]);
+  const at = start.slice(0, L);
+  for (let k = 0; k < idx.length; k++) {
+    const i = idx[k];
+    if (i >= 0 && g.pos[i] >= 0) ring[at[g.pos[i]]++] = k;
+  }
+  const along = (k: number): number => {
+    const p = g.pos[idx[k]];
+    const [dx, dy] = p < w ? [1, 0] : p < w + h ? [0, 1] : p < 2 * w + h ? [-1, 0] : [0, -1];
+    return (k % map.w) * (dx * cos - dy * sin) + Math.floor(k / map.w) * (dx * sin + dy * cos);
+  };
+  // a ring pixel shown twice (a turn's step): the two in the walking direction (insertion: stable)
+  for (let p = 0; p < L; p++)
+    for (let a = start[p] + 1; a < start[p + 1]; a++) {
+      const k = ring[a];
+      const v = along(k);
+      let j = a - 1;
+      while (j >= start[p] && along(ring[j]) > v) {
+        ring[j + 1] = ring[j];
+        j--;
+      }
+      ring[j + 1] = k;
+    }
+  return ring;
 }
 
 /** An overlay frame mapped through a lean (the foil / sheen sweep): RGBA w × h, blended NORMAL or ADD. */
@@ -551,6 +670,17 @@ export function tiltShift(deg: number, h: number): number {
   return Math.round(dyc * s) - dyc * s;
 }
 
+/**
+ * The vertical sampling phase (source px, |·| ≤ 0.5) of a lettered lean: a turn drops a row one
+ * pixel every 1 / sin(deg) columns; this puts one such step at `gapX` — the gap between the ATK and
+ * DEF numbers — so a number keeps its own row as long as the slope allows (at 1.5° the line drops
+ * once, between the numbers, not between a number's last two digits). `pivotX`: the turn's pivot.
+ */
+export function tiltPhaseY(deg: number, gapX: number, pivotX: number): number {
+  const v = (gapX - pivotX) * Math.sin((deg * Math.PI) / 180) + 0.5;
+  return v - Math.round(v);
+}
+
 /** Bake every whole-degree step between 0 and `deg` of a side ahead (a hover then turns without a stall). */
 export function prebakeTilt(side: PixelCanvas, deg: number, glyphs = false): void {
   const n = Math.round(Math.abs(deg) / HAND3.degStep);
@@ -583,15 +713,23 @@ export interface Glyphs {
   readonly ground: Int32Array;
   /** Composite pixels of bare ground just above / below the line (2 rows): a glyph may land there too. */
   readonly bare: Uint8Array;
+  /** Composite pixels of the drop shadow (the line's darkest tone): a glyph's optional part. */
+  readonly shade: Uint8Array;
+  /** The composite x of the line's widest gap between two glyphs (between the ATK and DEF numbers). */
+  readonly gapX: number;
 }
 
-const glyphLines = new WeakMap<PixelCanvas, Glyphs | null>();
+const glyphLines = new Map<number, Glyphs | null>();
 const lum = (c: number): number => ((c >> 16) & 255) * 299 + ((c >> 8) & 255) * 587 + (c & 255) * 114;
 
-/** The ATK / DEF line of a face (null: none found). Cached per side canvas. */
+/** The ATK / DEF line of a face (null: none found). Cached per side (by sideId: its pixels). */
 export function glyphsOf(side: PixelCanvas): Glyphs | null {
-  let g = glyphLines.get(side);
-  if (g === undefined) glyphLines.set(side, (g = findGlyphs(side)));
+  const id = sideId(side);
+  let g = glyphLines.get(id);
+  if (g === undefined) {
+    glyphLines.set(id, (g = findGlyphs(side)));
+    if (glyphLines.size > CONTENT_CAP) glyphLines.delete(glyphLines.keys().next().value!);
+  }
   return g;
 }
 
@@ -697,7 +835,30 @@ function findGlyphs(side: PixelCanvas): Glyphs | null {
   const bare = new Uint8Array(of.length);
   for (const y of [r0 - 2, r0 - 1, rs + 1, rs + 2])
     if (y >= 0 && y < h) for (let x = x0; x <= x1; x++) if (side.get(x, y) === B) bare[at(x, y)] = 1;
-  return { blocks, of, y0: r0 + TILT_IN, y1: rs + TILT_IN, x0: x0 + TILT_IN, x1: x1 + TILT_IN, ground, bare };
+  const shade = new Uint8Array(of.length);
+  for (const px of blocks) for (const i of px) if (side.get((i % W) - TILT_IN, Math.floor(i / W) - TILT_IN) === S) shade[i] = 1;
+  // the widest gap between two neighbouring glyphs' ink (blocks run left to right)
+  let gapX = TILT_IN + Math.floor(w / 2);
+  let widest = -1;
+  const inkSpan = (px: Int32Array): [number, number] => {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const i of px)
+      if (!shade[i]) {
+        lo = Math.min(lo, i % W);
+        hi = Math.max(hi, i % W);
+      }
+    return [lo, hi];
+  };
+  for (let k = 1; k < blocks.length; k++) {
+    const a = inkSpan(blocks[k - 1])[1];
+    const b = inkSpan(blocks[k])[0];
+    if (b - a > widest) {
+      widest = b - a;
+      gapX = (a + 1 + b) / 2;
+    }
+  }
+  return { blocks, of, y0: r0 + TILT_IN, y1: rs + TILT_IN, x0: x0 + TILT_IN, x1: x1 + TILT_IN, ground, bare, shade, gapX };
 }
 
 /**
@@ -706,6 +867,9 @@ function findGlyphs(side: PixelCanvas): Glyphs | null {
  * onto the line or the bare ground right by it only (never the frame, the ring or outside the card:
  * a pixel that would land there — a shadow corner at a steep lean on the a5=off face — is left out).
  */
+/** How far (px) a glyph may move from where the turn takes it to stay whole. */
+const GLYPH_REACH = 3;
+
 function holdGlyphs(m: RotMap, gl: Glyphs, W: number): void {
   const n = gl.blocks.length;
   const sx = new Float64Array(n);
@@ -722,22 +886,51 @@ function holdGlyphs(m: RotMap, gl: Glyphs, W: number): void {
     cnt[b]++;
     idx[k] = gl.ground[Math.floor(i / W) - gl.y0];
   }
+  // where glyph pixel i may land with shift (tx, ty): on the line or the bare ground by it, not on a
+  // glyph set down already — except that ink covers a neighbour's drop shadow (output position, or −1)
+  const spot = (i: number, tx: number, ty: number): number => {
+    const ox = (i % W) + tx;
+    const oy = Math.floor(i / W) + ty;
+    if (ox < 0 || oy < 0 || ox >= m.w || oy >= m.h) return -1;
+    const k = oy * m.w + ox;
+    const cur = idx[k];
+    if (cur < 0 || (gl.of[cur] >= 0 && (gl.shade[i] || !gl.shade[cur]))) return -1;
+    const cx = cur % W;
+    const cy = Math.floor(cur / W);
+    return cx < gl.x0 || cx > gl.x1 || ((cy < gl.y0 || cy > gl.y1) && !gl.bare[cur]) ? -1 : k;
+  };
   for (let b = 0; b < n; b++) {
     if (!cnt[b]) continue;
-    const tx = Math.round(sx[b] / cnt[b]);
-    const ty = Math.round(sy[b] / cnt[b]);
-    for (const i of gl.blocks[b]) {
-      const ox = (i % W) + tx;
-      const oy = Math.floor(i / W) + ty;
-      if (ox < 0 || oy < 0 || ox >= m.w || oy >= m.h) continue;
-      const k = oy * m.w + ox;
-      const cur = idx[k];
-      if (cur < 0) continue;
-      const cx = cur % W;
-      const cy = Math.floor(cur / W);
-      if (cx < gl.x0 || cx > gl.x1 || ((cy < gl.y0 || cy > gl.y1) && !gl.bare[cur])) continue;
-      idx[k] = i;
+    const px = gl.blocks[b];
+    const mx = sx[b] / cnt[b];
+    const my = sy[b] / cnt[b];
+    let tx = Math.round(mx);
+    let ty = Math.round(my);
+    // the rounded mean, else the nearest shift (up to 3 px away) that sets the glyph's ink down whole:
+    // a half-degree or a steep lean (the hot-seat swap's fall) takes an end glyph's corner onto the
+    // frame — it moves in instead of losing ink (a drop-shadow pixel with no room is left out)
+    const whole = (x: number, y: number): boolean => px.every((i) => gl.shade[i] === 1 || spot(i, x, y) >= 0);
+    if (!whole(tx, ty)) {
+      let best = Infinity;
+      for (let dy = -GLYPH_REACH; dy <= GLYPH_REACH; dy++)
+        for (let dx = -GLYPH_REACH; dx <= GLYPH_REACH; dx++) {
+          const x = Math.round(mx) + dx;
+          const y = Math.round(my) + dy;
+          const d = (x - mx) * (x - mx) + (y - my) * (y - my);
+          if ((dx || dy) && d < best && whole(x, y)) {
+            best = d;
+            tx = x;
+            ty = y;
+          }
+        }
     }
+    // the ink, then its drop shadow where there is room for it
+    for (const ink of [true, false])
+      for (const i of px) {
+        if (gl.shade[i] === (ink ? 1 : 0)) continue;
+        const k = spot(i, tx, ty);
+        if (k >= 0) idx[k] = i;
+      }
   }
 }
 
@@ -1083,6 +1276,10 @@ class TiltView {
   private sig = '';
   private bake: TiltBake | null = null;
   private buf: PixelCanvas | undefined;
+  /** An ImageData over `buf`'s own pixels (no copy per paint), and the size last put on the texture. */
+  private bufImg: ImageData | null = null;
+  private putW = 0;
+  private putH = 0;
   private dead = false;
   private readonly onDestroy = () => this.destroy();
 
@@ -1145,12 +1342,11 @@ class TiltView {
   }
 
   private paint(side: PixelCanvas, tl: number | null, br: number | null, over: TiltOverlay | null): void {
-    const first = !this.bake || this.bake.w !== side.w;
     const id = this.card.cardId;
     const glyphs = this.card.faceUp && id !== null && isMonster(cardDef(id));
+    // one bake per new step, when it is first shown (≈ 0.3 ms; a hover's turn shows two or three, one a
+    // frame) — nothing baked ahead: a fresh hand paints each card once, not every step to upright
     const b = (this.bake = tiltBake(side, this.deg, glyphs));
-    // the steps between upright and this lean, ahead of a hover (≈ 0.2 ms each once the side is up-scaled)
-    if (first) prebakeTilt(side, this.deg, glyphs);
     this.buf = paintTilt(b, side, tl, br, over, this.buf);
     const { w, h } = b.map;
     const sc = this.scene;
@@ -1163,8 +1359,12 @@ class TiltView {
       this.tex = sc.textures.createCanvas(this.key, Math.max(96, w), Math.max(96, h))!;
     }
     const tex = this.tex;
-    tex.context.clearRect(0, 0, tex.width, tex.height);
-    tex.context.putImageData(this.buf.toImageData(), 0, 0);
+    if (!this.bufImg || this.bufImg.data !== this.buf.data) this.bufImg = new ImageData(this.buf.data as Uint8ClampedArray<ArrayBuffer>, w, h);
+    // putImageData replaces its rectangle outright: clear only what a bigger last bake left outside it
+    if (this.putW > w || this.putH > h) tex.context.clearRect(0, 0, this.putW, this.putH);
+    tex.context.putImageData(this.bufImg, 0, 0);
+    this.putW = w;
+    this.putH = h;
     const name = `t${w}x${h}`;
     if (!tex.has(name)) tex.add(name, 0, 0, 0, w, h);
     tex.refresh();

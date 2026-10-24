@@ -44,6 +44,8 @@ export const HUD3 = Object.freeze({
   name: Object.freeze({ x: 8, cap: 5 }),
   lpLabel: Object.freeze({ x: 8, cap: 28 }),
   lp: Object.freeze({ x: 22, cap: 19 }),
+  /** The LP counter's window row (F3, B2): the first wheel's glyph box left x (the box top is the lp cap's). */
+  lpCounter: Object.freeze({ x: 20 }),
   bar: Object.freeze({ x: 8, y: 37, w: 132, h: 4 }),
   emblem: Object.freeze({ x: 115, y: 13, w: 25, h: 23 }),
   /** Count groups (deck / hand / grave): icon left x; icons centred on cy. */
@@ -696,6 +698,29 @@ export class ButtonSkinV3 {
   flash(ms = 17): void {
     this.flashMs = Math.max(this.flashMs, ms);
     this.drawTrim();
+  }
+
+  /**
+   * F0 (the HUD's arrival, hudIn): 0 = the trim alone, 1 = the body with the trim one tone up, 2 = the
+   * button as its state draws it (the end of the arrival).
+   */
+  appear(step: 0 | 1 | 2): void {
+    if (this.dead) return;
+    this.bg.setVisible(step >= 1);
+    this.content.setVisible(step >= 2);
+    this.trim.nodeG.setVisible(step >= 2);
+    if (step === 2) {
+      this.apply(this.state);
+      return;
+    }
+    this.trim.set(styleTrim(this.style, this.lift() + (step === 1 ? 1 : 0)));
+  }
+
+  /** F0 'wake' (the HUD already on screen): one white trim frame, then one tone up; null = the state's own trim. */
+  wake(w: 'white' | 'up' | null): void {
+    if (this.dead) return;
+    if (w === null) this.drawTrim();
+    else this.trim.set(w === 'white' ? flatTrim(PAL.white) : styleTrim(this.style, this.lift() + 1));
   }
 
   /** Draw a visual state (Button.visualState()). */

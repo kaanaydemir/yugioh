@@ -598,6 +598,39 @@ export function rimClimb(scene: Phaser.Scene, s: Unit, o: RimOpts = {}): Promise
   });
 }
 
+/**
+ * A struck body's 1-px edge flash (A5 §3.0: the old art is never tinted — the blow is carried by an
+ * edge light): the pixels just outside the silhouette light in ramp[0] for `hold` rendered frames,
+ * then step through the rest of the ramp one frame each and are gone. Follows the sprite (the mask is
+ * the frame on screen). Resolves when gone. A3b / A-4 (Ayna Kalkanı's beam contact).
+ */
+export function rimFlash(scene: Phaser.Scene, s: Unit, o: { ramp?: readonly number[]; hold?: number; depth?: number } = {}): Promise<void> {
+  const ramp = o.ramp ?? [PAL.white, PAL.mag4, PAL.mag3, PAL.mag2];
+  const hold = Math.max(1, o.hold ?? 2);
+  let ras: Raster | null = null;
+  let f = 0;
+  return frames(scene, (dt) => {
+    if (dt > 0) f++;
+    const k = f < hold ? 0 : f - hold + 1;
+    const sil = silhouetteOf(s);
+    if (!sil || k >= ramp.length) {
+      ras?.destroy();
+      return false;
+    }
+    const W = sil.right - sil.left + 4;
+    const H = sil.bottom - sil.top + 4;
+    if (!ras || ras.w < W || ras.h < H) {
+      ras?.destroy();
+      ras = new Raster(scene, sil.left - 2, sil.top - 2, W + 8, H + 8, o.depth ?? s.depth + 0.6);
+    }
+    ras.moveTo(sil.left - 2, sil.top - 2);
+    ras.begin();
+    for (const q of sil.outside()) ras.px(q.x, q.y, ramp[k]);
+    ras.end();
+    return true;
+  });
+}
+
 // =================================================================================== steam, embers
 
 const STEAM = [PAL.white, PAL.mist, PAL.steel] as const;

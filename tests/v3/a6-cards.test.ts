@@ -359,7 +359,7 @@ function trace(track: { step(dt: number): void; value: number; moving: boolean }
 }
 
 describe('A6-A A2 — the v3 hand (K1), pure parts', { timeout: 60_000 }, () => {
-  it("fan: v1's arc (user decision 24 Oct) — v1's dip and lean, the lean in whole degrees, mirror-symmetric, leaning outwards", async () => {
+  it("fan: v1's arc (user decision 24 Oct) — v1's dip and lean, the lean in half degrees (within 0.25° of v1), mirror-symmetric, leaning outwards", async () => {
     await load('v3');
     const h = await import('../../src/view/v3/handV3');
     expect(h.fanDip(0, 1)).toBe(0);
@@ -372,8 +372,8 @@ describe('A6-A A2 — the v3 hand (K1), pure parts', { timeout: 60_000 }, () => 
         // v1 (src/view/HandView.ts pose()): y = BASE_Y + off² · min(1.4, 7 / half²), rot = off · dRot
         expect(h.fanDip(i, n), `n=${n} i=${i}`).toBe(Math.round(off * off * Math.min(1.4, 7 / (half * half))));
         const d = h.fanDeg(i, n);
-        expect(Number.isInteger(d), `n=${n} i=${i}`).toBe(true);
-        expect(Math.abs(d - (off * dRot * 180) / Math.PI), `n=${n} i=${i}`).toBeLessThanOrEqual(0.5);
+        expect(Number.isInteger(d * 2), `n=${n} i=${i}: ${d}`).toBe(true);
+        expect(Math.abs(d - (off * dRot * 180) / Math.PI), `n=${n} i=${i}`).toBeLessThanOrEqual(0.25);
         if (d !== 0) expect(Math.sign(d)).toBe(Math.sign(off));
         expect(h.fanDeg(n - 1 - i, n)).toBe(d === 0 ? 0 : -d);
         expect(h.fanDip(n - 1 - i, n)).toBe(h.fanDip(i, n));
@@ -382,15 +382,15 @@ describe('A6-A A2 — the v3 hand (K1), pure parts', { timeout: 60_000 }, () => 
       expect(Math.max(...leans)).toBeLessThanOrEqual(7);
       expect(Math.max(...Array.from({ length: n }, (_, i) => h.fanDip(i, n)))).toBeLessThanOrEqual(7);
     }
-    // the four-card hand of the checkpoint: −4 −1 1 4 degrees, 3 / 0 / 0 / 3 px down (v1: ±4.3°, ±1.4°)
-    expect([0, 1, 2, 3].map((i) => h.fanDeg(i, 4))).toEqual([-4, -1, 1, 4]);
+    // the four-card hand of the checkpoint: −4.5 −1.5 1.5 4.5 degrees (v1: ±4.30°, ±1.43°), 3 / 0 / 0 / 3 px down
+    expect([0, 1, 2, 3].map((i) => h.fanDeg(i, 4))).toEqual([-4.5, -1.5, 1.5, 4.5]);
     expect([0, 1, 2, 3].map((i) => h.fanDip(i, 4))).toEqual([3, 0, 0, 3]);
     // a raised card stands upright, a marked one leans half its lean (as v1), both sides alike
-    expect([h.tiltOf('hover', 4), h.tiltOf('select', -6), h.tiltOf('rest', 3), h.tiltOf('rest', -3)]).toEqual([0, 0, 3, -3]);
-    expect([h.tiltOf('mark', 3), h.tiltOf('mark', -3), h.tiltOf('mark', 6), h.tiltOf('mark', -1)]).toEqual([2, -2, 3, -1]);
+    expect([h.tiltOf('hover', 4.5), h.tiltOf('select', -6.5), h.tiltOf('rest', 3), h.tiltOf('rest', -3)]).toEqual([0, 0, 3, -3]);
+    expect([h.tiltOf('mark', 3), h.tiltOf('mark', -3), h.tiltOf('mark', 6), h.tiltOf('mark', -1.5)]).toEqual([1.5, -1.5, 3, -1]);
     // fanPose carries the lean; x / y stay whole pixels
     const p = h.fanPose(0, 5, -1, { x: 160, w: 320 }, 48);
-    expect(p.deg).toBe(-6);
+    expect(p.deg).toBe(-5.5);
     expect(Number.isInteger(p.x) && Number.isInteger(p.y)).toBe(true);
   });
 
@@ -448,14 +448,47 @@ describe('A6-A A2 — the v3 hand (K1), pure parts', { timeout: 60_000 }, () => 
   it("lean: the sampling phase keeps the ATK / DEF digit rows between two row steps (no lean cuts them)", async () => {
     await load('v3');
     const h = await import('../../src/view/v3/handV3');
-    for (let deg = -7; deg <= 7; deg++) {
+    for (let d2 = -40; d2 <= 40; d2++) {
+      const deg = d2 / 2;
       const shift = h.tiltShift(deg, 68);
       expect(Math.abs(shift)).toBeLessThanOrEqual(0.5);
       const s = Math.sin((deg * Math.PI) / 180);
       // the horizontal step a card row y gets (pixel centres, pivot row 34): one value across the digits
       const step = (y: number) => Math.floor(0.5 + shift + (y + 0.5 - 34) * s);
       const steps = new Set([59, 60, 61, 62, 63].map(step));
-      expect(steps.size, `${deg}°`).toBe(1);
+      if (Math.abs(deg) <= 7) expect(steps.size, `${deg}°`).toBe(1);
+      expect(Math.abs(h.tiltPhaseY(deg, 27, 26))).toBeLessThanOrEqual(0.5);
+    }
+  });
+
+  it('lean: the line drops a row between its two numbers — at ±0.5…±3° each number keeps one row, the step falls in the gap', async () => {
+    for (const flags of [undefined, { a5: 'off' }]) {
+      const { cards } = await load('v3', flags);
+      const h = await import('../../src/view/v3/handV3');
+      for (const id of ['ember_wolf', 'storm_hawk', 'tide_golem', 'crystal_wyrm'] as const) {
+        const side = cards.cardFaceCanvas(id);
+        const gl = h.glyphsOf(side)!;
+        const W = side.w + 2 * h.TILT_IN;
+        // the gap: between the ATK number's last glyph and the DEF icon, about the card's middle
+        expect(Math.abs(gl.gapX - (h.TILT_IN + side.w / 2)), id).toBeLessThanOrEqual(4);
+        const left = gl.blocks.map((px) => Math.max(...[...px].map((i) => i % W)) < gl.gapX);
+        expect(left.filter(Boolean).length, id).toBeGreaterThanOrEqual(4);
+        for (const deg of [-3, -2, -1.5, -1, -0.5, 0.5, 1, 1.5, 2, 2.5]) {
+          const b = h.tiltBake(side, deg, true);
+          const dy = gl.blocks.map(() => new Set<number>());
+          for (let k = 0; k < b.map.idx.length; k++) {
+            const i = b.map.idx[k];
+            if (i >= 0 && gl.of[i] >= 0) dy[gl.of[i]].add(Math.floor(k / b.map.w) - Math.floor(i / W));
+          }
+          const rowOf = (g: number) => [...dy[g]][0];
+          const atk = new Set(gl.blocks.map((_, g) => g).filter((g) => left[g]).map(rowOf));
+          const def = new Set(gl.blocks.map((_, g) => g).filter((g) => !left[g]).map(rowOf));
+          expect(atk.size, `${id} ${deg}° ATK rows`).toBe(1);
+          if (Math.abs(deg) < 3) expect(def.size, `${id} ${deg}° DEF rows`).toBe(1);
+          // the DEF number one row down (clockwise) / up (counter-clockwise), never more
+          expect(Math.abs(rowOf(gl.blocks.length - 1) - [...atk][0]), `${id} ${deg}°`).toBeLessThanOrEqual(Math.abs(deg) < 3 ? 1 : 2);
+        }
+      }
     }
   });
 
@@ -472,7 +505,9 @@ describe('A6-A A2 — the v3 hand (K1), pure parts', { timeout: 60_000 }, () => 
         for (const px of gl!.blocks) expect(px.length).toBeGreaterThan(3);
         const W = side.w + 2 * h.TILT_IN;
         const shadow = palette.PAL.ink; // the digits' drop shadow (the face's darkest tone)
-        for (let deg = -7; deg <= 7; deg++) {
+        // every half degree up to the hot-seat swap's steepest lean (±20°)
+        for (let d2 = -40; d2 <= 40; d2++) {
+          const deg = d2 / 2;
           if (deg === 0) continue;
           const b = h.tiltBake(side, deg, true);
           const offs = gl!.blocks.map(() => new Set<string>());
@@ -492,7 +527,8 @@ describe('A6-A A2 — the v3 hand (K1), pure parts', { timeout: 60_000 }, () => 
               if (shade(i)) expect(n, `${id} ${deg}° glyph ${g} shadow`).toBeLessThanOrEqual(1);
               else expect(n, `${id} ${deg}° glyph ${g} ink at ${i}`).toBe(1);
             }
-            expect([...seen[g].values()].length, `${id} ${deg}° glyph ${g}`).toBeGreaterThanOrEqual(px.length - 2);
+            // at a resting lean at most two drop-shadow pixels go (the swap's steep fall may lose a few more)
+            if (Math.abs(deg) <= 7) expect([...seen[g].values()].length, `${id} ${deg}° glyph ${g}`).toBeGreaterThanOrEqual(px.length - 2);
           });
           // the plain bake (a back, a spell) is another map: the flag is part of the cache key
           expect(h.tiltBake(side, deg)).not.toBe(b);
@@ -506,7 +542,8 @@ describe('A6-A A2 — the v3 hand (K1), pure parts', { timeout: 60_000 }, () => 
     const h = await import('../../src/view/v3/handV3');
     for (const side of [cards.cardBackCanvas(0), cards.cardBackCanvas(1), cards.cardFaceCanvas('judgment_bolt')]) {
       const W = side.w + 2 * h.TILT_IN;
-      for (let deg = -7; deg <= 7; deg++) {
+      for (let d2 = -14; d2 <= 14; d2++) {
+        const deg = d2 / 2;
         if (deg === 0) continue;
         const b = h.tiltBake(side, deg);
         const perCol = new Map<number, Set<number>>();
@@ -521,6 +558,42 @@ describe('A6-A A2 — the v3 hand (K1), pure parts', { timeout: 60_000 }, () => 
         }
         for (const [sx, offs] of perCol) expect(offs.size, `${deg}° column ${sx}`).toBe(1);
       }
+    }
+  });
+
+  it("lean: a flip's narrow turn frames turn plain nearest; a full-width side is known by its pixels (a flip's last frame shares the side's bake)", async () => {
+    const { cards } = await load('v3');
+    const h = await import('../../src/view/v3/handV3');
+    const cv3 = await import('../../src/view/v3/CardV3');
+    const face = cards.cardFaceCanvas('tide_golem');
+    const frames = cv3.cardTurnFrames('tide_golem', false, 0, 48, 68);
+    expect(frames.length).toBeGreaterThanOrEqual(5);
+    frames.forEach((f, k) => expect(h.isTurnFrame(f), `frame ${k}`).toBe(k < frames.length - 1));
+    expect(h.isTurnFrame(face)).toBe(false);
+    expect(h.isTurnFrame(cards.cardBackCanvas(1))).toBe(false);
+    // the last frame is a clone of the face: one bake (one up-scale, one lettering) serves both
+    for (const d of [-4.5, 1.5]) expect(h.tiltBake(frames[frames.length - 1], d, true)).toBe(h.tiltBake(face, d, true));
+    // a narrow frame: every output pixel shows the composite pixel under its centre (no Scale2x)
+    const f = frames[1];
+    const W = f.w + 2 * h.TILT_IN;
+    const H = f.h + 2 * h.TILT_IN;
+    for (const deg of [-4.5, 3]) {
+      const b = h.tiltBake(f, deg, true);
+      const r = (deg * Math.PI) / 180;
+      const cx = h.TILT_IN + Math.floor(f.w / 2);
+      const cy = h.TILT_IN + Math.floor(f.h / 2);
+      let bad = 0;
+      for (let j = 0; j < b.map.h; j++)
+        for (let i = 0; i < b.map.w; i++) {
+          const got = b.map.idx[j * b.map.w + i];
+          if (got < 0) continue;
+          const dx = i + 0.5 - b.map.px;
+          const dy = j + 0.5 - b.map.py;
+          const x = Math.floor(cx + dx * Math.cos(r) + dy * Math.sin(r));
+          const y = Math.floor(cy - dx * Math.sin(r) + dy * Math.cos(r));
+          if (x < 0 || y < 0 || x >= W || y >= H || got !== y * W + x) bad++;
+        }
+      expect(bad, `${deg}°`).toBe(0);
     }
   });
 
