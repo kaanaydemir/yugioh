@@ -226,8 +226,8 @@ function plainPass(c: Int32Array, i: Int32Array, cw: number, ch: number): { col:
 
 /** Scale2x ×3 the plain way, nothing lazy or skipped: the source index at each 8× pixel. */
 function plainUp8(col: Int32Array, w: number, h: number): (bx: number, by: number) => number {
-  let c = Int32Array.from(col);
-  let i = Int32Array.from(col, (v, k) => (v < 0 ? -1 : k));
+  let c: Int32Array = Int32Array.from(col);
+  let i: Int32Array = Int32Array.from(col, (v, k) => (v < 0 ? -1 : k));
   let cw = w;
   let ch = h;
   for (let pass = 0; pass < 3; pass++) {

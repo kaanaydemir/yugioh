@@ -3,7 +3,9 @@
 //   &state=still (default)  the idle layout: hint line, counts, SAVAŞ / TURU BİTİR, toolbar
 //          states          every Button state per style (normal / hover / pressed / disabled /
 //                          attention) + panels at LP ≤ 1000 and 0 + a flashed hint (a static sheet)
-//          lp              LP loss / gain on both panels, looping (trim flash, roll, bar)
+//          lp              LP loss / gain on both panels, looping (F3, B2: the trim, the counter's
+//                          mechanical count, the bar's 4-px steps and rising pixels, then P2 under
+//                          1000 for the low-LP pulse)
 //          turn            the turn passes: setActive + setTurn + phase cycle, looping
 //          hint            hint line: set → change → flash ("why not") → clear, looping
 //          buttons         a button hovered, pressed, released, disabled-clicked, attention on

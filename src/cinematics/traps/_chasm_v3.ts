@@ -41,10 +41,10 @@
 
 import type Phaser from 'phaser';
 import { PAL } from '../../art/palette';
-import { chasmGeometry, paintChasm, type ChasmGeom } from '../../art/spellmotifs-v3';
+import { chasmGeometry, type ChasmGeom } from '../../art/spellmotifs-v3';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { DEPTH, type XY, unitDepth, zoneXY } from '../../view/layout';
-import { lightBeam, lightPool, type BeamHandle, type LightHandle } from '../../view/light';
+import { lightBeam, lightFlash, lightPool, type BeamHandle, type LightHandle } from '../../view/light';
 import { padColorAt } from '../../view/light/stepped';
 import { wait } from '../../vfx/core';
 import { Sparks as PxSparks } from '../../vfx/combat';
@@ -167,6 +167,68 @@ interface PadLook {
   seam?: boolean;
   /** The scar fading after the shut: 0 ink, 1 night0, 2 gone. */
   scar?: 0 | 1 | 2;
+  /** The far rim's light this frame (one magenta tone; it breathes while the hole stands open). */
+  rim?: number;
+}
+
+/** The hole's half width per opening step, as a share of the slab half width (smaller than the kit's 0.4 / 0.7: the slabs stay readable round it). */
+export const HOLE_OPEN: readonly [number, number, number] = [0, 0.36, 0.62];
+
+/** The slabs of chasmGeometry round this scene's hole (see HOLE_OPEN), and its front lip. */
+export function padGeom(cx: number, cy: number, step: 0 | 1 | 2, hw = PAD_HW, hh = PAD_HH): ChasmGeom {
+  const g = chasmGeometry(cx, cy, hw, hh, step);
+  const C = g.slabs[0][0];
+  const rx = Math.round(hw * HOLE_OPEN[step]);
+  const ry = Math.round(rx / 2);
+  const lip: XY[] = [{ x: Math.round(cx) - hw - 8, y: C.y }];
+  if (rx > 0)
+    for (let i = 0; i <= 12; i++) {
+      const an = Math.PI - (i / 12) * Math.PI;
+      lip.push({ x: Math.round(C.x + Math.cos(an) * rx), y: Math.round(C.y + Math.sin(an) * ry) });
+    }
+  lip.push({ x: Math.round(cx) + hw + 8, y: C.y });
+  return { ...g, hole: { x: C.x, y: C.y, rx, ry }, lip };
+}
+
+/**
+ * The pad, open (A5 §3.4 AÇILMA): three flat slabs (back lighter — it tilts toward the light — left
+ * mid, front-right darker), ink cuts between them (2 px once pulled apart: the slab's side), the ink
+ * hole, its far rim lit by one magenta tone, the back slab's inner lip lit 1 px (night4) and the front
+ * lip 1 px (night2) — the edge a body sinks behind. Closed (step 0): only the cuts (the slab faces are
+ * the pad's own night1). Local canvas coordinates.
+ */
+export function paintPadV3(p: { set(x: number, y: number, c: number): unknown; get(x: number, y: number): number | null; poly(pts: readonly [number, number][], c: number): unknown; line(x0: number, y0: number, x1: number, y1: number, c: number): unknown; ellipse(cx: number, cy: number, rx: number, ry: number, c: number): unknown }, cx: number, cy: number, look: PadLook): void {
+  const g = padGeom(cx, cy, look.step);
+  const C = g.slabs[0][0];
+  if (look.step > 0) g.slabs.forEach((poly, i) => p.poly(poly.map((q) => [q.x, q.y] as [number, number]), g.faces[i]));
+  const k = look.step === 0 ? Math.max(0, Math.min(1, look.crack)) : 1;
+  const cut = look.seam ? PAL.white : look.scar === 1 ? PAL.night0 : PAL.ink;
+  if (k > 0)
+    for (const end of g.cuts) {
+      const ex = Math.round(C.x + (end.x - C.x) * k);
+      const ey = Math.round(C.y + (end.y - C.y) * k);
+      p.line(C.x, C.y, ex, ey, cut);
+      if (look.step === 2) p.line(C.x, C.y + 1, ex, ey + 1, PAL.ink);
+    }
+  const { x, y, rx, ry } = g.hole;
+  if (rx <= 0) return;
+  const er = Math.max(1, ry);
+  p.ellipse(x + 0.5, y + 0.5, rx, er, PAL.ink);
+  const rim = look.rim ?? (look.step === 2 ? PAL.mag2 : PAL.mag1);
+  for (let px = x - rx + 1; px <= x + rx - 1; px++) {
+    const dx = (px + 0.5 - (x + 0.5)) / rx;
+    if (Math.abs(dx) >= 1) continue;
+    const h = er * Math.sqrt(1 - dx * dx);
+    const top = Math.ceil(y + 0.5 - h - 0.5);
+    const bottom = Math.floor(y + 0.5 + h - 0.5);
+    // the far wall catches the trap's light (one tone), the back slab's lip above it is lit
+    if (p.get(px, top + 1) === PAL.ink) p.set(px, top + 1, rim);
+    const above = p.get(px, top - 1);
+    if (above !== null && above !== PAL.ink && Math.abs(dx) < 0.92) p.set(px, top - 1, look.step === 2 ? PAL.night4 : PAL.night3);
+    // the front lip
+    const below = p.get(px, bottom + 1);
+    if (below !== null && below !== PAL.ink && Math.abs(dx) < 0.95) p.set(px, bottom + 1, PAL.night2);
+  }
 }
 
 /**
@@ -201,7 +263,7 @@ class PadRaster {
   }
 
   get geom(): ChasmGeom {
-    return chasmGeometry(this.cx, this.cy, PAD_HW, PAD_HH, this.look.step);
+    return padGeom(this.cx, this.cy, this.look.step);
   }
 
   set(look: Partial<PadLook>): void {
@@ -213,35 +275,11 @@ class PadRaster {
     const r = this.r;
     if (!r.alive) return;
     const L = this.look;
-    const p = r.pc;
-    const lx = this.cx - r.x;
-    const ly = this.cy - r.y;
     r.begin();
-    if (L.scar !== 2) {
-      if (L.step > 0 || L.crack > 0) paintChasm(p, lx, ly, PAD_HW, PAD_HH, { step: L.step, crack: L.crack });
-      const g = chasmGeometry(lx, ly, PAD_HW, PAD_HH, L.step);
-      if (L.step === 0) {
-        // closed: only the cuts show (the slab faces are the pad's own night1): seam white, scar dims
-        const tone = L.seam ? PAL.white : L.scar === 1 ? PAL.night0 : PAL.ink;
-        p.map((c) => (c === PAL.night1 ? null : c === PAL.ink ? tone : c));
-      } else {
-        const { x, y, rx, ry } = g.hole;
-        // the far rim's light: one tone up at the full opening
-        if (L.step === 2) p.map((c) => (c === PAL.mag1 ? PAL.mag2 : c));
-        // the front lip: the pixel just below the hole's lower rim, lit 1 px (the edge the body sinks behind)
-        const ery = Math.max(1, ry);
-        for (let px = x - rx + 2; px <= x + rx - 2; px++) {
-          const dx = (px + 0.5 - (x + 0.5)) / rx;
-          if (Math.abs(dx) >= 1) continue;
-          const bottom = Math.floor(y + 0.5 + ery * Math.sqrt(1 - dx * dx) - 0.5);
-          const q = p.get(px, bottom + 1);
-          if (q !== null && q !== PAL.ink) p.set(px, bottom + 1, PAL.night2);
-        }
-      }
-    }
+    if (L.scar !== 2) paintPadV3(r.pc, this.cx - r.x, this.cy - r.y, L);
     // keep to the matte pad
     const { w, h } = r;
-    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) if (!this.matte[j * w + i]) p.erase(i, j);
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) if (!this.matte[j * w + i]) r.pc.erase(i, j);
     r.end();
   }
 
@@ -351,7 +389,7 @@ function lipDust(scene: Phaser.Scene, g: ChasmGeom, depth: number, seed: number,
       drag: 2,
       life: 300 + Math.floor(rnd() * 160),
       delay: Math.floor(rnd() * 60),
-      size: 2 + Math.floor(rnd() * 2),
+      size: 1 + Math.floor(rnd() * 2),
       shape: 'puff',
       colors: [PAL.stone2, PAL.night3, PAL.night2, PAL.night1],
       fadeAt: 1,
@@ -486,6 +524,7 @@ export async function swallowV3(ctx: DestroyCtx): Promise<void> {
   // the hole's magenta spills one tone onto the pad's rim and the floor round it (stepped light, under
   // the slabs: only the matte pixels outside them show it)
   lights.hole = lightPool(sc, C.x, C.y, { color: PAL.mag3, spill: null, radius: 32, floorY: C.y, intensity: 0.6, air: 0, fadeIn: 0 });
+  void lightFlash(sc, C.x, C.y, PAL.mag3, 46, 260, { floorY: C.y, ring: true, intensity: 0.9, air: 0 });
   // the body takes it: v3 art its hitHeavy struck frame, the old art its v1 hit
   const v3 = !!u && u.has('hitHeavy') && u.has('death');
   if (u) {
@@ -550,13 +589,26 @@ export async function swallowV3(ctx: DestroyCtx): Promise<void> {
     cardRas.destroy();
   }
 
+  // the hole stands open: its far rim breathes one magenta tone (mag2 ↔ mag1, 100 ms) until the shut
+  let breathing = true;
+  void (async () => {
+    let lit = true;
+    while (breathing) {
+      await wait(sc, 100);
+      if (!breathing) break;
+      lit = !lit;
+      pad.set({ rim: lit ? PAL.mag2 : PAL.mag1 });
+    }
+  })();
+
   // ---- SHUT — `shut`
   const lag = SHUT_AFTER - clock.now();
   if (lag > 0) await wait(sc, lag);
+  breathing = false;
   rocks.kill();
   mask.destroy();
-  void lights.hole?.fadeOut(120);
-  pad.set({ step: 1 });
+  void lights.hole?.fadeOut(80);
+  pad.set({ step: 1, rim: undefined });
   await nextFrame(sc);
   playV3('chasmShut', { volume: 1, pan: panAt(home.x) }); // mark `shut`
   pad.set({ step: 0, crack: 1, seam: true });
