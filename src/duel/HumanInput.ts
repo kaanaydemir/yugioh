@@ -19,6 +19,16 @@
 // (the card whose menu is open stays pinned there).
 // Keys (idle): B = SAVAŞ, E = TURU BİTİR, 1–9 = hand card, Esc / ≡ = düello menüsü
 // (Devam Et / Teslim Ol / Ana Menüye Dön; outside the player's own input only Devam / Ana Menü).
+//
+// v3, lane A6-B (V3_A6_B; docs/v3/A6_PLAN.md F4 / F5 / K11 / K12, step B3) — v1 keeps all of the above
+// exactly: board picks carry target corners on the candidate monsters (src/view/v3/TargetMarks.ts:
+// arrive, breathe, settle under the pointer, close on the click), the selected attacker white
+// corners; an invalid board click is answered where it lands (the reject stamp, the tile's outline,
+// the unit's contour; the reason stays in the hint line, which no longer repeats the instruction bar);
+// an unplayable hand card picked by key is refused in the hand too (hand.reject); a click on any
+// graveyard (or M / Shift+M: the viewer's / the other one) opens A6-A's graveyard panel while no
+// cinematic plays; hovering a deck, an empty graveyard or the other player's mini-hand shows the pile
+// in the inspect panel (inspect.showPile: counts only, nothing hidden).
 
 import Phaser from 'phaser';
 import { CARDS, cardDef, isMonster, isSpell, isTrap, tributesFor, type CardId } from '../data/cards';
@@ -27,7 +37,11 @@ import { freeMonsterZones, freeSpellTrapZones } from '../engine/query';
 import type { Action, GameState, PlayerId, Uid, ZoneKind, ZoneRef } from '../engine/types';
 import { PAL, PLAYER_COLOR } from '../art/palette';
 import { sfx } from '../audio/sfx';
-import { GAME_W, LOOK_V3, type BoardSpot } from '../view/layout';
+import { GAME_W, LOOK_V3, panelRect, type BoardSpot, type XY } from '../view/layout';
+import { V3_A6_B } from '../view/v3flags';
+import { AimMarks, SelectMark, ackClick, rejectClick } from '../view/v3/TargetMarks';
+import { gravePanelOpen, openGravePanel } from '../view/v3/GravePanel';
+import { showPile } from '../view/v3/inspectV3';
 import type { InspectStats } from '../view/InspectPanel';
 import type { MenuOption } from '../view/ActionMenu';
 import { playerStyle, uiKeysActive } from '../view/ui-textures';
@@ -79,6 +93,15 @@ export class HumanInput {
   /** The card whose menu / target pick is open: the inspect panel keeps showing it. */
   private pinned: { id: CardId | null; stats: InspectStats } | null = null;
   private pauseOpen = false;
+  /** v3 (A6-B, F4): the open board pick's target corners, the selected attacker's corners. */
+  private aim: AimMarks | null = null;
+  private sel: SelectMark | null = null;
+  /** v3 (F5): the screen point of the last board click (the reject stamp lands there). */
+  private lastClick: XY | null = null;
+  /** A cinematic is playing (set by the controller): the graveyard panel opens only when not. */
+  busy: () => boolean = () => false;
+  /** QA (v3, B3): how many times a graveyard panel was asked for (the S-9 stub opens nothing yet). */
+  graveOpens = 0;
   enabled = false;
   /** What the human is being asked for right now (QA / playtest tools read this). */
   mode: InputMode = 'off';
@@ -120,11 +143,18 @@ export class HumanInput {
         return;
       }
       if (over.length) return;
+      if (V3_A6_B && gravePanelOpen(scene)) return; // the panel holds the input
       const hit = this.pick(p.x, p.y);
       if (!hit) return;
+      if (V3_A6_B) {
+        this.lastClick = { x: p.x, y: p.y };
+        // K11: any graveyard opens its panel (idle, a pick, the computer's turn — not a cinematic)
+        if (hit.spot === 'graveyard' && this.openGrave(hit.player, 'mouse')) return;
+      }
       if (this.onZone) return this.onZone(hit);
       if (!this.onChoice || this.mode !== 'idle') return;
       if (hit.spot === 'monster' || hit.spot === 'spellTrap' || hit.spot === 'field') this.onChoice({ kind: 'zone', ref: { player: hit.player, zone: hit.spot as ZoneKind, index: hit.index } });
+      else if (V3_A6_B) this.rejectHit(hit); // F5: a deck / an empty pile has nothing to do
     });
     scene.input.on(Phaser.Input.Events.POINTER_MOVE, (p: Phaser.Input.Pointer) => this.hover(p.x, p.y));
     const onKey = (e: KeyboardEvent) => {
@@ -133,6 +163,12 @@ export class HumanInput {
       if (uiKeysActive()) return;
       if (e.key === 'Escape') {
         if (!e.repeat) this.requestMenu();
+        return;
+      }
+      // v3 K11: M = the viewer's graveyard panel, Shift+M = the other player's
+      if (V3_A6_B && (e.key === 'm' || e.key === 'M') && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const own = this.views.hand.owner;
+        this.openGrave(e.shiftKey ? (own === 0 ? 1 : 0) : own, 'key');
         return;
       }
       if (!this.enabled || !this.onChoice || this.mode !== 'idle' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -173,6 +209,10 @@ export class HumanInput {
     this.views.hand.setMarked([]);
     this.unpin();
     this.clearIdle();
+    this.aim?.cancel();
+    this.aim = null;
+    this.sel?.release();
+    this.sel = null;
     this.setMode('off');
   }
 
@@ -264,10 +304,13 @@ export class HumanInput {
         hud.setHint('Ne yapacağını seç · Esc: vazgeç', { player: p });
         break;
       case 'zone':
-        hud.setHint(this.zoneCancel ? 'Parlayan alanlardan birine tıkla · Esc: geri' : 'Parlayan hedeflerden birine tıkla', { player: p });
+        // v3 (F4): the instruction bar says it; the hint line does not repeat it (it keeps the reasons)
+        if (V3_A6_B) hud.setHint(null);
+        else hud.setHint(this.zoneCancel ? 'Parlayan alanlardan birine tıkla · Esc: geri' : 'Parlayan hedeflerden birine tıkla', { player: p });
         break;
       case 'tribute':
-        hud.setHint('Kurban edilecek canavarlarına tıkla · Esc: geri', { style: 'gold' });
+        if (V3_A6_B) hud.setHint(null);
+        else hud.setHint('Kurban edilecek canavarlarına tıkla · Esc: geri', { style: 'gold' });
         break;
       case 'idle':
       case 'discard':
@@ -351,6 +394,7 @@ export class HumanInput {
     const d = CARDS[cardId];
     if (s.phase !== 'main') {
       hud.flashHint('Savaş Aşamasında elden kart oynanmaz');
+      if (V3_A6_B) void this.views.hand.reject(uid); // F5 (a key pick; a click is refused by the hand itself)
       return null;
     }
     const acts = legal.filter((a) => 'uid' in a && a.uid === uid);
@@ -371,6 +415,7 @@ export class HumanInput {
     }
     if (!opts.some((o) => o.enabled)) {
       hud.flashHint(opts[0].reason ?? 'Bu kart şu an oynanamaz');
+      if (V3_A6_B) void this.views.hand.reject(uid);
       return null;
     }
     const hand = this.views.hand;
@@ -408,11 +453,11 @@ export class HumanInput {
     if (ref.player !== p) {
       if (s.phase === 'battle' && ref.zone === 'monster' && s.players[ref.player].monsters[ref.index])
         hud.flashHint(legal.some((a) => a.type === 'attack') ? 'Önce saldıracak kendi canavarına tıkla' : 'Saldırabilecek canavarın yok', { style: 'neutral' });
-      return null;
+      return this.refuse(ref);
     }
     if (ref.zone === 'spellTrap') {
       const st = s.players[p].spellTraps[ref.index];
-      if (!st || st.faceUp) return null;
+      if (!st || st.faceUp) return this.refuse(ref);
       const id = s.cards[st.uid].cardId;
       const acts = legal.filter((a) => a.type === 'activateSpell' && a.uid === st.uid) as Extract<Action, { type: 'activateSpell' }>[];
       if (!acts.length) {
@@ -420,7 +465,7 @@ export class HumanInput {
           isTrap(cardDef(id)) ? 'Tuzaklar rakip saldırınca ya da canavar çağırınca açılır: o an sana sorulur' : (this.spellReason(id, false) ?? 'Bu kart şu an aktive edilemez'),
           { style: isTrap(cardDef(id)) ? 'trap' : 'fire', ms: 2600 },
         );
-        return null;
+        return this.refuse(ref);
       }
       const t = this.views.field.tileAt(p, 'spellTrap', ref.index);
       this.pin(id);
@@ -432,9 +477,9 @@ export class HumanInput {
       if (verb !== 'activateSpell') return null;
       return this.spellParams(acts, id);
     }
-    if (ref.zone !== 'monster') return null;
+    if (ref.zone !== 'monster') return this.refuse(ref);
     const slot = s.players[p].monsters[ref.index];
-    if (!slot) return null;
+    if (!slot) return this.refuse(ref);
     const id = s.cards[slot.uid].cardId;
     const u = this.views.field.unitAt(p, ref.index);
     const at = u ? u.worldPoint('top') : (this.views.field.tileAt(p, 'monster', ref.index)?.home ?? { x: 320, y: 180 });
@@ -445,7 +490,7 @@ export class HumanInput {
       const attacks = legal.filter((a) => a.type === 'attack' && a.attackerZone === ref.index) as Extract<Action, { type: 'attack' }>[];
       if (!attacks.length) {
         hud.flashHint(this.attackReason(ref.index));
-        return null;
+        return this.refuse(ref);
       }
       const targets = attacks.filter((a) => a.targetZone !== null);
       const direct = attacks.find((a) => a.targetZone === null) ?? null;
@@ -463,6 +508,10 @@ export class HumanInput {
       const opp: PlayerId = p === 0 ? 1 : 0;
       const tile = this.views.field.tileAt(p, 'monster', ref.index);
       tile?.setHighlight(PAL.gold3);
+      // v3 (F4 / F5): the selected attacker wears white corners while its target is picked
+      const atk = V3_A6_B ? this.views.field.unitAt(p, ref.index) : null;
+      this.sel?.release();
+      this.sel = atk ? new SelectMark(this.scene, atk) : null;
       try {
         const r = await this.pickZone(
           targets.map((a) => ({ player: opp, zone: 'monster' as ZoneKind, index: a.targetZone! })),
@@ -476,6 +525,8 @@ export class HumanInput {
         } catch {
           /* tile gone */
         }
+        this.sel?.release();
+        this.sel = null;
       }
     }
 
@@ -493,7 +544,7 @@ export class HumanInput {
       });
     if (!opts.some((o) => o.enabled)) {
       hud.flashHint(opts[0].reason ?? 'Bu canavarla şu an bir şey yapılamaz', { style: 'neutral' });
-      return null;
+      return this.refuse(ref);
     }
     this.pin(slot.faceUp ? id : id, slot.faceUp ? stats : {});
     this.setMode('menu');
@@ -683,12 +734,21 @@ export class HumanInput {
     const ins = this.views.prompt.instruction(text, { cancel: o.cancel, style: this.player === 0 ? 'p1' : 'p2' });
     this.instruction = ins;
     this.zoneHover = { refs, color: o.color, hot: '' };
+    // v3 (F4): target corners on the candidates that are monsters on screen
+    const aim = V3_A6_B ? new AimMarks(this.scene, this.views, refs) : null;
+    this.aim?.cancel();
+    this.aim = aim;
     const prevMode = this.mode;
     return new Promise<ZoneRef | null>((resolve) => {
       let done = false;
       const finish = (v: ZoneRef | null) => {
         if (done) return;
         done = true;
+        if (aim) {
+          if (v && token === this.token) aim.confirm(v);
+          else aim.cancel();
+          if (this.aim === aim) this.aim = null;
+        }
         this.onZone = null;
         this.zoneCancel = null;
         this.endZoneHover();
@@ -708,10 +768,11 @@ export class HumanInput {
       this.onZone = (h) => {
         const r = refs.find((x) => x.player === h.player && x.zone === h.spot && x.index === h.index);
         if (r) {
-          sfx.play('uiClick', { volume: 0.7 });
+          if (!aim) sfx.play('uiClick', { volume: 0.7 }); // v3: the corners' lock (ui3Lock) says it
           finish(r);
         } else {
-          sfx.play('uiError', { volume: 0.4 });
+          if (aim) this.rejectHit(h);
+          else sfx.play('uiError', { volume: 0.4 });
           this.views.hud.flashHint('Parlayan alanlardan birine tıkla', { style: 'neutral', ms: 1200 });
         }
       };
@@ -747,11 +808,21 @@ export class HumanInput {
     this.instruction = ins;
     this.zoneHover = { refs, color: PAL.gold3, hot: '' };
     paint();
+    // v3 (F4 "Kurban seçimi"): corners on the pool; a chosen tribute's turn white beside a "1/2" counter
+    const aim = V3_A6_B ? new AimMarks(this.scene, this.views, refs) : null;
+    this.aim?.cancel();
+    this.aim = aim;
+    const refOf = (uid: Uid) => ({ player: p, zone: 'monster' as ZoneKind, index: zoneOf(uid) });
     return new Promise<Uid[] | null>((resolve) => {
       let done = false;
       const finish = (v: Uid[] | null) => {
         if (done) return;
         done = true;
+        if (aim) {
+          if (v && token === this.token) aim.confirm(v.map(refOf));
+          else aim.cancel();
+          if (this.aim === aim) this.aim = null;
+        }
         this.onZone = null;
         this.zoneCancel = null;
         this.endZoneHover();
@@ -773,16 +844,25 @@ export class HumanInput {
       this.onZone = (h) => {
         const uid = h.player === p && h.spot === 'monster' ? s.players[p].monsters[h.index]?.uid : undefined;
         if (uid === undefined || !pool.includes(uid)) {
-          sfx.play('uiError', { volume: 0.4 });
+          if (aim) this.rejectHit(h);
+          else sfx.play('uiError', { volume: 0.4 });
           this.views.hud.flashHint('Kurban olarak kendi canavarlarından birine tıkla', { style: 'neutral', ms: 1400 });
           return;
         }
         if (chosen.has(uid)) chosen.delete(uid);
         else chosen.add(uid);
-        sfx.play('uiClick', { volume: 0.7 });
+        if (!aim) sfx.play('uiClick', { volume: 0.7 });
         if (chosen.size >= need) return finish([...chosen]);
         ins.setText(label());
         paint();
+        if (aim) {
+          // the counters follow the order of choice; ui3Mark / ui3Unmark for the one clicked
+          const order = [...chosen];
+          for (const u of pool) {
+            const i = order.indexOf(u);
+            aim.mark(refOf(u), i >= 0 ? `${i + 1}/${need}` : null, u === uid);
+          }
+        }
         if (this.zoneHover) this.zoneHover.hot = '';
       };
       const prev = this.onChoice;
@@ -993,7 +1073,9 @@ export class HumanInput {
 
   private hover(sx: number, sy: number): void {
     const inHand = sy >= 284 && sx >= 160 && sx <= 480;
-    const h = inHand ? null : this.pick(sx, sy);
+    // v3 (K12): the other player's mini-hand by its panel
+    const mini = V3_A6_B && !inHand ? this.miniAt(sx, sy) : null;
+    const h = inHand || mini !== null ? null : this.pick(sx, sy);
     // board pick feedback: the candidate under the pointer lights up white
     const zh = this.zoneHover;
     if (inHand) {
@@ -1007,19 +1089,23 @@ export class HumanInput {
         if (prev && this.mode !== 'tribute') board.highlightZone(prev.player, prev.zone, prev.index, zh.color);
         if (hot && this.mode !== 'tribute') board.highlightZone(hot.player, hot.zone, hot.index, PAL.white);
         zh.hot = k;
-        if (hot) sfx.play('uiHover', { volume: 0.3, pitch: 1.3 });
+        // v3 (F4): the candidate's corners settle in under the pointer (they say ui3Aim themselves)
+        const aim = this.aim;
+        if (aim) aim.setHot(hot && aim.has(hot) ? hot : null);
+        if (hot && !(aim && aim.has(hot))) sfx.play('uiHover', { volume: 0.3, pitch: 1.3 });
       }
       this.scene.input.setDefaultCursor(hot ? 'pointer' : 'default');
     } else if (this.mode === 'idle') {
       this.scene.input.setDefaultCursor(h && this.idleZones.has(refKey(h)) ? 'pointer' : 'default');
     }
     if (inHand) return; // the hand band handles its own hover
-    const key = h ? refKey(h) : '';
+    const key = mini !== null ? `mini:${mini}` : h ? refKey(h) : '';
     if (key === this.hoverKey) return;
     this.hoverKey = key;
     const v = this.views;
     const s = this.state ?? null;
     const back = () => (this.pinned ? v.inspect.show(this.pinned.id, this.pinned.stats) : v.inspect.hide());
+    if (mini !== null && s) return void (showPile(v.inspect, 'hand', mini, s.players[mini].hand.length) || back());
     if (!h || !s) return back();
     const ps = s.players[h.player];
     if (h.spot === 'monster') {
@@ -1041,9 +1127,66 @@ export class HumanInput {
     }
     if (h.spot === 'graveyard') {
       const g = ps.graveyard;
-      return g.length ? v.inspect.show(s.cards[g[g.length - 1]].cardId) : back();
+      if (g.length) return v.inspect.show(s.cards[g[g.length - 1]].cardId);
+      // v3 (K12): an empty graveyard says so ("Mezarlık · 0 kart")
+      if (V3_A6_B && showPile(v.inspect, 'graveyard', h.player, 0)) return;
+      return back();
     }
+    // v3 (K12 / S-9): a deck shows its count, never its cards
+    if (V3_A6_B && h.spot === 'deck' && showPile(v.inspect, 'deck', h.player, ps.deck.length)) return;
     back();
+  }
+
+  // ================================================================ v3 (lane A6-B): reject, graveyard, mini-hand
+
+  /** F5: answer an invalid click on the board spot `h` where the click landed (v3 only). */
+  private rejectHit(h: { player: PlayerId; spot: BoardSpot; index: number } | null): void {
+    if (!V3_A6_B) return;
+    const at = this.lastClick;
+    if (!at) return;
+    const w = this.views.camera.worldPoint(at.x, at.y);
+    const unit = h && h.spot === 'monster' ? this.views.field.unitAt(h.player, h.index) : null;
+    rejectClick(this.scene, this.views, w, { tile: h, unit, selected: this.sel });
+  }
+
+  /** zoneFlow's "nothing to do there": the F5 answer in v3; null either way. */
+  private refuse(ref: ZoneRef): null {
+    if (V3_A6_B) this.rejectHit({ player: ref.player, spot: ref.zone, index: ref.index });
+    return null;
+  }
+
+  /**
+   * K11 (v3): open `player`'s graveyard panel (lane A6-A's, S-9) when no cinematic plays (or the duel
+   * is over) and no menu / prompt / picker holds the screen. True when the click was taken.
+   */
+  private openGrave(player: PlayerId, via: 'mouse' | 'key'): boolean {
+    if (!V3_A6_B) return false;
+    const s = this.state;
+    if (!s) return false;
+    if (gravePanelOpen(this.scene)) return true;
+    if (s.winner === null && this.busy()) return false;
+    if (this.pauseOpen || this.views.menu.isOpen) return false;
+    if (this.mode === 'menu' || this.mode === 'pause' || this.mode === 'trap' || this.mode === 'cards' || this.mode === 'curtain') return false;
+    this.graveOpens++;
+    if (via === 'mouse') ackClick(this.scene, this.views, { player, spot: 'graveyard', index: 0 });
+    const cards = s.players[player].graveyard.map((u) => s.cards[u].cardId);
+    void openGravePanel(this.scene, this.views, player, { cards, via }).catch((e) => console.error('[input] graveyard panel', e));
+    return true;
+  }
+
+  /** K12 (v3): the other player's mini-hand under a screen point (by its panel; 9×13 backs, 7 px apart). */
+  private miniAt(sx: number, sy: number): PlayerId | null {
+    const s = this.state;
+    if (!s) return null;
+    const q: PlayerId = this.views.hand.owner === 0 ? 1 : 0;
+    const n = Math.min(10, s.players[q].hand.length);
+    if (!n) return null;
+    const r = panelRect(q);
+    const cx = r.x + r.w / 2;
+    const half = Math.ceil(((n - 1) * 7) / 2) + 5;
+    const y0 = q === 0 ? r.y - 12 : r.y + r.h - 2;
+    const y1 = q === 0 ? r.y + 2 : r.y + r.h + 12;
+    return sx >= cx - half && sx <= cx + half && sy >= y0 && sy <= y1 ? q : null;
   }
 
   /** Keep hover lookups on the latest state even while not waiting for input. */

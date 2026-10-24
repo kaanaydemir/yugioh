@@ -8,6 +8,9 @@
 //
 // Input is locked while cinematics play. Hot-seat privacy is handled by views.info (curtain
 // before a different human sees their hand).
+// v3, lane A6-B (V3_A6_B; docs/v3/A6_PLAN.md K11, open question S3): while a graveyard panel is open the
+// computer still thinks, then holds its move until the panel closes; HumanInput learns when a cinematic
+// plays (input.busy) so the panel only opens between them.
 
 import Phaser from 'phaser';
 import { actingPlayer, apply, chooseAction, isLegal } from '../engine';
@@ -18,6 +21,8 @@ import { wait } from '../vfx/core';
 import type { Director } from '../cinematics/_core/Director';
 import type { DuelViews } from './types';
 import { HumanInput } from './HumanInput';
+import { V3_A6_B } from '../view/v3flags';
+import { gravePanelOpen, whenGravePanelClosed } from '../view/v3/GravePanel';
 
 interface Mail {
   action: Action;
@@ -64,6 +69,7 @@ export class DuelController {
     this.opts = opts;
     this.input = new HumanInput(scene, views);
     this.input.setState(state);
+    if (V3_A6_B) this.input.busy = () => this.busy;
     this.input.onQuit = () => this.quit();
     views.info.onCurtain = (on) => this.input.setCurtain(on);
     // the toolbar's sound switch starts from what is actually audible
@@ -149,6 +155,11 @@ export class DuelController {
         const think = wait(this.scene, this.state.pending ? 380 : 520).then(() => 'go' as const);
         const r = await Promise.race([think, mailArrived]);
         if (r === null || this.stopped) return null;
+        // v3 (K11 / S3): the graveyard panel is open — the computer has thought; it moves once it closes
+        if (V3_A6_B && gravePanelOpen(this.scene)) {
+          const g = await Promise.race([whenGravePanelClosed(this.scene).then(() => 'go' as const), mailArrived]);
+          if (g === null || this.stopped) return null;
+        }
         try {
           return { action: chooseAction(this.state, this.seed++), mail: null };
         } catch (e) {
