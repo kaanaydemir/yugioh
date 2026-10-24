@@ -476,8 +476,9 @@ export class LpCounter {
     if (REDUCED_MOTION) return this.steps(from, to, unit, ms, o.onClick, o.onLand);
     const lowFrom = lowDigits(from, k);
     const lowTo = lowDigits(to, k);
-    let shownDigit = mod10(Math.round(wheelPositions(from, n, k, lowFrom)[k]));
-    let clicked = 0;
+    // the fastest wheel's position counts whole units (not mod 10): its rounded value is the click
+    const startUnit = Math.round(wheelPositions(from, n, k, lowFrom)[k]);
+    let shownUnit = startUnit;
     const frame = (t: number): void => {
       if (!this.spin) return;
       const e = lpEase(t);
@@ -485,11 +486,10 @@ export class LpCounter {
       this.spin.v = v;
       const pos = wheelPositions(v, n, k, e < 0.5 ? lowFrom : lowTo);
       this.draw(pos, t < 1);
-      const d = mod10(Math.round(pos[k]));
-      if (d !== shownDigit) {
-        shownDigit = d;
-        clicked = Math.min(clicks, clicked + 1);
-        o.onClick?.(clicked, clicks);
+      const u = Math.round(pos[k]);
+      if (u !== shownUnit) {
+        shownUnit = u;
+        o.onClick?.(Math.min(clicks, Math.abs(u - startUnit)), clicks);
       }
     };
     return new Promise((resolve) => {

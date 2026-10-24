@@ -10,17 +10,19 @@
 //             the floor as the strike's lock-on sigil (kit `as: 'sigil'`): two thin rings — the teal2 lit rim and a
 //             teal1 inner ring, the floor's night0 between them (rings, never a filled pool: a bright ellipse under
 //             a column is Şifa Pınarı's basin); the teal1 horizon line stops short of the strike.
-//   cloud     matter, ink outlined: three towers (the tallest left of centre) with rounded heads on their upper-left
-//             shoulders, two low side lumps and a RAGGED base — three lumps hang under it, the bolt drops from the
-//             middle one. Flat bands: night4 lit band toward the top left (steel 1-px lit edge, kit litEdge),
-//             night3 front, night2 shadow toward the bottom right, 2-px night1 creases where a front mass overlaps
-//             a back one (IŞ-5). Only the underside within ~10 px of the bolt's root takes the strike's light
-//             (teal3 → teal2 steps) and the teal3 rim (IŞ-7); the rest of the belly stays in shadow.
-//   bolt      light, never outlined: a 5-px channel (teal4) with a 3-px white core, kinks of 8–12 px (a zig-zag at
-//             1×, never a column), from the belly to the hit; two 1-px forks rooted on its vertices (white root →
-//             teal4 → teal3 tip). At the hit a small white star (no flash ellipses).
+//   cloud     matter, ink outlined: a storm ceiling across the whole width (no free side edge, so it never reads
+//             as a cap or a saucer) — one dominant tower left of centre, smaller masses toward the sides, rounded
+//             heads on their upper-left shoulders and a RAGGED base: three lumps hang under it, the bolt drops from
+//             the middle one. Flat bands: night4 lit band only where the mass faces open sky toward the key light
+//             (steel 1-px lit edge, kit litEdge), night3 front, night2 shadow toward the bottom right, 1-px creases
+//             one ramp step under the surface where a front mass overlaps a back one (IŞ-5). Only the underside
+//             within ~8 px of the bolt's root takes the strike's light (teal3 → teal2) and the teal3 rim (IŞ-7).
+//   bolt      light, never outlined: a 5-px channel (teal4) with a 3-px white core, kinks of 10–14 px (a zig-zag at
+//             1×, never a column), 4-connected (no corner-only steps, no checkerboards), from the belly to the
+//             hit; two 1-px forks rooted on its vertices (white root → teal4 → teal3 tip). At the hit a small white
+//             star (no flash ellipses).
 //   slabs     matter: two floor plates broken and tilted up at the crater's rim (night4 lit top face, night2 side,
-//             night0 crack lines across the top), the struck ground breaking — stone, not water.
+//             night0 crack lines across the top, the edge facing the strike lit teal2 by it) — stone, not water.
 // The small picture (44×34) is a second drawing of the same composition (KART_RESIMLERI §1 (2)): the backdrop and
 // the bolt by the same code at 1× density (a 3-px bolt — 1-px white core in teal4 —, kinks ≥ 4 px, no forks), the
 // cloud as two rounded heads lit only on their upper-left shoulders, the slabs as small hand shapes.
@@ -363,6 +365,12 @@ const CLOUD_SMALL: readonly Puff[] = [
 const ROOT_SMALL: XY = [18, 12];
 /** The 3-px bolt: kinks of 5–6 px (≥ 4), the halved big path. */
 const BOLT_SMALL: readonly XY[] = [ROOT_SMALL, [13, 15], [20, 18], [15, 21], [21, 24], [23, 26]];
+/** The small picture's ONE fork, 2 px thick (teal3), off the second kink. */
+const FORK_SMALL: readonly XY[] = [
+  [20, 18],
+  [25, 20],
+  [27, 23],
+];
 
 function paintSmall(l: ArtLayers, f: number): void {
   const fl = FLICKER[f % FLICKER.length];
@@ -371,6 +379,12 @@ function paintSmall(l: ArtLayers, f: number): void {
   litEdge(l.subject, 1, { only: (c) => c === PAL.night4, lit: 0.6 });
   paintSlabs(l.subject, 2);
   ink(l.subject);
+  if (fl.forks.includes(1)) {
+    walk(FORK_SMALL, (x, y) => {
+      l.light.set(x, y, PAL.teal3);
+      l.light.set(x, y + 1, PAL.teal3);
+    }, true);
+  }
   span(l.light, BOLT_SMALL, 3, PAL.teal4);
   span(l.light, BOLT_SMALL, 1, fl.core);
   stamp(l.light, fl.star ? STAR_SMALL : STAR_SMALL_DIM, HIT[0] >> 1, (HIT[1] >> 1) + 1);

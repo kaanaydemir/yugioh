@@ -556,6 +556,140 @@ describe('B-open: the "DÜELLO!" plate and the HUD arrival (F0)', () => {
   });
 });
 
+describe('B2: the LP counter, the bar and the gain (F3)', () => {
+  /** The count simulated frame by frame (60 fps, the tween's clock): the shown number, the unit wheel's clicks. */
+  async function simulate(from: number, to: number) {
+    const { countUnit, lpRollMs, lpEase, wheelPositions, digitCount, LP_WHEELS } = await import('../../src/view/v3/odometer');
+    const n = Math.max(LP_WHEELS.min, digitCount(from), digitCount(to));
+    const k = countUnit(from, to);
+    const clicks = Math.round(Math.abs(to - from) / 10 ** k);
+    const ms = lpRollMs(clicks, 400);
+    const shown: number[] = [];
+    const clickAt: number[] = [];
+    const frame = 1000 / 60;
+    const start = Math.round(wheelPositions(from, n, k)[k]);
+    let last = start;
+    let advanced = 0;
+    for (let t = 0; t <= ms + frame; t += frame) {
+      const e = lpEase(Math.min(1, t / ms));
+      const pos = wheelPositions(from + (to - from) * e, n, k);
+      // the number the windows show (each wheel's nearest digit)
+      shown.push(pos.reduce((acc, p, j) => acc + (((Math.round(p) % 10) + 10) % 10) * 10 ** j, 0));
+      const d = Math.round(pos[k]);
+      if (d !== last) {
+        clickAt.push(t);
+        advanced += Math.abs(d - last);
+        last = d;
+      }
+    }
+    return { n, k, clicks, ms, shown, clickAt, advanced, start, end: last };
+  }
+
+  it('a mechanical count: the finest wheel clicks once per unit, the upper wheels turn only on the carry', async () => {
+    const { wheelPositions, countUnit } = await import('../../src/view/v3/odometer');
+    expect(countUnit(4000, 3500)).toBe(2);
+    expect(countUnit(4000, 1000)).toBe(2);
+    expect(countUnit(1800, 2800)).toBe(2);
+    expect(countUnit(3999, 4000)).toBe(0);
+    expect(Math.abs(99999 - 0) / 10 ** countUnit(99999, 0)).toBeLessThanOrEqual(60);
+    // at rest every wheel shows its digit exactly
+    expect(wheelPositions(3500, 4, 2)).toEqual([0, 0, 35, 3]);
+    // between 4000 and 3900 the thousands wheel turns exactly while the hundreds wheel passes 0 → 9
+    for (let v = 4000; v >= 3500; v -= 5) {
+      const [, , h, th] = wheelPositions(v, 4, 2);
+      const hm = ((h % 10) + 10) % 10;
+      const turning = th !== Math.round(th);
+      expect(turning, `v ${v}`).toBe(hm > 9 && hm < 10);
+    }
+  });
+
+  it('the count stays inside F3: ≤ 360 ms (≤ the 400-ms LP budgets), one click per unit, the shown number never turns back', async () => {
+    const { A6_MS } = await import('../../src/view/v3/motion');
+    for (const [from, to] of [
+      [4000, 3500],
+      [4000, 1000],
+      [1800, 2800],
+      [4000, 4500],
+      [900, 0],
+      [100, 0],
+    ]) {
+      const r = await simulate(from, to);
+      expect(r.ms, `${from} → ${to}`).toBeLessThanOrEqual(360);
+      expect(r.ms).toBeLessThanOrEqual(Math.min(A6_MS.lpDamage.max, A6_MS.lpGain.max));
+      // the fastest wheel turns exactly one digit per unit (several may pass within one early frame)
+      expect(r.advanced, `${from} → ${to} clicks`).toBe(r.clicks);
+      expect(Math.abs(r.end - r.start)).toBe(r.clicks);
+      expect(r.clickAt.length).toBeLessThanOrEqual(r.clicks);
+      expect(r.shown[0]).toBe(from);
+      expect(r.shown[r.shown.length - 1]).toBe(to);
+      for (let i = 1; i < r.shown.length; i++) {
+        if (to < from) expect(r.shown[i], `${from} → ${to} frame ${i}`).toBeLessThanOrEqual(r.shown[i - 1]);
+        else expect(r.shown[i], `${from} → ${to} frame ${i}`).toBeGreaterThanOrEqual(r.shown[i - 1]);
+      }
+    }
+  });
+
+  it('ticks: one per click at most every 34 ms (the gate), however fast the wheel turns', async () => {
+    const { tickGate, LP_V3 } = await import('../../src/view/v3/hudV3');
+    expect(LP_V3.tickGapMs).toBeGreaterThanOrEqual(34);
+    const r = await simulate(4000, 1000);
+    const gate = tickGate(LP_V3.tickGapMs);
+    const ticks = r.clickAt.filter((t) => gate(t));
+    expect(ticks.length).toBeGreaterThan(3);
+    for (let i = 1; i < ticks.length; i++) expect(ticks[i] - ticks[i - 1]).toBeGreaterThanOrEqual(34);
+  });
+
+  it('the windows: palette pixels, a 1-px frame with cut corners round an ink inside, 17 px apart', async () => {
+    const { lpWindowsCanvas, LP_WHEELS } = await import('../../src/view/v3/odometer');
+    const p = lpWindowsCanvas(4);
+    expect(p.w).toBe(4 * LP_WHEELS.pitch - 1);
+    expect(p.h).toBe(LP_WHEELS.bottom - LP_WHEELS.top + 2);
+    for (let y = 0; y < p.h; y++)
+      for (let x = 0; x < p.w; x++) {
+        const c = p.get(x, y);
+        if (c !== null) expect(PAL_SET.has(c), `${x},${y}`).toBe(true);
+      }
+    for (let i = 0; i < 4; i++) {
+      const x0 = i * LP_WHEELS.pitch;
+      expect(p.get(x0, 0), 'cut corner').toBeNull();
+      expect(p.get(x0 + 1, 0)).toBe(LP_WHEELS.frame);
+      expect(p.get(x0, 1)).toBe(LP_WHEELS.frame);
+      expect(p.get(x0 + 1, 1)).toBe(LP_WHEELS.inside);
+      expect(p.get(x0 + 15, p.h - 1), 'cut corner').toBeNull();
+      if (i < 3) expect(p.get(x0 + 16, 5), 'gap between windows').toBeNull();
+    }
+  });
+
+  it('tones: a turning edge one palette step down; low LP is 1–999 (F3); the timings fit the plan', async () => {
+    const { toneDown } = await import('../../src/view/v3/odometer');
+    const { isLowLp, LP_V3, PANEL_DEPTH } = await import('../../src/view/v3/hudV3');
+    const { DEPTH } = await import('../../src/view/layout');
+    expect(toneDown(PAL.white)).toBe(PAL.mist);
+    expect(toneDown(PAL.crim3)).toBe(PAL.crim2);
+    expect(toneDown(PAL.leaf3)).toBe(PAL.leaf2);
+    expect(toneDown(PAL.night3)).toBe(PAL.night2);
+    expect([isLowLp(999), isLowLp(1), isLowLp(1000), isLowLp(0)]).toEqual([true, true, false, false]);
+    expect(LP_V3.erodeAt + LP_V3.erodeMs).toBeLessThanOrEqual(360);
+    expect(LP_V3.trimMs + 34).toBeLessThanOrEqual(400);
+    expect(LP_V3.shakeMs).toBeLessThanOrEqual(120);
+    expect(LP_V3.lowBeatMs * 2).toBe(1200);
+    expect(LP_V3.lowPulseMs).toBeGreaterThanOrEqual(50); // ≥ 3 frames (§1.5)
+    expect(LP_V3.barStep).toBe(4);
+    // the panels sit above today's panelGlow fill (HUD + 4.5) and under the effects flying into them (HUD + 6)
+    expect(PANEL_DEPTH).toBeGreaterThan(DEPTH.HUD + 5);
+    expect(PANEL_DEPTH).toBeLessThan(DEPTH.HUD + 6);
+  });
+
+  it('the gain (presentHeal, S-14): the handler ends within A6_MS.lpGain; the number sits outside its panel', async () => {
+    const { A6_MS } = await import('../../src/view/v3/motion');
+    const { HEAL_V3 } = await import('../../src/cinematics/v3small/heal');
+    const { LP_WHEELS } = await import('../../src/view/v3/odometer');
+    expect(HEAL_V3.handlerMs).toBeLessThanOrEqual(A6_MS.lpGain.max - 17);
+    expect(HEAL_V3.handlerMs).toBeGreaterThanOrEqual(LP_WHEELS.rollMs);
+    expect(HEAL_V3.gap).toBeGreaterThanOrEqual(8); // a size-1 number's half height + 1: clear of the panel
+  });
+});
+
 describe('B1 registration audit (§6.4): lane B fills only its own hooks, only under V3_A6_B', () => {
   const LANE_B_HOOKS = ['duelPlate', 'hudIn', 'turnStart', 'phaseChange', 'deckOut', 'gameOver', 'decision', 'target', 'presentHeal'];
   async function filled(look: 'v1' | 'v3', a6?: string): Promise<string[]> {
@@ -572,10 +706,10 @@ describe('B1 registration audit (§6.4): lane B fills only its own hooks, only u
     return filledV3Hooks();
   }
 
-  it('v1: none; v3 lane B on: turnStart + phaseChange + duelPlate + hudIn (and nothing outside lane B); lane B off: none of B’s', async () => {
+  it('v1: none; v3 lane B on: turnStart + phaseChange + duelPlate + hudIn + presentHeal (and nothing outside lane B); lane B off: none of B’s', async () => {
     expect(await filled('v1')).toEqual([]);
     const b = await filled('v3', 'b');
-    expect(b).toEqual(expect.arrayContaining(['turnStart', 'phaseChange', 'duelPlate', 'hudIn']));
+    expect(b).toEqual(expect.arrayContaining(['turnStart', 'phaseChange', 'duelPlate', 'hudIn', 'presentHeal']));
     expect(b.filter((h) => !LANE_B_HOOKS.includes(h))).toEqual([]);
     for (const a6 of ['off', 'a']) expect((await filled('v3', a6)).filter((h) => LANE_B_HOOKS.includes(h)), `a6=${a6}`).toEqual([]);
   }, 120000);
@@ -591,6 +725,7 @@ describe('A6-B source scan (§6.4)', () => {
       '../../src/view/v3/odometer.ts',
       '../../src/cinematics/v3small/turn.ts',
       '../../src/cinematics/v3small/opening-flow.ts',
+      '../../src/cinematics/v3small/heal.ts',
     ],
     {
       eager: true,
@@ -611,7 +746,7 @@ describe('A6-B source scan (§6.4)', () => {
   });
 
   it('no colour constant outside the palette, no ADD blend, no alpha fade in A6-B files', () => {
-    expect(Object.keys(SOURCES).length).toBe(7);
+    expect(Object.keys(SOURCES).length).toBe(8);
     for (const [f, src] of Object.entries(SOURCES)) {
       const hexes = [...src.matchAll(/0x[0-9a-fA-F]{6}\b/g)].map((m) => Number(m[0]));
       expect(

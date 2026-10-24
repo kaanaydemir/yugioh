@@ -339,7 +339,11 @@ export class HandView {
    * cinematics). It stays where it is (top of the hand band); the rest of the hand closes up.
    */
   takeCard(uid: Uid): CardSprite | null {
-    return this.detach(uid, false);
+    const mo = this.motion;
+    const c = this.detach(uid, mo !== null);
+    // v3: a leaning card straightens through its baked steps as the caller takes it (no one-frame snap)
+    if (c && mo) void mo.lean(c, 0, HAND3.tiltMs);
+    return c;
   }
 
   /** takeCard; v3: `keepLean` leaves a leaning card leaning (the caller straightens it, removeCard). */

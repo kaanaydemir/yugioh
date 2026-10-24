@@ -192,6 +192,16 @@ interface PanelV3 {
  */
 export const PANEL_DEPTH = DEPTH.HUD + 5.5;
 
+/** A tick gate (F3): true when at least `gap` ms of loop time passed since its last true. */
+export function tickGate(gap: number): (now: number) => boolean {
+  let last = -Infinity;
+  return (now) => {
+    if (now - last < gap) return false;
+    last = now;
+    return true;
+  };
+}
+
 /** Low LP (F3): above 0 and under 1000. */
 export function isLowLp(lp: number): boolean {
   return lp > 0 && lp < 1000;
@@ -485,16 +495,14 @@ export class HudV3 implements HudApi {
       P.rollTone = loss ? PAL.crim3 : PAL.leaf3;
       this.renderLp(P);
     });
-    let lastTick = -1e9;
+    const tickOk = tickGate(LP_V3.tickGapMs);
     void P.counter.count(value, {
       maxMs: cap,
       onLand: () => this.landLp(P, seq, loss),
       onClick: (i, n) => {
         if (P.lpSeq !== seq || this.destroyed) return;
         // one tick per click, at least 34 ms apart in real time (at 2× / 3× the stream thins)
-        const now = this.scene.game.loop.time;
-        if (now - lastTick < LP_V3.tickGapMs) return;
-        lastTick = now;
+        if (!tickOk(this.scene.game.loop.time)) return;
         const k = n > 1 ? i / n : 1;
         const pitch = loss ? 0.9 + 0.2 * (1 - k) : 1 + 0.3 * k;
         ui3Sfx('ui3LpTick', { pitch }, 'lpTick', { volume: 0.35, pitch });
