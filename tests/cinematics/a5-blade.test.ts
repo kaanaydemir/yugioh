@@ -1,7 +1,9 @@
-// Lane A5-A step A-2 — Ejder Kılıcı v3 (docs/v3/A5_PLAN.md §3.1): the signature great sword (palette,
+// Lane A5-A step A-2 — Ejder Kılıcı v3 (docs/v3/A5_PLAN.md §3.1): the signature great sword motif (palette,
 // size ≥ the old forge's 15×46 sword, stages, rim, crack), the equip anchor and the waist ring, the
-// break's shards, the bond pose plan, the flight (path, drawings, the drawing plan with no one-frame
-// flicks), the lying card's art window, and when a statChange is a blade's loss.
+// break's shards, the bond pose plan, the forged sword of the forge (bigsword step, the user's rule of
+// 24 Oct: the old forge path in v3 pixels — never smaller than the old 30×92 / 15×46 sword; turns, looks,
+// the old size choice, the layout, the beats), the lying card's art window, and when a statChange is a
+// blade's loss.
 // (Kept in its own file: tests/cinematics/a5-spells.test.ts is being edited by a parallel step.)
 
 import { describe, expect, it, vi } from 'vitest';
@@ -13,20 +15,8 @@ import { PixelCanvas } from '../../src/art/pixel';
 import { ISO_TEX_H, ISO_TEX_W } from '../../src/art/cards';
 import { greatSwordMotif, type GreatSwordOpts, type MotifFacing, type SwordAngle } from '../../src/art/spellmotifs-v3';
 import { anchorFromFrame, ringPixels, swordShardPoints } from '../../src/duel/auras-v3';
-import {
-  PLAN_MIN_RUN,
-  PLAN_SAMPLES,
-  bladeLost,
-  bondPosePlan,
-  flightDrawing,
-  flightEase,
-  flightPath,
-  flightPlan,
-  inArtWindow,
-  planAt,
-  type FlightDrawing,
-  type StatEv,
-} from '../../src/cinematics/spells/_blade_v3';
+import { DRAW_STEPS, FORGE, bladeLost, bondPosePlan, forgeLayout, inArtWindow, sinkLook, type StatEv } from '../../src/cinematics/spells/_blade_v3';
+import { FORGE_OLD, TURN_K, forgeSizeFor, forgeSwordGeom, forgeSwordMotif, turnAt, type ForgeSize, type ForgeSwordOpts, type ForgeTurn } from '../../src/cinematics/spells/_blade_sword';
 import type { MonsterUnit } from '../../src/duel/MonsterUnit';
 
 const PALETTE = new Set<number>(Object.values(PAL));
@@ -185,91 +175,119 @@ describe('A-2 the bond pose', () => {
   });
 });
 
-describe('A-2 the flight', () => {
-  const same = (a: FlightDrawing, b: FlightDrawing) => a.angle === b.angle && (a.angle === 'up' || a.facing === b.facing);
-  const runsOf = (plan: FlightDrawing[]) => {
-    const runs: { d: FlightDrawing; n: number }[] = [];
-    for (const d of plan) {
-      const last = runs[runs.length - 1];
-      if (last && same(last.d, d)) last.n++;
-      else runs.push({ d, n: 1 });
-    }
-    return runs;
+describe('bigsword: the forged sword (the old forge path in v3 pixels)', () => {
+  const SIZES: ForgeSize[] = ['big', 'mid'];
+  const VARIANTS: Omit<ForgeSwordOpts, 'size'>[] = [
+    {},
+    { runesLit: true },
+    { glint: 0.5 },
+    { turn: 1 },
+    { turn: 2 },
+    { turn: 3 },
+    { back: true },
+    { turn: 1, back: true },
+    { turn: 2, back: true },
+    { look: 'hot' },
+    { look: 'cool' },
+    { look: 'ember' },
+    { look: 'ghost' },
+  ];
+  const width = (p: PixelCanvas): number => {
+    const b = p.bounds();
+    return b ? b.w : 0;
   };
 
-  it('the path runs from the forged sword to the anchor; the ease starts fast and lands at 1', () => {
-    const from = { x: 257, y: 190 };
-    const to = { x: 278, y: 154 };
-    const p = flightPath(from, to, -1);
-    expect(p[0]).toEqual(from);
-    expect(p[3]).toEqual(to);
-    expect(flightEase(0)).toBe(0);
-    expect(flightEase(1)).toBe(1);
-    expect(flightEase(0.25)).toBeGreaterThan(0.4);
-    for (let t = 0.05; t < 1; t += 0.05) expect(flightEase(t)).toBeGreaterThan(flightEase(t - 0.05));
-  });
-
-  it('drawings: the closest angle while it rises or crosses; upright while it barely moves or comes down', () => {
-    expect(flightDrawing({ x: 0, y: 0 })).toEqual({ angle: 'up', facing: 1 });
-    expect(flightDrawing({ x: 6, y: 20 })).toEqual({ angle: 'up', facing: 1 });
-    expect(flightDrawing({ x: 0, y: -30 }).angle).toBe('up');
-    expect(flightDrawing({ x: 20, y: -20 })).toEqual({ angle: 'diag', facing: 1 });
-    expect(flightDrawing({ x: -20, y: -20 })).toEqual({ angle: 'diag', facing: -1 });
-    expect(flightDrawing({ x: -30, y: -2 })).toEqual({ angle: 'flat', facing: -1 });
-  });
-
-  it('the plan: one drawing per 5 ms, upright at both ends, no drawing shown for less than ≈ 2 frames', () => {
-    const cases: [{ x: number; y: number }, { x: number; y: number }, -1 | 1][] = [
-      [{ x: 257, y: 175 }, { x: 278, y: 154 }, -1], // the card in front of the monster (Büyücü, Suikastçı)
-      [{ x: 290, y: 205 }, { x: 228, y: 148 }, -1], // a card two zones to the right (Kurt, Muhafız)
-      [{ x: 150, y: 190 }, { x: 330, y: 120 }, -1], // a card far to the left (the big Ejder)
-      [{ x: 390, y: 95 }, { x: 352, y: 108 }, 1], // P2: its card behind the monster row
-    ];
-    for (const [from, to, side] of cases) {
-      const path = flightPath(from, to, side);
-      const plan = flightPlan(path, side);
-      expect(plan.length).toBe(PLAN_SAMPLES);
-      expect(plan[0].angle).toBe('up');
-      expect(plan[plan.length - 1]).toEqual({ angle: 'up', facing: 1 });
-      const runs = runsOf(plan);
-      for (let i = 1; i < runs.length - 1; i++) expect(runs[i].n).toBeGreaterThanOrEqual(PLAN_MIN_RUN);
-      expect(planAt(plan, 0)).toBe(plan[0]);
-      expect(planAt(plan, 1)).toBe(plan[plan.length - 1]);
+  it('every drawing is palette-only, deterministic and keeps its size canvas and anchor (turns never move it)', () => {
+    for (const size of SIZES) {
+      const g = forgeSwordGeom(size);
+      for (const v of VARIANTS) {
+        const m = forgeSwordMotif({ size, ...v });
+        expect(paletteOnly(m.px)).toEqual([]);
+        expect(hash(m.px)).toBe(hash(forgeSwordMotif({ size, ...v }).px));
+        expect([m.px.w, m.px.h, m.ax, m.ay]).toEqual([g.w, g.h, g.cx, 0]);
+      }
     }
-    // the short lift in front of the monster rises upright (no one-frame flat flick, no blade into the body)
-    const short = flightPlan(flightPath(cases[0][0], cases[0][1], -1), -1);
-    expect(short.some((d) => d.angle === 'flat')).toBe(false);
-    // the long cross to the left leans left, the way it flies (the blade leads)
-    const long = flightPlan(flightPath(cases[1][0], cases[1][1], -1), -1);
-    expect(long.some((d) => d.angle !== 'up' && d.facing === -1)).toBe(true);
-    expect(long.some((d) => d.angle !== 'up' && d.facing === 1)).toBe(false);
-    // the far card: it leans toward the monster on the way and rights itself before its tip reaches the body
-    const far = flightPlan(flightPath(cases[2][0], cases[2][1], -1), -1);
-    expect(far.some((d) => d.angle !== 'up' && d.facing === 1)).toBe(true);
   });
 
-  it('never points the blade into its holder near the anchor (P1 and the P2 mirror)', () => {
-    const reach = { up: 0, diag: 23, flat: 32 } as const;
-    const cases: [{ x: number; y: number }, { x: number; y: number }, -1 | 1][] = [
-      [{ x: 150, y: 190 }, { x: 330, y: 120 }, -1],
-      [{ x: 257, y: 175 }, { x: 278, y: 154 }, -1],
-      [{ x: 390, y: 95 }, { x: 352, y: 108 }, 1],
-      [{ x: 500, y: 90 }, { x: 352, y: 108 }, 1],
-    ];
-    for (const [from, to, side] of cases) {
-      const path = flightPath(from, to, side);
-      const plan = flightPlan(path, side);
-      const edge = to.x - side * 4;
-      plan.forEach((d, i) => {
-        if (d.angle === 'up' || d.facing !== -side) return;
-        // where the sword is at that sample (the plan is laid on the eased path)
-        const k = flightEase(i / (plan.length - 1));
-        const u = 1 - k;
-        const x = u * u * u * path[0].x + 3 * u * u * k * path[1].x + 3 * u * k * k * path[2].x + k * k * k * path[3].x;
-        // a run absorbing a short one may hold its lean a few samples on: allow the merge's slack
-        expect((x + d.facing * reach[d.angle] - edge) * -side).toBeLessThanOrEqual(PLAN_MIN_RUN * 3);
-      });
+  it('is at least the old forge sword in each of its sizes (30×92 at ×2, 15×46 at ×1) — the big one twice the old v3 great sword', () => {
+    for (const size of SIZES) {
+      const b = forgeSwordMotif({ size }).px.bounds()!;
+      expect(b.w).toBeGreaterThanOrEqual(FORGE_OLD[size].w);
+      expect(b.h).toBeGreaterThanOrEqual(FORGE_OLD[size].h);
     }
+    const big = forgeSwordMotif({ size: 'big' }).px.bounds()!;
+    const great = greatSwordMotif({}).px.bounds()!;
+    expect(big.w * big.h).toBeGreaterThanOrEqual(great.w * great.h * 3);
+    // point down: the white point is the lowest drawn pixel above the outline, the gem pommel at the top
+    const full = forgeSwordMotif({ size: 'big' }).px;
+    const g = forgeSwordGeom('big');
+    expect(full.get(g.cx, g.tipRow)).toBe(PAL.white);
+    expect(full.get(g.cx, g.tipRow + 1)).toBe(PAL.ink);
+  });
+
+  it('the spin: turns narrow to edge-on, the back face drops the gems, the looks step the ramp without ink', () => {
+    for (const size of SIZES) {
+      const w = [0, 1, 2, 3].map((t) => width(forgeSwordMotif({ size, turn: t as ForgeTurn }).px));
+      for (let i = 1; i < w.length; i++) expect(w[i]).toBeLessThan(w[i - 1]);
+      expect(w[3]).toBeLessThanOrEqual(5);
+      const crim = (p: PixelCanvas) => [PAL.crim1, PAL.crim2, PAL.crim3, PAL.crim4].reduce((n, c) => n + count(p, c), 0);
+      const front = forgeSwordMotif({ size }).px;
+      const back = forgeSwordMotif({ size, back: true }).px;
+      // the grip stays crimson; the pommel gem, the guard gem and the runes do not show on the back
+      expect(crim(back)).toBeLessThan(crim(front));
+      expect(width(back)).toBe(width(front));
+      for (const look of ['hot', 'cool', 'ember', 'ghost'] as const) expect(count(forgeSwordMotif({ size, look }).px, PAL.ink)).toBe(0);
+      expect(count(forgeSwordMotif({ size, look: 'hot' }).px, PAL.white)).toBeGreaterThan(count(front, PAL.white) * 4);
+      expect(count(forgeSwordMotif({ size, runesLit: true }).px, PAL.white)).toBeGreaterThan(count(front, PAL.white));
+      expect(hash(forgeSwordMotif({ size, glint: 0.5 }).px)).not.toBe(hash(front));
+    }
+  });
+
+  it('the spin picks the pre-drawn turn nearest |cos| (back face while cos < 0): the old 1.5 turns from the back to the face', () => {
+    expect(turnAt(Math.PI)).toEqual({ turn: 0, back: true });
+    expect(turnAt(Math.PI * 4)).toEqual({ turn: 0, back: false });
+    expect(turnAt(Math.PI * 1.5).turn).toBe(3);
+    expect(turnAt(Math.PI * 2.25)).toEqual({ turn: 1, back: false });
+    expect(turnAt(Math.PI * 1.25)).toEqual({ turn: 1, back: true });
+    for (let a = 0; a < Math.PI * 4; a += 0.05) {
+      const d = turnAt(a);
+      expect(Math.abs(TURN_K[d.turn] - Math.abs(Math.cos(a)))).toBeLessThanOrEqual(0.17 + 1e-9);
+    }
+  });
+
+  it("the old forge's size choice: ×2 for a body ≥ 40 px with ≥ 30 px to plunge, else ×1 (P2's back row)", () => {
+    expect(forgeSizeFor({ top: 140, h: 52 })).toBe('big');
+    expect(forgeSizeFor({ top: 140, h: 36 })).toBe('mid');
+    expect(forgeSizeFor({ top: 64, h: 50 })).toBe('mid');
+  });
+
+  it('the layout: the ring a halo over the head as wide as the old outer ring, the point just over it, the stab in the body middle', () => {
+    for (const box of [
+      { cx: 292, top: 140, h: 52 },
+      { cx: 318, top: 96, h: 86 },
+      { cx: 352, top: 64, h: 50 },
+    ]) {
+      const L = forgeLayout(box);
+      expect(L.rx * 2).toBe(L.size === 'big' ? 88 : 72);
+      expect(L.ry).toBe(Math.round(L.rx * 0.32));
+      expect(L.ringY).toBe(Math.max(22, Math.round(box.top - 8)));
+      expect(L.top).toBeGreaterThanOrEqual(15);
+      // the point hovers just over the ring's centre (the old: 4 px over it), above the head
+      expect(L.top + L.tipRow).toBeLessThanOrEqual(Math.max(L.ringY, L.tipRow + 16));
+      expect(L.stabTop + L.tipRow).toBe(Math.round(box.top + box.h * 0.5));
+      // it plunges down a fair way (the old: ≥ 30 px for the ×2 sword)
+      expect(L.stabTop - (L.top - 13)).toBeGreaterThanOrEqual(L.size === 'big' ? 30 : 20);
+    }
+  });
+
+  it('the beats are the old forge’s (834 ms from the runes to the stab, the runes a little quicker); the sink steps down the ramp to light', () => {
+    const toStab = FORGE.runes + FORGE.orbit + FORGE.converge + DRAW_STEPS * FORGE.drawStep + FORGE.cool + FORGE.spin + FORGE.hang + FORGE.plunge;
+    // the draw-in, the cooling, the spin, the hang and the plunge are the old ones exactly
+    expect([DRAW_STEPS * FORGE.drawStep, FORGE.cool, FORGE.spin, FORGE.hang, FORGE.plunge, FORGE.stop, FORGE.sink]).toEqual([64, 33, 210, 60, 70, 70, 230]);
+    expect(toStab).toBeGreaterThanOrEqual(780);
+    expect(toStab).toBeLessThanOrEqual(870);
+    const seq = [0, 0.2, 0.4, 0.6, 0.8, 0.95].map(sinkLook);
+    expect(seq).toEqual(['full', 'full', 'cool', 'ember', 'ghost', null]);
   });
 });
 

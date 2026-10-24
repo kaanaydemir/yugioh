@@ -108,13 +108,16 @@ export const V3_SPELL_RECIPES = {
       v.noise('pink', { g: [[0, 0], [0.12, 0.08], [0.7, 0.0001, 'e']], to: v.filt('lowpass', [[0, 300], [0.7, 900, 'e']], 0.9) });
     },
   },
-  /** The soul glides out of the grave: a pink-noise sweep left → right, a few soft pings. */
+  /**
+   * The soul glides out of the grave: a pink-noise sweep, a few soft pings. Centred: the glide runs
+   * either way (P1's graveyard is on the right, P2's on the left), so the scene pans it (A-7).
+   */
   recallGlide: {
     cap: 1,
     gap: 0.2,
     verb: 0.5,
     play(v) {
-      sweep(v, 0, 0.55, [500, 1800, 800], 0.32, { kind: 'pink', q: 1.4, pan: [-0.4, 0.4], peakAt: 0.5 });
+      sweep(v, 0, 0.55, [500, 1800, 800], 0.32, { kind: 'pink', q: 1.4, peakAt: 0.5 });
       [93, 96, 100].forEach((m, i) => v.bell(midiHz(m), { t: 0.12 + i * 0.13, g: 0.05, dec: 0.4, ratio: 2, index: 0.5 }));
     },
   },

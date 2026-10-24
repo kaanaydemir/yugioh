@@ -759,21 +759,20 @@ export function trapPromptV3(scene: Phaser.Scene, player: PlayerId, options: rea
   return result;
 }
 
-/** Resolve after `ms` of scene (tween-scaled) time. */
-function waitScaled(scene: Phaser.Scene, ms: number): Promise<void> {
+/** Resolve after `ms` of scene (tween-scaled) time (shared with CurtainV3). */
+export function waitScaled(scene: Phaser.Scene, ms: number): Promise<void> {
   return new Promise((resolve) => {
     let el = 0;
+    const stop = () => {
+      scene.events.off('update', tick);
+      scene.events.off('shutdown', stop);
+      resolve();
+    };
     const tick = (_t: number, dt: number) => {
       el += dt * scene.tweens.timeScale;
-      if (el >= ms - 1e-6) {
-        scene.events.off('update', tick);
-        resolve();
-      }
+      if (el >= ms - 1e-6) stop();
     };
     scene.events.on('update', tick);
-    scene.events.once('shutdown', () => {
-      scene.events.off('update', tick);
-      resolve();
-    });
+    scene.events.once('shutdown', stop);
   });
 }

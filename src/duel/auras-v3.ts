@@ -20,7 +20,7 @@ import type Phaser from 'phaser';
 import { PAL } from '../art/palette';
 import { greatSwordMotif, paintFlameTongue, swordMotif, type Motif } from '../art/spellmotifs-v3';
 import { monsterFrame } from '../art/textures';
-import { fxCount, fxRng, greatSwordKey, motifImage, setMotif, shards, silhouetteOf, steamEmitter, swordKey } from '../cinematics/_v3/spellfx';
+import { fxCount, fxRng, motifImage, setMotif, shards, silhouetteOf, steamEmitter, swordKey } from '../cinematics/_v3/spellfx';
 import { DEPTH, type XY } from '../view/layout';
 import { lightPool, type LightHandle } from '../view/light';
 import { REDUCED_MOTION } from '../view/v3/motion';
@@ -163,8 +163,9 @@ export function steamAuraV3(scene: Phaser.Scene, unit: MonsterUnit): Disposable 
 //
 // Lane A5-A step A-2 (docs/v3/A5_PLAN.md §3.1 "Kalıcı durum" / "Kırılma"). src/duel/auras.ts hands
 // equipAura over to equipAuraV3 under V3_A5_A, so FieldView.sync (a rebuilt scene) builds the same
-// state the forge leaves behind; the forge itself (src/cinematics/spells/_blade_v3.ts) starts it on
-// its bond frame with { bond: true }.
+// state the forge leaves behind; the forge itself (src/cinematics/spells/_blade_v3.ts) starts it with
+// { bond: true } once its big sword has sunk into the body (bigsword step: the forged sword is the old
+// forge's big plunging blade again; the aura is what it leaves on the monster).
 //
 //   the sword   the A5-A motif (spellmotifs-v3 swordMotif, 'up', len 11: ≈ 9×21 px with its ink
 //               outline, gold planes, the white edge on the screen's lit side) floats at the
@@ -172,6 +173,8 @@ export function steamAuraV3(scene: Phaser.Scene, unit: MonsterUnit): Disposable 
 //               left for P1, its mirror for P2 — just outside the body, behind it). It bobs 1 px
 //               (400 ms period) and every ≈ 2 s a glint runs down its lit edge (IŞ-8: 1 px → cross →
 //               1 px, three steps). The drawing is never mirrored (A5 §3.0 P2): the light stays top left.
+//               The bond (after the forge's plunge): one frame of a white rim on the sword, then one
+//               glint down its edge.
 //   the ring    a 1-px gold rune ring at the waist (the core's height, 2:1 like the floor): its back
 //               arc behind the body, its front arc in front; dashes that creep round slowly. On the bond
 //               frame it closes clockwise in three steps from the sword's side, bright, then settles
@@ -300,9 +303,9 @@ export function ringPixels(cx: number, cy: number, rx: number, ry: number, start
 
 export interface EquipAuraOpts {
   /**
-   * Start on the forge's bond frame (A5 §3.1 BAĞ): the signature great sword stands at the anchor
-   * (one frame of a white rim), the big waist ring closes clockwise in three steps and tightens, then
-   * after CONDENSE_AT the great sword condenses into the small floating one (three frames).
+   * Start as the forge's blade has sunk into the body (A5 §3.1 BAĞ): the small sword appears at the
+   * anchor with one frame of a white rim and one glint down its edge, the big waist ring closes
+   * clockwise in three steps, holds bright and tightens round the waist.
    */
   bond?: boolean;
 }
@@ -310,9 +313,8 @@ export interface EquipAuraOpts {
 /** The bond's big ring (at least the old forge ring's 64 px across) and its tightening steps. */
 export const BOND_RING_RX = 34;
 const RING_TIGHTEN_STEPS = 3;
-/** When the great sword condenses into the small aura sword (ms after the bond), one step per frame. */
-export const CONDENSE_AT = 400;
-const CONDENSE_STEPS = 3;
+/** The bond's glint down the new sword's edge starts this long after the bond. */
+const BOND_GLINT_AT = 120;
 
 /** 7 gold shard sources off a sword drawing placed with its guard at (gx, gy) (its own pixels; white → gold4). */
 export function swordShardPoints(gx: number, gy: number, seed = 1, great = false): { x: number; y: number; c: number }[] {
@@ -347,9 +349,6 @@ export function equipAuraV3(scene: Phaser.Scene, unit: MonsterUnit, o: EquipAura
   /** The game loop's frame counter: one step of it is one rendered frame (also under the tools' stepped clock). */
   const loopFrame = (): number => scene.game.loop.frame;
   const madeAt = loopFrame();
-  // the bond phases: the great sword, then the condense (one step per rendered frame), then the small one
-  let condense = o.bond ? -1 : CONDENSE_STEPS;
-  let condenseFrame = 0;
   // the break (destroy): the time and loop frame it was asked on
   let breakAt = -1;
   let breakFrame = 0;
@@ -372,25 +371,18 @@ export function equipAuraV3(scene: Phaser.Scene, unit: MonsterUnit, o: EquipAura
     if (l && l.alive) void l.fadeOut(200);
   };
 
-  /** The great sword is shown (the bond, before it condenses). */
-  const great = (): boolean => condense < 2;
-
-  /** The sword's drawing for this frame (cached textures: rim / glint / crack / condense variants). */
+  /** The sword's drawing for this frame (cached textures: rim / glint / crack variants). */
   const drawing = (): [string, () => Motif] => {
-    if (breakAt >= 0) return great() ? greatSwordKey({ crack: true }) : swordKey({ len: AURA_SWORD_LEN, crack: true });
-    if (o.bond && condense < 0) {
-      // the bond: one frame of the white rim, the runes flare, then one glint down the lit edge
-      if (loopFrame() - madeAt < 1) return greatSwordKey({ rim: 'white', runesLit: true });
-      if (el < 200) return greatSwordKey({ runesLit: true });
-      const g = el - 200;
-      if (g < GLINT_STEP * 3) return greatSwordKey(g < GLINT_STEP ? { glint: 0.15 } : g < GLINT_STEP * 2 ? { glint: 0.5, glintCross: true } : { glint: 0.85 });
-      return greatSwordKey({});
+    if (breakAt >= 0) return swordKey({ len: AURA_SWORD_LEN, crack: true });
+    if (o.bond) {
+      // the bond: one frame of the white rim, then one glint down the lit edge
+      if (loopFrame() - madeAt < 1) return swordKey({ len: AURA_SWORD_LEN, rim: 'white' });
+      const b = el - BOND_GLINT_AT;
+      if (b >= 0 && b < GLINT_STEP * 3) return swordKey(b < GLINT_STEP ? { len: AURA_SWORD_LEN, glint: 0.15 } : b < GLINT_STEP * 2 ? { len: AURA_SWORD_LEN, glint: 0.5, glintCross: true } : { len: AURA_SWORD_LEN, glint: 0.85 });
     }
-    if (condense === 0) return greatSwordKey({ rim: 'white' });
-    if (condense === 1) return swordKey({ len: AURA_SWORD_LEN, rim: 'white' });
     const g = (el + glintPhase) % GLINT_EVERY;
     const cycle = Math.floor((el + glintPhase) / GLINT_EVERY);
-    if (el > CONDENSE_AT + 500 && g < GLINT_STEP * 3) {
+    if (el > BOND_GLINT_AT + GLINT_STEP * 3 + 500 && g < GLINT_STEP * 3) {
       if (cycle !== glintCycle) {
         glintCycle = cycle;
         glintShown = -1;
@@ -409,7 +401,7 @@ export function equipAuraV3(scene: Phaser.Scene, unit: MonsterUnit, o: EquipAura
   const breakBurst = (gx: number, gy: number, rcx: number, rcy: number, an: EquipAnchor): void => {
     const floor = Math.round(unit.home.y) + 2;
     const depth = (s.active ? s.depth : DEPTH.FX) + 1;
-    void shards(scene, { from: swordShardPoints(gx, gy, unit.uid, great()), ramp: GOLD_RAMP, mode: 'fall', floor, restMs: 90, depth, seed: unit.uid * 31 + 9, speed: BREAK_BLADE_SPEED });
+    void shards(scene, { from: swordShardPoints(gx, gy, unit.uid), ramp: GOLD_RAMP, mode: 'fall', floor, restMs: 90, depth, seed: unit.uid * 31 + 9, speed: BREAK_BLADE_SPEED });
     const ring = ringPixels(rcx, rcy, an.rx, an.ry, 0);
     const bits = Array.from({ length: BREAK_RING_BITS }, (_, i) => {
       const q = ring[Math.floor((i * ring.length) / BREAK_RING_BITS)];
@@ -418,7 +410,7 @@ export function equipAuraV3(scene: Phaser.Scene, unit: MonsterUnit, o: EquipAura
     void shards(scene, { from: bits, ramp: GOLD_RAMP, mode: 'fall', centre: { x: rcx, y: rcy }, floor, restMs: 60, depth, seed: unit.uid * 17 + 3, speed: BREAK_RING_SPEED });
     const rnd = fxRng(unit.uid * 7 + 29);
     const sp = new PxSparks(scene, DEPTH.FX + 3);
-    const my = gy - (great() ? 14 : 6);
+    const my = gy - 6;
     const n = fxCount(BREAK_SPARKS);
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2 + rnd() * 0.6;
@@ -441,15 +433,7 @@ export function equipAuraV3(scene: Phaser.Scene, unit: MonsterUnit, o: EquipAura
     const an = equipAnchor(unit);
     const sx = Math.round(s.x);
     const sy = Math.round(s.y);
-    // the condense: one step per rendered frame from CONDENSE_AT on
-    if (o.bond && breakAt < 0 && condense < CONDENSE_STEPS && el >= CONDENSE_AT) {
-      const f = loopFrame();
-      if (condense < 0 || f > condenseFrame) {
-        condense++;
-        condenseFrame = f;
-      }
-    }
-    const bob = !REDUCED_MOTION && breakAt < 0 && !great() && Math.floor(el / (BOB_MS / 2)) % 2 === 1 ? -1 : 0;
+    const bob = !REDUCED_MOTION && breakAt < 0 && Math.floor(el / (BOB_MS / 2)) % 2 === 1 ? -1 : 0;
     const gx = sx + an.dx;
     const gy = sy + an.dy + bob;
     const rcx = sx + an.ringDx;

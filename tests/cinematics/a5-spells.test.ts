@@ -528,14 +528,15 @@ describe('A-4 Ayna Kalkanı (v3): the big dome, the order, the schedule', () => 
       expect(x1 - x0 + 1).toBeGreaterThanOrEqual(120);
       expect(y1 - y0 + 1).toBeGreaterThanOrEqual(110);
     }
-  });
+  }, 30_000); // two full ray marches (old + new shells, both sides): seconds on a loaded machine
 
-  it('the dome is see-through (EF-2): palette-only 1-px seams and outline, quarter-step glass — under half of its monster row covered, at any heat', async () => {
+  it('the dome is see-through (EF-2): palette-only 1-px seams and outline, quarter-step glass — under half of its monster row covered, at any heat or glow', async () => {
     const { domeShape, domeField, domeLook, paintDomeShell } = await import('../../src/cinematics/traps/_mirror_v3');
     const f = domeField(domeShape(1));
-    const cover = (heat: number) => {
+    const cover = (heat: number, glow = 0) => {
       const L = domeLook(f.cells.length);
       L.heat.fill(heat);
+      L.glow.fill(glow);
       const near = new PixelCanvas(f.w, f.h);
       paintDomeShell(near, f, 'near', L);
       const far = new PixelCanvas(f.w, f.h);
@@ -559,11 +560,59 @@ describe('A-4 Ayna Kalkanı (v3): the big dome, the order, the schedule', () => 
       expect(glass).toBeGreaterThan(1000);
       return painted / glass;
     };
-    const covers = [0, 1, 2].map(cover);
+    const covers = [0, 1, 2].map((h) => cover(h));
     for (const k of covers) expect(k).toBeLessThan(0.5);
     // and it is glass, not a wire frame: the tint and the glow show (the old dome's pink glass)
     expect(covers[0]).toBeGreaterThan(0.1);
     expect(covers[2]).toBeGreaterThan(covers[0] + 0.1);
+    // the ignition (the catch, the charge's hottest cells, the flash): still under half, at every level,
+    // and the lit panes fill the glass well beyond the seams' glow
+    const glows = [1, 2, 3].map((g) => cover(0, g));
+    for (const k of glows) expect(k).toBeLessThan(0.5);
+    expect(cover(2, 2)).toBeLessThan(0.5);
+    expect(glows[1]).toBeGreaterThan(covers[2] + 0.1);
+  });
+
+  it('the catch ignites the whole dome (user decision 24 Oct: never duller than the old pink-white glass)', async () => {
+    const { domeShape, domeField, domeLook, paintDomeShell, DOME_PX, IGNITE } = await import('../../src/cinematics/traps/_mirror_v3');
+    // ≈ 8 frames: held through the 60 ms hit-stop (≈ 4 frames), the panes lit up to IGNITE.lit, then a quarter
+    expect(IGNITE.hot).toBeGreaterThanOrEqual(1);
+    expect(IGNITE.lit).toBeGreaterThanOrEqual(3);
+    expect(IGNITE.fade).toBeGreaterThanOrEqual(IGNITE.lit + 2);
+    for (const side of [0, 1] as const) {
+      const f = domeField(domeShape(side));
+      const L = domeLook(f.cells.length);
+      L.glow.fill(2);
+      const near = new PixelCanvas(f.w, f.h);
+      paintDomeShell(near, f, 'near', L);
+      // every cell with a pane lights it (mag4 / mag3), and a lit pane never touches a seam (1-px gap)
+      const lit = new Map<number, number>();
+      const panes = new Map<number, number>();
+      for (let j = 0; j < f.h; j++)
+        for (let i = 0; i < f.w; i++) {
+          const idx = j * f.w + i;
+          const c = f.near.cell[idx];
+          if (c < 0 || f.near.kind[idx] !== DOME_PX.glass) continue;
+          if (f.near.inset[idx]) panes.set(c, (panes.get(c) ?? 0) + 1);
+          const col = near.alpha(i, j) ? near.get(i, j) : null;
+          if (col === PAL.mag4 || col === PAL.mag3) {
+            expect(f.near.inset[idx], `side ${side}: lit glass next to a seam at ${i},${j}`).toBe(1);
+            lit.set(c, (lit.get(c) ?? 0) + 1);
+          }
+        }
+      const big = [...panes].filter(([, n]) => n >= 4).map(([c]) => c);
+      expect(big.length).toBeGreaterThan(20);
+      for (const c of big) expect(lit.get(c) ?? 0, `side ${side}: cell ${c} stays dark`).toBeGreaterThan(0);
+      // the lit panes are pink (mag4 / mag3): white only round the struck point (glow 3), EF-4
+      let white = 0;
+      for (let j = 0; j < f.h; j++) for (let i = 0; i < f.w; i++) if (near.alpha(i, j) && near.get(i, j) === PAL.white) white++;
+      const L0 = domeLook(f.cells.length);
+      const rest = new PixelCanvas(f.w, f.h);
+      paintDomeShell(rest, f, 'near', L0);
+      let white0 = 0;
+      for (let j = 0; j < f.h; j++) for (let i = 0; i < f.w; i++) if (rest.alpha(i, j) && rest.get(i, j) === PAL.white) white0++;
+      expect(white).toBeLessThanOrEqual(white0 + 60);
+    }
   });
 
   it('the reflections go nearest to the struck point first (ties keep the event order)', async () => {

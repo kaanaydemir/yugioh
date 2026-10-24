@@ -89,10 +89,11 @@ describe('Şifa Pınarı v3 — the signature fountain painter (spellmotifs-v3)'
   });
 
   it('is never smaller than the old 82-px geyser (the user rule of 24 Oct)', () => {
-    const b = bounds(fountain(FOUNTAIN_H, { phase: 4 }));
-    // the jet + its crown rise at least 82 px above the floor; the curtains spread ≥ 44 px wide
+    const b = bounds(fountain(FOUNTAIN_H, { phase: 4, reach: SPRING_V3.reach }));
+    // the jet + its crown rise at least 82 px above the floor; the scene's curtains spread at least
+    // as wide as the old geyser's (52 px)
     expect(BY - b.y0 + 1).toBeGreaterThanOrEqual(82);
-    expect(b.x1 - b.x0 + 1).toBeGreaterThanOrEqual(2 * SPRING_V3.reach);
+    expect(b.x1 - b.x0 + 1).toBeGreaterThanOrEqual(52);
     expect(Math.max(...SPRING_V3.rise)).toBeGreaterThanOrEqual(82);
     expect(FOUNTAIN_H).toBeGreaterThanOrEqual(80);
   });
@@ -203,6 +204,23 @@ describe('Şifa Pınarı v3 — the scene plan (_spring_v3)', () => {
           expect(overlapX && overlapY, `P${p + 1} spring vs P${q + 1} monster ${i}`).toBe(false);
         }
     }
+  });
+
+  it('EF-2: on a set tile the fountain covers well under half of a body standing on the tile behind it', () => {
+    // a body's box on the monster tile one row behind the spell / trap tile (P1: +32, −16), 52 × 64 px
+    // up from its feet, against every opaque pixel of the full fountain (jet, crown, all curtains)
+    const p = new PixelCanvas(200, 200);
+    const base = { x: 80, y: 150 };
+    paintFountain(p, base.x, base.y, FOUNTAIN_H, { phase: 3, reach: SPRING_V3.reach });
+    const feet = { x: base.x + 32, y: base.y - 16 };
+    let inBox = 0;
+    let covered = 0;
+    for (let y = feet.y - 64; y < feet.y; y++)
+      for (let x = feet.x - 26; x < feet.x + 26; x++) {
+        inBox++;
+        if (p.alpha(x, y) > 0) covered++;
+      }
+    expect(covered / inBox).toBeLessThan(0.2);
   });
 
   it('a set card springs from its own tile', () => {

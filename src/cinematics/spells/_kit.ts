@@ -555,7 +555,7 @@ export interface OpeningOpts {
   /**
    * v3 look only, a set card's release(): 'dissolve' (default, as before: the 260 ms noise block) or
    * 'flow' (A5 §3.6 / §4.3: the card's own pixels, TileCard.currentPixels(), pour into the orb like a
-   * hand card's do — collapseTileInto). Nothing passes 'flow' yet (lane A5-A step A-7 does).
+   * hand card's do — collapseTileInto). Şifa Pınarı (A-6) and Ruh Çağrısı (A-7) pass 'flow'.
    */
   setRelease?: 'dissolve' | 'flow';
   /**

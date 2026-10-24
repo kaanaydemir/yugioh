@@ -1,38 +1,42 @@
-// Ejder Kılıcı (dragon_blade) — the v3 look. Lane A5-A step A-2 (docs/v3/A5_PLAN.md §3.1: "kart
-// kılıca dönüşür, kılıç canavara bağlanır"). Behind V3_A5_A only: dragon_blade.ts hands its
-// 'activate' / 'equip' / 'destroyed' hooks over on their first line, flow/stats.ts hands a blade's
-// loss over to bladeBreakBeat; v1 and the plain v3 look run the old code unchanged.
+// Ejder Kılıcı (dragon_blade) — the v3 look. Lane A5-A step A-2 (docs/v3/A5_PLAN.md §3.1), the forge
+// rebuilt by the bigsword step on the user's rule of 24 Oct (A5_PLAN top note, REHBER EF-2: a signature
+// effect is never smaller or duller than the old one; v3 differs by crisp pixels, detail, frames, light
+// and sound — never by shrinking). Behind V3_A5_A only: dragon_blade.ts hands its 'activate' / 'equip' /
+// 'destroyed' hooks over on their first line, flow/stats.ts hands a blade's loss over to bladeBreakBeat;
+// v1 and the plain v3 look run the old code unchanged.
 //
+// The forge is the OLD path (dragon_blade.ts forge, v1: its sizes, beats and timing) drawn in v3 pixels.
 // Times are scene ms from activate at 1× (hand; a set card stands up on its tile instead of flying):
 //   0–200    the A2 opening (spellOpeningV3): the card beside its owner, the duelist's 'command'
 //   200–320  hold: the card breathes a pixel, motes gather in it
 //   320–500  LAND (landV3): whole pixels, no rotation — the card flies onto its spell zone, appears
 //            standing on its tile and lies down; the tile burns one gold tone — cardPlace, mark `land`
-//   +0       FORGE (the 'equip' hook): out of the lying card's art the SIGNATURE great sword draws itself
-//            upward in three steps (a 1-px gold line → + hilt and guard → the finished ≈ 17×47 blade:
-//            gold planes, the white edge on the lit side, runes in the fuller, 1-px ink outline;
-//            spellmotifs-v3 greatSwordMotif — never smaller than the old forge's 15×46 sword, the
-//            user's rule of 24 Oct), a dashed rune ring opens on the floor round it; the card's art
-//            window drops to dark night tones for two frames (its light left it), 6–8 rune pixels
-//            pour into the blade, a gold pool on the tile. Today's camera lean at this beat is KEPT
-//            (the user's decision: the same ctx.focus call, target and timing as dragon_blade.ts:260).
-//            bladeForge, mark `forge`
-//   +120     FLIGHT: the sword arcs up to its monster, its drawing taken from the three pre-drawn
-//            angles (up, 45°, flat × 2 facings: spellfx.swordFor) closest to its travel — never a
-//            fractional rotation. The drawings are planned once (flightPlan): no angle shows for under
-//            ≈ 2 frames, and the blade never points into its holder (it rights itself before its tip
-//            would reach the body). P1's sword goes behind the body from its first lean (it swings round
-//            behind the back; P2's card lies behind the row: behind all the way). A 2-px gold trail on
-//            whole pixels, at the sword's depth. bladeFly
-//   +320     BOND: the sword stops at the monster's equip anchor (auras-v3 equipAnchor: the body box's
-//            top left behind the back for P1, the mirror for P2) — the persistent aura takes it over on
-//            this frame (equipAuraV3 { bond }): one frame of a white rim on the SWORD only, the waist
-//            ring closing clockwise in three steps. The same frame: the single "+700" (EF-9), the badge
-//            rolls, 4–6 gold sparks, a gold flash at the feet that settles to the aura's one tone.
-//            v3 art in attack position plays `victory` forward to its peak, holds it 160 ms and steps
-//            back to f0 (no new frames); the old art and a guarding monster are never posed.
-//            bladeBond (duck 0.45), mark `bond`
-//   ≤ 1500   the input comes back (the settle: the sword starts its 1-px bob)
+// FORGE (the 'equip' hook, +ms; today's camera lean at this beat is KEPT: the same ctx.focus call,
+// target and timing as dragon_blade.ts:265, the user's decision):
+//   +0       eight gold runes leave the lying card's art (its art window drops to night tones for two
+//            frames: its light left it) and arc up over the monster; the forge ring — one 1-px ring as
+//            wide as the old one's outer ring (88 / 72 px), its back arc behind the head — draws itself
+//            round in three steps and its dashes creep; a gold pool lies under the monster — bladeFly
+//   +270     the runes orbit a beat, then converge into a vertical spine over the ring
+//   +383     the SWORD draws itself top → bottom white-hot in four steps (_blade_sword.ts: 'big' 33×96
+//            over a medium+ monster with head room, 'mid' 17×49 otherwise — the old forge's own size
+//            choice, never smaller than its 30×92 / 15×46), cools through gold4 to its planes, the
+//            runes in its fuller glowing — bladeForge, mark `forge`
+//   +483     it SPINS 1.5 turns while it rises 8 px — pre-drawn turn drawings, no fractional scale; the
+//            ring steps down the gold ramp and goes out; a light streak runs down the blade
+//   +700     it HANGS (5 px higher, a beat), a star on its point
+//   +766     it PLUNGES (inQuad, a one-frame trail of light lines over it) — bladeFly
+//   +850     IMPACT (mark `bond`): its point in the body's middle; hit-stop 70 ms; the struck part
+//            flashes white with a gold band (EF-3 contact flash, the heavy 3 frames) and the body's
+//            1-px edge lights white, then gold runs down it from the stab; the single "+700" (EF-9),
+//            the badge rolls; the floor rings (≥ the old 62 px) and 26 gold sparks; v3 art in attack
+//            position plays `victory` to its peak and back (no new frames) — bladeBond (duck 0.45)
+//   +920     the blade SINKS 20 / 10 px into the body (cut at the stab line), down the gold ramp to
+//            light, in a stepped column of light
+//   +1150    the persistent aura takes over (auras-v3 equipAuraV3 { bond }): the small sword at the
+//            monster's back with one frame of a white rim, the waist ring closing round it
+//   +1283    the input comes back (measured at 1×, equip at 517: ready 1800 ms in spBlade / Def / P2,
+//            1733 for the set card, 1850–1867 where the v3 pose plays — +450…+483 over the old v3)
 // BREAK (bladeBreakBeat: the blade's loss reaches the monster — flow/stats.ts's v3 statChange, or this
 // file's 'destroyed' hook): the aura's destroy (a two-frame white crack across the blade with the ring
 // drawn tight and bright, then the burst — the blade's shards, the ring snapped into pieces and star
@@ -47,20 +51,22 @@ import { PAL } from '../../art/palette';
 import { FLAT_H, FLAT_W, ISO_CX, ISO_CY, ISO_TEX_H, ISO_TEX_W, poseAxes, restQuat } from '../../art/cards';
 import { hasMonsterArtV3 } from '../../art/monsters';
 import { monsterSheetKey, warmMonsterSheet } from '../../art/textures';
-import { GREAT_BLADE, crackPath, type MotifFacing, type SwordAngle } from '../../art/spellmotifs-v3';
-import { DEPTH, type XY, unitDepth, zoneXY } from '../../view/layout';
+import { crackPath } from '../../art/spellmotifs-v3';
+import { DEPTH, type XY, zoneXY } from '../../view/layout';
 import type { TileCard } from '../../view/TileCard';
 import { wait } from '../../vfx/core';
-import { Raster, onFrame, run } from '../../vfx/setpieces';
+import { E, Raster, freeze, lerp, onFrame, qbez, run, spriteBox } from '../../vfx/setpieces';
 import { Sparks as PxSparks } from '../../vfx/combat';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
-import { BREAK_CRACK_FRAMES, equipAnchor, equipAuraV3, equipSwordAt, ringPixels } from '../../duel/auras-v3';
+import { BREAK_CRACK_FRAMES, equipAuraV3, equipSwordAt, ringPixels } from '../../duel/auras-v3';
 import { fx, type CinematicContext } from '../api';
-import { fxCount, fxRng, greatSwordKey, motifImage, rimFlash, setMotif, swordFor } from '../_v3/spellfx';
+import { fxCount, fxRng, motifImage, rimClimb, rimFlash, setMotif } from '../_v3/spellfx';
+import { contactFlash } from '../_v3/flash';
 import { panAt, play as playV3 } from '../_v3/sound';
 import { impactNumber } from '../_v3/number';
 import { cardLeaves } from '../_v3/card';
-import { bg, evAt, fs, idxOf, ip, lightFlash, lightPool, relax, setTileOf, spellOpening, type ActCtx, type AnyCtx } from './_kit';
+import { type ForgeLook, type ForgeSize, forgeSizeFor, forgeSwordGeom, forgeSwordKey, turnAt } from './_blade_sword';
+import { bg, evAt, fs, idxOf, ip, lightBeam, lightFlash, lightPool, relax, setTileOf, spellOpening, type ActCtx, type AnyCtx } from './_kit';
 
 type EquipCtx = CinematicContext<Extract<GameEvent, { type: 'equip' }>>;
 type DestroyCtx = CinematicContext<Extract<GameEvent, { type: 'destroy' }>>;
@@ -74,12 +80,41 @@ const OPEN_HOLD = 180;
 const LAND_MS = 80;
 const LIE_MS = 70;
 const LIE_SET_MS = 110;
-/** FORGE: one step of the sword drawing itself (3 steps). */
-export const FORGE_STEP = 36;
-/** FLIGHT to the anchor. */
-export const FLIGHT_MS = 180;
-/** After the bond: the settle the input waits for (the great sword condenses at CONDENSE_AT; the badge's roll ≤ 400). */
-const SETTLE_MS = 460;
+/** The forge's beats — the old forge's (dragon_blade.ts forge, v1). */
+export const FORGE = {
+  /** the runes fly out of the card into the ring (each rune `runeEach`, one every `runeStagger`) */
+  runes: 230,
+  runeEach: 150,
+  runeStagger: 11,
+  /** the ring starts to draw itself (three steps) */
+  ringAt: 70,
+  ringStep: 57,
+  orbit: 40,
+  converge: 90,
+  /** the white-hot draw-in: DRAW_STEPS steps of one frame (the old 70 ms crop) */
+  drawStep: 16,
+  /** the cooling frames (gold4) before the planes show (two frames, the old 34 ms) */
+  cool: 33,
+  spin: 210,
+  hang: 60,
+  plunge: 70,
+  /** the hit-stop of the stab (EF-5: a spell 60–100 ms) */
+  stop: 70,
+  sink: 230,
+  /** after the sink: the aura's bond ring closes before the input comes back */
+  settle: 100,
+} as const;
+export const DRAW_STEPS = 4;
+const RISE_PX = 8;
+const HANG_PX = 5;
+/** How far the blade sinks into the body after the stab (the old 10·SS). */
+const SINK_PX: Readonly<Record<ForgeSize, number>> = { big: 20, mid: 10 };
+/**
+ * The impact number's centre, in px off the blade's edge: "+700" is 31 px of glyphs (+1 px ink a
+ * side) and slams at 2× for its first two frames (_v3/number.ts), so 32–34 px reach each way from
+ * its centre then; 36 keeps even the slam clear of the blade's ink (~17 px of air once it settles).
+ */
+const NUMBER_CLEAR = 36;
 /** The bond pose (v3 art): the peak's hold, the step back, the cap on a forward frame. */
 export const PEAK_HOLD = 160;
 const BACK_STEP = 40;
@@ -87,9 +122,11 @@ const FORWARD_CAP = 70;
 /** The victory frame each v3 monster peaks on (wings spread / orb star / the fist at the chest). */
 const VICTORY_PEAK: Readonly<Record<string, number>> = { crystal_wyrm: 3, abyss_magus: 3, stone_sentinel: 3 };
 
-const GOLD_TRAIL = [PAL.gold4, PAL.gold3, PAL.gold2] as const;
-const RUNE_FX = [PAL.gold2, PAL.gold3, PAL.gold4] as const;
-const BOND_FX = [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2] as const;
+const G = [PAL.gold0, PAL.gold1, PAL.gold2, PAL.gold3, PAL.gold4] as const;
+const RUNE_TRAIL = [PAL.gold4, PAL.gold3, PAL.gold2] as const;
+const SPARK_FX = [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2, PAL.gold1] as const;
+/** The stab on the body's edge: white two frames, then a frame each down the gold ramp. */
+const STAB_RIM = [PAL.white, PAL.white, PAL.gold4, PAL.gold4] as const;
 /** The break's edge light on the body: white through the crack frames, then a frame each down the gold ramp. */
 const BREAK_RIM = [PAL.white, PAL.gold4, PAL.gold4, PAL.gold4, PAL.gold3, PAL.gold3, PAL.gold2] as const;
 
@@ -252,135 +289,62 @@ export async function bladeActivateV3(ctx: ActCtx): Promise<void> {
   relax(ctx, 360);
 }
 
-// ================================================================ equip: forge → flight → bond
+// ================================================================ equip: the forge (the old path, v3 pixels)
 
-/** The great sword's guard while it forms on the lying card: its pommel on the card's middle, rising a pixel or two per stage. */
-function forgeGuard(home: XY, stage: 1 | 2 | 3): XY {
-  return { x: Math.round(home.x), y: Math.round(home.y) - 15 - (stage === 1 ? 0 : stage === 2 ? 1 : 3) };
+/** Where the forge happens over a body box (pure; tested). */
+export interface ForgeLayout {
+  size: ForgeSize;
+  /** The sword's centre column (world x). */
+  x: number;
+  /** The forge ring: over the head like a halo (the old circleY), as wide as the old outer ring. */
+  ringY: number;
+  rx: number;
+  ry: number;
+  /** The sword's top row while it forms (the old hover: its point just over the ring). */
+  top: number;
+  /** The sword's top row on the stab frame (its point in the body's middle, the old stabY). */
+  stabTop: number;
+  /** The point's row inside the drawing and the drawing's height. */
+  tipRow: number;
+  h: number;
 }
 
-/** Cubic Bézier point / tangent. */
-function bez(p0: XY, p1: XY, p2: XY, p3: XY, t: number): { p: XY; d: XY } {
-  const u = 1 - t;
-  const p = {
-    x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x,
-    y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y,
-  };
-  const d = {
-    x: 3 * u * u * (p1.x - p0.x) + 6 * u * t * (p2.x - p1.x) + 3 * t * t * (p3.x - p2.x),
-    y: 3 * u * u * (p1.y - p0.y) + 6 * u * t * (p2.y - p1.y) + 3 * t * t * (p3.y - p2.y),
-  };
-  return { p, d };
-}
-
-/**
- * The flight's path (pure; tested): straight up off the card, over toward the body's back side, then
- * down into the anchor from above — the blade is set onto the monster's back point up.
- */
-export function flightPath(from: XY, to: XY, side: -1 | 1): [XY, XY, XY, XY] {
-  // up (the upright drawing), across on a diagonal (the 45° one), a short drop into place (upright)
-  return [from, { x: from.x, y: from.y - 10 }, { x: to.x + side * 4, y: Math.min(from.y, to.y) - 16 }, to];
-}
-
-/**
- * The drawing for a travel direction (pure; tested): the closest pre-drawn angle while it rises or
- * crosses; going down it keeps the upright drawing (the blade is lowered into place point up — there is
- * no point-down drawing); 'up' when it barely moves.
- */
-export function flightDrawing(d: XY): FlightDrawing {
-  if (Math.hypot(d.x, d.y) < 1e-3 || d.y > Math.abs(d.x) * 0.35) return { angle: 'up', facing: 1 };
-  return swordFor(d.x, d.y);
-}
-
-/** One drawing of the flying sword. */
-export interface FlightDrawing {
-  angle: SwordAngle;
-  facing: MotifFacing;
-}
-
-/** The flight's ease (the path parameter at flight time t ∈ [0, 1]): fast off the card, settling into place. */
-export function flightEase(t: number): number {
-  return t >= 1 ? 1 : 1 - (1 - t) * (1 - t);
-}
-
-/** The drawing plan's flight-time samples (every 5 ms of FLIGHT_MS) and its shortest held run (≈ 2 frames at 1×). */
-export const PLAN_SAMPLES = 37;
-export const PLAN_MIN_RUN = 7;
-
-/** How far the great sword's tip reaches sideways from its guard in the leaning drawings. */
-const BLADE_REACH: Readonly<Record<SwordAngle, number>> = { up: 0, diag: Math.round(GREAT_BLADE * 0.72), flat: GREAT_BLADE };
-
-/**
- * The flight's drawing at each of `n` evenly spaced flight-time samples (pure; tested): flightDrawing of
- * the path's tangent at the eased parameter, the upright drawing on the last sample (the bond). The
- * blade never points into its holder: a drawing leaning toward the body (the side away from `side`, the
- * anchor's side) rights itself once its tip would pass the body's back edge (the anchor sits 4 px
- * outside it) — it arrives upright instead of skewering the body. A drawing that would hold for fewer
- * than `minRun` samples — the one-frame flat flick as the path tops out over the anchor — is absorbed by
- * the drawing before it, so each angle the sword shows lasts ≥ 2 frames.
- */
-export function flightPlan(path: readonly [XY, XY, XY, XY], side: -1 | 1, n = PLAN_SAMPLES, minRun = PLAN_MIN_RUN): FlightDrawing[] {
-  const same = (a: FlightDrawing, b: FlightDrawing): boolean => a.angle === b.angle && (a.angle === 'up' || a.facing === b.facing);
-  const edge = path[3].x - side * 4;
-  const runs: { d: FlightDrawing; n: number }[] = [];
-  for (let i = 0; i < n; i++) {
-    let d: FlightDrawing = { angle: 'up', facing: 1 };
-    if (i < n - 1) {
-      const { p, d: tan } = bez(path[0], path[1], path[2], path[3], flightEase(i / (n - 1)));
-      d = flightDrawing(tan);
-      if (d.angle !== 'up' && d.facing === -side && (p.x + d.facing * BLADE_REACH[d.angle] - edge) * -side > 0) d = { angle: 'up', facing: 1 };
-    }
-    const last = runs[runs.length - 1];
-    if (last && same(last.d, d)) last.n++;
-    else runs.push({ d, n: 1 });
-  }
-  // a short run between two others joins the one before it (then equal neighbours merge)
-  for (let i = 1; i < runs.length - 1; ) {
-    if (runs[i].n >= minRun) {
-      i++;
-      continue;
-    }
-    runs[i - 1].n += runs[i].n;
-    runs.splice(i, 1);
-    if (i < runs.length && same(runs[i - 1].d, runs[i].d)) {
-      runs[i - 1].n += runs[i].n;
-      runs.splice(i, 1);
-    }
-  }
-  const out: FlightDrawing[] = [];
-  for (const r of runs) for (let j = 0; j < r.n; j++) out.push(r.d);
-  return out;
-}
-
-/** The plan's drawing at flight time t ∈ [0, 1]. */
-export function planAt(plan: readonly FlightDrawing[], t: number): FlightDrawing {
-  return plan[Math.max(0, Math.min(plan.length - 1, Math.round(t * (plan.length - 1))))];
-}
-
-/** The middle of the great sword's blade from its guard, for a drawing (the trail runs there). */
-function bladeMid(angle: SwordAngle, facing: MotifFacing): XY {
-  return angle === 'up' ? { x: 0, y: -14 } : angle === 'flat' ? { x: facing * 14, y: 0 } : { x: facing * 10, y: -10 };
+/** The old forge's layout (dragon_blade.ts forge) for the v3 drawings (see ForgeLayout). */
+export function forgeLayout(box: { cx: number; top: number; h: number }): ForgeLayout {
+  const size = forgeSizeFor(box);
+  const geo = forgeSwordGeom(size);
+  const ringY = Math.max(22, Math.round(box.top - 8));
+  const half = Math.round(geo.h / 2);
+  const hoverY = Math.max(half + 16, ringY - half - 4);
+  // the old rings: CR = 22 + 8·SS, the outer one at CR + 6, 0.32 high
+  const rx = 22 + (size === 'big' ? 16 : 8) + 6;
+  const middle = Math.round(box.top + box.h * 0.5);
+  return { size, x: Math.round(box.cx), ringY, rx, ry: Math.round(rx * 0.32), top: hoverY - half, stabTop: middle - geo.tipRow, tipRow: geo.tipRow, h: geo.h };
 }
 
 /**
- * A rune circle on the floor round the forming sword (≥ the old forge ring: 52 px across): dashes and six
- * rune pixels, drawn in `step` thirds (1…3), then stepped down the gold ramp by `fade` (0…3; 3 = gone).
+ * The forge ring (one 1-px ring, EF-7): `shown` thirds drawn clockwise from the front (1…3, a white
+ * head while it draws), its dashes creeping by `creep`; `fade` steps it down the ramp (0 bright … 3 gone).
+ * The back arc (above the centre) behind the body, the front arc in front.
  */
-function drawForgeRing(ras: Raster, c: XY, step: number, fade: number): void {
-  ras.begin();
+function drawHalo(back: Raster, front: Raster, L: ForgeLayout, shown: number, creep: number, fade: number): void {
+  back.begin();
+  front.begin();
   if (fade < 3) {
-    const pts = ringPixels(c.x, c.y, 26, 13, Math.PI / 2);
-    const n = Math.ceil((pts.length * Math.min(3, step)) / 3);
-    const tone = [PAL.gold3, PAL.gold2, PAL.gold1][fade];
-    const rune = [PAL.gold4, PAL.gold3, PAL.gold2][fade];
+    const pts = ringPixels(L.x, L.ringY, L.rx, L.ry, Math.PI / 2);
+    const n = Math.ceil((pts.length * Math.min(3, shown)) / 3);
     for (let i = 0; i < n; i++) {
-      const d = i % 6;
-      if (d === 4 || d === 5) continue;
-      ras.px(pts[i].x, pts[i].y, i % Math.max(1, Math.floor(pts.length / 6)) === 0 ? rune : tone);
+      const q = pts[i];
+      const behind = q.y < L.ringY;
+      const d = (i + creep) % 6;
+      let c: number | null;
+      if (shown < 3) c = i === n - 1 ? PAL.white : G[4 - fade];
+      else c = d >= 4 ? null : d === 0 ? G[Math.max(1, 4 - fade)] : behind ? G[Math.max(1, 2 - fade)] : G[Math.max(1, 3 - fade)];
+      if (c !== null) (behind ? back : front).px(q.x, q.y, c);
     }
-    if (step < 3 && n > 0 && fade === 0) ras.px(pts[n - 1].x, pts[n - 1].y, PAL.white);
   }
-  ras.end();
+  back.end();
+  front.end();
 }
 
 /**
@@ -420,6 +384,11 @@ function floorBurst(scene: Phaser.Scene, at: XY, depth: number): Promise<void> {
   });
 }
 
+/** The sink's look by its progress (the old alpha 1 → 0.6 → 0.25 as palette steps), null = gone. */
+export function sinkLook(t: number): ForgeLook | null {
+  return t < 0.3 ? 'full' : t < 0.5 ? 'cool' : t < 0.7 ? 'ember' : t < 0.9 ? 'ghost' : null;
+}
+
 /** The forge, the v3 look (see the header). */
 export async function bladeEquipV3(ctx: EquipCtx): Promise<void> {
   const ev = ctx.ev;
@@ -439,123 +408,214 @@ export async function bladeEquipV3(ctx: EquipCtx): Promise<void> {
   const c = u.core();
   bg(ctx.focus({ x: c.x, y: c.y - 20 }, { zoom: 1.06, ms: 420, pan: 0.3 }));
 
-  // ---- FORGE (mark `forge`): the great sword draws itself up out of the card's art in three steps
-  const standDepth = unitDepth(home.y) + 0.5;
-  const g1 = forgeGuard(home, 1);
-  const sword = motifImage(sc, ...greatSwordKey({ stage: 1 }), g1.x, g1.y, standDepth);
-  playV3('bladeForge', { volume: 0.9, pan: panAt(home.x) });
-  dimArt(sc, tile);
-  const pool = lightPool(sc, home.x, home.y, { color: PAL.gold3, spill: PAL.gold1, radius: fs(22), floorY: home.y, intensity: 0.9, fadeIn: 0 });
-  const ring = Raster.around(sc, home.x, home.y, 60, 32, DEPTH.TILE_FX + 2);
-  drawForgeRing(ring, home, 1, 0);
-  // 6–8 rune pixels from round the card pour into the blade
+  const target = u.sprite;
+  const L = forgeLayout(spriteBox(sc, target));
+  const geo = forgeSwordGeom(L.size);
   const rnd = fxRng(ev.spellUid * 13 + 7);
-  const runes = new PxSparks(sc, standDepth + 0.2);
-  const nRunes = fxCount(8);
-  for (let i = 0; i < nRunes; i++) {
-    const a = (i / nRunes) * Math.PI * 2 + rnd() * 0.5;
-    runes.add({
-      x: Math.round(home.x + Math.cos(a) * 26),
-      y: Math.round(home.y + Math.sin(a) * 13),
-      tx: g1.x + (i % 2 === 0 ? -1 : 1),
-      ty: g1.y - 4 - Math.round(rnd() * 22),
-      curl: (rnd() * 2 - 1) * 10,
-      life: 90 + Math.round(rnd() * 30),
-      delay: i * 6,
-      colors: RUNE_FX,
-      shape: i % 3 === 0 ? 'plus' : 'px',
-      fadeAt: 1,
-    });
-  }
-  runes.release();
-  await step(sc, FORGE_STEP);
-  const g2 = forgeGuard(home, 2);
-  setMotif(sword, ...greatSwordKey({ stage: 2 }));
-  sword.setPosition(g2.x, g2.y);
-  drawForgeRing(ring, home, 2, 0);
-  await step(sc, FORGE_STEP);
-  const g3 = forgeGuard(home, 3);
-  setMotif(sword, ...greatSwordKey({ runesLit: true }));
-  sword.setPosition(g3.x, g3.y);
-  drawForgeRing(ring, home, 3, 0);
-  await step(sc, FORGE_STEP);
-
-  // ---- FLIGHT: the closest pre-drawn angle each frame, a 2-px gold trail; the forge ring steps down
-  playV3('bladeFly', { volume: 0.8, pan: panAt(home.x) });
-  void lightFlash(sc, home.x, home.y, PAL.gold4, fs(18), 140, { floorY: home.y, intensity: 0.8 }); // the push-off
-  void pool.fadeOut(200);
-  const an = equipAnchor(u);
-  const trail = new PxSparks(sc, DEPTH.FX + 2);
-  // the drawings are planned once (no one-frame flicks); P1's sword goes behind the body when it first
-  // tilts toward its anchor (it swings round behind the monster's back — never across the body in front)
-  const plan = flightPlan(flightPath(g3, equipSwordAt(u), an.side), an.side);
-  const tiltAt = plan.findIndex((d) => d.angle !== 'up');
-  const behindFrom = tiltAt > 0 ? tiltAt / (plan.length - 1) : 0.66;
-  let last: XY | null = null;
-  let drawingKey = '';
-  let ringFade = 0;
-  await run(sc, FLIGHT_MS, (t) => {
-    if (!sword.active) return;
-    const fade = Math.min(3, Math.floor((t * FLIGHT_MS) / 60) + 1);
-    if (fade > ringFade) {
-      ringFade = Math.min(fade, ringFade + 1);
-      drawForgeRing(ring, home, 3, ringFade);
-    }
-    const to = equipSwordAt(u);
-    const path = flightPath(g3, to, an.side);
-    const { p } = bez(path[0], path[1], path[2], path[3], flightEase(t));
-    const x = Math.round(p.x);
-    const y = Math.round(p.y);
-    const dr = t >= 1 ? { angle: 'up' as const, facing: 1 as const } : planAt(plan, t);
-    const key = `${dr.angle}${dr.facing}`;
-    if (key !== drawingKey) {
-      drawingKey = key;
-      setMotif(sword, ...greatSwordKey({ angle: dr.angle, facing: dr.facing }));
-    }
-    sword.setPosition(x, y);
-    // P1: in front while it rises off its (nearer) card, behind the body from its first tilt (it settles
-    // behind the back); P2: its card lies behind the monster's row — behind the body all the way. The
-    // trail rides at the sword's depth (it is never drawn over a body the sword is behind)
-    const behind = u.sprite.depth - 0.4;
-    const depth = u.player === 1 ? Math.min(standDepth, behind) : t >= behindFrom ? behind : standDepth;
-    sword.setDepth(depth);
-    trail.px.g.setDepth(depth - 0.01);
-    const m = bladeMid(dr.angle, dr.facing);
-    const here = { x: x + m.x, y: y + m.y };
-    if (last && (here.x !== last.x || here.y !== last.y)) for (let j = 0; j < 2; j++) trail.add({ x: last.x + j, y: last.y, life: 110, colors: GOLD_TRAIL, shape: 'px', fadeAt: 1 });
-    last = here;
-  });
-  trail.release();
-  ring.destroy();
-
-  // ---- BOND (mark `bond`): the aura takes the great sword over on this frame
-  sword.destroy();
-  if (u.retired || !u.sprite.active) {
-    if (st) void u.setStats(st.atk, st.def, false);
-    return;
-  }
-  u.setAura('equip', equipAuraV3(sc, u, { bond: true }));
-  const at = equipSwordAt(u);
-  playV3('bladeBond', { volume: 1, pan: panAt(at.x) });
-  if (st) {
-    const { up, delta } = statDelta(st);
-    const top = u.worldPoint('top');
-    if (delta > 0) bg(impactNumber(sc, Math.round(top.x), Math.round(top.y) - 4, delta, { kind: up ? 'heal' : 'damage' }));
-    void u.setStats(st.atk, st.def, true);
-  }
   const sparks = new PxSparks(sc, DEPTH.FX + 3);
-  const nSp = fxCount(6);
-  for (let i = 0; i < nSp; i++) {
-    const a = -Math.PI / 2 + (i / Math.max(1, nSp - 1) - 0.5) * 2.6;
-    const v = 40 + rnd() * 30;
-    sparks.add({ x: at.x, y: at.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, ay: 120, drag: 2, life: 180 + Math.round(rnd() * 80), colors: BOND_FX, shape: i % 2 === 0 ? 'plus' : 'px', fadeAt: 1 });
+  const NR = 8;
+  const swordDepth = DEPTH.FX + 2;
+
+  // ---- 0–250: the runes leave the card's art and arc up into the forge ring over the head
+  playV3('bladeFly', { volume: 0.6, pan: panAt(home.x) });
+  dimArt(sc, tile);
+  const cardPool = lightPool(sc, home.x, home.y, { color: PAL.gold3, spill: PAL.gold1, radius: fs(22), floorY: home.y, intensity: 0.9, fadeIn: 0 });
+  void cardPool.fadeOut(260);
+  const ringLight = lightPool(sc, L.x, u.home.y, { color: PAL.gold3, spill: PAL.gold1, radius: fs(30), floorY: u.home.y, intensity: 0, anim: 'breathe', fadeIn: 0 });
+  ringLight.setIntensity(0.7, 300);
+  const RW = L.rx * 2 + 6;
+  const RH = L.ry * 2 + 6;
+  const haloBack = Raster.around(sc, L.x, L.ringY, RW, RH, target.depth - 0.5);
+  const haloFront = Raster.around(sc, L.x, L.ringY, RW, RH, DEPTH.FX + 1);
+  let ringShown = 0;
+  let ringFade = 0;
+  let creep = 0;
+  const stopHalo = onFrame(sc, (dt, el) => {
+    if (el >= FORGE.ringAt) ringShown = Math.min(3, Math.floor((el - FORGE.ringAt) / FORGE.ringStep) + 1, ringShown + 1);
+    if (dt > 0 && ringShown >= 3) creep++;
+    drawHalo(haloBack, haloFront, L, ringShown, creep, ringFade);
+  });
+  const nb = fxCount(10);
+  for (let i = 0; i < nb; i++)
+    sparks.add({ x: home.x + Math.round((rnd() - 0.5) * 12), y: home.y, vx: (rnd() - 0.5) * 80, vy: -30 - rnd() * 60, ay: 200, life: 200 + Math.round(rnd() * 160), colors: SPARK_FX, shape: i % 3 === 0 ? 'plus' : 'px', fadeAt: 1 });
+  const slot = (i: number, el: number): XY => {
+    const a = el * 0.0034 + (i / NR) * Math.PI * 2;
+    return { x: L.x + Math.cos(a) * L.rx, y: L.ringY + Math.sin(a) * L.ry };
+  };
+  const runes: Phaser.GameObjects.Image[] = [];
+  for (let i = 0; i < NR; i++) runes.push(sc.add.image(home.x, home.y, 'set:rune', `r${i}`).setDepth(DEPTH.FX + 2).setVisible(false));
+  let el0 = 0;
+  await run(sc, FORGE.runes, (_t, el) => {
+    el0 = el;
+    runes.forEach((r, i) => {
+      const k = Math.max(0, Math.min(1, (el - i * FORGE.runeStagger) / FORGE.runeEach));
+      if (k <= 0) return;
+      const end = slot(i, el);
+      const ctrl = { x: lerp(home.x, end.x, 0.3) + (i % 2 ? -18 : 18), y: Math.min(home.y, end.y) - 26 };
+      const p = qbez(home, ctrl, end, E.outCubic(k));
+      if (!r.visible) r.setVisible(true).setTintFill(PAL.white);
+      else if (k > 0.3) r.clearTint();
+      r.setPosition(Math.round(p.x), Math.round(p.y));
+      if (k < 1 && rnd() < 0.6) sparks.add({ x: Math.round(p.x), y: Math.round(p.y), life: 120 + Math.round(rnd() * 100), colors: RUNE_TRAIL, shape: 'px', fadeAt: 1 });
+    });
+  });
+  // one beat in the ring: they orbit, the back ones behind the head
+  await run(sc, FORGE.orbit, (_t, el) => {
+    runes.forEach((r, i) => {
+      const p = slot(i, el0 + el);
+      r.setPosition(Math.round(p.x), Math.round(p.y));
+      r.setDepth(Math.sin((el0 + el) * 0.0034 + (i / NR) * Math.PI * 2) > 0 ? DEPTH.FX + 2 : target.depth - 0.4);
+    });
+  });
+  // ---- converge into the blade's spine
+  const ss = L.size === 'big' ? 2 : 1;
+  const spine = (i: number): XY => ({ x: L.x, y: L.top + 4 * ss + (i / (NR - 1)) * (L.h - 10 * ss) });
+  const starts = runes.map((r) => ({ x: r.x, y: r.y }));
+  await run(sc, FORGE.converge, (t) => {
+    const k = E.inCubic(t);
+    runes.forEach((r, i) => {
+      const p = spine(i);
+      r.setDepth(DEPTH.FX + 2).setPosition(Math.round(lerp(starts[i].x, p.x, k)), Math.round(lerp(starts[i].y, p.y, k)));
+    });
+  });
+  runes.forEach((r) => r.destroy());
+
+  // ---- the sword draws itself top → bottom white-hot (mark `forge`), cools, its runes glowing
+  playV3('bladeForge', { volume: 0.9, pan: panAt(L.x) });
+  const sword = motifImage(sc, ...forgeSwordKey({ size: L.size, look: 'hot' }), L.x, L.top, swordDepth);
+  for (let s = 1; s <= DRAW_STEPS; s++) {
+    sword.setCrop(0, 0, geo.w, Math.ceil((geo.h * s) / DRAW_STEPS));
+    await step(sc, FORGE.drawStep);
   }
-  sparks.release();
-  // the feet: the floor burst and a gold flash two frames bright (the aura's own one tone stays)
+  sword.setCrop();
+  const ns = fxCount(16);
+  for (let i = 0; i < ns; i++) {
+    const yy = L.top + 6 + Math.round(rnd() * (L.h - 12));
+    sparks.add({ x: L.x + Math.round((rnd() - 0.5) * 6), y: yy, vx: (rnd() - 0.5) * 140, vy: -40 + rnd() * 60, drag: 4, life: 240 + Math.round(rnd() * 180), colors: SPARK_FX, shape: i % 4 === 0 ? 'plus' : 'px', fadeAt: 1 });
+  }
+  setMotif(sword, ...forgeSwordKey({ size: L.size, look: 'cool' }));
+  await step(sc, FORGE.cool);
+
+  // ---- it spins 1.5 turns while it rises (pre-drawn turns: never a fractional scale); the ring goes
+  // out down the ramp; a light streak runs down the blade once it faces us again
+  let drawingKey = '';
+  const show = (o: Parameters<typeof forgeSwordKey>[0]): void => {
+    const [k, make] = forgeSwordKey(o);
+    if (k === drawingKey) return;
+    drawingKey = k;
+    setMotif(sword, k, make);
+  };
+  const glintAt = (t: number): number | undefined => (t < 0 || t > 1 ? undefined : Math.round(t * 6) / 6);
+  let top = L.top;
+  const GLINT_SPAN = FORGE.spin * 0.45 + FORGE.hang;
+  await run(sc, FORGE.spin, (t, el) => {
+    const d = turnAt(E.outCubic(t) * Math.PI * 3 + Math.PI);
+    const g = glintAt((el - FORGE.spin * 0.55) / GLINT_SPAN);
+    show({ size: L.size, turn: d.turn, back: d.back, runesLit: true, glint: d.turn === 0 && !d.back ? g : undefined });
+    top = L.top - Math.round(E.outQuad(t) * RISE_PX);
+    sword.setPosition(L.x, top);
+    ringFade = Math.min(3, Math.floor(t * 4));
+    if (Math.floor(el / 34) % 2 === 0 && rnd() < 0.5)
+      sparks.add({ x: L.x + Math.round((rnd() - 0.5) * 12), y: top + Math.round(L.h * (0.3 + rnd() * 0.5)), vy: 10 + rnd() * 20, life: 300, colors: RUNE_TRAIL, shape: 'px', fadeAt: 1 });
+  });
+  ringFade = 3;
+  stopHalo();
+  haloBack.destroy();
+  haloFront.destroy();
+  void ringLight.fadeOut(220);
+
+  // ---- anticipation: it hangs a beat higher, a star on its point. v3 art in attack position rises to
+  // its victory peak as the blade comes down (the peak lands on the stab, held through the hit-stop)
+  const pose: Promise<void> = !u.retired && target.active ? bondPose(u) : Promise.resolve();
+  const riseTop = top;
+  await run(sc, FORGE.hang, (t, el) => {
+    top = riseTop - Math.round(E.outQuad(t) * HANG_PX);
+    sword.setPosition(L.x, top);
+    show({ size: L.size, glint: glintAt((el + FORGE.spin * 0.45) / GLINT_SPAN) });
+  });
+  show({ size: L.size });
+  sparks.add({ x: L.x, y: top + L.tipRow, life: 140, colors: [PAL.white, PAL.gold4], shape: 'plus', fadeAt: 1 });
+
+  // ---- the plunge: inQuad, a one-frame trail of light lines over it
+  const b = spriteBox(sc, target);
+  const stabTop = Math.round(b.top + b.h * 0.5) - L.tipRow;
+  const fromTop = top;
+  const trail = new Raster(sc, L.x - geo.guardHw - 2, 0, geo.guardHw * 2 + 5, Math.max(8, stabTop + geo.guardRow + 4), swordDepth - 0.1);
+  playV3('bladeFly', { volume: 0.85, pitch: 1.25, pan: panAt(L.x) });
+  let last = fromTop;
+  await run(sc, FORGE.plunge, (t) => {
+    top = Math.round(lerp(fromTop, stabTop, E.inQuad(t)));
+    sword.setPosition(L.x, top);
+    // where the pommel and the guard's wing tips were a frame ago (behind the sword)
+    trail.begin();
+    if (top - last > 2)
+      for (const [dx, row, cc] of [
+        [0, 0, PAL.gold4],
+        [-Math.round(geo.guardHw * 0.7), geo.guardRow, PAL.gold3],
+        [Math.round(geo.guardHw * 0.7), geo.guardRow, PAL.gold2],
+      ] as const)
+        for (let y = last + row; y < top + row; y++) trail.px(L.x + dx, y, cc);
+    trail.end();
+    last = top;
+  });
+  trail.destroy();
+
+  // ---- IMPACT (mark `bond`): the stab frame
+  const alive = !u.retired && target.active;
+  const tip: XY = { x: L.x, y: top + L.tipRow };
+  playV3('bladeBond', { volume: 1, pan: panAt(L.x) });
+  if (alive) {
+    contactFlash(sc, target, { x: 0, y: 1 }, { frames: 3, coverage: 0.45, tint: PAL.gold4, at: tip });
+    bg(rimFlash(sc, target, { ramp: STAB_RIM, hold: 2 }).then(() => (target.active && !u.retired ? rimClimb(sc, target, { ramp: [PAL.gold2, PAL.gold3, PAL.gold4], stepMs: 50, holdMs: 140, fadeMs: 150, from: 'head' }) : undefined)));
+    if (st) {
+      // the single number (EF-9) over the head beside the blade, toward the field's middle (the old
+      // count's glyphs). It never covers the blade, not even in its two slam frames at 2×: its centre
+      // stands NUMBER_CLEAR px off the blade's edge (half the slammed "+700" plus the ink and air)
+      const { up, delta } = statDelta(st);
+      const head = u.worldPoint('top');
+      const side = u.player === 0 ? 1 : -1;
+      if (delta > 0) bg(impactNumber(sc, L.x + side * (geo.bladeHw + NUMBER_CLEAR), Math.round(head.y) - 4, delta, { kind: up ? 'heal' : 'damage' }));
+      void u.setStats(st.atk, st.def, true);
+    }
+  } else if (st) void u.setStats(st.atk, st.def, false);
   bg(floorBurst(sc, ip(u.home), DEPTH.TILE_FX + 3));
-  void lightFlash(sc, u.home.x, u.home.y, PAL.gold4, fs(30), 120, { floorY: u.home.y, intensity: 1.1 });
-  const pose = bondPose(u);
-  await Promise.all([pose, wait(sc, SETTLE_MS)]);
+  void lightFlash(sc, L.x, tip.y, PAL.gold4, fs(48), 620, { floorY: u.home.y, ring: true, intensity: 1.2 });
+  const ni = fxCount(26);
+  for (let i = 0; i < ni; i++) {
+    const a = (i / ni) * Math.PI * 2 + rnd() * 0.4;
+    const v = 60 + rnd() * 110;
+    sparks.add({ x: tip.x, y: tip.y - 4, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.6 - 40, ay: 260, drag: 1.5, life: 300 + Math.round(rnd() * 300), colors: SPARK_FX, shape: i % 3 === 0 ? 'plus' : 'px', fadeAt: 1 });
+  }
+  await freeze(sc, FORGE.stop);
+
+  // ---- the blade sinks into the body (cut at the stab line) and turns to light in a stepped column
+  const cutRow = tip.y;
+  const sinkPx = SINK_PX[L.size];
+  const column = new Raster(sc, L.x - 4, Math.round(b.top) - 30, 9, Math.max(8, Math.round(u.home.y - b.top) + 28), target.depth + 0.6);
+  bg(lightBeam(sc, { x: L.x, y: b.top - 30 }, { x: L.x, y: u.home.y - 2 }, PAL.gold4, 260, { width: 12, depth: target.depth - 0.5, intensity: 0.8 }).done);
+  await run(sc, FORGE.sink, (t) => {
+    top = stabTop + Math.round(t * sinkPx);
+    const look = sinkLook(t);
+    if (look) {
+      show({ size: L.size, look });
+      sword.setPosition(L.x, top).setCrop(0, 0, geo.w, Math.max(0, Math.min(geo.h, cutRow - top + 1))).setVisible(true);
+    } else sword.setVisible(false);
+    // the column: 7 → 5 → 3 → 1 px, white core first, down the ramp
+    const k = Math.min(3, Math.floor(t * 4));
+    const hw = 3 - k;
+    column.begin();
+    for (let y = column.y; y < column.y + column.h; y++)
+      for (let x = -hw; x <= hw; x++) column.px(L.x + x, y, Math.abs(x) === hw && hw > 0 ? PAL.gold2 : k === 0 && Math.abs(x) <= 1 ? PAL.white : k <= 1 ? PAL.gold4 : PAL.gold3);
+    column.end();
+  });
+  column.destroy();
+  sword.destroy();
+  sparks.release();
+
+  // ---- the persistent aura takes over: the small sword at the back, the waist ring closing
+  if (u.retired || !target.active) return;
+  u.setAura('equip', equipAuraV3(sc, u, { bond: true }));
+  await Promise.all([pose, wait(sc, FORGE.settle)]);
 }
 
 // ================================================================ the break

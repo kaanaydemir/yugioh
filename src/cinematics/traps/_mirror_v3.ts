@@ -22,21 +22,26 @@
 //            streak's 0.72 rad), on its contact frame — a ranged strike's bolt (5 px, attribute colours,
 //            white core) leaves the muzzle on the attack's own release frame; a melee body steps 10 px
 //            toward the dome on whole pixels into its own impact frame and its blow streaks off its muzzle
-//            (as the old dome's streak did for every attacker). 60 ms hit-stop; the struck cell flares as a
-//            white checker for 2 frames (still glass); a ripple of lit seams runs over the whole dome
-//            (190 ms); a big whole-pixel star, pixel sparks, a magenta floor flash; the dome itself trembles
-//            1 px (local, never the camera). The body steps back home. mirrorCatch
-//   +60…+210 CHARGE: the seams heat up cell by cell, the light gathers at the struck point (a growing
-//            whole-pixel star, motes drawn in) — the old charge beat
-//   +210     REFLECTION, one by one — `beam:<i>`: the first departure lights every seam for a frame
-//            (white round the struck point, mag4 further out: EF-4) and splays 7 stray 1-px reflections
-//            off the dome (the old "many beams"); then for every
+//            (as the old dome's streak did for every attacker). 60 ms hit-stop. The whole dome IGNITES (the
+//            old dome's pink-white glass, user decision 24 Oct "never smaller or duller"): every cell's pane
+//            lights as a mag4 / mag3 checker on its inset pixels (white / mag4 round the struck point), its
+//            seams mag4 / white — held through the hit-stop, then stepped down (≈ 8 frames in all, then a
+//            quarter for 2); the struck cell flares as a white checker for 2 frames (still glass); a ripple
+//            of lit seams runs over the whole dome (190 ms); a big whole-pixel star, pixel sparks, a magenta
+//            floor flash; the dome itself trembles 1 px (local, never the camera). The body steps back
+//            home. mirrorCatch
+//   +60…+210 CHARGE: the seams heat up cell by cell (the hot cells light their panes), the light
+//            gathers at the struck point (a growing whole-pixel star, motes drawn in) — the old charge beat
+//   +210     REFLECTION, one by one — `beam:<i>`: the first departure lights every seam and pane for a
+//            frame (white round the struck point, mag4 further out: EF-4), the panes for 2 more, and
+//            splays 7 stray 1-px reflections off the dome (the old "many beams"); then for every
 //            attack-position monster of the attacking side, nearest to the struck point first, a beam
-//            arcs from the struck point to the monster's core in 120 ms (5 px: mag3 / mag4 / white core,
-//            a hard white head; fanned apart like the old ones); its contact is that monster's own death
-//            (the v3 death kit: the v3 art's death pose, the old art's reaction + material break), a 1-px
-//            white / magenta rim on its silhouette, a 2-frame white star; the beam swells to 7 px for 2
-//            frames, then thins out by steps (EF-13); a short floor strip of light. The next beam leaves
+//            arcs from the struck point to the monster's core in 120 ms (7 px: mag2 / mag3 / mag4 / white
+//            core — the old glowing band's width — a hard white head; fanned apart like the old ones); its
+//            contact is that monster's own death (the v3 death kit: the v3 art's death pose, the old
+//            art's reaction + material break), a 1-px white / magenta rim on its silhouette, a 2-frame
+//            white star; the beam swells to 9 px (3-px white core) for 2 frames, then thins out by steps
+//            (EF-13); a short floor strip of light. The next beam leaves
 //            220 ms after the previous contact (later when two graveyard landings would come closer than
 //            150 ms); each departure sends a small ripple over the dome. mirrorBeam, one step up per victim
 //   last+120 BREAK — `break`: the dome breaks out from the struck point (340 ms, as the old one): every
@@ -124,6 +129,20 @@ const DEATH_EST = { pose: 1220, legacy: 520 } as const;
 const STRUCK_EL = 0.72;
 /** A melee body's step toward the dome before its blow streaks off (the old lunge: 8 px). */
 const MELEE_STEP = 10;
+/**
+ * The catch ignites the dome (the old dome's pink-white glass, ≈ 8 frames): in dome frames after the catch
+ * (the hit-stop holds frame 0, ≈ 4 rendered frames) every cell's pane is lit up to `lit` — hot (white)
+ * round the struck point up to `hot` — then a quarter of the glass up to `fade`, then the ripple and the
+ * charge carry on.
+ */
+export const IGNITE = { hot: 1, lit: 3, fade: 5 } as const;
+/** How far round the struck point (lattice units: about the struck cell and its ring) the glass burns white. */
+const HOT_R = 0.3;
+/**
+ * How far round the struck point the seams burn white on the first reflection's flash frame (lattice units,
+ * about a third of the cells; mag4 further out): the whole frame stays ≤ 1.5 % white with the HUD (EF-4).
+ */
+const FLASH_WHITE_R = 0.6;
 
 // ================================================================ pure helpers (tested)
 
@@ -256,6 +275,12 @@ export interface DomeShell {
   cell: Int32Array;
   /** Grazing level 0…3 (3 = the glass seen edge-on, along the outline). */
   fres: Uint8Array;
+  /**
+   * 1 = clear glass whose four neighbours are clear glass of the same cell: a lit cell's pane (the catch,
+   * the charge's hottest cells) is a checker on these pixels only, so a 1-px dark gap keeps every seam
+   * readable and the shell stays under half covered (EF-2).
+   */
+  inset: Uint8Array;
 }
 
 export interface DomeField {
@@ -326,7 +351,7 @@ export function domeField(shape: DomeShape): DomeField {
       }
     }
   }
-  const shell = (): DomeShell => ({ kind: new Uint8Array(n), cell: new Int32Array(n).fill(-1), fres: new Uint8Array(n) });
+  const shell = (): DomeShell => ({ kind: new Uint8Array(n), cell: new Int32Array(n).fill(-1), fres: new Uint8Array(n), inset: new Uint8Array(n) });
   const near = shell();
   const far = shell();
   for (let pass = 0; pass < 2; pass++) {
@@ -357,6 +382,14 @@ export function domeField(shape: DomeShape): DomeField {
         S.kind[idx] = kind;
         if (kind === DOME_PX.seam || kind === DOME_PX.foot) cells[c].seams.push({ x: x0 + i, y: y0 + j, f: Math.round(y0 + j + Z[pass][idx]) });
       }
+    // the panes: clear glass with clear glass of its own cell on all four sides
+    const clear = (i: number, j: number, c: number): boolean => i >= 0 && j >= 0 && i < w && j < h && S.cell[j * w + i] === c && S.kind[j * w + i] === DOME_PX.glass;
+    for (let j = 0; j < h; j++)
+      for (let i = 0; i < w; i++) {
+        const idx = j * w + i;
+        const c = S.cell[idx];
+        if (c >= 0 && S.kind[idx] === DOME_PX.glass && clear(i + 1, j, c) && clear(i - 1, j, c) && clear(i, j + 1, c) && clear(i, j - 1, c)) S.inset[idx] = 1;
+      }
   }
   return { shape, w, h, near, far, cells };
 }
@@ -369,10 +402,16 @@ export interface DomeLook {
   heat: Uint8Array;
   /** Materializing: 2 = white seams + a glass flash, 1 = mag4 seams, 0 settled. */
   fresh: Uint8Array;
+  /**
+   * The glass lit up (the catch ignites every cell, the charge its hottest ones — the old dome's pink-white
+   * glass): 0 off, 1 a quarter of the glass mag3 + mag4 seams, 2 the pane lit (mag4 / mag3 checker on the
+   * inset pixels) + mag4 seams, 3 hot (white / mag4 pane, white seams).
+   */
+  glow: Uint8Array;
 }
 
 export function domeLook(cells: number, shown = true): DomeLook {
-  return { vis: new Uint8Array(cells).fill(shown ? 1 : 0), heat: new Uint8Array(cells), fresh: new Uint8Array(cells) };
+  return { vis: new Uint8Array(cells).fill(shown ? 1 : 0), heat: new Uint8Array(cells), fresh: new Uint8Array(cells), glow: new Uint8Array(cells) };
 }
 
 /**
@@ -381,8 +420,11 @@ export function domeLook(cells: number, shown = true): DomeLook {
  * Near glass: outline mag4, seams mag3 at grazing angles / mag2 where you look straight through, the old
  * dome's pink glass tint (mag2 on a quarter of the pixels where the glass is seen edge-on, half of them
  * along the outline, mag1 further in, clear in the middle), the white streak. Heat lights the seams by
- * steps (mag4, white) and the glass with them (a quarter mag3 / mag4: the old dome's glow on the catch
- * and the charge). Far glass: seams mag1 / mag2, its foot on the floor mag2, a quarter mag1 tint edge-on.
+ * steps (mag4, white) and the glass with them (a quarter mag3 / mag4: the ripple, the charge). Glow lights
+ * the glass itself (the old dome's pink-white glass on the catch): a quarter of it, or the pane — a
+ * mag4 / mag3 (hot: white / mag4) checker on the inset pixels, clear next to the seams, so the honeycomb
+ * stays readable and under half the shell is covered. Far glass: seams mag1 / mag2 (lit: mag3 / mag4),
+ * its foot on the floor mag2, a quarter mag1 tint edge-on.
  */
 export function paintDomeShell(p: PixelCanvas, f: DomeField, which: 'near' | 'far', L: DomeLook): void {
   const S = which === 'near' ? f.near : f.far;
@@ -397,6 +439,7 @@ export function paintDomeShell(p: PixelCanvas, f: DomeField, which: 'near' | 'fa
       const kind = S.kind[idx];
       const heat = L.heat[c];
       const fresh = L.fresh[c];
+      const glow = L.glow[c];
       const fr = S.fres[idx];
       // the 2×2 Bayer quarter pixels: b0 = the first quarter, b1 = its diagonal partner (b0 + b1 = the checker)
       const ex = ((x0 + i) & 1) === 0;
@@ -405,20 +448,22 @@ export function paintDomeShell(p: PixelCanvas, f: DomeField, which: 'near' | 'fa
       const b1 = !ex && !ey;
       let col = -1;
       if (near) {
-        if (kind === DOME_PX.rim) col = heat >= 2 || fresh >= 2 ? PAL.white : PAL.mag4;
-        else if (kind === DOME_PX.seam) col = heat >= 2 || fresh >= 2 ? PAL.white : heat === 1 || fresh === 1 ? PAL.mag4 : fr >= 2 ? PAL.mag3 : PAL.mag2;
+        if (kind === DOME_PX.rim) col = heat >= 2 || fresh >= 2 || glow >= 3 ? PAL.white : PAL.mag4;
+        else if (kind === DOME_PX.seam) col = heat >= 2 || fresh >= 2 || glow >= 3 ? PAL.white : heat === 1 || fresh === 1 || glow >= 1 ? PAL.mag4 : fr >= 2 ? PAL.mag3 : PAL.mag2;
         else if (kind === DOME_PX.spec) col = PAL.white;
-        else if (kind === DOME_PX.spec2) col = heat >= 2 ? PAL.white : PAL.mag4;
+        else if (kind === DOME_PX.spec2) col = heat >= 2 || glow >= 2 ? PAL.white : PAL.mag4;
         // the struck panel flares as a white checker (every other pixel): still glass, what is behind shows through
         else if (heat >= 3) col = b0 || b1 ? PAL.white : -1;
         else if (fresh >= 2) col = b0 || b1 ? PAL.mag3 : -1;
-        // the glass glows with its seams on the catch / ripple / charge (a quarter of its pixels)
-        else if (b0 && heat >= 1) col = heat >= 2 ? PAL.mag4 : PAL.mag3;
+        // the lit pane: a checker on the inset pixels (white / mag4 when hot, mag4 / mag3), clear by the seams
+        else if (glow >= 2) col = S.inset[idx] === 0 ? -1 : b0 ? (glow >= 3 ? PAL.white : PAL.mag4) : b1 ? (glow >= 3 ? PAL.mag4 : PAL.mag3) : -1;
+        // the glass glows with its seams on the ripple / charge / the ignition's last step (a quarter of its pixels)
+        else if (b0 && (heat >= 1 || glow >= 1)) col = heat >= 2 ? PAL.mag4 : PAL.mag3;
         // the pink glass tint, brighter where the glass is seen edge-on
         else if (b0) col = fr >= 2 ? PAL.mag2 : fr === 1 ? PAL.mag1 : -1;
         else if (b1 && fr >= 3) col = PAL.mag2;
       } else {
-        if (kind === DOME_PX.seam || kind === DOME_PX.foot) col = heat >= 2 || fresh >= 2 ? PAL.mag4 : heat === 1 || fresh === 1 ? PAL.mag3 : kind === DOME_PX.foot || fr >= 2 ? PAL.mag2 : PAL.mag1;
+        if (kind === DOME_PX.seam || kind === DOME_PX.foot) col = heat >= 2 || fresh >= 2 || glow >= 3 ? PAL.mag4 : heat === 1 || fresh === 1 || glow >= 1 ? PAL.mag3 : kind === DOME_PX.foot || fr >= 2 ? PAL.mag2 : PAL.mag1;
         else if (heat >= 3) col = b0 || b1 ? PAL.mag4 : -1;
         else if (fresh >= 2) col = b0 || b1 ? PAL.mag1 : -1;
         else if (b0 && heat >= 2) col = PAL.mag2;
@@ -566,6 +611,7 @@ class DomeV3 {
   private ringFade = 0;
   private ripple: { at: number; hu: number; hv: number; ms: number; reach: number } | null = null;
   private struck: { cell: number; at: number } | null = null;
+  private ignite: { at: number; hu: number; hv: number } | null = null;
   private charge = 0;
   private flashAt = -1;
   private flashHit: DomeHit | null = null;
@@ -641,9 +687,13 @@ class DomeV3 {
     });
   }
 
-  /** The catch: the struck cell a white checker, a ripple of lit seams over the dome, a 1-px local tremble. */
+  /**
+   * The catch: every cell's glass ignites (IGNITE: the lit panes, white round the struck point), the struck
+   * cell a white checker, a ripple of lit seams over the dome, a 1-px local tremble.
+   */
   strike(hit: DomeHit): void {
     if (hit.cell >= 0) this.struck = { cell: hit.cell, at: this.frame };
+    this.ignite = { at: this.frame, hu: hit.hu, hv: hit.hv };
     this.ripple = { at: this.el, hu: hit.hu, hv: hit.hv, ms: RIPPLE_MS, reach: 2.2 };
     if (!REDUCED_MOTION) this.trembleFrom = this.frame;
   }
@@ -661,10 +711,11 @@ class DomeV3 {
 
   /**
    * The first reflection leaving: every seam lights up for a frame — white round the struck point, mag4
-   * further out (EF-4: never a white sheet) — and mag4 the next frame.
+   * further out (EF-4: never a white sheet) — and mag4 the next frame; the panes light with them (2 frames,
+   * then a quarter for 2). Its frame 0 is the next one painted (this is called between frames).
    */
   flash(hit: DomeHit): void {
-    this.flashAt = this.frame;
+    this.flashAt = this.frame + 1;
     this.flashHit = hit;
   }
 
@@ -757,28 +808,41 @@ class DomeV3 {
     if (rip && rt >= 1) this.ripple = null;
     const sheenT = this.buildAt >= 0 ? ((this.el - this.buildAt) / 1500) % 1 : -1;
     const flashF = this.flashAt >= 0 ? this.frame - this.flashAt : 99;
+    const ig = this.ignite;
+    const igF = ig ? this.frame - ig.at : 99;
+    if (ig && igF > IGNITE.fade) this.ignite = null;
     for (let i = 0; i < cells.length; i++) {
       const cl = cells[i];
       const age = this.appear[i] < 0 ? -1 : this.frame - this.appear[i];
       L.fresh[i] = age < 0 ? 0 : age < 2 ? 2 : age < 4 ? 1 : 0;
       let heat = 0;
+      let glow = 0;
       if (rip && rt >= 0 && rt < 1) {
         const d = Math.hypot(cl.cu - rip.hu, cl.cv - rip.hv);
         const r = Math.max(0, 1 - Math.abs(d - rt * rip.reach) / 0.25) * (1 - rt);
         heat = r > 0.55 ? 2 : r > 0.2 ? 1 : 0;
       }
+      // the catch ignites every cell's glass: hot round the struck point, the panes lit, then a quarter
+      if (ig && igF >= 0 && igF <= IGNITE.fade) glow = igF <= IGNITE.hot && Math.hypot(cl.cu - ig.hu, cl.cv - ig.hv) < HOT_R ? 3 : igF <= IGNITE.lit ? 2 : 1;
       if (this.charge > 0) {
         const pulse = this.charge * (0.55 + 0.45 * Math.sin(this.el * 0.03 + cl.cu * 9 + cl.cv * 5));
         heat = Math.max(heat, pulse > 0.75 ? 2 : pulse > 0.35 ? 1 : 0);
+        // the hot cells of the charge light their panes too (the old charge's glowing glass)
+        if (pulse > 0.75) glow = Math.max(glow, 2);
       }
-      if (flashF === 0) heat = Math.max(heat, this.flashHit && Math.hypot(cl.cu - this.flashHit.hu, cl.cv - this.flashHit.hv) < 0.9 ? 2 : 1);
-      else if (flashF === 1) heat = Math.max(heat, 1);
-      if (heat === 0 && sheenT >= 0 && age >= 4) {
+      if (flashF >= 0 && flashF <= 4) {
+        const dF = this.flashHit ? Math.hypot(cl.cu - this.flashHit.hu, cl.cv - this.flashHit.hv) : 9;
+        if (flashF === 0) heat = Math.max(heat, dF < FLASH_WHITE_R ? 2 : 1);
+        else if (flashF === 1) heat = Math.max(heat, 1);
+        glow = Math.max(glow, flashF === 0 && dF < HOT_R ? 3 : flashF <= 2 ? 2 : 1);
+      }
+      if (heat === 0 && glow === 0 && sheenT >= 0 && age >= 4) {
         // a sheen band slides over the glass (living detail): a diagonal of cells one tone up
         const s = cl.cu * 0.55 - cl.cv * 0.45;
         if (Math.abs(s - (sheenT * 3.2 - 1.6)) < 0.07) heat = 1;
       }
       L.heat[i] = heat;
+      L.glow[i] = glow;
     }
     if (this.struck) {
       const sf = this.frame - this.struck.at;
@@ -941,6 +1005,34 @@ function star(r: Raster, p: XY, arm: number, tip: number, core: number = PAL.whi
 }
 
 /**
+ * The big catch star (the old dome's big white star, readable on the lit glass): a tapered plus — a 3×3
+ * core and 3-px-thick arm roots, 1-px arms out to `arm`, `tip` on the ends — and short diagonal rays.
+ */
+function bigStar(r: Raster, p: XY, arm: number, tip: number, core: number = PAL.white): void {
+  const x = Math.round(p.x);
+  const y = Math.round(p.y);
+  const root = Math.max(1, Math.floor(arm / 3));
+  for (let k = -arm; k <= arm; k++) {
+    const a = Math.abs(k);
+    const c = a === arm ? tip : core;
+    r.px(x + k, y, c);
+    r.px(x, y + k, c);
+    if (a <= root) {
+      // the thick root of each arm
+      for (const s of [-1, 1]) {
+        r.px(x + k, y + s, core);
+        r.px(x + s, y + k, core);
+      }
+    }
+  }
+  const d = Math.max(2, Math.floor(arm / 3) + 1);
+  for (const [dx, dy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]] as const) {
+    for (let k = 2; k < d; k++) r.px(x + dx * k, y + dy * k, core);
+    r.px(x + dx * d, y + dy * d, tip);
+  }
+}
+
+/**
  * A ranged strike's bolt from the muzzle into the shell (attribute colours, white core, whole pixels,
  * 5 px like the old streak's body). Resolves on its contact frame.
  */
@@ -962,9 +1054,9 @@ function strikeBolt(scene: Phaser.Scene, from: XY, to: XY, ramp: readonly number
 
 /**
  * One reflected beam: a gentle fanned arc (as the old ones) from the struck point to a victim's core in
- * BEAM_MS — 5 px (mag3 / mag4 / white core) with a hard white head; on contact a white star, the beam
- * swells to 7 px for 2 frames, then thins by steps (5 → 3 → 1 px) and is gone (EF-13). `onContact`
- * runs on the contact frame.
+ * BEAM_MS — 7 px (mag2 edge / mag3 / mag4 / white core: the old glowing band's width) with a hard white
+ * head; on contact a white star, the beam swells to 9 px with a 3-px white core for 2 frames, then thins
+ * by steps (7 → 5 → 3 → 1 px) and is gone (EF-13). `onContact` runs on the contact frame.
  */
 function arcBeam(scene: Phaser.Scene, from: XY, to: XY, fan: number, onContact: () => void): Promise<void> {
   const a = { x: Math.round(from.x), y: Math.round(from.y) };
@@ -1001,13 +1093,14 @@ function arcBeam(scene: Phaser.Scene, from: XY, to: XY, fan: number, onContact: 
       const after = hitFrame < 0 ? -1 : frame - hitFrame;
       r.begin();
       if (after < 0) {
-        strokePath(r, path, 0, head, [PAL.mag3, PAL.mag4, PAL.white]);
-        star(r, path[head - 1], 2, PAL.mag4);
-      } else if (after < 2) {
         strokePath(r, path, 0, head, [PAL.mag2, PAL.mag3, PAL.mag4, PAL.white]);
-        star(r, b, 4, PAL.mag4);
-      } else if (after < 4) strokePath(r, path, 0, head, [PAL.mag2, PAL.mag3, PAL.mag4]);
-      else if (after < 6) strokePath(r, path, 0, head, [PAL.mag2, PAL.mag4]);
+        star(r, path[head - 1], 3, PAL.mag4);
+      } else if (after < 2) {
+        strokePath(r, path, 0, head, [PAL.mag2, PAL.mag3, PAL.mag4, PAL.white, PAL.white]);
+        star(r, b, 5, PAL.mag4);
+      } else if (after < 4) strokePath(r, path, 0, head, [PAL.mag2, PAL.mag3, PAL.mag4, PAL.white]);
+      else if (after < 6) strokePath(r, path, 0, head, [PAL.mag2, PAL.mag3, PAL.mag4]);
+      else if (after < 7) strokePath(r, path, 0, head, [PAL.mag2, PAL.mag4]);
       else if (after < 8) strokePath(r, path, 0, head, [PAL.mag3]);
       r.end();
       // done after the steps (8 rendered frames past contact; a hit-stop holds them)
@@ -1022,8 +1115,8 @@ function arcBeam(scene: Phaser.Scene, from: XY, to: XY, fan: number, onContact: 
 }
 
 /**
- * The catch on the shell: a big whole-pixel star (white, then mag4, then mag3), pixel sparks, the magenta
- * floor flash under it.
+ * The catch on the shell: a big whole-pixel star (thick white, held through the hit-stop, then mag4, then
+ * mag3), pixel sparks, the magenta floor flash under it.
  */
 function catchBurst(scene: Phaser.Scene, at: XY, floorY: number, seed: number): void {
   const r = Raster.around(scene, at.x, at.y, 30, 30, DEPTH.FX + 6);
@@ -1031,9 +1124,9 @@ function catchBurst(scene: Phaser.Scene, at: XY, floorY: number, seed: number): 
   onFrame(scene, (dt) => {
     if (dt > 0) f++;
     r.begin();
-    if (f < 2) star(r, at, 6, PAL.mag4);
-    else if (f < 4) star(r, at, 4, PAL.mag3, PAL.mag4);
-    else if (f < 6) star(r, at, 2, PAL.mag2, PAL.mag3);
+    if (f < 2) bigStar(r, at, 10, PAL.mag4);
+    else if (f < 4) bigStar(r, at, 7, PAL.mag3, PAL.mag4);
+    else if (f < 6) star(r, at, 3, PAL.mag2, PAL.mag3);
     r.end();
     if (f >= 6) {
       r.destroy();

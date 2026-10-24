@@ -29,7 +29,7 @@ import { DEPTH, GAME_H, GAME_W, UI, type Rect } from '../layout';
 import { ICON, type UiStyle, pushUiKeys } from '../ui-textures';
 import { PalText, canvasTexture, capYV3, iconTexture, iconTones, textWidthV3, ui3Sfx } from './hudSkin';
 import { REDUCED_MOTION, settle } from './motion';
-import { PlateBox, foldedPlate } from './TrapPromptV3';
+import { PlateBox, foldedPlate, waitScaled } from './TrapPromptV3';
 
 const FRAME = 1000 / 60;
 
@@ -246,23 +246,4 @@ export async function curtainV3(scene: Phaser.Scene, player: PlayerId, opts: Cur
   }
   cleanup();
   if (hand) await hand.waveFaceDown(false, wave);
-}
-
-/** Resolve after `ms` of scene (tween-scaled) time. */
-function waitScaled(scene: Phaser.Scene, ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    let el = 0;
-    const tick = (_t: number, dt: number) => {
-      el += dt * scene.tweens.timeScale;
-      if (el >= ms - 1e-6) {
-        scene.events.off('update', tick);
-        resolve();
-      }
-    };
-    scene.events.on('update', tick);
-    scene.events.once('shutdown', () => {
-      scene.events.off('update', tick);
-      resolve();
-    });
-  });
 }

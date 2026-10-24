@@ -54,6 +54,9 @@ import { Sparks as PxSparks } from '../../vfx/combat';
 import { matterRamp } from '../_v3/death';
 import { warmPoses } from '../_v3/warm';
 import { atMark, panAt, play as playV3, soundsOf, start as startV3 } from '../_v3/sound';
+// ---- lane A5-A step A-7 (V3_A5_A, docs/v3/A5_PLAN.md §3.6): a set card's own pixels pour into the orb
+// (no noise block) and the spell's own sounds — recallOpen as the grave opens, recallGlide as the soul glides
+import { V3_A5_A } from '../../view/v3flags';
 import { clearHologram, holoRamp, setHologram } from '../../vfx/hologram';
 
 const ADD = Phaser.BlendModes.ADD;
@@ -323,7 +326,7 @@ registerCardHook('soul_recall', 'activate', async (ctx) => {
   if (LOOK_V3 && sEv && isMonster(CARDS[sEv.cardId])) warmPoses(sEv.cardId as MonsterId, sEv.player, ['revive']);
   const gi = idxOf(ctx, run0, (e) => e.type === 'toGraveyard' && e.from === 'resolved' && e.uid === ev.uid);
   const set = setTileOf(ctx);
-  const op = await spellOpening(ctx, { uid: ev.uid, cardId: ev.cardId, player: ev.player, from: set ? 'set' : 'hand', zone: ev.zone, hold: LOOK_V3 ? 120 : 260 });
+  const op = await spellOpening(ctx, { uid: ev.uid, cardId: ev.cardId, player: ev.player, from: set ? 'set' : 'hand', zone: ev.zone, hold: LOOK_V3 ? 120 : 260, setRelease: V3_A5_A ? 'flow' : undefined });
   const gUid = tEv?.graveyardUid;
   if (!tEv || !sEv || gUid === undefined || !isMonster(CARDS[sEv.cardId])) {
     await op.close();
@@ -728,8 +731,14 @@ async function soulRiseV3(ctx: AnyCtx, from: XY, to: XY, id: MonsterId, player: 
   // revive swell opens the grave and fades as the ghost arrives — its bell crest (≈ 1 s in) never
   // rings over the body's own gather / land (sound QA #9: 89 % of the gather window, a second
   // accent 14 frames after the land)
-  const reviveSnd = soundsOf(id) ? startV3('revive', { volume: 0.75 }) : null;
-  if (!reviveSnd) ctx.sfx('revive', { volume: 0.9 });
+  // A5-A (A-7): the spell's own grave opening (recallOpen: a hollow low voice + one soft bell) instead
+  // of the shared 'revive' swell; with a voiced monster it fades as the ghost leaves, the same way
+  const graveSnd = V3_A5_A ? 'recallOpen' : 'revive';
+  const reviveSnd = soundsOf(id) ? startV3(graveSnd, { volume: V3_A5_A ? 0.9 : 0.75, pan: V3_A5_A ? panAt(gx) : undefined }) : null;
+  if (!reviveSnd) {
+    if (V3_A5_A) playV3('recallOpen', { volume: 0.9, pan: panAt(gx) });
+    else ctx.sfx('revive', { volume: 0.9 });
+  }
   bg(floorRing(sc, gx, gy, { r0: 6, r1: fs(42), ms: 360, ramp: CYAN_FX, depth: DEPTH.SHADOW - 1 }));
   void lightFlash(sc, gx, gy - 10, PAL.cyan4, fs(36), 420, { floorY: gy, intensity: 1, ring: true });
   const graveLight = lightPool(sc, gx, gy, { color: PAL.cyan3, radius: fs(26), intensity: 0.8, anim: 'breathe', fadeIn: 120 });
@@ -776,7 +785,9 @@ async function soulRiseV3(ctx: AnyCtx, from: XY, to: XY, id: MonsterId, player: 
   const dist = Math.hypot(end.x - start.x, end.y - start.y);
   const FLOAT = tm.float ?? Math.round(Math.min(560, Math.max(320, 200 + dist * 1.1)));
   const ctrl = { x: (start.x + end.x) / 2, y: Math.min(start.y, end.y) - Math.round(Math.min(80, 46 + dist * 0.1)) };
-  ctx.sfx('whoosh', { volume: 0.4, pitch: 0.7 });
+  // A5-A (A-7): the soul's glide has the spell's own sound (recallGlide), panned to the glide's middle
+  if (V3_A5_A) playV3('recallGlide', { volume: 0.85, pan: panAt((start.x + end.x) / 2) });
+  else ctx.sfx('whoosh', { volume: 0.4, pitch: 0.7 });
   const ghostLight = lightPool(sc, start.x, start.y, { color: PAL.cyan3, radius: fs(20), floorY: gy, intensity: 0.6, fadeIn: 80 });
   void graveLight.fadeOut(360);
   const ECHO_EVERY = 80;

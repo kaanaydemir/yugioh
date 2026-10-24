@@ -12,12 +12,13 @@
 //            light lying round it as a teal0 band), a stepped shock ring runs out to 56 px, and the
 //            SIGNATURE fountain shoots up one height per frame (14 → 30 → 48 → 64 → 76 → 86 → 82 →
 //            80 px: never smaller than the old 82-px geyser — the user's rule of 24 Oct): a stepped jet
-//            9 → 7 → 5 px wide (water4 lit edge, white core, teal4 … teal1; no outline), a crown
-//            folding over, water curtains falling from it to a 22-px ring (two behind, two in front,
-//            breaking into drops), spray thrown off the crown, ripples running out on the pool, a teal
-//            light flash and a caustic pool. springRise, mark `erupt`
-//   +150     DROPS: 6 drops (2×2, white core + water4) 45 ms apart on short arcs from the crown's side
-//            to the duelist's chest; on each landing a 1-frame "+" glint on him. springDrop, one
+//            11 → 9 → 7 px wide (water4 lit edge, white core, teal4 … teal1; no outline), a crown
+//            folding over, water curtains falling from it to a 27-px ring (53 px across, the old
+//            geyser's 52 at least; four behind, four in front, breaking into drops), spray thrown off
+//            the crown, ripples running out on the pool, a teal light flash and a caustic pool.
+//            springRise, mark `erupt`
+//   crest    DROPS: 6 gem drops (white core + water4, a 9-px teal streak) 36 ms apart on short arcs
+//            from the crown's side to the duelist's chest; on each landing a 2-frame "+" glint on him. springDrop, one
 //            pentatonic step higher each ("it fills up"), mark `drop:<i>`
 //   1st drop the heal: ctx.play(lpGain, { delivered: true }) → the LP presentation (lane A6-B's
 //            V3HOOKS.presentHeal when filled, else today's presentHeal; contract S-14); a teal 1-px edge
@@ -61,12 +62,15 @@ export const SPRING_V3 = Object.freeze({
   rise: [14, 30, 48, 64, 76, 86, 82, FOUNTAIN_H] as readonly number[],
   /** …and while it sinks (one step per two frames). */
   sink: [62, 44, 26, 12, 4, 0] as readonly number[],
-  /** The pool's radius (rx) per two frames from the eruption; then it holds the last. */
-  pool: [8, 12, 16, 19, 22, 24] as readonly number[],
+  /** The pool's radius (rx) per two frames from the eruption; then it holds the last (the curtains land inside it). */
+  pool: [8, 12, 16, 20, 24, 28] as readonly number[],
   /** The light band round the pool at full size. */
   halo: 6,
-  /** The curtains' floor ring and their fall from the crown (ms, from the jet's 4th height). */
-  reach: 22,
+  /**
+   * The curtains' floor ring and their fall from the crown (ms, from the jet's 4th height). 27: the
+   * curtains spread 53 px, never narrower than the old geyser's 52 (the user's rule of 24 Oct).
+   */
+  reach: 27,
   curtainFallMs: 170,
   /** The eruption's shock ring: out to 56 px (the old floorRing r1) in 18 frames. */
   shockR: [10, 56] as readonly number[],
