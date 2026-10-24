@@ -316,9 +316,13 @@ const A6A_SOURCES = import.meta.glob<string>(
     '/src/view/v3/handV3.ts',
     '/src/view/v3/inspectV3.ts',
     '/src/cinematics/v3small/set.ts',
+    '/src/art/rotsprite.ts',
   ],
   { query: '?raw', import: 'default', eager: true },
 );
+
+/** CardV3 / CardSprite as text: the leaning hand card reads a few of their fields by name. */
+const CARD_SOURCES = import.meta.glob<string>(['/src/view/v3/CardV3.ts', '/src/view/CardSprite.ts'], { query: '?raw', import: 'default', eager: true });
 
 // §6.3's camera-call pattern, assembled from pieces so this file does not match the same scan itself.
 const CAMERA_CALL = new RegExp(['\\bfo' + 'cus\\(', 'close' + 'Up', 'set' + 'Zoom', '\\.pa' + 'n\\(', 'desc' + 'end\\('].join('|'));
@@ -327,7 +331,7 @@ describe('A6-A source scan (§6.3 / §6.4)', { timeout: 60_000 }, () => {
   it('no colour constant outside the palette, no ADD blend, no alpha fade, no Math.random, no camera call', async () => {
     const { PAL } = await import('../../src/art/palette');
     const PAL_SET = new Set<number>(Object.values(PAL));
-    expect(Object.keys(A6A_SOURCES).length).toBe(8);
+    expect(Object.keys(A6A_SOURCES).length).toBe(9);
     for (const [f, src] of Object.entries(A6A_SOURCES)) {
       const hexes = [...src.matchAll(/0x[0-9a-fA-F]{6}\b/g)].map((m) => Number(m[0]));
       expect(
@@ -355,18 +359,149 @@ function trace(track: { step(dt: number): void; value: number; moving: boolean }
 }
 
 describe('A6-A A2 — the v3 hand (K1), pure parts', { timeout: 60_000 }, () => {
-  it('fan: straight, a y curve only — the outer cards 1–4 px lower, symmetric, deepest at the ends', async () => {
+  it("fan: v1's arc (user decision 24 Oct) — v1's dip and lean, the lean in whole degrees, mirror-symmetric, leaning outwards", async () => {
     await load('v3');
     const h = await import('../../src/view/v3/handV3');
     expect(h.fanDip(0, 1)).toBe(0);
+    expect(h.fanDeg(0, 1)).toBe(0);
     for (let n = 2; n <= 10; n++) {
-      const dips = Array.from({ length: n }, (_, i) => h.fanDip(i, n));
-      expect(Math.max(...dips), `n=${n}`).toBeLessThanOrEqual(4);
-      expect(dips[0], `n=${n}`).toBeGreaterThanOrEqual(1);
-      expect(dips[0]).toBe(dips[n - 1]);
-      for (let i = 0; i < n; i++) expect(Number.isInteger(dips[i])).toBe(true);
-      for (let i = 1; i <= Math.floor((n - 1) / 2); i++) expect(dips[i]).toBeLessThanOrEqual(dips[i - 1]);
+      const half = Math.max(1, (n - 1) / 2);
+      const dRot = Math.min(0.05, 0.22 / Math.max(1, n - 1));
+      for (let i = 0; i < n; i++) {
+        const off = i - (n - 1) / 2;
+        // v1 (src/view/HandView.ts pose()): y = BASE_Y + off² · min(1.4, 7 / half²), rot = off · dRot
+        expect(h.fanDip(i, n), `n=${n} i=${i}`).toBe(Math.round(off * off * Math.min(1.4, 7 / (half * half))));
+        const d = h.fanDeg(i, n);
+        expect(Number.isInteger(d), `n=${n} i=${i}`).toBe(true);
+        expect(Math.abs(d - (off * dRot * 180) / Math.PI), `n=${n} i=${i}`).toBeLessThanOrEqual(0.5);
+        if (d !== 0) expect(Math.sign(d)).toBe(Math.sign(off));
+        expect(h.fanDeg(n - 1 - i, n)).toBe(d === 0 ? 0 : -d);
+        expect(h.fanDip(n - 1 - i, n)).toBe(h.fanDip(i, n));
+      }
+      const leans = Array.from({ length: n }, (_, i) => Math.abs(h.fanDeg(i, n)));
+      expect(Math.max(...leans)).toBeLessThanOrEqual(7);
+      expect(Math.max(...Array.from({ length: n }, (_, i) => h.fanDip(i, n)))).toBeLessThanOrEqual(7);
     }
+    // the four-card hand of the checkpoint: −4 −1 1 4 degrees, 3 / 0 / 0 / 3 px down (v1: ±4.3°, ±1.4°)
+    expect([0, 1, 2, 3].map((i) => h.fanDeg(i, 4))).toEqual([-4, -1, 1, 4]);
+    expect([0, 1, 2, 3].map((i) => h.fanDip(i, 4))).toEqual([3, 0, 0, 3]);
+    // a raised card stands upright, a marked one leans half its lean (as v1), both sides alike
+    expect([h.tiltOf('hover', 4), h.tiltOf('select', -6), h.tiltOf('rest', 3), h.tiltOf('rest', -3)]).toEqual([0, 0, 3, -3]);
+    expect([h.tiltOf('mark', 3), h.tiltOf('mark', -3), h.tiltOf('mark', 6), h.tiltOf('mark', -1)]).toEqual([2, -2, 3, -1]);
+    // fanPose carries the lean; x / y stay whole pixels
+    const p = h.fanPose(0, 5, -1, { x: 160, w: 320 }, 48);
+    expect(p.deg).toBe(-6);
+    expect(Number.isInteger(p.x) && Number.isInteger(p.y)).toBe(true);
+  });
+
+  it('lean: baked RotSprite style with its rim ring — 0° is the card + ring pixel for pixel, no new colour, the ring walks the whole rim', async () => {
+    const { cards, palette } = await load('v3');
+    const h = await import('../../src/view/v3/handV3');
+    const side = cards.cardFaceCanvas('ember_wolf');
+    const back = cards.cardBackCanvas(0);
+    const R = palette.PLAYER_RAMP[0];
+    // 0°: the composite itself (1-px margin, 1 empty pixel, the ring, the card)
+    const b0 = h.tiltBake(side, 0);
+    const p0 = h.paintTilt(b0, side, R[3], R[2]);
+    const o = 1 + h.TILT_IN;
+    for (let y = 0; y < side.h; y++) for (let x = 0; x < side.w; x++) expect(p0.get(o + x, o + y)).toBe(side.get(x, y));
+    expect(p0.get(o + 5, o - 1)).toBe(R[3]); // top edge: tl
+    expect(p0.get(o - 1, o + 5)).toBe(R[3]); // left edge: tl
+    expect(p0.get(o + side.w, o + 5)).toBe(R[2]); // right edge: br
+    expect(p0.get(o + 5, o + side.h)).toBe(R[2]); // bottom edge: br
+    expect(p0.get(o - 1, o - 1)).toBeNull(); // the ring's corners are cut (as CardV3's paintRing)
+    expect(b0.ring.length).toBe(2 * side.w + 2 * side.h);
+    for (const src of [side, back])
+      for (const deg of [-6, -4, -1, 1, 3, 6, 18]) {
+        const b = h.tiltBake(src, deg);
+        expect(h.tiltBake(src, deg)).toBe(b); // cached
+        const p = h.paintTilt(b, src, R[3], R[2]);
+        const pal = new Set<number>([R[3], R[2]]);
+        for (let y = 0; y < src.h; y++) for (let x = 0; x < src.w; x++) {
+          const c = src.get(x, y);
+          if (c !== null) pal.add(c);
+        }
+        for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) {
+          const c = p.get(x, y);
+          if (c !== null) expect(pal.has(c), `${deg}° ${x},${y}`).toBe(true);
+        }
+        // the ring: about the rim's length, and its walk steps to a neighbouring pixel (the light node runs smoothly)
+        expect(Math.abs(b.ring.length - 232)).toBeLessThanOrEqual(12);
+        let jumps = 0;
+        for (let k = 0; k < b.ring.length; k++) {
+          const a = b.ring[k];
+          const c = b.ring[(k + 1) % b.ring.length];
+          const d = Math.max(Math.abs((a % b.map.w) - (c % b.map.w)), Math.abs(Math.floor(a / b.map.w) - Math.floor(c / b.map.w)));
+          if (d > 1) jumps++;
+        }
+        expect(jumps, `${deg}°`).toBeLessThanOrEqual(2);
+        // the card's centre lands on whole pixels (the TiltView places it unrotated at whole pixels)
+        expect(Number.isInteger(b.map.px) && Number.isInteger(b.map.py)).toBe(true);
+        // without a rim no ring pixel is painted
+        const bare = h.paintTilt(b, src, null, null);
+        let ring = 0;
+        for (let k = 0; k < b.map.idx.length; k++) if (b.map.idx[k] >= 0 && bare.data[k * 4 + 3] === 0) ring++;
+        expect(ring).toBeGreaterThan(200);
+      }
+  });
+
+  it("lean: the sampling phase keeps the ATK / DEF digit rows between two row steps (no lean cuts them)", async () => {
+    await load('v3');
+    const h = await import('../../src/view/v3/handV3');
+    for (let deg = -7; deg <= 7; deg++) {
+      const shift = h.tiltShift(deg, 68);
+      expect(Math.abs(shift)).toBeLessThanOrEqual(0.5);
+      const s = Math.sin((deg * Math.PI) / 180);
+      // the horizontal step a card row y gets (pixel centres, pivot row 34): one value across the digits
+      const step = (y: number) => Math.floor(0.5 + shift + (y + 0.5 - 34) * s);
+      const steps = new Set([59, 60, 61, 62, 63].map(step));
+      expect(steps.size, `${deg}°`).toBe(1);
+    }
+  });
+
+  it('lean: a monster face keeps its ATK / DEF lettering whole — every glyph moves as one block, every pixel shown once (v3 face and a5=off face)', async () => {
+    for (const flags of [undefined, { a5: 'off' }]) {
+      const { cards } = await load('v3', flags);
+      const h = await import('../../src/view/v3/handV3');
+      for (const id of ['ember_wolf', 'storm_hawk', 'tide_golem', 'crystal_wyrm'] as const) {
+        const side = cards.cardFaceCanvas(id);
+        const gl = h.glyphsOf(side);
+        expect(gl, `${id} ${flags?.a5 ?? 'v3'}`).not.toBeNull();
+        // two icons and at least three digits each side
+        expect(gl!.blocks.length, id).toBeGreaterThanOrEqual(8);
+        for (const px of gl!.blocks) expect(px.length).toBeGreaterThan(3);
+        const W = side.w + 2 * h.TILT_IN;
+        for (let deg = -7; deg <= 7; deg++) {
+          if (deg === 0) continue;
+          const b = h.tiltBake(side, deg, true);
+          const offs = gl!.blocks.map(() => new Set<string>());
+          const seen = gl!.blocks.map(() => 0);
+          for (let k = 0; k < b.map.idx.length; k++) {
+            const i = b.map.idx[k];
+            if (i < 0 || gl!.of[i] < 0) continue;
+            offs[gl!.of[i]].add(`${(k % b.map.w) - (i % W)},${Math.floor(k / b.map.w) - Math.floor(i / W)}`);
+            seen[gl!.of[i]]++;
+          }
+          gl!.blocks.forEach((px, g) => {
+            expect(offs[g].size, `${id} ${deg}° glyph ${g}: one shift`).toBe(1);
+            expect(seen[g], `${id} ${deg}° glyph ${g}: every pixel once`).toBe(px.length);
+          });
+          // the plain bake (a back, a spell) is another map: the flag is part of the cache key
+          expect(h.tiltBake(side, deg)).not.toBe(b);
+        }
+      }
+    }
+  });
+
+  it('a leaning card mirrors CardV3 / CardSprite fields by name (the rim flash, the node phase, the sweep): they must still exist', async () => {
+    const cv3 = CARD_SOURCES['/src/view/v3/CardV3.ts'];
+    const cs = CARD_SOURCES['/src/view/CardSprite.ts'];
+    const hv = A6A_SOURCES['/src/view/v3/handV3.ts'];
+    expect(/private nodeT = 0;/.test(cv3)).toBe(true);
+    expect(/private flashTone: number \| null = null;/.test(cv3)).toBe(true);
+    expect(/private flashShape: 'full' \| 'style'/.test(cv3)).toBe(true);
+    expect(/protected readonly sheen: Phaser\.GameObjects\.Sprite;/.test(cs)).toBe(true);
+    expect(/nodeT\?: unknown; flashTone\?: unknown; flashShape\?: unknown; sheen\?: unknown/.test(hv)).toBe(true);
   });
 
   it('hover: the neighbours open ±12 / ±7 / ±4, a 2-px gap never closes, every x a whole pixel', async () => {

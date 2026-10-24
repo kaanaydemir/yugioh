@@ -52,6 +52,8 @@ interface Pose {
   x: number;
   y: number;
   rot: number;
+  /** v3: the slot's resting lean in whole degrees (baked, never a runtime rotation). */
+  deg?: number;
 }
 
 const ADD = Phaser.BlendModes.ADD;
@@ -110,7 +112,7 @@ export class HandView {
     this.scene = scene;
     this.ownerId = opts.owner ?? 0;
     this.faceDown = opts.faceDown ?? false;
-    if (V3_A6_A) this.motion = new HandMotion(scene);
+    if (V3_A6_A) this.motion = new HandMotion(scene, { px1: TEX.px1 });
     const r = UI.hand;
     this.zone = scene.add
       .zone(r.x, r.y - 18, r.w, r.h + 18)
@@ -337,6 +339,11 @@ export class HandView {
    * cinematics). It stays where it is (top of the hand band); the rest of the hand closes up.
    */
   takeCard(uid: Uid): CardSprite | null {
+    return this.detach(uid, false);
+  }
+
+  /** takeCard; v3: `keepLean` leaves a leaning card leaning (the caller straightens it, removeCard). */
+  private detach(uid: Uid, keepLean: boolean): CardSprite | null {
     const i = this.slots.findIndex((s) => s.uid === uid);
     if (i < 0) return null;
     const s = this.slots[i];
@@ -347,7 +354,7 @@ export class HandView {
       this.onHover?.(null);
     }
     if (this.selectedUid === uid) this.selectedUid = null;
-    this.motion?.release(s.sprite);
+    this.motion?.release(s.sprite, keepLean);
     this.scene.tweens.killTweensOf(s.sprite);
     s.sprite.setHighlight(null);
     void s.sprite.hoverLift(false);
@@ -358,15 +365,20 @@ export class HandView {
 
   /** Remove a card with an effect: 'dissolve' (discard: burns into embers) or 'fade'. */
   async removeCard(uid: Uid, how: 'dissolve' | 'fade' = 'dissolve'): Promise<void> {
-    const c = this.takeCard(uid);
+    const mo = this.motion;
+    const c = this.detach(uid, mo !== null);
     if (!c) return;
-    if (this.motion) {
-      // v3: whole-pixel moves, no fade (the dissolve itself is the card's)
+    if (mo) {
+      // v3: whole-pixel moves, no fade (the dissolve itself is the card's); a leaning card turns
+      // upright through its baked steps as it lifts (v1 turned it to 0 in the same move)
+      const up = mo.lean(c, 0, HAND3.tiltMs);
       if (how === 'dissolve') {
-        await pxMove(this.scene, c, { y: c.y - 16 }, 160, EASE.outQuad);
+        await Promise.all([pxMove(this.scene, c, { y: c.y - 16 }, 160, EASE.outQuad), up]);
+        mo.release(c);
         await c.dissolve(620);
       } else {
-        await pxMove(this.scene, c, { y: c.y + 20 }, 220, EASE.inQuad);
+        await Promise.all([pxMove(this.scene, c, { y: c.y + 20 }, 220, EASE.inQuad), up]);
+        mo.release(c);
         c.setVisible(false);
       }
     } else if (how === 'dissolve') {
@@ -542,7 +554,7 @@ export class HandView {
 
   /** Resting fan pose of card i of n, with card h raised (−1 = none). */
   private pose(i: number, n: number, h: number): Pose {
-    if (this.motion) return { ...fanPose(i, n, h, UI.hand, CARD_W), rot: 0 }; // v3: straight, y curve only
+    if (this.motion) return { ...fanPose(i, n, h, UI.hand, CARD_W), rot: 0 }; // v3: v1's arc, the lean baked (deg)
     const r = UI.hand;
     const cx = r.x + r.w / 2;
     const step = n <= 1 ? 0 : Math.min(MAX_STEP, (r.w - CARD_W - 8) / (n - 1));
@@ -643,14 +655,14 @@ export class HandView {
 
   // ---------------------------------------------------------------- v3 (lane A6-A, K1)
 
-  /** v3: every card to its fan slot through HandMotion (whole pixels, never rotated), rims refreshed. */
+  /** v3: every card to its fan slot through HandMotion (whole pixels, the lean baked), rims refreshed. */
   private layoutV3(animate: boolean): void {
     const mo = this.motion!;
     const n = this.slots.length;
     const h = this.hoverIndex();
     this.slots.forEach((s, i) => {
       if (s.busy) {
-        mo.release(s.sprite);
+        mo.release(s.sprite, true);
         return;
       }
       const p = this.pose(i, n, h);
@@ -659,7 +671,7 @@ export class HandView {
       s.sprite.setDepth(raised || selected ? DEPTH.HAND + 20 : DEPTH.HAND + i);
       const state: LiftState = selected ? 'select' : raised ? 'hover' : this.marked.has(s.uid) ? 'mark' : 'rest';
       const was = mo.stateOf(s.sprite);
-      mo.place(s.sprite, p.x, p.y, state, animate, i * HAND3.breathStep);
+      mo.place(s.sprite, p.x, p.y, state, animate, i * HAND3.breathStep, p.deg ?? 0);
       // the settle (K1 "Oturma"): two white frames on the rim as the card lands on its lift
       if (animate && state === 'hover' && was !== null && was !== 'hover' && was !== 'select' && !REDUCED_MOTION) {
         const card = s.sprite as CardV3;
@@ -713,8 +725,9 @@ export class HandView {
 
   /**
    * v3 hot-seat swap: today's choreography and timing (the outgoing hand drops in a wave from the
-   * outside in, the incoming one rises from the centre out), straight and on whole pixels — no
-   * rotation; the rise lands with a 2-px overshoot (KO-2).
+   * outside in, the incoming one rises from the centre out) on whole pixels, the rise landing with a
+   * 2-px overshoot (KO-2). The leans are v1's, baked: a falling card leans 14° further outwards, a
+   * rising one closes from three times its lean onto its slot's.
    */
   private async setOwnerV3(player: PlayerId, faceDown: boolean): Promise<void> {
     const mo = this.motion!;
@@ -730,13 +743,14 @@ export class HandView {
     const mid = (old.length - 1) / 2;
     const outgoing = Promise.all(
       old.map(async (s, i) => {
-        mo.release(s.sprite);
+        mo.release(s.sprite, true);
         s.sprite.setHighlight(null);
         await wait(this.scene, Math.abs(i - mid) * 40);
         if (!s.sprite.active) return;
         await pxMove(this.scene, s.sprite, { y: s.sprite.y - 6 }, 90, EASE.outQuad);
         if (!s.sprite.active) return;
-        await pxMove(this.scene, s.sprite, { y: GAME_H + CARD_H }, 230, EASE.inCubic);
+        const out = mo.leanOf(s.sprite) + (i < mid ? -HAND3.swapLean : HAND3.swapLean);
+        await Promise.all([pxMove(this.scene, s.sprite, { y: GAME_H + CARD_H }, 230, EASE.inCubic), mo.lean(s.sprite, out, 230)]);
         s.sprite.destroy();
       }),
     );
@@ -756,7 +770,13 @@ export class HandView {
         s.sprite.setPosition(p.x, GAME_H + CARD_H).setFaceUp(!faceDown);
         await wait(this.scene, 90 + Math.abs(i - m2) * 50);
         const dist = Math.max(1, GAME_H + CARD_H - p.y);
-        if (s.sprite.active) await pxMove(this.scene, s.sprite, { x: p.x, y: p.y }, 340, REDUCED_MOTION ? EASE.outCubic : overshootEase(2 / dist));
+        const deg = p.deg ?? 0;
+        const fan = Math.max(-HAND3.swapFanMax, Math.min(HAND3.swapFanMax, deg * HAND3.swapFan));
+        if (s.sprite.active)
+          await Promise.all([
+            pxMove(this.scene, s.sprite, { x: p.x, y: p.y }, 340, REDUCED_MOTION ? EASE.outCubic : overshootEase(2 / dist)),
+            mo.lean(s.sprite, deg, 340, fan),
+          ]);
         s.busy = false;
       }),
     );

@@ -1,7 +1,11 @@
 // The v3 hand (K1) — lane A6-A, step A2 (docs/v3/A6_PLAN.md §3 K1, §4.4 KO-1 … KO-3, KO-9; S-9).
 // HandView keeps its state and API; with lane A6-A on (V3_A6_A) its v3 branches use this module:
-//   - the cards stand straight (no rotation, ever); the fan is a y curve only (the outer cards sit
-//     1–4 px lower); every card breathes 0 / −1 px (2400 ms, the phase 300 ms later per card)
+//   - the cards sit on v1's gentle arc (user decision, 24 Oct: "el yay şeklinde, kartlar hafif
+//     dönük"): the outer cards dip up to 7 px and lean outwards a little (v1's angles, ≤ ~6°) — but
+//     never rotated at runtime: each lean is BAKED in whole-degree steps the pixel-art way
+//     (RotSprite, src/art/rotsprite.ts, on the card + its rim ring), cached lazily and shown unrotated
+//     on whole pixels (TiltView); a hovered / selected card turns upright through the steps (90 ms)
+//     and is then the plain crisp CardV3; every card breathes 0 / −1 px (2400 ms, phase +300 ms/card)
 //   - a playable card wears a 1-px rim in its owner's tone (PLAYER_RAMP[p][3]) with a running light
 //     node (CardV3.setRim); a locked hand dims the rims a tone and holds the nodes
 //   - hover: 0 → −18 px (easeOutCubic, 100 ms), settles on −16 (40 ms) with two white frames on the
@@ -12,27 +16,58 @@
 // Everything lands on whole pixels: HandMotion steps every card itself (its own whole-pixel tracks
 // on the scene's scaled clock, as the tweens did: speed / hit-stop / pause aware) and nothing else
 // moves a hand card while it rests in the hand. Reduced motion (KO-9): no breathing, no press, no
-// shake, no node travel; the lift is one 60 ms move.
+// shake, no node travel; the lift is one 60 ms move, the lean changes in one step.
 //
-//   const motion = new HandMotion(scene);
-//   motion.place(sprite, x, y, 'hover', true, i * HAND3.breathStep);   // every layout
-//   motion.reject(sprite);                                              // the shake
-//   motion.release(sprite);                                             // a cinematic takes the card
+//   const motion = new HandMotion(scene, { px1: TEX.px1 });
+//   motion.place(sprite, x, y, 'hover', true, i * HAND3.breathStep, deg);   // every layout
+//   motion.reject(sprite);                                                   // the shake
+//   motion.release(sprite);                                                  // a cinematic takes the card
 //
+// A leaning card is drawn by its TiltView: one small live canvas per card holding the baked turn of
+// what the CardV3 would show upright — its side (face / back, or a flip's turn frame), its rim ring
+// with the flash tones and the running light node, the ace foil sweep — while the CardV3's own
+// layers are hidden. Upright (0°) the CardV3 draws itself, as before.
 // No runtime Phaser import (the scene is given), so the pure parts are unit-tested in node.
 
 import type Phaser from 'phaser';
+import { frameRGBA, type FrameLike } from '../../art/atlas';
 import { PAL, PLAYER_RAMP, RAMPS, type Ramp } from '../../art/palette';
+import { PixelCanvas, mix } from '../../art/pixel';
+import { colorsOf, edgeDecisions, quantizeDeg, rotMap, upscale8, type RotMap, type UpScaled } from '../../art/rotsprite';
+import { cardDef, isMonster, type CardId } from '../../data/cards';
 import type { PlayerId } from '../../engine/types';
 import type { RimStyle } from './CardV3';
+import { rimPath } from './ui-kit';
 import { REDUCED_MOTION } from './motion';
 
 /** The v3 hand's numbers (K1; v1 geometry: the hand band of layout.ts UI_V1). */
 export const HAND3 = Object.freeze({
   /** Card centre y at rest: the bottom edge on the screen edge (as v1). */
   baseY: 326,
-  /** The fan's y curve: the outermost cards sit this many px lower at most (1–4). */
-  maxDip: 4,
+  /**
+   * The fan's arc — v1's (src/view/HandView.ts pose(), user decision 24 Oct): card i sits
+   * off² · min(dipK, maxDip / half²) px lower (off = i − (n − 1) / 2, half = max(1, (n − 1) / 2)) …
+   */
+  maxDip: 7,
+  dipK: 1.4,
+  /** … and leans off · min(rotStep, rotSpan / (n − 1)) rad outwards, shown in whole `degStep` steps. */
+  rotStep: 0.05,
+  rotSpan: 0.22,
+  degStep: 1,
+  /** A raised card turns upright through the baked steps (and back when it sinks), in this time. */
+  tiltMs: 90,
+  /** RotSprite smooths only the card's outer band of this many px (edgeDecisions): digits stay whole. */
+  tiltBand: 2,
+  /**
+   * The card row a lean's sampling phase keeps whole: the middle of the v3 face's ATK / DEF digits
+   * (src/art/cardface-v3/frame.ts: text box y 52, digits y 59..63) — a small turn's row step then
+   * falls above or below them, never through them.
+   */
+  keepRow: 61,
+  /** Hot-seat swap (v1's): a falling card leans this much further out (0.25 rad), a rising one closes from 3× its lean (≤ 20°). */
+  swapLean: 14,
+  swapFan: 3,
+  swapFanMax: 20,
   /** Hover: rise past the lift, then settle on it. */
   rise: 18,
   lift: 16,
@@ -79,13 +114,35 @@ export function liftOf(state: LiftState): number {
 
 // ================================================================ the fan (pure)
 
-/** The fan's y dip (px down) of card i of n: 0 in the middle, up to 1–4 px for the outer cards. */
+/** The fan's y dip (px down) of card i of n: v1's arc — 0 in the middle, up to 7 px for the outer cards. */
 export function fanDip(i: number, n: number): number {
   if (n <= 1) return 0;
-  const half = (n - 1) / 2;
-  const off = i - half;
-  const max = Math.min(HAND3.maxDip, n - 1);
-  return Math.round((max * off * off) / (half * half));
+  const off = i - (n - 1) / 2;
+  const half = Math.max(1, (n - 1) / 2);
+  return Math.round(off * off * Math.min(HAND3.dipK, HAND3.maxDip / (half * half)));
+}
+
+/**
+ * The lean of card i of n (degrees, clockwise; whole `degStep` steps): v1's turn off · dRot, the
+ * left cards leaning left, the right ones right — at most ~6° for the outermost of a full hand.
+ */
+export function fanDeg(i: number, n: number): number {
+  if (n <= 1) return 0;
+  const off = i - (n - 1) / 2;
+  const dRot = Math.min(HAND3.rotStep, HAND3.rotSpan / Math.max(1, n - 1));
+  return leanStep((off * dRot * 180) / Math.PI);
+}
+
+/** A lean snapped to the baked steps, mirror-symmetric (±1.5 → ±2: the fan's two sides match). */
+function leanStep(deg: number): number {
+  const q = quantizeDeg(Math.abs(deg), HAND3.degStep);
+  return q === 0 ? 0 : Math.sign(deg) * q;
+}
+
+/** The lean a card shows in a lift state: upright when raised (hover / select), half when marked (as v1). */
+export function tiltOf(state: LiftState, rest: number): number {
+  if (state === 'hover' || state === 'select') return 0;
+  return state === 'mark' ? leanStep(rest / 2) : rest;
 }
 
 /** The horizontal step between card centres for n cards in a band `bandW` wide (as v1). */
@@ -124,10 +181,11 @@ export function fanXs(n: number, h: number, band: { x: number; w: number }, card
 
 /**
  * The resting (unlifted) whole-pixel pose of card i of n with card h raised (−1 = none): x with the
- * neighbours opened (fanXs), y on the fan's curve. Never rotated.
+ * neighbours opened (fanXs), y on the fan's arc, and the card's resting lean (deg; the lift state
+ * decides what is shown — tiltOf). Never rotated at runtime: the lean is a baked texture (TiltView).
  */
-export function fanPose(i: number, n: number, h: number, band: { x: number; w: number }, cardW: number): { x: number; y: number } {
-  return { x: fanXs(n, h, band, cardW)[i], y: HAND3.baseY + fanDip(i, n) };
+export function fanPose(i: number, n: number, h: number, band: { x: number; w: number }, cardW: number): { x: number; y: number; deg: number } {
+  return { x: fanXs(n, h, band, cardW)[i], y: HAND3.baseY + fanDip(i, n), deg: fanDeg(i, n) };
 }
 
 /** Breathing offset (0 or −1 px) of a card at hand time `t` with phase `phase` (ms). */
@@ -294,6 +352,385 @@ export function liftKeys(prev: LiftState, next: LiftState, base: number, reduced
   return [{ at: HAND3.spreadMs, v: target, ease: EASE.outCubic }];
 }
 
+// ================================================================ the baked lean (RotSprite, pure)
+//
+// A leaning card is the CardV3's own pixels turned the pixel-art way: its side (48 × 68) and its rim
+// ring (1 px outside the card, corners cut, as CardV3's paintRing) are laid out in one composite — an
+// empty pixel, the ring, the card — and turned by RotSprite (src/art/rotsprite.ts) deciding on the
+// card's outer band only (edgeDecisions: outline and trim smooth as lines, the art inside sampled
+// plain); a monster's ATK / DEF line is then re-lettered glyph by glyph, each digit / icon set down
+// whole on the slope (glyphsOf / holdGlyphs). The bake is an INDEX map: the ring is coloured per frame
+// (playable / hover / locked / a flash), an overlay frame (the ace foil sweep) maps through it at the
+// cost of a lookup, and the ring's turned pixels in walking order carry the running light node.
+
+/** Where the card sits in its composite: one empty pixel, then the 1-px rim ring. */
+export const TILT_IN = 2;
+/** The ring's stand-in decision colour (not an RGB value: whatever tone the rim takes, it turns the same). */
+const RING_MARK = 0x1000001;
+/** Up-scales kept (≈ 0.5 MB each: the costly ≈ 1.5 ms step) and baked leans kept (≈ 20 KB each). */
+const UP_CAP = 4;
+const BAKE_CAP = 160;
+
+/** A card size's composite: per pixel its rim edge (0 none, 1 top / left = tl, 2 bottom / right = br) and walking position. */
+interface RingGeo {
+  readonly W: number;
+  readonly H: number;
+  readonly edge: Uint8Array;
+  readonly pos: Int32Array;
+  readonly len: number;
+}
+
+const ringGeos = new Map<string, RingGeo>();
+
+function ringGeo(w: number, h: number): RingGeo {
+  const key = `${w}x${h}`;
+  let g = ringGeos.get(key);
+  if (g) return g;
+  const W = w + 2 * TILT_IN;
+  const H = h + 2 * TILT_IN;
+  const edge = new Uint8Array(W * H);
+  const pos = new Int32Array(W * H).fill(-1);
+  // CardV3's ring: rimPath(0, 0, w + 2, h + 2, 1); its top + left edges take tl, the rest br
+  const path = rimPath(0, 0, w + 2, h + 2, 1);
+  path.forEach(([x, y], k) => {
+    const i = (y + TILT_IN - 1) * W + (x + TILT_IN - 1);
+    edge[i] = y === 0 || x === 0 ? 1 : 2;
+    pos[i] = k;
+  });
+  g = { W, H, edge, pos, len: path.length };
+  ringGeos.set(key, g);
+  return g;
+}
+
+/** A card side's lean, baked. */
+export interface TiltBake {
+  readonly deg: number;
+  /** The turned composite (index = y · W + x of the composite; the pivot — the card's centre — lands on map.px / py). */
+  readonly map: RotMap;
+  /** The output pixels (k = y · map.w + x) of the rim ring in walking order, clockwise from the top-left (as rimPath). */
+  readonly ring: Int32Array;
+  readonly geo: RingGeo;
+  /** The side's size. */
+  readonly w: number;
+  readonly h: number;
+}
+
+let sideSeq = 0;
+const sideIds = new WeakMap<PixelCanvas, number>();
+/** A stable id per side canvas (the caches and the TiltView's change check). */
+function sideId(p: PixelCanvas): number {
+  let id = sideIds.get(p);
+  if (id === undefined) sideIds.set(p, (id = ++sideSeq));
+  return id;
+}
+
+const ups = new Map<PixelCanvas, UpScaled>();
+const bakes = new Map<string, TiltBake>();
+
+function upOf(side: PixelCanvas): UpScaled {
+  let u = ups.get(side);
+  if (u) {
+    ups.delete(side);
+    ups.set(side, u);
+    return u;
+  }
+  const g = ringGeo(side.w, side.h);
+  const col = new Int32Array(g.W * g.H).fill(-1);
+  const dec = edgeDecisions(colorsOf(side), side.w, side.h, HAND3.tiltBand);
+  for (let y = 0; y < side.h; y++) col.set(dec.subarray(y * side.w, (y + 1) * side.w), (y + TILT_IN) * g.W + TILT_IN);
+  for (let i = 0; i < col.length; i++) if (g.edge[i]) col[i] = RING_MARK;
+  u = upscale8(col, g.W, g.H);
+  ups.set(side, u);
+  if (ups.size > UP_CAP) ups.delete(ups.keys().next().value!);
+  return u;
+}
+
+/**
+ * `side` (a card side, or a flip's turn frame) leaning `deg` (whole degrees, clockwise) with its rim
+ * ring, baked RotSprite style about the card's centre (CardV3's origin: the pixel floor(w / 2),
+ * floor(h / 2)). `glyphs` (a monster's face): its ATK / DEF line moves glyph by glyph, each whole
+ * (glyphsOf). Cached (LRU); at 0° it is the composite pixel for pixel.
+ */
+export function tiltBake(side: PixelCanvas, deg: number, glyphs = false): TiltBake {
+  const key = `${sideId(side)}:${deg}${glyphs ? ':g' : ''}`;
+  let b = bakes.get(key);
+  if (b) {
+    bakes.delete(key);
+    bakes.set(key, b);
+    return b;
+  }
+  const g = ringGeo(side.w, side.h);
+  const r = (deg * Math.PI) / 180;
+  const cos = Math.cos(r);
+  const sin = Math.sin(r);
+  const map = rotMap(upOf(side), deg, [TILT_IN + Math.floor(side.w / 2), TILT_IN + Math.floor(side.h / 2)], [tiltShift(deg, side.h), 0]);
+  const line = glyphs ? glyphsOf(side) : null;
+  if (line) holdGlyphs(map, line, g.W);
+  // the ring in walking order: the output pixels that show a ring pixel, by that pixel's place on the
+  // walk (two showing the same ring pixel: in the walking direction, turned with the card)
+  const { w, h } = side;
+  const dir = (p: number): [number, number] => (p < w ? [1, 0] : p < w + h ? [0, 1] : p < 2 * w + h ? [-1, 0] : [0, -1]);
+  const ks: number[] = [];
+  for (let k = 0; k < map.idx.length; k++) {
+    const i = map.idx[k];
+    if (i >= 0 && g.pos[i] >= 0) ks.push(k);
+  }
+  const along = (k: number) => {
+    const [dx, dy] = dir(g.pos[map.idx[k]]);
+    return (k % map.w) * (dx * cos - dy * sin) + Math.floor(k / map.w) * (dx * sin + dy * cos);
+  };
+  ks.sort((a, c) => g.pos[map.idx[a]] - g.pos[map.idx[c]] || along(a) - along(c));
+  b = { deg, map, ring: Int32Array.from(ks), geo: g, w, h };
+  bakes.set(key, b);
+  if (bakes.size > BAKE_CAP) bakes.delete(bakes.keys().next().value!);
+  return b;
+}
+
+/** An overlay frame mapped through a lean (the foil / sheen sweep): RGBA w × h, blended NORMAL or ADD. */
+export interface TiltOverlay {
+  readonly rgba: Uint8ClampedArray;
+  readonly alpha: number;
+  readonly add: boolean;
+}
+
+/**
+ * Paint a baked lean: the side's pixels (the overlay blended over them as the upright card shows it),
+ * the rim ring's top / left edges in `tl` and the rest in `br` (null: not drawn).
+ */
+export function paintTilt(b: TiltBake, side: PixelCanvas, tl: number | null, br: number | null, over: TiltOverlay | null = null, into?: PixelCanvas): PixelCanvas {
+  const { W, edge } = b.geo;
+  const { w, h } = b;
+  const sd = side.data;
+  const m = b.map;
+  const out = into && into.w === m.w && into.h === m.h ? into.clear() : new PixelCanvas(m.w, m.h);
+  const d = out.data;
+  for (let k = 0; k < m.idx.length; k++) {
+    const i = m.idx[k];
+    if (i < 0) continue;
+    const x = (i % W) - TILT_IN;
+    const y = Math.floor(i / W) - TILT_IN;
+    let c: number | null = null;
+    if (x >= 0 && y >= 0 && x < w && y < h) {
+      const s = (y * w + x) * 4;
+      if (sd[s + 3] === 0) continue;
+      c = (sd[s] << 16) | (sd[s + 1] << 8) | sd[s + 2];
+      const oa = over ? over.rgba[s + 3] : 0;
+      if (over && oa > 0) {
+        const o = (over.rgba[s] << 16) | (over.rgba[s + 1] << 8) | over.rgba[s + 2];
+        const a = over.alpha * (oa / 255);
+        if (!over.add) c = mix(c, o, a);
+        else {
+          const ch = (sh: number) => Math.min(255, ((c! >> sh) & 255) + Math.round(((o >> sh) & 255) * a));
+          c = (ch(16) << 16) | (ch(8) << 8) | ch(0);
+        }
+      }
+    } else if (edge[i] === 1) c = tl;
+    else if (edge[i] === 2) c = br;
+    if (c === null) continue;
+    const o = k * 4;
+    d[o] = (c >> 16) & 255;
+    d[o + 1] = (c >> 8) & 255;
+    d[o + 2] = c & 255;
+    d[o + 3] = 255;
+  }
+  return out;
+}
+
+/**
+ * The sampling phase (source px, |·| ≤ 0.5) of a lean: a small turn shears whole rows one pixel
+ * every 1 / sin(deg) rows; this puts HAND3.keepRow — the ATK / DEF digits — midway between two such
+ * steps, so the digits are never cut in two (at ±1°, ±3°, ±5° a step would otherwise fall in them).
+ */
+export function tiltShift(deg: number, h: number): number {
+  const s = Math.sin((deg * Math.PI) / 180);
+  const dyc = HAND3.keepRow + 0.5 - Math.floor(h / 2);
+  return Math.round(dyc * s) - dyc * s;
+}
+
+/** Bake every whole-degree step between 0 and `deg` of a side ahead (a hover then turns without a stall). */
+export function prebakeTilt(side: PixelCanvas, deg: number, glyphs = false): void {
+  const n = Math.round(Math.abs(deg) / HAND3.degStep);
+  const step = Math.sign(deg) * HAND3.degStep;
+  for (let k = 1; k <= n; k++) tiltBake(side, k * step, glyphs);
+}
+
+// ---------------------------------------------------------------- the ATK / DEF line, glyph by glyph
+
+/**
+ * A monster face's ATK / DEF line as rigid blocks — the two icons and every digit with its drop
+ * shadow. A lean moves each block as ONE piece (upright, whole pixels, to where the turn takes it), so
+ * the lettering steps along the slope BETWEEN glyphs, as a pixel artist letters a tilted card; turned
+ * pixel by pixel a 3-px digit kinks wherever a 1-px step of the turn falls in it (at ±4° a "0" reads
+ * "d", an "8" reads "4"). Found on the face itself: the rows around HAND3.keepRow that carry ink on a
+ * flat ground (the v3 face's y 59..63, the a5=off face's 60..64), cut at the ink-free columns; the
+ * drop shadow is the line's darkest tone, beside and under the ink.
+ */
+export interface Glyphs {
+  /** Each block's pixels, as composite indices (y + TILT_IN) · W + (x + TILT_IN). */
+  readonly blocks: readonly Int32Array[];
+  /** Composite index → its block (−1: none). */
+  readonly of: Int32Array;
+  /** The line's composite box (ink rows + the shadow row; inside the frame's two outer columns). */
+  readonly y0: number;
+  readonly y1: number;
+  readonly x0: number;
+  readonly x1: number;
+  /** Per composite row y0 … y1: a composite index of that row's ground (what a moved glyph leaves). */
+  readonly ground: Int32Array;
+}
+
+const glyphLines = new WeakMap<PixelCanvas, Glyphs | null>();
+const lum = (c: number): number => ((c >> 16) & 255) * 299 + ((c >> 8) & 255) * 587 + (c & 255) * 114;
+
+/** The ATK / DEF line of a face (null: none found). Cached per side canvas. */
+export function glyphsOf(side: PixelCanvas): Glyphs | null {
+  let g = glyphLines.get(side);
+  if (g === undefined) glyphLines.set(side, (g = findGlyphs(side)));
+  return g;
+}
+
+function findGlyphs(side: PixelCanvas): Glyphs | null {
+  const { w, h } = side;
+  const k = HAND3.keepRow;
+  if (w < 8 || k + 1 >= h) return null;
+  const x0 = 2;
+  const x1 = w - 3;
+  // the ground: the commonest tone around the line (its rows and the bare rows framing it: inside the
+  // line alone a digit's dark counters and shadows can outnumber it); the shadow: the darkest tone
+  // darker than the ground
+  const tally = new Map<number, number>();
+  for (let y = Math.max(0, k - 3); y <= Math.min(h - 1, k + 4); y++)
+    for (let x = x0; x <= x1; x++) {
+      const c = side.get(x, y);
+      if (c !== null) tally.set(c, (tally.get(c) ?? 0) + 1);
+    }
+  let B = -1;
+  let most = 0;
+  for (const [c, n] of tally) if (n > most) [B, most] = [c, n];
+  if (B < 0) return null;
+  let S: number | null = null;
+  for (let y = Math.max(0, k - 3); y <= Math.min(h - 1, k + 4); y++)
+    for (let x = x0; x <= x1; x++) {
+      const c = side.get(x, y);
+      if (c !== null && c !== B && lum(c) < lum(B) && (S === null || lum(c) < lum(S))) S = c;
+    }
+  const ink = (x: number, y: number): boolean => {
+    const c = side.get(x, y);
+    return c !== null && c !== B && c !== S;
+  };
+  // a row of the line: some ink, and at least a quarter of it bare ground (a frame bar is not)
+  const lineRow = (y: number): boolean => {
+    let inked = false;
+    let ground = 0;
+    for (let x = x0; x <= x1; x++) {
+      if (side.get(x, y) === B) ground++;
+      else if (ink(x, y)) inked = true;
+    }
+    return inked && ground * 4 >= x1 - x0 + 1;
+  };
+  if (!lineRow(k)) return null;
+  let r0 = k;
+  let r1 = k;
+  while (r0 > 0 && lineRow(r0 - 1)) r0--;
+  while (r1 < h - 1 && lineRow(r1 + 1)) r1++;
+  if (r1 - r0 + 1 > 8) return null;
+  const rs = Math.min(h - 1, r1 + 1); // the drop shadow's row
+  const W = w + 2 * TILT_IN;
+  const at = (x: number, y: number): number => (y + TILT_IN) * W + (x + TILT_IN);
+  const of = new Int32Array(W * (h + 2 * TILT_IN)).fill(-1);
+  const blocks: Int32Array[] = [];
+  const inkCol = (x: number): boolean => {
+    for (let y = r0; y <= r1; y++) if (ink(x, y)) return true;
+    return false;
+  };
+  for (let x = x0; x <= x1; ) {
+    if (!inkCol(x)) {
+      x++;
+      continue;
+    }
+    const a = x;
+    while (x + 1 <= x1 && inkCol(x + 1)) x++;
+    const b = x;
+    x++;
+    if (b - a + 1 > 7) continue; // a bar, not a glyph
+    // the glyph: its ink and its shadow in the line, its shadow alone in the row under it
+    const px: number[] = [];
+    for (let y = r0; y <= rs; y++)
+      for (let xx = a; xx <= Math.min(x1, b + 1); xx++) {
+        const c = side.get(xx, y);
+        if (c !== null && (y <= r1 ? c !== B : c === S)) px.push(at(xx, y));
+      }
+    if (!px.length) continue;
+    for (const i of px) of[i] = blocks.length;
+    blocks.push(Int32Array.from(px));
+  }
+  if (!blocks.length) return null;
+  // each row's ground: its commonest tone outside the glyphs, the instance nearest the middle
+  const ground = new Int32Array(rs - r0 + 1);
+  for (let y = r0; y <= rs; y++) {
+    const n = new Map<number, number>();
+    for (let x = x0; x <= x1; x++) {
+      const c = side.get(x, y);
+      if (c !== null && of[at(x, y)] < 0) n.set(c, (n.get(c) ?? 0) + 1);
+    }
+    let G: number | null = null;
+    let gm = 0;
+    for (const [c, m] of n) if (m > gm) [G, gm] = [c, m];
+    if (G === null) return null;
+    let gx = -1;
+    for (let d = 0; d <= w && gx < 0; d++)
+      for (const x of [(w >> 1) - d, (w >> 1) + d]) if (gx < 0 && x >= x0 && x <= x1 && side.get(x, y) === G && of[at(x, y)] < 0) gx = x;
+    ground[y - r0] = at(gx, y);
+  }
+  return { blocks, of, y0: r0 + TILT_IN, y1: rs + TILT_IN, x0: x0 + TILT_IN, x1: x1 + TILT_IN, ground };
+}
+
+/**
+ * Re-letter a turned map: every output pixel showing a glyph pixel shows that row's ground instead,
+ * then each glyph is set down whole — shifted by the (rounded) mean of where the turn took its pixels —
+ * onto the line only (never the frame, the ring or outside the card).
+ */
+function holdGlyphs(m: RotMap, gl: Glyphs, W: number): void {
+  const n = gl.blocks.length;
+  const sx = new Float64Array(n);
+  const sy = new Float64Array(n);
+  const cnt = new Int32Array(n);
+  const idx = m.idx;
+  for (let k = 0; k < idx.length; k++) {
+    const i = idx[k];
+    if (i < 0) continue;
+    const b = gl.of[i];
+    if (b < 0) continue;
+    sx[b] += (k % m.w) - (i % W);
+    sy[b] += Math.floor(k / m.w) - Math.floor(i / W);
+    cnt[b]++;
+    idx[k] = gl.ground[Math.floor(i / W) - gl.y0];
+  }
+  for (let b = 0; b < n; b++) {
+    if (!cnt[b]) continue;
+    const tx = Math.round(sx[b] / cnt[b]);
+    const ty = Math.round(sy[b] / cnt[b]);
+    for (const i of gl.blocks[b]) {
+      const ox = (i % W) + tx;
+      const oy = Math.floor(i / W) + ty;
+      if (ox < 0 || oy < 0 || ox >= m.w || oy >= m.h) continue;
+      const k = oy * m.w + ox;
+      const cur = idx[k];
+      if (cur < 0) continue;
+      const cx = cur % W;
+      const cy = Math.floor(cur / W);
+      if (cy < gl.y0 || cy > gl.y1 || cx < gl.x0 || cx > gl.x1) continue;
+      idx[k] = i;
+    }
+  }
+}
+
+/** The node tail tones of a rim (CardV3's rampOf: the ramp a tone belongs to, else the neutral one). */
+function nodeRamp(color: number): Ramp {
+  for (const r of [PLAYER_RAMP[0], PLAYER_RAMP[1], ...Object.values(RAMPS)]) if ((r as readonly number[]).includes(color)) return r;
+  return [PAL.night3, PAL.night4, PAL.steel, PAL.mist, PAL.white];
+}
+
 // ================================================================ HandMotion
 
 interface Cue {
@@ -305,6 +742,10 @@ interface Motion {
   sprite: Phaser.GameObjects.Container;
   x: Track;
   y: Track;
+  /** The lean (degrees; shown in whole baked steps). */
+  tilt: Track;
+  /** The lean this card's fan slot rests at (the lift state decides what is shown: tiltOf). */
+  rest: number;
   state: LiftState;
   /** The y this card's fan slot rests on (without lift / breath). */
   base: number;
@@ -316,20 +757,35 @@ interface Motion {
   cues: Cue[];
 }
 
+/** A card let go of that still eases its lean (the hot-seat swap, a discard). */
+interface Loose {
+  tilt: Track;
+  done: () => void;
+}
+
+export interface HandMotionOpts {
+  /** The 1 × 1 white texture (the rim's light node pixels; TEX.px1). */
+  px1: string;
+}
+
 /**
  * Steps the hand's cards on whole pixels (see the header). One per HandView; the cards it holds are
  * moved by nothing else (a card in flight is released first and adopted again where it lands).
  */
 export class HandMotion {
   private readonly scene: Phaser.Scene;
+  private readonly px1: string;
   private readonly map = new Map<Phaser.GameObjects.Container, Motion>();
+  private readonly loose = new Map<Phaser.GameObjects.Container, Loose>();
+  private readonly views = new Map<Phaser.GameObjects.Container, TiltView>();
   /** The hand's own clock (scaled ms; breathing reads it). */
   private clock = 0;
   private alive = true;
   private readonly onUpdate = (_t: number, dt: number) => this.tick(dt);
 
-  constructor(scene: Phaser.Scene) {
+  constructor(scene: Phaser.Scene, opts: HandMotionOpts) {
     this.scene = scene;
+    this.px1 = opts.px1;
     scene.events.on('update', this.onUpdate);
   }
 
@@ -343,27 +799,38 @@ export class HandMotion {
     return this.map.get(sprite)?.state ?? null;
   }
 
+  /** The lean a card shows now (whole degrees; 0: upright or not leaning). */
+  leanOf(sprite: Phaser.GameObjects.Container): number {
+    return this.views.get(sprite)?.deg ?? 0;
+  }
+
   /**
-   * Hold a card in its fan slot: x / base y (unlifted), its lift state and breathing phase. A card
-   * not held yet is adopted where it is (e.g. where its flight landed). `animate` false: at once.
+   * Hold a card in its fan slot: x / base y (unlifted), its lift state, breathing phase and resting
+   * lean (`deg`: the lift state decides what is shown — upright when raised, half when marked). A card
+   * not held yet is adopted where it is and as it leans (e.g. where its flight landed). `animate`
+   * false: at once.
    */
-  place(sprite: Phaser.GameObjects.Container, x: number, base: number, state: LiftState, animate: boolean, phase: number): void {
+  place(sprite: Phaser.GameObjects.Container, x: number, base: number, state: LiftState, animate: boolean, phase: number, deg = 0): void {
     let m = this.map.get(sprite);
     if (!m) {
       const cx = Math.round(sprite.x);
       const cy = Math.round(sprite.y);
       // a card adopted mid-air keeps where it is; its "state" is whatever its height says
-      m = { sprite, x: new Track(cx), y: new Track(cy), state: 'rest', base, phase, shake: null, el: 0, cues: [] };
+      m = { sprite, x: new Track(cx), y: new Track(cy), tilt: new Track(this.leanOf(sprite)), rest: deg, state: 'rest', base, phase, shake: null, el: 0, cues: [] };
       const up = base - cy;
       if (up >= HAND3.lift - 1) m.state = 'hover';
       else if (up >= HAND3.mark - 1) m.state = 'mark';
       this.map.set(sprite, m);
+      this.settleLoose(sprite);
     }
     m.phase = phase;
+    m.rest = deg;
     const target = base - liftOf(state);
+    const lean = tiltOf(state, deg);
     if (!animate) {
       m.x.jump(x);
       m.y.jump(target);
+      m.tilt.jump(lean);
       m.base = base;
       if (m.state !== state) {
         m.state = state;
@@ -374,6 +841,11 @@ export class HandMotion {
       return;
     }
     if (m.x.end !== x) m.x.play([{ at: HAND3.spreadMs, v: x, ease: EASE.outCubic }]);
+    if (m.tilt.end !== lean) {
+      // upright through the baked steps (reduced motion: in one step)
+      if (REDUCED_MOTION) m.tilt.jump(lean);
+      else m.tilt.play([{ at: HAND3.tiltMs, v: lean, ease: EASE.outCubic }]);
+    }
     if (m.state !== state) {
       // a pressed card that stays under the pointer (e.g. a discard pick) finishes its press
       const keepPress = m.state === 'select' && state === 'hover' && m.y.end === target;
@@ -409,21 +881,70 @@ export class HandMotion {
     m.shake = 0;
   }
 
-  /** Let go of a card (a cinematic takes it, it is destroyed, or it flies). */
-  release(sprite: Phaser.GameObjects.Container): void {
-    this.map.delete(sprite);
+  /**
+   * Ease the lean of a card that is not held (`from`: what it shows now) to `deg` over `ms` — the
+   * hot-seat swap's cards, a discarded card straightening as it lifts. Resolves when it is there;
+   * at 0 the CardV3 draws itself again. Reduced motion: at once.
+   */
+  lean(sprite: Phaser.GameObjects.Container, deg: number, ms: number, from = this.leanOf(sprite)): Promise<void> {
+    this.settleLoose(sprite);
+    if (this.map.has(sprite) || !sprite.active) return Promise.resolve();
+    if (REDUCED_MOTION || ms <= 0 || from === deg) {
+      this.show(sprite, deg);
+      return Promise.resolve();
+    }
+    const tilt = new Track(from);
+    tilt.play([{ at: ms, v: deg, ease: EASE.outCubic }]);
+    this.show(sprite, quantizeDeg(from, HAND3.degStep));
+    return new Promise((done) => this.loose.set(sprite, { tilt, done }));
   }
 
-  /** Let go of every card. */
+  /**
+   * Let go of a card (a cinematic takes it, it is destroyed, or it flies). It stands upright at once
+   * (the CardV3 draws itself) unless `keepLean`: then it keeps leaning as it is (the swap's drop).
+   */
+  release(sprite: Phaser.GameObjects.Container, keepLean = false): void {
+    this.map.delete(sprite);
+    if (keepLean) return;
+    this.settleLoose(sprite);
+    this.dropView(sprite);
+  }
+
+  /** Let go of every card (all upright). */
   clear(): void {
     this.map.clear();
+    for (const s of [...this.loose.keys()]) this.settleLoose(s);
+    for (const s of [...this.views.keys()]) this.dropView(s);
   }
 
   destroy(): void {
     if (!this.alive) return;
+    this.clear();
     this.alive = false;
-    this.map.clear();
     this.scene?.events?.off('update', this.onUpdate);
+  }
+
+  private settleLoose(sprite: Phaser.GameObjects.Container): void {
+    const l = this.loose.get(sprite);
+    if (!l) return;
+    this.loose.delete(sprite);
+    l.done();
+  }
+
+  private dropView(sprite: Phaser.GameObjects.Container): void {
+    this.views.get(sprite)?.destroy();
+    this.views.delete(sprite);
+  }
+
+  /** Show a card leaning `deg` (whole degrees): its TiltView, made on the first lean. */
+  private show(sprite: Phaser.GameObjects.Container, deg: number): void {
+    let v = this.views.get(sprite);
+    if (!v) {
+      if (deg === 0 || !isTiltCard(sprite) || !sprite.active) return;
+      v = new TiltView(this.scene, sprite, this.px1, () => this.views.delete(sprite));
+      this.views.set(sprite, v);
+    }
+    v.show(deg);
   }
 
   private apply(m: Motion): void {
@@ -431,6 +952,7 @@ export class HandMotion {
     const dx = m.shake === null ? 0 : rejectOffset(m.shake);
     const breath = m.y.moving ? 0 : breathOf(this.clock, m.phase);
     s.setPosition(Math.round(m.x.value) + dx, Math.round(m.y.value) + breath);
+    this.show(s, quantizeDeg(m.tilt.value, HAND3.degStep));
   }
 
   private tick(rawDt: number): void {
@@ -445,6 +967,7 @@ export class HandMotion {
       }
       m.x.step(dt);
       m.y.step(dt);
+      m.tilt.step(dt);
       if (m.shake !== null) {
         m.shake += dt;
         if (m.shake >= HAND3.rejectStepMs * HAND3.reject.length) m.shake = null;
@@ -459,6 +982,228 @@ export class HandMotion {
       }
       this.apply(m);
     }
+    for (const [sprite, l] of this.loose) {
+      if (!sprite.active) {
+        this.settleLoose(sprite);
+        continue;
+      }
+      l.tilt.step(dt);
+      this.show(sprite, quantizeDeg(l.tilt.value, HAND3.degStep));
+      if (!l.tilt.moving) this.settleLoose(sprite);
+    }
+    // every leaning card follows its CardV3's look (side, rim, flash, light node, sweep)
+    for (const v of this.views.values()) v.update();
+  }
+}
+
+// ================================================================ TiltView (a leaning card, drawn)
+
+/** What a TiltView needs of a CardV3 (structural: no runtime import of the card class). */
+type TiltCard = Phaser.GameObjects.Container & {
+  readonly inner: Phaser.GameObjects.Container;
+  readonly crisp: boolean;
+  readonly rimStyle: Readonly<RimStyle> | null;
+  readonly displayW: number;
+  readonly displayH: number;
+  /** CardSprite's public side state: a known monster face up gets its ATK / DEF line held whole. */
+  readonly faceUp: boolean;
+  readonly cardId: CardId | null;
+  shownPixels(): PixelCanvas;
+};
+
+function isTiltCard(s: Phaser.GameObjects.Container): s is TiltCard {
+  const c = s as unknown as Partial<TiltCard>;
+  return c.crisp === true && typeof c.shownPixels === 'function' && !!c.inner;
+}
+
+/** The sheen / foil sprite of a card, as far as a TiltView reads it. */
+interface SheenLike {
+  visible: boolean;
+  alpha: number;
+  blendMode: number | string;
+  frame: { name: string };
+  texture: { key: string };
+}
+
+/**
+ * What the upright CardV3 shows right now beyond its public state: the rim flash (tone + shape), the
+ * running node's phase and the foil / sheen sweep. CardV3 keeps these private (it draws them itself
+ * when upright); a TiltView reads them so the leaning copy flashes and runs its light node frame for
+ * frame with the card it stands in for — tests/v3/a6-cards.test.ts guards the field names.
+ */
+function upright(card: TiltCard): { flash: number | null; shape: 'full' | 'style'; nodeT: number; sheen: SheenLike | null } {
+  const c = card as unknown as { nodeT?: unknown; flashTone?: unknown; flashShape?: unknown; sheen?: unknown };
+  const sheen = c.sheen as SheenLike | undefined;
+  return {
+    flash: typeof c.flashTone === 'number' ? c.flashTone : null,
+    shape: c.flashShape === 'style' ? 'style' : 'full',
+    nodeT: typeof c.nodeT === 'number' ? c.nodeT : 0,
+    sheen: sheen && sheen.visible && sheen.alpha > 0 ? sheen : null,
+  };
+}
+
+/** The pixels of an overlay frame (read once from its texture source; null when unreadable). */
+const overlayPixels = new WeakMap<object, Uint8ClampedArray | null>();
+function overlayOf(frame: object): Uint8ClampedArray | null {
+  if (!overlayPixels.has(frame)) overlayPixels.set(frame, frameRGBA(frame as unknown as FrameLike));
+  return overlayPixels.get(frame) ?? null;
+}
+
+let tiltSeq = 0;
+
+/**
+ * One leaning hand card on screen: the baked lean in ONE small live canvas (re-painted only when what
+ * it shows changes — the lean step, the side or turn frame, the rim tones, a sweep frame) plus the
+ * rim's running light node (3 px1 pixels per node), all children of the card's container at whole
+ * pixels and unrotated; the CardV3's own layers (its `inner`) are hidden meanwhile. At 0° it hides
+ * itself and the CardV3 draws itself upright again.
+ */
+class TiltView {
+  deg = 0;
+  private img: Phaser.GameObjects.Image | null = null;
+  private tex: Phaser.Textures.CanvasTexture | null = null;
+  private key = '';
+  private readonly nodes: Phaser.GameObjects.Image[] = [];
+  private sig = '';
+  private bake: TiltBake | null = null;
+  private buf: PixelCanvas | undefined;
+  private dead = false;
+  private readonly onDestroy = () => this.destroy();
+
+  constructor(
+    private readonly scene: Phaser.Scene,
+    private readonly card: TiltCard,
+    private readonly px1: string,
+    private readonly onGone: () => void,
+  ) {
+    card.once('destroy', this.onDestroy);
+  }
+
+  /** Lean `deg` whole degrees (0: upright, the CardV3 draws itself). */
+  show(deg: number): void {
+    if (this.dead || deg === this.deg) return;
+    this.deg = deg;
+    if (deg === 0) this.hide();
+    else this.update();
+  }
+
+  /** Follow the card's look; every frame while it leans (cheap when nothing changed). */
+  update(): void {
+    if (this.dead || this.deg === 0) return;
+    const card = this.card;
+    if (!card.active) return;
+    const side = card.shownPixels();
+    // only a card shown at its texture size leans (a cinematic's raster is the CardV3's own business)
+    if (card.displayW !== side.w || card.displayH !== side.h) {
+      this.hide();
+      return;
+    }
+    const st = card.rimStyle;
+    const look = upright(card);
+    // the ring's tones, exactly as CardV3.placeRim picks them (a 'style' flash lights only the drawn edges)
+    const flash = look.flash;
+    const partial = flash !== null && look.shape === 'style' && st !== null;
+    const tl = partial ? (st!.tl !== null ? flash : null) : (flash ?? st?.tl ?? null);
+    const br = partial ? (st!.br !== null ? flash : null) : (flash ?? st?.br ?? null);
+    let over: TiltOverlay | null = null;
+    let sweep = '-';
+    const sh = look.sheen;
+    if (sh) {
+      const rgba = overlayOf(sh.frame);
+      if (rgba && rgba.length === side.w * side.h * 4) {
+        over = { rgba, alpha: sh.alpha, add: sh.blendMode === 1 || sh.blendMode === 'ADD' };
+        sweep = `${sh.texture.key}#${sh.frame.name}@${sh.alpha}`;
+      }
+    }
+    const sig = `${sideId(side)}|${this.deg}|${tl}|${br}|${sweep}`;
+    if (sig !== this.sig) {
+      this.sig = sig;
+      this.paint(side, tl, br, over);
+    }
+    const b = this.bake!;
+    const ix = Math.round(card.inner.x) - b.map.px;
+    const iy = Math.round(card.inner.y) - b.map.py;
+    this.img!.setPosition(ix, iy).setVisible(true);
+    card.inner.setVisible(false);
+    this.placeNodes(st, look.nodeT, flash !== null, ix, iy);
+  }
+
+  private paint(side: PixelCanvas, tl: number | null, br: number | null, over: TiltOverlay | null): void {
+    const first = !this.bake || this.bake.w !== side.w;
+    const id = this.card.cardId;
+    const glyphs = this.card.faceUp && id !== null && isMonster(cardDef(id));
+    const b = (this.bake = tiltBake(side, this.deg, glyphs));
+    // the steps between upright and this lean, ahead of a hover (≈ 0.2 ms each once the side is up-scaled)
+    if (first) prebakeTilt(side, this.deg, glyphs);
+    this.buf = paintTilt(b, side, tl, br, over, this.buf);
+    const { w, h } = b.map;
+    const sc = this.scene;
+    if (!this.tex || this.tex.width < w || this.tex.height < h) {
+      if (this.key && sc.textures.exists(this.key)) {
+        this.img?.setTexture('__DEFAULT');
+        sc.textures.remove(this.key);
+      }
+      this.key = `hand3:tilt:${++tiltSeq}`;
+      this.tex = sc.textures.createCanvas(this.key, Math.max(96, w), Math.max(96, h))!;
+    }
+    const tex = this.tex;
+    tex.context.clearRect(0, 0, tex.width, tex.height);
+    tex.context.putImageData(this.buf.toImageData(), 0, 0);
+    const name = `t${w}x${h}`;
+    if (!tex.has(name)) tex.add(name, 0, 0, 0, w, h);
+    tex.refresh();
+    if (!this.img) {
+      this.img = sc.add.image(0, 0, this.key, name).setOrigin(0);
+      this.card.add(this.img);
+    } else this.img.setTexture(this.key, name);
+  }
+
+  /** The rim's running light node on the leaning ring (CardV3.placeNode, on the baked ring path). */
+  private placeNodes(st: Readonly<RimStyle> | null, nodeT: number, flashing: boolean, ix: number, iy: number): void {
+    const count = st ? Math.max(0, Math.min(2, Math.round(st.nodes ?? 0))) : 0;
+    const ring = this.bake!.ring;
+    const L = ring.length;
+    if (count === 0 || flashing || L === 0) {
+      for (const n of this.nodes) n.setVisible(false);
+      return;
+    }
+    while (this.nodes.length < count * 3) {
+      const img = this.scene.add.image(0, 0, this.px1).setOrigin(0);
+      this.card.add(img);
+      this.nodes.push(img);
+    }
+    const R = st!.ramp ?? nodeRamp(st!.tl ?? st!.br ?? PAL.mist);
+    const tones = [PAL.white, R[4], R[2]];
+    const mw = this.bake!.map.w;
+    for (let k = count * 3; k < this.nodes.length; k++) this.nodes[k].setVisible(false);
+    for (let n = 0; n < count; n++) {
+      const t = nodeT + n / count;
+      const head = Math.floor((((t % 1) + 1) % 1) * L) % L;
+      for (let i = 0; i < 3; i++) {
+        const k = ring[(head - i + L * 2) % L];
+        this.nodes[n * 3 + i].setPosition(ix + (k % mw), iy + Math.floor(k / mw)).setTint(tones[i]).setVisible(true);
+      }
+    }
+  }
+
+  private hide(): void {
+    this.img?.setVisible(false);
+    for (const n of this.nodes) n.setVisible(false);
+    if (this.card.active) this.card.inner.setVisible(true);
+  }
+
+  destroy(): void {
+    if (this.dead) return;
+    this.dead = true;
+    this.card.off('destroy', this.onDestroy);
+    this.hide();
+    this.img?.destroy();
+    this.img = null;
+    for (const n of this.nodes) n.destroy();
+    this.nodes.length = 0;
+    if (this.key && this.scene.textures?.exists(this.key)) this.scene.textures.remove(this.key);
+    this.tex = null;
+    this.onGone();
   }
 }
 

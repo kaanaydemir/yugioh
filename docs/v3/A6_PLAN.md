@@ -235,20 +235,22 @@ Girdi: değişmez. Ölçü: kontrol noktasının "boşta ekran" çifti ≥ 3 som
 
 | Vuruş | ms | Görüntü | Işık / ses |
 |---|---|---|---|
-| Bekleme | sürekli | Kartlar **dik** (döndürme 0); yelpaze yalnız y eğrisi (dış kartlar 1–4 px aşağı). Her kart 2400 ms periyotla 0 / −1 px nefes alır, faz kart başına 300 ms kayık. | — |
+| Bekleme | sürekli | **El yay şeklinde, kartlar hafif dönük — kullanıcı kararı, 24 Ekim** (önceki "dik kart, yalnız y eğrisi" kararının ve §1.1 G2'deki aynı ifadenin yerine geçer). Yay v1'inki: dış kartlar `off² · min(1,4; 7 / yarı²)` px aşağıda (en çok 7 px), kartlar dışa doğru `off · min(0,05; 0,22 / (n − 1))` rad yatık (4 kartta −4 / −1 / 1 / 4°, 5 kartta −6 / −3 / 0 / 3 / 6°). Yatıklık **çalışma anında döndürülmez** (KO-1): her açı 1°'lik basamakla RotSprite yöntemiyle (Scale2x ×3 + en yakın örnekleme, `src/art/rotsprite.ts`) kartın 1 px kenar halkasıyla birlikte pişirilir, tembel önbelleğe alınır ve döndürülmeden tam pikselde gösterilir (`handV3.ts` TiltView); yalnız kartın dış 2 px bandı yumuşatılır, iç kısım (resim, ATK / DEF rakamları) bütün örneklenir ve örnekleme fazı rakam satırını iki satır kayması arasına koyar. Her kart 2400 ms periyotla 0 / −1 px nefes alır, faz kart başına 300 ms kayık. | — |
 | Oynanabilir | sürekli | Kartın 1 px dışında sahibin tonunda (`PLAYER_RAMP[p][3]`) 1 px kenar; kenarda 3 px'lik ışık düğümü döner (beyaz baş, `ramp[4]`, `ramp[2]` kuyruk; A2 büyü açılışındaki `cardRim` dili). Düğüm fazı kart başına kayık. | — |
-| Üzerine gelme | 0–100 | Kart 0 → −18 px (easeOutCubic, tam piksel); üst ve sol kenarda 1 px ışık şeridi (sol üst ışık kuralı). Komşular ±12 / ±7 / ±4 px açılır (120 ms). InspectPanel aynı karede kartı gösterir (K12). | `ui3Hover`: 30 ms yumuşak tık; perde elin içindeki sıraya göre pentatonik merdiven (eli taramak küçük bir arp gibi) |
+| Üzerine gelme | 0–100 | Kart 0 → −18 px (easeOutCubic, tam piksel) ve pişmiş basamaklardan geçerek 90 ms'de dikleşir (0°; bundan sonra düz CardV3); üst ve sol kenarda 1 px ışık şeridi (sol üst ışık kuralı). Komşular ±12 / ±7 / ±4 px açılır (120 ms), yatıklıklarını korur. InspectPanel aynı karede kartı gösterir (K12). | `ui3Hover`: 30 ms yumuşak tık; perde elin içindeki sıraya göre pentatonik merdiven (eli taramak küçük bir arp gibi) |
 | Oturma | 100–140 | −18 → −16 px. Kenar 2 kare beyaz, sonra sahip tonunda parlak. | — |
-| Ayrılma | 0–100 | −16 → 0, aşma yok (Quad.Out). | — |
+| Ayrılma | 0–100 | −16 → 0, aşma yok (Quad.Out); kart 90 ms'de yatıklığına geri döner. | — |
 | Seçme (tıklama) | 0–40 | Basma: −16 → −13 px, kenar 2 kare beyaz. | `ui3Select` (iki nota yukarı) 0 ms'de |
 | | 40–110 | −13 → −17 → −16 px; kenar altın (`PAL.gold3`), iki düğüm. ActionMenu 40 ms'de açılır (mevcut). | — |
 | Ret (geçersiz el tıklaması, F5) | 0–150 | `hand.reject(uid)`: x +2, −2, +1, −1, 0 (30 ms adımlar), kenar 2 kare kızıl (`crim3`). | `ui3Error` |
 | Kilitli el (sinematik) | sürekli | Kenarlar bir ton söner, düğümler durur; nefes sürer. | — |
-| İşaretli (el sınırı atması) | 0–90 | Kart 9 px kalkar, kızıl kenar + düğüm. | `ui3Mark` / `ui3Unmark` |
-| Dalga (perde, F7) | kart başına 30 ms | `hand.waveFaceDown(down, 30)`: kartlar sırayla keskin dönüş kareleriyle kapanır / açılır (S-9). | `ui3Flip` (seyrek) |
+| İşaretli (el sınırı atması) | 0–90 | Kart 9 px kalkar ve yatıklığının yarısına iner (v1 gibi), kızıl kenar + düğüm. | `ui3Mark` / `ui3Unmark` |
+| Dalga (perde, F7) | kart başına 30 ms | `hand.waveFaceDown(down, 30)`: kartlar sırayla keskin dönüş kareleriyle kapanır / açılır (S-9); yatık kartın dönüş kareleri de aynı açıyla pişirilir. | `ui3Flip` (seyrek) |
 
-P2: sıcak koltukta P2 cihazı tutarken aynı el altta, kızıl rampayla. Rakibin mini eli panelinin yanında
-kalır; sayı değişince mini kartlar tam piksel kayar; mini kartlar v3 arka yüzü gösterir (S-2). Hız: üzerine gelme / seçme
+P2: sıcak koltukta P2 cihazı tutarken aynı el (aynı yay, kapalı arka yüzler dahil) altta, kızıl rampayla. Sıcak koltuk
+değişiminde v1'deki gibi düşen kartlar 14° daha açılır, yükselen el üç katı açıdan kendi yayına kapanır (pişmiş
+basamaklarla). Rakibin mini eli panelinin yanında kalır (v1'de de dönük değildi: dik, yalnız hafif y eğrisi); sayı
+değişince mini kartlar tam piksel kayar; mini kartlar v3 arka yüzü gösterir (S-2). Hız: üzerine gelme / seçme
 sahne saatinde (bugünkü gibi); ×3 basılı tutma yalnız sinematikte. AH: nefes, aşma, basma ve düğüm hareketi yok; kalkış
 60 ms. Girdi: hiçbir zaman kilitlemez.
 
