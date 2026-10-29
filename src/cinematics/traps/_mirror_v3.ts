@@ -12,9 +12,9 @@
 // card continuity, the v3 sounds and today's camera calls.
 //   0        the trap opening (trapOpeningV3: the card springs up, burst, "TUZAK!", Ayna's glint); its
 //            lean stays as it is. The attacker waits in its declaration's charge hold.
-//   250      DOME — `raise`: the floor ring draws itself round the defender's row from the front, then
+//   220      DOME — `raise`: the floor ring draws itself round the defender's row from the front, then
 //            the hex cells materialize from the floor up (each cell: 2 frames white seams + a glass
-//            flash, 2 frames mag4, then its own tone) — ≈ 380 ms, like the old build; the magenta light
+//            flash, 2 frames mag4, then its own tone) — ≈ 330 ms (fix round 1: from 250 / 380); the magenta light
 //            pool spreads under the dome; while it stands a sheen band slides over the cells. Today's
 //            dome lean (mirror_barrier.ts:57) is called here, same target and options (user decision:
 //            the camera does not change). mirrorRaise (4 plate ticks spread over the build)
@@ -30,10 +30,12 @@
 //            of lit seams runs over the whole dome (190 ms); a big whole-pixel star, pixel sparks, a magenta
 //            floor flash; the dome itself trembles 1 px (local, never the camera). The body steps back
 //            home. mirrorCatch
-//   +60…+210 CHARGE: the seams heat up cell by cell (the hot cells light their panes), the light
-//            gathers at the struck point (a growing whole-pixel star, motes drawn in) — the old charge beat
-//   +210     REFLECTION, one by one — `beam:<i>`: the first departure lights every seam and pane for a
-//            frame (white round the struck point, mag4 further out: EF-4), the panes for 2 more, and
+//   +0…+34   CHARGE: the seams heat up cell by cell (the hot cells light their panes), the light
+//            gathers at the struck point (a growing whole-pixel star, motes drawn in) — the old charge beat,
+//            cut to 2 frames (fix round 1, A5A-C1-02: the first beam leaves ≤ 180 ms after the catch)
+//   ≈ +94    REFLECTION, one by one — `beam:<i>`: the first departure lights every seam and pane for a
+//            frame (mag4; white only within WHITE_DISC_R of the struck point — fix round 2, A5A-C2-06: from
+//            the catch on, the glass is white only there, EF-4 with every lane's HUD), the panes for 2 more, and
 //            splays 7 stray 1-px reflections off the dome (the old "many beams"); then for every
 //            attack-position monster of the attacking side, nearest to the struck point first, a beam
 //            arcs from the struck point to the monster's core in 120 ms (7 px: mag2 / mag3 / mag4 / white
@@ -41,15 +43,23 @@
 //            contact is that monster's own death (the v3 death kit: the v3 art's death pose, the old
 //            art's reaction + material break), a 1-px white / magenta rim on its silhouette, a 2-frame
 //            white star; the beam swells to 9 px (3-px white core) for 2 frames, then thins out by steps
-//            (EF-13); a short floor strip of light. The next beam leaves
-//            220 ms after the previous contact (later when two graveyard landings would come closer than
-//            150 ms); each departure sends a small ripple over the dome. mirrorBeam, one step up per victim
-//   last+120 BREAK — `break`: the dome breaks out from the struck point (340 ms, as the old one): every
-//            cell into 2–3 whole-pixel shards of its seams that fall to the floor under them, rest and
-//            fade by palette steps; the floor ring steps out, the light pool goes out. mirrorBreak
-//   then     EXIT — `exit`: the trap card lies down on its tile and leaves for the graveyard from there
-//            (card continuity), landing ≥ 150 ms after the last victim's card; the camera relaxes
-//            (ctx.unfocus(320), as today).
+//            (EF-13); a short floor strip of light. The next beam leaves 220 ms after the previous
+//            contact (BEAM_GAP; 150 ms after a victim with a v3 death pose, BEAM_GAP_POSED — its long
+//            pose keeps the landings apart), timed on the live show clock (hit-stops included); each
+//            departure sends a small ripple over the dome. mirrorBeam, one step up per victim
+//   last+120 BREAK — `break`: the dome breaks out from the struck point (340 ms, as the old one): on the
+//            break frame a crack network runs out of the struck point (7 jagged 1-px rays with a branch
+//            each, white then mag4, 2 frames); the cells go front-loaded (eased out: ≥ a quarter of them in
+//            the first 50 ms, so the frame after the sound shows the dome breaking — fix round 2,
+//            A5A-C2-02), every cell into 2–3 whole-pixel shards of its seams that fall to the floor under
+//            them, rest and fade by palette steps; the floor ring steps out, the light pool goes out. Never
+//            on a victim's burst: after an old-art victim (whose death bursts with its generic shatter
+//            ≈ 130 ms after the contact) the break waits BREAK_CLEAR after that burst. mirrorBreak
+//   with it  EXIT — `exit`: on the break the trap card lies down on its tile and leaves for the graveyard
+//            from there in parallel with the shatter (card continuity), its landing kept ≥ 167 ms clear of
+//            every victim's card landing (exitLanding); the camera relaxes (ctx.unfocus(320), as today).
+// Fix round 1 (A5A-C1-02): tbMirror / P2 1.93 s, Direct 1.98 s, a5MirrorSlice 2.33 s, a5MirrorTriple
+// 2.28 s (budgets 2.1 / 2.35 / 2.6 s; were 2.1 / 2.35 / 2.6+).
 // Depths: the far shell is drawn behind the defender row's units (as the old one), the near glass in
 // front of them but behind anything standing in front of the dome (the old near glass covered every unit).
 // Under REDUCED_MOTION the particles and shards are halved (fxCount) and the dome does not tremble.
@@ -63,6 +73,7 @@ import { BOARD_MID_COL, BOARD_OX, BOARD_OY, DEPTH, LANE_COLS, TILE_H, TILE_W, ty
 import { lightBeam, lightFlash, lightPool, type LightHandle } from '../../view/light';
 import { REDUCED_MOTION } from '../../view/v3/motion';
 import { wait } from '../../vfx/core';
+import { showClock } from '../../duel/showclock';
 import { Sparks as PxSparks, stopTime } from '../../vfx/combat';
 import { E, Raster, onFrame, qbez, run } from '../../vfx/setpieces';
 import { fx, type CinematicContext } from '../api';
@@ -79,10 +90,13 @@ type ActCtx = CinematicContext<EvOf<'activate'>>;
 
 // ================================================================ timing (ms, scene clock, t = 0 at activate)
 
-/** The dome starts to build: the trap card is standing (trapOpeningV3: standUp 220 ms + its 40 ms hit-stop). */
-export const DOME_AT = 250;
-/** The build: the floor ring, then the cells from the floor up (the old dome's 380 ms). */
-export const BUILD_MS = 380;
+/**
+ * The dome starts to build as the trap card comes up (trapOpeningV3: standUp 220 ms + its 40 ms hit-stop;
+ * fix round 1, C1-02: from its stand-up's last frames, so the reflections fit the named budget).
+ */
+export const DOME_AT = 220;
+/** The build: the floor ring, then the cells from the floor up (the old dome's 380 ms; fix round 1: 330). */
+export const BUILD_MS = 330;
 /** The earliest contact: the dome is complete (every cell shown and settled). */
 export const CATCH_AT = DOME_AT + BUILD_MS + 17;
 /** Kept for the old name (the v3 panel of A-4 started here). */
@@ -102,15 +116,43 @@ const CATCH_STOP = 60;
 const BOUNCE_MS = 150;
 /** The ripple of lit seams over the dome after the catch (the old dome's 190 ms). */
 export const RIPPLE_MS = 190;
-/** The charge (seams heat up, the light gathers at the struck point): starts this long after the hit-stop … */
-export const CHARGE_AT = 60;
+/**
+ * The charge (seams heat up, the light gathers at the struck point): starts this long after the hit-stop …
+ * (fix round 1, C1-02: folded into the catch — the ignition's frames keep playing under the charge and the
+ * first beam, so the first reflection leaves 120 ms after the contact: the hit-stop + the charge; A5 §3.3
+ * YAKALAMA 520 → YANSIMA 700 ms)
+ */
+export const CHARGE_AT = 0;
 /** … and lasts this long; the first reflection leaves when it is full. */
-export const CHARGE_MS = 150;
+export const CHARGE_MS = 34;
 /** A reflection: the head's travel, and the gap from one contact to the next beam (A5 §3.3). */
 export const BEAM_MS = 120;
 export const BEAM_GAP = 220;
+/**
+ * The gap after a victim that dies on its own v3 death pose (fix round 1, C1-02): its pose starts on the
+ * contact frame and carries the hit itself (the crack, the collapse), so the next beam may leave 150 ms
+ * after it (the beat floor) — two v3 deaths of ≈ 1.2 s each still fit the two-victim budget (2.35 s).
+ */
+export const BEAM_GAP_POSED = 150;
 /** The dome breaks this long after the last contact. */
 const BREAK_AFTER = 120;
+/**
+ * Fix round 2 (A5A-C2-02): the break never shares a frame with a victim's own burst (an old-art death bursts,
+ * with its generic 'shatter' sound, ≈ 130 ms after its contact; two glass sounds on one frame read as one):
+ * after such a last victim it waits this long after the burst …
+ */
+export const BREAK_CLEAR = 100;
+/** … but never longer than this after the last contact (a burst that never comes). */
+const BREAK_WAIT_CAP = 420;
+/**
+ * From the catch on, the glass is white only this close (px) to the struck point (fix round 2, A5A-C2-06): the
+ * first departure lit every seam white (≈ 1800 px, 1.8 % of the frame with every lane's HUD, EF-4 ≤ 1.5 %);
+ * now the seams and panes light mag4 / pink and only ≈ 150–300 px round the struck point burn white.
+ */
+export const WHITE_DISC_R = 11;
+/** The break's crack network: rays out of the struck point (jagged 1-px, one branch each), their reach (px). */
+export const CRACK_RAYS = 7;
+const CRACK_REACH = [30, 58] as const;
 /** The break-out of the cells (the old dome's 340 ms). */
 export const SHATTER_MS = 340;
 /** Two graveyard landings are at least this far apart (A5 §3.0 EF-12). */
@@ -158,15 +200,15 @@ export function reflectionOrder(cell: XY, cores: readonly XY[]): number[] {
  * When each beam leaves (ms after the first one leaves): 220 ms after the previous contact, pushed later
  * when this victim's card would land within LAND_GAP (+ a little margin) of an earlier one's.
  */
-export function beamSchedule(deathMs: readonly number[], o: { beamMs?: number; gap?: number; landGap?: number } = {}): number[] {
+export function beamSchedule(deathMs: readonly number[], o: { beamMs?: number; gap?: number; gaps?: readonly number[]; landGap?: number } = {}): number[] {
   const beamMs = o.beamMs ?? BEAM_MS;
-  const gap = o.gap ?? BEAM_GAP;
   const landGap = (o.landGap ?? LAND_GAP) + 20;
   const out: number[] = [];
   const lands: number[] = [];
   let at = 0;
   deathMs.forEach((d, k) => {
-    if (k > 0) at = out[k - 1] + beamMs + gap;
+    // the gap after the previous contact: per victim (`gaps[k]`), else one for all
+    if (k > 0) at = out[k - 1] + beamMs + (o.gaps?.[k] ?? o.gap ?? BEAM_GAP);
     // push this beam later until its landing keeps clear of every earlier landing
     for (let guard = 0; guard < 8; guard++) {
       const land = at + beamMs + d;
@@ -178,6 +220,22 @@ export function beamSchedule(deathMs: readonly number[], o: { beamMs?: number; g
     lands.push(at + beamMs + d);
   });
   return out;
+}
+
+/**
+ * The break-out front (fix round 2, A5A-C2-02): a cell breaks once brk · 0.7 + d · 0.3 < this, `el` ms after the
+ * break — eased out, front-loaded (the old linear ramp released < 10 % of the cells in the first 50 ms, so the
+ * 1× frame after the sound still showed a whole dome).
+ */
+export function shatterFront(el: number): number {
+  const t = Math.max(0, el / SHATTER_MS);
+  // eased out over SHATTER_MS (above the old line all the way), then on along the old line: the farthest cells
+  // (key up to 0.7 + 0.3 · their lattice distance) go exactly when they did
+  return (t < 1 ? 1 - (1 - t) ** 3 : t) * 1.15;
+}
+/** A cell's place in the break-out (its random part and its lattice distance from the struck point). */
+export function shatterKey(brk: number, d: number): number {
+  return brk * 0.7 + d * 0.3;
 }
 
 // ================================================================ the dome: shape and pixel field (pure)
@@ -408,10 +466,16 @@ export interface DomeLook {
    * inset pixels) + mag4 seams, 3 hot (white / mag4 pane, white seams).
    */
   glow: Uint8Array;
+  /**
+   * When set (from the catch on): the heat / glow white burns only inside this disc (world px, r² squared
+   * radius) — mag4 outside it (EF-4; fix round 2, A5A-C2-06). The materializing seams and the specular streak
+   * are not limited.
+   */
+  whiteDisc: { x: number; y: number; r2: number } | null;
 }
 
 export function domeLook(cells: number, shown = true): DomeLook {
-  return { vis: new Uint8Array(cells).fill(shown ? 1 : 0), heat: new Uint8Array(cells), fresh: new Uint8Array(cells), glow: new Uint8Array(cells) };
+  return { vis: new Uint8Array(cells).fill(shown ? 1 : 0), heat: new Uint8Array(cells), fresh: new Uint8Array(cells), glow: new Uint8Array(cells), whiteDisc: null };
 }
 
 /**
@@ -431,6 +495,7 @@ export function paintDomeShell(p: PixelCanvas, f: DomeField, which: 'near' | 'fa
   const { w, h } = f;
   const { x0, y0 } = f.shape;
   const near = which === 'near';
+  const disc = L.whiteDisc;
   for (let j = 0; j < h; j++)
     for (let i = 0; i < w; i++) {
       const idx = j * w + i;
@@ -446,17 +511,19 @@ export function paintDomeShell(p: PixelCanvas, f: DomeField, which: 'near' | 'fa
       const ey = ((y0 + j) & 1) === 0;
       const b0 = ex && ey;
       const b1 = !ex && !ey;
+      // the heat / glow white: only inside the white disc once it is set (EF-4), mag4 outside it
+      const W = disc && ((x0 + i - disc.x) ** 2 + (y0 + j - disc.y) ** 2 > disc.r2) ? PAL.mag4 : PAL.white;
       let col = -1;
       if (near) {
-        if (kind === DOME_PX.rim) col = heat >= 2 || fresh >= 2 || glow >= 3 ? PAL.white : PAL.mag4;
-        else if (kind === DOME_PX.seam) col = heat >= 2 || fresh >= 2 || glow >= 3 ? PAL.white : heat === 1 || fresh === 1 || glow >= 1 ? PAL.mag4 : fr >= 2 ? PAL.mag3 : PAL.mag2;
+        if (kind === DOME_PX.rim) col = fresh >= 2 ? PAL.white : heat >= 2 || glow >= 3 ? W : PAL.mag4;
+        else if (kind === DOME_PX.seam) col = fresh >= 2 ? PAL.white : heat >= 2 || glow >= 3 ? W : heat === 1 || fresh === 1 || glow >= 1 ? PAL.mag4 : fr >= 2 ? PAL.mag3 : PAL.mag2;
         else if (kind === DOME_PX.spec) col = PAL.white;
-        else if (kind === DOME_PX.spec2) col = heat >= 2 || glow >= 2 ? PAL.white : PAL.mag4;
+        else if (kind === DOME_PX.spec2) col = heat >= 2 || glow >= 2 ? W : PAL.mag4;
         // the struck panel flares as a white checker (every other pixel): still glass, what is behind shows through
-        else if (heat >= 3) col = b0 || b1 ? PAL.white : -1;
+        else if (heat >= 3) col = b0 || b1 ? W : -1;
         else if (fresh >= 2) col = b0 || b1 ? PAL.mag3 : -1;
         // the lit pane: a checker on the inset pixels (white / mag4 when hot, mag4 / mag3), clear by the seams
-        else if (glow >= 2) col = S.inset[idx] === 0 ? -1 : b0 ? (glow >= 3 ? PAL.white : PAL.mag4) : b1 ? (glow >= 3 ? PAL.mag4 : PAL.mag3) : -1;
+        else if (glow >= 2) col = S.inset[idx] === 0 ? -1 : b0 ? (glow >= 3 ? W : PAL.mag4) : b1 ? (glow >= 3 ? PAL.mag4 : PAL.mag3) : -1;
         // the glass glows with its seams on the ripple / charge / the ignition's last step (a quarter of its pixels)
         else if (b0 && (heat >= 1 || glow >= 1)) col = heat >= 2 ? PAL.mag4 : PAL.mag3;
         // the pink glass tint, brighter where the glass is seen edge-on
@@ -616,6 +683,8 @@ class DomeV3 {
   private flashAt = -1;
   private flashHit: DomeHit | null = null;
   private brk: { at: number; hu: number; hv: number } | null = null;
+  /** The break's crack network (fix round 2, A5A-C2-02): its pixels (with their reach from the struck point), its raster, its frame. */
+  private cracks: { px: { x: number; y: number; d: number; tip: boolean }[]; ras: Raster; f: number; loop: number } | null = null;
   private trembleFrom = -1;
   private dead = false;
   private readonly stopFn: () => void;
@@ -692,6 +761,8 @@ class DomeV3 {
    * cell a white checker, a ripple of lit seams over the dome, a 1-px local tremble.
    */
   strike(hit: DomeHit): void {
+    // from the catch on, the glass burns white only round the struck point (EF-4; fix round 2, A5A-C2-06)
+    this.look.whiteDisc = { x: hit.x, y: hit.y, r2: WHITE_DISC_R * WHITE_DISC_R };
     if (hit.cell >= 0) this.struck = { cell: hit.cell, at: this.frame };
     this.ignite = { at: this.frame, hu: hit.hu, hv: hit.hv };
     this.ripple = { at: this.el, hu: hit.hu, hv: hit.hv, ms: RIPPLE_MS, reach: 2.2 };
@@ -725,6 +796,9 @@ class DomeV3 {
    */
   shatter(hit: DomeHit): Promise<void> {
     this.brk = { at: this.el, hu: hit.hu, hv: hit.hv };
+    // the crack network, drawn on this very frame (the sound's): white, then mag4 the next frame, then gone
+    this.cracks = { px: this.crackNet(hit), ras: new Raster(this.scene, this.shape.x0, this.shape.y0, this.field.w, this.field.h, DEPTH.UNIT + this.shape.c.y + HH + 0.7), f: 0, loop: this.scene.game.loop.frame };
+    this.drawCracks();
     const { c } = this.shape;
     const n = fxCount(28);
     for (let i = 0; i < n; i++) {
@@ -743,6 +817,83 @@ class DomeV3 {
         return true;
       });
     });
+  }
+
+  /**
+   * The break's crack network: CRACK_RAYS jagged 1-px rays out of the struck point over the glass (both shells;
+   * a ray stops where the glass ends), a vertex every 5–7 px with a 1–2 px sideways kink, one branch each at
+   * 40–60 % of its reach. Each pixel keeps its reach from the struck point (white near it, mag4 further out).
+   */
+  private crackNet(hit: DomeHit): { x: number; y: number; d: number; tip: boolean }[] {
+    const { x0, y0 } = this.shape;
+    const { w, h, near, far } = this.field;
+    const out: { x: number; y: number; d: number; tip: boolean }[] = [];
+    const seen = new Set<number>();
+    const onGlass = (x: number, y: number) => {
+      const i = x - x0;
+      const j = y - y0;
+      if (i < 0 || j < 0 || i >= w || j >= h) return false;
+      return near.cell[j * w + i] >= 0 || far.cell[j * w + i] >= 0;
+    };
+    const ray = (sx: number, sy: number, ang: number, reach: number, d0: number, branch: boolean): void => {
+      let px = sx;
+      let py = sy;
+      let d = d0;
+      let alive = true;
+      while (alive && d - d0 < reach) {
+        const step = 5 + Math.floor(this.rnd() * 3);
+        const kink = (this.rnd() < 0.5 ? -1 : 1) * (1 + Math.floor(this.rnd() * 2));
+        // the ray runs flatter on screen (the glass curves away), kinks sideways now and then
+        const nx = Math.round(px + Math.cos(ang) * step - Math.sin(ang) * kink * 0.6);
+        const ny = Math.round(py + Math.sin(ang) * step * 0.8 + Math.cos(ang) * kink * 0.6);
+        const segD = d;
+        bres(px, py, nx, ny, (x, y) => {
+          if (!alive) return;
+          if (!onGlass(x, y)) {
+            alive = false;
+            return;
+          }
+          const k = (y << 12) + x;
+          if (seen.has(k)) return;
+          seen.add(k);
+          out.push({ x, y, d: segD + Math.hypot(x - px, y - py), tip: false });
+        });
+        if (!alive) break;
+        if (branch && d - d0 >= reach * (0.4 + this.rnd() * 0.2) && d - d0 < reach * 0.6 + step) {
+          branch = false;
+          ray(nx, ny, ang + (this.rnd() < 0.5 ? -1 : 1) * (0.5 + this.rnd() * 0.3), reach * 0.4, d + step, false);
+        }
+        px = nx;
+        py = ny;
+        d += step;
+      }
+      // the last few pixels of a ray are its fading tip
+      for (let q = out.length - 1, n = 0; q >= 0 && n < 3; q--, n++) out[q].tip = true;
+    };
+    for (let r = 0; r < CRACK_RAYS; r++) {
+      const ang = ((r + 0.5) / CRACK_RAYS) * Math.PI * 2 + (this.rnd() - 0.5) * 0.5;
+      const reach = CRACK_REACH[0] + this.rnd() * (CRACK_REACH[1] - CRACK_REACH[0]);
+      ray(hit.x, hit.y, ang, reach, 0, true);
+    }
+    return out;
+  }
+
+  /** The crack network's frame: 0 white (mag4 out at the tips and past 60 % of the reach), 1 mag4 (white round the struck point), then gone. */
+  private drawCracks(): void {
+    const cr = this.cracks;
+    if (!cr) return;
+    if (cr.f >= 2) {
+      cr.ras.destroy();
+      this.cracks = null;
+      return;
+    }
+    const r = cr.ras;
+    r.begin();
+    for (const q of cr.px) {
+      const col = cr.f === 0 ? (q.tip ? PAL.mag3 : q.d <= CRACK_REACH[1] * 0.6 ? PAL.white : PAL.mag4) : q.d <= WHITE_DISC_R ? PAL.white : q.tip ? PAL.mag2 : PAL.mag4;
+      r.px(q.x, q.y, col);
+    }
+    r.end();
   }
 
   private emitShards(ci: number): void {
@@ -789,13 +940,21 @@ class DomeV3 {
           L.vis[i] = 1;
         }
     }
-    // the break: cells go from the struck point out (and in a random order), each into shards
+    // the break: cells go from the struck point out (and in a random order), each into shards — front-loaded
+    // (shatterFront: eased out), the crack network on its first two frames
     if (this.brk) {
-      const tb = ((this.el - this.brk.at) / SHATTER_MS) * 1.15;
+      // (one step per game frame after the one it was drawn on: called mid-frame, its white frame is rendered)
+      const lf = this.scene.game.loop.frame;
+      if (this.cracks && dt > 0 && lf > this.cracks.loop) {
+        this.cracks.loop = lf;
+        this.cracks.f++;
+        this.drawCracks();
+      }
+      const tb = shatterFront(this.el - this.brk.at);
       for (let i = 0; i < cells.length; i++) {
         if (L.vis[i] === 2) continue;
         const d = Math.hypot(cells[i].cu - this.brk.hu, cells[i].cv - this.brk.hv);
-        if (cells[i].brk * 0.7 + d * 0.3 < tb) {
+        if (shatterKey(cells[i].brk, d) < tb) {
           if (L.vis[i] === 1) this.emitShards(i);
           L.vis[i] = 2;
         }
@@ -897,6 +1056,8 @@ class DomeV3 {
     this.nearR.destroy();
     this.farR.destroy();
     this.baseR.destroy();
+    this.cracks?.ras.destroy();
+    this.cracks = null;
     this.sparks.release();
     // shards finish on their own clock; cleaned up once quiet (or on scene shutdown)
     const layers = [this.nearShards, this.farShards];
@@ -913,14 +1074,37 @@ class DomeV3 {
 
 // ================================================================ small pieces
 
-/** Elapsed show time (speed / hit-stop aware, the clock the cards fly on) since the call. */
-function showTimer(scene: Phaser.Scene): { now(): number; stop(): void } {
+/**
+ * Show time that runs on through hit-stops (fix round 1, C1-02): the speed still scales it and the duel
+ * menu's pause stops it. The reflections' rhythm (the next beam 220 ms after a contact, the break 120 ms
+ * after the last) is kept on this clock, so a victim's death hit-stop never stretches the gaps (a beam
+ * that is due during a freeze simply starts moving when the freeze ends).
+ */
+function liveTimer(scene: Phaser.Scene): { now(): number; until(at: number): Promise<void>; stop(): void } {
+  const clock = showClock(scene);
   let t = 0;
-  const stop = onFrame(scene, (dt) => {
-    t += dt;
-    return true;
-  });
-  return { now: () => t, stop };
+  const waits: { at: number; done: () => void }[] = [];
+  const h = (_time: number, delta: number) => {
+    if (!clock.paused) t += Math.min(50, delta) * clock.speed;
+    for (let i = waits.length - 1; i >= 0; i--)
+      if (t >= waits[i].at) {
+        const w = waits[i];
+        waits.splice(i, 1);
+        w.done();
+      }
+  };
+  // (Phaser.Scenes.Events.UPDATE / SHUTDOWN: this module imports Phaser for its types only)
+  scene.events.on('update', h);
+  const stop = () => {
+    scene.events.off('update', h);
+    for (const w of waits.splice(0)) w.done();
+  };
+  scene.events.once('shutdown', stop);
+  return {
+    now: () => t,
+    until: (at) => (t >= at ? Promise.resolve() : new Promise<void>((done) => waits.push({ at, done }))),
+    stop,
+  };
 }
 
 /** Whole-pixel line (Bresenham), endpoints included. */
@@ -1058,7 +1242,7 @@ function strikeBolt(scene: Phaser.Scene, from: XY, to: XY, ramp: readonly number
  * head; on contact a white star, the beam swells to 9 px with a 3-px white core for 2 frames, then thins
  * by steps (7 → 5 → 3 → 1 px) and is gone (EF-13). `onContact` runs on the contact frame.
  */
-function arcBeam(scene: Phaser.Scene, from: XY, to: XY, fan: number, onContact: () => void): Promise<void> {
+function arcBeam(scene: Phaser.Scene, from: XY, to: XY, fan: number, onContact: () => void): { contact: Promise<void>; done: Promise<void> } {
   const a = { x: Math.round(from.x), y: Math.round(from.y) };
   const b = { x: Math.round(to.x), y: Math.round(to.y) };
   const dx = b.x - a.x;
@@ -1076,7 +1260,9 @@ function arcBeam(scene: Phaser.Scene, from: XY, to: XY, fan: number, onContact: 
   const r = new Raster(scene, Math.min(...xs) - 9, Math.min(...ys) - 9, Math.max(...xs) - Math.min(...xs) + 19, Math.max(...ys) - Math.min(...ys) + 19, DEPTH.FX + 5);
   let hitFrame = -1;
   let frame = 0;
-  return new Promise((resolve) => {
+  let contacted!: () => void;
+  const contact = new Promise<void>((r) => (contacted = r));
+  const done = new Promise<void>((resolve) => {
     onFrame(scene, (dt, el) => {
       if (dt > 0) frame++;
       // the head lands on the frame its 120 ms are up (7 frames at 60 fps; no extra frame of waiting)
@@ -1088,6 +1274,7 @@ function arcBeam(scene: Phaser.Scene, from: XY, to: XY, fan: number, onContact: 
         } catch (e) {
           console.error('[mirror] contact', e);
         }
+        contacted();
       }
       const head = hitFrame < 0 ? Math.max(1, Math.round(k * (path.length - 1)) + 1) : path.length;
       const after = hitFrame < 0 ? -1 : frame - hitFrame;
@@ -1112,6 +1299,9 @@ function arcBeam(scene: Phaser.Scene, from: XY, to: XY, fan: number, onContact: 
       return true;
     });
   });
+  // a scene that shuts down mid-flight never leaves the contact hanging
+  void done.then(() => contacted());
+  return { contact, done };
 }
 
 /**
@@ -1244,10 +1434,23 @@ function planStrike(u: MonsterUnit | null): StrikePlan | null {
 // ================================================================ the exit
 
 /**
- * The spent trap leaves (trapExitV3's beats with a landing time): it lies down on its tile, then is born
- * from there into its graveyard flight, landing no earlier than `landAt()` (elapsed show ms of `clock`).
+ * The spent trap leaves (trapExitV3's beats with a landing time; fix round 1, C1-02: it starts at the break,
+ * not after the last victim's card): it lies down on its tile while the dome shatters, then is born from
+ * there into its graveyard flight — landing at least LAND_GAP (+ a frame) clear of every victim's card
+ * landing `lands()` (elapsed ms of `clock`: the known ones, or the death kit's estimate for a death still
+ * on its way), before them if it can, else just after the one it would meet (A5 §3.0 EF-12).
  */
-async function exitAfter(ctx: ActCtx, op: Opening, clock: { now(): number }, landAt: () => Promise<number | null>): Promise<void> {
+export function exitLanding(t0: number, lands: readonly number[], gap = LAND_GAP + 17): number {
+  let t = t0;
+  const sorted = [...lands].sort((a, b) => a - b);
+  for (let guard = 0; guard < 16; guard++) {
+    const clash = sorted.find((l) => Math.abs(t - l) < gap);
+    if (clash === undefined) break;
+    t = clash + gap;
+  }
+  return t;
+}
+async function exitAfter(ctx: ActCtx, op: Opening, clock: { now(): number }, lands: () => number[]): Promise<void> {
   const ev = ctx.ev;
   op.stopAura();
   const gi = ctx.findType('toGraveyard', (e) => e.uid === ev.uid);
@@ -1257,11 +1460,11 @@ async function exitAfter(ctx: ActCtx, op: Opening, clock: { now(): number }, lan
   const { tile } = ctx.views.field.release(ev.uid);
   const from = tile ? { x: Math.round(tile.home.x), y: Math.round(tile.home.y) } : { x: Math.round(op.at.x), y: Math.round(op.at.y) };
   if (tile && tile.active && tile.standing) await tile.layDown(180);
-  const target = await landAt();
   const top = ctx.views.field.pile(gEv.owner, 'graveyard').topXY();
   // cardLeaves: a 47 ms birth flash, a 50 ms lift, then the arc (flightMs by distance)
   const fly = 97 + flightMs(Math.hypot(top.x - from.x, top.y - from.y));
-  const delay = target === null ? 0 : Math.max(0, Math.ceil(target - (clock.now() + fly)));
+  const t0 = clock.now() + fly;
+  const delay = Math.max(0, Math.ceil(exitLanding(t0, lands()) - t0));
   return cardLeaves(ctx, { owner: gEv.owner, cardId: ev.cardId, from, tile: tile && tile.active ? tile : null, delay });
 }
 
@@ -1271,7 +1474,7 @@ async function exitAfter(ctx: ActCtx, op: Opening, clock: { now(): number }, lan
 export async function mirrorV3(ctx: ActCtx): Promise<void> {
   const ev = ctx.ev;
   const sc = ctx.scene;
-  const clock = showTimer(sc);
+  const clock = liveTimer(sc);
   const runIdx = fx.resolutionRun(ctx);
   const kills = runIdx.filter((i) => {
     const e = ctx.events[i];
@@ -1308,7 +1511,9 @@ export async function mirrorV3(ctx: ActCtx): Promise<void> {
     return { i, e, u, core: u ? u.core() : { x: z.x, y: z.y - 14 } };
   });
   const order = reflectionOrder(hit, victims.map((v) => v.core)).map((k) => victims[k]);
-  const departs = beamSchedule(order.map((v) => (v.u && v.u.has('death') ? DEATH_EST.pose : DEATH_EST.legacy)));
+  const posed = order.map((v) => !!v.u && v.u.has('death'));
+  const gaps = order.map((_v, k) => (k > 0 && posed[k - 1] ? BEAM_GAP_POSED : BEAM_GAP));
+  const departs = beamSchedule(order.map((_v, k) => (posed[k] ? DEATH_EST.pose : DEATH_EST.legacy)), { gaps });
 
   // ---- DOME (parallel with the opening): raise at DOME_AT, complete before CATCH_AT
   const { ra, rb, rz } = dome.shape;
@@ -1399,13 +1604,16 @@ export async function mirrorV3(ctx: ActCtx): Promise<void> {
   void wait(sc, 120).then(() => lights.pool?.setIntensity(1, 260));
   const bounced = after();
 
-  // ---- CHARGE: the seams heat up, the light gathers at the struck point
-  await wait(sc, CHARGE_AT);
+  // ---- CHARGE (folded into the catch, C1-02): the seams heat up, the light gathers at the struck point while
+  // the ignition's own frames play on; the first reflection leaves when it is full (catch + 120 ms)
+  if (CHARGE_AT > 0) await wait(sc, CHARGE_AT);
   lights.pool?.setIntensity(1.45, CHARGE_MS);
   const stopGather = gatherLight(sc, hit, CHARGE_MS, ev.uid * 11 + 5);
   await run(sc, CHARGE_MS, (t) => dome.setCharge(E.inQuad(t)));
 
-  // ---- REFLECTION, one by one — `beam:<i>`
+  // ---- REFLECTION, one by one — `beam:<i>`: the next beam leaves 220 ms after the previous contact (live
+  // show time: a death's hit-stop does not stretch the gap), later only to keep the victims' graveyard
+  // landings ≥ 150 ms apart (beamSchedule)
   stopGather();
   dome.flash(hit);
   strayRays(sc, hit, ev.player, ev.uid * 19 + 7);
@@ -1413,13 +1621,19 @@ export async function mirrorV3(ctx: ActCtx): Promise<void> {
   void wait(sc, 90).then(() => lights.pool?.setIntensity(0.9, 300));
   void run(sc, 190, (t) => dome.setCharge(1 - t));
   const deaths: Promise<unknown>[] = [];
-  const landings: Promise<number | null>[] = [];
+  const beams: Promise<void>[] = [];
+  // each victim's card landing (elapsed ms of the live clock): an estimate from its contact, the real one from its birth
+  const lands: number[] = [];
+  // each victim's burst (its card's birth: an old-art death's generic shatter sound plays on it), live clock ms
+  const bursts: number[] = [];
+  let burstSeen!: (k: number) => void;
+  const lastBurst = new Promise<void>((r) => (burstSeen = (k) => k === order.length - 1 && r()));
   const t0 = clock.now();
   const nB = order.length;
+  let lastContact = t0;
   for (let k = 0; k < order.length; k++) {
     const v = order[k];
-    const lag = departs[k] - (clock.now() - t0);
-    if (lag > 0) await wait(sc, lag);
+    if (k > 0) await clock.until(Math.max(t0 + departs[k], lastContact + gaps[k]));
     const to = v.u && !v.u.retired && v.u.sprite.active ? v.u.core() : v.core;
     const dir = norm(sub(to, hit));
     const home = v.u ? { x: v.u.home.x, y: v.u.home.y } : zoneXY(v.e.player, 'monster', v.e.zone);
@@ -1430,15 +1644,16 @@ export async function mirrorV3(ctx: ActCtx): Promise<void> {
     if (k > 0) dome.pulse(hit);
     // the beam's light falls on the floor in a short strip under its lane (no air glow)
     void lightBeam(sc, from, to, PAL.mag3, 300, { air: false, floor: { from: { x: hit.x, y: hit.floorY }, to: home }, floorWidth: 10, intensity: 0.9 });
-    let born!: (t: number | null) => void;
-    landings.push(new Promise<number | null>((r) => (born = r)));
-    await arcBeam(sc, from, to, fan, () => {
+    const beam = arcBeam(sc, from, to, fan, () => {
       playV3('mirrorBeam', { volume: 0.9, pitch: Math.pow(2, (2 * k) / 12), pan: panAt(to.x) }); // mark `beam:<k>`
+      lands[k] = clock.now() + (v.u && v.u.has('death') ? DEATH_EST.pose : DEATH_EST.legacy);
       // the victim's card is born on its burst frame: its landing = birth + flash + lift + arc
       const onBorn = () => {
+        bursts[k] = clock.now();
+        burstSeen(k);
         const top = ctx.views.field.pile(ctx.owner(v.e.uid), 'graveyard').topXY();
         // (+20 ms: the flash, lift and arc each end on a whole frame)
-        born(clock.now() + 117 + flightMs(Math.hypot(top.x - home.x, top.y - home.y)));
+        lands[k] = clock.now() + 117 + flightMs(Math.hypot(top.x - home.x, top.y - home.y));
       };
       // the beam's light rims the struck body (an edge light, never a tint: A5 §3.0); the old art
       // shows its own hit frame — the death kit then breaks it (its contact flash is not played)
@@ -1447,28 +1662,33 @@ export async function mirrorV3(ctx: ActCtx): Promise<void> {
         if (!v.u.has('death')) void v.u.play(v.u.has('hitHeavy') ? 'hitHeavy' : 'hit', { hold: true });
       }
       void lightFlash(sc, to.x, home.y, PAL.mag4, 40 * TK, 360, { floorY: home.y, ring: true, air: 0 });
-      const p = ctx.isConsumed(v.i) ? Promise.resolve() : ctx.play(v.i, { hit: false, push: dir, onBorn });
-      deaths.push(p.then(() => born(null)));
+      deaths.push(ctx.isConsumed(v.i) ? Promise.resolve() : ctx.play(v.i, { hit: false, push: dir, onBorn }));
     });
+    beams.push(beam.done);
+    await beam.contact;
+    lastContact = clock.now();
   }
 
-  // ---- BREAK — `break`
-  await wait(sc, BREAK_AFTER);
+  // ---- BREAK — `break`: 120 ms after the last contact (live), while the beams thin out and the deaths go on —
+  // never on the same frame as the last victim's burst (fix round 2, A5A-C2-02): an old-art victim bursts with
+  // its generic shatter ≈ 130 ms after its contact, so the break then comes BREAK_CLEAR after that burst
+  await clock.until(lastContact + BREAK_AFTER);
+  const lastK = order.length - 1;
+  if (lastK >= 0 && !posed[lastK]) {
+    if (bursts[lastK] === undefined) await Promise.race([lastBurst, clock.until(lastContact + BREAK_WAIT_CAP)]);
+    if (bursts[lastK] !== undefined) await clock.until(bursts[lastK] + BREAK_CLEAR);
+  }
   playV3('mirrorBreak', { volume: 0.9, pan: panAt(domeC.x) }); // mark `break`
   void lights.pool?.fadeOut(SHATTER_MS);
   const broken = dome.shatter(hit).then(() => dome.destroy());
 
-  // ---- EXIT — `exit`: the trap card lands ≥ LAND_GAP after the last victim's card
+  // ---- EXIT — `exit`: the trap card lies down during the shatter and flies, its landing clear of the
+  // victims' landings by ≥ LAND_GAP (C1-02: no longer after the last victim's card); the camera relaxes
   void ctx.unfocus(320);
-  const landAt = async (): Promise<number | null> => {
-    const ts = await Promise.all(landings);
-    const known = ts.filter((t): t is number => t !== null);
-    return known.length ? Math.max(...known) + LAND_GAP : null;
-  };
-  const exit = exitAfter(ctx, op, clock, landAt);
+  const exit = exitAfter(ctx, op, clock, () => lands.filter((t) => Number.isFinite(t)));
   // every kill the reflections did not reach (should not happen) still plays
   for (const i of kills) if (!ctx.isConsumed(i)) deaths.push(ctx.play(i, { hit: true }));
-  await all([...deaths, exit, broken, bounced, op.banner]);
+  await all([...deaths, exit, broken, bounced, op.banner, ...beams]);
   clock.stop();
   await fx.playRun(ctx, fx.resolutionRun(ctx));
 }

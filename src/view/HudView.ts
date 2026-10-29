@@ -716,6 +716,16 @@ class HudViewV1 {
     this.hintFlashLeft = o.ms ?? 2400;
   }
 
+  /**
+   * End a flash early and fall back to the base line (v3 calls it on the next valid input, A6B-11;
+   * v1 never calls it, so v1 keeps its timing).
+   */
+  endHintFlash(): void {
+    if (this.hintFlashLeft <= 0) return;
+    this.hintFlashLeft = 0;
+    this.renderHint(this.hintBase, false);
+  }
+
   /** Current hint text (QA). */
   get hintText(): string {
     return this.hintKey.split('|').slice(1).join('|');

@@ -310,6 +310,36 @@ export interface EquipAuraOpts {
    * clockwise in three steps, holds bright and tightens round the waist.
    */
   bond?: boolean;
+  /**
+   * Fix round 1 (C1-06): the aura exists from now on (the field's state has it) but shows nothing for this
+   * many ms of scene time — the forge's big blade is still sinking into the body; the bond then plays as
+   * above from the reveal frame on.
+   */
+  revealIn?: number;
+  /** The equip card's uid (its tile is watched for the crack that breaks the blade); default: looked up. */
+  cardUid?: number;
+}
+
+/**
+ * Fix round 1 (C1-03): the blade breaks on its CARD's crack, not after the card's flight. An effect that
+ * destroys the equip card (Uçurum Büyücüsü's tendril, strikes-a/abyss_magus.ts — not this lane's file)
+ * plays the card's crack and flight itself and only then the holder's statChange; the aura watches its card's
+ * tile and, on the crack's first frame (the tile jolted a whole pixel off its home), calls this hook once —
+ * _blade_v3.ts sets it to the break beat (its crack, the −700, the shatter), so cause and effect stay in order.
+ */
+export const EQUIP_HOOKS: { onCardCrack: ((scene: Phaser.Scene, unit: MonsterUnit) => void) | null } = { onCardCrack: null };
+
+interface WatchField {
+  tileOf(uid: number): { active: boolean; x: number; home: XY } | null;
+}
+/** The scene's FieldView (read only) and the uid of the spell / trap card equipped to `unit` in its last synced state. */
+function equipCardOf(scene: Phaser.Scene, unit: MonsterUnit): { field: WatchField | null; uid: number | null } {
+  const field = (scene as unknown as { views?: { field?: WatchField & { lastState?: { players: readonly { spellTraps: readonly ({ uid: number; equippedTo: number | null } | null)[] }[] } | null } } }).views?.field ?? null;
+  if (!field) return { field: null, uid: null };
+  const st = field.lastState;
+  if (!st) return { field, uid: null };
+  for (const p of st.players) for (const s of p.spellTraps) if (s && s.equippedTo === unit.uid) return { field, uid: s.uid };
+  return { field, uid: null };
 }
 
 /** The bond's big ring (at least the old forge ring's 64 px across) and its tightening steps. */
@@ -356,7 +386,14 @@ export function equipAuraV3(scene: Phaser.Scene, unit: MonsterUnit, o: EquipAura
   let el = 0;
   /** The game loop's frame counter: one step of it is one rendered frame (also under the tools' stepped clock). */
   const loopFrame = (): number => scene.game.loop.frame;
-  const madeAt = loopFrame();
+  // the reveal (revealIn): the bond's timeline runs from it — its loop frame and scene time
+  let madeAt = loopFrame();
+  let revealAt = 0;
+  let revealed = !(o.revealIn && o.revealIn > 0);
+  // the card's crack watch (EQUIP_HOOKS.onCardCrack, once)
+  const watch = equipCardOf(scene, unit);
+  const cardUid = o.cardUid ?? watch.uid;
+  let crackSeen = false;
   // the break (destroy): the time and loop frame it was asked on
   let breakAt = -1;
   let breakFrame = 0;
@@ -385,7 +422,7 @@ export function equipAuraV3(scene: Phaser.Scene, unit: MonsterUnit, o: EquipAura
     if (o.bond) {
       // the bond: one frame of the white rim, then one glint down the lit edge
       if (loopFrame() - madeAt < 1) return swordKey({ len: AURA_SWORD_LEN, rim: 'white' });
-      const b = el - BOND_GLINT_AT;
+      const b = el - revealAt - BOND_GLINT_AT;
       if (b >= 0 && b < GLINT_STEP * 3) return swordKey(b < GLINT_STEP ? { len: AURA_SWORD_LEN, glint: 0.15 } : b < GLINT_STEP * 2 ? { len: AURA_SWORD_LEN, glint: 0.5, glintCross: true } : { len: AURA_SWORD_LEN, glint: 0.85 });
     }
     const g = (el + glintPhase) % GLINT_EVERY;
@@ -483,6 +520,36 @@ export function equipAuraV3(scene: Phaser.Scene, unit: MonsterUnit, o: EquipAura
       return false;
     }
     // ---- the living state
+    // the card's crack (C1-03): on its first frame the break beat starts (once; the beat destroys this aura)
+    if (!crackSeen && cardUid !== null && watch.field && alive && EQUIP_HOOKS.onCardCrack) {
+      const t = watch.field.tileOf(cardUid);
+      if (t && t.active && Math.round(t.x) !== Math.round(t.home.x)) {
+        crackSeen = true;
+        try {
+          EQUIP_HOOKS.onCardCrack(scene, unit);
+        } catch (e) {
+          console.error('[aura] card crack', e);
+        }
+        if (breakAt >= 0 || killed) {
+          back.end();
+          front.end();
+          return !killed;
+        }
+      }
+    }
+    // the reveal (C1-06): nothing shows until the forge's blade has sunk; the bond plays from here
+    if (!revealed) {
+      if (el >= (o.revealIn ?? 0)) {
+        revealed = true;
+        revealAt = el;
+        madeAt = loopFrame();
+      } else {
+        sword.setVisible(false);
+        back.end();
+        front.end();
+        return true;
+      }
+    }
     if (!shown) {
       sword.setVisible(false);
       back.end();
@@ -500,19 +567,20 @@ export function equipAuraV3(scene: Phaser.Scene, unit: MonsterUnit, o: EquipAura
     // forge ring) and bright, holds, then tightens round the waist in three steps, stepping down to
     // the dashes that creep round (one pixel every 150 ms)
     const closeMs = RING_CLOSE_STEP * 3;
-    const bondRing = o.bond && el < closeMs + RING_HOLD + RING_SETTLE_STEP * (RING_TIGHTEN_STEPS + 1);
+    const eb = el - revealAt;
+    const bondRing = o.bond && eb < closeMs + RING_HOLD + RING_SETTLE_STEP * (RING_TIGHTEN_STEPS + 1);
     let rx = an.rx;
     let solid = 0;
     let tone: number = PAL.gold3;
     if (bondRing) {
       const big = Math.max(BOND_RING_RX, an.rx);
-      if (el < closeMs + RING_HOLD) {
-        ringShown = Math.min(3, Math.floor(el / RING_CLOSE_STEP) + 1, ringShown + 1);
+      if (eb < closeMs + RING_HOLD) {
+        ringShown = Math.min(3, Math.floor(eb / RING_CLOSE_STEP) + 1, ringShown + 1);
         solid = ringShown;
         tone = PAL.gold4;
         rx = big;
       } else {
-        const t = Math.min(RING_TIGHTEN_STEPS, Math.floor((el - closeMs - RING_HOLD) / RING_SETTLE_STEP) + 1);
+        const t = Math.min(RING_TIGHTEN_STEPS, Math.floor((eb - closeMs - RING_HOLD) / RING_SETTLE_STEP) + 1);
         tightShown = Math.min(t, tightShown + 1);
         solid = 3;
         rx = Math.round(big + ((an.rx - big) * tightShown) / RING_TIGHTEN_STEPS);

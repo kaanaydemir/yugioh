@@ -175,6 +175,12 @@ export class DuelController {
       this.input.setState(this.state);
       const a = await Promise.race([this.director.userWait(this.input.waitAction(this.state, p)), mailArrived]);
       if (!a) return null;
+      // v3 (A6-B, F7 / KO-11): a trap question answered in hot-seat — the defender's hand turns face down
+      // before the attacker's battle goes on (nothing outside v3 lane B with the curtain)
+      if (V3_A6_B && pd && pd.kind === 'trapResponse' && a.type === 'respond' && pd.player !== this.state.activePlayer) {
+        await this.views.info.coverAfterAnswer(p);
+        if (this.stopped) return null;
+      }
       return { action: a, mail: null };
     } finally {
       this.waitingAction = false;

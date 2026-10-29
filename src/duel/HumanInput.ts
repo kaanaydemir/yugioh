@@ -96,6 +96,8 @@ export class HumanInput {
   /** v3 (A6-B, F4): the open board pick's target corners, the selected attacker's corners. */
   private aim: AimMarks | null = null;
   private sel: SelectMark | null = null;
+  /** v3 (A6B-7): the frame the target corners last locked (their ui3Lock is that frame's sound). */
+  private aimLockFrame = -1;
   /** v3 (F5): the screen point of the last board click (the reject stamp lands there). */
   private lastClick: XY | null = null;
   /** A cinematic is playing (set by the controller): the graveyard panel opens only when not. */
@@ -278,7 +280,8 @@ export class HumanInput {
         }
         if (token !== this.token) return null;
         if (a) {
-          sfx.play('uiConfirm', { volume: 0.6 });
+          // v3 (A6B-7): the target corners' lock (ui3Lock) already sounded on this frame — one sound a frame
+          if (!V3_A6_B || this.aimLockFrame !== (this.scene.game?.getFrame?.() ?? -2)) sfx.play('uiConfirm', { volume: 0.6 });
           return a;
         }
         if (c.kind === 'battle' || c.kind === 'endTurn') sfx.play('uiError', { volume: 0.5 });
@@ -302,6 +305,8 @@ export class HumanInput {
   // ================================================================ mode + hint line
 
   private setMode(m: InputMode): void {
+    // v3 (A6B-11): a new instruction ends a refused click's reason (v1 lets it run its course)
+    if (V3_A6_B && m !== this.mode) this.views.hud.endHintFlash();
     this.mode = m;
     const hud = this.views.hud;
     const p = this.player;
@@ -522,7 +527,8 @@ export class HumanInput {
         const r = await this.pickZone(
           targets.map((a) => ({ player: opp, zone: 'monster' as ZoneKind, index: a.targetZone! })),
           `${CARDS[id].name}: saldırılacak canavarı seç`,
-          { cancel: true, color: PAL.gold3 },
+          // v3 (A6B-7): the attack's declare sounds its own lock-on on the click's frame — no second lock sound
+          { cancel: true, color: PAL.gold3, lockSound: false },
         );
         return r ? (targets.find((a) => a.targetZone === r.index) ?? null) : null;
       } finally {
@@ -733,7 +739,7 @@ export class HumanInput {
    * click). Candidates glow gold and the one under the pointer white: gold reads on cyan, crimson
    * and volcano tiles alike (a player-colored outline vanished on that player's own tiles).
    */
-  private pickZone(refs: ZoneRef[], text: string, o: { cancel: boolean; color: number }): Promise<ZoneRef | null> {
+  private pickZone(refs: ZoneRef[], text: string, o: { cancel: boolean; color: number; lockSound?: boolean }): Promise<ZoneRef | null> {
     const board = this.views.board;
     const token = this.token;
     // v3 (F4): target corners on the candidates that are monsters on screen; the floor highlight
@@ -752,8 +758,10 @@ export class HumanInput {
         if (done) return;
         done = true;
         if (aim) {
-          if (v && token === this.token) aim.confirm(v);
-          else aim.cancel();
+          if (v && token === this.token) {
+            aim.confirm(v, o.lockSound !== false);
+            this.aimLockFrame = this.scene.game?.getFrame?.() ?? -1;
+          } else aim.cancel();
           if (this.aim === aim) this.aim = null;
         }
         this.onZone = null;
@@ -776,6 +784,7 @@ export class HumanInput {
         const r = refs.find((x) => x.player === h.player && x.zone === h.spot && x.index === h.index);
         if (r) {
           if (!aim) sfx.play('uiClick', { volume: 0.7 }); // v3: the corners' lock (ui3Lock) says it
+          if (V3_A6_B) this.views.hud.endHintFlash(); // A6B-11: a valid pick ends the reason
           finish(r);
         } else {
           if (aim) this.rejectHit(h);
@@ -831,8 +840,10 @@ export class HumanInput {
         if (done) return;
         done = true;
         if (aim) {
-          if (v && token === this.token) aim.confirm(v.map(refOf));
-          else aim.cancel();
+          if (v && token === this.token) {
+            aim.confirm(v.map(refOf));
+            this.aimLockFrame = this.scene.game?.getFrame?.() ?? -1;
+          } else aim.cancel();
           if (this.aim === aim) this.aim = null;
         }
         this.onZone = null;
@@ -863,6 +874,7 @@ export class HumanInput {
         }
         if (chosen.has(uid)) chosen.delete(uid);
         else chosen.add(uid);
+        if (V3_A6_B) this.views.hud.endHintFlash(); // A6B-11: a tribute picked ends the reason
         if (!aim) sfx.play('uiClick', { volume: 0.7 });
         if (chosen.size >= need) return finish([...chosen]);
         ins.setText(label());
@@ -922,6 +934,7 @@ export class HumanInput {
           chosen.push(uid);
         }
         hand.setMarked(chosen);
+        if (V3_A6_B) hud.endHintFlash(); // A6B-11: a card picked ends the reason; the count line shows
         hint();
         if (chosen.length < count) return;
         asking = true;

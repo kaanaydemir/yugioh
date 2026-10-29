@@ -28,10 +28,15 @@ import { CARD_H, CARD_W, DEPTH, GAME_H, GAME_W, UI, byArena } from './layout';
 import { GLOW_PAD, ICON, UI_RAMP, type UiKeyHandler, crownTex, pushUiKeys, glowTex, haloTex, panelTex, playerStyle, streakTex, stripesTex, typeOn } from './ui-textures';
 import { V3_A6_B } from './v3flags';
 import { REDUCED_MOTION } from './v3/motion';
-import { PalText, TrimGfx, canvasTexture, capYV3, iconTexture, plateBodyV3, styleTone, styleTrim, textWidthV3 } from './v3/hudSkin';
+import { PalText, TrimGfx, bodyV3, canvasTexture, capYV3, iconTexture, plateBodyV3, styleTone, styleTrim, textWidthV3 } from './v3/hudSkin';
 import { trapPromptV3, type TrapPromptOpts } from './v3/TrapPromptV3';
 import { curtainV3, type CurtainHand, type CurtainKind } from './v3/CurtainV3';
 import { gameOverV3 } from './v3/ResultPlate';
+
+/** v3 instruction bar: the words' tone a palette step (−2, −1, 0), as the hint line's (A6B-1). */
+const INS_WORDS = [PAL.steel, PAL.mist, PAL.white] as const;
+/** v3 instruction bar: glyphs stamped a frame. */
+const INS_STAMP = 6;
 
 export interface TrapOption {
   uid: Uid;
@@ -666,6 +671,10 @@ export class Prompt {
    * stamped six glyphs per frame (~130 ms for a long one), the v3 İPTAL button. It appears in two palette steps dropping
    * 2 → 0 px and leaves the same way rising (no ADD glow, no Back.Out: whole pixels, KO-1 / KO-2). The
    * hint line no longer repeats it (HumanInput). Same handle and keys as today's bar.
+   * Fix round 1 (as the hint line, critic A6B-1): the plate never shows without its words — the letters
+   * stamp from the plate's first frame and stay through the leave, words and caret stepping their tones
+   * with the plate (steel → mist → white); the fade steps are one palette tone darker a step (−1: night0 /
+   * ink, −2: ink), never a flat night0 slab (which read as a band in palcheck a6).
    */
   private instructionV3(text: string, opts: { cancel?: boolean; style?: 'gold' | 'p1' | 'p2' | 'trap' | 'spell' }): InstructionHandle {
     const sc = this.scene;
@@ -690,16 +699,34 @@ export class Prompt {
     let stamp = Infinity;
     let caretT = 0;
     let caretStep = 0;
-    const plateKey = (pw: number, ph: number, step: number) => canvasTexture(sc, `ui3:ins:${pw}x${ph}:${step}`, () => plateBodyV3(pw, ph, step));
+    // the body a palette step: 0 the HUD body (night1 / night0); the fade steps one tone darker a step
+    const plateKey = (pw: number, ph: number, step: number) =>
+      canvasTexture(sc, `ui3:ins2:${pw}x${ph}:${step}`, () =>
+        step >= 0 ? plateBodyV3(pw, ph, 0) : bodyV3(pw, ph, { bands: step === -1 ? [PAL.night0, PAL.ink] : [PAL.ink, PAL.ink] }),
+      );
+    const caretKey = (step: number) => {
+      const ct = styleTone(style, 2 + step);
+      return iconTexture(sc, ICON.caret, { w: ct, m: ct, s: ct, n: ct }) ?? ICON.caret;
+    };
     const setStep = (step: number) => {
       if (!bar || !body) return;
-      body.setTexture(plateKey(w, H, step));
-      trim?.set(styleTrim(style, step));
-      bar.y = Y - (step === 0 ? 0 : step === -1 ? 1 : 2);
-      const on = step === 0;
-      caret?.setVisible(on);
-      for (const l of lines) l.setVisible(on);
-      cancelBtn?.setVisible(step >= -1);
+      const s = Math.max(-2, Math.min(0, Math.round(step)));
+      body.setTexture(plateKey(w, H, s));
+      trim?.set(styleTrim(style, s));
+      bar.y = Y + s; // 2 → 0 px in, 0 → 2 px out
+      // the words and the caret step their tones with the plate (A6B-1: the plate never shows without them)
+      caret?.setTexture(caretKey(s));
+      for (const l of lines) l.setColor(INS_WORDS[s + 2]);
+      cancelBtn?.setVisible(s >= -1);
+    };
+    // the letter stamp: the first `stamp` glyphs over the lines in reading order (Infinity = all)
+    const revealStamp = () => {
+      let left = stamp;
+      for (const l of lines) {
+        l.reveal(left);
+        left -= l.glyphCount;
+      }
+      return left;
     };
     const build = (s: string, animate: boolean) => {
       bar?.destroy();
@@ -736,9 +763,7 @@ export class Prompt {
       bar.add(body);
       trim = new TrimGfx(sc, bar, 0, 0, w, H).set(styleTrim(style, 0));
       trim.setNode(REDUCED_MOTION ? null : { head: PAL.white, tail: [styleTone(style, 2), styleTone(style, 1)], lapMs: 2400, restMs: 700 });
-      const ct = styleTone(style, 2);
-      const ck = iconTexture(sc, ICON.caret, { w: ct, m: ct, s: ct, n: ct }) ?? ICON.caret;
-      caret = sc.add.image(7, Math.round(H / 2) - 4, ck).setOrigin(0);
+      caret = sc.add.image(7, Math.round(H / 2) - 4, caretKey(0)).setOrigin(0);
       bar.add(caret);
       const textTop = Math.floor((H - ((parts.length - 1) * tm.lineHeight + tm.capHeight)) / 2);
       parts.forEach((t, i) => {
@@ -761,9 +786,10 @@ export class Prompt {
         setStep(0);
         return;
       }
-      // appear: two palette steps dropping 2 → 0 px (2 frames each), then the letters stamp in
-      stamp = REDUCED_MOTION ? Infinity : 0;
-      for (const l of lines) l.reveal(stamp);
+      // appear: two palette steps dropping 2 → 0 px (2 frames each); the letters stamp in from the plate's
+      // first frame, six a frame (A6B-1: never a plate without its words)
+      stamp = REDUCED_MOTION ? Infinity : INS_STAMP;
+      revealStamp();
       setStep(-2);
       sc.time.delayedCall(2 * FRAME, () => {
         if (my !== seq || closed) return;
@@ -778,14 +804,9 @@ export class Prompt {
       if (closed || !bar) return;
       const k = sc.time.timeScale;
       trim?.tick(dt * k);
-      if (stamp !== Infinity && bar.y === Y) {
-        stamp += 6;
-        let left = stamp;
-        for (const l of lines) {
-          l.reveal(left);
-          left -= l.glyphCount;
-        }
-        if (left > 0) stamp = Infinity;
+      if (stamp !== Infinity) {
+        stamp += INS_STAMP;
+        if (revealStamp() > 0) stamp = Infinity;
       }
       caretT += dt * k;
       if (!REDUCED_MOTION && caretT >= 380) {

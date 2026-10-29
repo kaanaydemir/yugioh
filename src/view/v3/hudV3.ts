@@ -78,6 +78,20 @@ export { ui3Ready, ui3Sfx };
 /** F5 (B3): the hint line's 1-px shake under a refused click's reason (30 ms per step). */
 const HINT_SHAKE = Object.freeze([1, -1, 1, 0]) as readonly number[];
 
+/**
+ * A6B-1: the hint's words and caret step with the plate — a plain line steel → mist → white, a flash
+ * (a refused click's reason) crim2 → crim3 → crim4; the flash caret crim1 → crim2 → crim3 (index = step + 2).
+ */
+export const HINT_WORDS = Object.freeze([PAL.steel, PAL.mist, PAL.white]) as readonly number[];
+export const HINT_WORDS_FLASH = Object.freeze([PAL.crim2, PAL.crim3, PAL.crim4]) as readonly number[];
+/**
+ * A6B-11: a refused click's reason past its two crimson frames — neutral trim and caret, the words
+ * gold1 → gold2 → gold3: an amber notice, not an alarm, plainly apart from a plain instruction's white
+ * at 1×, and never palcheck "white" (so the reason adds no white to a frame the reject already lights).
+ */
+export const HINT_WORDS_REASON = Object.freeze([PAL.gold1, PAL.gold2, PAL.gold3]) as readonly number[];
+const HINT_CARET_FLASH = Object.freeze([PAL.crim1, PAL.crim2, PAL.crim3]) as readonly number[];
+
 /** The SAVAŞ cell's fill steps (F2: two steps in, two steps out). */
 const BATTLE_FILL = [PAL.crim0, PAL.crim1] as const;
 
@@ -109,7 +123,7 @@ interface ArrivalPiece {
   dx: number;
   dy: number;
   delay: number;
-  /** 0 = the trim alone (the frame lights first), 1 = the body with the trim one tone up, 2 = all, at rest. */
+  /** The piece complete in every step (A6B-8): 0 = its trim two tones down, 1 = one tone down, 2 = at rest. */
   stage(s: 0 | 1 | 2): void;
   /** 'wake': one white trim frame, then one tone up; null = back to rest. */
   wake(w: 'white' | 'up' | null): void;
@@ -316,7 +330,6 @@ export class HudV3 implements HudApi {
   private readonly hintRoot: Phaser.GameObjects.Container;
   private hintBase: { text: string; style: UiStyle } | null = null;
   private hintKey = '';
-  private hintSeq = 0;
   private hintTrim: TrimGfx | null = null;
   private hintText_: PalText | null = null;
   private hintCaret: Phaser.GameObjects.Image | null = null;
@@ -324,8 +337,19 @@ export class HudV3 implements HudApi {
   private hintWiggle: Phaser.Tweens.Tween | null = null;
   /** Real milliseconds left on a flashed hint (not scaled by the animation speed, as v1). */
   private hintFlashLeft = 0;
-  /** The hint plate has reached its full step (a flash then swaps in place). */
-  private hintFull = false;
+  /** The palette step the hint plate shows now (−2 / −1 / 0), null when no plate is up (A6B-1). */
+  private hintStep: number | null = null;
+  /** What the plate on screen is drawn with (its words' look and its rest position). */
+  /** The hint plate on screen; `burnt`: a refused click's reason past its two crimson frames (A6B-11). */
+  private hintLook: { style: UiStyle; flash: boolean; burnt: boolean; w: number; x: number; y: number } | null = null;
+  /** The plate stepping in (dir 1) or out (dir −1): from `from`, `per` frames a step, since frame `born`. */
+  private hintAnim: { dir: 1 | -1; from: number; per: number; born: number; swapped: boolean } | null = null;
+  /** The frame the trim returns to its rest tones (after a flash's burn or a change's tick). */
+  private hintTrimBack: number | null = null;
+  /** A flash's 1-px shake (two frames a step), since frame `born`. */
+  private hintShake: { born: number } | null = null;
+  /** Work for the next rendered frame (nextFrame): [the frame it waits for, the job]. */
+  private readonly nextJobs: [number, () => void][] = [];
   private tip: { owner: Button; root: Phaser.GameObjects.Container; trim: TrimGfx; text: PalText; timer: Phaser.Time.TimerEvent } | null = null;
   private soundOn = !sfx.isMuted();
   private readonly updateFn: (t: number, dt: number) => void;
@@ -335,10 +359,9 @@ export class HudV3 implements HudApi {
   private caretT = 0;
   private visible = true;
   private destroyed = false;
-  /** F0 (hudIn): the running arrival and the child visibility it borrowed (restored at its end). */
+  /** F0 (hudIn): the running arrival. */
   private arrival: { tween: Phaser.Tweens.Tween | null; pieces: ArrivalPiece[]; mode: ArrivalMode } | null = null;
   private arrived = false;
-  private readonly borrowed = new Map<Phaser.GameObjects.Container, Map<Phaser.GameObjects.GameObject & { visible: boolean; setVisible(b: boolean): unknown }, boolean>>();
 
   constructor(scene: Phaser.Scene, opts: HudOpts = {}) {
     this.scene = scene;
@@ -494,7 +517,9 @@ export class HudV3 implements HudApi {
     const base = Math.min(1100, Math.max(420, 320 + amount * 0.32));
     const resolveMs = (cap !== undefined ? Math.min(cap, base) : base) + 140;
     // the edge (0–34 ms): only the trim — 2 white frames, then the change's tone; a loss shakes
-    ui3Sfx(loss ? 'ui3LpLoss' : 'ui3LpGain', {}, loss ? 'lpDown' : 'lpUp');
+    // (one frame after the edge: the contact frame belongs to the strike's own sounds — A6B-7, KO-7 ±1 frame)
+    this.nextFrame(() => ui3Sfx(loss ? 'ui3LpLoss' : 'ui3LpGain', {}, loss ? 'lpDown' : 'lpUp'));
+    const edgeFrame = this.frameNow() + 1; // that sound's frame carries no counter tick (one sound a frame)
     this.trimFlash(P, loss ? { light: PAL.crim4, dark: PAL.crim3 } : { light: PAL.leaf4, dark: PAL.leaf3 }, LP_V3.trimMs);
     if (loss) this.shakePanel(P, amount >= 1500 ? 3 : amount >= 500 ? 2 : 1, LP_V3.shakeMs);
     // the digits: white for two frames, then the change's tone while the counter counts
@@ -512,6 +537,7 @@ export class HudV3 implements HudApi {
       onLand: () => this.landLp(P, seq, loss),
       onClick: (i, n) => {
         if (P.lpSeq !== seq || this.destroyed) return;
+        if (this.frameNow() <= edgeFrame) return; // the edge sound's frame (A6B-7)
         // one tick per click, at least 34 ms apart in real time (at 2× / 3× the stream thins)
         if (!tickOk(this.scene.game.loop.time)) return;
         const k = n > 1 ? i / n : 1;
@@ -821,6 +847,22 @@ export class HudV3 implements HudApi {
 
   setLocked(b: boolean): void {
     for (const btn of [this.battleButton, this.endTurnButton]) btn.setLocked(b);
+    // a cinematic starts (the summon, the spell…): a refused click's reason has had its say (A6B-11)
+    if (b) this.endHintFlash();
+  }
+
+  /**
+   * A6B-11: the next valid input (a pick taken, a new instruction, the input locked for a cinematic) ends a
+   * refused click's reason at once — the hint line falls back to its base line (or leaves).
+   */
+  endHintFlash(): void {
+    if (this.hintFlashLeft <= 0) return;
+    this.hintFlashLeft = 0;
+    // on the next frame: a same-frame setHint (the new instruction, the lock's null) has its say first,
+    // so a leaving plate keeps the reason's words instead of flashing the old base line
+    this.nextFrame(() => {
+      if (this.hintFlashLeft <= 0) this.renderHint(this.hintBase, false);
+    });
   }
 
   setSpeed(k: SpeedLevel): void {
@@ -897,8 +939,9 @@ export class HudV3 implements HudApi {
 
   /**
    * F0 (hudIn): the HUD arrives. 'slide' (the opening, the HUD hidden until now): each piece slides
-   * in from its own screen edge on whole pixels (HUD_ARRIVAL), its first frame the trim alone, its
-   * second the body with the trim one tone up, then everything at rest. 'wake' (skipIntro: the HUD is
+   * in from its own screen edge on whole pixels (HUD_ARRIVAL), complete from its first frame — body,
+   * words and numbers (A6B-8: never a frame without them) — its trim (and a button's label) two tones
+   * down, then one, then at rest. 'wake' (skipIntro: the HUD is
    * already on screen, so nothing moves): each piece's trim flashes white for one frame, then one tone
    * up, in the same order. REDUCED_MOTION: no slide and no stagger, the same two palette steps. Never
    * locks the input. Idempotent: one arrival per HUD; settleArrival() ends it at once.
@@ -1006,10 +1049,10 @@ export class HudV3 implements HudApi {
         delay,
         shown: -1,
         stage: (s) => {
-          this.borrowVisible(P.root, s === 2 ? null : s === 0 ? [P.trim.g] : [P.trim.g, P.body]);
-          if (s === 0) P.trim.set(this.restTrim(P));
-          else if (s === 1) P.trim.set(styleTrim(st, P.active ? 2 : 1));
-          else this.applyTrim(P);
+          // A6B-8: the panel comes complete — body, name, LP, bar and counters from its first frame — and
+          // only its trim steps up into its rest tone (two palette steps); never a frame without its numbers
+          if (s === 2) this.applyTrim(P);
+          else P.trim.set(styleTrim(st, (P.active ? 1 : 0) - (2 - s)));
         },
         wake: (w) => P.trim.set(w === 'white' ? flatTrim(PAL.white) : w === 'up' ? styleTrim(st, P.active ? 2 : 1) : (P.trimOverride ?? this.restTrim(P))),
       };
@@ -1032,10 +1075,8 @@ export class HudV3 implements HudApi {
       delay: 2 * A.stagger,
       shown: -1,
       stage: (s) => {
-        for (const [root, body, trim] of plates) {
-          this.borrowVisible(root, s === 2 ? null : s === 0 ? [trim.g] : [trim.g, body]);
-          trim.set(styleTrim('neutral', s === 1 ? 1 : 0));
-        }
+        // the phase bar and the turn badge come with their words; their trims step up into rest (A6B-8)
+        for (const [, , trim] of plates) trim.set(styleTrim('neutral', s - 2));
         for (const b of toolbar) b.appearStep(s);
       },
       wake: (w) => {
@@ -1058,27 +1099,6 @@ export class HudV3 implements HudApi {
       },
     };
     return [panel(this.panels[0], A.p1, 0), panel(this.panels[1], A.p2, A.stagger), top, buttons];
-  }
-
-  /**
-   * Show only `keep` of a container's children (their own visibility kept), remembering what each
-   * child was; null gives every child back its remembered visibility (the arrival's end).
-   */
-  private borrowVisible(root: Phaser.GameObjects.Container, keep: Phaser.GameObjects.GameObject[] | null): void {
-    type Vis = Phaser.GameObjects.GameObject & { visible: boolean; setVisible(b: boolean): unknown };
-    let rec = this.borrowed.get(root);
-    if (keep === null) {
-      if (!rec) return;
-      for (const [c, v] of rec) if (c.active) c.setVisible(v);
-      this.borrowed.delete(root);
-      return;
-    }
-    if (!rec) {
-      rec = new Map();
-      for (const c of root.list as Vis[]) rec.set(c, c.visible);
-      this.borrowed.set(root, rec);
-    }
-    for (const [c, v] of rec) if (c.active) c.setVisible(v && keep.includes(c));
   }
 
   // ================================================================ panels
@@ -1419,109 +1439,164 @@ export class HudV3 implements HudApi {
   // ================================================================ hint line
 
   /**
-   * The guidance plate: a dark plate with a neutral trim (a 'fire' flash: crimson), the caret in
-   * the style's tone stepping one pixel, white text (a flash: crim4). It appears in two palette
-   * steps rising 2 → 0 px, and leaves the same way.
-   * A flash (F5, B3: the reason of a refused click) burns its trim two frames bright crimson (crim4),
-   * then wears the crimson trim; the plate shakes 1 px (+1 −1 +1 0, 30-ms steps; none with reduced
-   * motion). When the line is already up, the flash swaps it in place on the click's frame — no
-   * re-appear — so the reason is there at once.
+   * The guidance plate: a dark plate with a neutral trim (a 'fire' flash: crimson), the caret in the
+   * style's tone stepping one pixel, white words (a flash: crim4). The plate never shows without its
+   * words (A6B-1): words and caret are built with the plate and step their tones with it.
+   *   appear  (no plate up) two palette steps rising 2 → 0 px, two frames a step; the words steel →
+   *           mist → white (a flash: crim2 → crim3 → crim4, one frame a step — a refused click's
+   *           reason reads at once)
+   *   change  (a plate up) the new words swap in on the same frame (the plate takes their width,
+   *           centred); a plate still stepping in steps on from where it is; a plain change lifts the
+   *           trim one tone for two frames
+   *   flash   (F5, B3) at its full step the trim burns two frames bright crimson (crim4), then wears
+   *           the crimson trim, and the plate shakes 1 px (+1 −1 +1 0, 30-ms steps; none with reduced
+   *           motion)
+   *   leave   plate, trim, caret and words step down together (−1, −2), then gone
    */
   private renderHint(h: { text: string; style: UiStyle } | null, flash: boolean): void {
-    const sc = this.scene;
     const root = this.hintRoot;
     if (!root.active) return;
     const key = h ? `${h.style}|${h.text}` : '';
     if (key === this.hintKey && !flash) return;
     this.hintKey = key;
-    const seq = ++this.hintSeq;
-    const wasFull = this.hintFull;
     this.hintWiggle?.stop();
     this.hintWiggle = null;
-    this.hintFull = false;
+    this.hintAnim = null;
+    const up = this.hintStep !== null && !!this.hintBody?.active;
+    const now = this.frameNow();
     if (!h) {
-      // leave: two palette steps, then gone
-      const body = this.hintBody;
-      if (!body || !body.active) {
+      if (!up) {
         this.clearHint();
         root.setVisible(false);
         return;
       }
-      const w = body.width;
-      const H = body.height;
-      this.hintText_?.setVisible(false);
-      this.hintCaret?.setVisible(false);
-      body.setTexture(this.hintPlateKey(w, H, -1));
-      this.hintTrim?.set(this.hintTrimFor('neutral', -1, false));
-      sc.time.delayedCall(2 * FRAME_MS, () => {
-        if (seq !== this.hintSeq) return;
-        body.setTexture(this.hintPlateKey(w, H, -2));
-        this.hintTrim?.set(this.hintTrimFor('neutral', -2, false));
-        sc.time.delayedCall(2 * FRAME_MS, () => {
-          if (seq !== this.hintSeq) return;
-          this.clearHint();
-          root.setVisible(false);
-        });
-      });
+      // leave: plate and words step down together (this frame one step), two frames a step, then gone
+      const from = Math.min(0, this.hintStep ?? 0) - 1;
+      if (from < -2) {
+        this.clearHint();
+        root.setVisible(false);
+        return;
+      }
+      if (this.hintLook) root.x = this.hintLook.x;
+      this.applyHintStep(from);
+      this.hintAnim = { dir: -1, from, per: 2, born: now, swapped: false };
       return;
     }
+    // a plate up keeps its step (the words swap in this frame); else it starts two steps down
+    const from = up ? Math.max(-2, Math.min(0, this.hintStep ?? 0)) : REDUCED_MOTION ? 0 : -2;
+    this.buildHint(h, flash, from);
+    root.setVisible(this.visible);
+    if (from >= 0) this.hintFull(now, up);
+    else this.hintAnim = { dir: 1, from, per: flash ? 1 : 2, born: now, swapped: up };
+  }
+
+  /**
+   * The plate reached its full step on frame `now`: a flash burns its trim two frames crim4, then wears
+   * the crimson trim, and shakes 1 px (two frames a step); a plain line swapped in place lifts its trim
+   * one tone for two frames.
+   */
+  private hintFull(now: number, swapped: boolean): void {
+    const look = this.hintLook;
+    if (!look) return;
+    if (!look.flash) {
+      if (swapped) {
+        this.hintTrim?.set(styleTrim('neutral', 1));
+        this.hintTrimBack = now + 2;
+      }
+      return;
+    }
+    this.hintTrim?.set(flatTrim(PAL.crim4));
+    this.hintTrimBack = now + 2;
+    this.hintShake = REDUCED_MOTION ? null : { born: now };
+  }
+
+  /** Advance the hint's steps, trim and shake on the game's frame count (called every frame by tick). */
+  private tickHint(): void {
+    const now = this.frameNow();
+    const look = this.hintLook;
+    const a = this.hintAnim;
+    if (a && look) {
+      const age = now - a.born;
+      const s = a.from + a.dir * Math.floor(age / a.per);
+      if (a.dir < 0 && s < -2) {
+        this.hintAnim = null;
+        this.clearHint();
+        this.hintRoot.setVisible(false);
+        return;
+      }
+      const target = a.dir > 0 ? Math.min(0, s) : s;
+      if (target !== this.hintStep) this.applyHintStep(target);
+      if (a.dir > 0 && target >= 0) {
+        this.hintAnim = null;
+        this.hintFull(now, a.swapped);
+      }
+    }
+    if (this.hintTrimBack !== null && now >= this.hintTrimBack) {
+      this.hintTrimBack = null;
+      if (look && look.flash && !look.burnt) {
+        // A6B-11 (F5): the crimson was two frames of burn; the reason stays in the plain plate's tones
+        look.burnt = true;
+        this.hintStep = null;
+        this.applyHintStep(0);
+      } else if (look && this.hintStep === 0) this.hintTrim?.set(this.hintTrimFor(look.style, 0, look.flash));
+    }
+    const sh = this.hintShake;
+    if (sh && look) {
+      const i = Math.floor((now - sh.born) / 2);
+      if (i >= HINT_SHAKE.length) {
+        this.hintShake = null;
+        this.hintRoot.x = look.x;
+      } else this.hintRoot.x = look.x + HINT_SHAKE[i];
+    }
+  }
+
+  /** The game's frame number (one per rendered frame; the frozen QA clock steps it too). */
+  private frameNow(): number {
+    return this.scene.game?.getFrame?.() ?? 0;
+  }
+
+  /** Run `fn` on the next rendered frame (the HUD's update), whatever clock called this one. */
+  private nextFrame(fn: () => void): void {
+    this.nextJobs.push([this.frameNow() + 1, fn]);
+  }
+
+  /** (Re)build the plate for `h` at palette step `step`: body, trim, caret and words together. */
+  private buildHint(h: { text: string; style: UiStyle }, flash: boolean, step: number): { x: number; y: number; w: number } {
+    const sc = this.scene;
+    const root = this.hintRoot;
     this.clearHint();
     const H = HUD3.hint.h;
-    const tw = textWidthV3(h.text, 'md');
-    const w = HUD3.hint.padL + tw + HUD3.hint.padR;
+    const w = HUD3.hint.padL + textWidthV3(h.text, 'md') + HUD3.hint.padR;
     const x = Math.round(HUD3.hint.cx - w / 2);
     const y = HUD3.hint.y;
-    const inPlace = flash && wasFull && this.visible;
-    const body = sc.add.image(0, 0, this.hintPlateKey(w, H, inPlace ? 0 : -2)).setOrigin(0);
+    const body = sc.add.image(0, 0, this.hintPlateKey(w, H, step)).setOrigin(0);
     root.add(body);
     this.hintBody = body;
-    this.hintTrim = new TrimGfx(sc, root, 0, 0, w, H).set(inPlace ? flatTrim(PAL.crim4) : this.hintTrimFor(h.style, -2, flash));
-    const caretTone = flash ? PAL.crim3 : styleTone(h.style, 1);
-    const caretKey = iconTexture(sc, ICON.caret, { w: caretTone, m: caretTone, s: caretTone, n: caretTone }) ?? ICON.caret;
-    this.hintCaret = sc.add.image(6, 4, caretKey).setOrigin(0).setVisible(inPlace);
-    this.hintText_ = new PalText(sc, HUD3.hint.padL, capYV3('md', 5), h.text, { size: 'md', color: flash ? PAL.crim4 : PAL.white });
-    this.hintText_.setVisible(inPlace);
+    this.hintTrim = new TrimGfx(sc, root, 0, 0, w, H);
+    this.hintCaret = sc.add.image(6, 4, ICON.caret).setOrigin(0);
+    this.hintText_ = new PalText(sc, HUD3.hint.padL, capYV3('md', 5), h.text, { size: 'md', color: PAL.white });
     root.add([this.hintCaret, this.hintText_.root]);
-    root.setPosition(x, inPlace ? y : y + 2).setVisible(this.visible);
-    /** At full: a flash burns two frames, then wears the crimson trim, and the plate shakes 1 px. */
-    const full = () => {
-      this.hintFull = true;
-      if (!flash) return;
-      this.hintTrim?.set(flatTrim(PAL.crim4));
-      sc.time.delayedCall(2 * FRAME_MS, () => {
-        if (seq !== this.hintSeq) return;
-        this.hintTrim?.set(this.hintTrimFor(h.style, 0, true));
-      });
-      if (REDUCED_MOTION) return;
-      const steps = HINT_SHAKE;
-      let i = 0;
-      const next = () => {
-        if (seq !== this.hintSeq || !root.active) return;
-        if (i >= steps.length) return void root.setX(x);
-        root.setX(x + steps[i++]);
-        sc.time.delayedCall(30, next);
-      };
-      next();
-    };
-    if (inPlace) {
-      full();
-      return;
-    }
-    sc.time.delayedCall(2 * FRAME_MS, () => {
-      if (seq !== this.hintSeq) return;
-      body.setTexture(this.hintPlateKey(w, H, -1));
-      this.hintTrim?.set(this.hintTrimFor(h.style, -1, flash));
-      root.y = y + 1;
-      sc.time.delayedCall(2 * FRAME_MS, () => {
-        if (seq !== this.hintSeq) return;
-        body.setTexture(this.hintPlateKey(w, H, 0));
-        this.hintTrim?.set(this.hintTrimFor(h.style, 0, flash));
-        root.y = y;
-        this.hintCaret?.setVisible(true);
-        this.hintText_?.setVisible(true);
-        full();
-      });
-    });
+    root.x = x;
+    this.hintLook = { style: h.style, flash, burnt: false, w, x, y };
+    this.applyHintStep(step);
+    return { x, y, w };
+  }
+
+  /** The plate on screen at palette step `step` (−2 / −1 / 0): body, trim, caret and words in that step's tones. */
+  private applyHintStep(step: number): void {
+    const look = this.hintLook;
+    if (!look || !this.hintBody?.active) return;
+    const s = Math.max(-2, Math.min(0, Math.round(step)));
+    this.hintStep = s;
+    this.hintBody.setTexture(this.hintPlateKey(look.w, HUD3.hint.h, s));
+    const red = look.flash && !look.burnt;
+    this.hintTrim?.set(this.hintTrimFor(look.style, s, red));
+    // a reason past its burn wears the neutral caret (a 'fire' style must not keep it crimson)
+    const caret = red ? HINT_CARET_FLASH[s + 2] : styleTone(look.flash ? 'neutral' : look.style, 1 + s);
+    this.hintCaret?.setTexture(iconTexture(this.scene, ICON.caret, { w: caret, m: caret, s: caret, n: caret }) ?? ICON.caret);
+    this.hintText_?.setColor((red ? HINT_WORDS_FLASH : look.flash ? HINT_WORDS_REASON : HINT_WORDS)[s + 2]);
+    // rising 2 → 0 px with the steps (sinking the same way out); none with reduced motion
+    this.hintRoot.y = look.y + (REDUCED_MOTION ? 0 : -s);
   }
 
   private hintTrimFor(style: UiStyle, step: number, flash: boolean): Trim {
@@ -1540,6 +1615,11 @@ export class HudV3 implements HudApi {
     this.hintText_ = null;
     this.hintCaret = null;
     this.hintBody = null;
+    this.hintStep = null;
+    this.hintLook = null;
+    this.hintAnim = null;
+    this.hintTrimBack = null;
+    this.hintShake = null;
     this.hintRoot.removeAll(true);
   }
 
@@ -1552,6 +1632,14 @@ export class HudV3 implements HudApi {
       if (this.hintFlashLeft <= 0) {
         this.hintFlashLeft = 0;
         this.renderHint(this.hintBase, false);
+      }
+    }
+    this.tickHint();
+    if (this.nextJobs.length) {
+      const now = this.frameNow();
+      for (let i = 0; i < this.nextJobs.length; ) {
+        if (now < this.nextJobs[i][0]) i++;
+        else this.nextJobs.splice(i, 1)[0][1]();
       }
     }
     const k = this.scene.time.timeScale;

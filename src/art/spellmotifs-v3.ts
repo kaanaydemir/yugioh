@@ -16,6 +16,8 @@
 //   paintFlameTongue                  Volkan Arenası aura: a 3-frame flame tongue (+ 3 cooling steps)
 //   chasmGeometry / paintChasm        Yer Yarığı: a pad split into 3 slabs, the hole, its front lip
 //   crackPath / paintCrack            Yer Yarığı: the sharp crack running over the floor
+//   paintRecallSigil                  Ruh Çağrısı: the destination sigil (rings, dial, hexagram, 8 runes; ≥ v1 size)
+//   paintRecallFlavour                Ruh Çağrısı: the attribute glyphs standing on the landing ring
 //   blitMotif                         place a Motif (canvas + anchor) on a PixelCanvas
 //
 // Card art (A5-B B-3 / B-4) paints these straight into its 44×34 window or 16×12 icon with the P1
@@ -1098,6 +1100,268 @@ export function paintLavaColumn(p: PixelCanvas, cx: number, baseY: number, h: nu
   p.set(x0 + LAVA_W, by, PAL.fire1);
 }
 
+// =================================================================================== eruption (fix round 1)
+
+/**
+ * One step of Volkan Arenası's PATLAMA (lane A5-A fix round 1, the user's rule of 24 Oct: a signature
+ * effect is never smaller or duller than the old one — v1 burst a ≈ 46×52 fireball in an ≈ 85×45 ring
+ * here; the first build's 8×24 column read as a tick). A lava jet that flares as it climbs (a fan of
+ * molten lava, not a pipe): `h` its height over the vent, `top` its half width at the top (the foot's is
+ * 6), `spray` the blobs it throws off its crown (1–3; −1…−3: the spray falling back as the jet drops),
+ * `burst` the vent's flare (2 white, 1 fire4), `vent` the pool (1–3 opening, 4–6 cooling), `spikes` the
+ * splash crown round the vent, `ms` the step's length at 1× (the scene shows at most one new step per
+ * rendered frame, SÜ-3).
+ */
+export interface EruptionStep {
+  h: number;
+  top: number;
+  spray: -3 | -2 | -1 | 0 | 1 | 2 | 3;
+  burst: 0 | 1 | 2;
+  vent: 0 | 1 | 2 | 3 | 4 | 5 | 6;
+  spikes: 0 | 1 | 2 | 3;
+  ms: number;
+}
+/**
+ * The eruption step by step: 3 steps up (a frame each: the blast), 4 held steps (the jet roars, its crown
+ * boils, the gobs leave it), 3 down (the jet drops, its spray falls back round it), then the pool cools.
+ */
+export const ERUPTION_STEPS: readonly EruptionStep[] = [
+  { h: 16, top: 9, spray: 0, burst: 2, vent: 1, spikes: 1, ms: 17 },
+  { h: 34, top: 12, spray: 1, burst: 1, vent: 2, spikes: 2, ms: 17 },
+  { h: 50, top: 15, spray: 2, burst: 0, vent: 3, spikes: 3, ms: 17 },
+  { h: 54, top: 17, spray: 3, burst: 0, vent: 3, spikes: 2, ms: 34 },
+  { h: 53, top: 18, spray: 3, burst: 0, vent: 3, spikes: 1, ms: 34 },
+  { h: 55, top: 17, spray: 3, burst: 0, vent: 3, spikes: 0, ms: 34 },
+  { h: 54, top: 18, spray: 3, burst: 0, vent: 3, spikes: 0, ms: 34 },
+  { h: 36, top: 14, spray: -1, burst: 0, vent: 3, spikes: 0, ms: 34 },
+  { h: 18, top: 11, spray: -2, burst: 0, vent: 3, spikes: 0, ms: 34 },
+  { h: 0, top: 0, spray: -3, burst: 0, vent: 4, spikes: 0, ms: 34 },
+  { h: 0, top: 0, spray: 0, burst: 0, vent: 5, spikes: 0, ms: 50 },
+  { h: 0, top: 0, spray: 0, burst: 0, vent: 6, spikes: 0, ms: 50 },
+];
+/** The step on which the gobs leave the jet's crown (the first held step). */
+export const ERUPTION_GOB_STEP = 3;
+/** The jet's half width at its foot (a 13-px mouth: the critic's floor is 16 px across, the jet flares to 35). */
+export const ERUPTION_FOOT = 6;
+/** The highest pixel above the vent the eruption reaches (jet + spray; raster sizing). */
+export const ERUPTION_TOP = 78;
+/** The crown's rows: over these the jet splits into its splash fingers. */
+const CROWN = 12;
+/** The splash fingers across the jet's top (u across its width, height in rows over the split). */
+const FINGERS: readonly (readonly [number, number])[] = [
+  [0.08, 6],
+  [0.3, 10],
+  [0.52, 13],
+  [0.74, 9],
+  [0.94, 5],
+];
+
+/** The jet's tone across its row at u ∈ [0, 1] (lit edge on the screen's left, shadow right). */
+function jetBand(u: number): number {
+  if (u < 0.1) return PAL.fire3;
+  if (u < 0.42) return PAL.fire4;
+  if (u < 0.7) return PAL.fire3;
+  if (u < 0.88) return PAL.fire2;
+  return PAL.fire1;
+}
+
+/** A blob of lava (s = 1…3 px), lit from the top left; `age` 0…2 cools it a tone a step. */
+function lavaBlob(p: PixelCanvas, x: number, y: number, s: number, age: number): void {
+  const hot = age <= 0 ? PAL.fire4 : age === 1 ? PAL.fire3 : PAL.fire2;
+  const body = age <= 0 ? PAL.fire3 : age === 1 ? PAL.fire2 : PAL.fire1;
+  if (s <= 1) {
+    p.set(x, y, hot);
+    return;
+  }
+  for (let yy = 0; yy < s; yy++)
+    for (let xx = 0; xx < s; xx++) {
+      if (s === 3 && (xx === 0 || xx === 2) && (yy === 0 || yy === 2) && !(xx === 0 && yy === 0)) continue;
+      p.set(x + xx, y + yy, xx + yy === 0 ? hot : xx + yy >= s ? body : age <= 0 && s === 3 && xx + yy === 1 ? PAL.fire4 : body);
+    }
+}
+
+/** The spray's blob slots: across the crown (nx in top half widths), how high (ny of SPRAY_H), size. */
+const SPRAY: readonly (readonly [number, number, number])[] = [
+  [-0.15, 0.1, 3],
+  [0.25, 0.2, 3],
+  [-0.6, 0.3, 2],
+  [0.75, 0.35, 2],
+  [0.0, 0.5, 2],
+  [-1.0, 0.45, 2],
+  [1.05, 0.55, 2],
+  [-0.4, 0.75, 2],
+  [0.45, 0.8, 1],
+  [-1.25, 0.7, 1],
+  [1.3, 0.85, 1],
+  [-0.8, 0.95, 1],
+  [0.95, 1.05, 1],
+  [0.1, 1.1, 1],
+  [-0.1, 0.65, 3],
+  [0.6, 0.6, 2],
+];
+
+/** The vent's pool rx by stage (opening 1–3, cooling 4–6). */
+const VENT_RX = [0, 10, 15, 19, 19, 18, 16] as const;
+
+/**
+ * Volkan Arenası's eruption on the field pad at (cx, baseY), step `step` of ERUPTION_STEPS (see there):
+ * a lava jet that flares from a 13-px mouth to ≈ 37 px across, 55 px high (fire1…fire4 bands, a 1-px
+ * white core, ragged edges that climb, rising streaks), a spray of molten blobs boiling off its crown, a
+ * molten pool opening round the vent with a splash crown, the vent's white flare on the blast frames; the
+ * jet drops with its spray falling back, then the pool cools by palette steps. Light: no outline. Pure
+ * (no randomness, palette only); `phase` boils it.
+ */
+export function paintEruption(p: PixelCanvas, cx: number, baseY: number, step: number, o: { phase?: number } = {}): void {
+  const s = ERUPTION_STEPS[Math.max(0, Math.min(ERUPTION_STEPS.length - 1, Math.round(step)))];
+  cx = Math.round(cx);
+  const by = Math.round(baseY);
+  const ph = Math.round(o.phase ?? 0);
+  // ---- the pool round the vent (iso 2:1): fire2 rim, fire3, a fire4 heart; cooling: darker, then a ring
+  const rx = VENT_RX[s.vent];
+  if (rx > 0) {
+    const ry = rx / 2;
+    const ex = cx + 0.5;
+    const ey = by + 0.5;
+    if (s.vent <= 3) {
+      p.ellipse(ex, ey, rx, ry, PAL.fire2);
+      p.ellipse(ex, ey, rx - 3, Math.max(1, ry - 1.5), PAL.fire3);
+      if (rx >= 12) p.ellipse(ex - 1, ey - 0.5, rx - 8, Math.max(1, ry - 4), PAL.fire4);
+      p.ellipseRing(ex, ey, rx, ry, s.vent === 3 ? PAL.fire3 : PAL.fire2);
+      // glints walking over the molten surface (the lit side)
+      for (let i = 0; i < 3; i++) p.set(cx - rx + 4 + ((ph * 3 + i * 7) % Math.max(1, rx)), by - 1 + (i % 2), i === 0 ? W : PAL.fire4);
+    } else if (s.vent === 4) {
+      p.ellipse(ex, ey, rx, ry, PAL.fire1);
+      p.ellipse(ex, ey, rx - 4, Math.max(1, ry - 2), PAL.fire2);
+      p.ellipse(ex - 1, ey, rx - 10, Math.max(1, ry - 4), PAL.fire3);
+    } else if (s.vent === 5) {
+      p.ellipse(ex, ey, rx, ry, PAL.fire0);
+      p.ellipse(ex, ey, rx - 5, Math.max(1, ry - 2.5), PAL.fire1);
+      p.ellipseRing(ex, ey, rx - 5, Math.max(1, ry - 2.5), PAL.fire2);
+    } else {
+      p.ellipseRing(ex, ey, rx, ry, PAL.fire1);
+      p.ellipse(ex, ey, rx - 8, Math.max(1, ry - 4), PAL.fire1);
+    }
+  }
+  // ---- the splash crown: lava thrown up round the vent's rim (the back ones first, behind the jet)
+  const spikes = (front: boolean) => {
+    if (!s.spikes || !rx) return;
+    const n = 9;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + 0.35;
+      const sy = Math.sin(a);
+      if (front !== sy > 0) continue;
+      const x = Math.round(cx + Math.cos(a) * (rx - 2));
+      const y = Math.round(by + sy * (rx / 2 - 1));
+      const tall = [0, 3, 6, 4][s.spikes] + ((i * 5) % 3);
+      for (let k = 0; k < tall; k++) {
+        p.set(x, y - k, k === tall - 1 ? PAL.fire4 : k >= tall - 3 ? PAL.fire3 : PAL.fire2);
+        if (i % 3 === 0 && k < tall - 2) p.set(x + 1, y - k, k === 0 ? PAL.fire2 : PAL.fire3);
+      }
+      if (s.spikes >= 2) p.set(x + (Math.cos(a) > 0 ? 1 : -1), y - tall - 1 - (s.spikes - 2), PAL.fire4);
+    }
+  };
+  spikes(false);
+  // ---- the jet: flares from its mouth to its top; ragged edges climb with the phase; streaks rise in it.
+  // Its crown is no lid: over the last CROWN rows it splits into five splash fingers (the middle one the
+  // tallest) that throw the spray — the lava bursts open at the top.
+  const h = Math.round(s.h);
+  const jetTop = by - h + 1;
+  const crownRows = h >= 30 ? CROWN : h >= 14 ? Math.round(CROWN / 2) : 0;
+  const cutRow = jetTop + crownRows; // the body below, the fingers above
+  const fingers = FINGERS.map(([u, fh], j) => ({ u, fh: Math.max(2, Math.round((fh + (((ph + j * 2) % 3) - 1)) * (crownRows / CROWN))) }));
+  for (let i = 0; i < h; i++) {
+    const y = by - i;
+    const t = h > 1 ? i / (h - 1) : 0;
+    const fromTop = h - 1 - i;
+    let hw = Math.round(ERUPTION_FOOT + (s.top - ERUPTION_FOOT) * Math.pow(t, 1.3));
+    // the foot spreads into the pool
+    if (i < 3) hw = Math.max(hw, [10, 8, 7][i]);
+    // ragged edges: jags that climb 2 px a phase step (the lava tears upward)
+    const jl = [0, 1, 0, 2, 0, 0, 1, 0][(i + ph * 2) & 7];
+    const jr = [1, 0, 0, 0, 2, 0, 1, 0][(i + ph * 2 + 3) & 7];
+    const xl = cx - hw - (i > 3 && y > cutRow ? jl : 0);
+    const xr = cx + hw + (i > 3 && y > cutRow ? jr : 0);
+    const span = Math.max(1, xr - xl);
+    const coreX = cx - 1 - Math.round(t * 2);
+    const lean = y < cutRow ? Math.ceil((cutRow - y) * 0.45) + 1 : 0;
+    for (let x = xl - lean; x <= xr + lean; x++) {
+      const u = Math.max(0, Math.min(1, (x - xl) / span));
+      if (y < cutRow) {
+        // the crown's fingers: each narrows to its tip; nothing between them
+        const up = cutRow - y;
+        let inFinger = false;
+        let tip = false;
+        for (const f of fingers) {
+          if (up > f.fh) continue;
+          // the fingers lean out as they rise (a splash crown, wider than the jet)
+          const fx = Math.round(xl + f.u * span + (f.u - 0.5) * up * 0.9);
+          const fw = Math.max(0, Math.round(3.6 * (1 - up / (f.fh + 1))));
+          if (Math.abs(x - fx) <= fw) {
+            inFinger = true;
+            tip = up >= f.fh - 1;
+          }
+        }
+        if (!inFinger) continue;
+        p.set(x, y, tip ? (u < 0.6 ? PAL.fire4 : PAL.fire3) : u < 0.5 ? PAL.fire4 : u < 0.8 ? PAL.fire3 : PAL.fire2);
+        continue;
+      }
+      let c = jetBand(u);
+      if (x === coreX && y > cutRow + 2 && i > 1) c = W;
+      else if (y > cutRow) {
+        // rising streaks: fire4 dashes climbing the shadow band, fire3 crust flecks in the lit band, a white fleck by the core
+        if (u > 0.5 && u < 0.72 && (i + ph * 3) % 9 < 3 && (x + i) % 4 === 0) c = PAL.fire4;
+        else if (u > 0.14 && u < 0.3 && (i + ph * 2) % 10 === 0) c = PAL.fire3;
+        else if (x === coreX + 2 && (i + ph * 4) % 11 === 0) c = W;
+      }
+      p.set(x, y, c);
+    }
+  }
+  // ---- the spray: molten blobs thrown off the fingers' tips, climbing and drifting outward with the
+  // phase, cooling a tone as they go; falling back round the jet as it drops
+  if (s.spray > 0 && h > 0 && crownRows > 0) {
+    const per = [0, 1, 2, 3][s.spray];
+    const topHw = s.top;
+    fingers.forEach((f, j) => {
+      const fx = cx - topHw + Math.round(f.u * topHw * 2 + (f.u - 0.5) * f.fh * 0.9);
+      const tipY = cutRow - f.fh;
+      const side = f.u < 0.45 ? -1 : f.u > 0.55 ? 1 : (j & 1 ? 1 : -1);
+      for (let k = 0; k < per; k++) {
+        const q = (ph * 0.29 + k * 0.37 + j * 0.21) % 1;
+        const x = Math.round(fx + side * q * (5 + Math.abs(f.u - 0.5) * 22));
+        const y = Math.round(tipY - 3 - q * 15 + q * q * 6);
+        lavaBlob(p, x - 1, y - 1, q < 0.35 ? 3 : q < 0.7 ? 2 : 1, q < 0.4 ? 0 : q < 0.75 ? 1 : 2);
+      }
+    });
+  } else if (s.spray < 0) {
+    const k = -s.spray;
+    const full = by - 56;
+    for (let j = 0; j < 12; j++) {
+      const [nx, ny0, sz] = SPRAY[j];
+      const x = Math.round(cx + nx * 16 * (1.1 + k * 0.35)) - (sz >> 1);
+      const y = Math.round(full - ny0 * 10 + k * k * 5 + k * 6);
+      if (y > by - 3) continue;
+      lavaBlob(p, x, y, Math.max(1, sz - (k >> 1)), Math.min(2, k - 1 + (j & 1)));
+    }
+  }
+  spikes(true);
+  // ---- the vent's flare on the blast frames (in front of everything): a white streak along the floor,
+  // fire4 / fire3 ends, two short rays up and out
+  if (s.burst) {
+    const half = s.burst === 2 ? 20 : 13;
+    const core = s.burst === 2 ? 7 : 3;
+    for (let dx = -half; dx <= half; dx++) {
+      const a = Math.abs(dx);
+      p.set(cx + dx, by - 1, a <= core ? (s.burst === 2 ? W : PAL.fire4) : a <= half - 5 ? PAL.fire4 : PAL.fire3);
+      if (a <= core - 2) p.set(cx + dx, by - 2, s.burst === 2 ? W : PAL.fire4);
+    }
+    for (let k = 1; k <= (s.burst === 2 ? 6 : 4); k++) {
+      const c = k <= 2 ? (s.burst === 2 ? W : PAL.fire4) : PAL.fire3;
+      p.set(cx - 9 - k * 2, by - 2 - k, c);
+      p.set(cx + 9 + k * 2, by - 2 - k, c);
+    }
+  }
+}
+
 // =================================================================================== flame tongue
 
 /** The three frames of a flame tongue (5×7): 2 fire2 outer, 3 fire3, 4 fire4 core (A5 §3.2 aura). */
@@ -1118,13 +1382,15 @@ const FLAME_KEY: Record<string, number> = { '1': PAL.fire1, '2': PAL.fire2, '3':
  * A flame tongue standing on (cx, baseY) (its bottom row): frame 0…2 of the loop, or a cooling
  * step (`cool` 1…3: shrink, darken, two smoke pixels). Light: no outline.
  */
-export function paintFlameTongue(p: PixelCanvas, cx: number, baseY: number, frame: number, o: { cool?: 0 | 1 | 2 | 3 } = {}): void {
+export function paintFlameTongue(p: PixelCanvas, cx: number, baseY: number, frame: number, o: { cool?: 0 | 1 | 2 | 3; ramp?: readonly number[] } = {}): void {
   const rows = o.cool ? FLAME_COOL[o.cool - 1] : FLAME[((Math.round(frame) % 3) + 3) % 3];
+  // (fix round 1: another ramp's tongue — Ruh Çağrısı's DARK ring burns in void tones)
+  const key: Record<string, number> = o.ramp ? { '1': o.ramp[1], '2': o.ramp[2], '3': o.ramp[3], '4': o.ramp[4], s: PAL.stone2 } : FLAME_KEY;
   const x0 = Math.round(cx) - 2;
   const y0 = Math.round(baseY) - rows.length + 1;
   for (let j = 0; j < rows.length; j++)
     for (let i = 0; i < rows[j].length; i++) {
-      const c = FLAME_KEY[rows[j][i]];
+      const c = key[rows[j][i]];
       if (c !== undefined) p.set(x0 + i, y0 + j, c);
     }
 }
@@ -1310,4 +1576,191 @@ export function paintCrack(p: PixelCanvas, path: readonly XY[], n: number, o: { 
     }
   }
   for (let i = 0; i < m; i++) p.set(path[i].x, path[i].y, PAL.ink);
+}
+
+// =================================================================================== recall sigil
+
+/**
+ * Ruh Çağrısı's destination sigil (fix round 1, A5A-C1-07): never smaller than v1's rune circle
+ * (≈ 70 × 35): at full size its outer shadow ring is 2·(RECALL_SIGIL_R + 2) × (RECALL_SIGIL_R + 2).
+ */
+export const RECALL_SIGIL_R = 38;
+/** The runes orbiting in the sigil's band. */
+export const RECALL_RUNE_N = 8;
+/** The 3 × 4 rune glyphs ('X' lit), upright like v1's letters, one whole pixel per stroke. */
+export const RECALL_RUNES: readonly (readonly string[])[] = [
+  ['X.X', '.X.', '.X.', '.X.'],
+  ['X..', 'XX.', 'X.X', 'X..'],
+  ['.X.', 'X.X', '.X.', 'X.X'],
+  ['X.X', 'XX.', 'X..', 'X..'],
+];
+/** Rune orbit: one whole step of the phase turns the runes by this many radians. */
+export const RECALL_RUNE_STEP = (Math.PI * 2) / 96;
+
+/**
+ * The sigil on the floor, centred on (cx, cy): `step` 1…3 opens it in thirds of RECALL_SIGIL_R (outer
+ * ring; + the inner ring at 2; + the dial ticks, the hexagram and the RECALL_RUNE_N runes at 3); `phase`
+ * turns the runes in whole steps; `lit` lifts every line one palette step (the arrival pulse).
+ * Opaque cyan tones only, 1-px lines, no fill (the tile shows through).
+ */
+export function paintRecallSigil(p: PixelCanvas, cx: number, cy: number, o: { step: number; phase?: number; lit?: boolean }): void {
+  const step = Math.max(0, Math.min(3, Math.round(o.step)));
+  if (step <= 0) return;
+  const lit = !!o.lit;
+  const r = Math.round((RECALL_SIGIL_R * step) / 3);
+  const ry = Math.max(1, Math.round(r / 2));
+  const C = lit ? [PAL.cyan1, PAL.cyan2, PAL.cyan3, PAL.cyan4, W] : [PAL.cyan0, PAL.cyan1, PAL.cyan2, PAL.cyan3, PAL.cyan4];
+  // the outer ring and its shadow line just outside it
+  p.ellipseRing(cx, cy, r + 2, ry + 1, C[0]);
+  p.ellipseRing(cx, cy, r, ry, C[3]);
+  if (step >= 2) p.ellipseRing(cx, cy, Math.round(r * 0.6), Math.max(1, Math.round(ry * 0.6)), C[2]);
+  if (step < 3) return;
+  // the dial: 24 ticks just inside the outer ring
+  for (let i = 0; i < 24; i++) {
+    const a = (i / 24) * Math.PI * 2;
+    p.set(Math.round(cx + Math.cos(a) * (r - 3)), Math.round(cy + Math.sin(a) * (ry - 1.5)), i % 2 === 0 ? C[2] : C[1]);
+  }
+  // the hexagram on the inner ring (two iso triangles, dim)
+  const ri = r * 0.6;
+  const ryi = ry * 0.6;
+  const hex = Array.from({ length: 6 }, (_, k) => {
+    const a = (k / 6) * Math.PI * 2 + Math.PI / 6;
+    return { x: Math.round(cx + Math.cos(a) * ri), y: Math.round(cy + Math.sin(a) * ryi) };
+  });
+  for (const tri of [[0, 2, 4], [1, 3, 5]])
+    for (let k = 0; k < 3; k++) {
+      const a = hex[tri[k]];
+      const b = hex[tri[(k + 1) % 3]];
+      p.line(a.x, a.y, b.x, b.y, C[1]);
+    }
+  // the runes in the band between the rings, turning in whole steps; the far half a tone darker
+  const ph = Math.round(o.phase ?? 0);
+  for (let i = 0; i < RECALL_RUNE_N; i++) {
+    const a = (i / RECALL_RUNE_N) * Math.PI * 2 + ph * RECALL_RUNE_STEP;
+    const x = Math.round(cx + Math.cos(a) * r * 0.8) - 1;
+    const y = Math.round(cy + Math.sin(a) * ry * 0.8) - 2;
+    const tone = Math.sin(a) < 0 ? C[3] : C[4];
+    p.stamp(RECALL_RUNES[i % RECALL_RUNES.length], { X: tone }, x, y);
+  }
+}
+
+/**
+ * The attribute flavour standing on Ruh Çağrısı's landing ring (fix round 1, A5A-C1-07), 5 px wide,
+ * bottom row on (cx, baseY), a 3-frame loop; `cool` 1 / 2 shrink it, 3 = gone. Keys: 2 / 3 / 4 = the
+ * attribute ramp's tones 2–4, W = white. FIRE / DARK are flame tongues (DARK in void tones); WATER a
+ * small spout throwing two drops; LIGHT a twinkling four-point star; EARTH a rock spike; WIND a leaf.
+ */
+const RECALL_FLAVOUR: Record<'WATER' | 'LIGHT' | 'EARTH' | 'WIND', readonly (readonly string[])[]> = {
+  WATER: [
+    ['.....', '..4..', '..4..', '..3..', '.343.', '23332'],
+    ['..4..', '.4.4.', '..3..', '..3..', '.343.', '23332'],
+    ['.4.4.', '4...4', '.....', '..3..', '.343.', '23332'],
+    ['.....', '.....', '.....', '..3..', '.333.', '23332'],
+    ['.....', '.....', '.....', '.....', '.....', '.232.'],
+  ],
+  // LIGHT's tone 4 is white: the star's arms stay in the golds and only the peak frame's centre is
+  // white (a ring of 14 white stars pushed the frame's white share over the base's — palcheck EF-4)
+  LIGHT: [
+    ['..2..', '..3..', '23W32', '..3..', '..2..', '.....'],
+    ['.....', '..2..', '.232.', '..2..', '.....', '.....'],
+    ['..2..', '.....', '2.3.2', '.....', '..2..', '.....'],
+    ['.....', '.....', '..3..', '.....', '.....', '.....'],
+    ['.....', '.....', '..2..', '.....', '.....', '.....'],
+  ],
+  EARTH: [
+    ['.....', '..4..', '.343.', '.343.', '23332', '22222'],
+    ['.....', '..3..', '.443.', '.343.', '23332', '22222'],
+    ['.....', '..4..', '.344.', '.343.', '23332', '22222'],
+    ['.....', '.....', '.....', '.34..', '2333.', '22222'],
+    ['.....', '.....', '.....', '.....', '.....', '.222.'],
+  ],
+  WIND: [
+    ['.....', '.44..', '3..4.', '...3.', '..3..', '.....'],
+    ['.....', '..44.', '.4..3', '.3...', '..3..', '.....'],
+    ['.....', '.....', '.344.', '3...3', '.....', '.....'],
+    ['.....', '.....', '..4..', '.3.3.', '.....', '.....'],
+    ['.....', '.....', '.....', '..3..', '.....', '.....'],
+  ],
+};
+
+/**
+ * A water spout of Ruh Çağrısı's WATER landing (fix round 2, A5A-C2-05: v1's water landing had a ≈ 40-px
+ * droplet column; the v3 ring's 5-px glyph spouts read smaller): a 2-px column rising `height` px (20–30) from
+ * (cx, baseY) and falling back, one cycle per t ∈ [0, 1): it rises eased out (t < 0.32) with a white tip and a
+ * spray pixel over it, crests (to 0.46) into a three-drop crown, then sinks while four drops arc out to both
+ * sides and land back on the base line — whole pixels, the water ramp (lit side tone 4, shade tone 3, foam
+ * tone 2–3 at its foot), white only on the tip and the drops' tops.
+ */
+export const RECALL_SPOUT = { rise: 0.32, crest: 0.46 } as const;
+export function paintRecallSpout(p: PixelCanvas, cx: number, baseY: number, ramp: readonly number[], height: number, t: number): void {
+  const H = Math.max(4, Math.round(height));
+  const x = Math.round(cx);
+  const b = Math.round(baseY);
+  const tt = ((t % 1) + 1) % 1;
+  const { rise, crest } = RECALL_SPOUT;
+  let h: number;
+  if (tt < rise) h = Math.round(H * (1 - (1 - tt / rise) ** 2));
+  else if (tt < crest) h = H;
+  else {
+    const s = (tt - crest) / (1 - crest);
+    h = Math.round(H * (1 - s) * (1 - s));
+  }
+  // the foot: a short foam band on the floor (4 px, one tone darker at the ends)
+  if (h > 0) {
+    p.set(x - 2, b, ramp[2]);
+    p.set(x - 1, b, ramp[3]);
+    p.set(x, b, ramp[3]);
+    p.set(x + 1, b, ramp[2]);
+  }
+  // the column: 2 px at its foot (the lit left pixel tone 4, the shade tone 3), thinning to a 1-px stream that
+  // sways one pixel every three rows and breaks into drops near the top (a gap every 5 px); a white tip
+  const thick = Math.max(2, Math.round(h * 0.35));
+  for (let k = 1; k < h; k++) {
+    const y = b - k;
+    const fromTop = h - 1 - k;
+    if (fromTop === 0) {
+      p.set(x - 1, y, W);
+      continue;
+    }
+    if (k < thick) {
+      p.set(x - 1, y, ramp[4]);
+      p.set(x, y, ramp[3]);
+      continue;
+    }
+    if (fromTop > 1 && fromTop < h - thick - 1 && fromTop % 5 === 3) continue;
+    const sway = Math.floor(k / 3) % 2 === 0 ? -1 : 0;
+    p.set(x + sway, y, fromTop <= 2 ? ramp[4] : (k + Math.floor(tt * 12)) % 3 === 0 ? ramp[3] : ramp[4]);
+  }
+  if (tt < rise && h > 2) p.set(x - 1, b - h - 1, W); // the spray pixel over the rising tip
+  if (tt >= rise && tt < crest) {
+    // the crown: three drops over the top
+    const top = b - H;
+    p.set(x - 2, top, ramp[4]);
+    p.set(x - 1, top - 1, W);
+    p.set(x + 1, top, ramp[4]);
+  }
+  if (tt >= crest) {
+    // four drops arc out from the crest and land on the base line
+    const s = (tt - crest) / (1 - crest);
+    for (const d of [-2, -1, 1, 2]) {
+      const dx = Math.round(Math.sign(d) * (Math.abs(d) * 2 + Math.abs(d) * 6 * s));
+      const dy = Math.round(-H - 8 * s + (H + 8) * s * s);
+      const px = x + dx - (d < 0 ? 1 : 0);
+      const py = b + dy;
+      if (py > b) continue;
+      p.set(px, py, s < 0.5 ? W : ramp[4]);
+      if (py + 1 <= b) p.set(px, py + 1, ramp[s < 0.5 ? 4 : 3]);
+    }
+  }
+}
+
+export function paintRecallFlavour(p: PixelCanvas, attr: 'LIGHT' | 'DARK' | 'FIRE' | 'WATER' | 'EARTH' | 'WIND', ramp: readonly number[], cx: number, baseY: number, frame: number, o: { cool?: 0 | 1 | 2 | 3 } = {}): void {
+  if (attr === 'FIRE' || attr === 'DARK') {
+    paintFlameTongue(p, cx, baseY, frame, { cool: o.cool, ramp: attr === 'DARK' ? ramp : undefined });
+    return;
+  }
+  if (o.cool === 3) return;
+  const set = RECALL_FLAVOUR[attr];
+  const rows = o.cool ? set[2 + o.cool] : set[((Math.round(frame) % 3) + 3) % 3];
+  p.stamp(rows, { '2': ramp[2], '3': ramp[3], '4': ramp[4], W }, Math.round(cx) - 2, Math.round(baseY) - rows.length + 1);
 }

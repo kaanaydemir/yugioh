@@ -31,7 +31,7 @@ import { PAL, RAMPS, type Ramp } from '../../art/palette';
 import { frameRectV3, type Trim } from '../../art/frame-v3';
 import { PixelCanvas } from '../../art/pixel';
 import type { PlayerId } from '../../engine/types';
-import { BOARD_CENTER, DEPTH, UI, panelRect, type Rect } from '../layout';
+import { BOARD_CENTER, DEPTH, UI, panelRect, type Rect, type XY } from '../layout';
 import { ICON } from '../ui-textures';
 import { REDUCED_MOTION, settle } from './motion';
 import { bodyV3, canvasTexture, capYV3, flatTrim, glyphTexture, iconTexture, iconTones, layoutLine, trimPixels, TrimGfx, type TrimNode } from './hudSkin';
@@ -75,11 +75,17 @@ export const PLATE = Object.freeze({
   iconGap: 3,
   /** Timeline (ms, 1×). */
   slideMs: 120,
-  stampFrom: 67,
+  /** The first letter comes with the plate's first frame (A6B-8: a plate never shows without its words). */
+  stampFrom: 0,
+  /** The plate reaches its rest tones (two palette steps in): the turn motif's beat (F1, A6B-7). */
+  restAt: 67,
   settleAt: 360,
   settledMs: 450,
   hopMs: 40,
   nodeLapMs: 900,
+  /** The fold out (A6B-5): heights round the middle row, two frames each, then gone. */
+  fold: Object.freeze([12, 6, 2]),
+  foldFrames: 2,
 });
 
 const FRAME = 1000 / 60;
@@ -237,15 +243,40 @@ export class TurnPlate {
   }
 
   /**
-   * The tail: three hops toward `target` (a smaller plate each, on a straight whole-pixel line; the
-   * last one is the target's own frame in white), then the plate is gone. `label` (optional) rides
-   * the first two hops (e.g. "TUR 4", then "4"). Resolves when it is gone. With REDUCED_MOTION: two
-   * palette steps out, in place.
+   * The tail (A6B-5): the plate folds out in place (20 → 12 → 6 → 2 px round its middle row, two frames
+   * each, the trim stepping down) while a light spark carries its news to `target` along a whole-pixel
+   * arc (flySpark; `frames` caps the flight); `onLand` runs on the spark's landing frame, the target's
+   * frame lights white. Resolves when both are done. `label` is kept for the callers' API (the spark
+   * carries no letters). With REDUCED_MOTION: two palette steps out in place, `onLand` at once.
    */
-  shrinkTo(target: Rect, label: readonly string[] = [], onLand?: () => void): Promise<void> {
+  shrinkTo(target: Rect, label: readonly string[] = [], onLand?: () => void, o: { frames?: number } = {}): Promise<void> {
+    void label;
+    return this.startLeave({ target, onLand, frames: o.frames });
+  }
+
+  /**
+   * Fold out in place with no spark (A6B-5: the turn plate's number has already flown to the badge
+   * when it was stamped). Resolves when it is gone.
+   */
+  leave(): Promise<void> {
+    return this.startLeave({});
+  }
+
+  /**
+   * The last stamped glyph (the turn plate's turn number): when it is stamped (ms from show) and its
+   * centre on screen at the plate's rest. Null when the plate has no glyph.
+   */
+  lastGlyph(): { at: number; x: number; y: number } | null {
+    const g = this.glyphs[this.glyphs.length - 1];
+    if (!g) return null;
+    const fr = g.img.frame;
+    return { at: Math.max(0, g.at), x: Math.round(this.rect.x + g.x + fr.width / 2), y: Math.round(this.rect.y + g.y + fr.height / 2) };
+  }
+
+  private startLeave(o: { target?: Rect; onLand?: () => void; frames?: number }): Promise<void> {
     if (this.shrinking) return this.shrinking;
     if (!this.alive) {
-      onLand?.();
+      o.onLand?.();
       return Promise.resolve();
     }
     // the appear timeline stops first (its frame / end callbacks see `leaving` and keep off the plate)
@@ -253,7 +284,7 @@ export class TurnPlate {
     const appear = this.tween;
     this.tween = null;
     appear?.stop();
-    this.shrinking = this.runShrink(target, label, onLand);
+    this.shrinking = this.runShrink(o.target ?? null, o.onLand, o.frames);
     return this.shrinking;
   }
 
@@ -345,7 +376,7 @@ export class TurnPlate {
     });
   }
 
-  private async runShrink(target: Rect, label: readonly string[], onLand?: () => void): Promise<void> {
+  private async runShrink(target: Rect | null, onLand?: () => void, frames?: number): Promise<void> {
     const sc = this.scene;
     let landed = false;
     const land = () => {
@@ -355,53 +386,63 @@ export class TurnPlate {
     };
     if (REDUCED_MOTION) {
       // two palette steps out, in place
+      land();
       await this.timeline(2 * PLATE.hopMs, (ms) => this.alive && this.applyStep(ms < PLATE.hopMs ? -1 : -2));
       this.destroy();
-      land();
       return;
     }
-    // the plate's own pieces go; each hop is a fresh small plate (body + trim [+ label])
+    // the news flies on (a spark from the plate's middle), the plate folds where it is
+    const spark = target
+      ? flySpark(sc, { x: Math.round(this.rect.x + this.w / 2), y: Math.round(this.rect.y + this.h / 2) }, target, this.ramp, { frames, onLand: land })
+      : Promise.resolve(land());
     this.trim.setNode(null);
-    this.root.removeAll(true);
-    const hopRoot = sc.add.container(0, 0).setDepth(DEPTH.HUD + 8).setScrollFactor(0);
-    this.root.add(hopRoot);
-    this.root.setPosition(0, 0);
-    const a = { x: this.rect.x + this.w / 2, y: this.rect.y + this.h / 2 };
-    const b = { x: target.x + target.w / 2, y: target.y + target.h / 2 };
-    const hops = [1 / 3, 2 / 3, 1].map((k, i) => {
-      const w = Math.round(this.w + (target.w - this.w) * k);
-      const h = Math.round(this.h + (target.h - this.h) * k);
-      const x = i === 2 ? target.x : Math.round(a.x + (b.x - a.x) * k - w / 2);
-      const y = i === 2 ? target.y : Math.round(a.y + (b.y - a.y) * k - h / 2);
-      return { x, y, w, h, label: i < 2 ? label[i] ?? '' : '', last: i === 2 };
-    });
-    let shown = -1;
-    const hop: { trim: TrimGfx | null } = { trim: null };
-    const paint = (i: number) => {
-      hopRoot.removeAll(true);
-      hop.trim?.destroy();
-      hop.trim = null;
-      const H = hops[i];
-      if (!H) return;
-      if (!H.last) hopRoot.add(sc.add.image(H.x, H.y, this.bodyKey(H.w, H.h, 0)).setOrigin(0, 0));
-      hop.trim = new TrimGfx(sc, hopRoot, H.x, H.y, H.w, H.h).set(H.last ? flatTrim(PAL.white) : plateTrim(this.ramp, i === 0 ? 0 : -1));
-      if (H.label) {
-        const L = layoutLine(H.label, 'md');
-        const lx = Math.round(H.x + (H.w - L.w) / 2);
-        const ly = H.y + Math.round((H.h - 15) / 2);
-        for (const g of L.glyphs) hopRoot.add(sc.add.image(lx + g.x, ly, glyphTexture(sc, g.code, 'md', PAL.white)).setOrigin(0, 0));
-      }
+    this.root.x = this.rect.x;
+    const pieces: { img: Phaser.GameObjects.Image | null; trim: TrimGfx | null } = { img: null, trim: null };
+    const clear = () => {
+      pieces.img?.destroy();
+      pieces.img = null;
+      pieces.trim?.destroy();
+      pieces.trim = null;
     };
-    await this.timeline(3 * PLATE.hopMs, (ms) => {
+    let shown = -1;
+    const fold = PLATE.fold;
+    const fold$ = this.timeline(fold.length * PLATE.foldFrames * FRAME, (ms) => {
       if (!this.alive) return;
-      const i = Math.min(2, Math.floor((ms + 0.5) / PLATE.hopMs));
-      if (i !== shown) {
-        shown = i;
-        paint(i);
-        if (i === 2) land(); // the last hop is on the target: whatever it carries arrives now
+      const i = Math.min(fold.length, Math.floor((ms + 0.5) / (PLATE.foldFrames * FRAME)));
+      if (i === shown) return;
+      shown = i;
+      clear();
+      if (i >= fold.length) {
+        this.root.setVisible(false);
+        return;
+      }
+      const h = fold[i];
+      const y = Math.round((this.h - h) / 2);
+      // the plate's own body and text go; a folded body stands in (the text one tone down on the first fold)
+      this.body.setVisible(false);
+      this.icon?.setVisible(false);
+      this.trim.setVisible(false);
+      for (const g of this.glyphs) {
+        const keep = i === 0 && g.y >= y && g.y + 7 <= y + h + 2;
+        g.img.setVisible(keep);
+        if (keep) g.img.setTexture(glyphTexture(sc, g.code, 'md', dimTone(g.color)));
+      }
+      if (h >= 4) {
+        pieces.img = sc.add.image(0, y, this.bodyKey(this.w, h, 0)).setOrigin(0, 0);
+        this.root.addAt(pieces.img, 0);
+        pieces.trim = new TrimGfx(sc, this.root, 0, y, this.w, h).set(plateTrim(this.ramp, -1 - i));
+      } else {
+        const key = canvasTexture(sc, `ui3:plate:fold:${this.w}:${hexOf(this.ramp[2])}`, () => {
+          const p = new PixelCanvas(this.w, 2);
+          p.rect(0, 0, this.w, 2, this.ramp[2]);
+          return p;
+        });
+        pieces.img = sc.add.image(0, y, key).setOrigin(0, 0);
+        this.root.add(pieces.img);
       }
     });
-    hop.trim?.destroy();
+    await Promise.all([fold$, spark]);
+    clear();
     this.destroy();
     land();
   }
@@ -424,6 +465,160 @@ export class TurnPlate {
       this.tween = t;
     });
   }
+}
+
+/** One palette step down a ramp (a folding letter). */
+function dimTone(c: number): number {
+  for (const ramp of [RAMPS.cyan, RAMPS.crim, RAMPS.gold, [PAL.night2, PAL.night3, PAL.night4, PAL.steel, PAL.mist, PAL.white] as const]) {
+    const i = (ramp as readonly number[]).indexOf(c);
+    if (i > 0) return ramp[i - 1];
+  }
+  return c;
+}
+
+function hexOf(c: number): string {
+  return c.toString(16).padStart(6, '0');
+}
+
+// ================================================================ the spark (a plate's news flies on, A6B-5)
+
+/** The spark's flight: px a frame it aims at, its frame bounds, the arc's bulge (× the distance), the landing frames. */
+export const SPARK = Object.freeze({ pxPerFrame: 24, minFrames: 7, maxFrames: 14, bulge: 0.16, landFrames: 2 });
+
+/** Frames of a spark's flight over a → b (SPARK bounds; `max` caps it). Pure. */
+export function sparkFrames(a: XY, b: XY, max: number = SPARK.maxFrames): number {
+  const n = Math.round(Math.hypot(b.x - a.x, b.y - a.y) / SPARK.pxPerFrame);
+  return Math.max(Math.min(SPARK.minFrames, max), Math.min(max, n));
+}
+
+/**
+ * The spark's head at frame i of n (pure, whole pixels): a quadratic arc from a to b bulging `bulge` ×
+ * the distance AWAY from the board's centre (it goes round the field, over the dark arena, not across the
+ * units; the arc's control point stays on screen), eased in and out (smoothstep) — it leaves gently,
+ * crosses fast, and settles into its target.
+ */
+export function sparkPoint(a: XY, b: XY, i: number, n: number, bulge: number = SPARK.bulge): XY {
+  const t0 = Math.max(0, Math.min(1, n > 0 ? i / n : 1));
+  const t = t0 * t0 * (3 - 2 * t0);
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const mx = (a.x + b.x) / 2;
+  const my = (a.y + b.y) / 2;
+  let px = -dy / len;
+  let py = dx / len;
+  const bc = BOARD_CENTER;
+  if (Math.hypot(mx + px - bc.x, my + py - bc.y) < Math.hypot(mx - px - bc.x, my - py - bc.y)) {
+    px = -px;
+    py = -py;
+  }
+  const cx = Math.max(4, Math.min(636, mx + px * bulge * len));
+  const cy = Math.max(4, Math.min(356, my + py * bulge * len));
+  const u = 1 - t;
+  return { x: Math.round(u * u * a.x + 2 * u * t * cx + t * t * b.x), y: Math.round(u * u * a.y + 2 * u * t * cy + t * t * b.y) };
+}
+
+/** Every pixel of the whole-pixel line a → b (Bresenham), both ends included. Pure. */
+export function linePixels(a: XY, b: XY): XY[] {
+  const out: XY[] = [];
+  let x = Math.round(a.x);
+  let y = Math.round(a.y);
+  const x1 = Math.round(b.x);
+  const y1 = Math.round(b.y);
+  const dx = Math.abs(x1 - x);
+  const dy = -Math.abs(y1 - y);
+  const sx = x < x1 ? 1 : -1;
+  const sy = y < y1 ? 1 : -1;
+  let err = dx + dy;
+  for (;;) {
+    out.push({ x, y });
+    if (x === x1 && y === y1) break;
+    const e2 = 2 * err;
+    if (e2 >= dy) {
+      err += dy;
+      x += sx;
+    }
+    if (e2 <= dx) {
+      err += dx;
+      y += sy;
+    }
+  }
+  return out;
+}
+
+/**
+ * A light spark flies from `from` to the middle of `to` (or to `aim`; screen px) on whole pixels along a gentle arc
+ * (A6B-5: the plate's news reaches its place — the turn number its badge, the battle plate its SAVAŞ
+ * cell): a 2 × 2 white head and a trail along the path of its last three frames (ramp[4] → ramp[3] →
+ * ramp[2], every pixel of the path drawn, so it never skips however fast it crosses); on the landing
+ * frame `onLand` runs and the target's 1-px frame shows white for two frames. Scene clock (speed aware).
+ * `bulge` 0 flies straight (a path along the HUD's top band). Reduced motion: no flight — it lands at once.
+ */
+export function flySpark(scene: Phaser.Scene, from: XY, to: Rect, ramp: Ramp, o: { frames?: number; onLand?: () => void; depth?: number; aim?: XY; bulge?: number } = {}): Promise<void> {
+  let landed = false;
+  const land = () => {
+    if (landed) return;
+    landed = true;
+    o.onLand?.();
+  };
+  if (REDUCED_MOTION) {
+    land();
+    return Promise.resolve();
+  }
+  const a = { x: Math.round(from.x), y: Math.round(from.y) };
+  const b = o.aim ? { x: Math.round(o.aim.x), y: Math.round(o.aim.y) } : { x: Math.round(to.x + to.w / 2), y: Math.round(to.y + to.h / 2) };
+  const n = Math.max(1, sparkFrames(a, b, o.frames ?? SPARK.maxFrames));
+  const pts = Array.from({ length: n + 1 }, (_, i) => sparkPoint(a, b, i, n, o.bulge ?? SPARK.bulge));
+  const g = scene.add.graphics().setDepth(o.depth ?? DEPTH.HUD + 8).setScrollFactor(0);
+  const px = (q: XY, c: number, w = 1) => {
+    g.fillStyle(c, 1);
+    g.fillRect(q.x, q.y, w, w);
+  };
+  let last = -1;
+  const draw = (f: number) => {
+    if (f === last || !g.active) return;
+    last = f;
+    g.clear();
+    if (f < n) {
+      // the trail: the path of the last three frames, oldest darkest
+      for (let k = 3; k >= 1; k--) {
+        const i0 = f - k;
+        if (i0 < 0) continue;
+        const tone = k === 3 ? ramp[2] : k === 2 ? ramp[3] : ramp[4];
+        for (const q of linePixels(pts[i0], pts[i0 + 1])) px(q, tone);
+      }
+      px({ x: pts[f].x - 1, y: pts[f].y - 1 }, PAL.white, 2);
+      return;
+    }
+    // landed: the target's frame white for two frames
+    land();
+    g.fillStyle(PAL.white, 1);
+    g.fillRect(to.x, to.y, to.w, 1);
+    g.fillRect(to.x, to.y + to.h - 1, to.w, 1);
+    g.fillRect(to.x, to.y, 1, to.h);
+    g.fillRect(to.x + to.w - 1, to.y, 1, to.h);
+  };
+  const total = (n + SPARK.landFrames) * FRAME;
+  return new Promise((resolve) => {
+    let done = false;
+    const end = () => {
+      if (done) return;
+      done = true;
+      if (g.active) g.destroy();
+      land();
+      resolve();
+    };
+    draw(0);
+    scene.tweens.addCounter({
+      from: 0,
+      to: total,
+      duration: total,
+      onUpdate: (tw) => draw(Math.min(n + SPARK.landFrames - 1, Math.floor(((tw.getValue() ?? 0) + 0.5) / FRAME))),
+      onComplete: end,
+      onStop: end,
+    });
+    scene.events.once('shutdown', end);
+  });
 }
 
 /** Pixels of one plate at rest (tests / the dev page): body + trim, palette only (no text). */
@@ -476,12 +671,12 @@ export const DUEL_PLATE = Object.freeze({
   gapBelowBar: 3,
   /** y offset per frame of the drop onto the rest (the last entry holds): never into the phase bar. */
   drop: Object.freeze([-3, -2, 0, 1, 0]),
-  /** Frame of the first letter's stamp (then one letter per frame). */
-  stampFrame: 4,
+  /** Frame of the first letter's stamp (then one letter per frame): with the plate's first frame (A6B-8). */
+  stampFrame: 0,
   /** The thump after the last letter: frames with the plate 1 px down (the first one with a white trim). */
   thumpFrames: 2,
-  nodeFrame: 13,
-  glintFrame: 14,
+  nodeFrame: 9,
+  glintFrame: 10,
   /** Glint band travel per frame (px) and its width (white core; the last column gold4). */
   glintStep: 6,
   glintW: 4,

@@ -97,6 +97,40 @@ export function beatTimes(arrivals: readonly number[], gap = 150): number[] {
   return out;
 }
 
+/** A front beat: when it starts (its edge / steam begins, its sound plays) and when its number shows. */
+export interface FrontBeat {
+  start: number;
+  show: number;
+}
+
+/**
+ * The front beats as the player sees them (fix round 2, A5A-C2-01): beatTimes spaced only the starts, but a
+ * FIRE beat's number comes on its edge's top frame (`lead` ≈ 117 ms after the start) while a WATER beat's
+ * comes at once — so a FIRE / WATER pair's numbers landed 16–67 ms apart and covered each other. Here,
+ * in distance order (arrival, ties in input order), each beat starts at its own arrival but never before
+ * `first` (clear of the eruption's own sounds), never within `soundGap` of the previous start (two beat
+ * sounds never stack), and late enough that its NUMBER shows ≥ `gap` after the previous number (A5 §3.2:
+ * ≥ 150 ms apart; the front itself is never changed). Returns the beats in the input order (ms after the
+ * eruption).
+ */
+export function frontSchedule(items: readonly { arrival: number; lead: number }[], o: { gap?: number; soundGap?: number; first?: number } = {}): FrontBeat[] {
+  const gap = o.gap ?? 150;
+  const soundGap = o.soundGap ?? 100;
+  const first = o.first ?? 150;
+  const order = items.map((it, i) => ({ ...it, i })).sort((a, b) => a.arrival - b.arrival || a.i - b.i);
+  const out = new Array<FrontBeat>(items.length);
+  let lastShow = -Infinity;
+  let lastStart = -Infinity;
+  for (const it of order) {
+    const lead = Math.max(0, it.lead);
+    const start = Math.max(it.arrival, first, lastStart + soundGap, lastShow + gap - lead);
+    out[it.i] = { start, show: start + lead };
+    lastStart = start;
+    lastShow = start + lead;
+  }
+  return out;
+}
+
 // =================================================================================== the ambience
 
 /** Particle counts at full level (REDUCED_MOTION: halved). */

@@ -25,11 +25,11 @@
 //            choice, never smaller than its 30×92 / 15×46), cools through gold4 to its planes, the
 //            runes in its fuller glowing — bladeForge, mark `forge`
 //   +483     it SPINS 1.5 turns while it rises 8 px — pre-drawn turn drawings, no fractional scale; a
-//            light streak runs down the blade
-//   +700     it HANGS (5 px higher, a beat), a star on its point; the ring steps down the gold ramp
+//            light streak runs down the blade (fix round 1, A5A-C1-06: spin 150 + hang 50 ≤ 200 ms)
+//   +633     it HANGS (5 px higher, a beat), a star on its point; the ring steps down the gold ramp
 //            through the hang and the plunge (gone at the stab, as the old ring faded)
-//   +766     it PLUNGES (inQuad, a one-frame trail of light lines over it) — bladeFly
-//   +850     IMPACT (mark `bond`): its point in the body's middle; hit-stop 70 ms. The old forge flashed
+//   +683     it PLUNGES (inQuad, a one-frame trail of light lines over it) — bladeFly
+//   ≈ +760   IMPACT (mark `bond`): its point in the body's middle; hit-stop 70 ms. The old forge flashed
 //            the WHOLE body white then gold; v3 keeps EF-3 (the body lights only where struck) and
 //            carries the flash with the effect (fix round 2): the blade itself goes WHITE-HOT through
 //            the hit-stop, gold4 for two frames after; a crisp star bursts round the blade's entry
@@ -39,16 +39,20 @@
 //            guard's edge where its slam would reach the guard (numberSpot), the badge rolls; the floor
 //            rings (≥ the old 62 px) and 26 gold sparks; v3 art in attack position plays `victory` to
 //            its peak and back (no new frames) — bladeBond (duck 0.45)
-//   +920     the blade SINKS 20 / 10 px into the body (cut at the stab line), its planes, then down the
+//   +stab    the blade SINKS 20 / 10 px into the body (cut at the stab line), its planes, then down the
 //            gold ramp to light, in a stepped column of light that never stands above the sword's top
-//            row (fix round 2: on a tall body it stood over the pommel like a pole)
-//   +1150    the persistent aura takes over (auras-v3 equipAuraV3 { bond }): the small sword at the
-//            monster's back with one frame of a white rim, the waist ring closing round it
-//   +1283    the input comes back (measured at 1×, equip at 517: ready 1800 ms in spBlade / Def / P2,
-//            1733 for the set card, 1850–1867 where the v3 pose plays — +450…+483 over the old v3)
-// BREAK (bladeBreakBeat: the blade's loss reaches the monster — flow/stats.ts's v3 statChange, or this
-// file's 'destroyed' hook; fix round 2: the old break turned the whole holder gold for ~300 ms, v3 answers
-// with the big blade itself, never a tint), +ms from the beat:
+//            row (fix round 2: on a tall body it stood over the pommel like a pole); the persistent aura
+//            (auras-v3 equipAuraV3 { bond }) is made at the stab and shows itself once the sink is done
+//            (revealIn): the small sword at the monster's back with one frame of a white rim, the waist
+//            ring closing round it. None of this is waited for (fix round 1, A5A-C1-06):
+//   stab+130 the input comes back (FORGE.tail; measured at 1×: spBlade / Def / P2 / Ace 1450 ms, the set
+//            card 1383 ms — were 1.72–1.85 s)
+// BREAK (bladeBreakBeat: the blade's loss reaches the monster — fix round 1, A5A-C1-03: as soon as the
+// equip card's tile cracks under the tendril (auras-v3 EQUIP_HOOKS.onCardCrack, the aura sees its tile
+// jolt), the −700 on the crack frame and the card's flight in parallel; flow/stats.ts's v3 statChange then
+// only settles the badge (bladeBrokeEarly) — else from the statChange or this file's 'destroyed' hook;
+// fix round 2: the old break turned the whole holder gold for ~300 ms, v3 answers with the big blade
+// itself, never a tint), +ms from the beat:
 //   +0       the forged blade the forge sank into the body TEARS OUT of it white-hot (cut at the body's
 //            middle: it slides out of the wound, sparks spraying off it) and rises to the forge's hover
 //            over the head (83 ms, white → gold4 → its planes) — bladeForge, lower ("shiing")
@@ -77,9 +81,9 @@ import { wait } from '../../vfx/core';
 import { E, Raster, freeze, lerp, onFrame, qbez, run, spriteBox } from '../../vfx/setpieces';
 import { Sparks as PxSparks } from '../../vfx/combat';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
-import { BREAK_CRACK_FRAMES, equipAuraV3, ringPixels } from '../../duel/auras-v3';
+import { BREAK_CRACK_FRAMES, EQUIP_HOOKS, equipAuraV3, ringPixels } from '../../duel/auras-v3';
 import { fx, type CinematicContext } from '../api';
-import { fxCount, fxRng, motifImage, rimClimb, rimFlash, setMotif, silhouetteOf } from '../_v3/spellfx';
+import { fxCount, fxRng, motifImage, numberUnderBar, rimClimb, rimFlash, setMotif, silhouetteOf } from '../_v3/spellfx';
 import { contactFlash } from '../_v3/flash';
 import { panAt, play as playV3 } from '../_v3/sound';
 import { impactNumber } from '../_v3/number';
@@ -115,14 +119,20 @@ export const FORGE = {
   drawStep: 16,
   /** the cooling frames (gold4) before the planes show (two frames, the old 34 ms) */
   cool: 33,
-  spin: 210,
-  hang: 60,
+  /** fix round 1 (C1-06): the blade's spin and hang over the target together ≤ 200 ms (were 210 + 60) */
+  spin: 150,
+  hang: 50,
   plunge: 70,
   /** the hit-stop of the stab (EF-5: a spell 60–100 ms) */
   stop: 70,
   sink: 230,
-  /** after the sink: the aura's bond ring closes before the input comes back */
+  /** after the sink: the aura's bond ring closes before the input comes back (not waited for: C1-06) */
   settle: 100,
+  /**
+   * fix round 1 (C1-06): the input comes back this long after the stab (its hit-stop included); the sink,
+   * the column of light, the aura's bond and a v3 body's victory pose play on by themselves
+   */
+  tail: 130,
 } as const;
 export const DRAW_STEPS = 4;
 const RISE_PX = 8;
@@ -834,7 +844,9 @@ export async function bladeEquipV3(ctx: EquipCtx): Promise<void> {
       // off the guard's edge where the slam reaches the guard's rows, else off the blade's)
       const { up, delta } = statDelta(st);
       const n = numberSpot({ x: L.x, swordTop: top, headY: u.worldPoint('top').y, side: u.player === 0 ? 1 : -1, travel: SINK_PX[L.size], geo });
-      if (delta > 0) bg(impactNumber(sc, n.x, n.y, delta, { kind: up ? 'heal' : 'damage' }));
+      // (never up into the phase bar: P2's back-row Kristal Ejder's head is near the screen's top — fix round 2)
+      const nb = numberUnderBar(n.y);
+      if (delta > 0) bg(impactNumber(sc, n.x, nb.y, delta, { kind: up ? 'heal' : 'damage', rise: nb.rise }));
       void u.setStats(st.atk, st.def, true);
     }
   } else if (st) void u.setStats(st.atk, st.def, false);
@@ -848,14 +860,18 @@ export async function bladeEquipV3(ctx: EquipCtx): Promise<void> {
   }
   await freeze(sc, FORGE.stop);
 
+  // ---- the persistent aura exists from the stab on (the field's state has it: a sync, a break or an attack
+  // right after the input comes back all find it) but shows nothing until the blade has sunk (revealIn)
+  if (!u.retired && target.active) u.setAura('equip', equipAuraV3(sc, u, { bond: true, revealIn: FORGE.sink, cardUid: ev.spellUid }));
   // ---- the blade sinks into the body (cut at the stab line) and turns to light in a stepped column:
-  // gold4 for SINK_COOL_FRAMES (the white-hot flash cooling), its planes, then down the ramp to light
+  // gold4 for SINK_COOL_FRAMES (the white-hot flash cooling), its planes, then down the ramp to light.
+  // Fix round 1 (C1-06): it plays on by itself — the input comes back FORGE.tail after the stab
   const cutRow = tip.y;
   const sinkPx = SINK_PX[L.size];
   const column = new Raster(sc, L.x - 4, Math.round(b.top) - 30, 9, Math.max(8, Math.round(u.home.y - b.top) + 28), target.depth + 0.6);
   bg(lightBeam(sc, { x: L.x, y: b.top - 30 }, { x: L.x, y: u.home.y - 2 }, PAL.gold4, 260, { width: 12, depth: target.depth - 0.5, intensity: 0.8 }).done);
   let sunk = 0;
-  await run(sc, FORGE.sink, (t, _el, dt) => {
+  const sinking = run(sc, FORGE.sink, (t, _el, dt) => {
     if (dt > 0) sunk++;
     top = stabTop + Math.round(t * sinkPx);
     const look = sunk < SINK_COOL_FRAMES ? 'cool' : sinkLook(t);
@@ -872,17 +888,16 @@ export async function bladeEquipV3(ctx: EquipCtx): Promise<void> {
     for (let y = Math.max(column.y, top); y < column.y + column.h; y++)
       for (let x = -hw; x <= hw; x++) column.px(L.x + x, y, Math.abs(x) === hw && hw > 0 ? PAL.gold2 : k === 0 && Math.abs(x) <= 1 ? PAL.white : k <= 1 ? PAL.gold4 : PAL.gold3);
     column.end();
+  }).then(() => {
+    column.destroy();
+    sword.destroy();
+    sparks.release();
+    stopHalo();
+    haloGone();
   });
-  column.destroy();
-  sword.destroy();
-  sparks.release();
-  stopHalo();
-  haloGone();
-
-  // ---- the persistent aura takes over: the small sword at the back, the waist ring closing
-  if (u.retired || !target.active) return;
-  u.setAura('equip', equipAuraV3(sc, u, { bond: true }));
-  await Promise.all([pose, wait(sc, FORGE.settle)]);
+  bg(sinking);
+  bg(pose);
+  await wait(sc, Math.max(0, FORGE.tail - FORGE.stop));
 }
 
 // ================================================================ the break
@@ -909,7 +924,44 @@ export function bladeLost(state: { players: readonly { spellTraps: readonly ({ e
  * then drains down the body's edge. Resolves on the shatter's frame (the rest goes on by itself).
  */
 export async function bladeBreakBeat(ctx: AnyCtx, e: StatEv, u: MonsterUnit): Promise<void> {
-  const sc = ctx.scene;
+  return breakBeat(ctx.scene, e, u);
+}
+
+/** The holders whose blade is breaking right now (one break per blade: the card's crack or the statChange). */
+const breaking = new WeakSet<MonsterUnit>();
+/** The holders whose blade broke on its card's crack, with the stats the beat rolled to (C1-03). */
+const brokeOnCrack = new WeakMap<MonsterUnit, { atk: number; def: number }>();
+/** Ejder Kılıcı's bonus (cards.ts 'equipAtk700'; engine/query.ts): what the break takes back. */
+export const BLADE_BONUS = 700;
+
+/**
+ * Fix round 1 (C1-03): the blade's card cracks on its tile (the aura saw its first frame, auras-v3
+ * EQUIP_HOOKS) while its holder still stands — the break beat starts NOW, the "−700" on its crack frame,
+ * while the card's own flight runs in parallel; the holder's statChange (played after the card's flight
+ * by the destroying effect) then only settles the badge (bladeBrokeEarly).
+ */
+EQUIP_HOOKS.onCardCrack = (scene: Phaser.Scene, u: MonsterUnit): void => {
+  if (breaking.has(u) || u.retired || !u.sprite.active || !u.sprite.visible || !u.hasAura('equip')) return;
+  const s = u.shownStats;
+  const e: StatEv = { type: 'statChange', uid: u.uid, prevAtk: s.atk, prevDef: s.def, atk: Math.max(0, s.atk - BLADE_BONUS), def: s.def };
+  brokeOnCrack.set(u, { atk: e.atk, def: e.def });
+  void breakBeat(scene, e, u).catch((err) => console.error('[blade] early break', err));
+};
+
+/**
+ * Whether this holder's blade already broke on its card's crack (C1-03) — then its statChange shows no
+ * second number: the badge only settles on the event's values (no roll when the beat already rolled there).
+ * Consumes the mark.
+ */
+export function bladeBrokeEarly(u: MonsterUnit): boolean {
+  if (!brokeOnCrack.has(u)) return false;
+  brokeOnCrack.delete(u);
+  return true;
+}
+
+async function breakBeat(sc: Phaser.Scene, e: StatEv, u: MonsterUnit): Promise<void> {
+  if (breaking.has(u)) return;
+  breaking.add(u);
   const target = u.sprite;
   const L = forgeLayout(spriteBox(sc, target));
   const geo = forgeSwordGeom(L.size);
@@ -946,23 +998,25 @@ export async function bladeBreakBeat(ctx: AnyCtx, e: StatEv, u: MonsterUnit): Pr
     await frames(sc, 1);
   }
   sword.setX(L.x);
-  // ---- the CRACK (mark `break`): both swords crack white on this frame (the aura's destroy draws its
-  // own crack now and bursts after BREAK_CRACK_FRAMES); the single number shares it
-  playV3('bladeBreak', { volume: 0.9, pan: panAt(L.x) });
+  // ---- the CRACK: both swords crack white for BREAK_CRACK_FRAMES (the aura's destroy draws its own crack
+  // now and bursts with this one); the gold leaves the body: its 1-px edge white through the crack, down the
+  // gold ramp as the blade bursts, then the gold drains down it from the head
   setMotif(sword, ...forgeSwordKey({ size: L.size, crack: true }));
   u.setAura('equip', null);
+  bg(rimFlash(sc, target, { ramp: BREAK_RIM, hold: BREAK_CRACK_FRAMES }).then(() => (target.active && !u.retired ? rimClimb(sc, target, { ramp: [PAL.gold2, PAL.gold3, PAL.gold4], stepMs: 60, holdMs: 160, fadeMs: 180, from: 'head' }) : undefined)));
+  await frames(sc, BREAK_CRACK_FRAMES);
+  // ---- the SHATTER (mark `break`; fix round 2, A5A-C2-07: the sound and the single number come on the frame
+  // the sword visibly bursts, not on its crack 2–4 frames before): the pieces burst white and fall; star
+  // sparks leave the blade's middle; the burst's light on the floor; the badge rolls back
+  playV3('bladeBreak', { volume: 0.9, pan: panAt(L.x) });
   const { up, delta } = statDelta(e);
   if (delta > 0) {
     const n = numberSpot({ x: L.x, swordTop: top, headY: u.worldPoint('top').y, side: u.player === 0 ? 1 : -1, geo });
-    bg(impactNumber(sc, n.x, n.y, delta, { kind: up ? 'heal' : 'damage' }));
+    const nb = numberUnderBar(n.y);
+    bg(impactNumber(sc, n.x, nb.y, delta, { kind: up ? 'heal' : 'damage', rise: nb.rise }));
   }
   void u.setStats(e.atk, e.def, true);
-  // the gold leaves the body: its 1-px edge white through the crack, down the gold ramp as the blade
-  // bursts, then the gold drains down it from the head; the burst's light on the floor
-  bg(rimFlash(sc, target, { ramp: BREAK_RIM, hold: BREAK_CRACK_FRAMES }).then(() => (target.active && !u.retired ? rimClimb(sc, target, { ramp: [PAL.gold2, PAL.gold3, PAL.gold4], stepMs: 60, holdMs: 160, fadeMs: 180, from: 'head' }) : undefined)));
   void lightFlash(sc, L.x, top + L.tipRow, PAL.gold4, fs(40), 420, { floorY: u.home.y, intensity: 0.9 });
-  await frames(sc, BREAK_CRACK_FRAMES);
-  // ---- the SHATTER: the pieces burst white and fall; star sparks leave the blade's middle
   sword.destroy();
   bg(bladeShatter(sc, L.size, { x: L.x - geo.cx, y: top }, { cx: L.x, floor: Math.round(u.home.y) + 2, depth: DEPTH.FX + 2, seed: u.uid }));
   const mid = top + Math.round(geo.h * 0.55);
@@ -974,6 +1028,7 @@ export async function bladeBreakBeat(ctx: AnyCtx, e: StatEv, u: MonsterUnit): Pr
   }
   sparks.release();
   await frames(sc, 1);
+  breaking.delete(u);
 }
 
 /** The equip leaves the field, the v3 look: its card cracks and leaves; a standing holder's blade breaks. */
@@ -990,7 +1045,19 @@ export async function bladeDestroyedV3(ctx: DestroyCtx): Promise<void> {
   const u = holder !== null && holder !== undefined ? ctx.unit(holder) : null;
   const jobs: Promise<unknown>[] = [];
   let broke = false;
-  if (u && !u.retired && u.hasAura('equip')) {
+  if (u && !u.retired && (brokeOnCrack.has(u) || breaking.has(u))) {
+    // its blade broke on the card's crack already (C1-03): its statChange only settles the badge
+    const ci = ctx.findType('statChange', (e) => e.uid === holder, { until: (e) => e.type !== 'statChange' && e.type !== 'toGraveyard' && e.type !== 'destroy' });
+    const se = evAt(ctx, ci, 'statChange');
+    if (se && ci >= 0) {
+      ctx.consumeAt(ci);
+      brokeOnCrack.delete(u);
+      // (the beat's roll is still running toward these values: a second set would restart it)
+      const t = u.shownStats;
+      if (t.atk !== se.atk || t.def !== se.def) jobs.push(u.setStats(se.atk, se.def, true));
+    }
+    broke = true;
+  } else if (u && !u.retired && u.hasAura('equip')) {
     // a holder still standing: its ATK roll-back is this beat (the sword breaks, one number)
     const ci = ctx.findType('statChange', (e) => e.uid === holder, { until: (e) => e.type !== 'statChange' && e.type !== 'toGraveyard' && e.type !== 'destroy' });
     const se = evAt(ctx, ci, 'statChange');

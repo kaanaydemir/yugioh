@@ -61,7 +61,8 @@ export const CURTAIN = Object.freeze({
   gapHand: 8,
   rise: 6,
   riseMs: 120,
-  stampFrom: 67,
+  /** Line 1 stamps from the plate's first frame, line 2 and the tap icon are there with it (A6B-8). */
+  stampFrom: 0,
   lettersPerFrame: 2,
   /** The hand's wave: ms between two cards (F7: 30). */
   waveMs: 30,
@@ -157,6 +158,13 @@ export async function curtainV3(scene: Phaser.Scene, player: PlayerId, opts: Cur
 
   // ---- 1. the hand turns face down (the previous player's cards are never seen again)
   if (hand && !hand.isFaceDown) await hand.waveFaceDown(true, wave);
+  // already face down (covered after a trap answer, A6B-2): the hand-over waits a frame, so the curtain's
+  // sound has its frame alone (A6B-7: one sound a frame — the hand-over slides cards)
+  else if (hand && scene.time)
+    await new Promise<void>((r) => {
+      scene.time.delayedCall(FRAME - 1, () => r());
+      scene.events.once('shutdown', () => r());
+    });
   if (!alive) return;
 
   // ---- 2. the hand-over runs behind the plate (the hand stays face down)
@@ -188,13 +196,8 @@ export async function curtainV3(scene: Phaser.Scene, player: PlayerId, opts: Cur
   if (tap) p.root.add(tap);
   const glyphs = line1.reduce((n, t) => n + t.glyphCount, 0);
   let el = 0;
-  let shown = false;
-  const showParts = (on: boolean) => {
-    line2.setVisible(on);
-    tap?.setVisible(on);
-    for (const t of line1) t.setVisible(on);
-  };
-  showParts(false);
+  let nodeOn = false;
+  let tapStep = 9;
   tick = (_t: number, dt: number) => {
     const d = dt * scene.tweens.timeScale;
     el += d;
@@ -202,23 +205,28 @@ export async function curtainV3(scene: Phaser.Scene, player: PlayerId, opts: Cur
     const step = appearStep(el);
     p.setStep(step);
     p.root.y = curtainY(R.y, el);
-    if (step === 0 && !shown) {
-      shown = true;
-      showParts(true);
+    if (step === 0 && !nodeOn) {
+      nodeOn = true;
       p.setNode(true);
     }
-    if (!shown) return;
-    // line 1 stamps two letters a frame; line 2 breathes in palette steps, the icon taps
+    // A6B-8: the words come with the plate — line 1 stamps two letters a frame from its first frame, line 2
+    // and the tap icon are there from it too, two tones down, then one, then at rest (line 2 then breathes
+    // mist ↔ white in palette steps, the icon taps)
     let left = REDUCED_MOTION ? glyphs : Math.max(0, Math.floor((el - CURTAIN.stampFrom) / FRAME + 1e-6) + 1) * CURTAIN.lettersPerFrame;
     if (!REDUCED_MOTION && el < CURTAIN.stampFrom) left = 0;
     for (const t of line1) {
       t.reveal(Math.max(0, left));
       left -= t.glyphCount;
     }
-    if (!REDUCED_MOTION) {
-      line2.setColor(Math.floor(el / CURTAIN.blinkMs) % 2 === 0 ? PAL.mist : PAL.white);
-      if (tap) tap.y = CURTAIN.line2Cap - 2 + (Math.floor(el / CURTAIN.tapMs) % 2);
+    if (step < 0) line2.setColor(step <= -2 ? PAL.night4 : PAL.steel);
+    else if (!REDUCED_MOTION) line2.setColor(Math.floor(el / CURTAIN.blinkMs) % 2 === 0 ? PAL.mist : PAL.white);
+    else line2.setColor(PAL.mist);
+    if (tap && step !== tapStep) {
+      tapStep = step;
+      const k = iconTexture(scene, ICON.pointer, iconTones(style, 1 + step));
+      if (k) tap.setTexture(k);
     }
+    if (tap && !REDUCED_MOTION) tap.y = CURTAIN.line2Cap - 2 + (Math.floor(el / CURTAIN.tapMs) % 2);
   };
   scene.events.on('update', tick);
   tick(0, 0);

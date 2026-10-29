@@ -25,10 +25,8 @@
 
 import type Phaser from 'phaser';
 import { PAL } from '../../art/palette';
-import { sfx } from '../../audio/sfx';
 import { DEPTH, duelistXY, panelRect, type XY } from '../../view/layout';
 import { V3_A6_B } from '../../view/v3flags';
-import { ui3Ready } from '../../view/v3/hudV3';
 import { PalText } from '../../view/v3/hudSkin';
 import { textMetrics, type TextSize } from '../../ui/text';
 import { REDUCED_MOTION } from '../../view/v3/motion';
@@ -127,8 +125,8 @@ export function gainNumberV3(sc: Phaser.Scene, cx: number, cy: number, amount: n
 export async function presentHealV3(ctx: AnyCtx, ev: EvOf<'lpGain'>, o: { at?: XY } = {}): Promise<void> {
   const sc = ctx.scene;
   const at = o.at ? { x: Math.round(o.at.x), y: Math.round(o.at.y) } : healNumberXY(ctx, ev.player);
-  // today's chime stands in until lane A6-A writes ui3LpGain (the counter plays it, or 'lpUp')
-  if (!ui3Ready('ui3LpGain')) sfx.play('heal', { volume: 0.7 });
+  // the gain's sound is the counter's (ui3LpGain, today's 'lpUp' standing in): A6B-7 — the old 'heal' chime
+  // layer sounded on that same frame (one sound a frame)
   gainNumberV3(sc, at.x, at.y, ev.amount, { depth: DEPTH.HUD + 20, rise: ev.player === 0 ? HEAL_V3.riseP1 : HEAL_V3.riseP2 });
   const d = duelistXY(ev.player);
   void lightFlash(sc, d.x, d.y, PAL.leaf3, fs(HEAL_V3.lightR), HEAL_V3.lightMs, { intensity: HEAL_V3.lightLevel });

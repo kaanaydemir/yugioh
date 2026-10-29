@@ -33,7 +33,7 @@
 import type Phaser from 'phaser';
 import type { CardId } from '../../data/cards';
 import { cardDef } from '../../data/cards';
-import { PAL, PLAYER_RAMP } from '../../art/palette';
+import { PAL, PLAYER_RAMP, RAMPS } from '../../art/palette';
 import { PixelCanvas, type Pt } from '../../art/pixel';
 import type { DuelViews } from '../../duel/types';
 import type { PlayerId, Uid } from '../../engine/types';
@@ -64,6 +64,12 @@ export const TRAP_MARK = Object.freeze({
   holdMs: 300,
   /** One lap of the running node. */
   lapMs: 720,
+  /**
+   * ui3Decision after mark() (A6B-7): ≥ 34 ms past the declare's lock (today's fallback lockOn has a
+   * 30-ms gap and the lock sounds on the decision's first frame); three frames, minus a millisecond so
+   * the delayed call fires on that frame and not the next.
+   */
+  cueMs: 3 * FRAME - 1,
   /** Settle: two frames per palette step (mag2 → mag1 → mag0, then gone). */
   settleStepMs: 2 * FRAME,
   /** The rim's depth: on the floor plane, over the lying card, under every unit (UNIT + y). */
@@ -218,8 +224,13 @@ export class TrapMarksV3 {
     return this.started;
   }
 
-  /** Mark the cards now (idempotent): rims trace in, nodes run, the pads light; ui3Decision. */
-  mark(): void {
+  /**
+   * Mark the cards now (idempotent): rims trace in, nodes run, the pads light; ui3Decision three frames
+   * after the first rim, half-way round its trace (A6B-7: the attack's declare locks on the decision's
+   * first frame, and today's fallback lockOn keeps a 30-ms gap — one frame later it was dropped; 49 ms
+   * clears it). `sound` false: the caller sounds the moment itself (the trap question's own ui3Decision).
+   */
+  mark(sound = true): void {
     if (!this.live || this.started) return;
     this.started = true;
     this.el = 0;
@@ -233,7 +244,13 @@ export class TrapMarksV3 {
       const node = sc.add.graphics().setDepth(TRAP_MARK.depth + 0.01);
       this.marks.push({ tile, index: this.zoneOf.get(tile) ?? 0, path, outerPts, rim, node, pool: null, lit: false, drawn: -1, tone: null, outer: null });
     }
-    ui3Sfx('ui3Decision', { volume: 0.5 }, 'lockOn', { volume: 0.45, pitch: 0.7 });
+    if (sound) {
+      const play = () => {
+        if (this.live) ui3Sfx('ui3Decision', { volume: 0.5 }, 'lockOn', { volume: 0.45, pitch: 0.7 });
+      };
+      if (sc.time) sc.time.delayedCall(TRAP_MARK.cueMs, play);
+      else play();
+    }
     sc.events.on('update', this.onUpdate);
     this.tick(0);
   }
@@ -426,7 +443,8 @@ export const TRAP_Q = Object.freeze({
   slideMs: 120,
   settleAt: 150,
   settledMs: 200,
-  stampFrom: 67,
+  /** The question stamps from the plate's first frame (A6B-8: the plate never shows without its words). */
+  stampFrom: 0,
   lettersPerFrame: 2,
   /** The cards turn face up: card i at flipFrom + i × flipStagger, each in flipMs (≤ 300 ms in all for 3). */
   flipFrom: 40,
@@ -516,7 +534,7 @@ export function trapPromptV3(scene: Phaser.Scene, player: PlayerId, options: rea
   plate.takeInput(); // the board under the plate is not hovered through it (HumanInput skips covered points)
   // the board: a person is asked — the defender's face-down cards are marked now if the decision
   // did not already (the S-15 fast path of a summon window)
-  openTrapMarks(scene)?.mark();
+  openTrapMarks(scene)?.mark(false); // (silent: the question's ui3Decision below says it — A6B-7)
   ui3Sfx('ui3Decision', { volume: 0.6 }, 'yourMove');
 
   // ---- header: the trap rune, the question (stamped), the asked player
@@ -524,18 +542,18 @@ export function trapPromptV3(scene: Phaser.Scene, player: PlayerId, options: rea
   let tx = TRAP_Q.padX;
   let icon: Phaser.GameObjects.Image | null = null;
   if (iconKey) {
-    icon = scene.add.image(TRAP_Q.padX, 5, iconKey).setOrigin(0, 0).setVisible(false);
+    icon = scene.add.image(TRAP_Q.padX, 5, iconKey).setOrigin(0, 0);
     root.add(icon);
     tx += icon.width + 3;
   }
   const question = new PalText(scene, tx, capYV3('md', TRAP_Q.headCap), 'Tuzak açılsın mı?', { size: 'md', color: PAL.white });
   root.add(question.root);
-  question.reveal(0);
+  // its first letters come with the plate's first frame (A6B-8)
+  question.reveal(REDUCED_MOTION ? question.glyphCount : TRAP_Q.lettersPerFrame);
   const ownerTone = PLAYER_RAMP[player][3];
   const ownerText = `OYUNCU ${player + 1}`;
   const owner = new PalText(scene, w - TRAP_Q.padX - textWidthV3(ownerText, 'sm'), capYV3('sm', TRAP_Q.ownerCap), ownerText, { size: 'sm', color: ownerTone });
   root.add(owner.root);
-  owner.setVisible(false);
 
   // ---- the cards (face down, then turned), each in its rim
   const cards: PromptCard[] = options.map((opt, i) => {
@@ -554,6 +572,9 @@ export function trapPromptV3(scene: Phaser.Scene, player: PlayerId, options: rea
   const bx0 = Math.round(w / 2 - TRAP_Q.btnW - TRAP_Q.btnGap / 2);
   const openBtn = new Button(scene, bx0, TRAP_Q.btnY, { w: TRAP_Q.btnW, h: TRAP_Q.btnH, label: 'AÇ', icon: ICON.trap, style: 'trap' });
   const passBtn = new Button(scene, bx0 + TRAP_Q.btnW + TRAP_Q.btnGap, TRAP_Q.btnY, { w: TRAP_Q.btnW, h: TRAP_Q.btnH, label: 'GEÇ', style: 'neutral' });
+  // the plate voices the answer itself (ui3Confirm / ui3Back): the buttons' own click sound stays off (A6B-7)
+  openBtn.fireSound = false;
+  passBtn.fireSound = false;
   root.add([openBtn, passBtn]);
   openBtn.appearStep(0);
   passBtn.appearStep(0);
@@ -568,25 +589,35 @@ export function trapPromptV3(scene: Phaser.Scene, player: PlayerId, options: rea
 
   let selected = n === 1 ? 0 : -1;
   let hovered = -1;
-  let shown = false; // step 0 reached: the cards' rims and the info line are up
+  // the plate's palette step (−2, −1, 0): the rims, the header and the info line step with it (A6B-8:
+  // every part shows from the plate's first frame to its last, never an empty plate or button)
+  let plateStep = -9;
   const rimNode = (gold: boolean): TrimNode | null =>
     REDUCED_MOTION ? null : gold ? { head: PAL.white, tail: [PAL.gold4, PAL.gold3], lapMs: 900, restMs: 300 } : { head: PAL.white, tail: [PAL.mag4, PAL.mag3], lapMs: 1100, restMs: 500 };
+  const dimBy = () => Math.max(0, -plateStep);
   const paintRims = () => {
+    const d = dimBy();
     cards.forEach((c, i) => {
-      c.rim.setVisible(shown);
+      c.rim.setVisible(true);
       // (the trap cards wear a magenta frame of their own: an unpicked card's rim is the neutral
       // steel / mist trim, the hovered one magenta, the picked one gold)
-      if (i === selected) c.rim.set(styleTrim('gold', 1));
-      else c.rim.set(i === hovered ? styleTrim('trap', 2) : styleTrim('neutral', 0));
+      if (i === selected) c.rim.set(styleTrim('gold', 1 - d));
+      else c.rim.set(i === hovered ? styleTrim('trap', 2 - d) : styleTrim('neutral', -d));
     });
+  };
+  let infoId: CardId | null = null;
+  const toneInfo = () => {
+    const d = dimBy();
+    // the card's name mag4 → mag3 → mag2, "Bir kart seç" mist → steel → night4 as the plate steps down
+    info.setColor(infoId ? RAMPS.mag[Math.max(0, 4 - d)] : [PAL.mist, PAL.steel, PAL.night4][Math.min(2, d)]);
   };
   const setInfo = (i: number) => {
     const id = i >= 0 ? cards[i].opt.cardId : null;
+    infoId = id;
     const text = id ? cardDef(id).name : 'Bir kart seç';
     info.setText(text);
-    info.setColor(id ? PAL.mag4 : PAL.mist);
+    toneInfo();
     info.setPosition(Math.round(w / 2 - info.width / 2), capYV3('sm', TRAP_Q.infoCap));
-    info.setVisible(shown);
   };
   const showFocus = (i: number) => {
     setInfo(i);
@@ -635,18 +666,23 @@ export function trapPromptV3(scene: Phaser.Scene, player: PlayerId, options: rea
     };
   });
   const applyStep = (step: number) => {
-    plate.setStep(step);
-    const b: 0 | 1 | 2 = step <= -2 ? 0 : step === -1 ? 1 : 2;
+    const st = Math.max(-2, Math.min(0, Math.round(step)));
+    if (st === plateStep) return;
+    plateStep = st;
+    plate.setStep(st);
+    const b: 0 | 1 | 2 = st <= -2 ? 0 : st === -1 ? 1 : 2;
     openBtn.appearStep(b);
     passBtn.appearStep(b);
-    const on = step >= 0;
-    icon?.setVisible(on);
-    owner.setVisible(on);
-    if (on !== shown) {
-      shown = on;
-      paintRims();
-      info.setVisible(on);
+    // the header, the rims and the info line step with the plate (two tones down, one, rest)
+    const d = -st;
+    if (icon) {
+      const k = iconTexture(scene, ICON.trap, iconTones('trap', 1 - d));
+      if (k) icon.setTexture(k);
     }
+    owner.setColor(PLAYER_RAMP[player][3 - d]);
+    question.setColor([PAL.white, PAL.mist, PAL.steel][d]);
+    paintRims();
+    toneInfo();
   };
   const stampTotal = question.glyphCount;
   const tick = (_t: number, dt: number) => {

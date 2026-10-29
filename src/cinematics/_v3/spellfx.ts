@@ -55,7 +55,7 @@ import {
   type SwordAngle,
   type SwordOpts,
 } from '../../art/spellmotifs-v3';
-import { DEPTH, type XY } from '../../view/layout';
+import { DEPTH, UI, type XY } from '../../view/layout';
 import { REDUCED_MOTION } from '../../view/v3/motion';
 import { Raster, onFrame, run } from '../../vfx/setpieces';
 import { Sparks as PxSparks } from '../../vfx/combat';
@@ -75,6 +75,20 @@ function seedAt(p: XY, salt = 0): number {
 }
 
 /** Particle budget: halved under reduced motion (A5 §3.0), never below 1 when n ≥ 1. */
+/**
+ * A v3 impact number under the phase bar (fix round 2, A5-A low: a "+700" over P2's back-row Kristal Ejder
+ * floated up into ÇEKME · ANA · SAVAŞ): impactNumber jumps 7 px and drifts `rise` (default 18) px up from its
+ * spawn, its glyphs reach 7 px above their centre. Returns the spawn y (never so high that even a 4-px rise
+ * reaches the bar) and the rise that keeps its top ≥ 2 px under the bar (≤ 18, the default).
+ */
+export const NUMBER_JUMP_PX = 7;
+export function numberUnderBar(y: number): { y: number; rise: number } {
+  const bar = UI.phaseBar.y + UI.phaseBar.h;
+  const top = bar + 2 + NUMBER_JUMP_PX + 7;
+  const yy = Math.max(Math.round(y), top + 4);
+  return { y: yy, rise: Math.max(4, Math.min(18, yy - top)) };
+}
+
 export function fxCount(n: number, reduced: boolean = REDUCED_MOTION): number {
   if (n <= 0) return 0;
   return reduced ? Math.max(1, Math.ceil(n / 2)) : n;
@@ -99,6 +113,33 @@ export function jitter(scene: Phaser.Scene, obj: { x: number; y: number; setPosi
     if (dt > 0) n++;
     const off = t >= 1 ? 0 : [1, 0, -1, 0][n % 4];
     obj.setPosition(x0 + off, y0);
+  });
+}
+
+/**
+ * A card on its tile is being cracked open (fix round 1 of lane A5-A): the effect that destroys it jolts its
+ * tile a whole pixel off its home (Uçurum Büyücüsü's crack, the default v3 destroy) — or the tile is already
+ * gone. Pure reading of the tile's state, no side effect.
+ */
+export function tileShaken(tile: { active: boolean; x: number; home: XY } | null): boolean {
+  return !tile || !tile.active || Math.round(tile.x) !== Math.round(tile.home.x);
+}
+
+/**
+ * Resolves on the frame the card on `tile` cracks (tileShaken) — the cause a stat change or a cooling waits
+ * for before it shows (A5 §3.2 Serinleme, §3.1 Kırılma: the effect after its cause) — or after `capMs` of
+ * scene time at the latest (nothing ever waits for a crack that never comes).
+ */
+export function untilCardCracks(scene: Phaser.Scene, tile: { active: boolean; x: number; home: XY } | null, capMs: number): Promise<void> {
+  if (tileShaken(tile)) return Promise.resolve();
+  return new Promise((resolve) => {
+    onFrame(scene, (_dt, el) => {
+      if (tileShaken(tile) || el >= capMs) {
+        resolve();
+        return false;
+      }
+      return true;
+    });
   });
 }
 
@@ -324,6 +365,12 @@ export interface DropArcOpts {
    * from the top left — white top / left / centre, water4 right / bottom: a drop that reads at 1×).
    */
   drop?: 'square' | 'gem';
+  /**
+   * Lava only: 'small' (default, as before: a fire4 / fire3 pair, a 1-px fire2 trail) or 'big' (Volkan's
+   * eruption gobs, fix round 1: a 2×2 gob lit from the top left — fire4 / fire3 over fire3 / fire2 — with a
+   * 2-px trail, landing as a 2-px ember that cools by palette steps).
+   */
+  gob?: 'small' | 'big';
 }
 
 /**
@@ -356,6 +403,7 @@ export function dropArcs(scene: Phaser.Scene, o: DropArcOpts): Promise<void> {
   const y1 = Math.ceil(Math.max(...ys)) + 4;
   const ras = new Raster(scene, x0, top, x1 - x0 + 1, y1 - top + 1, o.depth ?? DEPTH.FX + 3);
   const water = o.kind === 'water';
+  const big = !water && o.gob === 'big';
   const EMBER = [PAL.fire4, PAL.fire3, PAL.fire2, PAL.stone1];
   return frames(scene, (_dt, el) => {
     ras.begin();
@@ -380,6 +428,7 @@ export function dropArcs(scene: Phaser.Scene, o: DropArcOpts): Promise<void> {
         const age = el - d.ember;
         if (!water && age < EMBER.length * 90) {
           ras.px(d.to.x, d.to.y, EMBER[Math.floor(age / 90)]);
+          if (big) ras.px(d.to.x + 1, d.to.y, EMBER[Math.min(EMBER.length - 1, Math.floor(age / 90) + 1)]);
           live = true;
         } else if (water && age < 34) {
           ras.px(d.to.x - 1, d.to.y, PAL.teal4);
@@ -415,6 +464,13 @@ export function dropArcs(scene: Phaser.Scene, o: DropArcOpts): Promise<void> {
           py0 = q.y;
           if (len >= trailN) break;
         }
+      } else if (big && d.prev && (d.prev.x !== x || d.prev.y !== y)) {
+        // the big gob's streak: a solid 3-px tail straight back toward where it was a frame ago
+        // (fire3 next to it, then fire2) — a moving blob, never a dotted line
+        const dx = d.prev.x - x;
+        const dy = d.prev.y - y;
+        const n = Math.max(Math.abs(dx), Math.abs(dy));
+        for (let k = 1; k <= Math.min(3, n); k++) ras.px(x + Math.round((dx * k) / n) + (dx > 0 ? 1 : 0), y + Math.round((dy * k) / n) + (dy > 0 ? 1 : 0), k === 1 ? PAL.fire3 : PAL.fire2);
       } else if (d.prev && (d.prev.x !== x || d.prev.y !== y)) ras.px(d.prev.x, d.prev.y, water ? PAL.teal3 : PAL.fire2);
       if (water && o.drop === 'gem') {
         ras.px(x, y - 1, PAL.white);
@@ -427,6 +483,11 @@ export function dropArcs(scene: Phaser.Scene, o: DropArcOpts): Promise<void> {
         ras.px(x + 1, y, PAL.water4);
         ras.px(x, y + 1, PAL.water4);
         ras.px(x + 1, y + 1, PAL.water4);
+      } else if (big) {
+        ras.px(x, y, PAL.fire4);
+        ras.px(x + 1, y, PAL.fire3);
+        ras.px(x, y + 1, PAL.fire3);
+        ras.px(x + 1, y + 1, PAL.fire2);
       } else {
         ras.px(x, y, PAL.fire4);
         ras.px(x + 1, y, PAL.fire3);

@@ -20,8 +20,9 @@
 // S-15 fast decision, the marks come with the prompt; Enter = AÇ: Yer Yarığı opens); a6DeclineP2 — P2's
 // attack, P1's scripted "Geç" (the marks on P1's side cool down); a6Curtain — hot-seat with the curtain:
 // P1 ends the turn, the hand turns face down, the plate "SIRA: OYUNCU 2", a tap, P2's hand turns up;
-// a6CurtainTrap — the trap question's curtain ("TUZAK SORUSU: OYUNCU 2"), the prompt, GEÇ, and the
-// curtain back to P1. The prompt's cards / buttons are UI targets { trapPrompt: i | 'open' | 'pass' }
+// a6CurtainTrap — the trap question's curtain ("TUZAK SORUSU: OYUNCU 2"), the prompt, GEÇ (the
+// defender's hand turns face down at once and stays down through the attacker's battle), and the curtain
+// back to P1; a6CurtainTrapP2 its mirror. The prompt's cards / buttons are UI targets { trapPrompt: i | 'open' | 'pass' }
 // (src/view/v3/TrapPromptV3.ts; skipped in v1 — the keys answer there too).
 // B5 (F8 / F9): a6Defeat — run with &mode=vsBot: the person (P1) attacks Kristal Ejder with Kor Kurdu at
 // 1000 LP and loses to the computer (the result plate's "KAYBETTİN" / "LP'n sıfırlandı"); the deck-out and
@@ -201,6 +202,18 @@ const PACK: Record<string, Scenario> = {
     // (the waits leave v1's full-screen curtain time to start listening, so the key also runs in v1)
     steps: [
       withCurtain({ type: 'attack', player: 0, attackerZone: 0, targetZone: null }),
+      { ui: 'wait', ms: 1800 },
+      { ui: 'key', key: ' ', ms: 1200 },
+      { ui: 'key', key: 'Escape', ms: 3200 },
+      { ui: 'key', key: ' ', ms: 1500 },
+      { ui: 'key', key: 'Enter' },
+    ],
+  },
+  a6CurtainTrapP2: {
+    desc: "F7, the mirror (A6B-2 privacy check): hot-seat with the curtain — P2 attacks; \"TUZAK SORUSU: OYUNCU 1\", Space; the prompt, Esc = GEÇ (P1's hand turns face down at once, through P2's battle); the curtain back to P2, Space",
+    stage: { phase: 'battle', active: 1, p1: { monsters: ['ember_wolf'], hand: ['tide_golem', 'judgment_bolt'] }, p0: { spellTraps: ['chains_of_light'], hand: ['volt_lizard', 'storm_hawk'] } },
+    steps: [
+      withCurtain({ type: 'attack', player: 1, attackerZone: 0, targetZone: null }),
       { ui: 'wait', ms: 1800 },
       { ui: 'key', key: ' ', ms: 1200 },
       { ui: 'key', key: 'Escape', ms: 3200 },

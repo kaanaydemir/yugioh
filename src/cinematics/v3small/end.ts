@@ -24,13 +24,17 @@
 //            first (a stepped shade on that side only: no full-screen dim); each of its monsters plays its own
 //            death 120 ms apart (a v3 body: its death pose, then it breaks as its material; an old one: its
 //            recoil a beat, then the material break — no hologram glitch); its duelist kneels (defeat)
-//   300–1000 the winner: today's lean; a narrow stepped gold beam drops onto the podium in three frames (5 px:
-//            white core, gold sides), a stepped gold ring runs out on the floor, a gold pool stays on the
-//            podium; the duelist raises a fist (victory); the side's wave (calm board); the winner's monsters
-//            play `victory` (held on its last frame) or roar, 100 ms apart, each with a 2-frame gold contour
-//   900–1500 the result plate (ResultPlate) opens over the top centre, the lines stamp, three pixel
-//            fireworks in the winner's half; ui3Victory (a person beaten by the computer: ui3Defeat) and the
-//            fanfare as today
+//   300–1000 the winner: today's lean; a narrow stepped gold beam drops onto the podium in three frames (7 px:
+//            white core, gold sides) and holds through the plate's stamps (A6B-3), a stepped gold ring runs
+//            out on the floor, a stepped gold pool lights the podium's own floor (gold2 / gold1 / gold0 bands,
+//            the core pulsing a tone while the beam holds; ≈ 400 ms after the beam, then two steps out); the
+//            duelist raises a fist (victory); the side's wave (calm board); the winner's monsters play
+//            `victory` (held on its last frame) or roar, 100 ms apart, each with a 2-frame gold contour
+//   740 (scene; ≈ 900 ms of game time after the gameOver event) the result plate (ResultPlate) opens over
+//            the top centre: line 1 ("KAZANAN: OYUNCU 1") stamps two letters a frame from the opening's last
+//            step and reads by ≈ 1.1 s, line 2 three a frame; three crisp pixel fireworks (2 × 2 cores, rays
+//            to 7 px) 150 ms apart in the winner's half; ui3Victory (a person beaten by the computer:
+//            ui3Defeat) and the fanfare as today
 //   …3100    hold: tiny gold motes rise off the winner's podium; the loser's dead neon trim sputters one
 //            step up for two frames now and then (a dying tube); the handler ends; Prompt.gameOver v3 adds
 //            the button row under the plate; today's unfocus(700) eases the lean back
@@ -83,14 +87,85 @@ export const END_V3_MS = Object.freeze({
   contourFrames: 2,
   /** The deck-out plate starts its hop into the result plate this long before the plate opens. */
   hopLead: 120,
-  plateAt: 900,
+  /**
+   * The result plate opens (A6B-3): scene 740 ms ≈ 900 ms of game time after the gameOver handler starts
+   * (today's slow motion stretches its first beats; measured on flowLethal) — F9: 900–1500.
+   */
+  plateAt: 740,
   /** Victory poses hold their last frame until then (then the calm idle breathes again). */
   releaseAt: 1700,
   gameOver: 3100,
 });
 
-/** The beam's frames (60 fps): drop, hold, out. */
-export const BEAM = Object.freeze({ dropFrames: 3, holdFrames: 16, outFrames: 4, width: 5 });
+/** The beam's frames (60 fps): drop, hold (through the plate's stamps, A6B-3), out. */
+export const BEAM = Object.freeze({ dropFrames: 3, holdFrames: 38, outFrames: 4, width: 7 });
+
+/**
+ * The winner's stepped gold pool on the podium floor (A6B-3, F9 "kürsüde basamaklı altın ışık havuzu"):
+ * the iso ellipse round the duelist's foot (rx × ry), stepping in over `inFrames`, holding while the beam
+ * holds and `holdAfterBeam` frames (≈ 400 ms) after it, then stepping out `outFrames` a level.
+ */
+export const POOL = Object.freeze({ rx: 21, ry: 10, inFrames: 2, holdAfterBeam: 24, outFrames: 3, flickFrames: 6 });
+
+/**
+ * The podium pool at `level` 0–3 (pure): every podium-floor pixel (the podium pads are the platform's
+ * 'border' top — never its neon trim, rim or edge) inside the ellipse takes its band's gold — core
+ * (inner 40 %), middle (to 70 %), rim — `level` steps up from nothing: 3 = gold2 / gold1 / gold0,
+ * 2 = gold1 / gold0, 1 = gold0 at the core; `flick` lifts the core one more tone (the beam's pulse).
+ * Opaque palette pixels on the floor (the stepped light language, no alpha): { x, y } is the patch's
+ * top-left on screen.
+ */
+export function podiumPoolCanvas(player: PlayerId, level: number, flick = false): { x: number; y: number; p: PixelCanvas } {
+  const pod = duelistXY(player);
+  const cx = Math.round(pod.x);
+  const cy = Math.round(pod.y);
+  const { rx, ry } = POOL;
+  const p = new PixelCanvas(2 * rx + 1, 2 * ry + 1);
+  const G = [PAL.gold0, PAL.gold1, PAL.gold2, PAL.gold3];
+  for (let y = -ry; y <= ry; y++)
+    for (let x = -rx; x <= rx; x++) {
+      const d = Math.hypot(x / rx, y / ry);
+      if (d > 1) continue;
+      const t = topAt(cx + x, cy + y);
+      if (!t || t.kind !== 'border') continue;
+      const band = d < 0.4 ? 0 : d < 0.7 ? 1 : 2;
+      let n = Math.round(level) - band;
+      if (n <= 0) continue;
+      if (band === 0 && flick) n++;
+      p.set(x + rx, y + ry, G[Math.min(G.length - 1, n - 1)]);
+    }
+  return { x: cx - rx, y: cy - ry, p };
+}
+
+/** The pool's level and flick `f` frames after the beam lands (null: gone). Pure. */
+export function podiumPoolAt(f: number, reduced: boolean = REDUCED_MOTION): { level: number; flick: boolean } | null {
+  const hold = BEAM.holdFrames + POOL.holdAfterBeam;
+  if (f < 0) return null;
+  if (f >= hold + 2 * POOL.outFrames) return null;
+  if (f >= hold) return { level: f < hold + POOL.outFrames ? 2 : 1, flick: false };
+  if (!reduced && f < POOL.inFrames) return { level: 1 + f, flick: false };
+  const flick = !reduced && f < BEAM.holdFrames && Math.floor(f / POOL.flickFrames) % 2 === 0;
+  return { level: 3, flick };
+}
+
+/** The stepped gold pool on the winner's podium, from the beam's landing (scene clock), until it is out. */
+function podiumPool(sc: Phaser.Scene, player: PlayerId): { destroy(): void } {
+  const o = podiumPoolCanvas(player, 3);
+  const key = (lv: number, fl: boolean) => canvasTexture(sc, `ui3:podpool:${player}:${lv}:${fl ? 1 : 0}`, () => podiumPoolCanvas(player, lv, fl).p);
+  const img = sc.add.image(o.x, o.y, key(REDUCED_MOTION ? 3 : 1, false)).setOrigin(0, 0).setDepth(STEP_DEPTH + 0.03);
+  const total = (BEAM.holdFrames + POOL.holdAfterBeam + 2 * POOL.outFrames) * FRAME;
+  let shown = '';
+  void timeline(sc, total, (ms) => {
+    if (!img.active) return;
+    const a = podiumPoolAt(Math.floor((ms + 0.5) / FRAME));
+    const k = a ? `${a.level}:${a.flick}` : '';
+    if (k === shown) return;
+    shown = k;
+    if (a) img.setTexture(key(a.level, a.flick));
+    img.setVisible(!!a);
+  }).then(() => img.active && img.destroy());
+  return { destroy: () => img.active && img.destroy() };
+}
 
 // ================================================================ deck-out pieces
 
@@ -419,7 +494,9 @@ async function fall(ctx: AnyCtx, u: MonsterUnit): Promise<void> {
     await ctx.wait(140);
   }
   if (!u.sprite.active || !u.sprite.visible) return;
-  await shatter(sc, u.sprite, { monsterId: u.cardId, attribute: u.attribute, material: deathMaterial(u.cardId), floorY: home.y });
+  // no hit-stop (A6B-10): a loser's death at the game over is no blow, and its material's 30–50 ms stop
+  // froze the whole show — the result plate's letters stalled inside the winner's name ("KAZANAN: OY")
+  await shatter(sc, u.sprite, { monsterId: u.cardId, attribute: u.attribute, material: deathMaterial(u.cardId), floorY: home.y, stopMs: 0 });
   u.sprite.setVisible(false);
   u.shadow.setVisible(false);
 }
@@ -458,13 +535,16 @@ async function goldBeam(ctx: AnyCtx, x: number, footY: number, depth: number, on
     }
     const h = f - (BEAM.dropFrames - 1);
     if (h <= BEAM.holdFrames) {
-      // landed: 5 px — a white core, gold4, the outer edges flicker gold3 / gold2 every two frames
-      const edge = Math.floor(h / 2) % 2 === 0 ? PAL.gold3 : PAL.gold2;
-      col(-2, top, foot, edge);
-      col(2, top, foot, edge);
+      // landed: 7 px (A6B-3: the 5-px column read as a thread at 1×) — a white core, gold4, gold3, the
+      // outer edges flicker gold2 / gold1 every two frames
+      const edge = Math.floor(h / 2) % 2 === 0 ? PAL.gold2 : PAL.gold1;
+      col(-3, top, foot, edge);
+      col(3, top, foot, edge);
+      col(-2, top, foot, PAL.gold3);
+      col(2, top, foot, PAL.gold3);
       col(-1, top, foot, PAL.gold4);
       col(1, top, foot, PAL.gold4);
-      col(0, top, foot, h === 0 ? PAL.white : PAL.white);
+      col(0, top, foot, PAL.white);
       // the splash at the feet on the landing frames
       if (h < 3) {
         g.fillStyle(h === 0 ? PAL.white : PAL.gold4, 1);
@@ -472,8 +552,12 @@ async function goldBeam(ctx: AnyCtx, x: number, footY: number, depth: number, on
       }
       return;
     }
-    // out: 3 px, then 1 px, then gone
+    // out: 5 px, 3 px, then 1 px, then gone
     const o = h - BEAM.holdFrames;
+    if (o <= 1) {
+      col(-2, top, foot, PAL.gold2);
+      col(2, top, foot, PAL.gold2);
+    }
     if (o <= 2) {
       col(-1, top, foot, PAL.gold3);
       col(0, top, foot, PAL.gold4);
@@ -600,7 +684,8 @@ async function deckOutV3(ctx: Ctx<'deckOut'>): Promise<void> {
   const duelist = v.duelists?.get(p);
   if (duelist) bg(duelist.play('command'));
   ui3Sfx('ui3DeckOut', { volume: 0.7 }, 'uiError', { volume: 0.6 });
-  if (!ui3Ready('ui3DeckOut')) ctx.sfx('darkPulse', { volume: 0.3, pitch: 1.4 });
+  // (the stand-in's low thud three frames after its click: one sound a frame, A6B-7)
+  if (!ui3Ready('ui3DeckOut')) bg(ctx.wait(3 * FRAME).then(() => ctx.sfx('darkPulse', { volume: 0.3, pitch: 1.4 })));
   // the empty pad's "0": three crimson blinks, then it stays (the reason for the loss)
   const tagX = Math.round(at.x - 9 / 2);
   const tagY = Math.round(at.y + 8);
@@ -630,6 +715,8 @@ async function deckOutV3(ctx: Ctx<'deckOut'>): Promise<void> {
 /** The gold pool and motes on the winner's podium (they leave with the result plate). */
 let poolHandle: ReturnType<typeof lightPool> | null = null;
 let motesHandle: { destroy(): void } | null = null;
+/** The stepped gold pool on the podium floor (it runs its own ~1 s; it goes with the plate if that leaves first). */
+let podPoolHandle: { destroy(): void } | null = null;
 
 async function gameOverV3(ctx: Ctx<'gameOver'>): Promise<void> {
   const sc = ctx.scene;
@@ -649,7 +736,8 @@ async function gameOverV3(ctx: Ctx<'gameOver'>): Promise<void> {
     v.board.setActivePlayer(winner, true);
     // ---- the loser: the side goes dark, the monsters fall one by one, the duelist kneels
     const shade = shadeSide(ctx, loser);
-    ctx.sfx('darkPulse', { volume: 0.35, pitch: 0.7 });
+    // the side's dark pulse on the shade's second step (A6B-7: off the frame the last card lands on the pile)
+    bg(ctx.wait(END_V3_MS.shadeSteps[1]).then(() => ctx.sfx('darkPulse', { volume: 0.35, pitch: 0.7 })));
     const losers = v.field
       .units()
       .filter((u) => u.player === loser && !u.retired && u.sprite.active && u.sprite.visible)
@@ -672,6 +760,8 @@ async function gameOverV3(ctx: Ctx<'gameOver'>): Promise<void> {
         void lightFlash(sc, pod.x, pod.y - 16, PAL.gold3, fs(44), 520, { floorY: pod.y, ring: true, intensity: 0.9 });
         const pool = lightPool(sc, pod.x, pod.y, { color: PAL.gold3, radius: fs(30), intensity: 0.75, anim: REDUCED_MOTION ? 'steady' : 'breathe' });
         poolHandle = pool;
+        // the stepped gold pool on the podium's own floor (the light layer lights only the pads: A6B-3)
+        podPoolHandle = podiumPool(sc, winner);
         motesHandle = podiumMotes(sc, pod, depth);
         bg(goldRing(ctx, pod, depth + 0.02));
         bg(v.board.pulseSide(winner));
@@ -699,13 +789,15 @@ async function gameOverV3(ctx: Ctx<'gameOver'>): Promise<void> {
 
     // ---- the result plate (the deck-out plate hops into it), the sting and the fanfare
     await ctx.wait(END_V3_MS.plateAt - END_V3_MS.winnerAt - (keepDeck ? END_V3_MS.hopLead : 0));
-    if (keepDeck && keepDeck.active) bg(keepDeck.shrinkTo(resultPlateRect(), ['DESTE BİTTİ']));
+    if (keepDeck && keepDeck.active) bg(keepDeck.shrinkTo(resultPlateRect(), ['DESTE BİTTİ'], undefined, { frames: 7 }));
     if (keepDeck) await ctx.wait(END_V3_MS.hopLead);
     const plate = ResultPlate.show(sc, { winner, reason: ctx.ev.reason, viewerWon });
     const pool = poolHandle;
     if (pool) plate.attach({ destroy: () => void pool.fadeOut(300) });
     const motes = motesHandle;
     if (motes) plate.attach(motes);
+    const podPool = podPoolHandle;
+    if (podPool) plate.attach(podPool);
     if (viewerWon === false) ui3Sfx('ui3Defeat', {}, 'defeat', { volume: 0.6 });
     else ui3Sfx('ui3Victory', {}, 'victory', { volume: 0.8 });
     if (ctx.settings.music) ctx.music.play('victory');
@@ -718,6 +810,7 @@ async function gameOverV3(ctx: Ctx<'gameOver'>): Promise<void> {
   } finally {
     poolHandle = null;
     motesHandle = null;
+    podPoolHandle = null;
     bg(ctx.unfocus(700)); // today's safety (flow/end.ts:173)
   }
 }

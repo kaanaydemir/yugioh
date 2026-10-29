@@ -178,6 +178,7 @@ describe('the v3 HUD behind V3_A6_B (§5.0.3)', () => {
     'setSpeed',
     'setHint',
     'flashHint',
+    'endHintFlash',
     'setSoundOn',
     'setPlayerName',
     'lpXY',
@@ -813,7 +814,9 @@ describe('B3: target corners (F4), the reject (F5), the engine lock', () => {
     expect(AIM.stepMs * AIM.arrive.length).toBeLessThanOrEqual(A6_MS.targetsVisible.max);
     expect([0, 90].map((t) => arriveExtra(t, true))).toEqual([0, 0]);
     expect([0, 419, 420, 839, 840].map((t) => breathIn(t, 0, false))).toEqual([0, 0, -1, -1, 0]);
-    expect([0, 139, 140, 559, 560].map((t) => breathIn(t, 1, false))).toEqual([0, 0, 0, 0, -1]);
+    // A6B-6: neighbours breathe in anti-phase (half the 420-ms period apart)
+    expect(AIM.breathStagger * 2).toBe(AIM.breathMs);
+    expect([0, 209, 210, 629, 630].map((t) => breathIn(t, 1, false))).toEqual([0, 0, 0, 0, -1]);
     for (const t of [0, 500, 1000]) expect(breathIn(t, 0, true)).toBe(0);
   });
 
@@ -1300,6 +1303,240 @@ describe('B5: the deck-out (F8), the result plate, victory / defeat (F9)', () =>
     expect(T.winnerAt + BEAM.dropFrames * FRAME).toBeLessThan(T.plateAt - T.hopLead);
     expect(T.plateAt < T.releaseAt && T.releaseAt < T.gameOver).toBe(true);
     expect(T.shadeSteps[T.shadeSteps.length - 1]).toBeLessThan(T.winnerAt);
+  });
+});
+
+describe('A6-B fix round 1 (critic A6B-1 … A6B-7)', () => {
+  it('A6B-1: the hint\u2019s words step with the plate — never a plate without words (dim → full, palette tones)', async () => {
+    const { HINT_WORDS, HINT_WORDS_FLASH, HINT_WORDS_REASON } = await import('../../src/view/v3/hudV3');
+    for (const ramp of [HINT_WORDS, HINT_WORDS_FLASH, HINT_WORDS_REASON]) {
+      expect(ramp.length).toBe(3);
+      for (const c of ramp) expect(PAL_SET.has(c)).toBe(true);
+    }
+    // −2 / −1 / 0: steel → mist → white; a flash crim2 → crim3 → crim4 (each step brighter)
+    expect([...HINT_WORDS]).toEqual([PAL.steel, PAL.mist, PAL.white]);
+    expect([...HINT_WORDS_FLASH]).toEqual([PAL.crim2, PAL.crim3, PAL.crim4]);
+    // A6B-11: a reason past its burn: amber gold, no channel-all-high "white" (palcheck: every channel > 235)
+    expect([...HINT_WORDS_REASON]).toEqual([PAL.gold1, PAL.gold2, PAL.gold3]);
+    for (const c of HINT_WORDS_REASON) expect(Math.min(c >> 16, (c >> 8) & 255, c & 255)).toBeLessThanOrEqual(235);
+  });
+
+  it('A6B-2: a trap answered in hot-seat with the curtain turns the defender’s hand face down (v3 lane B only)', async () => {
+    const mk = async (look: 'v1' | 'v3', a6?: string, o: { mode?: 'hotseat' | 'vsBot'; curtain?: boolean; owner?: 0 | 1; down?: boolean } = {}) => {
+      vi.resetModules();
+      G.__NEON_LOOK = look;
+      if (a6 !== undefined) G.__NEON_V3FLAGS = { a6 };
+      const { ViewerPolicy } = await import('../../src/duel/viewer');
+      const calls: [boolean, number][] = [];
+      const hand = {
+        owner: o.owner ?? 1,
+        isFaceDown: o.down ?? false,
+        async waveFaceDown(down: boolean, ms: number) {
+          calls.push([down, ms]);
+          hand.isFaceDown = down;
+        },
+      };
+      const v = new ViewerPolicy({ mode: o.mode ?? 'hotseat', cpu: [], curtain: o.curtain ?? true, hand: hand as never, hud: {} as never, prompt: {} as never });
+      await v.coverAfterAnswer(1);
+      return calls;
+    };
+    expect(await mk('v3')).toEqual([[true, 30]]);
+    expect(await mk('v3', 'b')).toEqual([[true, 30]]);
+    // nothing to hide: v1, lane B off, vsBot, no curtain, a hand already down or someone else's on screen
+    expect(await mk('v1')).toEqual([]);
+    expect(await mk('v3', 'off')).toEqual([]);
+    expect(await mk('v3', 'a')).toEqual([]);
+    expect(await mk('v3', undefined, { mode: 'vsBot' })).toEqual([]);
+    expect(await mk('v3', undefined, { curtain: false })).toEqual([]);
+    expect(await mk('v3', undefined, { down: true })).toEqual([]);
+    expect(await mk('v3', undefined, { owner: 0 })).toEqual([]);
+  }, 60000);
+
+  it('A6B-3: the result plate reads early (line 1 two letters a frame from the opening’s last step, line 2 four) and stays inside F9', async () => {
+    const { RESULT, resultText } = await import('../../src/view/v3/ResultPlate');
+    const { layoutLine: lay } = await import('../../src/view/v3/hudSkin');
+    const t = resultText({ winner: 0, reason: 'lp', viewerWon: null });
+    const n1 = lay(t.line1.map((x) => x.text).join(''), 'md').glyphs.length;
+    const n2 = lay(t.line2, 'sm').glyphs.length;
+    const stamp0 = (RESULT.openH.length - 1) * RESULT.openFrames;
+    const end1 = stamp0 + Math.ceil(n1 / RESULT.line1PerFrame);
+    const end2 = Math.max(stamp0 + 1, end1 - RESULT.line2Lead) + Math.ceil(n2 / RESULT.line2PerFrame);
+    // "KAZANAN: OYUNCU 1" reads ≤ 200 ms after the plate opens (≈ 1.1 s after the game-over event), the reason ≤ 300 ms
+    expect(end1 * (1000 / 60)).toBeLessThanOrEqual(200);
+    expect(end2 * (1000 / 60)).toBeLessThanOrEqual(300);
+    // three fireworks, 150 ms apart
+    expect(RESULT.fireworksAt.length).toBe(3);
+    for (let i = 1; i < 3; i++) expect(RESULT.fireworksAt[i] - RESULT.fireworksAt[i - 1]).toBe(150);
+  });
+
+  it('A6B-3: fireworks read at 1×: a 2 × 2 core, eight continuous 1-px rays growing to ≥ 7 px', async () => {
+    const { fireworkPixels } = await import('../../src/view/v3/ResultPlate');
+    const { RAMPS } = await import('../../src/art/palette');
+    // the burst's frames come after a 4-frame climb: the flash, then rays 3 → 5 → 7
+    const flash = fireworkPixels(4, RAMPS.gold, 1)!;
+    expect(flash.filter((q) => q.c === PAL.white).map((q) => `${q.x},${q.y}`).sort()).toEqual(['0,0', '0,1', '1,0', '1,1']);
+    const full = fireworkPixels(7, RAMPS.gold, 1)!;
+    const set = new Set(full.map((q) => `${q.x},${q.y}`));
+    // the right ray: (2..8, 0) all lit — a continuous 7-px line from the core
+    for (let x = 2; x <= 8; x++) expect(set.has(`${x},0`), `${x}`).toBe(true);
+    // the up ray (x 0) and the diagonal (1 + k, 1 + k)
+    for (let k = 1; k <= 7; k++) {
+      expect(set.has(`0,${-k}`)).toBe(true);
+      expect(set.has(`${1 + k},${1 + k}`)).toBe(true);
+    }
+    expect(full.filter((q) => q.c === PAL.white).length).toBe(8); // the eight tips
+  });
+
+  it('A6B-3: the podium pool — gold bands on the podium floor only, stepping in, holding past the beam, stepping out', async () => {
+    const { BEAM, POOL, podiumPoolAt, podiumPoolCanvas } = await import('../../src/cinematics/v3small/end');
+    const { topAt } = await import('../../src/still/arena');
+    const GOLD = new Set<number>([PAL.gold0, PAL.gold1, PAL.gold2, PAL.gold3]);
+    for (const p of [0, 1] as const) {
+      const o = podiumPoolCanvas(p, 3, true);
+      let lit = 0;
+      for (let y = 0; y < o.p.h; y++)
+        for (let x = 0; x < o.p.w; x++) {
+          const c = o.p.get(x, y);
+          if (c === null) continue;
+          lit++;
+          expect(GOLD.has(c)).toBe(true);
+          expect(topAt(o.x + x, o.y + y)?.kind).toBe('border');
+        }
+      expect(lit).toBeGreaterThan(200);
+      expect(offPalette(o.p)).toEqual([]);
+      // fewer levels light fewer pixels; level 0 lights none
+      const count = (lv: number) => {
+        const q = podiumPoolCanvas(p, lv).p;
+        let n = 0;
+        for (let y = 0; y < q.h; y++) for (let x = 0; x < q.w; x++) if (q.get(x, y) !== null) n++;
+        return n;
+      };
+      expect(count(0)).toBe(0);
+      expect(count(1)).toBeLessThan(count(2));
+      expect(count(2)).toBeLessThan(count(3));
+    }
+    const hold = BEAM.holdFrames + POOL.holdAfterBeam;
+    expect(podiumPoolAt(0, false)).toEqual({ level: 1, flick: false });
+    expect(podiumPoolAt(1, false)).toEqual({ level: 2, flick: false });
+    expect(podiumPoolAt(2, false)?.level).toBe(3);
+    expect(podiumPoolAt(hold - 1, false)).toEqual({ level: 3, flick: false });
+    expect(podiumPoolAt(hold, false)?.level).toBe(2);
+    expect(podiumPoolAt(hold + POOL.outFrames, false)?.level).toBe(1);
+    expect(podiumPoolAt(hold + 2 * POOL.outFrames, false)).toBeNull();
+    // ≈ 400 ms of pool after the beam
+    expect(POOL.holdAfterBeam * (1000 / 60)).toBeGreaterThanOrEqual(380);
+    expect(podiumPoolAt(0, true)).toEqual({ level: 3, flick: false });
+  });
+
+  it('A6B-4: the readiness ring — 2 px of crimson with an ink line, r 10 → 22 → 34 on whole pixels (past the badge), halves split at the centre row', async () => {
+    const { READY_RADII, readySteps, readyStepsReduced, readyBandCanvas, TURN_V3_MS } = await import('../../src/cinematics/v3small/turn');
+    expect([...READY_RADII]).toEqual([10, 22, 34]);
+    for (const player of [0, 1] as const) {
+      const steps = readySteps(player);
+      // three growth steps of two frames, the last held two more, then two palette steps down: 200 ms
+      expect(steps.slice(0, 3).map((s) => s.r)).toEqual([...READY_RADII]);
+      expect(steps.reduce((n, s) => n + s.frames, 0)).toBe(12);
+      expect(steps.slice(2).every((s) => s.r === 34)).toBe(true);
+      // the bottom of the r-34 band (y + 17) and its ink (y + 18) run under the stat badge's last row (y + 15)
+      expect(Math.round(34 / 2) + 1).toBeGreaterThan(11 + 4);
+      // reduced motion: no growth
+      expect(readyStepsReduced(player).every((s) => s.r === 34)).toBe(true);
+    }
+    // P2's ring leads with white (it parts from P2's crimson grid); P1's with crim4
+    expect(readySteps(1)[0].outer).toBe(PAL.white);
+    expect(readySteps(0)[0].outer).toBe(PAL.crim4);
+    // the last attacker's ring (third, 120 ms of stagger) and pool end inside the 250-ms tail after the input returns
+    expect(TURN_V3_MS.ringFrom + 2 * TURN_V3_MS.ringStagger + 12 * (1000 / 60)).toBeLessThanOrEqual(TURN_V3_MS.battle + 10 + 250);
+    expect(TURN_V3_MS.poolHoldMs).toBeGreaterThanOrEqual(150);
+    expect(TURN_V3_MS.ringFrom + 2 * TURN_V3_MS.ringStagger + TURN_V3_MS.poolHoldMs + TURN_V3_MS.poolOutMs).toBeLessThanOrEqual(TURN_V3_MS.battle + 10 + 250);
+    for (const st of [...readySteps(0), ...readySteps(1)]) {
+      const p = readyBandCanvas(st.r, st.outer, st.inner);
+      const ry = Math.round(st.r / 2);
+      expect([p.w, p.h]).toEqual([2 * st.r + 3, 2 * ry + 3]);
+      expect(offPalette(p)).toEqual([]);
+      const tones = new Set<number>();
+      for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) if (p.get(x, y) !== null) tones.add(p.get(x, y)!);
+      expect([...tones].sort()).toEqual([PAL.ink, st.outer, st.inner].sort());
+      // the leftmost column is ink (the line outside), then the outer tone, then the inner tone
+      const mid = ry + 1;
+      expect([p.get(0, mid), p.get(1, mid), p.get(2, mid)]).toEqual([PAL.ink, st.outer, st.inner]);
+      const back = readyBandCanvas(st.r, st.outer, st.inner, 'back');
+      const front = readyBandCanvas(st.r, st.outer, st.inner, 'front');
+      for (let y = 0; y < p.h; y++)
+        for (let x = 0; x < p.w; x++) {
+          const c = p.get(x, y);
+          expect(y < mid ? back.get(x, y) : front.get(x, y)).toBe(c);
+          expect(y < mid ? front.get(x, y) : back.get(x, y)).toBeNull();
+        }
+    }
+  });
+
+  it('A6B-5: the spark flies a whole-pixel arc from the plate to its target, every frame on a continuous path, round the field', async () => {
+    const { SPARK, linePixels, sparkFrames, sparkPoint } = await import('../../src/view/v3/TurnPlate');
+    const { BOARD_CENTER } = await import('../../src/view/layout');
+    const cases = [
+      { a: { x: 76, y: 228 }, b: { x: 196, y: 12 } },
+      { a: { x: 560, y: 92 }, b: { x: 196, y: 12 } },
+    ];
+    for (const { a, b } of cases) {
+      const n = sparkFrames(a, b, 12);
+      expect(n).toBeGreaterThanOrEqual(SPARK.minFrames);
+      expect(n).toBeLessThanOrEqual(12);
+      const pts = Array.from({ length: n + 1 }, (_, i) => sparkPoint(a, b, i, n));
+      expect(pts[0]).toEqual(a);
+      expect(pts[n]).toEqual(b);
+      for (const q of pts) expect(Number.isInteger(q.x) && Number.isInteger(q.y)).toBe(true);
+      // the trail between two frames is a gapless 8-connected line
+      for (let i = 0; i < n; i++) {
+        const line = linePixels(pts[i], pts[i + 1]);
+        for (let k = 1; k < line.length; k++) expect(Math.max(Math.abs(line[k].x - line[k - 1].x), Math.abs(line[k].y - line[k - 1].y))).toBe(1);
+      }
+      // the arc's middle lies farther from the board's centre than the straight line's middle
+      const mid = pts[Math.round(n / 2)];
+      const straight = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      expect(Math.hypot(mid.x - BOARD_CENTER.x, mid.y - BOARD_CENTER.y)).toBeGreaterThan(Math.hypot(straight.x - BOARD_CENTER.x, straight.y - BOARD_CENTER.y) - 1);
+      // bulge 0: straight
+      const s = sparkPoint(a, b, n / 2, n, 0);
+      expect(Math.abs(s.x - straight.x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(s.y - straight.y)).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('A6B-5: the plate folds out in place (12 → 6 → 2 px, two frames each) — no hops across the screen', async () => {
+    const { PLATE } = await import('../../src/view/v3/TurnPlate');
+    expect([...PLATE.fold]).toEqual([12, 6, 2]);
+    expect(PLATE.fold.length * PLATE.foldFrames * (1000 / 60)).toBeLessThanOrEqual(120);
+    for (let i = 1; i < PLATE.fold.length; i++) expect(PLATE.fold[i]).toBeLessThan(PLATE.fold[i - 1]);
+  });
+
+  it('A6B-6: overlapping candidates drop the corners that fall inside another’s box; the hovered corner is thick with its joint where the thin one’s is', async () => {
+    const { AIM, CORNERS, cornerCanvas, cornerJoint, cornerXY, overlappedCorners, thickCornerCanvas } = await import('../../src/view/v3/TargetMarks');
+    const wolf = { x0: 100, y0: 40, x1: 160, y1: 90 };
+    const lizard = { x0: 140, y0: 70, x1: 210, y1: 120 };
+    const w = overlappedCorners(wolf, AIM.gap, [lizard]);
+    const l = overlappedCorners(lizard, AIM.gap, [wolf]);
+    expect([...w]).toEqual(['br']);
+    expect([...l]).toEqual(['tl']);
+    expect(overlappedCorners(wolf, AIM.gap, []).size).toBe(0);
+    expect(overlappedCorners(wolf, AIM.gap, [{ x0: 400, y0: 40, x1: 460, y1: 90 }]).size).toBe(0);
+    for (const c of CORNERS) {
+      const thick = thickCornerCanvas(c, PAL.gold4, PAL.white);
+      expect(offPalette(thick)).toEqual([]);
+      const thin = cornerCanvas(c, PAL.gold3);
+      // the joint pixel lands on the same screen pixel for both sizes (thick: right / bottom start 2 px earlier)
+      const p = cornerXY(c, wolf, AIM.gap);
+      const j = cornerJoint(c, wolf, AIM.gap);
+      const right = c === 'tr' || c === 'br';
+      const bottom = c === 'bl' || c === 'br';
+      expect(thin.get(j.x - p.x, j.y - p.y)).toBe(PAL.gold3);
+      expect(thick.get(j.x - (right ? p.x - 2 : p.x), j.y - (bottom ? p.y - 2 : p.y))).toBe(PAL.white);
+      // 2-px legs: more lit pixels than the thin corner
+      let a = 0;
+      let b = 0;
+      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) if (thick.get(x, y) !== null && thick.get(x, y) !== PAL.ink) a++;
+      for (let y = 0; y < 6; y++) for (let x = 0; x < 6; x++) if (thin.get(x, y) !== null && thin.get(x, y) !== PAL.ink) b++;
+      expect(a).toBeGreaterThanOrEqual(2 * b);
+    }
   });
 });
 

@@ -2,7 +2,7 @@
 // the game-over button row under it (Prompt.gameOver v3). Built only under V3_A6_B (the callers gate).
 //
 //   const plate = ResultPlate.show(scene, { winner: 0, reason: 'lp', viewerWon: null });
-//   await plate.entered;                                   // opened, both lines stamped (~0.6 s at 1×)
+//   await plate.entered;                                   // opened, both lines stamped (~0.45 s at 1×)
 //   const choice = await gameOverV3(scene, 0, 'lp', { menu: true });   // 'replay' | 'menu'
 //
 // Look (S-1 frame language, palette only, whole pixels; no alpha, ADD, scale or rotation):
@@ -16,18 +16,22 @@
 //            plate's): the winner's lit, its centre blinking every 24 frames; the loser's dim
 //   life     after the stamps: one white trim frame and a 1-px drop (the small object shakes, never the
 //            screen); a white glint runs over line 1 one letter a frame; a light node runs the trim
-//   fireworks (a win only) three small crisp bursts (≤ 31 px across) in the winner's half beside the plate: a 1-px shell
-//            climbs 5 px a frame, then 12 rays open to r 11–15 stepping down the winner's ramp (gold for
-//            the middle one), each head trailing back to the heart; the heads fall (drips), then crackle
+//   fireworks (a win only) three crisp bursts (≤ 31 px across), 150 ms apart, in the winner's half beside the
+//            plate (A6B-3: readable at 1×): a shell climbs 6 px a frame, a 2 × 2 white core flashes in a gold4
+//            plus, eight 1-px rays grow 3 → 5 → 7 px with white tips (the winner's ramp; gold for the
+//            middle one), detach as 3-px dashes, fall as sparks and crackle out
 // Placement: centred on the screen's middle column, 3 px under the phase bar — where the opening's
 // "DÜELLO!" plate stood (the duel's two bookends) — above the board; the button row 5 px under it.
 // Motion (frames at 60 fps, on the scene's tween clock: speed aware):
 //   f0–5     opens in three steps (h 6 → 20 → 40 about its middle row, two frames each; the trim steps
-//            gold1/gold2 → gold2/gold3 → rest)
-//   f6…      line 1 stamps one letter a frame (a white frame 1 px high, then its tone), the crown and
-//            the marks with the first letter; then line 2, two letters a frame (one white frame each)
+//            gold1/gold2 → gold2/gold3 → rest); the two players' marks show from the middle step (A6B-8:
+//            the box is never empty)
+//   f4…      (A6B-3: the winner reads at once) on the last opening step line 1 stamps two letters a frame
+//            (a white frame 1 px high, then its tone), the crown with the first letters; line 2 four
+//            letters a frame from the frame after line 1's last letter (A6B-10: the name, then the reason)
 //   +1       the thump (white trim, 1 px down for two frames); the glint; the node starts
-//   leave    two palette steps out (letters one tone down, then only the dark frame), then gone
+//   leave    two palette steps out (letters, crown and marks one tone down, then two: never the bare
+//            frame, A6B-8), then gone
 // Reduced motion (KO-9): there at once, no node, glint, thump or fireworks; it leaves in the same steps.
 
 import type Phaser from 'phaser';
@@ -64,8 +68,15 @@ export const RESULT = Object.freeze({
   /** The three opening heights (about the middle row), each shown `openFrames` frames. */
   openH: Object.freeze([6, 20, 40]),
   openFrames: 2,
-  /** Line 2 stamps this many letters a frame. */
-  line2PerFrame: 2,
+  /**
+   * Letters stamped per frame (A6B-3: the winner reads within ~0.2 s of the plate opening, the reason by
+   * ~0.3 s): line 1 two a frame from the opening's last step, line 2 four a frame from `line2Lead` frames
+   * before line 1 ends — 0 (A6B-10): the name stamps through without a pause, THEN line 2 (the frame after
+   * the name's last letter).
+   */
+  line1PerFrame: 2,
+  line2PerFrame: 4,
+  line2Lead: 0,
   /** The thump after the last letter: frames 1 px down (the first with a white trim). */
   thumpFrames: 2,
   /** One lap of the trim's node, then a rest. */
@@ -73,10 +84,10 @@ export const RESULT = Object.freeze({
   nodeRestMs: 400,
   /** Frames per exit step (two steps). */
   exitFrames: 2,
-  /** Fireworks: launch delays after the plate opens (ms) — three, in the winner's half. */
-  fireworksAt: Object.freeze([60, 240, 420]),
-  /** Their sizes (× the burst radius 13): the gold middle one the biggest. */
-  fireworkSizes: Object.freeze([1, 1.15, 0.85]),
+  /** Fireworks: launch delays after the plate opens (ms) — three, 150 ms apart, in the winner's half. */
+  fireworksAt: Object.freeze([0, 150, 300]),
+  /** Their sizes (× the 7-px rays): the gold middle one the biggest. */
+  fireworkSizes: Object.freeze([1, 1.2, 0.9]),
   /** The marks' inset from the plate's ends and the winner's blink (frames). */
   markInset: 6,
   blinkFrames: 24,
@@ -158,57 +169,102 @@ export function resultOpening(f: number, reduced = REDUCED_MOTION): { h: number;
   return { h: RESULT.openH[i], step: i === 0 ? -2 : i === 1 ? -1 : 0 };
 }
 
-/** Frames of a firework's climb, and the burst's radius per frame (whole px). */
-const FW_LAUNCH = 5;
-const FW_R = [2, 4, 6, 8, 10, 11, 12, 13, 13, 13, 13, 13] as const;
-/** The head's tone per burst frame: −1 white, else the ramp index. */
-const FW_HEAD = [-1, -1, 4, 4, 4, 3, 3, 3, 2, 2, 1, 1] as const;
+/** Frames of a firework's climb (the shell rises 6 px a frame from 24 px under its burst point). */
+const FW_LAUNCH = 4;
+/** Burst frames: the core flash, the rays growing (3 → 5 → 7 px), detaching, then falling sparks. */
+const FW_BURST = 13;
+
+/**
+ * The eight ray directions of a burst round its 2 × 2 core: each ray leaves from the core pixel on its
+ * side (a pinwheel, symmetric under a quarter turn), so every ray is a crisp 1-px line at 1×.
+ */
+const FW_RAYS: readonly { ox: number; oy: number; dx: number; dy: number }[] = Object.freeze([
+  { ox: 1, oy: 0, dx: 1, dy: 0 },
+  { ox: 1, oy: 1, dx: 1, dy: 1 },
+  { ox: 1, oy: 1, dx: 0, dy: 1 },
+  { ox: 0, oy: 1, dx: -1, dy: 1 },
+  { ox: 0, oy: 1, dx: -1, dy: 0 },
+  { ox: 0, oy: 0, dx: -1, dy: -1 },
+  { ox: 0, oy: 0, dx: 0, dy: -1 },
+  { ox: 1, oy: 0, dx: 1, dy: -1 },
+]);
 
 /**
  * One firework at frame f (pure): pixels relative to its burst point, palette tones; null once over.
- * The shell climbs 5 px a frame from 24 px below (a white head, a 2-px tail); the burst opens 12 rays
- * to r 13 × `size` (a white plus at its heart for two frames): each ray a head with a trail back toward
- * the heart (3 px while it opens, stepping down the ramp); from frame 6 the heads fall 1 px more each
- * frame, their trails turn into drips above them, and the last four frames crackle (alternate rays on
- * alternate frames).
+ * Readable at 1× (critic A6B-3): the shell climbs 6 px a frame (a white head, a 3-px tail down the ramp);
+ * the burst is a 2 × 2 white core in a gold4 plus (one frame), then eight crisp rays grow 3 → 5 → 7 px
+ * (× `size`) with white tips over the ramp's light tones while the core steps down (white → gold4 →
+ * gold3); the rays then detach and fly on as 3-px dashes stepping down the ramp, become single sparks
+ * that fall a little more each frame, and crackle out (alternate sparks on alternate frames).
  */
 export function fireworkPixels(f: number, ramp: Ramp, size = 1): { x: number; y: number; c: number }[] | null {
   if (f < 0) return [];
   const out: { x: number; y: number; c: number }[] = [];
+  const push = (x: number, y: number, c: number) => out.push({ x, y, c });
   if (f < FW_LAUNCH) {
-    const y = 24 - 5 * f;
-    out.push({ x: 0, y, c: PAL.white }, { x: 0, y: y + 1, c: ramp[3] }, { x: 0, y: y + 2, c: ramp[2] });
+    const y = 24 - 6 * f;
+    push(0, y, PAL.white);
+    push(1, y, PAL.white);
+    push(0, y + 1, ramp[4]);
+    push(1, y + 1, ramp[3]);
+    push(0, y + 2, ramp[3]);
+    push(0, y + 3, ramp[2]);
     return out;
   }
   const b = f - FW_LAUNCH;
-  if (b >= FW_R.length) return null;
-  const r = Math.max(1, Math.round(FW_R[b] * size));
-  const head = FW_HEAD[b];
-  const tone = (i: number) => (i < 0 ? PAL.white : ramp[Math.max(1, Math.min(4, i))]);
-  const drop = b >= 6 ? b - 5 : 0;
-  const trail = b <= 3 ? 3 : b <= 6 ? 2 : 1;
-  const falling = b >= 6;
-  for (let k = 0; k < 12; k++) {
-    if (b >= 8 && (k + b) % 2 === 1) continue; // the crackle
-    const a = (k / 12) * Math.PI * 2;
-    const dx = Math.cos(a);
-    const dy = Math.sin(a);
-    const hx = Math.round(dx * r);
-    const hy = Math.round(dy * r) + drop;
-    out.push({ x: hx, y: hy, c: tone(head) });
-    for (let t = 1; t <= trail; t++) {
-      // the trail tone: a white head's trail starts at the ramp's top
-      const c = tone(head < 0 ? 5 - t : head - t);
-      if (falling) out.push({ x: hx, y: hy - t, c });
-      else if (r - t > 0) out.push({ x: Math.round(dx * (r - t)), y: Math.round(dy * (r - t)), c });
-    }
+  if (b >= FW_BURST) return null;
+  const L = (n: number) => Math.max(1, Math.round(n * size));
+  const core = (c: number) => {
+    push(0, 0, c);
+    push(1, 0, c);
+    push(0, 1, c);
+    push(1, 1, c);
+  };
+  if (b === 0) {
+    // the flash: the white core in a gold4 plus
+    core(PAL.white);
+    for (const [x, y] of [[-1, 0], [-1, 1], [2, 0], [2, 1], [0, -1], [1, -1], [0, 2], [1, 2]] as const) push(x, y, PAL.gold4);
+    return out;
   }
-  if (b <= 1) for (const [x, y] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]] as const) out.push({ x, y, c: PAL.white });
+  // a ray's pixel k (1 = next to the core) along direction r
+  const at = (r: (typeof FW_RAYS)[number], k: number) => ({ x: r.ox + r.dx * k, y: r.oy + r.dy * k });
+  if (b <= 3) {
+    // growing: 3 → 5 → 7 px, the tip white, the body down the ramp's light tones; the core steps down
+    const len = L([0, 3, 5, 7][b]);
+    core(b === 1 ? PAL.white : b === 2 ? PAL.gold4 : PAL.gold3);
+    for (const r of FW_RAYS)
+      for (let k = 1; k <= len; k++) {
+        const p = at(r, k);
+        push(p.x, p.y, k === len ? PAL.white : k >= len - 2 ? ramp[4] : k > 1 ? ramp[3] : ramp[2]);
+      }
+    return out;
+  }
+  if (b <= 6) {
+    // detached: 3-px dashes fly on (one px a frame), stepping down; the core a last gold2 frame
+    if (b === 4) core(PAL.gold2);
+    const len = L(7);
+    const head = len + (b - 3);
+    for (const r of FW_RAYS)
+      for (let t = 0; t < 3; t++) {
+        const p = at(r, head - t);
+        push(p.x, p.y, t === 0 ? (b === 6 ? ramp[3] : ramp[4]) : t === 1 ? ramp[3] : ramp[2]);
+      }
+    return out;
+  }
+  // sparks: one per ray, falling a little more each frame, stepping down; the last frames crackle
+  const s = b - 7;
+  const len = L(7);
+  const tone = s < 2 ? ramp[3] : s < 4 ? ramp[2] : ramp[1];
+  FW_RAYS.forEach((r, i) => {
+    if (s >= 3 && (i + s) % 2 === 1) return;
+    const p = at(r, len + 4 + Math.floor(s / 2));
+    push(p.x, p.y + Math.floor((s * (s + 1)) / 4), tone);
+  });
   return out;
 }
 
 /** Frames a firework lasts. */
-export const FIREWORK_FRAMES = FW_LAUNCH + FW_R.length;
+export const FIREWORK_FRAMES = FW_LAUNCH + FW_BURST;
 
 /** Burst points (screen px) of the three fireworks: beside the plate, in the winner's half. */
 export function fireworkPoints(winner: PlayerId, rect: Rect = resultPlateRect()): XY[] {
@@ -315,13 +371,14 @@ export class ResultPlate {
       const color = colors1[i] ?? PAL.white;
       const img = scene.add.image(x1 + g.x, y1, glyphTexture(scene, g.code, 'md', color)).setOrigin(0, 0).setVisible(false);
       this.root.add(img);
-      this.glyphs.push({ img, code: g.code, color, x: x1 + g.x, y: y1, size: 'md', at: STAMP0 + i, line: 1 });
+      this.glyphs.push({ img, code: g.code, color, x: x1 + g.x, y: y1, size: 'md', at: STAMP0 + Math.floor(i / RESULT.line1PerFrame), line: 1 });
     });
-    // line 2, centred, two letters a frame after line 1
+    // line 2, centred, three letters a frame, starting as line 1 stamps its last letters
     const L2 = layoutLine(this.text.line2, 'sm');
     const x2 = Math.round((r.w - L2.w) / 2);
     const y2 = capYV3('sm', RESULT.line2Cap);
-    const from2 = STAMP0 + L1.glyphs.length;
+    const end1 = STAMP0 + Math.ceil(L1.glyphs.length / RESULT.line1PerFrame);
+    const from2 = Math.max(STAMP0 + 1, end1 - RESULT.line2Lead);
     L2.glyphs.forEach((g, i) => {
       const img = scene.add.image(x2 + g.x, y2, glyphTexture(scene, g.code, 'sm', PAL.mist)).setOrigin(0, 0).setVisible(false);
       this.root.add(img);
@@ -349,7 +406,7 @@ export class ResultPlate {
     else this.attached.push(d);
   }
 
-  /** Two palette steps out (letters one tone down, then only the dark frame), then gone. */
+  /** Two palette steps out (letters, crown and marks one tone down, then two), then gone. */
   leave(): Promise<void> {
     if (this.leaving) return this.leaving;
     if (!this.alive) return Promise.resolve();
@@ -439,11 +496,13 @@ export class ResultPlate {
         nodeOn = true;
         this.trim.setNode({ head: PAL.white, tail: [PAL.gold4, PAL.gold4, PAL.gold3], lapMs: RESULT.nodeLapMs, restMs: RESULT.nodeRestMs });
       }
-      // the marks with the first letter (one white frame), then the winner's lit, the loser's dim
+      // the marks with the opening's middle step (A6B-8: the box is never empty — the two players'
+      // diamonds sit on its middle rows; one white frame), then the winner's lit, the loser's dim
+      const mark0 = STAMP0 - RESULT.openFrames;
       this.marks.forEach((m, pl) => {
-        const on = f >= STAMP0;
+        const on = f >= mark0;
         m.setVisible(on);
-        if (on) m.setTexture(this.markKey(pl as PlayerId, f === STAMP0 ? 'white' : pl === this.spec.winner ? 'rest' : 'dim'));
+        if (on) m.setTexture(this.markKey(pl as PlayerId, f === mark0 ? 'white' : pl === this.spec.winner ? 'rest' : 'dim'));
       });
       // the crown with the first letter (one white frame)
       if (this.crown) {
@@ -498,7 +557,7 @@ export class ResultPlate {
         g.clear();
         pts.forEach((p, i) => {
           const f = Math.floor((ms - RESULT.fireworksAt[i] + 0.5) / FRAME);
-          if (f === 5 && !popped.has(i)) {
+          if (f === FW_LAUNCH && !popped.has(i)) {
             popped.add(i);
             sfx.play('fireBurst', { volume: 0.18, pitch: 1.7 + 0.15 * i });
           }
@@ -519,6 +578,8 @@ export class ResultPlate {
     this.trim.setNode(null);
     this.fx.clear();
     this.root.y = this.rect.y;
+    // A6B-8 (KK-8): never the bare frame — the letters, the crown and the marks step down WITH the
+    // plate (one tone, then two) and go with it; the stamped ones only (an unstamped glyph stays hidden)
     const steps = (ms: number) => {
       if (!this.alive) return;
       const s = ms < RESULT.exitFrames * FRAME - 0.5 ? -1 : -2;
@@ -526,10 +587,11 @@ export class ResultPlate {
       this.trim.set(plateTrim(RAMPS.gold, s));
       for (const g of this.glyphs) {
         g.img.y = g.y;
-        g.img.setVisible(s === -1 && g.img.visible).setTexture(glyphTexture(this.scene, g.code, g.size, dimTone(g.color)));
+        const tone = s === -1 ? dimTone(g.color) : dimTone(dimTone(g.color));
+        g.img.setTexture(glyphTexture(this.scene, g.code, g.size, tone));
       }
-      this.crown?.img.setVisible(false);
-      for (const m of this.marks) m.setVisible(s === -1 && m.visible).setTexture(this.markKey(this.marks.indexOf(m) as PlayerId, 'dim'));
+      if (this.crown?.img.visible) this.crown.img.setTexture(iconTexture(this.scene, ICON.crown, iconTones('gold', s)) ?? ICON.crown);
+      for (const m of this.marks) m.setTexture(this.markKey(this.marks.indexOf(m) as PlayerId, 'dim'));
     };
     await this.timeline(2 * RESULT.exitFrames * FRAME, steps);
     this.destroy();
@@ -556,8 +618,8 @@ export class ResultPlate {
   }
 }
 
-/** The frame line 1's first letter is stamped on (after the three opening steps). */
-const STAMP0 = RESULT.openH.length * RESULT.openFrames;
+/** The frame line 1's first letter is stamped on: the opening's last step (the plate at full height). */
+const STAMP0 = (RESULT.openH.length - 1) * RESULT.openFrames;
 
 /** One palette step down (a leaving letter). */
 function dimTone(c: number): number {

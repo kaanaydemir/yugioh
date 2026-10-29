@@ -8,11 +8,13 @@
 // The "DÜELLO!" beat (t = 0 ≈ 3.78 s into the opening, where today's band slammed in):
 //   0        hudIn('duel'): the HUD arrives — P1's panel from the bottom left, P2's from the top right,
 //            the bar (+ turn badge, toolbar) from the top, the buttons from the right, 40 ms apart,
-//            120 ms each on whole pixels; each piece's first frame is its trim alone, the second its
-//            body with the trim one tone up (HudV3.arrive: no single-frame pop, 240 ms in all)
+//            120 ms each on whole pixels; each piece comes complete — body, words, numbers — its trim
+//            two tones down, then one, then at rest (HudV3.arrive, A6B-8: no frame without its
+//            numbers, no single-frame pop; 240 ms in all)
 //   0        the large plate drops in under the phase bar, above the board's top corner (clear of
-//            every deal path); its letters stamp one per frame from 67 ms, the duelists' marks and a
-//            1-px thump at 183 ms, a glint sweeps the word, a light node runs its trim (DuelPlate)
+//            every deal path); its letters stamp one per frame from its first frame (A6B-8: never a plate
+//            without its word), the duelists' marks and a 1-px thump at 117 ms, a glint sweeps the
+//            word, a light node runs its trim (DuelPlate)
 //   0–290    the floor answers from the board's middle: a stepped light ripple runs outward, every
 //            zone pad one tone up (night1 → night2, a flash of two at its peak) as the ripple passes,
 //            then back (the stepped light layer: pad pixels only, never a wash)

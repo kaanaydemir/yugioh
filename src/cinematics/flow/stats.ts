@@ -19,10 +19,10 @@ import { ADD, all, bg, chevronTexture, rr, fs, lightFlash, type AnyCtx, type Ctx
 import type { XY } from '../../view/layout';
 import { V3_A5_A } from '../../view/v3flags';
 import { Sparks as PxSparks } from '../../vfx/combat';
-import { fxCount, fxRng, rimClimb, silhouetteOf } from '../_v3/spellfx';
+import { fxCount, fxRng, numberUnderBar, rimClimb, silhouetteOf } from '../_v3/spellfx';
 import { impactNumber } from '../_v3/number';
 import { panAt, play as playV3 } from '../_v3/sound';
-import { bladeBreakBeat, bladeLost } from '../spells/_blade_v3';
+import { bladeBreakBeat, bladeBrokeEarly, bladeLost } from '../spells/_blade_v3';
 
 type StatEv = EvOf<'statChange'>;
 
@@ -204,8 +204,9 @@ async function statBeatV3(ctx: AnyCtx, e: StatEv, u: MonsterUnit, spots: XY[]): 
     if (peaked) return;
     peaked = true;
     const t = u.worldPoint('top');
-    const n = numberSpotV3(spots, t.x, t.y - 4);
-    if (delta > 0) pop = impactNumber(sc, n.x, n.y, delta, { kind: up ? 'heal' : 'damage' });
+    // (never up into the phase bar: a back-row head is near the screen's top — fix round 2)
+    const n = numberSpotV3(spots, t.x, numberUnderBar(t.y - 4).y);
+    if (delta > 0) pop = impactNumber(sc, n.x, n.y, delta, { kind: up ? 'heal' : 'damage', rise: numberUnderBar(n.y).rise });
     playV3(up ? 'lpUp' : 'lpDown', { volume: 0.4, pan: panAt(u.home.x) }); // mark `stat`
     // the badge rolls from this frame (its target is set now, so a sync will not snap it)
     void u.setStats(e.atk, e.def, true);
@@ -227,7 +228,14 @@ async function statChangeV3(ctx: Ctx<'statChange'>, group: StatEv[], volcano: bo
     if (!u || u.retired) return;
     if (volcano && (u.attribute === 'FIRE' || u.attribute === 'WATER') && !u.hasAura('volcano'))
       u.setAura('volcano', u.attribute === 'FIRE' ? flameAura(ctx.scene, u) : steamAura(ctx.scene, u));
-    // Ejder Kılıcı's loss (A-2, A5 §3.1 Kırılma): the sword breaks on this beat, its number on the crack frame
+    // Ejder Kılıcı's loss (A-2, A5 §3.1 Kırılma): the sword breaks on this beat, its number on the crack frame —
+    // or it broke already on its card's crack (fix round 1, C1-03): the badge only settles, no second number
+    if (bladeBrokeEarly(u)) {
+      // (the beat's roll is still running toward these values: a second set would restart it)
+      const t = u.shownStats;
+      if (t.atk !== e.atk || t.def !== e.def) await u.setStats(e.atk, e.def, true);
+      return;
+    }
     if (bladeLost(k === 0 ? ctx.stateNext : ctx.after, e, u)) {
       if (!u.sprite.visible || !u.sprite.active) u.setAura('equip', null);
       else return bladeBreakBeat(ctx, e, u);

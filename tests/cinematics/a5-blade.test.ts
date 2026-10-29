@@ -15,7 +15,8 @@ import { PixelCanvas } from '../../src/art/pixel';
 import { ISO_TEX_H, ISO_TEX_W } from '../../src/art/cards';
 import { greatSwordMotif, type GreatSwordOpts, type MotifFacing, type SwordAngle } from '../../src/art/spellmotifs-v3';
 import { BOND_RING_RX, BREAK_CRACK_FRAMES, anchorFromFrame, breakRing, ringPixels, swordShardPoints } from '../../src/duel/auras-v3';
-import { BREAK, DRAW_STEPS, FORGE, SINK_COOL_FRAMES, bladeLost, bondPosePlan, forgeLayout, inArtWindow, numberSpot, shardTone, sinkLook, type StatEv } from '../../src/cinematics/spells/_blade_v3';
+import { BLADE_BONUS, BREAK, DRAW_STEPS, FORGE, SINK_COOL_FRAMES, bladeBrokeEarly, bladeLost, bondPosePlan, forgeLayout, inArtWindow, numberSpot, shardTone, sinkLook, type StatEv } from '../../src/cinematics/spells/_blade_v3';
+import { EQUIP_HOOKS } from '../../src/duel/auras-v3';
 import { FORGE_OLD, TURN_K, forgeSizeFor, forgeSwordChunks, forgeSwordGeom, forgeSwordMotif, turnAt, type ForgeSize, type ForgeSwordOpts, type ForgeTurn } from '../../src/cinematics/spells/_blade_sword';
 import type { MonsterUnit } from '../../src/duel/MonsterUnit';
 
@@ -280,12 +281,18 @@ describe('bigsword: the forged sword (the old forge path in v3 pixels)', () => {
     }
   });
 
-  it('the beats are the old forge’s (834 ms from the runes to the stab, the runes a little quicker); the sink steps down the ramp to light', () => {
+  it('the beats are the old forge’s, its spin + hang trimmed (fix round 1, C1-06); the sink steps down the ramp to light', () => {
     const toStab = FORGE.runes + FORGE.orbit + FORGE.converge + DRAW_STEPS * FORGE.drawStep + FORGE.cool + FORGE.spin + FORGE.hang + FORGE.plunge;
-    // the draw-in, the cooling, the spin, the hang and the plunge are the old ones exactly
-    expect([DRAW_STEPS * FORGE.drawStep, FORGE.cool, FORGE.spin, FORGE.hang, FORGE.plunge, FORGE.stop, FORGE.sink]).toEqual([64, 33, 210, 60, 70, 70, 230]);
-    expect(toStab).toBeGreaterThanOrEqual(780);
-    expect(toStab).toBeLessThanOrEqual(870);
+    // the draw-in, the cooling, the plunge, the hit-stop and the sink are the old ones exactly
+    expect([DRAW_STEPS * FORGE.drawStep, FORGE.cool, FORGE.plunge, FORGE.stop, FORGE.sink]).toEqual([64, 33, 70, 70, 230]);
+    // C1-06: the blade's spin and hang over the target together ≤ 200 ms (were 210 + 60), the spin still readable
+    expect(FORGE.spin + FORGE.hang).toBeLessThanOrEqual(200);
+    expect(FORGE.spin).toBeGreaterThanOrEqual(120);
+    // … and the input comes back ≤ 150 ms after the stab (its hit-stop included): the sink plays on by itself
+    expect(FORGE.tail).toBeGreaterThanOrEqual(FORGE.stop);
+    expect(FORGE.tail).toBeLessThanOrEqual(150);
+    expect(toStab).toBeGreaterThanOrEqual(700);
+    expect(toStab).toBeLessThanOrEqual(800);
     // (fix round 2: the stab's white-hot flash cools through SINK_COOL_FRAMES of gold4 first, so the sink
     // itself goes planes → light: full, ember, ghost, gone)
     const seq = [0, 0.2, 0.4, 0.6, 0.8, 0.95].map(sinkLook);
@@ -409,5 +416,15 @@ describe('A-2 the card and the loss', () => {
     expect(bladeLost(none, { ...e, atk: 3100 }, u())).toBe(false);
     expect(bladeLost(none, e, u({ retired: true }))).toBe(false);
     expect(bladeLost(none, e, u({ aura: false }))).toBe(false);
+  });
+});
+
+describe('fix round 1 (A5A-C1-03): the break starts on the card’s crack', () => {
+  it('the blade registers the crack hook; a unit whose blade did not break early is left to the statChange', () => {
+    // the equip aura calls this the frame its card tile jolts under the tendril (auras-v3)
+    expect(typeof EQUIP_HOOKS.onCardCrack).toBe('function');
+    expect(BLADE_BONUS).toBe(700);
+    const u = { uid: 7 } as unknown as MonsterUnit;
+    expect(bladeBrokeEarly(u)).toBe(false);
   });
 });

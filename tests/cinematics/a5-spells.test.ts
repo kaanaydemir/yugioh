@@ -9,6 +9,8 @@
 // old beats (build, ripple, charge, break). Step A-5: Yer Yarığı — the beat times (crack ≈ 150 ms, ≤ 250 ms
 // run, the old under-cracks / open / shut), the whole-pixel fall, the wide abyss (as wide as the old one),
 // its lip and drawing (palette only), the trap card's landing after the victim's (≥ 150 ms).
+// Fix round 1: the eruption at v1's footprint, the mirror's faster schedule, the chasm's sink-driven shut,
+// the crack watch of the equip / field card, Ruh Çağrısı's sigil, column and attribute ring at ≥ v1 size.
 // Later steps add their checks here.
 
 import { describe, expect, it, vi } from 'vitest';
@@ -30,6 +32,7 @@ import {
   beatTimes,
   frontArrivalMs,
   frontMsAt,
+  frontSchedule,
   volcanoAmbienceOnV3,
   volcanoAmbienceProbe,
   volcanoAmbienceV3,
@@ -395,6 +398,84 @@ describe('A-3 Volkan Arenası: the lava front', () => {
     const sp = beatTimes([frontArrivalMs(0, 0, 0), frontArrivalMs(0, 0, 1), frontArrivalMs(0, 1, 0), frontArrivalMs(0, 1, 1)]);
     expect(Math.max(...sp)).toBeLessThanOrEqual(FRONT_SPREAD_MS);
   });
+
+  // fix round 2 (A5A-C2-01): the beats are spaced by what the player sees — a FIRE beat's number comes on its
+  // edge's top frame (117 ms in), a WATER beat's at once — so the NUMBERS are ≥ 150 ms apart, the beat sounds
+  // ≥ 100 ms apart and the first beat ≥ 150 ms after the eruption
+  it('front beats: numbers ≥ 150 ms apart, sounds ≥ 100 ms apart, the first ≥ 150 ms after the eruption', () => {
+    const FIRE = 133;
+    const check = (items: { arrival: number; lead: number }[]) => {
+      const b = frontSchedule(items, { first: 150 });
+      b.forEach((x, i) => {
+        expect(x.start).toBeGreaterThanOrEqual(items[i].arrival);
+        expect(x.start).toBeGreaterThanOrEqual(150);
+        expect(x.show - x.start).toBe(items[i].lead);
+      });
+      const shows = b.map((x) => x.show).sort((a, c) => a - c);
+      for (let i = 1; i < shows.length; i++) expect(shows[i] - shows[i - 1]).toBeGreaterThanOrEqual(150);
+      const starts = b.map((x) => x.start).sort((a, c) => a - c);
+      for (let i = 1; i < starts.length; i++) expect(starts[i] - starts[i - 1]).toBeGreaterThanOrEqual(100);
+      // by distance: an earlier arrival never shows its number later than a later one
+      const byArr = items.map((it, i) => ({ a: it.arrival, s: b[i].show, i })).sort((p, q) => p.a - q.a || p.i - q.i);
+      for (let i = 1; i < byArr.length; i++) expect(byArr[i].s).toBeGreaterThan(byArr[i - 1].s);
+      return b;
+    };
+    // spVolcano: wolf (FIRE, P1 zone 0), golem (WATER, P1 zone 1), serpent (WATER, P2 zone 0), titan (FIRE, P2 zone 1)
+    const sp = check([
+      { arrival: frontArrivalMs(0, 0, 0), lead: FIRE },
+      { arrival: frontArrivalMs(0, 0, 1), lead: 0 },
+      { arrival: frontArrivalMs(0, 1, 0), lead: 0 },
+      { arrival: frontArrivalMs(0, 1, 1), lead: FIRE },
+    ]);
+    // the critic's case: the WATER number no longer lands 16–67 ms after the FIRE one
+    expect(sp[1].show - sp[0].show).toBeGreaterThanOrEqual(150);
+    expect(sp[2].show - sp[3].show).toBeGreaterThanOrEqual(150);
+    // spVolcanoP2: titan (FIRE, P2 zone 1), serpent (WATER, P1 zone 1), wolf (FIRE, P1 zone 2)
+    check([
+      { arrival: frontArrivalMs(1, 1, 1), lead: FIRE },
+      { arrival: frontArrivalMs(1, 0, 1), lead: 0 },
+      { arrival: frontArrivalMs(1, 0, 2), lead: FIRE },
+    ]);
+    // a5VolcanoSlice / spVolcanoReplace-like pairs, and a WATER before a FIRE
+    check([
+      { arrival: frontArrivalMs(0, 0, 1), lead: FIRE },
+      { arrival: frontArrivalMs(0, 1, 0), lead: 0 },
+    ]);
+    check([
+      { arrival: 0, lead: 0 },
+      { arrival: 20, lead: FIRE },
+      { arrival: 40, lead: 0 },
+      { arrival: 60, lead: FIRE },
+      { arrival: 600, lead: 0 },
+    ]);
+    // the last number still shows inside the scene (the creep stops ≥ 120 ms after it): ≤ 0.9 s + a little
+    expect(Math.max(...sp.map((x) => x.show))).toBeLessThanOrEqual(FRONT_SPREAD_MS);
+  });
+
+  it('a beat number never slams over a number already up (numberSpot reserves the slam box)', async () => {
+    const { numberSpot, numbersClash, numberBox } = await import('../../src/cinematics/spells/volcano_arena');
+    expect(numberBox('+500')).toEqual({ w: 33, h: 14 });
+    expect(numberBox('-300')).toEqual({ w: 32, h: 14 });
+    // the critic's two pairs (spVolcano: wolf +500 then golem −300; titan +500 then serpent −300)
+    for (const [a, b] of [
+      [
+        { x: 257, y: 106, t: '+500' },
+        { x: 290, y: 120, t: '-300' },
+      ],
+      [
+        { x: 352, y: 77, t: '+500' },
+        { x: 374, y: 89, t: '-300' },
+      ],
+    ] as const) {
+      const spots: { x: number; y: number; w: number }[] = [];
+      const p = numberSpot(spots, a.x, a.y, a.t);
+      expect(p).toMatchObject({ x: a.x, y: a.y });
+      const q = numberSpot(spots, b.x, b.y, b.t);
+      expect(numbersClash({ ...q, w: numberBox(b.t).w }, spots[0])).toBe(false);
+      // moved the least: a few px, never off its monster
+      expect(Math.abs(q.x - b.x) + Math.abs(q.y - b.y)).toBeLessThanOrEqual(30);
+    }
+  });
 });
 
 describe('A-3 Volkan Arenası: the v3 ambience and field auras', () => {
@@ -638,21 +719,114 @@ describe('A-4 Ayna Kalkanı (v3): the big dome, the order, the schedule', () => 
     }
   });
 
-  it('the old beats come back: the dome is built (380 ms) before the earliest contact; ripple, charge and break as the old dome', async () => {
+  it('the old beats come back: the dome is built before the earliest contact; ripple, charge and break as the old dome', async () => {
     const { DOME_AT, BUILD_MS, CATCH_AT, RIPPLE_MS, CHARGE_AT, CHARGE_MS, SHATTER_MS } = await import('../../src/cinematics/traps/_mirror_v3');
-    expect(DOME_AT).toBe(250);
-    expect(BUILD_MS).toBeGreaterThanOrEqual(380);
+    // fix round 1 (C1-02): the build from the stand-up's last frames, a little quicker (was 250 / 380)
+    expect(DOME_AT).toBe(220);
+    expect(BUILD_MS).toBeGreaterThanOrEqual(300);
     expect(CATCH_AT - DOME_AT).toBeGreaterThanOrEqual(BUILD_MS);
     expect(RIPPLE_MS).toBe(190);
     expect(SHATTER_MS).toBe(340);
-    // the first reflection leaves ≤ 270 ms after the contact's hit-stop (the old dome: 360)
-    expect(CHARGE_AT + CHARGE_MS).toBeLessThanOrEqual(270);
+    // the first reflection leaves ≤ 180 ms after the catch: the 60 ms hit-stop + the charge
+    expect(60 + CHARGE_AT + CHARGE_MS).toBeLessThanOrEqual(180);
+  });
+
+  it('fix round 1 (C1-02): after a posed v3 death the next beam may leave 150 ms after the contact; per-victim gaps', async () => {
+    const { beamSchedule, BEAM_MS, BEAM_GAP, BEAM_GAP_POSED, LAND_GAP } = await import('../../src/cinematics/traps/_mirror_v3');
+    expect(BEAM_GAP_POSED).toBe(150);
+    expect(BEAM_GAP_POSED).toBeLessThan(BEAM_GAP);
+    // two posed v3 deaths (≈ 1.2 s each): contact + 150, their landings still ≥ 150 ms apart
+    const t = beamSchedule([1220, 1220], { gaps: [0, BEAM_GAP_POSED] });
+    expect(t).toEqual([0, BEAM_MS + BEAM_GAP_POSED]);
+    expect(Math.abs(t[1] - t[0])).toBeGreaterThanOrEqual(LAND_GAP);
+    // a per-victim gap never loosens the landing rule
+    for (const deaths of [[520, 520], [1220, 520], [520, 1220, 520]]) {
+      const gaps = deaths.map(() => BEAM_GAP_POSED);
+      const tt = beamSchedule(deaths, { gaps });
+      const lands = tt.map((d, k) => d + BEAM_MS + deaths[k]);
+      for (let i = 0; i < lands.length; i++) for (let j = i + 1; j < lands.length; j++) expect(Math.abs(lands[i] - lands[j])).toBeGreaterThanOrEqual(LAND_GAP);
+    }
+  });
+
+  it('fix round 2 (C2-02): the break is front-loaded — a quarter of the dome is gone 50 ms after the sound — and ends as before', async () => {
+    const { domeShape, domeField, shatterFront, shatterKey, SHATTER_MS, BREAK_CLEAR } = await import('../../src/cinematics/traps/_mirror_v3');
+    expect(BREAK_CLEAR).toBeGreaterThanOrEqual(100);
+    // the front is eased out (never behind the old line) and joins the old line after SHATTER_MS
+    let last = -1;
+    for (let el = 0; el <= SHATTER_MS * 2; el += 17) {
+      const f = shatterFront(el);
+      expect(f).toBeGreaterThanOrEqual(last);
+      expect(f).toBeGreaterThanOrEqual((el / SHATTER_MS) * 1.15 - 1e-9);
+      last = f;
+    }
+    expect(shatterFront(SHATTER_MS * 1.5)).toBeCloseTo(1.15 * 1.5, 6);
+    for (const side of [0, 1] as const) {
+      const f = domeField(domeShape(side));
+      // struck points high on the shell (the attacks meet it at 0.72 rad: v ≈ 0.66)
+      const strikes = f.cells.filter((c) => c.cv > 0.55 && c.cv < 0.8);
+      expect(strikes.length).toBeGreaterThan(5);
+      const goneAt = (s: { cu: number; cv: number }, ms: number) => f.cells.filter((c) => shatterKey(c.brk, Math.hypot(c.cu - s.cu, c.cv - s.cv)) < shatterFront(ms)).length / f.cells.length;
+      let worst50 = 1;
+      let worstEnd = 0;
+      for (const s of strikes) {
+        worst50 = Math.min(worst50, goneAt(s, 50));
+        // every cell goes, no later than the old linear ramp let it go
+        let t = 0;
+        while (goneAt(s, t) < 1 && t < 3000) t += 17;
+        worstEnd = Math.max(worstEnd, t);
+      }
+      expect(worst50, `side ${side}`).toBeGreaterThanOrEqual(0.25);
+      expect(worstEnd).toBeLessThanOrEqual(3000);
+    }
+  });
+
+  it('fix round 2 (C2-06): from the catch on, the dome burns white only round the struck point (EF-4)', async () => {
+    const { domeShape, domeField, domeLook, paintDomeShell, DOME_PX, WHITE_DISC_R } = await import('../../src/cinematics/traps/_mirror_v3');
+    for (const side of [0, 1] as const) {
+      const f = domeField(domeShape(side));
+      // the hottest frame there is: every seam and pane at full heat / glow (the first departure, the charge's peak)
+      const L = domeLook(f.cells.length);
+      L.heat.fill(2);
+      L.glow.fill(3);
+      const hit = f.near.cell.findIndex((c) => c >= 0);
+      const hx = f.shape.x0 + Math.round(f.w / 2);
+      const hy = f.shape.y0 + Math.round(f.h / 3);
+      expect(hit).toBeGreaterThanOrEqual(0);
+      L.whiteDisc = { x: hx, y: hy, r2: WHITE_DISC_R * WHITE_DISC_R };
+      const near = new PixelCanvas(f.w, f.h);
+      paintDomeShell(near, f, 'near', L);
+      let inDisc = 0;
+      for (let j = 0; j < f.h; j++)
+        for (let i = 0; i < f.w; i++) {
+          if (!near.alpha(i, j) || near.get(i, j) !== PAL.white) continue;
+          const kind = f.near.kind[j * f.w + i];
+          if (kind === DOME_PX.spec) continue; // the specular streak stays white (it always was)
+          const out = (f.shape.x0 + i - hx) ** 2 + (f.shape.y0 + j - hy) ** 2 > WHITE_DISC_R * WHITE_DISC_R;
+          expect(out, `side ${side}: white at ${i},${j} outside the disc`).toBe(false);
+          inDisc++;
+        }
+      // ≤ ~300 px of white round the struck point (the critic's bound), the rest of the glass mag4 / pink
+      expect(inDisc).toBeLessThanOrEqual(300);
+      expect(inDisc).toBeGreaterThan(20);
+    }
+  });
+
+  it('fix round 1 (C1-02): the trap card lands clear (≥ 167 ms) of every victim card, never earlier than asked', async () => {
+    const { exitLanding, LAND_GAP } = await import('../../src/cinematics/traps/_mirror_v3');
+    expect(exitLanding(1000, [])).toBe(1000);
+    expect(exitLanding(1000, [600])).toBe(1000);
+    expect(exitLanding(1000, [900, 1100])).toBe(1100 + LAND_GAP + 17);
+    for (const lands of [[950], [900, 1100, 1300], [1500, 1000]]) {
+      const t = exitLanding(1000, lands);
+      expect(t).toBeGreaterThanOrEqual(1000);
+      for (const l of lands) expect(Math.abs(t - l)).toBeGreaterThanOrEqual(LAND_GAP + 17);
+    }
   });
 });
 
 describe('A-5 Yer Yarığı (v3): timing, the wide abyss, the fall', () => {
   it('the crack leaves ≈ 150 ms after activate, runs ≤ 250 ms; the old beats follow (under-cracks, open, fall, shut)', async () => {
-    const { CRACK_AT, CRACK_MS, RADIAL_LEAD, RADIAL_MS, OPEN_MS, SHUT_MS, SHUT_AFTER } = await import('../../src/cinematics/traps/_chasm_v3');
+    const { CRACK_AT, CRACK_MS, RADIAL_LEAD, RADIAL_MS, OPEN_MS, SHUT_MS, SHUT_FRAMES, SHUT_LEAD, SHUT_AFTER, shutOpenAt } = await import('../../src/cinematics/traps/_chasm_v3');
     // game time = show clock + the opening's burst stop (3 frames) + the destroy's dispatch frame
     const crack = CRACK_AT + 50 + 17;
     expect(crack).toBeLessThanOrEqual(151);
@@ -661,25 +835,43 @@ describe('A-5 Yer Yarığı (v3): timing, the wide abyss, the fall', () => {
     // the old beats, each readable (the old ones: 300 / 180 / 200 ms)
     expect(RADIAL_MS).toBeGreaterThanOrEqual(150);
     expect(OPEN_MS).toBeGreaterThanOrEqual(150);
-    expect(SHUT_MS).toBeGreaterThanOrEqual(150);
-    // the shut lands within 1.3 s of the crack (the old fissure + abyss took ≈ 1.44 s)
-    expect(SHUT_AFTER).toBeLessThanOrEqual(1300);
+    // fix round 1 (C1-05): no empty hold — the shut starts SHUT_LEAD frames before the body is gone (its
+    // lip swallowing the rest) and slams SHUT_FRAMES later: ≤ 100 ms after the body's last pixel
+    expect(SHUT_MS).toBeLessThanOrEqual(100);
+    expect(SHUT_FRAMES).toBeGreaterThanOrEqual(5);
+    expect((SHUT_FRAMES * 1000) / 60).toBeLessThanOrEqual(100.1);
+    expect(SHUT_LEAD).toBeGreaterThanOrEqual(1);
+    expect(SHUT_LEAD).toBeLessThan(SHUT_FRAMES);
+    // whole steps, closing from the first frame (no hold), shut on the last
+    const steps = Array.from({ length: SHUT_FRAMES }, (_, j) => shutOpenAt(j));
+    expect(steps[0]).toBeLessThan(1);
+    expect(steps[SHUT_FRAMES - 1]).toBe(0);
+    for (let j = 1; j < steps.length; j++) expect(steps[j]).toBeLessThan(steps[j - 1]);
+    // the shut lands within 1.0 s of the crack (the old fissure + abyss took ≈ 1.44 s)
+    expect(SHUT_AFTER).toBeLessThanOrEqual(1000);
     // the S-15 target: a fast decision (≤ 120 ms) + the crack's start stays within 300 ms of the summon's end
     expect(120 + crack + 17).toBeLessThanOrEqual(300);
   });
 
-  it('the fall is whole pixels, one step per frame, accelerating (the old inQuad drop), deep enough for the tallest body', async () => {
-    const { FALL_FRAMES, fallOffsets } = await import('../../src/cinematics/traps/_chasm_v3');
+  it('the fall is whole pixels, one step per frame, accelerating 2, 4, 7, 11, 16 … (A5 §3.4), deep enough for the tallest body', async () => {
+    const { FALL_FRAMES, PRE_FALL_FRAMES, fallOffsets } = await import('../../src/cinematics/traps/_chasm_v3');
+    // fix round 2 (C2-08): the struck body holds ≤ 2 frames on the opening pad, then drops visibly from the first frame
+    expect(PRE_FALL_FRAMES).toBeLessThanOrEqual(2);
     for (const depth of [110, 140]) {
       const off = fallOffsets(depth);
       expect(off.length).toBe(FALL_FRAMES);
+      expect(off.slice(0, 5)).toEqual([2, 4, 7, 11, 16]);
+      let reached = -1;
       for (let k = 0; k < off.length; k++) {
         expect(Number.isInteger(off[k])).toBe(true);
         if (k > 0) expect(off[k]).toBeGreaterThanOrEqual(off[k - 1]);
-        if (k > 1) expect(off[k] - off[k - 1]).toBeGreaterThanOrEqual(off[k - 1] - off[k - 2] - 1);
+        // accelerating (one px more each frame) until it reaches the depth, then held there
+        if (k > 1 && off[k] < depth) expect(off[k] - off[k - 1]).toBe(off[k - 1] - off[k - 2] + 1);
+        if (reached < 0 && off[k] === depth) reached = k;
       }
+      expect(reached).toBeGreaterThan(0);
+      expect(reached).toBeLessThanOrEqual(17);
       expect(off[off.length - 1]).toBe(depth);
-      expect(off[off.length - 1] - off[off.length - 2]).toBeGreaterThan(off[1] - off[0]);
     }
   });
 
@@ -775,5 +967,179 @@ describe('A-5 Yer Yarığı (v3): timing, the wide abyss, the fall', () => {
     // above the trap opening's floor ring (DEPTH.SHADOW − 1), below the shadows and every unit
     expect(CRACK_DEPTH).toBeGreaterThan(DEPTH.SHADOW - 1);
     expect(CRACK_DEPTH).toBeLessThan(DEPTH.SHADOW);
+  });
+});
+
+describe('fix round 1 (A5-A): the eruption, the recall landing, the crack watch', () => {
+  /** Opaque bounding box of a canvas. */
+  const bbox = (p: PixelCanvas) => {
+    let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
+    for (let y = 0; y < p.h; y++)
+      for (let x = 0; x < p.w; x++)
+        if (p.alpha(x, y) > 0) {
+          x0 = Math.min(x0, x);
+          y0 = Math.min(y0, y);
+          x1 = Math.max(x1, x);
+          y1 = Math.max(y1, y);
+        }
+    return x1 < 0 ? { w: 0, h: 0 } : { w: x1 - x0 + 1, h: y1 - y0 + 1 };
+  };
+
+  it('C1-01: the eruption rises 3 steps, holds ≥ 2, falls 3; at its peak ≥ 16 px wide, ≥ 44 px tall, a white core, palette only', () => {
+    const S = M.ERUPTION_STEPS;
+    expect(S[0].h).toBeLessThan(S[1].h);
+    expect(S[1].h).toBeLessThan(S[2].h);
+    const held = S.filter((s) => s.h >= 50);
+    expect(held.length).toBeGreaterThanOrEqual(2 + 1);
+    const peak = S.reduce((k, s, i) => (s.h > S[k].h ? i : k), 0);
+    const after = S.slice(peak + 1).map((s) => s.h);
+    for (let i = 1; i < after.length; i++) expect(after[i]).toBeLessThanOrEqual(after[i - 1]);
+    expect(after[after.length - 1]).toBe(0);
+    // ≤ 1.9 s scene: the eruption itself stays short
+    expect(S.reduce((n, s) => n + s.ms, 0)).toBeLessThanOrEqual(450);
+    for (let k = 3; k <= 6; k++) {
+      const p = new PixelCanvas(84, M.ERUPTION_TOP + 18);
+      M.paintEruption(p, 42, M.ERUPTION_TOP + 6, k, { phase: k });
+      expect(paletteOnly(p).bad).toEqual([]);
+      const b = bbox(p);
+      expect(b.w, `step ${k}`).toBeGreaterThanOrEqual(16);
+      expect(b.h, `step ${k}`).toBeGreaterThanOrEqual(44);
+      let white = 0;
+      for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) if (p.alpha(x, y) && p.get(x, y) === PAL.white) white++;
+      expect(white, `step ${k}`).toBeGreaterThanOrEqual(8);
+      const q = new PixelCanvas(84, M.ERUPTION_TOP + 18);
+      M.paintEruption(q, 42, M.ERUPTION_TOP + 6, k, { phase: k });
+      expect(hash(q)).toBe(hash(p));
+    }
+  });
+
+  it('C1-01: a two-ring floor shock ≥ 90 × 44 and 10–14 gobs on arcs ≤ 40 px', async () => {
+    const { SHOCK_RINGS, ERUPT_GOB_GROUPS, ERUPT_GOBS } = await import('../../src/cinematics/spells/volcano_arena');
+    expect(SHOCK_RINGS.length).toBe(2);
+    const R = Math.max(...SHOCK_RINGS.map((r) => Math.max(...r.rx)));
+    expect(R * 2).toBeGreaterThanOrEqual(90);
+    expect(R).toBeGreaterThanOrEqual(44);
+    expect(ERUPT_GOBS).toBeGreaterThanOrEqual(10);
+    expect(ERUPT_GOBS).toBeLessThanOrEqual(14);
+    for (const g of ERUPT_GOB_GROUPS) for (const r of g.reach) expect(r).toBeLessThanOrEqual(40);
+  });
+
+  it('C1-03 / C1-04: a card tile counts as cracked once it jolts off its home (or is gone)', async () => {
+    const { tileShaken } = await import('../../src/cinematics/_v3/spellfx');
+    expect(tileShaken(null)).toBe(true);
+    expect(tileShaken({ active: false, x: 100, home: { x: 100, y: 0 } })).toBe(true);
+    expect(tileShaken({ active: true, x: 100, home: { x: 100, y: 0 } })).toBe(false);
+    expect(tileShaken({ active: true, x: 101, home: { x: 100, y: 0 } })).toBe(true);
+    expect(tileShaken({ active: true, x: 99, home: { x: 100, y: 0 } })).toBe(true);
+  });
+
+  it('C1-07: the recall sigil is ≥ v1’s rune circle (≈ 70 × 35): rings, dial, hexagram, 8 runes; palette only, deterministic', () => {
+    const p = new PixelCanvas(96, 52);
+    M.paintRecallSigil(p, 48, 26, { step: 3, phase: 5 });
+    expect(paletteOnly(p).bad).toEqual([]);
+    const b = bbox(p);
+    expect(b.w).toBeGreaterThanOrEqual(72);
+    expect(b.h).toBeGreaterThanOrEqual(36);
+    const q = new PixelCanvas(96, 52);
+    M.paintRecallSigil(q, 48, 26, { step: 3, phase: 5 });
+    expect(hash(q)).toBe(hash(p));
+    // it opens in thirds; the lit pulse lifts it (white lines appear)
+    const s1 = new PixelCanvas(96, 52);
+    M.paintRecallSigil(s1, 48, 26, { step: 1 });
+    expect(bbox(s1).w).toBeLessThan(b.w);
+    const lit = new PixelCanvas(96, 52);
+    M.paintRecallSigil(lit, 48, 26, { step: 3, phase: 5, lit: true });
+    const whites = (c: PixelCanvas) => {
+      let n = 0;
+      for (let y = 0; y < c.h; y++) for (let x = 0; x < c.w; x++) if (c.alpha(x, y) && c.get(x, y) === PAL.white) n++;
+      return n;
+    };
+    expect(whites(p)).toBe(0);
+    expect(whites(lit)).toBeGreaterThanOrEqual(16);
+  });
+
+  it('C1-07: the landing burst reaches ≥ 80 × 40, its ring stays ≥ 80 × 40; the attribute glyphs are palette only', async () => {
+    const R = await import('../../src/cinematics/spells/soul_recall');
+    const max = Math.max(...R.RECALL_LAND_RINGS.map((r) => Math.max(...r.rx)));
+    expect(max * 2).toBeGreaterThanOrEqual(80);
+    expect(max).toBeGreaterThanOrEqual(40);
+    expect(R.RECALL_RING_RX * 2).toBeGreaterThanOrEqual(80);
+    for (const r of R.RECALL_LAND_RINGS) for (const t of r.tone) expect(t >= 0 && t <= 4).toBe(true);
+    // the column: a white core, cyan bands, a cyan1 edge
+    expect(R.recallPillarTone(0, 5)).toBe(PAL.white);
+    expect(R.recallPillarTone(4, 5)).toBe(PAL.cyan1);
+    expect(R.RECALL_PILLAR_H).toBeGreaterThanOrEqual(80);
+    const ramps = { FIRE: [PAL.fire0, PAL.fire1, PAL.fire2, PAL.fire3, PAL.fire4], WATER: [PAL.water0, PAL.water1, PAL.water2, PAL.water3, PAL.water4], LIGHT: [PAL.gold0, PAL.gold1, PAL.gold2, PAL.gold3, PAL.gold4], DARK: [PAL.void0, PAL.void1, PAL.void2, PAL.void3, PAL.void4], EARTH: [PAL.earth0, PAL.earth1, PAL.earth2, PAL.earth3, PAL.earth4], WIND: [PAL.leaf0, PAL.leaf1, PAL.leaf2, PAL.leaf3, PAL.leaf4] } as const;
+    for (const [attr, ramp] of Object.entries(ramps) as [keyof typeof ramps, readonly number[]][]) {
+      for (let f = 0; f < 3; f++) {
+        const p = new PixelCanvas(9, 10);
+        M.paintRecallFlavour(p, attr, ramp, 4, 8, f);
+        expect(paletteOnly(p).bad, `${attr} ${f}`).toEqual([]);
+        expect(bbox(p).w, `${attr} ${f}`).toBeGreaterThan(0);
+      }
+      const gone = new PixelCanvas(9, 10);
+      M.paintRecallFlavour(gone, attr, ramp, 4, 8, 0, { cool: 3 });
+      expect(paletteOnly(gone).bad).toEqual([]);
+    }
+  });
+
+  it('C2-05: the landing is at least v1’s water ring (≈ 95 × 45) and WATER throws 20–30 px spouts in drop arcs', async () => {
+    const R = await import('../../src/cinematics/spells/soul_recall');
+    const max = Math.max(...R.RECALL_LAND_RINGS.map((r) => Math.max(...r.rx)));
+    expect(max * 2).toBeGreaterThanOrEqual(96);
+    expect(R.RECALL_RING_RX * 2).toBeGreaterThanOrEqual(96);
+    expect(R.RECALL_RING_HOLD).toBeGreaterThanOrEqual(760);
+    expect(R.RECALL_SPOUTS).toBeGreaterThanOrEqual(3);
+    for (const h of R.RECALL_SPOUT_H) {
+      expect(h).toBeGreaterThanOrEqual(20);
+      expect(h).toBeLessThanOrEqual(30);
+    }
+    const water = [PAL.water0, PAL.water1, PAL.water2, PAL.water3, PAL.water4];
+    let tallest = 0;
+    let drops = 0;
+    for (let k = 0; k < 24; k++) {
+      const t = k / 24;
+      const p = new PixelCanvas(30, 40);
+      M.paintRecallSpout(p, 15, 36, water, 28, t);
+      expect(paletteOnly(p).bad, `t ${t}`).toEqual([]);
+      const bb = bbox(p);
+      if (bb.w > 0) tallest = Math.max(tallest, bb.h);
+      // nothing below the base line, white only on tips / drop tops (a handful of pixels)
+      let white = 0;
+      for (let y = 0; y < p.h; y++)
+        for (let x = 0; x < p.w; x++) {
+          if (!p.alpha(x, y)) continue;
+          expect(y, `t ${t}`).toBeLessThanOrEqual(36);
+          if (p.get(x, y) === PAL.white) white++;
+        }
+      expect(white).toBeLessThanOrEqual(6);
+      if (t >= M.RECALL_SPOUT.crest && bb.w >= 9) drops++;
+    }
+    expect(tallest).toBeGreaterThanOrEqual(28);
+    // after the crest the drops arc out to both sides (the spout spans ≥ 9 px on some frames)
+    expect(drops).toBeGreaterThan(0);
+    // deterministic
+    const a = new PixelCanvas(30, 40);
+    const b = new PixelCanvas(30, 40);
+    M.paintRecallSpout(a, 15, 36, water, 26, 0.6);
+    M.paintRecallSpout(b, 15, 36, water, 26, 0.6);
+    expect(a.data).toEqual(b.data);
+  });
+
+  it('C1-07: the held circle is a double ring with a dial; LIGHT stars keep white to the peak frame’s centre (EF-4)', async () => {
+    const R = await import('../../src/cinematics/spells/soul_recall');
+    expect(R.RECALL_RING_INNER_RX).toBeLessThanOrEqual(R.RECALL_RING_RX - 6);
+    expect(R.RECALL_RING_INNER_RX * 2).toBeGreaterThanOrEqual(60);
+    expect(R.RECALL_RING_TICKS).toBeGreaterThanOrEqual(12);
+    // LIGHT's ramp ends in white: a ring of 14 stars must not light 14 × 5 white pixels at once
+    const light = [PAL.gold1, PAL.gold2, PAL.gold3, PAL.gold4, PAL.white];
+    const whites = (f: number) => {
+      const p = new PixelCanvas(9, 10);
+      M.paintRecallFlavour(p, 'LIGHT', light, 4, 8, f);
+      let n = 0;
+      for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) if (p.alpha(x, y) && p.get(x, y) === PAL.white) n++;
+      return n;
+    };
+    expect([whites(0), whites(1), whites(2)]).toEqual([1, 0, 0]);
   });
 });

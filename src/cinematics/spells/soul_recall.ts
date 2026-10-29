@@ -29,14 +29,16 @@
 //          the body (bottom → top) — never a roar, a cut-in or an on-summon effect
 //   land   the body has re-formed: cyan ring, the badge pops, and only now does the spent card
 //          leave — born on the grave the energy went into, flying on whole pixels to its owner's pile
+//          (lane A5-A, V3_A5_A, fix round 1: the 80 × 40 rune sigil, the cyan column and the attribute
+//          ring at ≥ v1 size instead of the ring and the dotted shockwave — see the section before soulRiseV3)
 //   end    resolves once the card has landed and the body stands (its last breath plays on)
 // Budget ≤ 2.1 s (suRevive, spRecallSet, sliceMagusRevive…).
 
 import Phaser from 'phaser';
-import { CARDS, isMonster, type CardId, type MonsterId } from '../../data/cards';
+import { CARDS, isMonster, type Attribute, type CardId, type MonsterId } from '../../data/cards';
 import { currentAtk, currentDef } from '../../engine';
 import type { GameEvent, GameState, PlayerId, Uid } from '../../engine/types';
-import { PAL, RAMPS, type Ramp } from '../../art/palette';
+import { ATTRIBUTE_COLOR, ATTRIBUTE_RAMP, PAL, RAMPS, type Ramp } from '../../art/palette';
 import { ARENA_V2, DEPTH, LOOK_V3, type XY, unitDepth, zoneXY } from '../../view/layout';
 import { TEX, flash, shake, wait } from '../../vfx/core';
 import { E, Raster, Sparks, floorRing, ghostTexture, lerp, onFrame, qbez, rnd, rr, run } from '../../vfx/setpieces';
@@ -59,7 +61,9 @@ import { atMark, panAt, play as playV3, soundsOf, start as startV3 } from '../_v
 import { V3_A5_A } from '../../view/v3flags';
 // (step A-8: the reduced-motion profile, A5 §3.0 — the particles of the v3 recall halved; lane A5-A only)
 import { REDUCED_MOTION } from '../../view/v3/motion';
-import { fxCount } from '../_v3/spellfx';
+import { fxCount, fxRng } from '../_v3/spellfx';
+// (fix round 1, A5A-C1-07: the destination sigil, the column and the attribute ring at ≥ v1 size)
+import { RECALL_SIGIL_R, paintRecallFlavour, paintRecallSigil, paintRecallSpout } from '../../art/spellmotifs-v3';
 import { clearHologram, holoRamp, setHologram } from '../../vfx/hologram';
 
 const ADD = Phaser.BlendModes.ADD;
@@ -73,6 +77,8 @@ type AnyCtx = CinematicContext<GameEvent>;
 interface Ghost {
   /** Melt down into the pillar (white, fading). */
   melt(ms?: number): Promise<void>;
+  /** v3 + A5-A: the destination sigil, left lit after the melt — the landing closes it. */
+  sigil?: { pulse(ms: number): void; dismiss(ms: number): Promise<void> };
 }
 
 /**
@@ -646,6 +652,7 @@ function ghostVariant(sc: Phaser.Scene, gs: GhostSheetV3, f: number, kind: 'echo
  * dismiss() closes it in three steps.
  */
 function tileCircleV3(sc: Phaser.Scene, x: number, y: number): { pulse(ms: number): void; dismiss(ms: number): Promise<void> } {
+  if (V3_A5_A) return recallSigilV3(sc, x, y);
   const R = 30;
   const ras = Raster.around(sc, Math.round(x), Math.round(y), R * 2 + 10, R + 10, DEPTH.TILE_FX);
   const cx = Math.round(x);
@@ -690,6 +697,292 @@ function tileCircleV3(sc: Phaser.Scene, x: number, y: number): { pulse(ms: numbe
       ras.destroy();
     },
   };
+}
+
+// ---------------------------------------------------------------- lane A5-A, fix round 1 (A5A-C1-07)
+//
+// The critic's 1× pairs: v1's destination is a ≈ 70 × 35 rune circle, a cyan light column, then a big
+// attribute ring (the wolf's flame ring) still burning at the end; the v3 kit had a ≈ 45 × 18 ring and a
+// thin dotted ≈ 50 × 22 shockwave. Behind V3_A5_A (the A2 kit unchanged without it), never smaller:
+//   the sigil  spellmotifs-v3 paintRecallSigil, 80 × 40 at full size: rings, a dial, a hexagram and
+//              eight runes turning in whole steps; it opens as the ghost rises, stays lit from the
+//              arrival and closes on the landing
+//   the column a crisp cyan pillar the body is re-formed in (white core, cyan4 / cyan3 / cyan1 bands,
+//              no alpha, no blend), behind the body; it pinches out on the landing
+//   the land   a solid two-ring burst in the monster's ATTRIBUTE ramp (to 92 × 46), then its ring stays
+//              lit (84 × 42) with the attribute's glyphs standing on it (spellmotifs-v3 paintRecallFlavour:
+//              FIRE flame tongues like v1's flame ring, DARK void flames, WATER spouts, LIGHT stars, EARTH
+//              spikes, WIND leaves; all but FIRE also throw motes) and steps out after the input
+// Times unchanged (nothing here is awaited by the scene).
+
+/** v3 + A5-A: the destination sigil at ≥ v1 size (opens in three radius steps, the runes turn one whole
+ *  step every 50 ms, pulse() lifts it one palette step, dismiss() closes it in three steps). */
+function recallSigilV3(sc: Phaser.Scene, x: number, y: number): { pulse(ms: number): void; dismiss(ms: number): Promise<void> } {
+  const cx = Math.round(x);
+  const cy = Math.round(y);
+  const R = RECALL_SIGIL_R + 4;
+  const ras = Raster.around(sc, cx, cy, R * 2 + 4, R + 8, DEPTH.TILE_FX);
+  let step = 0;
+  let hi = 0;
+  let closing = false;
+  let el = 0;
+  const stop = onFrame(sc, (dt) => {
+    el += dt;
+    if (!closing) step = Math.min(3, Math.floor(el / 80) + 1);
+    if (hi > 0) hi = Math.max(0, hi - dt);
+    ras.begin();
+    paintRecallSigil(ras.pc, cx - ras.x, cy - ras.y, { step, phase: Math.floor(el / 50), lit: hi > 0 });
+    ras.end();
+    return true;
+  });
+  return {
+    pulse(ms: number) {
+      hi = Math.max(hi, ms);
+    },
+    async dismiss(ms: number) {
+      closing = true;
+      hi = 0;
+      const each = Math.max(17, Math.round(ms / 3));
+      for (let k = 2; k >= 0; k--) {
+        step = Math.min(step, k);
+        await wait(sc, each);
+      }
+      stop();
+      ras.destroy();
+    },
+  };
+}
+
+/** The recall column's height (px above the floor) and its half widths, rise → hold → pinch. */
+export const RECALL_PILLAR_H = 96;
+export const RECALL_PILLAR_RISE = [1, 3, 5] as const;
+export const RECALL_PILLAR_PINCH = [3, 1] as const;
+
+/** The column's tone at distance d from its centre line, half width hw (white core, then cyan4 / cyan3, a cyan1 edge). */
+export function recallPillarTone(d: number, hw: number): number {
+  if (d <= 0) return PAL.white;
+  const edge = hw - 1 - d;
+  return edge <= 0 ? PAL.cyan1 : edge === 1 ? PAL.cyan3 : PAL.cyan4;
+}
+
+/** v3 + A5-A: the crisp cyan column at the tile, behind the body; pinch() narrows it out in whole steps. */
+function recallPillarV3(sc: Phaser.Scene, at: XY, depth: number): { pinch(): void } {
+  const x = Math.round(at.x);
+  const base = Math.round(at.y) + 1;
+  const H = RECALL_PILLAR_H;
+  const ras = new Raster(sc, x - 8, base - H - 2, 16, H + 6, depth);
+  let k = 0;
+  let pinchAt = -1;
+  const draw = (hw: number, top: number, scan: number) => {
+    const p = ras.pc;
+    p.clear();
+    if (hw <= 0) return;
+    const lx = x - ras.x;
+    const ly = base - ras.y;
+    for (let row = 0; row < top; row++) {
+      const y = ly - row;
+      // the top tapers in whole steps (no fade): the last rows narrower and a tone down
+      const fromTop = top - 1 - row;
+      const w = fromTop < 3 ? Math.max(1, hw - 2) : fromTop < 7 ? Math.max(1, hw - 1) : hw;
+      const lift = Math.abs(row - scan) <= 1 && fromTop >= 7; // the energy band running up
+      for (let c = -w; c < w; c++) {
+        const d = c < 0 ? -c - 1 : c;
+        let tone = lift ? (d < w - 1 ? PAL.white : PAL.cyan4) : recallPillarTone(d, w);
+        if (fromTop < 3 && tone === PAL.white) tone = PAL.cyan4;
+        p.set(lx + c, y, tone);
+      }
+    }
+    // the foot: a short bright bar on the floor, one pixel wider each side than the column
+    for (let c = -hw - 2; c < hw + 2; c++) p.set(lx + c, ly + 1, Math.abs(c + 0.5) < hw ? PAL.cyan4 : PAL.cyan2);
+  };
+  onFrame(sc, (dt) => {
+    if (dt <= 0) return true;
+    let hw: number;
+    let top = H;
+    if (pinchAt >= 0) {
+      const j = k - pinchAt;
+      if (j >= RECALL_PILLAR_PINCH.length) {
+        ras.destroy();
+        return false;
+      }
+      hw = RECALL_PILLAR_PINCH[j];
+    } else if (k < RECALL_PILLAR_RISE.length) {
+      hw = RECALL_PILLAR_RISE[k];
+      top = Math.round((H * (k + 1)) / RECALL_PILLAR_RISE.length);
+    } else hw = 5;
+    draw(hw, top, (k * 6) % (H + 12));
+    ras.end();
+    k++;
+    return true;
+  });
+  return {
+    pinch() {
+      if (pinchAt < 0) pinchAt = k;
+    },
+  };
+}
+
+/**
+ * The landing burst: two solid rings stepping out in the attribute ramp (ramp indices), 2 frames a step — to
+ * 104 × 52 (fix round 2, A5A-C2-05: v1's water ring is ≈ 95 × 45; the burst had peaked at ≈ 85 × 40).
+ */
+export const RECALL_LAND_RINGS: readonly { start: number; rx: readonly number[]; tone: readonly number[] }[] = [
+  { start: 0, rx: [18, 28, 38, 44, 49, 52], tone: [4, 4, 3, 3, 2, 1] },
+  { start: 1, rx: [12, 22, 31, 38, 43], tone: [4, 3, 3, 2, 1] },
+];
+/**
+ * The ring that stays lit after the burst (half width; 96 × 48 — fix round 2: from 84 × 42, never smaller than
+ * v1's ≈ 95 × 45 water ring), how long (≈ 800 ms), and the attribute glyphs standing on it.
+ */
+export const RECALL_RING_RX = 48;
+export const RECALL_RING_HOLD = 800;
+export const RECALL_RING_FLAMES = 14;
+/** The held circle's inner ring (80 × 40, drawn 50 ms after the outer one) and the dial ticks turning between
+ *  the two in whole steps — a magic circle in the attribute's ramp (v1's water landing was one). */
+export const RECALL_RING_INNER_RX = 40;
+export const RECALL_RING_TICKS = 16;
+/**
+ * WATER's own volume (fix round 2, A5A-C2-05: v1's water landing threw a ≈ 40-px droplet column): four spouts
+ * standing on the lit ring climb 22–30 px and fall back in whole-pixel drop arcs (spellmotifs-v3
+ * paintRecallSpout), each on its own beat, for as long as the ring is lit.
+ */
+export const RECALL_SPOUTS = 4;
+export const RECALL_SPOUT_H = [30, 24, 28, 22] as const;
+export const RECALL_SPOUT_CYCLE = 460;
+
+/** v3 + A5-A: the landing at (x, y) in the attribute's ramp (see the section note). Resolves when gone. */
+function recallLandV3(sc: Phaser.Scene, at: XY, attr: Attribute): Promise<void> {
+  const ramp = ATTRIBUTE_RAMP[attr];
+  // the held ring's brightest tone: LIGHT's ramp ends in white, kept for the burst only (EF-4 white share)
+  const hi = ramp[4] === PAL.white ? ramp[3] : ramp[4];
+  const x = Math.round(at.x);
+  const y = Math.round(at.y);
+  const span = 56;
+  const floor = Raster.around(sc, x, y, span * 2 + 4, span + 10, DEPTH.SHADOW - 1);
+  // (tall enough for WATER's spouts: 30 px over the ring's back points)
+  const back = Raster.around(sc, x, y - 18, span * 2 + 4, span + 50, DEPTH.SHADOW - 0.5);
+  const front = Raster.around(sc, x, y - 18, span * 2 + 4, span + 50, unitDepth(y) + 1);
+  const rng = fxRng(x * 7 + y * 13 + attr.length);
+  // the ring's light on the floor (the stepped light layer; no dark spill — a dark spill tone reads as a smear)
+  const pool = lightPool(sc, x, y, { color: ATTRIBUTE_COLOR[attr], spill: null, radius: 46, floorY: y, intensity: 0.75, anim: 'breathe', fadeIn: 60 });
+  const fire = attr === 'FIRE';
+  const nFlames = fxCount(RECALL_RING_FLAMES, RM);
+  const nSpouts = fxCount(RECALL_SPOUTS, RM);
+  const motesBack = fire ? null : new PxSparks(sc, unitDepth(y) - 1);
+  const motesFront = fire ? null : new PxSparks(sc, unitDepth(y) + 1.5);
+  const STEP = 1000 / 30; // two frames a step
+  const burstEnd = Math.max(...RECALL_LAND_RINGS.map((r) => (r.start + r.rx.length) * STEP));
+  const ringIn = 3 * STEP;
+  const end = ringIn + RECALL_RING_HOLD;
+  const OUT = 3 * 50;
+  const ringAt = (rx: number, tone: number, inner: number | null) => {
+    floor.pc.ellipseRing(x - floor.x, y - floor.y, rx, Math.max(1, Math.round(rx / 2)), tone);
+    if (inner !== null) floor.pc.ellipseRing(x - floor.x, y - floor.y, rx - 1, Math.max(1, Math.round(rx / 2) - 1), inner);
+  };
+  let lastMote = -999;
+  return new Promise<void>((resolve) => {
+    onFrame(sc, (dt, el) => {
+      if (dt <= 0) return true;
+      floor.begin();
+      back.begin();
+      front.begin();
+      // ---- the burst
+      for (const r of RECALL_LAND_RINGS) {
+        const k = Math.floor(el / STEP) - r.start;
+        if (k < 0 || k >= r.rx.length) continue;
+        const t = r.tone[k];
+        ringAt(r.rx[k], ramp[t], k < 3 && t > 0 ? ramp[t - 1] : null);
+      }
+      // ---- the ring that stays (fades in under the burst's tail, steps out after the hold)
+      const out = el - end;
+      if (el >= ringIn && out < OUT) {
+        const dim = out < 0 ? 0 : Math.floor(out / 50) + 1; // 0 lit · 1–3 stepping out
+        const main = ramp[Math.max(0, 2 - Math.max(0, dim - 1))];
+        if (dim < 3) ringAt(RECALL_RING_RX, main, dim === 0 ? ramp[1] : null);
+        // the inner ring and the dial between: drawn a step after the outer ring, gone a step before it
+        if (el >= ringIn + 50 && dim < 2) {
+          ringAt(RECALL_RING_INNER_RX, dim === 0 ? ramp[2] : ramp[1], dim === 0 ? ramp[1] : null);
+          if (dim === 0) {
+            const turn = Math.floor(el / 67) * (TAU / 192);
+            for (let i = 0; i < RECALL_RING_TICKS; i++) {
+              const a = (i / RECALL_RING_TICKS) * TAU + turn;
+              for (let r = RECALL_RING_INNER_RX + 2; r <= RECALL_RING_INNER_RX + 4; r++)
+                floor.px(Math.round(x + Math.cos(a) * r), Math.round(y + (Math.sin(a) * r) / 2), ramp[3]);
+            }
+          }
+        }
+        // the front arc's highlight studs shimmer (whole steps)
+        if (dim === 0)
+          for (let i = 0; i < 12; i++) {
+            if ((i + Math.floor(el / 100)) % 3 !== 0) continue;
+            const a = (i / 12) * TAU;
+            if (Math.sin(a) <= 0) continue;
+            floor.px(Math.round(x + Math.cos(a) * RECALL_RING_RX), Math.round(y + Math.sin(a) * (RECALL_RING_RX / 2)), hi);
+          }
+        // the attribute's glyphs standing on the ring (FIRE: flame tongues, v1's flame ring) — grow in, live, cool out
+        for (let i = 0; i < nFlames; i++) {
+          const a = (i / nFlames) * TAU + 0.2;
+          const fx0 = Math.round(x + Math.cos(a) * RECALL_RING_RX);
+          const fy0 = Math.round(y + Math.sin(a) * (RECALL_RING_RX / 2));
+          const ras = Math.sin(a) > 0 ? front : back;
+          const grow = Math.floor((el - ringIn) / 50);
+          const cool = out >= 0 ? Math.min(3, Math.floor(out / 50) + 1) : grow < 2 ? 2 - grow : 0;
+          paintRecallFlavour(ras.pc, attr, ramp, fx0 - ras.x, fy0 - ras.y, Math.floor(el / 67) + i, { cool: cool as 0 | 1 | 2 | 3 });
+        }
+        // WATER: four spouts climb off the lit ring and fall back in drop arcs, each on its own beat
+        if (attr === 'WATER' && out < 0)
+          for (let i = 0; i < nSpouts; i++) {
+            const local = el - ringIn - i * 70;
+            if (local < 0) continue;
+            const a = (i / nSpouts) * TAU + 0.55;
+            const sx = Math.round(x + Math.cos(a) * RECALL_RING_RX);
+            const sy = Math.round(y + Math.sin(a) * (RECALL_RING_RX / 2));
+            const ras = Math.sin(a) > 0 ? front : back;
+            paintRecallSpout(ras.pc, sx - ras.x, sy - ras.y, ramp, RECALL_SPOUT_H[i % RECALL_SPOUT_H.length], (local % RECALL_SPOUT_CYCLE) / RECALL_SPOUT_CYCLE);
+          }
+        // the others: motes of the attribute rising off the ring
+        if (!fire && out < 0 && el - lastMote >= 40) {
+          lastMote = el;
+          for (let m = 0; m < (RM ? 1 : 2); m++) {
+            const a = rng() * TAU;
+            const px = Math.round(x + Math.cos(a) * RECALL_RING_RX);
+            const py = Math.round(y + Math.sin(a) * (RECALL_RING_RX / 2));
+            const em = Math.sin(a) > 0 ? motesFront : motesBack;
+            const water = attr === 'WATER';
+            const earth = attr === 'EARTH';
+            const wind = attr === 'WIND';
+            em?.add({
+              x: px,
+              y: py,
+              vx: wind ? -Math.sin(a) * 40 : (rng() - 0.5) * 10,
+              vy: water ? -(50 + rng() * 25) : earth ? -(40 + rng() * 20) : -(22 + rng() * 26),
+              ay: water || earth ? 240 : 0,
+              floor: water || earth ? py + 1 : undefined,
+              life: 300 + Math.floor(rng() * 120),
+              colors: [hi, ramp[3], ramp[2]],
+              shape: attr === 'LIGHT' ? 'plus' : earth ? 'shard' : 'px',
+              size: earth ? 2 : 1,
+              fadeAt: 1,
+            });
+          }
+        }
+      }
+      floor.end();
+      back.end();
+      front.end();
+      if (el >= Math.max(burstEnd, end + OUT)) {
+        floor.destroy();
+        back.destroy();
+        front.destroy();
+        motesBack?.release();
+        motesFront?.release();
+        void pool.fadeOut(160);
+        resolve();
+        return false;
+      }
+      return true;
+    });
+  });
 }
 
 /**
@@ -837,8 +1130,10 @@ async function soulRiseV3(ctx: AnyCtx, from: XY, to: XY, id: MonsterId, player: 
       grave.destroy();
       flames.release();
       mist.release();
-      bg(dest.dismiss(320));
+      // (A5-A: the sigil stays lit until the landing, which closes it — recallV3)
+      if (!V3_A5_A) bg(dest.dismiss(320));
     },
+    sigil: V3_A5_A ? dest : undefined,
   };
 }
 
@@ -889,13 +1184,26 @@ async function recallV3(ctx: CinematicContext<Extract<GameEvent, { type: 'activa
   const voice = soundsOf(sEv.cardId);
   void lightFlash(sc, dest.x, dest.y - 12, PAL.cyan4, fs(34), 360, { floorY: dest.y, ring: true, intensity: 0.85 });
   bg(ghost.melt(120));
+  // A5-A (A5A-C1-07): the sigil stays lit until the landing; the cyan column the body re-forms in, behind it
+  ghost.sigil?.pulse(4000);
+  const pillar = V3_A5_A ? recallPillarV3(sc, dest, unitDepth(dest.y) - 0.5) : null;
+  const card = CARDS[sEv.cardId];
+  const attr: Attribute = isMonster(card) ? card.attribute : 'LIGHT';
   const unit: MonsterUnit | null = field.addUnit(sEv.uid, { hidden: true, atk: stats.atk, def: stats.def, position: sEv.position });
   let landed!: () => void;
   const landP = new Promise<void>((r) => (landed = r));
   let revSound = false;
   const land = () => {
-    bg(shockwave(sc, dest.x, dest.y, { ramp: CYAN, radius: fs(44), ms: 360, thickness: 4 }));
-    void lightFlash(sc, dest.x, dest.y - 16, PAL.cyan4, fs(30), 300, { floorY: dest.y, ring: true, intensity: 0.7 });
+    if (V3_A5_A) {
+      // A5-A (A5A-C1-07): the column pinches out, the sigil closes, the attribute ring bursts and stays lit
+      pillar?.pinch();
+      if (ghost.sigil) bg(ghost.sigil.dismiss(240));
+      bg(recallLandV3(sc, dest, attr));
+      void lightFlash(sc, dest.x, dest.y - 16, ATTRIBUTE_COLOR[attr], fs(30), 300, { floorY: dest.y, intensity: 0.8 });
+    } else {
+      bg(shockwave(sc, dest.x, dest.y, { ramp: CYAN, radius: fs(44), ms: 360, thickness: 4 }));
+      void lightFlash(sc, dest.x, dest.y - 16, PAL.cyan4, fs(30), 300, { floorY: dest.y, ring: true, intensity: 0.7 });
+    }
     // A2 art review r3 #1: a few angular shards of the monster's own matter skid out along the
     // floor (no round, soft dust puffs under the rising body)
     landShards(sc, dest.x, dest.y, unit ? matterRamp(unit.cardId) : RAMPS.cyan);

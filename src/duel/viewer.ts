@@ -70,6 +70,8 @@ export class ViewerPolicy {
    * question ("TUZAK SORUSU: OYUNCU n").
    */
   async ensureViewer(p: PlayerId, opts: { trap?: boolean } = {}): Promise<void> {
+    // v3 (A6B-2): a cover wave after a trap answer finishes before the next hand-over looks at the hand
+    if (this.covering) await this.covering;
     const target = this.viewerFor(p);
     if (target === this.hand.owner && !this.hand.isFaceDown) return;
     const useCurtain = this.mode === 'hotseat' && this.curtain && !this.auto && this.isHuman(target);
@@ -93,5 +95,28 @@ export class ViewerPolicy {
       await this.hand.setOwner(target, false);
     }
     this.onChange?.(target);
+  }
+
+  /** The defender's hand turning face down after a trap answer (v3, lane A6-B), until it is down. */
+  private covering: Promise<void> | null = null;
+
+  /**
+   * v3 (lane A6-B, F7 / KO-11; critic A6B-2): `p` has answered a trap question in hot-seat with the
+   * curtain on. The question was the defender's; the battle goes on as the turn player's — so the
+   * defender's hand turns face down now, in the curtain's wave (S-9, 30 ms a card), and stays down
+   * through the attacker's battle; the next hand-over (ensureViewer) then runs the curtain from that
+   * covered hand. Resolves when the hand is down (at once when there is nothing to cover). Lane B off,
+   * v1, vsBot, the demo and a hot-seat without the curtain: nothing (the hand is not private there).
+   */
+  coverAfterAnswer(p: PlayerId): Promise<void> {
+    if (!V3_A6_B) return Promise.resolve();
+    const useCurtain = this.mode === 'hotseat' && this.curtain && !this.auto && this.isHuman(p);
+    if (!useCurtain || this.hand.owner !== p || this.hand.isFaceDown) return Promise.resolve();
+    const wave = this.hand.waveFaceDown(true, 30).catch((e) => console.error('[viewer] cover', e));
+    this.covering = wave;
+    void wave.then(() => {
+      if (this.covering === wave) this.covering = null;
+    });
+    return wave;
   }
 }

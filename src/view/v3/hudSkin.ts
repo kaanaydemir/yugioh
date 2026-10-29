@@ -204,6 +204,8 @@ export function iconTones(style: UiStyle, lift = 0): IconTones {
 
 /** Disabled icon tones (night3 text, F10). */
 export const ICON_DISABLED: IconTones = Object.freeze({ w: PAL.night4, m: PAL.night3, s: PAL.night3, n: PAL.night2 });
+/** A disabled button's icon while it arrives / leaves (one tone under ICON_DISABLED). */
+export const ICON_DISABLED_DIM: IconTones = Object.freeze({ w: PAL.night3, m: PAL.night2, s: PAL.night2, n: PAL.night1 });
 
 /**
  * Re-tone an ICON glyph (src/view/ui-textures ICON_ART: white / mist / steel / night3 art with a 1-px
@@ -664,6 +666,8 @@ export class ButtonSkinV3 {
   private attention = false;
   /** Frames left of a flat white trim (hover-in / click), counted on the scene clock. */
   private flashMs = 0;
+  /** Palette steps under the state's tones while the button arrives / leaves (appear: 2, 1, 0). */
+  private dim = 0;
   /** ms left of the flat crimson reject trim (F5: a disabled button clicked; shown in every state). */
   private rejectMs = 0;
   private readonly updateFn: (t: number, dt: number) => void;
@@ -722,19 +726,18 @@ export class ButtonSkinV3 {
   }
 
   /**
-   * F0 (the HUD's arrival, hudIn): 0 = the trim alone, 1 = the body with the trim one tone up, 2 = the
-   * button as its state draws it (the end of the arrival).
+   * Arriving / leaving in palette steps (F0 hudIn, the trap prompt, the game-over row): 0 = the whole
+   * button two tones down (trim, label and icon), 1 = one tone down, 2 = the button as its state draws it.
+   * Never an empty box (A6B-8, KK-8): body, label and icon show in every step; only the light node waits
+   * for the rest step.
    */
   appear(step: 0 | 1 | 2): void {
     if (this.dead) return;
-    this.bg.setVisible(step >= 1);
-    this.content.setVisible(step >= 2);
+    this.dim = 2 - step;
+    this.bg.setVisible(true);
+    this.content.setVisible(true);
     this.trim.nodeG.setVisible(step >= 2);
-    if (step === 2) {
-      this.apply(this.state);
-      return;
-    }
-    this.trim.set(styleTrim(this.style, this.lift() + (step === 1 ? 1 : 0)));
+    this.apply(this.state);
   }
 
   /** F0 'wake' (the HUD already on screen): one white trim frame, then one tone up; null = the state's own trim. */
@@ -792,6 +795,7 @@ export class ButtonSkinV3 {
 
   private drawTrim(): void {
     if (this.rejectMs > 0) return void this.trim.set(flatTrim(PAL.crim3));
+    if (this.dim > 0) return void this.trim.set(styleTrim(this.style, this.lift() - this.dim));
     this.trim.set(this.flashMs > 0 && this.state !== 'd' ? flatTrim(PAL.white) : styleTrim(this.style, this.lift()));
   }
 
@@ -807,10 +811,10 @@ export class ButtonSkinV3 {
 
   private toneContent(): void {
     const d = this.state === 'd';
-    const lift = this.lift();
-    this.label?.setColor(d ? PAL.night3 : styleTone(this.style, lift + 1));
+    const lift = this.lift() - this.dim;
+    this.label?.setColor(d ? (this.dim > 0 ? PAL.night2 : PAL.night3) : styleTone(this.style, lift + 1));
     if (this.icon && this.iconKey) {
-      const k = iconTexture(this.host.scene, this.iconKey, d ? ICON_DISABLED : iconTones(this.style, lift));
+      const k = iconTexture(this.host.scene, this.iconKey, d ? (this.dim > 0 ? ICON_DISABLED_DIM : ICON_DISABLED) : iconTones(this.style, lift));
       if (k) this.icon.setTexture(k);
     }
   }

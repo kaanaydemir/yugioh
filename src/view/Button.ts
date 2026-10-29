@@ -398,8 +398,14 @@ export class Button extends Phaser.GameObjects.Container {
     });
   }
 
+  /**
+   * v3 (A6B-7): false keeps the click's own confirm sound off — for a plate that voices its answer itself
+   * on the same frame (the trap prompt's AÇ / GEÇ: ui3Confirm / ui3Back). Hover and press stay.
+   */
+  fireSound = true;
+
   private fire(): void {
-    if (this.sound) sfx.play('uiConfirm', { volume: 0.7 });
+    if (this.sound && this.fireSound) sfx.play('uiConfirm', { volume: 0.7 });
     if (this.v3) {
       this.v3.flash(34); // v3: two frames of white trim, no ADD flash / sparks
       this.onClick?.();

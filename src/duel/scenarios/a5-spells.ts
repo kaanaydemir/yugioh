@@ -12,6 +12,13 @@ const PACK: Record<string, Scenario> = {
     stage: { p0: { hand: ['volcano_arena'], monsters: ['stone_sentinel', 'ember_wolf', 'crystal_wyrm'] }, p1: { monsters: ['tide_golem', 'abyss_magus'] } },
     steps: [(D) => ({ type: 'activateSpell', player: 0, uid: D.uid('volcano_arena', 0) })],
   },
+  // fix round 2 (A5A-C2-03): spVolcanoReplace mirrored — P2's Volkan Arenası replaces P1's; the arena stays
+  // hot (no cold frame, no re-spread), only the new pad erupts on the far side.
+  a5VolcanoReplaceP2: {
+    desc: "player 2 Volkan Arenası replaces player 1's (mirrored): the arena stays hot, the far pad erupts",
+    stage: { active: 1, p1: { hand: ['volcano_arena'], monsters: [null, 'tide_golem'] }, p0: { field: 'volcano_arena', monsters: ['ember_wolf'] } },
+    steps: [(D) => ({ type: 'activateSpell', player: 1, uid: D.uid('volcano_arena', 1) })],
+  },
   // A-4 (§3.3): Ayna Kalkanı over the v3 slice. P2's Kristal Ejder attacks P1's Taş Muhafız; P1 springs
   // the mirror: both of P2's attack-position monsters — the Ejder and Uçurum Büyücüsü, v3 art — die
   // their own v3 deaths, one after the other (nearest to the panel first), 220 ms between contacts.

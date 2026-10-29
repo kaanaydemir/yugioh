@@ -7,8 +7,12 @@
 //                    3 px outside each candidate monster's opaque box (the union of its rest frames).
 //                    They arrive from 4 px further out in three steps (0–90 ms, ui3AimOpen), then
 //                    breathe 1 px in / out every 420 ms (each candidate 140 ms after the one on its
-//                    left). Under the pointer: one white frame, the corners settle 2 px in, the unit
-//                    gets a one-frame gold contour (ui3Aim, a pentatonic step per candidate). The click
+//                    left; A6B-6: 210 ms — neighbours breathe in anti-phase). Under the pointer: one
+//                    white frame, the corners settle 2 px in and stay thick (2-px legs, gold4 round a white
+//                    joint) for as long as it is hovered, the unit gets a one-frame gold contour (ui3Aim, a
+//                    pentatonic step per candidate). Overlapping candidates (A6B-6): a corner whose joint
+//                    falls inside another candidate's box is dropped, the hovered one keeps all four, drawn
+//                    over the rest. The click
 //                    (confirm): the corners close onto the body in two steps with one white contour
 //                    frame and are gone by 60 ms (ui3Lock) — the action is sent at 0 ms, the marks ride
 //                    the cinematic's first frames; the other candidates' corners step out and fade.
@@ -70,8 +74,10 @@ export const AIM = Object.freeze({
   stepMs: 30,
   /** Breathing: the corners sit 1 px in for every other half period. */
   breathMs: 420,
-  /** Each candidate breathes this much later than the one on its left. */
-  breathStagger: 140,
+  /** Each candidate breathes this much later than the one on its left: half the period (A6B-6: neighbours in anti-phase). */
+  breathStagger: 210,
+  /** A corner of one candidate whose joint falls inside another candidate's box grown by this is dropped (A6B-6). */
+  overlapPad: 2,
   /** Under the pointer the corners settle this many px in (one px per 33-ms step). */
   hotIn: 2,
   /** The confirm: the gap of the two closing steps, then the fade frame; gone at confirmMs. */
@@ -145,6 +151,58 @@ export function minGap(b: Box): number {
 export function cornerCanvas(c: CornerName, tone: number, joint: number = tone): PixelCanvas {
   const p = new PixelCanvas(6, 6);
   return brackets(p, 1, 1, 4, 4, tone, { corners: [c], leg: AIM.leg, joint });
+}
+
+/**
+ * A hovered candidate's corner (A6B-6: "hangisi imleç altında" reads at 1× for as long as it is hovered):
+ * the L's legs two pixels thick, AIM.leg + 1 long, in `tone` with a 2 × 2 `joint`, a 1-px ink outline (8 × 8).
+ * Its outer corner pixel sits where the thin corner's does (canvas 1 or 6 on each axis): the thickness
+ * grows inward, toward the body.
+ */
+export function thickCornerCanvas(c: CornerName, tone: number, joint: number = tone): PixelCanvas {
+  const p = new PixelCanvas(8, 8);
+  const L = AIM.leg + 1;
+  const fx = c === 'tr' || c === 'br';
+  const fy = c === 'bl' || c === 'br';
+  const at = (x: number, y: number): [number, number] => [fx ? 7 - x : x, fy ? 7 - y : y];
+  const legs: [number, number][] = [];
+  for (let i = 0; i < L; i++)
+    for (let t = 0; t < 2; t++) {
+      legs.push(at(1 + i, 1 + t));
+      legs.push(at(1 + t, 1 + i));
+    }
+  const own = new Set(legs.map(([x, y]) => `${x},${y}`));
+  for (const [x, y] of legs)
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && !own.has(`${x + dx},${y + dy}`)) p.set(x + dx, y + dy, PAL.ink);
+  const jx = new Set([at(1, 1), at(2, 1), at(1, 2), at(2, 2)].map(([x, y]) => `${x},${y}`));
+  for (const [x, y] of legs) p.set(x, y, jx.has(`${x},${y}`) ? joint : tone);
+  return p;
+}
+
+/** The screen pixel of corner `c`'s outer joint for box `b` pushed out by `gap` (the L's own corner). */
+export function cornerJoint(c: CornerName, b: Box, gap: number): XY {
+  const left = c === 'tl' || c === 'bl';
+  const top = c === 'tl' || c === 'tr';
+  return { x: left ? b.x0 - gap : b.x1 + gap, y: top ? b.y0 - gap : b.y1 + gap };
+}
+
+/**
+ * Which corners of `b` (at `gap`) to drop because their joint falls inside another candidate's box grown
+ * by AIM.overlapPad (A6B-6: overlapping candidates never interleave their brackets). Pure.
+ */
+export function overlappedCorners(b: Box, gap: number, others: readonly Box[]): Set<CornerName> {
+  const out = new Set<CornerName>();
+  const pad = AIM.overlapPad;
+  for (const c of CORNERS) {
+    const j = cornerJoint(c, b, gap);
+    for (const o of others)
+      if (j.x >= o.x0 - pad && j.x <= o.x1 + pad && j.y >= o.y0 - pad && j.y <= o.y1 + pad) {
+        out.add(c);
+        break;
+      }
+  }
+  return out;
 }
 
 /** The reject stamp's x offset and palette step `ms` after the click (null = gone). */
@@ -251,8 +309,10 @@ export function ui3CardSfx(name: UiCardSfxName, opts: SfxOpts = {}, fallback: Sf
 
 // ================================================================ corner sets
 
-function cornerKey(scene: Phaser.Scene, c: CornerName, tone: number, joint: number): string {
-  return canvasTexture(scene, `ui3:aim:${c}:${hex(tone)}:${hex(joint)}`, () => cornerCanvas(c, tone, joint));
+function cornerKey(scene: Phaser.Scene, c: CornerName, tone: number, joint: number, thick = false): string {
+  return thick
+    ? canvasTexture(scene, `ui3:aim:t:${c}:${hex(tone)}:${hex(joint)}`, () => thickCornerCanvas(c, tone, joint))
+    : canvasTexture(scene, `ui3:aim:${c}:${hex(tone)}:${hex(joint)}`, () => cornerCanvas(c, tone, joint));
 }
 
 /** Four corner images around a box (whole pixels, AIM.depth). */
@@ -267,8 +327,11 @@ class CornerSet {
     this.imgs = CORNERS.map((c) => scene.add.image(0, 0, cornerKey(scene, c, PAL.gold3, PAL.gold3)).setOrigin(0, 0).setDepth(depth).setVisible(false));
   }
 
-  /** Draw the corners around `b` at `gap` in `tone` (null box / tone = hidden). */
-  draw(b: Box | null, gap: number, tone: number | null, joint: number | null = tone): void {
+  /**
+   * Draw the corners around `b` at `gap` in `tone` (null box / tone = hidden); `thick`: the hovered
+   * corners (2-px legs, thickness inward); `hide`: corners dropped where they overlap another candidate.
+   */
+  draw(b: Box | null, gap: number, tone: number | null, joint: number | null = tone, o: { thick?: boolean; hide?: ReadonlySet<CornerName>; depth?: number } = {}): void {
     if (this.dead) return;
     if (!b || tone === null) {
       for (const i of this.imgs) i.setVisible(false);
@@ -276,12 +339,17 @@ class CornerSet {
     }
     const g = Math.max(minGap(b), Math.round(gap));
     const j = joint ?? tone;
-    const k = `${tone}|${j}`;
+    const thick = !!o.thick;
+    const k = `${tone}|${j}|${thick}`;
     CORNERS.forEach((c, n) => {
       const img = this.imgs[n];
-      if (k !== this.key) img.setTexture(cornerKey(this.scene, c, tone, j));
+      if (k !== this.key) img.setTexture(cornerKey(this.scene, c, tone, j, thick));
       const p = cornerXY(c, b, g);
-      img.setPosition(p.x, p.y).setVisible(true);
+      // the thick corner's outer joint sits on the thin one's: right / bottom corners start 2 px earlier
+      const x = thick && (c === 'tr' || c === 'br') ? p.x - 2 : p.x;
+      const y = thick && (c === 'bl' || c === 'br') ? p.y - 2 : p.y;
+      img.setPosition(x, y).setVisible(!o.hide?.has(c));
+      if (o.depth !== undefined) img.setDepth(o.depth);
     });
     this.key = k;
   }
@@ -532,10 +600,13 @@ export class AimMarks {
     if (this.dead) return false;
     this.flashes.tick();
     let alive = 0;
+    // this frame's boxes (A6B-6: a corner inside another candidate's box is dropped)
+    const boxes = new Map<AimEntry, Box | null>();
+    for (const e of this.entries) if (e.state !== 'dead') boxes.set(e, unitBox(e.unit));
     for (const e of this.entries) {
       if (e.state === 'dead') continue;
       // draw this frame from the time reached so far, then advance to the next frame
-      this.render(e, dt);
+      this.render(e, dt, boxes);
       e.t += dt;
       e.age += dt;
       e.frames++;
@@ -548,11 +619,12 @@ export class AimMarks {
     return true;
   }
 
-  private render(e: AimEntry, _dt: number): void {
-    const box = unitBox(e.unit);
+  private render(e: AimEntry, _dt: number, boxes: ReadonlyMap<AimEntry, Box | null>): void {
+    const box = boxes.get(e) ?? unitBox(e.unit);
     let gap: number = AIM.gap;
     let tone: number | null = PAL.gold3;
     let joint: number | null = null;
+    let thick = false;
     switch (e.state) {
       case 'arrive': {
         if (REDUCED_MOTION || e.t >= AIM.stepMs * AIM.arrive.length) {
@@ -568,8 +640,15 @@ export class AimMarks {
         gap += breathIn(e.age, e.order);
         break;
       case 'hot':
+        // hovered (A6B-6): thick bright corners for as long as the pointer is on it — one white frame, then
+        // gold4 legs round a white joint, settled 2 px in
         gap -= REDUCED_MOTION || e.t >= 33 ? AIM.hotIn : 1;
+        thick = true;
         if (e.frames === 0) tone = PAL.white;
+        else {
+          tone = PAL.gold4;
+          joint = PAL.white;
+        }
         break;
       case 'unhot':
         if (REDUCED_MOTION || e.t >= 33) {
@@ -615,7 +694,16 @@ export class AimMarks {
       joint = e.flash.tone;
       e.flash.frames--;
     }
-    e.set.draw(box, gap, tone, joint ?? tone);
+    // overlapping candidates (A6B-6): the hovered one keeps all four corners (drawn over the others); any
+    // other drops each corner whose joint falls inside another candidate's box
+    let hide: Set<CornerName> | undefined;
+    const isHot = e === this.hot && e.state === 'hot';
+    if (box && !isHot && e.state !== 'close') {
+      const others: Box[] = [];
+      for (const [o, ob] of boxes) if (o !== e && ob && o.state !== 'dead' && o.state !== 'leave') others.push(ob);
+      if (others.length) hide = overlappedCorners(box, Math.max(minGap(box), Math.round(gap)), others);
+    }
+    e.set.draw(box, gap, tone, joint ?? tone, { thick, hide, depth: isHot ? AIM.depth + 0.5 : AIM.depth });
     // the counter tag sits just off the top-right corner, its middle on the corner's top leg
     if (e.label && box) {
       const g = Math.max(minGap(box), gap);

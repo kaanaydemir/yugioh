@@ -32,14 +32,17 @@
 //            the hole's front lip — a geometry mask: no fade, no tint; v3 art goes on to hitHeavy f1 / f2;
 //            seven rocks break off the back rim and tumble in after it (masked too); the deep glow breathes
 //            one tone. chasmFall
-//   ≈ 1067   SHUT — `shut`: the abyss slams shut in whole steps (180 ms); the scar's cracks flash white for
-//            a frame; a two-ring shock ring runs out over the floor (mag4 → mag3 → mag2 → earth, whole
+//   ≈ 850–950 SHUT — driven by the sink, never a fixed hold (fix round 1, A5A-C1-05): SHUT_LEAD (4) frames
+//            before the body's top is due under the lip the abyss starts to close in whole steps (100 ms,
+//            faster and faster), the lip the body hides behind closing with it, so the slam lands ≤ 100 ms
+//            after the body's last pixel (measured 67–85 ms). On the slam frame — `shut`: the scar's cracks
+//            flash white; a two-ring shock ring runs out over the floor (mag4 → mag3 → mag2 → earth, whole
 //            pixels), dust puffs and magenta sparks; the scar trembles 1 px (local, never the camera); the
-//            card is born on the scar (cardLeaves) and flies to the graveyard; the cracks cool down by
-//            palette steps. chasmShut
-//   then     EXIT — `exit`: once the abyss has shut (at any speed), the trap card lies down on its tile and
-//            leaves for the graveyard from there, landing ≥ 150 ms after the victim's card; the camera
-//            relaxes (ctx.unfocus(320)).
+//            card is born on the scar on that same frame (cardLeaves) and flies to the graveyard; the cracks
+//            cool down by palette steps. chasmShut
+//   with it  EXIT — `exit`: as the abyss starts to close the trap card lies down on its tile and then flies
+//            in parallel with the victim's card, landing ≥ 150 ms after it; the camera relaxes on the slam
+//            (ctx.unfocus(320), today's beat). Input ≈ 1.53–1.63 s after activate (≤ 1.7 s, A5 §7.1 risk 9).
 // Nothing here adds a full-screen flash, a dim, a whole-sprite tint or a camera move (A5 §0 K1–K2). Under
 // REDUCED_MOTION (A5 §3.0 / §6.4; lane A5-A step A-8): particles are halved (fxCount), nothing trembles (jitter,
 // the body's 1-px shiver while the ground gives way) and the abyss opens without its overshoot; times unchanged.
@@ -94,17 +97,35 @@ export function abyssOpenAt(t: number, reduced: boolean = REDUCED_MOTION): numbe
 export function openShiver(k: number, reduced: boolean = REDUCED_MOTION): number {
   return reduced ? 0 : k % 4 === 0 ? 1 : k % 4 === 2 ? -1 : 0;
 }
-/** The fall: at most this many rendered frames (≈ 400 ms at 1×, as the old one's 480 ms inQuad fall) … */
+/** The fall: at most this many rendered frames (≈ 400 ms at 1×, as the old one's 480 ms inQuad fall). */
 export const FALL_FRAMES = 24;
-/** … it ends 2 frames after the body has passed under the lip; then the open abyss stands this long (its deep glow breathing). */
-export const HOLD_MS = 100;
-/** The abyss slams shut (whole steps; the old one: 200 ms). */
-export const SHUT_MS = 180;
 /**
- * When the shut lands at 1× at the latest (show ms after the crack left): crack + under-cracks + open + the
- * longest fall + hold + shut (a short body is under the lip sooner; the exit also waits for the real shut).
+ * The struck body holds this many rendered frames on the opening pad before it drops (A5 §3.4: the struck
+ * frame held 2 frames; fix round 2, A5A-C2-08 — it used to idle the whole 150-ms opening and the fall's first
+ * frames barely moved, ≈ 200 ms in all): the drop starts on the 3rd frame of the opening, with chasmFall.
  */
-export const SHUT_AFTER = CRACK_MS - RADIAL_LEAD + RADIAL_MS + OPEN_MS + Math.round((FALL_FRAMES * 1000) / 60) + HOLD_MS + SHUT_MS;
+export const PRE_FALL_FRAMES = 2;
+/** The abyss slams shut (whole steps, closing faster and faster; the old one: 200 ms). */
+export const SHUT_MS = 100;
+/** The shut's rendered frames at 60 fps. */
+export const SHUT_FRAMES = Math.max(2, Math.round(SHUT_MS / (1000 / 60)));
+/**
+ * No empty hold (fix round 1, A5A-C1-05): the shut starts this many frames before the body's box top is
+ * due under the lip (the fall's own offsets), i.e. while the body still shows — the closing lip swallows
+ * what is left — so the slam (SHUT_FRAMES later, 100 ms) lands ≤ 100 ms after the body's last pixel
+ * (filmed: 68 ms Gölge Suikastçı, 85 ms Kristal Ejder).
+ */
+export const SHUT_LEAD = 4;
+/** The abyss's opening on shut frame j (0 … SHUT_FRAMES − 1): visibly closing from the first frame, 0 on the last. */
+export function shutOpenAt(j: number): number {
+  const t = Math.min(1, (j + 1) / SHUT_FRAMES);
+  return t >= 1 ? 0 : 1 - t * t;
+}
+/**
+ * When the slam lands at 1× at the latest (show ms after the crack left): crack + under-cracks + the struck
+ * hold on the opening pad + the longest fall + the shut's frames past it (a short body is under the lip sooner).
+ */
+export const SHUT_AFTER = CRACK_MS - RADIAL_LEAD + RADIAL_MS + Math.round(((PRE_FALL_FRAMES + FALL_FRAMES - SHUT_LEAD + SHUT_FRAMES) * 1000) / 60);
 /**
  * The running crack's depth: over the trap opening's floor ring (DEPTH.SHADOW − 1), which would hide its
  * first ≈ 20 px for 2–3 frames after the crack sound, and under the shadows and the units.
@@ -121,12 +142,18 @@ export const PAD_HH = 12;
 // ================================================================ pure helpers (tested)
 
 /**
- * The fall's offsets (px below the start), one per rendered frame: an accelerating whole-pixel drop
- * (the old one's inQuad) deep enough for the tallest body to pass under the lip.
+ * The fall's offsets (px below the start), one per rendered frame: A5 §3.4's accelerating whole-pixel drop
+ * 2, 4, 7, 11, 16, 22 … (each frame one px more than the one before: visible from its very first frame —
+ * fix round 2, A5A-C2-08; the old inQuad spread over 24 frames moved 0–3 px for its first five), held at
+ * `depth` (deep enough for the tallest body to pass under the lip); at most `frames` long.
  */
 export function fallOffsets(depth = 120, frames = FALL_FRAMES): number[] {
   const out: number[] = [];
-  for (let k = 1; k <= frames; k++) out.push(Math.round(depth * (k / frames) * (k / frames)));
+  let y = 0;
+  for (let k = 1; k <= frames; k++) {
+    y = Math.min(depth, k === 1 ? 2 : y + k);
+    out.push(y);
+  }
   return out;
 }
 
@@ -617,8 +644,16 @@ export interface ChasmHints {
   from?: XY;
   /** Called with the show time (activate clock) the victim's card will land, or null (no card). */
   onLand?: (t: number | null) => void;
-  /** Called on the shut frame (the abyss slams shut): the trap card only lies down after it, at any speed. */
+  /** Called on the shut frame (the abyss slams shut): the camera relaxes on it, at any speed. */
   onShut?: () => void;
+  /** Called when the abyss starts to close (SHUT_LEAD frames before the body is gone): the trap card lies down. */
+  onClosing?: () => void;
+  /**
+   * Called with today's victim lean as it starts (resolves when the pan is done): the camera relaxes only after
+   * it — the quicker fall (fix round 2, A5A-C2-08) must not cut the lean short (user decision: the camera moves
+   * exactly as today, measure maxScrollPx = base).
+   */
+  onLean?: (done: Promise<void>) => void;
   /** The activate's show clock (the victim's landing is reported on it). */
   clock?: { now(): number };
 }
@@ -704,7 +739,7 @@ export async function swallowV3(ctx: DestroyCtx): Promise<void> {
   void lights.strip?.fadeOut(300);
 
   // ---- OPEN — `open`
-  void ctx.focus(lean, { zoom: 1.07, ms: 320, pan: 0.36 }); // today's victim lean (chasm_trap.ts:153, :148 before A-5), kept
+  hints.onLean?.(ctx.focus(lean, { zoom: 1.07, ms: 320, pan: 0.36 })); // today's victim lean (chasm_trap.ts:153, :148 before A-5), kept
   playV3('chasmOpen', { volume: 1, pan: panAt(home.x) }); // mark `open`
   const thud = hitSoundFor(u, { kind: 'physical', heavy: true });
   if (thud) playHit(sc, thud, { heavy: true, volume: 0.7, pan: panAt(home.x) });
@@ -731,19 +766,29 @@ export async function swallowV3(ctx: DestroyCtx): Promise<void> {
   const sx0 = s ? s.x : 0;
   const sy0 = s ? s.y : 0;
   const openFrames = Math.max(2, Math.round(OPEN_MS / (1000 / 60)));
-  await eachFrame(sc, openFrames, (k) => {
-    const t = (k + 1) / openFrames;
-    const open = abyssOpenAt(t);
-    abyss.set({ open });
-    mask.update(abyssLip(shape, Math.max(0.05, Math.min(1, open))));
-    // the body trembles 1 px (not with reduced motion) and sinks 3 px as the ground gives way (whole pixels)
-    if (s && s.active) s.setPosition(sx0 + openShiver(k), sy0 + Math.round(t * 3));
+  // the opening's frames: the pad gives way in whole steps (outBack) — its first PRE_FALL_FRAMES with the
+  // struck body trembling 1 px on it (not with reduced motion), the rest while it already falls (below)
+  let of = 0;
+  let opened = 1;
+  const openStep = (): void => {
+    if (of >= openFrames) return;
+    const t = (of + 1) / openFrames;
+    opened = abyssOpenAt(t);
+    abyss.set({ open: opened });
+    of++;
+    if (of >= openFrames) opened = 1;
+  };
+  await eachFrame(sc, Math.min(PRE_FALL_FRAMES, openFrames), (k) => {
+    openStep();
+    mask.update(abyssLip(shape, Math.max(0.05, Math.min(1, opened))));
+    if (s && s.active) s.setPosition(sx0 + openShiver(k), sy0 + (k > 0 ? 1 : 0));
     if (cardRas && cardRas.alive) cardRas.moveTo(cardRas.x, cardRas.y + (k % 3 === 0 ? 1 : 0));
   });
-  abyss.set({ open: 1 });
-  mask.update(abyssLip(shape, 1));
 
-  // ---- FALL
+  // ---- FALL → SHUT: the body drops on whole pixels behind the front lip from the opening's 3rd frame (fix
+  // round 2, A5A-C2-08: chasmFall on the first drop frame, the pad still opening round it); SHUT_LEAD frames
+  // before its top is due under the lip the abyss starts to close (the closing lip swallowing what is left),
+  // so the slam lands ≤ 100 ms after the body's last pixel — no empty hold (fix round 1, A5A-C1-05)
   playV3('chasmFall', { volume: 0.85, pan: panAt(home.x) });
   const rocks = tumblingRocks(sc, shape, mask, ABYSS_DEPTH + 0.6, seed + 11);
   const bodyH = s && s.active ? spriteBox(sc, s).h : 60;
@@ -752,73 +797,102 @@ export async function swallowV3(ctx: DestroyCtx): Promise<void> {
   const cy0 = cardRas ? cardRas.y : 0;
   if (u && v3) u.pose('hitHeavy', 1);
   let breath = 0;
-  // the lip's lowest line: a body whose top is below it has gone under the floor
-  const lipY = shape.y + shape.ry + 2;
+  // the lip's lowest line at an opening: a body whose top is below it has gone under the floor
+  const lipLow = (open: number) => abyssLip(shape, open).reduce((m, q) => Math.max(m, q.y), shape.y) + 1;
+  const lipY = lipLow(1);
+  // gone: the body is retired below the lip (never faded), its card raster too
+  let gone = false;
+  const retireBody = () => {
+    if (gone) return;
+    gone = true;
+    if (u && s) {
+      mask.clear(s);
+      mask.clear(u.shadow);
+      u.posed = false;
+      u.retire();
+    }
+    if (cardRas) {
+      mask.clear(cardRas.img);
+      cardRas.destroy();
+    }
+  };
+  // ---- the slam — `shut` — on the frame the abyss is shut: the sound, the white seam, the shock ring, and
+  // the card born on the scar (cardLeaves, EF-12), flying to its graveyard
+  let land: Promise<void> = Promise.resolve();
+  const slam = () => {
+    retireBody(); // (never left standing on the shut scar)
+    rocks.kill();
+    mask.destroy();
+    playV3('chasmShut', { volume: 1, pan: panAt(home.x) }); // mark `shut`
+    hints.onShut?.();
+    abyss.set({ open: 0, seam: true });
+    land = (async () => {
+      if (!gEv) {
+        hints.onLand?.(null);
+        return;
+      }
+      const top = field.pile(gEv.owner, 'graveyard').topXY();
+      const t = hints.clock ? hints.clock.now() : 0;
+      // cardLeaves: a 47 ms birth flash, a 50 ms lift, then the arc
+      hints.onLand?.(t + 97 + flightMs(Math.hypot(top.x - home.x, top.y - home.y)) + 20);
+      await cardLeaves(ctx, { owner: gEv.owner, cardId: ev.cardId, from: home });
+    })();
+    void slamRing(sc, shape, ABYSS_DEPTH + 0.2);
+    slamDust(sc, shape, unitDepth(home.y) + 1, seed + 17);
+    void lightFlash(sc, home.x, home.y, PAL.mag4, Math.round(shape.rx * 1.7), 460, { floorY: home.y, ring: true, intensity: 0.9, air: 0 });
+    void abyss.tremble(sc, 120);
+  };
   await new Promise<void>((resolve) => {
     let k = 0;
-    let goneAt = -1;
+    let j = -1; // the shut's frame (−1: still open)
     onFrame(sc, (dt) => {
       if (dt <= 0) return true;
-      const dy = offs[Math.min(k, offs.length - 1)];
-      if (s && s.active) s.setPosition(sx0, Math.round(y0 + dy));
-      if (cardRas && cardRas.alive) cardRas.moveTo(cardRas.x, cy0 + Math.min(dy, 40));
-      if (u && v3 && k === 6) u.pose('hitHeavy', 2);
-      // the deep glow breathes one tone while the body goes down
-      if (k % 6 === 0) abyss.set({ breath: (breath = 1 - breath) });
-      if (goneAt < 0 && (!s || !s.active || spriteBox(sc, s).top > lipY)) goneAt = k;
-      k++;
-      if (k >= offs.length || (goneAt >= 0 && k >= goneAt + 2)) {
+      let open = 1;
+      // the opening's remaining frames, under the falling body (its lip follows)
+      if (j < 0 && of < openFrames) {
+        openStep();
+        if (!gone) mask.update(abyssLip(shape, Math.max(0.05, Math.min(1, opened))));
+      } else if (j < 0 && of === openFrames) {
+        of++;
+        abyss.set({ open: 1 });
+        if (!gone) mask.update(abyssLip(shape, 1));
+      }
+      if (j >= 0) {
+        // ---- SHUT: whole steps, closing faster and faster; the lip the body hides behind closes with it
+        open = shutOpenAt(j);
+        if (open > 0) {
+          abyss.set({ open, breath: 0, glow: 3 });
+          if (!gone) mask.update(abyssLip(shape, Math.max(0.05, open)));
+        }
+        j++;
+      } else if (k % 6 === 0) abyss.set({ breath: (breath = 1 - breath) }); // the deep glow breathes one tone
+      if (!gone && open > 0) {
+        const dy = offs[Math.min(k, offs.length - 1)];
+        if (s && s.active) s.setPosition(sx0, Math.round(y0 + dy));
+        if (cardRas && cardRas.alive) cardRas.moveTo(cardRas.x, cy0 + Math.min(dy, 40));
+        if (u && v3 && k === 6) u.pose('hitHeavy', 2);
+        const top = s && s.active ? spriteBox(sc, s).top : Infinity;
+        if (j < 0 && (top + offs[Math.min(k + SHUT_LEAD, offs.length - 1)] - dy > lipY || k + SHUT_LEAD >= offs.length - 1)) {
+          j = 0; // the shut's first step comes on the next frame
+          void lights.hole?.fadeOut(SHUT_MS + 60);
+          hints.onClosing?.();
+        }
+        if (top > lipLow(open)) retireBody();
+        k++;
+      }
+      if (open <= 0) {
+        slam();
         resolve();
         return false;
       }
       return true;
     });
   });
-  // gone: the body is retired below the lip (never faded), its card raster too
-  if (u && s) {
-    mask.clear(s);
-    mask.clear(u.shadow);
-    u.posed = false;
-    u.retire();
-  }
-  if (cardRas) {
-    mask.clear(cardRas.img);
-    cardRas.destroy();
-  }
-  await wait(sc, HOLD_MS);
-
-  // ---- SHUT — `shut`
-  rocks.kill();
-  mask.destroy();
-  void lights.hole.fadeOut(SHUT_MS + 60);
-  const shutFrames = Math.max(2, Math.round(SHUT_MS / (1000 / 60)));
-  await eachFrame(sc, shutFrames, (k) => {
-    const t = (k + 1) / shutFrames;
-    abyss.set({ open: Math.max(0, 1 - E.inCubic(t)), breath: 0, glow: 3 });
-  });
-  playV3('chasmShut', { volume: 1, pan: panAt(home.x) }); // mark `shut`
-  hints.onShut?.();
-  abyss.set({ open: 0, seam: true });
-  void slamRing(sc, shape, ABYSS_DEPTH + 0.2);
-  slamDust(sc, shape, unitDepth(home.y) + 1, seed + 17);
-  void lightFlash(sc, home.x, home.y, PAL.mag4, Math.round(shape.rx * 1.7), 460, { floorY: home.y, ring: true, intensity: 0.9, air: 0 });
-  void abyss.tremble(sc, 120);
   await nextFrame(sc);
   abyss.set({ seam: false });
   field.forget(ev.uid);
   if (unit) sc.events.emit('v3:dead', unit);
-  // the card is born on the scar and flies to its graveyard; the scar's cracks cool down by steps
-  const land = (async () => {
-    if (!gEv) {
-      hints.onLand?.(null);
-      return;
-    }
-    const top = field.pile(gEv.owner, 'graveyard').topXY();
-    const t = hints.clock ? hints.clock.now() : 0;
-    // cardLeaves: a 47 ms birth flash, a 50 ms lift, then the arc
-    hints.onLand?.(t + 97 + flightMs(Math.hypot(top.x - home.x, top.y - home.y)) + 20);
-    await cardLeaves(ctx, { owner: gEv.owner, cardId: ev.cardId, from: home });
-  })();
+  // the scar's cracks cool down by palette steps
   void (async () => {
     for (const g of [2, 1, 0, -1]) {
       await wait(sc, 150);
@@ -872,20 +946,26 @@ export async function chasmV3(ctx: ActCtx): Promise<void> {
   // the victim's card landing (reported by the swallow on this clock), for the trap card's own landing
   let landed!: (t: number | null) => void;
   const victimLand = new Promise<number | null>((r) => (landed = r));
-  // the abyss's shut (reported by the swallow): the trap card lies down only after it — at 1× the shut
-  // comes at CRACK_AT + SHUT_AFTER, at a higher game speed the frame-stepped beats can push it later
+  // the abyss's shut (reported by the swallow): the camera relaxes on it — at 1× the slam comes by
+  // CRACK_AT + SHUT_AFTER, at a higher game speed the frame-stepped beats can push it later
   let shut!: () => void;
   const shutDone = new Promise<void>((r) => (shut = r));
+  // the abyss starts to close (reported by the swallow): the trap card lies down then, in parallel
+  let closing!: () => void;
+  const closingNow = new Promise<void>((r) => (closing = r));
+  // today's victim lean (reported by the swallow): the camera relaxes only once it has reached its mark
+  let leanDone: Promise<void> = Promise.resolve();
   // ---- the swallow starts with the crack, while the opening is still on
   const swallow = (async () => {
     try {
       await wait(sc, CRACK_AT);
       if (di === undefined || ctx.isConsumed(di)) return;
-      const hints: ChasmHints = { from: trapAt, clock, onLand: (t) => landed(t), onShut: () => shut() };
+      const hints: ChasmHints = { from: trapAt, clock, onLand: (t) => landed(t), onShut: () => shut(), onClosing: () => closing(), onLean: (p) => (leanDone = p) };
       await ctx.play(di, { ...hints, owned: true });
     } finally {
       // (no-ops when the swallow reported them)
       landed(null);
+      closing();
       shut();
     }
   })();
@@ -893,16 +973,18 @@ export async function chasmV3(ctx: ActCtx): Promise<void> {
   // today's opening lean, the same target (chasm_trap.ts:118)
   const op = await trapOpening(ctx, { focus: lerpXY({ x: trapAt.x, y: trapAt.y - 30 }, { x: vAt.x, y: vAt.y - 20 }, 0.35) });
 
-  // ---- EXIT — `exit`: the card lies down once the abyss has shut, and lands ≥ LAND_GAP after the victim's
+  // ---- EXIT — `exit`: the card lies down as the abyss starts to close and flies in parallel with the
+  // victim's card, landing ≥ LAND_GAP after it (fix round 1, A5A-C1-05); the camera relaxes on the slam
   const exit = (async () => {
-    const lag = CRACK_AT + SHUT_AFTER - clock.now();
-    if (lag > 0) await wait(sc, lag);
-    await shutDone;
-    void ctx.unfocus(320);
-    await exitAfter(ctx, op, clock, async () => {
+    await closingNow;
+    const out = exitAfter(ctx, op, clock, async () => {
       const t = await victimLand;
       return t === null ? null : t + LAND_GAP;
     });
+    await shutDone;
+    await leanDone;
+    void ctx.unfocus(320);
+    await out;
   })();
   await swallow;
   // anything else of the run (should be nothing) plays in order
