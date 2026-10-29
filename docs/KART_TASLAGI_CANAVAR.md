@@ -1,4 +1,4 @@
-# Canavar taslağı — 28 yeni özgün canavar (+12 mevcut = 40... bkz. not)
+# Canavar taslağı — 40 yeni özgün canavar
 
 > Bu belge bir **taslak**tır: kart verisi (`src/data/cards.ts`) ve çizim henüz yapılmadı.
 > Hepsi özgün ad ve tasarım; rol listesi (kart numaraları) kullanıcının seçtiği 40 ikonik role karşılık gelir.
@@ -50,7 +50,6 @@
 
 ## Not: sayım
 Bu liste kullanıcının seçtiği **40 rolün** özgün karşılığıdır (hepsi yeni). Mevcut 12 canavarla toplam **52 canavar** olur.
-(Belgenin başlığındaki "28" yanlıştır; doğrusu 40 yeni canavar.)
 
 ## Dağılım
 KARANLIK 11 · IŞIK 8 · TOPRAK 9 · ATEŞ 3 · SU 4 · RÜZGAR 5 (yeni). Mevcut 12 ile: ATEŞ 5, SU 6, IŞIK 11, KARANLIK 13, TOPRAK 11, RÜZGAR 6.
