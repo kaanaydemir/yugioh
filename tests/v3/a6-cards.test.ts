@@ -745,6 +745,25 @@ describe('A6-A A2 — the v3 hand (K1), pure parts', { timeout: 60_000 }, () => 
     }
   });
 
+  it('fan with 5 / 6 / 7 / 8 cards: on screen, clear of the HUD, monotone x, min step, gentle lean', async () => {
+    await load('v3');
+    const h = await import('../../src/view/v3/handV3');
+    const band = { x: 176, w: 288 }; // UI_V2.hand
+    const maxLean = Math.max(...[1, 2, 3, 4, 5, 6].map((n) => Math.abs(h.fanDeg(n - 1, n))));
+    for (const n of [5, 6, 7, 8]) {
+      for (let hi = -1; hi < n; hi++) {
+        const xs = h.fanXs(n, hi, band, 48);
+        expect(xs[0] - 24 - 2, `n=${n} h=${hi} left`).toBeGreaterThanOrEqual(132); // right edge of the p1 panel
+        expect(xs[n - 1] + 24 + 2, `n=${n} h=${hi} right`).toBeLessThanOrEqual(540); // the buttons
+        for (let i = 1; i < n; i++) expect(xs[i] - xs[i - 1], `n=${n} h=${hi} step ${i}`).toBeGreaterThanOrEqual(hi < 0 ? 20 : 8);
+      }
+      for (let i = 0; i < n; i++) {
+        expect(Math.abs(h.fanDeg(i, n))).toBeLessThanOrEqual(maxLean);
+        expect(h.fanPose(i, n, -1, band, 48).y + 34).toBeLessThanOrEqual(360 + 8); // dip ≤ 7
+      }
+    }
+  });
+
   it('breathing: 0 / −1 px on a 2400 ms period, the phase 300 ms later per card; none with reduced motion', async () => {
     await load('v3');
     const h = await import('../../src/view/v3/handV3');

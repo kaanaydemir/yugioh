@@ -11,7 +11,29 @@ import type { Scenario } from '../scenarios';
 const FOUR: CardId[] = ['ember_wolf', 'tide_golem', 'judgment_bolt', 'storm_hawk'];
 const EIGHT: CardId[] = ['ember_wolf', 'tide_golem', 'storm_hawk', 'judgment_bolt', 'healing_spring', 'soul_recall', 'mirror_barrier', 'crystal_wyrm'];
 
+const SEVEN: CardId[] = ['ember_wolf', 'tide_golem', 'storm_hawk', 'judgment_bolt', 'healing_spring', 'soul_recall', 'mirror_barrier'];
+
 const PACK: Record<string, Scenario> = {
+  a6Hand7: {
+    desc: 'UI: a 7-card hand (P1; one over the limit): the pointer sweeps the outer and middle cards (overlap, hover rise)',
+    stage: { p0: { hand: SEVEN } },
+    steps: [
+      { ui: 'move', at: { xy: [320, 250] }, ms: 100 },
+      { ui: 'move', at: { hand: 0 }, ms: 250 },
+      { ui: 'move', at: { hand: 3 }, ms: 250 },
+      { ui: 'move', at: { hand: 6 }, ms: 250 },
+    ],
+  },
+  a6Hand7P2: {
+    desc: 'UI: a 7-card hand, P2 at the screen: the pointer sweeps the outer and middle cards',
+    stage: { active: 1, p1: { hand: SEVEN } },
+    steps: [
+      { ui: 'move', at: { xy: [320, 250] }, ms: 100 },
+      { ui: 'move', at: { hand: 0 }, ms: 250 },
+      { ui: 'move', at: { hand: 3 }, ms: 250 },
+      { ui: 'move', at: { hand: 6 }, ms: 250 },
+    ],
+  },
   a6HoverP2: {
     desc: 'UI, P2 at the screen (hot-seat): the pointer passes over three hand cards, then selects one (its action menu opens)',
     stage: { active: 1, p1: { hand: FOUR, monsters: [null, 'stone_sentinel'] }, p0: { monsters: [null, 'volt_lizard'] } },

@@ -189,6 +189,83 @@ const STAB_RIM = [PAL.white, PAL.white, PAL.gold4, PAL.gold4] as const;
 /** The break's edge light on the body: white through the crack frames, then a frame each down the gold ramp. */
 const BREAK_RIM = [PAL.white, PAL.gold4, PAL.gold4, PAL.gold4, PAL.gold3, PAL.gold3, PAL.gold2] as const;
 
+/**
+ * The struck body lit as a SEE-THROUGH 2×2 checker (fix round 3, the user's rule "a signature effect is never
+ * dimmer than the old one": the old forge held the whole monster white then gold ~520 ms; EF-3 forbids the
+ * wash, so the body lights as a checker of 2×2 blocks over ≤ `cap` of its opaque pixels, the phase swapping
+ * every frame so the whole body reads lit over the beat). One colour per frame (`ramp`: white → down the gold
+ * ramp), palette colours, whole pixels, no alpha, no tint; the body's own pixels show between the blocks.
+ * Blocks with the fewest body pixels (the edge) drop first, so the lit part stays solid blocks.
+ */
+function bodyChecker(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite, ramp: readonly number[], cap = 0.44, halo = true): Promise<void> {
+  let ras: Raster | null = null;
+  let k = 0;
+  return new Promise((resolve) => {
+    onFrame(scene, (dt) => {
+      if (dt <= 0) return true;
+      const sil = k < ramp.length && s.active ? silhouetteOf(s) : null;
+      if (!sil) {
+        ras?.destroy();
+        resolve();
+        return false;
+      }
+      const W = sil.right - sil.left + 4;
+      const H = sil.bottom - sil.top + 4;
+      if (!ras || ras.w < W || ras.h < H) {
+        ras?.destroy();
+        ras = new Raster(scene, sil.left - 2, sil.top - 2, W + 8, H + 8, s.depth + 0.5);
+      }
+      ras.moveTo(sil.left - 2, sil.top - 2);
+      const blocks = new Map<number, { bx: number; by: number; n: number }>();
+      let total = 0;
+      for (let y = sil.top; y < sil.bottom; y++)
+        for (let x = sil.left; x < sil.right; x++) {
+          if (!sil.has(x, y)) continue;
+          total++;
+          const bx = Math.floor(x / 2);
+          const by = Math.floor(y / 2);
+          if (((bx + by) & 1) !== (k & 1)) continue;
+          const id = by * 4096 + bx;
+          const b = blocks.get(id);
+          if (b) b.n++;
+          else blocks.set(id, { bx, by, n: 1 });
+        }
+      const list = [...blocks.values()].sort((a, b) => a.n - b.n || ((a.bx * 7 + a.by * 13) % 5) - ((b.bx * 7 + b.by * 13) % 5));
+      let lit = list.reduce((a, b) => a + b.n, 0);
+      let drop = 0;
+      while (lit > total * cap && drop < list.length) lit -= list[drop++].n;
+      ras.begin();
+      for (let i = drop; i < list.length; i++) {
+        const b = list[i];
+        for (let dy = 0; dy < 2; dy++)
+          for (let dx = 0; dx < 2; dx++) {
+            const x = b.bx * 2 + dx;
+            const y = b.by * 2 + dy;
+            if (sil.has(x, y)) ras.px(x, y, ramp[k]);
+          }
+      }
+      // the glow spilling past the body: a 1-px checker band two pixels deep outside its edge (not the body)
+      if (halo)
+        for (let y = sil.top - 2; y < sil.bottom + 2; y++)
+          for (let x = sil.left - 2; x < sil.right + 2; x++) {
+            if (((x + y) & 1) !== (k & 1) || sil.has(x, y)) continue;
+            if (sil.has(x - 1, y) || sil.has(x + 1, y) || sil.has(x, y - 1) || sil.has(x, y + 1) || sil.has(x - 2, y) || sil.has(x + 2, y) || sil.has(x, y - 2) || sil.has(x, y + 2)) ras.px(x, y, ramp[k]);
+          }
+      ras.end();
+      k++;
+      return true;
+    });
+  });
+}
+
+/** The stab's body light after the hit-stop: white, then down the gold ramp (the old white → gold glow). */
+const STAB_CHECKER = [
+  ...Array<number>(6).fill(PAL.white),
+  ...Array<number>(18).fill(PAL.gold4),
+  ...Array<number>(12).fill(PAL.gold3),
+  ...Array<number>(5).fill(PAL.gold2),
+] as const;
+
 // ================================================================ small helpers
 
 /** Resolve after `n` rendered frames (never fewer, at any speed). */
@@ -859,6 +936,7 @@ export async function bladeEquipV3(ctx: EquipCtx): Promise<void> {
     sparks.add({ x: tip.x, y: tip.y - 4, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.6 - 40, ay: 260, drag: 1.5, life: 300 + Math.round(rnd() * 300), colors: SPARK_FX, shape: i % 3 === 0 ? 'plus' : 'px', fadeAt: 1 });
   }
   await freeze(sc, FORGE.stop);
+  if (alive) bg(bodyChecker(sc, target, STAB_CHECKER));
 
   // ---- the persistent aura exists from the stab on (the field's state has it: a sync, a break or an attack
   // right after the input comes back all find it) but shows nothing until the blade has sunk (revealIn)
