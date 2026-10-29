@@ -227,7 +227,8 @@ function gameUrl(base, g) {
   if (g.entry === 'demo') return `${base}demo.html?${q}`;
   if (g.entry === 'arena') return `${base}?${q}&arena=v2`;
   if (g.entry === 'v1') return `${base}?${q}`;
-  if (g.entry === 'v3') return `${base}?${q}&look=v3`; // the v3 look (A2/A3 acceptance demo games)
+  if (g.entry === 'v3') return `${base}?${q}&look=v3`;
+  if (g.entry === 'v3z5') return `${base}?${q}&look=v3&zones=5`; // v3 look + the 5+5 board // the v3 look (A2/A3 acceptance demo games)
   throw new Error(`unknown entry ${g.entry}`);
 }
 

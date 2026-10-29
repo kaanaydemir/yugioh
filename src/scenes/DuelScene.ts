@@ -38,7 +38,7 @@ import { runUiStep } from '../duel/qaInput';
 import { armOnFreeze, installTestClock } from '../duel/testClock';
 import type { DuelViews } from '../duel/types';
 import { loadSettings, saveSettings, type DuelLaunch, type DuelMode, type Settings } from './launch';
-import { ARENA_V2, LOOK_V3 } from '../view/layout';
+import { ARENA_V2, LANES, LOOK_V3 } from '../view/layout';
 import { resetAtDuelStart } from '../duel/seeds';
 import { ensureLightLayer } from '../view/light';
 
@@ -165,7 +165,7 @@ export class DuelScene extends Phaser.Scene {
       state = buildStage(L.stage);
       before = state;
     } else {
-      const r = newGame({ seed, firstPlayer: L.firstPlayer, decks: L.decks, noShuffle: L.noShuffle });
+      const r = newGame({ seed, firstPlayer: L.firstPlayer, decks: L.decks, noShuffle: L.noShuffle, zones: LANES === 5 ? 5 : 3 });
       state = r.state;
       events = r.events;
       before = rewindNewGame(state, events);

@@ -14,6 +14,7 @@
 //                      all (every scenario; slow). Presets and keys can be mixed: ref,tbMirror
 //                      A trailing * selects every key with that prefix: 'slice*' (the A2 slice pack)
 //   --look v3          adds &look=v3 (the v3 look switch)
+//   --zones 5          adds &zones=5 (the 5+5 board; honoured only with --look v3)
 //   --arena v2         adds &arena=v2
 //   --speed N          adds &speed=N (default: the game default, 1×)
 //   --query "&k=v"     any extra URL query
@@ -448,6 +449,7 @@ const LAUNCH_LIST = (args.launch && args.launch !== 'true' ? args.launch.split('
   });
 let extraQuery = '';
 if (args.look) extraQuery += `&look=${encodeURIComponent(args.look)}`;
+if (args.zones) extraQuery += `&zones=${encodeURIComponent(args.zones)}`; // 5 = the 5+5 board (needs --look v3)
 if (args.arena) extraQuery += `&arena=${encodeURIComponent(args.arena)}`;
 if (args.speed) extraQuery += `&speed=${encodeURIComponent(args.speed)}`;
 if (args.query) extraQuery += args.query.startsWith('&') ? args.query : `&${args.query}`;

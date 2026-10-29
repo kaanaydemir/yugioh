@@ -53,7 +53,7 @@ import { PAL, PLAYER_COLOR } from '../art/palette';
 import { mix, mulberry32 } from '../art/pixel';
 import type { PlayerId } from '../engine/types';
 import { TEX, shake } from '../vfx/core';
-import { ARENA_V2, BOARD_COLS, BOARD_ROWS, type BoardSpot, DEPTH, GAME_H, GAME_W, LOOK_V3, isoToScreen, screenToIso, zoneCell } from './layout';
+import { ARENA_V2, BOARD_COLS, BOARD_MID_COL, BOARD_ROWS, type BoardSpot, DEPTH, GAME_H, GAME_W, LOOK_V3, isoToScreen, screenToIso, zoneCell } from './layout';
 import { BoardViewV2 } from './board-v2/BoardViewV2';
 import { BoardViewCalm } from './board-calm/BoardViewCalm';
 import type { CrowdReaction } from './board-v2/types';
@@ -389,7 +389,7 @@ export class BoardView {
     const jobs: Promise<void>[] = [];
     jobs.push(this.run(760, (k) => (this.sideFlash[player] = 1 - k), 'Quad.Out'));
     // ripple out from the duelist's podium
-    const pod = player === 0 ? { col: 2, row: 5.35 } : { col: 2, row: -1.35 };
+    const pod = player === 0 ? { col: BOARD_MID_COL, row: 5.35 } : { col: BOARD_MID_COL, row: -1.35 };
     this.shockwave(pod.col, pod.row, 0, color, 640, 170);
     for (const t of this.tiles) {
       if (t.zone.player !== player) continue;
@@ -457,7 +457,7 @@ export class BoardView {
     if (this.v2) return this.v2.setTheme(theme, animate, from);
     const token = ++this.themeToken;
     if (theme === 'volcano') {
-      const origin = from === null ? { col: 2, row: 2 } : zoneCell(from, 'field');
+      const origin = from === null ? { col: BOARD_MID_COL, row: 2 } : zoneCell(from, 'field');
       this.ensureLava(origin);
       const f = this.crack!;
       const end = f.maxDist + 16;
@@ -780,7 +780,7 @@ export class BoardView {
           .setBlendMode(ADD)
           .setTint(PLAYER_COLOR[zone.player]);
         const back = zone.player === 0 ? 4 - row : row;
-        this.tiles.push({ col, row, zone, img, glow, phase: back * 1.1 + Math.abs(col - 2) * 0.45, boost: 0, color: PLAYER_COLOR[zone.player] });
+        this.tiles.push({ col, row, zone, img, glow, phase: back * 1.1 + Math.abs(col - BOARD_MID_COL) * 0.45, boost: 0, color: PLAYER_COLOR[zone.player] });
       }
     const B = BRIDGE_RECT;
     this.img(B.x, B.y, AK.bridge, D.tile);

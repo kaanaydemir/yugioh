@@ -197,11 +197,11 @@ export function cellZone(col: number, row: number): ZoneHit | null {
   const r = player === 0 ? row : BOARD_ROWS - 1 - row;
   if (r === 3) {
     if (c === 0) return { player, spot: 'field', index: 0 };
-    if (c === 4) return { player, spot: 'graveyard', index: 0 };
+    if (c === BOARD_COLS - 1) return { player, spot: 'graveyard', index: 0 };
     return { player, spot: 'monster', index: c - 1 };
   }
   if (c === 0) return { player, spot: 'banish', index: 0 };
-  if (c === 4) return { player, spot: 'deck', index: 0 };
+  if (c === BOARD_COLS - 1) return { player, spot: 'deck', index: 0 };
   return { player, spot: 'spellTrap', index: c - 1 };
 }
 

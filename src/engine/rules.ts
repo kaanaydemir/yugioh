@@ -9,8 +9,9 @@ import { CARDS, DEFAULT_DECK, type CardId } from '../data/cards';
 import {
   EngineError,
   HAND_LIMIT,
-  MONSTER_ZONES,
-  SPELL_TRAP_ZONES,
+  DEFAULT_ZONES,
+  ZONES_5,
+  type ZoneCounts,
   START_HAND,
   START_LP,
   other,
@@ -88,9 +89,10 @@ export function isLegal(state: GameState, action: Action): boolean {
 
 export function newGame(opts: NewGameOptions): ApplyResult {
   const decks: [CardId[], CardId[]] = opts.decks ?? [DEFAULT_DECK, DEFAULT_DECK];
+  const zc: ZoneCounts = opts.zones === 5 ? ZONES_5 : DEFAULT_ZONES;
   const s: GameState = {
     cards: {},
-    players: [emptyPlayer(0), emptyPlayer(1)],
+    players: [emptyPlayer(0, zc), emptyPlayer(1, zc)],
     turn: 1,
     activePlayer: 0,
     firstPlayer: 0,
@@ -101,6 +103,7 @@ export function newGame(opts: NewGameOptions): ApplyResult {
     rng: opts.seed >>> 0,
     internal: { queue: [] },
   };
+  if (opts.zones === 5) s.zones = { ...ZONES_5 };
   const r = new Resolver(s);
 
   const first: PlayerId = opts.firstPlayer ?? (nextRandom(s) < 0.5 ? 0 : 1);
@@ -169,15 +172,15 @@ function safeJson(v: unknown): string {
   }
 }
 
-function emptyPlayer(id: PlayerId): PlayerState {
+function emptyPlayer(id: PlayerId, z: ZoneCounts = DEFAULT_ZONES): PlayerState {
   return {
     id,
     lp: START_LP,
     deck: [],
     hand: [],
     graveyard: [],
-    monsters: Array.from({ length: MONSTER_ZONES }, () => null),
-    spellTraps: Array.from({ length: SPELL_TRAP_ZONES }, () => null),
+    monsters: Array.from({ length: z.monsters }, () => null),
+    spellTraps: Array.from({ length: z.spellTraps }, () => null),
     fieldSpell: null,
     normalSummonUsed: false,
   };

@@ -3,9 +3,11 @@
 
 import { CARDS, type CardId } from '../../src/data/cards';
 import {
-  MONSTER_ZONES,
-  SPELL_TRAP_ZONES,
   START_LP,
+  zoneCounts,
+  ZONES_5,
+  DEFAULT_ZONES,
+  type ZoneCounts,
   apply,
   legalActions,
   type Action,
@@ -44,6 +46,8 @@ export interface ScenarioOpts {
   active?: PlayerId;
   phase?: Phase;
   first?: PlayerId;
+  /** 3 (default) or 5 zones per side. */
+  zones?: 3 | 5;
 }
 
 /**
@@ -53,9 +57,10 @@ export interface ScenarioOpts {
  */
 export function scenario(o: ScenarioOpts = {}): GameState {
   const turn = o.turn ?? 3;
+  const zc: ZoneCounts = o.zones === 5 ? ZONES_5 : DEFAULT_ZONES;
   const s: GameState = {
     cards: {},
-    players: [blank(0), blank(1)],
+    players: [blank(0, zc), blank(1, zc)],
     turn,
     activePlayer: o.active ?? 0,
     firstPlayer: o.first ?? 0,
@@ -66,6 +71,7 @@ export function scenario(o: ScenarioOpts = {}): GameState {
     rng: 12345,
     internal: { queue: [] },
   };
+  if (o.zones === 5) s.zones = { ...ZONES_5 };
   let next = 1;
   const mk = (id: CardId, owner: PlayerId): Uid => {
     if (!CARDS[id]) throw new Error(`bad card ${id}`);
@@ -112,15 +118,15 @@ export function scenario(o: ScenarioOpts = {}): GameState {
   return s;
 }
 
-function blank(id: PlayerId): PlayerState {
+function blank(id: PlayerId, z: ZoneCounts = DEFAULT_ZONES): PlayerState {
   return {
     id,
     lp: START_LP,
     deck: [],
     hand: [],
     graveyard: [],
-    monsters: Array.from({ length: MONSTER_ZONES }, () => null),
-    spellTraps: Array.from({ length: SPELL_TRAP_ZONES }, () => null),
+    monsters: Array.from({ length: z.monsters }, () => null),
+    spellTraps: Array.from({ length: z.spellTraps }, () => null),
     fieldSpell: null,
     normalSummonUsed: false,
   };
@@ -207,8 +213,8 @@ export function checkInvariants(s: GameState): void {
   for (const p of [0, 1] as PlayerId[]) {
     const ps = s.players[p];
     assert(ps.id === p, `players[${p}].id`);
-    assert(ps.monsters.length === MONSTER_ZONES, 'monster zone count');
-    assert(ps.spellTraps.length === SPELL_TRAP_ZONES, 'spell/trap zone count');
+    assert(ps.monsters.length === zoneCounts(s).monsters, 'monster zone count');
+    assert(ps.spellTraps.length === zoneCounts(s).spellTraps, 'spell/trap zone count');
     assert(Number.isInteger(ps.lp) && ps.lp >= 0, `lp ${ps.lp}`);
     for (const u of ps.deck) {
       put(u, `deck${p}`);

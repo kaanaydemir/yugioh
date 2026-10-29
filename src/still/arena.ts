@@ -20,10 +20,11 @@
 
 import { PAL } from '../art/palette';
 import type { Color, PixelCanvas, Pt } from '../art/pixel';
-import { cellKind, isoToScreen, zoneAtCell, zoneXY, type XY } from '../view/layout';
+import { BOARD_COLS, cellKind, isoToScreen, zoneAtCell, zoneXY, type XY } from '../view/layout';
 import {
   G0,
   G1,
+  GR1,
   HULL,
   KEEL_TIP,
   OUTLINE,
@@ -158,7 +159,7 @@ function rawTop(x: number, y: number): { kind: TopKind; color: Color } | null {
   }
   // two large panel joins per side: the bridge row's gutters run on across the border to the rim,
   // so the trim changes colour (player / neutral / player) at a physical seam, not mid-line
-  if ((g.col < -0.5 || g.col > 4.5) && BRIDGE_SEAMS.some((r) => Math.abs(g.row - r) * 32 < 1)) return { kind: 'join', color: T.join };
+  if ((g.col < -0.5 || g.col > BOARD_COLS - 0.5) && BRIDGE_SEAMS.some((r) => Math.abs(g.row - r) * 32 < 1)) return { kind: 'join', color: T.join };
   if (insidePoly(TRIM_IN, g.col, g.row) && !insidePoly(TRIM_OUT, g.col, g.row)) {
     const back = nx < 0 || ny < 0; // nearest edge faces away from the camera
     return { kind: 'trim', color: (back ? T.trimBack : T.trim)[rowSide(g.row)] };
@@ -275,8 +276,8 @@ function drawHull(p: PixelCanvas): void {
   // keel spike under the last tier: two dark facets meeting in a lit ridge (no energy core, no beam)
   const last = tiers[tiers.length - 1];
   const spikeTop = last.top + last.t;
-  const lft = rp(gp(G0 + last.inset, G1 - last.inset, spikeTop));
-  const bot = rp(gp(G1 - last.inset, G1 - last.inset, spikeTop));
+  const lft = rp(gp(G0 + last.inset, GR1 - last.inset, spikeTop));
+  const bot = rp(gp(G1 - last.inset, GR1 - last.inset, spikeTop));
   const rgt = rp(gp(G1 - last.inset, G0 + last.inset, spikeTop));
   const apex: Pt = [KEEL_TIP.x, KEEL_TIP.y];
   // (the outer edge row of each facet is ink: the point stays outlined where it dips into the floor disc)
@@ -297,8 +298,8 @@ function drawHull(p: PixelCanvas): void {
   // spike. No ink lines between the bands — the tone change is the step.
   for (let k = tiers.length - 1; k >= 0; k--) {
     const { inset, top, t } = tiers[k];
-    const l = rp(gp(G0 + inset, G1 - inset, top));
-    const b = rp(gp(G1 - inset, G1 - inset, top));
+    const l = rp(gp(G0 + inset, GR1 - inset, top));
+    const b = rp(gp(G1 - inset, GR1 - inset, top));
     const r = rp(gp(G1 - inset, G0 + inset, top));
     const keel = k === tiers.length - 1;
     // `lead` rows reach up under the tier / slab above so rounding never opens a 1px gap

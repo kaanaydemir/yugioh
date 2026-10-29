@@ -65,8 +65,15 @@ function chromePath() {
 }
 
 // ---- board geometry (mirror of src/view/layout.ts)
-const BOARD_OX = 320;
-const BOARD_OY = 96;
+// zones5 (?zones=5 with ?look=v3, set by goto / --query): 7×5 grid, origin (288, 80), graveyard / deck on col 6
+let Z5 = /[?&]zones=5(&|$)/.test(args.query ?? '') && /[?&]look=v3(&|$)/.test(args.query ?? '');
+let BOARD_OX = Z5 ? 288 : 320;
+let BOARD_OY = Z5 ? 80 : 96;
+function setZones5(q) {
+  Z5 = /[?&]zones=5(&|$)/.test(q) && /[?&]look=v3(&|$)/.test(q);
+  BOARD_OX = Z5 ? 288 : 320;
+  BOARD_OY = Z5 ? 80 : 96;
+}
 function isoToScreen(col, row) {
   return { x: BOARD_OX + (col - row) * 32, y: BOARD_OY + (col + row) * 16 };
 }
@@ -83,15 +90,15 @@ function zoneCell(player, spot, index = 0) {
       c = { col: 0, row: 3 };
       break;
     case 'graveyard':
-      c = { col: 4, row: 3 };
+      c = { col: Z5 ? 6 : 4, row: 3 };
       break;
     case 'deck':
-      c = { col: 4, row: 4 };
+      c = { col: Z5 ? 6 : 4, row: 4 };
       break;
     default:
       c = { col: 0, row: 4 };
   }
-  return player === 0 ? c : { col: 4 - c.col, row: 4 - c.row };
+  return player === 0 ? c : { col: (Z5 ? 6 : 4) - c.col, row: 4 - c.row };
 }
 
 const port = 5900 + Math.floor(Math.random() * 600);
@@ -143,6 +150,7 @@ try {
     note: (s) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s] ${s}`),
     async goto(query, o = {}) {
       let q = query.startsWith('?') ? query : '?' + query;
+      setZones5(q);
       q += (q.length > 1 ? '&' : '') + 'test=1';
       await page.goto(base + q, { waitUntil: 'load' });
       box = null;

@@ -23,6 +23,7 @@
 //                    set, per-film query / length / step, frame count, shot exit code, git HEAD).
 //                    Films of the base manifest that the set does not list (added with --add) are
 //                    compared too, from the manifest's own query / length
+//   --zones 5        appends &zones=5 (the 5+5 board; v3 sets only)
 //   --query-suffix Q appended to every film's URL when filming (e.g. "&a5=a&a6=off", a lane's
 //                    kill-switches): the film is still compared with the base's film of the same
 //                    query (the base was filmed without it); the suffix is printed and stored in the
@@ -306,7 +307,7 @@ if (args.range && args.range !== 'true') {
 }
 const rangeText = RANGE ? `${RANGE[0]}–${RANGE[1] === Infinity ? 'end' : RANGE[1]} ms` : '';
 /** --query-suffix: appended to every film's URL when filming (the comparison stays by the set's query). */
-const SUFFIX = args['query-suffix'] && args['query-suffix'] !== 'true' ? (args['query-suffix'].startsWith('&') ? args['query-suffix'] : `&${args['query-suffix']}`) : '';
+const SUFFIX = (args['query-suffix'] && args['query-suffix'] !== 'true' ? (args['query-suffix'].startsWith('&') ? args['query-suffix'] : `&${args['query-suffix']}`) : '') + (args.zones && args.zones !== 'true' ? `&zones=${args.zones}` : ''); // --zones 5: the 5+5 board (v3 look only)
 
 let films = SETS[SET].films.map((f) => filmSpec(SET, f));
 // --add key[:ms],…: extra scenario films of this run

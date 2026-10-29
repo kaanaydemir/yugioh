@@ -3,28 +3,33 @@
 // so the calm still keeps the exact board silhouette without importing the game's texture module.
 // Grid → screen always goes through src/view/layout.ts (isoToScreen / screenToIso, 5×5 of 64×32).
 
-import { BOARD_COLS, BOARD_ROWS, isoToScreen, screenToIso } from '../view/layout';
+import { BOARD_COLS, BOARD_MID_COL, BOARD_ROWS, isoToScreen, screenToIso } from '../view/layout';
 
 /** The slab extends SLAB_E tiles beyond the 5×5 grid; its side faces are SLAB_T px thick. */
 export const SLAB_E = 0.375;
 export const SLAB_T = 14;
 export const G0 = -0.5 - SLAB_E; // -0.875
-export const G1 = BOARD_COLS - 0.5 + SLAB_E; // 4.875
+export const G1 = BOARD_COLS - 0.5 + SLAB_E; // 4.875 (v1); the slab's far COLUMN edge (6.875 with 7 columns)
+/** The slab's far ROW edge (4.875: the rows never change). */
+export const GR1 = BOARD_ROWS - 0.5 + SLAB_E;
+/** The duelist podiums' column span: the centre lane +- 0.75 (v1 1.25..2.75, zones5 2.25..3.75). */
+export const POD_C0 = BOARD_MID_COL - 0.75;
+export const POD_C1 = BOARD_MID_COL + 0.75;
 
 /** Union outline of the platform top (slab + the two duelist podiums), grid (col,row), CCW. */
 export const OUTLINE: readonly [number, number][] = [
   [G0, G0],
-  [1.25, G0],
-  [1.25, -2.0],
-  [2.75, -2.0],
-  [2.75, G0],
+  [POD_C0, G0],
+  [POD_C0, -2.0],
+  [POD_C1, -2.0],
+  [POD_C1, G0],
   [G1, G0],
-  [G1, G1],
-  [2.75, G1],
-  [2.75, 6.0],
-  [1.25, 6.0],
-  [1.25, G1],
-  [G0, G1],
+  [G1, GR1],
+  [POD_C1, GR1],
+  [POD_C1, 6.0],
+  [POD_C0, 6.0],
+  [POD_C0, GR1],
+  [G0, GR1],
 ];
 
 /** Hull tiers under the slab (inset in tiles, face height px). */
@@ -41,8 +46,7 @@ export const KEEL_TIP = (() => {
     depth += 32 * (h.inset - prev) + h.t;
     prev = h.inset;
   }
-  const c = BOARD_COLS - 0.5 + SLAB_E - prev;
-  const s = isoToScreen(c, c);
+  const s = isoToScreen(G1 - prev, GR1 - prev);
   return { x: Math.round(s.x), y: Math.round(s.y + depth + 28) };
 })();
 
@@ -53,8 +57,8 @@ export function gp(c: number, r: number, depth = 0): [number, number] {
 }
 
 export function insideOutline(c: number, r: number): boolean {
-  if (c >= G0 && c <= G1 && r >= G0 && r <= G1) return true;
-  if (c >= 1.25 && c <= 2.75 && ((r >= G1 && r <= 6.0) || (r >= -2.0 && r <= G0))) return true;
+  if (c >= G0 && c <= G1 && r >= G0 && r <= GR1) return true;
+  if (c >= POD_C0 && c <= POD_C1 && ((r >= GR1 && r <= 6.0) || (r >= -2.0 && r <= G0))) return true;
   return false;
 }
 

@@ -12,9 +12,10 @@
 
 import { CARDS, type CardId } from '../data/cards';
 import {
-  MONSTER_ZONES,
-  SPELL_TRAP_ZONES,
+  DEFAULT_ZONES,
+  ZONES_5,
   START_LP,
+  type ZoneCounts,
   type GameState,
   type MonsterSlot,
   type Phase,
@@ -50,17 +51,19 @@ export interface StageSpec {
   first?: PlayerId;
   /** RNG state (default 12345). */
   rng?: number;
+  /** 3 or 5 monster + spell/trap zones per player (default: the board's LANES, 3 unless ?zones=5). */
+  zones?: 3 | 5;
 }
 
-function blank(id: PlayerId): PlayerState {
+function blank(id: PlayerId, z: ZoneCounts): PlayerState {
   return {
     id,
     lp: START_LP,
     deck: [],
     hand: [],
     graveyard: [],
-    monsters: Array.from({ length: MONSTER_ZONES }, () => null),
-    spellTraps: Array.from({ length: SPELL_TRAP_ZONES }, () => null),
+    monsters: Array.from({ length: z.monsters }, () => null),
+    spellTraps: Array.from({ length: z.spellTraps }, () => null),
     fieldSpell: null,
     normalSummonUsed: false,
   };
@@ -68,9 +71,10 @@ function blank(id: PlayerId): PlayerState {
 
 export function buildStage(o: StageSpec = {}): GameState {
   const turn = o.turn ?? 3;
+  const zc: ZoneCounts = (o.zones ?? (globalThis as { __NEON_LANES?: number }).__NEON_LANES ?? 3) === 5 ? ZONES_5 : DEFAULT_ZONES;
   const s: GameState = {
     cards: {},
-    players: [blank(0), blank(1)],
+    players: [blank(0, zc), blank(1, zc)],
     turn,
     activePlayer: o.active ?? 0,
     firstPlayer: o.first ?? 0,
@@ -81,6 +85,7 @@ export function buildStage(o: StageSpec = {}): GameState {
     rng: o.rng ?? 12345,
     internal: { queue: [] },
   };
+  if (zc === ZONES_5) s.zones = { ...ZONES_5 };
   let next = 1;
   const mk = (id: CardId, owner: PlayerId): Uid => {
     if (!CARDS[id]) throw new Error(`unknown card ${id}`);
@@ -97,7 +102,7 @@ export function buildStage(o: StageSpec = {}): GameState {
     ps.hand = (side.hand ?? []).map((id) => mk(id, p));
     ps.graveyard = (side.graveyard ?? []).map((id) => mk(id, p));
     (side.monsters ?? []).forEach((spec, i) => {
-      if (!spec || i >= MONSTER_ZONES) return;
+      if (!spec || i >= zc.monsters) return;
       const m = typeof spec === 'string' ? { id: spec } : spec;
       const faceUp = m.faceUp ?? true;
       const slot: MonsterSlot = {
@@ -111,7 +116,7 @@ export function buildStage(o: StageSpec = {}): GameState {
       ps.monsters[i] = slot;
     });
     (side.spellTraps ?? []).forEach((spec, i) => {
-      if (!spec || i >= SPELL_TRAP_ZONES) return;
+      if (!spec || i >= zc.spellTraps) return;
       const st = typeof spec === 'string' ? { id: spec } : spec;
       const equipTarget = st.equippedTo !== undefined ? (ps.monsters[st.equippedTo]?.uid ?? null) : null;
       const slot: SpellTrapSlot = {

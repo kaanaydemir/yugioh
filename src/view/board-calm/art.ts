@@ -35,8 +35,8 @@ import { PAL } from '../../art/palette';
 import { type Color, PixelCanvas, type Pt } from '../../art/pixel';
 import type { PlayerId } from '../../engine/types';
 import { topAt, type TopKind } from '../../still/arena';
-import { G0, G1, HULL, KEEL_TIP, OUTLINE, SLAB_T, WALL_H, gp, inGrid, insideOutline, pixelGrid, rimY, standsBottomY } from '../../still/arena-geom';
-import { BOARD_COLS, BOARD_ROWS, type BoardSpot, GAME_H, GAME_W, cellKind, isoToScreen, zoneAtCell, zoneCell } from '../layout';
+import { G0, G1, GR1, HULL, KEEL_TIP, OUTLINE, SLAB_T, WALL_H, gp, inGrid, insideOutline, pixelGrid, rimY, standsBottomY } from '../../still/arena-geom';
+import { BOARD_COLS, BOARD_MID_COL, BOARD_ROWS, type BoardSpot, GAME_H, GAME_W, LANES, ZONES5, cellKind, isoToScreen, zoneAtCell, zoneCell } from '../layout';
 
 // ---------------------------------------------------------------- tones (as src/still/arena.ts T)
 
@@ -316,8 +316,8 @@ function drawHull(p: PixelCanvas): void {
   }
   const last = tiers[tiers.length - 1];
   const spikeTop = last.top + last.t;
-  const lft = rp(gp(G0 + last.inset, G1 - last.inset, spikeTop));
-  const bot = rp(gp(G1 - last.inset, G1 - last.inset, spikeTop));
+  const lft = rp(gp(G0 + last.inset, GR1 - last.inset, spikeTop));
+  const bot = rp(gp(G1 - last.inset, GR1 - last.inset, spikeTop));
   const rgt = rp(gp(G1 - last.inset, G0 + last.inset, spikeTop));
   const apex: Pt = [KEEL_TIP.x, KEEL_TIP.y];
   for (let x = lft[0]; x < bot[0]; x++) {
@@ -331,8 +331,8 @@ function drawHull(p: PixelCanvas): void {
   }
   for (let k = tiers.length - 1; k >= 0; k--) {
     const { inset, top, t } = tiers[k];
-    const l = rp(gp(G0 + inset, G1 - inset, top));
-    const b = rp(gp(G1 - inset, G1 - inset, top));
+    const l = rp(gp(G0 + inset, GR1 - inset, top));
+    const b = rp(gp(G1 - inset, GR1 - inset, top));
     const r = rp(gp(G1 - inset, G0 + inset, top));
     const keel = k === tiers.length - 1;
     band(p, l, b, t, () => (keel ? T.keelL : T.hullL), 2);
@@ -557,6 +557,7 @@ function plainBorder(c: number, r: number): boolean {
  * Fills `kinds` (frame pixels) and returns the trim pixels as [x, y, colour] triples.
  */
 function drawTop(p: PixelCanvas, kinds: Uint8Array, ms: Record<string, number>): { trims: number[]; ring: Uint8Array } {
+  if (ZONES5) return drawTopGeneric(p, kinds, ms);
   const t0 = performance.now();
   const cells = cellTable();
   const { refs, own, ring } = referenceTiles(cells);
@@ -631,6 +632,36 @@ function drawTop(p: PixelCanvas, kinds: Uint8Array, ms: Record<string, number>):
   return { trims, ring };
 }
 
+/**
+ * zones5 (7×5 grid): the fast path above relies on a 5×5 grid's repeats and on its 180° symmetry
+ * tables, so a 7-column board runs the still's own topAt() over every pixel of the platform top
+ * (one-off ~100 ms, only with ?zones=5). Same outputs: `kinds`, the trim pixel triples, the ring.
+ */
+function drawTopGeneric(p: PixelCanvas, kinds: Uint8Array, ms: Record<string, number>): { trims: number[]; ring: Uint8Array } {
+  const t0 = performance.now();
+  const { ring } = referenceTiles(cellTable());
+  const t1 = performance.now();
+  const trims: number[] = [];
+  const corners = OUTLINE.map(([c, r]) => gp(c, r));
+  const minX = Math.floor(Math.min(...corners.map((q) => q[0])));
+  const maxX = Math.ceil(Math.max(...corners.map((q) => q[0])));
+  const minY = Math.floor(Math.min(...corners.map((q) => q[1])));
+  const maxY = Math.ceil(Math.max(...corners.map((q) => q[1])));
+  for (let y = Math.max(0, minY); y <= Math.min(p.h - 1, maxY); y++)
+    for (let x = Math.max(0, minX); x <= Math.min(p.w - 1, maxX); x++) {
+      const t = topAt(x, y);
+      topAtCalls++;
+      if (!t) continue;
+      p.set(x, y, t.color);
+      kinds[y * GAME_W + x] = TOP_CODE[t.kind];
+      if (t.kind === 'trim') trims.push(x, y, t.color);
+    }
+  ms.topRefs = Math.round((t1 - t0) * 10) / 10;
+  ms.topGrid = 0;
+  ms.topBand = Math.round((performance.now() - t1) * 10) / 10;
+  return { trims, ring };
+}
+
 const OUTLINE_RECTS: [number, number, number, number][] = [
   [G0, G1, G0, G1],
   [1.25, 2.75, G1, 6],
@@ -692,8 +723,8 @@ function zoneMasks(ring: Uint8Array): CalmArt['masks'] & { linePath: CalmArt['li
 }
 
 const ZONES: [BoardSpot, number][] = [
-  ['monster', 3],
-  ['spellTrap', 3],
+  ['monster', LANES],
+  ['spellTrap', LANES],
   ['field', 1],
   ['graveyard', 1],
   ['deck', 1],
@@ -799,7 +830,7 @@ const STRIP_START = {
   right: scr(G1, 1.5),
 } as const;
 /** Podium outer edge midpoints (pulses and the ignition start there). */
-const PODIUM_XY: Record<0 | 1, { x: number; y: number }> = { 0: scr(2, 6), 1: scr(2, -2) };
+const PODIUM_XY: Record<0 | 1, { x: number; y: number }> = { 0: scr(BOARD_MID_COL, 6), 1: scr(BOARD_MID_COL, -2) };
 
 function trimPieces(list: number[]): { trims: TrimPiece[]; paths: CalmArt['paths'] } {
   const bySide: TrimPxT[][] = [[], [], []];

@@ -29,7 +29,7 @@ import { PAL, RAMPS } from '../../art/palette';
 import { type Color, mulberry32 } from '../../art/pixel';
 import type { PlayerId } from '../../engine/types';
 import { TEX, shake } from '../../vfx/core';
-import { type BoardSpot, DEPTH, GAME_W, isoToScreen, screenToIso, zoneCell } from '../layout';
+import { BOARD_MID_COL, type BoardSpot, DEPTH, GAME_W, isoToScreen, screenToIso, zoneCell } from '../layout';
 import {
   CALM,
   CALM_BG_PARTS,
@@ -405,7 +405,7 @@ export class BoardViewCalm {
   async setTheme(theme: ArenaTheme, animate = true, from: PlayerId | null = null): Promise<void> {
     const token = ++this.themeToken;
     if (theme === 'volcano') {
-      const origin = from === null ? { col: 2, row: 2 } : zoneCell(from, 'field');
+      const origin = from === null ? { col: BOARD_MID_COL, row: 2 } : zoneCell(from, 'field');
       this.ensureLava(origin);
       const f = this.crack!;
       const end = f.maxDist + 16;
@@ -639,7 +639,7 @@ export class BoardViewCalm {
     for (const z of calmZones()) {
       const c = zoneCell(z.player, z.spot, z.index);
       const s = isoToScreen(c.col, c.row);
-      const pod = z.player === 0 ? { col: 2, row: 5.35 } : { col: 2, row: -1.35 };
+      const pod = z.player === 0 ? { col: BOARD_MID_COL, row: 5.35 } : { col: BOARD_MID_COL, row: -1.35 };
       this.zones.push({
         ref: { player: z.player, spot: z.spot, index: z.index },
         col: c.col,

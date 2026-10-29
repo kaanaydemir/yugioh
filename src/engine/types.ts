@@ -22,6 +22,18 @@ export const MONSTER_ZONES = 3;
 export const SPELL_TRAP_ZONES = 3;
 export const HAND_LIMIT = 6;
 
+/** Per-game zone counts. A state without `zones` is the classic 3+3 board. */
+export interface ZoneCounts {
+  monsters: number;
+  spellTraps: number;
+}
+export const DEFAULT_ZONES: ZoneCounts = { monsters: MONSTER_ZONES, spellTraps: SPELL_TRAP_ZONES };
+export const ZONES_5: ZoneCounts = { monsters: 5, spellTraps: 5 };
+/** Zone counts of a game (3+3 unless the game was created with `zones`). */
+export function zoneCounts(s: { zones?: ZoneCounts }): ZoneCounts {
+  return s.zones ?? DEFAULT_ZONES;
+}
+
 export function other(p: PlayerId): PlayerId {
   return (p === 0 ? 1 : 0) as PlayerId;
 }
@@ -103,6 +115,8 @@ export interface GameState {
   winReason: WinReason | null;
   /** RNG state (mulberry32). */
   rng: number;
+  /** Zone counts; absent = 3+3 (keeps classic states byte-identical). */
+  zones?: ZoneCounts;
   /** Engine-private continuation data (e.g. an attack waiting on a trap response). */
   internal: Record<string, unknown>;
 }
@@ -267,4 +281,6 @@ export interface NewGameOptions {
   decks?: [CardId[], CardId[]];
   /** Testing: skip shuffling so deck order is exactly as given (decks[i][0] is drawn first). */
   noShuffle?: boolean;
+  /** 3 (default) or 5 monster + spell/trap zones per player. */
+  zones?: 3 | 5;
 }

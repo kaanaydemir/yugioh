@@ -25,6 +25,19 @@
 //   cols 2 / 4: empty gap tiles between neighbouring zones (monsters never stand "dip dibe")
 //   col 0 / col 6: outer pads — P1 field (0,4), banish (0,5), graveyard (6,4), deck (6,5)
 //
+// ── v3 look + ?zones=5 (opt-in, ZONES5) ── a 7×5 grid of the same 64×32 tiles (5 lanes per side):
+//
+//   grid (col, row) → screen: x = 288 + (col - row) * 32
+//                             y =  80 + (col + row) * 16          (tile center)
+//
+//   rows exactly as v1 (0 P2 spell/trap, 1 P2 monsters, 2 no-man's land, 3 P1 monsters, 4 P1 spell/trap)
+//   cols 1..5: the five lanes (zone index 0..4 for P1); col 0: field (row 3) + banish (row 4),
+//   col 6: graveyard (row 3) + deck (row 4) — the outer pads.
+//   BOARD_MID_COL = 3 (the centre lane), the board centre (3, 2) stays at screen (320, 160) — the same
+//   point as v1's (2, 2) — so everything centred on BOARD_MID_COL/ROW stays centred; the origin moved
+//   (288, 80) instead of (320, 96), the camera never changes.
+//   Tile-corner bounding box x 128..512, y 64..256 (v1: x 160..480, y 80..240).
+//
 // In both variants player 2's board is player 1's rotated 180° around the board center.
 // Player 1 (id 0, cyan) sits at the lower-left, player 2 (id 1, crimson) at the upper-right.
 // The duel axis runs lower-left → upper-right, so P1 sprites face RIGHT and P2 sprites are flipX.
@@ -45,6 +58,10 @@ import type { PlayerId, ZoneKind } from '../engine/types';
 //                    its old sheet.
 // Decided once at module init, like the arena variant: `globalThis.__NEON_LOOK` ('v1' | 'v3'),
 // else the URL param `?look=v3`, else 'v1'.
+//
+// ZONES5 (additive): 5 monster + 5 spell/trap zones per player instead of 3 + 3. Opt-in with
+// `globalThis.__NEON_ZONES = 5` or the URL param `?zones=5`, read once at module init, and honoured
+// ONLY with the v3 look (with look v1 it is ignored: v1 stays 3+3).
 
 export type Look = 'v1' | 'v3';
 
@@ -65,6 +82,27 @@ function detectLook(): Look {
     /* no globals (tests, workers): fall through */
   }
   return 'v1';
+}
+
+/** True when the board has 5 + 5 zones per player (v3 look + `?zones=5` / `__NEON_ZONES = 5`). */
+export const ZONES5: boolean = LOOK_V3 && detectZones5();
+/** Monster / spell-trap zones per player on this board (3 or 5). */
+export const LANES: number = ZONES5 ? 5 : 3;
+// Published for src/duel/scenario.ts, which must not import this module statically (it would fix LOOK too early for tests that set the look global afterwards).
+(globalThis as { __NEON_LANES?: number }).__NEON_LANES = LANES;
+
+function detectZones5(): boolean {
+  try {
+    const g = (globalThis as { __NEON_ZONES?: unknown }).__NEON_ZONES;
+    if (g === 5 || g === '5') return true;
+    if (g === 3 || g === '3') return false;
+    if (typeof location !== 'undefined' && typeof URLSearchParams !== 'undefined') {
+      return new URLSearchParams(location.search).get('zones') === '5';
+    }
+  } catch {
+    /* no globals (tests, workers): fall through */
+  }
+  return false;
 }
 
 /** Pick the v1 (today's look) or the v3 value (for module-level constants elsewhere). */
@@ -112,16 +150,16 @@ export const GAME_H = 360;
 
 export const TILE_W: number = byArena(64, 80);
 export const TILE_H: number = byArena(32, 40);
-export const BOARD_COLS: number = byArena(5, 7);
+export const BOARD_COLS: number = ZONES5 ? 7 : byArena(5, 7);
 export const BOARD_ROWS: number = byArena(5, 6);
 /** Screen position of the center of grid cell (0, 0). */
-export const BOARD_OX: number = byArena(320, 300);
-export const BOARD_OY: number = byArena(96, 66);
+export const BOARD_OX: number = ZONES5 ? 288 : byArena(320, 300);
+export const BOARD_OY: number = ZONES5 ? 80 : byArena(96, 66);
 
 /** Grid rows of the no-man's land / energy bridge between the two front rows (v1 [2], v2 [2, 3]). */
 export const BRIDGE_ROWS: readonly number[] = byArena([2], [2, 3]);
-/** Grid columns of the three lanes (monster / spell-trap index 0..2 of player 1; v1 [1,2,3], v2 [1,3,5]). */
-export const LANE_COLS: readonly number[] = byArena([1, 2, 3], [1, 3, 5]);
+/** Grid columns of the lanes (monster / spell-trap index of player 1; v1 [1,2,3], v2 [1,3,5], zones5 [1..5]). */
+export const LANE_COLS: readonly number[] = ZONES5 ? [1, 2, 3, 4, 5] : byArena([1, 2, 3], [1, 3, 5]);
 /** Fractional grid coords of the board center (v1 (2, 2), v2 (3, 2.5)). */
 export const BOARD_MID_COL: number = (BOARD_COLS - 1) / 2;
 export const BOARD_MID_ROW: number = (BOARD_ROWS - 1) / 2;
@@ -176,9 +214,9 @@ function zoneCellV1(spot: BoardSpot, index: number): { col: number; row: number 
     case 'field':
       return { col: 0, row: 3 };
     case 'graveyard':
-      return { col: 4, row: 3 };
+      return { col: BOARD_COLS - 1, row: 3 };
     case 'deck':
-      return { col: 4, row: 4 };
+      return { col: BOARD_COLS - 1, row: 4 };
     case 'banish':
       return { col: 0, row: 4 };
   }
@@ -212,8 +250,8 @@ export interface ZoneRef {
 const ZONE_BY_CELL: Map<string, ZoneRef> = (() => {
   const m = new Map<string, ZoneRef>();
   const spots: [BoardSpot, number][] = [
-    ['monster', 3],
-    ['spellTrap', 3],
+    ['monster', LANES],
+    ['spellTrap', LANES],
     ['field', 1],
     ['graveyard', 1],
     ['deck', 1],
@@ -291,7 +329,7 @@ export function facesLeft(player: PlayerId): boolean {
  */
 export function duelistXY(player: PlayerId): XY {
   if (ARENA_V2) return player === 0 ? isoToScreen(3, 6.25) : isoToScreen(3, -1.25);
-  return player === 0 ? isoToScreen(2, 5.35) : isoToScreen(2, -1.35);
+  return player === 0 ? isoToScreen(BOARD_MID_COL, 5.35) : isoToScreen(BOARD_MID_COL, -1.35);
 }
 
 // ---------------------------------------------------------------- deck corners (additive)
