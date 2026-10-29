@@ -696,6 +696,16 @@ describe('A-4 Ayna Kalkanı (v3): the big dome, the order, the schedule', () => 
     }
   });
 
+  it('one owner\'s victims land in engine order (the pile\'s top card only changes on a landing)', async () => {
+    const { engineOrderPerOwner, beamSchedule } = await import('../../src/cinematics/traps/_mirror_v3');
+    expect(engineOrderPerOwner([1, 0], [0, 0])).toEqual([0, 1]);
+    expect(engineOrderPerOwner([2, 0, 1], [0, 1, 0])).toEqual([0, 2, 1]);
+    expect(engineOrderPerOwner([], [])).toEqual([]);
+    // ordered: a short death after a long one still lands after it, >= 150 ms later
+    const t = beamSchedule([1220, 520], { ordered: true });
+    expect(t[1] + 520 - (t[0] + 1220)).toBeGreaterThanOrEqual(150);
+  });
+
   it('the reflections go nearest to the struck point first (ties keep the event order)', async () => {
     const { reflectionOrder } = await import('../../src/cinematics/traps/_mirror_v3');
     const cell = { x: 320, y: 130 };

@@ -84,7 +84,6 @@ import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { BREAK_CRACK_FRAMES, EQUIP_HOOKS, equipAuraV3, ringPixels } from '../../duel/auras-v3';
 import { fx, type CinematicContext } from '../api';
 import { fxCount, fxRng, motifImage, numberUnderBar, rimClimb, rimFlash, setMotif, silhouetteOf } from '../_v3/spellfx';
-import { contactFlash } from '../_v3/flash';
 import { panAt, play as playV3 } from '../_v3/sound';
 import { impactNumber } from '../_v3/number';
 import { cardLeaves } from '../_v3/card';
@@ -146,6 +145,8 @@ const SINK_PX: Readonly<Record<ForgeSize, number>> = { big: 20, mid: 10 };
  * The edge is the guard's when the slam's rows reach the guard's (numberSpot), else the blade's.
  */
 const NUMBER_CLEAR = 36;
+/** P2's break number stands this many px higher than the head so its slam clears the deck / graveyard tiles. */
+const BREAK_LIFT_P2 = 40;
 /**
  * The slammed number's ink is not centred on its x: every glyph cell carries its outline / shadow on the
  * right (_v3/number.ts), so the 2× slam reaches 31 px left of x but 33 px right (measured in game,
@@ -213,9 +214,9 @@ function bodyChecker(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite, ramp: re
       const H = sil.bottom - sil.top + 4;
       if (!ras || ras.w < W || ras.h < H) {
         ras?.destroy();
-        ras = new Raster(scene, sil.left - 2, sil.top - 2, W + 8, H + 8, s.depth + 0.5);
+        ras = new Raster(scene, sil.left - 5, sil.top - 5, W + 14, H + 14, s.depth + 0.5);
       }
-      ras.moveTo(sil.left - 2, sil.top - 2);
+      ras.moveTo(sil.left - 5, sil.top - 5);
       const blocks = new Map<number, { bx: number; by: number; n: number }>();
       let total = 0;
       for (let y = sil.top; y < sil.bottom; y++)
@@ -244,12 +245,15 @@ function bodyChecker(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite, ramp: re
             if (sil.has(x, y)) ras.px(x, y, ramp[k]);
           }
       }
-      // the glow spilling past the body: a 1-px checker band two pixels deep outside its edge (not the body)
+      // the glow spilling past the body: a band four pixels deep outside its edge, 7 of 8 pixels lit, the
+      // dark one moving every frame (the body itself stays within `cap`)
       if (halo)
-        for (let y = sil.top - 2; y < sil.bottom + 2; y++)
-          for (let x = sil.left - 2; x < sil.right + 2; x++) {
-            if (((x + y) & 1) !== (k & 1) || sil.has(x, y)) continue;
-            if (sil.has(x - 1, y) || sil.has(x + 1, y) || sil.has(x, y - 1) || sil.has(x, y + 1) || sil.has(x - 2, y) || sil.has(x + 2, y) || sil.has(x, y - 2) || sil.has(x, y + 2)) ras.px(x, y, ramp[k]);
+        for (let y = sil.top - 4; y < sil.bottom + 4; y++)
+          for (let x = sil.left - 4; x < sil.right + 4; x++) {
+            if (((x + y * 2 + k * 3) & 7) === 0 || sil.has(x, y)) continue;
+            let near = false;
+            for (let d = 1; d <= 4 && !near; d++) near = sil.has(x - d, y) || sil.has(x + d, y) || sil.has(x, y - d) || sil.has(x, y + d);
+            if (near) ras.px(x, y, ramp[k] === PAL.white ? PAL.gold4 : ramp[k]); // (the white stays on the body: EF-4)
           }
       ras.end();
       k++;
@@ -260,10 +264,10 @@ function bodyChecker(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite, ramp: re
 
 /** The stab's body light after the hit-stop: white, then down the gold ramp (the old white → gold glow). */
 const STAB_CHECKER = [
-  ...Array<number>(6).fill(PAL.white),
-  ...Array<number>(18).fill(PAL.gold4),
-  ...Array<number>(12).fill(PAL.gold3),
-  ...Array<number>(5).fill(PAL.gold2),
+  ...Array<number>(10).fill(PAL.white),
+  ...Array<number>(32).fill(PAL.gold4),
+  ...Array<number>(4).fill(PAL.gold3),
+  ...Array<number>(3).fill(PAL.gold2),
 ] as const;
 
 // ================================================================ small helpers
@@ -313,8 +317,8 @@ function eachTick(scene: Phaser.Scene, fn: (k: number) => boolean): void {
  * `travel`: the rows the sword still sinks), else the blade's — NUMBER_SHADOW further on the left side
  * (its ink reaches further right), kept on screen.
  */
-export function numberSpot(o: { x: number; swordTop: number; headY: number; side: 1 | -1; travel?: number; geo: { guardRow: number; guardH: number; guardHw: number; bladeHw: number } }): XY {
-  const y = Math.round(o.headY) - 4;
+export function numberSpot(o: { x: number; swordTop: number; headY: number; side: 1 | -1; travel?: number; lift?: number; geo: { guardRow: number; guardH: number; guardHw: number; bladeHw: number } }): XY {
+  const y = Math.round(o.headY) - 4 - (o.lift ?? 0);
   const g0 = o.swordTop + o.geo.guardRow - 3;
   const g1 = o.swordTop + o.geo.guardRow + o.geo.guardH + 1 + (o.travel ?? 0);
   const onGuard = y + SLAM_HALF_H >= g0 && y - SLAM_HALF_H <= g1;
@@ -911,7 +915,8 @@ export async function bladeEquipV3(ctx: EquipCtx): Promise<void> {
   playV3('bladeBond', { volume: 1, pan: panAt(L.x) });
   show({ size: L.size, look: 'hot' });
   if (alive) {
-    contactFlash(sc, target, { x: 0, y: 1 }, { frames: 3, coverage: 0.45, tint: PAL.gold4, at: tip });
+    // the body's checker flash (below) replaces the contact flash's localized band: it covers the whole body
+    bg(bodyChecker(sc, target, STAB_CHECKER, 0.45));
     const entry = silhouetteOf(target)?.topAt(L.x) ?? Math.round(b.top);
     entryStar(sc, { x: L.x, y: entry - 3 }, L.size, target.depth - 0.4);
     bg(rimFlash(sc, target, { ramp: STAB_RIM, hold: 2 }).then(() => (target.active && !u.retired ? rimClimb(sc, target, { ramp: [PAL.gold2, PAL.gold3, PAL.gold4], stepMs: 50, holdMs: 240, fadeMs: 180, from: 'head' }) : undefined)));
@@ -936,7 +941,6 @@ export async function bladeEquipV3(ctx: EquipCtx): Promise<void> {
     sparks.add({ x: tip.x, y: tip.y - 4, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.6 - 40, ay: 260, drag: 1.5, life: 300 + Math.round(rnd() * 300), colors: SPARK_FX, shape: i % 3 === 0 ? 'plus' : 'px', fadeAt: 1 });
   }
   await freeze(sc, FORGE.stop);
-  if (alive) bg(bodyChecker(sc, target, STAB_CHECKER));
 
   // ---- the persistent aura exists from the stab on (the field's state has it: a sync, a break or an attack
   // right after the input comes back all find it) but shows nothing until the blade has sunk (revealIn)
@@ -1089,7 +1093,9 @@ async function breakBeat(sc: Phaser.Scene, e: StatEv, u: MonsterUnit): Promise<v
   playV3('bladeBreak', { volume: 0.9, pan: panAt(L.x) });
   const { up, delta } = statDelta(e);
   if (delta > 0) {
-    const n = numberSpot({ x: L.x, swordTop: top, headY: u.worldPoint('top').y, side: u.player === 0 ? 1 : -1, geo });
+    // (fix round 3: P2's number beside the sword used to slam on its own deck pile; it stands one number's height
+    // higher, above the pile's tile, still off the sword's edge)
+    const n = numberSpot({ x: L.x, swordTop: top, headY: u.worldPoint('top').y, side: u.player === 0 ? 1 : -1, lift: u.player === 1 ? BREAK_LIFT_P2 : 0, geo });
     const nb = numberUnderBar(n.y);
     bg(impactNumber(sc, n.x, nb.y, delta, { kind: up ? 'heal' : 'damage', rise: nb.rise }));
   }

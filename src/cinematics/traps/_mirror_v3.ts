@@ -197,10 +197,26 @@ export function reflectionOrder(cell: XY, cores: readonly XY[]): number[] {
 }
 
 /**
+ * Fix round 3 (the graveyard's top card): the Director's syncs set a pile's top card from the ENGINE's destroy
+ * order, so when the cards land in another order (nearest victim first) the top card flips on a frame where no
+ * card lands. The slots stay nearest-first, but the victims of ONE owner (they share a pile) fill their slots in
+ * engine order (`owners[i]` = the owner of victim i; victims are indexed in engine order).
+ */
+export function engineOrderPerOwner(order: readonly number[], owners: readonly number[]): number[] {
+  const out = [...order];
+  for (const o of new Set(owners)) {
+    const slots = out.map((v, k) => (owners[v] === o ? k : -1)).filter((k) => k >= 0);
+    const vs = slots.map((k) => out[k]).sort((a, b) => a - b);
+    slots.forEach((k, j) => (out[k] = vs[j]));
+  }
+  return out;
+}
+
+/**
  * When each beam leaves (ms after the first one leaves): 220 ms after the previous contact, pushed later
  * when this victim's card would land within LAND_GAP (+ a little margin) of an earlier one's.
  */
-export function beamSchedule(deathMs: readonly number[], o: { beamMs?: number; gap?: number; gaps?: readonly number[]; landGap?: number } = {}): number[] {
+export function beamSchedule(deathMs: readonly number[], o: { beamMs?: number; gap?: number; gaps?: readonly number[]; landGap?: number; ordered?: boolean } = {}): number[] {
   const beamMs = o.beamMs ?? BEAM_MS;
   const landGap = (o.landGap ?? LAND_GAP) + 20;
   const out: number[] = [];
@@ -212,9 +228,10 @@ export function beamSchedule(deathMs: readonly number[], o: { beamMs?: number; g
     // push this beam later until its landing keeps clear of every earlier landing
     for (let guard = 0; guard < 8; guard++) {
       const land = at + beamMs + d;
-      const clash = lands.find((l) => Math.abs(land - l) < landGap);
+      // `ordered`: a card never lands before an earlier beam's (the pile's top card is the engine's last)
+      const clash = lands.find((l) => Math.abs(land - l) < landGap || (o.ordered && land < l));
       if (clash === undefined) break;
-      at += clash + landGap - land;
+      at += Math.max(1, clash + landGap - land);
     }
     out.push(at);
     lands.push(at + beamMs + d);
@@ -523,7 +540,13 @@ export function paintDomeShell(p: PixelCanvas, f: DomeField, which: 'near' | 'fa
         else if (heat >= 3) col = b0 || b1 ? W : -1;
         else if (fresh >= 2) col = b0 || b1 ? PAL.mag3 : -1;
         // the lit pane: a checker on the inset pixels (white / mag4 when hot, mag4 / mag3), clear by the seams
-        else if (glow >= 2) col = S.inset[idx] === 0 ? -1 : b0 ? (glow >= 3 ? W : PAL.mag4) : b1 ? (glow >= 3 ? PAL.mag4 : PAL.mag3) : -1;
+        // (fix round 3: the panes stay one value step darker than the seams beside them — the seams are white
+        // in the hot disc, else mag4 — so the honeycomb net still reads at phone size)
+        else if (glow >= 2) {
+          const top = glow >= 3 && W === PAL.white ? PAL.mag4 : PAL.mag3;
+          const low = top === PAL.mag4 ? PAL.mag3 : PAL.mag2;
+          col = S.inset[idx] === 0 ? -1 : b0 ? top : b1 ? low : -1;
+        }
         // the glass glows with its seams on the ripple / charge / the ignition's last step (a quarter of its pixels)
         else if (b0 && (heat >= 1 || glow >= 1)) col = heat >= 2 ? PAL.mag4 : PAL.mag3;
         // the pink glass tint, brighter where the glass is seen edge-on
@@ -1510,10 +1533,10 @@ export async function mirrorV3(ctx: ActCtx): Promise<void> {
     const z = zoneXY(e.player, 'monster', e.zone);
     return { i, e, u, core: u ? u.core() : { x: z.x, y: z.y - 14 } };
   });
-  const order = reflectionOrder(hit, victims.map((v) => v.core)).map((k) => victims[k]);
+  const order = engineOrderPerOwner(reflectionOrder(hit, victims.map((v) => v.core)), victims.map((v) => ctx.owner(v.e.uid))).map((k) => victims[k]);
   const posed = order.map((v) => !!v.u && v.u.has('death'));
   const gaps = order.map((_v, k) => (k > 0 && posed[k - 1] ? BEAM_GAP_POSED : BEAM_GAP));
-  const departs = beamSchedule(order.map((_v, k) => (posed[k] ? DEATH_EST.pose : DEATH_EST.legacy)), { gaps });
+  const departs = beamSchedule(order.map((_v, k) => (posed[k] ? DEATH_EST.pose : DEATH_EST.legacy)), { gaps, ordered: true });
 
   // ---- DOME (parallel with the opening): raise at DOME_AT, complete before CATCH_AT
   const { ra, rb, rz } = dome.shape;

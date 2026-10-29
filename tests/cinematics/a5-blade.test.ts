@@ -369,6 +369,7 @@ describe('fix round 2: the break (the forged blade tears out, cracks and shatter
     const big = forgeSwordGeom('big');
     const mid = forgeSwordGeom('mid');
     // P1, big: the guard far above the head (the old placement: blade edge + 36)
+    expect(numberSpot({ x: 300, swordTop: 60, headY: 150, side: 1, lift: 40, geo: big }).y).toBe(numberSpot({ x: 300, swordTop: 60, headY: 150, side: 1, geo: big }).y - 40);
     const a = numberSpot({ x: 300, swordTop: 60, headY: 150, side: 1, travel: 20, geo: big });
     expect(a).toEqual({ x: 300 + big.bladeHw + 36, y: 146 });
     // P2, mid: the slam's rows reach the guard's band → off the guard's edge (no contact even at 2×)
