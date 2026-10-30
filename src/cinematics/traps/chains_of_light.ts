@@ -44,7 +44,7 @@
 
 import type Phaser from 'phaser';
 import { PAL, PLAYER_COLOR } from '../../art/palette';
-import { DEPTH, LOOK_V3, type XY, zoneXY } from '../../view/layout';
+import { LANE_MID, DEPTH, LOOK_V3, type XY, zoneXY } from '../../view/layout';
 import { lightFlash } from '../../view/light';
 import { shake, tween, wait } from '../../vfx/core';
 import { afterimages, stopTime, whiteFlash } from '../../vfx/combat';
@@ -78,8 +78,8 @@ registerCardHook(
     const trig = pend && pend.kind === 'trapResponse' && pend.trigger.kind === 'attackDeclared' ? pend.trigger : null;
     const attackerUid = nEv?.attackerUid ?? trig?.attackerUid ?? null;
     const attacker = attackerUid !== null ? live(ctx.unit(attackerUid)) : null;
-    const trapPt = ev.zone !== null ? zoneXY(ev.player, 'spellTrap', ev.zone) : zoneXY(ev.player, 'spellTrap', 1);
-    const aCore = attacker ? attacker.core() : zoneXY(other(ev.player), 'monster', 1);
+    const trapPt = ev.zone !== null ? zoneXY(ev.player, 'spellTrap', ev.zone) : zoneXY(ev.player, 'spellTrap', LANE_MID);
+    const aCore = attacker ? attacker.core() : zoneXY(other(ev.player), 'monster', LANE_MID);
     const op = await trapOpening(ctx, { focus: lerpXY({ x: trapPt.x, y: trapPt.y - 30 }, aCore, 0.45) });
     const { hold, other: kept } = takeAttack(ctx);
     kept?.destroy();
@@ -509,8 +509,8 @@ async function chainsV3(ctx: ActCtx): Promise<void> {
   const trig = pend && pend.kind === 'trapResponse' && pend.trigger.kind === 'attackDeclared' ? pend.trigger : null;
   const attackerUid = nEv?.attackerUid ?? trig?.attackerUid ?? null;
   const attacker = attackerUid !== null ? live(ctx.unit(attackerUid)) : null;
-  const trapPt = ev.zone !== null ? zoneXY(ev.player, 'spellTrap', ev.zone) : zoneXY(ev.player, 'spellTrap', 1);
-  const aCore = attacker ? attacker.core() : zoneXY(other(ev.player), 'monster', 1);
+  const trapPt = ev.zone !== null ? zoneXY(ev.player, 'spellTrap', ev.zone) : zoneXY(ev.player, 'spellTrap', LANE_MID);
+  const aCore = attacker ? attacker.core() : zoneXY(other(ev.player), 'monster', LANE_MID);
   const { hold, other: kept } = takeAttack(ctx);
   kept?.destroy();
   const tUid = hold?.targetUid ?? trig?.targetUid ?? null;

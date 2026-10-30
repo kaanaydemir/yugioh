@@ -69,7 +69,7 @@ import type { PlayerId } from '../../engine/types';
 import { ATTRIBUTE_RAMP, PAL, RAMPS } from '../../art/palette';
 import type { PixelCanvas } from '../../art/pixel';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
-import { BOARD_MID_COL, BOARD_OX, BOARD_OY, DEPTH, LANE_COLS, TILE_H, TILE_W, type XY, isoToScreen, monsterRow, screenToIso, zoneXY } from '../../view/layout';
+import { LANE_MID, BOARD_MID_COL, BOARD_OX, BOARD_OY, DEPTH, LANE_COLS, TILE_H, TILE_W, type XY, isoToScreen, monsterRow, screenToIso, zoneXY } from '../../view/layout';
 import { lightBeam, lightFlash, lightPool, type LightHandle } from '../../view/light';
 import { REDUCED_MOTION } from '../../view/v3/motion';
 import { wait } from '../../vfx/core';
@@ -1516,14 +1516,14 @@ export async function mirrorV3(ctx: ActCtx): Promise<void> {
   // the dome lean of mirror_barrier.ts:57 — same targets and options, computed before anything moves
   const domeC = isoToScreen(BOARD_MID_COL, monsterRow(ev.player));
   const domeTop = { x: domeC.x, y: domeC.y - 40 * TK };
-  const trapPt = ev.zone !== null ? zoneXY(ev.player, 'spellTrap', ev.zone) : zoneXY(ev.player, 'spellTrap', 1);
+  const trapPt = ev.zone !== null ? zoneXY(ev.player, 'spellTrap', ev.zone) : zoneXY(ev.player, 'spellTrap', LANE_MID);
   const aCore0 = attacker?.core() ?? domeTop;
   const leanAt = { x: (domeTop.x * 2 + aCore0.x) / 3, y: (domeTop.y * 2 + aCore0.y) / 3 };
 
   // ---- the dome (exists from the start, shows nothing until it builds) and the point the attack meets
   const dome = new DomeV3(sc, ev.player, ev.uid * 7 + 1);
   const plan = planStrike(attacker);
-  const aHome = attacker ? { x: attacker.home.x, y: attacker.home.y } : zoneXY(attackerSide, 'monster', 1);
+  const aHome = attacker ? { x: attacker.home.x, y: attacker.home.y } : zoneXY(attackerSide, 'monster', LANE_MID);
   const hit = dome.point(aHome, STRUCK_EL);
 
   // ---- victims, in reflection order

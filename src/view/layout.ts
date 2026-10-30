@@ -160,6 +160,8 @@ export const BOARD_OY: number = ZONES5 ? 80 : byArena(96, 66);
 export const BRIDGE_ROWS: readonly number[] = byArena([2], [2, 3]);
 /** Grid columns of the lanes (monster / spell-trap index of player 1; v1 [1,2,3], v2 [1,3,5], zones5 [1..5]). */
 export const LANE_COLS: readonly number[] = ZONES5 ? [1, 2, 3, 4, 5] : byArena([1, 2, 3], [1, 3, 5]);
+/** Zone index of the centre lane (3 lanes: 1, 5 lanes: 2) — the fallback aim / anchor when a zone is unknown. */
+export const LANE_MID: number = LANES >> 1;
 /** Fractional grid coords of the board center (v1 (2, 2), v2 (3, 2.5)). */
 export const BOARD_MID_COL: number = (BOARD_COLS - 1) / 2;
 export const BOARD_MID_ROW: number = (BOARD_ROWS - 1) / 2;

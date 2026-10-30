@@ -13,7 +13,7 @@
 import type Phaser from 'phaser';
 import { PAL } from '../../art/palette';
 import type { TileCard } from '../../view/TileCard';
-import { DEPTH, type XY, unitDepth, zoneXY } from '../../view/layout';
+import { LANE_MID, DEPTH, type XY, unitDepth, zoneXY } from '../../view/layout';
 import { lightBeam, lightFlash, lightPool } from '../../view/light';
 import { shake, wait } from '../../vfx/core';
 import { Raster, Sparks, boltPath, chasm, floorRing, onFrame, run } from '../../vfx/setpieces';
@@ -112,7 +112,7 @@ registerCardHook(
     });
     const dEv = di !== undefined ? (ctx.events[di] as EvOf<'destroy'>) : null;
     const victim = dEv ? live(ctx.unit(dEv.uid)) : null;
-    const trapAt = ev.zone !== null ? zoneXY(ev.player, 'spellTrap', ev.zone) : zoneXY(ev.player, 'spellTrap', 1);
+    const trapAt = ev.zone !== null ? zoneXY(ev.player, 'spellTrap', ev.zone) : zoneXY(ev.player, 'spellTrap', LANE_MID);
     const vAt = dEv ? zoneXY(dEv.player, 'monster', dEv.zone) : trapAt;
     if (victim) guardRemap(victim);
     const op = await trapOpening(ctx, { focus: lerpXY({ x: trapAt.x, y: trapAt.y - 30 }, { x: vAt.x, y: vAt.y - 20 }, 0.35) });

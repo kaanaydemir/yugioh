@@ -12,7 +12,7 @@
 
 import { PAL } from '../../art/palette';
 import type { XY } from '../../view/layout';
-import { zoneXY } from '../../view/layout';
+import { LANE_MID, zoneXY } from '../../view/layout';
 import { wait } from '../../vfx/core';
 import { floorRing } from '../../vfx/setpieces';
 import { quickFountain } from './_fountain';
@@ -30,7 +30,7 @@ registerCardHook('healing_spring', 'activate', async (ctx) => {
   const li = idxOf(ctx, run0, (e) => e.type === 'lpGain');
   const gi = idxOf(ctx, run0, (e) => e.type === 'toGraveyard' && e.from === 'resolved' && e.uid === ev.uid);
   const set = setTileOf(ctx);
-  const spring: XY = set ? { ...set.home } : zoneXY(ev.player, 'spellTrap', 1);
+  const spring: XY = set ? { ...set.home } : zoneXY(ev.player, 'spellTrap', LANE_MID);
   const op = await spellOpening(ctx, { uid: ev.uid, cardId: ev.cardId, player: ev.player, from: set ? 'set' : 'hand', zone: ev.zone, hold: 190 });
   // the droplets fly on the (un-zoomed) HUD camera: the world camera must be at rest before they launch
   relax(ctx, 300);

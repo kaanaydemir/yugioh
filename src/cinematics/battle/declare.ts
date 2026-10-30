@@ -19,7 +19,7 @@
 import type Phaser from 'phaser';
 import { PAL, PLAYER_COLOR, PLAYER_RAMP } from '../../art/palette';
 import { pixelText } from '../../ui/text';
-import { DEPTH, LOOK_V3, type XY, zoneXY } from '../../view/layout';
+import { LANE_MID, DEPTH, LOOK_V3, type XY, zoneXY } from '../../view/layout';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { DECLARE_MAX_MS } from '../_v3/budget';
 import { canHandOver, declarePoseFrame, type HandOver } from '../_v3/clash';
@@ -268,7 +268,7 @@ registerEvent(
     if (isSetPulse(h)) h.settle(PAL.night4);
     else h?.destroy();
     // small "Geç" over the defender's spell/trap row
-    const row = zoneXY(p, 'spellTrap', 1);
+    const row = zoneXY(p, 'spellTrap', LANE_MID);
     const at = { x: row.x, y: row.y - 22 };
     const t = pixelText(sc, at.x, at.y, 'Geç', { size: 'md', color: PAL.mist, originX: 0.5, originY: 0.5 }).setDepth(DEPTH.FX_TOP + 5);
     ctx.sfx('uiBack', { volume: 0.5, pitch: 0.9 });

@@ -15,7 +15,7 @@ import type Phaser from 'phaser';
 import { PAL } from '../../art/palette';
 import { STAND_H, isoProject } from '../../art/cards';
 import type { TileCard } from '../../view/TileCard';
-import { DEPTH, LOOK_V3, UI, type XY, zoneXY } from '../../view/layout';
+import { LANE_MID, DEPTH, LOOK_V3, UI, type XY, zoneXY } from '../../view/layout';
 import { lightFlash, lightPool } from '../../view/light';
 import { flash, shake, wait } from '../../vfx/core';
 import { Sparks as PxSparks, stopTime } from '../../vfx/combat';
@@ -149,7 +149,7 @@ export async function trapOpening(ctx: ActCtx, o: { focus?: XY } = {}): Promise<
   if (isSetPulse(pulse)) pulse.destroy();
   else pulse?.destroy();
   const tile = ev.zone !== null ? ctx.views.field.tileAt(ev.player, 'spellTrap', ev.zone) : null;
-  const at = tile ? { ...tile.home } : ev.zone !== null ? zoneXY(ev.player, 'spellTrap', ev.zone) : zoneXY(ev.player, 'spellTrap', 1);
+  const at = tile ? { ...tile.home } : ev.zone !== null ? zoneXY(ev.player, 'spellTrap', ev.zone) : zoneXY(ev.player, 'spellTrap', LANE_MID);
   const face = { x: at.x, y: at.y - 36 };
   if (tile) tile.setCard(ev.cardId);
   const stopAuraRef = { fn: () => undefined as void };
@@ -494,7 +494,7 @@ async function trapOpeningV3(ctx: ActCtx, o: { focus?: XY } = {}): Promise<Openi
   else pulse?.destroy();
   const tile = ev.zone !== null ? ctx.views.field.tileAt(ev.player, 'spellTrap', ev.zone) : null;
   const live = tile && tile.active ? tile : null;
-  const at = live ? { x: Math.round(live.home.x), y: Math.round(live.home.y) } : ev.zone !== null ? zoneXY(ev.player, 'spellTrap', ev.zone) : zoneXY(ev.player, 'spellTrap', 1);
+  const at = live ? { x: Math.round(live.home.x), y: Math.round(live.home.y) } : ev.zone !== null ? zoneXY(ev.player, 'spellTrap', ev.zone) : zoneXY(ev.player, 'spellTrap', LANE_MID);
   if (live) live.setCard(ev.cardId);
   void ctx.focus(o.focus ?? { x: at.x, y: at.y - 30 }, { ms: 240, pan: 0.25 });
   void duelist(ctx, ev.player)?.play('command');

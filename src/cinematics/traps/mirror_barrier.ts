@@ -12,7 +12,7 @@
 //   · the dome breaks into hex shards, the spent trap card burns out and goes to the graveyard.
 
 import { ATTRIBUTE_RAMP, PLAYER_COLOR, RAMPS } from '../../art/palette';
-import { BOARD_MID_COL, type XY, isoToScreen, monsterRow, zoneXY } from '../../view/layout';
+import { LANE_MID, BOARD_MID_COL, type XY, isoToScreen, monsterRow, zoneXY } from '../../view/layout';
 import { tween, wait } from '../../vfx/core';
 import { afterimages, impact as combatImpact } from '../../vfx/combat';
 import { sparkleBurst } from '../../vfx/summon';
@@ -54,7 +54,7 @@ registerCardHook(
     const dome = isoToScreen(BOARD_MID_COL, monsterRow(ev.player));
     const domeTop = { x: dome.x, y: dome.y - 40 * TK };
 
-    const trapPt = ev.zone !== null ? zoneXY(ev.player, 'spellTrap', ev.zone) : zoneXY(ev.player, 'spellTrap', 1);
+    const trapPt = ev.zone !== null ? zoneXY(ev.player, 'spellTrap', ev.zone) : zoneXY(ev.player, 'spellTrap', LANE_MID);
     const op = await trapOpening(ctx, { focus: lerpXY({ x: trapPt.x, y: trapPt.y - 30 }, domeTop, 0.5) });
     const { hold, other: kept } = takeAttack(ctx);
     kept?.destroy();

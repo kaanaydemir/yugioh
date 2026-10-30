@@ -40,7 +40,7 @@ import type { CardOrientation } from '../../art/cards';
 import { sfx } from '../../audio/sfx';
 import { CardSprite } from '../../view/CardSprite';
 import type { TileCard } from '../../view/TileCard';
-import { DEPTH, GAME_H, GAME_W, LOOK_V3, type BoardSpot, type XY, panelRect, zoneXY } from '../../view/layout';
+import { LANE_MID, DEPTH, GAME_H, GAME_W, LOOK_V3, type BoardSpot, type XY, panelRect, zoneXY } from '../../view/layout';
 import { MINI_CARD_W } from '../../view/ui-textures';
 import { TEX, flash, safe, shake, tween, wait } from '../../vfx/core';
 import { impact as combatImpact, stopTime, whiteFlash } from '../../vfx/combat';
@@ -102,7 +102,7 @@ export function lpPoint(ctx: AnyCtx, player: PlayerId): XY {
 export function duelistPoint(ctx: AnyCtx, player: PlayerId): XY {
   const d = ctx.views.duelists?.get(player);
   if (d) return d.chest();
-  const p = zoneXY(player, 'spellTrap', 1);
+  const p = zoneXY(player, 'spellTrap', LANE_MID);
   return { x: p.x + (player === 0 ? -26 : 26), y: p.y + (player === 0 ? 14 : -14) - 18 };
 }
 

@@ -8,7 +8,7 @@
 import type { GameEvent, PlayerId, Uid } from '../../engine/types';
 import { other } from '../../engine/types';
 import { PAL, RAMPS } from '../../art/palette';
-import { isoToScreen, type XY, zoneXY } from '../../view/layout';
+import { LANE_MID, isoToScreen, type XY, zoneXY } from '../../view/layout';
 import { tween, wait } from '../../vfx/core';
 import { projectile } from '../../vfx/combat';
 import { burnFly, chainsBind, chasm, ghostRise, healFly, healingFountain, mirrorDome, stormStrike, tendril, vineBurst } from '../../vfx/setpieces';
@@ -293,7 +293,7 @@ registerCardHook(
       const tgtUid = trig && trig.kind === 'attackDeclared' ? trig.targetUid : null;
       const tp = tgtUid !== null ? (ctx.unit(tgtUid)?.home ?? null) : null;
       const home = u.rest0;
-      const aim = tp ?? zoneXY(other(u.player), 'monster', 1);
+      const aim = tp ?? zoneXY(other(u.player), 'monster', LANE_MID);
       const k = 0.38;
       void u.play('attack');
       await tween(ctx.scene, { targets: u.sprite, x: home.x + (aim.x - home.x) * k, y: home.y + (aim.y - u.home.y) * k, duration: 170, ease: 'Quad.In' });
@@ -337,7 +337,7 @@ registerCardHook(
     const ev = ctx.ev;
     const { di } = effectRun(ctx);
     const u = ctx.unit(ev.uid);
-    const from = u ? u.core() : (lastZone(ctx) ?? zoneXY(ev.player, 'monster', 1));
+    const from = u ? u.core() : (lastZone(ctx) ?? zoneXY(ev.player, 'monster', LANE_MID));
     if (u && u.sprite.visible) {
       void u.play('roar');
       ctx.sfx('fireBurst', { volume: 0.6 });
@@ -369,7 +369,7 @@ registerCardHook(
       ctx.sfx('roarSmall', { volume: 0.8 });
       await wait(ctx.scene, 420);
     }
-    const from = u ? u.framePoint(30, 26) : (lastZone(ctx) ?? zoneXY(ev.player, 'monster', 1));
+    const from = u ? u.framePoint(30, 26) : (lastZone(ctx) ?? zoneXY(ev.player, 'monster', LANE_MID));
     let hit: Promise<void> = Promise.resolve();
     const target = di >= 0 ? (ctx.events[di] as Extract<GameEvent, { type: 'damage' }>).player : other(ev.player);
     await burnFly(ctx.scene, from, lpPoint(ctx, target), {
@@ -390,7 +390,7 @@ registerCardHook(
   async (ctx) => {
     const ev = ctx.ev;
     const { di } = effectRun(ctx);
-    const z = lastZone(ctx) ?? zoneXY(ev.player, 'monster', 1);
+    const z = lastZone(ctx) ?? zoneXY(ev.player, 'monster', LANE_MID);
     const from = { x: z.x, y: z.y - 10 };
     ctx.sfx('lightning', { volume: 0.8 });
     let hit: Promise<void> = Promise.resolve();
@@ -414,7 +414,7 @@ registerCardHook(
     const ev = ctx.ev;
     const { di } = effectRun(ctx);
     const u = ctx.unit(ev.uid);
-    const from = u ? u.framePoint(44, 48) : (lastZone(ctx) ?? zoneXY(ev.player, 'monster', 1));
+    const from = u ? u.framePoint(44, 48) : (lastZone(ctx) ?? zoneXY(ev.player, 'monster', LANE_MID));
     const target = di >= 0 ? (ctx.events[di] as Extract<GameEvent, { type: 'damage' }>).player : other(ev.player);
     ctx.sfx('waterSplash', { volume: 0.7 });
     let hit: Promise<void> = Promise.resolve();
@@ -441,7 +441,7 @@ registerCardHook(
       ctx.sfx('holyChime', { volume: 0.7 });
       await wait(ctx.scene, 420);
     }
-    const from = u ? u.core() : zoneXY(ev.player, 'monster', 1);
+    const from = u ? u.core() : zoneXY(ev.player, 'monster', LANE_MID);
     let healed: Promise<void> = Promise.resolve();
     await healFly(ctx.scene, from, lpPoint(ctx, ev.player), {
       onArrive: () => {

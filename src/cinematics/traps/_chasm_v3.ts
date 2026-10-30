@@ -52,7 +52,7 @@ import { PAL } from '../../art/palette';
 import type { PixelCanvas } from '../../art/pixel';
 import { crackPath } from '../../art/spellmotifs-v3';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
-import { DEPTH, type XY, unitDepth, zoneXY } from '../../view/layout';
+import { LANE_MID, DEPTH, type XY, unitDepth, zoneXY } from '../../view/layout';
 import { REDUCED_MOTION } from '../../view/v3/motion';
 import { lightBeam, lightFlash, lightPool, type BeamHandle, type LightHandle } from '../../view/light';
 import { wait } from '../../vfx/core';
@@ -940,7 +940,7 @@ export async function chasmV3(ctx: ActCtx): Promise<void> {
   });
   const dEv = di !== undefined ? (ctx.events[di] as EvOf<'destroy'>) : null;
   const trapTile = ev.zone !== null ? ctx.views.field.tileAt(ev.player, 'spellTrap', ev.zone) : null;
-  const trapAt = trapTile && trapTile.active ? { x: Math.round(trapTile.home.x), y: Math.round(trapTile.home.y) } : ev.zone !== null ? zoneXY(ev.player, 'spellTrap', ev.zone) : zoneXY(ev.player, 'spellTrap', 1);
+  const trapAt = trapTile && trapTile.active ? { x: Math.round(trapTile.home.x), y: Math.round(trapTile.home.y) } : ev.zone !== null ? zoneXY(ev.player, 'spellTrap', ev.zone) : zoneXY(ev.player, 'spellTrap', LANE_MID);
   const vAt = dEv ? zoneXY(dEv.player, 'monster', dEv.zone) : trapAt;
 
   // the victim's card landing (reported by the swallow on this clock), for the trap card's own landing

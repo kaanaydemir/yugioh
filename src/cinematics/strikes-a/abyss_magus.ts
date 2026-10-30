@@ -14,7 +14,7 @@
 import Phaser from 'phaser';
 import { PAL } from '../../art/palette';
 import type { GameEvent, ZoneRef } from '../../engine/types';
-import { DEPTH, LOOK_V3, type XY, zoneXY } from '../../view/layout';
+import { LANE_MID, DEPTH, LOOK_V3, type XY, zoneXY } from '../../view/layout';
 import { Raster } from '../../vfx/setpieces';
 import { cardLeaves } from '../_v3/card';
 import { strikeStartFrame } from '../_v3/clash';
@@ -370,7 +370,7 @@ registerCardHook('abyss_magus', 'effect', async (ctx) => {
   })();
   await lock.done;
   // 2. the shadow tendril crosses the floor; tendrils erupt around the card and clench
-  const from = u ? u.home : zoneXY(ev.player, 'monster', 1);
+  const from = u ? u.home : zoneXY(ev.player, 'monster', LANE_MID);
   // the card stays visible over the tendril's void pool (under the risers) until it is swallowed
   const pin = tile ? onFrame(sc, () => (tile.active ? void tile.setDepth(DEPTH.SHADOW) : false)) : null;
   // arena v2: the tendril's path glows faintly violet on the floor while it crosses

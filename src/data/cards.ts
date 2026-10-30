@@ -23,7 +23,17 @@ export type MonsterEffect =
   | 'directAttack' // storm_hawk
   | 'normalSummonGain500' // lumen_sprite
   | 'destroyedByBattleBurn500' // volt_lizard
-  | 'flipDestroyMonster'; // thorn_lurker
+  | 'flipDestroyMonster' // thorn_lurker
+  // ---- batch 1 of the expanded roster (docs/KART_TASLAGI_CANAVAR.md) ----
+  | 'ownSpellBurn300' // dusk_sorcerer: while face-up, each Spell its controller activates burns the opponent 300
+  | 'declareAtkDebuff400' // grim_warden: the monster it attacks has its ATK lowered by 400 for that battle
+  | 'noBattleDamageOnDestroy' // wisp_imp: destroyed in battle -> its controller takes no damage from that battle
+  | 'trapLock' // steel_silencer: while face-up, the opponent cannot activate Trap cards
+  | 'sealSet' // the five seals: all five distinct pieces in hand = instant win
+  | 'summonFreezeAttack' // hourglass_imp: on summon, one opposing monster cannot attack on the opponent's next turn
+  | 'summonTurnAtk500' // windmane_knight: +500 ATK while attacking on the turn it was Normal/Tribute Summoned
+  | 'defenseAtkDebuff500' // shield_titan: face-up in defense and attacked -> the attacker has -500 ATK in that battle
+  | 'windAura300'; // wing_lady: the other face-up WIND monsters on its controller's field get +300 ATK
 
 export type SpellEffect =
   | 'destroyOpponentMonster' // judgment_bolt
@@ -51,7 +61,23 @@ export type MonsterId =
   | 'lumen_sprite'
   | 'shade_assassin'
   | 'volt_lizard'
-  | 'thorn_lurker';
+  | 'thorn_lurker'
+  // batch 1 of the expanded roster (original designs; the roles echo well-known duel monsters)
+  | 'dusk_sorcerer'
+  | 'ashen_drake'
+  | 'grim_warden'
+  | 'venom_drake'
+  | 'wisp_imp'
+  | 'steel_silencer'
+  | 'seal_head'
+  | 'seal_arm_r'
+  | 'seal_arm_l'
+  | 'seal_leg_r'
+  | 'seal_leg_l'
+  | 'hourglass_imp'
+  | 'windmane_knight'
+  | 'shield_titan'
+  | 'wing_lady';
 
 export type SpellId = 'judgment_bolt' | 'healing_spring' | 'soul_recall' | 'dragon_blade' | 'volcano_arena';
 
@@ -95,6 +121,17 @@ export interface TrapCardDef {
 }
 
 export type CardDef = MonsterCardDef | SpellCardDef | TrapCardDef;
+
+/** The five seal pieces (sealSet): one card each; all five in a hand win the duel. */
+export const SEAL_IDS = ['seal_head', 'seal_arm_r', 'seal_arm_l', 'seal_leg_r', 'seal_leg_l'] as const satisfies readonly MonsterId[];
+const SEAL_TEXT = 'Beş Mühür: elinde beş parçanın hepsi varsa düelloyu hemen kazanırsın.';
+const SEAL_PIECES: readonly [MonsterId, string, number, number, number][] = [
+  ['seal_head', 'Mühürlü Baş', 3, 1000, 1000],
+  ['seal_arm_r', 'Sağ Kol Mührü', 1, 200, 300],
+  ['seal_arm_l', 'Sol Kol Mührü', 1, 200, 300],
+  ['seal_leg_r', 'Sağ Bacak Mührü', 1, 200, 300],
+  ['seal_leg_l', 'Sol Bacak Mührü', 1, 200, 300],
+];
 
 const MONSTERS: MonsterCardDef[] = [
   {
@@ -267,6 +304,166 @@ const MONSTERS: MonsterCardDef[] = [
   },
 ];
 
+/** Batch 1 of the expanded roster (not in DEFAULT_DECK; played through the 'expanded' pool, src/data/decks.ts). */
+const MONSTERS_B1: MonsterCardDef[] = [
+  {
+    id: 'dusk_sorcerer',
+    kind: 'monster',
+    name: 'Alacakaranlık Büyücüsü',
+    attribute: 'DARK',
+    race: 'Büyücü',
+    level: 7,
+    atk: 2500,
+    def: 2100,
+    effect: 'ownSpellBurn300',
+    text: 'Sahadayken senin büyü kartların aktive edildiğinde rakibe 300 hasar.',
+    flavor: '',
+    ace: true,
+  },
+  {
+    id: 'ashen_drake',
+    kind: 'monster',
+    name: 'Kül Ejderi',
+    attribute: 'DARK',
+    race: 'Ejderha',
+    level: 7,
+    atk: 2400,
+    def: 2000,
+    effect: 'none',
+    text: '',
+    flavor: 'Kül yağmurunun içinden doğan kara ejder. Nefesi gökyüzünü karartır.',
+    ace: true,
+  },
+  {
+    id: 'grim_warden',
+    kind: 'monster',
+    name: 'Hortlak Muhafız',
+    attribute: 'DARK',
+    race: 'Şeytan',
+    level: 6,
+    atk: 2500,
+    def: 1200,
+    effect: 'declareAtkDebuff400',
+    text: "Saldırı ilan ettiğinde hedef canavarın ATK'si bu savaş boyunca 400 azalır.",
+    flavor: '',
+    ace: true,
+  },
+  {
+    id: 'venom_drake',
+    kind: 'monster',
+    name: 'Zehir Ejderi',
+    attribute: 'DARK',
+    race: 'Ejderha',
+    level: 5,
+    atk: 2000,
+    def: 1500,
+    effect: 'none',
+    text: '',
+    flavor: 'Pullarından sızan zehir, geçtiği toprağı bir daha yeşertmez.',
+    ace: true,
+  },
+  {
+    id: 'wisp_imp',
+    kind: 'monster',
+    name: 'Tüy Hayalet',
+    attribute: 'DARK',
+    race: 'Şeytan',
+    level: 1,
+    atk: 300,
+    def: 200,
+    effect: 'noBattleDamageOnDestroy',
+    text: 'Savaşta yok olursa sahibi o savaştan hasar almaz.',
+    flavor: '',
+    ace: false,
+  },
+  {
+    id: 'steel_silencer',
+    kind: 'monster',
+    name: 'Çelik Susturucu',
+    attribute: 'DARK',
+    race: 'Makine',
+    level: 6,
+    atk: 2400,
+    def: 1500,
+    effect: 'trapLock',
+    text: 'Sahadayken rakip tuzak kartları aktive edemez.',
+    flavor: '',
+    ace: true,
+  },
+  ...SEAL_PIECES.map(
+    ([id, name, level, atk, def]): MonsterCardDef => ({
+      id,
+      kind: 'monster',
+      name,
+      attribute: 'DARK',
+      race: 'Büyücü',
+      level,
+      atk,
+      def,
+      effect: 'sealSet',
+      text: SEAL_TEXT,
+      flavor: '',
+      ace: false,
+    }),
+  ),
+  {
+    id: 'hourglass_imp',
+    kind: 'monster',
+    name: 'Kum Saati Cücesi',
+    attribute: 'LIGHT',
+    race: 'Büyücü',
+    level: 2,
+    atk: 500,
+    def: 400,
+    effect: 'summonFreezeAttack',
+    text: "Çağrıldığında rakibin 1 canavarı bir sonraki turunda saldıramaz.",
+    flavor: '',
+    ace: false,
+  },
+  {
+    id: 'windmane_knight',
+    kind: 'monster',
+    name: 'Fırtına Yeleli Şövalye',
+    attribute: 'EARTH',
+    race: 'Savaşçı',
+    level: 7,
+    atk: 2300,
+    def: 2100,
+    effect: 'summonTurnAtk500',
+    text: "Normal çağrıldığı tur saldırırken ATK +500.",
+    flavor: '',
+    ace: true,
+  },
+  {
+    id: 'shield_titan',
+    kind: 'monster',
+    name: 'Kalkan Devi',
+    attribute: 'EARTH',
+    race: 'Savaşçı',
+    level: 4,
+    atk: 100,
+    def: 2600,
+    effect: 'defenseAtkDebuff500',
+    text: "Savunma pozisyonundayken, saldıran canavarın ATK'si 500 düşer.",
+    flavor: '',
+    ace: false,
+  },
+  {
+    id: 'wing_lady',
+    kind: 'monster',
+    name: 'Kanat Hanımı',
+    attribute: 'WIND',
+    race: 'Kanatlı',
+    level: 4,
+    atk: 1300,
+    def: 1400,
+    effect: 'windAura300',
+    text: "Sahandaki diğer RÜZGAR canavarlarının ATK'si +300.",
+    flavor: '',
+    ace: false,
+  },
+];
+
 const SPELLS: SpellCardDef[] = [
   {
     id: 'judgment_bolt',
@@ -334,20 +531,21 @@ const TRAPS: TrapCardDef[] = [
   },
 ];
 
-export const ALL_CARDS: CardDef[] = [...MONSTERS, ...SPELLS, ...TRAPS];
+/** The 20 original cards (DEFAULT_DECK) followed by the expanded roster; new cards are only ever appended. */
+export const ALL_CARDS: CardDef[] = [...MONSTERS, ...SPELLS, ...TRAPS, ...MONSTERS_B1];
 
 export const CARDS: Record<CardId, CardDef> = Object.fromEntries(ALL_CARDS.map((c) => [c.id, c])) as Record<
   CardId,
   CardDef
 >;
 
-export const MONSTER_IDS: MonsterId[] = MONSTERS.map((m) => m.id);
+export const MONSTER_IDS: MonsterId[] = [...MONSTERS, ...MONSTERS_B1].map((m) => m.id);
 export const SPELL_IDS: SpellId[] = SPELLS.map((s) => s.id);
 export const TRAP_IDS: TrapId[] = TRAPS.map((t) => t.id);
 export const ALL_CARD_IDS: CardId[] = ALL_CARDS.map((c) => c.id);
 
-/** Default deck: one copy of each of the 20 cards (both players use it, shuffled). */
-export const DEFAULT_DECK: CardId[] = [...ALL_CARD_IDS];
+/** Default deck: one copy of each of the 20 original cards (both players use it, shuffled). Never grows. */
+export const DEFAULT_DECK: CardId[] = [...MONSTERS, ...SPELLS, ...TRAPS].map((c) => c.id);
 
 export function cardDef(id: CardId): CardDef {
   return CARDS[id];
