@@ -1,6 +1,6 @@
 // Sağ Kol Mührü (seal_arm_r) — v3 art (?look=v3 only). A NEW body plan, the "breaker fist": a basalt-and-obsidian right
 // arm pushing straight up out of a cracked floor, a clenched fist on top, a bronze wrist band with the glyph stud (the seal)
-// between them. Hand-made rig (seal_arm_r-rig / -hand / -kit / -anims); frame 80×104, the crack's centre is the anchor.
+// between them. Hand-made rig (seal_arm_r-rig / -hand / -kit / -anims); frame 80×106, the crack's centre is the anchor.
 
 import type { AnyMonsterAnim, DrawOpts, MonsterAnim, MonsterAnimExtra, MonsterArt, MonsterPoints } from '../types';
 import type { PixelCanvas } from '../pixel';

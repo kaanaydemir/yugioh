@@ -62,7 +62,7 @@ export function idlePose(f: number): Pose {
     s1: 20 + 20 * T3(i),
     s2: 140 - 20 * T3(i),
     s3: 250 + 40 * T3(i),
-    motes: 0.3,
+    motes: 0.8,
     moteT: i / IDLE_N,
     // the one glint: 1 px → a 3 px cross → 1 px, on a fixed pixel
     glint: i === 4 ? 1 : i === 5 ? 2 : i === 6 ? 1 : 0,
@@ -204,7 +204,7 @@ function attackPose(f: number): Pose {
 // ------------------------------------------------------------------ roar (12 frames): the forehead toll
 
 const ROAR_N = 12;
-const ROAR_HOLDS = [80, 170, 110, 90, 110, 100, 100, 110, 120, 130, 140, 150];
+const ROAR_HOLDS = [70, 200, 120, 80, 170, 90, 70, 180, 100, 120, 130, 170];
 function roarPose(f: number): Pose {
   const n = ROAR_N;
   if (f >= 11) return home();
@@ -344,10 +344,10 @@ function revivePose(f: number): Pose {
   const n = 12;
   if (f >= 11) return home();
   const d: Partial<Pose>[] = [
-    { split: 1, dy: 5, motes: 0.9, seam: 1, jaw: 22 },
-    { split: 0.85, dy: 5, motes: 0.9, seam: 2, jaw: 24 },
-    { split: 0.6, dy: 5, motes: 0.8, seam: 2, jaw: 26 },
-    { split: 0.35, dy: 6, motes: 0.7, seam: 3, jaw: 24 },
+    { split: 1, dy: 5, motes: 0.9, seam: 1, jaw: 14 },
+    { split: 0.85, dy: 5, motes: 0.9, seam: 2, jaw: 16 },
+    { split: 0.6, dy: 5, motes: 0.8, seam: 2, jaw: 18 },
+    { split: 0.35, dy: 6, motes: 0.7, seam: 3, jaw: 18 },
     { split: 0.12, dy: 8, motes: 0.6, seam: 3, jaw: 20, nch: 1 },
     { split: 0, dy: 6, motes: 0.5, seam: 3, jaw: 17, nch: 2 },
     { split: 0, dy: 3, motes: 0.4, seam: 3, jaw: 14, nch: 3 },

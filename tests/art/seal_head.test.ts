@@ -25,7 +25,7 @@ describe('seal_head', () => {
     expect(spec('roar').marks?.release).toBe(4);
     expect(spec('death').marks?.dissolve).toBe(6);
     expect(art.p2).toBe('relight');
-    expect(art.hover).toBe(12);
+    expect(art.hover).toBe(7);
   });
 
   it('validateArt (normal tier) has no errors', { timeout: 60000 }, () => {

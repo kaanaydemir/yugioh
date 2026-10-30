@@ -1,5 +1,5 @@
 // Sağ Kol Mührü v3 — the rig of the "breaker fist": a basalt-and-obsidian right arm pushing up out of a cracked floor, a
-// clenched fist on top, a bronze wrist band with the glyph stud (the seal) between them. Frame 80 × 104, the crack's centre is
+// clenched fist on top, a bronze wrist band with the glyph stud (the seal) between them. Frame 80 × 106, the crack's centre is
 // the anchor. Painted back to front: far rubble, the hole and its lip, the forearm's slabs, the hand, the band and stud, near
 // rubble; then the 1-px ink outline; then the light layer (stud glow, the seams that crawl over the floor, sparks, dust).
 //
@@ -15,7 +15,7 @@ import { HAND0, HH, HOX, HOY, HW, paintHand, turnHand, type HandState } from './
 import { BRONZE, Comp, GLYPH_ARM_R, OBS, OBS_FAR, bands, chamfer, layer, release, type Pt } from './seal_arm_r-kit';
 
 export const W = 80;
-export const H = 104;
+export const H = 106;
 /** The crack's centre = the anchor (the arm leaves the floor here). */
 export const CX = 38;
 export const CY = 90;

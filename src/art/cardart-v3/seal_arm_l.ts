@@ -15,7 +15,7 @@ import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
 import { drawArm, pose, type Pose } from '../monsters-v3/seal_arm_l-rig';
 import { HAND_REST } from '../monsters-v3/seal_arm_l-hand';
-import { paintBackdrop, spikes } from './_kit';
+import { BACKDROPS, paintBackdrop, spikes } from './_kit';
 import type { ArtLayers, CardArtV3 } from './_types';
 
 /** The glyph disc in BIG px (within 6 px of the eclipse centre (44, 28)) and in SMALL px. */
@@ -45,12 +45,12 @@ function smallPose(f: number): Pose {
 }
 
 function backdrop(p: PixelCanvas, small: boolean): void {
-  paintBackdrop(p, 'DARK', { focus: small ? [44, 28] : [44, 28], horizon: 48, rays: false });
+  paintBackdrop(p, RECIPE, { focus: small ? [44, 28] : [44, 28], horizon: 48, rays: false });
   // the set's five short stepped rays (void2) at the pentagon angles, past the corona
   const k = small ? 0.5 : 1;
   const c = small ? [22, 14] : [44, 28];
   void c;
-  spikes(p, 44, 28, 5, 31, 38, 2.4, PAL.void2, -90);
+  spikes(p, 44, 28, 5, 31, 38, 2.4, PAL.teal1, -90);
   void k;
 }
 
@@ -94,6 +94,9 @@ function small(l: ArtLayers, f: number): void {
   pentad(l.light, true);
   sparkTip(l.light, true);
 }
+
+/** This card's accent colour (teal): the set backdrop (eclipse, five rays, pentad) stays, its corona / horizon / rays take the piece's hue. */
+const RECIPE = { ...BACKDROPS.DARK, tones: [PAL.teal0, PAL.teal1, PAL.teal2, PAL.night0], horizonLine: PAL.teal1, rim: PAL.teal2 };
 
 const art: CardArtV3 = {
   id: 'seal_arm_l',

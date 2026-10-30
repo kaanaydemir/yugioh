@@ -18,7 +18,7 @@ import { PixelCanvas } from '../pixel';
 import { lightOf } from '../rigkit';
 import { drawLeg, pose } from '../monsters-v3/seal_leg_l-rig';
 import { DENSE0, paintLegDense, type Dense } from '../monsters-v3/seal_leg_l-dense';
-import { paintBackdrop, spikes } from './_kit';
+import { BACKDROPS, paintBackdrop, spikes } from './_kit';
 import type { ArtLayers, CardArtV3 } from './_types';
 
 /** The knee plate / glyph in BIG px (within 6 px of the eclipse centre (44, 28)) and in SMALL px. */
@@ -36,8 +36,8 @@ const LOOP = [
 ] as const;
 
 function backdrop(p: PixelCanvas): void {
-  paintBackdrop(p, 'DARK', { focus: [44, 28], horizon: 48, rays: false });
-  spikes(p, 44, 28, 5, 31, 38, 2.4, PAL.void2, -90);
+  paintBackdrop(p, RECIPE, { focus: [44, 28], horizon: 48, rays: false });
+  spikes(p, 44, 28, 5, 31, 38, 2.4, PAL.water1, -90);
 }
 
 /** The pentad corner glyph: five dots on a pentagon, the card's own vertex (leg_l, 4th clockwise) hot. */
@@ -88,6 +88,9 @@ function small(l: ArtLayers, f: number): void {
   pentad(l.light, true);
   sparkTip(l.light, l.subject, true);
 }
+
+/** This card's accent colour (water): the set backdrop (eclipse, five rays, pentad) stays, its corona / horizon / rays take the piece's hue. */
+const RECIPE = { ...BACKDROPS.DARK, tones: [PAL.water0, PAL.water1, PAL.water2, PAL.night0], horizonLine: PAL.water1, rim: PAL.water2 };
 
 const art: CardArtV3 = {
   id: 'seal_leg_l',

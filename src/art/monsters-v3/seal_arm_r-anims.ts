@@ -26,8 +26,8 @@ const AMP = [1, 2, 1] as const;
 type Rip = readonly [number, number, number, number];
 const RIP1: readonly Rip[] = [[0, 0, 0, 0], [0, 0, 1, 0], [0, 1, 1, 0], [1, 1, 1, 0], [1, 1, 1, 0], [0, 1, 1, 0], [0, 0, 1, 0]];
 const RIP2: readonly Rip[] = [[0, 0, 0, 0], [0, 0, 1, 0], [0, 1, 1, 0], [1, 1, 2, 0], [1, 2, 2, 0], [1, 1, 1, 0], [0, 0, 1, 0]];
-const GLOW1 = [1, 1, 2, 3, 2, 1, 1];
-const GLOW2 = [1, 1, 2, 4, 3, 1, 1];
+const GLOW1 = [1, 2, 2, 3, 2, 2, 1];
+const GLOW2 = [1, 2, 2, 4, 3, 2, 1];
 // knuckle plates (one per finger) lag the forearm by a frame each: index first, pinky last
 const K_UP: readonly (readonly number[])[] = [
   [0, 0, 0, -1, -1, 0, 0],
@@ -54,6 +54,8 @@ export function idlePose(f: number): Pose {
   return pose({
     rip,
     hdy: rip[0] - prev,
+    // the fist ticks 1 px forward as the push starts (a grip adjusting), one frame
+    hdx: c === 1 ? 1 : 0,
     glow,
     spill: glow >= 3 ? 2 : 1,
     seam: 1,
@@ -67,7 +69,7 @@ export function idlePose(f: number): Pose {
     spark: cyc === 1 && c === 3 ? 2 : 0,
     hop: HOP[c],
     dust: c / 7,
-    dustN: 3,
+    dustN: 5,
     // the far slab beside the arm rattles once, in the strongest strain
     rub: cyc === 1 && c === 3 ? [0, -1, 0, 0, 0, 0, 0, 0] : POSE0.rub,
   });
@@ -79,6 +81,8 @@ const IDLE0 = idlePose(0);
 const GUARD_N = 7;
 const GUARD_HOLDS = [170, 160, 170, 170, 160, 170, 170];
 const G_UP = [-28, -28, -29, -29, -28, -28, -28];
+const G_FX = [4, 4, 5, 5, 4, 4, 4];
+const G_HAND = [10, 10, 12, 12, 10, 10, 10];
 const G_K0 = [0, -1, -1, -1, -1, 0, 0];
 const G_K3 = [-1, -1, -1, 0, 0, 0, -1];
 const G_GLOW = [0, 0, 0, 0, 0, 0, 1];
@@ -86,6 +90,8 @@ export function guardPose(f: number): Pose {
   const n = ((f % GUARD_N) + GUARD_N) % GUARD_N;
   return pose({
     up: G_UP[n],
+    fx: G_FX[n],
+    hand: G_HAND[n],
     glow: G_GLOW[n],
     spill: 0,
     seam: 1,
@@ -138,18 +144,23 @@ export function fromGuardPose(f: number): Pose {
   return key({ up: ups[f], glow: f >= 2 ? 1 : 0, spill: 0, seam: 1, h: hs({ grip: f >= 2 ? 1 : 0, ky: tup([0, f < 2 ? -1 : 0, 0, f < 1 ? -1 : 0]) }), dustN: 2, dust: f / 5 }, f, 5);
 }
 
-// ------------------------------------------------------------------ attack (10): dip, cock back, rising uppercut
+// ------------------------------------------------------------------ attack (13): a long coil, an explosive rising uppercut
 
-const A_N = 10;
-const ATTACK_HOLDS = [90, 130, 160, 60, 50, 60, 70, 100, 120, 140];
+// Rhythm identity: SLOW, trembling coil (four frames, the arm sinking into the crack, the stud strobing) and then ONE frame of
+// release (40 ms) that throws the fist 30 px up the iso diagonal; the recovery is a long exponential slide back.
+const A_N = 13;
+const ATTACK_HOLDS = [90, 130, 170, 190, 90, 40, 50, 70, 70, 100, 120, 140, 140];
 const A_RUB: readonly (readonly number[])[] = [
   [0, 0, 0, 0, 0, 0, 0, 0],
   [0, 0, 0, 0, 0, 0, 0, 0],
   [0, 1, 0, 0, 0, 0, 1, 0],
-  [-2, -3, -1, 0, -1, 0, -1, -2],
-  [-4, -6, -2, -2, -3, -2, -3, -4],
-  [-2, -3, -1, 0, -1, 0, -1, -1],
-  [-1, -1, 0, 0, 0, 0, 0, 0],
+  [0, 1, 1, 0, 1, 0, 1, 0],
+  [1, 0, 1, 1, 0, 1, 0, 1],
+  [-3, -4, -2, -1, -2, -1, -2, -3],
+  [-5, -7, -3, -3, -4, -3, -4, -5],
+  [-3, -4, -2, 0, -1, 0, -2, -2],
+  [-1, -2, 0, 0, 0, 0, -1, -1],
+  [0, -1, 0, 0, 0, 0, 0, 0],
   [0, 0, 0, 0, 0, 0, 0, 0],
   [0, 0, 0, 0, 0, 0, 0, 0],
   [0, 0, 0, 0, 0, 0, 0, 0],
@@ -160,47 +171,56 @@ export function attackPose(f: number): Pose {
     case 0:
       return home();
     case 1:
-      return k({ up: -4, hand: -8, glow: 2, spill: 1, seam: 2, h: hs({ grip: 0, ky: tup([-1, 0, 0, 0]) }), dustN: 2, dust: 0.2 });
+      return k({ up: -3, hand: -4, glow: 2, spill: 1, seam: 1, h: hs({ grip: 1, ky: tup([-1, 0, 0, 0]) }), dustN: 2, dust: 0.2 });
     case 2:
-      return k({ up: -9, fx: -2, hand: -16, glow: 3, spill: 2, seam: 3, h: hs({ grip: 0, ky: tup([-1, -1, 0, 0]), sy: 1 }), dustN: 3, dust: 0.45, spark: 1 });
+      return k({ up: -7, fx: 0, hand: -5, glow: 3, spill: 2, seam: 2, seamLen: 2, h: hs({ grip: 0, ky: tup([-1, -1, 0, 0]), sy: 1 }), dustN: 3, dust: 0.4, spark: 1 });
     case 3:
-      return k({ up: 8, fx: 6, hand: 6, glow: 3, spill: 2, seam: 3, h: hs({ grip: 0, ky: tup([-1, -1, -1, 0]) }), dustN: 4, dust: 0.7 });
+      return k({ up: -10, fx: 0, hand: -6, hdx: 1, glow: 4, spill: 2, seam: 3, seamLen: 4, h: hs({ grip: 0, ky: tup([-1, -1, -1, 0]), sy: 1 }), dustN: 4, dust: 0.6 });
     case 4:
-      return k({ up: 22, fx: 14, hand: 12, glow: 4, spill: 3, seam: 3, seamLen: 3, smear: 2, h: hs({ grip: 0, ky: tup([-1, -1, -1, -1]) }), dustN: 5, dust: 0.85, spark: 2 });
+      return k({ up: -11, fx: 0, hand: -6, hdx: -1, glow: 1, spill: 1, seam: 3, seamLen: 5, h: hs({ grip: 0, ky: tup([-1, -1, -1, -1]), sy: 1 }), dustN: 4, dust: 0.8, spark: 2 });
     case 5:
-      return k({ up: 20, fx: 13, hand: 12, glow: 5, spill: 3, seam: 3, seamLen: 3, glint: 1, h: hs({ grip: 0, ky: tup([-1, -1, -1, 0]) }), dustN: 5, dust: 0.95, spark: 3 });
+      return k({ up: 20, fx: 12, hand: 10, glow: 5, spill: 3, seam: 3, seamLen: 6, smear: 2, h: hs({ grip: 0, ky: tup([-1, -1, -1, -1]) }), dustN: 5, dust: 0.9, spark: 3 });
     case 6:
-      return k({ up: 12, fx: 8, hand: 8, glow: 3, spill: 2, seam: 2, h: hs({ grip: 0, ky: tup([0, -1, -1, 0]) }), dustN: 3, dust: 0.1 });
+      return k({ up: 24, fx: 14, hand: 12, glow: 5, spill: 3, seam: 3, seamLen: 6, glint: 1, h: hs({ grip: 0, ky: tup([-1, -1, -1, 0]) }), dustN: 5, dust: 0.95, spark: 3 });
     case 7:
-      return k({ up: 5, fx: 3, hand: 3, glow: 2, spill: 1, seam: 2, h: hs({ grip: 1, ky: tup([0, 0, -1, 0]) }), dustN: 2, dust: 0.3 });
+      return k({ up: 21, fx: 13, hand: 11, glow: 4, spill: 3, seam: 3, seamLen: 5, h: hs({ grip: 0, ky: tup([0, -1, -1, 0]) }), dustN: 4, dust: 0.1 });
     case 8:
-      return k({ up: 1, fx: 1, hand: 1, glow: 1, spill: 1, seam: 1, h: hs({ grip: 1 }), dustN: 1, dust: 0.5 });
+      return k({ up: 14, fx: 8, hand: 7, glow: 3, spill: 2, seam: 2, seamLen: 3, h: hs({ grip: 1, ky: tup([0, 0, -1, 0]) }), dustN: 3, dust: 0.3 });
+    case 9:
+      return k({ up: 8, fx: 4, hand: 4, glow: 2, spill: 1, seam: 2, h: hs({ grip: 1 }), dustN: 2, dust: 0.5 });
+    case 10:
+      return k({ up: 3, fx: 2, hand: 1, glow: 1, spill: 1, seam: 1, h: hs({ grip: 1 }), dustN: 1, dust: 0.7 });
+    case 11:
+      return k({ up: 1, fx: 1, glow: 1, spill: 1, seam: 1, h: hs({ grip: 1 }), dustN: 1, dust: 0.85 });
     default:
       return home();
   }
 }
-export const IMPACT = 4;
+export const IMPACT = 5;
 
-// ------------------------------------------------------------------ roar (9): root-light levitation
+// ------------------------------------------------------------------ roar (8): the ground-pound
 
+// Rhythm identity: the OPPOSITE of the attack and of the other pieces' roars: the fist climbs, trembles, then is driven DOWN
+// into the crack (the arm sinks below its rest height), the floor lights up from the impact point outwards and rubble leaps.
 const R_N = 9;
-const ROAR_HOLDS = [90, 150, 110, 90, 80, 100, 110, 130, 150];
-const R_UP = [0, 4, 9, 13, 14, 14, 10, 4, 0];
-const R_SEAM = [1, 2, 2, 3, 3, 3, 2, 2, 1];
-const R_LEN = [0, 0, 2, 4, 6, 6, 4, 2, 0];
-const R_GLOW = [1, 2, 2, 3, 5, 3, 2, 1, 1];
-const R_LEV = [0, 0, 1, 2, 4, 5, 4, 2, 0];
-// the fist trembles ±1 px at the top (hand dx), one plate at a time
-const R_TREM = [0, 0, 1, -1, 1, -1, 1, 0, 0];
+const ROAR_HOLDS = [90, 130, 150, 170, 50, 100, 90, 110, 150];
+// the arm first buckles DOWN into the crack (a three-step sink, the long part), then surges 25 px up in one frame and hangs
+const R_UP = [0, -4, -8, -10, 15, 17, 16, 9, 0];
+const R_SEAM = [1, 2, 3, 3, 3, 3, 3, 2, 1];
+const R_LEN = [0, 0, 3, 4, 6, 6, 5, 3, 0];
+const R_GLOW = [1, 2, 3, 4, 5, 4, 3, 2, 1];
+const R_LEV = [0, 0, 0, 0, 2, 4, 5, 3, 0];
+const R_TREM = [0, 0, 1, -1, 0, 1, -1, 1, 0];
+const R_SLAM = [false, false, false, false, true, false, false, false, false];
 export function roarPose(f: number): Pose {
   if (f >= R_N - 1) return home();
   const lev = R_LEV[f];
   const air: Pebble[] = lev
     ? [
-        { x: 22, y: CY - 6 - lev * 2, k: 0 },
-        { x: 52, y: CY - 8 - lev * 3, k: 1 },
-        { x: 30, y: CY - 12 - lev * 2, k: 0 },
-        { x: 46, y: CY - 5 - lev, k: 0 },
+        { x: 18, y: CY - 5 - lev * 3, k: 0 },
+        { x: 56, y: CY - 7 - lev * 3, k: 1 },
+        { x: 28, y: CY - 9 - lev * 2, k: 0 },
+        { x: 48, y: CY - 4 - lev, k: 0 },
       ].slice(0, Math.min(4, 1 + Math.ceil(lev / 2)))
     : [];
   return key(
@@ -211,12 +231,14 @@ export function roarPose(f: number): Pose {
       seam: R_SEAM[f],
       seamLen: R_LEN[f],
       hdx: R_TREM[f],
-      h: hs({ grip: f >= 3 && f <= 5 ? 0 : 1, ky: tup([f === 4 ? -1 : 0, f === 5 ? -1 : 0, f === 3 ? -1 : 0, f === 6 ? -1 : 0]) }),
-      rub: [0, -lev, 0, 0, 0, 0, -lev, 0],
+      h: hs({ grip: f >= 3 && f <= 6 ? 0 : 1, ky: tup([f === 2 ? -1 : 0, f === 5 ? -1 : 0, f === 4 ? -1 : 0, f === 6 ? -1 : 0]) }),
+      rub: R_SLAM[f] ? [-3, -4, -2, -1, -2, -1, -2, -3] : [0, -lev, 0, 0, 0, 0, -lev, 0],
       air,
-      dustN: 4,
+      wide: R_SLAM[f] || f === 5 ? 1 : 0,
+      dustN: 5,
       dust: f / 9,
-      spark: f === 4 ? 4 : f === 5 ? 2 : 0,
+      spark: f === 4 ? 4 : f === 5 || f === 7 ? 2 : 0,
+      flash: R_SLAM[f] ? 1 : 0,
     },
     f,
     R_N,
@@ -248,7 +270,7 @@ export function hitHeavyPose(f: number): Pose {
     { x: 61, y: 74, w: 3, h: 2, m: 0 },
   ];
   const T: Partial<Pose>[] = [
-    { fx: 2, hdx: 2, hand: 8, glow: 4, spill: 2, h: hs({ grip: 2, kx: tup([1, 1, 0, 1]), ky: tup([0, -1, 0, 0]), crack: 1 }), spark: 2 },
+    { fx: 1, hdx: 1, hand: 5, glow: 4, spill: 2, h: hs({ grip: 2, kx: tup([1, 1, 0, 1]), ky: tup([0, -1, 0, 0]), crack: 1 }), spark: 2 },
     { fx: 3, hdx: 3, hand: 15, glow: 3, spill: 1, h: hs({ grip: 4, splay: 1, crack: 1, thumb: 1 }), debris: [chip[0]], spark: 1 },
     { fx: 3, hdx: 1, hand: 12, glow: 2, h: hs({ grip: 3, crack: 1, ky: tup([0, 0, -1, 0]) }), debris: [chip[1]] },
     { fx: 2, hdx: 1, hand: 6, glow: 1, h: hs({ grip: 2, crack: 1 }), debris: [chip[2]] },
@@ -371,7 +393,7 @@ export const ANIMS: Record<MonsterAnim, AnimSpec> = {
   idle: spec(IDLE_N, 10, true, IDLE_HOLDS),
   guard: spec(GUARD_N, 6, true, GUARD_HOLDS),
   roar: spec(R_N, 9, false, ROAR_HOLDS, { charge: 1, release: 4, impact: 4, recover: 6 }),
-  attack: spec(A_N, 10, false, ATTACK_HOLDS, { charge: 1, release: 4, impact: 4, contact: 5, recover: 7 }),
+  attack: spec(A_N, 10, false, ATTACK_HOLDS, { charge: 1, release: 5, impact: 5, contact: 6, recover: 8 }),
   hit: spec(5, 12, false, HIT_HOLDS, { impact: 0, contact: 0, recover: 4 }),
 };
 export const EXTRA_ANIMS: Partial<Record<MonsterAnimExtra, AnimSpec>> = {

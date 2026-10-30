@@ -232,7 +232,7 @@ export function attackPose(f: number): Pose {
 
 // ------------------------------------------------------------------ roar (10 frames): blaze of the palm
 
-export const ROAR_HOLDS = [80, 140, 100, 90, 80, 90, 100, 110, 130, 150];
+export const ROAR_HOLDS = [60, 120, 70, 60, 50, 60, 70, 80, 100, 180];
 function roarKey(f: number): Pose {
   const wob = (f % 2 === 0 ? 1 : -1) * (f >= 2 && f <= 6 ? 1 : 0);
   const up = [3, 5, 6, 7, 7, 6, 5, 3, 1][f] ?? 0;
@@ -381,7 +381,7 @@ export function deathPose(f: number): Pose {
   const sp = f === 0 ? A5(-9, -5, 1, 7, 12) : close(Math.min(1, f / 4), -22).map((v, i) => v + (i === THUMB ? 0 : 0));
   if (f === 0) return hitF0();
   const hand = hp({ sp, ...curl(ks) });
-  const fall = [0, 0, 1, 2, 3, 5, 4, 5, 5][f];
+  const fall = [0, 0, 1, 2, 3, 4, 3, 4, 4][f];
   const glow = [1, 1, 1, 0, 0, 0, 0, 0, 0][f];
   return pose({
     sx: S0[0] - (f >= 1 ? 1 : 0) - (f >= 4 ? 1 : 0),
@@ -413,7 +413,7 @@ export function deathPose(f: number): Pose {
 export const REVIVE_HOLDS = [130, 120, 110, 100, 100, 100, 100, 110, 130];
 export function revivePose(f: number): Pose {
   if (f >= 8) return REST;
-  const dy = [11, 11, 10, 6, 1, -1, 0, 0][f];
+  const dy = [5, 5, 5, 3, 0, -1, 0, 0][f];
   const knit = [1, 0.7, 0.35, 0.1, 0, 0, 0, 0][f];
   const closeK = [1, 1, 0.9, 0.8, 0.5, 0.15, 0, 0][f];
   const tw = f === 1 ? A5(0, 0, 0, 0, 0.6) : f === 2 ? A5(0, 0, 0, 0.5, 0.9) : f === 3 ? A5(0, 0.4, 0.6, 0.3, 0.3) : A5(0, 0, 0, 0, 0);

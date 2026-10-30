@@ -15,7 +15,7 @@
 import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
 import { ANKLE0, HIP0, KNEE0, drawLeg, pose, type Pose } from '../monsters-v3/seal_leg_r-rig';
-import { paintBackdrop, spikes } from './_kit';
+import { BACKDROPS, paintBackdrop, spikes } from './_kit';
 import type { ArtLayers, CardArtV3 } from './_types';
 
 /** The rune column in BIG px (within 6 px of the eclipse centre (44, 28)) and in SMALL px. */
@@ -54,8 +54,8 @@ function legPose(f: number, dx: number, dy: number, dust: boolean): Pose {
 }
 
 function backdrop(p: PixelCanvas): void {
-  paintBackdrop(p, 'DARK', { focus: [44, 28], horizon: 48, rays: false });
-  spikes(p, 44, 28, 5, 31, 38, 2.4, PAL.void2, -90);
+  paintBackdrop(p, RECIPE, { focus: [44, 28], horizon: 48, rays: false });
+  spikes(p, 44, 28, 5, 31, 38, 2.4, PAL.earth1, -90);
 }
 
 /** The pentad corner glyph: five dots on a pentagon, the card's own vertex (leg_r, 3rd clockwise) hot. */
@@ -104,6 +104,9 @@ function small(l: ArtLayers, f: number): void {
   pentad(l.light, true);
   sparkTip(l.light, l.subject, true);
 }
+
+/** This card's accent colour (earth): the set backdrop (eclipse, five rays, pentad) stays, its corona / horizon / rays take the piece's hue. */
+const RECIPE = { ...BACKDROPS.DARK, tones: [PAL.earth0, PAL.earth1, PAL.earth2, PAL.night0], horizonLine: PAL.earth1, rim: PAL.earth2 };
 
 const art: CardArtV3 = {
   id: 'seal_leg_r',

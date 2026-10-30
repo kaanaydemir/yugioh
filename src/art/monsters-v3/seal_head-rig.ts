@@ -253,7 +253,7 @@ function splitSlabs(f: Frame): void {
   const OFF: Pt[] = [
     [-6, 4],
     [5, 2],
-    [2, 8],
+    [2, 6],
   ];
   const t = o.split;
   const bmax = new Int16Array(src.h).fill(-1);
@@ -369,6 +369,8 @@ interface Frame {
   th: number;
   k: number;
   after: ((p: PixelCanvas) => void)[];
+  /** drawn for a card / cut-in (`at`): the orbit radius is not capped */
+  free?: boolean;
 }
 
 const enum Part {
@@ -740,16 +742,16 @@ function drawShard(f: Frame, cx: number, cy: number, size: number, seed: number,
   f.comp.add(q, part, { out: near ? PAL.ink : undefined });
 }
 const SHARDS: readonly { rx: number; ry: number; size: number; seed: number; slot: Pt }[] = [
-  { rx: 29, ry: 20, size: 5, seed: 0, slot: [37, -14] },
-  { rx: 27, ry: 22, size: 4, seed: 1, slot: [38, 4] },
-  { rx: 30, ry: 18, size: 4, seed: 2, slot: [35, 22] },
+  { rx: 29, ry: 20, size: 6, seed: 0, slot: [37, -14] },
+  { rx: 27, ry: 22, size: 5, seed: 1, slot: [38, 4] },
+  { rx: 30, ry: 18, size: 5, seed: 2, slot: [35, 22] },
 ];
 /** the three shards: iso orbits round the head (angle deg: 0 = right, 90 = in front / below), or the guard shell's slots in front of the face */
 function paintShards(f: Frame, want: 'near' | 'far'): void {
   const { o } = f;
   const ang = [o.s1, o.s2, o.s3];
   // the orbit never swells past a modest 112 % (the board footprint stays inside ~72 px)
-  const rs = Math.min(o.sr, 112) / 100;
+  const rs = (f.free ? o.sr : Math.min(o.sr, 112)) / 100;
   SHARDS.forEach((sh, i) => {
     const a = ang[i] * DEG;
     const wob = (o.s1 + i * 90) * DEG;
@@ -1074,6 +1076,7 @@ export function drawHead(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right' = 
     th: -o.rot * DEG,
     k: at ? at.k : 1,
     after: [],
+    free: !!at,
   };
   // far chain + far shard
   if (o.nch >= 1) paintChain(f, chainPath(f, 0), 3, 0);

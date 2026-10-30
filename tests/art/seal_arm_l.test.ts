@@ -33,7 +33,7 @@ describe('seal_arm_l', () => {
     expect(spec('idle').frames).toBe(15);
     expect(art.p2).toBe('relight');
     expect(art.weight).toBe('floater');
-    expect(art.hover).toBe(14);
+    expect(art.hover).toBe(5);
   });
 
   it('validateArt (normal tier) has no errors', () => {
@@ -100,7 +100,7 @@ describe('seal_arm_l', () => {
         const st = artStats(l, px, focus);
         expect(st.offPalette).toBe(0);
         expect(st.isolated).toBeLessThanOrEqual(0.1);
-        expect(st.colors).toBeLessThanOrEqual(20);
+        expect(st.colors).toBeLessThanOrEqual(24);
       }
     }
     const cut = cutinFactory(KIT);

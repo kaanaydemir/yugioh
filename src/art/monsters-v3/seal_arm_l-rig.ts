@@ -318,32 +318,29 @@ function paintChain(c: Comp, p: Pose, f: ForeG, light: Light): void {
 
 // ---------------------------------------------------------------- floor contact (rubble, bolted tether chains, a crack that leaks seal light)
 
+/** one connected heap along the crack (a few big slabs, no loose pebbles: the stone stays calm) */
 const RUBBLE: readonly (readonly [number, number, number, number])[] = [
-  [5, 72, 4, 3],
-  [11, 73, 3, 2],
-  [18, 72, 5, 3],
-  [25, 73, 3, 2],
-  [30, 72, 4, 3],
-  [15, 74, 2, 1],
+  [4, 73, 31, 2],
+  [7, 71, 5, 3],
+  [17, 71, 7, 3],
+  [28, 72, 5, 2],
 ];
 const STAPLES: readonly Pt[] = [
   [9, 72],
   [28, 72],
 ];
 
+/** a taut chain: solid 2x2 face-on links alternating with 1x2 edge-on links (no hollow rings: nothing speckles at 1x) */
 function tether(c: Comp, a: Pt, b: Pt): void {
   const q = layer(c.p.w, c.p.h);
   const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-  const n = Math.max(2, Math.round(len / 2.7));
+  const n = Math.max(2, Math.round(len / 2.5));
   for (let i = 0; i < n; i++) {
     const k = (i + 0.5) / n;
-    const x = a[0] + (b[0] - a[0]) * k;
-    const y = a[1] + (b[1] - a[1]) * k;
-    const face = i % 2 === 0;
-    const bits = face ? LINK_FACE : LINK_EDGE;
-    const ox = rnd(x) - (face ? 1 : 0);
-    const oy = rnd(y) - (face ? 2 : 1);
-    stampBits(q, bits, ox, oy, (_cx, cy) => (cy < (bits.length >> 1) ? BRONZE.M : BRONZE.S));
+    const x = rnd(a[0] + (b[0] - a[0]) * k);
+    const y = rnd(a[1] + (b[1] - a[1]) * k);
+    if (i % 2 === 0) q.rect(x - 1, y - 1, 2, 2, BRONZE.M);
+    else q.rect(x, y - 1, 1, 2, BRONZE.S);
   }
   c.add(q, P_CHAIN);
 }
@@ -366,7 +363,6 @@ function paintContact(c: Comp, p: Pose, f: ForeG, light: Light): void {
     tether(c, [st[0] + 0.5, st[1]], ends[i]);
     const q = layer(c.p.w, c.p.h);
     q.rect(st[0], st[1], 2, 2, BRONZE.M);
-    q.set(st[0], st[1], BRONZE.L);
     c.add(q, P_CUFF, { out: BRONZE.D });
   });
   void p;
@@ -374,16 +370,29 @@ function paintContact(c: Comp, p: Pose, f: ForeG, light: Light): void {
 
 /** light layer: the hairline crack in the tile that bleeds seal light, and two dust specks hopping off the rubble */
 function contactLight(p: PixelCanvas, o: Pose): void {
-  const lit = o.floor >= 2 || o.seam >= 3 ? PAL.mag2 : PAL.mag1;
+  const lit = o.floor >= 2 || o.seam >= 3 ? PAL.mag3 : PAL.mag2;
   const pts: Pt[] = [[2, 76], [7, 75], [12, 77], [17, 75], [22, 77], [27, 75], [32, 76], [37, 75]];
+  // a bright spot crawls along the crack with the chain's wave (one step per frame), the rest stays dim
+  const crawl = (Math.floor(o.swT * 15) * 6) % 8;
+  let n = 0;
+  const put = (x: number, y: number) => {
+    if (p.inBounds(x, y) && !p.isOpaque(x, y)) p.set(x, y, (n + crawl) % 8 < 3 ? lit : PAL.mag1);
+    n++;
+  };
   for (let i = 0; i + 1 < pts.length; i++) {
     const [x0, y0] = pts[i];
     const [x1, y1] = pts[i + 1];
-    const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
-    for (let k = 0; k <= n; k++) {
-      const x = rnd(x0 + ((x1 - x0) * k) / n);
-      const y = rnd(y0 + ((y1 - y0) * k) / n);
-      if (p.inBounds(x, y) && !p.isOpaque(x, y)) p.set(x, y, (i + k) % 5 === 0 ? lit : PAL.mag1);
+    const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+    let px = x0;
+    let py = y0;
+    put(px, py);
+    for (let k = 1; k <= steps; k++) {
+      const x = rnd(x0 + ((x1 - x0) * k) / steps);
+      const y = rnd(y0 + ((y1 - y0) * k) / steps);
+      if (x !== px && y !== py) put(x, py); // keep the crack 4-connected (no isolated diagonal pixels)
+      put(x, y);
+      px = x;
+      py = y;
     }
   }
   const hop = (x: number, ph: number) => {
@@ -391,8 +400,6 @@ function contactLight(p: PixelCanvas, o: Pose): void {
     const y = 71 - Math.round(Math.abs(Math.sin(t * Math.PI)) * 3);
     if (p.inBounds(x, y) && !p.isOpaque(x, y)) p.set(x, y, PAL.stone3);
   };
-  hop(13, 0);
-  hop(26, 0.5);
 }
 
 // ---------------------------------------------------------------- rim tones

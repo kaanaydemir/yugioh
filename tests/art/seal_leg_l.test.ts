@@ -121,7 +121,7 @@ describe('seal_leg_l', () => {
         const st = artStats(l, px, focus);
         expect(st.offPalette).toBe(0);
         expect(st.isolated).toBeLessThanOrEqual(0.1);
-        expect(st.colors).toBeLessThanOrEqual(20);
+        expect(st.colors).toBeLessThanOrEqual(24);
       }
     }
     // the sprite's portrait hook is the card's small picture
