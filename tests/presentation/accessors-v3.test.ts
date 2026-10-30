@@ -16,7 +16,9 @@ vi.hoisted(() => {
 });
 vi.mock('phaser', async () => (await import('./_phaser-stub')).phaserStub());
 
-import { MONSTER_IDS, type MonsterId } from '../../src/data/cards';
+import { MONSTER_IDS as ALL_MONSTER_IDS, type MonsterId } from '../../src/data/cards';
+/** The original 12 monsters (the expanded roster uses the table fallbacks). */
+const MONSTER_IDS = ALL_MONSTER_IDS.slice(0, 12);
 import { PAL, RAMPS } from '../../src/art/palette';
 import { hasMonsterArtV3, monsterArt, registerFixtureArtV3 } from '../../src/art/monsters';
 import { LOOK_V3 } from '../../src/view/layout';

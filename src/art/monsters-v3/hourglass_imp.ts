@@ -3,7 +3,7 @@
 //
 // A small pointy-hatted gnome-wizard carrying an oversized hourglass staff whose sand FLOWS all the time and
 // FREEZES mid-fall when it casts. Files (this directory):
-//   hourglass_imp-build.ts   frame 68×64, anchor (26, 58), the build on biped v1 (lithe preset, near foot ahead),
+//   hourglass_imp-build.ts   frame 67×64, anchor (26, 58), the build on biped v1 (lithe preset, near foot ahead),
 //                            the member's channels (fx: sand, level, freeze, glow, eye, hat / beard / hem lag,
 //                            staff lag, spray, ring, dissolve / build, …)
 //   hourglass_imp-kit.ts     ramps (sky / gold / skin / beard / wood), flat value planes cut from a shape by the

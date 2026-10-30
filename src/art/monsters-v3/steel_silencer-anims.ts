@@ -77,7 +77,7 @@ const IDLE: readonly (readonly number[])[] = [
   [-1,  0,  0,  0,  0, -1, 1.1, 0, 0, 0, 0],
   [-1, -1,  1,  0,  0,  0, 1.3, 0, 0, 0, 0],
   [-1, -1,  1, -1,  0,  0, 1.6, 0, 1, 0, 1],
-  [ 0, -1,  1, -1, -1,  1, 1.8, 0, 1, 1, 1],
+  [ 0,  0,  0, -1, -1,  1, 1.8, 0, 1, 1, 1],
   [ 0,  0,  0, -1, -1,  2, 1.5, 0, 1, 1, 1],
   [ 0,  0,  0,  0, -1,  2, 1.2, 0, 1, 1, 0],
   [ 0,  0, -1,  0,  0,  1, 1.0, 0, 0, 1, 0],
@@ -91,7 +91,7 @@ const idle: LoopDef<Pose> = {
   holds: IDLE_HOLDS,
   at: (f) => {
     const [chest, hood, abs, drN, drF, scan, sigil, lid, cN, cF, lean2] = IDLE[f];
-    const AN = [0, 0, 1, 2, 2, 1, 1, 0, 0, 0, 0, 0][f];
+    const AN = [0, 0, 1, 2, 1, 1, 1, 0, 0, 0, 0, 0][f];
     const AF = [0, 0, 0, 0, 1, 1, 2, 2, 1, 0, 0, 0][f];
     const HX = [0, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0][f];
     return { head: { x: HX, y: 0, a: 0, lag: 0 }, armN: { hand: [0, AN] }, armF: { hand: [0, AF] }, fx: { chestY: chest, hoodY: hood, absY: abs, drumN: drN, drumF: drF, scan, sigil, lid, coneN: cN, coneF: cF, lean2, puff: f / IDLE.length } } as D;

@@ -215,8 +215,9 @@ describe('frameRGBA', () => {
 describe('sheet plans', () => {
   it('a real game paints every monster of both decks; P2 relights all of them (Ruh Çağrısı revives from either graveyard)', () => {
     const p = deckPlan([DEFAULT_DECK, DEFAULT_DECK]);
-    expect([...p.p1].sort()).toEqual([...MONSTER_IDS].sort());
-    expect([...p.p2].sort()).toEqual([...MONSTER_IDS].sort());
+    const legacy = MONSTER_IDS.slice(0, 12); // the default deck holds the original 12 monsters
+    expect([...p.p1].sort()).toEqual([...legacy].sort());
+    expect([...p.p2].sort()).toEqual([...legacy].sort());
   });
 
   it('without Ruh Çağrısı in its deck, player 2 controls only its own deck monsters', () => {

@@ -132,7 +132,7 @@ const TONE: Record<string, number> = {
   g: PAL.gold2,
   G: PAL.gold2,
   h: PAL.gold1,
-  w: PAL.water4,
+  w: PAL.water3,
   c: PAL.water2,
   C: PAL.water1,
   x: PAL.white,

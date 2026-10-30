@@ -1,13 +1,13 @@
 // Kum Saati Cücesi v3 — the BUILD on biped v1 (lithe preset): frame, proportions, materials, channels.
 //
-// A small pointy-hatted gnome-wizard carrying an oversized hourglass staff. Frame 68×64, anchor (26, 58):
+// A small pointy-hatted gnome-wizard carrying an oversized hourglass staff. Frame 67×64, anchor (26, 58):
 // 1 art px = 1 game px; the figure is ~27 px tall without its hat (hat tip ~38), the staff 46 px.
 // The staff is a PROP of the near hand (BipedPose.props.staff), the far hand is free (expressive hands).
 
 import { restOf, type BipedBuild } from '../bodyplans/biped/v1';
 import type { MaterialId } from '../materials';
 
-export const FRAME = Object.freeze({ w: 68, h: 64, anchor: [26, 58] as const });
+export const FRAME = Object.freeze({ w: 67, h: 64, anchor: [26, 58] as const });
 
 export const BUILD: BipedBuild = Object.freeze({
   root: [26, 58] as const,

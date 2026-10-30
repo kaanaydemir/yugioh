@@ -48,6 +48,13 @@ for (const r of RAMPS) {
   Object.assign(SEAM_T, stepDown(r, 1, PAL.night0));
   Object.assign(CREASE_T, stepDown(r, 2, PAL.night0));
 }
+// IŞ-11 (≤ 20 colours a frame): a seam never goes below a ramp's shade tone — on the shade it is the outline ink
+for (const r of RAMPS) {
+  if (r.length < 5) continue;
+  SEAM_T[r[1]] = PAL.ink;
+  CREASE_T[r[1]] = PAL.ink;
+  CREASE_T[r[2]] = r[1];
+}
 SEAM_T[PAL.white] = PAL.mist;
 CREASE_T[PAL.white] = PAL.steel;
 /** one step down the part's own ramp (the contact seam) */

@@ -305,9 +305,11 @@ function nearArm(ctx: Ctx): PixelCanvas {
   const fx = ctx.pose.fx;
   const rise = Math.round(fx.rise ?? 0);
   const q = ctx.canvas();
-  const sh: V = [rig.armN.root[0], rig.armN.root[1] + rise];
-  const el: V = [rig.armN.mid[0], rig.armN.mid[1] + rise + Math.round(fx.limp * 3)];
-  const hand: V = [rig.armN.end[0], rig.armN.end[1] + rise + Math.round(fx.fingY + fx.limp * 6)];
+  // a dead giant's shoulder (the pauldron falling) takes its arm down with it; in life the arm hangs from the rig
+  const drop = fx.padY > 3 ? Math.round(fx.padY) : 0;
+  const sh: V = [rig.armN.root[0], rig.armN.root[1] + rise + drop];
+  const el: V = [rig.armN.mid[0], rig.armN.mid[1] + rise + drop + Math.round(fx.limp * 3)];
+  const hand: V = [rig.armN.end[0], rig.armN.end[1] + rise + drop + Math.round(fx.fingY + fx.limp * 6)];
   limb(q, sh, el, ctx.light, { tones: IRON, w: [3.4, 3], cap: [0, 1] });
   limb(q, el, hand, ctx.light, { tones: IRON, w: [3, 3.4], cap: [0.5, 0] });
   // the bronze cuff round the wrist

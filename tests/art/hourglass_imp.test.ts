@@ -110,7 +110,7 @@ describe('hourglass_imp v3 (biped/v1)', () => {
       const bottom = b.y + b.h - 1;
       let x0 = Infinity;
       let x1 = -1;
-      for (let y = bottom - 2; y <= bottom; y++) for (let x = 0; x < p.w; x++) if (p.isOpaque(x, y)) {
+      for (let y = bottom - 5; y <= bottom; y++) for (let x = 0; x < p.w; x++) if (p.isOpaque(x, y)) {
         x0 = Math.min(x0, x);
         x1 = Math.max(x1, x);
       }
@@ -132,7 +132,11 @@ describe('hourglass_imp v3 (biped/v1)', () => {
     expect(top(last, 4, 33)).toBeGreaterThan(top(first, 4, 33) + 20);
     const s0 = drawFrame(art, 'summon', 0);
     const sL = drawFrame(art, 'summon', specOf('summon').marks!.land!);
-    expect(top(s0, 4, 33)).toBeGreaterThan(top(sL, 4, 33) + 15);
+    // f0: only the staff, a heap of sand and the falling grains; the body is poured in by the land frame
+    expect(count(s0)).toBeLessThan(count(sL) * 0.6);
+    const sE = drawFrame(art, 'summon', specOf('summon').frames - 1);
+    expect(Math.abs(top(sE, 4, 33) - top(first, 4, 33))).toBeLessThanOrEqual(3);
+    expect(top(sL, 4, 33)).toBeGreaterThan(top(s0, 4, 33) - 1);
     const r0 = drawFrame(art, 'revive', 0);
     expect(top(r0, 4, 33)).toBeGreaterThan(top(first, 4, 33) + 20);
   });

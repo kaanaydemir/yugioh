@@ -134,7 +134,7 @@ describe('A5-B v3 card face (B-1: frame + overlays)', () => {
     const off = await load('v3', { a5: 'off' });
     const cardsV1 = await load('v3', { cards: 'v1' });
     const v1 = await load('v1');
-    for (const id of off.data.ALL_CARD_IDS) {
+    for (const id of off.data.ALL_CARD_IDS.slice(0, 20)) { // the 20 original cards (later cards may already have v3 art)
       expect(cardsV1.cards.cardFaceCanvas(id).data).toEqual(off.cards.cardFaceCanvas(id).data);
       expect(cardsV1.cards.cardMip(id).levels[2].data).toEqual(off.cards.cardMip(id).levels[2].data);
       expect(cardsV1.cards.cardArtCanvas(id).data).toEqual(off.cards.cardArtCanvas(id).data);

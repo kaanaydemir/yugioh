@@ -1051,8 +1051,8 @@ describe('B5: the deck-out (F8), the result plate, victory / defeat (F9)', () =>
       expect(t.line1[1].color).toBe(PLAYER_RAMP[w][3]);
       expect(t.win).toBe(true);
     }
-    expect(RESULT_REASON).toEqual({ lp: "Rakibin LP'si sıfırlandı", deckout: 'Rakibin destesi bitti', surrender: 'Rakip teslim oldu' });
-    expect(RESULT_REASON_LOST).toEqual({ lp: "LP'n sıfırlandı", deckout: 'Desten bitti', surrender: 'Teslim oldun' });
+    expect(RESULT_REASON).toEqual({ lp: "Rakibin LP'si sıfırlandı", deckout: 'Rakibin destesi bitti', surrender: 'Rakip teslim oldu', seals: 'Beş Mühür tamamlandı' });
+    expect(RESULT_REASON_LOST).toEqual({ lp: "LP'n sıfırlandı", deckout: 'Desten bitti', surrender: 'Teslim oldun', seals: "Rakip Beş Mühür'ü tamamladı" });
     for (const r of ['lp', 'deckout', 'surrender'] as const) {
       expect(resultText({ winner: 1, reason: r, viewerWon: null }).line2).toBe(RESULT_REASON[r]);
       const won = resultText({ winner: 0, reason: r, viewerWon: true });

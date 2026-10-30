@@ -272,14 +272,14 @@ const death: AnimDef<Pose> = {
     struck(60, HEAVY_STRUCK),
     beat(80, { props: { shield: planted([-2, 0]) }, hip: { x: -2, y: 0, tilt: 0 }, lean: -0.08, fx: { dent: 2, dentAt: 0, lid: 3, eye: 0.1, sun: 0.2, tilt: -2, crack: 0.3, spark: 0.5, sparkAt: 0, chips: 0.4, chipsAt: 0, arrow: 1 } }),
     beat(110, { props: { shield: planted([-1, 0]) }, hip: { x: 0, y: 2, tilt: 0 }, lean: 0.03, fx: { dent: 2, dentAt: 0, lid: 3, eye: 0, sun: 0, tilt: -1, crack: 0.65, padY: 1, limp: 0.2, chips: 0.8, chipsAt: 0, rag: 0.6 } }),
-    beat(80, { props: { shield: planted([0, 0]) }, hip: { x: 0, y: 3, tilt: 0 }, lean: 0.07, fx: { dent: 2, dentAt: 0, lid: 3, eye: 0, sun: 0, tilt: 1, crack: 1, padY: 2, limp: 0.5, chips: 1, chipsAt: 0, rag: 0.4, fingY: 2 } }),
+    beat(80, { props: { shield: planted([0, 0]) }, hip: { x: 0, y: 3, tilt: 0 }, lean: 0.07, fx: { dent: 2, dentAt: 0, lid: 3, eye: 0, sun: 0, tilt: 1, crack: 1, padY: 3, limp: 0.5, chips: 1, chipsAt: 0, rag: 0.4, fingY: 2 } }),
     // the slab leans out under its own weight (the grip gone)
-    { ...beat(70, { ...DEAD, props: { shield: planted([1, 0]) }, fx: { ...DEAD.fx, dent: 2, dentAt: 0, tilt: 3, crack: 1, padY: 3, limp: 0.8, fingY: 3, plates: 0.08, dust: 0.2, dustAt: 0, dustTone: 1 } }), name: 'dissolve' },
-    beat(60, { ...DEAD, props: { shield: planted([2, 1]) }, fx: { ...DEAD.fx, tilt: 4, crack: 1, padY: 4, limp: 1, fingY: 4, plates: 0.22, dust: 0.35, dustAt: 0, dustTone: 1 } }),
-    beat(60, { ...DEAD, props: { shield: planted([2, 2]) }, fx: { ...DEAD.fx, tilt: 5, crack: 1, padY: 5, limp: 1, fingY: 5, plates: 0.42, dust: 0.5, dustAt: 0, dustTone: 1 } }),
-    beat(60, { ...DEAD, props: { shield: planted([2, 2]) }, fx: { ...DEAD.fx, tilt: 5, crack: 1, padY: 6, limp: 1, fingY: 6, plates: 0.64, dust: 0.65, dustAt: 0, dustTone: 1 } }),
-    beat(70, { ...DEAD, props: { shield: planted([2, 2]) }, fx: { ...DEAD.fx, tilt: 5, crack: 1, padY: 6, limp: 1, fingY: 6, plates: 0.84, dust: 0.8, dustAt: 0, dustTone: 1 } }),
-    beat(110, { ...DEAD, props: { shield: planted([2, 2]) }, fx: { ...DEAD.fx, tilt: 5, crack: 1, padY: 6, limp: 1, fingY: 6, plates: 1, dust: 0.95, dustAt: 0, dustTone: 1 } }),
+    { ...beat(70, { ...DEAD, props: { shield: planted([1, 0]) }, fx: { ...DEAD.fx, dent: 2, dentAt: 0, tilt: 3, crack: 1, padY: 6, limp: 0.8, fingY: 4, plates: 0.08, dust: 0.2, dustAt: 0, dustTone: 1 } }), name: 'dissolve' },
+    beat(60, { ...DEAD, props: { shield: planted([2, 1]) }, fx: { ...DEAD.fx, tilt: 4, crack: 1, padY: 11, limp: 1, fingY: 8, plates: 0.22, dust: 0.35, dustAt: 0, dustTone: 1 } }),
+    beat(60, { ...DEAD, props: { shield: planted([2, 2]) }, fx: { ...DEAD.fx, tilt: 5, crack: 1, padY: 16, limp: 1, fingY: 12, plates: 0.42, dust: 0.5, dustAt: 0, dustTone: 1 } }),
+    beat(60, { ...DEAD, props: { shield: planted([2, 2]) }, fx: { ...DEAD.fx, tilt: 5, crack: 1, padY: 21, limp: 1, fingY: 16, plates: 0.64, dust: 0.65, dustAt: 0, dustTone: 1 } }),
+    beat(70, { ...DEAD, props: { shield: planted([2, 2]) }, fx: { ...DEAD.fx, tilt: 5, crack: 1, padY: 24, limp: 1, fingY: 18, plates: 0.84, dust: 0.8, dustAt: 0, dustTone: 1 } }),
+    beat(110, { ...DEAD, props: { shield: planted([2, 2]) }, fx: { ...DEAD.fx, tilt: 5, crack: 1, padY: 26, limp: 1, fingY: 20, plates: 1, dust: 0.95, dustAt: 0, dustTone: 1 } }),
   ],
   end: 'hold',
 };
@@ -318,15 +318,15 @@ const summon: AnimDef<Pose> = {
 // cracks still dark; the plates fly back up the paths they fell along into the slab (the pauldron heaving
 // back up, the gauntlet finding the rim), the cracks closing; it stands whole (land), then the tower's
 // windows kindle and the eyes last.
-const HEAP: D = { ...DEAD, props: { shield: planted([2, 2]) }, fx: { ...DEAD.fx, tilt: 5, crack: 1, padY: 6, limp: 1, fingY: 6, plates: 1 } };
+const HEAP: D = { ...DEAD, props: { shield: planted([2, 2]) }, fx: { ...DEAD.fx, tilt: 5, crack: 1, padY: 26, limp: 1, fingY: 20, plates: 1 } };
 const revive: AnimDef<Pose> = {
   base: 'idle0',
   beats: [
     beat(100, { ...HEAP }),
     beat(80, { ...HEAP, fx: { ...HEAP.fx, plates: 0.8 } }),
-    beat(70, { ...HEAP, fx: { ...HEAP.fx, plates: 0.58, tilt: 5, padY: 5, fingY: 5 } }),
-    beat(60, { ...DEAD, props: { shield: planted([2, 1]) }, fx: { ...DEAD.fx, tilt: 4, crack: 1, padY: 4, limp: 0.8, fingY: 4, plates: 0.36 } }),
-    beat(60, { ...DEAD, props: { shield: planted([1, 1]) }, fx: { ...DEAD.fx, tilt: 3, crack: 0.7, padY: 3, limp: 0.5, fingY: 3, plates: 0.16 } }),
+    beat(70, { ...HEAP, fx: { ...HEAP.fx, plates: 0.58, tilt: 5, padY: 18, fingY: 14 } }),
+    beat(60, { ...DEAD, props: { shield: planted([2, 1]) }, fx: { ...DEAD.fx, tilt: 4, crack: 1, padY: 11, limp: 0.8, fingY: 8, plates: 0.36 } }),
+    beat(60, { ...DEAD, props: { shield: planted([1, 1]) }, fx: { ...DEAD.fx, tilt: 3, crack: 0.7, padY: 5, limp: 0.5, fingY: 4, plates: 0.16 } }),
     beat(70, { hip: { x: 0, y: 3, tilt: 0 }, lean: 0.07, props: { shield: planted([1, 0]) }, fx: { eye: 0, lid: 3, sun: 0, tilt: 2, crack: 0.4, padY: 2, limp: 0.2, fingY: 2, plates: 0.04, rag: 0.8 } }),
     { ...beat(90, { hip: { x: 0, y: 1, tilt: 0 }, props: { shield: planted() }, fx: { eye: 0, lid: 3, sun: 0, tilt: 0, crack: 0.15, padY: 1, plates: 0, bash: 0.5, dust: 0.2, dustAt: 0, rag: 1 } }), name: 'land' },
     beat(90, { fx: { eye: 0, lid: 3, sun: 0.7, crack: 0, dust: 0.5, dustAt: 0 } }),

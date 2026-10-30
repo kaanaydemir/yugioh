@@ -18,8 +18,8 @@ describe('wisp_imp v3 art', () => {
   it('is deterministic and uses palette colours only', () => {
     const a = drawFrame(art, 'idle', 3);
     const b = drawFrame(art, 'idle', 3);
-    expect(Buffer.from(a.data).equals(Buffer.from(b.data))).toBe(true);
-    const pal = new Set(Object.values(PAL));
+    expect(Array.from(a.data)).toEqual(Array.from(b.data));
+    const pal = new Set<number>(Object.values(PAL));
     for (let i = 0; i < a.data.length; i += 4) {
       if (!a.data[i + 3]) continue;
       expect(pal.has((a.data[i] << 16) | (a.data[i + 1] << 8) | a.data[i + 2])).toBe(true);

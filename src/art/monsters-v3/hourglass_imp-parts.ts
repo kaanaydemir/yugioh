@@ -53,17 +53,17 @@ const FACE_KEY: Record<string, number> = {
   s: SKIN.lit,
   m: SKIN.mid,
   d: SKIN.shade,
-  t: SKIN.hi,
-  N: SKIN.hi,
+  t: SKIN.lit,
+  N: SKIN.lit,
   n: SKIN.lit,
   o: SKIN.mid,
   O: SKIN.shade,
-  e: PAL.night0,
+  e: PAL.ink,
   E: PAL.white,
   b: PAL.white,
   B: PAL.mist,
   x: PAL.steel,
-  c: SKIN.deep,
+  c: SKIN.shade,
 };
 const FACE_TONE = new Set(['s', 'm', 'd']);
 
@@ -373,7 +373,7 @@ const torso: Part = {
 
 // ------------------------------------------------------------------ legs + boots
 
-const BOOT_KEY: Record<string, number> = { l: WOOD.lit, m: WOOD.mid, d: WOOD.shade, k: WOOD.deep };
+const BOOT_KEY: Record<string, number> = { l: WOOD.lit, m: WOOD.mid, d: WOOD.shade, k: WOOD.shade };
 const BOOT_TONE = new Set(['l', 'm', 'd']);
 // 8 × 5, the sole's centre at column 3, the toe curling forward
 // prettier-ignore
@@ -627,12 +627,37 @@ export function erode(c: PixelCanvas, ctx: Ctx): void {
     }
 }
 
+/** IŞ-10: a pixel none of whose 4 neighbours shares its colour takes the colour two of them share (one pass). */
+function crumbs(c: PixelCanvas): void {
+  const fix: [number, number, number][] = [];
+  for (let y = 0; y < c.h; y++)
+    for (let x = 0; x < c.w; x++) {
+      const v = c.get(x, y);
+      if (v === null) continue;
+      const nb = [c.get(x - 1, y), c.get(x + 1, y), c.get(x, y - 1), c.get(x, y + 1)];
+      if (nb.includes(v)) continue;
+      const cnt = new Map<number, number>();
+      for (const n of nb) if (n !== null) cnt.set(n, (cnt.get(n) ?? 0) + 1);
+      let best = -1;
+      let bc = 1;
+      for (const [k, n] of cnt) if (n > bc) {
+        best = k;
+        bc = n;
+      }
+      if (best >= 0) fix.push([x, y, best]);
+    }
+  for (const [x, y, v] of fix) c.set(x, y, v);
+}
+
 function withErode(p: Part): Part {
   return {
     ...p,
     paint(ctx) {
       const c = p.paint(ctx);
-      if (c) erode(c, ctx);
+      if (c) {
+        crumbs(c);
+        erode(c, ctx);
+      }
       return c;
     },
   };
