@@ -48,8 +48,8 @@ const n3 = (x: number, y: number, z: number): V3 => {
   const m = Math.hypot(x, y, z);
   return [x / m, y / m, z / m];
 };
-const LIGHT_LEFT = n3(-0.5, -0.74, 0.46);
-const LIGHT_RIGHT = n3(0.5, -0.74, 0.46);
+const LIGHT_LEFT = n3(-0.8, -0.56, 0.46);
+const LIGHT_RIGHT = n3(0.8, -0.56, 0.46);
 
 /** Current key light (3-D, toward the light) and its screen-plane direction. */
 export const LIGHT = { v: LIGHT_LEFT as V3, v2: norm([LIGHT_LEFT[0], LIGHT_LEFT[1]]) as V, side: -1, lift: 0 };

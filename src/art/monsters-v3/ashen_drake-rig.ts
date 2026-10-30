@@ -432,6 +432,58 @@ export function drawDrake(p: PixelCanvas, P: Pose): void {
   p.outline(INK);
   rimsAndAsh(p, R, P);
   if (P.crumble > 0) crumble(p, P);
+  tidy(p);
+}
+
+/**
+ * Final calm pass (IŞ-10): a diagonal outline step and a lone mid-tone pixel read as crumbs. The
+ * outline gets its missing 4-connecting corner (taken from the body side: the silhouette never
+ * grows); a lone body-tone pixel takes the commonest tone around it. Embers and ash are left alone.
+ */
+function tidy(p: PixelCanvas): void {
+  const N4: readonly V[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  const fire = new Set<number>([PAL.fire0, PAL.fire1, PAL.fire2, PAL.fire3, PAL.fire4, PAL.crim0]);
+  const lone = (x: number, y: number, c: number) => {
+    let any = false;
+    for (const [dx, dy] of N4) {
+      const d = p.get(x + dx, y + dy);
+      if (d === null) continue;
+      any = true;
+      if (d === c) return false;
+    }
+    return any;
+  };
+  const link: [number, number][] = [];
+  for (let y = 0; y < p.h; y++)
+    for (let x = 0; x < p.w; x++) {
+      if (p.get(x, y) !== INK || !lone(x, y, INK)) continue;
+      for (const sx of [-1, 1])
+        for (const sy of [-1, 1]) {
+          if (p.get(x + sx, y + sy) !== INK) continue;
+          const a = p.get(x + sx, y);
+          const b = p.get(x, y + sy);
+          const okA = a !== null && a !== INK && !fire.has(a);
+          const okB = b !== null && b !== INK && !fire.has(b);
+          if (okA || okB) link.push(okA && (!okB || sx > 0 === (sy > 0)) ? [x + sx, y] : [x, y + sy]);
+        }
+    }
+  for (const [x, y] of link) if (p.get(x, y) !== INK) p.set(x, y, INK);
+  const fix: [number, number, number][] = [];
+  for (let y = 0; y < p.h; y++)
+    for (let x = 0; x < p.w; x++) {
+      const c = p.get(x, y);
+      if (c === null || c === INK || fire.has(c) || !lone(x, y, c)) continue;
+      const cnt = new Map<number, number>();
+      for (const [dx, dy] of N4) {
+        const d = p.get(x + dx, y + dy);
+        if (d !== null && d !== INK && !fire.has(d)) cnt.set(d, (cnt.get(d) ?? 0) + 1);
+      }
+      let best = -1;
+      let bn = 0;
+      for (const [k, n] of cnt) if (n > bn) (best = k), (bn = n);
+      if (best >= 0) fix.push([x, y, best]);
+    }
+  for (const [x, y, c] of fix) p.set(x, y, c);
 }
 
 // ---------------------------------------------------------------- torso
