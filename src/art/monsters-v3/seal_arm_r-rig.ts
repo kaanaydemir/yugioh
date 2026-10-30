@@ -330,6 +330,8 @@ export function drawArm(p: PixelCanvas, ps: Pose, from: DrawOpts['lightFrom'] = 
     hl = turnHand(hl, Math.round(leanDeg(ps) + ps.hand));
     const hx = w.x + ps.hdx - HOX;
     const hy = top + ps.hdy - HOY;
+    // whatever sinks below the crack's lip is swallowed by the hole (never reaches the frame edge)
+    for (let y = Math.max(0, clipY + 1 - hy); y < HH; y++) for (let x = 0; x < HW; x++) hl.erase(x, y);
     if (ps.smear > 0) {
       for (let s = ps.smear; s >= 1; s--) {
         const sm = layer(HW, HH);
@@ -368,8 +370,10 @@ export function drawArm(p: PixelCanvas, ps: Pose, from: DrawOpts['lightFrom'] = 
   p.outline(PAL.ink);
 
   // -- stud spill on the stone, then the light layer
-  spillStone(p, ps, light);
-  paintLight(p, ps, light);
+  // (a stud that has sunk below the lip gives no light of its own)
+  const above = studPos(ps).y <= CY + 3;
+  if (above) spillStone(p, ps, light);
+  paintLight(p, ps, light, above);
 }
 
 /** Position of the stud's centre. */
@@ -385,6 +389,7 @@ function paintBand(c: Comp, ps: Pose, light: Light): void {
   q.poly(chamfer(cx - 9, w.y, cx + 9, w.y + 4, [1, 1, 1, 1]), PAL.gold2);
   bands(q, BRONZE, light, 3, 4, { top: 1, bottom: 1, edge: 0 });
   // a lower-lit row at the bottom edge (the band's underside shade)
+  for (let y = CY + 4; y < H; y++) for (let x = 0; x < W; x++) q.erase(x, y);
   c.add(q, 50, { out: PAL.gold0 });
   // the stud: 7 × 7 rounded square, bronze ring around the 5 × 5 socket
   const s = studPos(ps);
@@ -403,6 +408,7 @@ function paintBand(c: Comp, ps: Pose, light: Light): void {
     }
   // socket
   for (let j = 1; j <= 5; j++) for (let i = 1; i <= 5; i++) sq.set(x0 + i, y0 + j, PAL.mag0);
+  for (let y = CY + 4; y < H; y++) for (let x = 0; x < W; x++) sq.erase(x, y);
   c.add(sq, 51, { out: PAL.gold0 });
 }
 
@@ -540,13 +546,13 @@ function paintFissures(p: PixelCanvas, ps: Pose, light: Light): void {
     }
 }
 
-function paintLight(p: PixelCanvas, ps: Pose, light: Light): void {
+function paintLight(p: PixelCanvas, ps: Pose, light: Light, studUp: boolean): void {
   paintFissures(p, ps, light);
   paintSeams(p, ps);
-  paintStudGlow(p, ps, light);
+  if (studUp) paintStudGlow(p, ps, light);
   const s = studPos(ps);
   // sparks (void4)
-  for (let i = 0; i < Math.min(4, ps.spark); i++) {
+  for (let i = 0; i < (studUp ? Math.min(4, ps.spark) : 0); i++) {
     const [dx, dy] = SPARKS[i];
     const x = s.x + dx;
     const y = s.y + dy;

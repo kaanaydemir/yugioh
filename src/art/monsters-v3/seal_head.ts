@@ -15,7 +15,7 @@ const sealHeadV3: MonsterArt = {
   h: H,
   anchorX: AX,
   anchorY: AY,
-  hover: 12,
+  hover: 7,
   muzzle: MUZZLE,
   core: { x: 56, y: 33 },
   anims: ANIMS,

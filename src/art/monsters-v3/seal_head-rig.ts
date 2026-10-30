@@ -238,22 +238,27 @@ function splitSlabs(f: Frame): void {
   const ids = comp.id.slice();
   p.clear();
   comp.id.fill(0);
+  // the break runs down the seal glyph (the forehead disc's centre line) as a jagged zig-zag: the skull
+  // parts into a back half and a face half, the jaw drops away on its own
+  const ZZ = [0, 1, 1, 0, -1, -1];
   const dst = (id: number, xl: number, yl: number): number => {
     if (id === Part.cavity) return -1;
     if (id === Part.jaw || id === Part.teethLo) return 2;
     if (id === Part.strap) return yl > 18 ? 2 : xl < 10 ? 0 : 1;
     if (id === Part.chain || id === Part.shardFar || id === Part.shardNear) return xl < 10 ? 0 : 2;
     if (id === Part.stump || id === Part.fins) return 0;
-    // the break: a jagged diagonal from the brow's front to the back of the jaw hinge
-    const cut = -8 - 0.675 * (xl - 30) + (((xl + 40) >> 1) % 2 ? 1 : -1);
-    return yl < cut ? 0 : 1;
+    const cutx = DISC[0] + ZZ[(((yl + 60) >> 1) % 6 + 6) % 6];
+    return xl < cutx ? 0 : 1;
   };
   const OFF: Pt[] = [
-    [-9, 6],
-    [4, 7],
-    [8, -4],
+    [-8, 5],
+    [8, 3],
+    [2, 12],
   ];
   const t = o.split;
+  const bmax = new Int16Array(src.h).fill(-1);
+  const fmin = new Int16Array(src.h).fill(9999);
+  const body = (id: number) => id === Part.skull || id === Part.plate || id === Part.disc || id === Part.teeth;
   // draw lowest-priority first: jaw, face, back
   for (const slab of [2, 1, 0]) {
     const [ox_, oy_] = OFF[slab];
@@ -267,7 +272,26 @@ function splitSlabs(f: Frame): void {
         const c = src.get(x, y)!;
         p.set(x + mx, y + my, c);
         comp.id[(y + my) * W_ + (x + mx)] = id;
+        if (body(id) && y + my < src.h) {
+          if (slab === 0 && x + mx > bmax[y + my]) bmax[y + my] = x + mx;
+          if (slab === 1 && x + mx < fmin[y + my]) fmin[y + my] = x + mx;
+        }
       }
+  }
+  // the seal's light spills out of the gap between the halves (light layer: after the outline)
+  if (t >= 0.2) {
+    f.after.push((q) => {
+      for (let y = 0; y < q.h; y++) {
+        const a = bmax[y] + 2;
+        const b = fmin[y] - 2;
+        if (bmax[y] < 0 || b - a < 1 || b - a > 16) continue;
+        for (let x = a; x <= b; x++) {
+          const d = Math.min(x - a, b - x);
+          const hot = d >= 2 && (y + x) % 5 === 0 && o.split < 0.95;
+          q.set(x, y, hot ? PAL.mag4 : d === 0 ? PAL.mag1 : d === 1 ? PAL.mag2 : PAL.mag3);
+        }
+      }
+    });
   }
 }
 
@@ -716,15 +740,16 @@ function drawShard(f: Frame, cx: number, cy: number, size: number, seed: number,
   f.comp.add(q, part, { out: near ? PAL.ink : undefined });
 }
 const SHARDS: readonly { rx: number; ry: number; size: number; seed: number; slot: Pt }[] = [
-  { rx: 34, ry: 20, size: 5.5, seed: 0, slot: [37, -14] },
-  { rx: 30, ry: 22, size: 4.5, seed: 1, slot: [40, 4] },
-  { rx: 36, ry: 18, size: 4.5, seed: 2, slot: [35, 22] },
+  { rx: 29, ry: 20, size: 5, seed: 0, slot: [37, -14] },
+  { rx: 27, ry: 22, size: 4, seed: 1, slot: [38, 4] },
+  { rx: 30, ry: 18, size: 4, seed: 2, slot: [35, 22] },
 ];
 /** the three shards: iso orbits round the head (angle deg: 0 = right, 90 = in front / below), or the guard shell's slots in front of the face */
 function paintShards(f: Frame, want: 'near' | 'far'): void {
   const { o } = f;
   const ang = [o.s1, o.s2, o.s3];
-  const rs = o.sr / 100;
+  // the orbit never swells past a modest 112 % (the board footprint stays inside ~72 px)
+  const rs = Math.min(o.sr, 112) / 100;
   SHARDS.forEach((sh, i) => {
     const a = ang[i] * DEG;
     const wob = (o.s1 + i * 90) * DEG;
@@ -794,6 +819,77 @@ function cracks(f: Frame): void {
     line(pts, glow);
     if (o.crack >= 0.6) line([[4, -19], [10, -17], [13, -19]], PAL.mag1);
   }
+}
+
+
+/** chiselled detail on the stone: brow ridges, cheek chisel marks, rune bands, bronze rivets, extra hairline cracks */
+function paintDetail(f: Frame): void {
+  const { p, comp, light } = f;
+  const stone = (c: number | null) =>
+    c === OBS.S || c === OBS.M || c === OBS.L || c === OBS.E || c === OBS_FACE.S || c === OBS_FACE.M || c === OBS_FACE.L || c === OBS_FACE.E;
+  const onStone = (x: number, y: number): boolean => {
+    if (!p.isOpaque(x, y)) return false;
+    const id = comp.id[y * p.w + x];
+    return (id === Part.skull || id === Part.plate) && stone(p.get(x, y));
+  };
+  const line = (pts: Pt[], col: number): void => {
+    const q = layer();
+    q.polyline(mapPts(f, pts), col);
+    const b: number[] = [];
+    for (let y = 0; y < q.h; y++) for (let x = 0; x < q.w; x++) if (q.isOpaque(x, y) && onStone(x, y)) b.push(x, y);
+    for (let i = 0; i < b.length; i += 2) p.set(b[i], b[i + 1], col);
+    q.clear();
+    kitRelease(q);
+  };
+  const dot = (lx: number, ly: number, c: number): void => {
+    const [x, y] = T(f, lx, ly);
+    if (onStone(x, y)) p.set(x, y, c);
+  };
+  // brow ridges: two stepped ridges over the nose bridge, a lit run on the top one
+  line([[17, -12], [24, -12], [28, -11], [33, -11]], PAL.void0);
+  line([[16, -9], [22, -9], [29, -8]], PAL.void1);
+  line([[19, -14], [24, -14]], light.side < 0 ? PAL.stone3 : PAL.stone2);
+  // cheek chisel marks: three short slanted cuts
+  line([[0, 6], [4, 9]], PAL.void0);
+  line([[4, 4], [9, 8]], PAL.void0);
+  line([[8, 12], [11, 15]], PAL.void0);
+  // occiput plates: two stacked seam lines
+  line([[-24, -3], [-17, -3]], PAL.void0);
+  line([[-25, 5], [-18, 6]], PAL.void0);
+  line([[-4, -23], [-2, -19]], PAL.void0);
+  // rune bands: carved ticks with a dim seal dot in every other one (flat paint, never hot)
+  for (let i = 0; i < 4; i++) {
+    const lx = -15 + i * 3;
+    dot(lx, -19, PAL.void0);
+    dot(lx, -18, PAL.void0);
+    dot(lx, -17, i % 2 ? PAL.void0 : PAL.mag1);
+  }
+  for (let i = 0; i < 4; i++) {
+    const lx = 12 + i * 3;
+    dot(lx, -21, PAL.void0);
+    dot(lx, -20, i % 2 ? PAL.mag1 : PAL.void0);
+  }
+  // bronze rivets: 2x2 studs, lit corner toward the key light
+  const rivet = (lx: number, ly: number): void => {
+    const [x, y] = T(f, lx, ly);
+    const sx = light.side < 0 ? 0 : 1;
+    dot2(x, y, sx);
+  };
+  const dot2 = (x: number, y: number, sx: number): void => {
+    const cells: [number, number, number][] = [
+      [sx, 0, PAL.gold3],
+      [1 - sx, 0, PAL.gold2],
+      [sx, 1, PAL.gold2],
+      [1 - sx, 1, PAL.gold1],
+    ];
+    for (const [dx, dy, c] of cells) if (onStone(x + dx, y + dy)) p.set(x + dx, y + dy, c);
+  };
+  rivet(30, -12);
+  rivet(17, -13);
+  rivet(9, 4);
+  rivet(2, 15);
+  rivet(-21, -9);
+  rivet(-21, 6);
 }
 
 /** the jaw hinge: a round bronze stud with a dim seal dot */
@@ -995,6 +1091,7 @@ export function drawHead(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right' = 
   paintHinge(f);
   paintDisc(f);
   cracks(f);
+  paintDetail(f);
   spill(f);
   rimLight(f);
   // under a hood of chains the lens is painted before them (its glow shows only through the link gaps)
