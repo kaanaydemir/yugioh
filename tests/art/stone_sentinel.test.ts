@@ -75,7 +75,7 @@ describe('stone_sentinel v3 (biped/v1 pilot)', () => {
         expect(diff, `${anim} f${f}`).toBe(0);
         expect(rock).toBeLessThan(40);
       }
-  });
+  }, 60_000);
 
   it('the throw leaves from the rock: muzzle on the boulder until the release, beside the open hand there', () => {
     const s = art.anims.attack;

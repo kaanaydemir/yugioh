@@ -1049,7 +1049,7 @@ class Resolver {
   private attackTrapUsable(trapUid: Uid, defender: PlayerId, targetUid: Uid | null): boolean {
     switch (trapDefOf(this.s, trapUid)?.effect) {
       case 'attackRedirect':
-        return monsterRefs(this.s, defender).some((r) => uidAt(this.s, r) !== targetUid);
+        return monsterRefs(this.s, defender).some((r) => uidAt(this.s, r) !== targetUid && this.ps(defender).monsters[r.index]?.hat !== 'decoy'); // magic_hat tokens are not monsters
       case 'attackedBoost1000':
         return targetUid !== null && findMonster(this.s, targetUid) !== null;
       case 'hatShuffle': {
@@ -1120,7 +1120,7 @@ class Resolver {
       case 'attackRedirect': {
         finish();
         const targetUid = pd.trigger.kind === 'attackDeclared' ? pd.trigger.targetUid : null;
-        const candidates = monsterRefs(s, p).filter((r) => uidAt(s, r) !== targetUid);
+        const candidates = monsterRefs(s, p).filter((r) => uidAt(s, r) !== targetUid && this.ps(p).monsters[r.index]?.hat !== 'decoy');
         if (candidates.length) this.openPending({ kind: 'chooseTarget', player: p, sourceUid: uid, candidates });
         return;
       }
