@@ -3,7 +3,7 @@
 // eyes, a high winged collar, a long swept coat whose two fork-tipped tails stream back like a comet's, one
 // raised casting hand carrying a violet flame that burns in idle too, and a crescent-moon staff that is never
 // held: it floats and orbits the flame. Violet + moon-silver + midnight, gold only as small trim.
-// Hand-made rig (dusk_sorcerer-rig / -maps / -moon / -fx / -anims); frame 128×108, anchor on the floor, hover 6.
+// Hand-made rig (dusk_sorcerer-rig / -maps / -moon / -fx / -anims); frame 128×116, anchor on the floor, hover 6.
 
 import type { AnyMonsterAnim, DrawOpts, MonsterAnim, MonsterAnimExtra, MonsterArt, MonsterPoints } from '../types';
 import type { PixelCanvas } from '../pixel';
@@ -18,7 +18,7 @@ const duskSorcererV3: MonsterArt = {
   anchorY: GROUND_Y,
   hover: 6,
   muzzle: MUZZLE,
-  core: { x: RX + 1, y: 54 },
+  core: { x: RX + 1, y: 62 },
   anims: ANIMS,
   attackImpactFrame: IMPACT,
   weight: 'caster',

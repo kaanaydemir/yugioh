@@ -16,11 +16,10 @@ import { measureText, pixelText } from '../../ui/text';
 import { Button } from '../../view/Button';
 import { GAME_H, GAME_W } from '../../view/layout';
 import { ICON, panelTex, playerStyle } from '../../view/ui-textures';
-import { REDUCED_MOTION } from '../../view/v3/motion';
 import { tween } from '../../vfx/core';
 import type { DuelLaunch, DuelMode } from '../launch';
 import { REF_CLASSIC, deckStore, matchDecks, presetRef, type DeckStore, type LastKey, type ResolvedDeck } from './store';
-import { backdropTex, fadeFromInk, fadeToInk, fitText, latticeTex, orbTex, thumbTex } from './ui';
+import { REDUCED_MOTION, backdropTex, fadeFromInk, fadeToInk, fitText, latticeTex, orbTex, thumbTex } from './ui';
 import type { PlayerId } from '../../engine/types';
 
 export interface DeckPickData {

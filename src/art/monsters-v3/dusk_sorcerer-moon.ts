@@ -4,7 +4,8 @@
 
 import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
-import { planes, run, type Light } from '../rigkit';
+import { run, type Light } from '../rigkit';
+import { planes } from './dusk_sorcerer-kit';
 import type { Pose, Skel } from './dusk_sorcerer-rig';
 
 const DEG = Math.PI / 180;

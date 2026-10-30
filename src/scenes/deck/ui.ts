@@ -9,8 +9,24 @@ import { KIND_RAMP, PAL, type Ramp } from '../../art/palette';
 import { PixelCanvas, mix } from '../../art/pixel';
 import { GAME_H, GAME_W } from '../../view/layout';
 import { canvasTexture } from '../../view/v3/hudSkin';
-import { REDUCED_MOTION } from '../../view/v3/motion';
+import { REDUCED_MOTION as V3_REDUCED } from '../../view/v3/motion';
 import { tween } from '../../vfx/core';
+
+/**
+ * Reduced motion for the deck screens: the v3 flag, OR the OS preference / ?motion=reduced in any look
+ * (the v3 flag alone is always false in the v1 look). &motion=full wins.
+ */
+function detectReduced(): boolean {
+  try {
+    const q = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('motion') : null;
+    if (q === 'full') return false;
+    if (q === 'reduced' || V3_REDUCED) return true;
+    return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return V3_REDUCED;
+  }
+}
+export const REDUCED_MOTION: boolean = detectReduced();
 
 export const CELL_W = 108;
 export const CELL_H = 40;

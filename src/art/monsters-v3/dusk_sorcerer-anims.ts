@@ -29,6 +29,13 @@ export function mix(a: Pose, b: Pose, t: number): Pose {
   return o;
 }
 
+/** The crescent's small loop round its home beside the flame (θ deg): passes behind, then in front of the flame. */
+function loopMoon(th: number, hx = 0, hy = 0): Partial<Pose> {
+  const c = Math.cos(th * DEG);
+  const sn = sin(th * DEG);
+  return { mx: rnd(39 + hx + 4.5 * c), my: rnd(-38 + hy + 3.2 * sn), ma: rnd(200 + 16 * sn), mz: sn > 0 ? 1 : -1 };
+}
+
 /** Crescent on its orbit round the flame (θ deg: 0 = right, 90 = in front / below). */
 function orbit(nx: number, ny: number, th: number, rx = 10, ry = 5): Partial<Pose> {
   const fx = nx;
@@ -46,17 +53,20 @@ function orbit(nx: number, ny: number, th: number, rx = 10, ry = 5): Partial<Pos
 const IDLE_N = 16;
 export function idlePose(f: number): Pose {
   const t = (((f % IDLE_N) + IDLE_N) % IDLE_N) / IDLE_N;
-  const bob = rnd(-1.1 * sin(t * TAU));
-  const headBob = rnd(-1.1 * sin((t - 1 / 16) * TAU));
-  const ny = -29 + rnd(0.9 * sin((t - 2 / 16) * TAU));
+  // the float is a slow 1-px rise of the UPPER body only (hem, boots and tails stay on their baseline, so the
+  // body is never shifted as a whole): chest first, head a frame behind, the casting hand two frames behind
+  const up = (lag: number) => (((t - lag / 16 + 1) % 1) >= 0.25 && ((t - lag / 16 + 1) % 1) < 0.75 ? 1 : 0);
+  const u1 = up(0);
+  const u2 = up(1);
+  const u3 = up(2);
   const nx = 28;
   return pose({
-    bob,
-    hy: headBob - bob,
-    ny: ny - bob * 0 - 0,
+    sink: -u1,
+    hy: -u2 + u1,
+    ny: -29 - u3,
     nx,
     tailA: 2 * sin(2 * t * TAU),
-    tailB: 2 * sin((2 * t - 0.2) * TAU),
+    tailB: 1.6 * sin((2 * t - 0.2) * TAU),
     tailT: t,
     hemT: (2 * t) % 1,
     sashT: t,
@@ -70,7 +80,7 @@ export function idlePose(f: number): Pose {
     drape: rnd(0.8 * sin((t - 0.25) * TAU)),
     slag: rnd(1.2 * sin((t - 0.3) * TAU)),
     t,
-    ...orbit(nx, ny, 340 + 360 * t),
+    ...loopMoon(340 + 360 * t, 0, -u3),
   });
 }
 const IDLE0 = idlePose(0);
@@ -128,7 +138,7 @@ export function guardPose(f: number): Pose {
     sashT: t,
     t,
     collar: 1 - 0.1 * (0.5 + 0.5 * sin(t * TAU)),
-    my: -54 + (sin((t - 1 / 6) * TAU) > 0.5 ? -1 : 0),
+    my: -50 + (sin((t - 1 / 6) * TAU) > 0.5 ? -1 : 0),
     eye: 1.1 + 0.2 * sin(t * TAU),
     hy: 2 + (sin(t * TAU) < -0.5 ? 1 : 0),
     flameT: (t * 2) % 1,
@@ -145,14 +155,14 @@ const GUARD_HOLDS = [170, 160, 160, 170, 160, 160];
 
 const A_N = 12;
 const ATTACK_KEYS: Partial<Pose>[] = [
-  { nx: 27, ny: -28, lean: -1, flame: 1.1, ...orbit(27, -28, 350) },
+  { nx: 27, ny: -28, lean: -1, flame: 1.1, ...loopMoon(350, -1, 1) },
   { nx: 21, ny: -27, lean: -2, hy: -1, tipX: -2, flame: 1.25, charge: 0.4, eye: 1.25, mx: 32, my: -50, ma: 300, mz: 1 },
   { nx: 17, ny: -30, lean: -3, hy: -1, tailA: 3, tailB: 3, tipX: -3, flame: 1.35, charge: 0.7, eye: 1.35, mx: 16, my: -58, ma: 330, mz: 1, msn: 0 },
-  { nx: 14, ny: -32, lean: -3, hy: -2, tailA: 4, tailB: 4, tipX: -3, tipY: 1, flame: 1.45, charge: 1, eye: 1.5, hand: 'claw', mx: 8, my: -60, ma: 55, mz: -1, mglow: 1, collar: 0.8 },
+  { nx: 14, ny: -32, lean: -3, hy: -2, tailA: 4, tailB: 4, tipX: -3, tipY: 1, flame: 1.45, charge: 1, eye: 1.5, hand: 'claw', mx: 8, my: -54, ma: 55, mz: -1, mglow: 1, collar: 0.8 },
   { nx: 30, ny: -26, lean: 2, tailA: 1, tailB: 1, flame: 1.2, eye: 1.3, hand: 'claw', mx: 30, my: -54, ma: 100, mz: 1, msx: 7, msy: -2, msn: 1 },
-  { nx: 38, ny: -22, lean: 3, hy: 1, tailA: -2, tailB: -2, tipX: 2, flame: 0.9, eye: 1.2, hand: 'claw', mx: 52, my: -40, ma: 135, mz: 1, msx: 9, msy: 6, msn: 2 },
-  { nx: 42, ny: -18, lean: 4, hy: 1, tailA: -5, tailB: -4, tipX: 3, flame: 0.6, eye: 1.5, hand: 'claw', mx: 64, my: -24, ma: 165, mz: 1, msx: 8, msy: 7, msn: 2, flare: 2 },
-  { nx: 40, ny: -20, lean: 3, tailA: -3, tailB: -3, tipX: 2, flame: 1.4, eye: 1.5, hand: 'open', mx: 60, my: -30, ma: 120, mz: 1, msx: -5, msy: 3, msn: 1, mglow: 1 },
+  { nx: 35, ny: -22, lean: 3, hy: 1, tailA: -2, tailB: -2, tipX: 2, flame: 0.9, eye: 1.2, hand: 'claw', mx: 46, my: -40, ma: 135, mz: 1, msx: 9, msy: 6, msn: 2 },
+  { nx: 36, ny: -18, lean: 4, hy: 1, tailA: -5, tailB: -4, tipX: 3, flame: 0.6, eye: 1.5, hand: 'claw', mx: 52, my: -24, ma: 165, mz: 1, msx: 8, msy: 7, msn: 2, flare: 2 },
+  { nx: 37, ny: -20, lean: 3, tailA: -3, tailB: -3, tipX: 2, flame: 1.4, eye: 1.5, hand: 'open', mx: 50, my: -30, ma: 120, mz: 1, msx: -5, msy: 3, msn: 1, mglow: 1 },
   { nx: 34, ny: -26, lean: 1, tailA: -1, flame: 1.2, mx: 52, my: -36, ma: 180, mz: 1 },
 ];
 export function attackPose(f: number): Pose {
@@ -168,10 +178,10 @@ const ATTACK_HOLDS = [70, 90, 100, 170, 60, 50, 60, 80, 100, 110, 120, 140];
 
 const R_N = 11;
 const ROAR_KEYS: Partial<Pose>[] = [
-  { nx: 27, ny: -31, lean: -1, flame: 1.15, ...orbit(27, -31, 0) },
-  { nx: 24, ny: -40, hand: 'fist', lean: -2, hy: -1, flame: 1.25, charge: 0.5, eye: 1.3, collar: 0.9, mx: 24, my: -55, ma: 90, ms: 1.1, mz: -1 },
-  { nx: 22, ny: -46, hand: 'fist', lean: -3, hy: -2, tipX: -3, tailA: 3, tailB: 3, flame: 1.4, charge: 1, eye: 1.5, collar: 1, mx: 20, my: -60, ma: 90, ms: 1.15, mz: -1, mglow: 1 },
-  { nx: 26, ny: -26, hand: 'slam', lean: 2, sink: 3, hy: 1, tipX: 1, flame: 1.1, eye: 1.5, mx: 22, my: -58, ma: 90, ms: 1.15, mz: -1, elbow: -1 },
+  { nx: 27, ny: -31, lean: -1, flame: 1.15, ...loopMoon(0, -1, -2) },
+  { nx: 24, ny: -38, hand: 'fist', lean: -2, hy: -1, flame: 1.25, charge: 0.5, eye: 1.3, collar: 0.9, mx: 24, my: -50, ma: 90, ms: 1.1, mz: -1 },
+  { nx: 22, ny: -41, hand: 'fist', lean: -3, hy: -2, tipX: -3, tailA: 3, tailB: 3, flame: 1.3, charge: 1, eye: 1.5, collar: 1, mx: 20, my: -54, ma: 90, ms: 1.1, mz: -1, mglow: 1 },
+  { nx: 26, ny: -26, hand: 'slam', lean: 2, sink: 3, hy: 1, tipX: 1, flame: 1.1, eye: 1.5, mx: 22, my: -52, ma: 90, ms: 1.1, mz: -1, elbow: -1 },
   { nx: 29, ny: 2, hand: 'slam', lean: 5, sink: 10, hy: 2, tipX: 2, tailA: 3, tailB: 3, flame: 0.6, fdy: 6, eye: 1.5, mx: 22, my: -54, ma: 90, ms: 1.15, mz: -1, flare: 2, elbow: -1 },
   { nx: 30, ny: 14, hand: 'slam', lean: 6, sink: 14, hy: 3, tipX: 4, tipY: -1, tailA: 6, tailB: 6, flame: 0.4, fdy: 10, eye: 1.5, mx: 22, my: -50, ma: 90, ms: 1.15, mz: -1, ring: 0.25, rx: 33, ry: 31, flare: 4, collar: 1, elbow: -1 },
   { nx: 30, ny: 14, hand: 'slam', lean: 6, sink: 13, hy: 3, tipX: 4, tailA: 7, tailB: 6, flame: 0.5, fdy: 10, eye: 1.4, mx: 22, my: -50, ma: 90, ms: 1.1, mz: -1, ring: 0.6, rx: 33, ry: 31, flare: 4, elbow: -1 },
@@ -191,7 +201,7 @@ const ROAR_HOLDS = [80, 180, 60, 90, 90, 110, 100, 100, 110, 120, 140];
 
 const HIT_N = 6;
 const HIT_KEYS: Partial<Pose>[] = [
-  { hy: -1, lean: -1, tilt: 3, tipX: -3, eye: 0.3, squint: 1, flame: 0.75, mx: 38, my: -35 },
+  { hy: -1, lean: -1, tilt: 3, tipX: -3, eye: 0.3, squint: 1, flame: 0.9 },
   { lean: -3, hy: -2, tilt: 4, tipX: -4, tailA: 4, tailB: 3, nx: 25, squint: 1, eye: 0.3, flame: 0.6, collar: 0.8, mx: 36, my: -38 },
   { lean: -2, hy: -1, tilt: 2, tipX: -2, tailA: 2, tailB: 2, squint: 0.5, eye: 0.7, flame: 0.85 },
   { lean: -1, hy: 0, tilt: 1, tipX: -1, flame: 1 },
@@ -205,7 +215,7 @@ const HIT_HOLDS = [50, 50, 70, 80, 90, 110];
 
 const HH_N = 8;
 const HH_KEYS: Partial<Pose>[] = [
-  { hy: -2, lean: -2, tilt: 4, tipX: -4, hatX: -2, hatY: -3, eye: 0.2, squint: 1, flame: 0.5, mx: 42, my: -33 },
+  { hy: -2, lean: -2, tilt: 3, tipX: -3, hatX: -1, hatY: -2, eye: 0.2, squint: 1, flame: 0.8 },
   { lean: -4, sink: 2, hy: -3, tilt: 5, hatX: -5, hatY: -6, tipX: -5, tailA: 6, tailB: 5, nx: 24, ny: -26, squint: 1, eye: 0.2, flame: 0.4, collar: 0.9, mx: 46, my: -40, ma: 240 },
   { lean: -3, sink: 4, hy: -1, tilt: 3, hatX: -4, hatY: -3, tailA: 3, tailB: 2, squint: 1, eye: 0.5, flame: 0.6, flare: 2, b1x: 13, mx: 44, my: -37, ma: 220 },
   { lean: -2, sink: 3, hy: 0, hatX: -2, hatY: -1, tilt: 2, flame: 0.8, flare: 1, mx: 41, my: -36 },
@@ -310,7 +320,7 @@ export function revivePose(f: number): Pose {
         flame: k < 0.5 ? 0 : k,
         eye: k * 1.3,
         mx: 46 - 6 * k,
-        my: 29 - 66 * k,
+        my: 24 - 61 * k,
         ma: 270 - 70 * k,
         mz: -1,
         tailA: -4 * (1 - k),
@@ -338,8 +348,8 @@ const DEATH_KEYS: Partial<Pose>[] = [
   { ...HH_KEYS[0] },
   { lean: -4, sink: 3, hy: -3, tilt: 5, hatX: -6, hatY: -6, tipX: -5, tailA: 5, tailB: 4, nx: 24, ny: -24, squint: 1, eye: 0.3, flame: 0.4, collar: 0.9, mx: 46, my: -28, ma: 260 },
   { lean: -3, sink: 7, hy: -1, tilt: 3, hatX: -9, hatY: 4, tipX: -4, tailA: -3, tailB: -4, nx: 22, ny: -16, hand: 'loose', squint: 1, eye: 0.4, flame: 0.2, flare: 2, mx: 46, my: -8, ma: 300 },
-  { lean: -2, sink: 11, hy: 0, hatX: -10, hatY: 22, tailA: -5, tailB: -5, nx: 20, ny: -8, hand: 'loose', eye: 0.4, flame: 0, flare: 3, mx: 46, my: 29, ma: 270, b1x: 13 },
-  { lean: -2, sink: 14, hy: 1, hatX: -10, hatY: 36, tailA: -6, tailB: -6, nx: 20, ny: -4, hand: 'loose', eye: 0.3, flame: 0, flare: 4, mx: 46, my: 29, ma: 270, diss: 0.12 },
+  { lean: -2, sink: 11, hy: 0, hatX: -10, hatY: 22, tailA: -5, tailB: -5, nx: 20, ny: -8, hand: 'loose', eye: 0.4, flame: 0, flare: 3, mx: 46, my: 24, ma: 270, b1x: 13 },
+  { lean: -2, sink: 14, hy: 1, hatX: -10, hatY: 36, tailA: -6, tailB: -6, nx: 20, ny: -4, hand: 'loose', eye: 0.3, flame: 0, flare: 4, mx: 46, my: 24, ma: 270, diss: 0.12 },
 ];
 export function deathPose(f: number): Pose {
   if (f <= 4) return key(DEATH_KEYS[f], f, D_N);
@@ -354,7 +364,7 @@ const D_HOLDS = [50, 60, 70, 80, 80, 80, 80, 80, 80, 100];
 const V_N = 8;
 export function victoryPose(f: number): Pose {
   const k = Math.min(1, f / 5);
-  const end: Partial<Pose> = { nx: 24, ny: -46, hand: 'claw', lean: -1, hy: -1, tipX: -2, flame: 1.45, eye: 1.4, collar: 0.9, mx: 8, my: -58, ma: 90, ms: 1.1, mz: -1, mglow: 1, tailA: 3, tailB: 3, charge: 0 };
+  const end: Partial<Pose> = { nx: 24, ny: -42, hand: 'claw', lean: -1, hy: -1, tipX: -2, flame: 1.35, eye: 1.4, collar: 0.9, mx: 8, my: -52, ma: 90, ms: 1.05, mz: -1, mglow: 1, tailA: 3, tailB: 3, charge: 0 };
   const m = mix(IDLE0, { ...IDLE0, ...end }, k);
   return key({ ...m, hand: f >= 3 ? 'claw' : 'open', mz: f >= 3 ? -1 : 1, sink: f === 1 ? 2 : 0, lean: f === 1 ? 2 : m.lean }, f, V_N);
 }
@@ -409,7 +419,7 @@ export function framePose(anim: AnyMonsterAnim, f: number): Pose {
   return p;
 }
 
-export const MUZZLE = { x: RX + 66, y: 41 };
+export const MUZZLE = { x: RX + 62, y: 49 };
 
 export function framePoints(anim: AnyMonsterAnim, f: number): MonsterPoints {
   const o = framePose(anim, f);

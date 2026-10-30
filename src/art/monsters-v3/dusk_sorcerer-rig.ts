@@ -19,7 +19,8 @@
 
 import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
-import { PartComp, edgeRim, ik2, lightOf, planes, run, spans, widenTeeth, type Light, type V } from '../rigkit';
+import { edgeRim, ik2, lightOf, run, spans, widenTeeth, type Light } from '../rigkit';
+import { Comp, planes } from './dusk_sorcerer-kit';
 import { drawFlame, flameTop } from './dusk_sorcerer-fx';
 import { BEARD, BOOT_F, BOOT_B, FACE, HANDS, type HandKind } from './dusk_sorcerer-maps';
 import { paintMoon, moonGeom, moonTips, type MoonGeom } from './dusk_sorcerer-moon';
@@ -28,12 +29,12 @@ export type { HandKind, MoonGeom };
 
 /** Frame size, root position and the ground. */
 export const W = 128;
-export const H = 108;
+export const H = 116;
 /** Root (belt centre) at pose 0: x, y. */
 export const RX = 60;
-export const RY = 65;
+export const RY = 73;
 /** Anchor (ground point between the feet) and hover. */
-export const GROUND_Y = 98;
+export const GROUND_Y = 106;
 export const HOVER = 6;
 
 export const enum Part {
@@ -180,7 +181,7 @@ export const NEUTRAL: Pose = {
   b1x: 15,
   b1y: 27,
   b2x: -6,
-  b2y: 28,
+  b2y: 27,
   sashT: 0,
   sashL: 1,
   flame: 1,
@@ -232,7 +233,7 @@ type Pt = readonly [number, number];
 /** Everything the parts need about one frame: root, light, helpers. */
 export interface Frame {
   p: PixelCanvas;
-  comp: PartComp;
+  comp: Comp;
   light: Light;
   /** +1 when the key light comes from the frame's right (P2 relight) */
   rs: 1 | -1;
@@ -357,7 +358,7 @@ export function skeleton(o: Pose): Skel {
 export function drawSorcerer(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right'): void {
   const light = lightOf(lightFrom);
   const sk = skeleton(o);
-  const comp = new PartComp(p);
+  const comp = new Comp(p);
   const f: Frame = { p, comp, light, rs: light.side === 1 ? 1 : -1, o, rx: sk.R[0], ry: sk.R[1], at: (x, y) => [sk.R[0] + x, sk.R[1] + y], glints: [] };
 
   // ------------------------------------------------ the moon behind the hand (depth −1)
@@ -509,7 +510,7 @@ function drawTails(f: Frame, sk: Skel): void {
     const path = spline([a, b, c, d], 6);
     return { poly: ribbon(path, w0, 2, tailProf(w0)), path };
   };
-  const tb = mk([[-4, 3], [-12, 11], [-21, 20], [-30, 27]], o.tailB, 1, 9);
+  const tb = mk([[-4, 3], [-12, 10], [-21, 17], [-30, 22]], o.tailB, 1, 9);
   const ta = mk([[-5, -3], [-15, -1], [-27, 5], [-40, 13]], o.tailA, 1, 10);
   for (const [t, part] of [
     [tb, Part.tailB],
@@ -597,11 +598,11 @@ function drawSkirt(f: Frame, sk: Skel): void {
     [R[0] + 13 + fl2, R[1] + 7],
     [R[0] + 12 + fl2, R[1] + 14 + w(0.5, 0.1)],
     [R[0] + 8 + fl2 * 0.6, R[1] + 17 + w(0.7, 0.2)],
-    [R[0] + 5, R[1] + 23 + w(0.9, 0.4)],
+    [R[0] + 5, R[1] + 22 + w(0.8, 0.4)],
     [R[0] + 1, R[1] + 20 + w(0.9, 0.55)],
-    [R[0] - 3, R[1] + 26 + w(1.1, 0.7)],
+    [R[0] - 3, R[1] + 24 + w(0.9, 0.7)],
     [R[0] - 7, R[1] + 22 + w(1.1, 0.85)],
-    [R[0] - 11, R[1] + 26 + w(1, 0.95)],
+    [R[0] - 11, R[1] + 24 + w(0.9, 0.95)],
     [R[0] - 13 - fl2 * 0.5, R[1] + 16],
     [R[0] - 11, R[1] + 8],
   ];
@@ -898,12 +899,12 @@ function dissolvePass(f: Frame, sk: Skel): void {
   }
   for (let i = 0; i < mark.length; i += 2) {
     if (p.get(mark[i], mark[i + 1]) === PAL.ink) continue;
-    p.set(mark[i], mark[i + 1], o.gather ? ((mark[i] + mark[i + 1]) & 1 ? PAL.white : PAL.void4) : PAL.void0);
+    p.set(mark[i], mark[i + 1], o.gather ? ((fl((mark[i] - R[0]) / 2) + fl((mark[i + 1] - R[1]) / 2)) & 1 ? PAL.white : PAL.void4) : PAL.void0);
   }
   for (let i = 0; i < motes.length; i += 3) if (!p.isOpaque(motes[i], motes[i + 1])) p.set(motes[i], motes[i + 1], motes[i + 2]);
   if (o.gather) {
     // stars drifting in toward the forming band
-    const n = 7;
+    const n = 4;
     for (let i = 0; i < n; i++) {
       const a = hash2(i, 3, 5) * TAU;
       const d = (1 - o.diss) * 22 * (0.4 + hash2(i, 9, 2)) + 2;
@@ -957,7 +958,7 @@ function ringPass(f: Frame, sk: Skel): void {
   if (o.ring <= 0) return;
   const cx = sk.R[0] + o.rx;
   const cy = sk.R[1] + o.ry;
-  const a = 5 + 27 * o.ring;
+  const a = 5 + 22 * o.ring;
   const b = a * 0.36;
   const ell = (x: number, y: number, ka: number, kb: number) => {
     const u = (x + 0.5 - cx) / ka;
@@ -1013,7 +1014,7 @@ function chargePass(f: Frame, sk: Skel): void {
   for (let i = 0; i < n; i++) {
     const ph = (o.t * 2 + i / n) % 1;
     const a = (i / n) * TAU + ph * 2.4;
-    const d = (1 - ph) * (10 + 10 * o.charge) + 2;
+    const d = (1 - ph) * (7 + 7 * o.charge) + 2;
     const x = Math.round(fx + Math.cos(a) * d);
     const y = Math.round(fy - 5 + Math.sin(a) * d * 0.7);
     if (!p.isOpaque(x, y)) p.set(x, y, ph > 0.7 ? PAL.white : ph > 0.35 ? PAL.void4 : PAL.void3);

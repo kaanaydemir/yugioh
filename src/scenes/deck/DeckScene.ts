@@ -23,11 +23,10 @@ import { Button } from '../../view/Button';
 import { InspectPanel } from '../../view/InspectPanel';
 import { GAME_H, GAME_W } from '../../view/layout';
 import { ICON, panelTex, miniCardKey } from '../../view/ui-textures';
-import { REDUCED_MOTION } from '../../view/v3/motion';
 import { TEX, tween, wait } from '../../vfx/core';
 import { ELEMENTS, SORT_KEYS, SORT_LABEL, gridMove, sortPool, visibleIds, type KindFilter, type PoolFilter, type SortKey } from './pool';
 import { NAME_MAX, SLOT_COUNT, deckStore, slotRef, type DeckStore } from './store';
-import { CELL_H, CELL_W, backdropTex, cellTex, chainTex, fadeFromInk, fadeToInk, fitText, latticeTex, orbOf, orbTex, tickTex, type CellKind } from './ui';
+import { CELL_H, CELL_W, REDUCED_MOTION, backdropTex, cellTex, chainTex, fadeFromInk, fadeToInk, fitText, latticeTex, orbOf, orbTex, tickTex, type CellKind } from './ui';
 
 export interface DeckSceneData {
   /** Slot to open (default: the last edited one). */
@@ -133,6 +132,8 @@ export class DeckScene extends Phaser.Scene {
   private zone: Zone = 'pool';
   private deckCursor = 0;
   private editing = false;
+  /** The first character typed replaces the old name (select-all behaviour). */
+  private nameFresh = false;
   private caretT = 0;
   private presetIdx = -1;
   private leaving = false;
@@ -717,6 +718,7 @@ export class DeckScene extends Phaser.Scene {
   private setEditing(on: boolean): void {
     if (on === this.editing) return;
     this.editing = on;
+    this.nameFresh = on;
     this.caretT = 0;
     sfx.play(on ? 'uiClick' : 'uiConfirm', { volume: 0.45 });
     if (!on) this.cur.name = this.cur.name.trim() || `Deste ${this.slot + 1}`;
@@ -730,9 +732,12 @@ export class DeckScene extends Phaser.Scene {
       return true;
     }
     if (e.key === 'Backspace') {
-      this.cur.name = this.cur.name.slice(0, -1);
-    } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && /[A-Za-z0-9çğıöşüÇĞİÖŞÜ _.!+-]/.test(e.key) && this.cur.name.length < NAME_MAX) {
-      this.cur.name += e.key;
+      this.cur.name = this.nameFresh ? '' : this.cur.name.slice(0, -1);
+      this.nameFresh = false;
+    } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && /[A-Za-z0-9çğıöşüÇĞİÖŞÜ _.!+-]/.test(e.key)) {
+      if (this.nameFresh) this.cur.name = '';
+      this.nameFresh = false;
+      if (this.cur.name.length < NAME_MAX) this.cur.name += e.key;
     } else return e.key.length === 1 || e.key === 'Backspace';
     this.caretT = 0;
     this.renderDeck();
@@ -993,7 +998,7 @@ export class DeckScene extends Phaser.Scene {
     const dirty = keyOf(d.name, d.cards) !== d.savedKey;
     const shown = fitText(d.name, NAME_W - 18, (s) => measureText(s, 'sm').w);
     this.nameText.setText(shown + (dirty ? ' *' : ''));
-    this.nameText.setTint(this.editing ? PAL.gold4 : PAL.white);
+    this.nameText.setTint(this.editing ? (this.nameFresh ? PAL.white : PAL.gold4) : PAL.white);
     this.nameField.setTexture(panelTex(this, this.editing ? 'gold' : 'neutral', NAME_W, 15, { chamfer: 2, scan: false, alpha: 255 }));
     this.updateCaret();
     // count + legality
@@ -1017,7 +1022,7 @@ export class DeckScene extends Phaser.Scene {
       }
       const def = CARDS[id];
       r.orb.setVisible(true).setTexture(orbTex(this, orbOf(id)));
-      const nm = fitText(def.name, 60, (s) => measureText(s, 'sm').w);
+      const nm = fitText(def.name, isSealCard(id) ? 62 : 72, (s) => measureText(s, 'sm').w);
       r.name.setText(nm).setTint(this.zone === 'deck' && i === this.deckCursor ? PAL.white : PAL.mist);
       r.chain.setVisible(isSealCard(id)).setX(23 + Math.ceil(measureText(nm, 'sm').w) + 3);
       if (isMonster(def)) {
@@ -1045,7 +1050,7 @@ export class DeckScene extends Phaser.Scene {
       this.reasons.setTint(PAL.leaf3).setText('Deste hazır. Maçta seçebilirsin.');
     } else {
       const text = v.issues.map((i) => `· ${i.text}`).join('\n');
-      const lines = wrapText(text, 'sm', DW - 16).slice(0, 5);
+      const lines = wrapText(text, 'sm', DW - 16).slice(0, 4);
       this.reasons.setTint(d.cards.length === 0 ? PAL.steel : PAL.crim3).setText(lines.join('\n'));
     }
   }

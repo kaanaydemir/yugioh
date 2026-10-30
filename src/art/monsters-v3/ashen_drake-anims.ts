@@ -36,8 +36,8 @@ const R_ = Math.round;
 const CLOAK_N: Wing = NEUTRAL.nw;
 const CLOAK_F: Wing = NEUTRAL.fw;
 /** Wrapped forward as a shield (guard): the wrist ahead of the shoulder, the fingers hanging in a curtain. */
-const WRAP_N: Wing = { wx: 29, wy: 12, a: [128, 99, 70], l: [30, 33, 30], sag: 3, thumb: 3 };
-const WRAP_F: Wing = { wx: 34, wy: 9, a: [132, 104, 76], l: [27, 30, 27], sag: 3, thumb: 2 };
+const WRAP_N: Wing = { wx: 29, wy: 10, a: [128, 99, 70], l: [28, 29, 26], sag: 3, thumb: 3 };
+const WRAP_F: Wing = { wx: 34, wy: 8, a: [132, 104, 76], l: [25, 27, 24], sag: 3, thumb: 2 };
 /** Half open (roar tremble, summon): lifted off the back, still folded at the tips. */
 const LIFT_N: Wing = { wx: 4, wy: -17, a: [170, 144, 116], l: [52, 48, 42], sag: 5, thumb: 5 };
 const LIFT_F: Wing = { wx: 6, wy: -21, a: [176, 152, 126], l: [47, 43, 36], sag: 4, thumb: 4 };
@@ -77,22 +77,23 @@ export function idlePose(f: number): Pose {
   const roll = sin(TAU * (t - 0.2)) - sin(TAU * -0.2);
   const rollX = cos(TAU * (t - 0.2)) - cos(TAU * -0.2);
   const blink = f === 10 ? 0.5 : f === 11 ? 0 : f === 12 ? 0.5 : 1;
-  const nw: Partial<Wing> = { wy: CLOAK_N.wy - 1.6 * bW, a: [CLOAK_N.a[0] - 2.2 * bW, CLOAK_N.a[1] - 3 * bW, CLOAK_N.a[2] - 2 * bW], sag: CLOAK_N.sag + 0.9 * bW };
-  const fw: Partial<Wing> = { wy: CLOAK_F.wy - 2 * bF, a: [CLOAK_F.a[0] - 3 * bF, CLOAK_F.a[1] - 3 * bF, CLOAK_F.a[2] - 2 * bF], sag: CLOAK_F.sag + 0.8 * bF };
+  const nw: Partial<Wing> = { wy: CLOAK_N.wy - 1.0 * bW, a: [CLOAK_N.a[0] - 1.2 * bW, CLOAK_N.a[1] - 1.6 * bW, CLOAK_N.a[2] - 1.2 * bW], sag: CLOAK_N.sag + 0.6 * bW };
+  const fw: Partial<Wing> = { wy: CLOAK_F.wy - 1.2 * bF, a: [CLOAK_F.a[0] - 1.6 * bF, CLOAK_F.a[1] - 1.6 * bF, CLOAK_F.a[2] - 1.2 * bF], sag: CLOAK_F.sag + 0.5 * bF };
   return pose({
-    arch: R_(2 * b0 * 1.0) * 0.75,
-    shY: R_(1.4 * roll),
-    shX: R_(1.2 * rollX),
-    hipY: -R_(0.6 * b0),
-    hd: [R_(0.9 * (sin(TAU * (t + 0.1)) - sin(TAU * 0.1))), -R_(1.5 * bH) + R_(1.2 * roll)],
-    ha: NEUTRAL.ha + 0.045 * bH - 0.03 * roll,
+    belly: R_(1.6 * b0),
+    humpY: R_(1.2 * roll),
+    humpX: R_(1.0 * rollX),
+    hipY: 0,
+    hd: [R_(0.55 * (sin(TAU * (t + 0.1)) - sin(TAU * 0.1))), -R_(0.9 * bH) + R_(0.5 * roll)],
+    ha: NEUTRAL.ha + 0.03 * bH - 0.02 * roll,
+    flick: f % 3,
     eye: blink,
     tph: t,
-    tamp: 7,
-    tcurl: 1 + 0.07 * (sin(TAU * t - 0.9) - sin(-0.9)),
+    tamp: 4.5,
+    tcurl: 1 + 0.04 * (sin(TAU * t - 0.9) - sin(-0.9)),
     nw,
     fw,
-    glow: 0.5 + 0.12 * (sin(TAU * 2 * t + 0.4) - sin(0.4)) + 0.08 * b0,
+    glow: 0.5 + 0.15 * (sin(TAU * f / 3 + 0.5) - sin(0.5)) + 0.04 * b0,
     ash: t,
     smoke: 1,
   });
@@ -105,8 +106,8 @@ const IDLE_HOLDS = [160, 140, 130, 120, 120, 130, 150, 170, 160, 140, 120, 110, 
 export const GUARD_N = 10;
 
 const GUARD_BASE: PoseDelta = {
-  by: 3,
-  hipY: 3,
+  by: 2,
+  hipY: 0,
   shY: 7,
   shX: -2,
   arch: -2,
@@ -117,7 +118,7 @@ const GUARD_BASE: PoseDelta = {
   wfront: 1,
   glow: 0.38,
   tamp: 3,
-  tlift: -2,
+  tlift: 6,
   smoke: 1,
 };
 
@@ -130,22 +131,23 @@ export function guardPose(f: number): Pose {
   const blink = g === 7 ? 0.4 : 1;
   const nw: Wing = {
     ...WRAP_N,
-    wy: WRAP_N.wy - 1.4 * pulse(0),
-    a: [WRAP_N.a[0] - 4 * pulse(1), WRAP_N.a[1] - 4 * pulse(2), WRAP_N.a[2] - 4 * pulse(3)],
-    sag: WRAP_N.sag + 1.1 * pulse(2),
+    wy: WRAP_N.wy - 1.0 * pulse(0),
+    a: [WRAP_N.a[0] - 3 * pulse(1), WRAP_N.a[1] - 3 * pulse(2), WRAP_N.a[2] - 3 * pulse(3)],
+    sag: WRAP_N.sag + 0.8 * pulse(2),
   };
   const fw: Wing = { ...WRAP_F, wy: WRAP_F.wy - 1.2 * pulse(1), a: [WRAP_F.a[0] - 3 * pulse(2), WRAP_F.a[1] - 3 * pulse(3), WRAP_F.a[2] - 3 * pulse(4)] };
   return pose({
     ...GUARD_BASE,
-    by: 3 + R_(0.7 * sh),
-    shY: 7 + R_(0.8 * pulse(0)),
-    hd: [-8 + R_(1.5 * sin(TAU * (t + 0.15))), -9 + R_(1.2 * pulse(3))],
+    by: 2 + R_(0.5 * sh),
+    shY: 7,
+    hd: [-8 + R_(0.8 * sin(TAU * (t + 0.15))), -9 + R_(0.8 * pulse(3))],
     ha: 0.1 + 0.04 * sin(TAU * (t + 0.15)),
     eye: blink,
     nw,
     fw,
     tph: t * 2,
-    glow: 0.36 + 0.1 * sin(TAU * t),
+    flick: (g / 3) | 0,
+    glow: 0.34 + 0.05 * sin(TAU * t),
     ash: t,
   });
 }
@@ -158,25 +160,25 @@ const GUARD_HOLDS = [160, 150, 150, 160, 150, 160, 150, 150, 140, 150];
 
 const ROAR_KEYS: PoseDelta[] = [
   // 0 leaving idle: weight drops onto the shoulders
-  { shY: 2, arch: 1, hd: [0, 2], ha: 0.3, glow: 0.55 },
+  { humpY: 1, belly: 1, hd: [0, 1], ha: 0.27, glow: 0.55 },
   // 1 charge: crouch, the head sinks toward the floor line
   { by: 2, hipY: 1, shY: 4, arch: -1, hd: [3, 9], ha: 0.5, jaw: 0, glow: 0.7, nw: { wy: -13, sag: 5 }, tlift: 2 },
   // 2 deepest crouch (the long coil)
   { by: 3, hipY: 2, shY: 6, shX: 1, arch: -2, hd: [5, 14], ha: 0.62, jaw: 0.1, eye: 0.6, glow: 0.85, nw: { wy: -14, a: [148, 119, 91] }, tlift: 5 },
   // 3 jaws start to open: the head lifts a hair, the chest swells
-  { by: 3, hipY: 2, shY: 3, shX: 2, arch: 2, hd: [8, 12], ha: 0.42, jaw: 0.55, flare: 1, glow: 1, spill: 0.4, spillT: 0.1, nw: LIFT_N, fw: LIFT_F, tlift: 4 },
+  { by: 3, hipY: 2, shY: 3, shX: 2, arch: 2, hd: [8, 9], ha: 0.36, jaw: 0.55, flare: 1, glow: 1, spill: 0.4, spillT: 0.1, nw: LIFT_N, fw: LIFT_F, tlift: 4 },
   // 4 release: jaws wide, ember spill pours
-  { by: 3, hipY: 2, shY: 2, shX: 2, arch: 3, hd: [9, 11], ha: 0.34, jaw: 1, flare: 1, glow: 1, spill: 1, spillT: 0.3, nw: LIFT_N, fw: LIFT_F, tlift: 6 },
+  { by: 3, hipY: 2, shY: 2, shX: 2, arch: 3, hd: [8, 8], ha: 0.22, jaw: 0.9, flare: 1, glow: 1, spill: 1, spillT: 0.3, nw: LIFT_N, fw: LIFT_F, tlift: 6 },
   // 5-7 trembling growl
-  { by: 3, hipY: 3, shY: 1, shX: 3, arch: 3, hd: [10, 12], ha: 0.3, jaw: 0.95, flare: 1, glow: 1, spill: 1, spillT: 0.55, nw: wmix(LIFT_N, FLARE_N, 0.25), fw: wmix(LIFT_F, FLARE_F, 0.25), tlift: 7 },
-  { by: 3, hipY: 2, shY: 2, shX: 2, arch: 3, hd: [9, 13], ha: 0.36, jaw: 0.85, flare: 1, glow: 1, spill: 1, spillT: 0.8, nw: wmix(LIFT_N, FLARE_N, 0.35), fw: wmix(LIFT_F, FLARE_F, 0.3), tlift: 6 },
-  { by: 3, hipY: 3, shY: 1, shX: 3, arch: 3, hd: [10, 12], ha: 0.3, jaw: 0.9, flare: 1, glow: 1, spill: 0.85, spillT: 0.05, nw: wmix(LIFT_N, FLARE_N, 0.25), fw: wmix(LIFT_F, FLARE_F, 0.25), tlift: 7 },
+  { by: 3, hipY: 3, shY: 1, shX: 3, arch: 3, hd: [8, 9], ha: 0.22, jaw: 0.85, flare: 1, glow: 1, spill: 1, spillT: 0.55, nw: wmix(LIFT_N, FLARE_N, 0.25), fw: wmix(LIFT_F, FLARE_F, 0.25), tlift: 7 },
+  { by: 3, hipY: 2, shY: 2, shX: 2, arch: 3, hd: [8, 10], ha: 0.26, jaw: 0.8, flare: 1, glow: 1, spill: 1, spillT: 0.8, nw: wmix(LIFT_N, FLARE_N, 0.35), fw: wmix(LIFT_F, FLARE_F, 0.3), tlift: 6 },
+  { by: 3, hipY: 3, shY: 1, shX: 3, arch: 3, hd: [8, 9], ha: 0.22, jaw: 0.82, flare: 1, glow: 1, spill: 0.85, spillT: 0.05, nw: wmix(LIFT_N, FLARE_N, 0.25), fw: wmix(LIFT_F, FLARE_F, 0.25), tlift: 7 },
   // 8 recover: jaws close, the spill thins
   { by: 2, hipY: 1, shY: 3, arch: 1, hd: [5, 8], ha: 0.36, jaw: 0.3, flare: 0, glow: 0.8, spill: 0.35, spillT: 0.3, nw: LIFT_N, fw: LIFT_F, tlift: 3 },
   // 9 the cloak folds back
   { by: 1, shY: 2, hd: [2, 4], ha: 0.28, jaw: 0, glow: 0.62, nw: wmix(LIFT_N, CLOAK_N, 0.6), fw: wmix(LIFT_F, CLOAK_F, 0.6), tlift: 1 },
-  // 10 settle (one step short of idle f0)
-  { shY: 1, hd: [1, 1], ha: 0.24, glow: 0.54, nw: wmix(LIFT_N, CLOAK_N, 0.9), fw: wmix(LIFT_F, CLOAK_F, 0.9) },
+  // 10 settle (= idle f0)
+  {},
 ];
 const ROAR_HOLDS = [80, 110, 160, 90, 110, 70, 70, 80, 100, 110, 130];
 const ROAR_MARKS = { charge: 1, release: 4, impact: 4, recover: 8 };
@@ -188,7 +190,7 @@ const ROAR_MARKS = { charge: 1, release: 4, impact: 4, recover: 8 };
 
 const ATTACK_KEYS: PoseDelta[] = [
   // 0 weight shifts back
-  { hipY: 1, shY: 2, arch: 1, hd: [-1, 2], ha: 0.3, glow: 0.6, tlift: 2 },
+  { belly: 1, humpY: 1, hd: [0, 1], ha: 0.25, glow: 0.56 },
   // 1 charge: the haunch rises, the head sinks, the cloak flares
   { hipY: -2, shY: 5, arch: -1, hd: [-1, 7], ha: 0.46, glow: 0.8, nw: wmix(CLOAK_N, FLARE_N, 0.35), fw: wmix(CLOAK_F, FLARE_F, 0.35), tlift: 5, tcurl: 1.1 },
   // 2 coil: everything gathers back
@@ -196,21 +198,21 @@ const ATTACK_KEYS: PoseDelta[] = [
   // 3 the longest hold: fully coiled, the wings thrown up
   { hipY: -5, shY: 8, shX: -4, arch: -4, hd: [-5, 11], ha: 0.6, eye: 0.7, glow: 1, nw: FLARE_N, fw: FLARE_F, tlift: 8, tcurl: 1.18, lN: [-3, 0], lF: [-3, 0] },
   // 4 spring: the body unrolls forward, the paws leave the ground
-  { bx: 5, by: -4, hipY: -3, shY: -3, shX: 2, arch: 2, hd: [8, -2], ha: 0.12, jaw: 0.4, glow: 1, nw: wmix(FLARE_N, SLAM_N, 0.15), fw: wmix(FLARE_F, SLAM_F, 0.15), fN: [10, -16], fF: [12, -17], tlift: 6, tcurl: 1.1, lN: [4, -1], lF: [4, -1], claw: 1 },
+  { bx: 4, by: -4, hipY: -3, shY: -3, shX: 2, arch: 2, hd: [6, -2], ha: 0.12, jaw: 0.4, glow: 1, nw: wmix(FLARE_N, SLAM_N, 0.15), fw: wmix(FLARE_F, SLAM_F, 0.15), fN: [8, -16], fF: [10, -17], tlift: 6, tcurl: 1.1, lN: [4, -1], lF: [4, -1], claw: 1 },
   // 5 release: airborne at full stretch, jaws open, claws spread
-  { bx: 10, by: -6, hipY: -2, shY: -5, shX: 4, arch: 2, hd: [12, -4], ha: 0.04, jaw: 0.9, flare: 1, glow: 1, nw: wmix(FLARE_N, SLAM_N, 0.4), fw: wmix(FLARE_F, SLAM_F, 0.4), fN: [18, -18], fF: [20, -19], tlift: 2, tcurl: 1.0, lN: [9, -9], lF: [9, -8], claw: 1 },
+  { bx: 6, by: -6, hipY: -2, shY: -5, shX: 4, arch: 2, hd: [8, -4], ha: 0.04, jaw: 0.9, flare: 1, glow: 1, nw: wmix(FLARE_N, SLAM_N, 0.4), fw: wmix(FLARE_F, SLAM_F, 0.4), fN: [13, -18], fF: [15, -19], tlift: 2, tcurl: 1.0, lN: [9, -9], lF: [9, -8], claw: 1 },
   // 6 contact: the claws land on the target, the wings slam down over it
-  { bx: 9, by: -2, hipY: 0, shY: -1, shX: 4, arch: 1, hd: [14, 1], ha: 0.2, jaw: 0.8, flare: 1, glow: 1, nw: SLAM_N, fw: SLAM_F, fN: [22, -6], fF: [24, -7], wfront: 1, tlift: 0, lN: [11, -5], lF: [11, -4], claw: 1 },
+  { bx: 5, by: -2, hipY: 0, shY: -1, shX: 4, arch: 1, hd: [9, 1], ha: 0.2, jaw: 0.8, flare: 1, glow: 1, nw: SLAM_N, fw: SLAM_F, fN: [15, -6], fF: [17, -7], wfront: 1, tlift: 0, lN: [11, -5], lF: [11, -4], claw: 1 },
   // 7 follow-through: the slam presses down, the body lands on its knuckles
-  { bx: 10, by: 0, hipY: 1, shY: 1, shX: 3, arch: 0, hd: [12, 4], ha: 0.3, jaw: 0.4, glow: 0.9, nw: wmix(SLAM_N, CLOAK_N, 0.2), fw: wmix(SLAM_F, CLOAK_F, 0.2), fN: [16, -1], fF: [18, -2], wfront: 1, lN: [9, -1], lF: [9, 0], claw: 0.5 },
+  { bx: 5, by: 0, hipY: 1, shY: 1, shX: 3, arch: 0, hd: [8, 4], ha: 0.3, jaw: 0.4, glow: 0.9, nw: wmix(SLAM_N, CLOAK_N, 0.2), fw: wmix(SLAM_F, CLOAK_F, 0.2), fN: [11, -1], fF: [13, -2], wfront: 1, lN: [9, -1], lF: [9, 0], claw: 0.5 },
   // 8 recover: the paws plant, the wings lift
-  { bx: 7, by: 1, hipY: 1, shY: 3, shX: 2, hd: [8, 6], ha: 0.32, jaw: 0, glow: 0.8, nw: wmix(SLAM_N, CLOAK_N, 0.5), fw: wmix(SLAM_F, CLOAK_F, 0.5), fN: [8, 0], fF: [9, 0], lN: [5, 0], lF: [5, 0] },
+  { bx: 4, by: 1, hipY: 1, shY: 3, shX: 2, hd: [8, 6], ha: 0.32, jaw: 0, glow: 0.8, nw: wmix(SLAM_N, CLOAK_N, 0.5), fw: wmix(SLAM_F, CLOAK_F, 0.5), fN: [8, 0], fF: [9, 0], lN: [5, 0], lF: [5, 0] },
   // 9
-  { bx: 4, by: 1, shY: 2, shX: 1, hd: [4, 4], ha: 0.28, glow: 0.65, nw: wmix(SLAM_N, CLOAK_N, 0.75), fw: wmix(SLAM_F, CLOAK_F, 0.75), fN: [4, 0], fF: [4, 0], lN: [3, 0], lF: [3, 0] },
+  { bx: 3, by: 1, shY: 2, shX: 1, hd: [4, 4], ha: 0.28, glow: 0.65, nw: wmix(SLAM_N, CLOAK_N, 0.75), fw: wmix(SLAM_F, CLOAK_F, 0.75), fN: [4, 0], fF: [4, 0], lN: [3, 0], lF: [3, 0] },
   // 10
   { bx: 2, shY: 1, hd: [2, 2], ha: 0.25, glow: 0.56, nw: wmix(SLAM_N, CLOAK_N, 0.92), fw: wmix(SLAM_F, CLOAK_F, 0.92), fN: [1, 0], fF: [1, 0], lN: [1, 0], lF: [1, 0] },
-  // 11
-  { bx: 1, hd: [1, 1], glow: 0.52 },
+  // 11 (= idle f0)
+  {},
 ];
 const ATTACK_HOLDS = [70, 90, 100, 170, 60, 60, 90, 100, 110, 120, 130, 140];
 const ATTACK_MARKS = { charge: 1, release: 5, impact: 5, contact: 6, recover: 8 };
@@ -222,7 +224,7 @@ const ATTACK_MARKS = { charge: 1, release: 5, impact: 5, contact: 6, recover: 8 
 
 const HIT_KEYS: PoseDelta[] = [
   // 0 contact: the head snaps back, the jaw jolts, the eyes shut, the hump takes the blow
-  { shX: -3, shY: 2, arch: 1, hd: [-7, 3], ha: -0.2, jaw: 0.35, eye: 0, glow: 0.62 },
+  { humpX: -2, humpY: 1, hd: [-6, 2], ha: -0.12, jaw: 0.35, eye: 0, glow: 0.58 },
   // 1 the body follows
   { shX: -4, shY: 3, arch: 2, hipX: -1, hd: [-9, 4], ha: -0.12, jaw: 0.2, eye: 0, glow: 0.6, nw: { wy: -10, sag: 6 }, fw: { wy: -14 }, tamp: 9 },
   // 2
@@ -241,7 +243,7 @@ const HIT_MARKS = { impact: 0, contact: 0, recover: 3 };
 
 // hitHeavy (8 f): a harder blow: the hump driven back, a step back, the knees take the weight
 const HEAVY_KEYS: PoseDelta[] = [
-  { shX: -5, shY: 3, arch: 2, hd: [-10, 4], ha: -0.3, jaw: 0.5, eye: 0, glow: 0.66 },
+  { humpX: -3, humpY: 2, hd: [-8, 3], ha: -0.2, jaw: 0.5, eye: 0, glow: 0.6 },
   { shX: -6, shY: 4, arch: 2, hipX: -2, hipY: 1, hd: [-12, 5], ha: -0.22, jaw: 0.3, eye: 0, glow: 0.64, nw: { wy: -9, sag: 7 }, fw: { wy: -13 }, tamp: 11, tlift: 4, lN: [-3, -3], lF: [-3, -3] },
   { shX: -5, shY: 5, hipX: -3, hipY: 3, by: 2, hd: [-10, 6], ha: -0.05, eye: 0.2, glow: 0.58, tlift: 3, lN: [-4, -1], lF: [-4, -1] },
   { shX: -4, shY: 5, hipX: -3, hipY: 3, by: 2, hd: [-8, 7], ha: 0.1, eye: 0.5, glow: 0.55, lN: [-4, 0], lF: [-4, 0] },
@@ -255,7 +257,7 @@ const HEAVY_MARKS = { impact: 0, contact: 0, recover: 4 };
 
 // hitMagic (9 f): the cracks flash white-hot, the body goes rigid, a 1-px shudder, then slack
 const MAGIC_KEYS: PoseDelta[] = [
-  { shX: -2, shY: 1, arch: 2, hd: [-4, 1], ha: 0.02, jaw: 0.5, eye: 1, flare: 1, glow: 1, heat: 1 },
+  { humpX: -1, humpY: 1, hd: [-3, 1], ha: 0.06, jaw: 0.5, eye: 1, flare: 1, glow: 1, heat: 1 },
   { shX: -2, shY: 1, arch: 3, hd: [-5, 1], ha: -0.04, jaw: 0.6, flare: 1, glow: 1, heat: 1, nw: { wy: -15, sag: 6 }, fw: { wy: -19 }, tamp: 3 },
   { shX: -1, shY: 1, arch: 3, hd: [-4, 0], ha: -0.02, jaw: 0.55, flare: 1, glow: 1, heat: 0.9 },
   { shX: -2, shY: 2, arch: 2, hd: [-5, 1], ha: 0.02, jaw: 0.5, flare: 1, glow: 1, heat: 0.7, nw: { wy: -14 } },
@@ -328,33 +330,33 @@ const SUMMON_KEYS: PoseDelta[] = [
   { arch: 1, hd: [3, -2], ha: 0.14, nw: LIFT_N, fw: LIFT_F, glow: 0.76, tlift: 1 },
   // 10: shake out (a hump roll)
   { shY: 2, shX: -1, arch: 0, hd: [1, 2], ha: 0.26, nw: wmix(LIFT_N, CLOAK_N, 0.7), fw: wmix(LIFT_F, CLOAK_F, 0.7), glow: 0.62 },
-  // 11
-  { shY: 1, hd: [0, 1], ha: 0.23, nw: wmix(LIFT_N, CLOAK_N, 0.95), fw: wmix(LIFT_F, CLOAK_F, 0.95), glow: 0.54 },
+  // 11 (= idle f0)
+  {},
 ];
 const SUMMON_HOLDS = [100, 80, 70, 70, 100, 90, 70, 150, 100, 100, 110, 130];
 const SUMMON_MARKS = { land: 3 };
 
 const DEATH_KEYS: PoseDelta[] = [
   // 0: struck by magic (= hitMagic f0 with the first crack)
-  { shX: -2, shY: 1, arch: 2, hd: [-4, 1], ha: 0.02, jaw: 0.5, flare: 1, glow: 1, heat: 1 },
+  { humpX: -1, humpY: 1, hd: [-3, 1], ha: 0.06, jaw: 0.5, flare: 1, glow: 1, heat: 1 },
   // 1: the knees buckle, the head drops
   { shX: -3, shY: 4, hipX: -2, hipY: 3, by: 2, arch: 0, hd: [-5, 6], ha: 0.26, jaw: 0.4, eye: 0.4, glow: 0.8, heat: 0.4, lN: [-2, 0], lF: [-2, 0] },
   // 2
   { shX: -3, shY: 7, hipX: -3, hipY: 5, by: 4, arch: -2, hd: [-4, 11], ha: 0.42, jaw: 0.2, eye: 0.2, glow: 0.62, nw: { wy: -8, a: [156, 128, 100] }, fw: { wy: -12 }, tlift: -3, drain: 0.2 },
   // 3: the cloak slumps
-  { shX: -2, shY: 9, hipX: -3, hipY: 7, by: 6, arch: -3, hd: [-2, 15], ha: 0.5, eye: 0, glow: 0.42, nw: { wy: -3, wx: 3, a: [162, 138, 112], sag: 3 }, fw: { wy: -7, a: [168, 146, 120] }, tlift: -6, tcurl: 0.8, drain: 0.45, crumble: 0.05 },
+  { shX: -2, shY: 8, hipX: -3, hipY: 6, by: 5, arch: -3, hd: [-2, 15], ha: 0.5, eye: 0, glow: 0.42, nw: { wy: -3, wx: 3, a: [162, 138, 112], sag: 3 }, fw: { wy: -7, a: [168, 146, 120] }, tlift: -6, tcurl: 0.8, drain: 0.45, crumble: 0.05 },
   // 4: dissolve starts: the embers die, ash lifts
-  { shX: -2, shY: 10, hipX: -3, hipY: 8, by: 7, arch: -4, hd: [-1, 17], ha: 0.56, eye: 0, glow: 0.3, nw: { wy: 1, wx: 3, a: [166, 142, 116], sag: 3 }, fw: { wy: -4 }, tlift: -8, tcurl: 0.7, drain: 0.65, crumble: 0.2 },
+  { shX: -2, shY: 8, hipX: -3, hipY: 6, by: 5, arch: -4, hd: [-1, 17], ha: 0.56, eye: 0, glow: 0.3, nw: { wy: 1, wx: 3, a: [166, 142, 116], sag: 3 }, fw: { wy: -4 }, tlift: -8, tcurl: 0.7, drain: 0.65, crumble: 0.2 },
   // 5
-  { shX: -2, shY: 11, hipX: -3, hipY: 9, by: 8, arch: -4, hd: [0, 18], ha: 0.6, eye: 0, glow: 0.2, nw: { wy: 3, wx: 3 }, fw: { wy: -2 }, tlift: -9, tcurl: 0.65, drain: 0.8, crumble: 0.36 },
+  { shX: -2, shY: 8, hipX: -3, hipY: 6, by: 5, arch: -4, hd: [0, 18], ha: 0.6, eye: 0, glow: 0.2, nw: { wy: 3, wx: 3 }, fw: { wy: -2 }, tlift: -9, tcurl: 0.65, drain: 0.8, crumble: 0.36 },
   // 6
-  { shX: -2, shY: 11, hipX: -3, hipY: 10, by: 9, arch: -5, hd: [0, 19], ha: 0.62, eye: 0, glow: 0.12, nw: { wy: 5, wx: 3 }, fw: { wy: 0 }, tlift: -10, tcurl: 0.6, drain: 0.9, crumble: 0.5 },
+  { shX: -2, shY: 8, hipX: -3, hipY: 6, by: 5, arch: -5, hd: [0, 19], ha: 0.62, eye: 0, glow: 0.12, nw: { wy: 5, wx: 3 }, fw: { wy: 0 }, tlift: -10, tcurl: 0.6, drain: 0.9, crumble: 0.5 },
   // 7
-  { shX: -2, shY: 11, hipX: -3, hipY: 10, by: 9, arch: -5, hd: [0, 19], ha: 0.62, eye: 0, glow: 0.06, nw: { wy: 6, wx: 3 }, fw: { wy: 1 }, tlift: -10, tcurl: 0.6, drain: 1, crumble: 0.62 },
+  { shX: -2, shY: 8, hipX: -3, hipY: 6, by: 5, arch: -5, hd: [0, 19], ha: 0.62, eye: 0, glow: 0.06, nw: { wy: 6, wx: 3 }, fw: { wy: 1 }, tlift: -10, tcurl: 0.6, drain: 1, crumble: 0.62 },
   // 8
-  { shX: -2, shY: 11, hipX: -3, hipY: 10, by: 9, arch: -5, hd: [0, 19], ha: 0.62, eye: 0, glow: 0, nw: { wy: 6, wx: 3 }, fw: { wy: 1 }, tlift: -10, tcurl: 0.6, drain: 1, crumble: 0.74 },
+  { shX: -2, shY: 8, hipX: -3, hipY: 6, by: 5, arch: -5, hd: [0, 19], ha: 0.62, eye: 0, glow: 0, nw: { wy: 6, wx: 3 }, fw: { wy: 1 }, tlift: -10, tcurl: 0.6, drain: 1, crumble: 0.74 },
   // 9: low and slumped (the kit takes the body from here)
-  { shX: -2, shY: 11, hipX: -3, hipY: 10, by: 9, arch: -5, hd: [0, 19], ha: 0.62, eye: 0, glow: 0, nw: { wy: 6, wx: 3 }, fw: { wy: 1 }, tlift: -10, tcurl: 0.6, drain: 1, crumble: 0.84 },
+  { shX: -2, shY: 8, hipX: -3, hipY: 6, by: 5, arch: -5, hd: [0, 19], ha: 0.62, eye: 0, glow: 0, nw: { wy: 6, wx: 3 }, fw: { wy: 1 }, tlift: -10, tcurl: 0.6, drain: 1, crumble: 0.84 },
 ];
 const DEATH_HOLDS = [60, 60, 80, 90, 90, 80, 70, 70, 70, 70];
 const DEATH_MARKS = { impact: 0, contact: 0, dissolve: 4 };
@@ -371,24 +373,24 @@ const REVIVE_TAIL: PoseDelta[] = [
 ];
 void REVIVE_KEYS;
 const REVIVE_POSES: PoseDelta[] = [
-  { shX: -2, shY: 11, hipX: -3, hipY: 10, by: 9, arch: -5, hd: [0, 19], ha: 0.62, eye: 0, glow: 0, nw: { wy: 6, wx: 3 }, fw: { wy: 1 }, tlift: -10, tcurl: 0.6, drain: 1, crumble: 0.8 },
-  { shX: -2, shY: 11, hipX: -3, hipY: 10, by: 9, arch: -5, hd: [0, 19], ha: 0.62, eye: 0, glow: 0.1, nw: { wy: 6, wx: 3 }, fw: { wy: 1 }, tlift: -10, tcurl: 0.6, drain: 0.9, crumble: 0.55 },
-  { shX: -2, shY: 11, hipX: -3, hipY: 10, by: 9, arch: -5, hd: [0, 19], ha: 0.62, eye: 0, glow: 0.3, nw: { wy: 5, wx: 3 }, fw: { wy: 0 }, tlift: -10, tcurl: 0.6, drain: 0.7, crumble: 0.3 },
-  { shX: -2, shY: 10, hipX: -3, hipY: 8, by: 7, arch: -4, hd: [-1, 17], ha: 0.56, eye: 0, glow: 0.55, nw: { wy: 1, wx: 3 }, fw: { wy: -4 }, tlift: -8, tcurl: 0.7, drain: 0.4, crumble: 0.12 },
+  { shX: -2, shY: 8, hipX: -3, hipY: 6, by: 5, arch: -5, hd: [0, 19], ha: 0.62, eye: 0, glow: 0, nw: { wy: 6, wx: 3 }, fw: { wy: 1 }, tlift: -10, tcurl: 0.6, drain: 1, crumble: 0.8 },
+  { shX: -2, shY: 8, hipX: -3, hipY: 6, by: 5, arch: -5, hd: [0, 19], ha: 0.62, eye: 0, glow: 0.1, nw: { wy: 6, wx: 3 }, fw: { wy: 1 }, tlift: -10, tcurl: 0.6, drain: 0.9, crumble: 0.55 },
+  { shX: -2, shY: 8, hipX: -3, hipY: 6, by: 5, arch: -5, hd: [0, 19], ha: 0.62, eye: 0, glow: 0.3, nw: { wy: 5, wx: 3 }, fw: { wy: 0 }, tlift: -10, tcurl: 0.6, drain: 0.7, crumble: 0.3 },
+  { shX: -2, shY: 8, hipX: -3, hipY: 6, by: 5, arch: -4, hd: [-1, 17], ha: 0.56, eye: 0, glow: 0.55, nw: { wy: 1, wx: 3 }, fw: { wy: -4 }, tlift: -8, tcurl: 0.7, drain: 0.4, crumble: 0.12 },
   ...REVIVE_TAIL,
 ];
 const REVIVE_HOLDS = [90, 90, 90, 90, 100, 100, 90, 90, 110, 120, 130];
 const REVIVE_MARKS = { land: 6 };
 
 const VICTORY_KEYS: PoseDelta[] = [
-  { shY: 2, arch: 0, hd: [1, 2], ha: 0.3, glow: 0.7, nw: wmix(CLOAK_N, LIFT_N, 0.4) },
-  { shY: -2, hipY: 3, by: 1, arch: 2, hd: [2, -3], ha: 0.05, jaw: 0.4, glow: 0.9, fN: [4, -8], fF: [5, -9], nw: wmix(LIFT_N, FLARE_N, 0.5), fw: wmix(LIFT_F, FLARE_F, 0.5), claw: 1 },
-  { shY: -6, hipY: 5, by: 2, arch: 4, hd: [4, -9], ha: -0.25, jaw: 0.85, flare: 1, glow: 1, fN: [8, -14], fF: [9, -15], nw: FLARE_N, fw: FLARE_F, claw: 1, spill: 0.5, spillT: 0.2, tlift: 6 },
-  { shY: -7, hipY: 6, by: 2, arch: 5, hd: [5, -11], ha: -0.35, jaw: 1, flare: 1, glow: 1, fN: [9, -16], fF: [10, -17], nw: FLARE_N, fw: FLARE_F, claw: 1, spill: 0.8, spillT: 0.5, tlift: 7 },
-  { shY: -7, hipY: 6, by: 2, arch: 5, hd: [5, -11], ha: -0.35, jaw: 0.9, flare: 1, glow: 1, fN: [9, -16], fF: [10, -17], nw: FLARE_N, fw: FLARE_F, claw: 1, spill: 0.8, spillT: 0.8, tlift: 7 },
-  { shY: -6, hipY: 5, by: 2, arch: 4, hd: [5, -10], ha: -0.3, jaw: 0.7, flare: 1, glow: 1, fN: [9, -15], fF: [10, -16], nw: wmix(FLARE_N, LIFT_N, 0.15), fw: wmix(FLARE_F, LIFT_F, 0.15), claw: 1, spill: 0.4, spillT: 0.1, tlift: 6 },
-  { shY: -6, hipY: 5, by: 2, arch: 4, hd: [5, -10], ha: -0.3, jaw: 0.3, flare: 0, glow: 0.95, fN: [9, -15], fF: [10, -16], nw: wmix(FLARE_N, LIFT_N, 0.3), fw: wmix(FLARE_F, LIFT_F, 0.3), claw: 1, tlift: 6 },
-  { shY: -6, hipY: 5, by: 2, arch: 4, hd: [5, -10], ha: -0.3, jaw: 0.1, flare: 0, glow: 0.95, fN: [9, -15], fF: [10, -16], nw: wmix(FLARE_N, LIFT_N, 0.3), fw: wmix(FLARE_F, LIFT_F, 0.3), claw: 1, tlift: 6 },
+  { humpY: 1, belly: 1, hd: [1, 1], ha: 0.25, glow: 0.7, nw: wmix(CLOAK_N, LIFT_N, 0.4) },
+  { shY: -1, hipY: 1, arch: 1, hd: [2, -2], ha: 0.1, jaw: 0.4, glow: 0.9, fN: [2, -6], fF: [3, -7], nw: wmix(LIFT_N, FLARE_N, 0.4), fw: wmix(LIFT_F, FLARE_F, 0.4), claw: 1 },
+  { shY: -2, hipY: 2, by: 1, arch: 2, hd: [3, -4], ha: -0.1, jaw: 0.85, flare: 1, glow: 1, fN: [4, -9], fF: [5, -10], nw: wmix(LIFT_N, FLARE_N, 0.8), fw: wmix(LIFT_F, FLARE_F, 0.8), claw: 1, spill: 0.5, spillT: 0.2, tlift: 4 },
+  { shY: -3, hipY: 3, by: 1, arch: 2, hd: [4, -5], ha: -0.2, jaw: 1, flare: 1, glow: 1, fN: [5, -10], fF: [6, -11], nw: FLARE_N, fw: FLARE_F, claw: 1, spill: 0.8, spillT: 0.5, tlift: 5 },
+  { shY: -3, hipY: 3, by: 1, arch: 2, hd: [4, -5], ha: -0.2, jaw: 0.9, flare: 1, glow: 1, fN: [5, -10], fF: [6, -11], nw: FLARE_N, fw: FLARE_F, claw: 1, spill: 0.8, spillT: 0.8, tlift: 5 },
+  { shY: -3, hipY: 3, by: 1, arch: 2, hd: [4, -5], ha: -0.18, jaw: 0.7, flare: 1, glow: 1, fN: [5, -10], fF: [6, -11], nw: wmix(FLARE_N, LIFT_N, 0.15), fw: wmix(FLARE_F, LIFT_F, 0.15), claw: 1, spill: 0.4, spillT: 0.1, tlift: 4 },
+  { shY: -3, hipY: 3, by: 1, arch: 2, hd: [4, -5], ha: -0.18, jaw: 0.3, flare: 0, glow: 0.95, fN: [5, -10], fF: [6, -11], nw: wmix(FLARE_N, LIFT_N, 0.3), fw: wmix(FLARE_F, LIFT_F, 0.3), claw: 1, tlift: 4 },
+  { shY: -3, hipY: 3, by: 1, arch: 2, hd: [4, -5], ha: -0.18, jaw: 0.1, flare: 0, glow: 0.95, fN: [5, -10], fF: [6, -11], nw: wmix(FLARE_N, LIFT_N, 0.3), fw: wmix(FLARE_F, LIFT_F, 0.3), claw: 1, tlift: 4 },
 ];
 const VICTORY_HOLDS = [110, 100, 110, 130, 130, 140, 200, 200];
 
@@ -408,8 +410,8 @@ function keyed(keys: PoseDelta[], extra?: (f: number, n: number) => PoseDelta) {
   return (f: number): Pose => {
     const n = keys.length;
     const base = idlePose(0);
-    const ph = f / n;
-    return over(base, { tph: ph * 0.8, ash: (ph * 0.8 + 0.1) % 1, ...keys[f], ...(extra ? extra(f, n) : {}) });
+    const ph = f / (n - 1);
+    return over(base, { tph: 0.25 * sin(Math.PI * ph), ash: f === n - 1 ? 0 : (ph * 0.8 + 0.1) % 1, flick: f % 3, ...keys[f], ...(extra ? extra(f, n) : {}) });
   };
 }
 

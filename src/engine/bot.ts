@@ -579,7 +579,7 @@ const tryDoubleOffering: Step = (s, legal, me) => {
   return strong && cheap ? act : null;
 };
 
-/** battle_cry: use it when +1000 ATK turns an attack from bad/neutral into a win, or makes damage lethal. */
+/** battle_cry: use it when +1000 ATK flips a losing / even attack into a win, or turns the swing into lethal. */
 const tryBattleCry: Step = (s, legal, me, rng) => {
   const acts = spellActs(s, legal, 'atkBoostTurn');
   if (!acts.length || s.turn <= 1) return null;
@@ -587,15 +587,18 @@ const tryBattleCry: Step = (s, legal, me, rng) => {
     if (a.target?.kind !== 'monster') return -Infinity;
     const slot = s.players[me].monsters[a.target.ref.index];
     if (!slot || !slot.faceUp || slot.position !== 'attack' || slot.attacksThisTurn > 0) return -Infinity;
+    const zone = a.target.ref.index;
+    const before = bestAttackScoreFor(s, me, zone);
     const hyp = structuredClone(s);
-    const hs = hyp.players[me].monsters[a.target.ref.index]!;
+    const hs = hyp.players[me].monsters[zone]!;
     hs.boostAtk = 1000;
     hs.boostDef = 0;
     hs.boostTurn = hyp.turn;
-    const gain = bestAttackScoreFor(hyp, me, a.target.ref.index) - bestAttackScoreFor(s, me, a.target.ref.index);
-    return Number.isNaN(gain) ? -Infinity : gain;
+    const after = bestAttackScoreFor(hyp, me, zone);
+    const flips = (before <= 0 && after > 0) || (before < 100000 && after >= 100000);
+    return flips ? after : -Infinity;
   });
-  return pick && pick.score >= 900 ? pick.item : null;
+  return pick ? pick.item : null;
 };
 
 const trySetTrap: Step = (s, legal) => {

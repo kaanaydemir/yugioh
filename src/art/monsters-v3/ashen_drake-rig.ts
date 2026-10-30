@@ -88,6 +88,10 @@ export interface Pose {
   shY: number;
   /** extra arch of the spine between them (px up) */
   arch: number;
+  /** LOCAL shifts (the hump ellipse only / the belly's lower contour only): the cheap, small motions */
+  humpX: number;
+  humpY: number;
+  belly: number;
   /** wrist targets of the near / far forelimb and ankle targets of the near / far hind limb,
    *  as offsets from their planted rest position (px; negative y = lifted) */
   fN: V;
@@ -124,6 +128,8 @@ export interface Pose {
   wfront: number;
   /** ember spill from the mouth: fall phase (loop) */
   spillT: number;
+  /** fast flicker step (0, 1, 2…): which hot runs light up on the cracks, how the torn edges flutter */
+  flick: number;
 }
 
 const WING_NEUTRAL_N: Wing = { wx: 5, wy: -11, a: [148, 118, 90], l: [50, 47, 43], sag: 5, thumb: 4 };
@@ -137,6 +143,9 @@ export const NEUTRAL: Pose = {
   shX: 0,
   shY: 0,
   arch: 0,
+  humpX: 0,
+  humpY: 0,
+  belly: 0,
   fN: [0, 0],
   fF: [0, 0],
   lN: [0, 0],
@@ -162,6 +171,7 @@ export const NEUTRAL: Pose = {
   heat: 0,
   wfront: 0,
   spillT: 0,
+  flick: 0,
 };
 
 export type PoseDelta = Partial<Omit<Pose, 'nw' | 'fw'>> & { nw?: Partial<Wing>; fw?: Partial<Wing> };
@@ -260,7 +270,7 @@ export function tailPoints(P: Pose, root: V): V[] {
     prevRestAng = restAng;
     ang += turn * (i === 1 ? 1 : P.tcurl);
     const wave = P.tamp * DEG * Math.sin(2 * Math.PI * P.tph - i * 0.62) * (i / (TAIL_REST.length - 1) + 0.25);
-    const lift = (-P.tlift * DEG * 2.2 * i) / TAIL_REST.length;
+    const lift = (P.tlift * DEG * 2.2 * i) / TAIL_REST.length;
     const a = ang + wave * 0.5 + lift;
     const prev = pts[i - 1];
     pts.push([Math.max(5, prev[0] + Math.cos(a) * l), prev[1] + Math.sin(a) * l]);
@@ -346,6 +356,7 @@ function emberCol(glow: number, k: number, hot: boolean): number {
 /** A jagged ember line over the hide: 4-connected (no lone pixels), in runs of ~4 px with dropouts
  *  between them, dull ends and the odd hot run (deterministic by seed). */
 function emberLine(c: PixelCanvas, pts: readonly V[], P: Pose, seed: number, opt: { gap?: number; on?: (cur: number) => boolean; dim?: number; run?: number } = {}) {
+  const fk = P.flick;
   const glow = clamp(P.glow * (1 - P.drain) - (opt.dim ?? 0), 0, 1);
   if (glow <= 0.02) return;
   const px: V[] = [];
@@ -391,7 +402,7 @@ function emberLine(c: PixelCanvas, pts: readonly V[], P: Pose, seed: number, opt
     if (cur === null || cur === INK) continue;
     if (opt.on && !opt.on(cur)) continue;
     const edge = seg === 0 || seg === segs;
-    const hot = !edge && hash(seed + 7, seg) > 0.7 - 0.25 * glow;
+    const hot = !edge && hash(seed + 7 + fk * 13, seg) > 0.7 - 0.25 * glow;
     c.set(x, y, edge ? (glow > 0.3 ? PAL.fire2 : PAL.fire1) : emberCol(glow, seg, hot));
   }
 }
@@ -432,7 +443,9 @@ function torso(p: PixelCanvas, R: Rig, P: Pose, map: (pt: V) => V) {
   tubeS(g, [h0, h1, h2, h3, h4], 17, 28, M.HIDE, { flat: 2.4, biasAt: planes(0.5, 0.7, -0.45, 0.45) });
   // the haunch mass and the shoulder hump
   ellS(g, add(R.hip, [0, 1 * S]), 12, 12, 0.1, M.HIDE, { z: 1, flat: 2.4, biasEll: planesE(0.5, 0.7) });
-  ellS(g, add(R.sho, [1 * S, -2 * S]), 14, 16, -0.35, M.HIDE, { z: 1, flat: 2.4, biasEll: planesE(0.55, 0.7, -0.4, 0.5) });
+  ellS(g, add(R.sho, [1 * S + P.humpX, -2 * S + P.humpY]), 14, 16, -0.35, M.HIDE, { z: 1, flat: 2.4, biasEll: planesE(0.55, 0.7, -0.4, 0.5) });
+  // the belly's lower contour breathes (a local bulge)
+  ellS(g, add(R.mid, [-1 * S, 5 / S * S]), 16, 4.2 / S + P.belly / S, 0, M.HIDE, { z: -1, flat: 2.4, biasEll: planesE(0.5, 0.7) });
   const c = g.render();
   composite(p, c, selout, { top: 1, side: 1, bottom: 1 });
   // dorsal plates along the spine: two-tone spikes standing on the back line
@@ -718,7 +731,7 @@ function wing(p: PixelCanvas, R: Rig, P: Pose, far: boolean) {
   const { wrist, tips } = wingGeom(w, root);
   const matM = far ? M.MEMB_FAR : M.MEMB;
   const matB = far ? M.BONE_FAR : M.BONE;
-  const fl = Math.sin(2 * Math.PI * P.tph * 2 + (far ? 1.7 : 0)) * 0.6;
+  const fl = (((P.flick + (far ? 1 : 0)) % 3) - 1) * 0.6;
   // membrane outline: wrist → tip 1 → torn scallop → tip 2 → torn scallop → tip 3 → body
   const edge: V[] = [wrist, tips[0]];
   const rag = (k: number, i: number) => hash(k * 31 + i, far ? 5 : 9);
