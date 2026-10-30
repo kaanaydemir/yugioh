@@ -35,6 +35,7 @@ import { CARDS, cardDef, isMonster, isSpell, isTrap, tributesFor, type CardId } 
 import { currentAtk, currentDef, describePending, legalActions } from '../engine';
 import { freeMonsterZones, freeSpellTrapZones } from '../engine/query';
 import type { Action, GameState, PlayerId, Uid, ZoneKind, ZoneRef } from '../engine/types';
+import type { MonsterUnit } from './MonsterUnit';
 import { PAL, PLAYER_COLOR } from '../art/palette';
 import { sfx } from '../audio/sfx';
 import { GAME_W, LOOK_V3, panelRect, type BoardSpot, type XY } from '../view/layout';
@@ -84,6 +85,12 @@ export class HumanInput {
   private zoneCancel: (() => void) | null = null;
   private instruction: InstructionHandle | null = null;
   private trapOpen = false;
+  /** Inspect numbers: the plate's own while it shows battle-only values (v3), else the current stats. */
+  private plateStats(s: GameState, uid: Uid, u: MonsterUnit | null): InspectStats {
+    if (u && u.battleTint) return u.shownStats;
+    return { atk: currentAtk(s, uid), def: currentDef(s, uid) };
+  }
+
   private hoverKey = '';
   private highlighted: { setHighlight(c: number | null): unknown }[] = [];
   /** Zones that react to a click in idle (pointer cursor). */
@@ -495,7 +502,7 @@ export class HumanInput {
     const u = this.views.field.unitAt(p, ref.index);
     const at = u ? u.worldPoint('top') : (this.views.field.tileAt(p, 'monster', ref.index)?.home ?? { x: 320, y: 180 });
     const anchor = this.screenPoint(at);
-    const stats: InspectStats = { atk: currentAtk(s, slot.uid), def: currentDef(s, slot.uid) };
+    const stats: InspectStats = this.plateStats(s, slot.uid, u);
 
     if (s.phase === 'battle') {
       const attacks = legal.filter((a) => a.type === 'attack' && a.attackerZone === ref.index) as Extract<Action, { type: 'attack' }>[];
@@ -1139,7 +1146,7 @@ export class HumanInput {
       if (!slot) return back();
       const id = s.cards[slot.uid].cardId;
       if (!slot.faceUp) return v.inspect.show(h.player === v.hand.owner ? id : null);
-      return v.inspect.show(id, { atk: currentAtk(s, slot.uid), def: currentDef(s, slot.uid) });
+      return v.inspect.show(id, this.plateStats(s, slot.uid, v.field.unit(slot.uid)));
     }
     if (h.spot === 'spellTrap') {
       const st = ps.spellTraps[h.index];

@@ -731,7 +731,7 @@ async function gameOverV3(ctx: Ctx<'gameOver'>): Promise<void> {
   const keepDeck = deckPlate && deckPlate.spec.kind === 'deckOut' ? deckPlate : null;
   if (!keepDeck) TurnPlate.dismissAll();
   const vsBot = v.info.mode === 'vsBot';
-  const viewerWon = vsBot ? v.info.isHuman(winner) : null;
+  const viewerWon = vsBot && !v.info.auto ? v.info.isHuman(winner) : null; // auto mode (QA): nobody is "the viewer"
   try {
     v.board.setActivePlayer(winner, true);
     // ---- the loser: the side goes dark, the monsters fall one by one, the duelist kneels

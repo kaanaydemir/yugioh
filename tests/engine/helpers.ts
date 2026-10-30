@@ -299,3 +299,26 @@ export function checkEvents(s: GameState, events: GameEvent[]): void {
     if (e.type === 'damage' || e.type === 'lpGain') assert(e.amount > 0 && e.lpAfter >= 0, `${e.type} amounts`);
   }
 }
+
+/** The engine invariants, relaxed for the two states the batch adds: a Spell waiting in the spell_seal window and a Main Phase discard cost. */
+export function checkInvariantsRelaxed(s: GameState): void {
+  const q = (s.internal.queue ?? []) as { k: string; a?: { uid: Uid } }[];
+  const waiting = q.find((t) => t.k === 'spellResolve');
+  const cost = s.pending?.kind === 'discard' && s.pending.cost === true;
+  if (!waiting && !cost) return checkInvariants(s);
+  const c = structuredClone(s);
+  if (cost) c.phase = 'end';
+  if (waiting?.a) {
+    const uid = waiting.a.uid;
+    let inZone = false;
+    for (const p of c.players)
+      p.spellTraps.forEach((st, i) => {
+        if (st && st.uid === uid) {
+          inZone = true;
+          if (st.equippedTo === null) p.spellTraps[i] = { ...st, faceUp: false };
+        }
+      });
+    if (!inZone) c.players[c.cards[uid].owner].graveyard.push(uid);
+  }
+  checkInvariants(c);
+}

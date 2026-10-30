@@ -1,13 +1,14 @@
 // Card pools and deck factories. The classic game always plays DEFAULT_DECK (20 cards, both sides);
-// the 'expanded' pool adds every newer card and builds a seeded 20-card deck per side.
+// the 'expanded' pool adds every newer card and builds a seeded 20-card deck per side
+// (12 monsters + 8 spells/traps drawn from ALL non-monster cards, so every card gets dealt over seeds).
 //
 // Selecting the pool (v3 look only; with the v1 look the classic deck is always used):
 //   URL  ?deck=expanded          globalThis.__NEON_DECK = 'expanded'
 // TODO(deck builder): the real deck-builder UI replaces the sampler (docs/KART_TASLAGI_CANAVAR.md).
 //
 // Rules for a deck: every card id at most once (the five seals are five different cards, so a
-// 20-card sample may hold any subset of them). The sampler keeps all spells + traps (so the rules
-// stay covered) and draws 12 monsters from the whole monster roster with the seeded generator.
+// 20-card sample may hold any subset of them). The sampler draws 12 monsters (<= 4 of Sv7+) and 8
+// spells/traps from the whole roster with the seeded generator.
 
 import { ALL_CARDS, CARDS, DEFAULT_DECK, SEAL_IDS, isMonster, type Attribute, type CardDef, type CardId, type MonsterCardDef } from './cards';
 import { makeRng } from '../engine/rng';
@@ -37,16 +38,36 @@ export function detectDeckPool(): DeckPool {
   }
 }
 
-/** Seeded 20-card deck of `side` from the expanded pool: all non-monsters + 12 distinct monsters. */
+/** Spells/traps in a sampled deck (the rest of the 20 are monsters). */
+export const DECK_SPELLTRAPS = DECK_SIZE - DECK_MONSTERS;
+
+function shuffleWith<T>(arr: T[], rng: () => number): T[] {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+/**
+ * Seeded 20-card deck of `side` from the expanded pool: 12 distinct monsters (at most DECK_MAX_HIGH
+ * of Level >= DECK_HIGH_LEVEL) + 8 distinct spells/traps drawn from ALL non-monster cards.
+ */
 export function expandedDeck(seed: number, side: 0 | 1): CardId[] {
   const rng = makeRng((seed ^ Math.imul(side + 1, 0x9e3779b1) ^ 0x5eed5eed) >>> 0);
-  const monsters = ALL_CARDS.filter(isMonster).map((c) => c.id);
-  const rest = ALL_CARDS.filter((c) => !isMonster(c)).map((c) => c.id);
-  for (let i = monsters.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    [monsters[i], monsters[j]] = [monsters[j], monsters[i]];
+  const monsters = shuffleWith(ALL_CARDS.filter(isMonster), rng);
+  const rest = shuffleWith(ALL_CARDS.filter((c) => !isMonster(c)).map((c) => c.id), rng);
+  const picked: CardId[] = [];
+  let high = 0;
+  for (const m of monsters) {
+    if (picked.length >= DECK_MONSTERS) break;
+    if (m.level >= DECK_HIGH_LEVEL) {
+      if (high >= DECK_MAX_HIGH) continue;
+      high++;
+    }
+    picked.push(m.id);
   }
-  return [...monsters.slice(0, DECK_MONSTERS), ...rest].slice(0, DECK_SIZE);
+  return [...picked, ...rest.slice(0, DECK_SPELLTRAPS)];
 }
 
 /** The two decks of a game for `pool` (undefined: the classic deck for both). */

@@ -143,6 +143,7 @@ export class DeckScene extends Phaser.Scene {
   private exitArmed = 0;
   private ready = false;
   private pressedCell = -1;
+  private lastPoolClick = { cell: -1, at: -1000 };
   private msgGen = 0;
   private lastHoverSound = 0;
 
@@ -394,6 +395,10 @@ export class DeckScene extends Phaser.Scene {
       box.y = y;
       if (cell.index < 0 || this.pressedCell !== cell.index || p.rightButtonReleased()) return;
       this.pressedCell = -1;
+      // a fast double-click must not add and then remove the same card
+      const now = performance.now();
+      if (this.lastPoolClick.cell === cell.index && now - this.lastPoolClick.at < 250) return;
+      this.lastPoolClick = { cell: cell.index, at: now };
       this.togglePool(cell.index);
     });
     zone.on(Phaser.Input.Events.POINTER_OUT, () => {
@@ -455,7 +460,7 @@ export class DeckScene extends Phaser.Scene {
 
     // level curve + counts
     const cy = LIST_Y + DECK_SIZE * ROW_H + 3;
-    this.add.rectangle(DX + 6, cy - 2, DW - 12, 1, PAL.night3).setOrigin(0).setDepth(10);
+    this.add.rectangle(DX + 6, cy + 1, DW - 12, 1, PAL.night3).setOrigin(0).setDepth(10);
     for (let b = 0; b < CURVE_BUCKETS; b++) {
       const bx = DX + 8 + b * 11;
       this.curveBars.push(this.add.rectangle(bx, cy + 20, 9, 1, PAL.gold2).setOrigin(0, 1).setDepth(10));

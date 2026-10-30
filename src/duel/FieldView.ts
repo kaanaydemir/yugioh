@@ -13,12 +13,12 @@
 
 import Phaser from 'phaser';
 import { CARDS, isMonster, type CardId, type MonsterId } from '../data/cards';
-import { currentAtk, currentDef } from '../engine';
+import { currentAtk, currentDef, plateLock } from '../engine';
 import type { GameState, PlayerId, Position, Uid } from '../engine/types';
 import { volcanoActive } from '../engine/query';
 import type { CardOrientation } from '../art/cards';
 import { TileCard } from '../view/TileCard';
-import type { XY } from '../view/layout';
+import { LOOK_V3, type XY } from '../view/layout';
 import { MonsterUnit } from './MonsterUnit';
 import { PileView, type PileKind } from './PileView';
 import { equipAura, flameAura, steamAura } from './auras';
@@ -246,7 +246,9 @@ export class FieldView {
           if (u.position !== slot.position) void u.setPosition(slot.position, false);
           if (u.displaced) u.settle();
           const shown = u.shownStats;
-          if (shown.atk !== atk || shown.def !== def) void u.setStats(atk, def, false);
+          if (shown.atk !== atk || shown.def !== def) void u.setStats(atk, def, u.battleTint);
+          u.battleTint = false;
+          if (LOOK_V3) u.setLock(plateLock(state, slot));
           // auras (only on a running scene: aura helpers tick from their first frame)
           if (running) {
             try {

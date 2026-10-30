@@ -207,33 +207,243 @@ export function placeholderTotem(id: MonsterId): MonsterArt {
       p.outline(PAL.ink);
     },
     portrait(p: PixelCanvas) {
-      paintPortrait(p, ramp, seed);
+      paintPortrait(p, id, ramp, seed);
     },
   };
   cache.set(id, art);
   return art;
 }
 
-/** Card picture: the totem close-up on an attribute-coloured backdrop (banded sky, a floor, a few sparks). */
-function paintPortrait(p: PixelCanvas, ramp: Ramp, seed: number): void {
+// ---------------------------------------------------------------------------------------------
+// Card picture. Every placeholder monster gets its OWN picture: the attribute-coloured backdrop (its pattern, floor
+// line and sparks come from the name hash) with one big simple emblem chosen by id / race (hourglass, shield, wings,
+// gear, flame, eye, fist, boot ...), tone-banded from the top-left and outlined in ink. Palette only, whole pixels.
+// Painted at 44x34 (the hand art); `placeholderPortraitBig` is the 88x68 version (exact 2x of the same picture).
+// ---------------------------------------------------------------------------------------------
+
+export type Emblem = 'hourglass' | 'shield' | 'wings' | 'gear' | 'flame' | 'eye' | 'fistR' | 'fistL' | 'bootR' | 'bootL' | 'fang' | 'blade' | 'crystal';
+
+/** Which emblem a monster gets: the id first (seals, special monsters), then the race. */
+export function emblemFor(id: string, race: string): Emblem {
+  switch (id) {
+    case 'seal_head': return 'eye';
+    case 'seal_arm_r': return 'fistR';
+    case 'seal_arm_l': return 'fistL';
+    case 'seal_leg_r': return 'bootR';
+    case 'seal_leg_l': return 'bootL';
+    case 'hourglass_imp': return 'hourglass';
+    case 'shield_titan': return 'shield';
+    case 'windmane_knight': return 'blade';
+    case 'wing_lady': return 'wings';
+    case 'wisp_imp': return 'flame';
+    case 'venom_drake': return 'fang';
+    case 'steel_silencer': return 'gear';
+    case 'grim_warden': return 'crystal';
+  }
+  switch (race) {
+    case 'Makine': return 'gear';
+    case 'Kanatlı': return 'wings';
+    case 'Savaşçı': return 'blade';
+    case 'Şeytan': return 'flame';
+    case 'Ejderha': return 'fang';
+    case 'Büyücü': return 'hourglass';
+  }
+  return 'crystal';
+}
+
+/** Paint the emblem shape (flat body colour) on a transparent layer; returns accent painters run after shading. */
+function emblemShape(l: PixelCanvas, e: Emblem, body: number): (p: PixelCanvas, ramp: Ramp) => void {
+  const cx = 22;
+  switch (e) {
+    case 'hourglass':
+      l.poly([[12, 5], [32, 5], [23, 16], [32, 28], [12, 28], [21, 16]], body);
+      l.rect(10, 3, 24, 3, body);
+      l.rect(10, 28, 24, 3, body);
+      return (p, r) => {
+        p.poly([[16, 8], [28, 8], [22, 15]], r[4]);
+        p.poly([[22, 21], [17, 27], [27, 27]], r[4]);
+        p.vline(22, 16, 20, r[4]);
+        p.hline(10, 33, 3, PAL.white);
+      };
+    case 'shield':
+      l.poly([[11, 4], [33, 4], [33, 17], [22, 30], [11, 17]], body);
+      return (p, r) => {
+        p.vline(22, 7, 25, r[4]);
+        p.hline(15, 29, 12, r[4]);
+        p.disc(22, 12, 2, PAL.white);
+        p.hline(12, 32, 4, PAL.white);
+      };
+    case 'wings':
+      for (const m of [1, -1]) {
+        const X = (x: number) => cx + m * x;
+        l.poly([[X(2), 24], [X(5), 18], [X(13), 15], [X(17), 8], [X(19), 4], [X(18), 13], [X(21), 19], [X(14), 24], [X(8), 28]], body);
+      }
+      l.disc(cx, 17, 3, body);
+      return (p, r) => {
+        for (const m of [1, -1]) {
+          p.line(cx + m * 6, 21, cx + m * 17, 8, r[4]);
+          p.line(cx + m * 5, 24, cx + m * 15, 15, r[4]);
+        }
+        p.disc(cx, 17, 1, PAL.white);
+      };
+    case 'gear': {
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2;
+        const tx = Math.round(cx + Math.cos(a) * 11);
+        const ty = Math.round(16 + Math.sin(a) * 11);
+        l.rect(tx - 2, ty - 2, 5, 5, body);
+      }
+      l.disc(cx, 16, 9, body);
+      return (p, r) => {
+        p.disc(cx, 16, 4, r[0]);
+        p.disc(cx, 16, 2, r[2]);
+        p.ring(cx, 16, 7, r[4]);
+        p.set(cx - 2, 14, PAL.white);
+      };
+    }
+    case 'flame':
+      l.poly([[22, 2], [26, 9], [31, 15], [31, 22], [26, 28], [18, 28], [13, 22], [13, 15], [17, 10], [19, 6]], body);
+      l.poly([[14, 15], [10, 8], [17, 12]], body); // small horns
+      l.poly([[30, 15], [34, 8], [27, 12]], body);
+      return (p, r) => {
+        p.poly([[22, 12], [26, 18], [26, 24], [22, 27], [18, 24], [18, 18]], r[4]);
+        p.rect(18, 17, 3, 2, r[0]);
+        p.rect(24, 17, 3, 2, r[0]);
+        p.set(19, 17, PAL.white);
+        p.set(25, 17, PAL.white);
+      };
+    case 'eye':
+      l.poly([[5, 16], [14, 9], [22, 7], [30, 9], [39, 16], [30, 23], [22, 25], [14, 23]], body);
+      return (p, r) => {
+        p.disc(22, 16, 6, r[4]);
+        p.disc(22, 16, 3, r[0]);
+        p.set(20, 14, PAL.white);
+        p.line(22, 2, 22, 4, r[4]);
+        p.line(14, 4, 15, 6, r[4]);
+        p.line(30, 4, 29, 6, r[4]);
+        p.line(22, 28, 22, 30, r[4]);
+      };
+    case 'fistR':
+    case 'fistL': {
+      const t = (x: number, w: number) => (e === 'fistR' ? x : 44 - x - w);
+      l.rect(t(6, 16), 14, 16, 8, body); // forearm
+      l.rect(t(20, 14), 9, 14, 17, body); // fist
+      l.rect(t(4, 4), 12, 4, 12, body); // cuff
+      return (p, r) => {
+        for (const y of [13, 17, 21]) p.hline(t(28, 5), t(28, 5) + 4, y, r[2]);
+        p.vline(t(12, 1), 15, 20, r[4]);
+        p.rect(t(23, 3), 11, 3, 2, PAL.white);
+      };
+    }
+    case 'bootR':
+    case 'bootL': {
+      const t = (x: number, w: number) => (e === 'bootR' ? x : 44 - x - w);
+      l.rect(t(12, 10), 3, 10, 19, body); // shaft
+      l.poly(e === 'bootR' ? [[12, 20], [24, 20], [35, 24], [35, 30], [12, 30]] : [[32, 20], [20, 20], [9, 24], [9, 30], [32, 30]], body);
+      return (p, r) => {
+        p.hline(t(12, 10), t(12, 10) + 9, 6, r[4]);
+        p.hline(t(12, 10), t(12, 10) + 9, 8, r[2]);
+        p.hline(t(12, 23), t(12, 23) + 22, 28, r[2]);
+        p.disc(t(17, 1), 15, 1, PAL.white);
+      };
+    }
+    case 'fang':
+      l.poly([[22, 3], [30, 14], [31, 21], [22, 29], [13, 21], [14, 14]], body); // venom drop
+      l.poly([[3, 4], [11, 4], [7, 14]], body); // fangs
+      l.poly([[33, 4], [41, 4], [37, 14]], body);
+      return (p, r) => {
+        p.poly([[22, 12], [26, 20], [22, 26], [18, 20]], r[4]);
+        p.set(19, 15, PAL.white);
+      };
+    case 'blade':
+      l.poly([[34, 2], [35, 8], [17, 25], [12, 20]], body); // blade
+      l.poly([[8, 17], [14, 14], [24, 28], [19, 31]], body); // guard
+      l.poly([[8, 29], [12, 25], [15, 28], [11, 32]], body); // grip
+      return (p, r) => {
+        p.line(16, 21, 33, 5, r[4]);
+        p.line(5, 9, 14, 9, r[4]); // wind strands (the mane)
+        p.line(3, 14, 11, 14, r[3]);
+        p.line(6, 19, 12, 19, r[4]);
+        p.set(34, 3, PAL.white);
+      };
+    case 'crystal':
+      l.poly([[22, 2], [32, 14], [22, 30], [12, 14]], body);
+      return (p, r) => {
+        p.vline(22, 5, 27, r[2]);
+        p.hline(14, 30, 14, r[4]);
+      };
+  }
+}
+
+/** Tone-band a flat layer from the top-left: lit / body / shadow, then ink outline. */
+function shadeLayer(l: PixelCanvas, ramp: Ramp): void {
+  const b = l.bounds();
+  if (!b) return;
+  const mx = b.x + b.w / 2;
+  const my = b.y + b.h / 2;
+  l.map((c, x, y) => {
+    if (c !== ramp[3]) return c;
+    const d = (x - mx) * 0.6 + (y - my);
+    return d < -b.h * 0.22 ? ramp[4] : d > b.h * 0.2 ? ramp[2] : ramp[3];
+  });
+}
+
+/** Backdrop: attribute bands, a name-seeded pattern and floor line, a halo behind the emblem and a few sparks. */
+function paintBackdrop(p: PixelCanvas, ramp: Ramp, seed: number): void {
   const W = CARD_ART_W;
   const H = CARD_ART_H;
-  const horizon = 25;
+  const horizon = 24 + (seed % 3);
   const bands = [ramp[0], ramp[0], ramp[1], ramp[1], ramp[2]];
   for (let y = 0; y < horizon; y++) p.hline(0, W - 1, y, bands[Math.min(bands.length - 1, Math.floor((y / horizon) * bands.length))]);
   for (let y = horizon; y < H; y++) p.hline(0, W - 1, y, (y - horizon) % 4 < 2 ? ramp[1] : ramp[0]);
   p.hline(0, W - 1, horizon, ramp[2]);
-  // halo behind the totem
-  p.disc(22, 15, 11, ramp[1]);
-  p.disc(22, 15, 7, ramp[2]);
-  // sparks
-  for (let k = 0; k < 7; k++) {
+  const pat = (seed >> 3) % 4;
+  const ph = (seed >> 6) % 6;
+  for (let y = 0; y < horizon; y++) {
+    for (let x = 0; x < W; x++) {
+      let on = false;
+      if (pat === 0) on = (x + y + ph) % 8 === 0; // diagonal hatch
+      else if (pat === 1) on = (x + ph) % 6 === 0 && y % 2 === 0; // dotted columns
+      else if (pat === 2) on = (y + ph) % 7 === 0 && x % 3 !== 0; // dashed rules
+      else on = (x * 3 + y * 2 + ph) % 11 === 0; // scattered
+      if (on) p.set(x, y, ramp[2]);
+    }
+  }
+  p.disc(22, 16, 14, ramp[1]);
+  p.disc(22, 16, 12, ramp[2]);
+  p.ring(22, 16, 14, ramp[3]);
+  for (let k = 0; k < 6; k++) {
     const x = (seed >> k) % W;
     const y = (hash(String(seed + k)) >> 3) % (horizon - 3);
     p.set(x, y, k % 2 ? ramp[3] : ramp[4]);
   }
-  const layer = new PixelCanvas(W, H);
-  paintTotem(layer, { cx: 22, base: 31, h: 22, w: 13 + (seed % 3), ramp, seed, pulse: 1, spread: 0.6, orbit: ((seed >> 7) % 8) / 8 });
+}
+
+/** The 44x34 card picture of a placeholder monster (distinct per id). */
+export function placeholderPortrait(p: PixelCanvas, id: MonsterId): void {
+  const def = cardDef(id);
+  const attr = def.kind === 'monster' ? def.attribute : 'LIGHT';
+  const race = def.kind === 'monster' ? def.race : '';
+  paintPortrait(p, id, ATTRIBUTE_RAMP[attr], hash(id), race);
+}
+
+/** The 88x68 card picture: the same picture at exactly 2x (crisp, whole pixels). */
+export function placeholderPortraitBig(id: MonsterId): PixelCanvas {
+  const small = new PixelCanvas(CARD_ART_W, CARD_ART_H);
+  placeholderPortrait(small, id);
+  return small.scaled(2);
+}
+
+function paintPortrait(p: PixelCanvas, id: MonsterId, ramp: Ramp, seed: number, race?: string): void {
+  if (race === undefined) {
+    const d = cardDef(id);
+    race = d.kind === 'monster' ? d.race : '';
+  }
+  paintBackdrop(p, ramp, seed);
+  const layer = new PixelCanvas(CARD_ART_W, CARD_ART_H);
+  const accents = emblemShape(layer, emblemFor(id, race), ramp[3]);
+  shadeLayer(layer, ramp);
+  accents(layer, ramp);
   layer.outline(PAL.ink);
   p.blit(layer, 0, 0);
 }

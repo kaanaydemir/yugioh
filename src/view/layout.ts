@@ -523,7 +523,21 @@ const UI_V2: UiLayout = {
   bannerY: 172,
 };
 
-export const UI: UiLayout = byArena(UI_V1, UI_V2);
+/**
+ * 5+5 board (v3, default in a browser): the board's left tip reaches x ≈ 104 (y 142..165), so the 128-px inspect
+ * panel covered it by ~28 px. The panel gets this width there (4..104); its card (96 px at 2x) still fits.
+ */
+export const INSPECT_W_Z5 = 100;
+/**
+ * 5+5 board: top of the hint line plate (v1/3+3: 252). The P1 deck's count tag sits at y 251..259 right under
+ * the stack, so the plate starts below it; the hand's resting cards (tops ≥ 318) are still clear.
+ */
+export const HINT_Y_Z5 = 262;
+
+const UI_BASE: UiLayout = byArena(UI_V1, UI_V2);
+export const UI: UiLayout = ZONES5 ? { ...UI_BASE, inspect: { ...UI_BASE.inspect, w: INSPECT_W_Z5 } } : UI_BASE;
+/** Y of the hint line plate (v3 HUD). */
+export const HINT_Y: number = ZONES5 ? HINT_Y_Z5 : 252;
 
 export function panelRect(player: PlayerId): Rect {
   return player === 0 ? UI.p1Panel : UI.p2Panel;

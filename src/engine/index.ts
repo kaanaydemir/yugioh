@@ -63,4 +63,4 @@ export { describeEvent, describeEvents, describePending, cardName, playerName, i
 export { isLegal } from './rules';
 
 // Expanded roster (batch 1): the numbers a battle is fought with, the Trap lock and the seal check.
-export { battleNumbers, trapLocked, hasAllSeals, type BattleNumbers } from './query';
+export { battleNumbers, battlePlates, plateLock, trapLocked, hasAllSeals, type BattleNumbers, type PlateStats } from './query';

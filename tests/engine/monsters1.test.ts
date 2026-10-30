@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { apply, battleNumbers, currentAtk, legalActions, newGame, type Action, type GameEvent, type GameState, type PlayerId } from '../../src/engine';
 import { ALL_CARDS, CARDS, DEFAULT_DECK, SEAL_IDS, isMonster, type CardId } from '../../src/data/cards';
 import { DECK_SIZE, EXPANDED_POOL, decksFor, detectDeckPool, expandedDeck } from '../../src/data/decks';
-import { checkEvents, checkInvariants, isListed, play, scenario, seq, uidOf, type ScenarioOpts } from './helpers';
+import { checkEvents, checkInvariants, checkInvariantsRelaxed, isListed, play, scenario, seq, uidOf, type ScenarioOpts } from './helpers';
 
 const atk = (s: GameState, id: CardId, owner?: PlayerId) => currentAtk(s, uidOf(s, id, owner));
 const lp = (s: GameState, p: PlayerId) => s.players[p].lp;
@@ -469,12 +469,13 @@ describe('ownSpellBurn300 (dusk_sorcerer)', () => {
 });
 
 describe('deck pool', () => {
-  it('the sampler: 20 distinct cards, all spells and traps, 12 monsters, deterministic and different per side/seed', () => {
+  it('the sampler: 20 distinct cards, 12 monsters (<= 4 of Sv7+) + 8 spells/traps, deterministic and different per side/seed', () => {
     const d = expandedDeck(7, 0);
     expect(d).toHaveLength(DECK_SIZE);
     expect(new Set(d).size).toBe(DECK_SIZE);
     expect(d.filter((id) => CARDS[id].kind === 'monster')).toHaveLength(12);
     expect(d.filter((id) => CARDS[id].kind !== 'monster')).toHaveLength(8);
+    expect(d.filter((id) => { const c = CARDS[id]; return c.kind === 'monster' && c.level >= 7; }).length).toBeLessThanOrEqual(4);
     expect(expandedDeck(7, 0)).toEqual(d);
     expect(expandedDeck(7, 1)).not.toEqual(d);
     expect(expandedDeck(8, 0)).not.toEqual(d);
@@ -485,8 +486,9 @@ describe('deck pool', () => {
   it('across seeds every monster of the roster shows up (seals included)', () => {
     const seen = new Set<CardId>();
     for (let seed = 0; seed < 80; seed++) for (const id of [...expandedDeck(seed, 0), ...expandedDeck(seed, 1)]) seen.add(id);
-    // (the sampler keeps the first spells/traps fixed; the spell/trap batch 1 is covered in st1.test.ts)
     expect(EXPANDED_POOL.filter((id) => CARDS[id].kind === 'monster').every((id) => seen.has(id))).toBe(true);
+    // and so does every spell/trap (the sampler draws from all of them)
+    expect(EXPANDED_POOL.filter((id) => CARDS[id].kind !== 'monster').every((id) => seen.has(id))).toBe(true);
   });
   it('newGame({ pool: "expanded" }) plays; the default still deals the 20 original cards', () => {
     const g = newGame({ seed: 5, pool: 'expanded' }).state;
@@ -510,7 +512,7 @@ describe('bot on the expanded pool', () => {
         const a = chooseAction(state, seed);
         expect(actingPlayer(state)).toBe((a as { player: PlayerId }).player);
         const r = apply(state, a);
-        checkInvariants(r.state);
+        checkInvariantsRelaxed(r.state);
         checkEvents(r.state, r.events);
         for (const e of r.events) if (e.type === 'summon' || e.type === 'activate') used.add(e.cardId);
         state = r.state;

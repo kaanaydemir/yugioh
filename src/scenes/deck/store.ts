@@ -8,7 +8,7 @@
 //   const r = store.resolve(store.last('p1')); // { ref, name, cards, check } | null
 
 import { DEFAULT_DECK, type CardId } from '../../data/cards';
-import { classicDeck, presetById, presetDecks, repairDeck, validateDeck, type DeckCheck } from '../../data/decks';
+import { classicDeck, detectDeckPool, presetById, presetDecks, repairDeck, validateDeck, type DeckCheck } from '../../data/decks';
 
 export const SLOT_COUNT = 5;
 export const NAME_MAX = 14;
@@ -51,7 +51,8 @@ export const slotRef = (n: number): DeckRef => `slot:${n}`;
 export const presetRef = (id: string): DeckRef => `preset:${id}`;
 
 export function cleanName(raw: unknown, fallback: string): string {
-  const s = typeof raw === 'string' ? raw.replace(/\s+/g, ' ').trim().slice(0, NAME_MAX) : '';
+  // control characters (incl. U+0000) become spaces first, then whitespace collapses
+  const s = typeof raw === 'string' ? raw.replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, NAME_MAX) : '';
   return s || fallback;
 }
 
@@ -204,9 +205,13 @@ export function resetDeckStore(): void {
 /**
  * The decks a match starts with. Both sides on the classic deck -> undefined, so the engine keeps
  * its own default (DEFAULT_DECK, or the ?deck=expanded sampler): the untouched default flow.
+ * With ?deck=expanded a picked classic deck is always passed explicitly.
  */
 export function matchDecks(a: ResolvedDeck | null, b: ResolvedDeck | null): [CardId[], CardId[]] | undefined {
-  const classic = (r: ResolvedDeck | null) => !r || r.kind === 'klasik';
+  // Under ?deck=expanded the engine default is the sampler, so a picked 'Klasik Deste' must be passed
+  // explicitly (it is the real classic deck); an unpicked side (null) still means "engine default".
+  const expanded = detectDeckPool() === 'expanded';
+  const classic = (r: ResolvedDeck | null) => !r || (r.kind === 'klasik' && !expanded);
   if (classic(a) && classic(b)) return undefined;
   return [a ? [...a.cards] : [...DEFAULT_DECK], b ? [...b.cards] : [...DEFAULT_DECK]];
 }

@@ -58,7 +58,7 @@ import { framePointToWorld } from '../vfx/combat';
 import { clearHologram, getHologram } from '../vfx/hologram';
 import { Raster, run } from '../vfx/setpieces';
 import type { Disposable } from './types';
-import { StatBadge } from './StatBadge';
+import { StatBadge, type PlateLock } from './StatBadge';
 import { motionProfile, reactGuardPushPx, reactGuardReturnEase } from './motion';
 import { onDuelStart } from './seeds';
 import { contactFlash } from '../cinematics/_v3/flash';
@@ -1037,6 +1037,14 @@ export class MonsterUnit {
   /** Roll the badge to new values (green up / red down). */
   setStats(atk: number, def: number, animate = true): Promise<void> {
     return this.badge.set(atk, def, animate);
+  }
+
+  /** v3: the plate shows battle-only numbers; FieldView rolls it back to the real values when the batch ends. */
+  battleTint = false;
+
+  /** v3: lock marker on the plate (hourglass = frozen, padlock = position locked); null clears it. */
+  setLock(l: PlateLock | null): void {
+    this.badge.setLock(l);
   }
 
   get shownStats(): { atk: number; def: number } {

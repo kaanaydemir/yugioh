@@ -610,7 +610,7 @@ const SPELLS_B1: SpellCardDef[] = [
     spellType: 'normal',
     name: 'Diz Çöktürme',
     effect: 'forceDefense',
-    text: "Rakibin açık saldırı pozisyonundaki 1 canavarını hedef al: savunma pozisyonuna geçer ve bir sonraki turunda pozisyonunu değiştiremez.",
+    text: "Rakibin saldırı pozisyonundaki 1 canavarı hedef al: savunmaya geçer, sonraki turunda pozisyon değiştiremez.",
   },
   {
     id: 'cycle_of_graves',
@@ -741,7 +741,7 @@ const TRAPS_B1: TrapCardDef[] = [
     kind: 'trap',
     name: 'Sihirli Şapka',
     effect: 'hatShuffle',
-    text: 'Rakip bir canavarın sana ait canavara saldırı ilan ettiğinde: saldırılan canavarını ve 2 sahte şapkayı kapalı olarak karıştır; rakip bir şapka seçip ona saldırır.',
+    text: 'Rakibin canavarı saldırı ilan edince: saldırılan canavarını ve 2 sahte şapkayı kapalı karıştır; rakip birini seçip saldırır.',
   },
 ];
 

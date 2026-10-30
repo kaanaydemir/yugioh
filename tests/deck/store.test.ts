@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_DECK } from '../../src/data/cards';
 import { autoFillDeck, presetDecks } from '../../src/data/decks';
-import { DeckStore, NAME_MAX, SLOT_COUNT, STORE_KEY, matchDecks, parseStore, presetRef, serializeStore, slotRef, type KV } from '../../src/scenes/deck/store';
+import { DeckStore, NAME_MAX, cleanName, SLOT_COUNT, STORE_KEY, matchDecks, parseStore, presetRef, serializeStore, slotRef, type KV } from '../../src/scenes/deck/store';
 
 class FakeKV implements KV {
   data = new Map<string, string>();
@@ -108,5 +108,27 @@ describe('deck store', () => {
     expect(m[0]).toEqual(preset.cards);
     expect(m[1]).toEqual(DEFAULT_DECK);
     expect(matchDecks(classic, preset)![1]).toEqual(preset.cards);
+  });
+
+  it('matchDecks under ?deck=expanded: a picked classic deck is passed explicitly', () => {
+    const g = globalThis as { __NEON_LOOK?: unknown; __NEON_DECK?: unknown };
+    const old = [g.__NEON_LOOK, g.__NEON_DECK];
+    g.__NEON_LOOK = 'v3';
+    g.__NEON_DECK = 'expanded';
+    try {
+      const s = new DeckStore(new FakeKV());
+      const classic = s.resolve('klasik')!;
+      expect(matchDecks(null, null)).toBeUndefined();
+      expect(matchDecks(classic, classic)).toEqual([DEFAULT_DECK, DEFAULT_DECK]);
+    } finally {
+      g.__NEON_LOOK = old[0];
+      g.__NEON_DECK = old[1];
+    }
+  });
+
+  it('cleanName strips control characters (incl. U+0000) and collapses whitespace', () => {
+    expect(cleanName('Ate\u0000ş\u0007  Dev\n', 'x')).toBe('Ate ş Dev');
+    expect(cleanName('\u0000\u0001', 'Deste 1')).toBe('Deste 1');
+    expect(cleanName('a\u0085b', 'x')).toBe('a b');
   });
 });

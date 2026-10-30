@@ -287,6 +287,41 @@ export function battleNumbers(s: GameState, attackerUid: Uid, targetUid: Uid | n
   return { atk, targetValue, targetPosition: position, attackerDebuffBy, targetDebuffBy };
 }
 
+/**
+ * Lock marker a monster's plate shows (v3): 'freeze' while Kum Saati Cücesi's freeze is pending or running
+ * (`noAttackTurn`, up to and including the turn it bites), 'kneel' for Diz Çöktürme's position lock
+ * (`lockPositionTurn`); null once the lock's turn is over. A face-down monster shows none.
+ */
+export function plateLock(s: GameState, slot: MonsterSlot): 'freeze' | 'kneel' | null {
+  if (!slot.faceUp) return null;
+  if (slot.noAttackTurn !== undefined && s.turn <= slot.noAttackTurn) return 'freeze';
+  if (slot.lockPositionTurn !== undefined && s.turn <= slot.lockPositionTurn) return 'kneel';
+  return null;
+}
+
+/** The ATK / DEF a plate shows for one monster while a battle is fought. */
+export interface PlateStats {
+  atk: number;
+  def: number;
+}
+
+/**
+ * What the two ATK/DEF plates show during a battle (v3 look): persistent numbers from `currentAtk` /
+ * `currentDef` (equips, field spell, auras, one-turn boosts) plus the battle-only modifiers of
+ * `battleNumbers` (the attacker's ATK minus a defender's debuff; the target's ATK minus the declare debuff).
+ * A target in defense keeps its printed/current DEF. `target` is null for a direct attack.
+ */
+export function battlePlates(s: GameState, attackerUid: Uid, targetUid: Uid | null): { attacker: PlateStats; target: PlateStats | null } {
+  const nums = battleNumbers(s, attackerUid, targetUid);
+  const attacker = { atk: nums.atk, def: currentDef(s, attackerUid) };
+  if (targetUid === null || nums.targetValue === null) return { attacker, target: null };
+  const target = {
+    atk: nums.targetPosition === 'attack' ? nums.targetValue : currentAtk(s, targetUid),
+    def: currentDef(s, targetUid),
+  };
+  return { attacker, target };
+}
+
 /** Current DEF: base plus a live one-turn boost (hidden_reinforcement); face-down monsters included. */
 export function currentDef(s: GameState, uid: Uid): number {
   const card = s.cards[uid];

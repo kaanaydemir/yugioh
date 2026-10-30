@@ -20,7 +20,7 @@ import { ALL_CARDS, CARDS, DEFAULT_DECK, SPELL_IDS, TRAP_IDS, isMonster, isSpell
 import { EXPANDED_POOL } from '../../src/data/decks';
 import { makeRng } from '../../src/engine/rng';
 import { describeEvents, cardName, describePending } from '../../src/engine';
-import { checkEvents, checkInvariants, isListed, scenario, seq, uidOf, type ScenarioOpts } from './helpers';
+import { checkEvents, checkInvariants, checkInvariantsRelaxed, isListed, scenario, seq, uidOf, type ScenarioOpts } from './helpers';
 
 // ---------------------------------------------------------------------------------------------
 // helpers
@@ -29,28 +29,7 @@ const NEW_SPELLS: CardId[] = ['fate_trade', 'double_offering', 'kneel_down', 'cy
 const NEW_TRAPS: CardId[] = ['spell_seal', 'toppling_tower', 'homecoming', 'decoy_target', 'last_breath', 'sandstorm', 'hidden_reinforcement'];
 const NEW_CARDS = [...NEW_SPELLS, ...NEW_TRAPS];
 
-/** The engine invariants, relaxed for the two states the batch adds: a Spell waiting in the spell_seal window and a Main Phase discard cost. */
-function inv(s: GameState): void {
-  const q = (s.internal.queue ?? []) as { k: string; a?: { uid: Uid } }[];
-  const waiting = q.find((t) => t.k === 'spellResolve');
-  const cost = s.pending?.kind === 'discard' && s.pending.cost === true;
-  if (!waiting && !cost) return checkInvariants(s);
-  const c = structuredClone(s);
-  if (cost) c.phase = 'end';
-  if (waiting?.a) {
-    const uid = waiting.a.uid;
-    let inZone = false;
-    for (const p of c.players)
-      p.spellTraps.forEach((st, i) => {
-        if (st && st.uid === uid) {
-          inZone = true;
-          if (st.equippedTo === null) p.spellTraps[i] = { ...st, faceUp: false };
-        }
-      });
-    if (!inZone) c.players[c.cards[uid].owner].graveyard.push(uid);
-  }
-  checkInvariants(c);
-}
+const inv = checkInvariantsRelaxed;
 
 function play(s: GameState, ...actions: Action[]): { state: GameState; events: GameEvent[] } {
   let state = s;

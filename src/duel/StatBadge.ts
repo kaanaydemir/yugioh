@@ -7,14 +7,20 @@
 // while a value rolls. Lives at DEPTH.FX - 20 so other units never hide it.
 
 import Phaser from 'phaser';
-import { PAL, PLAYER_RAMP } from '../art/palette';
+import { PAL, PLAYER_RAMP, RAMPS } from '../art/palette';
 import { PixelCanvas } from '../art/pixel';
 import { digitsWidth, drawDigits } from '../art/cards';
 import type { PlayerId, Position } from '../engine/types';
-import { DEPTH } from '../view/layout';
+import { DEPTH, LOOK_V3 } from '../view/layout';
 import { tween, tweenValue } from '../vfx/core';
 
 let badgeSeq = 0;
+
+/** v3 lock markers on the plate: 'freeze' (Kum Saati Cücesi: cannot attack) / 'kneel' (Diz Çöktürme: position locked). */
+export type PlateLock = 'freeze' | 'kneel';
+/** Width of the marker slot (5-px icon + 1-px ink outline each side) added on the plate's left while a lock shows. */
+export const LOCK_PAD = 7;
+
 
 export const BADGE_DEPTH = DEPTH.FX - 20;
 
@@ -38,6 +44,7 @@ export class StatBadge {
   /** Bumped whenever a pop is cut short (hide / a new pop / a roll / destroy). */
   private popToken = 0;
   private shown = true;
+  private lock: PlateLock | null = null;
 
   constructor(scene: Phaser.Scene, x: number, y: number, o: { player: PlayerId; position: Position; atk: number; def: number; baseAtk: number; baseDef: number }) {
     this.scene = scene;
@@ -55,6 +62,13 @@ export class StatBadge {
   setPlayer(p: PlayerId): void {
     if (p === this.player) return;
     this.player = p;
+    this.render();
+  }
+
+  /** v3: show / clear the lock marker (an hourglass or a padlock on the plate's left). */
+  setLock(l: PlateLock | null): void {
+    if (l === this.lock) return;
+    this.lock = l;
     this.render();
   }
 
@@ -164,7 +178,8 @@ export class StatBadge {
   }
 
   private color(v: number, base: number, active: boolean): number {
-    if (v > base) return active ? PAL.leaf3 : PAL.leaf2;
+    // v3: higher = gold, lower = crimson (v1 keeps green / red)
+    if (v > base) return LOOK_V3 ? (active ? PAL.gold3 : PAL.gold2) : active ? PAL.leaf3 : PAL.leaf2;
     if (v < base) return active ? PAL.crim3 : PAL.crim2;
     return active ? PAL.white : PAL.steel;
   }
@@ -201,21 +216,60 @@ export class StatBadge {
     // tiny marker under the active stat
     const mx = atkActive ? 3 + Math.floor(aw / 2) : 3 + aw + 5 + Math.floor(dw / 2);
     p.set(mx, H - 1, R[3]);
-    const canvas = p.toCanvas();
-    if (!this.tex || this.tex.width !== W || this.tex.height !== H) {
+    // v3 lock marker: a 5x7 icon in a slot on the plate's left (the plate itself stays where it was)
+    const padL = this.lock ? LOCK_PAD : 0;
+    let out = p;
+    if (this.lock) {
+      out = new PixelCanvas(padL + W, H);
+      out.blit(p, padL, 0);
+      const icon = new PixelCanvas(LOCK_PAD, H);
+      paintLockIcon(icon, 1, 1, this.lock);
+      icon.outline(PAL.ink);
+      out.blit(icon, 0, 0);
+    }
+    const canvas = out.toCanvas();
+    const TW = out.w;
+    if (this.tex && (this.tex.width !== TW || this.tex.height !== H)) {
       if (this.tex) {
         this.tex.destroy();
         this.tex = null;
       }
       if (this.scene.textures.exists(this.key)) this.scene.textures.remove(this.key);
-      this.tex = this.scene.textures.createCanvas(this.key, W, H);
+      this.tex = null;
+    }
+    if (!this.tex) {
+      if (this.scene.textures.exists(this.key)) this.scene.textures.remove(this.key);
+      this.tex = this.scene.textures.createCanvas(this.key, TW, H);
       if (!this.tex) return;
       this.image.setTexture(this.key);
     }
     const ctx = this.tex.getContext();
-    ctx.clearRect(0, 0, W, H);
+    ctx.clearRect(0, 0, TW, H);
     ctx.drawImage(canvas, 0, 0);
     this.tex.refresh();
-    this.image.setSize(W, H);
+    this.image.setSize(TW, H);
+    // keep the plate body where it was: the origin sits on the body's centre, not on the widened canvas'
+    this.image.setOrigin((padL + W / 2) / TW, 0.5);
+  }
+}
+
+/** The 5x7 lock icon at (x, y): an ice-blue hourglass (freeze) or a gold padlock (kneel), ink outlined. Palette only. */
+function paintLockIcon(p: PixelCanvas, x: number, y: number, kind: PlateLock): void {
+  const ice = RAMPS.cyan;
+  if (kind === 'freeze') {
+    p.rect(x, y, 5, 1, ice[4]); // top cap
+    p.rect(x, y + 6, 5, 1, ice[4]); // bottom cap
+    p.rect(x + 1, y + 1, 3, 1, ice[3]);
+    p.set(x + 2, y + 2, ice[3]);
+    p.set(x + 2, y + 3, PAL.white);
+    p.set(x + 2, y + 4, ice[2]);
+    p.rect(x + 1, y + 5, 3, 1, ice[3]);
+  } else {
+    const g = RAMPS.gold;
+    p.rect(x + 1, y, 3, 1, g[4]); // shackle
+    p.set(x + 1, y + 1, g[4]).set(x + 3, y + 1, g[4]);
+    p.rect(x, y + 2, 5, 5, g[3]); // body
+    p.rect(x, y + 5, 5, 2, g[2]);
+    p.set(x + 2, y + 4, PAL.ink); // keyhole
   }
 }

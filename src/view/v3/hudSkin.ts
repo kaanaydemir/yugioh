@@ -35,6 +35,7 @@ import { sfx, type SfxName, type SfxOpts } from '../../audio/sfx';
 import { UI_FLOW_RECIPES, type UiFlowSfxName } from '../../audio/v3/ui-flow';
 import { sanitizeText, textMetrics, type TextSize } from '../../ui/text';
 import type { ButtonState, UiStyle } from '../ui-textures';
+import { HINT_Y } from '../layout';
 import { REDUCED_MOTION } from './motion';
 import { rimPath } from './ui-kit';
 
@@ -57,7 +58,7 @@ export const HUD3 = Object.freeze({
   turn: Object.freeze({ dx: -46, w: 42, h: 16, labelX: 6, labelCap: 6, numCap: 5, numCx: 33 }),
   mainBtn: Object.freeze({ h: 25, y1: 1, y2: 30 }),
   toolbar: Object.freeze({ y: 4, h: 16 }),
-  hint: Object.freeze({ y: 252, cx: 320, h: 17, padL: 16, padR: 8 }),
+  hint: Object.freeze({ y: HINT_Y, cx: 320, h: 17, padL: 16, padR: 8 }),
   /** The active panel's light node: one lap of the trim (F10: 2.4 s), then a rest before the next. */
   nodeLapMs: 2400,
   nodeRestMs: 1600,

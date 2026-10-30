@@ -1,241 +1,121 @@
-// Hortlak Muhafız v3 — the LIGHT and MATTER effects: eye lightning, rib glow, blade crackle, the grave's
-// mouth, dust, bone chips. Light is drawn after the outline and never outlined (IŞ-9); lightning is a
-// 4-connected 1-px zigzag (no lone pixels, IŞ-10), the same shape for at most two frames (REHBER §2.3 electric).
+// Hortlak Muhafız v3 — light and effects painted AFTER the outline (never outlined, IŞ-9): the violet-white lightning
+// (eye sockets, rib gaps, bolts up the spine, sparks on the blade), the afterimage arc of the cut, floor dust and
+// the dissolve motes. Every shape comes from a seed (no Math.random): a different shape every frame.
 
 import { PAL } from '../palette';
-import type { PixelCanvas } from '../pixel';
-import type { V } from '../rigkit/geom';
+import { PixelCanvas, mulberry32 } from '../pixel';
 
-// ------------------------------------------------------------------ lightning
+export type Pt = readonly [number, number];
 
-/** A small deterministic generator (no Math.random in art paths). */
-function lcg(seed: number): () => number {
-  let s = (seed * 2654435761) >>> 0;
-  return () => {
-    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
-    return s / 4294967296;
-  };
-}
+const BOLT = PAL.void4;
+const BOLT2 = PAL.void3;
+const BOLT3 = PAL.void2;
+const CORE = PAL.white;
 
 /**
- * A zigzag path of `len` px from (0, 0): 4-connected steps that climb (dy −1) and wander sideways; `out` is the
- * side it favours (−1 left, +1 right). Set `k` (1…8) fixes the shape.
+ * A 1-px 4-connected lightning bolt from a to b: a random walk across the line, `amp` px wide. Runs of void3 / void4
+ * with a white core run when `hot`. Returns the pixels it set (for branches).
  */
-export function arcPath(k: number, len: number, out: -1 | 1): V[] {
-  const r = lcg(k * 7919 + (out > 0 ? 31 : 17));
-  const pts: V[] = [[0, 0]];
-  let x = 0;
-  let y = 0;
-  let sideRun = 0;
-  while (pts.length < len) {
-    const roll = r();
-    if (sideRun < 2 && roll < 0.5) {
-      // a sideways step, biased outward
-      x += r() < 0.72 ? out : -out;
-      sideRun++;
-    } else {
-      y -= 1;
-      sideRun = 0;
-    }
-    pts.push([x, y]);
+export function bolt(p: PixelCanvas, a: Pt, b: Pt, seed: number, amp = 2, hot = false): Pt[] {
+  const rnd = mulberry32(seed * 7919 + 13);
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const n = Math.max(1, Math.round(Math.max(Math.abs(dx), Math.abs(dy))));
+  const len = Math.hypot(dx, dy) || 1;
+  const px = -dy / len;
+  const py = dx / len;
+  const pts: Pt[] = [];
+  let off = 0;
+  let last: Pt | null = null;
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    // the walk is pinned to 0 at both ends
+    const env = Math.min(1, t * 4, (1 - t) * 4);
+    off += (rnd() - 0.5) * 2.6;
+    off = Math.max(-amp, Math.min(amp, off));
+    const x = Math.round(a[0] + dx * t + px * off * env);
+    const y = Math.round(a[1] + dy * t + py * off * env);
+    if (last && last[0] !== x && last[1] !== y) pts.push([x, last[1]]);
+    if (!last || last[0] !== x || last[1] !== y) pts.push([x, y]);
+    last = [x, y];
+  }
+  for (let i = 0; i < pts.length; i++) {
+    const run = Math.floor(i / 3) % 3;
+    const c = hot && i > pts.length * 0.15 && i < pts.length * 0.85 && run === 1 ? CORE : run === 2 ? BOLT2 : BOLT;
+    p.set(pts[i][0], pts[i][1], c);
   }
   return pts;
 }
 
-/** Cached per (set, len, side). */
-const ARCS = new Map<string, V[]>();
-function arcOf(k: number, len: number, out: -1 | 1): V[] {
-  const key = `${k}:${len}:${out}`;
-  let a = ARCS.get(key);
-  if (!a) {
-    a = arcPath(k, len, out);
-    ARCS.set(key, a);
+/** A short fork off a bolt: two or three pixels leaving it sideways. */
+export function fork(p: PixelCanvas, from: Pt, dir: Pt, len: number, seed: number): void {
+  const rnd = mulberry32(seed * 31 + 5);
+  let x = from[0];
+  let y = from[1];
+  for (let i = 0; i < len; i++) {
+    if (rnd() < 0.5) x += Math.sign(dir[0]);
+    else y += Math.sign(dir[1]);
+    p.set(x, y, i === len - 1 ? BOLT3 : BOLT2);
   }
-  return a;
 }
 
-export interface ArcOpts {
-  /** the eye socket centres (frame px): near (left) and far (right) */
-  eyes: readonly [V, V];
-  /** lightning set 1…8 (0 = none) and its reach 0…2 */
-  set: number;
-  reach: number;
-  /** skip pixels inside this predicate (the sockets keep their own light) */
-  skip?: (x: number, y: number) => boolean;
+/** Colours of a lit eye socket for intensity `e` (0…1.5). */
+export function eyeGlow(p: PixelCanvas, x0: number, y0: number, w: number, h: number, e: number): void {
+  if (e <= 0.05) return;
+  // dim: a violet ember in the middle; mid: void3 band; hot: void4 core; white-hot: white heart
+  const cx = x0 + Math.floor((w - 1) / 2);
+  const cy = y0 + Math.floor((h - 1) / 2);
+  const c1 = e < 0.45 ? BOLT3 : BOLT2;
+  for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) if (e > 0.45 || (y === cy && x >= cx && x <= cx + 1)) p.set(x, y, c1);
+  if (e >= 0.8) for (let y = cy; y <= Math.min(cy + 1, y0 + h - 1); y++) for (let x = cx; x <= Math.min(cx + 1, x0 + w - 1); x++) p.set(x, y, BOLT);
+  if (e >= 1.25) p.set(cx, cy, CORE);
 }
 
-/** The crackle: a main bolt out of each socket (up and outward) with a short fork; cyan3 body, white tip pixel. */
-export function eyeArcs(p: PixelCanvas, o: ArcOpts): void {
-  if (o.set <= 0 || o.reach <= 0) return;
-  const len = Math.max(4, Math.round(9 * o.reach));
-  const eyeSides: [V, -1 | 1][] = [
-    [o.eyes[0], -1],
-    [o.eyes[1], 1],
-  ];
-  eyeSides.forEach(([c, out], i) => {
-    const k = ((o.set + i * 3 - 1) % 8) + 1;
-    const path = arcOf(k, len, out);
-    path.forEach(([dx, dy], j) => {
-      const x = c[0] + dx;
-      const y = c[1] - 2 + dy;
-      if (o.skip?.(x, y)) return;
-      p.set(x, y, j >= path.length - 2 ? PAL.cyan4 : PAL.cyan3);
-    });
-    // a short fork off the middle of the bolt, back toward the other side
-    if (o.reach >= 1.2) {
-      const m = path[Math.floor(path.length * 0.55)];
-      const fork = arcOf(k + 3, Math.round(len * 0.45), (out * -1) as -1 | 1);
-      fork.forEach(([dx, dy], j) => {
-        const x = c[0] + m[0] + dx;
-        const y = c[1] - 2 + m[1] + dy;
-        if (o.skip?.(x, y)) return;
-        p.set(x, y, j >= fork.length - 1 ? PAL.cyan4 : PAL.cyan2);
-      });
+/** Crackle out of an eye socket: 1–2 bolts leaving up / forward, a new shape per `seed`. */
+export function eyeBolts(p: PixelCanvas, at: Pt, up: number, seed: number, n = 2, hot = false): void {
+  const rnd = mulberry32(seed * 977 + 3);
+  for (let i = 0; i < n; i++) {
+    const ang = (-90 + (rnd() - 0.45) * 110 + i * 38) * (Math.PI / 180);
+    const l = up * (0.6 + rnd() * 0.6);
+    const b: Pt = [Math.round(at[0] + Math.cos(ang) * l), Math.round(at[1] + Math.sin(ang) * l)];
+    const pts = bolt(p, at, b, seed + i * 17, 2, hot);
+    if (pts.length > 5 && rnd() < 0.6) fork(p, pts[Math.floor(pts.length * 0.55)], [rnd() < 0.5 ? -1 : 1, -1], 2 + Math.floor(rnd() * 2), seed + i);
+  }
+}
+
+/** A bright segment running along a rib gap (a slit from x0..x1 at rows y..y+h-1): the charge crawls through the ribs. */
+export function gapCharge(p: PixelCanvas, x0: number, x1: number, y: number, h: number, pos: number, len: number, hot: number): void {
+  for (let x = x0; x <= x1; x++) {
+    const d = x - pos;
+    if (d < 0 || d >= len) continue;
+    const core = d >= 1 && d < len - 1;
+    for (let r = 0; r < h; r++) {
+      if (!p.isOpaque(x, y + r)) continue;
+      const c = core && hot > 0.6 && r === Math.floor(h / 2) ? BOLT : core ? BOLT2 : BOLT3;
+      p.set(x, y + r, c);
     }
-  });
-}
-
-/** A bolt between two points (frame px): a 4-connected jagged line, cyan3 with a white core every other run. */
-export function bolt(p: PixelCanvas, a: V, b: V, seed: number, core = true): V[] {
-  const r = lcg(seed * 104729 + 7);
-  const pts: V[] = [];
-  let x = Math.round(a[0]);
-  let y = Math.round(a[1]);
-  const tx = Math.round(b[0]);
-  const ty = Math.round(b[1]);
-  pts.push([x, y]);
-  let guard = 0;
-  while ((x !== tx || y !== ty) && guard++ < 200) {
-    const dx = tx - x;
-    const dy = ty - y;
-    // mostly along the longer axis, with a jag across it
-    const along = Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y';
-    const jag = r() < 0.34 && Math.abs(dx) + Math.abs(dy) > 2;
-    if (jag) {
-      if (along === 'x') y += r() < 0.5 ? 1 : -1;
-      else x += r() < 0.5 ? 1 : -1;
-    } else if (along === 'x') x += Math.sign(dx);
-    else y += Math.sign(dy);
-    pts.push([x, y]);
-  }
-  pts.forEach(([px, py], i) => p.set(px, py, core && i % 4 === 2 ? PAL.white : PAL.cyan3));
-  return pts;
-}
-
-// ------------------------------------------------------------------ eyes
-
-/**
- * One eye socket's light (3×3 hollow at `at` = its top-left): 0 = a single dim ember, 1 = rest (cyan1 socket,
- * cyan3 core 2×2), 1.5 = bright (core cyan4), 2 = flaring (the socket white-cyan, a white heart).
- */
-export function eyeLight(p: PixelCanvas, at: V, level: number): void {
-  const [x, y] = at;
-  if (level <= 0.05) {
-    p.set(x + 1, y + 2, PAL.cyan1);
-    return;
-  }
-  if (level < 0.7) {
-    p.set(x + 1, y + 1, PAL.cyan1);
-    p.set(x + 1, y + 2, PAL.cyan2);
-    p.set(x + 2, y + 2, PAL.cyan1);
-    return;
-  }
-  const rim = level >= 2 ? PAL.cyan3 : PAL.cyan1;
-  const core = level >= 2 ? PAL.white : level >= 1.4 ? PAL.cyan4 : PAL.cyan3;
-  for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) p.set(x + i, y + j, rim);
-  // the core sits low and toward the foe: the stare
-  for (const [i, j] of [[1, 1], [2, 1], [1, 2], [2, 2]] as const) p.set(x + i, y + j, core);
-  if (level >= 2) p.set(x, y + 1, PAL.cyan4);
-}
-
-// ------------------------------------------------------------------ matter: dust, chips
-
-const EARTH = [PAL.earth1, PAL.earth2, PAL.earth3, PAL.earth4] as const;
-
-/** A low puff of floor dust at (x, y) (the floor point): phase 0…1 = it grows and thins. Two-pixel blobs, no lone px. */
-export function dustPuff(p: PixelCanvas, x: number, y: number, phase: number, dir: -1 | 1 = 1): void {
-  if (phase <= 0) return;
-  const t = Math.min(1, phase);
-  const BLOBS: readonly (readonly [number, number, number])[] = [
-    [-5, 0, 1],
-    [4, 0, 1],
-    [-9, -1, 0],
-    [8, -1, 0],
-    [-2, -2, 2],
-    [2, -3, 2],
-  ];
-  BLOBS.forEach(([bx, by, size], i) => {
-    const gone = t > 0.55 + 0.08 * i;
-    if (gone) return;
-    const px = Math.round(x + bx * (0.5 + t) * dir * (bx < 0 ? 1 : 1));
-    const py = Math.round(y + by - t * (3 + size));
-    const tone = EARTH[Math.min(3, Math.max(0, Math.round(3 - t * 3 - (size === 0 ? 0 : 0))))];
-    p.rect(px, py, 2, size === 2 ? 2 : 1, tone);
-    p.rect(px, py, 2, 1, tone);
-  });
-}
-
-/** Bone chips flying off a struck place (frame px at c): phase 0…1; 2×2 and 2×1 blobs, bone tones. */
-export function boneChips(p: PixelCanvas, c: V, phase: number, dir: -1 | 1 = -1): void {
-  if (phase <= 0) return;
-  const t = Math.min(1, phase);
-  const CH: readonly (readonly [number, number, number, number])[] = [
-    [4, -6, 2, 2],
-    [7, -3, 2, 1],
-    [3, -9, 2, 2],
-    [9, -7, 1, 2],
-    [6, 0, 2, 1],
-  ];
-  CH.forEach(([vx, vy, w, h], i) => {
-    if (t > 0.9 - i * 0.04) return;
-    const x = Math.round(c[0] + dir * -vx * t * 3.2);
-    const y = Math.round(c[1] + vy * t * 3 + 9 * t * t * 3);
-    p.rect(x, y, w, h, i % 2 ? PAL.earth4 : PAL.skin4);
-    p.set(x + w - 1, y + h - 1, PAL.earth3);
-  });
-}
-
-// ------------------------------------------------------------------ the grave's mouth
-
-/**
- * The pit the summon climbs out of (and the revive sinks into): an ellipse in the floor at (cx, cy), `open`
- * 0…1…2 (1 fully open, 2 closed again). Ink-dark void with a violet lip lit from the key light, cyan cracks
- * radiating at the mouth when it opens. Drawn BEHIND the body (it is matter: outlined with the rest).
- */
-export function pit(p: PixelCanvas, cx: number, cy: number, open: number, left: boolean): void {
-  if (open <= 0 || open >= 2) return;
-  const k = open <= 1 ? open : 2 - open;
-  const rx = Math.round(5 + 15 * k);
-  const ry = Math.round(1 + 2 * k);
-  p.ellipse(cx, cy, rx, ry, PAL.void0);
-  // the lip: the back edge lit (void2), the front edge shaded (void1)
-  for (let x = -rx; x <= rx; x++) {
-    const t = x / rx;
-    const yy = Math.round(ry * Math.sqrt(Math.max(0, 1 - t * t)));
-    if (yy < 1) continue;
-    const lit = left ? x < 0 : x > 0;
-    p.set(cx + x, cy - yy, lit ? PAL.void3 : PAL.void2);
-    p.set(cx + x, cy + yy, PAL.void1);
-  }
-  // a hot core: cracks of cyan across the hollow while it is open
-  if (k > 0.5) {
-    for (let i = -rx + 3; i <= rx - 3; i += 5) p.set(cx + i, cy, i % 2 === 0 ? PAL.cyan1 : PAL.cyan2);
   }
 }
 
-/** The crack the grave leaves running out of the pit across the floor (cyan1 / cyan2 light, 4-connected). */
-export function floorCrack(p: PixelCanvas, cx: number, cy: number, reach: number, seed = 3): void {
-  if (reach <= 0) return;
-  const r = lcg(seed * 977);
-  for (const side of [-1, 1] as const) {
-    let x = cx + side * 6;
-    let y = cy;
-    const n = Math.round(reach * 12);
-    for (let i = 0; i < n; i++) {
-      p.set(x, y, i > n - 3 ? PAL.cyan1 : PAL.cyan2);
-      if (r() < 0.45) y += r() < 0.5 ? 1 : -1;
-      else x += side;
-      p.set(x, y, i > n - 3 ? PAL.cyan1 : PAL.cyan2);
-    }
+/** Floor dust puffs (clusters ≥ 2 px, tones of the dust, rising and thinning). `k` 0…1 is the age. */
+export function dust(p: PixelCanvas, cx: number, cy: number, k: number, seed: number, side = 1): void {
+  const rnd = mulberry32(seed * 101 + 9);
+  const n = 5;
+  for (let i = 0; i < n; i++) {
+    const a = rnd();
+    const dx = (a - 0.25) * 26 * (0.35 + k) * side;
+    const dy = -(2 + rnd() * 7) * k - 1;
+    const r = 1.5 + (1 - k) * 1.6 + rnd();
+    const c = k < 0.45 ? PAL.stone3 : k < 0.75 ? PAL.stone2 : PAL.stone1;
+    p.disc(cx + dx, cy + dy, r, c);
+  }
+}
+
+/** Dissolve motes rising: 2×2 / 3×3 void clusters above the frame's body. */
+export function motes(p: PixelCanvas, pts: readonly (readonly [number, number, number])[]): void {
+  for (const [x, y, s] of pts) {
+    const c = s >= 3 ? PAL.void4 : s === 2 ? PAL.void3 : PAL.void2;
+    p.rect(Math.round(x), Math.round(y), 2, 2, c);
+    if (s >= 3) p.set(Math.round(x), Math.round(y), PAL.white);
   }
 }

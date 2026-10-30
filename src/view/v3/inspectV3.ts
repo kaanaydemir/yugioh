@@ -48,10 +48,14 @@ export function showPile(inspect: InspectPanel, kind: PileKind, player: PlayerId
 
 const R = UI.inspect;
 /** The 2× card's centre (96 × 136: left 16, top 8). */
-const CARD_CX = 64;
+const CARD_CX = Math.round(R.w / 2);
 const CARD_CY = 76;
 const CARD_HW = 48;
 const CARD_HH = 68;
+/** Air around the card for its light (6 on the 128-px panel; the narrow 5+5 panel has 2 px each side). */
+const LIGHT_PAD = Math.max(1, Math.min(6, Math.floor((R.w - CARD_HW * 2) / 2)));
+/** The panel is too narrow for margins beside the card: no motes there (they would float outside it). */
+const NARROW = R.w < 120;
 /** The name's cap top; the type line, divider, stats and body follow it (as v1, 2 px lower). */
 const NAME_Y = 152;
 const TEXT_W = R.w - 14;
@@ -104,8 +108,8 @@ export function paintPanel(trim: TrimName): PixelCanvas {
  * 108 × 148, its top-left at (CARD_CX − 54, CARD_CY − 74).
  */
 export function paintLight(ramp: Ramp, step: 0 | 1): PixelCanvas {
-  const W = CARD_HW * 2 + 12;
-  const H = CARD_HH * 2 + 12;
+  const W = CARD_HW * 2 + LIGHT_PAD * 2;
+  const H = CARD_HH * 2 + LIGHT_PAD * 2;
   const p = new PixelCanvas(W, H);
   const ring = (inset: number, c: number) => {
     const x0 = inset;
@@ -119,11 +123,11 @@ export function paintLight(ramp: Ramp, step: 0 | 1): PixelCanvas {
   };
   // the card spans 6 .. W−7: its edge light at 5 (ramp[2]), the band at 3–4 (ramp[1]), the falloff
   // at 2 (ramp[0]; and 1 on the breathing step)
-  ring(5, ramp[2]);
-  ring(4, ramp[1]);
-  ring(3, ramp[1]);
-  ring(2, ramp[0]);
-  if (step === 1) ring(1, ramp[0]);
+  // (a narrow panel, 5+5 board: LIGHT_PAD < 6 keeps the innermost rings and drops the outer ones)
+  const o = 6 - LIGHT_PAD;
+  const rings: [number, number][] = [[5, ramp[2]], [4, ramp[1]], [3, ramp[1]], [2, ramp[0]]];
+  if (step === 1) rings.push([1, ramp[0]]);
+  for (const [inset, c] of rings) if (inset - o >= 0) ring(inset - o, c);
   return p;
 }
 
@@ -234,7 +238,7 @@ export class InspectPanelV3 {
     this.scene = scene;
     this.root = scene.add.container(OUT_X, R.y).setDepth(DEPTH.INSPECT).setScrollFactor(0);
     this.bg = scene.add.image(0, 0, canvasKey(scene, 'ui3:inspect:panel:neutral', () => paintPanel('neutral'))).setOrigin(0);
-    this.light = scene.add.image(CARD_CX - CARD_HW - 6, CARD_CY - CARD_HH - 6, this.lightKey(RAMPS.night, 0)).setOrigin(0);
+    this.light = scene.add.image(CARD_CX - CARD_HW - LIGHT_PAD, CARD_CY - CARD_HH - LIGHT_PAD, this.lightKey(RAMPS.night, 0)).setOrigin(0);
     this.stack = scene.add.image(CARD_CX - CARD_HW, CARD_CY - CARD_HH, canvasKey(scene, 'ui3:inspect:empty', paintEmptySlot)).setOrigin(0).setVisible(false);
     this.card = createCardV3(scene, null, { x: CARD_CX, y: CARD_CY, faceUp: false });
     this.card.setScale(2);
@@ -252,6 +256,7 @@ export class InspectPanelV3 {
     for (let i = 0; i < INSPECT3.motes; i++) {
       const img = scene.add.image(0, 0, TEX.px1).setOrigin(0).setVisible(false);
       this.root.add(img);
+      if (NARROW) continue; // (no margin beside the card: the motes stay out)
       // beside the card: the left (x 4..11) or the right (x 116..123) margin, alternating
       const left = i % 2 === 0;
       this.motes.push({ img, t: this.rnd(), x: left ? 4 + Math.floor(this.rnd() * 8) : 116 + Math.floor(this.rnd() * 8), speed: 0.1 + this.rnd() * 0.12, life: 0.7 + this.rnd() * 0.3 });
