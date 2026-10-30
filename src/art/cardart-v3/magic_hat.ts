@@ -46,7 +46,7 @@ interface Cfg {
   /** floor pool: centre, half widths of its two steps, half height of the outer */
   readonly pool: readonly [number, number, number, number, number];
   /** cone: apex y, lamp half width (outer / inner), footing y, footing half width (outer / inner) */
-  readonly cone: readonly [number, number, number, number, number];
+  readonly cone: readonly [number, number, number, number, number, number];
   readonly plank: readonly number[];
   readonly curtain: number;
   readonly star: readonly [number, number];
@@ -56,17 +56,17 @@ interface Cfg {
 const CFG: Readonly<Record<Size, Cfg>> = {
   big: {
     hz: 44,
-    hat: { brx: 10, bry: 3, bw: 14, tw: 12, ch: 15, band: 4 },
+    hat: { brx: 12, bry: 4, bw: 16, tw: 14, ch: 19, band: 5 },
     hats: [
       [44, 52],
-      [20, 56],
-      [68, 56],
+      [19, 57],
+      [69, 57],
     ],
     pool: [44, 53, 34, 22, 8],
     cone: [0, 4, 2, 44, 32, 20],
     plank: [49, 55, 61],
-    curtain: 10,
-    star: [44, 25],
+    curtain: 9,
+    star: [44, 21],
     motes: [
       [31, 24],
       [58, 30],
@@ -76,17 +76,17 @@ const CFG: Readonly<Record<Size, Cfg>> = {
   },
   small: {
     hz: 22,
-    hat: { brx: 5, bry: 1, bw: 7, tw: 6, ch: 8, band: 2 },
+    hat: { brx: 6, bry: 2, bw: 8, tw: 7, ch: 9, band: 2 },
     hats: [
       [22, 26],
-      [10, 28],
-      [34, 28],
+      [9, 29],
+      [35, 29],
     ],
     pool: [22, 26, 17, 11, 4],
     cone: [0, 2, 1, 22, 16, 10],
     plank: [25, 29],
     curtain: 5,
-    star: [22, 12],
+    star: [22, 9],
     motes: [
       [16, 12],
       [29, 15],
@@ -108,15 +108,17 @@ function hat(size: Size, cx: number, by: number, d: HatDims): PixelCanvas {
       const nx = (x + 0.5 - cx - 0.5) / (d.brx + 0.5);
       const ny = (y + 0.5 - by - 0.5) / (d.bry + 0.5);
       if (nx * nx + ny * ny > 1) continue;
-      p.set(x, y, nx < -0.45 ? PAL.void3 : nx > 0.5 ? PAL.void1 : PAL.void2);
+      p.set(x, y, nx < -0.45 ? PAL.void2 : nx > 0.5 ? PAL.void0 : PAL.void1);
     }
   // 2. the crown: tapering rows, bounded below by the curved base (a half ellipse in front of the brim)
-  const baseRy = big ? 3 : 1;
+  const baseRy = big ? 2 : 1;
   const ybot = (x: number): number => {
     const nx = (x + 0.5 - cx - 0.5) / hw;
     return by + Math.round(baseRy * Math.sqrt(Math.max(0, 1 - nx * nx)));
   };
   const topY = by - d.ch;
+  // the crown's shadow on the brim: one void0 row under the curved base
+  for (let x = cx - hw; x < cx + hw; x++) if (p.get(x, ybot(x) + 1) !== null) p.set(x, ybot(x) + 1, PAL.void0);
   const col = (i: number, w: number, lit: number, mid: number, dark: number): number =>
     i < Math.max(1, Math.round(w * 0.28)) ? lit : i >= Math.round(w * 0.7) ? dark : mid;
   for (let y = topY; y <= by + baseRy; y++) {

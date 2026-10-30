@@ -59,9 +59,11 @@ import type { PlayerId, ZoneKind } from '../engine/types';
 // Decided once at module init, like the arena variant: `globalThis.__NEON_LOOK` ('v1' | 'v3'),
 // else the URL param `?look=v3`, else 'v1'.
 //
-// ZONES5 (additive): 5 monster + 5 spell/trap zones per player instead of 3 + 3. Opt-in with
-// `globalThis.__NEON_ZONES = 5` or the URL param `?zones=5`, read once at module init, and honoured
-// ONLY with the v3 look (with look v1 it is ignored: v1 stays 3+3).
+// ZONES5 (additive): 5 monster + 5 spell/trap zones per player instead of 3 + 3. DEFAULT in a browser
+// with the v3 look (the playable game). Opt out with `?zones=3` / `globalThis.__NEON_ZONES = 3`; force
+// on with `?zones=5` / `__NEON_ZONES = 5`. Read once at module init, and honoured ONLY with the v3 look
+// (with look v1 it is ignored: v1 stays 3+3). Outside a browser (no `location`: vitest, node tools) the
+// default stays 3+3 unless `__NEON_ZONES = 5` is set, so engine / art tests keep the classic board.
 
 export type Look = 'v1' | 'v3';
 
@@ -84,7 +86,7 @@ function detectLook(): Look {
   return 'v1';
 }
 
-/** True when the board has 5 + 5 zones per player (v3 look + `?zones=5` / `__NEON_ZONES = 5`). */
+/** True when the board has 5 + 5 zones per player (v3 look; default in a browser, `?zones=3` opts out). */
 export const ZONES5: boolean = LOOK_V3 && detectZones5();
 /** Monster / spell-trap zones per player on this board (3 or 5). */
 export const LANES: number = ZONES5 ? 5 : 3;
@@ -97,7 +99,9 @@ function detectZones5(): boolean {
     if (g === 5 || g === '5') return true;
     if (g === 3 || g === '3') return false;
     if (typeof location !== 'undefined' && typeof URLSearchParams !== 'undefined') {
-      return new URLSearchParams(location.search).get('zones') === '5';
+      const z = new URLSearchParams(location.search).get('zones');
+      if (z === '3') return false;
+      return true; // browser + v3 look: 5+5 unless ?zones=3
     }
   } catch {
     /* no globals (tests, workers): fall through */

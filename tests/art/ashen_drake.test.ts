@@ -5,6 +5,12 @@
 
 import { describe, expect, it } from 'vitest';
 import art from '../../src/art/monsters-v3/ashen_drake';
+import card from '../../src/art/cardart-v3/ashen_drake';
+import cutinFactory from '../../src/art/cutins-v3/ashen_drake';
+import { KIT } from '../../src/art/cutins/index';
+import { PixelCanvas } from '../../src/art/pixel';
+import { PAL } from '../../src/art/palette';
+import { artStats, renderArt } from '../../src/art/cardart-v3/_kit';
 import { drawFrame, validateArt } from '../../src/art/rigkit';
 import type { AnyMonsterAnim } from '../../src/art/types';
 
@@ -59,5 +65,32 @@ describe('ashen_drake', () => {
     const ref = lowRows('idle', 0);
     for (const a of ['idle', 'guard', 'toGuard', 'fromGuard'] as const) for (let k = 0; k < spec(a).frames; k++) expect(lowRows(a, k), `${a} ${k}`).toMatchObject({ x0: ref.x0, x1: ref.x1 });
     for (const a of ALL) for (let k = 0; k < spec(a).frames; k++) expect(lowRows(a, k).edge, `${a} ${k}`).toBe(0);
+  });
+
+  it('paints the card picture at both sizes within the kit budgets (living frames) and the cut-in at its own density, both lights', () => {
+    for (let f = 0; f < (card.frames ?? 1); f++) {
+      const r = renderArt(card, f);
+      expect([r.bigPx.w, r.bigPx.h]).toEqual([88, 68]);
+      expect([r.smallPx.w, r.smallPx.h]).toEqual([44, 34]);
+      for (const [l, px, focus] of [[r.big, r.bigPx, card.focus], [r.small, r.smallPx, card.focusSmall ?? ([card.focus[0] / 2, card.focus[1] / 2] as const)]] as const) {
+        const st = artStats(l, px, focus);
+        expect(st.offPalette).toBe(0);
+        expect(st.isolated).toBeLessThanOrEqual(0.1);
+        expect(st.colors).toBeLessThanOrEqual(20);
+      }
+    }
+    const cut = cutinFactory(KIT);
+    expect(cut.id).toBe('ashen_drake');
+    expect([cut.w, cut.h]).toEqual([200, 144]);
+    expect(cut.holds!.length).toBe(cut.frames);
+    const palette = new Set<number>(Object.values(PAL) as number[]);
+    for (const light of ['left', 'right'] as const)
+      for (let f = 0; f < cut.frames; f++) {
+        const p = new PixelCanvas(cut.w, cut.h);
+        cut.draw(p, f, { lightFrom: light });
+        let n = 0;
+        for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) if (p.isOpaque(x, y)) { n++; expect(palette.has(p.get(x, y)!)).toBe(true); }
+        expect(n, `${light} ${f}`).toBeGreaterThan(5000);
+      }
   });
 });

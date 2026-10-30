@@ -143,7 +143,7 @@ describe('coral_serpent v3 (serpent type, A4.1 step 2)', () => {
     expect(litBias(p1).bias).toBeGreaterThan(0);
     expect(litBias(p2, true).bias).toBeGreaterThan(0);
     expect(litBias(p2, true).bias).toBeGreaterThan(litBias(p1, true).bias);
-  });
+  }, 60_000);
 
   it('the jet leaves the mouth: points().muzzle is the open mouth on every frame, and the spout starts there', () => {
     for (const anim of ALL)

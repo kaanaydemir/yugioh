@@ -171,6 +171,58 @@ export function applyEvent(s: GameState, ev: GameEvent): void {
       if (i >= 0) ps.hand.splice(i, 1);
       return;
     }
+    // ---- magic_hat: hats (decoy tokens + the hidden monster); mirrors rules.ts hideBehindHats / popDecoy / endHats
+    case 'hatsShuffled': {
+      const ms = s.players[ev.player].monsters;
+      const real = ms[ev.sourceZone];
+      if (!real || real.uid !== ev.sourceUid) return;
+      ms[ev.sourceZone] = null;
+      real.hatOrigin = { faceUp: real.faceUp, position: real.position };
+      real.hat = 'real';
+      real.faceUp = false;
+      real.position = 'defense';
+      for (const h of ev.hats) {
+        if (h.uid === ev.sourceUid) ms[h.zone] = real;
+        else {
+          s.cards[h.uid] = { uid: h.uid, cardId: 'magic_hat', owner: ev.player };
+          ms[h.zone] = { uid: h.uid, position: 'defense', faceUp: false, enteredTurn: s.turn, attacksThisTurn: 0, positionChangedTurn: -1, hat: 'decoy' };
+        }
+      }
+      return;
+    }
+    case 'hatChosen':
+      return;
+    case 'decoyPopped': {
+      const ms = s.players[ev.player].monsters;
+      if (ms[ev.zone]?.uid === ev.uid) ms[ev.zone] = null;
+      delete s.cards[ev.uid];
+      return;
+    }
+    case 'hatRevealed': {
+      const slot = s.players[ev.player].monsters[ev.zone];
+      if (slot && slot.uid === ev.uid) {
+        delete slot.hat;
+        delete slot.hatOrigin;
+      }
+      return;
+    }
+    case 'hatRestore': {
+      const ms = s.players[ev.player].monsters;
+      for (const r of ev.removed) {
+        if (ms[r.zone]?.uid === r.uid) ms[r.zone] = null;
+        delete s.cards[r.uid];
+      }
+      if (ev.restored) {
+        const slot = ms[ev.restored.zone];
+        if (slot && slot.uid === ev.restored.uid) {
+          slot.faceUp = ev.restored.faceUp;
+          slot.position = ev.restored.position;
+          delete slot.hat;
+          delete slot.hatOrigin;
+        }
+      }
+      return;
+    }
     case 'decision':
       s.pending = structuredClone(ev.pending);
       return;

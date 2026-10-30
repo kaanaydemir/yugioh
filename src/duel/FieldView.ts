@@ -23,6 +23,7 @@ import { MonsterUnit } from './MonsterUnit';
 import { PileView, type PileKind } from './PileView';
 import { equipAura, flameAura, steamAura } from './auras';
 import { CounterBadge } from './CounterBadge';
+import { hatsSync } from '../view/hats';
 
 export type FieldSpot = 'monster' | 'spellTrap' | 'field';
 
@@ -286,6 +287,8 @@ export class FieldView {
       this.piles[p].graveyard.set(g.length, g.length ? state.cards[g[g.length - 1]].cardId : null);
     }
     for (const [k, e] of [...this.entries]) if (!seen.has(k)) this.dispose(e, false);
+    // magic_hat: hats over the hatted slots (decoy tokens and the hidden monster)
+    if (running) hatsSync(this.scene, state);
   }
 
   destroy(): void {

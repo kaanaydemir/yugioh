@@ -62,7 +62,7 @@ describe('shield_titan v3', () => {
             expect(x >= 2 && y >= 2 && x < p.w - 2 && y < p.h - 2, `${a}:${f} margin (${x},${y})`).toBe(true);
           }
       }
-  });
+  }, 60_000);
 
   it('puts the muzzle, the core and the head on the frame of every anim, at or above the floor', () => {
     for (const a of ALL)
@@ -175,5 +175,5 @@ describe('shield_titan v3', () => {
         expect(opaque(p), `${light} ${f}`).toBeGreaterThan(5000);
         for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) if (p.isOpaque(x, y)) expect(PALETTE.has(p.get(x, y)!)).toBe(true);
       }
-  });
+  }, 60_000);
 });

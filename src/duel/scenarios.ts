@@ -263,7 +263,23 @@ for (const mod of Object.values(import.meta.glob<{ default: Record<string, Scena
 // that uses a zone above 2 are left alone. With 3 lanes nothing is touched: the getters return the
 // authored objects. Lazy (first read), because the lane count is only known once layout.ts loaded.
 
-const LANE_SHIFT = 1;
+/** Lane shift that centres the block of zone indices a scenario uses on the centre zone (2 of 5). */
+function laneShiftFor(st: StageSpec, steps: Step[]): number {
+  let lo = 99, hi = -1;
+  const use = (i: number) => { lo = Math.min(lo, i); hi = Math.max(hi, i); };
+  for (const side of [st.p0, st.p1]) {
+    side?.monsters?.forEach((m, i) => { if (m) use(i); });
+    side?.spellTraps?.forEach((m, i) => { if (m) use(i); });
+  }
+  for (const s of steps) {
+    if (typeof s === 'function') continue;
+    const o = s as unknown as Record<string, unknown>;
+    for (const k of ['zone', 'attackerZone', 'targetZone']) if (typeof o[k] === 'number') use(o[k] as number);
+  }
+  if (hi < 0) return 1;
+  return Math.max(0, Math.floor(2 - (lo + hi) / 2));
+}
+
 
 function lanes(): number {
   return (globalThis as { __NEON_LANES?: number }).__NEON_LANES ?? 3;
@@ -278,7 +294,7 @@ function stageIsThreeZone(st: StageSpec): boolean {
   return true;
 }
 
-function shiftStage(st: StageSpec): StageSpec {
+function shiftStage(st: StageSpec, LANE_SHIFT: number): StageSpec {
   const side = (s: StageSpec['p0']): StageSpec['p0'] => {
     if (!s) return s;
     const o = { ...s };
@@ -294,7 +310,7 @@ function shiftStage(st: StageSpec): StageSpec {
 }
 
 /** Shift every zone number of an action (or UI step) by one lane. Pure: returns a new object. */
-function shiftStep(st: Action | UiStep): Action | UiStep {
+function shiftStep(st: Action | UiStep, LANE_SHIFT: number): Action | UiStep {
   const o = { ...(st as unknown as Record<string, unknown>) };
   for (const k of ['zone', 'attackerZone', 'targetZone']) if (typeof o[k] === 'number') o[k] = (o[k] as number) + LANE_SHIFT;
   const ref = (r: unknown): unknown => {
@@ -315,12 +331,12 @@ function shiftStep(st: Action | UiStep): Action | UiStep {
   return o as unknown as Action | UiStep;
 }
 
-function shiftStepFn(st: Step): Step {
+function shiftStepFn(st: Step, sh: number): Step {
   if (typeof st === 'function') return (D) => {
     const a = st(D);
-    return a ? (shiftStep(a) as Action) : a;
+    return a ? (shiftStep(a, sh) as Action) : a;
   };
-  return shiftStep(st) as Step;
+  return shiftStep(st, sh) as Step;
 }
 
 for (const [key, sc] of Object.entries(SCENARIOS)) {
@@ -330,7 +346,11 @@ for (const [key, sc] of Object.entries(SCENARIOS)) {
   let cache: { stage: StageSpec; steps: Step[] } | null = null;
   const resolved = () => {
     if (lanes() !== 5 || !stageIsThreeZone(stage)) return null;
-    return (cache ??= { stage: shiftStage(stage), steps: steps.map(shiftStepFn) });
+    if (!cache) {
+      const sh = laneShiftFor(stage, steps);
+      cache = { stage: shiftStage(stage, sh), steps: steps.map((x) => shiftStepFn(x, sh)) };
+    }
+    return cache;
   };
   Object.defineProperty(sc, 'stage', { configurable: true, enumerable: true, get: () => resolved()?.stage ?? stage });
   Object.defineProperty(sc, 'steps', { configurable: true, enumerable: true, get: () => resolved()?.steps ?? steps });

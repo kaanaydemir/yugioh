@@ -152,8 +152,9 @@ const DUCK: Partial<Record<V3SpellSfxName, number>> = {
 };
 
 describe('A5 spell / trap sounds (§4.6)', () => {
-  it('23 recipes, all written (none of the A56.0 silent skeletons left)', () => {
-    expect(NAMES.length).toBe(23);
+  it('23 recipes + the 5 of Sihirli Şapka, all written (none of the A56.0 silent skeletons left)', () => {
+    expect(NAMES.length).toBeGreaterThanOrEqual(28);
+    for (const n of ['hatRise', 'hatThump', 'hatSwish', 'hatPop', 'hatReveal']) expect(NAMES).toContain(n);
     for (const n of NAMES) {
       const { log } = playOnce(R[n]);
       expect(log.sources.length, n).toBeGreaterThan(0);

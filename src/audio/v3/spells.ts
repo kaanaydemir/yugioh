@@ -375,6 +375,65 @@ export const V3_SPELL_RECIPES = {
       v.noise('white', { t: 0.02, g: swell(0.03, 0.08, 0.3), to: v.filt('highpass', 6000) });
     },
   },
+
+  // ================================================================ Sihirli Şapka (magic_hat)
+  // Soft cloth and felt, small round "bloops" and a toy chime: no glass, no metal, nothing near the
+  // mirror's plates or the chasm's stone. Every beat is short; the shuffle's swishes are quiet.
+  /** The hats rise out of the floor mist: a felt whoosh up and a soft rising "bloop" (E4 -> B4). */
+  hatRise: {
+    cap: 1,
+    gap: 0.15,
+    verb: 0.3,
+    play(v) {
+      sweep(v, 0, 0.3, [260, 1500, 700], 0.22, { kind: 'pink', q: 0.9, peakAt: 0.55 });
+      v.tone('sine', [[0, midiHz(64)], [0.18, midiHz(71), 'e']], { g: perc(0.14, 0.24, 0.02) });
+      puff(v, 0.02, 0.1, 0.22, 900, { kind: 'brown' });
+    },
+  },
+  /** A hat lands on its occupant: a dull felt thump with a little cloth air (x3, staggered by the scene). */
+  hatThump: {
+    cap: 3,
+    gap: 0.04,
+    verb: 0.2,
+    play(v) {
+      thump(v, 0, 170, 64, 0.5, 0.15, { drive: 1.2 });
+      puff(v, 0, 0.14, 0.12, 1400, { kind: 'pink' });
+    },
+  },
+  /** One shuffle pass: a quick cloth swish (band-passed air, rising) and a soft step. */
+  hatSwish: {
+    cap: 3,
+    gap: 0.05,
+    verb: 0.2,
+    play(v) {
+      sweep(v, 0, 0.2, [900, 2400, 1500], 0.13, { kind: 'white', q: 1.4, peakAt: 0.4 });
+      thump(v, 0.1, 140, 80, 0.12, 0.06);
+    },
+  },
+  /** A decoy hat lifts and pops: a round "pop" (sine 700 -> 1500), a puff and two toy sparkle ticks. */
+  hatPop: {
+    cap: 2,
+    gap: 0.08,
+    verb: 0.35,
+    play(v) {
+      v.tone('sine', [[0, 620], [0.05, 1500, 'e']], { g: perc(0.26, 0.09, 0.002) });
+      puff(v, 0, 0.2, 0.14, 2600, { kind: 'white' });
+      [midiHz(88), midiHz(93)].forEach((f, i) => v.tone('triangle', f, { t: 0.06 + i * 0.06, g: perc(0.08, 0.12, 0.002) }));
+    },
+  },
+  /** The real monster is found: a lift whoosh and a warm two-note chime (G5 -> D6), lower than the mirror's glass. */
+  hatReveal: {
+    cap: 1,
+    gap: 0.15,
+    verb: 0.45,
+    play(v) {
+      sweep(v, 0, 0.18, [500, 1800, 1100], 0.12, { kind: 'pink', q: 1 });
+      [midiHz(79), midiHz(86)].forEach((f, i) => {
+        v.tone('sine', f, { t: 0.05 + i * 0.09, g: perc(0.18, 0.5, 0.003) });
+        v.tone('sine', f * 2.01, { t: 0.05 + i * 0.09, g: perc(0.05, 0.3, 0.003) });
+      });
+    },
+  },
 } satisfies Record<string, Recipe>;
 
 export type V3SpellSfxName = keyof typeof V3_SPELL_RECIPES;

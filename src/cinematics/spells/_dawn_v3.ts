@@ -545,10 +545,8 @@ export class DawnFence {
         if (b && b.active) {
           const tex = motifTexture(this.scene, `dawn:badge:${from}`, badgeMotif(from));
           b.setTexture(tex.key);
-          b.setTintFill(PAL.white);
           bg(wait(this.scene, 34).then(() => {
             if (!b.active) return;
-            b.clearTint();
             this.setBadge(from - 1);
             this.badgeBump();
           }));
@@ -556,7 +554,6 @@ export class DawnFence {
       } else {
         const b = this.badge;
         if (b && b.active) {
-          b.setTintFill(PAL.white);
           bg(wait(this.scene, 34).then(() => this.setBadge(0)));
         }
       }

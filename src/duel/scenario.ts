@@ -51,7 +51,7 @@ export interface StageSpec {
   first?: PlayerId;
   /** RNG state (default 12345). */
   rng?: number;
-  /** 3 or 5 monster + spell/trap zones per player (default: the board's LANES, 3 unless ?zones=5). */
+  /** 3 or 5 monster + spell/trap zones per player (default: the board's LANES: 5 with the v3 look in a browser unless ?zones=3, else 3). */
   zones?: 3 | 5;
 }
 

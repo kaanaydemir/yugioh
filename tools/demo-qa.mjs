@@ -13,6 +13,7 @@
 //          entry demo  → demo.html?mode=demo&seed=S&speed=K           (window.__NEON_ARENA = 'v2')
 //          entry arena → index.html?mode=demo&seed=S&speed=K&arena=v2 (URL param)
 //          entry v1    → index.html?mode=demo&seed=S&speed=K          (the default arena, for comparison)
+//          entry v3   → v3 look at default settings (5+5 board); v3z3 → v3 look on 3+3 (?zones=3)
 //          entry v3z5x → v3 look + zones=5 + deck=expanded (new monsters on the 5-lane board)
 //          ":skip" adds &skipIntro=1 (default: the opening cinematic plays).
 //        Records __neon.duel.errors() (handler errors + watchdog timeouts), __neon.errors, page
@@ -228,7 +229,8 @@ function gameUrl(base, g) {
   if (g.entry === 'demo') return `${base}demo.html?${q}`;
   if (g.entry === 'arena') return `${base}?${q}&arena=v2`;
   if (g.entry === 'v1') return `${base}?${q}`;
-  if (g.entry === 'v3') return `${base}?${q}&look=v3`;
+  if (g.entry === 'v3') return `${base}?${q}&look=v3`; // 5+5 board (the default of the v3 look)
+  if (g.entry === 'v3z3') return `${base}?${q}&look=v3&zones=3`; // v3 look on the classic 3+3 board
   if (g.entry === 'v3z5') return `${base}?${q}&look=v3&zones=5`; // v3 look + the 5+5 board // the v3 look (A2/A3 acceptance demo games)
   if (g.entry === 'v3z5x') return `${base}?${q}&look=v3&zones=5&deck=expanded`; // 5+5 board + the expanded card pool (seeded 20-card decks)
   throw new Error(`unknown entry ${g.entry}`);

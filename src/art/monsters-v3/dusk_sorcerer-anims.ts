@@ -169,7 +169,7 @@ export function attackPose(f: number): Pose {
   const k8 = key(ATTACK_KEYS[8], 8, n);
   return key(mix(k8, IDLE0, f === 9 ? 0.4 : 0.75), f, n, IDLE0);
 }
-const ATTACK_HOLDS = [70, 90, 100, 170, 60, 50, 60, 80, 100, 110, 120, 140];
+const ATTACK_HOLDS = [70, 100, 130, 200, 100, 70, 60, 90, 110, 120, 120, 140];
 
 // ------------------------------------------------------------------ roar (11 frames): the floor slam
 
@@ -298,7 +298,7 @@ export function summonPose(f: number): Pose {
   const m = mix(key({ flame: 1.4, eye: 1.6, mx: 41, my: -38, ma: 300, mz: -1, collar: 0.9, tailA: 4, tailB: 4, mglow: 1 }, 6, SU_N), IDLE0, (f - 6) / 5);
   return key({ ...m, mglow: 0, t: ph }, f, SU_N, IDLE0);
 }
-const SU_HOLDS = [80, 80, 80, 80, 90, 100, 120, 100, 100, 110, 120, 140];
+const SU_HOLDS = [90, 90, 90, 90, 110, 120, 120, 100, 100, 110, 120, 140];
 
 const RV_N = 9;
 export function revivePose(f: number): Pose {

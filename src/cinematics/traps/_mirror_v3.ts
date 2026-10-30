@@ -286,7 +286,9 @@ export function domeShape(side: PlayerId): DomeShape {
   const a0 = BOARD_MID_COL;
   const b0 = monsterRow(side);
   // spanning the outer lanes (v1 cols 1–3 of 5, v2 cols 1–5 of 7) with 0.78 tiles to spare
-  const ra = (LANE_COLS[LANE_COLS.length - 1] - LANE_COLS[0]) / 2 + 0.78;
+  // 5 lanes: the outer tiles' far corners (±2.5, ±0.5) must lie inside the floor ellipse too (they poked out
+  // with 0.78: (2.5/2.78)² + (0.5/1.02)² = 1.05), so the margin grows to 1.0 tile; 3 lanes keep 0.78 (v3 3+3 identical)
+  const ra = (LANE_COLS[LANE_COLS.length - 1] - LANE_COLS[0]) / 2 + (LANE_COLS.length > 3 ? 1.0 : 0.78);
   const rb = 1.02;
   const rz = 84 * TK;
   const c = isoToScreen(a0, b0);

@@ -65,12 +65,13 @@ function chromePath() {
 }
 
 // ---- board geometry (mirror of src/view/layout.ts)
-// zones5 (?zones=5 with ?look=v3, set by goto / --query): 7×5 grid, origin (288, 80), graveyard / deck on col 6
-let Z5 = /[?&]zones=5(&|$)/.test(args.query ?? '') && /[?&]look=v3(&|$)/.test(args.query ?? '');
+// zones5 (the DEFAULT with ?look=v3 unless ?zones=3; set by goto / --query): 7×5 grid, origin (288, 80), graveyard / deck on col 6
+const isZ5 = (q) => /[?&]look=v3(&|$)/.test(q) && !/[?&]zones=3(&|$)/.test(q);
+let Z5 = isZ5(args.query ?? '');
 let BOARD_OX = Z5 ? 288 : 320;
 let BOARD_OY = Z5 ? 80 : 96;
 function setZones5(q) {
-  Z5 = /[?&]zones=5(&|$)/.test(q) && /[?&]look=v3(&|$)/.test(q);
+  Z5 = isZ5(q);
   BOARD_OX = Z5 ? 288 : 320;
   BOARD_OY = Z5 ? 80 : 96;
 }

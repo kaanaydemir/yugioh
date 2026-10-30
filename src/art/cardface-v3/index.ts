@@ -15,6 +15,7 @@ import type { CardId } from '../../data/cards';
 import type { PixelCanvas } from '../pixel';
 import { renderArt } from '../cardart-v3/_kit';
 import dawnSwords from '../cardart-v3/dawn_swords';
+import magicHat from '../cardart-v3/magic_hat';
 
 /** A card's v3 artwork painter (CARD_ART_W × CARD_ART_H, palette tones only). */
 export type CardArtV3Painter = (p: PixelCanvas) => void;
@@ -23,6 +24,10 @@ const ART: Partial<Record<CardId, CardArtV3Painter>> = {
   // Şafak Kılıçları: the v3 picture (the 44×34 hand version; the 88×68 one is for the 2× card)
   dawn_swords: (p) => {
     p.blit(renderArt(dawnSwords, 0).smallPx, 0, 0);
+  },
+  // Sihirli Şapka: the v3 picture (small version)
+  magic_hat: (p) => {
+    p.blit(renderArt(magicHat, 0).smallPx, 0, 0);
   },
 };
 const ICON: Partial<Record<CardId, (p: PixelCanvas) => void>> = {};

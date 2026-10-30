@@ -237,7 +237,7 @@ const HIT_KEYS: PoseDelta[] = [
   { hd: [0, 0], ha: 0.22 },
 ];
 const HIT_HOLDS = [60, 50, 70, 90, 100, 110];
-const HIT_MARKS = { impact: 0, contact: 0, recover: 3 };
+const HIT_MARKS = { impact: 0, contact: 0, recover: 4 };
 
 // ------------------------------------------------------------------ extra anims
 
@@ -377,6 +377,7 @@ const REVIVE_POSES: PoseDelta[] = [
   { shX: -2, shY: 8, hipX: -3, hipY: 6, by: 5, arch: -5, hd: [0, 19], ha: 0.62, eye: 0, glow: 0.1, nw: { wy: 6, wx: 3 }, fw: { wy: 1 }, tlift: -10, tcurl: 0.6, drain: 0.9, crumble: 0.55 },
   { shX: -2, shY: 8, hipX: -3, hipY: 6, by: 5, arch: -5, hd: [0, 19], ha: 0.62, eye: 0, glow: 0.3, nw: { wy: 5, wx: 3 }, fw: { wy: 0 }, tlift: -10, tcurl: 0.6, drain: 0.7, crumble: 0.3 },
   { shX: -2, shY: 8, hipX: -3, hipY: 6, by: 5, arch: -4, hd: [-1, 17], ha: 0.56, eye: 0, glow: 0.55, nw: { wy: 1, wx: 3 }, fw: { wy: -4 }, tlift: -8, tcurl: 0.7, drain: 0.4, crumble: 0.12 },
+  { shX: -2, shY: 7, hipX: -2, hipY: 5, by: 5, arch: -4, hd: [-1, 15], ha: 0.5, eye: 0.2, glow: 0.65, nw: { wy: -1, wx: 2 }, fw: { wy: -5 }, tlift: -6, tcurl: 0.8, drain: 0.25, crumble: 0.06 },
   ...REVIVE_TAIL,
 ];
 const REVIVE_HOLDS = [90, 90, 90, 90, 100, 100, 90, 90, 110, 120, 130];

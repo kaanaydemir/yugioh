@@ -14,7 +14,7 @@
 //                      all (every scenario; slow). Presets and keys can be mixed: ref,tbMirror
 //                      A trailing * selects every key with that prefix: 'slice*' (the A2 slice pack)
 //   --look v3          adds &look=v3 (the v3 look switch)
-//   --zones 5          adds &zones=5 (the 5+5 board; honoured only with --look v3)
+//   --zones 5          adds &zones=N (5 = the 5+5 board, now the DEFAULT with --look v3; pass 3 for the classic board)
 //   --arena v2         adds &arena=v2
 //   --speed N          adds &speed=N (default: the game default, 1×)
 //   --query "&k=v"     any extra URL query

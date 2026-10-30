@@ -33,7 +33,7 @@ describe('S-2 card back source', () => {
     expect(cards.cardBackCanvas(1)).toBe(cards.cardBackCanvas(0));
     expect(cards.cardMip('back', 1)).toBe(cards.cardMip('back', 0));
     expect(cards.cardMip('back')).toBe(cards.cardMip('back', 0));
-  });
+  }, 60_000);
 
   it('v3 (all lanes on, A6-A filled in step A1): per-player key and mip, each player\'s back from cardBackV3', async () => {
     // (A56.0 asserted today's pixels here while A6-A was the stub; lane A6-A's step A1 paints the

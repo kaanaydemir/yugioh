@@ -427,14 +427,15 @@ export class DeckScene extends Phaser.Scene {
     for (let i = 0; i < DECK_SIZE; i++) {
       const y = LIST_Y + i * ROW_H;
       const box = this.add.container(DX + 4, y).setDepth(9);
-      const hi = this.add.rectangle(0, 0, DW - 8, ROW_H, PAL.night3).setOrigin(0).setVisible(false);
+      // the highlight sits BELOW every row's text (a row's outline overlaps the next row's pixels)
+      const hi = this.add.rectangle(DX + 4, y, DW - 8, ROW_H, PAL.night3).setOrigin(0).setDepth(8).setVisible(false);
       const num = pixelText(this, 1, 1, String(i + 1).padStart(2, '0'), { size: 'sm', color: PAL.night4 });
       const orb = this.add.image(12, 0, orbTex(this, 'FIRE')).setOrigin(0);
       const name = pixelText(this, 23, 1, '', { size: 'sm', color: PAL.mist });
       const chain = this.add.image(80, 2, chainTex(this)).setOrigin(0).setVisible(false);
       const lvl = pixelText(this, 113, 1, '', { size: 'sm', color: PAL.gold3, originX: 1 });
       const atk = pixelText(this, 147, 1, '', { size: 'sm', color: PAL.crim3, originX: 1 });
-      box.add([hi, num, orb, name, chain, lvl, atk]);
+      box.add([num, orb, name, chain, lvl, atk]);
       const zone = this.add.zone(DX + 4, y, DW - 8, ROW_H).setOrigin(0).setDepth(12).setInteractive({ useHandCursor: true });
       const row: Row = { box, hi, orb, name, lvl, atk, num, chain, zone, id: null };
       zone.on(Phaser.Input.Events.POINTER_OVER, () => {
