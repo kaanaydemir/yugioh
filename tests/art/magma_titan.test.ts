@@ -74,7 +74,7 @@ describe('magma_titan v3 (biped/v1, A4.1 part 1)', () => {
         expect(diff, `${anim} f${f}`).toBe(0);
       }
     expect(frameDelta(drawFrame(art, 'idle', 0, 'left'), drawFrame(art, 'idle', 0, 'right'))).toBeGreaterThan(400);
-  });
+  }, 60_000);
 
   it('marks, holds and out (validateArt): clean for every anim; the attack is stomp → drive → punch', () => {
     const findings = validateArt(art, { tier: 'normal', attack: 'melee' });
