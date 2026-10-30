@@ -4,6 +4,8 @@
 
 import type { AnyMonsterAnim, DrawOpts, MonsterAnim, MonsterAnimExtra, MonsterArt, MonsterPoints } from '../types';
 import type { PixelCanvas } from '../pixel';
+import card from '../cardart-v3/seal_arm_r';
+import { renderArt } from '../cardart-v3/_kit';
 import { CX, CY, H, W, drawArm } from './seal_arm_r-rig';
 import { ANIMS, EXTRA_ANIMS, IMPACT, MUZZLE, framePoints, framePose } from './seal_arm_r-anims';
 
@@ -26,6 +28,10 @@ const sealArmR: MonsterArt = {
   extraAnims: EXTRA_ANIMS,
   drawExtra(p: PixelCanvas, anim: MonsterAnimExtra, frame: number, o?: DrawOpts) {
     drawArm(p, framePose(anim, frame), o?.lightFrom ?? 'left');
+  },
+  /** The card picture (v3 hand version, 44×34): replaces the placeholder crop on the card face under ?look=v3. */
+  portrait(p: PixelCanvas) {
+    p.blit(renderArt(card, 0).smallPx, 0, 0);
   },
   points(anim: AnyMonsterAnim, frame: number): MonsterPoints {
     return framePoints(anim, frame);
