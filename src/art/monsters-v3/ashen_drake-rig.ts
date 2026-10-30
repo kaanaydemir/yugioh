@@ -702,6 +702,7 @@ export function drawDragon(p: PixelCanvas, P: Pose) {
     }
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) put(dx, dy, k > 0.7 ? PAL.white : PAL.cyan4);
     put(0, 0, PAL.white);
+    remapWith(p, HIDE_MAP); // the gathered light is ember, not prism
   }
 }
 
@@ -1662,11 +1663,11 @@ function shard(p: PixelCanvas, c: V, L: number, h: number, whiteEdge: boolean) {
 const HIDE_MAP = new Map<number, number>([
   [PAL.night1, PAL.night0],
   [PAL.night2, PAL.night0],
-  [PAL.night3, PAL.stone0],
-  [PAL.night4, PAL.stone2],
-  [PAL.steel, PAL.stone1],
-  [PAL.mist, PAL.stone2],
-  [PAL.white, PAL.stone3],
+  [PAL.night3, PAL.night0],
+  [PAL.night4, PAL.stone1],
+  [PAL.steel, PAL.stone0],
+  [PAL.mist, PAL.stone1],
+  [PAL.white, PAL.stone2],
   [PAL.gold1, PAL.stone0],
   [PAL.gold2, PAL.stone1],
   [PAL.gold3, PAL.stone2],

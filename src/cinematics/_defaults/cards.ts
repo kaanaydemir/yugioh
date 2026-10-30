@@ -8,7 +8,7 @@
 import type { GameEvent, PlayerId, Uid } from '../../engine/types';
 import { other } from '../../engine/types';
 import { PAL, RAMPS } from '../../art/palette';
-import { LANE_MID, isoToScreen, type XY, zoneXY } from '../../view/layout';
+import { BOARD_MID_COL, LANE_MID, isoToScreen, type XY, zoneXY } from '../../view/layout';
 import { tween, wait } from '../../vfx/core';
 import { projectile } from '../../vfx/combat';
 import { burnFly, chainsBind, chasm, ghostRise, healFly, healingFountain, mirrorDome, stormStrike, tendril, vineBurst } from '../../vfx/setpieces';
@@ -94,7 +94,7 @@ registerCardHook(
     const run = resolutionRun(ctx);
     const li = idxOf(ctx, run, (e) => e.type === 'lpGain');
     const show = await spellShowcase(ctx, { uid: ev.uid, cardId: ev.cardId, player: ev.player, from: tileSource(ctx) ?? 'hand' });
-    const spring = isoToScreen(2, ev.player === 0 ? 4 : 0);
+    const spring = isoToScreen(BOARD_MID_COL, ev.player === 0 ? 4 : 0);
     await show.release(spring, { ms: 260 });
     let healed: Promise<void> = Promise.resolve();
     await healingFountain(ctx.scene, ev.player, lpPoint(ctx, ev.player), {

@@ -13,6 +13,7 @@
 //          entry demo  → demo.html?mode=demo&seed=S&speed=K           (window.__NEON_ARENA = 'v2')
 //          entry arena → index.html?mode=demo&seed=S&speed=K&arena=v2 (URL param)
 //          entry v1    → index.html?mode=demo&seed=S&speed=K          (the default arena, for comparison)
+//          entry v3z5x → v3 look + zones=5 + deck=expanded (new monsters on the 5-lane board)
 //          ":skip" adds &skipIntro=1 (default: the opening cinematic plays).
 //        Records __neon.duel.errors() (handler errors + watchdog timeouts), __neon.errors, page
 //        errors, console errors/warnings, stalls, the event timeline, fps; screenshots the key
@@ -229,6 +230,7 @@ function gameUrl(base, g) {
   if (g.entry === 'v1') return `${base}?${q}`;
   if (g.entry === 'v3') return `${base}?${q}&look=v3`;
   if (g.entry === 'v3z5') return `${base}?${q}&look=v3&zones=5`; // v3 look + the 5+5 board // the v3 look (A2/A3 acceptance demo games)
+  if (g.entry === 'v3z5x') return `${base}?${q}&look=v3&zones=5&deck=expanded`; // 5+5 board + the expanded card pool (seeded 20-card decks)
   throw new Error(`unknown entry ${g.entry}`);
 }
 

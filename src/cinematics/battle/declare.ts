@@ -19,7 +19,7 @@
 import type Phaser from 'phaser';
 import { PAL, PLAYER_COLOR, PLAYER_RAMP } from '../../art/palette';
 import { pixelText } from '../../ui/text';
-import { LANE_MID, DEPTH, LOOK_V3, type XY, zoneXY } from '../../view/layout';
+import { LANES, LANE_MID, DEPTH, LOOK_V3, type XY, zoneXY } from '../../view/layout';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { DECLARE_MAX_MS } from '../_v3/budget';
 import { canHandOver, declarePoseFrame, type HandOver } from '../_v3/clash';
@@ -247,7 +247,7 @@ registerEvent(
     ctx.keep('trapPulse', pulse);
     ctx.sfx('lockOn', { volume: 0.45, pitch: 0.7 });
     // a magenta shimmer runs along the defender's spell/trap row once
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < LANES; i++) {
       const p = zoneXY(pd.player, 'spellTrap', i);
       void wait(ctx.scene, i * 70).then(() => {
         void lightFlash(ctx.scene, p.x, p.y, PAL.mag3, 30, 420, { intensity: 0.6 });

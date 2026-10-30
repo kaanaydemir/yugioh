@@ -118,11 +118,13 @@ export const RESULT_REASON: Readonly<Record<WinReason, string>> = Object.freeze(
   lp: "Rakibin LP'si sıfırlandı",
   deckout: 'Rakibin destesi bitti',
   surrender: 'Rakip teslim oldu',
+  seals: 'Beş Mühür tamamlandı',
 });
 export const RESULT_REASON_LOST: Readonly<Record<WinReason, string>> = Object.freeze({
   lp: "LP'n sıfırlandı",
   deckout: 'Desten bitti',
   surrender: 'Teslim oldun',
+  seals: 'Rakip Beş Mühür\'ü tamamladı',
 });
 
 export interface ResultText {

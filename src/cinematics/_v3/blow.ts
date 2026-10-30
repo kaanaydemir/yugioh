@@ -17,7 +17,7 @@ interface XY {
 export type BlowKind = 'physical' | 'magic';
 
 /** What each monster's strike is made of (its registerStrike / plan §2). */
-export const STRIKE_KIND: Readonly<Record<MonsterId, BlowKind>> = {
+export const STRIKE_KIND: Readonly<Partial<Record<MonsterId, BlowKind>>> = {
   crystal_wyrm: 'magic', // prism breath
   abyss_magus: 'magic', // void orb
   magma_titan: 'physical', // lava fist

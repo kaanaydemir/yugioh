@@ -124,7 +124,7 @@ describe('DONE: guard knock-back by weight', () => {
 });
 
 describe('the 12 monsters (plan §2)', () => {
-  const PLAN: Record<MonsterId, WeightClass> = {
+  const PLAN: Partial<Record<MonsterId, WeightClass>> = {
     crystal_wyrm: 'mediumHeavy', // orta-ağır
     abyss_magus: 'caster', // süzülen büyücü
     magma_titan: 'heavy', // ağır
@@ -140,8 +140,8 @@ describe('the 12 monsters (plan §2)', () => {
   };
 
   it('each art declares its weight class', () => {
-    expect(MONSTER_IDS.length).toBe(12);
-    for (const id of MONSTER_IDS) {
+    expect(MONSTER_IDS.length).toBeGreaterThanOrEqual(12);
+    for (const id of MONSTER_IDS.slice(0, 12)) {  // the original 12 (later cards use the placeholder weight)
       expect(monsterArt(id).weight, id).toBe(PLAN[id]);
       expect(weightOf(monsterArt(id)), id).toBe(PLAN[id]);
       expect(motionProfile(monsterArt(id)).weight, id).toBe(PLAN[id]);

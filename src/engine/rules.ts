@@ -6,6 +6,7 @@
 // PendingDecision, which pauses the queue until the decision is answered by a later action.
 
 import { CARDS, DEFAULT_DECK, type CardId } from '../data/cards';
+import { decksFor, detectDeckPool } from '../data/decks';
 import {
   EngineError,
   HAND_LIMIT,
@@ -34,6 +35,8 @@ import {
   CHASM_MIN_ATK,
   PLAYERS,
   actionKey,
+  battleNumbers,
+  hasAllSeals,
   currentAtk as qCurrentAtk,
   currentDef as qCurrentDef,
   findMonster,
@@ -88,7 +91,7 @@ export function isLegal(state: GameState, action: Action): boolean {
 }
 
 export function newGame(opts: NewGameOptions): ApplyResult {
-  const decks: [CardId[], CardId[]] = opts.decks ?? [DEFAULT_DECK, DEFAULT_DECK];
+  const decks: [CardId[], CardId[]] = opts.decks ?? decksFor(opts.pool ?? detectDeckPool(), opts.seed) ?? [DEFAULT_DECK, DEFAULT_DECK];
   const zc: ZoneCounts = opts.zones === 5 ? ZONES_5 : DEFAULT_ZONES;
   const s: GameState = {
     cards: {},
@@ -129,6 +132,7 @@ export function newGame(opts: NewGameOptions): ApplyResult {
     r.drawCard(other(first), true);
   }
   r.beginTurn(first, 1, true);
+  r.checkWin();
   return { state: s, events: r.ev };
 }
 
@@ -205,6 +209,8 @@ type Task =
   | { k: 'emberBurn'; uid: Uid }
   | { k: 'tideBurn'; uid: Uid; controller: PlayerId }
   | { k: 'flipEffect'; uid: Uid; controller: PlayerId }
+  /** ownSpellBurn300: a Spell was activated by `controller` while `uid` was face-up on their field. */
+  | { k: 'spellBurn'; uid: Uid; controller: PlayerId }
   | { k: 'endPhase' }
   | { k: 'nextTurn' };
 
@@ -276,6 +282,13 @@ class Resolver {
         return;
       case 'flipEffect':
         return this.openFlipEffect(t.uid, t.controller);
+      case 'spellBurn': {
+        const loc = findMonster(this.s, t.uid);
+        if (!loc || !loc.slot.faceUp) return;
+        this.activateMonsterEffect(t.uid, loc.player);
+        this.damage(other(loc.player), 300, 'effect', t.uid);
+        return;
+      }
       case 'endPhase':
         return this.endPhase();
       case 'nextTurn':
@@ -291,6 +304,7 @@ class Resolver {
     if (uid === undefined) return false;
     ps.hand.push(uid);
     this.emit({ type: 'draw', player: p, uid, cardId: this.cardId(uid), initial });
+    this.checkSeals();
     return true;
   }
 
@@ -314,11 +328,12 @@ class Resolver {
       this.win(other(p), 'deckout');
       return;
     }
+    if (s.winner !== null) return; // the draw completed the five seals
     this.setPhase('main');
   }
 
   private endPhase(): void {
-    this.setPhase('end');
+    this.withStats(() => this.setPhase('end'));
     const p = this.s.activePlayer;
     const hand = this.ps(p).hand.length;
     if (hand > HAND_LIMIT) this.openPending({ kind: 'discard', player: p, count: hand - HAND_LIMIT });
@@ -353,10 +368,24 @@ class Resolver {
     if (s.winner !== null) return;
     const dead0 = s.players[0].lp <= 0;
     const dead1 = s.players[1].lp <= 0;
-    if (!dead0 && !dead1) return;
+    if (!dead0 && !dead1) {
+      this.checkSeals();
+      return;
+    }
     // Both at 0 at the same time: the turn player wins.
     const winner: PlayerId = dead0 && dead1 ? s.activePlayer : dead0 ? 1 : 0;
     this.win(winner, 'lp');
+  }
+
+  /** sealSet: the instant a hand holds all five distinct seal cards its owner wins (turn player first). */
+  checkSeals(): void {
+    const s = this.s;
+    if (s.winner !== null) return;
+    for (const p of [s.activePlayer, other(s.activePlayer)])
+      if (hasAllSeals(s, this.ps(p).hand)) {
+        this.win(p, 'seals');
+        return;
+      }
   }
 
   win(winner: PlayerId, reason: WinReason): void {
@@ -401,20 +430,24 @@ class Resolver {
   private destroyMonster(p: PlayerId, index: number, reason: DestroyReason, sourceUid: Uid | null): void {
     const slot = this.ps(p).monsters[index];
     if (!slot) return;
-    this.emit({ type: 'destroy', player: p, uid: slot.uid, cardId: this.cardId(slot.uid), location: 'monster', zone: index, reason, sourceUid });
-    this.ps(p).monsters[index] = null;
-    this.toGraveyard(slot.uid, 'monster', index);
-    this.dropEquips(slot.uid);
+    this.withStats(() => {
+      this.emit({ type: 'destroy', player: p, uid: slot.uid, cardId: this.cardId(slot.uid), location: 'monster', zone: index, reason, sourceUid });
+      this.ps(p).monsters[index] = null;
+      this.toGraveyard(slot.uid, 'monster', index);
+      this.dropEquips(slot.uid);
+    });
   }
 
   /** tribute → toGraveyard, then its equips. */
   private tributeMonster(p: PlayerId, index: number, forUid: Uid): void {
     const slot = this.ps(p).monsters[index];
     if (!slot) return;
-    this.emit({ type: 'tribute', player: p, uid: slot.uid, cardId: this.cardId(slot.uid), zone: index, forUid });
-    this.ps(p).monsters[index] = null;
-    this.toGraveyard(slot.uid, 'monster', index);
-    this.dropEquips(slot.uid);
+    this.withStats(() => {
+      this.emit({ type: 'tribute', player: p, uid: slot.uid, cardId: this.cardId(slot.uid), zone: index, forUid });
+      this.ps(p).monsters[index] = null;
+      this.toGraveyard(slot.uid, 'monster', index);
+      this.dropEquips(slot.uid);
+    });
   }
 
   /** Equip spells attached to a monster that left the field are destroyed by rule. */
@@ -492,7 +525,7 @@ class Resolver {
       case 'activateSpell':
         return this.activateSpell(a);
       case 'enterBattle':
-        return this.setPhase('battle');
+        return this.withStats(() => this.setPhase('battle'));
       case 'attack':
         return this.declareAttack(a.player, a.attackerZone, a.targetZone);
       case 'endTurn':
@@ -519,6 +552,10 @@ class Resolver {
   }
 
   private summonFromHand(p: PlayerId, uid: Uid, zone: number, tributes: Uid[], set: boolean): void {
+    this.withStats(() => this.summonFromHandBody(p, uid, zone, tributes, set));
+  }
+
+  private summonFromHandBody(p: PlayerId, uid: Uid, zone: number, tributes: Uid[], set: boolean): void {
     const s = this.s;
     const ps = this.ps(p);
     ps.hand.splice(ps.hand.indexOf(uid), 1);
@@ -533,6 +570,7 @@ class Resolver {
       return;
     }
     ps.monsters[zone] = { uid, position: 'attack', faceUp: true, enteredTurn: s.turn, attacksThisTurn: 0, positionChangedTurn: -1 };
+    if (monsterDefOf(s, uid)?.effect === 'summonTurnAtk500') ps.monsters[zone]!.normalSummoned = true;
     const method: SummonMethod = tribs.length ? 'tribute' : 'normal';
     this.emit({ type: 'summon', player: p, uid, cardId: this.cardId(uid), zone, method, position: 'attack', from: 'hand', sourceUid: null });
     this.queue.unshift({ k: 'summonWindow', uid }, { k: 'summonTriggers', uid, method });
@@ -540,12 +578,14 @@ class Resolver {
 
   private flipSummon(p: PlayerId, zone: number): void {
     const slot = this.ps(p).monsters[zone]!;
-    slot.faceUp = true;
-    slot.position = 'attack';
-    slot.positionChangedTurn = this.s.turn;
-    const cardId = this.cardId(slot.uid);
-    this.emit({ type: 'flip', player: p, uid: slot.uid, cardId, zone, cause: 'flipSummon' });
-    this.emit({ type: 'summon', player: p, uid: slot.uid, cardId, zone, method: 'flip', position: 'attack', from: 'field', sourceUid: null });
+    this.withStats(() => {
+      slot.faceUp = true;
+      slot.position = 'attack';
+      slot.positionChangedTurn = this.s.turn;
+      const cardId = this.cardId(slot.uid);
+      this.emit({ type: 'flip', player: p, uid: slot.uid, cardId, zone, cause: 'flipSummon' });
+      this.emit({ type: 'summon', player: p, uid: slot.uid, cardId, zone, method: 'flip', position: 'attack', from: 'field', sourceUid: null });
+    });
     this.queue.unshift({ k: 'summonTriggers', uid: slot.uid, method: 'flip' });
   }
 
@@ -584,6 +624,12 @@ class Resolver {
       case 'flipDestroyMonster':
         if (method === 'flip') this.openFlipEffect(uid, loc.player);
         return;
+      case 'summonFreezeAttack': {
+        // the summoner picks one opposing monster (face-down ones too); none = no effect
+        const candidates = monsterRefs(s, other(loc.player));
+        if (candidates.length) this.openPending({ kind: 'chooseTarget', player: loc.player, sourceUid: uid, candidates });
+        return;
+      }
       default:
         return;
     }
@@ -609,6 +655,10 @@ class Resolver {
     }
     const from = fromHand ? 'hand' : 'spellTrap';
     const base = { type: 'activate', player: p, uid: a.uid, cardId: d.id, kind: 'spell' } as const;
+    // ownSpellBurn300: face-up sorcerers on the activating player's field when the Spell is activated
+    const burners: Task[] = ps.monsters.flatMap((m): Task[] =>
+      m && m.faceUp && monsterDefOf(s, m.uid)?.effect === 'ownSpellBurn300' ? [{ k: 'spellBurn', uid: m.uid, controller: p }] : [],
+    );
 
     if (d.spellType === 'normal') {
       this.emit({ ...base, from, zone: stZone });
@@ -629,8 +679,10 @@ class Resolver {
           this.emit({ type: 'target', player: p, sourceUid: a.uid, targets: [{ player: p, zone: 'monster', index: t.toZone }], graveyardUid: t.uid });
           const gy = this.ps(owner).graveyard;
           gy.splice(gy.indexOf(t.uid), 1);
-          ps.monsters[t.toZone] = { uid: t.uid, position: 'attack', faceUp: true, enteredTurn: s.turn, attacksThisTurn: 0, positionChangedTurn: -1 };
-          this.emit({ type: 'summon', player: p, uid: t.uid, cardId: this.cardId(t.uid), zone: t.toZone, method: 'special', position: 'attack', from: 'graveyard', sourceUid: a.uid });
+          this.withStats(() => {
+            ps.monsters[t.toZone] = { uid: t.uid, position: 'attack', faceUp: true, enteredTurn: s.turn, attacksThisTurn: 0, positionChangedTurn: -1 };
+            this.emit({ type: 'summon', player: p, uid: t.uid, cardId: this.cardId(t.uid), zone: t.toZone, method: 'special', position: 'attack', from: 'graveyard', sourceUid: a.uid });
+          });
           after.push({ k: 'summonTriggers', uid: t.uid, method: 'special' });
           break;
         }
@@ -639,7 +691,7 @@ class Resolver {
       }
       if (stZone !== null) ps.spellTraps[stZone] = null;
       this.toGraveyard(a.uid, 'resolved', stZone);
-      this.queue.unshift(...after);
+      this.queue.unshift(...after, ...burners);
       return;
     }
 
@@ -654,6 +706,7 @@ class Resolver {
         ps.spellTraps[zone]!.equippedTo = targetUid;
         this.emit({ type: 'equip', player: p, spellUid: a.uid, spellZone: zone, targetUid });
       });
+      this.queue.unshift(...burners);
       return;
     }
 
@@ -664,6 +717,7 @@ class Resolver {
       ps.fieldSpell = { uid: a.uid, faceUp: true, setTurn: -1, equippedTo: null };
       this.emit({ type: 'fieldSpell', player: p, uid: a.uid, cardId: d.id, active: true });
     });
+    this.queue.unshift(...burners);
   }
 
   private declareAttack(p: PlayerId, attackerZone: number, targetZone: number | null): void {
@@ -741,6 +795,12 @@ class Resolver {
     const src = pd.sourceUid;
     this.activateMonsterEffect(src, pd.player);
     this.emit({ type: 'target', player: pd.player, sourceUid: src, targets: [{ player: ref.player, zone: ref.zone, index: ref.index }] });
+    if (monsterDefOf(s, src)?.effect === 'summonFreezeAttack') {
+      // the target cannot attack on its controller's next turn (the global turn counter + 1)
+      const slot = this.ps(ref.player).monsters[ref.index];
+      if (slot) slot.noAttackTurn = s.turn + 1;
+      return;
+    }
     if (ref.zone === 'monster') this.destroyMonster(ref.player, ref.index, 'effect', src);
     else this.destroySpellTrap(ref, 'effect', src);
   }
@@ -776,9 +836,10 @@ class Resolver {
       this.emit({ type: 'flip', player: dp, uid: targetUid, cardId: tDef.id, zone: tLoc.index, cause: 'attacked' });
     }
 
-    const atk = qCurrentAtk(s, attackerUid);
+    const nums = battleNumbers(s, attackerUid, targetUid);
+    const atk = nums.atk;
     const tPos = tLoc.slot.position;
-    const tVal = tPos === 'attack' ? qCurrentAtk(s, targetUid) : qCurrentDef(s, targetUid);
+    const tVal = nums.targetValue!;
     let killT = false;
     let killA = false;
     let dmgTo: PlayerId | null = null;
@@ -805,11 +866,23 @@ class Resolver {
       dmgTo = ap;
       dmg = tVal - atk;
     }
+    // wisp_imp: destroyed in battle -> its controller takes no damage from this battle
+    let impUid: Uid | null = null;
+    if (dmg > 0 && dmgTo === dp && killT && tDef.effect === 'noBattleDamageOnDestroy') impUid = targetUid;
+    else if (dmg > 0 && dmgTo === ap && killA && aDef.effect === 'noBattleDamageOnDestroy') impUid = attackerUid;
+    if (impUid !== null) {
+      dmg = 0;
+      dmgTo = null;
+    }
     const result = killT && killA ? 'bothDestroyed' : killT ? 'targetDestroyed' : killA ? 'attackerDestroyed' : 'noDestroy';
+    // contextual ATK debuffs (grim_warden on the target, shield_titan on the attacker) announce themselves
+    if (nums.targetDebuffBy !== null) this.activateMonsterEffect(nums.targetDebuffBy, ap);
+    if (nums.attackerDebuffBy !== null) this.activateMonsterEffect(nums.attackerDebuffBy, dp);
     this.emit({
       type: 'battle', player: ap, attackerUid, attackerZone: aLoc.index, targetUid, targetZone: tLoc.index,
       attackerAtk: atk, targetPosition: tPos, targetValue: tVal, result,
     });
+    if (impUid !== null) this.activateMonsterEffect(impUid, impUid === targetUid ? dp : ap);
     if (dmgTo !== null) this.damage(dmgTo, dmg, 'battle', dmgTo === dp ? attackerUid : targetUid);
     if (killT) this.destroyMonster(dp, tLoc.index, 'battle', attackerUid);
     if (killA) this.destroyMonster(ap, aLoc.index, 'battle', targetUid);

@@ -37,6 +37,22 @@ export const DEATH_PRESETS: Record<MonsterId, DeathPreset> = {
   shade_assassin: { material: 'shadow', accent: 'shadow' },
   volt_lizard: { material: 'light', accent: 'crystal' },
   thorn_lurker: { material: 'plant', accent: 'plant' },
+  // expanded roster, batch 1 (placeholder flavours until each monster gets its own)
+  dusk_sorcerer: { material: 'shadow', accent: 'shadow' },
+  ashen_drake: { material: 'shadow', accent: 'fire' },
+  grim_warden: { material: 'shadow', accent: 'crystal' },
+  venom_drake: { material: 'plant', accent: 'shadow' },
+  wisp_imp: { material: 'shadow', accent: 'shadow' },
+  steel_silencer: { material: 'stone', accent: 'crystal' },
+  seal_head: { material: 'shadow', accent: 'crystal' },
+  seal_arm_r: { material: 'shadow', accent: 'crystal' },
+  seal_arm_l: { material: 'shadow', accent: 'crystal' },
+  seal_leg_r: { material: 'shadow', accent: 'crystal' },
+  seal_leg_l: { material: 'shadow', accent: 'crystal' },
+  hourglass_imp: { material: 'light', accent: 'light' },
+  windmane_knight: { material: 'stone', accent: 'stone' },
+  shield_titan: { material: 'stone', accent: 'stone' },
+  wing_lady: { material: 'light', accent: 'plant' },
 };
 
 /**

@@ -37,7 +37,7 @@ import { frameRGBA } from '../art/atlas';
 import { holdOf } from '../art/animtime';
 import { monsterArt } from '../art/monsters';
 import { sfx, type SfxName } from '../audio/sfx';
-import { DEPTH, GAME_H, GAME_W, LOOK_V3, type XY, isoToScreen, panelRect, screenToIso, unitDepth } from '../view/layout';
+import { BOARD_MID_COL, DEPTH, GAME_H, GAME_W, LOOK_V3, type XY, isoToScreen, panelRect, screenToIso, unitDepth } from '../view/layout';
 import { lightBeam, lightFlash } from '../view/light';
 import { TEX, flash, shake, wait } from './core';
 import { Sparks as PxSparks, stopTime } from './combat';
@@ -1684,7 +1684,7 @@ const WATER_RAMP = [PAL.white, PAL.teal4, PAL.teal3, PAL.teal2, PAL.teal1];
  * into the pool meanwhile. Resolves when the last droplet has landed; the pool fades on its own.
  */
 export async function healingFountain(scene: Phaser.Scene, player: PlayerId, toXY: XY, opts: FountainOpts = {}): Promise<void> {
-  const base = opts.at ?? isoToScreen(2, player === 0 ? 4 : 0);
+  const base = opts.at ?? isoToScreen(BOARD_MID_COL, player === 0 ? 4 : 0);
   const x = Math.round(base.x);
   const y = Math.round(base.y);
   const H = 82;

@@ -14,7 +14,7 @@
 //   last flurry of feathers drifts down.
 
 import { PAL, RAMPS } from '../../art/palette';
-import { DEPTH, type XY, unitDepth } from '../../view/layout';
+import { DEPTH, LANES, type XY, unitDepth } from '../../view/layout';
 import { wait } from '../../vfx/core';
 import { afterimages, whiteFlash } from '../../vfx/combat';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
@@ -236,7 +236,7 @@ async function hawkStrike(s: StrikeArgs): Promise<void> {
     if (s.direct) {
       // ---- 2b. the long arc over the enemy monsters (wings beating, then a glide)
       const opp = u.player === 0 ? 1 : 0;
-      const row = [0, 1, 2].map((i) => s.ctx.views.field.unitAt(opp, i)).filter((x): x is MonsterUnit => !!x && x.sprite.visible);
+      const row = Array.from({ length: LANES }, (_, i) => s.ctx.views.field.unitAt(opp, i)).filter((x): x is MonsterUnit => !!x && x.sprite.visible);
       const topY = row.length ? Math.min(...row.map((m) => m.worldPoint('top').y)) : Math.min(apex.y, s.to.y);
       const P = { x: coreC.x - d * 22, y: Math.min(coreC.y - 44, topY - 14) };
       const ctrl = { x: (apex.x + P.x) / 2, y: Math.min(apex.y, P.y, topY) - 20 };

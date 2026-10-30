@@ -25,24 +25,25 @@ const sin = Math.sin;
 //   tail  — one slow traveling wave per loop (period 20);
 // a blink once per loop and one glint on the near wing's wrist knuckle.
 
-const IDLE_N = 20;
+const IDLE_N = 16;
 // the one glint of the loop: the near wing's wrist knuckle (a facet vertex on the lit leading
 // edge) on the three frames it stands still (f2–f4): 1 px → a 3-px cross → 1 px
 const IDLE_SPARKS: Record<number, [number, number][]> = { 2: [[0, 1]], 3: [[0, 2]], 4: [[0, 1]] };
+/** Ashen drake: ONE slow breath per loop (the wyrm breathes twice). */
 
 /** The 1-px body sink of the breath (frames 4–7 and 14–17: it leads the exhale a little, and idle
  *  f0 sits two frames into a rest plateau, so the lagging parts are at rest there too). */
 function idleDip(f: number): number {
   const g = ((f % IDLE_N) + IDLE_N) % IDLE_N;
-  return (g >= 4 && g <= 7) || (g >= 14 && g <= 17) ? 1 : 0;
+  return 0; // the heavy drake never steps its whole body (HA-21 phase): the breath lives in the chest, wings and tail
 }
 
 export function idlePose(f: number): Pose {
   const t = (((f % IDLE_N) + IDLE_N) % IDLE_N) / IDLE_N;
-  const br = (lag: number) => sin(2 * TAU * t - lag); // breath (period 10 frames)
+  const br = (lag: number) => sin(TAU * t - lag); // breath (one per loop)
   const rel = (lag: number) => br(lag) - sin(-lag);
   const b = br(0);
-  const blink = f === 15 ? 0.5 : f === 16 ? 0 : f === 17 ? 0.5 : 1;
+  const blink = f === 13 ? 0.5 : f === 14 ? 0 : f === 15 ? 0.5 : 1;
   // the hip sinks 1 px on the exhale; nothing on the body rotates by a fraction of a pixel (that
   // would make the shading crawl) — parts either move together or hold still. The step ripples
   // through the body (overlap): the head (and with it the upper neck) and the near wing's hand
@@ -53,13 +54,13 @@ export function idlePose(f: number): Pose {
     hy: dip,
     lean: 0,
     tailLag: [late(1), late(2)],
-    headY: -1 + Math.round(-0.65 * br(0.94) - 0.1) + late(1),
+    headY: 1 + Math.round(-1.4 * br(0.94) - 0.1) + late(1),
     headX: Math.round(0.7 * sin(TAU * t + 0.5) - 0.2),
     // (the extra lags are measured from frame 0, so frame 0 stays the approved still's pose)
-    nw: { a1: -108 - 4 * b, a2: -138 - 3.5 * br(Math.PI / 6), a3: -118 - 4 * br(Math.PI / 3), scal: 1 + 0.1 * rel(1.6), lag: late(1) },
-    fw: { a1: -84 - 4 * rel(0.35), a2: -108 - 4 * rel(Math.PI / 6 + 0.35), a3: -87.67 - 5 * rel(Math.PI / 3 + 0.35), scal: 1 + 0.1 * rel(2), lag: late(2) },
+    nw: { a1: -108 - 7 * b, a2: -138 - 6 * br(Math.PI / 6), a3: -118 - 7 * br(Math.PI / 3), scal: 1 + 0.16 * rel(1.6), lag: late(1) },
+    fw: { a1: -84 - 6 * rel(0.35), a2: -108 - 6 * rel(Math.PI / 6 + 0.35), a3: -87.67 - 7 * rel(Math.PI / 3 + 0.35), scal: 1 + 0.16 * rel(2), lag: late(2) },
     tail: t,
-    tailAmp: 4,
+    tailAmp: 6,
     arm: br(1.2) > 0.3 ? 3 : 0,
     armF: br(1.8) > 0.3 ? -2 : 0,
     glow: 0.3 + 0.15 * br(0.6),
@@ -68,7 +69,7 @@ export function idlePose(f: number): Pose {
   });
 }
 
-const IDLE_HOLDS = Array.from({ length: IDLE_N }, (_, f) => (f === 16 ? 80 : 100));
+const IDLE_HOLDS = Array.from({ length: IDLE_N }, (_, f) => (f % 8 === 3 ? 170 : f % 8 === 7 ? 150 : 130));
 
 // ------------------------------------------------------------------ guard (8 frames, 1.3 s)
 //
@@ -81,10 +82,12 @@ const IDLE_HOLDS = Array.from({ length: IDLE_N }, (_, f) => (f === 16 ? 80 : 100
 
 const GUARD_N = 8;
 // per frame: chest / thigh dip, wrapped-wing dip, head dip (px), membrane bulge (0/1)
-const G_CHEST = [0, 0, 1, 1, 1, 1, 0, 0];
-const G_WING = [0, 0, 0, 1, 1, 1, 1, 0];
-const G_HEAD = [0, 0, 0, 0, 1, 1, 1, 1];
-const G_BULGE = [0, 1, 1, 1, 1, 0, 0, 0];
+const G_CHEST = [0, 1, 1, 1, 0, 0, 0, 0];
+const G_WING = [0, 0, 1, 1, 1, 1, 0, 0];
+const G_HEAD = [1, 1, 0, 0, 0, 1, 1, 1];
+const G_BULGE = [0, 0, 0, 1, 1, 1, 1, 0];
+// ashen drake: the head leads the breath and rolls slowly from side to side under the wrap
+const G_SWAY = [0, 1, 2, 2, 1, 0, -1, -1];
 const G_SPARKS: Record<number, [number, number][]> = { 4: [[1, 1]], 5: [[1, 2]], 6: [[1, 1]] };
 
 export function guardPose(f: number): Pose {
@@ -94,11 +97,11 @@ export function guardPose(f: number): Pose {
   const t = g / GUARD_N;
   return pose({
     guard: true,
-    hy: 3 + c,
-    lean: 0.16,
-    headX: -3,
-    headY: 12 + at(G_HEAD, 0) - c,
-    ha: 0.34,
+    hy: 4 + c,
+    lean: 0.24,
+    headX: -1 + G_SWAY[g],
+    headY: 8 + at(G_HEAD, 0) - c,
+    ha: 0.5,
     wingDy: at(G_WING, 0) - c,
     tailLag: [at(G_CHEST, 1) - c, at(G_CHEST, 2) - c],
     nw: { a1: -64, a2: 40, a3: 76, fan: 21, scal: G_BULGE[g] ? 1.22 : 0.98 },
@@ -112,7 +115,7 @@ export function guardPose(f: number): Pose {
   });
 }
 
-const GUARD_HOLDS = [180, 150, 140, 160, 180, 150, 140, 160];
+const GUARD_HOLDS = [200, 170, 160, 200, 200, 180, 150, 200];
 
 // ------------------------------------------------------------------ roar (12 frames)
 //
@@ -122,7 +125,7 @@ const GUARD_HOLDS = [180, 150, 140, 160, 180, 150, 140, 160];
 
 // the far wing flung open to the side BELOW the line of the open jaws (a strip of floor between
 // the lower jaw and its leading edge, so the jaw silhouette never merges into the dark membrane)
-const FW_SPREAD: Partial<Wing> = { a1: -29, a2: 6, a3: -36, fan: 29, span: 1.3, at: [7, 3] };
+const FW_SPREAD: Partial<Wing> = { a1: -29, a2: 6, a3: -36, fan: 29, span: 1.15, at: [7, 3] };
 const NW_SPREAD: Partial<Wing> = { a1: -120, a2: -144, a3: -110, fan: -46, span: 1.05 };
 
 const ROAR_KEYS: PoseDelta[] = [
@@ -149,7 +152,19 @@ const ROAR_KEYS: PoseDelta[] = [
   // 11 = idle f0 (tail phase carried on)
   {},
 ];
-const ROAR_HOLDS = [70, 110, 160, 60, 110, 70, 70, 80, 100, 100, 110, 120];
+const ROAR_HOLDS = [90, 150, 200, 70, 150, 90, 100, 110, 130, 140, 150, 180];
+// ashen drake: a hunched heave, not a rear — the chest and head stay low and forward
+ROAR_KEYS.forEach((k, i) => {
+  if (i >= 2 && i <= 9) {
+    const w = i === 2 ? 0.5 : 1; // the first heave frame is only half way
+    k.lean = (k.lean ?? 0) * (1 - 0.6 * w);
+    k.ha = (k.ha ?? 0) * (1 - 0.65 * w) + 0.12 * w;
+    k.headY = (k.headY ?? 0) * (1 - 0.5 * w) + 3 * w;
+    k.headX = (k.headX ?? 0) * (1 - 0.5 * w) + 3 * w;
+    k.hy = (k.hy ?? 0) * (1 - 0.5 * w) + w;
+    k.arm = (k.arm ?? 0) * (1 - 0.5 * w);
+  }
+});
 
 // ------------------------------------------------------------------ attack: Prism Breath (13 frames)
 //
@@ -193,7 +208,19 @@ const ATTACK_KEYS: PoseDelta[] = [
   {},
 ];
 export const IMPACT = 5;
-const ATTACK_HOLDS = [60, 90, 100, 160, 110, 70, 90, 100, 100, 100, 110, 120, 140];
+const ATTACK_HOLDS = [70, 150, 170, 190, 200, 50, 80, 100, 120, 130, 140, 160, 190];
+// ashen drake: the coil is a hunker — the head drops low into the chest (not drawn back and up), the
+// haunches heave, the ember light swells behind the jaws; then one hard lunge
+ATTACK_KEYS.forEach((k, i) => {
+  if (i >= 1 && i <= 4) {
+    const w = [0, 0.35, 0.65, 0.9, 1][i]; // eased in: the hunker deepens frame by frame
+    k.headY = (k.headY ?? 0) + Math.round(8 * w);
+    k.ha = (k.ha ?? 0) + 0.5 * w;
+    k.hy = (k.hy ?? 0) + (w > 0.5 ? 1 : 0);
+    k.lean = (k.lean ?? 0) * (1 - 0.5 * w);
+    k.headX = (k.headX ?? 0) * (1 - 0.4 * w);
+  }
+});
 
 // ------------------------------------------------------------------ hit (6 frames)
 //
@@ -221,7 +248,7 @@ const HIT_KEYS: PoseDelta[] = [
   // 4 = idle f0
   {},
 ];
-const HIT_HOLDS = [60, 50, 70, 90, 110, 120];
+const HIT_HOLDS = [60, 60, 90, 120, 140, 150];
 
 // ------------------------------------------------------------------ tables
 
@@ -565,17 +592,19 @@ const EXTRA_POSES: Partial<Record<MonsterAnimExtra, Pose[]>> = {
   fromGuard: FROM_GUARD,
 };
 
-const spec = (holds: number[], marks?: AnimSpec['marks']): AnimSpec => ({ frames: holds.length, fps: 10, loop: false, holds, ...(marks ? { marks } : {}) });
+// ashen drake: a heavier tempo than the wyrm — every extra anim's holds are 12 % longer (10 ms steps)
+const heavy = (holds: number[], k = 1.12) => holds.map((h) => Math.round((h * k) / 10) * 10);
+const spec = (holds: number[], marks?: AnimSpec['marks'], k = 1.12): AnimSpec => ({ frames: holds.length, fps: 10, loop: false, holds: heavy(holds, k).map((h) => Math.min(200, h)), ...(marks ? { marks } : {}) });
 
 export const EXTRA_ANIMS: Partial<Record<MonsterAnimExtra, AnimSpec>> = {
   summon: spec(SUMMON_HOLDS, { land: 3 }),
   death: spec(DEATH_HOLDS, { impact: 0, dissolve: 4 }),
   revive: spec(REVIVE_HOLDS, { land: 4 }),
-  hitHeavy: spec(HIT_HEAVY_HOLDS, { impact: 0, contact: 0, recover: 5 }),
-  hitMagic: spec(HIT_MAGIC_HOLDS, { impact: 0, contact: 0, recover: 6 }),
+  hitHeavy: spec(HIT_HEAVY_HOLDS, { impact: 0, contact: 0, recover: 5 }, 1),
+  hitMagic: spec(HIT_MAGIC_HOLDS, { impact: 0, contact: 0, recover: 6 }, 1),
   victory: spec(VICTORY_HOLDS),
-  toGuard: spec(TO_GUARD_HOLDS),
-  fromGuard: spec(FROM_GUARD_HOLDS),
+  toGuard: spec(TO_GUARD_HOLDS, undefined, 1),
+  fromGuard: spec(FROM_GUARD_HOLDS, undefined, 1),
 };
 
 /** The frame whose glint is the 3-px cross, per anim with a glint: the 1-px frames around it use

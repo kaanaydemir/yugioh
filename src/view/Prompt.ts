@@ -78,6 +78,7 @@ const REASON: Record<WinReason, string> = {
   lp: "Rakibin LP'si sıfırlandı",
   deckout: 'Rakibin destesi bitti',
   surrender: 'Rakip teslim oldu',
+  seals: 'Beş Mühür tamamlandı',
 };
 
 function capY(size: TextSize, capTop: number): number {

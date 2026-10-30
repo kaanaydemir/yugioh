@@ -61,3 +61,6 @@ export { chooseAction } from './bot';
 export { describeEvent, describeEvents, describePending, cardName, playerName, inflect } from './describe';
 /** True if `action` would be accepted by apply() right now. */
 export { isLegal } from './rules';
+
+// Expanded roster (batch 1): the numbers a battle is fought with, the Trap lock and the seal check.
+export { battleNumbers, trapLocked, hasAllSeals, type BattleNumbers } from './query';

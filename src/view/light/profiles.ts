@@ -69,6 +69,22 @@ export const MONSTER_GLOW: Record<MonsterId, MonsterGlow> = {
   shade_assassin: { emissive: [T(PAL.crim4, 1), T(PAL.crim3, 0.8), T(PAL.void4, 1), T(PAL.white, 0.6), T(PAL.void3, 0.2)], halo: 0.65, pool: 0.8 },
   volt_lizard: { emissive: [T(PAL.white, 1), T(PAL.cyan4, 1), T(PAL.cyan3, 0.8), T(PAL.gold4, 0.45)], halo: 0.7, pool: 1 },
   thorn_lurker: { emissive: [T(PAL.mag3, 0.7), T(PAL.mag4, 1), T(PAL.white, 0.5), T(PAL.leaf4, 1), T(PAL.gold4, 1), T(PAL.leaf3, 0.15)], halo: 0.55, pool: 0.85 },
+  // expanded roster, batch 1 (attribute-coloured placeholder glow)
+  dusk_sorcerer: { emissive: [T(PAL.void4, 1), T(PAL.mag4, 1), T(PAL.white, 0.8), T(PAL.void3, 0.4)], halo: 0.6, pool: 0.9 },
+  ashen_drake: { emissive: [T(PAL.void4, 1), T(PAL.mag3, 0.7), T(PAL.white, 0.7), T(PAL.fire3, 0.4)], halo: 0.6, pool: 0.9 },
+  grim_warden: { emissive: [T(PAL.cyan4, 1), T(PAL.white, 1), T(PAL.void4, 1), T(PAL.cyan3, 0.7)], halo: 0.6, pool: 0.9 },
+  venom_drake: { emissive: [T(PAL.leaf4, 1), T(PAL.leaf3, 0.7), T(PAL.white, 0.6), T(PAL.void4, 0.8)], halo: 0.6, pool: 0.9 },
+  wisp_imp: { emissive: [T(PAL.void4, 1), T(PAL.white, 0.8), T(PAL.mag4, 0.8)], halo: 0.6, pool: 0.9 },
+  steel_silencer: { emissive: [T(PAL.crim4, 1), T(PAL.crim3, 0.7), T(PAL.white, 0.6), T(PAL.void4, 0.7)], halo: 0.6, pool: 0.9 },
+  seal_head: { emissive: [T(PAL.mag4, 1), T(PAL.void4, 1), T(PAL.white, 0.8)], halo: 0.6, pool: 0.9 },
+  seal_arm_r: { emissive: [T(PAL.mag4, 1), T(PAL.void4, 1), T(PAL.white, 0.7)], halo: 0.6, pool: 0.9 },
+  seal_arm_l: { emissive: [T(PAL.mag4, 1), T(PAL.void4, 1), T(PAL.white, 0.7)], halo: 0.6, pool: 0.9 },
+  seal_leg_r: { emissive: [T(PAL.mag4, 1), T(PAL.void4, 1), T(PAL.white, 0.7)], halo: 0.6, pool: 0.9 },
+  seal_leg_l: { emissive: [T(PAL.mag4, 1), T(PAL.void4, 1), T(PAL.white, 0.7)], halo: 0.6, pool: 0.9 },
+  hourglass_imp: { emissive: [T(PAL.gold4, 1), T(PAL.white, 1), T(PAL.gold3, 0.7)], halo: 0.6, pool: 0.9 },
+  windmane_knight: { emissive: [T(PAL.gold4, 1), T(PAL.gold3, 0.7), T(PAL.white, 0.6), T(PAL.leaf3, 0.3)], halo: 0.6, pool: 0.9 },
+  shield_titan: { emissive: [T(PAL.gold4, 1), T(PAL.gold3, 0.7), T(PAL.white, 0.5)], halo: 0.6, pool: 0.9 },
+  wing_lady: { emissive: [T(PAL.teal4, 1), T(PAL.white, 0.9), T(PAL.gold4, 0.8), T(PAL.teal3, 0.5)], halo: 0.6, pool: 0.9 },
 };
 
 /**

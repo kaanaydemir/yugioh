@@ -2,6 +2,7 @@
 
 import {
   CARDS,
+  SEAL_IDS,
   isMonster,
   isSpell,
   isTrap,
@@ -10,7 +11,7 @@ import {
   type SpellCardDef,
   type TrapCardDef,
 } from '../data/cards';
-import type { Action, GameState, MonsterSlot, PlayerId, SpellTrapSlot, Uid, ZoneRef } from './types';
+import type { Action, GameState, MonsterSlot, PlayerId, Position, SpellTrapSlot, Uid, ZoneRef } from './types';
 
 export const PLAYERS: readonly PlayerId[] = [0, 1];
 
@@ -141,7 +142,40 @@ export function fieldAtkModifier(s: GameState, d: MonsterCardDef): number {
   return mod;
 }
 
-/** Current ATK: base + equips + field spell for face-up field monsters (floor 0); base otherwise. */
+/** True when `p`'s opponent controls a face-up trapLock monster (Çelik Susturucu): `p` cannot activate traps. */
+export function trapLocked(s: GameState, p: PlayerId): boolean {
+  for (const m of s.players[p === 0 ? 1 : 0].monsters) {
+    if (m && m.faceUp && monsterDefOf(s, m.uid)?.effect === 'trapLock') return true;
+  }
+  return false;
+}
+
+/** True when every one of the five seal cards is in `hand`. */
+export function hasAllSeals(s: GameState, hand: readonly Uid[]): boolean {
+  const have = new Set(hand.map((u) => s.cards[u]?.cardId));
+  return SEAL_IDS.every((id) => have.has(id));
+}
+
+/** windAura300: +300 per OTHER face-up windAura monster on the same field when `d` is a WIND monster. */
+export function auraBonus(s: GameState, uid: Uid, d: MonsterCardDef, controller: PlayerId): number {
+  if (d.attribute !== 'WIND') return 0;
+  let bonus = 0;
+  for (const m of s.players[controller].monsters) {
+    if (m && m.faceUp && m.uid !== uid && monsterDefOf(s, m.uid)?.effect === 'windAura300') bonus += 300;
+  }
+  return bonus;
+}
+
+/** summonTurnAtk500: +500 while attacking (own battle phase) on the turn it was Normal / Tribute Summoned. */
+export function summonTurnBonus(s: GameState, d: MonsterCardDef, controller: PlayerId, slot: MonsterSlot): number {
+  if (d.effect !== 'summonTurnAtk500') return 0;
+  return slot.normalSummoned && slot.position === 'attack' && slot.enteredTurn === s.turn && s.activePlayer === controller && s.phase === 'battle' ? 500 : 0;
+}
+
+/**
+ * Current ATK: base + equips + field spell + auras (+ the knight's attack bonus) for face-up field
+ * monsters (floor 0); base otherwise. Battle-only debuffs live in `battleNumbers`.
+ */
 export function currentAtk(s: GameState, uid: Uid): number {
   const card = s.cards[uid];
   if (!card) return 0;
@@ -149,7 +183,49 @@ export function currentAtk(s: GameState, uid: Uid): number {
   if (!isMonster(d)) return 0;
   const loc = findMonster(s, uid);
   if (!loc || !loc.slot.faceUp) return d.atk;
-  return Math.max(0, d.atk + equipBonus(s, uid) + fieldAtkModifier(s, d));
+  return Math.max(0, d.atk + equipBonus(s, uid) + fieldAtkModifier(s, d) + auraBonus(s, uid, d, loc.player) + summonTurnBonus(s, d, loc.player, loc.slot));
+}
+
+export interface BattleNumbers {
+  /** The attacker's ATK in this battle (current ATK minus a defender's debuff). */
+  atk: number;
+  /** The target's ATK (attack position) or DEF (defense position); null for a direct attack. */
+  targetValue: number | null;
+  targetPosition: Position | null;
+  /** Monster effects that changed a number (for the log / cinematics), as uids of the source monsters. */
+  attackerDebuffBy: Uid | null;
+  targetDebuffBy: Uid | null;
+}
+
+/**
+ * The numbers a battle is fought with. A face-down target counts as a defense-position monster (it is
+ * flipped before the damage step). Shared by the battle code (rules.ts) and the bot, so every
+ * contextual modifier (grim_warden -400 on the target's ATK, shield_titan -500 on the attacker's ATK)
+ * has one definition; persistent modifiers come from `currentAtk`.
+ */
+export function battleNumbers(s: GameState, attackerUid: Uid, targetUid: Uid | null): BattleNumbers {
+  let atk = currentAtk(s, attackerUid);
+  if (targetUid === null) return { atk, targetValue: null, targetPosition: null, attackerDebuffBy: null, targetDebuffBy: null };
+  const aDef = monsterDefOf(s, attackerUid);
+  const tLoc = findMonster(s, targetUid);
+  const tDef = monsterDefOf(s, targetUid);
+  if (!tLoc || !tDef) return { atk, targetValue: null, targetPosition: null, attackerDebuffBy: null, targetDebuffBy: null };
+  const position: Position = tLoc.slot.faceUp ? tLoc.slot.position : 'defense';
+  let attackerDebuffBy: Uid | null = null;
+  let targetDebuffBy: Uid | null = null;
+  if (position === 'defense' && tDef.effect === 'defenseAtkDebuff500' && atk > 0) {
+    atk = Math.max(0, atk - 500);
+    attackerDebuffBy = targetUid;
+  }
+  let targetValue: number;
+  if (position === 'attack') {
+    targetValue = currentAtk(s, targetUid);
+    if (aDef?.effect === 'declareAtkDebuff400' && targetValue > 0) {
+      targetValue = Math.max(0, targetValue - 400);
+      targetDebuffBy = attackerUid;
+    }
+  } else targetValue = currentDef(s, targetUid);
+  return { atk, targetValue, targetPosition: position, attackerDebuffBy, targetDebuffBy };
 }
 
 /** Current DEF (no card in the pool modifies DEF yet; kept symmetric with currentAtk). */
@@ -164,6 +240,7 @@ export function currentDef(s: GameState, uid: Uid): number {
 /** Face-down traps of `p` with one of `effects`, set on an earlier turn (eligible to respond now). */
 export function respondableTraps(s: GameState, p: PlayerId, effects: readonly string[]): Uid[] {
   const out: Uid[] = [];
+  if (trapLocked(s, p)) return out; // Çelik Susturucu: the face-down traps stay set
   for (const st of s.players[p].spellTraps) {
     if (!st || st.faceUp) continue;
     const d = defOf(s, st.uid);

@@ -55,6 +55,10 @@ export interface MonsterSlot {
   attacksThisTurn: number;
   /** Turn number of the last manual position change / flip summon (-1 if never). */
   positionChangedTurn: number;
+  /** summonFreezeAttack: this monster cannot attack while `state.turn` equals this value. Absent = never frozen. */
+  noAttackTurn?: number;
+  /** summonTurnAtk500: set when the monster arrived by Normal / Tribute Summon (absent otherwise). */
+  normalSummoned?: boolean;
 }
 
 export interface SpellTrapSlot {
@@ -100,7 +104,7 @@ export type PendingDecision =
   /** End-phase hand limit. */
   | { kind: 'discard'; player: PlayerId; count: number };
 
-export type WinReason = 'lp' | 'deckout' | 'surrender';
+export type WinReason = 'lp' | 'deckout' | 'surrender' | 'seals';
 
 export interface GameState {
   cards: Record<Uid, CardInstance>;
@@ -283,4 +287,9 @@ export interface NewGameOptions {
   noShuffle?: boolean;
   /** 3 (default) or 5 monster + spell/trap zones per player. */
   zones?: 3 | 5;
+  /**
+   * Deck pool used when `decks` is not given: 'default' = DEFAULT_DECK for both; 'expanded' = a seeded
+   * 20-card deck per side from every card (src/data/decks.ts). Omitted: detected from ?deck= / __NEON_DECK.
+   */
+  pool?: 'default' | 'expanded';
 }

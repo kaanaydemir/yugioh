@@ -39,7 +39,7 @@ import Phaser from 'phaser';
 import type { PlayerId } from '../../engine/types';
 import { PAL } from '../../art/palette';
 import { mulberry32 } from '../../art/pixel';
-import { DEPTH, isoToScreen, unitDepth, zoneXY, type XY } from '../../view/layout';
+import { BOARD_COLS, BOARD_ROWS, DEPTH, isoToScreen, unitDepth, zoneXY, type XY } from '../../view/layout';
 import { REDUCED_MOTION } from '../../view/v3/motion';
 import { lightPool, type LightHandle } from '../../view/light';
 import { TEX } from '../../vfx/core';
@@ -238,11 +238,18 @@ function findPad(scene: Phaser.Scene): PlayerId | null {
   return null;
 }
 
-/** A random point on the lava seams (the lines between the zones of the 5×5 grid and round it). */
+/** A random point on the lava seams (the lines between the zones of the whole grid, 5×5 or 7×5, and round it). */
 function seamPoint(rnd: () => number): XY {
-  const k = Math.floor(rnd() * 6) - 0.5;
-  const t = -0.5 + rnd() * 5;
-  const p = rnd() < 0.5 ? isoToScreen(k, t) : isoToScreen(t, k);
+  // the three draws keep the 5×5 order (seam index, position along it, axis): same points as ever
+  const u1 = rnd();
+  const u2 = rnd();
+  const alongCols = rnd() < 0.5;
+  // seam of the cols (a line of constant col) runs along the rows, and the other way round
+  const nSeam = alongCols ? BOARD_COLS : BOARD_ROWS;
+  const nAlong = alongCols ? BOARD_ROWS : BOARD_COLS;
+  const k = Math.floor(u1 * (nSeam + 1)) - 0.5;
+  const t = -0.5 + u2 * nAlong;
+  const p = alongCols ? isoToScreen(k, t) : isoToScreen(t, k);
   return { x: Math.round(p.x), y: Math.round(p.y) };
 }
 

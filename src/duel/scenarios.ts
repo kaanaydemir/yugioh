@@ -252,3 +252,86 @@ export const SCENARIOS: Record<string, Scenario> = {
 for (const mod of Object.values(import.meta.glob<{ default: Record<string, Scenario> }>('./scenarios/*.ts', { eager: true }))) {
   Object.assign(SCENARIOS, mod.default ?? {});
 }
+
+// ---------------------------------------------------------------- 5-lane centring (?zones=5)
+//
+// The packs above were written for 3 + 3 zones (indices 0..2). On the 5-lane board those sit on the
+// LEFT three lanes, so every stage that was authored for 3 zones (no explicit `zones: 5`, no index
+// above 2 anywhere) is shifted one lane to the right — stage indices (monsters, spellTraps,
+// equippedTo) and every zone number of its steps (action zone / attackerZone / targetZone, target
+// refs, UI steps' zone / unit points). The scenarios of the zones5 pack (key z5*) and every stage
+// that uses a zone above 2 are left alone. With 3 lanes nothing is touched: the getters return the
+// authored objects. Lazy (first read), because the lane count is only known once layout.ts loaded.
+
+const LANE_SHIFT = 1;
+
+function lanes(): number {
+  return (globalThis as { __NEON_LANES?: number }).__NEON_LANES ?? 3;
+}
+
+function stageIsThreeZone(st: StageSpec): boolean {
+  if (st.zones === 5) return false;
+  for (const side of [st.p0, st.p1]) {
+    if (!side) continue;
+    if ((side.monsters?.length ?? 0) > 3 || (side.spellTraps?.length ?? 0) > 3) return false;
+  }
+  return true;
+}
+
+function shiftStage(st: StageSpec): StageSpec {
+  const side = (s: StageSpec['p0']): StageSpec['p0'] => {
+    if (!s) return s;
+    const o = { ...s };
+    if (s.monsters) o.monsters = [...Array.from({ length: LANE_SHIFT }, () => null), ...s.monsters];
+    if (s.spellTraps)
+      o.spellTraps = [
+        ...Array.from({ length: LANE_SHIFT }, () => null),
+        ...s.spellTraps.map((x) => (x && typeof x === 'object' && x.equippedTo !== undefined ? { ...x, equippedTo: x.equippedTo + LANE_SHIFT } : x)),
+      ];
+    return o;
+  };
+  return { ...st, p0: side(st.p0), p1: side(st.p1) };
+}
+
+/** Shift every zone number of an action (or UI step) by one lane. Pure: returns a new object. */
+function shiftStep(st: Action | UiStep): Action | UiStep {
+  const o = { ...(st as unknown as Record<string, unknown>) };
+  for (const k of ['zone', 'attackerZone', 'targetZone']) if (typeof o[k] === 'number') o[k] = (o[k] as number) + LANE_SHIFT;
+  const ref = (r: unknown): unknown => {
+    if (!r || typeof r !== 'object') return r;
+    const q = { ...(r as Record<string, unknown>) };
+    if (typeof q.index === 'number' && (q.zone === 'monster' || q.zone === 'spellTrap')) q.index += LANE_SHIFT;
+    if (q.ref) q.ref = ref(q.ref);
+    return q;
+  };
+  if (o.target) o.target = ref(o.target);
+  const at = o.at as Record<string, unknown> | undefined;
+  if (at && typeof at === 'object') {
+    const a = { ...at };
+    if (Array.isArray(a.zone) && (a.zone[1] === 'monster' || a.zone[1] === 'spellTrap')) a.zone = [a.zone[0], a.zone[1], (a.zone[2] as number) + LANE_SHIFT];
+    if (Array.isArray(a.unit)) a.unit = [a.unit[0], (a.unit[1] as number) + LANE_SHIFT];
+    o.at = a;
+  }
+  return o as unknown as Action | UiStep;
+}
+
+function shiftStepFn(st: Step): Step {
+  if (typeof st === 'function') return (D) => {
+    const a = st(D);
+    return a ? (shiftStep(a) as Action) : a;
+  };
+  return shiftStep(st) as Step;
+}
+
+for (const [key, sc] of Object.entries(SCENARIOS)) {
+  if (/^z5/.test(key)) continue;
+  const stage = sc.stage;
+  const steps = sc.steps;
+  let cache: { stage: StageSpec; steps: Step[] } | null = null;
+  const resolved = () => {
+    if (lanes() !== 5 || !stageIsThreeZone(stage)) return null;
+    return (cache ??= { stage: shiftStage(stage), steps: steps.map(shiftStepFn) });
+  };
+  Object.defineProperty(sc, 'stage', { configurable: true, enumerable: true, get: () => resolved()?.stage ?? stage });
+  Object.defineProperty(sc, 'steps', { configurable: true, enumerable: true, get: () => resolved()?.steps ?? steps });
+}

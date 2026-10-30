@@ -1,6 +1,6 @@
 # Canavar taslağı — 40 yeni özgün canavar
 
-> Bu belge bir **taslak**tır: kart verisi (`src/data/cards.ts`) ve çizim henüz yapılmadı.
+> Bu belge bir **taslak**tır. Durum: 1. parti (15 kart) veri + motor + yer tutucu görsel olarak eklendi (aşağıdaki "Parti 1 durumu"); gerçek çizimler henüz yok.
 > Hepsi özgün ad ve tasarım; rol listesi (kart numaraları) kullanıcının seçtiği 40 ikonik role karşılık gelir.
 > Alan kuralı: 5 canavar + 5 büyü/tuzak alanı. Çağırma: Sv 1–4 kurbansız, 5–6 için 1, 7+ için 2 kurban.
 > Boyut = sprite sınıfı (48 / 64 / 80 / 96 px). ATK üst sınırı 3000 (yalnızca 3 "patron" kartı).
@@ -69,3 +69,19 @@ Yeni şablonlar (her biri küçük, tekrar kullanılabilir):
 1. 48/64 px vanilla ve basit etkili canavarlar (önce bunlar: 18 kart).
 2. 80 px orta kartlar (14 kart).
 3. 96 px patronlar (6 kart: #10, #12, #22, #28, #31, #37) — en son, her biri imza çağrı ister.
+
+## Parti 1 durumu (11 rol = 15 kart)
+Kodda: `src/data/cards.ts` (15 kart, `MonsterId` genişledi), `src/engine/**` (etki şablonları), `src/data/decks.ts` (havuz + deste üretici),
+`src/art/monsters/_placeholder-new.ts` (kristal totem yer tutucu), `src/duel/scenarios/monsters1.ts` (m1* senaryoları), `tests/engine/monsters1.test.ts`.
+Kartlar: dusk_sorcerer, ashen_drake, grim_warden, venom_drake, wisp_imp, steel_silencer, Beş Mühür (seal_head, seal_arm_r, seal_arm_l, seal_leg_r, seal_leg_l), hourglass_imp, windmane_knight, shield_titan, wing_lady.
+(Tablodaki #11 `fifth_seal` yerine kullanıcı kararıyla Beş Mühür seti: elde 5 farklı parça = anında zafer, `winReason: 'seals'`.)
+
+Eklenen etki şablonları (hepsi motorda küçük, test edilmiş): `ownSpellBurn300`, `declareAtkDebuff400`, `noBattleDamageOnDestroy`, `trapLock`, `sealSet`,
+`summonFreezeAttack` (slotta `noAttackTurn`), `summonTurnAtk500` (slotta `normalSummoned`, yalnızca kendi Savaş Aşamasında +500), `defenseAtkDebuff500`, `windAura300` (yalnızca kendi sahası).
+Etkin ATK tek yerde: `currentAtk` (aura + şövalye bonusu dahil); savaşa özgü indirimler `battleNumbers(state, attacker, target)` (motor, bot ve savaş olayı aynı sayıyı kullanır).
+Yorumlar: Kalkan Devi yalnızca kendisine saldırana etki eder; Kum Saati hedefi çağıran seçer (kapalı canavar dahil); Hortlak Muhafız yalnızca saldırı pozisyonundaki hedefin ATK'sini düşürür.
+
+Deste: varsayılan 20 kart değişmedi. `?deck=expanded` (veya `globalThis.__NEON_DECK='expanded'`, yalnız v3 görünümünde) her oyuncuya tohumlu 20 kartlık deste verir:
+tüm büyü/tuzaklar + 35 kartlık havuzdan 12 farklı canavar (her kart en fazla 1 kez).
+TODO(deste kurucu): gerçek deste kurma arayüzü gelince bu örnekleyici onunla değiştirilecek.
+Yer tutucu görsel gerçek sanat gelince (v1 `src/art/monsters/<id>.ts` veya `monsters-v3/<id>.ts`) kendiliğinden devreden çıkar.

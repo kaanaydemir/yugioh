@@ -125,6 +125,7 @@ const WIN_REASON: Record<string, string> = {
   lp: 'LP sıfırlandı',
   deckout: 'deste bitti',
   surrender: 'rakip teslim oldu',
+  seals: 'Beş Mühür tamamlandı',
 };
 
 /**
@@ -241,6 +242,8 @@ export function describePending(state: GameState, pd: PendingDecision): string {
     case 'chooseTarget': {
       const card = state.cards[pd.sourceUid];
       const what = pd.candidates.every((c) => c.zone === 'monster') ? 'canavarı' : 'kartı';
+      if (card && CARDS[card.cardId].kind === 'monster' && (CARDS[card.cardId] as { effect: string }).effect === 'summonFreezeAttack')
+        return `${cardName(card.cardId, 'gen')} etkisi: bir sonraki turunda saldıramayacak canavarı seç.`;
       return card ? `${cardName(card.cardId, 'gen')} etkisi: yok edilecek ${what} seç.` : `Yok edilecek ${what} seç.`;
     }
     case 'discard':

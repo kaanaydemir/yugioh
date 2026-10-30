@@ -5,7 +5,8 @@
 import { isMonster, isSpell, isTrap, type MonsterCardDef } from '../data/cards';
 import { EngineError, HAND_LIMIT, other, type Action, type GameState, type PlayerId, type Uid, type ZoneRef } from './types';
 import { actingPlayer, legalActions } from './rules';
-import { currentAtk, currentDef, defOf, fieldAtkModifier, findMonster, monsterDefOf, uidAt, volcanoActive } from './query';
+import { battleNumbers, currentAtk, currentDef, defOf, fieldAtkModifier, findMonster, hasAllSeals, monsterDefOf, uidAt, volcanoActive } from './query';
+import { SEAL_IDS } from '../data/cards';
 import { makeRng } from './rng';
 
 type Rng = () => number;
@@ -102,8 +103,19 @@ function oppThreat(s: GameState, me: PlayerId): number {
   return t;
 }
 
+/** How many distinct seal pieces `me` holds (sealSet: five win the duel). */
+function sealsHeld(s: GameState, me: PlayerId): number {
+  const have = new Set(s.players[me].hand.map((u) => s.cards[u].cardId));
+  return SEAL_IDS.filter((id) => have.has(id)).length;
+}
+
+function isSeal(s: GameState, uid: Uid): boolean {
+  return monsterDefOf(s, uid)?.effect === 'sealSet';
+}
+
 function keepValue(s: GameState, me: PlayerId, uid: Uid): number {
   const d = defOf(s, uid);
+  if (isMonster(d) && d.effect === 'sealSet') return sealsHeld(s, me) >= 2 ? 5000 : d.atk * 0.5;
   if (isMonster(d)) return d.atk * (d.level >= 5 ? 0.8 : 1) + (d.effect === 'flipDestroyMonster' ? 900 : 0);
   if (isSpell(d)) {
     switch (d.effect) {
@@ -271,8 +283,13 @@ const trySummon: Step = (s, legal, me, rng) => {
   const threat = oppThreat(s, me);
   const oppHasMonsters = s.players[other(me)].monsters.some(Boolean);
   const oppHasST = s.players[other(me)].spellTraps.some(Boolean) || s.players[other(me)].fieldSpell !== null;
+  const hoard = sealsHeld(s, me) >= 3;
+  const oppHasSetTrap = s.players[other(me)].spellTraps.some((st) => st && !st.faceUp);
+  const myMons = s.players[me].monsters;
+  const spellsInHand = s.players[me].hand.filter((u) => defOf(s, u).kind === 'spell').length;
   const pick = bestWithScore(opts, rng, (a) => {
     const d = monsterDefOf(s, a.uid) as MonsterCardDef;
+    if (hoard && d.effect === 'sealSet') return -Infinity; // keep the pieces in hand: the set wins on the spot
     const cost = a.tributes.reduce((t, u) => t + ownValue(s, u) + 300, 0);
     let v: number;
     if (a.type === 'normalSummon') {
@@ -284,6 +301,13 @@ const trySummon: Step = (s, legal, me, rng) => {
       if (d.effect === 'directAttack') v += 300;
       if (d.effect === 'piercing') v += 200;
       if (d.effect === 'flipDestroyMonster') v -= 600;
+      if (d.effect === 'summonFreezeAttack' && oppHasMonsters) v += 350;
+      if (d.effect === 'trapLock' && oppHasSetTrap) v += 500;
+      if (d.effect === 'ownSpellBurn300') v += 250 * Math.min(2, spellsInHand);
+      if (d.effect === 'summonTurnAtk500' && s.turn > 1) v += 500;
+      if (d.effect === 'windAura300') v += 250 * myMons.filter((m) => m && m.faceUp && monsterDefOf(s, m.uid)?.attribute === 'WIND').length;
+      if (d.effect === 'declareAtkDebuff400') v += 250;
+      if (d.effect === 'defenseAtkDebuff500') v += 300;
       if (d.ace) v += 300;
       if (atk < threat) v -= 0.5 * (threat - atk);
     } else {
@@ -413,30 +437,32 @@ function attackScore(s: GameState, me: PlayerId, attackerZone: number, targetZon
   }
   const td = monsterDefOf(s, t.uid) as MonsterCardDef;
   const tVal = publicValue(s, t.uid);
+  const nums = battleNumbers(s, aUid, t.uid); // contextual debuffs (grim_warden, shield_titan) included
+  const batk = nums.atk;
   if (t.position === 'attack') {
-    const ta = currentAtk(s, t.uid);
-    if (atk > ta) {
-      const dmg = atk - ta;
+    const ta = nums.targetValue ?? currentAtk(s, t.uid);
+    if (batk > ta) {
+      const dmg = batk - ta;
       if (dmg >= oppLp) return 100000;
       let v = tVal + dmg;
       if (td.effect === 'destroyedByBattleBurn500') v -= 500;
       if (aDef.effect === 'battleDestroyBurn300') v += 300;
       return v;
     }
-    if (atk === ta) return tVal - aVal - 1;
-    return -(aVal + (ta - atk));
+    if (batk === ta) return tVal - aVal - 1;
+    return -(aVal + (ta - batk));
   }
-  const tdv = currentDef(s, t.uid);
+  const tdv = nums.targetValue ?? currentDef(s, t.uid);
   const tide = td.effect === 'defenseAttackedBurn300' ? 300 : 0;
-  if (atk > tdv) {
-    const pierce = aDef.effect === 'piercing' ? atk - tdv : 0;
+  if (batk > tdv) {
+    const pierce = aDef.effect === 'piercing' ? batk - tdv : 0;
     if (pierce >= oppLp) return 100000;
     let v = tVal + pierce - tide;
     if (td.effect === 'destroyedByBattleBurn500') v -= 500;
     if (aDef.effect === 'battleDestroyBurn300') v += 300;
     return v;
   }
-  return -(tdv - atk) - tide - 1;
+  return -(tdv - batk) - tide - 1;
 }
 
 function bestAttackScoreFor(s: GameState, me: PlayerId, zone: number): number {

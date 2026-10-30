@@ -102,6 +102,7 @@ export function legalActions(s: GameState): Action[] {
       const oppHasMonsters = opp.monsters.some(Boolean);
       me.monsters.forEach((m, attackerZone) => {
         if (!m || !m.faceUp || m.position !== 'attack' || m.attacksThisTurn > 0) return;
+        if (m.noAttackTurn === s.turn) return; // frozen by Kum Saati Cücesi
         const d = monsterDefOf(s, m.uid);
         if (oppHasMonsters)
           opp.monsters.forEach((t, targetZone) => {

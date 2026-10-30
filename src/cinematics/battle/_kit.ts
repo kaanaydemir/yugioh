@@ -127,7 +127,7 @@ export async function dimPulse(scene: Phaser.Scene, level: number, o: { in?: num
 }
 
 /** The colour each monster's strike lights the floor with at the impact (its VFX colour). */
-export const STRIKE_LIGHT: Record<MonsterId, number> = {
+export const STRIKE_LIGHT: Partial<Record<MonsterId, number>> = {
   crystal_wyrm: PAL.cyan4,
   abyss_magus: PAL.void3,
   magma_titan: PAL.fire3,

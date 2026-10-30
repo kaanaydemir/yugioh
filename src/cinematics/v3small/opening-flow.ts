@@ -31,7 +31,7 @@
 
 import { PAL } from '../../art/palette';
 import type { PlayerId } from '../../engine/types';
-import { BOARD_CENTER, zoneXY, type BoardSpot } from '../../view/layout';
+import { BOARD_CENTER, LANES, zoneXY, type BoardSpot } from '../../view/layout';
 import { V3_A6_B } from '../../view/v3flags';
 import { REDUCED_MOTION } from '../../view/v3/motion';
 import { HudV3, ui3Ready, ui3Sfx } from '../../view/v3/hudV3';
@@ -55,8 +55,8 @@ export const OPENING_V3 = Object.freeze({
 });
 
 const ZONES: readonly (readonly [BoardSpot, number])[] = [
-  ['monster', 3],
-  ['spellTrap', 3],
+  ['monster', LANES],
+  ['spellTrap', LANES],
   ['field', 1],
   ['deck', 1],
   ['graveyard', 1],
