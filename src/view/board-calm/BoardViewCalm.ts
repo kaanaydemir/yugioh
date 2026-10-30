@@ -206,6 +206,13 @@ export interface BoardViewCalmOptions {
   active?: PlayerId | null;
   lights?: boolean;
   volcanoFrom?: PlayerId | null;
+  /**
+   * Neon Tower handover (docs/v3/ARENA_NEON_TOWER.md §8; additive, default = everything built, the
+   * calm arena exactly as before): parts BoardViewNt draws itself. `background` = the ink base, the four
+   * tinted bg masks and the stars; `slab` = the slab image and the neon trim pieces. The zone pads,
+   * highlights, flashes, runner, pulses and the volcano theme (this class is the floor ENGINE) stay.
+   */
+  skip?: { background?: boolean; slab?: boolean };
 }
 
 let instanceCounter = 0;
@@ -255,13 +262,16 @@ export class BoardViewCalm {
   private lavaTex: Phaser.Textures.CanvasTexture | null = null;
   private lavaData: ImageData | null = null;
   private lavaImg: Img | null = null;
+  private readonly skip: NonNullable<BoardViewCalmOptions['skip']>;
 
   constructor(scene: Phaser.Scene, opts: BoardViewCalmOptions = {}) {
     this.scene = scene;
+    this.skip = opts.skip ?? {};
     this.art = buildCalmTextures(scene);
     this.ring = this.add(scene.add.graphics()).setDepth(D.ring);
-    this.buildBackground();
-    this.buildSlab();
+    if (this.skip.background) for (const p of CALM_BG_PARTS) this.bg[p] = [];
+    else this.buildBackground();
+    if (!this.skip.slab) this.buildSlab();
     this.buildZones();
     this.buildParticles();
     this.setActivePlayer(opts.active ?? null, false);

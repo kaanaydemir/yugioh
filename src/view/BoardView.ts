@@ -56,6 +56,9 @@ import { TEX, shake } from '../vfx/core';
 import { ARENA_V2, BOARD_COLS, BOARD_MID_COL, BOARD_ROWS, type BoardSpot, DEPTH, GAME_H, GAME_W, LOOK_V3, isoToScreen, screenToIso, zoneCell } from './layout';
 import { BoardViewV2 } from './board-v2/BoardViewV2';
 import { BoardViewCalm } from './board-calm/BoardViewCalm';
+import { BoardViewNt } from './board-nt';
+import type { ArenaViewApi } from './board-nt/api';
+import { ARENA_NT } from './board-nt/flag';
 import type { CrowdReaction } from './board-v2/types';
 
 export type { ArenaTheme, ZoneHit } from '../art/arena';
@@ -203,8 +206,8 @@ export class BoardView {
   readonly scene: Phaser.Scene;
   /** The arena v2 implementation (null in v1). */
   private readonly v2: BoardViewV2 | null = null;
-  /** The calm arena of the v3 look (null otherwise). */
-  private readonly calm: BoardViewCalm | null = null;
+  /** The arena of the v3 look: the calm arena, or the Neon Tower (?arena=nt, docs/v3/ARENA_NEON_TOWER.md); null otherwise. */
+  private readonly calm: ArenaViewApi | null = null;
   private readonly id = ++instanceCounter;
   private readonly objs: Phaser.GameObjects.GameObject[] = [];
   private readonly rnd = mulberry32(1337);
@@ -269,7 +272,7 @@ export class BoardView {
   constructor(scene: Phaser.Scene, opts: BoardViewOptions = {}) {
     this.scene = scene;
     if (LOOK_V3) {
-      this.calm = new BoardViewCalm(scene, opts);
+      this.calm = ARENA_NT ? new BoardViewNt(scene, opts) : new BoardViewCalm(scene, opts);
       return;
     }
     if (ARENA_V2) {
@@ -582,6 +585,7 @@ export class BoardView {
    * `power` (0.5 … 2) scales how long and how big. Returns at once (the reaction plays on its own).
    */
   crowd(kind: CrowdReaction, side: PlayerId | null = null, power = 1): void {
+    if (this.calm) this.calm.crowd?.(kind, side, power);
     if (this.v2) this.v2.crowd(kind, side, power);
   }
 
