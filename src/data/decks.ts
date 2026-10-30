@@ -1,22 +1,29 @@
-// Card pools and deck factories. The classic game always plays DEFAULT_DECK (20 cards, both sides);
-// the 'expanded' pool adds every newer card and builds a seeded 20-card deck per side
-// (12 monsters + 8 spells/traps drawn from ALL non-monster cards, so every card gets dealt over seeds).
+// Card pools and deck factories. The classic game plays DEFAULT_DECK (the original 20 cards, both sides,
+// engine default); the 'expanded' pool adds every newer card and builds a seeded 40-card deck per side
+// (24 monsters + 16 spells/traps drawn from ALL non-monster cards, so every card gets dealt over seeds).
 //
 // Selecting the pool (v3 look only; with the v1 look the classic deck is always used):
 //   URL  ?deck=expanded          globalThis.__NEON_DECK = 'expanded'
-// TODO(deck builder): the real deck-builder UI replaces the sampler (docs/KART_TASLAGI_CANAVAR.md).
 //
-// Rules for a deck: every card id at most once (the five seals are five different cards, so a
-// 20-card sample may hold any subset of them). The sampler draws 12 monsters (<= 4 of Sv7+) and 8
-// spells/traps from the whole roster with the seeded generator.
+// Deck BUILDER rules (validateDeck, docs/DESTE_KURMA.md): DECK_MIN..DECK_MAX cards (40..80), at most 3 copies
+// of a card (the five seal pieces: 1 each), monsters >= 40% of the deck, Sv7+ monsters <= 20% of the deck.
+// These rules apply to the builder / pickers only: the engine still starts a game with ANY deck.
 
 import { ALL_CARDS, CARDS, DEFAULT_DECK, SEAL_IDS, isMonster, type Attribute, type CardDef, type CardId, type MonsterCardDef } from './cards';
 import { makeRng } from '../engine/rng';
 
 export type DeckPool = 'default' | 'expanded';
 
-export const DECK_SIZE = 20;
-export const DECK_MONSTERS = 12;
+/** Smallest / largest legal builder deck. */
+export const DECK_MIN = 40;
+export const DECK_MAX = 80;
+/** The default size: presets, the classic doubled deck, the CPU sampler and "Rastgele doldur". */
+export const DECK_SIZE = DECK_MIN;
+/** Copies of one card allowed (the five seals: 1). */
+export const MAX_COPIES = 3;
+export const SEAL_COPIES = 1;
+/** Sampler split of a 40-card deck. */
+export const DECK_MONSTERS = 24;
 
 /** Every card of the 'expanded' pool (monsters, spells and traps). */
 export const EXPANDED_POOL: readonly CardId[] = ALL_CARDS.map((c) => c.id);
@@ -38,8 +45,18 @@ export function detectDeckPool(): DeckPool {
   }
 }
 
-/** Spells/traps in a sampled deck (the rest of the 20 are monsters). */
+/** Spells/traps in a sampled deck (the rest are monsters). */
 export const DECK_SPELLTRAPS = DECK_SIZE - DECK_MONSTERS;
+
+/** True for the five seal pieces (the "Beş Mühür" set). */
+export function isSealCard(id: string): boolean {
+  return (SEAL_IDS as readonly string[]).includes(id);
+}
+
+/** Copies of `id` a deck may hold. */
+export function maxCopies(id: string): number {
+  return isSealCard(id) ? SEAL_COPIES : MAX_COPIES;
+}
 
 function shuffleWith<T>(arr: T[], rng: () => number): T[] {
   for (let i = arr.length - 1; i > 0; i--) {
@@ -49,25 +66,31 @@ function shuffleWith<T>(arr: T[], rng: () => number): T[] {
   return arr;
 }
 
+/** `slots` cards from the shuffled `list`: each card 1 copy, 2 with ~30% chance when `dup(id)` allows. */
+function sampleCopies(list: readonly CardId[], slots: number, rng: () => number, dup: (id: CardId) => boolean): CardId[] {
+  const out: CardId[] = [];
+  for (const id of list) {
+    if (out.length >= slots) break;
+    out.push(id);
+    if (out.length < slots && dup(id) && rng() < 0.3) out.push(id);
+  }
+  return out;
+}
+
 /**
- * Seeded 20-card deck of `side` from the expanded pool: 12 distinct monsters (at most DECK_MAX_HIGH
- * of Level >= DECK_HIGH_LEVEL) + 8 distinct spells/traps drawn from ALL non-monster cards.
+ * Seeded 40-card deck of `side` from the expanded pool: 24 monsters (Sv7+ one copy each, seals one copy,
+ * the rest up to two) + 16 spells/traps drawn from ALL non-monster cards. Always passes validateDeck.
  */
 export function expandedDeck(seed: number, side: 0 | 1): CardId[] {
   const rng = makeRng((seed ^ Math.imul(side + 1, 0x9e3779b1) ^ 0x5eed5eed) >>> 0);
   const monsters = shuffleWith(ALL_CARDS.filter(isMonster), rng);
   const rest = shuffleWith(ALL_CARDS.filter((c) => !isMonster(c)).map((c) => c.id), rng);
-  const picked: CardId[] = [];
-  let high = 0;
-  for (const m of monsters) {
-    if (picked.length >= DECK_MONSTERS) break;
-    if (m.level >= DECK_HIGH_LEVEL) {
-      if (high >= DECK_MAX_HIGH) continue;
-      high++;
-    }
-    picked.push(m.id);
-  }
-  return [...picked, ...rest.slice(0, DECK_SPELLTRAPS)];
+  const lowDup = (id: CardId) => {
+    const d = CARDS[id];
+    return !isSealCard(id) && !(isMonster(d) && d.level >= DECK_HIGH_LEVEL);
+  };
+  const picked = sampleCopies(monsters.map((m) => m.id), DECK_MONSTERS, rng, lowDup);
+  return [...picked, ...sampleCopies(rest, DECK_SPELLTRAPS, rng, (id) => !isSealCard(id))];
 }
 
 /** The two decks of a game for `pool` (undefined: the classic deck for both). */
@@ -77,17 +100,29 @@ export function decksFor(pool: DeckPool, seed: number): [CardId[], CardId[]] | u
 }
 
 // ======================================================================== deck builder rules
-// A builder deck (docs/DESTE_KURMA.md): exactly DECK_SIZE cards, every id at most once (singleton),
-// at least DECK_MIN_MONSTERS monsters and at most DECK_MAX_HIGH monsters of Level >= DECK_HIGH_LEVEL
-// (tribute-heavy). The pool is ALL_CARDS read at call time: nothing here counts cards.
+// A builder deck (docs/DESTE_KURMA.md): DECK_MIN..DECK_MAX cards, every id at most maxCopies(id) times,
+// monsters >= 40% of the deck and monsters of Level >= DECK_HIGH_LEVEL <= 20% (tribute-heavy).
+// Both ratios are measured on max(size, DECK_MIN) so a half-built deck is not judged on a tiny size.
+// The pool is ALL_CARDS read at call time: nothing here counts cards.
 
-export const DECK_MIN_MONSTERS = 6;
 export const DECK_HIGH_LEVEL = 7;
-export const DECK_MAX_HIGH = 4;
+export const MIN_MONSTER_RATIO = 0.4;
+export const MAX_HIGH_RATIO = 0.2;
+/** Monsters a deck of `size` cards needs. */
+export function minMonsters(size: number): number {
+  return Math.ceil(Math.max(size, DECK_MIN) * MIN_MONSTER_RATIO);
+}
+/** Sv7+ monsters a deck of `size` cards may hold. */
+export function maxHigh(size: number): number {
+  return Math.floor(Math.max(size, DECK_MIN) * MAX_HIGH_RATIO);
+}
+/** The limits at the smallest legal deck (kept for the UI / tests that quote them). */
+export const DECK_MIN_MONSTERS = minMonsters(DECK_MIN);
+export const DECK_MAX_HIGH = maxHigh(DECK_MIN);
 /** Level-curve buckets: levels 1..7 and "8+". */
 export const CURVE_BUCKETS = 8;
 
-export type DeckIssueCode = 'size' | 'dupe' | 'unknown' | 'monsters' | 'high';
+export type DeckIssueCode = 'size' | 'copies' | 'unknown' | 'monsters' | 'high';
 
 export interface DeckIssue {
   code: DeckIssueCode;
@@ -104,8 +139,10 @@ export interface DeckStats {
   high: number;
   /** Monsters per level: index 0 = Level 1 ... index 7 = Level 8 and up. */
   curve: number[];
-  /** Ids present more than once (each listed once). */
-  dupes: string[];
+  /** Copies per known card id. */
+  counts: Record<string, number>;
+  /** Ids held in more copies than maxCopies allows (each listed once). */
+  over: string[];
   /** Ids that are not in the card pool (a saved deck after a card was removed). */
   unknown: string[];
 }
@@ -121,17 +158,14 @@ export function isCardId(id: unknown): id is CardId {
 }
 
 export function deckStats(ids: readonly string[]): DeckStats {
-  const st: DeckStats = { size: ids.length, monsters: 0, spells: 0, traps: 0, high: 0, curve: new Array<number>(CURVE_BUCKETS).fill(0), dupes: [], unknown: [] };
-  const seen = new Set<string>();
+  const st: DeckStats = { size: ids.length, monsters: 0, spells: 0, traps: 0, high: 0, curve: new Array<number>(CURVE_BUCKETS).fill(0), counts: {}, over: [], unknown: [] };
   for (const id of ids) {
-    if (seen.has(id)) {
-      if (!st.dupes.includes(id)) st.dupes.push(id);
-    }
-    seen.add(id);
     if (!isCardId(id)) {
       if (!st.unknown.includes(id)) st.unknown.push(id);
       continue;
     }
+    st.counts[id] = (st.counts[id] ?? 0) + 1;
+    if (st.counts[id] > maxCopies(id) && !st.over.includes(id)) st.over.push(id);
     const d = CARDS[id];
     if (isMonster(d)) {
       st.monsters++;
@@ -143,49 +177,67 @@ export function deckStats(ids: readonly string[]): DeckStats {
   return st;
 }
 
+/** Copies of `id` in `ids`. */
+export function copiesOf(ids: readonly string[], id: string): number {
+  let n = 0;
+  for (const x of ids) if (x === id) n++;
+  return n;
+}
+
 /** The reasons (Turkish) a deck is not playable; `ok` when there are none. */
 export function validateDeck(ids: readonly string[]): DeckCheck {
   const stats = deckStats(ids);
   const issues: DeckIssue[] = [];
   if (stats.unknown.length) issues.push({ code: 'unknown', text: `Eksik kart: ${stats.unknown.length} (artık oyunda yok)` });
-  if (stats.dupes.length) {
-    const names = stats.dupes.map((d) => (isCardId(d) ? CARDS[d].name : d)).slice(0, 2).join(', ');
-    issues.push({ code: 'dupe', text: `Her karttan en çok 1 tane: ${names}${stats.dupes.length > 2 ? '…' : ''}` });
+  if (stats.over.length) {
+    const names = stats.over.map((d) => CARDS[d as CardId].name).slice(0, 2).join(', ');
+    issues.push({ code: 'copies', text: `Çok kopya: ${names}${stats.over.length > 2 ? '…' : ''} (en çok ${MAX_COPIES}, Mühür ${SEAL_COPIES})` });
   }
-  if (stats.size < DECK_SIZE) issues.push({ code: 'size', text: `Deste ${DECK_SIZE} kart olmalı: ${DECK_SIZE - stats.size} eksik` });
-  else if (stats.size > DECK_SIZE) issues.push({ code: 'size', text: `Deste ${DECK_SIZE} kart olmalı: ${stats.size - DECK_SIZE} fazla` });
-  if (stats.monsters < DECK_MIN_MONSTERS) issues.push({ code: 'monsters', text: `En az ${DECK_MIN_MONSTERS} canavar gerek (şimdi ${stats.monsters})` });
-  if (stats.high > DECK_MAX_HIGH) issues.push({ code: 'high', text: `En çok ${DECK_MAX_HIGH} canavar Sv ${DECK_HIGH_LEVEL}+ olabilir (şimdi ${stats.high})` });
+  if (stats.size < DECK_MIN) issues.push({ code: 'size', text: `Deste en az ${DECK_MIN} kart olmalı: ${DECK_MIN - stats.size} eksik` });
+  else if (stats.size > DECK_MAX) issues.push({ code: 'size', text: `Deste en çok ${DECK_MAX} kart olabilir: ${stats.size - DECK_MAX} fazla` });
+  const need = minMonsters(stats.size);
+  if (stats.monsters < need) issues.push({ code: 'monsters', text: `En az ${need} canavar gerek (şimdi ${stats.monsters})` });
+  const cap = maxHigh(stats.size);
+  if (stats.high > cap) issues.push({ code: 'high', text: `En çok ${cap} canavar Sv ${DECK_HIGH_LEVEL}+ olabilir (şimdi ${stats.high})` });
   return { ok: issues.length === 0, issues, stats };
 }
 
-/** Would adding `id` to `ids` break a rule that adding more cards can never fix (dupe / too many / high cap)? */
+/** Would adding `id` to `ids` break a rule that adding more cards can never fix (copies / full / high cap)? */
 export function addBlocker(ids: readonly string[], id: CardId): string | null {
-  if (ids.includes(id)) return 'Bu kart destede zaten var';
-  if (ids.length >= DECK_SIZE) return `Deste dolu (${DECK_SIZE}/${DECK_SIZE})`;
+  const have = copiesOf(ids, id);
+  const lim = maxCopies(id);
+  if (have >= lim) return lim === 1 ? 'Bu karttan destede zaten var (en çok 1)' : `Bu karttan en çok ${lim} kopya (zaten ${have})`;
+  if (ids.length >= DECK_MAX) return `Deste dolu (${DECK_MAX}/${DECK_MAX})`;
   const d = CARDS[id];
-  if (d && isMonster(d) && d.level >= DECK_HIGH_LEVEL && deckStats(ids).high >= DECK_MAX_HIGH) return `En çok ${DECK_MAX_HIGH} canavar Sv ${DECK_HIGH_LEVEL}+ olabilir`;
+  if (d && isMonster(d) && d.level >= DECK_HIGH_LEVEL) {
+    const cap = maxHigh(ids.length + 1);
+    if (deckStats(ids).high >= cap) return `En çok ${cap} canavar Sv ${DECK_HIGH_LEVEL}+ olabilir`;
+  }
   return null;
 }
 
-/** True for the five seal pieces (the "Beş Mühür" set). */
-export function isSealCard(id: string): boolean {
-  return (SEAL_IDS as readonly string[]).includes(id);
-}
-
-/** Drops unknown ids and repeats from anything that claims to be a deck (saved JSON). */
-export function repairDeck(raw: unknown): { cards: CardId[]; missing: number; repeats: number } {
+/**
+ * Drops unknown ids and copies beyond maxCopies from anything that claims to be a deck (saved JSON),
+ * and cuts the list at DECK_MAX. Order is kept.
+ */
+export function repairDeck(raw: unknown): { cards: CardId[]; missing: number; repeats: number; trimmed: number } {
   const cards: CardId[] = [];
+  const have: Record<string, number> = {};
   let missing = 0;
   let repeats = 0;
+  let trimmed = 0;
   if (Array.isArray(raw)) {
     for (const id of raw) {
       if (!isCardId(id)) missing++;
-      else if (cards.includes(id)) repeats++;
-      else cards.push(id);
+      else if ((have[id] ?? 0) >= maxCopies(id)) repeats++;
+      else if (cards.length >= DECK_MAX) trimmed++;
+      else {
+        have[id] = (have[id] ?? 0) + 1;
+        cards.push(id);
+      }
     }
   }
-  return { cards, missing, repeats };
+  return { cards, missing, repeats, trimmed };
 }
 
 /** Deterministic Fisher-Yates over a copy. */
@@ -200,26 +252,33 @@ function shuffled<T>(list: readonly T[], seed: number): T[] {
 }
 
 /**
- * "Rastgele doldur": keeps the cards already in `current` and adds seeded random ones until the
- * deck holds DECK_SIZE cards without breaking a rule. Monsters first (up to DECK_MIN_MONSTERS,
- * low levels), then about a third spells / traps, never above the high-level cap. Returns the new
- * list (the pool may be too small to fill: then as many as fit).
+ * "Rastgele doldur": keeps the cards already in `current` and adds seeded random ones until the deck holds
+ * `target` cards (default DECK_SIZE, clamped to DECK_MIN..DECK_MAX) without breaking a rule. Monsters first
+ * (up to the monster minimum, low levels), then about a third spells / traps, never above the high-level cap.
+ * Cards with the fewest copies are preferred, so the deck spreads over the pool before it repeats.
+ * Returns the new list (the pool may be too small to fill: then as many as fit).
  */
-export function autoFillDeck(current: readonly string[], seed: number, pool: readonly CardDef[] = ALL_CARDS): CardId[] {
-  const deck: CardId[] = repairDeck(current).cards.slice(0, DECK_SIZE);
+export function autoFillDeck(current: readonly string[], seed: number, pool: readonly CardDef[] = ALL_CARDS, target: number = DECK_SIZE): CardId[] {
+  const goal = Math.max(DECK_MIN, Math.min(DECK_MAX, Math.floor(target)));
+  const deck: CardId[] = repairDeck(current).cards.slice(0, goal);
   const st = () => deckStats(deck);
-  const free = shuffled(pool.filter((c) => !deck.includes(c.id)), seed);
+  const free = shuffled(pool, seed);
   const take = (pred: (c: CardDef) => boolean): boolean => {
-    const i = free.findIndex((c) => pred(c) && addBlocker(deck, c.id) === null);
-    if (i < 0) return false;
-    deck.push(free.splice(i, 1)[0].id);
-    return true;
+    for (let copies = 0; copies < MAX_COPIES; copies++) {
+      const c = free.find((x) => pred(x) && copiesOf(deck, x.id) === copies && addBlocker(deck, x.id) === null);
+      if (c) {
+        deck.push(c.id);
+        return true;
+      }
+    }
+    return false;
   };
-  while (deck.length < DECK_SIZE && st().monsters < DECK_MIN_MONSTERS) if (!take((c) => isMonster(c) && c.level < DECK_HIGH_LEVEL)) break;
-  const backRows = Math.max(0, Math.round(DECK_SIZE / 3) - (st().spells + st().traps));
-  for (let k = 0; k < backRows && deck.length < DECK_SIZE; k++) if (!take((c) => !isMonster(c))) break;
-  while (deck.length < DECK_SIZE) if (!take((c) => isMonster(c))) break;
-  while (deck.length < DECK_SIZE) if (!take(() => true)) break;
+  const need = minMonsters(goal);
+  while (deck.length < goal && st().monsters < need) if (!take((c) => isMonster(c) && c.level < DECK_HIGH_LEVEL)) break;
+  const backRows = Math.max(0, Math.round(goal / 3) - (st().spells + st().traps));
+  for (let k = 0; k < backRows && deck.length < goal; k++) if (!take((c) => !isMonster(c))) break;
+  while (deck.length < goal) if (!take((c) => isMonster(c))) break;
+  while (deck.length < goal) if (!take(() => true)) break;
   return deck;
 }
 
@@ -309,32 +368,49 @@ export function missingPins(def: PresetDef, pool: readonly CardDef[] = ALL_CARDS
   return def.pins.filter((id) => !ids.has(id));
 }
 
+/**
+ * Candidates for a preset slot list: every card of `list` (already ranked best first) with up to `copies(c)`
+ * copies; copy k of the card at rank i has priority i + k * spread, so strong cards double up before weak
+ * ones appear at all.
+ */
+function copyOrder<T extends CardDef>(list: T[], spread: number, copies: (c: T) => number): T[] {
+  const out: { c: T; pri: number }[] = [];
+  list.forEach((c, i) => {
+    for (let k = 0; k < copies(c); k++) out.push({ c, pri: i + k * spread });
+  });
+  return out.sort((a, b) => a.pri - b.pri).map((x) => x.c);
+}
+
 /** Builds one preset from `pool`: pins first, then back row and monsters by role score; stable order. */
 export function buildPreset(def: PresetDef, pool: readonly CardDef[] = ALL_CARDS): Preset {
   const order = new Map(pool.map((c, i) => [c.id, i]));
   const deck: CardId[] = [];
+  // pins: two copies each (one for the seals), they are the theme of the deck
   for (const id of def.pins) if (order.has(id) && addBlocker(deck, id) === null) deck.push(id);
+  for (const id of def.pins) if (order.has(id) && !isSealCard(id) && deck.length < DECK_SIZE / 2 && addBlocker(deck, id) === null) deck.push(id);
   const backScore = (c: CardDef) => (BACK_SCORE[(c as { effect: string }).effect]?.[def.role] ?? 2) + (def.attribute === 'FIRE' && (c as { effect: string }).effect === 'fieldVolcano' ? 3 : 0);
   const ranked = <T extends CardDef>(list: T[], score: (c: T) => number) => [...list].sort((a, b) => score(b) - score(a) || (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
-  const free = pool.filter((c) => !deck.includes(c.id));
-  // back row up to the aim (counting pinned spells / traps)
+  const all = [...pool];
+  // back row up to the aim (counting pinned spells / traps), best cards first, strong ones doubled
+  const backAim = def.backRow * 2;
   const backNow = () => deck.filter((id) => !isMonster(CARDS[id])).length;
-  for (const c of ranked(free.filter((c) => !isMonster(c)), backScore)) {
-    if (backNow() >= def.backRow || deck.length >= DECK_SIZE) break;
-    deck.push(c.id);
+  for (const c of copyOrder(ranked(all.filter((c) => !isMonster(c)), backScore), 6, (c) => (backScore(c) >= 5 ? 3 : 2))) {
+    if (backNow() >= backAim || deck.length >= DECK_SIZE) break;
+    if (addBlocker(deck, c.id) === null && copiesOf(deck, c.id) < 3) deck.push(c.id);
   }
-  // monsters: keep at least 5 low-level (<= 4) ones so the deck can summon without tributes
-  const monsters = ranked(free.filter(isMonster), (c) => monsterScore(c, def.role, def.attribute));
+  // monsters: keep at least 10 low-level (<= 4) ones so the deck can summon without tributes; Sv7+ one copy
+  const monsters = ranked(all.filter(isMonster), (c) => monsterScore(c, def.role, def.attribute));
   const lowNow = () => deck.filter((id) => { const d = CARDS[id]; return isMonster(d) && d.level <= 4; }).length;
-  for (const c of monsters) {
+  for (const c of copyOrder(monsters, 8, (m) => (m.level >= DECK_HIGH_LEVEL ? 1 : 3))) {
     if (deck.length >= DECK_SIZE) break;
-    if (deck.includes(c.id) || addBlocker(deck, c.id) !== null) continue;
+    if (addBlocker(deck, c.id) !== null) continue;
     const slotsLeft = DECK_SIZE - deck.length - 1;
-    if (c.level > 4 && lowNow() + slotsLeft < 5) continue;
+    if (c.level > 4 && lowNow() + slotsLeft < 10) continue;
     deck.push(c.id);
   }
   // pool too thin for a rule above: top up with anything legal
-  for (const c of pool) if (deck.length < DECK_SIZE && !deck.includes(c.id) && addBlocker(deck, c.id) === null) deck.push(c.id);
+  for (let copies = 0; copies < MAX_COPIES; copies++)
+    for (const c of pool) if (deck.length < DECK_SIZE && copiesOf(deck, c.id) === copies && addBlocker(deck, c.id) === null) deck.push(c.id);
   deck.sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
   return { id: def.id, name: def.name, blurb: def.blurb, cards: deck };
 }
@@ -355,7 +431,10 @@ export function presetById(id: string): Preset | undefined {
   return presetDecks().find((p) => p.id === id);
 }
 
-/** The classic 20-card deck as a plain list (the "Klasik Deste" entry of the pickers). */
+/**
+ * The classic deck as a plain list (the "Klasik Deste" entry of the pickers): the original 20 cards twice
+ * (40 cards, two copies each). The engine's own default (DEFAULT_DECK, 20 cards) is untouched.
+ */
 export function classicDeck(): CardId[] {
-  return [...DEFAULT_DECK];
+  return [...DEFAULT_DECK, ...DEFAULT_DECK];
 }

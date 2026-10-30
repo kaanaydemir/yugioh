@@ -3,8 +3,8 @@
 //   left    the game's own inspect panel (big card + Turkish text), a key-help / seal-hint plate under it
 //   middle  the card pool: filter chips (kind, element), sort chips, a scrolling 3-column grid of cells
 //           (44x34 picture, name, ATK/DEF, element orb, level) — click / Enter adds or removes a card
-//   right   the deck: 5 save slots, the deck's name, the 20 slots as a list, the level curve, the
-//           counts, the Turkish reasons while the deck is not playable, and the action buttons
+//   right   the deck: 5 save slots, the deck's name, the count N/40-80, a scrolling list of the distinct
+//           cards with their copy count (xN) and a - / + pair per row, the level curve, the counts, the Turkish reasons while the deck is not playable, and the action buttons
 //
 // Mouse and keyboard both do everything (see HELP below). The pool is read from ALL_CARDS at
 // runtime: 35 cards today, 60-80 later; the grid scrolls and nothing here counts cards.
@@ -17,7 +17,7 @@ import type { TrimName } from '../../art/frame-v3';
 import { ATTRIBUTE_COLOR, KIND_RAMP, PAL } from '../../art/palette';
 import { sfx } from '../../audio/sfx';
 import {
-  CURVE_BUCKETS, DECK_HIGH_LEVEL, DECK_SIZE, addBlocker, autoFillDeck, classicDeck, deckStats, isSealCard, presetDecks, validateDeck,
+  CURVE_BUCKETS, DECK_HIGH_LEVEL, DECK_MAX, DECK_MIN, addBlocker, autoFillDeck, classicDeck, copiesOf, deckStats, isSealCard, presetDecks, validateDeck,
 } from '../../data/decks';
 import { measureText, pixelText, wrapText } from '../../ui/text';
 import { Button } from '../../view/Button';
@@ -56,13 +56,17 @@ const GRID_X = PX + 6;
 const GRID_Y = PY + 40;
 const ROW_H = 9;
 const LIST_Y = DY + 39;
-const NAME_W = 96;
+const NAME_W = 82;
+/** Visible rows of the deck list (it scrolls: up to 55 distinct cards). */
+const LIST_ROWS = 20;
+const RANGE = `/${DECK_MIN}-${DECK_MAX}`;
 const BTN_Y = DY + DH - 2 * 17 - 1;
 const KIND_LABEL: Record<KindFilter, string> = { all: 'Tümü', monster: 'Canavar', spell: 'Büyü', trap: 'Tuzak' };
 const KINDS: readonly KindFilter[] = ['all', 'monster', 'spell', 'trap'];
 const SPELL_WORD: Record<string, string> = { normal: 'Normal', equip: 'Kuşanma', field: 'Alan', continuous: 'Devamlı' };
 const HELP: readonly (readonly [string, string])[] = [
-  ['ENTER', 'Ekle / çıkar'],
+  ['ENTER', 'Kopya ekle'],
+  ['DEL', 'Kopya çıkar'],
   ['TAB', 'Alan değiştir'],
   ['1-5', 'Deste yuvası'],
   ['K · N', 'Kaydet · Ad ver'],
@@ -90,7 +94,11 @@ interface Cell {
   word: Phaser.GameObjects.BitmapText;
   chain: Phaser.GameObjects.Image;
   tick: Phaser.GameObjects.Image;
+  cntBg: Phaser.GameObjects.Rectangle;
+  cnt: Phaser.GameObjects.BitmapText;
+  minus: Phaser.GameObjects.Container;
   zone: Phaser.GameObjects.Zone;
+  minusZone: Phaser.GameObjects.Zone;
   x: number;
   y: number;
   index: number;
@@ -104,10 +112,19 @@ interface Row {
   name: Phaser.GameObjects.BitmapText;
   lvl: Phaser.GameObjects.BitmapText;
   atk: Phaser.GameObjects.BitmapText;
-  num: Phaser.GameObjects.BitmapText;
+  cnt: Phaser.GameObjects.BitmapText;
   chain: Phaser.GameObjects.Image;
+  minus: StepBtn;
+  plus: StepBtn;
   zone: Phaser.GameObjects.Zone;
   id: CardId | null;
+}
+
+/** The small - / + button of a deck row. */
+interface StepBtn {
+  bg: Phaser.GameObjects.Rectangle;
+  label: Phaser.GameObjects.BitmapText;
+  zone: Phaser.GameObjects.Zone;
 }
 
 interface Draft {
@@ -134,6 +151,8 @@ export class DeckScene extends Phaser.Scene {
   private scrollRow = 0;
   private zone: Zone = 'pool';
   private deckCursor = 0;
+  /** First visible entry of the deck list. */
+  private deckScroll = 0;
   private editing = false;
   /** The first character typed replaces the old name (select-all behaviour). */
   private nameFresh = false;
@@ -160,6 +179,9 @@ export class DeckScene extends Phaser.Scene {
   private nameCaret!: Phaser.GameObjects.Rectangle;
   private nameZone!: Phaser.GameObjects.Zone;
   private countText!: Phaser.GameObjects.BitmapText;
+  private rangeText!: Phaser.GameObjects.BitmapText;
+  private dTrack!: Phaser.GameObjects.Rectangle;
+  private dThumb!: Phaser.GameObjects.Rectangle;
   private okIcon!: Phaser.GameObjects.Image;
   private curveBars: Phaser.GameObjects.Rectangle[] = [];
   private curveNums: Phaser.GameObjects.BitmapText[] = [];
@@ -203,6 +225,7 @@ export class DeckScene extends Phaser.Scene {
     this.scrollRow = 0;
     this.cursor = 0;
     this.deckCursor = 0;
+    this.deckScroll = 0;
     this.zone = 'pool';
     this.filter = { kind: 'all', attr: null };
     this.sort = 'level';
@@ -255,7 +278,7 @@ export class DeckScene extends Phaser.Scene {
       if (this.onKey(e)) e.preventDefault();
     };
     window.addEventListener('keydown', onKey);
-    const onWheel = (_p: Phaser.Input.Pointer, _o: unknown, _dx: number, dy: number) => this.wheel(dy);
+    const onWheel = (p: Phaser.Input.Pointer, _o: unknown, _dx: number, dy: number) => this.wheel(dy, p.x);
     this.input.on(Phaser.Input.Events.POINTER_WHEEL, onWheel);
     const onUpdate = (_t: number, dt: number) => this.tick(dt);
     this.events.on(Phaser.Scenes.Events.UPDATE, onUpdate);
@@ -299,7 +322,7 @@ export class DeckScene extends Phaser.Scene {
   private buildHeader(): void {
     const t = pixelText(this, 10, 6, 'DESTE KUR', { size: 'md', color: PAL.white }).setDepth(10);
     t.setTint(PAL.gold4, PAL.gold4, PAL.gold3, PAL.gold3);
-    this.txt(96, 8, 'Beş Mühür, tek kopya kuralı, 20 kart', PAL.steel);
+    this.txt(96, 8, `${DECK_MIN}-${DECK_MAX} kart · en çok 3 kopya · Mühür 1`, PAL.steel);
     const back = new Button(this, GAME_W - 66, 2, { w: 62, h: 18, label: 'GERİ', size: 'sm', icon: ICON.close, style: 'neutral', depth: 20 });
     back.onClick = () => void this.leave();
     back.onHover = (on) => on && this.say('Ana menüye dön (ESC)', 'info');
@@ -372,11 +395,26 @@ export class DeckScene extends Phaser.Scene {
     const atk = pixelText(this, 52, 26, '', { size: 'sm', color: PAL.crim3 });
     const def = pixelText(this, 82, 26, '', { size: 'sm', color: PAL.cyan3 });
     const word = pixelText(this, 52, 26, '', { size: 'sm', color: PAL.mist });
-    const chain = this.add.image(CELL_W - 12, 27, chainTex(this)).setOrigin(0);
+    const chain = this.add.image(CELL_W - 12, 17, chainTex(this)).setOrigin(0);
     const tick = this.add.image(37, 4, tickTex(this)).setOrigin(0);
-    box.add([bg, art, orb, lvlBg, lvl, name, atk, def, word, chain, tick]);
+    const cntBg = this.add.rectangle(3, 37, 1, 1, PAL.ink).setOrigin(0, 1).setVisible(false);
+    const cnt = pixelText(this, 4, 36, '', { size: 'sm', color: PAL.gold4, originY: 1 });
+    // the - button (remove one copy), bottom of the art window between "xN" and the level; visible while the card is in the deck
+    const mbg = this.add.rectangle(0, 0, 11, 9, PAL.night3).setOrigin(0);
+    const mtx = pixelText(this, 3, 2, '-', { size: 'sm', color: PAL.white });
+    const minus = this.add.container(19, CELL_H - 12, [mbg, mtx]).setVisible(false);
+    box.add([bg, art, orb, lvlBg, lvl, name, atk, def, word, chain, tick, cntBg, cnt, minus]);
     const zone = this.add.zone(x, y, CELL_W, CELL_H).setOrigin(0).setDepth(12).setInteractive({ useHandCursor: true });
-    const cell: Cell = { box, bg, art, orb, lvlBg, lvl, name, atk, def, word, chain, tick, zone, x, y, index: -1, id: null };
+    const minusZone = this.add.zone(x + 19, y + CELL_H - 12, 11, 9).setOrigin(0).setDepth(13).setInteractive({ useHandCursor: true });
+    minusZone.input!.enabled = false;
+    const cell: Cell = { box, bg, art, orb, lvlBg, lvl, name, atk, def, word, chain, tick, cntBg, cnt, minus, zone, minusZone, x, y, index: -1, id: null };
+    minusZone.on(Phaser.Input.Events.POINTER_OVER, () => {
+      if (cell.id && !this.editing) this.setFocus('pool', cell.index, true);
+    });
+    minusZone.on(Phaser.Input.Events.POINTER_UP, (p: Phaser.Input.Pointer) => {
+      if (!cell.id || this.editing || p.rightButtonReleased()) return;
+      this.removeCard(cell.id);
+    });
     zone.on(Phaser.Input.Events.POINTER_OVER, () => {
       if (cell.index < 0 || this.editing) return;
       this.setFocus('pool', cell.index, true);
@@ -391,14 +429,12 @@ export class DeckScene extends Phaser.Scene {
       this.setFocus('pool', cell.index, false);
       box.y = y + 1;
     });
+    // (adding the same card twice in a row is allowed now: copies)
     zone.on(Phaser.Input.Events.POINTER_UP, (p: Phaser.Input.Pointer) => {
       box.y = y;
       if (cell.index < 0 || this.pressedCell !== cell.index || p.rightButtonReleased()) return;
       this.pressedCell = -1;
-      // a fast double-click must not add and then remove the same card
-      const now = performance.now();
-      if (this.lastPoolClick.cell === cell.index && now - this.lastPoolClick.at < 250) return;
-      this.lastPoolClick = { cell: cell.index, at: now };
+      this.lastPoolClick = { cell: cell.index, at: performance.now() };
       this.togglePool(cell.index);
     });
     zone.on(Phaser.Input.Events.POINTER_OUT, () => {
@@ -426,40 +462,74 @@ export class DeckScene extends Phaser.Scene {
     this.nameZone.on(Phaser.Input.Events.POINTER_OVER, () => !this.editing && this.say('Desteye ad ver (N)', 'info'));
     // count line + legal mark
     this.countText = pixelText(this, DX + NAME_W + 9, DY + 24, '', { size: 'md', color: PAL.white }).setDepth(10);
+    this.rangeText = pixelText(this, DX + NAME_W + 9, DY + 28, RANGE, { size: 'sm', color: PAL.steel }).setDepth(10);
     this.okIcon = this.add.image(DX + DW - 9, DY + 28, ICON.check).setDepth(10).setVisible(false);
 
-    // list rows
-    for (let i = 0; i < DECK_SIZE; i++) {
+    // list rows: one per distinct card, "xN" copies, - / + per row; the list scrolls
+    const RW = DW - 12;
+    for (let i = 0; i < LIST_ROWS; i++) {
       const y = LIST_Y + i * ROW_H;
       const box = this.add.container(DX + 4, y).setDepth(9);
       // the highlight sits BELOW every row's text (a row's outline overlaps the next row's pixels)
-      const hi = this.add.rectangle(DX + 4, y, DW - 8, ROW_H, PAL.night3).setOrigin(0).setDepth(8).setVisible(false);
-      const num = pixelText(this, 1, 1, String(i + 1).padStart(2, '0'), { size: 'sm', color: PAL.night4 });
-      const orb = this.add.image(12, 0, orbTex(this, 'FIRE')).setOrigin(0);
-      const name = pixelText(this, 23, 1, '', { size: 'sm', color: PAL.mist });
+      const hi = this.add.rectangle(DX + 4, y, RW, ROW_H, PAL.night3).setOrigin(0).setVisible(false).setDepth(8);
+      const cnt = pixelText(this, 1, 1, '', { size: 'sm', color: PAL.gold3 });
+      const orb = this.add.image(13, 0, orbTex(this, 'FIRE')).setOrigin(0);
+      const name = pixelText(this, 24, 1, '', { size: 'sm', color: PAL.mist });
       const chain = this.add.image(80, 2, chainTex(this)).setOrigin(0).setVisible(false);
-      const lvl = pixelText(this, 113, 1, '', { size: 'sm', color: PAL.gold3, originX: 1 });
-      const atk = pixelText(this, 147, 1, '', { size: 'sm', color: PAL.crim3, originX: 1 });
-      box.add([num, orb, name, chain, lvl, atk]);
-      const zone = this.add.zone(DX + 4, y, DW - 8, ROW_H).setOrigin(0).setDepth(12).setInteractive({ useHandCursor: true });
-      const row: Row = { box, hi, orb, name, lvl, atk, num, chain, zone, id: null };
-      zone.on(Phaser.Input.Events.POINTER_OVER, () => {
+      const lvl = pixelText(this, 99, 1, '', { size: 'sm', color: PAL.gold3, originX: 1 });
+      const atk = pixelText(this, 121, 1, '', { size: 'sm', color: PAL.crim3, originX: 1 });
+      const stepBtn = (bx: number, label: string): StepBtn => {
+        const bg = this.add.rectangle(DX + 4 + bx, y + 1, 10, ROW_H - 2, PAL.night3).setOrigin(0).setDepth(9);
+        const lt = pixelText(this, DX + 4 + bx + 3, y + 1, label, { size: 'sm', color: PAL.white }).setDepth(10);
+        const zone = this.add.zone(DX + 4 + bx, y, 11, ROW_H).setOrigin(0).setDepth(13).setInteractive({ useHandCursor: true });
+        return { bg, label: lt, zone };
+      };
+      const minus = stepBtn(124, '-');
+      const plus = stepBtn(135, '+');
+      box.add([cnt, orb, name, chain, lvl, atk]);
+      const zone = this.add.zone(DX + 4, y, RW, ROW_H).setOrigin(0).setDepth(12).setInteractive({ useHandCursor: true });
+      const row: Row = { box, hi, orb, name, lvl, atk, cnt, chain, minus, plus, zone, id: null };
+      const focusRow = () => {
         if (!row.id || this.editing) return;
         this.zone = 'deck';
-        this.deckCursor = i;
+        this.deckCursor = this.deckScroll + i;
         this.renderFocus();
         this.showInspect();
         this.hoverSound();
-      });
+      };
+      zone.on(Phaser.Input.Events.POINTER_OVER, focusRow);
       zone.on(Phaser.Input.Events.POINTER_UP, (p: Phaser.Input.Pointer) => {
         if (!row.id || this.editing || p.rightButtonReleased()) return;
+        focusRow();
+      });
+      for (const b of [minus, plus]) b.zone.on(Phaser.Input.Events.POINTER_OVER, focusRow);
+      minus.zone.on(Phaser.Input.Events.POINTER_UP, (p: Phaser.Input.Pointer) => {
+        if (!row.id || this.editing || p.rightButtonReleased()) return;
+        this.deckCursor = this.deckScroll + i;
         this.removeCard(row.id);
+      });
+      plus.zone.on(Phaser.Input.Events.POINTER_UP, (p: Phaser.Input.Pointer) => {
+        if (!row.id || this.editing || p.rightButtonReleased()) return;
+        this.deckCursor = this.deckScroll + i;
+        this.addCard(row.id, -1);
       });
       this.rows.push(row);
     }
+    // scrollbar of the list
+    this.dTrack = this.add.rectangle(DX + DW - 6, LIST_Y, 2, LIST_ROWS * ROW_H, PAL.night2).setOrigin(0).setDepth(10);
+    this.dThumb = this.add.rectangle(DX + DW - 6, LIST_Y, 2, 20, PAL.steel).setOrigin(0).setDepth(11);
+    const dz = this.add.zone(DX + DW - 9, LIST_Y, 8, LIST_ROWS * ROW_H).setOrigin(0).setDepth(14).setInteractive({ useHandCursor: true });
+    const dragD = (p: Phaser.Input.Pointer) => {
+      const max = this.maxDeckScroll();
+      if (!max) return;
+      const t = Math.max(0, Math.min(1, (p.y - LIST_Y) / (LIST_ROWS * ROW_H)));
+      this.scrollDeck(Math.round(t * max) - this.deckScroll);
+    };
+    dz.on(Phaser.Input.Events.POINTER_DOWN, dragD);
+    dz.on(Phaser.Input.Events.POINTER_MOVE, (p: Phaser.Input.Pointer) => p.isDown && dragD(p));
 
     // level curve + counts
-    const cy = LIST_Y + DECK_SIZE * ROW_H + 3;
+    const cy = LIST_Y + LIST_ROWS * ROW_H + 3;
     this.add.rectangle(DX + 6, cy + 1, DW - 12, 1, PAL.night3).setOrigin(0).setDepth(10);
     for (let b = 0; b < CURVE_BUCKETS; b++) {
       const bx = DX + 8 + b * 11;
@@ -479,7 +549,7 @@ export class DeckScene extends Phaser.Scene {
       { label: 'Kaydet', tip: 'Desteyi bu yuvaya kaydet (K)', run: () => this.save() },
       { label: 'Rastgele', tip: 'Rastgele doldur: kalan yerleri kurallara uygun doldurur (R)', run: () => this.randomFill() },
       { label: 'Hazır', tip: 'Hazır desteleri sırayla yükle (H)', run: () => this.nextPreset() },
-      { label: 'Sıfırla', tip: 'Klasik 20 kartlık desteyi yükle (D)', run: () => this.resetClassic() },
+      { label: 'Sıfırla', tip: 'Klasik desteyi yükle: ilk 20 kart iki kopya, 40 kart (D)', run: () => this.resetClassic() },
       { label: 'Temizle', tip: 'Destedeki tüm kartları çıkar (X)', run: () => this.clearDeck() },
       { label: 'Ad Ver', tip: 'Desteye ad ver (N)', run: () => this.setEditing(true) },
     ];
@@ -586,9 +656,37 @@ export class DeckScene extends Phaser.Scene {
     this.scrollRow = Math.max(0, Math.min(maxRow, this.scrollRow));
   }
 
-  private wheel(dy: number): void {
+  private wheel(dy: number, x = 0): void {
     if (!this.ready || this.editing || !dy) return;
-    this.scrollBy(dy > 0 ? 1 : -1);
+    if (x >= DX) this.scrollDeck(dy > 0 ? 3 : -3);
+    else this.scrollBy(dy > 0 ? 1 : -1);
+  }
+
+  /** The distinct cards of the deck with their copy counts, in list order (level, then ATK, then name). */
+  private deckEntries(): { id: CardId; n: number }[] {
+    const ids = [...new Set(this.cur.cards)];
+    return this.sortedIds(ids).map((id) => ({ id, n: copiesOf(this.cur.cards, id) }));
+  }
+
+  private sortedIds(ids: readonly CardId[]): CardId[] {
+    return sortPool(ids.map((id) => CARDS[id]), 'level').map((d) => d.id);
+  }
+
+  private maxDeckScroll(): number {
+    return Math.max(0, this.deckEntries().length - LIST_ROWS);
+  }
+
+  private scrollDeck(rows: number): void {
+    const next = Math.max(0, Math.min(this.maxDeckScroll(), this.deckScroll + rows));
+    if (next === this.deckScroll) return;
+    this.deckScroll = next;
+    this.renderDeck();
+  }
+
+  private ensureDeckVisible(): void {
+    if (this.deckCursor < this.deckScroll) this.deckScroll = this.deckCursor;
+    else if (this.deckCursor >= this.deckScroll + LIST_ROWS) this.deckScroll = this.deckCursor - LIST_ROWS + 1;
+    this.deckScroll = Math.max(0, Math.min(this.maxDeckScroll(), this.deckScroll));
   }
 
   private scrollBy(rows: number): void {
@@ -622,11 +720,19 @@ export class DeckScene extends Phaser.Scene {
     return this.cur.cards.includes(id);
   }
 
+  private copies(id: CardId): number {
+    return copiesOf(this.cur.cards, id);
+  }
+
+  /** Pool click: one more copy (the - button / DEL / the deck list take copies out). */
   private togglePool(index: number): void {
     const id = this.list[index];
     if (!id) return;
-    if (this.inDeck(id)) this.removeCard(id);
-    else this.addCard(id, index);
+    this.addCard(id, index);
+  }
+
+  private countLabel(): string {
+    return `${this.cur.cards.length}${RANGE}`;
   }
 
   private addCard(id: CardId, fromIndex = this.cursor): void {
@@ -639,33 +745,35 @@ export class DeckScene extends Phaser.Scene {
     }
     this.cur.cards.push(id);
     sfx.play('uiClick', { volume: 0.7, pitch: 1.25 });
+    const shown = this.deckEntries().findIndex((e) => e.id === id);
+    // keep the row we touched on screen
+    if (shown >= 0 && (shown < this.deckScroll || shown >= this.deckScroll + LIST_ROWS)) this.deckScroll = Math.max(0, Math.min(this.maxDeckScroll(), shown - Math.floor(LIST_ROWS / 2)));
     this.afterEdit();
-    const shown = this.sortedDeck().indexOf(id);
-    this.flyTo(fromIndex, shown);
-    this.flashRow(shown);
-    this.say(`${CARDS[id].name} desteye eklendi (${this.cur.cards.length}/${DECK_SIZE})`, 'ok');
+    const row = shown - this.deckScroll;
+    if (fromIndex >= 0) this.flyTo(fromIndex, row);
+    this.flashRow(row);
+    this.say(`${CARDS[id].name} eklendi (x${this.copies(id)}) · ${this.countLabel()}`, 'ok');
   }
 
   private removeCard(id: CardId): void {
-    const i = this.cur.cards.indexOf(id);
+    const i = this.cur.cards.lastIndexOf(id);
     if (i < 0) return;
     this.cur.cards.splice(i, 1);
     sfx.play('uiClick', { volume: 0.6, pitch: 0.8 });
     this.afterEdit();
-    this.say(`${CARDS[id].name} desteden çıkarıldı (${this.cur.cards.length}/${DECK_SIZE})`, 'info');
+    const left = this.copies(id);
+    this.say(`${CARDS[id].name} çıkarıldı${left ? ` (x${left} kaldı)` : ''} · ${this.countLabel()}`, 'info');
   }
 
   private afterEdit(): void {
-    this.deckCursor = Math.max(0, Math.min(this.cur.cards.length - 1, this.deckCursor));
+    const n = this.deckEntries().length;
+    this.deckCursor = Math.max(0, Math.min(n - 1, this.deckCursor));
+    if (!n) this.deckScroll = 0;
+    this.deckScroll = Math.max(0, Math.min(this.maxDeckScroll(), this.deckScroll));
     this.renderGrid();
     this.renderDeck();
     this.renderFocus();
     this.renderPlate();
-  }
-
-  private sortedDeck(): CardId[] {
-    const defs = this.cur.cards.map((id) => CARDS[id]);
-    return sortPool(defs, 'level').map((d) => d.id);
   }
 
   private save(): void {
@@ -688,11 +796,11 @@ export class DeckScene extends Phaser.Scene {
     if (this.editing) this.setEditing(false);
     const before = this.cur.cards.length;
     const seed = Math.floor(Math.random() * 0x7fffffff);
-    this.cur.cards = autoFillDeck(this.cur.cards, seed);
+    this.cur.cards = autoFillDeck(this.cur.cards, seed, undefined, Math.max(DECK_MIN, this.cur.cards.length));
     sfx.play('uiConfirm', { volume: 0.55, pitch: 1.2 });
     this.afterEdit();
     this.pulse(this.countText);
-    this.say(this.cur.cards.length > before ? `${this.cur.cards.length - before} kart eklendi: ${this.cur.cards.length}/${DECK_SIZE}` : 'Eklenecek uygun kart bulunamadı', this.cur.cards.length > before ? 'ok' : 'bad');
+    this.say(this.cur.cards.length > before ? `${this.cur.cards.length - before} kart eklendi: ${this.countLabel()}` : this.cur.cards.length >= DECK_MIN ? 'Deste zaten dolu' : 'Eklenecek uygun kart bulunamadı', this.cur.cards.length > before ? 'ok' : 'bad');
   }
 
   private nextPreset(): void {
@@ -716,7 +824,7 @@ export class DeckScene extends Phaser.Scene {
     sfx.play('uiConfirm', { volume: 0.5, pitch: 0.95 });
     this.afterEdit();
     this.renderDeck();
-    this.say('Klasik 20 kartlık deste yüklendi.', 'info');
+    this.say('Klasik deste yüklendi: ilk 20 kart, her biri iki kopya (40).', 'info');
   }
 
   private clearDeck(): void {
@@ -774,9 +882,16 @@ export class DeckScene extends Phaser.Scene {
         if (n >= 0) this.moveCursor(n);
       } else {
         if (dx < 0) return this.switchZone('pool');
-        const n = this.cur.cards.length;
+        const n = this.deckEntries().length;
+        if (dx > 0) {
+          const e = this.deckEntries()[this.deckCursor];
+          if (e) this.addCard(e.id, -1);
+          return;
+        }
         if (n) {
           this.deckCursor = (this.deckCursor + dy + n) % n;
+          this.ensureDeckVisible();
+          this.renderDeck();
           this.renderFocus();
           this.showInspect();
           this.hoverSound();
@@ -801,11 +916,26 @@ export class DeckScene extends Phaser.Scene {
       case 'Space':
         if (e.repeat) return true;
         if (this.zone === 'pool') this.togglePool(this.cursor);
-        else this.removeCard(this.sortedDeck()[this.deckCursor]);
+        else {
+          const e = this.deckEntries()[this.deckCursor];
+          if (e) this.removeCard(e.id);
+        }
         return true;
       case 'Delete':
       case 'Backspace': {
-        const id = this.zone === 'pool' ? this.list[this.cursor] : this.sortedDeck()[this.deckCursor];
+        const id = this.zone === 'pool' ? this.list[this.cursor] : this.deckEntries()[this.deckCursor]?.id;
+        if (id && this.inDeck(id)) this.removeCard(id);
+        return true;
+      }
+      case 'Equal':
+      case 'NumpadAdd': {
+        const id = this.zone === 'pool' ? this.list[this.cursor] : this.deckEntries()[this.deckCursor]?.id;
+        if (id) this.addCard(id, this.zone === 'pool' ? this.cursor : -1);
+        return true;
+      }
+      case 'Minus':
+      case 'NumpadSubtract': {
+        const id = this.zone === 'pool' ? this.list[this.cursor] : this.deckEntries()[this.deckCursor]?.id;
         if (id && this.inDeck(id)) this.removeCard(id);
         return true;
       }
@@ -813,10 +943,12 @@ export class DeckScene extends Phaser.Scene {
         this.switchZone(this.zone === 'pool' ? 'deck' : 'pool', e.shiftKey);
         return true;
       case 'PageDown':
-        this.scrollBy(ROWS - 1);
+        if (this.zone === 'deck') this.scrollDeck(LIST_ROWS - 1);
+        else this.scrollBy(ROWS - 1);
         return true;
       case 'PageUp':
-        this.scrollBy(-(ROWS - 1));
+        if (this.zone === 'deck') this.scrollDeck(-(LIST_ROWS - 1));
+        else this.scrollBy(-(ROWS - 1));
         return true;
       case 'Home':
         this.moveCursor(0);
@@ -889,7 +1021,9 @@ export class DeckScene extends Phaser.Scene {
       return;
     }
     this.zone = z;
-    this.deckCursor = Math.max(0, Math.min(this.cur.cards.length - 1, this.deckCursor));
+    this.deckCursor = Math.max(0, Math.min(this.deckEntries().length - 1, this.deckCursor));
+    this.ensureDeckVisible();
+    this.renderDeck();
     this.hoverSound();
     this.renderFocus();
     this.showInspect();
@@ -948,12 +1082,10 @@ export class DeckScene extends Phaser.Scene {
 
   private bindCell(cell: Cell, id: CardId): void {
     const d = CARDS[id];
-    const inDeck = this.inDeck(id);
     const focus = this.zone === 'pool' && cell.index === this.cursor;
-    cell.bg.setTexture(cellTex(this, this.cellKind(id), focus, inDeck));
+    this.paintCount(cell, focus);
     cell.art.setTexture(cardArtKey(id));
     cell.orb.setTexture(orbTex(this, orbOf(id)));
-    cell.tick.setVisible(inDeck);
     cell.chain.setVisible(isSealCard(id));
     const nameW = CELL_W - 53;
     let lines = wrapText(d.name, 'sm', nameW);
@@ -979,27 +1111,38 @@ export class DeckScene extends Phaser.Scene {
     cell.atk.setTint(PAL.crim3);
   }
 
+  /** Frame, tick, "xN" copy badge and - button of a pool cell. */
+  private paintCount(cell: Cell, focus: boolean): void {
+    const id = cell.id;
+    if (!id) return;
+    const n = this.copies(id);
+    const max = isSealCard(id) ? 1 : 3;
+    cell.bg.setTexture(cellTex(this, this.cellKind(id), focus, n > 0));
+    cell.tick.setVisible(n > 0);
+    cell.minus.setVisible(n > 0);
+    if (cell.minusZone.input) cell.minusZone.input.enabled = n > 0;
+    cell.cnt.setText(n > 0 ? `x${n}` : '').setTint(n >= max ? PAL.crim3 : PAL.gold4);
+    cell.cntBg.setVisible(n > 0).setSize(n > 0 ? Math.ceil(measureText(`x${n}`, 'sm').w) + 3 : 1, 8);
+  }
+
   /** Only the focus ring / in-deck frames (cheap; used while the mouse sweeps). */
   private renderFocus(): void {
     for (const cell of this.cells) {
       if (!cell.id) continue;
       const focus = this.zone === 'pool' && cell.index === this.cursor;
-      const inDeck = this.inDeck(cell.id);
-      cell.bg.setTexture(cellTex(this, this.cellKind(cell.id), focus, inDeck));
-      cell.tick.setVisible(inDeck);
+      this.paintCount(cell, focus);
     }
-    const sorted = this.sortedDeck();
     this.rows.forEach((r, i) => {
-      const on = this.zone === 'deck' && i === this.deckCursor && !!r.id;
+      const on = this.zone === 'deck' && this.deckScroll + i === this.deckCursor && !!r.id;
       r.hi.setVisible(on);
       r.name.setTint(on ? PAL.white : r.id ? PAL.mist : PAL.night4);
     });
-    void sorted;
   }
 
   private renderDeck(): void {
     const d = this.cur;
-    const sorted = this.sortedDeck();
+    const entries = this.deckEntries();
+    this.deckScroll = Math.max(0, Math.min(this.maxDeckScroll(), this.deckScroll));
     // slot tabs
     this.slotBtns.forEach((b, i) => {
       b.setStyle(i === this.slot ? 'gold' : 'neutral');
@@ -1017,28 +1160,43 @@ export class DeckScene extends Phaser.Scene {
     this.updateCaret();
     // count + legality
     const v = validateDeck(d.cards);
-    this.countText.setText(`${d.cards.length}/${DECK_SIZE}`);
-    this.countText.setTint(v.ok ? PAL.leaf3 : d.cards.length >= DECK_SIZE ? PAL.crim3 : PAL.white);
+    const n = d.cards.length;
+    const inRange = n >= DECK_MIN && n <= DECK_MAX;
+    const tone = n === 0 ? PAL.white : v.ok ? PAL.leaf3 : inRange ? PAL.gold3 : PAL.crim3;
+    this.countText.setText(String(n)).setTint(tone);
+    this.rangeText.setX(this.countText.x + Math.ceil(measureText(String(n), 'md').w) + 1).setTint(tone === PAL.white ? PAL.steel : tone);
     this.okIcon.setVisible(v.ok).setTint(PAL.leaf3);
     // rows
     this.rows.forEach((r, i) => {
-      const id = sorted[i] ?? null;
+      const e = entries[this.deckScroll + i];
+      const id = e?.id ?? null;
       r.id = id;
-      r.num.setTint(id ? PAL.steel : PAL.night3);
       if (r.zone.input) r.zone.input.enabled = !!id;
+      for (const b of [r.minus, r.plus]) {
+        b.bg.setVisible(!!id);
+        b.label.setVisible(!!id);
+        if (b.zone.input) b.zone.input.enabled = !!id;
+      }
       if (!id) {
         r.orb.setVisible(false);
-        r.name.setText('· · ·').setTint(PAL.night4);
+        r.name.setText(i === 0 && !entries.length ? '· · ·' : '').setTint(PAL.night4);
+        r.cnt.setText('');
         r.lvl.setText('');
         r.atk.setText('');
         r.chain.setVisible(false);
         return;
       }
       const def = CARDS[id];
+      const blocked = addBlocker(d.cards, id) !== null;
+      r.plus.bg.setFillStyle(blocked ? PAL.night2 : PAL.night4);
+      r.plus.label.setTint(blocked ? PAL.night4 : PAL.white);
+      r.minus.bg.setFillStyle(PAL.night4);
+      r.minus.label.setTint(PAL.white);
+      r.cnt.setText(`x${e.n}`).setTint(e.n >= (isSealCard(id) ? 1 : 3) ? PAL.crim3 : PAL.gold3);
       r.orb.setVisible(true).setTexture(orbTex(this, orbOf(id)));
-      const nm = fitText(def.name, isSealCard(id) ? 62 : 72, (s) => measureText(s, 'sm').w);
-      r.name.setText(nm).setTint(this.zone === 'deck' && i === this.deckCursor ? PAL.white : PAL.mist);
-      r.chain.setVisible(isSealCard(id)).setX(23 + Math.ceil(measureText(nm, 'sm').w) + 3);
+      const nm = fitText(def.name, isSealCard(id) ? 44 : 54, (s) => measureText(s, 'sm').w);
+      r.name.setText(nm).setTint(this.zone === 'deck' && this.deckScroll + i === this.deckCursor ? PAL.white : PAL.mist);
+      r.chain.setVisible(isSealCard(id)).setX(24 + Math.ceil(measureText(nm, 'sm').w) + 3);
       if (isMonster(def)) {
         r.lvl.setText(`Sv${def.level}`).setTint(def.level >= DECK_HIGH_LEVEL ? PAL.crim3 : PAL.gold3);
         r.atk.setText(String(def.atk)).setTint(PAL.crim3);
@@ -1047,13 +1205,22 @@ export class DeckScene extends Phaser.Scene {
         r.atk.setText(def.kind === 'spell' ? 'BÜYÜ' : 'TUZAK').setTint(def.kind === 'spell' ? KIND_RAMP.spell[3] : KIND_RAMP.trap[3]);
       }
     });
+    // list scrollbar
+    const needBar = entries.length > LIST_ROWS;
+    this.dTrack.setVisible(needBar);
+    this.dThumb.setVisible(needBar);
+    if (needBar) {
+      const h = this.dTrack.height;
+      const th = Math.max(8, Math.round((h * LIST_ROWS) / entries.length));
+      this.dThumb.setSize(2, th).setPosition(this.dTrack.x, LIST_Y + Math.round(((h - th) * this.deckScroll) / this.maxDeckScroll()));
+    }
     this.renderFocus();
     // curve + counts
     const st = deckStats(d.cards);
     const maxN = Math.max(1, ...st.curve);
-    const unit = Math.min(4, Math.floor(16 / maxN));
+    const unit = Math.min(4, 16 / maxN);
     st.curve.forEach((n, b) => {
-      this.curveBars[b].setSize(9, Math.max(1, n * unit)).setFillStyle(n === 0 ? PAL.night3 : b + 1 >= DECK_HIGH_LEVEL ? PAL.crim2 : PAL.gold2);
+      this.curveBars[b].setSize(9, Math.max(1, Math.round(n * unit))).setFillStyle(n === 0 ? PAL.night3 : b + 1 >= DECK_HIGH_LEVEL ? PAL.crim2 : PAL.gold2);
       this.curveNums[b].setTint(n ? (b + 1 >= DECK_HIGH_LEVEL ? PAL.crim3 : PAL.gold3) : PAL.night4);
     });
     this.countTexts[0].setText(`${st.monsters}`);
@@ -1084,7 +1251,7 @@ export class DeckScene extends Phaser.Scene {
   }
 
   private currentCard(): CardId | null {
-    return this.zone === 'pool' ? (this.list[this.cursor] ?? null) : (this.sortedDeck()[this.deckCursor] ?? null);
+    return this.zone === 'pool' ? (this.list[this.cursor] ?? null) : (this.deckEntries()[this.deckCursor]?.id ?? null);
   }
 
   private showInspect(): void {
@@ -1137,7 +1304,7 @@ export class DeckScene extends Phaser.Scene {
 
   /** A mini card flies from the grid cell to the deck row it joined. */
   private flyTo(fromIndex: number, rowIdx: number): void {
-    if (REDUCED_MOTION || rowIdx < 0) return;
+    if (REDUCED_MOTION || rowIdx < 0 || rowIdx >= LIST_ROWS) return;
     const c = this.cells.find((k) => k.index === fromIndex);
     if (!c) return;
     const img = this.add.image(c.x + 24, c.y + 20, miniCardKey(0)).setDepth(40);
@@ -1208,8 +1375,8 @@ export class DeckScene extends Phaser.Scene {
   // ================================================================ QA
 
   /** QA: the state the tests and tools read. */
-  get qaState(): { slot: number; cards: CardId[]; name: string; list: number; cursor: number; zone: Zone; legal: boolean; scrollRow: number } {
-    return { slot: this.slot, cards: [...this.cur.cards], name: this.cur.name, list: this.list.length, cursor: this.cursor, zone: this.zone, legal: validateDeck(this.cur.cards).ok, scrollRow: this.scrollRow };
+  get qaState(): { slot: number; cards: CardId[]; name: string; list: number; cursor: number; zone: Zone; legal: boolean; scrollRow: number; deckScroll: number; entries: { id: CardId; n: number }[] } {
+    return { slot: this.slot, cards: [...this.cur.cards], name: this.cur.name, list: this.list.length, cursor: this.cursor, zone: this.zone, legal: validateDeck(this.cur.cards).ok, scrollRow: this.scrollRow, deckScroll: this.deckScroll, entries: this.deckEntries() };
   }
 
   qaKey(code: string, key = code): boolean {
@@ -1217,9 +1384,9 @@ export class DeckScene extends Phaser.Scene {
   }
 
   /** QA: grid cell centres in game pixels, for real-mouse tools. */
-  qaLayout(): { cells: { index: number; id: CardId; x: number; y: number }[]; rows: { id: CardId; x: number; y: number }[]; buttons: Record<string, { x: number; y: number }> } {
-    const cells = this.cells.filter((c) => c.id).map((c) => ({ index: c.index, id: c.id as CardId, x: c.x + CELL_W / 2, y: c.y + CELL_H / 2 }));
-    const rows = this.rows.filter((r) => r.id).map((r, i) => ({ id: r.id as CardId, x: DX + DW / 2, y: LIST_Y + i * ROW_H + 4 }));
+  qaLayout(): { cells: { index: number; id: CardId; x: number; y: number; minusX: number; minusY: number }[]; rows: { id: CardId; x: number; y: number; minusX: number; plusX: number }[]; buttons: Record<string, { x: number; y: number }> } {
+    const cells = this.cells.filter((c) => c.id).map((c) => ({ index: c.index, id: c.id as CardId, x: c.x + CELL_W / 2, y: c.y + CELL_H / 2, minusX: c.x + 24, minusY: c.y + CELL_H - 8 }));
+    const rows = this.rows.filter((r) => r.id).map((r, i) => ({ id: r.id as CardId, x: DX + 60, y: LIST_Y + i * ROW_H + 4, minusX: DX + 4 + 129, plusX: DX + 4 + 140 }));
     const buttons: Record<string, { x: number; y: number }> = {};
     ['kaydet', 'rastgele', 'hazir', 'sifirla', 'temizle', 'adver'].forEach((k, i) => {
       buttons[k] = { x: DX + 4 + (i % 3) * 50 + 24, y: BTN_Y + Math.floor(i / 3) * 17 + 8 };

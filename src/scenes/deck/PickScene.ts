@@ -11,7 +11,7 @@ import { CARDS, ATTRIBUTE_NAMES, isMonster, type CardId } from '../../data/cards
 import { cardArtKey } from '../../art/cards';
 import { PAL, PLAYER_COLOR } from '../../art/palette';
 import { music, sfx } from '../../audio/sfx';
-import { CURVE_BUCKETS, DECK_HIGH_LEVEL, deckStats, presetDecks } from '../../data/decks';
+import { CURVE_BUCKETS, DECK_HIGH_LEVEL, copiesOf, deckStats, presetDecks } from '../../data/decks';
 import { measureText, pixelText } from '../../ui/text';
 import { Button } from '../../view/Button';
 import { GAME_H, GAME_W } from '../../view/layout';
@@ -37,6 +37,9 @@ const LY = 46;
 const LW = 206;
 const ROW = 22;
 const RX = 250;
+/** Thumbnails: 5 columns x 4 rows visible; a deck of up to 80 cards shows its distinct cards (xN badge) and scrolls. */
+const T_COLS = 5;
+const T_ROWS = 4;
 
 interface Opt {
   ref: string;
@@ -63,7 +66,11 @@ export class DeckPickScene extends Phaser.Scene {
   private sel = 0;
   private thumbSel = 0;
   private rows: ListRow[] = [];
-  private thumbs: { img: Phaser.GameObjects.Image; frame: Phaser.GameObjects.Image; zone: Phaser.GameObjects.Zone }[] = [];
+  private thumbs: { img: Phaser.GameObjects.Image; frame: Phaser.GameObjects.Image; zone: Phaser.GameObjects.Zone; cntBg: Phaser.GameObjects.Rectangle; cnt: Phaser.GameObjects.BitmapText }[] = [];
+  /** Distinct cards of the shown deck with copy counts, and the first visible thumbnail row. */
+  private entries: { id: CardId; n: number }[] = [];
+  private thumbRow = 0;
+  private pageText!: Phaser.GameObjects.BitmapText;
   private title!: Phaser.GameObjects.BitmapText;
   private legal!: Phaser.GameObjects.BitmapText;
   private cap!: Phaser.GameObjects.BitmapText;
@@ -94,6 +101,8 @@ export class DeckPickScene extends Phaser.Scene {
     this.curveLabels = [];
     this.sel = 0;
     this.thumbSel = 0;
+    this.thumbRow = 0;
+    this.entries = [];
     this.firstRef = this.d.first;
   }
 
@@ -170,7 +179,7 @@ export class DeckPickScene extends Phaser.Scene {
 
   private describe(r: ResolvedDeck): string {
     const s = r.check.stats;
-    return `${s.monsters} canavar · ${s.spells} büyü · ${s.traps} tuzak`;
+    return `${s.size} kart · ${s.monsters} canavar · ${s.spells} büyü · ${s.traps} tuzak`;
   }
 
   private buildOptions(): void {
@@ -209,7 +218,7 @@ export class DeckPickScene extends Phaser.Scene {
       const marker = this.add.image(10, 10, this.markerFor(o)).setTint(o.ref === RANDOM_REF || o.ref === REF_CLASSIC || o.ref.startsWith('slot') ? PAL.gold3 : 0xffffff);
       if (o.ref.startsWith('preset:')) marker.clearTint();
       const title = pixelText(this, 22, 2, fitText(o.title, 120, (s) => measureText(s, 'sm').w), { size: 'sm', color: PAL.white });
-      const sub = pixelText(this, 22, 11, fitText(o.sub, 150, (s) => measureText(s, 'sm').w), { size: 'sm', color: PAL.steel });
+      const sub = pixelText(this, 22, 11, fitText(o.sub, 178, (s) => measureText(s, 'sm').w), { size: 'sm', color: PAL.steel });
       const tag = pixelText(this, LW - 4, 2, o.tag, { size: 'sm', color: PAL.night4, originX: 1 });
       box.add([hi, marker, title, sub, tag]);
       const zone = this.add.zone(LX, y, LW, ROW - 2).setOrigin(0).setDepth(12).setInteractive({ useHandCursor: true });
@@ -234,19 +243,26 @@ export class DeckPickScene extends Phaser.Scene {
   private buildPreview(): void {
     this.title = pixelText(this, RX, 46, '', { size: 'md', color: PAL.white }).setDepth(10);
     this.legal = pixelText(this, RX, 62, '', { size: 'sm', color: PAL.mist, maxWidth: 356 }).setDepth(10);
-    for (let i = 0; i < 20; i++) {
-      const x = RX + (i % 5) * 49;
-      const y = 78 + Math.floor(i / 5) * 39;
+    for (let i = 0; i < T_COLS * T_ROWS; i++) {
+      const x = RX + (i % T_COLS) * 49;
+      const y = 78 + Math.floor(i / T_COLS) * 39;
       const frame = this.add.image(x, y, thumbTex(this, 'monster', false)).setOrigin(0).setDepth(8);
       const img = this.add.image(x + 1, y + 1, cardArtKey('crystal_wyrm')).setOrigin(0).setDepth(9);
+      const cntBg = this.add.rectangle(x + 2, y + 34, 1, 8, PAL.ink).setOrigin(0, 1).setDepth(10);
+      const cnt = pixelText(this, x + 3, y + 33, '', { size: 'sm', color: PAL.gold4, originY: 1 }).setDepth(11);
       const zone = this.add.zone(x, y, 46, 36).setOrigin(0).setDepth(12).setInteractive();
       zone.on(Phaser.Input.Events.POINTER_OVER, () => {
-        if (this.thumbSel === i) return;
-        this.thumbSel = i;
+        const k = this.thumbRow * T_COLS + i;
+        if (this.thumbSel === k) return;
+        this.thumbSel = k;
         this.renderCaption();
       });
-      this.thumbs.push({ img, frame, zone });
+      this.thumbs.push({ img, frame, zone, cntBg, cnt });
     }
+    this.pageText = pixelText(this, RX + 244, 66, '', { size: 'sm', color: PAL.steel, originX: 1 }).setDepth(10);
+    this.input.on(Phaser.Input.Events.POINTER_WHEEL, (p: Phaser.Input.Pointer, _o: unknown, _dx: number, dy: number) => {
+      if (p.x >= RX && p.y >= 70 && p.y <= 236 && dy) this.scrollThumbs(dy > 0 ? 1 : -1);
+    });
     // right column: counts + curve
     this.stats = pixelText(this, 506, 78, '', { size: 'sm', color: PAL.mist, lineSpacing: 1 }).setDepth(10);
     for (let b = 0; b < CURVE_BUCKETS; b++) {
@@ -269,7 +285,7 @@ export class DeckPickScene extends Phaser.Scene {
     this.okBtn = new Button(this, 470, 322, { w: 138, h: 18, label: this.step === 1 ? 'MAÇA BAŞLA' : 'SEÇ · SIRADAKİ', size: 'sm', style: playerStyle(this.who), depth: 20 });
     this.okBtn.onClick = () => void this.confirm();
     this.okBtn.setAttention(true);
-    pixelText(this, 222, 328, '↑↓ SEÇ · ←→ KART · ENTER ONAYLA · ESC GERİ', { size: 'sm', color: PAL.steel }).setDepth(10);
+    pixelText(this, 222, 328, '↑↓ SEÇ · ←→ KART · PGUP/PGDN · ENTER · ESC', { size: 'sm', color: PAL.steel }).setDepth(10);
   }
 
   // ---------------------------------------------------------------- render
@@ -297,9 +313,13 @@ export class DeckPickScene extends Phaser.Scene {
     if (!deck) {
       this.title.setText('Rastgele rakip');
       this.legal.setText('Rakip, hazır desteler arasından rastgele birini seçer:').setTint(PAL.mist);
+      this.entries = [];
+      this.pageText.setText('');
       this.thumbs.forEach((t) => {
         t.img.setVisible(false);
         t.frame.setVisible(false);
+        t.cnt.setText('');
+        t.cntBg.setVisible(false);
         t.zone.input!.enabled = false;
       });
       this.stats.setPosition(RX, 86).setText(presetDecks().map((p) => `· ${p.name}  —  ${p.blurb}`).join('\n'));
@@ -318,31 +338,52 @@ export class DeckPickScene extends Phaser.Scene {
       this.legal.setText(`Oynanamaz: ${lines.join(' · ')}`).setTint(PAL.crim3);
     } else if (deck.kind === 'preset') {
       this.legal.setText(presetDecks().find((p) => presetRef(p.id) === deck.ref)?.blurb ?? '').setTint(PAL.mist);
-    } else this.legal.setText(deck.kind === 'klasik' ? 'Oyunun ilk 20 kartı. Her zaman hazır.' : 'Kayıtlı destin. Hazır.').setTint(PAL.leaf3);
-    this.thumbs.forEach((t, i) => {
-      const id = deck.cards[i];
-      t.img.setVisible(!!id);
-      t.frame.setVisible(!!id);
-      t.zone.input!.enabled = !!id;
-      if (id) {
-        t.img.setTexture(cardArtKey(id));
-        t.frame.setTexture(thumbTex(this, CARDS[id].kind, false));
-      }
-    });
+    } else this.legal.setText(deck.kind === 'klasik' ? 'Oyunun ilk 20 kartı, ikişer kopya (40 kart). Her zaman hazır.' : 'Kayıtlı destin. Hazır.').setTint(PAL.leaf3);
+    this.thumbRow = 0;
+    this.entries = [...new Set(deck.cards)].map((id) => ({ id, n: copiesOf(deck.cards, id) }));
+    this.paintThumbs();
     const st = deckStats(deck.cards);
     this.stats.setText(`${st.size} kart\nCanavar ${st.monsters}\nBüyü ${st.spells}\nTuzak ${st.traps}`);
     const maxN = Math.max(1, ...st.curve);
-    const unit = Math.min(4, Math.floor(18 / maxN));
-    st.curve.forEach((n, b) => this.bars[b].setSize(10, Math.max(1, n * unit)).setFillStyle(n === 0 ? PAL.night3 : b + 1 >= DECK_HIGH_LEVEL ? PAL.crim2 : PAL.gold2));
+    const unit = Math.min(4, 18 / maxN);
+    st.curve.forEach((n, b) => this.bars[b].setSize(10, Math.max(1, Math.round(n * unit))).setFillStyle(n === 0 ? PAL.night3 : b + 1 >= DECK_HIGH_LEVEL ? PAL.crim2 : PAL.gold2));
+    this.renderCaption();
+  }
+
+  /** Fills the visible thumbnail rows from `entries` starting at `thumbRow`. */
+  private paintThumbs(): void {
+    this.thumbs.forEach((t, i) => {
+      const e = this.entries[this.thumbRow * T_COLS + i];
+      t.img.setVisible(!!e);
+      t.frame.setVisible(!!e);
+      t.zone.input!.enabled = !!e;
+      const show = !!e && e.n > 1;
+      t.cnt.setText(show ? `x${e.n}` : '');
+      t.cntBg.setVisible(show).setSize(show ? Math.ceil(measureText(`x${e.n}`, 'sm').w) + 3 : 1, 8);
+      if (e) {
+        t.img.setTexture(cardArtKey(e.id));
+        t.frame.setTexture(thumbTex(this, CARDS[e.id].kind, false));
+      }
+    });
+    const rows = Math.ceil(this.entries.length / T_COLS);
+    this.pageText.setText(rows > T_ROWS ? `${this.thumbRow * T_COLS + 1}-${Math.min(this.entries.length, (this.thumbRow + T_ROWS) * T_COLS)} / ${this.entries.length} kart türü` : '');
+  }
+
+  private scrollThumbs(rows: number): void {
+    const max = Math.max(0, Math.ceil(this.entries.length / T_COLS) - T_ROWS);
+    const next = Math.max(0, Math.min(max, this.thumbRow + rows));
+    if (next === this.thumbRow) return;
+    this.thumbRow = next;
+    this.paintThumbs();
     this.renderCaption();
   }
 
   private renderCaption(): void {
     const deck = this.shownDeck;
-    const id = deck?.cards[this.thumbSel] as CardId | undefined;
+    const id = deck ? this.entries[this.thumbSel]?.id : undefined;
     this.thumbs.forEach((t, i) => {
-      const cid = deck?.cards[i];
-      if (cid) t.frame.setTexture(thumbTex(this, CARDS[cid].kind, i === this.thumbSel));
+      const e = this.entries[this.thumbRow * T_COLS + i];
+      if (e) t.frame.setTexture(thumbTex(this, CARDS[e.id].kind, this.thumbRow * T_COLS + i === this.thumbSel));
     });
     if (!id) {
       this.cap.setText('');
@@ -351,7 +392,7 @@ export class DeckPickScene extends Phaser.Scene {
       return;
     }
     const d = CARDS[id];
-    this.cap.setText(d.name);
+    this.cap.setText(`${d.name}${this.entries[this.thumbSel].n > 1 ? `  x${this.entries[this.thumbSel].n}` : ''}`);
     if (isMonster(d)) {
       this.capType.setText(`${ATTRIBUTE_NAMES[d.attribute]} / ${d.race} · Sv ${d.level} · ATK ${d.atk} / DEF ${d.def}`);
       this.capText.setText(d.text || `"${d.flavor}"`);
@@ -371,13 +412,23 @@ export class DeckPickScene extends Phaser.Scene {
         return this.moveSel(1);
       case 'ArrowLeft':
       case 'ArrowRight': {
-        const n = this.shownDeck?.cards.length ?? 0;
+        const n = this.entries.length;
         if (!n) return true;
         this.thumbSel = (this.thumbSel + (e.code === 'ArrowRight' ? 1 : -1) + n) % n;
+        const row = Math.floor(this.thumbSel / T_COLS);
+        if (row < this.thumbRow) this.thumbRow = row;
+        else if (row >= this.thumbRow + T_ROWS) this.thumbRow = row - T_ROWS + 1;
         sfx.play('uiHover', { volume: 0.35 });
+        this.paintThumbs();
         this.renderCaption();
         return true;
       }
+      case 'PageDown':
+        this.scrollThumbs(T_ROWS - 1);
+        return true;
+      case 'PageUp':
+        this.scrollThumbs(-(T_ROWS - 1));
+        return true;
       case 'Enter':
       case 'NumpadEnter':
       case 'Space':

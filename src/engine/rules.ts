@@ -132,11 +132,13 @@ export function newGame(opts: NewGameOptions): ApplyResult {
 
   r.emit({ type: 'gameStart', firstPlayer: first, seed: opts.seed });
   for (const p of PLAYERS) r.emit({ type: 'shuffle', player: p });
-  for (let i = 0; i < START_HAND; i++) {
+  const startHand = opts.startHand ?? START_HAND;
+  if (!Number.isInteger(startHand) || startHand < 0) throw new EngineError(`invalid startHand ${String(startHand)}`);
+  for (let i = 0; i < startHand; i++) {
     r.drawCard(first, true);
     r.drawCard(other(first), true);
   }
-  r.beginTurn(first, 1, true);
+  r.beginTurn(first, 1, !opts.firstPlayerDraws);
   r.checkWin();
   return { state: s, events: r.ev };
 }

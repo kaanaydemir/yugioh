@@ -32,6 +32,7 @@ ACTION SHAPES the UI must send (exactly as listed by legalActions; uid lists may
 
 EVENT SEQUENCES (P = acting player; [..] = optional; ┃ = the batch ends and the next apply continues):
 - newGame: gameStart{firstPlayer, seed} → shuffle(0) → shuffle(1) → 8× draw{initial:true} alternating, first player first → turnStart{turn:1} → phaseChange(draw) → phaseChange(main). There is no draw on turn 1.
+  (v3: opts.startHand=5 + opts.firstPlayerDraws=true → 10 initial draws, then a non-initial draw for the first player in turn 1.)
 - Turn start (after endTurn): phaseChange(end) → [decision(discard) ┃ discard → toGraveyard(from:'hand', zone:null) ×count] → turnStart{player, turn} → phaseChange(draw) → draw{initial:false} | (deckOut → gameOver{reason:'deckout'}) → phaseChange(main).
 - Normal summon: summon{method:'normal', from:'hand', position:'attack', sourceUid:null}.
   - If the defender has a ready chasm_trap and current ATK ≥ 1000: → decision(trapResponse) ┃ then see "chasm" below.

@@ -11,7 +11,7 @@ import Phaser from 'phaser';
 import type { CardId } from '../data/cards';
 import { legalActions, newGame } from '../engine';
 import { actingPlayer } from '../engine';
-import type { Action, GameEvent, GameState, NewGameOptions, PlayerId } from '../engine/types';
+import { OPENING_HAND_V3, type Action, type GameEvent, type GameState, type NewGameOptions, type PlayerId } from '../engine/types';
 import { volcanoActive } from '../engine/query';
 import { PAL } from '../art/palette';
 import { music, sfx } from '../audio/sfx';
@@ -165,7 +165,7 @@ export class DuelScene extends Phaser.Scene {
       state = buildStage(L.stage);
       before = state;
     } else {
-      const r = newGame({ seed, firstPlayer: L.firstPlayer, decks: L.decks, noShuffle: L.noShuffle, zones: LANES === 5 ? 5 : 3 });
+      const r = newGame({ seed, firstPlayer: L.firstPlayer, decks: L.decks, noShuffle: L.noShuffle, zones: LANES === 5 ? 5 : 3, ...(LOOK_V3 ? { startHand: OPENING_HAND_V3, firstPlayerDraws: true } : {}) });
       state = r.state;
       events = r.events;
       before = rewindNewGame(state, events);

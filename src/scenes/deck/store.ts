@@ -1,19 +1,21 @@
 // Deck persistence: 5 save slots + the "last used" choices, in localStorage (or any KV with
 // getItem / setItem). Every storage access is wrapped: a blocked / full / corrupt storage never
 // throws, the data then lives in memory for the session. A saved deck that names a card that no
-// longer exists is repaired on load (the id is dropped and counted in `missing`).
+// longer exists is repaired on load (the id is dropped and counted in `missing`); copies over the limit are
+// dropped too, and an old 20-card save is migrated to a 40-card deck (`migrated`).
 //
 //   const store = deckStore();                 // the game-wide singleton
 //   store.setSlot(0, { name: 'Benim', cards });
 //   const r = store.resolve(store.last('p1')); // { ref, name, cards, check } | null
 
-import { DEFAULT_DECK, type CardId } from '../../data/cards';
-import { classicDeck, detectDeckPool, presetById, presetDecks, repairDeck, validateDeck, type DeckCheck } from '../../data/decks';
+import type { CardId } from '../../data/cards';
+import { DECK_MIN, autoFillDeck, classicDeck, detectDeckPool, presetById, presetDecks, repairDeck, validateDeck, type DeckCheck } from '../../data/decks';
 
 export const SLOT_COUNT = 5;
 export const NAME_MAX = 14;
 export const STORE_KEY = 'neon-duello:decks';
-const VERSION = 1;
+/** v1: 20-card singleton saves. v2: 40..80 cards, up to 3 copies (older saves are migrated on load). */
+const VERSION = 2;
 
 /** 'klasik' | 'preset:<id>' | 'slot:<n>' */
 export type DeckRef = string;
@@ -24,6 +26,8 @@ export interface SavedDeck {
   cards: CardId[];
   /** Ids dropped on load because the card no longer exists. */
   missing: number;
+  /** True when an old (v1, 20-card) save was doubled / auto-filled to DECK_MIN on load. */
+  migrated?: boolean;
 }
 
 export interface DeckStoreData {
@@ -44,6 +48,7 @@ export interface ResolvedDeck {
   cards: CardId[];
   check: DeckCheck;
   missing: number;
+  migrated?: boolean;
 }
 
 export const REF_CLASSIC: DeckRef = 'klasik';
@@ -67,13 +72,21 @@ export function parseStore(text: string | null): DeckStoreData {
     return data;
   }
   if (!raw || typeof raw !== 'object') return data;
-  const o = raw as { slots?: unknown; last?: unknown };
+  const o = raw as { v?: unknown; slots?: unknown; last?: unknown };
+  const oldVersion = typeof o.v !== 'number' || o.v < VERSION;
   if (Array.isArray(o.slots)) {
     for (let i = 0; i < SLOT_COUNT; i++) {
       const s = o.slots[i] as { name?: unknown; cards?: unknown } | null | undefined;
       if (!s || typeof s !== 'object' || !Array.isArray(s.cards)) continue;
       const fixed = repairDeck(s.cards);
-      data.slots[i] = { name: cleanName(s.name, `Deste ${i + 1}`), cards: fixed.cards, missing: fixed.missing };
+      let cards = fixed.cards;
+      let migrated = false;
+      if (oldVersion && cards.length >= 10 && cards.length < DECK_MIN) {
+        // a (nearly) full 20-card singleton save (smaller ones stay drafts): play it twice (seals stay single), then top up with seeded cards to DECK_MIN
+        cards = autoFillDeck(repairDeck([...cards, ...cards]).cards, 0x5a17 + i * 977);
+        migrated = true;
+      }
+      data.slots[i] = { name: cleanName(s.name, `Deste ${i + 1}`), cards, missing: fixed.missing, ...(migrated ? { migrated } : {}) };
     }
   }
   if (o.last && typeof o.last === 'object') {
@@ -172,7 +185,7 @@ export class DeckStore {
     if (ref.startsWith('slot:')) {
       const n = Number(ref.slice(5));
       const s = Number.isInteger(n) ? this.slot(n) : null;
-      return s ? { ref, kind: 'slot', name: s.name, cards: [...s.cards], check: validateDeck(s.cards), missing: s.missing } : null;
+      return s ? { ref, kind: 'slot', name: s.name, cards: [...s.cards], check: validateDeck(s.cards), missing: s.missing, ...(s.migrated ? { migrated: true } : {}) } : null;
     }
     return null;
   }
@@ -204,7 +217,8 @@ export function resetDeckStore(): void {
 
 /**
  * The decks a match starts with. Both sides on the classic deck -> undefined, so the engine keeps
- * its own default (DEFAULT_DECK, or the ?deck=expanded sampler): the untouched default flow.
+ * its own default (the original 20-card DEFAULT_DECK, or the ?deck=expanded sampler): the untouched default
+ * flow (?mode= URLs, scenarios, v1 identity). Any other pairing passes full decks (40..80 cards).
  * With ?deck=expanded a picked classic deck is always passed explicitly.
  */
 export function matchDecks(a: ResolvedDeck | null, b: ResolvedDeck | null): [CardId[], CardId[]] | undefined {
@@ -213,5 +227,5 @@ export function matchDecks(a: ResolvedDeck | null, b: ResolvedDeck | null): [Car
   const expanded = detectDeckPool() === 'expanded';
   const classic = (r: ResolvedDeck | null) => !r || (r.kind === 'klasik' && !expanded);
   if (classic(a) && classic(b)) return undefined;
-  return [a ? [...a.cards] : [...DEFAULT_DECK], b ? [...b.cards] : [...DEFAULT_DECK]];
+  return [a ? [...a.cards] : classicDeck(), b ? [...b.cards] : classicDeck()];
 }

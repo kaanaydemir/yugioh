@@ -469,13 +469,14 @@ describe('ownSpellBurn300 (dusk_sorcerer)', () => {
 });
 
 describe('deck pool', () => {
-  it('the sampler: 20 distinct cards, 12 monsters (<= 4 of Sv7+) + 8 spells/traps, deterministic and different per side/seed', () => {
+  it('the sampler: 40 cards (24 monsters + 16 spells/traps, copy limits respected), deterministic and different per side/seed', () => {
     const d = expandedDeck(7, 0);
     expect(d).toHaveLength(DECK_SIZE);
-    expect(new Set(d).size).toBe(DECK_SIZE);
-    expect(d.filter((id) => CARDS[id].kind === 'monster')).toHaveLength(12);
-    expect(d.filter((id) => CARDS[id].kind !== 'monster')).toHaveLength(8);
-    expect(d.filter((id) => { const c = CARDS[id]; return c.kind === 'monster' && c.level >= 7; }).length).toBeLessThanOrEqual(4);
+    expect(DECK_SIZE).toBe(40);
+    expect(d.filter((id) => CARDS[id].kind === 'monster')).toHaveLength(24);
+    expect(d.filter((id) => CARDS[id].kind !== 'monster')).toHaveLength(16);
+    expect(d.filter((id) => { const c = CARDS[id]; return c.kind === 'monster' && c.level >= 7; }).length).toBeLessThanOrEqual(8);
+    for (const id of new Set(d)) expect(d.filter((x) => x === id).length).toBeLessThanOrEqual(id.startsWith('seal_') ? 1 : 3);
     expect(expandedDeck(7, 0)).toEqual(d);
     expect(expandedDeck(7, 1)).not.toEqual(d);
     expect(expandedDeck(8, 0)).not.toEqual(d);
@@ -493,7 +494,7 @@ describe('deck pool', () => {
   it('newGame({ pool: "expanded" }) plays; the default still deals the 20 original cards', () => {
     const g = newGame({ seed: 5, pool: 'expanded' }).state;
     checkInvariants(g);
-    expect(Object.values(g.cards).filter((c) => c.owner === 0)).toHaveLength(20);
+    expect(Object.values(g.cards).filter((c) => c.owner === 0)).toHaveLength(40);
     const d = newGame({ seed: 5 }).state;
     expect(Object.values(d.cards).every((c) => DEFAULT_DECK.includes(c.cardId))).toBe(true);
     expect(Object.keys(d.cards)).toHaveLength(40);

@@ -72,7 +72,7 @@ export const MONSTER_GLOW: Record<MonsterId, MonsterGlow> = {
   // expanded roster, batch 1 (attribute-coloured placeholder glow)
   dusk_sorcerer: { emissive: [T(PAL.void4, 1), T(PAL.mag4, 1), T(PAL.white, 0.8), T(PAL.void3, 0.4)], halo: 0.6, pool: 0.9 },
   ashen_drake: { emissive: [T(PAL.void4, 1), T(PAL.mag3, 0.7), T(PAL.white, 0.7), T(PAL.fire3, 0.4)], halo: 0.6, pool: 0.9 },
-  grim_warden: { emissive: [T(PAL.cyan4, 1), T(PAL.white, 1), T(PAL.void4, 1), T(PAL.cyan3, 0.7)], halo: 0.6, pool: 0.9 },
+  grim_warden: { emissive: [T(PAL.void4, 1), T(PAL.white, 1), T(PAL.mag4, 1), T(PAL.void3, 0.7)], halo: 0.6, pool: 0.9 },
   venom_drake: { emissive: [T(PAL.leaf4, 1), T(PAL.leaf3, 0.7), T(PAL.white, 0.6), T(PAL.void4, 0.8)], halo: 0.6, pool: 0.9 },
   wisp_imp: { emissive: [T(PAL.void4, 1), T(PAL.white, 0.8), T(PAL.mag4, 0.8)], halo: 0.6, pool: 0.9 },
   steel_silencer: { emissive: [T(PAL.crim4, 1), T(PAL.crim3, 0.7), T(PAL.white, 0.6), T(PAL.void4, 0.7)], halo: 0.6, pool: 0.9 },

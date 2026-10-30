@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_DECK } from '../../src/data/cards';
-import { autoFillDeck, presetDecks } from '../../src/data/decks';
+import { autoFillDeck, classicDeck, copiesOf, presetDecks, validateDeck } from '../../src/data/decks';
 import { DeckStore, NAME_MAX, cleanName, SLOT_COUNT, STORE_KEY, matchDecks, parseStore, presetRef, serializeStore, slotRef, type KV } from '../../src/scenes/deck/store';
 
 class FakeKV implements KV {
@@ -52,13 +52,42 @@ describe('deck store', () => {
   it('repairs a saved deck whose card no longer exists and flags it', () => {
     const kv = new FakeKV();
     const cards = autoFillDeck([], 4);
-    kv.data.set(STORE_KEY, JSON.stringify({ v: 1, slots: [{ name: 'Eski', cards: [...cards.slice(0, 19), 'removed_card', 'removed_two'] }], last: {} }));
+    kv.data.set(STORE_KEY, JSON.stringify({ v: 2, slots: [{ name: 'Eski', cards: [...cards.slice(0, 39), 'removed_card', 'removed_two'] }], last: {} }));
     const s = new DeckStore(kv);
     const r = s.resolve(slotRef(0))!;
     expect(r.missing).toBe(2);
-    expect(r.cards).toHaveLength(19);
+    expect(r.cards).toHaveLength(39);
     expect(r.check.ok).toBe(false);
     expect(r.cards).not.toContain('removed_card');
+  });
+
+  it('drops copies over the limit on load (4th wyrm, 2nd seal)', () => {
+    const kv = new FakeKV();
+    const cards = autoFillDeck([], 4).filter((c) => c !== 'crystal_wyrm' && c !== 'seal_head');
+    kv.data.set(STORE_KEY, JSON.stringify({ v: 2, slots: [{ name: 'Çok', cards: [...cards, ...Array(5).fill('crystal_wyrm'), 'seal_head', 'seal_head'] }] }));
+    const r = new DeckStore(kv).resolve(slotRef(0))!;
+    expect(copiesOf(r.cards, 'crystal_wyrm')).toBe(3);
+    expect(copiesOf(r.cards, 'seal_head')).toBe(1);
+  });
+
+  it('migrates an old 20-card (v1) save to a legal 40-card deck, keeps its cards, and does not crash', () => {
+    const kv = new FakeKV();
+    kv.data.set(STORE_KEY, JSON.stringify({ v: 1, slots: [{ name: 'Eski Deste', cards: DEFAULT_DECK }, { name: 'Taslak', cards: DEFAULT_DECK.slice(0, 4) }, { name: 'Bozuk', cards: [...DEFAULT_DECK.slice(0, 18), 'gone', 'gone2'] }], last: { p1: 'slot:0' } }));
+    const s = new DeckStore(kv);
+    const r = s.resolve(slotRef(0))!;
+    expect(r.migrated).toBe(true);
+    expect(r.cards).toHaveLength(40);
+    expect(r.check.ok, r.check.issues.map((i) => i.text).join('|')).toBe(true);
+    for (const id of DEFAULT_DECK) expect(r.cards).toContain(id);
+    expect(s.resolve(slotRef(1))!.cards).toHaveLength(4); // a small draft stays a draft (invalid, not crashing)
+    expect(s.resolve(slotRef(1))!.check.ok).toBe(false);
+    const broken = s.resolve(slotRef(2))!;
+    expect(broken.missing).toBe(2);
+    expect(validateDeck(broken.cards).ok).toBe(true);
+    // saving writes v2, so the next load is not migrated again
+    s.setSlot(0, { name: 'Eski Deste', cards: r.cards });
+    expect(JSON.parse(kv.data.get(STORE_KEY)!).v).toBe(2);
+    expect(new DeckStore(kv).resolve(slotRef(0))!.cards).toEqual(r.cards);
   });
 
   it('falls back to memory when storage throws', () => {
@@ -90,7 +119,8 @@ describe('deck store', () => {
 
   it('resolve: classic, presets, empty slot, garbage refs', () => {
     const s = new DeckStore(new FakeKV());
-    expect(s.resolve('klasik')!.cards).toEqual(DEFAULT_DECK);
+    expect(s.resolve('klasik')!.cards).toEqual(classicDeck());
+    expect(s.resolve('klasik')!.check.ok).toBe(true);
     expect(s.resolve(presetRef(presetDecks()[3].id))!.check.ok).toBe(true);
     expect(s.resolve(slotRef(0))).toBeNull();
     expect(s.resolve('preset:nope')).toBeNull();
@@ -106,7 +136,7 @@ describe('deck store', () => {
     expect(matchDecks(classic, classic)).toBeUndefined();
     const m = matchDecks(preset, classic)!;
     expect(m[0]).toEqual(preset.cards);
-    expect(m[1]).toEqual(DEFAULT_DECK);
+    expect(m[1]).toEqual(classicDeck());
     expect(matchDecks(classic, preset)![1]).toEqual(preset.cards);
   });
 
@@ -119,7 +149,7 @@ describe('deck store', () => {
       const s = new DeckStore(new FakeKV());
       const classic = s.resolve('klasik')!;
       expect(matchDecks(null, null)).toBeUndefined();
-      expect(matchDecks(classic, classic)).toEqual([DEFAULT_DECK, DEFAULT_DECK]);
+      expect(matchDecks(classic, classic)).toEqual([classicDeck(), classicDeck()]);
     } finally {
       g.__NEON_LOOK = old[0];
       g.__NEON_DECK = old[1];

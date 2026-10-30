@@ -32,11 +32,11 @@ Tarz kuralı: oyunun **orijinal piksel dili** korunur — 640×360, tam sayı b�
 |---|---|
 | Başlangıç LP | 4000 |
 | Deste | 20 kart (her oyuncu aynı 20 kartın birer kopyası, karıştırılmış) |
-| Başlangıç eli | 4 kart |
+| Başlangıç eli | 4 kart (v3 görünümü / yeni oyunlar: 5 kart; ilk oyuncu da 1. turda çekerek 6 kartla başlar) |
 | Canavar alanı | 3 |
 | Büyü/Tuzak alanı | 3 + 1 Alan Büyüsü bölgesi |
 | El sınırı | Bitiş Aşamasında 6 (fazlası atılır) |
-| İlk tur | İlk oyuncu kart çekmez ve saldıramaz |
+| İlk tur | İlk oyuncu saldıramaz. Eski kural (v1): kart da çekmez. v3 kuralı: her iki oyuncu 5 kartla başlar, sırası gelen oyuncu 6. kartı çeker (ilk oyuncu da 1. turda çeker, atlama yok) |
 
 **Tur akışı:** Çekme Aşaması → Ana Aşama → Savaş Aşaması → Bitiş Aşaması. Speed Duel'deki gibi 2. Ana Aşama yoktur.
 

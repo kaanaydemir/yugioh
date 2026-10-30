@@ -41,12 +41,12 @@ const scenarios: Record<string, Scenario> = {
   },
   gwKill: {
     desc: 'Hortlak Muhafız is destroyed in battle (hit, death)',
-    stage: { phase: 'battle', p0: { monsters: ['windmane_knight'] }, p1: { monsters: [{ id: 'grim_warden', position: 'attack' }] } },
+    stage: { phase: 'battle', p0: { monsters: ['crystal_wyrm'] }, p1: { monsters: [{ id: 'grim_warden', position: 'attack' }] } },
     steps: [attack(0, 0)],
   },
   gwKillP2: {
     desc: 'Hortlak Muhafız (player 1) is destroyed in battle',
-    stage: { phase: 'battle', active: 1, p1: { monsters: ['windmane_knight'] }, p0: { monsters: [{ id: 'grim_warden', position: 'attack' }] } },
+    stage: { phase: 'battle', active: 1, p1: { monsters: ['crystal_wyrm'] }, p0: { monsters: [{ id: 'grim_warden', position: 'attack' }] } },
     steps: [attack(0, 0, 1)],
   },
   gwGuard: {

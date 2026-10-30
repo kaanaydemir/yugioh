@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_DECK } from '../../src/data/cards';
-import { autoFillDeck, presetDecks } from '../../src/data/decks';
+import { autoFillDeck, classicDeck, presetDecks } from '../../src/data/decks';
 import { apply, chooseAction, newGame } from '../../src/engine';
 import type { GameState } from '../../src/engine/types';
 import { DeckStore, matchDecks, presetRef, slotRef, type KV } from '../../src/scenes/deck/store';
@@ -41,7 +41,7 @@ describe('matches with picked decks reach a winner', () => {
     const classic = store.resolve('klasik')!;
     const decks = matchDecks(mine, classic)!;
     expect(decks[0]).toEqual(cards);
-    expect(decks[1]).toEqual(DEFAULT_DECK);
+    expect(decks[1]).toEqual(classicDeck());
     expect(playOut(decks, 8, 3).winner).not.toBeNull();
     const vsPreset = matchDecks(mine, store.resolve(presetRef('muhur')))!;
     expect(playOut(vsPreset, 9, 3).winner).not.toBeNull();

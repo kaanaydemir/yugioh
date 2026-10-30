@@ -18,6 +18,8 @@ export type Position = 'attack' | 'defense';
 
 export const START_LP = 4000;
 export const START_HAND = 4;
+/** Opening hand of the v3 rules: 5 cards each, and the first player draws on turn 1 (6 = HAND_LIMIT). */
+export const OPENING_HAND_V3 = 5;
 export const MONSTER_ZONES = 3;
 export const SPELL_TRAP_ZONES = 3;
 export const HAND_LIMIT = 6;
@@ -362,4 +364,8 @@ export interface NewGameOptions {
    * 20-card deck per side from every card (src/data/decks.ts). Omitted: detected from ?deck= / __NEON_DECK.
    */
   pool?: 'default' | 'expanded';
+  /** Opening hand size per player. Default START_HAND (4). The v3 look passes OPENING_HAND_V3 (5). */
+  startHand?: number;
+  /** When true the first player draws on turn 1 (no skip). Default false (legacy: no draw on turn 1). */
+  firstPlayerDraws?: boolean;
 }

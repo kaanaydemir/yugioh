@@ -14,7 +14,7 @@ import type { PlayerId } from '../../engine/types';
 import { pixelText, upper } from '../../ui/text';
 import { Button } from '../../view/Button';
 import { CardSprite } from '../../view/CardSprite';
-import { DEPTH, unitDepth } from '../../view/layout';
+import { DEPTH, LOOK_V3, unitDepth } from '../../view/layout';
 import { ICON, UI_RAMP, haloTex, panelTex, type UiStyle } from '../../view/ui-textures';
 import { safe, tween, tweenValue, wait } from '../../vfx/core';
 import {
@@ -267,7 +267,7 @@ const PAGES: Page[] = [
     lines: [
       'Her oyuncu 4000 LP ile başlar. Rakibinin LP\'sini 0\'a indiren düelloyu kazanır.',
       'Deste 20 karttır: 12 canavar, 5 büyü ve 3 tuzak. İki oyuncu da aynı kartları karıştırılmış olarak oynar.',
-      'Başlangıç elin 4 kart. Kart çekmen gerekirken desten boşsa kaybedersin.',
+      LOOK_V3 ? 'Başlangıç elin 5 kart; sıran gelince 6. kartı çekersin. Kart çekmen gerekirken desten boşsa kaybedersin.' : 'Başlangıç elin 4 kart. Kart çekmen gerekirken desten boşsa kaybedersin.',
       'Teslim olan oyuncu kaybeder.',
     ],
     async run(st) {
@@ -324,7 +324,7 @@ const PAGES: Page[] = [
       'Ana: canavar çağırır, kart koyar, büyü açarsın.',
       'Savaş: saldırı pozisyonundaki canavarlarınla saldırırsın.',
       'Bitiş: elinde en fazla 6 kart kalır, sıra rakibe geçer.',
-      'İlk oyuncu ilk turda kart çekmez ve saldıramaz.',
+      LOOK_V3 ? 'İlk oyuncu da ilk turda kart çeker ama saldıramaz.' : 'İlk oyuncu ilk turda kart çekmez ve saldıramaz.',
     ],
     async run(st) {
       const s = st.scene;
