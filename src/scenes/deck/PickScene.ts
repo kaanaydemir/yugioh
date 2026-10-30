@@ -259,7 +259,7 @@ export class DeckPickScene extends Phaser.Scene {
       });
       this.thumbs.push({ img, frame, zone, cntBg, cnt });
     }
-    this.pageText = pixelText(this, RX + 244, 66, '', { size: 'sm', color: PAL.steel, originX: 1 }).setDepth(10);
+    this.pageText = pixelText(this, 506, 190, '', { size: 'sm', color: PAL.steel, maxWidth: 110, lineSpacing: -1 }).setDepth(10);
     this.input.on(Phaser.Input.Events.POINTER_WHEEL, (p: Phaser.Input.Pointer, _o: unknown, _dx: number, dy: number) => {
       if (p.x >= RX && p.y >= 70 && p.y <= 236 && dy) this.scrollThumbs(dy > 0 ? 1 : -1);
     });
@@ -366,7 +366,7 @@ export class DeckPickScene extends Phaser.Scene {
       }
     });
     const rows = Math.ceil(this.entries.length / T_COLS);
-    this.pageText.setText(rows > T_ROWS ? `${this.thumbRow * T_COLS + 1}-${Math.min(this.entries.length, (this.thumbRow + T_ROWS) * T_COLS)} / ${this.entries.length} kart türü` : '');
+    this.pageText.setText(rows > T_ROWS ? `${this.thumbRow * T_COLS + 1}-${Math.min(this.entries.length, (this.thumbRow + T_ROWS) * T_COLS)} / ${this.entries.length} tür\nPGUP/PGDN kaydır` : '');
   }
 
   private scrollThumbs(rows: number): void {

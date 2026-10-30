@@ -261,3 +261,12 @@ motor değişikliği gerektirdiği için ikisi birlikte tasarlanır.
 - Kapsam (konuşulacak): karakter görünüşü (sahada/HUD'da nerede durur), çağırma / büyü / tuzak / hasar / zafer / yenilgi animasyonları, ses, deste seçimiyle eşleşme.
 - Kurallar aynı: kamera değişmez, 640×360 piksel dili, palet, özgün tasarım, v1 görünümü aynı kalır.
 - Sıra: arena/saha yeniden tasarımıyla birlikte konuşulacak; şimdilik yalnızca not.
+
+## Not: Uygulama ana dili İngilizce
+
+Karar (kullanıcı): uygulamanın ana (varsayılan) dili **İngilizce** olacak; Türkçe ikinci dil olarak kalacak.
+- Tüm arayüz metinleri, kart adları/açıklamaları, ipuçları ve menüler bir i18n katmanından (anahtar → metin) okunmalı; şu an kodda gömülü Türkçe metinler bu katmana taşınacak.
+- Kart/oyun metinleri İngilizce karşılıklarıyla yazılacak (özgün adlar korunur, Yu-Gi-Oh benzerliği yok).
+- Metin genişlikleri değişeceği için kart paneli, plaka ve düğme taşmaları İngilizce ile yeniden doğrulanacak.
+- Steam hattı: dil seçimi ayarlarda; ilk açılışta sistem dili, yoksa İngilizce.
+- Zamanlama: kural işi (5 kart / 40–80 deste) ve Beş Mühür sanatı bittikten sonra, ayrı bir iş olarak.
