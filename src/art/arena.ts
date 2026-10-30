@@ -1509,7 +1509,7 @@ export function buildCrackField(origin: { col: number; row: number }, seed = 7):
       const wx = x + R.x;
       const wy = y + R.y;
       const g = screenToIso(wx + 0.5, wy + 0.5);
-      if (g.col < -0.5 || g.col > 4.5 || g.row < -0.5 || g.row > 4.5) continue;
+      if (g.col < -0.5 || g.col > BOARD_COLS - 0.5 || g.row < -0.5 || g.row > BOARD_ROWS - 0.5) continue;
       const c = Math.round(g.col);
       const r = Math.round(g.row);
       const ctr = isoToScreen(c, r);
@@ -1535,19 +1535,23 @@ export function buildCrackField(origin: { col: number; row: number }, seed = 7):
     return lastS!;
   };
   const drips: { x: number; y: number }[] = [];
-  for (let k = 0; k <= 5; k++) {
+  // (5x5: k = 0..5 on both axes, the same rnd order as ever; 7x5 adds the extra column fissures)
+  const midC = (BOARD_COLS - 1) / 2;
+  for (let k = 0; k <= Math.max(BOARD_COLS, BOARD_ROWS); k++) {
     const v = k - 0.5;
+    const onCols = k <= BOARD_COLS;
+    const onRows = k <= BOARD_ROWS;
     // toward P1's back edge (row +) and the right edge (col +): these continue as drips down the faces
-    if (rnd() < 0.85) {
-      const e = jag(v, 4.5, 0, 1, SLAB_E + 0.02);
-      if (k > 0 && k < 5 && (v < 1.25 || v > 2.75)) drips.push(e);
+    if (onCols && rnd() < 0.85) {
+      const e = jag(v, BOARD_ROWS - 0.5, 0, 1, SLAB_E + 0.02);
+      if (k > 0 && k < BOARD_COLS && Math.abs(v - midC) > 0.75) drips.push(e);
     }
-    if (rnd() < 0.85) {
-      const e = jag(4.5, v, 1, 0, SLAB_E + 0.02);
-      if (k > 0 && k < 5) drips.push(e);
+    if (onRows && rnd() < 0.85) {
+      const e = jag(BOARD_COLS - 0.5, v, 1, 0, SLAB_E + 0.02);
+      if (k > 0 && k < BOARD_ROWS) drips.push(e);
     }
-    if (rnd() < 0.7) jag(v, -0.5, 0, -1, SLAB_E - 0.04);
-    if (rnd() < 0.7) jag(-0.5, v, -1, 0, SLAB_E - 0.04);
+    if (onCols && rnd() < 0.7) jag(v, -0.5, 0, -1, SLAB_E - 0.04);
+    if (onRows && rnd() < 0.7) jag(-0.5, v, -1, 0, SLAB_E - 0.04);
   }
   // 3) drips down the faces (vertical, with a heavier drop at the end)
   for (const d of drips) {
@@ -1564,9 +1568,9 @@ export function buildCrackField(origin: { col: number; row: number }, seed = 7):
     [0, 16],
     [-32, 0],
   ];
-  for (let i = 0; i < 40; i++) {
-    const c = Math.floor(rnd() * 5);
-    const r = Math.floor(rnd() * 5);
+  for (let i = 0; i < Math.round((40 * BOARD_COLS * BOARD_ROWS) / 25); i++) {
+    const c = Math.floor(rnd() * BOARD_COLS);
+    const r = Math.floor(rnd() * BOARD_ROWS);
     const ctr = isoToScreen(c, r);
     const e = Math.floor(rnd() * 4);
     const a = tips[e];
