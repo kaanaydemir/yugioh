@@ -251,9 +251,9 @@ function splitSlabs(f: Frame): void {
     return xl < cutx ? 0 : 1;
   };
   const OFF: Pt[] = [
-    [-8, 5],
-    [8, 3],
-    [2, 12],
+    [-6, 4],
+    [5, 2],
+    [2, 8],
   ];
   const t = o.split;
   const bmax = new Int16Array(src.h).fill(-1);
@@ -284,11 +284,11 @@ function splitSlabs(f: Frame): void {
       for (let y = 0; y < q.h; y++) {
         const a = bmax[y] + 2;
         const b = fmin[y] - 2;
-        if (bmax[y] < 0 || b - a < 1 || b - a > 16) continue;
+        if (bmax[y] < 0 || b - a < 1 || b - a > 10) continue;
         for (let x = a; x <= b; x++) {
           const d = Math.min(x - a, b - x);
-          const hot = d >= 2 && (y + x) % 5 === 0 && o.split < 0.95;
-          q.set(x, y, hot ? PAL.mag4 : d === 0 ? PAL.mag1 : d === 1 ? PAL.mag2 : PAL.mag3);
+          const hot = d >= 2 && (y + x) % 7 === 0 && o.split < 0.95;
+          q.set(x, y, hot ? PAL.mag4 : d === 0 ? PAL.mag1 : d === 1 ? PAL.mag2 : (y + x) % 3 === 0 ? PAL.mag2 : PAL.mag3);
         }
       }
     });

@@ -25,7 +25,7 @@ const AMP = [1, 2, 1] as const;
 // the wrist / the creases below it); the release runs down again. One control point moves per frame (two in the big strain).
 type Rip = readonly [number, number, number, number];
 const RIP1: readonly Rip[] = [[0, 0, 0, 0], [0, 0, 1, 0], [0, 1, 1, 0], [1, 1, 1, 0], [1, 1, 1, 0], [0, 1, 1, 0], [0, 0, 1, 0]];
-const RIP2: readonly Rip[] = [[0, 0, 0, 0], [0, 0, 1, 0], [0, 1, 2, 0], [1, 2, 2, 0], [2, 2, 2, 0], [1, 1, 2, 0], [0, 1, 1, 0]];
+const RIP2: readonly Rip[] = [[0, 0, 0, 0], [0, 0, 1, 0], [0, 1, 1, 0], [1, 1, 2, 0], [1, 2, 2, 0], [1, 1, 1, 0], [0, 0, 1, 0]];
 const GLOW1 = [1, 1, 2, 3, 2, 1, 1];
 const GLOW2 = [1, 1, 2, 4, 3, 1, 1];
 // knuckle plates (one per finger) lag the forearm by a frame each: index first, pinky last
@@ -33,9 +33,13 @@ const K_UP: readonly (readonly number[])[] = [
   [0, 0, 0, -1, -1, 0, 0],
   [0, 0, 0, -1, -1, -1, 0],
   [0, 0, 0, 0, -1, -1, 0],
-  [0, 0, 0, 0, -1, -1, -1],
+  [0, 1, 0, 0, -1, -1, -1],
 ];
 const HOP = [0, 0, 0, 0, 1, 3, 4];
+// a plate creep: each knuckle shifts 1 px sideways for two frames, one finger after the other (a slow grinding wave)
+const KX_ON: readonly (readonly number[])[] = [[0, 1, 2], [2, 3, 4], [4, 5, 6], [6, 0, 1]];
+// the fingers close one after the other (index and middle first) and open in a different order: never all four in one frame
+const FY_ON: readonly (readonly number[])[] = [[2, 3, 4], [2, 3, 4, 5], [3, 4], [3, 4, 5]];
 
 export function idlePose(f: number): Pose {
   const n = ((f % IDLE_N) + IDLE_N) % IDLE_N;
@@ -45,16 +49,20 @@ export function idlePose(f: number): Pose {
   const rip = (a === 2 ? RIP2 : RIP1)[c];
   const glow = (a === 2 ? GLOW2 : GLOW1)[c];
   const tight = c === 3 || c === 4;
+  // the fist trails the wrist by one frame: the forearm top moves first, the fist a beat later
+  const prev = (a === 2 ? RIP2 : RIP1)[(c + 6) % 7][0];
   return pose({
     rip,
+    hdy: rip[0] - prev,
     glow,
     spill: glow >= 3 ? 2 : 1,
     seam: 1,
     seamT: n / IDLE_N,
     h: hs({
       grip: 1,
+      kx: tup([KX_ON[0].includes(c) ? 1 : 0, KX_ON[1].includes(c) ? 1 : 0, KX_ON[2].includes(c) ? 1 : 0, KX_ON[3].includes(c) ? 1 : 0]),
       ky: tup([K_UP[0][c], K_UP[1][c], K_UP[2][c], K_UP[3][c]]),
-      fy: tight ? tup([-1, -1, -1, -1]) : HAND0.fy,
+      fy: tup([FY_ON[0].includes(c) ? -1 : 0, FY_ON[1].includes(c) ? -1 : 0, FY_ON[2].includes(c) ? -1 : 0, FY_ON[3].includes(c) ? -1 : 0]),
     }),
     spark: cyc === 1 && c === 3 ? 2 : 0,
     hop: HOP[c],

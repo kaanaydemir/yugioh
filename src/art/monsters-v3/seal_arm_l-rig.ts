@@ -21,7 +21,11 @@ export const H = 80;
 /** Floor point under the arm (the game's shadow sits here); the arm floats HOVER px above it. */
 export const AX = 38;
 export const AY = 70;
-export const HOVER = 14;
+export const HOVER = 5;
+/** The whole arm is drawn this many px lower than its pose tables say (the pose tables were keyed for a 14 px hover): its stump now sits just above the tile. */
+export const SHIFT = 6;
+/** Frame row of the tile centre (the anchor floats HOVER px above it). */
+export const FLOOR = AY + HOVER;
 
 /** Rest geometry. */
 export const S0: Pt = [17, 53];
@@ -311,6 +315,86 @@ function paintChain(c: Comp, p: Pose, f: ForeG, light: Light): void {
   void light;
 }
 
+
+// ---------------------------------------------------------------- floor contact (rubble, bolted tether chains, a crack that leaks seal light)
+
+const RUBBLE: readonly (readonly [number, number, number, number])[] = [
+  [5, 72, 4, 3],
+  [11, 73, 3, 2],
+  [18, 72, 5, 3],
+  [25, 73, 3, 2],
+  [30, 72, 4, 3],
+  [15, 74, 2, 1],
+];
+const STAPLES: readonly Pt[] = [
+  [9, 72],
+  [28, 72],
+];
+
+function tether(c: Comp, a: Pt, b: Pt): void {
+  const q = layer(c.p.w, c.p.h);
+  const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const n = Math.max(2, Math.round(len / 2.7));
+  for (let i = 0; i < n; i++) {
+    const k = (i + 0.5) / n;
+    const x = a[0] + (b[0] - a[0]) * k;
+    const y = a[1] + (b[1] - a[1]) * k;
+    const face = i % 2 === 0;
+    const bits = face ? LINK_FACE : LINK_EDGE;
+    const ox = rnd(x) - (face ? 1 : 0);
+    const oy = rnd(y) - (face ? 2 : 1);
+    stampBits(q, bits, ox, oy, (_cx, cy) => (cy < (bits.length >> 1) ? BRONZE.M : BRONZE.S));
+  }
+  c.add(q, P_CHAIN);
+}
+
+function paintContact(c: Comp, p: Pose, f: ForeG, light: Light): void {
+  // rubble heaped round the stump's foot
+  for (const [x, y, w, h] of RUBBLE) {
+    const q = layer(c.p.w, c.p.h);
+    q.rect(x, y, w, h, OBS.M);
+    bands(q, OBS, light, 1, 1);
+    c.add(q, P_CHIP, { out: OBS.D });
+  }
+  // two bronze staples bolted into the tile, a taut chain from each up to the stump's underside
+  const e = f.s;
+  const ends: Pt[] = [
+    [e[0] - 4, e[1] + 7],
+    [e[0] + 5, e[1] + 8],
+  ];
+  STAPLES.forEach((st, i) => {
+    tether(c, [st[0] + 0.5, st[1]], ends[i]);
+    const q = layer(c.p.w, c.p.h);
+    q.rect(st[0], st[1], 2, 2, BRONZE.M);
+    q.set(st[0], st[1], BRONZE.L);
+    c.add(q, P_CUFF, { out: BRONZE.D });
+  });
+  void p;
+}
+
+/** light layer: the hairline crack in the tile that bleeds seal light, and two dust specks hopping off the rubble */
+function contactLight(p: PixelCanvas, o: Pose): void {
+  const lit = o.floor >= 2 || o.seam >= 3 ? PAL.mag2 : PAL.mag1;
+  const pts: Pt[] = [[2, 76], [7, 75], [12, 77], [17, 75], [22, 77], [27, 75], [32, 76], [37, 75]];
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const [x0, y0] = pts[i];
+    const [x1, y1] = pts[i + 1];
+    const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+    for (let k = 0; k <= n; k++) {
+      const x = rnd(x0 + ((x1 - x0) * k) / n);
+      const y = rnd(y0 + ((y1 - y0) * k) / n);
+      if (p.inBounds(x, y) && !p.isOpaque(x, y)) p.set(x, y, (i + k) % 5 === 0 ? lit : PAL.mag1);
+    }
+  }
+  const hop = (x: number, ph: number) => {
+    const t = (o.swT + ph) % 1;
+    const y = 71 - Math.round(Math.abs(Math.sin(t * Math.PI)) * 3);
+    if (p.inBounds(x, y) && !p.isOpaque(x, y)) p.set(x, y, PAL.stone3);
+  };
+  hop(13, 0);
+  hop(26, 0.5);
+}
+
 // ---------------------------------------------------------------- rim tones
 
 const STONE_UP = new Map<number, number>([
@@ -428,7 +512,7 @@ function discLight(p: PixelCanvas, cx: number, cy: number, level: number, light:
 export function drawArm(p: PixelCanvas, pose0: Pose, from: DrawOpts['lightFrom'] = 'left'): void {
   const light = lightOf(from);
   const o = pose0;
-  const dy = o.dy;
+  const dy = o.dy + SHIFT;
   const pz: Pose = dy === 0 ? o : { ...o, sy: o.sy + dy, wy: o.wy + dy };
   const f = foreGeom(pz);
   const g: HandG = handGeom([pz.wx, pz.wy], pz.ha, pz.hand);
@@ -439,12 +523,13 @@ export function drawArm(p: PixelCanvas, pose0: Pose, from: DrawOpts['lightFrom']
     for (const ch of list) {
       const q = layer(p.w, p.h);
       const [w, h] = ch.k === 0 ? [2, 2] : ch.k === 1 ? [3, 2] : [3, 3];
-      q.rect(rnd(ch.x), rnd(ch.y), w, h, OBS.M);
+      q.rect(rnd(ch.x), rnd(ch.y) + SHIFT, w, h, OBS.M);
       bands(q, OBS, light, 1, 1);
       c.add(q, P_CHIP, { out: OBS.D });
     }
   };
   chips(o.chips);
+  paintContact(c, pz, f, light);
 
   if (o.lvl >= 2) paintForearm(c, pz, f, light);
   // the travelling pulse tints the plate it is passing (violet spill band, one frame per plate)
@@ -508,6 +593,7 @@ export function drawArm(p: PixelCanvas, pose0: Pose, from: DrawOpts['lightFrom']
   }
   if (o.lvl >= 1 && !o.fist) discLight(p, dcx, dcy, o.glow, light);
   if (o.lvl >= 2) paintSeam(c, pz, f);
+  contactLight(p, o);
   for (let i = 0; i < NF; i++) if (beadLevels[i] >= 3) hotTip(p, i, g);
   fxLayer(p, o, dcx, dcy);
   for (const s of o.sparks) p.set(rnd(s[0]), rnd(s[1] + dy), PAL.void4);
@@ -522,10 +608,10 @@ function fxLayer(p: PixelCanvas, o: Pose, cx: number, cy: number): void {
   };
   // floor diamond (2:1) under the anchor
   if (o.floor > 0) {
-    const fy = AY + 1;
+    const fy = FLOOR - 3;
     for (let i = 0; i <= 12; i++) {
       const dxs = i;
-      const dys = Math.round((12 - i) / 2);
+      const dys = Math.round((12 - i) / 3);
       for (const sx of [-1, 1])
         for (const sy of [-1, 1]) put(AX + sx * dxs, fy + sy * dys, o.floor >= 2 && (i === 12 || i === 0) ? PAL.mag2 : PAL.mag1);
     }

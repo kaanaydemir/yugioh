@@ -7,7 +7,7 @@
 // out, the hand drops palm up, bounces once and cracks. Every one-shot ends exactly on idle f0 (toGuard on guard f0).
 
 import type { AnimSpec, AnyMonsterAnim, MonsterAnim, MonsterAnimExtra, MonsterPoints } from '../types';
-import { AX, AY, POSE0, S0, W0, HA0, pose, type Pose } from './seal_arm_l-rig';
+import { AX, AY, POSE0, S0, W0, HA0, SHIFT, pose, type Pose } from './seal_arm_l-rig';
 import { HAND_REST, INDEX, MIDDLE, NF, PINKY, THUMB, handGeom, type HandPose } from './seal_arm_l-hand';
 
 const TAU = Math.PI * 2;
@@ -381,7 +381,7 @@ export function deathPose(f: number): Pose {
   const sp = f === 0 ? A5(-9, -5, 1, 7, 12) : close(Math.min(1, f / 4), -22).map((v, i) => v + (i === THUMB ? 0 : 0));
   if (f === 0) return hitF0();
   const hand = hp({ sp, ...curl(ks) });
-  const fall = [0, 0, 1, 3, 6, 11, 8, 10, 10][f];
+  const fall = [0, 0, 1, 2, 3, 5, 4, 5, 5][f];
   const glow = [1, 1, 1, 0, 0, 0, 0, 0, 0][f];
   return pose({
     sx: S0[0] - (f >= 1 ? 1 : 0) - (f >= 4 ? 1 : 0),
@@ -496,13 +496,13 @@ export function framePose(anim: AnyMonsterAnim, f: number): Pose {
 // ------------------------------------------------------------------ points
 
 export const MUZZLE = (() => {
-  const g = handGeom([REST.wx, REST.wy], REST.ha, REST.hand);
+  const g = handGeom([REST.wx, REST.wy + SHIFT], REST.ha, REST.hand);
   return { x: rnd(g.disc[0]), y: rnd(g.disc[1]) };
 })();
 
 export function framePoints(anim: AnyMonsterAnim, f: number): MonsterPoints {
   const p = framePose(anim, f);
-  const g = handGeom([p.wx, p.wy + p.dy], p.ha, p.hand);
+  const g = handGeom([p.wx, p.wy + p.dy + SHIFT], p.ha, p.hand);
   const disc = { x: rnd(g.disc[0]), y: rnd(g.disc[1]) };
   const mid = { x: rnd((g.w[0] + g.knuck[0]) / 2), y: rnd((g.w[1] + g.knuck[1]) / 2) };
   return { muzzle: disc, core: disc, head: mid, hand: mid, claw: { x: rnd(g.claw[0]), y: rnd(g.claw[1]) }, grip: disc, feet: { x: AX, y: AY } };
