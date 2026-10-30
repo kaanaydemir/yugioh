@@ -21,7 +21,7 @@ import { PAL, PLAYER_COLOR, PLAYER_RAMP } from '../../art/palette';
 import { pixelText } from '../../ui/text';
 import { LANES, LANE_MID, DEPTH, LOOK_V3, type XY, zoneXY } from '../../view/layout';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
-import { battlePlates } from '../../engine';
+import { showBattlePlates } from './plates';
 import { DECLARE_MAX_MS } from '../_v3/budget';
 import { canHandOver, declarePoseFrame, type HandOver } from '../_v3/clash';
 import { resultPlate } from '../traps/_opening';
@@ -363,30 +363,6 @@ registerObserver((ev, ctx) => {
 const DECLARE_POSE_MS = 180;
 /** A3 Y1b: the declaration's length until the battle starts (the reticle's 230-ms lock on the frame grid). */
 const DECLARE_SETTLE_MS = 233;
-
-/**
- * v3: the plates show the numbers this battle is fought with (battle-only debuffs such as Hortlak Muhafiz -400 /
- * Kalkan Devi -500 and one-turn boosts included). The badge rolls with its usual pop and tints gold (higher) /
- * crimson (lower); FieldView rolls it back when the batch ends (MonsterUnit.battleTint).
- */
-function showBattlePlates(ctx: Ctx<'attackDeclare'>, attacker: MonsterUnit | null, target: MonsterUnit | null): void {
-  const ev = ctx.ev;
-  let plates: ReturnType<typeof battlePlates>;
-  try {
-    plates = battlePlates(ctx.state, ev.attackerUid, ev.targetUid);
-  } catch {
-    return;
-  }
-  const apply = (u: MonsterUnit | null, st: { atk: number; def: number } | null): void => {
-    if (!u || !st) return;
-    const shown = u.shownStats;
-    if (shown.atk === st.atk && shown.def === st.def) return;
-    u.battleTint = true;
-    void u.setStats(st.atk, st.def, true);
-  };
-  apply(attacker, plates.attacker);
-  apply(target, plates.target);
-}
 
 async function attackDeclareV3(ctx: Ctx<'attackDeclare'>): Promise<void> {
   const ev = ctx.ev;

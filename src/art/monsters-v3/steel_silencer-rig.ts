@@ -21,7 +21,7 @@ import { PixelCanvas } from '../pixel';
 import { ik2, lightOf, run, type Light } from '../rigkit';
 import { Comp, planes } from './steel_silencer-kit';
 
-export const W = 120;
+export const W = 116;
 export const H = 96;
 export const RX = 44;
 export const GY = 88;
@@ -181,7 +181,7 @@ export function hash2(x: number, y: number, s = 0): number {
 }
 
 /** Flat three-band planes (IŞ-3): lit band toward the key light (and the top), shade band away / at the bottom. */
-function bands(q: PixelCanvas, t: Tones, light: Light, litW = 2, shW = 2, opt: { top?: number; bottom?: number } = {}): void {
+function bands(q: PixelCanvas, t: Tones, light: Light, litW = 3, shW = 2, opt: { top?: number; bottom?: number } = {}): void {
   const ls = light.side;
   const top = opt.top ?? 1;
   const bottom = opt.bottom ?? 1;
@@ -309,7 +309,7 @@ function drawLeg(f: Frame, near: boolean): void {
   const q = layer();
   q.poly(tubePoly(hip, kn, 11, 3, 0), t.M);
   q.poly(tubePoly(kn, an, 10, 0, 2), t.M);
-  bands(q, t, light, 2, 2);
+  bands(q, t, light, 3, 2);
   f.comp.add(q, near ? Part.legN : Part.legF, { out: PAL.night1 });
   // hydraulic ram on the shin: a bright rod on the shade side
   const rod = layer();
@@ -318,13 +318,13 @@ function drawLeg(f: Frame, near: boolean): void {
   // knee cap (copper disc) and foot plate
   const k = layer();
   k.disc(kn[0] + 1, kn[1], 6, near ? COPPER.M : COPPER.S);
-  bands(k, near ? COPPER : { L: COPPER.M, M: COPPER.S, S: COPPER.S, D: COPPER.D }, light, 2, 2);
+  bands(k, near ? COPPER : { L: COPPER.M, M: COPPER.S, S: COPPER.S, D: COPPER.D }, light, 3, 2);
   f.comp.add(k, near ? Part.legN : Part.legF, { out: PAL.earth0 });
   const fx = an[0] - 8;
   const fy = GY - 6 - (near ? o.nfl : o.ffl);
   const foot = layer();
   foot.poly([[fx, fy + 6], [fx + 1, fy], [fx + 14, fy], [fx + 18, fy + 3], [fx + 18, fy + 6]], near ? COPPER.M : COPPER.S);
-  bands(foot, near ? COPPER : { L: COPPER.M, M: COPPER.S, S: COPPER.S, D: COPPER.D }, light, 2, 2);
+  bands(foot, near ? COPPER : { L: COPPER.M, M: COPPER.S, S: COPPER.S, D: COPPER.D }, light, 3, 2);
   f.comp.add(foot, near ? Part.legN : Part.legF, { out: PAL.earth0 });
 }
 
@@ -333,7 +333,7 @@ function drawPelvis(f: Frame): void {
   const [bx, by] = sk.base;
   const q = layer();
   q.poly(boxPoly(bx - 16, by - 31, bx + 17, by - 19, 2), STEEL.M);
-  bands(q, STEEL, light, 2, 2);
+  bands(q, STEEL, light, 3, 2);
   // copper belt
   for (let y = by - 31; y <= by - 28; y++) for (let x = bx - 15; x <= bx + 16; x++) if (q.isOpaque(x, y)) q.set(x, y, y === by - 31 ? COPPER.L : y === by - 28 ? COPPER.S : COPPER.M);
   f.comp.add(q, Part.pelvis, { out: PAL.night1 });
@@ -344,7 +344,7 @@ function drawBack(f: Frame): void {
   const [tx, ty] = sk.T;
   const q = layer();
   q.poly(boxPoly(tx - 30 + o.back, ty - 54, tx - 15 + o.back, ty - 28, 2), DARK.M);
-  bands(q, DARK, light, 2, 2);
+  bands(q, DARK, light, 3, 2);
   // radiator slits
   for (let i = 0; i < 4; i++) {
     const y = ty - 49 + i * 5;
@@ -388,7 +388,7 @@ function drawTorso(f: Frame): void {
   // core port: steel ring + dark well (bars are light, after the outline)
   const pr = layer();
   pr.disc(sk.core[0], sk.core[1], 8, STEEL.M);
-  bands(pr, STEEL, light, 2, 2);
+  bands(pr, STEEL, light, 3, 2);
   pr.disc(sk.core[0], sk.core[1], 6, PAL.night0);
   f.comp.add(pr, Part.port, { out: PAL.night1 });
 }
@@ -399,7 +399,7 @@ function drawPauldron(f: Frame): void {
   // far drum + stack behind, near drum in front
   const fq = layer();
   fq.ellipse(tx - 14, ty - 54, 8, 7, DARK.M);
-  bands(fq, DARK, light, 2, 2);
+  bands(fq, DARK, light, 3, 2);
   f.comp.add(fq, Part.stackF, { out: PAL.night1 });
   const q = layer();
   q.ellipse(tx - 2, ty - 53, 12, 9, COPPER.M);
@@ -415,11 +415,11 @@ function drawHead(f: Frame): void {
   // collar plate under the visor
   const c = layer();
   c.poly(boxPoly(hx + 3, hy - 47, hx + 30, hy - 42, 1), STEEL.M);
-  bands(c, STEEL, light, 2, 2);
+  bands(c, STEEL, light, 3, 2);
   f.comp.add(c, Part.head, { out: PAL.night1 });
   const q = layer();
   q.poly(boxPoly(hx + 5, hy - 58, hx + 36, hy - 45, 2), STEEL.M);
-  bands(q, STEEL, light, 2, 2);
+  bands(q, STEEL, light, 3, 2);
   // copper brow (top 3 rows) and jaw (bottom 2 rows)
   for (let y = hy - 58; y <= hy - 46; y++)
     for (let x = hx + 5; x <= hx + 36; x++) {
@@ -438,13 +438,13 @@ function drawNearArm(f: Frame): void {
   // upper arm (copper-steel piston link)
   const u = layer();
   u.poly(tubePoly(sk.sh1, sk.el1, 13, 4, 0), STEEL.M);
-  bands(u, STEEL, light, 2, 2);
+  bands(u, STEEL, light, 3, 2);
   f.comp.add(u, Part.armN, { out: PAL.night1 });
   // shoulder joint + elbow joint (copper discs)
   for (const j of [sk.sh1, sk.el1]) {
     const d = layer();
     d.disc(j[0], j[1], 7, COPPER.M);
-    bands(d, COPPER, light, 2, 2);
+    bands(d, COPPER, light, 3, 2);
     f.comp.add(d, Part.armN, { out: COPPER.D });
   }
   // forearm: a huge cylinder
@@ -465,12 +465,12 @@ function drawNearArm(f: Frame): void {
   const [wx, wy] = sk.w1;
   const col = layer();
   col.poly(tubePoly([wx - sk.dir1[0] * 3, wy - sk.dir1[1] * 3], [wx + sk.dir1[0] * 3, wy + sk.dir1[1] * 3], 17), STEEL.M);
-  bands(col, STEEL, light, 2, 2);
+  bands(col, STEEL, light, 3, 2);
   f.comp.add(col, Part.armN, { out: PAL.night1 });
   const r = layer();
   const rl = 4 + o.ram;
   r.poly(tubePoly([wx + sk.dir1[0] * 2, wy + sk.dir1[1] * 2], [wx + sk.dir1[0] * rl, wy + sk.dir1[1] * rl], 8), PAL.mist);
-  bands(r, { L: PAL.mist, M: PAL.steel, S: PAL.night4, D: PAL.night3 }, light, 2, 2);
+  bands(r, { L: PAL.mist, M: PAL.steel, S: PAL.night4, D: PAL.night3 }, light, 3, 2);
   // pile point
   const px = wx + sk.dir1[0] * (rl + 1);
   const py = wy + sk.dir1[1] * (rl + 1);
@@ -488,15 +488,15 @@ function drawFarArm(f: Frame): void {
   const { sk, light } = f;
   const u = layer();
   u.poly(tubePoly(sk.sh2, sk.el2, 12, 4, 0), DARK.M);
-  bands(u, DARK, light, 2, 2);
+  bands(u, DARK, light, 3, 2);
   f.comp.add(u, Part.armF, { out: PAL.night1 });
   const q = layer();
   q.poly(tubePoly(sk.el2, sk.w2, 13, 3, 4), DARK.M);
-  bands(q, DARK, light, 2, 2);
+  bands(q, DARK, light, 3, 2);
   f.comp.add(q, Part.armF, { out: PAL.night1 });
   const d = layer();
   d.disc(sk.el2[0], sk.el2[1], 6, COPPER.S);
-  bands(d, { L: COPPER.M, M: COPPER.S, S: COPPER.S, D: COPPER.D }, light, 2, 2);
+  bands(d, { L: COPPER.M, M: COPPER.S, S: COPPER.S, D: COPPER.D }, light, 3, 2);
   f.comp.add(d, Part.armF, { out: COPPER.D });
 }
 
@@ -507,11 +507,11 @@ function drawShield(f: Frame): void {
   const R = 12;
   const q = layer();
   q.poly(HEX(cx, cy, R, sx), COPPER.M);
-  bands(q, COPPER, light, 2, 2);
+  bands(q, COPPER, light, 3, 2);
   f.comp.add(q, Part.shield, { out: COPPER.D });
   const face = layer();
   face.poly(HEX(cx, cy, R - 3, sx), STEEL.M);
-  bands(face, STEEL, light, 2, 2);
+  bands(face, STEEL, light, 3, 2);
   f.comp.add(face, Part.shield, { out: PAL.night1 });
   const well = layer();
   well.poly(HEX(cx, cy, R - 7, sx), PAL.night0);
@@ -591,6 +591,7 @@ function sealLight(f: Frame): void {
       const b = ring[(i + 1) % 6];
       if ((i + (fl(o.t * 12) & 1)) % 3 === 2) continue;
       pw.line(rnd(a[0]), rnd(a[1]), rnd(b[0]), rnd(b[1]), o.ward > 1 ? PAL.void4 : PAL.void3);
+      pw.line(rnd(a[0]) + 1, rnd(a[1]), rnd(b[0]) + 1, rnd(b[1]), PAL.void3);
     }
   }
 }
@@ -600,8 +601,8 @@ function steamLight(f: Frame): void {
   const ph = o.puff;
   const mk = (x: number, y: number, k: number, seed: number) => {
     // a puff = a 2×2 / 3×2 blob drifting up and back, shrinking to a lone 2×2 then gone
-    for (let i = 0; i < 3; i++) {
-      const u = (k + i / 3) % 1;
+    for (let i = 0; i < 4; i++) {
+      const u = (k + i / 4) % 1;
       const rise = 2 + u * 15 * o.puffK;
       const drift = -u * 4 + Math.sin((u + seed) * TAU) * 1.5;
       const bx = rnd(x + drift);
@@ -620,8 +621,8 @@ function steamLight(f: Frame): void {
     // a hard burst: two jets
     const v = o.vent;
     for (let i = 0; i < 4; i++) {
-      p.rect(rnd(sk.stack1[0] - 2 - i * 2 * v), rnd(sk.stack1[1] - 3 - i * 4 * v), 3, 2, i < 2 ? PAL.white : PAL.mist);
-      p.rect(rnd(sk.stack2[0] - 2 - i * 3 * v), rnd(sk.stack2[1] - 2 - i * 4 * v), 3, 2, i < 2 ? PAL.white : PAL.mist);
+      p.rect(rnd(sk.stack1[0] - 2 - i * 2 * v), rnd(sk.stack1[1] - 3 - i * 3 * v), 3, 2, i < 2 ? PAL.white : PAL.mist);
+      p.rect(rnd(sk.stack2[0] - 2 - i * 3 * v), rnd(sk.stack2[1] - 2 - i * 3 * v), 3, 2, i < 2 ? PAL.white : PAL.mist);
     }
   }
 }

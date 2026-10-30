@@ -36,18 +36,35 @@ export function boxOf(q: PixelCanvas, pad = 0): Box | null {
   return { x0: Math.max(0, x0 - pad), y0: Math.max(0, y0 - pad), x1: Math.min(w - 1, x1 + pad), y1: Math.min(h - 1, y1 + pad) };
 }
 
-/** A tone per opaque pixel chosen on a snapshot of the part's mask (visits only its box). */
-export function planes(q: PixelCanvas, tone: (x: number, y: number, src: PixelCanvas) => number | null): PixelCanvas {
-  const src = q.clone();
+// Layers are pooled: a part is painted on a clean frame-sized canvas, laid on the frame by Comp.add(), which clears the
+// part's box again and gives the canvas back (so a frame costs a handful of allocations, not one per part).
+const POOL: PixelCanvas[] = [];
+export function layer(w: number, h: number): PixelCanvas {
+  const q = POOL.pop();
+  return q && q.w === w && q.h === h ? q : new PixelCanvas(w, h);
+}
+function clearBox(q: PixelCanvas, b: Box): void {
+  const { w, data } = q;
+  for (let y = b.y0; y <= b.y1; y++) data.fill(0, (y * w + b.x0) * 4, (y * w + b.x1 + 1) * 4);
+}
+let SNAP: PixelCanvas | null = null;
+
+/** A tone per opaque pixel chosen on a snapshot of the part's mask (visits only its box; the snapshot is pooled). */
+export function planes(q: PixelCanvas, tone: (x: number, y: number, src: PixelCanvas) => number | null): void {
   const b = boxOf(q);
-  if (!b) return src;
+  if (!b) return;
+  if (!SNAP || SNAP.w !== q.w || SNAP.h !== q.h) SNAP = new PixelCanvas(q.w, q.h);
+  const src = SNAP;
+  const pad = 4;
+  const bb: Box = { x0: Math.max(0, b.x0 - pad), y0: Math.max(0, b.y0 - pad), x1: Math.min(q.w - 1, b.x1 + pad), y1: Math.min(q.h - 1, b.y1 + pad) };
+  for (let y = bb.y0; y <= bb.y1; y++) src.data.set(q.data.subarray((y * q.w + bb.x0) * 4, (y * q.w + bb.x1 + 1) * 4), (y * q.w + bb.x0) * 4);
   for (let y = b.y0; y <= b.y1; y++)
     for (let x = b.x0; x <= b.x1; x++) {
       if (!src.isOpaque(x, y)) continue;
       const c = tone(x, y, src);
       if (c !== null) q.set(x, y, c);
     }
-  return src;
+  clearBox(src, bb);
 }
 
 /** The frame being drawn plus a part-id buffer; add() lays a part over it with optional separation lines. */
@@ -58,11 +75,15 @@ export class Comp {
     this.p = p;
     this.id = new Uint8Array(p.w * p.h);
   }
+  /** Lay part `q` over the frame, then clear it and return it to the pool (a part is added once). */
   add(q: PixelCanvas, part: number, o: SepOpts = {}): void {
     const { p, id } = this;
     const W = p.w;
     const b = boxOf(q, 1);
-    if (!b) return;
+    if (!b) {
+      POOL.push(q);
+      return;
+    }
     const outs: number[] = [];
     const ins: number[] = [];
     for (let y = b.y0; y <= b.y1; y++)
@@ -90,6 +111,8 @@ export class Comp {
         id[y * W + x] = part;
       }
     for (let i = 0; i < ins.length; i += 2) p.set(ins[i], ins[i + 1], o.in!);
+    clearBox(q, b);
+    POOL.push(q);
   }
 }
 
@@ -118,11 +141,11 @@ export const LINING: Tones = { L: PAL.crim2, M: PAL.crim1, S: PAL.crim0, D: PAL.
  * Flat three-band planes (IŞ-3): the band toward the key light, the shade band away from it, the mid tone
  * between; `top` / `bottom` are the widths of the lit upper and shaded lower edge.
  */
-export function bands(q: PixelCanvas, t: Tones, light: Light, litW = 2, shW = 2, opt: { top?: number; bottom?: number } = {}): PixelCanvas {
+export function bands(q: PixelCanvas, t: Tones, light: Light, litW = 2, shW = 2, opt: { top?: number; bottom?: number } = {}): void {
   const ls = light.side;
   const top = opt.top ?? 1;
   const bottom = opt.bottom ?? 1;
-  return planes(q, (x, y, src) => {
+  planes(q, (x, y, src) => {
     const toLight = Math.min(run(src, x, y, ls, -1, litW + 1), run(src, x, y, ls, 0, litW + 1) + 1);
     const up = run(src, x, y, 0, -1, top + 1);
     if (up < top || toLight < litW) return t.L;

@@ -47,7 +47,7 @@ describe('magic_hat card data', () => {
     expect((d as { effect: string }).effect).toBe('hatShuffle');
     expect(TRAP_IDS).toContain('magic_hat');
     expect((d as { text: string }).text).toBe(
-      'Rakip bir canavarın sana ait canavara saldırı ilan ettiğinde: saldırılan canavarını ve 2 sahte şapkayı kapalı olarak karıştır; rakip bir şapka seçip ona saldırır.',
+      'Rakibin canavarı saldırı ilan edince: saldırılan canavarını ve 2 sahte şapkayı kapalı karıştır; rakip birini seçip saldırır.',
     );
   });
 });

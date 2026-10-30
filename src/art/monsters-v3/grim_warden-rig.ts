@@ -17,7 +17,7 @@
 import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
 import { ik2, lightOf, type Light } from '../rigkit';
-import { BONE, BONE_FAR, CLOAK, Comp, IRON, IRON_FAR, LINING, bands, lerp, planes, ribbon, spline, type Pt, type Tones } from './grim_warden-kit';
+import { BONE, BONE_FAR, CLOAK, Comp, IRON, IRON_FAR, LINING, bands, layer as kitLayer, lerp, planes, ribbon, spline, type Pt, type Tones } from './grim_warden-kit';
 import { bolt, dust, eyeBolts, eyeGlow, fork, gapCharge, motes } from './grim_warden-fx';
 
 export const W = 128;
@@ -40,6 +40,8 @@ export interface Pose {
   sink: number;
   lean: number;
   chy: number;
+  /** rib cage heave (px, + = down): the ribs and their gaps only */
+  rb: number;
   /** head offset from the neck (px), head turn (deg, + = chin up / back), jaw opening (deg), eye brightness 0…1.5 */
   hx: number;
   hy: number;
@@ -96,6 +98,7 @@ export const NEUTRAL: Pose = {
   sink: 0,
   lean: 0,
   chy: 0,
+  rb: 0,
   hx: 0,
   hy: 0,
   hr: 0,
@@ -178,15 +181,25 @@ export function skeleton(o: Pose): Skel {
   const H2: Pt = [R[0] - 7, R[1] - 1];
   const A1: Pt = [76 + o.f1x, 104 + o.f1y];
   const A2: Pt = [42 + o.f2x, 104 + o.f2y];
-  const K1 = pick(H1, A1, 15, 15, 1, 0.2);
-  const K2 = pick(H2, A2, 15, 15, 1, 0.2);
+  // a deep crouch folds the knees: they stay above the floor line
+  const k1 = pick(H1, A1, 15, 15, 1, 0.2);
+  const k2 = pick(H2, A2, 15, 15, 1, 0.2);
+  const K1: Pt = [k1[0], Math.min(k1[1], GY - 9)];
+  const K2: Pt = [k2[0], Math.min(k2[1], GY - 9)];
   const C: Pt = [60 + o.lean, 59 + o.sink + o.chy];
   const N: Pt = [C[0] + 3 + o.lean * 0.3, C[1] - 15];
   const S: Pt = [N[0] + 4 + o.hx, N[1] - 8 + o.hy];
   const Sh1: Pt = [C[0] + 13, C[1] - 13 + o.p1 * 0.5];
   const Sh2: Pt = [C[0] - 13, C[1] - 12 + o.p2 * 0.5];
-  const G: Pt = [R[0] + o.gx, R[1] + o.gy];
   const dir: Pt = [cos(o.ba * DEG), sin(o.ba * DEG)];
+  // the point never goes below the floor line or out of the frame: the hands ride up / back with it (a planted blade)
+  let gX = R[0] + o.gx;
+  let gY = R[1] + o.gy;
+  const lowY = gY + dir[1] * BLADE_LEN;
+  if (lowY > GY - 2) gY -= lowY - (GY - 2);
+  const farX = gX + dir[0] * BLADE_LEN;
+  if (farX > W - 4) gX -= farX - (W - 4);
+  const G: Pt = [gX, gY];
   const tip: Pt = [G[0] + dir[0] * BLADE_LEN, G[1] + dir[1] * BLADE_LEN];
   const pommel: Pt = [G[0] - dir[0] * 17, G[1] - dir[1] * 17];
   const Hn: Pt = [G[0] - dir[0] * 4, G[1] - dir[1] * 4];
@@ -229,7 +242,7 @@ interface Frame {
   after: ((p: PixelCanvas) => void)[];
 }
 
-const layer = () => new PixelCanvas(W, H);
+const layer = () => kitLayer(W, H);
 const P = (v: Pt): Pt => [rnd(v[0]), rnd(v[1])];
 
 function rotPts(pts: readonly Pt[], ang: number, o: Pt): Pt[] {
@@ -256,10 +269,10 @@ function capeShape(f: Frame): { q: PixelCanvas; left: (t: number) => number; top
   const { o, sk } = f;
   const q = layer();
   const top = sk.C[1] - 17;
-  const hem = 99 + o.capeL;
+  const hem = 92 + o.capeL;
   const sh = sk.C[0];
   const wave = (t: number, ph: number) => sin((o.capeT - t * 0.6 + ph) * Math.PI * 2);
-  const left = (t: number) => lerp(sh - 15, 20, Math.pow(t, 0.85)) + o.capeA * Math.pow(t, 1.3) + wave(t, 0) * 3.2 * t - o.wrap * 0 * t;
+  const left = (t: number) => lerp(sh - 15, 20, Math.pow(t, 0.85)) + o.capeA * Math.pow(t, 1.3) + wave(t, 0) * 4.6 * t - o.wrap * 0 * t;
   const right = (t: number) => lerp(sh + 5, sh - 1, t) + o.capeA * 0.35 * t + wave(t, 0.25) * 1.2 * t;
   const pts: Pt[] = [];
   const n = 9;
@@ -274,7 +287,7 @@ function capeShape(f: Frame): { q: PixelCanvas; left: (t: number) => number; top
   for (let i = 0; i < nt; i++) {
     const a = lerp(x0, x1, i / nt);
     const b = lerp(x0, x1, (i + 1) / nt);
-    const d = 5 + 4 * sin((o.ragT + i * 0.19) * Math.PI * 2) + (i % 2) * 3;
+    const d = 5 + 3 * sin((o.ragT + i * 0.19) * Math.PI * 2) + (i % 2) * 3;
     pts.push([a + 1, hem - 1]);
     pts.push([(a + b) / 2, hem + d - 3]);
   }
@@ -381,13 +394,15 @@ function paintPelvis(f: Frame): void {
   const lag = o.ragT;
   const rg = layer();
   const sw = rnd(1.2 * sin(lag * Math.PI * 2));
-  rg.poly([[rx - 3, ry - 4], [rx + 4, ry - 4], [rx + 4 + sw, ry + 12], [rx + 1 + sw, ry + 15], [rx - 3 + sw, ry + 11]], LINING.M);
+  const fl = GY - 3;
+  rg.poly([[rx - 3, ry - 4], [rx + 4, ry - 4], [rx + 4 + sw, Math.min(fl - 3, ry + 12)], [rx + 1 + sw, Math.min(fl, ry + 15)], [rx - 3 + sw, Math.min(fl - 4, ry + 11)]], LINING.M);
   bands(rg, LINING, f.light, 1, 1);
   f.comp.add(rg, Part.pelvis, { out: LINING.D });
   const plate = (cx: number, w: number, h: number, far: boolean) => {
     const t = far ? IRON_FAR : IRON;
     const pq = layer();
-    pq.poly([[cx - w / 2, ry - 4], [cx + w / 2, ry - 4], [cx + w / 2 - 1, ry - 4 + h], [cx, ry - 4 + h + 2], [cx - w / 2 + 1, ry - 4 + h]], t.M);
+    const fy = GY - 3;
+    pq.poly([[cx - w / 2, ry - 4], [cx + w / 2, ry - 4], [cx + w / 2 - 1, Math.min(fy - 2, ry - 4 + h)], [cx, Math.min(fy, ry - 4 + h + 2)], [cx - w / 2 + 1, Math.min(fy - 2, ry - 4 + h)]], t.M);
     bands(pq, t, f.light, 1, 1);
     f.comp.add(pq, Part.pelvis, { out: t.D });
   };
@@ -435,7 +450,7 @@ export interface RibGap {
 export function ribGaps(sk: Skel, o: Pose): RibGap[] {
   const out: RibGap[] = [];
   for (let i = 0; i < RIBS.length - 1; i++) {
-    const y = rnd(sk.C[1] + RIBS[i][0] + 2 + o.slump * i * 0.5);
+    const y = rnd(sk.C[1] + RIBS[i][0] + 2 + o.slump * i * 0.5 + o.rb);
     out.push({ x0: rnd(sk.C[0] - 6), x1: rnd(sk.C[0] + RIBS[i][1] - 3), y: y + 1, h: 2 });
   }
   return out;
@@ -453,7 +468,7 @@ function paintRibs(f: Frame): void {
   f.comp.add(cav, Part.ribs);
   for (let i = 0; i < RIBS.length; i++) {
     const [dy, hw, tilt] = RIBS[i];
-    const sag = o.slump * i * 0.8;
+    const sag = o.slump * i * 0.8 + o.rb;
     const q = layer();
     const y = cy + dy + sag;
     // a rib bar: from the spine side (left) to the sternum (right), sloping down toward the front
@@ -631,11 +646,11 @@ function paintSword(f: Frame): void {
 // ---------------------------------------------------------------- neck, skull, horns
 
 /** Local skull geometry (x forward, y down; origin = skull centre). */
-const CRAN: Pt[] = [[-6, 0], [-6, -4], [-4, -8], [0, -9], [4, -8], [7, -5], [8, -2], [8, 1], [6, 3], [3, 4], [-2, 4], [-5, 3]];
+const CRAN: Pt[] = [[-7, 0], [-7, -5], [-4, -9], [1, -11], [6, -10], [9, -6], [10, -2], [10, 2], [8, 5], [4, 6], [-3, 6], [-6, 4]];
 /** Socket pixels (skull-local): near (wide, slanted) and far (narrow). */
-const SOCK_N: Pt[] = [[1, -3], [2, -3], [3, -3], [1, -2], [2, -2], [3, -2], [4, -2], [2, -1], [3, -1]];
-const SOCK_F: Pt[] = [[6, -3], [7, -3], [6, -2], [7, -2], [6, -1]];
-const JAW: Pt[] = [[-4, 3], [7, 3], [7, 5], [5, 8], [0, 9], [-3, 7]];
+const SOCK_N: Pt[] = [[1, -5], [2, -5], [3, -5], [4, -5], [0, -4], [1, -4], [2, -4], [3, -4], [4, -4], [0, -3], [1, -3], [2, -3], [3, -3], [1, -2], [2, -2], [3, -2]];
+const SOCK_F: Pt[] = [[7, -5], [8, -5], [6, -4], [7, -4], [8, -4], [6, -3], [7, -3], [8, -3], [7, -2]];
+const JAW: Pt[] = [[-4, 5], [8, 5], [8, 7], [6, 10], [0, 11], [-3, 9]];
 const HORN_N: Pt[] = [[2, -7], [7, -9], [12, -11], [15, -15], [16, -21]];
 const HORN_F: Pt[] = [[-3, -7], [-8, -9], [-13, -11], [-16, -15], [-17, -21]];
 
@@ -695,15 +710,15 @@ function paintSkull(f: Frame): void {
   // mandible: hinged at (-5, 3), swings down by `jaw`
   const jt: Pt[] = JAW.map(([x, y]) => {
     const dx = x + 5;
-    const dy = y - 3;
+    const dy = y - 5;
     const c = cos(ja);
     const s = sin(ja);
-    return at(-5 + dx * c - dy * s, 3 + dx * s + dy * c);
+    return at(-5 + dx * c - dy * s, 5 + dx * s + dy * c);
   });
   const jq = layer();
   if (o.jaw > 4) {
     // the open mouth: the black behind the teeth
-    const mouth: Pt[] = [at(-4, 3), at(9, 3), jt[1], jt[0]];
+    const mouth: Pt[] = [at(-4, 5), at(9, 5), jt[1], jt[0]];
     jq.poly(mouth, PAL.ink);
   }
   jq.poly(jt, BONE.M);
@@ -719,15 +734,19 @@ function paintSkull(f: Frame): void {
   };
   for (const [x, y] of SOCK_N) put(x, y, PAL.void0);
   for (const [x, y] of SOCK_F) put(x, y, PAL.void0);
-  for (const [x, y] of [[5, 1], [6, 1], [5, 2], [6, 2]] as const) put(x, y, PAL.void0);
-  // brow ridge: a lit lip over the sockets
-  for (const x of [0, 1, 2, 3, 4]) put(x, -5 + Math.floor(x / 3), BONE.L);
-  // upper teeth: three 2-px teeth
-  for (const x of [0, 3, 6]) for (const dx of [0, 1]) for (const y of [3, 4]) put(x + dx, y, dx === 0 ? BONE.L : BONE.M);
+  // nasal cavity: an inverted heart
+  for (const [x, y] of [[5, 0], [6, 0], [5, 1], [6, 1], [5, 2]] as const) put(x, y, PAL.void0);
+  // cheekbone: a lit ridge under the socket, a crease behind it
+  for (const x of [0, 1, 2, 3]) put(x, 0, BONE.L);
+  for (const x of [-4, -3, -2, -1]) put(x, 1, BONE.D);
+  // upper teeth: four 2-px teeth with dark gaps, the mouth line under them
+  for (const x of [-1, 2, 5, 8]) for (const dx of [0, 1]) for (const y of [4, 5]) put(x + dx, y, dx === 0 ? BONE.L : BONE.M);
+  for (const x of [1, 4, 7]) for (const y of [4, 5]) put(x, y, PAL.void0);
+  for (let x = -2; x <= 9; x++) put(x, 6, o.jaw > 4 ? PAL.ink : BONE.D);
   f.comp.add(q, Part.skull, { out: BONE.D });
   // light: eyes (sockets 1,-4 / 7,-4 as drawn) + bolts
-  const e1 = at(2, -3);
-  const e2 = at(6, -3);
+  const e1 = at(1, -4);
+  const e2 = at(7, -4);
   const en = P(e1);
   const ef = P(e2);
   f.after.push((p) => {
@@ -755,20 +774,21 @@ function lightPass(f: Frame): void {
   });
   // eye bolts
   if (o.zap > 0.7) {
-    const e = P(hg.at(3, -3));
-    eyeBolts(p, e, 6 + 7 * Math.min(1.4, zap - 0.4), o.zs * 3 + 1, o.zap > 1.1 ? 3 : 2, zap > 1.1);
-    const e2 = P(hg.at(8, -3));
-    if (zap > 1.1) eyeBolts(p, e2, 8, o.zs * 3 + 2, 1, true);
+    const e = P(hg.at(3, -5));
+    eyeBolts(p, e, 6 + 7 * Math.min(1.4, zap - 0.4), o.zs * 3 + 1, o.spine > 0.5 ? 1 : o.zap > 1.1 ? 3 : 2, zap > 1.1 && o.spine <= 0.5);
+    const e2 = P(hg.at(8, -5));
+    if (zap > 1.1 && o.spine <= 0.5) eyeBolts(p, e2, 8, o.zs * 3 + 2, 1, true);
   }
   // bolts up the spine
   if (o.spine > 0) {
     const n = 2 + Math.round(o.spine * 2);
     for (let i = 0; i < n; i++) {
-      const bx = sk.C[0] - 7 + i * 5 - 2;
-      const by0 = sk.C[1] - 6;
-      const l = 14 + o.spine * 20;
-      const pts = bolt(p, [bx, by0], [bx - 3 + i * 3, by0 - l], o.zs * 5 + i, 3, o.spine > 0.7);
-      if (pts.length > 6) fork(p, pts[Math.floor(pts.length * 0.5)], [i % 2 ? 1 : -1, -1], 3, o.zs + i);
+      // the burst climbs the back of the rib cage and leans away from the skull (up and to the left)
+      const bx = sk.C[0] - 9 + i * 2;
+      const by0 = sk.C[1] - 8;
+      const l = 14 + o.spine * 16;
+      const pts = bolt(p, [bx, by0], [bx - 6 - i * 4, by0 - l], o.zs * 5 + i, 3, o.spine > 0.7);
+      if (pts.length > 6) fork(p, pts[Math.floor(pts.length * 0.5)], [-1, -1], 3, o.zs + i);
     }
   }
   // blade sparks: a little crawl along the cutting edge
@@ -791,14 +811,15 @@ function lightPass(f: Frame): void {
 function paintPit(p: PixelCanvas, glow: number, ring: number): void {
   if (glow > 0) {
     const rx = 15 + Math.round(glow * 15);
-    p.ellipse(AX, GY - 1, rx, Math.round(rx * 0.32), PAL.ink);
-    p.ellipse(AX, GY - 1, rx - 3, Math.round(rx * 0.32) - 1, PAL.void0);
-    p.ellipseRing(AX, GY - 1, rx, Math.round(rx * 0.32), glow > 0.6 ? PAL.void3 : PAL.void2);
-    if (glow > 0.8) p.ellipseRing(AX, GY - 1, rx - 3, Math.round(rx * 0.32) - 1, PAL.void4);
+    const ry = Math.min(6, Math.round(rx * 0.22));
+    p.ellipse(AX, GY - 1, rx, ry, PAL.ink);
+    p.ellipse(AX, GY - 1, rx - 3, ry - 1, PAL.void0);
+    p.ellipseRing(AX, GY - 1, rx, ry, glow > 0.6 ? PAL.void3 : PAL.void2);
+    if (glow > 0.8) p.ellipseRing(AX, GY - 1, rx - 3, ry - 1, PAL.void4);
   }
   if (ring > 0) {
     const rx = 16 + Math.round(ring * 38);
-    const ry = Math.round(rx * 0.34);
+    const ry = Math.min(6, Math.round(rx * 0.2));
     p.ellipseRing(AX, GY - 1, rx, ry, ring < 0.5 ? PAL.void4 : PAL.void3);
     if (ring < 0.7) p.ellipseRing(AX, GY - 1, rx - 2, ry - 1, PAL.void2);
   }
@@ -812,7 +833,7 @@ function paintArc(p: PixelCanvas, o: Pose, sk: Skel): void {
     const u = k / n;
     const ang = (o.arcA + (o.arcB - o.arcA) * u) * DEG;
     const wd = (3 + 11 * u) * o.arc;
-    const r1 = BLADE_LEN + 1;
+    const r1 = BLADE_LEN - 2;
     const r0 = r1 - wd;
     const col = u < 0.4 ? PAL.void2 : u < 0.75 ? PAL.void3 : PAL.void4;
     const c = cos(ang);
@@ -870,8 +891,8 @@ function drawBody(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right'): void {
   paintPauldron(f, true);
   paintSword(f);
   paintArm(f, false);
-  paintHands(f);
   paintPauldron(f, false);
+  paintHands(f);
   paintHorn(f, false);
   paintSkull(f);
   paintHorn(f, true);

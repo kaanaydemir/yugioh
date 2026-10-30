@@ -4,7 +4,7 @@
 //   hatsShuffled  three (or two) dusk-violet hats rise out of floor mist over the real monster's tile and the
 //                 decoy tiles, drop over their occupants (the monster dips under a 4-frame top-down wipe, three
 //                 felt thumps), then SHUFFLE along ground arcs — 3 passes, each hat with its shadow, a tiny star
-//                 sparkle per swap — and settle with a small hop. ≈ 1.7 s after the opening's banner (budget:
+//                 sparkle per swap — and settle with a small hop. ≈ 1.65 s after the opening's banner (budget:
 //                 activation + shuffle ≤ 2.6 s).
 //   hatChosen     the attacker's pick: the chosen hat hops and a floor ring marks it.
 //   decoyPopped   the hat lifts, a puff + confetti stars, the hat tumbles away; the attacker wobbles (≤ 0.6 s).
@@ -37,10 +37,10 @@ const HOME = (p: PlayerId, z: number): XY => {
 // ================================================================ timing (scaled-clock ms)
 
 export const RISE_MS = 220;
-export const RISE_STAGGER = 40;
+export const RISE_STAGGER = 30;
 export const DROP_MS = 150;
 export const DROP_STAGGER = 50;
-export const PASS_MS = 300;
+export const PASS_MS = 265;
 export const PASS_GAP = 15;
 export const HOVER_LIFT = 20;
 export const POP_MS = 420;

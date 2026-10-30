@@ -403,7 +403,9 @@ export class InspectPanelV3 {
     this.name = pixelText(this.scene, 0, capY(nameSize, NAME_Y + (nameSize === 'sm' ? 1 : 0)), name, { size: nameSize, color: PAL.white });
     this.name.x = Math.round(R.w / 2 - this.name.width / 2);
     this.root.addAt(this.name, nameIdx);
-    this.typeLine.setText(type).setTint(this.ramp[3]);
+    // (the narrow 5+5 panel: a long type line first loses the spaces round its slash, then its star level)
+    const typeFits = [type, type.replace(' / ', '/'), type.replace(' / ', '/').replace(/ ★\d+$/, '')].find((t) => measureText(t, 'sm').w <= R.w - 6) ?? type;
+    this.typeLine.setText(typeFits).setTint(this.ramp[3]);
     this.typeLine.setPosition(Math.round(R.w / 2 - this.typeLine.width / 2), capY('sm', NAME_Y + 11));
     const dy = NAME_Y + 19;
     this.divider.setPosition(8, dy - 2);

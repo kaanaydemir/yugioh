@@ -41,6 +41,7 @@ import type Phaser from 'phaser';
 import type { GameEvent } from '../../engine/types';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { ATTRIBUTE_RAMP, PAL, RAMPS, type Ramp } from '../../art/palette';
+import { restoreBattlePlates } from './plates';
 import { DEPTH, GAME_W, LOOK_V3, type XY } from '../../view/layout';
 import { shake, wait } from '../../vfx/core';
 import { blockClang, directHit, impact as combatImpact, whiteFlash } from '../../vfx/combat';
@@ -74,7 +75,13 @@ function battlePower(ev: EvOf<'battle'>, dmg: number): 1 | 2 | 3 {
 registerEvent(
   'battle',
   async (ctx) => {
-    if (LOOK_V3) return battleV3(ctx);
+    if (LOOK_V3) {
+      try {
+        return await battleV3(ctx);
+      } finally {
+        restoreBattlePlates(ctx.stateNext);
+      }
+    }
     const ev = ctx.ev;
     const sc = ctx.scene;
     const attacker = ctx.unit(ev.attackerUid);

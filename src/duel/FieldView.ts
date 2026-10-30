@@ -246,8 +246,13 @@ export class FieldView {
           if (u.position !== slot.position) void u.setPosition(slot.position, false);
           if (u.displaced) u.settle();
           const shown = u.shownStats;
-          if (shown.atk !== atk || shown.def !== def) void u.setStats(atk, def, u.battleTint);
-          u.battleTint = false;
+          // v3: while a battle runs (the declaration's plate numbers) the plate keeps them; the battle's end rolls it back
+          if (u.battleTint && state.phase === 'battle') {
+            /* keep */
+          } else {
+            if (shown.atk !== atk || shown.def !== def) void u.setStats(atk, def, u.battleTint);
+            u.battleTint = false;
+          }
           if (LOOK_V3) u.setLock(plateLock(state, slot));
           // auras (only on a running scene: aura helpers tick from their first frame)
           if (running) {

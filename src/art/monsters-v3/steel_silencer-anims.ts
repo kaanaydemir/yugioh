@@ -37,25 +37,29 @@ const blend = (a: Pose, b: Pose, t: number): Pose => snap(mix(a, b, t));
 // ------------------------------------------------------------------ idle (12 frames, 1.8 s)
 
 const IDLE_N = 12;
+const tick = (starts: number[], on: number, off: number, len = 2): number[] => Array.from({ length: IDLE_N }, (_, f) => (starts.some((s) => (f - s + IDLE_N) % IDLE_N < len) ? on : off));
 const I = {
-  back: [0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0],
-  ty: [0, 0, -1, -1, -1, -1, 0, 0, 0, 0, 0, 0],
-  hy: [0, 0, 0, -1, -1, -1, -1, 0, 0, 0, 0, 0],
-  ny: [-18, -18, -18, -18, -19, -19, -19, -19, -18, -18, -18, -18],
-  ram: [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0],
-  fy: [-37, -37, -37, -37, -37, -37, -37, -38, -38, -38, -37, -37],
-  core: [1, 1, 1, 1, 1, 2, 2, 2, 1, 1, 1, 1],
-  seal: [1, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1],
+  // 2-frame hard ticks: each part clicks out for two frames and back, two clicks per loop at staggered starts, so
+  // at most two parts are ever displaced and every frame transition moves a different pair
+  ny: tick([1, 7], -21, -18),
+  ty: tick([], -1, 0),
+  shake: Array.from({ length: IDLE_N }, (_, f) => (f === 2 || f === 3 || f === 8 || f === 9 ? 1 : f === 5 || f === 6 || f === 10 || f === 11 ? 2 : 0)),
+  fy: tick([3, 9], -40, -37),
+  hy: tick([4, 10], -2, 0),
+  back: tick([5, 11], 2, 0),
+  ram: tick([6, 0], 2, 0),
+  lean: tick([6, 0], 1, 0),
+  core: [1, 1, 1, 2, 2, 1, 1, 2, 2, 1, 1, 1],
+  seal: [1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1],
   scan: [0, 0, 1, 2, 2, 2, 1, 0, -1, -2, -2, -1],
   lid: [0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0],
-  lean: [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0],
-  vent: [0, 0, 0, 0, 0, 0, 0.6, 1, 0, 0, 0, 0],
+  vent: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
 };
 export function idlePose(f: number): Pose {
   const k = ((f % IDLE_N) + IDLE_N) % IDLE_N;
   return pose({
-    back: I.back[k], ty: I.ty[k], hy: I.hy[k], ny: I.ny[k], ram: I.ram[k], fy: I.fy[k], core: I.core[k], seal: I.seal[k],
-    scan: I.scan[k], lid: I.lid[k], lean: I.lean[k], vent: I.vent[k], puff: k / IDLE_N, t: k / IDLE_N,
+    back: I.back[k], ty: I.ty[k], hy: I.hy[k], ny: I.ny[k], ram: I.ram[k], fy: I.fy[k], core: I.core[k], seal: I.seal[k], shake: I.shake[k],
+    scan: I.scan[k], lid: I.lid[k], lean: I.lean[k], vent: I.vent[k], puff: k / IDLE_N, puffK: 1, t: k / IDLE_N,
   });
 }
 const IDLE0 = idlePose(0);
@@ -75,23 +79,22 @@ const home = (): Pose => ({ ...IDLE0 });
 const GUARD_N = 6;
 const G0: Partial<Pose> = {
   py: 2, ty: 0, hy: 1, hx: 1, lid: 1, eye: 1.2,
-  nx: 20, ny: -14, ram: 0,
-  fx: 44, fy: -40, hx2: 8, hy2: 2, hexs: 0.62, seal: 2, core: 2,
-  puffK: 0.7,
+  nx: 22, ny: -28, ram: 0,
+  fx: 34, fy: -39, hx2: 9, hy2: 3, hexs: 0.86, seal: 2, core: 2,
+  puffK: 1,
 };
 export function guardPose(f: number): Pose {
   const k = f % GUARD_N;
   return {
     ...IDLE0,
     ...G0,
-    ward: k % 2 === 0 ? 1 : 2,
+    ward: 2,
+    shake: [2, 0, 1, 1, 0, 2][k],
     seal: k === 3 ? 3 : 2,
-    ty: k === 2 || k === 3 ? -1 : 0,
-    fy: k === 4 ? -41 : -40,
     scan: [0, 0, 1, 1, 0, -1][k],
     core: k === 3 || k === 4 ? 3 : 2,
     puff: k / GUARD_N,
-    t: k / GUARD_N,
+    t: k / 12,
   };
 }
 const GUARD0 = guardPose(0);
@@ -118,7 +121,7 @@ export function attackPose(f: number): Pose {
   const m = f === 9 ? 0.4 : f === 10 ? 0.75 : 0.9;
   return snap(key({ ...mix(k8, IDLE0, m), slam: 0, spark: f === 9 ? 0.8 : 0, dust: f === 9 ? 0.8 : 0, shake: 0, vent: f === 9 ? 0.6 : 0, ward: 0, ring: 0 }, f, A_N, IDLE0));
 }
-const ATTACK_HOLDS = [100, 130, 120, 130, 200, 50, 60, 70, 90, 110, 120, 140];
+const ATTACK_HOLDS = [100, 150, 150, 170, 260, 60, 60, 70, 90, 110, 120, 140];
 
 // ------------------------------------------------------------------ roar (10 frames): "Sus!" — the silence ring
 
@@ -126,10 +129,10 @@ const R_N = 10;
 const ROAR_KEYS: Partial<Pose>[] = [
   { },
   { py: 1, tx: -2, hy: 1, eye: 1.4, core: 2, shutter: 1, vent: 0.4, nx: 16, ny: -10, fx: 26, fy: -42 },
-  { py: 2, tx: -3, ty: 1, hy: 1, hx: -1, eye: 1.6, core: 2, shutter: 2, nx: 10, ny: -6, fx: 28, fy: -48, back: 1, seal: 2 },
-  { py: 2, tx: -2, ty: 0, eye: 2, core: 3, shutter: 2, nx: 8, ny: -4, fx: 30, fy: -54, vent: 1, lean: 1, back: 1, seal: 3, hexs: 0.9 },
-  { py: 0, tx: 2, ty: -1, hy: -1, hx: 1, eye: 2, core: 3, shutter: 2, nx: 8, ny: -4, fx: 32, fy: -56, hexs: 0.8, seal: 3, vent: 1, ring: 0.12, rx: 11, ry: -39, spark: 0.1 },
-  { py: 0, tx: 2, ty: -1, hx: 1, eye: 2, core: 3, shutter: 2, nx: 8, ny: -4, fx: 32, fy: -56, hexs: 0.8, seal: 3, vent: 0.6, ring: 0.3, rx: 11, ry: -39 },
+  { py: 2, tx: -3, ty: 1, hy: 1, hx: -1, eye: 1.6, core: 2, shutter: 2, nx: 10, ny: -12, fx: 28, fy: -48, back: 1, seal: 2 },
+  { py: 2, tx: -2, ty: 0, eye: 2, core: 3, shutter: 2, nx: 8, ny: -12, fx: 30, fy: -54, vent: 1, lean: 1, back: 1, seal: 3, hexs: 0.9 },
+  { py: 0, tx: 2, ty: -1, hy: -1, hx: 1, eye: 2, core: 3, shutter: 2, nx: 8, ny: -12, fx: 32, fy: -56, hexs: 0.8, seal: 3, vent: 1, ring: 0.12, rx: 11, ry: -39, spark: 0.1 },
+  { py: 0, tx: 2, ty: -1, hx: 1, eye: 2, core: 3, shutter: 2, nx: 8, ny: -12, fx: 32, fy: -56, hexs: 0.8, seal: 3, vent: 0.6, ring: 0.3, rx: 11, ry: -39 },
   { py: 0, tx: 1, eye: 1.6, core: 3, shutter: 1, nx: 12, ny: -8, fx: 30, fy: -50, seal: 2, ring: 0.52, rx: 11, ry: -39 },
   { py: 0, eye: 1.4, core: 2, shutter: 1, nx: 20, ny: -14, fx: 28, fy: -44, ring: 0.74, rx: 11, ry: -39 },
 ];
@@ -159,7 +162,7 @@ const HIT_HOLDS = [50, 50, 70, 80, 90, 110];
 
 const HH_N = 8;
 const HH_KEYS: Partial<Pose>[] = [
-  { hx: -3, hy: 1, lid: 2, eye: 0.3, shake: 1, spark: 0.15, tx: -1 },
+  { hx: -2, lid: 2, eye: 0.3, shake: 1, spark: 0.15 },
   { hx: -3, tx: -4, py: 3, lid: 2, eye: 0.4, shake: 2, nx: 30, ny: -6, core: 2, spark: 0.4, back: 1, ffl: 3, ffx: -3 },
   { hx: -2, tx: -3, py: 4, lid: 2, eye: 0.6, shake: 1, nx: 28, ny: -4, spark: 0.7, ffl: 4, ffx: -4, ward: 0 },
   { hx: -1, tx: -2, py: 2, lid: 1, eye: 0.8, nx: 31, ny: -7, ffl: 1, ffx: -2 },
@@ -191,7 +194,7 @@ const TG_K = [0.2, 0.45, 0.65, 0.85, 1];
 export function toGuardPose(f: number): Pose {
   if (f >= 5) return { ...GUARD0 };
   const k = TG_K[f];
-  return { ...blend(IDLE0, GUARD0, k), ward: f >= 3 ? 1 : 0, puff: f / 5, t: f / 5, seal: f >= 3 ? 2 : 1, hexs: 1 - 0.38 * k };
+  return { ...blend(IDLE0, GUARD0, k), ward: f >= 3 ? 1 : 0, puff: f / 5, t: f / 5, seal: f >= 3 ? 2 : 1, hexs: 1 - 0.14 * k };
 }
 const TG_HOLDS = [55, 60, 60, 65, 60, 60];
 const FG_K = [0.3, 0.6, 0.85, 1];
@@ -199,7 +202,7 @@ export function fromGuardPose(f: number): Pose {
   if (f >= 4) return home();
   const k = FG_K[f];
   const m = blend(GUARD0, IDLE0, k);
-  return { ...m, ward: 0, puff: f / 4, t: f / 4, hexs: 0.62 + 0.38 * k };
+  return { ...m, ward: 0, puff: f / 4, t: f / 4, hexs: 0.86 + 0.14 * k };
 }
 const FG_HOLDS = [65, 65, 70, 70, 80];
 
