@@ -7,7 +7,7 @@
 
 | # | id | Ad | Element / Tür | Sv | ATK/DEF | Boy | Etki (Türkçe) | Görsel fikir |
 |---|---|---|---|---|---|---|---|---|
-| 1 | dusk_sorcerer | Alacakaranlık Büyücüsü | KARANLIK / Büyücü | 7 | 2500/2100 | 80 | Sahadayken senin büyü kartların aktive edildiğinde rakibe 300 hasar. | Mor cüppeli, uzun asa, omuzda ay tılsımı |
+| 1 | dusk_sorcerer | Akşam Büyücüsü | KARANLIK / Büyücü | 7 | 2500/2100 | 80 | Sahadayken senin büyü kartların aktive edildiğinde rakibe 300 hasar. | Mor cüppeli, uzun asa, omuzda ay tılsımı |
 | 2 | ashen_drake | Kül Ejderi | KARANLIK / Ejderha | 7 | 2400/2000 | 80 | — | Kömür siyahı, kızıl çatlaklı kanatlar |
 | 3 | grim_warden | Hortlak Muhafız | KARANLIK / Şeytan | 6 | 2500/1200 | 80 | Saldırı ilan ettiğinde hedefin ATK'si bu tur 400 azalır. | Boynuzlu iskelet-şövalye, gözlerden şimşek |
 | 4 | night_apprentice | Gece Çırağı | KARANLIK / Büyücü | 6 | 2000/1700 | 64 | Sahanda başka bir Büyücü varsa ATK +500. | Genç büyücü kız, yıldızlı şapka |
@@ -26,7 +26,7 @@
 | 17 | hourglass_imp | Kum Saati Cücesi | IŞIK / Büyücü | 2 | 500/400 | 48 | Çağrıldığında rakibin 1 canavarı bir sonraki turunda saldıramaz. | Büyük kum saatli, sivri şapkalı cüce |
 | 18 | cotton_sentry | Pamuk Bekçi | IŞIK / Peri | 3 | 300/500 | 48 | Savaşta yok edilmez. ÇEVİR: saldırana 500 hasar. | Bulut gibi yumuşak, gülen bekçi |
 | 19 | holy_herald | Kutsal Haberci | IŞIK / Peri | 4 | 1100/1900 | 48 | Sahandaki tüm IŞIK canavarlarının ATK'si +300 (kendisi dahil değil). | Kanatlı, borazanlı küçük haberci |
-| 20 | windmane_knight | Fırtına Yeleli Şövalye | TOPRAK / Savaşçı | 7 | 2300/2100 | 80 | Normal çağrıldığı tur saldırırken ATK +500. | Atlı değil, yeleli miğferli ağır şövalye |
+| 20 | windmane_knight | Fırtına Şövalyesi | TOPRAK / Savaşçı | 7 | 2300/2100 | 80 | Normal çağrıldığı tur saldırırken ATK +500. | Atlı değil, yeleli miğferli ağır şövalye |
 | 21 | forest_warden | Orman Muhafızı | TOPRAK / Savaşçı | 4 | 1400/1200 | 64 | — | Yeşil pelerinli, kılıç-kalkanlı elf savaşçı |
 | 22 | obsidian_knight | Obsidyen Şövalye | TOPRAK / Savaşçı | 8 | 3000/2500 | 96 | Çağrıldığında rakibin 1 canavarını yok et. | Siyah-altın zırh, devasa çift elli kılıç |
 | 23 | drake_hunter | Ejder Avcısı | TOPRAK / Savaşçı | 7 | 2600/2300 | 80 | Bir Ejderha ile savaşırken ATK +1000. | Pelerinli, koca kılıçlı avcı |

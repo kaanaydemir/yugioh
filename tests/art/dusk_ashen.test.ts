@@ -1,4 +1,4 @@
-// Alacakaranlık Büyücüsü + Kül Ejderi (v3 art, registered): every anim the v3 contract needs exists with
+// Akşam Büyücüsü + Kül Ejderi (v3 art, registered): every anim the v3 contract needs exists with
 // marks and holds, validateArt (normal tier) reports no errors, a frame is deterministic, P2 is a relight
 // of the same silhouette, and the two arts are not the arts they were derived from (distinct palette and size).
 
@@ -30,7 +30,7 @@ for (const art of [dusk, ashen]) {
     it('draws deterministically and P2 keeps the silhouette', () => {
       const a = drawFrame(art, 'idle', 0, 'left');
       const b = drawFrame(art, 'idle', 0, 'left');
-      expect(Buffer.from(a.data).equals(Buffer.from(b.data))).toBe(true);
+      expect(a.data.length === b.data.length && a.data.every((v: number, i: number) => v === b.data[i])).toBe(true);
       const r = drawFrame(art, 'idle', 0, 'right');
       let diff = 0;
       for (let y = 0; y < a.h; y++) for (let x = 0; x < a.w; x++) if (a.isOpaque(x, y) !== r.isOpaque(x, y)) diff++;

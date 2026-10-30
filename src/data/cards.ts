@@ -309,7 +309,7 @@ const MONSTERS_B1: MonsterCardDef[] = [
   {
     id: 'dusk_sorcerer',
     kind: 'monster',
-    name: 'Alacakaranlık Büyücüsü',
+    name: 'Akşam Büyücüsü',
     attribute: 'DARK',
     race: 'Büyücü',
     level: 7,
@@ -423,7 +423,7 @@ const MONSTERS_B1: MonsterCardDef[] = [
   {
     id: 'windmane_knight',
     kind: 'monster',
-    name: 'Fırtına Yeleli Şövalye',
+    name: 'Fırtına Şövalyesi',
     attribute: 'EARTH',
     race: 'Savaşçı',
     level: 7,

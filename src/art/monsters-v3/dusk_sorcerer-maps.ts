@@ -47,7 +47,7 @@ export interface PartMap {
   oy: number;
 }
 
-// ---------------------------------------------------------------- hood, coat bust, shoulders (Alacakaranlık Büyücüsü)
+// ---------------------------------------------------------------- hood, coat bust, shoulders (Akşam Büyücüsü)
 // Authored ONCE with light-relative planes and translated per key light (relight(), below):
 //   t top plane (lit from above in both)   m mid cloth   b back / shade cloth
 //   r a plane facing the frame's right   l a plane facing the frame's left  (lit when the key is on that side)

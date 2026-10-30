@@ -84,7 +84,7 @@ const scenarios: Record<string, Scenario> = {
     steps: [summon('hourglass_imp', 1), { type: 'chooseTarget', player: 0, target: { player: 1, zone: 'monster', index: 0 } }],
   },
   m1Knight: {
-    desc: 'Fırtına Yeleli Şövalye: tribute summoned, enters the battle phase (ATK 2300 -> 2800) and attacks the same turn',
+    desc: 'Fırtına Şövalyesi: tribute summoned, enters the battle phase (ATK 2300 -> 2800) and attacks the same turn',
     stage: {
       p0: { hand: ['windmane_knight'], monsters: ['stone_sentinel', 'ember_wolf'] },
       p1: { monsters: [{ id: 'shade_assassin', position: 'attack' }, { id: 'ashen_drake', position: 'attack' }] },
@@ -92,7 +92,7 @@ const scenarios: Record<string, Scenario> = {
     steps: [summon('windmane_knight', 1, ['stone_sentinel', 'ember_wolf']), battle(), attack(1, 1)],
   },
   m1Sorcerer: {
-    desc: 'Alacakaranlık Büyücüsü: every Spell its owner activates burns the opponent for 300 (Şifa Pınarı: +1000 LP, -300 for the rival)',
+    desc: 'Akşam Büyücüsü: every Spell its owner activates burns the opponent for 300 (Şifa Pınarı: +1000 LP, -300 for the rival)',
     stage: { p0: { hand: ['healing_spring'], monsters: ['dusk_sorcerer'] }, p1: { monsters: ['ember_wolf'] } },
     steps: [(D) => ({ type: 'activateSpell', player: 0, uid: D.uid('healing_spring', 0) })],
   },

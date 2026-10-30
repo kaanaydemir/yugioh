@@ -1,4 +1,4 @@
-// Alacakaranlık Büyücüsü (dusk_sorcerer) — v3 art (?look=v3 only; src/art/monsters/index.ts). A tall
+// Akşam Büyücüsü (dusk_sorcerer) — v3 art (?look=v3 only; src/art/monsters/index.ts). A tall
 // robed master spellcaster: an open hood with the face in shadow and two violet eyes, a long flared
 // midnight coat with gold trim and sash over a violet cloak, a vertical wooden-gold staff with a
 // silver crescent (moon-sigil) head, a floating crescent charm at the shoulder and a small violet

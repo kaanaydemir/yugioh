@@ -26,7 +26,12 @@ for (const [path, mod] of Object.entries(modules)) {
   if (art && art.id) REGISTRY.set(art.id, art);
 }
 
-const v3Modules = import.meta.glob<{ default: MonsterArt }>(['../monsters-v3/*.ts', '!../monsters-v3/_*.ts'], { eager: true });
+const v3Modules = import.meta.glob<{ default: MonsterArt }>([
+    '../monsters-v3/*.ts',
+    '!../monsters-v3/_*.ts',
+    // Work-in-progress art that is NOT shippable yet (failed the distinction / gate review, 30 Oct): the placeholder is used until it is redone.
+    '!../monsters-v3/dusk_sorcerer.ts', '!../monsters-v3/ashen_drake.ts', '!../monsters-v3/grim_warden.ts', '!../monsters-v3/hourglass_imp.ts', '!../monsters-v3/shield_titan.ts', '!../monsters-v3/steel_silencer.ts', '!../monsters-v3/venom_drake.ts', '!../monsters-v3/wisp_imp.ts',
+  ], { eager: true });
 
 const REGISTRY_V3 = new Map<MonsterId, MonsterArt>();
 for (const mod of Object.values(v3Modules)) {
