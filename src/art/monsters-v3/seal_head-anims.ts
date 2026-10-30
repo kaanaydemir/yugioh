@@ -31,6 +31,7 @@ const IDLE_N = 18;
 const IDLE_HOLDS = [130, 110, 100, 100, 100, 100, 100, 100, 110, 130, 110, 100, 100, 100, 100, 100, 100, 110];
 /** float: the skull rises 2 px in whole-pixel steps, hangs, sinks (hold-eased) */
 const BOB = [0, 0, -1, -1, -2, -2, -2, -2, -2, -1, -1, 0, 0, 0, 0, 0, 0, 0];
+const bobAt = (i: number, lag: number) => BOB[(((i - lag) % IDLE_N) + IDLE_N) % IDLE_N];
 /** the eye: two swells per loop (period 9): slow rise 5 f, fast drop 2 f */
 const EYE9 = [3, 3, 4, 4, 3, 2, 2, 2, 3];
 /** the neck seam: three beats per loop (period 6) */
@@ -42,7 +43,12 @@ export function idlePose(f: number): Pose {
   const strain = i === 6 || i === 7 || i === 15 || i === 16;
   const clink = i === 7 || i === 16;
   return pose({
-    dy: BOB[i],
+    // the float lives in the loose parts: the skull stays on its pixels, the crest rises first, the jaw a frame later, the
+    // neck stump and its chains two frames after that (whole px, one part per step: never the whole head on one frame)
+    dy: 0,
+    fdy: bobAt(i, 0),
+    jdy: bobAt(i, 1),
+    cdy: bobAt(i, 2),
     eye: i === 12 ? 0 : EYE9[i % 9],
     // the forehead disc breathes with the eye, one frame behind
     disc: EYE9[(i + 8) % 9],
@@ -50,8 +56,8 @@ export function idlePose(f: number): Pose {
     far: 1,
     // chains and shards lag the skull (chains +2 f)
     chT: (((i - 2 + IDLE_N) % IDLE_N) / IDLE_N) % 1,
-    chA: 1.5,
-    jaw: strain ? 13.5 : 12,
+    chA: 2.2,
+    jaw: (strain ? 13.5 : 12) + 1.6 * Math.sin(((i - 4) / IDLE_N) * Math.PI * 2) - 1.6 * Math.sin((-4 / IDLE_N) * Math.PI * 2),
     clink: clink ? 1 : 0,
     s1: 20 + 20 * T3(i),
     s2: 140 - 20 * T3(i),
@@ -89,7 +95,9 @@ const GUARD_N = 8;
 const GUARD_HOLDS = [170, 150, 160, 170, 160, 150, 160, 170];
 const G0: Pose = {
   ...HOME,
-  dy: 6,
+  dy: 2,
+  dx: -4,
+  rot: -8,
   jaw: 9,
   eye: 2,
   eyeOpen: 0.85,
@@ -112,10 +120,13 @@ export function guardPose(f: number): Pose {
   return {
     ...G0,
     // one small part per frame: the chains on the even steps, the shell's wobble on the odd ones, the eye and the sink rarely
-    chT: [0, 0, 0.25, 0.25, 0.5, 0.5, 0.75, 0.75][i],
-    s1: [0, 0, 60, 60, 120, 120, 180, 180][i],
+    chT: [0, 0.1, 0.1, 0.1, 0.55, 0.55, 0.8, 0.8][i],
+    s1: [0, 0, 45, 45, 45, 200, 200, 320][i],
     eye: seq([2, 2, 2, 3, 3, 3, 2, 2], i),
-    dy: seq([6, 6, 6, 6, 7, 7, 7, 7], i),
+    dy: 2,
+    jdy: seq([0, 0, 0, 0, 1, 1, 1, 0], i),
+    // the jaw rocks slowly under the hood (a sinusoid, one period per loop)
+    jaw: seq([9, 9, 10.5, 10.5, 10.5, 9, 8, 8], i),
     moteT: i / GUARD_N,
   };
 }
@@ -129,8 +140,8 @@ function toGuardPose(f: number): Pose {
     { shell: 0.35, eye: 3 },
     { shell: 0.75, eye: 3 },
     { shell: 1, hood: 0.3, eye: 3 },
-    { shell: 1, hood: 0.65, jaw: 11, eye: 3 },
-    { shell: 1, hood: 0.9, dy: 3, jaw: 10, eye: 2, eyeOpen: 0.9 },
+    { shell: 1, hood: 0.65, jaw: 11, eye: 3, rot: -5, dx: 0 },
+    { shell: 1, hood: 0.9, dy: 2, jaw: 10, eye: 2, eyeOpen: 0.9, rot: -6, dx: -3 },
   ];
   if (f >= 5) return guardPose(0);
   return key({ ...d[f], s1: lerpAngle(HOME.s1, 0, f / 5), s2: lerpAngle(HOME.s2, 0, f / 5), s3: lerpAngle(HOME.s3, 0, f / 5), disc: f >= 3 ? 2 : 3, far: f >= 4 ? 0 : 1 }, f, 6);
@@ -148,7 +159,7 @@ function fromGuardPose(f: number): Pose {
   const m = mixPose(g, HOME, t);
   // the chains uncross first, then the head rises, the shell breaks into orbits last
   const hood = [0.55, 0.15, 0, 0][f];
-  const dy = [5, 3, 1, 0][f];
+  const dy = [2, 1, 1, 0][f];
   const shell = [1, 0.85, 0.5, 0.2][f];
   return { ...m, hood, dy, shell, s1: lerpAngle(0, HOME.s1, t), s2: lerpAngle(0, HOME.s2, t), s3: lerpAngle(0, HOME.s3, t), jaw: lerp(9, 12, t), eye: f >= 2 ? 3 : 2, disc: f >= 2 ? 3 : 2, far: f >= 3 ? 1 : 0, glint: 0 };
 }
@@ -197,18 +208,20 @@ const ROAR_HOLDS = [80, 170, 110, 90, 110, 100, 100, 110, 120, 130, 140, 150];
 function roarPose(f: number): Pose {
   const n = ROAR_N;
   if (f >= 11) return home();
+  // the toll: the head rocks back (f1-3), the forehead STRIKES forward at the release (f4, below its rest), then rings out as a
+  // damped bell: rebound, smaller dips, settle (a ringing path, not one rise and one fall)
   const base: Partial<Pose>[] = [
     { rot: 1, eye: 4, disc: 4 },
     { rot: 4, dy: -1, eye: 4, disc: 4, sr: 85, chA: 0.6 },
-    { rot: 6, dy: -2, eye: 4, disc: 4, sr: 80, chA: 2, taut: 0.3 },
-    { rot: 6, dy: -2, eye: 4, disc: 4, sr: 112, chA: 3.5, jaw: 11 },
-    { rot: 6, dy: -2, eye: 4, disc: 4, sr: 122, chA: 5, rings: [0], jaw: 11 },
-    { rot: 6, dy: -2, eye: 4, disc: 4, sr: 125, chA: 5, rings: [1] },
-    { rot: 5, dy: -1, eye: 4, disc: 4, sr: 122, chA: 4.5, rings: [2, 0] },
-    { rot: 4, dy: -1, eye: 4, disc: 4, sr: 115, chA: 4, rings: [3, 1] },
-    { rot: 3, dy: -1, eye: 4, disc: 4, sr: 115, chA: 3, rings: [4, 2, 0] },
-    { rot: 2, eye: 4, disc: 3, sr: 105, chA: 2.5, rings: [3, 1] },
-    { rot: 1, eye: 3, disc: 3, sr: 100, chA: 2, rings: [2] },
+    { rot: 7, dy: -2, eye: 4, disc: 4, sr: 80, chA: 2, taut: 0.3 },
+    { rot: 7, dy: -2, eye: 4, disc: 4, sr: 112, chA: 3.5, jaw: 11 },
+    { rot: -5, dy: 1, eye: 4, disc: 4, sr: 122, chA: 5, rings: [0], jaw: 11 },
+    { rot: 3, dy: -1, eye: 4, disc: 4, sr: 125, chA: 5, rings: [1] },
+    { rot: -3, dy: 0, eye: 4, disc: 4, sr: 122, chA: 4.5, rings: [2, 0] },
+    { rot: 2, dy: 0, eye: 4, disc: 4, sr: 115, chA: 4, rings: [3, 1] },
+    { rot: -1.5, eye: 4, disc: 4, sr: 112, chA: 3, rings: [4, 2, 0] },
+    { rot: 1, eye: 4, disc: 3, sr: 105, chA: 2.5, rings: [3, 1] },
+    { rot: -0.5, eye: 3, disc: 3, sr: 100, chA: 2, rings: [2] },
   ];
   const d = { ...base[f] };
   // the chains ring like a bell: their phase alternates every frame while the toll lasts
@@ -269,7 +282,7 @@ const FLOOR_CLIP = 82;
 function summonPose(f: number): Pose {
   const n = 14;
   if (f >= 13) return home();
-  const dys = [70, 70, 70, 58, 44, 30, 18, 7, -2, 0, 0, 0, 0];
+  const dys = [72, 60, 56, 52, 44, 30, 18, 7, -2, 0, 0, 0, 0];
   const d: Partial<Pose> = {
     dy: dys[f],
     clip: f <= 7 ? FLOOR_CLIP : 0,
@@ -304,17 +317,19 @@ function deathPose(f: number): Pose {
     { dx: -2, dy: 4, rot: 2, eye: 2, eyeOpen: 0.3, jaw: 24, strap: 2, disc: 2, motes: 0.4 },
     { dx: -1, dy: 4, rot: 0, eye: 2, eyeOpen: 0, jaw: 24, strap: 2, disc: 1, motes: 0.5, seam: 4 },
     { dx: 0, dy: 5, eye: 0, jaw: 24, strap: 2, disc: 1, motes: 0.6, seam: 4 },
-    { dy: 5, split: 0.45, eye: 0, jaw: 24, strap: 2, disc: 0, motes: 0.8, seam: 4 },
-    { dy: 5, split: 0.75, eye: 0, jaw: 24, strap: 2, disc: 0, motes: 0.9, seam: 3 },
-    { dy: 5, split: 0.92, eye: 0, jaw: 24, strap: 2, disc: 0, motes: 0.9, seam: 3 },
-    { dy: 5, split: 1, eye: 0, jaw: 22, strap: 2, disc: 0, motes: 0.7, seam: 2 },
-    { dy: 5, split: 1, eye: 0, jaw: 16, strap: 2, disc: 0, motes: 0.5, seam: 1 },
+    { dy: 5, split: 0.45, eye: 0, jaw: 20, strap: 2, disc: 0, motes: 0.8, seam: 4 },
+    { dy: 5, split: 0.75, eye: 0, jaw: 18, strap: 2, disc: 0, motes: 0.9, seam: 3 },
+    { dy: 5, split: 0.92, eye: 0, jaw: 16, strap: 2, disc: 0, motes: 0.9, seam: 3 },
+    { dy: 5, split: 1, eye: 0, jaw: 15, strap: 2, disc: 0, motes: 0.7, seam: 2 },
+    { dy: 5, split: 1, eye: 0, jaw: 14, strap: 2, disc: 0, motes: 0.5, seam: 1 },
   ];
   const o = key({ ...d[f], far: f >= 1 ? 0 : 1 }, f, n);
   // the chains go slack and hang
   o.taut = 0;
   o.chA = f >= 2 ? 0.8 : 1.5;
   if (f >= 2) o.nch = 3;
+  if (f >= 6) o.nch = 1;
+  if (f >= 7) o.nch = 0;
   if (f >= 6) {
     o.mx = 46 + ((f * 3) % 7);
     o.my = 82;
@@ -427,5 +442,5 @@ export function framePose(anim: AnyMonsterAnim, f: number): Pose {
 export function framePoints(anim: AnyMonsterAnim, f: number): MonsterPoints {
   const o = framePose(anim, f);
   const p = headPoints(o);
-  return { muzzle: { x: rnd(p.muzzle[0]), y: rnd(p.muzzle[1]) }, core: { x: rnd(p.core[0]), y: rnd(p.core[1]) }, head: { x: rnd(p.head[0]), y: rnd(p.head[1]) } };
+  return { feet: { x: 50, y: 86 }, muzzle: { x: rnd(p.muzzle[0]), y: rnd(p.muzzle[1]) }, core: { x: rnd(p.core[0]), y: rnd(p.core[1]) }, head: { x: rnd(p.head[0]), y: rnd(p.head[1]) } };
 }

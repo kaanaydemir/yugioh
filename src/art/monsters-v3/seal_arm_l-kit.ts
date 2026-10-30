@@ -124,6 +124,14 @@ export interface Tones {
 
 /** Colossus obsidian: creases are violet-black void0 (not the Titan's night0); stone3 runs only on near light corners. */
 export const OBS: Tones = { E: PAL.stone3, L: PAL.stone2, M: PAL.stone1, S: PAL.stone0, D: PAL.void0 };
+/** The forearm slabs sit a step darker than the hand (the hand is the picture's subject). */
+export const OBS_ARM: Tones = { E: PAL.stone3, L: PAL.stone2, M: PAL.stone1, S: PAL.stone0, D: PAL.void0 };
+/** The palm slab: the biggest near block of the hand, its lit plane carries the stone3 run. */
+export const OBS_PALM: Tones = { E: PAL.stone3, L: PAL.stone2, M: PAL.stone1, S: PAL.stone0, D: PAL.void0 };
+/** The hand's plates are a step lighter in their shadow half (the fingers are thin: a stone0 half would read as a hole). */
+export const OBS_HAND: Tones = { E: PAL.stone3, L: PAL.stone2, M: PAL.stone1, S: PAL.stone0, D: PAL.void0 };
+/** Obsidian under the travelling seal light: the violet spill band (lit side void2, shadow side void0). */
+export const SPILL: Tones = { E: PAL.void3, L: PAL.void2, M: PAL.void1, S: PAL.void0, D: PAL.ink };
 /** Bronze bindings (cuff, chain, the disc's ring). */
 export const BRONZE: Tones = { E: PAL.gold3, L: PAL.gold3, M: PAL.gold2, S: PAL.gold1, D: PAL.gold0 };
 /** Seal glow ramp, dim → hot. */
@@ -203,3 +211,52 @@ export const GLYPH_ARM_L: readonly string[] = ['#.#.#', '#.#.#', '.###.', '.###.
 /** The palm disc: 9 × 9 round, and its 7 × 7 round socket (rows from the top). */
 export const DISC9: readonly string[] = ['..#####..', '.#######.', '#########', '#########', '#########', '#########', '#########', '.#######.', '..#####..'];
 export const SOCK7: readonly string[] = ['..###..', '.#####.', '#######', '#######', '#######', '.#####.', '..###..'];
+
+/**
+ * Crumb pass (IŞ-4) for the stone planes only: a stone pixel with no 4-neighbour of its own tone (a 1-px stair of a band edge,
+ * not a deliberate line) takes the tone its neighbours share most. Creases, bronze, seal light and the silhouette slivers
+ * (≤ 1 opaque 4-neighbour) are never touched and never counted as the donor.
+ */
+export function stoneCrumbs(p: PixelCanvas, passes = 2): void {
+  crumbs(p, [PAL.stone0, PAL.stone1, PAL.stone2, PAL.stone3], passes);
+}
+/** The same pass for the bronze tones. */
+export function stoneCrumbsOf(p: PixelCanvas): void {
+  crumbs(p, [PAL.gold0, PAL.gold1, PAL.gold2, PAL.gold3], 2);
+}
+function crumbs(p: PixelCanvas, tones: readonly number[], passes: number): void {
+  const stone = new Set<number>(tones);
+  const b = boxOf(p);
+  if (!b) return;
+  for (let pass = 0; pass < passes; pass++) {
+    const fix: number[] = [];
+    for (let y = b.y0; y <= b.y1; y++)
+      for (let x = b.x0; x <= b.x1; x++) {
+        const c = p.get(x, y);
+        if (c === null || !stone.has(c)) continue;
+        let same = false;
+        let op4 = 0;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+          if (p.isOpaque(x + dx, y + dy)) {
+            op4++;
+            if (p.get(x + dx, y + dy) === c) same = true;
+          }
+        }
+        if (same || op4 <= 1) continue;
+        const votes = new Map<number, number>();
+        for (let dy = -1; dy <= 1; dy++)
+          for (let dx = -1; dx <= 1; dx++) {
+            if (!dx && !dy) continue;
+            const q = p.isOpaque(x + dx, y + dy) ? p.get(x + dx, y + dy) : null;
+            if (q === null || !stone.has(q)) continue;
+            votes.set(q, (votes.get(q) ?? 0) + (dx && dy ? 1 : 2));
+          }
+        let best = -1;
+        let bv = 0;
+        for (const [q, v] of votes) if (v > bv) [best, bv] = [q, v];
+        if (best >= 0) fix.push(x, y, best);
+      }
+    if (!fix.length) break;
+    for (let i = 0; i < fix.length; i += 3) p.set(fix[i], fix[i + 1], fix[i + 2]);
+  }
+}

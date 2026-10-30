@@ -38,9 +38,12 @@ const cos = Math.cos;
 // ---------------------------------------------------------------- pose
 
 export interface Pose {
-  /** skull offset (whole px) */
+  /** skull offset (whole px); the jaw, the neck stump + chains and the crest fins may lag it by whole px (jdy / cdy / fdy, added to dy) */
   dx: number;
   dy: number;
+  jdy: number;
+  cdy: number;
+  fdy: number;
   /** head tilt in degrees (+ = chin up / back) and jaw opening in degrees (rest 6, slam 0) */
   rot: number;
   jaw: number;
@@ -97,6 +100,9 @@ export interface Pose {
 export const NEUTRAL: Pose = {
   dx: 0,
   dy: 0,
+  jdy: 0,
+  cdy: 0,
+  fdy: 0,
   rot: 0,
   jaw: 12,
   eye: 3,
@@ -243,9 +249,9 @@ function splitSlabs(f: Frame): void {
     return yl < cut ? 0 : 1;
   };
   const OFF: Pt[] = [
-    [-9, 9],
-    [4, 10],
-    [8, 0],
+    [-9, 6],
+    [4, 7],
+    [8, -4],
   ];
   const t = o.split;
   // draw lowest-priority first: jaw, face, back
@@ -282,7 +288,7 @@ function flashBands(f: Frame): void {
       if (!p.isOpaque(x, y)) continue;
       const id = comp.id[y * p.w + x];
       if (id !== Part.skull && id !== Part.plate && id !== Part.jaw && id !== Part.fins) continue;
-      if (((x + y * 2 + shift) % 11) >= 4) continue;
+      if (((x + y * 2 + shift) % 11) >= 3) continue;
       const c = p.get(x, y);
       if (c === OBS.S) p.set(x, y, PAL.void2);
       else if (c === OBS.M) p.set(x, y, PAL.void1);
@@ -381,7 +387,8 @@ function TJ(f: Frame, x: number, y: number): Pt {
   const s = sin(a);
   const rx = x - HINGE[0];
   const ry = y - HINGE[1];
-  return T(f, HINGE[0] + rx * c - ry * s, HINGE[1] + rx * s + ry * c);
+  const t = T(f, HINGE[0] + rx * c - ry * s, HINGE[1] + rx * s + ry * c);
+  return f.o.jdy ? [t[0], t[1] + f.o.jdy * f.k] : t;
 }
 const mapPts = (f: Frame, pts: readonly Pt[], jaw = false): Pt[] => pts.map(([x, y]) => (jaw ? TJ(f, x, y) : T(f, x, y)));
 
@@ -445,7 +452,7 @@ const OBS_FACE: Tones = { E: PAL.stone2, L: PAL.stone1, M: PAL.stone0, S: PAL.st
 function paintFins(f: Frame): void {
   const { light } = f;
   FINS.forEach((fin, i) => {
-    const q = polyLayer(f, fin, OBS.M);
+    const q = polyLayer(f, fin.map(([x, y]) => [x, y + f.o.fdy] as Pt), OBS.M);
     bands(q, OBS, light, 2, 2, { top: 1, bottom: 1 });
     if (i < 2) edgeRuns(q, OBS, light, 3);
     f.comp.add(q, Part.fins, { out: OBS.D });
@@ -453,7 +460,7 @@ function paintFins(f: Frame): void {
 }
 
 function paintStump(f: Frame): void {
-  const q = polyLayer(f, STUMP, OBS_FAR.M);
+  const q = polyLayer(f, STUMP.map(([x, y]) => [x, y + f.o.cdy] as Pt), OBS_FAR.M);
   bands(q, OBS_FAR, f.light, 2, 3, { top: 1, bottom: 2 });
   f.comp.add(q, Part.stump);
 }
@@ -656,7 +663,7 @@ const LEN = [10, 13, 11];
 /** loose chain from the stump: hanging path vs hooded path, blended */
 function chainPath(f: Frame, i: number): Pt[] {
   const { o } = f;
-  const a = ANCHOR[i];
+  const a: Pt = [ANCHOR[i][0], ANCHOR[i][1] + o.cdy];
   const ph = (o.chT + i * 0.31) * Math.PI * 2;
   const sw = o.chA * (1 - o.taut);
   const hang: Pt[] = [
@@ -709,9 +716,9 @@ function drawShard(f: Frame, cx: number, cy: number, size: number, seed: number,
   f.comp.add(q, part, { out: near ? PAL.ink : undefined });
 }
 const SHARDS: readonly { rx: number; ry: number; size: number; seed: number; slot: Pt }[] = [
-  { rx: 34, ry: 20, size: 4, seed: 0, slot: [37, -14] },
-  { rx: 30, ry: 22, size: 3, seed: 1, slot: [40, 4] },
-  { rx: 36, ry: 18, size: 3, seed: 2, slot: [35, 22] },
+  { rx: 34, ry: 20, size: 5.5, seed: 0, slot: [37, -14] },
+  { rx: 30, ry: 22, size: 4.5, seed: 1, slot: [40, 4] },
+  { rx: 36, ry: 18, size: 4.5, seed: 2, slot: [35, 22] },
 ];
 /** the three shards: iso orbits round the head (angle deg: 0 = right, 90 = in front / below), or the guard shell's slots in front of the face */
 function paintShards(f: Frame, want: 'near' | 'far'): void {
@@ -765,15 +772,15 @@ function spill(f: Frame): void {
 /** hairline cracks in the stone (void0), and the brow crack of a heavy blow */
 function cracks(f: Frame): void {
   const { o } = f;
-  const line = (pts: Pt[]) => {
+  const line = (pts: Pt[], col: number = PAL.void0) => {
     const q = layer();
-    q.polyline(mapPts(f, pts), PAL.void0);
+    q.polyline(mapPts(f, pts), col);
     // only on the stone: keep the cut inside the body
     const { p, comp } = f;
     const b: number[] = [];
     for (let y = 0; y < q.h; y++)
       for (let x = 0; x < q.w; x++) if (q.isOpaque(x, y) && p.isOpaque(x, y) && (comp.id[y * p.w + x] === Part.skull || comp.id[y * p.w + x] === Part.plate)) b.push(x, y);
-    for (let i = 0; i < b.length; i += 2) p.set(b[i], b[i + 1], PAL.void0);
+    for (let i = 0; i < b.length; i += 2) p.set(b[i], b[i + 1], col);
     q.clear();
     kitRelease(q);
   };
@@ -783,8 +790,9 @@ function cracks(f: Frame): void {
     const n = o.crack >= 0.6 ? 4 : 2;
     const full: Pt[] = [[2, -23], [4, -19], [3, -15], [7, -12], [8, -8], [6, -4]];
     const pts = full.slice(0, 2 + n);
-    line(pts);
-    if (o.crack >= 0.6) line([[4, -19], [10, -17], [13, -19]]);
+    const glow = o.crack >= 0.6 ? PAL.mag2 : PAL.mag1;
+    line(pts, glow);
+    if (o.crack >= 0.6) line([[4, -19], [10, -17], [13, -19]], PAL.mag1);
   }
 }
 
@@ -805,7 +813,8 @@ function paintHinge(f: Frame): void {
 
 /** a bronze collar where the neck was torn off */
 function paintCollar(f: Frame): void {
-  const q = polyLayer(f, [[-23, 14], [6, 14], [6, 19], [-23, 19]], BRONZE.M);
+  const cd = f.o.cdy;
+  const q = polyLayer(f, [[-23, 14 + cd], [6, 14 + cd], [6, 19 + cd], [-23, 19 + cd]], BRONZE.M);
   bands(q, BRONZE, f.light, 1, 1, { top: 1, bottom: 1 });
   f.comp.add(q, Part.strap, { in: BRONZE.D });
 }
@@ -927,8 +936,8 @@ function seamLight(f: Frame): void {
   const lvl = clamp(rnd(o.seam), 0, 4);
   if (lvl <= 0) return;
   f.after.push((p) => {
-    const base = T(f, -9, 24);
-    const zig: Pt[] = [[-10, 0], [-8, -1], [-6, 0], [-4, 0], [-2, -1], [0, 0], [2, 0], [4, -1], [6, 0], [8, 0], [9, -1]];
+    const base = T(f, -9, 24 + o.cdy);
+    const zig: Pt[] = [[-10, 0], [-8, -1], [-6, 0], [-4, 0], [-2, -1], [0, 0], [2, 0], [4, -1], [6, 0], [8, -4], [9, -1]];
     zig.forEach(([x, y]) => p.set(base[0] + x, base[1] + y, MAG[Math.min(3, lvl)]));
     // a dim ember under the crack, and bleed lines up the stump
     zig.forEach(([x, y]) => {

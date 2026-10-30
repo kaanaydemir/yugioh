@@ -10,7 +10,7 @@
 import { PAL } from '../palette';
 import type { PixelCanvas } from '../pixel';
 import type { Light } from '../rigkit';
-import { BRONZE, MAG, OBS, bands, bar, fill, layer, rot, rnd, type Comp, type Pt } from './seal_arm_l-kit';
+import { stoneCrumbsOf, BRONZE, MAG, OBS, OBS_HAND, OBS_PALM, SPILL, bands, bar, fill, layer, planes, rot, rnd, stoneCrumbs, type Comp, type Pt, type Tones } from './seal_arm_l-kit';
 
 export const NF = 5;
 export const PINKY = 0;
@@ -131,23 +131,49 @@ const PALM: readonly Pt[] = [
 
 // ---------------------------------------------------------------- painters
 
+/**
+ * Flat bands for a straight bar, cut along its axis (the lit half toward the key light, the shadow half away, a mid band only
+ * when the bar is wide): the two halves are rasterised straight lines, so no 1-px stair of a band is left on a diagonal finger.
+ */
+export function axisBands(q: PixelCanvas, a: Pt, b: Pt, wa: number, wb: number, t: Tones, light: Light): void {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const l = Math.hypot(dx, dy) || 1;
+  let nx = -dy / l;
+  let ny = dx / l;
+  // the normal that faces the light (screen-plane light direction (∓0.56, −0.83))
+  if (nx * (0.85 * light.side) + ny * -0.5 < 0) {
+    nx = -nx;
+    ny = -ny;
+  }
+  planes(q, (x, y) => {
+    const px = x + 0.5 - a[0];
+    const py = y + 0.5 - a[1];
+    const along = Math.max(0, Math.min(1, (px * dx + py * dy) / (l * l)));
+    const half = (wa + (wb - wa) * along) / 2;
+    const u = px * nx + py * ny - ((0 * along) as number);
+    const m = half > 2.4 ? half * 0.36 : 0;
+    return u > m ? t.L : u < -m ? t.S : t.M;
+  });
+}
+
 /** One finger segment as a shaded plate (a tapered bar), laid with a crease ring over what is behind. */
-function segment(comp: Comp, id: number, a: Pt, b: Pt, wa: number, wb: number, light: Light, crease = true): void {
+function segment(comp: Comp, id: number, a: Pt, b: Pt, wa: number, wb: number, light: Light, crease = true, tones: Tones = OBS): void {
   const q = layer(comp.p.w, comp.p.h);
   // start a little behind the joint so a bent finger has no wedge gap on the outside of the bend
   const dx = b[0] - a[0];
   const dy = b[1] - a[1];
   const l = Math.hypot(dx, dy) || 1;
   const a2: Pt = [a[0] - (dx / l) * 0.9, a[1] - (dy / l) * 0.9];
-  bar(q, a2, b, wa, wb, OBS.M);
-  bands(q, OBS, light, 1, 1);
-  comp.add(q, id, crease ? { out: OBS.D } : {});
+  bar(q, a2, b, wa, wb, tones.M);
+  axisBands(q, a2, b, wa, wb, tones, light);
+  comp.add(q, id, crease ? { out: tones.D } : {});
 }
 
 /** Paint a finger (three plates). `tip` is the bead level 0..4 (seal light on the fingertip). */
-export function paintFinger(comp: Comp, i: number, g: HandG, light: Light, partId: number): void {
+export function paintFinger(comp: Comp, i: number, g: HandG, light: Light, partId: number, litSeg = -1): void {
   const pts = g.f[i];
-  for (let j = 0; j < 3; j++) segment(comp, partId, pts[j], pts[j + 1], WID[i][j], WID[i][j + 1], light, true);
+  for (let j = 0; j < 3; j++) segment(comp, partId, pts[j], pts[j + 1], WID[i][j], WID[i][j + 1], light, j > 0, j === litSeg ? SPILL : OBS_HAND);
 }
 
 /** The glowing bead on a fingertip (inside the silhouette, drawn before the outline). */
@@ -167,8 +193,9 @@ export function tipBead(q: PixelCanvas, i: number, g: HandG, level: number): voi
 /** Palm slab with its knuckle blocks; returns nothing, lays itself on the comp. */
 export function paintPalm(comp: Comp, g: HandG, light: Light, partId: number): void {
   const q = layer(comp.p.w, comp.p.h);
-  fill(q, g.palm, OBS.M);
-  bands(q, OBS, light, 3, 2, { top: 2, bottom: 2, edge: 4 });
+  fill(q, g.palm, OBS_PALM.M);
+  bands(q, OBS_PALM, light, 7, 5, { top: 0, bottom: 0, edge: 0 });
+  stoneCrumbs(q);
   comp.add(q, partId, { out: OBS.D });
 }
 
@@ -187,7 +214,11 @@ export function paintCuff(comp: Comp, w: Pt, axisDeg: number, light: Light, part
   const [cx, cy] = rot(1, 0, axisDeg);
   const [vx, vy] = rot(0, 1, axisDeg);
   const pt = (a: number, b: number): Pt => [w[0] + cx * a + vx * b, w[1] + cy * a + vy * b];
-  fill(q, [pt(-3.0, -wide), pt(1.8, -wide + 0.6), pt(1.8, wide - 0.4), pt(-3.0, wide)], BRONZE.M);
-  bands(q, BRONZE, light, 1, 1, { top: 1, bottom: 1 });
+  // a bar across the wrist, cut along its own axis: the half toward the key light is the lit plane (so it flips with the light)
+  const a = pt(-0.6, -wide + 0.3);
+  const b = pt(-0.6, wide - 0.2);
+  bar(q, a, b, 4.8, 4.8, BRONZE.M);
+  axisBands(q, a, b, 4.8, 4.8, BRONZE, light);
+  stoneCrumbsOf(q);
   comp.add(q, partId, { out: PAL.gold0 });
 }

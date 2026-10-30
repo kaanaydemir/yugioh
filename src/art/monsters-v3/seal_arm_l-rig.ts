@@ -14,7 +14,7 @@ import { PixelCanvas } from '../pixel';
 import { lightOf, type Light } from '../rigkit';
 import type { DrawOpts } from '../types';
 import { HAND_REST, INDEX, MIDDLE, NF, PINKY, RING, THUMB, handGeom, paintCuff, paintFinger, paintPalm, paintThenar, tipBead, type HandG, type HandPose } from './seal_arm_l-hand';
-import { BRONZE, Comp, DEG, DISC9, GLYPH_ARM_L, MAG, OBS, SOCK7, bands, bar, fill, layer, rnd, stampBits, type Pt } from './seal_arm_l-kit';
+import { BRONZE, Comp, DEG, DISC9, GLYPH_ARM_L, MAG, OBS, OBS_ARM, SOCK7, bands, bar, fill, layer, rnd, stampBits, stoneCrumbs, type Pt } from './seal_arm_l-kit';
 
 export const W = 100;
 export const H = 80;
@@ -88,6 +88,12 @@ export interface Pose {
   erode: number;
   /** drawing offset of the whole frame in px (death fall / bounce). NOT a sprite move: the rig is redrawn there. */
   dy: number;
+  /** the four long fingers are drawn OVER the palm (a closed fist: the disc is hidden) */
+  fist: boolean;
+  /** summon build level: 0 only the light, 1 + hand and cuff, 2 + forearm, 3 everything */
+  lvl: number;
+  /** floor-diamond phase pulse 0..1 and the stepped-star lines of the pentagon */
+  star: number;
 }
 
 export const POSE0: Pose = {
@@ -123,6 +129,9 @@ export const POSE0: Pose = {
   build: 1,
   erode: 0,
   dy: 0,
+  fist: false,
+  lvl: 3,
+  star: 0,
 };
 
 export function pose(o: Partial<Pose>): Pose {
@@ -226,8 +235,9 @@ function paintForearm(c: Comp, p: Pose, f: ForeG, light: Light): void {
   // C (wrist slab), B, A (with the snapped end) — each shaded from its own edges
   const mk = (pts: Pt[], edge: number, crack: boolean) => {
     const q = layer(w, h);
-    fill(q, pts, OBS.M);
-    bands(q, OBS, light, 3, 2, { top: 2, bottom: 2, edge });
+    fill(q, pts, OBS_ARM.M);
+    bands(q, OBS_ARM, light, 6, 4, { top: 0, bottom: 0, edge: 0 });
+    stoneCrumbs(q);
     if (crack) cracked(q);
     c.add(q, P_FOREARM, { out: OBS.D });
   };
@@ -242,8 +252,9 @@ function paintForearm(c: Comp, p: Pose, f: ForeG, light: Light): void {
     // close along the right (parting) edge of A
     pts.push(loc(f, aEnd + 0.9, 6.6 + fl[0]));
     pts.push(loc(f, aEnd - 0.9, -6.4 + fl[0]));
-    fill(q, pts, OBS.M);
-    bands(q, OBS, light, 3, 2, { top: 2, bottom: 2, edge: 4 });
+    fill(q, pts, OBS_ARM.M);
+    bands(q, OBS_ARM, light, 6, 4, { top: 0, bottom: 0, edge: 0 });
+    stoneCrumbs(q);
     if (p.crack > 0) cracked(q);
     c.add(q, P_FOREARM, { out: OBS.D });
   }
@@ -283,7 +294,8 @@ function paintChain(c: Comp, p: Pose, f: ForeG, light: Light): void {
   const pitch = 2.7;
   for (let i = 0; i < n; i++) {
     const k = (i + 1) / 4;
-    const ang = (p.sw * k + 14 * Math.sin((p.swT - i * 0.16) * Math.PI * 2) * k * (p.sw === 0 ? 0 : 0)) * DEG;
+    // a wave runs down the chain: each link a little behind the one above it
+    const ang = (p.sw * Math.sin((p.swT - i * 0.13) * Math.PI * 2) * (0.45 + k * 0.55)) * DEG;
     x += Math.sin(ang) * pitch;
     y += Math.cos(ang) * pitch;
     const face = i % 2 === 0;
@@ -291,16 +303,72 @@ function paintChain(c: Comp, p: Pose, f: ForeG, light: Light): void {
     const ox = rnd(x) - (face ? 1 : 0);
     const oy = rnd(y) - (face ? 2 : 1);
     stampBits(q, bits, ox, oy, (cx, cy) => {
-      // lit top-left pixel, shadow bottom-right
-      const top = cy === 0 && face;
-      const bot = cy >= bits.length - 1;
-      if (top) return BRONZE.L;
-      if (bot) return BRONZE.S;
-      return (face ? cx === 0 : true) ? BRONZE.M : BRONZE.S;
+      // two flat tones: the upper half lit, the lower half in shadow (no single-pixel shading)
+      return cy < (bits.length >> 1) ? BRONZE.M : BRONZE.S;
     });
   }
   c.add(q, P_CHAIN);
   void light;
+}
+
+// ---------------------------------------------------------------- rim tones
+
+const STONE_UP = new Map<number, number>([
+  [PAL.stone0, PAL.stone1],
+  [PAL.stone1, PAL.stone2],
+  [PAL.stone2, PAL.stone3],
+]);
+const STONE_DOWN = new Map<number, number>([
+  [PAL.stone3, PAL.stone2],
+  [PAL.stone2, PAL.stone1],
+  [PAL.stone1, PAL.stone0],
+]);
+
+/** Contiguous 3-px tone steps at the two ends of every body row: the end toward the key light one tone lighter, the far end one darker. */
+function rimTones(p: PixelCanvas, light: Light, w = 3): void {
+  const ups: [number, number, number][] = [];
+  for (let y = 0; y < p.h; y++) {
+    for (let x = 0; x < p.w; ) {
+      if (p.get(x, y) === null) {
+        x++;
+        continue;
+      }
+      const x0 = x;
+      while (x < p.w && p.get(x, y) !== null) x++;
+      const x1 = x - 1;
+      if (x1 - x0 + 1 < 8) continue;
+      for (let k = 0; k < w; k++) {
+        const lx = light.side < 0 ? x0 + k : x1 - k;
+        const dx = light.side < 0 ? x1 - k : x0 + k;
+        const lc = p.get(lx, y);
+        const dc = p.get(dx, y);
+        if (lc !== null && STONE_UP.has(lc)) ups.push([lx, y, STONE_UP.get(lc)!]);
+        if (dc !== null && STONE_DOWN.has(dc)) ups.push([dx, y, STONE_DOWN.get(dc)!]);
+      }
+    }
+  }
+  for (const [x, y, c] of ups) p.set(x, y, c);
+}
+
+/** A stone pixel with no 4-neighbour of its own tone joins the stone tone most of its neighbours share (no lone specks in the flat bands). */
+function despeckleStone(p: PixelCanvas): void {
+  const stone = new Set<number>([PAL.stone0, PAL.stone1, PAL.stone2, PAL.stone3]);
+  const fix: [number, number, number][] = [];
+  const nb: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  for (let y = 0; y < p.h; y++)
+    for (let x = 0; x < p.w; x++) {
+      const c = p.get(x, y);
+      if (c === null || !stone.has(c)) continue;
+      const near = nb.map(([dx, dy]) => p.get(x + dx, y + dy));
+      if (near.some((n) => n === c)) continue;
+      const votes = new Map<number, number>();
+      for (const n of near) if (n !== null && stone.has(n)) votes.set(n, (votes.get(n) ?? 0) + 1);
+      let best = -1;
+      let bv = 0;
+      for (const [k, v] of votes) if (v > bv || (v === bv && Math.abs(k - c) < Math.abs(best - c))) (best = k), (bv = v);
+      if (bv >= 2) fix.push([x, y, best]);
+    }
+  for (const [x, y, c] of fix) p.set(x, y, c);
 }
 
 // ---------------------------------------------------------------- the glyph disc
@@ -371,25 +439,42 @@ export function drawArm(p: PixelCanvas, pose0: Pose, from: DrawOpts['lightFrom']
     for (const ch of list) {
       const q = layer(p.w, p.h);
       const [w, h] = ch.k === 0 ? [2, 2] : ch.k === 1 ? [3, 2] : [3, 3];
-      q.rect(rnd(ch.x), rnd(ch.y + dy), w, h, OBS.M);
+      q.rect(rnd(ch.x), rnd(ch.y), w, h, OBS.M);
       bands(q, OBS, light, 1, 1);
       c.add(q, P_CHIP, { out: OBS.D });
     }
   };
   chips(o.chips);
 
-  paintForearm(c, pz, f, light);
-  for (const i of [PINKY, RING, MIDDLE, INDEX]) paintFinger(c, i, g, light, P_FINGER);
-  paintPalm(c, g, light, P_PALM);
-  paintCuff(c, g.w, (f.ang + g.a) / 2, light, P_CUFF);
-  paintChain(c, pz, f, light);
-  paintThenar(c, g, light, P_PALM);
-  paintFinger(c, THUMB, g, light, P_THUMB);
+  if (o.lvl >= 2) paintForearm(c, pz, f, light);
+  // the travelling pulse tints the plate it is passing (violet spill band, one frame per plate)
+  // each finger a little after the one before it (thumb first): the wave crosses the hand instead of lighting it at once
+  const LAGP = [10, 7.5, 5, 2.5, 0];
+  const litSeg = (i: number): number => {
+    if (o.pulse < 0) return -1;
+    const pu = o.pulse - LAGP[i];
+    let d = Math.hypot(g.f[i][0][0] - g.disc[0], g.f[i][0][1] - g.disc[1]);
+    for (let j = 0; j < 3; j++) {
+      const l = Math.hypot(g.f[i][j + 1][0] - g.f[i][j][0], g.f[i][j + 1][1] - g.f[i][j][1]);
+      if (pu >= d - 1 && pu < d + l - 1) return j;
+      d += l;
+    }
+    return -1;
+  };
+  if (o.lvl >= 1) {
+    if (!o.fist) for (const i of [PINKY, RING, MIDDLE, INDEX]) paintFinger(c, i, g, light, P_FINGER, litSeg(i));
+    paintPalm(c, g, light, P_PALM);
+    paintCuff(c, g.w, (f.ang + g.a) / 2, light, P_CUFF);
+    if (o.lvl >= 3) paintChain(c, pz, f, light);
+    paintThenar(c, g, light, P_PALM);
+    if (o.fist) for (const i of [PINKY, RING, MIDDLE, INDEX]) paintFinger(c, i, g, light, P_FINGER);
+    paintFinger(c, THUMB, g, light, P_THUMB, litSeg(THUMB));
+  }
 
   // inlay that must sit inside the silhouette: the disc ring + socket, the fingertip beads
   const dcx = rnd(g.disc[0]);
   const dcy = rnd(g.disc[1]);
-  discRing(p, dcx, dcy, light);
+  if (o.lvl >= 1 && !o.fist) discRing(p, dcx, dcy, light);
 
   // pulse → bead levels
   const beadLevels: number[] = [];
@@ -404,24 +489,87 @@ export function drawArm(p: PixelCanvas, pose0: Pose, from: DrawOpts['lightFrom']
       continue;
     }
     const d = Math.hypot(g.f[i][3][0] - g.disc[0], g.f[i][3][1] - g.disc[1]);
-    const dd = o.pulse - d;
+    const dd = o.pulse - LAGP[i] - d;
     beadLevels.push(dd < -6 ? 0 : dd < -2 ? 1 : dd < 2 ? 3 : dd < 6 ? 2 : 1);
   }
   for (let i = 0; i < NF; i++) tipBead(p, i, g, Math.min(3, beadLevels[i]));
+
+  // form shading at the silhouette: on every row the stone at the lit end of a run is lifted one tone, the stone at the far end lowered
+  rimTones(p, light);
+  despeckleStone(p);
 
   // ink outline round the whole stone
   p.outline(PAL.ink);
 
   // ---- light layer (after the outline, never outlined)
-  spillRing(c, dcx, dcy, o.spill, light);
-  veins(c, g, o);
-  discLight(p, dcx, dcy, o.glow, light);
-  paintSeam(c, pz, f);
+  if (!o.fist && o.lvl >= 1) {
+    spillRing(c, dcx, dcy, o.spill, light);
+    veins(c, g, o);
+  }
+  if (o.lvl >= 1 && !o.fist) discLight(p, dcx, dcy, o.glow, light);
+  if (o.lvl >= 2) paintSeam(c, pz, f);
   for (let i = 0; i < NF; i++) if (beadLevels[i] >= 3) hotTip(p, i, g);
+  fxLayer(p, o, dcx, dcy);
   for (const s of o.sparks) p.set(rnd(s[0]), rnd(s[1] + dy), PAL.void4);
   for (const m of o.motes) p.set(rnd(m[0]), rnd(m[1] + dy), MAG[m[2]]);
-  void BRONZE;
-  void P_CHAIN;
+}
+
+/** Light-only effects over / beside the body: floor diamond, halo rings, the pentagon of summon discs, the fist of light. */
+function fxLayer(p: PixelCanvas, o: Pose, cx: number, cy: number): void {
+  const free = (x: number, y: number) => p.inBounds(x, y) && !p.isOpaque(x, y);
+  const put = (x: number, y: number, c: number) => {
+    if (free(x, y)) p.set(x, y, c);
+  };
+  // floor diamond (2:1) under the anchor
+  if (o.floor > 0) {
+    const fy = AY + 1;
+    for (let i = 0; i <= 12; i++) {
+      const dxs = i;
+      const dys = Math.round((12 - i) / 2);
+      for (const sx of [-1, 1])
+        for (const sy of [-1, 1]) put(AX + sx * dxs, fy + sy * dys, o.floor >= 2 && (i === 12 || i === 0) ? PAL.mag2 : PAL.mag1);
+    }
+  }
+  // halo rings round the palm
+  for (const [r, tone] of o.rings) ringAt(p, cx + 0.5, cy + 0.5 + o.dy * 0, r, MAG[tone], put);
+  // the fist of light
+  if (o.lightFist > 0) {
+    const r = [0, 3, 5, 6.5][o.lightFist];
+    for (let y = cy - 8; y <= cy + 8; y++)
+      for (let x = cx - 8; x <= cx + 8; x++) {
+        const d = Math.hypot(x - cx, y - cy);
+        if (d <= r) put(x, y, d <= r * 0.3 ? PAL.mag4 : d <= r * 0.65 ? PAL.mag3 : PAL.mag2);
+      }
+  }
+  // the pentagon of tiny seal discs
+  if (o.pent > 0) {
+    const pts: Pt[] = [];
+    for (let k = 0; k < 5; k++) {
+      const a = (-90 + 72 * k + o.pentRot * 9) * DEG;
+      pts.push([cx + Math.cos(a) * o.pentR, cy + Math.sin(a) * o.pentR]);
+    }
+    if (o.star > 0) for (let k = 0; k < 5; k++) lineTo(p, pts[k], pts[(k + 2) % 5], o.star >= 2 ? PAL.mag2 : PAL.mag1, put);
+    for (let k = 0; k < Math.min(5, o.pent); k++) {
+      const [x, y] = [rnd(pts[k][0]), rnd(pts[k][1])];
+      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) put(x + ox, y + oy, PAL.mag3);
+      put(x, y, PAL.mag4);
+    }
+  }
+}
+
+function lineTo(p: PixelCanvas, a: Pt, b: Pt, c: number, put: (x: number, y: number, c: number) => void): void {
+  const n = Math.max(1, Math.round(Math.hypot(b[0] - a[0], b[1] - a[1])));
+  for (let i = 0; i <= n; i++) if (i % 4 < 2) put(rnd(a[0] + ((b[0] - a[0]) * i) / n), rnd(a[1] + ((b[1] - a[1]) * i) / n), c);
+  void p;
+}
+
+/** A stepped 1-px ring of radius r (only on free pixels). */
+function ringAt(p: PixelCanvas, cx: number, cy: number, r: number, c: number, put: (x: number, y: number, c: number) => void): void {
+  const inside = (x: number, y: number) => (x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2 <= r * r;
+  for (let y = Math.floor(cy - r) - 1; y <= Math.ceil(cy + r) + 1; y++)
+    for (let x = Math.floor(cx - r) - 1; x <= Math.ceil(cx + r) + 1; x++)
+      if (inside(x, y) && (!inside(x + 1, y) || !inside(x - 1, y) || !inside(x, y + 1) || !inside(x, y - 1))) put(x, y, c);
+  void p;
 }
 
 /** Violet spill of the lit glyph onto the palm stone round the disc: lit side void2, shadow side void1 (flat bands, IŞ-3). */
@@ -442,7 +590,7 @@ function spillRing(c: Comp, cx: number, cy: number, level: number, light: Light)
 
 /** Seal veins: 1-px lines from the disc to each finger base over the palm slab, lit by the travelling pulse. */
 function veins(c: Comp, g: HandG, o: Pose): void {
-  if (o.veins <= 0) return;
+  if (o.veins <= 0 || (o.veins === 1 && o.pulse < 0)) return;
   const [dx, dy] = g.disc;
   for (let i = 0; i < NF; i++) {
     const b = g.f[i][0];
