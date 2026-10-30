@@ -131,18 +131,19 @@ const guard: LoopDef<Pose> = {
     const s = Math.sin((TAU * f) / GN);
     const c = Math.cos((TAU * f) / GN);
     const glow = 1.5 + 0.3 * s;
+    // the staff keeps idle's slant and its foot (HA-9: the planted foot never moves between idle and guard)
     return reach(
       {
-        ...staff(0.08),
+        ...staff(STAFF_A),
         hip: { x: 0, y: 2, tilt: 0 },
         lean: -0.04,
         chestLean: -0.06,
         breath: 0.5 + 0.5 * c,
-        head: { x: R(-0.8 + 0.6 * s), y: 1, a: 0, lag: 0 },
-        fx: { sand: 0.34, level: 0.62, freeze: 1, glow, eye: 0.7, brow: -1, hatX: R(1 + 0.8 * s), hatY: 2 + R(0.8 * c), beardX: 0, beardY: 0, hemX: 0, staffX: R(0.6 * s), staffY: R(0.6 * c), shine: f === 2 ? 0.5 : 0, plant: 1 },
+        head: { x: -1, y: 1 + (f === 2 || f === 3 ? 0 : 0), a: 0, lag: 0 },
+        fx: { sand: 0.34, level: 0.62, freeze: 1, glow, eye: 0.7, brow: -1, hatX: 1 + (f === 1 || f === 2 ? 1 : 0), hatY: 2 + (f === 3 || f === 4 ? 1 : 0), beardX: 0, beardY: 0, hemX: 0, staffX: 0, staffY: 0, shine: f === 2 ? 0.5 : 0, plant: 1 },
       },
-      { to: [35 + R(0.4 * c), 46], grip: 'hold' },
-      { to: [34, 40 + R(0.5 * s)], grip: 'hold' },
+      { to: [HN0[0], HN0[1] + 1], grip: 'hold' },
+      { to: [HN0[0] + 1, HN0[1] - 6 + (f === 4 ? 1 : 0)], grip: 'hold' },
     )(NEUTRAL) as unknown as D;
   },
 };
