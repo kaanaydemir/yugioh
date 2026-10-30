@@ -253,3 +253,11 @@ motor değişikliği gerektirdiği için ikisi birlikte tasarlanır.
 | A5 Büyü / tuzak / kart resimleri | sürüyor | plan `docs/v3/A5_PLAN.md`. Tamam: ortak kit, motifler, 23 ses tarifi, Volkan Arenası, v3 kart çerçevesi. Sürüyor: Ayna, Yarık, Kılıç, Şifa, Ruh Çağrısı + ses geçişi. 24 Ekim kullanıcı isteği: kart resimleri daha kaliteli olacak; yeni tarz (88×68 büyük + elle düzeltilmiş 44×34 küçük resim, `docs/v3/KART_RESIMLERI.md`) üç denemeyle sınanıyor, onaydan sonra bütün kartlara |
 | A6 Küçük olaylar | sürüyor | plan `docs/v3/A6_PLAN.md`. Tamam: HUD kabuğu, tur levhası, v3 kart nesnesi + arka yüz, el + inceleme paneli (kontrol noktası A56.K kullanıcıya gitti, yön onaylandı). Sürüyor: açılış, LP sayacı, hedefleme, tuzak istemi, perde, zafer; elin hafif yayı geri geliyor (24 Ekim kullanıcı kararı). Sırada: çekme, koyma, kurban, mezarlık paneli, arayüz sesleri |
 | A7 Bütünlük / çıkış adayı | bekliyor | 24 Ekim kullanıcı kararı: eldeki işler bitince en kısa sürede bir ön sürüm (pre-release) hazırlanacak; kart sayısı 20'den 60–80'e çıkmalı (plan sonra, kullanıcıyla); token bütçesi dikkatli kullanılacak |
+
+## Not: Düellocu karakterleri (kullanıcı isteği, plana alındı)
+
+- 4 oyuncu (düellocu) karakteri yapılacak; her birinin kendine özel animasyonları olacak.
+- Örnek: "Kara Büyücü" tipi bir düellocu canavar çağırırken, tuzak tetiklerken, büyü oynarken, hasar alırken ve kazanırken kendi kişisel hareketini yapar.
+- Kapsam (konuşulacak): karakter görünüşü (sahada/HUD'da nerede durur), çağırma / büyü / tuzak / hasar / zafer / yenilgi animasyonları, ses, deste seçimiyle eşleşme.
+- Kurallar aynı: kamera değişmez, 640×360 piksel dili, palet, özgün tasarım, v1 görünümü aynı kalır.
+- Sıra: arena/saha yeniden tasarımıyla birlikte konuşulacak; şimdilik yalnızca not.
