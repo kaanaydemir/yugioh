@@ -21,7 +21,7 @@ const scenarios: Record<string, Scenario> = {
   },
   adSummonP2: {
     desc: 'Kül Ejderi: player 2 tribute summons it',
-    stage: { p0: { monsters: ['stone_sentinel'] }, p1: { hand: ['ashen_drake'], monsters: ['ember_wolf', null, 'storm_hawk'] } },
+    stage: { active: 1, p0: { monsters: ['stone_sentinel'] }, p1: { hand: ['ashen_drake'], monsters: ['ember_wolf', null, 'storm_hawk'] } },
     steps: [summon('ashen_drake', 1, ['ember_wolf', 'storm_hawk'], 1)],
   },
   adAttack: {
