@@ -121,7 +121,7 @@ export function attackPose(f: number): Pose {
   const m = f === 9 ? 0.4 : f === 10 ? 0.75 : 0.9;
   return snap(key({ ...mix(k8, IDLE0, m), slam: 0, spark: f === 9 ? 0.8 : 0, dust: f === 9 ? 0.8 : 0, shake: 0, vent: f === 9 ? 0.6 : 0, ward: 0, ring: 0 }, f, A_N, IDLE0));
 }
-const ATTACK_HOLDS = [100, 150, 150, 170, 260, 60, 60, 70, 90, 110, 120, 140];
+const ATTACK_HOLDS = [100, 150, 170, 190, 200, 60, 60, 70, 90, 110, 120, 140];
 
 // ------------------------------------------------------------------ roar (10 frames): "Sus!" — the silence ring
 

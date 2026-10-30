@@ -964,9 +964,10 @@ export function drawHead(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right' = 
     comp: new Comp(p),
     light,
     o,
-    ox: OX + o.dx,
-    oy: OY + o.dy,
+    ox: at ? at.ox + o.dx * at.k : OX + o.dx,
+    oy: at ? at.oy + o.dy * at.k : OY + o.dy,
     th: -o.rot * DEG,
+    k: at ? at.k : 1,
     after: [],
   };
   // far chain + far shard
