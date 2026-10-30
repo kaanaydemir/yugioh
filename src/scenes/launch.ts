@@ -1,4 +1,5 @@
 // How scenes hand off to each other, plus persisted player settings.
+import type { CardId } from '../data/cards';
 import type { PlayerId } from '../engine/types';
 
 /** hotseat: two humans share the screen. vsBot: human (P1) vs the CPU. demo: CPU vs CPU (title attract mode / QA). */
@@ -13,6 +14,11 @@ export interface DuelLaunch {
   botPlayer?: PlayerId;
   /** Skip the opening cinematic (QA / quick restart). */
   skipIntro?: boolean;
+  /**
+   * The two decks of the match, picked on the deck screens (src/scenes/deck). Omitted: the engine's
+   * default (the classic 20 cards, or the ?deck=expanded sampler).
+   */
+  decks?: [CardId[], CardId[]];
 }
 
 export interface Settings {

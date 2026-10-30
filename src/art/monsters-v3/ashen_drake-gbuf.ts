@@ -1,26 +1,23 @@
-// Kristal Ejder v3 — the little "deferred" raster pipeline of the rig (ashen_drake-rig.ts).
+// Kül Ejderi v3 — the little "deferred" raster pipeline of the drake rig (ashen_drake-rig.ts).
 //
-// Started as a copy of the v1 pipeline (src/art/monsters/ashen_drake.ts) and restyled to the
-// approved still (src/still/wyrm-map.ts):
-//   - one key light that the caller can flip (P1: frame top-left; P2 relight: frame top-right,
-//     which the flipX of player 2 turns back into the screen's top-left);
-//   - parts are quantized into clear value planes (lit / mid / shadow) and despeckled with a
-//     4-neighbour rule, so tone clusters stay flat and calm (no 1-px tone crumbs);
-//   - junction creases: a part laid over another darkens the surface behind it in a band that is
-//     1 px on top, wider at the sides and widest underneath (the still's night3 creases);
-//   - selective edge paint: 1-px highlight / underside lines placed by the edge's facing, not by
-//     noise.
+// The pipeline itself (G-buffer layers, value-plane quantization, 4-neighbour despeckle, junction
+// creases, selective edge paint) is the craft of the aces (see crystal_wyrm-gbuf.ts); what is the
+// drake's own here: the frame (a wide, low quadruped), the materials (charcoal hide with a lighter
+// mid-tone band so it reads on the navy floor, ember-seamed membrane, ash bone, horn) and the
+// seam / crease tables of those ramps.
 // Everything here is pure (no Phaser) and deterministic.
 
 import { PixelCanvas } from '../pixel';
 import { PAL } from '../palette';
 
-/** Frame of the v3 wyrm: the v1 96×96 frame with a margin so no pose touches the edge. */
-export const W = 116;
-export const H = 104;
-/** Where the v1 frame's (0,0) sits in this frame (the character keeps its size: 1 art px = 1 game px). */
-export const OX = 10;
-export const OY = 8;
+/** Frame of the drake: a wide, low quadruped (nose ~x 126, tail tip ~x 10; ground line at GY). */
+export const W = 144;
+export const H = 88;
+/** Ground line (anchor row): the soles of the planted claws. */
+export const GY = 81;
+/** Kept for the art file's anchor maths (the frame has no v1 offset). */
+export const OX = 0;
+export const OY = 0;
 
 export type V = readonly [number, number];
 
@@ -83,35 +80,40 @@ export interface Mat {
 export const M = {
   HIDE: 0,
   HIDE_FAR: 1,
-  GOLD: 2,
-  CRYS: 4,
-  GLASS: 6,
-  GLASS_FAR: 7,
-  MOUTH: 8,
-  HIDE_D: 9,
-  BONE: 10,
-  BONE_FAR: 11,
-  GOLD_D: 12,
+  HORN: 2,
+  HORN_D: 3,
+  MEMB: 4,
+  MEMB_FAR: 5,
+  MOUTH: 6,
+  HIDE_D: 7,
+  BONE: 8,
+  BONE_FAR: 9,
+  EMBER: 10,
+  PLATE: 11,
 } as const;
 
 export const MATS: Mat[] = [];
-// white hide: lit plane white, mid plane mist, shadow plane steel, turned-under night3
-MATS[M.HIDE] = { ramp: [PAL.night2, PAL.night3, PAL.steel, PAL.mist, PAL.white], th: [-0.62, -0.28, 0.14, 0.56] };
+// charcoal hide: the lit plane stone3, the mid plane stone2 (the band that reads on the navy floor),
+// the shadow plane stone1, the turned-under tone stone0
+MATS[M.HIDE] = { ramp: [PAL.stone0, PAL.stone1, PAL.stone2, PAL.stone3], th: [-0.28, 0.5, 0.98] };
 // the far side of the body: one value darker
-MATS[M.HIDE_FAR] = { ramp: [PAL.night1, PAL.night2, PAL.night3, PAL.steel, PAL.mist], th: [-0.55, -0.1, 0.3, 0.72] };
-MATS[M.GOLD] = { ramp: [PAL.gold1, PAL.gold2, PAL.gold3, PAL.gold4], th: [-0.5, 0.05, 0.58] };
-// hand-toned gold (horn bands): 0 gold1 root, 1 gold2 underside, 2 gold3 body, 3 gold4 top edge
-MATS[M.GOLD_D] = { ramp: [PAL.gold1, PAL.gold2, PAL.gold3, PAL.gold4], th: [], direct: true };
-// ashen drake: the dorsal plates are charcoal hide (the crystal's cyan ramp is not used)
-MATS[M.CRYS] = { ramp: [PAL.night2, PAL.night3, PAL.steel, PAL.mist, PAL.white], th: [], direct: true };
-MATS[M.GLASS] = { ramp: [PAL.cyan0, PAL.cyan1, PAL.cyan2, PAL.cyan3, PAL.cyan4, PAL.white], th: [], direct: true };
-MATS[M.GLASS_FAR] = { ramp: [PAL.night1, PAL.cyan0, PAL.cyan1, PAL.cyan2, PAL.cyan3, PAL.cyan4], th: [], direct: true };
-MATS[M.MOUTH] = { ramp: [PAL.night0, PAL.night1, PAL.crim1], th: [0.3, 0.8] };
-// hand-toned hide (head planes): 0 night2, 1 night3, 2 steel, 3 mist, 4 white
-MATS[M.HIDE_D] = { ramp: [PAL.night2, PAL.night3, PAL.steel, PAL.mist, PAL.white], th: [], direct: true };
+MATS[M.HIDE_FAR] = { ramp: [PAL.ink, PAL.stone0, PAL.stone1, PAL.stone2], th: [-0.3, 0.45, 1.0] };
+// horn / claw: bone-ash bands (direct): 0 root, 1 underside, 2 body, 3 top edge
+MATS[M.HORN] = { ramp: [PAL.stone1, PAL.stone2, PAL.stone3, PAL.stone4], th: [-0.5, 0.1, 0.62] };
+MATS[M.HORN_D] = { ramp: [PAL.stone1, PAL.stone2, PAL.stone3, PAL.stone4], th: [], direct: true };
+// torn wing skin: wine shadow, burnt brown mid, dull ember lit plane
+MATS[M.MEMB] = { ramp: [PAL.crim0, PAL.fire0, PAL.fire1], th: [-0.35, 0.3] };
+MATS[M.MEMB_FAR] = { ramp: [PAL.ink, PAL.crim0, PAL.fire0], th: [-0.35, 0.3] };
+MATS[M.MOUTH] = { ramp: [PAL.ink, PAL.night0, PAL.fire0], th: [0.3, 0.8] };
+// hand-toned hide (head planes): 0 stone0, 1 stone1, 2 stone2, 3 stone3, 4 stone4
+MATS[M.HIDE_D] = { ramp: [PAL.stone0, PAL.stone1, PAL.stone2, PAL.stone3, PAL.stone4], th: [], direct: true };
 // wing bones: one flat mid tone (edges are painted afterwards)
-MATS[M.BONE] = { ramp: [PAL.steel, PAL.mist, PAL.white], th: [-0.2, 0.75] };
-MATS[M.BONE_FAR] = { ramp: [PAL.night3, PAL.steel, PAL.mist], th: [-0.2, 0.8] };
+MATS[M.BONE] = { ramp: [PAL.stone1, PAL.stone2, PAL.stone3], th: [-0.2, 0.75] };
+MATS[M.BONE_FAR] = { ramp: [PAL.stone0, PAL.stone1, PAL.stone2], th: [-0.2, 0.8] };
+// ember: hand-toned (0 fire0 … 4 fire4)
+MATS[M.EMBER] = { ramp: [PAL.fire0, PAL.fire1, PAL.fire2, PAL.fire3, PAL.fire4], th: [], direct: true };
+// dorsal plates: dark, hard-edged (direct 0 ink … 3 stone2)
+MATS[M.PLATE] = { ramp: [PAL.stone0, PAL.stone1, PAL.stone2, PAL.stone3], th: [], direct: true };
 
 function toneOf(m: Mat, i: number): number {
   let k = 0;
@@ -265,6 +267,8 @@ export function resetPools() {
 export interface PrimOpt {
   z?: number;
   bias?: number;
+  /** extra per-pixel bias of an ellipse: (x, y) = the normalized offset from its centre (-1 … 1, screen axes) */
+  biasEll?: (x: number, y: number) => number;
   /** squash of the normal's z (higher = flatter, calmer planes) */
   flat?: number;
 }
@@ -284,7 +288,7 @@ export function gEll(g: G, c: V, rx: number, ry: number, ang: number, mat: numbe
       const d2 = lx_ * lx_ + ly_ * ly_;
       if (d2 > 1) continue;
       const nz = Math.sqrt(1 - d2);
-      g.put(x, y, mat, lx_ * cs - ly_ * sn, lx_ * sn + ly_ * cs, nz * flat, z0 + nz * Math.min(rx, ry), o.bias ?? 0);
+      g.put(x, y, mat, lx_ * cs - ly_ * sn, lx_ * sn + ly_ * cs, nz * flat, z0 + nz * Math.min(rx, ry), (o.bias ?? 0) + (o.biasEll ? o.biasEll(dx / rx, dy / ry) : 0));
     }
   }
 }
@@ -408,43 +412,33 @@ export function gShard(g: G, base: V, dir: V, length: number, hw: number, mat: n
 
 // ------------------------------------------------------------------ compositing
 
-/** One step down the ramp: the 1-px contact seam (v1). */
+/** One step down the ramp: the 1-px contact seam. */
 const SEAM: Record<number, number> = {
-  [PAL.white]: PAL.steel,
-  [PAL.mist]: PAL.steel,
-  [PAL.steel]: PAL.night3,
-  [PAL.night4]: PAL.night2,
-  [PAL.night3]: PAL.night2,
-  [PAL.night2]: PAL.night1,
-  [PAL.night1]: PAL.night0,
-  [PAL.cyan4]: PAL.cyan2,
-  [PAL.cyan3]: PAL.cyan1,
-  [PAL.cyan2]: PAL.cyan1,
-  [PAL.cyan1]: PAL.cyan0,
-  [PAL.cyan0]: PAL.night0,
-  [PAL.gold4]: PAL.gold2,
-  [PAL.gold3]: PAL.gold1,
-  [PAL.gold2]: PAL.gold1,
-  [PAL.gold1]: PAL.gold0,
+  [PAL.stone4]: PAL.stone2,
+  [PAL.stone3]: PAL.stone1,
+  [PAL.stone2]: PAL.stone1,
+  [PAL.stone1]: PAL.stone0,
+  [PAL.stone0]: PAL.ink,
+  [PAL.fire4]: PAL.fire2,
+  [PAL.fire3]: PAL.fire1,
+  [PAL.fire2]: PAL.fire1,
+  [PAL.fire1]: PAL.fire0,
+  [PAL.fire0]: PAL.ink,
+  [PAL.crim0]: PAL.ink,
 };
-/** Junction crease: hide folds into night3, the darker tones one step further, glass to its deep tone. */
+/** Junction crease: hide folds into the next darker tone, two steps for the light ones. */
 const CREASE: Record<number, number> = {
-  [PAL.white]: PAL.night3,
-  [PAL.mist]: PAL.night3,
-  [PAL.steel]: PAL.night3,
-  [PAL.night4]: PAL.night2,
-  [PAL.night3]: PAL.night2,
-  [PAL.night2]: PAL.night1,
-  [PAL.night1]: PAL.night0,
-  [PAL.cyan4]: PAL.cyan1,
-  [PAL.cyan3]: PAL.cyan1,
-  [PAL.cyan2]: PAL.cyan1,
-  [PAL.cyan1]: PAL.cyan0,
-  [PAL.cyan0]: PAL.night0,
-  [PAL.gold4]: PAL.gold2,
-  [PAL.gold3]: PAL.gold1,
-  [PAL.gold2]: PAL.gold1,
-  [PAL.gold1]: PAL.gold0,
+  [PAL.stone4]: PAL.stone1,
+  [PAL.stone3]: PAL.stone1,
+  [PAL.stone2]: PAL.stone0,
+  [PAL.stone1]: PAL.stone0,
+  [PAL.stone0]: PAL.ink,
+  [PAL.fire4]: PAL.fire1,
+  [PAL.fire3]: PAL.fire1,
+  [PAL.fire2]: PAL.fire0,
+  [PAL.fire1]: PAL.fire0,
+  [PAL.fire0]: PAL.ink,
+  [PAL.crim0]: PAL.ink,
 };
 export type SeamFn = (x: number, y: number, behind: number) => number;
 export const selout: SeamFn = (_x, _y, c) => SEAM[c] ?? PAL.ink;
@@ -586,11 +580,11 @@ export function edgePaint(c: PixelCanvas, hi: number | null, lo: number | null, 
 }
 
 /**
- * Cool reflected light from the arena on the shadow-side silhouette of the hide (the edges facing
- * away from the key light and down): one continuous cyan2 line, only where the edge faces empty
+ * Reflected light on the shadow-side silhouette of the hide (the edges facing
+ * away from the key light and down): one continuous line, only where the edge faces empty
  * space.
  */
-export function rimLight(c: PixelCanvas, dst: PixelCanvas, cols: readonly number[] = [PAL.night2, PAL.night3, PAL.steel], rim = PAL.cyan2, only?: (x: number, y: number) => boolean) {
+export function rimLight(c: PixelCanvas, dst: PixelCanvas, cols: readonly number[] = [PAL.stone0, PAL.stone1, PAL.stone2], rim = PAL.fire1, only?: (x: number, y: number) => boolean) {
   const d = c.data;
   const inL = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H && d[(y * W + x) * 4 + 3] > 0;
   const open = (x: number, y: number) => !inL(x, y) && !dst.isOpaque(x, y);

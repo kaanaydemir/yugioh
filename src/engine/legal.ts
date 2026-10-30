@@ -1,14 +1,17 @@
 // Legal action enumeration. This list drives both the UI menus and the bot, and `apply`
 // accepts exactly the actions listed here (after normalisation), so it must be complete.
 
-import { isMonster, isSpell, isTrap, tributesFor, type SpellCardDef } from '../data/cards';
+import { isMonster, isSpell, isTrap, type SpellCardDef } from '../data/cards';
 import { other, type Action, type GameState, type PlayerId, type Uid } from './types';
 import {
   combinations,
   defOf,
+  extraSummonAvailable,
   freeMonsterZones,
   freeSpellTrapZones,
   monsterDefOf,
+  spellTrapRefs,
+  tributeNeed,
 } from './query';
 
 const asc = (a: number, b: number) => a - b;
@@ -42,15 +45,18 @@ export function legalActions(s: GameState): Action[] {
   const opp = s.players[other(p)];
 
   if (s.phase === 'main') {
-    // Normal / Tribute Summon and Set (shared once-per-turn right).
-    if (!me.normalSummonUsed) {
+    // Normal / Tribute Summon and Set (shared once-per-turn right). festival_square: once the right is
+    // spent, one more Level <= 4 monster may be summoned / set without tributes.
+    const extraOnly = me.normalSummonUsed && extraSummonAvailable(s, p);
+    if (!me.normalSummonUsed || extraOnly) {
       const fieldUids: Uid[] = me.monsters.flatMap((m) => (m ? [m.uid] : []));
       const summons: Action[] = [];
       const sets: Action[] = [];
       for (const uid of me.hand) {
         const d = defOf(s, uid);
         if (!isMonster(d)) continue;
-        const n = tributesFor(d.level);
+        if (extraOnly && d.level > 4) continue;
+        const n = tributeNeed(s, p, d.level);
         for (const combo of combinations(fieldUids, n)) {
           const tributes = [...combo].sort(asc);
           me.monsters.forEach((m, zone) => {
@@ -71,7 +77,7 @@ export function legalActions(s: GameState): Action[] {
 
     // Manual position change: face-up, not arrived this turn, hasn't attacked, once per turn.
     me.monsters.forEach((m, zone) => {
-      if (m && m.faceUp && m.enteredTurn !== s.turn && m.attacksThisTurn === 0 && m.positionChangedTurn !== s.turn)
+      if (m && m.faceUp && m.enteredTurn !== s.turn && m.attacksThisTurn === 0 && m.positionChangedTurn !== s.turn && m.lockPositionTurn !== s.turn)
         out.push({ type: 'changePosition', player: p, zone });
     });
 
@@ -151,7 +157,9 @@ function pushSpellActivations(
       }
       break;
     }
-    case 'equipAtk700': {
+    case 'equipAtk700':
+    case 'equipPiercing':
+    case 'equipDestroyShield': {
       const targets: number[] = [];
       me.monsters.forEach((m, i) => {
         if (m && m.faceUp) targets.push(i);
@@ -168,7 +176,40 @@ function pushSpellActivations(
       break;
     }
     case 'fieldVolcano':
+    case 'fieldTidalBay':
+    case 'fieldShadowCavern':
+    case 'fieldExtraSummon':
       if (fromHand) out.push({ type: 'activateSpell', player: p, uid });
+      break;
+    case 'draw2Discard1':
+      // the activation draws 2 and discards 1: keep one card in the deck afterwards
+      if (me.deck.length >= 3) out.push({ type: 'activateSpell', player: p, uid });
+      break;
+    case 'doubleTribute': {
+      // only useful with a Level 7+ monster in hand, one tribute on the field and the summon right unspent
+      if (me.normalSummonUsed || me.tributeHelperTurn === s.turn) break;
+      if (!me.monsters.some(Boolean)) break;
+      if (!me.hand.some((u) => u !== uid && isMonster(defOf(s, u)) && (defOf(s, u) as { level: number }).level >= 7)) break;
+      out.push({ type: 'activateSpell', player: p, uid });
+      break;
+    }
+    case 'forceDefense':
+      s.players[o].monsters.forEach((m, index) => {
+        if (m && m.faceUp && m.position === 'attack')
+          out.push({ type: 'activateSpell', player: p, uid, target: { kind: 'monster', ref: { player: o, zone: 'monster', index } } });
+      });
+      break;
+    case 'recycleGraveyard':
+      if (me.graveyard.length >= 3) out.push({ type: 'activateSpell', player: p, uid });
+      break;
+    case 'atkBoostTurn':
+      me.monsters.forEach((m, index) => {
+        if (m && m.faceUp)
+          out.push({ type: 'activateSpell', player: p, uid, target: { kind: 'monster', ref: { player: p, zone: 'monster', index } } });
+      });
+      break;
+    case 'destroyOpponentSpellTrap':
+      for (const ref of spellTrapRefs(s, o)) out.push({ type: 'activateSpell', player: p, uid, target: { kind: 'card', ref } });
       break;
   }
 }

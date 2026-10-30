@@ -348,6 +348,8 @@ export class DuelScene extends Phaser.Scene {
   restartDuel(opts: Partial<DuelStart> & Partial<NewGameOptions> = {}): void {
     const L = this.launchData;
     const keep: Partial<DuelStart> = { mode: L.mode, botPlayer: L.botPlayer, skipIntro: L.skipIntro, speed: L.speed, curtain: L.curtain, auto: L.auto, loop: L.loop };
+    // decks picked on the deck screens carry over a rematch (a QA restart that passes its own decks wins)
+    if (L.decks && !L.stage && !L.state) keep.decks = L.decks;
     const next: DuelStart = { ...keep, ...opts } as DuelStart;
     if (!opts.stage && !opts.state && !opts.decks && opts.seed === undefined) next.seed = (L.seed ?? 0) + 1;
     this.controller?.stop();

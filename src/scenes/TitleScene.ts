@@ -36,8 +36,10 @@ export interface TitleData {
   sync?: boolean;
   logoOnly?: boolean;
   dev?: boolean;
-  /** Coming back from a duel: skip the click-to-start gate. */
+  /** Coming back from a duel (or the deck screens): skip the click-to-start gate. */
   from?: 'duel';
+  /** Menu entry id to highlight when the menu opens (coming back from a sub-scene). */
+  select?: string;
 }
 
 /** Camera resting points (scroll) per screen. */
@@ -54,6 +56,7 @@ const ENTRIES: MenuEntry[] = [
   { id: 'hotseat', label: '2 Oyuncu (Aynı Ekran)', desc: 'İki oyuncu aynı ekranda sırayla oynar.', icon: TICON.duo, style: 'p1' },
   { id: 'vsBot', label: 'Bilgisayara Karşı', desc: 'Yapay zekâya karşı düello. Sen Oyuncu 1 olursun.', icon: TICON.bot, style: 'p2' },
   { id: 'demo', label: 'İzle (Demo)', desc: 'İki bilgisayar oyuncusu düello eder. Arkana yaslan!', icon: TICON.eye, style: 'gold' },
+  { id: 'deck', label: 'Deste Kur', desc: '20 kartlık kendi destenini kur, kaydet ve maçlarda kullan.', icon: TICON.cards, style: 'leaf' },
   { id: 'howto', label: 'Nasıl Oynanır', desc: 'Aşamalar, çağırma, savaş hesabı ve tuzaklar.', icon: TICON.book, style: 'spell' },
   { id: 'gallery', label: 'Kart Galerisi', desc: '20 kartın tamamı. Canavarları canlı izle.', icon: TICON.cards, style: 'trap' },
   { id: 'settings', label: 'Ayarlar', desc: 'Animasyon hızı, ses, müzik ve sıra perdesi.', icon: TICON.gear, style: 'neutral' },
@@ -142,6 +145,8 @@ export class TitleScene extends Phaser.Scene {
     });
     buildTitleIcons(this);
     this.menu = new MainMenu(this, 14, 108, ENTRIES);
+    const pre = ENTRIES.findIndex((en) => en.id === this.opts.select);
+    if (pre >= 0) this.menu.index = pre;
     this.menu.onSelect = (id) => void this.choose(id);
     this.hints = this.buildHints();
 
@@ -215,7 +220,7 @@ export class TitleScene extends Phaser.Scene {
 
   private buildHints(): Phaser.GameObjects.Container {
     const c = this.add.container(0, 0).setScrollFactor(0).setDepth(2000).setVisible(false);
-    const t = pixelText(this, 320, 348, '↑↓ SEÇ   ·   ENTER ONAYLA   ·   1–6 KISAYOL', { size: 'sm', align: 'center', originX: 0.5, originY: 0.5, color: PAL.steel });
+    const t = pixelText(this, 320, 348, '↑↓ SEÇ   ·   ENTER ONAYLA   ·   1–7 KISAYOL', { size: 'sm', align: 'center', originX: 0.5, originY: 0.5, color: PAL.steel });
     c.add(t);
     return c;
   }
@@ -265,7 +270,7 @@ export class TitleScene extends Phaser.Scene {
           void this.backToAttract();
           return;
       }
-      const d = /^(Digit|Numpad)([1-6])$/.exec(e.code);
+      const d = /^(Digit|Numpad)([1-7])$/.exec(e.code);
       if (d && !e.repeat) {
         this.menu.select(Number(d[2]) - 1, true);
         void this.menu.activate();
@@ -314,8 +319,12 @@ export class TitleScene extends Phaser.Scene {
 
   private async choose(id: string): Promise<void> {
     if (this.screen !== 'menu') return;
-    if (id === 'hotseat' || id === 'vsBot' || id === 'demo') {
+    if (id === 'demo') {
       await this.launch(id);
+      return;
+    }
+    if (id === 'hotseat' || id === 'vsBot' || id === 'deck') {
+      await this.leaveTo(id);
       return;
     }
     if (id === 'howto' || id === 'gallery' || id === 'settings') {
@@ -329,6 +338,20 @@ export class TitleScene extends Phaser.Scene {
       await Promise.all([menuOut, logoOut, clear]);
       await this.openOverlay(id);
     }
+  }
+
+  /** Hot-seat / vs CPU go through the deck picker ("Deste Seç"), "Deste Kur" opens the builder. */
+  private async leaveTo(id: 'hotseat' | 'vsBot' | 'deck'): Promise<void> {
+    this.screen = 'launch';
+    this.menu.setEnabled(false);
+    void this.logo.glitch(1);
+    await wait(this, 120);
+    void tween(this, { targets: this.hints, alpha: 0, duration: 140 });
+    void this.menu.hide();
+    const cover = await wipeOut(this);
+    void cover;
+    if (id === 'deck') this.scene.start('Deck', {});
+    else this.scene.start('DeckPick', { mode: id, step: 0 });
   }
 
   private hideArenaFloorFx(): void {

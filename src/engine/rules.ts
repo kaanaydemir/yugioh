@@ -5,7 +5,7 @@
 // ("tasks") onto `state.internal.queue`. `run()` drains the queue in order; a task may open a
 // PendingDecision, which pauses the queue until the decision is answered by a later action.
 
-import { CARDS, DEFAULT_DECK, type CardId } from '../data/cards';
+import { CARDS, DEFAULT_DECK, isTrap, type CardId } from '../data/cards';
 import { decksFor, detectDeckPool } from '../data/decks';
 import {
   EngineError,
@@ -22,6 +22,7 @@ import {
   type GameEvent,
   type GameState,
   type GraveyardFrom,
+  type MonsterSlot,
   type NewGameOptions,
   type PendingDecision,
   type Phase,
@@ -37,8 +38,10 @@ import {
   actionKey,
   battleNumbers,
   hasAllSeals,
+  hasPiercing,
   currentAtk as qCurrentAtk,
   currentDef as qCurrentDef,
+  equipOfEffect,
   findMonster,
   findSpellTrap,
   locate as qLocate,
@@ -49,6 +52,8 @@ import {
   spellDefOf,
   spellTrapRefs,
   trapDefOf,
+  uidAt,
+  type SpellTrapLoc,
 } from './query';
 import { legalActions as qLegalActions } from './legal';
 import { nextRandom, shuffleInPlace } from './rng';
@@ -197,8 +202,8 @@ function emptyPlayer(id: PlayerId, z: ZoneCounts = DEFAULT_ZONES): PlayerState {
 type SummonMethod = 'normal' | 'tribute' | 'special' | 'flip';
 
 type Task =
-  /** chasm_trap window after a Normal/Tribute Summon. */
-  | { k: 'summonWindow'; uid: Uid }
+  /** chasm_trap / toppling_tower window after a Summon (`method` 'special': only toppling_tower looks). */
+  | { k: 'summonWindow'; uid: Uid; method?: 'special' }
   /** On-summon effects (magma_titan, lumen_sprite, abyss_magus, thorn_lurker on flip summon). */
   | { k: 'summonTriggers'; uid: Uid; method: SummonMethod }
   /** mirror_barrier / chains_of_light window after an attack declaration. */
@@ -211,11 +216,28 @@ type Task =
   | { k: 'flipEffect'; uid: Uid; controller: PlayerId }
   /** ownSpellBurn300: a Spell was activated by `controller` while `uid` was face-up on their field. */
   | { k: 'spellBurn'; uid: Uid; controller: PlayerId }
+  /** last_breath window: `player` (not the turn player) just dropped below 1500 LP from damage. */
+  | { k: 'lpWindow'; player: PlayerId }
+  /** An activated Spell waiting for the spell_seal window to close; resolved next unless negated. */
+  | { k: 'spellResolve'; a: Extract<Action, { type: 'activateSpell' }>; fromHand: boolean; stZone: number | null }
   | { k: 'endPhase' }
   | { k: 'nextTurn' };
 
-const ATTACK_TRAPS = ['attackDestroyAllAttackPosition', 'attackNegateEndBattle'] as const;
-const SUMMON_TRAPS = ['summonDestroy1000Plus'] as const;
+const ATTACK_TRAPS = [
+  'attackDestroyAllAttackPosition',
+  'attackNegateEndBattle',
+  'attackBounceAttacker',
+  'attackRedirect',
+  'attackNegateAllDefense',
+  'attackedBoost1000',
+] as const;
+const SUMMON_TRAPS = ['summonDestroy1000Plus', 'summonDestroy1800Plus'] as const;
+const SPELL_NEGATE_TRAPS = ['spellActivateNegate'] as const;
+const LP_TRAPS = ['lpBelow1500Gain1500'] as const;
+/** last_breath: an LP drop from >= this value to below it opens the window. */
+const LP_LOW = 1500;
+/** toppling_tower: minimum current ATK of the summoned monster. */
+const TOWER_MIN_ATK = 1800;
 
 class Resolver {
   readonly ev: GameEvent[] = [];
@@ -258,7 +280,7 @@ class Resolver {
   private exec(t: Task): void {
     switch (t.k) {
       case 'summonWindow':
-        return this.summonWindow(t.uid);
+        return this.summonWindow(t.uid, t.method);
       case 'summonTriggers':
         return this.summonTriggers(t.uid, t.method);
       case 'attackWindow':
@@ -289,6 +311,10 @@ class Resolver {
         this.damage(other(loc.player), 300, 'effect', t.uid);
         return;
       }
+      case 'lpWindow':
+        return this.lpWindow(t.player);
+      case 'spellResolve':
+        return this.resolveSpell(t.a, t.fromHand, t.stZone);
       case 'endPhase':
         return this.endPhase();
       case 'nextTurn':
@@ -353,8 +379,19 @@ class Resolver {
   private damage(p: PlayerId, amount: number, source: 'battle' | 'effect', sourceUid: Uid | null): void {
     if (amount <= 0) return;
     const ps = this.ps(p);
+    const before = ps.lp;
     ps.lp = Math.max(0, ps.lp - amount);
     this.emit({ type: 'damage', player: p, amount, source, sourceUid, lpAfter: ps.lp });
+    // last_breath: the opponent's damage pushed this player under 1500 (and not to 0): open a window once the action settles
+    if (before >= LP_LOW && ps.lp < LP_LOW && ps.lp > 0 && p !== this.s.activePlayer && respondableTraps(this.s, p, LP_TRAPS).length)
+      this.queue.unshift({ k: 'lpWindow', player: p });
+  }
+
+  private lpWindow(p: PlayerId): void {
+    const ps = this.ps(p);
+    if (ps.lp <= 0 || ps.lp >= LP_LOW || p === this.s.activePlayer) return;
+    const options = respondableTraps(this.s, p, LP_TRAPS);
+    if (options.length) this.openPending({ kind: 'trapResponse', player: p, trigger: { kind: 'lpLow', player: p }, options });
   }
 
   private gain(p: PlayerId, amount: number, sourceUid: Uid | null): void {
@@ -427,15 +464,56 @@ class Resolver {
   }
 
   /** destroy → toGraveyard for a monster, then its equips (destroy reason 'rule' → toGraveyard). */
-  private destroyMonster(p: PlayerId, index: number, reason: DestroyReason, sourceUid: Uid | null): void {
+  private destroyMonster(p: PlayerId, index: number, reason: DestroyReason, sourceUid: Uid | null): boolean {
     const slot = this.ps(p).monsters[index];
-    if (!slot) return;
+    if (!slot) return false;
+    // guardian_charm: the equip is destroyed instead and the monster stays
+    const shield = equipOfEffect(this.s, slot.uid, 'equipDestroyShield');
+    if (shield) {
+      this.breakShield(shield, sourceUid);
+      return false;
+    }
     this.withStats(() => {
       this.emit({ type: 'destroy', player: p, uid: slot.uid, cardId: this.cardId(slot.uid), location: 'monster', zone: index, reason, sourceUid });
       this.ps(p).monsters[index] = null;
       this.toGraveyard(slot.uid, 'monster', index);
       this.dropEquips(slot.uid);
     });
+    return true;
+  }
+
+  /** The shield equip announces itself and is destroyed in place of its monster. */
+  private breakShield(sh: SpellTrapLoc, sourceUid: Uid | null): void {
+    this.withStats(() => {
+      const cardId = this.cardId(sh.slot.uid);
+      this.emit({ type: 'activate', player: sh.player, uid: sh.slot.uid, cardId, kind: 'spell', from: 'spellTrap', zone: sh.index });
+      this.emit({ type: 'destroy', player: sh.player, uid: sh.slot.uid, cardId, location: 'spellTrap', zone: sh.index, reason: 'effect', sourceUid });
+      this.ps(sh.player).spellTraps[sh.index] = null;
+      this.toGraveyard(sh.slot.uid, 'spellTrap', sh.index);
+    });
+  }
+
+  /** A monster goes back to its owner's hand (homecoming); its equips are destroyed by rule. */
+  private returnToHand(p: PlayerId, index: number): void {
+    const slot = this.ps(p).monsters[index];
+    if (!slot) return;
+    const owner = this.s.cards[slot.uid].owner;
+    this.withStats(() => {
+      this.ps(p).monsters[index] = null;
+      this.ps(owner).hand.push(slot.uid);
+      this.emit({ type: 'toHand', player: owner, uid: slot.uid, cardId: this.cardId(slot.uid), from: 'monster', zone: index });
+      this.dropEquips(slot.uid);
+    });
+    this.checkSeals();
+  }
+
+  /** Remove the queued battle of `attackerUid` (the attack was negated). */
+  private dropBattle(attackerUid: Uid): void {
+    const q = this.queue;
+    for (let i = q.length - 1; i >= 0; i--) {
+      const t = q[i];
+      if (t.k === 'battle' && t.attackerUid === attackerUid) q.splice(i, 1);
+    }
   }
 
   /** tribute → toGraveyard, then its equips. */
@@ -563,7 +641,8 @@ class Resolver {
       .map((t) => findMonster(s, t)!)
       .sort((a, b) => a.index - b.index);
     for (const t of tribs) this.tributeMonster(p, t.index, uid);
-    ps.normalSummonUsed = true;
+    if (ps.normalSummonUsed) ps.extraSummonTurn = s.turn; // festival_square: the extra Normal Summon / Set
+    else ps.normalSummonUsed = true;
     if (set) {
       ps.monsters[zone] = { uid, position: 'defense', faceUp: false, enteredTurn: s.turn, attacksThisTurn: 0, positionChangedTurn: -1 };
       this.emit({ type: 'setMonster', player: p, uid, zone });
@@ -589,14 +668,23 @@ class Resolver {
     this.queue.unshift({ k: 'summonTriggers', uid: slot.uid, method: 'flip' });
   }
 
-  private summonWindow(uid: Uid): void {
+  private summonWindow(uid: Uid, method?: 'special'): void {
     const loc = findMonster(this.s, uid);
     if (!loc || !loc.slot.faceUp) return;
-    if (qCurrentAtk(this.s, uid) < CHASM_MIN_ATK) return;
+    const atk = qCurrentAtk(this.s, uid);
+    if (atk < CHASM_MIN_ATK) return;
     const defender = other(loc.player);
-    const options = respondableTraps(this.s, defender, SUMMON_TRAPS);
+    // chasm_trap: Normal / Tribute Summons with ATK >= 1000; toppling_tower: any Summon with ATK >= 1800
+    const options = respondableTraps(this.s, defender, SUMMON_TRAPS).filter((u) =>
+      trapDefOf(this.s, u)!.effect === 'summonDestroy1800Plus' ? atk >= TOWER_MIN_ATK : method !== 'special',
+    );
     if (options.length)
-      this.openPending({ kind: 'trapResponse', player: defender, trigger: { kind: 'summoned', monsterUid: uid }, options });
+      this.openPending({
+        kind: 'trapResponse',
+        player: defender,
+        trigger: method === 'special' ? { kind: 'summoned', monsterUid: uid, method } : { kind: 'summoned', monsterUid: uid },
+        options,
+      });
   }
 
   private summonTriggers(uid: Uid, method: SummonMethod): void {
@@ -655,14 +743,45 @@ class Resolver {
     }
     const from = fromHand ? 'hand' : 'spellTrap';
     const base = { type: 'activate', player: p, uid: a.uid, cardId: d.id, kind: 'spell' } as const;
-    // ownSpellBurn300: face-up sorcerers on the activating player's field when the Spell is activated
-    const burners: Task[] = ps.monsters.flatMap((m): Task[] =>
-      m && m.faceUp && monsterDefOf(s, m.uid)?.effect === 'ownSpellBurn300' ? [{ k: 'spellBurn', uid: m.uid, controller: p }] : [],
-    );
-
     if (d.spellType === 'normal') {
       this.emit({ ...base, from, zone: stZone });
+    } else if (d.spellType === 'equip') {
+      const zone = fromHand ? a.zone! : stZone!;
+      if (fromHand) ps.spellTraps[zone] = { uid: a.uid, faceUp: true, setTurn: -1, equippedTo: null };
+      this.emit({ ...base, from, zone });
+    } else {
+      this.emit({ ...base, from, zone: null });
+    }
+    // spell_seal window: only opens when the opponent has a ready, unlocked counter trap
+    const opp = other(p);
+    const options = respondableTraps(s, opp, SPELL_NEGATE_TRAPS);
+    if (options.length) {
+      this.queue.unshift({ k: 'spellResolve', a, fromHand, stZone });
+      this.openPending({ kind: 'trapResponse', player: opp, trigger: { kind: 'spellActivated', spellUid: a.uid, player: p }, options });
+      return;
+    }
+    this.resolveSpell(a, fromHand, stZone);
+  }
+
+  /** ownSpellBurn300: face-up sorcerers on `p`'s field when a Spell is activated. */
+  private spellBurners(p: PlayerId): Task[] {
+    const s = this.s;
+    return this.ps(p).monsters.flatMap((m): Task[] =>
+      m && m.faceUp && monsterDefOf(s, m.uid)?.effect === 'ownSpellBurn300' ? [{ k: 'spellBurn', uid: m.uid, controller: p }] : [],
+    );
+  }
+
+  /** The effect of an activated Spell (the `activate` event is already out). */
+  private resolveSpell(a: Extract<Action, { type: 'activateSpell' }>, fromHand: boolean, stZone: number | null): void {
+    const s = this.s;
+    const p = a.player;
+    const ps = this.ps(p);
+    const d = spellDefOf(s, a.uid)!;
+    const burners = this.spellBurners(p);
+
+    if (d.spellType === 'normal') {
       const after: Task[] = [];
+      let askDiscard = false;
       switch (d.effect) {
         case 'destroyOpponentMonster': {
           const ref = (a.target as { kind: 'monster'; ref: ZoneRef }).ref;
@@ -683,7 +802,54 @@ class Resolver {
             ps.monsters[t.toZone] = { uid: t.uid, position: 'attack', faceUp: true, enteredTurn: s.turn, attacksThisTurn: 0, positionChangedTurn: -1 };
             this.emit({ type: 'summon', player: p, uid: t.uid, cardId: this.cardId(t.uid), zone: t.toZone, method: 'special', position: 'attack', from: 'graveyard', sourceUid: a.uid });
           });
-          after.push({ k: 'summonTriggers', uid: t.uid, method: 'special' });
+          after.push({ k: 'summonWindow', uid: t.uid, method: 'special' }, { k: 'summonTriggers', uid: t.uid, method: 'special' });
+          break;
+        }
+        case 'draw2Discard1':
+          // draw 2 (a completed seal set wins on the spot), then discard 1 once the spell has left the chain
+          this.drawCard(p, false);
+          if (s.winner === null) this.drawCard(p, false);
+          askDiscard = s.winner === null;
+          break;
+        case 'doubleTribute':
+          ps.tributeHelperTurn = s.turn;
+          break;
+        case 'forceDefense': {
+          const ref = (a.target as { kind: 'monster'; ref: ZoneRef }).ref;
+          this.emit({ type: 'target', player: p, sourceUid: a.uid, targets: [{ ...ref }] });
+          const slot = this.ps(ref.player).monsters[ref.index];
+          if (slot) {
+            slot.position = 'defense';
+            slot.positionChangedTurn = s.turn;
+            slot.lockPositionTurn = s.turn + 1; // the global turn counter: the controller's next turn
+            this.emit({ type: 'positionChange', player: ref.player, uid: slot.uid, zone: ref.index, position: 'defense' });
+          }
+          break;
+        }
+        case 'recycleGraveyard': {
+          // the last three cards of the graveyard (the spell itself has not landed there yet) go back to the deck
+          const gy = ps.graveyard;
+          const picked = gy.splice(Math.max(0, gy.length - 3), 3);
+          for (const u of picked) {
+            ps.deck.push(u);
+            this.emit({ type: 'toDeck', owner: p, uid: u, cardId: this.cardId(u), from: 'graveyard' });
+          }
+          shuffleInPlace(s, ps.deck);
+          this.emit({ type: 'shuffle', player: p });
+          this.drawCard(p, false);
+          break;
+        }
+        case 'atkBoostTurn': {
+          const ref = (a.target as { kind: 'monster'; ref: ZoneRef }).ref;
+          this.emit({ type: 'target', player: p, sourceUid: a.uid, targets: [{ ...ref }] });
+          const slot = this.ps(ref.player).monsters[ref.index];
+          if (slot) this.withStats(() => this.addBoost(slot, 1000, 0));
+          break;
+        }
+        case 'destroyOpponentSpellTrap': {
+          const ref = (a.target as { kind: 'card'; ref: ZoneRef }).ref;
+          this.emit({ type: 'target', player: p, sourceUid: a.uid, targets: [{ ...ref }] });
+          this.destroySpellTrap(ref, 'effect', a.uid);
           break;
         }
         default:
@@ -691,14 +857,13 @@ class Resolver {
       }
       if (stZone !== null) ps.spellTraps[stZone] = null;
       this.toGraveyard(a.uid, 'resolved', stZone);
+      if (askDiscard) this.openPending({ kind: 'discard', player: p, count: 1, cost: true });
       this.queue.unshift(...after, ...burners);
       return;
     }
 
     if (d.spellType === 'equip') {
       const zone = fromHand ? a.zone! : stZone!;
-      if (fromHand) ps.spellTraps[zone] = { uid: a.uid, faceUp: true, setTurn: -1, equippedTo: null };
-      this.emit({ ...base, from, zone });
       const ref = (a.target as { kind: 'monster'; ref: ZoneRef }).ref;
       const targetUid = this.ps(ref.player).monsters[ref.index]!.uid;
       this.emit({ type: 'target', player: p, sourceUid: a.uid, targets: [{ ...ref }] });
@@ -711,13 +876,31 @@ class Resolver {
     }
 
     // Field spell: only one on the whole field — the new one destroys any existing one.
-    this.emit({ ...base, from, zone: null });
     this.withStats(() => {
       for (const op of PLAYERS) if (this.ps(op).fieldSpell) this.destroySpellTrap({ player: op, zone: 'field', index: 0 }, 'rule', a.uid);
       ps.fieldSpell = { uid: a.uid, faceUp: true, setTurn: -1, equippedTo: null };
       this.emit({ type: 'fieldSpell', player: p, uid: a.uid, cardId: d.id, active: true });
     });
     this.queue.unshift(...burners);
+  }
+
+  /** Add a one-turn ATK / DEF boost to a monster slot (stacks within the same turn). */
+  private addBoost(slot: MonsterSlot, atk: number, def: number): void {
+    const same = slot.boostTurn === this.s.turn;
+    slot.boostAtk = (same ? (slot.boostAtk ?? 0) : 0) + atk;
+    slot.boostDef = (same ? (slot.boostDef ?? 0) : 0) + def;
+    slot.boostTurn = this.s.turn;
+  }
+
+  /** spell_seal: the activation is negated; the Spell (hand, set card or placed equip) is destroyed. */
+  private negateSpell(spellUid: Uid, activator: PlayerId, trapUid: Uid): void {
+    const q = this.queue;
+    const qi = q.findIndex((t) => t.k === 'spellResolve' && t.a.uid === spellUid);
+    if (qi >= 0) q.splice(qi, 1);
+    const zone = this.ps(activator).spellTraps.findIndex((st) => st?.uid === spellUid);
+    if (zone >= 0) this.destroySpellTrap({ player: activator, zone: 'spellTrap', index: zone }, 'effect', trapUid);
+    else this.toGraveyard(spellUid, 'resolved', null);
+    this.queue.unshift(...this.spellBurners(activator)); // the Spell was activated: the sorcerer still burns
   }
 
   private declareAttack(p: PlayerId, attackerZone: number, targetZone: number | null): void {
@@ -735,9 +918,21 @@ class Resolver {
     const loc = findMonster(this.s, attackerUid);
     if (!loc) return;
     const defender = other(loc.player);
-    const options = respondableTraps(this.s, defender, ATTACK_TRAPS);
+    const options = respondableTraps(this.s, defender, ATTACK_TRAPS).filter((u) => this.attackTrapUsable(u, defender, targetUid));
     if (options.length)
       this.openPending({ kind: 'trapResponse', player: defender, trigger: { kind: 'attackDeclared', attackerUid, targetUid }, options });
+  }
+
+  /** Can this set attack trap do anything right now? (decoy_target needs another monster, hidden_reinforcement a target.) */
+  private attackTrapUsable(trapUid: Uid, defender: PlayerId, targetUid: Uid | null): boolean {
+    switch (trapDefOf(this.s, trapUid)?.effect) {
+      case 'attackRedirect':
+        return monsterRefs(this.s, defender).some((r) => uidAt(this.s, r) !== targetUid);
+      case 'attackedBoost1000':
+        return targetUid !== null && findMonster(this.s, targetUid) !== null;
+      default:
+        return true;
+    }
   }
 
   private respond(p: PlayerId, uid: Uid | null): void {
@@ -776,7 +971,59 @@ class Resolver {
         this.queue.push({ k: 'endPhase' }, { k: 'nextTurn' });
         return;
       }
-      case 'summonDestroy1000Plus': {
+      case 'spellActivateNegate': {
+        if (pd.trigger.kind === 'spellActivated') this.negateSpell(pd.trigger.spellUid, pd.trigger.player, uid);
+        finish();
+        return;
+      }
+      case 'attackBounceAttacker': {
+        const attackerUid = pd.trigger.kind === 'attackDeclared' ? pd.trigger.attackerUid : -1;
+        const aLoc = findMonster(s, attackerUid);
+        if (aLoc) {
+          this.emit({ type: 'attackNegated', player: other(p), attackerUid, byUid: uid });
+          this.dropBattle(attackerUid);
+          this.returnToHand(aLoc.player, aLoc.index);
+        }
+        finish();
+        return;
+      }
+      case 'attackRedirect': {
+        finish();
+        const targetUid = pd.trigger.kind === 'attackDeclared' ? pd.trigger.targetUid : null;
+        const candidates = monsterRefs(s, p).filter((r) => uidAt(s, r) !== targetUid);
+        if (candidates.length) this.openPending({ kind: 'chooseTarget', player: p, sourceUid: uid, candidates });
+        return;
+      }
+      case 'lpBelow1500Gain1500':
+        this.gain(p, 1500, uid);
+        finish();
+        return;
+      case 'attackNegateAllDefense': {
+        const attackerUid = pd.trigger.kind === 'attackDeclared' ? pd.trigger.attackerUid : -1;
+        this.emit({ type: 'attackNegated', player: other(p), attackerUid, byUid: uid });
+        this.dropBattle(attackerUid);
+        const atkSide = other(p);
+        this.ps(atkSide).monsters.forEach((m, i) => {
+          if (!m || !m.faceUp || m.position !== 'attack') return;
+          m.position = 'defense';
+          m.positionChangedTurn = s.turn;
+          this.emit({ type: 'positionChange', player: atkSide, uid: m.uid, zone: i, position: 'defense' });
+        });
+        finish();
+        return;
+      }
+      case 'attackedBoost1000': {
+        const targetUid = pd.trigger.kind === 'attackDeclared' ? pd.trigger.targetUid : null;
+        const tLoc = targetUid === null ? null : findMonster(s, targetUid);
+        if (tLoc) {
+          this.emit({ type: 'target', player: p, sourceUid: uid, targets: [{ player: tLoc.player, zone: 'monster', index: tLoc.index }] });
+          this.withStats(() => this.addBoost(tLoc.slot, 1000, 1000));
+        }
+        finish();
+        return;
+      }
+      case 'summonDestroy1000Plus':
+      case 'summonDestroy1800Plus': {
         if (pd.trigger.kind === 'summoned') {
           const mloc = findMonster(s, pd.trigger.monsterUid);
           if (mloc) this.destroyMonster(mloc.player, mloc.index, 'effect', uid);
@@ -793,6 +1040,17 @@ class Resolver {
     s.pending = null;
     if (!pd || pd.kind !== 'chooseTarget') return;
     const src = pd.sourceUid;
+    const srcDef = CARDS[s.cards[src].cardId];
+    if (isTrap(srcDef)) {
+      // decoy_target: the attack in the queue now aims at the chosen own monster
+      if (srcDef.effect === 'attackRedirect') {
+        const newUid = uidAt(s, ref);
+        const battle = this.queue.find((t): t is Extract<Task, { k: 'battle' }> => t.k === 'battle');
+        this.emit({ type: 'target', player: pd.player, sourceUid: src, targets: [{ player: ref.player, zone: ref.zone, index: ref.index }] });
+        if (battle && newUid !== null) battle.targetUid = newUid;
+      }
+      return;
+    }
     this.activateMonsterEffect(src, pd.player);
     this.emit({ type: 'target', player: pd.player, sourceUid: src, targets: [{ player: ref.player, zone: ref.zone, index: ref.index }] });
     if (monsterDefOf(s, src)?.effect === 'summonFreezeAttack') {
@@ -858,7 +1116,7 @@ class Resolver {
       }
     } else if (atk > tVal) {
       killT = true;
-      if (aDef.effect === 'piercing') {
+      if (hasPiercing(s, attackerUid)) {
         dmgTo = dp;
         dmg = atk - tVal;
       }
@@ -866,6 +1124,11 @@ class Resolver {
       dmgTo = ap;
       dmg = tVal - atk;
     }
+    // guardian_charm: a monster that would be destroyed but wears the shield survives (the shield breaks in destroyMonster)
+    const wouldKillT = killT;
+    const wouldKillA = killA;
+    if (killT && equipOfEffect(s, targetUid, 'equipDestroyShield')) killT = false;
+    if (killA && equipOfEffect(s, attackerUid, 'equipDestroyShield')) killA = false;
     // wisp_imp: destroyed in battle -> its controller takes no damage from this battle
     let impUid: Uid | null = null;
     if (dmg > 0 && dmgTo === dp && killT && tDef.effect === 'noBattleDamageOnDestroy') impUid = targetUid;
@@ -884,8 +1147,8 @@ class Resolver {
     });
     if (impUid !== null) this.activateMonsterEffect(impUid, impUid === targetUid ? dp : ap);
     if (dmgTo !== null) this.damage(dmgTo, dmg, 'battle', dmgTo === dp ? attackerUid : targetUid);
-    if (killT) this.destroyMonster(dp, tLoc.index, 'battle', attackerUid);
-    if (killA) this.destroyMonster(ap, aLoc.index, 'battle', targetUid);
+    if (wouldKillT) this.destroyMonster(dp, tLoc.index, 'battle', attackerUid);
+    if (wouldKillA) this.destroyMonster(ap, aLoc.index, 'battle', targetUid);
 
     // Post-battle triggers in rule order (§2): volt → ember → tide → thorn.
     const tasks: Task[] = [];

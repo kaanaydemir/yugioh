@@ -59,6 +59,12 @@ export interface MonsterSlot {
   noAttackTurn?: number;
   /** summonTurnAtk500: set when the monster arrived by Normal / Tribute Summon (absent otherwise). */
   normalSummoned?: boolean;
+  /** Spell/trap batch 1: one-turn ATK / DEF bonus (battle_cry, hidden_reinforcement); active while `state.turn === boostTurn` and before the End Phase. */
+  boostAtk?: number;
+  boostDef?: number;
+  boostTurn?: number;
+  /** kneel_down: this monster cannot change position while `state.turn` equals this value. */
+  lockPositionTurn?: number;
 }
 
 export interface SpellTrapSlot {
@@ -82,6 +88,10 @@ export interface PlayerState {
   spellTraps: (SpellTrapSlot | null)[]; // length SPELL_TRAP_ZONES
   fieldSpell: SpellTrapSlot | null;
   normalSummonUsed: boolean;
+  /** double_offering: on this turn number a Level 7+ monster needs one tribute fewer. Absent = never. */
+  tributeHelperTurn?: number;
+  /** festival_square: the turn number on which the extra Normal Summon / Set was used. Absent = never. */
+  extraSummonTurn?: number;
 }
 
 export type ZoneKind = 'monster' | 'spellTrap' | 'field';
@@ -94,7 +104,12 @@ export interface ZoneRef {
 
 export type TrapTrigger =
   | { kind: 'attackDeclared'; attackerUid: Uid; targetUid: Uid | null }
-  | { kind: 'summoned'; monsterUid: Uid };
+  /** `method` is set only for Special Summons ('special'); absent = Normal / Tribute Summon (kept byte-identical for old states). */
+  | { kind: 'summoned'; monsterUid: Uid; method?: 'special' }
+  /** spell_seal window: `spellUid` was just activated by `player` (the turn player) and has not resolved yet. */
+  | { kind: 'spellActivated'; spellUid: Uid; player: PlayerId }
+  /** last_breath window: `player` (not the turn player) dropped below 1500 LP from damage. */
+  | { kind: 'lpLow'; player: PlayerId };
 
 export type PendingDecision =
   /** `player` may activate one of `options` (set trap uids) or decline with respond(null). */
@@ -102,7 +117,8 @@ export type PendingDecision =
   /** A triggered effect needs a target (abyss_magus, thorn_lurker). */
   | { kind: 'chooseTarget'; player: PlayerId; sourceUid: Uid; candidates: ZoneRef[] }
   /** End-phase hand limit. */
-  | { kind: 'discard'; player: PlayerId; count: number };
+  /** `cost`: a Main Phase discard paid for a card effect (fate_trade) instead of the End Phase hand limit. */
+  | { kind: 'discard'; player: PlayerId; count: number; cost?: boolean };
 
 export type WinReason = 'lp' | 'deckout' | 'surrender' | 'seals';
 
@@ -133,7 +149,9 @@ export type SpellTarget =
   /** A monster on the field (judgment_bolt: opponent's; dragon_blade: own face-up). */
   | { kind: 'monster'; ref: ZoneRef }
   /** soul_recall: a monster card in either graveyard plus your empty monster zone to summon into. */
-  | { kind: 'graveyard'; uid: Uid; toZone: number };
+  | { kind: 'graveyard'; uid: Uid; toZone: number }
+  /** purging_wave: a Spell/Trap (or field spell) of the opponent; `ref.zone` is 'spellTrap' or 'field'. */
+  | { kind: 'card'; ref: ZoneRef };
 
 export type Action =
   /** Normal or Tribute Summon from hand in face-up attack position. */
@@ -262,6 +280,10 @@ export type GameEvent =
   /** Current ATK/DEF of a face-up monster changed (equip, field spell). */
   | { type: 'statChange'; uid: Uid; atk: number; def: number; prevAtk: number; prevDef: number }
   | { type: 'discard'; player: PlayerId; uid: Uid; cardId: CardId }
+  /** A card returns to its owner's hand from the field (homecoming) — `from` is where it was. */
+  | { type: 'toHand'; player: PlayerId; uid: Uid; cardId: CardId; from: 'monster' | 'graveyard'; zone: number | null }
+  /** A card returns to the deck from the graveyard (cycle_of_graves); a `shuffle` event follows the last one. */
+  | { type: 'toDeck'; owner: PlayerId; uid: Uid; cardId: CardId; from: 'graveyard' }
   /** A pending decision opened (UI cue). */
   | { type: 'decision'; pending: PendingDecision }
   | { type: 'responseDeclined'; player: PlayerId }

@@ -6,6 +6,7 @@ import {
   isMonster,
   isSpell,
   isTrap,
+  tributesFor,
   type CardDef,
   type MonsterCardDef,
   type SpellCardDef,
@@ -121,10 +122,52 @@ export function equipBonus(s: GameState, uid: Uid): number {
       if (st && st.faceUp && st.equippedTo === uid) {
         const d = defOf(s, st.uid);
         if (isSpell(d) && d.effect === 'equipAtk700') bonus += 700;
+        else if (isSpell(d) && d.effect === 'equipPiercing') bonus += 300;
       }
     }
   }
   return bonus;
+}
+
+/** The face-up equip spell of `effect` attached to monster `uid` (first by player / zone order), or null. */
+export function equipOfEffect(s: GameState, uid: Uid, effect: string): SpellTrapLoc | null {
+  for (const p of PLAYERS) {
+    const sts = s.players[p].spellTraps;
+    for (let i = 0; i < sts.length; i++) {
+      const st = sts[i];
+      if (st && st.faceUp && st.equippedTo === uid) {
+        const d = defOf(s, st.uid);
+        if (isSpell(d) && d.effect === effect) return { player: p, index: i, slot: st };
+      }
+    }
+  }
+  return null;
+}
+
+/** Does this monster deal piercing damage (the coral_serpent effect, or a piercing_lance equip)? */
+export function hasPiercing(s: GameState, uid: Uid): boolean {
+  return monsterDefOf(s, uid)?.effect === 'piercing' || equipOfEffect(s, uid, 'equipPiercing') !== null;
+}
+
+/** A one-turn boost (battle_cry / hidden_reinforcement) is live on its turn until the End Phase. */
+function boostLive(s: GameState, slot: MonsterSlot): boolean {
+  return slot.boostTurn === s.turn && s.phase !== 'end';
+}
+
+/** Tributes needed to Normal Summon / Set a monster of `level` for player `p` right now (double_offering aware). */
+export function tributeNeed(s: GameState, p: PlayerId, level: number): number {
+  const n = tributesFor(level);
+  return level >= 7 && s.players[p].tributeHelperTurn === s.turn ? n - 1 : n;
+}
+
+/** festival_square: `p` may make one more Normal Summon / Set of a Level <= 4 monster this turn. */
+export function extraSummonAvailable(s: GameState, p: PlayerId): boolean {
+  const ps = s.players[p];
+  if (!ps.normalSummonUsed || ps.extraSummonTurn === s.turn) return false;
+  const fs = ps.fieldSpell;
+  if (!fs || !fs.faceUp) return false;
+  const d = defOf(s, fs.uid);
+  return isSpell(d) && d.effect === 'fieldExtraSummon';
 }
 
 /** ATK modifier of the active field spell(s) for a monster of the given attribute. */
@@ -134,9 +177,16 @@ export function fieldAtkModifier(s: GameState, d: MonsterCardDef): number {
     const fs = s.players[p].fieldSpell;
     if (!fs || !fs.faceUp) continue;
     const fd = defOf(s, fs.uid);
-    if (isSpell(fd) && fd.effect === 'fieldVolcano') {
+    if (!isSpell(fd)) continue;
+    if (fd.effect === 'fieldVolcano') {
       if (d.attribute === 'FIRE') mod += 500;
       else if (d.attribute === 'WATER') mod -= 300;
+    } else if (fd.effect === 'fieldTidalBay') {
+      if (d.attribute === 'WATER' || d.attribute === 'WIND') mod += 400;
+      else if (d.attribute === 'FIRE') mod -= 400;
+    } else if (fd.effect === 'fieldShadowCavern') {
+      if (d.attribute === 'DARK' || d.attribute === 'EARTH') mod += 300;
+      else if (d.attribute === 'LIGHT') mod -= 300;
     }
   }
   return mod;
@@ -183,7 +233,8 @@ export function currentAtk(s: GameState, uid: Uid): number {
   if (!isMonster(d)) return 0;
   const loc = findMonster(s, uid);
   if (!loc || !loc.slot.faceUp) return d.atk;
-  return Math.max(0, d.atk + equipBonus(s, uid) + fieldAtkModifier(s, d) + auraBonus(s, uid, d, loc.player) + summonTurnBonus(s, d, loc.player, loc.slot));
+  const boost = boostLive(s, loc.slot) ? (loc.slot.boostAtk ?? 0) : 0;
+  return Math.max(0, d.atk + equipBonus(s, uid) + fieldAtkModifier(s, d) + auraBonus(s, uid, d, loc.player) + summonTurnBonus(s, d, loc.player, loc.slot) + boost);
 }
 
 export interface BattleNumbers {
@@ -228,13 +279,15 @@ export function battleNumbers(s: GameState, attackerUid: Uid, targetUid: Uid | n
   return { atk, targetValue, targetPosition: position, attackerDebuffBy, targetDebuffBy };
 }
 
-/** Current DEF (no card in the pool modifies DEF yet; kept symmetric with currentAtk). */
+/** Current DEF: base plus a live one-turn boost (hidden_reinforcement); face-down monsters included. */
 export function currentDef(s: GameState, uid: Uid): number {
   const card = s.cards[uid];
   if (!card) return 0;
   const d = CARDS[card.cardId];
   if (!isMonster(d)) return 0;
-  return Math.max(0, d.def);
+  const loc = findMonster(s, uid);
+  const boost = loc && boostLive(s, loc.slot) ? (loc.slot.boostDef ?? 0) : 0;
+  return Math.max(0, d.def + boost);
 }
 
 /** Face-down traps of `p` with one of `effects`, set on an earlier turn (eligible to respond now). */
@@ -326,7 +379,9 @@ export function normalizeAction(s: GameState, a: Action): Action {
         out.target =
           a.target.kind === 'monster'
             ? { kind: 'monster', ref: { player: a.target.ref.player, zone: a.target.ref.zone, index: a.target.ref.index } }
-            : { kind: 'graveyard', uid: a.target.uid, toZone: a.target.toZone };
+            : a.target.kind === 'card'
+              ? { kind: 'card', ref: { player: a.target.ref.player, zone: a.target.ref.zone, index: a.target.ref.index } }
+              : { kind: 'graveyard', uid: a.target.uid, toZone: a.target.toZone };
       }
       return out;
     }

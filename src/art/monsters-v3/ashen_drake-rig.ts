@@ -1,1785 +1,867 @@
-// Kristal Ejder v3 — the restyled rig. Same skeleton, proportions and silhouette as the v1 rig
-// (src/art/monsters/ashen_drake.ts, copied and kept numerically identical where it defines the
-// shape), redrawn with the craft of the approved still (src/still/wyrm-map.ts):
-//   head   — white top plane, mist side plane, steel cheek wedge, ONE night3 brow ridge ending in
-//            front of the eye, a night2 eye socket with a cyan3 iris and one white glint, a night1
-//            mouth line with an up-turned corner, a steel lower jaw with a night3 underside and a lit
-//            chin, gold horns in four bands (gold4 top edge … gold1 root);
-//   neck   — white lit plane | mist | steel shadow plane | cyan2 bounce rim, one steel throat seam;
-//   body   — a big calm white lit plane, the cyan2 keel on the lit/mid break, mist mid plane, steel;
-//   legs   — night3 creases where the thigh lies on the belly (1 px over, 2 behind, 3 under);
-//   wings  — flat glass cells, ONE fold line, white / cyan4 trailing rims by facing, two-tone bones;
-//   crest  — two-value shards in a dark cyan0 channel.
-// Every frame is a Pose (numbers) rendered through this rig, so the craft holds in every frame.
-// The key light is flipped for the P2 relight sheet (ashen_drake-gbuf.ts setLight).
+// Kül Ejderi v3 — the drake's own rig: a low, hunched QUADRUPED (not the wyrm's upright biped).
+//
+// Body plan (side view, facing right; every height is "px above the ground line GY"):
+//   haunch  — a heavy folded hind leg (thigh forward, hock back, flat foot), hip at (38, 27);
+//   torso   — a deep barrel that rises to a massive shoulder hump (76, 33) — the front limbs are
+//             longer than the hind ones, so the back slopes DOWN to the tail;
+//   arms    — thick forelimbs on the KNUCKLES (a fist with three claws on the floor), the near one
+//             back under the shoulder, the far one planted ahead: the gait of a gorilla;
+//   neck    — short and thick, no S-curve; the horned head hangs LOW in front of the hump;
+//   wings   — ragged, half-folded on the back like a cloak: the wrist stands over the shoulder as a
+//             bony knuckle, three finger bones sweep back and down over the flank, the membrane is
+//             torn (notches, holes with an ember rim) — they only open for the roar / summon;
+//   tail    — a long hooked tail that drags low and curls up into a spiked club.
+// Ember-red cracks run along the ribs, haunch, spine, finger bones and tear edges; ash drifts
+// off the back and out of the nostrils in every frame (Pose.ash is a loop phase).
+//
+// Craft (same pipeline as the aces, ashen_drake-gbuf.ts): parts are drawn as G-buffer layers
+// (spheres / tubes / facets lit by ONE key light that the caller can flip for the P2 relight),
+// quantized into clear value planes, despeckled, composited with 1-px seams / creases, then the
+// silhouette outline, selective rim lines (the lighter mid-tone band that keeps the charcoal
+// readable on the navy floor), ember lines and the ash.
 
 import { PixelCanvas, bezier } from '../pixel';
 import { PAL } from '../palette';
 import {
   DEG,
-  clamp,
   FLAT_N,
+  GY,
   H,
   LIGHT,
   M,
-  OX,
-  OY,
   W,
   add,
+  clamp,
   composite,
   crease,
-  fillPoly,
   distPoly,
   distSeg,
-  dorsal,
-  dot,
-  edgeNormal,
   edgePaint,
+  fillPoly,
   flo,
-  gEll,
+  gEll as gEll0,
   gFacet,
-  gShard,
-  gTube,
+  gTube as gTube0,
   ik,
   len,
   lerp,
   lerpV,
   lineOn,
-  maskOf,
   mul,
   newCanvas,
   newG,
   norm,
-  pathU,
   polar,
   resetPools,
   rimLight,
   rnd,
   rotV,
-  samplePath,
   selout,
   sub,
-  twinkle,
-  type Fold,
-  type SeamFn,
+  type G,
   type V,
 } from './ashen_drake-gbuf';
 
-// ------------------------------------------------------------------ pose
+// ------------------------------------------------------------------ pose model
 
+/** One wing: the wrist (offset from the wing root, screen px) and three finger bones (angle, length). */
 export interface Wing {
-  /** humerus angle (deg, screen space) */
-  a1: number;
-  /** forearm angle */
-  a2: number;
-  /** first (outer) finger angle */
-  a3: number;
-  /** finger fan step (deg); sign picks the fan direction */
-  fan: number;
-  /** bone length multiplier (a spread far wing turns toward the viewer and reads bigger) */
-  span: number;
-  /** where the inner membrane meets the body, in torso space (undefined = default) */
-  at?: V;
-  /** depth of the trailing-edge scallops (1 = rest; >1 billows, <1 pulls taut) */
-  scal?: number;
-  /** vertical lag (px) of the hand of the wing (wrist and finger tips): they follow a body step a
-   *  frame late (overlap), the shoulder and elbow move with the body */
-  lag?: number;
+  wx: number;
+  wy: number;
+  /** finger angles in degrees, screen space: 0 = forward, 90 = down, 180 = back, -90 = up */
+  a: [number, number, number];
+  l: [number, number, number];
+  /** depth of the scalloped trailing edge (px) */
+  sag: number;
+  /** thumb claw length at the wrist (px) */
+  thumb: number;
 }
 
 export interface Pose {
-  hx: number;
-  hy: number;
-  /** torso rotation around the hip (rad, negative = rear up) */
-  lean: number;
-  /** head pivot offset from its neutral spot (relative to the chest) */
-  headX: number;
-  headY: number;
-  /** head angle (rad, + = nose down) */
+  /** whole-body offset (px, +y down): the pounce and the crouch */
+  bx: number;
+  by: number;
+  /** extra offsets of the haunch and the shoulder hump (px) */
+  hipX: number;
+  hipY: number;
+  shX: number;
+  shY: number;
+  /** extra arch of the spine between them (px up) */
+  arch: number;
+  /** wrist targets of the near / far forelimb and ankle targets of the near / far hind limb,
+   *  as offsets from their planted rest position (px; negative y = lifted) */
+  fN: V;
+  fF: V;
+  lN: V;
+  lF: V;
+  /** head: offset from its rest place (px), angle (rad, + = nose down), jaw (0..1), eye (0..1), flare (0..1) */
+  hd: V;
   ha: number;
-  /** 0..1 */
   jaw: number;
-  /** neck control points: extra offset of the base-side and head-side handles (S-curve) */
-  nk1: V;
-  nk2: V;
+  eye: number;
+  flare: number;
+  /** tail: loop phase (0..1), wave amplitude (deg), curl multiplier of the hook, tip lift (px) */
+  tph: number;
+  tamp: number;
+  tcurl: number;
+  tlift: number;
   nw: Wing;
   fw: Wing;
-  /** tail sway phase (0..1) and amplitude (deg) */
-  tail: number;
-  tailAmp: number;
-  /** extra tail curl (deg, + lifts the tip) */
-  tailLift: number;
-  /** arm raise (deg); the far arm follows with `armF` extra */
-  arm: number;
-  armF: number;
-  /** 0..1 energy in veins / spikes */
+  /** ember glow 0..1 (cracks, eye, mouth); ash loop phase 0..1; smoke density 0..1 */
   glow: number;
-  /** 0..1 light gathered in the mouth */
-  mouth: number;
-  /** chest pulse 0..1 (light swelling behind the keel during the breath) */
-  pulse: number;
-  /** 1 open, 0 squeezed shut (hit), 0.5 half-lid (blink) */
-  eye: number;
-  /** guard: wings wrapped forward (selects the shield wing layout) */
-  guard: boolean;
-  /** the crystal glint: [anchor index, size 1|2] — at most one, and an anim shows it on three
-   *  frames in a row on the same vertex (size 1, 2, 1: 1 px → 3-px cross → 1 px). Anchors are facet
-   *  vertices on the top-left lit edge: 0 the near wing's wrist knuckle, 1 the near wing's elbow
-   *  (in the guard: the peak of the wrapped shield). */
-  sparkles: [number, number][];
-  /** the glint's pixel, fixed for the frames it lives on (ashen_drake-anims.ts: taken from the
-   *  frame that shows the cross, glintPixelFor); unset = found on this frame's own vertex */
-  glintAt?: V;
-  /** motion smear: the head's path from this pose to the current one is drawn as a light trail */
-  smearFrom?: PoseDelta;
-
-  // ---- part 2 (extra anims); the defaults draw exactly the base frames
-  /** whole-body lift (px, negative = up): the summon drop; the feet leave the ground with it */
-  lift: number;
-  /** 0..1 the legs drawn up under the belly (airborne) */
-  tuck: number;
-  /** near / far foot displacement from its planted spot (a step; y < 0 = that foot is lifted) */
-  stepN: V;
-  stepF: V;
-  /** 0..1 the membrane roots slide toward the guard wrap (in-betweens to / from guard) */
-  wrap: number;
-  /** 0..1 the wing glass flares one tone brighter (hitMagic) */
-  flare: number;
-  /** 0..1 crack lines spread from the chest over the body (death; revive closes them) */
-  cracks: number;
-  /** 0..1 the inner light drains from the extremities into the core and out (revive: refills) */
+  ash: number;
+  smoke: number;
+  /** ember spill from the mouth 0..1 (roar) */
+  spill: number;
+  /** claws spread 0..1 (front paws) */
+  claw: number;
+  /** death / revive: body crumbled into ash (0 = whole, 1 = gone) and the embers drained (0 = lit) */
+  crumble: number;
   drain: number;
-  /** 0..1 the cold crystal body splits along the main crack (death's last frames) */
-  split: number;
-  /** <1: revive — the body is crystal fragments flying in and locking into place (1 = whole) */
-  gather: number;
-  /** vertical lag (px) of the tail's middle and tip: they follow a body step one and two frames late */
-  tailLag: V;
-  /** whole-pixel vertical offset of both wings against the body (a wing that follows a body step a
-   *  frame late: the guard breath) */
-  wingDy: number;
-  /** extra torso rotation around the hip (rad, negative = knocked back) that only the chest and what
-   *  hangs on it (the neck base, the head, the arms, the keel, the upper back crystals) take: the
-   *  wings, the hip, the legs and the tail hold their pose — a struck frame, where the contact region
-   *  moves first and the rest of the body follows a frame later */
-  chestLean: number;
-  /** 0..1 the crystal crest along the neck flares (≥ 0.75: one tone step up, like `glow` for every
-   *  crystal) — the struck region's crystals light on the contact frame */
-  crestFlare: number;
-  /** 0..1 (≥ 0.5) the open eye blazes — the iris burns white with a cyan4 rim (a magic jolt's
-   *  contact frame: the charge in the eyes) */
-  eyeFlare: number;
+  /** strike flash: the hide on the struck side goes white-hot (hitMagic) 0..1 */
+  heat: number;
+  /** the near wing is drawn in FRONT of the head and the arm (guard wrap, wing slam): 0 / 1 */
+  wfront: number;
+  /** ember spill from the mouth: fall phase (loop) */
+  spillT: number;
 }
 
+const WING_NEUTRAL_N: Wing = { wx: 5, wy: -11, a: [148, 118, 90], l: [50, 47, 43], sag: 5, thumb: 4 };
+const WING_NEUTRAL_F: Wing = { wx: 6, wy: -15, a: [158, 134, 108], l: [46, 41, 35], sag: 4, thumb: 3 };
+
 export const NEUTRAL: Pose = {
-  hx: 0,
-  hy: 0,
-  lean: 0,
-  headX: 0,
-  headY: 0,
-  ha: 0.1,
+  bx: 0,
+  by: 0,
+  hipX: 0,
+  hipY: 0,
+  shX: 0,
+  shY: 0,
+  arch: 0,
+  fN: [0, 0],
+  fF: [0, 0],
+  lN: [0, 0],
+  lF: [0, 0],
+  hd: [0, 0],
+  ha: 0.22,
   jaw: 0,
-  nk1: [0, 0],
-  nk2: [0, 0],
-  nw: { a1: -108, a2: -138, a3: -118, fan: -40, span: 1 },
-  fw: { a1: -84, a2: -110, a3: -92, fan: -28, span: 1 },
-  tail: 0,
-  tailAmp: 4,
-  tailLift: 0,
-  arm: 0,
-  armF: 0,
-  glow: 0.3,
-  mouth: 0,
-  pulse: 0,
   eye: 1,
-  guard: false,
-  sparkles: [],
-  lift: 0,
-  tuck: 0,
-  stepN: [0, 0],
-  stepF: [0, 0],
-  wrap: 0,
   flare: 0,
-  cracks: 0,
+  tph: 0,
+  tamp: 6,
+  tcurl: 1,
+  tlift: 0,
+  nw: WING_NEUTRAL_N,
+  fw: WING_NEUTRAL_F,
+  glow: 0.5,
+  ash: 0,
+  smoke: 1,
+  spill: 0,
+  claw: 0,
+  crumble: 0,
   drain: 0,
-  split: 0,
-  gather: 1,
-  tailLag: [0, 0],
-  wingDy: 0,
-  chestLean: 0,
-  crestFlare: 0,
-  eyeFlare: 0,
+  heat: 0,
+  wfront: 0,
+  spillT: 0,
 };
 
 export type PoseDelta = Partial<Omit<Pose, 'nw' | 'fw'>> & { nw?: Partial<Wing>; fw?: Partial<Wing> };
 
-export function pose(d: PoseDelta): Pose {
-  return { ...NEUTRAL, ...d, nw: { ...NEUTRAL.nw, ...(d.nw ?? {}) }, fw: { ...NEUTRAL.fw, ...(d.fw ?? {}) } };
+export function pose(d: PoseDelta = {}): Pose {
+  const { nw, fw, ...rest } = d;
+  return { ...NEUTRAL, ...rest, nw: { ...NEUTRAL.nw, ...nw }, fw: { ...NEUTRAL.fw, ...fw } } as Pose;
 }
 
-/** Numeric in-between of two poses (smears, generated in-betweens). Discrete fields come from b. */
-export function lerpPose(a: Pose, b: Pose, t: number): Pose {
-  const w = (x: Wing, y: Wing): Wing => ({
-    a1: lerp(x.a1, y.a1, t),
-    a2: lerp(x.a2, y.a2, t),
-    a3: lerp(x.a3, y.a3, t),
-    fan: lerp(x.fan, y.fan, t),
-    span: lerp(x.span, y.span, t),
-    at: x.at && y.at ? lerpV(x.at, y.at, t) : y.at ?? x.at,
-    scal: lerp(x.scal ?? 1, y.scal ?? 1, t),
-    lag: lerp(x.lag ?? 0, y.lag ?? 0, t),
-  });
-  return {
-    ...b,
-    hx: lerp(a.hx, b.hx, t),
-    hy: lerp(a.hy, b.hy, t),
-    lean: lerp(a.lean, b.lean, t),
-    headX: lerp(a.headX, b.headX, t),
-    headY: lerp(a.headY, b.headY, t),
-    ha: lerp(a.ha, b.ha, t),
-    jaw: lerp(a.jaw, b.jaw, t),
-    nk1: lerpV(a.nk1, b.nk1, t),
-    nk2: lerpV(a.nk2, b.nk2, t),
-    nw: w(a.nw, b.nw),
-    fw: w(a.fw, b.fw),
-    tail: lerp(a.tail, b.tail, t),
-    tailAmp: lerp(a.tailAmp, b.tailAmp, t),
-    tailLift: lerp(a.tailLift, b.tailLift, t),
-    arm: lerp(a.arm, b.arm, t),
-    armF: lerp(a.armF, b.armF, t),
-    glow: lerp(a.glow, b.glow, t),
-    mouth: lerp(a.mouth, b.mouth, t),
-    pulse: lerp(a.pulse, b.pulse, t),
-    eye: lerp(a.eye, b.eye, t),
-    lift: lerp(a.lift, b.lift, t),
-    tuck: lerp(a.tuck, b.tuck, t),
-    stepN: lerpV(a.stepN, b.stepN, t),
-    stepF: lerpV(a.stepF, b.stepF, t),
-    wrap: lerp(a.wrap, b.wrap, t),
-    flare: lerp(a.flare, b.flare, t),
-    cracks: lerp(a.cracks, b.cracks, t),
-    drain: lerp(a.drain, b.drain, t),
-    split: lerp(a.split, b.split, t),
-    gather: lerp(a.gather, b.gather, t),
-    tailLag: lerpV(a.tailLag, b.tailLag, t),
-    wingDy: lerp(a.wingDy, b.wingDy, t),
-    chestLean: lerp(a.chestLean, b.chestLean, t),
-    crestFlare: lerp(a.crestFlare, b.crestFlare, t),
-    eyeFlare: lerp(a.eyeFlare, b.eyeFlare, t),
-  };
+/** Re-base a pose on another (a delta over a full pose). */
+export function over(base: Pose, d: PoseDelta): Pose {
+  const { nw, fw, ...rest } = d;
+  return { ...base, ...rest, nw: { ...base.nw, ...nw }, fw: { ...base.fw, ...fw } } as Pose;
 }
+
+function lerpAny<T>(a: T, b: T, t: number): T {
+  if (typeof a === 'number' && typeof b === 'number') return (a + (b - a) * t) as unknown as T;
+  if (Array.isArray(a) && Array.isArray(b)) return a.map((v, i) => lerpAny(v, b[i], t)) as unknown as T;
+  if (a && b && typeof a === 'object' && typeof b === 'object') {
+    const o: Record<string, unknown> = {};
+    for (const k of Object.keys(b as object)) o[k] = lerpAny((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k], t);
+    return o as T;
+  }
+  return b;
+}
+export const lerpPose = (a: Pose, b: Pose, t: number): Pose => lerpAny(a, b, t);
 
 // ------------------------------------------------------------------ skeleton
 
-const NEAR_FINGERS = [19.5, 22.5, 19];
-const FAR_FINGERS = [17.5, 16, 12.5];
+/** Global scale of the design (a class-80 drake is ~3500 px, not the 5500 the first proportions gave). */
+export const S = 0.8;
+const CX = 66;
+/** Frame shift to the right (room for the tail on the left). */
+const X0 = 5;
+const q = (x: number, h: number): V => [X0 + CX + (x - CX) * S, GY - h * S];
 
-interface WingRig {
-  S: V;
-  E: V;
-  Wr: V;
-  tips: V[];
-  attach: V;
-}
+type TubeOpts = Parameters<typeof gTube0>[5];
+const tubeS = (g: G, path: V[], w0: number, w1: number, mat: number, o?: TubeOpts) => gTube0(g, path, w0 * S, w1 * S, mat, o);
+const ellS = (g: G, c: V, rx: number, ry: number, ang: number, mat: number, o?: Parameters<typeof gEll0>[6]) => gEll0(g, c, rx * S, ry * S, ang, mat, o);
 
-/** Ashen drake: a smaller wingspan than the crystal wyrm (0.78 of its bones). */
-const WS = 0.78;
-
-function wingRig(S: V, w: Wing, fingers: number[], l1: number, l2: number, attach: V): WingRig {
-  const E = add(S, polar(w.a1, l1 * w.span * WS));
-  const lag: V = [0, w.lag ?? 0];
-  const Wr = add(add(E, polar(w.a2, l2 * w.span * WS)), mul(lag, 0.5));
-  const tips = fingers.map((fl, i) => add(add(Wr, polar(w.a3 + w.fan * i, fl * w.span * WS)), mul(lag, 0.5)));
-  return { S, E, Wr, tips, attach };
-}
-
-// feet are planted: they never move (no foot sliding); the legs reach them by IK
-const FOOT_NEAR: V = [52 + OX, 88 + OY];
-const ANKLE_NEAR: V = [44.5 + OX, 83 + OY];
-const FOOT_FAR: V = [62 + OX, 85 + OY];
-const ANKLE_FAR: V = [55 + OX, 80 + OY];
-
-export interface Legs {
-  footN: V;
-  ankleN: V;
-  footF: V;
-  ankleF: V;
-}
-
-/**
- * Where the feet are: planted (the default: exactly the constants above), displaced by a step
- * (`stepN` / `stepF`), carried up with the body (`lift`), or drawn up under the belly (`tuck`).
- */
-export function legs(P: Pose): Legs {
-  const lift: V = [0, P.lift];
-  const hip = rig(P).hip;
-  const t = P.tuck;
-  const at = (planted: V, step: V, tucked: V): V => {
-    const pl = add(add(planted, lift), step);
-    return t > 0 ? lerpV(pl, add(hip, tucked), t) : pl;
-  };
-  return {
-    footN: at(FOOT_NEAR, P.stepN, [7, 16]),
-    ankleN: at(ANKLE_NEAR, P.stepN, [0.5, 12]),
-    footF: at(FOOT_FAR, P.stepF, [16, 13]),
-    ankleF: at(ANKLE_FAR, P.stepF, [10, 9.5]),
-  };
-}
+const HIP0: V = q(38, 27);
+const SHO0: V = q(78, 43);
+const HAND_N: V = q(86, 8);
+const HAND_F: V = q(101, 7);
+const ANK_N: V = q(41, 11);
+const ANK_F: V = q(61, 11);
+const HEAD0: V = q(102, 28);
+const WROOT_N: V = q(72, 58);
+const WROOT_F: V = q(79, 60);
+const TAIL_ROOT: V = q(31, 28);
 
 export interface Rig {
   hip: V;
-  chest: V;
-  tAng: number;
-  neck0: V;
+  sho: V;
+  mid: V;
+  back: V[];
+  elbowN: V;
+  wristN: V;
+  elbowF: V;
+  wristF: V;
+  kneeN: V;
+  ankN: V;
+  kneeF: V;
+  ankF: V;
   head: V;
-  att: (o: V) => V;
+  neck: V[];
+  tail: V[];
+  rootN: V;
+  rootF: V;
+}
+
+// the tail's rest shape: a hook that drags low and curls up (relative to the root, +y down)
+const TAIL_REST: V[] = [
+  [0, 0],
+  [-5, 3],
+  [-10, 6],
+  [-15, 8],
+  [-19, 8],
+  [-22, 5],
+  [-24, 0],
+  [-25, -6],
+  [-26, -11],
+  [-26, -15],
+];
+
+export function tailPoints(P: Pose, root: V): V[] {
+  const pts: V[] = [root];
+  let ang = 0;
+  let prevRestAng = 0;
+  for (let i = 1; i < TAIL_REST.length; i++) {
+    const d = mul(sub(TAIL_REST[i], TAIL_REST[i - 1]), S);
+    const restAng = Math.atan2(d[1], d[0]);
+    const l = len(d);
+    // relative turn of this segment vs the previous one, scaled by the curl, plus the travelling wave
+    const turn = i === 1 ? restAng : restAng - prevRestAng;
+    prevRestAng = restAng;
+    ang += turn * (i === 1 ? 1 : P.tcurl);
+    const wave = P.tamp * DEG * Math.sin(2 * Math.PI * P.tph - i * 0.62) * (i / (TAIL_REST.length - 1) + 0.25);
+    const lift = (-P.tlift * DEG * 2.2 * i) / TAIL_REST.length;
+    const a = ang + wave * 0.5 + lift;
+    const prev = pts[i - 1];
+    pts.push([prev[0] + Math.cos(a) * l, prev[1] + Math.sin(a) * l]);
+  }
+  return pts;
 }
 
 export function rig(P: Pose): Rig {
-  const hip: V = [42 + OX + P.hx, 66 + OY + P.hy + P.lift];
-  const lean = P.lean + P.chestLean;
-  const tAng = -0.78 + lean;
-  const chest = add(hip, [Math.cos(tAng) * 17, Math.sin(tAng) * 17]);
-  const att = (o: V): V => add(chest, rotV(o, lean));
-  return { hip, chest, tAng, att, neck0: att([3, -5]), head: rnd(add(chest, [15 + P.headX, -21 + P.headY])) };
-}
-
-function wings(P: Pose) {
-  // the wings hang on the body's lean only (a struck chest moves under them; they follow later)
-  const { hip, chest, att } = rig(P.chestLean ? { ...P, chestLean: 0 } : P);
-  const backAttach = add(lerpV(hip, chest, 0.3), rotV([-8, -5], P.lean));
-  const farWing = wingRig(att([1, -8]), P.fw, FAR_FINGERS, 11, 13, att(P.fw.at ?? [-6, -4]));
-  const nearWing = wingRig(att([-6, -6]), P.nw, NEAR_FINGERS, 13, 16, P.nw.at ? att(P.nw.at) : backAttach);
-  if (P.guard) {
-    nearWing.attach = add(hip, [0, 8]);
-    farWing.attach = att([12, 10]);
-  } else if (P.wrap > 0) {
-    nearWing.attach = lerpV(nearWing.attach, add(hip, [0, 8]), P.wrap);
-    farWing.attach = lerpV(farWing.attach, att([12, 10]), P.wrap);
-  }
-  const dy = Math.round(P.wingDy);
-  if (dy) for (const w of [farWing, nearWing]) shiftWing(w, dy);
-  return { farWing, nearWing };
-}
-
-function shiftWing(w: WingRig, dy: number) {
-  const d: V = [0, dy];
-  w.S = add(w.S, d);
-  w.E = add(w.E, d);
-  w.Wr = add(w.Wr, d);
-  w.attach = add(w.attach, d);
-  w.tips = w.tips.map((t) => add(t, d));
-}
-
-/** The glint's vertex and the direction into the glass facet that meets there: the wrist knuckle
- *  (0: the corner of the outer cell between fingers 0 and 1) or the elbow (1: the corner of the
- *  inner sheet; in the guard the peak of the wrapped shield). */
-function glintAnchor(w: WingRig, i: number): { v: V; dir: V } {
-  if (i === 1) return { v: w.E, dir: norm(add(norm(sub(w.Wr, w.E)), norm(sub(w.attach, w.E)))) };
-  return { v: w.Wr, dir: norm(add(norm(sub(w.tips[0], w.Wr)), norm(sub(w.tips[1], w.Wr)))) };
-}
-
-const GLINT_ON = new Set<number>([PAL.cyan1, PAL.cyan2, PAL.cyan3]);
-/** The glint pixel: from the vertex into its facet's corner, the first pixel whose cross (it and its
- *  four neighbours) lies on glass with a 1-px glass margin round it — the facet catches the light
- *  right at its corner, and the white cross stays clear of the white spars and rims (white touching
- *  white would merge into a blob). No such pixel: the vertex itself. */
-function glintOn(p: PixelCanvas, a: { v: V; dir: V }): V {
-  const glass = (x: number, y: number) => {
-    const c = p.get(x, y);
-    return c !== null && GLINT_ON.has(c);
+  const hip = add(HIP0, [P.bx + P.hipX, P.by + P.hipY]);
+  const sho = add(SHO0, [P.bx + P.shX, P.by + P.shY]);
+  const mid: V = [(hip[0] + sho[0]) / 2, (hip[1] + sho[1]) / 2 - P.arch];
+  const back: V[] = [hip, lerpV(hip, mid, 0.55), mid, lerpV(mid, sho, 0.55), sho];
+  const shoulderPt = add(sho, [3 * S, 6 * S]);
+  const wristN = add(HAND_N, P.fN);
+  const wristF = add(HAND_F, P.fF);
+  const elbowN = ik(shoulderPt, wristN, 17 * S, 17 * S, 1);
+  const elbowF = ik(add(shoulderPt, [4 * S, 0]), wristF, 17 * S, 17 * S, 1);
+  const ankN = add(ANK_N, P.lN);
+  const ankF = add(ANK_F, P.lF);
+  const hipJ = add(hip, [2 * S, 4 * S]);
+  const kneeN = ik(hipJ, ankN, 15 * S, 16 * S, -1);
+  const kneeF = ik(add(hipJ, [4 * S, 0]), ankF, 15 * S, 16 * S, -1);
+  const head = add(HEAD0, [P.bx + P.hd[0], P.by + P.hd[1]]);
+  const nb = add(sho, [8 * S, -3 * S]);
+  const neck: V[] = [nb, lerpV(nb, head, 0.5), head];
+  return {
+    hip,
+    sho,
+    mid,
+    back,
+    elbowN,
+    wristN,
+    elbowF,
+    wristF,
+    kneeN,
+    ankN,
+    kneeF,
+    ankF,
+    head,
+    neck,
+    tail: tailPoints(P, add(TAIL_ROOT, [P.bx + P.hipX, P.by + P.hipY])),
+    rootN: add(WROOT_N, [P.bx + P.shX * 0.8, P.by + P.shY * 0.8]),
+    rootF: add(WROOT_F, [P.bx + P.shX * 0.8, P.by + P.shY * 0.8]),
   };
-  const clear = (x: number, y: number) => {
-    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (Math.abs(dx) + Math.abs(dy) <= 2 && !glass(x + dx, y + dy)) return false;
-    return true;
+}
+
+// ------------------------------------------------------------------ small helpers
+
+const hash = (a: number, b = 0) => {
+  let h = (a * 374761393 + b * 668265263) | 0;
+  h = (h ^ (h >>> 13)) * 1274126177;
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+};
+
+const INK = PAL.ink;
+
+/** Cross-section value planes of a tube: a lit top band, a flat mid plane, a turned-under band. */
+const planes = (top = 0.6, under = 0.55, topAt = -0.42, underAt = 0.5) => (_u: number, _v: number, _ox: number, oy: number) => (oy < topAt ? top : oy > underAt ? -under : 0);
+const planesE = (top = 0.6, under = 0.55, topAt = -0.42, underAt = 0.5) => (_x: number, y: number) => (y < topAt ? top : y > underAt ? -under : 0);
+const isHide = (c: number) => c === PAL.stone0 || c === PAL.stone1 || c === PAL.stone2 || c === PAL.stone3 || c === PAL.stone4;
+
+/** Part-space shear: points drawn on the torso follow the hip / shoulder offsets. */
+function bodyMap(P: Pose): (pt: V) => V {
+  const dh: V = [P.bx + P.hipX, P.by + P.hipY];
+  const ds: V = [P.bx + P.shX, P.by + P.shY];
+  return (pt) => {
+    const u = clamp((pt[0] - HIP0[0]) / (SHO0[0] - HIP0[0]), 0, 1);
+    const d = lerpV(dh, ds, u);
+    return [pt[0] + d[0], pt[1] + d[1] - P.arch * Math.sin(Math.PI * u) * 0.9];
   };
-  for (let k = 1; k <= 9; k += 0.5) {
-    const [x, y] = flo(add(a.v, mul(a.dir, k)));
-    if (clear(x, y)) return [x, y];
+}
+
+/** Ember colour for a glow level (0..1) and a spark roll. */
+function emberCol(glow: number, k: number, hot: boolean): number {
+  if (glow < 0.2) return PAL.fire1;
+  if (glow < 0.5) return hot ? PAL.fire3 : PAL.fire2;
+  if (glow < 0.8) return hot ? PAL.fire4 : PAL.fire3;
+  return hot ? PAL.fire4 : k % 3 === 0 ? PAL.fire4 : PAL.fire3;
+}
+
+/** A jagged ember line over the hide: 4-connected (no lone pixels), in runs of ~4 px with dropouts
+ *  between them, dull ends and the odd hot run (deterministic by seed). */
+function emberLine(c: PixelCanvas, pts: readonly V[], P: Pose, seed: number, opt: { gap?: number; on?: (cur: number) => boolean; dim?: number; run?: number } = {}) {
+  const glow = clamp(P.glow * (1 - P.drain) - (opt.dim ?? 0), 0, 1);
+  if (glow <= 0.02) return;
+  const px: V[] = [];
+  const push = (x: number, y: number) => {
+    const last = px[px.length - 1];
+    if (!last || last[0] !== x || last[1] !== y) px.push([x, y]);
+  };
+  for (let i = 1; i < pts.length; i++) {
+    const a = flo(pts[i - 1]);
+    const b = flo(pts[i]);
+    let [x0, y0] = a;
+    const dx = Math.abs(b[0] - x0);
+    const dy = -Math.abs(b[1] - y0);
+    const sx = x0 < b[0] ? 1 : -1;
+    const sy = y0 < b[1] ? 1 : -1;
+    let err = dx + dy;
+    for (;;) {
+      push(x0, y0);
+      if (x0 === b[0] && y0 === b[1]) break;
+      const e2 = 2 * err;
+      const stepX = e2 >= dy;
+      const stepY = e2 <= dx;
+      if (stepX) {
+        err += dy;
+        x0 += sx;
+      }
+      if (stepY) {
+        err += dx;
+        if (stepX) push(x0, y0); // 4-connect the diagonal step
+        y0 += sy;
+      }
+    }
   }
-  return flo(a.v);
+  const run = opt.run ?? 4;
+  const gap = opt.gap ?? 0.2;
+  const n = px.length;
+  for (let k = 0; k < n; k++) {
+    const seg = (k / run) | 0;
+    const segs = ((n - 1) / run) | 0;
+    if (seg > 0 && seg < segs && hash(seed, seg) < gap) continue;
+    const [x, y] = px[k];
+    const cur = c.get(x, y);
+    if (cur === null || cur === INK) continue;
+    if (opt.on && !opt.on(cur)) continue;
+    const edge = seg === 0 || seg === segs;
+    const hot = !edge && hash(seed + 7, seg) > 0.7 - 0.25 * glow;
+    c.set(x, y, edge ? (glow > 0.3 ? PAL.fire2 : PAL.fire1) : emberCol(glow, seg, hot));
+  }
 }
 
-/** The glint vertex of a pose (anchor i; see Pose.sparkles). */
-export function glintPixel(P: Pose, i = 0): V {
-  return flo(glintAnchor(wings(P).nearWing, i).v);
-}
+// ------------------------------------------------------------------ the drawing
 
-/** The pixel the glint of a pose sits on (drawn once without it, then searched like drawDragon). */
-export function glintPixelFor(P: Pose): V | null {
-  if (!P.sparkles.length) return null;
-  const c = newCanvas();
-  drawDragon(c, { ...P, sparkles: [], glintAt: undefined });
-  return glintOn(c, glintAnchor(wings(P).nearWing, P.sparkles[0][0]));
-}
+const KEEP = new Uint8Array(W * H);
 
-export function neckPath(P: Pose): V[] {
-  const { neck0, head } = rig(P);
-  return bezier(neck0, add(add(neck0, rotV([-3, -12], (P.lean + P.chestLean) * 0.6)), P.nk1), add(add(head, polar(P.ha / DEG + 128, 9)), P.nk2), head, 18);
-}
-
-// ------------------------------------------------------------------ neck value planes
-//
-// The neck's planes are explicit bands across the tube (measured on the approved still), not a
-// lighting result: a white lit plane along the contour that faces the key light (square-ended, it
-// fades out at the base where the neck runs behind the chest), mist, a steel shadow plane that
-// widens toward the base and runs into a night3 / night2 throat wedge, a cyan2 rim on the upper
-// neck. The relit (P2) sheet mirrors the same breaks across the neck (the lit band on the other
-// contour), so P2 shows exactly P1's planes, never a centred highlight.
-
-const NECK_W0 = 10.5;
-const NECK_W1 = 7;
-/** the rim starts above this point of the neck (below it the throat wedge meets the outline) */
-const NECK_RIM_U = 0.17;
-type Tab = readonly (readonly [number, number])[];
-/** band widths (px from a contour, across the neck) along the neck (u: 0 base … 1 head); measured on
- *  the still: the lit plane fades out at the base, the shadow plane widens downward into the wedge */
-const NECK_LIT: Tab = [[0.04, 0], [0.08, 1], [0.12, 2], [0.15, 3], [0.35, 3], [0.45, 3.5], [0.6, 4], [1, 4]];
-const NECK_SHADE: Tab = [[0, 9], [0.05, 8], [0.08, 7], [0.12, 6], [0.15, 6], [0.19, 5], [0.3, 5], [0.4, 2.8], [0.6, 2.5], [1, 2.5]];
-const NECK_N3: Tab = [[0, 6], [0.01, 5], [0.05, 4], [0.08, 3], [0.12, 1], [0.14, 0]];
-const NECK_N2: Tab = [[0, 3], [0.01, 2], [0.05, 1], [0.07, 0]];
-function tab(t: Tab, u: number): number {
-  if (u <= t[0][0]) return t[0][1];
-  for (let i = 1; i < t.length; i++) if (u <= t[i][0]) return lerp(t[i - 1][1], t[i][1], (u - t[i - 1][0]) / (t[i][0] - t[i - 1][0]));
-  return t[t.length - 1][1];
-}
-
-/** Tone index (HIDE_D: 0 night2 … 4 white) of a neck pixel at (u along, v across: -1 left … 1 right). */
-function neckTone(u: number, v: number): number {
-  const r = lerp(NECK_W0, NECK_W1, u) / 2;
-  const toward = LIGHT.side < 0 ? -v : v;
-  const dl = (1 - toward) * r;
-  const ds = (1 + toward) * r;
-  if (ds < tab(NECK_N2, u)) return 0;
-  if (ds < tab(NECK_N3, u)) return 1;
-  if (dl < tab(NECK_LIT, u)) return 4;
-  if (ds < tab(NECK_SHADE, u)) return 2;
-  return 3;
-}
-
-const NECK_SEAM_U = 0.37;
-/** One steel throat-plate seam across the lit plane (a short square dash from the lit contour). */
-function neckSeam(c: PixelCanvas, path: V[]) {
-  const s = samplePath(path, NECK_SEAM_U);
-  const r = lerp(NECK_W0, NECK_W1, NECK_SEAM_U) / 2;
-  const toLit: V = mul([-s.tan[1], s.tan[0]], LIGHT.side < 0 ? -1 : 1);
-  lineOn(c, add(s.p, mul(toLit, r + 1)), add(s.p, mul(toLit, r - tab(NECK_LIT, NECK_SEAM_U) + 1.2)), PAL.steel, (cur) => cur === PAL.white);
-}
-
-const HIDE_COLS = [PAL.white, PAL.mist, PAL.steel] as const;
-const onHide = (cur: number) => (HIDE_COLS as readonly number[]).includes(cur);
-const FOLD_LEG: Fold = { top: 1, side: 2, bottom: 3 };
-const THIGH_TURN = 0.6;
-const TAIL_UNDER = 0.4;
-const FAR_LEG_BIAS = -0.15;
-const FOLD_NECK: Fold = { top: 1, side: 1, bottom: 2 };
-
-// ------------------------------------------------------------------ the dragon
-
-export function drawDragon(p: PixelCanvas, P: Pose) {
+/** The whole drake of one pose. */
+export function drawDrake(p: PixelCanvas, P: Pose): void {
   resetPools();
   KEEP.fill(0);
   const R = rig(P);
-  const { hip, chest, tAng, att, head } = R;
-  const { farWing, nearWing } = wings(P);
-  CORE.v = coreOf(R);
+  const map = bodyMap(P);
 
-  composite(p, drawWing(farWing, true, P));
+  tail(p, R, P);
+  legHind(p, R, P, true);
+  wing(p, R, P, true);
+  armFront(p, R, P, true);
+  torso(p, R, P, map);
+  legHind(p, R, P, false);
+  if (!P.wfront) wing(p, R, P, false);
+  neckAndHead(p, R, P);
+  armFront(p, R, P, false);
+  if (P.wfront) wing(p, R, P, false);
 
-  // ---------------- far leg / far arm (one value darker; a night1 line where they meet the body)
-  const L = legs(P);
-  {
-    const g = newG();
-    const j = add(hip, [8, 0]);
-    const knee = ik(j, L.ankleF, 10.5, 9.5, -1);
-    // the far leg sits in the body's shadow: a value lower than its own lighting (night3 / steel)
-    gTube(g, [j, knee], 10, 6.5, M.HIDE_FAR, { z: 0, bias: FAR_LEG_BIAS });
-    gTube(g, [knee, L.ankleF], 6, 4.2, M.HIDE_FAR, { z: 1, bias: FAR_LEG_BIAS });
-    gTube(g, [L.ankleF, add(L.footF, [-1, 0])], 4.2, 3.8, M.HIDE_FAR, { z: 2 });
-    gEll(g, L.footF, 3.4, 2, 0, M.HIDE_FAR, { z: 2 });
-    const c = g.render();
-    // a lit top edge on the foot, a dark sole
-    footEdges(c, L.footF, true);
-    claws(c, L.footF, true);
-    maskOf(c, FAR_MASK);
-    composite(p, c);
-  }
-  {
-    const g = newG();
-    const s = att([7, 1]);
-    const a = P.arm + P.armF;
-    const el = add(s, polar(72 - a, 7));
-    const wr = add(el, polar(-35 - a * 1.4, 8));
-    gTube(g, [s, el, wr], 4.8, 3.4, M.HIDE_FAR);
-    gEll(g, add(wr, polar(-35 - a * 1.4, 1)), 2.2, 1.7, (-35 - a * 1.4) * DEG, M.HIDE_FAR, { z: 2 });
-    const c = g.render();
-    hand(c, wr, -35 - a * 1.4, true);
-    composite(p, c);
-  }
-
-  // ---------------- tail (+ ridge crystals and the crystal blade)
-  {
-    const base = [142, 138, 143, 153, 166, 180, 196, 216, 238, 256];
-    const pts: V[] = [add(hip, rotV([-7, 3], P.lean * 0.4))];
-    for (let i = 0; i < base.length; i++) {
-      const k = i / (base.length - 1);
-      const a = base[i] - P.tailLift * k * k + Math.sin((P.tail - i * 0.07) * Math.PI * 2) * P.tailAmp * (0.3 + k);
-      pts.push(add(pts[i], polar(a, 3.45)));
-    }
-    // overlap: the middle of the tail follows a body step a frame late, the tip two frames late
-    for (let i = 1; i < pts.length; i++) {
-      const k = i / (pts.length - 1);
-      const dy = k < 0.3 ? 0 : k < 0.65 ? P.tailLag[0] * ((k - 0.3) / 0.35) : lerp(P.tailLag[0], P.tailLag[1], (k - 0.65) / 0.35);
-      if (dy) pts[i] = add(pts[i], [0, dy]);
-    }
-    const gs = newG();
-    for (let i = 1; i < pts.length - 2; i += 2) {
-      const t = norm(sub(pts[i + 1], pts[i]));
-      const dn = dorsal(t);
-      const k = i / pts.length;
-      const r = lerp(10, 2.6, k) / 2;
-      const b = add(pts[i], mul(dn, r));
-      gShard(gs, b, add(dn, mul(t, 0.6)), lerp(6, 4, k), lerp(2, 1.4, k), M.CRYS, 0, P.glow);
-    }
-    composite(p, gs.render(0, false));
-    const g = newG();
-    // the underside turns under into a steel band (light from above in both sheets)
-    gTube(g, pts, 10, 2.6, M.HIDE, { flat: 1.15, biasAt: (_u, _v, _ox, oy) => (oy > 0 ? -TAIL_UNDER * oy : 0) });
-    const tip = pts[pts.length - 1];
-    const tdir = norm(sub(tip, pts[pts.length - 3]));
-    gShard(g, sub(tip, mul(tdir, 1)), tdir, 8, 2.8, M.CRYS, 6, P.glow);
-    const c = g.render();
-    rimLight(c, p);
-    composite(p, c);
-  }
-
-  // ---------------- back crystals + torso
-  {
-    const gs = newG();
-    const axis = norm(sub(chest, hip));
-    const dn = dorsal(axis);
-    const spikes: [number, number, number][] = [
-      [1.05, 8, 7],
-      [0.74, 9.5, 8.5],
-      [0.42, 10, 7],
-      [0.1, 9.5, 5],
-    ];
-    for (const [t, off, l] of spikes) {
-      const b = add(lerpV(hip, chest, t), mul(dn, off - 1));
-      gShard(gs, b, add(dn, mul(axis, -0.6)), l, l * 0.36, M.CRYS, 0, P.glow);
-    }
-    composite(p, gs.render(0, false));
-  }
-  {
-    const g = newG();
-    // the tube wins wherever it covers: the lit / mid break runs straight along the torso (a plane
-    // break, not rings); the two ellipsoids only round off the silhouette
-    gEll(g, hip, 13.5, 11.5, (tAng - P.chestLean) * 0.3, M.HIDE, { flat: 1.45 });
-    gEll(g, chest, 10.5, 11.5, tAng, M.HIDE, { flat: 1.45 });
-    gTube(g, [hip, chest, att([3, -5])], 21, 16, M.HIDE, { flat: 1.45, z: 6 });
-    const c = g.render();
-    keel(c, R, P);
-    if (P.cracks > 0) cracksOn(c, P, torsoCracks(R), false);
-    rimLight(c, p);
-    composite(p, c);
-  }
-
-  // ---------------- near hind leg: shin + foot, then the thigh over them (a night3 crease behind
-  // the knee) and over the belly (night3 crease 1 px over, 2 behind, 3 under; ONE night1 line
-  // against the far leg)
-  {
-    const j = add(hip, [3, 3]);
-    const knee = ik(j, L.ankleN, 11, 9.5, -1);
-    const gl = newG();
-    gTube(gl, [knee, L.ankleN], 6.5, 4.6, M.HIDE, { z: 1, flat: 1.1 });
-    gTube(gl, [L.ankleN, add(L.footN, [-1, 0])], 4.6, 4, M.HIDE, { z: 2 });
-    gEll(gl, L.footN, 3.8, 2.2, 0, M.HIDE, { z: 2 });
-    const cl = gl.render();
-    footEdges(cl, L.footN, false);
-    claws(cl, L.footN, false);
-    const g = newG();
-    // the thigh: the side turned away from the key light (its back) drops into a steel shadow plane
-    // (the tube's own lighting would centre the highlight: the light falls almost along the thigh)
-    gTube(g, [j, knee], 16.5, 9.5, M.HIDE, { z: 2, flat: 1.25, biasAt: (_u, _v, ox) => Math.min(0, THIGH_TURN * ox * LIGHT.side) });
-    const c = g.render();
-    composite(cl, c, crease, { top: 0, side: 1, bottom: 2 });
-    // one straight fracture down the thigh's plane break (its long axis: lit front | shadow back)
-    if (P.cracks > 0) cracksOn(cl, P, [{ from: 0.3, pts: [lerpV(j, knee, 0.12), lerpV(j, knee, 0.8)] }], false);
-    rimLight(cl, p);
-    // against the far leg: ONE night1 line, then the far leg's own junction shadow (one value down)
-    maskOf(cl, LEG_MASK);
-    const on = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H && LEG_MASK[y * W + x] === 1;
-    composite(p, cl, (x, y, b) => (FAR_MASK[y * W + x] && (on(x - 1, y) || on(x + 1, y) || on(x, y - 1) || on(x, y + 1)) ? PAL.night1 : crease(x, y, b)), FOLD_LEG);
-  }
-
-  // ---------------- neck (+ crystal crest in its dark channel)
-  const nPath = neckPath(P);
-  {
-    const gs = newG();
-    for (const t of [0.3, 0.45, 0.6, 0.74, 0.87]) {
-      const s = samplePath(nPath, t);
-      const dn = dorsal(s.tan);
-      const r = lerp(10, 7, t) / 2;
-      const b = add(s.p, mul(dn, r - 0.5));
-      gShard(gs, b, add(dn, mul(s.tan, -0.55)), lerp(8, 5, t), lerp(2.4, 1.7, t), M.CRYS, 0, Math.max(P.glow, P.crestFlare));
-    }
-    const cs = gs.render(0, false);
-    // the crest sits in a dark cyan0 channel: the glass behind it folds two values down
-    composite(p, cs, (x, y, b) => (b === PAL.cyan1 || b === PAL.cyan2 ? PAL.cyan0 : crease(x, y, b)), { top: 2, side: 2, bottom: 2 });
-    const g = newG();
-    gTube(g, nPath, NECK_W0, NECK_W1, M.HIDE_D, { biasAt: neckTone });
-    const c = g.render();
-    neckSeam(c, nPath);
-    // the cool rim only along the upper neck (the base runs into the dark throat wedge, unrimmed)
-    rimLight(c, p, [PAL.steel], PAL.cyan2, (x, y) => pathU(nPath, [x + 0.5, y + 0.5]) > NECK_RIM_U);
-    composite(p, c, crease, FOLD_NECK);
-  }
-
-  // ---------------- head
-  HEAD_MASK.fill(0);
-  drawHead(p, head, P);
-
-  // ---------------- near arm (raised forearm: white top plane, flat steel underside, wrist crease)
-  {
-    const g = newG();
-    const s = att([2, 3]);
-    const el = add(s, polar(68 - P.arm, 7.5));
-    const wa = -30 - P.arm * 1.4;
-    const wr = add(el, polar(wa, 9));
-    gEll(g, add(s, [0.5, 1]), 3.6, 3.2, 0, M.HIDE, { z: 1, flat: 1.3 });
-    gTube(g, [s, el, wr], 5.8, 4.2, M.HIDE, { flat: 1.2 });
-    gEll(g, add(wr, polar(wa, 1)), 2.6, 2, wa * DEG, M.HIDE, { z: 2, bias: 0.3 });
-    const c = g.render();
-    forearmUnderside(c, el, wr);
-    rimLight(c, p);
-    hand(c, wr, wa, false);
-    castShadow(p, c);
-    // the crease on the side facing the key light (and above) is one value (steel); behind and under
-    // the arm it is the night3 crease
-    composite(p, c, (x, y, b) => (c.isOpaque(x - LIGHT.side, y) || c.isOpaque(x, y + 1) ? selout(x, y, b) : crease(x, y, b)));
-  }
-
-  // ---------------- near wing (in front)
-  {
-    const c = drawWing(nearWing, false, P);
-    if (P.cracks > 0) {
-      // one straight fracture across the inner sheet, from the forearm toward the trailing edge
-      const { E, Wr, tips } = nearWing;
-      cracksOn(c, P, [{ from: 0.36, pts: [lerpV(E, Wr, 0.45), lerpV(lerpV(tips[1], tips[2], 0.5), Wr, 0.3)] }], true);
-    }
-    composite(p, c);
-  }
-
-  // ---------------- smear frame (attack release): the head and horns are stretched back along their
-  // path by 2 px — matter, attached to the back of the skull and the horn, outlined with the body
-  if (P.smearFrom) smearHead(p, pose(P.smearFrom), P);
-
-  // ---------------- one last calm pass: lone 1-px crumbs inside the body take their surroundings
-  cleanCrumbs(p);
-
-  // ---------------- the crystal glint: one, on a facet vertex of the lit edge (it rides the vertex)
-  for (const [ai, size] of P.sparkles.slice(0, 1)) twinkle(p, P.glintAt ?? glintOn(p, glintAnchor(nearWing, ai)), size);
-
-  // ---------------- part 2: the light drains, the crystal splits, the fragments gather
-  if (P.drain > 0) drainLight(p, P);
-  if (P.split > 0) splitBody(p, R, P);
-  if (P.gather < 1) gatherBody(p, P);
-
-  p.outline(PAL.ink);
-  ashSkin(p, P, R, nPath);
-
-  // prism light gathering between the jaws while charging (unoutlined: it is light, not matter)
-  if (P.mouth > 0.45 && P.jaw < 0.5) {
-    const m = rnd(add(mouthPoint(P), [1, 0]));
-    const k = P.mouth;
-    const put = (dx: number, dy: number, col: number) => p.set(m[0] + dx, m[1] + dy, col);
-    if (k > 0.9) {
-      for (const [dx, dy] of [[3, 0], [-3, 0], [0, 3], [0, -3]] as const) put(dx, dy, PAL.cyan3);
-      for (const [dx, dy] of [[2, 0], [-2, 0], [0, 2], [0, -2], [1, 1], [-1, 1], [1, -1], [-1, -1]] as const) put(dx, dy, PAL.cyan4);
-      put(4, 0, PAL.cyan2);
-    } else if (k > 0.7) {
-      for (const [dx, dy] of [[2, 0], [-2, 0], [0, 2], [0, -2]] as const) put(dx, dy, PAL.cyan3);
-    }
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) put(dx, dy, k > 0.7 ? PAL.white : PAL.cyan4);
-    put(0, 0, PAL.white);
-    remapWith(p, HIDE_MAP); // the gathered light is ember, not prism
-  }
+  embers(p, R, P, map);
+  p.outline(INK);
+  rimsAndAsh(p, R, P);
+  if (P.crumble > 0) crumble(p, P);
 }
 
-/**
- * The keel: ONE cyan2 crystal line down the chest (at rest it sits exactly on the break between
- * the white lit plane and the mist mid plane, as on the still). It is fixed in torso space, so it
- * moves rigidly with the chest; the chest pulse lights it during the breath (cyan3 → a white core
- * with a cyan3 edge on its shadow side).
- */
-function keel(c: PixelCanvas, R: Rig, P: Pose) {
-  const a = R.att([-6.4, 0.6]);
-  const b = R.att([-3.4, 9.6]);
-  const core = P.pulse > 0.66 ? PAL.white : P.pulse > 0.33 ? PAL.cyan4 : PAL.cyan2;
-  const onChest = (cur: number) => cur === PAL.white || cur === PAL.mist || cur === PAL.steel;
-  if (P.pulse > 0.66) {
-    const s = -LIGHT.side;
-    lineOn(c, [a[0] + s, a[1]], [b[0] + s, b[1]], PAL.cyan3, onChest);
-  }
-  lineOn(c, a, b, core, (cur) => onChest(cur) || cur === PAL.cyan3);
-}
+// ---------------------------------------------------------------- torso
 
-/** Deliberate single pixels (eye glint, iris, nostril) that the crumb pass must keep. */
-const KEEP = new Uint8Array(W * H);
-
-/**
- * A pixel inside the body (4 opaque, non-ink neighbours) with no neighbour of its own colour in any
- * of the 8 directions is a crumb left where planes, creases and rims meet: it takes the colour its
- * 4-neighbours share most. 1-px lines (8-connected) and the silhouette are never touched.
- */
-function cleanCrumbs(p: PixelCanvas) {
-  const hits: number[] = [];
-  for (let y = 1; y < H - 1; y++)
-    for (let x = 1; x < W - 1; x++) {
-      if (KEEP[y * W + x]) continue;
-      const c = p.get(x, y);
-      if (c === null || c === PAL.ink || !p.isOpaque(x, y)) continue;
-      let same = false;
-      for (let dy = -1; dy <= 1 && !same; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && p.isOpaque(x + dx, y + dy) && p.get(x + dx, y + dy) === c) same = true;
-      if (same) continue;
-      const n4: number[] = [];
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-        const q = p.isOpaque(x + dx, y + dy) ? p.get(x + dx, y + dy) : null;
-        if (q === null || q === PAL.ink) break;
-        n4.push(q);
-      }
-      if (n4.length < 4) continue;
-      let best = n4[0];
-      let bn = 0;
-      for (const q of n4) {
-        const k = n4.filter((v) => v === q).length;
-        if (k > bn) [best, bn] = [q, k];
-      }
-      hits.push(x, y, best);
-    }
-  for (let i = 0; i < hits.length; i += 3) p.set(hits[i], hits[i + 1], hits[i + 2]);
-}
-
-/** The raised forearm's flat steel underside: the lower 2 px of the forearm (elbow → wrist). */
-function forearmUnderside(c: PixelCanvas, el: V, wr: V) {
-  const t = norm(sub(wr, el));
-  let n: V = [-t[1], t[0]];
-  if (n[1] < 0) n = [-n[0], -n[1]];
-  const hits: number[] = [];
-  for (let y = Math.floor(Math.min(el[1], wr[1]) - 4); y <= Math.ceil(Math.max(el[1], wr[1]) + 4); y++)
-    for (let x = Math.floor(Math.min(el[0], wr[0]) - 4); x <= Math.ceil(Math.max(el[0], wr[0]) + 4); x++) {
-      const cur = c.get(x, y);
-      if (cur !== PAL.white && cur !== PAL.mist) continue;
-      const q: V = [x + 0.5, y + 0.5];
-      const along = dot(sub(q, el), t);
-      if (along < 1 || along > len(sub(wr, el)) + 0.5) continue;
-      if (dot(sub(q, el), n) > 0.6) hits.push(x, y);
-    }
-  for (let i = 0; i < hits.length; i += 2) c.set(hits[i], hits[i + 1], PAL.steel);
-}
-
-/** One value down: the shadow a part casts on the hide behind it. */
-const SHADOW: Record<number, number> = {
-  [PAL.white]: PAL.steel,
-  [PAL.mist]: PAL.steel,
-  [PAL.steel]: PAL.night3,
-  [PAL.cyan2]: PAL.cyan1,
-  [PAL.cyan3]: PAL.cyan1,
-  [PAL.cyan4]: PAL.cyan2,
-};
-/**
- * Cast shadow of a layer (the near arm) on the body already drawn: the layer's shape moved away from
- * the key light (down, and to the far side), over the hide only, never under the layer itself.
- */
-function castShadow(p: PixelCanvas, layer: PixelCanvas, off: V = [2, 2]) {
-  const ox = -LIGHT.side * off[0];
-  const oy = off[1];
-  const hits: number[] = [];
-  for (let y = 0; y < H; y++)
-    for (let x = 0; x < W; x++) {
-      if (layer.isOpaque(x, y) || !p.isOpaque(x, y)) continue;
-      if (!layer.isOpaque(x - ox, y - oy)) continue;
-      const to = SHADOW[p.get(x, y)!];
-      if (to !== undefined) hits.push(x, y, to);
-    }
-  for (let i = 0; i < hits.length; i += 3) p.set(hits[i], hits[i + 1], hits[i + 2]);
-}
-
-/** Foot: a lit top edge and a dark sole (near night3, far night2). */
-function footEdges(c: PixelCanvas, foot: V, far: boolean) {
-  const x0 = Math.floor(foot[0]);
-  const y0 = Math.floor(foot[1]);
-  for (let y = y0 - 4; y <= y0 + 3; y++)
-    for (let x = x0 - 6; x <= x0 + 5; x++) {
-      const cur = c.get(x, y);
-      if (cur === null) continue;
-      if (!c.isOpaque(x, y + 1) && y >= y0) c.set(x, y, far ? PAL.night2 : PAL.night3);
-    }
-}
-
-/** The head layer's pixels (skull, jaw, mouth, horns) of the frame being drawn. */
-const HEAD_MASK = new Uint8Array(W * H);
-function orMask(c: PixelCanvas, into: Uint8Array) {
-  for (let i = 0; i < W * H; i++) if (c.data[i * 4 + 3]) into[i] = 1;
-}
-
-/**
- * Smear frame of the lunging head: the head (with its horns) is repeated 1 and 2 px back along its
- * motion (from the previous pose's head to this one) on the empty pixels behind it, so the back of
- * the skull and the horn stretch into a short trail that is part of the silhouette (outlined with
- * it), never a loose stroke in the air.
- */
-function smearHead(p: PixelCanvas, from: Pose, to: Pose) {
-  const d = norm(sub(rig(to).head, rig(from).head));
-  const hits: number[] = [];
-  const taken = new Set<number>();
-  for (const k of [1, 2]) {
-    const o = rnd(mul(d, k));
-    for (let y = 0; y < H; y++)
-      for (let x = 0; x < W; x++) {
-        if (!HEAD_MASK[y * W + x]) continue;
-        const tx = x - o[0];
-        const ty = y - o[1];
-        if (tx < 1 || ty < 1 || tx >= W - 1 || ty >= H - 1 || p.isOpaque(tx, ty) || taken.has(ty * W + tx)) continue;
-        const c = p.get(x, y);
-        if (c === null || c === PAL.ink) continue;
-        taken.add(ty * W + tx);
-        hits.push(tx, ty, c);
-      }
-  }
-  for (let i = 0; i < hits.length; i += 3) p.set(hits[i], hits[i + 1], hits[i + 2]);
-}
-
-function claws(c: PixelCanvas, foot: V, far: boolean) {
-  const col = far ? PAL.steel : PAL.white;
-  const x = Math.floor(foot[0]);
-  const y = Math.floor(foot[1]);
-  c.set(x + 4, y + 1, col);
-  c.set(x + 3, y + 2, col);
-  c.set(x + 2, y + 2, col);
-  c.set(x, y + 2, col);
-  c.set(x - 1, y + 2, col);
-}
-
-/** Forefoot claws: two hooks growing straight out of the front of the palm. */
-function hand(c: PixelCanvas, wr: V, ang: number, far: boolean) {
-  const col = far ? PAL.steel : PAL.white;
-  const tipCol = far ? PAL.night3 : PAL.mist;
-  const palm = add(wr, polar(ang, 1));
-  for (const [da, long] of [[0, true], [48, false]] as const) {
-    let k = 1.5;
-    let a = flo(add(palm, polar(ang + da, k)));
-    while (c.isOpaque(a[0], a[1]) && k < 6) {
-      k += 0.5;
-      a = flo(add(palm, polar(ang + da, k)));
-    }
-    c.set(a[0], a[1], col);
-    if (long) {
-      const b = flo(add(palm, polar(ang + da + 35, k + 1.2)));
-      if (!c.isOpaque(b[0], b[1])) c.set(b[0], b[1], tipCol);
-    }
-  }
-}
-
-// ------------------------------------------------------------------ wing
-
-/**
- * Crystal wing, restyled: every membrane cell is ONE flat glass tone (near: outer cells cyan3,
- * the inner sheet cyan2 with ONE cyan3 fold line from the elbow and cyan1 at the root; far: one
- * value darker), the free trailing edges carry one rim line coloured by their facing (white toward
- * the key light, cyan4 away), the bones are two-tone spars (white edge toward the light).
- */
-function drawWingRaw(r: WingRig, far: boolean, P: Pose): PixelCanvas {
+function torso(p: PixelCanvas, R: Rig, P: Pose, map: (pt: V) => V) {
   const g = newG();
-  const glass = far ? M.GLASS_FAR : M.GLASS;
-  const { S, E, Wr, tips, attach } = r;
-  const n = tips.length;
-  const shield = P.guard && !far;
-  const w = far ? P.fw : P.nw;
-  const scal = w.scal ?? 1;
-  // GLASS: 0 cyan0 1 cyan1 2 cyan2 3 cyan3 4 cyan4 5 white | GLASS_FAR: 0 night1 1 cyan0 2 cyan1 3 cyan2 4 cyan3
-  // [lead, trail] facet tone of each cell (outer → inner): the outer cells are flat, the inner
-  // sheet keeps its two facets (lit lead facet by the finger, the broad trail sheet one value down)
-  const cellTone = (i: number): [number, number] => (shield ? (i < n - 1 ? [3, 2] : [2, 1]) : far ? (i < n - 1 ? [3, 3] : [2, 2]) : i < n - 1 ? [3, 3] : [3, 2]);
-  const rootTone = 1;
-  const curves: V[][] = [];
-  const valleys: V[] = [];
-  for (let i = 0; i < n; i++) {
-    const a = tips[i];
-    const inner = i + 1 >= n;
-    const b = inner ? attach : tips[i + 1];
-    const hub = inner ? lerpV(Wr, E, 0.5) : Wr;
-    // trailing edge: a scallop between two finger tips (its depth breathes with `scal`)
-    const curve = bezier(a, lerpV(lerpV(a, b, 0.5), hub, (inner ? 0.42 : 0.62) * scal), b, undefined, 10);
-    curves.push(curve);
-    valleys.push(curve[5]);
-    const [lead, trail] = cellTone(i);
-    const root = (x: number, y: number) => inner && !shield && !far && distSeg([x + 0.5, y + 0.5], attach, S) < 4.2;
-    // flare: one step lighter; a flat cell opens into its two facets (lit lead, trail one value down)
-    const up = P.flare >= 0.5 ? 1 : 0;
-    const trailUp = up && lead === trail ? 0 : up;
-    gFacet(g, [Wr, ...curve.slice(0, 6)], glass, FLAT_N, 0, (x, y) => (root(x, y) ? rootTone + up : lead + up));
-    gFacet(g, inner ? [Wr, ...curve.slice(5), S, E] : [Wr, ...curve.slice(5)], glass, FLAT_N, 0, (x, y) => (root(x, y) ? rootTone + up : trail + trailUp));
+  const [h0, h1, h2, h3, h4] = R.back;
+  tubeS(g, [h0, h1, h2, h3, h4], 17, 28, M.HIDE, { flat: 2.4, biasAt: planes(0.5, 0.7, -0.45, 0.45) });
+  // the haunch mass and the shoulder hump
+  ellS(g, add(R.hip, [0, 1 * S]), 12, 12, 0.1, M.HIDE, { z: 1, flat: 2.4, biasEll: planesE(0.5, 0.7) });
+  ellS(g, add(R.sho, [1 * S, -2 * S]), 14, 16, -0.35, M.HIDE, { z: 1, flat: 2.4, biasEll: planesE(0.55, 0.7, -0.4, 0.5) });
+  const c = g.render();
+  composite(p, c, selout, { top: 1, side: 1, bottom: 1 });
+  // dorsal plates along the spine: two-tone spikes standing on the back line
+  const sp = newG();
+  const spine = bezier(add(R.hip, [-8 * S, -9 * S]), add(R.hip, [10 * S, -12 * S]), add(R.sho, [-14 * S, -17 * S]), add(R.sho, [-2 * S, -17 * S]), 14);
+  for (let i = 1; i < spine.length - 1; i++) {
+    if (i % 2 === 0) continue;
+    const t = norm(sub(spine[i + 1], spine[i - 1]));
+    const up: V = [t[1], -t[0]];
+    const upv: V = up[1] < 0 ? up : mul(up, -1);
+    const L = (3.5 + 1.5 * Math.sin((i / spine.length) * Math.PI)) * S;
+    const base = spine[i];
+    tubeS(sp, [base, add(base, mul(norm(add(upv, mul(t, -0.5))), L))], 4.2, 1, M.PLATE, { z: 2, biasAt: (_u, _v, ox) => (ox < 0 ? 2 : 1) });
   }
-  const c = g.render(0, false);
+  composite(p, sp.render(0, false), selout, { top: 0, side: 1, bottom: 0 });
+}
 
-  // trailing-edge rims: free glass edges next to a scallop → one line, coloured by its facing
-  // hitMagic flare: every facet one ramp step lighter, and the lines that separate them step up with
-  // them (the rim facing away and the fold line), so the three planes and their lines survive
-  const flared = P.flare >= 0.5;
-  const rimHi = far ? PAL.cyan2 : shield ? PAL.cyan3 : PAL.white;
-  const rimLo = far ? PAL.cyan2 : shield ? PAL.cyan2 : flared ? PAL.white : PAL.cyan4;
-  {
-    const hits: number[] = [];
-    for (let y = 0; y < H; y++)
-      for (let x = 0; x < W; x++) {
-        if (!c.isOpaque(x, y)) continue;
-        if (c.isOpaque(x - 1, y) && c.isOpaque(x + 1, y) && c.isOpaque(x, y - 1) && c.isOpaque(x, y + 1)) continue;
-        const q: V = [x + 0.5, y + 0.5];
-        let near = false;
-        for (const cv of curves) if (distPoly(q, cv) < 1.6) near = true;
-        if (!near) continue;
-        let nx = 0;
-        let ny = 0;
-        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && !c.isOpaque(x + dx, y + dy)) (nx += dx), (ny += dy);
-        const f = dot(norm([nx, ny]), LIGHT.v2);
-        hits.push(x, y, f > -0.05 ? rimHi : rimLo);
-      }
-    for (let i = 0; i < hits.length; i += 3) c.set(hits[i], hits[i + 1], hits[i + 2]);
+// ---------------------------------------------------------------- hind leg
+
+function legHind(p: PixelCanvas, R: Rig, P: Pose, far: boolean) {
+  const hip = far ? add(R.hip, [5 * S, 2 * S]) : add(R.hip, [1 * S, 3 * S]);
+  const knee = far ? R.kneeF : R.kneeN;
+  const ank = far ? R.ankF : R.ankN;
+  const mat = far ? M.HIDE_FAR : M.HIDE;
+  const g = newG();
+  tubeS(g, [hip, knee], 19, 11, mat, { flat: 2.2, biasAt: planes() });
+  ellS(g, hip, far ? 9 : 10, far ? 9 : 10, 0, mat, { flat: 2.2, biasEll: planesE() });
+  tubeS(g, [knee, ank], 11, 7, mat, { flat: 2.2, z: 0.5, biasAt: planes() });
+  ellS(g, knee, 6, 6, 0, mat, { z: 1, flat: 2.2, biasEll: planesE() });
+  // flat foot with three toes
+    tubeS(g, [add(ank, [-2 * S, 0]), add(ank, [4 * S, 3 * S]), [ank[0] + 11 * S, GY - 3 * S]], 9, 6, mat, { flat: 1.3 });
+  const c = g.render();
+  composite(p, c, far ? selout : crease, far ? { top: 1, side: 1, bottom: 1 } : { top: 1, side: 2, bottom: 2 });
+  // claws
+  const fx = ank[0] + 11 * S;
+  const fy = GY - 3 * S;
+  const cl = newG();
+  for (let i = 0; i < 3; i++) tubeS(cl, [[fx - 1 * S + i * 0.5, fy - 2 * S + i * 1.4 * S], [fx + (4 + i) * S, fy + 1 * S + i * 0.7 * S]], 3, 1, far ? M.BONE_FAR : M.HORN, { z: 2 });
+  composite(p, cl.render(0, false), selout, { top: 0, side: 1, bottom: 0 });
+}
+
+// ---------------------------------------------------------------- forelimb
+
+function armFront(p: PixelCanvas, R: Rig, P: Pose, far: boolean) {
+  const sh = far ? add(R.sho, [7 * S, 6 * S]) : add(R.sho, [2 * S, 7 * S]);
+  const el = far ? R.elbowF : R.elbowN;
+  const wr = far ? R.wristF : R.wristN;
+  const mat = far ? M.HIDE_FAR : M.HIDE;
+  const g = newG();
+  tubeS(g, [sh, el], far ? 13 : 16, far ? 9 : 11, mat, { flat: 2.2, biasAt: planes() });
+  ellS(g, el, far ? 6 : 7, far ? 6 : 7, 0, mat, { z: 1, flat: 2.2, biasEll: planesE() });
+  tubeS(g, [el, wr], far ? 10 : 12, far ? 7 : 9, mat, { flat: 2.2, z: 0.5, biasAt: planes() });
+  // the fist: a knuckle ball on the floor
+  const fist = add(wr, [2 * S, 1 * S]);
+  ellS(g, fist, far ? 6 : 7, far ? 5 : 6, 0, mat, { z: 1.5, flat: 2.2, biasEll: planesE() });
+  const c = g.render();
+  composite(p, c, far ? selout : crease, far ? { top: 1, side: 1, bottom: 1 } : { top: 1, side: 2, bottom: 2 });
+  // three claws
+  const spread = P.claw;
+  const cl = newG();
+  const base = add(fist, [4 * S, -1 * S]);
+  for (let i = 0; i < 3; i++) {
+    const a0: V = [base[0] + i * 0.2, base[1] - 1.5 * S + i * 2 * S];
+    const tip: V = [base[0] + (6 + spread * 3 + i * 0.4) * S, base[1] + (3 + i * 1.7 + spread * (i - 1) * 2) * S];
+    tubeS(cl, [a0, [lerp(a0[0], tip[0], 0.5), lerp(a0[1], tip[1], 0.5) - 0.5], tip], 3.4, 1, far ? M.BONE_FAR : M.HORN, { z: 2 });
   }
-
-  // ONE fold line across the inner sheet: from the elbow toward the middle of its trailing edge
-  if (!shield) {
-    const inner = curves[n - 1];
-    const fold = far ? (flared ? PAL.cyan2 : PAL.cyan1) : flared ? PAL.cyan4 : PAL.cyan3;
-    const from = lerpV(E, Wr, 0.12);
-    const to = inner[5];
-    const glassCols = new Set(MATS_GLASS(far));
-    lineOn(c, lerpV(from, to, 0.08), lerpV(from, to, 0.93), fold, (cur) => glassCols.has(cur) && cur !== rimHi && cur !== rimLo);
-  }
-
-  // bones: arm (humerus + forearm) as a flat mid-tone spar with ONE lit edge and ONE dark underside
-  {
-    const gb = newG();
-    const bone = far ? M.BONE_FAR : M.BONE;
-    gTube(gb, [S, E, Wr], 4.8, 3.6, bone, { z: 4, flat: 3 });
-    gEll(gb, Wr, 2.5, 2.5, 0, bone, { z: 5, flat: 3 });
-    gEll(gb, E, 2.7, 2.7, 0, bone, { z: 5, flat: 3 });
-    const b = gb.render(0, false);
-    if (far) edgePaint(b, PAL.mist, PAL.night3, { lit: 0.45, dark: -0.2 });
-    else {
-      // humerus: white edge, mist, steel; forearm: white leading edge, mist, cyan1 underside
-      edgePaint(b, PAL.white, null, { lit: 0.12 });
-      const hum = (x: number, y: number) => distSeg([x + 0.5, y + 0.5], S, E) < distSeg([x + 0.5, y + 0.5], E, Wr);
-      const hits: number[] = [];
-      for (let y = 0; y < H; y++)
-        for (let x = 0; x < W; x++) {
-          const cur = b.get(x, y);
-          if (cur === null || cur === PAL.white) continue;
-          if (b.isOpaque(x - 1, y) && b.isOpaque(x + 1, y) && b.isOpaque(x, y - 1) && b.isOpaque(x, y + 1)) continue;
-          const nn = norm(edgeNormal(b, x, y));
-          if (dot(nn, LIGHT.v2) <= -0.2) hits.push(x, y, hum(x, y) ? PAL.steel : PAL.cyan1);
-        }
-      for (let i = 0; i < hits.length; i += 3) b.set(hits[i], hits[i + 1], hits[i + 2]);
-    }
-    // the elbow knuckle stays one calm tone; the wrist knuckle gets a 2-px cyan4 glint
-    if (!far) {
-      const k = flo(add(Wr, [LIGHT.side < 0 ? -1 : 0, -1]));
-      if (b.isOpaque(k[0], k[1])) b.set(k[0], k[1], PAL.cyan4);
-      if (b.isOpaque(k[0] + 1, k[1])) b.set(k[0] + 1, k[1], PAL.cyan4);
-    }
-    composite(c, b, (_x, _y, behind) => behind);
-  }
-
-  // finger bones: finger 0 (the spike) a two-tone spar, finger 1 a white top row over mist,
-  // finger 2 one mist line (far wing: finger 0 one steel line, finger 1 one steel strut)
-  for (let i = 0; i < n; i++) {
-    const t = tips[i];
-    const a = flo(Wr);
-    const e = flo(t);
-    if (shield) {
-      lineOn(c, lerpV(Wr, t, 0.2), lerpV(Wr, t, 0.86), i === 0 ? PAL.white : PAL.mist);
-      continue;
-    }
-    if (far) {
-      // finger 0: the leading edge, one steel line with a lit mist tip; finger 2: the one strut
-      // between the two cells (steel, a short mist lit edge toward its tip); finger 1 is hidden
-      if (i === 0) {
-        c.line(a[0] + 1, a[1], e[0], e[1], PAL.steel);
-        const m = flo(lerpV(Wr, t, 0.82));
-        c.line(m[0], m[1], e[0], e[1], PAL.mist);
-      } else if (i === n - 1) {
-        c.line(a[0], a[1], e[0], e[1], PAL.steel);
-        const m = flo(lerpV(Wr, t, 0.62));
-        lineOn(c, [m[0] + 0.5, m[1] - 0.5], [e[0] + 1.5, e[1] - 0.5], PAL.mist, (cur) => cur !== PAL.steel);
-      }
-      continue;
-    }
-    const dir = norm(sub(t, Wr));
-    // a two-line spar: line A on the bone, line B one pixel below (flat finger) or to the right
-    // (steep finger) — the same pixels for both lights; the line facing the key light is white
-    const sd: V = Math.abs(dir[0]) > Math.abs(dir[1]) ? [0, 1] : [1, 0];
-    const bLit = dot(sd, LIGHT.v2) > 0;
-    const mid = flo(lerpV(Wr, t, 0.55));
-    if (i === 2) {
-      c.line(a[0], a[1], e[0], e[1], PAL.mist);
-      continue;
-    }
-    c.line(a[0], a[1], mid[0], mid[1], bLit ? PAL.mist : PAL.white);
-    c.line(a[0] + sd[0], a[1] + sd[1], mid[0] + sd[0], mid[1] + sd[1], bLit ? PAL.white : PAL.mist);
-    c.line(mid[0], mid[1], e[0], e[1], PAL.white);
-  }
-  return c;
+  composite(p, cl.render(0, false), selout, { top: 0, side: 1, bottom: 0 });
 }
 
-function MATS_GLASS(far: boolean): number[] {
-  return far ? [PAL.night1, PAL.cyan0, PAL.cyan1, PAL.cyan2, PAL.cyan3, PAL.cyan4] : [PAL.cyan0, PAL.cyan1, PAL.cyan2, PAL.cyan3, PAL.cyan4, PAL.white];
+// ---------------------------------------------------------------- neck + head
+
+function neckAndHead(p: PixelCanvas, R: Rig, P: Pose) {
+  const g = newG();
+  tubeS(g, R.neck, 21, 17, M.HIDE, { flat: 2.4, biasAt: planes(0.5, 0.7) });
+  composite(p, g.render(), crease, { top: 1, side: 2, bottom: 2 });
+  head(p, R.head, P);
 }
 
-// ------------------------------------------------------------------ head
-
-/** head scale */
-const HS = 1.2;
-const HINGE: V = [-1.5, 1.4];
-const JAW_OPEN = 0.62; // ~35° at jaw = 1
-
-interface HeadFrame {
-  T: (x: number, y: number) => V;
-  J: (x: number, y: number) => V;
-  jawA: number;
-}
-
-export function headFrame(hp: V, P: Pose): HeadFrame {
-  const ha = P.ha;
-  const T = (x: number, y: number): V => add(hp, rotV([x * HS, y * HS], ha));
-  const jawA = P.jaw * JAW_OPEN;
-  const J = (x: number, y: number): V => {
-    const q = add(HINGE, rotV(sub([x, y], HINGE), jawA));
-    return T(q[0], q[1]);
-  };
-  return { T, J, jawA };
-}
-
-/** Head-space coordinates of a frame pixel (inverse of headFrame's T). */
-function headSpace(hp: V, ha: number, x: number, y: number): V {
-  const d = rotV([x + 0.5 - hp[0], y + 0.5 - hp[1]], -ha);
-  return [d[0] / HS, d[1] / HS];
-}
-
-/** Centre of the open mouth (beam origin). */
-export function mouthPoint(P: Pose): V {
-  const { T, J } = headFrame(rig(P).head, P);
-  return lerpV(T(16, 1.4), J(15.5, 1.4), 0.5);
-}
-
-/** Eye (head point) of a pose. */
-export function eyePoint(P: Pose): V {
-  const { T } = headFrame(rig(P).head, P);
-  return T(2.4, -3.6);
-}
-
-// Head planes in head space (x forward along the snout, y down; scaled by HS, rotated by ha).
 type P2 = [number, number];
-// the whole upper head (v1 silhouette): side plane, mist
-const SKULL: P2[] = [[-5, 1.4], [-6.4, -2], [-4.8, -5.4], [-0.8, -7.3], [4.4, -7.4], [7.8, -6.2], [9.8, -4.7], [14.8, -3.8], [17.4, -3.4], [18.8, -2.2], [19.1, -0.3], [18.3, 1.4], [10, 1.4], [3, 1.4]];
-// lower jaw (rotates about HINGE; v1 silhouette): steel side plane, night3 underside, lit chin
-const JAW: P2[] = [[-4.4, 1.4], [18, 1.4], [18.2, 2.9], [15.2, 4.2], [9, 5.0], [2, 5.8], [-2.6, 5.6], [-4.8, 3.6]];
-const CHIN: P2[] = [[15.4, 1.6], [18.4, 1.6], [18.4, 3.2], [15.6, 3.4]];
+const SKULL: P2[] = [[-5, 0], [-5.5, -4], [-2, -8], [3, -10], [8, -9.5], [12, -7.5], [17, -6], [21, -5], [24, -3.4], [25.5, -1], [25, 1.8], [23, 3], [14, 3.2], [3, 3.6], [-2, 3]];
+const JAW: P2[] = [[-3.5, 3], [22.5, 3], [23.5, 3.4], [22, 5.5], [17, 7.6], [9, 8.8], [0, 8.4], [-4.5, 6.4]];
+const TOP: P2[] = [[-6, -11], [24, -11], [26, -5.2], [20, -4.6], [14, -5], [9, -6], [4, -6.2], [-1, -4.6]];
+const CHEEK: P2[] = [[-6, -0.5], [4, -1], [9, 1.2], [3, 3.8], [-6, 3.8]];
+const BROW: P2[] = [[2, -6.3], [10, -6.8], [14, -5.2]];
+const HINGE: V = [-2, 3];
 
-// Interior planes and lines measured on the approved still at the rest pose (still pixel
-// coordinates, v1 frame) and carried into head space once, so the rest pose reproduces the still
-// and every other pose moves them rigidly with the head.
-const REST_HP: V = [66, 22];
-const REST_HA = 0.1;
-const hs = (x: number, y: number): P2 => {
-  const d = rotV([x - REST_HP[0], y - REST_HP[1]], -REST_HA);
-  return [d[0] / HS, d[1] / HS];
-};
-// lit top plane (white): crown, brow and snout bridge (clipped to the skull)
-const TOP: P2[] = [hs(61, 6), hs(97, 6), hs(97, 23.1), hs(89, 22.4), hs(75, 20.05), hs(75, 17), hs(66.9, 17), hs(66.9, 12)];
-// steel cheek wedge under the cheekbone
-const CHEEK: P2[] = [hs(63, 21), hs(72, 21), hs(70.2, 22.4), hs(64, 24.1), hs(62.6, 24.1)];
-// the brow ridge (night3): one long line from the horn root over the eye, dropping in front of it
-const BROW: P2[] = [hs(65.5, 17.5), hs(74.5, 17.5), hs(74.5, 18.5), hs(73.5, 18.5)];
-// the up-turned corner of the mouth line (night1; the line itself is the seam over the jaw)
-const MOUTH_HOOK: P2[] = [hs(64.5, 23.5), hs(68.5, 23.5)];
-const NOSTRIL: P2 = hs(86.5, 22.5);
-const EYE_AT: P2 = hs(67.5, 18.5);
-// eye stamps (top-left at EYE_AT): night2 socket, cyan3 iris, one white glint under the brow
-const EYE_OPEN = ['22wddd', '22ddd2', '.22222'];
-const EYE_HALF = ['223333', '22ddd2', '.22222'];
-const EYE_SHUT = ['223333', '.2222.'];
-const EYE_FLARE = ['22wwwe', '22eww2', '.22222'];
-const EYE_KEY: Record<string, number> = { '2': PAL.night2, '3': PAL.night3, d: PAL.cyan3, w: PAL.white, e: PAL.cyan4 };
+const HS = 1.22 * S;
 
-const MOUTH_MASK = new Uint8Array(W * H);
-const FAR_MASK = new Uint8Array(W * H);
-const LEG_MASK = new Uint8Array(W * H);
-const JAW_MASK = new Uint8Array(W * H);
-const SKULL_MASK = new Uint8Array(W * H);
-
-function drawHead(p: PixelCanvas, hp: V, P: Pose) {
-  const { T, J, jawA } = headFrame(hp, P);
+function head(p: PixelCanvas, hp: V, P: Pose) {
+  const T = (x: number, y: number): V => add(hp, rotV([x * HS, y * HS], P.ha));
+  const jawA = P.jaw * 0.62;
+  const J = (x: number, y: number): V => {
+    const qv = add(HINGE, rotV(sub([x, y], HINGE), jawA));
+    return T(qv[0], qv[1]);
+  };
   const Ts = (pts: P2[]) => pts.map(([x, y]) => T(x, y));
   const Js = (pts: P2[]) => pts.map(([x, y]) => J(x, y));
-  const open = P.jaw > 0.1;
-  MOUTH_MASK.fill(0);
-  JAW_MASK.fill(0);
+  const open = P.jaw > 0.08;
 
-  // mouth cavity: dark throat at the back, glowing prism light at the front when charged
+  // horns first (behind the head): the far horn darker and higher, the near horn long and swept back
+  {
+    const far = newG();
+    tubeS(far, bezier(T(0, -8), T(-5, -13), T(-11, -14.5), T(-17, -12.5), 10), 4.5, 1, M.HIDE_FAR, { flat: 1.2 });
+    composite(p, far.render(0, false), selout, { top: 1, side: 1, bottom: 1 });
+  }
+
+  // mouth cavity
+  const mouth = newG();
   if (open) {
-    const g = newG();
-    gFacet(g, [T(-2.6, 1.4), T(18.3, 1.4), J(18, 1.4), J(-2.6, 1.4)], M.MOUTH, FLAT_N, 0);
-    const c = g.render(0, false);
-    const back = T(-1, 1.4);
-    const front = T(18.3, 1.4);
-    const m = lerpV(T(16, 1.4), J(15.5, 1.4), 0.5);
-    const glowM = P.mouth;
+    gFacet(mouth, [T(-2, 3), T(23, 3), J(23, 3), J(-2, 3)], M.MOUTH, FLAT_N, 0);
+    const c = mouth.render(0, false);
+    const m = lerpV(T(14, 3), J(14, 3), 0.5);
+    const back = T(-1, 3);
+    const front = T(23, 3);
     const axis = sub(front, back);
     const al = len(axis) || 1;
-    const jawLine = [J(-2, 1.4), J(18, 1.4)];
     for (let y = 0; y < H; y++)
       for (let x = 0; x < W; x++) {
         if (!c.isOpaque(x, y)) continue;
-        const q: V = [x + 0.5, y + 0.5];
-        const along = ((q[0] - back[0]) * axis[0] + (q[1] - back[1]) * axis[1]) / (al * al);
-        const dm = len(sub(q, m));
-        let col: number = along < 0.42 ? PAL.night0 : PAL.night1;
-        if (glowM > 0.5) {
-          if (dm < 1.9) col = PAL.white;
-          else if (dm < 3.1) col = PAL.cyan4;
-          else if (dm < 4.3) col = PAL.cyan3;
-          else if (along > 0.5) col = PAL.cyan1;
-        } else if (along > 0.3 && along < 0.85 && distSeg(q, jawLine[0], jawLine[1]) < 1.6) col = PAL.crim1; // tongue
+        const along = (((x + 0.5 - back[0]) * axis[0] + (y + 0.5 - back[1]) * axis[1]) / (al * al));
+        const dm = len(sub([x + 0.5, y + 0.5], m));
+        let col: number = along < 0.4 ? PAL.ink : PAL.night0;
+        const g2 = P.glow * (1 - P.drain) + P.spill;
+        if (g2 > 0.55) {
+          if (dm < 2.2 && P.spill > 0.3) col = PAL.fire4;
+          else if (dm < 3.6) col = PAL.fire3;
+          else if (along > 0.35) col = PAL.fire2;
+          else col = PAL.fire1;
+        } else if (along > 0.45) col = PAL.fire0;
         c.set(x, y, col);
       }
-    maskOf(c, MOUTH_MASK);
-    orMask(c, HEAD_MASK);
-    composite(p, c);
+    composite(p, c, () => INK, { top: 0, side: 0, bottom: 0 });
   }
 
-  // lower jaw: steel side plane, night3 underside line, lit chin
+  // lower jaw
   {
     const g = newG();
     gFacet(g, Js(JAW), M.HIDE_D, FLAT_N, 0, 2);
-    gFacet(g, Js(CHIN), M.HIDE_D, FLAT_N, 1, 3);
+    // lit chin
+    gFacet(g, Js([[17, 3.6], [23.2, 3.6], [22.4, 5.6], [17.5, 7.2]]), M.HIDE_D, FLAT_N, 1, 3);
     const c = g.render(0, false);
-    const down = rotV([0, 1], P.ha + jawA);
+    const dn = rotV([0, 1], P.ha + jawA);
     const hits: number[] = [];
     for (let y = 0; y < H; y++)
       for (let x = 0; x < W; x++) {
-        if (!c.isOpaque(x, y) || c.get(x, y) !== PAL.steel) continue;
-        if (!c.isOpaque(x + Math.round(down[0]), y + Math.round(down[1])) || !c.isOpaque(x, y + 1)) hits.push(x, y);
+        if (!c.isOpaque(x, y) || c.get(x, y) !== PAL.stone2) continue;
+        if (!c.isOpaque(x + Math.round(dn[0]), y + Math.round(dn[1]))) hits.push(x, y);
       }
-    for (let i = 0; i < hits.length; i += 2) c.set(hits[i], hits[i + 1], PAL.night3);
-    maskOf(c, JAW_MASK);
-    orMask(c, HEAD_MASK);
-    composite(p, c, (x, y, b) => (MOUTH_MASK[y * W + x] ? PAL.ink : selout(x, y, b)));
+    for (let i = 0; i < hits.length; i += 2) c.set(hits[i], hits[i + 1], PAL.stone1);
+    composite(p, c, (_x, _y, b) => (open ? INK : b === PAL.stone2 || b === PAL.stone3 ? PAL.stone0 : selout(_x, _y, b)), { top: 1, side: 1, bottom: 1 });
   }
 
-  // upper head: mist side plane, white top plane, steel cheek wedge
+  // upper head: stone2 side plane, stone3 top plane, stone1 cheek wedge
   const g = newG();
-  gFacet(g, Ts(SKULL), M.HIDE_D, FLAT_N, 0, 3);
-  {
-    const c0 = g.render(0, false);
-    maskOf(c0, SKULL_MASK);
-  }
-  const inSkull = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H && SKULL_MASK[y * W + x] === 1;
-  fillPoly2(Ts(TOP), (x, y) => inSkull(x, y) && g.put(x, y, M.HIDE_D, 0, 0, 1, 1, 4));
-  fillPoly2(Ts(CHEEK), (x, y) => inSkull(x, y) && g.put(x, y, M.HIDE_D, 0, 0, 1, 2, 2));
+  gFacet(g, Ts(SKULL), M.HIDE_D, FLAT_N, 0, 2);
+  const sk = g.render(0, false);
+  const inSkull = (x: number, y: number) => sk.isOpaque(x, y);
+  fillPoly(Ts(TOP), (x, y) => inSkull(x, y) && g.put(x, y, M.HIDE_D, 0, 0, 1, 1, 3));
+  fillPoly(Ts(CHEEK), (x, y) => inSkull(x, y) && g.put(x, y, M.HIDE_D, 0, 0, 1, 2, 1));
   const c = g.render(0, false);
-  // brow ridge, mouth line, nostril
-  const L = (pts: P2[], col: number) => {
-    for (let i = 1; i < pts.length; i++) lineOn(c, T(...pts[i - 1]), T(...pts[i]), col);
-  };
-  L(BROW, PAL.night3);
-  L(MOUTH_HOOK, PAL.night1);
+  for (let i = 1; i < BROW.length; i++) lineOn(c, T(...BROW[i - 1]), T(...BROW[i]), PAL.stone0);
+  // nostril
+  const nos = flo(T(22.5, -1.6));
+  c.paint(nos[0], nos[1], PAL.stone0);
+  // the lip line under the snout when closed
+  if (!open) lineOn(c, T(2, 2.6), T(23, 2.8), PAL.stone0, (cur) => cur === PAL.stone2 || cur === PAL.stone1);
+  composite(p, c, selout, { top: 1, side: 1, bottom: 1 });
+
+  // near horn: bone-ash bands, swept back and up with a hooked tip
   {
-    const n0 = flo(T(...NOSTRIL));
-    c.paint(n0[0], n0[1], PAL.night2);
-    if (n0[0] >= 0 && n0[1] >= 0 && n0[0] < W && n0[1] < H) KEEP[n0[1] * W + n0[0]] = 1;
+    const band = (_u: number, _v: number, _ox: number, oy: number) => (oy < -0.4 ? 3 : oy > 0.3 ? 1 : 2);
+    const hg = newG();
+    tubeS(hg, bezier(T(1.5, -8.2), T(-4, -12), T(-11, -13), T(-18, -9), 10), 5, 1, M.HORN_D, { biasAt: band });
+    composite(p, hg.render(0, false), selout, { top: 1, side: 1, bottom: 1 });
+    // brow spike
+    const bs = newG();
+    tubeS(bs, [T(9, -9), T(12, -13.5), T(15.5, -15)], 3.4, 1, M.HORN_D, { biasAt: band });
+    composite(p, bs.render(0, false), selout, { top: 1, side: 1, bottom: 1 });
+    // jaw spur
+    const js = newG();
+    tubeS(js, [J(2, 7.4), J(-1.5, 11.5), J(-4.5, 13)], 3.6, 1, M.HORN_D, { biasAt: band });
+    composite(p, js.render(0, false), selout, { top: 1, side: 1, bottom: 1 });
   }
-  // charged lips: a thread of light leaks between the closed jaws
-  if (!open && P.mouth > 0.2) lineOn(c, T(6, 1.0), T(18.5, 0.8), P.mouth > 0.6 ? PAL.cyan4 : PAL.cyan3);
-  orMask(c, HEAD_MASK);
-  composite(p, c, (x, y, b) => {
-    const i = y * W + x;
-    if (MOUTH_MASK[i]) return PAL.ink;
-    // closed: the jaw's top row under the lip is the night1 mouth line, from the corner forward
-    if (JAW_MASK[i]) return open ? PAL.ink : headSpace(hp, P.ha, x, y)[0] > -0.6 ? PAL.night1 : b;
-    return selout(x, y, b);
-  });
-  // eye
+
+  // eye: an ember slit under the brow
   {
-    const e = flo(T(...EYE_AT));
-    const rows = P.eye > 0.75 ? (P.eyeFlare >= 0.5 ? EYE_FLARE : EYE_OPEN) : P.eye > 0.25 ? EYE_HALF : EYE_SHUT;
+    const e = flo(T(8.5, -4.6));
+    const glow = P.glow * (1 - P.drain);
+    const lit = glow > 0.6 || P.flare > 0.5;
+    const rows =
+      P.eye > 0.75 ? (P.flare > 0.5 ? ['0eee0', '3eww3', '03330'] : ['0333', '2e3.', '.22.']) : P.eye > 0.25 ? ['0333', '.22.'] : ['0000', '.00.'];
+    const keyc: Record<string, number> = { '0': PAL.stone0, '2': PAL.fire2, '3': lit ? PAL.fire3 : PAL.fire2, e: PAL.fire4, w: PAL.white, '.': -1 };
     for (let j = 0; j < rows.length; j++)
       for (let i = 0; i < rows[j].length; i++) {
-        let col = EYE_KEY[rows[j][i]];
-        if (col === undefined) continue;
-        // charged: the iris burns brighter
-        if (rows[j][i] === 'd' && P.glow > 0.85) col = PAL.cyan4;
+        const col = keyc[rows[j][i]];
+        if (col === undefined || col < 0) continue;
         const x = e[0] + i;
         const y = e[1] + j;
-        if (p.isOpaque(x, y) && p.get(x, y) !== PAL.ink) {
+        if (p.isOpaque(x, y) && p.get(x, y) !== INK) {
           p.set(x, y, col);
           KEEP[y * W + x] = 1;
         }
       }
   }
 
-  // fangs: white teeth hang just inside the ink gape line
+  // teeth
   if (open) {
-    const down = rotV([0, 1], P.ha);
+    const dn = rotV([0, 1], P.ha);
     const up = rotV([0, -1], P.ha + jawA);
-    const tooth = (from: V, dir: V, long: boolean) => {
-      let seenInk = false;
-      let last = '';
-      for (let k = 0; k < 9; k += 0.5) {
-        const q = flo(add(from, mul(dir, k)));
-        const key = q[0] + ',' + q[1];
-        if (key === last) continue;
-        last = key;
-        if (q[0] < 0 || q[1] < 0 || q[0] >= W || q[1] >= H) return;
-        const i = q[1] * W + q[0];
-        const cur = p.get(q[0], q[1]);
-        if (!MOUTH_MASK[i]) {
-          if (seenInk) return;
-          continue;
-        }
-        if (cur === PAL.ink) {
-          seenInk = true;
-          continue;
-        }
-        p.set(q[0], q[1], PAL.white);
-        if (long) {
-          const q2 = flo(add(from, mul(dir, k + 1)));
-          if (MOUTH_MASK[q2[1] * W + q2[0]] && p.get(q2[0], q2[1]) !== PAL.ink) p.set(q2[0], q2[1], PAL.mist);
-        }
-        return;
-      }
-    };
-    for (const [tx, long] of [[6.5, false], [10, true], [13.5, true], [17, true]] as const) tooth(T(tx, 0.4), down, long);
-    for (const tx of [12, 16.2]) tooth(J(tx, 2.6), up, false);
-  }
-
-  // horns (gold, four bands): the main sweep off the crown and a cheek horn
-  {
-    // four bands by the horn's own geometry (the same for both lights, so P2 never zig-zags):
-    // gold4 along the upper edge, gold3 body, gold2 underside, gold1 at the root
-    const band = (root: number) => (u: number, _v: number, _ox: number, oy: number) => (u < root ? 0 : oy < -0.42 ? 3 : oy > 0.3 ? 1 : 2);
-    const g2 = newG();
-    gTube(g2, bezier(T(-1.6, -6.2), T(-6.8, -8.4), T(-11.8, -8.8), T(-16.2, -12), 12), 3.8, 1, M.GOLD_D, { biasAt: band(0.035) });
-    const hornC = g2.render(0, false);
-    orMask(hornC, HEAD_MASK);
-    composite(p, hornC, selout, { top: 1, side: 1, bottom: 1 });
-    const g3 = newG();
-    gTube(g3, bezier(T(-3.6, -0.4), T(-7, -0.2), T(-9.4, 0.8), T(-11.6, 3), 8), 2.6, 1, M.GOLD_D, { z: 1, biasAt: band(-1) });
-    composite(p, g3.render(0, false), () => PAL.night2, { top: 1, side: 1, bottom: 1 });
-  }
-}
-
-/** fillPoly with a callback that may return anything (lets callers filter with &&). */
-function fillPoly2(pts: readonly V[], cb: (x: number, y: number) => unknown) {
-  fillPoly(pts, (x, y) => void cb(x, y));
-}
-
-// ------------------------------------------------------------------ part 2: death / revive passes
-//
-// Crack lines live in the space of the part they are on (torso, neck, head, thigh, wing, tail), so
-// they move rigidly with it and never swim. Each grows from its first point once `cracks` passes
-// its `from`. While the inner light is still in the body a crack glows (cyan3 on the hide, white on
-// the glass); where the light has drained (the same front as drainLight) it is a dark groove.
-
-/** The point the inner light drains into (the keel, where the first crack opens). */
-const CORE = { v: [0, 0] as V };
-function coreOf(R: Rig): V {
-  return R.att([-5, 5]);
-}
-
-/** Radius of the drain front: pixels farther from the core than this have lost their light. */
-function drainFront(P: Pose): number {
-  return P.drain <= 0 ? Infinity : (1 - P.drain) * 80 - 4;
-}
-function drainedAt(P: Pose, x: number, y: number): boolean {
-  return Math.hypot(x + 0.5 - CORE.v[0], y + 0.5 - CORE.v[1]) > drainFront(P);
-}
-
-interface Crack {
-  from: number;
-  pts: V[];
-}
-
-/** The torso's fracture in torso space: ONE straight line through the keel's core, up to the neck
- *  root and (a moment later) down to the belly — the line the cold crystal splits along. */
-const TORSO_CRACK: [number, number][] = [[0, -7.5], [-5, 5], [-10, 17]];
-function torsoCracks(R: Rig): Crack[] {
-  const [up, core, down] = TORSO_CRACK.map((o) => R.att(o));
-  return [
-    { from: 0, pts: [core, up] },
-    { from: 0.06, pts: [core, down] },
-  ];
-}
-
-const HIDE_PX = new Set<number>([PAL.white, PAL.mist, PAL.steel, PAL.night3, PAL.night2, PAL.cyan2]);
-const GLASS_PX = new Set<number>([PAL.cyan0, PAL.cyan1, PAL.cyan2, PAL.cyan3, PAL.cyan4, PAL.white, PAL.mist, PAL.steel]);
-
-/** One value up every ramp: the lit lip of a fracture (the edge that faces the key light). */
-const LIP: Record<number, number> = {
-  [PAL.night2]: PAL.night3,
-  [PAL.night3]: PAL.steel,
-  [PAL.steel]: PAL.mist,
-  [PAL.mist]: PAL.white,
-  [PAL.cyan0]: PAL.cyan1,
-  [PAL.cyan1]: PAL.cyan2,
-  [PAL.cyan2]: PAL.cyan3,
-  [PAL.cyan3]: PAL.cyan4,
-};
-
-/**
- * Draw the visible part of each crack over a part's layer (only over its own surface pixels): a
- * straight 1-px groove (glowing while the light is still in the body, dark where it has drained)
- * with a 1-px lip one value lighter on its side toward the key light.
- */
-function cracksOn(c: PixelCanvas, P: Pose, list: Crack[], glass: boolean) {
-  const surf = glass ? GLASS_PX : HIDE_PX;
-  for (const k of list) {
-    const grow = clamp((P.cracks - k.from) / 0.42, 0, 1);
-    if (grow <= 0) continue;
-    // the visible prefix of the polyline
-    const lens = [0];
-    for (let i = 1; i < k.pts.length; i++) lens.push(lens[i - 1] + len(sub(k.pts[i], k.pts[i - 1])));
-    const want = grow * lens[lens.length - 1];
-    const groove = new Map<number, V>();
-    const lips: [number, number][] = [];
-    for (let i = 1; i < k.pts.length && lens[i - 1] < want; i++) {
-      const t = clamp((want - lens[i - 1]) / (lens[i] - lens[i - 1] || 1), 0, 1);
-      const a = k.pts[i - 1];
-      const b = lerpV(a, k.pts[i], t);
-      const d = norm(sub(k.pts[i], a));
-      let n: V = [-d[1], d[0]];
-      if (dot(n, LIGHT.v2) < 0) n = [-n[0], -n[1]];
-      const o = rnd(n);
-      lineOn2(c, a, b, (x, y) => {
-        groove.set(y * W + x, [x, y]);
-        lips.push([x + o[0], y + o[1]]);
-        return null;
-      });
-    }
-    for (const [x, y] of lips) {
-      if (groove.has(y * W + x)) continue;
-      const cur = c.get(x, y);
-      if (cur === null || !surf.has(cur)) continue;
-      const up = LIP[cur];
-      if (up !== undefined) c.set(x, y, up);
-    }
-    for (const [x, y] of groove.values()) {
-      const cur = c.get(x, y);
-      if (cur === null || !surf.has(cur)) continue;
-      const dark = drainedAt(P, x, y);
-      c.set(x, y, glass ? (dark ? PAL.cyan0 : PAL.white) : dark ? PAL.night2 : PAL.cyan3);
-    }
-  }
-}
-
-/** Bresenham line whose colour is chosen per pixel (null = leave the pixel). */
-function lineOn2(c: PixelCanvas, a: V, b: V, col: (x: number, y: number, cur: number) => number | null) {
-  let [x0, y0] = flo(a);
-  const [x1, y1] = flo(b);
-  const dx = Math.abs(x1 - x0);
-  const dy = -Math.abs(y1 - y0);
-  const sx = x0 < x1 ? 1 : -1;
-  const sy = y0 < y1 ? 1 : -1;
-  let err = dx + dy;
-  for (;;) {
-    const cur = c.get(x0, y0);
-    if (cur !== null) {
-      const k = col(x0, y0, cur);
-      if (k !== null) c.set(x0, y0, k);
-    }
-    if (x0 === x1 && y0 === y1) break;
-    const e2 = 2 * err;
-    if (e2 >= dy) {
-      err += dy;
-      x0 += sx;
-    }
-    if (e2 <= dx) {
-      err += dx;
-      y0 += sy;
-    }
-  }
-}
-
-/** One value down every ramp: what is left of the crystal once its light has gone out. */
-const DRAIN: Record<number, number> = {
-  [PAL.white]: PAL.mist,
-  [PAL.mist]: PAL.steel,
-  [PAL.steel]: PAL.night3,
-  [PAL.night4]: PAL.night3,
-  [PAL.night3]: PAL.night2,
-  [PAL.night2]: PAL.night1,
-  [PAL.night1]: PAL.night0,
-  [PAL.cyan4]: PAL.cyan3,
-  [PAL.cyan3]: PAL.cyan2,
-  [PAL.cyan2]: PAL.cyan1,
-  [PAL.cyan1]: PAL.cyan0,
-  [PAL.cyan0]: PAL.night1,
-  [PAL.gold4]: PAL.gold3,
-  [PAL.gold3]: PAL.gold2,
-  [PAL.gold2]: PAL.gold1,
-  [PAL.gold1]: PAL.gold0,
-  [PAL.crim1]: PAL.night1,
-};
-
-/** The inner light retreats from the extremities into the core (drain → 1), or refills from it
- *  (revive: drain → 0): beyond the front every tone is one value down. */
-function drainLight(p: PixelCanvas, P: Pose) {
-  for (let y = 0; y < H; y++)
-    for (let x = 0; x < W; x++) {
-      const cur = p.get(x, y);
-      if (cur === null || !drainedAt(P, x, y)) continue;
-      const to = DRAIN[cur];
-      if (to !== undefined) p.set(x, y, to);
-    }
-}
-
-/** The main crack, extended through the whole body: the line the cold crystal splits along. */
-function splitLine(R: Rig): V[] {
-  const [a, m, b] = TORSO_CRACK.map((o) => R.att(o));
-  const up = norm(sub(a, m));
-  const dn = norm(sub(b, m));
-  return [add(a, mul(up, 80)), a, m, b, add(b, mul(dn, 80))];
-}
-
-/** The body splits along the main crack: the front piece (head, neck, chest) parts from the back
- *  piece by 1 px (split ≥ 0.5) or 2 px (split ≥ 1); the outline fills the gap with ink. */
-function splitBody(p: PixelCanvas, R: Rig, P: Pose) {
-  const k = P.split >= 1 ? 2 : P.split >= 0.5 ? 1 : 0;
-  if (!k) return;
-  const line = splitLine(R);
-  const src = newCanvas();
-  src.data.set(p.data);
-  p.clear();
-  const side = (q: V) => {
-    let best = Infinity;
-    let s = 0;
-    for (let i = 1; i < line.length; i++) {
-      const d = distSeg(q, line[i - 1], line[i]);
-      if (d < best) {
-        best = d;
-        const ab = sub(line[i], line[i - 1]);
-        const aq = sub(q, line[i - 1]);
-        s = ab[0] * aq[1] - ab[1] * aq[0];
+    for (const tx of [8, 12, 16, 20]) {
+      const a = flo(T(tx, 3.4));
+      for (let k = 0; k < 3; k++) {
+        const x = Math.round(a[0] + dn[0] * k);
+        const y = Math.round(a[1] + dn[1] * k);
+        const cur = p.get(x, y);
+        if (cur !== null && cur !== INK && !isHide(cur)) p.set(x, y, k === 2 ? PAL.stone3 : PAL.stone4);
       }
     }
-    return s;
-  };
-  // the front piece moves forward and down a little (it falls away), the back piece stays
-  const mv: V = k === 2 ? [2, 1] : [1, 1];
-  for (let y = 0; y < H; y++)
-    for (let x = 0; x < W; x++) {
-      const cur = src.get(x, y);
-      if (cur === null) continue;
-      const front = side([x + 0.5, y + 0.5]) < 0;
-      if (!front) p.set(x, y, cur);
-    }
-  for (let y = 0; y < H; y++)
-    for (let x = 0; x < W; x++) {
-      const cur = src.get(x, y);
-      if (cur === null) continue;
-      if (side([x + 0.5, y + 0.5]) < 0) {
-        const tx = x + mv[0];
-        const ty = y + mv[1];
-        if (tx < W - 1 && ty < H - 1) p.set(tx, ty, cur);
+    for (const tx of [11, 17]) {
+      const a = flo(J(tx, 2.6));
+      for (let k = 0; k < 2; k++) {
+        const x = Math.round(a[0] + up[0] * k);
+        const y = Math.round(a[1] + up[1] * k);
+        const cur = p.get(x, y);
+        if (cur !== null && cur !== INK && !isHide(cur)) p.set(x, y, PAL.stone4);
       }
     }
-}
-
-// Revive: the body is cut into crystal fragments (a fixed jittered-grid Voronoi partition of the
-// frame, 7 px cells); each flies in from outside along a gentle spiral and locks into place, the
-// inner fragments first. While flying a fragment is a clean crystal shard (shard()): a straight-
-// edged rhombus on 2:1 or 45° steps, sized by its cell, two flat tones split along its ridge (the
-// face toward the key light cyan3, the other cyan1) inside its own 1-px ink outline, white only
-// along the lit edge of the few largest; once locked it shows the body.
-const CELL = 7;
-const GX = Math.ceil(W / CELL) + 1;
-const GY = Math.ceil(H / CELL) + 1;
-let CELL_MAP: Int16Array | null = null;
-let SEEDS: V[] = [];
-const hash = (i: number, k: number) => {
-  let h = (i * 374761393 + k * 668265263) | 0;
-  h = Math.imul(h ^ (h >>> 13), 1274126177);
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
-};
-function cellMap(): Int16Array {
-  if (CELL_MAP) return CELL_MAP;
-  SEEDS = [];
-  for (let gy = 0; gy < GY; gy++)
-    for (let gx = 0; gx < GX; gx++) {
-      const i = gy * GX + gx;
-      SEEDS.push([gx * CELL + 0.5 + hash(i, 1) * 6, gy * CELL + 0.5 + hash(i, 2) * 6]);
-    }
-  const m = new Int16Array(W * H);
-  for (let y = 0; y < H; y++)
-    for (let x = 0; x < W; x++) {
-      const gx = Math.floor(x / CELL);
-      const gy = Math.floor(y / CELL);
-      let best = Infinity;
-      let bi = 0;
-      for (let dy = -1; dy <= 1; dy++)
-        for (let dx = -1; dx <= 1; dx++) {
-          const cx = gx + dx;
-          const cy = gy + dy;
-          if (cx < 0 || cy < 0 || cx >= GX || cy >= GY) continue;
-          const i = cy * GX + cx;
-          const d = (SEEDS[i][0] - x - 0.5) ** 2 + (SEEDS[i][1] - y - 0.5) ** 2;
-          if (d < best) [best, bi] = [d, i];
-        }
-      m[y * W + x] = bi;
-    }
-  CELL_MAP = m;
-  return m;
-}
-
-const SHARD: Record<number, number> = {
-  [PAL.white]: PAL.white,
-  [PAL.mist]: PAL.cyan4,
-  [PAL.steel]: PAL.cyan3,
-  [PAL.night4]: PAL.cyan2,
-  [PAL.night3]: PAL.cyan2,
-  [PAL.night2]: PAL.cyan1,
-  [PAL.night1]: PAL.cyan1,
-  [PAL.night0]: PAL.cyan0,
-  [PAL.cyan0]: PAL.cyan1,
-  [PAL.cyan1]: PAL.cyan2,
-  [PAL.cyan2]: PAL.cyan3,
-  [PAL.cyan3]: PAL.cyan4,
-  [PAL.cyan4]: PAL.white,
-};
-
-/** Arrival (0..1) and offset of a fragment at this gather progress. */
-export function fragment(i: number, seed: V, gather: number): { a: number; off: V } {
-  const c = CORE.v;
-  const d = len(sub(seed, c));
-  const delay = 0.5 * clamp(d / 52, 0, 1) + 0.1 * hash(i, 3);
-  const a = clamp((gather - delay) / 0.4, 0, 1);
-  let dir = norm(sub(seed, c));
-  // fragments come in from the sides and from above, never from under the floor
-  if (dir[1] > -0.1) dir = norm([dir[0] || (hash(i, 4) < 0.5 ? -1 : 1), -0.1]);
-  const k = 1 - a;
-  // the spiral turns upward on both sides: they arc in from above
-  const swirl = k * 40 * DEG * (dir[0] > 0 ? -1 : 1);
-  const dist = (8 + 10 * hash(i, 5)) * k * k;
-  return { a, off: mul(rotV(dir, swirl), dist) };
-}
-
-function gatherBody(p: PixelCanvas, P: Pose) {
-  const map = cellMap();
-  const src = newCanvas();
-  src.data.set(p.data);
-  p.clear();
-  const N = SEEDS.length;
-  const frag = new Array<{ a: number; off: V }>(N);
-  for (let i = 0; i < N; i++) frag[i] = fragment(i, SEEDS[i], P.gather);
-  // the locked fragments show the body
-  const cnt = new Int32Array(N);
-  const sx = new Float64Array(N);
-  const sy = new Float64Array(N);
-  for (let y = 0; y < H; y++)
-    for (let x = 0; x < W; x++) {
-      const cur = src.get(x, y);
-      if (cur === null) continue;
-      const i = map[y * W + x];
-      cnt[i]++;
-      sx[i] += x;
-      sy[i] += y;
-      if (frag[i].a >= 1) p.set(x, y, cur);
-    }
-  // the flying ones: one shard each, at the cell's centre carried by its flight (largest last, so
-  // the big lit shards read on top); white edges on the four largest in flight
-  const fly: number[] = [];
-  for (let i = 0; i < N; i++) if (cnt[i] >= 4 && frag[i].a > 0 && frag[i].a < 1) fly.push(i);
-  fly.sort((a, b) => cnt[a] - cnt[b] || a - b);
-  const lit = new Set(fly.slice(-4));
-  for (const i of fly) {
-    const c = rnd(add([sx[i] / cnt[i], sy[i] / cnt[i]], frag[i].off));
-    shard(p, c, Math.max(2, Math.min(5, Math.round(Math.sqrt(cnt[i]) * 0.8))), hash(i, 7), lit.has(i));
   }
 }
 
-/** Is (x, y) inside a shard of long half-size L: kind 0 a flat rhombus (2:1 edges, ridge across),
- *  1 a tall rhombus (2:1, ridge up), 2 a 45° diamond (ridge along the diagonal away from the light).
- *  Returns 0 outside, 1 the lit face, 2 the shadow face. */
-function shardFace(kind: number, L: number, x: number, y: number): number {
-  const s = -LIGHT.side; // +1: the key light is at the frame's left
-  if (kind === 0) {
-    const w = L;
-    const h = Math.ceil(L / 2);
-    if (Math.abs(x) / w + Math.abs(y) / h > 1) return 0;
-    return y <= 0 ? 1 : 2;
-  }
-  if (kind === 1) {
-    const w = Math.ceil(L / 2);
-    const h = L;
-    if (Math.abs(x) / w + Math.abs(y) / h > 1) return 0;
-    return x * s <= 0 ? 1 : 2;
-  }
-  const r = Math.ceil(L * 0.75);
-  if (Math.abs(x) + Math.abs(y) > r) return 0;
-  return x * s + y <= 0 ? 1 : 2;
-}
+// ---------------------------------------------------------------- tail
 
-/** One flying crystal shard (see gatherBody): ink outline ring, two flat faces, a white lit edge. */
-function shard(p: PixelCanvas, c: V, L: number, h: number, whiteEdge: boolean) {
-  const kind = h < 0.4 ? 0 : h < 0.65 ? 1 : 2;
-  const R = L + 1;
-  const inside = (x: number, y: number) => x >= -R && x <= R && y >= -R && y <= R && shardFace(kind, L, x, y) > 0;
-  const put = (x: number, y: number, col: number) => {
-    const X = c[0] + x;
-    const Y = c[1] + y;
-    if (X >= 1 && Y >= 1 && X < W - 1 && Y < H - 1) p.set(X, Y, col);
-  };
-  for (let y = -R; y <= R; y++)
-    for (let x = -R; x <= R; x++)
-      if (!inside(x, y) && (inside(x - 1, y) || inside(x + 1, y) || inside(x, y - 1) || inside(x, y + 1))) put(x, y, PAL.ink);
-  const s = -LIGHT.side;
-  for (let y = -R; y <= R; y++)
-    for (let x = -R; x <= R; x++) {
-      const f = inside(x, y) ? shardFace(kind, L, x, y) : 0;
-      if (!f) continue;
-      // the lit edge: a lit-face pixel whose neighbour toward the light (above, or on the light's
-      // side) is outside the shard
-      const edge = f === 1 && (!inside(x, y - 1) || !inside(x - s, y));
-      put(x, y, f === 2 ? PAL.cyan1 : whiteEdge && edge ? PAL.white : PAL.cyan3);
-    }
-}
-
-
-// ------------------------------------------------------------------ ashen drake skin (ember cracks, ash)
-// The rig above is the crystal wyrm's, drawn in its own colour space (white / mist / steel hide, cyan
-// glass); the drake keeps every plane, crease and seam and swaps the ramps at the end: charcoal hide,
-// charred membranes, ember light (the crystal's cyan light ramp) — then the ember cracks and the ash.
-
-const HIDE_MAP = new Map<number, number>([
-  [PAL.night1, PAL.night0],
-  [PAL.night2, PAL.night0],
-  [PAL.night3, PAL.night0],
-  [PAL.night4, PAL.stone1],
-  [PAL.steel, PAL.stone0],
-  [PAL.mist, PAL.stone1],
-  [PAL.white, PAL.stone2],
-  [PAL.gold1, PAL.stone0],
-  [PAL.gold2, PAL.stone1],
-  [PAL.gold3, PAL.stone2],
-  [PAL.gold4, PAL.stone3],
-  [PAL.cyan0, PAL.fire0],
-  [PAL.cyan1, PAL.fire1],
-  [PAL.cyan2, PAL.fire2],
-  [PAL.cyan3, PAL.fire3],
-  [PAL.cyan4, PAL.fire4],
-]);
-
-// wing layers: the glass cells become charred membrane, the free edges ember-lit rims
-const WING_MAP = new Map<number, number>([
-  [PAL.night1, PAL.night0],
-  [PAL.cyan0, PAL.night0],
-  [PAL.cyan1, PAL.fire0],
-  [PAL.cyan2, PAL.fire0],
-  [PAL.cyan3, PAL.fire0],
-  [PAL.cyan4, PAL.fire2],
-  [PAL.steel, PAL.stone1],
-  [PAL.mist, PAL.stone2],
-  [PAL.white, PAL.stone3],
-  [PAL.night3, PAL.stone0],
-]);
-
-function remapWith(p: PixelCanvas, m: Map<number, number>) {
-  for (let y = 0; y < H; y++)
-    for (let x = 0; x < W; x++) {
-      const c = p.get(x, y);
-      if (c === null) continue;
-      const t = m.get(c);
-      if (t !== undefined) p.set(x, y, t);
-    }
-}
-
-const h3 = (a: number, b: number, c = 0) => {
-  let h = (a * 374761393 + b * 668265263 + c * 2147483647) | 0;
-  h = Math.imul(h ^ (h >>> 13), 1274126177);
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
-};
-
-/** A jagged ember crack along a polyline: broken runs, a hot core, painted only where `on` allows. */
-function emberLine(c: PixelCanvas, pts: readonly V[], glow: number, seed: number, on: (cur: number) => boolean, gap = 0.22) {
-  let step = 0;
-  for (let i = 0; i + 1 < pts.length; i++) {
-    const a = pts[i];
+function tail(p: PixelCanvas, R: Rig, P: Pose) {
+  const pts = R.tail;
+  const g = newG();
+  tubeS(g, pts, 12, 4, M.HIDE, { flat: 2.4, bias: -0.12, biasAt: planes(0.5, 0.6) });
+  composite(p, g.render(), selout, { top: 1, side: 1, bottom: 1 });
+  // dorsal spikes along the upper edge
+  const sp = newG();
+  for (let i = 1; i < pts.length - 1; i++) {
+    const a = pts[i - 1];
     const b = pts[i + 1];
-    const n = Math.max(1, Math.ceil(len(sub(b, a))));
-    const d = norm(sub(b, a));
-    const nrm: V = [-d[1], d[0]];
-    for (let k = 0; k < n; k++) {
-      const q = lerpV(a, b, k / n);
-      step++;
-      if (h3(step, seed) < gap) continue;
-      const jit = Math.round((h3(step >> 1, seed, 9) - 0.5) * 1.6);
-      const x = Math.floor(q[0] + nrm[0] * jit);
-      const y = Math.floor(q[1] + nrm[1] * jit);
-      const cur = c.get(x, y);
-      if (cur === null || !on(cur)) continue;
-      const hot = h3(step, seed, 3) < 0.25 + glow * 0.55;
-      c.set(x, y, hot ? (glow > 0.8 ? PAL.fire4 : PAL.fire3) : PAL.fire2);
+    const t = norm(sub(b, a));
+    const up: V = [-t[1], t[0]]; // the side that faces up while the tail runs left
+    const w = (lerp(12, 4, i / (pts.length - 1)) / 2) * S;
+    const base = add(pts[i], mul(up, w - 1));
+    const L = lerp(7, 3.5, i / (pts.length - 1)) * S;
+    tubeS(sp, [base, add(base, mul(norm(add(up, mul(t, -0.45))), L))], 4, 1, M.HORN, { z: 2, bias: -0.2 });
+  }
+  composite(p, sp.render(0, false), selout, { top: 0, side: 1, bottom: 0 });
+  // the club: a knot of bone with four spikes
+  const tip = pts[pts.length - 1];
+  const tb = norm(sub(tip, pts[pts.length - 3]));
+  const cg = newG();
+  ellS(cg, add(tip, mul(tb, 3 * S)), 5.5, 5, 0, M.HIDE, { z: 2, flat: 1.1 });
+  for (let k = 0; k < 4; k++) {
+    const a = Math.atan2(tb[1], tb[0]) + (k - 1.5) * 0.95;
+    const d: V = [Math.cos(a), Math.sin(a)];
+    const base = add(add(tip, mul(tb, 3 * S)), mul(d, 3.5 * S));
+    tubeS(cg, [base, add(base, mul(d, 6 * S))], 4, 1, M.HORN, { z: 3 });
+  }
+  composite(p, cg.render(0, false), selout, { top: 1, side: 1, bottom: 1 });
+}
+
+// ---------------------------------------------------------------- wings
+
+function wingGeom(w: Wing, root: V) {
+  const wrist = add(root, [w.wx * S, w.wy * S]);
+  const tips: V[] = w.a.map((a, i) => add(wrist, polar(a, w.l[i] * S)));
+  return { root, wrist, tips };
+}
+
+/** Torn-hole shapes of the membrane, in (panel, along, across) coordinates (0..1) so they follow the wing. */
+const HOLES: { panel: 0 | 1; at: number; across: number; r: number }[] = [
+  { panel: 1, at: 0.62, across: 0.45, r: 3.2 },
+  { panel: 0, at: 0.78, across: 0.35, r: 2.4 },
+  { panel: 1, at: 0.36, across: 0.62, r: 2.2 },
+];
+
+function wing(p: PixelCanvas, R: Rig, P: Pose, far: boolean) {
+  const w = far ? P.fw : P.nw;
+  const root = far ? R.rootF : R.rootN;
+  const { wrist, tips } = wingGeom(w, root);
+  const matM = far ? M.MEMB_FAR : M.MEMB;
+  const matB = far ? M.BONE_FAR : M.BONE;
+  const fl = Math.sin(2 * Math.PI * P.tph * 2 + (far ? 1.7 : 0)) * 0.6;
+  // membrane outline: wrist → tip 1 → torn scallop → tip 2 → torn scallop → tip 3 → body
+  const edge: V[] = [wrist, tips[0]];
+  const rag = (k: number, i: number) => hash(k * 31 + i, far ? 5 : 9);
+  for (let i = 0; i < 2; i++) {
+    const a = tips[i];
+    const b = tips[i + 1];
+    const m = lerpV(a, b, 0.5);
+    const inward = norm(sub(wrist, m));
+    const dep = w.sag * S;
+    const spike = (t: number, d: number): V => add(lerpV(a, b, t), mul(inward, d));
+    edge.push(spike(0.16, dep * (0.7 + rag(i, 1) * 0.5)));
+    edge.push(spike(0.28, dep * 0.15));
+    edge.push(spike(0.4, dep * (1.5 + rag(i, 2) + fl * 0.4)));
+    edge.push(spike(0.52, dep * 0.25));
+    edge.push(spike(0.64, dep * (0.9 + rag(i, 3) * 0.6)));
+    edge.push(spike(0.78, dep * 0.1));
+    edge.push(spike(0.9, dep * (0.6 + fl * 0.3)));
+    edge.push(b);
+  }
+  edge.push(add(lerpV(tips[2], root, 0.35), [0, 1]));
+  edge.push(root);
+
+  const g = newG();
+  const mask = newG();
+  gFacet(mask, edge, matM, FLAT_N, 0);
+  const full = mask.render(0, false);
+  fillPoly(edge, (x, y) => {
+    if (!full.isOpaque(x, y)) return;
+    const pt: V = [x + 0.5, y + 0.5];
+    const sideOf = (a: V, b: V) => (b[0] - a[0]) * (pt[1] - a[1]) - (b[1] - a[1]) * (pt[0] - a[0]);
+    // panel 0: between finger 1 and 2; panel 1: between finger 2 and 3; panel 2: root side of finger 3
+    const s01 = sideOf(wrist, tips[1]);
+    const s12 = sideOf(wrist, tips[2]);
+    const k = s01 < 0 ? 0 : s12 < 0 ? 1 : 2;
+    const nz: [number, number, number] = k === 0 ? [-0.2, -0.4, 0.9] : k === 1 ? [0.05, 0.05, 1] : [0.2, 0.25, 0.9];
+    // a darker 2-px band along every finger bone, so the skin folds under the bone
+    const d = Math.min(distSeg(pt, wrist, tips[0]), distSeg(pt, wrist, tips[1]), distSeg(pt, wrist, tips[2]));
+    g.put(x, y, matM, nz[0], nz[1], nz[2], 0, d < 3.2 ? -0.45 : 0);
+  });
+  const memb = g.render(0, false);
+  // torn holes: the flank shows through, a glowing rim stays
+  const holes: V[][] = HOLES.map((h) => {
+    const a0 = tips[h.panel];
+    const a1 = tips[h.panel + 1];
+    const edgeP = lerpV(a0, a1, h.across);
+    const c: V = lerpV(wrist, edgeP, h.at);
+    const r = h.r * S;
+    return [add(c, [-r, 0]), add(c, [-r * 0.3, -r * 0.9]), add(c, [r * 0.8, -r * 0.4]), add(c, [r, r * 0.5]), add(c, [0, r * 0.9]), add(c, [-r * 0.8, r * 0.5])];
+  });
+  const holeMask = new Set<number>();
+  for (const hp of holes) fillPoly(hp, (x, y) => holeMask.add(y * W + x));
+  for (const k of holeMask) {
+    const x = k % W;
+    const y = (k / W) | 0;
+    memb.erase(x, y);
+  }
+  const glowRim = P.glow * (1 - P.drain);
+  for (const k of holeMask) {
+    const x = k % W;
+    const y = (k / W) | 0;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (holeMask.has(ny * W + nx) || !memb.isOpaque(nx, ny)) continue;
+      memb.set(nx, ny, glowRim > 0.55 ? PAL.fire3 : glowRim > 0.25 ? PAL.fire2 : PAL.fire1);
     }
   }
-}
+  composite(p, memb, far ? selout : crease, { top: 1, side: 1, bottom: 1 });
 
-const SKIN = new Set<number>([PAL.night0, PAL.stone0, PAL.stone1, PAL.stone2, PAL.stone3]);
-const MEMB = new Set<number>([PAL.fire0, PAL.night0]);
-
-function drawWing(r: WingRig, far: boolean, P: Pose): PixelCanvas {
-  const c = drawWingRaw(r, far, P);
-  remapWith(c, WING_MAP);
-  if (P.guard && !far) return c;
-  // ember cracks run across the membrane from the wrist knuckle toward each scallop valley
-  const { Wr, tips } = r;
-  const g = P.glow;
-  tips.forEach((t, i) => {
-    const nx = tips[i + 1] ?? lerpV(r.attach, r.E, 0.5);
-    const mid = lerpV(lerpV(t, nx, 0.5), Wr, 0.32);
-    const mid2 = lerpV(lerpV(t, nx, 0.5), Wr, 0.62);
-    const j = (k: number) => Math.round((h3(i, k, far ? 5 : 6) - 0.5) * 3);
-    emberLine(c, [lerpV(Wr, mid2, 0.35), [mid2[0] + j(1), mid2[1] + j(2)], [mid[0] + j(3), mid[1] + j(4)], lerpV(mid, lerpV(t, nx, 0.5), 0.7)], far ? g * 0.6 : g, 11 + i + (far ? 20 : 0), (cur) => MEMB.has(cur), far ? 0.4 : 0.2);
-  });
-  return c;
-}
-
-/** The last pass: remap the colour space, ember spine cracks, ash flecks. */
-function ashSkin(p: PixelCanvas, P: Pose, R: Rig, nPath: V[]) {
-  remapWith(p, HIDE_MAP);
-  const axis = norm(sub(R.chest, R.hip));
-  const dn = dorsal(axis);
-  const g = Math.max(P.glow, P.crestFlare, P.pulse);
-  // spine: a broken ember seam just inside the back's edge (torso, neck, then the tail root)
-  const back = [add(lerpV(R.hip, R.chest, 0.02), mul(dn, 8.5)), add(lerpV(R.hip, R.chest, 0.4), mul(dn, 10.5)), add(lerpV(R.hip, R.chest, 0.8), mul(dn, 10.5)), add(R.chest, mul(dn, 9))];
-  emberLine(p, back, g, 71, (cur) => SKIN.has(cur), 0.3);
-  const neck: V[] = [];
-  for (const t of [0.12, 0.3, 0.48, 0.66, 0.84]) {
-    const s = samplePath(nPath, t);
-    neck.push(add(s.p, mul(dorsal(s.tan), lerp(4.5, 3, t))));
+  // ember veins inside the membrane: a dotted line a few px off each finger bone
+  for (let i = 0; i < 3; i++) {
+    const a = lerpV(wrist, tips[i], 0.18);
+    const b = lerpV(wrist, tips[i], 0.9);
+    const off: V = i === 0 ? [0, 3] : [-2, 2.5];
+    emberLine(p, [add(a, off), add(b, off)], P, 71 + i + (far ? 20 : 0), { on: (cur) => cur === PAL.fire0 || cur === PAL.crim0 || cur === PAL.fire1, gap: 0.45, dim: far ? 0.2 : 0 });
   }
-  emberLine(p, neck, g, 72, (cur) => SKIN.has(cur), 0.3);
-  // the chest: a crack of light in the plates under the keel line
-  const a = R.att([-3.2, 2]);
-  const b = R.att([-1.4, 9.5]);
-  emberLine(p, [a, lerpV(a, b, 0.5), b], Math.max(P.pulse, g * 0.6), 73, (cur) => SKIN.has(cur), 0.15);
-  // ash: a few flecks lifting off the back, a slow rise round the tail phase
-  for (let k = 0; k < 5; k++) {
-    const ph = (P.tail * 1 + k * 0.2) % 1;
-    const base = lerpV(R.hip, R.chest, 0.15 + h3(k, 1) * 0.7);
-    const q = add(base, add(mul(dn, 11 + ph * 12), [(h3(k, 2) - 0.5) * 8 - ph * 3, 0]));
-    const x = Math.round(q[0]);
-    const y = Math.round(q[1]);
-    if (p.isOpaque(x, y) || p.isOpaque(x + 1, y) || p.isOpaque(x - 1, y)) continue;
-    p.set(x, y, ph < 0.7 ? PAL.stone2 : PAL.stone1);
-  }
+
+  // bones: upper arm to the wrist, three fingers, thumb claw
+  const bg = newG();
+  tubeS(bg, [root, wrist], 4, 3.4, matB, { flat: 2.2, z: 3 });
+  ellS(bg, wrist, 3, 3, 0, matB, { z: 4, flat: 2.2 });
+  for (let i = 0; i < 3; i++) tubeS(bg, [wrist, tips[i]], 2.6 - i * 0.2, 1, matB, { flat: 2.2, z: 3 });
+  const th = polar(-60, w.thumb * S);
+  tubeS(bg, [add(wrist, [1, -1]), add(wrist, th)], 3, 1, far ? M.BONE_FAR : M.HORN, { z: 5 });
+  composite(p, bg.render(0, false), selout, { top: 1, side: 1, bottom: 1 });
 }
+
+// ---------------------------------------------------------------- embers, rims, ash
+
+function embers(p: PixelCanvas, R: Rig, P: Pose, map: (pt: V) => V) {
+  // ribs under the cloak: four arcs on the near flank
+  for (let i = 0; i < 4; i++) {
+    const x = 52 + i * 6.5;
+    const pts = bezier(map(q(x, 34)), map(q(x + 4, 28)), map(q(x + 6, 21)), map(q(x + 3, 15)), 8);
+    emberLine(p, pts, P, 11 + i, { on: isHide, gap: 0.3 });
+  }
+  // haunch cracks
+  emberLine(p, [map(q(30, 33)), map(q(34, 28)), map(q(32, 22)), map(q(37, 17))], P, 31, { on: isHide });
+  emberLine(p, [map(q(40, 35)), map(q(44, 30)), map(q(43, 25))], P, 37, { on: isHide, gap: 0.25 });
+  // shoulder crack
+  emberLine(p, [map(q(72, 26)), map(q(76, 21)), map(q(73, 16))], P, 41, { on: isHide, gap: 0.25 });
+}
+
+function rimsAndAsh(p: PixelCanvas, R: Rig, P: Pose) {
+  // the lighter mid-tone band: a lit edge line on the key-light side of the hide
+  edgePaint(p, PAL.stone3, null, { only: (c) => c === PAL.stone2 || c === PAL.stone1, lit: 0.5 });
+  // ash drifting off the back: 1–2 px flakes in three greys, rising and sliding back
+  ash(p, R, P);
+}
+
+function ash(p: PixelCanvas, R: Rig, P: Pose) {
+  if (P.smoke <= 0) return;
+  const emit: V[] = [add(R.mid, [-6 * S, -17 * S]), add(R.sho, [-2 * S, -20 * S]), add(R.hip, [-4 * S, -15 * S])];
+  const n = 3;
+  for (let e = 0; e < emit.length; e++)
+    for (let k = 0; k < n; k++) {
+      const t = (P.ash + k / n + e * 0.21) % 1;
+      const x = emit[e][0] - t * 16 + Math.sin(t * 9 + e * 2 + k) * 2.2;
+      const y = emit[e][1] - t * 20;
+      const col = t < 0.3 ? PAL.stone3 : t < 0.65 ? PAL.stone2 : PAL.stone1;
+      const xi = Math.round(x);
+      const yi = Math.round(y);
+      if (t > 0.92) continue;
+      if (p.isOpaque(xi, yi)) continue;
+      p.set(xi, yi, col);
+      if (t < 0.5) p.set(xi + 1, yi, col);
+    }
+}
+
+function crumble(p: PixelCanvas, P: Pose) {
+  void p;
+  void P;
+}
+
+// ------------------------------------------------------------------ points
+
+export function mouthPoint(P: Pose): V {
+  const R = rig(P);
+  const T = (x: number, y: number): V => add(R.head, rotV([x * HS, y * HS], P.ha));
+  const jawA = P.jaw * 0.62;
+  const Jp = (x: number, y: number): V => {
+    const qv = add(HINGE, rotV(sub([x, y], HINGE), jawA));
+    return T(qv[0], qv[1]);
+  };
+  return lerpV(T(21, 3), Jp(21, 3), 0.5);
+}
+
+export { distPoly, rnd };

@@ -2,10 +2,12 @@
 import type Phaser from 'phaser';
 import { TitleScene } from './TitleScene';
 import { DuelScene } from './DuelScene';
+import { DeckScene } from './deck/DeckScene';
+import { DeckPickScene } from './deck/PickScene';
 import { launchFromUrl } from './launch';
 
 export function sceneList(): (typeof Phaser.Scene)[] {
-  return [TitleScene, DuelScene];
+  return [TitleScene, DuelScene, DeckScene, DeckPickScene];
 }
 
 /** Scene key BootScene starts when no ?dev= preview is requested (and no ?mode=). */

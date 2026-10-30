@@ -27,6 +27,15 @@ const POSSESSIVE_NAMES: ReadonlySet<CardId> = new Set<CardId>([
   'mirror_barrier', // Ayna Kalkanı
   'chains_of_light', // Işık Zincirleri
   'chasm_trap', // Yer Yarığı
+  // spell/trap batch 1: names whose last word carries the possessive
+  'fate_trade', // Kader Takası
+  'battle_cry', // Savaş Narası
+  'purging_wave', // Arınma Dalgası
+  'tidal_bay', // Gelgit Körfezi
+  'shadow_cavern', // Gölge Mağarası
+  'festival_square', // Şenlik Meydanı
+  'spell_seal', // Büyü Mührü
+  'sandstorm', // Kum Fırtınası
 ]);
 
 const VOWELS = 'aeıioöuü';
@@ -121,6 +130,14 @@ function isFaceDownMonster(state: GameState, uid: Uid): boolean {
   return false;
 }
 
+/** Short outcome note appended to the log line of the spell/trap batch 1 traps. */
+const TRAP_NOTE: Partial<Record<CardId, string>> = {
+  spell_seal: 'Büyü geçersiz kılındı.',
+  homecoming: 'Saldıran canavar geri döndü.',
+  sandstorm: 'Saldırı durdu, rakip canavarlar savunmaya geçti.',
+  hidden_reinforcement: 'Hedef güçlendi.',
+};
+
 const WIN_REASON: Record<string, string> = {
   lp: 'LP sıfırlandı',
   deckout: 'deste bitti',
@@ -172,8 +189,10 @@ export function describeEvent(state: GameState, ev: GameEvent, batch?: readonly 
     case 'flip':
       return ev.cause === 'attacked' ? `Kapalı kart açıldı: ${cardName(ev.cardId)}!` : null;
     case 'activate':
+      if (ev.kind === 'spell' && ev.cardId === 'guardian_charm' && ev.from === 'spellTrap')
+        return `${cardName(ev.cardId)} canavarı korudu!`;
       if (ev.kind === 'spell') return `${playerName(ev.player)} büyü kartı açtı: ${cardName(ev.cardId)}!`;
-      if (ev.kind === 'trap') return `${playerName(ev.player)} tuzak kartı açtı: ${cardName(ev.cardId)}!`;
+      if (ev.kind === 'trap') return `${playerName(ev.player)} tuzak kartı açtı: ${cardName(ev.cardId)}!${TRAP_NOTE[ev.cardId] ? ' ' + TRAP_NOTE[ev.cardId] : ''}`;
       return `${cardName(ev.cardId, 'gen')} etkisi!`;
     case 'target': {
       if (ev.graveyardUid !== undefined) return `Mezarlıktan hedef: ${nameOf(state, ev.graveyardUid)}.`;
@@ -222,6 +241,10 @@ export function describeEvent(state: GameState, ev: GameEvent, batch?: readonly 
     }
     case 'discard':
       return `${playerName(ev.player)} elinden ${cardName(ev.cardId, 'acc')} attı.`;
+    case 'toHand':
+      return `${cardName(ev.cardId)} sahibinin eline döndü.`;
+    case 'toDeck':
+      return `${playerName(ev.owner, 'gen')} mezarlığından ${cardName(ev.cardId)} desteye karıştırıldı.`;
     case 'decision':
       return null;
     case 'responseDeclined':
@@ -244,9 +267,12 @@ export function describePending(state: GameState, pd: PendingDecision): string {
       const what = pd.candidates.every((c) => c.zone === 'monster') ? 'canavarı' : 'kartı';
       if (card && CARDS[card.cardId].kind === 'monster' && (CARDS[card.cardId] as { effect: string }).effect === 'summonFreezeAttack')
         return `${cardName(card.cardId, 'gen')} etkisi: bir sonraki turunda saldıramayacak canavarı seç.`;
+      if (card && card.cardId === 'decoy_target') return `${cardName(card.cardId)}: saldırının yöneleceği kendi canavarını seç.`;
       return card ? `${cardName(card.cardId, 'gen')} etkisi: yok edilecek ${what} seç.` : `Yok edilecek ${what} seç.`;
     }
     case 'discard':
+      // fate_trade asks for its cost in the Main Phase; the hand limit asks in the End Phase
+      if (pd.cost) return `${playerName(pd.player)}: Bedel olarak elinden ${pd.count} kart at.`;
       return `${playerName(pd.player)}: El sınırı 6. Elinden ${pd.count} kart at.`;
   }
 }

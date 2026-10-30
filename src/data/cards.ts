@@ -40,12 +40,32 @@ export type SpellEffect =
   | 'gain1000' // healing_spring
   | 'reviveFromGraveyard' // soul_recall
   | 'equipAtk700' // dragon_blade
-  | 'fieldVolcano'; // volcano_arena
+  | 'fieldVolcano' // volcano_arena
+  // ---- spell/trap batch 1 (docs/KART_TASLAGI_BUYU_TUZAK.md) ----
+  | 'draw2Discard1' // fate_trade: draw 2, then discard 1
+  | 'doubleTribute' // double_offering: this turn a Level 7+ monster needs only 1 tribute
+  | 'forceDefense' // kneel_down: an opposing face-up attack-position monster turns to defense and cannot change position next turn
+  | 'recycleGraveyard' // cycle_of_graves: shuffle the last 3 cards of your graveyard into your deck, draw 1
+  | 'atkBoostTurn' // battle_cry: +1000 ATK until the end phase
+  | 'destroyOpponentSpellTrap' // purging_wave: destroy 1 opposing Spell/Trap (field spell included)
+  | 'equipPiercing' // piercing_lance: +300 ATK and piercing damage
+  | 'equipDestroyShield' // guardian_charm: the equipped monster is not destroyed once; this card is destroyed instead
+  | 'fieldTidalBay' // tidal_bay: WATER/WIND +400, FIRE -400
+  | 'fieldShadowCavern' // shadow_cavern: DARK/EARTH +300, LIGHT -300
+  | 'fieldExtraSummon'; // festival_square: its controller may Normal Summon / Set one extra Level <= 4 monster per turn
 
 export type TrapEffect =
   | 'attackDestroyAllAttackPosition' // mirror_barrier
   | 'attackNegateEndBattle' // chains_of_light
-  | 'summonDestroy1000Plus'; // chasm_trap
+  | 'summonDestroy1000Plus' // chasm_trap
+  // ---- spell/trap batch 1 (docs/KART_TASLAGI_BUYU_TUZAK.md) ----
+  | 'spellActivateNegate' // spell_seal: negate a Spell activation and destroy that Spell
+  | 'summonDestroy1800Plus' // toppling_tower: a Normal/Tribute/Special Summon with ATK >= 1800 is destroyed
+  | 'attackBounceAttacker' // homecoming: negate the attack, the attacker returns to its owner's hand
+  | 'attackRedirect' // decoy_target: the defender picks another own monster to take the attack
+  | 'lpBelow1500Gain1500' // last_breath: LP dropped below 1500 by the opponent's damage -> gain 1500
+  | 'attackNegateAllDefense' // sandstorm: negate the attack; the attacker's controller's attack-position monsters turn to defense
+  | 'attackedBoost1000'; // hidden_reinforcement: the attacked monster gets +1000 ATK/DEF this battle
 
 export type SpellType = 'normal' | 'equip' | 'field';
 
@@ -79,9 +99,37 @@ export type MonsterId =
   | 'shield_titan'
   | 'wing_lady';
 
-export type SpellId = 'judgment_bolt' | 'healing_spring' | 'soul_recall' | 'dragon_blade' | 'volcano_arena';
+export type SpellId =
+  | 'judgment_bolt'
+  | 'healing_spring'
+  | 'soul_recall'
+  | 'dragon_blade'
+  | 'volcano_arena'
+  // spell/trap batch 1
+  | 'fate_trade'
+  | 'double_offering'
+  | 'kneel_down'
+  | 'cycle_of_graves'
+  | 'battle_cry'
+  | 'purging_wave'
+  | 'piercing_lance'
+  | 'guardian_charm'
+  | 'tidal_bay'
+  | 'shadow_cavern'
+  | 'festival_square';
 
-export type TrapId = 'mirror_barrier' | 'chains_of_light' | 'chasm_trap';
+export type TrapId =
+  | 'mirror_barrier'
+  | 'chains_of_light'
+  | 'chasm_trap'
+  // spell/trap batch 1
+  | 'spell_seal'
+  | 'toppling_tower'
+  | 'homecoming'
+  | 'decoy_target'
+  | 'last_breath'
+  | 'sandstorm'
+  | 'hidden_reinforcement';
 
 export type CardId = MonsterId | SpellId | TrapId;
 
@@ -531,8 +579,153 @@ const TRAPS: TrapCardDef[] = [
   },
 ];
 
+
+/** Spell/trap batch 1 (docs/KART_TASLAGI_BUYU_TUZAK.md): 11 spells (2 equip, 3 field) and 7 traps; original names. */
+const SPELLS_B1: SpellCardDef[] = [
+  {
+    id: 'fate_trade',
+    kind: 'spell',
+    spellType: 'normal',
+    name: 'Kader Takası',
+    effect: 'draw2Discard1',
+    text: '2 kart çek, sonra elinden 1 kart at. (Destende en az 3 kart olmalı.)',
+  },
+  {
+    id: 'double_offering',
+    kind: 'spell',
+    spellType: 'normal',
+    name: 'Çifte Kurban',
+    effect: 'doubleTribute',
+    text: 'Bu tur Seviye 7 veya daha yüksek bir canavarı tek kurbanla çağırabilirsin.',
+  },
+  {
+    id: 'kneel_down',
+    kind: 'spell',
+    spellType: 'normal',
+    name: 'Diz Çöktürme',
+    effect: 'forceDefense',
+    text: "Rakibin açık saldırı pozisyonundaki 1 canavarını hedef al: savunma pozisyonuna geçer ve bir sonraki turunda pozisyonunu değiştiremez.",
+  },
+  {
+    id: 'cycle_of_graves',
+    kind: 'spell',
+    spellType: 'normal',
+    name: 'Devir Daim',
+    effect: 'recycleGraveyard',
+    text: 'Mezarlığındaki son 3 kartı desteye karıştır, sonra 1 kart çek.',
+  },
+  {
+    id: 'battle_cry',
+    kind: 'spell',
+    spellType: 'normal',
+    name: 'Savaş Narası',
+    effect: 'atkBoostTurn',
+    text: "Sahandaki 1 açık canavarı hedef al: bu tur ATK'si +1000.",
+  },
+  {
+    id: 'purging_wave',
+    kind: 'spell',
+    spellType: 'normal',
+    name: 'Arınma Dalgası',
+    effect: 'destroyOpponentSpellTrap',
+    text: "Rakibin sahasındaki 1 Büyü/Tuzak kartını (alan büyüsü dahil) hedef al ve yok et.",
+  },
+  {
+    id: 'piercing_lance',
+    kind: 'spell',
+    spellType: 'equip',
+    name: 'Delici Mızrak',
+    effect: 'equipPiercing',
+    text: 'Sahandaki 1 açık canavara kuşan. Kuşanan canavar +300 ATK kazanır ve delici hasar verir.',
+  },
+  {
+    id: 'guardian_charm',
+    kind: 'spell',
+    spellType: 'equip',
+    name: 'Koruyucu Tılsım',
+    effect: 'equipDestroyShield',
+    text: 'Sahandaki 1 açık canavara kuşan. Kuşanan canavar yok edilecek olursa, bunun yerine bu kart yok olur.',
+  },
+  {
+    id: 'tidal_bay',
+    kind: 'spell',
+    spellType: 'field',
+    name: 'Gelgit Körfezi',
+    effect: 'fieldTidalBay',
+    text: "Sahadaki tüm SU ve RÜZGAR canavarlar +400 ATK, tüm ATEŞ canavarlar -400 ATK kazanır.",
+  },
+  {
+    id: 'shadow_cavern',
+    kind: 'spell',
+    spellType: 'field',
+    name: 'Gölge Mağarası',
+    effect: 'fieldShadowCavern',
+    text: "Sahadaki tüm KARANLIK ve TOPRAK canavarlar +300 ATK, tüm IŞIK canavarlar -300 ATK kazanır.",
+  },
+  {
+    id: 'festival_square',
+    kind: 'spell',
+    spellType: 'field',
+    name: 'Şenlik Meydanı',
+    effect: 'fieldExtraSummon',
+    text: 'Normal Çağırma hakkın bittiyse, turda 1 kez daha Seviye 4 veya daha düşük bir canavarı Normal Çağırabilir ya da kapalı koyabilirsin.',
+  },
+];
+
+const TRAPS_B1: TrapCardDef[] = [
+  {
+    id: 'spell_seal',
+    kind: 'trap',
+    name: 'Büyü Mührü',
+    effect: 'spellActivateNegate',
+    text: 'Rakip bir Büyü kartı aktive ettiğinde: aktivasyonu geçersiz kıl ve o büyüyü yok et.',
+  },
+  {
+    id: 'toppling_tower',
+    kind: 'trap',
+    name: 'Devrilen Kule',
+    effect: 'summonDestroy1800Plus',
+    text: 'Rakip ATK değeri 1800 veya daha yüksek bir canavarı Normal, Kurbanla ya da Özel Çağırdığında: o canavarı yok et.',
+  },
+  {
+    id: 'homecoming',
+    kind: 'trap',
+    name: 'Eve Dönüş',
+    effect: 'attackBounceAttacker',
+    text: 'Rakibin canavarı saldırı ilan ettiğinde: saldırıyı geçersiz kıl ve o canavarı sahibinin eline geri gönder.',
+  },
+  {
+    id: 'decoy_target',
+    kind: 'trap',
+    name: 'Sahte Hedef',
+    effect: 'attackRedirect',
+    text: 'Rakibin canavarı saldırı ilan ettiğinde: kendi sahandaki başka bir canavarı seç; saldırı ona yönelir.',
+  },
+  {
+    id: 'last_breath',
+    kind: 'trap',
+    name: 'Son Nefes',
+    effect: 'lpBelow1500Gain1500',
+    text: "Rakibin verdiği hasar LP'ni 1500'ün altına düşürdüğünde (0 değilse): 1500 LP kazan.",
+  },
+  {
+    id: 'sandstorm',
+    kind: 'trap',
+    name: 'Kum Fırtınası',
+    effect: 'attackNegateAllDefense',
+    text: "Rakibin canavarı saldırı ilan ettiğinde: saldırıyı geçersiz kıl ve rakibin saldırı pozisyonundaki tüm canavarlarını savunma pozisyonuna çevir.",
+  },
+  {
+    id: 'hidden_reinforcement',
+    kind: 'trap',
+    name: 'Gizli Takviye',
+    effect: 'attackedBoost1000',
+    text: "Rakibin canavarı sana ait bir canavara saldırı ilan ettiğinde: saldırılan canavarın ATK ve DEF'i bu savaş boyunca +1000.",
+  },
+];
+
 /** The 20 original cards (DEFAULT_DECK) followed by the expanded roster; new cards are only ever appended. */
-export const ALL_CARDS: CardDef[] = [...MONSTERS, ...SPELLS, ...TRAPS, ...MONSTERS_B1];
+export const ALL_CARDS: CardDef[] = [...MONSTERS, ...SPELLS, ...TRAPS, ...MONSTERS_B1, ...SPELLS_B1, ...TRAPS_B1];
 
 export const CARDS: Record<CardId, CardDef> = Object.fromEntries(ALL_CARDS.map((c) => [c.id, c])) as Record<
   CardId,
@@ -540,8 +733,8 @@ export const CARDS: Record<CardId, CardDef> = Object.fromEntries(ALL_CARDS.map((
 >;
 
 export const MONSTER_IDS: MonsterId[] = [...MONSTERS, ...MONSTERS_B1].map((m) => m.id);
-export const SPELL_IDS: SpellId[] = SPELLS.map((s) => s.id);
-export const TRAP_IDS: TrapId[] = TRAPS.map((t) => t.id);
+export const SPELL_IDS: SpellId[] = [...SPELLS, ...SPELLS_B1].map((s) => s.id);
+export const TRAP_IDS: TrapId[] = [...TRAPS, ...TRAPS_B1].map((t) => t.id);
 export const ALL_CARD_IDS: CardId[] = ALL_CARDS.map((c) => c.id);
 
 /** Default deck: one copy of each of the 20 original cards (both players use it, shuffled). Never grows. */

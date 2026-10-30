@@ -3,7 +3,7 @@
 // field, interaction with piercing / direct attack, and the 3-zone and 5-zone boards.
 import { describe, expect, it } from 'vitest';
 import { apply, battleNumbers, currentAtk, legalActions, newGame, type Action, type GameEvent, type GameState, type PlayerId } from '../../src/engine';
-import { CARDS, DEFAULT_DECK, SEAL_IDS, isMonster, type CardId } from '../../src/data/cards';
+import { ALL_CARDS, CARDS, DEFAULT_DECK, SEAL_IDS, isMonster, type CardId } from '../../src/data/cards';
 import { DECK_SIZE, EXPANDED_POOL, decksFor, detectDeckPool, expandedDeck } from '../../src/data/decks';
 import { checkEvents, checkInvariants, isListed, play, scenario, seq, uidOf, type ScenarioOpts } from './helpers';
 
@@ -478,14 +478,15 @@ describe('deck pool', () => {
     expect(expandedDeck(7, 0)).toEqual(d);
     expect(expandedDeck(7, 1)).not.toEqual(d);
     expect(expandedDeck(8, 0)).not.toEqual(d);
-    expect(EXPANDED_POOL).toHaveLength(35);
+    expect(EXPANDED_POOL).toHaveLength(ALL_CARDS.length); // the pool follows the roster (monsters + spell/trap batch 1)
     expect(decksFor('default', 1)).toBeUndefined();
     expect(detectDeckPool()).toBe('default');
   });
   it('across seeds every monster of the roster shows up (seals included)', () => {
     const seen = new Set<CardId>();
     for (let seed = 0; seed < 80; seed++) for (const id of [...expandedDeck(seed, 0), ...expandedDeck(seed, 1)]) seen.add(id);
-    expect(EXPANDED_POOL.every((id) => seen.has(id))).toBe(true);
+    // (the sampler keeps the first spells/traps fixed; the spell/trap batch 1 is covered in st1.test.ts)
+    expect(EXPANDED_POOL.filter((id) => CARDS[id].kind === 'monster').every((id) => seen.has(id))).toBe(true);
   });
   it('newGame({ pool: "expanded" }) plays; the default still deals the 20 original cards', () => {
     const g = newGame({ seed: 5, pool: 'expanded' }).state;
