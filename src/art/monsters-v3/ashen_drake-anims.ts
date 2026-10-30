@@ -42,8 +42,8 @@ const WRAP_F: Wing = { wx: 34, wy: 9, a: [132, 104, 76], l: [27, 30, 27], sag: 3
 const LIFT_N: Wing = { wx: 4, wy: -17, a: [170, 144, 116], l: [52, 48, 42], sag: 5, thumb: 5 };
 const LIFT_F: Wing = { wx: 6, wy: -21, a: [176, 152, 126], l: [47, 43, 36], sag: 4, thumb: 4 };
 /** Thrown wide up and back (the pounce's wind-up, victory). */
-const FLARE_N: Wing = { wx: 1, wy: -17, a: [192, 218, 244], l: [50, 48, 44], sag: 6, thumb: 6 };
-const FLARE_F: Wing = { wx: 4, wy: -19, a: [198, 224, 250], l: [45, 43, 39], sag: 5, thumb: 5 };
+const FLARE_N: Wing = { wx: 1, wy: -12, a: [190, 208, 226], l: [48, 44, 38], sag: 6, thumb: 6 };
+const FLARE_F: Wing = { wx: 4, wy: -10, a: [196, 214, 232], l: [42, 38, 32], sag: 5, thumb: 5 };
 /** The slam: swept forward and down over the target. */
 const SLAM_N: Wing = { wx: 20, wy: 0, a: [78, 58, 36], l: [36, 38, 34], sag: 4, thumb: 4 };
 const SLAM_F: Wing = { wx: 22, wy: -2, a: [84, 64, 42], l: [32, 34, 30], sag: 3, thumb: 3 };
@@ -190,11 +190,11 @@ const ATTACK_KEYS: PoseDelta[] = [
   // 0 weight shifts back
   { hipY: 1, shY: 2, arch: 1, hd: [-1, 2], ha: 0.3, glow: 0.6, tlift: 2 },
   // 1 charge: the haunch rises, the head sinks, the cloak flares
-  { bx: -2, hipY: -2, shY: 5, arch: -1, hd: [-1, 7], ha: 0.46, glow: 0.8, nw: wmix(CLOAK_N, FLARE_N, 0.35), fw: wmix(CLOAK_F, FLARE_F, 0.35), tlift: 5, tcurl: 1.1 },
+  { hipY: -2, shY: 5, arch: -1, hd: [-1, 7], ha: 0.46, glow: 0.8, nw: wmix(CLOAK_N, FLARE_N, 0.35), fw: wmix(CLOAK_F, FLARE_F, 0.35), tlift: 5, tcurl: 1.1 },
   // 2 coil: everything gathers back
-  { bx: -4, hipY: -4, shY: 7, shX: -3, arch: -3, hd: [-4, 10], ha: 0.55, glow: 0.95, nw: wmix(CLOAK_N, FLARE_N, 0.7), fw: wmix(CLOAK_F, FLARE_F, 0.7), tlift: 9, tcurl: 1.2, lN: [-2, 0], lF: [-2, 0] },
+  { hipY: -4, shY: 7, shX: -3, arch: -3, hd: [-4, 10], ha: 0.55, glow: 0.95, nw: wmix(CLOAK_N, FLARE_N, 0.7), fw: wmix(CLOAK_F, FLARE_F, 0.7), tlift: 7, tcurl: 1.15, lN: [-2, 0], lF: [-2, 0] },
   // 3 the longest hold: fully coiled, the wings thrown up
-  { bx: -5, hipY: -5, shY: 8, shX: -4, arch: -4, hd: [-5, 11], ha: 0.6, eye: 0.7, glow: 1, nw: FLARE_N, fw: FLARE_F, tlift: 12, tcurl: 1.25, lN: [-3, 0], lF: [-3, 0] },
+  { hipY: -5, shY: 8, shX: -4, arch: -4, hd: [-5, 11], ha: 0.6, eye: 0.7, glow: 1, nw: FLARE_N, fw: FLARE_F, tlift: 8, tcurl: 1.18, lN: [-3, 0], lF: [-3, 0] },
   // 4 spring: the body unrolls forward, the paws leave the ground
   { bx: 5, by: -4, hipY: -3, shY: -3, shX: 2, arch: 2, hd: [8, -2], ha: 0.12, jaw: 0.4, glow: 1, nw: wmix(FLARE_N, SLAM_N, 0.15), fw: wmix(FLARE_F, SLAM_F, 0.15), fN: [10, -16], fF: [12, -17], tlift: 6, tcurl: 1.1, lN: [4, -1], lF: [4, -1], claw: 1 },
   // 5 release: airborne at full stretch, jaws open, claws spread

@@ -263,7 +263,7 @@ export function tailPoints(P: Pose, root: V): V[] {
     const lift = (-P.tlift * DEG * 2.2 * i) / TAIL_REST.length;
     const a = ang + wave * 0.5 + lift;
     const prev = pts[i - 1];
-    pts.push([prev[0] + Math.cos(a) * l, prev[1] + Math.sin(a) * l]);
+    pts.push([Math.max(5, prev[0] + Math.cos(a) * l), prev[1] + Math.sin(a) * l]);
   }
   return pts;
 }
@@ -283,7 +283,9 @@ export function rig(P: Pose): Rig {
   const hipJ = add(hip, [2 * S, 4 * S]);
   const kneeN = ik(hipJ, ankN, 15 * S, 16 * S, -1);
   const kneeF = ik(add(hipJ, [4 * S, 0]), ankF, 15 * S, 16 * S, -1);
-  const head = add(HEAD0, [P.bx + P.hd[0], P.by + P.hd[1]]);
+  const head0 = add(HEAD0, [P.bx + P.hd[0], P.by + P.hd[1]]);
+  // the head never sinks into the floor (the jaw hangs ~14 px under its centre)
+  const head: V = [head0[0], Math.min(head0[1], GY - 17)];
   const nb = add(sho, [8 * S, -3 * S]);
   const neck: V[] = [nb, lerpV(nb, head, 0.5), head];
   return {
@@ -825,6 +827,35 @@ function rimsAndAsh(p: PixelCanvas, R: Rig, P: Pose) {
   edgePaint(p, PAL.stone3, null, { only: (c) => c === PAL.stone2 || c === PAL.stone1, lit: 0.5 });
   // ash drifting off the back: 1–2 px flakes in three greys, rising and sliding back
   ash(p, R, P);
+  spill(p, P);
+}
+
+/** The roar's ember spill: sparks fall out of the open jaws in an arc, splash on the floor and pool there. */
+function spill(p: PixelCanvas, P: Pose) {
+  if (P.spill <= 0.05) return;
+  const m = mouthPoint(P);
+  const n = Math.max(2, Math.round(8 * P.spill));
+  const put = (x: number, y: number, c: number) => {
+    x = Math.round(x);
+    y = Math.round(y);
+    if (x < 0 || y < 0 || x >= W || y >= H || p.isOpaque(x, y)) return;
+    p.set(x, y, c);
+  };
+  for (let k = 0; k < n; k++) {
+    const t = (P.spillT + k / n) % 1;
+    const reach = 5 + (k % 3) * 3;
+    const x = m[0] + 1 + t * reach;
+    const y = m[1] + 2 + t * t * (GY - 2 - m[1]);
+    const c = t < 0.2 ? PAL.fire4 : t < 0.5 ? PAL.fire3 : t < 0.8 ? PAL.fire2 : PAL.fire1;
+    put(x, y, c);
+    if (t < 0.6) put(x, y - 1, c);
+    if (t > 0.85) {
+      put(x - 1, GY - 1, PAL.fire2);
+      put(x + 1, GY - 1, PAL.fire3);
+    }
+  }
+  // the pool on the floor under the jaws
+  if (P.spill > 0.5) for (let i = 0; i < 9; i++) put(m[0] - 2 + i, GY - 1, i % 3 === 1 ? PAL.fire3 : PAL.fire2);
 }
 
 function ash(p: PixelCanvas, R: Rig, P: Pose) {
@@ -846,9 +877,39 @@ function ash(p: PixelCanvas, R: Rig, P: Pose) {
     }
 }
 
+/** Death / revive: the body crumbles into ash from the top down; the flakes fall and settle as a low heap. */
 function crumble(p: PixelCanvas, P: Pose) {
-  void p;
-  void P;
+  const c = P.crumble;
+  let y0 = H;
+  let y1 = 0;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (p.isOpaque(x, y)) (y0 = Math.min(y0, y)), (y1 = Math.max(y1, y));
+  if (y1 <= y0) return;
+  const gone: number[] = [];
+  for (let y = y0; y <= y1; y++)
+    for (let x = 0; x < W; x++) {
+      if (!p.isOpaque(x, y)) continue;
+      const u = (y - y0) / (y1 - y0 || 1);
+      const key = hash(x >> 1, (y >> 1) + 977);
+      if (y >= GY - 3) continue;
+      if (key < c * 1.35 - u * 0.55) gone.push(x, y, (key * 1000) | 0);
+    }
+  const col: number[] = [];
+  for (let i = 0; i < gone.length; i += 3) col.push(p.get(gone[i], gone[i + 1]) as number);
+  for (let i = 0; i < gone.length; i += 3) p.erase(gone[i], gone[i + 1]);
+  // the flakes: some still falling, most already settled on the floor
+  for (let i = 0; i < gone.length; i += 3) {
+    const x = gone[i];
+    const y = gone[i + 1];
+    const k = gone[i + 2] / 1000;
+    const warm = col[i / 3] === PAL.fire3 || col[i / 3] === PAL.fire2 || col[i / 3] === PAL.fire4;
+    if (k < 0.55) continue; // a share of the chunks just vanishes
+    const fall = Math.min(GY - 2 - y, Math.round((0.25 + k) * c * 34));
+    const nx = x + Math.round((k - 0.75) * 10 * c);
+    const ny = y + fall;
+    if (p.isOpaque(nx, ny)) continue;
+    const settled = ny >= GY - 3;
+    p.set(nx, ny, warm && P.drain < 0.8 ? PAL.fire1 : settled ? (k > 0.85 ? PAL.stone2 : PAL.stone1) : k > 0.8 ? PAL.stone2 : PAL.stone1);
+  }
 }
 
 // ------------------------------------------------------------------ points

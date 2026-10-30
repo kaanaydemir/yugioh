@@ -494,7 +494,7 @@ class Resolver {
   }
 
   /** A monster goes back to its owner's hand (homecoming); its equips are destroyed by rule. */
-  private returnToHand(p: PlayerId, index: number): void {
+  private returnToHand(p: PlayerId, index: number, recheckSeals = true): void {
     const slot = this.ps(p).monsters[index];
     if (!slot) return;
     const owner = this.s.cards[slot.uid].owner;
@@ -504,7 +504,7 @@ class Resolver {
       this.emit({ type: 'toHand', player: owner, uid: slot.uid, cardId: this.cardId(slot.uid), from: 'monster', zone: index });
       this.dropEquips(slot.uid);
     });
-    this.checkSeals();
+    if (recheckSeals) this.checkSeals();
   }
 
   /** Remove the queued battle of `attackerUid` (the attack was negated). */
@@ -858,7 +858,7 @@ class Resolver {
       if (stZone !== null) ps.spellTraps[stZone] = null;
       this.toGraveyard(a.uid, 'resolved', stZone);
       if (askDiscard) this.openPending({ kind: 'discard', player: p, count: 1, cost: true });
-      this.queue.unshift(...after, ...burners);
+      if (s.winner === null) this.queue.unshift(...after, ...burners);
       return;
     }
 
@@ -982,9 +982,10 @@ class Resolver {
         if (aLoc) {
           this.emit({ type: 'attackNegated', player: other(p), attackerUid, byUid: uid });
           this.dropBattle(attackerUid);
-          this.returnToHand(aLoc.player, aLoc.index);
+          this.returnToHand(aLoc.player, aLoc.index, false);
         }
         finish();
+        this.checkSeals(); // the returned card may complete a seal set in its owner's hand
         return;
       }
       case 'attackRedirect': {

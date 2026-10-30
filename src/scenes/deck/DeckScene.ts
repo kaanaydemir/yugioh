@@ -54,8 +54,10 @@ const ROWS = 6;
 const GAP = 2;
 const GRID_X = PX + 6;
 const GRID_Y = PY + 40;
-const ROW_H = 8;
-const LIST_Y = DY + 49;
+const ROW_H = 9;
+const LIST_Y = DY + 39;
+const NAME_W = 96;
+const BTN_Y = DY + DH - 2 * 17 - 1;
 const KIND_LABEL: Record<KindFilter, string> = { all: 'Tümü', monster: 'Canavar', spell: 'Büyü', trap: 'Tuzak' };
 const KINDS: readonly KindFilter[] = ['all', 'monster', 'spell', 'trap'];
 const SPELL_WORD: Record<string, string> = { normal: 'Normal', equip: 'Kuşanma', field: 'Alan' };
@@ -63,13 +65,11 @@ const HELP: readonly (readonly [string, string])[] = [
   ['ENTER', 'Ekle / çıkar'],
   ['TAB', 'Alan değiştir'],
   ['1-5', 'Deste yuvası'],
-  ['K', 'Kaydet'],
+  ['K · N', 'Kaydet · Ad ver'],
   ['R', 'Rastgele doldur'],
-  ['H', 'Hazır deste'],
-  ['D', 'Sıfırla (klasik)'],
+  ['H · D', 'Hazır · Klasik'],
   ['X', 'Temizle'],
-  ['N', 'Desteye ad ver'],
-  ['F E O', 'Süz · Element · Sırala'],
+  ['F E O', 'Süz/Element/Sıra'],
   ['ESC', 'Geri'],
 ];
 
@@ -358,12 +358,12 @@ export class DeckScene extends Phaser.Scene {
     const orb = this.add.image(5, 5, orbTex(this, 'FIRE')).setOrigin(0);
     const lvlBg = this.add.rectangle(46, 33, 1, 1, PAL.ink).setOrigin(1, 1).setAlpha(0.85);
     const lvl = pixelText(this, 46, 38, '', { size: 'sm', color: PAL.gold4, originX: 1, originY: 1 });
-    const name = pixelText(this, 52, 3, '', { size: 'sm', color: PAL.white, maxWidth: CELL_W - 54, lineSpacing: -1 });
+    const name = pixelText(this, 51, 3, '', { size: 'sm', color: PAL.white, maxWidth: CELL_W - 53, lineSpacing: -1 });
     const atk = pixelText(this, 52, 26, '', { size: 'sm', color: PAL.crim3 });
     const def = pixelText(this, 82, 26, '', { size: 'sm', color: PAL.cyan3 });
     const word = pixelText(this, 52, 26, '', { size: 'sm', color: PAL.mist });
     const chain = this.add.image(CELL_W - 12, 27, chainTex(this)).setOrigin(0);
-    const tick = this.add.image(CELL_W - 12, 3, tickTex(this)).setOrigin(0);
+    const tick = this.add.image(37, 4, tickTex(this)).setOrigin(0);
     box.add([bg, art, orb, lvlBg, lvl, name, atk, def, word, chain, tick]);
     const zone = this.add.zone(x, y, CELL_W, CELL_H).setOrigin(0).setDepth(12).setInteractive({ useHandCursor: true });
     const cell: Cell = { box, bg, art, orb, lvlBg, lvl, name, atk, def, word, chain, tick, zone, x, y, index: -1, id: null };
@@ -404,30 +404,28 @@ export class DeckScene extends Phaser.Scene {
       this.slotPips.push(this.add.rectangle(DX + 5 + i * 29 + 21, DY + 4 + 9, 3, 3, PAL.leaf3).setOrigin(0).setDepth(22).setVisible(false));
     }
     // name field
-    this.nameField = this.add.image(DX + 5, DY + 21, panelTex(this, 'neutral', DW - 10, 15, { chamfer: 2, scan: false, alpha: 255 })).setOrigin(0).setDepth(9);
+    this.nameField = this.add.image(DX + 5, DY + 21, panelTex(this, 'neutral', NAME_W, 15, { chamfer: 2, scan: false, alpha: 255 })).setOrigin(0).setDepth(9);
     this.nameText = pixelText(this, DX + 10, DY + 25, '', { size: 'sm', color: PAL.white }).setDepth(10);
     this.nameCaret = this.add.rectangle(DX + 10, DY + 25, 1, 8, PAL.gold4).setOrigin(0).setDepth(11).setVisible(false);
-    this.nameZone = this.add.zone(DX + 5, DY + 21, DW - 10, 15).setOrigin(0).setDepth(12).setInteractive({ useHandCursor: true });
+    this.nameZone = this.add.zone(DX + 5, DY + 21, NAME_W, 15).setOrigin(0).setDepth(12).setInteractive({ useHandCursor: true });
     this.nameZone.on(Phaser.Input.Events.POINTER_UP, () => this.setEditing(!this.editing));
     this.nameZone.on(Phaser.Input.Events.POINTER_OVER, () => !this.editing && this.say('Desteye ad ver (N)', 'info'));
     // count line + legal mark
-    this.countText = pixelText(this, DX + 8, DY + 39, '', { size: 'md', color: PAL.white }).setDepth(10);
-    this.okIcon = this.add.image(DX + DW - 14, DY + 43, ICON.check).setDepth(10).setVisible(false);
+    this.countText = pixelText(this, DX + NAME_W + 9, DY + 24, '', { size: 'md', color: PAL.white }).setDepth(10);
+    this.okIcon = this.add.image(DX + DW - 9, DY + 28, ICON.check).setDepth(10).setVisible(false);
 
     // list rows
     for (let i = 0; i < DECK_SIZE; i++) {
       const y = LIST_Y + i * ROW_H;
       const box = this.add.container(DX + 4, y).setDepth(9);
       const hi = this.add.rectangle(0, 0, DW - 8, ROW_H, PAL.night3).setOrigin(0).setVisible(false);
-      const num = pixelText(this, 2, 0, String(i + 1).padStart(2, '0'), { size: 'sm', color: PAL.night4 });
-      const orb = this.add.image(15, 0, orbTex(this, 'FIRE')).setOrigin(0).setScale(1);
-      const name = pixelText(this, 17, 0, '', { size: 'sm', color: PAL.mist });
+      const num = pixelText(this, 1, 1, String(i + 1).padStart(2, '0'), { size: 'sm', color: PAL.night4 });
+      const orb = this.add.image(12, 0, orbTex(this, 'FIRE')).setOrigin(0);
+      const name = pixelText(this, 23, 1, '', { size: 'sm', color: PAL.mist });
       const chain = this.add.image(80, 2, chainTex(this)).setOrigin(0).setVisible(false);
-      const lvl = pixelText(this, 112, 0, '', { size: 'sm', color: PAL.gold3, originX: 1 });
-      const atk = pixelText(this, 146, 0, '', { size: 'sm', color: PAL.crim3, originX: 1 });
+      const lvl = pixelText(this, 113, 1, '', { size: 'sm', color: PAL.gold3, originX: 1 });
+      const atk = pixelText(this, 147, 1, '', { size: 'sm', color: PAL.crim3, originX: 1 });
       box.add([hi, num, orb, name, chain, lvl, atk]);
-      // the row is 8 px: the orb is drawn as a 9 px sprite cropped by its position; keep it tiny via crop
-      orb.setCrop(0, 0, 9, 8);
       const zone = this.add.zone(DX + 4, y, DW - 8, ROW_H).setOrigin(0).setDepth(12).setInteractive({ useHandCursor: true });
       const row: Row = { box, hi, orb, name, lvl, atk, num, chain, zone, id: null };
       zone.on(Phaser.Input.Events.POINTER_OVER, () => {
@@ -446,12 +444,12 @@ export class DeckScene extends Phaser.Scene {
     }
 
     // level curve + counts
-    const cy = LIST_Y + DECK_SIZE * ROW_H + 4;
+    const cy = LIST_Y + DECK_SIZE * ROW_H + 3;
     this.add.rectangle(DX + 6, cy - 2, DW - 12, 1, PAL.night3).setOrigin(0).setDepth(10);
     for (let b = 0; b < CURVE_BUCKETS; b++) {
       const bx = DX + 8 + b * 11;
-      this.curveBars.push(this.add.rectangle(bx, cy + 22, 9, 1, PAL.gold2).setOrigin(0, 1).setDepth(10));
-      this.curveNums.push(pixelText(this, bx + 5, cy + 22, b === CURVE_BUCKETS - 1 ? '8+' : String(b + 1), { size: 'sm', color: b + 1 >= DECK_HIGH_LEVEL ? PAL.crim3 : PAL.steel, originX: 0.5 }).setDepth(10));
+      this.curveBars.push(this.add.rectangle(bx, cy + 20, 9, 1, PAL.gold2).setOrigin(0, 1).setDepth(10));
+      this.curveNums.push(pixelText(this, bx + 5, cy + 21, b === CURVE_BUCKETS - 1 ? '8+' : String(b + 1), { size: 'sm', color: b + 1 >= DECK_HIGH_LEVEL ? PAL.crim3 : PAL.steel, originX: 0.5 }).setDepth(10));
     }
     const icons = [ICON.swords, ICON.spell, ICON.trap];
     for (let i = 0; i < 3; i++) {
@@ -459,20 +457,19 @@ export class DeckScene extends Phaser.Scene {
       this.add.image(DX + 104, y + 4, icons[i]).setDepth(10).setTint(i === 0 ? PAL.gold3 : i === 1 ? PAL.teal3 : PAL.mag3);
       this.countTexts.push(pixelText(this, DX + 111, y, '', { size: 'sm', color: PAL.mist }).setDepth(10));
     }
-    this.reasons = pixelText(this, DX + 8, cy + 36, '', { size: 'sm', color: PAL.crim3, maxWidth: DW - 16, lineSpacing: -1 }).setDepth(10);
+    this.reasons = pixelText(this, DX + 8, cy + 33, '', { size: 'sm', color: PAL.crim3, maxWidth: DW - 16, lineSpacing: -1 }).setDepth(10);
 
     // action buttons (2 columns x 3 rows)
     const defs: { label: string; tip: string; run: () => void }[] = [
       { label: 'Kaydet', tip: 'Desteyi bu yuvaya kaydet (K)', run: () => this.save() },
-      { label: 'Rastgele Doldur', tip: 'Kalan yerleri kurallara uygun rastgele doldur (R)', run: () => this.randomFill() },
-      { label: 'Hazır Deste', tip: 'Hazır desteleri sırayla yükle (H)', run: () => this.nextPreset() },
+      { label: 'Rastgele', tip: 'Rastgele doldur: kalan yerleri kurallara uygun doldurur (R)', run: () => this.randomFill() },
+      { label: 'Hazır', tip: 'Hazır desteleri sırayla yükle (H)', run: () => this.nextPreset() },
       { label: 'Sıfırla', tip: 'Klasik 20 kartlık desteyi yükle (D)', run: () => this.resetClassic() },
       { label: 'Temizle', tip: 'Destedeki tüm kartları çıkar (X)', run: () => this.clearDeck() },
       { label: 'Ad Ver', tip: 'Desteye ad ver (N)', run: () => this.setEditing(true) },
     ];
-    const by = DY + DH - 3 * 17 - 3;
     defs.forEach((d, i) => {
-      const b = new Button(this, DX + 4 + (i % 2) * 74, by + Math.floor(i / 2) * 17, { w: 73, h: 16, label: d.label, size: 'sm', style: i === 0 ? 'gold' : 'neutral', depth: 20 });
+      const b = new Button(this, DX + 4 + (i % 3) * 50, BTN_Y + Math.floor(i / 3) * 17, { w: 49, h: 16, label: d.label, size: 'sm', style: i === 0 ? 'gold' : 'neutral', depth: 20 });
       b.onClick = d.run;
       b.onHover = (on) => on && this.say(d.tip, 'info');
       this.actionBtns.push(b);
@@ -485,10 +482,9 @@ export class DeckScene extends Phaser.Scene {
     const w = 128;
     const h = 94;
     this.plate.push(this.add.image(x, y, panelTex(this, 'neutral', w, h, { alpha: 236 })).setOrigin(0).setDepth(3));
-    this.plate.push(this.txt(x + 8, y + 5, 'KISAYOLLAR', PAL.gold3));
     HELP.forEach(([k, v], i) => {
-      this.plate.push(this.txt(x + 8, y + 17 + i * 6.5, k, PAL.white));
-      this.plate.push(this.txt(x + 44, y + 17 + i * 6.5, v, PAL.mist));
+      this.plate.push(this.txt(x + 8, y + 5 + i * 9, k, PAL.gold3));
+      this.plate.push(this.txt(x + 44, y + 5 + i * 9, v, PAL.mist));
     });
     // seal mode
     this.plateSeal.push(this.txt(x + 8, y + 5, 'BEŞ MÜHÜR', PAL.gold3));
@@ -939,7 +935,7 @@ export class DeckScene extends Phaser.Scene {
     cell.orb.setTexture(orbTex(this, orbOf(id)));
     cell.tick.setVisible(inDeck);
     cell.chain.setVisible(isSealCard(id));
-    const nameW = CELL_W - 54;
+    const nameW = CELL_W - 53;
     let lines = wrapText(d.name, 'sm', nameW);
     if (lines.length > 2) lines = [lines[0], fitText(lines.slice(1).join(' '), nameW, (s) => measureText(s, 'sm').w)];
     cell.name.setText(lines.join('\n')).setTint(PAL.white);
@@ -948,15 +944,15 @@ export class DeckScene extends Phaser.Scene {
       const w = Math.ceil(measureText(`Sv${d.level}`, 'sm').w) - 1;
       cell.lvlBg.setSize(w + 3, 8).setVisible(true).setPosition(46, 37);
       cell.lvl.setPosition(45, 38).setVisible(true).setTint(d.level >= DECK_HIGH_LEVEL ? PAL.crim3 : PAL.gold4);
-      cell.atk.setText(String(d.atk)).setVisible(true).setPosition(52, 27);
-      cell.def.setText(String(d.def)).setVisible(true).setPosition(52 + Math.ceil(measureText(String(d.atk), 'sm').w) + 4, 27);
+      cell.atk.setText(String(d.atk)).setVisible(true).setPosition(51, 27);
+      cell.def.setText(String(d.def)).setVisible(true).setPosition(51 + Math.ceil(measureText(String(d.atk), 'sm').w) + 4, 27);
       cell.word.setVisible(false);
     } else {
       cell.lvl.setVisible(false);
       cell.lvlBg.setVisible(false);
       cell.atk.setVisible(false);
       cell.def.setVisible(false);
-      cell.word.setText(d.kind === 'spell' ? `Büyü · ${SPELL_WORD[d.spellType] ?? 'Normal'}` : 'Tuzak').setVisible(true).setPosition(52, 27);
+      cell.word.setText(d.kind === 'spell' ? `Büyü · ${SPELL_WORD[d.spellType] ?? 'Normal'}` : 'Tuzak').setVisible(true).setPosition(51, 27);
       cell.word.setTint(d.kind === 'spell' ? KIND_RAMP.spell[3] : KIND_RAMP.trap[3]);
     }
     cell.def.setTint(PAL.cyan3);
@@ -995,10 +991,10 @@ export class DeckScene extends Phaser.Scene {
     });
     // name
     const dirty = keyOf(d.name, d.cards) !== d.savedKey;
-    const shown = fitText(d.name, DW - 34, (s) => measureText(s, 'sm').w);
+    const shown = fitText(d.name, NAME_W - 18, (s) => measureText(s, 'sm').w);
     this.nameText.setText(shown + (dirty ? ' *' : ''));
     this.nameText.setTint(this.editing ? PAL.gold4 : PAL.white);
-    this.nameField.setTexture(panelTex(this, this.editing ? 'gold' : 'neutral', DW - 10, 15, { chamfer: 2, scan: false, alpha: 255 }));
+    this.nameField.setTexture(panelTex(this, this.editing ? 'gold' : 'neutral', NAME_W, 15, { chamfer: 2, scan: false, alpha: 255 }));
     this.updateCaret();
     // count + legality
     const v = validateDeck(d.cards);
@@ -1021,9 +1017,9 @@ export class DeckScene extends Phaser.Scene {
       }
       const def = CARDS[id];
       r.orb.setVisible(true).setTexture(orbTex(this, orbOf(id)));
-      const nm = fitText(def.name, 62, (s) => measureText(s, 'sm').w);
+      const nm = fitText(def.name, 60, (s) => measureText(s, 'sm').w);
       r.name.setText(nm).setTint(this.zone === 'deck' && i === this.deckCursor ? PAL.white : PAL.mist);
-      r.chain.setVisible(isSealCard(id)).setX(17 + Math.ceil(measureText(nm, 'sm').w) + 3);
+      r.chain.setVisible(isSealCard(id)).setX(23 + Math.ceil(measureText(nm, 'sm').w) + 3);
       if (isMonster(def)) {
         r.lvl.setText(`Sv${def.level}`).setTint(def.level >= DECK_HIGH_LEVEL ? PAL.crim3 : PAL.gold3);
         r.atk.setText(String(def.atk)).setTint(PAL.crim3);
@@ -1036,7 +1032,7 @@ export class DeckScene extends Phaser.Scene {
     // curve + counts
     const st = deckStats(d.cards);
     const maxN = Math.max(1, ...st.curve);
-    const unit = Math.min(4, Math.floor(18 / maxN));
+    const unit = Math.min(4, Math.floor(16 / maxN));
     st.curve.forEach((n, b) => {
       this.curveBars[b].setSize(9, Math.max(1, n * unit)).setFillStyle(n === 0 ? PAL.night3 : b + 1 >= DECK_HIGH_LEVEL ? PAL.crim2 : PAL.gold2);
       this.curveNums[b].setTint(n ? (b + 1 >= DECK_HIGH_LEVEL ? PAL.crim3 : PAL.gold3) : PAL.night4);
@@ -1206,10 +1202,10 @@ export class DeckScene extends Phaser.Scene {
     const rows = this.rows.filter((r) => r.id).map((r, i) => ({ id: r.id as CardId, x: DX + DW / 2, y: LIST_Y + i * ROW_H + 4 }));
     const buttons: Record<string, { x: number; y: number }> = {};
     ['kaydet', 'rastgele', 'hazir', 'sifirla', 'temizle', 'adver'].forEach((k, i) => {
-      buttons[k] = { x: DX + 4 + (i % 2) * 74 + 36, y: DY + DH - 3 * 17 - 3 + Math.floor(i / 2) * 17 + 8 };
+      buttons[k] = { x: DX + 4 + (i % 3) * 50 + 24, y: BTN_Y + Math.floor(i / 3) * 17 + 8 };
     });
     this.slotBtns.forEach((b, i) => (buttons[`slot${i + 1}`] = { x: b.x + 13, y: b.y + 7 }));
-    buttons.name = { x: DX + DW / 2, y: DY + 28 };
+    buttons.name = { x: DX + 5 + NAME_W / 2, y: DY + 28 };
     buttons.geri = { x: GAME_W - 35, y: 11 };
     return { cells, rows, buttons };
   }
