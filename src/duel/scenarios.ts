@@ -275,6 +275,8 @@ function laneShiftFor(st: StageSpec, steps: Step[]): number {
     if (typeof s === 'function') continue;
     const o = s as unknown as Record<string, unknown>;
     for (const k of ['zone', 'attackerZone', 'targetZone']) if (typeof o[k] === 'number') use(o[k] as number);
+    const tz = (o.target as { toZone?: unknown } | undefined)?.toZone; // a revive / recall destination is a zone of the block too
+    if (typeof tz === 'number') use(tz);
   }
   if (hi < 0) return 1;
   return Math.max(0, Math.floor(2 - (lo + hi) / 2));
@@ -317,6 +319,7 @@ function shiftStep(st: Action | UiStep, LANE_SHIFT: number): Action | UiStep {
     if (!r || typeof r !== 'object') return r;
     const q = { ...(r as Record<string, unknown>) };
     if (typeof q.index === 'number' && (q.zone === 'monster' || q.zone === 'spellTrap')) q.index += LANE_SHIFT;
+    if (typeof q.toZone === 'number') q.toZone += LANE_SHIFT;
     if (q.ref) q.ref = ref(q.ref);
     return q;
   };
