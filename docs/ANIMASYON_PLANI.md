@@ -13,6 +13,7 @@ güncellenir ve iş commit + push edilir.
 | Sıra | Önce görsel geçiş, sonra çıkış. Oyun her aşamada oynanabilir ve çıkarılabilir kalır. |
 | Hedef (24 Ekim, kullanıcı) | Oyun **en kısa sürede Steam'de** çıkacak. Önce eldeki işler biter, sonra ön sürüm (pre-release); kart sayısı 60–80'e çıkmalı. Token bütçesi dikkatli kullanılır. |
 | 3D (24 Ekim, kullanıcı) | **3D yok.** Görünüm 2.5D (izometrik) piksel sanatı olarak kalır. 3D ancak oyun para kazanırsa yeniden düşünülür. |
+| Saha ve arka plan (30 Ekim, kullanıcı) | Saha 5 canavar + 5 büyü/tuzak alanına çıkar (7×5 ızgara, `?zones=5`, şimdilik isteğe bağlı; efektler 5 alana uyarlandıktan sonra varsayılan olur). **Arka plan ve sahanın görünümü beğenilmedi: yeniden tasarlanacak** (karar ve yön sonra konuşulacak; A7'den önce, 5+5 saha oturduktan sonra planlanır). | 
 
 ## 1. Altın kural
 
