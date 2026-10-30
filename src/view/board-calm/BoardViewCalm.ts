@@ -212,7 +212,15 @@ export interface BoardViewCalmOptions {
    * tinted bg masks and the stars; `slab` = the slab image and the neon trim pieces. The zone pads,
    * highlights, flashes, runner, pulses and the volcano theme (this class is the floor ENGINE) stay.
    */
-  skip?: { background?: boolean; slab?: boolean };
+  skip?: {
+    background?: boolean;
+    slab?: boolean;
+    /**
+     * Only the slab IMAGE (hull, faces, top plate): the neon trim pieces stay. They are this class's lit / dead /
+     * runner / ignition / volcano-heat strip and lie on pixels the Neon Tower plate leaves free for them (A1).
+     */
+    slabImage?: boolean;
+  };
 }
 
 let instanceCounter = 0;
@@ -635,7 +643,7 @@ export class BoardViewCalm {
 
   private buildSlab(): void {
     const S = this.art.slab;
-    this.img(S.x, S.y, CALM.slab, D.slab);
+    if (!this.skip.slabImage) this.img(S.x, S.y, CALM.slab, D.slab);
     for (const piece of this.art.trims) {
       const L = piece.layer;
       const dead = this.img(L.x, L.y, CALM.atlas, D.trimDead, CALM.trim(piece.n)).setVisible(false);

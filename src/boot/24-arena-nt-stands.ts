@@ -1,6 +1,5 @@
-import { NT_STANDS_KEY, paintStands } from '../art/arena-nt/stands';
 import { ARENA_NT } from '../view/board-nt/flag';
-import { ensureNtTexture } from '../view/board-nt/textures';
+import { ensureStandsTextures } from '../view/board-nt/stands';
 import type { BootStep } from './types';
 
 /**
@@ -12,7 +11,7 @@ const step: BootStep = {
   order: 24,
   build: (scene) => {
     if (!ARENA_NT) return;
-    ensureNtTexture(scene, 'stands', NT_STANDS_KEY, paintStands);
+    ensureStandsTextures(scene);
   },
 };
 export default step;

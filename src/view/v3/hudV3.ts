@@ -40,7 +40,9 @@ import type { Trim } from '../../art/frame-v3';
 import { sfx } from '../../audio/sfx';
 import type { Phase, PlayerId } from '../../engine/types';
 import { START_LP } from '../../engine/types';
+import { ARENA_NT } from '../board-nt/flag';
 import { Button } from '../Button';
+import { type HudMood, hudPortrait } from './hudPortrait';
 import { LP_WHEELS, LpCounter, Odometer } from './odometer';
 import type { HudCountKind, HudCounts, HudOpts, HudView, SpeedLevel } from '../HudView';
 import { DEPTH, UI, panelRect, type Rect, type XY } from '../layout';
@@ -188,6 +190,12 @@ interface PanelV3 {
   low: Phaser.Time.TimerEvent | null;
   lowPulse: boolean;
   lowDim: boolean;
+  /** Neon Tower look: the duelist's face in the emblem slot (null with any other arena), its mood and when the mood ends (portrait clock). */
+  portrait: Phaser.GameObjects.Image | null;
+  mood: HudMood;
+  moodUntil: number;
+  /** The key of the texture shown (so a refresh only touches the image when the picture changes). */
+  portraitKey: string;
 }
 
 /**
@@ -295,6 +303,8 @@ export class HudV3 implements HudApi {
   private readonly scene: Phaser.Scene;
   private readonly panels: [PanelV3, PanelV3];
   private readonly objects: { setVisible(b: boolean): unknown; destroy(): void }[] = [];
+  /** Neon Tower: the portraits' clock (ms of scene time × timeScale). */
+  private portraitT = 0;
   private activePlayer: PlayerId;
   private phase: Phase;
   private phasePlayer: PlayerId;
@@ -512,6 +522,7 @@ export class HudV3 implements HudApi {
     }
     const loss = value < from;
     const amount = Math.abs(delta || value - from);
+    if (amount >= 300) this.setMood(P, loss ? 'hurt' : 'glad', loss ? 900 : 1000);
     // v1's resolve time (o.maxMs: the v3 LP roll cap, 400 ms): every caller keeps its timing
     const cap = o.maxMs;
     const base = Math.min(1100, Math.max(420, 320 + amount * 0.32));
@@ -691,6 +702,7 @@ export class HudV3 implements HudApi {
       const on = P.player === player;
       const was = P.active;
       P.active = on;
+      this.refreshPortrait(P);
       const st = playerStyleV3(P.player);
       P.name.setColor(on ? styleTone(st, 1) : styleTone(st, 0));
       // the light node starts its lap when the panel becomes active (a repeated call keeps it running)
@@ -1122,6 +1134,28 @@ export class HudV3 implements HudApi {
     return canvasTexture(this.scene, `ui3:hud:chip:${p}:${d}`, () => chipV3(p, d));
   }
 
+  private portraitTexKey(p: PlayerId, mood: HudMood, lit: boolean): string {
+    return `ui3:hud:portrait:${p}:${mood}:${lit ? 1 : 0}`;
+  }
+
+  /** Show the portrait for the panel's mood / lit state (a blink swaps in the shut-eyed picture while the mood is idle). */
+  private refreshPortrait(P: PanelV3, blink = false): void {
+    if (!P.portrait || !P.portrait.active) return;
+    const mood: HudMood = P.mood === 'idle' && blink ? 'blink' : P.mood;
+    const key = this.portraitTexKey(P.player, mood, P.active);
+    if (key === P.portraitKey) return;
+    P.portraitKey = key;
+    P.portrait.setTexture(canvasTexture(this.scene, key, () => hudPortrait(P.player, mood, P.active)));
+  }
+
+  /** A mood for a while (a loss winces, a gain smiles); the portrait clock is the scene clock × timeScale. */
+  private setMood(P: PanelV3, mood: HudMood, ms: number): void {
+    if (!P.portrait) return;
+    P.mood = mood;
+    P.moodUntil = this.portraitT + ms;
+    this.refreshPortrait(P);
+  }
+
   private buildPanel(player: PlayerId, lp: number): PanelV3 {
     const sc = this.scene;
     const rect = panelRect(player);
@@ -1157,6 +1191,12 @@ export class HudV3 implements HudApi {
     const chipX = w - HUD3.chip.w - HUD3.chip.right;
     const chip = sc.add.image(chipX, HUD3.chip.y, canvasTexture(sc, `ui3:hud:chip:${player}:0`, () => chipV3(player, 0))).setOrigin(0).setVisible(false);
     root.add(chip);
+    // Neon Tower: the player's face replaces the hexagon's number (same slot, same size, no layout shift)
+    let portrait: Phaser.GameObjects.Image | null = null;
+    if (ARENA_NT) {
+      portrait = sc.add.image(HUD3.emblem.x, HUD3.emblem.y, canvasTexture(sc, this.portraitTexKey(player, 'idle', false), () => hudPortrait(player, 'idle', false))).setOrigin(0);
+      root.add(portrait);
+    }
     const P: PanelV3 = {
       player,
       rect,
@@ -1187,6 +1227,10 @@ export class HudV3 implements HudApi {
       low: null,
       lowPulse: false,
       lowDim: false,
+      portrait,
+      mood: 'idle',
+      moodUntil: 0,
+      portraitKey: portrait ? this.portraitTexKey(player, 'idle', false) : '',
     };
     this.applyTrim(P);
     this.renderLp(P);
@@ -1644,6 +1688,17 @@ export class HudV3 implements HudApi {
     }
     const k = this.scene.time.timeScale;
     for (const P of this.panels) P.trim.tick(dt * k);
+    if (ARENA_NT) {
+      this.portraitT += dt * k;
+      for (const P of this.panels) {
+        if (!P.portrait) continue;
+        if (P.mood !== 'idle' && this.portraitT >= P.moodUntil) P.mood = 'idle';
+        // a blink every 5–7 s (140 ms), each duelist on their own period; none with reduced motion
+        const period = P.player === 0 ? 5300 : 6900;
+        const blink = !REDUCED_MOTION && (this.portraitT + (P.player === 0 ? 1700 : 4100)) % period < 140;
+        this.refreshPortrait(P, blink);
+      }
+    }
     // the hint caret steps one pixel every 320 ms (scene clock)
     this.caretT += dt * k;
     if (this.hintCaret && this.hintCaret.active && this.hintCaret.visible) this.hintCaret.x = 6 + (REDUCED_MOTION ? 0 : Math.floor(this.caretT / 320) % 2);

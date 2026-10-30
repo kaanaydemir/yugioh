@@ -1,6 +1,5 @@
-import { NT_WALL_KEY, paintWall } from '../art/arena-nt/wall';
 import { ARENA_NT } from '../view/board-nt/flag';
-import { ensureNtTexture } from '../view/board-nt/textures';
+import { ensureWallTextures } from '../view/board-nt/wall';
 import type { BootStep } from './types';
 
 /**
@@ -12,7 +11,7 @@ const step: BootStep = {
   order: 23,
   build: (scene) => {
     if (!ARENA_NT) return;
-    ensureNtTexture(scene, 'wall', NT_WALL_KEY, paintWall);
+    ensureWallTextures(scene);
   },
 };
 export default step;

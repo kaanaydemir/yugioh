@@ -20,7 +20,8 @@ import { BoardViewCalm, type BoardViewCalmOptions } from '../board-calm/BoardVie
 import type { ArenaViewApi, CrowdReaction } from './api';
 import { drawNtDebug } from './debug';
 import { NT_DEBUG } from './flag';
-import { type NtLayer, makeCtx } from './layer';
+import type { CinematicContext } from '../../cinematics/_core/types';
+import { type NtEventInfo, type NtLayer, makeCtx } from './layer';
 import { createCrowdLayer } from './crowd';
 import { createFloorLayer } from './floor';
 import { createHologramsLayer } from './holograms';
@@ -34,7 +35,7 @@ import { createWallLayer } from './wall';
 type Img = Phaser.GameObjects.Image;
 
 /** Which parts of the calm arena the Neon Tower layers have replaced so far (skeleton: none). */
-export const NT_SKIP: NonNullable<BoardViewCalmOptions['skip']> = {};
+export const NT_SKIP: NonNullable<BoardViewCalmOptions['skip']> = { background: true, slabImage: true };
 
 export class BoardViewNt implements ArenaViewApi {
   readonly scene: Phaser.Scene;
@@ -61,12 +62,14 @@ export class BoardViewNt implements ArenaViewApi {
       createPadsLayer(ctx),
       createLightsLayer(ctx),
     ];
+    // the board is built dark for the intro (BoardView lights:false): the layers start dark too
+    if (opts.lights === false) for (const l of this.layers) void l.setLights?.(false, false);
     if (NT_DEBUG > 0) drawNtDebug(scene, ctx.add);
     // game events for the reaction layers (crowd, holograms, screens): the cinematic observers see every event
     void import('../../cinematics/_core/registry')
       .then((r) => {
         if (this.destroyed) return;
-        this.unobserve = r.registerObserver((ev) => this.onGameEvent(ev));
+        this.unobserve = r.registerObserver((ev, cctx) => this.onGameEvent(ev, cctx));
       })
       .catch((e) => console.error('[arena-nt] observer failed', e));
     scene.events.on(Phaser.Scenes.Events.UPDATE, this.tick, this);
@@ -144,9 +147,17 @@ export class BoardViewNt implements ArenaViewApi {
 
   // ================================================================ internals
 
-  private onGameEvent(ev: GameEvent): void {
+  private onGameEvent(ev: GameEvent, cctx?: CinematicContext): void {
     if (this.destroyed) return;
-    for (const l of this.layers) l.onGameEvent?.(ev);
+    const info: NtEventInfo = {};
+    if (ev.type === 'attackDeclare') {
+      try {
+        info.attackerAttribute = cctx?.monster(ev.attackerUid)?.attribute ?? null;
+      } catch {
+        info.attackerAttribute = null;
+      }
+    }
+    for (const l of this.layers) l.onGameEvent?.(ev, info);
   }
 
   private tick(_time: number, delta: number): void {

@@ -1,10 +1,10 @@
-import { NT_SCREENS_KEY, paintScreens } from '../art/arena-nt/screens';
 import { ARENA_NT } from '../view/board-nt/flag';
-import { ensureNtTexture } from '../view/board-nt/textures';
+import { ensureScreenTextures } from '../view/board-nt/screens';
 import type { BootStep } from './types';
 
 /**
- * Neon Tower arena (screens layer, docs/v3/ARENA_NEON_TOWER.md): builds this layer's textures — only with
+ * Neon Tower arena (screens layer, docs/v3/ARENA_NEON_TOWER.md): builds this layer's textures (the portrait
+ * atlas: frames, the two pictures, their lit twins and the blink / wince / smile / hair-sway patches) — only with
  * ?look=v3&arena=nt (ARENA_NT; in every other page this step returns at once and builds nothing).
  */
 const step: BootStep = {
@@ -12,7 +12,7 @@ const step: BootStep = {
   order: 27,
   build: (scene) => {
     if (!ARENA_NT) return;
-    ensureNtTexture(scene, 'screens', NT_SCREENS_KEY, paintScreens);
+    ensureScreenTextures(scene);
   },
 };
 export default step;

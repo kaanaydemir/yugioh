@@ -1,7 +1,7 @@
-// Neon Tower arena switch (docs/v3/ARENA_NEON_TOWER.md §1). Development phase: the new arena is
-// OPT-IN with ?look=v3&arena=nt (or globalThis.__NEON_ARENA_NT = true before boot); the calm v3
-// arena stays the default, v1 never changes. The final phase (owner C) flips the default HERE and
-// nowhere else: change `DEFAULT_ON` to true (and keep `?arena=calm` as the opt-out).
+// Neon Tower arena switch (docs/v3/ARENA_NEON_TOWER.md §1). FINAL PHASE (owner C): under the v3 look the
+// Neon Tower arena is now the DEFAULT. `?arena=old` (alias `?arena=calm`) keeps the previous v3 arena (the calm
+// blue stadium: BoardViewCalm), `?arena=nt` forces the new one; globalThis.__NEON_ARENA_NT = true | false before
+// boot overrides both. v1 never changes (no NT code runs and no NT texture is built without the v3 look).
 //
 // layout.ts is NOT touched: its ?arena= reader only knows 'v1' / 'v2' (any other value, 'nt'
 // included, falls through to 'v1') and ignores the param completely under LOOK_V3.
@@ -11,8 +11,8 @@
 
 import { LOOK_V3 } from '../layout';
 
-/** The default after the final phase's flip (docs §10). Development: false. */
-export const DEFAULT_ON = false;
+/** The default after the final phase's flip (docs §10): the Neon Tower arena under the v3 look. */
+export const DEFAULT_ON = true;
 
 function detect(): boolean {
   if (!LOOK_V3) return false;
@@ -22,7 +22,7 @@ function detect(): boolean {
     if (typeof location !== 'undefined' && typeof URLSearchParams !== 'undefined') {
       const a = new URLSearchParams(location.search).get('arena');
       if (a === 'nt') return true;
-      if (a === 'calm') return false;
+      if (a === 'old' || a === 'calm') return false;
     }
   } catch {
     /* no globals (tests, workers): fall through */

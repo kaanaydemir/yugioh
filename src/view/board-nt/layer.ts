@@ -5,6 +5,7 @@
 // layer's, and must be cheap: no per-sprite tweens, a few timers on the scene clock (tick()).
 
 import type Phaser from 'phaser';
+import type { Attribute } from '../../data/cards';
 import type { GameEvent, PlayerId } from '../../engine/types';
 import type { CrowdReaction } from './api';
 import { NT_DEBUG } from './flag';
@@ -15,6 +16,12 @@ export type NtLayerName = 'platform' | 'floor' | 'pads' | 'wall' | 'stands' | 'c
 /** The build-phase owner of a layer (docs §9). */
 export type NtOwner = 'A1' | 'A2' | 'B1' | 'B2' | 'C';
 
+/** Extra facts about an event that the layers cannot read from the event itself (resolved by the view from the cinematic context). */
+export interface NtEventInfo {
+  /** attackDeclare: the attacker's attribute (for the colour of the burst). */
+  attackerAttribute?: Attribute | null;
+}
+
 export interface NtLayer {
   readonly name: NtLayerName;
   readonly owner: NtOwner;
@@ -23,8 +30,8 @@ export interface NtLayer {
   /** The floodlights come on / go off (the intro ignition); `animate` false = at once. */
   setLights?(on: boolean, animate: boolean): Promise<void>;
   setActivePlayer?(player: PlayerId | null): void;
-  /** A game event reached the cinematic director (summon, attack, damage …): short reactions (crowd, holograms, screens). */
-  onGameEvent?(ev: GameEvent): void;
+  /** A game event reached the cinematic director (summon, attack, damage …): short reactions (crowd, holograms, screens, lights). */
+  onGameEvent?(ev: GameEvent, info?: NtEventInfo): void;
   /** BoardView.crowd(kind, side, power). */
   crowd?(kind: CrowdReaction, side: PlayerId | null, power: number): void;
   destroy(): void;
