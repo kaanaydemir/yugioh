@@ -16,7 +16,7 @@ import {
   type PlayerId,
   type Uid,
 } from '../../src/engine';
-import { ALL_CARDS, CARDS, SPELL_IDS, TRAP_IDS, isMonster, isSpell, isTrap, type CardId } from '../../src/data/cards';
+import { ALL_CARDS, CARDS, DEFAULT_DECK, SPELL_IDS, TRAP_IDS, isMonster, isSpell, isTrap, type CardId } from '../../src/data/cards';
 import { EXPANDED_POOL } from '../../src/data/decks';
 import { makeRng } from '../../src/engine/rng';
 import { describeEvents, cardName, describePending } from '../../src/engine';
@@ -106,7 +106,7 @@ describe('card data', () => {
     expect(SPELL_IDS).toEqual(expect.arrayContaining(NEW_SPELLS));
     expect(TRAP_IDS).toEqual(expect.arrayContaining(NEW_TRAPS));
     // the classic deck did not change
-    expect(ALL_CARDS.slice(0, 20).map((c) => c.id)).toEqual(newGame({ seed: 1, noShuffle: true }).state.players[0].deck.map((u) => newGame({ seed: 1, noShuffle: true }).state.cards[u].cardId));
+    expect(ALL_CARDS.slice(0, 20).map((c) => c.id)).toEqual(DEFAULT_DECK);
     expect(EXPANDED_POOL).toEqual(expect.arrayContaining(NEW_CARDS));
   });
   it('Turkish names inflect with the possessive where the last word has it', () => {
@@ -199,11 +199,14 @@ describe('double_offering (Çifte Kurban): one tribute for a Level 7+ monster', 
         expect(done.state.players[p].monsters.some((m) => m && done.state.cards[m.uid].cardId === 'crystal_wyrm')).toBe(true);
         expect(has(done.state, done.events, 'tribute:ember_wolf')).toBe(true);
       });
-  it('with two monsters both the 1-tribute and the 2-tribute summons are legal; a Set follows the same rule', () => {
+  it('with two monsters either one can be the single tribute (never two); a Set follows the same rule', () => {
     const s = scenario({ p0: { hand: ['double_offering', 'crystal_wyrm'], monsters: ['ember_wolf', 'tide_golem'] } });
+    const two = legalActions(s).filter((a) => a.type === 'normalSummon' && a.uid === uidOf(s, 'crystal_wyrm')) as Extract<Action, { type: 'normalSummon' }>[];
+    expect(new Set(two.map((a) => a.tributes.length))).toEqual(new Set([2]));
     const r = play(s, sp(s, 'double_offering'));
     const wy = legalActions(r.state).filter((a) => a.type === 'normalSummon' && a.uid === uidOf(s, 'crystal_wyrm')) as Extract<Action, { type: 'normalSummon' }>[];
-    expect(new Set(wy.map((a) => a.tributes.length))).toEqual(new Set([1, 2]));
+    expect(new Set(wy.map((a) => a.tributes.length))).toEqual(new Set([1]));
+    expect(new Set(wy.flatMap((a) => a.tributes)).size).toBe(2);
     const set = legalActions(r.state).filter((a) => a.type === 'setMonster' && a.uid === uidOf(s, 'crystal_wyrm')) as Extract<Action, { type: 'setMonster' }>[];
     expect(set.some((a) => a.tributes.length === 1)).toBe(true);
   });
@@ -240,7 +243,7 @@ describe('kneel_down (Diz Çöktürme): defense position + no position change ne
         const targets = legalActions(s).filter((a) => a.type === 'activateSpell') as Extract<Action, { type: 'activateSpell' }>[];
         expect(targets.map((a) => (a.target as { ref: { index: number } }).ref.index)).toEqual([z]); // only the face-up attack-position monster
         const r = play(s, sp(s, 'kneel_down', p, { target: mon(opp(p), z) }));
-        expect(evs(r.state, r.events)).toEqual(['activate:kneel_down', 'target', 'toGraveyard:kneel_down'].flatMap((e) => (e === 'target' ? ['target', 'positionChange'] : [e])));
+        expect(evs(r.state, r.events)).toEqual(['activate:kneel_down', 'target', 'positionChange:crystal_wyrm', 'toGraveyard:kneel_down']);
         expect(r.state.players[opp(p)].monsters[z]!.position).toBe('defense');
         // the knelt monster cannot change position on its controller's next turn, the others can
         const next = play(r.state, endTurn(p));
@@ -251,7 +254,7 @@ describe('kneel_down (Diz Çöktürme): defense position + no position change ne
         // and the turn after that it can again
         const later = play(next.state, endTurn(opp(p)), endTurn(p));
         expect(later.state.activePlayer).toBe(opp(p));
-        expect(legalActions(later.state).some((a) => a.type === 'changePosition' && a.zone === z)).toBe(false); // it is in defense and... lock expired:
+        expect(legalActions(later.state).some((a) => a.type === 'changePosition' && a.zone === z)).toBe(true); // the lock lasted exactly one turn
       });
   it('lock expires: two turns later the monster may change position again', () => {
     const s = scenario({ p0: { hand: ['kneel_down'] }, p1: { monsters: ['crystal_wyrm'] } });
@@ -461,27 +464,41 @@ describe('guardian_charm (Koruyucu Tılsım): the equip is destroyed instead of 
 // ---------------------------------------------------------------------------------------------
 describe('field spells: tidal_bay, shadow_cavern, festival_square', () => {
   const board = {
-    p0: { monsters: ['tide_golem', 'storm_hawk', 'ember_wolf', 'stone_sentinel'] as CardId[] },
-    p1: { monsters: ['coral_serpent', 'shade_assassin', 'lumen_sprite', 'volt_lizard'] as CardId[] },
+    p0: { monsters: ['tide_golem', 'storm_hawk', 'ember_wolf'] as CardId[] },
+    p1: { monsters: ['coral_serpent', 'shade_assassin', 'lumen_sprite'] as CardId[] },
+  };
+  const board5 = {
+    p0: { monsters: ['tide_golem', 'storm_hawk', 'ember_wolf', 'stone_sentinel', 'wing_lady'] as CardId[] },
+    p1: { monsters: ['coral_serpent', 'shade_assassin', 'lumen_sprite', 'volt_lizard', 'tide_golem'] as CardId[] },
   };
   const atks = (s: GameState, p: PlayerId) => s.players[p].monsters.map((m) => (m ? currentAtk(s, m.uid) : null));
-  for (const zones of ZONES)
-    it(`tidal_bay (${zones} zones): WATER/WIND +400, FIRE -400, both fields; volcano replaces it`, () => {
-      const s = scenario({ zones, ...board, p0: { ...board.p0, field: 'tidal_bay' } });
-      expect(atks(s, 0).slice(0, 4)).toEqual([1500, 1400, 1300, 500]);
-      expect(atks(s, 1).slice(0, 4)).toEqual([2400, 1900, 400, 1500]);
-      expect(currentDef(s, s.players[0].monsters[0]!.uid)).toBe(2000);
-      const v = scenario({ zones, ...board, p0: { ...board.p0, hand: ['volcano_arena'], field: 'tidal_bay' } });
-      const r = play(v, sp(v, 'volcano_arena'));
-      expect(r.state.players[0].fieldSpell && r.state.cards[r.state.players[0].fieldSpell.uid].cardId).toBe('volcano_arena');
-      expect(atks(r.state, 0).slice(0, 4)).toEqual([800, 1000, 2200, 500]);
-    });
-  for (const zones of ZONES)
-    it(`shadow_cavern (${zones} zones): DARK/EARTH +300, LIGHT -300, floor 0`, () => {
-      const s = scenario({ zones, ...board, p1: { ...board.p1, field: 'shadow_cavern' } });
-      expect(atks(s, 0).slice(0, 4)).toEqual([1100, 1000, 1700, 800]);
-      expect(atks(s, 1).slice(0, 4)).toEqual([2000, 2200, 100, 1200]);
-    });
+  it('tidal_bay (3 zones): WATER/WIND +400, FIRE -400, both fields; volcano replaces it', () => {
+    const s = scenario({ ...board, p0: { ...board.p0, field: 'tidal_bay' } });
+    expect(atks(s, 0)).toEqual([1500, 1400, 1300]);
+    expect(atks(s, 1)).toEqual([2400, 1900, 400]);
+    expect(currentDef(s, s.players[0].monsters[0]!.uid)).toBe(2000); // DEF is never touched
+    const v = scenario({ ...board, p0: { ...board.p0, hand: ['volcano_arena'], field: 'tidal_bay' } });
+    const r = play(v, sp(v, 'volcano_arena'));
+    expect(r.state.players[0].fieldSpell && r.state.cards[r.state.players[0].fieldSpell.uid].cardId).toBe('volcano_arena');
+    expect(atks(r.state, 0)).toEqual([800, 1000, 2200]);
+  });
+  it('tidal_bay / shadow_cavern (5 zones): all five lanes of both sides', () => {
+    const s = scenario({ zones: 5, ...board5, p0: { ...board5.p0, field: 'tidal_bay' } });
+    expect(atks(s, 0)).toEqual([1500, 1700, 1300, 500, 1700]); // storm_hawk 1000 +400 +300 (Kanat Hanımı aura); Kanat Hanımı 1300 +400
+    expect(atks(s, 1)).toEqual([2400, 1900, 400, 1500, 1500]);
+    const c = scenario({ zones: 5, ...board5, p1: { ...board5.p1, field: 'shadow_cavern' } });
+    expect(atks(c, 0)).toEqual([1100, 1300, 1700, 800, 1300]);
+    expect(atks(c, 1)).toEqual([2000, 2200, 100, 1200, 1100]);
+  });
+  it('shadow_cavern (3 zones): DARK/EARTH +300, LIGHT -300 with a floor of 0', () => {
+    const s = scenario({ ...board, p1: { ...board.p1, field: 'shadow_cavern' } });
+    expect(atks(s, 0)).toEqual([1100, 1000, 1700]);
+    expect(atks(s, 1)).toEqual([2000, 2200, 100]);
+    const z = scenario({ p0: { monsters: ['lumen_sprite'], field: 'shadow_cavern' } });
+    expect(currentAtk(z, z.players[0].monsters[0]!.uid)).toBe(100);
+    const w = scenario({ p0: { monsters: ['wisp_imp'], field: 'shadow_cavern' } });
+    expect(currentAtk(w, w.players[0].monsters[0]!.uid)).toBe(600);
+  });
   it('activated from the hand: the statChange events list every changed monster; destroyed -> the numbers come back', () => {
     const s = scenario({ ...board, p0: { ...board.p0, hand: ['tidal_bay'] } });
     const r = play(s, sp(s, 'tidal_bay'));
@@ -493,7 +510,7 @@ describe('field spells: tidal_bay, shadow_cavern, festival_square', () => {
     // source leaves the field: the opposing purging_wave
     const w = scenario({ ...board, p0: { ...board.p0, field: 'tidal_bay' }, p1: { ...board.p1, hand: ['purging_wave'] }, active: 1 });
     const d = play(w, sp(w, 'purging_wave', 1, { target: card(0, 'field', 0) }));
-    expect(atks(d.state, 0).slice(0, 4)).toEqual([1100, 1000, 1700, 500]);
+    expect(atks(d.state, 0)).toEqual([1100, 1000, 1700]);
     expect(evs(d.state, d.events)).toContain('statChange:tide_golem:1500>1100');
   });
   for (const p of BOTH)
@@ -756,7 +773,7 @@ describe('decoy_target (Sahte Hedef): the defender picks which own monster takes
     expect(evs(r.state, r.events)).toContain('flip:thorn_lurker');
   });
   it('redirects a storm_hawk direct attack onto a monster (every monster is a candidate)', () => {
-    const s = scenario({ phase: 'battle', p0: { monsters: ['storm_hawk'] }, p1: { monsters: ['stone_sentinel'], spellTraps: ['decoy_target'] } });
+    const s = scenario({ phase: 'battle', p0: { monsters: ['storm_hawk'] }, p1: { monsters: [{ id: 'stone_sentinel', position: 'defense' }], spellTraps: ['decoy_target'] } });
     const w = play(s, atk(0, 0, null));
     expect(opts(w.state)).toHaveLength(1);
     const r = play(w.state, respond(w.state, 'decoy_target', 1));
@@ -793,9 +810,9 @@ describe('last_breath (Son Nefes): LP below 1500 from the opponent\'s damage', (
       });
   it('only when the drop crosses 1500 (not from 1400, not to 0), and only for the opponent\'s damage', () => {
     const base = (lp: number) => scenario({ phase: 'battle', p0: { monsters: ['ember_wolf'] }, p1: { lp, spellTraps: ['last_breath'] } });
-    expect(play(base(1400), atk(0, 0, null)).state.pending).toBeNull(); // already below
+    const weak = scenario({ phase: 'battle', p0: { monsters: ['lumen_sprite'] }, p1: { lp: 1400, spellTraps: ['last_breath'] } });
+    expect(play(weak, atk(0, 0, null)).state.pending).toBeNull(); // already below 1500: not a crossing
     expect(play(base(1700), atk(0, 0, null)).state.winner).toBe(0); // lethal: no window at 0
-    expect(play(base(3199), atk(0, 0, null)).state.pending).toBeNull(); // 3199-1700 = 1499 < 1500 -> window
   });
   it('3199 -> 1499 opens the window (the boundary), 3200 -> 1500 does not', () => {
     const base = (lp: number) => scenario({ phase: 'battle', p0: { monsters: ['ember_wolf'] }, p1: { lp, spellTraps: ['last_breath'] } });
@@ -813,9 +830,10 @@ describe('last_breath (Son Nefes): LP below 1500 from the opponent\'s damage', (
     expect(b.state.pending).toMatchObject({ kind: 'trapResponse', trigger: { kind: 'lpLow' } });
   });
   it('the window waits for the whole action: the battle destruction happens before the prompt', () => {
-    const s = scenario({ phase: 'battle', p0: { monsters: ['crystal_wyrm'] }, p1: { lp: 3000, monsters: [{ id: 'ember_wolf' }], spellTraps: ['last_breath'] } });
+    const s = scenario({ phase: 'battle', p0: { monsters: ['crystal_wyrm'] }, p1: { lp: 2500, monsters: [{ id: 'ember_wolf' }], spellTraps: ['last_breath'] } });
     const w = play(s, atk(0, 0, 0));
     expect(evs(w.state, w.events)).toEqual(expect.arrayContaining(['damage:p1:1100', 'destroy:ember_wolf', 'toGraveyard:ember_wolf']));
+    expect(w.state.players[1].lp).toBe(1400);
     expect(w.state.pending?.kind).toBe('trapResponse');
   });
 });
@@ -876,7 +894,7 @@ describe('hidden_reinforcement (Gizli Takviye): the attacked monster gets +1000 
         expect(e).toEqual(expect.arrayContaining(['activate:hidden_reinforcement', 'target', 'statChange:ember_wolf:1700>2700', 'battle:attackerDestroyed']));
         expect(r.state.players[p].monsters[0]).toBeNull(); // 1900 < 2700
         expect(r.state.players[opp(p)].lp).toBe(4000);
-        expect(r.state.players[p].lp).toBe(4000 - 800);
+        expect(r.state.players[p].lp).toBe(4000 - 800 - 300); // the 800 difference and Kor Kurdu's own 300 burn (it won the fight)
         // the boost ends with the End Phase
         const end = play(r.state, endTurn(p));
         expect(currentAtk(end.state, end.state.players[opp(p)].monsters[z]!.uid)).toBe(1700);
@@ -987,7 +1005,12 @@ describe('bot', () => {
     const cave = scenario({ p0: { hand: ['shadow_cavern'], monsters: ['shade_assassin', 'stone_sentinel'] }, p1: { monsters: ['lumen_sprite'] } });
     expect(isAct(pick(cave), cave, 'shadow_cavern')).toBe(true);
     const fest = scenario({ p0: { hand: ['festival_square', 'ember_wolf', 'storm_hawk'] } });
-    expect(isAct(pick(fest), fest, 'festival_square')).toBe(true);
+    const f1 = pick(fest);
+    expect(f1.type).toBe('normalSummon'); // the normal summon first...
+    const fest2 = apply(fest, f1).state;
+    expect(isAct(pick(fest2), fest2, 'festival_square')).toBe(true); // ...then the square for the extra one
+    const fest3 = apply(fest2, pick(fest2)).state;
+    expect(legalActions(fest3).some((a) => a.type === 'normalSummon')).toBe(true);
   });
   it('trap answers: spell_seal, toppling_tower, last_breath yes; homecoming / sandstorm / decoy / hidden when it pays', () => {
     const seal = scenario({ p0: { hand: ['judgment_bolt'] }, p1: { monsters: ['crystal_wyrm'], spellTraps: ['spell_seal'] } });
@@ -1002,7 +1025,7 @@ describe('bot', () => {
     const big = scenario({ phase: 'battle', p0: { monsters: ['crystal_wyrm'] }, p1: { monsters: ['ember_wolf'], spellTraps: ['homecoming'] } });
     const w4 = play(big, atk(0, 0, 0));
     expect(pick(w4.state)).toMatchObject({ type: 'respond', uid: uidOf(big, 'homecoming', 1) });
-    const hid = scenario({ phase: 'battle', p0: { monsters: ['ember_wolf'] }, p1: { monsters: ['shade_assassin'], spellTraps: ['hidden_reinforcement'] } });
+    const hid = scenario({ phase: 'battle', p0: { monsters: ['shade_assassin'] }, p1: { monsters: ['ember_wolf'], spellTraps: ['hidden_reinforcement'] } });
     const w5 = play(hid, atk(0, 0, 0));
     expect(pick(w5.state)).toMatchObject({ type: 'respond', uid: uidOf(hid, 'hidden_reinforcement', 1) });
     const dec = scenario({ phase: 'battle', p0: { monsters: ['shade_assassin'] }, p1: { monsters: ['lumen_sprite', 'crystal_wyrm'], spellTraps: ['decoy_target'] } });

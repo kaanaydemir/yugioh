@@ -15,11 +15,11 @@ import { CURVE_BUCKETS, DECK_HIGH_LEVEL, deckStats, presetDecks } from '../../da
 import { measureText, pixelText } from '../../ui/text';
 import { Button } from '../../view/Button';
 import { GAME_H, GAME_W } from '../../view/layout';
-import { ICON, panelTex, playerStyle } from '../../view/ui-textures';
+import { ICON, playerStyle } from '../../view/ui-textures';
 import { tween } from '../../vfx/core';
 import type { DuelLaunch, DuelMode } from '../launch';
 import { REF_CLASSIC, deckStore, matchDecks, presetRef, type DeckStore, type LastKey, type ResolvedDeck } from './store';
-import { REDUCED_MOTION, backdropTex, fadeFromInk, fadeToInk, fitText, latticeTex, orbTex, thumbTex } from './ui';
+import { REDUCED_MOTION, backdropTex, panelV3, fadeFromInk, fadeToInk, fitText, latticeTex, orbTex, thumbTex } from './ui';
 import type { PlayerId } from '../../engine/types';
 
 export interface DeckPickData {
@@ -71,6 +71,7 @@ export class DeckPickScene extends Phaser.Scene {
   private capText!: Phaser.GameObjects.BitmapText;
   private stats!: Phaser.GameObjects.BitmapText;
   private bars: Phaser.GameObjects.Rectangle[] = [];
+  private curveLabels: Phaser.GameObjects.BitmapText[] = [];
   private okBtn!: Button;
   private lattice!: Phaser.GameObjects.TileSprite;
   private t = 0;
@@ -90,6 +91,7 @@ export class DeckPickScene extends Phaser.Scene {
     this.rows = [];
     this.thumbs = [];
     this.bars = [];
+    this.curveLabels = [];
     this.sel = 0;
     this.thumbSel = 0;
     this.firstRef = this.d.first;
@@ -117,10 +119,10 @@ export class DeckPickScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor(PAL.night0);
     this.store = deckStore();
     this.add.image(0, 0, backdropTex(this)).setOrigin(0);
-    this.lattice = this.add.tileSprite(0, 0, GAME_W, GAME_H, latticeTex(this)).setOrigin(0).setAlpha(0.5);
+    this.lattice = this.add.tileSprite(0, 0, GAME_W, GAME_H, latticeTex(this)).setOrigin(0);
 
     const style = playerStyle(this.who);
-    this.add.image(20, 12, panelTex(this, style, 600, 336, { header: 20, alpha: 240 })).setOrigin(0).setDepth(3);
+    this.add.image(20, 12, panelV3(this, this.who === 0 ? 'p1' : 'p2', 600, 336, 20)).setOrigin(0).setDepth(3);
     const head = pixelText(this, 32, 22, this.heading, { size: 'md', color: PAL.white }).setDepth(10);
     head.setTint(PLAYER_COLOR[this.who], PLAYER_COLOR[this.who], PAL.white, PAL.white);
     const stepNo = this.d.mode === 'hotseat' || this.d.mode === 'vsBot' ? `ADIM ${this.step + 1}/2` : '';
@@ -250,9 +252,9 @@ export class DeckPickScene extends Phaser.Scene {
     for (let b = 0; b < CURVE_BUCKETS; b++) {
       const bx = 506 + b * 12;
       this.bars.push(this.add.rectangle(bx, 160, 10, 1, PAL.gold2).setOrigin(0, 1).setDepth(10));
-      pixelText(this, bx + 5, 162, b === CURVE_BUCKETS - 1 ? '8+' : String(b + 1), { size: 'sm', color: b + 1 >= DECK_HIGH_LEVEL ? PAL.crim3 : PAL.steel, originX: 0.5 }).setDepth(10);
+      this.curveLabels.push(pixelText(this, bx + 5, 162, b === CURVE_BUCKETS - 1 ? '8+' : String(b + 1), { size: 'sm', color: b + 1 >= DECK_HIGH_LEVEL ? PAL.crim3 : PAL.steel, originX: 0.5 }).setDepth(10));
     }
-    pixelText(this, 506, 178, 'SEVİYE EĞRİSİ', { size: 'sm', color: PAL.night4 }).setDepth(10);
+    this.curveLabels.push(pixelText(this, 506, 178, 'SEVİYE EĞRİSİ', { size: 'sm', color: PAL.night4 }).setDepth(10));
     this.add.rectangle(RX, 238, 358, 1, PAL.night3).setOrigin(0).setDepth(9);
     this.cap = pixelText(this, RX, 244, '', { size: 'md', color: PAL.white }).setDepth(10);
     this.capType = pixelText(this, RX, 260, '', { size: 'sm', color: PAL.gold3 }).setDepth(10);
@@ -282,7 +284,6 @@ export class DeckPickScene extends Phaser.Scene {
       r.sub.setTint(!ok ? PAL.crim2 : on ? PAL.mist : PAL.steel);
       r.tag.setTint(on ? PAL.gold3 : PAL.night4);
       r.box.x = LX + (on && !REDUCED_MOTION ? 2 : 0);
-      r.marker.setAlpha(ok ? 1 : 0.4);
     });
     this.okBtn.setEnabled(this.pickable(this.opts[this.sel]));
   }
@@ -292,20 +293,24 @@ export class DeckPickScene extends Phaser.Scene {
     const deck = o.deck;
     this.shownDeck = deck;
     this.thumbSel = 0;
+    this.curveLabels.forEach((l) => l.setVisible(!!deck));
     if (!deck) {
       this.title.setText('Rastgele rakip');
-      this.legal.setText('Hazır desteler arasından rastgele biri seçilir.').setTint(PAL.mist);
+      this.legal.setText('Rakip, hazır desteler arasından rastgele birini seçer:').setTint(PAL.mist);
       this.thumbs.forEach((t) => {
         t.img.setVisible(false);
         t.frame.setVisible(false);
+        t.zone.input!.enabled = false;
       });
-      this.stats.setText('');
-      this.bars.forEach((b) => b.setSize(10, 1).setFillStyle(PAL.night3));
+      this.stats.setPosition(RX, 86).setText(presetDecks().map((p) => `· ${p.name}  —  ${p.blurb}`).join('\n'));
+      this.bars.forEach((b) => b.setVisible(false));
       this.cap.setText('');
       this.capType.setText('');
       this.capText.setText('');
       return;
     }
+    this.bars.forEach((b) => b.setVisible(true));
+    this.stats.setPosition(506, 78);
     this.title.setText(deck.name);
     const bad = !deck.check.ok || deck.missing;
     if (bad) {
@@ -330,12 +335,6 @@ export class DeckPickScene extends Phaser.Scene {
     const unit = Math.min(4, Math.floor(18 / maxN));
     st.curve.forEach((n, b) => this.bars[b].setSize(10, Math.max(1, n * unit)).setFillStyle(n === 0 ? PAL.night3 : b + 1 >= DECK_HIGH_LEVEL ? PAL.crim2 : PAL.gold2));
     this.renderCaption();
-    if (!REDUCED_MOTION) {
-      this.thumbs.forEach((t, i) => {
-        t.img.setAlpha(0);
-        this.tweens.add({ targets: t.img, alpha: 1, duration: 90, delay: i * 8 });
-      });
-    }
   }
 
   private renderCaption(): void {
@@ -416,7 +415,7 @@ export class DeckPickScene extends Phaser.Scene {
     this.store.setLast(this.lastKey, o.ref);
     if (!lastStep) {
       this.firstRef = o.ref;
-      await tween(this, { targets: this.cameras.main, alpha: 0.2, duration: REDUCED_MOTION ? 1 : 120 });
+      await fadeToInk(this, REDUCED_MOTION ? 1 : 120);
       this.scene.restart({ mode: this.d.mode, step: 1, dev: this.d.dev, first: o.ref } satisfies DeckPickData);
       return;
     }

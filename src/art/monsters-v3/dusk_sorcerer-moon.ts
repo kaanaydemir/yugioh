@@ -30,18 +30,18 @@ export function moonGeom(o: Pose, sk: Skel): MoonGeom {
 }
 
 /** The crescent + shaft + tassel into q (flat tones; the rig outlines it). */
-export function paintMoon(q: PixelCanvas, g: MoonGeom, light: Light, o: Pose): void {
+export function paintMoon(q: PixelCanvas, g: MoonGeom, light: Light, o: Pose, bw = 2): void {
   const n = Math.max(1, o.msn);
   // smear ghosts first (older, darker), then the staff itself
   for (let k = n; k >= 0; k--) {
     const ox = k === 0 ? 0 : -o.msx * k;
     const oy = k === 0 ? 0 : -o.msy * k;
     if (k > 0 && (o.msx === 0 && o.msy === 0)) continue;
-    paintOne(q, { ...g, cx: g.cx + ox, cy: g.cy + oy }, light, k);
+    paintOne(q, { ...g, cx: g.cx + ox, cy: g.cy + oy }, light, k, bw);
   }
 }
 
-function paintOne(q: PixelCanvas, g: MoonGeom, light: Light, ghost: number): void {
+function paintOne(q: PixelCanvas, g: MoonGeom, light: Light, ghost: number, bw = 2): void {
   const w = Math.ceil(g.R * 1.9);
   const body = new PixelCanvas(q.w, q.h);
   const c1x = g.cx + g.ux * g.d;
@@ -60,14 +60,14 @@ function paintOne(q: PixelCanvas, g: MoonGeom, light: Light, ghost: number): voi
   const sl = g.R * 0.4;
   const sx1 = g.cx - g.ux * (g.R + sl);
   const sy1 = g.cy - g.uy * (g.R + sl);
-  body.thickLine(sx0, sy0, sx1, sy1, 2, PAL.steel);
+  body.thickLine(sx0, sy0, sx1, sy1, Math.max(2, bw), PAL.steel);
   const ls = light.side;
   const ghostTone = ghost > 0;
   planes(body, (x, y, src) => {
-    const toLight = Math.min(run(src, x, y, ls, -1, 3), run(src, x, y, ls, 0, 3) + 1);
-    if (toLight < 2) return ghostTone ? PAL.steel : PAL.mist;
-    const away = Math.min(run(src, x, y, -ls, 1, 3), run(src, x, y, -ls, 0, 3) + 1);
-    if (away < 2) return ghostTone ? PAL.night3 : PAL.night4;
+    const toLight = Math.min(run(src, x, y, ls, -1, bw + 1), run(src, x, y, ls, 0, bw + 1) + 1);
+    if (toLight < bw) return ghostTone ? PAL.steel : PAL.mist;
+    const away = Math.min(run(src, x, y, -ls, 1, bw + 1), run(src, x, y, -ls, 0, bw + 1) + 1);
+    if (away < bw) return ghostTone ? PAL.night3 : PAL.night4;
     return ghostTone ? PAL.night4 : PAL.steel;
   });
   // gold ring on the shaft, a small violet gem in the hollow's root

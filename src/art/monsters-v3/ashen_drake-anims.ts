@@ -42,8 +42,8 @@ const WRAP_F: Wing = { wx: 34, wy: 8, a: [132, 104, 76], l: [25, 27, 24], sag: 3
 const LIFT_N: Wing = { wx: 4, wy: -17, a: [170, 144, 116], l: [52, 48, 42], sag: 5, thumb: 5 };
 const LIFT_F: Wing = { wx: 6, wy: -21, a: [176, 152, 126], l: [47, 43, 36], sag: 4, thumb: 4 };
 /** Thrown wide up and back (the pounce's wind-up, victory). */
-const FLARE_N: Wing = { wx: 1, wy: -12, a: [190, 208, 226], l: [48, 44, 38], sag: 6, thumb: 6 };
-const FLARE_F: Wing = { wx: 4, wy: -10, a: [196, 214, 232], l: [42, 38, 32], sag: 5, thumb: 5 };
+const FLARE_N: Wing = { wx: 1, wy: -9, a: [188, 204, 220], l: [46, 42, 36], sag: 6, thumb: 6 };
+const FLARE_F: Wing = { wx: 4, wy: -7, a: [194, 210, 226], l: [40, 36, 30], sag: 5, thumb: 5 };
 /** The slam: swept forward and down over the target. */
 const SLAM_N: Wing = { wx: 20, wy: 0, a: [78, 58, 36], l: [36, 38, 34], sag: 4, thumb: 4 };
 const SLAM_F: Wing = { wx: 22, wy: -2, a: [84, 64, 42], l: [32, 34, 30], sag: 3, thumb: 3 };
@@ -77,23 +77,23 @@ export function idlePose(f: number): Pose {
   const roll = sin(TAU * (t - 0.2)) - sin(TAU * -0.2);
   const rollX = cos(TAU * (t - 0.2)) - cos(TAU * -0.2);
   const blink = f === 10 ? 0.5 : f === 11 ? 0 : f === 12 ? 0.5 : 1;
-  const nw: Partial<Wing> = { wy: CLOAK_N.wy - 1.0 * bW, a: [CLOAK_N.a[0] - 1.2 * bW, CLOAK_N.a[1] - 1.6 * bW, CLOAK_N.a[2] - 1.2 * bW], sag: CLOAK_N.sag + 0.6 * bW };
-  const fw: Partial<Wing> = { wy: CLOAK_F.wy - 1.2 * bF, a: [CLOAK_F.a[0] - 1.6 * bF, CLOAK_F.a[1] - 1.6 * bF, CLOAK_F.a[2] - 1.2 * bF], sag: CLOAK_F.sag + 0.5 * bF };
+  const nw: Partial<Wing> = { wy: CLOAK_N.wy - 1.5 * bW, a: [CLOAK_N.a[0] - 1.8 * bW, CLOAK_N.a[1] - 2.4 * bW, CLOAK_N.a[2] - 1.8 * bW], sag: CLOAK_N.sag + 0.9 * bW };
+  const fw: Partial<Wing> = { wy: CLOAK_F.wy - 1.8 * bF, a: [CLOAK_F.a[0] - 2.4 * bF, CLOAK_F.a[1] - 2.4 * bF, CLOAK_F.a[2] - 1.8 * bF], sag: CLOAK_F.sag + 0.8 * bF };
   return pose({
-    belly: R_(1.6 * b0),
-    humpY: R_(1.2 * roll),
-    humpX: R_(1.0 * rollX),
+    belly: R_(2.6 * b0),
+    humpY: R_(1.5 * roll),
+    humpX: R_(1.2 * rollX),
     hipY: 0,
     hd: [R_(0.55 * (sin(TAU * (t + 0.1)) - sin(TAU * 0.1))), -R_(0.9 * bH) + R_(0.5 * roll)],
     ha: NEUTRAL.ha + 0.03 * bH - 0.02 * roll,
     flick: f % 3,
     eye: blink,
     tph: t,
-    tamp: 4.5,
+    tamp: 8.5,
     tcurl: 1 + 0.04 * (sin(TAU * t - 0.9) - sin(-0.9)),
     nw,
     fw,
-    glow: 0.5 + 0.15 * (sin(TAU * f / 3 + 0.5) - sin(0.5)) + 0.04 * b0,
+    glow: 0.5 + 0.2 * (sin(TAU * f / 3 + 0.5) - sin(0.5)) + 0.04 * b0,
     ash: t,
     smoke: 1,
   });
@@ -386,11 +386,11 @@ const VICTORY_KEYS: PoseDelta[] = [
   { humpY: 1, belly: 1, hd: [1, 1], ha: 0.25, glow: 0.7, nw: wmix(CLOAK_N, LIFT_N, 0.4) },
   { shY: -1, hipY: 1, arch: 1, hd: [2, -2], ha: 0.1, jaw: 0.4, glow: 0.9, fN: [2, -6], fF: [3, -7], nw: wmix(LIFT_N, FLARE_N, 0.4), fw: wmix(LIFT_F, FLARE_F, 0.4), claw: 1 },
   { shY: -2, hipY: 2, by: 1, arch: 2, hd: [3, -4], ha: -0.1, jaw: 0.85, flare: 1, glow: 1, fN: [4, -9], fF: [5, -10], nw: wmix(LIFT_N, FLARE_N, 0.8), fw: wmix(LIFT_F, FLARE_F, 0.8), claw: 1, spill: 0.5, spillT: 0.2, tlift: 4 },
-  { shY: -3, hipY: 3, by: 1, arch: 2, hd: [4, -5], ha: -0.2, jaw: 1, flare: 1, glow: 1, fN: [5, -10], fF: [6, -11], nw: FLARE_N, fw: FLARE_F, claw: 1, spill: 0.8, spillT: 0.5, tlift: 5 },
-  { shY: -3, hipY: 3, by: 1, arch: 2, hd: [4, -5], ha: -0.2, jaw: 0.9, flare: 1, glow: 1, fN: [5, -10], fF: [6, -11], nw: FLARE_N, fw: FLARE_F, claw: 1, spill: 0.8, spillT: 0.8, tlift: 5 },
-  { shY: -3, hipY: 3, by: 1, arch: 2, hd: [4, -5], ha: -0.18, jaw: 0.7, flare: 1, glow: 1, fN: [5, -10], fF: [6, -11], nw: wmix(FLARE_N, LIFT_N, 0.15), fw: wmix(FLARE_F, LIFT_F, 0.15), claw: 1, spill: 0.4, spillT: 0.1, tlift: 4 },
-  { shY: -3, hipY: 3, by: 1, arch: 2, hd: [4, -5], ha: -0.18, jaw: 0.3, flare: 0, glow: 0.95, fN: [5, -10], fF: [6, -11], nw: wmix(FLARE_N, LIFT_N, 0.3), fw: wmix(FLARE_F, LIFT_F, 0.3), claw: 1, tlift: 4 },
-  { shY: -3, hipY: 3, by: 1, arch: 2, hd: [4, -5], ha: -0.18, jaw: 0.1, flare: 0, glow: 0.95, fN: [5, -10], fF: [6, -11], nw: wmix(FLARE_N, LIFT_N, 0.3), fw: wmix(FLARE_F, LIFT_F, 0.3), claw: 1, tlift: 4 },
+  { shY: -2, hipY: 3, by: 0, arch: 2, hd: [4, -5], ha: -0.2, jaw: 1, flare: 1, glow: 1, fN: [5, -10], fF: [6, -11], nw: FLARE_N, fw: FLARE_F, claw: 1, spill: 0.8, spillT: 0.5, tlift: 5 },
+  { shY: -2, hipY: 3, by: 0, arch: 2, hd: [4, -5], ha: -0.2, jaw: 0.9, flare: 1, glow: 1, fN: [5, -10], fF: [6, -11], nw: FLARE_N, fw: FLARE_F, claw: 1, spill: 0.8, spillT: 0.8, tlift: 5 },
+  { shY: -2, hipY: 3, by: 0, arch: 2, hd: [4, -5], ha: -0.18, jaw: 0.7, flare: 1, glow: 1, fN: [5, -10], fF: [6, -11], nw: wmix(FLARE_N, LIFT_N, 0.15), fw: wmix(FLARE_F, LIFT_F, 0.15), claw: 1, spill: 0.4, spillT: 0.1, tlift: 4 },
+  { shY: -2, hipY: 3, by: 0, arch: 2, hd: [4, -5], ha: -0.18, jaw: 0.3, flare: 0, glow: 0.95, fN: [5, -10], fF: [6, -11], nw: wmix(FLARE_N, LIFT_N, 0.3), fw: wmix(FLARE_F, LIFT_F, 0.3), claw: 1, tlift: 4 },
+  { shY: -2, hipY: 3, by: 0, arch: 2, hd: [4, -5], ha: -0.18, jaw: 0.1, flare: 0, glow: 0.95, fN: [5, -10], fF: [6, -11], nw: wmix(FLARE_N, LIFT_N, 0.3), fw: wmix(FLARE_F, LIFT_F, 0.3), claw: 1, tlift: 4 },
 ];
 const VICTORY_HOLDS = [110, 100, 110, 130, 130, 140, 200, 200];
 

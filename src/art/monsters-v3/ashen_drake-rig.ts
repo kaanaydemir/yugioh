@@ -347,10 +347,9 @@ function bodyMap(P: Pose): (pt: V) => V {
 
 /** Ember colour for a glow level (0..1) and a spark roll. */
 function emberCol(glow: number, k: number, hot: boolean): number {
-  if (glow < 0.2) return PAL.fire1;
-  if (glow < 0.5) return hot ? PAL.fire3 : PAL.fire2;
-  if (glow < 0.8) return hot ? PAL.fire4 : PAL.fire3;
-  return hot ? PAL.fire4 : k % 3 === 0 ? PAL.fire4 : PAL.fire3;
+  if (glow < 0.3) return hot ? PAL.fire2 : PAL.fire1;
+  if (glow < 0.6) return hot ? PAL.fire3 : PAL.fire2;
+  return hot && k % 4 === 0 ? PAL.fire4 : hot ? PAL.fire3 : PAL.fire2;
 }
 
 /** A jagged ember line over the hide: 4-connected (no lone pixels), in runs of ~4 px with dropouts
@@ -390,7 +389,7 @@ function emberLine(c: PixelCanvas, pts: readonly V[], P: Pose, seed: number, opt
       }
     }
   }
-  const run = opt.run ?? 4;
+  const run = opt.run ?? 3;
   const gap = opt.gap ?? 0.2;
   const n = px.length;
   for (let k = 0; k < n; k++) {
@@ -402,7 +401,7 @@ function emberLine(c: PixelCanvas, pts: readonly V[], P: Pose, seed: number, opt
     if (cur === null || cur === INK) continue;
     if (opt.on && !opt.on(cur)) continue;
     const edge = seg === 0 || seg === segs;
-    const hot = !edge && hash(seed + 7 + fk * 13, seg) > 0.7 - 0.25 * glow;
+    const hot = !edge && hash(seed + 7 + fk * 13, seg) > 0.62 - 0.25 * glow;
     c.set(x, y, edge ? (glow > 0.3 ? PAL.fire2 : PAL.fire1) : emberCol(glow, seg, hot));
   }
 }
@@ -833,6 +832,12 @@ function embers(p: PixelCanvas, R: Rig, P: Pose, map: (pt: V) => V) {
   emberLine(p, [map(q(40, 35)), map(q(44, 30)), map(q(43, 25))], P, 37, { on: isHide, gap: 0.25 });
   // shoulder crack
   emberLine(p, [map(q(72, 26)), map(q(76, 21)), map(q(73, 16))], P, 41, { on: isHide, gap: 0.25 });
+  // spine seam, neck, tail root, far haunch, forearm
+  emberLine(p, [map(q(44, 44)), map(q(52, 46)), map(q(60, 49)), map(q(68, 53))], P, 51, { on: isHide, gap: 0.3 });
+  emberLine(p, [add(R.sho, [10 * S, -2 * S]), add(R.sho, [15 * S, 1 * S]), add(R.head, [-6 * S, -2 * S])], P, 52, { on: isHide, gap: 0.2 });
+  emberLine(p, [add(R.hip, [-10 * S, -3 * S]), add(R.hip, [-14 * S, 2 * S]), add(R.hip, [-18 * S, 3 * S])], P, 53, { on: isHide, gap: 0.2 });
+  emberLine(p, [add(R.elbowN, [-1, 2]), add(R.elbowN, [3, 6]), add(R.wristN, [-2, -2])], P, 54, { on: isHide, gap: 0.25 });
+  emberLine(p, [add(R.kneeN, [-2, 0]), add(R.kneeN, [-4, 5]), add(R.ankN, [0, -3])], P, 55, { on: isHide, gap: 0.25 });
 }
 
 function rimsAndAsh(p: PixelCanvas, R: Rig, P: Pose) {
@@ -874,7 +879,9 @@ function spill(p: PixelCanvas, P: Pose) {
 function ash(p: PixelCanvas, R: Rig, P: Pose) {
   if (P.smoke <= 0) return;
   const emit: V[] = [add(R.mid, [-6 * S, -17 * S]), add(R.sho, [-2 * S, -20 * S]), add(R.hip, [-4 * S, -15 * S])];
-  const n = 3;
+  const n = 4;
+  const nos = mouthPoint(P);
+  emit.push(add(nos, [2, -7]));
   for (let e = 0; e < emit.length; e++)
     for (let k = 0; k < n; k++) {
       const t = (P.ash + k / n + e * 0.21) % 1;

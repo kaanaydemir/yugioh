@@ -52,7 +52,9 @@ export type SpellEffect =
   | 'equipDestroyShield' // guardian_charm: the equipped monster is not destroyed once; this card is destroyed instead
   | 'fieldTidalBay' // tidal_bay: WATER/WIND +400, FIRE -400
   | 'fieldShadowCavern' // shadow_cavern: DARK/EARTH +300, LIGHT -300
-  | 'fieldExtraSummon'; // festival_square: its controller may Normal Summon / Set one extra Level <= 4 monster per turn
+  | 'fieldExtraSummon' // festival_square: its controller may Normal Summon / Set one extra Level <= 4 monster per turn
+  // ---- continuous spells ----
+  | 'attackLock3'; // dawn_swords: reveals the opponent's face-down monsters; while face-up the opponent cannot attack; counter 3, ticks down at the end of each opponent turn
 
 export type TrapEffect =
   | 'attackDestroyAllAttackPosition' // mirror_barrier
@@ -65,9 +67,11 @@ export type TrapEffect =
   | 'attackRedirect' // decoy_target: the defender picks another own monster to take the attack
   | 'lpBelow1500Gain1500' // last_breath: LP dropped below 1500 by the opponent's damage -> gain 1500
   | 'attackNegateAllDefense' // sandstorm: negate the attack; the attacker's controller's attack-position monsters turn to defense
-  | 'attackedBoost1000'; // hidden_reinforcement: the attacked monster gets +1000 ATK/DEF this battle
+  | 'attackedBoost1000' // hidden_reinforcement: the attacked monster gets +1000 ATK/DEF this battle
+  | 'hatShuffle'; // magic_hat: the attacked monster + up to 2 decoy tokens are hidden under shuffled hats; the attacker picks one
 
-export type SpellType = 'normal' | 'equip' | 'field';
+/** 'continuous' (additive): stays face-up in a spell/trap zone with a counter (dawn_swords). */
+export type SpellType = 'normal' | 'equip' | 'field' | 'continuous';
 
 export type MonsterId =
   | 'crystal_wyrm'
@@ -116,7 +120,8 @@ export type SpellId =
   | 'guardian_charm'
   | 'tidal_bay'
   | 'shadow_cavern'
-  | 'festival_square';
+  | 'festival_square'
+  | 'dawn_swords';
 
 export type TrapId =
   | 'mirror_barrier'
@@ -129,7 +134,8 @@ export type TrapId =
   | 'decoy_target'
   | 'last_breath'
   | 'sandstorm'
-  | 'hidden_reinforcement';
+  | 'hidden_reinforcement'
+  | 'magic_hat';
 
 export type CardId = MonsterId | SpellId | TrapId;
 
@@ -670,6 +676,14 @@ const SPELLS_B1: SpellCardDef[] = [
     effect: 'fieldExtraSummon',
     text: 'Normal Çağırma hakkın bittiyse, turda 1 kez daha Seviye 4 veya daha düşük bir canavarı Normal Çağırabilir ya da kapalı koyabilirsin.',
   },
+  {
+    id: 'dawn_swords',
+    kind: 'spell',
+    spellType: 'continuous',
+    name: 'Şafak Kılıçları',
+    effect: 'attackLock3',
+    text: 'Rakibin tüm kapalı canavarlarını aç. Bu kart sahadayken rakibin canavarları saldıramaz. Rakibin 3. turunun sonunda bu kart yok olur.',
+  },
 ];
 
 const TRAPS_B1: TrapCardDef[] = [
@@ -721,6 +735,13 @@ const TRAPS_B1: TrapCardDef[] = [
     name: 'Gizli Takviye',
     effect: 'attackedBoost1000',
     text: "Rakibin canavarı sana ait bir canavara saldırı ilan ettiğinde: saldırılan canavarın ATK ve DEF'i bu savaş boyunca +1000.",
+  },
+  {
+    id: 'magic_hat',
+    kind: 'trap',
+    name: 'Sihirli Şapka',
+    effect: 'hatShuffle',
+    text: 'Rakip bir canavarın sana ait canavara saldırı ilan ettiğinde: saldırılan canavarını ve 2 sahte şapkayı kapalı olarak karıştır; rakip bir şapka seçip ona saldırır.',
   },
 ];
 

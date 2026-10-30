@@ -39,7 +39,7 @@ const R = UI.inspect;
 const CARD_CX = 64;
 const CARD_CY = 74;
 const TEXT_W = R.w - 14;
-const SPELL_TYPE: Record<string, string> = { normal: 'Normal', equip: 'Kuşanma', field: 'Alan' };
+const SPELL_TYPE: Record<string, string> = { normal: 'Normal', equip: 'Kuşanma', field: 'Alan', continuous: 'Devamlı' };
 
 function capY(size: TextSize, capTop: number): number {
   return capTop - textMetrics(size).capTop;

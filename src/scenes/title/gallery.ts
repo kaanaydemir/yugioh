@@ -53,7 +53,7 @@ const ATTR_SFX: Record<Attribute, SfxName> = {
   WIND: 'windGust',
 };
 
-const SPELL_TYPE: Record<string, string> = { normal: 'Normal', equip: 'Kuşanma', field: 'Alan' };
+const SPELL_TYPE: Record<string, string> = { normal: 'Normal', equip: 'Kuşanma', field: 'Alan', continuous: 'Devamlı' };
 
 function kindRampOf(def: CardDef): Ramp {
   return KIND_RAMP[def.kind];

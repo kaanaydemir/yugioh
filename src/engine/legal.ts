@@ -9,6 +9,7 @@ import {
   extraSummonAvailable,
   freeMonsterZones,
   freeSpellTrapZones,
+  attackLocked,
   monsterDefOf,
   spellTrapRefs,
   tributeNeed,
@@ -104,7 +105,7 @@ export function legalActions(s: GameState): Action[] {
     if (s.turn > 1) out.push({ type: 'enterBattle', player: p });
     out.push({ type: 'endTurn', player: p });
   } else if (s.phase === 'battle') {
-    if (s.turn > 1) {
+    if (s.turn > 1 && !attackLocked(s, p)) {
       const oppHasMonsters = opp.monsters.some(Boolean);
       me.monsters.forEach((m, attackerZone) => {
         if (!m || !m.faceUp || m.position !== 'attack' || m.attacksThisTurn > 0) return;
@@ -175,6 +176,11 @@ function pushSpellActivations(
       }
       break;
     }
+    case 'attackLock3':
+      // continuous: from hand it needs a free spell/trap zone; a set card is already in its zone
+      if (fromHand) for (const zone of freeSpellTrapZones(s, p)) out.push({ type: 'activateSpell', player: p, uid, zone });
+      else out.push({ type: 'activateSpell', player: p, uid });
+      break;
     case 'fieldVolcano':
     case 'fieldTidalBay':
     case 'fieldShadowCavern':

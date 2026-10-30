@@ -28,7 +28,7 @@ import {
 
 export type MonSpec = CardId | { id: CardId; position?: Position; faceUp?: boolean; enteredTurn?: number; attacks?: number; posChanged?: number };
 /** equippedTo = the index of the monster zone (same side) it is attached to. */
-export type STSpec = CardId | { id: CardId; faceUp?: boolean; setTurn?: number; equippedTo?: number };
+export type STSpec = CardId | { id: CardId; faceUp?: boolean; setTurn?: number; equippedTo?: number; counter?: number };
 
 export interface SideSpec {
   hand?: CardId[];
@@ -124,6 +124,7 @@ export function buildStage(o: StageSpec = {}): GameState {
         faceUp: st.faceUp ?? equipTarget !== null,
         setTurn: st.setTurn ?? (equipTarget !== null ? -1 : turn - 1),
         equippedTo: equipTarget,
+        ...(st.counter !== undefined ? { counter: st.counter } : {}),
       };
       ps.spellTraps[i] = slot;
     });

@@ -133,7 +133,7 @@ export function validateDeck(ids: readonly string[]): DeckCheck {
   }
   if (stats.size < DECK_SIZE) issues.push({ code: 'size', text: `Deste ${DECK_SIZE} kart olmalı: ${DECK_SIZE - stats.size} eksik` });
   else if (stats.size > DECK_SIZE) issues.push({ code: 'size', text: `Deste ${DECK_SIZE} kart olmalı: ${stats.size - DECK_SIZE} fazla` });
-  if (stats.monsters < DECK_MIN_MONSTERS) issues.push({ code: 'monsters', text: `En az ${DECK_MIN_MONSTERS} canavar gerekir (şimdi ${stats.monsters})` });
+  if (stats.monsters < DECK_MIN_MONSTERS) issues.push({ code: 'monsters', text: `En az ${DECK_MIN_MONSTERS} canavar gerek (şimdi ${stats.monsters})` });
   if (stats.high > DECK_MAX_HIGH) issues.push({ code: 'high', text: `En çok ${DECK_MAX_HIGH} canavar Sv ${DECK_HIGH_LEVEL}+ olabilir (şimdi ${stats.high})` });
   return { ok: issues.length === 0, issues, stats };
 }

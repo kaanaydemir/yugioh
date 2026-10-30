@@ -25,6 +25,7 @@ import type { V3SfxName } from './v3/slice';
 import type { V3MaterialSfxName } from './v3/materials';
 import type { V3VoiceSfxName } from './v3/voices';
 import type { V3SpellSfxName } from './v3/spells';
+import type { DawnSfxName } from './v3/dawn';
 import type { UiCardSfxName } from './v3/ui-cards';
 import type { UiFlowSfxName } from './v3/ui-flow';
 
@@ -58,6 +59,7 @@ export type SfxName =
   // A5 / A6 (additive, A56.0): spell / trap sounds (src/audio/v3/spells.ts) and the UI family
   // (src/audio/v3/ui-cards.ts, ui-flow.ts)
   | V3SpellSfxName
+  | DawnSfxName
   | UiCardSfxName
   | UiFlowSfxName;
 

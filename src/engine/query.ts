@@ -200,6 +200,14 @@ export function trapLocked(s: GameState, p: PlayerId): boolean {
   return false;
 }
 
+/** True when `p`'s opponent controls a face-up attackLock3 spell (Şafak Kılıçları): `p`'s monsters cannot declare attacks. */
+export function attackLocked(s: GameState, p: PlayerId): boolean {
+  for (const st of s.players[p === 0 ? 1 : 0].spellTraps) {
+    if (st && st.faceUp && spellDefOf(s, st.uid)?.effect === 'attackLock3') return true;
+  }
+  return false;
+}
+
 /** True when every one of the five seal cards is in `hand`. */
 export function hasAllSeals(s: GameState, hand: readonly Uid[]): boolean {
   const have = new Set(hand.map((u) => s.cards[u]?.cardId));
@@ -374,7 +382,7 @@ export function normalizeAction(s: GameState, a: Action): Action {
       const card = s.cards[a.uid];
       const d = card ? CARDS[card.cardId] : undefined;
       const inHand = s.players[a.player]?.hand.includes(a.uid) ?? false;
-      if (inHand && d && isSpell(d) && d.spellType === 'equip') out.zone = a.zone;
+      if (inHand && d && isSpell(d) && (d.spellType === 'equip' || d.spellType === 'continuous')) out.zone = a.zone;
       if (a.target) {
         out.target =
           a.target.kind === 'monster'

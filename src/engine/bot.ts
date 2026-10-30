@@ -5,7 +5,7 @@
 import { isMonster, isSpell, isTrap, type Attribute, type MonsterCardDef } from '../data/cards';
 import { EngineError, HAND_LIMIT, other, type Action, type GameState, type PlayerId, type Uid, type ZoneRef } from './types';
 import { actingPlayer, legalActions } from './rules';
-import { battleNumbers, currentAtk, currentDef, defOf, equipOfEffect, fieldAtkModifier, findMonster, hasAllSeals, hasPiercing, monsterDefOf, uidAt, volcanoActive } from './query';
+import { attackLocked, battleNumbers, currentAtk, currentDef, defOf, equipOfEffect, fieldAtkModifier, findMonster, hasAllSeals, hasPiercing, monsterDefOf, uidAt, volcanoActive } from './query';
 import { SEAL_IDS } from '../data/cards';
 import { makeRng } from './rng';
 
@@ -35,7 +35,13 @@ function decide(s: GameState, legal: Action[], me: PlayerId, rng: Rng): Action |
     if (pd.kind === 'trapResponse') return decideTrap(s, legal, me);
     if (pd.kind === 'chooseTarget') {
       // decoy_target: the candidates are my own monsters; pick the one that fights the attack best
-      if (isTrap(defOf(s, pd.sourceUid))) return best(legal, rng, (a) => (a.type === 'chooseTarget' ? redirectValue(s, me, a.target) : -Infinity));
+      const src = defOf(s, pd.sourceUid);
+      // magic_hat: the attacker has no information about the hats, so it guesses (seeded RNG)
+      if (isTrap(src) && src.effect === 'hatShuffle') {
+        const picks = legal.filter((a) => a.type === 'chooseTarget');
+        return picks.length ? picks[Math.floor(rng() * picks.length)] : null;
+      }
+      if (isTrap(src)) return best(legal, rng, (a) => (a.type === 'chooseTarget' ? redirectValue(s, me, a.target) : -Infinity));
       return best(legal, rng, (a) => (a.type === 'chooseTarget' ? targetValue(s, me, a.target) : -Infinity));
     }
     if (pd.kind === 'discard')
@@ -154,6 +160,8 @@ function keepValue(s: GameState, me: PlayerId, uid: Uid): number {
         return 1000;
       case 'equipDestroyShield':
         return 900;
+      case 'attackLock3':
+        return 1250;
     }
   }
   if (isTrap(d)) {
@@ -336,6 +344,8 @@ function decideTrap(s: GameState, legal: Action[], me: PlayerId): Action | null 
       if (wins) tries.push([boost, harm + tVal * 0.5 + attackerVal * (pos === 'attack' && atk < have + 1000 ? 0.8 : 0)]);
     }
   }
+  const hat = options.find((o) => effectOf(o) === 'hatShuffle');
+  if (hat && harm > 0) tries.push([hat, harm * 0.6 + 100]); // the attacker only guesses right some of the time
   const decoy = options.find((o) => effectOf(o) === 'attackRedirect');
   if (decoy && harm > 0) {
     let bestGain = 0;
@@ -364,6 +374,7 @@ function decideMain(s: GameState, legal: Action[], me: PlayerId, rng: Rng): Acti
     trySpellRemoval,
     tryPurge,
     tryKneel,
+    tryDawnSwords,
     tryFlip,
     trySoulRecall,
     tryFateTrade,
@@ -510,14 +521,15 @@ const tryField: Step = (s, legal, me) => {
     if (net > topNet) (top = act), (topNet = net);
   }
   if (top) return top;
-  // festival_square: worth it with two small monsters in hand (one extra summon this turn)
+  // festival_square: worth it as soon as a small monster waits in the hand (an extra summon now or later)
   const fest = spellActs(s, legal, 'fieldExtraSummon')[0];
   if (fest) {
     const small = s.players[me].hand.filter((u) => {
       const d = defOf(s, u);
       return isMonster(d) && d.level <= 4;
     }).length;
-    if (small >= 2 && s.players[me].monsters.filter((m) => !m).length >= 2) return fest;
+    // one small monster to put out now or later is enough: the square keeps paying on the next turns too
+    if (small >= 1 && s.players[me].monsters.some((m) => !m)) return fest;
   }
   return null;
 };
@@ -548,6 +560,23 @@ const tryKneel: Step = (s, legal, me, rng) => {
   const oppAtks = s.players[other(me)].monsters.filter((m) => m && m.faceUp && m.position === 'attack').length;
   // worth a card when it is their best monster (>= 1800 ATK) or it clears a wall my attackers cannot beat
   return pick.score >= 1800 || (pick.score > myTop && oppAtks === 1 && myTop > 0) ? pick.item : null;
+};
+
+/** dawn_swords: a three-turn attack lock plus a reveal; worth it when the opponent's board outguns mine (or LP is under pressure). */
+const tryDawnSwords: Step = (s, legal, me, rng) => {
+  const opp = other(me);
+  if (attackLocked(s, opp)) return null; // my lock is already up
+  const acts = spellActs(s, legal, 'attackLock3');
+  if (!acts.length) return null;
+  const topAtk = (p: PlayerId) =>
+    s.players[p].monsters.reduce((t, m) => (m && m.faceUp && m.position === 'attack' ? Math.max(t, currentAtk(s, m.uid)) : t), 0);
+  const oppAttackers = s.players[opp].monsters.filter((m) => m && (!m.faceUp || m.position === 'attack')).length;
+  if (!oppAttackers) return null;
+  const oppTop = Math.max(topAtk(opp), s.players[opp].monsters.some((m) => m && !m.faceUp) ? 1200 : 0);
+  const behind = oppTop > topAtk(me) || s.players[me].lp < s.players[opp].lp - 1000;
+  if (!behind) return null;
+  // prefer a set card already on the field (no zone needed), else any free zone
+  return best(acts, rng, (a) => (a.zone === undefined ? 1 : 0)) ?? acts[0];
 };
 
 /** fate_trade: filter the hand when it holds junk or is small. */
@@ -727,6 +756,7 @@ function bestAttackScoreFor(s: GameState, me: PlayerId, zone: number): number {
 /** Best attack score among monsters that could attack this turn (used before entering battle). */
 function bestAttackScore(s: GameState, me: PlayerId): number {
   let top = -Infinity;
+  if (attackLocked(s, me)) return top; // dawn_swords: no attack can be declared
   s.players[me].monsters.forEach((m, i) => {
     if (m && m.faceUp && m.position === 'attack' && m.attacksThisTurn === 0) top = Math.max(top, bestAttackScoreFor(s, me, i));
   });

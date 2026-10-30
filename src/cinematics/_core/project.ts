@@ -111,7 +111,7 @@ export function applyEvent(s: GameState, ev: GameEvent): void {
         if (i >= 0) ps.hand.splice(i, 1);
         const d = CARDS[ev.cardId];
         // equip spells from hand land in their spell/trap zone at activation
-        if (isSpell(d) && d.spellType === 'equip' && ev.zone !== null)
+        if (isSpell(d) && (d.spellType === 'equip' || d.spellType === 'continuous') && ev.zone !== null)
           ps.spellTraps[ev.zone] = { uid: ev.uid, faceUp: true, setTurn: -1, equippedTo: null };
       } else if (ev.from === 'spellTrap' && ev.zone !== null) {
         const st = ps.spellTraps[ev.zone];
@@ -125,6 +125,11 @@ export function applyEvent(s: GameState, ev: GameEvent): void {
     case 'statChange':
     case 'deckOut':
       return;
+    case 'counter': {
+      const st = s.players[ev.player].spellTraps[ev.zone];
+      if (st && st.uid === ev.uid) st.counter = ev.value;
+      return;
+    }
     case 'attackDeclare': {
       const slot = s.players[ev.player].monsters[ev.attackerZone];
       if (slot && slot.uid === ev.attackerUid) slot.attacksThisTurn++;

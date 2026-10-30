@@ -22,6 +22,7 @@ import type { XY } from '../view/layout';
 import { MonsterUnit } from './MonsterUnit';
 import { PileView, type PileKind } from './PileView';
 import { equipAura, flameAura, steamAura } from './auras';
+import { CounterBadge } from './CounterBadge';
 
 export type FieldSpot = 'monster' | 'spellTrap' | 'field';
 
@@ -33,6 +34,8 @@ export interface ZoneEntry {
   cardId: CardId;
   tile: TileCard;
   unit: MonsterUnit | null;
+  /** the 3 / 2 / 1 plate of a counted continuous spell (dawn_swords) */
+  counter?: CounterBadge | null;
 }
 
 const key = (p: PlayerId, spot: FieldSpot, i: number) => `${p}:${spot}:${i}`;
@@ -269,6 +272,7 @@ export class FieldView {
         seen.add(k);
         const cardId = state.cards[slot.uid].cardId;
         this.syncCard(k, p, 'spellTrap', i, slot.uid, cardId, slot.faceUp);
+        this.syncCounter(k, slot.faceUp ? slot.counter : undefined);
       });
       // ---- field spell
       if (ps.fieldSpell) {
@@ -313,6 +317,23 @@ export class FieldView {
     this.fixTile(e.tile, cardId, faceUp, 'up');
   }
 
+  /** The counter plate of a face-up counted spell sits on its tile's upper right corner; it appears, punches on a change, goes with the card. */
+  private syncCounter(k: string, value: number | undefined): void {
+    const e = this.entries.get(k);
+    if (!e) return;
+    if (value === undefined || value <= 0) {
+      if (e.counter) {
+        e.counter.destroy();
+        e.counter = null;
+      }
+      return;
+    }
+    const x = e.tile.home.x + 10;
+    const y = e.tile.home.y - 6;
+    if (!e.counter) e.counter = new CounterBadge(this.scene, x, y, value);
+    else if (e.counter.shown !== value) void e.counter.set(value, true);
+  }
+
   private fixTile(t: TileCard, cardId: CardId, faceUp: boolean, o: CardOrientation): void {
     const ok =
       t.active &&
@@ -342,6 +363,10 @@ export class FieldView {
       this.scene.time.delayedCall(1700, () => {
         if (this.ghosts.get(uid) === u) this.ghosts.delete(uid);
       });
+    }
+    if (e.counter) {
+      e.counter.destroy();
+      e.counter = null;
     }
     const t = e.tile;
     if (!t.active) return;

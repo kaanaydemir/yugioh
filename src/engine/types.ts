@@ -65,6 +65,14 @@ export interface MonsterSlot {
   boostTurn?: number;
   /** kneel_down: this monster cannot change position while `state.turn` equals this value. */
   lockPositionTurn?: number;
+  /**
+   * magic_hat: this slot is a hat for the rest of the turn. 'decoy' = a "Şapka Tuzağı" token (its uid has a
+   * CardInstance with cardId 'magic_hat' and owner = the hat's controller; it never reaches a graveyard);
+   * 'real' = the hidden attacked monster (face-down defense while hatted). Absent = a normal monster.
+   */
+  hat?: 'decoy' | 'real';
+  /** magic_hat (hat === 'real'): face / position the monster had before it was hidden; restored when the hats end. */
+  hatOrigin?: { faceUp: boolean; position: Position };
 }
 
 export interface SpellTrapSlot {
@@ -74,6 +82,8 @@ export interface SpellTrapSlot {
   setTurn: number;
   /** For equip spells: the uid of the equipped monster. */
   equippedTo: Uid | null;
+  /** Continuous spells (dawn_swords): turns left; absent for every other card. Decremented at the end of each opponent turn. */
+  counter?: number;
 }
 
 export interface PlayerState {
@@ -212,7 +222,16 @@ export type GameEvent =
   | { type: 'setSpellTrap'; player: PlayerId; uid: Uid; zone: number }
   | { type: 'positionChange'; player: PlayerId; uid: Uid; zone: number; position: Position }
   /** A face-down monster is turned face-up (flip summon, or attacked while set). */
-  | { type: 'flip'; player: PlayerId; uid: Uid; cardId: CardId; zone: number; cause: 'flipSummon' | 'attacked' }
+  | {
+      type: 'flip';
+      player: PlayerId;
+      uid: Uid;
+      cardId: CardId;
+      zone: number;
+      /** 'reveal' (dawn_swords): turned face-up by an effect, no flip effect triggers; `sourceUid` is the spell. */
+      cause: 'flipSummon' | 'attacked' | 'reveal';
+      sourceUid?: Uid;
+    }
   /**
    * A card or effect activates. For spells/traps `from` says where the card is shown.
    * For monster effects (`kind: 'monsterEffect'`) `zone` is the monster zone (or null if it left the field).
@@ -284,6 +303,35 @@ export type GameEvent =
   | { type: 'toHand'; player: PlayerId; uid: Uid; cardId: CardId; from: 'monster' | 'graveyard'; zone: number | null }
   /** A card returns to the deck from the graveyard (cycle_of_graves); a `shuffle` event follows the last one. */
   | { type: 'toDeck'; owner: PlayerId; uid: Uid; cardId: CardId; from: 'graveyard' }
+  /** A continuous spell's counter changed (dawn_swords). `value` is the new count (0 = it is destroyed right after, reason 'rule'). */
+  | { type: 'counter'; player: PlayerId; uid: Uid; cardId: CardId; zone: number; value: number; prev: number }
+  /**
+   * magic_hat: the attacked monster and its decoys were hidden under hats (follows `activate`).
+   * `player` = hats' controller. `sourceZone` = zone the attacked monster stood in. `hats` lists EVERY hat
+   * (decoys and the real one alike, sorted by `zone`; `uid` is the sprite key) with its destination zone; the
+   * payload does not say which is real (the real one is the uid of the preceding `attackDeclare.targetUid`,
+   * a presentation that must keep the secret should not use that).
+   */
+  | { type: 'hatsShuffled'; player: PlayerId; sourceUid: Uid; sourceZone: number; hats: { uid: Uid; zone: number }[] }
+  /** magic_hat: the attacker's controller picked the hat in `zone` (the attack now aims at it). */
+  | { type: 'hatChosen'; player: PlayerId; hatOwner: PlayerId; uid: Uid; zone: number }
+  /** magic_hat: a decoy token vanished (attacked / destroyed by an effect). Not a graveyard arrival. */
+  | { type: 'decoyPopped'; player: PlayerId; uid: Uid; zone: number; cause: 'attacked' | 'destroyed' }
+  /** magic_hat: the attacked hat held the real monster; followed by the normal `flip` (cause 'attacked', no flip effect) and `battle`. */
+  | { type: 'hatRevealed'; player: PlayerId; uid: Uid; cardId: CardId; zone: number }
+  /**
+   * magic_hat: remaining decoys were removed (`removed`) and, at the end of the turn, a still-hidden real
+   * monster flips back face-up in its zone (`restored`, no flip effect). reason 'revealed': the real monster
+   * was hit (`restored` null); 'turnEnd': End Phase cleanup (emitted only if something was left).
+   */
+  | {
+      type: 'hatRestore';
+      player: PlayerId;
+      reason: 'revealed' | 'turnEnd';
+      removed: { uid: Uid; zone: number }[];
+      /** `cardId` is null (and `faceUp` false) when the monster was face-down before the hats: it stays hidden. */
+      restored: { uid: Uid; cardId: CardId | null; zone: number; position: Position; faceUp: boolean } | null;
+    }
   /** A pending decision opened (UI cue). */
   | { type: 'decision'; pending: PendingDecision }
   | { type: 'responseDeclined'; player: PlayerId }

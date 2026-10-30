@@ -5,8 +5,9 @@
 import Phaser from 'phaser';
 import { ATTRIBUTE_NAMES, CARDS, isMonster, type Attribute, type CardId } from '../../data/cards';
 import { drawAttributeOrb } from '../../art/cards';
-import { KIND_RAMP, PAL, type Ramp } from '../../art/palette';
-import { PixelCanvas, mix } from '../../art/pixel';
+import { frameRectV3, trimV3, type TrimName } from '../../art/frame-v3';
+import { KIND_RAMP, PAL, RAMPS, type Ramp } from '../../art/palette';
+import { PixelCanvas } from '../../art/pixel';
 import { GAME_H, GAME_W } from '../../view/layout';
 import { canvasTexture } from '../../view/v3/hudSkin';
 import { REDUCED_MOTION as V3_REDUCED } from '../../view/v3/motion';
@@ -28,6 +29,24 @@ function detectReduced(): boolean {
 }
 export const REDUCED_MOTION: boolean = detectReduced();
 
+/**
+ * A panel in the v3 frame language (palette only: ink outline, one 1-px trim, two flat bands),
+ * optionally with a header band. Used for every panel of the deck screens in both looks, so no
+ * alpha-blended off-palette colour ever reaches the screen.
+ */
+export function panelV3(scene: Phaser.Scene, trim: TrimName, w: number, h: number, header = 0, lift = 0): string {
+  return canvasTexture(scene, `deck:panel:${trim}:${lift}:${w}x${h}:${header}`, () => {
+    const p = new PixelCanvas(w, h);
+    const t = trimV3(trim, lift);
+    frameRectV3(p, 0, 0, w, h, t, { split: header ? header + 10 : 0.55 });
+    if (header) {
+      p.rect(2, 2, w - 4, header - 2, PAL.night2);
+      p.hline(2, w - 3, header, t.dark);
+    }
+    return p;
+  });
+}
+
 export const CELL_W = 108;
 export const CELL_H = 40;
 
@@ -44,8 +63,8 @@ export function cellTex(scene: Phaser.Scene, kind: CellKind, focus: boolean, inD
     p.rect(0, 0, w, h, PAL.ink);
     // chamfered body
     p.rect(1, 1, w - 2, h - 2, trim);
-    p.rect(2, 2, w - 4, h - 4, inDeck ? mix(PAL.night2, PAL.gold1, 0.35) : focus ? PAL.night3 : PAL.night2);
-    p.rect(2, 24, w - 4, h - 26, inDeck ? mix(PAL.night1, PAL.gold0, 0.4) : focus ? PAL.night2 : PAL.night1);
+    p.rect(2, 2, w - 4, h - 4, inDeck ? RAMPS.gold[0] : focus ? PAL.night3 : PAL.night2);
+    p.rect(2, 24, w - 4, h - 26, inDeck ? PAL.night1 : focus ? PAL.night2 : PAL.night1);
     p.hline(2, w - 3, 24, focus ? R[2] : PAL.night0);
     p.hline(2, w - 3, 2, light);
     p.vline(2, 3, h - 3, light);

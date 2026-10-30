@@ -33,7 +33,7 @@ export function mix(a: Pose, b: Pose, t: number): Pose {
 function loopMoon(th: number, hx = 0, hy = 0): Partial<Pose> {
   const c = Math.cos(th * DEG);
   const sn = sin(th * DEG);
-  return { mx: rnd(39 + hx + 4.5 * c), my: rnd(-38 + hy + 3.2 * sn), ma: rnd(200 + 16 * sn), mz: sn > 0 ? 1 : -1 };
+  return { mx: rnd(39 + hx + 3.5 * c), my: rnd(-38 + hy + 2.6 * sn), ma: rnd(200 + 10 * sn), mz: sn > 0 ? 1 : -1 };
 }
 
 /** Crescent on its orbit round the flame (θ deg: 0 = right, 90 = in front / below). */
@@ -61,17 +61,17 @@ export function idlePose(f: number): Pose {
   const u3 = up(2);
   const nx = 28;
   return pose({
-    sink: -u1,
-    hy: -u2 + u1,
-    ny: -29 - u3,
+    tailW: 0.55,
+    hy: 0 * u2,
+    ny: -29 - 0 * u3,
     nx,
-    tailA: 2 * sin(2 * t * TAU),
-    tailB: 1.6 * sin((2 * t - 0.2) * TAU),
-    tailT: t,
-    hemT: (2 * t) % 1,
-    sashT: t,
+    tailA: 1.5 * sin(2 * t * TAU),
+    tailB: 1.2 * sin((2 * t - 0.2) * TAU),
+    tailT: (2 * t) % 1,
+    hemT: (4 * t) % 1,
+    sashT: (2 * t) % 1,
     collar: 0.5 + 0.2 * sin((t - 0.1) * TAU),
-    flameT: (2 * t) % 1,
+    flameT: (4 * t) % 1,
     flame: 1.15 + 0.08 * sin((3 * t + 0.2) * TAU),
     tipX: rnd(1.3 * sin((t - 0.15) * TAU)),
     tipY: rnd(0.8 * sin((t - 0.3) * TAU)),
@@ -135,13 +135,10 @@ export function guardPose(f: number): Pose {
     ...G0,
     hemT: t,
     tailT: t,
+    tailW: 0.35,
     sashT: t,
     t,
-    collar: 1 - 0.1 * (0.5 + 0.5 * sin(t * TAU)),
-    my: -50 + (sin((t - 1 / 6) * TAU) > 0.5 ? -1 : 0),
-    eye: 1.1 + 0.2 * sin(t * TAU),
-    hy: 2 + (sin(t * TAU) < -0.5 ? 1 : 0),
-    flameT: (t * 2) % 1,
+    flameT: t,
   };
 }
 const GUARD0 = guardPose(0);
@@ -159,11 +156,11 @@ const ATTACK_KEYS: Partial<Pose>[] = [
   { nx: 21, ny: -27, lean: -2, hy: -1, tipX: -2, flame: 1.25, charge: 0.4, eye: 1.25, mx: 32, my: -50, ma: 300, mz: 1 },
   { nx: 17, ny: -30, lean: -3, hy: -1, tailA: 3, tailB: 3, tipX: -3, flame: 1.35, charge: 0.7, eye: 1.35, mx: 16, my: -58, ma: 330, mz: 1, msn: 0 },
   { nx: 14, ny: -32, lean: -3, hy: -2, tailA: 4, tailB: 4, tipX: -3, tipY: 1, flame: 1.45, charge: 1, eye: 1.5, hand: 'claw', mx: 8, my: -54, ma: 55, mz: -1, mglow: 1, collar: 0.8 },
-  { nx: 30, ny: -26, lean: 2, tailA: 1, tailB: 1, flame: 1.2, eye: 1.3, hand: 'claw', mx: 30, my: -54, ma: 100, mz: 1, msx: 7, msy: -2, msn: 1 },
-  { nx: 35, ny: -22, lean: 3, hy: 1, tailA: -2, tailB: -2, tipX: 2, flame: 0.9, eye: 1.2, hand: 'claw', mx: 46, my: -40, ma: 135, mz: 1, msx: 9, msy: 6, msn: 2 },
-  { nx: 36, ny: -18, lean: 4, hy: 1, tailA: -5, tailB: -4, tipX: 3, flame: 0.6, eye: 1.5, hand: 'claw', mx: 52, my: -24, ma: 165, mz: 1, msx: 8, msy: 7, msn: 2, flare: 2 },
-  { nx: 37, ny: -20, lean: 3, tailA: -3, tailB: -3, tipX: 2, flame: 1.4, eye: 1.5, hand: 'open', mx: 50, my: -30, ma: 120, mz: 1, msx: -5, msy: 3, msn: 1, mglow: 1 },
-  { nx: 34, ny: -26, lean: 1, tailA: -1, flame: 1.2, mx: 52, my: -36, ma: 180, mz: 1 },
+  { nx: 30, ny: -26, lean: 2, tailA: 1, tailB: 1, flame: 1.2, eye: 1.3, hand: 'claw', mx: 30, my: -54, ma: 100, mz: 1, msx: 4, msy: -1, msn: 1 },
+  { nx: 35, ny: -22, lean: 3, hy: 1, tailA: -2, tailB: -2, tipX: 2, flame: 0.9, eye: 1.2, hand: 'claw', mx: 46, my: -40, ma: 135, mz: 1, msx: 5, msy: 3, msn: 2 },
+  { nx: 34, ny: -18, lean: 4, hy: 1, tailA: -5, tailB: -4, tipX: 3, flame: 0.6, eye: 1.5, hand: 'claw', mx: 48, my: -24, ma: 165, mz: 1, msx: 5, msy: 4, msn: 2, flare: 2 },
+  { nx: 37, ny: -20, lean: 3, tailA: -3, tailB: -3, tipX: 2, flame: 1.4, eye: 1.5, hand: 'open', mx: 50, my: -30, ma: 120, mz: 1, msx: -3, msy: 2, msn: 1, mglow: 1 },
+  { nx: 33, ny: -26, lean: 1, tailA: -1, flame: 1.2, mx: 45, my: -36, ma: 180, mz: 1 },
 ];
 export function attackPose(f: number): Pose {
   const n = A_N;
@@ -215,7 +212,7 @@ const HIT_HOLDS = [50, 50, 70, 80, 90, 110];
 
 const HH_N = 8;
 const HH_KEYS: Partial<Pose>[] = [
-  { hy: -2, lean: -2, tilt: 3, tipX: -3, hatX: -1, hatY: -2, eye: 0.2, squint: 1, flame: 0.8 },
+  { hy: -1, lean: -1, tilt: 3, tipX: -3, hatX: -1, hatY: -1, eye: 0.2, squint: 1, flame: 0.9 },
   { lean: -4, sink: 2, hy: -3, tilt: 5, hatX: -5, hatY: -6, tipX: -5, tailA: 6, tailB: 5, nx: 24, ny: -26, squint: 1, eye: 0.2, flame: 0.4, collar: 0.9, mx: 46, my: -40, ma: 240 },
   { lean: -3, sink: 4, hy: -1, tilt: 3, hatX: -4, hatY: -3, tailA: 3, tailB: 2, squint: 1, eye: 0.5, flame: 0.6, flare: 2, b1x: 13, mx: 44, my: -37, ma: 220 },
   { lean: -2, sink: 3, hy: 0, hatX: -2, hatY: -1, tilt: 2, flame: 0.8, flare: 1, mx: 41, my: -36 },
@@ -271,8 +268,8 @@ export function summonPose(f: number): Pose {
   if (f <= 6) {
     const diss = [0.98, 0.85, 0.7, 0.52, 0.34, 0.16, 0][f];
     const rise = [0.15, 0.3, 0.5, 0.7, 0.85, 1, 1][f];
-    const gate = [0.5, 0.9, 1, 1, 1, 0.85, 0.6][f];
-    const my = [-66, -62, -58, -52, -46, -41, -38][f];
+    const gate = [0.4, 0.6, 0.7, 0.8, 0.65, 0.65, 0.5][f];
+    const my = [-52, -52, -51, -49, -46, -41, -38][f];
     return key(
       {
         diss,

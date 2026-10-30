@@ -102,6 +102,8 @@ export interface Pose {
   tailA: number;
   tailB: number;
   tailT: number;
+  /** amplitude of the tail wave 0…1 */
+  tailW: number;
   flare: number;
   collar: number;
   hemT: number;
@@ -175,6 +177,7 @@ export const NEUTRAL: Pose = {
   tailA: 0,
   tailB: 0,
   tailT: 0,
+  tailW: 1,
   flare: 0,
   collar: 0.5,
   hemT: 0,
@@ -500,7 +503,7 @@ function carveFork(q: PixelCanvas, path: readonly Pt[], len: number): void {
 
 function drawTails(f: Frame, sk: Skel): void {
   const { o, light } = f;
-  const wave = (k: number, ph: number) => Math.sin((o.tailT + ph) * TAU) * k;
+  const wave = (k: number, ph: number) => Math.sin((o.tailT + ph) * TAU) * k * o.tailW;
   const mk = (pts: readonly Pt[], swing: number, k: number, w0: number): { poly: Pt[]; path: Pt[] } => {
     const [root, mid1, mid2, tip] = pts;
     const a: Pt = [f.rx + root[0], f.ry + root[1]];
@@ -820,6 +823,14 @@ function drawShell(f: Frame, sk: Skel): void {
     const dn = run(s, x, y, 0, 1, 3);
     const edge = Math.min(run(s, x, y, 1, 0, 3), run(s, x, y, -1, 0, 3));
     if (up === 0 || dn === 0 && y > R[1] + 10) return SILVER.M;
+    if (k > 0.7 && y > R[1] - 8) {
+      for (const [fx0, fx1] of [[4, 2], [11, 9]] as const) {
+        const fxp = R[0] + fx0 + ((y - R[1] + 6) / 28) * (fx1 - fx0);
+        const dd = x + 0.5 - fxp;
+        if (Math.abs(dd) < 0.9) return LINING.S;
+        if (dd * -ls > 0.9 && dd * -ls < 2) return LINING.L;
+      }
+    }
     if (toLight < 2) return LINING.L;
     if (edge === 0 && toLight > 3) return SILVER.S;
     const away = Math.min(run(s, x, y, -ls, 1, 4), run(s, x, y, -ls, 0, 4) + 1);

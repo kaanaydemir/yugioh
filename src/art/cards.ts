@@ -306,10 +306,11 @@ const SPELL_GLYPH = ['..#..', '.#o#.', '#ooo#', '.#o#.', '..#..'];
 const TRAP_GLYPH = ['#####', '#ooo#', '.#o#.', '.#o#.', '..#..'];
 
 /** 5×5 spell/trap type icons. */
-const TYPE_ICON: Record<'normal' | 'equip' | 'field' | 'trap', string[]> = {
+const TYPE_ICON: Record<'normal' | 'equip' | 'field' | 'continuous' | 'trap', string[]> = {
   normal: ['..#..', '..#..', '##o##', '..#..', '..#..'],
   equip: ['....#', '...#.', '#.#..', '.#...', '#.#..'],
   field: ['.....', '...#.', '.#.##', '#o#o#', '#####'],
+  continuous: ['.###.', '#...#', '#.o.#', '#...#', '.###.'],
   trap: ['#.#.#', '#####', '.....', '#####', '#.#.#'],
 };
 
@@ -340,7 +341,7 @@ function drawStar(p: PixelCanvas, x: number, y: number): void {
   p.stamp(STAR_SHADE, { a: PAL.gold4, b: PAL.gold3, c: PAL.fire3 }, x, y);
 }
 
-function drawTypeIcon(p: PixelCanvas, x: number, y: number, kind: 'normal' | 'equip' | 'field' | 'trap', ramp: Ramp): void {
+function drawTypeIcon(p: PixelCanvas, x: number, y: number, kind: 'normal' | 'equip' | 'field' | 'continuous' | 'trap', ramp: Ramp): void {
   p.rect(x - 1, y - 1, 7, 7, PAL.ink);
   p.rect(x, y, 5, 5, ramp[1]);
   p.stamp(TYPE_ICON[kind], { '#': ramp[4], o: ramp[3] }, x, y);
@@ -749,7 +750,7 @@ function drawLevelRow(p: PixelCanvas, def: CardDef, ramp: Ramp): void {
     return;
   }
   const t = def.kind === 'trap' ? 'trap' : def.spellType;
-  const icon: 'normal' | 'equip' | 'field' | 'trap' = t === 'trap' ? 'trap' : t === 'equip' ? 'equip' : t === 'field' ? 'field' : 'normal';
+  const icon: 'normal' | 'equip' | 'field' | 'continuous' | 'trap' = t === 'trap' ? 'trap' : t === 'equip' ? 'equip' : t === 'field' ? 'field' : t === 'continuous' ? 'continuous' : 'normal';
   drawTypeIcon(p, 40, y, icon, ramp);
   // banner rule leading into the icon
   p.hline(4, 37, y + 2, ramp[3]);

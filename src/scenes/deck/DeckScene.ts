@@ -13,6 +13,7 @@
 import Phaser from 'phaser';
 import { ALL_CARDS, ATTRIBUTE_NAMES, CARDS, SEAL_IDS, isMonster, type Attribute, type CardId } from '../../data/cards';
 import { cardArtKey } from '../../art/cards';
+import type { TrimName } from '../../art/frame-v3';
 import { ATTRIBUTE_COLOR, KIND_RAMP, PAL } from '../../art/palette';
 import { sfx } from '../../audio/sfx';
 import {
@@ -22,11 +23,11 @@ import { measureText, pixelText, wrapText } from '../../ui/text';
 import { Button } from '../../view/Button';
 import { InspectPanel } from '../../view/InspectPanel';
 import { GAME_H, GAME_W } from '../../view/layout';
-import { ICON, panelTex, miniCardKey } from '../../view/ui-textures';
+import { ICON, miniCardKey } from '../../view/ui-textures';
 import { TEX, tween, wait } from '../../vfx/core';
 import { ELEMENTS, SORT_KEYS, SORT_LABEL, gridMove, sortPool, visibleIds, type KindFilter, type PoolFilter, type SortKey } from './pool';
 import { NAME_MAX, SLOT_COUNT, deckStore, slotRef, type DeckStore } from './store';
-import { CELL_H, CELL_W, REDUCED_MOTION, backdropTex, cellTex, chainTex, fadeFromInk, fadeToInk, fitText, latticeTex, orbOf, orbTex, tickTex, type CellKind } from './ui';
+import { CELL_H, CELL_W, REDUCED_MOTION, backdropTex, panelV3, cellTex, chainTex, fadeFromInk, fadeToInk, fitText, latticeTex, orbOf, orbTex, tickTex, type CellKind } from './ui';
 
 export interface DeckSceneData {
   /** Slot to open (default: the last edited one). */
@@ -36,7 +37,7 @@ export interface DeckSceneData {
   /** Where GERİ / ESC goes instead of the title menu (the deck picker that opened the builder). */
   back?: { key: string; data: object };
   /** QA: start with this filter / sort / deck. */
-  qa?: { kind?: KindFilter; attr?: Attribute | null; sort?: SortKey; cards?: CardId[]; name?: string; cursor?: number };
+  qa?: { kind?: KindFilter; attr?: Attribute | null; sort?: SortKey; cards?: CardId[]; name?: string; cursor?: number; zone?: Zone; deckCursor?: number; missing?: number };
 }
 
 // ---------------------------------------------------------------- layout
@@ -59,7 +60,7 @@ const NAME_W = 96;
 const BTN_Y = DY + DH - 2 * 17 - 1;
 const KIND_LABEL: Record<KindFilter, string> = { all: 'Tümü', monster: 'Canavar', spell: 'Büyü', trap: 'Tuzak' };
 const KINDS: readonly KindFilter[] = ['all', 'monster', 'spell', 'trap'];
-const SPELL_WORD: Record<string, string> = { normal: 'Normal', equip: 'Kuşanma', field: 'Alan' };
+const SPELL_WORD: Record<string, string> = { normal: 'Normal', equip: 'Kuşanma', field: 'Alan', continuous: 'Devamlı' };
 const HELP: readonly (readonly [string, string])[] = [
   ['ENTER', 'Ekle / çıkar'],
   ['TAB', 'Alan değiştir'],
@@ -114,6 +115,8 @@ interface Draft {
   cards: CardId[];
   /** The saved copy it was loaded from (to tell if it changed). */
   savedKey: string;
+  /** Cards dropped on load because they no longer exist ("eksik kart"); cleared by saving. */
+  missing: number;
 }
 
 const keyOf = (name: string, cards: readonly string[]) => `${name}|${cards.join(',')}`;
@@ -212,13 +215,13 @@ export class DeckScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor(PAL.night0);
     this.store = deckStore();
     this.add.image(0, 0, backdropTex(this)).setOrigin(0).setDepth(0);
-    this.lattice = this.add.tileSprite(0, 0, GAME_W, GAME_H, latticeTex(this)).setOrigin(0).setAlpha(0.55).setDepth(1);
+    this.lattice = this.add.tileSprite(0, 0, GAME_W, GAME_H, latticeTex(this)).setOrigin(0).setDepth(1);
     this.buildMotes();
 
     // drafts: one working copy per slot (an empty slot starts as an empty deck)
     for (let i = 0; i < SLOT_COUNT; i++) {
       const s = this.store.slot(i);
-      this.drafts.push(s ? { name: s.name, cards: [...s.cards], savedKey: keyOf(s.name, s.cards) } : { name: `Deste ${i + 1}`, cards: [], savedKey: keyOf(`Deste ${i + 1}`, []) });
+      this.drafts.push(s ? { name: s.name, cards: [...s.cards], savedKey: keyOf(s.name, s.cards), missing: s.missing } : { name: `Deste ${i + 1}`, cards: [], savedKey: keyOf(`Deste ${i + 1}`, []), missing: 0 });
     }
     const lastEdit = Number((this.store.last('edit') ?? '').replace('slot:', ''));
     this.slot = this.data0.slot ?? (Number.isInteger(lastEdit) && lastEdit >= 0 && lastEdit < SLOT_COUNT ? lastEdit : 0);
@@ -236,6 +239,11 @@ export class DeckScene extends Phaser.Scene {
 
     this.refreshList();
     if (this.data0.qa?.cursor !== undefined) this.cursor = Math.max(0, Math.min(this.list.length - 1, this.data0.qa.cursor));
+    if (this.data0.qa?.zone === 'deck' && this.cur.cards.length) {
+      this.zone = 'deck';
+      this.deckCursor = Math.min(this.cur.cards.length - 1, this.data0.qa.deckCursor ?? 0);
+    }
+    if (this.data0.qa?.missing) this.cur.missing = this.data0.qa.missing;
     this.ensureVisible();
     this.renderAll();
     this.showInspect();
@@ -279,8 +287,8 @@ export class DeckScene extends Phaser.Scene {
     }
   }
 
-  private panel(x: number, y: number, w: number, h: number, style: 'neutral' | 'gold' | 'p1' = 'neutral', header = 0): void {
-    this.add.image(x, y, panelTex(this, style, w, h, { header, alpha: 236 })).setOrigin(0).setDepth(3);
+  private panel(x: number, y: number, w: number, h: number, style: TrimName = 'neutral', header = 0): void {
+    this.add.image(x, y, panelV3(this, style, w, h, header)).setOrigin(0).setDepth(3);
   }
 
   private txt(x: number, y: number, s: string, color: number = PAL.mist, size: 'sm' | 'md' = 'sm', depth = 10): Phaser.GameObjects.BitmapText {
@@ -357,7 +365,7 @@ export class DeckScene extends Phaser.Scene {
     const bg = this.add.image(0, 0, cellTex(this, 'monster', false, false)).setOrigin(0);
     const art = this.add.image(3, 3, cardArtKey(ALL_CARDS[0].id)).setOrigin(0);
     const orb = this.add.image(5, 5, orbTex(this, 'FIRE')).setOrigin(0);
-    const lvlBg = this.add.rectangle(46, 33, 1, 1, PAL.ink).setOrigin(1, 1).setAlpha(0.85);
+    const lvlBg = this.add.rectangle(46, 33, 1, 1, PAL.ink).setOrigin(1, 1);
     const lvl = pixelText(this, 46, 38, '', { size: 'sm', color: PAL.gold4, originX: 1, originY: 1 });
     const name = pixelText(this, 51, 3, '', { size: 'sm', color: PAL.white, maxWidth: CELL_W - 53, lineSpacing: -1 });
     const atk = pixelText(this, 52, 26, '', { size: 'sm', color: PAL.crim3 });
@@ -405,7 +413,7 @@ export class DeckScene extends Phaser.Scene {
       this.slotPips.push(this.add.rectangle(DX + 5 + i * 29 + 21, DY + 4 + 9, 3, 3, PAL.leaf3).setOrigin(0).setDepth(22).setVisible(false));
     }
     // name field
-    this.nameField = this.add.image(DX + 5, DY + 21, panelTex(this, 'neutral', NAME_W, 15, { chamfer: 2, scan: false, alpha: 255 })).setOrigin(0).setDepth(9);
+    this.nameField = this.add.image(DX + 5, DY + 21, panelV3(this, 'neutral', NAME_W, 15)).setOrigin(0).setDepth(9);
     this.nameText = pixelText(this, DX + 10, DY + 25, '', { size: 'sm', color: PAL.white }).setDepth(10);
     this.nameCaret = this.add.rectangle(DX + 10, DY + 25, 1, 8, PAL.gold4).setOrigin(0).setDepth(11).setVisible(false);
     this.nameZone = this.add.zone(DX + 5, DY + 21, NAME_W, 15).setOrigin(0).setDepth(12).setInteractive({ useHandCursor: true });
@@ -482,7 +490,7 @@ export class DeckScene extends Phaser.Scene {
     const y = 262;
     const w = 128;
     const h = 94;
-    this.plate.push(this.add.image(x, y, panelTex(this, 'neutral', w, h, { alpha: 236 })).setOrigin(0).setDepth(3));
+    this.plate.push(this.add.image(x, y, panelV3(this, 'neutral', w, h)).setOrigin(0).setDepth(3));
     HELP.forEach(([k, v], i) => {
       this.plate.push(this.txt(x + 8, y + 5 + i * 9, k, PAL.gold3));
       this.plate.push(this.txt(x + 44, y + 5 + i * 9, v, PAL.mist));
@@ -660,6 +668,7 @@ export class DeckScene extends Phaser.Scene {
     this.store.setSlot(this.slot, { name: d.name, cards: d.cards });
     this.store.setLast('edit', slotRef(this.slot));
     d.savedKey = keyOf(this.store.slot(this.slot)!.name, d.cards);
+    d.missing = 0;
     d.name = this.store.slot(this.slot)!.name;
     sfx.play('uiConfirm', { volume: 0.7 });
     this.renderDeck();
@@ -936,7 +945,7 @@ export class DeckScene extends Phaser.Scene {
     const inDeck = this.inDeck(id);
     const focus = this.zone === 'pool' && cell.index === this.cursor;
     cell.bg.setTexture(cellTex(this, this.cellKind(id), focus, inDeck));
-    cell.art.setTexture(cardArtKey(id)).setAlpha(inDeck && !focus ? 0.62 : 1);
+    cell.art.setTexture(cardArtKey(id));
     cell.orb.setTexture(orbTex(this, orbOf(id)));
     cell.tick.setVisible(inDeck);
     cell.chain.setVisible(isSealCard(id));
@@ -957,7 +966,7 @@ export class DeckScene extends Phaser.Scene {
       cell.lvlBg.setVisible(false);
       cell.atk.setVisible(false);
       cell.def.setVisible(false);
-      cell.word.setText(d.kind === 'spell' ? `Büyü · ${SPELL_WORD[d.spellType] ?? 'Normal'}` : 'Tuzak').setVisible(true).setPosition(51, 27);
+      cell.word.setText(d.kind === 'spell' ? (d.spellType === 'normal' ? 'Büyü' : (SPELL_WORD[d.spellType] ?? 'Büyü')) : 'Tuzak').setVisible(true).setPosition(51, 27);
       cell.word.setTint(d.kind === 'spell' ? KIND_RAMP.spell[3] : KIND_RAMP.trap[3]);
     }
     cell.def.setTint(PAL.cyan3);
@@ -971,7 +980,6 @@ export class DeckScene extends Phaser.Scene {
       const focus = this.zone === 'pool' && cell.index === this.cursor;
       const inDeck = this.inDeck(cell.id);
       cell.bg.setTexture(cellTex(this, this.cellKind(cell.id), focus, inDeck));
-      cell.art.setAlpha(inDeck && !focus ? 0.62 : 1);
       cell.tick.setVisible(inDeck);
     }
     const sorted = this.sortedDeck();
@@ -999,7 +1007,7 @@ export class DeckScene extends Phaser.Scene {
     const shown = fitText(d.name, NAME_W - 18, (s) => measureText(s, 'sm').w);
     this.nameText.setText(shown + (dirty ? ' *' : ''));
     this.nameText.setTint(this.editing ? (this.nameFresh ? PAL.white : PAL.gold4) : PAL.white);
-    this.nameField.setTexture(panelTex(this, this.editing ? 'gold' : 'neutral', NAME_W, 15, { chamfer: 2, scan: false, alpha: 255 }));
+    this.nameField.setTexture(panelV3(this, 'neutral', NAME_W, 15, 0, this.editing ? 2 : 0));
     this.updateCaret();
     // count + legality
     const v = validateDeck(d.cards);
@@ -1046,12 +1054,15 @@ export class DeckScene extends Phaser.Scene {
     this.countTexts[1].setText(`${st.spells}`);
     this.countTexts[2].setText(`${st.traps}`);
     // reasons
-    if (v.ok) {
+    const lost = d.missing > 0 ? [`· Eksik kart: ${d.missing} (oyundan kalktı, çıkarıldı)`] : [];
+    if (v.ok && !lost.length) {
       this.reasons.setTint(PAL.leaf3).setText('Deste hazır. Maçta seçebilirsin.');
+    } else if (v.ok) {
+      this.reasons.setTint(PAL.gold3).setText(wrapText(`${lost.join('\n')}\nKaydedince uyarı kalkar.`, 'sm', DW - 16).slice(0, 4).join('\n'));
     } else {
-      const text = v.issues.map((i) => `· ${i.text}`).join('\n');
+      const text = [...lost, ...v.issues.map((i) => `· ${i.text}`)].join('\n');
       const lines = wrapText(text, 'sm', DW - 16).slice(0, 4);
-      this.reasons.setTint(d.cards.length === 0 ? PAL.steel : PAL.crim3).setText(lines.join('\n'));
+      this.reasons.setTint(d.cards.length === 0 && !lost.length ? PAL.steel : PAL.crim3).setText(lines.join('\n'));
     }
   }
 
@@ -1079,9 +1090,8 @@ export class DeckScene extends Phaser.Scene {
   private say(text: string, tone: Tone, instant = false): void {
     const gen = ++this.msgGen;
     this.footMsg.setText(text).setTint(TONE[tone]);
-    if (instant || REDUCED_MOTION) return;
-    this.footMsg.setAlpha(0.4);
-    void tween(this, { targets: this.footMsg, alpha: 1, duration: 120 }).then(() => gen === this.msgGen && this.footMsg.setAlpha(1));
+    void gen;
+    void instant;
   }
 
   // ---------------------------------------------------------------- small motion
@@ -1092,8 +1102,7 @@ export class DeckScene extends Phaser.Scene {
     for (const c of this.cells) {
       if (!c.id) continue;
       c.box.y = c.y + dir * 4;
-      c.box.setAlpha(0.5);
-      this.tweens.add({ targets: c.box, y: c.y, alpha: 1, duration: 100, ease: 'Quad.Out' });
+      this.tweens.add({ targets: c.box, y: c.y, duration: 100, ease: 'Quad.Out' });
     }
   }
 
@@ -1107,9 +1116,9 @@ export class DeckScene extends Phaser.Scene {
   private flashRow(i: number): void {
     const r = this.rows[i];
     if (!r || REDUCED_MOTION) return;
-    r.hi.setVisible(true).setFillStyle(PAL.gold3).setAlpha(0.9);
-    void tween(this, { targets: r.hi, alpha: 0, duration: 260, ease: 'Quad.Out' }).then(() => {
-      r.hi.setFillStyle(PAL.night3).setAlpha(1);
+    r.hi.setVisible(true).setFillStyle(PAL.gold3);
+    void wait(this, 140).then(() => {
+      r.hi.setFillStyle(PAL.night3);
       this.renderFocus();
     });
   }
@@ -1159,7 +1168,7 @@ export class DeckScene extends Phaser.Scene {
     for (const m of this.motes) {
       const y = (m.y - (this.t / 1000) * m.v + GAME_H * 4) % GAME_H;
       m.img.setPosition(Math.round(m.x + Math.sin(this.t / 1400 + m.ph) * 3), Math.round(y));
-      m.img.setAlpha(0.25 + 0.35 * (0.5 + 0.5 * Math.sin(this.t / 700 + m.ph)));
+      m.img.setTint([PAL.night3, PAL.night4, PAL.steel][Math.floor((0.5 + 0.5 * Math.sin(this.t / 700 + m.ph)) * 2.99)]);
     }
   }
 

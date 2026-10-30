@@ -57,7 +57,7 @@ const NAME_Y = 152;
 const TEXT_W = R.w - 14;
 /** Off-screen x of the panel (slid out). */
 const OUT_X = -R.w - 12;
-const SPELL_TYPE: Record<string, string> = { normal: 'Normal', equip: 'Kuşanma', field: 'Alan' };
+const SPELL_TYPE: Record<string, string> = { normal: 'Normal', equip: 'Kuşanma', field: 'Alan', continuous: 'Devamlı' };
 
 export const INSPECT3 = Object.freeze({
   slideMs: 120,

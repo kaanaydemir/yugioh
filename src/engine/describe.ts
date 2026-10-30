@@ -187,7 +187,9 @@ export function describeEvent(state: GameState, ev: GameEvent, batch?: readonly 
     case 'positionChange':
       return `${nameOf(state, ev.uid)} ${ev.position === 'defense' ? 'savunma' : 'saldırı'} pozisyonuna geçti.`;
     case 'flip':
-      return ev.cause === 'attacked' ? `Kapalı kart açıldı: ${cardName(ev.cardId)}!` : null;
+      return ev.cause === 'attacked' || ev.cause === 'reveal' ? `Kapalı kart açıldı: ${cardName(ev.cardId)}!` : null;
+    case 'counter':
+      return ev.value === 0 ? `${cardName(ev.cardId)} sona erdi.` : ev.prev === 0 ? null : `${cardName(ev.cardId)}: ${ev.value} tur kaldı.`;
     case 'activate':
       if (ev.kind === 'spell' && ev.cardId === 'guardian_charm' && ev.from === 'spellTrap')
         return `${cardName(ev.cardId)} canavarı korudu!`;
@@ -247,6 +249,16 @@ export function describeEvent(state: GameState, ev: GameEvent, batch?: readonly 
       return `${playerName(ev.owner, 'gen')} mezarlığından ${cardName(ev.cardId)} desteye karıştırıldı.`;
     case 'decision':
       return null;
+    case 'hatsShuffled':
+      return `${playerName(ev.player)} canavarını şapkaların altına gizledi ve karıştırdı!`;
+    case 'hatChosen':
+      return `${playerName(ev.player)} ${ev.zone + 1}. alandaki şapkayı seçti.`;
+    case 'decoyPopped':
+      return 'Sahte şapka patladı, altı boştu.';
+    case 'hatRevealed':
+      return null; // the following flip event names the card
+    case 'hatRestore':
+      return ev.restored ? 'Şapkalar kalktı, canavar yerine döndü.' : null;
     case 'responseDeclined':
       return `${playerName(ev.player)} tuzak açmadı.`;
     case 'deckOut':
@@ -267,6 +279,7 @@ export function describePending(state: GameState, pd: PendingDecision): string {
       const what = pd.candidates.every((c) => c.zone === 'monster') ? 'canavarı' : 'kartı';
       if (card && CARDS[card.cardId].kind === 'monster' && (CARDS[card.cardId] as { effect: string }).effect === 'summonFreezeAttack')
         return `${cardName(card.cardId, 'gen')} etkisi: bir sonraki turunda saldıramayacak canavarı seç.`;
+      if (card && card.cardId === 'magic_hat') return `${cardName(card.cardId)}: saldıracağın şapkayı seç.`;
       if (card && card.cardId === 'decoy_target') return `${cardName(card.cardId)}: saldırının yöneleceği kendi canavarını seç.`;
       return card ? `${cardName(card.cardId, 'gen')} etkisi: yok edilecek ${what} seç.` : `Yok edilecek ${what} seç.`;
     }

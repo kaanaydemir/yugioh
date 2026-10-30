@@ -26,7 +26,7 @@ import { actionKey, normalizeAction } from '../../src/engine/query';
 export type MonSpec =
   | CardId
   | { id: CardId; position?: Position; faceUp?: boolean; enteredTurn?: number; attacks?: number; posChanged?: number };
-export type STSpec = CardId | { id: CardId; faceUp?: boolean; setTurn?: number; equippedTo?: number };
+export type STSpec = CardId | { id: CardId; faceUp?: boolean; setTurn?: number; equippedTo?: number; counter?: number };
 
 export interface Side {
   hand?: CardId[];
@@ -111,6 +111,7 @@ export function scenario(o: ScenarioOpts = {}): GameState {
         setTurn: st.setTurn ?? (equipTarget !== null ? -1 : turn - 1),
         equippedTo: equipTarget,
       };
+      if (st.counter !== undefined) slot.counter = st.counter;
       ps.spellTraps[i] = slot;
     });
     if (side.field) ps.fieldSpell = { uid: mk(side.field, p), faceUp: true, setTurn: -1, equippedTo: null };
@@ -231,7 +232,7 @@ export function checkInvariants(s: GameState): void {
     ps.monsters.forEach((m, i) => {
       if (!m) return;
       put(m.uid, `mon${p}.${i}`);
-      assert(CARDS[s.cards[m.uid].cardId].kind === 'monster', 'non-monster in monster zone');
+      assert(m.hat === 'decoy' || CARDS[s.cards[m.uid].cardId].kind === 'monster', 'non-monster in monster zone');
       assert(m.faceUp || m.position === 'defense', 'face-down monster must be in defense');
       assert(m.enteredTurn <= s.turn, 'enteredTurn in the future');
     });
@@ -247,7 +248,7 @@ export function checkInvariants(s: GameState): void {
         assert(host && host.faceUp, 'equip host must be an own face-up monster');
       }
       // Face-up spell/trap cards only persist when they are continuous (equips here).
-      if (st.faceUp) assert(st.equippedTo !== null, 'face-up non-equip left on the field');
+      if (st.faceUp) assert(st.equippedTo !== null || (d.kind === 'spell' && d.spellType === 'continuous'), 'face-up non-equip left on the field');
     });
     if (ps.fieldSpell) {
       put(ps.fieldSpell.uid, `field${p}`);
@@ -279,10 +280,12 @@ const UID_FIELDS = ['uid', 'attackerUid', 'targetUid', 'sourceUid', 'spellUid', 
 /** Every uid referenced by an event exists, and cardIds match. */
 export function checkEvents(s: GameState, events: GameEvent[]): void {
   for (const e of events) {
+    if (e.type === 'decoyPopped' || e.type === 'hatChosen') continue; // magic_hat token: its CardInstance is gone by design
     const any = e as Record<string, unknown>;
     for (const f of UID_FIELDS) {
       const v = any[f];
       if (v === null || v === undefined) continue;
+      if (e.type === 'attackDeclare' && f === 'targetUid') continue; // may be a magic_hat token that popped in this very apply
       assert(typeof v === 'number' && s.cards[v], `${e.type}.${f}=${String(v)} is not a real uid`);
     }
     if (typeof any.uid === 'number' && typeof any.cardId === 'string')

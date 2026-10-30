@@ -122,10 +122,11 @@ const SPELL_GLYPH = ['..#..', '.#o#.', '#ooo#', '.#o#.', '..#..'];
 const TRAP_GLYPH = ['#####', '#ooo#', '.#o#.', '.#o#.', '..#..'];
 
 /** 5×5 spell / trap type icons — today's. */
-const TYPE_ICON: Record<'normal' | 'equip' | 'field' | 'trap', readonly string[]> = {
+const TYPE_ICON: Record<'normal' | 'equip' | 'field' | 'continuous' | 'trap', readonly string[]> = {
   normal: ['..#..', '..#..', '##o##', '..#..', '..#..'],
   equip: ['....#', '...#.', '#.#..', '.#...', '#.#..'],
   field: ['.....', '...#.', '.#.##', '#o#o#', '#####'],
+  continuous: ['.###.', '#...#', '#.o.#', '#...#', '.###.'],
   trap: ['#.#.#', '#####', '.....', '#####', '#.#.#'],
 };
 
@@ -233,7 +234,7 @@ function paintRow(p: PixelCanvas, def: CardDef): void {
   }
   const R = kindRampV3(def);
   const t = def.kind === 'trap' ? 'trap' : def.spellType;
-  const icon: 'normal' | 'equip' | 'field' | 'trap' = t === 'trap' ? 'trap' : t === 'equip' ? 'equip' : t === 'field' ? 'field' : 'normal';
+  const icon: 'normal' | 'equip' | 'field' | 'continuous' | 'trap' = t === 'trap' ? 'trap' : t === 'equip' ? 'equip' : t === 'field' ? 'field' : t === 'continuous' ? 'continuous' : 'normal';
   // the type rule leading into the icon: one kind line, a 3-px arrow head lit
   p.hline(5, 37, ROW_Y + 2, R[2]);
   p.set(3, ROW_Y + 2, R[3]).set(4, ROW_Y + 1, R[3]).set(4, ROW_Y + 2, R[3]).set(4, ROW_Y + 3, R[3]);

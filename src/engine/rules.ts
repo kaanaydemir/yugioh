@@ -230,6 +230,7 @@ const ATTACK_TRAPS = [
   'attackRedirect',
   'attackNegateAllDefense',
   'attackedBoost1000',
+  'hatShuffle',
 ] as const;
 const SUMMON_TRAPS = ['summonDestroy1000Plus', 'summonDestroy1800Plus'] as const;
 const SPELL_NEGATE_TRAPS = ['spellActivateNegate'] as const;
@@ -359,10 +360,27 @@ class Resolver {
   }
 
   private endPhase(): void {
+    for (const pl of PLAYERS) this.endHats(pl, 'turnEnd'); // magic_hat: tokens vanish, a hidden monster flips back face-up
     this.withStats(() => this.setPhase('end'));
     const p = this.s.activePlayer;
+    this.tickContinuous(p);
     const hand = this.ps(p).hand.length;
     if (hand > HAND_LIMIT) this.openPending({ kind: 'discard', player: p, count: hand - HAND_LIMIT });
+  }
+
+  /** dawn_swords: at the end of each of `p`'s turns the counter of the opponent's lock spells ticks down; at 0 the card is destroyed (rule). */
+  private tickContinuous(p: PlayerId): void {
+    const owner = other(p);
+    const sts = this.ps(owner).spellTraps;
+    for (let i = 0; i < sts.length; i++) {
+      const st = sts[i];
+      if (!st || !st.faceUp || spellDefOf(this.s, st.uid)?.effect !== 'attackLock3') continue;
+      const prev = st.counter ?? 0;
+      const value = Math.max(0, prev - 1);
+      st.counter = value;
+      this.emit({ type: 'counter', player: owner, uid: st.uid, cardId: this.cardId(st.uid), zone: i, value, prev });
+      if (value === 0) this.destroySpellTrap({ player: owner, zone: 'spellTrap', index: i }, 'rule', null);
+    }
   }
 
   private openPending(pd: PendingDecision): void {
@@ -467,6 +485,11 @@ class Resolver {
   private destroyMonster(p: PlayerId, index: number, reason: DestroyReason, sourceUid: Uid | null): boolean {
     const slot = this.ps(p).monsters[index];
     if (!slot) return false;
+    if (slot.hat === 'decoy') {
+      // magic_hat token: it just vanishes (no destroy event, no graveyard)
+      this.popDecoy(p, index, 'destroyed');
+      return true;
+    }
     // guardian_charm: the equip is destroyed instead and the monster stays
     const shield = equipOfEffect(this.s, slot.uid, 'equipDestroyShield');
     if (shield) {
@@ -491,6 +514,87 @@ class Resolver {
       this.ps(sh.player).spellTraps[sh.index] = null;
       this.toGraveyard(sh.slot.uid, 'spellTrap', sh.index);
     });
+  }
+
+  // ---- magic_hat ---------------------------------------------------------------------------
+
+  /**
+   * The attacked monster at `srcIndex` and up to 2 decoy tokens go under shuffled hats (face-down defense).
+   * Hat zones are drawn from the monster's own zone plus the free zones with the state RNG; then the attacker's
+   * controller picks one hat (a chooseTarget decision owned by the trap).
+   */
+  private hideBehindHats(p: PlayerId, srcIndex: number, trapUid: Uid): void {
+    const s = this.s;
+    const ms = this.ps(p).monsters;
+    const real = ms[srcIndex];
+    if (!real) return;
+    const free: number[] = [];
+    ms.forEach((m, i) => {
+      if (!m) free.push(i);
+    });
+    const decoys = Math.min(2, free.length);
+    if (decoys === 0) return;
+    const pool = [srcIndex, ...free];
+    shuffleInPlace(s, pool);
+    const zones = pool.slice(0, decoys + 1); // zones[0] hides the real monster, the rest hold decoys
+    let nextUid = Math.max(0, ...Object.keys(s.cards).map(Number)) + 1;
+    this.withStats(() => {
+      ms[srcIndex] = null;
+      real.hatOrigin = { faceUp: real.faceUp, position: real.position };
+      real.hat = 'real';
+      real.faceUp = false;
+      real.position = 'defense';
+      ms[zones[0]] = real;
+      for (let k = 1; k < zones.length; k++) {
+        const uid = nextUid++;
+        s.cards[uid] = { uid, cardId: 'magic_hat', owner: p };
+        ms[zones[k]] = { uid, position: 'defense', faceUp: false, enteredTurn: s.turn, attacksThisTurn: 0, positionChangedTurn: -1, hat: 'decoy' };
+      }
+    });
+    const hats = zones
+      .map((z) => ({ uid: ms[z]!.uid, zone: z }))
+      .sort((a, b) => a.zone - b.zone);
+    this.emit({ type: 'hatsShuffled', player: p, sourceUid: real.uid, sourceZone: srcIndex, hats });
+    const attacker = other(p);
+    const candidates: ZoneRef[] = hats.map((h) => ({ player: p, zone: 'monster', index: h.zone }));
+    this.openPending({ kind: 'chooseTarget', player: attacker, sourceUid: trapUid, candidates });
+  }
+
+  /** A decoy token vanishes (attacked / destroyed). It never reaches a graveyard and its CardInstance is dropped. */
+  private popDecoy(p: PlayerId, index: number, cause: 'attacked' | 'destroyed'): void {
+    const slot = this.ps(p).monsters[index];
+    if (!slot || slot.hat !== 'decoy') return;
+    this.emit({ type: 'decoyPopped', player: p, uid: slot.uid, zone: index, cause });
+    this.ps(p).monsters[index] = null;
+    delete this.s.cards[slot.uid];
+  }
+
+  /**
+   * Removes the remaining decoys of `p`; at 'turnEnd' a still-hidden real monster also flips back face-up
+   * (original position, no flip effect). Emits one `hatRestore` when anything changed.
+   */
+  private endHats(p: PlayerId, reason: 'revealed' | 'turnEnd'): void {
+    const ms = this.ps(p).monsters;
+    const removed: { uid: Uid; zone: number }[] = [];
+    let restored = null as Extract<GameEvent, { type: 'hatRestore' }>['restored'];
+    this.withStats(() => {
+      ms.forEach((m, i) => {
+        if (!m || !m.hat) return;
+        if (m.hat === 'decoy') {
+          removed.push({ uid: m.uid, zone: i });
+          delete this.s.cards[m.uid];
+          ms[i] = null;
+        } else if (reason === 'turnEnd') {
+          const o = m.hatOrigin ?? { faceUp: true, position: m.position };
+          m.faceUp = o.faceUp;
+          m.position = o.position;
+          delete m.hat;
+          delete m.hatOrigin;
+          restored = { uid: m.uid, cardId: o.faceUp ? this.cardId(m.uid) : null, zone: i, position: o.position, faceUp: o.faceUp };
+        }
+      });
+    });
+    if (removed.length || restored) this.emit({ type: 'hatRestore', player: p, reason, removed, restored });
   }
 
   /** A monster goes back to its owner's hand (homecoming); its equips are destroyed by rule. */
@@ -745,7 +849,7 @@ class Resolver {
     const base = { type: 'activate', player: p, uid: a.uid, cardId: d.id, kind: 'spell' } as const;
     if (d.spellType === 'normal') {
       this.emit({ ...base, from, zone: stZone });
-    } else if (d.spellType === 'equip') {
+    } else if (d.spellType === 'equip' || d.spellType === 'continuous') {
       const zone = fromHand ? a.zone! : stZone!;
       if (fromHand) ps.spellTraps[zone] = { uid: a.uid, faceUp: true, setTurn: -1, equippedTo: null };
       this.emit({ ...base, from, zone });
@@ -862,6 +966,24 @@ class Resolver {
       return;
     }
 
+    if (d.spellType === 'continuous') {
+      const zone = fromHand ? a.zone! : stZone!;
+      const slot = ps.spellTraps[zone]!;
+      slot.counter = 3;
+      this.emit({ type: 'counter', player: p, uid: a.uid, cardId: d.id, zone, value: 3, prev: 0 });
+      // reveal every face-down monster of the opponent (no flip effect: the 'flip' event is tagged cause 'reveal')
+      const opp = other(p);
+      this.withStats(() => {
+        this.ps(opp).monsters.forEach((m, mz) => {
+          if (!m || m.faceUp) return;
+          m.faceUp = true;
+          this.emit({ type: 'flip', player: opp, uid: m.uid, cardId: this.cardId(m.uid), zone: mz, cause: 'reveal', sourceUid: a.uid });
+        });
+      });
+      this.queue.unshift(...burners);
+      return;
+    }
+
     if (d.spellType === 'equip') {
       const zone = fromHand ? a.zone! : stZone!;
       const ref = (a.target as { kind: 'monster'; ref: ZoneRef }).ref;
@@ -930,6 +1052,13 @@ class Resolver {
         return monsterRefs(this.s, defender).some((r) => uidAt(this.s, r) !== targetUid);
       case 'attackedBoost1000':
         return targetUid !== null && findMonster(this.s, targetUid) !== null;
+      case 'hatShuffle': {
+        // magic_hat: a real (non-hat) monster is attacked and there is at least one free zone for a decoy
+        const t = targetUid === null ? null : findMonster(this.s, targetUid);
+        if (!t || t.player !== defender || t.slot.hat) return false;
+        if (this.ps(defender).monsters.some((m) => m?.hat)) return false;
+        return this.ps(defender).monsters.some((m) => !m);
+      }
       default:
         return true;
     }
@@ -1023,6 +1152,13 @@ class Resolver {
         finish();
         return;
       }
+      case 'hatShuffle': {
+        const targetUid = pd.trigger.kind === 'attackDeclared' ? pd.trigger.targetUid : null;
+        const tLoc = targetUid === null ? null : findMonster(s, targetUid);
+        finish();
+        if (tLoc) this.hideBehindHats(tLoc.player, tLoc.index, uid);
+        return;
+      }
       case 'summonDestroy1000Plus':
       case 'summonDestroy1800Plus': {
         if (pd.trigger.kind === 'summoned') {
@@ -1049,6 +1185,15 @@ class Resolver {
         const battle = this.queue.find((t): t is Extract<Task, { k: 'battle' }> => t.k === 'battle');
         this.emit({ type: 'target', player: pd.player, sourceUid: src, targets: [{ player: ref.player, zone: ref.zone, index: ref.index }] });
         if (battle && newUid !== null) battle.targetUid = newUid;
+      }
+      // magic_hat: the attacker's controller picked a hat; the queued attack now aims at it
+      if (srcDef.effect === 'hatShuffle') {
+        const newUid = uidAt(s, ref);
+        const battle = this.queue.find((t): t is Extract<Task, { k: 'battle' }> => t.k === 'battle');
+        if (newUid !== null) {
+          this.emit({ type: 'hatChosen', player: pd.player, hatOwner: ref.player, uid: newUid, zone: ref.index });
+          if (battle) battle.targetUid = newUid;
+        }
       }
       return;
     }
@@ -1085,7 +1230,23 @@ class Resolver {
 
     const tLoc = findMonster(s, targetUid);
     if (!tLoc || tLoc.player !== dp) return;
+    if (tLoc.slot.hat === 'decoy') {
+      // magic_hat: the attacker guessed a decoy: it pops, nobody takes damage, the real monster stays hidden
+      this.popDecoy(dp, tLoc.index, 'attacked');
+      return;
+    }
     const tDef = monsterDefOf(s, targetUid)!;
+
+    // magic_hat: the attacker found the real monster: the hats lift (remaining decoys vanish) and it is
+    // flipped like any attacked face-down monster, but a flip effect does not trigger.
+    const hatOrigin = tLoc.slot.hat === 'real' ? (tLoc.slot.hatOrigin ?? null) : null;
+    const hatted = tLoc.slot.hat === 'real';
+    if (hatted) {
+      this.emit({ type: 'hatRevealed', player: dp, uid: targetUid, cardId: tDef.id, zone: tLoc.index });
+      delete tLoc.slot.hat;
+      delete tLoc.slot.hatOrigin;
+      this.endHats(dp, 'revealed');
+    }
 
     // A face-down target is flipped face-up before damage calculation.
     let flipped = false;
@@ -1158,7 +1319,15 @@ class Resolver {
     if (killT && !killA && aDef.effect === 'battleDestroyBurn300') tasks.push({ k: 'emberBurn', uid: attackerUid });
     if (killA && !killT && tDef.effect === 'battleDestroyBurn300') tasks.push({ k: 'emberBurn', uid: targetUid });
     if (tPos === 'defense' && tDef.effect === 'defenseAttackedBurn300') tasks.push({ k: 'tideBurn', uid: targetUid, controller: dp });
-    if (flipped && tDef.effect === 'flipDestroyMonster') tasks.push({ k: 'flipEffect', uid: targetUid, controller: dp });
+    if (flipped && !hatted && tDef.effect === 'flipDestroyMonster') tasks.push({ k: 'flipEffect', uid: targetUid, controller: dp });
+    // magic_hat: a surviving monster that was hidden goes back to the position it had before the hats
+    if (hatted && hatOrigin && hatOrigin.position !== 'defense') {
+      const hs = this.ps(dp).monsters[tLoc.index];
+      if (hs && hs.uid === targetUid && hs.faceUp) {
+        hs.position = hatOrigin.position;
+        this.emit({ type: 'positionChange', player: dp, uid: targetUid, zone: tLoc.index, position: hs.position });
+      }
+    }
     this.queue.unshift(...tasks);
   }
 }
