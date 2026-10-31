@@ -12,9 +12,11 @@ import type { MonsterArt } from '../types';
 import { LOOK_V3 } from '../../view/layout';
 import { placeholderMonster } from './_placeholder';
 import { placeholderTotem } from './_placeholder-new';
+import { placeholderToken } from './_placeholder-token';
 
 /** Art of a monster that has no art file yet: the expanded roster gets the crystal totem (yields to real art automatically). */
 function placeholderFor(id: MonsterId): MonsterArt {
+  if (id === 'straw_decoy_token') return placeholderToken(); // batch 2: the Saman Korkuluk token's straw scarecrow
   return MONSTER_IDS.indexOf(id) >= 12 ? placeholderTotem(id) : placeholderMonster(id);
 }
 

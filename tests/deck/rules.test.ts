@@ -170,9 +170,10 @@ describe('autoFillDeck (Rastgele doldur)', () => {
 });
 
 describe('preset decks', () => {
-  it('there are six, with unique ids and names', () => {
-    expect(presetDecks()).toHaveLength(6);
-    expect(new Set(presetDecks().map((p) => p.id)).size).toBe(6);
+  it('there are seven, with unique ids and names', () => {
+    expect(presetDecks()).toHaveLength(PRESET_DEFS.length);
+    expect(PRESET_DEFS.length).toBe(7);
+    expect(new Set(presetDecks().map((p) => p.id)).size).toBe(7);
     expect(presetById('muhur')?.name).toBe('Karanlık Mühür');
   });
 

@@ -464,6 +464,8 @@ export interface TrapPromptOption {
 export interface TrapPromptOpts {
   /** The card under the pointer or picked (null: none): the caller shows it in the inspect panel. */
   onFocus?: (cardId: CardId | null) => void;
+  /** Batch 2: the header question (default "Tuzak açılsın mı?"; a quick-spell window asks "Kart açılsın mı?"). */
+  question?: string;
 }
 
 /** The plate's width for n usable cards (one to three: the spell / trap row). */
@@ -546,7 +548,7 @@ export function trapPromptV3(scene: Phaser.Scene, player: PlayerId, options: rea
     root.add(icon);
     tx += icon.width + 3;
   }
-  const question = new PalText(scene, tx, capYV3('md', TRAP_Q.headCap), 'Tuzak açılsın mı?', { size: 'md', color: PAL.white });
+  const question = new PalText(scene, tx, capYV3('md', TRAP_Q.headCap), opts.question ?? 'Tuzak açılsın mı?', { size: 'md', color: PAL.white });
   root.add(question.root);
   // its first letters come with the plate's first frame (A6B-8)
   question.reveal(REDUCED_MOTION ? question.glyphCount : TRAP_Q.lettersPerFrame);
@@ -614,7 +616,8 @@ export function trapPromptV3(scene: Phaser.Scene, player: PlayerId, options: rea
   const setInfo = (i: number) => {
     const id = i >= 0 ? cards[i].opt.cardId : null;
     infoId = id;
-    const text = id ? cardDef(id).name : 'Bir kart seç';
+    const d0 = id ? cardDef(id) : null;
+    const text = d0 ? (d0.kind === 'spell' ? `${d0.name} · Hızlı Büyü` : d0.name) : 'Bir kart seç';
     info.setText(text);
     toneInfo();
     info.setPosition(Math.round(w / 2 - info.width / 2), capYV3('sm', TRAP_Q.infoCap));

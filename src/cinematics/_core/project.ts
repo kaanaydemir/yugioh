@@ -72,8 +72,15 @@ export function applyEvent(s: GameState, ev: GameEvent): void {
           return;
         }
       }
+      // batch 2: a token is created by the summon (its CardInstance did not exist before)
+      if (ev.from === 'token') {
+        s.cards[ev.uid] = { uid: ev.uid, cardId: ev.cardId, owner: ev.player };
+        ps.monsters[ev.zone] = { ...freshMonster(ev.uid, s.turn, true, ev.position), token: true };
+        return;
+      }
       detach(s, ev.uid);
-      if (ev.from === 'hand') ps.normalSummonUsed = true;
+      // (a Special Summon from the hand — polar_sovereign — keeps the Normal Summon)
+      if (ev.from === 'hand' && ev.method !== 'special') ps.normalSummonUsed = true;
       ps.monsters[ev.zone] = freshMonster(ev.uid, s.turn, true, ev.position);
       return;
     }
@@ -223,6 +230,38 @@ export function applyEvent(s: GameState, ev: GameEvent): void {
       }
       return;
     }
+    // ---- batch 2 (docs/v3/YENI_KARTLAR.md) — mirrors rules.ts takeControl / vanishToken / banish / spite_axe
+    case 'controlChange': {
+      const from = s.players[ev.from].monsters;
+      const slot = from[ev.fromZone];
+      if (!slot || slot.uid !== ev.uid) return;
+      from[ev.fromZone] = null;
+      s.players[ev.to].monsters[ev.toZone] = slot;
+      return;
+    }
+    case 'tokenVanish': {
+      const ms = s.players[ev.player].monsters;
+      if (ms[ev.zone]?.uid === ev.uid) ms[ev.zone] = null;
+      delete s.cards[ev.uid];
+      return;
+    }
+    case 'banish': {
+      const ps = s.players[ev.owner];
+      detach(s, ev.uid);
+      (ps.banished ??= []).push(ev.uid);
+      return;
+    }
+    case 'toDeck':
+      // (only spite_axe's top-of-deck return; the graveyard → deck shuffles keep today's projection)
+      if (ev.from === 'spellTrap') {
+        detach(s, ev.uid);
+        s.players[ev.owner].deck.unshift(ev.uid);
+      }
+      return;
+    case 'massDestroy':
+    case 'coinToss':
+    case 'diceRoll':
+      return;
     case 'decision':
       s.pending = structuredClone(ev.pending);
       return;

@@ -16,6 +16,7 @@
 import type Phaser from 'phaser';
 import type { Attribute, CardDef, CardId, MonsterCardDef, MonsterId } from '../data/cards';
 import { ALL_CARD_IDS, cardDef, isMonster } from '../data/cards';
+import { paintB2Emblem } from './cardart/_placeholder-b2';
 import type { PlayerId } from '../engine/types';
 import { cardArtwork } from './cardart';
 import { monsterArt } from './monsters';
@@ -559,7 +560,8 @@ function fallbackArt(id: CardId): PixelCanvas {
   const p = new PixelCanvas(CARD_ART_W, CARD_ART_H);
   const r = kindRamp(d.kind);
   rgrad(p, 0, 0, CARD_ART_W, CARD_ART_H, 22, 17, 26, [r[3], r[2], r[1], r[0]]);
-  p.disc(22, 17, 6, r[4]);
+  // batch 2: the new spells get a placeholder emblem each until their artwork exists
+  if (!paintB2Emblem(p, id)) p.disc(22, 17, 6, r[4]);
   return p;
 }
 
@@ -1514,8 +1516,10 @@ export function isoCanvas(id: CardId | 'back', o: CardOrientation, player: Playe
 /** Build every card texture + overlay animation. Called once at boot. */
 export function buildCardTextures(scene: Phaser.Scene): void {
   isoCache.clear();
+  // batch 2: tokens are not collectible (not in ALL_CARD_IDS) but stand on the field as cards
+  const ids: CardId[] = [...ALL_CARD_IDS, 'straw_decoy_token'];
   // upright
-  for (const id of ALL_CARD_IDS) {
+  for (const id of ids) {
     addTex(scene, cardArtKey(id), cardArtCanvas(id));
     addTex(scene, cardFaceKey(id), cardFaceCanvas(id));
   }
@@ -1546,7 +1550,7 @@ export function buildCardTextures(scene: Phaser.Scene): void {
   // iso
   for (const o of ['up', 'side'] as CardOrientation[]) {
     for (const player of [0, 1] as PlayerId[]) {
-      for (const id of [...ALL_CARD_IDS, 'back' as const]) addTex(scene, cardIsoKey(id, o, player), isoCanvas(id, o, player));
+      for (const id of [...ids, 'back' as const]) addTex(scene, cardIsoKey(id, o, player), isoCanvas(id, o, player));
     }
     const isil = renderFlat('back', o, 0, { solid: 0xffffff, outline: false });
     addTex(scene, cardIsoSilKey(o), isil);

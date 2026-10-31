@@ -107,6 +107,27 @@ export function chainTex(scene: Phaser.Scene): string {
   });
 }
 
+/** A horseshoe magnet, 9x5: the mark of the three Kutup pieces and Kutup Hükümdarı (the fusion). */
+export function magnetTex(scene: Phaser.Scene): string {
+  return canvasTexture(scene, 'deck:magnet', () => {
+    const p = new PixelCanvas(9, 5);
+    p.stamp(['.hhhhhhh.', '##+++++##', '##.....##', 'WW.....WW', 'WW.....WW'], { h: PAL.fire3, '#': PAL.fire2, '+': PAL.fire1, W: PAL.stone4 }, 0, 0);
+    p.set(0, 3, PAL.white).set(7, 3, PAL.white);
+    p.outline(PAL.ink);
+    return p;
+  });
+}
+
+/** A gold "1" tag, 9x5: a card a deck may hold only once (SINGLE_COPY_IDS). */
+export function singleTex(scene: Phaser.Scene): string {
+  return canvasTexture(scene, 'deck:single', () => {
+    const p = new PixelCanvas(9, 5);
+    p.stamp(['.hhhhhhh.', '###WW####', '####W####', '####W####', '.##WWW##.'], { h: PAL.gold3, '#': PAL.gold2, W: PAL.white }, 0, 0);
+    p.outline(PAL.ink);
+    return p;
+  });
+}
+
 /** 7x7 gold tick for "already in the deck". */
 export function tickTex(scene: Phaser.Scene): string {
   return canvasTexture(scene, 'deck:tick', () => {

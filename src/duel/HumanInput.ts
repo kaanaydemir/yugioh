@@ -244,7 +244,13 @@ export class HumanInput {
           player,
           pd.options.map((u) => ({ uid: u, cardId: state.cards[u].cardId })),
           // v3 (F7): a card hovered / picked on the prompt plate is read in the inspect panel
-          V3_A6_B ? { onFocus: (id) => (id ? this.views.inspect.show(id) : this.views.inspect.hide()) } : undefined,
+          // (batch 2: a set quick spell may answer too — the question says "Kart", not "Tuzak")
+          V3_A6_B
+            ? {
+                onFocus: (id) => (id ? this.views.inspect.show(id) : this.views.inspect.hide()),
+                ...(pd.options.some((u) => isSpell(cardDef(state.cards[u].cardId))) ? { question: 'Kart açılsın mı?' } : {}),
+              }
+            : undefined,
         );
         this.trapOpen = false;
         if (token !== this.token) return null;
@@ -259,6 +265,26 @@ export class HumanInput {
         const uids = await this.pickDiscard(pd.count, describePending(state, pd));
         if (!uids || token !== this.token) return null;
         return { type: 'discard', player, uids };
+      }
+      // batch 2 (docs/v3/YENI_KARTLAR.md): the coin call and Kovuk Devi's count
+      if (pd && pd.kind === 'coinCall') {
+        this.setMode('cards');
+        const src = state.cards[pd.sourceUid];
+        const call = await this.views.prompt.choose(describePending(state, pd), [
+          { id: 'tails', label: 'YAZI' },
+          { id: 'heads', label: 'TURA' },
+        ], { title: src ? CARDS[src.cardId].name : 'Yazı-Tura', style: player === 0 ? 'p1' : 'p2' });
+        if (token !== this.token) return null;
+        return { type: 'callCoin', player, call: call === 'heads' ? 'heads' : 'tails' };
+      }
+      if (pd && pd.kind === 'chooseCount') {
+        this.setMode('cards');
+        const src = state.cards[pd.sourceUid];
+        const opts: { id: string; label: string }[] = [];
+        for (let n = pd.min; n <= pd.max; n++) opts.push({ id: String(n), label: String(n) });
+        const n = await this.views.prompt.choose(describePending(state, pd), opts, { title: src ? CARDS[src.cardId].name : undefined, style: player === 0 ? 'p1' : 'p2' });
+        if (token !== this.token) return null;
+        return { type: 'chooseCount', player, n: Number(n) };
       }
       for (;;) {
         if (token !== this.token) return null;
@@ -418,7 +444,17 @@ export class HumanInput {
     const acts = legal.filter((a) => 'uid' in a && a.uid === uid);
     const has = (t: Action['type']) => acts.some((a) => a.type === t);
     let opts: MenuOption[];
-    if (isMonster(d)) {
+    if (isMonster(d) && d.effect === 'magnetFusion') {
+      // batch 2: Kutup Hükümdarı comes only by tributing the three Kutup pieces (no Normal Summon)
+      opts = [
+        {
+          id: 'specialSummon',
+          label: 'Birleştirerek Çağır (3 parça)',
+          enabled: has('specialSummon'),
+          reason: s.phase !== 'main' ? 'Canavarlar yalnızca Ana Aşamada çağrılır' : 'Sahanda Kutup İğnesi, Kutup Örsü ve Kutup Bobini olmalı',
+        },
+      ];
+    } else if (isMonster(d)) {
       const need = tributesFor(d.level);
       const why = this.summonReason(cardId);
       opts = [
@@ -460,8 +496,22 @@ export class HumanInput {
       }
       case 'activateSpell':
         return this.spellParams(cands as Extract<Action, { type: 'activateSpell' }>[], cardId);
+      case 'specialSummon':
+        return this.fusionParams(cands as Extract<Action, { type: 'specialSummon' }>[], cardId);
     }
     return null;
+  }
+
+  /** batch 2: Kutup Hükümdarı — the three pieces to tribute (asked only when there is a choice). */
+  private async fusionParams(cands: Extract<Action, { type: 'specialSummon' }>[], cardId: CardId): Promise<Action | null> {
+    if (cands.length === 1) return cands[0];
+    const pool = [...new Set(cands.flatMap((a) => a.tributes))];
+    const chosen = await this.pickTributes(pool, 3, CARDS[cardId].name);
+    if (!chosen) return null;
+    const key = [...chosen].sort((a, b) => a - b).join(',');
+    const hit = cands.find((a) => [...a.tributes].sort((x, y) => x - y).join(',') === key) ?? null;
+    if (!hit) this.views.hud.flashHint('Her parçadan birer tane seç: İğne, Örs ve Bobin', { style: 'neutral', ms: 2200 });
+    return hit;
   }
 
   private async zoneFlow(ref: ZoneRef, legal: Action[]): Promise<Action | null> {
@@ -552,6 +602,7 @@ export class HumanInput {
     // main phase
     const change = legal.find((a) => a.type === 'changePosition' && a.zone === ref.index) ?? null;
     const flip = legal.find((a) => a.type === 'flipSummon' && a.zone === ref.index) ?? null;
+    const effect = legal.find((a) => a.type === 'activateMonster' && a.zone === ref.index) ?? null;
     const opts: MenuOption[] = [];
     if (!slot.faceUp) opts.push({ id: 'flip', label: 'Çevirerek Çağır', enabled: !!flip, reason: this.flipReason(ref.index) ?? undefined });
     else
@@ -561,6 +612,10 @@ export class HumanInput {
         enabled: !!change,
         reason: this.positionReason(ref.index) ?? undefined,
       });
+    // batch 2: an ignition effect (Kadran Soytarısı, Kovuk Devi) — offered only on the cards that have one
+    const fx = slot.faceUp ? cardDef(id) : null;
+    if (fx && isMonster(fx) && (fx.effect === 'coinWipe' || fx.effect === 'banishGraveBoost400'))
+      opts.unshift({ id: 'effect', label: 'Etkiyi Kullan', enabled: !!effect, reason: this.effectReason(ref.index) ?? undefined });
     if (!opts.some((o) => o.enabled)) {
       hud.flashHint(opts[0].reason ?? 'Bu canavarla şu an bir şey yapılamaz', { style: 'neutral' });
       return this.refuse(ref);
@@ -570,6 +625,7 @@ export class HumanInput {
     const verb = await this.views.menu.open(anchor.x, anchor.y - 2, opts, { style: playerStyle(p), title: slot.faceUp ? CARDS[id].name : `${CARDS[id].name} (kapalı)` });
     if (verb === 'flip') return flip;
     if (verb === 'change') return change;
+    if (verb === 'effect') return effect;
     return null;
   }
 
@@ -631,9 +687,15 @@ export class HumanInput {
       refs.set(refKey(r), r);
     }
     const hostile = [...refs.values()].some((r) => r.player !== p);
+    const b2Text: Partial<Record<CardId, string>> = {
+      puppet_string: `${name}: tur sonuna kadar kontrolüne alacağın rakip canavarı seç`,
+      soul_leash: `${name}: kuşanıp kontrolüne alacağın rakip canavarı seç`,
+      auger_lance: `${name}: yok edilecek büyü/tuzak kartını seç`,
+      spite_axe: `${name}: kuşanacak canavarını seç`,
+    };
     const r = await this.pickZone(
       [...refs.values()],
-      hostile ? `${name}: yok edilecek rakip canavarı seç` : `${name}: kuşanacak canavarını seç`,
+      b2Text[cardId] ?? (hostile ? `${name}: yok edilecek rakip canavarı seç` : `${name}: kuşanacak canavarını seç`),
       { cancel: true, color: PAL.gold3 },
     );
     if (!r) return null;
@@ -671,6 +733,7 @@ export class HumanInput {
     const d = cardDef(cardId);
     if (!isMonster(d)) return null;
     if (s.phase !== 'main') return 'Canavarlar yalnızca Ana Aşamada çağrılır';
+    if (me.noSummonTurn === s.turn) return 'Saman Korkuluklar bu tur başka canavar çağırmana izin vermiyor';
     if (me.normalSummonUsed) return 'Bu tur zaten bir canavar çağırdın ya da kapalı koydun (turda 1 hak)';
     const need = tributesFor(d.level);
     const onField = me.monsters.filter(Boolean).length;
@@ -697,6 +760,55 @@ export class HumanInput {
         return fromHand && !freeSpellTrapZones(s, p).length ? 'Büyü/Tuzak alanların dolu' : null;
       case 'volcano_arena':
         return fromHand ? null : 'Alan büyüsü yalnızca elden aktive edilir';
+      // ---- batch 2
+      case 'well_pail':
+        return s.players[p].deck.length >= 2 ? null : 'Destende en az 2 kart olmalı';
+      case 'winnow_sieve':
+        return s.players[p].deck.length >= 3 ? null : 'Destende en az 3 kart olmalı';
+      case 'puppet_string':
+      case 'soul_leash':
+        if (!freeMonsterZones(s, p).length) return 'Canavar alanların dolu';
+        return s.players[opp].monsters.some(Boolean) ? 'Kontrolüne alınabilecek rakip canavar yok' : 'Rakibin sahasında canavar yok';
+      case 'void_eye':
+        return 'Sahada yok edilecek canavar yok';
+      case 'sweeping_gale':
+        return 'Rakibin sahasında büyü/tuzak kartı yok';
+      case 'auger_lance':
+        if (!fromHand) {
+          const st = s.players[p].spellTraps.find((x) => x && s.cards[x.uid].cardId === 'auger_lance' && !x.faceUp);
+          if (st && st.setTurn >= s.turn) return 'Kapalı konan hızlı büyü bir sonraki turdan itibaren açılır';
+        }
+        return 'Sahada yok edilecek büyü/tuzak kartı yok';
+      case 'straw_decoys':
+        if (!fromHand) {
+          const st = s.players[p].spellTraps.find((x) => x && s.cards[x.uid].cardId === 'straw_decoys' && !x.faceUp);
+          if (st && st.setTurn >= s.turn) return 'Kapalı konan hızlı büyü bir sonraki turdan itibaren açılır';
+        }
+        return 'Canavar alanların dolu';
+      case 'lucky_die':
+        return 'Sahanda açık bir canavarın yok';
+      case 'spite_axe':
+        if (!s.players[p].monsters.some((m) => m && m.faceUp)) return 'Sahanda kuşanacak açık bir canavarın yok';
+        return fromHand && !freeSpellTrapZones(s, p).length ? 'Büyü/Tuzak alanların dolu' : null;
+    }
+    return null;
+  }
+
+  /** batch 2: why a monster's ignition effect cannot be used now. */
+  private effectReason(zone: number): string | null {
+    const s = this.state!;
+    const p = this.player;
+    const m = s.players[p].monsters[zone];
+    if (!m) return null;
+    const d = cardDef(s.cards[m.uid].cardId);
+    if (s.phase !== 'main') return 'Etkiler yalnızca Ana Aşamada kullanılır';
+    if (isMonster(d) && d.effect === 'coinWipe') {
+      if (!s.players[p === 0 ? 1 : 0].monsters.some(Boolean)) return 'Rakibin sahasında canavar yok';
+      return 'Bu etki bu tur zaten kullanıldı (turda 1 kez)';
+    }
+    if (isMonster(d) && d.effect === 'banishGraveBoost400') {
+      if (!s.players[p].graveyard.some((u) => isMonster(cardDef(s.cards[u].cardId)))) return 'Mezarlığında oyundan çıkarılacak canavar yok';
+      return 'Bu etki bu tur zaten kullanıldı (turda 1 kez)';
     }
     return null;
   }
@@ -978,7 +1090,9 @@ export class HumanInput {
           const i = s.players[p].spellTraps.findIndex((st) => st?.uid === a.uid);
           if (i >= 0) stZones.add(i);
         }
-      } else if (a.type === 'attack') zones.add(a.attackerZone);
+      } else if (a.type === 'specialSummon') handUids.add(a.uid);
+      else if (a.type === 'activateMonster') zones.add(a.zone);
+      else if (a.type === 'attack') zones.add(a.attackerZone);
       else if (a.type === 'changePosition' || a.type === 'flipSummon') zones.add(a.zone);
     }
     v.hand.setEnabled(true);

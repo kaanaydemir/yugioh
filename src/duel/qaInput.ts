@@ -148,3 +148,11 @@ export async function runUiStep(scene: Phaser.Scene, views: DuelViews, step: UiS
   else qaClick(scene, p, step.button ?? 'left');
   return qaWait(scene, step.ms ?? 0);
 }
+
+// QA (batch-2 playtest, tools/playtest.mjs scripts): resolve a UI target from the page —
+//   window.__neonUiPoint({ menu: 'activateSpell' }) → { x, y } in game pixels, or null.
+(globalThis as { __neonUiPoint?: (at: UiTarget) => XY | null }).__neonUiPoint = (at) => {
+  const g = (globalThis as { __neon?: { game?: Phaser.Game; duel?: { views: DuelViews } } }).__neon;
+  const scene = g?.game?.scene.getScene('Duel');
+  return scene && g?.duel ? uiPoint(scene, g.duel.views, at) : null;
+};

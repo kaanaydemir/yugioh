@@ -82,7 +82,7 @@ Tarz kuralı: oyunun **orijinal piksel dili** korunur — 640×360, tam sayı b�
 
 ---
 
-## 3. Kartlar (20)
+## 3. Kartlar (klasik 20 + genişletilmiş havuz; 2. parti aşağıda)
 
 ### Canavarlar (12)
 | # | Kart | Element / Tür | Svy | ATK/DEF | Etki | Sprite |
@@ -127,6 +127,58 @@ deste kurucuda ve `?deck=expanded` havuzunda oynanır. **Emekli** kartlar (`src/
 ama hiçbir yerde sunulmaz (kurucu, hazır desteler, CPU / rastgele desteler); kayıtlı destelerde yüklenirken benzeriyle
 değiştirilir (`docs/DESTE_KURMA.md`).
 - **Akşam Büyücüsü** (`dusk_sorcerer`, KARANLIK Sv7) — sahip kararıyla oyundan kaldırıldı; yerine Kül Ejderi konur.
+
+### Yeni kartlar — 2. parti (v3, `docs/v3/YENI_KARTLAR.md`)
+`src/data/cards.ts`'te `MONSTERS_B2` / `SPELLS_B2` olarak `ALL_CARDS` sonuna eklendi; deste kurucuda, hazır destelerde ve
+`?deck=expanded` havuzunda oynanır. Sahip kararları (2026-10-31): **Yaldızlı Kafes eklenmedi** (rol Şafak Kılıçları'nda;
+havuz 80), **Kül Ejderi'ne diriliş kuralı yok** (vanilla kalır, yalnız görünüm/animasyon yenilenir), Hızlı Büyü onaylandı,
+Kutup Hükümdarı ATK 3000. "Tek" = destede en çok 1 kopya (`SINGLE_COPY_IDS`).
+
+**Canavarlar (15)**
+| Kart | Element / Tür | Svy | ATK/DEF | Etki |
+|---|---|---|---|---|
+| **Kabuk Zıpkıncı** (`tide_harpooner`) ★AS | SU / Su | 5 | 1700/1500 | Gelgit Körfezi sahadayken rakip ona saldıramaz, rakibin büyüleri onu hedef alamaz (başka saldırılabilir canavar yoksa doğrudan saldırı serbest) |
+| **Kadran Soytarısı** (`dial_jester`) · Tek | IŞIK / Büyücü | 2 | 700/300 | Turda 1 kez: yazı-tura. Bilirsen rakibin tüm canavarları, bilemezsen kendi canavarların yok olur (+ toplam ATK'nin yarısı hasar) |
+| **Bulut Yavrusu** (`cloud_hatchling`) | RÜZGAR / Ejderha | 3 | 1100/900 | Soytarı bilince sahadaysa kalıcı +1200 ATK / +800 DEF |
+| **Yansıyan Okçu** (`reflection_archer`) | IŞIK / Büyücü | 4 | 1800/1000 | — |
+| **Hurda Akıncıları** (`scrap_raiders`) | ATEŞ / Savaşçı | 4 | 2000/0 | Saldırdıktan sonra savunmaya geçer, bir sonraki turunda pozisyon değiştiremez |
+| **Kovuk Devi** (`hollow_ogre`) | TOPRAK / Canavar-Savaşçı | 4 | 1400/900 | Turda 1 kez: mezarlıktan en çok 2 canavarı çıkar, her biri için bu tur +400 ATK |
+| **Kaya Baltacı** (`crag_axeman`) | TOPRAK / Savaşçı | 4 | 1600/1300 | — |
+| **Sazlık Balıkçılı** (`reed_heron`) | SU / Kanatlı Canavar | 4 | 1400/1500 | — |
+| **Uçurtma Eskrimci** (`kite_fencer`) | RÜZGAR / Savaşçı | 3 | 900/600 | İki saldırı; ikincisi yalnız canavara |
+| **Çamur Pençe Ruhu** (`mudgrasp_spirit`) | TOPRAK / Şeytan | 4 | 700/1800 | Savunmadayken saldırılırsa saldıranı savunmaya kilitler |
+| **Bozkır Boynuzlusu** (`steppe_spiralhorn`) | RÜZGAR / Canavar | 4 | 1500/1400 | — |
+| **Kutup İğnesi** (`polar_needle`) | TOPRAK / Kaya | 4 | 1500/1100 | Kutup parçası |
+| **Kutup Örsü** (`polar_anvil`) | TOPRAK / Kaya | 4 | 1100/1700 | Kutup parçası |
+| **Kutup Bobini** (`polar_coil`) | TOPRAK / Kaya | 4 | 1300/1400 | Kutup parçası |
+| **Kutup Hükümdarı** (`polar_sovereign`) ★AS | TOPRAK / Kaya | 8 | 3000/2800 | Üç parça kurban edilerek elden Özel Çağrılır (Normal Çağırma hakkını harcamaz). Yok olursa parçalar mezarlıktan savunmada geri gelir (3 boş alan gerekir) |
+
+Jeton: **Saman Korkuluk** (`straw_decoy_token`, Sv1 0/0) — yalnız Saman Korkuluklar çağırır; havuzda, destede ve sayımda yok.
+
+**Büyüler (11)**
+| Kart | Tür | Etki |
+|---|---|---|
+| **Kuyu Kovası** (`well_pail`) · Tek | Normal | 2 kart çek |
+| **Kukla İpi** (`puppet_string`) | Normal | Rakibin 1 canavarının kontrolünü Bitiş Aşamasına kadar al (jeton hariç) |
+| **Boşluk Gözü** (`void_eye`) · Tek | Normal | Sahadaki tüm canavarları yok et |
+| **Süpürge Rüzgarı** (`sweeping_gale`) · Tek | Normal | Rakibin tüm B/T kartlarını (alan büyüsü dahil) yok et |
+| **Harman Eleği** (`winnow_sieve`) · Tek | Normal | 3 kart çek, sonra 2 kart at |
+| **Burgu Mızrağı** (`auger_lance`) | **Hızlı** | 1 B/T kartını yok et; kapalıyken rakibin saldırısına / çağırmasına cevap olabilir |
+| **Ruh Tasması** (`soul_leash`) | Kuşanma | Rakibin açık canavarını al (tasma sahadayken); rakip her Çekme Aşamasında 1000 LP kazanır |
+| **Saman Korkuluklar** (`straw_decoys`) | **Hızlı** | Boş alan − 1 (en az 1) Saman Korkuluk jetonu; kendi turunda açılırsa o tur başka çağırma yok |
+| **Hınç Baltası** (`spite_axe`) | Kuşanma | +800 ATK; sahadan ayrılınca sahibinin deste üstüne döner, sahibi 500 hasar alır |
+| **Sayfa Çeviren** (`page_turner`) | Normal | İki oyuncu da elini atar, attığı kadar çeker |
+| **Talih Zarı** (`lucky_die`) | Normal | Zar: tüm açık canavarlarına bu tur değer × 100 ATK/DEF |
+
+**CPU (bilgisayar, `src/engine/bot.ts`):** kartların hepsini oynar ve yeni kararların hepsine (yazı-tura, sayı seçimi,
+hızlı büyü cevabı, Mızrak hedefi) cevap verir. Kuyu Kovası'nı erken (deste ≥ 5), Harman Eleği'ni elde zayıf kart varken,
+Sayfa Çeviren'i kendi eli ince / rakibinki kalınken (mühür toplarken asla) oynar. Boşluk Gözü ve Kadran'ı yalnız rakibin sahası
+belirgin üstünken kullanır (Hükümdar'ın parçalarına ayrılmasını hesaba katar; Kadran'da kaybetmek öldürecekse oynamaz).
+Kukla İpi'yi en güçlü canavara, aldığı canavarı bedava kurban/saldırgan olarak kullanır; Ruh Tasması'nı düşük LP'li rakibe
+(1000 LP hediyesi yüzünden) daha seçici takar. Hızlı büyüleri kapalı koyar: Korkuluklar büyük / öldürücü doğrudan saldırıda,
+Mızrak saldıranın kuşanma kartına ya da tehlikeli kapalı karta açılır. Zıpkıncı elindeyse önce Gelgit Körfezi; rakipte
+korunan Zıpkıncı varsa kaldırma büyüsü önce Körfez'e. Üç parça ve Hükümdar varsa hemen birleştirir; Hükümdar eldeyken
+parçaları korur (kurban etmez, Ruh Çağrısı ile geri getirir).
 
 ---
 

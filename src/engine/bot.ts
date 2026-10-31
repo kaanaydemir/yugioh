@@ -5,8 +5,8 @@
 import { isMonster, isSpell, isTrap, type Attribute, type MonsterCardDef } from '../data/cards';
 import { EngineError, HAND_LIMIT, other, type Action, type GameState, type PlayerId, type Uid, type ZoneRef } from './types';
 import { actingPlayer, legalActions } from './rules';
-import { attackLocked, battleNumbers, currentAtk, currentDef, defOf, equipOfEffect, fieldAtkModifier, findMonster, hasAllSeals, hasPiercing, monsterDefOf, uidAt, volcanoActive } from './query';
-import { SEAL_IDS } from '../data/cards';
+import { attackLocked, battleNumbers, currentAtk, currentDef, defOf, equipBonus, equipOfEffect, fieldAtkModifier, findMonster, hasAllSeals, hasPiercing, monsterDefOf, shrouded, uidAt, volcanoActive } from './query';
+import { CARDS, MAGNET_PIECE_IDS, SEAL_IDS } from '../data/cards';
 import { makeRng } from './rng';
 
 type Rng = () => number;
@@ -33,9 +33,18 @@ function decide(s: GameState, legal: Action[], me: PlayerId, rng: Rng): Action |
   const pd = s.pending;
   if (pd) {
     if (pd.kind === 'trapResponse') return decideTrap(s, legal, me);
+    if (pd.kind === 'coinCall') {
+      // dial_jester: a fair coin; the call is a seeded guess
+      const calls = legal.filter((a) => a.type === 'callCoin');
+      return calls.length ? calls[Math.floor(rng() * calls.length)] : null;
+    }
+    if (pd.kind === 'chooseCount') return decideCount(s, legal, me);
     if (pd.kind === 'chooseTarget') {
       // decoy_target: the candidates are my own monsters; pick the one that fights the attack best
       const src = defOf(s, pd.sourceUid);
+      // auger_lance answering an attack / summon: the attacker's equip first, then the opponent's best card; never my own if avoidable
+      if (isSpell(src) && src.effect === 'destroySpellTrapQuick')
+        return best(legal, rng, (a) => (a.type === 'chooseTarget' ? lanceTargetValue(s, me, a.target) : -Infinity));
       // magic_hat: the attacker has no information about the hats, so it guesses (seeded RNG)
       if (isTrap(src) && src.effect === 'hatShuffle') {
         const picks = legal.filter((a) => a.type === 'chooseTarget');
@@ -123,9 +132,67 @@ function isSeal(s: GameState, uid: Uid): boolean {
   return monsterDefOf(s, uid)?.effect === 'sealSet';
 }
 
+/** polar pieces: how many OTHER distinct pieces (and the Sovereign) `me` holds in hand or on the field. */
+function magnetKin(s: GameState, me: PlayerId, pieceId: string): number {
+  const ps = s.players[me];
+  const ids = new Set<string>();
+  for (const u of ps.hand) ids.add(s.cards[u].cardId);
+  for (const m of ps.monsters) if (m) ids.add(s.cards[m.uid].cardId);
+  let n = 0;
+  for (const id of ids) {
+    if (id === pieceId) continue;
+    const d = CARDS[id as keyof typeof CARDS];
+    if (d && isMonster(d) && (d.effect === 'magnetPiece' || d.effect === 'magnetFusion')) n++;
+  }
+  return n;
+}
+
+/**
+ * polar pieces toward the fusion: what one more piece of `uid`'s kind on my field is worth while the Sovereign is
+ * in my hand (0 for anything else). `incoming`: the piece is not on the field yet (a summon / set candidate).
+ */
+function piecePremium(s: GameState, me: PlayerId, uid: Uid, incoming = false): number {
+  if (monsterDefOf(s, uid)?.effect !== 'magnetPiece') return 0;
+  const ps = s.players[me];
+  if (!ps.hand.some((u) => monsterDefOf(s, u)?.effect === 'magnetFusion')) return 0;
+  const id = s.cards[uid].cardId;
+  const onField = new Set(ps.monsters.filter((m) => m && monsterDefOf(s, m.uid)?.effect === 'magnetPiece').map((m) => s.cards[m!.uid].cardId));
+  if (incoming && onField.has(id)) return 0; // a second copy of a piece already out adds nothing
+  onField.delete(id);
+  return 500 + 600 * onField.size;
+}
+
+/** A monster I only hold until the End Phase (puppet_string): losing / tributing it costs me nothing. */
+function borrowedForTurn(s: GameState, me: PlayerId, uid: Uid): boolean {
+  const loc = findMonster(s, uid);
+  return !!loc && loc.player === me && loc.slot.borrowed?.until === 'endPhase';
+}
+
+/**
+ * What a mass destruction of `p`'s monsters really takes from `p` (public view for the opponent): the board value,
+ * minus what comes back (a polar_sovereign with its three pieces in the graveyard splits into them).
+ */
+function wipeValue(s: GameState, p: PlayerId, me: PlayerId): number {
+  let v = boardValue(s, p, me);
+  const ps = s.players[p];
+  for (const m of ps.monsters) {
+    if (!m || monsterDefOf(s, m.uid)?.effect !== 'magnetFusion') continue;
+    // every zone is free after the wipe, so the split happens when the graveyard holds the three pieces
+    const back = MAGNET_PIECE_IDS.every((id) => ps.graveyard.some((u) => s.cards[u].cardId === id));
+    if (!back) continue;
+    for (const id of MAGNET_PIECE_IDS) {
+      const pd = CARDS[id] as MonsterCardDef;
+      v -= Math.max(pd.atk, pd.def * 0.75) * 0.8;
+    }
+  }
+  return v;
+}
+
 function keepValue(s: GameState, me: PlayerId, uid: Uid): number {
   const d = defOf(s, uid);
   if (isMonster(d) && d.effect === 'sealSet') return sealsHeld(s, me) >= 2 ? 5000 : d.atk * 0.5;
+  // polar pieces: worth keeping while the other pieces / the Sovereign are around (the fusion is the plan)
+  if (isMonster(d) && d.effect === 'magnetPiece') return d.atk + 450 * magnetKin(s, me, d.id);
   if (isMonster(d)) return d.atk * (d.level >= 5 ? 0.8 : 1) + (d.effect === 'flipDestroyMonster' ? 900 : 0);
   if (isSpell(d)) {
     switch (d.effect) {
@@ -162,6 +229,28 @@ function keepValue(s: GameState, me: PlayerId, uid: Uid): number {
         return 900;
       case 'attackLock3':
         return 1250;
+      case 'draw2':
+        return 1500;
+      case 'controlUntilEnd':
+        return 1600;
+      case 'destroyAllMonsters':
+        return 2000;
+      case 'destroyAllOppSpellTrap':
+        return 1500;
+      case 'draw3Discard2':
+        return 1100;
+      case 'destroySpellTrapQuick':
+        return 1300;
+      case 'equipControl':
+        return 1700;
+      case 'strawTokens':
+        return 1400;
+      case 'equipAtk800Return':
+        return 1100;
+      case 'handRefreshBoth':
+        return 600;
+      case 'diceBoost100':
+        return 800;
     }
   }
   if (isTrap(d)) {
@@ -221,12 +310,52 @@ function targetValue(s: GameState, me: PlayerId, ref: ZoneRef): number {
   if (ref.zone === 'monster') return publicValue(s, uid);
   if (ref.zone === 'field') {
     const eff = fieldEffectOf(s, ref.player) || 'fieldVolcano';
-    return 600 + fieldNet(s, ref.player, eff) - fieldNet(s, other(ref.player), eff);
+    // tide_harpooner: the Bay shrouds the opponent's harpooner, so it goes first
+    const shroud = eff === 'fieldTidalBay' && s.players[other(me)].monsters.some((m) => m && m.faceUp && monsterDefOf(s, m.uid)?.effect === 'tidalBayShroud') ? 900 : 0;
+    return 600 + shroud + fieldNet(s, ref.player, eff) - fieldNet(s, other(ref.player), eff);
   }
   const loc = s.players[ref.player].spellTraps[ref.index];
   if (!loc) return -Infinity;
   if (!loc.faceUp) return 1000; // could be a trap
   return loc.equippedTo !== null ? 1100 : 300;
+}
+
+/** auger_lance target (quick answer): the attacker's equip > the opponent's cards (targetValue) > anything of mine. */
+function lanceTargetValue(s: GameState, me: PlayerId, ref: ZoneRef): number {
+  const uid = uidAt(s, ref);
+  if (uid === null) return -Infinity;
+  if (ref.player === me) return -5000 - (ref.zone === 'field' ? 0 : 1);
+  const q = (s.internal.queue ?? []) as { k: string; attackerUid?: number }[];
+  const attackerUid = q.find((t) => t.k === 'battle')?.attackerUid;
+  const st = ref.zone === 'spellTrap' ? s.players[ref.player].spellTraps[ref.index] : null;
+  if (st && attackerUid !== undefined && st.equippedTo === attackerUid) return 5000;
+  return targetValue(s, me, ref);
+}
+
+/** hollow_ogre: the fewest banished monsters that make an attack of the ogre pay (else the fewest). */
+function decideCount(s: GameState, legal: Action[], me: PlayerId): Action | null {
+  const pd = s.pending;
+  if (!pd || pd.kind !== 'chooseCount') return null;
+  const loc = findMonster(s, pd.sourceUid);
+  const counts = legal.filter((a): a is Extract<Action, { type: 'chooseCount' }> => a.type === 'chooseCount');
+  if (!loc || !counts.length) return counts[0] ?? null;
+  for (const a of counts) if (ogreGain(s, me, loc.index, a.n)) return a;
+  return counts[0]; // nothing pays: spend the least
+}
+
+/** Would +400·n ATK on my monster in `zone` turn its best attack from unprofitable into profitable (or lethal)? */
+function ogreGain(s: GameState, me: PlayerId, zone: number, n: number): boolean {
+  if (s.turn <= 1) return false;
+  const before = bestAttackScoreFor(s, me, zone);
+  const hyp = structuredClone(s);
+  const hs = hyp.players[me].monsters[zone];
+  if (!hs) return false;
+  const same = hs.boostTurn === hyp.turn;
+  hs.boostAtk = (same ? (hs.boostAtk ?? 0) : 0) + 400 * n;
+  hs.boostDef = same ? (hs.boostDef ?? 0) : 0;
+  hs.boostTurn = hyp.turn;
+  const after = bestAttackScoreFor(hyp, me, zone);
+  return (before <= 0 && after > 0) || (before < 100000 && after >= 100000);
 }
 
 /** decoy_target: how good is it to let my monster at `ref` take the pending attack? */
@@ -274,7 +403,7 @@ function decideTrap(s: GameState, legal: Action[], me: PlayerId): Action | null 
     if (tower) return tower;
     const chasm = options.find((o) => effectOf(o) === 'summonDestroy1000Plus');
     if (chasm && (currentAtk(s, uid) >= 1500 || d?.ace)) return chasm;
-    return decline;
+    return decline; // quick spells are kept for the attack
   }
   if (pd.trigger.kind === 'spellActivated') {
     // spell_seal: stop anything that matters (everything but a tiny heal when I am healthy)
@@ -358,7 +487,18 @@ function decideTrap(s: GameState, legal: Action[], me: PlayerId): Action | null 
   let top: Opt | null = null;
   let topScore = 0;
   for (const [o, sc] of tries) if (o && sc > topScore) (top = o), (topScore = sc);
-  return top ?? decline;
+  if (top) return top;
+  // batch 2 quick spells: straw_decoys against a big / lethal direct attack, auger_lance on the attacker's equip
+  const quickOf = (effect: string) =>
+    options.find((o) => {
+      const d = defOf(s, o.uid!);
+      return isSpell(d) && d.effect === effect;
+    });
+  const straw = quickOf('strawTokens');
+  if (straw && targetUid === null && (lethal || damage >= 1500)) return straw;
+  const lance = quickOf('destroySpellTrapQuick');
+  if (lance && (lethal || harm >= 800) && equipBonus(s, attackerUid) > 0) return lance;
+  return decline;
 }
 
 function ownValueAny(s: GameState, uid: Uid): number {
@@ -371,7 +511,14 @@ function decideMain(s: GameState, legal: Action[], me: PlayerId, rng: Rng): Acti
   // Removal and flip effects first (a face-down thorn_lurker is worth more flipped than tributed),
   // then develop the board, then buffs, then defensive setup.
   const steps = [
+    tryFusion,
+    tryWellPail,
+    tryVoidEye,
+    tryJester,
+    tryGale,
     trySpellRemoval,
+    tryPuppet,
+    tryLeash,
     tryPurge,
     tryKneel,
     tryDawnSwords,
@@ -380,9 +527,14 @@ function decideMain(s: GameState, legal: Action[], me: PlayerId, rng: Rng): Acti
     tryFateTrade,
     tryCycle,
     tryDoubleOffering,
+    tryWinnow,
+    tryPageTurner,
+    tryBayForHarpooner,
     trySummon,
     tryEquip,
     tryField,
+    tryOgre,
+    tryDie,
     tryBattleCry,
     tryHeal,
     trySetTrap,
@@ -428,9 +580,139 @@ const trySoulRecall: Step = (s, legal, _me, rng) => {
     if (a.target?.kind !== 'graveyard') return -Infinity;
     const d = monsterDefOf(s, a.target.uid);
     if (!d) return -Infinity;
-    return d.atk + (d.effect === 'summonBurn500' ? 500 : 0) + (a.target.toZone === 1 ? 1 : 0);
+    return d.atk + (d.effect === 'summonBurn500' ? 500 : 0) + piecePremium(s, _me, a.target.uid, true) + (a.target.toZone === 1 ? 1 : 0);
   });
   return pick && pick.score >= 1500 ? pick.item : null;
+};
+
+// ---- batch 2 main-phase steps ----------------------------------------------------------------
+
+/** Sum of the board value of `p`'s monsters (own view for me, public view for the opponent). */
+function boardValue(s: GameState, p: PlayerId, me: PlayerId): number {
+  return s.players[p].monsters.reduce((t, m) => t + (m ? (p === me ? ownValue(s, m.uid) : publicValue(s, m.uid)) : 0), 0);
+}
+
+/** polar_sovereign: always fuse when the three pieces stand. */
+const tryFusion: Step = (s, legal) => legal.find((a) => a.type === 'specialSummon') ?? null;
+
+/** well_pail: free cards, play it early while the deck is healthy. */
+const tryWellPail: Step = (s, legal, me) => {
+  const act = spellActs(s, legal, 'draw2')[0];
+  return act && s.players[me].deck.length >= 5 ? act : null;
+};
+
+/** winnow_sieve: dig 3 when the deck is deep and the hand holds weak cards. */
+const tryWinnow: Step = (s, legal, me) => {
+  const act = spellActs(s, legal, 'draw3Discard2')[0];
+  if (!act || s.players[me].deck.length < 6) return null;
+  const junk = s.players[me].hand.filter((u) => u !== act.uid && keepValue(s, me, u) < 900).length;
+  return junk >= 1 || s.players[me].hand.length <= 3 ? act : null;
+};
+
+/** page_turner: when my hand is thin and theirs is fat (never with seal pieces I am collecting). */
+const tryPageTurner: Step = (s, legal, me) => {
+  const act = spellActs(s, legal, 'handRefreshBoth')[0];
+  if (!act || sealsHeld(s, me) >= 2) return null;
+  const mine = s.players[me].hand.length - 1;
+  const theirs = s.players[other(me)].hand.length;
+  return mine <= 2 && theirs >= 4 && s.players[me].deck.length >= mine + 2 ? act : null;
+};
+
+/** void_eye: only when the opponent's board is clearly worth more than mine. */
+const tryVoidEye: Step = (s, legal, me) => {
+  const act = spellActs(s, legal, 'destroyAllMonsters')[0];
+  if (!act) return null;
+  return wipeValue(s, other(me), me) - wipeValue(s, me, me) >= 2000 ? act : null;
+};
+
+/** sweeping_gale: two or more opposing spells/traps, or a field spell that hurts me. */
+const tryGale: Step = (s, legal, me) => {
+  const act = spellActs(s, legal, 'destroyAllOppSpellTrap')[0];
+  if (!act) return null;
+  const opp = s.players[other(me)];
+  const cards = opp.spellTraps.filter(Boolean).length;
+  const eff = fieldEffectOf(s, other(me));
+  const fieldHurts = eff !== '' && fieldNet(s, other(me), eff) - fieldNet(s, me, eff) > 0;
+  return cards >= 2 || fieldHurts ? act : null;
+};
+
+/** dial_jester: gamble only when the swing is big (or an ace stands there) and losing does not kill me. */
+const tryJester: Step = (s, legal, me) => {
+  const act = legal.find((a) => a.type === 'activateMonster' && monsterDefOf(s, s.players[me].monsters[a.zone]?.uid ?? -1)?.effect === 'coinWipe');
+  if (!act) return null;
+  const oppMons = s.players[other(me)].monsters.filter(Boolean);
+  const hatch = s.players[me].monsters.filter((m) => m && m.faceUp && m.permAtk === undefined && monsterDefOf(s, m.uid)?.effect === 'jesterAging').length;
+  const swing = wipeValue(s, other(me), me) - boardValue(s, me, me) + 1200 * hatch;
+  const ace = oppMons.some((m) => m!.faceUp && monsterDefOf(s, m!.uid)?.ace);
+  const loss = Math.floor(s.players[me].monsters.reduce((t, m) => t + (m ? currentAtk(s, m.uid) : 0), 0) / 2);
+  return (swing >= 1500 || ace) && loss < s.players[me].lp ? act : null;
+};
+
+/** hollow_ogre: banish only when the bonus makes an attack pay. */
+const tryOgre: Step = (s, legal, me) => {
+  const act = legal.find((a): a is Extract<Action, { type: 'activateMonster' }> => a.type === 'activateMonster' && monsterDefOf(s, s.players[me].monsters[a.zone]?.uid ?? -1)?.effect === 'banishGraveBoost400');
+  if (!act) return null;
+  const slot = s.players[me].monsters[act.zone];
+  if (!slot || slot.position !== 'attack' || slot.attacksThisTurn > 0) return null;
+  const n = Math.min(2, s.players[me].graveyard.filter((u) => isMonster(defOf(s, u))).length);
+  for (let k = 1; k <= n; k++) if (ogreGain(s, me, act.zone, k)) return act;
+  return null;
+};
+
+/** lucky_die: when an average roll (+300) makes one of my attacks pay. */
+const tryDie: Step = (s, legal, me) => {
+  const act = spellActs(s, legal, 'diceBoost100')[0];
+  if (!act || s.turn <= 1 || attackLocked(s, me)) return null;
+  let flips = false;
+  s.players[me].monsters.forEach((m, zone) => {
+    if (!m || !m.faceUp || m.position !== 'attack' || m.attacksThisTurn > 0 || flips) return;
+    const before = bestAttackScoreFor(s, me, zone);
+    const hyp = structuredClone(s);
+    const hs = hyp.players[me].monsters[zone]!;
+    const same = hs.boostTurn === hyp.turn;
+    hs.boostAtk = (same ? (hs.boostAtk ?? 0) : 0) + 300;
+    hs.boostDef = (same ? (hs.boostDef ?? 0) : 0) + 300;
+    hs.boostTurn = hyp.turn;
+    const after = bestAttackScoreFor(hyp, me, zone);
+    if ((before <= 0 && after > 0) || (before < 100000 && after >= 100000)) flips = true;
+  });
+  return flips ? act : null;
+};
+
+/** puppet_string: borrow the opponent's best monster when it can swing this turn (or it is a big threat). */
+const tryPuppet: Step = (s, legal, me, rng) => {
+  const acts = spellActs(s, legal, 'controlUntilEnd');
+  const pick = bestWithScore(acts, rng, (a) => {
+    if (a.target?.kind !== 'monster') return -Infinity;
+    const uid = uidAt(s, a.target.ref);
+    if (uid === null) return -Infinity;
+    const slot = s.players[a.target.ref.player].monsters[a.target.ref.index];
+    const swing = slot && slot.faceUp && slot.position === 'attack' && s.turn > 1 ? currentAtk(s, uid) : 0;
+    return Math.max(publicValue(s, uid), swing + 300);
+  });
+  if (!pick) return null;
+  // a borrowed monster is also a free tribute: cheaper to fire when a big monster waits in hand for one
+  const ps = s.players[me];
+  const own = ps.monsters.filter(Boolean).length;
+  const bigWaits = !ps.normalSummonUsed && ps.hand.some((u) => {
+    const d = defOf(s, u);
+    return isMonster(d) && d.effect !== 'magnetFusion' && d.atk >= 2000 && ((d.level >= 5 && d.level <= 6 && own === 0) || (d.level >= 7 && own === 1));
+  });
+  return pick.score >= (bigWaits ? 1200 : 1800) ? pick.item : null;
+};
+
+/** soul_leash: take the opponent's strongest face-up monster for good (less keen when their LP is low: the 1000 LP gifts matter less then). */
+const tryLeash: Step = (s, legal, me, rng) => {
+  const acts = spellActs(s, legal, 'equipControl');
+  const pick = bestWithScore(acts, rng, (a) => {
+    if (a.target?.kind !== 'monster') return -Infinity;
+    const uid = uidAt(s, a.target.ref);
+    return uid === null ? -Infinity : publicValue(s, uid) - (a.zone ?? 0) * 0.01;
+  });
+  if (!pick) return null;
+  // the owner gains 1000 LP in each of their Draw Phases: a low-LP opponent climbs back out of reach
+  const oppLp = s.players[other(me)].lp;
+  return pick.score >= (oppLp <= 2000 ? 2300 : 1600) ? pick.item : null;
 };
 
 const trySummon: Step = (s, legal, me, rng) => {
@@ -448,7 +730,8 @@ const trySummon: Step = (s, legal, me, rng) => {
   const pick = bestWithScore(opts, rng, (a) => {
     const d = monsterDefOf(s, a.uid) as MonsterCardDef;
     if (hoard && d.effect === 'sealSet') return -Infinity; // keep the pieces in hand: the set wins on the spot
-    const cost = a.tributes.reduce((t, u) => t + ownValue(s, u) + 300, 0);
+    // a monster borrowed until the End Phase (puppet_string) is a free tribute: it would go back anyway
+    const cost = a.tributes.reduce((t, u) => t + (borrowedForTurn(s, me, u) ? -200 : ownValue(s, u) + 300 + piecePremium(s, me, u)), 0);
     let v: number;
     if (a.type === 'normalSummon') {
       const atk = Math.max(0, d.atk + (volcanoActive(s) ? fieldAtkModifier(s, d) : 0));
@@ -466,11 +749,21 @@ const trySummon: Step = (s, legal, me, rng) => {
       if (d.effect === 'windAura300') v += 250 * myMons.filter((m) => m && m.faceUp && monsterDefOf(s, m.uid)?.attribute === 'WIND').length;
       if (d.effect === 'declareAtkDebuff400') v += 250;
       if (d.effect === 'defenseAtkDebuff500') v += 300;
+      if (d.effect === 'magnetPiece') {
+        // a piece next to the other pieces builds toward the Sovereign (much more so with the Sovereign in hand)
+        const others = new Set(myMons.filter((m) => m && monsterDefOf(s, m.uid)?.effect === 'magnetPiece' && s.cards[m.uid].cardId !== d.id).map((m) => s.cards[m!.uid].cardId)).size;
+        const sovInHand = s.players[me].hand.some((u) => monsterDefOf(s, u)?.effect === 'magnetFusion');
+        v += (sovInHand ? 700 : 250) * others;
+      }
+      if (d.effect === 'doubleAttackMonster') v += 250;
+      if (d.effect === 'coinWipe' && oppHasMonsters) v += 400;
+      if (d.effect === 'jesterAging') v += 150;
       if (d.ace) v += 300;
       if (atk < threat) v -= 0.5 * (threat - atk);
     } else {
       v = d.def * 0.75;
       if (d.effect === 'flipDestroyMonster') v += oppHasMonsters ? 1100 : 400;
+      if (d.effect === 'magnetPiece') v += piecePremium(s, me, a.uid, true);
       if (d.effect === 'summonBurn500') v += 250;
       if (a.tributes.length > 0) v -= 500;
     }
@@ -481,7 +774,13 @@ const trySummon: Step = (s, legal, me, rng) => {
 };
 
 const tryEquip: Step = (s, legal, me, rng) => {
-  const acts = [...spellActs(s, legal, 'equipAtk700'), ...spellActs(s, legal, 'equipPiercing'), ...spellActs(s, legal, 'equipDestroyShield')];
+  const lowLp = s.players[me].lp <= 500;
+  const acts = [
+    ...spellActs(s, legal, 'equipAtk700'),
+    ...spellActs(s, legal, 'equipPiercing'),
+    ...spellActs(s, legal, 'equipDestroyShield'),
+    ...(lowLp ? [] : spellActs(s, legal, 'equipAtk800Return')), // spite_axe costs 500 LP when it leaves
+  ];
   const oppSets = s.players[other(me)].monsters.some((m) => m && (!m.faceUp || m.position === 'defense'));
   const pick = best(acts, rng, (a) => {
     if (a.target?.kind !== 'monster') return -Infinity;
@@ -534,15 +833,28 @@ const tryField: Step = (s, legal, me) => {
   return null;
 };
 
+/** tide_harpooner in hand or on my field: Tidal Bay first (the shroud + 400 ATK). */
+const tryBayForHarpooner: Step = (s, legal, me) => {
+  if (s.players[0].fieldSpell || s.players[1].fieldSpell) return null;
+  const act = spellActs(s, legal, 'fieldTidalBay')[0];
+  if (!act) return null;
+  const ps = s.players[me];
+  const harp = (u: Uid) => monsterDefOf(s, u)?.effect === 'tidalBayShroud';
+  return ps.hand.some(harp) || ps.monsters.some((m) => m && m.faceUp && harp(m.uid)) ? act : null;
+};
+
 const tryHeal: Step = (s, legal, me) => {
   const act = spellActs(s, legal, 'gain1000')[0];
   if (!act) return null;
   return s.players[me].lp <= 3000 || s.players[me].hand.length > HAND_LIMIT - 1 ? act : null;
 };
 
-/** purging_wave: take out a set card (could be a trap), an equip on a strong monster or a harmful field spell. */
+/** purging_wave (and auger_lance in my own Main Phase, at the opponent's cards only): a set card, an equip or a harmful field spell. */
 const tryPurge: Step = (s, legal, me, rng) => {
-  const acts = spellActs(s, legal, 'destroyOpponentSpellTrap');
+  const acts = [
+    ...spellActs(s, legal, 'destroyOpponentSpellTrap'),
+    ...spellActs(s, legal, 'destroySpellTrapQuick').filter((a) => a.target?.kind === 'card' && a.target.ref.player !== me),
+  ];
   const pick = bestWithScore(acts, rng, (a) => (a.target?.kind === 'card' ? targetValue(s, me, a.target.ref) : -Infinity));
   return pick && pick.score >= 1000 ? pick.item : null;
 };
@@ -634,7 +946,8 @@ const trySetTrap: Step = (s, legal) => {
   return (
     legal.find((a) => {
       if (a.type !== 'setSpellTrap') return false;
-      return isTrap(defOf(s, a.uid));
+      const d = defOf(s, a.uid);
+      return isTrap(d) || (isSpell(d) && d.spellType === 'quick'); // quick spells wait set for the opponent's attack
     }) ?? null
   );
 };
@@ -700,13 +1013,16 @@ function attackScore(s: GameState, me: PlayerId, attackerZone: number, targetZon
   const atk = currentAtk(s, aUid);
   const aDef = monsterDefOf(s, aUid) as MonsterCardDef;
   const oppLp = s.players[other(me)].lp;
+  // scrap_raiders sits in defense after attacking: swing only to kill or to destroy a monster
+  const raiders = aDef.effect === 'attackThenDefense';
   if (targetZone === null) {
     if (atk <= 0) return -Infinity;
+    if (raiders && atk < oppLp) return -Infinity;
     return atk >= oppLp ? 100000 : atk + 1;
   }
   const t = s.players[other(me)].monsters[targetZone];
   if (!t) return -Infinity;
-  const aVal = ownValue(s, aUid);
+  const aVal = borrowedForTurn(s, me, aUid) ? 0 : ownValue(s, aUid); // puppet_string: it goes back anyway
   if (!t.faceUp) {
     if (atk >= 1800) return 900;
     if (atk >= 1400) return 300;
@@ -726,11 +1042,12 @@ function attackScore(s: GameState, me: PlayerId, attackerZone: number, targetZon
       if (aDef.effect === 'battleDestroyBurn300') v += 300;
       return v;
     }
-    if (batk === ta) return tVal - aVal - 1;
+    if (batk === ta) return raiders ? -Infinity : tVal - aVal - 1;
     return -(aVal + (ta - batk));
   }
   const tdv = nums.targetValue ?? currentDef(s, t.uid);
-  const tide = td.effect === 'defenseAttackedBurn300' ? 300 : 0;
+  // mudgrasp_spirit pins the attacker in defense: count it like a small burn
+  const tide = (td.effect === 'defenseAttackedBurn300' ? 300 : 0) + (td.effect === 'defenseAttackedPin' ? 400 : 0);
   if (batk > tdv) {
     const pierce = hasPiercing(s, aUid) ? batk - tdv : 0;
     if (pierce >= oppLp) return 100000;
@@ -746,10 +1063,11 @@ function bestAttackScoreFor(s: GameState, me: PlayerId, zone: number): number {
   const opp = s.players[other(me)];
   const slot = s.players[me].monsters[zone];
   if (!slot) return -Infinity;
-  const hasTargets = opp.monsters.some(Boolean);
+  const hasTargets = opp.monsters.some((t) => t && !shrouded(s, t.uid));
+  const second = slot.attacksThisTurn > 0; // kite_fencer: the second attack only at a monster
   let top = -Infinity;
-  if (hasTargets) opp.monsters.forEach((t, j) => t && (top = Math.max(top, attackScore(s, me, zone, j))));
-  if (!hasTargets || monsterDefOf(s, slot.uid)?.effect === 'directAttack') top = Math.max(top, attackScore(s, me, zone, null));
+  if (hasTargets) opp.monsters.forEach((t, j) => t && !shrouded(s, t.uid) && (top = Math.max(top, attackScore(s, me, zone, j))));
+  if (!second && (!hasTargets || monsterDefOf(s, slot.uid)?.effect === 'directAttack')) top = Math.max(top, attackScore(s, me, zone, null));
   return top;
 }
 
@@ -758,7 +1076,8 @@ function bestAttackScore(s: GameState, me: PlayerId): number {
   let top = -Infinity;
   if (attackLocked(s, me)) return top; // dawn_swords: no attack can be declared
   s.players[me].monsters.forEach((m, i) => {
-    if (m && m.faceUp && m.position === 'attack' && m.attacksThisTurn === 0) top = Math.max(top, bestAttackScoreFor(s, me, i));
+    if (m && m.faceUp && m.position === 'attack' && m.attacksThisTurn < (monsterDefOf(s, m.uid)?.effect === 'doubleAttackMonster' ? 2 : 1))
+      top = Math.max(top, bestAttackScoreFor(s, me, i));
   });
   return top;
 }

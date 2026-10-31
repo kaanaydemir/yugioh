@@ -36,6 +36,27 @@ const POSSESSIVE_NAMES: ReadonlySet<CardId> = new Set<CardId>([
   'festival_square', // Şenlik Meydanı
   'spell_seal', // Büyü Mührü
   'sandstorm', // Kum Fırtınası
+  // batch 2
+  'dial_jester', // Kadran Soytarısı
+  'cloud_hatchling', // Bulut Yavrusu
+  'scrap_raiders', // Hurda Akıncıları
+  'hollow_ogre', // Kovuk Devi
+  'reed_heron', // Sazlık Balıkçılı
+  'mudgrasp_spirit', // Çamur Pençe Ruhu
+  'steppe_spiralhorn', // Bozkır Boynuzlusu
+  'polar_needle', // Kutup İğnesi
+  'polar_anvil', // Kutup Örsü
+  'polar_coil', // Kutup Bobini
+  'polar_sovereign', // Kutup Hükümdarı
+  'well_pail', // Kuyu Kovası
+  'puppet_string', // Kukla İpi
+  'void_eye', // Boşluk Gözü
+  'sweeping_gale', // Süpürge Rüzgarı
+  'winnow_sieve', // Harman Eleği
+  'auger_lance', // Burgu Mızrağı
+  'soul_leash', // Ruh Tasması
+  'spite_axe', // Hınç Baltası
+  'lucky_die', // Talih Zarı
 ]);
 
 const VOWELS = 'aeıioöuü';
@@ -175,6 +196,8 @@ export function describeEvent(state: GameState, ev: GameEvent, batch?: readonly 
         case 'tribute':
           return `${playerName(ev.player)}, ${cardName(ev.cardId, 'acc')} kurbanla çağırdı!`;
         case 'special':
+          if (ev.from === 'token') return `${playerName(ev.player)} bir ${cardName(ev.cardId)} jetonu çağırdı.`;
+          if (ev.from === 'hand') return `${playerName(ev.player)}, ${cardName(ev.cardId, 'acc')} elinden özel çağırdı!`;
           return `${playerName(ev.player)}, ${cardName(ev.cardId, 'acc')} mezarlıktan özel çağırdı!`;
         case 'flip':
           return `${playerName(ev.player)}, ${cardName(ev.cardId, 'acc')} çevirerek çağırdı!`;
@@ -246,7 +269,26 @@ export function describeEvent(state: GameState, ev: GameEvent, batch?: readonly 
     case 'toHand':
       return `${cardName(ev.cardId)} sahibinin eline döndü.`;
     case 'toDeck':
+      if (ev.from === 'spellTrap') return `${cardName(ev.cardId)} sahibinin destesinin üstüne döndü.`;
       return `${playerName(ev.owner, 'gen')} mezarlığından ${cardName(ev.cardId)} desteye karıştırıldı.`;
+    case 'controlChange': {
+      const n = ev.cardId ? cardName(ev.cardId, 'acc') : 'kapalı canavarı';
+      return ev.reason === 'take'
+        ? `${playerName(ev.to)}, ${n} kontrolüne aldı!`
+        : `${ev.cardId ? cardName(ev.cardId) : 'Kapalı canavar'} sahibine döndü.`;
+    }
+    case 'massDestroy': {
+      const src = ev.sourceUid !== null ? state.cards[ev.sourceUid] : undefined;
+      return src ? `${cardName(src.cardId)}: ${ev.refs.length} kart yok oluyor!` : null;
+    }
+    case 'coinToss':
+      return `Para atıldı: ${ev.result === 'heads' ? 'TURA' : 'YAZI'}! ${playerName(ev.player)} ${ev.win ? 'bildi' : 'bilemedi'}.`;
+    case 'diceRoll':
+      return `Zar atıldı: ${ev.value}!`;
+    case 'banish':
+      return `${cardName(ev.cardId)} oyundan çıkarıldı.`;
+    case 'tokenVanish':
+      return `${cardName(ev.cardId)} dağıldı.`;
     case 'decision':
       return null;
     case 'hatsShuffled':
@@ -273,6 +315,8 @@ export function describeEvent(state: GameState, ev: GameEvent, batch?: readonly 
 export function describePending(state: GameState, pd: PendingDecision): string {
   switch (pd.kind) {
     case 'trapResponse':
+      if (pd.options.some((u) => state.cards[u] && CARDS[state.cards[u].cardId].kind === 'spell'))
+        return `${playerName(pd.player)}: Tuzak ya da hızlı büyü açmak ister misin?`;
       return `${playerName(pd.player)}: Tuzak kartı açmak ister misin?`;
     case 'chooseTarget': {
       const card = state.cards[pd.sourceUid];
@@ -281,12 +325,20 @@ export function describePending(state: GameState, pd: PendingDecision): string {
         return `${cardName(card.cardId, 'gen')} etkisi: bir sonraki turunda saldıramayacak canavarı seç.`;
       if (card && card.cardId === 'magic_hat') return `${cardName(card.cardId)}: saldıracağın şapkayı seç.`;
       if (card && card.cardId === 'decoy_target') return `${cardName(card.cardId)}: saldırının yöneleceği kendi canavarını seç.`;
+      if (card && card.cardId === 'straw_decoys') return `${cardName(card.cardId)}: saldırının yöneleceği korkuluğu seç.`;
       return card ? `${cardName(card.cardId, 'gen')} etkisi: yok edilecek ${what} seç.` : `Yok edilecek ${what} seç.`;
     }
     case 'discard':
       // fate_trade asks for its cost in the Main Phase; the hand limit asks in the End Phase
       if (pd.cost) return `${playerName(pd.player)}: Bedel olarak elinden ${pd.count} kart at.`;
       return `${playerName(pd.player)}: El sınırı 6. Elinden ${pd.count} kart at.`;
+    case 'coinCall':
+      return `${playerName(pd.player)}: Yazı mı, Tura mı?`;
+    case 'chooseCount': {
+      const card = state.cards[pd.sourceUid];
+      const who = card ? `${cardName(card.cardId, 'gen')} etkisi: ` : '';
+      return `${who}oyundan çıkarılacak canavar sayısını seç (${pd.min}–${pd.max}).`;
+    }
   }
 }
 

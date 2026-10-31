@@ -1,10 +1,15 @@
 // Legal action enumeration. This list drives both the UI menus and the bot, and `apply`
 // accepts exactly the actions listed here (after normalisation), so it must be complete.
 
-import { isMonster, isSpell, isTrap, type SpellCardDef } from '../data/cards';
-import { other, type Action, type GameState, type PlayerId, type Uid } from './types';
+import { MAGNET_PIECE_IDS, isMonster, isSpell, isTrap, type SpellCardDef } from '../data/cards';
+import { other, type Action, type GameState, type PlayerId, type SpellTrapSlot, type Uid } from './types';
 import {
+  allSpellTrapRefs,
   combinations,
+  controlTargetable,
+  effectUsedThisTurn,
+  shrouded,
+  summonAllowed,
   defOf,
   extraSummonAvailable,
   freeMonsterZones,
@@ -37,6 +42,12 @@ export function legalActions(s: GameState): Action[] {
         for (const combo of combinations(s.players[pd.player].hand, pd.count))
           out.push({ type: 'discard', player: pd.player, uids: [...combo].sort(asc) });
         break;
+      case 'coinCall':
+        out.push({ type: 'callCoin', player: pd.player, call: 'heads' }, { type: 'callCoin', player: pd.player, call: 'tails' });
+        break;
+      case 'chooseCount':
+        for (let n = pd.min; n <= pd.max; n++) out.push({ type: 'chooseCount', player: pd.player, n });
+        break;
     }
     return out;
   }
@@ -49,13 +60,16 @@ export function legalActions(s: GameState): Action[] {
     // Normal / Tribute Summon and Set (shared once-per-turn right). festival_square: once the right is
     // spent, one more Level <= 4 monster may be summoned / set without tributes.
     const extraOnly = me.normalSummonUsed && extraSummonAvailable(s, p);
-    if (!me.normalSummonUsed || extraOnly) {
-      const fieldUids: Uid[] = me.monsters.flatMap((m) => (m ? [m.uid] : []));
+    const canSummon = summonAllowed(s, p); // straw_decoys on its own turn: no other summon
+    if ((!me.normalSummonUsed || extraOnly) && canSummon) {
+      // tokens can never be tributed
+      const fieldUids: Uid[] = me.monsters.flatMap((m) => (m && !m.token ? [m.uid] : []));
       const summons: Action[] = [];
       const sets: Action[] = [];
       for (const uid of me.hand) {
         const d = defOf(s, uid);
         if (!isMonster(d)) continue;
+        if (d.effect === 'magnetFusion') continue; // polar_sovereign: Special Summon only (double_offering does not open it)
         if (extraOnly && d.level > 4) continue;
         const n = tributeNeed(s, p, d.level);
         for (const combo of combinations(fieldUids, n)) {
@@ -72,7 +86,7 @@ export function legalActions(s: GameState): Action[] {
 
     // Flip Summon: face-down, set on an earlier turn, not already flipped/changed this turn.
     me.monsters.forEach((m, zone) => {
-      if (m && !m.faceUp && m.enteredTurn < s.turn && m.positionChangedTurn !== s.turn)
+      if (m && !m.faceUp && m.enteredTurn < s.turn && m.positionChangedTurn !== s.turn && canSummon)
         out.push({ type: 'flipSummon', player: p, zone });
     });
 
@@ -98,24 +112,40 @@ export function legalActions(s: GameState): Action[] {
     for (const st of me.spellTraps) {
       if (!st || st.faceUp) continue;
       const d = defOf(s, st.uid);
-      if (isSpell(d)) pushSpellActivations(s, p, st.uid, d, false, out);
+      // a set quick spell waits one turn (it cannot be activated on the turn it was set)
+      if (isSpell(d) && (d.spellType !== 'quick' || setReady(s, st))) pushSpellActivations(s, p, st.uid, d, false, out);
     }
+
+    // Batch 2: monster ignition effects (dial_jester, hollow_ogre) and the magnet fusion Special Summon.
+    me.monsters.forEach((m, zone) => {
+      if (!m || !m.faceUp || effectUsedThisTurn(s, m.uid)) return;
+      const d = monsterDefOf(s, m.uid);
+      if (d?.effect === 'coinWipe' && opp.monsters.some(Boolean)) out.push({ type: 'activateMonster', player: p, zone });
+      if (d?.effect === 'banishGraveBoost400' && me.graveyard.some((u) => isMonster(defOf(s, u)))) out.push({ type: 'activateMonster', player: p, zone });
+    });
+    if (canSummon) pushFusions(s, p, out);
 
     // The first turn of the duel has no battle.
     if (s.turn > 1) out.push({ type: 'enterBattle', player: p });
     out.push({ type: 'endTurn', player: p });
   } else if (s.phase === 'battle') {
     if (s.turn > 1 && !attackLocked(s, p)) {
-      const oppHasMonsters = opp.monsters.some(Boolean);
+      // Kabuk Zıpkıncı under Gelgit Körfezi cannot be attacked; with nothing else to attack, a direct attack is legal
+      const attackable = (t: (typeof opp.monsters)[number]) => !!t && !shrouded(s, t.uid);
+      const oppHasAttackable = opp.monsters.some(attackable);
       me.monsters.forEach((m, attackerZone) => {
-        if (!m || !m.faceUp || m.position !== 'attack' || m.attacksThisTurn > 0) return;
-        if (m.noAttackTurn === s.turn) return; // frozen by Kum Saati Cücesi
+        if (!m || !m.faceUp || m.position !== 'attack') return;
         const d = monsterDefOf(s, m.uid);
-        if (oppHasMonsters)
+        // Uçurtma Eskrimci attacks twice; its second attack only at a monster
+        const double = d?.effect === 'doubleAttackMonster';
+        if (m.attacksThisTurn > (double ? 1 : 0)) return;
+        if (m.noAttackTurn === s.turn) return; // frozen by Kum Saati Cücesi
+        const second = m.attacksThisTurn > 0;
+        if (oppHasAttackable)
           opp.monsters.forEach((t, targetZone) => {
-            if (t) out.push({ type: 'attack', player: p, attackerZone, targetZone });
+            if (attackable(t)) out.push({ type: 'attack', player: p, attackerZone, targetZone });
           });
-        if (!oppHasMonsters || d?.effect === 'directAttack')
+        if (!second && (!oppHasAttackable || d?.effect === 'directAttack'))
           out.push({ type: 'attack', player: p, attackerZone, targetZone: null });
       });
     }
@@ -139,7 +169,7 @@ function pushSpellActivations(
   switch (d.effect) {
     case 'destroyOpponentMonster':
       s.players[o].monsters.forEach((m, index) => {
-        if (m)
+        if (m && !shrouded(s, m.uid))
           out.push({ type: 'activateSpell', player: p, uid, target: { kind: 'monster', ref: { player: o, zone: 'monster', index } } });
       });
       break;
@@ -148,7 +178,7 @@ function pushSpellActivations(
       break;
     case 'reviveFromGraveyard': {
       const free = freeMonsterZones(s, p);
-      if (!free.length) break;
+      if (!free.length || !summonAllowed(s, p)) break;
       for (const gp of [p, o] as PlayerId[]) {
         for (const g of s.players[gp].graveyard) {
           if (!isMonster(defOf(s, g))) continue;
@@ -160,7 +190,8 @@ function pushSpellActivations(
     }
     case 'equipAtk700':
     case 'equipPiercing':
-    case 'equipDestroyShield': {
+    case 'equipDestroyShield':
+    case 'equipAtk800Return': {
       const targets: number[] = [];
       me.monsters.forEach((m, i) => {
         if (m && m.faceUp) targets.push(i);
@@ -201,7 +232,7 @@ function pushSpellActivations(
     }
     case 'forceDefense':
       s.players[o].monsters.forEach((m, index) => {
-        if (m && m.faceUp && m.position === 'attack')
+        if (m && m.faceUp && m.position === 'attack' && !shrouded(s, m.uid))
           out.push({ type: 'activateSpell', player: p, uid, target: { kind: 'monster', ref: { player: o, zone: 'monster', index } } });
       });
       break;
@@ -217,5 +248,76 @@ function pushSpellActivations(
     case 'destroyOpponentSpellTrap':
       for (const ref of spellTrapRefs(s, o)) out.push({ type: 'activateSpell', player: p, uid, target: { kind: 'card', ref } });
       break;
+    // ---- batch 2 ----
+    case 'draw2':
+      if (me.deck.length >= 2) out.push({ type: 'activateSpell', player: p, uid });
+      break;
+    case 'draw3Discard2':
+      if (me.deck.length >= 3) out.push({ type: 'activateSpell', player: p, uid });
+      break;
+    case 'controlUntilEnd':
+      if (!freeMonsterZones(s, p).length) break;
+      s.players[o].monsters.forEach((m, index) => {
+        if (m && controlTargetable(s, m))
+          out.push({ type: 'activateSpell', player: p, uid, target: { kind: 'monster', ref: { player: o, zone: 'monster', index } } });
+      });
+      break;
+    case 'equipControl': {
+      if (!freeMonsterZones(s, p).length) break;
+      const targets: number[] = [];
+      s.players[o].monsters.forEach((m, i) => {
+        if (m && m.faceUp && controlTargetable(s, m)) targets.push(i);
+      });
+      if (!targets.length) break;
+      const tgt = (index: number) => ({ kind: 'monster' as const, ref: { player: o, zone: 'monster' as const, index } });
+      if (fromHand) {
+        for (const zone of freeSpellTrapZones(s, p)) for (const index of targets) out.push({ type: 'activateSpell', player: p, uid, zone, target: tgt(index) });
+      } else for (const index of targets) out.push({ type: 'activateSpell', player: p, uid, target: tgt(index) });
+      break;
+    }
+    case 'destroyAllMonsters':
+      if (s.players[p].monsters.some(Boolean) || s.players[o].monsters.some(Boolean)) out.push({ type: 'activateSpell', player: p, uid });
+      break;
+    case 'destroyAllOppSpellTrap':
+      if (spellTrapRefs(s, o).length) out.push({ type: 'activateSpell', player: p, uid });
+      break;
+    case 'destroySpellTrapQuick':
+      for (const ref of allSpellTrapRefs(s, uid)) out.push({ type: 'activateSpell', player: p, uid, target: { kind: 'card', ref } });
+      break;
+    case 'strawTokens':
+      if (freeMonsterZones(s, p).length) out.push({ type: 'activateSpell', player: p, uid });
+      break;
+    case 'handRefreshBoth':
+      out.push({ type: 'activateSpell', player: p, uid });
+      break;
+    case 'diceBoost100':
+      if (me.monsters.some((m) => m && m.faceUp)) out.push({ type: 'activateSpell', player: p, uid });
+      break;
   }
+}
+
+/** A set quick spell may be activated only after the turn it was set. */
+function setReady(s: GameState, st: SpellTrapSlot): boolean {
+  return st.setTurn >= 0 && st.setTurn < s.turn;
+}
+
+/**
+ * polar_sovereign (magnetFusion): tribute one Kutup İğnesi, one Kutup Örsü and one Kutup Bobini controlled by `p`
+ * (face-up or face-down; borrowed ones too) to Special Summon it from hand into the middle tribute's zone.
+ */
+function pushFusions(s: GameState, p: PlayerId, out: Action[]): void {
+  const me = s.players[p];
+  const fusions = me.hand.filter((u) => monsterDefOf(s, u)?.effect === 'magnetFusion');
+  if (!fusions.length) return;
+  const pieces = MAGNET_PIECE_IDS.map((id) =>
+    me.monsters.flatMap((m, zone) => (m && !m.token && !m.hat && s.cards[m.uid].cardId === id ? [{ uid: m.uid, zone }] : [])),
+  );
+  if (pieces.some((l) => !l.length)) return;
+  for (const uid of fusions)
+    for (const a of pieces[0])
+      for (const b of pieces[1])
+        for (const c of pieces[2]) {
+          const zones = [a.zone, b.zone, c.zone].sort(asc);
+          out.push({ type: 'specialSummon', player: p, uid, zone: zones[1], tributes: [a.uid, b.uid, c.uid].sort(asc) });
+        }
 }

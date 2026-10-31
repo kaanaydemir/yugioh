@@ -11,13 +11,13 @@
 // Rules and presets: src/data/decks.ts. Persistence: ./store.ts. Notes: docs/DESTE_KURMA.md.
 
 import Phaser from 'phaser';
-import { ALL_CARDS, ATTRIBUTE_NAMES, CARDS, SEAL_IDS, isMonster, type Attribute, type CardId } from '../../data/cards';
+import { ALL_CARDS, ATTRIBUTE_NAMES, CARDS, MAGNET_PIECE_IDS, SEAL_IDS, isMonster, type Attribute, type CardId } from '../../data/cards';
 import { cardArtKey } from '../../art/cards';
 import type { TrimName } from '../../art/frame-v3';
 import { ATTRIBUTE_COLOR, KIND_RAMP, PAL } from '../../art/palette';
 import { sfx } from '../../audio/sfx';
 import {
-  CURVE_BUCKETS, DECK_HIGH_LEVEL, DECK_MAX, DECK_MIN, addBlocker, autoFillDeck, classicDeck, copiesOf, deckStats, isSealCard, presetDecks, validateDeck,
+  CURVE_BUCKETS, DECK_HIGH_LEVEL, DECK_MAX, DECK_MIN, addBlocker, autoFillDeck, classicDeck, copiesOf, deckStats, isSealCard, isSingleCopy, maxCopies, presetDecks, validateDeck,
 } from '../../data/decks';
 import { measureText, pixelText, wrapText } from '../../ui/text';
 import { Button } from '../../view/Button';
@@ -27,7 +27,7 @@ import { ICON, miniCardKey } from '../../view/ui-textures';
 import { TEX, tween, wait } from '../../vfx/core';
 import { ELEMENTS, SORT_KEYS, SORT_LABEL, gridMove, sortPool, visibleIds, type KindFilter, type PoolFilter, type SortKey } from './pool';
 import { NAME_MAX, SLOT_COUNT, deckStore, slotRef, type DeckStore } from './store';
-import { CELL_H, CELL_W, REDUCED_MOTION, backdropTex, panelV3, cellTex, chainTex, fadeFromInk, fadeToInk, fitText, latticeTex, orbOf, orbTex, tickTex, type CellKind } from './ui';
+import { CELL_H, CELL_W, REDUCED_MOTION, backdropTex, panelV3, cellTex, chainTex, fadeFromInk, fadeToInk, fitText, latticeTex, magnetTex, orbOf, orbTex, singleTex, tickTex, type CellKind } from './ui';
 
 export interface DeckSceneData {
   /** Slot to open (default: the last edited one). */
@@ -63,7 +63,21 @@ const RANGE = `/${DECK_MIN}-${DECK_MAX}`;
 const BTN_Y = DY + DH - 2 * 17 - 1;
 const KIND_LABEL: Record<KindFilter, string> = { all: 'Tümü', monster: 'Canavar', spell: 'Büyü', trap: 'Tuzak' };
 const KINDS: readonly KindFilter[] = ['all', 'monster', 'spell', 'trap'];
-const SPELL_WORD: Record<string, string> = { normal: 'Normal', equip: 'Kuşanma', field: 'Alan', continuous: 'Devamlı' };
+const SPELL_WORD: Record<string, string> = { normal: 'Normal', equip: 'Kuşanma', field: 'Alan', continuous: 'Devamlı', quick: 'Hızlı' };
+
+/** The polar fusion family (the three pieces + Kutup Hükümdarı). */
+function isMagnetCard(id: CardId): boolean {
+  const d = CARDS[id];
+  return isMonster(d) && (d.effect === 'magnetPiece' || d.effect === 'magnetFusion');
+}
+
+/** The small mark after a card's name: seal chain, polar magnet, single-copy "1" tag (or none). */
+function markTexOf(scene: Phaser.Scene, id: CardId): string | null {
+  if (isSealCard(id)) return chainTex(scene);
+  if (isMagnetCard(id)) return magnetTex(scene);
+  if (isSingleCopy(id)) return singleTex(scene);
+  return null;
+}
 const HELP: readonly (readonly [string, string])[] = [
   ['ENTER', 'Kopya ekle'],
   ['DEL', 'Kopya çıkar'],
@@ -197,6 +211,9 @@ export class DeckScene extends Phaser.Scene {
   private plate: Phaser.GameObjects.GameObject[] = [];
   private plateSeal: Phaser.GameObjects.GameObject[] = [];
   private sealCount!: Phaser.GameObjects.BitmapText;
+  private noteTitle!: Phaser.GameObjects.BitmapText;
+  private noteIcon!: Phaser.GameObjects.Image;
+  private noteBody!: Phaser.GameObjects.BitmapText;
   private lattice!: Phaser.GameObjects.TileSprite;
   private motes: { img: Phaser.GameObjects.Image; x: number; y: number; v: number; ph: number }[] = [];
   private t = 0;
@@ -324,7 +341,7 @@ export class DeckScene extends Phaser.Scene {
   private buildHeader(): void {
     const t = pixelText(this, 10, 6, 'DESTE KUR', { size: 'md', color: PAL.white }).setDepth(10);
     t.setTint(PAL.gold4, PAL.gold4, PAL.gold3, PAL.gold3);
-    this.txt(96, 8, `${DECK_MIN}-${DECK_MAX} kart · en çok 3 kopya · Mühür 1`, PAL.steel);
+    this.txt(96, 8, `${DECK_MIN}-${DECK_MAX} kart · en çok 3 kopya · Mühür ve tek kopyalık kartlar 1`, PAL.steel);
     const back = new Button(this, GAME_W - 66, 2, { w: 62, h: 18, label: 'GERİ', size: 'sm', icon: ICON.close, style: 'neutral', depth: 20 });
     back.onClick = () => void this.leave();
     back.onHover = (on) => on && this.say('Ana menüye dön (ESC)', 'info');
@@ -573,12 +590,12 @@ export class DeckScene extends Phaser.Scene {
       this.plate.push(this.txt(x + 8, y + 5 + i * 9, k, PAL.gold3));
       this.plate.push(this.txt(x + 44, y + 5 + i * 9, v, PAL.mist));
     });
-    // seal mode
-    this.plateSeal.push(this.txt(x + 8, y + 5, 'BEŞ MÜHÜR', PAL.gold3));
-    this.plateSeal.push(this.add.image(x + w - 14, y + 8, chainTex(this)).setOrigin(0.5).setDepth(10));
-    this.plateSeal.push(pixelText(this, x + 8, y + 19, 'Beş Mühür: 5 parça elde birleşirse kazanırsın', { size: 'sm', color: PAL.white, maxWidth: w - 16, lineSpacing: -1 }).setDepth(10));
+    // note mode (a seal piece, a polar card or a single-copy card is focused): title, mark, rule, deck count
+    this.noteTitle = this.txt(x + 8, y + 5, 'BEŞ MÜHÜR', PAL.gold3);
+    this.noteIcon = this.add.image(x + w - 14, y + 8, chainTex(this)).setOrigin(0.5).setDepth(10);
+    this.noteBody = pixelText(this, x + 8, y + 19, '', { size: 'sm', color: PAL.white, maxWidth: w - 16, lineSpacing: -1 }).setDepth(10);
     this.sealCount = pixelText(this, x + 8, y + 56, '', { size: 'sm', color: PAL.mist, maxWidth: w - 16, lineSpacing: -1 }).setDepth(10);
-    this.plateSeal.push(this.sealCount);
+    this.plateSeal.push(this.noteTitle, this.noteIcon, this.noteBody, this.sealCount);
     for (const o of this.plateSeal) (o as unknown as Phaser.GameObjects.Components.Visible).setVisible(false);
   }
 
@@ -1089,7 +1106,9 @@ export class DeckScene extends Phaser.Scene {
     this.paintCount(cell, focus);
     cell.art.setTexture(cardArtKey(id));
     cell.orb.setTexture(orbTex(this, orbOf(id)));
-    cell.chain.setVisible(isSealCard(id));
+    const mark = markTexOf(this, id);
+    cell.chain.setVisible(mark !== null);
+    if (mark) cell.chain.setTexture(mark);
     const nameW = CELL_W - 53;
     let lines = wrapText(d.name, 'sm', nameW);
     if (lines.length > 2) lines = [lines[0], fitText(lines.slice(1).join(' '), nameW, (s) => measureText(s, 'sm').w)];
@@ -1119,7 +1138,7 @@ export class DeckScene extends Phaser.Scene {
     const id = cell.id;
     if (!id) return;
     const n = this.copies(id);
-    const max = isSealCard(id) ? 1 : 3;
+    const max = maxCopies(id);
     cell.bg.setTexture(cellTex(this, this.cellKind(id), focus, n > 0));
     cell.tick.setVisible(n > 0);
     cell.minus.setVisible(n > 0);
@@ -1195,11 +1214,13 @@ export class DeckScene extends Phaser.Scene {
       r.plus.label.setTint(blocked ? PAL.night4 : PAL.white);
       r.minus.bg.setFillStyle(PAL.night4);
       r.minus.label.setTint(PAL.white);
-      r.cnt.setText(`x${e.n}`).setTint(e.n >= (isSealCard(id) ? 1 : 3) ? PAL.crim3 : PAL.gold3);
+      r.cnt.setText(`x${e.n}`).setTint(e.n >= maxCopies(id) ? PAL.crim3 : PAL.gold3);
       r.orb.setVisible(true).setTexture(orbTex(this, orbOf(id)));
-      const nm = fitText(def.name, isSealCard(id) ? 44 : 54, (s) => measureText(s, 'sm').w);
+      const mark = markTexOf(this, id);
+      const nm = fitText(def.name, mark ? 44 : 54, (s) => measureText(s, 'sm').w);
       r.name.setText(nm).setTint(this.zone === 'deck' && this.deckScroll + i === this.deckCursor ? PAL.white : PAL.mist);
-      r.chain.setVisible(isSealCard(id)).setX(24 + Math.ceil(measureText(nm, 'sm').w) + 3);
+      r.chain.setVisible(mark !== null).setX(24 + Math.ceil(measureText(nm, 'sm').w) + 3);
+      if (mark) r.chain.setTexture(mark);
       if (isMonster(def)) {
         r.lvl.setText(`Sv${def.level}`).setTint(def.level >= DECK_HIGH_LEVEL ? PAL.crim3 : PAL.gold3);
         r.atk.setText(String(def.atk)).setTint(PAL.crim3);
@@ -1245,12 +1266,26 @@ export class DeckScene extends Phaser.Scene {
 
   private renderPlate(): void {
     const id = this.currentCard();
-    const seal = !!id && isSealCard(id);
-    for (const o of this.plate) (o as unknown as Phaser.GameObjects.Components.Visible).setVisible(!seal);
-    for (const o of this.plateSeal) (o as unknown as Phaser.GameObjects.Components.Visible).setVisible(seal);
-    if (seal) {
+    const mark = id ? markTexOf(this, id) : null;
+    for (const o of this.plate) (o as unknown as Phaser.GameObjects.Components.Visible).setVisible(!mark);
+    for (const o of this.plateSeal) (o as unknown as Phaser.GameObjects.Components.Visible).setVisible(!!mark);
+    if (!id || !mark) return;
+    this.noteIcon.setTexture(mark);
+    if (isSealCard(id)) {
       const have = SEAL_IDS.filter((s) => this.inDeck(s)).length;
+      this.noteTitle.setText('BEŞ MÜHÜR');
+      this.noteBody.setText('Beş Mühür: 5 parça elde birleşirse kazanırsın');
       this.sealCount.setText(`Destede: ${have}/${SEAL_IDS.length} parça. ${have === SEAL_IDS.length ? 'Beşi de elinde birleşirse düello biter.' : 'Hepsini toplarsan elde birleştirmek mümkün.'}`);
+    } else if (isMagnetCard(id)) {
+      const have = MAGNET_PIECE_IDS.filter((s) => this.inDeck(s)).length;
+      const sov = this.inDeck('polar_sovereign');
+      this.noteTitle.setText('KUTUP');
+      this.noteBody.setText("Kutup parçası: üçü sahandayken Kutup Hükümdarı'nı çağırabilirsin");
+      this.sealCount.setText(`Destede: ${have}/${MAGNET_PIECE_IDS.length} parça, Hükümdar ${sov ? 'var' : 'yok'}.`);
+    } else {
+      this.noteTitle.setText('TEK KOPYA');
+      this.noteBody.setText('Bu karttan destede en çok 1 tane olabilir.');
+      this.sealCount.setText(this.inDeck(id) ? 'Destede: 1/1.' : 'Destede yok.');
     }
   }
 

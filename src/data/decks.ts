@@ -6,7 +6,8 @@
 //   URL  ?deck=expanded          globalThis.__NEON_DECK = 'expanded'
 //
 // Deck BUILDER rules (validateDeck, docs/DESTE_KURMA.md): DECK_MIN..DECK_MAX cards (40..80), at most 3 copies
-// of a card (the five seal pieces: 1 each), monsters >= 40% of the deck, Sv7+ monsters <= 20% of the deck.
+// of a card (the five seal pieces and the SINGLE_COPY_IDS: 1 each), monsters >= 40% of the deck, Sv7+ monsters
+// <= 20% of the deck.
 // These rules apply to the builder / pickers only: the engine still starts a game with ANY deck.
 
 import { ALL_CARDS, CARDS, COLLECTIBLE_CARDS, DEFAULT_DECK, SEAL_IDS, isMonster, isRetired, type Attribute, type CardDef, type CardId, type MonsterCardDef } from './cards';
@@ -53,9 +54,20 @@ export function isSealCard(id: string): boolean {
   return (SEAL_IDS as readonly string[]).includes(id);
 }
 
+/**
+ * Cards a deck may hold only once (owner decision 2026-10-31, docs/v3/YENI_KARTLAR.md §0.2): free draws, hand
+ * refresh and the wipes would speed up the five-seal win; Kadran Soytarısı is a once-per-turn coin wipe.
+ */
+export const SINGLE_COPY_IDS: readonly CardId[] = ['well_pail', 'void_eye', 'sweeping_gale', 'winnow_sieve', 'dial_jester'];
+
+/** True for a card a deck may hold only once (the seals and SINGLE_COPY_IDS). */
+export function isSingleCopy(id: string): boolean {
+  return isSealCard(id) || (SINGLE_COPY_IDS as readonly string[]).includes(id);
+}
+
 /** Copies of `id` a deck may hold. */
 export function maxCopies(id: string): number {
-  return isSealCard(id) ? SEAL_COPIES : MAX_COPIES;
+  return isSealCard(id) ? SEAL_COPIES : isSingleCopy(id) ? 1 : MAX_COPIES;
 }
 
 function shuffleWith<T>(arr: T[], rng: () => number): T[] {
@@ -87,10 +99,10 @@ export function expandedDeck(seed: number, side: 0 | 1): CardId[] {
   const rest = shuffleWith(COLLECTIBLE_CARDS.filter((c) => !isMonster(c)).map((c) => c.id), rng);
   const lowDup = (id: CardId) => {
     const d = CARDS[id];
-    return !isSealCard(id) && !(isMonster(d) && d.level >= DECK_HIGH_LEVEL);
+    return !isSingleCopy(id) && !(isMonster(d) && d.level >= DECK_HIGH_LEVEL);
   };
   const picked = sampleCopies(monsters.map((m) => m.id), DECK_MONSTERS, rng, lowDup);
-  return [...picked, ...sampleCopies(rest, DECK_SPELLTRAPS, rng, (id) => !isSealCard(id))];
+  return [...picked, ...sampleCopies(rest, DECK_SPELLTRAPS, rng, (id) => !isSingleCopy(id))];
 }
 
 /** The two decks of a game for `pool` (undefined: the classic deck for both). */
@@ -193,7 +205,8 @@ export function validateDeck(ids: readonly string[]): DeckCheck {
   if (stats.unknown.length) issues.push({ code: 'unknown', text: `Eksik kart: ${stats.unknown.length} (artık oyunda yok)` });
   if (stats.over.length) {
     const names = stats.over.map((d) => CARDS[d as CardId].name).slice(0, 2).join(', ');
-    issues.push({ code: 'copies', text: `Çok kopya: ${names}${stats.over.length > 2 ? '…' : ''} (en çok ${MAX_COPIES}, Mühür ${SEAL_COPIES})` });
+    const single = stats.over.some((d) => isSingleCopy(d) && !isSealCard(d));
+    issues.push({ code: 'copies', text: `Çok kopya: ${names}${stats.over.length > 2 ? '…' : ''} (en çok ${MAX_COPIES}, Mühür ${SEAL_COPIES}${single ? ', tek kopyalık kart 1' : ''})` });
   }
   if (stats.size < DECK_MIN) issues.push({ code: 'size', text: `Deste en az ${DECK_MIN} kart olmalı: ${DECK_MIN - stats.size} eksik` });
   else if (stats.size > DECK_MAX) issues.push({ code: 'size', text: `Deste en çok ${DECK_MAX} kart olabilir: ${stats.size - DECK_MAX} fazla` });
@@ -324,7 +337,7 @@ export function autoFillDeck(current: readonly string[], seed: number, pool: rea
 }
 
 // ======================================================================== preset decks
-// Six themed starter / CPU decks. Each is a recipe: a few pinned cards plus a deterministic,
+// Seven themed starter / CPU decks. Each is a recipe: a few pinned cards plus a deterministic,
 // role-weighted pick from the CURRENT pool (so new cards flow in), always legal by validateDeck.
 
 export type PresetRole = 'aggro' | 'control' | 'support' | 'seal' | 'defense' | 'balanced';
@@ -351,12 +364,14 @@ export interface Preset {
 }
 
 export const PRESET_DEFS: readonly PresetDef[] = [
-  { id: 'ates', name: 'Ateş Saldırı', blurb: 'Yüksek ATK, yakıp geçen hızlı saldırılar.', role: 'aggro', attribute: 'FIRE', pins: ['magma_titan', 'ember_wolf', 'storm_hawk', 'shade_assassin', 'judgment_bolt', 'dragon_blade', 'volcano_arena'], backRow: 6 },
-  { id: 'su', name: 'Su Kontrol', blurb: 'Tuzaklar, delici hasar ve sabırlı savunma.', role: 'control', attribute: 'WATER', pins: ['coral_serpent', 'tide_golem', 'mirror_barrier', 'chains_of_light', 'chasm_trap', 'thorn_lurker'], backRow: 8 },
-  { id: 'isik', name: 'Işık Destek', blurb: 'Can kazan, kartları geri getir, uzun oyna.', role: 'support', attribute: 'LIGHT', pins: ['crystal_wyrm', 'lumen_sprite', 'volt_lizard', 'hourglass_imp', 'healing_spring', 'soul_recall'], backRow: 7 },
+  { id: 'ates', name: 'Ateş Saldırı', blurb: 'Yüksek ATK, yakıp geçen hızlı saldırılar.', role: 'aggro', attribute: 'FIRE', pins: ['magma_titan', 'ember_wolf', 'storm_hawk', 'shade_assassin', 'judgment_bolt', 'dragon_blade', 'volcano_arena', 'scrap_raiders', 'spite_axe'], backRow: 6 },
+  { id: 'su', name: 'Su Kontrol', blurb: 'Tuzaklar, delici hasar ve sabırlı savunma.', role: 'control', attribute: 'WATER', pins: ['coral_serpent', 'tide_golem', 'mirror_barrier', 'chains_of_light', 'chasm_trap', 'thorn_lurker', 'tide_harpooner', 'reed_heron', 'tidal_bay', 'auger_lance'], backRow: 8 },
+  { id: 'isik', name: 'Işık Destek', blurb: 'Can kazan, kartları geri getir, uzun oyna.', role: 'support', attribute: 'LIGHT', pins: ['crystal_wyrm', 'lumen_sprite', 'volt_lizard', 'hourglass_imp', 'healing_spring', 'soul_recall', 'well_pail', 'winnow_sieve', 'reflection_archer'], backRow: 7 },
   { id: 'muhur', name: 'Karanlık Mühür', blurb: 'Beş Mühür parçasını elde topla, anında kazan.', role: 'seal', attribute: 'DARK', pins: [...SEAL_IDS, 'wisp_imp', 'steel_silencer', 'soul_recall'], backRow: 5 },
-  { id: 'toprak', name: 'Toprak Savunma', blurb: 'Kalın DEF, sağlam muhafızlar, geç ama kesin.', role: 'defense', attribute: 'EARTH', pins: ['stone_sentinel', 'shield_titan', 'thorn_lurker', 'windmane_knight', 'mirror_barrier', 'healing_spring'], backRow: 7 },
-  { id: 'dengeli', name: 'Dengeli', blurb: 'Her elementten biraz; her duruma bir cevap.', role: 'balanced', pins: ['crystal_wyrm', 'abyss_magus', 'magma_titan', 'coral_serpent', 'ember_wolf', 'judgment_bolt', 'mirror_barrier'], backRow: 7 },
+  { id: 'toprak', name: 'Toprak Savunma', blurb: 'Kalın DEF, sağlam muhafızlar, geç ama kesin.', role: 'defense', attribute: 'EARTH', pins: ['stone_sentinel', 'shield_titan', 'thorn_lurker', 'windmane_knight', 'mirror_barrier', 'healing_spring', 'mudgrasp_spirit', 'straw_decoys'], backRow: 7 },
+  { id: 'dengeli', name: 'Dengeli', blurb: 'Her elementten biraz; her duruma bir cevap.', role: 'balanced', pins: ['crystal_wyrm', 'abyss_magus', 'magma_titan', 'coral_serpent', 'ember_wolf', 'judgment_bolt', 'mirror_barrier', 'void_eye', 'puppet_string'], backRow: 7 },
+  // batch 2: the polar fusion deck (docs/v3/YENI_KARTLAR.md §1 "Mıknatıs"): pieces x2, the Sovereign, revive + decoys to keep pieces alive
+  { id: 'miknatis', name: 'Mıknatıs', blurb: "Üç Kutup parçasını diz, Kutup Hükümdarı'nı çağır.", role: 'defense', attribute: 'EARTH', pins: ['polar_needle', 'polar_anvil', 'polar_coil', 'polar_sovereign', 'soul_recall', 'straw_decoys'], backRow: 7 },
 ];
 
 /** Back-row ranking per role, keyed by effect (unknown effects score 2). */
@@ -369,6 +384,18 @@ const BACK_SCORE: Record<string, Partial<Record<PresetRole, number>>> = {
   attackDestroyAllAttackPosition: { control: 7, defense: 6, balanced: 5, support: 3, aggro: 2, seal: 3 },
   attackNegateEndBattle: { control: 6, defense: 6, balanced: 4, support: 4, aggro: 2, seal: 4 },
   summonDestroy1000Plus: { control: 6, balanced: 4, defense: 4, aggro: 3, support: 2, seal: 3 },
+  // batch 2 (docs/v3/YENI_KARTLAR.md §7)
+  draw2: { support: 7, seal: 7, balanced: 5, control: 4, aggro: 4, defense: 4 },
+  draw3Discard2: { support: 6, seal: 6, balanced: 4, control: 4, aggro: 3, defense: 3 },
+  controlUntilEnd: { aggro: 6, balanced: 5, control: 4, support: 3, defense: 2, seal: 2 },
+  equipControl: { control: 6, balanced: 5, aggro: 4, support: 4, defense: 3, seal: 3 },
+  destroyAllMonsters: { control: 6, defense: 5, balanced: 5, seal: 5, support: 3, aggro: 2 },
+  destroyAllOppSpellTrap: { aggro: 6, balanced: 5, control: 4, support: 3, defense: 3, seal: 3 },
+  destroySpellTrapQuick: { control: 6, aggro: 5, balanced: 5, support: 4, defense: 4, seal: 3 },
+  strawTokens: { defense: 7, seal: 6, control: 5, support: 4, balanced: 4, aggro: 1 },
+  equipAtk800Return: { aggro: 6, balanced: 3, support: 2, defense: 1, control: 1, seal: 1 },
+  handRefreshBoth: { balanced: 2, support: 2, control: 2, aggro: 2, defense: 1, seal: 1 },
+  diceBoost100: { aggro: 4, balanced: 3, support: 2, defense: 2, control: 1, seal: 1 },
 };
 
 const CONTROL_FX = new Set(['flipDestroyMonster', 'tributeSummonDestroySpellTrap', 'trapLock', 'declareAtkDebuff400', 'summonFreezeAttack', 'defenseAttackedBurn300']);
@@ -429,7 +456,7 @@ export function buildPreset(def: PresetDef, poolIn: readonly CardDef[] = COLLECT
   const deck: CardId[] = [];
   // pins: two copies each (one for the seals), they are the theme of the deck
   for (const id of def.pins) if (order.has(id) && addBlocker(deck, id) === null) deck.push(id);
-  for (const id of def.pins) if (order.has(id) && !isSealCard(id) && deck.length < DECK_SIZE / 2 && addBlocker(deck, id) === null) deck.push(id);
+  for (const id of def.pins) if (order.has(id) && !isSingleCopy(id) && deck.length < DECK_SIZE / 2 && addBlocker(deck, id) === null) deck.push(id);
   const backScore = (c: CardDef) => (BACK_SCORE[(c as { effect: string }).effect]?.[def.role] ?? 2) + (def.attribute === 'FIRE' && (c as { effect: string }).effect === 'fieldVolcano' ? 3 : 0);
   const ranked = <T extends CardDef>(list: T[], score: (c: T) => number) => [...list].sort((a, b) => score(b) - score(a) || (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
   const all = [...pool];
@@ -446,6 +473,8 @@ export function buildPreset(def: PresetDef, poolIn: readonly CardDef[] = COLLECT
   for (const c of copyOrder(monsters, 8, (m) => (m.level >= DECK_HIGH_LEVEL ? 1 : 3))) {
     if (deck.length >= DECK_SIZE) break;
     if (addBlocker(deck, c.id) !== null) continue;
+    // polar_sovereign cannot be Normal Summoned: only a deck built around the pieces (it pins them) runs it, at most twice
+    if (c.effect === 'magnetFusion' && (!def.pins.includes(c.id) || copiesOf(deck, c.id) >= 2)) continue;
     const slotsLeft = DECK_SIZE - deck.length - 1;
     if (c.level > 4 && lowNow() + slotsLeft < 10) continue;
     deck.push(c.id);
@@ -460,7 +489,7 @@ export function buildPreset(def: PresetDef, poolIn: readonly CardDef[] = COLLECT
 let presetCache: Preset[] | null = null;
 let presetCachePool = -1;
 
-/** The six presets built from the current collectible pool (cached until the pool changes). */
+/** The presets built from the current collectible pool (cached until the pool changes). */
 export function presetDecks(): readonly Preset[] {
   if (!presetCache || presetCachePool !== ALL_CARDS.length) {
     presetCache = PRESET_DEFS.map((d) => buildPreset(d));

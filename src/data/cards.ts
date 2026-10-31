@@ -33,7 +33,17 @@ export type MonsterEffect =
   | 'summonFreezeAttack' // hourglass_imp: on summon, one opposing monster cannot attack on the opponent's next turn
   | 'summonTurnAtk500' // windmane_knight: +500 ATK while attacking on the turn it was Normal/Tribute Summoned
   | 'defenseAtkDebuff500' // shield_titan: face-up in defense and attacked -> the attacker has -500 ATK in that battle
-  | 'windAura300'; // wing_lady: the other face-up WIND monsters on its controller's field get +300 ATK
+  | 'windAura300' // wing_lady: the other face-up WIND monsters on its controller's field get +300 ATK
+  // ---- batch 2 of the expanded roster (docs/v3/YENI_KARTLAR.md §6) ----
+  | 'tidalBayShroud' // tide_harpooner: while Tidal Bay is face-up: cannot be attacked / targeted by the opponent's Spells
+  | 'coinWipe' // dial_jester: once per turn, call a coin toss: right = destroy the opponent's monsters, wrong = your own + damage
+  | 'jesterAging' // cloud_hatchling: grows (+1200 ATK / +800 DEF, permanent) when a Dial Jester toss is called right
+  | 'attackThenDefense' // scrap_raiders: after it declared an attack it turns to defense and is locked until its next turn
+  | 'banishGraveBoost400' // hollow_ogre: once per turn banish up to 2 monsters of your graveyard, +400 ATK each this turn
+  | 'doubleAttackMonster' // kite_fencer: two attacks per Battle Phase, the second only at a monster
+  | 'defenseAttackedPin' // mudgrasp_spirit: attacked in defense -> the attacker turns to defense, locked on its next turn
+  | 'magnetPiece' // polar_needle / polar_anvil / polar_coil: the three pieces of Kutup Hükümdarı
+  | 'magnetFusion'; // polar_sovereign: Special Summon by tributing the three pieces; destroyed -> the pieces come back
 
 export type SpellEffect =
   | 'destroyOpponentMonster' // judgment_bolt
@@ -54,7 +64,19 @@ export type SpellEffect =
   | 'fieldShadowCavern' // shadow_cavern: DARK/EARTH +300, LIGHT -300
   | 'fieldExtraSummon' // festival_square: its controller may Normal Summon / Set one extra Level <= 4 monster per turn
   // ---- continuous spells ----
-  | 'attackLock3'; // dawn_swords: reveals the opponent's face-down monsters; while face-up the opponent cannot attack; counter 3, ticks down at the end of each opponent turn
+  | 'attackLock3' // dawn_swords: reveals the opponent's face-down monsters; while face-up the opponent cannot attack; counter 3, ticks down at the end of each opponent turn
+  // ---- spell batch 2 (docs/v3/YENI_KARTLAR.md §7) ----
+  | 'draw2' // well_pail: draw 2
+  | 'controlUntilEnd' // puppet_string: take control of an opposing monster until the End Phase
+  | 'destroyAllMonsters' // void_eye: destroy every monster on the field
+  | 'destroyAllOppSpellTrap' // sweeping_gale: destroy every opposing Spell/Trap (field spell included)
+  | 'draw3Discard2' // winnow_sieve: draw 3, then discard 2
+  | 'destroySpellTrapQuick' // auger_lance (quick): destroy 1 Spell/Trap on the field
+  | 'equipControl' // soul_leash: equip to an opposing face-up monster and control it; the owner gains 1000 each Draw Phase
+  | 'strawTokens' // straw_decoys (quick): Special Summon Straw Decoy tokens (free zones - 1, at least 1)
+  | 'equipAtk800Return' // spite_axe: +800 ATK; leaving the field it goes to the top of its owner's deck instead, owner takes 500
+  | 'handRefreshBoth' // page_turner: both players discard their hands and draw as many
+  | 'diceBoost100'; // lucky_die: roll a die: your face-up monsters get +100 x the roll ATK/DEF this turn
 
 export type TrapEffect =
   | 'attackDestroyAllAttackPosition' // mirror_barrier
@@ -71,7 +93,8 @@ export type TrapEffect =
   | 'hatShuffle'; // magic_hat: the attacked monster + up to 2 decoy tokens are hidden under shuffled hats; the attacker picks one
 
 /** 'continuous' (additive): stays face-up in a spell/trap zone with a counter (dawn_swords). */
-export type SpellType = 'normal' | 'equip' | 'field' | 'continuous';
+/** 'quick' (additive): a Quick-Play spell — from hand in your Main Phase, or set and activated after its set turn in your Main Phase or in answer to an opponent's attack declaration / summon. */
+export type SpellType = 'normal' | 'equip' | 'field' | 'continuous' | 'quick';
 
 export type MonsterId =
   | 'crystal_wyrm'
@@ -101,7 +124,25 @@ export type MonsterId =
   | 'hourglass_imp'
   | 'windmane_knight'
   | 'shield_titan'
-  | 'wing_lady';
+  | 'wing_lady'
+  // batch 2 (docs/v3/YENI_KARTLAR.md §6)
+  | 'tide_harpooner'
+  | 'dial_jester'
+  | 'cloud_hatchling'
+  | 'reflection_archer'
+  | 'scrap_raiders'
+  | 'hollow_ogre'
+  | 'crag_axeman'
+  | 'reed_heron'
+  | 'kite_fencer'
+  | 'mudgrasp_spirit'
+  | 'steppe_spiralhorn'
+  | 'polar_needle'
+  | 'polar_anvil'
+  | 'polar_coil'
+  | 'polar_sovereign'
+  /** Token of straw_decoys: outside the pool (never in ALL_CARDS / decks), only ever created on the field. */
+  | 'straw_decoy_token';
 
 export type SpellId =
   | 'judgment_bolt'
@@ -121,7 +162,19 @@ export type SpellId =
   | 'tidal_bay'
   | 'shadow_cavern'
   | 'festival_square'
-  | 'dawn_swords';
+  | 'dawn_swords'
+  // spell batch 2 (docs/v3/YENI_KARTLAR.md §7)
+  | 'well_pail'
+  | 'puppet_string'
+  | 'void_eye'
+  | 'sweeping_gale'
+  | 'winnow_sieve'
+  | 'auger_lance'
+  | 'soul_leash'
+  | 'straw_decoys'
+  | 'spite_axe'
+  | 'page_turner'
+  | 'lucky_die';
 
 export type TrapId =
   | 'mirror_barrier'
@@ -157,6 +210,8 @@ export interface MonsterCardDef {
   ace: boolean;
   /** Retired (owner decision): kept for art / old saves, but never offered (pool, builder, presets, CPU). */
   retired?: boolean;
+  /** A token (straw_decoy_token): created on the field by an effect; never in ALL_CARDS, a deck or a graveyard. */
+  token?: boolean;
 }
 
 export interface SpellCardDef {
@@ -526,6 +581,243 @@ const MONSTERS_B1: MonsterCardDef[] = [
   },
 ];
 
+/** Batch 2 of the expanded roster (docs/v3/YENI_KARTLAR.md §6, owner decisions 2026-10-31). */
+const MAGNET_TEXT = (a: string, b: string) => `Kutup parçası. ${a} ve ${b} ile birlikte Kutup Hükümdarı'nı çağırmak için kurban edilebilir.`;
+const MONSTERS_B2: MonsterCardDef[] = [
+  {
+    id: 'tide_harpooner',
+    kind: 'monster',
+    name: 'Kabuk Zıpkıncı',
+    attribute: 'WATER',
+    race: 'Su',
+    level: 5,
+    atk: 1700,
+    def: 1500,
+    effect: 'tidalBayShroud',
+    text: 'Gelgit Körfezi alan büyüsü sahadayken: rakip bu karta saldıramaz ve rakibin Büyü kartları bu kartı hedef alamaz. Rakibin saldırabileceği başka canavarın yoksa rakip doğrudan saldırabilir.',
+    flavor: '',
+    ace: true,
+  },
+  {
+    id: 'dial_jester',
+    kind: 'monster',
+    name: 'Kadran Soytarısı',
+    attribute: 'LIGHT',
+    race: 'Büyücü',
+    level: 2,
+    atk: 700,
+    def: 300,
+    effect: 'coinWipe',
+    text: "Turda 1 kez, Ana Aşamanda, rakibin sahasında canavar varken: Yazı ya da Tura seç ve para at. Bilirsen: rakibin sahasındaki tüm canavarları yok et. Bilemezsen: kendi sahandaki tüm canavarları yok et (bu kart dahil) ve yok olan canavarların toplam ATK'sinin yarısı kadar hasar al.",
+    flavor: '',
+    ace: false,
+  },
+  {
+    id: 'cloud_hatchling',
+    kind: 'monster',
+    name: 'Bulut Yavrusu',
+    attribute: 'WIND',
+    race: 'Ejderha',
+    level: 3,
+    atk: 1100,
+    def: 900,
+    effect: 'jesterAging',
+    text: "Kadran Soytarısı'nın yazı-turası bilindiğinde bu kart sahanda açıksa: büyür ve kalıcı olarak ATK +1200, DEF +800 kazanır (her Bulut Yavrusu için 1 kez).",
+    flavor: '',
+    ace: false,
+  },
+  {
+    id: 'reflection_archer',
+    kind: 'monster',
+    name: 'Yansıyan Okçu',
+    attribute: 'LIGHT',
+    race: 'Büyücü',
+    level: 4,
+    atk: 1800,
+    def: 1000,
+    effect: 'none',
+    text: '',
+    flavor: 'Gölü olmayan yerde de bir yansıması vardır. Okunu ilk o atar.',
+    ace: false,
+  },
+  {
+    id: 'scrap_raiders',
+    kind: 'monster',
+    name: 'Hurda Akıncıları',
+    attribute: 'FIRE',
+    race: 'Savaşçı',
+    level: 4,
+    atk: 2000,
+    def: 0,
+    effect: 'attackThenDefense',
+    text: 'Bu kart saldırı ilan ettikten sonra, savaş aşaması bittiğinde hâlâ sahadaysa savunma pozisyonuna geçer ve senin bir sonraki turunda pozisyon değiştiremez.',
+    flavor: '',
+    ace: false,
+  },
+  {
+    id: 'hollow_ogre',
+    kind: 'monster',
+    name: 'Kovuk Devi',
+    attribute: 'EARTH',
+    race: 'Canavar-Savaşçı',
+    level: 4,
+    atk: 1400,
+    def: 900,
+    effect: 'banishGraveBoost400',
+    text: 'Turda 1 kez, Ana Aşamanda: mezarlığından en çok 2 canavarı oyundan çıkar. Bu kart bu tur, çıkarılan her canavar için +400 ATK kazanır.',
+    flavor: '',
+    ace: false,
+  },
+  {
+    id: 'crag_axeman',
+    kind: 'monster',
+    name: 'Kaya Baltacı',
+    attribute: 'EARTH',
+    race: 'Savaşçı',
+    level: 4,
+    atk: 1600,
+    def: 1300,
+    effect: 'none',
+    text: '',
+    flavor: 'Dağı ikiye yarmak için tek bir savuruş yeter derler. O hiç ikinciye gerek duymadı.',
+    ace: false,
+  },
+  {
+    id: 'reed_heron',
+    kind: 'monster',
+    name: 'Sazlık Balıkçılı',
+    attribute: 'WATER',
+    race: 'Kanatlı Canavar',
+    level: 4,
+    atk: 1400,
+    def: 1500,
+    effect: 'none',
+    text: '',
+    flavor: 'Sisin içinde tek ayak üstünde bekler. Gagası suyu bozmadan iner.',
+    ace: false,
+  },
+  {
+    id: 'kite_fencer',
+    kind: 'monster',
+    name: 'Uçurtma Eskrimci',
+    attribute: 'WIND',
+    race: 'Savaşçı',
+    level: 3,
+    atk: 900,
+    def: 600,
+    effect: 'doubleAttackMonster',
+    text: 'Bu kart her Savaş Aşamasında iki kez saldırabilir. İkinci saldırı yalnızca bir canavara yapılabilir.',
+    flavor: '',
+    ace: false,
+  },
+  {
+    id: 'mudgrasp_spirit',
+    kind: 'monster',
+    name: 'Çamur Pençe Ruhu',
+    attribute: 'EARTH',
+    race: 'Şeytan',
+    level: 4,
+    atk: 700,
+    def: 1800,
+    effect: 'defenseAttackedPin',
+    text: 'Savunma pozisyonundayken saldırıya uğrarsa: savaştan sonra saldıran canavar savunma pozisyonuna geçer ve sahibinin bir sonraki turunda pozisyon değiştiremez.',
+    flavor: '',
+    ace: false,
+  },
+  {
+    id: 'steppe_spiralhorn',
+    kind: 'monster',
+    name: 'Bozkır Boynuzlusu',
+    attribute: 'WIND',
+    race: 'Canavar',
+    level: 4,
+    atk: 1500,
+    def: 1400,
+    effect: 'none',
+    text: '',
+    flavor: 'Bozkırın rüzgarı onun izinden eser. Sarmal boynuzlarından geçerken ıslık çalar.',
+    ace: false,
+  },
+  {
+    id: 'polar_needle',
+    kind: 'monster',
+    name: 'Kutup İğnesi',
+    attribute: 'EARTH',
+    race: 'Kaya',
+    level: 4,
+    atk: 1500,
+    def: 1100,
+    effect: 'magnetPiece',
+    text: MAGNET_TEXT('Kutup Örsü', 'Kutup Bobini'),
+    flavor: '',
+    ace: false,
+  },
+  {
+    id: 'polar_anvil',
+    kind: 'monster',
+    name: 'Kutup Örsü',
+    attribute: 'EARTH',
+    race: 'Kaya',
+    level: 4,
+    atk: 1100,
+    def: 1700,
+    effect: 'magnetPiece',
+    text: MAGNET_TEXT('Kutup İğnesi', 'Kutup Bobini'),
+    flavor: '',
+    ace: false,
+  },
+  {
+    id: 'polar_coil',
+    kind: 'monster',
+    name: 'Kutup Bobini',
+    attribute: 'EARTH',
+    race: 'Kaya',
+    level: 4,
+    atk: 1300,
+    def: 1400,
+    effect: 'magnetPiece',
+    text: MAGNET_TEXT('Kutup İğnesi', 'Kutup Örsü'),
+    flavor: '',
+    ace: false,
+  },
+  {
+    id: 'polar_sovereign',
+    kind: 'monster',
+    name: 'Kutup Hükümdarı',
+    attribute: 'EARTH',
+    race: 'Kaya',
+    level: 8,
+    atk: 3000,
+    def: 2800,
+    effect: 'magnetFusion',
+    text: "Normal Çağrılamaz ve kapalı konamaz. Sahandaki Kutup İğnesi, Kutup Örsü ve Kutup Bobini'ni kurban ederek elinden Özel Çağrılır. Bu kart yok edildiğinde: mezarlığında Kutup İğnesi, Kutup Örsü ve Kutup Bobini varsa ve sahanda 3 boş canavar alanı varsa, üçünü savunma pozisyonunda Özel Çağır.",
+    flavor: '',
+    ace: true,
+  },
+];
+
+/** The three pieces of Kutup Hükümdarı (magnetFusion), in the order they come back when it splits. */
+export const MAGNET_PIECE_IDS = ['polar_needle', 'polar_anvil', 'polar_coil'] as const satisfies readonly MonsterId[];
+
+/** Tokens: created on the field only (straw_decoys). In CARDS, never in ALL_CARDS, a deck or a graveyard. */
+const TOKENS: MonsterCardDef[] = [
+  {
+    id: 'straw_decoy_token',
+    kind: 'monster',
+    name: 'Saman Korkuluk',
+    attribute: 'EARTH',
+    race: 'Bitki',
+    level: 1,
+    atk: 0,
+    def: 0,
+    effect: 'none',
+    text: 'Saman Korkuluklar jetonu. Kurban edilemez.',
+    flavor: '',
+    ace: false,
+    token: true,
+  },
+];
+
 const SPELLS: SpellCardDef[] = [
   {
     id: 'judgment_bolt',
@@ -753,18 +1045,118 @@ const TRAPS_B1: TrapCardDef[] = [
   },
 ];
 
-/** The 20 original cards (DEFAULT_DECK) followed by the expanded roster; new cards are only ever appended. */
-export const ALL_CARDS: CardDef[] = [...MONSTERS, ...SPELLS, ...TRAPS, ...MONSTERS_B1, ...SPELLS_B1, ...TRAPS_B1];
+/** Spell batch 2 (docs/v3/YENI_KARTLAR.md §7; owner decision: no Yaldızlı Kafes). */
+const SPELLS_B2: SpellCardDef[] = [
+  {
+    id: 'well_pail',
+    kind: 'spell',
+    spellType: 'normal',
+    name: 'Kuyu Kovası',
+    effect: 'draw2',
+    text: '2 kart çek. (Destende en az 2 kart olmalı.)',
+  },
+  {
+    id: 'puppet_string',
+    kind: 'spell',
+    spellType: 'normal',
+    name: 'Kukla İpi',
+    effect: 'controlUntilEnd',
+    text: 'Rakibin sahasındaki 1 canavarı hedef al (jeton hariç): Bitiş Aşamasına kadar onun kontrolünü al. (Sahanda boş canavar alanı olmalı.)',
+  },
+  {
+    id: 'void_eye',
+    kind: 'spell',
+    spellType: 'normal',
+    name: 'Boşluk Gözü',
+    effect: 'destroyAllMonsters',
+    text: 'Sahadaki tüm canavarları yok et.',
+  },
+  {
+    id: 'sweeping_gale',
+    kind: 'spell',
+    spellType: 'normal',
+    name: 'Süpürge Rüzgarı',
+    effect: 'destroyAllOppSpellTrap',
+    text: 'Rakibin sahasındaki tüm Büyü ve Tuzak kartlarını (alan büyüsü dahil) yok et.',
+  },
+  {
+    id: 'winnow_sieve',
+    kind: 'spell',
+    spellType: 'normal',
+    name: 'Harman Eleği',
+    effect: 'draw3Discard2',
+    text: '3 kart çek, sonra elinden 2 kart at. (Destende en az 3 kart olmalı.)',
+  },
+  {
+    id: 'auger_lance',
+    kind: 'spell',
+    spellType: 'quick',
+    name: 'Burgu Mızrağı',
+    effect: 'destroySpellTrapQuick',
+    text: 'Hızlı Büyü. Sahadaki 1 Büyü/Tuzak kartını hedef al ve yok et. (Kapalı koyduğun turdan sonra, rakibin saldırı ilanında ya da canavar çağırmasında da aktive edebilirsin.)',
+  },
+  {
+    id: 'soul_leash',
+    kind: 'spell',
+    spellType: 'equip',
+    name: 'Ruh Tasması',
+    effect: 'equipControl',
+    text: 'Rakibin açık 1 canavarına kuşan (jeton hariç): bu kart sahadayken onun kontrolü sende. Rakibin her Çekme Aşamasında rakip 1000 LP kazanır.',
+  },
+  {
+    id: 'straw_decoys',
+    kind: 'spell',
+    spellType: 'quick',
+    name: 'Saman Korkuluklar',
+    effect: 'strawTokens',
+    text: "Hızlı Büyü. Boş canavar alanı sayısının 1 eksiği kadar (en az 1) 'Saman Korkuluk' jetonunu (Sv1, 0/0) savunma pozisyonunda Özel Çağır. Jetonlar kurban edilemez. Bu kartı kendi turunda aktive ettiysen o tur başka canavar çağıramazsın.",
+  },
+  {
+    id: 'spite_axe',
+    kind: 'spell',
+    spellType: 'equip',
+    name: 'Hınç Baltası',
+    effect: 'equipAtk800Return',
+    text: 'Sahandaki 1 açık canavara kuşan: +800 ATK. Bu kart sahadan mezarlığa gönderilecek olursa, bunun yerine sahibinin destesinin en üstüne konur ve sahibi 500 hasar alır.',
+  },
+  {
+    id: 'page_turner',
+    kind: 'spell',
+    spellType: 'normal',
+    name: 'Sayfa Çeviren',
+    effect: 'handRefreshBoth',
+    text: 'Her iki oyuncu elindeki tüm kartları mezarlığa gönderir, sonra gönderdiği kadar kart çeker.',
+  },
+  {
+    id: 'lucky_die',
+    kind: 'spell',
+    spellType: 'normal',
+    name: 'Talih Zarı',
+    effect: 'diceBoost100',
+    text: "Bir zar at: sahandaki tüm açık canavarların ATK ve DEF'i bu tur, gelen sayı × 100 artar.",
+  },
+];
 
-export const CARDS: Record<CardId, CardDef> = Object.fromEntries(ALL_CARDS.map((c) => [c.id, c])) as Record<
+/** The 20 original cards (DEFAULT_DECK) followed by the expanded roster; new cards are only ever appended. */
+export const ALL_CARDS: CardDef[] = [...MONSTERS, ...SPELLS, ...TRAPS, ...MONSTERS_B1, ...SPELLS_B1, ...TRAPS_B1, ...MONSTERS_B2, ...SPELLS_B2];
+
+/** Every card definition, tokens included (tokens are never in ALL_CARDS). */
+export const CARDS: Record<CardId, CardDef> = Object.fromEntries([...ALL_CARDS, ...TOKENS].map((c) => [c.id, c])) as Record<
   CardId,
   CardDef
 >;
 
-export const MONSTER_IDS: MonsterId[] = [...MONSTERS, ...MONSTERS_B1].map((m) => m.id);
-export const SPELL_IDS: SpellId[] = [...SPELLS, ...SPELLS_B1].map((s) => s.id);
+/** Every monster id (tokens included: they need art); the pool is COLLECTIBLE_CARDS. */
+export const MONSTER_IDS: MonsterId[] = [...MONSTERS, ...MONSTERS_B1, ...MONSTERS_B2, ...TOKENS].map((m) => m.id);
+export const SPELL_IDS: SpellId[] = [...SPELLS, ...SPELLS_B1, ...SPELLS_B2].map((s) => s.id);
 export const TRAP_IDS: TrapId[] = [...TRAPS, ...TRAPS_B1].map((t) => t.id);
 export const ALL_CARD_IDS: CardId[] = ALL_CARDS.map((c) => c.id);
+
+/** True for a token card id (straw_decoy_token): it only ever exists on the field. */
+export function isTokenId(id: string): boolean {
+  const d = (CARDS as Record<string, CardDef | undefined>)[id];
+  return !!d && d.kind === 'monster' && d.token === true;
+}
 
 /** True for a card that was taken out of the game (`retired`): it exists, but is never offered. */
 export function isRetired(id: string): boolean {

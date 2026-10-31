@@ -8,6 +8,12 @@ kurallar ve hazır desteler `src/data/decks.ts`, kayıt `src/scenes/deck/store.t
 - Deste **en az 40, en çok 80 kart** (`DECK_MIN`, `DECK_MAX`).
 - Her karttan **en çok 3 kopya** (`MAX_COPIES`); Beş Mühür parçalarından (`seal_head`, `seal_arm_r`, `seal_arm_l`, `seal_leg_r`,
   `seal_leg_l`) **her biri en çok 1** (`maxCopies`). Fazla kopya "Çok kopya: ..." diye işaretlenir.
+- **Tek kopyalık kartlar** (`SINGLE_COPY_IDS`, sahip kararı 2026-10-31): **Kuyu Kovası**, **Boşluk Gözü**, **Süpürge Rüzgarı**,
+  **Harman Eleği** ve **Kadran Soytarısı** destede en çok 1 kez bulunur (`isSingleCopy`, `maxCopies` = 1). `validateDeck`
+  "Çok kopya: … (…, tek kopyalık kart 1)" der; `addBlocker` "Bu karttan destede zaten var (en çok 1)"; `autoFillDeck`,
+  `repairDeck`, hazır desteler ve `expandedDeck` ikinci kopya koymaz.
+- **Jeton** `straw_decoy_token` (Saman Korkuluk) bir kart kimliğidir ama `ALL_CARDS` / havuz dışındadır: kurucu ızgarasında,
+  hazır destelerde, rastgele doldurmada ve sayımda yoktur.
 - Boyuta göre ölçeklenen oranlar (`minMonsters`, `maxHigh`; küçük deste en az 40 kart gibi sayılır): **canavar en az %40**
   (40 kartta 16, 80 kartta 32), **Seviye 7+ canavar en çok %20** (40 kartta 8, 80 kartta 16; kurbanlı çağırma ağır).
 - Bilinmeyen kart kimliği (oyundan kalkmış kart) "Eksik kart" diye işaretlenir; deste yüklenirken kart düşürülür.
@@ -20,7 +26,12 @@ kurallar ve hazır desteler `src/data/decks.ts`, kayıt `src/scenes/deck/store.t
   (`SavedDeck.replaced`; kaydedince kalkar).
 - Bu kurallar yalnız **kurucu / deste seçici** içindir: motor (`newGame({decks})`) her desteyle oyun başlatabilir; eski 20 kartlık
   yardımcılı testler ve `DEFAULT_DECK` (20 kart) aynen çalışır.
-- Beş Mühür: 5 parça kartta küçük **zincir simgesi**; üzerine gelince ipucu: "Beş Mühür: 5 parça elde birleşirse kazanırsın".
+- Kart adının yanındaki küçük işaretler (ızgara hücresi ve deste listesi; `markTexOf`): Beş Mühür parçalarında **zincir**,
+  Kutup parçaları ve Kutup Hükümdarı'nda **mıknatıs** (`magnetTex`), tek kopyalık kartlarda altın **"1" etiketi** (`singleTex`).
+  İşaretli bir kart odaktayken sol alt plaka kuralı söyler: "Beş Mühür: 5 parça elde birleşirse kazanırsın" (+ destedeki parça
+  sayısı), "Kutup parçası: üçü sahandayken Kutup Hükümdarı'nı çağırabilirsin" (+ "Destede: n/3 parça, Hükümdar var/yok"),
+  "Bu karttan destede en çok 1 tane olabilir." (TEK KOPYA). Kopya rozeti `xN` sınıra (`maxCopies`) gelince kırmızıdır.
+- Hızlı büyüler (Burgu Mızrağı, Saman Korkuluklar) ızgarada "Hızlı" diye yazılır; Büyü süzgecinde görünür.
 - Eksik / geçersiz deste **kaydedilebilir** (taslak), ama maçta seçilemez (seçicide soluk, gerekçesi yazılı).
 - `autoFillDeck(mevcut, tohum, havuz, hedef)`: kurallara uyan, tohumlu "Rastgele doldur"; önce az kopyalı kartları seçer
   (hedef 40..80; kurucuda hedef = en az 40, bugünkü kart sayısı büyükse o). `repairDeck`: bilinmeyenleri ve limit üstü kopyaları
@@ -35,9 +46,11 @@ kurallar ve hazır desteler `src/data/decks.ts`, kayıt `src/scenes/deck/store.t
   çok 55 farklı kart), seviye eğrisi, canavar/büyü/tuzak sayıları, kırmızı gerekçe satırları ve düğmeler (Kaydet, Rastgele,
   Hazır, Sıfırla, Temizle, Ad Ver).
 - Kopya ekleme: havuzda karta **tıkla = +1 kopya** (hücrede `xN` rozeti ve resmin altında **-** düğmesi var), listede **+ / -**.
-  3 kopyaya (Mühür 1) ulaşınca ek sınırı kırmızı mesajla söylenir. Fare tekerleği: solda ızgara, sağ panelde liste kayar.
+  3 kopyaya (Mühür ve tek kopyalık kartlarda 1) ulaşınca ek sınırı kırmızı mesajla söylenir. Başlık satırı: "40-80 kart · en çok 3
+  kopya · Mühür ve tek kopyalık kartlar 1". Fare tekerleği: solda ızgara, sağ panelde liste kayar.
 - **Deste seç** (`DeckPick` sahnesi): 2 Oyuncu'da Oyuncu 1 sonra Oyuncu 2; Bilgisayara Karşı'da sen, sonra rakip
-  ("Rastgele" = hazır desteler arasından biri, ya da herhangi bir hazır deste). Liste: Klasik, 6 hazır deste, dolu yuvalar.
+  ("Rastgele" = hazır desteler arasından biri, ya da herhangi bir hazır deste). Liste: Klasik, 7 hazır deste, dolu yuvalar
+  (en çok 13 satır; liste uzayınca satır aralığı 22 px'ten 21 px'e sıkışır, alttaki düğmelere değmez).
   Varsayılan seçili olan **son kullanılan** deste. Sağda destenin **farklı kartları** (5x4 küçük resim, `xN` rozeti; 20'den
   fazlaysa PgUp/PgDn ya da tekerlekle kayar), eğri, sayılar, seçili kartın metni.
 - Hepsi fare **ve** klavye ile tam çalışır (aşağıda); üzerine gelme / basma geri bildirimi, odak çerçevesi; `prefers-reduced-motion`
@@ -50,13 +63,19 @@ K kaydet · R rastgele doldur · H hazır deste (sırayla) · D klasik desteyi y
 F tür süzgeci · E element süzgeci · O sıralama · Esc geri (kaydedilmemiş değişiklikte ikinci Esc ile çıkılır).
 
 ## Hazır desteler (`PRESET_DEFS`, `buildPreset`)
-Ateş Saldırı, Su Kontrol, Işık Destek, Karanlık Mühür (5 mühür + destek), Toprak Savunma, Dengeli. Hepsi **40 kart**. Her biri bir
+Ateş Saldırı, Su Kontrol, Işık Destek, Karanlık Mühür (5 mühür + destek), Toprak Savunma, Dengeli, **Mıknatıs** (üç Kutup
+parçası + Kutup Hükümdarı + Ruh Çağrısı + Saman Korkuluklar). Hepsi **40 kart**. Her biri bir
 tarif: birkaç sabit kart (`pins`, ikişer kopya; mühürler birer) + güncel havuzdan role göre puanlanmış deterministik seçim
 (güçlü kartlar 2-3 kopya, Sv7+ tek kopya, arka sıra hedefi `backRow x 2`); en az 10 düşük seviyeli canavar, hep geçerli.
-Yeni kart gelince puanlamaya girer. `tests/deck/rules.test.ts` her hazır destenin geçerli olduğunu ve her `pin`'in havuzda
+Yeni kart gelince puanlamaya girer. 2. parti pinleri (`docs/v3/YENI_KARTLAR.md` §1): Ateş → Hurda Akıncıları, Hınç Baltası;
+Su → Kabuk Zıpkıncı, Sazlık Balıkçılı, Gelgit Körfezi, Burgu Mızrağı; Işık → Kuyu Kovası, Harman Eleği, Yansıyan Okçu; Toprak →
+Çamur Pençe Ruhu, Saman Korkuluklar; Dengeli → Boşluk Gözü, Kukla İpi (Yaldızlı Kafes sahip kararıyla yok). Tek kopyalık
+pinler bir kez girer. **Kutup Hükümdarı** Normal Çağrılamadığı için yalnız onu pinleyen destede (Mıknatıs, en çok 2 kopya)
+yer alır; diğer hazır desteler onu sıralamada atlar. `tests/deck/rules.test.ts` her hazır destenin geçerli olduğunu ve her `pin`'in havuzda
 durduğunu denetler (kart kimliği kaybolursa test **yüksek sesle** kırılır). CPU rakip desteleri de bunlardır.
 **Klasik Deste** = özgün 20 kartın iki katı (`classicDeck()`, 40 kart, her karttan 2). CPU örnekleyici `expandedDeck` (`?deck=expanded`):
-tohumlu 40 kart = 24 canavar + 16 büyü/tuzak (tüm büyü/tuzaklardan çeker; Sv7+ ve mühür tek kopya, diğerleri en çok 2).
+tohumlu 40 kart = 24 canavar + 16 büyü/tuzak (tüm büyü/tuzaklardan çeker; Sv7+, mühür ve tek kopyalık kartlar tek kopya,
+diğerleri en çok 2).
 
 ## Kayıt (`DeckStore`)
 `localStorage` anahtarı `neon-duello:decks`: `{v:2, slots:[5], last:{p1,p2,cpu,edit}}`. Her erişim `try/catch` içinde; depolama
@@ -73,7 +92,9 @@ ile başlar; `?mode=…` URL'leri ve tüm senaryolar zaten bu yolu kullanır (v1
 
 ## Bilinen eksikler
 - Kurucu, tek seferde bir yuvayı düzenler; yuvalar arası kart kopyalama / deste dışa aktarma kodu yok.
-- Seviye 7+ havuzda 3 farklı kart var (Akşam Büyücüsü emekli): 40 kartta üst sınır (8) 3'er kopyayla (9) aşılabilir, test bunu doğrular.
+- Seviye 7+ havuzda 4 farklı kart var (Kristal Ejder, Kül Ejderi, Fırtına Şövalyesi, Kutup Hükümdarı; Akşam Büyücüsü emekli):
+  40 kartta üst sınır (8) 3'er kopyayla aşılabilir, test bunu doğrular.
+- "Rastgele doldur" ve `?deck=expanded` Kutup Hükümdarı'nı parçaları olmadan da seçebilir (ölü kart); hazır desteler bunu yapmaz.
 - Klasik'e karşı Klasik (iki taraf da varsayılan) motorun 20 kartlık `DEFAULT_DECK`'iyle oynanır (eski akış / `?mode=` URL'leri ve
   v1 filmdiff aynı kalsın diye); Klasik Deste başka bir desteye karşı seçilince 40 kartlık hâli oynanır.
 - Havuzda sağ tık ile kopya çıkarma yok (tarayıcı bağlam menüsü); onun yerine hücredeki **-** düğmesi / Del kullanılır.

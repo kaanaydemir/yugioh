@@ -32,6 +32,7 @@ import { PalText, TrimGfx, bodyV3, canvasTexture, capYV3, iconTexture, plateBody
 import { trapPromptV3, type TrapPromptOpts } from './v3/TrapPromptV3';
 import { curtainV3, type CurtainHand, type CurtainKind } from './v3/CurtainV3';
 import { gameOverV3 } from './v3/ResultPlate';
+import { registerUiTarget } from '../duel/qaInput';
 
 /** v3 instruction bar: the words' tone a palette step (−2, −1, 0), as the hint line's (A6B-1). */
 const INS_WORDS = [PAL.steel, PAL.mist, PAL.white] as const;
@@ -72,6 +73,15 @@ export interface InstructionHandle {
 }
 
 const ADD = Phaser.BlendModes.ADD;
+
+/** The open choose() panel (QA: the `{ choice: id }` UI target — that option's button centre). */
+let openChoice: { scene: Phaser.Scene; ids: string[]; at: { x: number; y: number }[] } | null = null;
+registerUiTarget('choice', (scene, _views, arg) => {
+  const q = openChoice;
+  if (!q || q.scene !== scene) return null;
+  const i = q.ids.indexOf(String(arg));
+  return i >= 0 ? q.at[i] : null;
+});
 const NAME: Record<PlayerId, string> = { 0: 'OYUNCU 1', 1: 'OYUNCU 2' };
 const NAME_TITLE: Record<PlayerId, string> = { 0: 'Oyuncu 1', 1: 'Oyuncu 2' };
 const REASON: Record<WinReason, string> = {
@@ -419,7 +429,9 @@ export class Prompt {
     const n = options.length;
     const gapX = 26;
     const cardsW = n * CARD_W + (n - 1) * gapX;
-    const question = `${NAME_TITLE[player]}: Tuzak kartı açmak ister misin?`;
+    // batch 2: a set quick spell can answer too (the question names it)
+    const quick = options.some((o) => cardDef(o.cardId).kind === 'spell');
+    const question = quick ? `${NAME_TITLE[player]}: Hızlı büyü ya da tuzak açmak ister misin?` : `${NAME_TITLE[player]}: Tuzak kartı açmak ister misin?`;
     const w = Math.max(252, cardsW + 40, measureText(question, 'sm').w + 24);
     const textY = 38 + CARD_H + 17;
     const lines = Math.max(...options.map((o) => wrapText(cardDef(o.cardId).text, 'sm', w - 20).length));
@@ -432,7 +444,7 @@ export class Prompt {
     const bg = sc.add.image(0, 0, panelTex(sc, 'trap', w, h, { header: 19, alpha: 248 })).setOrigin(0);
     panel.add([glow, bg]);
     const icon = sc.add.image(9, 5, ICON.trap).setOrigin(0).setTint(R[4]);
-    const head = pixelText(sc, 22, capY('md', 6), 'TUZAK FIRSATI', { size: 'md', color: R[4] });
+    const head = pixelText(sc, 22, capY('md', 6), quick ? 'YANIT FIRSATI' : 'TUZAK FIRSATI', { size: 'md', color: R[4] });
     const who = pixelText(sc, w - 9, capY('sm', 7), NAME[player], { size: 'sm', color: PLAYER_COLOR[player] });
     who.x = Math.round(w - 9 - who.width);
     const q = pixelText(sc, Math.round(w / 2), capY('sm', 26), question, { size: 'sm', color: PAL.white });
@@ -913,6 +925,81 @@ export class Prompt {
       };
       this.addKeys(keyFn);
     });
+    sc.tweens.add({ targets: dim, alpha: 0, duration: 160 });
+    await tween(sc, { targets: panel, scale: 0.9, alpha: 0, duration: 140, ease: 'Quad.In' });
+    root.destroy();
+    return result;
+  }
+
+  // ================================================================ choice (batch 2)
+
+  /**
+   * One of several answers (batch 2: the coin call YAZI / TURA, Kovuk Devi's count). A panel like
+   * confirm() with one button per option; keys 1–n pick, Enter picks the first. No cancel.
+   */
+  async choose(text: string, options: { id: string; label: string }[], opts: { title?: string; style?: 'neutral' | 'gold' | 'p1' | 'p2' | 'trap' } = {}): Promise<string> {
+    const sc = this.scene;
+    const style = opts.style ?? 'gold';
+    const R = UI_RAMP[style];
+    const root = sc.add.container(0, 0).setDepth(DEPTH.OVERLAY).setScrollFactor(0);
+    const dim = sc.add.rectangle(0, 0, GAME_W, GAME_H, PAL.ink).setOrigin(0).setAlpha(0).setInteractive();
+    root.add(dim);
+    const maxW = 240;
+    const m = measureText(text, 'md', maxW);
+    const bw = 72;
+    const gap = 10;
+    const rowW = options.length * bw + (options.length - 1) * gap;
+    const w = Math.max(200, m.w + 32, rowW + 32);
+    const head = opts.title ? 16 : 0;
+    const h = 30 + head + m.h + 36;
+    const panel = sc.add.container(Math.round(GAME_W / 2), Math.round(GAME_H / 2 - 10));
+    const glow = sc.add.image(-w / 2 - GLOW_PAD, -h / 2 - GLOW_PAD, glowTex(sc, w, h)).setOrigin(0).setBlendMode(ADD).setTint(R[3]).setAlpha(0.5);
+    const bg = sc.add.image(-Math.round(w / 2), -Math.round(h / 2), panelTex(sc, style, w, h, { alpha: 248 })).setOrigin(0);
+    panel.add([glow, bg]);
+    if (opts.title) {
+      const tt = pixelText(sc, 0, -Math.round(h / 2) + 8, opts.title, { size: 'md', color: R[4] });
+      tt.x = -Math.round(tt.width / 2);
+      panel.add(tt);
+    }
+    const t = pixelText(sc, 0, -Math.round(h / 2) + 12 + head, text, { size: 'md', color: PAL.white, maxWidth: maxW, align: 'center' });
+    t.x = -Math.round(t.width / 2);
+    panel.add(t);
+    const x0 = -Math.round(rowW / 2);
+    const buttons = options.map((o, i) => {
+      const b = new Button(sc, x0 + i * (bw + gap), Math.round(h / 2) - 34, { w: bw, h: 25, label: o.label, style: style === 'neutral' ? 'gold' : style });
+      panel.add(b);
+      return b;
+    });
+    root.add(panel);
+    sc.tweens.add({ targets: dim, alpha: 0.5, duration: 160 });
+    panel.setScale(0.85).setAlpha(0);
+    sfx.play('uiConfirm', { volume: 0.5 });
+    await tween(sc, { targets: panel, scale: 1, alpha: 1, duration: 200, ease: 'Back.Out' });
+    openChoice = { scene: sc, ids: options.map((o) => o.id), at: buttons.map((b) => ({ x: Math.round(panel.x + b.x + bw / 2), y: Math.round(panel.y + b.y + 12) })) };
+    const result = await new Promise<string>((resolve) => {
+      let done = false;
+      const finish = (v: string) => {
+        if (done) return;
+        done = true;
+        this.removeKeys(keyFn);
+        resolve(v);
+      };
+      buttons.forEach((b, i) => (b.onClick = () => finish(options[i].id)));
+      const keyFn = (e: KeyboardEvent) => {
+        if (e.key === 'Enter') {
+          buttons[0].click();
+          return true;
+        }
+        const k = Number(e.key);
+        if (Number.isInteger(k) && k >= 1 && k <= buttons.length) {
+          buttons[k - 1].click();
+          return true;
+        }
+        return false;
+      };
+      this.addKeys(keyFn);
+    });
+    openChoice = null;
     sc.tweens.add({ targets: dim, alpha: 0, duration: 160 });
     await tween(sc, { targets: panel, scale: 0.9, alpha: 0, duration: 140, ease: 'Quad.In' });
     root.destroy();

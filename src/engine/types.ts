@@ -75,6 +75,20 @@ export interface MonsterSlot {
   hat?: 'decoy' | 'real';
   /** magic_hat (hat === 'real'): face / position the monster had before it was hidden; restored when the hats end. */
   hatOrigin?: { faceUp: boolean; position: Position };
+  // ---- batch 2 (docs/v3/YENI_KARTLAR.md §2) — all absent on older states ----
+  /**
+   * Control switch (puppet_string / soul_leash): this monster belongs to `owner` (CardInstance.owner) and sits on
+   * the other player's field. 'endPhase' = goes back in the next End Phase (puppet_string); 'equip' = while the
+   * equip `byUid` (soul_leash) stays on the field.
+   */
+  borrowed?: { owner: PlayerId; until: 'endPhase' | 'equip'; byUid: Uid };
+  /** A token (straw_decoy_token): never tributed, never targeted by control spells, vanishes instead of the graveyard. */
+  token?: true;
+  /** cloud_hatchling: permanent ATK / DEF gain while this slot stays on the field. */
+  permAtk?: number;
+  permDef?: number;
+  /** scrap_raiders: the turn on which it declared an attack (it turns to defense when that Battle Phase ends). */
+  declaredAttackTurn?: number;
 }
 
 export interface SpellTrapSlot {
@@ -104,6 +118,10 @@ export interface PlayerState {
   tributeHelperTurn?: number;
   /** festival_square: the turn number on which the extra Normal Summon / Set was used. Absent = never. */
   extraSummonTurn?: number;
+  /** hollow_ogre: cards removed from play (banished); oldest first. Absent = none. */
+  banished?: Uid[];
+  /** straw_decoys activated on its own turn: no other monster may be summoned (normal, tribute, set, flip, special) on this turn. */
+  noSummonTurn?: number;
 }
 
 export type ZoneKind = 'monster' | 'spellTrap' | 'field';
@@ -118,19 +136,31 @@ export type TrapTrigger =
   | { kind: 'attackDeclared'; attackerUid: Uid; targetUid: Uid | null }
   /** `method` is set only for Special Summons ('special'); absent = Normal / Tribute Summon (kept byte-identical for old states). */
   | { kind: 'summoned'; monsterUid: Uid; method?: 'special' }
-  /** spell_seal window: `spellUid` was just activated by `player` (the turn player) and has not resolved yet. */
+  /**
+   * spell_seal window: `spellUid` was just activated by `player` (the activator: the turn player, or the
+   * opponent when a quick spell answers an attack / summon) and has not resolved yet.
+   */
   | { kind: 'spellActivated'; spellUid: Uid; player: PlayerId }
   /** last_breath window: `player` (not the turn player) dropped below 1500 LP from damage. */
   | { kind: 'lpLow'; player: PlayerId };
 
 export type PendingDecision =
-  /** `player` may activate one of `options` (set trap uids) or decline with respond(null). */
+  /**
+   * `player` may activate one of `options` (set trap uids, plus set quick spells after their set turn in the
+   * attackDeclared / summoned windows) or decline with respond(null).
+   */
   | { kind: 'trapResponse'; player: PlayerId; trigger: TrapTrigger; options: Uid[] }
   /** A triggered effect needs a target (abyss_magus, thorn_lurker). */
   | { kind: 'chooseTarget'; player: PlayerId; sourceUid: Uid; candidates: ZoneRef[] }
   /** End-phase hand limit. */
   /** `cost`: a Main Phase discard paid for a card effect (fate_trade) instead of the End Phase hand limit. */
-  | { kind: 'discard'; player: PlayerId; count: number; cost?: boolean };
+  | { kind: 'discard'; player: PlayerId; count: number; cost?: boolean }
+  /** dial_jester: `player` calls the coin toss of `sourceUid` (answer: callCoin). */
+  | { kind: 'coinCall'; player: PlayerId; sourceUid: Uid }
+  /** hollow_ogre: how many cards (min..max) the effect of `sourceUid` uses (answer: chooseCount). */
+  | { kind: 'chooseCount'; player: PlayerId; sourceUid: Uid; min: number; max: number };
+
+export type CoinFace = 'heads' | 'tails';
 
 export type WinReason = 'lp' | 'deckout' | 'surrender' | 'seals';
 
@@ -187,7 +217,16 @@ export type Action =
   | { type: 'respond'; player: PlayerId; uid: Uid | null }
   | { type: 'chooseTarget'; player: PlayerId; target: ZoneRef }
   | { type: 'discard'; player: PlayerId; uids: Uid[] }
-  | { type: 'surrender'; player: PlayerId };
+  | { type: 'surrender'; player: PlayerId }
+  // ---- batch 2 (docs/v3/YENI_KARTLAR.md §2) ----
+  /** Main Phase ignition effect of the face-up monster in `zone` (dial_jester, hollow_ogre). */
+  | { type: 'activateMonster'; player: PlayerId; zone: number }
+  /** Answer to a coinCall decision ('heads' = Tura, 'tails' = Yazı). */
+  | { type: 'callCoin'; player: PlayerId; call: CoinFace }
+  /** Answer to a chooseCount decision. */
+  | { type: 'chooseCount'; player: PlayerId; n: number }
+  /** Special Summon from hand by tributing (polar_sovereign: the three pieces); does not use the Normal Summon. */
+  | { type: 'specialSummon'; player: PlayerId; uid: Uid; zone: number; tributes: Uid[] };
 
 // ---------------------------------------------------------------------------
 // Events — everything the presentation layer animates. Emitted in causal order.
@@ -215,8 +254,9 @@ export type GameEvent =
       zone: number;
       method: 'normal' | 'tribute' | 'special' | 'flip';
       position: Position;
-      from: 'hand' | 'graveyard' | 'field';
-      /** For special summons: the card that caused it (soul_recall). */
+      /** 'token': a token created by an effect (straw_decoys). */
+      from: 'hand' | 'graveyard' | 'field' | 'token';
+      /** For special summons: the card that caused it (soul_recall, straw_decoys, a splitting polar_sovereign). */
       sourceUid: Uid | null;
     }
   /** Face-down monster placed (defense). cardId intentionally omitted (hidden). */
@@ -303,8 +343,11 @@ export type GameEvent =
   | { type: 'discard'; player: PlayerId; uid: Uid; cardId: CardId }
   /** A card returns to its owner's hand from the field (homecoming) — `from` is where it was. */
   | { type: 'toHand'; player: PlayerId; uid: Uid; cardId: CardId; from: 'monster' | 'graveyard'; zone: number | null }
-  /** A card returns to the deck from the graveyard (cycle_of_graves); a `shuffle` event follows the last one. */
-  | { type: 'toDeck'; owner: PlayerId; uid: Uid; cardId: CardId; from: 'graveyard' }
+  /**
+   * A card returns to the deck from the graveyard (cycle_of_graves; a `shuffle` event follows the last one), or
+   * from a spell/trap zone onto the top of its owner's deck (spite_axe: `position` 'top', no shuffle).
+   */
+  | { type: 'toDeck'; owner: PlayerId; uid: Uid; cardId: CardId; from: 'graveyard' | 'spellTrap'; position?: 'top' }
   /** A continuous spell's counter changed (dawn_swords). `value` is the new count (0 = it is destroyed right after, reason 'rule'). */
   | { type: 'counter'; player: PlayerId; uid: Uid; cardId: CardId; zone: number; value: number; prev: number }
   /**
@@ -334,6 +377,32 @@ export type GameEvent =
       /** `cardId` is null (and `faceUp` false) when the monster was face-down before the hats: it stays hidden. */
       restored: { uid: Uid; cardId: CardId | null; zone: number; position: Position; faceUp: boolean } | null;
     }
+  // ---- batch 2 (docs/v3/YENI_KARTLAR.md §2) ----
+  /**
+   * A monster changes sides (puppet_string / soul_leash take it; it goes back at the End Phase / when the leash
+   * leaves). `cardId` is null for a face-down monster. `sourceUid`: the spell (null when it goes back by rule).
+   */
+  | {
+      type: 'controlChange';
+      uid: Uid;
+      cardId: CardId | null;
+      from: PlayerId;
+      to: PlayerId;
+      fromZone: number;
+      toZone: number;
+      reason: 'take' | 'return';
+      sourceUid: Uid | null;
+    }
+  /** A mass destruction starts (void_eye, sweeping_gale, dial_jester): the cards about to go, then a destroy / vanish per card. */
+  | { type: 'massDestroy'; player: PlayerId; sourceUid: Uid | null; refs: ZoneRef[] }
+  /** dial_jester: the coin toss. `win` = `call` === `result`. */
+  | { type: 'coinToss'; player: PlayerId; sourceUid: Uid; call: CoinFace; result: CoinFace; win: boolean }
+  /** lucky_die: the die roll (1..6). */
+  | { type: 'diceRoll'; player: PlayerId; sourceUid: Uid; value: number }
+  /** hollow_ogre: a card is removed from play (from `owner`'s graveyard). */
+  | { type: 'banish'; owner: PlayerId; uid: Uid; cardId: CardId; from: 'graveyard'; sourceUid: Uid | null }
+  /** A token leaves the field (it never reaches a graveyard; its CardInstance is dropped). */
+  | { type: 'tokenVanish'; player: PlayerId; uid: Uid; cardId: CardId; zone: number; cause: 'battle' | 'effect' | 'rule' }
   /** A pending decision opened (UI cue). */
   | { type: 'decision'; pending: PendingDecision }
   | { type: 'responseDeclined'; player: PlayerId }

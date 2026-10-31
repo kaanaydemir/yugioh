@@ -123,6 +123,7 @@ export function equipBonus(s: GameState, uid: Uid): number {
         const d = defOf(s, st.uid);
         if (isSpell(d) && d.effect === 'equipAtk700') bonus += 700;
         else if (isSpell(d) && d.effect === 'equipPiercing') bonus += 300;
+        else if (isSpell(d) && d.effect === 'equipAtk800Return') bonus += 800;
       }
     }
   }
@@ -241,7 +242,7 @@ export function currentAtk(s: GameState, uid: Uid): number {
   if (!isMonster(d)) return 0;
   const loc = findMonster(s, uid);
   if (!loc || !loc.slot.faceUp) return d.atk;
-  const boost = boostLive(s, loc.slot) ? (loc.slot.boostAtk ?? 0) : 0;
+  const boost = (boostLive(s, loc.slot) ? (loc.slot.boostAtk ?? 0) : 0) + (loc.slot.permAtk ?? 0);
   return Math.max(0, d.atk + equipBonus(s, uid) + fieldAtkModifier(s, d) + auraBonus(s, uid, d, loc.player) + summonTurnBonus(s, d, loc.player, loc.slot) + boost);
 }
 
@@ -329,7 +330,7 @@ export function currentDef(s: GameState, uid: Uid): number {
   const d = CARDS[card.cardId];
   if (!isMonster(d)) return 0;
   const loc = findMonster(s, uid);
-  const boost = loc && boostLive(s, loc.slot) ? (loc.slot.boostDef ?? 0) : 0;
+  const boost = (loc && boostLive(s, loc.slot) ? (loc.slot.boostDef ?? 0) : 0) + (loc?.slot.permDef ?? 0);
   return Math.max(0, d.def + boost);
 }
 
@@ -341,6 +342,84 @@ export function respondableTraps(s: GameState, p: PlayerId, effects: readonly st
     if (!st || st.faceUp) continue;
     const d = defOf(s, st.uid);
     if (isTrap(d) && effects.includes(d.effect) && st.setTurn >= 0 && st.setTurn < s.turn) out.push(st.uid);
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Batch 2 (docs/v3/YENI_KARTLAR.md §2)
+// ---------------------------------------------------------------------------
+
+/** True when a face-up Gelgit Körfezi (fieldTidalBay) is active on either field. */
+export function tidalBayActive(s: GameState): boolean {
+  for (const p of PLAYERS) {
+    const fs = s.players[p].fieldSpell;
+    if (fs && fs.faceUp && spellDefOf(s, fs.uid)?.effect === 'fieldTidalBay') return true;
+  }
+  return false;
+}
+
+/**
+ * tidalBayShroud (Kabuk Zıpkıncı): a face-up harpooner while Tidal Bay is up cannot be attacked by the opponent and
+ * cannot be targeted by the opponent's Spells.
+ */
+export function shrouded(s: GameState, uid: Uid): boolean {
+  const loc = findMonster(s, uid);
+  if (!loc || !loc.slot.faceUp) return false;
+  return monsterDefOf(s, uid)?.effect === 'tidalBayShroud' && tidalBayActive(s);
+}
+
+/** Can the opponent's Spell take this monster as its target (not a token / hat / shrouded harpooner)? */
+export function spellTargetable(s: GameState, slot: MonsterSlot): boolean {
+  return !shrouded(s, slot.uid);
+}
+
+/** A monster a control spell (puppet_string / soul_leash) may take: no token, no hat, no shrouded harpooner. */
+export function controlTargetable(s: GameState, slot: MonsterSlot): boolean {
+  return !slot.token && !slot.hat && !shrouded(s, slot.uid);
+}
+
+/** Has the once-per-turn ignition effect of `uid` (dial_jester, hollow_ogre) been used on this turn? */
+export function effectUsedThisTurn(s: GameState, uid: Uid): boolean {
+  const used = s.internal.usedTurn as Record<string, number> | undefined;
+  return !!used && used[String(uid)] === s.turn;
+}
+
+/** May `p` summon a monster this turn (straw_decoys activated on `p`'s own turn forbids it)? */
+export function summonAllowed(s: GameState, p: PlayerId): boolean {
+  return s.players[p].noSummonTurn !== s.turn;
+}
+
+/** True for a monster slot holding a token (straw_decoy_token). */
+export function isTokenSlot(slot: MonsterSlot | null | undefined): boolean {
+  return !!slot && slot.token === true;
+}
+
+/** Spell/trap refs (both fields, field zones included) except the card `exceptUid`. */
+export function allSpellTrapRefs(s: GameState, exceptUid: Uid | null): ZoneRef[] {
+  const out: ZoneRef[] = [];
+  for (const p of PLAYERS) for (const r of spellTrapRefs(s, p)) if (uidAt(s, r) !== exceptUid) out.push(r);
+  return out;
+}
+
+/** Is a set quick spell of `p` able to do something now (auger_lance: a target; straw_decoys: a free monster zone)? */
+export function quickUsable(s: GameState, p: PlayerId, uid: Uid): boolean {
+  const d = spellDefOf(s, uid);
+  if (!d || d.spellType !== 'quick') return false;
+  if (d.effect === 'destroySpellTrapQuick') return allSpellTrapRefs(s, uid).length > 0;
+  if (d.effect === 'strawTokens') return s.players[p].monsters.some((m) => !m);
+  return false;
+}
+
+/**
+ * Set quick spells of `p` that may answer an opponent's attack declaration / summon now: face-down, set on an
+ * earlier turn and usable. Çelik Susturucu does not stop them (only traps).
+ */
+export function respondableQuick(s: GameState, p: PlayerId): Uid[] {
+  const out: Uid[] = [];
+  for (const st of s.players[p].spellTraps) {
+    if (!st || st.faceUp || st.setTurn < 0 || st.setTurn >= s.turn) continue;
+    if (quickUsable(s, p, st.uid)) out.push(st.uid);
   }
   return out;
 }
@@ -440,6 +519,14 @@ export function normalizeAction(s: GameState, a: Action): Action {
       return { type: 'chooseTarget', player: a.player, target: { player: a.target.player, zone: a.target.zone, index: a.target.index } };
     case 'discard':
       return { type: 'discard', player: a.player, uids: [...a.uids].sort(asc) };
+    case 'activateMonster':
+      return { type: 'activateMonster', player: a.player, zone: a.zone };
+    case 'callCoin':
+      return { type: 'callCoin', player: a.player, call: a.call };
+    case 'chooseCount':
+      return { type: 'chooseCount', player: a.player, n: a.n };
+    case 'specialSummon':
+      return { type: 'specialSummon', player: a.player, uid: a.uid, zone: a.zone, tributes: [...(a.tributes ?? [])].sort(asc) };
   }
 }
 

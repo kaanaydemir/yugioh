@@ -1,7 +1,7 @@
 // DESTE SEÇ — the compact deck picker that sits between the title menu and a match (scene 'DeckPick').
 //   2 Oyuncu: Oyuncu 1 picks, then Oyuncu 2.   Bilgisayara Karşı: you pick, then the opponent's deck
 //   ("Rastgele" = a seeded-by-the-clock preset, or any preset).
-// The list holds the classic deck, the six presets and the saved slots; the default highlight is the
+// The list holds the classic deck, the presets and the saved slots; the default highlight is the
 // deck used last time. An unplayable deck (illegal / missing cards) is listed but cannot be chosen.
 // The choice is handed to the duel as `decks` (see launch.ts); both sides on the classic deck leaves it
 // undefined, i.e. exactly today's default flow.
@@ -19,7 +19,7 @@ import { ICON, playerStyle } from '../../view/ui-textures';
 import { tween } from '../../vfx/core';
 import type { DuelLaunch, DuelMode } from '../launch';
 import { REF_CLASSIC, deckStore, matchDecks, presetRef, type DeckStore, type LastKey, type ResolvedDeck } from './store';
-import { REDUCED_MOTION, backdropTex, panelV3, fadeFromInk, fadeToInk, fitText, latticeTex, orbTex, thumbTex } from './ui';
+import { REDUCED_MOTION, backdropTex, panelV3, fadeFromInk, fadeToInk, fitText, latticeTex, magnetTex, orbTex, thumbTex } from './ui';
 import type { PlayerId } from '../../engine/types';
 
 export interface DeckPickData {
@@ -36,6 +36,8 @@ const LX = 32;
 const LY = 46;
 const LW = 206;
 const ROW = 22;
+/** The list ends above the bottom buttons (y 322): with many entries (7 presets + 5 slots) the rows tighten. */
+const LIST_BOTTOM = 320;
 const RX = 250;
 /** Thumbnails: 5 columns x 4 rows visible; a deck of up to 80 cards shows its distinct cards (xN badge) and scrolls. */
 const T_COLS = 5;
@@ -63,6 +65,8 @@ export class DeckPickScene extends Phaser.Scene {
   private d!: DeckPickData;
   private store!: DeckStore;
   private opts: Opt[] = [];
+  /** Row pitch of the deck list (ROW, or tighter when the list is long). */
+  private rowH = ROW;
   private sel = 0;
   private thumbSel = 0;
   private rows: ListRow[] = [];
@@ -197,12 +201,14 @@ export class DeckPickScene extends Phaser.Scene {
       list.push({ ref: o.ref, deck: o, title: o.name, sub: bad ? (o.missing ? `Eksik kart: ${o.missing}` : o.check.issues[0]?.text ?? 'Oynanamaz') : this.describe(o), tag });
     }
     this.opts = list;
+    this.rowH = Math.min(ROW, Math.floor((LIST_BOTTOM - LY + 2) / Math.max(1, list.length)));
   }
 
   private markerFor(o: Opt): string {
     if (o.ref === RANDOM_REF) return ICON.pointer;
     if (o.ref.startsWith('preset:')) {
       const id = o.ref.slice(7);
+      if (id === 'miknatis') return magnetTex(this);
       const attr = ({ ates: 'FIRE', su: 'WATER', isik: 'LIGHT', muhur: 'DARK', toprak: 'EARTH', dengeli: 'WIND' } as const)[id as 'ates'];
       return orbTex(this, attr ?? 'LIGHT');
     }
@@ -212,16 +218,16 @@ export class DeckPickScene extends Phaser.Scene {
 
   private buildList(): void {
     this.opts.forEach((o, i) => {
-      const y = LY + i * ROW;
+      const y = LY + i * this.rowH;
       const box = this.add.container(LX, y).setDepth(8);
-      const hi = this.add.rectangle(0, 0, LW, ROW - 2, PAL.night3).setOrigin(0).setVisible(false);
+      const hi = this.add.rectangle(0, 0, LW, this.rowH - 2, PAL.night3).setOrigin(0).setVisible(false);
       const marker = this.add.image(10, 10, this.markerFor(o)).setTint(o.ref === RANDOM_REF || o.ref === REF_CLASSIC || o.ref.startsWith('slot') ? PAL.gold3 : 0xffffff);
       if (o.ref.startsWith('preset:')) marker.clearTint();
       const title = pixelText(this, 22, 2, fitText(o.title, 120, (s) => measureText(s, 'sm').w), { size: 'sm', color: PAL.white });
       const sub = pixelText(this, 22, 11, fitText(o.sub, 178, (s) => measureText(s, 'sm').w), { size: 'sm', color: PAL.steel });
       const tag = pixelText(this, LW - 4, 2, o.tag, { size: 'sm', color: PAL.night4, originX: 1 });
       box.add([hi, marker, title, sub, tag]);
-      const zone = this.add.zone(LX, y, LW, ROW - 2).setOrigin(0).setDepth(12).setInteractive({ useHandCursor: true });
+      const zone = this.add.zone(LX, y, LW, this.rowH - 2).setOrigin(0).setDepth(12).setInteractive({ useHandCursor: true });
       zone.on(Phaser.Input.Events.POINTER_OVER, () => {
         if (this.busy || this.sel === i) return;
         this.sel = i;
@@ -523,7 +529,7 @@ export class DeckPickScene extends Phaser.Scene {
   }
 
   qaLayout(): { rows: { ref: string; x: number; y: number }[]; ok: { x: number; y: number }; back: { x: number; y: number } } {
-    return { rows: this.opts.map((o, i) => ({ ref: o.ref, x: LX + LW / 2, y: LY + i * ROW + 10 })), ok: { x: 470 + 69, y: 331 }, back: { x: 32 + 39, y: 331 } };
+    return { rows: this.opts.map((o, i) => ({ ref: o.ref, x: LX + LW / 2, y: LY + i * this.rowH + 10 })), ok: { x: 470 + 69, y: 331 }, back: { x: 32 + 39, y: 331 } };
   }
 
 }

@@ -85,6 +85,23 @@ export const MONSTER_GLOW: Record<MonsterId, MonsterGlow> = {
   windmane_knight: { emissive: [T(PAL.gold4, 1), T(PAL.gold3, 0.7), T(PAL.white, 0.6), T(PAL.leaf3, 0.3)], halo: 0.6, pool: 0.9 },
   shield_titan: { emissive: [T(PAL.gold4, 1), T(PAL.gold3, 0.7), T(PAL.white, 0.5)], halo: 0.6, pool: 0.9 },
   wing_lady: { emissive: [T(PAL.teal4, 1), T(PAL.white, 0.9), T(PAL.gold4, 0.8), T(PAL.teal3, 0.5)], halo: 0.6, pool: 0.9 },
+  // batch 2 (attribute-coloured placeholder glow)
+  tide_harpooner: { emissive: [T(PAL.water4, 0.8), T(PAL.white, 0.8), T(PAL.cyan4, 0.6)], halo: 0.6, pool: 0.9 },
+  dial_jester: { emissive: [T(PAL.gold4, 1), T(PAL.white, 1), T(PAL.gold3, 0.6)], halo: 0.6, pool: 0.9 },
+  cloud_hatchling: { emissive: [T(PAL.leaf4, 1), T(PAL.white, 0.8), T(PAL.leaf3, 0.4)], halo: 0.6, pool: 0.9 },
+  reflection_archer: { emissive: [T(PAL.gold4, 1), T(PAL.white, 1), T(PAL.gold3, 0.6)], halo: 0.6, pool: 0.9 },
+  scrap_raiders: { emissive: [T(PAL.fire4, 1), T(PAL.fire3, 0.7), T(PAL.white, 0.7)], halo: 0.6, pool: 0.9 },
+  hollow_ogre: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
+  crag_axeman: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
+  reed_heron: { emissive: [T(PAL.water4, 0.8), T(PAL.white, 0.8), T(PAL.cyan4, 0.6)], halo: 0.6, pool: 0.9 },
+  kite_fencer: { emissive: [T(PAL.leaf4, 1), T(PAL.white, 0.8), T(PAL.leaf3, 0.4)], halo: 0.6, pool: 0.9 },
+  mudgrasp_spirit: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
+  steppe_spiralhorn: { emissive: [T(PAL.leaf4, 1), T(PAL.white, 0.8), T(PAL.leaf3, 0.4)], halo: 0.6, pool: 0.9 },
+  polar_needle: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
+  polar_anvil: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
+  polar_coil: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
+  polar_sovereign: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
+  straw_decoy_token: { emissive: [T(PAL.gold4, 0.5)], halo: 0.2, pool: 0.5 },
 };
 
 /**

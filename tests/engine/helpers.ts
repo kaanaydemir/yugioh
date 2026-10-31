@@ -229,12 +229,19 @@ export function checkInvariants(s: GameState): void {
       put(u, `gy${p}`);
       assert(s.cards[u].owner === p, 'graveyard owner');
     }
+    for (const u of ps.banished ?? []) {
+      put(u, `banished${p}`);
+      assert(s.cards[u].owner === p, 'banished owner');
+    }
     ps.monsters.forEach((m, i) => {
       if (!m) return;
       put(m.uid, `mon${p}.${i}`);
       assert(m.hat === 'decoy' || CARDS[s.cards[m.uid].cardId].kind === 'monster', 'non-monster in monster zone');
       assert(m.faceUp || m.position === 'defense', 'face-down monster must be in defense');
       assert(m.enteredTurn <= s.turn, 'enteredTurn in the future');
+      // control switch: a borrowed monster sits on the other side of its owner (soul_recall revives stay unmarked)
+      if (m.borrowed) assert(m.borrowed.owner === s.cards[m.uid].owner && m.borrowed.owner !== p, 'borrowed monster on its owner side');
+      if (m.token) assert(CARDS[s.cards[m.uid].cardId].kind === 'monster' && (CARDS[s.cards[m.uid].cardId] as { token?: boolean }).token === true, 'token slot without a token card');
     });
     ps.spellTraps.forEach((st, i) => {
       if (!st) return;
@@ -244,7 +251,10 @@ export function checkInvariants(s: GameState): void {
       assert(!(d.kind === 'spell' && d.spellType === 'field'), 'field spell in spell/trap zone');
       if (st.equippedTo !== null) {
         assert(st.faceUp, 'equip must be face-up');
-        const host = s.players[p].monsters.find((x) => x?.uid === st.equippedTo);
+        // the host is an own monster, or (control switch) a monster that changed sides with its equips
+        const own = s.players[p].monsters.find((x) => x?.uid === st.equippedTo);
+        const moved = s.players[p === 0 ? 1 : 0].monsters.find((x) => x?.uid === st.equippedTo && (x.borrowed || s.cards[x.uid].owner !== p));
+        const host = own ?? moved;
         assert(host && host.faceUp, 'equip host must be an own face-up monster');
       }
       // Face-up spell/trap cards only persist when they are continuous (equips here).
@@ -262,7 +272,9 @@ export function checkInvariants(s: GameState): void {
     if (s.pending?.kind === 'discard') assert(s.phase === 'end', 'discard outside end phase');
     if (!s.pending) assert(s.phase === 'main' || s.phase === 'battle', `idle in ${s.phase}`);
     if (s.pending?.kind === 'trapResponse') {
-      assert(s.pending.player !== s.activePlayer, 'trap response by the turn player');
+      // the turn player answers only a quick spell of the opponent (spell_seal window, activator = the opponent)
+      const nested = s.pending.trigger.kind === 'spellActivated' && s.pending.trigger.player !== s.activePlayer;
+      assert(s.pending.player !== s.activePlayer || nested, 'trap response by the turn player');
       for (const u of s.pending.options) {
         const st = s.players[s.pending.player].spellTraps.find((x) => x?.uid === u);
         assert(st && !st.faceUp && st.setTurn < s.turn, 'trap option must be set on an earlier turn');
@@ -279,16 +291,19 @@ const UID_FIELDS = ['uid', 'attackerUid', 'targetUid', 'sourceUid', 'spellUid', 
 
 /** Every uid referenced by an event exists, and cardIds match. */
 export function checkEvents(s: GameState, events: GameEvent[]): void {
+  // tokens (straw_decoy_token) that vanished in this batch: their CardInstance is gone by design
+  const vanished = new Set(events.flatMap((e) => (e.type === 'tokenVanish' ? [e.uid] : [])));
   for (const e of events) {
-    if (e.type === 'decoyPopped' || e.type === 'hatChosen') continue; // magic_hat token: its CardInstance is gone by design
+    if (e.type === 'decoyPopped' || e.type === 'hatChosen' || e.type === 'tokenVanish') continue; // magic_hat token: its CardInstance is gone by design
     const any = e as Record<string, unknown>;
     for (const f of UID_FIELDS) {
       const v = any[f];
       if (v === null || v === undefined) continue;
       if (e.type === 'attackDeclare' && f === 'targetUid') continue; // may be a magic_hat token that popped in this very apply
+      if (typeof v === 'number' && vanished.has(v)) continue;
       assert(typeof v === 'number' && s.cards[v], `${e.type}.${f}=${String(v)} is not a real uid`);
     }
-    if (typeof any.uid === 'number' && typeof any.cardId === 'string')
+    if (typeof any.uid === 'number' && typeof any.cardId === 'string' && !vanished.has(any.uid as number))
       assert(s.cards[any.uid as number].cardId === any.cardId, `${e.type} cardId mismatch`);
     if (e.type === 'decision') {
       const pd = e.pending;
@@ -303,7 +318,9 @@ export function checkEvents(s: GameState, events: GameEvent[]): void {
 /** The engine invariants, relaxed for the two states the batch adds: a Spell waiting in the spell_seal window and a Main Phase discard cost. */
 export function checkInvariantsRelaxed(s: GameState): void {
   const q = (s.internal.queue ?? []) as { k: string; a?: { uid: Uid } }[];
-  const waiting = q.find((t) => t.k === 'spellResolve');
+  // a quick spell picking its target (auger_lance answering an attack / summon) waits face-up like a Spell in the seal window
+  const quick = s.internal.quick as { uid: Uid } | undefined;
+  const waiting = q.find((t) => t.k === 'spellResolve') ?? (quick ? { k: 'quick', a: { uid: quick.uid } } : undefined);
   const cost = s.pending?.kind === 'discard' && s.pending.cost === true;
   if (!waiting && !cost) return checkInvariants(s);
   const c = structuredClone(s);

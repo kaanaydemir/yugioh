@@ -53,6 +53,23 @@ export const DEATH_PRESETS: Record<MonsterId, DeathPreset> = {
   windmane_knight: { material: 'stone', accent: 'stone' },
   shield_titan: { material: 'stone', accent: 'stone' },
   wing_lady: { material: 'light', accent: 'plant' },
+  // batch 2 (docs/v3/YENI_KARTLAR.md; placeholder flavours until each monster gets its own)
+  tide_harpooner: { material: 'water', accent: 'water' },
+  dial_jester: { material: 'light', accent: 'crystal' },
+  cloud_hatchling: { material: 'plant', accent: 'light' },
+  reflection_archer: { material: 'crystal', accent: 'light' },
+  scrap_raiders: { material: 'stone', accent: 'fire' },
+  hollow_ogre: { material: 'plant', accent: 'stone' },
+  crag_axeman: { material: 'stone', accent: 'stone' },
+  reed_heron: { material: 'water', accent: 'plant' },
+  kite_fencer: { material: 'plant', accent: 'light' },
+  mudgrasp_spirit: { material: 'stone', accent: 'shadow' },
+  steppe_spiralhorn: { material: 'plant', accent: 'plant' },
+  polar_needle: { material: 'stone', accent: 'crystal' },
+  polar_anvil: { material: 'stone', accent: 'crystal' },
+  polar_coil: { material: 'stone', accent: 'crystal' },
+  polar_sovereign: { material: 'stone', accent: 'crystal' },
+  straw_decoy_token: { material: 'plant', accent: 'plant' },
 };
 
 /**

@@ -525,7 +525,8 @@ describe('bot on the expanded pool', () => {
     }
     expect(overs).toBe(24);
     const fresh = ['dusk_sorcerer', 'ashen_drake', 'grim_warden', 'venom_drake', 'wisp_imp', 'steel_silencer', 'hourglass_imp', 'windmane_knight', 'shield_titan', 'wing_lady'];
-    expect(fresh.filter((id) => used.has(id)).length).toBeGreaterThanOrEqual(8);
+    // the pool grew by 26 cards with batch 2 (docs/v3/YENI_KARTLAR.md), so each batch-1 card is dealt less often
+    expect(fresh.filter((id) => used.has(id)).length).toBeGreaterThanOrEqual(7);
   });
   it('a seal hoarder wins: forced draws, the bot holds the pieces and completes the set', async () => {
     const { chooseAction } = await import('../../src/engine');

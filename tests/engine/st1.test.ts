@@ -1028,8 +1028,10 @@ describe('bot', () => {
 
 function randomDeck(seed: number, side: PlayerId): CardId[] {
   const rng = makeRng((seed * 7919 + side * 104729 + 17) >>> 0);
-  const monsters = ALL_CARDS.filter(isMonster).map((c) => c.id);
-  const nonMon = ALL_CARDS.filter((c) => !isMonster(c)).map((c) => c.id);
+  // the batch-1 era pool (batch 2 has its own bot games in tests/engine/b2_bot.test.ts)
+  const pool = ALL_CARDS.slice(0, ALL_CARDS.findIndex((c) => c.id === 'tide_harpooner'));
+  const monsters = pool.filter(isMonster).map((c) => c.id);
+  const nonMon = pool.filter((c) => !isMonster(c)).map((c) => c.id);
   const shuffle = <T,>(a: T[]) => {
     for (let i = a.length - 1; i > 0; i--) {
       const j = Math.floor(rng() * (i + 1));
