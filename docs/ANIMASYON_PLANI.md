@@ -281,3 +281,6 @@ Her animasyon mükemmel olacak. Her saldırı, doğum (çağırma) ve özel yete
 
 ## Not: tempo çok hızlı (kullanıcı geri bildirimi)
 Animasyonlar 1x hızda bile çok hızlı. Altın kural (mükemmel, çarpıcı animasyon) için her imza anın nefes alması gerek. Yapılacak: v3 süre bütçeleri (cut-in ≤1.0 s, saldırı ≤2.2 s, vb.) gözden geçirilecek; önce hangi anların hızlı olduğu kullanıcıdan alınacak, ardından ya genel bir tempo çarpanı (varsayılan daha yavaş, ayarlardan 1x/1.5x/2x) ya da anlara özel bekleme (hold) süreleri uzatılacak. v1 görünümü birebir aynı kalır (yalnız v3).
+
+## Fikir (not): düellocuları bir sahneye koymak — Yu-Gi-Oh tarzı
+Düellocular (oyuncu karakterleri) bir sahnede durur: dünyada bir yerde, düello alanının çevresinde ya da karşılıklı, tıpkı Yu-Gi-Oh'taki gibi. Detay sonra konuşulacak (sahne nasıl olacak, karakterler nerede duracak, tepkileri, düello giriş/bitiş sahnesi). Düellocu karakterler özelliğiyle (4 karakter, kişisel animasyonlar) birlikte düşünülecek. Şimdilik yalnızca not.
