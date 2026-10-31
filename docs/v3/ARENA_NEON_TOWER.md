@@ -194,3 +194,6 @@ Kapılar (her aşama sonunda): `npm run typecheck`, `npm test`, `filmdiff --set 
 - **Slot durumları** (`floor.ts`): boş (sönük ince sınır, grafit kuyu), dolu (parlak sınır + koyu mavi/kızıl havuz + halka), yüzü kapalı (dolu + dört köşe saplaması); sıradaki taraf / çağırma-saldırı anında sınır 1 ton yukarı. Durum `scene.views.field` okunarak 120 ms'de bir yenilenir. Calm hover/seçim çizgisi üstte, hizası yapı gereği aynı.
 - **3+3**: calm neon şeridi küçük taslağı izlediği için (`skip.trims`) kapatılır, plaka kendi sönük kenar çizgisini boyar (mavi yakın / kızıl uzak).
 - **Doku tasarrufu**: NT açıkken calm `slab` + `bg` yüklenmez (`buildCalmTextures(scene, {slab,bg})`): arena kategorisi 2,56 → 1,22 MB.
+
+## Kullanıcı notu: kalite hedefi
+Arena daha yüksek kaliteli pixel art olmalı (Sea of Stars çıtası): daha fazla ton basamağı, temiz kümeler, el çizimi hissi, dither/gürültü yerine bilinçli malzeme dokusu, zengin ama okunur detay. 3. tur bitince ayrı bir "kalite turu" olarak yapılacak (çözünürlük 640×360 ve palet aynı kalır).
