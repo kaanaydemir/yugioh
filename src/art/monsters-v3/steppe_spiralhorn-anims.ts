@@ -54,11 +54,11 @@ const I = {
   hdx: [8, 8, 8, 9, 9, 9, 9, 9, 9, 8, 8, 8, 9, 9, 9, 9, 8, 8],
   // weight drifts to the hindquarters while the hind hoof is cocked
   hipX: [-10, -10, -10, -10, -10, -10, -10, -10, -10, -10, -10, -10, -10, -10, -10, -10, -10, -10],
-  ear: [0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0],
+  ear: [0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1],
   sniff: [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 2, 0, 0, 0],
   nose: [0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
   blink: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 0, 0, 0, 0],
-  tail: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0],
+  tail: [0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0],
   curl: [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0, 0.25, 0.5, 0.75, -1, -1],
 };
 const COCK: Record<number, Leg> = { 6: leg(-8, 0, -22), 7: leg(-7, -1, -40), 8: leg(-7, -1, -40), 9: leg(-7, -1, -40), 10: leg(-8, 0, -22) };
@@ -165,8 +165,8 @@ const ROAR: Pose[] = [
   // the head flings up as the forequarters spring: a short rear (front hooves off the floor)
   { ...IDLE0, hipY: -28, shX: 6, shY: -34, hdx: 7, hdy: -12, ha: A.up, ear: 2, sniff: 2, fn: leg(12, -5, 100), ff: leg(15, -3, 80), hn: leg(-11, 0, -20), hf: leg(-7, 0, -18), tail: 1, mane: 0.4, t: 0.25 },
   // down again on the forefeet, the neck stretching up: the honk is held with the head to the sky (the one tip twinkle)
-  { ...IDLE0, hipY: -28, shY: -31, hdx: 6, hdy: -15, ha: A.sky, ear: 2, sniff: 2, nose: 1, fn: leg(9, 0, -6), ff: leg(13, 0, -4), dust: 0.2, curl: 0.15, glint: 2, tail: 1, mane: 0.55, t: 0.37 },
-  { ...IDLE0, hipY: -28, shY: -31, hdx: 6, hdy: -17, ha: A.sky, ear: 1, sniff: 2, nose: 1, fn: leg(9, 0, -6), ff: leg(13, 0, -4), dust: 0.5, curl: 0.45, glint: 2, tail: 1, mane: 0.7, t: 0.5 },
+  { ...IDLE0, hipY: -28, shY: -31, hdx: 6, hdy: -15, ha: A.sky, ear: 2, sniff: 2, nose: 1, mouth: 1, fn: leg(9, 0, -6), ff: leg(13, 0, -4), dust: 0.2, curl: 0.15, glint: 2, tail: 1, mane: 0.55, t: 0.37 },
+  { ...IDLE0, hipY: -28, shY: -31, hdx: 6, hdy: -17, ha: A.sky, ear: 1, sniff: 2, nose: 1, mouth: 1, fn: leg(9, 0, -6), ff: leg(13, 0, -4), dust: 0.5, curl: 0.45, glint: 2, tail: 1, mane: 0.7, t: 0.5 },
   { ...IDLE0, hdx: 7, hdy: -15, ha: A.sky, ear: 1, sniff: 1, curl: 0.75, mane: 0.85, t: 0.62 },
   // the head swings back down and gives a shake (one step past level, ears flicked)
   { ...IDLE0, hdx: 9, hdy: -10, ha: A.down, ear: 1, nose: 1, mane: 0.1, tail: 1, t: 0.75 },
@@ -207,10 +207,10 @@ const HH_HOLDS = [50, 60, 80, 90, 100, 120, 140];
 
 const HM: Pose[] = [
   // f0: the coat goes rigid — legs locked straight, the eye wide, both horn tips glint and ring
-  { ...IDLE0, hdy: -12, ear: 2, blink: 3, glint: 1, t: 0 },
-  { ...IDLE0, hipX: -9, hipY: -30, shX: 9, shY: -31, hdx: 9, hdy: -12, ear: 2, blink: 3, glint: 1, t: 1 / 12 },
-  { ...IDLE0, hipX: -11, hipY: -30, shX: 7, shY: -31, hdx: 7, hdy: -12, ear: 2, blink: 3, glint: 1, t: 2 / 12 },
-  { ...IDLE0, hipY: -30, shY: -31, hdy: -12, ear: 1, blink: 0, glint: 1, t: 3 / 12 },
+  { ...IDLE0, hdy: -12, ear: 2, blink: 3, glint: 1, rigid: 1, tail: 1, t: 0 },
+  { ...IDLE0, hipX: -9, hipY: -30, shX: 9, shY: -31, hdx: 9, hdy: -12, ear: 2, blink: 3, glint: 1, rigid: 1, tail: 1, t: 1 / 12 },
+  { ...IDLE0, hipX: -11, hipY: -30, shX: 7, shY: -31, hdx: 7, hdy: -12, ear: 2, blink: 3, glint: 1, rigid: 1, tail: 1, t: 2 / 12 },
+  { ...IDLE0, hipY: -30, shY: -31, hdy: -12, ear: 1, blink: 0, glint: 1, rigid: 1, t: 3 / 12 },
   { ...IDLE0, ear: 1, blink: 1, mane: 0.4, nose: 1 },
   { ...IDLE0, ear: 0, mane: 0.7 },
   { ...IDLE0 },

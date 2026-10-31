@@ -84,8 +84,10 @@ export interface Pose {
   mane: number;
   maneK: number;
   tail: number;
-  /** coat goes rigid (hitMagic): 0 / 1 */
+  /** coat goes rigid (hitMagic): the mane teeth stand straight up, a stiff tail */
   rigid: number;
+  /** the honk: the mouth opens under the nose (0 / 1) */
+  mouth: number;
   // ---- light / effect fields (steppe_spiralhorn-fx.ts)
   /** horn-tip wind curls: phase 0…1 (−1 none) */
   curl: number;
@@ -135,6 +137,7 @@ export const NEUTRAL: Pose = {
   maneK: 1,
   tail: 0,
   rigid: 0,
+  mouth: 0,
   curl: -1,
   glint: 0,
   wake: -1,
@@ -385,8 +388,8 @@ function drawMane(f: Frame): void {
     const k = (i + 0.5) / N;
     const x = a[0] + (b[0] - a[0]) * k;
     const y = a[1] + (b[1] - a[1]) * k + 0.5;
-    const sway = rnd(Math.sin((o.mane - k * 0.5) * Math.PI * 2) * o.maneK);
-    const hgt = 2 + (i % 2) + (i === 2 ? 1 : 0);
+    const sway = o.rigid > 0 ? 1 : rnd(Math.sin((o.mane - k * 0.5) * Math.PI * 2) * o.maneK);
+    const hgt = 2 + (i % 2) + (i === 2 ? 1 : 0) + (o.rigid > 0 ? 1 : 0);
     q.poly([[x - 0.8, y + 1.5], [x + 1.2, y + 1.5], [x - 0.8 + sway, y - hgt], [x - 2.3 + sway, y - hgt + 0.5]], CREST.M);
   }
   bands(q, CREST, light, { top: 1, lit: 1, bottom: 0, away: 0 });
@@ -439,6 +442,13 @@ function drawHead(f: Frame): void {
   const m0 = sk.hl(7.5, 10.5);
   const m1 = sk.hl(9.5, 10.5);
   q.line(rnd(m0[0]), rnd(m0[1]), rnd(m1[0]), rnd(m1[1]), NOSE.D);
+  if (o.mouth > 0) {
+    // the open mouth: a dark wedge under the drooping nose (the saiga honk)
+    for (const [mx, my] of [[8, 11], [9, 11], [10, 11], [8.5, 12], [9.5, 12]] as const) {
+      const m = sk.hl(mx, my);
+      q.set(rnd(m[0]), rnd(m[1]), PAL.earth0);
+    }
+  }
   // the eye: ink, 2 px (half-shut 1 row; shut: a lid line); a dark tear streak under it
   const [ex, ey] = [rnd(sk.eye[0]), rnd(sk.eye[1])];
   if (o.blink === 2) q.set(ex, ey + 1, COAT.D).set(ex + 1, ey + 1, COAT.D);
