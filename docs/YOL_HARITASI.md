@@ -42,3 +42,12 @@ Her şerit kendi dalına push eder; ana oturum dalları `claude/yugioh-card-game
 | C | claude/kart-c | session_01Qe4uUFQZLLFads5VWWVWXM |
 | D | claude/kart-d | session_01Qe4uUGTZwWeKDJrNnCEZ7k |
 | E | claude/kart-e | session_01Qe4uUEaufKLqmHJXwp6MbG |
+
+## Şeritlerden sonra (sıra)
+1. Birleştirme + toplu kontrol (çakışma, ses dengesi, yeni kartlarla CPU maçları).
+2. Arena kalite turu (kule/duvar derinliği, platform malzemesi, bellek bütçesi 42 MB).
+3. HD-2D kararı — sahibe tekrar sor (hatırlatma).
+4. Düellocular sahnede (4 karakter, kendi animasyonları).
+5. Yayın öncesi kalite denetimi (her kartın VFX/SFX'i altın kurala göre; performans, açılış, hatalar).
+6. İngilizce (ana dil).
+7. Yayın hazırlığı (Steam paketleme, ayarlar, kayıt, mağaza görselleri).
