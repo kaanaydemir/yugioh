@@ -161,6 +161,8 @@ export function attackPose(f: number): Pose {
 const ATTACK_HOLDS = [70, 60, 60, 140, 50, 60, 100, 110, 120, 130];
 
 // ------------------------------------------------------------------ special (14 frames): attack 2 — kite flight and pendulum cut
+// In flight (f5–f10) the sprite draws no string: the body leaves its tile, so the taut string from the kite's tail
+// to the pin on the home tile is the cinematic's (src/cinematics/kartc/kite_fencer.ts, drawn in world space).
 
 const PIN: Partial<Pose> = { pinX: AX - 14, pinY: GY };
 const SPECIAL_KEYS: Partial<Pose>[] = [
@@ -171,15 +173,15 @@ const SPECIAL_KEYS: Partial<Pose>[] = [
   { lamp: 3, fx: -5, fy: -18, ko: 1.18, kbl: 3, ky: -11, ka: -2, sink: 3, smode: 1, svib: -1, ...PIN, rlift: 1, hx: 9, hy: 2, ba: -8 },
   { lamp: 3, fx: -4, fy: -18, ko: 1.2, kbl: 3, ky: -12, ka: -1, sink: 4, lean: -1, smode: 1, svib: 1, ...PIN, rlift: 1, hx: 8, hy: 3, ba: -4 },
   // rise: lifts off, hanging under the kite (the kite rides above and behind his head), legs dangling and trailing
-  { lamp: 2, fx: -3, fy: -16, ko: 1.2, kh: 0.86, kbl: 3, kx: -8, ky: -13, ka: 4, sink: 0, lift: 2, f1x: -6, f1y: -2, f2x: 2, f2y: -1, smode: 1, svib: 0, ...PIN, rlift: 2, hx: 9, hy: 4, ba: 0 },
-  { lamp: 2, fx: -2, fy: -16, ko: 1.18, kh: 0.86, kbl: 2, kx: -8, ky: -12, ka: 8, sink: 0, lift: 3, f1x: -9, f1y: -3, f2x: 3, f2y: -2, smode: 1, svib: 1, ...PIN, rlift: 2, hx: 9, hy: 5, ba: 2, lean: -1 },
+  { lamp: 2, fx: -3, fy: -16, ko: 1.2, kh: 0.86, kbl: 3, kx: -8, ky: -13, ka: 4, sink: 0, lift: 2, f1x: -6, f1y: -2, f2x: 2, f2y: -1, smode: 3, rlift: 2, hx: 9, hy: 4, ba: 0 },
+  { lamp: 2, fx: -2, fy: -16, ko: 1.18, kh: 0.86, kbl: 2, kx: -8, ky: -12, ka: 8, sink: 0, lift: 3, f1x: -9, f1y: -3, f2x: 3, f2y: -2, smode: 3, rlift: 2, hx: 9, hy: 5, ba: 2, lean: -1 },
   // the pendulum swing: body swung back, rapier low and horizontal, the curved trail grows
-  { lamp: 2, fx: -2, fy: -16, ko: 1.18, kh: 0.86, kbl: 2, kx: -8, ky: -12, ka: 14, sink: 0, lift: 3, lean: -2, f1x: -11, f1y: -3, f2x: 1, f2y: -3, smode: 1, ...PIN, rlift: 2, hx: 9, hy: 6, ba: 6, arc: 0.35 },
-  { lamp: 2, fx: -3, fy: -16, ko: 1.18, kh: 0.86, kbl: 2, kx: -8, ky: -12, ka: 4, sink: 0, lift: 3, lean: 2, f1x: -7, f1y: -3, f2x: 2, f2y: -2, smode: 1, svib: 1, ...PIN, rlift: 2, hx: 12, hy: 4, ba: 0, arc: 0.7 },
+  { lamp: 2, fx: -2, fy: -16, ko: 1.18, kh: 0.86, kbl: 2, kx: -8, ky: -12, ka: 14, sink: 0, lift: 3, lean: -2, f1x: -11, f1y: -3, f2x: 1, f2y: -3, smode: 3, rlift: 2, hx: 9, hy: 6, ba: 6, arc: 0.35 },
+  { lamp: 2, fx: -3, fy: -16, ko: 1.18, kh: 0.86, kbl: 2, kx: -8, ky: -12, ka: 4, sink: 0, lift: 3, lean: 2, f1x: -7, f1y: -3, f2x: 2, f2y: -2, smode: 3, rlift: 2, hx: 12, hy: 4, ba: 0, arc: 0.7 },
   // release / contact at the lowest point: the lateral cut
-  { lamp: 2, fx: -3, fy: -16, ko: 1.14, kh: 0.86, kbl: 2, kx: -8, ky: -12, ka: -6, sink: 0, lift: 3, lean: 3, f1x: -3, f1y: -3, f2x: 4, f2y: -2, smode: 1, ...PIN, rlift: 2, hx: 13, hy: 3, ba: -4, arc: 1, smear: 1 },
+  { lamp: 2, fx: -3, fy: -16, ko: 1.14, kh: 0.86, kbl: 2, kx: -8, ky: -12, ka: -6, sink: 0, lift: 3, lean: 3, f1x: -3, f1y: -3, f2x: 4, f2y: -2, smode: 3, rlift: 2, hx: 13, hy: 3, ba: -4, arc: 1, smear: 1 },
   // exit: the arc carries on up, the wind spills, the cloak collapses, the panel goes out
-  { lamp: 2, fx: -6, fy: -14, ko: 0.85, kh: 0.9, kbl: -1, kx: -8, ky: -12, ka: -14, sink: 0, lift: 3, lean: 2, f1x: 0, f1y: -1, f2x: -4, f2y: 1, smode: 1, ...PIN, rlift: 1, hx: 10, hy: -4, ba: -38 },
+  { lamp: 2, fx: -6, fy: -14, ko: 0.85, kh: 0.9, kbl: -1, kx: -8, ky: -12, ka: -14, sink: 0, lift: 3, lean: 2, f1x: 0, f1y: -1, f2x: -4, f2y: 1, smode: 3, rlift: 1, hx: 10, hy: -4, ba: -38 },
   { lamp: 1, fx: -10, fy: -10, ko: 0.9, kbl: -1, ky: -10, ka: -16, sink: 0, lift: 1, lean: 1, f1x: 1, f1y: 0, f2x: -2, f2y: 0, smode: 0, rlift: 1, hx: 10, hy: -1, ba: -22 },
   { lamp: 0, fx: -12, fy: -8, ko: 1, kbl: -1, ky: -9, ka: -7, sink: 4, lean: -1, hx: 9, hy: 2, ba: -10, sph: -1 },
   {},
