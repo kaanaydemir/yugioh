@@ -50,6 +50,7 @@ import type { InstructionHandle } from '../view/Prompt';
 import type { DuelViews } from './types';
 import { pickCard } from './CardPicker';
 import { showClock } from './showclock';
+import { shroudReject } from '../cinematics/kartc/tide_harpooner-shroud';
 
 type Choice =
   | { kind: 'battle' }
@@ -906,6 +907,7 @@ export class HumanInput {
           if (V3_A6_B) this.views.hud.endHintFlash(); // A6B-11: a valid pick ends the reason
           finish(r);
         } else {
+          if (LOOK_V3 && shroudReject(this.scene, this.views, this.state, h, this.player)) return; // tide_harpooner: Körfez kalkanı
           if (aim) this.rejectHit(h);
           else sfx.play('uiError', { volume: 0.4 });
           // v3: candidates with corners are "marked", not lit (the floor highlight is theirs only without a monster)

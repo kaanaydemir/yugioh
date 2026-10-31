@@ -22,6 +22,7 @@ import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { LOOK_V3 } from '../../view/layout';
 import { setCombatSfx } from '../../vfx/combat';
 import { hitSfxName } from '../../audio/v3/materials';
+import { HARPOONER_VOICE } from '../../audio/v3/tide_harpooner';
 import { voiceSounds } from '../../audio/v3/voices';
 import type { MaterialId } from '../../art/materials';
 import { v3Recipe } from '../../presentation/registry';
@@ -174,6 +175,7 @@ export interface CharacterSounds {
 }
 
 export const CHARACTER_SOUNDS: Partial<Record<CardId, CharacterSounds>> = {
+  tide_harpooner: HARPOONER_VOICE,
   crystal_wyrm: {
     roar: 'wyrmRoar',
     arrive: 'wyrmChime',

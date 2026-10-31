@@ -86,7 +86,7 @@ export const MONSTER_GLOW: Record<MonsterId, MonsterGlow> = {
   shield_titan: { emissive: [T(PAL.gold4, 1), T(PAL.gold3, 0.7), T(PAL.white, 0.5)], halo: 0.6, pool: 0.9 },
   wing_lady: { emissive: [T(PAL.teal4, 1), T(PAL.white, 0.9), T(PAL.gold4, 0.8), T(PAL.teal3, 0.5)], halo: 0.6, pool: 0.9 },
   // batch 2 (attribute-coloured placeholder glow)
-  tide_harpooner: { emissive: [T(PAL.water4, 0.8), T(PAL.white, 0.8), T(PAL.cyan4, 0.6)], halo: 0.6, pool: 0.9 },
+  tide_harpooner: { emissive: [T(PAL.water4, 0.8), T(PAL.white, 0.8), T(PAL.gold4, 0.4)], halo: 0.6, pool: 0.9 },
   dial_jester: { emissive: [T(PAL.gold4, 1), T(PAL.white, 1), T(PAL.gold3, 0.6)], halo: 0.6, pool: 0.9 },
   cloud_hatchling: { emissive: [T(PAL.leaf4, 1), T(PAL.white, 0.8), T(PAL.leaf3, 0.4)], halo: 0.6, pool: 0.9 },
   reflection_archer: { emissive: [T(PAL.gold4, 1), T(PAL.white, 1), T(PAL.gold3, 0.6)], halo: 0.6, pool: 0.9 },

@@ -7,6 +7,7 @@
 import type { SfxName } from './sfx';
 import { ahr, midiHz, perc, swell, type Pt, type Voice } from './synth';
 import { V3_RECIPES } from './v3/slice';
+import { V3_HARPOONER_RECIPES } from './v3/tide_harpooner';
 import { V3_MATERIAL_RECIPES } from './v3/materials';
 import { V3_VOICE_RECIPES } from './v3/voices';
 import { V3_SPELL_RECIPES } from './v3/spells';
@@ -1085,6 +1086,7 @@ export const RECIPES: Record<SfxName, Recipe> = {
 
   // ================================================================ v3 (additive: ./v3/slice.ts)
   ...V3_RECIPES,
+  ...V3_HARPOONER_RECIPES, // tide_harpooner (lane C, C1)
   ...V3_MATERIAL_RECIPES, // v3 material hits generated from the material library (./v3/materials.ts)
   ...V3_VOICE_RECIPES, // v3 character voices generated from presentation recipes (./v3/voices.ts)
   // A5 / A6 (registered once in A56.0; the lanes fill their own modules, never this table)
