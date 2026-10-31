@@ -197,3 +197,6 @@ Kapılar (her aşama sonunda): `npm run typecheck`, `npm test`, `filmdiff --set 
 
 ## Kullanıcı notu: kalite hedefi
 Arena daha yüksek kaliteli pixel art olmalı (Sea of Stars çıtası): daha fazla ton basamağı, temiz kümeler, el çizimi hissi, dither/gürültü yerine bilinçli malzeme dokusu, zengin ama okunur detay. 3. tur bitince ayrı bir "kalite turu" olarak yapılacak (çözünürlük 640×360 ve palet aynı kalır).
+
+## Kullanıcı kararı: seyirciler kaldırılacak
+Tribünlerdeki seyirciler (crowd) arenadan çıkarılacak. Tribün yapıları, korkuluk ve ışıklar kalıp kalmayacağı kalite turunda netleşecek (varsayılan: seyirci yok, boşalan yer tribün dokusu/ışık ve ekipmanla doldurulur). Değişiklik dördüncü tur eleştirmeni bitince yapılacak.
