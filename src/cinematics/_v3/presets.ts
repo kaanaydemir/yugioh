@@ -40,9 +40,9 @@ export const DEATH_PRESETS: Record<MonsterId, DeathPreset> = {
   // expanded roster, batch 1 (placeholder flavours until each monster gets its own)
   dusk_sorcerer: { material: 'shadow', accent: 'shadow' },
   ashen_drake: { material: 'shadow', accent: 'fire' },
-  grim_warden: { material: 'shadow', accent: 'crystal' },
+  grim_warden: { material: 'shadow', accent: 'shadow' },
   venom_drake: { material: 'plant', accent: 'shadow' },
-  wisp_imp: { material: 'shadow', accent: 'shadow' },
+  wisp_imp: { material: 'light', accent: 'shadow' }, // R3 feathers drift up and flutter (never dragged down); white-gold matter, void accent
   steel_silencer: { material: 'stone', accent: 'crystal' },
   seal_head: { material: 'shadow', accent: 'crystal' },
   seal_arm_r: { material: 'shadow', accent: 'crystal' },

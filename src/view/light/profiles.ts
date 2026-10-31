@@ -72,9 +72,13 @@ export const MONSTER_GLOW: Record<MonsterId, MonsterGlow> = {
   // expanded roster, batch 1 (attribute-coloured placeholder glow)
   dusk_sorcerer: { emissive: [T(PAL.void4, 1), T(PAL.mag4, 1), T(PAL.white, 0.8), T(PAL.void3, 0.4)], halo: 0.6, pool: 0.9 },
   ashen_drake: { emissive: [T(PAL.void4, 1), T(PAL.mag3, 0.7), T(PAL.white, 0.7), T(PAL.fire3, 0.4)], halo: 0.6, pool: 0.9 },
-  grim_warden: { emissive: [T(PAL.void4, 1), T(PAL.white, 1), T(PAL.mag4, 1), T(PAL.void3, 0.7)], halo: 0.6, pool: 0.9 },
+  // R2 lantern warden: only the soul fire (lantern flame + glass core) and the cage eye glow (leaf4 / leaf3 are
+  // lights-only in the rig; white only as the flame heart at full flare); the glass body (leaf2) glows only next to the flame
+  grim_warden: { emissive: [T(PAL.leaf4, 1), T(PAL.leaf3, 0.7), T(PAL.white, 0.8)], near: [T(PAL.leaf2, 0.45)], halo: 0.7, pool: 1.05, spill: PAL.leaf3 },
   venom_drake: { emissive: [T(PAL.leaf4, 1), T(PAL.leaf3, 0.7), T(PAL.white, 0.6), T(PAL.void4, 0.8)], halo: 0.6, pool: 0.9 },
-  wisp_imp: { emissive: [T(PAL.void4, 1), T(PAL.white, 0.8), T(PAL.mag4, 0.8)], halo: 0.6, pool: 0.9 },
+  // R3 Down Wisp: only the two gold dot eyes glow (gold4 glint / gold3 dot / gold2 lower row: gold is lights-only in
+  // the rig). The body is white / mist / steel / lilac void4 feathers, so white, mist and void4 are never emissive.
+  wisp_imp: { emissive: [T(PAL.gold4, 1), T(PAL.gold3, 0.8), T(PAL.gold2, 0.3)], halo: 0.5, pool: 0.85 },
   steel_silencer: { emissive: [T(PAL.crim4, 1), T(PAL.crim3, 0.7), T(PAL.white, 0.6), T(PAL.void4, 0.7)], halo: 0.6, pool: 0.9 },
   seal_head: { emissive: [T(PAL.mag4, 1), T(PAL.void4, 1), T(PAL.white, 0.8)], halo: 0.6, pool: 0.9 },
   seal_arm_r: { emissive: [T(PAL.mag4, 1), T(PAL.void4, 1), T(PAL.white, 0.7)], halo: 0.6, pool: 0.9 },

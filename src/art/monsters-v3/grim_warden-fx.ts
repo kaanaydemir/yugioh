@@ -1,121 +1,166 @@
-// Hortlak Muhafız v3 — light and effects painted AFTER the outline (never outlined, IŞ-9): the violet-white lightning
-// (eye sockets, rib gaps, bolts up the spine, sparks on the blade), the afterimage arc of the cut, floor dust and
-// the dissolve motes. Every shape comes from a seed (no Math.random): a different shape every frame.
+// Hortlak Muhafız v3 ("Fener Bekçisi") — light and effects painted AFTER the outline (never outlined, IŞ-9): the soul
+// flame inside the lantern, the glass glow, the single cage eye, soul motes, the lantern's burst, glass shards, the
+// whirl trail of the chain swing and floor dust. Stepped palette tones only (no alpha, no gradients); every random shape
+// comes from a seed (no Math.random): a different flame silhouette every frame, the same frame every time.
 
 import { PAL } from '../palette';
 import { PixelCanvas, mulberry32 } from '../pixel';
 
 export type Pt = readonly [number, number];
 
-const BOLT = PAL.void4;
-const BOLT2 = PAL.void3;
-const BOLT3 = PAL.void2;
-const CORE = PAL.white;
-
 /**
- * A 1-px 4-connected lightning bolt from a to b: a random walk across the line, `amp` px wide. Runs of void3 / void4
- * with a white core run when `hot`. Returns the pixels it set (for branches).
+ * The soul flame in a lantern whose glass interior spans x0..x1 × y0..y1 (inclusive). `k` 0…1.5 is the intensity
+ * (0 = dark glass, 0.5 = ember, 1 = burning, 1.4+ = white heart), `seed` picks one of the flame silhouettes, `lean`
+ * (−1…1) tilts the tongue against the swing.
  */
-export function bolt(p: PixelCanvas, a: Pt, b: Pt, seed: number, amp = 2, hot = false): Pt[] {
-  const rnd = mulberry32(seed * 7919 + 13);
-  const dx = b[0] - a[0];
-  const dy = b[1] - a[1];
-  const n = Math.max(1, Math.round(Math.max(Math.abs(dx), Math.abs(dy))));
-  const len = Math.hypot(dx, dy) || 1;
-  const px = -dy / len;
-  const py = dx / len;
-  const pts: Pt[] = [];
-  let off = 0;
-  let last: Pt | null = null;
-  for (let i = 0; i <= n; i++) {
-    const t = i / n;
-    // the walk is pinned to 0 at both ends
-    const env = Math.min(1, t * 4, (1 - t) * 4);
-    off += (rnd() - 0.5) * 2.6;
-    off = Math.max(-amp, Math.min(amp, off));
-    const x = Math.round(a[0] + dx * t + px * off * env);
-    const y = Math.round(a[1] + dy * t + py * off * env);
-    if (last && last[0] !== x && last[1] !== y) pts.push([x, last[1]]);
-    if (!last || last[0] !== x || last[1] !== y) pts.push([x, y]);
-    last = [x, y];
-  }
-  for (let i = 0; i < pts.length; i++) {
-    const run = Math.floor(i / 3) % 3;
-    const c = hot && i > pts.length * 0.15 && i < pts.length * 0.85 && run === 1 ? CORE : run === 2 ? BOLT2 : BOLT;
-    p.set(pts[i][0], pts[i][1], c);
-  }
-  return pts;
-}
-
-/** A short fork off a bolt: two or three pixels leaving it sideways. */
-export function fork(p: PixelCanvas, from: Pt, dir: Pt, len: number, seed: number): void {
-  const rnd = mulberry32(seed * 31 + 5);
-  let x = from[0];
-  let y = from[1];
-  for (let i = 0; i < len; i++) {
-    if (rnd() < 0.5) x += Math.sign(dir[0]);
-    else y += Math.sign(dir[1]);
-    p.set(x, y, i === len - 1 ? BOLT3 : BOLT2);
-  }
-}
-
-/** Colours of a lit eye socket for intensity `e` (0…1.5). */
-export function eyeGlow(p: PixelCanvas, x0: number, y0: number, w: number, h: number, e: number): void {
-  if (e <= 0.05) return;
-  // dim: a violet ember in the middle; mid: void3 band; hot: void4 core; white-hot: white heart
-  const cx = x0 + Math.floor((w - 1) / 2);
-  const cy = y0 + Math.floor((h - 1) / 2);
-  const c1 = e < 0.45 ? BOLT3 : BOLT2;
-  for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) if (e > 0.45 || (y === cy && x >= cx && x <= cx + 1)) p.set(x, y, c1);
-  if (e >= 0.8) for (let y = cy; y <= Math.min(cy + 1, y0 + h - 1); y++) for (let x = cx; x <= Math.min(cx + 1, x0 + w - 1); x++) p.set(x, y, BOLT);
-  if (e >= 1.25) p.set(cx, cy, CORE);
-}
-
-/** Crackle out of an eye socket: 1–2 bolts leaving up / forward, a new shape per `seed`. */
-export function eyeBolts(p: PixelCanvas, at: Pt, up: number, seed: number, n = 2, hot = false): void {
-  const rnd = mulberry32(seed * 977 + 3);
-  for (let i = 0; i < n; i++) {
-    const ang = (-90 + (rnd() - 0.45) * 110 + i * 38) * (Math.PI / 180);
-    const l = up * (0.6 + rnd() * 0.6);
-    const b: Pt = [Math.round(at[0] + Math.cos(ang) * l), Math.round(at[1] + Math.sin(ang) * l)];
-    const pts = bolt(p, at, b, seed + i * 17, 2, hot);
-    if (pts.length > 5 && rnd() < 0.6) fork(p, pts[Math.floor(pts.length * 0.55)], [rnd() < 0.5 ? -1 : 1, -1], 2 + Math.floor(rnd() * 2), seed + i);
-  }
-}
-
-/** A bright segment running along a rib gap (a slit from x0..x1 at rows y..y+h-1): the charge crawls through the ribs. */
-export function gapCharge(p: PixelCanvas, x0: number, x1: number, y: number, h: number, pos: number, len: number, hot: number): void {
-  for (let x = x0; x <= x1; x++) {
-    const d = x - pos;
-    if (d < 0 || d >= len) continue;
-    const core = d >= 1 && d < len - 1;
-    for (let r = 0; r < h; r++) {
-      if (!p.isOpaque(x, y + r)) continue;
-      const c = core && hot > 0.6 && r === Math.floor(h / 2) ? BOLT : core ? BOLT2 : BOLT3;
-      p.set(x, y + r, c);
+export function soulFlame(p: PixelCanvas, x0: number, y0: number, x1: number, y1: number, k: number, seed: number, lean = 0, own: (x: number, y: number) => boolean = () => true): void {
+  const w = x1 - x0 + 1;
+  const h = y1 - y0 + 1;
+  // the glass itself: dark green panes, lit when the flame burns
+  const pane = k < 0.25 ? PAL.leaf0 : k < 0.6 ? PAL.leaf1 : PAL.leaf2;
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (p.isOpaque(x, y) && own(x, y)) p.set(x, y, pane);
+  if (k < 0.25) return;
+  const rnd = mulberry32(seed * 131 + 7);
+  const cx = x0 + (w - 1) / 2 + lean * 0.8;
+  // tongue height grows with k; its shape wobbles per seed
+  const top = y1 - Math.round((h - 1) * Math.min(1, 0.35 + 0.5 * k)) + Math.round(rnd() * 1.2);
+  const tilt = (rnd() - 0.5) * 1.4 + lean;
+  for (let y = Math.max(y0, top); y <= y1; y++) {
+    const t = (y - top) / Math.max(1, y1 - top); // 0 tip → 1 base
+    const half = 0.5 + t * (w * 0.42) * Math.min(1, k + 0.2);
+    const mx = cx + tilt * (1 - t) * 1.6;
+    for (let x = x0; x <= x1; x++) {
+      const d = Math.abs(x - mx);
+      if (d > half || !own(x, y)) continue;
+      const core = d < half * 0.5 && t > 0.35;
+      const c = core ? (k >= 1.4 && t > 0.55 && d < 0.8 ? PAL.white : PAL.leaf4) : PAL.leaf3;
+      p.set(x, y, c);
     }
   }
 }
 
-/** Floor dust puffs (clusters ≥ 2 px, tones of the dust, rising and thinning). `k` 0…1 is the age. */
-export function dust(p: PixelCanvas, cx: number, cy: number, k: number, seed: number, side = 1): void {
-  const rnd = mulberry32(seed * 101 + 9);
-  const n = 5;
+/** The single eye light inside the cage at (x, y): ember / burning / blazing. */
+export function eyeLight(p: PixelCanvas, x: number, y: number, e: number, wide = 2): void {
+  if (e <= 0.08) return;
+  if (e < 0.45) {
+    p.set(x, y, PAL.leaf2);
+    return;
+  }
+  for (let i = 0; i < wide; i++) p.set(x + i, y, e >= 0.8 ? PAL.leaf4 : PAL.leaf3);
+  if (e >= 0.8) {
+    p.set(x - 1, y, PAL.leaf3);
+    p.set(x + wide, y, PAL.leaf2);
+  }
+  if (e >= 1.3) {
+    p.set(x, y, PAL.white);
+    p.set(x, y - 1, PAL.leaf3);
+    p.set(x, y + 1, PAL.leaf3);
+  }
+}
+
+/** Soul motes: 1–2 px points of green that rise off the lantern (each [x, y, size 1..3]). */
+export function motes(p: PixelCanvas, pts: readonly (readonly [number, number, number])[]): void {
+  for (const [x, y, s] of pts) {
+    const X = Math.round(x);
+    const Y = Math.round(y);
+    if (s >= 3) {
+      p.set(X, Y, PAL.leaf4);
+      p.set(X + 1, Y, PAL.leaf3);
+      p.set(X, Y + 1, PAL.leaf3);
+    } else if (s === 2) {
+      p.set(X, Y, PAL.leaf3);
+      p.set(X, Y + 1, PAL.leaf2);
+    } else p.set(X, Y, PAL.leaf2);
+  }
+}
+
+/** Motes drifting up from (cx, cy): `n` points on their own seeded paths at age `t` (0…1). */
+export function driftMotes(p: PixelCanvas, cx: number, cy: number, t: number, seed: number, n = 3, spread = 6): void {
+  const rnd = mulberry32(seed * 977 + 3);
+  const pts: [number, number, number][] = [];
   for (let i = 0; i < n; i++) {
+    const ph = (t + rnd()) % 1;
+    const x = cx + (rnd() - 0.5) * spread + Math.sin((ph + i) * 6.2) * 1.2;
+    const y = cy - 2 - ph * 14;
+    pts.push([x, y, ph < 0.35 ? 2 : 1]);
+  }
+  motes(p, pts);
+}
+
+/**
+ * The lantern's soul burst at (cx, cy): a stepped green star (one hard ring at most, EF-7), `k` 0…1 age, `r` size.
+ * Young: white core + leaf4 rays; old: leaf2 ring fragments.
+ */
+export function soulBurst(p: PixelCanvas, cx: number, cy: number, k: number, r: number, seed: number): void {
+  const rnd = mulberry32(seed * 313 + 11);
+  const R = r * (0.45 + 0.75 * k);
+  const n = 9;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + rnd() * 0.35;
+    const l0 = R * (k < 0.5 ? 0.15 : 0.55);
+    const l1 = R * (0.75 + rnd() * 0.45);
+    const c = k < 0.35 ? PAL.leaf4 : k < 0.7 ? PAL.leaf3 : PAL.leaf2;
+    for (let d = l0; d <= l1; d += 0.7) p.set(Math.round(cx + Math.cos(a) * d), Math.round(cy + Math.sin(a) * d * 0.8), c);
+  }
+  if (k < 0.45) {
+    const c0 = Math.max(1, Math.round(R * 0.32));
+    p.disc(cx, cy, c0 + 1, PAL.leaf3);
+    p.disc(cx, cy, c0, PAL.leaf4);
+    if (k < 0.25) p.disc(cx, cy, Math.max(1, c0 - 1), PAL.white);
+  } else if (k < 0.85) p.ellipseRing(cx, cy, Math.round(R * 0.9), Math.round(R * 0.7), k < 0.6 ? PAL.leaf3 : PAL.leaf2);
+}
+
+/** Glass shards flying from (cx, cy) at age k (0…1): 2-px iron / green-glass bits that fall to the floor at fy. */
+export function shards(p: PixelCanvas, cx: number, cy: number, fy: number, k: number, seed: number, n = 7): void {
+  const rnd = mulberry32(seed * 53 + 17);
+  for (let i = 0; i < n; i++) {
+    const vx = (rnd() - 0.45) * 26;
+    const vy = -6 - rnd() * 10;
+    const x = Math.round(cx + vx * k);
+    const y = Math.min(fy - 1, Math.round(cy + vy * k + 30 * k * k));
+    const c = i % 3 === 0 ? PAL.stone3 : i % 3 === 1 ? PAL.leaf2 : PAL.leaf3;
+    p.set(x, y, c);
+    p.set(x + 1, y, i % 2 ? c : PAL.leaf1);
+  }
+}
+
+/** Floor dust puffs (clusters ≥ 2 px, rising and thinning). `k` 0…1 is the age. */
+export function dust(p: PixelCanvas, cx: number, cy: number, k: number, seed: number, side = 1, spread = 22): void {
+  const rnd = mulberry32(seed * 101 + 9);
+  for (let i = 0; i < 5; i++) {
     const a = rnd();
-    const dx = (a - 0.25) * 26 * (0.35 + k) * side;
-    const dy = -(2 + rnd() * 7) * k - 1;
-    const r = 1.5 + (1 - k) * 1.6 + rnd();
+    const dx = (a - 0.25) * spread * (0.35 + k) * side;
+    const dy = -(2 + rnd() * 6) * k - 1;
+    const r = 1.4 + (1 - k) * 1.5 + rnd() * 0.8;
     const c = k < 0.45 ? PAL.stone3 : k < 0.75 ? PAL.stone2 : PAL.stone1;
     p.disc(cx + dx, cy + dy, r, c);
   }
 }
 
-/** Dissolve motes rising: 2×2 / 3×3 void clusters above the frame's body. */
-export function motes(p: PixelCanvas, pts: readonly (readonly [number, number, number])[]): void {
-  for (const [x, y, s] of pts) {
-    const c = s >= 3 ? PAL.void4 : s === 2 ? PAL.void3 : PAL.void2;
-    p.rect(Math.round(x), Math.round(y), 2, 2, c);
-    if (s >= 3) p.set(Math.round(x), Math.round(y), PAL.white);
+/** Earth clods thrown up while rising out of the floor (summon): small earth clusters at age k. */
+export function clods(p: PixelCanvas, cx: number, fy: number, k: number, seed: number, n = 6): void {
+  const rnd = mulberry32(seed * 71 + 5);
+  for (let i = 0; i < n; i++) {
+    const vx = (rnd() - 0.5) * 34;
+    const vy = -10 - rnd() * 12;
+    const x = Math.round(cx + vx * k);
+    const y = Math.round(fy + vy * k + 26 * k * k);
+    if (y >= fy) continue;
+    const c = i % 2 ? PAL.earth1 : PAL.earth2;
+    p.rect(x, y, 2, 2, c);
+  }
+}
+
+/** The whirl trail of the lantern on its chain: a stepped arc of green dots around (cx, cy) radius r, angles a0→a1 (rad). */
+export function whirlTrail(p: PixelCanvas, cx: number, cy: number, rx: number, ry: number, a0: number, a1: number): void {
+  const n = Math.max(3, Math.round(Math.abs(a1 - a0) * Math.max(rx, ry) / 1.6));
+  for (let i = 0; i <= n; i++) {
+    const u = i / n;
+    const a = a0 + (a1 - a0) * u;
+    const c = u > 0.7 ? PAL.leaf3 : u > 0.35 ? PAL.leaf2 : PAL.leaf1;
+    const x = Math.round(cx + Math.cos(a) * rx);
+    const y = Math.round(cy + Math.sin(a) * ry);
+    p.set(x, y, c);
+    if (u > 0.55) p.set(x, y + 1, PAL.leaf2);
   }
 }

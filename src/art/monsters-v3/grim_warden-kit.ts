@@ -1,6 +1,6 @@
-// Hortlak Muhafız v3 — small drawing kit of the "grave knight" rig: bounding-box compositor, flat value planes
-// measured from a part's own edges, paths (spline / ribbon), and the tone sets of the three materials
-// (bone, charcoal iron, cloak + lining). Pure, deterministic; palette only.
+// Hortlak Muhafız v3 ("Fener Bekçisi") — small drawing kit of the lantern-warden rig: bounding-box compositor, flat value
+// planes measured from a part's own edges, paths (spline / ribbon), and the tone sets of its materials (shroud cloth,
+// cage iron, aged bone, haft wood, soul-fire glass). Pure, deterministic; palette only.
 
 import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
@@ -126,16 +126,20 @@ export interface Tones {
   D: number;
 }
 
-/** Aged ivory (the warm body ramp): the bone of skull, ribs, spine, limbs. */
-export const BONE: Tones = { L: PAL.skin4, M: PAL.earth4, S: PAL.earth3, D: PAL.skin1 };
-export const BONE_FAR: Tones = { L: PAL.earth4, M: PAL.earth3, S: PAL.skin1, D: PAL.skin0 };
-/** Charcoal iron plate. */
-export const IRON: Tones = { L: PAL.stone3, M: PAL.stone2, S: PAL.stone1, D: PAL.stone0 };
-export const IRON_FAR: Tones = { L: PAL.stone2, M: PAL.stone1, S: PAL.stone0, D: PAL.ink };
-/** The cloak: black-violet, with a turned lit edge. */
-export const CLOAK: Tones = { L: PAL.void2, M: PAL.void1, S: PAL.void0, D: PAL.night0 };
-/** Dull crimson lining. */
-export const LINING: Tones = { L: PAL.crim2, M: PAL.crim1, S: PAL.crim0, D: PAL.ink };
+/** The tattered shroud: ash-grey cloth, violet-black folds. */
+export const SHROUD: Tones = { L: PAL.stone2, M: PAL.stone1, S: PAL.stone0, D: PAL.void0 };
+/** Its far side / inside of the hood (one value darker). */
+export const SHROUD_FAR: Tones = { L: PAL.stone1, M: PAL.stone0, S: PAL.void0, D: PAL.ink };
+/** Cage iron, boots, lantern frame, spade. */
+export const IRON: Tones = { L: PAL.stone4, M: PAL.stone3, S: PAL.stone2, D: PAL.stone1 };
+export const IRON_FAR: Tones = { L: PAL.stone3, M: PAL.stone2, S: PAL.stone1, D: PAL.stone0 };
+/** Aged bone: the hands and the skull's teeth behind the bars. */
+export const BONE: Tones = { L: PAL.earth4, M: PAL.earth3, S: PAL.earth2, D: PAL.earth1 };
+export const BONE_FAR: Tones = { L: PAL.earth3, M: PAL.earth2, S: PAL.earth1, D: PAL.earth0 };
+/** The bony hands: a value darker than the skull's teeth so they never outshine the lantern. */
+export const HAND: Tones = { L: PAL.earth3, M: PAL.earth2, S: PAL.earth1, D: PAL.earth0 };
+/** Haft wood, rope belt. */
+export const WOOD: Tones = { L: PAL.earth3, M: PAL.earth2, S: PAL.earth1, D: PAL.earth0 };
 
 /**
  * Flat three-band planes (IŞ-3): the band toward the key light, the shade band away from it, the mid tone
