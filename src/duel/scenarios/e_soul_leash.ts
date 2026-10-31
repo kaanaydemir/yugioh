@@ -81,9 +81,9 @@ const PACK: Record<string, Scenario> = {
     stage: {
       zones: 5,
       p0: { hand: ['soul_leash'], monsters: ['stone_sentinel'] },
-      p1: { hand: ['auger_lance', 'kite_fencer'], monsters: ['tide_golem', 'thorn_lurker', 'abyss_magus', 'ember_wolf', 'stone_sentinel'] },
+      p1: { hand: ['auger_lance', 'ember_wolf'], monsters: ['tide_golem', 'thorn_lurker', 'abyss_magus', 'ember_wolf', 'stone_sentinel'] },
     },
-    steps: [leash(0, 2, 1), endTurn(0), (D) => ({ type: 'normalSummon', player: 1, uid: D.uid('kite_fencer', 1), zone: 2, tributes: [] }) as Action, lance(1, 0, 1)],
+    steps: [leash(0, 2, 1), endTurn(0), (D) => ({ type: 'normalSummon', player: 1, uid: D.uid('ember_wolf', 1), zone: 2, tributes: [] }) as Action, lance(1, 0, 1)],
   },
   // ---- the leashed monster dies in battle: the leash goes to the graveyard, the bond fades
   eLeashDies: {

@@ -34,6 +34,8 @@ export interface AxeOpts {
   look?: AxeLook;
   /** Buried: every row this many px (or more) below O is cut away (the floor line), null = whole. */
   cut?: number | null;
+  /** Card art only: an exact scale instead of the size's (the 88×68 / 44×34 pictures). */
+  scale?: number;
 }
 
 type UV = readonly [number, number];
@@ -128,8 +130,8 @@ function frame(angle: number, mirror: boolean): { dx: number; dy: number; nx: nu
 }
 
 /** Where a local point (u along the haft, v toward the blade; lg units) lies from O, in screen px. */
-export function axeOffset(o: { size: AxeSize; angle: number; mirror?: boolean }, u: number, v: number): { x: number; y: number } {
-  const k = SCALE[o.size];
+export function axeOffset(o: { size: AxeSize; angle: number; mirror?: boolean; scale?: number }, u: number, v: number): { x: number; y: number } {
+  const k = o.scale ?? SCALE[o.size];
   const f = frame(o.angle, !!o.mirror);
   return { x: Math.round((u * f.dx + v * f.nx) * k), y: Math.round((u * f.dy + v * f.ny) * k) };
 }
@@ -153,8 +155,8 @@ const EMBER = [PAL.fire1, PAL.fire2, PAL.fire3, PAL.fire4] as const;
 
 /** The axe drawing (anchor = O). */
 export function axeMotif(o: AxeOpts): Motif {
-  const k = SCALE[o.size];
-  const sm = o.size === 'sm';
+  const k = o.scale ?? SCALE[o.size];
+  const sm = k < 0.8;
   const mirror = !!o.mirror;
   const f = frame(o.angle, mirror);
   // bounds of the shape in screen space

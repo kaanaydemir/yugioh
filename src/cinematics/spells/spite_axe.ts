@@ -83,23 +83,23 @@ type StatEv = Extract<GameEvent, { type: 'statChange' }>;
 
 // ================================================================ timing (scene ms, 1×)
 
-const OPEN_HOLD = 200;
+const OPEN_HOLD = 160;
 const T = {
-  omenMs: 150,
+  omenMs: 120,
   appear: 150,
-  tumbleMs: 110,
-  diveMs: 240,
+  tumbleMs: 90,
+  diveMs: 210,
   stop: 80,
   quiverFrames: 6,
-  pulseEvery: 180,
+  pulseEvery: 190,
   reachMs: 260,
   pulsesBeforeWrench: 3,
-  wrenchMs: 320,
+  wrenchMs: 280,
   snapStop: 60,
-  pullMs: 220,
+  pullMs: 190,
   tail: 130,
 } as const;
-const RET = { shudder: 120, drop: 90, flyMs: 430, slamStop: 60, sinkMs: 130, lashMs: 150, backMs: 130 } as const;
+const RET = { shudder: 120, drop: 90, flyMs: 430, slamStop: 60, sinkMs: 130, lashMs: 180, backMs: 160 } as const;
 
 const EMBER = [PAL.white, PAL.fire4, PAL.fire3, PAL.fire2, PAL.fire1] as const;
 const EMBER_DOWN = [PAL.fire4, PAL.fire3, PAL.fire2, PAL.fire1, PAL.stone0] as const;
@@ -346,12 +346,12 @@ async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void
   // beside the body, just off its back edge (never under it)
   const sil = silhouetteOf(s);
   const edgeX = sil ? (side < 0 ? sil.left : sil.right) : home.x + side * 20;
-  const bite: XY = { x: R(edgeX + side * 7), y: home.y + 5 };
+  const bite: XY = { x: R(edgeX + side * 26), y: home.y + 6 };
   const pp = plantPose(u.player);
-  const lgPlant: AxeOpts = { size: 'lg', angle: pp.angle, mirror: pp.mirror, heat: 1 };
-  // O (the head's origin) such that the edge's middle sits 9 px under the floor line
-  const edge = axeOffset(lgPlant, -1, 6);
-  const plantO: XY = { x: bite.x - edge.x, y: bite.y - edge.y + 9 };
+  const lgPlant: AxeOpts = { size: 'lg', angle: pp.angle, mirror: pp.mirror, heat: 2 };
+  // O (the head's origin) such that the blade's toe bites 5 px under the floor line at the bite point
+  const edge = axeOffset(lgPlant, 9, 11);
+  const plantO: XY = { x: bite.x - edge.x, y: bite.y - edge.y + 3 };
   const st = evAt(ctx, ci, 'statChange');
   const tile = ctx.views.field.tileAt(ev.player, 'spellTrap', ev.spellZone);
   const from: XY = (ctx.hints.from as XY | undefined) ?? (tile ? { x: tile.home.x, y: tile.home.y } : zoneXY(ev.player, 'spellTrap', ev.spellZone));
@@ -369,8 +369,13 @@ async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void
   const dl = Math.hypot(d.x, d.y);
   const ux = d.x / dl;
   const uy = d.y / dl;
-  const L = Math.min(170, (plantO.y + 10) / uy);
-  const sky: XY = { x: R(plantO.x - ux * L), y: R(plantO.y - uy * L) };
+  // it drops from high over its head end, a steep line (head first), never from more than 160 px
+  void ux;
+  void uy;
+  const sky: XY = { x: R(plantO.x - side * 34), y: R(Math.max(-12, plantO.y - 160)) };
+  const fdx = plantO.x - sky.x;
+  const fdy = plantO.y - sky.y;
+  const fl = Math.hypot(fdx, fdy) || 1;
   const sparkTop: XY = { x: sky.x, y: Math.max(8, sky.y + 10) };
   await run(sc, T.omenMs, (t) => {
     const k = E.outCubic(t);
@@ -396,7 +401,6 @@ async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void
 
   // ---- the AXE appears high above (white-hot), tumbles half a turn…
   const axe = new AxeSprite(sc, { ...lgPlant, angle: pp.angle + 180, look: 'hot' }, sky.x, sky.y, depthAxe);
-  void lightFlash(sc, sky.x, Math.max(10, sky.y), PAL.fire3, 26, 260, { floorY: bite.y, intensity: 0.5, air: 0.6 });
   sparks.add({ x: sky.x, y: Math.max(6, sky.y), life: 160, colors: [PAL.white, PAL.fire4, PAL.fire3], shape: 'star', fadeAt: 1 });
   await frames(sc, 1);
   axe.set({ look: 'plain' });
@@ -417,7 +421,7 @@ async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void
   await run(sc, T.diveMs, (t, el, dt) => {
     const k = E.inQuad(t);
     const x = lerp(sky.x, plantO.x, k);
-    const y = lerp(sky.y, plantO.y - 9, k);
+    const y = lerp(sky.y, plantO.y - 4, k);
     axe.at(x, y);
     light.setPosition(x, y + 10, bite.y);
     const pom = axe.pt(-32, 0);
@@ -427,7 +431,7 @@ async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void
       [-3, 0],
       [3, 2],
     ] as const) {
-      const tail = { x: pom.x - ux * 26 + off, y: pom.y - uy * 26 };
+      const tail = { x: pom.x - (fdx / fl) * 26 + off, y: pom.y - (fdy / fl) * 26 };
       chainAlong(chainR, chainPts({ x: pom.x + off * 0.3, y: pom.y }, tail, 3, el / 40 + ph, 8));
     }
     // a one-frame light line behind the head
@@ -443,8 +447,8 @@ async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void
   playV3('e_axeBite', { volume: 1, pan: panAt(bite.x) });
   const cracks = floorCracks(sc, bite, ev.spellUid, side);
   cracks.glow(4);
-  void lightFlash(sc, bite.x, bite.y - 6, PAL.fire4, 34, 420, { floorY: bite.y, intensity: 0.7 });
   light.setPosition(bite.x, bite.y - 8, bite.y);
+  light.setIntensity(0.3, 200);
   void shake(sc, 170, 3);
   const nBurst = fxCount(26);
   for (let i = 0; i < nBurst; i++) {
@@ -464,7 +468,7 @@ async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void
     axe.at(plantO.x + (f % 2 === 0 ? amp : -amp), plantO.y).bury(bite.y);
     await frames(sc, 1);
   }
-  axe.at(plantO.x, plantO.y).bury(bite.y).set({ heat: 1 });
+  axe.at(plantO.x, plantO.y).bury(bite.y).set({ heat: 2 });
   cracks.glow(3);
 
   // ---- the chains fall slack and coil on the floor (two heaps)
@@ -507,7 +511,7 @@ async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void
     const ring = Raster.around(sc, bite.x, bite.y, 60, 32, DEPTH.TILE_FX + 2);
     return run(sc, 200, (t, _e) => {
       const st2 = Math.floor(t * 4);
-      axe.set({ pulse: Math.min(3, st2), heat: st2 < 2 ? 2 : 1 }).bury(bite.y);
+      axe.set({ pulse: Math.min(3, st2), heat: st2 < 2 ? 3 : 2 }).bury(bite.y);
       ring.begin();
       const r = 6 + st2 * 4 + i * 2;
       for (let a = 0; a < 48; a++) {
@@ -518,11 +522,11 @@ async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void
       ring.end();
     }).then(() => {
       ring.destroy();
-      axe.set({ pulse: -1, heat: 1 });
+      axe.set({ pulse: -1, heat: 2 });
       cracks.glow(3);
     });
   };
-  await wait(sc, 60);
+  await wait(sc, 30);
   bg(pulse(0));
   await wait(sc, T.pulseEvery);
   // the monster leans toward the axe, the veins climb it
@@ -537,8 +541,6 @@ async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void
   );
   bg(rimClimb(sc, s, { ramp: VEIN_RIM, stepMs: 60, holdMs: 620, fadeMs: 160, from: 'feet' }));
   bg(pulse(1));
-  await wait(sc, T.pulseEvery);
-  bg(pulse(2));
   await wait(sc, T.pulseEvery);
 
   // ---- THE WRENCH: the haft trembles harder, the chains pull taut to their pegs, the cracks run longer
@@ -576,7 +578,6 @@ async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void
   }
   axe.set({ look: 'hot' }).bury(null);
   cracks.slit(true);
-  void lightFlash(sc, bite.x, bite.y - 10, PAL.fire4, 28, 300, { floorY: bite.y, intensity: 0.8 });
   void shake(sc, 120, 2);
   await freeze(sc, T.snapStop);
   axe.set({ look: 'plain', heat: 2 });
@@ -640,7 +641,7 @@ async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void
     }
     bg(wait(sc, 260).then(() => (aura.eyeLvl = 2)));
     bg(rimFlash(sc, s, { ramp: [PAL.fire4, PAL.fire3, PAL.fire3, PAL.fire2, PAL.crim2], hold: 2 }));
-    void lightFlash(sc, home.x, home.y - 20, PAL.fire3, 34, 420, { floorY: home.y, intensity: 0.8 });
+    void lightFlash(sc, home.x, home.y - 20, PAL.fire3, 20, 360, { floorY: home.y, intensity: 0.6 });
     if (st) {
       const delta = Math.abs(st.atk - st.prevAtk);
       const head = u.worldPoint('top');
@@ -817,7 +818,7 @@ async function returnScene(ctx: DeckCtx): Promise<void> {
   const endA = 90;
   // the head (O) lands on the pile's top, the blade in it
   const slamO: XY = { x: R(deck.x), y: R(deck.y - 4) };
-  const ctrl = { x: lerp(startP.x, slamO.x, 0.5), y: Math.min(startP.y, slamO.y) - 70 };
+  const ctrl = { x: lerp(startP.x, slamO.x, 0.5), y: Math.min(startP.y, slamO.y) - 44 };
   const spin = 360 + 180 + turn(tilt + 540, endA);
   const trail: XY[] = [];
   const lightF = lightPool(sc, startP.x, startP.y, { color: PAL.fire3, radius: 16, air: 0.5, airRadius: 10, intensity: 0.6, anim: 'flicker', fadeIn: 0 });
@@ -853,7 +854,7 @@ async function returnScene(ctx: DeckCtx): Promise<void> {
   playV3('e_axeDeck', { volume: 1, pan: panAt(slamO.x) });
   axe.set({ angle: endA, mirror: deckMirror, look: 'hot' }).at(slamO.x, slamO.y);
   void lightF.fadeOut(300);
-  void lightFlash(sc, slamO.x, slamO.y, PAL.fire3, 36, 420, { floorY: R(deck.y + 4), ring: true, intensity: 1 });
+  void lightFlash(sc, slamO.x, slamO.y, PAL.fire3, 22, 360, { floorY: R(deck.y + 4), intensity: 0.8 });
   void shake(sc, 120, 2);
   try {
     pile.set(pile.count + 1, pile.topCard);
@@ -885,23 +886,39 @@ async function returnScene(ctx: DeckCtx): Promise<void> {
   const root: XY = { x: R(deck.x), y: R(deck.y - 6) };
   const whip = new Raster(sc, 0, 0, 640, 360, DEPTH.HUD + 6);
   playV3('e_axeLash', { volume: 1, pan: panAt(tip.x) });
-  const mid = { x: lerp(root.x, tip.x, 0.5), y: Math.min(root.y, tip.y) - 46 };
+  const mid = { x: lerp(root.x, tip.x, 0.5), y: Math.min(root.y, tip.y) - 70 };
+  const drawWhip = (pts: readonly XY[], hot: boolean): void => {
+    whip.begin();
+    // an ember line under the links (the chain is red-hot from the axe), then the iron links over it
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const a = pts[i];
+      const b = pts[i + 1];
+      const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y)));
+      for (let j = 0; j < n; j++) {
+        const x = R(lerp(a.x, b.x, j / n));
+        const y = R(lerp(a.y, b.y, j / n));
+        whip.px(x, y + 1, PAL.ink);
+        whip.px(x, y - 1, hot ? PAL.fire3 : PAL.fire1);
+        whip.px(x, y, hot ? PAL.fire4 : PAL.fire2);
+      }
+    }
+    chainAlong(whip, pts, 3);
+    whip.end();
+  };
   await run(sc, RET.lashMs, (t, el) => {
     const k = E.inQuad(t);
     const pts: XY[] = [];
-    const n = 16;
+    const n = 18;
     for (let i = 0; i <= n; i++) {
       const s2 = (i / n) * k;
       const p = qbez(root, mid, tip, s2);
       // a travelling wave along the chain, decaying toward the tip
-      const w = Math.sin(s2 * 14 - el / 12) * 4 * (1 - s2);
+      const w = Math.sin(s2 * 14 - el / 12) * 5 * (1 - s2);
       pts.push({ x: p.x, y: p.y + w });
     }
-    whip.begin();
-    chainAlong(whip, pts, 3);
+    drawWhip(pts, t > 0.7);
     const h = pts[pts.length - 1];
-    whip.px(h.x, h.y, PAL.fire4);
-    whip.end();
+    sparks.add({ x: h.x, y: h.y, life: 80, colors: [PAL.fire4, PAL.fire3], shape: 'px', fadeAt: 1 });
   });
   // the CRACK on the panel
   const panel = new Raster(sc, pr.x - 6, pr.y - 6, pr.w + 12, pr.h + 12, DEPTH.HUD + 5.5);
@@ -948,9 +965,11 @@ async function returnScene(ctx: DeckCtx): Promise<void> {
       const p = qbez(root, mid, tip, s2);
       pts.push({ x: p.x, y: p.y + Math.sin(s2 * 10 + el / 10) * 2 });
     }
-    whip.begin();
-    if (k > 0.05) chainAlong(whip, pts, 3);
-    whip.end();
+    if (k > 0.05) drawWhip(pts, false);
+    else {
+      whip.begin();
+      whip.end();
+    }
   });
   whip.destroy();
   ex.destroy();

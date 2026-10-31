@@ -265,7 +265,7 @@ export class AxeAura {
 
 // ================================================================ the fallen axe
 
-/** The planted pose of the lg axe beside a body (head down, its haft leaning toward the body). */
+/** The planted pose beside a body: the blade's toe bites the floor, the blade fans outward, the haft rises toward the body. */
 export function plantPose(player: PlayerId): { angle: number; mirror: boolean } {
   return player === 0 ? { angle: 120, mirror: false } : { angle: 60, mirror: true };
 }
