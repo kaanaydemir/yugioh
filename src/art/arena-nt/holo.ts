@@ -9,6 +9,9 @@
 //   beam:<side>       the summon flare's upward light beam (a bright core, ramp sides, a stipple edge)
 //   hot:<side>        a bright ring that climbs the creature during the flare
 //   mote:<side>:<k>   1-3 px digital motes
+//   halo:<side>:<k>   the creature's BLOOM: a big stepped ellipse of dark ramp tones, drawn with ADD blend behind the creature (2 breathing sizes)
+//   spill:<side>:<k>  the light SPILL on the floor / the stands round the pedestal (ADD blend, over the crowd)
+//   orb:<k>           the magus staff's magenta orb light (3 pulse sizes), ADD blend
 // Pure PixelCanvas code, no alpha.
 
 import { PAL } from '../palette';
@@ -40,7 +43,16 @@ export const FLARE_H = 2 * 15 + 3;
 export const BEAM_W = 30;
 export const BEAM_H = 150;
 
-const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+/** Bloom sizes: the halo round a creature (centre on the creature), the spill on the floor / stands (centre under the pedestal), the orb. */
+export const HALO = [
+  { rx: 76, ry: 60 },
+  { rx: 74, ry: 60 },
+] as const;
+export const HALO_FRAMES = 2;
+export const SPILL = { rx: 96, ry: 40 } as const;
+export const SPILL_FRAMES = 2;
+export const ORB_R = 34;
+export const ORB_FRAMES = 3;
 
 const N = { ink: PAL.ink, n0: PAL.night0, n1: PAL.night1, n2: PAL.night2, n3: PAL.night3, n4: PAL.night4, steel: PAL.steel } as const;
 
@@ -57,15 +69,14 @@ function paintPed(side: 0 | 1): PixelCanvas {
   const cy = PED_AT.y;
   const { rx, ry } = PED;
   const H = PED.side;
-  // ---- the glow on the floor round the pedestal: a sparse stipple of the ramp's darkest tone, thinning outward
+  // ---- the glow on the floor round the pedestal: a flat disc of the ramp's darkest tone, its rim a one-pixel checker
   for (let y = 0; y < PED_H; y++)
     for (let x = 0; x < PED_W; x++) {
       const dx = (x - cx) / (rx + PED.pad);
       const dy = (y - (cy + H / 2 + 2)) / (ry + H / 2 + 5);
       const d = dx * dx + dy * dy;
       if (d > 1) continue;
-      const level = d < 0.55 ? 5 : d < 0.8 ? 3 : 1;
-      if (BAYER[(y & 3) * 4 + (x & 3)] < level) c.set(x, y, R[0]);
+      if (d < 0.62 || ((x + y) & 1) === 0) c.set(x, y, R[0]);
     }
   // ---- the cylinder side, column by column between the top ellipse's lower arc and the bottom ellipse's lower arc
   for (let x = cx - rx; x <= cx + rx; x++) {
@@ -94,15 +105,19 @@ function paintPed(side: 0 | 1): PixelCanvas {
   c.ellipse(cx, cy, rx - 4, ry - 2, N.n0);
   // the lit part of the rim: the upper-left half one tone up
   for (let a = Math.PI * 0.55; a < Math.PI * 1.45; a += 0.012) c.set(Math.round(cx + Math.cos(a) * rx), Math.round(cy + Math.sin(a) * ry), N.n4);
-  // the pool: dither rings of the ramp inside the dark face
+  // the pool: three flat steps of the ramp inside the dark face, each edge a one-pixel checker
   for (let y = 0; y < PED_H; y++)
     for (let x = 0; x < PED_W; x++) {
       const dx = (x - cx) / (rx - 8);
       const dy = (y - cy) / (ry - 3);
-      const d = dx * dx + dy * dy;
+      const d = Math.sqrt(dx * dx + dy * dy);
       if (d > 1) continue;
-      const level = Math.round((1 - d) * 11);
-      if (BAYER[(y & 3) * 4 + (x & 3)] < level) c.set(x, y, d < 0.35 ? R[2] : R[1]);
+      const ck = ((x + y) & 1) === 0;
+      let t = d < 0.3 ? 2 : d < 0.64 ? 1 : 0;
+      if (Math.abs(d - 0.3) < 0.05 && ck) t = 1;
+      if (Math.abs(d - 0.64) < 0.05 && ck) t = 0;
+      if (Math.abs(d - 0.92) < 0.08 && ck) t = -1;
+      if (t >= 0 && !(t === 0 && d > 0.8)) c.set(x, y, t === 2 ? R[2] : t === 1 ? R[1] : R[0]);
     }
   // the lit spot under the creature's feet
   c.ellipse(cx, cy, 16, 3, R[1]);
@@ -137,18 +152,22 @@ function paintRing(side: 0 | 1, k: number): PixelCanvas {
 function paintCone(side: 0 | 1): PixelCanvas {
   const R = HOLO_LOOKS[side].ramp;
   const c = new PixelCanvas(CONE_W, CONE_H);
+  // the cone's light falls off with distance from the pedestal's centre (curved contours, never horizontal bands): two flat steps whose
+  // edges are a one-pixel checker, and a 1-px lit rim on both flanks
   for (let y = 0; y < CONE_H; y++) {
     const u = 1 - y / (CONE_H - 1); // 1 at the pedestal (bottom) … 0 at the top
     const half = 36 + (1 - u) * 24;
-    const level = Math.round(u * 5);
     for (let x = 0; x < CONE_W; x++) {
       const dx = Math.abs(x - CONE_W / 2 + 0.5);
       if (dx > half) continue;
-      // vertical streaks: some 2-px columns stay dark
-      if (((x >> 1) + (y >> 4)) % 3 === 0) continue;
-      if (BAYER[(y & 3) * 4 + (x & 3)] < level) c.set(x, y, R[0]);
-      // the cone's two edges: a sparse 1-px line
-      if (dx > half - 1 && (y + (x & 1)) % 3 === 0) c.set(x, y, u > 0.3 ? R[1] : R[0]);
+      const across = 1 - dx / half;
+      const v = across * 0.55 + u * 0.7 - 0.2;
+      const ck = ((x + y) & 1) === 0;
+      let t = v > 0.62 ? 2 : v > 0.3 ? 1 : 0;
+      if (Math.abs(v - 0.62) < 0.05 && ck) t = 1;
+      if (Math.abs(v - 0.3) < 0.05 && ck) t = 0;
+      if (v > 0.12 && t >= 1) c.set(x, y, t === 2 ? R[1] : R[0]);
+      else if (v > 0.2 && t === 0 && ck) c.set(x, y, R[0]);
     }
   }
   return c;
@@ -175,17 +194,18 @@ function paintBeam(side: 0 | 1): PixelCanvas {
   const cx = BEAM_W / 2;
   for (let y = 0; y < BEAM_H; y++) {
     const u = 1 - y / (BEAM_H - 1); // 1 at the base … 0 at the top
-    // the beam narrows a little as it climbs and thins out into a stipple
+    // the beam narrows a little as it climbs and thins into a checker
     const half = 3 + Math.round(u * 9);
     for (let x = 0; x < BEAM_W; x++) {
       const dx = Math.abs(x - cx + 0.5);
       if (dx > half + 2) continue;
-      const fade = Math.round(u * 16);
-      if (dx < 2) c.set(x, y, BAYER[(y & 3) * 4 + (x & 3)] < fade + 4 ? R[5] : R[4]);
-      else if (dx < half - 3) c.set(x, y, BAYER[(y & 3) * 4 + (x & 3)] < fade + 3 ? R[4] : R[3]);
+      const ck = ((x + y) & 1) === 0;
+      const hi = u > 0.35 || ck;
+      if (dx < 2) c.set(x, y, hi ? R[5] : R[4]);
+      else if (dx < half - 3) c.set(x, y, hi ? R[4] : R[3]);
       else if (dx < half) {
-        if (BAYER[(y & 3) * 4 + (x & 3)] < fade + 2) c.set(x, y, R[3]);
-      } else if (BAYER[(y & 3) * 4 + (x & 3)] < Math.round(fade / 2)) c.set(x, y, R[2]);
+        if (u > 0.2 || ck) c.set(x, y, R[3]);
+      } else if (ck && u > 0.25) c.set(x, y, R[2]);
     }
   }
   return c;
@@ -218,6 +238,47 @@ function paintMote(side: 0 | 1, k: number): PixelCanvas {
   return c;
 }
 
+/**
+ * A stepped glow: concentric flat steps of `tones` (outer → inner), each step edge softened by a 2×2 checker one pixel wide (never a
+ * 4×4 Bayer noise). `grow` widens every step a little (the breathing variant).
+ */
+function paintGlow(w: number, h: number, rx: number, ry: number, tones: readonly number[], grow: number, skew = 0): PixelCanvas {
+  const c = new PixelCanvas(w, h);
+  const cx = (w - 1) / 2;
+  const cy = (h - 1) / 2;
+  const n = tones.length;
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const dx = (x - cx) / (rx + grow);
+      const dy = (y - cy) / (ry + grow * 0.8);
+      const d = Math.sqrt(dx * dx + dy * dy) + skew * Math.sin(Math.atan2(dy, dx) * 3) * 0.02;
+      if (d >= 1) continue;
+      // step edges at d = 1 - (i+1)/n ... a quadratic falloff so the core is small and the rim wide
+      const v = (1 - d) * (1 - d);
+      const f = v * n * 1.6;
+      let lvl = Math.floor(f);
+      const fr = f - lvl;
+      if (fr > 0.78 && ((x + y) & 1) === 0) lvl += 1;
+      if (lvl <= 0) continue;
+      c.set(x, y, tones[Math.min(n, lvl) - 1]);
+    }
+  return c;
+}
+
+function paintHalo(side: 0 | 1, k: number): PixelCanvas {
+  const R = HOLO_LOOKS[side].ramp;
+  const { rx, ry } = HALO[side];
+  return paintGlow(2 * rx + 3, 2 * ry + 3, rx, ry, [R[0], R[0], R[1]], k * 2, 1);
+}
+function paintSpill(side: 0 | 1, k: number): PixelCanvas {
+  const R = HOLO_LOOKS[side].ramp;
+  return paintGlow(2 * SPILL.rx + 3, 2 * SPILL.ry + 3, SPILL.rx, SPILL.ry, [R[0], R[0], R[1], R[1]], k * 3, 1);
+}
+function paintOrb(k: number): PixelCanvas {
+  const g = [PAL.mag0, PAL.mag0, PAL.mag1, PAL.mag1, PAL.mag2];
+  return paintGlow(2 * ORB_R + 3, 2 * ORB_R + 3, ORB_R - 6 + k * 3, ORB_R - 6 + k * 3, g, 0);
+}
+
 export const pedName = (side: 0 | 1): string => `ped:${side}`;
 export const ringName = (side: 0 | 1, k: number): string => `ring:${side}:${k}`;
 export const coneName = (side: 0 | 1): string => `cone:${side}`;
@@ -225,6 +286,9 @@ export const flareName = (side: 0 | 1, k: number): string => `flare:${side}:${k}
 export const beamName = (side: 0 | 1): string => `beam:${side}`;
 export const hotName = (side: 0 | 1): string => `hot:${side}`;
 export const moteName = (side: 0 | 1, k: number): string => `mote:${side}:${k}`;
+export const haloName = (side: 0 | 1, k: number): string => `halo:${side}:${k}`;
+export const spillName = (side: 0 | 1, k: number): string => `spill:${side}:${k}`;
+export const orbName = (k: number): string => `orb:${k}`;
 
 let cache: NtAtlas | null = null;
 export function holoStaticBake(): NtAtlas {
@@ -237,8 +301,11 @@ export function holoStaticBake(): NtAtlas {
     for (let k = 0; k < FLARE_FRAMES; k++) parts.push([flareName(side, k), paintFlare(side, k)]);
     parts.push([beamName(side), paintBeam(side)], [hotName(side), paintHot(side)]);
     for (let k = 0; k < MOTE_FRAMES; k++) parts.push([moteName(side, k), paintMote(side, k)]);
+    for (let k = 0; k < HALO_FRAMES; k++) parts.push([haloName(side, k), paintHalo(side, k)]);
+    for (let k = 0; k < SPILL_FRAMES; k++) parts.push([spillName(side, k), paintSpill(side, k)]);
   }
-  cache = packAtlas(parts, 512);
+  for (let k = 0; k < ORB_FRAMES; k++) parts.push([orbName(k), paintOrb(k)]);
+  cache = packAtlas(parts, 640);
   return cache;
 }
 

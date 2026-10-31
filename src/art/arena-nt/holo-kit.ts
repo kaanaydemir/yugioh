@@ -92,6 +92,8 @@ export interface FacetPart {
   idBase: number;
   /** extra tones for a facet by its seed (the travelling shimmer) */
   boost?: (s: Pt) => number;
+  /** a 1-px contour of this tone where the part meets another part (separates overlapping limbs / head from the body) */
+  sep?: number;
 }
 
 /** Paint one faceted part over the plane (later parts overwrite earlier ones). */
@@ -142,6 +144,25 @@ export function paintFacets(pl: Plane, p: FacetPart): void {
       }
       pl.put(x, y, tones[best], p.idBase + best);
     }
+  if (p.sep !== undefined) {
+    const mineId = (c: number): boolean => c >= p.idBase && c < p.idBase + seeds.length;
+    const mark: number[] = [];
+    for (let y = Math.max(0, Math.floor(y0)); y <= Math.min(pl.h - 1, Math.ceil(y1)); y++)
+      for (let x = Math.max(0, Math.floor(x0)); x <= Math.min(pl.w - 1, Math.ceil(x1)); x++) {
+        if (!mineId(pl.cell[y * pl.w + x])) continue;
+        for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= pl.w || ny >= pl.h) continue;
+          const n = pl.cell[ny * pl.w + nx];
+          if (n >= 0 && !mineId(n)) {
+            mark.push(y * pl.w + x);
+            break;
+          }
+        }
+      }
+    for (const i of mark) pl.tone[i] = p.sep;
+  }
   // wire lines on the facet borders: the pixel of the DARKER facet, one tone above the brighter one (so the border reads as a lit edge)
   const wires = p.wires ?? 0.5;
   if (wires <= 0) return;

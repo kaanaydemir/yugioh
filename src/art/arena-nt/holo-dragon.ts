@@ -122,7 +122,7 @@ function paintWing(pl: Plane, side: 'far' | 'near', a: number, idBase: number, s
   });
   // the arm panel: shoulder, elbow, wrist, then down the last finger to the body
   const arm: Pt[] = [w.S, w.E, W, w.tips[0], chain[1], w.tips[1], chain[3], w.tips[2], chain[5], w.tips[3], chain[7], w.att];
-  const armPoly: Pt[] = [w.S, w.E, W, chain[2], chain[4], chain[6], chain[8], w.att];
+  const armPoly: Pt[] = [w.S, w.E, W, w.att];
   void arm;
   paintFacets(pl, { poly: armPoly, seeds: grid(armPoly, 8, 90 + (far ? 0 : 3)), base: base + 0.5, light: [-0.4, -0.9], gain: 1.2, salt: 95 + (far ? 0 : 5), jitter: 0.7, lo: 0, hi: 2, wires: 0.6, idBase: idBase + 40, boost: shim });
   // bone frame: the arm (shoulder → elbow → wrist) thick, the fingers thin and bright
@@ -189,22 +189,22 @@ function paintPlane(k: number, n: number): Plane {
     tailSeeds.push([tl[i][0] + (i % 2 ? 2 : -2), tl[i][1] + (i % 2 ? -2 : 2)]);
     if (i % 2 === 0 && i > 0 && i < tl.length - 2) tailSeeds.push([(tl[i][0] + tl[i + 1][0]) / 2, (tl[i][1] + tl[i + 1][1]) / 2 + (i % 4 ? 3 : -3)]);
   }
-  paintFacets(pl, { poly: tailPoly, seeds: tailSeeds, base: 1.7, light: [-0.3, -1], gain: 1.1, salt: 31, jitter: 0.8, lo: 0, hi: 3, wires: 0.55, idBase: 3000, boost: shim });
+  paintFacets(pl, { poly: tailPoly, seeds: tailSeeds, base: 1.7, light: [-0.3, -1], gain: 1.1, salt: 31, jitter: 0.8, lo: 0, hi: 3, wires: 0.55, idBase: 3000, boost: shim, sep: 0 });
   // tail crest
   for (let i = 1; i < tl.length - 1; i += 2) spike(pl, [tl[i][0], tl[i][1] - (7 - i * 0.8)], [tl[i][0] - 2, tl[i][1] - (12 - i * 1.1)], 4, 4, 3100 + i * 3);
 
-  const leg = (pts: Pt[], w0: number, w1: number, base: number, salt: number, id: number): void => {
+  const leg = (pts: Pt[], w0: number, w1: number, base: number, salt: number, id: number, sep?: number): void => {
     const poly = tube(pts, w0, w1);
     const seeds: Pt[] = [];
     for (let i = 0; i < pts.length; i++) seeds.push([pts[i][0] + (i % 2 ? 2.5 : -2.5), pts[i][1]]);
-    paintFacets(pl, { poly, seeds, base, light: [-0.7, -0.7], gain: 1.2, salt, jitter: 0.7, lo: 0, hi: 4, wires: 0.6, idBase: id, boost: shim });
+    paintFacets(pl, { poly, seeds, base, light: [-0.7, -0.7], gain: 1.2, salt, jitter: 0.7, lo: 0, hi: 4, wires: 0.6, idBase: id, boost: shim, sep });
   };
   const toes = (f: Pt, id: number, tone: number): void => {
     for (let i = 0; i < 3; i++) spike(pl, [f[0] + i * 3 - 1, f[1] - 1], [f[0] + i * 3 + 3, f[1] + 2 + (i === 1 ? 1 : 0)], 3, tone, id + i * 3);
   };
   // far hind leg (behind the body, a little to the right)
-  leg([[58, 90], [62, 102], [70, 109], [76, 116]], 12, 6, 1.2, 41, 3200);
-  toes([73, 117], 3260, 2);
+  leg([[60, 90], [64, 102], [72, 110], [78, 117]], 13, 6, 1.0, 41, 3200, 0);
+  toes([75, 118], 3260, 2);
 
   // ---- neck + torso (a single S-curve silhouette), then the belly strip
   const BACK: Pt[] = [[38, 102], [42, 90], [46, 76], [52, 62], [58, 50], [60, 38], [64, 28], [70, 21]];
@@ -216,17 +216,17 @@ function paintPlane(k: number, n: number): Plane {
   // belly strip: a lighter band of shard facets down the front of the chest
   const belly = tube(FRONT.slice(1, 7).map((p) => [p[0] - 4, p[1] + 1] as Pt).map(up), 6, 8);
   const bseeds: Pt[] = FRONT.slice(1, 7).map((p, i) => up([p[0] - 4 + (i % 2 ? 1.5 : -1.5), p[1] + 2]));
-  paintFacets(pl, { poly: belly, seeds: bseeds, base: 3.1, light: [-0.4, -0.9], gain: 0.7, salt: 55, jitter: 0.6, lo: 2, hi: 4, wires: 0.8, idBase: 4300, boost: shim });
+  paintFacets(pl, { poly: belly, seeds: bseeds, base: 3.4, light: [-0.4, -0.9], gain: 0.7, salt: 55, jitter: 0.6, lo: 2, hi: 4, wires: 0.8, idBase: 4300, boost: shim });
   // the back crest: spikes down the neck and spine
   for (let i = 1; i < 8; i++) {
     const a = up(BACK[i]);
     spike(pl, [a[0] + 2, a[1] + 1], [a[0] - 6 - (i % 2), a[1] - 2 - (i % 3)], 5, 4, 4400 + i * 3);
   }
   // near hind leg: thigh, shin, foot (over the body)
-  leg([[50, 88], [48, 100], [56, 108], [60, 117]], 15, 7, 2.3, 61, 4600);
-  toes([57, 118], 4660, 4);
+  leg([[48, 86], [43, 98], [51, 108], [55, 117]], 19, 7, 2.5, 61, 4600, 0);
+  toes([52, 118], 4660, 4);
   // front arm (reaching forward-down)
-  leg([[76, 66], [84, 74], [92, 78], [98, 83]].map(up), 8, 4, 2.7, 63, 4700);
+  leg(([[76, 66], [84, 74], [92, 78], [98, 83]] as Pt[]).map(up), 8, 4, 2.7, 63, 4700, 0);
   for (let i = 0; i < 3; i++) spike(pl, up([97 + i * 2, 82 + i * 0.5]), up([103 + i * 2, 86 + i * 2]), 3, 4, 4760 + i * 3);
 
   // ---- horns, head (over everything)
@@ -236,9 +236,9 @@ function paintPlane(k: number, n: number): Plane {
   };
   horn([[72, 20], [64, 11], [54, 7], [50, 11]], 5, 5000);
   horn([[78, 16], [72, 7], [66, 2], [63, 5]], 4, 5010);
-  const HEAD: Pt[] = [[66, 20], [76, 14], [88, 15], [99, 21], [110, 28], [110, 33], [102, 34], [96, 39], [88, 41], [79, 37], [70, 30]].map(upHead);
-  const hseeds: Pt[] = [[72, 22], [82, 20], [92, 22], [102, 28], [106, 31], [84, 28], [92, 32], [98, 35], [78, 33], [88, 37]].map(upHead);
-  paintFacets(pl, { poly: HEAD, seeds: hseeds, base: 3, light: [-0.5, -0.85], gain: 1.6, salt: 53, jitter: 0.6, lo: 1, hi: 4, wires: 0.7, idBase: 5100, boost: shim });
+  const HEAD: Pt[] = ([[66, 20], [76, 14], [88, 15], [99, 21], [110, 28], [110, 33], [102, 34], [96, 39], [88, 41], [79, 37], [70, 30]] as Pt[]).map(upHead);
+  const hseeds: Pt[] = ([[72, 22], [82, 20], [92, 22], [102, 28], [106, 31], [84, 28], [92, 32], [98, 35], [78, 33], [88, 37]] as Pt[]).map(upHead);
+  paintFacets(pl, { poly: HEAD, seeds: hseeds, base: 3, light: [-0.5, -0.85], gain: 1.6, salt: 53, jitter: 0.6, lo: 1, hi: 4, wires: 0.7, idBase: 5100, boost: shim, sep: 1 });
   // brow ridge + the eye + a lit jaw line
   const eye = upHead([90, 22]);
   pl.put(Math.round(eye[0]), Math.round(eye[1]), 5, 5200);
