@@ -1213,16 +1213,12 @@ export class HumanInput {
   }
 
   /**
-   * Alpha of the pixel (fx, fy) of a sprite's FULL frame (realWidth × realHeight). A trimmed frame
-   * (v3 cropped atlas, src/art/atlas.ts) stores only its opaque box at offset (frame.x, frame.y):
-   * getPixelAlpha takes stored-rect coordinates, so the trim offset comes off first (0 untrimmed).
+   * Alpha of the pixel (fx, fy) of a sprite's FULL frame (realWidth × realHeight). Phaser's
+   * getPixelAlpha takes full-frame coordinates and removes a trimmed frame's offset (frame.x/y,
+   * v3 cropped atlas) itself, so the coordinates go in as they are (do not subtract it twice).
    */
   private framePixelAlpha(s: Phaser.GameObjects.Sprite, fx: number, fy: number): number {
-    const f = s.frame;
-    const tx = fx - (f.x || 0);
-    const ty = fy - (f.y || 0);
-    if (tx < 0 || ty < 0 || tx >= f.cutWidth || ty >= f.cutHeight) return 0;
-    return this.scene.textures.getPixelAlpha(tx, ty, s.texture.key, f.name) ?? 0;
+    return this.scene.textures.getPixelAlpha(fx, fy, s.texture.key, s.frame.name) ?? 0;
   }
 
   /** The "is this a meaningful click right now" test used by pick(), or null. */
