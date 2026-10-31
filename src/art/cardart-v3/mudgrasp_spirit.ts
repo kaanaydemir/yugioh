@@ -147,13 +147,13 @@ interface Hand {
   readonly fingers: readonly (readonly [number, number, number])[]; // angle, length, width
 }
 const HAND_NEAR: Hand = {
-  palm: [67, 55],
+  palm: [65, 55],
   r: 7.5,
   fingers: [
     [-112, 9, 4.6],
     [-78, 11, 4.8],
     [-45, 11, 4.8],
-    [-14, 10, 4.6],
+    [-12, 8.5, 4.6],
     [150, 7, 5], // thumb, down-left
   ],
 };
@@ -240,8 +240,8 @@ const FAR_ARM: readonly V[] = [
 /** The near arm (right): from the shoulder out and down to the near hand. */
 const NEAR_ARM: readonly V[] = [
   [56, 42],
-  [63, 46],
-  [67, 54],
+  [62, 47],
+  [65, 54],
 ];
 
 /** The wet puddle the spirit grows out of (subject: it is matter on the floor). */
@@ -339,6 +339,10 @@ function paintMask(t: Xf): PixelCanvas {
   hole(EYE_N, 3.3, 2.5);
   hole(EYE_F, 1.6, 2.4);
   hole(MOUTH, 2.1, 2.6);
+  if (t.bw === 1) {
+    // 1×: the one main crack, brow-down (the mask must read as cracked in the hand)
+    lineOn(q, M(-0.5, -11), M(-1.2, -5.5), PAL.stone1, (c) => c !== null && c !== PAL.void0);
+  }
   if (t.bw > 1) {
     // the lower lid ledge catches the light under the near hole
     lineOn(q, M(-5.5, 2.6), M(-1.5, 2.6), PAL.stone4, (c) => c === PAL.stone3 || c === PAL.stone4);
@@ -368,7 +372,7 @@ const HAND_NEAR_SMALL: readonly string[] = [
   'k22k21k21kk22k',
   'k21k21k21k210k',
   'k21k21k21k10k.',
-  '.k21121121110k',
+  '.k21111111110k',
   '.k2111111110k.',
   'kk2111111110k.',
   'k21k11111100k.',
@@ -378,13 +382,13 @@ const HAND_NEAR_SMALL: readonly string[] = [
 ];
 // prettier-ignore
 const HAND_FAR_SMALL: readonly string[] = [
-  '.....kk.kk....',
+  '.....kk.kkk...',
   '....k22k22k...',
   '.kk.k21k21kkk.',
   'k22kk21k21k22k',
   'k211k21k21k21k',
   '.k21k21k21k21k',
-  'k21112112110k.',
+  'k21112112110kk',
   '.k2111111110k.',
   '.k2111111110kk',
   '.k21111111k10k',
@@ -397,9 +401,9 @@ const HAND_CROWN_SMALL: readonly string[] = [
   '.k.k.k.k...',
   'k2k2k2k2k..',
   'k2k2k2k2k..',
-  'k2121211kk.',
+  'k2121211kkk',
   'k2111111k2k',
-  '.k2111110k.',
+  '.k2111110kk',
   '..k21110k..',
   '..k2110k...',
 ];
@@ -409,9 +413,55 @@ const HANDS_SMALL: readonly (readonly [readonly string[], number, number])[] = [
   [HAND_CROWN_SMALL, 7, 3],
   [HAND_FAR_SMALL, 2, 19],
   [HAND_NEAR_SMALL, 27, 19],
+  // the crown forearm's shadow edge meets the head's outline (closes a 2×2 checker against the sun)
+  [['k'], 16, 11],
 ];
 
 // ================================================================ assembly
+
+/**
+ * Close every 2×2 checker (two diagonal pairs of two tones) of the picture `back` + `s` by repainting ONE pixel of
+ * the subject: with ink in the checker, the lonelier non-ink pixel becomes ink (the outline steps cleanly);
+ * otherwise the lonelier subject pixel takes the other tone. Diagonal outlines with a lit band make these.
+ */
+function closeCheckers(s: PixelCanvas, back: PixelCanvas): void {
+  const at = (x: number, y: number) => s.get(x, y) ?? back.get(x, y);
+  const same = (x: number, y: number) => {
+    const c = at(x, y);
+    let n = 0;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) if (at(x + dx, y + dy) === c) n++;
+    return n;
+  };
+  for (let pass = 0; pass < 3; pass++) {
+    let changed = false;
+    for (let y = 0; y + 1 < s.h; y++)
+      for (let x = 0; x + 1 < s.w; x++) {
+        const a = at(x, y);
+        const b = at(x + 1, y);
+        if (a === null || b === null || a === b || at(x, y + 1) !== b || at(x + 1, y + 1) !== a) continue;
+        const pairA: V[] = [[x, y], [x + 1, y + 1]];
+        const pairB: V[] = [[x + 1, y], [x, y + 1]];
+        const [keep, other] = a === PAL.ink ? [a, pairB] : b === PAL.ink ? [b, pairA] : [null, null];
+        let cand: V[];
+        let to: number;
+        if (keep !== null && other) {
+          cand = other;
+          to = PAL.ink;
+        } else {
+          const la = Math.min(same(...pairA[0]), same(...pairA[1]));
+          const lb = Math.min(same(...pairB[0]), same(...pairB[1]));
+          cand = la <= lb ? pairA : pairB;
+          to = la <= lb ? b : a;
+        }
+        cand = cand.filter(([cx, cy]) => to === PAL.ink || s.isOpaque(cx, cy));
+        if (!cand.length) continue;
+        cand.sort((p, q) => same(p[0], p[1]) - same(q[0], q[1]));
+        s.set(cand[0][0], cand[0][1], to);
+        changed = true;
+      }
+    if (!changed) break;
+  }
+}
 
 function paintSubject(t: Xf, small: boolean): PixelCanvas {
   const W = t.w;
@@ -438,13 +488,10 @@ function paintSubject(t: Xf, small: boolean): PixelCanvas {
     lineOn(body, P(t, [44, 38]), P(t, [50, 45]), PAL.earth0, isM);
     lineOn(body, P(t, [40, 47]), P(t, [47, 53]), PAL.earth0, isM);
     lineOn(body, P(t, [28, 58]), P(t, [36, 62]), PAL.earth0, isM);
-    for (const [bx, by] of [[30, 33], [26, 41]] as const) {
-      const [x, y] = P(t, [bx, by]);
-      body.set(Math.floor(x), Math.floor(y), PAL.earth3);
-      body.set(Math.floor(x) + 1, Math.floor(y), PAL.earth2);
-      body.set(Math.floor(x), Math.floor(y) + 1, PAL.earth1);
-      body.set(Math.floor(x) + 1, Math.floor(y) + 1, PAL.earth0);
-    }
+    // a mud bubble: a tiny dome, lit top-left, its wet spot, the shade under it
+    const BUB = ['.22.', '2310', '.00.'];
+    const BK = { '2': PAL.earth2, '3': PAL.earth3, '1': PAL.earth1, '0': PAL.earth0 };
+    for (const [bx, by] of [[44, 46], [32, 54]] as const) patch(body, BUB, BK, bx, by);
   }
   over(s, body, true);
   // the near arm and hand (in front)
@@ -524,12 +571,12 @@ function paintLight(l: PixelCanvas, subject: PixelCanvas, t: Xf, small: boolean,
   // veins: dim violet threads on the mound (one frame brighter)
   const veinTone = k === 3 ? PAL.void3 : PAL.void2;
   const mud = (c: number | null) => c === PAL.earth1 || c === PAL.earth0;
+  // (big only: at 1× a vein is a stray violet stroke)
   const veins: readonly (readonly V[])[] = small
-    ? [[[40, 40], [41, 48]]]
+    ? []
     : [
-        [[38, 38], [40, 43], [40, 49], [38, 55]],
-        [[40, 46], [44, 50]],
-        [[58, 44], [63, 47]],
+        [[39, 39], [41, 44], [40, 49], [41, 54]],
+        [[57, 44], [61, 47]],
       ];
   for (const path of veins)
     for (let i = 0; i + 1 < path.length; i++) {
@@ -548,7 +595,7 @@ function paintLight(l: PixelCanvas, subject: PixelCanvas, t: Xf, small: boolean,
       }
     }
   // the bubble on the hump: swells (f1), round (f2), pops with a violet spark (f3)
-  const [bx, by] = P(t, [33, 31]);
+  const [bx, by] = P(t, [36, 49]);
   const X = Math.floor(bx);
   const Y = Math.floor(by);
   if (k === 1) on(X, Y, PAL.earth2);
@@ -576,6 +623,7 @@ interface Xf {
   readonly h: number;
 }
 
+const closed = (q: PixelCanvas, back: PixelCanvas): PixelCanvas => (closeCheckers(q, back), q);
 let SUBJ_BIG: PixelCanvas | null = null;
 let SUBJ_SMALL: PixelCanvas | null = null;
 
@@ -587,18 +635,18 @@ const SUN_R = 30;
 
 // prettier-ignore
 const ICON: readonly string[] = [
-  'ssssssssssssssss',
-  'sssssuuuuussssss',
-  'sssuuukaaxuussss',
-  'ssuukaaabbxuusss',
-  'sskkvwvabxvkusss',
-  'skmmkaaabbxkmsss',
-  'kmmmkaabxxkmmmss',
-  'mmllmkxxxkmllmms',
-  'mlmmmmkkkmmmmlmm',
-  'kkmmmmmmmmmmmmkk',
-  'ppppkkmmmmkkpppp',
-  'pppppppppppppppp',
+  'ssssssuuuuusssss',
+  'ssssuuukkkuuusss',
+  'sssuuukaabkuusss',
+  'ssuuukaaabxkusss',
+  'ssuukawvabvxkuss',
+  'ssuukaaabbbxkuss',
+  'ssuukaabooxxkuss',
+  'sskukkabbbxkkkss',
+  'skkkkmkkkkkmmkks',
+  'klmmmmmmmmmmmmmk',
+  'kmmmmmmmmmmmmmmk',
+  'pkkppppppppppkkp',
 ];
 const ICON_KEY: Readonly<Record<string, number>> = {
   s: PAL.earth0,
@@ -609,6 +657,7 @@ const ICON_KEY: Readonly<Record<string, number>> = {
   x: PAL.stone2,
   v: PAL.void3,
   w: PAL.white,
+  o: PAL.void0,
   m: PAL.earth1,
   l: PAL.earth2,
   p: PAL.stone0,
@@ -629,14 +678,14 @@ const art: CardArtV3 = {
   holdMs: 150,
   big(l: ArtLayers, f: number) {
     paintBackdrop(l.backdrop, 'EARTH', { focus: SUN, radius: SUN_R, horizon: HORIZON });
-    SUBJ_BIG ??= paintSubject(XF_BIG, false);
+    SUBJ_BIG ??= closed(paintSubject(XF_BIG, false), l.backdrop);
     l.subject.blit(SUBJ_BIG, 0, 0);
     paintLight(l.light, SUBJ_BIG, XF_BIG, false, f);
   },
   small(l: ArtLayers, f: number) {
     const sun: V = [(XF_SMALL.ox + SUN[0] * SMALL_S) * 2, (XF_SMALL.oy + SUN[1] * SMALL_S) * 2];
     paintBackdrop(l.backdrop, 'EARTH', { focus: sun, radius: SUN_R * SMALL_S * 2, horizon: Math.round((XF_SMALL.oy + HORIZON * SMALL_S) * 2) });
-    SUBJ_SMALL ??= paintSubject(XF_SMALL, true);
+    SUBJ_SMALL ??= closed(paintSubject(XF_SMALL, true), l.backdrop);
     l.subject.blit(SUBJ_SMALL, 0, 0);
     paintLight(l.light, SUBJ_SMALL, XF_SMALL, true, f);
   },

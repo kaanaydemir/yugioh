@@ -59,11 +59,11 @@ export const DEATH_PRESETS: Record<MonsterId, DeathPreset> = {
   cloud_hatchling: { material: 'plant', accent: 'light' },
   reflection_archer: { material: 'crystal', accent: 'light' },
   scrap_raiders: { material: 'stone', accent: 'fire' },
-  hollow_ogre: { material: 'plant', accent: 'stone' },
+  hollow_ogre: { material: 'plant', accent: 'plant' }, // C6 roots unravel into the tile, one sprout wilts (stone/ash endings are reserved, §5.2)
   crag_axeman: { material: 'stone', accent: 'stone' },
   reed_heron: { material: 'water', accent: 'plant' },
   kite_fencer: { material: 'plant', accent: 'light' },
-  mudgrasp_spirit: { material: 'stone', accent: 'shadow' },
+  mudgrasp_spirit: { material: 'water', accent: 'shadow' }, // C10 liquefies back into its puddle (stone/ash endings are reserved, §5.2)
   steppe_spiralhorn: { material: 'plant', accent: 'plant' },
   polar_needle: { material: 'stone', accent: 'crystal' },
   polar_anvil: { material: 'stone', accent: 'crystal' },

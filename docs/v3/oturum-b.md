@@ -20,6 +20,7 @@ v1 baselines were filmed at 684e290 (before any lane B edit): `shots/v3/a3/basel
 | grim_warden | WIP | WIP | WIP | – | – | 0 | – |
 | wisp_imp | WIP | WIP | n/a | – | – | 0 | – |
 | mudgrasp_spirit | WIP | WIP | n/a | – | – | 0 | – |
-| hollow_ogre | – | – | n/a | – | – | 0 | – |
+| hollow_ogre | WIP | WIP | n/a | – | – | 0 | – |
 
 Checkpoint 2026-10-31 18:10 UTC (8af5386): build stage in progress — grim_warden and wisp_imp rigs + card art, grim cut-in, mudgrasp_spirit rig underway; hollow_ogre queued.
+Checkpoint 2026-10-31 19:42 UTC: grim_warden / wisp_imp cinematics + SFX in progress; mudgrasp_spirit and hollow_ogre rigs + card art underway. grim −400 drain timing change in battle/declare.ts + plates.ts (v3-gated).

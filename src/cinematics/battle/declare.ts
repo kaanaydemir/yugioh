@@ -371,7 +371,8 @@ async function attackDeclareV3(ctx: Ctx<'attackDeclare'>): Promise<void> {
   ctx.take('attack')?.destroy();
   const attacker = live(ctx.unit(ev.attackerUid));
   const target = ev.targetUid !== null ? live(ctx.unit(ev.targetUid)) : null;
-  showBattlePlates(ctx, attacker, target);
+  // (Hortlak Muhafız's −400 drops at its drain beat, not here: holdDrain)
+  showBattlePlates(ctx, attacker, target, { holdDrain: true });
   // the poses the clash may need (recoils, guard brace / break, deaths) are painted now, in the
   // background — never synchronously on the contact frame (_v3/warm.ts)
   for (const u of [attacker, target]) if (u) warmPoses(u.cardId, u.player, REACTION_POSES);

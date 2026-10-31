@@ -6,7 +6,7 @@
 //
 // No registrations of cinematics here besides one observer (the safety net).
 
-import { battlePlates, currentAtk, currentDef } from '../../engine';
+import { battleNumbers, battlePlates, currentAtk, currentDef } from '../../engine';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { registerObserver } from '../api';
 import type { CinematicContext } from '../api';
@@ -17,11 +17,17 @@ const tinted = new Set<MonsterUnit>();
 
 type DeclareCtx = Pick<CinematicContext, 'state'> & { ev: { attackerUid: number; targetUid: number | null } };
 
-/** Roll the plates of the attacker and the target to this battle's numbers. */
-export function showBattlePlates(ctx: DeclareCtx, attacker: MonsterUnit | null, target: MonsterUnit | null): void {
+/**
+ * Roll the plates of the attacker and the target to this battle's numbers. `holdDrain` (the declaration):
+ * the target's declare debuff (Hortlak Muhafız −400) is left off — it drops at the attacker's own drain
+ * beat (its activate cinematic calls this again without the option, src/cinematics/kart-b/grim_warden.ts).
+ */
+export function showBattlePlates(ctx: DeclareCtx, attacker: MonsterUnit | null, target: MonsterUnit | null, o: { holdDrain?: boolean } = {}): void {
   let plates: ReturnType<typeof battlePlates>;
   try {
     plates = battlePlates(ctx.state, ctx.ev.attackerUid, ctx.ev.targetUid);
+    if (o.holdDrain && plates.target && ctx.ev.targetUid !== null && battleNumbers(ctx.state, ctx.ev.attackerUid, ctx.ev.targetUid).targetDebuffBy === ctx.ev.attackerUid)
+      plates = { ...plates, target: { ...plates.target, atk: currentAtk(ctx.state, ctx.ev.targetUid) } };
   } catch {
     return;
   }

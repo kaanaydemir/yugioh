@@ -9,6 +9,13 @@
 // the mouth moans) → the arms come back up. summon = the climb out of a vortex: two hands burst up and grip the
 // puddle's edges, the body hauls itself up, the mask seats with a click. death = it liquefies back into the puddle,
 // the vortex runs backwards, the mask sinks last. Every one-shot ends on idle f0 (HA-14).
+//
+// DISTINCTION (KK-15, sameness UYARI out of plan, 31 Oct): the attack's point track correlates with the punchers
+// (steel_silencer 0.905, stone_sentinel 0.845: "hand back, then forward") — ours scoops DOWN first, lobs over the
+// head in an arc and ends with the hand SINKING into the ground, the head / core barely move, and the projectile
+// leaves the palm (no body contact). The guard loop correlates with thorn_lurker by the silhouette proxy (0.91):
+// both are near-still crouch loops measured against idle f0; ours is a swollen mud rampart (it RISES, it does
+// not crouch) with a lid arm that peeks. A blind eye test is still open (docs/v3/oturum-b/mudgrasp_spirit.md).
 
 import type { AnimSpec, AnyMonsterAnim, MonsterAnim, MonsterAnimExtra, MonsterPoints } from '../types';
 import { AX, GY, pose, skeleton, type Pose } from './mudgrasp_spirit-rig';
@@ -97,9 +104,11 @@ function table(keys: Partial<Pose>[], f: number, n: number, ease: number[] = [])
 
 const GUARD_N = 8;
 const G0: Partial<Pose> = {
-  sink: 3, lean: -3, hump: -1, hx: -1, hy: 2, lid: 1, eye: 1,
-  nx: 15, ny: -3, nc: 0.65, fx: 21, fy: -4, fc: 0.6,
-  aa: -58, ab: 38, ac: 0.55, rx: -23, rc: 0.7, bubK: 1,
+  // the "closed wall": the mud SWELLS UP into a rampart (fatter, taller mound), the near arm a bar across the chest,
+  // the crown arm curled over the head as a lid — the mask peeks over the bar
+  sink: -1, swell: 2, mound: 1.35, lean: -2, hump: 2, hx: -1, hy: 1, lid: 1, eye: 1,
+  nx: 15, ny: -6, nc: 0.65, fx: 21, fy: -6, fc: 0.6,
+  aa: -58, ab: 38, ac: 0.55, rx: -22, rc: 0.7, bubK: 1,
 };
 export function guardPose(f: number): Pose {
   const k = ((f % GUARD_N) + GUARD_N) % GUARD_N;
@@ -107,11 +116,12 @@ export function guardPose(f: number): Pose {
   return snap({
     ...IDLE0,
     ...G0,
-    swell: [0, 1, 1, 0, 0, 1, 1, 0][k],
-    hy: [2, 2, 3, 3, 2, 2, 3, 3][k],
+    swell: [2, 3, 3, 2, 2, 3, 3, 2][k],
+    hy: [1, 1, 2, 2, 1, 1, 2, 2][k],
     look: [0, 0, 0, 1, 1, 0, 0, 0][k],
-    aa: -58 + 5 * Math.sin(TAU * (ph - 0.25)),
-    ab: 38 + 4 * Math.sin(TAU * (ph - 0.45)),
+    // the lid arm lifts slowly to peek and drops back fast (a wary, asymmetric loop — not a breathing pulse)
+    aa: [-60, -57, -53, -49, -46, -46, -55, -60][k],
+    ab: [38, 37, 35, 33, 32, 33, 37, 39][k],
     ac: 0.55 + 0.25 * Math.sin(TAU * ph),
     nc: 0.65 + 0.15 * Math.sin(TAU * (ph - 0.4)),
     bub: ph * 0.5,
@@ -120,7 +130,7 @@ export function guardPose(f: number): Pose {
   });
 }
 const GUARD0 = guardPose(0);
-const GUARD_HOLDS = [170, 150, 150, 170, 170, 150, 150, 170];
+const GUARD_HOLDS = [190, 130, 120, 180, 200, 120, 130, 170];
 
 // ------------------------------------------------------------------ toGuard / fromGuard
 
@@ -217,7 +227,7 @@ const HH_KEYS: Partial<Pose>[] = [
 export function hitHeavyPose(f: number): Pose {
   return table(HH_KEYS, f, HH_N);
 }
-const HH_HOLDS = [50, 60, 80, 110, 110, 120, 130, 140];
+const HH_HOLDS = [50, 60, 140, 110, 110, 120, 130, 140];
 
 const HM_N = 8;
 const HM_KEYS: Partial<Pose>[] = [
