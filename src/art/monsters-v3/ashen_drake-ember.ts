@@ -122,7 +122,7 @@ export function emberPass(p: PixelCanvas, c: EmberCtx) {
         const y = hy + dy;
         const cur = p.get(x, y);
         if (cur === null || cur === PAL.ink) continue;
-        put(p, keep, x, y, Math.abs(dy) <= 1 && dx === 0 ? hot : PAL.fire1);
+        put(p, keep, x, y, dy === 0 && dx === 0 ? PAL.gold4 : Math.abs(dy) <= 1 && dx === 0 ? hot : PAL.fire1);
       }
   }
   // ---- the hem's ember lip: on the tip row inside the outline; embers with dark gaps, a shimmer step
