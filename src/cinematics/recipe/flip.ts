@@ -18,7 +18,7 @@ import { leaves, shadowWisps } from '../../vfx/particles';
 import { sparkleBurst } from '../../vfx/summon';
 import type { CardHookEvents, CinematicHandler } from '../_core/registry';
 import { matterRamp } from '../_v3/presets';
-import { panAt, play, soundsOf } from '../_v3/sound';
+import { panAt, play, soundsOf, soundsOfUnit } from '../_v3/sound';
 import { floorCracks } from './setpieces/rockAssembly';
 import { burst } from '../summon-b/_kit';
 import { flipV3With, type FlipAccentFn } from '../summon-b/flip';
@@ -72,7 +72,7 @@ export function recipeFlip(r: PresentationRecipe): CinematicHandler<CardHookEven
     flipV3With(ctx, accent, {
       burst: false,
       rise: (c, u) => {
-        const v = soundsOf(u.cardId);
+        const v = soundsOfUnit(u);
         if (v) play(v.land, { volume: 0.6, pan: panAt(u.home.x) });
         else c.sfx(u.card.ace ? 'roarBig' : 'roarSmall', { volume: 0.55 });
       },

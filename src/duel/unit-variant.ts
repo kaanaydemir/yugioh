@@ -66,7 +66,9 @@ export function syncUidVariants(scene: Phaser.Scene, state: GameState): void {
   m.clear();
   for (const ps of state.players)
     for (const slot of ps.monsters) {
-      if (!slot || !slot.faceUp) continue;
+      // face-down slots too: a grown hatchling under magic_hat keeps its permAtk, and the flip that
+      // reveals it builds the unit (onBuilt) before the next sync — it must be grown from frame 0
+      if (!slot) continue;
       const v = slotVariant(state.cards[slot.uid].cardId as MonsterId, slot);
       if (v) m.set(slot.uid, v);
     }

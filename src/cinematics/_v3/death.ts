@@ -108,7 +108,7 @@ const ACCENTS: Record<ShatterMaterial, AccentSpec> = {
   // acid (venom_drake §5.4): acid drops fall from the body onto a dark acid pool, a leaf3 floor light,
   // no white orbit
   acid: {
-    emit: { from: 'body', rate: 30, colors: [PAL.leaf3, PAL.leaf2], vy: [10, 40], ay: 520, sway: 0, shape: 'px', life: [260, 460], floor: true, flicker: false },
+    emit: { from: 'body', rate: 30, colors: [PAL.leaf3, PAL.leaf2], vy: [10, 40], ay: 520, sway: 0, shape: 'px', life: [260, 460], floor: true },
     pool: [PAL.leaf1, PAL.void0, PAL.ink, PAL.leaf3],
     orbit: null,
     glints: null,

@@ -9,6 +9,7 @@
 
 import { CARDS, isMonster, isSpell } from '../../data/cards';
 import type { GameEvent, GameState, MonsterSlot, PlayerId, Uid } from '../../engine/types';
+import { LOOK_V3 } from '../../view/layout';
 
 /** Remove `uid` from every hand, deck, graveyard and field zone of `s`. */
 function detach(s: GameState, uid: Uid): void {
@@ -23,6 +24,23 @@ function detach(s: GameState, uid: Uid): void {
     for (let z = 0; z < ps.spellTraps.length; z++) if (ps.spellTraps[z]?.uid === uid) ps.spellTraps[z] = null;
     if (ps.fieldSpell?.uid === uid) ps.fieldSpell = null;
   }
+}
+
+/** The monster slot (face-up or face-down) holding `uid`, if any. */
+function slotOf(s: GameState, uid: Uid): MonsterSlot | undefined {
+  for (const ps of s.players) for (const m of ps.monsters) if (m?.uid === uid) return m;
+  return undefined;
+}
+
+/**
+ * v3: hatchlings whose growth was activated but whose statChange has not been projected yet, per
+ * projected state object (projectBatch mutates one state through the whole batch).
+ */
+const GROWING = new WeakMap<GameState, Set<Uid>>();
+function growingOf(s: GameState): Set<Uid> {
+  let g = GROWING.get(s);
+  if (!g) GROWING.set(s, (g = new Set()));
+  return g;
 }
 
 function freshMonster(uid: Uid, turn: number, faceUp: boolean, position: 'attack' | 'defense'): MonsterSlot {
@@ -113,15 +131,14 @@ export function applyEvent(s: GameState, ev: GameEvent): void {
     case 'activate': {
       const ps = s.players[ev.player];
       if (ev.kind === 'monsterEffect') {
-        // cloud_hatchling grows (rules.ts callCoin: activate, then permAtk / permDef on the slot): the
-        // projected slot carries the growth, so the frontier sync keeps the badge and the grown form
-        const d = CARDS[ev.cardId];
-        if (isMonster(d) && d.effect === 'jesterAging') {
-          const slot = s.players.flatMap((q) => q.monsters).find((m) => m?.uid === ev.uid);
-          if (slot && slot.faceUp && slot.permAtk === undefined) {
-            slot.permAtk = 1200;
-            slot.permDef = 800;
-          }
+        // v3: cloud_hatchling grows (rules.ts callCoin: activate, then permAtk / permDef inside one
+        // withStats, whose statChange follows). The activate only marks the uid; the growth lands on
+        // the projected slot at that statChange, so its count-up still animates and every later
+        // frontier sync keeps the badge and the grown form. (v1 keeps today's projection.)
+        if (LOOK_V3) {
+          const d = CARDS[ev.cardId];
+          const slot = slotOf(s, ev.uid);
+          if (isMonster(d) && d.effect === 'jesterAging' && slot && slot.faceUp && slot.permAtk === undefined) growingOf(s).add(ev.uid);
         }
         return;
       }
@@ -138,10 +155,21 @@ export function applyEvent(s: GameState, ev: GameEvent): void {
       }
       return;
     }
+    case 'statChange': {
+      // v3: the growth marked at the hatchling's activate (the values come from the engine's event)
+      const g = LOOK_V3 ? GROWING.get(s) : undefined;
+      if (g?.delete(ev.uid)) {
+        const slot = slotOf(s, ev.uid);
+        if (slot && slot.permAtk === undefined) {
+          slot.permAtk = ev.atk - ev.prevAtk;
+          slot.permDef = ev.def - ev.prevDef;
+        }
+      }
+      return;
+    }
     case 'target':
     case 'attackNegated':
     case 'battle':
-    case 'statChange':
     case 'deckOut':
       return;
     case 'counter': {

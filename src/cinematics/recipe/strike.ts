@@ -46,7 +46,7 @@ import { Sparks, onFrame, sleep } from '../../vfx/combat';
 import { Raster } from '../../vfx/setpieces';
 import type { StrikeArgs } from '../_core/types';
 import { strikeStartFrame } from '../_v3/clash';
-import { atFrame, atMark, panAt, play, soundsOf, takeCharge } from '../_v3/sound';
+import { atFrame, atMark, panAt, play, soundsOfUnit, takeCharge } from '../_v3/sound';
 import { currentPixels } from '../strikes-a/_kit';
 
 // ================================================================ hooks (lazy modules, preloaded at install)
@@ -678,7 +678,7 @@ async function throwStrike(s: StrikeArgs, r: PresentationRecipe, hooks: RecipeHo
   const rnd = mulberry32(u.uid * 977 + (s.target?.uid ?? 3) * 31 + 7);
   const res = s.ctx.ev.result;
   const loses = res === 'attackerDestroyed' || res === 'bothDestroyed';
-  const voice = soundsOf(u.cardId);
+  const voice = soundsOfUnit(u);
   const pan = panAt(u.home.x);
   const mat = projectileMaterial(r);
   const n = u.frameCount('attack');

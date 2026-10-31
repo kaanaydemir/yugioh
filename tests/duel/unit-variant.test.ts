@@ -5,8 +5,8 @@
 //    gets null from every hook (today's path)
 //  - the sheet swap persists across resyncs (upgrade-only; a rebuilt unit of a grown uid is grown from
 //    its first frame; a slot without the growth — a re-summoned hatchling — builds a baby)
-//  - the badge never rolls back: the projected snapshot after the growth's activate already carries
-//    permAtk / permDef (FieldView.sync's setStats reads currentAtk of that snapshot)
+//  - the badge never rolls back: the projected snapshot after the growth's statChange (the count-up)
+//    carries permAtk / permDef (FieldView.sync's setStats reads currentAtk of that snapshot)
 
 import { describe, expect, it, vi } from 'vitest';
 
@@ -174,9 +174,13 @@ describe('the sheet swap persists across resyncs', () => {
     const baby = fakeUnit(sc, uid);
     MonsterUnit.onBuilt!(baby);
     expect(variantOf(baby)).toBeNull();
-    // a face-down grown slot shows no unit variant either
+    // a face-down grown slot (under magic_hat) keeps its uid: the flip that reveals it builds the unit
+    // before the next sync, and that unit is grown from its first frame (blueprint §3.3 kaChGrownHat)
     syncUidVariants(sc, stateWith(slot({ faceUp: false, permAtk: 1200, permDef: 800 })));
-    expect(uidVariant(sc, uid)).toBeNull();
+    expect(uidVariant(sc, uid)).toBe('grown');
+    const revealed = fakeUnit(sc, uid);
+    MonsterUnit.onBuilt!(revealed);
+    expect(variantOf(revealed)).toBe('grown');
   });
 });
 
@@ -184,7 +188,7 @@ describe('the badge never rolls back (project.ts: the growth is projected)', () 
   const coinAct = (p: 0 | 1, zone: number): Action => ({ type: 'activateMonster', player: p, zone });
   const call = (p: 0 | 1, c: 'heads' | 'tails'): Action => ({ type: 'callCoin', player: p, call: c });
 
-  it('every snapshot from the hatchling\'s activate on carries permAtk / permDef = the engine\'s after state', () => {
+  it('the growth lands at the hatchling\'s statChange (its count-up still animates), = the engine\'s after state', () => {
     let s = scenario({ p0: { monsters: ['dial_jester', 'cloud_hatchling'] }, p1: { monsters: ['stone_sentinel'] } });
     s = apply(s, coinAct(0, 0)).state;
     const before = structuredClone(s);
@@ -193,13 +197,24 @@ describe('the badge never rolls back (project.ts: the growth is projected)', () 
     expect([currentAtk(r.state, uid), currentDef(r.state, uid)]).toEqual([2300, 1700]);
     const snaps = projectBatch(before, r.events);
     const ai = r.events.findIndex((e) => e.type === 'activate' && e.uid === uid);
+    const si = r.events.findIndex((e) => e.type === 'statChange' && e.uid === uid);
     expect(ai).toBeGreaterThanOrEqual(0);
-    expect(currentAtk(snaps[ai], uid), 'before its activate: the baby').toBe(1100);
-    for (let n = ai + 1; n < snaps.length; n++) {
+    expect(si).toBeGreaterThan(ai);
+    // snaps[n] = the state after event n - 1: up to and including the activate (and anything before the
+    // statChange) the slot is the baby, so the sync before the count-up never shows the end values
+    for (let n = 0; n <= si; n++) expect(currentAtk(snaps[n], uid), `snap ${n}: the baby`).toBe(1100);
+    for (let n = si + 1; n < snaps.length; n++) {
       const m = snaps[n].players[0].monsters[1]!;
       expect([m.permAtk, m.permDef], `snap ${n}`).toEqual([1200, 800]);
       expect([currentAtk(snaps[n], uid), currentDef(snaps[n], uid)], `snap ${n}`).toEqual([2300, 1700]);
     }
+  });
+
+  it('a statChange of a hatchling without the growth activate (an equip) projects no growth', () => {
+    const s = scenario({ p0: { monsters: ['cloud_hatchling'] } });
+    const h = s.players[0].monsters[0]!;
+    applyEvent(s, { type: 'statChange', uid: h.uid, atk: 1600, def: 900, prevAtk: 1100, prevDef: 900 });
+    expect(h.permAtk).toBeUndefined();
   });
 
   it('an activate of any other monster effect, or of a hatchling that already grew, changes nothing', () => {
