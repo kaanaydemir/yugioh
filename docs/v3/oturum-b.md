@@ -17,7 +17,9 @@ v1 baselines were filmed at 684e290 (before any lane B edit): `shots/v3/a3/basel
 ## Status
 | Card | Rig | Card art | Cut-in | Cinematics | SFX | Critique rounds | Gates |
 |---|---|---|---|---|---|---|---|
-| grim_warden | – | – | – | – | – | 0 | – |
-| wisp_imp | – | – | n/a | – | – | 0 | – |
-| mudgrasp_spirit | – | – | n/a | – | – | 0 | – |
+| grim_warden | WIP | WIP | WIP | – | – | 0 | – |
+| wisp_imp | WIP | WIP | n/a | – | – | 0 | – |
+| mudgrasp_spirit | WIP | WIP | n/a | – | – | 0 | – |
 | hollow_ogre | – | – | n/a | – | – | 0 | – |
+
+Checkpoint 2026-10-31 18:10 UTC (8af5386): build stage in progress — grim_warden and wisp_imp rigs + card art, grim cut-in, mudgrasp_spirit rig underway; hollow_ogre queued.
