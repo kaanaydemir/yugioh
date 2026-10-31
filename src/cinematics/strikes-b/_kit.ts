@@ -11,7 +11,7 @@ import Phaser from 'phaser';
 import type { CardId } from '../../data/cards';
 import type { GameEvent, PlayerId } from '../../engine/types';
 import { ATTRIBUTE_RAMP, PAL, type Ramp } from '../../art/palette';
-import { monsterAnimKey, monsterFrame, monsterFrameName } from '../../art/textures';
+import { monsterAnimKey, monsterFrameName } from '../../art/textures';
 import type { AnyMonsterAnim, MonsterAnim } from '../../art/types';
 import { ARENA_V2, DEPTH, LOOK_V3, TILE_W, type XY, unitDepth } from '../../view/layout';
 import { lightFlash } from '../../view/light';
@@ -23,6 +23,7 @@ import type { TileCard } from '../../view/TileCard';
 import { listHandlers, type CinematicContext, type StrikeArgs } from '../api';
 import { onDuelStart } from '../../duel/seeds';
 import { deathMaterial, deathV3 } from '../_v3/death';
+import { unitFrame, variantTag } from '../../duel/unit-variant';
 
 export { E, Px, Sparks, animate, onFrame, sleep };
 export type { StrikeArgs };
@@ -161,7 +162,7 @@ export function homeSprite(u: MonsterUnit): void {
 
 /** Pixels of a given colour set in a frame (for crest sparks, glints...). Frame coords. */
 export function framePixelsOf(u: MonsterUnit, anim: MonsterAnim, frame: number, colors: readonly number[]): XY[] {
-  const pc = monsterFrame(u.cardId, anim, frame);
+  const pc = unitFrame(u, anim, frame);
   const set = new Set(colors);
   const out: XY[] = [];
   for (let y = 0; y < pc.h; y++)
@@ -182,10 +183,10 @@ export function framePixelsOf(u: MonsterUnit, anim: MonsterAnim, frame: number, 
 export function glintPoint(u: MonsterUnit, anim: MonsterAnim, frame: number, colors: readonly number[], near: XY, radius = 6): XY {
   const n = u.frameCount(anim);
   const f = clamp(Math.round(frame), 0, n - 1);
-  const key = `${u.cardId}|${anim}|${f}|${colors.join(',')}|${near.x},${near.y}|${radius}`;
+  const key = `${u.cardId}${variantTag(u)}|${anim}|${f}|${colors.join(',')}|${near.x},${near.y}|${radius}`;
   const hit = glintCache.get(key);
   if (hit) return hit;
-  const pc = monsterFrame(u.cardId, anim, f);
+  const pc = unitFrame(u, anim, f);
   const set = new Set(colors);
   let best: XY = { x: near.x, y: near.y };
   let bestD = Infinity;
@@ -210,7 +211,7 @@ const glintCache = new Map<string, XY>();
 /** Opaque bounds of the sprite's current frame in world space. */
 export function worldBox(u: MonsterUnit): { x: number; y: number; w: number; h: number; cx: number; cy: number } {
   const fi = u.frameInfo();
-  const b = monsterFrame(u.cardId, fi.anim ?? 'idle', fi.frame).bounds() ?? { x: 0, y: 0, w: u.art.w, h: u.art.h };
+  const b = unitFrame(u, fi.anim ?? 'idle', fi.frame).bounds() ?? { x: 0, y: 0, w: u.art.w, h: u.art.h };
   const a = u.framePoint(b.x, b.y);
   const c = u.framePoint(b.x + b.w, b.y + b.h);
   const x = Math.min(a.x, c.x);

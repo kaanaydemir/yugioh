@@ -1359,3 +1359,13 @@ Each finding was checked against the tree (2026-10-31) before it was resolved.
 | Bold 2 | The scar keeps the marker | — | **Adopted:** the level-3 scar keeps a 3-px `stone2` chitin hook tip, and its bubbles pop at the hook's base. It also replaces revision 2's dead stalk, so no plant glyph is left anywhere (§5.0, §5.4, §7) |
 | Bold 3 | The rattle carries the battle's weight | — | **Adopted:** `power` 1 / 2 / 3 → `venomChargeLight` / `venomCharge` / `venomChargeHeavy` (final rate 22 / 26 / 30 per second) and hole coverage 6 / 10 / 12 % (§5.0, §5.2, §6) |
 | — | The cloud_hatchling grown-form question | N/A | No change |
+
+## Build log
+- 2026-10-31 — shared-infrastructure step (one agent, before the builders): the approved shared hooks for this
+  card are in; see `docs/v3/oturum-a.md` → "Shared infrastructure (lane A)" for the exact API, the files and the
+  gate results. Placeholders the builder now owns and tunes are listed there (material defs, the
+  `ash` / `acid` shatter and accent values). No card art, cinematic or sound was made in this step.
+  - Deviation: `defs/venomscale.ts` uses `death { shatter: 'acid', accent: 'acid' }` (matter = MATTER_RAMP.acid,
+    the blueprint's green matter) because the materials test pins `matter = MATTER_RAMP[death.shatter]`; the recipe
+    still breaks the body as `shadow` + accent `acid`. The blueprint's `case 'crackle'` is reproduced by the generic
+    interpreter with `dec: [0.12, 0.35], knock: 120, rattle: 4200` (Magic = 0.6 × 0.35 = 0.21 s vs 0.2 s).

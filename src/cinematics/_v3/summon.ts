@@ -22,7 +22,6 @@
 import type Phaser from 'phaser';
 import type { PlayerId } from '../../engine/types';
 import { PAL, PLAYER_RAMP, type Ramp } from '../../art/palette';
-import { monsterFrame } from '../../art/textures';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { DEPTH, type XY } from '../../view/layout';
 import { lightBeam, lightFlash, lightPool, type LightHandle } from '../../view/light';
@@ -31,6 +30,7 @@ import { Px, Sparks, onFrame, sleep } from '../../vfx/combat';
 import { sfx, type SfxName } from '../../audio/sfx';
 import type { ShatterMaterial } from '../../vfx/shatter';
 import { deathPreset } from './presets';
+import { unitFrame } from '../../duel/unit-variant';
 
 /** Hologram phase of a summon with a summon pose (ms; A0 §6.2 item 4). */
 export const HOLO_MAX_MS = 300;
@@ -66,7 +66,7 @@ function poseSpan(u: MonsterUnit, anim: 'summon' | 'revive'): { top: number; bot
   let bottom = -Infinity;
   const n = u.frameCount(anim);
   for (let f = 0; f < n; f++) {
-    const b = monsterFrame(u.cardId, anim, f).bounds();
+    const b = unitFrame(u, anim, f).bounds();
     if (!b) continue;
     top = Math.min(top, b.y);
     bottom = Math.max(bottom, b.y + b.h);

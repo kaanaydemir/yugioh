@@ -7,7 +7,7 @@
 // with the engine's real `after` state (debug warning on mismatch) and continues from the
 // engine's state, so small drifts can never accumulate.
 
-import { CARDS, isSpell } from '../../data/cards';
+import { CARDS, isMonster, isSpell } from '../../data/cards';
 import type { GameEvent, GameState, MonsterSlot, PlayerId, Uid } from '../../engine/types';
 
 /** Remove `uid` from every hand, deck, graveyard and field zone of `s`. */
@@ -112,7 +112,19 @@ export function applyEvent(s: GameState, ev: GameEvent): void {
     }
     case 'activate': {
       const ps = s.players[ev.player];
-      if (ev.kind === 'monsterEffect') return;
+      if (ev.kind === 'monsterEffect') {
+        // cloud_hatchling grows (rules.ts callCoin: activate, then permAtk / permDef on the slot): the
+        // projected slot carries the growth, so the frontier sync keeps the badge and the grown form
+        const d = CARDS[ev.cardId];
+        if (isMonster(d) && d.effect === 'jesterAging') {
+          const slot = s.players.flatMap((q) => q.monsters).find((m) => m?.uid === ev.uid);
+          if (slot && slot.faceUp && slot.permAtk === undefined) {
+            slot.permAtk = 1200;
+            slot.permDef = 800;
+          }
+        }
+        return;
+      }
       if (ev.from === 'hand') {
         const i = ps.hand.indexOf(ev.uid);
         if (i >= 0) ps.hand.splice(i, 1);

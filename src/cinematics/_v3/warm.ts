@@ -15,6 +15,8 @@ import type { PlayerId } from '../../engine/types';
 import type { AnyMonsterAnim } from '../../art/types';
 import { monsterSheetKey, warmMonsterSheet } from '../../art/textures';
 import { LOOK_V3 } from '../../view/layout';
+import type { MonsterUnit } from '../../duel/MonsterUnit';
+import { unitSheetKey } from '../../duel/unit-variant';
 
 /** The poses a blow on a unit may need (recoils, the guard brace / break, the death). */
 export const REACTION_POSES: readonly AnyMonsterAnim[] = ['hitMagic', 'hitHeavy', 'death', 'toGuard', 'fromGuard'];
@@ -24,6 +26,16 @@ export function warmPoses(id: MonsterId, player: PlayerId, anims: readonly AnyMo
   if (!LOOK_V3) return;
   try {
     warmMonsterSheet(monsterSheetKey(id, player), anims);
+  } catch (e) {
+    console.warn('[warm] poses', e);
+  }
+}
+
+/** warmPoses for a unit on the field: the sheet it really shows (a variant's, src/duel/unit-variant.ts; else warmPoses' own). */
+export function warmUnitPoses(u: MonsterUnit, anims: readonly AnyMonsterAnim[]): void {
+  if (!LOOK_V3) return;
+  try {
+    warmMonsterSheet(unitSheetKey(u), anims);
   } catch (e) {
     console.warn('[warm] poses', e);
   }

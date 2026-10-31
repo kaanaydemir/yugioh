@@ -35,7 +35,6 @@ import type Phaser from 'phaser';
 import type { GameEvent } from '../../engine/types';
 import { PAL } from '../../art/palette';
 import type { PixelCanvas } from '../../art/pixel';
-import { monsterFrame } from '../../art/textures';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { DEPTH, type XY, zoneXY } from '../../view/layout';
 import { lightFlash, lightPool, type LightHandle } from '../../view/light';
@@ -46,7 +45,8 @@ import { behindBodies, cardLeaves } from './card';
 import { contactFlash } from './flash';
 import { deathStartFrom, takePlannedEntry } from './posematch';
 import { planGuardBreak, runGuardBreak, showsGuard } from './guardbreak';
-import { atFrame, hush, panAt, play, soundsOf } from './sound';
+import { atFrame, hush, panAt, play, soundsOfUnit } from './sound';
+import { unitFrame, variantTag } from '../../duel/unit-variant';
 
 type DestroyCtx = CinematicContext<Extract<GameEvent, { type: 'destroy' }>>;
 type ToGraveyardEv = Extract<GameEvent, { type: 'toGraveyard' }>;
@@ -60,9 +60,23 @@ import { deathPreset } from './presets';
 
 interface AccentSpec {
   /** Pixel motes emitted while the body dies: from the body or the feet; vy range, gravity, sway. */
-  emit: { from: 'body' | 'feet'; rate: number; colors: readonly number[]; vy: readonly [number, number]; ay: number; sway: number; shape: 'px' | 'plus' | 'puff'; life: readonly [number, number]; floor?: boolean } | null;
+  emit: {
+    from: 'body' | 'feet';
+    rate: number;
+    colors: readonly number[];
+    vy: readonly [number, number];
+    ay: number;
+    sway: number;
+    shape: 'px' | 'plus' | 'puff';
+    life: readonly [number, number];
+    floor?: boolean;
+    /** 'px' motes blink while they live (default: every 'px' accent but water's drops). */
+    flicker?: boolean;
+  } | null;
   /** A dithered pool opening on the floor (outer, inner, core, rim). */
   pool: readonly [number, number, number, number] | null;
+  /** The 3 pixels orbiting the pool's rim: their colour (default PAL.white), or null for none. */
+  orbit?: number | null;
   /** Sparkle glints popping on the body (crystal light leaking out). */
   glints: readonly number[] | null;
   /** Floor light under the body (stepped light layer; v3 only) — dims as the body dies. */
@@ -87,6 +101,19 @@ const ACCENTS: Record<ShatterMaterial, AccentSpec> = {
   },
   light: { emit: { from: 'body', rate: 40, colors: [PAL.white, PAL.gold4, PAL.gold3], vy: [-50, -18], ay: 0, sway: 10, shape: 'plus', life: [320, 560] }, pool: null, glints: [PAL.white, PAL.gold4], light: PAL.gold4 },
   plant: { emit: { from: 'body', rate: 24, colors: [PAL.leaf3, PAL.leaf2, PAL.earth2], vy: [8, 30], ay: 60, sway: 26, shape: 'px', life: [420, 700], floor: true }, pool: null, glints: null, light: null },
+  // lane A (additive; docs/v3/oturum-a.md "Shared infrastructure"). Placeholders from the blueprints;
+  // the card builders tune them. ash (ashen_drake §5.6): ash grains sift down from the body and settle,
+  // no pool, the last embers' light under it.
+  ash: { emit: { from: 'body', rate: 22, colors: [PAL.stone2, PAL.stone1], vy: [6, 22], ay: 40, sway: 12, shape: 'puff', life: [420, 700], floor: true }, pool: null, glints: null, light: PAL.fire2 },
+  // acid (venom_drake §5.4): acid drops fall from the body onto a dark acid pool, a leaf3 floor light,
+  // no white orbit
+  acid: {
+    emit: { from: 'body', rate: 30, colors: [PAL.leaf3, PAL.leaf2], vy: [10, 40], ay: 520, sway: 0, shape: 'px', life: [260, 460], floor: true, flicker: false },
+    pool: [PAL.leaf1, PAL.void0, PAL.ink, PAL.leaf3],
+    orbit: null,
+    glints: null,
+    light: PAL.leaf3,
+  },
 };
 
 interface Accent {
@@ -102,12 +129,12 @@ const opaqueCache = new Map<string, { x: number; y: number }[]>();
 function bodyPixels(u: MonsterUnit): { x: number; y: number }[] {
   const fi = u.frameInfo();
   const anim = fi.anim ?? 'idle';
-  const key = `${u.cardId}|${anim}|${fi.frame}`;
+  const key = `${u.cardId}${variantTag(u)}|${anim}|${fi.frame}`;
   let pts = opaqueCache.get(key);
   if (!pts) {
     let pc: PixelCanvas | null = null;
     try {
-      pc = monsterFrame(u.cardId, anim, fi.frame);
+      pc = unitFrame(u, anim, fi.frame);
     } catch {
       pc = null;
     }
@@ -170,7 +197,7 @@ function runAccent(sc: Phaser.Scene, u: MonsterUnit, kind: ShatterMaterial, home
           colors: A.emit.colors,
           shape: A.emit.shape,
           size: A.emit.shape === 'puff' ? RR(1.5, 3) : 1,
-          flicker: A.emit.shape === 'px' && kind !== 'water',
+          flicker: A.emit.flicker ?? (A.emit.shape === 'px' && kind !== 'water'),
           floor: A.emit.floor ? home.y + Math.round(RR(-2, 2)) : undefined,
           bounce: 0,
           fadeAt: 1,
@@ -210,11 +237,13 @@ function runAccent(sc: Phaser.Scene, u: MonsterUnit, kind: ShatterMaterial, home
             const c = di > 1 ? ((x + y) % 2 === 0 ? outer : -1) : di > 0.8 ? rim : di > 0.35 ? inner : core;
             if (c >= 0) poolG.dot(home.x + x, home.y + y, c, 1);
           }
-        // the rim turns (a few bright pixels orbiting)
-        for (let i = 0; i < 3; i++) {
-          const a = el * 0.008 + (i / 3) * Math.PI * 2;
-          poolG.dot(Math.round(home.x + Math.cos(a) * rx), Math.round(home.y + Math.sin(a) * ry), PAL.white, 1);
-        }
+        // the rim turns (a few bright pixels orbiting; AccentSpec.orbit: their colour, null = none)
+        const orbit = A.orbit === undefined ? PAL.white : A.orbit;
+        if (orbit !== null)
+          for (let i = 0; i < 3; i++) {
+            const a = el * 0.008 + (i / 3) * Math.PI * 2;
+            poolG.dot(Math.round(home.x + Math.cos(a) * rx), Math.round(home.y + Math.sin(a) * ry), orbit, 1);
+          }
       } else if (closing >= 0) return false;
     }
     return true;
@@ -344,7 +373,7 @@ function breakBody(d: V3DeathArgs, accent: Accent | null, pushK: number): Promis
   const push = d.push ? { x: d.push.x * pushK, y: d.push.y * pushK } : undefined;
   // a character with its own break sound (sound.ts) scores the burst frame itself: the shatter's
   // generic burst sound (played synchronously on that frame) is skipped
-  const C = soundsOf(u.cardId);
+  const C = soundsOfUnit(u);
   const brk = () =>
     shatter(sc, u.sprite, {
       monsterId: u.cardId,
@@ -413,7 +442,7 @@ async function posedDeath(d: V3DeathArgs): Promise<void> {
   const dissolveF = u.markFrame('death', 'dissolve', Math.max(0, n - 3));
   // the character's death beats on their frames (the blow's own sound is the contact's): the first
   // beat of the death itself, the dissolve, what follows it (the magus' staff hitting the floor)
-  const C = soundsOf(u.cardId);
+  const C = soundsOfUnit(u);
   if (C) {
     const pan = panAt(d.home.x);
     if (C.deathStart) atFrame(u, 'death', Math.min(1, n - 1), () => play(C.deathStart!, { pan }), { late: false });

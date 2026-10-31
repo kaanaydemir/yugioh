@@ -122,6 +122,12 @@ export interface PresentationRecipe {
     blocked?: BlockedForm;
     /** Replaces chains_of_light RANGED for this card (v3). */
     ranged?: boolean;
+    /**
+     * The strike's colour ramp in the battle kit (contact-flash tint, impact sparks, hit reaction:
+     * battle/battle.ts `aRamp`) instead of the attacker's ATTRIBUTE_RAMP (and the thrown rock's
+     * greys). Lane A: ashen_drake's ash ignites in fire, not in DARK violet.
+     */
+    ramp?: RampName;
   };
   /**
    * `leadMs`: how long the matter gathers before the summon pose starts ('assemble': default 220 ms);

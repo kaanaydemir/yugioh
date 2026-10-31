@@ -7,13 +7,13 @@
 import type Phaser from 'phaser';
 import { PAL } from '../../art/palette';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
-import { monsterFrame } from '../../art/textures';
 import { DEPTH, GAME_H, GAME_W, type XY, unitDepth } from '../../view/layout';
 import { shake } from '../../vfx/core';
 import { Sparks as PxSparks, stopTime, whiteFlash } from '../../vfx/combat';
 import { E, Raster, Sparks, floorRing, onFrame, qbez, run, sleep, spriteBox, type WorldBox } from '../../vfx/setpieces';
 import { lightBeam, lightFlash, lightPool } from '../../view/light';
 import { ADD, TAU, TK, clamp01, lerp, rnd, rr } from '../battle/_kit';
+import { unitFrame } from '../../duel/unit-variant';
 
 const GOLD = [PAL.gold2, PAL.gold3, PAL.gold4, PAL.white] as const;
 
@@ -361,7 +361,7 @@ function opaqueOn(u: MonsterUnit, x: number, y: number): boolean {
   if (fx < 0 || fy < 0 || fx >= W || fy >= H) return false;
   const fi = u.frameInfo();
   try {
-    return monsterFrame(u.cardId, fi.anim ?? 'idle', fi.frame).isOpaque(Math.floor(fx), Math.floor(fy));
+    return unitFrame(u, fi.anim ?? 'idle', fi.frame).isOpaque(Math.floor(fx), Math.floor(fy));
   } catch {
     return false;
   }
@@ -397,7 +397,7 @@ function silhouette(u: MonsterUnit, prev: SilMask | null): SilMask | null {
   const m = new Uint8Array(w * h);
   let pc: { isOpaque(x: number, y: number): boolean } | null = null;
   try {
-    pc = monsterFrame(u.cardId, fi.anim ?? 'idle', fi.frame);
+    pc = unitFrame(u, fi.anim ?? 'idle', fi.frame);
   } catch {
     pc = null;
   }

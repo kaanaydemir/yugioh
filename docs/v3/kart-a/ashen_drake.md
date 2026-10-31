@@ -897,3 +897,12 @@ Every claim was re-read in the code before it was accepted.
 
 **Rejected / not taken as written:** none of the findings. Two were adapted: #4 uses the LUB rather than the DUB in the silence (so the ignition itself completes the heartbeat), and #1's "pose at 260" is kept but the measured entrance is 1.88 s rather than the critic's tighter sketch, which still fits the ≤ 1.95 s target.
 
+
+## Build log
+- 2026-10-31 — shared-infrastructure step (one agent, before the builders): the approved shared hooks for this
+  card are in; see `docs/v3/oturum-a.md` → "Shared infrastructure (lane A)" for the exact API, the files and the
+  gate results. Placeholders the builder now owns and tunes are listed there (material defs, the
+  `ash` / `acid` shatter and accent values). No card art, cinematic or sound was made in this step.
+  - Deviation: `MATTER_RAMP.ash = RAMPS.stone` (fire1 is darker than stone3, §3.4's fallback). `defs/ash.ts` takes
+    `shatter: 'ash'` and its own `ASH_SOUND` already (Q2/Q3 landed), so the SE-5 gap of §6.5 is closed at the
+    data level; the LSD check vs `hitStoneHeavy` is the builder's.

@@ -81,7 +81,7 @@ import { TK, type EvOf, all, lerpXY, live, norm, other, sub, takeAttack } from '
 import { canHandOver, strikeStartFrame } from '../_v3/clash';
 import { cardLeaves, flightMs } from '../_v3/card';
 import { fxCount, fxRng, rimFlash } from '../_v3/spellfx';
-import { atFrame, panAt, play as playV3, soundsOf, takeCharge } from '../_v3/sound';
+import { atFrame, panAt, play as playV3, soundsOfUnit, takeCharge } from '../_v3/sound';
 import type { SfxHandle } from '../../audio/sfx';
 import { isRanged } from './chains_of_light';
 import { trapOpening, type Opening } from './_opening';
@@ -1441,6 +1441,7 @@ interface StrikePlan {
 const STRIKE_RAMP: Readonly<Record<string, readonly number[]>> = {
   crystal_wyrm: RAMPS.cyan,
   abyss_magus: RAMPS.void,
+  ashen_drake: RAMPS.fire, // lane A: the reflected ash breath ignites (docs/v3/kart-a/ashen_drake.md §8.4)
 };
 
 function strikeRamp(u: MonsterUnit): readonly number[] {
@@ -1571,7 +1572,7 @@ export async function mirrorV3(ctx: ActCtx): Promise<void> {
     hold?.dropMarks();
     sc.tweens.killTweensOf(s);
     u.posed = true;
-    const voice = soundsOf(u.cardId);
+    const voice = soundsOfUnit(u);
     let charge: SfxHandle | null = null;
     if (voice) charge = takeCharge(u, voice.charge, { volume: 0.8, pan: panAt(u.home.x) });
     else ctx.sfx('whoosh', { volume: 0.5, pitch: plan.ranged ? 0.8 : 1.1 });

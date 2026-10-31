@@ -1174,3 +1174,14 @@ Every claim was re-checked in the tree before acting on it. All 19 findings were
 - **Grown keeps one baby habit (adopted):** the grown idle's f13–f16 hiccup with a fat ring from the big jaw, no extra frames (§4.1). Its sound follows Q4 (no ambient idle sound system today).
 - **The ground remembers the sneeze (adopted):** flattened-grass annuli per crossed tile, blinking out in three palette steps over ≈ 1 s (§5.2).
 - **"It was always the baby" (adopted):** the grown death un-ages over f3–f5 into the baby's ball, and the SMALL original egg knits shut; the shed mane / ring cloud becomes the float cloud (§4.8, §5.5). It replaces revision 2's big egg.
+
+## Build log
+- 2026-10-31 — shared-infrastructure step (one agent, before the builders): the approved shared hooks for this
+  card are in; see `docs/v3/oturum-a.md` → "Shared infrastructure (lane A)" for the exact API, the files and the
+  gate results. Placeholders the builder now owns and tunes are listed there (material defs, the
+  `ash` / `acid` shatter and accent values). No card art, cinematic or sound was made in this step.
+  - Deviations: `MonsterUnit` also has `static animSheetFor?` + field `animSheetKey` (for `ownsKey`); `unitSheetKey(u)`
+    returns `monsterSheetKey(id, player)` for a unit without a variant (keeps its lazy-P2 side effect byte-identical);
+    `warmPoses` stays id-based for summons, the declaration uses the new `warmUnitPoses(u, …)`. The variant's rewind
+    steps / voice are data on `registerMonsterVariant` (`rewind`, `rewindSfx`). `hatchhide` is in
+    `GENERATED_HIT_MATERIALS` already; with `sound: { same: 'cloth' }` it plays cloth until its own sound is set.

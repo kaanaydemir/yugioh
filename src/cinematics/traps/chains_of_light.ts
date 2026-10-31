@@ -59,7 +59,7 @@ import { banner, type BannerOpts } from '../../vfx/banners';
 import { fx, registerCardHook, type CinematicContext } from '../api';
 import { TAU, type EvOf, all, holdFrame, lerpXY, live, other, rnd, rr, seed, takeAttack } from '../battle/_kit';
 import { resultPlate, trapExit, trapOpening } from './_opening';
-import { panAt, play as playV3, soundsOf, takeCharge } from '../_v3/sound';
+import { panAt, play as playV3, soundsOfUnit, takeCharge } from '../_v3/sound';
 import type { SfxHandle } from '../../audio/sfx';
 import { v3Recipe } from '../../presentation/registry';
 
@@ -210,6 +210,7 @@ export function isRanged(id: string): boolean {
 const CHARGE: Readonly<Record<string, readonly number[]>> = {
   crystal_wyrm: [PAL.white, PAL.cyan4, PAL.cyan3, PAL.cyan2],
   abyss_magus: [PAL.white, PAL.void4, PAL.void3, PAL.void2],
+  ashen_drake: [PAL.fire4, PAL.fire3, PAL.stone2, PAL.stone1], // lane A: embers in the ash (ashen_drake.md §8.4)
 };
 
 /** A strike's charge gathering at the muzzle point of the frame the attacker shows (follows it). */
@@ -557,7 +558,7 @@ async function chainsV3(ctx: ActCtx): Promise<void> {
     reach = dash;
     const ms = Math.max(240, Math.min(420, u.rangeMs('attack', f0, fStop)));
     // a monster with its own voice starts its charge (the bind cuts it short: _v3/sound.ts)
-    const voice = soundsOf(u.cardId);
+    const voice = soundsOfUnit(u);
     if (voice) chargeSnd = takeCharge(u, voice.charge, { volume: 0.8, pan: panAt(u.home.x) });
     else ctx.sfx('whoosh', { volume: 0.5, pitch: ranged ? 0.8 : 1.1 });
     if (ranged) glow = chargeGlow(sc, u, CHARGE[u.cardId] ?? [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2]);

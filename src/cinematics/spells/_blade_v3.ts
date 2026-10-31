@@ -73,7 +73,8 @@ import type { GameEvent, PlayerId } from '../../engine/types';
 import { PAL } from '../../art/palette';
 import { FLAT_H, FLAT_W, ISO_CX, ISO_CY, ISO_TEX_H, ISO_TEX_W, poseAxes, restQuat } from '../../art/cards';
 import { hasMonsterArtV3 } from '../../art/monsters';
-import { monsterSheetKey, warmMonsterSheet } from '../../art/textures';
+import { warmMonsterSheet } from '../../art/textures';
+import { unitSheetKey } from '../../duel/unit-variant';
 import { crackPath } from '../../art/spellmotifs-v3';
 import { DEPTH, type XY, zoneXY } from '../../view/layout';
 import type { TileCard } from '../../view/TileCard';
@@ -368,7 +369,7 @@ async function bondPose(u: MonsterUnit): Promise<void> {
 function warmBond(u: MonsterUnit | null): void {
   if (!u || !hasMonsterArtV3(u.cardId)) return;
   try {
-    warmMonsterSheet(monsterSheetKey(u.cardId, u.player), ['victory']);
+    warmMonsterSheet(unitSheetKey(u), ['victory']);
   } catch {
     /* warming is an optimisation only */
   }

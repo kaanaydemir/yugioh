@@ -103,7 +103,8 @@ registerEvent(
     const blocked = ev.result === 'attackerDestroyed' || (ev.result === 'noDestroy' && defense && (ev.targetValue ?? 0) > ev.attackerAtk);
     const power = battlePower(ev, dmgEv?.amount ?? 0);
     const { hold, other: kept } = takeAttack(ctx);
-    const aRamp: Ramp = attacker ? ATTRIBUTE_RAMP[attacker.attribute] : RAMPS.gold;
+    const vr = attacker ? v3Recipe(attacker.cardId)?.attack.ramp : undefined;
+    const aRamp: Ramp = attacker ? (vr ? RAMPS[vr] : ATTRIBUTE_RAMP[attacker.attribute]) : RAMPS.gold;
     const tRamp: Ramp = target ? ATTRIBUTE_RAMP[target.attribute] : RAMPS.gold;
     const tTile = ev.targetUid !== null ? ctx.tile(ev.targetUid) : null;
     const to: XY = direct ? fx.duelistPoint(ctx, defender) : live(target) ? target!.core() : tTile ? { x: tTile.home.x, y: tTile.home.y - 10 } : { x: GAME_W / 2, y: 140 };
@@ -374,7 +375,8 @@ async function battleV3(ctx: Ctx<'battle'>): Promise<void> {
   const blocked = ev.result === 'attackerDestroyed' || (ev.result === 'noDestroy' && defense && (ev.targetValue ?? 0) > ev.attackerAtk);
   const power = battlePower(ev, dmgEv?.amount ?? 0);
   const { hold, other: kept } = takeAttack(ctx);
-  const aRamp: Ramp = attacker ? (physicalThrow(attacker.cardId) ? THROWN_RAMP : ATTRIBUTE_RAMP[attacker.attribute]) : RAMPS.gold;
+  const vr = attacker ? v3Recipe(attacker.cardId)?.attack.ramp : undefined;
+  const aRamp: Ramp = attacker ? (vr ? RAMPS[vr] : physicalThrow(attacker.cardId) ? THROWN_RAMP : ATTRIBUTE_RAMP[attacker.attribute]) : RAMPS.gold;
   const tRamp: Ramp = target ? ATTRIBUTE_RAMP[target.attribute] : RAMPS.gold;
   const tTile = ev.targetUid !== null ? ctx.tile(ev.targetUid) : null;
   const to: XY = direct ? fx.duelistPoint(ctx, defender) : live(target) ? target!.core() : tTile ? { x: tTile.home.x, y: tTile.home.y - 10 } : { x: GAME_W / 2, y: 140 };

@@ -32,7 +32,7 @@ import { E, Sparks, addGlow, floorRing, onFrame, run } from '../../vfx/setpieces
 import { banner, type BannerOpts } from '../../vfx/banners';
 import { lightBeam, lightFlash } from '../../view/light';
 import { fx, registerEvent, registerObserver } from '../api';
-import { REACTION_POSES, warmPoses } from '../_v3/warm';
+import { REACTION_POSES, warmUnitPoses } from '../_v3/warm';
 import { alignStart, frameDelta, idleDelta, settleBefore, strikeContactIn } from '../_v3/posematch';
 import { V3HOOKS } from '../v3small/_hooks';
 import {
@@ -374,7 +374,7 @@ async function attackDeclareV3(ctx: Ctx<'attackDeclare'>): Promise<void> {
   showBattlePlates(ctx, attacker, target);
   // the poses the clash may need (recoils, guard brace / break, deaths) are painted now, in the
   // background — never synchronously on the contact frame (_v3/warm.ts)
-  for (const u of [attacker, target]) if (u) warmPoses(u.cardId, u.player, REACTION_POSES);
+  for (const u of [attacker, target]) if (u) warmUnitPoses(u, REACTION_POSES);
   // A3 Y1b: a resting target's idle starts arriving on a frame its struck pose continues: the
   // declaration + the strike from the frame after the charge pose to the attack's 'contact' mark
   // (the battle re-plans on the strike's own first frame, _v3/posematch.ts)
