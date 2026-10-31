@@ -497,7 +497,8 @@ export const KITE_VOICE = {
   charge: 'kfnPikeCharge',
   release: 'kfnFleche',
   impact: 'kfnTsst',
-  deathStart: 'kfnDeathTaut',
+  // (deathStart is the cinematic's: the death pose may join at f1 or later — kfnDeathTaut is scored on the first
+  // death frame it shows before the snap, src/cinematics/kartc/kite_fencer.ts watchDeath)
   dissolve: 'kfnClatter',
   // death frames after 'dissolve' (f4: the rapier hits the tile): the bounces and the rest tick
   afterDissolve: [

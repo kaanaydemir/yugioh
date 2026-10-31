@@ -690,6 +690,8 @@ function watchDeath(scene: Phaser.Scene, u: MonsterUnit): void {
   const flip = u.flipX;
   const light = lightOf(u);
   const pan = panAt(u.home.x);
+  let taut = false;
+  let tautAt = 0;
   let snapped = false;
   let flown = false;
   let folded = false;
@@ -700,7 +702,14 @@ function watchDeath(scene: Phaser.Scene, u: MonsterUnit): void {
     const fi = u.frameInfo();
     const active = u.sprite.active;
     if (active && fi.anim === 'death') {
-      if (!snapped && fi.frame >= 2) {
+      // the string pulls taut as the death begins (the pose may join at f2 straight from the recoil: the tension
+      // still sounds before the snap)
+      if (!taut) {
+        taut = true;
+        tautAt = el;
+        play('kfnDeathTaut', { pan });
+      }
+      if (!snapped && fi.frame >= 2 && el - tautAt >= 60) {
         snapped = true;
         play('kfnSnap', { pan });
         // the break point: halfway between the kite's tail and the pin (death f2: pin at AX − 22, GY)
