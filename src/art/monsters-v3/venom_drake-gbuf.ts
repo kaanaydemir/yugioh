@@ -36,7 +36,7 @@ export interface Tones {
 }
 
 /** venomscale: void0 creases, void1 shadow, void2 mid, mag1 plum lit plane, void3 lit edge. */
-export const HIDE: Tones = { L: PAL.mag1, M: PAL.void1, S: PAL.void0, D: PAL.void0, E: PAL.void3 };
+export const HIDE: Tones = { L: PAL.mag1, M: PAL.void2, S: PAL.void1, D: PAL.void0, E: PAL.void3 };
 /** the far side of the body: one value step darker */
 export const HIDE_FAR: Tones = { L: PAL.void2, M: PAL.void1, S: PAL.void0, D: PAL.void0, E: null };
 /** chitin / bone: claws, horns, belly plates, the last tail segments, the stinger */
