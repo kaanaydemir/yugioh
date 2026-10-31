@@ -139,5 +139,7 @@ PASS; saWyrmBlocked FAILs by 0.01 pt (Δoff 1.44 vs 1.43) in one frame (t = 462)
 are the ambient sky-flyer band (x 32–606, y 94–111), which differs between two HEAD runs as well; not this change.
 
 ## Open issues
-- Owner question: ambient idle sounds per monster (see above).
-- Owner question (venom_drake §10.1): only the death scar lasts the duel; attack scars fade after ~2.4 s.
+- Owner question: ambient idle sounds per monster. Owner silent → lane-A choice: NOT built (no ambient-sound system;
+  three cards ticking/dripping between actions would clutter the board mix). Idle identities play inside cinematics.
+- Owner question (venom_drake §10.1). Owner silent → lane-A choice: only the venom_drake DEATH scar lasts the duel
+  (memorable, flavor-true "nothing grows again"); attack scars fade after ~2.4 s so they never read as a game mechanic.
