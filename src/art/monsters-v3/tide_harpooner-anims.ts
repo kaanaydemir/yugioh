@@ -308,9 +308,9 @@ const DEATH_KEYS: Pose[] = [
   key({ ...G_SHELL, rot: 80, sx: 13, sy: 14, ext: 0, eye: 0, legs: 0, nOn: 0, fOn: 0, coil: 0, hOn: 0, rope: 0, sand: 0.4 }),
   // sinks, clipped at the floor, sand piling over its edges
   key({ rot: 80, sx: 13, sy: 20, sink: 0, ext: 0, eye: 0, legs: 0, nOn: 0, fOn: 0, coil: 0, hOn: 0, rope: 0, sand: 0.6 }),
-  key({ rot: 80, sx: 13, sy: 27, sink: 0, ext: 0, eye: 0, legs: 0, nOn: 0, fOn: 0, coil: 0, hOn: 0, rope: 0, sand: 0.8 }),
-  key({ rot: 80, sx: 13, sy: 34, sink: 0, ext: 0, eye: 0, legs: 0, nOn: 0, fOn: 0, coil: 0, hOn: 0, rope: 0, sand: 1 }),
-  key({ rot: 80, sx: 13, sy: 37, sink: 0, ext: 0, eye: 0, legs: 0, nOn: 0, fOn: 0, coil: 0, hOn: 0, rope: 0, sand: 1, diss: 0.55 }),
+  key({ rot: 80, sx: 13, sy: 29, sink: 0, ext: 0, eye: 0, legs: 0, nOn: 0, fOn: 0, coil: 0, hOn: 0, rope: 0, sand: 0.8 }),
+  key({ rot: 80, sx: 13, sy: 39, sink: 0, ext: 0, eye: 0, legs: 0, nOn: 0, fOn: 0, coil: 0, hOn: 0, rope: 0, sand: 1 }),
+  key({ rot: 80, sx: 13, sy: 44, sink: 0, ext: 0, eye: 0, legs: 0, nOn: 0, fOn: 0, coil: 0, hOn: 0, rope: 0, sand: 1, diss: 0.55 }),
 ];
 export function deathPose(f: number): Pose {
   return DEATH_KEYS[Math.min(f, D_N - 1)];
