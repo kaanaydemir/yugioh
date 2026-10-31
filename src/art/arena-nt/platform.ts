@@ -3,7 +3,7 @@
 //   - a plain graphite top plate over the fixed 7×5 reference grid (the 5+5 board; 3+3 uses its middle
 //     columns, the outer lane cells stay empty graphite) with a rim, a free channel for BoardViewCalm's
 //     neon trim pieces (they keep their lit / dead / runner / ignition behaviour), panel seams and bolts;
-//   - the two duelist bumps (grid cols PAD_C0..PAD_C1) as part of the same plate;
+//   - ONE chamfered slab (layout-nt PLATE_OUTLINE: an octagon); the two duelist pads stand ON it (pads layer), nothing is cut into the outline;
 //   - layered armour side panels (FACE_H px: lip, rail, energy-strip channel, armour panel, ledge, skirt)
 //     on every camera-facing edge, panel seams, a few vents, corner pillars and four corner blocks;
 //   - the contact shadow under the platform (ink, dithered in three steps: no alpha, no blur);
@@ -12,8 +12,7 @@
 // strip pieces, vent puffs, corner glints) for the layer's ambient motion. Pure PixelCanvas code
 // (no Phaser): runs in Node for tests. Colours only from src/art/palette.ts (through NT_PAL).
 
-import { FACE_H, NT_COLS, NT_OX, NT_OY, NT_ROWS, PAD_C0, PAD_C1, PLATE_G0, PLATE_G1X, PLATE_G1Y, PLATE_OUTLINE, ntIso } from '../../view/board-nt/layout-nt';
-import { LANES } from '../../view/layout';
+import { FACE_H, NT_COLS, NT_OX, NT_OY, NT_ROWS, PLATE_C0, PLATE_C1, PLATE_OUTLINE, PLATE_R0, PLATE_R1, PLATE_X0, PLATE_X1, PLATE_Y0, PLATE_Y1, ntIso } from '../../view/board-nt/layout-nt';
 import { type Color, PixelCanvas } from '../pixel';
 import { PAL } from '../palette';
 import { NT_PAL } from './palette';
@@ -52,43 +51,33 @@ const sideOfRow = (r: number): Side => (r > 2.5 ? 0 : r < 1.5 ? 1 : 2);
 
 // ---------------------------------------------------------------- grid helpers
 
-/** The plate as a union of rectangles in grid space (the bumps overlap the plate so their joint is no edge). */
-const RECTS: readonly (readonly [number, number, number, number])[] = [
-  [PLATE_G0, PLATE_G1X, PLATE_G0, PLATE_G1Y],
-  [PAD_C0, PAD_C1, -2, 0.5],
-  [PAD_C0, PAD_C1, 4.5, 6],
-];
+/**
+ * The plate is a convex octagon: the intersection of eight half-planes. Edge index (also the rim tone slot):
+ * 0 −col, 1 +col, 2 −row, 3 +row, 4 far flat (−s), 5 near flat (+s), 6 left end cap (−u), 7 right end cap (+u); u = c − r, s = c + r.
+ */
+const S_FAR = (PLATE_Y0 - NT_OY) / 16;
+const S_NEAR = (PLATE_Y1 - NT_OY) / 16;
+const U_LEFT = (PLATE_X0 - NT_OX) / 32;
+const U_RIGHT = (PLATE_X1 - NT_OX) / 32;
 
-/** Depth (grid units) of a point inside the plate (−1 outside), and which side of its best rectangle is nearest (0 −col, 1 +col, 2 −row, 3 +row). */
+/**
+ * Depth of a point inside the plate in screen px (the distance to the nearest edge, measured vertically for the slanted and flat
+ * edges, horizontally for the end caps; −1 outside), and which edge is nearest.
+ */
 let depthSide = 0;
 function plateDepth(c: number, r: number): number {
-  let best = -1;
-  for (let k = 0; k < RECTS.length; k++) {
-    const q = RECTS[k];
-    const d0 = c - q[0];
-    const d1 = q[1] - c;
-    const d2 = r - q[2];
-    const d3 = q[3] - r;
-    let d = d0;
-    let side = 0;
-    if (d1 < d) {
-      d = d1;
-      side = 1;
+  const s = c + r;
+  const u = c - r;
+  const d = [(c - PLATE_C0) * 32, (PLATE_C1 - c) * 32, (r - PLATE_R0) * 32, (PLATE_R1 - r) * 32, (s - S_FAR) * 16, (S_NEAR - s) * 16, (u - U_LEFT) * 32, (U_RIGHT - u) * 32];
+  let best = d[0];
+  let side = 0;
+  for (let k = 1; k < 8; k++)
+    if (d[k] < best) {
+      best = d[k];
+      side = k;
     }
-    if (d2 < d) {
-      d = d2;
-      side = 2;
-    }
-    if (d3 < d) {
-      d = d3;
-      side = 3;
-    }
-    if (d >= 0 && d > best) {
-      best = d;
-      depthSide = side;
-    }
-  }
-  return best;
+  depthSide = side;
+  return best < 0 ? -1 : best / 32;
 }
 
 // ---------------------------------------------------------------- public result
@@ -129,9 +118,11 @@ export interface PlatformArt {
 interface FaceDef {
   a: [number, number];
   b: [number, number];
-  /** grid column of a shaded (+col) face's edge (the row follows x); unused on lit faces */
+  /** grid column of a shaded (+col) face's edge (the row follows x); unused on the other faces */
   col: number;
   lit: boolean;
+  /** a fixed owner for the whole face (the flat near edge), or null: the owner follows x */
+  side: Side | null;
   seams: number[];
   /** panel indices that carry a vent */
   vents: number[];
@@ -209,10 +200,10 @@ export function paintPlatform(): PixelCanvas {
 
 // ---------------------------------------------------------------- top surface
 
-/** Edge-side rim tone (coping highlight): the camera-facing lower-left edge is the lit one. −col, +col, −row, +row. */
-const RIM: readonly Color[] = [N3, N3, N2, N4];
+/** Edge-side rim tone (coping highlight): the camera-facing lower-left edge is the lit one. −col, +col, −row, +row, far flat, near flat, left cap, right cap. */
+const RIM: readonly Color[] = [N3, N3, N2, N4, N2, N3, N3, N2];
 /** The coping's second row (one tone down). */
-const RIM2: readonly Color[] = [N2, N2, N1, N3];
+const RIM2: readonly Color[] = [N2, N2, N1, N3, N1, N2, N2, N1];
 
 /** A tiny deterministic hash (0..1) of a screen pixel: sparse plate noise that never moves. */
 function hash01(x: number, y: number): number {
@@ -223,22 +214,12 @@ function hash01(x: number, y: number): number {
 
 function paintTop(S: Surface, x0: number, y0: number, x1: number, y1: number): PlatformArt['dashes'] {
   const dashPx: { x: number; y: number }[][] = Array.from({ length: 13 }, () => []);
-  // 3+3: the calm arena's neon trim follows ITS (smaller) outline, so it stays off and the plate carries its own dim edge line
-  const ownTrim = LANES < 5;
-  for (let y = y0; y < y1; y++) {
-    // the screen span of the plate on this row: the union of its three rectangles (c + r is fixed along a row)
+  // the plate carries its own neon edge line along the whole slab outline (blue near / crimson far, steel in the neutral middle):
+  // BoardViewCalm's trim pieces follow the OLD calm outline (bumps included), so the host must skip them (NT_SKIP.trims)
+  const ownTrim = true;
+  for (let y = Math.max(y0, PLATE_Y0); y < Math.min(y1, PLATE_Y1); y++) {
     const sum = (y + 0.5 - NT_OY) / 16;
-    let xa = Infinity;
-    let xb = -Infinity;
-    for (const q of RECTS) {
-      const cmin = Math.max(q[0], sum - q[3]);
-      const cmax = Math.min(q[1], sum - q[2]);
-      if (cmax < cmin) continue;
-      xa = Math.min(xa, NT_OX + (2 * cmin - sum) * 32);
-      xb = Math.max(xb, NT_OX + (2 * cmax - sum) * 32);
-    }
-    if (xa > xb) continue;
-    for (let x = Math.max(x0, Math.floor(xa) - 1); x < Math.min(x1, Math.ceil(xb) + 1); x++) {
+    for (let x = Math.max(x0, PLATE_X0); x < Math.min(x1, PLATE_X1); x++) {
       const ga = (x + 0.5 - NT_OX) / 32;
       const c = (ga + sum) / 2;
       const r = (sum - ga) / 2;
@@ -272,7 +253,7 @@ function paintTop(S: Surface, x0: number, y0: number, x1: number, y1: number): P
         S.put(x, y, dv < 1 ? N0 : G1);
         continue;
       }
-      // the border band between the rim and the grid (and the bumps): layered coping, a groove, the trim channel, a groove, the plate
+      // the border band between the rim and the grid: layered coping, a groove, the trim channel, a groove, the plate
       if (d32 < 1) {
         S.put(x, y, RIM[side]);
         continue;
@@ -286,7 +267,7 @@ function paintTop(S: Surface, x0: number, y0: number, x1: number, y1: number): P
         continue;
       }
       if (d32 < 4) {
-        // BoardViewCalm's neon pieces lie exactly here (5+5); 3+3 paints the line itself, blue near / crimson far
+        // the plate's own neon line, blue near / crimson far
         if (ownTrim) {
           const ramp = r > 2.5 ? NT_PAL.blue : r < 1.5 ? NT_PAL.red : NT_PAL.metal;
           S.put(x, y, ramp === NT_PAL.metal ? N3 : ramp[2]);
@@ -299,7 +280,7 @@ function paintTop(S: Surface, x0: number, y0: number, x1: number, y1: number): P
       }
       let tone: Color = G1;
       // a panel seam every tile along the edge, a bolt where it meets the band's middle
-      const sAlong = side < 2 ? r : c;
+      const sAlong = side < 2 || side > 5 ? r : c;
       const t = sAlong + 0.5 - Math.floor(sAlong + 0.5);
       if (t < 1 / 32) tone = d32 >= 8 && d32 < 10 ? STONE3 : N0;
       else if (t >= 1 / 32 && t < 2 / 32 && d32 >= 5.5) tone = G2;
@@ -353,33 +334,27 @@ function paintEmblem(S: Surface, level: number): void {
 const rp = (q: { x: number; y: number }): [number, number] => [Math.round(q.x), Math.round(q.y)];
 
 function faceDefs(): FaceDef[] {
+  // the faces the camera sees: the lower-left long edge (lit), the flat near edge, the lower-right long edge (shaded)
+  const V = PLATE_OUTLINE.map(([c, r]) => rp(ntIso(c, r)));
   const out: FaceDef[] = [];
-  const n = PLATE_OUTLINE.length;
-  for (let i = 0; i < n; i++) {
-    const a = PLATE_OUTLINE[i];
-    const b = PLATE_OUTLINE[(i + 1) % n];
-    const nx = Math.sign(b[1] - a[1]);
-    const ny = -Math.sign(b[0] - a[0]);
-    if (!(nx > 0 || ny > 0)) continue;
-    let A = rp(ntIso(a[0], a[1]));
-    let B = rp(ntIso(b[0], b[1]));
-    if (A[0] > B[0]) [A, B] = [B, A];
-    const L = B[0] - A[0];
+  const mk = (a: [number, number], b: [number, number], lit: boolean, col: number, side: Side | null): FaceDef => {
+    const L = b[0] - a[0];
     let seams: number[];
     let vents: number[];
-    if (A[0] === 352 && B[0] === 536) {
+    if (side === null && !lit) {
       // the right face: seams where the strip changes owner (rows 2.5 / 1.5 = x 428 / 460)
-      seams = [352, 390, 428, 460, 498, 536];
+      seams = [a[0], 396, 428, 460, 493, b[0]];
       vents = [1, 3];
     } else {
       const k = Math.max(1, Math.round(L / 33));
-      seams = Array.from({ length: k + 1 }, (_, j) => A[0] + Math.round((L * j) / k));
+      seams = Array.from({ length: k + 1 }, (_, j) => a[0] + Math.round((L * j) / k));
       vents = k >= 3 ? [1] : [];
     }
-    out.push({ a: A, b: B, col: a[0], lit: ny > 0, seams, vents });
-  }
-  // far → near so a nearer face paints over a farther one where they meet
-  out.sort((f, g) => f.a[0] + f.a[1] + f.b[0] + f.b[1] - (g.a[0] + g.a[1] + g.b[0] + g.b[1]));
+    return { a, b, col, lit, side, seams, vents };
+  };
+  out.push(mk(V[0], V[7], true, PLATE_C0, null)); // lower-left long edge (blue)
+  out.push(mk(V[7], V[6], false, 0, 0)); // flat near edge (blue, the near-corner tone)
+  out.push(mk(V[6], V[5], false, PLATE_C1, null)); // lower-right long edge: blue → neutral → crimson
   return out;
 }
 
@@ -399,7 +374,7 @@ function paintFace(S: Surface, f: FaceDef, id: number, strips: Omit<StripPiece, 
   const slope = (B[1] - A[1]) / (B[0] - A[0]);
   const yTop = (x: number): number => edgeTop(A[1], slope, A[0], x);
   // which side's energy lies at x: the left faces are the player's; on a +col face the row follows x
-  const sideAt = (x: number): Side => (f.lit ? 0 : sideOfRow(f.col - (x - NT_OX) / 32));
+  const sideAt = (x: number): Side => (f.side !== null ? f.side : f.lit ? 0 : sideOfRow(f.col - (x - NT_OX) / 32));
   const lipPts: { x: number; y: number }[] = [];
   const panelOf = (x: number): number => {
     let i = 0;
@@ -483,8 +458,9 @@ function edgeTop(ky: number, slope: number, kx: number, x: number): number {
 interface Pillar {
   /** the corner vertex (screen) */
   k: [number, number];
-  /** which face lines the pillar follows: left face only / right face only / both (a convex or a concave corner) */
-  mode: 'L' | 'R' | 'LR';
+  /** slope of the face line left / right of the vertex (+½ lower-left face, 0 flat near edge, −½ lower-right face) */
+  sl: number;
+  sr: number;
   /** pillar centre column */
   cx: number;
   /** 0 blue / 1 crimson / 2 neutral: the tone of the slit */
@@ -492,22 +468,16 @@ interface Pillar {
 }
 
 function PILLARS(): Pillar[] {
-  const v = (c: number, r: number): [number, number] => rp(ntIso(c, r));
-  const left = v(PLATE_G0, PLATE_G1Y);
-  const bottom = v(PLATE_G1X, PLATE_G1Y);
-  const right = v(PLATE_G1X, PLATE_G0);
-  const b1 = v(PAD_C0, 6);
-  const b2 = v(PAD_C1, 6);
-  const p2 = v(PAD_C1, -2);
-  const inner = v(PAD_C1, PLATE_G1Y); // the concave joint of the near bump's right face and the long lower-right face
+  const v = (i: number): [number, number] => rp(ntIso(PLATE_OUTLINE[i][0], PLATE_OUTLINE[i][1]));
+  const left = v(0);
+  const bl = v(7);
+  const br = v(6);
+  const right = v(5);
   return [
-    { k: left, mode: 'L', cx: left[0] + 2, side: 0 },
-    { k: bottom, mode: 'LR', cx: bottom[0], side: 0 },
-    { k: right, mode: 'R', cx: right[0] - 2, side: 1 },
-    { k: b1, mode: 'L', cx: b1[0] + 2, side: 0 },
-    { k: b2, mode: 'LR', cx: b2[0], side: 0 },
-    { k: p2, mode: 'R', cx: p2[0] - 2, side: 1 },
-    { k: inner, mode: 'LR', cx: inner[0], side: 0 },
+    { k: left, sl: 0.5, sr: 0.5, cx: left[0] + 4, side: 0 },
+    { k: bl, sl: 0.5, sr: 0, cx: bl[0], side: 0 },
+    { k: br, sl: 0, sr: -0.5, cx: br[0], side: 0 },
+    { k: right, sl: -0.5, sr: -0.5, cx: right[0] - 5, side: 1 },
   ];
 }
 
@@ -515,8 +485,7 @@ function PILLARS(): Pillar[] {
 function paintPillar(S: Surface, p: Pillar): void {
   const ramp = p.side === 0 ? NT_PAL.blue : p.side === 1 ? NT_PAL.red : NT_PAL.metal;
   for (let x = p.cx - 4; x <= p.cx + 4; x++) {
-    const useLeft = p.mode === 'L' || (p.mode === 'LR' && x <= p.k[0]);
-    const yt = edgeTop(p.k[1], useLeft ? 0.5 : -0.5, p.k[0], x);
+    const yt = edgeTop(p.k[1], x <= p.k[0] ? p.sl : p.sr, p.k[0], x);
     const k = x - p.cx;
     for (let v = 0; v < FACE_H; v++) {
       let c: Color;
@@ -549,12 +518,11 @@ function paintCorners(S: Surface): PlatformArt['corners'] {
   const HW = 14;
   const HH = 7;
   const H = 10;
-  // each block's base diamond sits exactly in its plate corner (the wedge's sides run at slope ±1/2)
+  // (the far corner stays free: the gate / emblem stand behind it). The left block sits at the lower end of its end cap, the
+  // right one at the upper end (point-symmetric), clear of the corner tiles; each base diamond touches its cap with a vertex.
   const spots: { cx: number; cy: number; side: 0 | 1 }[] = [
-    { cx: 104 + HW, cy: 144, side: 0 }, // left tip (player)
-    { cx: 352, cy: 268 - HH, side: 0 }, // near corner (player)
-    { cx: 536 - HW, cy: 176, side: 1 }, // right tip (opponent)
-    { cx: 288, cy: 52 + HH, side: 1 }, // far corner (opponent)
+    { cx: PLATE_X0 + HW, cy: 175, side: 0 }, // left end cap (player)
+    { cx: PLATE_X1 - HW, cy: 145, side: 1 }, // right end cap (opponent)
   ];
   for (const s of spots) {
     paintCube(S, s.cx, s.cy, HW, HH, H, s.side);

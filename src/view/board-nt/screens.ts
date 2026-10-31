@@ -23,6 +23,7 @@ import {
   litName,
   overlayName,
   paintPlate,
+  paintReadout,
   picName,
   scanName,
   screensBake,
@@ -46,6 +47,7 @@ const Z = {
   lit: NT_DEPTH.screens + 0.3,
   frame: NT_DEPTH.screens + 0.5,
   plate: NT_DEPTH.screens + 0.6,
+  num: NT_DEPTH.screens + 0.7,
 } as const;
 
 /** Register the screens' atlas texture + frames once (boot step 27 and, as a fallback, the layer). */
@@ -85,6 +87,9 @@ function plateNames(scene: Phaser.Scene): [string, string] {
   return names;
 }
 
+/** How long the LP readout stays on a screen after damage / healing (ms): pop, hold, two blinks, gone. */
+const READOUT_MS = 1500;
+
 /** Ceiling rods (a 3-px steel bar with a lit edge) the screens hang from: x offsets inside the screen, top y of the bezel there. */
 const ROD_X = [14, 76] as const;
 
@@ -111,6 +116,11 @@ export function createScreensLayer(ctx: NtCtx): NtLayer {
     frame: Phaser.GameObjects.Image;
     plate: Phaser.GameObjects.Image;
     plateKeys: [string, string];
+    /** the LP readout (a damage / gain amount + the LP now), shown on the picture for READOUT_MS */
+    num: Phaser.GameObjects.Image;
+    numKey: string;
+    numAt: { x: number; y: number };
+    numStart: number;
     // last applied state (skip redundant Phaser calls)
     last: { frame: number; patch: string; sway: number; jx: number; litA: string; litB: string; tear: string; reveal: number; textTone: number; scan: number };
     rx: Reaction | null;
@@ -148,12 +158,19 @@ export function createScreensLayer(ctx: NtCtx): NtLayer {
 
     // ---- name plate (sheared with the screen): baked here from the HUD's text painter in two tones (idle / active)
     const R = who === 0 ? RAMPS.cyan : RAMPS.crim;
-    const plateKeys: [string, string] = [`nt:screens:plate:${who}:${names[who]}:3`, `nt:screens:plate:${who}:${names[who]}:4`];
-    const plates = [3, 4].map((tone) => paintPlate(who, textCanvas(names[who], 'sm', R[tone])));
+    // the right plate must stay right of the duelist notch (art/arena-nt/screens.ts NOTCH): a longer name (BİLGİSAYAR) shows as CPU
+    const label = who === 1 && (textCanvas(names[who], 'sm', R[3]).bounds()?.w ?? 0) > 40 ? 'CPU' : names[who];
+    const plateKeys: [string, string] = [`nt:screens:plate:${who}:${label}:3`, `nt:screens:plate:${who}:${label}:4`];
+    const plates = [3, 4].map((tone) => paintPlate(who, textCanvas(label, 'sm', R[tone])));
     plates.forEach((pl, i) => canvasTexture(scene, plateKeys[i], pl.canvas));
     const plate = add(scene.add.image(r.x + plates[0].x, r.y + plates[0].y, plateKeys[0]).setOrigin(0).setDepth(Z.plate));
+    const num = add(scene.add.image(0, 0, NT_SCREENS_KEY, frameName(who, false)).setOrigin(0).setDepth(Z.num).setVisible(false));
     return {
       who,
+      num,
+      numKey: '',
+      numAt: { x: 0, y: 0 },
+      numStart: -9999,
       px,
       py,
       pic,
@@ -180,6 +197,19 @@ export function createScreensLayer(ctx: NtCtx): NtLayer {
   /** power-on progress (rows drawn per screen); a lights-out screen is dark (−1) */
   let rising = false;
   let powerRun = 0;
+
+  /** Show "−amount / LP now" (or "+amount") on a screen: the textures are baked on demand (small, cached by the texture manager). */
+  function readout(who: 0 | 1, amount: number, lpAfter: number, gain: boolean): void {
+    const s = screens[who];
+    const R = who === 0 ? RAMPS.cyan : RAMPS.crim;
+    const key = `nt:screens:num:${who}:${gain ? '+' : '-'}${amount}:${lpAfter}`;
+    const sh = paintReadout(who, textCanvas(`${gain ? '+' : '-'}${amount}`, 'md', gain ? PAL.white : R[4]), textCanvas(`LP ${lpAfter}`, 'sm', gain ? RAMPS.cyan[4] : PAL.white));
+    if (!scene.textures.exists(key)) canvasTexture(scene, key, sh.canvas);
+    s.numKey = key;
+    s.numAt = { x: SCREENS[who].x + sh.x, y: SCREENS[who].y + sh.y };
+    s.numStart = now;
+    s.num.setTexture(key);
+  }
 
   function react(who: 0 | 1, kind: Reaction['kind'], power: number): void {
     const ms = Math.round((kind === 'hurt' ? 420 : 640) * power);
@@ -208,7 +238,7 @@ export function createScreensLayer(ctx: NtCtx): NtLayer {
         const edge = rows > 0;
         s.litB.setVisible(edge);
         if (edge) s.litB.setCrop(0, Math.max(0, rows - 2), PORTRAIT_W, Math.min(2, rows)).setPosition(s.px, s.py + Math.max(0, rows - 2));
-        for (const o of [s.litA, s.swayImg, s.patch, s.tear, s.scan, s.plate]) o.setVisible(false);
+        for (const o of [s.litA, s.swayImg, s.patch, s.tear, s.scan, s.plate, s.num]) o.setVisible(false);
         L.litA = L.litB = L.tear = '';
         L.patch = '#';
         L.sway = 9;
@@ -315,6 +345,14 @@ export function createScreensLayer(ctx: NtCtx): NtLayer {
       L.frame = fk;
       s.frame.setFrame(frameName(who, fk === 1));
     }
+    // ---- the LP readout: pops in one pixel low, rises 2 px, blinks twice at the end, then is gone
+    const na = t - s.numStart;
+    const showNum = na >= 0 && na < READOUT_MS && !(na > READOUT_MS - 360 && Math.floor(na / 90) % 2 === 1);
+    if (showNum) {
+      const lift = na < 160 ? 0 : na < 320 ? 1 : 2;
+      s.num.setPosition(s.numAt.x + jx, s.numAt.y - lift).setVisible(true);
+    } else if (s.num.visible) s.num.setVisible(false);
+
     // the name plate's text one tone up on the active side
     const tone = active === who ? 4 : 3;
     if (tone !== L.textTone) {
@@ -371,9 +409,11 @@ export function createScreensLayer(ctx: NtCtx): NtLayer {
       switch (ev.type) {
         case 'damage':
           react(ev.player, 'hurt', ev.amount >= 2000 ? 1.7 : ev.amount >= 1000 ? 1.3 : 1);
+          readout(ev.player, ev.amount, Math.max(0, ev.lpAfter), false);
           break;
         case 'lpGain':
           react(ev.player, 'glad', 1);
+          readout(ev.player, ev.amount, ev.lpAfter, true);
           break;
         case 'summon':
           screens[ev.player].kick = now;

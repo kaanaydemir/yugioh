@@ -28,53 +28,67 @@ export function ntIso(col: number, row: number): XY {
 
 // ---------------------------------------------------------------- platform
 
-/** The plate extends this many tiles beyond the tile grid (as the calm slab: left tip stays at x 104). */
-export const PLATE_E = 0.375;
-export const PLATE_G0 = -0.5 - PLATE_E; // -0.875
-export const PLATE_G1X = NT_COLS - 0.5 + PLATE_E; // 6.875
-export const PLATE_G1Y = NT_ROWS - 0.5 + PLATE_E; // 4.875
-/** The duelist pads' column span (centre lane ±0.75) and how far they stand out of the plate (rows −2 / 6). */
-export const PAD_C0 = 2.25;
-export const PAD_C1 = 3.75;
+/**
+ * The plate is ONE chamfered slab (an octagon: two long diagonal edges, a flat far edge, a flat near edge and two vertical end
+ * caps), the duelist pads stand ON it. It is the rectangle cols PLATE_C0..PLATE_C1 × rows PLATE_R0..PLATE_R1 of the 7×5 grid
+ * (the margin beyond the tiles is 0.375 tile on the column sides; 1.4 tiles on the row sides, so the pads fit inside the edge
+ * band), its four corners cut by the screen lines x = PLATE_X0 / PLATE_X1 (vertical end caps) and y = PLATE_Y0 / PLATE_Y1
+ * (flat far / near edges). Every vertex lands on a whole screen pixel; the slab is point-symmetric about the board centre (320, 160).
+ */
+export const PLATE_C0 = -0.875;
+export const PLATE_C1 = NT_COLS - 0.5 + 0.375; // 6.875
+export const PLATE_R0 = -1.9375;
+export const PLATE_R1 = NT_ROWS - 0.5 + 1.9375; // 5.9375
+/** The chamfer lines (screen px): vertical end caps x, flat far / near edges y. */
+export const PLATE_X0 = 114;
+export const PLATE_X1 = 526;
+export const PLATE_Y0 = 58;
+export const PLATE_Y1 = 262;
 /**
  * Height of the side armour below the top edge (J1: 28, was 18): coping 3 + groove, upper armour plate 7, light channel 4,
- * lower armour plate 8, ledge + skirt 4, bottom outline 1. The stands / crowd sit below it (armour bottom y = 120 + x/2 on the
- * left face, 472 − x/2 on the right face).
+ * lower armour plate 8, ledge + skirt 4, bottom outline 1. The stands / crowd sit below it (armour bottom y = 154 + x/2 on the
+ * left face, 472 − x/2 on the right face, 290 on the flat near edge).
  */
 export const FACE_H = 28;
 
-/** Platform top outline (grid coords, CCW), duelist pads included. Same footprint as the calm slab. */
+/** Grid coordinates of a screen point (inverse of ntIso). */
+export function ntGrid(x: number, y: number): [number, number] {
+  const u = (x - NT_OX) / 32;
+  const s = (y - NT_OY) / 16;
+  return [(s + u) / 2, (s - u) / 2];
+}
+
+/**
+ * Platform top outline (grid coords), duelist pads inside it: the eight vertices of the octagon, clockwise on screen, starting
+ * at the near-left corner (index 6 is the near-right end of the flat near edge: arena-nt/lights.ts splits blue / crimson there).
+ */
 export const PLATE_OUTLINE: readonly [number, number][] = [
-  [PLATE_G0, PLATE_G0],
-  [PAD_C0, PLATE_G0],
-  [PAD_C0, -2],
-  [PAD_C1, -2],
-  [PAD_C1, PLATE_G0],
-  [PLATE_G1X, PLATE_G0],
-  [PLATE_G1X, PLATE_G1Y],
-  [PAD_C1, PLATE_G1Y],
-  [PAD_C1, 6],
-  [PAD_C0, 6],
-  [PAD_C0, PLATE_G1Y],
-  [PLATE_G0, PLATE_G1Y],
+  ntGrid(PLATE_X0, 183), // near-left corner (left face start)
+  ntGrid(PLATE_X0, 139), // left end cap, top
+  ntGrid(276, PLATE_Y0), // far flat edge, left end
+  ntGrid(368, PLATE_Y0), // far flat edge, right end
+  ntGrid(PLATE_X1, 137), // right end cap, top
+  ntGrid(PLATE_X1, 181), // right end cap, bottom
+  ntGrid(364, PLATE_Y1), // near flat edge, right end (the near corner of the right face)
+  ntGrid(272, PLATE_Y1), // near flat edge, left end
 ];
 
-/** The four corners of the plate's top (screen): apex (far), right tip, bottom (near), left tip. */
+/** The extreme points of the plate's top (screen): the middle of the flat far edge, the right / left end caps, the middle of the flat near edge. */
 export const PLATE_CORNERS = {
-  apex: ntIso(PLATE_G0, PLATE_G0), // (288, 52)
-  right: ntIso(PLATE_G1X, PLATE_G0), // (536, 176)
-  bottom: ntIso(PLATE_G1X, PLATE_G1Y), // (352, 268)
-  left: ntIso(PLATE_G0, PLATE_G1Y), // (104, 144)
+  apex: { x: 322, y: PLATE_Y0 },
+  right: { x: PLATE_X1, y: 159 },
+  bottom: { x: 318, y: PLATE_Y1 },
+  left: { x: PLATE_X0, y: 161 },
 } as const;
 
 /** Screen bounding box of the plate top (duelist pads are inside it). */
-export const PLATE_TOP: Rect = { x: 104, y: 52, w: 432, h: 216 };
-/** Plate + side armour (the lowest point is the near corner: y 268 + FACE_H = 296, behind the hint plate / hand: HUD draws over it). */
-export const PLATE_FULL: Rect = { x: 104, y: 52, w: 432, h: 244 };
+export const PLATE_TOP: Rect = { x: PLATE_X0, y: PLATE_Y0, w: PLATE_X1 - PLATE_X0, h: PLATE_Y1 - PLATE_Y0 };
+/** Plate + side armour (the lowest point is the flat near edge: y 262 + FACE_H = 290, behind the hint plate / hand: HUD draws over it). */
+export const PLATE_FULL: Rect = { x: PLATE_X0, y: PLATE_Y0, w: PLATE_X1 - PLATE_X0, h: PLATE_Y1 - PLATE_Y0 + FACE_H };
 /** Soft contact shadow under the platform (ink, stepped): may run under the HUD, never above y 140. */
 export const PLATE_SHADOW: Rect = { x: 88, y: 140, w: 464, h: 176 };
 
-/** The two duelist pads (diamond 56×28 around the duelist's feet = layout.duelistXY). */
+/** The two duelist pads: the 58×35 canvas box (cell 56×28) around the duelist's feet = layout.duelistXY; the pad diamond itself is 40×20 (art/arena-nt/pads.ts PAD_HALF). */
 export const DUELIST_PADS: readonly Rect[] = [
   { x: 185, y: 200, w: 56, h: 28 }, // P1, feet (213, 214), cyan border
   { x: 399, y: 92, w: 56, h: 28 }, // P2, feet (427, 106), crimson border

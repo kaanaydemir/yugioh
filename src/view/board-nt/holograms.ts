@@ -42,6 +42,7 @@ import {
   pedName,
   ringName,
 } from '../../art/arena-nt/holo';
+import { MAGUS_ANCHOR, MAGUS_FRAMES, MAGUS_H, MAGUS_W, paintMagusFlash, paintMagusFrame } from '../../art/arena-nt/holo-magus';
 import { monsterArt } from '../../art/monsters';
 import { type PixelCanvas } from '../../art/pixel';
 import { monsterFrame, whenMonstersBuilt } from '../../art/textures';
@@ -90,6 +91,8 @@ interface Station {
   box: Box | null;
   /** feet anchor inside the baked frame */
   anchor: { x: number; y: number };
+  /** how far the image was pushed sideways to stay on the screen (px) */
+  dx: number;
   creature: Phaser.GameObjects.Image | null;
   tear: Phaser.GameObjects.Image | null;
   ring: Phaser.GameObjects.Image;
@@ -162,6 +165,7 @@ export function createHologramsLayer(ctx: NtCtx): NtLayer {
       frames: [],
       box: null,
       anchor: { x: 0, y: 0 },
+      dx: 0,
       creature: null,
       tear: null,
       ring,
@@ -185,28 +189,36 @@ export function createHologramsLayer(ctx: NtCtx): NtLayer {
   function planBake(): void {
     for (const st of stations) {
       const spec = HOLOS[st.side];
-      const art = monsterArt(spec.monster);
       const look = HOLO_LOOKS[st.side];
+      // the right station paints its own hooded wizard (holo-magus.ts); the left one bakes the monster's own idle frames
+      const own = spec.monster === 'abyss_magus';
+      const art = monsterArt(spec.monster);
       const n = art.anims.idle.frames;
-      const count = IDLE_FRAMES[st.side];
+      const count = own ? MAGUS_FRAMES : IDLE_FRAMES[st.side];
       const idx: number[] = [];
       for (let i = 0; i < count; i++) idx.push(Math.round((i * n) / count) % n);
       const src: PixelCanvas[] = [];
-      for (const i of idx) jobs.push(() => void src.push(monsterFrame(spec.monster, 'idle', i)));
       const baked: [string, PixelCanvas][] = [];
       let box: Box | null = null;
-      jobs.push(() => (box = unionBounds(src)));
-      idx.forEach((_, j) => jobs.push(() => box && baked.push([`f${j}`, bakeHoloFrame(src[j], box, look, j, idx.length, src[0])])));
+      if (own) {
+        box = { x: 0, y: 0, w: MAGUS_W, h: MAGUS_H };
+        idx.forEach((_, j) => jobs.push(() => baked.push([`f${j}`, paintMagusFrame(j, count)])));
+        jobs.push(() => baked.push(['flash', paintMagusFlash()]));
+      } else {
+        for (const i of idx) jobs.push(() => void src.push(monsterFrame(spec.monster, 'idle', i)));
+        jobs.push(() => (box = unionBounds(src)));
+        idx.forEach((_, j) => jobs.push(() => box && baked.push([`f${j}`, bakeHoloFrame(src[j], box, look, j, idx.length, src[0])])));
+        jobs.push(() => box && baked.push(['flash', bakeHoloFlash(src[0], box, look)]));
+      }
       // the opacity steps of the flicker (from the first pose), the flash of a summon
       jobs.push(() => {
         if (!box) return;
         const f0 = baked.find((b) => b[0] === 'f0')![1];
         baked.push(['d1', dimFrame(f0, 1)], ['d2', dimFrame(f0, 2)]);
       });
-      jobs.push(() => box && baked.push(['flash', bakeHoloFlash(src[0], box, look)]));
       jobs.push(() => {
         if (!box || destroyed) return;
-        const sz = holoSize(box, look);
+        const sz = own ? { w: MAGUS_W, h: MAGUS_H } : holoSize(box, look);
         let atlas: NtAtlas = packAtlas(baked, sz.w + 1);
         for (let k = 2; k <= 4; k++) {
           const a = packAtlas(baked, (sz.w + 1) * k);
@@ -219,9 +231,11 @@ export function createHologramsLayer(ctx: NtCtx): NtLayer {
         st.frames = idx.map((_, j) => `f${j}`);
         st.box = { x: 0, y: 0, w: sz.w, h: sz.h };
         // the feet (anchor) inside the baked frame
-        st.anchor = holoAnchor({ x: art.anchorX, y: art.anchorY }, box, look);
+        st.anchor = own ? { x: MAGUS_ANCHOR.x, y: MAGUS_ANCHOR.y } : holoAnchor({ x: art.anchorX, y: art.anchorY }, box, look);
+        // the creature stays whole on the screen: the dragon's tail reaches left of its feet, so its image is pushed in
         const p = spec.pedestal;
-        const ox = p.cx - st.anchor.x;
+        const ox = Math.max(5, Math.min(635 - sz.w, p.cx - st.anchor.x));
+        st.dx = ox - (p.cx - st.anchor.x);
         const oy = p.cy - 1 - st.anchor.y;
         st.creature = ctx.add(scene.add.image(ox, oy, key, 'f0').setOrigin(0).setDepth(Z.creature).setVisible(false));
         st.tear = ctx.add(scene.add.image(ox, oy, key, 'f0').setOrigin(0).setDepth(Z.tear).setVisible(false));
@@ -359,7 +373,7 @@ export function createHologramsLayer(ctx: NtCtx): NtLayer {
       if (!ts) tr.setVisible(false);
       else {
         tr.setFrame(st.frames[idx]).setCrop(0, ts.y, box.w, 6).setVisible(true);
-        tr.setPosition(h.pedestal.cx - st.anchor.x + ts.dx, h.pedestal.cy - 1 - st.anchor.y);
+        tr.setPosition(h.pedestal.cx - st.anchor.x + st.dx + ts.dx, h.pedestal.cy - 1 - st.anchor.y);
       }
     }
   }

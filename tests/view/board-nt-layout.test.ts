@@ -4,7 +4,7 @@
 import { FRAME_H, FRAME_W, SCREEN_AT } from '../../src/art/arena-nt/screens';
 import { describe, expect, it } from 'vitest';
 import { ARENA_NT } from '../../src/view/board-nt/flag';
-import { DUELIST_PADS, FACE_H, PLATE_FULL, PLATE_TOP, HOLOS, KEEP_OUT, PLATE_CORNERS, SCREENS, STANDS, ntIso, ntRegions, rectsOverlap, standsBounds } from '../../src/view/board-nt/layout-nt';
+import { DUELIST_PADS, FACE_H, PLATE_FULL, PLATE_TOP, HOLOS, KEEP_OUT, PLATE_CORNERS, PLATE_OUTLINE, SCREENS, STANDS, ntIso, ntRegions, rectsOverlap, standsBounds } from '../../src/view/board-nt/layout-nt';
 import { duelistXY, zoneXY } from '../../src/view/layout';
 
 describe('neon tower layout map', () => {
@@ -23,11 +23,53 @@ describe('neon tower layout map', () => {
     }
   });
 
-  it('keeps the calm platform footprint (left tip at x 104, near corner y 268)', () => {
-    expect(PLATE_CORNERS.left).toEqual({ x: 104, y: 144 });
-    expect(PLATE_CORNERS.bottom).toEqual({ x: 352, y: 268 });
-    expect(PLATE_CORNERS.apex).toEqual({ x: 288, y: 52 });
-    expect(PLATE_CORNERS.right).toEqual({ x: 536, y: 176 });
+  it('is ONE chamfered slab: a convex octagon that contains the whole tile grid and both duelist pads', () => {
+    expect(PLATE_OUTLINE.length).toBe(8);
+    const pts = PLATE_OUTLINE.map(([c, r]) => ntIso(c, r));
+    // every vertex lands on a whole pixel and the outline is convex (all turns the same way)
+    for (const p of pts) {
+      expect(Number.isInteger(Math.round(p.x * 1e6) / 1e6)).toBe(true);
+      expect(Number.isInteger(Math.round(p.y * 1e6) / 1e6)).toBe(true);
+    }
+    let sign = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % pts.length];
+      const c = pts[(i + 2) % pts.length];
+      const cross = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+      expect(cross).not.toBe(0);
+      if (sign === 0) sign = Math.sign(cross);
+      expect(Math.sign(cross)).toBe(sign);
+    }
+    const inside = (x: number, y: number): boolean => {
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i];
+        const b = pts[(i + 1) % pts.length];
+        if (Math.sign((b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x)) === -sign) return false;
+      }
+      return true;
+    };
+    // the four outer vertices of every tile diamond (7×5 grid, 64×32 cells) and the pad diamonds' vertices
+    for (let col = 0; col < 7; col++)
+      for (let row = 0; row < 5; row++) {
+        const t = ntIso(col, row);
+        for (const [dx, dy] of [[-32, 0], [32, 0], [0, -16], [0, 16]]) expect(inside(t.x + dx, t.y + dy), `tile ${col},${row}`).toBe(true);
+      }
+    for (const p of [0, 1] as const) {
+      const d = duelistXY(p);
+      for (const [dx, dy] of [[-20, 0], [20, 0], [0, -10], [0, 10 + 4]]) expect(inside(d.x + dx, d.y + dy), `pad ${p}`).toBe(true);
+    }
+  });
+
+  it('keeps the platform inside the left panel edge, the HUD hint plate and the frame', () => {
+    expect(PLATE_TOP.x).toBeGreaterThanOrEqual(104);
+    expect(PLATE_TOP.x + PLATE_TOP.w).toBeLessThanOrEqual(640 - 104);
+    expect(PLATE_TOP.y).toBeGreaterThanOrEqual(52);
+    expect(PLATE_FULL.y + PLATE_FULL.h).toBeLessThanOrEqual(296);
+    // the near-right corner (outline index 6) is where lights.ts splits blue / crimson
+    expect(Math.round(ntIso(PLATE_OUTLINE[6][0], PLATE_OUTLINE[6][1]).x)).toBe(364);
+    expect(PLATE_CORNERS.left.x).toBe(PLATE_TOP.x);
+    expect(PLATE_CORNERS.right.x).toBe(PLATE_TOP.x + PLATE_TOP.w);
   });
 
   it('gives the platform a thick armour side (J1: 26..32 px) and a bounding box that includes it', () => {

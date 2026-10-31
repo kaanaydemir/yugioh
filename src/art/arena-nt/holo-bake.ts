@@ -9,8 +9,8 @@
 //     deep blue shadow bands, cyan mid, white-ice highlights; magus = ink-violet shadows, violet mid, magenta-lilac
 //     highlights, white sparks
 //   * facets glow: where a band meets a darker band the pixel is one tone brighter (the wire-frame look of the concept)
-//   * translucency WITHOUT alpha: every 3rd row is a scan line (two tones down, the darkest tones drop out), the deep
-//     shadow is a checker; only the outline rim and the lit planes are solid
+//   * translucency WITHOUT alpha: a soft stipple scan (every 4th row, every other pixel one tone down; the darkest tones
+//     drop out), the deep shadow is a checker; only the outline rim and the lit planes are solid
 //   * a bright 1-px rim round the silhouette (white on the edges facing the top-left light), a lit scan band whose
 //     height is different in every frame, so one pass of the loop is one sweep from the head to the feet
 //   * opacity steps for the flicker: `dimFrame` thins a baked frame with a 4×4 Bayer mask (75 % / 50 % of the body
@@ -163,9 +163,10 @@ export function bakeHoloFrame(src: PixelCanvas, box: Box, look: HoloLook, index:
         if (lo < t && t >= 1 && t < 5) t = Math.min(5, t + 1);
         if (inBand) t = Math.min(5, t + 2);
         else {
-          // scan lines: every 3rd row two tones down; deep shadow is a checker; the darkest tones drop out
-          const scan = y % 3 === 1;
-          if (scan) t -= 2;
+          // soft scan: every 4th row, every other pixel one tone down (a stipple, never a full dark row); deep shadow is a
+          // checker; the darkest tones drop out
+          const scan = y % 4 === 1 && (x + (y >> 2)) % 2 === 0;
+          if (scan) t -= 1;
           if (t <= 0 && (x + y) % 2 === 1) t = -1;
           else if (t < 0) t = -1;
           else if (t === 0 && scan) t = -1;
@@ -215,7 +216,7 @@ export function bakeHoloFlash(src: PixelCanvas, box: Box, look: HoloLook, hot = 
         // keep the creature's form: the dark planes one step down
         const l = p.lum[y * w + x];
         t = l < th[1] ? 3 : l < th[3] ? 4 : 5;
-        if (y % 3 === 1) t = Math.max(3, t - 1);
+        if (y % 4 === 1 && (x + (y >> 2)) % 2 === 0) t = Math.max(3, t - 1);
       }
       out.set(x, y, R[t]);
     }

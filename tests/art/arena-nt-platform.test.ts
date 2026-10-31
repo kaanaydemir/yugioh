@@ -21,7 +21,15 @@ describe('neon tower platform painters', () => {
     const a = buildPlatformArt();
     expect(a.canvas.w).toBe(PLATFORM_BOX.w);
     expect(offPalette(a.canvas)).toBe(0);
-    expect(a.canvas.isOpaque(288 - PLATFORM_BOX.x, 60 - PLATFORM_BOX.y)).toBe(true);
+    // the slab: opaque inside the octagon, clear outside (the old bumps / apex notch are gone)
+    const op = (x: number, y: number): boolean => a.canvas.isOpaque(x - PLATFORM_BOX.x, y - PLATFORM_BOX.y);
+    expect(op(320, 59)).toBe(true); // far flat edge
+    expect(op(320, 270)).toBe(true); // near armour
+    expect(op(300, 56)).toBe(false); // above the flat far edge
+    expect(op(108, 160)).toBe(false); // left of the end cap (the old left tip stuck out to x 104)
+    expect(op(213, 232)).toBe(true); // the lower-left face runs straight under the P1 pad (no notch)
+    expect(op(427, 80)).toBe(false); // above the upper-right edge (the old far bump)
+    expect(op(213, 214)).toBe(true); // the P1 pad stands on the plate
     expect(a.strips.length).toBeGreaterThan(8);
     expect(a.vents.length).toBeGreaterThan(0);
   });

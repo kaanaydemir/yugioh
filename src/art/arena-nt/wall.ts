@@ -195,14 +195,12 @@ function leds(): WallLed[] {
   // tower: outer buttress LEDs (left x 243…, mirrored right), the spine flank LEDs
   const T0 = TOWER_POS.x;
   for (const [dx, dy, hue, mode] of [
-    [7, 38, 'r', 'blink'],
-    [7, 42, 'c', 'pulse'],
-    [7, 46, 'c', 'steady'],
-    [26, 62, 'g', 'flick'],
-    [38, 60, 'c', 'blink'],
-    [53, 72, 'r', 'pulse'],
-    [40, 40, 'c', 'pulse'],
-    [40, 43, 'r', 'blink'],
+    [7, 30, 'r', 'blink'],
+    [12, 44, 'c', 'pulse'],
+    [7, 58, 'c', 'steady'],
+    [34, 56, 'g', 'flick'],
+    [36, 25, 'c', 'blink'],
+    [33, 90, 'r', 'pulse'],
   ] as const) {
     add(T0 + dx, dy, hue, mode);
     add(T0 + TOWER_W - 3 - dx, dy, hue === 'r' ? 'c' : hue === 'c' ? 'r' : hue, mode === 'blink' ? 'pulse' : mode === 'pulse' ? 'blink' : mode);
@@ -261,8 +259,8 @@ export interface WallData {
 }
 /** Small data panels on the tower flanks (4 frames, a slow bar chart). */
 export const WALL_DATA: readonly WallData[] = [
-  { x: TOWER_POS.x + 8, y: 24, hue: 'c', period: 2600, phase: 0 },
-  { x: TOWER_POS.x + TOWER_W - 22, y: 24, hue: 'c', period: 3100, phase: 900 },
+  { x: TOWER_POS.x + 29, y: 21, hue: 'c', period: 2600, phase: 0 },
+  { x: TOWER_POS.x + TOWER_W - 43, y: 21, hue: 'c', period: 3100, phase: 900 },
 ];
 export function dataFrame(d: WallData, t: number): number {
   return Math.floor((((t + d.phase) % d.period) / d.period) * 4) % 4;

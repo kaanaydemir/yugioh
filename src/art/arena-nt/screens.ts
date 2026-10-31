@@ -99,9 +99,16 @@ export function shearPiece(c: PixelCanvas, who: 0 | 1, ox: number, oy: number): 
   return { canvas: out, x: ox, y: oy + mn };
 }
 
-/** The platform cut of the left screen: the lowest frame row (sheared frame space) allowed at column x, or Infinity (right screen). */
+/**
+ * The notch of the right screen's lower-left corner: the P2 duelist (feet 427,106; body x 419..431, head top y 74) stands right
+ * in front of it, so up to column NOTCH.x the bezel ends at row NOTCH.row (abs y 71) and then drops in a steep staircase
+ * (NOTCH.slope rows per column) back to its natural bottom. The name plate (right-aligned) starts right of the notch.
+ */
+export const NOTCH = { x: 33, row: 49, slope: 3 } as const;
+
+/** The platform cut of the left screen / the duelist notch of the right one: the lowest frame row (sheared frame space) allowed at column x. */
 function cutRow(who: 0 | 1, x: number): number {
-  if (who === 1) return Infinity;
+  if (who === 1) return x <= NOTCH.x ? NOTCH.row : NOTCH.row + NOTCH.slope * (x - NOTCH.x);
   return Math.floor(PLATE_CUT_A - (SCREEN_AT[0].x + x) / 2) - SCREEN_AT[0].y;
 }
 
@@ -253,9 +260,30 @@ export function paintPlate(who: 0 | 1, label: PixelCanvas): { canvas: PixelCanva
   flat.blit(label, 3, 1);
   // sits in the picture's lower corner on the side of the screen's own colour (left: lower-left, right: lower-right)
   const fx = who === 0 ? PIC_AT.x + 3 : PIC_AT.x + PORTRAIT_W - 3 - w;
-  const fy = PIC_AT.y + PORTRAIT_H - 3 - h;
+  // the right plate sits two rows higher so its lower-left corner stays inside the notched bezel
+  const fy = PIC_AT.y + PORTRAIT_H - 3 - h - (who === 1 ? 2 : 0);
   const s = shearPiece(flat, who, fx, fy);
   return { canvas: s.canvas, x: s.x, y: s.y };
+}
+
+/**
+ * The LP readout of a screen: the amount that was lost / gained on top (big), the LP now below it (small), both centred on a
+ * plate-less ink-outlined block, sheared like the picture. `big` / `small` are text canvases (ink-outlined glyph rows). The block
+ * sits in the picture's lower half; the right screen keeps right of the duelist notch (columns > NOTCH.x).
+ */
+export function paintReadout(who: 0 | 1, big: PixelCanvas, small: PixelCanvas): Sheared {
+  const bb = big.bounds();
+  const sb = small.bounds();
+  if (bb) big = big.crop(bb.x, bb.y, bb.w, bb.h);
+  if (sb) small = small.crop(sb.x, sb.y, sb.w, sb.h);
+  const w = Math.max(big.w, small.w);
+  const flat = new PixelCanvas(w, big.h + 1 + small.h);
+  flat.blit(big, Math.floor((w - big.w) / 2), 0);
+  flat.blit(small, Math.floor((w - small.w) / 2), big.h + 1);
+  const cx = who === 0 ? PIC_AT.x + 40 : PIC_AT.x + 52;
+  const fx = Math.min(PIC_AT.x + PORTRAIT_W - 2 - w, Math.max(PIC_AT.x + 2, cx - (w >> 1)));
+  const fy = PIC_AT.y + 22;
+  return shearPiece(flat, who, fx, fy);
 }
 
 export interface ScreensBake extends NtAtlas {
