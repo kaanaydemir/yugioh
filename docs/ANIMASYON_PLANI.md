@@ -270,3 +270,8 @@ Karar (kullanıcı): uygulamanın ana (varsayılan) dili **İngilizce** olacak; 
 - Metin genişlikleri değişeceği için kart paneli, plaka ve düğme taşmaları İngilizce ile yeniden doğrulanacak.
 - Steam hattı: dil seçimi ayarlarda; ilk açılışta sistem dili, yoksa İngilizce.
 - Zamanlama: kural işi (5 kart / 40–80 deste) ve Beş Mühür sanatı bittikten sonra, ayrı bir iş olarak.
+
+## Not: Yeniden tasarlanacak canavarlar (kullanıcı kararı)
+- **Akşam Büyücüsü** (dusk_sorcerer): çok kötü görünüyor; detaylı çalışmayla komple yeniden tasarım (sprite + animasyonlar + kart resmi).
+- **Pullardan sızan zehirli ejderha** (venom_drake): aynı şekilde komple yeniden tasarım.
+- Durum: beklemede. Kullanıcı "başla" deyince yapılacak (arena işi bittikten sonra).
