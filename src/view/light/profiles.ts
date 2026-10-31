@@ -94,7 +94,7 @@ export const MONSTER_GLOW: Record<MonsterId, MonsterGlow> = {
   hollow_ogre: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
   crag_axeman: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
   reed_heron: { emissive: [T(PAL.gold4, 1), T(PAL.white, 0.5)], halo: 0.3, pool: 0.4 }, // C8: the dimmest presence (eye + beak glint only)
-  kite_fencer: { emissive: [T(PAL.leaf4, 1), T(PAL.white, 0.8), T(PAL.leaf3, 0.4)], halo: 0.6, pool: 0.9 },
+  kite_fencer: { emissive: [T(PAL.gold4, 1), T(PAL.white, 0.6)], halo: 0.5, pool: 0.6 }, // C9: the lit indicator panel + the rapier tip (no leaf tones: C11's)
   mudgrasp_spirit: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
   steppe_spiralhorn: { emissive: [T(PAL.leaf4, 1), T(PAL.white, 0.8), T(PAL.leaf3, 0.4)], halo: 0.6, pool: 0.9 },
   polar_needle: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
