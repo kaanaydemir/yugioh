@@ -371,7 +371,8 @@ export function skel(P: HatchPose, age: number): Skel {
   // (grown: the tips lie flat back along the top of the mane, never up like ears; critique r1 #1)
   const back: V = addV(LV([35, 57], [35, 41], sW), [o[0] + R(lean * 0.3), o[1] + cr * L(2, 10, sL)]);
   const wo = P.wingOpen;
-  const wingN = { base: back, tip: addV(back, [L(-5.5, -14, sW) - wo * L(2, 1, sW), L(-3, -10, sW) - P.wingN - wo * L(2, 6, sW)]) };
+  // (grown: the tips reach ≈ 6 px out of the back mane, critique r3 #9)
+  const wingN = { base: back, tip: addV(back, [L(-5.5, -15.5, sW) - wo * L(2, 1, sW), L(-3, -13, sW) - P.wingN - wo * L(2, 6, sW)]) };
   const backF: V = addV(back, [L(3, 5, sW), L(-2, -4, sW)]);
   const wingF = { base: backF, tip: addV(backF, [L(-3.5, -11, sW) - wo * L(1, 1, sW), L(-3.5, -12, sW) - P.wingF - wo * L(2, 6, sW)]) };
 
@@ -849,10 +850,15 @@ function drawBody(p: PixelCanvas, w: Workspace, P: HatchPose, light: Light, age:
   if (S.sW >= 0.5) {
     // the folded wing tips: their roots under the back mane, the points sticking out behind it
     const rf = w.raster();
-    rf.facet(wingTip(S.wingF.base, S.wingF.tip, 2.6, P.wingOpen), M.TIP, [-0.2, -0.3, 1], -5, -0.3);
+    const wf = wingTip(S.wingF.base, S.wingF.tip, 3, P.wingOpen);
+    rf.facet(wf.slice(0, 4), M.TIP, [-0.2, -0.3, 1], -5, -0.15);
+    rf.facet(wf.slice(3), M.TIP, [0.4, 0.5, 0.7], -5, -0.35);
     lay(p, w, rf);
     const r = w.raster();
-    r.facet(wingTip(S.wingN.base, S.wingN.tip, 3, P.wingOpen), M.TIP, [-0.5, -0.6, 1], 0, 0.25);
+    // two planes (critique r3 #9): the leading half leaf3 toward the light, the trailing half leaf2
+    const wn = wingTip(S.wingN.base, S.wingN.tip, 3.6, P.wingOpen);
+    r.facet(wn.slice(0, 4), M.TIP, [-0.5, -0.6, 1], 0, 0.25);
+    r.facet(wn.slice(3), M.TIP, [0.5, 0.5, 0.6], 0, -0.1);
     lay(p, w, r);
   }
   cloudLobes(p, w, maneLobes(S, P, false), light, P.fluff >= 0.9 ? 2 : P.fluff > 0.5 ? 1 : 0);
@@ -951,9 +957,12 @@ function wingTip(base: V, tip: V, hw: number, open: number): V[] {
   const n = Math.hypot(d[0], d[1]) || 1;
   const px: V = [-d[1] / n, d[0] / n];
   const k = hw * (1 + open * 0.6);
+  // [0..3] the leading half (base side, mid, tip, base), [3..6] the trailing half (base, tip, mid, side)
   return [
     [base[0] + px[0] * k, base[1] + px[1] * k],
     [base[0] + d[0] * 0.65 + px[0] * k * 0.8, base[1] + d[1] * 0.65 + px[1] * k * 0.8],
+    tip,
+    base,
     tip,
     [base[0] + d[0] * 0.5 - px[0] * k * 0.4, base[1] + d[1] * 0.5 - px[1] * k * 0.4],
     [base[0] - px[0] * k * 0.6, base[1] - px[1] * k * 0.6],
