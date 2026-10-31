@@ -24,6 +24,7 @@ import { Voice } from './synth';
 import type { V3SfxName } from './v3/slice';
 import type { HarpoonerSfxName } from './v3/tide_harpooner';
 import type { V3MaterialSfxName } from './v3/materials';
+import type { SpiralhornSfxName } from './v3/steppe_spiralhorn';
 import type { V3VoiceSfxName } from './v3/voices';
 import type { HeronSfxName } from './v3/reed_heron';
 import type { V3SpellSfxName } from './v3/spells';
@@ -59,6 +60,7 @@ export type SfxName =
   | HarpoonerSfxName
   // v3 material hits (additive: src/audio/v3/materials.ts — the template hit<Material><Light|Heavy|Magic>)
   | V3MaterialSfxName
+  | SpiralhornSfxName
   // v3 character voices from presentation recipes (additive: src/audio/v3/voices.ts — voice:<card>:<role>)
   | V3VoiceSfxName
   | HeronSfxName

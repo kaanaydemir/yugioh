@@ -199,7 +199,9 @@ function frontY(f: Frame, x: number, y: number): boolean {
 function windGone(f: Frame, x: number, y: number, x0: number, span: number): number {
   const { o } = f;
   if (o.wind <= 0) return -1;
-  const u = (x - x0) / span;
+  // the wind comes from the front (where the killing blow came from): the mound erodes from the head end and the stream
+  // leaves backward, away from the attacker (it never blows into the killer's body)
+  const u = (x0 + span - x) / span;
   const thr = u * 0.8 + 0.2 * hash2(x >> 1, y >> 1, 91) + (GY - y) * 0.002;
   return thr < o.wind ? o.wind - thr : -1;
 }
@@ -270,13 +272,13 @@ export function deathPasses(f: Frame, stage: 'matter' | 'light'): void {
         for (let i = 1; i <= hgt; i++) put(f, x + (i > 1 ? lean : 0), y - i, i === hgt ? PAL.leaf4 : PAL.leaf3);
       }
   }
-  // the stream: erased clusters ride the wind leeward (+x), climbing on a curve
+  // the stream: erased clusters ride the wind leeward (−x, behind him), climbing on a curve
   for (const m of f.motes) {
     const k = m.k;
-    const x = rnd(m.x + 4 + k * 95 + Math.sin(k * 5 + m.i) * 2);
+    const x = rnd(m.x - 4 - k * 95 + Math.sin(k * 5 + m.i) * 2);
     const y = rnd(m.y - 2 - k * 14 - k * k * 30 + Math.sin(k * 7 + m.i * 0.3) * 1.5);
     if (m.i % 3 === 0) blade(f, x, y, m.i);
-    else seed(f, x, y, m.i + rnd(k * 6), -1);
+    else seed(f, x, y, m.i + rnd(k * 6), 1);
   }
   // the horns become two long seed plumes that lift and drift away
   if (o.plume > 0) {
@@ -284,10 +286,10 @@ export function deathPasses(f: Frame, stage: 'matter' | 'light'): void {
     const hs = [f.sk.hornN, f.sk.hornF];
     hs.forEach((h, j) => {
       const lift = k * (16 + j * 4);
-      const dx = k * (12 + j * 8);
+      const dx = -k * (12 + j * 8);
       const len = h.len + 2;
       const a0 = (h.ang * Math.PI) / 180;
-      const a = a0 + (0 - a0) * Math.min(1, k * 1.3) * 0.6;
+      const a = a0 + (-Math.PI - a0) * Math.min(1, k * 1.3) * 0.6;
       const bx = h.base[0] + dx;
       const by = h.base[1] - lift;
       for (let s = 0; s <= len; s++) {

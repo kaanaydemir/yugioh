@@ -30,6 +30,7 @@ import { AXEMAN_VOICE } from '../../audio/v3/crag_axeman';
 import { v3Recipe } from '../../presentation/registry';
 import { KITE_VOICE } from '../../audio/v3/kite_fencer';
 import type { BlowKind } from './blow';
+import { SPIRALHORN_VOICE } from '../../audio/v3/steppe_spiralhorn';
 
 // ================================================================ play
 
@@ -213,6 +214,7 @@ export const CHARACTER_SOUNDS: Partial<Record<CardId, CharacterSounds>> = {
   },
   kite_fencer: KITE_VOICE,
   crag_axeman: AXEMAN_VOICE,
+  steppe_spiralhorn: SPIRALHORN_VOICE,
 };
 
 /**

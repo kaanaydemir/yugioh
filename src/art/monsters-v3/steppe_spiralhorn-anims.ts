@@ -153,7 +153,12 @@ const ATTACK: Pose[] = [
   { ...IDLE0, hdx: 9, hdy: -10, ha: A.down, ear: 1, nose: 1, seeds: 0.9, mane: 0.6, tail: 1, t: at(15, 13) },
   { ...IDLE0 },
 ];
-export const attackPose = (f: number): Pose => ATTACK[Math.min(f, ATTACK.length - 1)];
+// The strike cinematic (src/cinematics/kartc/steppe_spiralhorn.ts) moves the sprite through the air, so the floor-
+// and contact-bound effects (the take-off grass fans, the hoof dust, the seed burst) are painted there in WORLD space
+// (they stay on the floor / at the contact point while he flies on and rebounds); the attack frames keep only what
+// rides the body (the horn-tip curls, the eye, the mane).
+const ATTACK_BODY: Pose[] = ATTACK.map((p) => ({ ...p, wake: -1, dust: -1, seeds: -1 }));
+export const attackPose = (f: number): Pose => ATTACK_BODY[Math.min(f, ATTACK_BODY.length - 1)];
 const ATTACK_HOLDS = [80, 90, 110, 170, 100, 100, 90, 120, 100, 60, 80, 100, 110, 120, 140];
 
 // ------------------------------------------------------------------ roar (9 frames): rear + the saiga honk
@@ -269,7 +274,7 @@ const DEATH: Pose[] = [
   { ...LIE, grass: 1, wind: 1, plume: 0.55 },
 ];
 export const deathPose = (f: number): Pose => DEATH[Math.min(f, DEATH.length - 1)];
-const D_HOLDS = [50, 60, 70, 80, 70, 70, 70, 70, 70, 70, 80, 90];
+const D_HOLDS = [50, 50, 60, 70, 55, 55, 55, 55, 55, 55, 60, 70];
 
 // ------------------------------------------------------------------ revive (10 frames): the death run backwards
 
