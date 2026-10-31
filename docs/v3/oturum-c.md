@@ -20,7 +20,7 @@ Tüm kartların worktree'lerde commit'lenmiş hâli `claude/kart-c`'ye birleşti
 |---|---|---|
 | tide_harpooner | rig, anim, kart resmi, cut-in, sesler, recipe, saldırı/çağırma/ölüm/Körfez kalkanı sinematikleri, senaryolar — WIP checkpoint — sunum yapıldı, eleştiri turları sürüyor | ≥3 eleştiri turu → kapılar |
 | reed_heron | rig + kart resmi + sunum (sis çağırma, üçlü gaga 40/40/80, sis ölümü, sesler, rhr senaryoları) — WIP checkpoint — sunum yapıldı, eleştiri turları sürüyor | ≥3 eleştiri turu → kapılar |
-| crag_axeman | rig + anim + kart resmi (sunum yok) | sunum (yarık, dönüş+yarma, ikiye ayrılma, SFX) → turlar → kapılar |
+| crag_axeman | rig + anim + kart resmi + sunum (yarık, dönüş+yarma, ikiye ayrılma, SFX) — WIP checkpoint — sunum yapıldı, eleştiri turları sürüyor | ≥3 eleştiri turu → kapılar |
 | kite_fencer | rig + kart resmi + sunum (pike, uçurtma uçuşu 2. saldırı, yaprak çağırma, ölüm uçuşu, panel, sesler) — WIP checkpoint — sunum yapıldı, eleştiri turları sürüyor | ≥3 eleştiri turu → kapılar |
 | steppe_spiralhorn | rig + anim + ölüm finali + kart resmi (sunum yok) | sunum (sekmeler, tohum patlaması, flüt sesi) → turlar → kapılar |
 
