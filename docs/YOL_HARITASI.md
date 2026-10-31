@@ -7,10 +7,10 @@ Kart isimleri ve tasarımları ORİJİNAL olur; Yu-Gi-Oh kartları yalnızca "ro
 
 | # | İş | Durum |
 |---|----|-------|
-| 1 | Neon Tower hologramlarını eski hâle (commit bc12475 = oynanabilir sürüm 7) döndür | devam ediyor (quick-batch-1) |
-| 2 | Arenadan seyircileri kaldır (tribün yapısı kalır) | devam ediyor (quick-batch-1) |
-| 3 | Animasyonları yavaşlat (v3 genel tempo çarpanı + kilit anlarda uzun bekleme; v1 aynı) | devam ediyor (quick-batch-1) |
-| 4 | Akşam Büyücüsü (dusk_sorcerer) kartını oyundan çıkar (cards.ts'de "retired", desteler göç eder) | devam ediyor (quick-batch-1) |
+| 1 | Neon Tower hologramlarını eski hâle (commit bc12475 = oynanabilir sürüm 7) döndür | bitti (587828c, test sürümü 9) |
+| 2 | Arenadan seyircileri kaldır (tribün yapısı kalır) | bitti (587828c, test sürümü 9) |
+| 3 | Animasyonları yavaşlat (v3 genel tempo çarpanı + kilit anlarda uzun bekleme; v1 aynı) | bitti (587828c, test sürümü 9) |
+| 4 | Akşam Büyücüsü (dusk_sorcerer) kartını oyundan çıkar (cards.ts'de "retired", desteler göç eder) | bitti (587828c, test sürümü 9) |
 | 5 | Kül Ejderi (ashen_drake) komple yeniden tasarım — altın kural | bekliyor |
 | 6 | Hortlak Muhafız (grim_warden) yeniden tasarım | bekliyor |
 | 7 | Pot of Greed rolünde büyü kartı (2 kart çek) — orijinal isim | bekliyor |
