@@ -46,13 +46,13 @@ const S: Record<string, Scenario> = {
     steps: [attack(2, 2)],
   },
   rhrKill: {
-    desc: 'destroyed in battle (ember_wolf 1700 vs 1400): back into the mist, only the reeds and one ring remain',
-    stage: { zones: 5, phase: 'battle', p0: { monsters: [N, N, 'ember_wolf', N, N] }, p1: { monsters: [N, N, { id: 'reed_heron', position: 'attack' }, N, N] } },
+    desc: 'destroyed in battle (shade_assassin 1900 vs 1400): back into the mist, only the reeds and one ring remain',
+    stage: { zones: 5, phase: 'battle', p0: { monsters: [N, N, 'shade_assassin', N, N] }, p1: { monsters: [N, N, { id: 'reed_heron', position: 'attack' }, N, N] } },
     steps: [attack(2, 2)],
   },
   rhrKillP2: {
     desc: 'destroyed in battle as player 1 by player 2 (relit P2 attacker, the heron unmirrored)',
-    stage: { zones: 5, phase: 'battle', active: 1, p0: { monsters: [N, N, { id: 'reed_heron', position: 'attack' }, N, N] }, p1: { monsters: [N, N, 'ember_wolf', N, N] } },
+    stage: { zones: 5, phase: 'battle', active: 1, p0: { monsters: [N, N, { id: 'reed_heron', position: 'attack' }, N, N] }, p1: { monsters: [N, N, 'shade_assassin', N, N] } },
     steps: [attack(2, 2, 1)],
   },
   rhrGuard: {
@@ -61,8 +61,8 @@ const S: Record<string, Scenario> = {
     steps: [attack(2, 2)],
   },
   rhrGuardDies: {
-    desc: 'dies in defense (ember_wolf 1700 vs DEF 1500)',
-    stage: { zones: 5, phase: 'battle', p0: { monsters: [N, N, 'ember_wolf', N, N] }, p1: { monsters: [N, N, { id: 'reed_heron', position: 'defense' }, N, N] } },
+    desc: 'dies in defense (shade_assassin 1900 vs DEF 1500)',
+    stage: { zones: 5, phase: 'battle', p0: { monsters: [N, N, 'shade_assassin', N, N] }, p1: { monsters: [N, N, { id: 'reed_heron', position: 'defense' }, N, N] } },
     steps: [attack(2, 2)],
   },
   rhrLoses: {

@@ -124,7 +124,8 @@ export function attackPose(f: number): Pose {
     default: return home();
   }
 }
-const ATTACK_HOLDS = [90, 70, 80, 90, 200, 190, 190, 50, 50, 50, 80, 110, 130, 150];
+// (tempo gate: the attack incl. the target's death ≤ 3.19 s game time — measure.mjs rhrAttack; the strides are 120 ms each)
+const ATTACK_HOLDS = [90, 70, 60, 70, 200, 120, 120, 50, 40, 40, 80, 90, 100, 120];
 
 // ------------------------------------------------------------------ roar (9 frames): the wings open once
 
@@ -231,7 +232,8 @@ export function summonPose(f: number): Pose {
     default: return key({ wo: 0.1, by: 1 }, f, SU_N);
   }
 }
-const SU_HOLDS = [160, 160, 90, 200, 90, 150, 150, 100, 160, 100, 120, 140];
+// (summon ≤ 1.8 s scene incl. the card slam: GAME_DESIGN, measure.mjs rhrSummon; the glint keeps its 200 ms)
+const SU_HOLDS = [140, 130, 80, 200, 80, 130, 120, 90, 140, 90, 100, 120];
 
 // ------------------------------------------------------------------ death (10): wings close, one step back, the mist takes him
 
