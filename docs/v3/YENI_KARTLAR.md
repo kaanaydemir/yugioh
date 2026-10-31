@@ -712,9 +712,9 @@ Director hasarı kendisi yeniden hesaplamaz: savunmada hasarsız yok olan hayale
 6. **Tek kopya kuralı** (Kuyu Kovası, Harman Eleği, Boşluk Gözü, Süpürge Rüzgarı) onaylanıyor mu?
 
 ## Sahip kararları (2026-10-31)
-1. Yaldızlı Kafes: Şafak Kılıçları zaten aynı rolü yapıyor (Swords of Revealing Light) — sahibe soruldu; öneri: Kafes EKLENMEZ, Şafak Kılıçları'na yeni imza animasyon + ses yapılır (havuz 80).
+1. Yaldızlı Kafes EKLENMEZ (Şafak Kılıçları zaten bu rol). Bunun yerine Şafak Kılıçları'na yeni imza animasyon + ses yapılır (Kafes storyboard'u ona uyarlanabilir). Havuz 80.
 2. Kül Ejderi "küllerinden doğar" kuralı: EKLENMEZ. Yalnız görünüm + tüm animasyonlar + sesler yeniden.
-3. Hızlı Büyü: sahibe açıklandı, karar bekliyor.
+3. Hızlı Büyü (M11): ONAY. Burgu Mızrağı ve Saman Korkuluklar hızlı büyü.
 4. Kutup Hükümdarı ATK 3000: ONAY.
 5. Kadran Soytarısı: destede EN ÇOK 1 kopya, etkisi turda EN ÇOK 1 kez.
 6. Kuyu Kovası, Boşluk Gözü, Süpürge Rüzgarı, Harman Eleği: destede TEK KOPYA — ONAY.
