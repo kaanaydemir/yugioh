@@ -22,6 +22,6 @@ Tüm kartların worktree'lerde commit'lenmiş hâli `claude/kart-c`'ye birleşti
 | reed_heron | rig + kart resmi + sunum (sis çağırma, üçlü gaga 40/40/80, sis ölümü, sesler, rhr senaryoları) — WIP checkpoint — sunum yapıldı, eleştiri turları sürüyor | ≥3 eleştiri turu → kapılar |
 | crag_axeman | rig + anim + kart resmi + sunum (yarık, dönüş+yarma, ikiye ayrılma, SFX) — WIP checkpoint — sunum yapıldı, eleştiri turları sürüyor | ≥3 eleştiri turu → kapılar |
 | kite_fencer | rig + kart resmi + sunum (pike, uçurtma uçuşu 2. saldırı, yaprak çağırma, ölüm uçuşu, panel, sesler) — WIP checkpoint — sunum yapıldı, eleştiri turları sürüyor | ≥3 eleştiri turu → kapılar |
-| steppe_spiralhorn | rig + anim + ölüm finali + kart resmi (sunum yok) | sunum (sekmeler, tohum patlaması, flüt sesi) → turlar → kapılar |
+| steppe_spiralhorn | rig + anim + ölüm finali + kart resmi + sunum (sekmeler, tohum patlaması, flüt sesi) — WIP checkpoint — sunum yapıldı, eleştiri turları sürüyor | ≥3 eleştiri turu → kapılar |
 
 Süreç: Workflow `kart-c-lane` (run wf_c8c99914-3bc) her kartı worktree'de sürdürüyor; her kart bitince birleştirme + kapılar + push.
