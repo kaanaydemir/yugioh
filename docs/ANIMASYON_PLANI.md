@@ -278,3 +278,6 @@ Karar (kullanıcı): uygulamanın ana (varsayılan) dili **İngilizce** olacak; 
 
 ## ALTIN KURAL (marka kararı)
 Her animasyon mükemmel olacak. Her saldırı, doğum (çağırma) ve özel yetenek kart başına UNIQUE, muhteşem ve göz alıcı olacak; enerjimizin çoğu buraya harcanacak, çünkü markamızın en önemli şeyi bu. İkinci olarak SFX en az animasyonlar kadar güzel olacak. Mükemmel VFX + SFX: unique, çarpıcı, akıcı. Bu kural diğer her kararın üstündedir (CLAUDE.md'ye de yazıldı).
+
+## Not: tempo çok hızlı (kullanıcı geri bildirimi)
+Animasyonlar 1x hızda bile çok hızlı. Altın kural (mükemmel, çarpıcı animasyon) için her imza anın nefes alması gerek. Yapılacak: v3 süre bütçeleri (cut-in ≤1.0 s, saldırı ≤2.2 s, vb.) gözden geçirilecek; önce hangi anların hızlı olduğu kullanıcıdan alınacak, ardından ya genel bir tempo çarpanı (varsayılan daha yavaş, ayarlardan 1x/1.5x/2x) ya da anlara özel bekleme (hold) süreleri uzatılacak. v1 görünümü birebir aynı kalır (yalnız v3).
