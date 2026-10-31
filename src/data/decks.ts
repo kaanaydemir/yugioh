@@ -9,7 +9,7 @@
 // of a card (the five seal pieces: 1 each), monsters >= 40% of the deck, Sv7+ monsters <= 20% of the deck.
 // These rules apply to the builder / pickers only: the engine still starts a game with ANY deck.
 
-import { ALL_CARDS, CARDS, DEFAULT_DECK, SEAL_IDS, isMonster, type Attribute, type CardDef, type CardId, type MonsterCardDef } from './cards';
+import { ALL_CARDS, CARDS, COLLECTIBLE_CARDS, DEFAULT_DECK, SEAL_IDS, isMonster, isRetired, type Attribute, type CardDef, type CardId, type MonsterCardDef } from './cards';
 import { makeRng } from '../engine/rng';
 
 export type DeckPool = 'default' | 'expanded';
@@ -25,8 +25,8 @@ export const SEAL_COPIES = 1;
 /** Sampler split of a 40-card deck. */
 export const DECK_MONSTERS = 24;
 
-/** Every card of the 'expanded' pool (monsters, spells and traps). */
-export const EXPANDED_POOL: readonly CardId[] = ALL_CARDS.map((c) => c.id);
+/** Every card of the 'expanded' pool (monsters, spells and traps; retired cards are never in it). */
+export const EXPANDED_POOL: readonly CardId[] = COLLECTIBLE_CARDS.map((c) => c.id);
 
 /** Detects the pool of this page: expanded only with the v3 look and `?deck=expanded` / `__NEON_DECK`. */
 export function detectDeckPool(): DeckPool {
@@ -83,8 +83,8 @@ function sampleCopies(list: readonly CardId[], slots: number, rng: () => number,
  */
 export function expandedDeck(seed: number, side: 0 | 1): CardId[] {
   const rng = makeRng((seed ^ Math.imul(side + 1, 0x9e3779b1) ^ 0x5eed5eed) >>> 0);
-  const monsters = shuffleWith(ALL_CARDS.filter(isMonster), rng);
-  const rest = shuffleWith(ALL_CARDS.filter((c) => !isMonster(c)).map((c) => c.id), rng);
+  const monsters = shuffleWith(COLLECTIBLE_CARDS.filter(isMonster), rng);
+  const rest = shuffleWith(COLLECTIBLE_CARDS.filter((c) => !isMonster(c)).map((c) => c.id), rng);
   const lowDup = (id: CardId) => {
     const d = CARDS[id];
     return !isSealCard(id) && !(isMonster(d) && d.level >= DECK_HIGH_LEVEL);
@@ -103,7 +103,9 @@ export function decksFor(pool: DeckPool, seed: number): [CardId[], CardId[]] | u
 // A builder deck (docs/DESTE_KURMA.md): DECK_MIN..DECK_MAX cards, every id at most maxCopies(id) times,
 // monsters >= 40% of the deck and monsters of Level >= DECK_HIGH_LEVEL <= 20% (tribute-heavy).
 // Both ratios are measured on max(size, DECK_MIN) so a half-built deck is not judged on a tiny size.
-// The pool is ALL_CARDS read at call time: nothing here counts cards.
+// The pool is COLLECTIBLE_CARDS (ALL_CARDS minus retired cards): nothing here counts cards. A retired card
+// (cards.ts `retired`, e.g. dusk_sorcerer) counts as "not in the pool": validateDeck reports it as missing,
+// addBlocker refuses it and repairDeck (saved decks) swaps each copy for a RETIRED_SUBSTITUTES card.
 
 export const DECK_HIGH_LEVEL = 7;
 export const MIN_MONSTER_RATIO = 0.4;
@@ -143,7 +145,7 @@ export interface DeckStats {
   counts: Record<string, number>;
   /** Ids held in more copies than maxCopies allows (each listed once). */
   over: string[];
-  /** Ids that are not in the card pool (a saved deck after a card was removed). */
+  /** Ids that are not in the card pool (a saved deck after a card was removed, or a retired card). */
   unknown: string[];
 }
 
@@ -160,7 +162,7 @@ export function isCardId(id: unknown): id is CardId {
 export function deckStats(ids: readonly string[]): DeckStats {
   const st: DeckStats = { size: ids.length, monsters: 0, spells: 0, traps: 0, high: 0, curve: new Array<number>(CURVE_BUCKETS).fill(0), counts: {}, over: [], unknown: [] };
   for (const id of ids) {
-    if (!isCardId(id)) {
+    if (!isCardId(id) || isRetired(id)) {
       if (!st.unknown.includes(id)) st.unknown.push(id);
       continue;
     }
@@ -204,6 +206,7 @@ export function validateDeck(ids: readonly string[]): DeckCheck {
 
 /** Would adding `id` to `ids` break a rule that adding more cards can never fix (copies / full / high cap)? */
 export function addBlocker(ids: readonly string[], id: CardId): string | null {
+  if (isRetired(id)) return 'Bu kart artık oyunda yok';
   const have = copiesOf(ids, id);
   const lim = maxCopies(id);
   if (have >= lim) return lim === 1 ? 'Bu karttan destede zaten var (en çok 1)' : `Bu karttan en çok ${lim} kopya (zaten ${have})`;
@@ -217,27 +220,65 @@ export function addBlocker(ids: readonly string[], id: CardId): string | null {
 }
 
 /**
- * Drops unknown ids and copies beyond maxCopies from anything that claims to be a deck (saved JSON),
- * and cuts the list at DECK_MAX. Order is kept.
+ * Stand-ins for retired cards, best first (same element / level band, so a saved deck keeps its size, its
+ * monster count and its Sv7+ count). When all of them are at their copy limit, any collectible card of the
+ * same kind and level band is used.
  */
-export function repairDeck(raw: unknown): { cards: CardId[]; missing: number; repeats: number; trimmed: number } {
+export const RETIRED_SUBSTITUTES: Partial<Record<CardId, readonly CardId[]>> = {
+  dusk_sorcerer: ['ashen_drake', 'crystal_wyrm', 'windmane_knight'],
+};
+
+/** The card that replaces one copy of the retired `id` in a deck holding `have` copies; null when none fits. */
+export function retiredSubstitute(id: CardId, have: Readonly<Record<string, number>>): CardId | null {
+  const d = CARDS[id];
+  const band = (c: CardDef) => (isMonster(c) && isMonster(d) ? (c.level >= DECK_HIGH_LEVEL) === (d.level >= DECK_HIGH_LEVEL) && !isSealCard(c.id) : c.kind === d.kind);
+  const fallback = COLLECTIBLE_CARDS.filter((c) => c.kind === d.kind && band(c)).map((c) => c.id);
+  for (const s of [...(RETIRED_SUBSTITUTES[id] ?? []), ...fallback]) if (isCardId(s) && !isRetired(s) && (have[s] ?? 0) < maxCopies(s)) return s;
+  return null;
+}
+
+/**
+ * Drops unknown ids and copies beyond maxCopies from anything that claims to be a deck (saved JSON),
+ * swaps every copy of a retired card for a substitute (retiredSubstitute; counted in `replaced`, or in
+ * `missing` when nothing fits) and cuts the list at DECK_MAX. Order is kept (a substitute takes the
+ * retired card's place); the deck's own copies of a substitute card always win over the stand-ins.
+ */
+export function repairDeck(raw: unknown): { cards: CardId[]; missing: number; repeats: number; trimmed: number; replaced: number } {
   const cards: CardId[] = [];
   const have: Record<string, number> = {};
   let missing = 0;
   let repeats = 0;
   let trimmed = 0;
+  let replaced = 0;
+  const slots: (CardId | { retired: CardId })[] = [];
   if (Array.isArray(raw)) {
     for (const id of raw) {
       if (!isCardId(id)) missing++;
+      else if (isRetired(id)) slots.push({ retired: id });
       else if ((have[id] ?? 0) >= maxCopies(id)) repeats++;
-      else if (cards.length >= DECK_MAX) trimmed++;
       else {
         have[id] = (have[id] ?? 0) + 1;
-        cards.push(id);
+        slots.push(id);
       }
     }
   }
-  return { cards, missing, repeats, trimmed };
+  for (const s of slots) {
+    let id: CardId;
+    if (typeof s === 'string') id = s;
+    else {
+      const sub = retiredSubstitute(s.retired, have);
+      if (!sub) {
+        missing++;
+        continue;
+      }
+      have[sub] = (have[sub] ?? 0) + 1;
+      replaced++;
+      id = sub;
+    }
+    if (cards.length >= DECK_MAX) trimmed++;
+    else cards.push(id);
+  }
+  return { cards, missing, repeats, trimmed, replaced };
 }
 
 /** Deterministic Fisher-Yates over a copy. */
@@ -258,11 +299,11 @@ function shuffled<T>(list: readonly T[], seed: number): T[] {
  * Cards with the fewest copies are preferred, so the deck spreads over the pool before it repeats.
  * Returns the new list (the pool may be too small to fill: then as many as fit).
  */
-export function autoFillDeck(current: readonly string[], seed: number, pool: readonly CardDef[] = ALL_CARDS, target: number = DECK_SIZE): CardId[] {
+export function autoFillDeck(current: readonly string[], seed: number, pool: readonly CardDef[] = COLLECTIBLE_CARDS, target: number = DECK_SIZE): CardId[] {
   const goal = Math.max(DECK_MIN, Math.min(DECK_MAX, Math.floor(target)));
   const deck: CardId[] = repairDeck(current).cards.slice(0, goal);
   const st = () => deckStats(deck);
-  const free = shuffled(pool, seed);
+  const free = shuffled(pool.filter((c) => !isRetired(c.id)), seed);
   const take = (pred: (c: CardDef) => boolean): boolean => {
     for (let copies = 0; copies < MAX_COPIES; copies++) {
       const c = free.find((x) => pred(x) && copiesOf(deck, x.id) === copies && addBlocker(deck, x.id) === null);
@@ -363,8 +404,8 @@ function monsterScore(d: MonsterCardDef, role: PresetRole, attr: Attribute | und
 }
 
 /** Cards of `def.pins` that are not in the pool (empty for a healthy preset). */
-export function missingPins(def: PresetDef, pool: readonly CardDef[] = ALL_CARDS): CardId[] {
-  const ids = new Set(pool.map((c) => c.id));
+export function missingPins(def: PresetDef, pool: readonly CardDef[] = COLLECTIBLE_CARDS): CardId[] {
+  const ids = new Set(pool.filter((c) => !isRetired(c.id)).map((c) => c.id));
   return def.pins.filter((id) => !ids.has(id));
 }
 
@@ -382,7 +423,8 @@ function copyOrder<T extends CardDef>(list: T[], spread: number, copies: (c: T) 
 }
 
 /** Builds one preset from `pool`: pins first, then back row and monsters by role score; stable order. */
-export function buildPreset(def: PresetDef, pool: readonly CardDef[] = ALL_CARDS): Preset {
+export function buildPreset(def: PresetDef, poolIn: readonly CardDef[] = COLLECTIBLE_CARDS): Preset {
+  const pool = poolIn.filter((c) => !isRetired(c.id));
   const order = new Map(pool.map((c, i) => [c.id, i]));
   const deck: CardId[] = [];
   // pins: two copies each (one for the seals), they are the theme of the deck
@@ -418,7 +460,7 @@ export function buildPreset(def: PresetDef, pool: readonly CardDef[] = ALL_CARDS
 let presetCache: Preset[] | null = null;
 let presetCachePool = -1;
 
-/** The six presets built from the current pool (cached until the pool changes). */
+/** The six presets built from the current collectible pool (cached until the pool changes). */
 export function presetDecks(): readonly Preset[] {
   if (!presetCache || presetCachePool !== ALL_CARDS.length) {
     presetCache = PRESET_DEFS.map((d) => buildPreset(d));

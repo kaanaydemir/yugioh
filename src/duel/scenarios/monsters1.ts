@@ -91,11 +91,7 @@ const scenarios: Record<string, Scenario> = {
     },
     steps: [summon('windmane_knight', 1, ['stone_sentinel', 'ember_wolf']), battle(), attack(1, 1)],
   },
-  m1Sorcerer: {
-    desc: 'Akşam Büyücüsü: every Spell its owner activates burns the opponent for 300 (Şifa Pınarı: +1000 LP, -300 for the rival)',
-    stage: { p0: { hand: ['healing_spring'], monsters: ['dusk_sorcerer'] }, p1: { monsters: ['ember_wolf'] } },
-    steps: [(D) => ({ type: 'activateSpell', player: 0, uid: D.uid('healing_spring', 0) })],
-  },
+  // m1Sorcerer (Akşam Büyücüsü's spell burn) was removed with the card (dusk_sorcerer is retired, owner decision)
   m1Imp: {
     desc: 'Tüy Hayalet attacks Taş Muhafız and is destroyed — its owner takes no battle damage',
     stage: { phase: 'battle', p0: { monsters: ['wisp_imp'] }, p1: { monsters: [{ id: 'stone_sentinel', position: 'attack' }] } },
@@ -106,7 +102,7 @@ const scenarios: Record<string, Scenario> = {
     stage: {
       p0: {
         hand: ['seal_head', 'seal_arm_r', 'hourglass_imp', 'wisp_imp', 'venom_drake', 'ashen_drake'],
-        monsters: ['dusk_sorcerer', { id: 'shield_titan', position: 'defense' }, 'wing_lady', { id: 'steel_silencer', position: 'attack' }, 'windmane_knight'],
+        monsters: ['ashen_drake', { id: 'shield_titan', position: 'defense' }, 'wing_lady', { id: 'steel_silencer', position: 'attack' }, 'windmane_knight'],
         spellTraps: ['mirror_barrier', null, 'chasm_trap'],
       },
       p1: {

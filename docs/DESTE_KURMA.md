@@ -1,7 +1,7 @@
 # Deste kurma (DESTE KUR) — tasarım notu
 
-Ana menüde **DESTE KUR** (3 maç kipinin altında, Nasıl Oynanır'ın üstünde). Kart havuzu `ALL_CARDS`'tan **çalışma anında**
-okunur: kart sayısı hiçbir yerde yazılı değildir; 35 kart da, 80 kart da aynı ekranda kayar. Kodlar: `src/scenes/deck/**`,
+Ana menüde **DESTE KUR** (3 maç kipinin altında, Nasıl Oynanır'ın üstünde). Kart havuzu `COLLECTIBLE_CARDS`'tan (= `ALL_CARDS` eksi emekli
+kartlar) **çalışma anında** okunur: kart sayısı hiçbir yerde yazılı değildir; 35 kart da, 80 kart da aynı ekranda kayar. Kodlar: `src/scenes/deck/**`,
 kurallar ve hazır desteler `src/data/decks.ts`, kayıt `src/scenes/deck/store.ts`, testler `tests/deck/**`.
 
 ## Kurallar (`validateDeck`, Türkçe gerekçelerle)
@@ -11,13 +11,20 @@ kurallar ve hazır desteler `src/data/decks.ts`, kayıt `src/scenes/deck/store.t
 - Boyuta göre ölçeklenen oranlar (`minMonsters`, `maxHigh`; küçük deste en az 40 kart gibi sayılır): **canavar en az %40**
   (40 kartta 16, 80 kartta 32), **Seviye 7+ canavar en çok %20** (40 kartta 8, 80 kartta 16; kurbanlı çağırma ağır).
 - Bilinmeyen kart kimliği (oyundan kalkmış kart) "Eksik kart" diye işaretlenir; deste yüklenirken kart düşürülür.
+- **Emekli kartlar** (`cards.ts` içinde `retired: true`; bugün yalnız **Akşam Büyücüsü** `dusk_sorcerer`, sahip kararı): kart
+  verisi ve resmi paylaşılan sözleşme olduğu için silinmez, ama hiçbir yerde sunulmaz: kurucu ızgarası, hazır desteler, CPU /
+  `?deck=expanded` örnekleyicisi, "Rastgele doldur". `addBlocker` "Bu kart artık oyunda yok" der, `validateDeck` onu "Eksik
+  kart" sayar. Kayıtlı bir destede (v1 veya v2) her kopyası yüklenirken **benzeriyle değiştirilir** (`RETIRED_SUBSTITUTES`:
+  Kül Ejderi → Kristal Ejder → Fırtına Şövalyesi, sonra aynı türden / aynı seviye bandından herhangi biri); deste boyu, canavar
+  ve Sv7+ sayısı korunur, deste geçerli kalır. Kurucu bunu "Oyundan kalkan kart: N kopya benzeriyle değişti" diye yazar
+  (`SavedDeck.replaced`; kaydedince kalkar).
 - Bu kurallar yalnız **kurucu / deste seçici** içindir: motor (`newGame({decks})`) her desteyle oyun başlatabilir; eski 20 kartlık
   yardımcılı testler ve `DEFAULT_DECK` (20 kart) aynen çalışır.
 - Beş Mühür: 5 parça kartta küçük **zincir simgesi**; üzerine gelince ipucu: "Beş Mühür: 5 parça elde birleşirse kazanırsın".
 - Eksik / geçersiz deste **kaydedilebilir** (taslak), ama maçta seçilemez (seçicide soluk, gerekçesi yazılı).
 - `autoFillDeck(mevcut, tohum, havuz, hedef)`: kurallara uyan, tohumlu "Rastgele doldur"; önce az kopyalı kartları seçer
   (hedef 40..80; kurucuda hedef = en az 40, bugünkü kart sayısı büyükse o). `repairDeck`: bilinmeyenleri ve limit üstü kopyaları
-  atar, 80'de keser. `addBlocker`: bir kart eklenemiyorsa Türkçe nedeni.
+  atar, emekli kartları yerinde değiştirir (`replaced`), 80'de keser. `addBlocker`: bir kart eklenemiyorsa Türkçe nedeni.
 
 ## Ekranlar
 - **Kurucu** (`Deck` sahnesi, `?dev=deck`): solda oyunun kendi inspect paneli (büyük kart + metin) ve kısayol / mühür plakası;
@@ -66,7 +73,7 @@ ile başlar; `?mode=…` URL'leri ve tüm senaryolar zaten bu yolu kullanır (v1
 
 ## Bilinen eksikler
 - Kurucu, tek seferde bir yuvayı düzenler; yuvalar arası kart kopyalama / deste dışa aktarma kodu yok.
-- Seviye 7+ havuzda 4 farklı kart var: 40 kartta üst sınır (8) 3'er kopyayla aşılabilir, test bunu doğrular.
+- Seviye 7+ havuzda 3 farklı kart var (Akşam Büyücüsü emekli): 40 kartta üst sınır (8) 3'er kopyayla (9) aşılabilir, test bunu doğrular.
 - Klasik'e karşı Klasik (iki taraf da varsayılan) motorun 20 kartlık `DEFAULT_DECK`'iyle oynanır (eski akış / `?mode=` URL'leri ve
   v1 filmdiff aynı kalsın diye); Klasik Deste başka bir desteye karşı seçilince 40 kartlık hâli oynanır.
 - Havuzda sağ tık ile kopya çıkarma yok (tarayıcı bağlam menüsü); onun yerine hücredeki **-** düğmesi / Del kullanılır.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_DECK } from '../../src/data/cards';
+import { COLLECTIBLE_CARDS, DEFAULT_DECK } from '../../src/data/cards';
 import { autoFillDeck, classicDeck, copiesOf, presetDecks, validateDeck } from '../../src/data/decks';
 import { DeckStore, NAME_MAX, cleanName, SLOT_COUNT, STORE_KEY, matchDecks, parseStore, presetRef, serializeStore, slotRef, type KV } from '../../src/scenes/deck/store';
 
@@ -59,6 +59,27 @@ describe('deck store', () => {
     expect(r.cards).toHaveLength(39);
     expect(r.check.ok).toBe(false);
     expect(r.cards).not.toContain('removed_card');
+  });
+
+  it('a saved deck holding the retired Akşam Büyücüsü loads legal: each copy swapped for a substitute (same size)', () => {
+    const kv = new FakeKV();
+    const subs = new Set(['ashen_drake', 'crystal_wyrm', 'windmane_knight']);
+    const cards = autoFillDeck([], 4, COLLECTIBLE_CARDS.filter((c) => !subs.has(c.id))).slice(0, 38);
+    const saved = ['dusk_sorcerer', ...cards, 'dusk_sorcerer'];
+    kv.data.set(STORE_KEY, JSON.stringify({ v: 2, slots: [{ name: 'Akşam', cards: saved }], last: { p1: 'slot:0' } }));
+    const s = new DeckStore(kv);
+    const r = s.resolve(slotRef(0))!;
+    expect(r.cards).toHaveLength(saved.length);
+    expect(r.cards).not.toContain('dusk_sorcerer');
+    expect(r.cards[0]).toBe('ashen_drake');
+    expect(r.missing).toBe(0);
+    expect(s.slot(0)!.replaced).toBe(2);
+    expect(r.check.ok, r.check.issues.map((i) => i.text).join('|')).toBe(true);
+    // an old v1 (20-card) save with it migrates without it as well
+    kv.data.set(STORE_KEY, JSON.stringify({ v: 1, slots: [{ name: 'Eski', cards: [...DEFAULT_DECK.slice(0, 19), 'dusk_sorcerer'] }] }));
+    const m = new DeckStore(kv).resolve(slotRef(0))!;
+    expect(m.cards).not.toContain('dusk_sorcerer');
+    expect(m.check.ok, m.check.issues.map((i) => i.text).join('|')).toBe(true);
   });
 
   it('drops copies over the limit on load (4th wyrm, 2nd seal)', () => {

@@ -480,7 +480,8 @@ describe('deck pool', () => {
     expect(expandedDeck(7, 0)).toEqual(d);
     expect(expandedDeck(7, 1)).not.toEqual(d);
     expect(expandedDeck(8, 0)).not.toEqual(d);
-    expect(EXPANDED_POOL).toHaveLength(ALL_CARDS.length); // the pool follows the roster (monsters + spell/trap batch 1)
+    expect(EXPANDED_POOL).toHaveLength(ALL_CARDS.filter((c) => !c.retired).length); // the pool follows the roster minus retired cards
+    expect(EXPANDED_POOL).not.toContain('dusk_sorcerer');
     expect(decksFor('default', 1)).toBeUndefined();
     expect(detectDeckPool()).toBe('default');
   });

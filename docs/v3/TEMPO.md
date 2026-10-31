@@ -41,10 +41,10 @@ tabloyla karşılaştırılabilir.
 
 | Senaryo | Önce | Sonra | Oran |
 |---|---|---|---|
-| `saWyrmAtk` (saldırı + ölüm) | MEASURE_saWyrmAtk |
-| `saMagusAtk` (saldırı + ölüm) | MEASURE_saMagusAtk |
-| `suWyrm` (kurbanlı çağırma + cut-in) | MEASURE_suWyrm |
-| `spBolt` (büyü) | MEASURE_spBolt |
-| `tbChains` (tuzak) | MEASURE_tbChains |
-| `tbMirror` (tuzak, Ayna) | MEASURE_tbMirror |
-| `flowLethal` (son vuruş + oyun sonu) | MEASURE_flowLethal |
+| `saWyrmAtk` (saldırı + ölüm) | 2,00 sn | 2,68 sn | ×1,34 |
+| `saMagusAtk` (saldırı + ölüm) | 1,55 sn | 2,17 sn | ×1,40 |
+| `suWyrm` (kurbanlı çağırma + cut-in) | 2,80 sn | 3,53 sn | ×1,26 |
+| `spBolt` (büyü) | 1,32 sn | 1,83 sn | ×1,39 |
+| `tbChains` (tuzak) | 3,67 sn | 4,90 sn | ×1,34 |
+| `tbMirror` (tuzak, Ayna) | 2,58 sn | 3,37 sn | ×1,30 |
+| `flowLethal` (son vuruş + oyun sonu) | 5,97 sn | 7,98 sn | ×1,34 |

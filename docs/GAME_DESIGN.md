@@ -121,6 +121,13 @@ Tarz kuralı: oyunun **orijinal piksel dili** korunur — 640×360, tam sayı b�
 | **Işık Zincirleri** (`chains_of_light`) | Rakip saldırı ilan ettiğinde | Saldırıyı geçersiz kıl. Savaş Aşaması biter, tur Bitiş Aşamasına geçer. |
 | **Yer Yarığı** (`chasm_trap`) | Rakip ATK ≥ 1000 bir canavarı Normal/Kurbanla Çağırdığında | O canavarı yok et |
 
+### Genişletilmiş havuz ve emekli kartlar
+Yukarıdaki 20 kart klasik destedir; sonraki kartlar (`docs/KART_TASLAGI_CANAVAR.md`, `docs/KART_TASLAGI_BUYU_TUZAK.md`)
+deste kurucuda ve `?deck=expanded` havuzunda oynanır. **Emekli** kartlar (`src/data/cards.ts`'te `retired: true`) veride kalır
+ama hiçbir yerde sunulmaz (kurucu, hazır desteler, CPU / rastgele desteler); kayıtlı destelerde yüklenirken benzeriyle
+değiştirilir (`docs/DESTE_KURMA.md`).
+- **Akşam Büyücüsü** (`dusk_sorcerer`, KARANLIK Sv7) — sahip kararıyla oyundan kaldırıldı; yerine Kül Ejderi konur.
+
 ---
 
 ## 4. Görsel Stil

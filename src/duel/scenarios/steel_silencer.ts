@@ -41,12 +41,12 @@ const scenarios: Record<string, Scenario> = {
   },
   ssKill: {
     desc: 'Çelik Susturucu is destroyed in battle (hit, death)',
-    stage: { phase: 'battle', p0: { monsters: ['dusk_sorcerer'] }, p1: { monsters: [{ id: 'steel_silencer', position: 'attack' }] } },
+    stage: { phase: 'battle', p0: { monsters: ['crystal_wyrm'] }, p1: { monsters: [{ id: 'steel_silencer', position: 'attack' }] } },
     steps: [attack(0, 0)],
   },
   ssKillP2: {
     desc: 'Çelik Susturucu (player 1) is destroyed in battle',
-    stage: { phase: 'battle', active: 1, p1: { monsters: ['dusk_sorcerer'] }, p0: { monsters: [{ id: 'steel_silencer', position: 'attack' }] } },
+    stage: { phase: 'battle', active: 1, p1: { monsters: ['crystal_wyrm'] }, p0: { monsters: [{ id: 'steel_silencer', position: 'attack' }] } },
     steps: [attack(0, 0, 1)],
   },
   ssGuard: {

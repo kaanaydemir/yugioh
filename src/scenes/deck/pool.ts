@@ -1,7 +1,7 @@
 // Pure helpers of the deck builder's card grid: filters, sorting, grid navigation.
-// The pool is read from ALL_CARDS at call time (it grows as new cards arrive).
+// The pool is COLLECTIBLE_CARDS (ALL_CARDS minus retired cards; it grows as new cards arrive).
 
-import { ALL_CARDS, isMonster, type Attribute, type CardDef, type CardId } from '../../data/cards';
+import { ALL_CARDS, COLLECTIBLE_CARDS, isMonster, type Attribute, type CardDef, type CardId } from '../../data/cards';
 
 export type KindFilter = 'all' | 'monster' | 'spell' | 'trap';
 export type SortKey = 'level' | 'atk' | 'name';
@@ -44,8 +44,8 @@ export function sortPool(defs: readonly CardDef[], key: SortKey): CardDef[] {
   return out;
 }
 
-/** The ids shown in the grid for a filter + sort over `pool` (default: every card). */
-export function visibleIds(f: PoolFilter, key: SortKey, pool: readonly CardDef[] = ALL_CARDS): CardId[] {
+/** The ids shown in the grid for a filter + sort over `pool` (default: every collectible card). */
+export function visibleIds(f: PoolFilter, key: SortKey, pool: readonly CardDef[] = COLLECTIBLE_CARDS): CardId[] {
   return sortPool(pool.filter((c) => matches(c, f)), key).map((c) => c.id);
 }
 

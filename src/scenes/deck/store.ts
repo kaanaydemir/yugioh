@@ -1,7 +1,9 @@
 // Deck persistence: 5 save slots + the "last used" choices, in localStorage (or any KV with
 // getItem / setItem). Every storage access is wrapped: a blocked / full / corrupt storage never
 // throws, the data then lives in memory for the session. A saved deck that names a card that no
-// longer exists is repaired on load (the id is dropped and counted in `missing`); copies over the limit are
+// longer exists is repaired on load (the id is dropped and counted in `missing`; a retired card such as
+// dusk_sorcerer is swapped for a substitute instead, counted in `replaced`, so the deck keeps its size and
+// stays legal); copies over the limit are
 // dropped too, and an old 20-card save is migrated to a 40-card deck (`migrated`).
 //
 //   const store = deckStore();                 // the game-wide singleton
@@ -26,6 +28,8 @@ export interface SavedDeck {
   cards: CardId[];
   /** Ids dropped on load because the card no longer exists. */
   missing: number;
+  /** Copies of a retired card swapped for a substitute on load (decks.ts retiredSubstitute). */
+  replaced?: number;
   /** True when an old (v1, 20-card) save was doubled / auto-filled to DECK_MIN on load. */
   migrated?: boolean;
 }
@@ -86,7 +90,7 @@ export function parseStore(text: string | null): DeckStoreData {
         cards = autoFillDeck(repairDeck([...cards, ...cards]).cards, 0x5a17 + i * 977);
         migrated = true;
       }
-      data.slots[i] = { name: cleanName(s.name, `Deste ${i + 1}`), cards, missing: fixed.missing, ...(migrated ? { migrated } : {}) };
+      data.slots[i] = { name: cleanName(s.name, `Deste ${i + 1}`), cards, missing: fixed.missing, ...(fixed.replaced ? { replaced: fixed.replaced } : {}), ...(migrated ? { migrated } : {}) };
     }
   }
   if (o.last && typeof o.last === 'object') {

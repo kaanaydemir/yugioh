@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { ALL_CARDS, CARDS, DEFAULT_DECK, SEAL_IDS, isMonster, type CardId } from '../../src/data/cards';
+import { ALL_CARDS, COLLECTIBLE_CARDS, CARDS, DEFAULT_DECK, SEAL_IDS, isMonster, type CardId } from '../../src/data/cards';
 import {
-  DECK_MAX, DECK_MIN, DECK_SIZE, MAX_COPIES, PRESET_DEFS, addBlocker, autoFillDeck, buildPreset, classicDeck, copiesOf, deckStats, expandedDeck, isSealCard, maxCopies, maxHigh, minMonsters, missingPins, presetById, presetDecks, repairDeck, validateDeck,
+  DECK_MAX, DECK_MIN, DECK_SIZE, EXPANDED_POOL, MAX_COPIES, PRESET_DEFS, RETIRED_SUBSTITUTES, addBlocker, autoFillDeck, buildPreset, classicDeck, copiesOf, deckStats, expandedDeck, isSealCard, maxCopies, maxHigh, minMonsters, missingPins, presetById, presetDecks, repairDeck, validateDeck,
 } from '../../src/data/decks';
 import { newGame } from '../../src/engine';
+import { isRetired } from '../../src/data/cards';
+import { visibleIds } from '../../src/scenes/deck/pool';
 
-const monsters = ALL_CARDS.filter(isMonster);
+const monsters = COLLECTIBLE_CARDS.filter(isMonster);
 const high = monsters.filter((m) => m.level >= 7).map((m) => m.id);
 const low = monsters.filter((m) => m.level < 7 && !SEAL_IDS.includes(m.id as never)).map((m) => m.id);
-const back = ALL_CARDS.filter((c) => !isMonster(c)).map((c) => c.id);
+const back = COLLECTIBLE_CARDS.filter((c) => !isMonster(c)).map((c) => c.id);
 
 /** n copies of each id, in order, up to `size` cards. */
 const spread = (ids: string[], size: number, per = 2): string[] => {
@@ -73,10 +75,12 @@ describe('deck rules (40..80 cards, 3 copies, seals 1)', () => {
     expect(validateDeck(mk(32)).issues.map((i) => i.code)).not.toContain('monsters');
   });
 
-  // the pool holds 4 Sv7+ monsters today; at 3 copies each that is 12: over the 40-card cap of 8, fine at 80
+  // the collectible pool holds 3 Sv7+ monsters today (dusk_sorcerer retired); at 3 copies each that is 9:
+  // over the 40-card cap of 8, fine at 80
   it('rejects too many Level 7+ monsters (cap grows with the deck)', () => {
     const tribute = spread(high, 12, 3);
-    const d40 = [...tribute, ...spread(low, 14, 3), ...spread(back, 14, 3)];
+    expect(tribute.length).toBeGreaterThan(8);
+    const d40 = [...tribute, ...spread(low, 26 - tribute.length, 3), ...spread(back, 14, 3)];
     expect(d40.length).toBe(40);
     const r = validateDeck(d40);
     expect(r.issues.map((i) => i.code)).toContain('high');
@@ -149,18 +153,18 @@ describe('autoFillDeck (Rastgele doldur)', () => {
 
   it('fills to a bigger target (up to 80) and spreads copies', () => {
     for (const target of [40, 55, 80]) {
-      const d = autoFillDeck([], target, ALL_CARDS, target);
+      const d = autoFillDeck([], target, COLLECTIBLE_CARDS, target);
       expect(d).toHaveLength(target);
       expect(validateDeck(d).ok, `${target}`).toBe(true);
     }
-    expect(autoFillDeck([], 1, ALL_CARDS, 500)).toHaveLength(80); // clamped
-    expect(autoFillDeck([], 1, ALL_CARDS, 5)).toHaveLength(40);
+    expect(autoFillDeck([], 1, COLLECTIBLE_CARDS, 500)).toHaveLength(80); // clamped
+    expect(autoFillDeck([], 1, COLLECTIBLE_CARDS, 5)).toHaveLength(40);
     const four = autoFillDeck(['crystal_wyrm', 'crystal_wyrm'], 5);
     expect(four.filter((x) => x === 'crystal_wyrm').length).toBeGreaterThanOrEqual(2);
   });
 
   it('on a pool too small to fill returns what fits without throwing', () => {
-    const d = autoFillDeck([], 1, ALL_CARDS.slice(0, 7));
+    const d = autoFillDeck([], 1, COLLECTIBLE_CARDS.slice(0, 7));
     expect(d.length).toBeLessThanOrEqual(7 * MAX_COPIES);
   });
 });
@@ -198,7 +202,7 @@ describe('preset decks', () => {
   });
 
   it('survives a pool that lost a card: still 40 legal cards', () => {
-    const pool = ALL_CARDS.filter((c) => c.id !== 'magma_titan' && c.id !== 'judgment_bolt');
+    const pool = COLLECTIBLE_CARDS.filter((c) => c.id !== 'magma_titan' && c.id !== 'judgment_bolt');
     for (const def of PRESET_DEFS) {
       const p = buildPreset(def, pool);
       expect(validateDeck(p.cards).ok, def.name).toBe(true);
@@ -230,5 +234,64 @@ describe('expanded sampler (CPU, 40 cards)', () => {
       }
     expect(expandedDeck(3, 0)).toEqual(expandedDeck(3, 0));
     expect(expandedDeck(3, 0)).not.toEqual(expandedDeck(3, 1));
+  });
+});
+
+describe('retired cards (dusk_sorcerer, owner decision)', () => {
+  const R = 'dusk_sorcerer' as CardId;
+  it('the card stays in ALL_CARDS / CARDS (shared contract) but is flagged retired and never offered', () => {
+    expect(CARDS[R].retired).toBe(true);
+    expect(isRetired(R)).toBe(true);
+    expect(isRetired('ashen_drake')).toBe(false);
+    expect(ALL_CARDS.some((c) => c.id === R)).toBe(true);
+    expect(COLLECTIBLE_CARDS.some((c) => c.id === R)).toBe(false);
+    expect(EXPANDED_POOL).not.toContain(R);
+    expect(visibleIds({ kind: 'all', attr: null }, 'name')).not.toContain(R);
+    expect(visibleIds({ kind: 'monster', attr: 'DARK' }, 'level')).not.toContain(R);
+  });
+  it('presets, the classic deck, the sampler and Rastgele doldur never hold it (even when handed ALL_CARDS)', () => {
+    for (const p of presetDecks()) expect(p.cards, p.id).not.toContain(R);
+    for (const d of PRESET_DEFS) expect(buildPreset(d, ALL_CARDS).cards).not.toContain(R);
+    expect(classicDeck()).not.toContain(R);
+    for (let seed = 0; seed < 40; seed++) {
+      expect(expandedDeck(seed, 0)).not.toContain(R);
+      expect(expandedDeck(seed, 1)).not.toContain(R);
+      expect(autoFillDeck([], seed, ALL_CARDS, 80)).not.toContain(R);
+    }
+    expect(autoFillDeck([], 3)).not.toContain(R);
+  });
+  it('the builder refuses it and validateDeck reports it as missing', () => {
+    expect(addBlocker([], R)).toMatch(/artık oyunda yok/);
+    const d = autoFillDeck([], 5);
+    const withIt = [...d.slice(0, 39), R];
+    const v = validateDeck(withIt);
+    expect(v.ok).toBe(false);
+    expect(v.issues.map((i) => i.code)).toContain('unknown');
+    expect(v.stats.unknown).toEqual([R]);
+  });
+  it('repairDeck swaps each copy for a substitute in place: size, monster count and Sv7+ count kept, deck legal', () => {
+    expect(RETIRED_SUBSTITUTES[R]?.[0]).toBe('ashen_drake');
+    const base = autoFillDeck([], 9).filter((id) => { const c = CARDS[id]; return !(isMonster(c) && c.level >= 7); });
+    expect(base.length).toBeGreaterThanOrEqual(36);
+    const raw = [R, ...base.slice(0, 36), R, R, R];
+    const r = repairDeck(raw);
+    expect(r.replaced).toBe(4);
+    expect(r.missing).toBe(0);
+    expect(r.cards).toHaveLength(40);
+    expect(r.cards).not.toContain(R);
+    expect(r.cards[0]).toBe('ashen_drake');
+    expect(r.cards[39]).toBe('crystal_wyrm'); // ashen_drake is full after three
+    expect(deckStats(r.cards).high).toBe(4);
+    expect(deckStats(r.cards).monsters).toBe(deckStats(raw).monsters + 4);
+    expect(validateDeck(r.cards).ok).toBe(true);
+  });
+  it('the deck\'s own copies of a substitute win; the stand-ins move on down the list', () => {
+    const raw = ['ashen_drake', 'ashen_drake', R, 'ashen_drake', R];
+    const r = repairDeck(raw);
+    expect(r.cards.filter((x) => x === 'ashen_drake')).toHaveLength(3);
+    expect(r.cards[2]).toBe('crystal_wyrm');
+    expect(r.cards[4]).toBe('crystal_wyrm');
+    expect(r.repeats).toBe(0);
+    expect(r.replaced).toBe(2);
   });
 });

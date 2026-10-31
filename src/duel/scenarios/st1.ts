@@ -103,7 +103,7 @@ const ST1: Record<string, Scenario> = {
     stage: {
       zones: Z5,
       p0: { hand: ['shadow_cavern'], monsters: ['shade_assassin', 'stone_sentinel', null, 'lumen_sprite', 'volt_lizard'] },
-      p1: { monsters: [null, 'dusk_sorcerer', 'tide_golem', 'grim_warden'] },
+      p1: { monsters: [null, 'ashen_drake', 'tide_golem', 'grim_warden'] },
     },
     steps: [act('shadow_cavern', 0)],
   },

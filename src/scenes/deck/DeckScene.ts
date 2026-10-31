@@ -6,8 +6,8 @@
 //   right   the deck: 5 save slots, the deck's name, the count N/40-80, a scrolling list of the distinct
 //           cards with their copy count (xN) and a - / + pair per row, the level curve, the counts, the Turkish reasons while the deck is not playable, and the action buttons
 //
-// Mouse and keyboard both do everything (see HELP below). The pool is read from ALL_CARDS at
-// runtime: 35 cards today, 60-80 later; the grid scrolls and nothing here counts cards.
+// Mouse and keyboard both do everything (see HELP below). The pool is read from COLLECTIBLE_CARDS (no
+// retired cards) at runtime: 35 cards today, 60-80 later; the grid scrolls and nothing here counts cards.
 // Rules and presets: src/data/decks.ts. Persistence: ./store.ts. Notes: docs/DESTE_KURMA.md.
 
 import Phaser from 'phaser';
@@ -134,6 +134,8 @@ interface Draft {
   savedKey: string;
   /** Cards dropped on load because they no longer exist ("eksik kart"); cleared by saving. */
   missing: number;
+  /** Copies of a retired card swapped for a substitute on load (store `replaced`); cleared by saving. */
+  replaced?: number;
 }
 
 const keyOf = (name: string, cards: readonly string[]) => `${name}|${cards.join(',')}`;
@@ -245,7 +247,7 @@ export class DeckScene extends Phaser.Scene {
     // drafts: one working copy per slot (an empty slot starts as an empty deck)
     for (let i = 0; i < SLOT_COUNT; i++) {
       const s = this.store.slot(i);
-      this.drafts.push(s ? { name: s.name, cards: [...s.cards], savedKey: keyOf(s.name, s.cards), missing: s.missing } : { name: `Deste ${i + 1}`, cards: [], savedKey: keyOf(`Deste ${i + 1}`, []), missing: 0 });
+      this.drafts.push(s ? { name: s.name, cards: [...s.cards], savedKey: keyOf(s.name, s.cards), missing: s.missing, replaced: s.replaced ?? 0 } : { name: `Deste ${i + 1}`, cards: [], savedKey: keyOf(`Deste ${i + 1}`, []), missing: 0 });
     }
     const lastEdit = Number((this.store.last('edit') ?? '').replace('slot:', ''));
     this.slot = this.data0.slot ?? (Number.isInteger(lastEdit) && lastEdit >= 0 && lastEdit < SLOT_COUNT ? lastEdit : 0);
@@ -783,6 +785,7 @@ export class DeckScene extends Phaser.Scene {
     this.store.setLast('edit', slotRef(this.slot));
     d.savedKey = keyOf(this.store.slot(this.slot)!.name, d.cards);
     d.missing = 0;
+    d.replaced = 0;
     d.name = this.store.slot(this.slot)!.name;
     sfx.play('uiConfirm', { volume: 0.7 });
     this.renderDeck();
@@ -1228,6 +1231,7 @@ export class DeckScene extends Phaser.Scene {
     this.countTexts[2].setText(`${st.traps}`);
     // reasons
     const lost = d.missing > 0 ? [`· Eksik kart: ${d.missing} (oyundan kalktı, çıkarıldı)`] : [];
+    if (d.replaced) lost.push(`· Oyundan kalkan kart: ${d.replaced} kopya benzeriyle değişti`);
     if (v.ok && !lost.length) {
       this.reasons.setTint(PAL.leaf3).setText('Deste hazır. Maçta seçebilirsin.');
     } else if (v.ok) {

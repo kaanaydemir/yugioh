@@ -155,6 +155,8 @@ export interface MonsterCardDef {
   flavor: string;
   /** Ace monsters get a full-screen cut-in when summoned. */
   ace: boolean;
+  /** Retired (owner decision): kept for art / old saves, but never offered (pool, builder, presets, CPU). */
+  retired?: boolean;
 }
 
 export interface SpellCardDef {
@@ -164,6 +166,8 @@ export interface SpellCardDef {
   name: string;
   effect: SpellEffect;
   text: string;
+  /** Retired (owner decision): kept for art / old saves, but never offered (pool, builder, presets, CPU). */
+  retired?: boolean;
 }
 
 export interface TrapCardDef {
@@ -172,6 +176,8 @@ export interface TrapCardDef {
   name: string;
   effect: TrapEffect;
   text: string;
+  /** Retired (owner decision): kept for art / old saves, but never offered (pool, builder, presets, CPU). */
+  retired?: boolean;
 }
 
 export type CardDef = MonsterCardDef | SpellCardDef | TrapCardDef;
@@ -373,6 +379,8 @@ const MONSTERS_B1: MonsterCardDef[] = [
     text: 'Sahadayken senin büyü kartların aktive edildiğinde rakibe 300 hasar.',
     flavor: '',
     ace: true,
+    // removed from the game (owner decision): saved decks swap it for RETIRED_SUBSTITUTES (src/data/decks.ts)
+    retired: true,
   },
   {
     id: 'ashen_drake',
@@ -757,6 +765,16 @@ export const MONSTER_IDS: MonsterId[] = [...MONSTERS, ...MONSTERS_B1].map((m) =>
 export const SPELL_IDS: SpellId[] = [...SPELLS, ...SPELLS_B1].map((s) => s.id);
 export const TRAP_IDS: TrapId[] = [...TRAPS, ...TRAPS_B1].map((t) => t.id);
 export const ALL_CARD_IDS: CardId[] = ALL_CARDS.map((c) => c.id);
+
+/** True for a card that was taken out of the game (`retired`): it exists, but is never offered. */
+export function isRetired(id: string): boolean {
+  const d = (CARDS as Record<string, CardDef | undefined>)[id];
+  return !!d && d.retired === true;
+}
+
+/** Every card that can be offered (pool, deck builder, presets, CPU / random decks): ALL_CARDS minus retired. */
+export const COLLECTIBLE_CARDS: CardDef[] = ALL_CARDS.filter((c) => !c.retired);
+export const COLLECTIBLE_CARD_IDS: CardId[] = COLLECTIBLE_CARDS.map((c) => c.id);
 
 /** Default deck: one copy of each of the 20 original cards (both players use it, shuffled). Never grows. */
 export const DEFAULT_DECK: CardId[] = [...MONSTERS, ...SPELLS, ...TRAPS].map((c) => c.id);
