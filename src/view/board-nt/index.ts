@@ -35,7 +35,7 @@ import { createWallLayer } from './wall';
 type Img = Phaser.GameObjects.Image;
 
 /** Which parts of the calm arena the Neon Tower layers have replaced so far (skeleton: none). */
-export const NT_SKIP: NonNullable<BoardViewCalmOptions['skip']> = { background: true, slabImage: true, trims: LANES < 5 };
+export const NT_SKIP: NonNullable<BoardViewCalmOptions['skip']> = { background: true, slabImage: true, trims: true };
 
 export class BoardViewNt implements ArenaViewApi {
   readonly scene: Phaser.Scene;
