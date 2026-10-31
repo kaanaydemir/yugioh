@@ -16,18 +16,18 @@ Kart isimleri ve tasarımları ORİJİNAL olur; Yu-Gi-Oh kartları yalnızca "ro
 | 7 | Pot of Greed rolünde büyü kartı (2 kart çek) — orijinal isim | bekliyor |
 | 8 | Tüy Hayalet yeniden tasarım | bekliyor |
 | 9 | The Legendary Fisherman rolünde canavar | bekliyor |
-| 10 | Time Wizard rolünde kart: şu an yok (Kum Saati Cücesi farklı: dondurma). Sahibe soruldu | soru |
+| 10 | Time Wizard rolünde yeni kart (yazı-tura; doğru: rakip canavarlar yok, yanlış: kendi canavarların yok + yarı ATK hasar) — sahip onayladı | bekliyor |
 | 11 | Baby Dragon rolünde canavar | bekliyor |
 | 12 | Gemini Elf rolünde canavar | bekliyor |
 | 13 | Goblin Attack Force rolünde canavar | bekliyor |
 | 14 | Bazoo the Soul-Eater rolünde canavar | bekliyor |
 | 15 | Axe Raider, Alligator's Sword, Hayabusa Knight, Earthbound Spirit, Gazelle, Alpha/Beta/Gamma Magnet Warrior rollerinde canavarlar | bekliyor |
 | 16 | Change of Heart, Dark Hole, Harpie's Feather Duster, Graceful Charity, Swords of Revealing Light, Mystical Space Typhoon, Snatch Steal, Scapegoat, Axe of Despair, Card Destruction, Graceful Dice rollerinde büyüler | bekliyor |
-| 17 | İki ikonik kartın KART görünümünü (kart resmi) güncelle | soru (hangi iki kart?) |
-| 18 | Saha görünüm kalitesini artır, "HD-2D" tarzı | soru (piksel kuralı ile çelişki) |
+| 17 | Kristal Ejder + Uçurum Büyücüsü KART resimlerini yenile (yalnız kart görünümü) | bekliyor |
+| 18 | Saha kalitesi "HD-2D" tarzı — SAHİP KARARI: ŞİMDİLİK PAS. HATIRLATMA: diğer maddeler bitince sahibe tekrar sor (piksel kalır + bloom/derinlik/ışık seçeneği önerildi) | ertelendi |
 
 ## Notlar
 - Kart sayısı: şu an 55; 4. madde −1, yeni kartlar ≈ +26 → yaklaşık 80 (hedef 60–80 içinde).
 - 16. maddedeki birçok etki motor (engine) eklentisi ister: kontrol değiştirme, saha temizleme, jeton (token) çağırma, zar, 3 tur kilit, el yenileme.
-- Magnet Warrior üçlüsü: üç parça + birleşik özel çağırma (Mühür setindeki gibi bir set mekaniği) düşünülüyor.
+- Magnet Warrior üçlüsü: SAHİP ONAYLADI — üç parça sahadayken kurban edilip büyük birleşik canavar çağrılır (imza birleşme animasyonu).
 - Her adımda commit + push; oynanabilir sürüm (artifact 81f1C4yX81fc29Z1AHKA8D) düzenli güncellenir.
