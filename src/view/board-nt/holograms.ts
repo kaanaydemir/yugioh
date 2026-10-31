@@ -1,22 +1,20 @@
-// Neon Tower layer: HOLOGRAMS — owner B2 (docs/v3/ARENA_NEON_TOWER.md §2, §7, §9). Two hologram creatures on round pedestals (layout-nt.ts HOLOS),
-// ALWAYS the same two (user decision): left = Kristal Ejder (a faceted blue-white crystal dragon, ~142×120, src/art/arena-nt/holo-dragon.ts), right =
-// Uçurum Büyücüsü (a hooded wizard in a gust, src/art/arena-nt/holo-magus.ts). Both are PAINTED (not baked from the monster sprites): flat facets,
-// one tone per facet, a bright rim; no stipple, no scan rows, no dither. The frames are painted one small job per tick (≤ ~3 ms) and the hologram
-// materialises (drawn in from the head down) when ready.
+// Neon Tower layer: HOLOGRAMS — owner B2 (docs/v3/ARENA_NEON_TOWER.md §2, §7, §9; J3: big, blue-white and violet, a real flare).
+// Two hologram creatures on round pedestals (layout-nt.ts HOLOS), ALWAYS the same two (user decision): left = Kristal Ejder
+// (crystal_wyrm, blue-white), right = Uçurum Büyücüsü (abyss_magus, violet/magenta), our own designs. Built from the monsters'
+// own v3 idle frames (monsterFrame), enlarged 4/3 and 3/2 with a nearest pass, tone-mapped into six hard bands, scan lines and
+// facet glow (no alpha: src/art/arena-nt/holo-bake.ts). The frames are baked AFTER the monster sheets are painted, one small
+// job per tick (≤ ~3 ms), and the hologram materialises (drawn in from the head down) when ready.
 //
-// Light: each station casts a BLOOM (a big stepped ellipse of dark ramp tones, ADD blend, behind the creature) and a SPILL (a flat ellipse on the floor
-// and over the first stand tiers, ADD blend, above the crowd); the wizard's orb adds its own magenta pool that pulses with the orb.
-//
-// Idle (calm, but visibly alive at 1×): a slow frame loop (≈ 2.8 s, the two creatures never in step) with a diagonal facet shimmer; a flicker every
-// 1.7–3 s (three pre-baked brightness steps, tone shifts not masks), a tear (a 6-row slice slips 3 px for 70 ms) every ≈ 5 s, a ring of light chasing round
-// the pedestal, a light cone, twelve digital motes drifting up. Reaction: a summon on that side (onGameEvent 'summon', the owner's side) = a strong
-// flare in ≤ 420 ms — the creature goes white, a beam shoots up, rings expand across the pedestal, two rings climb the creature, the bloom flares, a burst
-// of motes — then back to the slow idle. Depth: NT_DEPTH.holoPed / holo / holoFx. Everything runs on tick() (no tweens, no timers).
+// Idle (calm, but visibly alive at 1×): a slow frame loop (≈ 2.8 s, the two creatures never in step) carrying a lit scan band
+// that sweeps head → feet each loop; a flicker every 1.7–3 s (three pre-baked opacity steps: 100 % → 75 % → 50 % → 75 %, 40 ms
+// each; sometimes a one-frame drop-out), a tear (a 6-row slice slips 3 px for 70 ms) every ≈ 5 s, a ring of light chasing round
+// the pedestal, a dither light cone, twelve digital motes drifting up (three kinds). Reaction: a summon on that side
+// (onGameEvent 'summon', the owner's side) = a strong flare in ≤ 420 ms — the whole creature goes white, a light beam shoots up
+// through it, three rings expand across the pedestal, two rings climb the creature, a burst of motes — then back to the slow idle.
+// Depth: NT_DEPTH.holoPed / holo / holoFx. Everything runs on tick() (no tweens, no timers).
 
 import type Phaser from 'phaser';
-import { dimTones, flashTones } from '../../art/arena-nt/holo-kit';
-import { HOLO_LOOKS } from '../../art/arena-nt/holo-bake';
-import { DRAGON_ANCHOR, DRAGON_FRAMES, DRAGON_H, DRAGON_W, paintDragonFrame } from '../../art/arena-nt/holo-dragon';
+import { type Box, HOLO_LOOKS, bakeHoloFlash, bakeHoloFrame, dimFrame, holoAnchor, holoSize, unionBounds } from '../../art/arena-nt/holo-bake';
 import {
   BEAM_H,
   BEAM_W,
@@ -26,35 +24,27 @@ import {
   FLARE_FRAMES,
   FLARE_H,
   FLARE_W,
-  HALO,
-  HALO_FRAMES,
   MOTE_FRAMES,
   NT_HOLO_KEY,
-  ORB_FRAMES,
-  ORB_R,
   PED,
   PED_AT,
   RING_FRAMES,
   RING_H,
   RING_W,
-  SPILL,
-  SPILL_FRAMES,
   beamName,
   coneName,
   flareName,
-  haloName,
   holoStaticBake,
   hotName,
   moteName,
   ntHoloCreatureKey,
-  orbName,
   paintHolo,
   pedName,
   ringName,
-  spillName,
 } from '../../art/arena-nt/holo';
-import { MAGUS_ANCHOR, MAGUS_FRAMES, MAGUS_H, MAGUS_ORB, MAGUS_W, paintMagusFlash, paintMagusFrame } from '../../art/arena-nt/holo-magus';
+import { monsterArt } from '../../art/monsters';
 import { type PixelCanvas } from '../../art/pixel';
+import { monsterFrame, whenMonstersBuilt } from '../../art/textures';
 import { packAtlas, hash01, type NtAtlas } from '../../art/arena-nt/wall-kit';
 import type { GameEvent, PlayerId } from '../../engine/types';
 import { HOLOS, NT_DEPTH } from './layout-nt';
@@ -70,7 +60,6 @@ export function ensureHoloTextures(scene: Phaser.Scene): void {
 }
 
 const Z = {
-  halo: NT_DEPTH.holoPed + 0.8,
   ped: NT_DEPTH.holoPed,
   cone: NT_DEPTH.holoPed + 0.3,
   ring: NT_DEPTH.holoPed + 0.6,
@@ -80,8 +69,6 @@ const Z = {
   motes: NT_DEPTH.holoFx,
   floor: NT_DEPTH.holoFx + 0.2,
   hot: NT_DEPTH.holoFx + 0.3,
-  orb: NT_DEPTH.holoFx + 0.4,
-  spill: NT_DEPTH.crowdFx + 0.2,
 } as const;
 
 /** Per-side timing: dwell of one idle frame, flicker / tear periods, phase (never in step). */
@@ -93,32 +80,22 @@ const FLARE_MS = 420;
 const MOTES = 12;
 /** Whole-pixel slice cost budget per tick (ms). */
 const SLICE_MS = 3;
-/** The painted creatures: frame count, size, feet anchor, painters (idle, flash). */
-const CREATURE = [
-  { n: DRAGON_FRAMES, w: DRAGON_W, h: DRAGON_H, anchor: DRAGON_ANCHOR, paint: (k: number): PixelCanvas => paintDragonFrame(k, DRAGON_FRAMES) },
-  { n: MAGUS_FRAMES, w: MAGUS_W, h: MAGUS_H, anchor: MAGUS_ANCHOR, paint: (k: number): PixelCanvas => paintMagusFrame(k, MAGUS_FRAMES) },
-] as const;
+/** Frames of the idle loop per creature (memory: each baked frame of the Ejder is ≈ 72 KB, the Büyücü ≈ 36 KB). */
+const IDLE_FRAMES = [8, 6] as const;
 
 interface Station {
   side: 0 | 1;
   /** baked creature */
   frames: string[];
-  box: { x: number; y: number; w: number; h: number } | null;
+  box: Box | null;
   /** feet anchor inside the baked frame */
   anchor: { x: number; y: number };
-  /** how far the image was pushed sideways to stay on the screen (px) */
-  dx: number;
   creature: Phaser.GameObjects.Image | null;
   tear: Phaser.GameObjects.Image | null;
   ring: Phaser.GameObjects.Image;
   cone: Phaser.GameObjects.Image;
   hot: Phaser.GameObjects.Image[];
   floor: Phaser.GameObjects.Image;
-  halo: Phaser.GameObjects.Image;
-  spill: Phaser.GameObjects.Image;
-  orb: Phaser.GameObjects.Image | null;
-  /** where the creature's image sits (top-left) once placed */
-  at: { x: number; y: number };
   beam: Phaser.GameObjects.Image;
   motes: Phaser.GameObjects.Blitter;
   moteBobs: Phaser.GameObjects.Bob[];
@@ -127,7 +104,7 @@ interface Station {
   rows: number;
   ready: boolean;
   flareAt: number;
-  last: { fname: string; mat: boolean; ring: number; hide: number; dx: number; tear: string; floor: number; beam: string; halo: number; orb: number };
+  last: { fname: string; mat: boolean; ring: number; hide: number; dx: number; tear: string; floor: number; beam: string };
 }
 
 /** Flicker step of the creature at time t: 0 = full, 1 = 75 %, 2 = 50 %, 3 = dropped out (one frame). */
@@ -180,51 +157,17 @@ export function createHologramsLayer(ctx: NtCtx): NtLayer {
     const beam = add(scene.add.image(cx, cy - 2, NT_HOLO_KEY, beamName(side)).setOrigin(0.5, 1).setDepth(Z.beam).setVisible(false));
     const motes = add(scene.add.blitter(0, 0, NT_HOLO_KEY).setDepth(Z.motes));
     const moteBobs = Array.from({ length: MOTES }, (_, i) => motes.create(cx, cy, moteName(side, i % MOTE_FRAMES)));
-    // where the painted creature's image will sit: its feet on the pedestal centre, pushed in to stay on the screen
-    const cr = CREATURE[side];
-    const ox = Math.max(2, Math.min(640 - cr.w, cx - cr.anchor.x));
-    const oy = cy - 1 - cr.anchor.y;
-    // the bloom behind the creature and the spill on the floor / over the first stand tiers (ADD blend, hidden until the lights are on)
-    const halo = add(
-      scene.add
-        .image(ox + cr.w / 2, oy + cr.h / 2 + 4, NT_HOLO_KEY, haloName(side, 0))
-        .setDepth(Z.halo)
-        .setBlendMode('ADD')
-        .setVisible(false),
-    );
-    const spill = add(
-      scene.add
-        .image(cx, cy + 14, NT_HOLO_KEY, spillName(side, 0))
-        .setDepth(Z.spill)
-        .setBlendMode('ADD')
-        .setVisible(false),
-    );
-    const orb =
-      side === 1
-        ? add(
-            scene.add
-              .image(ox + MAGUS_ORB.x, oy + MAGUS_ORB.y, NT_HOLO_KEY, orbName(0))
-              .setDepth(Z.orb)
-              .setBlendMode('ADD')
-              .setVisible(false),
-          )
-        : null;
     return {
       side,
       frames: [],
       box: null,
       anchor: { x: 0, y: 0 },
-      dx: 0,
       creature: null,
       tear: null,
       ring,
       cone,
       hot,
       floor,
-      halo,
-      spill,
-      orb,
-      at: { x: ox, y: oy },
       beam,
       motes,
       moteBobs,
@@ -232,7 +175,7 @@ export function createHologramsLayer(ctx: NtCtx): NtLayer {
       rows: 0,
       ready: false,
       flareAt: -9999,
-      last: { fname: '', mat: false, ring: -1, hide: -1, dx: 0, tear: '', floor: -1, beam: '', halo: -1, orb: -1 },
+      last: { fname: '', mat: false, ring: -1, hide: -1, dx: 0, tear: '', floor: -1, beam: '' },
     };
   });
 
@@ -242,33 +185,44 @@ export function createHologramsLayer(ctx: NtCtx): NtLayer {
   function planBake(): void {
     for (const st of stations) {
       const spec = HOLOS[st.side];
-      const cr = CREATURE[st.side];
-      const R = HOLO_LOOKS[st.side].ramp;
+      const art = monsterArt(spec.monster);
+      const look = HOLO_LOOKS[st.side];
+      const n = art.anims.idle.frames;
+      const count = IDLE_FRAMES[st.side];
+      const idx: number[] = [];
+      for (let i = 0; i < count; i++) idx.push(Math.round((i * n) / count) % n);
+      const src: PixelCanvas[] = [];
+      for (const i of idx) jobs.push(() => void src.push(monsterFrame(spec.monster, 'idle', i)));
       const baked: [string, PixelCanvas][] = [];
-      for (let j = 0; j < cr.n; j++) jobs.push(() => baked.push([`f${j}`, cr.paint(j)]));
-      // the flash of a summon and the flicker's brightness steps (tone shifts of the first pose, no dither masks)
+      let box: Box | null = null;
+      jobs.push(() => (box = unionBounds(src)));
+      idx.forEach((_, j) => jobs.push(() => box && baked.push([`f${j}`, bakeHoloFrame(src[j], box, look, j, idx.length, src[0])])));
+      // the opacity steps of the flicker (from the first pose), the flash of a summon
       jobs.push(() => {
+        if (!box) return;
         const f0 = baked.find((b) => b[0] === 'f0')![1];
-        baked.push(['flash', flashTones(f0, R)], ['d1', dimTones(f0, R, 1)], ['d2', dimTones(f0, R, 2)]);
+        baked.push(['d1', dimFrame(f0, 1)], ['d2', dimFrame(f0, 2)]);
       });
+      jobs.push(() => box && baked.push(['flash', bakeHoloFlash(src[0], box, look)]));
       jobs.push(() => {
-        if (destroyed) return;
-        let atlas: NtAtlas = packAtlas(baked, cr.w + 1);
+        if (!box || destroyed) return;
+        const sz = holoSize(box, look);
+        let atlas: NtAtlas = packAtlas(baked, sz.w + 1);
         for (let k = 2; k <= 4; k++) {
-          const a = packAtlas(baked, (cr.w + 1) * k);
+          const a = packAtlas(baked, (sz.w + 1) * k);
           if (a.canvas.w * a.canvas.h < atlas.canvas.w * atlas.canvas.h) atlas = a;
         }
         const key = ntHoloCreatureKey(st.side);
         ensureNtTexture(scene, 'holograms', key, () => atlas.canvas);
         const tex = scene.textures.get(key);
         for (const [name, r] of Object.entries(atlas.frames)) if (!tex.has(name)) tex.add(name, 0, r.x, r.y, r.w, r.h);
-        st.frames = Array.from({ length: cr.n }, (_, j) => `f${j}`);
-        st.box = { x: 0, y: 0, w: cr.w, h: cr.h };
-        st.anchor = { x: cr.anchor.x, y: cr.anchor.y };
+        st.frames = idx.map((_, j) => `f${j}`);
+        st.box = { x: 0, y: 0, w: sz.w, h: sz.h };
+        // the feet (anchor) inside the baked frame
+        st.anchor = holoAnchor({ x: art.anchorX, y: art.anchorY }, box, look);
         const p = spec.pedestal;
-        // the image stays whole on the screen (st.at was worked out at creation)
-        const { x: ox, y: oy } = st.at;
-        st.dx = ox - (p.cx - st.anchor.x);
+        const ox = p.cx - st.anchor.x;
+        const oy = p.cy - 1 - st.anchor.y;
         st.creature = ctx.add(scene.add.image(ox, oy, key, 'f0').setOrigin(0).setDepth(Z.creature).setVisible(false));
         st.tear = ctx.add(scene.add.image(ox, oy, key, 'f0').setOrigin(0).setDepth(Z.tear).setVisible(false));
         st.ready = true;
@@ -276,12 +230,14 @@ export function createHologramsLayer(ctx: NtCtx): NtLayer {
       });
     }
   }
-  void Promise.resolve().then(() => {
-    if (!destroyed) {
-      planBake();
-      started = true;
-    }
-  });
+  void whenMonstersBuilt()
+    .then(() => {
+      if (!destroyed) {
+        planBake();
+        started = true;
+      }
+    })
+    .catch((e) => console.error('[arena-nt] hologram bake failed', e));
 
   const hashPos = (side: 0 | 1, i: number, lap: number): { x: number; w: number } => ({ x: Math.round((hash01(side * 31 + i, lap, 7) - 0.5) * 92), w: 1 });
 
@@ -302,27 +258,6 @@ export function createHologramsLayer(ctx: NtCtx): NtLayer {
     st.cone.setVisible(lit);
     // the cone's streaks drift up a pixel now and then (a shimmer without a second texture)
     st.cone.setY(cy - 2 - (Math.floor(t / 520 + st.side) % 2));
-
-    // ---- bloom / spill / orb light: the halo breathes between two sizes, the flare swells it; the orb follows the wizard's beat
-    const hk = flaring ? 1 : Math.floor(t / 900 + st.side * 0.5) % 2;
-    if (hk !== L.halo) {
-      L.halo = hk;
-      st.halo.setFrame(haloName(st.side, hk % HALO_FRAMES));
-      st.spill.setFrame(spillName(st.side, hk % SPILL_FRAMES));
-    }
-    const on = lit && st.ready && st.rows !== 0 && st.rows >= -0.5;
-    st.halo.setVisible(on);
-    st.spill.setVisible(lit);
-    if (st.orb) {
-      // the magus frame loop: dwell ms per frame, the orb pulse of the frame being shown ([0,1,2,1,0,0])
-      const fi = Math.floor((t + tm.phase) / tm.dwell) % MAGUS_FRAMES;
-      const pulse = flaring ? 2 : [0, 1, 2, 1, 0, 0][fi];
-      if (pulse !== L.orb) {
-        L.orb = pulse;
-        st.orb.setFrame(orbName(pulse % ORB_FRAMES));
-      }
-      st.orb.setVisible(on);
-    }
 
     // ---- motes: climb, restart at a new place each lap (3.5× faster burst while flaring)
     const speed = flaring ? 3.5 : 1;
@@ -424,7 +359,7 @@ export function createHologramsLayer(ctx: NtCtx): NtLayer {
       if (!ts) tr.setVisible(false);
       else {
         tr.setFrame(st.frames[idx]).setCrop(0, ts.y, box.w, 6).setVisible(true);
-        tr.setPosition(h.pedestal.cx - st.anchor.x + st.dx + ts.dx, h.pedestal.cy - 1 - st.anchor.y);
+        tr.setPosition(h.pedestal.cx - st.anchor.x + ts.dx, h.pedestal.cy - 1 - st.anchor.y);
       }
     }
   }
@@ -459,4 +394,4 @@ export function createHologramsLayer(ctx: NtCtx): NtLayer {
   };
 }
 
-export { CONE_FRAMES, CONE_H, CONE_W, FLARE_H, FLARE_W, HALO, ORB_R, PED, RING_H, RING_W, SPILL };
+export { CONE_FRAMES, CONE_H, CONE_W, FLARE_H, FLARE_W, PED, RING_H, RING_W };
