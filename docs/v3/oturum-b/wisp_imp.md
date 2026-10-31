@@ -12,7 +12,7 @@ Lane B, branch `claude/kart-b`. Spec: `docs/v3/YENI_KARTLAR.md` §8 R3 (+ §5, �
 | Exclusion in `src/art/monsters/index.ts` | **removed** (rig stage) | only the wisp entry was deleted; the other three stay |
 | Light profile (`MONSTER_GLOW`) | **done** | gold-only emissive |
 | Death preset (`DEATH_PRESETS`) | **done** | `material: 'light', accent: 'shadow'` |
-| Cinematics / SFX / scenarios | not started | — |
+| Cinematics / SFX / scenarios | **done, round 1** (cinematics agent) | `src/cinematics/kart-b/wisp_imp.ts`, `src/audio/v3/wisp_imp.ts`, `src/duel/scenarios/wisp_imp.ts` |
 
 ## Card art (stage: CARD ART + LIGHT PROFILE)
 File: `src/art/cardart-v3/wisp_imp.ts` (no import from the rig: it survives any rig rewrite).
@@ -175,3 +175,90 @@ shell; the card-art agent's `portrait()` lines are kept), `tests/art/wisp_imp.te
    unique; the flags come from point-track motion proxies).
 8. Critique rounds with independent critics not run yet in this stage (only self-review, ~25 LOOKed renders).
 9. Idle SFX: not built (orchestrator decision 3: optional; log it).
+
+## Cinematics + SFX + scenarios (stage 3, cinematics agent, 2026-10-31)
+
+### Files
+- `src/audio/v3/wisp_imp.ts` — 20 recipes + `WISP_IMP_VOICE` (all required roles incl. the revive pair), spread
+  through the existing `kart-b.ts` (no shared edit). Palette: 5 kHz feather rustle (white noise band-passed
+  4.4–5.6 kHz × irregular 30–70 Hz flutter + 6–7 kHz quill ticks), a tiny ghost voice (triangle + soft saw at
+  420–620 Hz through formants "uu" 300/800 and "ö" 380/1500 + breath), chimes in F lydian (off the wyrm's E and
+  the warden's B♭ minor), and the game's only "pof" (`wiPof`, effect path only).
+  Roles: roar `wiBoo`, arrive `wiDrift`, land `wiLand`, charge `wiPuff`, release `wiVolley`, impact `wiImpact`,
+  dissolve `wiGust`, burst `wiAway`, revive `wiReviveGather`/`wiReviveLand`. Extra beats fired by the
+  cinematics: `wiTouch`, `wiFountain`, `wiTsk` (cap 8, gap 6 ms), `wiShed`, `wiCloud`, `wiFlock` (sustained),
+  `wiStuff`, `wiCatch`, `wiSafe`, `wiPof`.
+- `src/cinematics/kart-b/wisp_imp.ts` — every registration `if (LOOK_V3)`, priority 20:
+  `kart-b:wisp_imp:summon` (card hook, from hand only; runSummon with an own v3 entrance),
+  `kart-b:wisp_imp:strike`, `kart-b:wisp_imp:death` ('destroyed'), `kart-b:wisp_imp:effect`.
+- `src/duel/scenarios/wisp_imp.ts` — 14 keys (below).
+
+### What each moment does
+- **Summon** (≈2.2 s scene = spec): the summon frame 0's lone feather is moved down from 62 px above the tile
+  for 500 ms, swinging like a pendulum (frames 0/1 = its two tilts, positions compensated so the feather never
+  jumps), a cool light follows it; the unit's drop shadow is hidden until the fountain has built a body.
+  Sprite summon pose takes over: touch (tick + high ping, floor ripple rings of down, light flash), a
+  feather FOUNTAIN whirls up round the ghost (back half behind the sprite, front half in front, its own
+  raster), flung out on 'land' (down "fumf", 1-px shake, second ripple), "bö!" on land+1 (gold eye flash, a
+  crown of 6 feathers pops off, badge pop). No hologram (the feathers build it).
+- **Strike "Tüy Oku Sağanağı"**: continues from the declaration's puff (takeCharge 'wiPuff'); on 'release'
+  six feather darts (7–9 px whole-pixel feathers with a down-speck trail) leave the release frame's face
+  hollow on fanned cubic arcs and home in (staggered 34 ms, a gap after the third). First arrival = contact:
+  `s.impact`, `wiImpact`, **stopTime 60 ms** (the spec's hit-stop; the art stays weight `floater`), white light
+  flash. Others: `wiTsk` + a white "tsk" cross → lilac ring + a puff of down; darts stick in the body (follow
+  its knock-back, quiver 1 px) for ~320 ms then flake off and flutter down. Blocked: they glance off and
+  tumble; the wisp plays its hit after the backlash. Direct: they pepper the duelist. `wiShed` on 'recover'.
+- **Death without the event (wind)**: deathV3-style bookkeeping without the material shatter; joins a
+  planned lethal entry / guard break like `posedDeath`; the sprite's death pose strips it while gust streaks
+  cross the tile and peeled feathers stream downwind (backward = away from where it faces); `wiGust` on
+  'dissolve', the card is born at dissolve+3, `wiAway` on the last frame. **No pof.**
+- **Effect = the feather pillow** (the effect hook owns the death: it finds the wisp's `destroy` and
+  `ctx.play(di, { pillow: { amount, owner }, hit: false })`; amount = |attackerAtk − targetValue| of the
+  battle just before): special 0…release at timeScale 1.3 (hug → cushion → squeeze), its poof frame one beat,
+  then the body IS a cloud (`wiCloud`, 9 heavy feathers float down on the tile, the card leaves) → 42 feathers
+  stream on bezier arcs to the owner's LP panel on a HUD-depth raster (`wiFlock`) → they pack into a pillow
+  with the ghost's face (dark hollow + gold eyes, tufted corners, piped seam, ink outline) over the LP digits
+  (`wiStuff`) → the "-N" number drops in from the field side and smacks into it (`wiCatch`: squash wide/flat,
+  eyes "> <", overshoot) → eyes "^ ^", gold "0 · KORUNDU" above (P1) / below (P2) the panel + a gold ring
+  (`wiSafe`) → **POF** (`wiPof`): lumpy cloud ring + 34 down specks drifting; the label blinks out.
+
+### Scenario keys (P1 + P2)
+`wiSummon`, `wiSummonP2` (normal summon) · `wiAttack`, `wiAttackP2` (vs attack-position shield_titan 100: wins)
+· `wiDirect`, `wiDirectP2` · `wiBlocked` (vs defending stone_sentinel: darts glance off, 1800 to it) ·
+`wiGuard` (in defense vs shield_titan: guard holds) · `wiCushion`, `wiCushionP2` (shade_assassin 1900 attacks
+the ATK wisp: pillow takes 1600) · `wiCushionSelf`, `wiCushionSelfP2` (wisp attacks a stronger stone_sentinel:
+pillow takes its own 200; = `m1Imp`) · `wiDefDies`, `wiDefDiesP2` (killed in defense: no event → wind).
+NOTE: the handbook suggested ember_wolf for the cushion; it has its own on-destroy burn trigger
+(`battleDestroyBurn300`) that adds a 2.2 s effect + damage to the film, so shade_assassin (no effect) is used.
+
+### Gates (this stage)
+- typecheck: clean for every wisp file. Tests: `tests/art/wisp_imp*.test.ts` + `tests/presentation` 89/89.
+- v1: `filmdiff --set v1` **17/17 IDENTICAL**.
+- Camera: base taken with this file moved out (`<scratch>/wisp_imp/camera-base.json`), then
+  `measure --camera-gate`: **15 ok, 0 FAIL** (wi* + m1Imp; focusCalls = base, zoom 1).
+- Budgets (game clock, `<scratch>/wisp_imp/m2.json`): summon 3000 ms (spec 2.2 s × 1.35; no REHBER row for a
+  normal summon) · declaration 316 ≤ 435 · attack battle 2017 ≤ 3190 · direct battle 2017 ≤ 2320 · blocked
+  2084 · guard 1217 · effect (pillow incl. the death) 2216 ≤ 2320 · wind death 1050 ≤ 2030 · number − contact 0.
+  In `wiCushion` the battle event spans 5.2 s only because the trigger plays inside it (battle part ≈ 2.95 s,
+  shade_assassin's own strike).
+- palcheck (a5 rules) on effect windows: pillow window (HUD + field clip) Δoff max +0.20 pt ok; summon
+  window Δoff +0.82 ok. FAILs only on (a) `white` > 1.5 %, which the frame-0 scene already has (bright statues
+  + the white-bodied wisp sprite itself: rig-owned body tone, not an effect), and (b) Δoff spikes from OTHER
+  cards' effects inside the clip (shade_assassin's slash at t≈2040, shield_titan's shatter at t≈1680).
+- Evidence (`shots/v3/kart-b/wisp_imp/`): `wiSummon.png`, `wiAttack.png`, `wiAttack-contact.png`,
+  `wiAttack-contact2.png`, `wiAttackP2.png`, `wiDirect.png`, `wiBlocked.png`, `wiCushion.png`,
+  `wiCushion-pillow.png` (P2 panel), `wiCushionP2-pillow.png` (P1 panel), `wiCushionSelf.png`,
+  `wiCushionSelf-pillow.png`, `wiDefDies.png`, `sfx/wi*.png` (spectrograms: wiPof, wiBoo, wiDrift, wiImpact,
+  wiGust, wiCatch, wiSafe, wiPuff, wiVolley, wiCloud, wiFountain).
+
+### Open issues (stage 3)
+10. Idle SFX not built (decision 3: optional) — the feather rustle + tiny "hu" would need a per-unit
+    `animationupdate` listener; left out.
+11. Struck-body material for feathers: no generated feather hit; the generic struck sound plays when the
+    wisp is hit (decision 4: shared tables untouched).
+12. Only one round of self-critique on the films (no independent critic agents yet). Candidates: the
+    pre-roll feather is small at 1×; the darts read best at 2×+; the pillow's -N flight could start closer
+    to the flock's arrival; the pause (~0.75 s game) between the contact and the pillow is the battle kit's.
+13. No MP4 clip (`tools/clip.mjs`) made yet for the owner's ears; peaks from the audio page: all chain
+    peaks ≤ 0.85.
+14. Revive pair (`wiReviveGather/Land`) written but not filmed (soul_recall scenario not run).

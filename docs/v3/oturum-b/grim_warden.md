@@ -168,3 +168,74 @@ planned custom option-(b) death owns the real ending anyway.
 - The 2× inspect card shows the small art ×2 (the kit's big-art integration is not wired for any monster).
 - If the orchestrator wants a grim-specific cut-in rhythm, add it to RHYTHM together with the RHYTHM_TODAY test line.
 - Cut-in critique rounds were self-critique (no critic agent available in this stage); 3 iterations on each art.
+
+## Stage — cinematics + SFX + scenarios (agent: cinematics lane, 2026-10-31)
+
+**Files (mine):** `src/audio/v3/grim_warden.ts` (21 recipes + `GRIM_WARDEN_VOICE`, wired by the existing
+`kart-b.ts`), `src/cinematics/kart-b/grim_warden.ts` (all registrations `if (LOOK_V3)`, priority 20),
+`src/cinematics/kart-b/grim_warden-fx.ts` (pure painters, no side effects), `src/duel/scenarios/grim_warden.ts`
+(rewritten). Shared, minimal + v3-only (orchestrator decision 1): `src/cinematics/battle/plates.ts`
+(`showBattlePlates(..., { holdDrain })` leaves the attacker's own declare debuff off) and
+`src/cinematics/battle/declare.ts:374` (passes `{ holdDrain: true }`). Both run only in the v3 declaration.
+
+**Sound palette** (§5.1): B♭ minor lantern glass (B♭4–F6, below/darker than the wyrm's E-major glass), tritone
+choir on F/B (not the magus' D/G#), pendulum chain = slow `link` pairs 1180/1630 Hz + a dry brown-noise creak,
+soul fire = fluttering pink band + F1 saw hum, iron = FM 2.13/1.73 at 330–380 Hz / 1.1 kHz (away from 1.41 @ 470–760).
+`gwSiphon` is the only identity layer built on `glassReverse` (12 reversed swells DESCENDING the ladder, faster
+and faster) + a falling inhale band; `gwThread` is a sine falling from the target's pitch (played with
+`pitch` per attribute). Roles: roar gwRoar, arrive gwRise (start/stop at land), land gwLand, charge gwCharge
+(held from the declaration, taken over by the strike), swing gwSwing (f4), release gwRelease, impact gwImpact,
+deathStart gwShatter, dissolve gwCollapse, afterDissolve gwHelm, burst gwFade, revive gwReviveGather/gwReviveLand.
+Extra beats: gwStone, gwChop (f8), gwDebuff (−400 bell), gwGiveBack, gwKeep, gwWail.
+Spectrograms: `shots/v3/kart-b/grim_warden/snd/*.png` (?dev=audio&page=one; 3 tuning passes: siphon steps made
+dominant over the drone, choir/wail formant saws boosted (Q 3/4), impact sub cut to 0.98 raw peak, quiet
+swing/release/giveback/fade raised). Note: a few PNGs predate the last level bump (thread/keep/giveback/fade).
+
+**Cinematics** (header of `kart-b/grim_warden.ts` has the storyboards):
+- summon (hand, tribute): grave mound swells + cracks, headstone pushes up, soul light seeps (leaf3 cracks,
+  flickering pool, motes) → `summon` pose rises out of the mound (no hologram), headstone shoved over on f2
+  (gwStone, clods) and falls flat → land: mound bursts flat under the boots, dust → cut-in on the pose peak
+  (`runSummon` → `S.climax()` = the v3 band, ≤ 0.9 s) → leaf-green finale. Keeps the base's single tribute
+  `focus` (camera gate). Non-hand summons fall to the base.
+- effect (activate monsterEffect): takes the AttackHold (marks dropped, held charge dropped), `special` to the
+  drinking frame; on release the soul thread (target attribute ramp, arcing, beads flowing in, 3 dots orbiting
+  the target core) runs to the lantern (gwSiphon + gwThread); drain beat: `showBattlePlates` rolls −400
+  (gwDebuff + crimson flare at the plate), the target fades (bayer 30 % one tone darker, live frames), the
+  lantern glass/flame repaints into the stolen ramp (bayer-stepped); thread thins and snaps; back to the attack
+  charge pose; hold re-kept. Battle hook (`attack`, after base): target alive → give-back (beads run home,
+  fade + colour step out, gwGiveBack); target dead → aura `grimLantern` keeps the colour until turnStart.
+- strike "Fener Tırpanı": continues from the declaration pose; soul-fire whirl trail on the lantern's live
+  point (stolen colour if drained), GLIDE toward the target on f2→contact (floor soul marks + shed wisps),
+  contact on attack 'contact' (s.impact at the lantern), soul burst ring + rays + glass shards bouncing on the
+  target floor, gwImpact; f8 iron crescent (gwChop); glide home on the recovery. Direct: short glide + soul
+  bolt to the duelist. Melee loser: returns at contact (battle owns the body).
+- death (option b): death pose joined from the reaction (planned entry / guard break as deathV3); f3 gwShatter,
+  f4 glass shards + flash + the SKULL-SHAPED MIST (11×11 skull in the lantern's ramp — green, or the stolen
+  colour) rises swaying and comes apart (gwWail); dissolve gwCollapse; helm drop gwHelm + dust; last frame →
+  4-step bayer knock-out in 150 ms with ash flares (gwFade), card born on that frame (`cardLeaves`).
+
+**Scenarios:** gwSummon(P2), gwAttack(P2) (EARTH drain, target dies), gwDrainFire, gwDrainWaterP2,
+gwDrainSurvive(P2) (equipped wyrm: target lives, warden dies), gwDrainDecline (trap window declined →
+activate in batch 2), gwNegated (chains: no drain), gwFaceDown, gwBlocked (shield_titan defense, bounce),
+gwDirect(P2), gwHit, gwKill(P2), gwGuard, gwGuardKill.
+
+**Gates:** `tsc` clean; filmdiff v1 17/17 IDENTICAL (`cin/filmdiff-v1.txt`; a6v1 set not run); vitest cinematics/presentation/audio + grim art tests 244/244.
+Measure (`cin/measure-r1.json/.txt`, game ms): tribute summon 4000 ≤ 4350; activate (drain) 1934 ≤ 2320; battle
+1800–2616 ≤ 3190; destroy (grim) 1500–1583 ≤ 2030; direct battle 1834 ≤ 2320; declaration 316 ≤ 435; 0 errors.
+gwGuardKill battle 5034 includes ember_wolf's own burn trigger (activate 2183, not ours).
+Camera gate vs base taken before any change (`cin/camera-base.json`): 9 ok, 11 NOBASE ok, 0 FAIL.
+Palcheck (clip 200,60,240,160 / 250,90,150,110): the drain/strike/summon windows sit at Δoff ≈ 0 against the
+film's own f0; the a5 FAILs come from the shared declaration (t≈340–480, same in gwHit, a non-grim cinematic)
+and the arena's white baseline (~1.6–1.9 % in this clip in gwHit too); the burst's white core was reduced.
+
+**Evidence** (`shots/v3/kart-b/grim_warden/cin/`): gwDrainFire-r1(.png, z), -drain-z, -strike-z, gwSummon-z,
+gwSummon-r2z, gwKill-z, gwDrainSurvive-z, gwAttackP2-z, measure-r1.*, camera-base.json.
+
+**Open issues:**
+- Idle SFX (chain creak / soul hum) not built: needs a per-unit idle listener for units created by sync; logged.
+- Wood/mud struck-hit materials: not grim's (n/a).
+- Target-survives branch where the warden itself dies (the only survive case: ATK−400 ≥ 2500): the stolen light
+  leaves as the skull mist in the stolen colour instead of flowing back to the target.
+- No independent critic rounds (no critic agents in this stage); 2 self-critique passes (thread arc/thickness,
+  glide inset 5→11, mound flattening under the boots, burst white).
+- MP4 with audio (clip.mjs) not produced in this stage.
