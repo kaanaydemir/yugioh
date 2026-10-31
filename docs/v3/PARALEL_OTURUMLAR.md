@@ -15,6 +15,7 @@ main branch.
 | B | claude/kart-b | grim_warden (R2), wisp_imp (R3), mudgrasp_spirit (C10), hollow_ogre (C6, includes the banish presentation) |
 | C | claude/kart-c | tide_harpooner (C1), reed_heron (C8), crag_axeman (C7), kite_fencer (C9), steppe_spiralhorn (C11) |
 | D | claude/kart-d | dial_jester (C2, includes the coin toss), reflection_archer (C4), scrap_raiders (C5), polar_needle / polar_anvil / polar_coil / polar_sovereign (C12–C15, includes the fusion and split sequence), straw_decoy_token |
+| F | claude/kart-f | shield_titan (Kalkan Devi), hourglass_imp (Kum Saati Cücesi), windmane_knight (Fırtına Şövalyesi), wing_lady (Kanat Hanımı): existing cards with NO real art (crystal-totem placeholder in game); full golden-rule sprite + card art + cinematics + SFX. Earlier v3 drafts of shield_titan/hourglass_imp exist in src/art/monsters-v3 but were excluded in src/art/monsters/index.ts for failing review |
 | E | claude/kart-e | the 11 spells S1–S5 and S7–S12 (no S6, gilded_cage was dropped), a new signature animation and sound for dawn_swords (Şafak Kılıçları; adapt the S6 Kafes storyboard), and the CARD art only for crystal_wyrm and abyss_magus |
 
 ## What "done" means for each card (BRAND GOLDEN RULE, CLAUDE.md)
