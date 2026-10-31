@@ -64,7 +64,7 @@ export const DEATH_PRESETS: Record<MonsterId, DeathPreset> = {
   reed_heron: { material: 'water', accent: 'plant' },
   kite_fencer: { material: 'plant', accent: 'light' },
   mudgrasp_spirit: { material: 'stone', accent: 'shadow' },
-  steppe_spiralhorn: { material: 'plant', accent: 'plant' },
+  steppe_spiralhorn: { material: 'light', accent: 'plant' },
   polar_needle: { material: 'stone', accent: 'crystal' },
   polar_anvil: { material: 'stone', accent: 'crystal' },
   polar_coil: { material: 'stone', accent: 'crystal' },

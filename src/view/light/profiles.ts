@@ -96,7 +96,7 @@ export const MONSTER_GLOW: Record<MonsterId, MonsterGlow> = {
   reed_heron: { emissive: [T(PAL.water4, 0.8), T(PAL.white, 0.8), T(PAL.cyan4, 0.6)], halo: 0.6, pool: 0.9 },
   kite_fencer: { emissive: [T(PAL.leaf4, 1), T(PAL.white, 0.8), T(PAL.leaf3, 0.4)], halo: 0.6, pool: 0.9 },
   mudgrasp_spirit: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
-  steppe_spiralhorn: { emissive: [T(PAL.leaf4, 1), T(PAL.white, 0.8), T(PAL.leaf3, 0.4)], halo: 0.6, pool: 0.9 },
+  steppe_spiralhorn: { emissive: [T(PAL.gold4, 1), T(PAL.leaf4, 0.5)], halo: 0.5, pool: 0.7 },
   polar_needle: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
   polar_anvil: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
   polar_coil: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },

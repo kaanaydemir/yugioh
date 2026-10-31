@@ -23,6 +23,7 @@ import { RECIPES } from './sounds';
 import { Voice } from './synth';
 import type { V3SfxName } from './v3/slice';
 import type { V3MaterialSfxName } from './v3/materials';
+import type { SpiralhornSfxName } from './v3/steppe_spiralhorn';
 import type { V3VoiceSfxName } from './v3/voices';
 import type { V3SpellSfxName } from './v3/spells';
 import type { DawnSfxName } from './v3/dawn';
@@ -54,6 +55,7 @@ export type SfxName =
   | V3SfxName
   // v3 material hits (additive: src/audio/v3/materials.ts — the template hit<Material><Light|Heavy|Magic>)
   | V3MaterialSfxName
+  | SpiralhornSfxName
   // v3 character voices from presentation recipes (additive: src/audio/v3/voices.ts — voice:<card>:<role>)
   | V3VoiceSfxName
   // A5 / A6 (additive, A56.0): spell / trap sounds (src/audio/v3/spells.ts) and the UI family

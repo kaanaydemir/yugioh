@@ -26,6 +26,7 @@ import { voiceSounds } from '../../audio/v3/voices';
 import type { MaterialId } from '../../art/materials';
 import { v3Recipe } from '../../presentation/registry';
 import type { BlowKind } from './blow';
+import { SPIRALHORN_VOICE } from '../../audio/v3/steppe_spiralhorn';
 
 // ================================================================ play
 
@@ -205,6 +206,7 @@ export const CHARACTER_SOUNDS: Partial<Record<CardId, CharacterSounds>> = {
     reviveGather: 'magusReviveGather',
     reviveLand: 'magusReviveSettle',
   },
+  steppe_spiralhorn: SPIRALHORN_VOICE,
 };
 
 /**
