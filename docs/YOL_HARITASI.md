@@ -51,3 +51,9 @@ Her şerit kendi dalına push eder; ana oturum dalları `claude/yugioh-card-game
 5. Yayın öncesi kalite denetimi (her kartın VFX/SFX'i altın kurala göre; performans, açılış, hatalar).
 6. İngilizce (ana dil).
 7. Yayın hazırlığı (Steam paketleme, ayarlar, kayıt, mağaza görselleri).
+
+## Ana oturum düzeltmeleri (test sürümü 11, 898dc9d)
+- Canavar tıklama çakışması (v3): hedef seçerken adayın görünen gövdesi öncelikli; üzerine gelince ve tıklayınca aynı canavar seçiliyor. Doğrulama: her tahta pikseli doğru (P1 19343/19343, P2 19308/19308).
+- Sıra sıra oyunda sağ ekran "OYUNCU 2" (CPU yalnız bilgisayara karşı).
+- Deste seçimi: fareyle tıklama seçer; üzerine gelmek seçimi değiştirmez; ikinci tıklama/düğme/Enter ilerletir.
+- Saman korkuluk "takılma": oyun hatası değil, test aracının perde geçişini iki kez tıklamasıymış (tools/playtest.mjs passCurtain düzeltildi).
