@@ -417,13 +417,13 @@ export function paintKite(q: PixelCanvas, k: KiteGeom, light: Light, o: { flash?
   const f0 = hot ? PANEL_FIRE_HOT : PANEL_FIRE;
   const gold = light.side < 0 ? g0 : f0;
   const fire = light.side < 0 ? f0 : g0;
-  const bowOut = (a: Pt, b: Pt): Pt => {
-    // outward = away from the crossing
+  const bowOut = (a: Pt, b: Pt, k: number): Pt => {
+    // outward = away from the crossing; the short top edges bow less, so the diamond keeps its points
     const m: Pt = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
     const dx = m[0] - X[0];
     const dy = m[1] - X[1];
     const l = Math.hypot(dx, dy) || 1;
-    return [m[0] + (dx / l) * bl, m[1] + (dy / l) * bl];
+    return [m[0] + (dx / l) * bl * k, m[1] + (dy / l) * bl * k];
   };
   const panel = (pts: Pt[], t: Tones, low: boolean) => {
     const s = kitLayer(q.w, q.h);
@@ -434,10 +434,10 @@ export function paintKite(q: PixelCanvas, k: KiteGeom, light: Light, o: { flash?
     q.blit(s, 0, 0);
     s.clear();
   };
-  panel([X, L, bowOut(L, T), T], gold, false);
-  panel([X, T, bowOut(T, R), R], fire, false);
-  panel([X, R, bowOut(R, B), B], gold, true);
-  panel([X, B, bowOut(B, L), L], fire, true);
+  panel([X, L, bowOut(L, T, 0.45), T], gold, false);
+  panel([X, T, bowOut(T, R, 0.45), R], fire, false);
+  panel([X, R, bowOut(R, B, 0.85), B], gold, true);
+  panel([X, B, bowOut(B, L, 0.85), L], fire, true);
   // the spar shadow seen through the thin cloth: a deep band beside the spine and under the cross spar (MA-4)
   const ls = light.side;
   const deep = (x: number, y: number) => {

@@ -24,6 +24,8 @@ import type { AnyMonsterAnim, DrawOpts, MonsterAnim, MonsterAnimExtra, MonsterAr
 import type { PixelCanvas } from '../pixel';
 import { AX, GY, H, W, drawFencer } from './kite_fencer-rig';
 import { ANIMS, CORE, EXTRA_ANIMS, IMPACT, MUZZLE, framePoints, framePose } from './kite_fencer-anims';
+import card from '../cardart-v3/kite_fencer';
+import { renderArt } from '../cardart-v3/_kit';
 
 const art: MonsterArt = {
   id: 'kite_fencer',
@@ -47,6 +49,10 @@ const art: MonsterArt = {
   },
   points(anim: AnyMonsterAnim, frame: number): MonsterPoints {
     return framePoints(anim, frame);
+  },
+  /** The 44×34 card art: the hand-made small picture of cardart-v3/kite_fencer (rendered lazily, on first use). */
+  portrait(p: PixelCanvas) {
+    p.blit(renderArt(card, 0).smallPx, 0, 0);
   },
 };
 export default art;
