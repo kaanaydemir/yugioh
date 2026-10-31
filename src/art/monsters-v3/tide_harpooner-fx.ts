@@ -155,6 +155,9 @@ export interface WallOpts {
   curl?: number;
   /** the drop: 0 standing … 1 soaked into the tile (splash ring) */
   collapse?: number;
+  /** the ellipse radii (default RING: the 64×32 tile; the cinematics pass the arena's tile) */
+  rx?: number;
+  ry?: number;
 }
 
 /** Iso ellipse of the tile (64×32 by default). */
@@ -176,8 +179,8 @@ export function shroudWall(p: PixelCanvas, cx: number, cy: number, half: 'back' 
     const back = sy < 0;
     if ((half === 'back') !== back) continue;
     const r = 1 + col * 0.35;
-    const x = rnd(cx + sx * RING.rx * r);
-    const y = rnd(cy + sy * RING.ry * r);
+    const x = rnd(cx + sx * (o.rx ?? RING.rx) * r);
+    const y = rnd(cy + sy * (o.ry ?? RING.ry) * r);
     let h = o.height * (1 - col);
     // the curl: a bump of up to 10 px where the attempt hit, its lip curling over
     if (o.curl && o.curlAt !== undefined) {
@@ -273,8 +276,8 @@ export function splinters(p: PixelCanvas, butt: Pt, phase: number, light: 'left'
     const y = rnd(Math.min(butt[1] - 1, y0 + (butt[1] - 1 - y0) * t * t));
     const flat = t >= 1;
     const len = 4 + (i % 3);
-    const lit = fade ? PAL.earth1 : PAL.earth2;
-    const dark = PAL.earth1;
+    const lit = fade ? PAL.earth2 : PAL.earth3;
+    const dark = fade ? PAL.earth1 : PAL.earth2;
     for (let k = 0; k < len; k++) {
       const px = flat ? x + k - (len >> 1) : x + rnd((k - len / 2) * 0.5 * side);
       const py = flat ? y : y - k + (len >> 1);

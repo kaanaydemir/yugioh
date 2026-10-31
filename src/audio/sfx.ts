@@ -22,6 +22,7 @@ import { musicEngine, musicVolume, scheduleMusic, startPlan, VICTORY_STING_SEC, 
 import { RECIPES } from './sounds';
 import { Voice } from './synth';
 import type { V3SfxName } from './v3/slice';
+import type { HarpoonerSfxName } from './v3/tide_harpooner';
 import type { V3MaterialSfxName } from './v3/materials';
 import type { V3VoiceSfxName } from './v3/voices';
 import type { V3SpellSfxName } from './v3/spells';
@@ -52,6 +53,7 @@ export type SfxName =
   | 'victory' | 'defeat'
   // v3 look (additive: src/audio/v3/slice.ts — character, material, slice spell / trap sounds)
   | V3SfxName
+  | HarpoonerSfxName
   // v3 material hits (additive: src/audio/v3/materials.ts — the template hit<Material><Light|Heavy|Magic>)
   | V3MaterialSfxName
   // v3 character voices from presentation recipes (additive: src/audio/v3/voices.ts — voice:<card>:<role>)
