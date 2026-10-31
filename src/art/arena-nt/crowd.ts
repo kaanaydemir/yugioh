@@ -1,48 +1,45 @@
-// Neon Tower painter: crowd — owner B1 (docs/v3/ARENA_NEON_TOWER.md §2 / §5 / §8).
-// The spectator ATLAS: 8 looks × (10 shared + 2 × 5 team) frames of 12×13 px, pre-baked in code
-// (pure PixelCanvas, no Math.random, no Phaser: runs in Node for tests). One texture, one grid:
-//   row = look (0…7), column = frame id (CF_*), cell 12×13 (feet below the cell: the stands' railing hides
-//   everything under row 12, seats.ts RAIL_H = 4 of the 16-px spectator cell).
-// Spectators are drawn facing RIGHT (the left stand faces the platform that way; the right stand is the
-// same art mirrored with Bob.flipX). Everything is darker than the platform: muted clothes, dark hair,
-// skin tones from the lower half of the ramp; the only brighter pixels are the 2–3 px of a glow stick
-// (team colour: blue on the left stand, crimson on the right).
+// Neon Tower painter: crowd (docs/v3/ARENA_NEON_TOWER.md §2 / §5 / §8).
+// The spectator ATLAS: 9 looks × (13 shared + 2 × 5 team) frames of 14×22 px, pre-baked in code (pure PixelCanvas,
+// no Math.random, no Phaser: runs in Node for tests). One texture, one grid:
+//   row = look (0…8), column = frame id (CF_*), cell 14×22; the feet are at the bottom edge and the stand's railing
+//   hides the lowest 4 rows (seats.ts RAIL_H), so a SEATED spectator shows head + shoulders (10 px), a STANDING one
+//   13 px, arms-up ones reach the cell top.
+// Spectators face RIGHT (the left stand looks at the platform that way; the right stand uses the same art mirrored
+// with Bob.flipX). They are LIGHTER than the stands behind them (mid-tone clothes, light skin, bright hair accents)
+// and carry a 1-px RIM LIGHT on the platform side (right edge of head and torso). The brightest pixels of the whole
+// crowd are the glow sticks (team colour: blue on the left stand, crimson on the right).
 
 import { PAL, RAMPS } from '../palette';
-import { PixelCanvas } from '../pixel';
+import { PixelCanvas, shade } from '../pixel';
 
 /** Texture key of the crowd atlas. */
 export const NT_CROWD_KEY = 'nt:crowd';
 
-/** Spectator frame size inside the atlas (the layer places it at feet.y − CROWD_CELL.h). */
-export const CROWD_FW = 12;
-export const CROWD_FH = 13;
-export const CROWD_LOOKS = 8;
+/** Spectator frame size inside the atlas (the layer places it at feet.y − CROWD_FH). */
+export const CROWD_FW = 14;
+export const CROWD_FH = 22;
+export const CROWD_LOOKS = 9;
 
 // ---- frame ids (columns of the atlas) ------------------------------------------------------------
-/** Seated, breathing (shoulders 1 px up / down). */
-export const CF_SIT0 = 0;
+export const CF_SIT0 = 0; // seated, breathing (head + shoulders 1 px up / down)
 export const CF_SIT1 = 1;
-/** Standing, small bounce. */
-export const CF_STAND0 = 2;
+export const CF_STAND0 = 2; // standing, small bounce
 export const CF_STAND1 = 3;
-/** Clapping: hands together / apart. */
-export const CF_CLAP0 = 4;
+export const CF_CLAP0 = 4; // clapping: hands together / apart
 export const CF_CLAP1 = 5;
-/** Gasp: hands to the cheeks (standing, frozen). */
-export const CF_GASP = 6;
-/** Both arms up, alternating (bare hands). */
-export const CF_UP0 = 7;
+export const CF_GASP = 6; // hands to the cheeks, open mouth
+export const CF_UP0 = 7; // both arms up, alternating heights, mouth open
 export const CF_UP1 = 8;
-/** Seated, leaning toward the platform. */
-export const CF_LEAN = 9;
+export const CF_LEAN = 9; // seated, leaning toward the platform
+export const CF_TURN = 10; // seated, head turned away (talking to the neighbour)
+export const CF_WAVE0 = 11; // seated, one hand waving
+export const CF_WAVE1 = 12;
 /** Team frames (stick in the raised hand): seated 3 sway frames, standing arms-up 2 frames. */
-export const CF_STICK_SIT0 = 10; // …12
-export const CF_STICK_UP0 = 13; // …14
-/** Shared frames 0…9, then 5 frames per team (0 blue, 1 crimson). */
-export const CROWD_SHARED = 10;
+export const CF_STICK_SIT0 = 13; // …15
+export const CF_STICK_UP0 = 16; // …17
+export const CROWD_SHARED = 13;
 export const CROWD_TEAM = 5;
-export const CROWD_COLS = CROWD_SHARED + 2 * CROWD_TEAM; // 20
+export const CROWD_COLS = CROWD_SHARED + 2 * CROWD_TEAM; // 23
 
 /** Atlas column of a frame id for a team (0 blue / 1 red); shared ids ignore the team. */
 export function crowdCol(id: number, team: 0 | 1): number {
@@ -56,22 +53,25 @@ export function crowdFrameName(look: number, col: number): string {
 
 // ---- looks ------------------------------------------------------------------------------------------
 
-type Hair = 'short' | 'long' | 'spiky' | 'bald' | 'cap';
+type Hair = 'short' | 'long' | 'spiky' | 'bald' | 'cap' | 'hood' | 'beanie';
+type Detail = 'none' | 'stripe' | 'zip' | 'strings' | 'bands';
 
 interface Look {
   hair: Hair;
-  /** hair / cap base + shade */
+  /** hair / cap / hood base + shade */
   h0: number;
   h1: number;
-  /** skin base + shade */
+  /** skin base, shade, light */
   s0: number;
   s1: number;
+  s2: number;
   /** shirt base, shade, light edge */
   c0: number;
   c1: number;
   c2: number;
-  /** trousers / lap */
-  p: number;
+  /** accent (cap brim, stripe, beanie roll, strings) */
+  trim: number;
+  detail: Detail;
 }
 
 const N = RAMPS.night;
@@ -83,246 +83,271 @@ const K = RAMPS.skin;
 const R = RAMPS.crim;
 const C = RAMPS.cyan;
 
-/** Eight distinct looks (hair style / hair colour / skin / clothes). Muted: darker than the platform. */
+/** Nine distinct looks (hair style / colour / skin / clothes). Mid tones: lighter than the stands, darker than the platform edge. */
 const LOOKS: readonly Look[] = [
-  // 0 brown short hair, slate-blue jacket
-  { hair: 'short', h0: E[1], h1: E[0], s0: K[2], s1: K[1], c0: N[3], c1: N[2], c2: N[4], p: N[1] },
+  // 0 brown short hair, slate-blue jacket with a zip
+  { hair: 'short', h0: E[2], h1: E[1], s0: K[2], s1: K[1], s2: K[3], c0: N[4], c1: N[3], c2: PAL.steel, trim: N[2], detail: 'zip' },
   // 1 blonde long hair, dull crimson top
-  { hair: 'long', h0: G[1], h1: G[0], s0: K[3], s1: K[2], c0: R[1], c1: R[0], c2: R[2], p: N[1] },
-  // 2 violet spiky hair, dark violet hood
-  { hair: 'spiky', h0: V[2], h1: V[1], s0: K[2], s1: K[1], c0: V[1], c1: V[0], c2: V[2], p: N[0] },
-  // 3 black short hair, teal jacket
-  { hair: 'short', h0: N[1], h1: PAL.ink, s0: K[1], s1: K[0], c0: T[1], c1: T[0], c2: T[2], p: N[1] },
-  // 4 cap (slate), brown jacket
-  { hair: 'cap', h0: N[2], h1: N[1], s0: K[1], s1: K[0], c0: E[1], c1: E[0], c2: E[2], p: N[0] },
-  // 5 shaved head, violet top
-  { hair: 'bald', h0: K[0], h1: K[0], s0: K[1], s1: K[0], c0: R[0], c1: PAL.ink, c2: R[1], p: N[1] },
-  // 6 grey hair, steel-blue coat
-  { hair: 'short', h0: N[4], h1: N[3], s0: K[3], s1: K[2], c0: N[2], c1: N[1], c2: N[3], p: N[0] },
-  // 7 teal long hair, gold-brown top
-  { hair: 'long', h0: C[1], h1: C[0], s0: K[2], s1: K[1], c0: G[0], c1: PAL.ink, c2: G[1], p: N[1] },
+  { hair: 'long', h0: G[2], h1: G[1], s0: K[3], s1: K[2], s2: K[4], c0: R[1], c1: R[0], c2: R[2], trim: R[3], detail: 'none' },
+  // 2 violet spiky hair, dark jacket with a gold stripe
+  { hair: 'spiky', h0: V[3], h1: V[2], s0: K[2], s1: K[1], s2: K[3], c0: N[2], c1: N[1], c2: N[3], trim: G[2], detail: 'stripe' },
+  // 3 black hair (rimmed), teal hoodie strings
+  { hair: 'short', h0: N[2], h1: N[1], s0: K[1], s1: K[0], s2: K[2], c0: T[1], c1: T[0], c2: T[2], trim: T[3], detail: 'strings' },
+  // 4 red cap, mustard-brown shirt
+  { hair: 'cap', h0: R[2], h1: R[1], s0: K[3], s1: K[2], s2: K[4], c0: G[1], c1: G[0], c2: G[2], trim: R[0], detail: 'none' },
+  // 5 shaved head, violet top with bands
+  { hair: 'bald', h0: K[1], h1: K[0], s0: K[1], s1: K[0], s2: K[2], c0: V[1], c1: V[0], c2: V[2], trim: V[3], detail: 'bands' },
+  // 6 grey hair, cyan coat
+  { hair: 'short', h0: PAL.mist, h1: PAL.steel, s0: K[3], s1: K[2], s2: K[4], c0: C[1], c1: C[0], c2: C[2], trim: C[3], detail: 'zip' },
+  // 7 teal long hair, slate top with a stripe
+  { hair: 'long', h0: T[2], h1: T[1], s0: K[2], s1: K[1], s2: K[3], c0: N[3], c1: N[2], c2: N[4], trim: T[3], detail: 'stripe' },
+  // 8 hooded, earth jacket
+  { hair: 'hood', h0: E[2], h1: E[1], s0: K[2], s1: K[1], s2: K[3], c0: E[1], c1: E[0], c2: E[2], trim: E[3], detail: 'strings' },
+];
+// (a ninth hair style 'beanie' is drawn by look 4's alternate in drawHead when requested; kept for future looks)
+
+/** Glow stick colours per team: [body, tip, halo]. Brightest pixels of the whole crowd. */
+const STICK: readonly [number, number, number][] = [
+  [C[3], PAL.white, C[1]],
+  [R[3], PAL.white, R[1]],
 ];
 
-/** Glow stick colours per team: [body, tip]. Brightest pixels of the whole crowd. */
-const STICK: readonly [number, number][] = [
-  [C[2], C[3]],
-  [R[2], R[3]],
-];
+// ---- heads ---------------------------------------------------------------------------------------------
+
+interface HeadMap {
+  /** one row above the head box (spikes, pompom), x 0…5 */
+  above?: string;
+  /** six rows, x 0…5 (facing right: the back of the head is on the left) */
+  rows: readonly string[];
+}
+const HEADS: Record<Hair, HeadMap> = {
+  short: { rows: ['.hhhh.', 'hhhhhh', 'Hsssss', 'HsssEs', '.ssSs.', '..SS..'] },
+  long: { rows: ['.hhhh.', 'hhhhhh', 'hsssss', 'hhssEs', 'hHsss.', 'hH.SS.'] },
+  spiky: { above: '.h.h.h', rows: ['hhhhhh', 'hHhHhh', 'Hsssss', 'HsssEs', '.ssSs.', '..SS..'] },
+  bald: { rows: ['.sssl.', 'ssssll', 'Ssssss', 'SsssEs', '.ssSs.', '..SS..'] },
+  cap: { rows: ['.hhhh.', 'hhhhhh', 'Hsssss', 'HsssEs', '.ssSs.', '..SS..'] },
+  hood: { rows: ['.hhhh.', 'hhhhhh', 'hhsssh', 'hHssEh', '.hsSsh', '..hh..'] },
+  beanie: { above: '...b..', rows: ['.bbbb.', 'BBBBBB', 'hsssss', 'hsssEs', '.ssSs.', '..SS..'] },
+};
+
+/** Draw a head box at (hx, hy). `away` mirrors it (looking back, away from the platform). */
+function drawHead(p: PixelCanvas, L: Look, hx: number, hy: number, away: boolean, mouth: boolean): void {
+  const map = HEADS[L.hair];
+  const key: Record<string, number> = { h: L.h0, H: L.h1, s: L.s0, S: L.s1, l: L.s2, E: PAL.ink, b: L.trim, B: L.trim };
+  if (L.hair === 'cap') {
+    key.h = L.h0;
+    key.H = K[0] === L.s1 ? L.s1 : L.h1;
+  }
+  const flip = away;
+  if (map.above) p.stamp([map.above], key, hx, hy - 1, { flipX: flip });
+  p.stamp(map.rows, key, hx, hy, { flipX: flip });
+  if (L.hair === 'cap') {
+    // brim toward the platform (the cap's lower edge, row 1)
+    const bx = flip ? hx - 2 : hx + 6;
+    p.set(bx, hy + 1, L.trim);
+    p.set(bx + 1, hy + 1, L.trim);
+    p.set(flip ? hx - 1 : hx + 5, hy + 2, L.s1);
+  }
+  if (mouth) {
+    const mx = flip ? hx + 2 : hx + 3;
+    p.set(mx, hy + 4, PAL.ink);
+    p.set(mx + 1, hy + 4, PAL.ink);
+  }
+  if (L.hair === 'long') {
+    // hair falls behind the shoulder
+    const bx = flip ? hx + 4 : hx;
+    p.rect(bx, hy + 6, 2, 2, L.h0);
+    p.set(bx + (flip ? 1 : 0), hy + 7, L.h1);
+  }
+}
 
 // ---- poses ---------------------------------------------------------------------------------------------
 
-type Arms = 'down' | 'clap0' | 'clap1' | 'up0' | 'up1' | 'gasp' | 'stick';
+type Arms = 'down' | 'clap0' | 'clap1' | 'up0' | 'up1' | 'gasp' | 'wave0' | 'wave1' | 'stickSit' | 'stickUp';
 
 interface Pose {
-  /** head top-left (the head is 6×5, hair spikes may rise 1 px above) */
-  hx: number;
+  /** head top-left y; the head box is 6 px wide */
   hy: number;
   /** shoulder row */
   ty: number;
-  /** torso left edge shift (leaning) */
-  tx: number;
+  /** torso / head shift toward the platform (leaning) */
+  lean?: number;
   arms: Arms;
-  /** stick: 0 vertical, 1 leans right (toward the platform), 2 leans left, seated reach (half-raised) */
+  /** looking away */
+  away?: boolean;
+  /** open mouth */
+  mouth?: boolean;
+  /** stick lean: 0 vertical, 1 toward the platform, 2 away */
   stick?: 0 | 1 | 2;
-  /** the stick hand is fully raised (standing cheer) instead of half raised (seated sway) */
-  high?: boolean;
-  /** standing: longer shirt before the trousers start */
-  standing?: boolean;
 }
 
-function drawHead(p: PixelCanvas, L: Look, hx: number, hy: number, arms: Arms): void {
-  const { s0, s1, h0, h1 } = L;
-  // face block: 5 wide × 4 tall (x hx+1 … hx+5, y hy+1 … hy+4), chin one narrower
-  p.rect(hx + 1, hy + 1, 5, 3, s0);
-  p.rect(hx + 2, hy + 4, 3, 1, s1);
-  p.set(hx + 1, hy + 4, s1);
-  // far cheek shade + eye (one dark pixel near the front edge, brow row)
-  p.set(hx + 1, hy + 2, s1);
-  p.set(hx + 4, hy + 2, PAL.ink);
-  p.set(hx + 5, hy + 2, s0);
-  if (arms === 'gasp') p.set(hx + 4, hy + 4, PAL.ink); // open mouth
-  switch (L.hair) {
-    case 'short':
-      p.rect(hx + 1, hy, 4, 1, h0);
-      p.rect(hx, hy + 1, 6, 1, h0);
-      p.set(hx, hy + 2, h1);
-      p.set(hx, hy + 3, h1);
-      p.set(hx + 5, hy + 1, h1);
+function drawTorso(p: PixelCanvas, L: Look, ty: number, tx: number): void {
+  const x0 = 3 + tx;
+  const h = CROWD_FH - ty;
+  p.rect(x0 + 1, ty, 6, 1, L.c0); // shoulders
+  p.rect(x0, ty + 1, 8, h - 1, L.c0);
+  p.vline(x0, ty + 1, CROWD_FH - 1, L.c1); // far sleeve shade
+  p.vline(x0 + 6, ty + 2, CROWD_FH - 1, L.c1); // near sleeve seam
+  p.vline(x0 + 7, ty + 1, CROWD_FH - 1, L.c2); // rim light on the platform side
+  p.set(x0 + 6, ty, L.c2);
+  p.set(x0 + 1, ty, L.c1);
+  switch (L.detail) {
+    case 'zip':
+      p.vline(x0 + 3, ty + 1, CROWD_FH - 1, L.c1);
+      p.set(x0 + 3, ty + 1, L.c2);
       break;
-    case 'long':
-      p.rect(hx + 1, hy, 4, 1, h0);
-      p.rect(hx, hy + 1, 6, 1, h0);
-      p.rect(hx, hy + 2, 2, 4, h0);
-      p.set(hx, hy + 5, h1);
-      p.set(hx + 1, hy + 5, h1);
-      p.set(hx + 5, hy + 1, h1);
+    case 'stripe':
+      p.hline(x0 + 1, x0 + 5, ty + 2, L.trim);
       break;
-    case 'spiky':
-      p.rect(hx + 1, hy, 5, 1, h0);
-      p.rect(hx, hy + 1, 6, 1, h0);
-      p.set(hx + 1, hy - 1, h0);
-      p.set(hx + 3, hy - 1, h0);
-      p.set(hx + 5, hy - 1, h0);
-      p.set(hx, hy + 2, h1);
-      p.set(hx, hy + 3, h1);
+    case 'strings':
+      p.vline(x0 + 3, ty + 1, ty + 3, L.trim);
+      p.vline(x0 + 4, ty + 1, ty + 2, L.trim);
       break;
-    case 'bald':
-      p.rect(hx + 1, hy, 4, 1, s0);
-      p.rect(hx, hy + 1, 6, 1, s0);
-      p.set(hx + 1, hy, s1);
-      p.set(hx, hy + 2, s1);
-      p.set(hx, hy + 3, s1);
+    case 'bands':
+      p.hline(x0 + 1, x0 + 5, ty + 1, L.c1);
+      p.hline(x0 + 1, x0 + 5, ty + 3, L.c1);
       break;
-    case 'cap':
-      p.rect(hx + 1, hy, 4, 1, h0);
-      p.rect(hx, hy + 1, 6, 1, h0);
-      p.rect(hx + 6, hy + 1, 2, 1, h1); // brim toward the platform
-      p.set(hx, hy + 2, h1);
-      p.set(hx, hy + 3, h1);
+    default:
       break;
   }
 }
 
-/** One spectator frame in a fresh 12×13 canvas. */
+/** Lighten the right-most opaque pixel of every row y0…y1 (the 1-px rim light of the platform side). */
+function rimLight(p: PixelCanvas, y0: number, y1: number): void {
+  for (let y = y0; y <= y1; y++) {
+    for (let x = CROWD_FW - 1; x >= 0; x--) {
+      if (!p.isOpaque(x, y)) continue;
+      const c = p.get(x, y);
+      if (c !== null && c !== PAL.ink) p.set(x, y, shade(c, 1));
+      break;
+    }
+  }
+}
+
+/** A 2-px wide arm from (x, y0) down to the shoulder y1, hand (2×2 skin) on top. */
+function arm(p: PixelCanvas, L: Look, x: number, top: number, y1: number, near: boolean): void {
+  p.rect(x, top + 2, 2, y1 - top - 1, L.c0);
+  p.vline(near ? x + 1 : x, top + 2, y1, near ? L.c2 : L.c1);
+  p.rect(x, top, 2, 2, L.s0);
+  p.set(x + (near ? 1 : 0), top, L.s2);
+}
+
+function drawStick(p: PixelCanvas, team: 0 | 1, bx: number, by: number, len: number, lean: 0 | 1 | 2): void {
+  const [body, tip, halo] = STICK[team];
+  // base at (bx, by) going up; lean 1 steps right every 2 px, lean 2 steps left
+  const dx = lean === 1 ? 1 : lean === 2 ? -1 : 0;
+  let x = bx;
+  for (let i = 0; i < len; i++) {
+    const y = by - i;
+    if (dx !== 0 && i === 2) x += dx;
+    if (dx !== 0 && i === 4) x += dx;
+    p.set(x, y, i >= len - 2 ? tip : body);
+  }
+  const ty = by - len + 1;
+  p.set(x - 1, ty, halo);
+  p.set(x + 1, ty, halo);
+  p.set(x, ty - 1, halo);
+}
+
+/** One spectator frame in a fresh 14×22 canvas. */
 function drawSpectator(L: Look, pose: Pose, team: 0 | 1): PixelCanvas {
   const p = new PixelCanvas(CROWD_FW, CROWD_FH);
-  const { hx, hy, ty, tx, arms } = pose;
-  const bottom = CROWD_FH - 1;
-  // torso: shoulders row (narrower), body, trousers / lap further down
-  const x0 = 2 + tx;
-  p.rect(x0 + 1, ty, 6, 1, L.c0);
-  p.rect(x0, ty + 1, 8, bottom - ty, L.c0);
-  p.rect(x0, ty + 1, 1, bottom - ty, L.c1); // far sleeve
-  p.rect(x0 + 7, ty + 1, 1, bottom - ty, L.c1);
-  p.set(x0 + 1, ty, L.c2); // shoulder glint (one px)
-  const lap = ty + (pose.standing ? 5 : 4);
-  if (lap <= bottom) p.rect(x0, lap, 8, bottom - lap + 1, L.p);
-  // collar: skin under the chin
-  p.set(hx + 3, ty, L.s1);
-  p.set(hx + 4, ty, L.s1);
-  drawHead(p, L, hx, hy, arms);
-  const sleeve = L.c0;
-  const hand = L.s0;
+  const { hy, ty, arms } = pose;
+  const tx = pose.lean ?? 0;
+  drawTorso(p, L, ty, tx);
+  drawHead(p, L, 4 + tx, hy, !!pose.away, !!pose.mouth);
+  rimLight(p, hy - 1, hy + 5);
+  const x0 = 3 + tx;
   switch (arms) {
     case 'down':
       break;
-    case 'clap0':
-      p.line(x0 + 1, ty + 1, 5, ty + 3, sleeve);
-      p.line(x0 + 6, ty + 1, 6, ty + 3, sleeve);
-      p.rect(5, ty + 2, 2, 2, hand);
+    case 'clap0': {
+      p.line(x0 + 1, ty + 1, 6, ty + 3, L.c2);
+      p.line(x0 + 6, ty + 1, 7, ty + 3, L.c2);
+      p.rect(6, ty + 2, 2, 2, L.s0);
+      p.set(6, ty + 2, L.s2);
       break;
-    case 'clap1':
-      p.set(x0 + 1, ty + 2, hand);
-      p.set(x0 + 6, ty + 2, hand);
-      p.vline(x0, ty + 1, ty + 2, sleeve);
-      p.vline(x0 + 7, ty + 1, ty + 2, sleeve);
+    }
+    case 'clap1': {
+      p.vline(x0, ty + 1, ty + 3, L.c2);
+      p.vline(x0 + 7, ty + 1, ty + 3, L.c2);
+      p.rect(x0 - 1, ty + 3, 2, 2, L.s0);
+      p.rect(x0 + 7, ty + 3, 2, 2, L.s0);
+      p.set(x0 + 8, ty + 3, L.s2);
       break;
+    }
     case 'up0':
-    case 'up1': {
-      // left arm (far) at x 1, right arm (near the platform) at x 10; the alternate frame swaps heights
-      const a = arms === 'up0' ? 5 : 3;
-      const b = arms === 'up0' ? 3 : 5;
-      p.vline(1, ty - a + 1, ty, sleeve);
-      p.set(1, ty - a, hand);
-      p.vline(10, ty - b + 1, ty, sleeve);
-      p.set(10, ty - b, hand);
-      p.set(2, ty, sleeve);
-      p.set(9, ty, sleeve);
+      arm(p, L, 1, ty - 9, ty, false);
+      arm(p, L, 11, ty - 6, ty, true);
       break;
-    }
+    case 'up1':
+      arm(p, L, 1, ty - 6, ty, false);
+      arm(p, L, 11, ty - 9, ty, true);
+      break;
     case 'gasp': {
-      const hyc = hy + 3;
-      p.vline(2, hyc + 1, ty + 1, sleeve);
-      p.vline(9, hyc + 1, ty + 1, sleeve);
-      p.rect(2, hyc - 1, 1, 2, hand);
-      p.rect(9, hyc - 1, 1, 2, hand);
+      p.vline(x0, ty, ty + 3, L.c2);
+      p.vline(x0 + 7, ty, ty + 3, L.c2);
+      p.rect(x0, hy + 3, 2, 3, L.s0);
+      p.rect(x0 + 6, hy + 3, 2, 3, L.s0);
+      p.set(x0 + 7, hy + 3, L.s2);
       break;
     }
-    case 'stick': {
-      const [body, tip] = STICK[team];
-      const lean = pose.stick ?? 0;
-      // the raised arm (toward the platform) + the free arm resting / waving
-      if (pose.high) {
-        // standing cheer: arm straight up on the right, free arm up on the left
-        p.vline(10, ty - 3, ty, sleeve);
-        p.set(10, ty - 4, hand);
-        p.vline(1, ty - 2, ty, sleeve);
-        p.set(1, ty - 3, hand);
-        p.set(2, ty, sleeve);
-        p.set(9, ty, sleeve);
-        const base = ty - 5;
-        if (lean === 0) {
-          p.vline(10, base - 2, base, body);
-          p.set(10, base - 3, tip);
-        } else if (lean === 1) {
-          p.set(10, base, body);
-          p.set(11, base - 1, body);
-          p.set(11, base - 2, body);
-          p.set(11, base - 3, tip);
-        } else {
-          p.set(10, base, body);
-          p.set(9, base - 1, body);
-          p.set(9, base - 2, body);
-          p.set(9, base - 3, tip);
-        }
-      } else {
-        // seated sway: forearm half raised at the shoulder, stick above the fist
-        p.vline(10, ty - 2, ty, sleeve);
-        p.set(10, ty - 3, hand);
-        const base = ty - 4;
-        if (lean === 0) {
-          p.vline(10, base - 2, base, body);
-          p.set(10, base - 3, tip);
-        } else if (lean === 1) {
-          p.set(10, base, body);
-          p.set(11, base - 1, body);
-          p.set(11, base - 2, body);
-          p.set(11, base - 3, tip);
-        } else {
-          p.set(10, base, body);
-          p.set(9, base - 1, body);
-          p.set(9, base - 2, body);
-          p.set(9, base - 3, tip);
-        }
-        p.set(9, ty, sleeve);
-      }
+    case 'wave0':
+      arm(p, L, 11, ty - 6, ty, true);
+      break;
+    case 'wave1':
+      p.line(11, ty, 12, ty - 4, L.c2);
+      p.rect(12, ty - 7, 2, 3, L.c0);
+      p.rect(12, ty - 8, 2, 2, L.s0);
+      p.set(13, ty - 8, L.s2);
+      break;
+    case 'stickSit': {
+      arm(p, L, 11, ty - 5, ty, true);
+      drawStick(p, team, 12, ty - 6, 7, pose.stick ?? 0);
+      break;
+    }
+    case 'stickUp': {
+      arm(p, L, 1, ty - 7, ty, false);
+      arm(p, L, 11, ty - 6, ty, true);
+      drawStick(p, team, 12, ty - 7, 6, pose.stick ?? 0);
       break;
     }
   }
   return p;
 }
 
-// pose tables: heights chosen so a standing head tops out at row 1, a seated one at row 4
-const SIT_Y = { hy: 4, ty: 9 };
-const STAND_Y = { hy: 1, ty: 6 };
-
 function poseOf(id: number): Pose {
   switch (id) {
     case CF_SIT0:
-      return { hx: 3, tx: 0, arms: 'down', ...SIT_Y };
+      return { hy: 8, ty: 14, arms: 'down' };
     case CF_SIT1:
-      return { hx: 3, tx: 0, arms: 'down', hy: 3, ty: 8 };
+      return { hy: 7, ty: 13, arms: 'down' };
     case CF_STAND0:
-      return { hx: 3, tx: 0, arms: 'down', standing: true, ...STAND_Y };
+      return { hy: 5, ty: 11, arms: 'down' };
     case CF_STAND1:
-      return { hx: 3, tx: 0, arms: 'down', standing: true, hy: 2, ty: 7 };
+      return { hy: 6, ty: 12, arms: 'down' };
     case CF_CLAP0:
-      return { hx: 3, tx: 0, arms: 'clap0', standing: true, hy: 2, ty: 7 };
+      return { hy: 6, ty: 12, arms: 'clap0' };
     case CF_CLAP1:
-      return { hx: 3, tx: 0, arms: 'clap1', standing: true, hy: 1, ty: 6 };
+      return { hy: 5, ty: 11, arms: 'clap1', mouth: true };
     case CF_GASP:
-      return { hx: 3, tx: 0, arms: 'gasp', standing: true, hy: 2, ty: 7 };
+      return { hy: 6, ty: 12, arms: 'gasp', mouth: true };
     case CF_UP0:
-      return { hx: 3, tx: 0, arms: 'up0', standing: true, hy: 4, ty: 9 };
+      return { hy: 6, ty: 12, arms: 'up0', mouth: true };
     case CF_UP1:
-      return { hx: 3, tx: 0, arms: 'up1', standing: true, hy: 3, ty: 8 };
+      return { hy: 5, ty: 11, arms: 'up1', mouth: true };
     case CF_LEAN:
-      return { hx: 4, tx: 1, arms: 'down', hy: 5, ty: 9 };
+      return { hy: 9, ty: 14, lean: 1, arms: 'down' };
+    case CF_TURN:
+      return { hy: 8, ty: 14, arms: 'down', away: true };
+    case CF_WAVE0:
+      return { hy: 8, ty: 14, arms: 'wave0' };
+    case CF_WAVE1:
+      return { hy: 7, ty: 13, arms: 'wave1' };
     default: {
-      // team frames
-      const k = id - CROWD_SHARED;
-      if (k < 3) return { hx: 3, tx: 0, arms: 'stick', stick: ([0, 1, 2] as const)[k], hy: 4, ty: 9 };
-      return { hx: 3, tx: 0, arms: 'stick', stick: ([0, 1] as const)[k - 3], high: true, standing: true, hy: 4, ty: 9 };
+      const k = (id - CROWD_SHARED) % CROWD_TEAM;
+      if (k < 3) return { hy: 8, ty: 14, arms: 'stickSit', stick: ([0, 1, 2] as const)[k] };
+      return { hy: k === 3 ? 6 : 5, ty: k === 3 ? 12 : 11, arms: 'stickUp', stick: ([0, 1] as const)[k - 3], mouth: true };
     }
   }
 }

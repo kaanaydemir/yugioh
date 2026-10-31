@@ -1,5 +1,5 @@
 // Neon Tower layer: CROWD (spectators) — owner B1 (docs/v3/ARENA_NEON_TOWER.md §6, §7, §8).
-// ~82 tiny spectators (8 looks; seated / standing / clapping / arms up / glow stick, mirrored for the right stand)
+// ~110 spectators (9 looks; seated / standing / clapping / waving / arms up / head turned / glow stick, mirrored for the right stand)
 // as Blitter bobs on ONE pre-baked atlas (src/art/arena-nt/crowd.ts): three blitters (one per stand row, at
 // seatDepth(row) of seats.ts, i.e. between the rows' railings), one texture, zero per-spectator tweens or timers.
 //
@@ -27,7 +27,9 @@ import {
   CF_STAND1,
   CF_STICK_SIT0,
   CF_STICK_UP0,
+  CF_TURN,
   CF_UP0,
+  CF_WAVE0,
   CROWD_COLS,
   CROWD_LOOKS,
   NT_CROWD_KEY,
@@ -55,8 +57,8 @@ const Q = 125;
 /** Reaction quantum (ms): reaction frames are re-evaluated at ~20 Hz while one is active. */
 const QR = 50;
 /** The mood clock: one seat may change its idle mode every MOOD ms. */
-const MOOD = 700;
-const MAX_TEMP = 8;
+const MOOD = 520;
+const MAX_TEMP = 10;
 /** Per-group periods in quanta: breath half period, glow-stick hold. */
 const GROUP_BREATH = [13, 15, 17, 19] as const;
 const GROUP_STICK = [3, 4, 3, 5] as const;
@@ -69,6 +71,9 @@ const M_SIT = 0;
 const M_STICK = 1;
 const M_STAND = 2;
 const M_CLAP = 3;
+const M_WAVE = 4;
+const M_TURN = 5;
+const M_LEAN = 6;
 
 // reaction kinds (0 = none)
 const R_CHEER = 1;
@@ -93,11 +98,11 @@ function kindOf(k: CrowdReaction | 'lean'): number {
 function durationOf(k: number, p: number): number {
   switch (k) {
     case R_CHEER:
-      return 650 + 450 * p;
+      return 560 + 340 * Math.min(p, 1.3);
     case R_ROAR:
-      return 1000 + 700 * p;
+      return 900 + 600 * p;
     case R_GASP:
-      return 500 + 350 * p;
+      return 520 + 300 * Math.min(p, 1.5);
     default:
       return 450 + 200 * p;
   }
@@ -107,7 +112,7 @@ function durationOf(k: number, p: number): number {
 function shareOf(k: number, p: number): number {
   switch (k) {
     case R_CHEER:
-      return Math.min(0.95, 0.45 + 0.3 * p);
+      return Math.min(0.97, 0.6 + 0.3 * p);
     case R_ROAR:
       return Math.min(1, 0.8 + 0.1 * p);
     case R_GASP:
@@ -167,7 +172,7 @@ export function createCrowdLayer(ctx: NtCtx): NtLayer {
     // looks: a seeded shuffle that avoids neighbours repeating (id-based hash, no Math.random)
     look[i] = Math.floor(mix(s.id, 11) * CROWD_LOOKS) % CROWD_LOOKS;
     if (i > 0 && look[i] === look[i - 1]) look[i] = (look[i] + 1 + Math.floor(mix(s.id, 12) * 6)) % CROWD_LOOKS;
-    holder[i] = mix(s.id, 21) < 0.36 ? 1 : 0;
+    holder[i] = mix(s.id, 21) < 0.32 ? 1 : 0;
     baseMode[i] = holder[i] ? M_STICK : M_SIT;
     mode[i] = baseMode[i];
     grp[i] = Math.floor(mix(s.id, 31) * 4) & 3;
@@ -175,7 +180,7 @@ export function createCrowdLayer(ctx: NtCtx): NtLayer {
     dly[i] = mix(s.id, 51) * 220;
     rel[i] = mix(s.id, 61) * 300;
     part[i] = mix(s.id, 71);
-    bare[i] = mix(s.id, 81) < 0.55 ? 1 : 0;
+    bare[i] = mix(s.id, 81) < 0.3 ? 1 : 0;
     const col = crowdCol(CF_SIT0, 0);
     const bob = rowBlitters[s.row].create(s.x - CROWD_CELL.w / 2, s.y - CROWD_CELL.h, frames[look[i] * CROWD_COLS + col]);
     bob.flipX = s.flipX;
@@ -222,6 +227,12 @@ export function createCrowdLayer(ctx: NtCtx): NtLayer {
         return crowdCol(Math.floor(o / 6) & 1 ? CF_STAND1 : CF_STAND0, 0);
       case M_CLAP:
         return crowdCol(CF_CLAP0 + ((o >> 1) & 1), 0);
+      case M_WAVE:
+        return crowdCol(CF_WAVE0 + ((o >> 1) & 1), 0);
+      case M_TURN:
+        return crowdCol(CF_TURN, 0);
+      case M_LEAN:
+        return crowdCol(CF_LEAN, 0);
       default:
         return crowdCol(Math.floor(o / GROUP_BREATH[g]) & 1 ? CF_SIT1 : CF_SIT0, 0);
     }
@@ -244,7 +255,7 @@ export function createCrowdLayer(ctx: NtCtx): NtLayer {
         default: {
           const s = Math.floor((t + off[i] * 31) / (k === R_ROAR ? 100 : 140)) & 1;
           if (holder[i]) return crowdCol(CF_STICK_UP0 + s, team[i] as 0 | 1);
-          if (k === R_ROAR || bare[i]) return crowdCol(CF_UP0 + s, 0);
+          if (k === R_ROAR || !bare[i]) return crowdCol(CF_UP0 + s, 0);
           return crowdCol(CF_CLAP0 + s, 0);
         }
       }
@@ -276,10 +287,12 @@ export function createCrowdLayer(ctx: NtCtx): NtLayer {
     // a new one stands up / claps for 3…8 steps
     const h = mix(step, 91);
     const h2 = mix(step, 92);
-    if (tempCount < MAX_TEMP && h < 0.8) {
+    if (tempCount < MAX_TEMP && h < 0.9) {
       const i = Math.floor(mix(step, 93) * SEAT_N) % SEAT_N;
       if (tempEnd[i] < 0) {
-        mode[i] = h2 < 0.5 ? M_STAND : M_CLAP;
+        // clap / wave / stand up / turn to the neighbour / lean in: seated stick holders only wave their stick
+        mode[i] = h2 < 0.25 ? M_CLAP : h2 < 0.45 ? M_STAND : h2 < 0.65 ? M_WAVE : h2 < 0.85 ? M_TURN : M_LEAN;
+        if (holder[i] && mode[i] !== M_CLAP && mode[i] !== M_STAND) mode[i] = baseMode[i];
         tempEnd[i] = step + 3 + Math.floor(mix(step, 94) * 6);
         tempCount++;
       }
@@ -314,34 +327,40 @@ export function createCrowdLayer(ctx: NtCtx): NtLayer {
       case 'summon': {
         // the entrance takes a moment: the crowd rises with the reveal
         const big = ev.method === 'tribute' || ev.method === 'special';
-        react('cheer', ev.player, big ? 1.4 : 1, 420);
+        react('cheer', ev.player, big ? 1.3 : 1, 420);
         break;
       }
       case 'flip':
-        react('cheer', ev.player, 0.6, 250);
+        react('cheer', ev.player, 0.8, 250);
         break;
       case 'activate':
-        if (ev.kind === 'trap') react('gasp', ev.player === 0 ? 1 : 0, 0.6, 150);
+        react('cheer', ev.player, 0.7, 150);
+        if (ev.kind === 'trap') react('gasp', ev.player === 0 ? 1 : 0, 0.7, 150);
         break;
       case 'attackDeclare':
-        react('lean', ev.player, 0.8, 0);
+        // the attacker's fans leap up, the defender's fans brace
+        react('cheer', ev.player, 1, 0);
+        react('gasp', ev.player === 0 ? 1 : 0, 0.5, 120);
         break;
       case 'damage': {
         const p = Math.max(0.5, Math.min(2, ev.amount / 1000));
-        if (ev.amount >= 500) {
-          react('gasp', ev.player, p, 120);
-          if (ev.amount >= 1000) react('cheer', ev.player === 0 ? 1 : 0, p * 0.8, 200);
+        if (ev.amount >= 1500) {
+          react('gasp', ev.player, p, 80);
+          react('roar', ev.player === 0 ? 1 : 0, 1, 160);
+        } else if (ev.amount > 0) {
+          react('gasp', ev.player, p, 80);
+          react('cheer', ev.player === 0 ? 1 : 0, Math.max(0.8, p), 160);
         }
         break;
       }
       case 'destroy':
         if (ev.location === 'monster') {
-          react('gasp', ev.player, 0.7, 150);
-          react('cheer', ev.player === 0 ? 1 : 0, 0.6, 250);
+          react('gasp', ev.player, 0.8, 120);
+          react('cheer', ev.player === 0 ? 1 : 0, 1, 200);
         }
         break;
       case 'lpGain':
-        if (ev.amount >= 500) react('cheer', ev.player, 0.6, 200);
+        if (ev.amount >= 500) react('cheer', ev.player, 0.8, 200);
         break;
       case 'gameOver':
         react('gasp', ev.winner === 0 ? 1 : 0, 1.6, 300);

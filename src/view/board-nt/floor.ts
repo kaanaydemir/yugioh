@@ -11,12 +11,13 @@
 // stay empty graphite, painted into the platform body.
 
 import type Phaser from 'phaser';
-import { FLOOR_FRAMES, NT_FLOOR_KEY, buildFloorArt } from '../../art/arena-nt/floor';
+import { FLOOR_FRAMES, NT_FLOOR_KEY, SLOT_DOWN, SLOT_EMPTY, SLOT_OCCUPIED, buildFloorArt } from '../../art/arena-nt/floor';
 import { NT_PAL } from '../../art/arena-nt/palette';
 import type { FloorArt } from '../../art/arena-nt/floor';
 import { calmZones } from '../board-calm/art';
-import type { PlayerId } from '../../engine/types';
-import { zoneXY } from '../layout';
+import type { FieldView } from '../../duel/FieldView';
+import type { GameEvent, PlayerId } from '../../engine/types';
+import { type BoardSpot, zoneXY } from '../layout';
 import { CENTER_EMBLEM, NT_DEPTH } from './layout-nt';
 import { type NtCtx, type NtLayer } from './layer';
 import { ensureNtTexture } from './textures';
@@ -42,12 +43,42 @@ export function createFloorLayer(ctx: NtCtx): NtLayer {
   const scene = ctx.scene;
   const art = registerFloorTextures(scene);
 
-  // ---- the slots
-  for (const z of calmZones()) {
+  // ---- the slots: one image per zone, three states (empty / occupied / face-down) read off the FieldView, the border one tone up
+  // for the side to move and for a moment on a summon / attack of that side. The calm pad image stays underneath (zoneAt, tileImage,
+  // TargetMarks, the stepped floor light) and calm's own hover / selection line and fill stay above.
+  interface Slot {
+    img: Img;
+    player: PlayerId;
+    spot: BoardSpot;
+    index: number;
+    pile: boolean;
+    state: number;
+    boost: number;
+    shown: string;
+  }
+  const slots: Slot[] = calmZones().map((z) => {
     const c = zoneXY(z.player, z.spot, z.index);
     const pile = z.spot !== 'monster' && z.spot !== 'spellTrap';
-    ctx.add(scene.add.image(c.x - 32, c.y - 16, NT_FLOOR_KEY, FLOOR_FRAMES.slot(z.player, pile)).setOrigin(0).setDepth(NT_DEPTH.floor + 0.25));
-  }
+    const shown = FLOOR_FRAMES.slot(z.player, pile);
+    const img = ctx.add(scene.add.image(c.x - 32, c.y - 16, NT_FLOOR_KEY, shown).setOrigin(0).setDepth(NT_DEPTH.floor + 0.25));
+    return { img, player: z.player, spot: z.spot, index: z.index, pile, state: SLOT_EMPTY, boost: 0, shown };
+  });
+  const fieldView = (): FieldView | null => (scene as unknown as { views?: { field?: FieldView } }).views?.field ?? null;
+  /** The state of a zone right now. */
+  const stateOf = (z: Slot, f: FieldView): number => {
+    try {
+      if (z.spot === 'deck' || z.spot === 'graveyard') return f.pile(z.player, z.spot).count > 0 ? SLOT_OCCUPIED : SLOT_EMPTY;
+      if (z.spot === 'banish') return SLOT_EMPTY;
+      const e = f.entry(z.player, z.spot, z.index);
+      if (!e) return SLOT_EMPTY;
+      return e.tile.faceUp ? SLOT_OCCUPIED : SLOT_DOWN;
+    } catch {
+      return SLOT_EMPTY;
+    }
+  };
+  /** Until this time a side's slot borders show one tone up (a summon / attack declaration of that side). */
+  const liftUntil: [number, number] = [0, 0];
+  let nextScan = 0;
 
   // ---- the centre strip's life
   const emblem = ctx.add(scene.add.image(CENTER_EMBLEM.x, CENTER_EMBLEM.y, NT_FLOOR_KEY, FLOOR_FRAMES.emblem(0, 0)).setOrigin(0).setDepth(NT_DEPTH.floor + 0.1));
@@ -82,8 +113,30 @@ export function createFloorLayer(ctx: NtCtx): NtLayer {
         pending = { until: onAt + 100, done };
       });
     },
+    onGameEvent(ev: GameEvent) {
+      if (ev.type !== 'summon' && ev.type !== 'attackDeclare') return;
+      const p = (ev as { player?: PlayerId }).player;
+      if (p === undefined) return;
+      liftUntil[p] = now + 900;
+      nextScan = 0;
+    },
     tick(_dt, t) {
       now = t;
+      // slots: re-read the board a few times a second (the FieldView is the truth), one setFrame per change
+      if (t >= nextScan) {
+        nextScan = t + 120;
+        const f = fieldView();
+        const lit = lights && t >= onAt;
+        for (const z of slots) {
+          const st = lit && f ? stateOf(z, f) : SLOT_EMPTY;
+          const bo = lit && (active === z.player || t < liftUntil[z.player]) ? 1 : 0;
+          const name = FLOOR_FRAMES.slot(z.player, z.pile, st, bo);
+          if (name !== z.shown) {
+            z.img.setFrame(name);
+            z.shown = name;
+          }
+        }
+      }
       if (pending && t >= pending.until) {
         pending.done();
         pending = null;

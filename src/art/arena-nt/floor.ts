@@ -11,7 +11,7 @@
 // Plus the animated bits: the emblem frames of the centre strip (16 ring levels) and the white masks of
 // its dashes. Pure PixelCanvas code (no Phaser): runs in Node for tests.
 
-import { CALM_T, buildCalmArt } from '../../view/board-calm/art';
+import { buildCalmArt } from '../../view/board-calm/art';
 import { type Color, PixelCanvas } from '../pixel';
 import { NT_PAL } from './palette';
 import { buildPlatformArt, emblemCanvas } from './platform';
@@ -19,10 +19,15 @@ import { type Atlas, packAtlas } from './platform-pack';
 
 export const NT_FLOOR_KEY = 'nt:floor';
 
+/** Slot states (docs/v3/ARENA_NEON_TOWER.md §12): empty (dim thin border), occupied (brighter border + a floor-pool tint), face-down (occupied + four corner studs). */
+export const SLOT_EMPTY = 0;
+export const SLOT_OCCUPIED = 1;
+export const SLOT_DOWN = 2;
+
 /** Frame names. */
 export const FLOOR_FRAMES = {
-  /** a slot of `player` (0 / 1); `pile` = the single pads (field, graveyard, deck, banish) */
-  slot: (player: 0 | 1, pile: boolean) => `slot:${player}:${pile ? 'pile' : 'main'}`,
+  /** a slot of `player` (0 / 1) in `state` (SLOT_*), `boost` 0 / 1 = the border one tone up (side to move, a reaction); `pile` = the single pads (field, graveyard, deck, banish) */
+  slot: (player: 0 | 1, pile: boolean, state = SLOT_EMPTY, boost = 0) => `slot:${player}:${pile ? 'pile' : 'main'}:${state}:${boost}`,
   /** the centre emblem at ring levels (blue 0..3, red 0..3) */
   emblem: (blue: number, red: number) => `emblem:${blue}:${red}`,
   dash: (k: number) => `dash:${k}`,
@@ -37,20 +42,36 @@ export interface FloorArt {
 
 let cached: FloorArt | null = null;
 
-/** The slot frame: calm's tile geometry (ring masks) in the owner's tones. */
-function slotFrame(player: 0 | 1, pile: boolean): PixelCanvas {
+/**
+ * The slot frame: calm's tile geometry (ring masks) in the owner's tones. Empty = a graphite well with a dim thin border and a
+ * dark ring; occupied = the border one tone up, a dark-teal / dark-crimson pool in the well and the same colour glowing in the
+ * ring; face-down = occupied plus a small stud at each of the four vertices (the corners a card back leaves free).
+ */
+function slotFrame(player: 0 | 1, pile: boolean, state: number, boost: number): PixelCanvas {
   const m = buildCalmArt().masks;
   const p = new PixelCanvas(64, 32);
-  const ring = player === 0 ? NT_PAL.blue[0] : NT_PAL.red[0];
-  const line = CALM_T.line[player];
-  const fill = pile ? CALM_T.pile : CALM_T.pad;
+  const ramp = player === 0 ? NT_PAL.blue : NT_PAL.red;
+  const empty = state === SLOT_EMPTY;
+  const ring: Color = empty ? NT_PAL.metal[0] : ramp[0];
+  const line: Color = ramp[(empty ? 1 : 2) + boost];
+  const fill: Color = empty ? NT_PAL.graphite[0] : ramp[0];
+  const stud: Color = NT_PAL.metal[5];
   for (let j = 0; j < 32; j++) {
     for (let i = 0; i < 64; i++) {
       if (m.tile.get(i, j) === null) continue;
-      const c: Color = m.line.get(i, j) !== null ? line : m.fill.get(i, j) !== null ? fill : ring;
+      const isLine = m.line.get(i, j) !== null;
+      const isFill = m.fill.get(i, j) !== null;
+      let c: Color = isLine ? line : isFill ? fill : ring;
+      if (state === SLOT_DOWN && !isFill) {
+        const dx = Math.abs(i + 0.5 - 32);
+        const dy = Math.abs(j + 0.5 - 16);
+        // the four vertices: left / right (long axis) and top / bottom
+        if ((dx > 28 && dy < 2.5) || (dy > 13 && dx < 3.5)) c = stud;
+      }
       p.set(i, j, c);
     }
   }
+  void pile;
   return p;
 }
 
@@ -58,7 +79,10 @@ export function buildFloorArt(): FloorArt {
   if (cached) return cached;
   const t0 = performance.now();
   const list: [string, PixelCanvas][] = [];
-  for (const player of [0, 1] as const) for (const pile of [false, true]) list.push([FLOOR_FRAMES.slot(player, pile), slotFrame(player, pile)]);
+  for (const player of [0, 1] as const)
+    for (const pile of [false, true])
+      for (const state of pile ? [SLOT_EMPTY, SLOT_OCCUPIED] : [SLOT_EMPTY, SLOT_OCCUPIED, SLOT_DOWN])
+        for (const boost of [0, 1]) list.push([FLOOR_FRAMES.slot(player, pile, state, boost), slotFrame(player, pile, state, boost)]);
   for (let b = 0; b < 4; b++) for (let r = 0; r < 4; r++) list.push([FLOOR_FRAMES.emblem(b, r), emblemCanvas(b, r)]);
   const dashes: FloorArt['dashes'] = [];
   buildPlatformArt().dashes.forEach((px, k) => {

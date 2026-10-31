@@ -185,3 +185,12 @@ Kapılar (her aşama sonunda): `npm run typecheck`, `npm test`, `filmdiff --set 
 - **K2** hologram yüksekliği: ayak y 134 ("üst köşe" yerine üst-orta). P2 paneli taşınmadan daha yukarı olmaz (HUD sözleşmesi); C'de P2 panelini küçültme seçeneği.
 - **K3** sol tribün kısa (27 vs 55): platform çarpıklığından. İstenirse C sol hologramı 12 px yukarı alıp sol tribünü ~20 izleyici uzatır.
 - **R1** basamaklı ışığın zemin bilgisi calm `topAt`'a bağlı. **R2** volkan lav boyayıcısı calm slab/kinds'e bağlı. **R3** hint çubuğu 3+3'te y 252: platform yakın köşesi (y 286) altında kalır (HUD üstte; kabul).
+
+## 16. J1 — platform, rim, slotlar, 3+3 (güncel durum; §3/§12 bunu geçersiz kılar)
+
+- **Zırh yan yüzü 28 px** (`FACE_H` 18 → 28): alt tüy + kapak (v0–2), üst zırh plakası (v4–10: vida, havalandırma ızgarası, girinti), ışık kanalı (v12–14, enerji şeridi), alt zırh plakası (v16–23: kaymalı derz, lamba, havalandırma), kenar + etek (v24–27). `PLATE_FULL` h 244, en alçak nokta y 296 (HUD üstte çizilir). **Kalabalık/tribün için**: zırh alt çizgisi sol yüzde `y = 120 + x/2`, sağ yüzde `472 − x/2`.
+- Üst plaka düz grafit (`stone1`), karolar yalnız 1-px kenarla okunur; yalnız çok seyrek 1-ton benek. Kenar: kapak 2 px + oluk + neon kanalı (calm şeridi 3..4 px içeride) + oluk. Köşe blokları 28×14×10; iç (konkav) köşeye de sütun eklendi; yan etek gölgesi 4 kademe (alfasız damga).
+- **Kırmızı kama / dama dokusu nedeni**: `lights.ts` iki taşkın elipsi (rx 150, ry 74) 0,5 yoğunlukta → tüm karolarda Bayer damalama ve ortada üst üste binen kızıl havuz. `FLOOR_POOLS = false`; yarı tonları slot sanatı üstlendi. Basamaklı örnekleyici (flaş, volkan) aynen çalışır.
+- **Slot durumları** (`floor.ts`): boş (sönük ince sınır, grafit kuyu), dolu (parlak sınır + koyu mavi/kızıl havuz + halka), yüzü kapalı (dolu + dört köşe saplaması); sıradaki taraf / çağırma-saldırı anında sınır 1 ton yukarı. Durum `scene.views.field` okunarak 120 ms'de bir yenilenir. Calm hover/seçim çizgisi üstte, hizası yapı gereği aynı.
+- **3+3**: calm neon şeridi küçük taslağı izlediği için (`skip.trims`) kapatılır, plaka kendi sönük kenar çizgisini boyar (mavi yakın / kızıl uzak).
+- **Doku tasarrufu**: NT açıkken calm `slab` + `bg` yüklenmez (`buildCalmTextures(scene, {slab,bg})`): arena kategorisi 2,56 → 1,22 MB.

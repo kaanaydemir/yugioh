@@ -36,8 +36,12 @@ export const PLATE_G1Y = NT_ROWS - 0.5 + PLATE_E; // 4.875
 /** The duelist pads' column span (centre lane ±0.75) and how far they stand out of the plate (rows −2 / 6). */
 export const PAD_C0 = 2.25;
 export const PAD_C1 = 3.75;
-/** Height of the side armour below the top edge: rim 2 + armour panel 11 + skirt 5. */
-export const FACE_H = 18;
+/**
+ * Height of the side armour below the top edge (J1: 28, was 18): coping 3 + groove, upper armour plate 7, light channel 4,
+ * lower armour plate 8, ledge + skirt 4, bottom outline 1. The stands / crowd sit below it (armour bottom y = 120 + x/2 on the
+ * left face, 472 − x/2 on the right face).
+ */
+export const FACE_H = 28;
 
 /** Platform top outline (grid coords, CCW), duelist pads included. Same footprint as the calm slab. */
 export const PLATE_OUTLINE: readonly [number, number][] = [
@@ -65,10 +69,10 @@ export const PLATE_CORNERS = {
 
 /** Screen bounding box of the plate top (duelist pads are inside it). */
 export const PLATE_TOP: Rect = { x: 104, y: 52, w: 432, h: 216 };
-/** Plate + side armour (the lowest point is the near corner: y 268 + FACE_H = 286, the hint plate's bottom). */
-export const PLATE_FULL: Rect = { x: 104, y: 52, w: 432, h: 234 };
+/** Plate + side armour (the lowest point is the near corner: y 268 + FACE_H = 296, behind the hint plate / hand: HUD draws over it). */
+export const PLATE_FULL: Rect = { x: 104, y: 52, w: 432, h: 244 };
 /** Soft contact shadow under the platform (ink, stepped): may run under the HUD, never above y 140. */
-export const PLATE_SHADOW: Rect = { x: 88, y: 140, w: 464, h: 170 };
+export const PLATE_SHADOW: Rect = { x: 88, y: 140, w: 464, h: 176 };
 
 /** The two duelist pads (diamond 56×28 around the duelist's feet = layout.duelistXY). */
 export const DUELIST_PADS: readonly Rect[] = [
@@ -86,17 +90,20 @@ export const WALL: Rect = { x: -8, y: -8, w: 656, h: 110 };
 /** The tall symmetrical tower mass at the back centre. */
 export const TOWER: Rect = { x: 236, y: 0, w: 168, h: 64 };
 /** The original winged-shield tournament emblem plate on the tower (the phase bar hides y < 20, so it sits at 22..48). */
-export const EMBLEM: Rect = { x: 298, y: 22, w: 44, h: 26 };
+export const EMBLEM: Rect = { x: 284, y: 21, w: 72, h: 38 };
 /** The small corridor / gate under the emblem: the platform's far corner (288, 52) hides its lower half. */
-export const CORRIDOR: Rect = { x: 306, y: 48, w: 28, h: 10 };
+export const CORRIDOR: Rect = { x: 306, y: 58, w: 28, h: 10 };
 /**
- * The two angled digital screens (frame included). The left one's lower-right corner is cut along
- * the platform's upper-left edge (y = 196 − x/2 − 2), so it never sits under the plate. Left = the
- * player (blue frame), right = the opponent (crimson frame). Inner portrait area: 80×56 inside.
+ * The two ANGLED digital screens (J3): panels hung parallel to the platform's far edges, so each is sheared in whole-pixel steps (1 px of
+ * height per 6 columns; src/art/arena-nt/screens.ts SCREEN_AT / FRAME_W / FRAME_H must stay equal to these rects). The rect is the
+ * bounding box of the sheared bezel: the inner edge (right side of the left screen, left side of the right one) is the high one, its top
+ * y 22 stays under the phase bar (y 4..19); the right screen ends at x 488 where the (compact) P2 panel begins. The left screen's lower
+ * inner corner is cut along the platform's upper-left edge (y = 194 − x / 2). Left = the player (blue), right = the opponent (crimson).
+ * Inner portrait area: 80×56 inside.
  */
 export const SCREENS: readonly Rect[] = [
-  { x: 146, y: 20, w: 90, h: 62 },
-  { x: 398, y: 20, w: 90, h: 62 },
+  { x: 148, y: 22, w: 92, h: 79 },
+  { x: 396, y: 22, w: 92, h: 79 },
 ];
 export const SCREEN_INNER = { w: 80, h: 56 } as const;
 
@@ -113,8 +120,11 @@ export interface HoloSpot {
   side: 0 | 1;
 }
 export const HOLOS: readonly HoloSpot[] = [
-  { box: { x: 0, y: 36, w: 104, h: 104 }, pedestal: { cx: 52, cy: 136, rx: 46, ry: 10 }, monster: 'crystal_wyrm', side: 0 },
-  { box: { x: 536, y: 36, w: 104, h: 104 }, pedestal: { cx: 588, cy: 136, rx: 46, ry: 10 }, monster: 'abyss_magus', side: 1 },
+  // left: Kristal Ejder at 4/3 (≈ 116×122 px); the top of its horns stays under the toolbar (y ≥ 20); the round pedestal (rx 54, ry 12,
+  // side 9) sits behind the first stand tiers (stands draw over it)
+  { box: { x: 2, y: 19, w: 116, h: 122 }, pedestal: { cx: 60, cy: 141, rx: 54, ry: 12 }, monster: 'crystal_wyrm', side: 0 },
+  // right: Uçurum Büyücüsü at 1.5 (≈ 84×110 px) under the compact P2 panel (bottom y 50); pedestal right end at the screen edge
+  { box: { x: 548, y: 51, w: 84, h: 110 }, pedestal: { cx: 588, cy: 161, rx: 54, ry: 12 }, monster: 'abyss_magus', side: 1 },
 ];
 
 // ---------------------------------------------------------------- stands + crowd
@@ -122,28 +132,33 @@ export const HOLOS: readonly HoloSpot[] = [
 export interface StandBlock {
   /** Blue (P1) stands on the left, crimson (P2) on the right. */
   side: 0 | 1;
-  /** Rows, front (nearest the platform) first. */
+  /** Tiers (rows), front (nearest the platform) first. */
   rows: number;
-  /** Feet line of row 0: y = a + x·slope (slope −½ right, +½ left); row k is 4 px lower and its x range shifts 10 px outward. */
+  /** Feet line of row 0: y = a + x·slope (slope +½ left, −½ right). */
   feet0: { a: number; slope: number };
   /** x range of row 0 (feet x of the first / last spectator slot). */
   x0: number;
   x1: number;
-  /** Row k covers x0 − 10k … x1 (left) / x0 … x1 + 10k clipped to xMax (right). */
+  /** Every further tier lies this many px LOWER at the same x (tier pitch: a spectator + its railing). */
+  rowDy: number;
+  /** Row k covers x0 + shiftA·k … min(xMax, x1 + shiftB·k): the tiers step outward along the iso diagonal. */
+  shiftA: number;
+  shiftB: number;
   xMax: number;
   /** Spectator slot pitch along x. */
   pitch: number;
 }
 export const STANDS: readonly StandBlock[] = [
-  // left: lower-left plate edge (104,144)→(352,268): E(x) = 92 + x/2, feet = E + 26 = 118 + x/2
-  { side: 0, rows: 3, feet0: { a: 118, slope: 0.5 }, x0: 88, x1: 156, xMax: 156, pitch: 9 },
-  // right: lower-right plate edge (352,268)→(536,176): E(x) = 444 − x/2, feet = E + 26 = 470 − x/2
-  { side: 1, rows: 3, feet0: { a: 470, slope: -0.5 }, x0: 466, x1: 628, xMax: 628, pitch: 9 },
+  // left: lower-left plate edge (104,144)→(352,268); armour bottom y = 110 + x/2; row 0 feet 18 px below it. Head tops stay
+  // below y 148 (the top-left corner x<150,y<150 belongs to the hologram).
+  { side: 0, rows: 5, feet0: { a: 128, slope: 0.5 }, x0: 76, x1: 150, rowDy: 13, shiftA: -16, shiftB: -16, xMax: 150, pitch: 8 },
+  // right: lower-right plate edge (352,268)→(536,176); armour bottom y = 462 − x/2; row 0 feet 18 px below it. Starts right of
+  // the hint plate (x 466), ends at the screen edge; head tops stay below y 148 (top-right corner = hologram).
+  { side: 1, rows: 5, feet0: { a: 480, slope: -0.5 }, x0: 476, x1: 626, rowDy: 13, shiftA: 16, shiftB: 0, xMax: 626, pitch: 8 },
 ];
-/** Spectator sprite cell (feet at the bottom centre) and the pre-baked looks / poses (atlas, docs §6). */
-export const CROWD_CELL = { w: 12, h: 16 } as const;
-export const CROWD_LOOKS = 8;
-export const CROWD_POSES = 5;
+/** Spectator sprite cell (feet at the bottom centre) and the pre-baked looks (atlas, docs §8). */
+export const CROWD_CELL = { w: 14, h: 22 } as const;
+export const CROWD_LOOKS = 9;
 
 // ---------------------------------------------------------------- HUD keep-out (never covered by the arena)
 
@@ -226,17 +241,27 @@ export function ntRegions(): NtRegion[] {
   return out;
 }
 
-/** Bounding rect of a stand block (all rows, spectators 12×16 included). */
+/** Bounding rect of a stand block (all rows, spectators 14×22 and the outer skirt included). */
 export function standsBounds(b: StandBlock): Rect {
-  const last = b.rows - 1;
-  const xa = b.side === 0 ? b.x0 - 10 * last - CROWD_CELL.w / 2 : b.x0 - CROWD_CELL.w / 2;
-  const xb = b.side === 0 ? b.x1 + CROWD_CELL.w / 2 : Math.min(b.xMax, b.x1 + 10 * last) + CROWD_CELL.w / 2;
-  const ys: number[] = [];
-  for (const x of [xa, xb]) for (let k = 0; k < b.rows; k++) ys.push(b.feet0.a + b.feet0.slope * (b.side === 0 ? x + 10 * k : x - 10 * k) + 4 * k);
-  const y0 = Math.min(...ys) - CROWD_CELL.h;
-  const y1 = Math.max(...ys);
+  let xa = Infinity;
+  let xb = -Infinity;
+  let y0 = Infinity;
+  let y1 = -Infinity;
+  for (let k = 0; k < b.rows; k++) {
+    const ra = b.x0 + b.shiftA * k;
+    const rb = Math.min(b.xMax, b.x1 + b.shiftB * k);
+    xa = Math.min(xa, ra - CROWD_CELL.w / 2);
+    xb = Math.max(xb, rb + CROWD_CELL.w / 2);
+    for (const x of [ra, rb]) {
+      const fy = b.feet0.a + b.feet0.slope * x + b.rowDy * k;
+      y0 = Math.min(y0, fy - CROWD_CELL.h);
+      y1 = Math.max(y1, fy + (k === b.rows - 1 ? STAND_SKIRT_H : 0));
+    }
+  }
   return { x: Math.round(xa), y: Math.round(y0), w: Math.round(xb - xa), h: Math.round(y1 - y0) };
 }
+/** Height of the outer skirt face under the last tier's feet line. */
+export const STAND_SKIRT_H = 22;
 
 export function rectsOverlap(a: Rect, b: Rect): boolean {
   return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;

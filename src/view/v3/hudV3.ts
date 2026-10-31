@@ -58,6 +58,8 @@ import {
   flatTrim,
   iconTexture,
   iconTones,
+  compactPanel,
+  hudGeom,
   menuIconV3,
   panelBodyV3,
   playerStyleV3,
@@ -619,7 +621,7 @@ export class HudV3 implements HudApi {
     P.barLp = from;
     P.leadWhite = true;
     P.sparks = [];
-    const { x, y, w } = HUD3.bar;
+    const { x, y, w } = hudGeom(P.player).bar;
     // positions across both laps (past w: the second lap, drawn from the bar's left end)
     const px = (v: number) => lpBarPos(v, w);
     const p0 = px(from);
@@ -918,7 +920,8 @@ export class HudV3 implements HudApi {
    */
   lpXY(player: PlayerId): XY {
     const P = this.panels[player];
-    return { x: P.rect.x + HUD3.lp.x + Math.round(textWidthV3(String(P.counter.shown), 'lg') / 2), y: P.rect.y + HUD3.lp.cap + 7 };
+    const G = hudGeom(player);
+    return { x: P.rect.x + G.lp.x + Math.round(textWidthV3(String(P.counter.shown), 'lg') / 2), y: P.rect.y + G.lp.cap + 7 };
   }
 
   panelXY(player: PlayerId): XY {
@@ -1160,41 +1163,42 @@ export class HudV3 implements HudApi {
     const sc = this.scene;
     const rect = panelRect(player);
     const st = playerStyleV3(player);
-    const { w, h } = HUD3.panel;
+    const G = hudGeom(player);
+    const { w, h } = G.panel;
     const root = this.track(sc.add.container(rect.x, rect.y).setDepth(PANEL_DEPTH).setScrollFactor(0));
     const body = sc.add.image(0, 0, canvasTexture(sc, `ui3:hud:panel:${player}`, () => panelBodyV3(player))).setOrigin(0);
     root.add(body);
     const trim = new TrimGfx(sc, root, 0, 0, w, h);
-    const name = new PalText(sc, HUD3.name.x, capYV3('md', HUD3.name.cap), PLAYER_NAME[player], { size: 'md', color: styleTone(st, 0) });
+    const name = new PalText(sc, G.name.x, capYV3('md', G.name.cap), PLAYER_NAME[player], { size: 'md', color: styleTone(st, 0) });
     root.add(name.root);
     // the LP number: a mechanical counter, its glyph boxes where today's digits stood (F3)
-    const counter = new LpCounter(sc, root, HUD3.lpCounter.x, capYV3(LP_WHEELS.size, HUD3.lp.cap), lp);
+    const counter = new LpCounter(sc, root, G.lpCounter.x, capYV3(LP_WHEELS.size, G.lp.cap), lp);
     const bar = sc.add.graphics();
     root.add(bar);
     // counts: today's glyphs re-toned to the owner's ramp, white numbers
     const counts = {} as Record<Kind, CountV3>;
     const groups: [Kind, string, number][] = [
-      ['deck', ICON.deck, HUD3.counts.x[0]],
-      ['hand', ICON.hand, HUD3.counts.x[1]],
-      ['grave', ICON.grave, HUD3.counts.x[2]],
+      ['deck', ICON.deck, G.counts.x[0]],
+      ['hand', ICON.hand, G.counts.x[1]],
+      ['grave', ICON.grave, G.counts.x[2]],
     ];
     const tones = iconTones(st, 0);
     for (const [k, src, x] of groups) {
       const key = iconTexture(sc, src, tones) ?? src;
       const f = sc.textures.getFrame(key);
-      const iy = Math.round(HUD3.counts.cy - f.height / 2);
+      const iy = Math.round(G.counts.cy - f.height / 2);
       const icon = sc.add.image(x, iy, key).setOrigin(0);
-      const text = new PalText(sc, x + f.width + 3, capYV3('md', HUD3.counts.cy - 3), '0', { size: 'md', color: PAL.white });
+      const text = new PalText(sc, x + f.width + 3, capYV3('md', G.counts.cy - 3), '0', { size: 'md', color: PAL.white });
       root.add([icon, text.root]);
       counts[k] = { icon, text, value: 0, baseY: iy, at: { x: x + Math.round(f.width / 2), y: iy + Math.round(f.height / 2) }, tone: PAL.white };
     }
-    const chipX = w - HUD3.chip.w - HUD3.chip.right;
-    const chip = sc.add.image(chipX, HUD3.chip.y, canvasTexture(sc, `ui3:hud:chip:${player}:0`, () => chipV3(player, 0))).setOrigin(0).setVisible(false);
+    const chipX = w - G.chip.w - G.chip.right;
+    const chip = sc.add.image(chipX, G.chip.y, canvasTexture(sc, `ui3:hud:chip:${player}:0`, () => chipV3(player, 0))).setOrigin(0).setVisible(false);
     root.add(chip);
     // Neon Tower: the player's face replaces the hexagon's number (same slot, same size, no layout shift)
     let portrait: Phaser.GameObjects.Image | null = null;
-    if (ARENA_NT) {
-      portrait = sc.add.image(HUD3.emblem.x, HUD3.emblem.y, canvasTexture(sc, this.portraitTexKey(player, 'idle', false), () => hudPortrait(player, 'idle', false))).setOrigin(0);
+    if (ARENA_NT && !compactPanel(player)) {
+      portrait = sc.add.image(G.emblem.x, G.emblem.y, canvasTexture(sc, this.portraitTexKey(player, 'idle', false), () => hudPortrait(player, 'idle', false))).setOrigin(0);
       root.add(portrait);
     }
     const P: PanelV3 = {
@@ -1308,7 +1312,7 @@ export class HudV3 implements HudApi {
   private drawBar(P: PanelV3): void {
     const g = P.bar;
     const R = this.rampOf(P.player);
-    const { x, y, w, h } = HUD3.bar;
+    const { x, y, w, h } = hudGeom(P.player).bar;
     const S = LP_V3.barStep;
     // positions across both laps (0 … 2w): the steps below work on them
     const k = (v: number) => lpBarPos(v, w);

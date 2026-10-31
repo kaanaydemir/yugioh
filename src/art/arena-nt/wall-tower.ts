@@ -15,9 +15,9 @@ import { T } from './wall-kit';
 export const TOWER_W = 168;
 export const TOWER_H = 102;
 /** Emblem plate position inside the tower texture. */
-export const EMBLEM_AT = { x: 62, y: 22 } as const;
+export const EMBLEM_AT = { x: 48, y: 21 } as const;
 /** Corridor opening (the part the platform's far corner may overlap) inside the tower texture. */
-export const CORRIDOR_AT = { x: 70, y: 48, w: 28, h: 10 } as const;
+export const CORRIDOR_AT = { x: 70, y: 58, w: 28, h: 10 } as const;
 /** Where the energy line runs (local x of its two pixels, y range above the emblem and below the corridor). */
 export const ENERGY_LINE = { x: 83, y0: 0, y1: 21 } as const;
 
@@ -112,49 +112,60 @@ function leftHalf(): PixelCanvas {
   p.vline(83, 0, 21, T.c1);
   p.vline(82, 0, 21, T.c0);
   for (let y = 3; y < 22; y += 6) p.vline(83, y, y + 2, T.c2);
-  // spine panels around the emblem plate (plate occupies x 62..83 of the half, y 22..47)
-  p.rect(62, 22, 22, 26, T.ink);
-  // below the plate: lintel of the corridor
-  p.rect(62, 48, 22, 10, T.n1);
-  p.hline(62, 83, 48, T.n2);
-  // corridor opening (28 wide: local x 70..83 in the half)
-  p.rect(70, 49, 14, 9, T.ink);
-  p.vline(70, 49, 57, T.n3);
-  p.vline(71, 49, 57, T.n2);
-  p.hline(70, 83, 49, T.n3);
-  p.hline(71, 83, 50, T.n2);
-  // inner depth: a dim cyan back light and three lit steps
-  p.hline(73, 83, 54, T.c0);
-  p.hline(73, 83, 55, T.c1);
-  p.hline(72, 83, 56, T.c0);
-  p.hline(72, 83, 57, T.c1);
-  // stair below the corridor: three steps, each wider, edge lit dim
-  p.rect(66, 58, 18, 2, T.n2);
-  p.hline(66, 83, 58, T.n3);
-  p.hline(66, 83, 59, T.c0);
-  p.rect(62, 60, 22, 2, T.n1);
-  p.hline(62, 83, 60, T.n2);
-  p.hline(62, 83, 61, T.c0);
-  p.rect(58, 62, 26, 3, T.n0);
-  p.hline(58, 83, 62, T.n1);
-  p.hline(58, 83, 63, T.c0);
-  p.hline(58, 83, 64, T.ink);
-  // guide strips along the stair sides leading down to the base: dim cyan0 lines
-  p.vline(60, 65, 92, T.c0);
-  p.vline(61, 65, 92, T.n1);
-  // podium below the stair: darker mass with plates
-  p.rect(62, 65, 22, 37, T.n0);
-  p.vline(62, 65, 101, T.n1);
-  for (const y of [74, 86]) {
+  // ---- the arch: a tall dark recess behind the big emblem (local x 46..83), chamfered at the head
+  for (let y = 19; y < H; y++) {
+    const x0 = y < 23 ? 46 + (23 - y) : 46;
+    p.hline(x0, 83, y, T.ink);
+    if (y >= 23) {
+      p.set(46, y, T.n2);
+      p.set(47, y, y % 6 < 3 ? T.c0 : T.n0);
+    }
+  }
+  for (let i = 0; i < 4; i++) p.set(50 - i, 19 + i, T.n3);
+  p.hline(50, 83, 19, T.n3);
+  p.hline(50, 83, 20, T.n1);
+  // faint back-light bars inside the arch (stepped, 2 tones) so the wings read against a lit stage
+  for (const [y, w] of [
+    [24, 0],
+    [48, 3],
+  ] as const) p.hline(49 + w, 83, y, T.c0);
+  // ---- corridor under the shield tip (y 58..69), three lit steps, a door glow
+  const d = 9;
+  p.rect(70, 49 + d, 14, 9, T.ink);
+  p.vline(70, 49 + d, 57 + d, T.n3);
+  p.vline(71, 49 + d, 57 + d, T.n2);
+  p.hline(70, 83, 49 + d, T.n3);
+  p.hline(71, 83, 50 + d, T.n2);
+  p.hline(73, 83, 54 + d, T.c0);
+  p.hline(73, 83, 55 + d, T.c1);
+  p.hline(72, 83, 56 + d, T.c1);
+  p.hline(72, 83, 57 + d, T.c2);
+  p.rect(66, 58 + d, 18, 2, T.n2);
+  p.hline(66, 83, 58 + d, T.n3);
+  p.hline(66, 83, 59 + d, T.c1);
+  p.rect(62, 60 + d, 22, 2, T.n1);
+  p.hline(62, 83, 60 + d, T.n2);
+  p.hline(62, 83, 61 + d, T.c0);
+  p.rect(58, 62 + d, 26, 3, T.n0);
+  p.hline(58, 83, 62 + d, T.n1);
+  p.hline(58, 83, 63 + d, T.c0);
+  p.vline(60, 65 + d, 92, T.c0);
+  p.vline(61, 65 + d, 92, T.n1);
+  p.rect(62, 65 + d, 22, H - 65 - d, T.n0);
+  p.vline(62, 65 + d, H - 1, T.n1);
+  for (const y of [84, 92]) {
     p.hline(64, 83, y, T.n1);
     p.hline(64, 83, y + 1, T.ink);
   }
-  p.rect(66, 90, 18, 8, T.ink);
-  p.frame(66, 90, 18, 8, T.n1);
+  // pennant ribs flanking the arch: short lit chevrons climbing the spine
+  for (let y = 26; y < 56; y += 10) {
+    p.hline(40, 44, y, T.n2);
+    p.set(41, y - 1, T.n3);
+  }
   // small LED group on the spine flank above the corridor
-  p.set(66, 40, T.c1);
-  p.set(66, 43, T.r1);
-  p.set(66, 46, T.c1);
+  p.set(40, 40, T.c1);
+  p.set(40, 43, T.r1);
+  p.set(40, 46, T.c1);
   return p;
 }
 

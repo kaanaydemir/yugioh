@@ -1,9 +1,10 @@
 // Neon Tower layout map (docs/v3/ARENA_NEON_TOWER.md §3): the rects of src/view/board-nt/layout-nt.ts
 // must agree with layout.ts (the tiles never move), keep the HUD readable, and the flag stays off
 // unless ?look=v3&arena=nt.
+import { FRAME_H, FRAME_W, SCREEN_AT } from '../../src/art/arena-nt/screens';
 import { describe, expect, it } from 'vitest';
 import { ARENA_NT } from '../../src/view/board-nt/flag';
-import { DUELIST_PADS, HOLOS, KEEP_OUT, PLATE_CORNERS, SCREENS, STANDS, ntIso, ntRegions, rectsOverlap, standsBounds } from '../../src/view/board-nt/layout-nt';
+import { DUELIST_PADS, FACE_H, PLATE_FULL, PLATE_TOP, HOLOS, KEEP_OUT, PLATE_CORNERS, SCREENS, STANDS, ntIso, ntRegions, rectsOverlap, standsBounds } from '../../src/view/board-nt/layout-nt';
 import { duelistXY, zoneXY } from '../../src/view/layout';
 
 describe('neon tower layout map', () => {
@@ -29,6 +30,12 @@ describe('neon tower layout map', () => {
     expect(PLATE_CORNERS.right).toEqual({ x: 536, y: 176 });
   });
 
+  it('gives the platform a thick armour side (J1: 26..32 px) and a bounding box that includes it', () => {
+    expect(FACE_H).toBeGreaterThanOrEqual(26);
+    expect(FACE_H).toBeLessThanOrEqual(32);
+    expect(PLATE_FULL.y + PLATE_FULL.h).toBe(PLATE_TOP.y + PLATE_TOP.h + FACE_H);
+  });
+
   it('centres each duelist pad on the duelist feet', () => {
     for (const p of [0, 1] as const) {
       const d = duelistXY(p);
@@ -49,8 +56,9 @@ describe('neon tower layout map', () => {
     for (const s of SCREENS) {
       expect(s.x).toBeGreaterThanOrEqual(0);
       expect(s.x + s.w).toBeLessThanOrEqual(640);
-      expect(s.w).toBe(90);
-      expect(s.h).toBe(62);
+      expect(s.w).toBe(FRAME_W);
+      expect(s.h).toBe(FRAME_H);
+      expect({ x: s.x, y: s.y }).toEqual(SCREEN_AT[SCREENS.indexOf(s)]);
     }
     for (const h of HOLOS) {
       expect(h.box.x).toBeGreaterThanOrEqual(0);
@@ -60,8 +68,8 @@ describe('neon tower layout map', () => {
       const r = standsBounds(b);
       expect(r.x + r.w).toBeLessThanOrEqual(640);
       expect(r.y).toBeGreaterThan(100);
-      // below the HUD hint plate and the hand
-      expect(r.y + r.h).toBeLessThan(KEEP_OUT.hint.y);
+      // clear of the always-visible HUD and of the hologram corners (x<150,y<150 / x>490,y<150)
+      for (const k of ['hint', 'p1Panel', 'hand', 'buttons', 'p2Panel', 'toolbar', 'phaseBar']) expect(rectsOverlap(r, KEEP_OUT[k]), `stand ${b.side} vs ${k}`).toBe(false);
     }
   });
 });

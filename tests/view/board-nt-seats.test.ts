@@ -6,8 +6,9 @@ import { SEATS, railDepth, seatDepth, seatsOf } from '../../src/view/board-nt/se
 
 describe('neon tower seats', () => {
   it('has both stands filled, left blue and right crimson', () => {
-    expect(seatsOf(0).length).toBeGreaterThan(20);
-    expect(seatsOf(1).length).toBeGreaterThan(40);
+    expect(seatsOf(0).length).toBeGreaterThan(40);
+    expect(seatsOf(1).length).toBeGreaterThan(50);
+    expect(SEATS.length).toBeGreaterThanOrEqual(100);
     expect(SEATS.every((s) => s.team === s.side && s.flipX === (s.side === 1))).toBe(true);
   });
   it('keeps every spectator cell inside the frame and off the always-visible HUD', () => {
@@ -24,11 +25,11 @@ describe('neon tower seats', () => {
     expect(SEATS.map((s) => s.id)).toEqual(SEATS.map((_, i) => i));
   });
   it('puts a row\'s railing between its own spectators and the next row\'s', () => {
-    for (let k = 0; k < 3; k++) {
+    for (let k = 0; k < 4; k++) {
       expect(railDepth(k)).toBeGreaterThan(seatDepth(k));
       expect(railDepth(k)).toBeLessThan(seatDepth(k + 1));
     }
-    expect(railDepth(2)).toBeLessThan(NT_DEPTH.crowdFx);
+    expect(railDepth(4)).toBeLessThan(NT_DEPTH.crowdFx);
     expect(seatDepth(0)).toBeGreaterThan(NT_DEPTH.stands);
   });
 });

@@ -6,8 +6,9 @@
 import { PixelCanvas } from '../pixel';
 import { T } from './wall-kit';
 
-export const EMBLEM_W = 44;
-export const EMBLEM_H = 26;
+export const EMBLEM_W = 72;
+export const EMBLEM_H = 38;
+const HW = EMBLEM_W / 2;
 
 function tones(frame: 0 | 1): { rim: number; hi: number; body: number; dark: number; core: number; coreHi: number } {
   return frame === 0
@@ -16,112 +17,87 @@ function tones(frame: 0 | 1): { rim: number; hi: number; body: number; dark: num
 }
 
 /**
- * Winged shield, drawn procedurally into a 22-column half (mirrored): three swept feather blades
- * (each a tapered wedge with a lit top edge), a pointed shield with a lit rim, a split seam and a diamond core.
+ * Winged shield, left half (36 columns, axis at x = 36): four swept feather blades (tapered wedges with a lit top
+ * edge), a pointed shield with a lit rim, a split seam and a diamond core. 2-3 tones only, no plate: it floats in the arch.
  */
 function paintHalf(frame: 0 | 1): PixelCanvas {
-  const p = new PixelCanvas(22, EMBLEM_H);
+  const p = new PixelCanvas(HW, EMBLEM_H);
   const c = tones(frame);
-  // feather blades: root (rx, ry) at the shield flank → tip (tx, ty); thickness tapers 3 → 1
+  // feather blades: root (rx, ry) at the shield flank -> tip (tx, ty); long upper feathers, shorter lower ones
   const blades: [number, number, number, number][] = [
-    [16, 7, 1, 2],
-    [16, 11, 3, 8],
-    [16, 15, 6, 14],
+    [27, 9, 0, 1],
+    [27, 13, 2, 8],
+    [27, 17, 5, 15],
+    [27, 21, 10, 22],
+    [27, 25, 17, 29],
   ];
   for (const [rx, ry, tx, ty] of blades) {
     p.poly(
       [
-        [rx + 1, ry - 1],
+        [rx + 1, ry - 2],
         [rx + 1, ry + 3],
-        [tx, ty + 1],
+        [tx, ty + 2],
         [tx, ty],
       ],
       c.body,
     );
-    p.line(rx, ry - 1, tx, ty, c.hi); // lit top edge
-    p.line(rx, ry + 2, tx + 2, ty + 1, c.dark); // shaded underside
+    p.line(rx, ry - 2, tx, ty, c.hi); // lit top edge
+    p.line(rx, ry + 2, tx + 2, ty + 2, c.dark); // shaded underside
   }
-  // a short fourth feather pointing down-left under the wing
+  // shield (left half, axis x = 36): flank x 26, taper to the tip (36, 37)
   p.poly(
     [
-      [17, 17],
-      [17, 19],
-      [11, 20],
-      [11, 19],
+      [26, 3],
+      [36, 3],
+      [36, 37],
+      [32, 31],
+      [26, 20],
     ],
-    c.body,
+    c.dark,
   );
-  p.line(16, 17, 11, 19, c.rim);
-  // shield (left half, axis at x = 22): top y 4, flank x 17 down to y 12, taper to the tip (22, 23)
-  const shield: [number, number][] = [
-    [17, 4],
-    [22, 4],
-    [22, 23],
-    [20, 20],
-    [17, 14],
-  ];
-  p.poly(shield, c.dark);
   p.poly(
     [
-      [19, 6],
-      [22, 6],
-      [22, 20],
-      [20, 16],
-      [19, 12],
+      [28, 6],
+      [36, 6],
+      [36, 32],
+      [32, 27],
+      [28, 18],
     ],
     c.body,
   );
   p.polyline(
     [
-      [17, 4],
-      [22, 4],
+      [26, 3],
+      [36, 3],
     ],
     c.rim,
   );
   p.polyline(
     [
-      [17, 4],
-      [17, 14],
-      [20, 20],
-      [22, 23],
+      [26, 3],
+      [26, 20],
+      [32, 31],
+      [36, 37],
     ],
     c.rim,
   );
-  // diamond core on the axis (left half of it)
-  p.hline(21, 21, 8, c.core);
-  p.hline(20, 21, 9, c.core);
-  p.hline(19, 21, 10, c.core);
-  p.hline(20, 21, 11, c.core);
-  p.hline(21, 21, 12, c.core);
-  p.hline(21, 21, 9, c.coreHi);
-  p.hline(21, 21, 10, c.coreHi);
+  // diamond core on the axis (left half)
+  for (let i = 0; i < 9; i++) {
+    const w = i < 5 ? i + 1 : 9 - i;
+    p.hline(36 - w, 35, 8 + i, c.core);
+  }
+  p.vline(35, 11, 15, c.coreHi);
+  p.vline(34, 12, 14, c.coreHi);
+  // split seam below the core
+  p.vline(35, 19, 27, c.dark);
   return p;
 }
 
 export function paintEmblem(frame: 0 | 1): PixelCanvas {
   const p = new PixelCanvas(EMBLEM_W, EMBLEM_H);
-  // plate: ink with a 1-px n2 frame, cut corners
-  p.rect(0, 0, EMBLEM_W, EMBLEM_H, T.ink);
-  p.frame(0, 0, EMBLEM_W, EMBLEM_H, T.n2);
-  p.frame(1, 1, EMBLEM_W - 2, EMBLEM_H - 2, T.n0);
-  for (const [x, y] of [
-    [0, 0],
-    [EMBLEM_W - 1, 0],
-    [0, EMBLEM_H - 1],
-    [EMBLEM_W - 1, EMBLEM_H - 1],
-  ] as const)
-    p.set(x, y, T.n0);
   const half = paintHalf(frame);
   p.blit(half, 0, 0);
-  p.blit(half, 22, 0, { flipX: true });
-  // plate corner studs
-  for (const [x, y] of [
-    [3, 3],
-    [EMBLEM_W - 4, 3],
-    [3, EMBLEM_H - 4],
-    [EMBLEM_W - 4, EMBLEM_H - 4],
-  ] as const)
-    p.set(x, y, frame === 0 ? T.n3 : T.n4);
+  p.blit(half, HW, 0, { flipX: true });
   return p;
 }
 

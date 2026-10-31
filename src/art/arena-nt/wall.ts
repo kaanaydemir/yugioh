@@ -123,18 +123,15 @@ export interface Deco {
   z: keyof typeof WALL_Z;
 }
 
-/** The two screen bays (frame 90×62 + 4 px margin; B2 draws the screens inside at SCREENS[i]). */
-export const BAYS = [
-  { x: 142, y: 16 },
-  { x: 394, y: 16 },
-] as const;
+/**
+ * The two screen bays. J3: the screens are now ANGLED quads (src/art/arena-nt/screens.ts, they carry their own ceiling rods), so the wall
+ * paints no rectangular bay recess / mount / LED behind them any more: the list is empty.
+ */
+export const BAYS: readonly { x: number; y: number }[] = [];
 export { BAY_W, BAY_H };
 
-/** Hologram socle top-face centres = the plinth centres of layout-nt HOLOS. */
-export const SOCLES = [
-  { frame: 'socle:c', cx: 52, cy: 136 },
-  { frame: 'socle:v', cx: 588, cy: 136 },
-] as const;
+/** Hologram socle top-face centres. J3: the hologram layer paints its own round pedestal (src/art/arena-nt/holo.ts), so the wall has none. */
+export const SOCLES: readonly { frame: string; cx: number; cy: number }[] = [];
 
 /** Hatches, vents and cable runs on the floor (screen px of the 34×18 sprite). Blue side left, crimson side right. */
 export const FLOOR_PROPS: readonly { frame: string; x: number; y: number }[] = [
@@ -204,8 +201,8 @@ function leds(): WallLed[] {
     [26, 62, 'g', 'flick'],
     [38, 60, 'c', 'blink'],
     [53, 72, 'r', 'pulse'],
-    [66, 36, 'c', 'pulse'],
-    [66, 52, 'r', 'blink'],
+    [40, 40, 'c', 'pulse'],
+    [40, 43, 'r', 'blink'],
   ] as const) {
     add(T0 + dx, dy, hue, mode);
     add(T0 + TOWER_W - 3 - dx, dy, hue === 'r' ? 'c' : hue === 'c' ? 'r' : hue, mode === 'blink' ? 'pulse' : mode === 'pulse' ? 'blink' : mode);

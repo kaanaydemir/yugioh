@@ -535,7 +535,29 @@ export const INSPECT_W_Z5 = 100;
 export const HINT_Y_Z5 = 262;
 
 const UI_BASE: UiLayout = byArena(UI_V1, UI_V2);
-export const UI: UiLayout = ZONES5 ? { ...UI_BASE, inspect: { ...UI_BASE.inspect, w: INSPECT_W_Z5 } } : UI_BASE;
+/**
+ * Neon Tower (the v3 default arena, src/view/board-nt/flag.ts): player 2's panel is the compact 148 × 47 one (src/view/v3/hudSkin.ts
+ * HUD3_P2C) so the right hologram has the corner below it. Same switch as flag.ts (which imports this module, so it is repeated
+ * here); v1 / v2 and `?arena=old` keep the 148 × 64 panel.
+ */
+export const P2_PANEL_COMPACT_H = 47;
+function ntArenaOn(): boolean {
+  if (!LOOK_V3) return false;
+  try {
+    const g = (globalThis as { __NEON_ARENA_NT?: unknown }).__NEON_ARENA_NT;
+    if (g === true || g === false) return g;
+    if (typeof location !== 'undefined' && typeof URLSearchParams !== 'undefined') {
+      const a = new URLSearchParams(location.search).get('arena');
+      if (a === 'nt') return true;
+      if (a === 'old' || a === 'calm') return false;
+    }
+  } catch {
+    /* no globals (tests, workers) */
+  }
+  return true;
+}
+const UI_Z: UiLayout = ZONES5 ? { ...UI_BASE, inspect: { ...UI_BASE.inspect, w: INSPECT_W_Z5 } } : UI_BASE;
+export const UI: UiLayout = ntArenaOn() ? { ...UI_Z, p2Panel: { ...UI_Z.p2Panel, h: P2_PANEL_COMPACT_H } } : UI_Z;
 /** Y of the hint line plate (v3 HUD). */
 export const HINT_Y: number = ZONES5 ? HINT_Y_Z5 : 252;
 

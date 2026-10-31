@@ -16,6 +16,8 @@
 
 import type Phaser from 'phaser';
 import { DEPTH } from '../../view/layout';
+import { ARENA_NT } from '../../view/board-nt/flag';
+import { SCREENS } from '../../view/board-nt/layout-nt';
 import { buildNumberTextures } from '../../vfx/numbers';
 import { peekShowClock } from '../../duel/showclock';
 
@@ -39,6 +41,25 @@ export interface ImpactNumberOpts {
 const easeOutQuad = (t: number): number => 1 - (1 - t) * (1 - t);
 
 /**
+ * Neon Tower (J3): keep a number clear of the two portrait screens (layout-nt SCREENS, the sheared bounding boxes). A number whose box
+ * (width ≈ 8 px per character, its jump + float included) meets a screen is moved to just under that screen's lower edge and floats
+ * less; with any other arena nothing changes.
+ */
+export function awayFromScreens(x: number, y: number, size: number, rise: number, chars: number): { y: number; rise: number } {
+  if (!ARENA_NT) return { y, rise };
+  const hw = Math.ceil((chars * 8 * size) / 2) + 2;
+  const top = y - 7 - rise - 6 * size;
+  const bottom = y + 6 * size;
+  for (const r of SCREENS) {
+    if (x + hw > r.x && x - hw < r.x + r.w && bottom > r.y && top < r.y + r.h) {
+      const r2 = Math.min(rise, 6);
+      return { y: r.y + r.h + 4 + 7 + r2 + 6 * size, rise: r2 };
+    }
+  }
+  return { y, rise };
+}
+
+/**
  * Pop a damage number at (x, y) that is visible on the frame it is created (see the header).
  * Returns when the pop is over.
  */
@@ -46,10 +67,12 @@ export function impactNumber(scene: Phaser.Scene, x: number, y: number, amount: 
   buildNumberTextures(scene);
   const kind = o.kind ?? 'damage';
   const size = o.size ?? 1;
-  const rise = o.rise ?? 18;
   const text = (kind === 'damage' ? '-' : '+') + String(Math.abs(Math.round(amount)));
   const x0 = Math.round(x);
-  const y0 = Math.round(y);
+  // Neon Tower: a number never lands on (or floats up through) a portrait screen: it pops just below the screen's lower edge instead
+  const off = awayFromScreens(x0, Math.round(y), size, o.rise ?? 18, text.length);
+  const y0 = off.y;
+  const rise = off.rise;
   const c = scene.add.container(x0, y0).setDepth(o.depth ?? DEPTH.FX_TOP + 50);
   // lay the digits out like numbers.ts (cell = glyph + 1 px outline left/top + outline/shadow right/bottom)
   const first = kind === 'damage' ? 'fx:num:flash' : 'fx:num:heal';

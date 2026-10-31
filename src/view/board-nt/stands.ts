@@ -8,7 +8,7 @@
 // stepped on the scene clock in tick(), no tweens. Painter: src/art/arena-nt/stands*.ts.
 
 import Phaser from 'phaser';
-import { NT_STANDS_KEY, paintStandsAtlas, standRows } from '../../art/arena-nt/stands';
+import { NT_STANDS_KEY, bakeStandBody, ntStandBodyKey, paintStandsAtlas, standBodyRect, standRows } from '../../art/arena-nt/stands';
 import type { NtAtlas } from '../../art/arena-nt/wall-kit';
 import { NT_DEPTH } from './layout-nt';
 import { type NtCtx, type NtLayer } from './layer';
@@ -25,6 +25,7 @@ export function ensureStandsTextures(scene: Phaser.Scene): void {
   ensureNtTexture(scene, 'stands', NT_STANDS_KEY, () => standsAtlas().canvas);
   const tex = scene.textures.get(NT_STANDS_KEY);
   for (const [name, r] of Object.entries(standsAtlas().frames)) if (!tex.has(name)) tex.add(name, 0, r.x, r.y, r.w, r.h);
+  for (const side of [0, 1] as const) ensureNtTexture(scene, 'stands', ntStandBodyKey(side), () => bakeStandBody(side, standsAtlas()).canvas);
 }
 
 type Bob = Phaser.GameObjects.Bob;
@@ -51,10 +52,11 @@ export function createStandsLayer(ctx: NtCtx): NtLayer {
   ensureStandsTextures(scene);
   const rows = standRows();
 
-  // the staircase, back walls and skirts: one blitter for the whole structure (below every spectator)
-  const body = ctx.add(scene.add.blitter(0, 0, NT_STANDS_KEY).setDepth(NT_DEPTH.stands));
-  // row k: back (row 0), treads, skirt (last row) — in row order so a lower row paints over the one behind
-  for (const r of rows) for (const q of [...r.back, ...r.tread, ...r.skirt]) body.create(q.x, q.y, q.frame);
+  // the staircase, back strip, skirt and banners: ONE baked image per side (below every spectator)
+  for (const side of [0, 1] as const) {
+    const r = standBodyRect(side);
+    ctx.add(scene.add.image(r.x, r.y, ntStandBodyKey(side)).setOrigin(0).setDepth(NT_DEPTH.stands));
+  }
 
   // the railings: one blitter per (side, row), at the depth between that row's spectators and the next row's
   const rails: RailRun[] = [];

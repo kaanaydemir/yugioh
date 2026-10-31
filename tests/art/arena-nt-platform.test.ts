@@ -30,7 +30,9 @@ describe('neon tower platform painters', () => {
     const p = buildPadsArt();
     expect(offPalette(f.atlas.canvas)).toBe(0);
     expect(offPalette(p.atlas.canvas)).toBe(0);
-    expect(f.atlas.frames.has('slot:0:main')).toBe(true);
+    expect(f.atlas.frames.has('slot:0:main:0:0')).toBe(true);
+    expect(f.atlas.frames.has('slot:1:main:2:1')).toBe(true);
+    expect(f.atlas.frames.has('slot:0:pile:1:0')).toBe(true);
     expect(p.atlas.frames.has('pad:1:3')).toBe(true);
   });
 });

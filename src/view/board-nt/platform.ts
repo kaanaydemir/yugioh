@@ -164,7 +164,7 @@ export function createPlatformLayer(ctx: NtCtx): NtLayer {
         const u = (t / s.period + s.phase) % 1;
         let level = Math.max(waveLevel(u), sideLevel(s.side));
         if (t < s.liftUntil) level = Math.max(level, s.lift);
-        const tone = STRIP_TONES[s.side][1 + Math.min(2, level)];
+        const tone = STRIP_TONES[s.side][2 + Math.min(2, level)];
         // level 0 is the baked dim strip: show the mask only when it is lifted
         s.img.setVisible(level > 0).setTint(tone);
       }

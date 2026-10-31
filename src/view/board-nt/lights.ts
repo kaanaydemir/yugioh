@@ -177,8 +177,11 @@ export function createLightsLayer(ctx: NtCtx): NtLayer {
     return { x: Math.round((a.x + b.x) / 2), y: Math.round((a.y + b.y) / 2) };
   };
   const FLOOR_K = 0.5;
+  // J1: the two big flood ellipses (rx 150) overlapped across the middle (a crimson wedge over the blue half) and, at half density, dithered
+  // every tile. The side tints now live in the slot art (src/art/arena-nt/floor.ts); the stepped sampler itself stays for flashes / volcano.
+  const FLOOR_POOLS = false;
   try {
-    for (const p of [0, 1] as const) {
+    for (const p of FLOOR_POOLS ? ([0, 1] as const) : []) {
       const c = poolAt(p);
       const h = addLight(scene, { x: c.x, y: c.y, radius: 150, ry: 74, color: p === 0 ? PAL.cyan3 : PAL.crim3, intensity: 0, group: 'flood', anim: 'steady' });
       floor.push(h);

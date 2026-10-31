@@ -3,7 +3,7 @@ import { ARENA_NT } from '../view/board-nt/flag';
 import type { BootStep } from './types';
 
 /**
- * Neon Tower arena (crowd layer, docs/v3/ARENA_NEON_TOWER.md): builds the spectator atlas (8 looks × 20 frames, one
+ * Neon Tower arena (crowd layer, docs/v3/ARENA_NEON_TOWER.md): builds the spectator atlas (9 looks × 23 frames, one
  * ~100 KB texture) — only with ?look=v3&arena=nt (ARENA_NT; in every other page this step returns at once and
  * builds nothing).
  */

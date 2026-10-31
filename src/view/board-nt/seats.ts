@@ -1,24 +1,24 @@
-// Neon Tower: the grandstand SEATS (owner A2; consumed by the crowd layer, owner B1).
+// Neon Tower: the grandstand SEATS (consumed by the crowd layer and the stands painter).
 //
 // Pure data, no Phaser: where every spectator stands, which row draws when, and how the row's depth
-// interleaves with the stand's railings. The geometry follows layout-nt.ts STANDS (docs §8): three
-// rows per side, the feet line of row k being
-//     left  (side 0, blue):   y = a + floor((x + 10k) / 2) + 4k      x = x0 − 10k … x1
-//     right (side 1, crimson): y = a − ceil((x − 10k) / 2) + 4k       x = x0 … x1
-// i.e. each row is 10 px further out and (at the same x) 9 px lower than the row behind it, so the
-// rows stack like terraces and the heads of row k show above the shoulders of row k+1.
+// interleaves with the stand's railings. The geometry follows layout-nt.ts STANDS (docs §8): four
+// tiers per side, the feet line of tier k being
+//     left  (side 0, blue):    y = a + floor(x / 2) + rowDy·k
+//     right (side 1, crimson): y = a − ceil(x / 2) + rowDy·k
+// and tier k covering x0 + shiftA·k … min(xMax, x1 + shiftB·k): every tier lies rowDy px lower at the same
+// x and is shifted outward along the iso diagonal, so the tiers stack like a flight of terraces and each row
+// shows a clean band of heads above the railing of the one in front of it.
 //
 // DEPTH CONTRACT (the stand's railings sit IN FRONT of their own row and BEHIND the next row):
 //   row k spectators  → seatDepth(k)  = NT_DEPTH.crowd + 0.1·k
 //   row k railing     → railDepth(k)  = NT_DEPTH.crowd + 0.1·k + 0.05          (stands.ts draws it)
-//   tiers / steps     → NT_DEPTH.stands (below every spectator)
-// The crowd layer therefore draws one batch PER ROW at seatDepth(row) (three batches per side at most;
-// still a single atlas). Glow sticks / reaction sparks stay at NT_DEPTH.crowdFx (18, above all rails).
-// The railing hides the lowest RAIL_H pixels of the spectator cell (feet and shins), so poses should
-// keep everything that matters above `y − RAIL_H`.
+//   steps / skirt     → NT_DEPTH.stands (below every spectator)
+// The crowd layer draws one batch PER ROW at seatDepth(row) (still a single atlas). Glow sticks / reaction
+// sparks stay at NT_DEPTH.crowdFx (18, above all rails). The railing hides the lowest RAIL_H pixels of the
+// spectator cell (feet and shins), so poses keep everything that matters above `y − RAIL_H`.
 //
 // Seats are listed row by row, left to right, front row (nearest the platform) first. Every number is
-// an integer screen pixel (feet = bottom centre of the 12×16 spectator cell, CROWD_CELL).
+// an integer screen pixel (feet = bottom centre of the 14×22 spectator cell, CROWD_CELL).
 
 import { CROWD_CELL, NT_DEPTH, STANDS, type StandBlock } from './layout-nt';
 
@@ -30,7 +30,7 @@ export interface Seat {
   readonly id: number;
   /** 0 = blue stand on the left, 1 = crimson stand on the right. */
   readonly side: 0 | 1;
-  /** 0 = front row (nearest the platform), 1, 2 = further out and lower. */
+  /** 0 = front row (nearest the platform), 1, 2, 3 = further out and lower. */
   readonly row: number;
   /** Column in the row, left to right. */
   readonly col: number;
@@ -56,22 +56,22 @@ export function railDepth(row: number): number {
 
 /** Row `k` of block `b`: the feet y at screen x (integer math, shared by seats and the stand painter). */
 export function feetY(b: StandBlock, k: number, x: number): number {
-  return b.side === 0 ? b.feet0.a + Math.floor((x + 10 * k) / 2) + 4 * k : b.feet0.a - Math.ceil((x - 10 * k) / 2) + 4 * k;
+  return b.side === 0 ? b.feet0.a + Math.floor(x / 2) + b.rowDy * k : b.feet0.a - Math.ceil(x / 2) + b.rowDy * k;
 }
 
 /** x range [xa, xb] (feet x of the first / last seat) of row `k` of block `b`. */
 export function rowRange(b: StandBlock, k: number): { xa: number; xb: number } {
-  return b.side === 0 ? { xa: b.x0 - 10 * k, xb: b.x1 } : { xa: b.x0, xb: Math.min(b.xMax, b.x1 + 10 * k) };
+  return { xa: b.x0 + b.shiftA * k, xb: Math.min(b.xMax, b.x1 + b.shiftB * k) };
 }
 
 /**
- * The aisle (a lit stair gap without seats) of each stand. Only the right stand has one: row k's gap starts at
- * x = x0 + shift·k (the stand's rows are shifted 10 px outward per row, so the aisle runs down the iso diagonal),
- * AISLE_W px wide; seats keep AISLE_PAD px clear on both sides (half a spectator cell + 1).
+ * The aisle (a lit stair gap without seats) of each stand. Only the right stand has one (it is the long one): row k's
+ * gap starts at x = x0 + shift·k (the tiers step outward, so the aisle runs down the iso diagonal), AISLE_W px
+ * wide; seats keep AISLE_PAD px clear on both sides (half a spectator cell).
  */
 export const AISLE_W = 16;
 export const AISLE_PAD = 7;
-export const AISLES: readonly ({ x0: number; shift: number } | null)[] = [null, { x0: 540, shift: 10 }];
+export const AISLES: readonly ({ x0: number; shift: number } | null)[] = [null, { x0: 544, shift: 16 }];
 
 /** Left x of the aisle gap in row `k` of block `b` (null = no aisle in that stand). */
 export function aisleX(b: StandBlock, k: number): number | null {
@@ -92,7 +92,7 @@ function build(): Seat[] {
     for (let k = 0; k < b.rows; k++) {
       const { xa, xb } = rowRange(b, k);
       // odd rows start half a pitch in, so the spectators do not stack in columns
-      const start = xa + (k % 2 === 1 ? 4 : 0);
+      const start = xa + (k % 2 === 1 ? b.pitch / 2 : 0);
       const ax = aisleX(b, k);
       let col = 0;
       const push = (x: number): void => {
@@ -120,7 +120,7 @@ function build(): Seat[] {
   return out;
 }
 
-/** Every spectator seat, both stands (≈ 27 left + ≈ 55 right). */
+/** Every spectator seat, both stands. */
 export const SEATS: readonly Seat[] = build();
 
 /** The seats of one side, row by row. */

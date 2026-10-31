@@ -5,7 +5,7 @@ import { PixelCanvas } from '../../src/art/pixel';
 import { PORTRAIT_H, PORTRAIT_W, paintPortrait } from '../../src/art/arena-nt/portraits';
 import { screensBake, picName, overlayName, OVERLAY_KINDS } from '../../src/art/arena-nt/screens';
 import { blinkAt, sweepAt, swayAt } from '../../src/art/arena-nt/screens-anim';
-import { HOLO_LOOKS, bakeHoloFrame, unionBounds } from '../../src/art/arena-nt/holo-bake';
+import { HOLO_LOOKS, bakeHoloFrame, holoSize, unionBounds } from '../../src/art/arena-nt/holo-bake';
 import { holoStaticBake } from '../../src/art/arena-nt/holo';
 
 const PALSET = new Set<number>(Object.values(PAL));
@@ -40,7 +40,7 @@ describe('portraits', () => {
       expect(b.frames[picName(who)]).toBeTruthy();
       for (const k of OVERLAY_KINDS) expect(b.frames[overlayName(who, k)]).toBeTruthy();
     }
-    expect(b.canvas.w * b.canvas.h * 4).toBeLessThan(260 * 1024);
+    expect(b.canvas.w * b.canvas.h * 4).toBeLessThan(400 * 1024);
   });
   it('idle schedule: the two screens are never in step', () => {
     let same = 0;
@@ -66,7 +66,7 @@ describe('holograms', () => {
     const box = unionBounds([src])!;
     const look = HOLO_LOOKS[0];
     const f = bakeHoloFrame(src, box, look, 0, 10);
-    expect(f.w).toBe(box.w);
+    expect(f.w).toBe(holoSize(box, look).w);
     const ramp = new Set<number>(look.ramp);
     let opaque = 0;
     for (let y = 0; y < f.h; y++) for (let x = 0; x < f.w; x++) if (f.isOpaque(x, y)) (opaque++, expect(ramp.has(f.get(x, y)!)).toBe(true));

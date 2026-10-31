@@ -36,6 +36,7 @@ import { UI_FLOW_RECIPES, type UiFlowSfxName } from '../../audio/v3/ui-flow';
 import { sanitizeText, textMetrics, type TextSize } from '../../ui/text';
 import type { ButtonState, UiStyle } from '../ui-textures';
 import { HINT_Y } from '../layout';
+import { ARENA_NT } from '../board-nt/flag';
 import { REDUCED_MOTION } from './motion';
 import { rimPath } from './ui-kit';
 
@@ -66,6 +67,33 @@ export const HUD3 = Object.freeze({
   attentionLapMs: 1400,
   attentionRestMs: 1000,
 });
+
+/**
+ * Neon Tower, player 2's panel (J3): a COMPACT 148 × 47 panel so the right hologram has the corner below it. Same pieces, same
+ * order and sizes as HUD3's panel, nothing dropped but the face emblem (the right screen carries the opponent's portrait):
+ * header (name, SIRA chip), LP digits, LP bar, the three counts. Every other player / arena keeps HUD3.
+ */
+export const HUD3_P2C = Object.freeze({
+  ...HUD3,
+  panel: Object.freeze({ w: 148, h: 47, header: 13 }),
+  name: Object.freeze({ x: 8, cap: 3 }),
+  lpLabel: Object.freeze({ x: 8, cap: 22 }),
+  lp: Object.freeze({ x: 22, cap: 16 }),
+  lpCounter: Object.freeze({ x: 20 }),
+  bar: Object.freeze({ x: 8, y: 32, w: 132, h: 3 }),
+  counts: Object.freeze({ cy: 41, x: Object.freeze([8, 54, 100]) }),
+  chip: Object.freeze({ w: 34, h: 11, y: 1, right: 6 }),
+});
+
+/** Is this player's panel the compact one (Neon Tower, player 2)? */
+export function compactPanel(player: PlayerId): boolean {
+  return ARENA_NT && player === 1;
+}
+
+/** The panel geometry of a player (HUD3, or the compact variant). */
+export function hudGeom(player: PlayerId): typeof HUD3 | typeof HUD3_P2C {
+  return compactPanel(player) ? HUD3_P2C : HUD3;
+}
 
 // ================================================================ tones
 
@@ -315,12 +343,13 @@ export function emblemV3(player: PlayerId): PixelCanvas {
  * digits, the bar and the counts are live objects on top (HudV3).
  */
 export function panelBodyV3(player: PlayerId): PixelCanvas {
-  const { w, h, header } = HUD3.panel;
+  const G = hudGeom(player);
+  const { w, h, header } = G.panel;
   const p = bodyV3(w, h, { split: header });
   // header rule: night2, from the trim to the emblem (the emblem breaks it)
   p.hline(2, w - 3, header, PAL.night2);
-  p.blit(emblemV3(player), HUD3.emblem.x, HUD3.emblem.y);
-  paintText(p, HUD3.lpLabel.x, capYV3('sm', HUD3.lpLabel.cap), 'LP', 'sm', PAL.mist);
+  if (!compactPanel(player)) p.blit(emblemV3(player), G.emblem.x, G.emblem.y);
+  paintText(p, G.lpLabel.x, capYV3('sm', G.lpLabel.cap), 'LP', 'sm', PAL.mist);
   return p;
 }
 

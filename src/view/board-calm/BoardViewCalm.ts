@@ -220,6 +220,11 @@ export interface BoardViewCalmOptions {
      * runner / ignition / volcano-heat strip and lie on pixels the Neon Tower plate leaves free for them (A1).
      */
     slabImage?: boolean;
+    /**
+     * The neon trim pieces too (and with them the runner / ignition / heat of that strip). BoardViewNt turns it on for the 3+3 board, where
+     * the calm outline is one column inside the Neon Tower plate and its trim would lie across the plate (J1: the plate paints its own line).
+     */
+    trims?: boolean;
   };
 }
 
@@ -275,7 +280,7 @@ export class BoardViewCalm {
   constructor(scene: Phaser.Scene, opts: BoardViewCalmOptions = {}) {
     this.scene = scene;
     this.skip = opts.skip ?? {};
-    this.art = buildCalmTextures(scene);
+    this.art = buildCalmTextures(scene, { slab: !this.skip.slab && !this.skip.slabImage, bg: !this.skip.background });
     this.ring = this.add(scene.add.graphics()).setDepth(D.ring);
     if (this.skip.background) for (const p of CALM_BG_PARTS) this.bg[p] = [];
     else this.buildBackground();
@@ -644,7 +649,7 @@ export class BoardViewCalm {
   private buildSlab(): void {
     const S = this.art.slab;
     if (!this.skip.slabImage) this.img(S.x, S.y, CALM.slab, D.slab);
-    for (const piece of this.art.trims) {
+    for (const piece of this.skip.trims ? [] : this.art.trims) {
       const L = piece.layer;
       const dead = this.img(L.x, L.y, CALM.atlas, D.trimDead, CALM.trim(piece.n)).setVisible(false);
       const lit = this.img(L.x, L.y, CALM.atlas, D.trim, CALM.trim(piece.n));
@@ -836,6 +841,7 @@ export class BoardViewCalm {
 
   /** Light the strip pixel at position s of `side` `up` tones above its current tone (this frame only). */
   private trimPx(side: 0 | 1, s: number, up: number): void {
+    if (this.skip.trims) return;
     const P = this.art.paths[side];
     const i = Math.round(s);
     if (i < 0 || i >= P.len) return;
