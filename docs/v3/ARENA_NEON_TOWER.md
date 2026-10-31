@@ -200,3 +200,6 @@ Arena daha yüksek kaliteli pixel art olmalı (Sea of Stars çıtası): daha faz
 
 ## Kullanıcı kararı: seyirciler kaldırılacak
 Tribünlerdeki seyirciler (crowd) arenadan çıkarılacak. Tribün yapıları, korkuluk ve ışıklar kalıp kalmayacağı kalite turunda netleşecek (varsayılan: seyirci yok, boşalan yer tribün dokusu/ışık ve ekipmanla doldurulur). Değişiklik dördüncü tur eleştirmeni bitince yapılacak.
+
+## Kullanıcı notu: hologramlar
+Kullanıcı, oyunun içinde çalışan (yayındaki sürüm 7 / 3. tur) hologram hâlini 4. turun yeni hologramlarından daha iyi buluyor. 4. tur eleştirmeni bitince iki hâl yan yana karşılaştırılacak; gerekirse holo*.ts ve holograms.ts commit 7c2ca89'daki hâle döndürülecek (sürüm 7 = o commit). Karar kullanıcıya sorulacak.
