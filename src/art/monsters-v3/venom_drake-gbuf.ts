@@ -42,9 +42,9 @@ export const HIDE_FAR: Tones = { L: PAL.void2, M: PAL.void1, S: PAL.void0, D: PA
 /** chitin / bone: claws, horns, belly plates, the last tail segments, the stinger */
 export const CHITIN: Tones = { L: PAL.stone3, M: PAL.stone2, S: PAL.stone1, D: PAL.stone1, E: PAL.stone4 };
 export const CHITIN_FAR: Tones = { L: PAL.stone2, M: PAL.stone1, S: PAL.stone1, D: PAL.stone0, E: null };
-/** membrane: darker than the hide (it reads as a cape over the flank): void1 lit fold / ribs, void0 web */
-export const MEMB: Tones = { L: PAL.void1, M: PAL.void0, S: PAL.void0, D: PAL.ink, E: null };
-export const MEMB_FAR: Tones = { L: PAL.void1, M: PAL.void0, S: PAL.void0, D: PAL.ink, E: null };
+/** membrane (blueprint §1): a void2 lit panel, void1 web / ribs (S), a mag1 leading edge (L), void0 only in the hem crease (D) */
+export const MEMB: Tones = { L: PAL.mag1, M: PAL.void2, S: PAL.void1, D: PAL.void0, E: null };
+export const MEMB_FAR: Tones = { L: PAL.void2, M: PAL.void1, S: PAL.void0, D: PAL.void0, E: null };
 
 /** The toxic under-glow rim (IŞ-7): one colour, on the side away from the key light. */
 export const RIM = PAL.leaf2;

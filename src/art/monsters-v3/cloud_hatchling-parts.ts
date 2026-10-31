@@ -17,7 +17,7 @@ export const AX = 40;
 export const GY = 74;
 
 /** the hide's tone thresholds: leaf4 is the big calm lit plane (§1.3), leaf1 only the deepest crease */
-export const HIDE_TH: readonly number[] = [-0.42, 0.04, 0.36];
+export const HIDE_TH: readonly number[] = [-0.5, -0.12, 0.2];
 
 /** G-buffer material slots. */
 export const M = { HIDE: 0, FAR: 1, BELLY: 2, CLOUD: 3, SHELL: 4, IVORY: 5, TIP: 6, CLAW: 7, CLOUDF: 8 } as const;
@@ -25,7 +25,7 @@ export const M = { HIDE: 0, FAR: 1, BELLY: 2, CLOUD: 3, SHELL: 4, IVORY: 5, TIP:
 export const MATS = materialTable([
   { ramp: HIDE.draw.ramp, th: HIDE_TH },
   { ramp: HIDE.draw.far.ramp, th: HIDE_TH },
-  { ramp: [PAL.earth2, PAL.earth3, PAL.earth4], th: [-0.7, -0.15] },
+  { ramp: [PAL.earth2, PAL.earth3, PAL.earth4], th: [-0.95, -0.3] },
   { ramp: [PAL.steel, PAL.mist, PAL.white], th: [-0.3, 0.3] },
   { ramp: [PAL.earth3, PAL.earth4, PAL.skin4], th: [-0.2, 0.4] },
   { ramp: [PAL.earth2, PAL.earth3, PAL.earth4, PAL.skin4], th: [-0.45, 0.05, 0.5] },
@@ -79,7 +79,7 @@ export const seg = (age: number, i: number): number => clamp01(age * 6 - i);
 // ------------------------------------------------------------------ the grown waist ring (§1.1 item 5)
 
 /** The ring's centre and radii (frame px; the grown body's waist). */
-export const RING = Object.freeze({ cx: 40, cy: 61, rx: 24, ry: 6 });
+export const RING = Object.freeze({ cx: 40, cy: 58, rx: 24, ry: 6 });
 export const RING_N = 12;
 
 export interface RingPuff {
@@ -108,21 +108,40 @@ export function ringPuffs(phase: number, o: { cy?: number; rx?: number; ry?: num
   return out;
 }
 
-/** One ring puff: a 5×4 cloud lobe pixel stamp (white top-left, mist body, steel underside). */
+/** One ring puff: a 6×4 cloud lobe pixel stamp (white top-left, mist body, steel underside). */
 export function ringPuff(p: PixelCanvas, x: number, y: number, light: Light, bright = false): void {
   const lit = light.side < 0 ? -1 : 1;
-  const rows = ['.mmm.', 'mmmmm', 'mmmmm', '.sss.'];
+  const rows = ['.mmmm.', 'mmmmmm', 'mmmmmm', '.ssss.'];
   for (let r = 0; r < rows.length; r++)
-    for (let c = 0; c < 5; c++) {
+    for (let c = 0; c < 6; c++) {
       const ch = rows[r][c];
       if (ch === '.') continue;
-      const cx = x - 2 + c;
+      const cx = x - 3 + c;
       const cy = y - 2 + r;
-      let col = ch === 's' ? PAL.steel : PAL.mist;
-      if (r <= 1 && ch === 'm' && (lit < 0 ? c <= 2 : c >= 2)) col = PAL.white;
+      let col: number = ch === 's' ? PAL.steel : PAL.mist;
+      if (r <= 1 && ch === 'm' && (lit < 0 ? c <= 3 : c >= 2)) col = PAL.white;
       if (bright && ch === 'm') col = PAL.white;
       p.set(cx, cy, col);
     }
+}
+
+/**
+ * The ring's band: the iso ellipse the puffs ride on, 2 px thick (mist over steel; the lit top row
+ * white on the near half). `half` picks the far (behind the body) or the near half.
+ */
+export function ringBand(p: PixelCanvas, cx: number, cy: number, rx: number, ry: number, half: 'back' | 'front'): void {
+  const n = Math.ceil(Math.PI * 2 * rx * 1.2);
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    const s = Math.sin(a);
+    const back = s < -0.05;
+    if ((half === 'back') !== back) continue;
+    const x = Math.round(cx + Math.cos(a) * rx);
+    const y = Math.round(cy + s * ry);
+    p.set(x, y, back ? PAL.mist : PAL.white);
+    p.set(x, y + 1, back ? PAL.steel : PAL.mist);
+    if (!back) p.set(x, y + 2, PAL.steel);
+  }
 }
 
 // ------------------------------------------------------------------ the hiccup ring (§4.1)
@@ -206,20 +225,23 @@ export function stampAt(p: PixelCanvas, s: Stamp, x: number, y: number, light: L
 
 /** The eggshell helmet (8×6, dome up, zigzag rim down): L lit skin4 · M earth4 · S earth3 · d earth2 speckle · r rim lip. */
 export const SHELL_CAP: Stamp = {
-  rows: ['..LLLM..', '.LLLMMM.', 'LLLMMdSM', 'LLMMMdSS', 'LMMMSSSS', 'r.rM.S.S'],
+  rows: ['..LLLM...', '.LLLMMMS.', 'LLLMMMdSS', 'LLMMMSSSd', 'LMMMSSSSS', 'L.M.S.S.S'],
   ax: 4,
   ay: 5,
 };
+/** The baby's chest tuft (a small cloud puff at the throat), 4×3; TUFT_UP bristles. */
+export const TUFT: Stamp = { rows: ['.WW.', 'WWMM', '.MS.'], ax: 1, ay: 1 };
+export const TUFT_UP: Stamp = { rows: ['W.W.', 'WWMW', 'WMMS', '.SS.'], ax: 1, ay: 2 };
 export const SHELL_KEY: Readonly<Record<string, number>> = Object.freeze({ L: PAL.skin4, M: PAL.earth4, S: PAL.earth3, d: PAL.earth2, r: PAL.skin4 });
 
 /** The baby's cowlick: a three-lobe cloud puff leaning back (W white · M mist · S steel), 10×7. */
 export const COWLICK: Stamp = {
-  rows: ['....WW....', '..WWWWM...', '.WWWMMMWW.', 'WWMMMSWWWM', 'WMMSSMMMMS', '.MSS.MMSS.', '..S...S...'],
+  rows: ['....WW....', '..WWWWW...', '.WWWWMWWW.', 'WWWMMWWWWM', 'WWMMSMWMMS', '.MMS.MMSS.', '..S...S...'],
   ax: 5,
   ay: 6,
 };
 export const COWLICK_UP: Stamp = {
-  rows: ['...WW.....', '..WWWM.WW.', '.WWMMMWWWM', 'WWMMSMWMMS', 'WMMSSMMMS.', '.MSS.MMS..', '..S..SS...'],
+  rows: ['...WW.....', '..WWWW.WW.', '.WWWMWWWWM', 'WWWMMMWWMS', 'WWMSSMMMS.', '.MSS.MMS..', '..S..SS...'],
   ax: 5,
   ay: 6,
 };

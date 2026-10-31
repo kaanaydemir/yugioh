@@ -19,7 +19,7 @@
 import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
 import { lightOf, type Light } from '../rigkit';
-import { holeAt, seamAt } from './venom_drake-holes';
+import { holeAt, seamAt, webAt } from './venom_drake-holes';
 import {
   AX, CHITIN, CHITIN_FAR, Comp, DEG, GY, H, HIDE, HIDE_FAR, MEMB, MEMB_FAR, RIM, VEN, W,
   bands, clamp, hash2, ik, layer, lerp, planes, rnd, tubePoly, type Pt, type Tones,
@@ -114,6 +114,8 @@ export interface Pose {
   mist: number;
   /** death / revive passes */
   seam: number; // seam web glow 0…1
+  /** where the seam web shows: 0 the whole hide (death / revive) · 1 the struck front half, no nodes (hitMagic) · 2 the tail only (revive f8) */
+  seamPart: number;
   holes: number; // 0…3 hole steps eaten into the hide
   /** the lace slumps into the pool 0…1 (death f7); pool size 0…1; the stinger marker sink 0…3 (≥0 shows it) */
   slump: number;
@@ -127,6 +129,9 @@ export interface Pose {
   curl: number;
   /** a 1-px shudder (hitMagic) 0/1/2 */
   shake: number;
+  /** the falling stinger marker (death f7): tilt (deg, + = toward the front) and lift above the pool (px) */
+  mtilt: number;
+  mlift: number;
   /** global phase 0…1 (deterministic flicker) */
   t: number;
 }
@@ -138,7 +143,7 @@ export const NEUTRAL: Pose = {
   bulb: 0, glow: 1, smear: 0, crown: 0,
   nk: [0, 0], fk: [0, 0], wing: 0, shield: 0, drape: 0,
   beads: [0, 0, 0, 0, 0, 0], bristle: 0, hot: 0, drip: 0, mist: 0,
-  seam: 0, holes: 0, slump: 0, pool: 0, marker: -1, glob: 0, body: 1, curl: 0, shake: 0, t: 0,
+  seam: 0, seamPart: 0, holes: 0, slump: 0, pool: 0, marker: -1, glob: 0, body: 1, curl: 0, shake: 0, mtilt: 0, mlift: 0, t: 0,
 };
 export const pose = (o: Partial<Pose>): Pose => ({ ...NEUTRAL, ...o });
 
@@ -147,7 +152,8 @@ export const pose = (o: Partial<Pose>): Pose => ({ ...NEUTRAL, ...o });
 /** The idle tail arch (screen deg per segment, root → tip). */
 const ARCH = [-102, -97, -92, -85, -70, -44, -14, 8, 30] as const;
 const T_STEP = 7.6;
-const T_W = [10, 9.4, 8.8, 8.2, 7.6, 7, 6.4, 5.8, 5.2, 4.8] as const;
+/** segment widths: a whip taper from 8 px at the root to 4 px at the chitin */
+const T_W = [8.4, 7.8, 7.2, 6.6, 6.1, 5.6, 5.1, 4.7, 4.3, 4] as const;
 
 export interface Skel {
   hip: Pt;
@@ -158,6 +164,8 @@ export interface Skel {
   /** near / far wing-arm: shoulder, elbow, wrist (= knuckle), finger tip (the folded wing's high point) */
   shN: Pt; elN: Pt; wrN: Pt; tipN: Pt;
   shF: Pt; elF: Pt; wrF: Pt; tipF: Pt;
+  /** the wing membranes (near / far): one continuous part, see wingGeo */
+  wgN: WingGeo; wgF: WingGeo;
   neck: Pt;
   head: Pt;
   eye: Pt;
@@ -171,6 +179,62 @@ export interface Skel {
   sting: Pt;
   hookM: Pt;
   quills: Pt[];
+}
+
+export interface WingGeo {
+  /** the finger root (the folded wing-knuckle; the wrist in the shield / spread) */
+  R: Pt;
+  /** the three finger tips: F[0] the leading (long) finger */
+  F: Pt[];
+  /** where the trailing edge meets the body / the arm */
+  A: Pt;
+  /** scallop depth of the trailing edge (0 = straight, toward R) */
+  dep: number;
+  /** eaten hole centres (near wing) */
+  holes: Pt[];
+}
+
+const lerp2 = (a: Pt, b: Pt, t: number): Pt => [lerp(a[0], b[0], t), lerp(a[1], b[1], t)];
+const add = (a: Pt, dx: number, dy: number): Pt => [a[0] + dx, a[1] + dy];
+
+/**
+ * The wing as one continuous part: three configurations blended by the shield (s) and spread (sp)
+ * weights. Folded: a narrow tongued membrane on the UPPER third of the flank, hanging from the finger
+ * ridge that runs back from the wing-knuckle over the elbow. Shield: the fingers fan forward from the
+ * lifted wrist in front of the face. Spread: the wing-knuckle rises above the shoulders and the
+ * fingers fan up and back (the roar hood at 0.5, the special at 1).
+ */
+function wingGeo(near: boolean, sh: Pt, el: Pt, wr: Pt, s: number, sp: number, drape: number): WingGeo {
+  // folded
+  const fR = add(el, near ? 0 : -1, near ? -5 : -9);
+  const fF = near
+    ? [add(sh, -29, -6), add(sh, -23, 1 + drape), add(sh, -15, 2 + drape)]
+    : [add(sh, -22, -7), add(sh, -17, -2), add(sh, -12, -1)];
+  const fA = add(el, -1, 2);
+  // the hood (roar, summon peak; sp 0.6): both wings fan up and BACK above the shoulders
+  const hR = add(sh, -2, -15);
+  const hF = [add(sh, -3, -30), add(sh, -15, -27), add(sh, -23, -16)];
+  const hA = add(sh, -15, -7);
+  // spread (special; sp 1): the near wing fans up and FORWARD over the head, the far one up and BACK (a wide V)
+  const pR = near ? add(sh, 3, -22) : add(sh, -4, -22);
+  const pF = near
+    ? [add(sh, 10, -36), add(sh, 21, -29), add(sh, 25, -16)]
+    : [add(sh, -8, -34), add(sh, -20, -29), add(sh, -26, -17)];
+  const pA = near ? add(sh, 9, -9) : add(sh, -17, -8);
+  // shield (near only)
+  const gF = [add(wr, 3, -17), add(wr, 12, -7), add(wr, 10, 8)];
+  const gA = add(el, 3, 16);
+  const HOOD = 0.6;
+  const path = (f: Pt, h: Pt, p: Pt): Pt => (sp <= HOOD ? lerp2(f, h, sp / HOOD) : lerp2(h, p, (sp - HOOD) / (1 - HOOD)));
+  const bl = (f: Pt, h: Pt, p: Pt, g: Pt): Pt => lerp2(path(f, h, p), g, s);
+  const R = bl(fR, hR, pR, wr);
+  const F = [0, 1, 2].map((i) => bl(fF[i], hF[i], pF[i], gF[i]));
+  const A = bl(fA, hA, pA, gA);
+  const dep = lerp(sp <= HOOD ? lerp(0.3, 0.28, sp / HOOD) : 0.27, 0.3, s);
+  // holes between the ribs (≥ 4×3 inside), the shield's third one over the eye
+  const h1: Pt = [R[0] * 0.38 + F[0][0] * 0.31 + F[1][0] * 0.31, R[1] * 0.38 + F[0][1] * 0.31 + F[1][1] * 0.31 + 1];
+  const h2: Pt = [R[0] * 0.34 + F[1][0] * 0.33 + F[2][0] * 0.33, R[1] * 0.34 + F[1][1] * 0.33 + F[2][1] * 0.33 + 0.5];
+  return { R, F, A, dep, holes: [h1, h2] };
 }
 
 export function tailAngles(o: Pose): number[] {
@@ -191,31 +255,25 @@ export function skeleton(o: Pose): Skel {
   const hipF: Pt = [hip[0] + 7, hip[1] + 4];
   const hockF: Pt = [43, 81];
   const kneeF = ik(hipF, hockF, 10, 8, -1);
-  // wing-arms: knuckles planted at x 56–61 (near) and 63–68 (far)
-  // wing-arms (pterosaur forelimbs): shoulder → a high elbow just above the back → a long forearm
-  // pillar down to the knuckle planted on the floor; the folded wing fingers run from the elbow back
-  // along the top of the flank to a claw tip over the hip, the membrane hangs below them as a cape
-  const shN: Pt = [sh[0] + 1, sh[1] + 1];
-  const shF: Pt = [sh[0] + 5, sh[1] - 1];
+  // wing-arms (pterosaur forelimbs): shoulder → an elbow bent BACK → a forward-angled forearm down to
+  // the knuckle planted on the floor. The wing is ONE continuous part in every frame (wingGeo): its
+  // finger root R, three finger tips and the body attach A blend between three configurations (folded
+  // on the upper flank · the guard shield in front of the face · spread above the back), so it peels,
+  // lifts and unfolds instead of swapping shapes.
+  const shN: Pt = [sh[0] + 1, sh[1] - 6];
+  const shF: Pt = [sh[0] + 5, sh[1] - 5];
   const s = clamp(o.shield, 0, 1);
-  const spread = o.wing;
-  const wrN0: Pt = [lerp(58 + o.nk[0], sh[0] + 6, r), lerp(83 - o.nk[1], sh[1] + 15, r)];
-  const elN0: Pt = [sh[0] - 4 - spread * 2, sh[1] - 17 - spread * 3];
-  // guard: the elbow rises over the head, the wrist swings forward in front of the face
-  const elNg: Pt = [sh[0] + 2, sh[1] - 16];
-  const wrNg: Pt = [sh[0] + 22, sh[1] - 4];
-  const elN: Pt = [lerp(elN0[0], elNg[0], s), lerp(elN0[1], elNg[1], s)];
-  const wrN: Pt = [lerp(wrN0[0], wrNg[0], s), lerp(wrN0[1], wrNg[1], s)];
+  const sp = clamp(o.wing, 0, 1);
+  const wrP: Pt = [lerp(58 + o.nk[0], sh[0] + 6, r), lerp(83 - o.nk[1], sh[1] + 15, r)];
+  const wrG: Pt = [sh[0] + 22, sh[1] - 4];
+  const wrN = lerp2(wrP, wrG, s);
+  const elN = lerp2(ik(shN, wrN, 12, 22, 1), [sh[0] + 3, sh[1] - 14], s);
   const wrF: Pt = [lerp(65 + o.fk[0], sh[0] + 11, r), lerp(83 - o.fk[1], sh[1] + 13, r)];
-  const elF: Pt = [sh[0] + 1 + spread * 3, sh[1] - 20 - spread * 4];
-  const fold = (el: Pt, back: number, len: number): Pt => {
-    const a = lerp(back, 228, spread) * DEG;
-    return [el[0] + Math.cos(a) * len, el[1] + Math.sin(a) * len];
-  };
-  const tipN0 = fold(elN0, 155 + o.drape, 32 - r * 4);
-  const tipNg: Pt = [elNg[0] + 20, elNg[1] - 8];
-  const tipN: Pt = [lerp(tipN0[0], tipNg[0], s), lerp(tipN0[1], tipNg[1], s)];
-  const tipF = fold(elF, 152, 22);
+  const elF = ik(shF, wrF, 11, 19, 1);
+  const wgN = wingGeo(true, sh, elN, wrN, s, sp, o.drape);
+  const wgF = wingGeo(false, [sh[0] + 5, sh[1] - 2], elF, wrF, 0, sp, 0);
+  const tipN = wgN.F[0];
+  const tipF = wgF.F[0];
   // neck / head
   const neck: Pt = [sh[0] + 5, sh[1] - 4];
   const head: Pt = [sh[0] + 17 + o.hx, sh[1] - 8 + o.hy];
@@ -252,7 +310,7 @@ export function skeleton(o: Pose): Skel {
     const k = i / 5;
     quills.push([lerp(sh[0] - 4, hip[0] - 2, k), lerp(sh[1] - 10, hip[1] - 12, k) - Math.sin(k * Math.PI) * 1.5 - (k > 0.1 && k < 0.95 ? o.breath : 0)]);
   }
-  return { hookM, hip, sh, hipN, kneeN, hockN, hipF, kneeF, hockF, shN, elN, wrN, tipN, shF, elF, wrF, tipF, neck, head, eye, mouth, fang, sac, tail, bulb, dir, sting, quills };
+  return { hookM, hip, sh, hipN, kneeN, hockN, hipF, kneeF, hockF, shN, elN, wrN, tipN, wgN, shF, elF, wrF, tipF, wgF, neck, head, eye, mouth, fang, sac, tail, bulb, dir, sting, quills };
 }
 
 // ---------------------------------------------------------------- frame
@@ -265,6 +323,8 @@ export interface Frame {
   sk: Skel;
   /** membrane hole pixels: transparent again after the outline where nothing is behind them */
   holes: number[];
+  /** the shield hole the eye glints through (guard) */
+  eyeHole?: Pt | null;
 }
 
 const OUT = PAL.void0;
@@ -308,7 +368,7 @@ function drawHindLeg(f: Frame, near: boolean): void {
   if (near) q.ellipse(hip[0] + 1, hip[1] + 1, 8, 9, t.M); // the thick thigh over the haunch
   q.poly(tubePoly(hip, kn, near ? 11 : 8, near ? 8 : 6), t.M);
   q.poly(tubePoly(kn, hk, near ? 6 : 5, near ? 5 : 4), t.M);
-  bands(q, t, light, { top: 2, lit: 3, sh: 4, bottom: 2, half: near ? 0.7 : 0 });
+  bands(q, t, light, { top: 2, lit: 3, sh: 2, bottom: 1, half: near ? 0.7 : 0 });
   if (near) rimOn(f, q, kn[1]);
   f.comp.add(q, near ? Part.legN : Part.legF, { out: OUT });
   // the foot: a broad 3-toed chitin-clawed foot flat on the floor (toes forward)
@@ -337,7 +397,7 @@ function drawBarrel(f: Frame): void {
     [sx - 2, sy + 13], [hx + 16, hy + 12], [hx + 5, hy + 11], [hx - 6, hy + 8], [hx - 11, hy + 2], [hx - 11, hy - 4],
   ];
   q.poly(pts, HIDE.M);
-  bands(q, HIDE, light, { top: 2, lit: 4, sh: 5, bottom: 2, half: 0.8 });
+  bands(q, HIDE, light, { top: 2, lit: 4, sh: 3, bottom: 1, half: 0.8 });
   // scale rows: 2-px void1 teeth every ≈5 px on the mid / shadow boundary (MA-2)
   planes(q, (x, y, src) => {
     if (src.get(x, y) !== HIDE.M) return null;
@@ -380,17 +440,37 @@ function drawTail(f: Frame): void {
     q.poly(tubePoly(a, b, w, T_W[i + 1]), HIDE.M);
     q.disc(b[0], b[1], T_W[i + 1] / 2, HIDE.M);
     if (i === 0) q.disc(a[0], a[1], w / 2, HIDE.M);
-    bands(q, HIDE, light, { top: 2, lit: 2, sh: 2, bottom: 1, half: 0.6 });
+    bands(q, HIDE, light, { top: 2, lit: 2, sh: 2, bottom: 1, half: 0.6, crease: false });
     f.comp.add(q, Part.tail, { out: OUT });
   }
-  // the toxic under-glow on the inner side of the rising arch (one continuous rim, segments 1…5)
+  // the toxic under-glow on the inner side of the rising arch: one run per segment (segments 0…4), a
+  // 1-px gap at every joint, none on the top segments (under-glow, not a neon cable)
   const ls = light.side;
   const rim: number[] = [];
-  for (let y = rnd(pts[5][1]); y <= rnd(pts[0][1]) + 2; y++)
+  for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
       if (f.comp.owner(x, y) !== Part.tail) continue;
       if (f.p.isOpaque(x - ls, y)) continue;
-      if (y < rnd(pts[4][1]) && x < pts[4][0]) continue;
+      // the nearest segment and the position along it
+      let best = 1e9;
+      let seg = -1;
+      let along = 0;
+      for (let i = 0; i < 7; i++) {
+        const [ax, ay] = pts[i];
+        const [bx, by] = pts[i + 1];
+        const vx = bx - ax;
+        const vy = by - ay;
+        const l2 = vx * vx + vy * vy || 1;
+        const t = clamp(((x + 0.5 - ax) * vx + (y + 0.5 - ay) * vy) / l2, 0, 1);
+        const d = Math.hypot(ax + vx * t - x - 0.5, ay + vy * t - y - 0.5);
+        if (d < best) {
+          best = d;
+          seg = i;
+          along = t * Math.sqrt(l2);
+        }
+      }
+      if (seg < 0 || seg > 4) continue;
+      if (along < 1.2 || along > T_STEP - 1.2) continue;
       rim.push(x, y);
     }
   for (let i = 0; i < rim.length; i += 2) f.p.set(rim[i], rim[i + 1], RIM);
@@ -435,6 +515,9 @@ function drawBulb(f: Frame): void {
   planes(q, (x, y, src) => {
     const u = (x + 0.5 - bx) * dx + (y + 0.5 - by) * dy;
     if (u < -rx + 1.6) return CHITIN.M;
+    // the chitin casing lip where the stinger joins (stone2, across the bulb's front)
+    const v = -(x + 0.5 - bx) * dy + (y + 0.5 - by) * dx;
+    if (u > rx - 1.2 && Math.abs(v) < 2.2) return PAL.stone2;
     const dn = !src.isOpaque(x, y + 1) || !src.isOpaque(x, y + 2);
     const up = !src.isOpaque(x, y - 1);
     if (up) return VEN.body;
@@ -444,126 +527,122 @@ function drawBulb(f: Frame): void {
   f.comp.add(q, Part.bulb, { out: PAL.ink });
 }
 
-/** Cut a round hole (radius r) into a membrane layer and ring it with leaf3. */
-function holeIn(f: Frame, q: PixelCanvas, cx: number, cy: number, r: number): void {
-  const x0 = Math.floor(cx - r - 2);
-  const y0 = Math.floor(cy - r - 2);
-  const x1 = Math.ceil(cx + r + 2);
-  const y1 = Math.ceil(cy + r + 2);
+/** The pixels of an oval hole at (cx, cy) if it fits inside the panel with a full ring around it, else null. */
+function holeFit(q: PixelCanvas, cx: number, cy: number, rx: number, ry: number): number[] | null {
   const hole: number[] = [];
-  for (let y = y0; y <= y1; y++)
-    for (let x = x0; x <= x1; x++) if (Math.hypot(x + 0.5 - cx, y + 0.5 - cy) <= r && q.isOpaque(x, y)) hole.push(x, y);
-  if (hole.length < 6) return;
+  const inside = (x: number, y: number) => Math.hypot((x + 0.5 - cx) / rx, (y + 0.5 - cy) / ry) <= 1;
+  for (let y = Math.floor(cy - ry - 1); y <= Math.ceil(cy + ry + 1); y++)
+    for (let x = Math.floor(cx - rx - 1); x <= Math.ceil(cx + rx + 1); x++) {
+      if (!inside(x, y)) continue;
+      // the hole and its ring must lie on the panel, a clear px away from another hole's ring
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (!q.isOpaque(x + dx, y + dy)) return null;
+      for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) if (q.get(x + dx, y + dy) === VEN.body) return null;
+      hole.push(x, y);
+    }
+  return hole.length >= 8 ? hole : null;
+}
+
+/**
+ * Cut an oval hole (≥ 4×3 inside) into a membrane layer near (cx, cy) — the nearest spot within 3 px
+ * where it fits with a full ring — and close a 1-px leaf3 ring around it (real transparency after the
+ * outline where nothing is behind it).
+ */
+function holeIn(f: Frame, q: PixelCanvas, cx: number, cy: number, rx: number, ry: number, keep?: number[]): Pt | null {
+  let hole: number[] | null = null;
+  search: for (let r = 0; r <= 3; r++)
+    for (let dy = -r; dy <= r; dy++)
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        hole = holeFit(q, rnd(cx) + dx, rnd(cy) + dy, rx, ry);
+        if (hole) break search;
+      }
+  if (!hole) return null;
   for (let i = 0; i < hole.length; i += 2) q.erase(hole[i], hole[i + 1]);
-  // the acid-lit lip: leaf3 on the lower half of the ring, leaf2 on the upper half (an eaten edge, not a glyph)
   for (let i = 0; i < hole.length; i += 2) {
     const x = hole[i];
     const y = hole[i + 1];
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) if (q.isOpaque(x + dx, y + dy)) q.set(x + dx, y + dy, y + dy + 0.5 >= cy ? VEN.body : VEN.deep);
+    // a 4-neighbour ring: round corners, not a square glyph
+    for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      keep?.push(x + dx, y + dy);
+      if (q.isOpaque(x + dx, y + dy)) q.set(x + dx, y + dy, VEN.body);
+    }
     f.holes.push(x, y);
+  }
+  let sx = 0;
+  let sy = 0;
+  for (let i = 0; i < hole.length; i += 2) {
+    sx += hole[i];
+    sy += hole[i + 1];
+  }
+  return [rnd(sx / (hole.length / 2)), rnd(sy / (hole.length / 2))];
+}
+
+/** A 1-px line inside a layer (only over its opaque pixels). */
+function lineIn(q: PixelCanvas, a: Pt, b: Pt, c: number, from = 0, to = 1): void {
+  const n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) * 1.5);
+  for (let i = Math.floor(n * from); i <= n * to; i++) {
+    const x = rnd(lerp(a[0], b[0], i / n) - 0.5);
+    const y = rnd(lerp(a[1], b[1], i / n) - 0.5);
+    if (q.isOpaque(x, y)) q.set(x, y, c);
   }
 }
 
 /**
- * The folded wing of one wing-arm: the finger bones run from the elbow back along the top of the
- * flank to a hooked claw tip; the membrane hangs below them as a ragged cape (tongued hem) with eaten
- * holes ringed in leaf3 (real holes: the body or the floor shows through). Spread (roar, special)
- * swings the fingers up and back and the membrane opens as a panel. Guard: the near one spreads
- * forward over the head as a sloping, holed shield.
+ * One wing (near / far), ONE continuous part in every frame (skeleton wingGeo): the wing-knuckle R on
+ * the elbow, the leading finger running from it, two more finger ribs, and the membrane between the
+ * arm, the fingers and the body attach A with a scalloped (folded: tongued) trailing edge. Membrane
+ * tones: a void2 panel, void1 web / ribs, a mag1 leading edge, void0 only in the hem crease. The near
+ * one carries the eaten holes (a closed leaf3 ring round a real hole).
  */
 function drawWing(f: Frame, near: boolean): void {
   const { sk, o, light } = f;
-  const t = near ? MEMB : MEMB_FAR;
+  const g = near ? sk.wgN : sk.wgF;
   const el = near ? sk.elN : sk.elF;
-  const wr = near ? sk.wrN : sk.wrF;
-  const tip = near ? sk.tipN : sk.tipF;
-  const s = near ? clamp(o.shield, 0, 1) : 0;
-  const sp = clamp(o.wing, 0, 1);
+  const t = near ? MEMB : MEMB_FAR;
+  const { R, F, A, dep } = g;
+  const sc = (a: Pt, b: Pt): Pt => [lerp(lerp(a[0], b[0], 0.5), R[0], dep), lerp(lerp(a[1], b[1], 0.5), R[1], dep)];
   const q = layer();
-  let ribs: [Pt, Pt][] = [];
-  let shieldFan: Pt[] = [];
-  if (s > 0.05) {
-    // the shield: the fingers fan from the wrist (up / forward / down) and the membrane spans them,
-    // scalloped between the finger tips, back to the raised elbow: a sloping, ribbed, holed shield
-    const fan: Pt[] = [tip, [wr[0] + 8, wr[1] - 10], [wr[0] + 9, wr[1] + 2], [wr[0] + 4, wr[1] + 12]].map(
-      (q2) => [lerp(wr[0], q2[0], s), lerp(wr[1], q2[1], s)] as Pt,
-    );
-    const poly: Pt[] = [el, fan[0]];
-    for (let i = 1; i < fan.length; i++) {
-      const a2 = fan[i - 1];
-      const b2 = fan[i];
-      const mx = lerp(a2[0], b2[0], 0.5);
-      const my = lerp(a2[1], b2[1], 0.5);
-      poly.push([lerp(mx, wr[0], 0.3), lerp(my, wr[1], 0.3)], b2);
-    }
-    poly.push([el[0] + 3, el[1] + 16 * s]);
-    q.poly(poly, t.L);
-    shieldFan = fan;
-  } else {
-    // hem: tongues hanging from the finger line toward the floor (folded), lifting as it spreads
-    const N = 6;
-    const hem: Pt[] = [];
-    for (let i = N; i >= 0; i--) {
-      const k = i / N;
-      const fx = lerp(el[0], tip[0], k);
-      const fy = lerp(el[1], tip[1], k);
-      const tongue = i % 2 === 0;
-      const hang = near ? (tongue ? 25 : 19) - k * 14 : (tongue ? 14 : 10) - k * 6;
-      const drop = Math.min(GY - 6 - fy, hang) * (1 - sp * 0.62) + (near ? o.drape * (1 - k) : 0);
-      hem.push([fx + (near ? 1 : 0), fy + drop]);
-    }
-    const front: Pt = near ? [lerp(el[0], wr[0], 0.75) - 1, lerp(el[1], wr[1], 0.75)] : [el[0] - 1, el[1] + 8];
-    q.poly([el, tip, ...[...hem].reverse(), front], t.M);
-    ribs = hem.filter((_, i) => i % 2 === 0).map((h, i) => [[lerp(el[0], tip[0], (i * 2) / N), lerp(el[1], tip[1], (i * 2) / N)] as Pt, h] as [Pt, Pt]);
-  }
-  // one fold line: the lit strip along the top (the finger side) and toward the light
+  const keep: number[] = [];
+  q.poly([el, R, F[0], sc(F[0], F[1]), F[1], sc(F[1], F[2]), F[2], sc(F[2], A), A], t.M);
+  // planes: the leading edge (toward the top / the light) lit, the hem underside a 1-px crease
   planes(q, (x, y, src) => {
-    if (!src.isOpaque(x, y - 1)) return t.L;
-    if (!src.isOpaque(x + light.side, y) && src.isOpaque(x, y - 1) && y < el[1] + 8) return t.L;
+    if (!src.isOpaque(x, y + 1) && src.isOpaque(x, y - 1)) return t.D;
+    if (!src.isOpaque(x, y - 1) || !src.isOpaque(x + light.side, y)) return t.L;
     return null;
   });
-  // the finger ribs: a lit line from the finger line down to each tongue tip (one rib per tongue)
-  for (const [a, b] of ribs) {
-    const n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]));
-    for (let i = 2; i < n - 1; i++) {
-      const x = rnd(lerp(a[0], b[0], i / n) - 0.5);
-      const y = rnd(lerp(a[1], b[1], i / n) - 0.5);
-      if (q.isOpaque(x, y)) q.set(x, y, t.L);
-    }
+  // the web: a rib along each trailing finger (1 px, the membrane's folds)
+  for (const tip of [F[1], F[2]]) {
+    lineIn(q, R, tip, t.S, 0.12, 0.95);
+    lineIn(q, [R[0], R[1] + 1], [tip[0], tip[1] + 0.5], t.S, 0.12, 0.6);
   }
-  // eaten holes (≥ 3 px) with a 1-px leaf3 ring; they stay transparent after the outline (f.holes)
   if (near) {
-    if (s > 0.05) {
-      holeIn(f, q, wr[0] + 4 * s, wr[1] - 5 * s, 1.6);
-      holeIn(f, q, wr[0] + 4 * s, wr[1] + 5 * s, 1.5);
-    } else {
-      // one in the panel above the back (the floor shows through), one low in the cape over the flank
-      holeIn(f, q, lerp(el[0], tip[0], 0.28) - 0.5, lerp(el[1], tip[1], 0.28) + 3, 1.6);
-      holeIn(f, q, lerp(el[0], tip[0], 0.55), lerp(el[1], tip[1], 0.55) + 9 * (1 - sp * 0.5), 1.5);
-    }
-  } else if (sp > 0.3) holeIn(f, q, lerp(el[0], tip[0], 0.6), lerp(el[1], tip[1], 0.6) + 4, 1.4);
+    const k = Math.max(clamp(o.shield, 0, 1), clamp(o.wing, 0, 1));
+    const rx = 2.1 + k * 0.6;
+    const ry = 1.6 + k * 0.6;
+    // the shield: the eye glints through one hole, one more between the upper ribs
+    if (o.shield > 0.6) f.eyeHole = holeIn(f, q, sk.eye[0] + 0.5, sk.eye[1] - 0.5, 2.1, 1.7, keep);
+    holeIn(f, q, g.holes[0][0], g.holes[0][1], rx, ry, keep);
+    if (o.shield <= 0.6) holeIn(f, q, g.holes[1][0], g.holes[1][1], rx, ry, keep);
+  } else if (o.wing > 0.3) holeIn(f, q, g.holes[0][0], g.holes[0][1], 2.1, 1.6, keep);
   f.comp.add(q, near ? Part.cape : Part.wingF, { out: OUT });
-  if (shieldFan.length) {
-    // the shield's finger bones: thin hide rods fanning from the wrist to each scallop point
-    const fb = layer();
-    for (const q2 of shieldFan.slice(1)) fb.poly(tubePoly(wr, q2, 2.2, 1.2), HIDE.M);
-    bands(fb, HIDE, light, { top: 1, lit: 1, sh: 1, bottom: 1, crease: false });
-    f.comp.add(fb, Part.cape, { out: OUT });
-  }
-  // the finger bones (hide ridge) with a hooked claw tip
+  // the bones: el → R (the wing metacarpal) and the leading finger R → F0 (hide), a chitin claw on R
   const b = layer();
   const bt = near ? HIDE : HIDE_FAR;
-  b.poly(tubePoly(el, tip, near ? 3.4 : 2.8, 1.6), bt.M);
-  bands(b, bt, light, { top: 1, lit: 1, sh: 1, bottom: 1, crease: false });
-  f.comp.add(b, near ? Part.cape : Part.wingF, { out: OUT });
+  b.poly(tubePoly(el, R, near ? 3.6 : 3, near ? 3.2 : 2.6), bt.M);
+  b.disc(R[0], R[1], near ? 1.8 : 1.4, bt.M);
+  b.poly(tubePoly(R, F[0], near ? 3 : 2.4, 1.3), bt.M);
+  bands(b, bt, light, { top: 1, lit: 1, sh: 0, bottom: 0, crease: false, edge: false });
+  for (let i = 0; i < keep.length; i += 2) b.erase(keep[i], keep[i + 1]); // the holes stay open through the bones
+  // the bones lie ON the membrane: no separation line over it (only toward the body)
+  f.comp.add(b, near ? Part.cape : Part.wingF, { out: OUT, outSkip: [near ? Part.cape : Part.wingF] });
   const c = layer();
   const cl = near ? CHITIN : CHITIN_FAR;
-  const ux = tip[0] - el[0];
-  const uy = tip[1] - el[1];
+  const ux = R[0] - el[0];
+  const uy = R[1] - el[1];
   const ul = Math.hypot(ux, uy) || 1;
-  const cx = tip[0] + (ux / ul) * 1.5;
-  const cy = tip[1] + (uy / ul) * 1.5;
-  c.set(rnd(cx - 0.5), rnd(cy - 0.5), cl.L).set(rnd(cx - 0.5 + ux / ul), rnd(cy - 0.5 + uy / ul) - 1, cl.M);
+  const cx = rnd(R[0] + (ux / ul) * 2 - 0.5);
+  const cy = rnd(R[1] + (uy / ul) * 2 - 0.5);
+  c.set(cx, cy, cl.M).set(cx + 1, cy - 1, cl.L);
   f.comp.add(c, near ? Part.cape : Part.wingF, { out: PAL.ink });
 }
 
@@ -573,10 +652,13 @@ function drawArm(f: Frame, near: boolean): void {
   const sh = near ? sk.shN : sk.shF;
   const el = near ? sk.elN : sk.elF;
   const wr = near ? sk.wrN : sk.wrF;
+  // upper arm back-down to the elbow (thick), a forearm angled forward that tapers to the wrist bulge
   const q = layer();
-  q.poly(tubePoly(sh, el, near ? 7 : 6, near ? 4.5 : 4), t.M);
-  q.poly(tubePoly(el, wr, near ? 4.6 : 4, near ? 3.6 : 3.2), t.M);
-  q.disc(el[0], el[1], near ? 2.4 : 2, t.M);
+  q.poly(tubePoly(sh, el, near ? 7 : 6, near ? 5 : 4.4), t.M);
+  q.disc(el[0], el[1], near ? 2.6 : 2.2, t.M);
+  q.poly(tubePoly(el, wr, near ? 4.6 : 4, near ? 2.6 : 2.4), t.M);
+  const wb = lerp2(el, wr, 0.82);
+  q.disc(wb[0], wb[1], near ? 1.9 : 1.6, t.M);
   bands(q, t, light, { top: 1, lit: 2, sh: 1, bottom: 1 });
   f.comp.add(q, near ? Part.armN : Part.armF, { out: OUT });
   // the wrist knuckle: a chitin claw-hand planted on the floor (or lifted)
@@ -584,18 +666,17 @@ function drawArm(f: Frame, near: boolean): void {
   const cl = near ? CHITIN : CHITIN_FAR;
   const wx = rnd(wr[0]);
   const wy = rnd(wr[1]);
-  const planted = !(near && o.shield > 0.05);
+  const planted = !(near && o.shield > 0.05) && o.rear < 0.3;
   if (planted) {
     k.poly([[wx - 2, wy - 1], [wx + 1, wy - 2], [wx + 4, wy + 1], [wx + 4, wy + 3], [wx - 2, wy + 3]], cl.M);
-    bands(k, cl, light, { top: 1, lit: 1, sh: 1, bottom: 1, crease: false });
   } else {
     k.poly([[wx - 2, wy - 2], [wx + 2, wy - 2], [wx + 4, wy], [wx + 2, wy + 2], [wx - 2, wy + 1]], cl.M);
-    bands(k, cl, light, { top: 1, lit: 1, sh: 1, bottom: 1, crease: false });
   }
+  bands(k, cl, light, { top: 1, lit: 1, sh: 1, bottom: 1, crease: false });
   f.comp.add(k, near ? Part.armN : Part.armF, { out: PAL.ink });
-  // the elbow spur: a short chitin hook where the wing folds
+  // the elbow spur: a short chitin hook pointing back
   const e = layer();
-  e.set(rnd(el[0]) - 1, rnd(el[1]) - 3, cl.L).set(rnd(el[0]), rnd(el[1]) - 2, cl.M);
+  e.set(rnd(el[0]) - 3, rnd(el[1]), cl.L).set(rnd(el[0]) - 2, rnd(el[1]), cl.M);
   f.comp.add(e, near ? Part.armN : Part.armF, { out: PAL.ink });
 }
 
@@ -606,7 +687,7 @@ function drawNeckHead(f: Frame): void {
   // neck: a thick tube from the chest to the back of the skull, chitin plates under it
   const n = layer();
   n.poly(tubePoly([nx - 2, ny + 2], [hx - 2, hy + 2], 11, 8), HIDE.M);
-  bands(n, HIDE, light, { top: 2, lit: 2, sh: 3, bottom: 2, half: 0.7 });
+  bands(n, HIDE, light, { top: 2, lit: 2, sh: 2, bottom: 1, half: 0.7 });
   f.comp.add(n, Part.neck, { out: OUT });
   const nb = layer();
   for (let i = 0; i <= 10; i++) {
@@ -647,6 +728,13 @@ function drawNeckHead(f: Frame): void {
     // the open mouth: a dark gap
     const m = layer();
     m.poly([[hx + 2, hy + 5], [hx + 15, hy + 4 + tl], [hx + 14, hy + 6 + tl + jd * 0.8], [hx + 4, hy + 6 + jd * 0.4]], PAL.void0);
+    if (jaw >= 2.5) {
+      // the hiss: venom strings between the jaws and a leaf2 tongue in the gape
+      const tx = rnd(hx + 8);
+      const ty = rnd(hy + 6 + tl * 0.6);
+      m.set(tx, ty, VEN.deep).set(tx + 1, ty, VEN.deep).set(tx + 2, ty - 1, VEN.deep);
+      m.set(rnd(hx + 11), rnd(hy + 5 + tl), VEN.body).set(rnd(hx + 11), rnd(hy + 6 + tl), VEN.body).set(rnd(hx + 6), rnd(hy + 5), VEN.body);
+    }
     f.comp.add(m, Part.head, {});
   }
   f.comp.add(h, Part.head, { out: OUT });
@@ -669,7 +757,7 @@ function drawQuills(f: Frame): void {
   const q = layer();
   for (let i = 0; i < 6; i++) {
     const [x, y] = sk.quills[i];
-    const h = 3 + o.bristle + (i === 1 || i === 2 ? 1 : 0);
+    const h = 4 + o.bristle + (i === 1 || i === 2 ? 1 : 0);
     const bx = rnd(x);
     const by = rnd(y);
     for (let k = 0; k < h; k++) q.set(bx - (k >> 1), by - k, k === h - 1 ? PAL.stone3 : PAL.stone2);
@@ -682,8 +770,17 @@ function drawQuills(f: Frame): void {
 function eyeLight(f: Frame): void {
   const { p, o, sk } = f;
   const [ex, ey] = [rnd(sk.eye[0]), rnd(sk.eye[1])];
+  // the eye is hidden when a part covers it (the guard shield): it glints through the shield's eye hole
+  if (f.comp.owner(ex, ey) !== Part.head) {
+    if (f.eyeHole) {
+      const [gx, gy] = f.eyeHole;
+      p.set(gx, gy, o.eyeHot ? PAL.gold3 : PAL.gold2).set(gx + 1, gy, PAL.ink);
+    }
+    return;
+  }
   if (o.eye >= 2) {
-    p.set(ex, ey, PAL.void0).set(ex + 1, ey, PAL.void0);
+    // shut: a 3-px ink lid line
+    p.set(ex - 1, ey, PAL.ink).set(ex, ey, PAL.ink).set(ex + 1, ey, PAL.ink);
     return;
   }
   const c = o.eyeHot ? PAL.gold3 : PAL.gold2;
@@ -708,7 +805,8 @@ function sacLight(f: Frame): void {
       const inner = comp.owner(x - 1, y) === Part.sac && comp.owner(x + 1, y) === Part.sac && comp.owner(x, y - 1) === Part.sac && comp.owner(x, y + 1) === Part.sac;
       if (!inner) continue;
       const d = Math.hypot((x + 0.5 - cx) / (r + 1), (y + 0.5 - cy) / r);
-      if (o.sacHot) p.set(x, y, d < core + 0.1 ? PAL.gold3 : VEN.body);
+      // hot (the hiss): only the lit upper half flashes gold3, the lower rim stays leaf3
+      if (o.sacHot) p.set(x, y, y + 0.5 < cy + 0.5 && d < core + 0.35 ? PAL.gold3 : VEN.body);
       else p.set(x, y, d < core ? VEN.body : VEN.deep);
     }
 }
@@ -723,18 +821,28 @@ function bulbLight(f: Frame): void {
     const c = p.get(x, y);
     return c === VEN.body || c === VEN.deep || c === VEN.dark;
   };
-  // the hot band: leaf3 / gold3 side by side across the bulb's heart, ONE gold4 core pixel
+  // the hot band: 2 rows on the bulb's upper-front quarter, leaf3 / gold3 side by side in IRREGULAR runs
+  // (never a checker), ONE gold4 core pixel; the lower side keeps its leaf2
+  const fx = sk.dir[0] >= 0 ? 1 : -1;
   const cx = rnd(bx - 0.5);
   const cy = rnd(by - 0.5);
-  const rows: [number, number][] = g >= 3 ? [[0, 3], [-1, 2], [1, 2], [-2, 1]] : g >= 2 ? [[0, 2], [-1, 2], [1, 1]] : [[0, 1], [-1, 1]];
-  for (const [dy, n] of rows)
-    for (let i = -n; i <= n; i++) {
-      const x = cx + i;
-      const y = cy + dy;
-      if (!venom(x, y)) continue;
-      p.set(x, y, (x + y) & 1 ? PAL.gold3 : VEN.body);
-    }
-  if (venom(cx, cy) || p.get(cx, cy) === PAL.gold3) p.set(cx, cy, VEN.core);
+  const Y = PAL.gold3;
+  const G = VEN.body;
+  const runs: number[][] =
+    g >= 3
+      ? [[G, Y, Y, G, Y, Y], [Y, G, Y, Y, G, G]]
+      : g >= 2
+        ? [[G, Y, Y, G, Y], [G, G, Y, G]]
+        : [[G, Y, G, G], [G, G, Y]];
+  runs.forEach((row, r) => {
+    const y = cy - 1 + r;
+    row.forEach((c, i) => {
+      const x = cx + fx * (i - 2 + r);
+      if (venom(x, y)) p.set(x, y, c);
+    });
+  });
+  const kx = cx + fx * (g >= 2 ? 1 : 0);
+  if (venom(kx, cy - 1) || p.get(kx, cy - 1) === Y) p.set(kx, cy - 1, VEN.core);
 }
 
 function beadLight(f: Frame): void {
@@ -743,12 +851,13 @@ function beadLight(f: Frame): void {
     const b = o.beads[i] ?? 0;
     if (b <= 0) continue;
     const [x, y] = sk.quills[i];
-    const h = 3 + o.bristle + (i === 1 || i === 2 ? 1 : 0);
+    const h = 4 + o.bristle + (i === 1 || i === 2 ? 1 : 0);
     const tx = rnd(x) - ((h - 1) >> 1);
     const ty = rnd(y) - h;
     const c = o.hot ? PAL.gold3 : VEN.body;
+    // a bead on the quill tip: 1 px swelling → a 2×2 drop (leaf3 with a gold3 top pixel)
     p.set(tx, ty, c);
-    if (b >= 2) p.set(tx - 1, ty, VEN.deep).set(tx, ty - 1, c);
+    if (b >= 2) p.set(tx - 1, ty, c).set(tx - 1, ty - 1, c).set(tx, ty - 1, PAL.gold3);
   }
 }
 
@@ -817,9 +926,13 @@ function seamWeb(f: Frame): void {
   const { p, comp, o } = f;
   if (o.seam <= 0.05) return;
   const k = o.seam;
+  const front = f.sk.sh[0] - 12;
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
-      if (!EATEN.has(comp.owner(x, y))) continue;
+      const own = comp.owner(x, y);
+      if (!EATEN.has(own)) continue;
+      if (o.seamPart === 1 && x < front) continue; // hitMagic: only the struck front half
+      if (o.seamPart === 2 && own !== Part.tail) continue; // revive f8: the last seams on the tail
       const c = p.get(x, y);
       if (c === null || c === PAL.ink) continue;
       const [u, v] = partXY(f, x, y);
@@ -827,8 +940,9 @@ function seamWeb(f: Frame): void {
       if (!s) continue;
       if (k < 0.5 && s === 1 && (x + y) & 1) continue; // a faint web: every other seam pixel
       const [u2, v2] = [u >> 2, v >> 2];
-      const hotNode = s === 2 && k >= 0.5 && hash2(u2, v2, 11) < 0.3;
-      p.set(x, y, hotNode ? PAL.gold3 : s === 2 && k >= 0.5 ? VEN.body : VEN.deep);
+      // the gold3 nodes belong to the dying web only (a survived magic hit shows plain seams)
+      const hotNode = o.seamPart === 0 && s === 2 && k >= 0.5 && hash2(u2, v2, 11) < 0.3;
+      p.set(x, y, hotNode ? PAL.gold3 : s === 2 && k >= 0.5 ? VEN.body : o.seamPart === 1 ? VEN.body : VEN.deep);
     }
 }
 
@@ -837,6 +951,25 @@ function eatHoles(f: Frame): void {
   const { p, comp, o } = f;
   if (o.holes <= 0) return;
   const gone = new Uint8Array(W * H);
+  // step 1 (and still at 2): 6–8 ROUND holes (r 1.8 → 3–4 px) open at the seam NODES, the cape first
+  const nodes: Pt[] = [];
+  if (o.holes < 2.5) {
+    const cand: [number, number, number][] = [];
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        const own = comp.owner(x, y);
+        if (!EATEN.has(own) || own === Part.horn || own === Part.fx) continue;
+        const [u, v] = partXY(f, x, y);
+        const w = webNode(u, v);
+        if (w) cand.push([x, y, own === Part.cape || own === Part.wingF ? 0 : 1]);
+      }
+    cand.sort((a, b) => a[2] - b[2] || hash2(a[0], a[1], 3) - hash2(b[0], b[1], 3));
+    for (const [x, y] of cand) {
+      if (nodes.length >= 8) break;
+      if (nodes.every(([nx, ny]) => Math.hypot(nx - x, ny - y) >= 9)) nodes.push([x, y]);
+    }
+  }
+  const rN = o.holes < 1.5 ? 1.8 : 2.6;
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
       if (!p.isOpaque(x, y)) continue;
@@ -847,7 +980,7 @@ function eatHoles(f: Frame): void {
       const [u, v] = partXY(f, x, y);
       // the membrane cape is eaten a step ahead (it falls away first)
       const step = own === Part.cape || own === Part.wingF ? Math.min(3, o.holes + 0.6) : o.holes;
-      if (holeAt(u, v, step, 5)) gone[y * W + x] = 1;
+      if ((o.holes >= 1.5 && holeAt(u, v, step, 5)) || nodes.some(([nx, ny]) => Math.hypot(nx - x, ny - y) <= rN)) gone[y * W + x] = 1;
     }
   for (let i = 0; i < W * H; i++) if (gone[i]) p.erase(i % W, (i / W) | 0);
   // rims: an acid lip under each hole (the venom runs down), one pixel
@@ -857,6 +990,23 @@ function eatHoles(f: Frame): void {
       if (!EATEN.has(comp.owner(x, y))) continue;
       p.set(x, y, VEN.body);
     }
+  // the round node holes get a closed acid ring (they read as "it is being eaten" at 1×)
+  if (nodes.length)
+    for (let y = 1; y < H - 1; y++)
+      for (let x = 1; x < W - 1; x++) {
+        if (!p.isOpaque(x, y) || !EATEN.has(comp.owner(x, y))) continue;
+        if (!nodes.some(([nx, ny]) => Math.abs(Math.hypot(nx - x, ny - y) - rN - 0.7) < 0.75)) continue;
+        p.set(x, y, VEN.body);
+      }
+}
+
+/** A seam node of the shared web (the centre pixel of a junction of three scales). */
+function webNode(u: number, v: number): boolean {
+  if (seamAt(u, v, 5) !== 2) return false;
+  // the local best: no neighbour is a "tighter" node
+  const n0 = webAt(u, v, 5).node;
+  for (const [du, dv] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) if (seamAt(u + du, v + dv, 5) === 2 && webAt(u + du, v + dv, 5).node < n0) return false;
+  return true;
 }
 
 function nearChitin(comp: Comp, x: number, y: number): boolean {
@@ -907,12 +1057,19 @@ function poolPass(f: Frame): void {
     if (up) return PAL.leaf1;
     if (dn) return PAL.void0;
     const d = Math.hypot((x + 0.5 - cx) / rx, (y + 0.5 - cy) / ry);
-    return d < 0.45 ? PAL.void0 : PAL.leaf2;
+    return d < 0.62 ? PAL.void0 : d < 0.78 && (x + y) % 3 === 0 ? PAL.leaf1 : PAL.leaf2;
   });
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (y > GY) q.erase(x, y);
   const ph = Math.floor(o.t * 10 + o.marker * 3);
   const bub: Pt[] = [[cx - 6 + (ph % 3), cy - 1], [cx + 5 - (ph % 2), cy]];
-  for (const [bx2, by2] of bub) if (q.isOpaque(rnd(bx2), rnd(by2))) q.set(rnd(bx2), rnd(by2), VEN.body);
+  // two distinct bubbles: a leaf3 cap over a leaf2 rim (2 px each)
+  for (const [bx2, by2] of bub) {
+    const x = rnd(bx2);
+    const y = rnd(by2);
+    if (!q.isOpaque(x, y) || !q.isOpaque(x + 1, y)) continue;
+    q.set(x, y, VEN.body).set(x + 1, y, VEN.body);
+    if (q.isOpaque(x, y - 1)) q.set(x, y - 1, VEN.body);
+  }
   const tmp = layer();
   tmp.blit(q, 0, 0);
   tmp.outline(PAL.ink);
@@ -931,29 +1088,49 @@ function markerPass(f: Frame): void {
   if (o.marker < 0) return;
   const x0 = AX + 2;
   const sink = rnd(clamp(o.marker, 0, 3) * 4.5);
-  const base = GY - 2 + sink;
+  const base = GY - 2 + sink - o.mlift;
+  // the shape is laid out upright and turned by mtilt about its foot (death f7: it falls and rights itself)
+  const ca = Math.cos(o.mtilt * DEG);
+  const sa = Math.sin(o.mtilt * DEG);
+  const T = (dx: number, dy: number): Pt => [x0 + dx * ca - dy * sa, base + dx * sa + dy * ca];
   const q = layer();
   // two chitin segments, the bulb casing, the hook on top pointing up and forward
-  q.ellipse(x0, base - 2.5, 2.6, 2.6, CHITIN.M);
-  q.ellipse(x0, base - 6.5, 2.3, 2.4, CHITIN.M);
-  q.ellipse(x0, base - 11, 3.2, 3.2, CHITIN.M);
-  strokeMask(q, [[x0, base - 13], [x0 + 1, base - 16], [x0 + 3, base - 17]], [2.4, 1.6, 1], CHITIN.M);
+  const e = (dx: number, dy: number, r: number) => {
+    const [cx, cy] = T(dx, dy);
+    q.ellipse(cx, cy, r, r, CHITIN.M);
+  };
+  e(0, -2.5, 2.6);
+  e(0, -6.5, 2.35);
+  e(0, -11, 3.2);
+  strokeMask(q, [T(0, -13), T(1, -16), T(3, -17)], [2.4, 1.6, 1], CHITIN.M);
   bands(q, CHITIN, light, { top: 1, lit: 1, sh: 1, bottom: 1, crease: false });
   // the casing's empty heart (the venom is spent: a dark well with one leaf2 pixel)
-  q.set(x0, base - 11, PAL.stone0).set(x0 - 1, base - 11, PAL.stone0).set(x0, base - 10, o.glow > 0 ? VEN.deep : PAL.stone0);
+  const [hx, hy] = T(0, -11);
+  q.set(rnd(hx - 0.5), rnd(hy - 0.5), PAL.stone0).set(rnd(hx - 1.5), rnd(hy - 0.5), PAL.stone0).set(rnd(hx - 0.5), rnd(hy + 0.5), o.glow > 0 ? VEN.deep : PAL.stone0);
   for (let y = GY - 1; y < H; y++) for (let x = 0; x < W; x++) q.erase(x, y); // below the pool surface
   const tmp = layer();
   tmp.blit(q, 0, 0);
   tmp.outline(PAL.ink);
+  if (o.mtilt !== 0) {
+    // the fall smear (HA-12): two stone streaks trailing the casing back along its arc
+    const a2 = T(-2, -13);
+    for (let i = 0; i < 4; i++) {
+      tmp.set(rnd(a2[0] - 0.5) - i, rnd(a2[1] - 0.5) - 2 - (i >> 1), i < 2 ? PAL.stone2 : PAL.stone1);
+      tmp.set(rnd(a2[0] - 0.5) - i + 1, rnd(a2[1] - 0.5) - 4 - (i >> 1), PAL.stone1);
+    }
+  }
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
       const c = tmp.get(x, y);
       if (c === null || y >= GY - 1) continue;
       p.set(x, y, c);
     }
-  // one bead of venom on the hook (until it falls, sink ≥ 1.5)
-  if (o.marker < 1.5 && o.glow > 0) p.set(x0 + 4, base - 17, VEN.body).set(x0 + 4, base - 16, VEN.deep);
-  else if (o.marker >= 1.5 && o.marker < 2) p.set(x0 + 4, GY - 3, VEN.body);
+  // one bead of venom hanging on the hook (leaf3 under a gold3 glint), then it falls into the pool
+  const [tx, ty] = T(3, -17);
+  const bx = rnd(tx + 0.5);
+  const by = rnd(ty + 0.5);
+  if (o.mtilt === 0 && o.marker < 1.5 && o.glow > 0) p.set(bx, by, PAL.gold3).set(bx, by + 1, VEN.body).set(bx + 1, by + 1, VEN.body);
+  else if (o.marker >= 1.5 && o.marker < 2) p.set(x0 + 4, GY - 5, VEN.deep).set(x0 + 4, GY - 4, VEN.body).set(x0 + 4, GY - 3, VEN.body);
 }
 
 /** The revive glob: hovering (1), falling with a smear (2), splatted with a crown (3). */

@@ -127,6 +127,53 @@ describe('ashen_drake (rev. 3, the ash vulture)', () => {
     for (let y = 0; y < f.h; y++) for (let x = 0; x < f.w; x++) if (f.get(x, y) === PAL.night0) expect(x >= 44 && x <= 68 && y >= 42 && y <= 74, `${x},${y}`).toBe(true);
   });
 
+  it('keeps the rib cavity dark (≥ 40 night0 px at rest: the heart glows through gaps, not a lit shield)', () => {
+    expect(count(drawFrame(art, 'idle', 0, 'left'), PAL.night0)).toBeGreaterThanOrEqual(40);
+    expect(count(drawFrame(art, 'idle', 0, 'right'), PAL.night0)).toBeGreaterThanOrEqual(40);
+  });
+
+  it('builds the summon / revive in chain order: one connected body, nothing floating (EF-11, HA-13)', () => {
+    const LIGHT = new Set<number>([PAL.fire1, PAL.fire2, PAL.fire3, PAL.fire4, PAL.gold4, PAL.white]);
+    const parts = (p: PixelCanvas) => {
+      const seen = new Uint8Array(p.w * p.h);
+      const sizes: number[] = [];
+      const solid = (x: number, y: number) => x >= 0 && y >= 0 && x < p.w && y < p.h && p.isOpaque(x, y) && !LIGHT.has(p.get(x, y)!);
+      for (let i = 0; i < p.w * p.h; i++) {
+        if (seen[i] || !solid(i % p.w, (i / p.w) | 0)) continue;
+        let n = 0;
+        const st = [i];
+        seen[i] = 1;
+        while (st.length) {
+          const j = st.pop()!;
+          n++;
+          for (let dy = -1; dy <= 1; dy++)
+            for (let dx = -1; dx <= 1; dx++) {
+              const X = (j % p.w) + dx;
+              const Y = ((j / p.w) | 0) + dy;
+              if (!solid(X, Y) || seen[Y * p.w + X]) continue;
+              seen[Y * p.w + X] = 1;
+              st.push(Y * p.w + X);
+            }
+        }
+        if (n >= 3) sizes.push(n);
+      }
+      return sizes.length;
+    };
+    for (const [a, f] of [['summon', 1], ['summon', 2], ['summon', 3], ['summon', 4], ['summon', 5], ['revive', 3], ['revive', 4], ['revive', 5]] as const)
+      expect(parts(drawFrame(art, a, f, 'left')), `${a} f${f}`).toBe(1);
+  });
+
+  it('pours two lit streams at 1× on the spill frames (≥ 30 ember px under the ribs)', () => {
+    const EMB = new Set<number>([PAL.fire2, PAL.fire3, PAL.fire4]);
+    for (const [a, f] of [['attack', 11], ['summon', 11], ['victory', 5]] as const) {
+      const p = drawFrame(art, a, f, 'left');
+      const r = ASHEN_RIBS(a, f);
+      let n = 0;
+      for (let y = r.y + 2; y < p.h; y++) for (let x = 0; x < p.w; x++) if (EMB.has(p.get(x, y)!)) n++;
+      expect(n, `${a} f${f}`).toBeGreaterThanOrEqual(30);
+    }
+  });
+
   it('tears the cloak off (attack f4: ≥ 45 % of idle f0 redrawn, the bare struts showing) and the death ends near-empty (≤ 40 px)', () => {
     // deviation from §9.4 (opaque ≤ 60 %): the bare wing struts, spread above the body, keep most of the
     // silhouette's area, so the change itself is measured: the plate field is gone from the frame

@@ -90,62 +90,74 @@ const key = (d: Partial<Pose>, base: Pose = IDLE0): Pose => ({ ...base, ...d });
 
 const GUARD_N = 8;
 const GUARD_HOLDS = [160, 150, 150, 160, 160, 150, 140, 150];
+/** The guard tail: lowered forward over the shield, the last two chitin segments bent UP so the hook is cocked
+ * above the shield rim pointing at the enemy. */
+const GUARD_TAIL = [-50, -32, -18, -6, 4, 14, 22, -24, -75];
 const G0: Partial<Pose> = {
-  sit: 2, shield: 1, hx: -3, hy: 2, tilt: 1, eye: 1, sac: 1, tRot: 16, tCurl: 1.05, tLag: 4, glow: 2, drip: 0, beads: [0, 0, 0, 0, 0, 0],
+  sit: 2, shield: 1, hx: -3, hy: 2, tilt: 1, eye: 1, sac: 1, tail: GUARD_TAIL, glow: 2, drip: 0, beads: [0, 0, 0, 0, 0, 0],
 };
 export function guardPose(f: number): Pose {
   const k = ((f % GUARD_N) + GUARD_N) % GUARD_N;
-  // one part changes per frame: membrane fills → chest sinks → shield rim drops → stinger twitch →
-  // sac pulse → membrane relaxes → chest → stinger
+  // one part changes per frame: membrane fills → chest sinks → shield rim drops → stinger twitch (2 px) →
+  // sac pulse → membrane relaxes → chest → stinger twitch back
   const fill = k >= 1 && k <= 5 ? 1 : 0;
   const breath = k >= 2 && k <= 6 ? 1 : 0;
   const rim = k >= 3 && k <= 6 ? 1 : 0;
-  const tw = k === 4 ? 1 : k === 7 ? -1 : 0;
+  const tw = k === 3 ? 2 : k === 7 ? -2 : 0;
   const sac = k === 5 ? 2 : 1;
-  return key({ ...G0, drape: fill, breath, hy: (G0.hy as number) + rim, tdx: tw + (k % 2), tLag: (G0.tLag as number) + (k >= 4 ? 2 : 0), sac, glow: k === 4 || k === 5 ? 3 : 2, t: k / GUARD_N });
+  return key({ ...G0, drape: fill, breath, hy: (G0.hy as number) + rim, tdx: tw, tdy: k === 3 ? -1 : 0, sac, glow: k === 4 || k === 5 ? 3 : 2, t: k / GUARD_N });
 }
 const GUARD0 = guardPose(0);
 
 // ------------------------------------------------------------------ toGuard / fromGuard (6 f, 360 ms each)
 
+// The wing is one part the whole way: f1 the membrane peels off the flank (the hem lifts), f2 the arm at
+// 45° with the membrane still half folded, f3 it opens into the shield, f4 settles. fromGuard reverses it.
 const TG_HOLDS = [50, 60, 60, 60, 60, 70];
+const toward = (t: number, sh: number, extra: Partial<Pose> = {}): Pose => ({ ...blend(IDLE0, GUARD0, t), shield: sh, ...extra });
 function toGuardPose(f: number): Pose {
-  const g = GUARD0;
   switch (f) {
     case 0: return key({ by: 1, hy: 1 });
-    case 1: return blend(IDLE0, { ...g, shield: 0, tRot: 4, tCurl: 1, hx: 0, hy: 1, eye: 0 }, 1);
-    case 2: return blend(key({ sit: 2 }), { ...g, shield: 0.35, tRot: 9, eye: 0 }, 0.6); // the in-between: the arm at 45°, the tail half down
-    case 3: return blend(IDLE0, { ...g, shield: 0.7 }, 0.8);
-    case 4: return blend(IDLE0, { ...g, shield: 0.92 }, 0.95);
-    default: return g;
+    case 1: return toward(0.25, 0.12, { eye: 0, drape: -3 }); // the hips sit back, the hem peels off the flank
+    case 2: return toward(0.5, 0.42, { eye: 0 }); // the in-between: the arm at 45°, the membrane half folded
+    case 3: return toward(0.78, 0.75);
+    case 4: return toward(0.94, 0.93);
+    default: return GUARD0;
   }
 }
 function fromGuardPose(f: number): Pose {
-  const g = GUARD0;
+  const back = (t: number, sh: number, extra: Partial<Pose> = {}): Pose => ({ ...blend(GUARD0, IDLE0, t), shield: sh, ...extra });
   switch (f) {
-    case 0: return key({ tRot: 8, tCurl: 1, tLag: 2 }, g); // the tail rises first
-    case 1: return blend(g, { ...IDLE0, sit: 2, shield: 0.75 }, 0.4);
-    case 2: return blend(g, { ...IDLE0, sit: 2, shield: 0.35 }, 0.7); // the near wing drops
-    case 3: return key({ sit: 1, shield: 0, by: 1, nk: [0, 1] }); // the knuckle plants back
-    case 4: return key({ sit: 0, by: 1 }); // the hips rise
+    case 0: return { ...GUARD0, tail: tailAngles(blend(GUARD0, IDLE0, 0.3)) }; // the tail rises first
+    case 1: return back(0.3, 0.8);
+    case 2: return back(0.55, 0.42); // the near wing drops (the arm at 45°)
+    case 3: return back(0.78, 0.12, { drape: -3, nk: [0, 1] }); // the membrane folds back onto the flank
+    case 4: return key({ sit: 0, by: 1 }); // the knuckle planted, the hips rise
     default: return IDLE0;
   }
 }
 
 // ------------------------------------------------------------------ attack (14 f, 1 250 ms): "Zehir Havanı"
 
-const WINDUP = [-128, -124, -116, -102, -80, -50, -16, 16, 40];
+/** The full wind-up: the root segments lean back 15° over the rump and the curl tightens (the loaded mortar). */
+const WINDUP = [-117, -113, -107, -98, -80, -50, -16, 12, 40];
+/** The whip: f5 a C opening forward (bulb high over the shoulders), f6 the release (root still curved, the
+ * tip straight at the target), f7 the overshoot (the tip droops below the horizontal, the root lags). */
+const WHIP = [-100, -90, -78, -64, -50, -36, -20, -2, 24];
+const RELEASE = [-80, -64, -50, -40, -33, -30, -27, -20, -6];
+const OVERSHOOT = [-76, -62, -48, -36, -24, -12, 4, 22, 44];
+const wind = (t: number): number[] => WINDUP.map((a, i) => a * t + tailAngles(IDLE0)[i] * (1 - t));
 export const ATTACK_HOLDS = [80, 60, 70, 80, 140, 50, 60, 90, 120, 80, 90, 100, 110, 120];
 function attackPose(f: number): Pose {
   switch (f) {
     case 0: return key({ hy: 1 });
-    case 1: return key({ hy: 1, sac: 0, tRot: -2, glow: 2, drip: 0 }); // charge (the declaration holds it)
-    case 2: return key({ by: 1, hy: 1, sac: 0, tail: WINDUP.map((a, i) => a * 0.55 + tailAngles(IDLE0)[i] * 0.45), bulb: 1, glow: 2, drip: 0 });
-    case 3: return key({ by: 1, hy: 1, sac: 0, tail: WINDUP.map((a, i) => a * 0.85 + tailAngles(IDLE0)[i] * 0.15), bulb: 2, glow: 3, bristle: 1, jaw: 1, drip: 0 });
-    case 4: return key({ by: 2, hx: -1, hy: 2, sac: 0, tail: WINDUP, bulb: 3, glow: 3, bristle: 1, jaw: 1, drip: 0, nk: [0, 0] }); // full wind-up
-    case 5: return key({ by: 1, hx: 1, tRot: 18, tCurl: 0.8, smear: 1, bulb: 2, glow: 2, jaw: 1, drip: 0 }); // the whip
-    case 6: return key({ bx: 1, hx: 1, hy: -1, tRot: 45, tCurl: 0.4, bulb: 0, glow: 1, crown: 1, jaw: 2, drip: 0 }); // release
-    case 7: return key({ bx: 1, hx: 1, hy: -2, tRot: 47, tCurl: 0.4, tdy: 2, glow: 1, jaw: 1, drip: 0 }); // follow-through
+    case 1: return key({ by: 1, sac: 0, tail: wind(0.12), glow: 2, drip: 0 }); // charge (the declaration holds it)
+    case 2: return key({ by: 1, hy: 1, sac: 0, tail: wind(0.42), bulb: 1, glow: 2, drip: 0, nk: [0, 1] }); // the knuckle grips
+    case 3: return key({ by: 2, hy: 1, sac: 0, tail: wind(0.75), bulb: 2, glow: 3, bristle: 1, jaw: 1, drip: 0, nk: [0, 1] });
+    case 4: return key({ by: 2, hx: -1, hy: 0, sac: 0, tail: WINDUP, bulb: 3, glow: 3, bristle: 1, jaw: 1, drip: 0, nk: [0, 1] }); // full wind-up: body low, head low
+    case 5: return key({ by: 1, hx: 1, tail: WHIP, smear: 1, bulb: 2, glow: 2, jaw: 1, drip: 0 }); // the whip
+    case 6: return key({ bx: 1, hx: 1, hy: -1, tail: RELEASE, bulb: 0, glow: 1, crown: 1, jaw: 2, drip: 0 }); // release
+    case 7: return key({ bx: 1, hx: 1, hy: -2, tail: OVERSHOOT, glow: 1, jaw: 1, drip: 0 }); // follow-through: rock forward, the head lifts
     case 8: return key({ bx: 1, hy: -2, tRot: 22, tCurl: 0.85, tLag: -10, glow: 1, sac: 0, drip: 0 }); // watch (held)
     case 9: return key({ bx: 1, hy: -1, tRot: 20, tCurl: 0.85, tLag: -8, tdx: 1, glow: 1, drip: 0 }); // contact: the rattle
     case 10: return key({ hy: -1, tRot: 14, tCurl: 0.9, tLag: -5, tdx: -1, glow: 1, drip: 0 }); // recover
@@ -159,19 +171,20 @@ function attackPose(f: number): Pose {
 
 const ROAR_HOLDS = [70, 100, 150, 60, 90, 70, 70, 70, 80, 100, 110, 130];
 function roarPose(f: number): Pose {
-  const hood = { wing: 0.5, sac: 3, bristle: 1 };
+  // the hood: both wing-arms lift the membranes half-spread above the shoulders, the quills erect 2 px
+  const hood = { wing: 0.6, sac: 3, bristle: 2 };
   switch (f) {
     case 0: return key({ hy: 1 });
-    case 1: return key({ hx: -2, hy: 3, by: 1, tilt: 1, tRot: -4, sac: 1, drip: 0 }); // charge: the head drops low, the neck coils
+    case 1: return key({ hx: -3, hy: 3, by: 1, tilt: 1, tRot: -4, sac: 1, wing: 0.2, drip: 0 }); // charge: the head drops low, the neck coils back
     case 2: return key({ hx: -2, hy: 2, by: 1, ...hood, tRot: -6, tCurl: 1.08, glow: 2, drip: 0 }); // the hood
-    case 3: return key({ hx: 1, hy: -1, ...hood, jaw: 3, sacHot: 1, glow: 3, tRot: -4, drip: 0, beads: [2, 2, 2, 2, 2, 2] }); // the hiss
+    case 3: return key({ hx: 1, hy: -1, ...hood, jaw: 3, sacHot: 1, glow: 3, tRot: -4, drip: 0, beads: [2, 2, 2, 2, 2, 2] }); // the hiss: a 4-px gape
     case 4: return key({ hx: 1, hy: -1, ...hood, jaw: 3, sac: 3, glow: 3, tRot: -4, tdx: 1, drip: 0, beads: [2, 2, 2, 2, 2, 2] }); // rattle
     case 5: return key({ hx: 1, hy: -1, ...hood, jaw: 3, sac: 2, glow: 2, tRot: -4, tdx: -1, drip: 0, beads: [1, 2, 2, 2, 2, 1] });
-    case 6: return key({ hx: 1, hy: -1, ...hood, jaw: 2, sac: 2, glow: 3, tRot: -4, tdx: 1, drip: 0, beads: [1, 1, 2, 2, 1, 1] });
-    case 7: return key({ hx: 1, hy: -1, wing: 0.4, bristle: 1, jaw: 2, sac: 1, glow: 2, tRot: -4, tdx: -1, drip: 0, beads: [0, 1, 1, 1, 1, 0] });
-    case 8: return key({ hy: -1, wing: 0.25, jaw: 1, sac: 1, glow: 2, tRot: -3, drip: 0 }); // recover
-    case 9: return key({ wing: 0.1, sac: 0, glow: 2, tRot: -2, drip: 0 });
-    case 10: return key({ tRot: -1, drip: 0 });
+    case 6: return key({ hx: 1, hy: -1, ...hood, wing: 0.56, jaw: 2, sac: 2, glow: 3, tRot: -4, tdx: 1, drip: 0, beads: [1, 1, 2, 2, 1, 1] });
+    case 7: return key({ hx: 1, hy: -1, wing: 0.5, bristle: 1, jaw: 2, sac: 1, glow: 2, tRot: -4, tdx: -1, drip: 0, beads: [0, 1, 1, 1, 1, 0] });
+    case 8: return key({ hy: -1, wing: 0.3, jaw: 1, sac: 1, glow: 2, tRot: -3, drip: 0 }); // recover
+    case 9: return key({ wing: 0.12, sac: 0, glow: 2, tRot: -2, drip: 0 });
+    case 10: return key({ wing: 0.03, tRot: -1, drip: 0 });
     default: return IDLE0;
   }
 }
@@ -182,7 +195,7 @@ function roarPose(f: number): Pose {
 const HIT_HOLDS = [50, 60, 130, 110, 120, 100];
 function hitPose(f: number): Pose {
   switch (f) {
-    case 0: return key({ hx: -2, hy: -2, tilt: -1, eye: 2, sac: 0, tdx: -1 }); // local: the head snaps back and up
+    case 0: return key({ hx: -2, hy: -1, tilt: -1, eye: 2, sac: 0, tdx: -1 }); // local: the head snaps 2 back, 1 up; the eye shut; the sac compressed
     case 1: return key({ bx: -1, hx: -2, hy: -1, tilt: -1, eye: 2, sac: 0, tdx: -1, tRot: -1 });
     case 2: return key({ bx: -1, hx: -1, hy: -1, eye: 1, sac: 1, tdx: -2, tRot: -3 }); // the reel: the tail sways back 2
     case 3: return key({ hx: -1, eye: 1, tdx: -1, tRot: -2 }); // recover
@@ -207,7 +220,7 @@ function hitMagicPose(f: number): Pose {
   const flare = { hot: 1, sacHot: 1, eyeHot: 1, glow: 3, seam: 0, beads: [2, 2, 2, 2, 2, 2] };
   switch (f) {
     case 0: return key({ ...flare, hy: -1, eye: 0, sac: 2 }); // the venom flares hot, the body rigid
-    case 1: return key({ ...flare, seam: 0.35, hy: -1, sac: 2, tRot: 1 }); // the seams show leaf3 for one frame
+    case 1: return key({ ...flare, seam: 0.35, seamPart: 1, hy: -1, sac: 2, tRot: 1 }); // the seams show leaf3 on the struck front half (no nodes: not the death web)
     case 2: return key({ hot: 1, eyeHot: 1, glow: 3, hy: -1, sac: 1, shake: 1, tRot: 1, beads: [1, 1, 1, 1, 1, 1] }); // shudder
     case 3: return key({ eyeHot: 1, glow: 2, hy: -1, sac: 1, shake: 2, tRot: -1, tdx: 1 });
     case 4: return key({ glow: 2, sac: 1, tRot: -1 }); // recover
@@ -223,15 +236,15 @@ const SP_HOLDS = [70, 90, 100, 140, 50, 60, 80, 90, 100, 100, 110, 110];
 function specialPose(f: number): Pose {
   switch (f) {
     case 0: return attackPose(1); // = the held attack f1, pixel for pixel
-    case 1: return key({ hy: 1, sac: 1, tRot: -2, wing: 0.08, glow: 2, drip: 0 }); // it begins the rear: the wings stir (≤ 1× idleΔ from the held attack f1)
-    case 2: return key({ by: -1, rear: 0.7, wing: 0.85, hy: -2, tail: WINDUP.map((a, i) => a * 0.6 + tailAngles(IDLE0)[i] * 0.4), bulb: 1, glow: 2, sac: 2, drip: 0 });
+    case 1: return { ...attackPose(1), hy: 1, wing: 0.1 }; // it begins the rear: the wings stir (≤ 1× idleΔ from the held attack f1)
+    case 2: return key({ by: -1, rear: 0.7, wing: 0.55, hy: -2, tail: WINDUP.map((a, i) => a * 0.6 + tailAngles(IDLE0)[i] * 0.4), bulb: 1, glow: 2, sac: 2, drip: 0 });
     case 3: return key({ by: -1, rear: 1, wing: 1, hy: -2, tail: WINDUP, bulb: 3, glow: 3, sac: 2, bristle: 1, beads: [2, 2, 2, 2, 2, 2], drip: 0 }); // the bulb swells
     case 4: return key({ by: -1, rear: 0.9, wing: 0.9, hy: -1, tRot: 40, tCurl: 0.45, smear: 1, bulb: 1, glow: 2, jaw: 2, drip: 0 }); // the flat fan: the spray
     case 5: return key({ rear: 0.6, wing: 0.4, tRot: 50, tCurl: 0.32, tdy: 2, glow: 1, jaw: 1, drip: 0 }); // follow, the wings beat
-    case 6: return key({ rear: 0.4, wing: 0.8, tRot: 30, tCurl: 0.6, glow: 1, drip: 0 });
-    case 7: return key({ rear: 0.2, wing: 0.3, tRot: 18, tCurl: 0.8, glow: 1, drip: 0 }); // recover: back onto the knuckles
-    case 8: return key({ by: 1, wing: 0.1, tRot: 10, tCurl: 0.9, glow: 1, drip: 0, nk: [0, 0] });
-    case 9: return key({ tRot: 5, glow: 1, drip: 0 });
+    case 6: return key({ rear: 0.4, wing: 0.7, tRot: 30, tCurl: 0.6, glow: 1, drip: 0 }); // the wings beat
+    case 7: return key({ rear: 0.2, wing: 0.4, tRot: 18, tCurl: 0.8, glow: 1, drip: 0 }); // recover: back onto the knuckles, the wings fold
+    case 8: return key({ by: 1, wing: 0.15, tRot: 10, tCurl: 0.9, glow: 1, drip: 0, nk: [0, 0] });
+    case 9: return key({ wing: 0.04, tRot: 5, glow: 1, drip: 0 });
     case 10: return key({ tRot: 2, drip: 0 });
     default: return IDLE0;
   }
@@ -241,20 +254,27 @@ function specialPose(f: number): Pose {
 
 const SU_HOLDS = [90, 80, 80, 90, 60, 70, 80, 80, 90, 60, 200, 90, 100, 110, 140];
 const CURL_TAIL = [150, 115, 80, 45, 15, 0, -4, -6, -10];
+/** f4 `land`: the tail half-way to its hook (the rest of the hook is drawn at f5, so no frame carries body + wing + tail at once). */
+const LAND_TAIL = [-104, -88, -68, -44, -16, 14, 44, 72, 96];
+/** f3: the root rises off the floor coil and the tail rolls up over the back in a low hook. */
+const RISE_TAIL = [-150, -125, -95, -62, -30, 0, 30, 60, 85];
+const HOOK_TAIL = [-126, -118, -106, -90, -70, -44, -14, 14, 36];
 function summonPose(f: number): Pose {
-  const low = { by: 4, sit: 1, hx: -9, hy: 9, tilt: 2, eye: 1, sac: 0, shield: 0.25, glow: 1, drip: 0, beads: [0, 0, 0, 0, 0, 0] };
+  // curled: body low, the head tucked under the folded near wing (the eye a slit), the tail wrapped round
+  const low = { by: 4, sit: 1, hx: -9, hy: 9, tilt: 2, eye: 1, sac: 0, shield: 0.32, glow: 1, drip: 0, beads: [0, 0, 0, 0, 0, 0] };
   switch (f) {
     case 0: return key({ ...low, curl: 1, tail: CURL_TAIL, nk: [-3, 3] });
     case 1: return key({ ...low, curl: 1, tail: CURL_TAIL.map((a, i) => (i >= 7 ? a - 12 : a)), nk: [-3, 3] }); // the tail tip flicks
-    case 2: return key({ ...low, curl: 1, tail: CURL_TAIL.map((a, i) => (i >= 6 ? a - 24 : a)), nk: [-2, 3] });
-    case 3: return key({ ...low, by: 3, hx: -7, hy: 7, shield: 0.15, tail: CURL_TAIL.map((a, i) => a - (i >= 4 ? (i - 3) * 14 : 0)), nk: [-1, 4] });
-    case 4: return key({ by: 3, sit: 0, hx: -4, hy: 4, eye: 1, sac: 0, tail: [-140, -132, -120, -102, -80, -54, -24, 6, 30], smear: 1, glow: 1, drip: 0, nk: [0, 0] }); // land: the knuckles slam
-    case 5: return key({ by: 2, hx: -1, hy: 1, sac: 0, tail: [-124, -118, -108, -95, -77, -52, -22, 8, 32], glow: 1, drip: 0 }); // the head lifts
-    case 6: return key({ by: 1, hy: -1, tilt: -1, jaw: 1, sac: 1, tRot: -14, tCurl: 1.2, glow: 1, drip: 0 }); // inhale
-    case 7: return key({ by: 1, hy: -1, tilt: -1, jaw: 2, sac: 2, tRot: -10, tCurl: 1.15, glow: 2, drip: 0 });
-    case 8: return key({ hy: -2, tilt: -1, jaw: 2, sac: 3, tRot: -6, tCurl: 1.1, glow: 2, drip: 0, bristle: 1 });
-    case 9: return key({ hy: -2, jaw: 1, sac: 3, tRot: 2, tCurl: 0.95, wing: 0.5, glow: 3, bulb: 2, bristle: 1, drip: 0, beads: [2, 2, 2, 2, 2, 2] }); // peak: the bulb ignites
-    case 10: return key({ hy: -2, jaw: 1, sac: 3, tRot: 2, tCurl: 0.95, wing: 0.5, glow: 3, bulb: 2, bristle: 1, drip: 0, beads: [2, 2, 2, 2, 2, 2], t: 0.5 }); // the cut-in hold
+    case 2: return key({ ...low, curl: 1, tail: CURL_TAIL.map((a, i) => (i >= 6 ? a - 24 : a)), nk: [-2, 3], tdx: 1 });
+    // the in-between rise: the knuckles plant first, the body comes up from the curl, the tail starts to lift
+    case 3: return key({ ...low, by: 4, hx: -7, hy: 6, shield: 0.18, tilt: 1, tail: RISE_TAIL, nk: [0, 0] });
+    case 4: return key({ by: 3, sit: 0, hx: -4, hy: 3, eye: 1, sac: 0, shield: 0.05, tail: LAND_TAIL, smear: 1, glow: 1, drip: 0, nk: [0, 0] }); // land: idle height − 3
+    case 5: return key({ by: 2, hx: -1, hy: 1, sac: 0, tail: HOOK_TAIL, glow: 1, drip: 0 }); // the head lifts, the tail hooks over the back
+    case 6: return key({ by: 1, hy: -1, tilt: -1, jaw: 1, sac: 1, tRot: -14, tCurl: 1.18, glow: 1, drip: 0 }); // inhale
+    case 7: return key({ by: 1, hy: -1, tilt: -1, jaw: 2, sac: 2, tRot: -10, tCurl: 1.12, glow: 2, wing: 0.15, drip: 0 });
+    case 8: return key({ hy: -2, tilt: -1, jaw: 2, sac: 3, tRot: -5, tCurl: 1.06, glow: 2, wing: 0.3, drip: 0, bristle: 1 });
+    case 9: return key({ hy: -2, jaw: 1, sac: 3, tRot: 2, tCurl: 0.95, wing: 0.6, glow: 3, bulb: 2, bristle: 2, drip: 0, beads: [2, 2, 2, 2, 2, 2] }); // peak: the bulb ignites, the membranes flare half
+    case 10: return key({ hy: -2, jaw: 1, sac: 3, tRot: 2, tCurl: 0.95, wing: 0.6, glow: 3, bulb: 3, bristle: 2, drip: 0, beads: [2, 2, 2, 2, 2, 2], tdx: 1, t: 0.5 }); // the cut-in hold: the bulb pulses 1 px
     case 11: return key({ hy: -1, jaw: 1, sac: 1, mist: 1, tRot: 1, wing: 0.4, glow: 2, bulb: 1, drip: 0, beads: [1, 1, 1, 1, 1, 1] }); // exhale
     case 12: return key({ sac: 1, mist: 2, wing: 0.2, glow: 2, tRot: 1, drip: 0 });
     case 13: return key({ wing: 0.05, glow: 1, drip: 0 });
@@ -275,7 +295,7 @@ function deathPose(f: number): Pose {
     case 4: return key({ ...locked, bx: -1, by: 3, hx: -3, hy: 3, tilt: 1, eye: 2, sac: 0, seam: 0.45, holes: 1, glow: 2 });
     case 5: return key({ ...locked, bx: -1, by: 4, hx: -3, hy: 4, tilt: 1, eye: 2, sac: 0, seam: 0, holes: 2, glow: 2, drape: 3 });
     case 6: return key({ ...locked, bx: -1, by: 4, hx: -3, hy: 4, tilt: 1, eye: 2, sac: 0, seam: 0, holes: 3, glow: 1, drape: 3 }); // the lace (held)
-    case 7: return key({ ...locked, bx: -1, by: 4, hx: -3, hy: 4, eye: 2, holes: 3, slump: 1, pool: 1, marker: 1, glow: 1 }); // the slump
+    case 7: return key({ ...locked, bx: -1, by: 4, hx: -3, hy: 4, eye: 2, holes: 3, slump: 1, pool: 1, marker: 0, mtilt: -45, mlift: 6, glow: 1 }); // the slump: the stinger falls, tilted, with a smear
     case 8: return key({ body: 0, pool: 1, marker: 0, glow: 1 }); // the stinger marker (held)
     case 9: return key({ body: 0, pool: 1, marker: 1.6, glow: 0 }); // it sinks, the bead falls
     default: return key({ body: 0, pool: 0.9, marker: 2.6, glow: 0 }); // the hook tip only
@@ -293,9 +313,9 @@ function revivePose(f: number): Pose {
     case 3: return key({ body: 0, pool: 1, marker: 0.8, glow: 1 }); // the stinger rights itself
     case 4: return key({ by: 2, eye: 2, sac: 0, holes: 3, seam: 0, pool: 0.6, glow: 1, drip: 0 }); // the lace stands up
     case 5: return key({ by: 2, eye: 2, sac: 0, holes: 2, seam: 0, glow: 1, drip: 0 });
-    case 6: return key({ by: 1, eye: 1, sac: 0, holes: 1, seam: 1, glow: 1, drip: 0 });
-    case 7: return key({ by: 1, eye: 1, sac: 0, seam: 0.5, glow: 1, drip: 0, nk: [0, 0] }); // land
-    case 8: return key({ sac: 2, eye: 0, seam: 0.2, glow: 1, drip: 0 }); // the first breath
+    case 6: return key({ by: 1, eye: 1, sac: 0, holes: 1, seam: 1, glow: 1, drip: 0, nk: [0, 3] }); // the near knuckle raised
+    case 7: return key({ by: 1, eye: 1, sac: 0, glow: 1, drip: 0, nk: [0, 0] }); // land: the hide whole, the knuckle slams down, the knees flex
+    case 8: return key({ sac: 2, eye: 0, seam: 0.6, seamPart: 2, glow: 1, drip: 0 }); // the first breath: the last seams glow on the tail
     case 9: return key({ sac: 1, glow: 3, bulb: 1, drip: 0 }); // the bulb ignites
     default: return IDLE0;
   }

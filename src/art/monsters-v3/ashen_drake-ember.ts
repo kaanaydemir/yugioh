@@ -82,44 +82,63 @@ export function emberPass(p: PixelCanvas, c: EmberCtx) {
   const hy = Math.round(R.heart[1] - 0.5);
   const beatUp = P.beat === 1 || P.beat === 2 ? 1 : P.beat === 3 ? -1 : 0;
   const heatUp = Math.max(0, Math.min(2, Math.round((P.heat - 1) * 2)));
-  // ---- leaks: the cavity glows round the heart, only where the cavity still shows
-  const r1 = P.heat <= 0.25 ? 2 : 4.2 + beatUp * 1.2 + heatUp * 1.5;
-  const r2 = P.heat <= 0.25 ? 3.5 : 7.2 + beatUp * 1.5 + heatUp * 2.5;
-  for (let y = hy - 12; y <= hy + 12; y++)
-    for (let x = hx - 12; x <= hx + 12; x++) {
+  // ---- the heart's halo: the cavity stays night0 (the dark that makes it glow, §1.3). Only a small
+  //      glow round the heart (≤ 7×6 with the heart at full heat) and a 1-px fire1 lip under each bar.
+  const hr = P.heat <= 0.25 ? 0 : heatUp >= 2 ? 3.4 : heatUp >= 1 ? 2.9 : beatUp > 0 ? 2.5 : 1.6;
+  for (let y = hy - 4; y <= hy + 4; y++)
+    for (let x = hx - 4; x <= hx + 4; x++) {
       if (x < 0 || y < 0 || x >= W || y >= H || !c.cavity[y * W + x]) continue;
-      const cur = p.get(x, y);
-      if (cur !== PAL.night0) continue;
-      const d = Math.hypot(x - hx, (y - hy) * 0.85);
-      if (d < r1) put(p, keep, x, y, heatUp >= 2 ? PAL.fire3 : PAL.fire2);
-      else if (d < r2) put(p, keep, x, y, PAL.fire1);
+      if (p.get(x, y) !== PAL.night0) continue;
+      const d = Math.max(Math.abs(x + 0.5 - (hx + 0.5)) / 1.0, Math.abs(y + 0.5 - (hy + 0.5)) / 0.85);
+      if (d < hr) put(p, keep, x, y, heatUp >= 2 && d < hr - 1 ? PAL.fire3 : PAL.fire2);
     }
+  // the lip: the cavity pixel right under a bar picks up the heart's light (fire1; fire2 on a beat / heat)
+  if (P.heat > 0.25)
+    for (let y = hy - 12; y <= hy + 12; y++)
+      for (let x = hx - 9; x <= hx + 9; x++) {
+        if (x < 0 || y < 1 || x >= W || y >= H || !c.cavity[y * W + x] || c.cavity[(y - 1) * W + x]) continue;
+        if (p.get(x, y) !== PAL.night0) continue;
+        const d = Math.hypot(x - hx, y - hy);
+        if (d > 9 + heatUp * 1.5) continue;
+        put(p, keep, x, y, (beatUp > 0 || heatUp > 0) && d < 5 + heatUp ? PAL.fire2 : PAL.fire1);
+      }
   // ---- the heart itself (only on cavity pixels: the bars stay in front of it)
-  for (const [dx, dy, col] of heartCells(P.beat, P.heat)) {
+  // the loose heart (falling in the death, buried in the revive heap) is an ember, not a lit square:
+  // 3×3 fire3 with a single fire4 (fire2 with a fire3 core off the beat, a dim 2×2 when spent)
+  const loose = P.crumble > 0.4 || (P.heap > 0 && P.boneTop > hy);
+  const cells: [number, number, number][] = !loose
+    ? heartCells(P.beat, P.heat)
+    : P.heat <= 0.25
+      ? [[0, 0, PAL.fire1], [1, 0, PAL.fire2], [0, 1, PAL.fire1], [1, 1, PAL.fire1]]
+      : P.heat < 0.7
+        ? [[0, 0, PAL.fire2], [1, 0, PAL.fire2], [0, 1, PAL.fire1], [1, 1, PAL.fire2]]
+        : [-1, 0, 1].flatMap((dy) => [-1, 0, 1].map((dx): [number, number, number] => [dx, dy, dx === 0 && dy === 0 ? (P.beat === 1 || P.crumble > 0.4 ? PAL.fire4 : PAL.fire3) : P.beat === 1 || P.crumble > 0.4 ? PAL.fire3 : PAL.fire2]));
+  for (const [dx, dy, col] of cells) {
     const x = hx + dx;
     const y = hy + dy;
     if (x < 0 || y < 0 || x >= W || y >= H) continue;
-    if (c.cavity[y * W + x] || P.crumble > 0.4 || (P.heap > 0 && P.boneTop > hy)) put(p, keep, x, y, col);
+    if (c.cavity[y * W + x] || loose) put(p, keep, x, y, col);
   }
-  // the bars' inner edges catch the light on a beat / at heat
+  // the bars' inner edges catch the light on a beat / at heat (only right round the heart)
   if (beatUp > 0 || heatUp > 0) {
-    for (let y = hy - 9; y <= hy + 9; y++)
-      for (let x = hx - 9; x <= hx + 9; x++) {
-        if (x < 0 || y < 0 || x >= W || y >= H || c.cavity[y * W + x]) continue;
+    for (let y = hy - 6; y <= hy + 6; y++)
+      for (let x = hx - 6; x <= hx + 6; x++) {
+        if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1 || c.cavity[y * W + x]) continue;
         const cur = p.get(x, y);
         if (cur !== PAL.stone2 && cur !== PAL.stone1) continue;
-        const nearCav = (c.cavity[y * W + x - 1] || c.cavity[y * W + x + 1] || c.cavity[(y - 1) * W + x] || c.cavity[(y + 1) * W + x]) && Math.hypot(x - hx, y - hy) < 5 + heatUp * 2;
+        const nearCav = (c.cavity[(y - 1) * W + x] || c.cavity[(y + 1) * W + x]) && Math.hypot(x - hx, y - hy) < 3.5 + heatUp * 1.2;
         if (nearCav) put(p, keep, x, y, heatUp >= 2 ? PAL.fire3 : PAL.fire2);
       }
   }
   // ---- the cocoon: a 2-px slit of heart glow where the cloaks overlap
   if (P.wingN.cocoon > 0.6 && P.heat > 0.25) {
-    const sx = hx + 9;
+    // at the cloak's front overlap, below the tucked head: fire2 → fire3 → gold4 → fire3 → fire2
+    const sx = hx + 10;
     const hot = P.beat === 0 ? PAL.fire3 : PAL.fire2;
     for (let dy = -3; dy <= 3; dy++)
       for (let dx = 0; dx < 2; dx++) {
         const x = sx + dx - (dy > 0 ? 1 : 0);
-        const y = hy + dy;
+        const y = hy + 8 + dy;
         const cur = p.get(x, y);
         if (cur === null || cur === PAL.ink) continue;
         put(p, keep, x, y, dy === 0 && dx === 0 ? PAL.gold4 : Math.abs(dy) <= 1 && dx === 0 ? hot : PAL.fire1);
@@ -134,7 +153,8 @@ export function emberPass(p: PixelCanvas, c: EmberCtx) {
       if (cur === null || cur === PAL.ink) continue;
       if (hash(x, 11, k) < 0.16) continue; // eaten gaps
       const sh = (x + Math.floor(P.shimmer * 20)) % 10;
-      const col = P.heat <= 0.25 ? PAL.stone1 : sh < 3 ? PAL.fire2 : PAL.fire1;
+      // at heat (hitMagic f0–f2, the summon's burst) the lip runs fire3
+      const col = P.heat <= 0.25 ? PAL.stone1 : P.heat >= 1.55 ? (sh < 6 ? PAL.fire3 : PAL.fire2) : sh < 3 ? PAL.fire2 : PAL.fire1;
       put(p, keep, x, y, col);
     }
   }
@@ -167,7 +187,8 @@ export function emberPass(p: PixelCanvas, c: EmberCtx) {
   if (P.eye > 0 && P.crumble < 0.35) {
     const ex = Math.round(R.eye[0] - 0.5);
     const ey = Math.round(R.eye[1] - 0.5);
-    put(p, keep, ex, ey, P.eye >= 2 ? PAL.white : PAL.fire3);
+    // 2 = the blaze: a 2-px fire4 eye (a white core only at full heat)
+    put(p, keep, ex, ey, P.eye >= 2 ? (P.heat >= 1.95 && P.seated < 44 ? PAL.white : PAL.fire4) : PAL.fire3);
     if (P.eye >= 2) put(p, keep, ex + 1, ey, PAL.fire4);
   }
   // ---- the throat: light between the jaws when they part
@@ -231,19 +252,20 @@ function brazier(p: PixelCanvas, c: EmberCtx) {
 
 function spill(p: PixelCanvas, c: EmberCtx) {
   const { P, R } = c;
-  // two streams from the lowest two rib gaps (between ribs 3–4 and below rib 4, at the keel side)
-  const g1 = lerpV(R.ribs[3][1], R.ribs[4][1], 0.5);
-  const g2 = add(R.ribs[4][1], [1, 2.5]);
+  // two streams from two DIFFERENT gaps (§4.4.1): the second-lowest gap (toward the spine) and the
+  // lowest one (toward the keel), ≥ 4 px apart so they read as two at 1×
+  const g1 = add(lerpV(R.ribs[2][1], R.ribs[3][1], 0.5), [-2, 0]);
+  const g2 = add(R.ribs[4][1], [2, 2.5]);
   if (P.spill < 2.5) {
     for (const [i, g] of [g1, g2].entries()) {
       const x0 = Math.round(g[0]);
       const y0 = Math.round(g[1]);
-      const len = P.spill < 1.5 ? 14 + i * 3 : 9;
-      const start = P.spill < 1.5 ? 0 : 7;
+      const len = P.spill < 1.5 ? 16 + i * 4 : 10;
+      const start = P.spill < 1.5 ? 0 : 8;
       for (let k = start; k < len; k++) {
         const y = y0 + k;
         if (y > GY) break;
-        const sway = Math.round(Math.sin((k + i * 3) * 0.6) * 0.6) + Math.floor(k / 6);
+        const sway = Math.round(Math.sin((k + i * 3) * 0.6) * 0.6) + Math.floor(k / 6) * (i ? 1 : -1);
         const head = k < 2 ? PAL.fire4 : k < 8 ? PAL.fire3 : PAL.fire2;
         put(p, c.keep, x0 + sway, y, head);
         put(p, c.keep, x0 + sway + 1, y, k < 6 ? PAL.fire2 : PAL.fire1);
@@ -251,24 +273,44 @@ function spill(p: PixelCanvas, c: EmberCtx) {
     }
     // scattered grains round the streams
     for (let k = 0; k < 14; k++) {
-      const x = Math.round(g1[0] - 3 + hash(k, 21, P.spill * 10) * 10);
+      const x = Math.round(g1[0] - 3 + hash(k, 21, P.spill * 10) * 12);
       const y = Math.round(g1[1] + 2 + hash(k, 22, P.spill * 10) * (GY - g1[1] - 2));
       if (y > GY) continue;
       put(p, c.keep, x, y, hash(k, 23) < 0.4 ? PAL.fire3 : PAL.fire2);
     }
   }
-  // the fan at the talons (grains landed / cooled)
+  // the fan at the talons: grains landed (2…3) → a cooled ash wedge 13 px wide, 3 tall on the floor
+  // rows (stone2 body, stone1 underside, an ink top edge), 3–4 fire1 embers (spill 3) cooling to 1–2
+  // on the held frame (spill ≥ 3.5)
   if (P.spill >= 2) {
-    const fx = Math.round(R.ankleN[0] + 6);
+    const fx = Math.round(R.ankleN[0] + 7);
     const cool = P.spill >= 3;
-    for (let k = 0; k < 18; k++) {
-      const dx = Math.round((hash(k, 31) - 0.35) * 14);
-      const dy = Math.round(hash(k, 32) * 2.2);
-      const x = fx + dx;
-      const y = GY - dy;
-      const cur = p.get(x, y);
-      if (cur !== null && cur !== PAL.ink && dy > 0) continue;
-      put(p, c.keep, x, y, cool ? (hash(k, 33) < 0.3 ? PAL.fire1 : PAL.stone2) : hash(k, 33) < 0.5 ? PAL.fire2 : PAL.fire1);
+    const rows: [number, number, number][] = [
+      [GY, fx, fx + 13],
+      [GY - 1, fx + 1, fx + 11],
+      [GY - 2, fx + 3, fx + 8],
+    ];
+    if (!cool) {
+      // still landing: hot grains over a thin bed
+      for (let x = fx; x <= fx + 12; x++) if (hash(x, 34) < 0.75) put(p, c.keep, x, GY, hash(x, 35) < 0.5 ? PAL.fire2 : PAL.fire1);
+      for (let k = 0; k < 8; k++) {
+        const x = fx + Math.round(hash(k, 31) * 11);
+        const y = GY - 1 - Math.round(hash(k, 32) * 1.5);
+        if (p.get(x, y) === null) put(p, c.keep, x, y, hash(k, 33) < 0.4 ? PAL.fire3 : PAL.fire2);
+      }
+      return;
     }
+    for (const [y, x0, x1] of rows)
+      for (let x = x0; x <= x1; x++) {
+        const cur = p.get(x, y);
+        if (cur !== null && cur !== PAL.ink) continue;
+        put(p, c.keep, x, y, y === GY ? PAL.stone1 : PAL.stone2);
+      }
+    // the top edge: ink over the wedge where there is air
+    for (const [y, x0, x1] of rows)
+      for (let x = x0 - 1; x <= x1 + 1; x++) if (p.get(x, y - 1) === null && (x >= x0 && x <= x1)) put(p, c.keep, x, y - 1, PAL.ink);
+    const embers = P.spill >= 3.5 ? [[fx + 5, GY - 1]] : [[fx + 3, GY - 1], [fx + 6, GY - 2], [fx + 9, GY - 1], [fx + 11, GY]];
+    if (P.spill >= 3.5) embers.push([fx + 8, GY]);
+    for (const [x, y] of embers) put(p, c.keep, x, y, PAL.fire1);
   }
 }

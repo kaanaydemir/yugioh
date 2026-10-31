@@ -1418,3 +1418,20 @@ Each finding was checked against the tree (2026-10-31) before it was resolved.
   - Known weaknesses: the cape area is a dark mass at 1×; holes in death f4 (step 1) are small; the guard shield
     is compact; the wing spread (roar hood / special) reads as spikes more than membranes; the summon curl →
     land is a hard pop; the card art is a placeholder crop.
+- 2026-10-31 — **sprite build, pass 2** (re-run of the sprite task after the usage pause; the pass-1 files were
+  already committed in the WIP checkpoint, so this pass reviewed every sheet P1 + P2 and fixed the two worst
+  known weaknesses):
+  - Summon unfurl (`venom_drake-anims.ts` `summonPose`): f4 `land` is now a tight scorpion hook cocked over the
+    back (bulb at the shoulder, smear) instead of jumping straight from the floor coil to the leaning-back arch;
+    f5 opens it to the lean-back arch, f6–f8 settle it (tCurl 1.18 → 1.12 → 1.06) into the f9 peak. The
+    curl → arch pop is now curl → hook → arch → peak.
+  - Guard shield (`venom_drake-rig.ts` `drawWing`): the fan is larger (finger tips +11/−13, +13/+1, +7/+14 from
+    the wrist), the panel is a lit `void2` plane with a `mag1` top edge (it merged with the tucked head as a
+    `void1` mass) and it carries three eaten holes (r 2.3 / 2.1 / 1.5) with the acid lip.
+  - Gates (`monster-gates --class ace --ref none`, P1 + P2): **21 ok, 0 FAIL** (guard Δ 0.36× / 0.35×, guard seam
+    1.13 / 1.11; everything else unchanged from pass 1). `tests/art/venom_drake.test.ts` 11/11; tsc: no errors in
+    venom files.
+  - Evidence: `shots/kart-a/venom_drake/sheet-v2/` (all strips P1 / P2, `gates.txt`), `shots/kart-a/venom_drake/s2/`
+    (×5 review crops), `films/summon-v2.png` (kaVenomSummon runs in the duel on the generic path).
+  - Still weak: the near wing-arm forearm reads as a straight vertical post at 1×; the shield holes are only
+    3–4 px; the death marker (f8) has no venom bead on the hook; the roar / special wing spread reads as spikes.

@@ -1185,3 +1185,53 @@ Every claim was re-checked in the tree before acting on it. All 19 findings were
     `warmPoses` stays id-based for summons, the declaration uses the new `warmUnitPoses(u, …)`. The variant's rewind
     steps / voice are data on `registerMonsterVariant` (`rewind`, `rewindSfx`). `hatchhide` is in
     `GENERATED_HIT_MATERIALS` already; with `sound: { same: 'cloth' }` it plays cloth until its own sound is set.
+- 2026-10-31 — **sprite build (stage: sprite)**, continuing the interrupted builder's parts / rig files.
+  - Files (new unless noted): `src/art/monsters-v3/cloud_hatchling.ts` (baby art, default export, `DISTINCTION`,
+    `HATCH_MOUTH`, `hatchShell(grown)`), `cloud_hatchling-anims.ts` (ONE pose table `hatchDefs(holds)` compiled as
+    `BABY` / `GROWN` with `BABY_HOLDS` / `GROWN_HOLDS`, `posePoints` / `poseJoints`, `framePuffs`),
+    `cloud_hatchling-rig.ts` (rewritten draw: standing body for any age + the story states: the curled ball at
+    any age with the peeling mane, the egg with cracks / burst / the rising knit wall + mist seams, the revive's
+    shell plates, the float cloud, the loose mane lobes), `cloud_hatchling-parts.ts` (kept; tuned: `HIDE_TH`
+    for a dominant leaf4 plane, 6×4 ring puffs + `ringBand`, new `SHELL_CAP` with a zigzag rim, `TUFT`, whiter
+    cowlick), `cloud_hatchling-grown.ts` (named `cloudHatchlingGrown` + `HATCH_GROWN_VARIANT`),
+    `_cloud_hatchling_grown.ts` (tools), `src/boot/18-hatchling-variant.ts` (the registration),
+    `src/duel/scenarios/kart_a_cloud_hatchling.ts` (all §8.5 `kaCh*` keys), `tests/art/cloud_hatchling.test.ts`.
+  - **Deviations.**
+    1. The variant is registered by a boot step (`src/boot/18-hatchling-variant.ts`), not by the art module:
+       `src/art/variants.ts` imports `textures.ts` → Phaser, and the art registry is loaded by Node tools and
+       ~all art tests (they crashed with `window is not defined`). The art module exports the variant record
+       (`HATCH_GROWN_VARIANT`, type-only import of variants); the boot module registers it at game load, before any
+       duel builds a unit. Verified: `?dev=duel&s=kaChGrownIdle&look=v3` shows the grown body, 2300 / 1700.
+    2. `rewindSfx: 'hatchVoiceCrackRev'` is left out until the SFX stage creates that name (commented in the record).
+    3. Idle holds: the §4 list sums to **1840 ms**, not the 1890 the heading says; the list is used as written.
+    4. Gates over blueprint amplitudes: the weeble lean is ±1 px at the head (not ±2: HA-21 phase was 53–64 %),
+       the hiccup jolt is the face only (no 1-px whole-body hop: HA-17), the far nub has no droop frame (HA-17);
+       liveliness comes from a 6-frame breath (squash) and a slow tail-tip sway instead (HA-18 16.6 %).
+    5. Baby guard: the PAWS cover the face (the wing nubs are on the back and too short to reach it); the nubs
+       lift. Grown guard: the tail does not curl and the paws do not slide forward (HA-9 fixes the lowest rows).
+    6. HA-9: the tail is drawn as two tubes (the floor part never depends on where the raised end swings); the
+       baby shell tap is 1 px (the tip stays above the 6-row feet band).
+    7. Grown proportions: head at (57, 37), wing tips and top mane lobes lowered, so the grown idle f0 is wider
+       than tall (58 × 54 class; the test pins `w > h`). Grown eye uses gold2/gold3 only (≤ 20 colours).
+    8. Death f2 is a crouched tumble (not yet a ball) in both forms, so f1 → f3 never pops into a ball; the grown
+       ball keeps mane lobes round its rim until it has un-aged below ≈ ⅓.
+  - **Gates** (`shots/kart-a/cloud_hatchling/gates.txt`; `--class medium --ref none`, P1 + P2): baby 20 ok, grown
+    19 ok; the only FAILs are the declared exceptions — baby HA-14 out(special) 12.5 (ends on the GROWN idle f0,
+    §4.10), grown HA-14 out(summon / revive) 3.7 and HA-15 in(special) 3.7 (drawn by the baby shell: the rewind
+    contract). Numbers baby / grown: HA-15 ≤ 1.92 / (attack, roar ≤ 1.6), HA-16 seams pass, HA-17 1.78–1.80 /
+    1.52–1.61, HA-18 16.6–16.9 % / 25.3–25.4 %, HA-19 0.73 / 0.43, HA-21 contact 22–32 %, phase ≤ 44 % / ≤ 47 %,
+    IŞ-10 idle 4.8 % / 2.6 %, body ≤ 11.2 %, effect ≤ 17.6 % (summon f8), HA-9 fixed, HA-1 / HA-25 139/139, IŞ-1
+    relit P2 > mirror, KK-13 139 frames, ≤ 2.0 ms / frame, 3.56 MB per side. Sİ-2 margin ≥ 2 on every frame.
+  - Tests: `tests/art/cloud_hatchling.test.ts` 9/9 (equal frames + marks in both arts, blueprint holds,
+    validateArt normal/projectile clean but for the exceptions, **special f15 ≡ grown idle f0 pixel-identical P1 and
+    P2 in both arts**, delegated anims identical in both arts, growth frames distinct, margins, ≤ 20 colours, leaf4
+    ≥ 40 % of the hide and cloud ≥ 35 %, no cyan/crim/teal/mag, the ring's 12 puffs and its 3-frame repeat, the
+    variant record). `tests/duel/unit-variant.test.ts` + materials still pass. `tsc`: no errors in these files.
+  - Evidence: `shots/kart-a/cloud_hatchling/` — `sheet/`, `sheet-p2/`, `grown/`, `grown-p2/` (all strips + json),
+    `f0.png`, `board.png`, `grownIdle-board.png` (the grown variant live on the board), `kk1-wyrm.png` (grown next
+    to crystal_wyrm at 2×: a maned cloud lion vs the tall wedge).
+  - **Known weaknesses / next round:** the grown forelegs merge into the chest under the front ruff (they read
+    only below the ring); the grown guard's risen two-row ring reads as scattered bubbles behind the body; the
+    baby's belly plate is small and half-hidden by the arm; the growth frames f7–f10 show a long-necked lizard
+    (the head rises before the mane, by the one-part-per-frame rule); attack hops / grown stomps are small at 1×;
+    summon cracks are faint. The KK-1 blind critic pass has NOT been run yet (reviewed by the builder only).

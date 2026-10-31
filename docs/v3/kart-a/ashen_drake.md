@@ -952,3 +952,79 @@ Every claim was re-read in the code before it was accepted.
     early frames show isolated hem patches / a floating skull piece (bottom-up masking); the guard cocoon is a dark
     egg with the head flush on its front; the crest spines are small at 1×; the board double pulse and the spill at 1×
     are not yet filmed (needs the recipe's light weights).
+- 2026-10-31 — **sprite build resumed (after the usage-limit pause), lane-A sprite builder.**
+  - Re-verified the tree as left: typecheck clean for the card's files, `tests/art/ashen_drake.test.ts` 10/10,
+    sheets regenerated (P1 + P2, all anims, points) and every strip looked at.
+  - Fixed the known weakness "bare struts read as straight rails (a harp)" in `ashen_drake-cloak.ts`: each finger is
+    now two phalanges bowed outward from the fan (bow 2.6 / 1.8 / 1.2 px), a knuckle ball at ~45 %, and a short hooked
+    tip turning back — the stripped frame in attack f3–f9 and revive f4–f8 reads as a bat hand. Area / noise unchanged
+    within the gates.
+  - Gates after the fix (`--class ace --ref none`, P1 + P2): **21 ok, 0 FAIL** (HA-15 ≤ 0.36, IŞ-10 body ≤ 9.0 %,
+    effect ≤ 16.8 %, KK-13 5.6 ms ref, 133 f, 6.64 MB). Evidence: `shots/kart-a/ashen_drake/sheet/` (regenerated,
+    `gates.txt`).
+  - Recipe still parked at `shots/kart-a/ashen_drake/recipe-ready.ts.txt`: `tests/presentation/outcomes.test.ts:71`
+    still pins `read === 3` (orchestrator ask unchanged).
+  - Remaining weaknesses: summon early frames (isolated hem patches / floating skull piece), guard cocoon reads as a
+    dark egg, small crest spines at 1×, in-game board pulse / spill not filmed until the recipe lands.
+- 2026-10-31 — **critic round 1 fixes (lane-A sprite builder).** Files: `ashen_drake-rig.ts`, `-cloak.ts`, `-ember.ts`,
+  `-anims.ts`, `tests/art/ashen_drake.test.ts` (3 new tests: dark cavity, chain-built summon / revive as one
+  connected body, ≥ 30 lit spill px). Evidence: `shots/kart-a/ashen_drake/r2/` (sheets P1 + P2 with points,
+  `gates.txt`, `board1x.png`, `board_clip.png`, zooms in `z/`: `idle.png`, `attack.png`, `summon.png`,
+  `victory.png`, `revive.png`, `death5.png`, `guard.png`, `hits.png`, `roar.png`).
+  - #1 struts: the bare hand is now a FAN from the wrist (+34° / +4° / −26° around the wrist→hem line), each
+    finger bowed 3.4–4.4 px with a 2×2 knuckle blob (stone3/stone2, far stone2/stone1) and a hooked tip, ragged
+    stone1 membrane stubs between the finger roots; with no plate left (attack f4–f9, revive f4–f6) the near
+    hand is composited BEHIND the rib cage. New pose field `strutFan` (1 bat hand, 0 fingers inside the cloak
+    outline): the summon builds with 0, the tear / regrowth / revive ramp it so no finger pokes out of a
+    re-grown cloak as a wire.
+  - #2 rib cavity: stays night0 (idle f0 62 px, was 17); a small halo round the heart (≤ 7×6 with the heart at
+    full heat), a 1-px fire1 lip under each bar (fire2 near the heart on a beat / at heat), bar inner edges lit
+    only within 3.5–6 px of the heart. The cavity is also cleared under a cloak drawn in front of it.
+  - #3 1× contrast: plates are roof tiles — one body tone, a stone3 lit lip on top (lit plates), a lower lip one
+    step down; the lit half is stone2 bodies, stone1/stone0 only for the shadow half and folds; plate jitter
+    only darkens the hanging half (no stone0 holes). Board (`kaAdBoard`, P1): cloak lit-side mean luminance
+    81 vs floor 58–63 (was 58 vs 56–64). **Deviation:** the lit-side contour is a one-step-UP stone edge
+    (`litContour`: stone1→stone2, stone2→stone3), not a void2 rim — a violet rim on the light side reads as a
+    second shadow and fights IŞ-1; the void2 rim stays on the shadow side. P2 board not filmed (the scenario
+    puts the drake on P1).
+  - #4 summon / revive chain build: `buildProgress(boneTop)` drives talons → legs → (tail from the hips
+    outward) → lumbar link + rib cage bottom-up → neck along its path → skull from the occiput → crest; the
+    hand appears only after the cage (summon: once the plates carry it). A lumbar tube (spine → pelvis) joins
+    the cage to the legs in every bare frame. Summon f1–f5 and revive f3–f5 are one connected body (tested).
+  - #5 victory: f2 is now an open-hands in-between (the 160 + 60 ms mantle frames re-split 110 / 110, frame
+    count unchanged), the head sits low and OUT in front of the canopy edge, jaw 1.3 on f4 (gape ≈ 4 px), near
+    mantle's back edge moved over the keel; f7 is a canopy-lift fold in-between before f8. Δ per step is now
+    ~3300 (two steps, was one 3873 step). Roar f2 softened the same way.
+  - #6 summon peak: new `spread` wing key — near hand thrown forward and UP over the head (a triangular sail,
+    concave trailing edge), far hand thrown back; head out of the S (pitch −18), jaw 0.5–0.7, eyes fire4,
+    flakes lifting on the hem. f6 is a 0.35 in-between, f9 0.5. bbox 96→104 px wide, margin 2.
+  - #7 spill: two streams from two different gaps (≥ 4 px apart; ≥ 30 lit px tested on attack f11, summon f11,
+    victory f5); the fan is a 14×3 wedge on rows 97–99 (stone2 body, stone1 underside, ink top) with 4 fire1
+    embers at spill 3 and 2 on the held victory frame (new value spill 3.5).
+  - #8 death: jagged stepped front (±3 px in 2–4 px runs) with chips peeling off; on crumble 0.3–0.6 three cloak
+    sheets slide down 2–5 px with a stone0 gap above them; the loose heart is a 3×3 fire3 with one fire4.
+  - #9 revive: the heap lifts 2 px on LUB (fire4 core) and 1 px on DUB, then shrinks 0.82 → 0.55 → 0.28 over f3–f5
+    while the bones rise through it (revive f0→f1 Δ 144, was 12).
+  - #10 hitHeavy: wrists −5 px, breath −1 (hood collapse) on f1–f2, talon 1.5 (3 px back) on f2.
+  - #11 hitMagic: eyes a 2-px fire4 (white core only at full heat with the cloak stripped), hem lip runs fire3 at
+    heat ≥ 1.55 (f0–f2; also the summon burst).
+  - #12 the second-to-last frames of hitHeavy / hitMagic / fromGuard settle 1 px (head + crest) before idle f0.
+  - #13 guard: the head now hangs out past the hood edge (snout tip and eye 3–5 px out), the slit moved below
+    it, plate-row lifts on f3 / f7 (near row 4, far row 3).
+  - #14 neck: root 2 px lower, angles −36 / 6 / 80 (an arch then the hang), skull ~4 px back toward the hood.
+  - #15 cloak texture: see #3 (roof tiles, no ink-dark side seams on lit plates, the near wrist's top rows calm).
+  - #16 spurs: a 3-px-wide claw rising off a bigger knuckle and hooking back (stone3 lit edge, void2 tip only);
+    crest spines wider (base ±2.6 px) in the blueprint tones (stone1 → void1 → void2 tips).
+  - #17 attack f5–f6: a 2–3 px stone1 / void1 smear trails the skull.
+  - #18 HA-18 headroom: the far cloak sways (wrist x 0/−1/−2/−1/0, y −1 at the peak) → P1 17.4 %, P2 16.3 %.
+    IŞ-1 P1 key frames are now all positive (attack f6 +0.4, hit f0 +5.0).
+  - #19 not a sprite fix (orchestrator): the recipe is still parked at `shots/kart-a/ashen_drake/recipe-ready.ts.txt`
+    until `tests/presentation/outcomes.test.ts:71` is relaxed.
+  - Gates (`--class ace --ref none`, P1 + P2): **21 ok, 0 FAIL** — margin 2 (roar f1), HA-15 ≤ 0.25, HA-16 idle
+    0.59 / guard 0.62, HA-17 1.40, HA-18 17.4 / 16.3 %, HA-19 0.50 / 0.47, HA-20 390 ms, IŞ-10 idle 6.8 / 5.9 %,
+    body ≤ 8.7 %, effect ≤ 13.3 %, HA-21 ≤ 17.9 %, HA-21 phase ≤ 47.1 %, 133 f, ≤ 6.85 ms ref, 6.64 MB.
+    `tests/art/ashen_drake.test.ts` 13/13; `npm run typecheck` clean.
+  - Remaining weaknesses: the roar's mantle frames (f2–f6) read as a boxy slab over the ribs; summon f8→f9 and
+    f9→f10 are still big steps (~3700 px: the burst folding back); the spread wings have no visible fingertip
+    spikes on their trailing edge; summon f5 shows a strut fork above the half-built cloak; the victory jaw at
+    1× is small; the board double pulse / spill at 1× still need the recipe to be filmed.
