@@ -358,6 +358,14 @@ async function blockedPike(s: StrikeArgs, at: XY, stop: XY, home: XY, depth0: nu
 
 // ================================================================ attack 2: "Uçurtma Süzülüşü"
 
+/**
+ * Attack 2's beat lengths (scene ms; the art's holds are the sheet's — the cinematic plays the frames on its own
+ * clock so the flight, the sounds and the frames stay locked): charge 260, rise 200, swing 284 to the cut, exit 100,
+ * glide 220 (≈ 1.45 s with the declaration's 0.3 s; spec 2.2 s ÷ 1.25 = 1.75 s scene, trimmed to the 3.19 s gate
+ * with a slow-dying target).
+ */
+const KT: Record<number, number> = { 1: 50, 2: 65, 3: 65, 4: 80, 5: 100, 6: 100, 7: 130, 8: 130, 9: 60, 10: 100, 11: 110, 12: 110, 13: 100 };
+
 async function kiteFlight(s: StrikeArgs): Promise<void> {
   const u = s.attacker;
   const sc = s.scene;
@@ -400,23 +408,23 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
   // ---- charge (f1–f4): the panel flares, the arm flung up, the cloak opens and billows, the string goes taut
   const f0 = 1;
   show(u, 'special', f0);
-  await sleep(sc, u.frameMs('special', 1));
+  await sleep(sc, KT[1]);
   show(u, 'special', 2);
   const rise = start('kfnStringRise', { pan, volume: 0.95 });
-  await sleep(sc, u.frameMs('special', 2));
+  await sleep(sc, KT[2]);
   show(u, 'special', 3);
-  await sleep(sc, u.frameMs('special', 3));
+  await sleep(sc, KT[3]);
   show(u, 'special', 4);
-  await sleep(sc, u.frameMs('special', 4));
+  await sleep(sc, KT[4]);
   // ---- rise (f5–f6): lifts off, the kite carries him over to the top of the swing
   const flyDepth = Math.max(depth0, tDepth + 0.5);
   spr.setDepth(flyDepth);
   const str = tautString(sc, () => (u.frameInfo().anim === 'special' && u.frameInfo().frame >= 5 && u.frameInfo().frame <= 10 ? tailW() : null), pin, flyDepth - 0.2, () => (u.frameInfo().frame >= 10 ? 5 : 0));
-  const riseMs = u.frameMs('special', 5) + u.frameMs('special', 6);
+  const riseMs = KT[5] + KT[6];
   show(u, 'special', 5);
   play('kfnSqueak', { pan, volume: 0.55, pitch: 1.1 });
   await animate(sc, riseMs, (t) => {
-    if (t >= u.frameMs('special', 5) / riseMs) show(u, 'special', 6);
+    if (t >= KT[5] / riseMs) show(u, 'special', 6);
     // first straight up and back (the lift-off), then over to the swing's start
     const a = clamp01(t / 0.45);
     const b = clamp01((t - 0.35) / 0.65);
@@ -426,7 +434,7 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
     at(g, h);
   });
   // ---- the pendulum swing (f7–f9): θ −70° → 0 (accelerating into the bottom), the blade's curved trail
-  const swingMs = u.frameMs('special', 7) + u.frameMs('special', 8) + Math.round(u.frameMs('special', 9) * 0.4);
+  const swingMs = KT[7] + KT[8] + Math.round(KT[9] * 0.4);
   const tipW = (): XY | null => {
     const fi = u.frameInfo();
     if (fi.anim !== 'special' || fi.frame < 7 || fi.frame > 10) return null;
@@ -436,8 +444,8 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
   const trail = tipTrail(sc, tipW, flyDepth + 0.3, 150);
   show(u, 'special', 7);
   play('kfnSwing', { pan: panAt(A.g.x), volume: 1 });
-  const f7end = u.frameMs('special', 7) / swingMs;
-  const f8end = (u.frameMs('special', 7) + u.frameMs('special', 8)) / swingMs;
+  const f7end = KT[7] / swingMs;
+  const f8end = (KT[7] + KT[8]) / swingMs;
   await animate(sc, swingMs, (t) => {
     show(u, 'special', t < f7end ? 7 : t < f8end ? 8 : 9);
     const th = -th0 * (1 - sineIn(t));
@@ -457,7 +465,7 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
   if (s.blocked) void glanceSparks(sc, cutAt, sgn, slitDepth);
   void cutSlit(sc, cutAt, sgn, slitDepth, { fibres: !s.blocked, rnd });
   void lightFlash(sc, cutAt.x, cutAt.y, PAL.white, 12, 140, { floorY: s.toGround.y, intensity: 0.6 });
-  await sleep(sc, Math.round(u.frameMs('special', 9) * 0.6));
+  await sleep(sc, Math.round(KT[9] * 0.6));
   if (u.claimed || u.retired) {
     trail.stop();
     str.destroy();
@@ -466,7 +474,7 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
   // ---- exit (f10): the arc carries on up past the target, the wind spills, the cloak collapses
   show(u, 'special', 10);
   play('kfnSpill', { pan: panAt(Lg.x), volume: 0.9 });
-  const exitMs = u.frameMs('special', 10);
+  const exitMs = KT[10];
   await animate(sc, exitMs, (t) => {
     const p = pend(th1 * sineOut(t));
     at(p.g, p.h);
@@ -474,14 +482,14 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
   trail.stop();
   // ---- the braking glide home (f11–f12), the panel goes out, a knee dip on landing
   const E = pend(th1);
-  const glideMs = u.frameMs('special', 11) + u.frameMs('special', 12);
+  const glideMs = KT[11] + KT[12];
   show(u, 'special', 11);
   str.destroy();
   play('kfnPanelOff', { pan, volume: 0.9 });
   const pp = panelPoint('special', 10);
   if (pp) void threadMote(sc, u.framePoint(pp.x, pp.y), -sgn, flyDepth + 0.2);
   await animate(sc, glideMs, (t) => {
-    if (t > u.frameMs('special', 11) / glideMs) show(u, 'special', 12);
+    if (t > KT[11] / glideMs) show(u, 'special', 12);
     // braking: fast off the swing, slow onto the tile; the height bleeds off
     const e = quadOut(t);
     const g = lerpXY(E.g, home, e);
@@ -492,9 +500,9 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
   show(u, 'special', 12);
   play('kfnLand', { pan, volume: 0.9 });
   spr.setDepth(unitDepth(u.home.y));
-  await sleep(sc, u.frameMs('special', 12));
+  await sleep(sc, KT[12]);
   show(u, 'special', 13);
-  await sleep(sc, Math.round(u.frameMs('special', 13) * 0.6));
+  await sleep(sc, Math.round(KT[13] * 0.6));
   u.lift = 0;
   place(u, home);
   if (!u.retired && !u.locked) u.rest();
@@ -590,7 +598,7 @@ async function leafKite(S: Stage): Promise<void> {
   const tex = { l: kiteTexture(sc, -22, light, 'up'), m: kiteTexture(sc, 0, light, 'up'), r: kiteTexture(sc, 22, light, 'up') };
   const depth = unitDepth(home.y) + 2;
   const kite = S.own(kiteImage(sc, tex.m, land.x, top, flip, depth));
-  const fallMs = 540;
+  const fallMs = 480;
   const sways = 3;
   let swayIdx = -1;
   await animate(sc, fallMs, (t) => {
@@ -622,15 +630,15 @@ async function leafKite(S: Stage): Promise<void> {
     [5, 3, PAL.gold3],
   ];
   for (const [dx, dy, c] of pools) void lightFlash(sc, R(land.x + sgn * dx), R(home.y + dy), c, 9, 90, { floorY: R(home.y + dy), intensity: 0.75, rise: 10 });
-  await sleep(sc, 70);
+  await sleep(sc, 60);
   show(u, 'summon', 3);
-  await sleep(sc, 70);
+  await sleep(sc, 60);
   // ---- a bump rises under the cloth, it tents
   show(u, 'summon', 4);
   play('kfnClothRustle', { pan, volume: 0.9 });
-  await sleep(sc, 80);
+  await sleep(sc, 70);
   show(u, 'summon', 5);
-  await sleep(sc, 80);
+  await sleep(sc, 70);
   // ---- he stands up under the kite; the cloth slides onto his shoulders (4 frames), the string uncoils
   for (const [f, ms] of [
     [6, 70],
@@ -658,9 +666,9 @@ async function leafKite(S: Stage): Promise<void> {
   void u.badge.pop();
   await sleep(sc, 60);
   show(u, 'roar', 6);
-  await sleep(sc, 70);
+  await sleep(sc, 60);
   show(u, 'roar', 7);
-  await sleep(sc, 70);
+  await sleep(sc, 50);
   if (!u.retired) u.rest();
 }
 
@@ -682,6 +690,8 @@ function watchDeath(scene: Phaser.Scene, u: MonsterUnit): void {
   const flip = u.flipX;
   const light = lightOf(u);
   const pan = panAt(u.home.x);
+  let taut = false;
+  let tautAt = 0;
   let snapped = false;
   let flown = false;
   let folded = false;
@@ -692,7 +702,14 @@ function watchDeath(scene: Phaser.Scene, u: MonsterUnit): void {
     const fi = u.frameInfo();
     const active = u.sprite.active;
     if (active && fi.anim === 'death') {
-      if (!snapped && fi.frame >= 2) {
+      // the string pulls taut as the death begins (the pose may join at f2 straight from the recoil: the tension
+      // still sounds before the snap)
+      if (!taut) {
+        taut = true;
+        tautAt = el;
+        play('kfnDeathTaut', { pan });
+      }
+      if (!snapped && fi.frame >= 2 && el - tautAt >= 60) {
         snapped = true;
         play('kfnSnap', { pan });
         // the break point: halfway between the kite's tail and the pin (death f2: pin at AX − 22, GY)
