@@ -61,7 +61,7 @@ const NAME_Y = 152;
 const TEXT_W = R.w - 14;
 /** Off-screen x of the panel (slid out). */
 const OUT_X = -R.w - 12;
-const SPELL_TYPE: Record<string, string> = { normal: 'Normal', equip: 'Kuşanma', field: 'Alan', continuous: 'Devamlı' };
+const SPELL_TYPE: Record<string, string> = { normal: 'Normal', equip: 'Kuşanma', field: 'Alan', continuous: 'Devamlı', quick: 'Hızlı' };
 
 export const INSPECT3 = Object.freeze({
   slideMs: 120,
@@ -414,6 +414,13 @@ export class InspectPanelV3 {
     const bodyY = (hasStats ? dy + 15 : dy + 5) - 1;
     const room = R.h - 3 - bodyY;
     const tight = measureText(text, 'sm', TEXT_W, true, -1).h > room;
+    // batch 2: a text longer than the panel even at tight spacing is cut at a word with "…" (never runs
+    // over the LP panel below); every older card fits, so it keeps its text as it was
+    if (tight && measureText(text, 'sm', TEXT_W, true, -2).h > room) {
+      const words = text.split(' ');
+      while (words.length > 1 && measureText(`${words.join(' ')}…`, 'sm', TEXT_W, true, -2).h > room) words.pop();
+      text = `${words.join(' ')}…`;
+    }
     const idx = this.root.getIndex(this.body);
     this.body.destroy();
     this.body = pixelText(this.scene, 7, bodyY, text, { size: 'sm', color: flavor ? PAL.mist : PAL.white, maxWidth: TEXT_W, lineSpacing: tight ? -2 : -1 });
