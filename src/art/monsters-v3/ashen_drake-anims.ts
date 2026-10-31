@@ -157,15 +157,15 @@ const HEAD_DOWN: D = { body: [7, 4], neck: [68, 46, -6], headPitch: 16, head: [1
 const ATTACK: AnimDef<AshenPose> = {
   base: 'idle0',
   beats: [
-    k({ wingN: W({ ripple: 1 }), beat: 0 }, 60),
+    k({ wingN: W({ ripple: 1 }), beat: 0 }, 75),
     // charge: the head lifts out of the S, the wrists rise, the cloak starts to unwrap (the declaration holds this)
     k({ neck: [-14, -6, -16], head: [-1, -1], headPitch: -10, crest: 0.6, wingN: W({ wrist: [1, -2], open: 0.15 }), wingF: W({ wrist: [0, -2], open: 0.12 }), beat: 1, heat: 1.1, breath: 1 }, 110, 'charge'),
     // the hem rows tear off into the ribs
     k({ neck: [-22, -10, -26], head: [-2, -2], headPitch: -16, crest: 0.8, wingN: W({ wrist: [2, -2], open: 0.45 }), wingF: W({ wrist: [0, -2], open: 0.4 }), seated: 30, chips: 14, heat: 1.45, ribSpread: 1, breath: 1 }, 90),
     // inhale: tight S, ribs spread, wings wide; the chips stream in
-    k({ neck: [-30, -16, -36], head: [-3, -3], headPitch: -22, crest: 1, wingN: W({ wrist: [3, -2], open: 0.75 }), wingF: W({ wrist: [0, -2], open: 0.7 }), seated: 14, chips: 16, heat: 1.8, ribSpread: 2, breath: 2, body: [-1, 0] }, 110),
+    k({ neck: [-30, -16, -36], head: [-3, -3], headPitch: -22, crest: 1, wingN: W({ wrist: [3, -2], open: 0.55 }), wingF: W({ wrist: [0, -2], open: 0.5 }), seated: 14, chips: 16, heat: 1.8, ribSpread: 2, breath: 2, body: [-1, 0] }, 110),
     // full wind-up: bare bones round a white heart, the head high and back, light between the teeth
-    k({ neck: [-36, -20, -44], head: [-4, -4], headPitch: -28, crest: 1.2, jaw: 0.1, wingN: W({ wrist: [3, -2], open: 0.9 }), wingF: W({ wrist: [0, -2], open: 0.85 }), seated: 0, chips: 14, heat: 2, ribSpread: 2, breath: 2, body: [-2, 0] }, 130),
+    k({ neck: [-36, -20, -44], head: [-4, -4], headPitch: -28, crest: 1.2, jaw: 0.1, wingN: W({ wrist: [3, -2], open: 0.35 }), wingF: W({ wrist: [0, -2], open: 0.3 }), seated: 0, chips: 14, heat: 2, ribSpread: 2, breath: 2, body: [-2, 0] }, 130),
     // the swing: the head whips forward and down, the crest streams back, the struts snap forward
     k({ ...HEAD_DOWN, body: [2, 1], neck: [-24, 18, 4], headPitch: -6, crest: -1, jaw: 0.4, wingN: W({ open: 0.4, mantle: 0.2 }), wingF: W({ open: 0.35, mantle: 0.18 }), seated: 0, heat: 2, ribSpread: 1, breath: 1 }, 50),
     // release: head DOWN at floor level, jaw wide
@@ -184,7 +184,7 @@ const ATTACK: AnimDef<AshenPose> = {
     k({ wingN: W({ open: 0.04 }), seated: 40, weld: 28, heat: 1, beat: 0, spill: 3 }, 120),
   ],
   end: 'idle0',
-  endMs: 140,
+  endMs: 125,
   phase: ['brazier', 'shimmer'],
 };
 

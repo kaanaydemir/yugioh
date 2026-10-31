@@ -310,12 +310,12 @@ export function drawCloak(ws: Workspace, light: Light, wing: WingId, w: WingPose
     const r = ws.raster();
     const wrist = s.front[0];
     const arm = [s.front[2], s.front[1], wrist];
-    r.tube(arm, 4, 3, o.far ? M.FAR : M.BONE, { z: 2, flat: 1.4 });
+    r.tube(arm, 3.4, 2.4, o.far ? M.FAR : M.BONE, { z: 2, flat: 1.4 });
     for (const [u, v, wd] of [[0.12, 0.92, 2.4], [0.42, 0.98, 2.2], [0.74, 0.86, 2]] as const) {
       const a = patchAt(s, u * 0.5 + 0.5 * 1, 0.08);
       const mid = patchAt(s, u, v * 0.5);
       const end = patchAt(s, u, v);
-      r.tube([lerpV(wrist, a, 0.2), mid, end], wd + 0.6, wd - 0.8, o.far ? M.FAR : M.BONE, { z: 1, flat: 1.4 });
+      r.tube([lerpV(wrist, a, 0.2), mid, end], wd, wd - 1, o.far ? M.FAR : M.BONE, { z: 1, flat: 1.4 });
     }
     const c = ws.render(r);
     q.blit(c, 0, 0);

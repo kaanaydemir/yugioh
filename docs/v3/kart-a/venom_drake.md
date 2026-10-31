@@ -1369,3 +1369,52 @@ Each finding was checked against the tree (2026-10-31) before it was resolved.
     the blueprint's green matter) because the materials test pins `matter = MATTER_RAMP[death.shatter]`; the recipe
     still breaks the body as `shadow` + accent `acid`. The blueprint's `case 'crackle'` is reproduced by the generic
     interpreter with `dec: [0.12, 0.35], knock: 120, rattle: 4200` (Magic = 0.6 × 0.35 = 0.21 s vs 0.2 s).
+- 2026-10-31 — **sprite build** (one agent): the complete v3 scorpion-wyvern sprite, P1 + P2 relight, live in v3.
+  - Files (new): `src/art/monsters-v3/venom_drake-gbuf.ts` (frame 100×92, GY 86, anchor 48; tone sets HIDE /
+    HIDE_FAR / CHITIN / MEMB / venom light; `bands()` flat-plane shading with a cel split; box-limited `Comp`),
+    `venom_drake-rig.ts` (Pose → pixels + every pass: seam web, `eatHoles`, `slumpPass`, `poolPass`,
+    `markerPass`, `globPass`, drip / crown / mist light), `venom_drake-holes.ts` (THE shared hole generator:
+    `webAt`, `seamAt`, `holeAt(x, y, step, seed, coverage)` — import it from venom_drake-acid.ts for the victim
+    holes), `venom_drake-anims.ts` (all pose tables, holds, marks, `BEATS`, points, joints), `venom_drake-wyvern.ts`
+    (the MonsterArt + `VENOM_DRAKE_DISTINCTION`; registered by id, `src/art/monsters/index.ts` untouched),
+    `src/duel/scenarios/kart_a_venom_drake.ts` (every §8.3 key). Rewritten: `tests/art/venom_drake.test.ts`,
+    `src/art/cardart-v3/venom_drake.ts` (INTERIM: crops of the new idle f0 on the DARK backdrop — the card-art
+    stage paints the real one). Deleted: `venom_drake.ts`, `-body`, `-build`, `-fx`, `-head`, `-parts`, `-types`
+    (the old `venom_drake-anims.ts` was overwritten by the new one).
+  - Gates (`monster-gates --class ace --ref none`, P1 + P2): **21 ok, 0 FAIL** — margin 2, edge 0, out 0.00,
+    in ≤ 1.61, seam idle 0.97 / guard 1.1, idle max Δ 1.58×, liveliness 15.7 % (P2 15.3 %), guard 0.37×, toGuard /
+    fromGuard 360 ms, noise idle 8.1 % / body 12.5 % / effect 18.8 % (death f6), HA-21 ≤ 20.7 %, HA-21 phase ≤ 47.0 %,
+    feet band x 32…69 fixed in 38/38 frames, marks all, muzzle 133/133, IŞ-1 P1 idle f0 +2.3 and P2 relight > mirror
+    on every key, 133 frames, 4.75 ms / frame, 4.89 MB. `tests/art/venom_drake.test.ts` 11/11. `npm run typecheck`
+    clean (whole tree at the time). Full `vitest`: the only failures are other lanes' / known (ashen_drake ×3 +
+    its recipe, cardface G1, dusk_ashen ×2, hourglass_imp, shield_titan, outcomes' recipe count 4 = ashen's new
+    recipe).
+  - Evidence: `shots/kart-a/venom_drake/sheet-final/` (P1 / P2 strips of every anim, `gates.txt`),
+    `shots/kart-a/venom_drake/ref/` (the reference aces' idle), `shots/kart-a/venom_drake/films/atk.png`
+    (kaVenomAtk on the generic path: the new sprite plays in the duel), `films/board3x.png` (1× read on NT, P2,
+    next to crystal_wyrm), `card-big.png` / `card-small.png` (interim card art).
+  - Deviations, and why:
+    - Hide tones: `L mag1 · M void1 · S void0 · E void3` (a value step darker than the blueprint's void2 mid):
+      with a void2 mid the body read as saturated purple and the venom did not glow; the mag1 plum lit plane
+      keeps it apart from the void casters (checked beside abyss_magus at 1×). The material def is unchanged.
+    - Wings: the folded wing peaks above the shoulders (elbow just above the back), the finger ridge runs back
+      to the hip and the membrane hangs as a tongued cape (ribs, 2 eaten holes: one in the panel above the back,
+      one low on the flank). The cape is darker than the hide (`void0` web, `void1` ribs).
+    - Idle drip falls from the STINGER hook, not the fang: the fang is at x ≈ 92, outside the feet band 34…68
+      (KK-5); the stinger tip is at x ≈ 59. Distinction text updated to match.
+    - Idle breath: split into travelling parts (back line rises, then the head, then the tail root, then the
+      cape) plus a 1-px stinger tremble — a whole-barrel 1-px drop broke HA-17 (2.3×) and HA-21 phase (58 %).
+    - Holes: they eat each scale cell from its centre outward, so the lace (step 3) is the seam web itself
+      (violet strands, leaf3 lower lips), not holes opening at the nodes. Seam glow is off on the lace frames.
+    - Attack wind-up: the bulb pulls back to ≈ (39, 22), not (26, 14): the 68-px tail cannot lean back further
+      without leaving the frame. Release bulb ≈ (78, 16), stinger ≈ (87, 19).
+    - Holds: `hit` f2 100 → 130 (HA-4 recover start 240); `special` tail re-ordered `90 100 100 110 110` (HA-3,
+      same total). special f1 is a stir (≤ 1× idleΔ of attack f1, tested); the rear starts at f2.
+    - Summon land (f4) is a one-frame tail swing with a smear (the curled tail cannot interpolate through the body).
+    - **Not done here (needs the cinematics / SFX stage):** the recipe `src/presentation/cards/venom_drake.ts`
+      (it names `voice: { custom: 'venom_drake' }`, which `tests/presentation/recipes.test.ts` rejects until
+      CHARACTER_SOUNDS has the set), so the death preset / glow profile still come from the v1 tables
+      (`DEATH_PRESETS.venom_drake`, `profiles.ts`) until it lands; no edit to those tables (v1 identity).
+  - Known weaknesses: the cape area is a dark mass at 1×; holes in death f4 (step 1) are small; the guard shield
+    is compact; the wing spread (roar hood / special) reads as spikes more than membranes; the summon curl →
+    land is a hard pop; the card art is a placeholder crop.

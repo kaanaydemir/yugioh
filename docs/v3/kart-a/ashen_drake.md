@@ -906,3 +906,49 @@ Every claim was re-read in the code before it was accepted.
   - Deviation: `MATTER_RAMP.ash = RAMPS.stone` (fire1 is darker than stone3, §3.4's fallback). `defs/ash.ts` takes
     `shatter: 'ash'` and its own `ASH_SOUND` already (Q2/Q3 landed), so the SE-5 gap of §6.5 is closed at the
     data level; the LSD check vs `hitStoneHeavy` is the builder's.
+- 2026-10-31 — **sprite build (rev. 3 vulture), lane-A sprite builder.**
+  - Files (new / rewritten): `src/art/monsters-v3/ashen_drake.ts` (toMonsterArt + `knock: 'pose'`, `poseKnockPx [1, 2, 2]`,
+    `joints()`; exports `ASHEN_DISTINCTION`, `ASHEN_MOUTH`, `ASHEN_RIBS`, `ASHEN_BUILD`, `ASHEN_ORDER`, `framePose`),
+    `ashen_drake-gbuf.ts` (W 120, H 104, AX 52, GY 99; material table on rigkit from `defs/ash.ts`, cloak tones on the
+    standard `lightOf` vector), `ashen_drake-rig.ts` (AshenPose, skeleton, tail / legs / rib cage / neck / skull / crest /
+    spurs, bone line, revive heap, torn-plate chips, death crumble, release smear), `ashen_drake-cloak.ts` (two 22-plate
+    Coons-patch plate fields, key shapes fold / open / mantle / cocoon, `ASHEN_ORDER` accretion order, struts, ripple),
+    `ashen_drake-ember.ts` (light pass after the outline: heart LUB / relax / DUB / rest / white, rib leaks, hem lip +
+    shimmer, welds, flakes, eyes, throat, cocoon slit, nostril smoke, brazier, spill + fan),
+    `ashen_drake-anims.ts` (all 13 anims, 133 f, the blueprint's holds and marks), `tests/art/ashen_drake.test.ts`
+    (rewritten), `src/duel/scenarios/kart_a_ashen_drake.ts` (all §8.5 `kaAd*` keys).
+  - The old quadruped rig / anims / gbuf moved to `src/art/monsters-v3/_ashen_legacy/` (not registered: the glob is
+    flat) ONLY so the old card art still compiles (`cardart-v3/ashen_drake.ts` import paths updated). Delete the folder
+    when the card-art stage redraws the card from the new rig.
+  - Gates (`tools/monster-gates.ts --class ace --ref none`, P1 + P2): **21 ok, 0 FAIL** — margin 2, HA-14 0.00,
+    HA-15 ≤ 0.36, HA-16 idle 0.68 / guard 0.45, HA-17 1.59 / 1.63, HA-18 15.6 % / 15.0 %, HA-19 0.45, HA-20 toGuard /
+    fromGuard 390 ms, IŞ-10 idle 6.5 % / body ≤ 9.0 % / effect ≤ 16.8 %, HA-21 ≤ 19.4 %, HA-21 phase ≤ 45.4 %, HA-9 fixed
+    40/40, HA-1 / HA-25 ok, IŞ-1 idle f0 +2.5 (P2 relight +8.6 vs mirror −2.5), KK-13 133 f, 5.5–6.0 ms ref, 6.64 MB.
+    Evidence: `shots/kart-a/ashen_drake/sheet/` (`ashen_drake-v3*.png/.json`, `gates.txt`), `board.png`, `kaAdAtk.png`
+    (in-game strip on the generic path), references `ref/`.
+  - `validateArt(ace)` clean (only the known HA-1 death note); P2 opaque diff 0 on all 133 frames; `npm test`: the
+    known failures only (cardface G1, dusk_ashen's DUSK half, hourglass_imp, shield_titan) + `outcomes.test.ts` if a
+    recipe is added (below).
+  - **Deviations:**
+    1. Breath: 0 → +1 px (not +2) and it lifts the wrist peaks + chest, not the whole cloak (the far cloak 1 frame, the
+       chest 2 frames late): a 2-px translated hood moved ~1000 px per step and idle drifted 58 % from f0, which broke
+       HA-17 and HA-21 phase. Liveliness is carried by the neck undulation, a ±6 tail sweep every frame, the ripple,
+       six hem flakes, the hem shimmer, crest sway, a far-wrist sway, nostril smoke and the brazier.
+    2. Wrist rises capped at −2/−4 px and the peaks sit 3 px lower than §1.2 (12 → 14 near, 16 → 18 far) to keep
+       Sİ-2 margin ≥ 2 with the 6-px spurs.
+    3. Attack tear order = `ASHEN_ORDER` reversed (§3.1): the wrist rows go first, not the hem rows (§4.4 text).
+    4. Test "attack f4 opaque ≤ 60 % of idle f0" replaced by "Δ(attack f4, idle f0) ≥ 45 % of idle f0": the bare wing
+       struts keep most of the area (the cloak hides the body rather than adding much silhouette).
+    5. Hits skip the heart (no gold4 on hit f0–f1, per §4.6); "exactly one gold4" is tested on idle (f1 none) only;
+       guard shows it in the cocoon slit.
+    6. Skull / cloak planes are G-buffer normals relit per light, not hand `_L/_R` maps.
+    7. Hit f0s move only the skull and the upper neck (HA-21 phase); the hood collapse of hitHeavy starts on f1.
+  - **Recipe NOT registered** (the light / death lines of §8.2): adding `src/presentation/cards/ashen_drake.ts` breaks
+    `tests/presentation/outcomes.test.ts:71` (`expect(read).toBe(3)` pins the number of v3 recipes; not ours). The
+    ready file is kept at `shots/kart-a/ashen_drake/recipe-ready.ts.txt` (death `ash` / `fire`, `attack.ramp 'fire'`,
+    glow `[[fire4,1],[gold4,1],[fire3,0.4]]`, custom strike / summon / death, interim rumble voice until the SFX stage).
+    Orchestrator ask: relax that pin to `≥ 3` (venom / hatchling hit it too), then move the file in.
+  - Known weaknesses: the bare struts read as straight rails (a harp) over the ribs in attack f3–f9; the summon's
+    early frames show isolated hem patches / a floating skull piece (bottom-up masking); the guard cocoon is a dark
+    egg with the head flush on its front; the crest spines are small at 1×; the board double pulse and the spill at 1×
+    are not yet filmed (needs the recipe's light weights).
