@@ -189,3 +189,111 @@ Open issues / for the next stages:
 - The light shape sits behind the mane, not on the focus (decision above) — flag for the style reviewer.
 - Card art shows the club RAISED (action pose); the sprite drags it on the ground in idle. Same club, same knots/seeds.
 - Big uses 20 colours (the cap).
+
+## Stage: CARD ART + LIGHT PROFILE — round 2 (contrast + readability pass)
+
+Re-ran the stage on the existing painting (round 1 above). Looked at it zoomed next to ember_wolf / crystal_wyrm:
+round 1 was brown on brown (the night-value trunk earth2/1/0 against the earth0 sky + earth1 treeline: the
+silhouette lived on the ink line alone), the club was a thin blob, the seeds were small grapes, the small's top-left
+(generated mane + TOP_SMALL branches + moon) was a scribble. Variants tried and LOOKED at (scratch
+`/tmp/claude-0/-home-user-yugioh/77596f6a-069b-5204-8bfc-ba0d0b8509ca/scratchpad/hollow_ogre/ca/cmp1..3.png`): moon behind the head (merges with
+the lit bark), moon behind the club with a charred dark club (the club vanished into the sky), lit mane (merges with
+the moon). Kept: moon behind the dark mane (backlit branches) + the changes below.
+
+Changes in `src/art/cardart-v3/hollow_ogre.ts`:
+- Trunk on the FULL bark ramp (earth3 lit / earth2 / earth1); the "night value" map was removed. The lit log is now
+  the largest light mass against the earth0 sky and reads at 1×.
+- Heartwood frame: the split wood around the hollow is earth4 on the lit lips (earth3/earth2 toward the shade); the
+  open log top's end-grain ring is earth4 on its lit half around a smaller hole. (gold1 was dropped — lower lids are
+  gold2 — to stay at 20 colours in big.)
+- Club thicker (7 → 15 px), bigger sawn end, bigger knots moved off the right edge; each cut face burns: void2 ember
+  ring, void3 kernel, 2×2-ish void4 heart; violet flame tongues 2–7 px (2 wide at the root, tip leaning) drawn over the
+  sky, flickering per frame — "sopası mor tohumlarla tutuşmuş" now reads.
+- Bigger ember eyes (big: near 6×3 slit, far 4×3; small: near 3 px + glint, far 2 px + lid).
+- Small: generated mane removed (`paintMane` returns empty for small); `TOP_SMALL` redrawn in small-canvas coords
+  (`TOP_SMALL_X = 0`) with two clean 2-px charred branches (one up-left, one back with a forked twig) over the moon,
+  earth4 heartwood on the head ring, smaller top hole (it read as a second mouth); seeds get a 1–3 px flame each.
+- Numbers (artStats f0): big 20 colours / backdrop 5 / isolated 3.1 % / checker 1 px / outline ink 100 % / focus ok;
+  small 19 / 4 / 7.4 % / 0 / 100 % / ok. subjectFill ~1.0 / 0.98 (giant + raised club fill the window).
+
+Light profile / presets: re-verified, unchanged. `MONSTER_GLOW.hollow_ogre` = gold4 1, gold3 0.75, void4 0.9, void3
+0.6, spill gold3: in `hollow_ogre-rig.ts` gold* and void2–4 appear only in the light pass (eyes, knots, seeds, bud,
+firefly, scar glow); white is also the moss glint, so it stays out. `DEATH_PRESETS.hollow_ogre` = plant / plant.
+`portrait()` hook is in `src/art/monsters-v3/hollow_ogre.ts` (unchanged).
+
+Evidence (re-shot, shots/v3/kart-b/hollow_ogre/): `cardart-big-x1/x3/x6.png`, `cardart-small-x1/x6.png`,
+`cardart-living-big-x3.png`, `cardart-living-small-x4.png`, `cardart-hatcard.png` (?dev=hatcard ×2: hand face, inspect
+face, art, iso field cards), `cardart-hatcard-x4.png` (hand face zoom). Round-1 `cardart-faces-*`, `cardart-face-x2`,
+`cardart-mini-x8` were deleted (stale; their node script now trips over Phaser's `window`).
+
+Tests: `npx vitest run tests/art/hollow_ogre-cardart.test.ts tests/art/cardface-v3.test.ts tests/art/hollow_ogre.test.ts`
+→ 23 pass, 1 fail = cardface-v3 G1 `scrap_raiders` 0.692 < 0.7 (not ours, pre-existing). tsc: no errors in my files.
+
+Open issues (round 2):
+- The light shape still sits behind the mane, not on the focus (KART_RESIMLERI §2 "ışık şekli odağı çerçeveler"):
+  deliberate (behind the head it merges with the lit bark), flag for the style reviewer.
+- Under the club (near fist + root fingers + club foot, big x 60–75 y 40–60 / small x 26–36 y 18–30) is still a busy
+  tan area; readable but not crisp at 1×.
+- Independent critic round still owed.
+
+## Stage: RIG + ALL ANIMS — round 2 (redraw / readability pass)
+
+The round-1 rig (above) was kept as the architecture (Pose → pixels, `Comp` part ids, pose tables). Re-studied
+against `_magma_titan` (big readable masses, one blazing focus) and `mudgrasp_spirit` (lane sibling, same earth ramp).
+Honest critique of round 1 at ×6/×8: the trunk read as a flat tan sack / cloak; the near arm and the club lay on ONE
+diagonal line (arm + club = one long bar, the club looked like a forearm); the club was a thin stick; the toadstools
+merged with the pale open-log ring (invisible); the shoulder moss was a bright green "cheek" next to the hollow; the
+guard (club as an upright post far in front) looked like holding a staff out; the chest hollow was small.
+
+### Design decisions (round 2)
+- **Arm / club composition:** the club now hangs LOW and FORWARD (≈22° in idle, head at `PLANT` = (AX+34, GY−13),
+  held just clear of the feet band), the near root arm bends with the ELBOW FORWARD (`nb −1` in idle, arm segments
+  13.5 + 14). Arm and club read as two shapes (a "7"), the club is a separate dark charred log.
+  `planted(a)` keeps the old pose-table numbers on a "hang" scale (`CA_OFF = 33`).
+- **Club:** a heavy knotted log: width 4.4 → 10, head disc 5.5, three burls (one on the head), `CLUB_LEN` 23 → 25.
+- **Bark:** long vertical furrows (5 per row, breaking every ~6 rows into plates, a 1-px wiggle every ~9 rows) in
+  trunk-local rows (they ride with the log, no crawling); the lit band narrowed (cylBands 0.17 / 0.5) so the log
+  reads round and heavy; the upper log is CHARRED one value down with a ragged tide line (the lightning burn).
+- **Silhouette:** shoulders broader (rad bump 4.5 around t 0.74); the open-log ring smaller (rx 0.72·r, ry 0.3·r) so
+  it no longer reads as a second face; two pale BRACKET FUNGI shelves on the log's back edge (the "dead log" read
+  against the sky); the two toadstools on long stems moved to the front of the near shoulder (read against the sky).
+- **Hollow:** bigger (5×7, was 4×6) with four pale torn-heartwood splinter teeth jutting from its rim into the dark
+  (the lightning split); ember eyes unchanged (2×2 + 1×2, light layer, never outlined).
+- **Moss:** dark (leaf1 / leaf0) instead of the bright leaf2 lump.
+- **Guard (new concept):** the club is barred DIAGONALLY ACROSS THE BELLY under the hollow (hand (61,55), ca −142),
+  eyes peeking over it; it twitches twice per loop (creak + after-creak). toGuard / fromGuard lerp the hand + club
+  angle (the club swings up through the vertical); the club is out of the feet band in idle AND guard (HA-9).
+- **Bigger body acting:** attack wind-up lean −8 (was −4), swing −3, release +8, contact +11 / crouch 4 / bob 2 (was
+  +6), bounce +9; roar rear −8 / bellow +10. All hands that pushed the bigger club out of the frame were moved in
+  (attack f2/f4–f8, roar f1/f3–f5, summon f6/f9/f10, special f1–f8, death club drop cfx 13).
+- **Idle:** the log creaks one px forward only (the 1-px back lean cost ~700 px of furrow/band reshuffle per step and
+  broke HA-17 / HA-21 phase); the life comes from the club pendulum (±11°), mane following the creak two frames late
+  plus its own wind rock, far-arm sway (±2 / ±1 px) and finger curl, moss drips (0…3), blink, glance, firefly
+  (frames 2…13). bob never changes on the same frame as lean.
+
+### Numbers (monster-gates `--class medium --ref none`, P1 | P2): 21 ok, 0 FAIL
+idleΔ 394 px = 16.3 % liveliness, HA-17 1.65, seam 0.65; guard Δ within 0.3–0.8; HA-21 hit 18 % / hitHeavy 29 % /
+death 29 %, phase max 49 % (hitMagic at idle f5; hit 43 %, hitHeavy 43 %); margins ≥ 2 on every frame of every anim;
+126 frames, 3.55 MB (medium ≤ 3.6), 1.75 ms/frame. Marks / holds unchanged (round 1). `tests/art/hollow_ogre*.test.ts`
+14/14 pass (the round-1 tests still describe the design: eyes / seed / knots / death remnant / palette / feet band).
+`tsc`: no errors in hollow_ogre files.
+
+### Sameness (KK-15) — UYARI rows (motion only; distinction header updated in `hollow_ogre-anims.ts`)
+dusk_sorcerer guard MOTloop 0.952 (points track: "prop displaced up-left and held" — inherent to any held-club guard;
+the round-1 post guard was 0.75 vs seal_leg_l) + attack 0.686; abyss_magus attack 0.565; grim_warden special 0.700;
+mudgrasp_spirit special 0.703 + death 0.936* (proxy, both sink into the tile); seal_head idle RHYTHM. No KEY / SI /
+silhouette rows. A blind eye test (critic agent) is owed.
+
+### Evidence (shots/v3/kart-b/hollow_ogre/)
+- `sheet/hollow_ogre-v3-all.png` + per-anim strips, `sheet-p2/hollow_ogre-v3-p2-all.png` + strips (regenerated)
+- `zoom/idle.png` (idle f0/f5/f10 ×4), `zoom/p2idle.png` (P2 relight ×6), `zoom/guard.png`, `zoom/atk.png`
+  (attack f3–f6), `zoom/sp.png` (special f3/4/5/6/8), `zoom/sum.png` (summon f1/4/6/9), `zoom/death.png` (f1/3/5/8)
+- `gates.txt`, `sameness/sameness.txt` + overlays, `board.png` (1× on the tiles)
+
+### Open issues (round 2)
+- The card art (`cardart-v3/hollow_ogre.ts`) still shows the round-1 proportions (club raised; that is fine) — no
+  bracket fungi / no charred top; harmonise in a card-art touch-up if the critic wants it.
+- Sameness rows above need the blind test; the guard row can only drop with a guard that is not "club held before the
+  body" — kept, it is the clearest defensive read.
+- Struck-wood material sound and idle SFX: unchanged open issues (orchestrator decisions 3 / 4).
+- The boosted club (glowing sprouts for the rest of the turn) is still a cinematic overlay at `points().staff/grip`.

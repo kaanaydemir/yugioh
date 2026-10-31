@@ -39,22 +39,30 @@ export function soulFlame(p: PixelCanvas, x0: number, y0: number, x1: number, y1
   }
 }
 
-/** The single eye light inside the cage at (x, y): ember / burning / blazing. */
-export function eyeLight(p: PixelCanvas, x: number, y: number, e: number, wide = 2): void {
+/**
+ * The single eye light inside the cage, top-left cell (x, y): ember (2 px leaf2) / burning (2×2 leaf3) / blazing (2×2
+ * leaf4 core with a leaf3 halo left and right and a leaf2 glow on the brow) / white heart. The second-brightest point
+ * of the figure after the lantern.
+ */
+export function eyeLight(p: PixelCanvas, x: number, y: number, e: number): void {
   if (e <= 0.08) return;
   if (e < 0.45) {
-    p.set(x, y, PAL.leaf2);
+    p.set(x, y + 1, PAL.leaf2);
+    p.set(x + 1, y + 1, PAL.leaf2);
     return;
   }
-  for (let i = 0; i < wide; i++) p.set(x + i, y, e >= 0.8 ? PAL.leaf4 : PAL.leaf3);
+  const core = e >= 0.8 ? PAL.leaf4 : PAL.leaf3;
+  for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) p.set(x + i, y + j, core);
   if (e >= 0.8) {
     p.set(x - 1, y, PAL.leaf3);
-    p.set(x + wide, y, PAL.leaf2);
+    p.set(x - 1, y + 1, PAL.leaf2);
+    p.set(x + 2, y, PAL.leaf3);
+    p.set(x + 2, y + 1, PAL.leaf3);
+    p.set(x + 1, y - 1, PAL.leaf2);
   }
   if (e >= 1.3) {
-    p.set(x, y, PAL.white);
-    p.set(x, y - 1, PAL.leaf3);
-    p.set(x, y + 1, PAL.leaf3);
+    p.set(x + 1, y, PAL.white);
+    p.set(x + 1, y - 1, PAL.leaf3);
   }
 }
 
@@ -97,6 +105,7 @@ export function soulBurst(p: PixelCanvas, cx: number, cy: number, k: number, r: 
   const n = 9;
   for (let i = 0; i < n; i++) {
     const a = (i / n) * Math.PI * 2 + rnd() * 0.35;
+    if (k >= 0.5) continue;
     const l0 = R * (k < 0.5 ? 0.15 : 0.55);
     const l1 = R * (0.75 + rnd() * 0.45);
     const c = k < 0.35 ? PAL.leaf4 : k < 0.7 ? PAL.leaf3 : PAL.leaf2;
@@ -107,7 +116,17 @@ export function soulBurst(p: PixelCanvas, cx: number, cy: number, k: number, r: 
     p.disc(cx, cy, c0 + 1, PAL.leaf3);
     p.disc(cx, cy, c0, PAL.leaf4);
     if (k < 0.25) p.disc(cx, cy, Math.max(1, c0 - 1), PAL.white);
-  } else if (k < 0.85) p.ellipseRing(cx, cy, Math.round(R * 0.9), Math.round(R * 0.7), k < 0.6 ? PAL.leaf3 : PAL.leaf2);
+  } else {
+    // old: the flame breaks into drifting embers (no ring: a ring + rays read as a reticle, critic r1)
+    for (let i = 0; i < 7; i++) {
+      const a = rnd() * Math.PI * 2;
+      const d = R * (0.6 + rnd() * 0.5);
+      const x = Math.round(cx + Math.cos(a) * d);
+      const y = Math.round(cy + Math.sin(a) * d * 0.8 - k * 4);
+      p.set(x, y, k < 0.7 ? PAL.leaf3 : PAL.leaf2);
+      if (i % 2 === 0) p.set(x, y - 1, PAL.leaf2);
+    }
+  }
 }
 
 /** Glass shards flying from (cx, cy) at age k (0…1): 2-px iron / green-glass bits that fall to the floor at fy. */
@@ -151,16 +170,27 @@ export function clods(p: PixelCanvas, cx: number, fy: number, k: number, seed: n
   }
 }
 
-/** The whirl trail of the lantern on its chain: a stepped arc of green dots around (cx, cy) radius r, angles a0→a1 (rad). */
+/**
+ * The whirl smear of the lantern on its chain: a stepped arc BAND round (cx, cy) on radii rx / ry from angle a0 to a1
+ * (rad; a1 = the lantern's side): 1 px leaf1 at the tail widening to 3 px (leaf2 → leaf3, a leaf4 leading core) at
+ * the head, stopping short of the lantern itself. Painted only on empty pixels: the smear passes BEHIND the figure.
+ */
 export function whirlTrail(p: PixelCanvas, cx: number, cy: number, rx: number, ry: number, a0: number, a1: number): void {
-  const n = Math.max(3, Math.round(Math.abs(a1 - a0) * Math.max(rx, ry) / 1.6));
+  const span = a1 - a0;
+  const r = Math.max(rx, ry);
+  const stop = Math.min(0.85, 6 / Math.max(1, r * Math.abs(span)));
+  const n = Math.max(6, Math.round(Math.abs(span) * r * 1.6));
   for (let i = 0; i <= n; i++) {
-    const u = i / n;
-    const a = a0 + (a1 - a0) * u;
-    const c = u > 0.7 ? PAL.leaf3 : u > 0.35 ? PAL.leaf2 : PAL.leaf1;
-    const x = Math.round(cx + Math.cos(a) * rx);
-    const y = Math.round(cy + Math.sin(a) * ry);
-    p.set(x, y, c);
-    if (u > 0.55) p.set(x, y + 1, PAL.leaf2);
+    const u = (i / n) * (1 - stop);
+    const a = a0 + span * u;
+    const th = u < 0.3 ? 0 : u < 0.65 ? 1 : 2;
+    for (let d = -th + (th === 2 ? 1 : 0); d <= (th === 0 ? 0 : 1); d++) {
+      const x = Math.round(cx + Math.cos(a) * (rx + d));
+      const y = Math.round(cy + Math.sin(a) * (ry + d));
+      if (p.isOpaque(x, y)) continue;
+      const edge = d !== 0 && th > 0;
+      const c = u > 0.78 ? (edge ? PAL.leaf3 : PAL.leaf4) : u > 0.5 ? (edge ? PAL.leaf2 : PAL.leaf3) : u > 0.25 ? PAL.leaf2 : PAL.leaf1;
+      p.set(x, y, c);
+    }
   }
 }

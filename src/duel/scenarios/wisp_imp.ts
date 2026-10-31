@@ -6,6 +6,12 @@ import type { Action, PlayerId } from '../../engine/types';
 import type { CardId } from '../../data/cards';
 
 const attack = (attackerZone: number, targetZone: number | null, player: PlayerId = 0): Action => ({ type: 'attack', player, attackerZone, targetZone });
+const recall = (p: PlayerId, toZone: number): Step => (D) => ({
+  type: 'activateSpell',
+  player: p,
+  uid: D.uid('soul_recall', p),
+  target: { kind: 'graveyard', uid: D.uid('wisp_imp', p), toZone },
+});
 const summon = (id: CardId, zone: number, player: PlayerId = 0): Step => (D) => ({ type: 'normalSummon', player, uid: D.uid(id, player), zone, tributes: [] });
 
 const scenarios: Record<string, Scenario> = {
@@ -83,6 +89,17 @@ const scenarios: Record<string, Scenario> = {
     desc: 'player 1\'s defending Tüy Hayalet is destroyed by player 2: the wind',
     stage: { phase: 'battle', active: 1, p0: { monsters: [{ id: 'wisp_imp', position: 'defense' }] }, p1: { monsters: ['shade_assassin'] } },
     steps: [attack(0, 0, 1)],
+  },
+  // ---- revive (soul_recall): the wind brings the feathers back (wiReviveGather / wiReviveLand)
+  wiRevive: {
+    desc: 'Ruh Çağrısı revives Tüy Hayalet from player 1\'s graveyard (the revive pose + its sound pair)',
+    stage: { p0: { hand: ['soul_recall'], graveyard: ['wisp_imp'] }, p1: { monsters: [null, 'ember_wolf'] } },
+    steps: [recall(0, 1)],
+  },
+  wiReviveP2: {
+    desc: 'player 2 revives its own Tüy Hayalet',
+    stage: { active: 1, p0: { monsters: [null, 'ember_wolf'] }, p1: { hand: ['soul_recall'], graveyard: ['wisp_imp'] } },
+    steps: [recall(1, 1)],
   },
 };
 

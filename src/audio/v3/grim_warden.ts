@@ -243,15 +243,18 @@ export const GRIM_WARDEN_RECIPES = {
     verb: 0.45,
     duck: 0.6,
     play(v) {
-      crack(v, 0, 0.7, { hp: 2400, lp: 9000, n: 3, gap: 0.009, dec: 0.011 });
-      thump(v, 0, 130, 38, 0.5, 0.38, { drive: 2.2 });
+      crack(v, 0, 0.8, { hp: 2400, lp: 9000, n: 3, gap: 0.009, dec: 0.011 });
+      thump(v, 0, 130, 38, 0.34, 0.36, { drive: 2.2 });
+      // the lantern glass SHATTERS (critic r1: no clear high layer): a bright 3–9 kHz burst of shards
+      v.noise('white', { g: [[0, 0], [0.003, 0.24], [0.09, 0.04, 'e'], [0.26, 0.0001, 'e']], to: v.filt('bandpass', [[0, 7000], [0.2, 4200, 'e']], 0.9) });
+      v.crackle({ t: 0.008, d: 0.3, n: 18, g: 0.16, f: 6200, q: 1.4, curve: 1.6, dec: 0.006 });
       // the soul burst: a pink whoomp swelling through a rising band, its hollow hum under it
       v.noise('pink', { g: [[0, 0], [0.012, 0.42], [0.32, 0.0001, 'e']], to: v.filt('bandpass', [[0, 500], [0.08, 1800, 'e'], [0.32, 600, 'e']], 1.3) });
       v.tone('sawtooth', [[0, F1 * 2], [0.4, F1, 'e']], { g: perc(0.07, 0.42, 0.004), to: v.filt('lowpass', 320, 1.2) });
       // the glass: struck panes and a shard rain in the warden's key
       glassBell(v, midiHz(82), 0.002, 0.085, 0.8, { modes: 4 });
       glassBell(v, midiHz(77), 0.006, 0.06, 0.7, { modes: 3 });
-      glassRain(v, { t: 0.01, d: 0.55, n: 16, g: 0.07, notes: GLASS, curve: 1.8, dec: [0.04, 0.2], spread: 0.7 });
+      glassRain(v, { t: 0.01, d: 0.55, n: 22, g: 0.12, notes: GLASS, curve: 1.8, dec: [0.04, 0.2], spread: 0.7 });
       // the ghost's whine breaks and falls away
       whine(v, 0.02, 0.36, midiHz(87), midiHz(70), 0.03);
     },
@@ -286,16 +289,17 @@ export const GRIM_WARDEN_RECIPES = {
       let t = 0;
       let rise = 0.16;
       for (let i = 0; i < SIPHON.length && t < D - 0.05; i++) {
-        glassReverse(v, midiHz(SIPHON[i]), t, 0.1 + Math.min(i, 6) * 0.008, rise);
+        // critic r1: the reversed glass must lead (+≈5 dB), the drone sits under it
+        glassReverse(v, midiHz(SIPHON[i]), t, 0.25 + Math.min(i, 6) * 0.016, rise);
         // a low double an octave under every third step (the body of the pull)
-        if (i % 3 === 2) glassReverse(v, midiHz(SIPHON[i] - 12), t, 0.065, rise);
+        if (i % 3 === 2) glassReverse(v, midiHz(SIPHON[i] - 12), t, 0.085, rise);
         t += rise * 0.72;
         rise = Math.max(0.06, rise * 0.9);
       }
       // the inhale: pink breath through a band falling 2.4 kHz → 500 Hz (drawn INTO the lantern)
       v.noise('pink', { g: [[0, 0.0001], [0.25, 0.12, 'e'], [D - 0.2, 0.14], [D, 0.0001, 'e']], to: v.filt('bandpass', [[0, 2400], [D, 500, 'e']], 1.8) });
-      drone(v, 0, D + 0.15, F1, 0.035, { lp: [160, 480, 180], att: 0.4, beat: 0.5 });
-      v.tone('sine', [[0, F1 * 2], [D, F1 * 1.5, 'e']], { g: [[0, 0], [0.3, 0.07], [D, 0.0001, 'e']] });
+      drone(v, 0, D + 0.15, F1, 0.017, { lp: [160, 420, 180], att: 0.4, beat: 0.5 });
+      v.tone('sine', [[0, F1 * 2], [D, F1 * 1.5, 'e']], { g: [[0, 0], [0.3, 0.035], [D, 0.0001, 'e']] });
     },
   },
   /** Effect: the target's own tone, a sine falling toward the lantern (the cinematic passes the target's `pitch`). */

@@ -319,6 +319,70 @@ function fountain(S: Stage, rnd: Rnd): { fling(): void; end(): void } {
   };
 }
 
+/**
+ * The falling feather's thread of down (specks shed every ~45 ms that drift and step down the ramp,
+ * a gold glint now and then) and its shadow on the tile (an iso dot that widens and darkens as it
+ * comes down). `at()` = the feather's world point (null: not falling any more).
+ */
+function fallTrail(S: Stage, rnd: Rnd, at: () => XY | null): { touch(): void; end(): void } {
+  const sc = S.scene;
+  const { home } = S;
+  const r = new Raster(sc, home.x - 50, home.y - 150, 100, 160, S.sprite.depth + 0.2);
+  const shadow = new Raster(sc, home.x - 16, home.y - 9, 33, 19, DEPTH.CARD_ON_TILE + 3);
+  const specks: { x: number; y: number; vx: number; t: number; gold: boolean }[] = [];
+  let lastShed = -999;
+  let touched = false;
+  let el0 = 0;
+  const stop = onFrame(sc, (_dt, el) => {
+    el0 = el;
+    const p = touched ? null : at();
+    if (p && el - lastShed > 30) {
+      lastShed = el;
+      specks.push({ x: p.x + rr(rnd, -2, 2), y: p.y + 1, vx: rr(rnd, -7, 7), t: el, gold: specks.length % 4 === 2 });
+    }
+    r.begin();
+    for (const k of specks) {
+      const a = (el - k.t) / 1000;
+      if (a > 0.66) continue;
+      const step = a < 0.22 ? 0 : a < 0.44 ? 1 : 2;
+      const x = ri(k.x + k.vx * a + Math.sin(a * 9 + k.x) * 1.2);
+      const y = ri(k.y + a * 10);
+      if (k.gold && a < 0.18) {
+        r.px(x, y, PAL.gold4);
+        if (a < 0.06) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) r.px(x + dx, y + dy, PAL.gold3);
+      } else {
+        r.px(x, y, TONES[step][step === 0 ? 0 : 1]);
+        if (step === 0) r.px(x + 1, y, TONES[0][1]);
+      }
+    }
+    r.end();
+    shadow.begin();
+    if (p) {
+      // 0 when high, 1 at the tile
+      // a ring of down-light on the tile that TIGHTENS onto the landing spot as it comes down
+      // (the touch's ripple then answers it by opening back out)
+      const k = clamp(1 - (home.y - 6 - p.y) / 90, 0, 1);
+      const rx = Math.round(lerp(13, 4, k));
+      const c = k < 0.35 ? PAL.void3 : k < 0.7 ? PAL.void4 : PAL.white;
+      shadow.ring(home.x, home.y, rx, Math.max(2, rx * 0.45), c);
+      if (k > 0.7) shadow.px(home.x, home.y, PAL.void4);
+    }
+    shadow.end();
+    return true;
+  });
+  return {
+    touch() {
+      touched = true;
+    },
+    end() {
+      void el0;
+      stop();
+      r.destroy();
+      shadow.destroy();
+    },
+  };
+}
+
 /** The summon (see the header). */
 async function summonV3(S: Stage): Promise<void> {
   const sc = S.scene;
@@ -348,6 +412,15 @@ async function summonV3(S: Stage): Promise<void> {
   const drift = start('wiDrift', { volume: 0.9, pan });
   const moon = lightPool(sc, w0.x, w0.y - FALL, { color: PAL.void4, spill: PAL.void3, radius: 12, floorY: S.home.y, air: 0.7, intensity: 0.45, anim: 'breathe', fadeIn: 120 });
   S.own({ destroy: () => moon.destroy() });
+  // the falling feather leaves a glinting thread of down behind it, and its little shadow on the
+  // tile grows as it comes down (the eye knows where it will land before it does)
+  const trail = fallTrail(S, rnd, () => {
+    const fi = u.frameInfo();
+    if (fi.anim !== 'summon') return null;
+    const c = frameCentre(u, 'summon', fi.frame);
+    return u.framePoint(c.x, c.y);
+  });
+  S.own({ destroy: () => trail.end() });
   let lastF = -1;
   await animate(sc, PRE, (t) => {
     if (!spr.active) return;
@@ -367,10 +440,15 @@ async function summonV3(S: Stage): Promise<void> {
   spr.setPosition(rest.x, rest.y);
   // ---- the summon pose: it keeps falling to the tile, touches, the fountain builds it
   const tile = S.glow({ color: PAL.void4, spill: PAL.void3, radius: 26, intensity: 0, anim: 'breathe', fadeIn: 0 });
-  const done = u.playRange('summon', 0);
   const n = u.frameCount('summon');
   const LAND = u.markFrame('summon', 'land', 9);
   const TOUCH = Math.max(1, Math.min(4, LAND - 5));
+  // the last stretch of the fall goes a little quicker than the sheet (it hung too long at 1×),
+  // the build from the touch on plays at the sheet's own beat
+  const done = (async () => {
+    await u.playRange('summon', 0, TOUCH, { timeScale: 1.45 });
+    if (spr.active) await u.playRange('summon', TOUCH);
+  })();
   const FOUNT = TOUCH + 1;
   // the moonlight follows the feather down
   const follow = onFrame(sc, () => {
@@ -384,6 +462,7 @@ async function summonV3(S: Stage): Promise<void> {
   S.own({ destroy: follow });
   let whirl: ReturnType<typeof fountain> | null = null;
   atFrame(u, 'summon', TOUCH, () => {
+    trail.touch();
     drift.stop(90);
     play('wiTouch', { volume: 0.9, pan });
     void moon.fadeOut(160);
@@ -892,8 +971,8 @@ function paintPillow(pc: PixelCanvas, cx: number, cy: number, a: number, b: numb
 
 /** A pillow sprite on the HUD layer: a raster you re-paint with a size and a face. */
 function pillowView(scene: Phaser.Scene, at: XY): { set(a: number, b: number, face: Face, dy?: number): void; hide(): void; destroy(): void } {
-  const W = 64;
-  const H = 40;
+  const W = 76;
+  const H = 44;
   const r = new Raster(scene, at.x - W / 2, at.y - H / 2, W, H, DEPTH.HUD + 8);
   const pc = new PixelCanvas(W, H);
   return {
@@ -1009,7 +1088,7 @@ async function pillowDeath(ctx: Ctx<'destroy'>, L: Leave | null, amount: number,
     // it hugs itself into a cushion (special 0 … release: hug, round, squeeze)
     const REL = u.markFrame('special', 'release', 5);
     atFrame(u, 'special', 2, () => play('wiStuff', { volume: 0.6, pan }), { late: false });
-    await u.asClaimant(() => u.playRange('special', 0, REL, { timeScale: 1.3 }));
+    await u.asClaimant(() => u.playRange('special', 0, REL, { timeScale: 1.45 }));
     burstAt = artPoint(u, 'special', REL, 'core');
     // its poof frame shows one beat (the sprite's own ring of down), then the body IS the cloud
     await sleep(sc, 50);
@@ -1030,47 +1109,64 @@ async function pillowDeath(ctx: Ctx<'destroy'>, L: Leave | null, amount: number,
   const top = lp.y < GAME_H / 2;
   const at = { x: ri(lp.x), y: ri(lp.y) };
   const flight = start('wiFlock', { volume: 0.85, pan: panAt(at.x) });
-  const FLY = 420;
+  const FLY = 390;
   await flock(sc, from, at, rnd, FLY);
   flight.stop(80);
   // ---- it packs into a pillow (the ghost's face on it)
   play('wiStuff', { volume: 0.9, pan: panAt(at.x) });
   const P = pillowView(sc, at);
-  const sizes: [number, number][] = [
-    [11, 6],
-    [21, 12],
-    [19, 10],
+  // it packs in with a plump overshoot (whole-pixel sizes, one per beat)
+  const sizes: [number, number, number][] = [
+    [9, 5, 30],
+    [17, 9, 30],
+    [26, 13, 36],
+    [22, 11, 34],
+    [24, 12, 24],
   ];
-  for (const [a, b] of sizes) {
-    P.set(a, b, 'open');
-    await sleep(sc, 40);
-  }
-  // ---- the prevented damage flies in and smacks into it
-  const num = pixelText(sc, 0, 0, `-${amount}`, { size: 'md', color: PAL.crim3, originX: 0.5, originY: 0.5 }).setDepth(DEPTH.HUD + 10);
-  // it comes in from the field side of the panel (where the blow came from) and drops onto the pillow
+  // the prevented damage is already on its way while the pillow plumps up: it comes in from the
+  // field side of the panel (where the blow came from) and drops onto the pillow
+  const num = pixelText(sc, 0, 0, `-${amount}`, { size: 'md', color: PAL.crim3, originX: 0.5, originY: 0.5 }).setDepth(DEPTH.HUD + 10).setVisible(false);
   const hitY = at.y + (top ? 6 : -6);
   const n0 = { x: at.x + (at.x < GAME_W / 2 ? 46 : -46), y: at.y + (top ? 46 : -44) };
-  num.setPosition(ri(n0.x), ri(n0.y));
   const ctrl = { x: lerp(n0.x, at.x, 0.35), y: Math.min(n0.y, hitY) - 22 };
-  await animate(sc, 200, (t) => {
-    const p = qbez(n0, ctrl, { x: at.x, y: hitY }, t * t);
-    num.setPosition(ri(p.x), ri(p.y));
-  });
+  let inbound: Promise<void> = Promise.resolve();
+  for (let i = 0; i < sizes.length; i++) {
+    const [a, b, ms] = sizes[i];
+    P.set(a, b, 'open');
+    if (i === 1) {
+      num.setPosition(ri(n0.x), ri(n0.y)).setVisible(true);
+      inbound = animate(sc, 180, (t) => {
+        const q = qbez(n0, ctrl, { x: at.x, y: hitY }, t * t);
+        num.setPosition(ri(q.x), ri(q.y));
+      });
+    }
+    await sleep(sc, ms);
+  }
+  await inbound;
   play('wiCatch', { volume: 0.95, pan: panAt(at.x) });
-  // squash: wide and flat, the eyes squeeze; the number sinks into it
-  P.set(23, 6, 'squeeze', top ? -1 : 1);
-  num.setPosition(at.x, hitY + (top ? -2 : 2));
-  await sleep(sc, 60);
-  P.set(17, 12, 'squeeze');
-  await sleep(sc, 50);
-  P.set(19, 10, 'happy');
+  // squash: wide and flat, the eyes squeeze, the number sinks into the down; then it springs
+  // back up tall, wobbles twice and settles — the blow is soaked up, nothing gets through
+  const squash: [number, number, Face, number, number][] = [
+    [29, 6, 'squeeze', 64, 3],
+    [27, 8, 'squeeze', 44, 4],
+    [19, 15, 'squeeze', 44, 0],
+    [26, 10, 'open', 44, 0],
+    [22, 13, 'open', 40, 0],
+    [24, 12, 'happy', 34, 0],
+  ];
+  for (const [a, b, face, ms, sink] of squash) {
+    P.set(a, b, face, top ? -Math.min(1, sink) : Math.min(1, sink));
+    if (sink > 0) num.setPosition(at.x, hitY + (top ? -sink : sink));
+    else num.setVisible(false);
+    await sleep(sc, ms);
+  }
   num.destroy();
   // "0 · KORUNDU"
   play('wiSafe', { volume: 0.85, pan: panAt(at.x) });
   const pr = panelRect(owner);
   const label = pixelText(sc, at.x, top ? pr.y + pr.h + 7 : pr.y - 7, '0 · KORUNDU', { size: 'sm', color: PAL.gold4, originX: 0.5, originY: 0.5 }).setDepth(DEPTH.HUD + 10);
   void panelFlash(sc, at);
-  await sleep(sc, 260);
+  await sleep(sc, 300);
   // ---- POF
   play('wiPof', { volume: 1, pan: panAt(at.x) });
   P.destroy();

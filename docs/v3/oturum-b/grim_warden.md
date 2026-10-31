@@ -256,3 +256,81 @@ Verdict: below the golden-rule bar on the signature moments. Ranked findings (de
 - MAJOR summon mound reads as a brown pie, headstone is a 3-px nub, no "fling" → `gwSummon-rise-z.png`.
 - minor: gwSiphon peak −18.7 dB (drone-dominant), impact lacks a glass-shatter high layer; gwGuard scenario has no "guard holds" branch;
   cut-in lantern clipped by the band edge; idle pendulum has no vertical arc (muzzle y fixed).
+
+## Fix round 1 (agent: fix lane, 2026-10-31) — evidence `shots/v3/kart-b/grim_warden/fix-r1/`
+Every blocker + major of critic r1 addressed; minors mostly. Files touched (all mine): `src/art/monsters-v3/grim_warden-rig.ts`,
+`-anims.ts`, `-fx.ts`; `src/art/cutins-v3/grim_warden.ts`; `src/cinematics/kart-b/grim_warden.ts`, `grim_warden-fx.ts`;
+`src/audio/v3/grim_warden.ts`; `src/duel/scenarios/grim_warden.ts`. No shared file touched in this round.
+
+**BLOCKER drain unreadable → fixed.** `soulThread` rewritten: a cubic arc lifted ≥ 30 px over BOTH sprites and bulging past
+both ends (they stand side by side), an ink-sheathed band 3 px wide (ramp[3] body + ramp[4] core), fat 3×3 soul beads with a
+white heart flowing in, soul wisps torn out of the target's body into the arc's foot, a growing/pulsing stepped halo round the
+lantern (`fill`), a light pool riding the arc apex + a glow on the target (light layer). `soulFade` now darkens TWO tiers (30 %
+of the pixels two tones, the next 30 % one tone) and a crawling rim of the stolen colour runs up the target's outline (starts
+before the thread: "it feels it coming"). A big red −400 (`impactNumber`, size 2) pops on the target's FAR side on the
+gwDebuff beat (clear of the arc), the plate still rolls. 1× full frame: `gwDrainFire-full.png` (#6–#12 the arc + −400 are the
+first read); zoom `gwDrainFire-drain-z.png`, P2 `gwDrainWaterP2-z.png`, `gwDrainWaterP2-full.png`.
+
+**BLOCKER whirl trail + reticle burst → fixed.** Cinematic trail = angle/radius of the lantern round the live `hand` point,
+drawn as a curved band along that circle (5 px head ramp[4]/[3]/[2] → 3 px → dotted 1 px tail), afterimage lanterns (ink case,
+ramp glass) on the circle, shed embers; always the lantern's current colour. Contact burst = solid irregular 11-spike star
+(ramp[3] / ramp[4] / white core) for 2 frames → rays break into shards, ONE ring once, shards in the same ramp. The sprite's own
+burst lost its ring (embers instead) and its trail is now a band painted behind the figure. Battle already stages the white
+silhouette + hit-stop: the 17 ms film shows the silhouette flash and ≈150 ms frozen hold (`gwDrainFire-contact-z.png`).
+Strike: `gwDrainFire-strike-z.png`, direct (green) `gwDirect-z.png`.
+
+**MAJOR lantern colour gap → fixed (root cause).** The tint/fade overlays synced in an UPDATE callback, so while the warden
+glided home (depth rising each tick, set later in the same tick) the overlay sorted UNDER its own sprite. Overlays are now
+glued on POST_UPDATE (`glue()` in the fx file, before the render's depth sort). The tint also recolours EVERY soul-light pixel
+of the frame (glass, flame, trail, burst, motes, soul bounce) except the eye box, so no green leaks in any anim.
+`gwDrainFire-after-z.png`: orange from contact through the target's death to the kept aura, no green frame.
+
+**MAJOR skull reads as brown grille → fixed (sprite + cut-in).** Helm is a hand map now: pale cool bone skull (stone4 lit
+cranium/cheek, stone3, stone2 crevices, void0 socket/nose/teeth gaps) inside DARK iron (stone2/stone1, stone0 separation):
+TWO meridian bars over the face, crown ring, jaw + chin bands. Eye = 2×2 leaf4 core + leaf3 halo + leaf2 brow glow (white
+heart at full). Cut-in: skull/cage painted with private tokens mapped last → pale stone bone, dark cage, bar count 4 → 3 (2
+over the face); the lantern raised 8–10 px so it never touches the band's lower edge (`cutin-sheet.png`).
+
+**MAJOR motion amplitude → fixed.** Attack: crouch → arm flung up-back (lantern behind the body) → fist overhead, lantern over
+the hood → apex tipping forward → chain at full length straight out → hurled down, torso counter-leans −3 → +6. Special: rear
+back (hood tipped up) → whole-body thrust (+6/7 lean, hood tipping over the cage) → three clearly different drinking frames
+(lantern ±2 px, flame swell, shroud blown +7…+9). Roar: rear back with helm thrown up (hr −12) → deep lunge (+7) with ±50°
+lantern swings. hit/hitHeavy/hitMagic: lantern flies to the chain's limit, overshoots, settles (hitMagic also snaps the helm
+back on f1; f0 kept local for KK-4). Summon: jerky rise (claw out → pause → heave → pause/shoulder shove → heave → squash 4 px
+on land). Idle pendulum lifts the lantern 1 px at both ends (`ly`). Boots: lit cuff/instep, toe-cap glint, shaded heel, sole
+line. One-pass despeckle on cloth/iron (isolated px −10 %). Sheets `sheet-p1/`, `sheet-p2/`; gates `gates.txt`: **21 ok /
+0 FAIL** (HA-15 in 0.71–0.97, HA-18 liveliness 17 %, HA-21 phase max 48.6 %, IŞ-10 ok, KK-13 4.97 MB).
+
+**MAJOR skull mist alien → fixed.** It puffs out of the broken lantern (squashed) and rises at once (38 px / 600 ms), body =
+two bayer tones of vapour with HOLES for sockets/mouth (no ink), hot socket points, a wobbling jaw, a streaming tail to the
+lantern dissolving from the bottom, stretches and tears apart from 40 %; a light pool rides with it; gwWail on its birth
+(`gwKill-death-z.png`, `gwKill-full.png`).
+
+**MAJOR no idle green pool → fixed (card file only, v3).** A watcher (one per scene, started by the first event the observer
+sees) keeps a leaf3 light pool (radius 26, flicker) glued to every warden's live lantern point — it swings with the
+pendulum, takes the stolen colour while the lantern holds one, fades at death (`idle-pool-z.png`). Shared MONSTER_GLOW not
+touched (its unit pool is DARK violet by attribute — shared design).
+
+**MAJOR summon mound pie → fixed.** Dome built per column (≤ 9 px), full ink silhouette, five tone bands lit top-left, pebbles;
+branching cracks (5 trunks + forks) void0 → leaf3 with pulsing leaf4 trunks and a white crown split; the pool pulses while the
+light seeps. Headstone 10×14 (rounded, carved cross) at the back rim, FLUNG up out of the soil on the seep beat (2-frame jolt +
+dust + a soft gwStone), shoved over on summon f3 (tipped pose in the air, in front), lands flat beyond the rim with a shake and
+dust (`gwSummon-rise-z.png`, `gwSummon-shove-z.png`).
+
+**minor sound → fixed.** gwSiphon: glassReverse steps +5.7 dB (raw peak 0.26 → 0.50, −15.4 dB), drone/sine halved — the
+descending reversed glass now dominates (`snd/gwSiphon-r1fix.png`). gwImpact: + a 3–9 kHz white shard burst and a 6 kHz
+crackle, glassRain louder/denser, sub thump trimmed (raw peak 1.02, chain 0.84) (`snd/gwImpact-r1fix.png`).
+**minor scenarios → fixed.** gwGuard now Fırtına Atmacası (ATK 1000) vs the defending warden (DEF 1200): guard loop + guard
+hit, the warden HOLDS (`gwGuard-z.png`); + gwGuardP2. The "face-up defense drain" case does not exist by the rules (engine
+`query.ts`: the −400 reads the target's ATK, attack position only) → added `gwDefenseNoDrain` (face-up defending Sazlık
+Balıkçılı: no drain, it breaks) to cover that branch explicitly.
+
+**Open issues after fix r1:**
+- The base summon's card slam still sprinkles purple attribute sparkles over the tile before the mound (shared summon kit /
+  `slamToZone`, not grim's file) — needs an orchestrator decision (a per-card opt-out flag).
+- On contact the shared battle staging adds attacker-attribute (DARK = violet) hit sparks/ring next to our single-family burst
+  (`battle.ts` `combatImpact`/`aRamp`) — a few violet px remain; needs a shared opt-out to be fully one colour family.
+- Idle SFX (chain creak) still not built (decision 3 optional); the idle-pool watcher is the hook it could hang on.
+- Rig noise: isolated px ≈ 190/frame (gate ok, 6.5–8 %): the cage teeth/bars and outline corners are inherent; more cleanup
+  possible on the tatters.
+- Sameness not re-run after the pose changes (gates re-run, green); a re-run of `tools/sameness.ts` is owed.

@@ -11,14 +11,16 @@
 //             hollow its edge ran parallel to the head — a hood-like tangent — and its core merged with the lit
 //             bark; behind the mane it backlights the branches), a low treeline of round crowns in the ridge's
 //             earth1, the stone0 floor under the earth1 horizon. 5 tones, all the recipe's.
-//   trunk     a broken log on two root legs (the floor shows between them), its top OPEN as on the sprite: pale
-//             splinter shards with charred tips around a pale end-grain ring and the dark hole down the log; flat
-//             cylinder planes on the bark ramp dropped one "night value" step (earth2 lit / earth1 / earth0),
-//             wavering bark fissures one step darker, a charred zig-zag lightning scar from the top into the
-//             hollow; the recipe's earth3 rim on the shadow side.
+//   trunk     a broken log on two root legs (the floor shows between them), its top OPEN as on the sprite: splinter
+//             shards with charred tips around a pale end-grain ring (earth4 heartwood on the lit half) and the dark
+//             hole down the log; flat cylinder planes on the FULL bark ramp (earth3 lit / earth2 / earth1: against the
+//             earth0 night sky the lit log is the largest light mass — a "night value" step down made it brown on
+//             brown), wavering bark fissures one step darker, a charred zig-zag lightning scar into the hollow; the
+//             recipe's earth3 rim on the shadow side.
 //   mane      broken branches thrown back from the top (up-left), charred, backlit by the moon.
 //   hollow    an almond hole in the chest: void0 darkness, the inner wall facing the light (right / bottom inside)
-//             in earth1 — depth —, a charred earth0 lip, and the pale split wood (earth3 / earth2) framing it.
+//             in earth1 — depth —, a charred earth0 lip, and the split heartwood framing it (earth4 on the lit lips,
+//             earth3 / earth2 toward the shade): the frame that holds the eye on the hollow.
 //   arms      root bundles with strand grooves: the far arm hangs down the back, its root fingers on the floor at
 //             the lower left; the near arm (bark ramp: it reaches into the light) wraps the club in root fingers.
 //   club      a knotted log raised up-right, charred backlit wood: three snapped branch stubs, a violet SEED in each
@@ -27,10 +29,12 @@
 //   shoulders dark moss caps (leaf0 / leaf1 / leaf2) with hanging strands; two mushrooms on the back shoulder.
 //   light     the two ember eyes deep in the hollow (gold3 slits, gold4 cores) on a flat void1 pool, with ONE white
 //             glint in the near eye — the picture's brightest point and its focus —, and the club's seeds (void2 /
-//             void3 / void4) with violet flame tongues: the second, dimmer light (the eyes win the value).
+//             void3 / void4 burning in the cut faces of the snapped branch stubs) with violet flame tongues licking up
+//             over the sky (2–7 px, flickering): the second, dimmer light (the eyes win the value).
 // small: the SAME geometry painted natively at 1× density on a closer crop (×0.64: head, hollow, club, shoulders —
 //        KART_RESIMLERI §1 "aynı resim, daha yakın"), 1-px bands, and hand corrections: the head stump and the mane
-//        as a 1× map (TOP_SMALL), hand-placed eye pixels — method (2) + (3). Judged at 1× on the face.
+//        (two clean charred branches over the moon, no generated mane) as a 1× map (TOP_SMALL), hand-placed eye and
+//        seed / flame pixels — method (2) + (3). Judged at 1× on the face.
 // Living art (A5_PLAN §3.7.6): 6 frames × 150 ms — the near eye's glint pulses, the eyes blink once (f3), a seed
 //        breathes (void3 ↔ void4), the seed flames flicker, a spark rises and a firefly (gold3) slips out of the
 //        hollow and back (≤ 2 px a frame).
@@ -78,7 +82,7 @@ const PI = (t: Xf, q: V): V => {
 };
 
 const XF_BIG: Xf = { s: 1, ox: 0, oy: 0, w: 88, h: 68, small: false };
-/** The small crop: ×0.54 about the hollow (a little closer than half). */
+/** The small crop: ×0.64 (closer than half: head, hollow, club, shoulders). */
 const SMALL_S = 0.64;
 const HOLLOW_C: V = [46, 32];
 const XF_SMALL: Xf = { s: SMALL_S, ox: Math.round(22 - 54 * SMALL_S), oy: Math.round(18 - 28 * SMALL_S), w: 44, h: 34, small: true };
@@ -354,15 +358,15 @@ const CLUB_PATH: readonly V[] = [
   [74, 13],
 ];
 /** the club's sawn top end (seen from below at 3/4: an ellipse of end grain): centre, rx, ry */
-const CLUB_END: readonly [V, number, number] = [[74, 11], 6.5, 3];
+const CLUB_END: readonly [V, number, number] = [[74, 11], 8, 3.5];
 /**
  * Knots on the club: snapped branch stubs, each with a seed in its cut face — stub root on the club axis, the cut
  * face's centre, its radius. Spread up and around the club (never a horizontal pair: that reads as eyes).
  */
 const KNOTS: readonly (readonly [V, V, number])[] = [
-  [[75, 21], [80, 20], 3],
-  [[72, 15], [67, 13], 2.8],
-  [[72, 30], [77, 31], 2.6],
+  [[76, 21], [81, 19], 3.4],
+  [[72, 15], [65, 13], 3.2],
+  [[72, 31], [78, 32], 3],
 ];
 /** young sprouts on the club's end: stem path */
 const SPROUTS: readonly (readonly V[])[] = [
@@ -415,6 +419,8 @@ function strokePart(t: Xf, path: readonly V[], w0: number, w1: number): PixelCan
 
 function paintMane(t: Xf): PixelCanvas {
   const q = new PixelCanvas(t.w, t.h);
+  // (small: the mane is hand-drawn in TOP_SMALL — at 1× the generated branches are a scribble)
+  if (t.small) return q;
   // (small: the two upper branches only, bold — at 1× three thin ones are a scribble)
   for (const [path, w] of t.small ? MANE.slice(0, 2) : MANE) q.stroke(PS(t, path), t.small ? 3 : w, t.small ? 2.2 : 2, 1);
   if (!t.small) for (const [a, b] of TWIGS) q.stroke(PS(t, [a, b]), 2, 1, 1);
@@ -460,9 +466,8 @@ function paintTrunk(t: Xf): PixelCanvas {
     q.rect(kx, ky, 3, 2, PAL.earth1);
     q.hline(kx, kx + 2, ky + 2, PAL.earth3);
   }
-  // the night value: the trunk drops one step down the bark ramp (it stands against the moon, in the dark); the
-  // near arm keeps the bark ramp (it reaches forward into the light) and the hollow's split wood stays pale
-  q.map((c) => (c === PAL.earth3 ? PAL.earth2 : c === PAL.earth2 ? PAL.earth1 : c === PAL.earth1 ? PAL.earth0 : c));
+  // the trunk keeps the full bark ramp (earth3 lit / earth2 / earth1): against the earth0 night sky the lit log is
+  // the picture's largest light mass and its silhouette reads at 1× (a "night value" step down made it brown on brown)
   // the charred lip around the hollow (scorch), then the hollow itself and its lit inner wall
   const hole = new PixelCanvas(t.w, t.h);
   hole.poly(PS(t, HOLLOW), 1);
@@ -480,7 +485,7 @@ function paintTrunk(t: Xf): PixelCanvas {
       if (hole.isOpaque(x, y)) q.set(x, y, PAL.void0);
       else if (lip.isOpaque(x, y)) q.set(x, y, PAL.earth0);
       // jagged: the split wood thins out toward the shadow side (right / below)
-      else if (wood.isOpaque(x, y) && ((x * 7 + y * 3) % 5 !== 0 || x < P(t, HOLLOW_C)[0])) q.set(x, y, x > P(t, HOLLOW_C)[0] + 3 * t.s && y > P(t, HOLLOW_C)[1] ? PAL.earth2 : PAL.earth3);
+      else if (wood.isOpaque(x, y) && ((x * 7 + y * 3) % 5 !== 0 || x < P(t, HOLLOW_C)[0])) q.set(x, y, x > P(t, HOLLOW_C)[0] + 3 * t.s && y > P(t, HOLLOW_C)[1] ? PAL.earth2 : (t.small ? x < P(t, HOLLOW_C)[0] - 1 && y < P(t, HOLLOW_C)[1] + 2 : x < P(t, HOLLOW_C)[0] - 2 || y < P(t, HOLLOW_C)[1] - 8) ? PAL.earth4 : PAL.earth3);
     }
   // the OPEN top of the log (the sprite's read, hollow_ogre-rig.ts): pale splinter shards with charred tips around
   // a pale end-grain ring and the dark hole down the log — painted after the night value (split heartwood is pale)
@@ -495,8 +500,10 @@ function paintTrunk(t: Xf): PixelCanvas {
         q.set(x, y, tip ? PAL.earth0 : x < litX ? PAL.earth3 : PAL.earth2);
       }
     const [ex, ey] = P(t, END_GRAIN[0]);
-    q.ellipse(ex, ey, END_GRAIN[1], END_GRAIN[2], PAL.earth3);
-    q.ellipse(ex + 0.5, ey + 0.4, END_GRAIN[1] - 1.6, END_GRAIN[2] - 1.1, PAL.void0);
+    const ring = new PixelCanvas(t.w, t.h);
+    ring.ellipse(ex, ey, END_GRAIN[1], END_GRAIN[2], 1);
+    for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) if (ring.isOpaque(x, y)) q.set(x, y, x < ex + 1 ? PAL.earth4 : PAL.earth3);
+    q.ellipse(ex + 0.5, ey + 0.4, END_GRAIN[1] - 2.2, END_GRAIN[2] - 1.3, PAL.void0);
   }
   const wall = new PixelCanvas(t.w, t.h);
   wall.poly(PS(t, HOLLOW_WALL), 1);
@@ -553,7 +560,7 @@ function paintShrooms(t: Xf): PixelCanvas {
 
 function paintClub(t: Xf): PixelCanvas {
   const q = new PixelCanvas(t.w, t.h);
-  q.stroke(PS(t, CLUB_PATH), Math.max(2, 5 * t.s), Math.max(3, 12 * t.s), 1);
+  q.stroke(PS(t, CLUB_PATH), Math.max(2, 7 * t.s), Math.max(3, 15 * t.s), 1);
   // branch stubs
   for (const [root, end, r] of KNOTS) q.stroke(PS(t, [root, end]), Math.max(2, (r * 2 + 1) * t.s), Math.max(2, (r * 2 + 0.4) * t.s), 1);
   const [[ex, ey], erx, ery] = CLUB_END;
@@ -667,27 +674,29 @@ const SMALL_KEY: Readonly<Record<string, number>> = {
   '1': PAL.earth1,
   '2': PAL.earth2,
   '3': PAL.earth3,
+  '4': PAL.earth4,
 };
 /**
- * The head stump and the mane at 1× (stamped at (0, 0) BEFORE the outline, so ink() closes it): the generated
- * branches are planks at this size, so two bold charred branches (earth0, an earth1 lit top) cross the moon —
- * one thrown up-left, one back with a fork —, and the open top of the log (as on the sprite): three pale splinter
- * shards with charred tips, a pale end-grain ring around the dark hole, over the head's lit plane and body.
+ * The head stump and the mane at 1× (stamped at (0, 0) BEFORE the outline, so ink() closes it; '_' erases): the
+ * generated branches are a scribble at this size (paintMane draws nothing on the small), so two clean 2-px charred
+ * branches (earth0, an earth1 lit top) cross the moon — one thrown up-left, one back with a forked twig —, and the
+ * open top of the log (as on the sprite): three splinter
+ * shards with charred tips, an end-grain ring (earth4 heartwood on the lit half) around a small dark hole, over the head's lit plane and body.
  */
-/** TOP_SMALL was drawn for ox = −11; the crop now sits 2 px further right in the big picture */
-const TOP_SMALL_X = -2;
+/** TOP_SMALL is stamped in small-canvas coordinates (x 0 = the canvas's left edge) */
+const TOP_SMALL_X = 0;
 // prettier-ignore
 const TOP_SMALL: readonly string[] = [
-  '__________kk________________', // 0
-  '_________k10k_______________', // 1
-  '__________k100k_k__k___k____', // 2
-  '___________kk10k0kk0k_k0k___', // 3
-  '_____________k133333333322k_', // 4
-  '______kkkk____k33vvvvvv321k_', // 5
-  '______k110k___k323vvvv3221k_', // 6
-  '_______kk0011kk32233332221k_', // 7
-  '_________kkk00k32222222221k_', // 8
-  '____________kkk', // 9
+  '_____10___________________', // 0
+  '______10__________________', // 1
+  '_______10___k_k__k___k____', // 2
+  '_______110__0k0kk0k_k0k___', // 3
+  '________110k144443333322k_', // 4
+  '_________10_k43vvvvv3321k_', // 5
+  '_1__________k4433vv33221k_', // 6
+  '__1_________k42233332221k_', // 7
+  '__11111_____k32222222221k_', // 8
+  '..00000000..', // 9
 ];
 
 const FOCUS: V = [EYE_N[0], EYE_N[1]];
@@ -716,20 +725,30 @@ function paintLight(l: PixelCanvas, subject: PixelCanvas, t: Xf, f: number): voi
     // the eyes' glow on the darkness: a flat void1 band around them
     for (let x = fx - 2; x <= nx + 1; x++) for (let y = ny - 1; y <= ny + 1; y++) on(x, y, PAL.void1, (c) => c === PAL.void0);
     if (blink) {
+      on(nx - 2, ny + 1, PAL.gold2, dark);
       on(nx - 1, ny + 1, PAL.gold2, dark);
       on(nx, ny + 1, PAL.gold2, dark);
-      on(fx, fy + 1, PAL.gold1, dark);
+      on(fx - 1, fy + 1, PAL.gold2, dark);
+      on(fx, fy + 1, PAL.gold2, dark);
     } else {
+      on(nx - 2, ny + 1, PAL.gold3, dark);
       on(nx - 1, ny, PAL.gold3, dark);
       on(nx, ny, GLINT[k], dark);
-      on(nx - 1, ny + 1, PAL.gold2, dark);
+      on(nx - 1, ny + 1, PAL.gold4, dark);
+      on(nx, ny + 1, PAL.gold2, dark);
       on(fx, fy, PAL.gold3, dark);
-      on(fx - 1, fy, PAL.gold2, dark);
+      on(fx - 1, fy, PAL.gold3, dark);
+      on(fx, fy + 1, PAL.gold2, dark);
     }
+    // the burning seeds: a void4 heart, void3 kernel, and a flickering violet tongue (1–3 px) up out of each
+    const FLAME_S = [2, 3, 2, 1, 3, 2];
     for (const [i, [x, y]] of SEEDS_SMALL.entries()) {
       on(x - 1, y, PAL.void3);
       on(x, y + 1, PAL.void3);
+      on(x - 1, y + 1, PAL.void2);
       on(x, y, i === 0 ? seedHot : PAL.void4);
+      const h = FLAME_S[(k + i * 2) % 6];
+      for (let j = 1; j <= h; j++) l.set(x - (j === 3 ? 1 : 0), y - j, j === 1 ? PAL.void3 : PAL.void2);
     }
     // the firefly
     if (k === 4) on(26, 17, PAL.gold3);
@@ -748,43 +767,52 @@ function paintLight(l: PixelCanvas, subject: PixelCanvas, t: Xf, f: number): voi
       if (dx * dx + dy * dy <= 1) on(Math.round(x), Math.round(y), PAL.void1, (c) => c === PAL.void0);
     }
   if (blink) {
-    for (let dx = -2; dx <= 1; dx++) on(nx + dx, ny + 1, PAL.gold2, dark);
-    for (let dx = -1; dx <= 1; dx++) on(fx + dx, fy + 1, PAL.gold2, dark);
+    for (let dx = -4; dx <= 1; dx++) on(nx + dx, ny + 1, PAL.gold2, dark);
+    for (let dx = -2; dx <= 2; dx++) on(fx + dx, fy + 1, PAL.gold2, dark);
   } else {
-    // near eye: 5×2 slit, slanted down toward the inside (left)
-    for (let dx = -3; dx <= 1; dx++) on(nx + dx, ny + (dx < -1 ? 1 : 0), PAL.gold3, dark);
-    for (let dx = -2; dx <= 1; dx++) on(nx + dx, ny + 1, PAL.gold3, dark);
+    // near eye: a 6×3 ember slit, slanted down toward the inside (left: a frown), gold4 core, lower lid gold2
+    for (let dx = -4; dx <= 1; dx++) on(nx + dx, ny + (dx < -2 ? 1 : 0), PAL.gold3, dark);
+    for (let dx = -4; dx <= 1; dx++) on(nx + dx, ny + 1, PAL.gold3, dark);
+    for (let dx = -2; dx <= 0; dx++) on(nx + dx, ny + 1, PAL.gold4, dark);
     on(nx - 1, ny, PAL.gold4, dark);
-    on(nx - 1, ny + 1, PAL.gold4, dark);
-    on(nx, ny + 1, PAL.gold4, dark);
-    on(nx - 3, ny + 2, PAL.gold1, dark);
-    on(nx - 2, ny + 2, PAL.gold2, dark);
-    on(nx - 1, ny + 2, PAL.gold2, dark);
+    for (let dx = -3; dx <= 1; dx++) on(nx + dx, ny + 2, PAL.gold2, dark);
     on(nx, ny, GLINT[k], dark);
-    // far eye (foreshortened): 3×2, slanted down toward the inside (right)
-    for (let dx = -1; dx <= 2; dx++) on(fx + dx, fy + (dx > 0 ? 1 : 0), PAL.gold3, dark);
-    on(fx, fy + 1, PAL.gold3, dark);
-    on(fx + 1, fy + 2, PAL.gold2, dark);
+    // far eye (foreshortened): 4×2, slanted down toward the inside (right)
+    for (let dx = -2; dx <= 1; dx++) on(fx + dx, fy + (dx > 0 ? 1 : 0), PAL.gold3, dark);
+    for (let dx = -1; dx <= 1; dx++) on(fx + dx, fy + 1, PAL.gold3, dark);
     on(fx, fy, PAL.gold4, dark);
+    on(fx - 1, fy + 1, PAL.gold4, dark);
+    for (let dx = -1; dx <= 1; dx++) on(fx + dx, fy + 2, PAL.gold2, dark);
   }
-  // the seeds in the club's knots: a void3 kernel with a void4 heart (the first breathes)
-  const knot = (c: number | null) => c === PAL.void1;
+  // the seeds in the club's knots: each cut face burns: a void2 ember ring, a void3 kernel, a 2×2 void4 heart (the
+  // first breathes)
+  const knot = (c: number | null) => c === PAL.void1 || c === PAL.earth0;
   for (const [i, [, c, r]] of KNOTS.entries()) {
     const [x, y] = [Math.floor(c[0]), Math.floor(c[1])];
-    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (dx * dx + dy * dy <= (r - 1) * (r - 1)) on(x + dx, y + dy, PAL.void2, knot);
-    on(x, y, PAL.void3, knot);
-    on(x - 1, y, PAL.void3, knot);
-    on(x, y - 1, PAL.void3, knot);
-    on(x - 1, y - 1, i === 0 ? seedHot : PAL.void4, knot);
+    for (let dy = -3; dy <= 3; dy++)
+      for (let dx = -3; dx <= 3; dx++) {
+        const d = dx * dx + dy * dy;
+        if (d <= (r - 0.5) * (r - 0.5)) on(x + dx, y + dy, d <= (r - 1.8) * (r - 1.8) ? PAL.void3 : PAL.void2, knot);
+      }
+    const hot = i === 0 ? seedHot : PAL.void4;
+    on(x - 1, y - 1, hot, knot);
+    on(x, y - 1, hot, knot);
+    on(x - 1, y, hot, knot);
   }
-  // the club is set alight by its seeds: a violet tongue licks up out of each cut face, flickering (1–3 px, the
-  // top pixel leaning with the draught on the tallest frame) — flat void3 at the root, void2 above
-  const FLAME_H = [2, 3, 2, 1, 3, 2];
+  // the club is set alight by its seeds: a violet tongue licks up out of each cut face, flickering (2–5 px, two
+  // wide at the root, the tip leaning with the draught) — void3 at the root, void2 above; drawn over the sky too
+  const FLAME_H = [5, 7, 6, 4, 7, 5];
   for (const [i, [, c, r]] of KNOTS.entries()) {
     const x = Math.floor(c[0]) - 1;
-    const y0 = Math.floor(c[1] - r) + 1;
+    const y0 = Math.floor(c[1] - r);
     const h = FLAME_H[(k + i * 2) % 6];
-    for (let j = 0; j < h; j++) l.set(x + (j === 2 ? 1 : 0), y0 - j, j === 0 ? PAL.void3 : PAL.void2);
+    for (let j = 0; j < h; j++) {
+      const lean = j >= 4 ? (k % 2 === 0 ? 1 : -1) : 0;
+      const col = j < 2 ? PAL.void4 : j < 4 ? PAL.void3 : PAL.void2;
+      l.set(x + lean, y0 - j, col);
+      if (j < 3) l.set(x + 1 + lean, y0 - j, j < 1 ? PAL.void4 : PAL.void3);
+      if (j < 1) l.set(x - 1, y0 - j, PAL.void2);
+    }
   }
   // violet sparks rising from the club head (≤ 2 px a frame)
   const SPARKS: readonly V[] = [

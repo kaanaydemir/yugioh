@@ -54,6 +54,8 @@ const I = {
   look: [0, 0, 0, 1, 1, 1, 1, 0, 0, 0, -1, -1, -1, -1, 0, 0],
   lid: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1],
   nd: [-1, 0, 1, 2, 3, 2, 1, 0, -1, -1, 3, 2, 1, 0, -1, -1],
+  // a low breath of violet in the round mouth on the swell (the moan, held in)
+  mouth: [0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0],
 };
 export function idlePose(f: number): Pose {
   const k = ((f % IDLE_N) + IDLE_N) % IDLE_N;
@@ -65,12 +67,14 @@ export function idlePose(f: number): Pose {
     look: I.look[k],
     lid: I.lid[k],
     nd: I.nd[k],
+    mouth: I.mouth[k],
     ndh: 3,
-    aa: -100 + 12 * Math.sin(TAU * (ph - 0.15)),
-    ab: -9 + 8 * Math.sin(TAU * (ph - 0.3)),
-    ac: 0.25 + 0.25 * Math.sin(TAU * (ph * 2 - 0.1)),
-    fc: 0.35 + 0.35 * Math.sin(TAU * (ph * 2 + 0.25)),
-    rc: 0.5 + 0.2 * Math.sin(TAU * (ph * 2 + 0.4)),
+    aa: -100 + 11 * Math.sin(TAU * (ph - 0.15)),
+    ab: -9 + 7 * Math.sin(TAU * (ph - 0.3)),
+    ac: 0.32 + 0.32 * Math.sin(TAU * (ph * 2 - 0.1)),
+    // the planted far / rear palms keep their grip (HA-9: the puddle band never changes width); life is in the drum
+    fc: 0.35,
+    rc: 0.5,
     ripple: 0.08 + ((ph * 2) % 1) * 0.84,
     bub: ph,
     drip: ph,
@@ -107,8 +111,8 @@ const G0: Partial<Pose> = {
   // the "closed wall": the mud SWELLS UP into a rampart (fatter, taller mound), the near arm a bar across the chest,
   // the crown arm curled over the head as a lid — the mask peeks over the bar
   sink: -1, swell: 2, mound: 1.35, lean: -2, hump: 2, hx: -1, hy: 1, lid: 1, eye: 1,
-  nx: 15, ny: -6, nc: 0.65, fx: 21, fy: -6, fc: 0.6,
-  aa: -58, ab: 38, ac: 0.55, rx: -22, rc: 0.7, bubK: 1,
+  nx: 15, ny: -6, nc: 0.65, fc: 0.35,
+  aa: -58, ab: 38, ac: 0.55, rc: 0.5, bubK: 1, aFront: 1,
 };
 export function guardPose(f: number): Pose {
   const k = ((f % GUARD_N) + GUARD_N) % GUARD_N;
@@ -165,13 +169,13 @@ const ATTACK_KEYS: Partial<Pose>[] = [
   // scoop: the hand digs into the mound (curled), splash of mud
   { nx: 11, ny: -1, nc: 1, lean: -2, hy: 2, hx: -1, look: -1, eye: 1.4, aa: -108, splash: 0.15, sx: 12, sy: -2 },
   // up with a fistful, the arm swinging back
-  { nx: 6, ny: -26, nc: 0.6, ball: 2, lean: -3, hump: 1, hy: 0, eye: 1.6, aa: -112, ab: -14, splash: 0.4, sx: 12, sy: -2 },
+  { nBack: 1, nx: 6, ny: -26, nc: 0.6, ball: 2, lean: -3, hump: 1, hy: 0, eye: 1.6, aa: -112, ab: -14, splash: 0.4, sx: 12, sy: -2 },
   // full draw: the ball cocked far behind the head (the long hold)
-  { nx: -6, ny: -46, nc: 0.6, ball: 3, lean: -5, hump: 2, bx: -1, hy: -1, hx: -1, eye: 2, mouth: 1, aa: -122, ab: -18, fx: 27, fy: -8 },
+  { nBack: 1, nx: -6, ny: -46, nc: 0.6, ball: 3, lean: -5, hump: 2, bx: -1, hy: -1, hx: -1, eye: 2, mouth: 1, aa: -122, ab: -18, fx: 27, fy: -8 },
   // swing: overhead, the body pitching forward
-  { nx: 16, ny: -52, nc: 0.5, ball: 3, lean: 1, hump: 2, hy: -1, eye: 2, mouth: 1, aa: -110, ab: -12, fx: 28, fy: -7 },
+  { nBack: 1, nx: 16, ny: -52, nc: 0.5, ball: 3, lean: 1, hump: 2, hy: -1, eye: 2, mouth: 1, aa: -110, ab: -12, fx: 28, fy: -7 },
   // release: arm thrown forward, the palm open — the ball leaves here
-  { nx: 37, ny: -33, nc: 0, ball: 0, lean: 5, hump: 0, hx: 2, hy: 0, eye: 2, mouth: 2, aa: -96, ab: -6, fx: 29, fy: -6 },
+  { nx: 38, ny: -27, nc: 0, ball: 0, lean: 5, hump: 0, hx: 2, hy: 0, eye: 2, mouth: 2, aa: -96, ab: -6, fx: 29, fy: -6 },
   // contact: follow-through, the hand dropping
   { nx: 37, ny: -15, nc: 0.2, lean: 5, hx: 2, eye: 2, mouth: 1, aa: -94, ab: -6, fx: 29, fy: -6 },
   // the hand slaps down into the ground and SINKS (eller yere gömülür)
@@ -193,10 +197,10 @@ const ROAR_KEYS: Partial<Pose>[] = [
   { sink: 1, lean: -2, hy: 1, eye: 1.4, lid: 1, aa: -106, ab: -14, ac: 0.6, nc: 0.5, fc: 0.6, bubK: 1 },
   { sink: 2, lean: -3, hy: 2, hump: -1, eye: 1.6, lid: 1, aa: -110, ab: -16, ac: 0.8, nc: 0.8, fc: 0.8, mouth: 1 },
   { sink: -1, lean: 1, hump: 3, hy: -2, eye: 2, aa: -92, ab: -2, ac: 0, al: 1, mouth: 2, vein: 1, bubK: 2, fx: 27, fy: -12 },
-  { sink: -1, lean: 2, hump: 3, hy: -3, hx: 1, eye: 2, aa: -84, ab: 4, ac: 0, al: 1.04, mouth: 3, vein: 2, bubK: 2, ripple: 0.15, fx: 26, fy: -16, nc: 0 },
-  { sink: -1, lean: 2, hump: 3, hy: -3, hx: 1, eye: 2, aa: -82, ab: 5, ac: 0.1, al: 1.04, mouth: 3, vein: 2, bubK: 2, ripple: 0.4, fx: 26, fy: -16, shake: 1 },
+  { sink: -1, lean: 2, hump: 3, hy: -3, hx: 1, eye: 2, aa: -84, ab: 4, ac: 0, al: 0.97, mouth: 3, vein: 2, bubK: 2, ripple: 0.15, fx: 26, fy: -16, nc: 0 },
+  { sink: -1, lean: 2, hump: 3, hy: -3, hx: 1, eye: 2, aa: -82, ab: 5, ac: 0.1, al: 0.97, mouth: 3, vein: 2, bubK: 2, ripple: 0.4, fx: 26, fy: -16, shake: 1 },
   { sink: 0, lean: 1, hump: 2, hy: -2, eye: 2, aa: -88, ab: 0, ac: 0.2, al: 1, mouth: 2, vein: 1, bubK: 2, ripple: 0.65, fx: 27, fy: -12, shake: 2 },
-  { sink: 0, hump: 1, hy: -1, eye: 1.6, aa: -95, ab: -5, ac: 0.2, al: 1.05, mouth: 1, ripple: 0.85, fx: 28, fy: -8 },
+  { sink: 0, hump: 1, hy: -1, eye: 1.6, aa: -95, ab: -5, ac: 0.2, al: 0.98, mouth: 1, ripple: 0.85, fx: 28, fy: -8 },
 ];
 export function roarPose(f: number): Pose {
   return table(ROAR_KEYS, f, R_N);
@@ -207,7 +211,7 @@ const ROAR_HOLDS = [80, 120, 160, 70, 110, 110, 100, 100, 120, 140];
 
 const HIT_N = 6;
 const HIT_KEYS: Partial<Pose>[] = [
-  { hx: -2, hy: -1, lid: 2, eye: 0.6, spray: 0.15, swell: -1, aa: -100 },
+  { hx: -2, hy: -1, lid: 2, eye: 0.6, spray: 0.15, swell: 0, aa: -100 },
   { hx: -2, hy: 0, lean: -2, lid: 2, eye: 0.8, spray: 0.5, swell: -1, aa: -94, ab: -4 },
   { hx: -1, lean: -1, lid: 1, eye: 1, spray: 0.85, swell: 1, aa: -106, ab: -14 },
   { hx: 0, lean: 1, lid: 0, eye: 1, swell: 0, aa: -103, ab: -11 },
@@ -219,7 +223,7 @@ const HIT_HOLDS = [50, 60, 130, 100, 110, 130];
 
 const HH_N = 8;
 const HH_KEYS: Partial<Pose>[] = [
-  { hx: -2, hy: -1, lid: 2, eye: 0.4, spray: 0.15, swell: -1, aa: -98, mx: -1 },
+  { hx: -2, hy: -1, lid: 2, eye: 0.4, spray: 0.15, swell: 0, aa: -98, mx: -1 },
   { nb: 1, hx: -3, hy: 2, sink: 4, hump: -2, lean: -4, bx: -1, lid: 2, eye: 0.5, spray: 0.5, swell: 1, aa: -88, ab: 4, ripple: 0.15, nx: 26, fx: 30, nc: 0.8, fc: 0.9 },
   { nb: 1, hx: -2, hy: 3, sink: 5, hump: -2, lean: -4, bx: -1, lid: 2, eye: 0.6, spray: 0.85, swell: 2, aa: -86, ab: 6, ripple: 0.4, nx: 26, fx: 30, nc: 0.9, fc: 1 },
   { hx: -1, hy: 1, sink: 2, hump: 1, lean: -2, lid: 1, eye: 0.9, swell: 0, aa: -108, ab: -16, ripple: 0.65, nc: 0.4 },
@@ -257,7 +261,7 @@ const SUMMON_KEYS: Partial<Pose>[] = [
   // the haul: the mask surfaces, the body is dragged up between the gripping hands
   { ...SUNK, climb: 0.75, al: 0.4, sink: 25, mound: 0.3, swirl: 0.85, swirlDir: 1, nx: 30, ny: -2, nc: 1, fx: 32, fy: -5, fc: 1, rx: -28, ry: -2, rc: 1, lean: 3, hy: 2, ripple: 0.35, eye: 0.5, lid: 2 },
   { ...SUNK, climb: 0.45, al: 0.8, sink: 14, mound: 0.6, swirl: 0.95, swirlDir: 1, nx: 29, ny: -2, nc: 1, fx: 31, fy: -5, fc: 1, rx: -27, ry: -2, rc: 1, lean: 4, hy: 2, ripple: 0.55, eye: 0.6, lid: 2, aa: -96, ab: -4 },
-  { ...SUNK, climb: 0.15, al: 1, sink: 5, mound: 0.9, swirl: 0, nx: 27, ny: -2, nc: 0.8, fx: 30, fy: -5, fc: 0.8, rx: -26, ry: -2, rc: 0.8, lean: 3, hy: 1, eye: 0.6, lid: 1, aa: -98, ab: -6, bubK: 1 },
+  { ...SUNK, climb: 0, al: 1, sink: 5, mound: 0.9, swirl: 0, nx: 27, ny: -2, nc: 0.8, fx: 30, fy: -5, fc: 0.8, rx: -26, ry: -2, rc: 0.8, lean: 3, hy: 1, eye: 0.6, lid: 1, aa: -98, ab: -6, bubK: 1 },
   // land: out, the mud settles (ripple ring)
   { sink: 0, mound: 1, nx: 24, ny: -2, nc: 0.5, rx: -25, lean: 1, hy: 1, eye: 0.4, lid: 2, my: -2, ripple: 0.2, splash: 0.3, sx: 2, sy: -2, bubK: 1 },
   // the mask seats (a click down) and the eyes ignite

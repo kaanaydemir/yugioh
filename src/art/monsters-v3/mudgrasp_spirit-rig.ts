@@ -21,9 +21,9 @@ import { despeckle, ik2, lightOf, type Light } from '../rigkit';
 import { Comp, DEG, bands, blobShade, hash2, limb, polar, type Blob, type Pt, type Tones } from './mudgrasp_spirit-kit';
 
 export const W = 92;
-export const H = 76;
+export const H = 78;
 export const AX = 40;
-export const GY = 69;
+export const GY = 71;
 
 export const enum Part {
   none = 0,
@@ -122,6 +122,10 @@ export interface Pose {
   nb: number;
   /** 1 = the mask has slipped off the head: (mx, my) place it relative to the root and it sinks below the puddle surface */
   maskFree: number;
+  /** 1 = the near arm passes BEHIND the hood (cocked behind the head in the attack), drawn before head + mask */
+  nBack: number;
+  /** 1 = the crown arm curls OVER the hood in front of it (guard lid), drawn after head + mask */
+  aFront: number;
   /** global phase 0…1 */
   t: number;
 }
@@ -180,6 +184,8 @@ export const NEUTRAL: Pose = {
   climb: 0,
   nb: -1,
   maskFree: 0,
+  nBack: 0,
+  aFront: 0,
   t: 0,
 };
 export const pose = (o: Partial<Pose>): Pose => ({ ...NEUTRAL, ...o });
@@ -275,7 +281,7 @@ export function skeleton(o: Pose): Skel {
   const elF = straight(sag(ik2(shF, wF, 21, 24, -1) as Pt), shF, wF);
   const s45 = sp(0.45);
   const rootA: Pt = [s45[0] - 4, s45[1] - rad(0.45) + 4];
-  const crownA = chainPts(rootA, o.aa, o.ab, [8 * o.al, 7 * o.al, 7 * o.al]);
+  const crownA = chainPts(rootA, o.aa, o.ab, [7.5 * o.al, 6.5 * o.al, 6.5 * o.al]);
   const s58 = sp(0.58);
   const rootB: Pt = [s58[0] + 1, s58[1] - rad(0.58) + 3];
   const crownB = chainPts(rootB, o.ba, o.bb, [9 * o.bl, 8 * o.bl, 6 * o.bl]);
@@ -350,10 +356,10 @@ function maskTone(ch: string, x: number, y: number, light: Light): number {
   const ny = (y + 0.5 - 8.2) / 9.6;
   const nz = Math.sqrt(Math.max(0, 1 - Math.min(1, nx * nx + ny * ny)));
   const [lx, ly, lz] = light.v;
-  const d = nx * lx + ny * ly + nz * lz;
+  const d = nx * lx + ny * ly + nz * lz + light.lift;
   // under the brow ridge and under the chin the clay turns away
   if (y === 16 || y === 17) return d > 0.55 ? PAL.stone3 : PAL.stone2;
-  return d > 0.42 ? PAL.stone4 : d > 0.05 ? PAL.stone3 : PAL.stone2;
+  return d > 0.4 ? PAL.stone4 : d > -0.08 ? PAL.stone3 : PAL.stone2;
 }
 
 // ---------------------------------------------------------------- hands
@@ -792,13 +798,15 @@ export function drawMudgrasp(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right
 
   const pud = drawPuddle(f);
   drawRearArms(f);
-  drawCrown(f, sk.crownA, o.ac, Part.crownA, ARM, null, o.al);
+  if (o.aFront <= 0.5) drawCrown(f, sk.crownA, o.ac, Part.crownA, ARM, null, o.al);
   drawFarArm(f);
   drawTorso(f);
   drawCrown(f, sk.crownB, o.bc, Part.crownB, FAR, 90, o.bl);
+  if (o.nBack > 0.5) drawNearArm(f);
   drawHead(f);
   drawMask(f);
-  drawNearArm(f);
+  if (o.aFront > 0.5) drawCrown(f, sk.crownA, o.ac, Part.crownA, ARM, null, o.al);
+  if (o.nBack <= 0.5) drawNearArm(f);
   drawDrops(f);
 
   // the wet front lip of the puddle covers what stands in it; nothing exists below the ground line

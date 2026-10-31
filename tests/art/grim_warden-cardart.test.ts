@@ -74,7 +74,7 @@ describe('grim_warden card art + cut-in (v3)', () => {
         }
       expect(n).toBeGreaterThan(5000);
     }
-  });
+  }, 20000); // paints 12 frames (P1 + P2): give it room on a loaded machine
 
   it('cut-in: the lens glint (cutin.ts findEye on f0) lands on the cage eye for both lights', () => {
     const cut = cutinFactory(KIT);

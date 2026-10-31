@@ -46,7 +46,7 @@ import { ATTRIBUTE_RAMP, PAL, RAMPS, type Ramp } from '../../art/palette';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { GameEvent } from '../../engine/types';
 import { DEPTH, LOOK_V3, type XY, unitDepth, zoneXY } from '../../view/layout';
-import { lightBeam, lightFlash, lightPool, type LightHandle } from '../../view/light';
+import { lightFlash, lightPool, type LightHandle } from '../../view/light';
 import { Raster } from '../../vfx/setpieces';
 import { Sparks, animate, onFrame, sleep } from '../../vfx/combat';
 import { shake } from '../../vfx/core';
@@ -60,6 +60,7 @@ import { behindBodies, cardLeaves } from '../_v3/card';
 import { deathStartFrom, takePlannedEntry } from '../_v3/posematch';
 import { planGuardBreak, runGuardBreak, showsGuard } from '../_v3/guardbreak';
 import { contactFlash } from '../_v3/flash';
+import { impactNumber } from '../_v3/number';
 import { sourceOwnsDeath } from '../strikes-b/_kit';
 import { TAU, graveMound, gravestone, knockOut, lanternTint, skullMist, soulFade, soulThread, type LanternTint, type SoulFade } from './grim_warden-fx';
 
@@ -96,7 +97,7 @@ function pointOf(u: MonsterUnit, anim: Parameters<MonsterUnit['frameCount']>[0],
 }
 
 /** The live point of the frame the sprite shows now. */
-function livePoint(u: MonsterUnit, name: 'muzzle' | 'head' | 'core' | 'staff'): XY {
+function livePoint(u: MonsterUnit, name: 'muzzle' | 'head' | 'core' | 'staff' | 'hand'): XY {
   const fi = u.frameInfo();
   return fi.anim ? pointOf(u, fi.anim, fi.frame, name) : u.muzzle();
 }
@@ -154,34 +155,41 @@ async function graveRiseV3(S: Stage): Promise<void> {
   const rise = start('gwRise', { volume: 0.9, pan });
   const rx = S.big ? 17 : 14;
   const mound = S.own(graveMound(sc, home, rx, S.depth + 0.4, S.ev.uid * 7 + 3, DEPTH.SHADOW + 0.5));
-  const stoneAt = { x: home.x - dir * 9, y: home.y - 6 };
+  const ry = Math.max(2, Math.round(rx * 0.45));
+  // the headstone stands at the mound's back rim (its foot hidden by the dome), on the far side of the fall
+  const stoneAt = { x: home.x - dir * 4, y: home.y - ry + 1 };
   const stone = S.own(gravestone(sc, stoneAt, (-dir as 1 | -1), S.depth - 0.6));
-  const pool = S.glow({ color: PAL.leaf3, radius: rx + 10, intensity: 0, anim: 'flicker', fadeIn: 0 });
+  const pool = S.glow({ color: PAL.leaf3, radius: rx + 12, intensity: 0, anim: 'flicker', fadeIn: 0 });
   const motes = new Sparks(sc, S.depth + 0.5);
   S.own({ destroy: () => motes.release() });
   let seeping = true;
   const stopMotes = onFrame(sc, (dt) => {
     if (!seeping) return false;
-    if (mound.seep > 0.3 && dt > 0 && R() < dt / 40) {
+    if (mound.seep > 0.3 && dt > 0 && R() < dt / 32) {
       const a = RR(0, TAU);
-      motes.add({ x: Math.round(home.x + Math.cos(a) * rx * 0.6), y: Math.round(home.y + Math.sin(a) * rx * 0.25 - 2), vx: RR(-6, 6), vy: RR(-46, -26), drag: 1, life: RR(260, 420), colors: [PAL.leaf4, PAL.leaf3, PAL.leaf2, PAL.leaf1], shape: 'px', fadeAt: 1, flicker: true });
+      motes.add({ x: Math.round(home.x + Math.cos(a) * rx * 0.5), y: Math.round(home.y + Math.sin(a) * rx * 0.2 - 6), vx: RR(-6, 6), vy: RR(-52, -28), drag: 1, life: RR(280, 460), colors: [PAL.leaf4, PAL.leaf3, PAL.leaf2, PAL.leaf1], shape: R() < 0.3 ? 'sq' : 'px', size: 1, fadeAt: 1, flicker: true });
     }
     return true;
   });
   S.own({ destroy: () => ((seeping = false), stopMotes()) });
-  // ---- the mound swells, the headstone pushes up, the earth cracks
+  // ---- the mound swells, the headstone pushes up out of it, the earth cracks
   void shake(sc, 260, 1);
-  await animate(sc, 150, (t) => {
-    mound.swell = t;
-    stone.rise = Math.min(1, t * 1.3);
+  await animate(sc, 170, (t) => {
+    mound.swell = t * t * (3 - 2 * t);
+    stone.rise = Math.min(1, t * 1.2);
     mound.crack = Math.max(0, t * 1.4 - 0.3);
   });
-  // ---- the soul light seeps through the cracks
-  pool.setIntensity(0.9, 160);
-  await animate(sc, 180, (t) => {
+  // ---- the soul light seeps through the cracks (the pool under it pulses, leaking upward); the headstone is
+  // flung up out of the soil by the first heave and drops back (a 2-frame jolt) with a puff of dust
+  pool.setIntensity(0.9, 120);
+  play('gwStone', { volume: 0.45, pan, pitch: 1.12 });
+  await animate(sc, 200, (t, el) => {
     mound.crack = Math.min(1, 0.75 + t);
     mound.seep = t;
+    stone.rise = el < 50 ? 1.7 : el < 100 ? 1.35 : 1;
+    pool.setIntensity(0.7 + 0.5 * (Math.floor(el / 60) % 2), 0);
   });
+  dust(sc, { x: stoneAt.x, y: stoneAt.y + 1 }, 4);
   // ---- the warden rises out of the mound, lantern first
   let landed = false;
   let finaled = false;
@@ -213,14 +221,17 @@ async function graveRiseV3(S: Stage): Promise<void> {
   }
   // the land mark's own beat (boots on soil, the chain settles, the lantern catches)
   atFrame(unit, 'summon', unit.markFrame('summon', 'land', 6), () => play('gwLand', { volume: 0.9, pan }), { late: false });
-  // frame 2: the rising shoulder shoves the headstone over; it falls flat behind
-  atFrame(unit, 'summon', 2, () => {
+  // frame 3 (the second heave): the rising shoulder shoves the headstone over — it flies tipped for two frames,
+  // lands flat with a thud and a dust burst
+  atFrame(unit, 'summon', 3, () => {
     stone.pose = 1;
-    play('gwStone', { volume: 0.75, pan });
-    clods(sc, home, rx, 7);
-    void sleep(sc, 90).then(() => {
+    stone.front();
+    play('gwStone', { volume: 0.8, pan });
+    clods(sc, home, rx, 9);
+    void sleep(sc, 110).then(() => {
       stone.pose = 2;
-      dust(sc, { x: stoneAt.x - dir * 4, y: stoneAt.y + 1 }, 5);
+      void shake(sc, 90, 1);
+      dust(sc, { x: stoneAt.x - dir * 30, y: stoneAt.y + 6 }, 9);
     });
   });
   // the mound sinks as the body climbs out of it
@@ -306,7 +317,7 @@ async function drainV3(ctx: Ctx<'activate'>): Promise<void> {
   const pan = panAt(u.home.x);
   // the drain object lives on into the battle (the strike burns in its colour; the battle hook ends it)
   drains.get(u.uid) && endDrain(drains.get(u.uid)!);
-  const fadeT = soulFade(sc, t);
+  const fadeT = soulFade(sc, t, ramp);
   const tint = lanternTint(sc, u, ramp);
   const light = lanternLight(sc, u, PAL.leaf3, 0.5);
   const onDying = (x: MonsterUnit) => {
@@ -319,53 +330,69 @@ async function drainV3(ctx: Ctx<'activate'>): Promise<void> {
   sc.events.on('v3:dying', onDying);
   const d: Drain = { targetUid: tUid, target: t, ramp, fade: fadeT, tint, light, off: () => sc.events.off('v3:dying', onDying) };
   drains.set(u.uid, d);
-  // ---- the special: draw back, thrust the lantern out, inhale; play up to the held drinking frame
+  // ---- the special: rear back, thrust the lantern out, inhale; play up to the held drinking frame
   const REL = u.markFrame('special', 'release', 5);
   const HOLD = Math.min(u.frameCount('special') - 2, REL + 2);
   const toRel = u.rangeMs('special', 0, REL);
   const posed = u.playRange('special', 0, HOLD);
-  // the target notices: it is marked by three soul dots turning round its core (the thread's anchor)
+  // the target feels it coming: its outline starts to glow in its own colour before the thread
+  void animate(sc, toRel, (k) => fadeT.rim(0.25 * k));
   await sleep(sc, toRel);
-  // ---- release: the thread is drawn out of the target and runs to the lantern
+  // ---- release: the thread is drawn out of the target, arcs high over both, and dives into the lantern
   const soulAt = () => (live(t) && t.sprite.visible ? rint(t.core()) : rint(t.home));
   const lantern = () => rint(livePoint(u, 'muzzle'));
-  const thread = soulThread(sc, soulAt, lantern, ramp, DEPTH.FX + 1);
-  const siphon = start('gwSiphon', { volume: 0.95, pan });
-  play('gwThread', { volume: 0.7, pan: panAt(t.home.x), pitch: SOUL_PITCH[t.attribute] ?? 1 });
-  const beam = lightBeam(sc, soulAt(), lantern(), ramp[3], 0, { width: 6, intensity: 0, shimmer: 0.5 });
-  void lightFlash(sc, lantern().x, lantern().y, PAL.leaf4, 18, 200, { floorY: u.home.y, air: 0.9, intensity: 0.8 });
-  const stopBeam = onFrame(sc, () => {
-    if (!beam.alive) return false;
-    beam.setEnds(soulAt(), lantern());
-    return true;
-  });
-  const REACH_MS = 150;
-  beam.setIntensity(0.8, REACH_MS);
+  const thread = soulThread(sc, soulAt, lantern, ramp, DEPTH.FX + 1, 30);
+  const siphon = start('gwSiphon', { volume: 1, pan });
+  play('gwThread', { volume: 0.75, pan: panAt(t.home.x), pitch: SOUL_PITCH[t.attribute] ?? 1 });
+  // the light layer: a pool riding the arc's apex (the streak over the floor) and a flare at the lantern
+  const apex = lightPool(sc, u.home.x, u.home.y, { color: ramp[3], radius: 26, floorY: u.home.y, air: 1, intensity: 0, anim: 'flicker', fadeIn: 0 });
+  apex.follow(() => (thread ? thread.at(0.5) : null), { floorY: () => Math.max(u.home.y, t.home.y) });
+  const tgtGlow = lightPool(sc, t.home.x, t.home.y, { color: ramp[3], radius: 22, floorY: t.home.y, air: 0.6, intensity: 0, anim: 'flicker', fadeIn: 0 });
+  tgtGlow.follow(() => (live(t) && t.sprite.visible ? t.core() : null), { floorY: () => t.home.y });
+  void lightFlash(sc, lantern().x, lantern().y, PAL.leaf4, 22, 220, { floorY: u.home.y, air: 0.9, intensity: 0.9 });
+  const REACH_MS = 170;
+  apex.setIntensity(0.9, REACH_MS);
+  tgtGlow.setIntensity(0.8, REACH_MS);
   await animate(sc, REACH_MS, (k) => {
     thread.reach = k * k * (3 - 2 * k);
-    fadeT.set(0.1 * k);
+    fadeT.set(0.08 * k);
+    fadeT.rim(0.25 + 0.35 * k);
   });
   thread.reach = 1;
-  // ---- the drain beat: −400 on the target's plate, it fades, the lantern pours full of its colour
+  // ---- the drain beat: −400 pops over the target and rolls on its plate, it fades, the lantern pours full
   showBattlePlates({ state: ctx.state, ev: { attackerUid: ev.uid, targetUid: tUid } }, u, t);
-  play('gwDebuff', { volume: 0.8, pan: panAt(t.home.x) });
-  void lightFlash(sc, lantern().x, lantern().y, ramp[3], 26, 300, { floorY: u.home.y, air: 0.9, intensity: 1 });
-  light.setColor(ramp[3]).setIntensity(1, 160);
+  play('gwDebuff', { volume: 0.85, pan: panAt(t.home.x) });
+  const tc = rint(t.core());
+  // the big −400 pops on the target's FAR side (clear of the arc and the lantern), level with its body
+  const away = Math.sign(t.home.x - u.home.x) || (u.flipX ? -1 : 1);
+  void impactNumber(sc, tc.x + away * 26, tc.y - 2, 400, { size: 2, rise: 12 });
+  void lightFlash(sc, lantern().x, lantern().y, ramp[3], 30, 320, { floorY: u.home.y, air: 0.9, intensity: 1.1 });
+  light.setColor(ramp[3]).setIntensity(1.3, 200);
   drainSpark(sc, t);
   await posed;
   holdFrameTremble(sc, u, HOLD, DRINK_MS);
   await animate(sc, DRINK_MS, (k) => {
-    fadeT.set(0.1 + 0.2 * Math.min(1, k * 1.6));
+    const kk = Math.min(1, k * 1.6);
+    fadeT.set(0.08 + 0.22 * kk);
+    fadeT.rim(0.6 - 0.35 * k);
     tint.set(Math.min(1, k * 1.4));
+    thread.fill = Math.min(1, k * 1.2);
   });
   tint.set(1);
+  thread.fill = 1;
   // ---- the thread thins in steps and snaps into the glass
   siphon.stop(110);
-  await animate(sc, 100, (k) => (thread.width = 1 - k));
+  apex.setIntensity(0, 120);
+  tgtGlow.setIntensity(0.25, 160);
+  await animate(sc, 110, (k) => {
+    thread.width = 1 - k;
+    fadeT.rim(0.25 * (1 - k));
+  });
   thread.destroy();
-  stopBeam();
-  void beam.fadeOut(120);
-  void lightFlash(sc, lantern().x, lantern().y, ramp[4], 16, 180, { floorY: u.home.y, air: 1, intensity: 0.9 });
+  void apex.fadeOut(80);
+  void tgtGlow.fadeOut(260);
+  void lightFlash(sc, lantern().x, lantern().y, ramp[4], 18, 200, { floorY: u.home.y, air: 1, intensity: 1 });
+  light.setIntensity(0.9, 200);
   // ---- back to the strike's charge pose (the recovery a little brisker: the strike follows)
   await u.playRange('special', HOLD + 1, u.frameCount('special') - 1, { timeScale: 1.35 });
   const f = declarePoseFrame(u);
@@ -479,39 +506,157 @@ if (LOOK_V3) {
   });
 }
 
+// ================================================================ idle: the lantern's swinging floor light
+
+/**
+ * The soul fire casts a green pool that swings across the floor with the lantern (spec idle line; critic r1: the
+ * light layer's unit pool is the DARK attribute's violet, centred on the body, so no green pool read at 1×). One
+ * watcher per scene (started by the first event it sees, v3 only) keeps a pool glued to every warden's live lantern
+ * point; it takes the stolen colour while the lantern holds one and leaves with the unit.
+ */
+const idlePools = new Map<number, { u: MonsterUnit; h: LightHandle; color: number }>();
+let poolScene: Phaser.Scene | null = null;
+function watchLanterns(ctx: CinematicContext): void {
+  const sc = ctx.scene;
+  if (poolScene === sc) return;
+  poolScene = sc;
+  for (const p of idlePools.values()) p.h.destroy();
+  idlePools.clear();
+  let acc = 250;
+  onFrame(sc, (dt) => {
+    if (poolScene !== sc || !sc.sys.isActive()) return false;
+    acc += dt;
+    if (acc < 120) return true;
+    acc = 0;
+    const field = ctx.views.field;
+    const seen = new Set<number>();
+    for (const u of field.units()) {
+      if (u.cardId !== ID || u.retired || !u.sprite.active || u.frameInfo().anim === 'death') continue;
+      seen.add(u.uid);
+      const want = (drains.get(u.uid)?.ramp ?? kept.get(u.uid) ?? LEAF)[3];
+      let p = idlePools.get(u.uid);
+      if (!p || p.u !== u) {
+        p?.h.destroy();
+        const h = lightPool(sc, u.home.x, u.home.y, { color: want, radius: 26, floorY: u.home.y, air: 0.6, intensity: 1.15, anim: 'flicker', fadeIn: 300 });
+        h.follow(() => (live(u) && u.sprite.visible ? livePoint(u, 'muzzle') : null), { floorY: () => u.worldPoint('feet').y });
+        p = { u, h, color: want };
+        idlePools.set(u.uid, p);
+      } else if (p.color !== want) {
+        p.h.setColor(want);
+        p.color = want;
+      }
+    }
+    for (const [uid, p] of [...idlePools]) {
+      if (seen.has(uid) && !p.u.retired) continue;
+      void p.h.fadeOut(200);
+      idlePools.delete(uid);
+    }
+    return true;
+  });
+}
+onDuelStart(() => {
+  for (const p of idlePools.values()) p.h.destroy();
+  idlePools.clear();
+  poolScene = null;
+});
+if (LOOK_V3) registerObserver((_ev, ctx) => watchLanterns(ctx));
+
 // ================================================================ strike: "Fener Tırpanı"
 
-/** The whirl's soul-fire trail: the lantern's live point traced on the frames it whirls, stepped out. */
+/**
+ * The whirl's soul-fire smear (critic r1: the old polyline read as a debug line): the lantern's live point is
+ * tracked as an ANGLE + RADIUS round the warden's fist, and the smear is drawn as a curved band along that circle
+ * — 5 px at the head (ramp[4] core, ramp[3], ramp[2] edges), stepping down to 3 px and a dotted 1 px tail as it
+ * ages — with afterimage lanterns (ink-cased, ramp glass) left on the circle and a few shed embers. Painted in the
+ * lantern's current colour (the stolen ramp after a drain, else leaf).
+ */
 function whirlTrail(sc: Phaser.Scene, u: MonsterUnit, ramp: Ramp, untilF: number): () => void {
   const r = new Raster(sc, 0, 0, 640, 360, u.sprite.depth + 0.3);
-  const pts: { p: XY; age: number }[] = [];
+  const embers = new Sparks(sc, u.sprite.depth + 0.35);
+  const pts: { a: number; rad: number; age: number }[] = [];
+  const ghosts: { a: number; rad: number; age: number }[] = [];
+  let lastFrame = -1;
   let alive = true;
   const stop = onFrame(sc, (dt) => {
-    if (!alive) return false;
+    if (!alive && !pts.length && !ghosts.length) return false;
     const fi = u.frameInfo();
-    const whirling = fi.anim === 'attack' && fi.frame >= 1 && fi.frame <= untilF;
-    if (whirling && u.sprite.visible) {
-      const p = rint(livePoint(u, 'muzzle'));
+    const whirling = alive && fi.anim === 'attack' && fi.frame >= 1 && fi.frame <= untilF && u.sprite.visible;
+    const c = livePoint(u, 'hand');
+    if (whirling) {
+      const m = livePoint(u, 'muzzle');
+      let a = Math.atan2(m.y - c.y, m.x - c.x);
+      const rad = Math.hypot(m.x - c.x, m.y - c.y);
       const last = pts[pts.length - 1];
-      if (!last || last.p.x !== p.x || last.p.y !== p.y) pts.push({ p, age: 0 });
+      if (last) {
+        while (a - last.a > Math.PI) a -= TAU;
+        while (a - last.a < -Math.PI) a += TAU;
+      }
+      if (fi.frame !== lastFrame) {
+        lastFrame = fi.frame;
+        if (last) ghosts.push({ a: last.a, rad: last.rad, age: 0 });
+        pts.push({ a, rad, age: 0 });
+        // shed embers off the swing
+        for (let i = 0; i < 3; i++) {
+          const ea = a - 0.25 * i * (last ? Math.sign(a - last.a) : 1);
+          embers.add({ x: Math.round(c.x + Math.cos(ea) * rad), y: Math.round(c.y + Math.sin(ea) * rad), vx: RR(-30, 30), vy: RR(-40, -10), drag: 3, life: RR(220, 340), colors: [ramp[4], ramp[3], ramp[2], ramp[1]], shape: 'px', fadeAt: 1, flicker: true });
+        }
+      } else if (last) {
+        last.a = a;
+        last.rad = rad;
+      }
     }
     for (const q of pts) q.age += dt;
-    while (pts.length && pts[0].age > 200) pts.shift();
+    for (const q of ghosts) q.age += dt;
+    while (pts.length > 1 && pts[0].age > 240 && pts[1].age > 240) pts.shift();
+    if (pts.length === 1 && pts[0].age > 240) pts.shift();
+    while (ghosts.length && ghosts[0].age > 130) ghosts.shift();
     r.img.setDepth(u.sprite.depth + 0.3);
     r.draw((g) => {
+      // the band: from the oldest key toward the newest, sampled along the circle
       for (let i = 1; i < pts.length; i++) {
-        const a = pts[i - 1];
-        const b = pts[i];
-        const age = b.age;
-        const c = age < 50 ? PAL.white : age < 100 ? ramp[4] : age < 150 ? ramp[3] : ramp[2];
-        g.line(a.p.x, a.p.y, b.p.x, b.p.y, c, 1, age < 100 ? 2 : 1);
+        const p0 = pts[i - 1];
+        const p1 = pts[i];
+        const steps = Math.max(4, Math.ceil(Math.abs(p1.a - p0.a) * Math.max(p0.rad, p1.rad)));
+        for (let k = 0; k <= steps; k++) {
+          const t = k / steps;
+          const a = lerp(p0.a, p1.a, t);
+          const rad = lerp(p0.rad, p1.rad, t);
+          // age along the band: the head (newest end) young, the tail old
+          const age = lerp(p0.age, p1.age, t);
+          if (age > 240) continue;
+          const half = age < 70 ? 2 : age < 150 ? 1 : 0;
+          if (half === 0 && (k & 1)) continue;
+          for (let d = -half; d <= half; d++) {
+            const x = Math.round(c.x + Math.cos(a) * (rad + d));
+            const y = Math.round(c.y + Math.sin(a) * (rad + d));
+            const core = d === 0;
+            const col = half === 2 ? (core ? ramp[4] : Math.abs(d) === 1 ? ramp[3] : ramp[2]) : half === 1 ? (core ? ramp[3] : ramp[2]) : ramp[2];
+            g.px(x, y, col);
+          }
+        }
+      }
+      // the afterimage lanterns on the circle (5×7: ink case, ramp glass, a hot heart while young)
+      for (const q of ghosts) {
+        const x = Math.round(c.x + Math.cos(q.a) * q.rad);
+        const y = Math.round(c.y + Math.sin(q.a) * q.rad);
+        if (q.age < 65) {
+          g.rect(x - 2, y - 3, 5, 7, PAL.ink);
+          g.rect(x - 1, y - 2, 3, 5, ramp[3]);
+          g.px(x, y, ramp[4]);
+        } else {
+          g.rect(x - 1, y - 2, 3, 5, ramp[2]);
+          g.px(x, y, ramp[3]);
+        }
       }
     });
-    return alive && (whirling || pts.length > 0);
-  }, () => r.destroy());
+    return true;
+  }, () => {
+    r.destroy();
+    embers.release();
+  });
   return () => {
     alive = false;
-    stop();
+    void stop;
   };
 }
 
@@ -559,39 +704,59 @@ function glideTrail(sc: Phaser.Scene, u: MonsterUnit, ramp: Ramp): () => void {
   };
 }
 
-/** The lantern's soul burst at the contact point (a stepped ring, rays, glass shards bouncing). */
+/**
+ * The lantern's soul burst at the contact point, ONE colour family (the lantern's ramp + white): a solid irregular
+ * star (uneven rays, a ramp[4] heart, a white core) for two frames, then its rays break into shards while ONE clean
+ * ring steps out once; glass shards spray in the same ramp and bounce on the struck body's floor (critic r1: the old
+ * overlapping dotted rings with "+" ticks read as a targeting reticle).
+ */
 function soulBurst(sc: Phaser.Scene, at: XY, floorY: number, ramp: Ramp, small: boolean, depth: number): void {
   const r = Raster.around(sc, at.x, at.y, 90, 70, depth);
   const R0 = small ? 9 : 14;
-  void animate(sc, 200, (k, el) => {
+  const N = 11;
+  const spikes = Array.from({ length: N }, (_, i) => ({ a: (i / N) * TAU + RR(-0.18, 0.18), l: RR(0.65, 1.15) }));
+  const star = (k: number): XY[] => {
+    const out: XY[] = [];
+    for (let i = 0; i < N; i++) {
+      const s0 = spikes[i];
+      const s1 = spikes[(i + 1) % N];
+      const mid = s0.a + ((((s1.a - s0.a) % TAU) + TAU) % TAU) / 2;
+      out.push({ x: at.x + Math.cos(s0.a) * R0 * s0.l * k, y: at.y + Math.sin(s0.a) * R0 * s0.l * k * 0.8 });
+      out.push({ x: at.x + Math.cos(mid) * R0 * 0.38 * k, y: at.y + Math.sin(mid) * R0 * 0.38 * k * 0.8 });
+    }
+    return out;
+  };
+  void animate(sc, 230, (_k, el) => {
     r.draw((g) => {
-      const step = Math.min(3, Math.floor(el / 50));
-      const rad = Math.round(R0 * (0.4 + 0.25 * step));
-      // the core (2 frames) then the ring stepping out and thinning
-      if (step === 0) {
-        g.disc(at.x, at.y, 3, ramp[4]);
-        g.disc(at.x, at.y, 1, PAL.white);
+      const step = Math.min(4, Math.floor(el / 46));
+      if (step <= 1) {
+        // the solid star: outer ramp[3], inner ramp[4], white core
+        g.poly(star(step === 0 ? 0.85 : 1.1), ramp[3]);
+        g.poly(star(step === 0 ? 0.55 : 0.7), ramp[4]);
+        g.disc(at.x, at.y, step === 0 ? 3 : 2, PAL.white);
+      } else {
+        // the rays break apart into flying shards along their own lines
+        for (const sp of spikes) {
+          const d0 = R0 * sp.l * (0.7 + 0.35 * step);
+          const d1 = d0 + (step < 4 ? 3 : 1);
+          g.line(at.x + Math.cos(sp.a) * d0, at.y + Math.sin(sp.a) * d0 * 0.8, at.x + Math.cos(sp.a) * d1, at.y + Math.sin(sp.a) * d1 * 0.8, step < 3 ? ramp[3] : ramp[2]);
+        }
+        if (step === 2) g.disc(at.x, at.y, 2, ramp[4]);
       }
-      g.ring(at.x, at.y, rad, Math.round(rad * 0.8), step < 2 ? ramp[4] : ramp[3], 1);
-      if (step < 2) g.ring(at.x, at.y, rad - 1, Math.round(rad * 0.8) - 1, ramp[3], 1);
-      // eight short rays, flickering
-      for (let i = 0; i < 8; i++) {
-        if ((i + step) % 2 === 1 && step > 0) continue;
-        const a = (i / 8) * TAU + 0.2;
-        const r0 = rad + 1;
-        const r1 = rad + (small ? 3 : 5) - step;
-        g.line(at.x + Math.cos(a) * r0, at.y + Math.sin(a) * r0 * 0.8, at.x + Math.cos(a) * r1, at.y + Math.sin(a) * r1 * 0.8, step === 0 ? PAL.white : ramp[4]);
+      // one clean ring, stepping out once (frames 1–2 only)
+      if (step === 1 || step === 2) {
+        const rad = Math.round(R0 * (step === 1 ? 1.1 : 1.45));
+        g.ring(at.x, at.y, rad, Math.round(rad * 0.8), step === 1 ? ramp[4] : ramp[3], 1);
       }
-      void k;
     });
   }).then(() => r.destroy());
-  // glass shards: whole pixels, bouncing on the struck body's floor, blinking out
+  // glass shards in the lantern's colour: whole pixels, bouncing on the struck body's floor, blinking out
   const sp = new Sparks(sc, depth + 0.1);
-  const n = small ? 8 : 14;
+  const n = small ? 9 : 16;
   for (let i = 0; i < n; i++) {
     const a = RR(0, TAU);
-    const v = RR(50, 120);
-    sp.add({ x: at.x, y: at.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.7 - 40, ay: 360, floor: floorY + RR(-3, 3), bounce: 0.35, life: RR(380, 560), colors: [GLASS[i % GLASS.length], PAL.stone4, PAL.stone3], shape: 'px', fadeAt: 1, flicker: i % 3 === 0 });
+    const v = RR(50, 130);
+    sp.add({ x: at.x, y: at.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.7 - 40, ay: 360, floor: floorY + RR(-3, 3), bounce: 0.35, life: RR(380, 560), colors: i % 4 === 0 ? [PAL.white, ramp[4], ramp[3]] : [ramp[4], ramp[3], ramp[2]], shape: i % 3 === 0 ? 'sq' : 'px', size: 1, fadeAt: 1, flicker: i % 3 === 0 });
   }
   for (let i = 0; i < (small ? 5 : 9); i++) {
     const a = RR(0, TAU);
@@ -830,7 +995,7 @@ async function emptyShroudV3(ctx: Ctx<'destroy'>): Promise<void> {
       const at = lanternFloor();
       shatterGlass(sc, at, home.y);
       void lightFlash(sc, at.x, at.y, ramp[3], 30, 300, { floorY: home.y, air: 0.8, intensity: 0.9 });
-      void skullLeaves(sc, { x: at.x, y: at.y - 6 }, ramp, u.sprite.depth + 0.6);
+      void skullLeaves(sc, { x: at.x, y: at.y - 2 }, ramp, u.sprite.depth + 0.6, home.y);
       play('gwWail', { volume: 0.8, pan });
     }, { late: false });
     // dissolve: the shroud collapses empty
@@ -876,13 +1041,26 @@ function shatterGlass(sc: Phaser.Scene, at: XY, floorY: number): void {
   sp.release();
 }
 
-/** The skull-shaped mist rises ~26 px swaying, then comes apart (≈640 ms; runs on its own). */
-async function skullLeaves(sc: Phaser.Scene, at: XY, ramp: Ramp, depth: number): Promise<void> {
-  const sk = skullMist(sc, at, ramp, depth);
-  await animate(sc, 640, (k, el) => {
-    sk.pos = { x: at.x + Math.round(Math.sin(el * 0.011) * 3), y: at.y - Math.round(26 * (1 - (1 - k) * (1 - k))) };
-    sk.gone = k < 0.45 ? 0 : (k - 0.45) / 0.55;
+/**
+ * The skull-shaped mist puffs out of the broken lantern and rises AT ONCE (never stands on the floor): ~38 px in
+ * ≈600 ms, swaying, its tail streaming from the lantern; it stretches upward and tears apart from k 0.35, a soft
+ * light-layer glow riding with it. gwWail is fired by the caller on the same frame.
+ */
+async function skullLeaves(sc: Phaser.Scene, at: XY, ramp: Ramp, depth: number, floorY: number): Promise<void> {
+  const sk = skullMist(sc, { x: at.x, y: at.y - 4 }, ramp, depth);
+  sk.root = { x: at.x, y: at.y };
+  const glow = lightPool(sc, at.x, at.y, { color: ramp[3], radius: 20, floorY, air: 1, intensity: 0.8, anim: 'flicker', fadeIn: 40 });
+  glow.follow(() => sk.pos, { floorY: () => floorY });
+  await animate(sc, 600, (k, el) => {
+    const e = 1 - (1 - k) * (1 - k);
+    sk.pos = { x: at.x + Math.round(Math.sin(el * 0.012) * 3 * k), y: at.y - 6 - Math.round(38 * e) };
+    sk.root = { x: at.x + Math.round(Math.sin(el * 0.01) * 2), y: at.y - Math.round(14 * Math.max(0, k - 0.3)) };
+    // a puff (squashed) that springs into the skull, then is torn upward and apart
+    sk.stretch = k < 0.15 ? 0.55 + 3 * k : 1 + Math.max(0, k - 0.45) * 1.6;
+    sk.gone = k < 0.4 ? 0 : Math.min(1, (k - 0.4) / 0.5);
+    if (k > 0.5) glow.setIntensity(0.8 * (1 - k) * 2, 0);
   });
+  void glow.fadeOut(100);
   sk.destroy();
 }
 

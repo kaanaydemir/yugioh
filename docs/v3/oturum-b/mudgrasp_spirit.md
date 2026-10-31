@@ -11,14 +11,40 @@ the 600 Hz suction "şlop", §5.2 ending "sıvı olup karoya geri akar"). Handbo
 ## Status by stage
 | Stage | State | Notes |
 |---|---|---|
-| Sprite rig (`src/art/monsters-v3/mudgrasp_spirit*.ts`) | **done, round 1** (all 13 anims, gates green) | registered in v3 (file `mudgrasp_spirit.ts`) |
-| Card art (`src/art/cardart-v3/mudgrasp_spirit.ts`) + `portrait()` | card-art agent (in progress in parallel) | `portrait()` already wired in the shell by that agent |
+| Sprite rig (`src/art/monsters-v3/mudgrasp_spirit*.ts`) | **round 2 done** (readability redesign for the owner blocker; all 13 anims re-checked, gates 21 ok / 0 FAIL, test 11/11) | registered in v3 (file `mudgrasp_spirit.ts`); frame now 92×78, anchor (40, 71) |
+| Card art (`src/art/cardart-v3/mudgrasp_spirit.ts`) + `portrait()` | **done, round 2** (value pass for the owner's "brown mass" note) | `portrait()` wired in `monsters-v3/mudgrasp_spirit.ts` (unchanged); see *Card art* below |
 | `DEATH_PRESETS` | **done**: `material: 'water', accent: 'shadow'` (stone/ash endings are reserved) | `src/cinematics/_v3/presets.ts` own line |
 | `MONSTER_GLOW` | **done**: `void4 / void3 / white` emissive, `near void2`, `spill void3` (no body tone) | `src/view/light/profiles.ts` own line |
 | Scenarios (`src/duel/scenarios/mudgrasp_spirit.ts`) | base set: `mgSummon(P2)`, `mgPin(P2)`, `mgPinKill`, `mgAttack`, `mgKill`, `mgIdle` | cinematic stage adds `mgSet`, `mgPinFlip`, `mgPinLock` |
 | Cinematics / SFX | not started | summon / strike / death / pin effect + aura; `src/audio/v3/mudgrasp_spirit.ts` |
 
-## Design note (rig stage)
+## Round 2 — readability redesign (owner blocker "blurry brown mass at 1×"), 2026-10-31
+
+What changed in the rig (same Pose API + anim tables, so the cinematic agents' frame numbers / marks still hold):
+- **Value ladder, darkest → brightest:** cowl cavity `void0`/`void1` → mud mound `earth0 / earth1 / earth2` as three real
+  flat planes (blobShade lit 0.6 / shade 0.22, bigger `earth3` wet glints) → ARMS one value lighter (`earth1 / earth2 /
+  earth3`, near forearm gloss `earth4` 1 px) split from the body by `earth0` creases → far arms back a value (`earth0 /
+  earth1 / earth2`) → the CLAY MASK (`stone4 / stone3`, `stone2` only under the chin, `stone1` crack) — the lightest big
+  value, separated from the hood by an **ink** ring (owner asked for ink separation; it is a separate rigid object) → the
+  violet eyes `void3 / void4 / white` as the brightest accent.
+- **Silhouette:** a HOODED spirit. The mud head became a **cowl** arching over and behind the mask (drooping tip over the
+  hump) around a violet-black cavity open toward the foe — pale face in a dark hole reads at 1×. Torso slimmer and taller
+  (rad −1.5, hump +5). Arms are thinner (5–6 → 3.5–6 px) **spider-leg arches** with negative space under them: near arm,
+  a second far front arm arching ahead (no longer the confusing hood arch over the mask), TWO long rear arms arching back
+  (elbows up), and the crown arm reaching up off the hump = five arms, "many long mud arms" now reads.
+- **Mask:** new 15×18 3/4 haniwa map (wide near socket, foreshortened far socket, round mouth, brow ridge, crack); tones
+  from a clay-ellipsoid normal · key light (+ P2 lift), so P1 and P2 are each lit from their own top-left (IŞ-2).
+- **Violet life in the mud (light layer, never outlined):** two crack glows on the mound that brighten on the swell, a
+  1-px `void1` bounce rim on the shade-side lower edge of the mound, the cowl cavity edge.
+- **Layering flags (new Pose fields):** `nBack` — the attack's cocked arm passes BEHIND the hood (f3–f5) instead of
+  crossing the face; `aFront` — in guard the crown arm curls OVER the hood as a lid (fingers over the brow, peeks on f4).
+- Anim fixes: idle far/rear palms keep their grip (HA-9 band), crown sway ±11°, a held-in violet breath in the mouth
+  on the swell; guard keeps the planted far/rear hands (band fixed); attack release lower (ny −27) so the throwing arm
+  passes under the mask; roar crown length 0.97 (top margin); summon f6 climb 0; hit / hitHeavy / death f0 swell 0
+  (HA-21 phase 47.5 % < 50 %).
+- Frame 92×76 → **92×78**, GY 69 → **71** (2 px head-room for the taller crown); 124 frames = 3.56 MB ≤ 3.6 MB (medium).
+
+## Design note (rig stage, round 1 — kept for the anim list; geometry / tones superseded by round 2 above)
 
 **References studied:** `steel_silencer` (rig/anims split, `Comp` bounding-box compositor, edge-measured flat bands,
 pose tables + `mix/snap`, cached `framePose`), `crystal_wyrm` / `abyss_magus` (G-buffer normal shading idea, rigid hand
@@ -61,7 +87,19 @@ tones, despeckled), so the body reads as slumping wet lumps, not as a banded cyl
 No `victory` (budget; nothing plays it). `MonsterAnimExtra` is a closed union, so the climb lives in `summon` and the
 plant/pull in `special`.
 
-## Evidence (rig stage)
+## Evidence (round 2)
+- Before / after: `shots/v3/kart-b/mudgrasp_spirit/r1-idle-f0-before-x2.png` → `r2-idle-f0-p1p2-x6.png`
+- Key poses ×3: `shots/v3/kart-b/mudgrasp_spirit/r2-keyposes-x3.png`
+- 1× in the duel: `shots/v3/kart-b/mudgrasp_spirit/mgIdle-1x.png`, zoom `mgIdle-x3.png`
+- Sheets P1 / P2 (all 13 anims, ×3, points): `sheet-p1/`, `sheet-p2/` (re-rendered)
+- monster-gates `--class medium --ref none`: `gates.txt` — 21 ok, 0 FAIL (liveliness 16.7 / 15.5 %, guard Δ 0.70,
+  HA-21 phase ≤ 48.1 %, HA-9 band fixed, margins ≥ 2, noise idle 4.6 %, 1.7 ms/frame)
+- Sameness: `sameness/` — same out-of-plan UYARI set as round 1 (attack point track vs steel_silencer 0.91 /
+  stone_sentinel 0.84; guard proxy vs thorn_lurker 0.97); distinction header in `-anims.ts`, blind test still open.
+- Test `tests/art/mudgrasp_spirit.test.ts`: 11/11 (new: "reads at 1×" — mask ≥ 120 px stone3/4 with an ink ring,
+  ≥ 60 px earth3 lit arm bands, all three body values ≥ 150 px, P1 and P2).
+
+## Evidence (rig stage, round 1)
 - Sheets P1 / P2 (×3, points): `shots/v3/kart-b/mudgrasp_spirit/sheet-p1/`, `.../sheet-p2/` (per-anim strips + `-all.png`)
 - Idle ×6: `shots/v3/kart-b/mudgrasp_spirit/idle-x6/mudgrasp_spirit-v3-idle.png`
 - monster-gates (`--class medium --ref none`): `shots/v3/kart-b/mudgrasp_spirit/gates.txt` — **21 ok, 0 FAIL**
@@ -71,6 +109,45 @@ plant/pull in `special`.
 - Test: `tests/art/mudgrasp_spirit.test.ts` (10 tests, green): validateArt normal / projectile, KK-13 budget,
   determinism + P2 silhouette, size, HA-9 puddle band, palette (earth/stone/void/ink/white only), eye lights,
   liquid death ending (mask sinks last), death preset `water`.
+
+## Card art (stage: CARD ART + LIGHT PROFILE, round 2)
+
+Spec line: "Ortada maske, izleyiciye uzanan çamur eller". Native painting (no sprite pixels → independent of the rig
+rework in progress). Round 1 read as a brown smear with spiky "starburst" hands; round 2 changes:
+- **Value plan** (owner note applied to the card): mask lightest · hands mid-light · body mid/dark · sky darkest.
+  EARTH sun tightened to radius 25 → a halo right behind the mask (pale clay on earth2/earth3), the mud body now
+  stands on the dark earth0 sky / earth1 ridge instead of on the sun.
+- **Body** = six lumps, **blob-shaded** (`shadeBlobs`, the rig's blobShade idea: normal of the deepest lump · key
+  light → earth2/earth1/earth0, despeckled) → slumping wet lumps; wet gloss (earth3 streak + one earth4 catch) on
+  the hump and far-flank crowns = the material cue that separates mud from hollow_ogre's matte wood (same EARTH
+  backdrop, adjacent card). Random crease lines and the long vertical vein stroke removed (one short forked vein).
+- **Hands**: procedural finger fans read as sticks/logs (tried 3 variants) → three **hand-drawn 1:1 big maps**
+  (`HAND_NEAR_BIG`, `HAND_FAR_BIG`, `HAND_CROWN_BIG`): chubby clay fingers parted by ink, lit tips with a hot pixel,
+  cupped earth0 palm, earth3 shadow-side rim, wrist drip, one earth4 wet catch. The near/far arms come straight at
+  the viewer, so the palms hide them (a visible diagonal forearm across the chest was tried twice and read as a
+  staff / clutter — dropped). A 4th hand claws up out of the puddle between them (`HAND_RISING_BIG`, "çok kol").
+- **Small** 44×34: same geometry ×0.5 with the same blob shading; hand maps updated (lit tips, dark cupped palms);
+  the procedural near arm dropped. Reads at 1× on the face: pale mask + violet eyes + two open hands.
+- Focus = near-eye white glint (only white pixel), brightest point; living art unchanged (glint pulse, bubble pop).
+
+Stats (frame 0): big 16 colours / backdrop 5, isolated 2.9 %, checker 0, ink outline 100 %, focus ok;
+small 14 colours, isolated 5.0 %, checker 0, ink 99 %, focus ok. `subjectFill` (bbox) is 0.83 / 0.87 — over the
+0.6–0.75 guideline because the hands bleed off both bottom corners by design (allowed: "alttan taşabilir"); the
+card test does not gate it. Cover is 0.51 / 0.59.
+
+Evidence: `shots/v3/kart-b/mudgrasp_spirit/cardart-big-x3.png`, `cardart-big-x6.png`, `cardart-small-x1.png`,
+`cardart-small-x6.png`, `cardart-living-big-x3.png`, `cardart-living-small-x4.png`, `cardart-hatcard.png`
+(`?dev=hatcard&id=mudgrasp_spirit&look=v3`: 1× face, 2× face, art, field minis), `cardart-icon-x12.png` (icon unchanged).
+
+Tests: `tests/art/mudgrasp_spirit-cardart.test.ts` 5/5 green; `tests/art/mudgrasp_spirit.test.ts` 11/11 green;
+`tests/art/cardface-v3.test.ts` 9/10 — the one failure is G1 for **scrap_raiders** (0.692 < 0.7, not lane B, not
+caused by this card). A scratch run of the same G1 check on the lane-B ids: mudgrasp_spirit 0.704, grim_warden
+0.770, wisp_imp 0.713, hollow_ogre 0.708 (all pass; mudgrasp is close to the line — the frame region does not
+depend on the art).
+
+Light profile (`src/view/light/profiles.ts`, own line) re-checked against the rig in progress: void2–void4 + white
+are used only by the eyes / mouth glow / veins / pops; emissive `void4, void3, white`, near `void2`, spill `void3`
+kept. DEATH_PRESETS `water / shadow` kept.
 
 ## Open issues
 1. **Sameness UYARI (out of plan)**: attack point-track MOT vs steel_silencer 0.905 / stone_sentinel 0.845 / abyss_magus
@@ -84,5 +161,13 @@ plant/pull in `special`.
    is cinematic work (option (b) death, HANDBOOK §6.3).
 4. The pin: special f8 is the hold frame; the attacker-side mud hands + 6 px ring + aura are cinematic / aura work.
 5. Idle SFX (glub + finger drum) and struck-body mud material sound: see orchestrator decisions (3)/(4) — later stage.
+7. (round 2) Summon f6: the near rear arm's arch leaves a small squarish gap against the body (reads as a gripping arm,
+   minor). Special pull f6–f8: the plunged near arm is nearly straight; the far front arm's plunge is mostly hidden.
+   Both are candidates for the critic round.
+8. (round 2) In the duel the light layer darkens the mud; the mask + eyes carry the read. A critic should confirm the
+   1× read next to stone_sentinel / crystal_wyrm (`mgIdle-x3.png`).
 6. At 1× the brown body is large next to 64-class neighbours (bbox ≈ 75×57 incl. puddle and the raised hand); the
    body mass itself is ≈ 45 px wide. Critics may want it a notch smaller.
+9. Card art: the rig is being reworked (owner "brown mass" blocker). If the rework changes the mask shape
+   (e.g. haniwa hollow eyes) or the arm design, re-align the card's mask (`MASK_OUT`, `EYE_N/EYE_F/MOUTH`) and
+   the small maps; the card does not import rig code, so nothing breaks automatically.

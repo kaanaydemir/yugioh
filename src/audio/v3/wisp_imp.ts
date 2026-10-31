@@ -405,8 +405,8 @@ export const WISP_IMP_RECIPES = {
     play(v) {
       const D = 0.75;
       // the wind blowing BACK (from the right toward the ghost), swelling into it
-      sweep(v, 0, D, [500, 900, 1500], 0.25, { kind: 'pink', q: 1, peakAt: 0.85, pan: [0.45, 0] });
-      rustle(v, 0, [[0, 0], [D * 0.85, 0.24], [D + 0.08, 0.0001, 'e']], { rate: 45, f: 4200, fTo: 5600, pan: [[0, 0.4], [D, 0]] });
+      sweep(v, 0, D, [500, 900, 1500], 0.34, { kind: 'pink', q: 1, peakAt: 0.85, pan: [0.45, 0] });
+      rustle(v, 0, [[0, 0], [D * 0.85, 0.32], [D + 0.08, 0.0001, 'e']], { rate: 45, f: 4200, fTo: 5600, pan: [[0, 0.4], [D, 0]] });
       quills(v, 0, D, 20, 0.06, { curve: 0.5 });
       [77, 81, 84, 88].forEach((m, i) => chime(v, m, 0.2 + i * 0.12, 0.02 + i * 0.006, 0.4));
     },

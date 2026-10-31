@@ -5,28 +5,32 @@
 // a pale cracked clay mask (stone4 / stone3 / stone2, void0 holes), violet eyes, many long mud arms.
 //
 // Composition (big px, 88×68; facing right, the mask turned three-quarters to the right):
-//   sun       the EARTH recipe's low dusty sun (earth2 → earth3) right behind the mask; the mesa ridge and the
-//             stone0 floor under an earth1 horizon. The pale mask reads against the sun's core, the dark mud
-//             silhouette against its outer step.
-//   body      a hunched mud mound (hump high on the back, left) sunk in a wet puddle that bleeds off the bottom;
-//             three flat planes under the key light (earth2 lit / earth1 / earth0 shade), the recipe's earth3
-//             rim on the shadow side, two sag creases and two bubbles on the hump.
-//   arms      a crown arm rising off the hump, its hand dangling over the back (the rig's crown arm: the
-//             silhouette cue); a far arm and a near arm reaching FORWARD out of the picture, their big open
-//             mud hands splayed toward the viewer at the lower corners (foreshortened: palms, five fingers,
-//             drips). Arms over the body get an ink contact line (mud on mud: same value).
+//   sun       the EARTH recipe's low dusty sun (earth2 → earth3), tightened (radius 25) so it is a HALO right
+//             behind the mask: the pale clay reads against it, the mud body against the dark earth0 sky and the
+//             earth1 mesa ridge (value plan: mask lightest · hands mid-light · body mid/dark · sky darkest).
+//   body      a hunched mud mound (hump high on the back, left) sunk in a wet puddle that bleeds off the bottom,
+//             built of six slumping lumps and BLOB-SHADED (shadeBlobs: each pixel takes the normal of the lump it
+//             is deepest in → earth2 lit / earth1 / earth0 shade, despeckled), so it reads as wet lumps, not a
+//             brown smear; the hottest crowns of the hump and the far flank carry the wet gloss (earth3 streak +
+//             one earth4 catch — mud is WET, unlike the matte wood of hollow_ogre); the recipe's earth3 rim on the
+//             shadow side; two bubbles on the hump.
+//   arms      a crown arm rising off the hump with a small open hand (the rig's crown arm: the silhouette cue);
+//             the far and near arms come straight AT the viewer, so their big open palms hide them: two
+//             hand-drawn 1:1 hands at the lower corners (HAND_FAR_BIG / HAND_NEAR_BIG: chubby clay fingers
+//             parted by ink, lit tips with a hot pixel, a cupped earth0 palm, a wrist drip) and a third hand
+//             clawing up out of the puddle between them (HAND_RISING_BIG) — "çok sayıda kol".
 //   mask      a cracked clay mask: a lit near cheek (stone4), the front plane (stone3), the far plane turning
 //             away (stone2), one crack from the brow down into the near eye and one under the mouth (stone1);
 //             a round moaning mouth hole.
 //   light     the violet eyes deep in the holes (void3 / void4) with ONE white glint in the near eye — the
-//             picture's brightest point and its focus —, a violet glow in the mouth, and a few dim violet
-//             veins (void2) on the mound (the rig's vein light). Never outlined.
-// small: the SAME geometry painted natively at 1× density, a slightly tighter crop (×0.56 instead of ×0.5,
-//        KART_RESIMLERI §1 "aynı resim, daha yakın"), 1-px bands; the mask and the eyes are a hand-drawn 1× map
-//        (MASK_SMALL) — method (2) + (3). Judged at 1× on the face.
+//             picture's brightest point and its focus —, a violet glow in the mouth, and one forked dim violet
+//             vein (void2) on the mound (the rig's vein light). Never outlined.
+// small: the SAME geometry painted natively at 1× density (×0.5, same blob shading), 1-px bands; the three hands
+//        are hand-drawn 1× maps (HAND_*_SMALL: lit tips, cupped dark palms) — method (2) + (3). Judged at 1× on
+//        the face (shots/v3/kart-b/mudgrasp_spirit/cardart-hatcard.png).
 // icon: a hand-drawn 16×12 field icon (mudgraspIcon): the mask's pale oval and its violet eye in the sun.
 // Living art (A5_PLAN §3.7.6): 6 frames × 150 ms — the near eye's glint pulses (white → void4 → void3), a bubble
-//             swells and pops on the hump (≤ 2 px), the veins brighten for one frame; palette swaps only.
+//             swells and pops on the hump (≤ 2 px), the vein brightens for one frame; palette swaps only.
 
 import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
@@ -43,10 +47,7 @@ interface Tones {
   readonly S: number;
 }
 const MUD: Tones = { L: PAL.earth2, M: PAL.earth1, S: PAL.earth0 };
-/** parts behind the body (crown arm): one value darker */
-const FAR: Tones = { L: PAL.earth1, M: PAL.earth1, S: PAL.earth0 };
 const RIM = PAL.earth3;
-const LIGHTS = [PAL.void2, PAL.void3, PAL.void4, PAL.white];
 
 // ================================================================ geometry (big px)
 
@@ -140,50 +141,6 @@ function lineOn(p: PixelCanvas, a: V, b: V, c: number, only: (cur: number | null
 
 // ================================================================ parts
 
-/** A mud hand reaching toward the viewer: a palm and fingers fanned from it (angles in degrees, lengths big px). */
-interface Hand {
-  readonly palm: V;
-  readonly r: number;
-  readonly fingers: readonly (readonly [number, number, number])[]; // angle, length, width
-}
-const HAND_NEAR: Hand = {
-  palm: [65, 55],
-  r: 7.5,
-  fingers: [
-    [-112, 9, 4.6],
-    [-78, 11, 4.8],
-    [-45, 11, 4.8],
-    [-12, 8.5, 4.6],
-    [150, 7, 5], // thumb, down-left
-  ],
-};
-const HAND_FAR: Hand = {
-  palm: [19, 55],
-  r: 6.8,
-  fingers: [
-    [-70, 8, 4.2],
-    [-102, 10, 4.4],
-    [-134, 10, 4.4],
-    [-164, 9, 4.2],
-    [32, 6, 4.6], // thumb, down-right
-  ],
-};
-
-function paintHand(t: Xf, h: Hand): PixelCanvas {
-  const q = new PixelCanvas(t.w, t.h);
-  const [cx, cy] = P(t, h.palm);
-  q.ellipse(cx, cy, h.r * t.s * 1.08, h.r * t.s * 0.92, 1);
-  for (const [a, len, w] of h.fingers) {
-    const r = (a * Math.PI) / 180;
-    // a finger: two segments, the tip bending a little (curling toward the viewer)
-    const k: V = [h.palm[0] + Math.cos(r) * (h.r + len * 0.45), h.palm[1] + Math.sin(r) * (h.r + len * 0.45)];
-    const r2 = r + (a > -90 && a < 90 ? 0.28 : -0.28);
-    const tip: V = [k[0] + Math.cos(r2) * len * 0.55, k[1] + Math.sin(r2) * len * 0.55];
-    q.stroke(PS(t, [h.palm, k, tip]), w * t.s * 1.5, Math.max(1.6, w * t.s * 0.75), 1);
-  }
-  return q;
-}
-
 /** A mud arm (tube) along a path, width w0 → w1 (big px). */
 function paintArm(t: Xf, path: readonly V[], w0: number, w1: number): PixelCanvas {
   const q = new PixelCanvas(t.w, t.h);
@@ -198,52 +155,98 @@ const CROWN_PATH: readonly V[] = [
   [27, 23],
   [24, 19],
 ];
-const HAND_CROWN: Hand = {
-  palm: [23, 16],
-  r: 4,
-  fingers: [
-    [-158, 6, 3.4],
-    [-122, 7.5, 3.4],
-    [-92, 8, 3.4],
-    [-62, 7, 3.2],
-    [-14, 5, 3.4], // thumb
-  ],
-};
-
 function paintCrown(t: Xf): PixelCanvas {
   const q = paintArm(t, CROWN_PATH, 7.5, 5.5);
-  if (t.bw > 1) q.blit(paintHand(t, HAND_CROWN), 0, 0);
   return q;
 }
 
+/** The body's lumps (big px): cx, cy, rx, ry — slumping wet blobs. */
+const BODY_BLOBS: readonly (readonly [number, number, number, number])[] = [
+  [42, 61, 25, 11], // the mound in the puddle
+  [36, 45, 14, 13], // the hump
+  [45, 36, 10, 10], // the neck
+  [MC[0] - 1, MC[1] + 1, 12.5, 14], // the mud head behind the mask
+  [57, 47, 9, 8], // the near shoulder slumping toward the near hand
+  [27, 53, 8, 7], // the far flank sagging over the far arm
+];
+
 function paintBody(t: Xf): PixelCanvas {
   const q = new PixelCanvas(t.w, t.h);
-  const e = (cx: number, cy: number, rx: number, ry: number) => {
+  for (const [cx, cy, rx, ry] of BODY_BLOBS) {
     const [x, y] = P(t, [cx, cy]);
     q.ellipse(x, y, rx * t.s, ry * t.s, 1);
-  };
-  e(42, 61, 25, 11); // the mound in the puddle
-  e(37, 45, 14, 13); // the hump
-  e(45, 36, 10, 10); // the neck
-  e(MC[0] - 1, MC[1] + 1, 12.5, 14); // the mud head behind the mask
-  // lumps: a drip lip on the near shoulder
-  e(57, 44, 6, 6);
+  }
   return q;
+}
+
+/**
+ * Blob shading (the rig's `blobShade` idea at card density): each pixel takes the normal of the lump it lies
+ * DEEPEST in (an ellipsoid), lit by the top-left key light → three flat planes (earth2 / earth1 / earth0), and
+ * the hottest crown of a big lump turns earth3 with one earth4 catch — the wet gloss that tells mud from wood.
+ * Single-pixel specks are folded into their neighbours afterwards (IŞ-10).
+ */
+function shadeBlobs(q: PixelCanvas, t: Xf): void {
+  const L = [-0.56, -0.66, 0.5];
+  const ln = Math.hypot(L[0], L[1], L[2]);
+  const lx = L[0] / ln, ly = L[1] / ln, lz = L[2] / ln;
+  const best: (readonly [number, number, number])[] = []; // per big lump: x, y, dot of its hottest pixel
+  for (let i = 0; i < BODY_BLOBS.length; i++) best.push([0, 0, -9]);
+  for (let y = 0; y < q.h; y++)
+    for (let x = 0; x < q.w; x++) {
+      if (!q.isOpaque(x, y)) continue;
+      let bi = -1;
+      let bd = 9;
+      let bn: readonly [number, number, number] = [0, 0, 1];
+      for (let i = 0; i < BODY_BLOBS.length; i++) {
+        const [cx, cy, rx, ry] = BODY_BLOBS[i];
+        const [px, py] = P(t, [cx, cy]);
+        const u = (x + 0.5 - px) / (rx * t.s);
+        const v = (y + 0.5 - py) / (ry * t.s);
+        const d = u * u + v * v;
+        if (d < 1 && 1 - d > 1 - bd) {
+          // deepest = smallest normalised distance, weighted by the lump's size so big forms win the overlap
+          if (bi < 0 || d * (8 / Math.max(8, rx)) < bd) {
+            bd = d * (8 / Math.max(8, rx));
+            bi = i;
+            bn = [u, v, Math.sqrt(Math.max(0, 1 - d))];
+          }
+        }
+      }
+      if (bi < 0) {
+        q.set(x, y, PAL.earth1);
+        continue;
+      }
+      const dot = bn[0] * lx + bn[1] * ly + bn[2] * lz;
+      q.set(x, y, dot > 0.74 ? PAL.earth2 : dot > 0.36 ? PAL.earth1 : PAL.earth0);
+      if (dot > best[bi][2]) best[bi] = [x, y, dot];
+    }
+  // despeckle: a pixel with no 4-neighbour of its tone takes the most common neighbour tone
+  const src = q.clone();
+  for (let y = 0; y < q.h; y++)
+    for (let x = 0; x < q.w; x++) {
+      const c = src.get(x, y);
+      if (c === null) continue;
+      const ns = [src.get(x + 1, y), src.get(x - 1, y), src.get(x, y + 1), src.get(x, y - 1)].filter((n): n is number => n !== null);
+      if (ns.includes(c) || !ns.length) continue;
+      const count = new Map<number, number>();
+      for (const n of ns) count.set(n, (count.get(n) ?? 0) + 1);
+      q.set(x, y, [...count.entries()].sort((a, b) => b[1] - a[1])[0][0]);
+    }
+  // wet gloss on the two biggest visible crowns (the hump, the far flank): a 3-px earth3 streak + earth4 catch
+  if (t.bw > 1)
+    for (const i of [1, 5]) {
+      const [x, y] = best[i];
+      for (const [dx, dy, c] of [[-1, 1, PAL.earth3], [0, 0, PAL.earth4], [1, -1, PAL.earth3], [1, 0, PAL.earth3]] as const)
+        if (q.get(x + dx, y + dy) === PAL.earth2) q.set(x + dx, y + dy, c);
+    }
 }
 
 /** The far arm (left): from the mound's flank forward to the far hand. */
 const FAR_ARM: readonly V[] = [
   [32, 50],
-  [25, 53],
-  [20, 56],
+  [24, 54],
+  [16, 57],
 ];
-/** The near arm (right): from the shoulder out and down to the near hand. */
-const NEAR_ARM: readonly V[] = [
-  [56, 42],
-  [62, 47],
-  [65, 54],
-];
-
 /** The wet puddle the spirit grows out of (subject: it is matter on the floor). */
 function paintPuddle(t: Xf): PixelCanvas {
   const q = new PixelCanvas(t.w, t.h);
@@ -262,22 +265,6 @@ function paintPuddle(t: Xf): PixelCanvas {
     gl([16, 64], [20, 64], PAL.earth2);
   }
   return q;
-}
-
-/** A palm's hollow (the hand faces the viewer): one shade crescent forward of the palm centre, big only. */
-function palmHollow(q: PixelCanvas, t: Xf, h: Hand, side: 1 | -1): void {
-  if (t.bw < 2) return;
-  const [cx, cy] = P(t, h.palm);
-  const r = h.r * t.s * 0.55;
-  for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++)
-    for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
-      const dx = x + 0.5 - cx;
-      const dy = y + 0.5 - cy;
-      const d = Math.hypot(dx, dy);
-      if (d > r || d < r - 2.2) continue;
-      if (dy < -0.5 || dx * side < -r * 0.3) continue;
-      if (q.get(x, y) === PAL.earth1) q.set(x, y, PAL.earth0);
-    }
 }
 
 // ---------------------------------------------------------------- the mask (big: procedural planes)
@@ -358,6 +345,97 @@ function paintMask(t: Xf): PixelCanvas {
   return q;
 }
 
+// ---------------------------------------------------------------- the big hands (hand-drawn 1:1 maps)
+// A painted fan of mud strokes reads as a bundle of sticks; the three big hands are drawn by hand (the stills'
+// method: map + KEY), palms open toward the viewer: chubby clay fingers parted by ink, each tip lit top-left with
+// an earth3 hot pixel, a cupped earth0 hollow in the palm, the recipe's earth3 rim on the shadow (right) side,
+// one earth4 wet catch on the heel of each front palm and a drip hanging off the wrist.
+// key: k ink · 4 earth4 wet catch · 3 earth3 · 2 earth2 lit · 1 earth1 body · 0 earth0 shade · '.' keep
+// prettier-ignore
+const HAND_NEAR_BIG: readonly string[] = [
+  '.........kkkk.........',
+  '....kkk.k3221k.kkkk...',
+  '...k322kk2211kk3221k..',
+  '...k221kk2110kk2211k..',
+  '...k211kk2110kk2110kkk',
+  '...k211kk2110kk2110k32k',
+  '...k2110k2110k2110k221k',
+  '....k210k2110k2110k213k',
+  'kk..k2110k110k1110k113k',
+  'k32kk21100k10k1100k103k',
+  'k2210k211000001000013k.',
+  '.k2110k2111100000113k..',
+  '..k21110211100000013k..',
+  '..kk2111111100000013k..',
+  '...k2241111110000113k..',
+  '....k22111111111113k...',
+  '.....kk21111111113k....',
+  '.......k211111133k.....',
+  '.......k21k3113kk......',
+  '........kk.k31k........',
+  '...........kk..........',
+];
+// prettier-ignore
+const HAND_FAR_BIG: readonly string[] = [
+  '........kkkk..........',
+  '...kkkk.k321k.kkk.....',
+  '..k3221kk2110kk321k...',
+  '..k2110kk2110kk2110k..',
+  'kkk2110kk2110kk2113k..',
+  'k321k110kk110kk2113k..',
+  'k2110k110k1100k1103k..',
+  '.k2110k10k1100k1103k..',
+  '.k21100k00k110k1103kkk',
+  '..k2110000010k11003k32k',
+  '..k21110000000110003213k',
+  '...k211100000011000113k.',
+  '...k24111000001100113k..',
+  '....k2111100000001103k..',
+  '....k22111111000111133k.',
+  '.....k221111111111133k..',
+  '......kk211111111133k...',
+  '........k2111111133k....',
+  '.........kk3113kkk......',
+  '...........k31k.........',
+  '............kk..........',
+];
+// prettier-ignore
+const HAND_CROWN_BIG: readonly string[] = [
+  '...k..k..k.....',
+  '..k3kk3kk3k.k..',
+  '..k2kk2kk2kk3k.',
+  '..k21k21k21k21k',
+  '..k21k21k21k13k',
+  '.kk211211211113k',
+  'k32k2111111113k.',
+  'k2111111111113k.',
+  '.k21111111113k..',
+  '..k211111113k...',
+  '...k2111113k....',
+  '....k21113k.....',
+  '.....k2113k.....',
+];
+// prettier-ignore
+/** One more hand clawing up out of the puddle between the two big ones ("çok sayıda kol"): only its fingers show. */
+const HAND_RISING_BIG: readonly string[] = [
+  '..k.kk.k....',
+  '.k3k32k3k...',
+  '.k2k21k2kk..',
+  '.k21k1k21k3k',
+  'kk21k1k21k2k',
+  'k2211111110k',
+  'k2111111100k',
+  'k0000000000k',
+];
+const HAND_KEY_BIG: Readonly<Record<string, number>> = { k: PAL.ink, '4': PAL.earth4, '3': PAL.earth3, '2': PAL.earth2, '1': PAL.earth1, '0': PAL.earth0 };
+/** where each big hand map is stamped (big px; the palm centres sit on HAND_*.palm) */
+const HANDS_BIG: readonly (readonly [readonly string[], number, number])[] = [
+  [HAND_CROWN_BIG, 18, 9],
+  [HAND_RISING_BIG, 37, 59],
+  [HAND_FAR_BIG, 5, 46],
+  [HAND_NEAR_BIG, 60, 46],
+];
+
 // ---------------------------------------------------------------- the small hands (hand-drawn 1× maps)
 // At 1× a painted hand is a tangle of 1-px slivers and rim pixels: the three hands are drawn by hand instead
 // (KART_RESIMLERI §1 method 3), on the same palms as the big picture: 2-px fingers (lit left px, body right px)
@@ -367,15 +445,15 @@ function paintMask(t: Xf): PixelCanvas {
 // prettier-ignore
 const HAND_NEAR_SMALL: readonly string[] = [
   '....kk.kk.....',
-  '...k22k22k....',
+  '...k32k32k....',
   '.kkk21k21k.kk.',
-  'k22k21k21kk22k',
+  'k32k21k21kk32k',
   'k21k21k21k210k',
   'k21k21k21k10k.',
   '.k21111111110k',
-  '.k2111111110k.',
-  'kk2111111110k.',
-  'k21k11111100k.',
+  '.k2111001110k.',
+  'kk2110000110k.',
+  'k21k11001100k.',
   'k210k0000033k.',
   '.kk.kk3333kk..',
   '......kkkk....',
@@ -383,14 +461,14 @@ const HAND_NEAR_SMALL: readonly string[] = [
 // prettier-ignore
 const HAND_FAR_SMALL: readonly string[] = [
   '.....kk.kkk...',
-  '....k22k22k...',
+  '....k32k32k...',
   '.kk.k21k21kkk.',
-  'k22kk21k21k22k',
+  'k32kk21k21k32k',
   'k211k21k21k21k',
   '.k21k21k21k21k',
   'k21112112110kk',
-  '.k2111111110k.',
-  '.k2111111110kk',
+  '.k2111001110k.',
+  '.k2110000110kk',
   '.k21111111k10k',
   '.k3000000k210k',
   '..kk3333kk0kk.',
@@ -399,7 +477,7 @@ const HAND_FAR_SMALL: readonly string[] = [
 // prettier-ignore
 const HAND_CROWN_SMALL: readonly string[] = [
   '.k.k.k.k...',
-  'k2k2k2k2k..',
+  'k3k3k3k3k..',
   'k2k2k2k2k..',
   'k2121211kkk',
   'k2111111k2k',
@@ -475,19 +553,13 @@ function paintSubject(t: Xf, small: boolean): PixelCanvas {
   s.blit(crown, 0, 0);
   // the far arm and hand (behind the mound)
   const farArm = paintArm(t, FAR_ARM, 8, 6.5);
-  if (!small) farArm.blit(paintHand(t, HAND_FAR), 0, 0);
   bandPart(farArm, MUD, lit, sh);
-  palmHollow(farArm, t, HAND_FAR, -1);
   over(s, farArm, true);
   // the mound + head
   const body = paintBody(t);
-  bandPart(body, MUD, small ? 1 : 4, small ? 1 : 3);
-  // sag creases on the hump's shade side and two bubbles on its lit flank (big only: at 1× they are noise)
+  shadeBlobs(body, t);
+  // two bubbles on the hump's lit flank (big only: at 1× they are noise)
   if (!small) {
-    const isM = (c: number | null) => c === PAL.earth1;
-    lineOn(body, P(t, [44, 38]), P(t, [50, 45]), PAL.earth0, isM);
-    lineOn(body, P(t, [40, 47]), P(t, [47, 53]), PAL.earth0, isM);
-    lineOn(body, P(t, [28, 58]), P(t, [36, 62]), PAL.earth0, isM);
     // a mud bubble: a tiny dome, lit top-left, its wet spot, the shade under it
     const BUB = ['.22.', '2310', '.00.'];
     const BK = { '2': PAL.earth2, '3': PAL.earth3, '1': PAL.earth1, '0': PAL.earth0 };
@@ -495,11 +567,6 @@ function paintSubject(t: Xf, small: boolean): PixelCanvas {
   }
   over(s, body, true);
   // the near arm and hand (in front)
-  const nearArm = paintArm(t, NEAR_ARM, 8.5, 7);
-  if (!small) nearArm.blit(paintHand(t, HAND_NEAR), 0, 0);
-  bandPart(nearArm, MUD, lit, sh);
-  palmHollow(nearArm, t, HAND_NEAR, 1);
-  over(s, nearArm, true);
   // the puddle under it all: its front lip covers what stands in it
   const pud = paintPuddle(t);
   const [, pcy] = P(t, [44, 66]);
@@ -525,6 +592,17 @@ function paintSubject(t: Xf, small: boolean): PixelCanvas {
   });
   ink(s);
   if (small) for (const [rows, x, y] of HANDS_SMALL) patch(s, rows, HAND_KEY, x, y);
+  else {
+    // the big arm + hand maps go BEHIND the mask: its clay and its own outline are kept
+    const isMask = (c: number | null) => c === PAL.stone1 || c === PAL.stone2 || c === PAL.stone3 || c === PAL.stone4 || c === PAL.void0;
+    const keep = s.clone();
+    for (const [rows, x, y] of HANDS_BIG) patch(s, rows, HAND_KEY_BIG, x, y);
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        const c = keep.get(x, y);
+        if (isMask(c) || (c === PAL.ink && [keep.get(x + 1, y), keep.get(x - 1, y), keep.get(x, y + 1), keep.get(x, y - 1)].some(isMask))) s.set(x, y, c!);
+      }
+  }
   return s;
 }
 
@@ -575,8 +653,8 @@ function paintLight(l: PixelCanvas, subject: PixelCanvas, t: Xf, small: boolean,
   const veins: readonly (readonly V[])[] = small
     ? []
     : [
-        [[39, 39], [41, 44], [40, 49], [41, 54]],
-        [[57, 44], [61, 47]],
+        [[42, 41], [40, 44], [41, 47]],
+        [[40, 44], [37, 46]],
       ];
   for (const path of veins)
     for (let i = 0; i + 1 < path.length; i++) {
@@ -607,11 +685,10 @@ function paintLight(l: PixelCanvas, subject: PixelCanvas, t: Xf, small: boolean,
     }
   }
   if (k === 3) on(X, Y, PAL.void3);
-  void LIGHTS;
 }
 
 const XF_BIG: Xf & { w: number; h: number } = { s: 1, ox: 0, oy: 0, bw: 2, w: 88, h: 68 };
-/** The small crop: ×0.56 about the mask (a little closer than half), 1-px bands. */
+/** The small crop: ×0.5 (the same framing as big), 1-px bands. */
 const SMALL_S = 0.5;
 const XF_SMALL: Xf & { w: number; h: number } = { s: SMALL_S, ox: 0, oy: 0, bw: 1, w: 44, h: 34 };
 const FOCUS: V = maskPx(XF_BIG, EYE_N);
@@ -628,8 +705,8 @@ let SUBJ_BIG: PixelCanvas | null = null;
 let SUBJ_SMALL: PixelCanvas | null = null;
 
 /** Sun centre (big px) behind the mask for the backdrop; the small one follows the small crop. */
-const SUN: V = [52, 22];
-const SUN_R = 30;
+const SUN: V = [51, 20];
+const SUN_R = 25;
 
 // ================================================================ field icon (16×12, hand-drawn)
 

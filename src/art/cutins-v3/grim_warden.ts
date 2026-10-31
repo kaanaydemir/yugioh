@@ -53,11 +53,11 @@ interface Pose {
 
 const POSES: readonly Pose[] = [
   { head: [0, 0], eye: 0, lan: [174, 118], fire: 0, cast: false, wisps: 0, t: 0 },
-  { head: [0, 0], eye: 1, lan: [172, 96], fire: 1, cast: false, wisps: 0, t: 1 },
-  { head: [1, 0], eye: 2, lan: [170, 80], fire: 2, cast: true, wisps: 0, t: 2 },
-  { head: [2, 1], eye: 2, lan: [167, 72], fire: 2, cast: true, wisps: 1, t: 3 },
-  { head: [1, 1], eye: 2, lan: [171, 82], fire: 2, cast: true, wisps: 3, t: 4 },
-  { head: [1, 1], eye: 2, lan: [173, 78], fire: 2, cast: true, wisps: 2, t: 5 },
+  { head: [0, 0], eye: 1, lan: [172, 80], fire: 1, cast: false, wisps: 0, t: 1 },
+  { head: [1, 0], eye: 2, lan: [170, 70], fire: 2, cast: true, wisps: 0, t: 2 },
+  { head: [2, 1], eye: 2, lan: [167, 62], fire: 2, cast: true, wisps: 1, t: 3 },
+  { head: [1, 1], eye: 2, lan: [171, 72], fire: 2, cast: true, wisps: 3, t: 4 },
+  { head: [1, 1], eye: 2, lan: [173, 68], fire: 2, cast: true, wisps: 2, t: 5 },
 ];
 const HOLDS: readonly number[] = [260, 110, 100, 110, 120, 420];
 
@@ -80,7 +80,6 @@ const CAPE: readonly V[] = [
 /** the cage bars (bowing round the skull into the crown knob) */
 const BARS: readonly (readonly V[])[] = [
   [[104, 100], [100, 76], [102, 56], [110, 40], [123, 30]],
-  [[113, 106], [109, 82], [110, 58], [115, 42], [123, 31]],
   [[124, 31], [124, 56], [125, 84], [125, 108]],
   [[140, 104], [142, 80], [141, 60], [136, 44], [125, 31]],
 ];
@@ -102,6 +101,27 @@ const TATTERS: readonly (readonly [V, V])[] = [
   [[34, 82], [20, 114]],
   [[40, 98], [30, 130]],
 ];
+
+// ================================================================ tokens
+// The skull and the cage are painted with private tokens (never shown) and mapped onto the stone ramp after the
+// cloth / iron re-mapping, so the bone reads PALE (stone4 / stone3 / stone2, void0 in the deepest hollows) and the
+// cage DARK (stone2 lit / stone1 / stone0) — critic r1: earth bone in four bars read as carved wood in a birdcage.
+const B4 = PAL.skin4;
+const B3 = PAL.skin3;
+const B2 = PAL.skin2;
+const B1 = PAL.skin1;
+const K3 = PAL.water3;
+const K2 = PAL.water2;
+const K1 = PAL.water1;
+const TOK: Record<number, number> = {
+  [B4]: PAL.stone4,
+  [B3]: PAL.stone3,
+  [B2]: PAL.stone2,
+  [B1]: PAL.stone1,
+  [K3]: PAL.stone2,
+  [K2]: PAL.stone1,
+  [K1]: PAL.stone0,
+};
 
 // ================================================================ helpers
 
@@ -287,18 +307,18 @@ const factory: CutinFactory = () => ({
     fillBy(hood, SK, (x, y) => {
       if (!inCav(x, y)) return null;
       const s = lit(x, y, add([124, 68], ho), 24);
-      return s > 0.6 ? PAL.earth4 : s > 0 ? PAL.earth3 : s > -0.55 ? PAL.earth2 : PAL.earth1;
+      return s > 0.6 ? B4 : s > 0 ? B3 : s > -0.55 ? B2 : B1;
     });
     // the socket (void0 oval, its lower rim in shadow), the nose hole, the cheek seam
     hood.ellipse(eye[0] + 0.5, eye[1] + 0.5, 7.2, 6, PAL.void0);
     hood.poly(T([[141, 70], [146, 70], [145, 79]], ho), PAL.void0);
     // skull structure: the temple hollow behind the socket and the cheek hollow under the cheekbone (earth1), the
     // cheekbone's lit ridge (earth4)
-    fillBy(hood, T([[112, 56], [120, 52], [124, 60], [118, 66], [111, 64]], ho), (x, y) => (inPoly(SK, x - ho[0], y - ho[1]) ? PAL.earth2 : null));
-    fillBy(hood, T([[118, 76], [134, 72], [140, 80], [128, 86], [116, 84]], ho), (x, y) => (inPoly(SK, x - ho[0], y - ho[1]) ? PAL.earth1 : null));
-    line4(hood, add([112, 72], ho), add([128, 70], ho), PAL.earth4, (c, x, y) => c !== null && inPoly(SK, x - ho[0], y - ho[1]));
-    line4(hood, add([126, 68], ho), add([130, 82], ho), PAL.earth1, (c, x, y) => c !== null && c !== PAL.void0 && inPoly(SK, x - ho[0], y - ho[1]));
-    line4(hood, add([130, 82], ho), add([142, 84], ho), PAL.earth1, (c, x, y) => c !== null && c !== PAL.void0 && inPoly(SK, x - ho[0], y - ho[1]));
+    fillBy(hood, T([[112, 56], [120, 52], [124, 60], [118, 66], [111, 64]], ho), (x, y) => (inPoly(SK, x - ho[0], y - ho[1]) ? B2 : null));
+    fillBy(hood, T([[118, 76], [134, 72], [140, 80], [128, 86], [116, 84]], ho), (x, y) => (inPoly(SK, x - ho[0], y - ho[1]) ? B1 : null));
+    line4(hood, add([112, 72], ho), add([128, 70], ho), B4, (c, x, y) => c !== null && inPoly(SK, x - ho[0], y - ho[1]));
+    line4(hood, add([126, 68], ho), add([130, 82], ho), B1, (c, x, y) => c !== null && c !== PAL.void0 && inPoly(SK, x - ho[0], y - ho[1]));
+    line4(hood, add([130, 82], ho), add([142, 84], ho), B1, (c, x, y) => c !== null && c !== PAL.void0 && inPoly(SK, x - ho[0], y - ho[1]));
     // the mouth: a row of upper teeth (stone4 lit tops, void0 gaps), the dark mouth line, the jaw
     for (let x = 112; x <= 142; x++) {
       const X = x + ho[0];
@@ -307,10 +327,10 @@ const factory: CutinFactory = () => ({
         const Y = y + ho[1];
         if (!inPoly(SK, x, y)) continue;
         let c: number;
-        if (y <= 89) c = gap ? PAL.void0 : PAL.earth4;
-        else if (y <= 91) c = gap ? PAL.void0 : PAL.earth3;
+        if (y <= 89) c = gap ? PAL.void0 : B4;
+        else if (y <= 91) c = gap ? PAL.void0 : B3;
         else if (y === 92) c = PAL.void0;
-        else c = gap ? PAL.earth1 : y === 93 ? PAL.earth3 : PAL.earth2;
+        else c = gap ? B1 : y === 93 ? B3 : B2;
         hood.set(X, Y, c);
       }
     }
@@ -318,17 +338,17 @@ const factory: CutinFactory = () => ({
     const cageOnly = (c: number | null, x: number, y: number) => c !== null && inCav(x, y);
     for (const bar of BARS) {
       const b = T(bar, ho);
-      path4(hood, b.map(([x, y]) => [x - side, y] as V), PAL.night3, cageOnly);
-      path4(hood, b.map(([x, y]) => [x + side, y] as V), PAL.mist, cageOnly);
-      path4(hood, b, PAL.steel, cageOnly);
+      path4(hood, b.map(([x, y]) => [x - side, y] as V), K1, cageOnly);
+      path4(hood, b.map(([x, y]) => [x + side, y] as V), K3, cageOnly);
+      path4(hood, b, K2, cageOnly);
     }
     // the brow ring round the cage: mist top row, steel, night3 under
     for (let x = 98; x <= 150; x++) {
       const X = x + ho[0];
       const rows: readonly [number, number][] = [
-        [RING_Y, PAL.mist],
-        [RING_Y + 1, PAL.steel],
-        [RING_Y + 2, PAL.night3],
+        [RING_Y, K3],
+        [RING_Y + 1, K2],
+        [RING_Y + 2, K1],
       ];
       for (const [y, c] of rows) if (inCav(X, y + ho[1])) hood.set(X, y + ho[1], c);
     }
@@ -338,7 +358,7 @@ const factory: CutinFactory = () => ({
       let best = b[0];
       for (const q of b) if (Math.abs(q[1] - (RING_Y + 1 + ho[1])) < Math.abs(best[1] - (RING_Y + 1 + ho[1]))) best = q;
       const rx = Math.round(best[0]);
-      if (inCav(rx, RING_Y + 1 + ho[1])) hood.set(rx, RING_Y + 1 + ho[1], PAL.night3).set(rx + side, RING_Y + ho[1], PAL.mist);
+      if (inCav(rx, RING_Y + 1 + ho[1])) hood.set(rx, RING_Y + 1 + ho[1], K1).set(rx + side, RING_Y + ho[1], K3);
     }
     // the crown knob
     const kn = add(KNOB, ho);
@@ -434,6 +454,8 @@ const factory: CutinFactory = () => ({
     const IR: Record<number, number> = { [PAL.mist]: PAL.stone4, [PAL.steel]: PAL.stone3, [PAL.night3]: PAL.stone1 };
     out.map((c) => CL[c] ?? c);
     out.map((c) => IR[c] ?? c);
+    // the skull (cool pale bone) and the cage iron (a value darker than the bone): their own tokens, mapped last
+    out.map((c) => TOK[c] ?? c);
 
     // ---------------------------------------------------------------- lights (never outlined)
     // green cast on the lantern's side of the head (blaze): cage bars, lip, skull edges facing right
@@ -447,7 +469,7 @@ const factory: CutinFactory = () => ({
           const faces = nb === PAL.void0 || nb === PAL.ink;
           if (!faces) continue;
           if (c === PAL.stone3 || c === PAL.stone4) marks.push(x, y, PAL.leaf3);
-          else if (c === PAL.earth3 || c === PAL.earth4 || c === PAL.earth2) marks.push(x, y, PAL.leaf2);
+          else if (c === PAL.stone2) marks.push(x, y, PAL.leaf2);
         }
       for (let i = 0; i < marks.length; i += 3) out.set(marks[i], marks[i + 1], marks[i + 2]);
     }

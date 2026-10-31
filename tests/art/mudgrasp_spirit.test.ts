@@ -117,6 +117,33 @@ describe('mudgrasp_spirit', () => {
     expect(mask).toBeGreaterThan(10);
   });
 
+  it('reads at 1x (owner feedback round 2): a pale ink-separated mask, arms lighter than the body, violet eyes on top', () => {
+    for (const light of ['left', 'right'] as const) {
+      const p = drawFrame(art, 'idle', 0, light);
+      const n = new Map<number, number>();
+      for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) { const c = p.get(x, y); if (c !== null) n.set(c, (n.get(c) ?? 0) + 1); }
+      const k = (c: number) => n.get(c) ?? 0;
+      // the clay mask is the lightest big value (≥ 120 px of stone4 / stone3)
+      expect(k(PAL.stone4) + k(PAL.stone3), light).toBeGreaterThanOrEqual(120);
+      // the near arms / hands carry a lit earth3 band (the body itself tops out at earth2 + a few wet glints)
+      expect(k(PAL.earth3), light).toBeGreaterThanOrEqual(60);
+      // all three body values are present as real planes
+      for (const c of [PAL.earth0, PAL.earth1, PAL.earth2]) expect(k(c), `${light} ${c.toString(16)}`).toBeGreaterThanOrEqual(150);
+      // the mask is ink-separated from the dark hood: every left-most mask pixel of a row has ink on its left
+      let rows = 0;
+      let inked = 0;
+      for (let y = 0; y < p.h; y++) {
+        let x0 = -1;
+        for (let x = 0; x < p.w; x++) { const c = p.get(x, y); if (c === PAL.stone4 || c === PAL.stone3 || c === PAL.stone2) { x0 = x; break; } }
+        if (x0 < 1) continue;
+        rows++;
+        if (p.get(x0 - 1, y) === PAL.ink || p.get(x0 - 1, y) === PAL.stone1) inked++;
+      }
+      expect(rows, light).toBeGreaterThanOrEqual(12);
+      expect(inked / rows, light).toBeGreaterThanOrEqual(0.8);
+    }
+  });
+
   it('the death preset is liquid, not the reserved stone ending (§5.2)', () => {
     expect(DEATH_PRESETS.mudgrasp_spirit.material).toBe('water');
   });

@@ -78,6 +78,9 @@ const scenarios: Record<string, Scenario> = {
   // ---- no drain: negated, face-down, defense (no activate event)
   gwNegated: battle('Işık Zincirleri stops Hortlak Muhafız: no drain plays', 0, { monsters: ['grim_warden'] }, { monsters: ['ember_wolf'], spellTraps: ['chains_of_light'] }, 0, 0, [respond('chains_of_light', 1)]),
   gwFaceDown: battle('Hortlak Muhafız attacks a face-down monster: no drain', 0, { monsters: ['grim_warden'] }, { monsters: [{ id: 'reed_heron', faceUp: false, position: 'defense' }] }, 0, 0),
+  // the rules drain ATTACK-position targets only (engine query.ts: declareAtkDebuff400 reads the target's ATK): a
+  // face-up DEFENSE target with DEF < 2500 gets no drain — the warden simply breaks it
+  gwDefenseNoDrain: battle('Hortlak Muhafız attacks a face-up defending Sazlık Balıkçılı (DEF 1500): no drain, it breaks', 0, { monsters: ['grim_warden'] }, { monsters: [{ id: 'reed_heron', position: 'defense' }] }, 0, 0),
   gwBlocked: battle('Hortlak Muhafız (−500) hits Kalkan Devi in defense (DEF 2600): the blow bounces, no drain', 0, { monsters: ['grim_warden'] }, { monsters: [{ id: 'shield_titan', position: 'defense' }] }, 0, 0),
   // ---- direct
   gwDirect: battle('Hortlak Muhafız attacks directly', 0, { monsters: [null, 'grim_warden'] }, {}, 1, null),
@@ -86,7 +89,9 @@ const scenarios: Record<string, Scenario> = {
   gwHit: battle('Kor Kurdu hits Hortlak Muhafız (attack position) and dies on it', 0, { monsters: ['ember_wolf'] }, { monsters: [{ id: 'grim_warden', position: 'attack' }] }, 0, 0),
   gwKill: battle('Kristal Ejder destroys Hortlak Muhafız: the empty shroud collapses', 0, { monsters: ['crystal_wyrm'] }, { monsters: [{ id: 'grim_warden', position: 'attack' }] }, 0, 0),
   gwKillP2: battle('Kristal Ejder destroys Hortlak Muhafız (P1 warden, P2 attacker)', 1, { monsters: ['crystal_wyrm'] }, { monsters: [{ id: 'grim_warden', position: 'attack' }] }, 0, 0),
-  gwGuard: battle('Hortlak Muhafız in defense (guard) takes an attack', 0, { monsters: ['shade_assassin'] }, { monsters: [{ id: 'grim_warden', position: 'defense' }] }, 0, 0),
+  // the guard HOLDS: Fırtına Atmacası (ATK 1000) strikes the defending warden (DEF 1200) — guard loop, a guard hit, no death
+  gwGuard: battle('Hortlak Muhafız in defense (DEF 1200) holds against Fırtına Atmacası (ATK 1000): guard hit, no death', 0, { monsters: ['storm_hawk'] }, { monsters: [{ id: 'grim_warden', position: 'defense' }] }, 0, 0),
+  gwGuardP2: battle('P1 Hortlak Muhafız in defense holds against a P2 Fırtına Atmacası', 1, { monsters: ['storm_hawk'] }, { monsters: [{ id: 'grim_warden', position: 'defense' }] }, 0, 0),
   gwGuardKill: battle('Hortlak Muhafız in defense is broken open and dies (the guard breaks into the shroud)', 0, { monsters: ['ember_wolf'] }, { monsters: [{ id: 'grim_warden', position: 'defense' }] }, 0, 0),
 };
 

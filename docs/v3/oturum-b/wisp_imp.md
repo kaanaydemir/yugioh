@@ -17,7 +17,7 @@ Lane B, branch `claude/kart-b`. Spec: `docs/v3/YENI_KARTLAR.md` §8 R3 (+ §5, �
 | Exclusion in `src/art/monsters/index.ts` | **removed** (rig stage) | only the wisp entry was deleted; the other three stay |
 | Light profile (`MONSTER_GLOW`) | **done** | gold-only emissive |
 | Death preset (`DEATH_PRESETS`) | **done** | `material: 'light', accent: 'shadow'` |
-| Cinematics / SFX / scenarios | **done, round 1** (cinematics agent) | `src/cinematics/kart-b/wisp_imp.ts`, `src/audio/v3/wisp_imp.ts`, `src/duel/scenarios/wisp_imp.ts` |
+| Cinematics / SFX / scenarios | **done, round 2** (cinematics agent; see round-2 section) | `src/cinematics/kart-b/wisp_imp.ts`, `src/audio/v3/wisp_imp.ts`, `src/duel/scenarios/wisp_imp.ts` |
 
 ## Card art (stage: CARD ART + LIGHT PROFILE)
 File: `src/art/cardart-v3/wisp_imp.ts` (no import from the rig: it survives any rig rewrite).
@@ -293,3 +293,48 @@ checked it again and changed no code:
 - Spec gap noted (open issue 15): the spec asks for a "lazy figure-8" float. In the sprite it lives only in the hood/tail,
   because a whole-body 1-px shift breaks HA-21 phase, and MonsterUnit has no hover bob. A unit-level floater drift
   (sprite y/x tween in v3) would need a shared MonsterUnit change, so it needs an orchestrator decision.
+
+## Cinematics + SFX + scenarios — round 2 (stage re-issued, cinematics agent, 2026-10-31 late)
+Re-filmed every moment fresh (`shots/v3/kart-b/wisp_imp/r2/`), critiqued, and fixed what read weakly at 1×.
+
+### Changes
+- **Summon pre-roll** (`fallTrail` in `kart-b/wisp_imp.ts`): the lone falling feather was a 6×3 speck that
+  hung ~1 s with nothing else on screen. Now (a) it sheds a glinting thread of down every 30 ms (white/lilac
+  specks stepping down the ramp, every 4th a gold glint with a 1-frame cross), (b) a ring of down-light on the
+  tile TIGHTENS onto the landing spot as it comes down (void3 → void4 → white), answered by the touch's
+  ripple opening back out, (c) the sheet's frames 0…touch play at timeScale 1.45 (touch now ≈ 140 ms
+  earlier; summon event 3000 → 2833 ms game).
+- **Pillow** (`pillowDeath`): bigger pillow (max 26×13 half-size, raster 76×44), plumps in with an overshoot
+  (5 sizes); the "-N" number now launches while the pillow is still plumping (no dead wait); the catch is a
+  6-beat squash-and-stretch (wide/flat with the number sunk 3–4 px into the down → tall → wobble ×2 →
+  settle, eyes "> <" → open → "^ ^"); "0 · KORUNDU" holds 300 ms before the POF. To keep the effect in budget
+  the special pose plays at 1.45 and the flock flies 390 ms.
+- **Revive scenarios** added: `wiRevive`, `wiReviveP2` (soul_recall): the shared soul_recall presentation +
+  the rig's revive pose + `wiReviveGather/Land` (gather swell raised: it measured −22 dB loud, now louder).
+
+### Scenario keys (all, P1 + P2)
+`wiSummon(P2)`, `wiAttack(P2)`, `wiDirect(P2)`, `wiBlocked`, `wiGuard`, `wiCushion(P2)` (enemy kills ATK wisp:
+pillow 1600), `wiCushionSelf(P2)` (wisp suicides into a stronger monster: pillow 200; = `m1Imp`),
+`wiDefDies(P2)` (no event: wind, no pof), `wiRevive(P2)`.
+
+### Gates (round 2)
+- typecheck: no wisp errors. `tests/art/wisp_imp*`, `tests/presentation`, scenario tests: 88/89 — the one
+  failure was `engine-boundary` timing out at 5 s under machine load (load avg ≈ 15); it passes 5/5 with `--testTimeout 60000`.
+- v1: `filmdiff --set v1` **17/17 IDENTICAL** (after the round-2 changes).
+- Camera gate (`<scratch>/wisp_imp/m3.json` vs `camera-base.json`): 15 ok + 2 NOBASE (the new revive keys), 0 FAIL.
+- Budgets (game clock, `<scratch>/wisp_imp/m3.json`, `m4.json`): summon 2833 · declaration 316 ≤ 435 · attack
+  battle 2017 ≤ 3190 · direct 2017 ≤ 2320 · blocked 2084 · guard 1217 · **effect 2300 ≤ 2320** (2400 before the
+  trims) · wind death 1050 ≤ 2030 · revive (soul_recall activate) 2133.
+- palcheck (a5): pillow panel clip — only off-palette colour is #070206, the outline of the shared `pixelText`
+  damage number (UI text, not this card's rasters); `white` > 1.5 % is already in frame 0 (the white LP
+  digits). Summon clip: Δoff +0.43 ok; `white` 1.8 % = the wisp's own white body (rig tone).
+- Evidence: `r2/wiSummon.png`, `r2/wiSummon-fall.png` (before) → `r2/wiSummon-fall3.png` (after),
+  `r2/wiCushion.png`, `r2/wiCushion-pillow*.png` (before), `r2/wiCushion-catch2.png` (after, ×3),
+  `r2/wiCushionP2-pillow.png` (P1 panel), `r2/wiAttack.png`, `r2/wiAttack-contact.png`, `r2/wiDefDies.png`,
+  `r2/wiDefDies-wind.png`, `r2/wiRevive.png`, `sfx/wiReviveGather.png`, `sfx/wiReviveLand.png`.
+
+### Open issues (round 2)
+16. **Owner feedback (motion liveliness) is a RIG issue and is not addressed by this stage** — idle/one-shot
+    frames still too similar; needs a rig pass (and re-run of monster-gates: HA-21/HA-18 margins are tight).
+17. Idle SFX and a feather struck-body material: still not built (decisions 3 / 4).
+18. No independent critic round yet; no MP4 clip (`tools/clip.mjs`) for the owner's ears.

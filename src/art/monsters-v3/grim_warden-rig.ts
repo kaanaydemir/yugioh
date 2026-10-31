@@ -56,6 +56,8 @@ export interface Pose {
   /** chain angle from straight down (deg, + = the lantern swings forward / right), chain length (px) */
   la: number;
   cl: number;
+  /** lantern lift (px, − = up): the pendulum rises at the ends of its swing */
+  ly: number;
   /** soul flame 0…1.5, its shape seed, its lean against the swing (−1…1) */
   fl: number;
   fs: number;
@@ -124,6 +126,7 @@ export const NEUTRAL: Pose = {
   ay: 1,
   la: 0,
   cl: 9,
+  ly: 0,
   fl: 1,
   fs: 0,
   flLean: 0,
@@ -217,7 +220,7 @@ export function skeleton(o: Pose): Skel {
   const ldy = cos(o.la * DEG);
   const K1: Pt = [K0[0] + ldx * o.cl, K0[1] + ldy * o.cl];
   const lc: Pt = [K0[0] + ldx * (o.cl + 7), Math.min(GY - 8, K0[1] + ldy * (o.cl + 7))];
-  const Lo: Pt = [rnd(lc[0]) - 4, rnd(lc[1]) - 7];
+  const Lo: Pt = [rnd(lc[0]) - 4, rnd(lc[1]) - 7 + rnd(o.ly)];
   // halberd: planted at BUTT (the far hand slides to wherever the haft passes), or swung from the far hand
   const hd: Pt = [cos(o.ha * DEG), sin(o.ha * DEG)];
   let hb: Pt;
@@ -457,8 +460,22 @@ function paintLegs(f: Frame): void {
     const [x, y] = P(A);
     q.poly([[x - 4, y - 3], [x + 2, y - 3], [x + 6, y], [x + 6, y + 2], [x - 4, y + 2]], it.M);
     q.rect(x - 4, y - 5, 6, 2, it.M);
-    bands(q, it, f.light, 1, 1);
-    f.comp.add(q, Part.legs, { out: it.D });
+    // iron-shod boot planes (critic r1: flat wedges read as slippers): a lit cuff ring and instep edge, the mid
+    // plate, a shaded heel / far side, a toe-cap glint, a dark sole line along the floor
+    const ls = f.light.side;
+    const lo = far ? PAL.stone1 : PAL.stone2;
+    const mid = far ? PAL.stone1 : PAL.stone2;
+    const hi = far ? PAL.stone2 : PAL.stone3;
+    const glint = far ? PAL.stone3 : PAL.stone4;
+    planes(q, (px, py, src) => {
+      if (py >= y + 2) return PAL.stone0;
+      if (py === y - 5) return hi;
+      if (py === y - 4) return ls < 0 ? (px <= x - 2 ? hi : lo) : px >= x ? hi : lo;
+      if (!src.isOpaque(px, py - 1)) return (px === x + 3 || px === x + 4) && py <= y - 1 ? glint : hi;
+      if (ls < 0 ? px >= x + 5 : px <= x - 4) return far ? PAL.stone0 : PAL.stone1;
+      return mid;
+    });
+    f.comp.add(q, Part.legs, { out: far ? PAL.stone0 : PAL.ink });
   }
 }
 
@@ -575,36 +592,30 @@ function paintMantle(f: Frame): void {
 // ---------------------------------------------------------------- hood + cage helm
 
 /**
- * The cage helm (15×13, facing right), built as a map: iron meridian bars (b) and bands (I: the top ring, brow, jaw
- * and chin bands) closing over a skull (s) seen between them; the dark socket (o) where the one eye burns, a nostril
- * (n), teeth (t / g gaps) behind the jaw band, a back plate over the nape (P), the knob on top (k).
+ * The cage helm (15×13, facing right), a hand map: a PALE BONE SKULL (h lit cranium / cheek, s bone, c crevice) caged in
+ * DARK iron — two meridian bars (b) over the face, the crown ring, the jaw and chin bands (I), the nape plate (P), the
+ * knob (k). The skull is cool bone (stone4 / stone3 / stone2) so it reads as bone behind iron at 1×, the iron is a value
+ * darker than the bone; the socket (o, 3×2, void0) holds the one eye (2×2 core + halo, light), n = the nose cavity,
+ * t / g = teeth and gaps behind the bars. Critic r1: four bars + earth bone read as a brown grille.
  */
-const HELM_PROFILE: readonly (readonly [number, number])[] = [
-  [6, 7], [4, 10], [2, 12], [1, 13], [1, 14], [0, 14], [0, 14], [0, 14], [1, 14], [1, 13], [2, 13], [3, 12], [4, 11],
+const HELM: readonly string[] = [
+  '......kk.......',
+  '....IIIIIII....',
+  '..Phhhbhhhhbs..',
+  '.PPshhbhhhsbss.',
+  '.PPsshbhsssbsss',
+  'PPPsssbscccbssc',
+  'PPPcssbsooobsss',
+  'PPPcssbcooobsnc',
+  '.PPcssbshhsbccc',
+  '.IIIIIIIIIIIII.',
+  '..ctgtbtgtgbtc.',
+  '...ctgbtgtgbc..',
+  '....IIIIIIII...',
 ];
-const HELM_BANDS = new Set([1, 5, 9, 12]);
-const HELM_BARS = new Set([4, 7, 10, 13]);
-const HELM: readonly string[] = HELM_PROFILE.map(([l, r], v) => {
-  let row = '';
-  for (let u = 0; u < 15; u++) {
-    let ch = '.';
-    if (u >= l && u <= r) {
-      if (v === 0) ch = 'k';
-      else if (HELM_BANDS.has(v)) ch = 'I';
-      else if (u <= 2) ch = 'P';
-      else if (HELM_BARS.has(u)) ch = 'b';
-      else if (v >= 6 && v <= 7 && (u === 8 || u === 9)) ch = 'o';
-      else if (v === 7 && u === 11) ch = 'n';
-      else if (v >= 10) ch = u % 2 ? 'g' : 't';
-      else ch = 's';
-    }
-    row += ch;
-  }
-  return row;
-});
 const HELM_CX = 7;
 const HELM_CY = 6;
-/** The socket the eye burns in (map coords of its top-left cell; 2×2). */
+/** The socket the eye burns in (map coords of its top-left cell; the 2×2 core scans 0 / +1 inside the 3×2 socket). */
 const SOCK_U = 8;
 const SOCK_V = 6;
 
@@ -658,34 +669,34 @@ function paintHelm(f: Frame): void {
   planes(q, (x, y) => {
     const ch = cells.get(y * W + x)!;
     const [u, v] = uv(x, y);
-    const toward = light.side < 0 ? 14 - u : u; // 0 at the lit edge
-    void toward;
-    const litU = light.side < 0 ? u <= 6 : u >= 8;
+    const litU = light.side < 0 ? u <= 7 : u >= 7;
     switch (ch) {
       case 'o':
       case 'g':
-        return PAL.void0;
       case 'n':
-        return PAL.earth0;
+        return PAL.void0;
       case 't':
-        return v === 10 ? BONE.L : BONE.M;
+        return v === 10 ? PAL.stone4 : PAL.stone3;
+      case 'h':
+        return litU || v === 8 ? PAL.stone4 : PAL.stone3;
       case 's':
-        if (v <= 4) return litU ? BONE.M : BONE_FAR.M;
-        return v === 8 ? BONE_FAR.S : litU ? BONE_FAR.M : BONE_FAR.S;
+        return v <= 3 && litU ? PAL.stone4 : PAL.stone3;
+      case 'c':
+        return PAL.stone2;
       case 'b':
-        return litU ? (v <= 4 ? IRON.L : IRON.M) : IRON.S;
+        return litU && v <= 4 ? PAL.stone2 : PAL.stone1;
       case 'P':
-        return litU ? IRON.M : IRON.S;
+        return litU && v <= 5 ? PAL.stone2 : PAL.stone1;
       case 'k':
-        return IRON.L;
-      default: {
-        // a band: lit on the light's half, shaded on the far half; the chin band in shade
-        if (v === 12) return IRON.S;
-        return litU ? IRON.L : IRON.M;
-      }
+        return PAL.stone3;
+      default:
+        // a band: the crown ring lit on the light's half, the jaw band mid, the chin band in shade
+        if (v === 12) return PAL.stone1;
+        if (v === 1) return litU ? PAL.stone3 : PAL.stone2;
+        return litU ? PAL.stone2 : PAL.stone1;
     }
   });
-  f.comp.add(q, Part.helm, { out: IRON.D });
+  f.comp.add(q, Part.helm, { out: PAL.stone0 });
   // a magic blow: the soul fire flashes through the bars (light, after the outline)
   if (o.zap > 0) {
     const bars: Pt[] = [];
@@ -698,12 +709,12 @@ function paintHelm(f: Frame): void {
   // the one eye: it burns in the socket and scans (0 / +1 px, a glance down on +2)
   if (o.helmOff < 0.5 && o.eye > 0.08) {
     const du = Math.min(1, Math.max(0, rnd(o.eyeDx)));
-    const dv = rnd(o.eyeDx) >= 2 ? 1 : 0;
+    const dv = 0;
     const eu = SOCK_U + du;
     const ev = SOCK_V + dv;
     const ex = ox + rnd((eu - HELM_CX) * c - (ev - HELM_CY) * s);
     const ey = oy + rnd((eu - HELM_CX) * s + (ev - HELM_CY) * c);
-    f.after.push((p) => eyeLight(p, ex, ey, o.eye, du === 0 ? 2 : 1));
+    f.after.push((p) => eyeLight(p, ex, ey, o.eye));
   }
 }
 
@@ -882,6 +893,33 @@ function soulBounce(f: Frame): void {
   for (const [x, y, c] of hits) p.set(x, y, c);
 }
 
+// ---------------------------------------------------------------- noise clean-up
+
+/**
+ * Single-pixel speckle on the cloth / bone / iron (critic r1: tatters and teeth read as noise at 1×): a body pixel
+ * (never ink, never the lantern, the helm's teeth or the eye) whose four neighbours all differ from it while three of
+ * them share one non-ink tone takes that tone. One pass, read from a snapshot (deterministic).
+ */
+function despeckle(f: Frame): void {
+  const { p, comp } = f;
+  const src = p.clone();
+  for (let y = 1; y < H - 1; y++)
+    for (let x = 1; x < W - 1; x++) {
+      const id = comp.id[y * W + x];
+      if (!id || id === Part.lantern || id === Part.chain || id === Part.helm || id === Part.handN || id === Part.handF) continue;
+      const c = src.get(x, y);
+      if (c === null || c === PAL.ink) continue;
+      const nb = [src.get(x + 1, y), src.get(x - 1, y), src.get(x, y + 1), src.get(x, y - 1)];
+      if (nb.some((n) => n === c || n === null)) continue;
+      const counts = new Map<number, number>();
+      for (const n of nb) if (n !== null && n !== PAL.ink) counts.set(n, (counts.get(n) ?? 0) + 1);
+      for (const [n, k] of counts) if (k >= 3) {
+        p.set(x, y, n);
+        break;
+      }
+    }
+}
+
 // ---------------------------------------------------------------- the frame
 
 function drawBody(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right'): void {
@@ -913,6 +951,7 @@ function drawBody(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right'): void {
   paintHand(f, false);
   if (!lBack) paintLantern(f);
   p.outline(PAL.ink);
+  despeckle(f);
   soulBounce(f);
   for (const fn of f.after) fn(p);
   // effects (never outlined)

@@ -208,12 +208,12 @@ const BARK: Tones = { L: PAL.earth3, M: PAL.earth2, S: PAL.earth1 };
 const FAR: Tones = { L: PAL.earth2, M: PAL.earth1, S: PAL.earth0 };
 const ROOT: Tones = { L: PAL.earth3, M: PAL.earth2, S: PAL.earth1 };
 const CLUB: Tones = { L: PAL.earth2, M: PAL.earth1, S: PAL.earth0 };
-const MOSS: Tones = { L: PAL.leaf2, M: PAL.leaf1, S: PAL.leaf0 };
+const MOSS: Tones = { L: PAL.leaf1, M: PAL.leaf1, S: PAL.leaf0 };
 const MOSS_FAR: Tones = { L: PAL.leaf1, M: PAL.leaf0, S: PAL.leaf0 };
 const CREASE = PAL.earth0;
 const HEART = PAL.earth4;
 
-export const CLUB_LEN = 23;
+export const CLUB_LEN = 25;
 /** crown shards: position across the top (−1…1), height, forward slant */
 const SHARDS: readonly (readonly [number, number, number])[] = [[-0.9, 6, -2], [-0.5, 11, -1], [-0.05, 7, 0.5], [0.38, 13, 2.5], [0.82, 6, 2.5]];
 
@@ -275,7 +275,7 @@ export function skeleton(o: Pose): Skel {
   const top: Pt = [base[0] + 15 + o.lean + sh, base[1] - height * 0.9 + o.bob];
   const ctrl: Pt = [base[0] - 3 + o.lean * 0.1, base[1] - height * 0.86];
   const sp = (t: number): Pt => bez(base, ctrl, top, t);
-  const rad = (t: number) => (9.5 + 3 * Math.max(0, 1 - ((t - 0.72) / 0.72) ** 2)) * (1 - 0.18 * col) + col * 3 * (1 - t);
+  const rad = (t: number) => (9 + 4.5 * Math.max(0, 1 - ((t - 0.74) / 0.6) ** 2)) * (1 - 0.18 * col) + col * 3 * (1 - t);
   const hc = sp(0.64);
   const hollow: Pt = [rnd(hc[0] + 1), rnd(hc[1])];
   // shoulders sit on the hunch, at the log's front and back edges (the hollow stays clear between them)
@@ -286,7 +286,7 @@ export function skeleton(o: Pose): Skel {
   const unf = clamp(o.unfurl, 0, 1);
   const wN0: Pt = [AX + o.nx, GY + o.ny];
   const wN: Pt = [lerp(shN[0], wN0[0], unf), lerp(shN[1], wN0[1], unf)];
-  const elN = ik2(shN, wN, 12.5 * Math.max(0.3, unf), 13.5 * Math.max(0.3, unf), o.nb) as Pt;
+  const elN = ik2(shN, wN, 13.5 * Math.max(0.3, unf), 14 * Math.max(0.3, unf), o.nb) as Pt;
   const wF0: Pt = [AX + o.fx, GY + o.fy];
   const wF: Pt = [lerp(shF[0], wF0[0], unf), lerp(shF[1], wF0[1], unf)];
   const elF = ik2(shF, wF, 14 * Math.max(0.3, unf), 15 * Math.max(0.3, unf), o.fb) as Pt;
@@ -310,7 +310,7 @@ export function skeleton(o: Pose): Skel {
     for (let i = 0; i <= n; i++) tendril.push(bez(r0, c, tgt, (i / n) * clamp(o.tl, 0, 1)));
   }
   return {
-    base, top, height, sp, rad, hollow, hrx: 4, hry: 6,
+    base, top, height, sp, rad, hollow, hrx: 5, hry: 7,
     shN, elN, wN, shF, elF, wF, grip, clubHead, clubButt,
     hipN, kneeN, footN, hipF, kneeF, footF,
     tip: tendril.length ? tendril[tendril.length - 1] : tips[5],
@@ -431,11 +431,11 @@ function mossClump(f: Frame, at: Pt, rx: number, t: Tones, part: Part, drips: nu
   f.comp.add(q, part, { out: far ? undefined : PAL.leaf0 });
 }
 
-function mushroom(q: PixelCanvas, at: Pt, w: number, light: Light): void {
+function mushroom(q: PixelCanvas, at: Pt, w: number, light: Light, stem = 3): void {
   const x = rnd(at[0]);
-  const y = rnd(at[1]);
+  const y = rnd(at[1]) - (stem - 3);
   // stem
-  q.rect(x, y - 2, 2, 3, PAL.earth3);
+  q.rect(x, y - 2, 2, stem, PAL.earth3);
   // cap: a dome, lit top rows, the rim / gill row one step down; the dome's crown sits toward the light
   const hw = Math.floor(w / 2);
   for (let i = -hw; i <= hw + 1; i++) q.set(x + i, y - 3, PAL.earth3);
@@ -493,7 +493,7 @@ function drawTrunk(f: Frame): void {
     const h = h0 * lift + 1;
     q.poly([[bx - 2.8, by + 2], [bx + 2.8, by + 2], [bx + sl + tdx * h * 0.25, by - h]], BARK.M);
   }
-  cylBands(q, BARK, light, 0.2, 0.56, 2);
+  cylBands(q, BARK, light, 0.17, 0.5, 2);
   // bark grain: seams that follow the log (dashes), mid / shade planes only; ring cracks
   const b0 = rnd(sk.top[1]) - 8;
   const b1 = rnd(sk.base[1]) + 4;
@@ -503,13 +503,32 @@ function drawTrunk(f: Frame): void {
     let r = -1;
     for (let x = 0; x < W; x++) if (src.isOpaque(x, y)) { if (l < 0) l = x; r = x; }
     if (l < 0 || r - l < 8) continue;
-    for (const [k, u] of [0.42, 0.57, 0.83, 0.93].entries()) {
-      if (jag(rnd((y + k * 7) / 4), k + 3) < 0.28) continue;
+    // long vertical bark furrows (they follow the log and break every few rows into plates); the lit plane keeps
+    // only its two widest furrows, one step down, so it stays calm (MA-2)
+    for (const [k, u] of [0.1, 0.34, 0.55, 0.74, 0.9].entries()) {
+      // trunk-local rows (from the base, which never bobs) so the grain rides with the log instead of crawling
+      const yl = y - rnd(sk.base[1]) + 80;
+      if (jag(Math.floor((yl + k * 5) / 6), k + 3) < 0.13) continue;
+      const wig = jag(Math.floor((yl + k * 3) / 9), k + 11) < 0.6 ? 0 : 1;
       const uu = light.side < 0 ? u : 1 - u;
-      const x = rnd(l + uu * (r - l));
+      const x = rnd(l + uu * (r - l)) + wig;
+      if (x <= l || x >= r) continue;
       const c = q.get(x, y);
       if (c === BARK.M || c === BARK.S) q.set(x, y, DARKER[c]);
+      else if (c === BARK.L && k < 2 && y > b0 + 10) q.set(x, y, BARK.M);
     }
+  }
+  // the lightning burn: the upper log around the crown is charred one value down, its lower edge a ragged tide line
+  if (col < 0.6) {
+    const ct = sk.sp(0.9);
+    const yBurn = ct[1] + 5 + rnd(sk.rad(0.9) * 0.2);
+    for (let y = rnd(ct[1]) - 16; y <= yBurn + 3; y++)
+      for (let x = 0; x < W; x++) {
+        const c = q.get(x, y);
+        if (c === null) continue;
+        const edge = yBurn + rnd(jag(x >> 1, 21) * 3) - (x * -light.side > ct[0] * -light.side + 4 ? 2 : 0);
+        if (y <= edge) q.set(x, y, DARKER[c] ?? c);
+      }
   }
   // two knot holes on the mid plane (a dark eye, a lit lower lip)
   for (const [t, du] of [[0.24, 0.52], [0.42, 0.7]] as const) {
@@ -562,8 +581,8 @@ function drawTrunk(f: Frame): void {
   // the open top of the hollow log: an end-grain ring (seen from above on the 2:1 board) around a dark hole
   if (col < 0.55) {
     const [cx, cy] = [rnd(top[0]), rnd(top[1] - rt * 0.5 + 2)];
-    const rx = Math.max(3, rnd(rt - 1.5));
-    const ry = Math.max(2, rnd(rt * 0.36));
+    const rx = Math.max(3, rnd(rt * 0.72));
+    const ry = Math.max(2, rnd(rt * 0.3));
     for (let y = cy - ry; y <= cy + ry; y++)
       for (let x = cx - rx; x <= cx + rx; x++) {
         const e = ((x - cx) / (rx + 0.4)) ** 2 + ((y - cy) / (ry + 0.4)) ** 2;
@@ -600,6 +619,21 @@ function drawTrunk(f: Frame): void {
           q.set(x, y, d > 0.25 ? BARK.L : d < -0.35 ? BARK.S : BARK.M);
         }
       }
+    // the lightning split: pale splintered teeth of torn heartwood jut from the rim into the dark
+    if (col < 0.4) {
+      const teeth: [number, number][] = [[-120, 3], [-35, 2], [60, 2], [160, 3]];
+      for (const [deg, len] of teeth) {
+        const a = deg * DEG;
+        const lit = -(Math.cos(a) * lx + Math.sin(a) * ly) < 0;
+        for (let k = 0; k < len; k++) {
+          const rr = 1 - (k + 0.5) / (rx + 0.5);
+          const x = rnd(hx + Math.cos(a) * rx * rr);
+          const y = rnd(hy + Math.sin(a) * ry * (1 - (k + 0.5) / (ry + 0.5)));
+          if (!q.isOpaque(x, y)) continue;
+          q.set(x, y, k === len - 1 ? (lit ? PAL.earth3 : PAL.earth2) : lit ? HEART : PAL.earth3);
+        }
+      }
+    }
   }
   f.comp.add(q, Part.trunk, { out: CREASE });
 }
@@ -643,11 +677,11 @@ function drawClub(f: Frame): void {
   const g = sk.grip;
   const h = sk.clubHead;
   const m = polar(g, o.ca, CLUB_LEN * 0.55);
-  limb(q, [a, g, m, h], 3.4, 8, CLUB.M);
-  q.disc(rnd(h[0]), rnd(h[1]), 4.5, CLUB.M);
-  // knots: big burls on the head end
-  const kn: Pt[] = [polar(m, o.ca - 90, 3.2), polar(polar(g, o.ca, CLUB_LEN * 0.72), o.ca + 90, 4)];
-  for (const k of kn) q.disc(rnd(k[0]), rnd(k[1]), 1.5, CLUB.M);
+  limb(q, [a, g, m, h], 4.4, 10, CLUB.M);
+  q.disc(rnd(h[0]), rnd(h[1]), 5.5, CLUB.M);
+  // knots: big burls on the head end (the club is a knotted log, its head swollen with them)
+  const kn: Pt[] = [polar(m, o.ca - 90, 4), polar(polar(g, o.ca, CLUB_LEN * 0.76), o.ca + 90, 5), polar(h, o.ca - 70, 5)];
+  kn.forEach((k, i) => q.disc(rnd(k[0]), rnd(k[1]), i === 1 ? 2.5 : 2, CLUB.M));
   // a broken branch stub near the head
   const st = polar(g, o.ca, CLUB_LEN * 0.68);
   limb(q, [st, polar(st, o.ca - 58, 4)], 2.4, 2, CLUB.M);
@@ -701,10 +735,29 @@ function drawNearArm(f: Frame): void {
 function drawNearMoss(f: Frame): void {
   const { sk, o, light } = f;
   if (o.collapse > 0.45 || (o.door >= 0 && o.door < 0.2)) return;
-  mossClump(f, [sk.shN[0], sk.shN[1] - 2], 5, MOSS, Part.nearMoss, 4, false);
+  mossClump(f, [sk.shN[0], sk.shN[1] - 1], 5, MOSS, Part.nearMoss, 4, false);
   const q = layer();
-  mushroom(q, [sk.shN[0] + 3, sk.shN[1] - 3], 5, light);
-  mushroom(q, [sk.shN[0] - 1, sk.shN[1] - 3], 3, light);
+  // two pale toadstools on long stems rise out of the moss, clear of the log top (they read against the sky)
+  mushroom(q, [sk.shN[0] + 6, sk.shN[1] + 1], 5, light, 4);
+  mushroom(q, [sk.shN[0] + 2, sk.shN[1] + 0], 3, light, 2);
+  f.comp.add(q, Part.nearMoss, { out: PAL.earth1 });
+}
+
+/** bracket fungi: pale shelves stacked on the log's back edge (lit tops, a dark gill underside) */
+function drawFungi(f: Frame): void {
+  const { sk, o } = f;
+  if (o.collapse > 0.35 || (o.door >= 0 && o.door < 0.2 && o.legs < 0.1 && o.unfurl < 0.05 && false)) return;
+  const q = layer();
+  for (const [t, w] of [[0.44, 6], [0.3, 4]] as const) {
+    const c = sk.sp(t);
+    const x1 = rnd(c[0] - sk.rad(t)) + 2;
+    const y = rnd(c[1]);
+    // the shelf: a fat half disc jutting back from the bark — lit cap, a mid rim, the dark gill underside
+    for (let i = 1; i < w; i++) q.set(x1 - i, y - 1, PAL.earth4);
+    for (let i = 0; i <= w; i++) q.set(x1 - i, y, PAL.earth4);
+    for (let i = 0; i <= w; i++) q.set(x1 - i, y + 1, PAL.earth3);
+    for (let i = 0; i < w - 1; i++) q.set(x1 - i, y + 2, PAL.earth2);
+  }
   f.comp.add(q, Part.nearMoss, { out: PAL.earth1 });
 }
 
@@ -1020,6 +1073,7 @@ export function drawOgre(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right'): 
   drawMane(f);
   drawFarMoss(f);
   drawTrunk(f);
+  drawFungi(f);
   drawBaseRoots(f);
   leg(f, sk.hipN, sk.kneeN, sk.footN, ROOT, Part.nearLeg, 1);
   drawDoor(f);
