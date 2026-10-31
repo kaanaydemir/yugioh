@@ -2,11 +2,12 @@
 //
 // Each wing is a hooded cloak hanging from its wrist peak: a Coons patch between four boundary
 // curves (back edge, front edge = the arm, the short top edge at the peak, the hem), cut into 8 rows
-// of shingled plates (1·2·2·3·3·3·4·4 = 22 per wing, 44 in all). Rows overlap downward like roof
-// tiles (the hem row is drawn first, every upper row lies over the one below); a plate is two flat
-// tones (an upper band facing up, a lower band) with its tip row one step darker (the IŞ-5 crease).
-// The plate's normal follows the hood's curvature, so the ONE key light tones it: P2's relight is
-// the same geometry lit from the right (the opaque mask never depends on the light).
+// of plates (1·2·2·3·3·3·4·4 = 22 per wing, 44 in all). The plates give the COVERAGE (the scalloped hem,
+// the per-plate states of the summon / tear / regrowth); the TEXTURE is shingle courses laid over the
+// hood's (u, v) field: rows ≈ 3.5 px with a full-width darker crease, short staggered joint ticks, 2–3
+// large light planes (stone2 lit / stone1 shadow, stone0 only in creases, stone3 lips on the top two
+// courses), sampled from the hood WITHOUT its wrist offset so the breath moves the silhouette, not the
+// tiles. P2's relight is the same geometry lit from the right (the opaque mask never depends on the light).
 //   - shape keys per wing (FOLD hood, OPEN spread, MANTLE canopy, COCOON wrap) blended by the pose;
 //   - plate states by the shared accretion order ASHEN_ORDER (summon build, attack tear-off / regrowth);
 //   - the bare wing struts (arm + 3 fingers) under the plates, the bony wrist spur over them;
@@ -81,9 +82,9 @@ export const SHAPES: Readonly<Record<WingId, Readonly<Record<Key, CloakShape>>>>
       [12, 62],
     ),
     mantle: S(
-      [[44, 20], [52, 20], [62, 28], [72, 42], [78, 58]],
-      [[50, 18], [60, 22], [72, 30], [82, 44], [88, 60]],
-      [47, 18],
+      [[52, 17], [56, 21], [63, 29], [72, 42], [78, 58]],
+      [[56, 16], [62, 21], [72, 30], [82, 44], [88, 60]],
+      [53, 15],
       [83, 60],
     ),
     cocoon: S(
@@ -286,7 +287,8 @@ export function plateCenter(s: CloakShape, p: Plate): V {
 /** the hood's surface normal at (u, v) of a wing (authored for the P1 view; the light does the rest) */
 function hoodNormal(wing: WingId, u: number, v: number, w: WingPose): [number, number, number] {
   const nx = wing === 'N' ? -0.95 + 1.45 * u : -1.1 + 0.6 * u;
-  const ny = -0.85 + 1.15 * v - 0.4 * w.open + 0.5 * w.mantle - 0.35 * (w.spread ?? 0);
+  // the canopy (mantle) turns its back UP to the light: its top courses lit, the hem side dark
+  const ny = -0.85 + 1.15 * v - 0.4 * w.open - 0.3 * w.mantle - 0.35 * (w.spread ?? 0);
   const nz = 0.7 + 0.2 * w.cocoon;
   return [nx, ny, nz];
 }
@@ -307,9 +309,13 @@ export interface CloakDraw {
 }
 
 const OWN = new Int16Array(W * H);
-const TT = new Float32Array(W * H);
+const RID = new Int16Array(W * H);
+const TH_LIT = 0.1;
+const CJ = new Uint8Array(W * H);
+const NU_CELLS = 8;
+const PLANE = new Uint8Array(32 * 16);
+const CR = new Uint8Array(W * H);
 const TIPX = new Float32Array(64);
-const LIP = new Uint8Array(64);
 /** the light's intensity on a facet normal (the frame's key light + its lift) */
 const lightI = (L: Light, n: readonly number[]) => n[0] * L.v[0] + n[1] * L.v[1] + n[2] * L.v[2] + L.lift;
 
@@ -318,7 +324,7 @@ const lightI = (L: Light, n: readonly number[]) => n[0] * L.v[0] + n[1] * L.v[1]
  * frame or gone (torn off / not yet built). The struts are drawn first (bare bones), the plates over
  * them hem row first, then the spur.
  */
-export function drawCloak(ws: Workspace, light: Light, wing: WingId, w: WingPose, off: V, state: (id: number) => PlateState, o: { far: boolean; struts: boolean; fan?: number; reach?: number }): CloakDraw {
+export function drawCloak(ws: Workspace, light: Light, wing: WingId, w: WingPose, off: V, state: (id: number) => PlateState, o: { far: boolean; struts: boolean; fan?: number; reach?: number; stubs?: boolean; shoulder?: V; spars?: number }): CloakDraw {
   const s = cloakShape(wing, w, off);
   const q = ws.canvas();
   const hem: number[] = [];
@@ -333,10 +339,13 @@ export function drawCloak(ws: Workspace, light: Light, wing: WingId, w: WingPose
   const knuckles: V[] = [];
   if (o.struts) {
     const r = ws.raster();
-    const wrist = s.front[0];
+    // the wrist the hand hangs from: the near wing's front peak, the far wing's back peak (where its spur sits)
+    const wrist = o.far ? s.back[0] : s.front[0];
     const arm = [s.front[2], s.front[1], wrist];
     const mat = o.far ? M.FAR : M.BONE;
     r.tube(arm, 3.4, 2.4, mat, { z: 2, flat: 1.4 });
+    // the forearm: a 3-px bone from the shoulder up to the wrist peak (the bare hand is never spider legs)
+    if (o.shoulder) r.tube([o.shoulder, lerpV(o.shoulder, wrist, 0.55), wrist], 3.2, 2.6, mat, { z: 2.2, flat: 1.4 });
     const hm = patchAt(s, 0.5, 1);
     const toHem = sub(hm, wrist);
     const reach = len(toHem) || 1;
@@ -351,10 +360,12 @@ export function drawCloak(ws: Workspace, light: Light, wing: WingId, w: WingPose
     const roots: V[] = [];
     const fingers: [V, V][] = [];
     const fan = o.fan ?? 1;
+    // the far hand fans further back and shorter, so its fingers stay behind / above the near ones
+    const farRot = o.far ? 6 : 0;
     for (const [deg, lk, wd, bow, pu, pv] of [[34, 0.86, 2.4, 4.4, 0.08, 0.92], [4, 0.95, 2.2, 4, 0.4, 0.98], [-26, 0.78, 2, 3.4, 0.74, 0.86]] as const) {
       // fan 1: the stripped bat hand; fan 0: the fingers lie inside the cloak's own outline (the
       // summon builds the hand under the plates it is about to carry)
-      const fanEnd = add(wrist, mul(rot(dir, deg), reach * lk * (o.reach ?? 1)));
+      const fanEnd = add(wrist, mul(rot(dir, deg + farRot), reach * lk * (o.reach ?? 1) * (o.far ? 0.74 : 1)));
       const end = lerpV(patchAt(s, pu, pv), fanEnd, fan);
       const d = norm(sub(end, wrist));
       const s0 = add(wrist, mul(d, 2.5));
@@ -362,6 +373,11 @@ export function drawCloak(ws: Workspace, light: Light, wing: WingId, w: WingPose
       const knuckle = add(lerpV(s0, end, 0.45), mul(perp, bow));
       const mid2 = add(lerpV(s0, end, 0.74), mul(perp, bow * 0.62));
       const hook = add(end, add(mul(perp, -1.8), mul(d, -1.2)));
+      if (o.stubs) {
+        // the summon before the cloak is ~70 % seated: only the finger ROOTS (never wires over a half-built hood)
+        r.tube([s0, lerpV(s0, knuckle, 0.4)], wd, wd - 0.4, M.HIDE + (o.far ? 1 : 0), { z: 1, flat: 1.4 });
+        continue;
+      }
       r.tube([s0, lerpV(s0, knuckle, 0.5), knuckle], wd, wd - 0.3, M.HIDE + (o.far ? 1 : 0), { z: 1, flat: 1.4 });
       r.tube([knuckle, mid2, end, hook], wd - 0.4, 1, M.HIDE + (o.far ? 1 : 0), { z: 1, flat: 1.4 });
       knuckles.push(knuckle);
@@ -372,7 +388,7 @@ export function drawCloak(ws: Workspace, light: Light, wing: WingId, w: WingPose
     const c = ws.render(r);
     // the membrane stubs: a ragged stone1 web between neighbouring finger roots (drawn under the bones)
     const web = o.far ? PAL.stone0 : PAL.stone1;
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < fingers.length - 1; i++) {
       const a0 = fingers[i][0];
       const a1 = roots[i];
       const b1 = roots[i + 1];
@@ -392,81 +408,223 @@ export function drawCloak(ws: Workspace, light: Light, wing: WingId, w: WingPose
     for (const kn of knuckles) {
       const x = Math.round(kn[0] - 1);
       const y = Math.round(kn[1] - 1);
+      // only on its finger: a knuckle never floats free of the bone it belongs to
+      if (!c.isOpaque(x, y) || !c.isOpaque(x + 1, y + 1)) continue;
       const lx = light.side < 0 ? 0 : 1;
       for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) q.set(x + dx, y + dy, dx === lx && dy === 0 ? hi : mid);
     }
   }
 
-  // ---- plates: placed hem row first, each upper row over the one below (OWN / TT: owner, height
-  //      fraction), then toned in a second pass so a plate's seams see its final neighbours
+  // ---- plates: placed hem row first, each upper row over the one below (OWN: the owner of a pixel; the
+  //      plates give the coverage, the scalloped hem and the per-plate states)
   const L = light;
-  const tone: [number, number, number][] = [];
+  let bx0 = W;
+  let by0 = H;
+  let bx1 = -1;
+  let by1 = -1;
   for (let r = NROW - 1; r >= 0; r--) {
     for (const p of plates.filter((pp) => pp.row === r)) {
-      const st = state(p.id);
-      if (st === 'gone') continue;
-      const { poly, top, tip } = platePoly(s, p, w.ripple);
-      const axis = sub(tip, top);
-      const a2 = axis[0] * axis[0] + axis[1] * axis[1] || 1;
-      const um = (p.u0 + p.u1) / 2;
-      const vm = (ROWS[p.row] + ROWS[p.row + 1]) / 2;
-      const n = hoodNormal(wing, um, vm, w);
-      // a roof tile: ONE calm body tone, a lit top lip (one step up) and a dark lower lip (one step down).
-      // The lit half of the hood is stone2 bodies with stone3 lips (it must stand ≥ 2 steps above the
-      // grey board floor at 1×, §1.3); stone1 / stone0 stay for the shadow half and the folds.
-      const jit = hash(p.id, 3) < 0.2 ? -1 : 0;
-      const I = lightI(L, n3(n[0], n[1] - 0.2, n[2])) + 0.06 * hash(p.id, 4);
-      const ILo = lightI(L, n3(n[0], n[1] + 0.35, n[2]));
-      // the far cloak is a step darker except its outer (back) face, which still turns to the light
-      const sh = shift && (L.side < 0 ? um > 0.45 : um < 0.55) ? shift : 0;
-      // the 2–3 large calm plates by the near wrist hold the lit plane: no jitter there
-      const calm = wing === 'N' && p.row <= 2;
-      const step = (v: number) => (v >= 0.42 ? 2 : v >= -0.05 ? 1 : 0);
-      const up = Math.max(0, step(I) - (p.row < 3 ? 0 : sh));
-      // the jitter only darkens a tile's hanging half (a lit tile never sinks to a stone0 hole)
-      const lo = Math.max(up >= 2 ? 1 : 0, Math.min(step(ILo), up) - sh + (calm ? 0 : jit));
-      LIP[p.id] = I >= 0.7 && up >= 2 ? 1 : 0;
-      tone[p.id] = [up, lo, 0.45 + 0.16 * hash(p.id, 6)];
+      if (state(p.id) === 'gone') continue;
+      const { poly, tip } = platePoly(s, p, w.ripple);
       TIPX[p.id] = tip[0];
       fillPoly(poly, (x, y) => {
         if (x < 0 || y < 0 || x >= W || y >= H) return;
         OWN[y * W + x] = p.id;
-        TT[y * W + x] = ((x + 0.5 - top[0]) * axis[0] + (y + 0.5 - top[1]) * axis[1]) / a2;
+        if (x < bx0) bx0 = x;
+        if (x > bx1) bx1 = x;
+        if (y < by0) by0 = y;
+        if (y > by1) by1 = y;
       });
     }
   }
-  const sx = -L.side; // a plate's shadow-side neighbour (P1: +x)
-  for (let y = 0; y < H; y++)
-    for (let x = 0; x < W; x++) {
+  // ---- the tone pass (§1.3 plate rule, IŞ-5, MA-2): the plates give the coverage (and their states);
+  //      the TEXTURE is shingle courses laid over the whole hood — rows ≈ 3.5 px tall, each with a full-width
+  //      crease one step darker at its lower edge, vertical joints staggered like brickwork, the body tone
+  //      a large light plane (stone2 lit / stone1 shadow; stone0 only in creases), stone3 lips only on the
+  //      top 2 courses of the lit plane and the wrist peak. The rippled plate row samples the field 1 px up
+  //      (its tiles drop with it).
+  const n = s.back.length - 1;
+  let Lv = 0;
+  // the courses are laid on the hood WITHOUT its wrist offset (the breath, the sway): the silhouette breathes
+  // while the tiles stay put, so the idle varies by its edges, not by a re-mapped texture (HA-21 phase)
+  const ts = cloakShape(wing, { ...w, wrist: [0, 0] }, off);
+  for (let i = 1; i <= n; i++) Lv += (len(sub(ts.back[i], ts.back[i - 1])) + len(sub(ts.front[i], ts.front[i - 1]))) / 2;
+  const NR = Math.max(4, Math.min(24, Math.round(Lv / 3.6)));
+  const NU = NU_CELLS;
+  RID.fill(-1);
+  const GP: V[] = [];
+  for (let r = 0; r <= NR + 2; r++) for (let j = 0; j <= NU; j++) GP.push(patchAt(ts, j / NU, r / NR));
+  const gp = (r: number, j: number) => GP[r * (NU + 1) + j];
+  for (let r = 0; r <= NR + 1; r++)
+    for (let j = 0; j < NU; j++)
+      fillPoly([gp(r, j), gp(r, j + 1), gp(r + 1, j + 1), gp(r + 1, j)], (x, y) => {
+        if (x < 0 || y < 0 || x >= W || y >= H || OWN[y * W + x] < 0) return;
+        RID[y * W + x] = r;
+        CJ[y * W + x] = j;
+      });
+  // gaps of the quad raster (and the wrist's lift above the course field): the pixel above / left, then
+  // the one below / right, else the plate's own course
+  for (let y = by0; y <= by1; y++)
+    for (let x = bx0; x <= bx1; x++) {
+      const i = y * W + x;
+      if (OWN[i] < 0 || RID[i] >= 0) continue;
+      const j = y > 0 && RID[i - W] >= 0 ? i - W : x > 0 && RID[i - 1] >= 0 ? i - 1 : -1;
+      if (j >= 0) {
+        RID[i] = RID[j];
+        CJ[i] = CJ[j];
+      }
+    }
+  for (let y = by1; y >= by0; y--)
+    for (let x = bx1; x >= bx0; x--) {
+      const i = y * W + x;
+      if (OWN[i] < 0 || RID[i] >= 0) continue;
+      const j = y + 1 < H && RID[i + W] >= 0 ? i + W : x + 1 < W && RID[i + 1] >= 0 ? i + 1 : -1;
+      if (j >= 0) {
+        RID[i] = RID[j];
+        CJ[i] = CJ[j];
+      } else {
+        const pl = PLATES[OWN[i]];
+        RID[i] = Math.round(ROWS[pl.row] * NR);
+        CJ[i] = Math.min(NU - 1, Math.floor(((pl.u0 + pl.u1) / 2) * NU));
+      }
+    }
+  const spread = w.spread ?? 0;
+  const NB = 3;
+  // the light plane: one value per (course, u-cell), read in the light's SCREEN direction only (P1 and the
+  // P2 relight split alike); the burst's sail is a lit upper plane over a dark underside
+  const NC = (NR + 2) * NU;
+  for (let r = 0; r < NR + 2; r++)
+    for (let j = 0; j < NU; j++) {
+      const u = (j + 0.5) / NU;
+      const v = (r + 0.5) / NR;
+      const nn = hoodNormal(wing, u, v, w);
+      let Ixy = nn[0] * L.v[0] + (nn[1] - 0.2) * L.v[1];
+      if (spread > 0.5) Ixy = v < 0.5 ? 1 : -1;
+      let k = Ixy >= TH_LIT ? 2 : 1;
+      // the far cloak's inner half one step darker (never stone0: that is for creases only)
+      if (shift && (L.side < 0 ? u > 0.45 : u < 0.55)) k = 1;
+      PLANE[r * NU + j] = k + (Ixy >= TH_LIT + 0.25 && r <= 1 ? 4 : 0);
+    }
+  void NC;
+  const rid = (x: number, y: number): number => (x < 0 || y < 0 || x >= W || y >= H ? -2 : RID[y * W + x]);
+  for (let y = by0; y <= by1; y++)
+    for (let x = bx0; x <= bx1; x++) {
+      const i0 = y * W + x;
+      const id = OWN[i0];
+      if (id < 0) continue;
+      // the rippled row's tiles drop 1 px with their plate (the wave travels hem → wrist)
+      const i = PLATES[id].row === w.ripple && y > 0 && RID[i0 - W] >= 0 ? i0 - W : i0;
+      const r = RID[i];
+      const j = CJ[i];
+      const pl = PLANE[Math.min(NR + 1, r) * NU + j];
+      let k = pl & 3;
+      const below = i === i0 ? rid(x, y + 1) : r === RID[i0] ? RID[i0] : rid(x, y);
+      const crease = below === -2 || (below >= 0 && below !== r) || (y + 1 < H && OWN[i0 + W] < 0);
+      let joint = false;
+      if (!crease && spread <= 0.5 && x > 0) {
+        // a joint is a short 1-px tick just above the crease (a tile's side under the one above)
+        const b2 = rid(x, y + 2);
+        if (b2 >= 0 && b2 !== r && RID[i - 1] === r && CJ[i - 1] !== j) {
+          const stag = (r % 2) * 0.5;
+          joint = Math.floor(((CJ[i - 1] + 0.5) / NU) * NB + stag) !== Math.floor(((j + 0.5) / NU) * NB + stag);
+        }
+      }
+      if (crease || joint) k -= 1;
+      else if (pl >= 4 && k === 2) {
+        // a lit lip on the top 2 courses, only as a horizontal run (a 1-px staircase step reads as a dot)
+        const top = (xx: number) => {
+          if (xx < 0 || xx >= W || OWN[y * W + xx] < 0 || RID[y * W + xx] !== r) return false;
+          const a = rid(xx, y - 1);
+          return a === -2 || (a >= 0 && a !== r) || OWN[(y - 1) * W + xx] < 0;
+        };
+        if (top(x) && (top(x - 1) || top(x + 1))) k = 3;
+      }
+      q.set(x, y, CLOAK_RAMP[Math.max(0, k)]);
+      CR[i0] = crease ? 1 : 0;
+    }
+  // the welds: a re-seated plate shows a fire2 lip on a course crease — at most 6 px a frame
+  for (let y = 0; y < H && welds.length < 12; y++)
+    for (let x = 0; x < W && welds.length < 12; x++) {
+      const id = OWN[y * W + x];
+      if (id < 0 || !CR[y * W + x] || state(id) !== 'weld') continue;
+      if (Math.abs(x + 0.5 - TIPX[id]) < 1.6 && (welds.length === 0 || hash(x, y, 77) < 0.6)) welds.push(x, y);
+    }
+  if ((o.spars ?? 0) > 0) sailSpars(q, s, wing, light, NR, Lv, o.spars!, o.far);
+  // the hem: ONE lip per column — the lowest cloak pixel with open air below
+  for (let x = 0; x < W; x++)
+    for (let y = H - 2; y >= 0; y--) {
       const id = OWN[y * W + x];
       if (id < 0) continue;
-      const [up, lo, band] = tone[id];
-      const t = TT[y * W + x];
-      const below = y + 1 < H ? OWN[(y + 1) * W + x] : -1;
-      const above = y > 0 ? OWN[(y - 1) * W + x] : -1;
-      const isTip = below !== id;
-      const isTop = above !== id && above >= 0;
-      const nb = x + sx >= 0 && x + sx < W ? OWN[y * W + x + sx] : -1;
-      // a side seam only where the neighbour is a different, darker tile in the shadow half
-      const isSide = nb >= 0 && nb !== id && PLATES[nb].row === PLATES[id].row && t > 0.15 && up <= 1;
-      // the body: the up tone; the shadow half of a tile drops to lo past its band (folds only)
-      // the hanging half of a tile one step down (never more: no ink-dark masonry), the lit lip on top
-      let k = t < band ? up : Math.max(lo, up - 1);
-      if (isTop && LIP[id]) k = 3;
-      if (isTip || isSide) k = Math.max(up >= 2 ? 1 : 0, k - 1);
-      q.set(x, y, CLOAK_RAMP[k]);
-      if (isTip && state(id) === 'weld' && Math.abs(x + 0.5 - TIPX[id]) < 1.6) welds.push(x, y);
+      if (OWN[(y + 1) * W + x] < 0 && PLATES[id].row === NROW - 1) hem.push(x, y);
+      break;
     }
-  // the hem: tip pixels of the hem row plates with open air (or another part) below
-  for (let y = 0; y < H - 1; y++)
-    for (let x = 0; x < W; x++) {
-      const id = OWN[y * W + x];
-      if (id < 0 || OWN[(y + 1) * W + x] >= 0) continue;
-      const p = PLATES[id];
-      if (p.row >= NROW - 2) hem.push(x, y);
-    }
-  despeckle(q, 1);
+  if (bx1 >= 0) despeckle(q, 1, { x0: Math.max(0, bx0 - 2), y0: Math.max(0, by0 - 2), x1: Math.min(W - 1, bx1 + 2), y1: Math.min(H - 1, by1 + 2) });
   return { layer: q, hem, welds, shape: s, own: OWN.slice() };
+}
+
+/** the spar roots / tips of the burst's sail (u across the hem) */
+const SPAR_U: readonly number[] = [0.06, 0.36, 0.66, 0.95];
+
+/**
+ * The summon's burst (§4.7 f7, critic r2 #7): the sail is a WING — four finger bones run as stone3-edged
+ * spars from the wrist through the sail to its trailing edge and past it into hooked tips; the trailing
+ * edge between the fingertips is scalloped (2–3 px notches); 4–6 loose 2×2 plates fly off beyond it.
+ */
+function sailSpars(q: PixelCanvas, s: CloakShape, wing: WingId, light: Light, NR: number, Lv: number, k: number, far: boolean) {
+  // the scallops: erase the sail between neighbouring fingertips, deepest half way (3 px), in field space
+  const depth = (u: number): number => {
+    for (let i = 0; i + 1 < SPAR_U.length; i++) {
+      const a = SPAR_U[i];
+      const b = SPAR_U[i + 1];
+      if (u >= a && u <= b) return Math.sin(((u - a) / (b - a)) * Math.PI) * 3 * k;
+    }
+    return 1.5 * k;
+  };
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      if (OWN[i] < 0) continue;
+      const v = (RID[i] + 0.5) / NR;
+      if (v * Lv > Lv - depth((CJ[i] + 0.5) / NU_CELLS)) {
+        q.erase(x, y);
+        OWN[i] = -1;
+      }
+    }
+  const wrist = patchAt(s, 0.5, 0.02);
+  const lit = far ? PAL.stone2 : PAL.stone3;
+  const dark = far ? PAL.stone0 : PAL.stone1;
+  const line = (a: V, b: V, col: number, under: number) => {
+    const n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) * 1.5);
+    for (let j = 0; j <= n; j++) {
+      const p = lerpV(a, b, j / n);
+      const x = Math.floor(p[0]);
+      const y = Math.floor(p[1]);
+      if (x < 0 || y < 0 || x >= W || y + 1 >= H) continue;
+      q.set(x, y, col);
+      if (!q.isOpaque(x, y + 1) || q.get(x, y + 1) !== col) q.set(x, y + 1, under);
+    }
+  };
+  for (const [i, u] of SPAR_U.entries()) {
+    const tip = patchAt(s, u, 1.02);
+    const mid = add(patchAt(s, u, 0.5), [0, -1]);
+    // past the trailing edge: a 3-px claw hooking back toward the sail's root side
+    const out = add(tip, mul(norm(sub(tip, mid)), 2.5));
+    const hook = add(out, [wing === 'N' ? -1.5 : 1.5, -1]);
+    line(wrist, mid, lit, dark);
+    line(mid, tip, lit, dark);
+    line(tip, out, i === 0 || i === 3 ? lit : PAL.stone2, dark);
+    line(out, hook, PAL.stone2, dark);
+  }
+  // loose plates torn off the edge, flying out beyond it (2×2, lit corner)
+  const n = Math.round(2 + 3 * k);
+  for (let j = 0; j < n; j++) {
+    const u = 0.12 + (0.78 * (j + 0.5)) / n;
+    const p = patchAt(s, u, 1.12 + 0.12 * hash(j, 81, wing === 'N' ? 1 : 2));
+    const x = Math.round(p[0] + (hash(j, 82) - 0.5) * 3);
+    const y = Math.round(p[1] + 1 + hash(j, 83) * 2);
+    const lx = light.side < 0 ? 0 : 1;
+    for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) if (x + dx >= 0 && x + dx < W && y + dy >= 0 && y + dy < H) q.set(x + dx, y + dy, dx === lx && dy === 0 ? (far ? PAL.stone2 : PAL.stone3) : far ? PAL.stone1 : PAL.stone2);
+  }
 }
 
 /** Light the wrist peak's top edge: a 1-px stone3 line on the light side of the peak (§1.3). */
@@ -481,7 +639,11 @@ export function peakEdge(q: PixelCanvas, s: CloakShape, wing: WingId, light: Lig
       if (Math.abs(dx) < 1.5 || Math.sign(dx) === light.side) hits.push(x, y);
     }
   const c = far ? PAL.stone2 : PAL.stone3;
-  for (let i = 0; i < hits.length; i += 2) q.set(hits[i], hits[i + 1], c);
+  // two rows thick on the staircase of the slope, so the lit edge reads as one line, never as dots (IŞ-10)
+  for (let i = 0; i < hits.length; i += 2) {
+    q.set(hits[i], hits[i + 1], c);
+    if (q.isOpaque(hits[i], hits[i + 1] + 1)) q.set(hits[i], hits[i + 1] + 1, far ? PAL.stone2 : PAL.stone3);
+  }
 }
 
 /** The bony wrist spur: a 3 px wide claw, 5–6 px tall, leaning back, a void2 tip (drawn over the plates). */

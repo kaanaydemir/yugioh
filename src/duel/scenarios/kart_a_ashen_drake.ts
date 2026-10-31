@@ -29,8 +29,8 @@ const scenarios: Record<string, Scenario> = {
     steps: [summon('ashen_drake', 1, ['ember_wolf', 'storm_hawk'], 1)],
   },
   kaAdBoard: {
-    desc: 'Kül Ejderi idles on the field next to a v3 neighbour (the floor pool double-pulses every 2 s)',
-    stage: { p0: { monsters: ['ashen_drake', 'crystal_wyrm'] }, p1: { monsters: [null, 'stone_sentinel'] } },
+    desc: 'Kül Ejderi idles on the field in the FRONT zone with a v3 neighbour two zones behind (nothing occludes its heart) (the floor pool double-pulses every 2 s)',
+    stage: { p0: { monsters: ['crystal_wyrm', null, 'ashen_drake'] }, p1: { monsters: ['stone_sentinel'] } },
     steps: [{ ui: 'wait', ms: 4000 }],
   },
   kaAdSummonOnHeap: {

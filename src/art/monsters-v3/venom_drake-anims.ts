@@ -59,15 +59,15 @@ export function idlePose(f: number): Pose {
   const breath = j >= 2 && j <= 4 ? 1 : 0;
   const sy = 0;
   const hy = j >= 4 && j <= 6 ? 1 : 0;
-  const ty = j >= 6 && j <= 8 ? 1 : 0;
+  const ty = 0; // (the tail-root dip moved the whole arch 1 px: HA-21 phase; the sway carries the tail)
   const br = 0;
   // the head: a slow low scan (±1 px), one blink-to-slit at f8
   const hx = rnd(wave(k, IDLE_N, 1) * 1.2);
   // the throat sac, period 6: 0 → 1 → 2 → 1, one frame behind the barrel
   const sac = [1, 0, 0, 1, 2, 2][k % 6];
   // the tail arch, period 18: the rump leads, the mid arch +1 frame, the bulb +2 (the lag)
-  const tRot = wave(k, IDLE_N) * 2.2;
-  const tLag = wave(k, IDLE_N, 2) * 7;
+  const tRot = wave(k, IDLE_N) * 1.3;
+  const tLag = wave(k, IDLE_N, 2) * 5;
   // the bulb's glow steps 1 → 2 → 1 on its own period of 9 (out of phase with the sac)
   const glow = [1, 1, 2, 2, 2, 1, 1, 1, 1][k % 9];
   // weep-quills: one beads at a time, front to back, 3 frames each
@@ -76,10 +76,11 @@ export function idlePose(f: number): Pose {
   // the stinger drip: swells f0–f11, falls f12–f14, splashes f15, the etch dot steps out f16–f17
   const drip = k < 4 ? 1 : k < 8 ? 2 : k < 12 ? 3 : k < 15 ? 10 + (k - 11) : k === 15 ? 20 : k === 16 ? 21 : 22;
   // the cape settles 2 frames after the shoulder
-  const drape = j >= 5 && j <= 7 ? 1 : 0;
+  const drape = (j >= 5 && j <= 7 ? 1 : 0) + (k % 2); // + a 1-px hem flutter on alternate frames (small reach, high frequency)
     // the venom tremble: the stinger tip quivers a px on alternate frames (high frequency, small reach)
   const tdx = k % 2;
-  return pose({ by: br, breath, sy, hx, hy, ty, sac, tRot, tLag, tdx, glow, beads, drip, drape, eye: k === 8 ? 1 : 0, t: k / IDLE_N });
+  const tdy = (k + 1) % 2; // the quiver is diagonal: x on odd frames, y on even ones
+  return pose({ by: br, breath, sy, hx, hy, ty, sac, tRot, tLag, tdx, tdy, glow, beads, drip, drape, eye: k === 8 ? 1 : 0, t: k / IDLE_N });
 }
 const IDLE0 = idlePose(0);
 
@@ -151,7 +152,7 @@ export const ATTACK_HOLDS = [80, 60, 70, 80, 140, 50, 60, 90, 120, 80, 90, 100, 
 function attackPose(f: number): Pose {
   switch (f) {
     case 0: return key({ hy: 1 });
-    case 1: return key({ by: 1, sac: 0, tail: wind(0.12), glow: 2, drip: 0 }); // charge (the declaration holds it)
+    case 1: return key({ hy: 1, sac: 0, tail: wind(0.1), glow: 2, drip: 0 }); // charge (the declaration holds it)
     case 2: return key({ by: 1, hy: 1, sac: 0, tail: wind(0.42), bulb: 1, glow: 2, drip: 0, nk: [0, 1] }); // the knuckle grips
     case 3: return key({ by: 2, hy: 1, sac: 0, tail: wind(0.75), bulb: 2, glow: 3, bristle: 1, jaw: 1, drip: 0, nk: [0, 1] });
     case 4: return key({ by: 2, hx: -1, hy: 0, sac: 0, tail: WINDUP, bulb: 3, glow: 3, bristle: 1, jaw: 1, drip: 0, nk: [0, 1] }); // full wind-up: body low, head low
@@ -206,7 +207,7 @@ function hitPose(f: number): Pose {
 const HH_HOLDS = [50, 60, 90, 110, 120, 110, 120];
 function hitHeavyPose(f: number): Pose {
   switch (f) {
-    case 0: return key({ hx: -3, hy: -2, tilt: -1, eye: 2, sac: 0, tdx: -1, nk: [0, 2] }); // struck (also death f0)
+    case 0: return key({ hx: -2, hy: -1, tilt: -1, eye: 2, sac: 0, tdx: -1, nk: [0, 2] }); // struck (also death f0)
     case 1: return key({ bx: -1, by: 1, hx: -3, hy: -1, tilt: -1, eye: 2, sac: 0, tdx: -2, tRot: -2, nk: [-1, 2] });
     case 2: return key({ bx: -2, by: 1, hx: -2, eye: 2, sac: 0, tdx: -2, tRot: -4, nk: [-2, 0] }); // a step back
     case 3: return key({ bx: -2, by: 1, hx: -1, eye: 1, tdx: -1, tRot: -3, nk: [-2, 0] });

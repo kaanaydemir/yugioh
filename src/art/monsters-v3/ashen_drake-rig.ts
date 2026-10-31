@@ -58,6 +58,8 @@ export interface AshenPose {
   shimmer: number;
   /** 0 none, 1 pouring, 2 down the talons, 3 cooled fan (3–4 embers), 3.5 the held, cooler fan (1–2) */
   spill: number;
+  /** which spill (each moment pours its own way): 0 attack, 1 roar, 2 summon, 3 victory */
+  spillKind: number;
   /** near talon: 0 gripping, 1 stepped back and in */
   talon: number;
   /** [curl, sweep] px of the tail */
@@ -111,6 +113,7 @@ export const NEUTRAL: AshenPose = {
   flakes2: [0, 0, 0],
   shimmer: 0,
   spill: 0,
+  spillKind: 0,
   talon: 0,
   tail: [0, 0],
   brazier: 0,
@@ -649,16 +652,47 @@ function crumble(p: PixelCanvas, P: AshenPose) {
  */
 function litContour(p: PixelCanvas, light: Light) {
   const s = light.side; // the lit side: −1 = left (P1)
-  const hits: number[] = [];
+  const d = p.data;
+  const op = (x: number, y: number) => x >= 0 && x < W && d[(y * W + x) * 4 + 3] > 0;
+  LC.fill(0);
+  const S1 = PAL.stone1;
+  const S2 = PAL.stone2;
   for (let y = 1; y < H; y++)
     for (let x = 0; x < W; x++) {
-      const c = p.get(x, y);
-      if (c !== PAL.stone1 && c !== PAL.stone2) continue;
-      if (p.isOpaque(x + s, y) || !p.isOpaque(x - s, y)) continue;
-      hits.push(x, y, c === PAL.stone2 ? PAL.stone3 : PAL.stone2);
+      const i = (y * W + x) * 4;
+      if (!d[i + 3]) continue;
+      const c = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
+      if (c !== S1 && c !== S2) continue;
+      if (op(x + s, y) || !op(x - s, y)) continue;
+      LC[y * W + x] = c === S2 ? 2 : 1;
     }
-  for (let i = 0; i < hits.length; i += 3) p.set(hits[i], hits[i + 1], hits[i + 2]);
+  // only runs of ≥ 2 rows: a lone stepped-up contour pixel is noise at 1× (IŞ-10)
+  const at = (x: number, y: number) => x >= 0 && x < W && y >= 0 && y < H && LC[y * W + x] > 0;
+  for (let y = 1; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const k = LC[y * W + x];
+      if (!k) continue;
+      if (at(x, y - 1) || at(x, y + 1) || at(x - 1, y - 1) || at(x + 1, y - 1) || at(x - 1, y + 1) || at(x + 1, y + 1)) p.set(x, y, k === 2 ? PAL.stone3 : PAL.stone2);
+    }
 }
+const LC = new Uint8Array(W * H);
+
+/** A lone void2 rim pixel on a staircase edge joins the one under it (a 2-px step, not a dot: IŞ-10). */
+function joinRim(p: PixelCanvas) {
+  const hits: number[] = [];
+  const d = p.data;
+  const V2 = PAL.void2;
+  for (let y = 1; y < H - 1; y++)
+    for (let x = 1; x < W - 1; x++) {
+      const i = (y * W + x) * 4;
+      if (!d[i + 3] || ((d[i] << 16) | (d[i + 1] << 8) | d[i + 2]) !== V2) continue;
+      if (p.get(x - 1, y) === PAL.void2 || p.get(x + 1, y) === PAL.void2 || p.get(x, y - 1) === PAL.void2 || p.get(x, y + 1) === PAL.void2) continue;
+      const b = p.get(x, y + 1);
+      if (b !== null && b !== PAL.night0 && !EMBERS.has(b)) hits.push(x, y + 1);
+    }
+  for (let i = 0; i < hits.length; i += 2) p.set(hits[i], hits[i + 1], PAL.void2);
+}
+const EMBERS = new Set<number>([PAL.fire1, PAL.fire2, PAL.fire3, PAL.fire4, PAL.gold4, PAL.white]);
 
 /** The whole drake of one pose, lit by `light`. */
 export function drawAshen(p: PixelCanvas, P: AshenPose, light: Light): DrawInfo {
@@ -669,9 +703,12 @@ export function drawAshen(p: PixelCanvas, P: AshenPose, light: Light): DrawInfo 
   const hood = R.hoodOff;
   const bt = P.boneTop;
 
-  if (P.heap > 0) composite(p, heapLayer(P, light), SEAM);
   const cF = cloakPose(P, 'F');
-  const far = drawCloak(WS, light, 'F', cF.w, cF.off, st, { far: true, struts: bare || (P.wingF.spread ?? 0) > 0.7, fan: bare ? P.strutFan : 1, reach: bare ? 1 : 1.3 });
+  // the summon build (bone line still rising, the hood < 70 % seated): no bare hand over the half-built hood
+  const stubs = P.strutFan < 0.5 && P.seated < 31 && P.boneTop > 0;
+  const spF = P.wingF.spread ?? 0;
+  const spN = P.wingN.spread ?? 0;
+  const far = drawCloak(WS, light, 'F', cF.w, cF.off, st, { far: true, struts: bare && !stubs, fan: P.strutFan, stubs, shoulder: add(R.spine[0], [-2, 2]), spars: spF > 0.3 ? Math.min(1, (spF - 0.3) / 0.55) : 0 });
   // the hand only once the cage (its parent through the shoulder) is whole: never a floating finger
   if (buildProgress(bt) < (P.strutFan > 0.5 ? 0.55 : 0.9)) maskStruts(far, H);
   peakEdge(far.layer, far.shape, 'F', light, true);
@@ -684,18 +721,22 @@ export function drawAshen(p: PixelCanvas, P: AshenPose, light: Light): DrawInfo 
   const gNeck = win(c, 0.5, 0.8);
   const gSkull = win(c, 0.8, 0.95);
   const gCrest = win(c, 0.95, 1);
-  composite(p, tailLayer(P, R, win(c, 0.16, 0.5)), SEAM);
+  composite(p, tailLayer(P, R, win(c, 0.26, 0.6)), SEAM);
   composite(p, rowsFrom(legLayer(P, R, true), legTop), SEAM);
   // stripped bare (no plate left), the near hand's struts go BEHIND the rib cage: the ribs read on top
   const cN = cloakPose(P, 'N');
-  const near = drawCloak(WS, light, 'N', cN.w, cN.off, st, { far: false, struts: bare || (P.wingN.spread ?? 0) > 0.7, fan: bare ? P.strutFan : 1, reach: bare ? 1 : 1.3 });
+  const near = drawCloak(WS, light, 'N', cN.w, cN.off, st, { far: false, struts: bare && !stubs, fan: P.strutFan, stubs, shoulder: add(R.spine[0], [3, 3]), spars: spN > 0.3 ? Math.min(1, (spN - 0.3) / 0.55) : 0 });
   if (buildProgress(bt) < (P.strutFan > 0.5 ? 0.55 : 0.9)) maskStruts(near, H);
   peakEdge(near.layer, near.shape, 'N', light, false);
-  const nearBehind = Math.round(P.seated) <= 0 && bt <= 0;
+  // also while the hood swings between the perch and the canopy: the cage (and its heart) stay in front
+  const mid = P.wingN.mantle > 0.2 && P.wingN.mantle < 0.8;
+  const nearBehind = (Math.round(P.seated) <= 0 && bt <= 0) || mid;
   if (nearBehind) composite(p, near.layer, CREASE);
   composite(p, c >= 1 ? cageLayer(P, R, CAVITY) : rowsFrom(cageLayer(P, R, CAVITY), c < 0.3 ? H : cageTop), SEAM);
   if (c < 1) for (let i = 0; i < Math.min(H, Math.ceil(c < 0.3 ? H : cageTop)) * W; i++) CAVITY[i] = 0;
   composite(p, rowsFrom(legLayer(P, R, false), legTop), SEAM);
+  // the revive's heap lies IN FRONT of the lower bones: they stand up out of it
+  if (P.heap > 0) composite(p, heapLayer(P, light), SEAM);
   // the cocoon tucks the head under the hood's edge, over the wrapped cloak
   const tucked = P.wingN.cocoon > 0.5 || P.wingN.mantle > 0.5;
   const headParts = () => {
@@ -736,6 +777,7 @@ export function drawAshen(p: PixelCanvas, P: AshenPose, light: Light): DrawInfo 
   const empty = WS.canvas();
   rimLight(p, empty, light, { cols: [PAL.stone0, PAL.stone1, PAL.stone2], rim: PAL.void2 });
   litContour(p, light);
+  joinRim(p);
   p.outline(PAL.ink);
   KEEP.fill(0);
   const ctx: EmberCtx = { P, R, light, cavity: CAVITY, near, far, keep: KEEP };

@@ -1028,3 +1028,96 @@ Every claim was re-read in the code before it was accepted.
     f9→f10 are still big steps (~3700 px: the burst folding back); the spread wings have no visible fingertip
     spikes on their trailing edge; summon f5 shows a strut fork above the half-built cloak; the victory jaw at
     1× is small; the board double pulse / spill at 1× still need the recipe to be filmed.
+- 2026-10-31 — **critic round 2 fixes (lane-A sprite builder).** Files: `ashen_drake-cloak.ts`, `-rig.ts`, `-ember.ts`,
+  `-anims.ts`, `tests/art/ashen_drake.test.ts`, `src/duel/scenarios/kart_a_ashen_drake.ts` (kaAdBoard),
+  `src/presentation/cards/ashen_drake.ts` (NEW: the recipe moved in from `recipe-ready.ts.txt`),
+  `tests/presentation/outcomes.test.ts:71` (`toBe(3)` → `toBeGreaterThanOrEqual(3)`, the pin the lane asked to relax).
+  Evidence: `shots/kart-a/ashen_drake/r3/` (sheets P1 + P2 with points, `gates.txt`, `board1x.png`, `board_film.png`
+  (kaAdBoard, 40 f × 50 ms, clipped 2×), `atkfilm.png` (kaAdAtk), `summonfilm.png` + `summonfilm2.png` (kaAdSummon,
+  cut-in and entrance), zooms in `z/`: `summon.png`, `revive.png`, `roar_victory.png`, `spill.png`, `p2.png`,
+  `attack_hits.png`).
+  - #1 (BLOCKER) — partly a sprite matter, partly the cinematics stage:
+    - Recipe registered (`src/presentation/cards/ashen_drake.ts`, unchanged from the parked file: death `ash` / `fire`,
+      `attack.ramp 'fire'`, heart-only glow, interim `rumble` voice, `custom { strike, summon, death }`); the outcomes pin
+      relaxed; `npm test`: only the known failures of other owners (cardface G1, cloud_hatchling WIP, dusk_sorcerer,
+      hourglass_imp, shield_titan); `tests/presentation` all green.
+    - Filmed at 1× in the duel: `kaAdAtk` still plays the GENERIC dash / white smear and the summon the generic vortex
+      hologram + the OLD quadruped cut-in portrait. That is expected and NOT fixable in the sprite files: the recipe
+      marks strike / summon / death `custom`, and `strikes-a/ashen_drake.ts` (the ash bank, silence, ignition, fuse),
+      `summon-a/ashen_drake.ts` (accretion entrance) and the redrawn card art / cut-in are the next stages of the card
+      (oturum-a: "card art (+cut-in) → cinematics + SFX"). Until they land, the card is NOT ship-quality in the duel.
+    - `kaAdBoard` re-staged (#14): the drake in the FRONT zone, the wyrm two zones behind, the sentinel in P2's first
+      zone; the 1× read is clear and the heart's LUB / DUB shows in `board_film.png` (#18–19, #23–24); the floor-pool
+      double pulse is only faintly visible at 1× (the light layer is subtle on the dark tile) — re-judge in the
+      cinematics stage.
+    - **IŞ-10 ref: why v1 is not a valid reference.** The gate's `auto` reference for a card without an approved still
+      is the v1 idle f0 — for ashen_drake that is the v1 `placeholderTotem`-era sprite of a DIFFERENT creature (a small
+      flat quadruped with 2.6 % noise), so the ratio measures nothing about this drake. The reference we use instead is
+      the slice ace's approved still (`src/still/wyrm.ts`, measured with `monster-sheet --still`: 203 isolated / 3404 px
+      = 5.96 %; the wyrm's own v3 idle f0 is 6.4 %). Drake idle f0 now **6.0 % (P1) → 1.01× the wyrm still** (limit
+      1.1×; was 6.9 % = 1.16×). The gate tool has no `--ref <other card>` (not ours to change), so `gates.txt` still
+      prints the v1 row as FAIL; every other row is ok with no `--ref` flag at all.
+  - #2 revive: f3 talons / legs / pelvis + the tail root out of the heap at ~74 % (the heap is now drawn IN FRONT of the
+    lower bones, so they stand up out of it), f4 ribs + neck at ~42 %, f5 skull + crest with the finger bones folded
+    (strutFan 0.1) at ~12 %, the fingers fan only from f6 (0.5) / f7 (0.7). Opaque 550 → 1564 → 3057 → 3073; Δ 415 /
+    1375 / 2369 / 2297 / 1480 (was one 2254 step with 594 → 2527 px). The far hand now hangs from the far wrist
+    (back peak), so its spur no longer floats beside the fingers.
+  - #3 spill: rewritten as grains (`spill()` in `-ember.ts`): 1×1 / 1×2 grains with 1-px gaps in a 3-row phase,
+    fire2 / fire1 alternating, fire3 only on the two exit rows, fire1 below the knee, 1-px fan-out every 4 rows; pour
+    points ≥ 5 px apart (gap 2/3 −3 px, gap 4 +3 px). Tested: longest solid vertical ember run ≤ 3 px on attack f11,
+    summon f12, victory f5, roar f4.
+  - #4 cooled fan → a mound: apex 3 px at the centre, 2 px, 1 px at the edges, 15–17 px wide, stone2 top, stone1 base,
+    void2 on the shadow-side flank, an ink top edge, the embers INSIDE (3 attack, 4 victory, 1 summon, 2 on the held
+    frame). Deviation: the apex sits 6 px ahead of the near ankle (between / just ahead of the talons), not dead centre —
+    at the centre it vanished into the toes at 1×. It still reads small at 1× (it is 3 px tall by spec).
+  - #5 roar: rebuilt — no mantle slab at all. The hood flares UP and BACK (`open` 0.3 → 0.58, wrists up), the cage and
+    its heart stay in view on every frame, the head thrusts forward and up out of the S, jaw 1.7 (gape ≈ 6 px) with the
+    throat lit, crest 2, ribs flare, ONE thin trickle (spillKind 1, no mound). Deviation from §4.5 ("roar = the compact
+    victory"): the roar is now its own moment (also answers #15).
+  - #6 victory: the `mantle` key is now a forward canopy (F's wrist moved up next to N's: no floating far spur); f2 tips
+    the wrists forward (mantle 0.55, wrist +4 / +3) with the near cloak drawn BEHIND the cage while it swings
+    (mantle 0.2–0.8), f3–f6 the full canopy with the head pushed out in front of and below its edge (`CANOPY_HEAD`),
+    jaw 1.7 on f4 with the fire lip, crest 2 (+2 px spines); the canopy's top faces the light (hoodNormal mantle term
+    flipped), its hem carries the fire1 lip (P2 is no longer a black mass: `z/p2.png`). The spill is spillKind 3 (two
+    dense streams + a dribble off the keel, the widest mound).
+  - #7 summon burst: `sailSpars()` — four stone3-edged finger spars from the wrist through the sail and 2–3 px past the
+    trailing edge into hooked tips, scalloped trailing edge (sine notches up to 3 px between the tips, in field space),
+    2–5 loose 2×2 plates flying beyond the edge; the sail is a lit upper plane over a dark underside (no joints). Spars
+    from spread 0.3 (f6, f9, f10 carry them too: no pillow frames).
+  - #8 cloak texture: the tone pass is new. The plates keep the coverage / scalloped hem / states; the texture is shingle
+    courses over the hood's (u, v) field (rows ≈ 3.6 px, a full-width crease one step down, 1-px joint ticks staggered
+    like brickwork, 8 u-cells), two light planes split in the light's SCREEN direction (stone2 lit / stone1 shadow;
+    stone0 only in creases and joints), stone3 lips only on the top two courses of the lit plane as horizontal runs.
+    The courses are laid on the hood WITHOUT its wrist offset (the breath moves the silhouette, not the tiles) and the
+    rippled row drops its tiles 1 px (HA-18 16.4 %, HA-21 phase 45.4 %; a fully re-mapped texture had pushed the phase
+    to 51 %). Hem lip: ONE pixel per column (the lowest last-row plate pixel), 4-px eaten runs, climbs a pixel on the tip
+    zigzag (no lone dots), the far hem never paints over the near cloak; ≤ 3 flakes lifting at once; welds ≤ 6 px a
+    frame on course creases. Noise helpers: the lit contour only in runs ≥ 2, the peak edge 2 px thick, a lone void2
+    rim pixel joins the one below.
+  - #9 attack f3–f4: the torn-chip stream ends at f3 (the f4 "knuckle chips" were the chips layer); knuckle blobs are
+    only drawn on their finger; a 3-px forearm runs from the shoulder (spine top) to the wrist; the far hand fans 6°
+    further back at 0.74 of the reach and hangs from the far wrist. Some near / far finger crossing remains at f4.
+  - #10 summon f5: no bare hand while the bone line is still rising and the hood < 31 plates (struts off; `stubs` path
+    kept for the roots).
+  - #11 summon fold-back: a half-fold in-between inserted inside the old 200 ms hold (f8 130 ms spread 1, NEW f9 70 ms
+    spread 0.74, f10 spread 0.42 with spars). **Summon is now 15 f (total 134 f, ≤ 140), still 1350 ms**; `ASHEN_BUILD`
+    has 15 rows; the cut-in hold frame stays f8. Δ f7→f8→f9→f10→f11: 1914 / 2726 / 3358 / 3395 (was 3743 / 3626 in two
+    steps; the slam f10→f11 is still a big step).
+  - #12 P2 far wing: stone1 body on its inner half (no stone0 bodies anywhere on the cloak).
+  - #13 hits: hitHeavy f1 head −5 px (snaps up) with the crest flaring, wrists +6 / +4 down, f2 head −3; hit f1 head −4.
+    f0 frames unchanged (HA-21 15.7–18.0 %).
+  - #15 spill per moment: `spillKind` 0 attack (two streams), 1 roar (one thin central trickle, no mound), 2 summon
+    (two sparse streams, fire1 below the exit, one ember in the mound), 3 victory (two dense streams + a keel dribble,
+    the widest mound).
+  - Performance: the course field costs paint time; bbox-limited loops, typed-array contour / rim passes and 8 u-cells
+    keep KK-13 at 7.41 / 6.99 ms ref-machine (limit 8; it measured 9.8 before the optimisation).
+  - Gates (`tools/monster-gates.ts --class ace`, no `--ref` flag, P1 + P2): **21 ok, 1 FAIL (IŞ-10 ref vs v1, see #1)** —
+    margin 2 (roar f1), HA-15 ≤ 0.33, HA-16 idle 0.69 / guard 0.83, HA-17 1.47, HA-18 16.4 / 16.0 %, HA-19 0.51 / 0.50,
+    HA-20 390 ms, IŞ-10 idle 6.2 / 5.3 %, body ≤ 8.1 %, effect ≤ 11.3 %, HA-21 ≤ 18.0 %, HA-21 phase ≤ 45.4 %, HA-9
+    40/40, IŞ-1 all positive, KK-13 134 f, 7.41 ms, 6.69 MB. `tests/art/ashen_drake.test.ts` 12/12 (spill test rewritten
+    for grains + the mound; frame counts 134 / summon 15), `npm run typecheck` clean.
+  - Remaining weaknesses: (1) the duel still shows the generic strike, the generic summon and the old cut-in portrait
+    until the cinematics / card-art stages land (the blocker's real cure); (2) the cooled mound is small at 1×; (3) the
+    bare-hand fingers still cross a little at attack f4 and poke above the regrowing hood at attack f11 (strutFan 0.4);
+    (4) summon f10→f11 (the slam) is a ~3400 px step; (5) victory f2 (the swing into the canopy) is a bulky in-between;
+    (6) the floor-pool double pulse is faint at 1×.

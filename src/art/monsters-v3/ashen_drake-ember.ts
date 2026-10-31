@@ -76,6 +76,12 @@ function heartCells(beat: number, heat: number): [number, number, number][] {
   return out;
 }
 
+/** the hem row of column x (null: none) */
+function hy2(hem: number[], x: number): number | null {
+  for (let i = 0; i < hem.length; i += 2) if (hem[i] === x) return hem[i + 1];
+  return null;
+}
+
 export function emberPass(p: PixelCanvas, c: EmberCtx) {
   const { P, R, keep } = c;
   const hx = Math.round(R.heart[0] - 0.5);
@@ -151,11 +157,20 @@ export function emberPass(p: PixelCanvas, c: EmberCtx) {
       const y = hem[i + 1];
       const cur = p.get(x, y);
       if (cur === null || cur === PAL.ink) continue;
-      if (hash(x, 11, k) < 0.16) continue; // eaten gaps
+      // the far hem only where the far cloak still shows (never painted over the near cloak)
+      if (k === 1 && [[0, 0], [-1, 0], [1, 0], [0, -1], [0, -2]].some(([dx, dy]) => c.near.own[(y + dy) * W + x + dx] >= 0)) continue;
+      if (hash(Math.floor(x / 4), 11, k) < 0.2) continue; // eaten gaps (4-px runs: never a lone ember dot)
       const sh = (x + Math.floor(P.shimmer * 20)) % 10;
       // at heat (hitMagic f0–f2, the summon's burst) the lip runs fire3
       const col = P.heat <= 0.25 ? PAL.stone1 : P.heat >= 1.55 ? (sh < 6 ? PAL.fire3 : PAL.fire2) : sh < 3 ? PAL.fire2 : PAL.fire1;
       put(p, keep, x, y, col);
+      // on a step of the tip zigzag the lip climbs one pixel, so it stays one connected line (no lone dots)
+      const ny = hy2(hem, x - 1);
+      const py = hy2(hem, x + 1);
+      if ((ny !== null && ny < y) || (py !== null && py < y)) {
+        const up = p.get(x, y - 1);
+        if (up !== null && up !== PAL.ink && !(k === 1 && c.near.own[(y - 1) * W + x] >= 0)) put(p, keep, x, y - 1, col);
+      }
     }
   }
   // ---- the welds: a plate re-seats with a 1-frame fire2 lip
@@ -169,9 +184,12 @@ export function emberPass(p: PixelCanvas, c: EmberCtx) {
   // ---- hem flakes: 2×2 chips peeling off the hem (stone2, a fire2 lip under them)
   const hemN = c.near.hem;
   if (hemN.length && P.crumble <= 0) {
+    let lifting = 0;
     for (let k = 0; k < 6; k++) {
       const lift = k < 3 ? P.flakes[k] : P.flakes2[k - 3];
       if (lift <= 0) continue;
+      // at most 3 flakes off the hem at once (the lip stays one lip, never a band of dirt)
+      if (++lifting > 3) break;
       const j = Math.floor(hash(k, 5) * (hemN.length / 2)) * 2;
       const bx = hemN[j];
       const by = hemN[j + 1];
@@ -250,67 +268,87 @@ function brazier(p: PixelCanvas, c: EmberCtx) {
     }
 }
 
+/**
+ * The rib spill (§4.4.1): "sand through a grate", never a lava drip. Each stream is GRAINS — 1×1 / 1×2
+ * pixels with 1-px gaps, fire1 / fire2 alternating, fire3 only at the exit gap, fire1 below the knee; it
+ * fans out 1 px every 4 rows; no solid run longer than 3 px. The pour points sit ≥ 5 px apart. The
+ * grains land as a low triangular mound between the talons (apex under the rib gap): 1 px tall at the
+ * edges, 3 at the centre, ~14 wide, stone2 top, stone1 lower edge, a void2 rim, the embers inside it.
+ * Every moment pours its own way (spillKind): 0 the attack (two streams), 1 the roar (one thin central
+ * trickle, no fan: the grains blow off), 2 the summon (two sparse, cooler streams: fire1 only below the
+ * exit), 3 the victory (two dense streams and a third dribble off the keel, the widest fan).
+ */
 function spill(p: PixelCanvas, c: EmberCtx) {
   const { P, R } = c;
-  // two streams from two DIFFERENT gaps (§4.4.1): the second-lowest gap (toward the spine) and the
-  // lowest one (toward the keel), ≥ 4 px apart so they read as two at 1×
-  const g1 = add(lerpV(R.ribs[2][1], R.ribs[3][1], 0.5), [-2, 0]);
-  const g2 = add(R.ribs[4][1], [2, 2.5]);
+  const kind = Math.round(P.spillKind);
+  const g1 = add(lerpV(R.ribs[2][1], R.ribs[3][1], 0.5), [-3, 0]);
+  const g2 = add(R.ribs[4][1], [3, 2.5]);
+  const g3 = add(R.keel[3], [0, 1]);
+  const pours: V[] = kind === 1 ? [lerpV(g1, g2, 0.5)] : kind === 3 ? [g1, g2, g3] : [g1, g2];
+  const knee = Math.min(R.heelN[1], R.heelF[1]) + 4;
+  const density = kind === 2 ? 0.55 : kind === 3 ? 1 : 0.85;
+  const tick = Math.floor(P.spill * 10);
   if (P.spill < 2.5) {
-    for (const [i, g] of [g1, g2].entries()) {
+    for (const [i, g] of pours.entries()) {
       const x0 = Math.round(g[0]);
       const y0 = Math.round(g[1]);
-      const len = P.spill < 1.5 ? 16 + i * 4 : 10;
-      const start = P.spill < 1.5 ? 0 : 8;
-      for (let k = start; k < len; k++) {
+      const dribble = kind === 3 && i === 2;
+      const start = P.spill < 1.5 ? 0 : 7;
+      const end = dribble ? 8 : GY - y0;
+      const side = i === 0 ? -1 : 1;
+      for (let k = start; k <= end; k++) {
         const y = y0 + k;
         if (y > GY) break;
-        const sway = Math.round(Math.sin((k + i * 3) * 0.6) * 0.6) + Math.floor(k / 6) * (i ? 1 : -1);
-        const head = k < 2 ? PAL.fire4 : k < 8 ? PAL.fire3 : PAL.fire2;
-        put(p, c.keep, x0 + sway, y, head);
-        put(p, c.keep, x0 + sway + 1, y, k < 6 ? PAL.fire2 : PAL.fire1);
+        // grain rows: a 1×2 grain then a 1-px gap, or a 1×1 grain and a gap (phase by stream and frame)
+        const ph = (k + i * 2 + tick) % 3;
+        if (ph === 2) continue;
+        if (k >= 2 && hash(k, 24 + i, tick) > density) continue;
+        // the fan-out: 1 px every 4 rows, grains wander inside it toward the stream's own side
+        const wdt = Math.floor(k / 4);
+        const off = wdt ? Math.round(hash(k, 25 + i, tick) * wdt) * side : 0;
+        const x = x0 + off;
+        const exit = k < 2 && !dribble;
+        const below = y >= knee;
+        const col = exit ? (kind === 2 ? PAL.fire2 : PAL.fire3) : below || kind === 2 ? PAL.fire1 : (k >> 1) % 2 ? PAL.fire1 : PAL.fire2;
+        if (p.get(x, y) === PAL.ink && !exit) continue;
+        put(p, c.keep, x, y, col);
+        // a second, smaller grain at the far side of the widened fan
+        if (wdt >= 2 && hash(k, 26 + i, tick) < 0.45 * density) put(p, c.keep, x0 - off, y, PAL.fire1);
       }
-    }
-    // scattered grains round the streams
-    for (let k = 0; k < 14; k++) {
-      const x = Math.round(g1[0] - 3 + hash(k, 21, P.spill * 10) * 12);
-      const y = Math.round(g1[1] + 2 + hash(k, 22, P.spill * 10) * (GY - g1[1] - 2));
-      if (y > GY) continue;
-      put(p, c.keep, x, y, hash(k, 23) < 0.4 ? PAL.fire3 : PAL.fire2);
     }
   }
-  // the fan at the talons: grains landed (2…3) → a cooled ash wedge 13 px wide, 3 tall on the floor
-  // rows (stone2 body, stone1 underside, an ink top edge), 3–4 fire1 embers (spill 3) cooling to 1–2
-  // on the held frame (spill ≥ 3.5)
-  if (P.spill >= 2) {
-    const fx = Math.round(R.ankleN[0] + 7);
-    const cool = P.spill >= 3;
-    const rows: [number, number, number][] = [
-      [GY, fx, fx + 13],
-      [GY - 1, fx + 1, fx + 11],
-      [GY - 2, fx + 3, fx + 8],
-    ];
-    if (!cool) {
-      // still landing: hot grains over a thin bed
-      for (let x = fx; x <= fx + 12; x++) if (hash(x, 34) < 0.75) put(p, c.keep, x, GY, hash(x, 35) < 0.5 ? PAL.fire2 : PAL.fire1);
-      for (let k = 0; k < 8; k++) {
-        const x = fx + Math.round(hash(k, 31) * 11);
-        const y = GY - 1 - Math.round(hash(k, 32) * 1.5);
-        if (p.get(x, y) === null) put(p, c.keep, x, y, hash(k, 33) < 0.4 ? PAL.fire3 : PAL.fire2);
-      }
-      return;
+  if (P.spill < 2 || kind === 1) return;
+  // the landing (2 … 3) and the cooled mound (≥ 3)
+  // the apex under the lowest rib gap, between the talons and a little ahead of the near one (so it reads on the floor)
+  const cx = Math.round(R.ankleN[0]) + 6;
+  const hw = kind === 3 ? 8 : 7;
+  const hot = P.spill < 3;
+  const heightAt = (x: number) => {
+    const d = Math.abs(x - cx);
+    return d > hw ? 0 : d <= 1 ? 3 : d <= hw - 3 ? 2 : 1;
+  };
+  for (let x = cx - hw; x <= cx + hw; x++) {
+    const h = heightAt(x);
+    for (let j = 0; j < h; j++) {
+      const y = GY - j;
+      const top = j === h - 1;
+      let col: number = top ? PAL.stone2 : PAL.stone1;
+      if (j === 0 && !top) col = PAL.stone1;
+      // the void2 rim on the shadow-side flank
+      const shadowSide = c.light.side < 0 ? x > cx : x < cx;
+      if (top && shadowSide && Math.abs(x - cx) >= hw - 2) col = PAL.void2;
+      if (hot && top) col = hash(x, 34, tick) < 0.5 ? PAL.fire2 : PAL.fire1;
+      put(p, c.keep, x, y, col);
     }
-    for (const [y, x0, x1] of rows)
-      for (let x = x0; x <= x1; x++) {
-        const cur = p.get(x, y);
-        if (cur !== null && cur !== PAL.ink) continue;
-        put(p, c.keep, x, y, y === GY ? PAL.stone1 : PAL.stone2);
-      }
-    // the top edge: ink over the wedge where there is air
-    for (const [y, x0, x1] of rows)
-      for (let x = x0 - 1; x <= x1 + 1; x++) if (p.get(x, y - 1) === null && (x >= x0 && x <= x1)) put(p, c.keep, x, y - 1, PAL.ink);
-    const embers = P.spill >= 3.5 ? [[fx + 5, GY - 1]] : [[fx + 3, GY - 1], [fx + 6, GY - 2], [fx + 9, GY - 1], [fx + 11, GY]];
-    if (P.spill >= 3.5) embers.push([fx + 8, GY]);
-    for (const [x, y] of embers) put(p, c.keep, x, y, PAL.fire1);
+    // the ink top edge over the mound (it lies on the toes too: the mound reads as its own shape)
+    const yt = GY - h;
+    if (h > 0) put(p, c.keep, x, yt, PAL.ink);
+    if (h > 0 && Math.abs(x - cx) === hw) put(p, c.keep, x + Math.sign(x - cx), GY, PAL.ink);
   }
+  if (hot) return;
+  // embers INSIDE the mound (never on its outline): 3–4 on the cooled fan, 1–2 on the held frame;
+  // the summon's cooler fan keeps one
+  const inner: [number, number][] = [[cx - 3, GY], [cx, GY - 1], [cx + 2, GY], [cx - 5, GY], [cx + 4, GY]];
+  const n = kind === 2 ? 1 : P.spill >= 3.5 ? 2 : kind === 3 ? 4 : 3;
+  for (const [x, y] of inner.slice(0, n)) put(p, c.keep, x, y, PAL.fire1);
 }

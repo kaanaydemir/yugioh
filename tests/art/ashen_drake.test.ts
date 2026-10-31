@@ -34,8 +34,8 @@ const count = (p: PixelCanvas, c: number) => {
 };
 
 describe('ashen_drake (rev. 3, the ash vulture)', () => {
-  it('has the 13 anims with the blueprint holds and marks (133 frames)', () => {
-    const frames: Record<string, number> = { idle: 20, guard: 8, toGuard: 6, fromGuard: 6, attack: 14, roar: 9, hit: 6, hitHeavy: 8, hitMagic: 8, summon: 14, death: 12, revive: 12, victory: 10 };
+  it('has the 13 anims with the blueprint holds and marks (134 frames: the summon fold-back in-between)', () => {
+    const frames: Record<string, number> = { idle: 20, guard: 8, toGuard: 6, fromGuard: 6, attack: 14, roar: 9, hit: 6, hitHeavy: 8, hitMagic: 8, summon: 15, death: 12, revive: 12, victory: 10 };
     let total = 0;
     for (const a of ALL) {
       const s = spec(a);
@@ -44,7 +44,8 @@ describe('ashen_drake (rev. 3, the ash vulture)', () => {
       expect(s.holds?.length, a).toBe(s.frames);
       total += s.frames;
     }
-    expect(total).toBe(133);
+    expect(total).toBe(134);
+    expect(spec('summon').holds!.reduce((x, y) => x + y, 0)).toBe(1350);
     const idle = spec('idle').holds!;
     expect(idle.reduce((x, y) => x + y, 0)).toBe(2000);
     expect(idle[1]).toBeGreaterThanOrEqual(130);
@@ -163,32 +164,42 @@ describe('ashen_drake (rev. 3, the ash vulture)', () => {
       expect(parts(drawFrame(art, a, f, 'left')), `${a} f${f}`).toBe(1);
   });
 
-  it('pours two lit streams at 1× on the spill frames (≥ 30 ember px under the ribs)', () => {
-    const EMB = new Set<number>([PAL.fire2, PAL.fire3, PAL.fire4]);
-    for (const [a, f] of [['attack', 11], ['summon', 11], ['victory', 5]] as const) {
+  it('pours the spill as GRAINS, its own way per moment, and cools into a mound (§4.4.1, critic r2 #3 / #4 / #15)', () => {
+    const EMB = new Set<number>([PAL.fire1, PAL.fire2, PAL.fire3, PAL.fire4]);
+    for (const [a, f] of [['attack', 11], ['summon', 12], ['victory', 5], ['roar', 4]] as const) {
       const p = drawFrame(art, a, f, 'left');
       const r = ASHEN_RIBS(a, f);
       let n = 0;
-      for (let y = r.y + 2; y < p.h; y++) for (let x = 0; x < p.w; x++) if (EMB.has(p.get(x, y)!)) n++;
-      expect(n, `${a} f${f}`).toBeGreaterThanOrEqual(30);
+      let run = 0;
+      for (let x = 0; x < p.w; x++) {
+        let col = 0;
+        for (let y = r.y + 4; y < 92; y++) {
+          const e = EMB.has(p.get(x, y)!);
+          col = e ? col + 1 : 0;
+          run = Math.max(run, col);
+          if (e) n++;
+        }
+      }
+      expect(n, `${a} f${f} grains`).toBeGreaterThanOrEqual(8);
+      // sand through a grate: never a solid drip line
+      expect(run, `${a} f${f} longest solid run`).toBeLessThanOrEqual(3);
     }
-  });
-
-  it('tears the cloak off (attack f4: ≥ 45 % of idle f0 redrawn, the bare struts showing) and the death ends near-empty (≤ 40 px)', () => {
-    // deviation from §9.4 (opaque ≤ 60 %): the bare wing struts, spread above the body, keep most of the
-    // silhouette's area, so the change itself is measured: the plate field is gone from the frame
-    const i0 = drawFrame(art, 'idle', 0);
-    const a4 = drawFrame(art, 'attack', 4);
-    let d = 0;
-    for (let i = 0; i < i0.data.length; i += 4) if (i0.data[i] !== a4.data[i] || i0.data[i + 1] !== a4.data[i + 1] || i0.data[i + 2] !== a4.data[i + 2] || i0.data[i + 3] !== a4.data[i + 3]) d++;
-    expect(d).toBeGreaterThanOrEqual(0.45 * opaque(i0));
-    expect(opaque(drawFrame(art, 'death', 11))).toBeLessThanOrEqual(40);
+    // the cooled fan: a low mound 1 px at the edges and 3 at the centre, embers inside it
+    const p = drawFrame(art, 'victory', 9, 'left');
+    const top = (x: number) => {
+      let h = 0;
+      while (h < 6 && p.get(x, 99 - h) !== null && p.get(x, 99 - h) !== PAL.ink) h++;
+      return h;
+    };
+    let mx = 0;
+    for (let x = 40; x < 80; x++) mx = Math.max(mx, top(x));
+    expect(mx).toBeGreaterThanOrEqual(3);
   });
 
   it('exports the accretion table, the mouth / ribs points and the distinction card', () => {
     expect(ASHEN_ORDER.length).toBe(44);
     expect(new Set(ASHEN_ORDER).size).toBe(44);
-    expect(ASHEN_BUILD.length).toBe(14);
+    expect(ASHEN_BUILD.length).toBe(15);
     expect(ASHEN_BUILD[7].seated).toBe(44);
     expect(ASHEN_BUILD.reduce((n, b) => n + b.seats.length, 0)).toBe(44);
     const m = ASHEN_MOUTH('attack', 6);

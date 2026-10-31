@@ -1235,3 +1235,65 @@ Every claim was re-checked in the tree before acting on it. All 19 findings were
     baby's belly plate is small and half-hidden by the arm; the growth frames f7–f10 show a long-necked lizard
     (the head rises before the mane, by the one-part-per-frame rule); attack hops / grown stomps are small at 1×;
     summon cracks are faint. The KK-1 blind critic pass has NOT been run yet (reviewed by the builder only).
+- 2026-10-31 — **critic round 1 fixes (sprite)**. Files: `cloud_hatchling-rig.ts`, `-parts.ts`, `-anims.ts`
+  (the art / grown / test files unchanged). Verified on ×3–×12 renders of every changed anim, P1 + P2, and on the
+  board (`?dev=duel&s=kaChGrownIdle`).
+  - **#1 (blocker) grown read.** The mane is now ONE continuous lobed dome from the crown over the nape and the
+    shoulders down the back to the haunch (11 back lobes + 3 front, `MANE_BACK` / `MANE_FRONT`, rear lobes follow
+    the body, only the near ones follow the head); the green slab is broken up / covered. Horn = a SOLID ivory
+    disc (skin4 / earth4 / earth3 by the key light, an earth2 spiral groove, a curl tip), tucked behind and above
+    the eye, no hide through it. Wing tips lie folded back, roots under the back mane, the points sticking out
+    behind the dome (no ears). Head a little bigger, muzzle shorter / taller (lion), a 4×3 gold eye under a leaf1
+    brow line. On the board it reads as a maned cloud beast; it never reads as crystal_wyrm.
+  - **#2 puffs.** New `puffLobe()` paints every cloud lobe by geometry: white cap toward the light, mist body,
+    steel crescent underneath; overlapping lobes only get a soft one-step contour (`LOBE_SEAM`; no night4
+    "brick" strokes, no horizontal slabs). The ring is 12 SEPARATE round puffs (r 3.1 ≈ 7×6), `ringBand` is no
+    longer drawn (the helper stays in parts).
+  - **#3 grown guard.** The ring sinks round the lying body as a two-row wall of touching puffs (`wallPuffs`:
+    lower row on the ring, upper row half a spacing on, 5 px up; r 4 each, no links); the head drops (crouch) so
+    the muzzle rests on the wall top. Deviation: the forelegs are not slid forward (HA-9 pins the bottom-6-row
+    x range to idle's 14..62).
+  - **#4 eggshell.** New hand-placed cup maps `SHELL_CUP_L` / `SHELL_CUP_R` (same shape, relit, IŞ-2): dome
+    bulging back, a jagged rim of skin3 teeth between earth2 notches facing the body, 2-px speckle. Laid AFTER the
+    despeckle pass (its 1-px rim survives). Baby: on the tail tip; baby guard: the tail curls up in front and the
+    cup turns round as the shield before the face; grown: a 10×8 band on the tail tip in front of the haunch
+    (shown from growth f7 on: f6 baby cup → f7 band, never missing). `fillPockets()` fills enclosed holes (tail
+    loop, wall gaps) with the shadow tone around them instead of ink. Deviation: the critic's "morph at f9" — the
+    band appears with the legs at f7 because the tail becomes the grown tail there (one part per frame).
+  - **#5 baby face.** 4×5 eye (night0, gold3 ring on the lower + outer side, white catch-light, leaf1 lid line).
+  - **#6 summon / revive.** Summon f9 is now a half-uncurled sit (head out, tail still wrapped, the popped shell
+    landing on the head); the old upside-down beat is dropped, f8 is the one somersault frame. Revive f4 is a
+    crouched sit at ≈ 70 % mass (plates still flat). Frame counts unchanged.
+  - **#7 death.** Ball radius at curl start 10.5 (was 7.6): baby f3 is a tucked ball at the old body width, it
+    shrinks only f4–f6 (ball 0.6 / 0.8 / 0.95 / 1). New pose field `ballG`: the grown form is already the big
+    mane-wrapped ball on f2 (baby still tumbling); the peeled lobes are drawn in front of the ball and sink to the
+    floor f3–f6. The cloud is under the egg on EVERY frame f7–f12; f10–f12 rock the egg x −1 / 0 / +1 and slide
+    the glint 2 px each way.
+  - **#8 growth.** The mane grows out of the cowlick lobe by lobe (each lobe has a start age t0: f7 crown, f8
+    nape, f9 shoulders, f10 back + ruff, f11 the last lobes + the ring); the head stays low and back during the
+    growth (`low`, no long neck). f6 → f7 still changes the legs (the blueprint's "one part per frame").
+  - **#9 mouths.** The face pitches about the head centre (tilt 2 ≈ 30° snout up); the open mouth is a painted
+    wedge (skin1, skin3 tongue — skin2 dropped for the ≤ 20-colour rule) with the jaw dropping 4–5 px; smear 1.5
+    px per step. Roar f4 is now an UPWARD squeak (tilt 2.6, eyes WIDE, nubs spread 3 px; grown `rear` 3 = the
+    chest rises on the forelegs, mane +2 px) — different from attack f8 (squeezed eyes, forward CHOO). Cheek
+    puff +3.2 px.
+  - **#10** X eyes only in death: baby hitHeavy f1 `><`, f2 swirl; the grown "4" is a narrowed glare.
+  - **#11** hitMagic: f1–f2 the cowlick lifts 2 px with three spikes (+3 px), the mane lobes get 2-px spikes and
+    push out 2 px; f0 (the contact frame) only starts the static (HA-21).
+  - **#12** baby wing nub = a 6×5 leaf3 lobe (TIP material) inked off the back (`INK_SEAM`); flaps 1 / 2 / 1 px.
+  - **#13** chest tuft is a 5×4 lobe; idle mane ruffle replaced by the wing tips lifting (HA-21 phase).
+    Not done: the belly plate is unchanged (still reads a little as a patch).
+  - **#15** `hideRim()`: a water4 rim on the hide's shadow-side silhouette (not on the floor rows).
+  - **#14 gates** (`shots/kart-a/cloud_hatchling/r2/gates-b.txt`, `gates-g.txt`; `--class medium --ref none`,
+    P1 + P2): baby 20 ok + 1 FAIL, grown 19 ok + 2 FAIL — **all three FAILs are the declared exceptions**
+    (record as KNOWN): baby HA-14 out(special) 12.5 / 12.3 (ends on the GROWN idle f0), grown HA-14
+    out(summon, revive) 3.6 (drawn by the baby shell, end on the baby idle), grown HA-15 in(special) 3.5–3.6
+    (starts from the baby: the rewind contract). Numbers baby / grown: HA-17 1.77 / 1.63, HA-18 18.6 % / 26.6 %,
+    HA-19 0.77 / 0.37, HA-21 contact ≤ 28 % / ≤ 26 %, HA-21 phase ≤ 47.7 % / ≤ 47.5 %, HA-16 ≤ 0.8, IŞ-10 idle
+    6.5 % / 3.4 %, HA-9 fixed (y 74), Sİ-2 margin 3 / 2, KK-13 139 frames, 3.56 MB, ≤ 2.4 ms / frame, IŞ-1 P2
+    relight > mirror. Tests: `tests/art/cloud_hatchling.test.ts` 9/9; `tsc` clean.
+  - Evidence: `shots/kart-a/cloud_hatchling/r2/` — `b/`, `b2/`, `g/`, `g2/` (×4 strips, P1 / P2), `f0-both.png`,
+    `board-grown.png`, `board-baby.png`.
+  - **Remaining weaknesses:** the grown head is still a fairly plain green dome (lion read comes from the mane);
+    the growth f7 body is long for one frame; grown guard wall merges with the mane into one cloud mass (reads as
+    "lying in its cloud", the head peeking); victory "V" nubs still small at 1×; the baby belly plate.

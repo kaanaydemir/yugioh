@@ -22,7 +22,7 @@
 
 import { compileAnims, definePose, draftGuardTransitions, type AnimDef, type AnimDefs, type Beat, type CompiledAnims, type LoopDef } from '../rigkit';
 import type { AnyMonsterAnim, MonsterAnimExtra, MonsterPoints } from '../types';
-import { NEUTRAL, ageOf, ballGeoOf, posePuffs, skel, type HatchPose } from './cloud_hatchling-rig';
+import { NEUTRAL, ageOf, ballGeoOf, formPose, posePuffs, skel, type HatchPose } from './cloud_hatchling-rig';
 import { AX, GY } from './cloud_hatchling-parts';
 
 export const KIT = definePose<HatchPose>(
@@ -30,13 +30,13 @@ export const KIT = definePose<HatchPose>(
   { head: ['head', 'tilt'], cloud: ['cow', 'tuft', 'drift'], wings: ['wingN', 'wingF', 'wingOpen'], tail: ['tail', 'tailTap'] },
   {
     head: ['head', 'tilt', 'cheeks', 'jaw', 'eye', 'blink', 'look', 'cow', 'fluff', 'mane', 'drift', 'smear', 'puff'],
-    chest: ['lean', 'tuft', 'squash'],
+    chest: ['lean', 'tuft', 'squash', 'rear'],
     wingN: ['wingN', 'wingOpen'],
     wingF: ['wingF'],
     armN: ['armN'],
     armF: ['armF'],
     lower: ['crouch'],
-    hips: ['hip', 'lift', 'shake'],
+    hips: ['hip', 'lift', 'shake', 'ballG'],
     tail: ['tail', 'tailTap', 'helmet'],
     extra: ['ring', 'ringY', 'ringFlare', 'wall', 'hic', 'glint'],
   },
@@ -107,8 +107,8 @@ export function idleDelta(f: number): D {
     // tail taps (f2, f11) with a 1-frame rebound
     tailTap: f === 2 || f === 11 ? 1 : f === 3 || f === 12 ? -1 : 0,
     // three quick nub flaps f5–f7, the droop on f8 (the far nub a frame late)
-    wingN: f === 5 || f === 7 ? 2 : f === 6 ? 1 : f === 8 ? -1 : 0,
-    wingF: f === 6 || f === 8 ? 2 : f === 7 ? 1 : 0,
+    wingN: f === 6 ? 2 : f === 5 || f === 7 ? 1 : f === 8 ? -1 : 0,
+    wingF: f === 7 ? 2 : f === 6 || f === 8 ? 1 : 0,
     blink: f === 10 ? 1 : 0,
     // the hiccup: f13 jolt (1 px, eyes wide, cheeks), the ring f14 → f17
     eye: f === 13 ? 6 : 0,
@@ -118,7 +118,8 @@ export function idleDelta(f: number): D {
     // grown: the waist ring orbits, the mane drifts (+2 behind)
     ring: (f * IDLE_RING_STEP) % 1,
     drift: ((((f - 2) / 18) % 1) + 1) % 1,
-    mane: f >= 5 && f <= 8 ? 0.3 : 0,
+    // (the grown ruffle is the wing tips lifting out of the mane: wingN / wingF above)
+    mane: 0,
   };
 }
 
@@ -127,7 +128,7 @@ const IDLE = (h: Holds): LoopDef<HatchPose> => ({ n: 18, holds: h.idle, at: idle
 // ------------------------------------------------------------------ guard (§4.2)
 
 /** the guard pose: baby crouched, paws over the face, one eye peeking, the shell tail in front; grown sphinx + ring wall */
-export const GUARD_POSE: D = { crouch: 1, armN: 1, armF: 0.85, tail: 1, eye: 5, look: [1, 0], tilt: -0.5, cow: -1, ringY: 9, wall: 1, mane: 0.4, wingN: 1, wingF: 1 };
+export const GUARD_POSE: D = { crouch: 1, armN: 1, armF: 0.85, tail: 1, eye: 5, look: [1, 0], tilt: -0.5, cow: -1, ringY: 0, wall: 1, mane: 0.4, wingN: 1, wingF: 1 };
 
 const GUARD = (h: Holds): LoopDef<HatchPose> => ({
   n: 8,
@@ -182,9 +183,10 @@ const ROAR_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[] =
   [{ squash: -0.3, wingN: 1, wingF: 1, cheeks: 0.4, tuft: 0.4 }],
   [{ squash: -0.5, wingOpen: 0.5, cheeks: 0.7, head: [0, -1], tilt: 0.5, mane: 0.4 }, 'charge'],
   [{ lift: 2, wingOpen: 0.8, head: [0, -1], tilt: 1, jaw: 0.2, armN: 0.3, armF: 0.3, mane: 0.6 }],
-  [{ lift: 3, wingOpen: 1, tilt: 1.5, jaw: 0.4, head: [1, -1], eye: 6, armN: 0.4, armF: 0.4, mane: 0.8, tuft: 0.8 }],
-  [{ lift: 2, wingOpen: 1, tilt: 1.5, jaw: 1, puff: 1, eye: 1, head: [1, -1], mane: 1, ringFlare: 2, cow: -2, tuft: 1 }, 'release'],
-  [{ lift: 1, wingOpen: 0.8, tilt: 1, jaw: 0.6, puff: 0.5, eye: 1, mane: 0.8, ringFlare: 2, cow: 2 }],
+  [{ lift: 3, rear: 2, wingOpen: 1, wingN: 1, wingF: 1, tilt: 1.5, jaw: 0.4, head: [1, -1], eye: 6, armN: 0.4, armF: 0.4, mane: 0.8, tuft: 0.8 }],
+  // the squeak goes UP: snout to the sky, mouth vertical, eyes wide, the nubs spread (≠ the attack's CHOO)
+  [{ lift: 2, rear: 3, wingOpen: 1, wingN: 3, wingF: 3, tilt: 2.6, jaw: 1, puff: 0.5, eye: 6, head: [0, -2], mane: 1, ringFlare: 2, cow: -2, tuft: 1 }, 'release'],
+  [{ lift: 1, rear: 2, wingOpen: 0.8, wingN: 1, wingF: 2, tilt: 1.8, jaw: 0.6, puff: 0.3, eye: 6, head: [0, -1], mane: 0.8, ringFlare: 2, cow: 2 }],
   [{ lean: -2, wingOpen: 0.4, eye: 6, jaw: 0.2, cow: 2, mane: 0.4 }, 'recover'],
   [{ lean: 2, wingOpen: 0.2, cow: -2, look: [1, 0] }],
   [{ lean: -1, cow: 1 }],
@@ -193,7 +195,7 @@ const ROAR_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[] =
 // ------------------------------------------------------------------ hits (§4.6)
 
 const HIT_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[] = [
-  [{ head: [-2, -1], tilt: 1, eye: 1, squash: 0.3, cow: 1 }],
+  [{ head: [-2, -1], tilt: 0.6, eye: 1, squash: 0.3, cow: 1 }],
   [{ head: [-1, 0], tilt: 0.5, eye: 1, squash: 0.2, cow: -2, hip: [-1, 0] }],
   [{ head: [-1, 0], eye: 1, blink: 0.5, cow: 2, hip: [-1, 0], mane: 0.4 }],
   [{ head: [0, 0], blink: 0.5, cow: -1, hip: [-1, 0] }, 'recover'],
@@ -201,14 +203,15 @@ const HIT_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[] = 
 ];
 const HIT_HEAVY_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[] = [
   [{ head: [-2, 0], tilt: 1, eye: 1, squash: 0.3, cow: 2 }],
-  [{ hip: [-2, 1], squash: 0.8, head: [-2, 0], tilt: 1.5, eye: 2, lean: -2, cow: 2, mane: 0.5, drift: 0.5 }],
-  [{ hip: [-3, 0], lift: 2, squash: -0.3, head: [-2, -1], tilt: 2, eye: 2, lean: -2, tail: -0.4, cow: -2, armN: 0.6, armF: 0.5, mane: 0.8 }],
+  [{ hip: [-2, 1], squash: 0.8, head: [-2, 0], tilt: 1.5, eye: 1, lean: -2, cow: 2, mane: 0.5, drift: 0.5 }],
+  [{ hip: [-3, 0], lift: 2, squash: -0.3, head: [-2, -1], tilt: 2, eye: 4, lean: -2, tail: -0.4, cow: -2, armN: 0.6, armF: 0.5, mane: 0.8 }],
   [{ hip: [-2, 1], squash: 0.6, head: [-1, 0], tilt: 0.5, eye: 1, lean: -1, cow: 2, mane: 0.5 }],
   [{ hip: [-1, 0], squash: 0.2, head: [1, 0], eye: 4, cow: -1, mane: 0.2 }, 'recover'],
   [{ head: [0, 0], blink: 0.5, cow: 1 }],
 ];
 const HIT_MAGIC_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[] = [
-  [{ head: [-1, -1], eye: 3, fluff: 1, tilt: 0.5 }],
+  // f0 is the contact frame: the static only starts (HA-21); the lobes stand on end f1–f2
+  [{ head: [-1, -1], eye: 3, fluff: 0.45, tilt: 0.5 }],
   [{ shake: 1, head: [-1, -1], eye: 3, fluff: 1, tuft: 1, wingN: 2, mane: 1 }],
   [{ shake: -1, head: [-1, -1], eye: 3, fluff: 1, tuft: 1, wingN: 1, wingF: 2, mane: 1 }],
   [{ shake: 1, eye: 3, fluff: 0.7, tuft: 0.6, wingF: 1, mane: 0.6 }],
@@ -228,9 +231,12 @@ const SUMMON_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[]
   [{ ...EGG, eggTilt: -1, crack: 0.9, glint: 2 }],
   [{ ...EGG, shake: 1, crack: 1, burst: 0.17 }],
   [{ ball: 1, egg: 1, burst: 1 }],
-  [{ ball: 1, tumble: 0.45, hip: [3, -2] }],
-  [{ ball: 0.75, tumble: 0.8, hip: [3, 0] }],
+  [{ ball: 1, tumble: 0.55, hip: [3, -2] }],
+  // the unfurl in-between: a half-uncurled sit, the head out, the tail still wrapped round the front, the
+  // popped shell lands on the head (critique r1 #6)
+  [{ crouch: 1, tail: 1, head: [1, 2], tilt: -0.5, eye: 1, cow: -1, hip: [2, 0], squash: 0.3, helmet: 1 }],
   [{ hip: [1, 0], helmet: 1, squash: 0.5, eye: 6, cow: -1 }],
+  // blink + the shell slides down the back (merged beat)
   [{ helmet: 0.5, blink: 1, cow: 1 }],
   [{ cow: 2, tuft: 1, fluff: 0.3, squash: -0.2 }],
 ];
@@ -238,19 +244,23 @@ const SUMMON_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[]
 // ------------------------------------------------------------------ death "Yumurtaya Dönüş" (§4.8)
 
 const DEATH_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[] = [
-  [{ head: [-2, -1], tilt: 1, eye: 1, squash: 0.3, cow: 1 }, 'struck'],
+  [{ head: [-2, -1], tilt: 0.6, eye: 1, squash: 0.3, cow: 1 }, 'struck'],
   [{ head: [-3, 0], hip: [-1, 0], tilt: 1.5, eye: 2, squash: 0.5, cow: 2, mane: 0.6 }],
-  [{ hip: [-2, 0], lean: -2, eye: 2, squash: 0.8, crouch: 0.7, head: [-2, 2], tilt: -1, cow: -2, armN: 0.6, armF: 0.6, tail: 0.6, mane: 1 }],
-  [{ ball: 0.7, tumble: 0.04, unAge: 1 / 3, loose: 0.35 }],
-  [{ ball: 1, tumble: -0.03, knit: 0.25, unAge: 2 / 3, loose: 0.7 }, 'dissolve'],
-  [{ ball: 1, knit: 0.5, unAge: 1, loose: 1 }],
+  // baby: tumbles back; grown (ballG): already the big ball, the mane wrapped round it
+  [{ hip: [-2, 0], lean: -2, eye: 2, squash: 0.8, crouch: 0.7, head: [-2, 2], tilt: -1, cow: -2, armN: 0.6, armF: 0.6, tail: 0.6, mane: 1, ballG: 0.5 }],
+  // the curl at ≈ 75 % of the standing mass, then it shrinks only while the plates rise (critique r1 #7)
+  [{ ball: 0.6, tumble: 0.04, unAge: 1 / 3, loose: 0.35 }],
+  [{ ball: 0.8, tumble: -0.03, knit: 0.25, unAge: 2 / 3, loose: 0.7 }, 'dissolve'],
+  [{ ball: 0.95, knit: 0.5, unAge: 1, loose: 1 }],
   [{ ball: 1, knit: 0.75, unAge: 1, loose: 1 }],
-  [{ ball: 1, knit: 1, unAge: 1, loose: 1 }],
-  [{ ball: 1, egg: 1, glint: 3, unAge: 1, float: 0 }],
+  // the gathered cloud stays under the egg on every frame from here (no flicker)
+  [{ ball: 1, knit: 1, unAge: 1, float: 2 }],
+  [{ ball: 1, egg: 1, glint: 3, unAge: 1, float: 3 }],
   [{ ball: 1, egg: 1, glint: 1, hip: [0, -1], unAge: 1, float: 2 }],
-  [{ ball: 1, egg: 1, glint: 1, hip: [0, -1], unAge: 1, float: 1 }],
+  // the float rock: the egg ±1 px, its glint sliding 2 px along the rim, the lobes a phase on
+  [{ ball: 1, egg: 1, glint: 1, hip: [-1, -1], unAge: 1, float: 1 }],
   [{ ball: 1, egg: 1, glint: 2, hip: [0, -1], unAge: 1, float: 2 }],
-  [{ ball: 1, egg: 1, hip: [0, -1], unAge: 1, float: 3 }],
+  [{ ball: 1, egg: 1, glint: 1, hip: [1, -1], unAge: 1, float: 3 }],
 ];
 
 // ------------------------------------------------------------------ revive (§4.9)
@@ -260,7 +270,8 @@ const REVIVE_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[]
   [{ ball: 1, plates: 0.33 }],
   [{ ball: 1, plates: 0.66, glint: 2 }],
   [{ ball: 1, plates: 1, tumble: -0.04 }],
-  [{ ball: 0.5, plates: 1, tumble: -0.08 }],
+  // uncurls halfway: a crouched sit at ≈ 70 % of the standing mass, head peeking, tail still round the front
+  [{ crouch: 1, tail: 1, plates: 1, head: [0, 2], tilt: -0.5, eye: 1, cow: 1, squash: 0.3 }],
   [{ crouch: 0.6, plates: 1, eye: 1, cow: 1 }, 'land'],
   [{ squash: -0.4, plates: 1, tuft: 0.6, eye: 6 }],
   [{ jaw: 0.6, puff: 0.4, eye: 1, head: [1, 0], cow: -2 }],
@@ -287,8 +298,8 @@ const SPECIAL_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[
   [{ grow: G(4), eye: 5, fluff: 0.2 }],
   [{ grow: G(5), eye: 5, mane: 0.6 }],
   [{ grow: 1, tilt: 1, head: [0, -1], mane: 0.4, wingOpen: 0.3 }],
-  [{ grow: 1, tilt: 1.5, head: [1, -1], jaw: 1, puff: 1, wingOpen: 1, mane: 1, eye: 1, ringFlare: 2 }, 'release'],
-  [{ grow: 1, tilt: 1, head: [1, -1], jaw: 0.8, wingOpen: 0.8, mane: 0.8, eye: 1, ringFlare: 1 }],
+  [{ grow: 1, tilt: 2, rear: 3, head: [1, -1], jaw: 1, puff: 1, wingOpen: 1, mane: 1, eye: 1, ringFlare: 2 }, 'release'],
+  [{ grow: 1, tilt: 1.5, rear: 2, head: [1, -1], jaw: 0.8, wingOpen: 0.8, mane: 0.8, eye: 1, ringFlare: 1 }],
   [{ grow: 1 }, 'recover'],
 ];
 
@@ -297,7 +308,7 @@ const SPECIAL_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[
 const VICTORY_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[] = [
   [{ squash: -0.5, tuft: 1, cheeks: 0.4, mane: 0.5, head: [0, -1] }],
   [{ lift: 4, armN: 0.6, armF: 0.6, wingOpen: 0.5, tuft: 0.6, cow: -2, mane: 0.6 }],
-  [{ squash: 0.4, wingOpen: 1, wingN: 2, wingF: 2, armN: 0.4, cow: 2, mane: 0.6 }],
+  [{ squash: 0.4, wingOpen: 1, wingN: 4, wingF: 4, armN: 0.4, cow: 2, mane: 0.6, rear: 2 }],
   [{ wingOpen: 1, jaw: 0.7, hic: 1, eye: 7, tilt: 0.5, cow: 1, mane: 0.8 }],
   [{ wingOpen: 0.6, eye: 7, tilt: 0.8, head: [0, -1], cow: -2, tailTap: -1, tuft: 0.6, mane: 0.5, ring: 1 / 12 }],
 ];
@@ -349,8 +360,9 @@ export function shellAgeOf(grown: boolean, anim: AnyMonsterAnim): number | undef
 
 const pt = (v: readonly [number, number]) => ({ x: Math.round(v[0]), y: Math.round(v[1]) });
 
-export function posePoints(P: HatchPose, shellAge: number | undefined): MonsterPoints {
-  const age = ageOf(P, shellAge);
+export function posePoints(P0: HatchPose, shellAge: number | undefined): MonsterPoints {
+  const age = ageOf(P0, shellAge);
+  const P = formPose(P0, age);
   const S = skel(P, age);
   const story = P.ball >= 0.5 || P.egg > 0 || P.knit > 0;
   const ball = ballGeoOf(P, age);

@@ -1435,3 +1435,72 @@ Each finding was checked against the tree (2026-10-31) before it was resolved.
     (×5 review crops), `films/summon-v2.png` (kaVenomSummon runs in the duel on the generic path).
   - Still weak: the near wing-arm forearm reads as a straight vertical post at 1×; the shield holes are only
     3–4 px; the death marker (f8) has no venom bead on the hook; the roar / special wing spread reads as spikes.
+- 2026-10-31 — **sprite fix pass after critic round 1** (critic report: `shots/kart-a/venom_drake/critic1/`).
+  - **Wing rebuilt as ONE continuous part** (`venom_drake-rig.ts` `wingGeo` / `drawWing` / `drawArm`; critic 1, 2,
+    3, 8): finger root R, three finger tips and the body attach A blend between four configurations (folded on the
+    upper flank · hood above the shoulders at `wing` 0.6 · spread at 1, near wing forward / far wing back · guard
+    shield in front of the face), so toGuard / fromGuard / special / summon peel, lift and unfold instead of
+    swapping a "cape" mode for an "arm" mode. The folded membrane is a narrow tongued strip on the upper third of
+    the flank; the barrel, its belly-plate band and the haunch now read. The forelimb is a 2-segment limb: upper
+    arm back-down to an elbow (IK, elbow spur), forearm angled forward and tapering to a wrist bulge and the chitin
+    knuckle. Membrane tones per blueprint §1: `void2` panel, `void1` web / ribs, `mag1` leading edge, `void0` only in
+    the hem crease (`MEMB` in gbuf). Holes: oval, ≥ 4×3 inside, a closed 4-neighbour `leaf3` ring, placed by a fit
+    search (nearest spot within 3 px where the whole ring lies on the panel, ≥ 3 px from another hole), and kept
+    open through the finger bones.
+  - **Hide tones** (critic 1, IŞ-11): `HIDE.S` is now `void1` (= the mid) so `void0` is only creases, separators and
+    the underside; idle f0 `void0` 29.3 % → 12.4 % of opaque; `void1` + `mag1` are the two largest groups. A
+    `void2` mid was tried and rejected (the hide went blue and swallowed the membrane). Shade-band widths narrowed
+    (barrel sh 3 / bottom 1, legs and neck sh 2 / bottom 1). The barrel's scale teeth now hang `mag1` off the
+    lit / mid boundary (the old `void0` teeth vanished with the tone change).
+  - **Guard** (critic 4): the tail lies forward over the back, the last two chitin segments bend up (tail table
+    `GUARD_TAIL`, last segment −75°) so the hook is cocked above the shield rim pointing at the enemy; the shield
+    has its 3 ribs and scalloped trailing edge, one hole between the upper ribs and one the eye glints through
+    (`eyeHole` → a `gold2` pixel; the eye is otherwise hidden when a part covers it). f3 / f7 carry a 2-px stinger
+    twitch. Guard Δ 0.34×. Deviation: the hook points ≈ horizontal, not 20° up — at −92° the bulb stands
+    vertical and the stinger reads as a periscope.
+  - **Attack** (critic 5, 6): wind-up spread over f2–f4 (`wind(0.42 / 0.75 / 1)`), the root segments lean back 15°
+    over the rump (`WINDUP`), barrel down 2 with the hind knees taking it, head 2 lower, near knuckle lifted 1 to
+    grip; f1 is a light charge (tail 10 %, head 1) so special f0 stays an `in` ≤ 2. Release arcs are explicit
+    tables: f5 `WHIP` a C opening forward (bulb ≈ (63, 18)), f6 `RELEASE` root still curved (bulb ≈ (76, 16)),
+    f7 `OVERSHOOT` tip below the horizontal with the root lagging, barrel 1 forward, head up 2.
+  - **Roar** (critic 7): f1 head down 3 / back 3; f2 the hood (both membranes fanned above the shoulders with ribs,
+    holes and trailing edge) and quills erect 2; f3 jaw 3 (≈ 4-px gape) with venom strings and a `leaf2` tongue in
+    the mouth; `sacHot` flashes only the lit upper half `gold3`, the lower half stays `leaf3`.
+  - **Special / summon peak** (critic 8): special f2 0.55 → f3 1 (unfolds over 2 frames), f6 beat 0.7, then folds;
+    summon f9 / f10 hood at 0.6, f10 adds a 1-px bulb pulse + tip tick (the 200 ms hold is no longer static).
+  - **Summon** (critic 9): f0–f2 the curl keeps the eye a slit and the wing folded over the shoulder (NOT done: the
+    head is still beside the wing, not under it — the shield path lifts the wing above the low head); f3 is a real
+    in-between (knuckles planted, body still low, tail rolled up over the back in a low hook `RISE_TAIL`); f4 land
+    at idle −3 with the tail half-way (`LAND_TAIL`); f5 the hook (`HOOK_TAIL`). No frame carries body + wing + tail
+    at once any more.
+  - **Hits** (critic 10): hit f0 head 2 back / 1 up, the eye a 3-px `ink` lid line, sac compressed; hitHeavy keeps
+    its 2-px knuckle lift (visible now that the cape no longer hides the forelimb) and f2 replant 2 back + knees
+    1; hitHeavy f0 head −2/−1. HA-21 phase was paid for by the idle, not by the hit: the idle tail-root dip `ty`
+    (it shifted the whole arch 1 px) is gone and the arch sway is 1.3° / lag 5° (was 2.2° / 7°); the liveliness
+    comes back from high-frequency, small-reach motion (a diagonal 1-px stinger quiver, `tdx` / `tdy` alternate,
+    and a 1-px hem flutter on alternate frames).
+  - **Venom signature** (critic 11): the bulb's hot band is 2 rows of irregular `leaf3` / `gold3` runs on the
+    upper-front quarter (no checker at any glow), one `gold4`, a `stone2` casing lip at the stinger join; quills
+    4–5 px (+2 bristle) with a 2×2 bead (`leaf3`, `gold3` top pixel).
+  - **Tail** (critic 17, 18): taper 8.4 → 4 px; the `leaf2` rim is one run per segment with a gap at every joint
+    and none on the top hide segments. Idle f0 opaque 2906 → 2668.
+  - **Death / revive / hitMagic** (critic 12–16): death f4 opens up to 8 round holes (r 1.8) at the seam NODES
+    (cape first, `webNode`), each with a closed `leaf3` ring, kept and widened at step 2; f7 the stinger marker is
+    drawn mid-fall (tilted 45°, lifted 6 px, a 2-streak stone smear); f8 a `gold3` + `leaf3` bead hangs on the hook
+    and falls at f9; the pool has a wider `void0` centre, `leaf1` flecks and two 2-px `leaf3` bubbles. Revive f6
+    lifts the near knuckle, f7 is the whole hide with the knuckle slammed down (no seams), f8 only the tail seams
+    glow (`seamPart` 2), f9 clean. hitMagic f1 shows plain seams on the struck front half only (`seamPart` 1, no
+    `gold3` nodes): the full node web belongs to the death.
+  - Not taken: critic 13's "1 of the 7 spare frames" — the mid-fall is drawn inside death f7 instead (adding a frame
+    renumbers BEATS used by the cinematics). Death f7 is `marker 0` + tilt, the upright stand starts at f8.
+  - Gates (`monster-gates --class ace --ref none`, P1 + P2): **21 ok, 0 FAIL** — margin 2, edge 0, out 0.00, in
+    0.72–1.34, seam idle 1.28 / guard 1.02, idle max Δ 1.58×, liveliness 16.9 % / 16.6 %, guard 0.34×, noise idle
+    9.8 % / body 10.6 % / effect 19.8 % (death f6), HA-21 ≤ 26.6 %, HA-21 phase ≤ 47.2 %, feet band x 32…69 38/38,
+    muzzle 133/133, 133 frames, 5.2 ms / frame, 4.89 MB. `tests/art/venom_drake.test.ts` 11/11; tsc clean.
+  - Evidence: `shots/kart-a/venom_drake/r2/final/` (P1 / P2 strips with points, `gates.txt`),
+    `shots/kart-a/venom_drake/r2/sheet/` (clean P1 strips), `r2/p2zoom.png` (P2 idle / guard / special / attack
+    ×5), `r2/before/` (pre-fix idle / toGuard / guard).
+  - Still weak: the folded wing is small at 1× (a ridge + a strip + one ring: the trade the critic asked for);
+    the guard shield is still a compact fan; hit vs hitHeavy differ mainly by the knuckle lift and the head
+    reach (HA-21 phase headroom is 2.8 %); the eye glint through the shield is one pixel; the summon curl does not
+    tuck the head under the wing; the in-duel attack still plays the generic path (cinematic, not sprite scope).

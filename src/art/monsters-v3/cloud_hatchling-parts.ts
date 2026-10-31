@@ -230,8 +230,8 @@ export const SHELL_CAP: Stamp = {
   ay: 5,
 };
 /** The baby's chest tuft (a small cloud puff at the throat), 4×3; TUFT_UP bristles. */
-export const TUFT: Stamp = { rows: ['.WW.', 'WWMM', '.MS.'], ax: 1, ay: 1 };
-export const TUFT_UP: Stamp = { rows: ['W.W.', 'WWMW', 'WMMS', '.SS.'], ax: 1, ay: 2 };
+export const TUFT: Stamp = { rows: ['.WW..', 'WWWM.', 'WWMMS', '.MSS.'], ax: 2, ay: 1 };
+export const TUFT_UP: Stamp = { rows: ['W.W.W', 'WWMWM', 'WWMMS', 'WMMSS', '.SSS.'], ax: 2, ay: 2 };
 export const SHELL_KEY: Readonly<Record<string, number>> = Object.freeze({ L: PAL.skin4, M: PAL.earth4, S: PAL.earth3, d: PAL.earth2, r: PAL.skin4 });
 
 /** The baby's cowlick: a three-lobe cloud puff leaning back (W white · M mist · S steel), 10×7. */
@@ -246,3 +246,119 @@ export const COWLICK_UP: Stamp = {
   ay: 6,
 };
 export const CLOUD_KEY: Readonly<Record<string, number>> = Object.freeze({ W: PAL.white, M: PAL.mist, S: PAL.steel });
+
+// ------------------------------------------------------------------ round cloud puffs (critique r1 #2)
+
+/**
+ * One round cloud puff painted by its geometry (never a lit ellipsoid band stack): a `white` cap toward
+ * the key light, a `mist` body, a `steel` crescent underneath. `spike` > 0 stands the lobe on end
+ * (hitMagic static): its rim breaks into 1-px points. Paints into `q` (a clear layer canvas).
+ */
+export function puffLobe(q: PixelCanvas, cx: number, cy: number, r: number, light: Light, spike = 0): void {
+  if (r < 0.8) return;
+  const rx = r + 0.35;
+  const ry = r * 0.9;
+  const lit = light.side < 0 ? -1 : 1;
+  const R = Math.ceil(Math.max(rx, ry) + 2);
+  for (let y = Math.floor(cy - R); y <= Math.ceil(cy + R); y++)
+    for (let x = Math.floor(cx - R); x <= Math.ceil(cx + R); x++) {
+      const u = (x + 0.5 - cx) / rx;
+      const v = (y + 0.5 - cy) / ry;
+      let d = u * u + v * v;
+      if (spike > 0) {
+        // points: every other rim direction reaches out by `spike` px
+        const a = Math.atan2(v, u);
+        const tooth = (Math.floor(((a + Math.PI) / (Math.PI * 2)) * Math.max(6, Math.round(r * 2.2))) % 2) * spike;
+        const k = (r + tooth) / r;
+        d = d / (k * k);
+      }
+      if (d > 1) continue;
+      let col: number = PAL.mist;
+      if (r < 2.2) col = v < -0.1 ? PAL.white : v > 0.45 ? PAL.steel : PAL.mist;
+      else if (u * u + (v + 0.32) * (v + 0.32) > 1.0 && v > 0.3) col = PAL.steel;
+      else if ((u - lit * 0.22) * (u - lit * 0.22) + (v + 0.2) * (v + 0.2) < 0.5) col = PAL.white;
+      q.set(x, y, col);
+    }
+}
+
+/** Overlap contour of the cloud lobes: a soft one-step (white → mist) where a lobe lies over cloud (its own steel crescent does the separating), a step down over the hide. */
+export const LOBE_SEAM = seamFrom(
+  Object.freeze({
+    ...SEAM_T,
+    [PAL.white]: PAL.mist,
+    [PAL.mist]: PAL.mist,
+    [PAL.steel]: PAL.steel,
+  }),
+);
+
+// ------------------------------------------------------------------ the eggshell cup (critique r1 #4)
+
+/**
+ * The half eggshell riding the tail tip, hand-placed (IŞ-2: an _L map for the P1 light, an _R map for
+ * the P2 relight; same shape). The dome bulges back (left), the jagged rim faces the body (right): light
+ * teeth (`i` skin3, the inner shell lip) between dark notches (`c` earth2, the cavity the tail goes
+ * into). L skin4 · M earth4 · S earth3 · d earth2 speckles (2-px, shadow plane only). Anchor = where the
+ * tail tip enters the cup. 10×8.
+ */
+export const SHELL_CUP_L: Stamp = {
+  rows: ['...LLLM...', '..LLLLMMi.', '.LLLLMMcc.', 'LLLLMMMSi.', 'LLLMMSdcc.', 'LLMMMSdSi.', '.MMMSSScc.', '..MSSSSi..'],
+  ax: 8,
+  ay: 4,
+};
+export const SHELL_CUP_R: Stamp = {
+  rows: ['...MMLL...', '..SMMLLLi.', '.SSMMLLcc.', 'SSSMMLLLi.', 'SdSMMLLcc.', 'SdSMMMLLi.', '.SSSMMLcc.', '..SSSMMi..'],
+  ax: 8,
+  ay: 4,
+};
+export const CUP_KEY: Readonly<Record<string, number>> = Object.freeze({ L: PAL.skin4, M: PAL.earth4, S: PAL.earth3, d: PAL.earth2, i: PAL.skin3, c: PAL.earth2 });
+
+/** Lay the cup at the tail tip; `flip` turns the shape round (dome forward, rim toward the back), the light stays put. */
+export function shellCup(q: PixelCanvas, x: number, y: number, light: Light, flip: boolean): void {
+  const map = (light.side < 0) !== flip ? SHELL_CUP_L : SHELL_CUP_R;
+  for (let r = 0; r < map.rows.length; r++) {
+    const row = map.rows[r];
+    for (let c = 0; c < row.length; c++) {
+      const col = CUP_KEY[row[c]];
+      if (col === undefined) continue;
+      q.set(x + (flip ? map.ax - c : c - map.ax), y + r - map.ay, col);
+    }
+  }
+}
+
+// ------------------------------------------------------------------ enclosed pockets (critique r1 #4)
+
+/**
+ * Fill every enclosed transparent pocket (not reachable from the frame border) with the shadow tone of
+ * what surrounds it, so p.outline() never turns a tail loop or a gap in the puff wall into a solid ink
+ * hole: hide around → `leaf2`, cloud around → `steel`, else `night4`.
+ */
+export function fillPockets(p: PixelCanvas, floorY = H): void {
+  const w = p.w;
+  const h = p.h;
+  const seen = new Uint8Array(w * h);
+  const st: number[] = [];
+  for (let x = 0; x < w; x++) st.push(x, 0, x, h - 1);
+  for (let y = 0; y < h; y++) st.push(0, y, w - 1, y);
+  while (st.length) {
+    const y = st.pop()!;
+    const x = st.pop()!;
+    if (x < 0 || y < 0 || x >= w || y >= h) continue;
+    const i = y * w + x;
+    if (seen[i] || p.isOpaque(x, y)) continue;
+    seen[i] = 1;
+    st.push(x + 1, y, x - 1, y, x, y + 1, x, y - 1);
+  }
+  // (never on the floor rows: the feet band stays where it was, HA-9)
+  for (let y = 1; y < Math.min(h - 1, floorY); y++)
+    for (let x = 1; x < w - 1; x++) {
+      if (seen[y * w + x] || p.isOpaque(x, y)) continue;
+      let hide = 0;
+      let cloud = 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const c = p.get(x + dx, y + dy);
+        if (isHide(c)) hide++;
+        else if (isCloud(c)) cloud++;
+      }
+      p.set(x, y, hide >= cloud && hide > 0 ? PAL.leaf2 : cloud > 0 ? PAL.steel : PAL.night4);
+    }
+}

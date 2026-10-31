@@ -181,6 +181,18 @@ export interface Skel {
   quills: Pt[];
 }
 
+export interface WingHole {
+  /** centre (frame px) */
+  c: Pt;
+  /** inner radii (px) */
+  rx: number;
+  ry: number;
+  /** shape seed (the ragged rim, which rim pixels are broken, the drip) */
+  seed: number;
+  /** a tear on the trailing edge (opens to the outside) instead of a hole inside the panel */
+  tear?: boolean;
+}
+
 export interface WingGeo {
   /** the finger root (the folded wing-knuckle; the wrist in the shield / spread) */
   R: Pt;
@@ -190,19 +202,21 @@ export interface WingGeo {
   A: Pt;
   /** scallop depth of the trailing edge (0 = straight, toward R) */
   dep: number;
-  /** eaten hole centres (near wing) */
-  holes: Pt[];
+  /** eaten holes: each a different size and shape, never two on one row (the corrosion, not a pattern) */
+  holes: WingHole[];
 }
 
 const lerp2 = (a: Pt, b: Pt, t: number): Pt => [lerp(a[0], b[0], t), lerp(a[1], b[1], t)];
 const add = (a: Pt, dx: number, dy: number): Pt => [a[0] + dx, a[1] + dy];
 
 /**
- * The wing as one continuous part: three configurations blended by the shield (s) and spread (sp)
+ * The wing as one continuous part: four configurations blended by the shield (s) and spread (sp)
  * weights. Folded: a narrow tongued membrane on the UPPER third of the flank, hanging from the finger
- * ridge that runs back from the wing-knuckle over the elbow. Shield: the fingers fan forward from the
- * lifted wrist in front of the face. Spread: the wing-knuckle rises above the shoulders and the
- * fingers fan up and back (the roar hood at 0.5, the special at 1).
+ * ridge that runs back from the wing-knuckle over the elbow. Hood (sp 0.6): a SIDEWAYS fan over the
+ * shoulders, wider than tall (≈ 26 × 19), three ribs radiating from the lifted wrist. Spread (sp 1):
+ * both wings fan up and BACK, the far wing's trailing tip passing behind the tail root (wider than the
+ * barrel), the head clear in front. Shield: the near wing lifted over the face, the fingers fanning
+ * forward-down into a sloped ≈ 21 × 21 fan in front of the chest and head.
  */
 function wingGeo(near: boolean, sh: Pt, el: Pt, wr: Pt, s: number, sp: number, drape: number): WingGeo {
   // folded
@@ -211,30 +225,42 @@ function wingGeo(near: boolean, sh: Pt, el: Pt, wr: Pt, s: number, sp: number, d
     ? [add(sh, -29, -6), add(sh, -23, 1 + drape), add(sh, -15, 2 + drape)]
     : [add(sh, -22, -7), add(sh, -17, -2), add(sh, -12, -1)];
   const fA = add(el, -1, 2);
-  // the hood (roar, summon peak; sp 0.6): both wings fan up and BACK above the shoulders
-  const hR = add(sh, -2, -15);
-  const hF = [add(sh, -3, -30), add(sh, -15, -27), add(sh, -23, -16)];
-  const hA = add(sh, -15, -7);
-  // spread (special; sp 1): the near wing fans up and FORWARD over the head, the far one up and BACK (a wide V)
-  const pR = near ? add(sh, 3, -22) : add(sh, -4, -22);
+  // the hood: a sideways fan over the shoulders (the far one a step higher and forward: two layers)
+  const hR = near ? add(sh, 1, -14) : add(sh, -1, -17);
+  const hF = near ? [add(sh, -6, -26), add(sh, -18, -23), add(sh, -25, -13)] : [add(sh, -4, -29), add(sh, -14, -27), add(sh, -20, -20)];
+  const hA = near ? add(sh, -14, -5) : add(sh, -10, -9);
+  // spread: up and back, the far wing the wider one (its trailing tip behind the tail root)
+  const pR = near ? add(sh, 0, -18) : add(sh, -1, -21);
   const pF = near
-    ? [add(sh, 10, -36), add(sh, 21, -29), add(sh, 25, -16)]
-    : [add(sh, -8, -34), add(sh, -20, -29), add(sh, -26, -17)];
-  const pA = near ? add(sh, 9, -9) : add(sh, -17, -8);
-  // shield (near only)
-  const gF = [add(wr, 3, -17), add(wr, 12, -7), add(wr, 10, 8)];
-  const gA = add(el, 3, 16);
+    ? [add(sh, -4, -35), add(sh, -21, -31), add(sh, -33, -19)]
+    : [add(sh, -5, -38), add(sh, -26, -35), add(sh, -42, -24)];
+  const pA = near ? add(sh, -17, -6) : add(sh, -27, -10);
+  // shield (near only): the fingers fan forward-down from the lifted wrist
+  const gF = [add(wr, 14, 3), add(wr, 14, 15), add(wr, 6, 21)];
+  const gA = add(sh, 9, 6);
   const HOOD = 0.6;
   const path = (f: Pt, h: Pt, p: Pt): Pt => (sp <= HOOD ? lerp2(f, h, sp / HOOD) : lerp2(h, p, (sp - HOOD) / (1 - HOOD)));
   const bl = (f: Pt, h: Pt, p: Pt, g: Pt): Pt => lerp2(path(f, h, p), g, s);
   const R = bl(fR, hR, pR, wr);
   const F = [0, 1, 2].map((i) => bl(fF[i], hF[i], pF[i], gF[i]));
   const A = bl(fA, hA, pA, gA);
-  const dep = lerp(sp <= HOOD ? lerp(0.3, 0.28, sp / HOOD) : 0.27, 0.3, s);
-  // holes between the ribs (≥ 4×3 inside), the shield's third one over the eye
-  const h1: Pt = [R[0] * 0.38 + F[0][0] * 0.31 + F[1][0] * 0.31, R[1] * 0.38 + F[0][1] * 0.31 + F[1][1] * 0.31 + 1];
-  const h2: Pt = [R[0] * 0.34 + F[1][0] * 0.33 + F[2][0] * 0.33, R[1] * 0.34 + F[1][1] * 0.33 + F[2][1] * 0.33 + 0.5];
-  return { R, F, A, dep, holes: [h1, h2] };
+  const dep = lerp(sp <= HOOD ? lerp(0.3, 0.26, sp / HOOD) : 0.25, 0.22, s);
+  const open = Math.max(s, sp);
+  const holes: WingHole[] = [];
+  // the trailing-edge scallop between F1 and F2 (where the folded strip is torn)
+  const sc12: Pt = [lerp((F[1][0] + F[2][0]) / 2, R[0], dep), lerp((F[1][1] + F[2][1]) / 2, R[1], dep)];
+  if (open < 0.3) {
+    // folded: ONE ragged tear on the strip's trailing edge (not a ring in mid-flank)
+    holes.push({ c: lerp2(sc12, R, 0.08), rx: 2.1, ry: 1.6, seed: near ? 3 : 4, tear: true });
+  } else if (s >= 0.5) {
+    // the shield: the eye hole (set by drawWing) + a bigger ragged one low beside the last rib
+    holes.push({ c: lerp2(lerp2(R, F[2], 0.62), F[1], 0.25), rx: 2.6, ry: 2.1, seed: 7 });
+  } else {
+    // hood / spread: a 3×3 near the trailing edge, a 5×4 low by the last rib (different rows, sizes)
+    holes.push({ c: lerp2(sc12, R, 0.3), rx: 1.6, ry: 1.6, seed: near ? 11 : 12 });
+    if (near) holes.push({ c: add(lerp2(R, F[2], 0.5), 0, 2.5), rx: 2.6, ry: 2.1, seed: 13 });
+  }
+  return { R, F, A, dep, holes };
 }
 
 export function tailAngles(o: Pose): number[] {
@@ -265,9 +291,9 @@ export function skeleton(o: Pose): Skel {
   const s = clamp(o.shield, 0, 1);
   const sp = clamp(o.wing, 0, 1);
   const wrP: Pt = [lerp(58 + o.nk[0], sh[0] + 6, r), lerp(83 - o.nk[1], sh[1] + 15, r)];
-  const wrG: Pt = [sh[0] + 22, sh[1] - 4];
+  const wrG: Pt = [sh[0] + 16, sh[1] - 13];
   const wrN = lerp2(wrP, wrG, s);
-  const elN = lerp2(ik(shN, wrN, 12, 22, 1), [sh[0] + 3, sh[1] - 14], s);
+  const elN = lerp2(ik(shN, wrN, 12, 22, 1), [sh[0] + 5, sh[1] - 4], s);
   const wrF: Pt = [lerp(65 + o.fk[0], sh[0] + 11, r), lerp(83 - o.fk[1], sh[1] + 13, r)];
   const elF = ik(shF, wrF, 11, 19, 1);
   const wgN = wingGeo(true, sh, elN, wrN, s, sp, o.drape);
@@ -323,6 +349,8 @@ export interface Frame {
   sk: Skel;
   /** membrane hole pixels: transparent again after the outline where nothing is behind them */
   holes: number[];
+  /** acid drips that ran off a hole's rim past the membrane (painted after the outline) */
+  drips: number[];
   /** the shield hole the eye glints through (guard) */
   eyeHole?: Pt | null;
 }
@@ -398,12 +426,10 @@ function drawBarrel(f: Frame): void {
   ];
   q.poly(pts, HIDE.M);
   bands(q, HIDE, light, { top: 2, lit: 4, sh: 3, bottom: 1, half: 0.8 });
-  // scale rows: 2-px void1 teeth every ≈5 px on the mid / shadow boundary (MA-2)
+  // scale rows: 2-px mag1 teeth every ≈5 px hanging off the lit / mid boundary (MA-2: scales, not a smooth plane)
   planes(q, (x, y, src) => {
-    if (src.get(x, y) !== HIDE.M) return null;
-    const below = src.get(x, y + 1);
-    if (below !== HIDE.S && below !== HIDE.D) return null;
-    return ((x + 2 * (y & 1)) % 5) < 2 ? HIDE.S : null;
+    if (src.get(x, y) !== HIDE.M || src.get(x, y - 1) !== HIDE.L) return null;
+    return (x + 2 * (y & 1)) % 5 < 2 ? HIDE.L : null;
   });
   f.comp.add(q, Part.barrel, { out: OUT });
   // belly plates: a stone2 band along the underside, stone1 seams every 3 px (the 1× read of the lower body)
@@ -527,54 +553,95 @@ function drawBulb(f: Frame): void {
   f.comp.add(q, Part.bulb, { out: PAL.ink });
 }
 
-/** The pixels of an oval hole at (cx, cy) if it fits inside the panel with a full ring around it, else null. */
-function holeFit(q: PixelCanvas, cx: number, cy: number, rx: number, ry: number): number[] | null {
+/** Inside a ragged oval hole: the rim radius wobbles per pixel (seeded), so no two holes share a stamp. */
+function holeInside(h: WingHole, cx: number, cy: number, x: number, y: number): boolean {
+  const d = Math.hypot((x + 0.5 - cx) / h.rx, (y + 0.5 - cy) / h.ry);
+  const ang = Math.atan2(y + 0.5 - cy, x + 0.5 - cx);
+  // a low-frequency wobble (a notch / a bulge), not pixel noise
+  const wob = 0.22 * Math.sin(ang * 2 + h.seed * 1.7) + 0.14 * Math.sin(ang * 3 + h.seed * 0.9);
+  return d <= 1 + wob;
+}
+
+/** The pixels of a hole centred at (cx, cy) if it (and, unless a tear, its whole rim) lies on the panel, else null. */
+function holeFit(q: PixelCanvas, h: WingHole, cx: number, cy: number): number[] | null {
   const hole: number[] = [];
-  const inside = (x: number, y: number) => Math.hypot((x + 0.5 - cx) / rx, (y + 0.5 - cy) / ry) <= 1;
-  for (let y = Math.floor(cy - ry - 1); y <= Math.ceil(cy + ry + 1); y++)
-    for (let x = Math.floor(cx - rx - 1); x <= Math.ceil(cx + rx + 1); x++) {
-      if (!inside(x, y)) continue;
-      // the hole and its ring must lie on the panel, a clear px away from another hole's ring
+  for (let y = Math.floor(cy - h.ry - 2); y <= Math.ceil(cy + h.ry + 2); y++)
+    for (let x = Math.floor(cx - h.rx - 2); x <= Math.ceil(cx + h.rx + 2); x++) {
+      if (!holeInside(h, cx, cy, x, y)) continue;
+      if (h.tear) {
+        if (q.isOpaque(x, y)) hole.push(x, y);
+        continue;
+      }
       for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (!q.isOpaque(x + dx, y + dy)) return null;
-      for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) if (q.get(x + dx, y + dy) === VEN.body) return null;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (q.get(x + dx, y + dy) === VEN.body) return null;
       hole.push(x, y);
     }
-  return hole.length >= 8 ? hole : null;
+  return hole.length >= (h.tear ? 5 : 7) ? hole : null;
 }
 
 /**
- * Cut an oval hole (≥ 4×3 inside) into a membrane layer near (cx, cy) — the nearest spot within 3 px
- * where it fits with a full ring — and close a 1-px leaf3 ring around it (real transparency after the
- * outline where nothing is behind it).
+ * Eat one hole into a membrane layer near h.c (the nearest spot within 3 px where it fits): a ragged
+ * oval (3–6 px), a leaf3 rim with 1–2 BROKEN pixels, and one leaf2 drip running down from its lowest
+ * rim pixel. A tear opens to the trailing edge. Real transparency after the outline where nothing is
+ * behind it. Returns the hole's centre pixel.
  */
-function holeIn(f: Frame, q: PixelCanvas, cx: number, cy: number, rx: number, ry: number, keep?: number[]): Pt | null {
+function holeIn(f: Frame, q: PixelCanvas, h: WingHole, keep?: number[]): Pt | null {
   let hole: number[] | null = null;
+  let at: Pt = h.c;
   search: for (let r = 0; r <= 3; r++)
     for (let dy = -r; dy <= r; dy++)
       for (let dx = -r; dx <= r; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
-        hole = holeFit(q, rnd(cx) + dx, rnd(cy) + dy, rx, ry);
+        at = [rnd(h.c[0]) + dx, rnd(h.c[1]) + dy];
+        hole = holeFit(q, h, at[0], at[1]);
         if (hole) break search;
       }
   if (!hole) return null;
-  for (let i = 0; i < hole.length; i += 2) q.erase(hole[i], hole[i + 1]);
+  const isHole = new Set<number>();
+  for (let i = 0; i < hole.length; i += 2) isHole.add(hole[i + 1] * W + hole[i]);
   for (let i = 0; i < hole.length; i += 2) {
-    const x = hole[i];
-    const y = hole[i + 1];
-    // a 4-neighbour ring: round corners, not a square glyph
-    for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-      keep?.push(x + dx, y + dy);
-      if (q.isOpaque(x + dx, y + dy)) q.set(x + dx, y + dy, VEN.body);
+    q.erase(hole[i], hole[i + 1]);
+    keep?.push(hole[i], hole[i + 1]);
+    f.holes.push(hole[i], hole[i + 1]);
+  }
+  // the rim: 4-neighbours of the hole still on the panel
+  const rim: number[] = [];
+  const seen = new Set<number>();
+  for (let i = 0; i < hole.length; i += 2)
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const x = hole[i] + dx;
+      const y = hole[i + 1] + dy;
+      const id = y * W + x;
+      if (isHole.has(id) || seen.has(id) || !q.isOpaque(x, y)) continue;
+      seen.add(id);
+      rim.push(x, y);
     }
-    f.holes.push(x, y);
+  // break 1–2 rim pixels (the upper ones: the acid runs down, the top edge is dry)
+  const order: number[] = [];
+  for (let i = 0; i < rim.length; i += 2) order.push(i);
+  order.sort((i, j) => rim[i + 1] - rim[j + 1] || hash2(rim[i], rim[i + 1], h.seed) - hash2(rim[j], rim[j + 1], h.seed));
+  const broken = new Set([order[0]]);
+  if (rim.length > 12) broken.add(order[2 + (h.seed % 3)]);
+  for (let i = 0; i < rim.length; i += 2) {
+    keep?.push(rim[i], rim[i + 1]);
+    if (!broken.has(i)) q.set(rim[i], rim[i + 1], VEN.body);
   }
-  let sx = 0;
-  let sy = 0;
-  for (let i = 0; i < hole.length; i += 2) {
-    sx += hole[i];
-    sy += hole[i + 1];
+  // one drip from the lowest rim pixel (seeded among the lowest row)
+  let lo = -1;
+  for (let i = 0; i < rim.length; i += 2) if (lo < 0 || rim[i + 1] > rim[lo + 1] || (rim[i + 1] === rim[lo + 1] && hash2(rim[i], 0, h.seed) > 0.5)) lo = i;
+  if (lo >= 0) {
+    const x = rim[lo];
+    const y = rim[lo + 1];
+    const n = h.rx * h.ry > 4 ? 2 : 1;
+    for (let k = 1; k <= n; k++) {
+      if (q.isOpaque(x, y + k)) q.set(x, y + k, VEN.deep);
+      else {
+        f.drips.push(x, y + k);
+        break;
+      }
+    }
   }
-  return [rnd(sx / (hole.length / 2)), rnd(sy / (hole.length / 2))];
+  return at;
 }
 
 /** A 1-px line inside a layer (only over its opaque pixels). */
@@ -615,15 +682,11 @@ function drawWing(f: Frame, near: boolean): void {
     lineIn(q, R, tip, t.S, 0.12, 0.95);
     lineIn(q, [R[0], R[1] + 1], [tip[0], tip[1] + 0.5], t.S, 0.12, 0.6);
   }
-  if (near) {
-    const k = Math.max(clamp(o.shield, 0, 1), clamp(o.wing, 0, 1));
-    const rx = 2.1 + k * 0.6;
-    const ry = 1.6 + k * 0.6;
-    // the shield: the eye glints through one hole, one more between the upper ribs
-    if (o.shield > 0.6) f.eyeHole = holeIn(f, q, sk.eye[0] + 0.5, sk.eye[1] - 0.5, 2.1, 1.7, keep);
-    holeIn(f, q, g.holes[0][0], g.holes[0][1], rx, ry, keep);
-    if (o.shield <= 0.6) holeIn(f, q, g.holes[1][0], g.holes[1][1], rx, ry, keep);
-  } else if (o.wing > 0.3) holeIn(f, q, g.holes[0][0], g.holes[0][1], 2.1, 1.6, keep);
+  if (near && o.shield > 0.6) {
+    // the shield: the eye glints through a small hole over it
+    f.eyeHole = holeIn(f, q, { c: [sk.eye[0] + 0.5, sk.eye[1] - 0.5], rx: 1.7, ry: 1.5, seed: 21 }, keep);
+  }
+  for (const h of g.holes) if (near || o.wing > 0.3) holeIn(f, q, h, keep);
   f.comp.add(q, near ? Part.cape : Part.wingF, { out: OUT });
   // the bones: el → R (the wing metacarpal) and the leading finger R → F0 (hide), a chitin claw on R
   const b = layer();
@@ -1173,7 +1236,7 @@ export function drawWyvern(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right')
   const light = lightOf(lightFrom);
   const sk = skeleton(o);
   const comp = new Comp(p);
-  const f: Frame = { p, comp, light, o, sk, holes: [] };
+  const f: Frame = { p, comp, light, o, sk, holes: [], drips: [] };
   if (o.body > 0) {
     // back to front
     drawHindLeg(f, false);
@@ -1195,6 +1258,7 @@ export function drawWyvern(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right')
     if (comp.owner(x, y) === Part.none) p.erase(x, y);
   }
   if (o.body > 0) {
+    for (let i = 0; i < f.drips.length; i += 2) if (!p.isOpaque(f.drips[i], f.drips[i + 1]) || comp.owner(f.drips[i], f.drips[i + 1]) === Part.none) p.set(f.drips[i], f.drips[i + 1], VEN.deep);
     sacLight(f);
     bulbLight(f);
     beadLight(f);

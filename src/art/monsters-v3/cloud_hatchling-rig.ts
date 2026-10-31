@@ -19,7 +19,7 @@
 import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
 import { composite, despeckle, Workspace, type Light, type Raster, type V } from '../rigkit';
-import { CLOUD_KEY, COWLICK, COWLICK_UP, CREASE, H, M, MATS, RING, SEAM, SHELL_CAP, SHELL_KEY, TUFT, TUFT_UP, W, clamp01, hiccupRing, ringBand, ringPuff, ringPuffs, seg, stampAt } from './cloud_hatchling-parts';
+import { CLOUD_KEY, COWLICK, GY, LOBE_SEAM, fillPockets, puffLobe, shellCup, COWLICK_UP, CREASE, H, M, MATS, RING, SEAM, SHELL_CAP, SHELL_KEY, TUFT, TUFT_UP, W, clamp01, hiccupRing, ringPuffs, seg, stampAt, type RingPuff } from './cloud_hatchling-parts';
 
 // ------------------------------------------------------------------ the pose (§3.2)
 
@@ -113,6 +113,10 @@ export interface HatchPose {
   shake: number;
   /** HA-12 smear on the release frame: the head was this many px behind */
   smear: number;
+  /** grown: the chest rises on the forelegs (px; roar, victory) */
+  rear: number;
+  /** the ball value used when the pose is drawn grown (the grown death curls a frame earlier) */
+  ballG: number;
 }
 
 export const NEUTRAL: HatchPose = {
@@ -162,6 +166,8 @@ export const NEUTRAL: HatchPose = {
   loose: 0,
   shake: 0,
   smear: 0,
+  rear: 0,
+  ballG: 0,
 };
 
 // ------------------------------------------------------------------ helpers
@@ -189,6 +195,7 @@ export interface Skel {
   chest: Ell;
   belly: Ell;
   head: Ell;
+  headRest: V;
   snout: Ell;
   jaw: Ell;
   cheek: Ell;
@@ -206,7 +213,7 @@ export interface Skel {
   tail: V[];
   tailW: [number, number];
   tailFront: boolean;
-  shell: { c: V; tilt: number };
+  shell: { c: V; tilt: number; flip: boolean };
   wingN: { base: V; tip: V };
   wingF: { base: V; tip: V };
   core: V;
@@ -220,7 +227,7 @@ export function subAges(age: number) {
 export function skel(P: HatchPose, age: number): Skel {
   const { sB, sL, sM, sH, sW, sN } = subAges(age);
   const cr = P.crouch;
-  const o: V = [R(P.hip[0]) + P.shake, R(P.hip[1] - P.lift * L(1, 0.3, sL))];
+  const o: V = [R(P.hip[0]) + P.shake, R(P.hip[1] - P.lift * L(1, 0.3, sL) - P.rear * sL)];
   const sq = P.squash;
   const lean = R(P.lean);
 
@@ -242,15 +249,23 @@ export function skel(P: HatchPose, age: number): Skel {
   // head: rides the body top; the muzzle broadens on f8
   const ht = 0.35 * sB + 0.35 * sL + 0.3 * sM;
   let hc: V = LV([45, 46.5], [57, 37], ht);
+  // during the growth the head stays low and back (no long neck) until the mane frames it (critique r1 #8)
+  const low = clamp01(sB * (1 - age) * 1.2);
+  hc = [hc[0] - low * 3, hc[1] + low * 6];
   hc = [hc[0] + lean + R(P.head[0]) + cr * L(1, 4, sL), hc[1] + R(P.head[1]) + cr * L(4, 12, sL) + R(sq * 1.5)];
   hc = addV(hc, o);
-  const head: Ell = { c: hc, rx: L(10.5, 8.5, ht), ry: L(9.5, 8, ht) };
+  // where the head would be without its own follow offsets (the rear mane stays with the body)
+  const headRest: V = [hc[0] - lean - R(P.head[0]), hc[1] - R(P.head[1])];
+  const head: Ell = { c: hc, rx: L(10.5, 9.5, ht), ry: L(9.5, 8.5, ht) };
   const tl = P.tilt;
-  const snout: Ell = { c: addV(hc, [L(8.5, 7, sM) - Math.max(0, tl) * 1.2, L(3.5, 4, sM) - tl * 2]), rx: L(4.5, 5.2, sM), ry: L(3.5, 4.4, sM) };
-  const jaw: Ell = { c: addV(snout.c, [L(-1, -1.5, sM) - P.jaw * 0.5, L(2.2, 3.4, sM) + P.jaw * L(2, 3, sM)]), rx: L(3.6, 4.6, sM), ry: L(1.6, 2.2, sM) + P.jaw * 0.6 };
-  const cheek: Ell = { c: addV(hc, [L(3.5, 5, sM), L(4, 6, sM)]), rx: 3 + P.cheeks * 1.6, ry: 2.4 + P.cheeks * 1.2 };
-  const eye: V = addV(hc, [L(4.5, 3.5, sM) - Math.max(0, tl) * 0.6, L(-1.5, -1.5, sM) - tl * 1.0]);
-  const mouth: V = [snout.c[0] + snout.rx - 1, snout.c[1] + 1];
+  // the face turns about the head centre with the pitch (tilt 2 ≈ the snout 30° up)
+  const ta = -tl * 0.25;
+  const snout: Ell = { c: addV(hc, rot([L(8.5, 6.5, sM), L(3.5, 3.5, sM)], ta)), rx: L(4.5, 4.6, sM), ry: L(3.5, 4.8, sM) };
+  // the jaw drops ≥ 4 px when wide (critique r1 #9)
+  const jaw: Ell = { c: addV(snout.c, rot([L(-1, -1.5, sM) + P.jaw * 1.4, L(2.2, 3.4, sM) + P.jaw * L(3.6, 4.6, sM)], ta)), rx: L(3.6, 4.6, sM) + P.jaw * 1.4, ry: L(1.6, 2.2, sM) + P.jaw * 0.6 };
+  const cheek: Ell = { c: addV(hc, [L(3.5, 5, sM), L(4, 6, sM)]), rx: 3 + P.cheeks * 3.2, ry: 2.4 + P.cheeks * 2 };
+  const eye: V = addV(hc, rot([L(4.5, 3.5, sM), L(-1.5, -1.5, sM)], ta * 0.8));
+  const mouth: V = [snout.c[0] + snout.rx - 1, snout.c[1] + 1 + R(P.jaw * 2)];
   const crown: V = addV(hc, [-2.5, -head.ry + 0.5]);
 
   // legs: the baby's stubby thigh + feet become the haunch + hind paw; the forepaws plant as forelegs (f7)
@@ -262,8 +277,8 @@ export function skel(P: HatchPose, age: number): Skel {
   // forelegs: baby stubby arms (forepaw raise over the face) → grown planted forelegs (stomp = lift px;
   // the sphinx crouch lays them forward along the floor)
   const lie = sL >= 0.5 ? cr : 0;
-  const baseN: V[] = [LV([45.5, 61], [53, 52], sL), LV([47.5, 63.5], [55, 63 - lie * 3], sL), LV([49, 64.5], [56, 72 - lie * 0.5], sL)];
-  const baseF: V[] = [LV([42, 61.5], [47, 52], sL), LV([43.5, 64], [48.5, 63 - lie * 3], sL), LV([45, 65], [49, 72 - lie * 0.5], sL)];
+  const baseN: V[] = [LV([45.5, 61], [53, 52], sL), LV([47.5, 63.5], [55, 63 - lie * 3], sL), LV([49, 64.5], [56, 70.5 - lie * 0.5], sL)];
+  const baseF: V[] = [LV([42, 61.5], [47, 52], sL), LV([43.5, 64], [48.5, 63 - lie * 3], sL), LV([45, 65], [49, 70.5 - lie * 0.5], sL)];
   const raise = (k: number, p: V[]): V[] => {
     if (sL < 0.5) return p.map((q, i) => (i === 0 ? q : addV(q, [k * (i === 1 ? 2 : 4), -k * (i === 1 ? 6 : 10)])));
     const g = k * (1 - lie);
@@ -277,8 +292,8 @@ export function skel(P: HatchPose, age: number): Skel {
     fix(armN);
     fix(armF);
   }
-  const pawN: Ell = { c: addV(armN[2], [L(0.5, 1.5, sL), L(0.3, 0.3, sL)]), rx: L(1.8, 4.2, sL), ry: L(1.5, 2, sL) };
-  const pawF: Ell = { c: addV(armF[2], [L(0.5, 1.5, sL), L(0.3, 0.3, sL)]), rx: L(1.4, 3.6, sL), ry: L(1.2, 1.8, sL) };
+  const pawN: Ell = { c: addV(armN[2], [L(0.5, 1.5, sL), L(0.3, 1.1, sL)]), rx: L(1.8, 4.2, sL), ry: L(1.5, 2, sL) };
+  const pawF: Ell = { c: addV(armF[2], [L(0.5, 1.5, sL), L(0.3, 1.5, sL)]), rx: L(1.4, 3.6, sL), ry: L(1.2, 1.8, sL) };
 
   // tail: the baby's short curl up behind (shell on the tip); grown: round the haunch along the floor
   const tc = P.tail;
@@ -289,32 +304,40 @@ export function skel(P: HatchPose, age: number): Skel {
     [29.5, 71.5],
     [25.5, 70.5],
     [23.5, 67 + tap * 0.5],
-    [24 + tc * 17, 64 + tap * 1 - tc * 4],
+    [24 + tc * 22, 64 + tap * 1 - tc * 6],
   ];
   const grownTail: V[] = [
     [23, 62],
     [17, 67],
     [18.5, 71.8],
-    [27, 72.4],
-    [36, 72.3],
+    [27, 72.2],
+    [35, 70.4],
   ];
   const tail = babyTail.map((q, i) => addV(LV(q, grownTail[i], sL), [o[0], i < 2 ? o[1] : Math.min(o[1], 0) * (sL < 0.5 ? 1 : 0)]));
   const tailW: [number, number] = [L(4.4, 7, sL), L(2.4, 3, sL)];
   const tip = tail[4];
   const prev = tail[3];
-  const shell = { c: tip, tilt: L(0.3 - tap * 0.25 + tc * 0.2, Math.atan2(tip[1] - prev[1], tip[0] - prev[0]) - Math.PI / 2, sL) };
+  // the cup rides the tip: baby — dome back (left), the jagged rim facing the body; curled in front
+  // (guard) it turns round to face the foe as a shield; grown — a band on the tip in front of the haunch,
+  // dome forward (critique r1 #4)
+  const shell = {
+    c: tip,
+    tilt: L(0.3 - tap * 0.25 + tc * 0.2, Math.atan2(tip[1] - prev[1], tip[0] - prev[0]) - Math.PI / 2, sL),
+    flip: sL >= 0.5 || tc > 0.5,
+  };
 
   // wings: the nubs on the back; grown, the tips folded up into the mane
-  const back: V = addV(LV([35.5, 58], [42, 36], sW), [o[0] + R(lean * 0.3), o[1] + cr * L(2, 10, sL)]);
+  // (grown: the tips lie flat back along the top of the mane, never up like ears; critique r1 #1)
+  const back: V = addV(LV([35, 57], [35, 41], sW), [o[0] + R(lean * 0.3), o[1] + cr * L(2, 10, sL)]);
   const wo = P.wingOpen;
-  const wingN = { base: back, tip: addV(back, [L(-5.5, -9, sW) - wo * L(2, 5, sW), L(-3, -13, sW) - P.wingN - wo * L(2, 4, sW)]) };
-  const backF: V = addV(back, [L(3, 5, sW), L(-2, -2, sW)]);
-  const wingF = { base: backF, tip: addV(backF, [L(-3.5, -4, sW) - wo * L(1, 3, sW), L(-3.5, -14, sW) - P.wingF - wo * L(2, 5, sW)]) };
+  const wingN = { base: back, tip: addV(back, [L(-5.5, -14, sW) - wo * L(2, 1, sW), L(-3, -10, sW) - P.wingN - wo * L(2, 6, sW)]) };
+  const backF: V = addV(back, [L(3, 5, sW), L(-2, -4, sW)]);
+  const wingF = { base: backF, tip: addV(backF, [L(-3.5, -11, sW) - wo * L(1, 1, sW), L(-3.5, -12, sW) - P.wingF - wo * L(2, 6, sW)]) };
 
   const core: V = [R(body.c[0]), R(body.c[1])];
   void sH;
   void sN;
-  return { age, sB, sL, sM, sH, sW, sN, o, body, chest, belly, head, snout, jaw, cheek, eye, mouth, crown, haunch, footN, footF, armN, armF, armW: [L(3.4, 7, sL), L(2.8, 5.6, sL)], pawN, pawF, tail, tailW, tailFront: sL >= 0.5, shell, wingN, wingF, core };
+  return { age, sB, sL, sM, sH, sW, sN, o, body, chest, belly, head, headRest, snout, jaw, cheek, eye, mouth, crown, haunch, footN, footF, armN, armF, armW: [L(3.4, 7, sL), L(2.8, 5.6, sL)], pawN, pawF, tail, tailW, tailFront: sL >= 0.5 || tc > 0.5, shell, wingN, wingF, core };
 }
 
 // ------------------------------------------------------------------ the workspace
@@ -342,68 +365,66 @@ interface Lobe {
 }
 
 /** A group of cloud lobes, each its own dome (calm flat planes), laid back to front with seams. */
-function cloudLobes(p: PixelCanvas, w: Workspace, lobes: readonly Lobe[], mat: number = M.CLOUD): void {
+function cloudLobes(p: PixelCanvas, w: Workspace, lobes: readonly Lobe[], light: Light, spike = 0): void {
   for (const l of lobes) {
     if (l.r < 1) continue;
-    const r = w.raster();
-    r.ell(l.c, l.r + 0.4, l.r, 0, mat, { flat: 1.1, bias: 0.06 });
-    lay(p, w, r);
+    const q = w.canvas();
+    puffLobe(q, l.c[0], l.c[1], l.r, light, l.r >= 3 ? spike : 0);
+    composite(p, q, LOBE_SEAM);
   }
 }
 
-/** The grown mane, head-relative [dx, dy, r]: back cascade (behind the head) and the front ruff. */
-const MANE_BACK: readonly [number, number, number][] = [
-  [-6, 2, 8],
-  [-14, 12, 6.5],
-  [-16, 3, 6.5],
-  [-14, -4, 6],
-  [-7, -8, 5.5],
-  [0, -9, 4.5],
-  [-6, 15, 6],
+/**
+ * The grown mane, head-relative [dx, dy, r, t0] (grown head at (57, 37)): ONE continuous lobed dome
+ * from the crown over the nape and the shoulders down the back to the haunch (critique r1 #1). t0 is the
+ * age the lobe starts at: the mane grows OUT of the cowlick during the growth (f7 crown, f8 nape, f9
+ * shoulders, f10 back + ruff, f11 the last back lobes; critique r1 #8).
+ */
+const MANE_BACK: readonly (readonly [number, number, number, number])[] = [
+  [-33, 13, 5, 4 / 6],
+  [-30, 5, 5.5, 4 / 6],
+  [-24, 11, 6.5, 4 / 6],
+  [-24, -2, 6, 3 / 6],
+  [-17, -7, 6, 2 / 6],
+  [-14, 14, 6, 4 / 6],
+  [-16, 5, 7.5, 3 / 6],
+  [-10, -10, 5.5, 1 / 6],
+  [-9, -1, 7, 2 / 6],
+  [-3, -9, 5, 1 / 6],
+  [-6, 9, 6.5, 3 / 6],
 ];
-const MANE_FRONT: readonly [number, number, number][] = [
-  [-3, 13, 4],
-  [2, 12, 4.5],
-  [1, -7, 3],
+const MANE_FRONT: readonly (readonly [number, number, number, number])[] = [
+  [-2, 12, 4.5, 4 / 6],
+  [4, 11, 4, 4 / 6],
+  [1, -7, 3, 3 / 6],
 ];
 
+/** how far a lobe that starts at age t0 has grown (one growth frame = 1/6) */
+const lobeAt = (age: number, t0: number): number => clamp01((age - t0) * 6);
+
 function maneLobes(S: Skel, P: HatchPose, front: boolean): Lobe[] {
-  const t = S.sN;
-  if (t <= 0) return [];
   const hc = S.head.c;
   const list = front ? MANE_FRONT : MANE_BACK;
   const bris = P.mane + P.fluff;
-  return list.map(([dx, dy, r], i) => {
+  const out: Lobe[] = [];
+  list.forEach(([dx, dy, r, t0], i) => {
+    const t = lobeAt(S.age, t0);
+    if (t <= 0) return;
     // drift: each lobe bobs 1 px on its own phase; bristle pushes it out from the head centre
+    // (only every third lobe bobs: a resting target is struck in any idle frame, HA-21 phase)
     const ph = (P.drift + i / list.length) % 1;
-    const bob = ph < 0.5 ? 0 : -1;
+    const bob = i % 4 === 0 && ph >= 0.5 ? -1 : 0;
     const n = Math.hypot(dx, dy) || 1;
-    const k = L(0.35, 1, t);
-    return { c: [R(hc[0] + dx * k + (dx / n) * bris * 1.5), R(hc[1] + dy * k + bob + (dy / n) * bris * 1.5)] as V, r: r * t * (1 + bris * 0.1) };
+    const k = L(0.55, 1, t);
+    // lobes near the head follow it, the rear ones stay with the body
+    const fw = clamp01(1.25 - n / 16);
+    const hb: V = [S.headRest[0] + (hc[0] - S.headRest[0]) * fw, S.headRest[1] + (hc[1] - S.headRest[1]) * fw];
+    out.push({ c: [R(hb[0] + dx * k + (dx / n) * bris * 2), R(hb[1] + dy * k + bob + (dy / n) * bris * 2)] as V, r: r * L(0.55, 1, t) * (1 + bris * 0.12) });
   });
+  return out;
 }
 
 // ------------------------------------------------------------------ the eggshell
-
-/** The half shell on the grown tail tip: a band with a zigzag rim (dome away from the tail). */
-function shellLayer(w: Workspace, light: Light, tip: V, tilt: number, size: number): PixelCanvas {
-  const r = w.raster();
-  const t = Math.max(-1.2, Math.min(1.2, tilt));
-  const dn: V = [Math.sin(t), Math.cos(t)];
-  const cc: V = [tip[0] - dn[0] * 1, tip[1] - dn[1] * 1];
-  r.ell(cc, 3.6 * size, 3.3 * size, -t, M.SHELL, { z: 6, flat: 1.15 });
-  const q = w.render(r);
-  for (let y = 0; y < H; y++)
-    for (let x = 0; x < W; x++) {
-      if (!q.isOpaque(x, y)) continue;
-      const u = (x + 0.5 - cc[0]) * dn[0] + (y + 0.5 - cc[1]) * dn[1];
-      const v = -(x + 0.5 - cc[0]) * dn[1] + (y + 0.5 - cc[1]) * dn[0];
-      const tooth = Math.floor((v + 40) / 2) % 2;
-      if (u > 0.6 * size + tooth) q.erase(x, y);
-    }
-  speckle(q, light, 2);
-  return q;
-}
 
 /** 2-px earth2 speckle clusters on the shell's shadow plane (earth3), at most n. */
 function speckle(q: PixelCanvas, light: Light, n: number): void {
@@ -540,7 +561,8 @@ function babyEye(p: PixelCanvas, P: HatchPose, e: V): void {
   const narrow = P.eye === 5;
   const wide = P.eye === 6;
   // the round eye: night0 pupil, gold3 iris crescent below, the white catch-light (the brightest pixel)
-  const rows = wide ? ['.kk.', 'kkkk', 'kkkk', 'kkkk', 'kggk', '.gg.'] : ['.kk.', 'kkkk', 'kkkk', 'kggk', '.gg.'];
+  // 4×5: night0 pupil, the gold3 iris ring on the lower and outer (front) side (critique r1 #5)
+  const rows = wide ? ['.kk.', 'kkkk', 'kkkk', 'kkkg', 'kkgg', '.gg.'] : ['.kk.', 'kkkk', 'kkkg', 'kkgg', '.gg.'];
   const oy = wide ? -1 : 0;
   for (let yy = 0; yy < rows.length; yy++)
     for (let xx = 0; xx < 4; xx++) {
@@ -550,6 +572,8 @@ function babyEye(p: PixelCanvas, P: HatchPose, e: V): void {
       put(xx, yy + oy, ch === 'g' ? PAL.gold3 : k);
     }
   if (half || narrow) put(0, 2, k), put(1, 2, k), put(2, 2, k), put(3, 2, k);
+  // the lid: a 1-px crease line over the eye
+  if (!half && !narrow) for (let xx = 0; xx < 4; xx++) if (p.isOpaque(x + xx, y + oy - 1)) put(xx, oy - 1, PAL.leaf1);
   const lk = P.look;
   const cx = 1 + Math.max(-1, Math.min(1, R(lk[0])));
   const cy = (half || narrow ? 2 : 1) + oy + Math.max(-1, Math.min(1, R(lk[1])));
@@ -569,15 +593,17 @@ function grownEye(p: PixelCanvas, P: HatchPose, e: V): void {
     put(0, 0, PAL.white), put(1, 0, PAL.white), put(2, 0, PAL.white), put(3, 0, PAL.white), put(0, 1, PAL.white), put(1, 1, PAL.white), put(2, 1, PAL.mist), put(3, 1, PAL.mist);
     return;
   }
-  if (P.eye === 2 || P.eye === 4) {
+  // X eyes belong to the death only (critique r1 #10); the grown "dazed" (4) is a narrowed glare
+  if (P.eye === 2) {
     put(0, 0, k), put(2, 0, k), put(1, 1, k), put(0, 2, k), put(2, 2, k);
     return;
   }
-  // gold eye with a night0 slit under the heavy brow
-  put(0, 0, PAL.gold3), put(1, 0, PAL.gold3), put(2, 0, PAL.gold3);
-  put(0, 1, PAL.gold2), put(1, 1, k), put(2, 1, PAL.gold3), put(3, 1, PAL.gold2);
-  if (P.eye !== 5 && P.blink < 0.35) put(1, 2, k), put(2, 2, PAL.gold2);
-  if (P.eye === 6) put(1, -1, PAL.gold3);
+  // gold eye (4×3) with a night0 slit under the heavy brow line
+  for (let xx = -1; xx < 4; xx++) put(xx, -1, PAL.leaf1);
+  put(0, 0, PAL.gold3), put(1, 0, PAL.gold3), put(2, 0, k), put(3, 0, PAL.gold3);
+  put(0, 1, PAL.gold3), put(1, 1, PAL.gold3), put(2, 1, k), put(3, 1, PAL.gold3);
+  if (P.eye !== 5 && P.eye !== 4 && P.blink < 0.35) put(1, 2, PAL.gold3), put(2, 2, k), put(3, 2, PAL.gold3);
+  if (P.eye === 6) put(0, -1, PAL.gold3), put(1, -1, PAL.gold3), put(2, -1, k), put(3, -1, PAL.gold3);
 }
 
 // ------------------------------------------------------------------ the draw
@@ -598,32 +624,60 @@ export function posePuffs(P: HatchPose, age: number) {
   return ringPuffs(P.ring, { cy: g.cy, rx: g.rx, ry: g.ry }).map((q) => ({ ...q, x: q.x + g.cx - RING.cx }));
 }
 
+/** the pose as one form draws it (the grown form curls into its ball one frame earlier: ballG) */
+export function formPose(P: HatchPose, age: number): HatchPose {
+  return age >= 0.5 && P.ballG > P.ball ? { ...P, ball: P.ballG } : P;
+}
+
 /** a pose drawn as a story state (the ball / the egg) instead of the standing body */
 export const isStory = (P: HatchPose): boolean => P.ball >= 0.5 || P.egg > 0 || P.knit > 0;
 
-export function drawHatch(p: PixelCanvas, P: HatchPose, light: Light, shellAge?: number): void {
-  const age = ageOf(P, shellAge);
+export function drawHatch(p: PixelCanvas, P0: HatchPose, light: Light, shellAge?: number): void {
+  const age = ageOf(P0, shellAge);
+  const P = formPose(P0, age);
   const w = ws(light);
   const eggC: V = [EGG_C[0] + R(P.hip[0]) + P.shake, EGG_C[1] + R(P.hip[1] - P.lift)];
+  // parts with 1-px craft (the shell cup's rim) are laid after the despeckle pass
+  const late: (() => void)[] = [];
   if (isStory(P)) drawStory(p, w, P, light, age, shellAge !== undefined);
-  else drawBody(p, w, P, light, age);
+  else drawBody(p, w, P, light, age, late);
   if (P.plates > 0) drawPlates(p, w, P, light, eggC, isStory(P));
   despeckle(p, 1);
+  hideRim(p, light);
+  for (const f of late) f();
+  fillPockets(p, GY - 2);
   p.outline(PAL.ink);
   lightPixels(p, P, light, age);
 }
 
+/**
+ * IŞ-7: the sky's reflection, a 1-px `water4` line on the hide's shadow-side silhouette (right and
+ * underside for P1; never on the floor contact rows).
+ */
+function hideRim(p: PixelCanvas, light: Light): void {
+  const s = -light.side;
+  const hits: number[] = [];
+  for (let y = 1; y < GY - 3; y++)
+    for (let x = 1; x < W - 1; x++) {
+      const c = p.get(x, y);
+      if (c !== PAL.leaf3 && c !== PAL.leaf2) continue;
+      if (p.isOpaque(x + s, y) && p.isOpaque(x, y + 1)) continue;
+      if (!p.isOpaque(x - s, y) || !p.isOpaque(x, y - 1)) continue;
+      if (!p.isOpaque(x + s, y) || (!p.isOpaque(x, y + 1) && !p.isOpaque(x + s, y + 1))) hits.push(x, y);
+    }
+  for (let i = 0; i < hits.length; i += 2) p.set(hits[i], hits[i + 1], PAL.water4);
+}
+
 // ------------------------------------------------------------------ the standing body (both forms)
 
-function drawBody(p: PixelCanvas, w: Workspace, P: HatchPose, light: Light, age: number): void {
+function drawBody(p: PixelCanvas, w: Workspace, P: HatchPose, light: Light, age: number, late: (() => void)[]): void {
   const S = skel(P, age);
   const puffs = posePuffs(P, age);
 
   // ---- 0: the back half of the waist ring (behind the body)
-  const rg = ringGeo(P);
-  if (puffs.length) ringBand(p, rg.cx, rg.cy, rg.rx, rg.ry, 'back');
-  for (const q of puffs) if (q.back) ringPuff(p, q.x, q.y, light);
-  if (P.wall > 0) for (const q of puffs) if (q.back) ringPuff(p, q.x, q.y - 4, light);
+  const wallRows = puffs.length && P.wall > 0 ? wallPuffs(P) : null;
+  if (wallRows) for (const row of wallRows) ringHalf(p, w, row, true, light, 3.1 + P.wall * 0.9);
+  else ringHalf(p, w, puffs, true, light);
 
   // ---- 1: far parts (far foot, far arm / foreleg, far wing)
   {
@@ -631,12 +685,7 @@ function drawBody(p: PixelCanvas, w: Workspace, P: HatchPose, light: Light, age:
     ell(r, S.footF, M.FAR, -4, 0, 1.3);
     r.tube(S.armF, S.armW[0] * 0.9, S.armW[1] * 0.9, M.FAR, { z: -4, flat: 1.3 });
     ell(r, S.pawF, M.FAR, -3, 0, 1.3);
-    if (S.sW < 0.5) r.tube([S.wingF.base, S.wingF.tip], 4, 2.4, M.FAR, { z: -5, flat: 1.3 });
-    lay(p, w, r);
-  }
-  if (S.sW >= 0.5) {
-    const r = w.raster();
-    r.facet(wingTip(S.wingF.base, S.wingF.tip, 3.4, P.wingOpen), M.TIP, [-0.2, -0.3, 1], -5, -0.3);
+    if (S.sW < 0.5) r.ell(LV(S.wingF.base, S.wingF.tip, 0.6), 2.6, 2.1, -0.6, M.FAR, { z: -5, flat: 1.2 });
     lay(p, w, r);
   }
 
@@ -648,27 +697,21 @@ function drawBody(p: PixelCanvas, w: Workspace, P: HatchPose, light: Light, age:
     r.tube(S.tail.slice(0, 3), S.tailW[0], wm, M.HIDE, { z: 2, flat: 1.3 });
     r.tube(S.tail.slice(2), wm, S.tailW[1], M.HIDE, { z: 2, flat: 1.3 });
     lay(p, w, r, S.sL >= 0.5 ? CREASE : SEAM);
-    if (P.helmet < 0.25) {
-      if (S.sL < 0.5) {
-        const q = w.canvas();
-        stampAt(q, SHELL_CAP, R(S.shell.c[0]), R(S.shell.c[1]) - 1, light, SHELL_KEY);
+    if (P.helmet < 0.25)
+      late.push(() => {
+        const q = new PixelCanvas(W, H);
+        shellCup(q, R(S.shell.c[0]), R(S.shell.c[1]) - (S.sL < 0.5 && !S.shell.flip ? 2 : 0), light, S.shell.flip);
         composite(p, q, SEAM);
-      } else composite(p, shellLayer(w, light, S.shell.c, S.shell.tilt, 0.95), SEAM);
-    }
+      });
   };
   if (!S.tailFront) drawTail();
-
-  // ---- 3: grown near wing tip (it pokes up out of the back mane)
-  if (S.sW >= 0.5) {
-    const r = w.raster();
-    r.facet(wingTip(S.wingN.base, S.wingN.tip, 4, P.wingOpen), M.TIP, [-0.5, -0.4, 1], 0, 0.2);
-    lay(p, w, r);
-  }
 
   // ---- 4: the body (body, chest, belly plate), then the haunch + hind foot
   {
     const r = w.raster();
     r.ell(S.body.c, S.body.rx, S.body.ry, 0, M.HIDE, { flat: 1.3 });
+    // the baby's short neck under the big head (the head sits ON the pear, no gap)
+    if (S.sB < 1) r.ell(LV(S.body.c, S.head.c, 0.5), L(6, 3, S.sB), L(4.5, 2, S.sB), 0, M.HIDE, { z: -1, flat: 1.3 });
     ell(r, S.chest, M.HIDE, 1, 0, 1.3);
     if (S.sM < 0.5) ell(r, S.belly, M.BELLY, 3 + S.body.rx * 0.4, 0, 1.3, 0.05);
     lay(p, w, r);
@@ -679,13 +722,23 @@ function drawBody(p: PixelCanvas, w: Workspace, P: HatchPose, light: Light, age:
   }
   if (S.tailFront) drawTail();
 
-  // ---- 5: the near wing nub (baby) / the back mane (grown)
+  // ---- 5: the near wing nub (baby: a 6×5 leaf3 lobe, inked off the back) / the back mane + the folded
+  // wing tips lying back along it (grown)
   if (S.sW < 0.5) {
     const r = w.raster();
-    r.tube([S.wingN.base, S.wingN.tip], 5.4, 3, M.HIDE, { z: 6, flat: 1.25, bias: 0.05 });
+    r.ell(LV(S.wingN.base, S.wingN.tip, 0.55), 3.3, 2.6, -0.55 - P.wingOpen * 0.4, M.TIP, { z: 6, flat: 1.15, bias: 0.12 });
+    lay(p, w, r, INK_SEAM);
+  }
+  if (S.sW >= 0.5) {
+    // the folded wing tips: their roots under the back mane, the points sticking out behind it
+    const rf = w.raster();
+    rf.facet(wingTip(S.wingF.base, S.wingF.tip, 2.6, P.wingOpen), M.TIP, [-0.2, -0.3, 1], -5, -0.3);
+    lay(p, w, rf);
+    const r = w.raster();
+    r.facet(wingTip(S.wingN.base, S.wingN.tip, 3, P.wingOpen), M.TIP, [-0.5, -0.6, 1], 0, 0.25);
     lay(p, w, r);
   }
-  cloudLobes(p, w, maneLobes(S, P, false));
+  cloudLobes(p, w, maneLobes(S, P, false), light, P.fluff >= 0.9 ? 2 : P.fluff > 0.5 ? 1 : 0);
 
   // ---- 6: near arm / foreleg
   {
@@ -700,25 +753,33 @@ function drawBody(p: PixelCanvas, w: Workspace, P: HatchPose, light: Light, age:
   if (smear) {
     // HA-12: the release smear — the head's silhouette stretched back along its path (hide, flat)
     const r = w.raster();
-    for (let k = 1; k <= smear; k++) r.ell([S.head.c[0] - k, S.head.c[1] + k * 0.3], S.head.rx * 0.9, S.head.ry * 0.85, 0, M.FAR, { z: 9, flat: 2.5, bias: -0.1 });
+    for (let k = 1; k <= smear; k++) r.ell([S.head.c[0] - k * 1.5, S.head.c[1] + k * 0.4], S.head.rx * 0.9, S.head.ry * 0.85, 0, M.FAR, { z: 9, flat: 2.5, bias: -0.1 });
     lay(p, w, r);
   }
   {
     const r = w.raster();
-    const ang = -P.tilt * 0.08;
+    const ang = -P.tilt * 0.12;
     r.ell(S.head.c, S.head.rx, S.head.ry, ang, M.HIDE, { z: 10, flat: 1.35 });
     r.ell(S.snout.c, S.snout.rx, S.snout.ry, ang, M.HIDE, { z: 12, flat: 1.2, bias: 0.04 });
     if (P.cheeks > 0.05) ell(r, S.cheek, M.HIDE, 13, 0, 1.3, 0.08);
     if (S.sM >= 0.5 || P.jaw > 0.2) ell(r, S.jaw, S.sM >= 0.5 ? M.BELLY : M.HIDE, 11, 0, 1.3);
+    // the open mouth's cavity between the snout and the dropped jaw (painted skin1 / skin3 in surface())
+    if (P.jaw > 0.2) r.ell(LV(S.snout.c, S.jaw.c, 0.55), S.snout.rx * 0.8, Math.max(1.5, (S.jaw.c[1] - S.snout.c[1]) * 0.55), ang, M.HIDE, { z: 10.5, flat: 1.3 });
     lay(p, w, r, CREASE);
   }
   // horns (grown, f9): small ivory ram curls half buried in the mane
-  if (S.sH > 0) drawHorn(p, w, S);
-  // the front mane (ruff under the jaw, the brow) and the cowlick
-  cloudLobes(p, w, maneLobes(S, P, true));
-  if (S.sN < 1) {
+  if (S.sH > 0) drawHorn(p, w, S, light);
+  // the front mane (ruff under the jaw, the brow) and the cowlick (until the crown lobes replace it)
+  cloudLobes(p, w, maneLobes(S, P, true), light, P.fluff >= 0.9 ? 2 : P.fluff > 0.5 ? 1 : 0);
+  if (lobeAt(S.age, 1 / 6) < 0.5) {
     const q = w.canvas();
-    stampAt(q, P.fluff > 0.5 || P.tuft > 0.7 ? COWLICK_UP : COWLICK, R(S.crown[0] + P.cow), R(S.crown[1] + 1 - P.fluff), light, CLOUD_KEY);
+    const cx = R(S.crown[0] + P.cow);
+    const cy = R(S.crown[1] + 1 - P.fluff * 2);
+    stampAt(q, P.fluff > 0.5 || P.tuft > 0.7 ? COWLICK_UP : COWLICK, cx, cy, light, CLOUD_KEY);
+    // static: the cowlick stands on end, three spikes 3 px up (critique r1 #11)
+    if (P.fluff > 0.5)
+      for (const [dx, hgt] of [[-3, 2], [0, 3], [3, 2]] as const)
+        for (let k = 1; k <= hgt; k++) q.set(cx + dx, cy - 6 - k, k === hgt ? PAL.white : PAL.mist);
     composite(p, q, SEAM);
   }
   // chest tuft (baby): a small cloud puff at the throat
@@ -726,7 +787,7 @@ function drawBody(p: PixelCanvas, w: Workspace, P: HatchPose, light: Light, age:
     const hc = S.head.c;
     const t = P.tuft + P.fluff;
     const q = w.canvas();
-    stampAt(q, t > 0.5 ? TUFT_UP : TUFT, R(hc[0] - 1), R(hc[1] + S.head.ry), light, CLOUD_KEY);
+    stampAt(q, t > 0.5 ? TUFT_UP : TUFT, R(hc[0] - 1), R(hc[1] + S.head.ry + 1), light, CLOUD_KEY);
     composite(p, q, SEAM);
   }
   // the helmet riding the head / sliding down the back (summon f10–f11)
@@ -736,13 +797,8 @@ function drawBody(p: PixelCanvas, w: Workspace, P: HatchPose, light: Light, age:
   }
 
   // ---- 8: the front half of the ring
-  if (puffs.length) {
-    const q = w.canvas();
-    ringBand(q, rg.cx, rg.cy, rg.rx, rg.ry, 'front');
-    for (const pf of puffs) if (!pf.back) ringPuff(q, pf.x, pf.y, light);
-    if (P.wall > 0) for (const pf of puffs) if (!pf.back) ringPuff(q, pf.x, pf.y - 4, light);
-    composite(p, q, SEAM);
-  }
+  if (wallRows) for (const row of wallRows) ringHalf(p, w, row, false, light, 3.1 + P.wall * 0.9);
+  else ringHalf(p, w, puffs, false, light);
 
   // ---- 9: the details on the surface (before the outline: they are inside the silhouette)
   surface(p, P, S);
@@ -763,31 +819,68 @@ function wingTip(base: V, tip: V, hw: number, open: number): V[] {
   ];
 }
 
-/** the grown horn: a small ivory ram curl (a tube spiral) behind the eye, half in the mane */
-function drawHorn(p: PixelCanvas, w: Workspace, S: Skel): void {
-  const r = w.raster();
-  const hc = S.head.c;
+/**
+ * The grown horn: a SOLID ivory ram curl (critique r1 #1) tucked behind and above the eye: a filled
+ * disc lit skin4 / earth4 / earth3 by the key light, an earth2 spiral groove, the curl's tip rolling
+ * forward under it. No hide shows through.
+ */
+function drawHorn(p: PixelCanvas, w: Workspace, S: Skel, light: Light): void {
   const k = S.sH;
-  // the curl's centre sits behind the eye; the horn leaves the crown backward and rolls down and forward
-  const cc: V = [hc[0] - 4.5, hc[1] - 1.5];
-  const pts: V[] = [];
-  for (let i = 0; i <= 10; i++) {
-    const t = i / 10;
-    const a = -Math.PI * 0.35 - t * Math.PI * 1.45 * k;
-    const rr = (4.2 - t * 2.4) * k;
-    pts.push([cc[0] + Math.cos(a) * rr, cc[1] + Math.sin(a) * rr]);
-  }
-  r.tube(pts, 3 * k + 0.6, 1.4, M.IVORY, { z: 14, flat: 1.3 });
-  const q = lay(p, w, r);
-  // the spiral grooves: earth2 dashes across the band
-  if (k >= 0.9)
-    for (let i = 2; i <= 8; i += 3) {
-      const [x, y] = pts[i];
-      const xx = R(x);
-      const yy = R(y);
-      if (q.isOpaque(xx, yy) && q.get(xx, yy) !== PAL.skin4) p.set(xx, yy, PAL.earth2);
+  const hc = S.head.c;
+  const c: V = [R(hc[0] - 3) + 0.5, R(hc[1] - 4.5) + 0.5];
+  const r = 1.4 + 2.2 * k;
+  const q = w.canvas();
+  const lv = light.v2;
+  const tip: V = [c[0] + r * 0.55, c[1] + r * 0.85];
+  for (let y = Math.floor(c[1] - r - 1); y <= Math.ceil(c[1] + r + 2); y++)
+    for (let x = Math.floor(c[0] - r - 1); x <= Math.ceil(c[0] + r + 2); x++) {
+      const dx = x + 0.5 - c[0];
+      const dy = y + 0.5 - c[1];
+      const inDisc = dx * dx + dy * dy <= r * r;
+      const tx = x + 0.5 - tip[0];
+      const ty = y + 0.5 - tip[1];
+      const inTip = k > 0.5 && tx * tx * 1.6 + ty * ty <= 2.2;
+      if (!inDisc && !inTip) continue;
+      const s = inDisc ? (dx * lv[0] + dy * lv[1]) / r : -0.5;
+      q.set(x, y, s > -0.1 ? PAL.skin4 : s > -0.55 ? PAL.earth4 : PAL.earth3);
     }
+  if (k >= 0.6)
+    for (let i = 0; i <= 14; i++) {
+      const t = i / 14;
+      const a = -Math.PI * 0.6 + t * Math.PI * 2.2;
+      const rr = 0.4 + t * (r - 1.3);
+      const x = Math.floor(c[0] + Math.cos(a) * rr);
+      const y = Math.floor(c[1] + Math.sin(a) * rr);
+      if (q.isOpaque(x, y)) q.set(x, y, PAL.earth2);
+    }
+  composite(p, q, SEAM);
 }
+
+/** one half of the waist ring: separate round puffs (≥ 6×5, no band), lower puffs over upper ones */
+function ringHalf(p: PixelCanvas, w: Workspace, puffs: readonly RingPuff[], back: boolean, light: Light, r = 3.1): void {
+  const sel = puffs.filter((q) => q.back === back).sort((a, b) => a.y - b.y);
+  for (const pf of sel) {
+    const q = w.canvas();
+    puffLobe(q, pf.x + 0.5, pf.y + 0.5, r, light);
+    composite(p, q, LOBE_SEAM);
+  }
+}
+
+/**
+ * The guard's puff wall (critique r1 #3): the ring sunk round the lying body as TWO rows of touching
+ * puffs (no band, no links): the lower row on the ring, the upper row half a spacing on and 5 px up,
+ * so its top meets the resting muzzle. Upper row first (behind), the lower row over it.
+ */
+function wallPuffs(P: HatchPose): RingPuff[][] {
+  const g = ringGeo(P);
+  const k = clamp01(P.wall);
+  const lower = ringPuffs(P.ring, { cy: g.cy, rx: g.rx - 2, ry: g.ry }).map((q) => ({ ...q, x: q.x + g.cx - RING.cx }));
+  const upper = ringPuffs(P.ring + 1 / 24, { cy: g.cy - R(5 * k), rx: g.rx - 3, ry: g.ry - 1 }).map((q) => ({ ...q, x: q.x + g.cx - RING.cx }));
+  return [upper, lower];
+}
+
+/** a seam that inks the contact edge (the baby's wing nub stands off its back) */
+const INK_SEAM = (): number => PAL.ink;
 
 /** mouth, nostril, belly seams, claws, cheek crease (inside the silhouette, before the outline) */
 function surface(p: PixelCanvas, P: HatchPose, S: Skel): void {
@@ -797,16 +890,25 @@ function surface(p: PixelCanvas, P: HatchPose, S: Skel): void {
   const my = R(sn.c[1] + sn.ry * 0.5);
   const inside = (x: number, y: number) => p.isOpaque(x, y) && p.isOpaque(x, y + 1) && p.isOpaque(x + 1, y);
   if (P.jaw > 0.2) {
-    // the open mouth: skin1 cavity, skin2 tongue at the bottom
-    const open = Math.max(2, R(L(1, 4, P.jaw) * (grownFace ? 1.3 : 1)));
-    const len = R(sn.rx * 1.2) + 1;
-    for (let k = 0; k < len; k++)
-      for (let j = 0; j < open; j++) {
-        const x = mx + k;
-        const y = my + j - (k > len - 3 ? 0 : 0);
-        if (!inside(x, y)) continue;
-        if (k === len - 1 && j === 0) continue;
-        p.set(x, y, j >= open - 1 && k < len - 2 && k > 0 ? PAL.skin2 : PAL.skin1);
+    // the open mouth: a wedge from the corner to the lips, `jaw` × 5–6 px wide at the front, skin1
+    // cavity with the skin3 tongue along its floor (≤ 20 colours); it follows the head's pitch (critique r1 #9)
+    const ta = -P.tilt * 0.25;
+    const open = P.jaw * (grownFace ? 6 : 5);
+    const len = R(sn.rx * 1.5) + 1;
+    const c0: V = [sn.c[0] - sn.rx * 0.45, sn.c[1] + sn.ry * 0.45];
+    const done = new Set<number>();
+    for (let k = 0; k <= len * 2; k++)
+      for (let j = -4; j <= 14; j++) {
+        const kk = k / 2;
+        const jj = j / 2;
+        const h = (open * kk) / len;
+        if (jj < -h * 0.2 || jj > h * 0.8) continue;
+        const q = addV(c0, rot([kk, jj], ta));
+        const x = Math.floor(q[0]);
+        const y = Math.floor(q[1]);
+        if (done.has(y * W + x)) continue;
+        done.add(y * W + x);
+        p.set(x, y, jj > h * 0.8 - 1.2 && kk < len - 1 ? PAL.skin3 : PAL.skin1);
       }
   } else {
     // the closed smile, tucked under the snout (a 1-px crease that turns up at the corner)
@@ -905,7 +1007,7 @@ export const EGG_C: V = [40, 74 - EGG_RY - 0.5];
 /** The ball's geometry at a pose (centre, radius) — any age. */
 export function ballGeoOf(P: HatchPose, age: number): { c: V; r: number } {
   const curl = clamp01((P.ball - 0.5) * 2);
-  const rB = L(7.6, 5.6, curl);
+  const rB = L(10.5, 5.6, curl);
   const rG = L(15, 13, curl);
   const r = L(rB, rG, age);
   return { c: [40 + R(P.hip[0]) + P.shake, 74 - r - 0.5 + R(P.hip[1] - P.lift)], r };
@@ -915,11 +1017,12 @@ function drawStory(p: PixelCanvas, w: Workspace, P: HatchPose, light: Light, age
   const eggC: V = [EGG_C[0] + R(P.hip[0]) + P.shake, EGG_C[1] + R(P.hip[1] - P.lift)];
   const tilt = P.eggTilt * 0.14 + (P.float === 1 ? -0.12 : P.float === 3 ? 0.12 : 0);
   // the cloud lip under the floating egg (death f9 on) and the loose mane lobes on the floor
-  if (P.loose > 0 && grownShell) looseLobes(p, w, P, age);
-  if (P.float > 0) floatCloud(p, w, eggC, P.float, grownShell);
+  if (P.float > 0) floatCloud(p, w, light, eggC, P.float, grownShell);
 
   const showBall = P.ball >= 0.5 && (P.egg <= 0 || P.burst > 0);
   if (showBall) drawBall(p, w, P, light, age);
+  // the peeled mane lobes sinking to the floor round the shrinking ball (in front: they must read)
+  if (P.loose > 0 && grownShell) looseLobes(p, w, light, P, age);
 
   // the summon burst: the cup and the popped top + shards
   if (P.burst > 0) {
@@ -957,7 +1060,7 @@ function drawBall(p: PixelCanvas, w: Workspace, P: HatchPose, light: Light, age:
       const a = -Math.PI * 0.95 + i * 0.42 + th;
       lobes.push({ c: [R(c[0] + Math.cos(a) * r * 1.02), R(c[1] + Math.sin(a) * r * 0.95)], r: 4.5 * mane });
     }
-    cloudLobes(p, w, lobes);
+    cloudLobes(p, w, lobes, light);
   }
   // the tail wrapping round the front bottom
   const tail: V[] = [];
@@ -1023,8 +1126,9 @@ function storyLights(p: PixelCanvas, P: HatchPose, light: Light, age: number): v
     }
   }
   if (P.glint > 0) {
-    const gx = eggC[0] + (light.side < 0 ? -3 : 3) + (P.float === 2 ? (light.side < 0 ? 1 : -1) : 0);
-    const gy = eggC[1] - (P.float === 2 ? 6 : 4);
+    const slide = P.float > 0 ? (P.float - 2) * 2 : 0;
+    const gx = eggC[0] + (light.side < 0 ? -3 : 3) + slide;
+    const gy = eggC[1] - 4 - (P.float === 2 ? 2 : 0);
     shellGlint(p, [gx + (light.side < 0 ? 2 : -2), gy + 4], P.glint, light, false);
   }
 }
@@ -1067,7 +1171,7 @@ function drawPlates(p: PixelCanvas, w: Workspace, P: HatchPose, light: Light, eg
   void behind;
 }
 
-function floatCloud(p: PixelCanvas, w: Workspace, eggC: V, phase: number, grownShell: boolean): void {
+function floatCloud(p: PixelCanvas, w: Workspace, light: Light, eggC: V, phase: number, grownShell: boolean): void {
   const y = eggC[1] + EGG_RY + 1;
   void y;
   const sh = (phase - 1) % 3;
@@ -1078,10 +1182,10 @@ function floatCloud(p: PixelCanvas, w: Workspace, eggC: V, phase: number, grownS
     const r = (i === 1 || i === 2 ? 3 : 2.4) * big;
     lobes.push({ c: [R(eggC[0] - 7 * big + i * 4.6 * big), R(73 - r + bob)], r });
   }
-  cloudLobes(p, w, lobes);
+  cloudLobes(p, w, lobes, light);
 }
 
-function looseLobes(p: PixelCanvas, w: Workspace, P: HatchPose, age: number): void {
+function looseLobes(p: PixelCanvas, w: Workspace, light: Light, P: HatchPose, age: number): void {
   const k = clamp01(P.loose);
   const lobes: Lobe[] = [];
   const spread = L(16, 11, k);
@@ -1091,5 +1195,5 @@ function looseLobes(p: PixelCanvas, w: Workspace, P: HatchPose, age: number): vo
     const y = L(52 + (i % 2) * 6, 72.5 - r - (i % 2), k);
     lobes.push({ c: [R(x), R(y)], r });
   }
-  cloudLobes(p, w, lobes);
+  cloudLobes(p, w, lobes, light);
 }
