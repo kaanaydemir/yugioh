@@ -16,6 +16,7 @@ import type { PixelCanvas } from '../pixel';
 import { renderArt } from '../cardart-v3/_kit';
 import dawnSwords from '../cardart-v3/dawn_swords';
 import magicHat from '../cardart-v3/magic_hat';
+import { LANE_E_ART } from '../cardart-v3/lane-e';
 
 /** A card's v3 artwork painter (CARD_ART_W × CARD_ART_H, palette tones only). */
 export type CardArtV3Painter = (p: PixelCanvas) => void;
@@ -29,6 +30,7 @@ const ART: Partial<Record<CardId, CardArtV3Painter>> = {
   magic_hat: (p) => {
     p.blit(renderArt(magicHat, 0).smallPx, 0, 0);
   },
+  ...LANE_E_ART, // lane E: the new spells' v3 pictures (../cardart-v3/lane-e.ts)
 };
 const ICON: Partial<Record<CardId, (p: PixelCanvas) => void>> = {};
 
