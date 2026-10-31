@@ -14,9 +14,9 @@
 
 import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
-import { drawDrake } from '../monsters-v3/ashen_drake-rig';
-import { drawPose } from '../monsters-v3/ashen_drake-anims';
-import { W, H, setLight } from '../monsters-v3/ashen_drake-gbuf';
+import { drawDrake } from '../monsters-v3/_ashen_legacy/ashen_drake-rig';
+import { drawPose } from '../monsters-v3/_ashen_legacy/ashen_drake-anims';
+import { W, H, setLight } from '../monsters-v3/_ashen_legacy/ashen_drake-gbuf';
 import { ink, paintBackdrop, rim } from './_kit';
 import type { CardArtV3 } from './_types';
 

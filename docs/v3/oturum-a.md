@@ -6,9 +6,9 @@ Branch `claude/kart-a` (from 684e290). Brief: `docs/v3/PARALEL_OTURUMLAR.md`.
 
 | Card | Design | Sprite rig (P1/P2) | Card art | Cut-in | Cinematics | SFX | Critique rounds | Gates | Pushed |
 |---|---|---|---|---|---|---|---|---|---|
-| ashen_drake (R1, no rebirth) | in progress | — | — | — | — | — | 0 | — | — |
-| venom_drake (full redesign) | in progress | — | — | — | — | — | 0 | — | — |
-| cloud_hatchling (C3 + aged form) | in progress | — | — | n/a (not ace) | — | — | 0 | — | — |
+| ashen_drake (R1, no rebirth) | done (rev 3) | — | — | — | — | — | 0 | — | — |
+| venom_drake (full redesign) | done (rev 3) | — | — | — | — | — | 0 | — | — |
+| cloud_hatchling (C3 + aged form) | done (rev 3) | — | — | n/a (not ace) | — | — | 0 | — | — |
 
 ## Environment notes
 - The container's Chromium lives at `/opt/pw-browsers/chromium-1243/chrome-linux64/chrome`, but the tools look for
@@ -17,6 +17,16 @@ Branch `claude/kart-a` (from 684e290). Brief: `docs/v3/PARALEL_OTURUMLAR.md`.
 - `shots/` is gitignored, so the v1 gate baselines were filmed at the lane's start commit (684e290):
   `shots/v3/a3/baseline/v1films` and `shots/v3/a56/baseline/a6v1films`.
 - Known test failures at start (4): cardface-v3 G1 (scrap_raiders, lane D), dusk_ashen, hourglass_imp, shield_titan.
+
+## Where we are (WIP checkpoint, 2026-10-31 ~20:00 UTC)
+- Done + pushed: design docs rev 3 (3 rounds of design critique), shared infrastructure + its adversarial-verify fixes.
+- Running (build workflow `kart-a-build`, run wf_cf41a606-b86): sprite builds of ashen_drake (new vulture-perch rig:
+  gbuf/rig/cloak/ember/anims; old quadruped kept under `_ashen_legacy/` until the build ends) and venom_drake
+  (scorpion wyvern: gbuf/rig/holes/anims, registered as `venom_drake-wyvern.ts`; old serpent files deleted).
+  WIP: `tests/art/venom_drake.test.ts` still imports the deleted file (being rewritten by the builder).
+- Next per card: 3 sheet-critique rounds → card art (+cut-in) + critique → cinematics + SFX → 3 film-critique rounds
+  (visual + sound/timing critics) → gates → 3 adversarial verifiers → commit/push. cloud_hatchling starts when a
+  builder slot frees (2 concurrent agents on this 4-CPU container).
 
 ## Design docs
 - `docs/v3/kart-a/ashen_drake.md`, `docs/v3/kart-a/venom_drake.md`, `docs/v3/kart-a/cloud_hatchling.md`
