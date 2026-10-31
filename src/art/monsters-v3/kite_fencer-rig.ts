@@ -343,6 +343,17 @@ function limb(f: Frame, a: Pt, b: Pt, w0: number, w1: number, t: Tones, part: Pa
 function paintString(f: Frame): void {
   const { o, sk } = f;
   const k = sk.kite;
+  if (o.smode === 5 && k) {
+    // the falling kite's string trails ABOVE it, curling to the side away from the tilt (a leaf, not a dive)
+    const B = k.B;
+    const s = o.ka >= 0 ? -1 : 1;
+    const q = layer();
+    path1(q, spline([B, [B[0] + 4 * s, B[1] + 1], [B[0] + 11 * s, B[1] - 4], [B[0] + 14 * s, B[1] - 13], [B[0] + 12 * s, B[1] - 22]], 4), STRING);
+    bowTie(q, [B[0] + 9 * s, B[1] - 2], BOW_A);
+    bowTie(q, [B[0] + 14 * s, B[1] - 12], BOW_B);
+    f.comp.add(q, Part.string);
+    return;
+  }
   if (o.smode === 3 || !k || o.kmode === 2) {
     if (o.smode === 4) coiled(f);
     return;
@@ -475,7 +486,7 @@ export function paintKite(q: PixelCanvas, k: KiteGeom, light: Light, o: { flash?
   if (o.bump) {
     // something rising under the lying cloth: a lit dome in the middle
     const s = kitLayer(q.w, q.h);
-    s.ellipse(X[0] + 1, X[1] - o.bump / 2, 5, Math.max(1, o.bump / 2 + 1), gold.M);
+    s.ellipse(X[0] + 1, X[1] - o.bump / 2, 5 + o.bump / 3, Math.max(1, o.bump / 2 + 1), gold.M);
     bands(s, gold, light, 2, 2);
     q.blit(s, 0, 0);
     s.clear();
@@ -772,10 +783,9 @@ function paintLight(f: Frame): void {
     const mx = rnd((B[0] + o.pinX) / 2);
     const my = rnd((B[1] + o.pinY) / 2);
     p.set(mx, my, PAL.white);
-    p.set(mx - 1, my - 1, PAL.gold4);
-    p.set(mx + 1, my + 1, PAL.gold4);
+    p.set(mx + 1, my, PAL.white);
+    p.set(mx, my - 1, PAL.gold4);
     p.set(mx + 1, my - 1, PAL.gold4);
-    p.set(mx - 1, my + 1, PAL.gold4);
   }
   if (o.star > 0) {
     const [x, y] = sk.tip;
@@ -866,13 +876,18 @@ export function drawFencer(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right' 
  * on (cx, cy) of a canvas, tilted by `tilt` deg, `open` 0…1.2, billow px; outlined. The cinematic builds its tilt maps
  * from this (whole-pixel rotation of the polygon, re-rasterised, never a rotated sprite).
  */
-export function drawLooseKite(p: PixelCanvas, cx: number, cy: number, tilt: number, open = 1, billow = 1, lightFrom: 'left' | 'right' = 'left', withString = true): void {
+export function drawLooseKite(p: PixelCanvas, cx: number, cy: number, tilt: number, open = 1, billow = 1, lightFrom: 'left' | 'right' = 'left', string: 'up' | 'down' | 'none' = 'up'): void {
   const light = lightOf(lightFrom);
   const k = kiteGeom([cx, cy], tilt, open, 1, billow);
   const q = new PixelCanvas(p.w, p.h);
-  if (withString) {
-    // the trailing string: a short curl hanging from the tail
-    const B = k.B;
+  const B = k.B;
+  if (string === 'up') {
+    // falling (summon): the string trails ABOVE the kite, out to the side away from the tilt
+    const s = tilt >= 0 ? -1 : 1;
+    path1(q, spline([B, [B[0] + 4 * s, B[1] + 1], [B[0] + 11 * s, B[1] - 4], [B[0] + 14 * s, B[1] - 13], [B[0] + 12 * s, B[1] - 22]], 4), STRING);
+    bowTie(q, [B[0] + 9 * s, B[1] - 2], BOW_A);
+  } else if (string === 'down') {
+    // flying off (death): the snapped stub hangs and curls under the tail
     path1(q, spline([B, [B[0] - 1, B[1] + 4], [B[0] + 1, B[1] + 8], [B[0] - 1, B[1] + 11]], 4), STRING);
   }
   paintKite(q, k, light);

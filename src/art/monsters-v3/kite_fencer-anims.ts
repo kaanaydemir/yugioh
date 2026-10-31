@@ -259,9 +259,9 @@ const SWORD_FLOOR: Partial<Pose> = { sword: 1, swx: AX - 3, swy: GY - 1, swa: 0 
 const DEATH_KEYS: Partial<Pose>[] = [
   HEAVY_KEYS[0],
   // the string pulls taut: a straight bright line, vibrating
-  { lean: -3, hdx: -2, sink: 3, hx: 7, hy: 1, ba: -20, ka: -12, ky: -11, kbl: 2, smode: 1, svib: 1, pinX: AX - 16, pinY: GY, fx: -12, fy: -11, rlift: 1 },
+  { lean: -3, hdx: -2, sink: 3, hx: 7, hy: 1, ba: -20, ka: -12, ky: -11, kbl: 2, smode: 1, svib: 1, pinX: AX - 22, pinY: GY, fx: -12, fy: -11, rlift: 1 },
   // SNAP: the ends whip back; the kite lurches up
-  { lean: -2, chy: 2, hdx: -1, hdy: 1, sink: 4, hx: 6, hy: 5, ba: 40, ka: -20, ky: -13, kbl: 3, smode: 2, svib: 1, pinX: AX - 16, pinY: GY, fx: -10, fy: -6, rlift: 2 },
+  { lean: -2, chy: 2, hdx: -1, hdy: 1, sink: 4, hx: 6, hy: 5, ba: 40, ka: -20, ky: -13, kbl: 3, smode: 2, svib: 1, pinX: AX - 22, pinY: GY, fx: -10, fy: -6, rlift: 2 },
   // the rapier drops; the cloak tears off his shoulders
   { lean: -1, chy: 3, hdy: 2, sink: 5, hx: 5, hy: 7, sword: 1, swx: AX + 8, swy: GY - 5, swa: -58, kmode: 2, kx: AX - 8, ky: 21, ka: -26, ko: 1.05, kbl: 3, smode: 3, fx: -8, fy: -2, rlift: 2 },
   // dissolve: the cloak flies up and away (the cinematic takes it off screen); the fencer thins; the rapier lands
@@ -301,14 +301,14 @@ const REVIVE_HOLDS = [90, 90, 80, 80, 90, 110, 100, 100, 110, 120];
 
 const SUMMON_KEYS: Partial<Pose>[] = [
   // the empty kite sways down like a leaf (never a dive): tilted right, then left
-  { body: 0, sword: 3, kmode: 2, kx: AX - 2, ky: 20, ka: 24, ko: 1, kbl: 2, smode: 3 },
-  { body: 0, sword: 3, kmode: 2, kx: AX - 6, ky: 34, ka: -22, ko: 1, kbl: 1, smode: 3 },
+  { body: 0, sword: 3, kmode: 2, kx: AX - 2, ky: 24, ka: 24, ko: 1, kbl: 2, smode: 5 },
+  { body: 0, sword: 3, kmode: 2, kx: AX - 4, ky: 36, ka: -22, ko: 1, kbl: 1, smode: 5 },
   // land: flat on the tile as an iso diamond, a cloth flop
   { body: 0, sword: 3, kmode: 2, kx: AX - 1, ky: GY - 7, ka: 0, kflat: 1, ko: 1.05, kbl: 2, smode: 4 },
   { body: 0, sword: 3, kmode: 2, kx: AX - 1, ky: GY - 7, ka: 0, kflat: 1, ko: 1, kbl: 0, smode: 4 },
   // a bump rises under the cloth, then it tents
-  { body: 0, sword: 3, kmode: 2, kx: AX - 1, ky: GY - 7, ka: 0, kflat: 1, ko: 1, kbl: 0, kbump: 3, smode: 4 },
-  { body: 0, sword: 3, kmode: 2, kx: AX - 1, ky: GY - 9, ka: 0, kflat: 0.7, ko: 0.95, kbl: 1, kbump: 6, smode: 4 },
+  { body: 0, sword: 3, kmode: 2, kx: AX - 1, ky: GY - 7, ka: 0, kflat: 1, ko: 1, kbl: 0, kbump: 4, smode: 4 },
+  { body: 0, sword: 3, kmode: 2, kx: AX - 1, ky: GY - 8, ka: 0, kflat: 0.85, ko: 0.95, kbl: 1, kbump: 9, smode: 4 },
   // he stands up under the kite: the cloth slides onto his shoulders
   { sink: 9, lean: 1, chy: 2, hdy: 1, hx: 7, hy: 4, ba: 18, kx: -1, ky: -5, ka: 62, ko: 0.95, kbl: 1, smode: 4, fx: -5, fy: -2 },
   { sink: 5, lean: 0, chy: 1, hx: 8, hy: 4, ba: 14, kx: -4, ky: -8, ka: 34, ko: 1, kbl: 2, smode: 4, fx: -8, fy: -5 },
