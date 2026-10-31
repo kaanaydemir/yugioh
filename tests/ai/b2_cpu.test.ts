@@ -171,7 +171,7 @@ describe('preset league: the CPU plays the new cards', () => {
     // the draw spells, the wipes, the steals and both quick spells show up across the league
     for (const id of ['well_pail', 'puppet_string', 'soul_leash', 'auger_lance', 'straw_decoys', 'void_eye'] as CardId[])
       expect(spells.has(id), `${id} played`).toBe(true);
-  });
+  }, 60000); // 98 full games: ~2 s alone, slower when the machine is busy
 });
 
 const ALL_B2_SPELLS = new Set<CardId>(
