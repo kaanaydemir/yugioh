@@ -30,7 +30,7 @@ export const KIT = definePose<HatchPose>(
   { head: ['head', 'tilt'], cloud: ['cow', 'tuft', 'drift'], wings: ['wingN', 'wingF', 'wingOpen'], tail: ['tail', 'tailTap'] },
   {
     head: ['head', 'tilt', 'cheeks', 'jaw', 'eye', 'blink', 'look', 'cow', 'fluff', 'mane', 'drift', 'smear', 'puff'],
-    chest: ['lean', 'tuft', 'squash', 'rear'],
+    chest: ['lean', 'tuft', 'squash', 'rear', 'lunge', 'lag', 'stomp'],
     wingN: ['wingN', 'wingOpen'],
     wingF: ['wingF'],
     armN: ['armN'],
@@ -163,16 +163,19 @@ const endOf = (h: Holds, a: string) => h[a][h[a].length - 1];
 
 const ATTACK_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[] = [
   [{ lean: 1, head: [1, 1], look: [1, 0], eye: 5, mane: 0.2 }],
-  [{ cheeks: 1, squash: -0.4, tuft: 0.7, head: [0, -1], mane: 0.6, eye: 6 }, 'charge'],
-  [{ cheeks: 1, lift: 4, armN: 0.5, armF: 0.3, tuft: 0.4, cow: -2, mane: 0.6 }],
-  [{ cheeks: 1, squash: 1, cow: 2, mane: 0.8, drift: 0.5 }],
-  [{ cheeks: 1, lift: 4, armF: 0.5, armN: 0.3, tuft: 0.4, cow: -2, mane: 0.6 }],
-  [{ cheeks: 1, squash: 1, cow: 2, mane: 0.8 }],
-  [{ head: [-2, -2], tilt: 2, eye: 1, cheeks: 0.6, jaw: 0.3, squash: -0.5, cow: -2, tuft: 0.6, wingOpen: 0.5, mane: 0.7 }],
-  [{ head: [2, 1], tilt: -0.5, eye: 1, jaw: 0.3, cow: -1, wingOpen: 0.7, mane: 0.5 }, 'swing'],
-  [{ head: [3, 1], tilt: -1, eye: 1, jaw: 1, puff: 1, smear: 2, squash: 0.3, cow: 2, wingOpen: 1, mane: 1 }, 'release', true],
-  [{ hip: [-2, 1], squash: 0.7, head: [-2, 1], eye: 1, jaw: 0.3, tail: -0.3, cow: 2, wingOpen: 0.6, mane: 0.6 }, 'follow'],
-  [{ hip: [-1, 0], squash: 0.3, eye: 4, cow: 3, tuft: 0.6, mane: 0.5, drift: 0.5 }, 'recover'],
+  // grown (lunge / rear / stomp / lag are grown-only): the chest and the mane sink back 3 px, the haunch
+  // squashes; the near foreleg lifts on the "ha…" and stamps on the CHOO, the mane a frame late (r2 #3)
+  [{ cheeks: 1, squash: -0.4, tuft: 0.7, head: [0, -1], mane: 0.6, eye: 6, lunge: [-2, 1], rear: -1 }, 'charge'],
+  [{ cheeks: 1, lift: 4, armN: 0.5, armF: 0.3, tuft: 0.4, cow: -2, mane: 0.6, lunge: [-3, 1], rear: -1.5, lag: 1 }],
+  [{ cheeks: 1, squash: 1, cow: 2, mane: 0.8, drift: 0.5, lunge: [-3, 2], rear: -2 }],
+  [{ cheeks: 1, lift: 4, armF: 0.5, armN: 0.3, tuft: 0.4, cow: -2, mane: 0.6, lunge: [-1, 0], lag: -1 }],
+  [{ cheeks: 1, squash: 1, cow: 2, mane: 0.8, lunge: [-2, 1], rear: -1, lag: 1 }],
+  [{ head: [-2, -2], tilt: 2, eye: 1, cheeks: 0.6, jaw: 0.3, squash: -0.5, cow: -2, tuft: 0.6, wingOpen: 0.5, mane: 0.7, lunge: [-3, 0], stomp: 3, rear: 1 }],
+  [{ head: [2, 1], tilt: -0.5, eye: 1, jaw: 0.3, cow: -1, wingOpen: 0.7, mane: 0.5, lunge: [1, 0], stomp: 2, lag: -2 }, 'swing'],
+  [{ head: [3, 1], tilt: -1, eye: 1, jaw: 1, puff: 1, smear: 2, squash: 0.3, cow: 2, wingOpen: 1, mane: 1, lunge: [3, 1], lag: -2 }, 'release', true],
+  // the wind lags the ring out of the mouth for a frame (critique r3 #11)
+  [{ hip: [-2, 1], squash: 0.7, head: [-2, 1], eye: 1, jaw: 0.3, puff: 0.5, tail: -0.3, cow: 2, wingOpen: 0.6, mane: 0.6, lunge: [2, 1], lag: 1 }, 'follow'],
+  [{ hip: [-1, 0], squash: 0.3, eye: 4, cow: 3, tuft: 0.6, mane: 0.5, drift: 0.5, lunge: [1, 0], lag: 0 }, 'recover'],
   [{ head: [1, 0], eye: 4, cow: -1, blink: 0, mane: 0.2, wingOpen: 0.2 }],
   [{ squash: -0.2, blink: 0.5, cow: 1 }],
 ];
@@ -183,10 +186,10 @@ const ROAR_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[] =
   [{ squash: -0.3, wingN: 1, wingF: 1, cheeks: 0.4, tuft: 0.4 }],
   [{ squash: -0.5, wingOpen: 0.5, cheeks: 0.7, head: [0, -1], tilt: 0.5, mane: 0.4 }, 'charge'],
   [{ lift: 2, wingOpen: 0.8, head: [0, -1], tilt: 1, jaw: 0.2, armN: 0.3, armF: 0.3, mane: 0.6 }],
-  [{ lift: 3, rear: 2, wingOpen: 1, wingN: 1, wingF: 1, tilt: 1.5, jaw: 0.4, head: [1, -1], eye: 6, armN: 0.4, armF: 0.4, mane: 0.8, tuft: 0.8 }],
+  [{ lift: 3, rear: 3, wingOpen: 1, wingN: 1, wingF: 1, tilt: 1.5, jaw: 0.4, head: [1, -1], eye: 6, armN: 0.4, armF: 0.4, mane: 0.8, tuft: 0.8, lunge: [-1, 0] }],
   // the squeak goes UP: snout to the sky, mouth vertical, eyes wide, the nubs spread (≠ the attack's CHOO)
-  [{ lift: 2, rear: 3, wingOpen: 1, wingN: 3, wingF: 3, tilt: 2.6, jaw: 1, puff: 0.5, eye: 6, head: [0, -2], mane: 1, ringFlare: 2, cow: -2, tuft: 1 }, 'release'],
-  [{ lift: 1, rear: 2, wingOpen: 0.8, wingN: 1, wingF: 2, tilt: 1.8, jaw: 0.6, puff: 0.3, eye: 6, head: [0, -1], mane: 0.8, ringFlare: 2, cow: 2 }],
+  [{ lift: 2, wingOpen: 1, wingN: 3, wingF: 3, tilt: 2.6, jaw: 1, puff: 0.5, eye: 6, head: [0, -2], mane: 1.2, ringFlare: 2, cow: -2, tuft: 1, rear: 5, lunge: [1, -1], lag: -1 }, 'release'],
+  [{ lift: 1, rear: 3, wingOpen: 0.8, wingN: 1, wingF: 2, tilt: 1.8, jaw: 0.6, puff: 0.3, eye: 6, head: [0, -1], mane: 0.8, ringFlare: 2, cow: 2, lunge: [1, 0], lag: 1 }],
   [{ lean: -2, wingOpen: 0.4, eye: 6, jaw: 0.2, cow: 2, mane: 0.4 }, 'recover'],
   [{ lean: 2, wingOpen: 0.2, cow: -2, look: [1, 0] }],
   [{ lean: -1, cow: 1 }],
@@ -196,8 +199,9 @@ const ROAR_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[] =
 
 const HIT_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[] = [
   [{ head: [-2, -1], tilt: 0.6, eye: 1, squash: 0.3, cow: 1 }],
-  [{ head: [-1, 0], tilt: 0.5, eye: 1, squash: 0.2, cow: -2, hip: [-1, 0] }],
-  [{ head: [-1, 0], eye: 1, blink: 0.5, cow: 2, hip: [-1, 0], mane: 0.4 }],
+  // the cowlick and the tail lag the recoil a frame, then overshoot (critique r2 #14: overlap in the art)
+  [{ head: [-1, 0], tilt: 0.5, eye: 1, squash: 0.2, cow: 3, tuft: 0.6, tail: -0.45, hip: [-1, 0], lag: 1 }],
+  [{ head: [-1, 0], eye: 1, blink: 0.5, cow: -2, tail: 0.15, hip: [-1, 0], mane: 0.4, lag: -1 }],
   [{ head: [0, 0], blink: 0.5, cow: -1, hip: [-1, 0] }, 'recover'],
   [{ cow: 1, hip: [0, 0] }],
 ];
@@ -223,15 +227,19 @@ const HIT_MAGIC_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?]
 
 const EGG: D = { egg: 1, ball: 1 };
 const SUMMON_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[] = [
-  [{ ...EGG, eggTilt: -1 }],
-  [{ ...EGG, eggTilt: 1 }],
+  // the drop: stretched by the fall, then less (f0 ≠ f1), the landing squash
+  [{ ...EGG, eggTilt: -1, squash: -1, hip: [0, -2] }],
+  [{ ...EGG, eggTilt: 1, squash: -0.5 }],
   [{ ...EGG, squash: 1 }, 'land'],
-  [{ ...EGG, eggTilt: -1, crack: 0.3 }],
-  [{ ...EGG, eggTilt: 1, crack: 0.6 }],
-  [{ ...EGG, eggTilt: -1, crack: 0.9, glint: 2 }],
+  // the egg rocks ±1 px with a 1-px squash while the zigzag crack grows 5 px a frame; f5 the peck
+  // (critique r2 #5)
+  [{ ...EGG, eggTilt: -1, hip: [-1, 0], squash: 0.7, crack: 0.34 }],
+  [{ ...EGG, eggTilt: 1, hip: [1, 0], squash: -0.5, crack: 0.67 }],
+  [{ ...EGG, eggTilt: -1, hip: [-1, 0], squash: 0.7, crack: 1.2, glint: 2 }],
   [{ ...EGG, shake: 1, crack: 1, burst: 0.17 }],
   [{ ball: 1, egg: 1, burst: 1 }],
-  [{ ball: 1, tumble: 0.55, hip: [3, -2] }],
+  // the tucked ball bursting out of the shell at the baby's curled size (critique r2 #4: no pop to f9)
+  [{ ball: 0.75, egg: 1, burst: 1.4, tumble: 0.2, hip: [1, -2] }],
   // the unfurl in-between: a half-uncurled sit, the head out, the tail still wrapped round the front, the
   // popped shell lands on the head (critique r1 #6)
   [{ crouch: 1, tail: 1, head: [1, 2], tilt: -0.5, eye: 1, cow: -1, hip: [2, 0], squash: 0.3, helmet: 1 }],
@@ -298,8 +306,10 @@ const SPECIAL_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[
   [{ grow: G(4), eye: 5, fluff: 0.2 }],
   [{ grow: G(5), eye: 5, mane: 0.6 }],
   [{ grow: 1, tilt: 1, head: [0, -1], mane: 0.4, wingOpen: 0.3 }],
-  [{ grow: 1, tilt: 2, rear: 3, head: [1, -1], jaw: 1, puff: 1, wingOpen: 1, mane: 1, eye: 1, ringFlare: 2 }, 'release'],
-  [{ grow: 1, tilt: 1.5, rear: 2, head: [1, -1], jaw: 0.8, wingOpen: 0.8, mane: 0.8, eye: 1, ringFlare: 1 }],
+  // the payoff roar (critique r2 #9): the roar f4 pose — the chest up on the forelegs, the head ≈ 25° up,
+  // the wide dark jaw, the mane masses flared 2–3 px
+  [{ grow: 1, tilt: 1.75, rear: 5, head: [1, -1], jaw: 1, puff: 0.6, wingOpen: 1, mane: 1.3, eye: 6, ringFlare: 2, lunge: [1, -1], lag: -1 }, 'release'],
+  [{ grow: 1, tilt: 1.4, rear: 3, head: [1, -1], jaw: 0.8, wingOpen: 0.8, mane: 0.9, eye: 1, ringFlare: 1, lunge: [1, 0], lag: 1 }],
   [{ grow: 1 }, 'recover'],
 ];
 

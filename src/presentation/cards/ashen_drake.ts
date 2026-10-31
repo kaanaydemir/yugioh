@@ -17,8 +17,8 @@ export default {
   summon: { style: 'vortex', matter: 'stone', roarPeak: 4 },
   death: { material: 'ash', accent: 'fire' },
   flip: { accent: 'sparks', ramp: 'fire' },
-  // INTERIM until the SFX stage lands src/audio/v3/ashen.ts + CHARACTER_SOUNDS.ashen_drake: then `{ custom: 'ashen_drake' }` (§6.4)
-  voice: { palette: 'rumble', key: 26, register: 'low', brightness: 0.3, tail: 'embers' },
+  // the hand-made set (src/audio/v3/ashen.ts, CHARACTER_SOUNDS.ashen_drake, §6.4)
+  voice: { custom: 'ashen_drake' },
   light: {
     glow: { emissive: [[PAL.fire4, 1], [PAL.gold4, 1], [PAL.fire3, 0.4]], halo: 0.55, pool: 0.8, spill: PAL.void2 },
     strike: PAL.fire3,

@@ -157,8 +157,11 @@ export interface Rig {
 const ANKLE_N: V = [55, 92];
 const ANKLE_F: V = [47, 91];
 const NECK_ROOT: V = [61, 47];
-const NECK_A: readonly number[] = [-36, 6, 80];
-const NECK_L: readonly number[] = [9, 8, 10];
+/** a real S (critic r3 #3): down-forward off the chest, UP, forward, then the hang to the skull */
+const NECK_A: readonly number[] = [-55, -5, 70, 30];
+const NECK_L: readonly number[] = [7, 7, 8, 5];
+/** which pose offset (P.neck: root, mid, head) drives each of the 4 segments */
+const NECK_O: readonly number[] = [0, 1, 2, 2];
 const PITCH0 = 34;
 /** skull scale (skull space → px) */
 const SKULL_K = 1.22;
@@ -172,14 +175,15 @@ export function rig(P: AshenPose): Rig {
   const hood: V = [b[0], b[1] - lift];
   const root = add(NECK_ROOT, b);
   const neck: V[] = [root];
-  for (let i = 0; i < 3; i++) {
-    let pt = add(neck[i], polar(NECK_A[i] + P.neck[i], NECK_L[i]));
-    if (i === 1) pt = add(pt, [P.neckSlide, 0]);
+  for (let i = 0; i < NECK_A.length; i++) {
+    let pt = add(neck[i], polar(NECK_A[i] + P.neck[NECK_O[i]], NECK_L[i]));
+    if (i === 2) pt = add(pt, [P.neckSlide, 0]);
     neck.push(pt);
   }
   // the breath lifts the neck's root with the chest; the lift fades along the neck (the skull stays)
-  for (let i = 0; i < 3; i++) neck[i] = add(neck[i], [0, -lift * (1 - i / 3)]);
-  const skull = add(neck[3], P.head);
+  const NL = neck.length - 1;
+  for (let i = 0; i < NL; i++) neck[i] = add(neck[i], [0, -lift * (1 - i / NL)]);
+  const skull = add(neck[NL], P.head);
   const pitch = (PITCH0 + P.headPitch) * (Math.PI / 180);
   const axis: V = [Math.cos(pitch), Math.sin(pitch)];
   const toS = (x: number, y: number): V => add(skull, [(axis[0] * x - axis[1] * y) * SKULL_K, (axis[1] * x + axis[0] * y) * SKULL_K]);
@@ -337,25 +341,43 @@ function cageLayer(P: AshenPose, R: Rig, cavity: Uint8Array): PixelCanvas {
   r.tube(R.keel, 3.2, 2.4, M.BONE, { z: 3, flat: 1.3, biasAt: planes(0.3, 0.3) });
   for (const [i, rb] of R.ribs.entries()) r.tube(rb, 2.6, 2.1 - i * 0.05, M.BONE, { z: 2, flat: 1.25, biasAt: planes(0.35, 0.3) });
   const c = WS.render(r);
-  for (let y = 0; y < H; y++)
-    for (let x = 0; x < W; x++) {
-      const col = c.get(x, y);
-      if (col === null) continue;
-      q.set(x, y, col);
-      cavity[y * W + x] = 0;
-    }
+  const cd = c.data;
+  for (let i = 0; i < W * H; i++) if (cd[i * 4 + 3]) cavity[i] = 0;
+  q.blit(c, 0, 0);
   return q;
+}
+
+/** a Catmull-Rom resample of a polyline (4 points per span): the S-neck bends, never kinks */
+function smooth(pts: readonly V[]): V[] {
+  const out: V[] = [];
+  const n = pts.length;
+  for (let i = 0; i < n - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[Math.min(n - 1, i + 2)];
+    for (let k = 0; k < 4; k++) {
+      const t = k / 4;
+      const t2 = t * t;
+      const t3 = t2 * t;
+      const c = (a: number, b: number, d: number, e: number) => 0.5 * (2 * b + (-a + d) * t + (2 * a - 5 * b + 4 * d - e) * t2 + (-a + 3 * b - 3 * d + e) * t3);
+      out.push([c(p0[0], p1[0], p2[0], p3[0]), c(p0[1], p1[1], p2[1], p3[1])]);
+    }
+  }
+  out.push(pts[n - 1]);
+  return out;
 }
 
 /** neck tube (hide with strata) */
 function neckLayer(P: AshenPose, R: Rig, grow = 1): PixelCanvas {
   const r = WS.raster();
-  const full = [add(R.neck[0], [-2, 3]), ...R.neck.slice(0, 3), lerpV(R.neck[2], R.neck[3], 0.6), R.neck[3]];
+  const nl = R.neck.length - 1;
+  const full = [add(R.neck[0], [-2, 3]), ...R.neck.slice(0, nl), lerpV(R.neck[nl - 1], R.neck[nl], 0.6), R.neck[nl]];
   if (grow <= 0.02) return WS.render(r);
-  const path = pathTo(full, grow);
-  r.tube(path, 10, grow >= 1 ? 6 : 8, M.HIDE, { flat: 1.8, bias: -0.78, biasAt: planes(0.62, 0.3) });
+  const path = pathTo(smooth(full), grow);
+  r.tube(path, 9, grow >= 1 ? 5 : 7, M.HIDE, { flat: 1.8, bias: -0.78, biasAt: planes(0.62, 0.3) });
   const q = WS.render(r);
-  if (path.length >= 4) strata(q, path.slice(0, 4), 8, 6, 2, false);
+  if (path.length >= 4) strata(q, path.slice(0, Math.min(path.length, 12)), 7, 6, 2, false);
   return q;
 }
 
@@ -373,7 +395,7 @@ function skullLayer(P: AshenPose, R: Rig, light: Light): PixelCanvas {
   // jaw first (behind the cranium), then the cranium side, top plane, brow
   r.facet(T(JAW, P.jaw), M.HIDE, N(0.1, 0.75, 0.6), 0, -0.1);
   r.facet(T(CRANIUM), M.HIDE, N(0.05, 0.1, 1), 1, 0);
-  r.facet(T(TOPPLANE), M.HIDE, N(-0.15, -0.9, 0.45), 2, 0.12);
+  r.facet(T(TOPPLANE), M.HIDE, N(-0.15, -0.9, 0.45), 2, 0.5);
   r.facet(T(BROW), M.HIDE, N(-0.1, -0.6, 0.7), 3, 0.1);
   // the occiput dome
   r.ell(skullPt(R, -0.5, -0.6), 3.4 * SKULL_K, 3.4 * SKULL_K, 0, M.HIDE, { z: 1.5, flat: 1.4 });
@@ -410,9 +432,10 @@ function crestLayer(P: AshenPose, R: Rig): PixelCanvas {
   const q = WS.canvas();
   const spots: { at: V; dir: V; len: number }[] = [];
   const nk = R.neck;
+  const ns = nk.length - 1;
   const along = (t: number): { p: V; tan: V } => {
-    const i = Math.min(2, Math.floor(t * 3));
-    const k = t * 3 - i;
+    const i = Math.min(ns - 1, Math.floor(t * ns));
+    const k = t * ns - i;
     const p = lerpV(nk[i], nk[i + 1], k);
     return { p, tan: norm(sub(nk[i + 1], nk[i])) };
   };
@@ -706,9 +729,11 @@ export function drawAshen(p: PixelCanvas, P: AshenPose, light: Light): DrawInfo 
   const cF = cloakPose(P, 'F');
   // the summon build (bone line still rising, the hood < 70 % seated): no bare hand over the half-built hood
   const stubs = P.strutFan < 0.5 && P.seated < 31 && P.boneTop > 0;
+  // the revive (critic r3 #8): the arms are there with only the finger STUBS until the fingers extend (f6)
+  const armStubs = stubs && P.heap > 0;
   const spF = P.wingF.spread ?? 0;
   const spN = P.wingN.spread ?? 0;
-  const far = drawCloak(WS, light, 'F', cF.w, cF.off, st, { far: true, struts: bare && !stubs, fan: P.strutFan, stubs, shoulder: add(R.spine[0], [-2, 2]), spars: spF > 0.3 ? Math.min(1, (spF - 0.3) / 0.55) : 0 });
+  const far = drawCloak(WS, light, 'F', cF.w, cF.off, st, { far: true, struts: bare && (!stubs || armStubs), fan: P.strutFan, stubs, shoulder: add(R.spine[0], [-2, 2]), spars: spF > 0.3 ? Math.min(1, (spF - 0.3) / 0.55) : 0 });
   // the hand only once the cage (its parent through the shoulder) is whole: never a floating finger
   if (buildProgress(bt) < (P.strutFan > 0.5 ? 0.55 : 0.9)) maskStruts(far, H);
   peakEdge(far.layer, far.shape, 'F', light, true);
@@ -725,7 +750,7 @@ export function drawAshen(p: PixelCanvas, P: AshenPose, light: Light): DrawInfo 
   composite(p, rowsFrom(legLayer(P, R, true), legTop), SEAM);
   // stripped bare (no plate left), the near hand's struts go BEHIND the rib cage: the ribs read on top
   const cN = cloakPose(P, 'N');
-  const near = drawCloak(WS, light, 'N', cN.w, cN.off, st, { far: false, struts: bare && !stubs, fan: P.strutFan, stubs, shoulder: add(R.spine[0], [3, 3]), spars: spN > 0.3 ? Math.min(1, (spN - 0.3) / 0.55) : 0 });
+  const near = drawCloak(WS, light, 'N', cN.w, cN.off, st, { far: false, struts: bare && (!stubs || armStubs), fan: P.strutFan, stubs, shoulder: add(R.spine[0], [3, 3]), spars: spN > 0.3 ? Math.min(1, (spN - 0.3) / 0.55) : 0 });
   if (buildProgress(bt) < (P.strutFan > 0.5 ? 0.55 : 0.9)) maskStruts(near, H);
   peakEdge(near.layer, near.shape, 'N', light, false);
   // also while the hood swings between the perch and the canopy: the cage (and its heart) stay in front
@@ -763,7 +788,8 @@ export function drawAshen(p: PixelCanvas, P: AshenPose, light: Light): DrawInfo 
     for (let i = 0; i < W * H; i++) if (CAVITY[i] && near.layer.data[i * 4 + 3]) CAVITY[i] = 0;
   }
   if (tucked) headParts();
-  if (bt <= 0 || bt < 20) {
+  // no claw spur without its wrist (a summon / revive frame whose arms are not built yet)
+  if ((bt <= 0 || bt < 20) && !(stubs && !armStubs && P.seated <= 0)) {
     if (st(PLATES[0].id) !== 'gone' || bare) composite(p, spurLayer(spurPts(far.shape, 'F', 0), true, light), SEAM, { top: 0, side: 0, bottom: 0 });
     composite(p, spurLayer(spurPts(near.shape, 'N', 0), false, light), SEAM, { top: 0, side: 0, bottom: 0 });
   }

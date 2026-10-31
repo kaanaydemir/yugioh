@@ -34,8 +34,8 @@ const count = (p: PixelCanvas, c: number) => {
 };
 
 describe('ashen_drake (rev. 3, the ash vulture)', () => {
-  it('has the 13 anims with the blueprint holds and marks (134 frames: the summon fold-back in-between)', () => {
-    const frames: Record<string, number> = { idle: 20, guard: 8, toGuard: 6, fromGuard: 6, attack: 14, roar: 9, hit: 6, hitHeavy: 8, hitMagic: 8, summon: 15, death: 12, revive: 12, victory: 10 };
+  it('has the 13 anims with the blueprint holds and marks (136 frames: the summon fold-back + the slam / regrowth in-betweens, critic r3 #7)', () => {
+    const frames: Record<string, number> = { idle: 20, guard: 8, toGuard: 6, fromGuard: 6, attack: 15, roar: 9, hit: 6, hitHeavy: 8, hitMagic: 8, summon: 16, death: 12, revive: 12, victory: 10 };
     let total = 0;
     for (const a of ALL) {
       const s = spec(a);
@@ -44,7 +44,7 @@ describe('ashen_drake (rev. 3, the ash vulture)', () => {
       expect(s.holds?.length, a).toBe(s.frames);
       total += s.frames;
     }
-    expect(total).toBe(134);
+    expect(total).toBe(136);
     expect(spec('summon').holds!.reduce((x, y) => x + y, 0)).toBe(1350);
     const idle = spec('idle').holds!;
     expect(idle.reduce((x, y) => x + y, 0)).toBe(2000);
@@ -90,7 +90,7 @@ describe('ashen_drake (rev. 3, the ash vulture)', () => {
     expect(wh).toBeLessThanOrEqual(1.05);
     const n = opaque(f);
     expect(n).toBeGreaterThanOrEqual(2900);
-    expect(n).toBeLessThanOrEqual(3500);
+    expect(n).toBeLessThanOrEqual(3700); // r3: the rounded hood crown adds ~50 px
     const R = rig(framePose('idle', 0));
     expect(topX).toBeLessThan(R.skull[0]);
     // the skull's lowest point is ≥ 30 px below the hood peak
@@ -166,7 +166,7 @@ describe('ashen_drake (rev. 3, the ash vulture)', () => {
 
   it('pours the spill as GRAINS, its own way per moment, and cools into a mound (§4.4.1, critic r2 #3 / #4 / #15)', () => {
     const EMB = new Set<number>([PAL.fire1, PAL.fire2, PAL.fire3, PAL.fire4]);
-    for (const [a, f] of [['attack', 11], ['summon', 12], ['victory', 5], ['roar', 4]] as const) {
+    for (const [a, f] of [['attack', 12], ['summon', 13], ['victory', 5], ['roar', 4]] as const) {
       const p = drawFrame(art, a, f, 'left');
       const r = ASHEN_RIBS(a, f);
       let n = 0;
@@ -199,7 +199,7 @@ describe('ashen_drake (rev. 3, the ash vulture)', () => {
   it('exports the accretion table, the mouth / ribs points and the distinction card', () => {
     expect(ASHEN_ORDER.length).toBe(44);
     expect(new Set(ASHEN_ORDER).size).toBe(44);
-    expect(ASHEN_BUILD.length).toBe(15);
+    expect(ASHEN_BUILD.length).toBe(16);
     expect(ASHEN_BUILD[7].seated).toBe(44);
     expect(ASHEN_BUILD.reduce((n, b) => n + b.seats.length, 0)).toBe(44);
     const m = ASHEN_MOUTH('attack', 6);

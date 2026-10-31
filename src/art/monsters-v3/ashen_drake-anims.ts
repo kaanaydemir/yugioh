@@ -74,7 +74,7 @@ export function idleDelta(f: number): D {
     headPitch: f >= 8 && f <= 11 ? 3 : 0,
     beat,
     ribSpread: f === 0 ? 1 : 0,
-    tail: [0, Math.round(Math.sin(((f - 2) / 20) * Math.PI * 2) * 6)],
+    tail: [0, Math.round(Math.sin(((f - 2) / 20) * Math.PI * 2) * 7)],
     wingN: W({ ripple: rippleOf(f, 0) }),
     wingF: W({ ripple: rippleOf(f, 1), wrist: [[0, -1, -2, -1, 0][f % 5], [0, 0, -1, 0, 0][f % 5]] }),
     flakes: [flake(f, 3), flake(f, 9), flake(f, 15)],
@@ -155,8 +155,8 @@ const FROM_GUARD: AnimDef<AshenPose> = {
 // ------------------------------------------------------------------ attack: "Kül Fırtınası Nefesi"
 
 /** plates seated per attack frame: the tear (reverse order) and the regrowth (accretion order) */
-export const ATTACK_SEATED = [44, 44, 30, 14, 0, 0, 0, 0, 0, 0, 14, 28, 40, 44] as const;
-const HEAD_DOWN: D = { body: [7, 4], neck: [68, 46, -6], headPitch: 16, head: [1, 1] };
+export const ATTACK_SEATED = [44, 44, 30, 14, 0, 0, 0, 0, 0, 0, 14, 21, 28, 40, 44] as const;
+const HEAD_DOWN: D = { body: [7, 4], neck: [68, 46, 20], headPitch: 16, head: [1, 1] };
 
 const ATTACK: AnimDef<AshenPose> = {
   base: 'idle0',
@@ -181,11 +181,14 @@ const ATTACK: AnimDef<AshenPose> = {
     // contact: the watch — bare-boned, head low and tilted, jaw half shut, eye on the target
     k({ ...HEAD_DOWN, headPitch: 10, head: [1, 1], crest: -0.3, jaw: 0.25, wingN: W({ mantle: 0.18, open: 0.35 }), wingF: W({ mantle: 0.16, open: 0.3 }), seated: 0, heat: 0.5, beat: 4 }, 90, 'contact'),
     // recover: the heart answers; the bars flex; regrowth 1
-    k({ body: [3, 1], neck: [-4, 18, 2], headPitch: 4, head: [1, 1], jaw: 0.2, wingN: W({ open: 0.3, mantle: 0.1 }), wingF: W({ open: 0.25, mantle: 0.1 }), seated: 14, weld: 0, strutFan: 0.75, heat: 1, beat: 1, ribFlex: 1, ribSpread: 1 }, 100, 'recover'),
+    k({ body: [3, 1], neck: [-4, 18, 2], headPitch: 4, head: [1, 1], jaw: 0.2, wingN: W({ open: 0.3, mantle: 0.1 }), wingF: W({ open: 0.25, mantle: 0.1 }), seated: 14, weld: 0, strutFan: 0.75, heat: 1, beat: 1, ribFlex: 1, ribSpread: 1 }, 70, 'recover'),
+    // the in-between (critic r3 #7): the hood ~60 % closed, the plates still welding in, the fingers folded
+    // under its leading edge (taken from the cooled-fan hold: the timing is unchanged)
+    k({ body: [2, 0], neck: [-3, 12, 1], headPitch: 3, wingN: W({ open: 0.22, mantle: 0.05 }), wingF: W({ open: 0.18, mantle: 0.05 }), seated: 21, weld: 10, strutFan: 0.15, heat: 1.15, beat: 1, ribFlex: 1, ribSpread: 1 }, 80),
     // the rib spill; regrowth 2; the head lifts
-    k({ body: [1, 0], neck: [-2, 8, 0], headPitch: 2, wingN: W({ open: 0.15 }), wingF: W({ open: 0.12 }), seated: 28, weld: 14, strutFan: 0.4, heat: 1.3, beat: 2, ribFlex: 1, ribSpread: 1, spill: 1 }, 110),
+    k({ body: [1, 0], neck: [-2, 8, 0], headPitch: 2, wingN: W({ open: 0.15 }), wingF: W({ open: 0.12 }), seated: 28, weld: 18, strutFan: 0, heat: 1.3, beat: 2, ribFlex: 1, ribSpread: 1, spill: 1 }, 85),
     // the spill cools into an ash fan at the talons; regrowth 3; the wings fold over the shoulders
-    k({ wingN: W({ open: 0.04 }), seated: 40, weld: 28, strutFan: 0, heat: 1, beat: 0, spill: 3 }, 120),
+    k({ wingN: W({ open: 0.04 }), seated: 40, weld: 28, strutFan: 0, heat: 1, beat: 0, spill: 3 }, 95),
   ],
   end: 'idle0',
   endMs: 125,
@@ -203,12 +206,13 @@ const ROAR: AnimDef<AshenPose> = {
   beats: [
     k({ beat: 0 }, 70),
     k({ wingN: W({ wrist: [1, -4] }), wingF: W({ wrist: [0, -3] }), neck: [-10, -4, -10], headPitch: -8, beat: 2, breath: 1 }, 100, 'charge'),
-    k({ wingN: W({ open: 0.3, wrist: [2, -4] }), wingF: W({ open: 0.26, wrist: [0, -4] }), neck: [-16, -2, -12], head: [1, -1], headPitch: -12, jaw: 0.4, crest: 0.8, heat: 1.3, breath: 1, ribSpread: 1 }, 120),
-    k({ wingN: W({ open: 0.5, wrist: [2, -5] }), wingF: W({ open: 0.45, wrist: [0, -4] }), neck: [-22, 2, -14], head: [2, -2], headPitch: -16, jaw: 1, crest: 1.3, heat: 1.6, ribSpread: 1, breath: 1 }, 50),
-    k({ wingN: W({ open: 0.58, wrist: [2, -5] }), wingF: W({ open: 0.52, wrist: [0, -4] }), neck: [-24, 4, -14], head: [3, -2], headPitch: -18, jaw: 1.7, crest: 2, heat: 1.9, ribSpread: 2, ribFlex: 1, breath: 1, spill: 1, spillKind: 1 }, 100, 'release'),
-    k({ wingN: W({ open: 0.54, wrist: [2, -4], ripple: 2 }), wingF: W({ open: 0.5, wrist: [0, -4] }), neck: [-22, 4, -12], head: [3, -2], headPitch: -16, jaw: 1.4, crest: 1.6, heat: 1.6, ribSpread: 1, ribFlex: 1, spill: 1.2, spillKind: 1 }, 90),
-    k({ wingN: W({ open: 0.3, wrist: [1, -2] }), wingF: W({ open: 0.26, wrist: [0, -2] }), neck: [-12, 2, -6], head: [1, -1], headPitch: -8, jaw: 0.6, crest: 0.8, heat: 1.2, ribSpread: 0, spill: 2, spillKind: 1, flakes: [1, 2, 0] }, 100, 'recover'),
-    k({ wingN: W({ open: 0.1 }), wingF: W({ open: 0.08 }), neck: [-4, 0, -2], jaw: 0.2, heat: 1, beat: 0, flakes: [0, 3, 1] }, 110),
+    // the skull THRUSTS forward and up (critic r3 #9: +2 → +4 → +6 px), the crest lifting with it
+    k({ wingN: W({ open: 0.24, wrist: [2, -4] }), wingF: W({ open: 0.2, wrist: [0, -4] }), neck: [-16, -2, -12], head: [3, -2], headPitch: -12, jaw: 0.5, crest: 1, heat: 1.3, breath: 1, ribSpread: 1 }, 90),
+    k({ wingN: W({ open: 0.4, wrist: [2, -5] }), wingF: W({ open: 0.36, wrist: [0, -4] }), neck: [-22, 2, -14], head: [5, -4], headPitch: -16, jaw: 1.3, crest: 1.6, heat: 1.6, ribSpread: 1, breath: 1 }, 70),
+    k({ wingN: W({ open: 0.46, wrist: [2, -5] }), wingF: W({ open: 0.42, wrist: [0, -4] }), neck: [-24, 4, -14], head: [7, -5], headPitch: -18, jaw: 2, crest: 2.4, heat: 1.9, ribSpread: 2, ribFlex: 1, breath: 1, spill: 1, spillKind: 1 }, 130, 'release'),
+    k({ wingN: W({ open: 0.44, wrist: [2, -4], ripple: 2 }), wingF: W({ open: 0.4, wrist: [0, -4] }), neck: [-22, 4, -12], head: [6, -4], headPitch: -16, jaw: 1.5, crest: 1.8, heat: 1.6, ribSpread: 1, ribFlex: 1, spill: 1.2, spillKind: 1 }, 90),
+    k({ wingN: W({ open: 0.26, wrist: [1, -2] }), wingF: W({ open: 0.22, wrist: [0, -2] }), neck: [-12, 2, -6], head: [3, -2], headPitch: -8, jaw: 0.6, crest: 0.8, heat: 1.2, ribSpread: 0, spill: 2, spillKind: 1, flakes: [1, 2, 0] }, 90, 'recover'),
+    k({ wingN: W({ open: 0.1 }), wingF: W({ open: 0.08 }), neck: [-4, 0, -2], head: [1, -1], jaw: 0.2, heat: 1, beat: 0, flakes: [0, 3, 1] }, 100),
   ],
   end: 'idle0',
   endMs: 120,
@@ -218,14 +222,16 @@ const ROAR: AnimDef<AshenPose> = {
 // The victory: the hood thrown FORWARD and DOWN into a canopy (its hem out past the snout), the head
 // pushed out in front of and below the canopy's edge, jaw wide with its lit lip, the crest raised; the ribs
 // pour (two dense streams and a dribble off the keel) and the grains cool into the widest fan.
-const CANOPY_HEAD: D = { neck: [30, 40, -40], head: [5, 6], headPitch: 0, body: [2, 1] };
+const CANOPY_HEAD: D = { neck: [50, 40, -10], head: [3, 4], headPitch: 4, body: [2, 1] };
 const VICTORY: AnimDef<AshenPose> = {
   base: 'idle0',
   beats: [
     k({ beat: 1, ribSpread: 1 }, 80),
     k({ beat: 2, wingN: W({ wrist: [1, -4] }), wingF: W({ wrist: [0, -3] }), neck: [-8, -6, -10], head: [-2, -1], headPitch: -6, breath: 1 }, 110),
     // the wrists tip forward: the canopy forms over the head, its hem already ahead of the snout
-    k({ wingN: W({ mantle: 0.55, wrist: [4, 1] }), wingF: W({ mantle: 0.5, wrist: [3, 1] }), neck: [6, 14, -8], head: [2, 2], headPitch: 2, crest: 0.8, heat: 1.2, breath: 1, body: [1, 0] }, 110),
+    // the swing (critic r3 #5): the near cloak RISES along its arc (up and over, wrists high), the head ducks
+    // forward and down out from under it
+    k({ wingN: W({ open: 0.3, mantle: 0.32, wrist: [3, -5] }), wingF: W({ open: 0.25, mantle: 0.28, wrist: [2, -4] }), neck: [34, 30, 0], head: [2, 3], headPitch: 10, crest: -0.4, heat: 1.2, breath: 1, body: [1, 0] }, 110),
     // the head pushes out from under the canopy's edge, the jaw parting
     k({ ...CANOPY_HEAD, wingN: W({ mantle: 0.95 }), wingF: W({ mantle: 0.9 }), jaw: 0.9, crest: 1.6, heat: 1.5 }, 110),
     // the hollow roar: jaw wide (≥ 6 px), the throat lit, the crest raised 2 px, the ribs flare
@@ -235,7 +241,7 @@ const VICTORY: AnimDef<AshenPose> = {
     // the grains run down the talons; the canopy shudders, a plate row drops
     k({ ...CANOPY_HEAD, wingN: W({ mantle: 0.96, ripple: 6 }), wingF: W({ mantle: 0.9, ripple: 5 }), jaw: 0.7, crest: 1, heat: 1.3, ribSpread: 1, ribFlex: 1, spill: 2, spillKind: 3 }, 100),
     // the ribs close; the spill cools; the canopy lifts on its way back up (the fold in-between)
-    k({ wingN: W({ mantle: 0.5, wrist: [1, -3] }), wingF: W({ mantle: 0.45, wrist: [0, -2] }), neck: [12, 20, -14], head: [3, 3], headPitch: 2, jaw: 0.2, heat: 1, spill: 2.6, spillKind: 3, flakes: [1, 2, 1], body: [1, 1] }, 120),
+    k({ wingN: W({ mantle: 0.5, wrist: [1, -3] }), wingF: W({ mantle: 0.45, wrist: [0, -2] }), neck: [30, 26, -6], head: [2, 3], headPitch: 2, jaw: 0.2, heat: 1, spill: 2.6, spillKind: 3, flakes: [1, 2, 1], body: [1, 1] }, 120),
     // the wings fold back up over the shoulders
     k({ wingN: W({ mantle: 0.15, open: 0.1, wrist: [0, -1] }), wingF: W({ mantle: 0.12, open: 0.08 }), neck: [2, 8, 4], head: [1, 1], heat: 1, spill: 3, spillKind: 3, flakes: [0, 3, 2] }, 140),
     // held: the hood re-formed, head low in the S, the cooled fan at the talons, the heart at rest
@@ -295,8 +301,8 @@ const HIT_MAGIC: AnimDef<AshenPose> = {
 // ------------------------------------------------------------------ summon: bones bottom-up + accretion
 
 /** per summon frame: the bone line (frame row; 0 = all) and the plates seated (§4.7) */
-export const SUMMON_BONE = [96, 86, 74, 60, 48, 36, 0, 0, 0, 0, 0, 0, 0, 0, 0] as const;
-export const SUMMON_SEATED = [0, 0, 4, 10, 18, 28, 38, 44, 44, 44, 44, 44, 44, 44, 44] as const;
+export const SUMMON_BONE = [96, 86, 74, 60, 48, 36, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] as const;
+export const SUMMON_SEATED = [0, 0, 4, 10, 18, 28, 38, 44, 44, 44, 44, 44, 44, 44, 44, 44] as const;
 
 const SUMMON: AnimDef<AshenPose> = {
   base: 'idle0',
@@ -310,18 +316,20 @@ const SUMMON: AnimDef<AshenPose> = {
     k({ strutFan: 0, boneTop: 0, seated: 38, weld: 28, heat: 1.2, eye: 1, neck: [-12, -8, -14], headPitch: -8, wingN: W({ wrist: [1, -3], spread: 0.55 }), wingF: W({ wrist: [0, -3], spread: 0.52 }) }, 90),
     // peak: the wings BURST open — the near hand forward and up over the head, the far hand back; the
     // head lifts out of the S, jaw open, eyes ignite; loose plate chips on the hem
-    k({ seated: 44, weld: 38, heat: 1.6, eye: 2, neck: [-20, -12, -24], headPitch: -16, crest: 1, jaw: 0.5, wingN: W({ spread: 0.9, wrist: [0, -1] }), wingF: W({ spread: 0.9 }), breath: 1, flakes: [2, 1, 3], flakes2: [1, 3, 2] }, 60),
+    k({ seated: 44, weld: 38, heat: 1.6, eye: 2, neck: [14, 14, 10], head: [1, 3], headPitch: -10, crest: 1, jaw: 0.5, wingN: W({ spread: 0.9, wrist: [0, -1] }), wingF: W({ spread: 0.9 }), breath: 1, flakes: [2, 1, 3], flakes2: [1, 3, 2] }, 60),
     // the spread (the cinematic holds this through the cut-in): full span
-    k({ heat: 1.5, eye: 2, neck: [-22, -12, -26], headPitch: -18, crest: 1.2, jaw: 0.7, wingN: W({ spread: 1 }), wingF: W({ spread: 1 }), breath: 1, flakes: [3, 2, 1], flakes2: [2, 1, 3] }, 130),
+    k({ heat: 1.5, eye: 2, neck: [14, 12, 8], head: [1, 5], headPitch: -14, crest: 1.2, jaw: 0.7, wingN: W({ spread: 1 }), wingF: W({ spread: 1 }), breath: 1, flakes: [3, 2, 1], flakes2: [2, 1, 3] }, 130),
     // the fold-back starts inside the hold: a half-fold in-between (no 100-px pop, critic r2 #11)
-    k({ heat: 1.4, eye: 2, neck: [-18, -10, -20], headPitch: -12, crest: 1, jaw: 0.4, wingN: W({ spread: 0.74, wrist: [0, -2] }), wingF: W({ spread: 0.72, wrist: [0, -2] }), breath: 1, flakes: [2, 3, 1] }, 70),
+    k({ heat: 1.4, eye: 2, neck: [12, 10, 6], head: [1, 2], headPitch: -10, crest: 1, jaw: 0.4, wingN: W({ spread: 0.74, wrist: [0, -2] }), wingF: W({ spread: 0.72, wrist: [0, -2] }), breath: 1, flakes: [2, 3, 1] }, 70),
     k({ heat: 1.3, eye: 1, neck: [-12, -6, -12], headPitch: -6, crest: 0.6, jaw: 0.2, wingN: W({ spread: 0.42, open: 0.15, wrist: [1, -3] }), wingF: W({ spread: 0.4, wrist: [0, -3] }), breath: 1, flakes: [1, 3, 0] }, 90),
     // the cloak slams down over the shoulders (the shock ring beat)
+    // the in-between of the slam (critic r3 #7): the cloaks ~60 % closed, the plates welding in (fire seams)
+    k({ heat: 1.25, eye: 1, neck: [-4, 2, 0], headPitch: -2, crest: 0.4, wingN: W({ spread: 0.16, open: 0.08, wrist: [0, -1] }), wingF: W({ spread: 0.15, wrist: [0, -1] }), weld: 30, breath: 1 }, 50),
     k({ heat: 1.2, beat: 1, body: [0, 1], neck: [-2, 4, 4], wingN: W({ wrist: [0, 2] }), wingF: W({ wrist: [0, 1] }), breath: 0 }, 100),
     // the rib spill
     k({ heat: 1.6, beat: 2, ribFlex: 1, ribSpread: 1, spill: 1, spillKind: 2, neck: [0, 4, 4] }, 110),
     // the spill cools into the fan; the neck lowers into the S
-    k({ heat: 1, spill: 3, spillKind: 2, neck: [0, 2, 2] }, 130),
+    k({ heat: 1, spill: 3, spillKind: 2, neck: [0, 2, 2] }, 80),
   ],
   end: 'idle0',
   endMs: 120,
@@ -364,9 +372,11 @@ const REVIVE: AnimDef<AshenPose> = {
     // legs and pelvis (heap ~70 %), f4 ribs and neck (~40 %), f5 skull, crest and the FOLDED finger bones
     // (~10 %); the fingers fan open only from f6 (each step's change ≤ ~1.5× the next)
     k({ heap: 0.74, boneTop: 79, seated: 0, strutFan: 0, heat: 1, drop: 22, eye: 0, body: [0, 3], wingN: W({ open: 0.1, wrist: [0, 6] }), wingF: W({ wrist: [0, 6] }) }, 90),
-    k({ heap: 0.42, boneTop: 50, seated: 0, strutFan: 0, heat: 1, drop: 8, eye: 0, body: [0, 2], neck: [6, 14, 16], wingN: W({ open: 0.15, wrist: [0, 4] }), wingF: W({ wrist: [0, 4] }) }, 90),
-    k({ heap: 0.12, boneTop: 0, seated: 0, strutFan: 0.1, heat: 1.1, drop: 2, eye: 0, body: [0, 1], neck: [2, 8, 8], wingN: W({ wrist: [0, 2] }), wingF: W({ wrist: [0, 2] }) }, 100),
-    k({ seated: 0, strutFan: 0.5, heat: 1.2, beat: 1, eye: 1, neck: [0, 4, 4], wingN: W({ open: 0.1 }) }, 110, 'land'),
+    // f4 (critic r3 #8): the skull is already there, low, jaw slack, crest flat — never a hooked neck alone
+    k({ heap: 0.42, boneTop: 1, seated: 0, strutFan: 0, heat: 1, drop: 8, eye: 0, body: [0, 2], neck: [30, 30, 24], head: [0, 2], headPitch: 18, jaw: 0.5, crest: -1, wingN: W({ open: 0.15, wrist: [0, 4] }), wingF: W({ wrist: [0, 4] }) }, 90),
+    // f5: the finger bones come in as STUBS, folded; f6 they extend; never the full fan before f6
+    k({ heap: 0.12, boneTop: 0.5, seated: 0, strutFan: 0, heat: 1.1, drop: 2, eye: 0, body: [0, 1], neck: [14, 18, 14], head: [0, 1], headPitch: 8, jaw: 0.3, crest: -0.5, wingN: W({ wrist: [0, 2] }), wingF: W({ wrist: [0, 2] }) }, 100),
+    k({ seated: 0, strutFan: 0.55, heat: 1.2, beat: 1, eye: 1, neck: [0, 4, 4], wingN: W({ open: 0.1 }) }, 110, 'land'),
     k({ seated: 6, weld: 0, strutFan: 0.7, order: 1, heat: 1.3, beat: 1, eye: 1 }, 90),
     k({ seated: 16, weld: 6, strutFan: 0.45, order: 1, heat: 1, beat: 0 }, 100),
     k({ seated: 28, weld: 16, strutFan: 0.2, order: 1, heat: 1.3, beat: 1 }, 110),

@@ -1504,3 +1504,113 @@ Each finding was checked against the tree (2026-10-31) before it was resolved.
     the guard shield is still a compact fan; hit vs hitHeavy differ mainly by the knuckle lift and the head
     reach (HA-21 phase headroom is 2.8 %); the eye glint through the shield is one pixel; the summon curl does not
     tuck the head under the wing; the in-duel attack still plays the generic path (cinematic, not sprite scope).
+- 2026-10-31 — **sprite fix pass after critic round 2** (critic report: `shots/kart-a/venom_drake/r2crit/`; files:
+  `venom_drake-rig.ts`, `venom_drake-anims.ts`, `venom_drake-wyvern.ts` header only).
+  - **1 Attack "Zehir Havanı"** (BLOCKER): `WINDUP` now swings the whole arch back over the rump (root −135°, the curl
+    tightened): bulb f1→f4 = (60,15) → (50,12) → (38,12) → **(31,13)**, a 34–47 px throw. f3–f4 barrel −2 + hips
+    sit 0.5 / 1, head low and back (hx −1 / −2, hy +2). f5 / f6 the barrel rocks forward 2 (`bx 2`); the head rides it
+    +1 and lifts to aim at f6–f7 (hy −2 / −3, tilt −1). f7 overshoot = bulb (79,21), 5 px under the f6 line (78,16),
+    clear of the head. f8 a new `SLOW_S` in-between, bulb (73,21). f5 smear redrawn: a 2-px trail along the
+    bulb's own path (back and gently up toward the swing's apex), over the tail, tapering to 1 px, ink-outlined.
+    Deviation: the critic's "head forward 2 px" is +1 on the head (the snout would touch the frame edge at +2).
+  - **2 Membrane / hood / spread** (BLOCKER): `wingGeo` hood = a sideways fan over the shoulders (≈ 27 × 18) with the
+    wrist raised in front and the fingers fanning back; the far wing only peeks behind its upper-back edge (no second
+    "ear"). Holes: one TEAR on the trailing edge (opens to the outside, only its upper lip wet) and one 5×4 low and
+    forward — different rows and sizes, so no mask / eyes. Spread (special f2–f6): up and BACK, near span ≈ 40 px,
+    the far wing's trailing tip behind the tail root, the head clear in front (P1 and P2 checked).
+  - **3 Summon** (BLOCKER): f0–f2 the near wing drapes forward over the tucked head as a cloak (`wingGeo` `cl` =
+    `curl`), the eye slit glints through a hole in it (same `eyeHole` path as the guard). f3–f8 `unfurl(t)` grows
+    the tail from the floor wrap to the f9 peak arch, each segment turning the short way round: bulb y
+    83 → 80 → 73 → 68 → 57 → 42 → 30 → 22 → 17 → **15 at f9** (the peak = ignition + hood). Max Δ 1967 (f6) vs 2246
+    before; the f4 triangle (old `LAND_TAIL` smear) is gone with the table. Deviation: f3 bulb y 68 not 64 (the
+    wrap's first unroll lifts the root first).
+  - **4 Guard** (MAJOR): shield fan ≈ 25 × 20 in front of chest and head (wrist sh+(14,−15), fingers +15/+2,
+    +17/+12, +10/+20), 3 ribs, the eye hole with the `gold2` eye and a second ragged 5×4 hole low-back; the snout
+    peeks under the front scallop. `GUARD_TAIL` is a low raised C (bulb (70,29)), the hook forward-down over the
+    shield rim. f1 has its own change (the shield's lower fingers fill +1 px; guard f1 Δ 81, no identical pair).
+  - **5 Idle appeal** (MAJOR): flank hole → a ragged notch on the strip's trailing edge (no ring); sac gets a 1-px
+    hide rim (`mag1` lit / top, `void1` below), drawn over the jaw with no separation row. Tail `ARCH` leans ≈ 12°
+    forward as one continuous C, taper 9 → 3.8 (`T_W`); chitin segments shaded each (`stone2` / `stone3`) with an ink
+    joint; the tail's `void3` edge stair removed (speckle) and the `leaf2` under-glow limited to segments 1–3.
+  - **6 Holes** (MAJOR): death f4 / revive node holes are now 7 seeded holes, size 3–6 px, oval / round / notched
+    (wobbled rim), a `leaf3` rim with 1–2 broken top pixels, a `leaf2` drip on every other one, never two on one row
+    (|Δy| ≥ 3 within 20 px). Wing holes use the same rules (`holeIn`, broken rim + drip, tear variant).
+  - **7 Revive** (MAJOR): f5 `holes 1.95`: opaque 1442 → 1948 → 2453 (even thirds).
+  - **8 Hits** (MAJOR): `hit` keeps the tail completely still (head + barrel only). `hitHeavy` f0 head down and back
+    (hx −3, hy 0, tilt +1 snout dipped, `ink` lid, knuckle +2); the tail lags f1, then the bulb swings back (tRot −4,
+    tdx −3) at f2 and rattles home. death f1 follows the new heavy f0. HA-21 phase 46.8 % (was 47.2 %).
+  - **9 toGuard f0**: `sit 0.4` only, Δ idle f0 → toGuard f0 = 1.19× idleΔ (was 3.0×).
+  - **10 Death f7–f8**: points follow the falling marker's hook tip in f7 ((40,64)); f8's casing heart glows
+    (`leaf3` over `leaf2`, a `stone0` well) while `glow` > 0. Wing-hole drips are not painted on slump frames (stray px).
+  - **11 hitMagic**: f4 sac 2, f5 a tail-tip settle (tdx −1); f6 = idle f0 is no longer a copy of f5.
+  - **12 Venom hue**: +1–2 `gold3` on the bulb's upper-back hot band at every glow (one `gold4` kept); checked on the
+    NT board at 1× (`r3/board/board-zoom.png`): reads acid yellow-green.
+  - **13 IŞ-10 ref**: waiver written next to the Sİ-5 one in `venom_drake-wyvern.ts`; with the default `--ref` the
+    row still fails (expected, full redesign); the lane runs `--ref none`.
+  - **14 Margins**: idle noise 9.5 % (was 9.8), death f6 18.9 % (was 19.8). Idle seam stays 1.3 (not changed).
+  - Gates (`monster-gates --class ace --ref none`, P1 + P2): **21 ok, 0 FAIL** — margin 2 (attack f4), in 0.80–1.78,
+    seam idle 1.3 / guard 0.76, idle max Δ 1.55×, liveliness 15.5 % / 15.8 %, guard 0.47×, noise idle 9.5 % / body
+    10.9 % / effect 18.9 %, HA-21 ≤ 23.7 %, HA-21 phase ≤ 46.8 %, feet band 38/38, muzzle every frame, 6.1 ms / frame.
+    `tests/art/venom_drake.test.ts` 11/11; `npm run typecheck` clean (whole tree).
+  - Evidence: `shots/kart-a/venom_drake/r3/final/` (P1 / P2 strips with points, `gates.txt`), `r3/g2/clean/` (clean
+    strips P1 + P2), `r3/g2/m-special-roar.png`, `r3/g2/m-p2.png` (P2 summon / guard / hitHeavy / attack), `r3/w0/`
+    (×6–12 work crops: hood, sac, notch, shield, smear), `r3/board/board.png`, `board-zoom.png`, `atk-film.png`.
+  - Still weak: liveliness 15.5 % sits near its 15 % floor (the tail edge speckle that was removed was also motion);
+    summon f5 is a long flat tail line over the back for one 70 ms frame; the spread wing's finger tips read spiky;
+    the death f4 holes are honest but small next to the bright seam web at 1×.
+- 2026-10-31 — **sprite fix pass after critic round 3** (critic report: `shots/kart-a/venom_drake/crit3/`; files:
+  `venom_drake-rig.ts`, `venom_drake-anims.ts`, `venom_drake-wyvern.ts` header, `tests/art/venom_drake.test.ts`).
+  - **3 Cape + forelimb** (MAJOR): the folded near wing is a real CAPE now: the wing metacarpal runs from the wrist up
+    and back to the knuckle under the back line (`WingGeo.B`, the membrane's front edge), the long finger lies back
+    along the back, the `void2` panel drapes over the flank and the FRONT of the near thigh down to y ≈ 72 (draw
+    order: near thigh, then the cape, then the arm), a seeded ragged hem (bites every 2–3 px), ONE fold line (void1
+    crease), one 4×4 real hole with a `leaf3` rim in the panel + a tear on the hem. Forelimb: elbow knob set back and
+    low (IK 15 / 13), a wrist joint (`Skel.jN/jF`) so the hand angles forward, a hide hand pad with two chitin claws
+    and a thumb spur (no grey wedge); the near limb is lit on its whole front plane (`half 0.9`).
+  - **4 Sac** (MAJOR): rest radius −0.6 (`SAC_R0 2.2`), body `leaf2` with a small `leaf3` core; `sacHot` (roar f3,
+    hitMagic) is a `leaf3` core + `leaf3` rim pulse round a `leaf2` body with ONE `gold3` glint — no gold fill.
+  - **5 Guard face** (MAJOR): the second shield hole is a TEAR biting the upper-back edge (`lip` leaf3), not a ring
+    on the eye's diagonal; the sac is not drawn in guard (`sac −1`). One eye glint remains.
+  - **1, 2 Special** (MAJOR): 12 → **14 f** (still 1 100 ms: `70 60 70 70 90 40 50 60 80 90 100 100 110 110`); f1 a
+    real crouch (barrel +2, head +1, haunch sat, bulb drawn back), f2 a third-rear with the hood half open, f3 three-
+    quarter rear, f4 full spread; **f5 a new 40 ms whip in-between** (`SP_APEX`: the arch flung over the fan, bulb
+    ≈ (60, 15)); **f6 release** = a stretched whip (`tStretch 1.28`, `tThin 1`, `SP_LASH`) from the rump root OVER
+    the fan to the bulb, with a smear. Bulb path f4 → f5 → f6: (32, 9) → (60, 15) → (80, 14). Marks: charge 1,
+    release = impact 6, contact 8, recover 9; `BEATS.spray` 6. Largest rear step 3 503 → 2 988 px (f3 → f4).
+    Deviation: the critic's "≤ 1.5 × idleΔ × 4" (≈ 2 650) is not met on the rear (2 655 / 2 933 / 2 988): every
+    rearing frame moves the whole body and the fan; the steps are now even instead of one 3 132 / 3 503 pop.
+  - **6 Death** (MAJOR): 11 → **13 f** (780 ms kept: `50 50 60 60 50 40 50 100 60 60 120 40 40`): f4 whole holes at
+    the venom sources, **f5 new half-eaten step** (`holes 1.5`), f6, f7 the lace (held 100), **f8 new slump** (barrel
+    sags 8, the arch buckles at its mid joint `BUCKLE`, the bulb drops ≈ 15 px to (48, 58)), f9 into the pool with
+    the falling stinger, f10 marker. `BEATS` lace 7 / slump 9 / marker 10. Opaque f3 → f9: 2 521 → 2 275 → 1 840 →
+    1 303 → 1 275 → 1 175 → 712.
+  - **7 Acid web** (minor): part space is warped round the venom sources (sac, quills, cape hole, tail under the bulb):
+    cells small there and ≈ 2.4× bigger away (`partXY`), node dots halved (30 → 14 %), node holes bigger at step 1.
+    Not done: "holes eat the cells next to them first" (the hole mask is shared with the future victim overlay;
+    left unchanged).
+  - **8, 9 Revive** (minor): f3 is the slump in reverse (the low buckled lace with the arch out of the pool, stinger
+    ≈ y 62) before the full lace at f4; the web fades 100 → 60 → 25 → 0 % over f5–f8 (no re-flare).
+  - **10 Attack smear** (minor): a quadratic arc from the bulb's upper-back edge bowing up and back, 1–2 px above
+    the tail (erased where it would cover the tail), `leaf2` tapering to `leaf1`.
+  - **11, 12 Summon** (minor): f5 is a rising S (`RISE_S`, bulb (44, 37)); f6–f8 a plain angle blend into the peak
+    (no "7" corner); f4 a lower, tighter S; f3 adjusted to keep the 2-px margin.
+  - **13 Roar jaw** (minor): the sac hangs from the lower jaw (drops 0.7 px per jaw step), the gape has a `mag0`
+    throat floor under the `void0` roof, a `mag1` gum line and one lower fang (`stone4` / `stone3`).
+  - **14 Idle** (minor): + a 1-px near-hand re-grip at f10–f11. Liveliness 15.5 → 16.5 %.
+  - **15** (BLOCKER, outside the sprite): not mine — `src/cinematics/_v3/presets.ts:44` still maps
+    `venom_drake: { material: 'plant', accent: 'shadow' }` and the mortar cinematic is not built; left for the
+    orchestrator / cinematics stage. The sprite's attack and new special/death frame numbers are in `BEATS`.
+  - Gates (`monster-gates --class ace --ref none`, P1 + P2): **21 ok, 0 FAIL** — margin 2 (attack f4), edge 0,
+    in 0.75–1.67, seam idle 1.25 / guard 0.91, idle max Δ 1.47×, liveliness 16.5 % / 16.6 %, guard 0.37×, noise
+    idle 9.9 % / 9.3 %, body 12.3 %, effect 19.3 % (death f7), HA-21 ≤ 23.0 %, HA-21 phase ≤ 46.0 %, feet band
+    38/38, muzzle 137/137, 137 frames (≤ 140), 5.5 ms / frame, 5.04 MB. `tests/art/venom_drake.test.ts` 11/11 (frame
+    counts 13 / 14, total 137; the special test now asks for a real crouch and no rear step > 7 × idleΔ; the death
+    lace is f7 and eats monotonically f4 → f7). `npm run typecheck` clean.
+  - Evidence: `shots/kart-a/venom_drake/r4/final/` (P1 / P2 strips with points, `gates.txt`), `r4/base/` (before),
+    `r4/sp.png` (special f0–f8), `r4/de.png`, `r4/de2.png` (death), `r4/rv.png` (revive), `r4/su.png` (summon),
+    `r4/smear.png` (attack f4–f6 + special f5–f6), `r4/p2keys.png` (P2 key frames), `r4/one.png` (×2 read: idle P1 /
+    P2, guard).
+  - Still weak: idle noise 9.9 % sits at its 10 % limit and death f7 at 19.3 % of 20 % (the cape and the warped web
+    added edges); the guard's upper-back tear shows the neck behind it, so it reads as a dark notch more than a
+    bite; the special rear steps are ≈ 6.8 × idleΔ; summon f4 still lies low over the back for its 60 ms; the
+    forearm at 1× is a lit 4-px limb, readable but thin.

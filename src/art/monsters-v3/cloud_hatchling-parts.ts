@@ -79,7 +79,7 @@ export const seg = (age: number, i: number): number => clamp01(age * 6 - i);
 // ------------------------------------------------------------------ the grown waist ring (§1.1 item 5)
 
 /** The ring's centre and radii (frame px; the grown body's waist). */
-export const RING = Object.freeze({ cx: 40, cy: 58, rx: 24, ry: 6 });
+export const RING = Object.freeze({ cx: 40, cy: 60, rx: 24, ry: 6 });
 export const RING_N = 12;
 
 export interface RingPuff {
@@ -100,8 +100,25 @@ export function ringPuffs(phase: number, o: { cy?: number; rx?: number; ry?: num
   const rx = o.rx ?? RING.rx;
   const ry = o.ry ?? RING.ry;
   const out: RingPuff[] = [];
+  // evenly spaced ALONG the ellipse (arc length), not by angle: the side puffs never bunch into clusters
+  // (critique r3 #7); a shift of 1/12 still maps the pattern onto itself
+  const N = 360;
+  const acc = [0];
+  for (let i = 1; i <= N; i++) {
+    const a0 = ((i - 1) / N) * Math.PI * 2;
+    const a1 = (i / N) * Math.PI * 2;
+    acc.push(acc[i - 1] + Math.hypot((Math.cos(a1) - Math.cos(a0)) * rx, (Math.sin(a1) - Math.sin(a0)) * ry));
+  }
+  const total = acc[N];
+  const angleAt = (u: number): number => {
+    const t = u * total;
+    let i = 1;
+    while (i < N && acc[i] < t) i++;
+    const f = (t - acc[i - 1]) / Math.max(1e-9, acc[i] - acc[i - 1]);
+    return ((i - 1 + f) / N) * Math.PI * 2;
+  };
   for (let k = 0; k < RING_N; k++) {
-    const a = ((k / RING_N + phase) % 1) * Math.PI * 2;
+    const a = angleAt(((k / RING_N + phase) % 1 + 1) % 1);
     const s = Math.sin(a);
     out.push({ k, x: Math.round(RING.cx + Math.cos(a) * rx), y: Math.round(cy + s * ry), back: s < -0.05 });
   }
@@ -254,7 +271,16 @@ export const CLOUD_KEY: Readonly<Record<string, number>> = Object.freeze({ W: PA
  * the key light, a `mist` body, a `steel` crescent underneath. `spike` > 0 stands the lobe on end
  * (hitMagic static): its rim breaks into 1-px points. Paints into `q` (a clear layer canvas).
  */
-export function puffLobe(q: PixelCanvas, cx: number, cy: number, r: number, light: Light, spike = 0): void {
+/** the far-side tones of a cloud lobe (the back half of the ring, in the body's shade) */
+const DIM: Readonly<Record<number, number>> = Object.freeze({ [PAL.white]: PAL.mist, [PAL.mist]: PAL.steel, [PAL.steel]: PAL.night4 });
+
+export function puffLobe(q: PixelCanvas, cx: number, cy: number, r: number, light: Light, spike = 0, dim = false): void {
+  if (dim) {
+    const t = new (q.constructor as new (w: number, h: number) => PixelCanvas)(q.w, q.h);
+    puffLobe(t, cx, cy, r, light, spike, false);
+    for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) if (t.isOpaque(x, y)) q.set(x, y, DIM[t.get(x, y)!] ?? t.get(x, y)!);
+    return;
+  }
   if (r < 0.8) return;
   const rx = r + 0.35;
   const ry = r * 0.9;
@@ -274,6 +300,18 @@ export function puffLobe(q: PixelCanvas, cx: number, cy: number, r: number, ligh
       }
       if (d > 1) continue;
       let col: number = PAL.mist;
+      if (r >= 4.5) {
+        // a big mass (critique r2 #1): a 2-px steel crescent along the underside, a broad white cap
+        // toward the light, mist between — one cap, one crescent, no inner cobbles
+        const ux = (x + 0.5 - cx) / rx;
+        const uy = (y + 0.5 - cy - 2.2) / ry;
+        const wx = (x + 0.5 - (cx + lit * r * 0.22)) / (rx * 0.78);
+        const wy = (y + 0.5 - (cy - r * 0.28)) / (ry * 0.72);
+        if (v > 0.15 && ux * ux + uy * uy > 1) col = PAL.steel;
+        else if (wx * wx + wy * wy < 1) col = PAL.white;
+        q.set(x, y, col);
+        continue;
+      }
       if (r < 2.2) col = v < -0.1 ? PAL.white : v > 0.45 ? PAL.steel : PAL.mist;
       else if (u * u + (v + 0.32) * (v + 0.32) > 1.0 && v > 0.3) col = PAL.steel;
       else if ((u - lit * 0.22) * (u - lit * 0.22) + (v + 0.2) * (v + 0.2) < 0.5) col = PAL.white;
@@ -301,14 +339,15 @@ export const LOBE_SEAM = seamFrom(
  * tail tip enters the cup. 10×8.
  */
 export const SHELL_CUP_L: Stamp = {
-  rows: ['...LLLM...', '..LLLLMMi.', '.LLLLMMcc.', 'LLLLMMMSi.', 'LLLMMSdcc.', 'LLMMMSdSi.', '.MMMSSScc.', '..MSSSSi..'],
+  // (the top row: 3 skin4 teeth breaking the outline, the broken edge read at 1×; critique r2 #12)
+  rows: ['..L.L.L...', '..LLLLM...', '..LLLLMMi.', '.LLLLMMcc.', 'LLLLMMMSi.', 'LLLMMSdcc.', 'LLMMMSdSi.', '.MMMSSScc.', '..MSSSSi..'],
   ax: 8,
-  ay: 4,
+  ay: 5,
 };
 export const SHELL_CUP_R: Stamp = {
-  rows: ['...MMLL...', '..SMMLLLi.', '.SSMMLLcc.', 'SSSMMLLLi.', 'SdSMMLLcc.', 'SdSMMMLLi.', '.SSSMMLcc.', '..SSSMMi..'],
+  rows: ['..L.L.L...', '..SMMLL...', '..SMMLLLi.', '.SSMMLLcc.', 'SSSMMLLLi.', 'SdSMMLLcc.', 'SdSMMMLLi.', '.SSSMMLcc.', '..SSSMMi..'],
   ax: 8,
-  ay: 4,
+  ay: 5,
 };
 export const CUP_KEY: Readonly<Record<string, number>> = Object.freeze({ L: PAL.skin4, M: PAL.earth4, S: PAL.earth3, d: PAL.earth2, i: PAL.skin3, c: PAL.earth2 });
 

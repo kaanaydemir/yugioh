@@ -1297,3 +1297,70 @@ Every claim was re-checked in the tree before acting on it. All 19 findings were
   - **Remaining weaknesses:** the grown head is still a fairly plain green dome (lion read comes from the mane);
     the growth f7 body is long for one frame; grown guard wall merges with the mane into one cloud mass (reads as
     "lying in its cloud", the head peeking); victory "V" nubs still small at 1×; the baby belly plate.
+- 2026-10-31 — **critic round 2 fixes (sprite)**. Files: `cloud_hatchling-rig.ts`, `-parts.ts`, `-anims.ts` (art / grown /
+  test files unchanged). Checked on ×3–×6 renders of every changed anim, P1 + P2 (`tools/_ch_frames.ts`, scratch),
+  and on the board (`?dev=duel&s=kaChGrownIdle&look=v3`).
+  - **#1 (blocker) grown mane.** Rebuilt as FOUR masses (haunch r 8, back r 9.5, nape ruff r 9, crown r 9;
+    `MANE_BACK` = `Mass[]`), each one cloud dome painted by a new big-lobe branch of `puffLobe()` (r ≥ 4.5: ONE
+    broad white cap toward the light, ONE 2-px steel crescent underneath, mist between). Small scallops (r 2.6)
+    only along each mass's outer `arc`, laid behind every mass so only the silhouette shows them. Front lobes
+    laid over the head: cheek ruff behind the jaw corner, two chin-ruff lobes under the jaw, a brow fringe over the
+    horn. Grown head ≈ 20 % larger (rx 9.5 → 11.5, ry 8.5 → 10, centre (56, 37.5)), snout 5.2 × 5.
+  - **#2 horn.** Up and back on the crown (hc + (−1.5, −8.5)), above the eye line, its back half under the brow
+    fringe; radius 4.2; skin4 dominant (≥ half the disc), earth4 / earth3 only on the shadow edge, one earth2
+    ¾-turn groove arc; the tip curls forward out of the head outline.
+  - **#3 grown attack / roar.** New grown-only pose fields (weighted by the legs' age, the baby never moves):
+    `lunge` [x, y] (chest + head + shoulders + front mane masses), `lag` (front mane overlap), `stomp` (near
+    foreleg lift); `rear` now raises only the chest on the planted forelegs (the haunch stays seated). Attack:
+    f1–f3 sink back 2/3/3 px + down, the haunch squashes; f6 foreleg up 3 px ("ha…"), f7 2 px, f8 stamps with the
+    chest thrown 4 px forward and the mane lagging 2 px, f9 the mane overshoots. Roar f4: chest up 5 px, head
+    pitched up, mane flared. **Mouth (shared, #3 / #8 / #9):** the open mouth is a wedge hinged at the mouth
+    corner (`mouthGeo`, facet in the head raster so it is part of the silhouette), painted night0 at the throat
+    and skin0 toward the lips, a 2×2 skin2 tongue on its floor, a white fang (grown); the lower jaw is its own
+    hide lobe hanging under the wedge (open 5.5 px baby / 7.5 px grown). The grown chin is hide now (was the tan
+    BELLY lump). Deviation: skin0 / skin2 instead of the critic's night0 / skin3 — night0 alone reads as a hole
+    in the sprite against the dark board.
+  - **#4 summon f8.** A tucked ball (ball 0.75 → r ≈ 10.5) bursting out of the cup, the cap and shards flying:
+    opaque 288 → 493 → 830 (f7 → f8 → f9), no ×4 pop. f0 / f1 are no longer merged: f0 is the falling stretch
+    2 px up, f1 a smaller stretch (bbox 12×16@34,56 vs @34,58).
+  - **#5 summon f0–f5.** The egg rocks ±1 px with a 1-px squash alternating on f3 / f4 / f5; the crack is a
+    zigzag on the lit face (earth2, white lip on its lit edge) growing 5 px per frame (5 / 10 / 15 + a 3-px
+    branch), f5 pecks a chip out of the top (`crack` > 1).
+  - **#6 baby death f3.** Ball radius at curl start 16.5 (f3 r ≈ 13.5; opaque 798 → 728, bbox 34×38 → 31×33),
+    shrinking f4–f6. The ball is now painted as three clean concentric bands (leaf4 / leaf3 / leaf2 round a
+    highlight toward the key light) with ONE tail curl and the cowlick on top (the wing nub, the inner head
+    ellipse and the patchwork are gone).
+  - **#7 grown death f2.** rG 15 → 18.5 and five big mane masses (r 8.5–9.5) round its rim + two masses wrapped
+    over its upper back: bbox 58×46, opaque 1764 (≈ 69 % of the idle 2551; less than the asked 85 % — the ball has
+    to fit the 2-px margin), they shrink / peel f3–f5 with the loose lobes.
+  - **#8 baby mouth + sneeze.** The wedge / jaw lobe above (no stick past the lips: the wedge only paints inside
+    the head). `airPuff()` is a cone of up to 4 short wind arcs (5–7 px, white / mist alternating) fanning out of
+    the mouth along the face's pitch, never over the sprite.
+  - **#9 growth f13.** Uses the roar f4 grown pose: tilt 1.75 (≈ 25° up), rear 5, wide dark jaw, mane 1.3 (masses
+    pushed out ≈ 2.6 px), lunge / lag overlap; f14 settles.
+  - **#10 waist ring.** RING cy 58 → 61, ry 6 → 7 (rx stays 24: one puff spacing = 3 idle frames, the test): the
+    front arc rides under the belly line in front of the forelegs, the side puffs stick out ≥ 6 px past the body
+    at both ends; every front puff casts a 1-px steel dot on the body under it.
+  - **#11 shell band.** Grown tail extended (tip (39, 70.6)); the band sits 10.5 px back from the tip so the tail
+    runs 2–3 px beyond it, ≈ 6 px further toward the haunch than before.
+  - **#12 baby belly / shell.** The belly plate is a tube tapering from the lower belly up into the chest
+    (3 tone bands by the material) with three earth2 scute bars; the cup maps got a top row of three skin4 1-px
+    teeth breaking the outline.
+  - **#13 grown guard.** Wall lobes r 3 (mane masses 8–9.5), a 1-px steel gap drawn over the top wall row
+    wherever a mane lobe sits on it; P2 guard IŞ-1 +2.5 → +18.7 (the big-mass caps).
+  - **#14 baby hit.** f1 the cowlick lags forward (+3) and the tail stretches back, f2 both overshoot.
+  - **#15 gates.** Not registered in REHBER §10: that file / the gate tool's "known" list are not mine — the three
+    FAILs remain the declared exceptions (orchestrator decision).
+  - **Gates** (`shots/kart-a/cloud_hatchling/r3/gates/gates-b.txt`, `gates-g.txt`; `--class medium --ref none`, P1 + P2):
+    baby 20 ok + 1 FAIL (HA-14 out special 13.3 / 13.0, declared), grown 19 ok + 2 FAIL (HA-14 out summon / revive
+    3.96 / 4.09, HA-15 in special 3.94 / 4.07, both declared). Baby / grown: HA-15 attack 1.80 / 0.89, roar 0.15 /
+    0.14; HA-17 1.77 / 1.69; HA-18 19.3 % / 24.2 %; HA-19 0.77 / 0.46; HA-21 contact ≤ 27 % / ≤ 24 %, phase ≤ 48.3 %
+    / ≤ 42.8 %; IŞ-10 idle 6.9 % / 3.2 %, effect ≤ 12.5 %; HA-9 fixed (grown x 14..62); IŞ-1 P2 relight > mirror on
+    every key frame; KK-13 139 frames, ≤ 3.1 ms / frame, 3.56 MB. Tests `tests/art/cloud_hatchling.test.ts` 9/9 +
+    `tests/duel/unit-variant.test.ts`; `tsc` clean.
+  - Evidence: `shots/kart-a/cloud_hatchling/r3/` — `gates/` (b, b2, g, g2 sheets + logs), `board-grown.png`,
+    `board-grown-z.png`, `w2`–`w12.png` (zoomed working renders: idle, attack, roar, death, summon, guard, special).
+  - **Remaining weaknesses:** baby HA-21 phase 48.3 % (close to 50); the grown face is still a smooth green head (the
+    lion read comes from the mane frame); growth f7–f8 show a tall white poof on a neck before the nape mass
+    arrives; the grown band still reads as a small tan block at 1× near the hind foot; summon f3's crack is short
+    (5 px); grown death f2 is ≈ 69 % of the idle mass, not 85 %.

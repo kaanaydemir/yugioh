@@ -1,7 +1,7 @@
 // Zehir Ejderi (venom_drake) v3 art — the hand-rigged SCORPION WYVERN (docs/v3/kart-a/venom_drake.md §3):
 // validateArt (ace tier) is clean, every anim and its marks exist, the muzzle is on every frame, the feet band
 // (bottom 6 rows) stays fixed in idle / guard / toGuard / fromGuard, P2 is a relight of the same silhouette,
-// the death leaves < 10 % of the idle body at its last frame, special f0 / f1 meet the held attack f1 (the
+// the death leaves < 10 % of the idle body at its last frame, special f0 meets the held attack f1 (the
 // direct-attack seam), the shared hole mask grows with its step, and the card picture paints at both sizes
 // inside the palette.
 
@@ -54,14 +54,14 @@ describe('venom_drake v3 (scorpion wyvern)', () => {
   });
 
   it('has every anim with the blueprint frame counts and marks', () => {
-    const want: Record<string, number> = { idle: 18, guard: 8, toGuard: 6, fromGuard: 6, attack: 14, roar: 12, hit: 6, hitHeavy: 7, hitMagic: 7, summon: 15, death: 11, revive: 11, special: 12 };
+    const want: Record<string, number> = { idle: 18, guard: 8, toGuard: 6, fromGuard: 6, attack: 14, roar: 12, hit: 6, hitHeavy: 7, hitMagic: 7, summon: 15, death: 13, revive: 11, special: 14 };
     let total = 0;
     for (const a of [...BASE, ...EXTRAS]) {
       expect(specOf(a), a).toBeTruthy();
       expect(specOf(a).frames, a).toBe(want[a]);
       total += specOf(a).frames;
     }
-    expect(total).toBe(133);
+    expect(total).toBe(137);
     expect(specOf('attack').marks).toMatchObject({ charge: 1, release: 6, impact: 6, contact: 9, recover: 10 });
     expect(specOf('death').marks).toMatchObject({ impact: 0, contact: 0, dissolve: 3 });
     expect(specOf('summon').marks!.land).toBe(4);
@@ -101,18 +101,21 @@ describe('venom_drake v3 (scorpion wyvern)', () => {
   it('the death eats the body away: < 10 % of idle f0 at its last frame', () => {
     const i0 = opaque(drawFrame(art, 'idle', 0));
     expect(opaque(drawFrame(art, 'death', specOf('death').frames - 1))).toBeLessThan(i0 * 0.1);
-    // the lace (f6) is a body made of holes: well under the struck body
-    expect(opaque(drawFrame(art, 'death', 6))).toBeLessThan(opaque(drawFrame(art, 'death', 2)) * 0.6);
+    // the lace (f7) is a body made of holes: well under the struck body; it eats in visible steps (f4 → f7)
+    expect(opaque(drawFrame(art, 'death', 7))).toBeLessThan(opaque(drawFrame(art, 'death', 2)) * 0.6);
+    for (let f = 4; f <= 7; f++) expect(opaque(drawFrame(art, 'death', f))).toBeLessThan(opaque(drawFrame(art, 'death', f - 1)) + 1);
   });
 
-  it('special f0 is the held attack f1 pixel for pixel, special f1 within 1× idleΔ of it', () => {
+  it('special f0 is the held attack f1 pixel for pixel; the crouch and the two-step rear never pop', () => {
     const a1 = drawFrame(art, 'attack', 1);
     expect(frameDelta(drawFrame(art, 'special', 0), a1)).toBe(0);
     let idleD = 0;
     const n = specOf('idle').frames;
     for (let f = 0; f < n; f++) idleD += frameDelta(drawFrame(art, 'idle', f), drawFrame(art, 'idle', (f + 1) % n));
     idleD /= n;
-    expect(frameDelta(drawFrame(art, 'special', 1), a1)).toBeLessThanOrEqual(idleD);
+    // (critic r3) f1 is a real crouch (no longer a near-copy of f0), and no step of the rear (f0 → f5) jumps
+    expect(frameDelta(drawFrame(art, 'special', 1), a1)).toBeGreaterThan(idleD * 2);
+    for (let f = 1; f <= 5; f++) expect(frameDelta(drawFrame(art, 'special', f), drawFrame(art, 'special', f - 1)), `special f${f}`).toBeLessThanOrEqual(idleD * 7);
   });
 
   it('the shared hole mask only grows with its step and the lace keeps strands', () => {

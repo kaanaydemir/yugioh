@@ -35,10 +35,12 @@ const S = (back: V[], front: V[], topMid: V, hemMid: V): CloakShape => ({ back, 
 type Key = 'fold' | 'open' | 'mantle' | 'cocoon' | 'spread';
 export const SHAPES: Readonly<Record<WingId, Readonly<Record<Key, CloakShape>>>> = {
   N: {
+    // the hood (critic r3 #3): the two wrists round into ONE shoulders-up curve, the near half from the
+    // shallow notch (x 47) over its crown to the wrist, never a separate cone tip
     fold: S(
-      [[50, 24], [42, 30], [36, 44], [34, 60], [35, 80]],
-      [[60, 14], [63, 25], [61, 38], [53, 57], [47, 77]],
-      [55, 18],
+      [[47, 18], [40, 25], [36, 42], [34, 60], [35, 80]],
+      [[61, 15], [63, 25], [61, 38], [53, 57], [47, 77]],
+      [54, 12.5],
       [40, 83],
     ),
     open: S(
@@ -47,11 +49,13 @@ export const SHAPES: Readonly<Record<WingId, Readonly<Record<Key, CloakShape>>>>
       [56, 16],
       [20, 68],
     ),
+    // the victory canopy (critic r3 #5): a SHORT forward hood over the shoulders, its hem ending behind the
+    // skull so the head (out in front, below) reads as its own shape with a floor-navy gap above the crest
     mantle: S(
-      [[52, 22], [58, 24], [65, 34], [70, 46], [74, 60]],
-      [[64, 20], [76, 24], [88, 34], [96, 48], [100, 66]],
-      [58, 20],
-      [94, 68],
+      [[50, 20], [55, 22], [61, 28], [66, 36], [69, 44]],
+      [[60, 15], [70, 17], [78, 23], [83, 31], [85, 39]],
+      [55, 15],
+      [78, 44],
     ),
     cocoon: S(
       [[50, 18], [42, 28], [38, 46], [38, 62], [40, 80]],
@@ -61,18 +65,20 @@ export const SHAPES: Readonly<Record<WingId, Readonly<Record<Key, CloakShape>>>>
     ),
     // the summon's burst (§4.7): the near hand thrown forward and UP over the head, its hem a
     // trailing edge from the shoulder to the forward tip, so the skull stays readable under it
+    // (critic r3 #6) a WING, not an umbrella: the wrist flung out to the far end of a long leading edge, the
+    // fingers fanning back from it to a ragged trailing edge that runs back to the shoulder
     spread: S(
-      [[80, 12], [75, 19], [70, 26], [65, 33], [61, 41]],
-      [[84, 12], [91, 16], [98, 20], [103, 25], [107, 30]],
-      [82, 11],
-      [86, 31],
+      [[98, 10], [88, 14], [78, 19], [70, 25], [63, 32]],
+      [[101, 10], [104, 17], [106, 24], [107, 30], [108, 35]],
+      [99.5, 9],
+      [86, 37],
     ),
   },
   F: {
     fold: S(
-      [[40, 18], [32, 27], [28, 42], [26, 58], [29, 77]],
-      [[47, 25], [48, 33], [47, 46], [44, 62], [40, 78]],
-      [43, 21],
+      [[36, 19], [30, 26], [28, 42], [26, 58], [29, 77]],
+      [[47, 18], [48, 30], [47, 46], [44, 62], [40, 78]],
+      [41.5, 14.5],
       [33, 81],
     ),
     open: S(
@@ -82,10 +88,10 @@ export const SHAPES: Readonly<Record<WingId, Readonly<Record<Key, CloakShape>>>>
       [12, 62],
     ),
     mantle: S(
-      [[52, 17], [56, 21], [63, 29], [72, 42], [78, 58]],
-      [[56, 16], [62, 21], [72, 30], [82, 44], [88, 60]],
-      [53, 15],
-      [83, 60],
+      [[45, 18], [49, 21], [55, 27], [60, 35], [63, 42]],
+      [[51, 15], [60, 16], [68, 21], [74, 29], [77, 37]],
+      [48, 15],
+      [71, 41],
     ),
     cocoon: S(
       [[42, 18], [34, 27], [30, 44], [30, 62], [32, 80]],
@@ -95,10 +101,10 @@ export const SHAPES: Readonly<Record<WingId, Readonly<Record<Key, CloakShape>>>>
     ),
     // the burst: the far hand thrown BACK, full height
     spread: S(
-      [[30, 12], [23, 18], [16, 25], [9, 32], [5, 40]],
-      [[34, 13], [38, 20], [42, 27], [45, 35], [48, 43]],
-      [32, 11],
-      [26, 34],
+      [[13, 10], [10, 17], [8, 24], [6, 30], [5, 36]],
+      [[17, 10], [26, 14], [35, 19], [42, 25], [47, 31]],
+      [15, 9],
+      [26, 37],
     ),
   },
 };
@@ -310,11 +316,41 @@ export interface CloakDraw {
 
 const OWN = new Int16Array(W * H);
 const RID = new Int16Array(W * H);
-const TH_LIT = 0.1;
 const CJ = new Uint8Array(W * H);
 const NU_CELLS = 8;
-const PLANE = new Uint8Array(32 * 16);
 const CR = new Uint8Array(W * H);
+const FU = new Float32Array(W * H);
+const FV = new Float32Array(W * H);
+const SID = new Int16Array(W * H);
+const SC_MAX = 40;
+const SC_N = new Float32Array(SC_MAX);
+const SC_ST = new Float32Array(SC_MAX);
+const SC_T = new Uint8Array(SC_MAX * 64);
+const IB: [number, number] = [0, 0];
+const cross2 = (ax: number, ay: number, bx: number, by: number) => ax * by - ay * bx;
+/** inverse bilinear: (s, t) of point (px, py) in the quad a(0,0) b(1,0) c(1,1) d(0,1) → IB */
+function invBilinear(px: number, py: number, a: V, b: V, c: V, d: V): void {
+  const ex = b[0] - a[0], ey = b[1] - a[1];
+  const fx = d[0] - a[0], fy = d[1] - a[1];
+  const gx = a[0] - b[0] + c[0] - d[0], gy = a[1] - b[1] + c[1] - d[1];
+  const hx = px - a[0], hy = py - a[1];
+  const k2 = cross2(gx, gy, fx, fy);
+  const k1 = cross2(ex, ey, fx, fy) + cross2(hx, hy, gx, gy);
+  const k0 = cross2(hx, hy, ex, ey);
+  let v: number;
+  if (Math.abs(k2) < 1e-6) v = Math.abs(k1) > 1e-9 ? -k0 / k1 : 0.5;
+  else {
+    const disc = k1 * k1 - 4 * k0 * k2;
+    const sq = Math.sqrt(Math.max(0, disc));
+    v = (-k1 - sq) / (2 * k2);
+    if (v < -0.05 || v > 1.05) v = (-k1 + sq) / (2 * k2);
+  }
+  const dx = ex + gx * v;
+  const dy = ey + gy * v;
+  const u = Math.abs(dx) > Math.abs(dy) ? (hx - fx * v) / dx : Math.abs(dy) > 1e-9 ? (hy - fy * v) / dy : 0.5;
+  IB[0] = Math.max(0, Math.min(1, u));
+  IB[1] = Math.max(0, Math.min(1, v));
+}
 const TIPX = new Float32Array(64);
 /** the light's intensity on a facet normal (the frame's key light + its lift) */
 const lightI = (L: Light, n: readonly number[]) => n[0] * L.v[0] + n[1] * L.v[1] + n[2] * L.v[2] + L.lift;
@@ -359,13 +395,14 @@ export function drawCloak(ws: Workspace, light: Light, wing: WingId, w: WingPose
     };
     const roots: V[] = [];
     const fingers: [V, V][] = [];
+    const bones: V[][] = [];
     const fan = o.fan ?? 1;
     // the far hand fans further back and shorter, so its fingers stay behind / above the near ones
-    const farRot = o.far ? 6 : 0;
-    for (const [deg, lk, wd, bow, pu, pv] of [[34, 0.86, 2.4, 4.4, 0.08, 0.92], [4, 0.95, 2.2, 4, 0.4, 0.98], [-26, 0.78, 2, 3.4, 0.74, 0.86]] as const) {
+    const farRot = o.far ? 22 : 0;
+    for (const [deg, lk, wd, bow, pu, pv] of [[o.far ? 34 : 18, o.far ? 0.86 : 0.8, 2.4, 4.4, 0.08, 0.92], [o.far ? 4 : 0, 0.95, 2.2, 4, 0.4, 0.98], [o.far ? -26 : -22, 0.78, 2, 3.4, 0.74, 0.86]] as const) {
       // fan 1: the stripped bat hand; fan 0: the fingers lie inside the cloak's own outline (the
       // summon builds the hand under the plates it is about to carry)
-      const fanEnd = add(wrist, mul(rot(dir, deg + farRot), reach * lk * (o.reach ?? 1) * (o.far ? 0.74 : 1)));
+      const fanEnd = add(wrist, mul(rot(dir, deg + farRot), reach * lk * (o.reach ?? 1) * (o.far ? 0.58 : 1)));
       const end = lerpV(patchAt(s, pu, pv), fanEnd, fan);
       const d = norm(sub(end, wrist));
       const s0 = add(wrist, mul(d, 2.5));
@@ -378,9 +415,9 @@ export function drawCloak(ws: Workspace, light: Light, wing: WingId, w: WingPose
         r.tube([s0, lerpV(s0, knuckle, 0.4)], wd, wd - 0.4, M.HIDE + (o.far ? 1 : 0), { z: 1, flat: 1.4 });
         continue;
       }
-      r.tube([s0, lerpV(s0, knuckle, 0.5), knuckle], wd, wd - 0.3, M.HIDE + (o.far ? 1 : 0), { z: 1, flat: 1.4 });
-      r.tube([knuckle, mid2, end, hook], wd - 0.4, 1, M.HIDE + (o.far ? 1 : 0), { z: 1, flat: 1.4 });
-      knuckles.push(knuckle);
+      // the finger itself is hand-drawn after the render (2 px at the base tapering to 1, a lit edge)
+      bones.push([s0, lerpV(s0, knuckle, 0.5), knuckle, mid2, end, hook]);
+      knuckles.push(knuckle, mid2);
       roots.push(lerpV(s0, knuckle, 0.85));
       fingers.push([s0, knuckle]);
     }
@@ -402,16 +439,50 @@ export function drawCloak(ws: Workspace, light: Light, wing: WingId, w: WingPose
       });
     }
     q.blit(c, 0, 0);
-    // the knuckle blobs: 2×2, lit corner on the light side
+    // the finger bones (critic r3 #10): 2 px at the base tapering to 1 px past the second joint, the edge
+    // toward the light one step up (stone3 near / stone2 far), the shadow edge one down; then a knuckle
+    // node on every joint (2×2, lit corner) — bony spindles, never wires
     const hi = o.far ? PAL.stone2 : PAL.stone3;
     const mid = o.far ? PAL.stone1 : PAL.stone2;
+    const lo = o.far ? PAL.stone0 : PAL.stone1;
+    for (const b of bones) {
+      let total = 0;
+      for (let i = 1; i < b.length; i++) total += len(sub(b[i], b[i - 1]));
+      let acc = 0;
+      for (let i = 1; i < b.length; i++) {
+        const a = b[i - 1];
+        const d = sub(b[i], a);
+        const L = len(d) || 1;
+        const steps = Math.ceil(L * 2);
+        // the side toward the light, in screen px (light.side −1: the left / up side is lit)
+        const nrm: V = [-d[1] / L, d[0] / L];
+        // the second px always sits on the bone's upper side (the opaque mask never depends on the light);
+        // only its tone follows the light
+        const upSign = nrm[1] < 0 || (nrm[1] === 0 && nrm[0] < 0) ? 1 : -1;
+        const litUp = (nrm[0] * upSign) * light.side + (nrm[1] * upSign) <= 0;
+        for (let k = 0; k <= steps; k++) {
+          const t = k / steps;
+          const pnt = add(a, mul(d, t));
+          const at = (acc + L * t) / (total || 1);
+          const x = Math.floor(pnt[0]);
+          const y = Math.floor(pnt[1]);
+          if (x < 0 || y < 0 || x >= W || y >= H) continue;
+          if (at < 0.62) {
+            const ox = Math.round(nrm[0] * upSign);
+            const oy = Math.round(nrm[1] * upSign);
+            q.set(x, y, litUp ? mid : lo);
+            if (x + ox >= 0 && x + ox < W && y + oy >= 0 && y + oy < H) q.set(x + ox, y + oy, litUp ? hi : mid);
+          } else q.set(x, y, at > 0.93 ? lo : mid);
+        }
+        acc += L;
+      }
+    }
     for (const kn of knuckles) {
       const x = Math.round(kn[0] - 1);
       const y = Math.round(kn[1] - 1);
-      // only on its finger: a knuckle never floats free of the bone it belongs to
-      if (!c.isOpaque(x, y) || !c.isOpaque(x + 1, y + 1)) continue;
+      if (x < 0 || y < 0 || x + 1 >= W || y + 1 >= H) continue;
       const lx = light.side < 0 ? 0 : 1;
-      for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) q.set(x + dx, y + dy, dx === lx && dy === 0 ? hi : mid);
+      for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) q.set(x + dx, y + dy, dx === lx && dy === 0 ? hi : dy === 1 && dx !== lx ? lo : mid);
     }
   }
 
@@ -437,122 +508,182 @@ export function drawCloak(ws: Workspace, light: Light, wing: WingId, w: WingPose
       });
     }
   }
-  // ---- the tone pass (§1.3 plate rule, IŞ-5, MA-2): the plates give the coverage (and their states);
-  //      the TEXTURE is shingle courses laid over the whole hood — rows ≈ 3.5 px tall, each with a full-width
-  //      crease one step darker at its lower edge, vertical joints staggered like brickwork, the body tone
-  //      a large light plane (stone2 lit / stone1 shadow; stone0 only in creases), stone3 lips only on the
-  //      top 2 courses of the lit plane and the wrist peak. The rippled plate row samples the field 1 px up
-  //      (its tiles drop with it).
+  // ---- the tone pass (critic r3 #2, §1.3 plate rule, IŞ-5, MA-2): the plates give the COVERAGE (and their
+  //      states); the TEXTURE is overlapping SCALE PLATES laid over the hood's (u, v) field — staggered rows
+  //      ≈ 4.2 px, each plate 4–6 px wide with a rounded, slightly ragged lower edge that hangs over the plate
+  //      below (its underside one or two steps down: the stone1 lip). The cloak is lit as ONE form: stone3 on
+  //      the upper third toward the light, falling through stone2 to stone1 toward the hem and the inside
+  //      edge; the far cloak a whole value step lower. The courses are laid on the hood WITHOUT its wrist
+  //      offset (the breath moves the silhouette, not the tiles); the rippled plate row samples 1 px up.
   const n = s.back.length - 1;
   let Lv = 0;
-  // the courses are laid on the hood WITHOUT its wrist offset (the breath, the sway): the silhouette breathes
-  // while the tiles stay put, so the idle varies by its edges, not by a re-mapped texture (HA-21 phase)
   const ts = cloakShape(wing, { ...w, wrist: [0, 0] }, off);
   for (let i = 1; i <= n; i++) Lv += (len(sub(ts.back[i], ts.back[i - 1])) + len(sub(ts.front[i], ts.front[i - 1]))) / 2;
   const NR = Math.max(4, Math.min(24, Math.round(Lv / 3.6)));
   const NU = NU_CELLS;
   RID.fill(-1);
   const GP: V[] = [];
-  for (let r = 0; r <= NR + 2; r++) for (let j = 0; j <= NU; j++) GP.push(patchAt(ts, j / NU, r / NR));
+  let gx0 = W;
+  let gx1 = 0;
+  let gy0 = H;
+  let gy1 = 0;
+  for (let r = 0; r <= NR + 2; r++)
+    for (let j = 0; j <= NU; j++) {
+      const g = patchAt(ts, j / NU, r / NR);
+      GP.push(g);
+      if (r <= NR) {
+        gx0 = Math.min(gx0, g[0]);
+        gx1 = Math.max(gx1, g[0]);
+        gy0 = Math.min(gy0, g[1]);
+        gy1 = Math.max(gy1, g[1]);
+      }
+    }
   const gp = (r: number, j: number) => GP[r * (NU + 1) + j];
   for (let r = 0; r <= NR + 1; r++)
-    for (let j = 0; j < NU; j++)
-      fillPoly([gp(r, j), gp(r, j + 1), gp(r + 1, j + 1), gp(r + 1, j)], (x, y) => {
+    for (let j = 0; j < NU; j++) {
+      const a = gp(r, j);
+      const b = gp(r, j + 1);
+      const c = gp(r + 1, j + 1);
+      const d = gp(r + 1, j);
+      fillPoly([a, b, c, d], (x, y) => {
         if (x < 0 || y < 0 || x >= W || y >= H || OWN[y * W + x] < 0) return;
-        RID[y * W + x] = r;
-        CJ[y * W + x] = j;
+        const i = y * W + x;
+        RID[i] = r;
+        CJ[i] = j;
+        invBilinear(x + 0.5, y + 0.5, a, b, c, d);
+        FU[i] = (j + IB[0]) / NU;
+        FV[i] = (r + IB[1]) / NR;
       });
+    }
   // gaps of the quad raster (and the wrist's lift above the course field): the pixel above / left, then
   // the one below / right, else the plate's own course
+  const copy = (i: number, j: number) => {
+    RID[i] = RID[j];
+    CJ[i] = CJ[j];
+    FU[i] = FU[j];
+    FV[i] = FV[j];
+  };
   for (let y = by0; y <= by1; y++)
     for (let x = bx0; x <= bx1; x++) {
       const i = y * W + x;
       if (OWN[i] < 0 || RID[i] >= 0) continue;
       const j = y > 0 && RID[i - W] >= 0 ? i - W : x > 0 && RID[i - 1] >= 0 ? i - 1 : -1;
-      if (j >= 0) {
-        RID[i] = RID[j];
-        CJ[i] = CJ[j];
-      }
+      if (j >= 0) copy(i, j);
     }
   for (let y = by1; y >= by0; y--)
     for (let x = bx1; x >= bx0; x--) {
       const i = y * W + x;
       if (OWN[i] < 0 || RID[i] >= 0) continue;
       const j = y + 1 < H && RID[i + W] >= 0 ? i + W : x + 1 < W && RID[i + 1] >= 0 ? i + 1 : -1;
-      if (j >= 0) {
-        RID[i] = RID[j];
-        CJ[i] = CJ[j];
-      } else {
+      if (j >= 0) copy(i, j);
+      else {
         const pl = PLATES[OWN[i]];
         RID[i] = Math.round(ROWS[pl.row] * NR);
         CJ[i] = Math.min(NU - 1, Math.floor(((pl.u0 + pl.u1) / 2) * NU));
+        FU[i] = (pl.u0 + pl.u1) / 2;
+        FV[i] = ROWS[pl.row];
       }
     }
   const spread = w.spread ?? 0;
-  const NB = 3;
-  // the light plane: one value per (course, u-cell), read in the light's SCREEN direction only (P1 and the
-  // P2 relight split alike); the burst's sail is a lit upper plane over a dark underside
-  const NC = (NR + 2) * NU;
-  for (let r = 0; r < NR + 2; r++)
-    for (let j = 0; j < NU; j++) {
-      const u = (j + 0.5) / NU;
-      const v = (r + 0.5) / NR;
-      const nn = hoodNormal(wing, u, v, w);
-      let Ixy = nn[0] * L.v[0] + (nn[1] - 0.2) * L.v[1];
-      if (spread > 0.5) Ixy = v < 0.5 ? 1 : -1;
-      let k = Ixy >= TH_LIT ? 2 : 1;
-      // the far cloak's inner half one step darker (never stone0: that is for creases only)
-      if (shift && (L.side < 0 ? u > 0.45 : u < 0.55)) k = 1;
-      PLANE[r * NU + j] = k + (Ixy >= TH_LIT + 0.25 && r <= 1 ? 4 : 0);
-    }
-  void NC;
-  const rid = (x: number, y: number): number => (x < 0 || y < 0 || x >= W || y >= H ? -2 : RID[y * W + x]);
+  // the scale rows: count of plates per row from the hood's width there (≈ 5 px a plate), a stagger
+  const PH = 5;
+  const NPR = Math.min(SC_MAX - 1, Math.ceil(Lv / PH) + 2);
+  for (let pr = 0; pr <= NPR; pr++) {
+    const vc = Math.min(1.1, ((pr + 0.5) * PH) / (Lv || 1));
+    const wd = len(sub(patchAt(ts, 1, vc), patchAt(ts, 0, vc)));
+    SC_N[pr] = Math.max(1, Math.round(wd / 6.2));
+    SC_ST[pr] = (pr % 2) * 0.5 + (hash(pr, 91, shift) - 0.5) * 0.1;
+  }
+  const bulge = (pr: number, c: number, fx: number) => {
+    const t = 2 * fx - 1;
+    const dep = 2.6 + hash(pr, c, 93 + shift) * 0.6;
+    // a ragged lower edge: one bite or one tooth per plate, never symmetric
+    const bite = hash(pr, c, 96) < 0.4 && Math.floor(fx * 4) === 1 + Math.floor(hash(pr, c, 94) * 2) ? -1 : 0;
+    return dep * (1 - t * t) + bite;
+  };
+  // pass 1: the owning scale of every pixel
+  SID.fill(-1);
   for (let y = by0; y <= by1; y++)
     for (let x = bx0; x <= bx1; x++) {
       const i0 = y * W + x;
+      SID[i0] = -1;
       const id = OWN[i0];
       if (id < 0) continue;
-      // the rippled row's tiles drop 1 px with their plate (the wave travels hem → wrist)
       const i = PLATES[id].row === w.ripple && y > 0 && RID[i0 - W] >= 0 ? i0 - W : i0;
-      const r = RID[i];
-      const j = CJ[i];
-      const pl = PLANE[Math.min(NR + 1, r) * NU + j];
-      let k = pl & 3;
-      const below = i === i0 ? rid(x, y + 1) : r === RID[i0] ? RID[i0] : rid(x, y);
-      const crease = below === -2 || (below >= 0 && below !== r) || (y + 1 < H && OWN[i0 + W] < 0);
-      let joint = false;
-      if (!crease && spread <= 0.5 && x > 0) {
-        // a joint is a short 1-px tick just above the crease (a tile's side under the one above)
-        const b2 = rid(x, y + 2);
-        if (b2 >= 0 && b2 !== r && RID[i - 1] === r && CJ[i - 1] !== j) {
-          const stag = (r % 2) * 0.5;
-          joint = Math.floor(((CJ[i - 1] + 0.5) / NU) * NB + stag) !== Math.floor(((j + 0.5) / NU) * NB + stag);
+      const vpx = FV[i] * Lv;
+      const u = FU[i];
+      let pr = Math.max(0, Math.min(NPR, Math.floor(vpx / PH)));
+      const ly = vpx - pr * PH;
+      let sp = u * SC_N[pr] + SC_ST[pr];
+      if (pr > 0) {
+        const su = u * SC_N[pr - 1] + SC_ST[pr - 1];
+        const cu = Math.floor(su);
+        if (ly < bulge(pr - 1, cu, su - cu)) {
+          pr -= 1;
+          sp = su;
         }
       }
-      if (crease || joint) k -= 1;
-      else if (pl >= 4 && k === 2) {
-        // a lit lip on the top 2 courses, only as a horizontal run (a 1-px staircase step reads as a dot)
-        const top = (xx: number) => {
-          if (xx < 0 || xx >= W || OWN[y * W + xx] < 0 || RID[y * W + xx] !== r) return false;
-          const a = rid(xx, y - 1);
-          return a === -2 || (a >= 0 && a !== r) || OWN[(y - 1) * W + xx] < 0;
-        };
-        if (top(x) && (top(x - 1) || top(x + 1))) k = 3;
-      }
-      q.set(x, y, CLOAK_RAMP[Math.max(0, k)]);
-      CR[i0] = crease ? 1 : 0;
+      SID[i0] = pr * 64 + Math.floor(sp) + 8;
+    }
+  // pass 2: the tones — one body tone per plate (the form's light), its lower edge one / two steps down
+  const cx = (gx0 + gx1) / 2;
+  const cy = (gy0 + gy1) / 2;
+  const hw = Math.max(4, (gx1 - gx0) / 2);
+  const hh = Math.max(4, (gy1 - gy0) / 2);
+  SC_T.fill(255);
+  const toneOf = (sid: number): number => {
+    if (SC_T[sid] !== 255) return SC_T[sid];
+    const pr = Math.floor(sid / 64);
+    const c = (sid % 64) - 8;
+    const u = Math.max(0, Math.min(1, (c + 0.5 - SC_ST[pr]) / SC_N[pr]));
+    const v = Math.min(1, ((pr + 0.5) * PH) / (Lv || 1));
+    const P = patchAt(ts, u, v);
+    let k: number;
+    if (spread > 0.5) k = v < 0.42 ? 3 : v < 0.7 ? 2 : 1;
+    else {
+      const gx = ((P[0] - cx) / hw) * L.side;
+      const gy = (cy - P[1]) / hh;
+      const nn = hoodNormal(wing, u, v, w);
+      const g = 0.6 * gx + 0.8 * gy + 0.35 * (nn[0] * L.v[0]) + (hash(pr, c, 97) - 0.5) * 0.22;
+      k = g > 0.45 ? 3 : g > -0.3 ? 2 : 1;
+    }
+    if (shift) k = Math.max(1, k - 1);
+    SC_T[sid] = k;
+    return k;
+  };
+  for (let y = by0; y <= by1; y++)
+    for (let x = bx0; x <= bx1; x++) {
+      const i0 = y * W + x;
+      const sid = SID[i0];
+      if (sid < 0) continue;
+      const k = toneOf(sid);
+      const below = y + 1 < H ? SID[i0 + W] : -1;
+      // the plate's rounded rim: its lower edge, and its sides where the plate of the row below shows
+      // beside it (so the rim is one connected arc, never a dashed course)
+      const row = sid >> 6;
+      const side = (j: number) => j >= 0 && (SID[j] >> 6) > row;
+      const edge = below !== sid || (x > 0 && side(i0 - 1)) || (x + 1 < W && side(i0 + 1));
+      // the underside: stone3 → stone1, stone2 → stone1, stone1 → stone0
+      const e = k >= 2 ? 1 : 0;
+      // the cast shadow right under the plate above's rim: one step down (the overhang reads as depth)
+      const under = !edge && y > 0 && SID[i0 - W] >= 0 && (SID[i0 - W] >> 6) < row;
+      q.set(x, y, CLOAK_RAMP[edge ? e : under ? Math.max(1, k - 1) : k]);
+      CR[i0] = edge ? 1 : 0;
     }
   // the welds: a re-seated plate shows a fire2 lip on a course crease — at most 6 px a frame
-  for (let y = 0; y < H && welds.length < 12; y++)
-    for (let x = 0; x < W && welds.length < 12; x++) {
+  let anyWeld = false;
+  for (const p of plates) if (state(p.id) === 'weld') anyWeld = true;
+  if (anyWeld)
+  for (let y = Math.max(0, by0); y <= by1 && welds.length < 12; y++)
+    for (let x = Math.max(0, bx0); x <= bx1 && welds.length < 12; x++) {
       const id = OWN[y * W + x];
       if (id < 0 || !CR[y * W + x] || state(id) !== 'weld') continue;
       if (Math.abs(x + 0.5 - TIPX[id]) < 1.6 && (welds.length === 0 || hash(x, y, 77) < 0.6)) welds.push(x, y);
     }
   if ((o.spars ?? 0) > 0) sailSpars(q, s, wing, light, NR, Lv, o.spars!, o.far);
   // the hem: ONE lip per column — the lowest cloak pixel with open air below
-  for (let x = 0; x < W; x++)
-    for (let y = H - 2; y >= 0; y--) {
+  for (let x = Math.max(0, bx0); x <= bx1; x++)
+    for (let y = Math.min(H - 2, by1 + 1); y >= Math.max(0, by0); y--) {
       const id = OWN[y * W + x];
       if (id < 0) continue;
       if (OWN[(y + 1) * W + x] < 0 && PLATES[id].row === NROW - 1) hem.push(x, y);
@@ -572,13 +703,20 @@ const SPAR_U: readonly number[] = [0.06, 0.36, 0.66, 0.95];
  */
 function sailSpars(q: PixelCanvas, s: CloakShape, wing: WingId, light: Light, NR: number, Lv: number, k: number, far: boolean) {
   // the scallops: erase the sail between neighbouring fingertips, deepest half way (3 px), in field space
+  // (critic r3 #6) a RAGGED, asymmetric trailing edge: each span its own depth, the notch leaning toward
+  // the back finger, torn teeth along it — a burst wing, never an evenly scalloped umbrella
+  const AMP = wing === 'N' ? [3.4, 4.6, 2.4] : [2.6, 3.8, 4.4];
   const depth = (u: number): number => {
+    const tooth = (hash(Math.floor(u * 34), 87, wing === 'N' ? 1 : 2) - 0.5) * 2.4;
     for (let i = 0; i + 1 < SPAR_U.length; i++) {
       const a = SPAR_U[i];
       const b = SPAR_U[i + 1];
-      if (u >= a && u <= b) return Math.sin(((u - a) / (b - a)) * Math.PI) * 3 * k;
+      if (u >= a && u <= b) {
+        const t = (u - a) / (b - a);
+        return Math.max(0, (Math.sin(Math.PI * Math.pow(t, 0.62)) * AMP[i] + tooth) * k);
+      }
     }
-    return 1.5 * k;
+    return Math.max(0, (1.5 + tooth * 0.5) * k);
   };
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
@@ -615,15 +753,33 @@ function sailSpars(q: PixelCanvas, s: CloakShape, wing: WingId, light: Light, NR
     line(tip, out, i === 0 || i === 3 ? lit : PAL.stone2, dark);
     line(out, hook, PAL.stone2, dark);
   }
-  // loose plates torn off the edge, flying out beyond it (2×2, lit corner)
-  const n = Math.round(2 + 3 * k);
+  // loose plates torn off the edge (critic r3 #6): flung on DIVERGING ballistic arcs, three sizes (1×2,
+  // 2×2, 2×3), two turned variants, a 1-px lit edge, each its own distance — debris, never a dotted grid
+  const n = Math.round(3 + 4 * k);
+  const hiC = far ? PAL.stone2 : PAL.stone3;
+  const body = far ? PAL.stone1 : PAL.stone2;
+  const loC = far ? PAL.stone0 : PAL.stone1;
+  const sd = wing === 'N' ? 1 : 2;
   for (let j = 0; j < n; j++) {
-    const u = 0.12 + (0.78 * (j + 0.5)) / n;
-    const p = patchAt(s, u, 1.12 + 0.12 * hash(j, 81, wing === 'N' ? 1 : 2));
-    const x = Math.round(p[0] + (hash(j, 82) - 0.5) * 3);
-    const y = Math.round(p[1] + 1 + hash(j, 83) * 2);
-    const lx = light.side < 0 ? 0 : 1;
-    for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) if (x + dx >= 0 && x + dx < W && y + dy >= 0 && y + dy < H) q.set(x + dx, y + dy, dx === lx && dy === 0 ? (far ? PAL.stone2 : PAL.stone3) : far ? PAL.stone1 : PAL.stone2);
+    const u = 0.06 + 0.88 * hash(j, 81, sd);
+    const p0 = patchAt(s, u, 1);
+    const d0 = norm(sub(p0, wrist));
+    const a = (hash(j, 82, sd) - 0.5) * 0.9;
+    const dir: V = [d0[0] * Math.cos(a) - d0[1] * Math.sin(a), d0[0] * Math.sin(a) + d0[1] * Math.cos(a)];
+    const t = 0.25 + 0.75 * hash(j, 84, sd);
+    const at = add(p0, add(mul(dir, (4 + 11 * t) * k), [0, 8 * t * t * k]));
+    const [w0, h0] = j % 3 === 0 ? [1, 2] : j % 3 === 1 ? [2, 2] : [2, 3];
+    const turned = hash(j, 85, sd) < 0.5;
+    const x0 = Math.max(2, Math.min(W - 5, Math.round(at[0])));
+    const y0 = Math.max(2, Math.min(H - 8, Math.round(at[1])));
+    for (let dy = 0; dy < h0; dy++)
+      for (let dx = 0; dx < w0; dx++) {
+        // the turned variant leans: its lower rows shift one px toward the back
+        const x = x0 + dx - (turned && dy >= 2 ? 1 : 0);
+        const y = y0 + dy;
+        const litEdge = dy === 0 || (light.side < 0 ? dx === 0 && !turned : dx === w0 - 1 && !turned);
+        q.set(x, y, dy === h0 - 1 && h0 > 1 && !litEdge ? loC : litEdge ? hiC : body);
+      }
   }
 }
 
@@ -650,6 +806,7 @@ export function peakEdge(q: PixelCanvas, s: CloakShape, wing: WingId, light: Lig
 export function spurPts(s: CloakShape, wing: WingId, lean: number): { base: V; tip: V } {
   const wrist = wing === 'N' ? s.front[0] : s.back[0];
   const base: V = add(wrist, [0, 1]);
-  const tip: V = add(wrist, [-3.2 - lean, -5.4]);
+  const tip: V = add(wrist, [-2.6 - lean, -4.4]);
   return { base, tip };
 }
+export const __dbg = { SID, FV, FU };

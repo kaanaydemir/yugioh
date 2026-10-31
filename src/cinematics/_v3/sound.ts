@@ -206,6 +206,21 @@ export const CHARACTER_SOUNDS: Partial<Record<CardId, CharacterSounds>> = {
     reviveGather: 'magusReviveGather',
     reviveLand: 'magusReviveSettle',
   },
+  // lane A (docs/v3/kart-a/ashen_drake.md §6.4)
+  ashen_drake: {
+    roar: 'ashenRoar',
+    arrive: 'ashenMound',
+    land: 'ashenTalon',
+    charge: 'ashenInhale',
+    release: 'ashenExhale',
+    impact: 'ashenIgnite',
+    deathStart: 'ashenCrackle',
+    dissolve: 'ashenCrumble',
+    afterDissolve: [[3, 'ashenCoreDrop', 0.9]],
+    burst: 'ashenCool',
+    reviveGather: 'ashenReviveGather',
+    reviveLand: 'ashenReviveBeat',
+  },
 };
 
 /**

@@ -76,11 +76,6 @@ function heartCells(beat: number, heat: number): [number, number, number][] {
   return out;
 }
 
-/** the hem row of column x (null: none) */
-function hy2(hem: number[], x: number): number | null {
-  for (let i = 0; i < hem.length; i += 2) if (hem[i] === x) return hem[i + 1];
-  return null;
-}
 
 export function emberPass(p: PixelCanvas, c: EmberCtx) {
   const { P, R, keep } = c;
@@ -107,6 +102,21 @@ export function emberPass(p: PixelCanvas, c: EmberCtx) {
         const d = Math.hypot(x - hx, y - hy);
         if (d > 9 + heatUp * 1.5) continue;
         put(p, keep, x, y, (beatUp > 0 || heatUp > 0) && d < 5 + heatUp ? PAL.fire2 : PAL.fire1);
+      }
+  // the three gaps round the heart each show a 2-row ember band (critic r3 #4: the heart reads at 1×): the
+  // cavity rows right under a bar, within 5 px of the heart's column, fire3 at the centre, fire2 outward
+  if (P.heat > 0.25 && P.crumble <= 0.4 && !(P.heap > 0 && P.boneTop > hy))
+    for (let y = hy - 8; y <= hy + 9; y++)
+      for (let x = hx - 6; x <= hx + 6; x++) {
+        if (x < 0 || y < 2 || x >= W || y >= H || !c.cavity[y * W + x]) continue;
+        const under1 = !c.cavity[(y - 1) * W + x];
+        const under2 = c.cavity[(y - 1) * W + x] && !c.cavity[(y - 2) * W + x];
+        if (!under1 && !under2) continue;
+        const cur = p.get(x, y);
+        if (cur !== PAL.night0 && cur !== PAL.fire1) continue;
+        const dx = Math.abs(x - hx);
+        if (dx > 5) continue;
+        put(p, keep, x, y, dx <= 1 && (beatUp > 0 || heatUp > 0 || under1) ? PAL.fire3 : PAL.fire2);
       }
   // ---- the heart itself (only on cavity pixels: the bars stay in front of it)
   // the loose heart (falling in the death, buried in the revive heap) is an ember, not a lit square:
@@ -150,8 +160,12 @@ export function emberPass(p: PixelCanvas, c: EmberCtx) {
         put(p, keep, x, y, dy === 0 && dx === 0 ? PAL.gold4 : Math.abs(dy) <= 1 && dx === 0 ? hot : PAL.fire1);
       }
   }
-  // ---- the hem's ember lip: on the tip row inside the outline; embers with dark gaps, a shimmer step
+  // ---- the hem's ember lip (critic r3 #2): ember-EATEN notches bitten into the hem, 2 per 6 px — a deep
+  //      notch (2 px wide, 2 rows: fire2 at the edge, fire1 above) and a shallow one (2 px, 1 row), a dark
+  //      stone column between them; the shimmer walks a hotter block along the hem
   for (const [k, hem] of [c.near.hem, c.far.hem].entries()) {
+    const ph = k ? 3 : 0;
+    const hot = Math.floor(P.shimmer * 10);
     for (let i = 0; i < hem.length; i += 2) {
       const x = hem[i];
       const y = hem[i + 1];
@@ -159,17 +173,27 @@ export function emberPass(p: PixelCanvas, c: EmberCtx) {
       if (cur === null || cur === PAL.ink) continue;
       // the far hem only where the far cloak still shows (never painted over the near cloak)
       if (k === 1 && [[0, 0], [-1, 0], [1, 0], [0, -1], [0, -2]].some(([dx, dy]) => c.near.own[(y + dy) * W + x + dx] >= 0)) continue;
-      if (hash(Math.floor(x / 4), 11, k) < 0.2) continue; // eaten gaps (4-px runs: never a lone ember dot)
-      const sh = (x + Math.floor(P.shimmer * 20)) % 10;
-      // at heat (hitMagic f0–f2, the summon's burst) the lip runs fire3
-      const col = P.heat <= 0.25 ? PAL.stone1 : P.heat >= 1.55 ? (sh < 6 ? PAL.fire3 : PAL.fire2) : sh < 3 ? PAL.fire2 : PAL.fire1;
-      put(p, keep, x, y, col);
-      // on a step of the tip zigzag the lip climbs one pixel, so it stays one connected line (no lone dots)
-      const ny = hy2(hem, x - 1);
-      const py = hy2(hem, x + 1);
-      if ((ny !== null && ny < y) || (py !== null && py < y)) {
+      const m = (x + ph) % 6;
+      if (m === 2 || m === 5) continue;
+      const deep = m < 2;
+      const block = Math.floor((x + ph) / 6);
+      const lit = (block + hot) % 5 === 0;
+      let edge: number;
+      let upper: number;
+      if (P.heat <= 0.25) {
+        edge = PAL.stone1;
+        upper = PAL.stone1;
+      } else if (P.heat >= 1.55) {
+        edge = PAL.fire3;
+        upper = PAL.fire2;
+      } else {
+        edge = deep || lit ? PAL.fire2 : PAL.fire1;
+        upper = lit ? PAL.fire2 : PAL.fire1;
+      }
+      put(p, keep, x, y, edge);
+      if (deep) {
         const up = p.get(x, y - 1);
-        if (up !== null && up !== PAL.ink && !(k === 1 && c.near.own[(y - 1) * W + x] >= 0)) put(p, keep, x, y - 1, col);
+        if (up !== null && up !== PAL.ink && !(k === 1 && c.near.own[(y - 1) * W + x] >= 0)) put(p, keep, x, y - 1, upper);
       }
     }
   }
@@ -211,10 +235,23 @@ export function emberPass(p: PixelCanvas, c: EmberCtx) {
   }
   // ---- the throat: light between the jaws when they part
   if (P.jaw > 0.3 && P.heat > 0.5) {
-    const m: V = lerpV(R.mouth, R.skull, 0.55);
+    // the throat glow (critic r3 #9): the open gape (its ink wedge) lit from inside — fire2, the deep end
+    // fire3 (fire4 at full heat); ≥ 3 px once the jaw is wide
     const col = P.heat >= 1.6 ? PAL.fire4 : PAL.fire3;
-    put(p, keep, Math.round(m[0]), Math.round(m[1]), col);
-    put(p, keep, Math.round(m[0]) - 1, Math.round(m[1]), PAL.fire2);
+    let lit = 0;
+    // the hinge end of the gape (open air or ink between the jaws), a wedge 3–6 px
+    for (let sx = 2.4; sx <= 4 + 3 * Math.min(1.5, P.jaw); sx += 0.6)
+      for (let sy = 3.2; sy <= 2.8 + P.jaw * 1.2 * Math.min(1, sx / 5); sy += 0.6) {
+        const m = skullPt(R, sx, sy);
+        const x = Math.floor(m[0]);
+        const y = Math.floor(m[1]);
+        if (x < 0 || y < 0 || x >= W || y >= H || keep[y * W + x]) continue;
+        const cur = p.get(x, y);
+        if (cur !== null && cur !== PAL.ink) continue;
+        put(p, keep, x, y, sx < 4.2 && P.jaw >= 1 ? col : PAL.fire2);
+        lit++;
+      }
+    void lit;
   }
   // ---- nostril smoke: one 2-px stone2 curl rising off the snout (not light: stone tones, never outlined)
   if (P.smoke > 0 && P.crumble < 0.3) {

@@ -8,11 +8,15 @@
 //                         revive passes (seam web, the shared hole mask, lace, slump, pool, the stinger marker, glob);
 //   venom_drake-anims.ts  pose tables, holds, marks, points, joints, the beat frames for the cinematics.
 // Frame 100×92 (no v1 offset: a full redesign). Sİ-5 (idle f0 silhouette IoU with v1) is WAIVED by the owner's
-// "full redesign" decision for this card (oturum-a.md / venom_drake.md §1). Anchor (48, 86), hover 0.
+// "full redesign" decision for this card (oturum-a.md / venom_drake.md §1). For the same reason the IŞ-10 ref row
+// (idle f0 noise ≤ 1.1 × the v1 idle f0) is WAIVED: the v1 sprite is a different, much simpler creature, so the
+// gates run with `--ref none`; the absolute IŞ-10 limits (idle mean ≤ 10 %, body ≤ 15 %, effect ≤ 20 %) still
+// apply. Anchor (48, 86), hover 0.
 // Anims (holds in venom_drake-anims.ts): idle 18 f / 2.04 s loop · guard 8 f / 1.22 s loop · toGuard / fromGuard
 // 6 f / 360 ms · attack 14 f / 1 250 ms (charge@1, release = impact@6 at 400 ms from f1, contact@9, recover@10) ·
 // roar 12 f / 1 100 ms · hit 6 f / 570 ms · hitHeavy 7 f / 660 ms · hitMagic 7 f / 620 ms · summon 15 f / 1 420 ms
-// (land@4) · death 11 f / 780 ms (dissolve@3) · revive 11 f / 830 ms (land@7 at 500 ms) · special 12 f / 1 100 ms
+// (land@4) · death 13 f / 780 ms (dissolve@3; lace f7, slump f8, marker f10) · revive 11 f / 830 ms (land@7 at 500 ms) ·
+// special 14 f / 1 100 ms (release = impact@6, the whip in-between f5)
 // (the DIRECT attack's spray; special f0 = attack f1 pixel for pixel). victory is not drawn (REHBER §10.4).
 // P2 is a relit sheet (p2: 'relight'); the venom, the eye and the holes are self-lit (identical in both).
 
