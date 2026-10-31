@@ -4,7 +4,7 @@
 //   silhouette  a BROAD TRIANGLE on short legs set wide, with a second mass: the stone CRESCENT axe head rising behind
 //               the head ("a man with a half-moon on his shoulder"); no shield, no helmet, no plates, no rock body
 //   rhythm      idle = breath, a neck roll, the beads trailing, then the axe swung down behind him and TAPPED on the floor
-//               between the boots; attack = spin (accelerating holds 110→60) – three steps (180/150/120) – a 60 ms chop
+//               between the boots; attack = spin (accelerating holds 100→60) – three steps (160/135/110) – a 60 ms chop
 //   idle lead   the axe (the tap), not the chest: a barbarian's fidget, not a golem's breathing
 //   guard       the haft held horizontal across the chest as a bar, crouched
 //   signature   the Yarık: a 1-px white seam with earth4 lips (never fire, never rune gold) — the summon's boulder is cut

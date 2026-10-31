@@ -28,6 +28,7 @@ import type { V3VoiceSfxName } from './v3/voices';
 import type { HeronSfxName } from './v3/reed_heron';
 import type { V3SpellSfxName } from './v3/spells';
 import type { DawnSfxName } from './v3/dawn';
+import type { AxemanSfxName } from './v3/crag_axeman';
 import type { UiCardSfxName } from './v3/ui-cards';
 import type { UiFlowSfxName } from './v3/ui-flow';
 import type { KiteSfxName } from './v3/kite_fencer';
@@ -66,6 +67,7 @@ export type SfxName =
   | V3SpellSfxName
   | KiteSfxName
   | DawnSfxName
+  | AxemanSfxName
   | UiCardSfxName
   | UiFlowSfxName;
 

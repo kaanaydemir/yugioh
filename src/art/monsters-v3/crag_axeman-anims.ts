@@ -5,7 +5,7 @@
 //            beads swing a frame or two behind, the fur hem sways on its own 16-frame wave; then he lifts the axe over
 //            and TAPS its head on the floor between his boots (a 1-px spark: the Yarık foreshadowed) and heaves it back;
 //   attack = "Dağ Yaran": both hands take the haft (the declaration holds it low and out), ONE full 360° spin in six
-//            drawn facings, accelerating (110 → 60 ms, the two fastest frames smeared, clods spiral off the boots), the
+//            drawn facings, accelerating (100 → 60 ms, the two fastest frames smeared, clods spiral off the boots), the
 //            axe swung up behind the head (the longest frame), three heavy steps with an accelerating cadence, a 60 ms
 //            smeared chop, the bite (the edge buried in the floor, the seam starting), the heave and the axe back on
 //            the shoulder;
@@ -188,7 +188,7 @@ export function attackPose(f: number): Pose {
       return snap(key({ ...mix(key({ nx: 15, ny: -42, ba: -105, hl: 25, hd: -1, az: 0, f1x: 1, sink: 1, bead: -1, cape: -1 }, f, n), IDLE0, 0.35) }, f, n));
   }
 }
-const ATTACK_HOLDS = [70, 110, 110, 90, 80, 70, 60, 60, 200, 180, 150, 120, 60, 80, 110, 120, 140];
+const ATTACK_HOLDS = [70, 110, 100, 85, 75, 65, 60, 60, 170, 160, 135, 110, 60, 80, 110, 120, 140];
 
 // ------------------------------------------------------------------ roar (10 frames): the NARA
 

@@ -26,6 +26,7 @@ import { HARPOONER_VOICE } from '../../audio/v3/tide_harpooner';
 import { voiceSounds } from '../../audio/v3/voices';
 import { HERON_VOICE } from '../../audio/v3/reed_heron';
 import type { MaterialId } from '../../art/materials';
+import { AXEMAN_VOICE } from '../../audio/v3/crag_axeman';
 import { v3Recipe } from '../../presentation/registry';
 import { KITE_VOICE } from '../../audio/v3/kite_fencer';
 import type { BlowKind } from './blow';
@@ -211,6 +212,7 @@ export const CHARACTER_SOUNDS: Partial<Record<CardId, CharacterSounds>> = {
     reviveLand: 'magusReviveSettle',
   },
   kite_fencer: KITE_VOICE,
+  crag_axeman: AXEMAN_VOICE,
 };
 
 /**
