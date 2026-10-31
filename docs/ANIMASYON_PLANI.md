@@ -275,3 +275,6 @@ Karar (kullanıcı): uygulamanın ana (varsayılan) dili **İngilizce** olacak; 
 - **Akşam Büyücüsü** (dusk_sorcerer): çok kötü görünüyor; detaylı çalışmayla komple yeniden tasarım (sprite + animasyonlar + kart resmi).
 - **Pullardan sızan zehirli ejderha** (venom_drake): aynı şekilde komple yeniden tasarım.
 - Durum: beklemede. Kullanıcı "başla" deyince yapılacak (arena işi bittikten sonra).
+
+## ALTIN KURAL (marka kararı)
+Her animasyon mükemmel olacak. Her saldırı, doğum (çağırma) ve özel yetenek kart başına UNIQUE, muhteşem ve göz alıcı olacak; enerjimizin çoğu buraya harcanacak, çünkü markamızın en önemli şeyi bu. İkinci olarak SFX en az animasyonlar kadar güzel olacak. Mükemmel VFX + SFX: unique, çarpıcı, akıcı. Bu kural diğer her kararın üstündedir (CLAUDE.md'ye de yazıldı).

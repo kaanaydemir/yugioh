@@ -4,6 +4,13 @@ Isometric pixel-art, two-player (hot-seat) card duel inspired by Yu-Gi-Oh! Speed
 **The #1 priority is animation quality.** Read `docs/GAME_DESIGN.md` (Turkish) before working:
 rules, the 20 cards, art direction, the animation bible and per-card storyboards live there.
 
+## BRAND GOLDEN RULE (owner decision) — above everything, including the three rules below
+**Every animation must be perfect.** Every attack, summon, death and special ability is UNIQUE per
+card, stunning and eye-catching; our energy goes into this first — it is the core of the brand.
+**SFX is equal in importance:** sound effects must be at least as good as the animations. Perfect
+VFX and SFX — unique, striking, fluid, readable — are the golden rule. No generic or reused
+presentation for a signature moment; if a card's moment feels shared or flat, redo it.
+
 ## Golden rules (from Sea of Stars) — above every other decision
 1. Lots of animation frames: every motion is rich and fluid; nothing is ever static.
 2. Rich environment detail: small, living details in every corner of the arena.
