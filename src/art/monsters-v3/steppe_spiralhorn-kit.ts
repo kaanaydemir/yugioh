@@ -124,8 +124,11 @@ export interface BandOpts {
  */
 export function bands(q: PixelCanvas, t: Tones, light: Light, o: BandOpts = {}): void {
   const ls = light.side;
+  // the P2 relight's value lift (rigkit P2_LIFT_A2 in band form): the relit side shows the front, turned a little
+  // away from the light — one more lit column keeps P2 as bright as P1
+  const lift = light.lift > 0 ? 1 : 0;
   const top = o.top ?? 2;
-  const lit = o.lit ?? 2;
+  const lit = (o.lit ?? 2) + (o.lit ? lift : 0);
   const diag = o.diag ?? 0;
   const bottom = o.bottom ?? 2;
   const away = o.away ?? 2;

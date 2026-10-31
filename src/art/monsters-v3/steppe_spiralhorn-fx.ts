@@ -86,9 +86,9 @@ function curls(f: Frame): void {
   if (o.curl < 0) return;
   const ph = o.curl;
   const shapes: (readonly (readonly [number, number])[])[] = [
-    [[0, 1], [1, 0], [2, 0], [3, 1], [2, 2]],
-    [[0, 0], [1, 0], [2, 1], [1, 2], [0, 2]],
-    [[0, 1], [1, 2], [2, 2], [3, 1], [2, 0]],
+    [[0, 0], [1, 0], [2, 0], [2, 1], [2, 2], [1, 2]],
+    [[1, 0], [2, 0], [2, 1], [2, 2], [1, 2], [0, 2]],
+    [[0, 1], [1, 1], [1, 0], [2, 0], [3, 0]],
   ];
   const tips = [sk.hornN.tip, sk.hornF.tip];
   tips.forEach((tp, i) => {
@@ -106,8 +106,8 @@ function curls(f: Frame): void {
     for (const [dx, dy] of s) put(f, x + dx, y + dy, c);
     // a 2-px tail back toward the horn tip
     if (k < 0.6) {
-      put(f, x + 4, y + 1, PAL.leaf3);
-      put(f, x + 5, y + 1, PAL.leaf3);
+      put(f, x + 3, y + 2, PAL.leaf3);
+      put(f, x + 4, y + 2, PAL.leaf3);
     }
   });
 }
@@ -136,11 +136,11 @@ function wake(f: Frame): void {
   const grow = ph < 0.25 ? 0.55 + ph * 1.8 : 1 - (ph - 0.25) * 0.9;
   if (o.wakeK === 1) {
     // 6 blades behind / under the hind hooves, bending back (−x) and springing up as the phase runs
-    const xs = [-9, -6, -3, 0, 3, 6];
+    const xs = [-11, -8, -5, -2, 1, 4, 7];
     xs.forEach((dx, i) => {
-      const h = (3 + ((i * 5) % 4)) * grow * (i === 0 || i === 5 ? 0.7 : 1);
+      const h = (4 + ((i * 5) % 4)) * grow * (i === 0 || i === 6 ? 0.6 : 1);
       const bend = -(4 - i * 0.4) * (1 - ph) - 1;
-      floorBlade(f, cx + dx, h, bend, i === 2 || i === 4);
+      floorBlade(f, cx + dx, h, bend, i === 2 || i === 5);
     });
   } else {
     // the crescent: blades flattened outward from the landing point, both sides, then springing back
@@ -148,7 +148,7 @@ function wake(f: Frame): void {
     const xs = [-14, -10, -7, -4, 4, 7, 10, 14];
     xs.forEach((dx, i) => {
       const side = dx < 0 ? -1 : 1;
-      const h = (2.5 + ((i * 3) % 3)) * (0.5 + 0.6 * (1 - flat)) * (ph > 0.75 ? 1 - (ph - 0.75) * 3 : 1);
+      const h = (3.5 + ((i * 3) % 3)) * (0.5 + 0.6 * (1 - flat)) * (ph > 0.75 ? 1 - (ph - 0.75) * 3 : 1);
       floorBlade(f, cx + dx, h, side * (1 + 5 * flat), i === 1 || i === 6);
     });
   }

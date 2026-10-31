@@ -279,13 +279,13 @@ function drawLeg(f: Frame, which: 'fn' | 'ff' | 'hn' | 'hf'): void {
     q.poly(tube(g.mid, g.knee, 4, 3, 0.5, 0.5), t.M);
   }
   q.poly(tube(g.knee, [g.hoof[0], g.hoof[1] - 1.5], 2.6, 2.2, 0, 0), t.M);
-  bands(q, t, light, { top: 2, lit: 1, diag: 2, bottom: 0, away: 1 });
-  f.comp.add(q, part, { out: near ? PAL.earth1 : undefined });
+  bands(q, t, light, { top: 0, lit: 1, diag: 2, bottom: 0, away: 1 });
+  f.comp.add(q, part, near ? { out: PAL.ink, outSkip: [Part.tail, Part.hornF] } : {});
   // hoof: a 3-px block with the toe forward, stone
   const hq = layer();
   const hx = rnd(g.hoof[0]);
   const hy = rnd(g.hoof[1]);
-  hq.rect(hx - 1, hy - 2, 3, 1, near ? HOOF.L : HOOF.M).rect(hx - 1, hy - 1, 4, 1, near ? HOOF.M : PAL.stone0);
+  hq.rect(hx - 1, hy - 2, 3, 1, near ? HOOF.L : HOOF.M).rect(hx - 1, hy - 1, 4, 1, HOOF.M);
   f.comp.add(hq, part, {});
 }
 
@@ -300,7 +300,7 @@ function drawBody(f: Frame): void {
   const q = layer();
   q.poly(pts, COAT.M);
   const ls = light.side;
-  bands(q, COAT, light, { top: 3, lit: 4, diag: 4, bottom: 3, away: 2 });
+  bands(q, COAT, light, { top: 2, lit: 3, diag: 3, bottom: 3, away: 3 });
   // flash patches: the belly (bottom rows, mist / white toward the light) and the rump (the back of the hindquarters)
   planes(q, (x, y, src) => {
     const dn = run(src, x, y, 0, 1, 4);
@@ -319,7 +319,7 @@ function drawBody(f: Frame): void {
     };
     planes(q, (x, y, src) => {
       if (!inside(x, y) || run(src, x, y, 0, 1, 2) < 2) return null;
-      if ((x + 0.5 - c[0]) * sk.v[0] + (y + 0.5 - c[1]) * sk.v[1] < -1) return null;
+      if ((x + 0.5 - c[0]) * sk.v[0] + (y + 0.5 - c[1]) * sk.v[1] < 0) return null;
       const ax = (x + 0.5 - c[0]) * sk.u[0] + (y + 0.5 - c[1]) * sk.u[1];
       if (side * ax < 0) return null;
       const out = !inside(x + 1, y) || !inside(x - 1, y) || !inside(x, y + 1);
@@ -327,8 +327,7 @@ function drawBody(f: Frame): void {
       return out && cur !== PAL.white && cur !== PAL.mist ? COAT.S : null;
     });
   };
-  crease(-1, 1, 7, 8, 1);
-  crease(L - 1, 0, 5, 8, -1);
+  crease(-1, 2, 7, 7, 1);
   f.comp.add(q, Part.body, { out: PAL.earth0, outSkip: [Part.tail, Part.legFN, Part.legHN] });
 }
 
@@ -336,10 +335,10 @@ function drawTail(f: Frame): void {
   const { sk, o, light } = f;
   const r = sk.bl(-7, -3);
   const shapes: Record<number, Pt[]> = {
-    0: [[0, -1], [-3, 0], [-5, 3], [-4, 6], [-2, 5], [0, 2]],
-    1: [[0, 0], [-3, -2], [-6, -3], [-6, 0], [-3, 2], [0, 3]],
-    2: [[0, -1], [-2, 1], [-2, 5], [-1, 7], [1, 5], [1, 1]],
-    3: [[0, 0], [-4, -1], [-7, 0], [-6, 2], [-3, 3], [0, 3]],
+    0: [[0, -1], [-2.5, 0], [-4, 3], [-3, 5], [-1, 4], [0, 2]],
+    1: [[0, 0], [-2.5, -2], [-5, -3], [-5, -0.5], [-2.5, 1.5], [0, 2.5]],
+    2: [[0, -1], [-2, 1], [-2, 4.5], [-0.5, 5.5], [1, 4], [1, 1]],
+    3: [[0, 0], [-3, -1.5], [-5.5, -1], [-5, 1], [-2.5, 2.5], [0, 2.5]],
   };
   const s = shapes[o.tail] ?? shapes[0];
   const q = layer();
@@ -376,18 +375,19 @@ function drawNeck(f: Frame): void {
 
 function drawMane(f: Frame): void {
   const { sk, o, light } = f;
-  const n = neckLine(sk);
-  const [a, b] = n.top;
+  const a = sk.bl(sk.L - 8, -6.5);
+  const b = sk.hl(-3, 1.5);
   const q = layer();
-  // a short crest of grass teeth along the neck, leaning back, rippling behind the motion (lag grows toward the withers)
-  const N = 4;
+  // a crest of grass teeth from the withers up the neck, leaning back, rippling behind the motion (the lag grows
+  // toward the withers); 2-px teeth with 1-px gaps, so each tooth reads at 1×
+  const N = 5;
   for (let i = 0; i < N; i++) {
-    const k = (i + 0.6) / (N + 0.4);
+    const k = (i + 0.5) / N;
     const x = a[0] + (b[0] - a[0]) * k;
-    const y = a[1] + (b[1] - a[1]) * k + 1;
+    const y = a[1] + (b[1] - a[1]) * k + 0.5;
     const sway = rnd(Math.sin((o.mane - k * 0.5) * Math.PI * 2) * o.maneK);
-    const hgt = 3 + (i % 2);
-    q.poly([[x - 1, y + 1], [x + 1.6, y + 1], [x - 0.6 + sway, y - hgt], [x - 2.6 + sway, y - hgt + 1]], CREST.M);
+    const hgt = 2 + (i % 2) + (i === 2 ? 1 : 0);
+    q.poly([[x - 0.8, y + 1.5], [x + 1.2, y + 1.5], [x - 0.8 + sway, y - hgt], [x - 2.3 + sway, y - hgt + 0.5]], CREST.M);
   }
   bands(q, CREST, light, { top: 1, lit: 1, bottom: 0, away: 0 });
   f.comp.add(q, Part.mane, {});
@@ -450,9 +450,11 @@ function drawHead(f: Frame): void {
   f.comp.add(q, Part.head, { out: PAL.earth1, outSkip: [Part.hornF, Part.ear] });
   // the ear (near side, over the skull)
   const eq = layer();
-  eq.poly((EAR[o.ear] ?? EAR[0]).map(([x, y]) => sk.hl(x, y)), COAT.M);
-  bands(eq, COAT, light, { top: 1, lit: 1, bottom: 1, away: 2 });
-  f.comp.add(eq, Part.ear, { out: PAL.earth1, outSkip: [Part.hornF] });
+  eq.poly((EAR[o.ear] ?? EAR[0]).map(([x, y]) => sk.hl(x, y)), COAT_FAR.M);
+  bands(eq, COAT_FAR, light, { top: 1, lit: 1, bottom: 1, away: 1 });
+  // the inner ear: a 2-px earth1 streak along its lower edge
+  planes(eq, (x, y, src) => (run(src, x, y, 0, 1, 2) < 1 && run(src, x, y, light.side, 0, 2) >= 1 ? COAT.D : null));
+  f.comp.add(eq, Part.ear, { out: PAL.earth2, outSkip: [Part.hornF, Part.neck, Part.mane] });
 }
 
 /** One spiral horn rasterised along its axis: a waving (corkscrew) silhouette, thread dashes, a gold tip. */
@@ -485,7 +487,7 @@ function drawHorn(f: Frame, h: Skel['hornN'], far: boolean): void {
       else if (s > h.len - 4) q.set(x, y, far ? PAL.gold2 : PAL.gold3);
       else {
         q.set(x, y, t.M);
-        const ph = ((s + 0.8 * (n - c)) / P) % 1;
+        const ph = ((s + 0.35 * (n - c)) / P) % 1;
         if (ph > 0.62 && ph < 0.9 && s > 1.5) thread.add(y * W + x);
       }
     }
@@ -498,7 +500,7 @@ function drawHorn(f: Frame, h: Skel['hornN'], far: boolean): void {
     if (run(src, x, y, -light.side, 0, 1) < 1) return t.D;
     return null;
   });
-  f.comp.add(q, far ? Part.hornF : Part.hornN, { out: far ? undefined : PAL.earth1 });
+  f.comp.add(q, far ? Part.hornF : Part.hornN, far ? {} : { out: PAL.earth1, outSkip: [Part.head, Part.ear, Part.neck, Part.mane] });
 }
 
 // ---------------------------------------------------------------- draw
