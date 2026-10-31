@@ -38,7 +38,7 @@ import type { GameEvent, PlayerId } from '../../engine/types';
 import { PAL } from '../../art/palette';
 import type { AnyMonsterAnim } from '../../art/types';
 import { monsterFrame } from '../../art/textures';
-import { AX, GY, W, skeleton } from '../../art/monsters-v3/steppe_spiralhorn-rig';
+import { AX, GY, skeleton } from '../../art/monsters-v3/steppe_spiralhorn-rig';
 import { framePoints, framePose } from '../../art/monsters-v3/steppe_spiralhorn-anims';
 import { APEX_PITCH } from '../../audio/v3/steppe_spiralhorn';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
@@ -582,7 +582,9 @@ function watchDeath(sc: Phaser.Scene, u: MonsterUnit): void {
   deathWatched.add(u);
   const sgn = sgnOf(u);
   const pan = panAt(u.home.x);
+  let started = false;
   let fold1 = false;
+  let fold1At = 0;
   let fold2 = false;
   let seenEnd = false;
   let gone = false;
@@ -604,13 +606,21 @@ function watchDeath(sc: Phaser.Scene, u: MonsterUnit): void {
     const fi = u.frameInfo();
     if (active && fi.anim === 'death') {
       const f = fi.frame;
+      // the two falling exhales on the first death frame (the pose often joins at f2 straight from the recoil, so the
+      // kit's f1 beat would be skipped: the voice leaves deathStart to this watcher)
+      if (!started) {
+        started = true;
+        play('sshExhale', { volume: 0.9, pan });
+      }
       if (!fold1 && f >= 2) {
         fold1 = true;
+        fold1At = el;
         play('sshFold', { volume: 0.85, pan });
       }
-      if (!fold2 && f >= 3) {
+      // the hind legs follow the forelegs: a separate, lower thud (never on top of the first)
+      if (fold1 && !fold2 && f >= 3 && el - fold1At >= 130) {
         fold2 = true;
-        play('sshFold', { volume: 0.7, pan, pitch: 0.88 });
+        play('sshFold', { volume: 0.7, pan, pitch: 0.86 });
       }
       // the wind takes the mound: the stream carries on leeward past the frame's edge, climbing
       if (f >= 6 && f <= 10) {
