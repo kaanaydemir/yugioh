@@ -82,11 +82,13 @@ const G0: Pose = {
 };
 export function guardPose(f: number): Pose {
   const k = f % GUARD_N;
+  // three small lives on three phases: the horns test the air (a 1-px forward jab, f1–f2), the breath lifts the back
+  // and the neck (f3–f4), the tail clamps (f5) — the pike never drops
   return {
     ...G0,
-    br: k === 2 || k === 3 ? 1 : 0,
-    hdy: k === 3 || k === 4 ? -6 : -5,
-    sniff: k === 1 ? 1 : k === 4 ? 2 : 0,
+    hdx: k === 1 || k === 2 ? 10 : 9,
+    br: k === 3 || k === 4 ? 1 : 0,
+    sniff: k === 2 ? 1 : 0,
     tail: k === 5 ? 2 : 0,
     mane: k / GUARD_N,
     maneK: 1,
@@ -94,7 +96,7 @@ export function guardPose(f: number): Pose {
   };
 }
 const GUARD0 = guardPose(0);
-const GUARD_HOLDS = [170, 150, 160, 170, 150, 160];
+const GUARD_HOLDS = [190, 150, 170, 200, 160, 180];
 
 // ------------------------------------------------------------------ toGuard / fromGuard (5 frames each)
 
@@ -158,19 +160,21 @@ const ATTACK_HOLDS = [80, 90, 110, 170, 100, 100, 90, 120, 100, 60, 80, 100, 110
 
 const ROAR: Pose[] = [
   { ...IDLE0, hdx: 7, sniff: 1, ear: 1, t: 0 },
-  { ...IDLE0, hipX: -11, hipY: -27, shX: 7, shY: -31, hdx: 7, hdy: -13, ha: A.up, ear: 2, sniff: 2, hn: leg(-11, 0, -20), hf: leg(-7, 0, -18), t: 0.12 },
-  { ...ATTACK[2], ha: A.up, curl: -1, t: 0.25 },
-  // the honk: reared, head to the sky, the horns tilt back, the one tip twinkle
-  { ...ATTACK[3], ha: A.sky, hdx: 5, hdy: -11, sniff: 2, nose: 1, curl: 0.2, glint: 2, t: 0.37 },
-  { ...ATTACK[3], ha: A.sky, hdx: 5, hdy: -11, sniff: 2, nose: 1, ear: 1, curl: 0.5, glint: 2, fn: leg(12, -15, 125), ff: leg(15, -11, 95), t: 0.5 },
-  { ...ATTACK[2], ha: A.up, ear: 1, sniff: 1, curl: 0.8, t: 0.62 },
-  // the front hooves come down: dust, the grass fan crescent
-  { ...IDLE0, hipX: -10, hipY: -28, shX: 8, shY: -29, hdy: -12, ha: A.level, ear: 1, ...GATHER, fn: leg(9, 0, 0), ff: leg(13, 0, 2), dust: 0.3, t: 0.75 },
-  { ...IDLE0, hdy: -12, ear: 1, nose: 1, mane: 0.5, tail: 1, t: 0.87 },
+  // charge: a deep bow — the head drops, the horns sweep forward and down, the barrel sinks forward
+  { ...IDLE0, shY: -29, hdx: 10, hdy: -6, ha: A.low, ear: 2, sniff: 2, fn: leg(9, 0, 6), ff: leg(13, 0, 8), mane: 0.2, t: 0.12 },
+  // the head flings up as the forequarters spring: a short rear (front hooves off the floor)
+  { ...IDLE0, hipY: -28, shX: 6, shY: -34, hdx: 7, hdy: -12, ha: A.up, ear: 2, sniff: 2, fn: leg(12, -5, 100), ff: leg(15, -3, 80), hn: leg(-11, 0, -20), hf: leg(-7, 0, -18), tail: 1, mane: 0.4, t: 0.25 },
+  // down again on the forefeet, the neck stretching up: the honk is held with the head to the sky (the one tip twinkle)
+  { ...IDLE0, hipY: -28, shY: -31, hdx: 6, hdy: -15, ha: A.sky, ear: 2, sniff: 2, nose: 1, fn: leg(9, 0, -6), ff: leg(13, 0, -4), dust: 0.2, curl: 0.15, glint: 2, tail: 1, mane: 0.55, t: 0.37 },
+  { ...IDLE0, hipY: -28, shY: -31, hdx: 6, hdy: -17, ha: A.sky, ear: 1, sniff: 2, nose: 1, fn: leg(9, 0, -6), ff: leg(13, 0, -4), dust: 0.5, curl: 0.45, glint: 2, tail: 1, mane: 0.7, t: 0.5 },
+  { ...IDLE0, hdx: 7, hdy: -15, ha: A.sky, ear: 1, sniff: 1, curl: 0.75, mane: 0.85, t: 0.62 },
+  // the head swings back down and gives a shake (one step past level, ears flicked)
+  { ...IDLE0, hdx: 9, hdy: -10, ha: A.down, ear: 1, nose: 1, mane: 0.1, tail: 1, t: 0.75 },
+  { ...IDLE0, hdy: -12, ha: A.up, ear: 1, mane: 0.4, t: 0.87 },
   { ...IDLE0 },
 ];
 export const roarPose = (f: number): Pose => ROAR[Math.min(f, ROAR.length - 1)];
-const ROAR_HOLDS = [80, 100, 120, 160, 130, 100, 110, 120, 140];
+const ROAR_HOLDS = [80, 150, 100, 160, 130, 100, 110, 120, 140];
 
 // ------------------------------------------------------------------ hit / hitHeavy / hitMagic
 
