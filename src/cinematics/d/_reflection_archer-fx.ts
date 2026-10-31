@@ -267,7 +267,7 @@ export function twinArrows(sc: Phaser.Scene, o: TwinArrowOpts): Promise<void> {
   const trailD: XY[] = [];
   const ripples: { x: number; y: number; at: number }[] = [];
   const g0: XY = { x: o.fromUnder.x, y: o.ground };
-  const fl = lightPool(sc, o.from.x, o.from.y, { color: PAL.gold4, radius: 16, floorY: o.ground, air: 0.9, intensity: 1, fadeIn: 0 });
+  const fl = lightPool(sc, o.from.x, o.from.y, { color: PAL.gold4, radius: 12, floorY: o.ground, air: 0.9, intensity: 0.6, fadeIn: 0 });
   const fd = lightPool(sc, o.fromUnder.x, o.ground, { color: PAL.water3, radius: 12, floorY: o.ground, air: 0, intensity: 0.7, fadeIn: 0 });
   let lastRip = -99;
   const dx = o.to.x - o.from.x;
@@ -538,6 +538,7 @@ export function glassFall(sc: Phaser.Scene, u: MonsterUnit, ground: XY, dir: 1 |
   const gy = Math.round(ground.y);
   const top = gy - 60;
   const ras = new Raster(sc, ground.x - 50, top - 10, 100, gy - top + 40, DEPTH.FX - 2);
+  const floor = Raster.around(sc, ground.x + dir, gy + 5, 60, 30, FLOOR_DEPTH);
   interface Shard { x: number; y: number; vx: number; vy: number; c: number; done: number }
   const shards: Shard[] = [];
   for (let i = 0; i < 24; i++) {
@@ -555,14 +556,16 @@ export function glassFall(sc: Phaser.Scene, u: MonsterUnit, ground: XY, dir: 1 |
   void u;
   return animate(sc, MS, (t, el, dt) => {
     const s = dt / 1000;
-    ras.draw((g) => {
-      // the puddle drains: a stepped dark ellipse shrinking to nothing
+    floor.draw((g) => {
+      // the puddle drains: a stepped dark ellipse shrinking to nothing (on the floor, under every body)
       const pk = 1 - t;
       if (pk > 0.05) {
         const rr = Math.round(25 * pk);
-        g.ell(pud.x, pud.y, rr, Math.max(1, Math.round(rr * 0.48)), PAL.night2, pk > 0.5 ? 0.75 : 0.5);
-        ring(g, pud.x, pud.y, rr, rr * 0.48, PAL.water2, pk > 0.4 ? 1 : 0.5);
+        g.ell(pud.x, pud.y, rr, Math.max(1, Math.round(rr * 0.48)), pk > 0.6 ? PAL.night3 : PAL.night2);
+        ring(g, pud.x, pud.y, rr, rr * 0.48, pk > 0.6 ? PAL.water3 : PAL.water2);
       }
+    });
+    ras.draw((g) => {
       for (const sh of shards) {
         if (sh.done >= 0) {
           // the shard and its twin met: a glint on the floor for two steps, then gone
@@ -588,5 +591,8 @@ export function glassFall(sc: Phaser.Scene, u: MonsterUnit, ground: XY, dir: 1 |
         g.px(x, my, sh.c === PAL.white ? PAL.water3 : PAL.water2);
       }
     });
-  }).then(() => ras.destroy());
+  }).then(() => {
+    ras.destroy();
+    floor.destroy();
+  });
 }

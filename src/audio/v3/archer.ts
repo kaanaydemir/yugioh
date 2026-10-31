@@ -51,7 +51,7 @@ function mirror(v: Voice, f: number, t: number, env: readonly Pt[], o: { w?: num
   const l = v.panner(-w, { to: o.to });
   const r = v.panner(w, { to: o.to });
   const split = v.amp(1, { t, to: l });
-  const inv = v.amp(-(o.inv ?? 0.7), { t, to: r });
+  const inv = v.amp(-(o.inv ?? 0.5), { t, to: r });
   split.connect(inv);
   v.tone(o.wave ?? 'sine', f, { t, g: env, to: split, detune: o.detune });
 }
@@ -150,7 +150,7 @@ export const V3_ARCHER_RECIPES = {
       const l = v.panner(-0.5);
       const r = v.panner(0.5);
       const split = v.amp(1, { to: l });
-      const inv = v.amp(-0.7, { to: r });
+      const inv = v.amp(-0.5, { to: r });
       split.connect(inv);
       const w = v.tone('sine', f, { g: [[0, 0], [0.08, 0.06], [D, 0.1], [D + 0.12, 0.0001, 'e']], to: split });
       v.lfo(w.osc.detune, [[0, 5], [D, 11, 'e']], 9, { d: D + 0.1 });
@@ -252,7 +252,7 @@ export const V3_ARCHER_RECIPES = {
       const lp = v.filt('lowpass', 900, 1.2, { to: v.panner([[0, -0.2], [D, 0.3]]) });
       const lo = v.tone('triangle', [[0, 1980], [D, 1650, 'e']], { t: ECHO * 0.5, g: [[0, 0], [0.05, 0.08], [D, 0.06], [D + 0.05, 0.0001, 'e']], to: lp });
       v.lfo(lo.osc.detune, 19, 20, { t: ECHO * 0.5, d: D });
-      v.noise('brown', { g: [[0, 0], [0.06, 0.09], [D, 0.07], [D + 0.05, 0.0001, 'e']], to: v.filt('lowpass', 500, 0.9) });
+      v.noise('pink', { g: [[0, 0], [0.06, 0.06], [D, 0.05], [D + 0.05, 0.0001, 'e']], to: v.filt('bandpass', 420, 1.4) });
     },
   },
   /**
@@ -340,12 +340,12 @@ export const V3_ARCHER_RECIPES = {
     verb: 0.55,
     duck: 0.55,
     play(v) {
-      crack(v, 0, 0.22, { hp: 2200, n: 3, gap: 0.012, dec: 0.016 });
+      crack(v, 0, 0.3, { hp: 2200, n: 3, gap: 0.012, dec: 0.016 });
       thump(v, 0, 240, 90, 0.1, 0.08);
       for (let i = 0; i < 14; i++) {
         const k = Math.pow(v.rnd(), 1.4);
         const f = GLASS[Math.floor(v.rnd() * GLASS.length) % GLASS.length];
-        shard(v, f * v.r(0.996, 1.004), 0.01 + k * 0.55, 0.05 * (1 - 0.6 * k) * v.r(0.6, 1), v.r(0.08, 0.2), v.r(-0.6, 0.6), i % 2 === 0);
+        shard(v, f * v.r(0.996, 1.004), 0.01 + k * 0.55, 0.07 * (1 - 0.6 * k) * v.r(0.6, 1), v.r(0.08, 0.2), v.r(-0.6, 0.6), i % 2 === 0);
       }
       // the last of the mirror note, cut short
       mirror(v, F, 0, perc(0.08, 0.25, 0.002), { w: 0.6 });

@@ -34,7 +34,7 @@ import { deathV3 } from '../_v3/death';
 import { summonPose } from '../_v3/summon';
 import { atFrame, atMark, panAt, play, takeCharge } from '../_v3/sound';
 import { sourceOwnsDeath, worldBox } from '../strikes-b/_kit';
-import { afterimage, runSummon, type Stage } from '../summon-a/_kit';
+import { runSummon, type Stage } from '../summon-a/_kit';
 import { FLOOR_DEPTH, bounceDust, clockStamp, crankSparks, flipTrail, gearsAndSprings, jesterOffset, jesterPoint, popBurst, seedFx, tileDial } from './_dial_jester-fx';
 
 const ID = 'dial_jester';
@@ -206,8 +206,7 @@ registerStrike(
     u.pose('attack', LAUNCH);
     flipTrail(sc, () => jesterPoint(u, 'coin'), flyMs, DEPTH.FX - 3);
     let released = false;
-    let lastEcho = -99;
-    await animate(sc, flyMs, (t, el) => {
+    await animate(sc, flyMs, (t) => {
       const e = t < 0.5 ? 2 * t * t : 1 - 2 * (1 - t) * (1 - t);
       const lift = Math.sin(Math.PI * Math.min(1, t * 1.05)) * H;
       place({ x: feetHome.x + (feet.x - feetHome.x) * e, y: feetHome.y + (feet.y - feetHome.y) * e }, lift);
@@ -215,10 +214,6 @@ registerStrike(
         released = true;
         if (!u.claimed) u.pose('attack', REL);
         play('jesterFlip', { volume: 0.85, pan: panAt(spr.x) });
-      }
-      if (el - lastEcho >= 45 && t > 0.08 && t < 0.92) {
-        lastEcho = el;
-        afterimage(sc, spr, PAL.gold2, { alpha: 0.5, ms: 160, depth: spr.depth - 0.3 });
       }
     });
     place(feet);

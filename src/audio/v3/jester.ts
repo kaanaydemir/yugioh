@@ -92,7 +92,7 @@ function ratchet(v: Voice, t: number, n: number, rate: number | ((i: number) => 
   let x = 0;
   for (let i = 0; i < n; i++) {
     times.push(x);
-    gains.push(g * (0.75 + 0.25 * v.rnd()) * (1 + (o.rise ?? 0) * (i / Math.max(1, n - 1))));
+    gains.push(2.5 * g * (0.75 + 0.25 * v.rnd()) * (1 + (o.rise ?? 0) * (i / Math.max(1, n - 1))));
     x += 1 / (typeof rate === 'number' ? rate : rate(i));
   }
   v.bursts(times, gains, { t, dec: 0.006, f: o.f ?? 4200, q: o.q ?? 4 });
@@ -434,7 +434,7 @@ export const V3_JESTER_RECIPES = {
       const D = 2.4;
       const bp = v.filt('bandpass', [[0, 2600], [0.5, 3300, 'e'], [D, 2900, 'e']], 5);
       const am = v.ring([[0, 22], [0.4, 30], [D, 14, 'e']], { d: D + 0.05, mix: 0.85, to: bp, w: 'triangle' });
-      v.noise('white', { g: [[0, 0], [0.06, 0.28], [D * 0.6, 0.22], [D, 0.0001, 'e']], to: am });
+      v.noise('white', { g: [[0, 0], [0.06, 0.42], [D * 0.6, 0.33], [D, 0.0001, 'e']], to: am });
       const t = v.tone('sine', [[0, 3100], [D, 2950, 'e']], { g: [[0, 0], [0.05, 0.03], [D, 0.0001, 'e']] });
       v.lfo(t.amp.gain, [[0, 22], [D, 14, 'e']], 0.025, { d: D });
     },
@@ -483,16 +483,13 @@ export const V3_JESTER_RECIPES = {
       const times: number[] = [];
       const gains: number[] = [];
       let t = 0;
-      let i = 0;
       while (t < 0.55) {
         times.push(t);
         gains.push(0.11 * (1 - t / 0.7));
         t += Math.max(0.012, 0.075 * (1 - t / 0.6));
-        i++;
       }
       v.bursts(times, gains, { dec: 0.008, f: 3000, q: 5 });
       v.tone('sine', [[0, 2950], [0.6, 3080, 'e']], { g: [[0, 0.03], [0.6, 0.0001, 'e']] });
-      void i;
     },
   },
   /** The face shows: one hard tick. */
@@ -550,12 +547,12 @@ export const V3_JESTER_RECIPES = {
       let t = 0;
       let i = 0;
       while (t < D) {
-        revTick(v, t, 0.04 + 0.07 * (t / D), i % 2 ? TOCK : TICK, 0.02);
+        revTick(v, t, 0.06 + 0.1 * (t / D), i % 2 ? TOCK : TICK, 0.02);
         t += Math.max(0.022, 0.11 * (1 - t / D) * (1 - t / D));
         i++;
       }
       // the chirp: a squealing sine sweeping up with a fast warble (the tape's speed)
-      const s = v.tone('sine', [[0, 500], [D * 0.8, 2600, 'e'], [D, 3600, 'e']], { g: [[0, 0], [0.15, 0.05], [D * 0.9, 0.07], [D, 0.0001, 'e']] });
+      const s = v.tone('sine', [[0, 500], [D * 0.8, 2600, 'e'], [D, 3600, 'e']], { g: [[0, 0], [0.15, 0.08], [D * 0.9, 0.11], [D, 0.0001, 'e']] });
       v.lfo(s.osc.frequency, [[0, 9], [D, 26, 'e']], [[0, 60], [D, 260, 'e']], { d: D });
       const s2 = v.tone('triangle', [[0, 250], [D * 0.8, 1300, 'e'], [D, 1800, 'e']], { g: [[0, 0], [0.15, 0.04], [D, 0.0001, 'e']], to: v.filt('lowpass', 2500, 1) });
       v.lfo(s2.osc.frequency, [[0, 9], [D, 26, 'e']], [[0, 30], [D, 120, 'e']], { d: D });
