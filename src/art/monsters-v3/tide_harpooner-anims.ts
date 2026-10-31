@@ -176,9 +176,9 @@ const ATTACK_KEYS: Pose[] = [
   // f9: the rope pays out (the harpoon is the cinematic's now), the big claw follows through
   key({ sx: 1, cx: 2, eL: 18, eR: 26, hOn: 0, held: 0, nx: 26, ny: -38, nOpen: 0.8, rope: 2, ox: 66, oy: -44, sag: 1, fx: 14, fy: -42, coil: 0.5 }),
   // f10: HAUL 1 — rear legs plant, both claws haul, the rope snaps straight and a step brighter
-  key({ rot: -8, sx: -3, sy: 1, cx: -2, feet: 1, eL: 6, eR: 16, hOn: 0, held: 0, nx: 8, ny: -40, nOpen: 0, nAng: 20, rope: 2, taut: 1, ox: 66, oy: -44, sag: 0, fx: 6, fy: -42, coil: 0.9, tok: 1 }),
+  key({ rot: -8, sx: -3, sy: 1, cx: -2, feet: 1, eL: 6, eR: 16, hOn: 0, held: 0, nx: 10, ny: -33, nOpen: 0, nAng: 0, rope: 2, taut: 1, ox: 66, oy: -44, sag: 0, fx: 6, fy: -42, coil: 0.9, tok: 1 }),
   // f11: haul 2 — the rip-out: the rope goes slack and wobbles
-  key({ sx: -1, feet: 1, eL: 0, eR: 12, hOn: 0, held: 0, nx: 14, ny: -36, nOpen: 0.4, rope: 2, ox: 62, oy: -40, sag: 5, swing: -3, fx: 10, fy: -42, coil: 0.9 }),
+  key({ sx: -1, feet: 1, eL: 0, eR: 12, hOn: 0, held: 0, nx: 16, ny: -34, nOpen: 0.3, rope: 2, ox: 62, oy: -40, sag: 5, swing: -3, fx: 10, fy: -42, coil: 0.9 }),
   // f12: the reel — the harpoon flies back head-first, the rope coiling, its tail wet
   key({ eL: -4, eR: 10, hOn: 1, held: 0, hx: 58, hy: -50, ha: 180, hl: 1, nx: 20, ny: -36, nOpen: 0.8, rope: 1, sag: 3, swing: 2, wet: 1, fx: 12, fy: -44 }),
   // f13: caught (recover) — the big claw has it again, lifted

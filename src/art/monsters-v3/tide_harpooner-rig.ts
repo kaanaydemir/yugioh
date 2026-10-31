@@ -545,7 +545,11 @@ function ropePts(f: Frame): Pt[] {
   const { sk, o } = f;
   const coilTop: Pt = [sk.hF[0] + 3, sk.hF[1] + 2];
   if (o.rope === 1) return sagCurve(coilTop, sk.hring, o.sag, o.swing);
-  if (o.rope === 2) return sagCurve(coilTop, [AX + o.ox, GY + o.oy], o.sag, o.swing, 22);
+  if (o.rope === 2) {
+    // the line runs out of the big claw's grip (it pays out / is hauled through the chela), the coil feeds it
+    const from: Pt = o.nOn > 0.05 ? [sk.hN[0] + sk.dirN[0] * 9, sk.hN[1] + sk.dirN[1] * 9] : coilTop;
+    return sagCurve(from, [AX + o.ox, GY + o.oy], o.sag, o.swing, 22);
+  }
   if (o.rope === 3) {
     // the twirl: the rope from the raised small claw to the spinning harpoon's ring
     return sagCurve(coilTop, sk.hring, o.sag, o.swing, 10);
