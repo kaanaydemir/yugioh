@@ -3,6 +3,11 @@
 Lane B, branch `claude/kart-b`. Spec: `docs/v3/YENI_KARTLAR.md` §6 C10 (+ §5, §5.1 owner of the slow `growl` moan and
 the 600 Hz suction "şlop", §5.2 ending "sıvı olup karoya geri akar"). Handbook: `docs/v3/oturum-b/HANDBOOK.md`.
 
+> **OWNER FEEDBACK (2026-10-31, via orchestrator) — BLOCKER, must be fixed before this card ships:**
+> the draft sheet reads as a **blurry brown mass at 1×**. Needs much clearer value separation and a readable silhouette:
+> distinct light/mid/shadow planes on the mound, a mask that pops (lightest value + ink separation), arms separated from
+> the body by darker creases / rim light, purple eyes as the brightest accent. Check at 1× (no zoom) next to other monsters.
+
 ## Status by stage
 | Stage | State | Notes |
 |---|---|---|

@@ -3,6 +3,11 @@
 Lane B, branch `claude/kart-b`. Spec: `docs/v3/YENI_KARTLAR.md` §8 R3 (+ §5, §5.1 "pof" owner, §5.2 ending
 "tüy yastığı / rüzgar"). Handbook: `docs/v3/oturum-b/HANDBOOK.md`.
 
+> **OWNER FEEDBACK (2026-10-31, via orchestrator) — BLOCKER, must be fixed before this card ships:**
+> the frames are **too similar to each other** — needs much more lively motion: bigger pose changes per frame
+> (squash/stretch drawn into the pose, feather edges lifting in waves, tail curling, figure-eight drift with real
+> amplitude, hands gesturing), in idle and in every one-shot anim. Compare filmstrips side by side: consecutive frames must differ visibly at 1×.
+
 ## Status by stage
 | Stage | State | Owner / notes |
 |---|---|---|
