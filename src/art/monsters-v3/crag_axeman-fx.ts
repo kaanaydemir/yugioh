@@ -36,10 +36,11 @@ function stoneFacets(q: PixelCanvas, f: Frame, cx: number, cy: number, roll: num
   const T = [PAL.stone4, PAL.stone3, PAL.stone2, PAL.stone1, PAL.stone0];
   const s = clamp(step, 0, 2);
   const ls = f.light.side;
-  const seeds: [number, number][] = [[0, 0]];
-  for (let i = 0; i < 7; i++) {
-    const a = (i / 7) * TAU + roll * 0.45;
-    const r = BR * (0.55 + 0.15 * hash2(i, 2, 9));
+  // big irregular facets: jittered seeds (no hub), turned with the roll
+  const seeds: [number, number][] = [];
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * TAU + roll * 0.52 + (hash2(i, 4, 1) - 0.5) * 0.9;
+    const r = BR * (0.3 + 0.5 * hash2(i, 2, 9));
     seeds.push([Math.cos(a) * r, Math.sin(a) * r]);
   }
   planes(q, (x, y, src) => {
@@ -57,11 +58,11 @@ function stoneFacets(q: PixelCanvas, f: Frame, cx: number, cy: number, roll: num
       } else if (d < b1) b1 = d;
     }
     const [sx, sy] = seeds[bi];
-    const lit = (-sx * ls * 0.6 - sy * 0.8) / BR + (bi === 0 ? 0.15 : 0);
+    const lit = (-sx * ls * 0.6 - sy * 0.8) / BR + (-dx * ls * 0.3 - dy * 0.4) / BR;
     let tone = lit > 0.35 ? 0 : lit > 0.05 ? 1 : lit > -0.3 ? 2 : 3;
     // rim: the outer edge row of a facet facing the light is lit, the under edge dark
     if (!src.isOpaque(x, y + 1) || !src.isOpaque(x + ls * -1, y + 1)) tone = Math.max(tone, 3);
-    if (b1 - b0 < 0.9) tone = Math.min(4, Math.max(tone + 1, 2));
+    if (b1 - b0 < 0.8) tone = Math.min(4, tone + 1);
     return T[Math.min(4, tone + s)];
   });
 }
@@ -114,8 +115,8 @@ export function boulderFx(f: Frame, matter: boolean): void {
         }
         stoneFacets(h, f, cx, GY - 6, o.roll + (s > 0 ? 1 : 2), st === 5 ? sink : 0);
         if (st === 5 || k >= 0.7) {
-          // the flat cut face: a lighter top band (stone3), dimming as it sinks
-          planes(h, (x, y, src) => (!src.isOpaque(x, y - 1) || !src.isOpaque(x, y - 2) ? [PAL.stone3, PAL.stone2, PAL.stone1, PAL.stone1][Math.min(3, sink)] : null));
+          // the flat cut face on top: a 2-px band, earth4 while the light is in it, dimming in palette steps as it sinks
+          planes(h, (x, y, src) => (!src.isOpaque(x, y - 1) || !src.isOpaque(x, y - 2) ? [PAL.earth4, PAL.stone3, PAL.stone2, PAL.stone1][Math.min(3, sink)] : null));
         }
         f.comp.add(h, 14, { out: PAL.stone0 });
       }
@@ -135,11 +136,13 @@ export function boulderFx(f: Frame, matter: boolean): void {
     if (p.isOpaque(x, top)) p.set(x, top, PAL.gold4);
   }
   if (st === 4 || (st === 5 && o.bk < 1)) {
-    // a few lit pixels on the cut faces (the light still in the stone)
+    // the light still in the cut faces: the inner edge column of each half (earth4, the halves lying: stone4 rim)
     for (let y = 0; y < H; y++)
-      for (let x = 0; x < W; x++) {
-        if (f.comp.id[y * W + x] !== 14 || p.get(x, y) !== PAL.stone3) continue;
-        if (((x + y) & 3) === 0) p.set(x, y, st === 4 ? PAL.earth4 : PAL.stone4);
+      for (let x = 1; x < W - 1; x++) {
+        if (f.comp.id[y * W + x] !== 14) continue;
+        const inner = x < BCX ? !p.isOpaque(x + 1, y) || p.get(x + 1, y) === PAL.ink : !p.isOpaque(x - 1, y) || p.get(x - 1, y) === PAL.ink;
+        const nearCut = Math.abs(x - BCX) < 20;
+        if (inner && nearCut && st === 4) p.set(x, y, PAL.earth4);
       }
   }
 }
@@ -175,12 +178,12 @@ export function burnPass(q: PixelCanvas, T: Xf, burn: number, gather: boolean): 
     for (let x = 0; x < W; x++) {
       if (!q.isOpaque(x, y)) continue;
       const [bx, by] = xfInv(T, x, y);
-      const cx = Math.floor(bx / 2);
-      const cy = Math.floor(by / 2);
+      const cx = Math.floor(bx / 3);
+      const cy = Math.floor(by / 3);
       const d = Math.abs(bx - seam) / reach;
-      const thr = 0.78 * d + 0.22 * hash2(cx, cy, 5);
-      if (thr < burn - 0.18) q.erase(x, y);
-      else if (thr < burn - 0.08) q.set(x, y, gather ? PAL.white : PAL.earth4);
+      const thr = 0.9 * d + 0.1 * hash2(cx, cy, 5);
+      if (thr < burn - 0.14) q.erase(x, y);
+      else if (thr < burn - 0.06) q.set(x, y, gather ? PAL.white : PAL.earth4);
       else if (thr < burn) q.set(x, y, gather ? PAL.earth4 : PAL.white);
     }
 }
@@ -221,7 +224,7 @@ export function floorSeamFx(f: Frame): void {
   };
   if (o.crack !== 0) {
     // from the bite: the lowest point of the axe head on the floor; + runs forward (toward the target), − back to the feet
-    const ex = rnd(sk.edge[0]);
+    const ex = o.crack > 0 ? rnd(sk.edge[0]) : rnd(sk.axe[0]) - 2;
     seg(ex, rnd(Math.abs(o.crack)), o.crackK, o.crack > 0 ? 1 : -1);
   }
   if (o.fseam > 0) {
@@ -236,16 +239,24 @@ export function floorSeamFx(f: Frame): void {
 /** The 2-px arc smear behind the axe head on the fastest frames (stone4 / white, light, not outlined). */
 export function smearFx(f: Frame): void {
   const { o, p, sk } = f;
-  if (o.smear <= 0) return;
-  const back: Pt = [-sk.nrm[0], -sk.nrm[1]];
-  for (let v = 4; v <= 12; v++) {
-    const [x, y] = axeUV(sk, 0, v);
-    for (let k = 1; k <= 2; k++) {
-      const X = rnd(x + back[0] * (k + 2) - sk.dir[0] * k * 1.5);
-      const Y = rnd(y + back[1] * (k + 2) - sk.dir[1] * k * 1.5);
-      if (X < 1 || Y < 1 || X > W - 2 || Y > H - 2) continue;
+  if (o.smear === 0) return;
+  // the arc the head just swept (around the grip): two 1-px arcs trailing the edge, the outer white, the inner stone4;
+  // smear > 0 = the axe turns clockwise (the chop), < 0 = counter-clockwise (the spin's last quarter)
+  const sgn = o.smear > 0 ? -1 : 1;
+  const [gx, gy] = sk.G;
+  // the head's own angular extent around the grip is behind the poll: the smear starts beyond it
+  const base = Math.atan2(sk.axe[1] - gy, sk.axe[0] - gx);
+  const R = Math.hypot(sk.axe[0] - gx, sk.axe[1] - gy) + (o.fore < 1 ? 13 : 7);
+  for (let k = 0; k < 2; k++) {
+    const r = R - k * 4;
+    for (let d = 12; d <= 40; d += 1.2) {
+      const a = base + sgn * (d * Math.PI) / 180;
+      const X = rnd(gx + Math.cos(a) * r);
+      const Y = rnd(gy + Math.sin(a) * r);
+      if (X < 1 || Y < 1 || X > W - 2 || Y > GY) continue;
       if (p.isOpaque(X, Y) && p.get(X, Y) !== PAL.ink) continue;
-      p.set(X, Y, k === 1 && v > 9 ? PAL.white : PAL.stone4);
+      if (k === 1 && d > 30) continue;
+      p.set(X, Y, k === 0 && d < 24 ? PAL.white : PAL.stone4);
     }
   }
 }

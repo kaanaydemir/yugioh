@@ -23,13 +23,20 @@ import { axeUV } from './crag_axeman-kit';
 
 const rnd = Math.round;
 
+/** fields that switch (never lerp): facing, axe layer, blade side, grips, boulder state */
+const STEP = new Set<keyof Pose>(['fc', 'az', 'hd', 'fh', 'ag', 'bould', 'roll', 'bury', 'tap']);
+
 /** In-between of two poses (numbers lerp, the rest comes from b once t ≥ 0.5). */
 export function mix(a: Pose, b: Pose, t: number): Pose {
   const o = { ...b } as Pose;
   for (const k of Object.keys(a) as (keyof Pose)[]) {
     const x = a[k];
     const y = b[k];
-    if (typeof x === 'number' && typeof y === 'number' && k !== 'fc') (o as unknown as Record<string, number>)[k] = x + (y - x) * t;
+    if (k === 'ba' && typeof x === 'number' && typeof y === 'number') {
+      // the haft angle turns the short way round (−170 → 170 is 20°, not 340°)
+      const d = ((((y - x) % 360) + 540) % 360) - 180;
+      o.ba = x + d * t;
+    } else if (typeof x === 'number' && typeof y === 'number' && !STEP.has(k)) (o as unknown as Record<string, number>)[k] = x + (y - x) * t;
     else (o as unknown as Record<string, unknown>)[k] = t < 0.5 ? x : y;
   }
   return o;
@@ -76,14 +83,14 @@ const EYE = [1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1];
 const AXE: [number, number, number, number][] = [
   [13, -32, -120, 0], [13, -32, -120, 0], [13, -33, -120, 0], [13, -33, -121, 0], [13, -32, -120, 0], [13, -32, -122, 0],
   [13, -33, -136, 0],
-  [13, -33, -166, -1],
-  [12, -32, 162, -1],
-  [12, -31, 126, -1],
+  [13, -33, -166, -0.5],
+  [12, -32, 162, -0.5],
+  [12, -31, 126, -0.5],
   [12, -31, 95, 1],
   [12, -32, 96, 1],
-  [13, -32, 118, -1],
-  [13, -33, 164, -1],
-  [13, -33, -164, -1],
+  [13, -32, 118, -0.5],
+  [13, -33, 164, -0.5],
+  [13, -33, -164, -0.5],
   [13, -33, -134, 0],
 ];
 export function idlePose(f: number): Pose {
@@ -121,9 +128,10 @@ export function guardPose(f: number): Pose {
     ...IDLE0,
     ...G0,
     // calm: the chest heaves once, the bar dips a px a frame later, the beads trail, the fur sways
+    // the weight rocks from the back foot to the front one and back (the bar rides along), the head lags
     chy: [0, 1, 1, 0, 0, 0][k],
-    ny: -33 + [0, 0, 1, 1, 0, 0][k],
-    shr: [0, 0, -1, -1, 0, 0][k],
+    hx: [0, 0, 0, 1, 1, 0][k],
+    ny: -33 + [0, 0, 0, 1, 1, 0][k],
     bead: [0, 0, 1, 1, 0, -1][k],
     cape: [0, 1, 1, 0, -1, -1][k],
     eye: k === 4 ? 0 : 1,
@@ -140,11 +148,11 @@ const A_N = 17;
 /** the spin's six facings — the axe leads the turn: [facing, near hand x, y, haft angle, haft length, axe layer, clods, smear] */
 const SPIN: [Facing, number, number, number, number, number, number, number][] = [
   [1, 13, -34, 10, 21, 1, 0.15, 0],
-  [2, 13, -37, -24, 15, -1, 0.3, 0],
-  [3, -5, -38, -152, 15, -1, 0.45, 0],
-  [4, -10, -36, 178, 16, -1, 0.6, 0],
-  [5, -9, -33, 160, 15, 1, 0.75, 1],
-  [6, 2, -31, 95, 11, 1, 0.9, 1],
+  [2, 19, -38, -24, 15, -1, 0.3, 0],
+  [3, -13, -39, -152, 15, -1, 0.45, 0],
+  [4, -11, -36, 178, 15, -1, 0.6, 0],
+  [5, -9, -33, 160, 15, 1, 0.75, -1],
+  [6, 2, -31, 95, 11, 1, 0.9, -1],
 ];
 /** the cocked pose: both hands over the head, the axe dropped down the back (the full wind-up) */
 const COCK: Partial<Pose> = { hl: 23, hd: 1, sink: 2, lean: -1, nx: 3, ny: -50, ba: -138, az: 0, fh: 1, g2: -5, hy: -1, eye: 2, shr: -1, mant: -1, cape: -2, bead: -1 };
@@ -185,7 +193,7 @@ const ATTACK_HOLDS = [70, 110, 110, 90, 80, 70, 60, 60, 200, 180, 150, 120, 60, 
 // ------------------------------------------------------------------ roar (10 frames): the NARA
 
 const R_N = 10;
-const RAISED: Partial<Pose> = { hl: 23, hd: 1, nx: 18, ny: -55, ba: -142, az: 1, mouth: 1, eye: 2, hy: -2, hx: 1, chy: -1, shr: -2, mant: -1, lean: -1, fx: -15, fy: -36 };
+const RAISED: Partial<Pose> = { hl: 23, hd: 1, nx: 17, ny: -63, ba: -168, elx: 1, ely: 0, az: 0, mouth: 1, eye: 2, hy: -1, hx: 1, chy: -1, shr: -2, mant: -1, lean: -1, fx: -15, fy: -36 };
 export function roarPose(f: number): Pose {
   const n = R_N;
   if (f >= n - 1) return home();
@@ -222,10 +230,10 @@ const HIT_HOLDS = [50, 60, 80, 90, 100, 120];
 const HH_N = 8;
 const HH_KEYS: Partial<Pose>[] = [
   { hx: -2, tilt: -1, eye: 0, bead: 2, hy: 1 },
-  { hx: -3, hy: 1, tilt: -1, eye: 0, bead: 2, lean: -3, sink: 1, f1x: -2, f1y: -3, nx: 11, ny: -30, ba: -140, az: -1, cape: 2 },
-  { hx: -3, hy: 2, eye: 0, bead: 1, lean: -3, sink: 3, f1x: -4, nx: 10, ny: -27, ba: -168, az: -1, cape: 2, mant: 1, dust: 0.3 },
-  { hx: -2, hy: 2, eye: 1, bead: -1, lean: -2, sink: 3, f1x: -4, nx: 10, ny: -27, ba: -172, az: -1, cape: 1 },
-  { hx: -1, hy: 1, eye: 1, bead: -1, lean: -1, sink: 2, f1x: -2, f1y: -2, nx: 11, ny: -29, ba: -150, az: -1, cape: 0 },
+  { hx: -3, hy: 1, tilt: -1, eye: 0, bead: 2, lean: -3, sink: 1, f1x: -2, f1y: -3, nx: 11, ny: -30, ba: -140, az: -0.5, cape: 2 },
+  { hx: -3, hy: 2, eye: 0, bead: 1, lean: -3, sink: 3, f1x: -4, nx: 10, ny: -27, ba: -168, az: -0.5, cape: 2, mant: 1, dust: 0.3 },
+  { hx: -2, hy: 2, eye: 1, bead: -1, lean: -2, sink: 3, f1x: -4, nx: 10, ny: -27, ba: -172, az: -0.5, cape: 1 },
+  { hx: -1, hy: 1, eye: 1, bead: -1, lean: -1, sink: 2, f1x: -2, f1y: -2, nx: 11, ny: -29, ba: -150, az: -0.5, cape: 0 },
   { hx: 0, eye: 1, bead: 1, sink: 1, f1x: 0, nx: 12, ny: -31, ba: -128, dust: 0.3 },
   { bead: 1 },
 ];
@@ -306,7 +314,7 @@ export function deathPose(f: number): Pose {
   if (f === 4) return key({ ...rest, crack: -12, crackK: 1, seam: 1, split: 1, eye: 1 }, f, n);
   if (f === 5) return key({ ...rest, crack: -12, crackK: 1, seam: 1, split: 2 }, f, n);
   const tilt2 = [4, 8, 12, 14, 15, 16][f - 6];
-  const burn = [0, 0, 0, 0.25, 0.5, 0.72][f - 6];
+  const burn = [0, 0, 0, 0.22, 0.42, 0.6][f - 6];
   return key({ ...rest, crack: -12, crackK: f < 9 ? 1 : 0.5, seam: 1, split: 2 + (f - 5), tilt2, burn, bead: 2, cape: 2 }, f, n);
 }
 const D_HOLDS = [50, 60, 70, 70, 70, 70, 70, 70, 70, 75, 75, 80];
@@ -319,7 +327,7 @@ export function revivePose(f: number): Pose {
   if (f >= n - 1) return home();
   if (f <= 5) {
     const d = deathPose([11, 10, 9, 8, 6, 5][f]);
-    return key({ ...d, burn: [0.72, 0.5, 0.25, 0, 0, 0][f], gather: true, crack: -12, crackK: f < 3 ? 0.5 : 1, t: f / 10 }, f, n);
+    return key({ ...d, burn: [0.6, 0.42, 0.22, 0, 0, 0][f], gather: true, crack: -12, crackK: f < 3 ? 0.5 : 1, t: f / 10 }, f, n);
   }
   if (f === 6) return key({ ...deathPose(3), seam: 1, crack: -12, eye: 1 }, f, n);
   if (f === 7) return key({ ...deathPose(3), seam: 0.4, crack: -4, crackK: 0.5, eye: 1, sink: 1 }, f, n);
@@ -374,6 +382,9 @@ export function framePose(anim: AnyMonsterAnim, f: number): Pose {
   }
   return p;
 }
+
+/** The card picture's pose: the nara at the top of the swing, the crescent held up like a rising sun. */
+export const CARD_POSE: Pose = pose({ ...RAISED, ny: -59, ba: -172, hy: 0, cape: -2, bead: -1, t: 0.3, hem: 0.3 });
 
 export const MUZZLE = { x: AX + 18, y: GY - 58 };
 
