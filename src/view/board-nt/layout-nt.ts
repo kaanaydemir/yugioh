@@ -45,11 +45,11 @@ export const PLATE_X1 = 526;
 export const PLATE_Y0 = 58;
 export const PLATE_Y1 = 262;
 /**
- * Height of the side armour below the top edge (J1: 28, was 18): coping 3 + groove, upper armour plate 7, light channel 4,
- * lower armour plate 8, ledge + skirt 4, bottom outline 1. The stands / crowd sit below it (armour bottom y = 154 + x/2 on the
- * left face, 472 − x/2 on the right face, 290 on the flat near edge).
+ * Height of the side armour below the top edge (J1: 28, was 18; J4: a THICK slab, 52): coping 3 + groove, upper armour plate 12,
+ * light channel 6, main armour plate 18 (big bevelled panel face), belt 5, footing flange 4 incl. the bottom outline. The stands /
+ * crowd sit behind it (armour bottom y = 178 + x/2 on the left face, 448 − x/2 on the right face, 314 on the flat near edge).
  */
-export const FACE_H = 28;
+export const FACE_H = 52;
 
 /** Grid coordinates of a screen point (inverse of ntIso). */
 export function ntGrid(x: number, y: number): [number, number] {
@@ -83,10 +83,10 @@ export const PLATE_CORNERS = {
 
 /** Screen bounding box of the plate top (duelist pads are inside it). */
 export const PLATE_TOP: Rect = { x: PLATE_X0, y: PLATE_Y0, w: PLATE_X1 - PLATE_X0, h: PLATE_Y1 - PLATE_Y0 };
-/** Plate + side armour (the lowest point is the flat near edge: y 262 + FACE_H = 290, behind the hint plate / hand: HUD draws over it). */
+/** Plate + side armour (the lowest point is the flat near edge: y 262 + FACE_H = 314, behind the hint plate / hand: HUD draws over it). */
 export const PLATE_FULL: Rect = { x: PLATE_X0, y: PLATE_Y0, w: PLATE_X1 - PLATE_X0, h: PLATE_Y1 - PLATE_Y0 + FACE_H };
 /** Soft contact shadow under the platform (ink, stepped): may run under the HUD, never above y 140. */
-export const PLATE_SHADOW: Rect = { x: 88, y: 140, w: 464, h: 176 };
+export const PLATE_SHADOW: Rect = { x: 88, y: 140, w: 464, h: 196 };
 
 /** The two duelist pads: the 58×35 canvas box (cell 56×28) around the duelist's feet = layout.duelistXY; the pad diamond itself is 40×20 (art/arena-nt/pads.ts PAD_HALF). */
 export const DUELIST_PADS: readonly Rect[] = [

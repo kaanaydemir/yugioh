@@ -101,7 +101,8 @@ function paintPool(s: PoolShape, level: number): PixelCanvas {
       const d2 = dx * dx + dy * dy;
       if (d2 >= 1) continue;
       const d = s.peak * (1 - d2);
-      if (d * LIGHT_LV[level] > bayer4(x, y)) p.set(x, y, PAL.white);
+      // a flat contour (no dither): the level decides how far the light reaches, the edge is one clean 2:1 ellipse step
+      if (d * LIGHT_LV[level] > 0.24) p.set(x, y, PAL.white);
     }
   return p;
 }
@@ -131,9 +132,11 @@ function paintHalo(level: number): PixelCanvas {
 
 export const EDGE_TILE = 16;
 /** How far below the platform's near faces the contact glow reaches (px). */
-export const EDGE_REACH = 9;
+export const EDGE_REACH = 24;
+/** Rows below the slab that the apron's footing flange (ring + front face) already covers: the glow starts past it. */
+const EDGE_SKIP = 14;
 /** The tile grid origin (screen) and size covering the plate + armour. */
-const EDGE_BOX = { x: 96, y: 140, w: 464, h: 168 } as const;
+const EDGE_BOX = { x: 96, y: 140, w: 464, h: 208 } as const;
 
 /** Coverage mask of the platform's silhouette (plate top + the FACE_H armour below it) in screen pixels. */
 function plateMask(): PixelCanvas {
@@ -178,7 +181,7 @@ export function paintEdgeGlow(): EdgeArt {
         }
       if (k === 0) continue;
       kk[y * EDGE_BOX.w + x] = k;
-      dens[y * EDGE_BOX.w + x] = 0.95 * (1 - (k - 1) / EDGE_REACH);
+      dens[y * EDGE_BOX.w + x] = 1;
     }
   const tones = (side: 0 | 1): readonly [number, number] => (side === 0 ? [PAL.cyan1, PAL.cyan0] : [PAL.crim1, PAL.crim0]);
   const cols = Math.ceil(EDGE_BOX.w / EDGE_TILE);
@@ -201,13 +204,12 @@ export function paintEdgeGlow(): EdgeArt {
             const gy = ty * EDGE_TILE + y;
             if (gx >= EDGE_BOX.w || gy >= EDGE_BOX.h) continue;
             const i = gy * EDGE_BOX.w + gx;
-            const d = dens[i];
-            if (d <= 0) continue;
-            // world-aligned threshold: the box origin is a multiple of 4, so tile content repeats along the 2:1 edge
-            if (d * LIGHT_LV[L] > bayer4(gx, gy)) {
-              t.set(x, y, kk[i] <= 3 ? tones(side)[0] : tones(side)[1]);
-              n++;
-            }
+            if (dens[i] <= 0) continue;
+            // flat bands past the footing (no dither): level 1 = one thin band, 2 = + a second, 3 = + a wider outer one
+            const k = kk[i] - EDGE_SKIP;
+            if (k < 1 || k > 3 * L) continue;
+            t.set(x, y, k <= 3 ? (L === 1 ? tones(side)[1] : tones(side)[0]) : tones(side)[1]);
+            n++;
           }
         if (n === 0) {
           frames.push('');

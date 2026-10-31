@@ -17,94 +17,156 @@ export const WALL_Y0 = -8;
 /** Floor line (the wall's plinth bottom) in screen y. */
 export const WALL_BASE_Y = 102;
 
-/** One 32-px wall panel at (x0, 0): seams, ribs and one kind of detail (0 plain, 1 vent slits, 2 conduit, 3 data strip). */
-function panel(p: PixelCanvas, x0: number, kind: number): void {
+/** A bevelled box: lit top-left rim, shaded bottom-right rim, ink outline (recess = the light comes from the other side). */
+function bevelBox(p: PixelCanvas, x: number, y: number, w: number, h: number, face: number, hi: number, lo: number, recess = false): void {
+  p.rect(x, y, w, h, face);
+  p.hline(x + 1, x + w - 2, y + 1, recess ? lo : hi);
+  p.vline(x + 1, y + 1, y + h - 2, recess ? lo : hi);
+  p.hline(x + 1, x + w - 2, y + h - 2, recess ? hi : lo);
+  p.vline(x + w - 2, y + 1, y + h - 2, recess ? hi : lo);
+  p.frame(x, y, w, h, T.ink);
+}
+
+/** One 64-px wall bay at (x0, 0): pilasters, banded shading, a deep recessed plate and one kind of detail (0 louvres, 1 circuit, 2 conduit, 3 data). */
+function bay(p: PixelCanvas, x0: number, kind: number): void {
   const H = PANEL_H;
-  p.rect(x0, 0, 32, H, T.n0);
-  // ceiling shade: darker band at the top, one tone lighter in the middle of the wall
-  p.rect(x0, 0, 32, 20, T.ink);
-  p.rect(x0, 20, 32, 6, T.n0);
-  p.rect(x0, 26, 32, 58, T.n0);
-  // seams: ink line + 1 px lit edge right of it
-  p.vline(x0, 0, H - 1, T.ink);
-  p.vline(x0 + 1, 22, 90, T.n1);
-  p.vline(x0 + 31, 22, 90, T.ink);
-  // ribs
-  for (const y of [34, 66]) {
-    p.hline(x0 + 2, x0 + 30, y, T.n1);
-    p.hline(x0 + 2, x0 + 30, y + 1, T.ink);
+  const W = 64;
+  // field: banded light fall (ink under the beam -> night0 -> a lighter night1 band in the middle -> night0 near the plinth)
+  p.rect(x0, 0, W, H, T.n0);
+  p.rect(x0, 28, W, 6, T.ink);
+  p.rect(x0, 34, W, 3, T.n0);
+  p.rect(x0, 56, W, 22, T.n1);
+  p.rect(x0, 78, W, 3, T.n0);
+  // band edges are broken into small steps so they read as painted, not as ruler lines
+  for (let x = 1; x < W; x += 4) {
+    p.set(x0 + x, 55, T.n1);
+    p.set(x0 + x + 1, 56, T.n0);
+    p.set(x0 + x + 2, 77, T.n1);
   }
-  // panel inset: a darker plate with a 1px top light
-  p.rect(x0 + 4, 40, 24, 22, T.ink);
-  p.hline(x0 + 4, x0 + 27, 40, T.n1);
-  p.frame(x0 + 4, 40, 24, 22, T.ink);
-  p.rect(x0 + 5, 41, 22, 20, T.n0);
-  p.hline(x0 + 5, x0 + 26, 41, T.n1);
-  // rivets
-  for (const [dx, dy] of [
-    [3, 38],
-    [28, 38],
-    [3, 63],
-    [28, 63],
-  ] as const)
-    p.set(x0 + dx, dy, T.n2);
+  // pilasters (6 px) on both sides: lit rim, two face tones, shaded edge, clamps
+  for (const [px, flip] of [[x0, false], [x0 + W - 6, true]] as const) {
+    const cols = flip ? [T.n1, T.n2, T.n2, T.n1, T.n0, T.ink] : [T.ink, T.n3, T.n2, T.n2, T.n1, T.n0];
+    for (let i = 0; i < 6; i++) p.vline(px + i, 28, H - 14, cols[i]);
+    for (const y of [38, 62, 86]) {
+      p.hline(px, px + 5, y, T.n3);
+      p.hline(px, px + 5, y + 1, T.n1);
+      p.hline(px, px + 5, y + 2, T.ink);
+      p.set(px + (flip ? 2 : 3), y + 1, T.n4);
+    }
+  }
+  // the deep recessed plate
+  const bx = x0 + 10;
+  const by = 42;
+  bevelBox(p, bx, by, 44, 40, T.n0, T.n1, T.n2, true);
+  p.rect(bx + 3, by + 3, 38, 34, T.n1);
+  p.hline(bx + 3, bx + 40, by + 3, T.n0);
+  p.vline(bx + 3, by + 3, by + 36, T.n0);
+  p.hline(bx + 3, bx + 40, by + 36, T.n2);
+  p.vline(bx + 40, by + 3, by + 36, T.n2);
+  for (const [dx, dy] of [[5, 5], [38, 5], [5, 34], [38, 34]] as const) {
+    p.set(bx + dx, by + dy, T.n3);
+    p.set(bx + dx + 1, by + dy + 1, T.ink);
+  }
+  const ix = bx + 8;
+  const iy = by + 8;
   switch (kind) {
-    case 1: // vent slits
-      for (let i = 0; i < 4; i++) {
-        p.hline(x0 + 9, x0 + 22, 44 + i * 4, T.ink);
-        p.hline(x0 + 9, x0 + 22, 45 + i * 4, T.n1);
+    case 0: // louvres: lit lip, ink slot, shaded fin
+      for (let i = 0; i < 6; i++) {
+        p.hline(ix, ix + 27, iy + i * 4, T.n3);
+        p.hline(ix, ix + 27, iy + i * 4 + 1, T.ink);
+        p.hline(ix + 1, ix + 27, iy + i * 4 + 2, T.n0);
       }
+      p.set(ix + 28, iy + 1, T.c1);
       break;
-    case 2: // conduit: two vertical pipes with clamps
-      for (const dx of [10, 20]) {
-        p.rect(x0 + dx, 22, 3, 62, T.n1);
-        p.vline(x0 + dx, 22, 83, T.n2);
-        p.vline(x0 + dx + 2, 22, 83, T.ink);
-        for (const y of [30, 50, 72]) p.rect(x0 + dx - 1, y, 5, 2, T.n2);
+    case 1: // circuit: traces and nodes in cyan0 / cyan1
+      p.polyline([[ix, iy + 22], [ix + 8, iy + 22], [ix + 8, iy + 10], [ix + 20, iy + 10], [ix + 20, iy + 3], [ix + 27, iy + 3]], T.c0);
+      p.polyline([[ix, iy + 14], [ix + 4, iy + 14], [ix + 4, iy + 18], [ix + 14, iy + 18], [ix + 14, iy + 24], [ix + 27, iy + 24]], T.c0);
+      for (const [nx, ny] of [[8, 22], [8, 10], [20, 10], [4, 14], [14, 24]] as const) p.rect(ix + nx - 1, iy + ny - 1, 3, 3, T.c1);
+      p.set(ix + 8, iy + 10, T.c2);
+      break;
+    case 2: // conduit: two vertical pipes, three tones each, clamped
+      for (const dx of [4, 17]) {
+        p.vline(ix + dx, 0 + by + 4, by + 35, T.ink);
+        p.vline(ix + dx + 1, by + 4, by + 35, T.n3);
+        p.vline(ix + dx + 2, by + 4, by + 35, T.n2);
+        p.vline(ix + dx + 3, by + 4, by + 35, T.n2);
+        p.vline(ix + dx + 4, by + 4, by + 35, T.n1);
+        p.vline(ix + dx + 5, by + 4, by + 35, T.ink);
+        for (const y of [by + 10, by + 22, by + 31]) {
+          p.rect(ix + dx - 1, y, 8, 3, T.n2);
+          p.hline(ix + dx - 1, ix + dx + 6, y, T.n4);
+          p.hline(ix + dx - 1, ix + dx + 6, y + 2, T.ink);
+        }
       }
+      p.vline(ix + 12, by + 8, by + 30, T.c0);
       break;
-    case 3: // dim data strip: five short bars of different lengths (cyan0 on ink)
+    default: // data: five bars of different lengths, a lit end cap
       for (let i = 0; i < 5; i++) {
-        const len = 6 + Math.floor(hash01(x0, i, 7) * 14);
-        p.hline(x0 + 7, x0 + 7 + len, 44 + i * 3, T.c0);
+        const len = 8 + Math.floor(hash01(x0, i, 7) * 18);
+        p.hline(ix, ix + len, iy + 2 + i * 4, T.c0);
+        p.hline(ix, ix + len, iy + 3 + i * 4, T.c1);
+        p.set(ix + len + 1, iy + 2 + i * 4, T.c2);
       }
-      p.set(x0 + 24, 44, T.c1);
-      break;
-    default:
-      // a single lens window
-      p.rect(x0 + 12, 46, 8, 6, T.ink);
-      p.frame(x0 + 12, 46, 8, 6, T.n2);
-      p.hline(x0 + 14, x0 + 17, 49, T.n1);
   }
 }
 
-/** The repeating wall band tile. Plinth (floor skirting) at the bottom, light seams, no colour but a dim line. */
+/** The repeating wall band tile (128 x 110): two bays under a heavy ceiling girder, a plinth of armour plates at the foot. */
 export function paintPanelTile(): PixelCanvas {
   const p = new PixelCanvas(PANEL_W, PANEL_H);
-  for (let i = 0; i < 4; i++) panel(p, i * 32, (i + 1) % 4);
-  // ceiling truss (screen y −2 … 4): a dark beam with a lit top edge and cross braces every 16 px
-  p.rect(0, 6, PANEL_W, 6, T.n1);
-  p.hline(0, PANEL_W - 1, 6, T.n2);
-  p.hline(0, PANEL_W - 1, 11, T.ink);
-  p.hline(0, PANEL_W - 1, 12, T.ink);
-  for (let x = 0; x < PANEL_W; x += 16) {
-    p.vline(x, 6, 11, T.ink);
-    p.set(x + 1, 8, T.n3);
-    p.set(x + 8, 7, T.n2);
+  bay(p, 0, 0);
+  bay(p, 64, 1);
+  // two kinds more of detail on the very same silhouette: swap the plate content on every other repeat of the tile
+  // ceiling: a dark vault above the girder (rib every 32 px)
+  p.rect(0, 0, PANEL_W, 14, T.ink);
+  for (let x = 0; x < PANEL_W; x += 32) {
+    p.vline(x, 0, 13, T.n0);
+    p.vline(x + 1, 0, 13, T.n1);
+    p.vline(x + 2, 4, 13, T.n0);
   }
-  // plinth: ink gap, night1 skirting with a night2 top light and dim dashes of cyan0
-  const y = WALL_BASE_Y - WALL_Y0 - 12; // local row of the plinth top
+  p.hline(0, PANEL_W - 1, 12, T.n0);
+  // the girder (local y 14..27): lit top chord, two tone web with cross braces, shaded lower chord
+  p.rect(0, 14, PANEL_W, 14, T.n1);
+  p.hline(0, PANEL_W - 1, 14, T.n4);
+  p.hline(0, PANEL_W - 1, 15, T.n3);
+  p.hline(0, PANEL_W - 1, 16, T.n2);
+  p.rect(0, 17, PANEL_W, 8, T.n0);
+  p.hline(0, PANEL_W - 1, 25, T.n2);
+  p.hline(0, PANEL_W - 1, 26, T.n0);
+  p.hline(0, PANEL_W - 1, 27, T.ink);
+  for (let x = 0; x < PANEL_W; x += 32) {
+    // a K-brace: two diagonals meeting at the web's mid point, with a gusset plate
+    p.line(x + 2, 24, x + 16, 17, T.n3);
+    p.line(x + 3, 24, x + 17, 17, T.n1);
+    p.line(x + 30, 24, x + 16, 17, T.n3);
+    p.line(x + 29, 24, x + 15, 17, T.n1);
+    p.rect(x + 13, 17, 7, 3, T.n2);
+    p.hline(x + 13, x + 19, 17, T.n4);
+    p.set(x + 14, 18, T.ink);
+    p.set(x + 18, 18, T.ink);
+    p.vline(x, 14, 27, T.ink);
+    p.vline(x + 1, 17, 25, T.n2);
+  }
+  // a dim cyan service strip along the girder's lower chord, lit in short runs
+  for (let x = 6; x < PANEL_W; x += 32) {
+    p.hline(x, x + 19, 26, T.c0);
+    p.hline(x + 4, x + 11, 26, T.c1);
+  }
+  // plinth: armour plates of 32 px, lit upper lip, ink gap, a lamp slot
+  const y = WALL_BASE_Y - WALL_Y0 - 12;
   p.rect(0, y, PANEL_W, 12, T.n1);
-  p.hline(0, PANEL_W - 1, y, T.n2);
-  p.hline(0, PANEL_W - 1, y + 1, T.n1);
+  p.hline(0, PANEL_W - 1, y, T.n3);
+  p.hline(0, PANEL_W - 1, y + 1, T.n2);
   p.hline(0, PANEL_W - 1, y + 9, T.n0);
   p.hline(0, PANEL_W - 1, y + 10, T.ink);
   p.hline(0, PANEL_W - 1, y + 11, T.ink);
   for (let x = 0; x < PANEL_W; x += 32) {
-    p.rect(x + 6, y + 4, 20, 3, T.n0);
+    p.vline(x, y, y + 11, T.ink);
+    p.vline(x + 1, y + 2, y + 9, T.n2);
+    p.rect(x + 7, y + 4, 18, 4, T.ink);
     p.hline(x + 8, x + 23, y + 5, T.c0);
+    p.hline(x + 11, x + 19, y + 5, T.c1);
+    p.hline(x + 8, x + 23, y + 7, T.n2);
   }
-  for (let x = 0; x < PANEL_W; x += 16) p.vline(x, y + 2, y + 9, T.n0);
   return p;
 }
 
@@ -115,28 +177,31 @@ export function paintPillar(tube: readonly [number, number]): PixelCanvas {
   const W = 12;
   const H = PANEL_H;
   const p = new PixelCanvas(W, H);
-  p.rect(0, 0, W, H, T.n1);
-  p.rect(W - 4, 0, 4, H, T.n0); // shaded right plane
-  p.vline(0, 0, H - 1, T.ink);
-  p.vline(W - 1, 0, H - 1, T.ink);
-  p.vline(1, 0, H - 1, T.n2); // lit left edge
-  // clamps
+  // rounded column: lit rim, two bright planes, mid, shade, dark edge
+  const cols = [T.ink, T.steel, T.n4, T.n3, T.n2, T.n2, T.n2, T.n1, T.n1, T.n0, T.n0, T.ink];
+  for (let i = 0; i < W; i++) p.vline(i, 0, H - 1, cols[i]);
+  // armour clamps: lit lip, ink seam, shaded foot, a bolt
   for (const y of [10, 34, 58, 82]) {
-    p.rect(0, y, W, 3, T.n2);
-    p.hline(0, W - 1, y, T.n3);
-    p.hline(0, W - 1, y + 3, T.ink);
+    for (let i = 1; i < W - 1; i++) {
+      p.set(i, y, cols[i] === T.n0 ? T.n1 : T.n4);
+      p.set(i, y + 1, cols[i]);
+      p.set(i, y + 2, T.n0);
+      p.set(i, y + 3, T.ink);
+    }
+    p.set(2, y + 1, T.mist);
   }
-  // the tube: a 2-px recess with a dim glass line and brighter dashes every 12 px
+  // the tube: a recess with a bright glass line, brighter dashes every 12 px and a glow either side
   p.rect(4, 0, 4, H - 12, T.ink);
   p.vline(5, 0, H - 13, tube[0]);
   p.vline(6, 0, H - 13, tube[0]);
   for (let y = 4; y < H - 14; y += 12) {
-    p.vline(5, y, y + 3, tube[1]);
-    p.vline(6, y, y + 3, tube[1]);
+    p.vline(5, y, y + 5, tube[1]);
+    p.vline(6, y, y + 5, tube[1]);
+    p.set(5, y + 1, T.white);
   }
   // foot
   p.rect(0, H - 12, W, 12, T.n0);
-  p.hline(0, W - 1, H - 12, T.n2);
+  p.hline(0, W - 1, H - 12, T.n3);
   p.hline(0, W - 1, H - 11, T.ink);
   return p;
 }

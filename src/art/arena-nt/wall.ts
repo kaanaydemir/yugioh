@@ -34,6 +34,7 @@ import {
   paintSocle,
 } from './wall-parts';
 import { EMBLEM_AT, ENERGY_LINE, TOWER_H, TOWER_W, paintTower } from './wall-tower';
+import { GLOW_PAD, SCREEN_AT, paintScreenGlow } from './screens';
 
 /** Texture keys. NT_WALL_KEY is the atlas (decor, banners, LEDs, emblem, tower); the tiles are their own textures. */
 export const NT_WALL_KEY = 'nt:wall';
@@ -68,8 +69,10 @@ export function paintWallAtlas(): NtAtlas {
   f.push(['tower', paintTower()]);
   f.push(['emblem:0', paintEmblem(0)]);
   f.push(['emblem:1', paintEmblem(1)]);
-  f.push(['pillar:c', paintPillar([T.c0, T.c1])]);
-  f.push(['pillar:v', paintPillar([T.v1, T.v2])]);
+  f.push(['pillar:c', paintPillar([T.c1, T.c3])]);
+  f.push(['pillar:v', paintPillar([T.v2, T.v3])]);
+  f.push(['glow:0', paintScreenGlow(0)]);
+  f.push(['glow:1', paintScreenGlow(1)]);
   f.push(['bay', paintBay()]);
   f.push(['bayMount', paintBayMount()]);
   f.push(['rod', paintRod()]);
@@ -150,6 +153,8 @@ export function wallDecor(): Deco[] {
   // pillars flanking the holograms (the tube is dim; blue left, violet right)
   out.push({ frame: 'pillar:c', x: 104, y: WALL_Y0, z: 'decor' });
   out.push({ frame: 'pillar:v', x: 524, y: WALL_Y0, z: 'decor' });
+  // the light each portrait screen throws on the wall behind it (the screens themselves are drawn by the screens layer)
+  for (const who of [0, 1] as const) out.push({ frame: `glow:${who}`, x: SCREEN_AT[who].x - GLOW_PAD, y: SCREEN_AT[who].y - GLOW_PAD, z: 'decor' });
   // the screens hang from the ceiling truss
   for (const b of BAYS) {
     out.push({ frame: 'rod', x: b.x + 14, y: 3, z: 'decor' });

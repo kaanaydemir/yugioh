@@ -6,7 +6,7 @@
 //   - ONE chamfered slab (layout-nt PLATE_OUTLINE: an octagon); the two duelist pads stand ON it (pads layer), nothing is cut into the outline;
 //   - layered armour side panels (FACE_H px: lip, rail, energy-strip channel, armour panel, ledge, skirt)
 //     on every camera-facing edge, panel seams, a few vents, corner pillars and four corner blocks;
-//   - the contact shadow under the platform (ink, dithered in three steps: no alpha, no blur);
+//   (the contact shadow and the footing under it live in the apron painter, apron.ts: flat bands, no dither)
 //   - the neutral dark centre strip (bridge row) with its dashed centre line and tiny split emblem.
 // Everything is drawn in screen pixels into ONE texture (BOX), plus a small fx atlas (white masks of the
 // strip pieces, vent puffs, corner glints) for the layer's ambient motion. Pure PixelCanvas code
@@ -174,8 +174,6 @@ export function buildPlatformArt(): PlatformArt {
   lap('pillars+masks');
   const corners = paintCorners(S);
   lap('corners');
-  paintShadow(S);
-  lap('shadow');
 
   const fxList: [string, PixelCanvas][] = [...stripMasks, ...puffFrames(), ...glintFrames()];
   const fx = packAtlas(fxList, 256);
@@ -204,6 +202,8 @@ export function paintPlatform(): PixelCanvas {
 const RIM: readonly Color[] = [N3, N3, N2, N4, N2, N3, N3, N2];
 /** The coping's second row (one tone down). */
 const RIM2: readonly Color[] = [N2, N2, N1, N3, N1, N2, N2, N1];
+/** The coping's third row (the step down to the groove). */
+const RIM3: readonly Color[] = [N1, N1, N0, N2, N0, N1, N1, N0];
 
 /** A tiny deterministic hash (0..1) of a screen pixel: sparse plate noise that never moves. */
 function hash01(x: number, y: number): number {
@@ -250,10 +250,13 @@ function paintTop(S: Surface, x0: number, y0: number, x1: number, y1: number): P
         const ccx = NT_OX + (col - row) * 32;
         const ccy = NT_OY + (col + row) * 16;
         const dv = 16 - (Math.abs(x + 0.5 - ccx) / 2 + Math.abs(y + 0.5 - ccy));
-        S.put(x, y, dv < 1 ? N0 : G1);
+        // an empty cell (3+3 outer lanes, or under a slot image): graphite panel, a dim owner line, a dark glow row inside it
+        const ramp = row < 2 ? NT_PAL.red : row > 2 ? NT_PAL.blue : NT_PAL.metal;
+        S.put(x, y, dv < 1 ? N0 : dv < 2 ? ramp[row === 2 ? 1 : 2] : dv < 3 ? ramp[row === 2 ? 0 : 1] : y + 0.5 < ccy && dv < 4 ? G2 : G1);
         continue;
       }
-      // the border band between the rim and the grid: layered coping, a groove, the trim channel, a groove, the plate
+      // the border band between the rim and the grid: a RAISED coping (lit lip, mid tone, dark step), a groove, the trim channel,
+      // a groove, then the rim wall's inner shadow on the plate
       if (d32 < 1) {
         S.put(x, y, RIM[side]);
         continue;
@@ -263,19 +266,23 @@ function paintTop(S: Surface, x0: number, y0: number, x1: number, y1: number): P
         continue;
       }
       if (d32 < 3) {
-        S.put(x, y, N0);
+        S.put(x, y, RIM3[side]);
         continue;
       }
       if (d32 < 4) {
         // the plate's own neon line, blue near / crimson far
         if (ownTrim) {
           const ramp = r > 2.5 ? NT_PAL.blue : r < 1.5 ? NT_PAL.red : NT_PAL.metal;
-          S.put(x, y, ramp === NT_PAL.metal ? N3 : ramp[2]);
+          S.put(x, y, ramp === NT_PAL.metal ? N3 : ramp[3]);
         } else S.put(x, y, N1);
         continue;
       }
       if (d32 < 5) {
         S.put(x, y, N0);
+        continue;
+      }
+      if (d32 < 6) {
+        S.put(x, y, G0);
         continue;
       }
       let tone: Color = G1;
@@ -359,14 +366,43 @@ function faceDefs(): FaceDef[] {
 }
 
 /**
- * v → tone of a face column (lit = the camera-facing left faces, shade = the right faces); 'S' = strip core, 'L' = the
- * strip's glow row. Top → bottom (FACE_H 28): coping (v0–2) and a groove, the UPPER armour plate (v4–10: bevel, body ×4, shade),
- * a groove, the recessed light channel (v12–14), a groove, the LOWER armour plate (v16–23), a ledge (v24), the skirt (v25–26)
- * and the bottom outline.
+ * v → tone of a face column (lit = the camera-facing left faces, shade = the right faces). 'S' = strip core, 'L' = the strip's glow
+ * rows (outer 'l' = the dimmest). Top → bottom (FACE_H 52): coping (v0–2) and a groove, the UPPER armour plate (v4–15, bevel + five
+ * tone bands), a groove, the recessed light channel (v17–22), a groove, the MAIN armour plate (v24–41: a big bevelled panel face, six
+ * tone bands), a groove, the belt (v43–47: lip, dim owner line, hazard / bolts), the footing flange (v48–50) and the bottom outline.
  */
-const LIT_ROWS: (Color | 'S' | 'L')[] = [N4, N3, N2, INK, N3, N2, N2, N2, N2, N1, N1, INK, N0, 'S', 'L', INK, N3, N2, N2, N2, N1, N1, N1, N0, N4, N2, N0, INK];
-const SHD_ROWS: (Color | 'S' | 'L')[] = [N3, N2, N1, INK, N2, N1, N1, N1, N1, N0, N0, INK, N0, 'S', 'L', INK, N2, N1, N1, N1, N0, N0, N0, N0, N3, N1, N0, INK];
-const V_STRIP = 13;
+type RowTone = Color | 'S' | 'L' | 'l';
+const rowsOf = (...segs: RowTone[][]): RowTone[] => segs.flat();
+const LIT_ROWS: RowTone[] = rowsOf(
+  [STEEL, N4, N3, INK],
+  [N4, N3, N3, N3, N2, N2, N2, N2, N2, N1, N1, N0],
+  [INK],
+  [N0, 'L', 'S', 'S', 'l', N0],
+  [INK],
+  [N4, N3, N3, N3, N3, N2, N2, N2, N2, N2, N2, N2, N1, N1, N1, N1, N1, N0],
+  [INK],
+  [N3, N2, 'l', N1, N0],
+  [N3, N2, N1, INK],
+);
+const SHD_ROWS: RowTone[] = rowsOf(
+  [N4, N3, N2, INK],
+  [N3, N2, N2, N2, N1, N1, N1, N1, N1, N0, N0, N0],
+  [INK],
+  [N0, 'L', 'S', 'S', 'l', N0],
+  [INK],
+  [N3, N2, N2, N2, N2, N1, N1, N1, N1, N1, N1, N1, N0, N0, N0, N0, N0, N0],
+  [INK],
+  [N2, N1, 'l', N0, N0],
+  [N2, N1, N0, INK],
+);
+/** rows of the strip core (the animated overlay masks cover both) */
+const STRIP_ROWS = [19, 20] as const;
+/** tone ladder used to shift a face tone up / down a step (pillars, bevels) */
+const LADDER: readonly Color[] = [INK, N0, N1, N2, N3, N4, STEEL];
+const shiftTone = (c: Color, d: number): Color => {
+  const i = LADDER.indexOf(c);
+  return i < 0 ? c : LADDER[Math.max(1, Math.min(LADDER.length - 1, i + d))];
+};
 
 function paintFace(S: Surface, f: FaceDef, id: number, strips: Omit<StripPiece, 'frame'>[], cand: { x: number; y: number; tone: Color }[][], vents: PlatformArt['vents'], rim: PlatformArt['rim']): void {
   const [A, B] = [f.a, f.b];
@@ -383,6 +419,8 @@ function paintFace(S: Surface, f: FaceDef, id: number, strips: Omit<StripPiece, 
   };
   const hi = f.lit ? N4 : N3;
   const lo = f.lit ? N1 : N0;
+  const inner = (u: number): Color => (f.lit ? (u < 6 ? N2 : u < 11 ? N1 : N0) : u < 8 ? N1 : N0);
+  const gold = NT_PAL.gold;
   const runs = new Map<number, { x: number; y: number; tone: Color }[]>();
   for (let x = A[0]; x < B[0]; x++) {
     const yt = yTop(x);
@@ -396,40 +434,81 @@ function paintFace(S: Surface, f: FaceDef, id: number, strips: Omit<StripPiece, 
     const seam = isSeam0 || isSeam1;
     const tones = STRIP_TONES[sideAt(x)];
     const nearSeam = Math.min(x - sx0, sx1 - 1 - x) <= 1;
-    // the lower plate's own joints sit at the middle of each panel (staggered brickwork); a vent replaces one
     const mid = (sx0 + sx1) >> 1;
     const hasVent = f.vents.includes(pi);
-    const inVent = hasVent && x >= mid - 4 && x < mid + 5;
-    const lowSeam = x === mid || x === mid - 1;
-    // every third panel carries a recessed inset in the upper plate, every other one a lamp in the lower plate
-    const inset = !hasVent && pi % 3 === 1 && lx >= 5 && lx < plen - 6;
-    const lamp = !hasVent && pi % 2 === 0 && (x === mid + 5 || x === mid + 6);
+    const variant = hasVent ? 0 : (pi + (f.lit ? 0 : 1)) % 3;
+    const inInset = lx >= 3 && lx <= plen - 5;
+    const inVent = hasVent && x >= mid - 6 && x < mid + 7;
     for (let v = 0; v < FACE_H; v++) {
       const t = rows[v];
-      let c: Color = t === 'S' ? tones[2] : t === 'L' ? tones[1] : t;
-      // panel joints: a dark groove and a lit edge through both armour plates (not through the coping or the skirt)
-      if (v >= 4 && v <= 26 && seam) c = isSeam1 ? INK : hi;
-      else if (v >= 4 && v <= 10) {
-        // upper plate: chamfered top corners, a lit left bevel / shaded right edge, rivets, an inset or a vent grille
-        if (v === 4 && nearSeam) c = rows[5] as Color;
-        else if (lx === 1 && v >= 5) c = hi;
-        else if (lx === plen - 3 && v >= 5) c = lo;
-        else if (v === 5 && (lx === 3 || lx === plen - 5)) c = f.lit ? STEEL : N4;
-        else if (inVent && v >= 6 && v <= 8) c = v === 7 ? N0 : INK;
-        else if (inset && v >= 6 && v <= 9) c = v === 6 ? lo : v === 9 ? hi : f.lit ? N1 : N0;
-        else if (pi % 2 === 1 && v >= 5 && v <= 8) c = f.lit ? (v === 5 ? N2 : N1) : (v === 5 ? N1 : N0);
-      } else if (v >= 16 && v <= 23) {
-        // lower plate: staggered joints, an alternate deeper tone, rivets low, a lamp and the vent slots
-        if (lowSeam && !seam) c = x === mid ? (f.lit ? N4 : N3) : INK;
-        else if (inVent && (v === 18 || v === 20 || v === 22)) c = INK;
-        else if (inVent && (v === 19 || v === 21)) c = N0;
-        else if (lamp && v === 19) c = tones[2];
-        else if (lamp && v === 20) c = tones[0];
-        else if (v === 17 && (lx === 3 || lx === plen - 4)) c = f.lit ? STEEL : N4;
-        else if (pi % 2 === 0 && v >= 17 && v <= 21 && !lowSeam) c = f.lit ? (v < 20 ? N2 : N1) : (v < 20 ? N1 : N0);
+      let c: Color = t === 'S' ? tones[2] : t === 'L' ? tones[1] : t === 'l' ? tones[0] : t;
+      if (v >= 4 && v <= 46 && seam) {
+        // panel joints: a dark groove and a lit edge through every armour band
+        c = isSeam1 ? INK : hi;
+      } else if (v >= 4 && v <= 15) {
+        // upper plate: chamfered top corners, lit left bevel / shaded right edge, rivets, a recessed inset (vent grille or lamp)
+        const u = v - 4;
+        if (u === 0 && nearSeam) c = rows[5] as Color;
+        else if (lx === 1 && u >= 1) c = hi;
+        else if (lx === plen - 3 && u >= 1) c = lo;
+        else if (u === 2 && (lx === 3 || lx === plen - 5)) c = f.lit ? STEEL : N4;
+        else if (u === 9 && (lx === 3 || lx === plen - 5)) c = f.lit ? N4 : N3;
+        else if (inVent && u >= 3 && u <= 8) c = u === 3 ? lo : u === 8 ? hi : u % 2 === 0 ? INK : lo;
+        else if (!hasVent && pi % 2 === 1 && lx >= 6 && lx <= plen - 8 && u >= 3 && u <= 8) {
+          // recessed inset: dark top lip, lit bottom lip, a lamp in the middle
+          const lampX = Math.abs(lx - (plen >> 1)) <= 1;
+          if (u === 3) c = lo;
+          else if (u === 8) c = hi;
+          else if (lampX && u === 5) c = tones[2];
+          else if (lampX && u === 6) c = tones[0];
+          else c = f.lit ? N1 : N0;
+        } else if (!hasVent && pi % 2 === 0 && lx >= 5 && lx <= plen - 7) {
+          // engraved line with a lit lip under it
+          if (u === 5) c = lo;
+          else if (u === 6) c = hi;
+        }
+      } else if (v >= 24 && v <= 41) {
+        // main plate: a big bevelled inset (lit top / left, shaded bottom / right) with a tone gradient and a variant fixture
+        const u = v - 24;
+        const iu = u - 2;
+        if (inInset && u >= 2 && u <= 15) {
+          const edge = u === 2 ? hi : u === 15 ? INK : lx === 3 ? hi : lx === plen - 5 ? lo : null;
+          if (edge !== null) c = edge;
+          else {
+            c = inner(u);
+            const lw = plen - 8;
+            const cx = lx - 4; // 0..lw-1 inside the inset
+            if (variant === 0) {
+              // vent grille: slats with a lit lip under each
+              if (cx >= 3 && cx <= lw - 4 && u >= 5 && u <= 12) c = u % 2 === 1 ? INK : f.lit ? N3 : N2;
+            } else if (variant === 1) {
+              // lamp window
+              if (Math.abs(cx - (lw >> 1)) <= 4 && u >= 6 && u <= 11) {
+                const wx = Math.abs(cx - (lw >> 1));
+                if (u === 6 || u === 11 || wx === 4) c = INK;
+                else c = u === 7 ? tones[3] : u === 8 || u === 9 ? tones[2] : tones[1];
+              }
+            } else {
+              // access hatch: a framed door with a handle and two lock pins
+              if (cx >= 4 && cx <= lw - 5 && u >= 5 && u <= 12) {
+                if (u === 5 || cx === 4) c = hi;
+                else if (u === 12 || cx === lw - 5) c = INK;
+                else if (u === 8 && Math.abs(cx - (lw >> 1)) <= 2) c = f.lit ? STEEL : N4;
+                else if ((u === 7 || u === 10) && (cx === 6 || cx === lw - 7)) c = f.lit ? N4 : N3;
+              }
+            }
+            // corner rivets
+            if ((iu === 2 || iu === 11) && (lx === 5 || lx === plen - 7)) c = f.lit ? STEEL : N4;
+          }
+        } else if (u >= 16 && u <= 17 && inInset) c = f.lit ? (u === 16 ? N1 : N0) : N0;
+      } else if (v >= 43 && v <= 47) {
+        // belt: lip, a dim owner line, hazard stripes on some panels, bolts
+        const u = v - 43;
+        if (pi % 4 === 2 && lx >= 6 && lx <= plen - 7 && u >= 1 && u <= 3 && u !== 2) c = (lx + u * 3) % 6 < 3 ? gold[1] : gold[0];
+        else if (u === 3 && lx % 8 === 4) c = f.lit ? STEEL : N4;
       }
       S.put(x, yt + v, c);
-      if (v === V_STRIP && !seam) {
+      if ((v === STRIP_ROWS[0] || v === STRIP_ROWS[1]) && !seam) {
         const arr = runs.get(pi) ?? [];
         arr.push({ x, y: yt + v, tone: tones[2] });
         runs.set(pi, arr);
@@ -474,38 +553,64 @@ function PILLARS(): Pillar[] {
   const br = v(6);
   const right = v(5);
   return [
-    { k: left, sl: 0.5, sr: 0.5, cx: left[0] + 4, side: 0 },
+    { k: left, sl: 0.5, sr: 0.5, cx: left[0] + 6, side: 0 },
     { k: bl, sl: 0.5, sr: 0, cx: bl[0], side: 0 },
     { k: br, sl: 0, sr: -0.5, cx: br[0], side: 0 },
-    { k: right, sl: -0.5, sr: -0.5, cx: right[0] - 5, side: 1 },
+    { k: right, sl: -0.5, sr: -0.5, cx: right[0] - 7, side: 1 },
   ];
 }
 
-/** A corner pillar (9 px wide) down the faces at a corner: lit left half, shaded right half, caps, bolts, grooves and a lit slit. */
+const PIL_HW = 6;
+/** Height of the pillar's cap block above the rim line. */
+const CAP_H = 7;
+
+/**
+ * A chunky corner pillar (13 px wide) down the faces at a corner: the face rows lifted one step on the lit half and two on the
+ * specular edge, dropped one on the shaded half; rivets, an owner-coloured slit in the light channel and a bevelled cap block that
+ * stands CAP_H px above the rim.
+ */
 function paintPillar(S: Surface, p: Pillar): void {
   const ramp = p.side === 0 ? NT_PAL.blue : p.side === 1 ? NT_PAL.red : NT_PAL.metal;
-  for (let x = p.cx - 4; x <= p.cx + 4; x++) {
+  for (let x = p.cx - PIL_HW; x <= p.cx + PIL_HW; x++) {
     const yt = edgeTop(p.k[1], x <= p.k[0] ? p.sl : p.sr, p.k[0], x);
     const k = x - p.cx;
+    const ak = Math.abs(k);
     for (let v = 0; v < FACE_H; v++) {
+      const t = LIT_ROWS[v];
       let c: Color;
-      if (k === -4 || k === 4) c = INK;
-      else if (k === -3) c = N4;
-      else if (k === -2) c = N4;
-      else if (k === -1) c = N3;
-      else if (k === 0) c = N3;
-      else if (k === 1) c = N2;
-      else if (k === 2) c = N2;
-      else c = N1;
-      if (v === 0) c = k <= 0 ? STEEL : N4;
-      else if (v === 1) c = k <= 0 ? N4 : N3;
-      if (v === 3 || v === 11 || v === 15) c = INK;
-      // bolts on the plates, a lit slit in the channel
-      if ((v === 6 || v === 19) && (k === -2 || k === 2)) c = k < 0 ? STEEL : N4;
-      if (v === V_STRIP && k >= -2 && k <= 2) c = k === 0 ? ramp[3] : ramp[2];
-      if (v === V_STRIP + 1 && k >= -2 && k <= 2) c = ramp[0];
-      if (v === 24) c = k <= 0 ? N4 : N3;
-      if (v === 27) c = INK;
+      if (ak === PIL_HW) c = INK;
+      else {
+        const base: Color = t === 'S' || t === 'L' || t === 'l' ? N1 : t;
+        const d = k < -3 ? 1 : k < 0 ? 1 : k === 0 || k === 1 ? 2 : k < 4 ? -1 : -2;
+        c = base === INK ? INK : shiftTone(base, d);
+        // vertical bevel lines: a bright arris at the middle, a dark one on the shaded side
+        if (base !== INK && (k === 0 || k === -1) && v > 3 && v < 48) c = shiftTone(base, 2);
+        if (base !== INK && k === 3 && v > 3 && v < 48) c = shiftTone(base, -1);
+      }
+      if (v >= 4 && v <= 46 && v !== 16 && v !== 23 && v !== 42 && ak < PIL_HW) {
+        // bolts on the plates
+        if ((v === 7 || v === 13 || v === 28 || v === 38) && (k === -4 || k === 4)) c = k < 0 ? STEEL : N4;
+        // plate inset on the main face
+        if (v >= 27 && v <= 36 && ak === 3 && v !== 31) c = k < 0 ? N4 : INK;
+      }
+      if (v === STRIP_ROWS[0] || v === STRIP_ROWS[1]) {
+        if (ak <= 3) c = ak === 3 ? ramp[1] : ak === 2 ? ramp[2] : ramp[3];
+        else if (ak < PIL_HW) c = N0;
+      }
+      if (v === 18 && ak <= 3) c = ramp[1];
+      if (v === 21 && ak <= 3) c = ramp[0];
+      S.put(x, yt + v, c);
+    }
+    // the cap block above the rim: a bevelled head, lit left, shaded right, a lit top edge and an owner lamp
+    const top = ak <= 3 ? -CAP_H : ak <= 5 ? -CAP_H + 1 : -CAP_H + 2;
+    for (let v = top; v < 0; v++) {
+      let c: Color;
+      if (ak === PIL_HW || v === top) c = INK;
+      else if (v === top + 1) c = k <= 0 ? STEEL : N4;
+      else if (v === -1) c = N1;
+      else c = k < -1 ? N4 : k < 1 ? N3 : k < 4 ? N2 : N1;
+      if (v === top + 2 && ak < PIL_HW && ak > 0) c = k < 0 ? N4 : N3;
+      if ((v === top + 3 || v === top + 4) && ak <= 1) c = v === top + 3 ? ramp[3] : ramp[1];
       S.put(x, yt + v, c);
     }
   }
@@ -515,9 +620,9 @@ function paintPillar(S: Surface, p: Pillar): void {
 
 function paintCorners(S: Surface): PlatformArt['corners'] {
   const out: PlatformArt['corners'] = [];
-  const HW = 14;
-  const HH = 7;
-  const H = 10;
+  const HW = 18;
+  const HH = 9;
+  const H = 16;
   // (the far corner stays free: the gate / emblem stand behind it). The left block sits at the lower end of its end cap, the
   // right one at the upper end (point-symmetric), clear of the corner tiles; each base diamond touches its cap with a vertex.
   const spots: { cx: number; cy: number; side: 0 | 1 }[] = [
@@ -562,50 +667,6 @@ function paintCube(S: Surface, cx: number, cy: number, hw: number, hh: number, h
   for (let j = 0; j < p.h; j++) for (let i = 0; i < p.w; i++) {
     const c = p.get(i, j);
     if (c !== null) S.put(ox + i, oy + j, c);
-  }
-}
-
-// ---------------------------------------------------------------- contact shadow
-
-function paintShadow(S: Surface): void {
-  const x0 = S.ox;
-  const w = S.w;
-  const bottom = new Int32Array(w).fill(-1);
-  for (let i = 0; i < w; i++) {
-    for (let y = S.oy + S.h - 1; y >= S.oy; y--)
-      if (S.has(x0 + i, y)) {
-        bottom[i] = y;
-        break;
-      }
-  }
-  const R = 12;
-  const REACH = 16;
-  for (let i = 0; i < w; i++) {
-    // only the rows from just under the nearest silhouette bottom down to REACH px below the farthest one can be shadow
-    let lo = Infinity;
-    let hi = -1;
-    for (let dx = -R; dx <= R; dx++) {
-      const k = i + dx;
-      if (k < 0 || k >= w || bottom[k] < 0) continue;
-      lo = Math.min(lo, bottom[k]);
-      hi = Math.max(hi, bottom[k]);
-    }
-    if (hi < 0) continue;
-    for (let y = lo + 1; y <= Math.min(S.oy + S.h - 1, hi + REACH + R); y++) {
-      if (S.has(x0 + i, y)) continue;
-      let dmin = 99;
-      for (let dx = -R; dx <= R; dx++) {
-        const k = i + dx;
-        if (k < 0 || k >= w || bottom[k] < 0 || bottom[k] >= y) continue;
-        const d = y - bottom[k] + Math.abs(dx);
-        if (d < dmin) dmin = d;
-      }
-      if (dmin > REACH) continue;
-      const x = x0 + i;
-      // solid under the hull, then a 2×2 stipple, a sparser one, the last specks: a soft ink skirt without alpha
-      const on = dmin <= 4 ? true : dmin <= 8 ? (x + y) % 2 === 0 : dmin <= 12 ? x % 2 === 0 && y % 2 === 0 : x % 4 === 0 && y % 4 === 0 && (x + y) % 8 === 0;
-      if (on) S.put(x, y, INK);
-    }
   }
 }
 

@@ -43,26 +43,46 @@ export interface FloorArt {
 let cached: FloorArt | null = null;
 
 /**
- * The slot frame: calm's tile geometry (ring masks) in the owner's tones. Empty = a graphite well with a dim thin border and a
- * dark ring; occupied = the border one tone up, a dark-teal / dark-crimson pool in the well and the same colour glowing in the
- * ring; face-down = occupied plus a small stud at each of the four vertices (the corners a card back leaves free).
+ * The slot frame: calm's tile geometry (ring masks) in the owner's tones, a bevelled panel instead of a hole. From the outside in:
+ * the outer ring (join + gap) is the owner's glow (dark tone far, mid tone next to the line), the zone LINE is the neon (brighter than
+ * before: tone 2 empty, 3 occupied, +1 for the side to move), then the interior: a graphite panel with a coloured inner glow row next
+ * to the line, a lit bevel along the two upper edges and a shaded one along the two lower edges (a slightly raised plate); occupied
+ * slots swap the plate for a dark-teal / dark-crimson pool; face-down adds four corner studs. calm's hover / selection overlays (line
+ * tone 3, fill, tips) still sit above and read brighter than the idle line.
  */
 function slotFrame(player: 0 | 1, pile: boolean, state: number, boost: number): PixelCanvas {
   const m = buildCalmArt().masks;
   const p = new PixelCanvas(64, 32);
   const ramp = player === 0 ? NT_PAL.blue : NT_PAL.red;
   const empty = state === SLOT_EMPTY;
-  const ring: Color = empty ? NT_PAL.metal[0] : ramp[0];
-  const line: Color = ramp[(empty ? 1 : 2) + boost];
-  const fill: Color = empty ? NT_PAL.graphite[0] : ramp[0];
+  const line: Color = ramp[Math.min(4, (empty ? 2 : 3) + boost)];
   const stud: Color = NT_PAL.metal[5];
+  const G = NT_PAL.graphite;
+  const isLine = (i: number, j: number): boolean => i >= 0 && j >= 0 && i < 64 && j < 32 && m.line.get(i, j) !== null;
+  const isFill = (i: number, j: number): boolean => i >= 0 && j >= 0 && i < 64 && j < 32 && m.fill.get(i, j) !== null;
   for (let j = 0; j < 32; j++) {
     for (let i = 0; i < 64; i++) {
       if (m.tile.get(i, j) === null) continue;
-      const isLine = m.line.get(i, j) !== null;
-      const isFill = m.fill.get(i, j) !== null;
-      let c: Color = isLine ? line : isFill ? fill : ring;
-      if (state === SLOT_DOWN && !isFill) {
+      let c: Color;
+      if (isLine(i, j)) c = line;
+      else if (!isFill(i, j)) {
+        // the owner's glow: next to the line a mid tone, the outermost ring the dark one
+        const nearLine = isLine(i - 1, j) || isLine(i + 1, j) || isLine(i, j - 1) || isLine(i, j + 1);
+        c = nearLine ? ramp[empty ? 0 : 1] : empty ? NT_PAL.metal[0] : ramp[0];
+      } else {
+        // interior: distance (px) to the line decides the inner glow row and the bevel rows
+        const upper = j < 16;
+        const d1 = isLine(i - 1, j) || isLine(i + 1, j) || isLine(i, j - 1) || isLine(i, j + 1);
+        const d2 = !d1 && (isFill(i - 2, j) === false || isFill(i + 2, j) === false || isFill(i, j - 2) === false || isFill(i, j + 2) === false || isLine(i - 2, j) || isLine(i + 2, j) || isLine(i, j - 2) || isLine(i, j + 2));
+        if (empty) {
+          c = d1 ? ramp[0] : d2 ? (upper ? G[2] : G[0]) : G[1];
+          // a faint sheen row high in the plate
+          if (!d1 && !d2 && j === 9 && i > 22 && i < 42) c = G[2];
+        } else {
+          c = d1 ? ramp[1] : d2 ? ramp[0] : ramp[0];
+        }
+      }
+      if (state === SLOT_DOWN && !isFill(i, j)) {
         const dx = Math.abs(i + 0.5 - 32);
         const dy = Math.abs(j + 0.5 - 16);
         // the four vertices: left / right (long axis) and top / bottom

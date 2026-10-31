@@ -14,15 +14,20 @@ import type Phaser from 'phaser';
 import { FLOOR_FRAMES, NT_FLOOR_KEY, SLOT_DOWN, SLOT_EMPTY, SLOT_OCCUPIED, buildFloorArt } from '../../art/arena-nt/floor';
 import { NT_PAL } from '../../art/arena-nt/palette';
 import type { FloorArt } from '../../art/arena-nt/floor';
+import { APRON_BOX, NT_APRON_FX_KEY, NT_APRON_KEY, buildApronArt, type ApronArt } from '../../art/arena-nt/apron';
 import { calmZones } from '../board-calm/art';
 import type { FieldView } from '../../duel/FieldView';
 import type { GameEvent, PlayerId } from '../../engine/types';
 import { type BoardSpot, zoneXY } from '../layout';
 import { CENTER_EMBLEM, NT_DEPTH } from './layout-nt';
+import { TEX } from '../../vfx/core';
 import { type NtCtx, type NtLayer } from './layer';
 import { ensureNtTexture } from './textures';
 
 type Img = Phaser.GameObjects.Image;
+
+/** Depth of the apron: above the wall's iso floor (9.95), below the wall band (10), the stands and the platform. */
+const APRON_Z = 9.96;
 
 /** Register the floor atlas (idempotent): slot frames, emblem levels, dash masks. Used by boot step 22 and the layer. */
 export function registerFloorTextures(scene: Phaser.Scene): FloorArt {
@@ -30,6 +35,17 @@ export function registerFloorTextures(scene: Phaser.Scene): FloorArt {
   ensureNtTexture(scene, 'floor', NT_FLOOR_KEY, () => art.atlas.canvas);
   const tex = scene.textures.get(NT_FLOOR_KEY);
   for (const [name, r] of art.atlas.frames) if (!tex.has(name)) tex.add(name, 0, r.x, r.y, r.w, r.h);
+  registerApronTextures(scene);
+  return art;
+}
+
+/** Register the apron (hall floor around the platform): the opaque floor texture and the fx atlas of its light strips (idempotent). */
+export function registerApronTextures(scene: Phaser.Scene): ApronArt {
+  const art = buildApronArt();
+  ensureNtTexture(scene, 'apron', NT_APRON_KEY, () => art.canvas);
+  ensureNtTexture(scene, 'apron-fx', NT_APRON_FX_KEY, () => art.fx.canvas);
+  const tex = scene.textures.get(NT_APRON_FX_KEY);
+  for (const [name, r] of art.fx.frames) if (!tex.has(name)) tex.add(name, 0, r.x, r.y, r.w, r.h);
   return art;
 }
 
@@ -42,6 +58,13 @@ function breath(u: number): number {
 export function createFloorLayer(ctx: NtCtx): NtLayer {
   const scene = ctx.scene;
   const art = registerFloorTextures(scene);
+  const apron = registerApronTextures(scene);
+  // the hall floor around the platform: just above the wall's iso floor (9.95), below the wall band, stands and the platform
+  ctx.add(scene.add.image(APRON_BOX.x, APRON_BOX.y, NT_APRON_KEY).setOrigin(0).setDepth(APRON_Z));
+  // its light strips (one white mask per rail piece, tinted by a pulse that runs outward from the platform) and beacon lamps
+  const railTones = [NT_PAL.blue, NT_PAL.red];
+  const railImgs: Img[] = apron.strips.map((st) => ctx.add(scene.add.image(st.x, st.y, NT_APRON_FX_KEY, st.frame).setOrigin(0).setDepth(APRON_Z + 0.01).setVisible(false)));
+  const lampImgs: Img[] = apron.lamps.map((l) => ctx.add(scene.add.image(l.x, l.y, TEX.px1).setOrigin(0).setScale(l.wide ? 2 : 1, 1).setDepth(APRON_Z + 0.02).setVisible(false)));
 
   // ---- the slots: one image per zone, three states (empty / occupied / face-down) read off the FieldView, the border one tone up
   // for the side to move and for a moment on a summon / attack of that side. The calm pad image stays underneath (zoneAt, tileImage,
@@ -151,6 +174,27 @@ export function createFloorLayer(ctx: NtCtx): NtLayer {
         lastB = b;
         lastR = r;
       }
+      // apron: a pulse runs outward along each rail (7.5 s lap, 3-tone head, the side to move one level up), the lamps blink
+      apron.strips.forEach((st, i) => {
+        const img = railImgs[i];
+        if (!on) {
+          img.setVisible(false);
+          return;
+        }
+        const u = (((t / 7500 + st.rail * 0.21) * 9 - st.n) % 9 + 9) % 9;
+        let level = u < 0.9 ? 3 : u < 1.9 ? 2 : u < 3 ? 1 : 0;
+        if (active === st.side) level = Math.max(level, 1);
+        img.setVisible(level > 0).setTint(railTones[st.side][1 + level]);
+      });
+      apron.lamps.forEach((l, i) => {
+        const img = lampImgs[i];
+        if (!on) {
+          img.setVisible(false);
+          return;
+        }
+        const f = (((t + l.phase) % l.period) + l.period) % l.period / l.period;
+        img.setVisible(true).setTint(railTones[l.side][f < 0.18 ? 4 : f < 0.5 ? 2 : 1]);
+      });
       // dashes: a light run along the centre line (7.2 s lap, 2-tone head)
       const n = dashes.length;
       dashes.forEach((d, k) => {

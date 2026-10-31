@@ -65,16 +65,16 @@ describe('neon tower layout map', () => {
     expect(PLATE_TOP.x).toBeGreaterThanOrEqual(104);
     expect(PLATE_TOP.x + PLATE_TOP.w).toBeLessThanOrEqual(640 - 104);
     expect(PLATE_TOP.y).toBeGreaterThanOrEqual(52);
-    expect(PLATE_FULL.y + PLATE_FULL.h).toBeLessThanOrEqual(296);
+    expect(PLATE_FULL.y + PLATE_FULL.h).toBeLessThanOrEqual(320);
     // the near-right corner (outline index 6) is where lights.ts splits blue / crimson
     expect(Math.round(ntIso(PLATE_OUTLINE[6][0], PLATE_OUTLINE[6][1]).x)).toBe(364);
     expect(PLATE_CORNERS.left.x).toBe(PLATE_TOP.x);
     expect(PLATE_CORNERS.right.x).toBe(PLATE_TOP.x + PLATE_TOP.w);
   });
 
-  it('gives the platform a thick armour side (J1: 26..32 px) and a bounding box that includes it', () => {
-    expect(FACE_H).toBeGreaterThanOrEqual(26);
-    expect(FACE_H).toBeLessThanOrEqual(32);
+  it('gives the platform a THICK armour side (J4: 45..60 px) and a bounding box that includes it', () => {
+    expect(FACE_H).toBeGreaterThanOrEqual(45);
+    expect(FACE_H).toBeLessThanOrEqual(60);
     expect(PLATE_FULL.y + PLATE_FULL.h).toBe(PLATE_TOP.y + PLATE_TOP.h + FACE_H);
   });
 

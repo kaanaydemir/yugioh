@@ -25,8 +25,8 @@ function paintPad(player: 0 | 1, level: number): PixelCanvas {
   const { w, h, cx, cy } = PAD_CANVAS;
   const p = new PixelCanvas(w, h);
   const ramp = player === 0 ? NT_PAL.blue : NT_PAL.red;
-  const neon: Color = ramp[Math.min(4, level + 1)];
-  const glow: Color = ramp[0];
+  const neon: Color = ramp[Math.min(4, level + 2)];
+  const glow: Color = ramp[1];
   // dv: vertical px inside the rhombus edge
   const dvOf = (i: number, j: number): number => PAD_HALF.h - (Math.abs(i + 0.5 - cx) * (PAD_HALF.h / PAD_HALF.w) + Math.abs(j + 0.5 - cy));
   // thickness: the lower edges' face (left lit, right shaded), then the ink outline
