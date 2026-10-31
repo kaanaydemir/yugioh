@@ -24,6 +24,7 @@ import { setCombatSfx } from '../../vfx/combat';
 import { hitSfxName } from '../../audio/v3/materials';
 import { voiceSounds } from '../../audio/v3/voices';
 import type { MaterialId } from '../../art/materials';
+import { AXEMAN_VOICE } from '../../audio/v3/crag_axeman';
 import { v3Recipe } from '../../presentation/registry';
 import type { BlowKind } from './blow';
 
@@ -205,6 +206,7 @@ export const CHARACTER_SOUNDS: Partial<Record<CardId, CharacterSounds>> = {
     reviveGather: 'magusReviveGather',
     reviveLand: 'magusReviveSettle',
   },
+  crag_axeman: AXEMAN_VOICE,
 };
 
 /**
