@@ -22,7 +22,7 @@ import { Comp, bands, bezier, castOn, clamp, fatPath, hash2, mixPoly, shift, typ
 export const W = 96;
 export const H = 84;
 export const AX = 38;
-export const GY = 76;
+export const GY = 74;
 
 export const enum Part {
   none = 0,
@@ -259,21 +259,21 @@ const B = (f: Frame, pts: readonly Pt[]): Pt[] => shift(pts, f.sk.B[0], f.sk.B[1
 
 /** The still-water patch (also used standalone by the cinematics: the pond stays home while the heron glides). */
 export function drawPond(p: PixelCanvas, o: Pick<Pose, 'rip' | 'drop' | 'ring' | 'fx'> & { cx?: number }, legX: number | null): void {
-  const cx = o.cx ?? AX + 4;
+  const cx = o.cx ?? AX + 5;
   const cy = GY;
   const q = layer();
-  q.ellipse(cx, cy, 25, 4, PAL.water0);
+  q.ellipse(cx, cy, 24, 6, PAL.water0);
   // darker deep middle, the far bank a night1 band, the near bank water0
-  for (let y = cy - 4; y <= cy + 4; y++)
-    for (let x = cx - 25; x <= cx + 25; x++) {
+  for (let y = cy - 6; y <= cy + 6; y++)
+    for (let x = cx - 24; x <= cx + 24; x++) {
       if (!q.isOpaque(x, y)) continue;
-      const dx = (x + 0.5 - cx) / 22;
-      const dy = (y + 0.5 - cy) / 2.6;
+      const dx = (x + 0.5 - cx) / 21;
+      const dy = (y + 0.5 - cy) / 4.2;
       if (dx * dx + dy * dy < 1) q.set(x, y, PAL.night0);
       else if (y < cy) q.set(x, y, PAL.night1);
     }
   // ripple lines crawl outward along the surface (water1 dashes)
-  const lines: [number, number, number][] = [[-14, -2, 4], [6, -2, 3], [-6, 2, 5], [12, 1, 4], [-19, 0, 3]];
+  const lines: [number, number, number][] = [[-14, -2, 4], [6, -3, 3], [-6, 3, 5], [12, 1, 4], [-18, 1, 3], [2, 4, 4]];
   lines.forEach(([x0, dy, len], i) => {
     const dir = x0 < 0 ? -1 : 1;
     const ph = (o.rip + i * 0.37) % 1;
@@ -302,8 +302,8 @@ export function drawPond(p: PixelCanvas, o: Pick<Pose, 'rip' | 'drop' | 'ring' |
         if (d <= 1 && di > 1 && q.isOpaque(x, y)) q.set(x, y, c);
       }
   };
-  if (o.drop >= 2) ringAt(o.drop === 2 ? 3 : 5, o.drop === 2 ? 1 : 2, o.drop === 2 ? PAL.water3 : PAL.water1, AX + 24);
-  if (o.ring > 0) ringAt(rnd(4 + o.ring * 14), rnd(1 + o.ring * 2), o.ring < 0.7 ? PAL.water3 : PAL.water1, cx - 2);
+  if (o.drop >= 2) ringAt(o.drop === 2 ? 3 : 5, o.drop === 2 ? 1 : 2, o.drop === 2 ? PAL.water3 : PAL.water1, AX + 25);
+  if (o.ring > 0) ringAt(rnd(4 + o.ring * 14), rnd(1 + o.ring * 3.5), o.ring < 0.7 ? PAL.water3 : PAL.water1, cx - 2);
   return void p.blit(q, 0, 0);
 }
 
@@ -572,7 +572,7 @@ function needleLight(f: Frame): void {
 function moonStreak(f: Frame): void {
   const { p, o } = f;
   if (!o.pond) return;
-  const cx = AX + 12;
+  const cx = AX + 13;
   const y = GY - 1;
   for (let x = cx; x < cx + 6; x++) if (p.get(x, y) === PAL.night0 || p.get(x, y) === PAL.water1) p.set(x, y, PAL.white);
   for (let x = cx + 1; x < cx + 4; x++) if (p.get(x, y + 1) === PAL.night0 || p.get(x, y + 1) === PAL.water1) p.set(x, y + 1, PAL.mist);

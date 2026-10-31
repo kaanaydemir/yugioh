@@ -21,7 +21,7 @@ import type { ArtLayers, CardArtV3 } from './_types';
 const BIG_DX = 10;
 const BIG_DY = -11;
 const SMALL_DX = -29;
-const SMALL_DY = -14;
+const SMALL_DY = -10;
 const IDLE_FRAMES = [0, 4, 8, 12] as const;
 
 const SK = skeleton(idlePose(0));
