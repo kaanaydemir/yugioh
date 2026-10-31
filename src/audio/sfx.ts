@@ -26,6 +26,11 @@ import type { V3MaterialSfxName } from './v3/materials';
 import type { V3VoiceSfxName } from './v3/voices';
 import type { V3SpellSfxName } from './v3/spells';
 import type { DawnSfxName } from './v3/dawn';
+import type { PolarAnvilSfxName } from './v3/polar_anvil';
+import type { PolarNeedleSfxName } from './v3/polar_needle';
+import type { PolarCoilSfxName } from './v3/polar_coil';
+import type { JesterSfxName } from './v3/jester';
+import type { ArcherSfxName } from './v3/archer';
 import type { UiCardSfxName } from './v3/ui-cards';
 import type { UiFlowSfxName } from './v3/ui-flow';
 
@@ -60,6 +65,11 @@ export type SfxName =
   // (src/audio/v3/ui-cards.ts, ui-flow.ts)
   | V3SpellSfxName
   | DawnSfxName
+  | PolarAnvilSfxName
+  | PolarNeedleSfxName
+  | PolarCoilSfxName
+  | JesterSfxName
+  | ArcherSfxName
   | UiCardSfxName
   | UiFlowSfxName;
 

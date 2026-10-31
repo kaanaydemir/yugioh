@@ -17,13 +17,23 @@ Kanıtlar: `shots/v3/d/<kart>/`.
 ## Kart durumu
 | Kart | Durum | Kanıt | Açık konular |
 |---|---|---|---|
-| polar_needle | bekliyor | | |
-| polar_anvil | bekliyor | | |
-| polar_coil | bekliyor | | |
-| polar_sovereign | bekliyor | | |
-| dial_jester | bekliyor | | |
-| reflection_archer | bekliyor | | |
-| scrap_raiders | bekliyor | | |
-| straw_decoy_token | bekliyor | | |
+| polar_needle | yapım + eleştiri turları sürüyor (WIP) | shots/v3/d/polar_needle/ (git dışı) | kapılar henüz koşmadı |
+| polar_anvil | yapım + eleştiri turları sürüyor (WIP) | shots/v3/d/polar_anvil/ (git dışı) | kapılar henüz koşmadı |
+| polar_coil | yapım + eleştiri turları sürüyor (WIP) | shots/v3/d/polar_coil/ (git dışı) | kapılar henüz koşmadı |
+| polar_sovereign | bekliyor (üç parça bitince başlar) | | |
+| dial_jester | yapım sürüyor (WIP: rig + kart görseli var) | shots/v3/d/dial_jester/ (git dışı) | sinematik/SFX tamamlanmadı |
+| reflection_archer | yapım sürüyor (WIP: rig + kart görseli var) | shots/v3/d/reflection_archer/ (git dışı) | sinematik/SFX tamamlanmadı |
+| scrap_raiders | yapım sürüyor (WIP: rig + kart görseli var) | shots/v3/d/scrap_raiders/ (git dışı) | sinematik/SFX tamamlanmadı |
+| straw_decoy_token | yapım sürüyor (WIP: rig + kart görseli var) | shots/v3/d/straw_decoy_token/ (git dışı) | sinematik/SFX tamamlanmadı |
 
 ## Günlük
+
+- 2026-10-31 WIP kontrol noktası (orkestratör isteği: kullanım limiti yaklaşıyor). Workflow `wf_ec97f149-c20` sürüyor:
+  el kitabı `docs/v3/oturum-d-rehber.md` yazıldı; yedi kartın rig + kart görseli + art testleri, polar parçalarının ve
+  dial_jester'ın sinematik/SFX'i kısmen hazır. `npm run typecheck` temiz. Kapılar (filmdiff, camera-gate, palcheck) bu
+  noktada koşulmadı — WIP.
+  Sırada: kalan kartların sinematik + SFX yapımı, her kart için 3 eleştiri/düzeltme turu, adversarial kapı doğrulaması,
+  kart başı commit; ardından polar_sovereign (birleşme + ayrılma). Duraklarsa: workflow aynı scriptPath ile
+  `resumeFromRunId: wf_ec97f149-c20` ile sürdürülür.
+  Bilinen konu (coil ajanı): kill senaryolarında ölüm kitinin ilk sesi atlanıyor (tepki ölüm animasyonunu önce başlatıyor);
+  coil kendi ölüm kancasından çalarak aştı; anvil/needle için de bakılacak.

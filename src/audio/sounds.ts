@@ -11,6 +11,11 @@ import { V3_MATERIAL_RECIPES } from './v3/materials';
 import { V3_VOICE_RECIPES } from './v3/voices';
 import { V3_SPELL_RECIPES } from './v3/spells';
 import { V3_DAWN_RECIPES } from './v3/dawn';
+import { V3_POLAR_ANVIL_RECIPES } from './v3/polar_anvil';
+import { V3_POLAR_NEEDLE_RECIPES } from './v3/polar_needle';
+import { V3_POLAR_COIL_RECIPES } from './v3/polar_coil';
+import { V3_JESTER_RECIPES } from './v3/jester';
+import { V3_ARCHER_RECIPES } from './v3/archer';
 import { UI_CARD_RECIPES } from './v3/ui-cards';
 import { UI_FLOW_RECIPES } from './v3/ui-flow';
 
@@ -1090,6 +1095,11 @@ export const RECIPES: Record<SfxName, Recipe> = {
   // A5 / A6 (registered once in A56.0; the lanes fill their own modules, never this table)
   ...V3_SPELL_RECIPES, // A5-A spell / trap sounds (./v3/spells.ts)
   ...V3_DAWN_RECIPES, // Şafak Kılıçları (./v3/dawn.ts)
+  ...V3_POLAR_ANVIL_RECIPES, // Kutup Örsü (./v3/polar_anvil.ts)
+  ...V3_POLAR_NEEDLE_RECIPES, // Kutup İğnesi (./v3/polar_needle.ts)
+  ...V3_POLAR_COIL_RECIPES, // Kutup Bobini (./v3/polar_coil.ts)
+  ...V3_JESTER_RECIPES, // Kadran Soytarısı (./v3/jester.ts)
+  ...V3_ARCHER_RECIPES, // Yansıyan Okçu (./v3/archer.ts)
   ...UI_CARD_RECIPES, // A6 UI sounds, cards (./v3/ui-cards.ts; written by A6-A)
   ...UI_FLOW_RECIPES, // A6 UI sounds, flow (./v3/ui-flow.ts; written by A6-A)
 };

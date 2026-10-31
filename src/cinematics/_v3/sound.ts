@@ -205,6 +205,11 @@ export const CHARACTER_SOUNDS: Partial<Record<CardId, CharacterSounds>> = {
     reviveGather: 'magusReviveGather',
     reviveLand: 'magusReviveSettle',
   },
+  polar_anvil: { roar: 'polarAnvilRoar', arrive: 'polarAnvilSlide', land: 'polarAnvilKlak', charge: 'polarAnvilCharge', release: 'polarAnvilDang', impact: 'polarAnvilWaveHit', deathStart: 'polarAnvilSwap', dissolve: 'polarAnvilRepel', afterDissolve: [[3, 'polarAnvilPlate', 0.8], [4, 'polarAnvilPlate', 0.45]], burst: 'polarAnvilBurst', reviveGather: 'polarAnvilReviveGather', reviveLand: 'polarAnvilReviveLock' }, // lane D (src/audio/v3/polar_anvil.ts)
+  polar_needle: { roar: 'polarNeedleRoar', arrive: 'polarNeedleDrop', land: 'polarNeedleLock', charge: 'polarNeedleCharge', release: 'polarNeedleLunge', impact: 'polarNeedlePierce', dissolve: 'polarNeedleWhirl', afterDissolve: [[1, 'polarNeedlePlate', 0.8], [3, 'polarNeedlePlate', 0.5]], burst: 'polarNeedleBurst', reviveGather: 'polarNeedleReviveGather', reviveLand: 'polarNeedleReviveLock' }, // lane D (src/audio/v3/polar_needle.ts)
+  polar_coil: { roar: 'polarCoilRoar', arrive: 'polarCoilPin', land: 'polarCoilSnap', charge: 'polarCoilCharge', release: 'polarCoilFling', impact: 'polarCoilTshak', dissolve: 'polarCoilWobble', afterDissolve: [[2, 'polarCoilTok', 0.9]], burst: 'polarCoilBurst', reviveGather: 'polarCoilReviveGather', reviveLand: 'polarCoilReviveSnap' }, // lane D (src/audio/v3/polar_coil.ts)
+  dial_jester: { roar: 'jesterRoar', arrive: 'jesterDialRewind', land: 'jesterPop', charge: 'jesterCharge', swing: 'jesterSpring', release: 'jesterFlip', impact: 'jesterCoinEdge', deathStart: 'jesterCrack', dissolve: 'jesterSprings', afterDissolve: [[1, 'jesterGear', 0.8], [2, 'jesterLastTick', 0.9], [3, 'jesterGear', 0.45]], burst: 'jesterBurst', reviveGather: 'jesterReviveGather', reviveLand: 'jesterReviveLand' }, // lane D (src/audio/v3/jester.ts)
+  reflection_archer: { roar: 'archerRoar', arrive: 'archerDrop', land: 'archerLand', charge: 'archerCharge', release: 'archerRelease', impact: 'archerImpact', deathStart: 'archerCrack', dissolve: 'archerFlat', afterDissolve: [[2, 'archerWeb', 0.9]], burst: 'archerShatter', reviveGather: 'archerReviveGather', reviveLand: 'archerReviveLand' }, // lane D (src/audio/v3/archer.ts)
 };
 
 /**
