@@ -9,9 +9,9 @@
 //           (a white air light at his core)
 //   f4      'dissolve': the halves separate 1 px, then 2 (caxTear — one long descending tear)
 //   f6–f11  the halves tilt apart in steps (caxFall, panned to each side, 140 ms apart); the seam-burn starts at the cut
-//   tail    the burn eats the last of each half in ≥ 2-px clusters (white → earth4 → gone; caxBurn) — the card is born
-//           as the body goes; the planted axe stays 400 ms (its floor seam closing), then tips flat ("tok": caxAxeTok)
-//           and blinks out
+//   tail    the card is born on the last death frame (burnt scraps only); the burn eats the last of each half in ≥ 2-px
+//           clusters (white → earth4 → gone; caxBurn); the planted axe stays 400 ms (its floor seam closing), then
+//           tips flat ("tok": caxAxeTok) and blinks out
 // The bookkeeping is the shared death kit's (the toGraveyard claimed, the tile released, the card born on the burst
 // frame and flown to the graveyard: _v3/card.ts cardLeaves); the body is this card's own (no recipe: this hook is
 // the card's only death handler above the defaults).
@@ -137,6 +137,8 @@ async function splitBody(ctx: DestroyCtx, u: MonsterUnit, home: XY, burst: () =>
   atFrame(u, 'death', Math.min(n - 1, dissolveF + 4), () => play('caxFall', { volume: 0.75, pitch: 0.92, pan: Math.max(-1, Math.min(1, pan + 0.4 * sgn)) }), { late: false });
   atFrame(u, 'death', Math.min(n - 1, dissolveF + 5), () => (pour as LightHandle | null)?.setIntensity(0.45, 160), { late: false });
   await untilFrame(n - 1);
+  // the last frame: only burnt scraps of the halves are left — the card is born now (it flies while the burn ends)
+  burst();
   if (u.sprite.active && inDeath()) await sleep(sc, u.frameMs('death', n - 1));
   // ---- the tail: the burn finishes on an overlay of the rig's own drawing (the sprite goes with the unit's shadow)
   if (!u.sprite.active) {
@@ -146,8 +148,6 @@ async function splitBody(ctx: DestroyCtx, u: MonsterUnit, home: XY, burst: () =>
   const ov = overlay(u, tailCanvas('burn', 0, light), { depth: u.sprite.depth });
   u.sprite.setVisible(false);
   play('caxBurn', { volume: 0.9, pan });
-  // the body breaks into the light now: the card is born on this frame (it flies while the burn finishes)
-  burst();
   if (!u.retired) u.retire(0);
   void (async () => {
     try {
