@@ -137,13 +137,15 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
     }
     return true;
   });
+  /** the lost throw keeps the harpoon (it drops and lies a beat) after the strike has let go */
+  let keepHarp = false;
   const cleanup = () => {
     if (closed) return;
     closed = true;
     stopRope();
     rope.destroy();
     shadow.destroy();
-    harp.destroy();
+    if (!keepHarp) harp.destroy();
     // the spray finishes on its own clock (its Surface is destroyed by its animation)
   };
 
@@ -211,7 +213,7 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
     const dir = norm(sub(tipEnd, tip0));
     const ang = angleOf(dir);
     const dist = Math.hypot(tipEnd.x - tip0.x, tipEnd.y - tip0.y);
-    const flyMs = s.direct ? clamp(rnd(dist * 1.15), 280, 380) : clamp(rnd(dist * 2.4), 110, 290);
+    const flyMs = s.direct ? clamp(rnd(dist * 0.95), 240, 300) : clamp(rnd(dist * 2.4), 90, 290);
     const floorA = u.home;
     const floorB = tgt ? tgt.home : { x: s.toGround.x, y: s.toGround.y };
     const floorDir = norm(sub(floorB, floorA));
@@ -262,8 +264,8 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
       // the stronger side answers on this frame (the handler owns the attacker now): the line goes slack, the
       // harpoon drops out of the guard and lies on the floor a beat, then blinks out
       look.on = false;
-      void dropHarpoon(sc, harp, rope, tipEnd, ang, (tgt?.home.y ?? tipEnd.y + 20) + 3).then(cleanup);
-      await sleep(sc, 34);
+      keepHarp = true;
+      void dropHarpoon(sc, harp, rope, tipEnd, ang, (tgt?.home.y ?? tipEnd.y + 20) + 3).then(() => harp.destroy());
       return;
     }
     // the harpoon rides the struck body (the kit's knock, then the pull)
@@ -274,7 +276,7 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
       if (tgt && tPos0 && tgt.sprite.active) harp.set(add(tipEnd, sub({ x: tgt.sprite.x, y: tgt.sprite.y }, tPos0)), ang, s.direct ? { bury: 7 } : {});
       return true;
     });
-    await sleep(sc, 120);
+    await sleep(sc, s.direct ? 60 : 120);
     if (!spr.active || u.retired) return;
 
     // ---- HAUL 1: rear legs plant, the rope snaps straight and a step brighter; the target comes TOWARD the crab
@@ -310,7 +312,7 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
     const endButt = M(artPt(u, 'attack', reelF, 'staff'));
     const endAng = angleOf(sub(endTip, endButt));
     const reelDist = Math.hypot(endTip.x - from.x, endTip.y - from.y);
-    const reelMs = clamp(rnd(reelDist * 0.75), u.frameMs('attack', ripF), 280);
+    const reelMs = clamp(rnd(reelDist * 0.75), u.frameMs('attack', ripF), s.direct ? 240 : 280);
     void sleep(sc, 40).then(() => play('harpReel', { volume: 0.9, pan: panAt(lerp(from.x, u.home.x, 0.5)) }));
     await animate(sc, reelMs, (t, el) => {
       const e = E.inQ(t) * 0.5 + t * 0.5;
@@ -325,13 +327,17 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
     // ---- caught: the art draws the harpoon (and the coiled line) from here
     look.on = false;
     harp.hide();
+    // the battle has its blow: hand it back now — the catch, the coil and the re-plant play on by themselves
+    // (the crab never left its tile: nothing to bring home)
     const rest = u.playRange('attack', reelF);
     atFrame(u, 'attack', plantF, () => {
       play('harpReplant', { volume: 0.9, pan });
       const foot = artPt(u, 'attack', plantF, 'staff');
       void lightFlash(sc, foot.x, u.home.y, PAL.white, 12, 220, { floorY: u.home.y, intensity: 0.5 });
     });
-    await rest;
+    void rest.then(() => {
+      if (spr.active && !u.retired && u.frameInfo().anim === 'attack' && !u.sprite.anims.isPlaying) u.rest();
+    });
   } finally {
     cleanup();
     if (spr.active && !u.retired && !loses && u.frameInfo().anim !== 'attack') u.rest();
@@ -417,8 +423,7 @@ function stakeChips(sc: Phaser.Scene, at: XY, dir: XY, seed: number): void {
 }
 
 /** The lost throw: the harpoon falls flat to the floor, lies a beat, blinks out (the rope with it). */
-async function dropHarpoon(sc: Phaser.Scene, harp: HarpoonImg, rope: Surface, tip: XY, ang: number, floorY: number): Promise<void> {
-  rope.clear();
+async function dropHarpoon(sc: Phaser.Scene, harp: HarpoonImg, _rope: Surface, tip: XY, ang: number, floorY: number): Promise<void> {
   const flat = Math.cos((ang * Math.PI) / 180) >= 0 ? 4 : 176;
   await animate(sc, 220, (t) => {
     const y = lerp(tip.y, floorY, t * t);
@@ -427,7 +432,7 @@ async function dropHarpoon(sc: Phaser.Scene, harp: HarpoonImg, rope: Surface, ti
   harp.set({ x: tip.x, y: floorY }, flat);
   await sleep(sc, 260);
   for (let i = 0; i < 4; i++) {
-    harp.img.setVisible(i % 2 === 1);
+    if (harp.img.active) harp.img.setVisible(i % 2 === 1);
     await sleep(sc, 50);
   }
 }
@@ -475,7 +480,7 @@ async function tideEntrance(S: Stage): Promise<void> {
   wet.setIntensity(0.7, 260);
   const arrive = start('harpTideIn', { volume: 0.9, pan });
   // 0–260: tide in (a flat sheet from the back-left, white leading edge)
-  await animate(sc, 260, (t) => (tide.st.inK = E.outQ(t)));
+  await animate(sc, 200, (t) => (tide.st.inK = E.outQ(t)));
   // 260–: tide out — the sheet draws back and UNCOVERS the half-buried apex
   u.showSprite();
   u.badge.setVisible(false);
@@ -495,7 +500,7 @@ async function tideEntrance(S: Stage): Promise<void> {
   atFrame(u, 'summon', Math.max(landF + 6, uprightF - 1), () => play('harpShellTok', { volume: 0.9, pan, pitch: 0.92 }));
   await run;
   // the roar: rears, vapour from the apex, the harpoon spun once in the claw — and PLANTED
-  const roarFrom = 2;
+  const roarFrom = 3;
   if (!S.cutIn) play('harpConch', { volume: 0.9, pan });
   const roar = u.playRange('roar', roarFrom);
   atFrame(u, 'roar', 5, () => play('harpSwish', { volume: 0.75, pan, pitch: 1.1 }));
@@ -509,12 +514,11 @@ async function tideEntrance(S: Stage): Promise<void> {
   });
   await roar;
   await Promise.race([cut, sleep(sc, 900)]);
-  // the wet sand dries back in two palette steps
-  await animate(sc, 260, (t) => (tide.st.dry = t < 0.5 ? 0.5 : 1));
-  tide.destroy();
-  void wet.fadeOut(260);
-  // summoned while the Bay is already up: the short (600 ms) wall
-  await syncShroud(S.ctx, u, { short: true });
+  // the wet sand dries back in two palette steps (after the entrance has handed the turn back)
+  void animate(sc, 300, (t) => (tide.st.dry = t < 0.5 ? 0.5 : 1)).then(() => tide.destroy());
+  void wet.fadeOut(300);
+  // summoned while the Bay is already up: the short (600 ms) wall rises as the turn is handed back
+  void syncShroud(S.ctx, u, { short: true });
 }
 
 /** Sand clods sliding off the uncovered shell (earth3, 2 px) — they fall and lie, then blink out. */

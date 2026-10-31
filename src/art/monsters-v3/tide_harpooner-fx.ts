@@ -282,6 +282,9 @@ export function splinters(p: PixelCanvas, butt: Pt, phase: number, light: 'left'
       const px = flat ? x + k - (len >> 1) : x + rnd((k - len / 2) * 0.5 * side);
       const py = flat ? y : y - k + (len >> 1);
       p.set(px, py, k === 0 || (ls < 0 ? k < len / 2 : k >= len / 2) ? lit : dark);
+      // 2 px of wood: the shaded side under (lying) / beside (flying) the lit one
+      if (flat) p.set(px, py + 1, PAL.earth1);
+      else p.set(px + side, py, dark);
     }
   }
   // the stone head: falls straight, lands flat

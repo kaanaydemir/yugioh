@@ -110,6 +110,7 @@ export class HarpoonImg {
     if (o.screen) this.img.setScrollFactor(0);
   }
   set(tip: XY, angle: number, o: { bury?: number; smear?: number } = {}): this {
+    if (!this.img.active) return this;
     const a = (((Math.round(angle / STEP) * STEP) % 360) + 360) % 360;
     const bury = o.bury ?? 0;
     const smear = o.smear ?? 0;
@@ -137,10 +138,10 @@ export class HarpoonImg {
     return this.img.visible;
   }
   hide(): void {
-    this.img.setVisible(false);
+    if (this.img.active) this.img.setVisible(false);
   }
   setDepth(d: number): this {
-    this.img.setDepth(d);
+    if (this.img.active) this.img.setDepth(d);
     return this;
   }
   destroy(): void {

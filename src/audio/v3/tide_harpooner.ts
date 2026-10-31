@@ -105,13 +105,13 @@ export const V3_HARPOONER_RECIPES = {
     duck: 0.35,
     play(v) {
       // in (L → R): the sheet slides over the sand; out (R → L): it recedes
-      sweep(v, 0, 0.6, [400, 1400, 600], 0.16, { kind: 'pink', q: 1.1, pan: [-0.5, 0.45], peakAt: 0.5 });
-      sweep(v, 0.55, 0.5, [300, 900, 250], 0.12, { kind: 'pink', q: 1.2, pan: [0.45, -0.4], peakAt: 0.35 });
+      sweep(v, 0, 0.6, [400, 1400, 600], 0.26, { kind: 'pink', q: 1.1, pan: [-0.5, 0.45], peakAt: 0.5 });
+      sweep(v, 0.55, 0.5, [300, 900, 250], 0.2, { kind: 'pink', q: 1.2, pan: [0.45, -0.4], peakAt: 0.35 });
       // foam fizz at the leading edge (high, sparse, thinning)
       v.crackle({ t: 0.08, d: 0.5, n: 40, g: 0.05, f: 6500, q: 0.6, dec: 0.006, curve: 1.2 });
       v.crackle({ t: 0.62, d: 0.4, n: 18, g: 0.035, f: 5200, q: 0.7, dec: 0.006, curve: 1.6 });
       // the wet body under it (a low slosh)
-      v.noise('brown', { g: [[0, 0], [0.35, 0.09], [0.7, 0.05], [1.1, 0.0001, 'e']], to: v.filt('lowpass', [[0, 300], [0.4, 700], [1.1, 220, 'e']], 1.2) });
+      v.noise('brown', { g: [[0, 0], [0.35, 0.16], [0.7, 0.09], [1.1, 0.0001, 'e']], to: v.filt('lowpass', [[0, 300], [0.4, 700], [1.1, 220, 'e']], 1.2) });
     },
   },
   harpHeave: {
@@ -132,8 +132,8 @@ export const V3_HARPOONER_RECIPES = {
     verb: 0.3,
     duck: 0.15,
     play(v) {
-      shellTok(v, 0, 0.075, { f: 620, dec: 0.12 });
-      sand(v, 0.004, 0.12, 0.12, 700);
+      shellTok(v, 0, 0.16, { f: 620, dec: 0.12 });
+      sand(v, 0.004, 0.22, 0.12, 700);
     },
   },
   harpConch: {
@@ -203,7 +203,7 @@ export const V3_HARPOONER_RECIPES = {
     duck: 0.1,
     play(v) {
       // one pass of the harpoon overhead (the scene sets pitch +8 % / pass and the pan in front / behind)
-      sweep(v, 0, 0.19, [500, 1100, 600], 0.2, { kind: 'pink', q: 1.6, peakAt: 0.5 });
+      sweep(v, 0, 0.19, [500, 1100, 600], 0.3, { kind: 'pink', q: 1.6, peakAt: 0.5 });
       // the rope's own whirr under it (a short flutter of a lower band)
       v.noise('pink', { g: [[0, 0], [0.09, 0.05], [0.19, 0.0001, 'e']], to: v.flutter(48, 0.5, { d: 0.2, base: 0.5, to: v.filt('bandpass', 340, 2.5) }) });
     },
@@ -287,10 +287,10 @@ export const V3_HARPOONER_RECIPES = {
     duck: 0.2,
     play(v) {
       // reeled back along the line toward the crab (the scene pans it)
-      sweep(v, 0, 0.22, [1800, 2600, 1200], 0.12, { kind: 'white', q: 1.8, peakAt: 0.45 });
-      v.noise('pink', { g: [[0, 0], [0.1, 0.05], [0.22, 0.0001, 'e']], to: v.flutter(36, 0.5, { d: 0.24, base: 0.5, to: v.filt('bandpass', 520, 3) }) });
+      sweep(v, 0, 0.22, [1800, 2600, 1200], 0.24, { kind: 'white', q: 1.8, peakAt: 0.45 });
+      v.noise('pink', { g: [[0, 0], [0.1, 0.12], [0.22, 0.0001, 'e']], to: v.flutter(36, 0.5, { d: 0.24, base: 0.5, to: v.filt('bandpass', 520, 3) }) });
       // the wet line slapping into the coil
-      v.noise('pink', { t: 0.19, g: perc(0.12, 0.05, 0.002), to: v.filt('bandpass', 900, 1.5) });
+      v.noise('pink', { t: 0.19, g: perc(0.24, 0.05, 0.002), to: v.filt('bandpass', 900, 1.5) });
     },
   },
   harpReplant: {
@@ -381,10 +381,11 @@ export const V3_HARPOONER_RECIPES = {
     duck: 0.2,
     play(v) {
       // "shuck": into the shell (noise through a band falling 1.2 kHz → 500)
-      v.noise('white', { g: perc(0.22, 0.09, 0.004), to: v.filt('bandpass', [[0, 1200], [0.09, 500, 'e']], 2.2) });
+      v.noise('white', { g: perc(0.6, 0.11, 0.004), to: v.filt('bandpass', [[0, 1200], [0.09, 500, 'e']], 2.2) });
+      thump(v, 0.06, 160, 100, 0.22, 0.06);
       // the claw clacks shut over the aperture (two clicks 14 ms apart) and the shell rings once, muffled
       crack(v, 0.06, 0.16, { hp: 3000, lp: 8000, n: 2, gap: 0.014, dec: 0.005 });
-      shellTok(v, 0.065, 0.035, { f: 560, dec: 0.08 });
+      shellTok(v, 0.065, 0.09, { f: 560, dec: 0.08 });
     },
   },
 
@@ -406,10 +407,10 @@ export const V3_HARPOONER_RECIPES = {
     verb: 0.3,
     duck: 0.3,
     play(v) {
-      shellTok(v, 0, 0.07, { f: 620, dec: 0.12 });
-      sand(v, 0, 0.14, 0.12, 600);
-      shellTok(v, 0.12, 0.06, { f: 520, dec: 0.13 });
-      sand(v, 0.12, 0.16, 0.16, 500);
+      shellTok(v, 0, 0.15, { f: 620, dec: 0.12 });
+      sand(v, 0, 0.28, 0.12, 600);
+      shellTok(v, 0.12, 0.13, { f: 520, dec: 0.13 });
+      sand(v, 0.12, 0.32, 0.16, 500);
     },
   },
   harpBury: {
@@ -509,8 +510,8 @@ export const V3_HARPOONER_RECIPES = {
     verb: 0.45,
     duck: 0.3,
     play(v) {
-      sweep(v, 0, 0.4, [1200, 600, 200], 0.15, { kind: 'pink', q: 1.1, peakAt: 0.2 });
-      v.noise('brown', { g: perc(0.16, 0.3, 0.01), to: v.filt('lowpass', 500, 1) });
+      sweep(v, 0, 0.4, [1200, 600, 200], 0.3, { kind: 'pink', q: 1.1, peakAt: 0.2 });
+      v.noise('brown', { g: perc(0.32, 0.3, 0.01), to: v.filt('lowpass', 500, 1) });
       v.crackle({ t: 0.05, d: 0.4, n: 22, g: 0.04, f: 5500, q: 0.8, dec: 0.006, curve: 1.6 });
     },
   },

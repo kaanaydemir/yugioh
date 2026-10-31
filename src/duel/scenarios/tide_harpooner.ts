@@ -31,14 +31,19 @@ const S: Record<string, Scenario> = {
 
   // ---------------------------------------------------------------- attack: twirl – throw – haul
   thpAttack: {
-    desc: 'Zıpkın Atışı: twirl, throw, the harpoon pierces Şimşek Kertenkelesi (1500), the PULL, reeled back, re-planted',
-    stage: { zones: 5, phase: 'battle', p0: { monsters: [N, N, 'tide_harpooner', N, N] }, p1: { monsters: [N, N, { id: 'volt_lizard', position: 'attack' }, N, N] } },
+    desc: 'Zıpkın Atışı: twirl, throw, the harpoon pierces Taş Muhafız (attack position, 500), the PULL, reeled back, re-planted',
+    stage: { zones: 5, phase: 'battle', p0: { monsters: [N, N, 'tide_harpooner', N, N] }, p1: { monsters: [N, N, { id: 'stone_sentinel', position: 'attack' }, N, N] } },
     steps: [attack(2, 2)],
   },
   thpAttackP2: {
     desc: 'Zıpkın Atışı as player 2 (the throw goes down-left)',
-    stage: { zones: 5, phase: 'battle', active: 1, p0: { monsters: [N, N, { id: 'volt_lizard', position: 'attack' }, N, N] }, p1: { monsters: [N, N, 'tide_harpooner', N, N] } },
+    stage: { zones: 5, phase: 'battle', active: 1, p0: { monsters: [N, N, { id: 'stone_sentinel', position: 'attack' }, N, N] }, p1: { monsters: [N, N, 'tide_harpooner', N, N] } },
     steps: [attack(2, 2, 1)],
+  },
+  thpAttackVolt: {
+    desc: 'Zıpkın Atışı into Şimşek Kertenkelesi (1500): the lizard’s own discharge trigger follows the kill',
+    stage: { zones: 5, phase: 'battle', p0: { monsters: [N, N, 'tide_harpooner', N, N] }, p1: { monsters: [N, N, { id: 'volt_lizard', position: 'attack' }, N, N] } },
+    steps: [attack(2, 2)],
   },
   thpAttackDiag: {
     desc: 'Zıpkın Atışı across lanes (zone 1 → zone 3): the rope runs diagonally',
