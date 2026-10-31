@@ -7,15 +7,15 @@
 // Pure PixelCanvas code (Node-safe).
 
 import { PixelCanvas } from '../pixel';
-import { STANDS, STAND_SKIRT_H, standsBounds, type StandBlock } from '../../view/board-nt/layout-nt';
-import { AISLE_W, aisleX, feetY, rowRange } from '../../view/board-nt/seats';
+import { STAND_SKIRT_H, standsBounds, type StandBlock } from '../../view/board-nt/layout-nt';
+import { ALL_STANDS, AISLE_W, aisleX, feetY, rowRange } from '../../view/board-nt/seats';
 import { packAtlas, type NtAtlas } from './wall-kit';
 import { LEFT_Y0, POST_H, RIGHT_Y0, TILE_W, paintAisle, paintBack, paintBanner, paintPost, paintRail, paintSkirt, paintTread, type StandSide } from './stands-parts';
 
 /** Texture key of the stands atlas (frames named inside). */
 export const NT_STANDS_KEY = 'nt:stands';
 /** Key of the baked static body of a side. */
-export const ntStandBodyKey = (side: StandSide): string => `nt:stands:body:${side}`;
+export const ntStandBodyKey = (block: number): string => `nt:stands:body:${block}`;
 
 export function paintStandsAtlas(): NtAtlas {
   const f: [string, PixelCanvas][] = [];
@@ -42,6 +42,8 @@ export interface StandPiece {
 }
 export interface StandRow {
   side: StandSide;
+  /** index in ALL_STANDS */
+  block: number;
   row: number;
   /** tiles of the staircase under the row (static) */
   tread: StandPiece[];
@@ -59,10 +61,10 @@ export interface StandRow {
 
 const lineY0 = (s: StandSide): number => (s === 0 ? LEFT_Y0 : RIGHT_Y0);
 
-function rowPieces(b: StandBlock, k: number): StandRow {
+function rowPieces(b: StandBlock, bi: number, k: number): StandRow {
   const side = b.side as StandSide;
   const { xa, xb } = rowRange(b, k);
-  const out: StandRow = { side, row: k, tread: [], rail: [], back: [], skirt: [], banners: [], posts: [] };
+  const out: StandRow = { side, block: bi, row: k, tread: [], rail: [], back: [], skirt: [], banners: [], posts: [] };
   const ax = aisleX(b, k);
   // tile x positions: all even (so the ½ slope steps line up with seats.ts feetY); with an aisle the grid is
   // anchored at the gap so a tile ends exactly where the aisle starts / begins
@@ -105,13 +107,15 @@ function rowPieces(b: StandBlock, k: number): StandRow {
 /** All tile placements of both stands (screen pixels). */
 export function standRows(): StandRow[] {
   const out: StandRow[] = [];
-  for (const b of STANDS) for (let k = 0; k < b.rows; k++) out.push(rowPieces(b, k));
+  ALL_STANDS.forEach((b, bi) => {
+    for (let k = 0; k < b.rows; k++) out.push(rowPieces(b, bi, k));
+  });
   return out;
 }
 
 /** Where the baked static body of a side sits (screen rect, the stand bounds + a margin). */
-export function standBodyRect(side: StandSide): { x: number; y: number; w: number; h: number } {
-  const b = standsBounds(STANDS[side]);
+export function standBodyRect(block: number): { x: number; y: number; w: number; h: number } {
+  const b = standsBounds(ALL_STANDS[block]);
   const x = b.x - 10;
   const y = b.y - 6;
   return { x, y, w: b.w + 20, h: b.h + 10 + 4 };
@@ -121,15 +125,15 @@ export function standBodyRect(side: StandSide): { x: number; y: number; w: numbe
  * The static body of one side (back strip, treads, skirt, banners): one canvas the layer shows as one image.
  * Rows paint in order so a lower row covers the riser of the one behind it.
  */
-export function bakeStandBody(side: StandSide, atlas: NtAtlas = paintStandsAtlas()): { canvas: PixelCanvas; x: number; y: number } {
-  const r = standBodyRect(side);
+export function bakeStandBody(block: number, atlas: NtAtlas = paintStandsAtlas()): { canvas: PixelCanvas; x: number; y: number } {
+  const r = standBodyRect(block);
   const canvas = new PixelCanvas(r.w, r.h);
   const put = (q: StandPiece): void => {
     const f = atlas.frames[q.frame];
     canvas.blit(atlas.canvas.crop(f.x, f.y, f.w, f.h), q.x - r.x, q.y - r.y);
   };
   for (const row of standRows()) {
-    if (row.side !== side) continue;
+    if (row.block !== block) continue;
     for (const q of [...row.back, ...row.tread, ...row.skirt, ...row.banners]) put(q);
   }
   return { canvas, x: r.x, y: r.y };
@@ -143,8 +147,8 @@ export function composeStandsStatic(canvas: PixelCanvas): void {
     canvas.blit(atlas.canvas.crop(f.x, f.y, f.w, f.h), q.x, q.y);
   };
   const rows = standRows();
-  for (const side of [0, 1] as const) {
-    const body = bakeStandBody(side, atlas);
+  for (let bi = 0; bi < ALL_STANDS.length; bi++) {
+    const body = bakeStandBody(bi, atlas);
     canvas.blit(body.canvas, body.x, body.y);
   }
   for (const r of rows) for (const q of [...r.rail, ...r.posts]) put(q);

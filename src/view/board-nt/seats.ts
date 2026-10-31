@@ -22,6 +22,18 @@
 
 import { CROWD_CELL, NT_DEPTH, STANDS, type StandBlock } from './layout-nt';
 
+/**
+ * Front-left terrace (J-fit): the left stand of layout-nt STANDS sits beside the platform's left end cap; this block continues
+ * the blue crowd along the platform's lower-left (front) face, row 0 8 px below the armour bottom (feet y = 162 + x/2, the same
+ * offset the right stand has: 480 − x/2 vs 472 − x/2). Six tiers step outward (down-left) into the empty lower-left corner; it
+ * stops left of the hint plate (x 174) and above the P1 panel (y 292). Same side / team as STANDS[0] (blue reactions).
+ */
+export const EXTRA_STANDS: readonly StandBlock[] = [
+  { side: 0, rows: 6, feet0: { a: 162, slope: 0.5 }, x0: 126, x1: 190, rowDy: 13, shiftA: -16, shiftB: -16, xMax: 190, pitch: 8 },
+];
+/** Every stand block: layout-nt STANDS first (ids unchanged), then the extra terraces. The index is the block id. */
+export const ALL_STANDS: readonly StandBlock[] = [...STANDS, ...EXTRA_STANDS];
+
 /** Height of the railing in front of a row: the spectator cell's bottom RAIL_H pixels are covered. */
 export const RAIL_H = 4;
 
@@ -88,7 +100,7 @@ function hash(n: number): number {
 
 function build(): Seat[] {
   const out: Seat[] = [];
-  for (const b of STANDS) {
+  ALL_STANDS.forEach((b, bi) => {
     for (let k = 0; k < b.rows; k++) {
       const { xa, xb } = rowRange(b, k);
       // odd rows start half a pitch in, so the spectators do not stack in columns
@@ -106,7 +118,7 @@ function build(): Seat[] {
           flipX: b.side === 1,
           depth: seatDepth(k),
           team: b.side,
-          seed: hash(b.side * 1000 + k * 100 + col),
+          seed: hash(b.side * 1000 + k * 100 + col + bi * 5000),
         });
       };
       // group A: from the row start up to the aisle (or the row end); group B restarts right after the gap
@@ -116,7 +128,7 @@ function build(): Seat[] {
       }
       if (ax !== null) for (let x = ax + AISLE_W + AISLE_PAD; x <= xb; x += b.pitch) push(x);
     }
-  }
+  });
   return out;
 }
 
