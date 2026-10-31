@@ -188,12 +188,12 @@ export const V3_AXEMAN_RECIPES = {
     verb: 0.35,
     duck: 0.7,
     play(v) {
-      thump(v, 0, 40, 28, 0.95, 0.35, { drive: 2.2 });
-      thump(v, 0, 120, 60, 0.45, 0.08, { drive: 1.8 });
-      crack(v, 0, 0.75, { hp: 1800, lp: 9000, n: 2, gap: 0.01, dec: 0.014 });
-      puff(v, 0.004, 0.42, 0.4, 700, { kind: 'brown' });
+      thump(v, 0, 40, 28, 0.62, 0.35, { drive: 2.2 });
+      thump(v, 0, 120, 60, 0.24, 0.08, { drive: 1.4 });
+      crack(v, 0, 0.5, { hp: 1800, lp: 9000, n: 2, gap: 0.01, dec: 0.014 });
+      puff(v, 0.004, 0.3, 0.4, 700, { kind: 'brown' });
       // the stone edge buried in stone: a short gritty grind
-      v.noise('brown', { t: 0.01, g: perc(0.3, 0.12, 0.004), to: v.filt('bandpass', 260, 3) });
+      v.noise('brown', { t: 0.01, g: perc(0.22, 0.12, 0.004), to: v.filt('bandpass', 260, 3) });
       // chips skittering
       v.crackle({ t: 0.02, d: 0.28, n: 14, g: 0.2, f: 3200, q: 0.8, dec: 0.006, curve: 1.8 });
     },
@@ -275,7 +275,7 @@ export const V3_AXEMAN_RECIPES = {
     verb: 0.3,
     duck: 0.4,
     play(v) {
-      crack(v, 0, 0.7, { hp: 1500, lp: 9000, n: 3, gap: 0.009, dec: 0.012 });
+      crack(v, 0, 0.55, { hp: 1500, lp: 9000, n: 3, gap: 0.009, dec: 0.012 });
       thump(v, 0, 120, 60, 0.6, 0.12, { drive: 1.8 });
       v.crackle({ t: 0.01, d: 0.22, n: 12, g: 0.18, f: 3400, q: 0.8, dec: 0.005, curve: 1.6 });
     },
@@ -316,10 +316,11 @@ export const V3_AXEMAN_RECIPES = {
     duck: 0.3,
     play(v) {
       // the boots grind into the rubble of the split boulder: the gravel crunch with its grains up front
-      thump(v, 0, 100, 74, 0.8, 0.13, { drive: 1.6 });
-      v.crackle({ d: 0.12, n: 22, g: 0.75, f: 3100, q: 0.6, dec: 0.006, curve: 1.4 });
-      v.noise('white', { g: perc(0.3, 0.05, 0.001), to: v.filt('bandpass', 3300, 1.6) });
-      v.crackle({ t: 0.03, d: 0.14, n: 8, g: 0.3, f: 5200, q: 0.9, dec: 0.004 });
+      thump(v, 0, 100, 74, 0.7, 0.13, { drive: 1.3 });
+      thump(v, 0.004, 62, 44, 0.45, 0.16);
+      v.crackle({ d: 0.12, n: 22, g: 0.75, f: 3300, q: 1.3, dec: 0.006, curve: 1.4 });
+      v.noise('white', { g: perc(0.3, 0.05, 0.001), to: v.filt('bandpass', 4200, 1.6) });
+      v.crackle({ t: 0.03, d: 0.14, n: 10, g: 0.55, f: 5600, q: 0.9, dec: 0.004 });
     },
   },
   /** The nara: a human baritone "HAA" shout (formants 700 / 1150 / 2600), chest voice, grit, a rasp at the top. */
@@ -355,7 +356,7 @@ export const V3_AXEMAN_RECIPES = {
     verb: 0.2,
     play(v) {
       // a closed "HN!": breath knocked out of the chest, the vowel cut short
-      vox(v, 0, 0.24, [[0, 132], [0.05, 126, 'e'], [0.24, 96, 'e']], 0.5, { formants: [480, 900, 2300], breath: 0.45, grit: 2.2, att: 0.008 });
+      vox(v, 0, 0.24, [[0, 132], [0.05, 126, 'e'], [0.24, 96, 'e']], 0.36, { formants: [480, 900, 2300], breath: 0.45, grit: 2.2, att: 0.008 });
     },
   },
   /** Death f1: he staggers, the axe slips out of the grip — leather sliding on the haft, a breath out. */
