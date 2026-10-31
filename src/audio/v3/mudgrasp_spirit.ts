@@ -60,11 +60,11 @@ function slop(v: Voice, t: number, g: number, o: { f?: number; d?: number; pan?:
   const out = o.pan !== undefined ? v.panner(o.pan, { to: o.to }) : o.to;
   // the suck: a resonant band rising into the pitch, swelling, then stopping
   const bp = v.filt('bandpass', [[0, f * 0.55], [d, f, 'e'], [d + 0.03, f * 1.1, 'e']], 7, { t, to: out });
-  v.noise('pink', { t, g: [[0, 0], [d * 0.85, g * 2.4], [d, g * 2.6], [d + 0.012, 0.0001, 'e']], to: bp });
+  v.noise('pink', { t, g: [[0, 0], [d * 0.85, g * 7], [d, g * 7.5], [d + 0.012, 0.0001, 'e']], to: bp });
   // the cavity's own tone, glottal-ish (it gives the "o")
-  v.tone('triangle', [[0, f * 0.6], [d, f, 'e']], { t, g: [[0, 0], [d * 0.8, g * 0.35], [d + 0.01, 0.0001, 'e']], to: out });
+  v.tone('triangle', [[0, f * 0.6], [d, f, 'e']], { t, g: [[0, 0], [d * 0.8, g * 0.7], [d + 0.01, 0.0001, 'e']], to: out });
   // the plop: the seal breaks, a sine dropping from the pitch
-  v.tone('sine', [[0, f], [0.07, f * 0.38, 'e']], { t: t + d, g: perc(g * 0.9, 0.08, 0.001), to: out });
+  v.tone('sine', [[0, f], [0.07, f * 0.38, 'e']], { t: t + d, g: perc(g * 1.4, 0.08, 0.001), to: out });
   // a damp click at the break
   v.noise('white', { t: t + d, g: perc(g * 0.5, 0.006, 0.0002), to: v.filt('bandpass', 2200, 1.4, { to: out }) });
 }
@@ -119,9 +119,9 @@ function moan(v: Voice, t: number, d: number, g: number, f: GrowlParams['f'], o:
 /** A wet slap: a pink noise smack (1–2.5 kHz), a short low body, a few droplets. */
 function smack(v: Voice, t: number, g: number, o: { pan?: number; to?: AudioNode; low?: number } = {}): void {
   const out = o.pan !== undefined ? v.panner(o.pan, { to: o.to }) : o.to;
-  v.noise('pink', { t, g: perc(g * 2.2, 0.035, 0.0008), to: v.filt('bandpass', [[0, 2400], [0.03, 1100, 'e']], 1.1, { t, to: out }) });
+  v.noise('pink', { t, g: perc(g * 4, 0.035, 0.0008), to: v.filt('bandpass', [[0, 2400], [0.03, 1100, 'e']], 1.1, { t, to: out }) });
   v.noise('white', { t, g: perc(g * 0.7, 0.01, 0.0003), to: v.filt('bandpass', 3800, 1.5, { to: out }) });
-  thump(v, t, o.low ?? 170, 62, g * 0.8, 0.12, { to: out });
+  thump(v, t, o.low ?? 170, 62, g * 1.3, 0.12, { to: out });
 }
 
 // ================================================================ recipes
@@ -156,12 +156,12 @@ export const MUDGRASP_SPIRIT_RECIPES = {
     verb: 0.35,
     duck: 0.4,
     play(v) {
-      slop(v, 0, 0.22, { d: 0.07, pan: -0.25 });
-      slop(v, 0.05, 0.2, { d: 0.06, f: SLOP * 1.06, pan: 0.25 });
+      slop(v, 0, 0.42, { d: 0.07, pan: -0.25 });
+      slop(v, 0.05, 0.38, { d: 0.06, f: SLOP * 1.06, pan: 0.25 });
       puff(v, 0.075, 0.22, 0.18, 900, { kind: 'brown' });
       sweep(v, 0.07, 0.16, [700, 1600, 900], 0.12, { q: 1.2, kind: 'pink' });
       pats(v, 0.12, 0.35, 10, 0.12);
-      glub(v, 0.15, 0.2, 100);
+      glub(v, 0.15, 0.12, 100);
     },
   },
   /** Summon f3: two palms slap down and grip the tile edges (el şaplağı, left then right). */
@@ -231,10 +231,10 @@ export const MUDGRASP_SPIRIT_RECIPES = {
     duck: 0.3,
     play(v) {
       const D = 1.3;
-      squelch(v, 0.02, 0.28, 0.28, { f: [320, 760, 400], rate: 40 });
+      squelch(v, 0.02, 0.28, 0.5, { f: [320, 760, 400], rate: 40 });
       slop(v, 0.26, 0.15, { d: 0.09, f: SLOP * 0.85 });
       // the arm draws back: a creaking wet stretch, a hum rising
-      squelch(v, 0.38, 0.6, 0.12, { f: [400, 650, 900], rate: 20 });
+      squelch(v, 0.38, 0.6, 0.25, { f: [400, 650, 900], rate: 20 });
       moan(v, 0.3, D - 0.3, 0.08, [56, 62, 70, 74, 76], { grit: 2 });
       v.tone('sine', [[0, 70], [D, 96, 'e']], { t: 0.3, g: [[0, 0], [0.5, 0.08], [D - 0.35, 0.1], [D - 0.3, 0.0001, 'e']] });
       pats(v, 0.3, 0.7, 6, 0.06);
@@ -248,7 +248,7 @@ export const MUDGRASP_SPIRIT_RECIPES = {
     duck: 0.35,
     play(v) {
       slop(v, 0, 0.18, { d: 0.05, f: SLOP * 1.12 });
-      sweep(v, 0.02, 0.24, [260, 820, 380], 0.32, { q: 1.4, pan: [-0.3, 0.35], kind: 'pink', peakAt: 0.35 });
+      sweep(v, 0.02, 0.24, [260, 820, 380], 0.8, { q: 1.4, pan: [-0.3, 0.35], kind: 'pink', peakAt: 0.35 });
       v.tone('sine', [[0, 140], [0.2, 90, 'e']], { t: 0.02, g: perc(0.12, 0.2, 0.01) });
       // the lump wobbling in flight: a few wet flaps
       squelch(v, 0.08, 0.2, 0.08, { f: [500, 700, 500], rate: 18 });
@@ -279,7 +279,7 @@ export const MUDGRASP_SPIRIT_RECIPES = {
     duck: 0.3,
     play(v) {
       smack(v, 0, 0.2, { low: 140 });
-      squelch(v, 0.03, 0.35, 0.2, { f: [700, 380, 220], rate: 26 });
+      squelch(v, 0.03, 0.35, 0.45, { f: [700, 380, 220], rate: 26 });
       v.tone('sine', [[0, SLOP * 0.8], [0.3, 180, 'e']], { t: 0.04, g: [[0, 0], [0.05, 0.05], [0.3, 0.0001, 'e']] });
       glub(v, 0.28, 0.16, 92);
       glub(v, 0.36, 0.1, 110);
@@ -307,8 +307,8 @@ export const MUDGRASP_SPIRIT_RECIPES = {
     verb: 0.35,
     duck: 0.5,
     play(v) {
-      [0, 0.07, 0.13, 0.2].forEach((t, i) => slop(v, t, 0.2 - i * 0.025, { d: 0.05 + i * 0.008, f: SLOP * (1 - i * 0.035), pan: (i % 2 ? 0.35 : -0.35) * (1 - i * 0.15) }));
-      squelch(v, 0.02, 0.4, 0.2, { f: [550, 850, 400], rate: 44 });
+      [0, 0.07, 0.13, 0.2].forEach((t, i) => slop(v, t, 0.42 - i * 0.05, { d: 0.05 + i * 0.008, f: SLOP * (1 - i * 0.035), pan: (i % 2 ? 0.35 : -0.35) * (1 - i * 0.15) }));
+      squelch(v, 0.02, 0.4, 0.08, { f: [300, 450, 260], rate: 44 });
       puff(v, 0, 0.2, 0.2, 800, { kind: 'brown' });
       pats(v, 0.05, 0.35, 9, 0.1);
     },
@@ -334,9 +334,9 @@ export const MUDGRASP_SPIRIT_RECIPES = {
     verb: 0.4,
     duck: 0.25,
     play(v) {
-      squelch(v, 0, 0.3, 0.12, { f: [300, 420, 260], rate: 12 });
-      glub(v, 0.06, 0.16, 84);
-      glub(v, 0.2, 0.1, 104);
+      squelch(v, 0, 0.3, 0.3, { f: [300, 420, 260], rate: 12 });
+      glub(v, 0.06, 0.32, 84);
+      glub(v, 0.2, 0.2, 104);
       v.tone('sine', [[0, 66], [0.4, 60, 'e']], { g: [[0, 0], [0.1, 0.06], [0.45, 0.0001, 'e']] });
     },
   },
@@ -348,8 +348,8 @@ export const MUDGRASP_SPIRIT_RECIPES = {
     duck: 0.1,
     vary: 0.08,
     play(v) {
-      v.noise('pink', { g: perc(0.18, 0.018, 0.0005), to: v.filt('bandpass', 1700, 1.8) });
-      glub(v, 0.004, 0.07, 170, { len: 0.035 });
+      v.noise('pink', { g: perc(0.5, 0.018, 0.0005), to: v.filt('bandpass', 1700, 1.8) });
+      glub(v, 0.004, 0.16, 170, { len: 0.035 });
     },
   },
   /** Death f1: the clay mask slips on the melting face (a ceramic scrape over wet). */
@@ -360,10 +360,10 @@ export const MUDGRASP_SPIRIT_RECIPES = {
     duck: 0.3,
     play(v) {
       const fl = v.flutter(60, 0.6, { d: 0.18, base: 0.35, to: v.filt('bandpass', [[0, 2600], [0.16, 1800, 'e']], 4) });
-      v.noise('white', { g: [[0, 0], [0.02, 0.35], [0.16, 0.0001, 'e']], to: fl });
+      v.noise('white', { g: [[0, 0], [0.02, 0.8], [0.16, 0.0001, 'e']], to: fl });
       clay(v, 0, 0.1, { f: 2100 });
-      squelch(v, 0.02, 0.26, 0.16, { f: [600, 380, 260], rate: 24 });
-      moan(v, 0.03, 0.42, 0.08, [60, 54, 46, 42, 38], { grit: 1.6 });
+      squelch(v, 0.02, 0.26, 0.35, { f: [600, 380, 260], rate: 24 });
+      moan(v, 0.03, 0.42, 0.14, [60, 54, 46, 42, 38], { grit: 1.6 });
     },
   },
   /** Death 'dissolve' (sustained ≈0.9 s): the body runs back into the cracks — a drain gulping, rising then falling. */
@@ -377,7 +377,7 @@ export const MUDGRASP_SPIRIT_RECIPES = {
       // the run of liquid into the cracks: a band falling, a fast flutter (the trickle)
       const pan = v.panner([[0, 0.3], [0.3, -0.3], [0.6, 0.25], [D, 0]]);
       const fl = v.flutter(26, 0.7, { d: D + 0.04, base: 0.35, to: v.filt('bandpass', [[0, 900], [D * 0.4, 600, 'e'], [D, 260, 'e']], 2, { to: pan }) });
-      v.noise('pink', { g: [[0, 0], [0.08, 0.7], [D * 0.6, 0.6], [D, 0.0001, 'e']], to: fl });
+      v.noise('pink', { g: [[0, 0], [0.08, 1.3], [D * 0.6, 1.1], [D, 0.0001, 'e']], to: fl });
       // the drain's gulps: pitch rising then falling (giderden akan su gibi yükselen-inen glub)
       const n = 13;
       for (let i = 0; i < n; i++) {
