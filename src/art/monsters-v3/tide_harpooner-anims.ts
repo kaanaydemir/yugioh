@@ -315,7 +315,7 @@ const DEATH_KEYS: Pose[] = [
 export function deathPose(f: number): Pose {
   return DEATH_KEYS[Math.min(f, D_N - 1)];
 }
-const D_HOLDS = [50, 70, 80, 90, 90, 90, 90, 90, 90, 100];
+const D_HOLDS = [50, 70, 80, 85, 85, 85, 85, 85, 85, 100];
 
 // ------------------------------------------------------------------ revive (12): the burial run backwards — the tide gives it back
 
