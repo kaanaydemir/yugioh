@@ -26,7 +26,8 @@ const SHUTDOWN = 'shutdown';
 /** ms (two frames) the number stays one size up before it settles. */
 const BIG_MS = 34;
 const FLASH_MS = 50;
-const LIFE = 1250;
+/** The whole life (scene ms); 1500 (was 1250) so the number is read before it fades (docs/v3/TEMPO.md). */
+const LIFE = 1500;
 
 export interface ImpactNumberOpts {
   /** Integer pixel scale (1 or 2). Default 1. */
@@ -129,7 +130,7 @@ export function impactNumber(scene: Phaser.Scene, x: number, y: number, amount: 
     const clock = peekShowClock(scene);
     const real = Math.min(50, delta);
     // through a hit-stop at the show speed; stopped by the menu pause; else the show clock's scale
-    const k = clock ? (clock.paused ? 0 : clock.frozen ? clock.speed : clock.scale) : scene.tweens.timeScale;
+    const k = clock ? (clock.paused ? 0 : clock.frozen ? clock.flowScale : clock.scale) : scene.tweens.timeScale;
     el += real * k;
     draw();
     if (el >= LIFE) end();

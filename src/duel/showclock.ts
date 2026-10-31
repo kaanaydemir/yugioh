@@ -44,6 +44,15 @@
 //   • v1 / v2 (no look switch): fxScale = 1 — real time, exactly as before (fxNow ===
 //     game.loop.time; a shake lasts its ms of real time at any speed and runs through hit-stops).
 //
+// • tempo  — the v3 look's presentation tempo (owner feedback "animations far too fast even at
+//            1×", docs/v3/TEMPO.md): while a cinematic plays, SpeedControl sets tempo = V3_TEMPO
+//            (default 1.35) and every show clock runs `tempo` times longer:
+//              scale = speed / tempo, and a hit-stop of `ms` freezes for ms × tempo × V3_HIT_HOLD
+//              (1.15: the impact frame gets a touch more than the rest) of real time.
+//            The speed setting (1× / 2× / 3×), fast-forward and slow motion still multiply on top.
+//            Between cinematics (the player's own input: hover, menus) tempo is 1. v1 / v2 never
+//            set it: tempo stays exactly 1 and no division happens (byte / timing identical).
+//
 // No runtime Phaser import (type-only), so the clock is unit-tested in node (tests/duel/showclock.test.ts).
 
 import type Phaser from 'phaser';
@@ -95,6 +104,8 @@ export interface ShowClockSnapshot {
   paused: boolean;
   pauses: number;
   strictFx: boolean;
+  /** The v3 presentation tempo now (1 = none; see the header). */
+  tempo: number;
 }
 
 /** Who started a freeze: combat.stopTime / setpieces.freeze ('stop') or core.hitStop ('hit'). */
@@ -133,6 +144,8 @@ export class ShowClock {
   now: number;
   private _speed = 1;
   private _userSpeed = 1;
+  private _tempo = 1;
+  private _freezeTempo = 1;
   private fz: FreezeState | null = null;
   /** legacyThaw: the scale written after a freeze ended, until the next setSpeed (null = none). */
   private thaw: number | null = null;
@@ -163,7 +176,21 @@ export class ShowClock {
   /** The time scale every Phaser clock runs at now (0 while frozen or paused). */
   get scale(): number {
     if (this.pauses > 0 || this.fz) return 0;
-    return this.thaw ?? this._speed;
+    const k = this.thaw ?? this._speed;
+    return this._tempo === 1 ? k : k / this._tempo;
+  }
+
+  /**
+   * The scale the show runs at whenever time flows (speed / tempo; ignores a freeze or pause).
+   * What a clock that runs THROUGH a hit-stop at the show's pace uses (_v3/number.ts).
+   */
+  get flowScale(): number {
+    return this._tempo === 1 ? this._speed : this._speed / this._tempo;
+  }
+
+  /** The v3 presentation tempo now (1 = none). */
+  get tempo(): number {
+    return this._tempo;
   }
 
   /** The scale of the hologram time and camera shakes (see the header). */
@@ -206,6 +233,7 @@ export class ShowClock {
       paused: this.paused,
       pauses: this.pauses,
       strictFx: this.strictFx,
+      tempo: this._tempo,
     };
   }
 
@@ -229,6 +257,21 @@ export class ShowClock {
     this.write();
   }
 
+  /**
+   * The v3 presentation tempo (≥ 1 makes the show longer; 1 = none). SpeedControl sets it every
+   * frame: V3_TEMPO while a cinematic plays, else 1. `freeze` is the factor a hit-stop's ms is
+   * stretched by (default `t`; the v3 look gives the impact frame a little extra on top). A freeze
+   * already running keeps its length.
+   */
+  setTempo(t: number, freeze: number = t): void {
+    if (this.disposed) return;
+    const v = Number.isFinite(t) && t > 0 ? t : 1;
+    this._freezeTempo = v === 1 ? 1 : Number.isFinite(freeze) && freeze > 0 ? freeze : v;
+    if (v === this._tempo) return;
+    this._tempo = v;
+    this.write();
+  }
+
   // ---------------------------------------------------------------- hit-stop
 
   /**
@@ -238,6 +281,8 @@ export class ShowClock {
    */
   freeze(ms: number, kind: FreezeKind = 'stop'): Promise<void> {
     if (!(ms > 0) || this.disposed) return Promise.resolve();
+    // the v3 tempo: a hit-stop holds `tempo` times longer, like everything else of the show
+    if (this._freezeTempo !== 1) ms *= this._freezeTempo;
     const cur = this.fz;
     if (cur) {
       cur.remaining = Math.max(cur.remaining, ms);
@@ -249,7 +294,8 @@ export class ShowClock {
       st.remaining -= delta;
       if (st.remaining <= 0) st.end();
     };
-    const saved = this.scale;
+    // the speed (before the tempo divides it; equal to the old `this.scale` whenever tempo is 1)
+    const saved = this.pauses > 0 ? 0 : (this.thaw ?? this._speed);
     const st: FreezeState = {
       remaining: ms,
       waiters: [],
@@ -422,6 +468,8 @@ export class ShowClock {
     this.pauses = 0;
     this.ps = null;
     this._speed = this._userSpeed = 1;
+    this._tempo = 1;
+    this._freezeTempo = 1;
     this.thaw = null;
     this.thawToken = null;
     this.write();

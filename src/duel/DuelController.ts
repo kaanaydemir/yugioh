@@ -70,6 +70,8 @@ export class DuelController {
     this.input = new HumanInput(scene, views);
     this.input.setState(state);
     if (V3_A6_B) this.input.busy = () => this.busy;
+    // the v3 presentation tempo (docs/v3/TEMPO.md): only the show slows down, not the player's input
+    views.speed.tempoWhen = () => this.busy;
     this.input.onQuit = () => this.quit();
     views.info.onCurtain = (on) => this.input.setCurtain(on);
     // the toolbar's sound switch starts from what is actually audible

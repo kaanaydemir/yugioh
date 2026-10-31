@@ -37,7 +37,7 @@ export const HOLO_MAX_MS = 300;
 /** Share of the summon the body must be visible (A0 §6.2 item 4). */
 export const BODY_MIN_SHARE = 0.5;
 /** The hologram settle of the OLD entrances in the v3 look (ms; their reveal stays their own). */
-export const HOLO_SETTLE_V3_MS = 120;
+export const HOLO_SETTLE_V3_MS = 160;
 
 function snd(name: SfxName, volume = 1, pitch = 1): void {
   try {

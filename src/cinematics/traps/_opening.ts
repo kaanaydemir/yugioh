@@ -524,7 +524,8 @@ async function trapOpeningV3(ctx: ActCtx, o: { focus?: XY } = {}): Promise<Openi
   else if (ev.cardId === 'chasm_trap' && !V3_A5_A) floorCracks(sc, at);
   // ONE short local "TUZAK!" over the card
   const word = trapWord(sc, { x: at.x, y: face.y - 36 });
-  await wait(sc, 100);
+  // the reveal holds (150, was 100: docs/v3/TEMPO.md) so the card and its word read before the scene
+  await wait(sc, 150);
   return { tile: live, at, face, banner: word, stopAura };
 }
 

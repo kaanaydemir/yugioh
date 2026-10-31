@@ -7,5 +7,8 @@ export const LP_ROLL_MAX_MS = 400;
 /** The attack declaration, handler start → end: ≤ 0.3 s (A0 §6.2 item 4). */
 export const DECLARE_MAX_MS = 300;
 
-/** Scene-time beat after a contact hit-stop before a death starts from the reaction pose. */
-export const DEATH_AFTER_CONTACT_MS = 110;
+/**
+ * Scene-time beat after a contact hit-stop before a death starts from the reaction pose. 150 (was
+ * 110): the struck pose reads before the body breaks (docs/v3/TEMPO.md, owner: "too fast").
+ */
+export const DEATH_AFTER_CONTACT_MS = 150;

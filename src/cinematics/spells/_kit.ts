@@ -1045,7 +1045,8 @@ async function spellOpeningV3(
 ): Promise<Opening> {
   const sc = ctx.scene;
   const field = ctx.views.field;
-  const hold = Math.min(180, Math.max(70, Math.round((o.hold ?? 300) * 0.5)));
+  // the card's signature hold before its effect (docs/v3/TEMPO.md: was 0.5× in 70–180 ms)
+  const hold = Math.min(240, Math.max(100, Math.round((o.hold ?? 300) * 0.65)));
   const keep = !!o.keepCard;
   bg(Promise.resolve(ctx.views.duelists?.get(o.player)?.play('command')));
   const motes = new PxSparks(sc, DEPTH.FX_TOP + 11);

@@ -1,85 +1,51 @@
-// Neon Tower layer: CROWD (spectators) — owner B1 (docs/v3/ARENA_NEON_TOWER.md §6, §7, §8).
-// ~110 spectators (9 looks; seated / standing / clapping / waving / arms up / head turned / glow stick, mirrored for the right stand)
-// as Blitter bobs on ONE pre-baked atlas (src/art/arena-nt/crowd.ts): three blitters (one per stand row, at
-// seatDepth(row) of seats.ts, i.e. between the rows' railings), one texture, zero per-spectator tweens or timers.
-//
-// Animation = pure function of the scene clock, evaluated at 8 Hz:
-//   - every seat has its own group (4 groups with different breath / stick periods), its own phase offset and its
-//     own mode (seated breathing, seated glow-stick sway, standing bounce, clapping). Frames only change when the
-//     seat's own step turns, so no two spectators move together;
-//   - a slow "mood" clock (every 700 ms) makes one seat stand up / start clapping for a few seconds, then sit down;
-//   - REACTIONS (cheer / gasp / roar / lean per side, power 0.5…2) override the idle frames for a short time and
-//     decay back: each seat joins after its own 0…220 ms delay and leaves after 0…300 ms (a ripple, not a switch),
-//     a settle frame (standing) before sitting down. Victory (gameOver) is sticky.
-// Nothing is allocated per frame (typed arrays, a frame-lookup table), nothing runs while nothing changes (the
-// tick returns at once unless the 8 Hz step turned, or a reaction is active: then at ~20 Hz).
-// Depth: above the stands' steps, below the platform; the railings of A2 cover the lowest 4 px of each cell.
+// Neon Tower layer: CROWD → the EMPTY STANDS' SEAT LIGHTS (owner decision: no spectators in the arena).
+// The tiers keep their seats (src/art/arena-nt/crowd.ts: folding stadium seats, a few folded up, a few with a forgotten gold
+// scarf), every seat back carries a tiny LED. The venue is empty but switched on:
+//   - idle: every LED glows on standby; a few twinkle (each on its own seeded schedule); every ~8 s a slow light wave rolls
+//     across each stand along the tiers (the two sides never in step);
+//   - REACTIONS (the old crowd API: cheer / gasp / roar / lean per side, power 0.5…2, driven by the same game events) become
+//     light shows on that side's seats: cheer = a ripple running outward from the platform then a short chase; roar = two
+//     soft strobes then a fast chase; gasp = the LEDs drop out and come back one by one; lean = a soft ripple. gameOver = the
+//     winner's stands keep chasing (sticky);
+//   - ignition (setLights): the tiers switch on row by row, front row first.
+// One tiny atlas, one Blitter per stand row (at seatDepth(row), between the railings: seats.ts depth contract), zero tweens or
+// timers: frames only change when a seat's own level changes; the tick returns at once unless the 10 Hz step turned (≈25 Hz
+// while a reaction runs). crowd() stays on the layer API (BoardView.crowd forwards here): it is harmless, only lights react.
 
 import Phaser from 'phaser';
 import type { GameEvent, PlayerId } from '../../engine/types';
-import {
-  CF_CLAP0,
-  CF_GASP,
-  CF_LEAN,
-  CF_SIT0,
-  CF_SIT1,
-  CF_STAND0,
-  CF_STAND1,
-  CF_STICK_SIT0,
-  CF_STICK_UP0,
-  CF_TURN,
-  CF_UP0,
-  CF_WAVE0,
-  CROWD_COLS,
-  CROWD_LOOKS,
-  NT_CROWD_KEY,
-  crowdAtlas,
-  crowdCol,
-  crowdFrameName,
-} from '../../art/arena-nt/crowd';
+import { NT_SEATS_KEY, SEAT_FH, SEAT_FW, seatFrameName, seatsAtlas } from '../../art/arena-nt/crowd';
 import type { CrowdReaction } from './api';
-import { CROWD_CELL } from './layout-nt';
 import { type NtCtx, type NtLayer } from './layer';
-import { SEATS } from './seats';
+import { SEATS, rowRange } from './seats';
+import { ALL_STANDS } from './seats';
 import { ensureNtTexture } from './textures';
 
-/** Register the crowd atlas and its frames once (boot step 26 and, as a fallback, the layer). */
+/** Register the seats atlas and its frames once (boot step 26 and, as a fallback, the layer). */
 export function ensureCrowdTextures(scene: Phaser.Scene): void {
-  ensureNtTexture(scene, 'crowd', NT_CROWD_KEY, () => crowdAtlas().canvas);
-  const tex = scene.textures.get(NT_CROWD_KEY);
-  for (const [name, r] of Object.entries(crowdAtlas().frames)) if (!tex.has(name)) tex.add(name, 0, r.x, r.y, r.w, r.h);
+  ensureNtTexture(scene, 'crowd', NT_SEATS_KEY, () => seatsAtlas().canvas);
+  const tex = scene.textures.get(NT_SEATS_KEY);
+  for (const [name, r] of Object.entries(seatsAtlas().frames)) if (!tex.has(name)) tex.add(name, 0, r.x, r.y, r.w, r.h);
 }
 
 // ---- constants ---------------------------------------------------------------------------------------------
 
-/** Idle quantum (ms): the 8 Hz clock every idle loop counts in. */
-const Q = 125;
-/** Reaction quantum (ms): reaction frames are re-evaluated at ~20 Hz while one is active. */
-const QR = 50;
-/** The mood clock: one seat may change its idle mode every MOOD ms. */
-const MOOD = 520;
-const MAX_TEMP = 10;
-/** Per-group periods in quanta: breath half period, glow-stick hold. */
-const GROUP_BREATH = [13, 15, 17, 19] as const;
-const GROUP_STICK = [3, 4, 3, 5] as const;
-/** Glow-stick sway order: vertical, right, vertical, left. */
-const STICK_SEQ = [0, 1, 0, 2] as const;
-const SETTLE = 240;
+/** Idle quantum (ms) and reaction quantum (ms). */
+const Q = 100;
+const QR = 40;
+/** Idle wave: period per side (ms), phase offsets, speed (px of wave coordinate per ms). */
+const WAVE_P = [8200, 9400] as const;
+const WAVE_OFF = [1800, 6100] as const;
+const WAVE_V = 0.16;
+/** Twinkle slot (ms) and the share of seats that twinkle in a slot. */
+const TW_SLOT = 300;
+const TW_SHARE = 0.035;
 
-// idle modes
-const M_SIT = 0;
-const M_STICK = 1;
-const M_STAND = 2;
-const M_CLAP = 3;
-const M_WAVE = 4;
-const M_TURN = 5;
-const M_LEAN = 6;
-
-// reaction kinds (0 = none)
 const R_CHEER = 1;
 const R_GASP = 2;
 const R_ROAR = 3;
 const R_LEAN = 4;
+const PRIO = [0, 2, 2, 3, 1] as const;
 
 const SEAT_N = SEATS.length;
 
@@ -94,35 +60,18 @@ function kindOf(k: CrowdReaction | 'lean'): number {
   return k === 'cheer' ? R_CHEER : k === 'gasp' ? R_GASP : k === 'roar' ? R_ROAR : R_LEAN;
 }
 
-/** Duration of a reaction (ms) by kind and power. */
 function durationOf(k: number, p: number): number {
   switch (k) {
     case R_CHEER:
-      return 560 + 340 * Math.min(p, 1.3);
+      return 700 + 340 * Math.min(p, 1.3);
     case R_ROAR:
-      return 900 + 600 * p;
+      return 1000 + 600 * p;
     case R_GASP:
-      return 520 + 300 * Math.min(p, 1.5);
+      return 600 + 260 * Math.min(p, 1.5);
     default:
-      return 450 + 200 * p;
+      return 500 + 200 * p;
   }
 }
-
-/** Share of the seats that join a reaction (the rest keep their idle loop). */
-function shareOf(k: number, p: number): number {
-  switch (k) {
-    case R_CHEER:
-      return Math.min(0.97, 0.6 + 0.3 * p);
-    case R_ROAR:
-      return Math.min(1, 0.8 + 0.1 * p);
-    case R_GASP:
-      return Math.min(1, 0.7 + 0.3 * p);
-    default:
-      return 0.6;
-  }
-}
-
-const PRIO = [0, 2, 2, 3, 1] as const;
 
 export interface CrowdDebug {
   react(kind: CrowdReaction, side: PlayerId | null, power?: number): void;
@@ -134,189 +83,176 @@ export interface CrowdDebug {
 export function createCrowdLayer(ctx: NtCtx): NtLayer {
   const scene = ctx.scene;
   ensureCrowdTextures(scene);
-  const tex = scene.textures.get(NT_CROWD_KEY);
+  const tex = scene.textures.get(NT_SEATS_KEY);
 
-  // ---- frame table: [look * CROWD_COLS + col] → Frame
-  const frames: Phaser.Textures.Frame[] = new Array(CROWD_LOOKS * CROWD_COLS);
-  for (let l = 0; l < CROWD_LOOKS; l++) for (let c = 0; c < CROWD_COLS; c++) frames[l * CROWD_COLS + c] = tex.get(crowdFrameName(l, c));
+  // frame table [team][variant][level]
+  const frames: Phaser.Textures.Frame[][][] = [0, 1].map((team) =>
+    [0, 1, 2].map((v) => [0, 1, 2, 3].map((l) => tex.get(seatFrameName(team as 0 | 1, v, l)))),
+  );
 
-  // ---- per-seat state (typed arrays: no allocation after this point)
-  const look = new Uint8Array(SEAT_N);
-  const team = new Uint8Array(SEAT_N);
-  const holder = new Uint8Array(SEAT_N);
-  const baseMode = new Uint8Array(SEAT_N);
-  const mode = new Uint8Array(SEAT_N);
-  const grp = new Uint8Array(SEAT_N);
-  const off = new Uint16Array(SEAT_N);
-  const cur = new Int16Array(SEAT_N).fill(-1);
-  const dly = new Float32Array(SEAT_N);
-  const rel = new Float32Array(SEAT_N);
-  const part = new Float32Array(SEAT_N);
-  const bare = new Uint8Array(SEAT_N);
-  const tempEnd = new Int32Array(SEAT_N).fill(-1);
+  // ---- per-seat data
+  const side = new Uint8Array(SEAT_N);
+  const row = new Uint8Array(SEAT_N);
+  const variant = new Uint8Array(SEAT_N);
+  /** ripple distance from the platform (in seat steps, rows count double) */
+  const dist = new Float32Array(SEAT_N);
+  /** idle wave coordinate (along the stand, tiers offset so the wave runs diagonally) */
+  const wav = new Float32Array(SEAT_N);
+  const seed = new Float32Array(SEAT_N);
+  const cur = new Int8Array(SEAT_N).fill(-1);
   const bobs: Phaser.GameObjects.Bob[] = new Array(SEAT_N);
-  const sideOf = new Uint8Array(SEAT_N);
 
-  const rowBlitters: Phaser.GameObjects.Blitter[] = [];
   const rowsUsed = Math.max(...SEATS.map((s) => s.row)) + 1;
+  const rowBlitters: Phaser.GameObjects.Blitter[] = [];
   for (let r = 0; r < rowsUsed; r++) {
-    const row = SEATS.find((s) => s.row === r);
-    if (!row) continue;
-    rowBlitters[r] = ctx.add(scene.add.blitter(0, 0, NT_CROWD_KEY).setDepth(row.depth));
+    const s0 = SEATS.find((s) => s.row === r);
+    if (s0) rowBlitters[r] = ctx.add(scene.add.blitter(0, 0, NT_SEATS_KEY).setDepth(s0.depth));
   }
-
+  // the platform-side end of each stand's rows (ripples start there)
+  const edge = ALL_STANDS.map((b) => {
+    let xa = Infinity;
+    let xb = -Infinity;
+    for (let k = 0; k < b.rows; k++) {
+      const r = rowRange(b, k);
+      xa = Math.min(xa, r.xa);
+      xb = Math.max(xb, r.xb);
+    }
+    return { xa, xb };
+  });
   for (let i = 0; i < SEAT_N; i++) {
     const s = SEATS[i];
-    sideOf[i] = s.side;
-    team[i] = s.team;
-    // looks: a seeded shuffle that avoids neighbours repeating (id-based hash, no Math.random)
-    look[i] = Math.floor(mix(s.id, 11) * CROWD_LOOKS) % CROWD_LOOKS;
-    if (i > 0 && look[i] === look[i - 1]) look[i] = (look[i] + 1 + Math.floor(mix(s.id, 12) * 6)) % CROWD_LOOKS;
-    holder[i] = mix(s.id, 21) < 0.4 ? 1 : 0;
-    baseMode[i] = holder[i] ? M_STICK : M_SIT;
-    mode[i] = baseMode[i];
-    grp[i] = Math.floor(mix(s.id, 31) * 4) & 3;
-    off[i] = Math.floor(mix(s.id, 41) * 400);
-    dly[i] = mix(s.id, 51) * 220;
-    rel[i] = mix(s.id, 61) * 300;
-    part[i] = mix(s.id, 71);
-    bare[i] = mix(s.id, 81) < 0.3 ? 1 : 0;
-    const col = crowdCol(CF_SIT0, 0);
-    const bob = rowBlitters[s.row].create(s.x - CROWD_CELL.w / 2, s.y - CROWD_CELL.h, frames[look[i] * CROWD_COLS + col]);
+    side[i] = s.side;
+    row[i] = s.row;
+    seed[i] = s.seed;
+    const h = mix(s.id, 17);
+    variant[i] = h < 0.08 ? 2 : h < 0.2 ? 1 : 0;
+    const e = s.side === 0 ? Math.max(...edge.filter((_, bi) => ALL_STANDS[bi].side === 0).map((q) => q.xb)) : Math.min(...edge.filter((_, bi) => ALL_STANDS[bi].side === 1).map((q) => q.xa));
+    dist[i] = Math.abs(e - s.x) / 8 + s.row * 2;
+    wav[i] = (s.side === 0 ? s.x : 640 - s.x) + s.row * 10;
+    const bob = rowBlitters[s.row].create(s.x - Math.floor(SEAT_FW / 2), s.y - SEAT_FH, frames[s.team][variant[i]][1]);
     bob.flipX = s.flipX;
     bobs[i] = bob;
-    cur[i] = col;
+    cur[i] = 1;
   }
+  let maxDist = 0;
+  for (let i = 0; i < SEAT_N; i++) maxDist = Math.max(maxDist, dist[i]);
 
   // ---- reaction state per side
   const rxKind = new Uint8Array(2);
   const rxT0 = new Float64Array(2);
   const rxUntil = new Float64Array(2);
-  const rxThr = new Float32Array(2);
+  const rxPow = new Float32Array(2);
   const rxSticky = new Uint8Array(2);
   let rxActive = 0;
 
   let now = 0;
   let lastQ = -1;
   let lastQr = -1;
-  let lastMood = -1;
-  let tempCount = 0;
   let destroyed = false;
-  // lights: the crowd steps up out of the dark with the stands (calm ignition: ~260 ms after the call)
   let litOn = true;
+  /** ignition start (ms of the layer clock), -1 = settled */
   let litFrom = -1;
-  let litStep = 3;
   const stats = { ms: 0, ticks: 0, work: 0 };
 
-  function applyLit(step: number): void {
-    litStep = step;
-    for (const b of rowBlitters) {
+  function setRowsVisible(t: number): boolean {
+    let done = true;
+    for (let r = 0; r < rowBlitters.length; r++) {
+      const b = rowBlitters[r];
       if (!b) continue;
-      b.setVisible(step > 0);
-      b.setAlpha(step >= 2 ? 1 : 0.5);
+      if (!litOn) {
+        b.setVisible(false);
+        continue;
+      }
+      const at = litFrom < 0 ? -1 : litFrom + 240 + r * 70;
+      const vis = at < 0 || t >= at;
+      if (!vis) done = false;
+      b.setVisible(vis);
     }
+    return done;
   }
 
-  function idleCol(i: number, q: number): number {
-    const o = q + off[i];
-    const g = grp[i];
-    switch (mode[i]) {
-      case M_STICK:
-        return crowdCol(CF_STICK_SIT0 + STICK_SEQ[Math.floor(o / GROUP_STICK[g]) & 3], team[i] as 0 | 1);
-      case M_STAND:
-        return crowdCol(Math.floor(o / 6) & 1 ? CF_STAND1 : CF_STAND0, 0);
-      case M_CLAP:
-        return crowdCol(CF_CLAP0 + ((o >> 1) & 1), 0);
-      case M_WAVE:
-        return crowdCol(CF_WAVE0 + ((o >> 1) & 1), 0);
-      case M_TURN:
-        return crowdCol(CF_TURN, 0);
-      case M_LEAN:
-        return crowdCol(CF_LEAN, 0);
-      default:
-        return crowdCol(Math.floor(o / GROUP_BREATH[g]) & 1 ? CF_SIT1 : CF_SIT0, 0);
-    }
+  /** Idle LED level of seat i at time t. */
+  function idleLevel(i: number, t: number): number {
+    const s = side[i];
+    // the slow wave
+    const u = (t + WAVE_OFF[s]) % WAVE_P[s];
+    const front = u * WAVE_V - 30;
+    const d = Math.abs(wav[i] - front);
+    if (d < 7) return 2;
+    // twinkles
+    const slot = Math.floor((t + seed[i] * 977) / TW_SLOT);
+    if (mix(i * 31 + 7, slot) < TW_SHARE) return 2;
+    // a few seats stay dark (standby off) so the field of dots is not a grid
+    return seed[i] < 0.12 ? 0 : 1;
   }
 
-  /** The reaction frame of seat i at time t, or -1 when the seat shows its idle frame. */
-  function rxCol(i: number, t: number): number {
-    const side = sideOf[i];
-    const k = rxKind[side];
+  /** Reaction level of seat i at time t, or -1 when the seat shows its idle level. */
+  function rxLevel(i: number, t: number): number {
+    const s = side[i];
+    const k = rxKind[s];
     if (k === 0) return -1;
-    const start = rxT0[side] + dly[i];
-    if (t < start || part[i] >= rxThr[side]) return -1;
-    const end = rxUntil[side] + rel[i];
-    if (t < end) {
-      switch (k) {
-        case R_GASP:
-          return crowdCol(CF_GASP, 0);
-        case R_LEAN:
-          return crowdCol(CF_LEAN, 0);
-        default: {
-          const s = Math.floor((t + off[i] * 31) / (k === R_ROAR ? 100 : 140)) & 1;
-          if (holder[i]) return crowdCol(CF_STICK_UP0 + s, team[i] as 0 | 1);
-          if (k === R_ROAR || !bare[i]) return crowdCol(CF_UP0 + s, 0);
-          return crowdCol(CF_CLAP0 + s, 0);
-        }
+    const a = t - rxT0[s];
+    if (a < 0) return -1;
+    const end = rxUntil[s];
+    if (t > end + 260 + seed[i] * 300) return -1;
+    const p = rxPow[s];
+    const di = dist[i];
+    switch (k) {
+      case R_CHEER:
+      case R_LEAN: {
+        const speed = k === R_CHEER ? 0.05 + 0.02 * p : 0.035;
+        const front = a * speed;
+        const off = front - di;
+        if (off >= 0 && off < 1.5) return k === R_CHEER ? 3 : 2;
+        if (off >= 1.5 && off < 3) return 2;
+        if (k === R_LEAN || front < maxDist + 3) return off < 0 ? -1 : 1;
+        // after the ripple: a three-step chase until the end
+        return (Math.floor(di) + Math.floor(t / 90)) % 3 === 0 ? 3 : 1;
       }
+      case R_ROAR: {
+        // two soft strobes (≈ 4 Hz, never faster), then the chase
+        const step = Math.floor(a / 120);
+        if (step < 4) return step % 2 === 0 ? 3 : 1;
+        return (Math.floor(di) + Math.floor(t / 70)) % 3 === 0 ? 3 : (Math.floor(di) + Math.floor(t / 70)) % 3 === 1 ? 2 : 1;
+      }
+      case R_GASP: {
+        // drop out, then come back one by one (seeded order) at standby
+        const back = 260 + seed[i] * 420 * Math.min(1.5, p);
+        return a < back ? 0 : 1;
+      }
+      default:
+        return -1;
     }
-    if (t < end + SETTLE && (k === R_CHEER || k === R_ROAR)) return crowdCol(CF_STAND0, 0);
-    return -1;
   }
 
-  function refresh(t: number, q: number): void {
+  function refresh(t: number): void {
     for (let i = 0; i < SEAT_N; i++) {
-      let col = rxActive ? rxCol(i, t) : -1;
-      if (col < 0) col = idleCol(i, q);
-      if (col !== cur[i]) {
-        cur[i] = col;
-        bobs[i].setFrame(frames[look[i] * CROWD_COLS + col]);
+      let l = rxActive ? rxLevel(i, t) : -1;
+      if (l < 0) l = idleLevel(i, t);
+      if (l !== cur[i]) {
+        cur[i] = l;
+        bobs[i].setFrame(frames[side[i]][variant[i]][l]);
       }
     }
   }
 
-  function moodStep(step: number): void {
-    // sit down the ones whose time is up
-    for (let i = 0; i < SEAT_N; i++) {
-      if (tempEnd[i] >= 0 && step >= tempEnd[i]) {
-        tempEnd[i] = -1;
-        mode[i] = baseMode[i];
-        tempCount--;
-      }
-    }
-    // a new one stands up / claps for 3…8 steps
-    const h = mix(step, 91);
-    const h2 = mix(step, 92);
-    if (tempCount < MAX_TEMP && h < 0.9) {
-      const i = Math.floor(mix(step, 93) * SEAT_N) % SEAT_N;
-      if (tempEnd[i] < 0) {
-        // clap / wave / stand up / turn to the neighbour / lean in: seated stick holders only wave their stick
-        mode[i] = h2 < 0.25 ? M_CLAP : h2 < 0.45 ? M_STAND : h2 < 0.65 ? M_WAVE : h2 < 0.85 ? M_TURN : M_LEAN;
-        if (holder[i] && mode[i] !== M_CLAP && mode[i] !== M_STAND) mode[i] = baseMode[i];
-        tempEnd[i] = step + 3 + Math.floor(mix(step, 94) * 6);
-        tempCount++;
-      }
-    }
-  }
-
-  function react(kind: CrowdReaction | 'lean', side: PlayerId | null, power = 1, delay = 0, sticky = false): void {
+  function react(kind: CrowdReaction | 'lean', who: PlayerId | null, power = 1, delay = 0, sticky = false): void {
     if (destroyed) return;
     const k = kindOf(kind);
     const p = Math.max(0.5, Math.min(2, power));
     for (const s of [0, 1] as const) {
-      if (side !== null && side !== s) continue;
+      if (who !== null && who !== s) continue;
       if (rxSticky[s] && !sticky) continue;
-      const t0 = now + delay;
       const live = rxKind[s] !== 0 && now < rxUntil[s] + 600;
       if (live && PRIO[k] < PRIO[rxKind[s]]) continue;
       rxKind[s] = k;
-      rxT0[s] = t0;
-      rxUntil[s] = sticky ? Infinity : t0 + durationOf(k, p);
-      rxThr[s] = shareOf(k, p);
+      rxT0[s] = now + delay;
+      rxUntil[s] = sticky ? Infinity : now + delay + durationOf(k, p);
+      rxPow[s] = p;
       rxSticky[s] = sticky ? 1 : 0;
     }
     rxActive = rxKind[0] || rxKind[1] ? 1 : 0;
-    lastQr = -1; // re-evaluate on the next tick
+    lastQr = -1;
   }
 
   function onGameEvent(ev: GameEvent): void {
@@ -325,7 +261,6 @@ export function createCrowdLayer(ctx: NtCtx): NtLayer {
         react('cheer', null, 0.8, 500);
         break;
       case 'summon': {
-        // the entrance takes a moment: the crowd rises with the reveal
         const big = ev.method === 'tribute' || ev.method === 'special';
         react('cheer', ev.player, big ? 1.3 : 1, 420);
         break;
@@ -338,7 +273,6 @@ export function createCrowdLayer(ctx: NtCtx): NtLayer {
         if (ev.kind === 'trap') react('gasp', ev.player === 0 ? 1 : 0, 0.7, 150);
         break;
       case 'attackDeclare':
-        // the attacker's fans leap up, the defender's fans brace
         react('cheer', ev.player, 1, 0);
         react('gasp', ev.player === 0 ? 1 : 0, 0.5, 120);
         break;
@@ -382,52 +316,34 @@ export function createCrowdLayer(ctx: NtCtx): NtLayer {
       now = t;
       const t0 = performance.now();
       stats.ticks++;
-      if (litFrom >= 0) {
-        const k = t - litFrom;
-        const step = k < 260 ? 0 : k < 380 ? 1 : 3;
-        if (step !== litStep) applyLit(step);
-        if (step === 3) litFrom = -1;
-      }
-      if (!litOn && litFrom < 0) return;
+      if (litFrom >= 0 && setRowsVisible(t)) litFrom = -1;
+      if (!litOn) return;
       const q = Math.floor(t / Q);
       const qr = rxActive ? Math.floor(t / QR) : q;
       if (q === lastQ && qr === lastQr) return;
       stats.work++;
-      if (lastMood < 0) lastMood = Math.floor(t / MOOD);
-      const mstep = Math.floor(t / MOOD);
-      for (let n = 0; lastMood < mstep && n < 4; n++) moodStep(++lastMood);
-      lastMood = mstep;
       lastQ = q;
       lastQr = qr;
       if (rxActive) {
-        // a reaction ends when both sides are past their release (+ settle)
         for (const s of [0, 1] as const) {
-          if (rxKind[s] && t > rxUntil[s] + 300 + SETTLE + 220) {
+          if (rxKind[s] && t > rxUntil[s] + 600) {
             rxKind[s] = 0;
             rxSticky[s] = 0;
           }
         }
         rxActive = rxKind[0] || rxKind[1] ? 1 : 0;
       }
-      refresh(t, q);
+      refresh(t);
       stats.ms += performance.now() - t0;
     },
     setLights(on: boolean, animate: boolean): Promise<void> {
       litOn = on;
-      if (!animate) {
-        litFrom = -1;
-        applyLit(on ? 3 : 0);
-      } else if (on) {
-        litFrom = now;
-        applyLit(0);
-      } else {
-        litFrom = -1;
-        applyLit(0);
-      }
+      litFrom = on && animate ? now : -1;
+      setRowsVisible(now);
       return Promise.resolve();
     },
-    crowd(kind: CrowdReaction, side: PlayerId | null, power: number): void {
-      react(kind, side, power, 0);
+    crowd(kind: CrowdReaction, who: PlayerId | null, power: number): void {
+      react(kind, who, power, 0);
     },
     onGameEvent,
     destroy(): void {

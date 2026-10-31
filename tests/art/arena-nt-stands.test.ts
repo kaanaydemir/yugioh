@@ -1,11 +1,11 @@
-// Neon Tower stands + crowd painters (J5 quality pass): palette-only, no alpha, deterministic, tiles follow the feet line,
+// Neon Tower stands + empty-seat painters (J5 quality pass): palette-only, no alpha, deterministic, tiles follow the feet line,
 // every static piece lies on the stands' bodies, texture budget of the stands + crowd stays near the plan.
 import { describe, expect, it } from 'vitest';
 import { PAL } from '../../src/art/palette';
 import { PixelCanvas } from '../../src/art/pixel';
 import { bakeStandBody, paintStandsAtlas, standBodyRect, standRows } from '../../src/art/arena-nt/stands';
 import { KIND, TILE_W, lineOrigin, tileH } from '../../src/art/arena-nt/stands-parts';
-import { crowdAtlas, CROWD_FW, CROWD_FH, CROWD_COLS, CROWD_LOOKS } from '../../src/art/arena-nt/crowd';
+import { SEAT_FH, SEAT_FW, SEAT_LEVELS, SEAT_VARIANTS, paintSeat, seatsAtlas } from '../../src/art/arena-nt/crowd';
 import { ALL_STANDS, SEATS, feetY, rowRange } from '../../src/view/board-nt/seats';
 
 const PALSET = new Set<number>(Object.values(PAL));
@@ -69,9 +69,9 @@ describe('stands painter', () => {
     }
     const atlas = paintStandsAtlas().canvas;
     bytes += atlas.w * atlas.h * 4;
-    const crowd = crowdAtlas().canvas;
-    bytes += crowd.w * crowd.h * 4;
-    // stands atlas + 3 bodies + crowd atlas: plan budget (docs/v3/ARENA_NEON_TOWER.md §10) ≈ 0.7 MB, hard cap 0.9 MB
+    const seats = seatsAtlas().canvas;
+    bytes += seats.w * seats.h * 4;
+    // stands atlas + 3 bodies + seats atlas (no spectator atlas any more): plan budget (docs/v3/ARENA_NEON_TOWER.md §10) ≈ 0.7 MB, hard cap 0.9 MB
     expect(bytes / 1048576).toBeLessThan(0.9);
   });
 
@@ -87,19 +87,42 @@ describe('stands painter', () => {
   });
 });
 
-describe('crowd atlas', () => {
-  it('is palette-only, alpha-free, deterministic, with a dark outline around every spectator', () => {
-    const a = crowdAtlas().canvas;
-    expect(a.w).toBe(CROWD_COLS * CROWD_FW);
-    expect(a.h).toBe(CROWD_LOOKS * CROWD_FH);
+describe('empty seats (no spectators: owner decision)', () => {
+  it('seat atlas is tiny, palette-only, alpha-free and deterministic', () => {
+    const a = seatsAtlas().canvas;
+    expect(a.w).toBe(SEAT_LEVELS * SEAT_FW);
+    expect(a.h).toBe(2 * SEAT_VARIANTS * SEAT_FH);
+    expect(a.w * a.h * 4).toBeLessThan(16 * 1024);
     expect(check(a)).toEqual({ off: 0, partial: 0 });
-    // each seated frame has outline pixels (night0) on its left edge column band
-    let outlined = 0;
-    for (let look = 0; look < CROWD_LOOKS; look++) {
-      let n = 0;
-      for (let y = 0; y < CROWD_FH; y++) for (let x = 0; x < CROWD_FW; x++) if (a.get(x, look * CROWD_FH + y) === PAL.night0) n++;
-      if (n > 10) outlined++;
+    for (const team of [0, 1] as const) for (let v = 0; v < SEAT_VARIANTS; v++) expect(same(paintSeat(team, v, 2), paintSeat(team, v, 2))).toBe(true);
+  });
+
+  it('LED levels change the light, never the seat shape, and are team-coloured', () => {
+    for (const team of [0, 1] as const)
+      for (let v = 0; v < SEAT_VARIANTS; v++) {
+        const off = paintSeat(team, v, 0);
+        for (let l = 1; l < SEAT_LEVELS; l++) {
+          const on = paintSeat(team, v, l);
+          let diff = 0;
+          for (let y = 0; y < SEAT_FH; y++)
+            for (let x = 0; x < SEAT_FW; x++) {
+              expect(on.isOpaque(x, y)).toBe(off.isOpaque(x, y));
+              if (on.get(x, y) !== off.get(x, y)) diff++;
+            }
+          expect(diff).toBeGreaterThan(0);
+          if (l < 3) expect(diff).toBeLessThanOrEqual(12);
+        }
+        const lit = paintSeat(team, v, 2).get(1, 2);
+        expect(lit).toBe(team === 0 ? PAL.cyan3 : PAL.crim3);
+      }
+  });
+
+  it('a seat shows above the railing (the rail hides only the legs)', () => {
+    for (let v = 0; v < SEAT_VARIANTS; v++) {
+      const c = paintSeat(0, v, 1);
+      let above = 0;
+      for (let y = 0; y < SEAT_FH - 4; y++) for (let x = 0; x < SEAT_FW; x++) if (c.isOpaque(x, y)) above++;
+      expect(above).toBeGreaterThan(25);
     }
-    expect(outlined).toBe(CROWD_LOOKS);
   });
 });

@@ -553,3 +553,59 @@ describe('ShowClock: shake and hologram time', () => {
     expect(v3.clock.fxScale).toBe(0.35);
   });
 });
+
+describe('ShowClock: v3 presentation tempo (docs/v3/TEMPO.md)', () => {
+  it('defaults to 1 and leaves the scales untouched (v1 / v2 never set it)', () => {
+    const { sc, clock } = mk();
+    clock.setSpeed(2);
+    expect(clock.tempo).toBe(1);
+    expect(sc.scales).toEqual([2, 2, 2]);
+    expect(clock.flowScale).toBe(2);
+    expect(clock.snapshot().tempo).toBe(1);
+  });
+
+  it('tempo t runs the show t times longer, with the speed setting still on top', () => {
+    const { sc, clock } = mk();
+    clock.setTempo(1.35);
+    expect(sc.scales[0]).toBeCloseTo(1 / 1.35, 9);
+    clock.setSpeed(3);
+    expect(sc.scales[0]).toBeCloseTo(3 / 1.35, 9);
+    expect(clock.flowScale).toBeCloseTo(3 / 1.35, 9);
+    const n0 = clock.now;
+    clock.setSpeed(1);
+    sc.frames(60); // 1 s of loop time
+    expect(clock.now - n0).toBeCloseTo(1000 / 1.35, 6);
+    clock.setTempo(1);
+    expect(sc.scales).toEqual([1, 1, 1]);
+  });
+
+  it('a hit-stop holds for ms × the freeze factor of real time; the speed comes back divided by the tempo', async () => {
+    const { sc, clock } = mk();
+    clock.setTempo(1.35, 1.35 * 1.15);
+    const p = clock.freeze(100);
+    expect(sc.scales).toEqual([0, 0, 0]);
+    expect(clock.flowScale).toBeCloseTo(1 / 1.35, 9);
+    const at = await resolvesAt(sc, p);
+    const want = 100 * 1.35 * 1.15;
+    expect(at).toBeGreaterThanOrEqual(want);
+    expect(at).toBeLessThan(want + DT + 1e-6);
+    expect(sc.scales[0]).toBeCloseTo(1 / 1.35, 9);
+  });
+
+  it('back to tempo 1: freezes are their plain ms again', async () => {
+    const { sc, clock } = mk();
+    clock.setTempo(1.5);
+    clock.setTempo(1);
+    const at = await resolvesAt(sc, clock.freeze(100));
+    expect(at).toBeGreaterThanOrEqual(100);
+    expect(at).toBeLessThan(100 + DT + 1e-6);
+  });
+
+  it('dispose resets the tempo', () => {
+    const { sc, clock } = mk();
+    clock.setTempo(2);
+    sc.events.emit('shutdown');
+    expect(sc.scales).toEqual([1, 1, 1]);
+    expect(clock.tempo).toBe(1);
+  });
+});

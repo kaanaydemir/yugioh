@@ -428,6 +428,9 @@ geçişinden sonra `shots/v3/a2f/soundfix/measure-v3.json` ile yeniden doğrulan
   saldıranın toparlanmasıyla paralel yürür (A2 düzeltme r1 #3).
 - **SÜ-3** Hızlandırma (2× / 3×) sanat kalitesini düşürmez: kareler atlanmaz, sahne saatiyle
   kısalır. İşaretler ve sesler yine kendi karelerinde gelir (§7).
+- **SÜ-4** Tablodaki bütçeler sahne saatidir. Oyunda sinematikler v3 tempo'suyla (1,35×, hit-stop
+  ≈ 1,55×) oynar; oyun saatiyle ölçülen sınır = bütçe × 1,45. Ayrıntı ve ölçümler:
+  [`TEMPO.md`](TEMPO.md). `&tempo=1` eski hızı verir.
 
 ---
 

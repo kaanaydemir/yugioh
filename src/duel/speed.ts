@@ -3,11 +3,47 @@
 // clock (src/duel/showclock.ts) every frame; the clock owns the time scales, so a hit-stop or the
 // menu pause holds the speed and gives it back as set (no save / restore, no one-frame drift).
 // The slow-motion countdown is real time, like before, but waits while the duel menu pauses.
+//
+// The v3 look's presentation tempo (docs/v3/TEMPO.md): while `tempoWhen()` holds (DuelController:
+// a cinematic is playing) the clock gets tempo = V3_TEMPO, so the whole show runs V3_TEMPO times
+// longer (scene time, sprite anims, hit-stops) with the speed setting still on top; the player's
+// own input between cinematics stays at the plain speed. A slow motion started inside a cinematic
+// lasts tempo times longer too (its countdown counts show-paced real time). v1 / v2: V3_TEMPO = 1,
+// nothing changes.
 
 import Phaser from 'phaser';
 import { showClock, type ShowClock } from './showclock';
+import { LOOK_V3 } from '../view/layout';
 
 export const FAST_FORWARD = 3;
+
+/** The v3 look's default presentation tempo: every cinematic beat lasts this many times longer. */
+export const V3_TEMPO_DEFAULT = 1.35;
+
+/** On top of the tempo: a hit-stop (the impact frame) holds this much longer still (v3 only). */
+export const V3_HIT_HOLD = 1.15;
+
+/**
+ * The tempo of this page: V3_TEMPO_DEFAULT in the v3 look (`&tempo=1` turns it off, `&tempo=1.5`
+ * tries another; clamped to 0.5–3), always 1 without the look switch.
+ */
+export const V3_TEMPO: number = detectTempo();
+
+function detectTempo(): number {
+  if (!LOOK_V3) return 1;
+  try {
+    if (typeof location !== 'undefined' && typeof URLSearchParams !== 'undefined') {
+      const p = new URLSearchParams(location.search).get('tempo');
+      if (p !== null) {
+        const v = Number(p);
+        if (Number.isFinite(v) && v > 0) return Math.min(3, Math.max(0.5, v));
+      }
+    }
+  } catch {
+    /* no URL: default */
+  }
+  return V3_TEMPO_DEFAULT;
+}
 
 export class SpeedControl {
   readonly scene: Phaser.Scene;
@@ -18,6 +54,10 @@ export class SpeedControl {
   private pointerHeld = false;
   /** Fast-forward only allowed while this returns true (e.g. while a cinematic plays). */
   canHold: () => boolean = () => true;
+  /** The v3 tempo applies only while this returns true (DuelController: while a cinematic plays). */
+  tempoWhen: () => boolean = () => false;
+  /** The tempo used while tempoWhen() holds (V3_TEMPO; 1 without the look switch). */
+  tempo: number = V3_TEMPO;
   onChange: ((k: number) => void) | null = null;
   private last = 0;
   private slow = 1;
@@ -47,7 +87,8 @@ export class SpeedControl {
     scene.input.on(Phaser.Input.Events.GAME_OUT, this.release);
     const upd = (_t: number, dt: number) => {
       if (this.slowLeft > 0 && !this.clock.paused) {
-        this.slowLeft -= dt;
+        const t = this.clock.tempo;
+        this.slowLeft -= t === 1 ? dt : dt / t;
         if (this.slowLeft <= 0) this.slow = 1;
         else if (this.slowLeft < 250) this.slow = Math.min(1, this.slow + (1 - this.slow) * (dt / Math.max(16, this.slowLeft)));
       }
@@ -100,6 +141,10 @@ export class SpeedControl {
   private apply(): void {
     // during a hit-stop / the menu pause the clock stays at 0 and uses this when time flows again
     const k = this.value;
+    if (this.tempo !== 1) {
+      const on = this.tempoWhen();
+      this.clock.setTempo(on ? this.tempo : 1, on ? this.tempo * V3_HIT_HOLD : 1);
+    }
     this.clock.setSpeed(k, this.userValue);
     if (k !== this.last) {
       this.last = k;
