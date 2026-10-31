@@ -23,6 +23,7 @@ import { LOOK_V3 } from '../../view/layout';
 import { setCombatSfx } from '../../vfx/combat';
 import { hitSfxName } from '../../audio/v3/materials';
 import { voiceSounds } from '../../audio/v3/voices';
+import { HERON_VOICE } from '../../audio/v3/reed_heron';
 import type { MaterialId } from '../../art/materials';
 import { v3Recipe } from '../../presentation/registry';
 import type { BlowKind } from './blow';
@@ -187,6 +188,7 @@ export const CHARACTER_SOUNDS: Partial<Record<CardId, CharacterSounds>> = {
     reviveGather: 'wyrmReviveGather',
     reviveLand: 'wyrmReviveLock',
   },
+  reed_heron: HERON_VOICE,
   abyss_magus: {
     roar: 'magusCall',
     arrive: 'magusPresence',
