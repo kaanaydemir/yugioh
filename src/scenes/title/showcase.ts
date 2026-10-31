@@ -4,7 +4,7 @@
 // Everything lives in world space (it drifts with the title camera).
 
 import Phaser from 'phaser';
-import { CARDS, MONSTER_IDS, isMonster, type Attribute, type MonsterId } from '../../data/cards';
+import { CARDS, MONSTER_IDS, isMonster, isRetired, type Attribute, type MonsterId } from '../../data/cards';
 import { monsterArt } from '../../art/monsters';
 import { ATTRIBUTE_RAMP, PAL, PLAYER_COLOR, RAMPS } from '../../art/palette';
 import { PixelCanvas, mulberry32 } from '../../art/pixel';
@@ -198,7 +198,7 @@ export class Showcase {
       if (!present.has(o.id) && free.some((f) => f.player === o.slot.player && f.idx === o.slot.idx)) return o;
     }
     if (this.queue.length === 0) {
-      this.queue = [...MONSTER_IDS];
+      this.queue = MONSTER_IDS.filter((m) => !isRetired(m));
       for (let i = this.queue.length - 1; i > 0; i--) {
         const j = Math.floor(this.rnd() * (i + 1));
         [this.queue[i], this.queue[j]] = [this.queue[j], this.queue[i]];

@@ -4,7 +4,7 @@
 // over a rune circle with their element effects. Card text below the grid.
 
 import Phaser from 'phaser';
-import { ALL_CARD_IDS, ATTRIBUTE_NAMES, CARDS, isMonster, tributesFor, type Attribute, type CardDef, type CardId, type MonsterId } from '../../data/cards';
+import { COLLECTIBLE_CARD_IDS, ATTRIBUTE_NAMES, CARDS, isMonster, tributesFor, type Attribute, type CardDef, type CardId, type MonsterId } from '../../data/cards';
 import { ANIM_SHEEN, CARD_GLOW, CARD_SHEEN, cardArtKey, cardFaceKey } from '../../art/cards';
 import { monsterArt } from '../../art/monsters';
 import { ATTRIBUTE_RAMP, KIND_RAMP, PAL, RAMPS, type Ramp } from '../../art/palette';
@@ -137,7 +137,7 @@ interface AnimChip {
 
 export class GalleryOverlay extends Overlay {
   private sel = 0;
-  private readonly ids: CardId[] = [...ALL_CARD_IDS];
+  private readonly ids: CardId[] = [...COLLECTIBLE_CARD_IDS];
   private readonly thumbs: Thumb[] = [];
   private selGlow!: Phaser.GameObjects.Image;
   private big!: Phaser.GameObjects.Image;
@@ -168,7 +168,7 @@ export class GalleryOverlay extends Overlay {
 
   constructor(scene: Phaser.Scene, initial?: string) {
     super(scene, W, H, 'Kart Galerisi', 'trap');
-    this.initial = initial && (ALL_CARD_IDS as string[]).includes(initial) ? (initial as CardId) : null;
+    this.initial = initial && (COLLECTIBLE_CARD_IDS as string[]).includes(initial) ? (initial as CardId) : null;
   }
 
   private get sx(): number {
