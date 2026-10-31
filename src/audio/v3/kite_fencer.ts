@@ -312,8 +312,11 @@ const KITE_RECIPES = {
     play(v) {
       clothSnap(v, 0, 0.55, 1600, 0.02, 2.5);
       bamboo(v, 0.003, 0.3, 2);
-      for (let i = 0; i < 5; i++) v.tone('sine', 4000 + (i % 2) * 260 - i * 40, { t: 0.02 + i * 0.03, g: perc(0.035 * (1 - i * 0.16), 0.022, 0.0005) });
-      thump(v, 0, 220, 120, 0.11, 0.06, { drive: 1.3 });
+      for (let i = 0; i < 5; i++) v.tone('sine', 4000 + (i % 2) * 260 - i * 40, { t: 0.02 + i * 0.03, g: perc(0.045 * (1 - i * 0.16), 0.022, 0.0005) });
+      // the heavier blow: a second, looser fabric snap (the cloth slapping back) rather than more low end
+      clothSnap(v, 0.045, 0.22, 2100, 0.016, 3);
+      // the spars knock together under the blow (a second, lower bamboo click), no low thud: that is the robe's
+      bamboo(v, 0.05, 0.16, 1);
     },
   },
   kfnGuardWrap: {

@@ -93,6 +93,19 @@ function attackCount(s: StrikeArgs): number {
   return slot?.attacksThisTurn ?? 1;
 }
 
+/** Does the attacker die in this battle (it then stays at the contact point: the battle takes the unit over)? */
+function attackerLoses(s: StrikeArgs): boolean {
+  const r = s.ctx.ev.result;
+  return r === 'attackerDestroyed' || r === 'bothDestroyed';
+}
+
+/** A losing attacker: hold the contact pose until the battle claims the unit for its death (never hop home dead). */
+async function yieldToDeath(sc: Phaser.Scene, u: MonsterUnit): Promise<void> {
+  watchDeath(sc, u);
+  let g = 0;
+  while (!u.claimed && !u.retired && g++ < 16) await sleep(sc, 30);
+}
+
 /** Hold one sheet frame (MonsterUnit.pose; ignored while another cinematic claims the unit). */
 function show(u: MonsterUnit, anim: AnyMonsterAnim, f: number): void {
   if (u.sprite.active && !u.locked) u.pose(anim, f);
@@ -269,6 +282,10 @@ async function pike(s: StrikeArgs, nth: number): Promise<void> {
   play('kfnTsst', { pan: panAt(at.x), volume: 1 });
   void lightFlash(sc, at.x, at.y, PAL.white, 10, 120, { floorY: s.toGround.y, intensity: 0.7 });
   void stopTime(sc, 60);
+  if (attackerLoses(s)) {
+    await yieldToDeath(sc, u);
+    return;
+  }
   await sleep(sc, Math.round(u.frameMs('attack', 5) * 0.5));
   if (u.claimed || u.retired) return; // a loser is taken over on the contact frame (battle.ts)
   await backHops(s, stop, home, depth0, nth, pan);
@@ -334,6 +351,11 @@ async function blockedPike(s: StrikeArgs, at: XY, stop: XY, home: XY, depth0: nu
   } finally {
     img.destroy();
     if (spr.active) spr.setVisible(true);
+  }
+  // a stronger foe: the bowed blade was his last move — he dies where he stands
+  if (attackerLoses(s)) {
+    await yieldToDeath(sc, u);
+    return;
   }
   // he skids back (the recoil pose belongs to the battle's counter while it plays) — 2 floor scuffs
   const from: XY = { x: spr.x, y: spr.y };
@@ -465,6 +487,18 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
   if (s.blocked) void glanceSparks(sc, cutAt, sgn, slitDepth);
   void cutSlit(sc, cutAt, sgn, slitDepth, { fibres: !s.blocked, rnd });
   void lightFlash(sc, cutAt.x, cutAt.y, PAL.white, 12, 140, { floorY: s.toGround.y, intensity: 0.6 });
+  if (attackerLoses(s)) {
+    // the cut failed and kills him: the wind dies, he drops out of the swing onto the floor beside the target
+    trail.stop();
+    str.destroy();
+    watchDeath(sc, u);
+    const h0 = u.lift;
+    await animate(sc, 110, (t) => at(bottom.g, h0 * (1 - t * t)));
+    at(bottom.g, 0);
+    show(u, 'special', 12);
+    await yieldToDeath(sc, u);
+    return;
+  }
   await sleep(sc, Math.round(KT[9] * 0.6));
   if (u.claimed || u.retired) {
     trail.stop();
@@ -565,6 +599,8 @@ registerCardHook(
         fade(['impactHeavy', 'impactLight', 'shieldBlock'], 12);
       });
       const pan = panAt(u.home.x);
+      // the death pose starts with the recoil, before the destroy event: follow it from the contact frame
+      if (lethal) watchDeath(sc, u);
       if (guard) play('kfnGuardWrap', { pan, volume: lethal ? 1 : 0.9 });
       else play(lethal ? 'kfnStruckHeavy' : 'kfnStruck', { pan, volume: lethal ? 1 : 0.9 });
     };
@@ -685,7 +721,10 @@ registerCardHook(
 // ================================================================ death: the string snaps, the cloak flies off screen
 
 /** Follow the recipe's death pose (deathV3) frame by frame and add the card's own beats. */
+const deathWatched = new WeakSet<MonsterUnit>();
 function watchDeath(scene: Phaser.Scene, u: MonsterUnit): void {
+  if (deathWatched.has(u)) return;
+  deathWatched.add(u);
   const sgn = sgnOf(u);
   const flip = u.flipX;
   const light = lightOf(u);
@@ -704,12 +743,12 @@ function watchDeath(scene: Phaser.Scene, u: MonsterUnit): void {
     if (active && fi.anim === 'death') {
       // the string pulls taut as the death begins (the pose may join at f2 straight from the recoil: the tension
       // still sounds before the snap)
-      if (!taut) {
+      if (!taut && fi.frame >= 1) {
         taut = true;
         tautAt = el;
         play('kfnDeathTaut', { pan });
       }
-      if (!snapped && fi.frame >= 2 && el - tautAt >= 60) {
+      if (taut && !snapped && fi.frame >= 2 && el - tautAt >= 60) {
         snapped = true;
         play('kfnSnap', { pan });
         // the break point: halfway between the kite's tail and the pin (death f2: pin at AX − 22, GY)
@@ -722,7 +761,9 @@ function watchDeath(scene: Phaser.Scene, u: MonsterUnit): void {
           const dn = { x: b.x - m.x, y: b.y - m.y };
           const nu = Math.hypot(up.x, up.y) || 1;
           const nd = Math.hypot(dn.x, dn.y) || 1;
-          void snapWhips(scene, m, { x: up.x / nu, y: up.y / nu }, { x: dn.x / nd, y: dn.y / nd }, u.sprite.depth + 0.3);
+          // in front of the units (an attacker standing on the tile must not hide the break), with a 1-frame spark of light
+          void snapWhips(scene, m, { x: up.x / nu, y: up.y / nu }, { x: dn.x / nd, y: dn.y / nd }, Math.max(u.sprite.depth + 0.3, DEPTH.FX + 2));
+          void lightFlash(scene, m.x, m.y, PAL.white, 7, 90, { floorY: u.home.y, intensity: 0.55 });
         }
       }
       if (!flown && fi.frame >= 5) {

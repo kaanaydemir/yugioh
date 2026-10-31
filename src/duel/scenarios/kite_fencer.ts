@@ -87,6 +87,20 @@ const S: Record<string, Scenario> = {
     stage: { zones: 5, phase: 'battle', p0: { monsters: [N, N, { id: 'kite_fencer', attacks: 1 }, N, N] }, p1: { monsters: [N, N, { id: 'stone_sentinel', position: 'attack' }, N, N] } },
     steps: [attack(2, 2)],
   },
+  // The rules forbid "1st attack direct, then the 2nd at a monster" (legal.ts: a direct attack only when the opponent
+  // has nothing to attack, the 2nd attack only at a monster, and no monster can appear in our battle phase). The
+  // nearest legal sequence: the direct fleche lights the panel (one attack left, nothing to spend it on), then the
+  // turn ends and the panel dims out in its 2 quiet steps on the phase change.
+  kfnDirectEnd: {
+    desc: 'Doğrudan saldırı, panel yanar; 2. saldırıya hedef yok: tur biter, panel 2 adımda söner',
+    stage: { zones: 5, phase: 'battle', p0: { monsters: [N, N, 'kite_fencer', N, N] } },
+    steps: [attack(2, null), { ui: 'wait', ms: 1400 }, { type: 'endTurn', player: 0 }],
+  },
+  kfnSecondLoser: {
+    desc: '2. saldırı güçlü hedefe (volt_lizard 1500): kesiş tutmaz, salınımdan yere düşer ve ölür',
+    stage: { zones: 5, phase: 'battle', p0: { monsters: [N, N, { id: 'kite_fencer', attacks: 1 }, N, N] }, p1: { monsters: [N, N, { id: 'volt_lizard', position: 'attack' }, N, N] } },
+    steps: [attack(2, 2)],
+  },
   kfnSecondHit: {
     desc: '2. saldırı dayanan hedefe (thorn_lurker savunmada, DEF 800): kesiş tutulur',
     stage: { zones: 5, phase: 'battle', p0: { monsters: [N, N, { id: 'kite_fencer', attacks: 1 }, N, N] }, p1: { monsters: [N, N, { id: 'thorn_lurker', position: 'defense' }, N, N] } },
