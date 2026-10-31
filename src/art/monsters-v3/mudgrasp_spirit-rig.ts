@@ -148,8 +148,8 @@ export const NEUTRAL: Pose = {
   nc: 0,
   nd: -1,
   ndh: 0,
-  fx: 28,
-  fy: -8,
+  fx: 33,
+  fy: -3,
   fc: 0.2,
   aa: -100,
   ab: -9,
@@ -159,7 +159,7 @@ export const NEUTRAL: Pose = {
   bb: 34,
   bl: 0,
   bc: 0.4,
-  rx: -22,
+  rx: -28,
   ry: -2,
   rc: 0.5,
   ball: 0,
@@ -186,8 +186,15 @@ export const pose = (o: Partial<Pose>): Pose => ({ ...NEUTRAL, ...o });
 
 // ---------------------------------------------------------------- tones
 
+// Value ladder (owner feedback round 2: "no blurry brown mass at 1x"): the body mound is the DARK mass (big lit
+// plane earth2, mid earth1, shade earth0, wet glints earth3); the near arms are one value LIGHTER (earth3 / earth2 /
+// earth1) so they read as separate limbs over it, split by earth0 creases; far arms sit back a value (earth2 / earth1
+// / earth0); the mud hood behind the mask is the darkest (earth1 / earth0) so the pale clay mask (stone4 / stone3,
+// ink-separated) is the lightest big value, and the violet eyes are the brightest accent of all.
 const MUD: Tones = { L: PAL.earth2, M: PAL.earth1, S: PAL.earth0 };
-const FAR: Tones = { L: PAL.earth1, M: PAL.earth0, S: PAL.earth0 };
+const ARM: Tones = { L: PAL.earth3, M: PAL.earth2, S: PAL.earth1 };
+const FAR: Tones = { L: PAL.earth2, M: PAL.earth1, S: PAL.earth0 };
+const HOOD: Tones = { L: PAL.earth1, M: PAL.earth0, S: PAL.earth0 };
 const GLOSS = PAL.earth3;
 const CREASE = PAL.earth0;
 
@@ -212,6 +219,10 @@ export interface Skel {
   rearRoot: Pt;
   elR: Pt;
   wR: Pt;
+  /** the second (far) rear arm, a value darker, arching behind the near rear arm */
+  rear2Root: Pt;
+  elR2: Pt;
+  wR2: Pt;
   core: Pt;
   eyeN: Pt;
 }
@@ -238,16 +249,16 @@ export function skeleton(o: Pose): Skel {
   const m = clamp(o.melt, 0, 1);
   const bxx = AX + o.bx + sh;
   const base: Pt = [bxx - 2, GY - 6 + o.sink];
-  const P1: Pt = [bxx - 12, GY - 37 + o.sink - o.hump];
+  const P1: Pt = [bxx - 11, GY - 42 + o.sink - o.hump];
   const P2: Pt = [AX + 9 + o.lean + sh, GY - 30 + o.sink - o.hump * 0.5];
   const sp = (t: number): Pt => {
     const q = bez(base, P1, P2, t);
     return [q[0] + (base[0] - q[0]) * m * 0.35, base[1] + (q[1] - base[1]) * (1 - 0.72 * m)];
   };
-  const rad = (t: number) => (t < 0.5 ? 12 - 4 * t : 12.5 - 5 * t) * (1 - 0.3 * m) + o.swell + m * 4 * (1 - t);
+  const rad = (t: number) => (t < 0.5 ? 10.5 - 4 * t : 11 - 5 * t) * (1 - 0.3 * m) + o.swell + m * 4 * (1 - t);
   const neck = sp(1);
   const head: Pt = [neck[0] + 6 + o.hx, neck[1] - 2 + o.hy];
-  const maskO: Pt = o.maskFree > 0 ? [AX + o.mx, GY + o.my] : [rnd(head[0]) - 4 + o.mx, rnd(head[1]) - 9 + o.my];
+  const maskO: Pt = o.maskFree > 0 ? [AX + o.mx, GY + o.my] : [rnd(head[0]) - 5 + o.mx, rnd(head[1]) - 10 + o.my];
   // climb (summon): the arms come straight up out of the mud under their hands; melt (death): the elbows sag
   const cl = clamp(o.climb, 0, 1);
   const under = (sh: Pt, w: Pt): Pt => [sh[0] + (w[0] - 3 - sh[0]) * cl, sh[1] + (GY + 10 - sh[1]) * cl];
@@ -257,23 +268,31 @@ export function skeleton(o: Pose): Skel {
   const wN: Pt = [AX + o.nx, GY + o.ny];
   const shN = under([s85[0] + 1, s85[1] + 9], wN);
   const elN = straight(sag(ik2(shN, wN, 14, 17, o.nb) as Pt), shN, wN);
+  // far front arm: a second spider-leg arch ahead of the near arm (shoulder hidden behind the chest)
   const wF: Pt = [AX + o.fx, GY + o.fy];
-  const shF = under([neck[0] - 6, neck[1] - 3], wF);
-  const elF = straight(sag(ik2(shF, wF, 24, 39, -1) as Pt), shF, wF);
+  const s70 = sp(0.7);
+  const shF = under([s70[0] + 3, s70[1] + 1], wF);
+  const elF = straight(sag(ik2(shF, wF, 21, 24, -1) as Pt), shF, wF);
   const s45 = sp(0.45);
   const rootA: Pt = [s45[0] - 4, s45[1] - rad(0.45) + 4];
-  const crownA = chainPts(rootA, o.aa, o.ab, [7 * o.al, 6 * o.al, 6 * o.al]);
+  const crownA = chainPts(rootA, o.aa, o.ab, [8 * o.al, 7 * o.al, 7 * o.al]);
   const s58 = sp(0.58);
   const rootB: Pt = [s58[0] + 1, s58[1] - rad(0.58) + 3];
   const crownB = chainPts(rootB, o.ba, o.bb, [9 * o.bl, 8 * o.bl, 6 * o.bl]);
+  // rear arms: long arches to the back (elbow up), palms gripping the puddle behind
   const wR: Pt = [AX + o.rx, GY + o.ry];
-  const rearRoot = under([bxx - 14, GY - 9 + o.sink * 0.5], wR);
-  const elR = straight(sag(ik2(rearRoot, wR, 8, 9, -1) as Pt), rearRoot, wR);
+  const s40 = sp(0.4);
+  const rearRoot = under([s40[0] - 7, s40[1] + 2], wR);
+  const elR = straight(sag(ik2(rearRoot, wR, 12, 15, 1) as Pt), rearRoot, wR);
+  const wR2: Pt = [AX + o.rx + 9, GY + o.ry - 4 + (o.ry > 2 ? 0 : 0)];
+  const s52 = sp(0.52);
+  const rear2Root = under([s52[0] - 4, s52[1] - 3], wR2);
+  const elR2 = straight(sag(ik2(rear2Root, wR2, 13, 15, 1) as Pt), rear2Root, wR2);
   const sc = sp(0.4);
   return {
-    base, sp, rad, neck, head, maskO, shN, elN, wN, shF, elF, wF, crownA, crownB, rearRoot, elR, wR,
+    base, sp, rad, neck, head, maskO, shN, elN, wN, shF, elF, wF, crownA, crownB, rearRoot, elR, wR, rear2Root, elR2, wR2,
     core: [rnd(sc[0] + 3), rnd(sc[1] + 2)],
-    eyeN: [maskO[0] + 3, maskO[1] + 5],
+    eyeN: [maskO[0] + 4, maskO[1] + 7],
   };
 }
 
@@ -291,32 +310,51 @@ const layer = () => new PixelCanvas(W, H);
 
 // ---------------------------------------------------------------- the clay mask (hand map; rigid)
 
-// A haniwa-like clay mask: a side plane (toward the viewer's left), b front plane (toward the foe), r brow ridge,
-// h cheek hollow, c chin underside, k the crack, e eye sockets and o the round moaning mouth (their light is painted
-// after the outline). 13 × 17.
+// A haniwa-like clay mask in 3/4 view (facing right): x shape, r the brow ridge (always the lit lip), e the hollow
+// eye sockets (near eye wide, far eye foreshortened), o the round moaning mouth, k the crack. Its tones are NOT a
+// hand-picked map but the normal of a clay ellipsoid (bulging toward the foe) · the key light → stone4 / stone3 /
+// stone2, so P1 and P2 are each lit from their own top-left (IŞ-2); it is rigid (whole-px moves, never rotates) and
+// ink-separated from the dark mud hood so it pops as the lightest big value. 15 × 18.
 const MASK = [
-  '...aabbbbb...',
-  '..aabbbbbbbb.',
-  '.aabbbbbbkbbb',
-  '.aabbbbbkbbbb',
-  'aarrrrrrkrrrb',
-  'aaeeebbbkbeeb',
-  'aaeeebbbbkeeb',
-  'aabbbbbbbkbbb',
-  'aahbbbbbbbkbb',
-  'aahbbbbbbbkhb',
-  'aabbbboobbkbb',
-  '.aabbooookbb.',
-  '.aabbooookbb.',
-  '.aabbboobkbb.',
-  '..aabbbbkbb..',
-  '..aaccccckc..',
-  '....ccccc....',
+  '....xxxxxx.....',
+  '..xxxxxxxxxx...',
+  '.xxxxxxxxxkxx..',
+  '.xxxxxxxxkxxxx.',
+  'xxxxxxxxxkxxxxx',
+  'xxrrrrrxxkxrrrx',
+  'xxeeeeexxxkeeex',
+  'xxeeeeexxxkeeex',
+  'xxxeeexxxxxkexx',
+  'xxxxxxxxxxxkxxx',
+  'xxxxxxxxxxxxkxx',
+  '.xxxxxoooxxkxx.',
+  '.xxxxoooooxkxx.',
+  '.xxxxoooooxxkx.',
+  '..xxxxoooxxkx..',
+  '..xxxxxxxxxkx..',
+  '...xxxxxxxxx...',
+  '.....xxxxx.....',
 ];
-export const MASK_W = 13;
-export const MASK_H = 17;
-const MASK_KEY_L: Record<string, number> = { a: PAL.stone4, b: PAL.stone3, r: PAL.stone4, h: PAL.stone2, c: PAL.stone2, k: PAL.stone1, e: PAL.void0, o: PAL.void0 };
-const MASK_KEY_R: Record<string, number> = { a: PAL.stone2, b: PAL.stone4, r: PAL.stone4, h: PAL.stone3, c: PAL.stone2, k: PAL.stone1, e: PAL.void0, o: PAL.void0 };
+export const MASK_W = 15;
+export const MASK_H = 18;
+/** eye sockets (map coords): near eye x 2..6 rows 6..8, far eye x 11..13 rows 6..8 */
+const EYE_N = { x0: 2, x1: 6, y: 6 };
+const EYE_F = { x0: 11, x1: 13, y: 6 };
+const MOUTH = { x: 7, y: 12 };
+
+function maskTone(ch: string, x: number, y: number, light: Light): number {
+  if (ch === 'e' || ch === 'o') return PAL.void0;
+  if (ch === 'k') return PAL.stone1;
+  if (ch === 'r') return PAL.stone4;
+  const nx = (x + 0.5 - 8.3) / 8.2;
+  const ny = (y + 0.5 - 8.2) / 9.6;
+  const nz = Math.sqrt(Math.max(0, 1 - Math.min(1, nx * nx + ny * ny)));
+  const [lx, ly, lz] = light.v;
+  const d = nx * lx + ny * ly + nz * lz;
+  // under the brow ridge and under the chin the clay turns away
+  if (y === 16 || y === 17) return d > 0.55 ? PAL.stone3 : PAL.stone2;
+  return d > 0.42 ? PAL.stone4 : d > 0.05 ? PAL.stone3 : PAL.stone2;
+}
 
 // ---------------------------------------------------------------- hands
 
@@ -392,19 +430,26 @@ function drawPuddle(f: Frame): PixelCanvas {
   return q;
 }
 
-function drawRearArm(f: Frame): void {
+function drawRearArms(f: Frame): void {
   const { sk, o, light } = f;
+  const k = 1 - 0.35 * o.melt;
+  // the far rear arm first (a value darker), then the near rear arm over it
+  const q2 = layer();
+  limb(q2, [sk.rear2Root, sk.elR2, sk.wR2], 4.5 * k, 3.2 * k, FAR.M);
+  hand(q2, sk.wR2, 180 + 30, Math.min(1, o.rc + 0.2), FAR.M, undefined, 0.8, 2);
+  bands(q2, FAR, light, 1, 2);
+  f.comp.add(q2, Part.rear, { out: CREASE });
   const q = layer();
-  limb(q, [sk.rearRoot, sk.elR, sk.wR], 6 * (1 - 0.35 * o.melt), 4 * (1 - 0.3 * o.melt), FAR.M);
-  hand(q, sk.wR, 180 + 12, o.rc, FAR.M, undefined, 0.9);
-  bands(q, FAR, light, 2, 2);
+  limb(q, [sk.rearRoot, sk.elR, sk.wR], 5.5 * k, 3.6 * k, ARM.M);
+  hand(q, sk.wR, 180 + 12, o.rc, ARM.M, undefined, 0.9);
+  bands(q, ARM, light, 2, 2);
   f.comp.add(q, Part.rear, { out: CREASE });
 }
 
 function drawCrown(f: Frame, pts: Pt[], curl: number, part: Part, t: Tones, handDir: number | null, scale = 1): void {
   if (scale < 0.1) return;
   const q = layer();
-  limb(q, pts, 6, 4, t.M);
+  limb(q, pts, 5, 3.4, t.M);
   const tip = pts[pts.length - 1];
   const prev = pts[pts.length - 2];
   const dir = handDir ?? Math.atan2(tip[1] - prev[1], tip[0] - prev[0]) / DEG;
@@ -416,7 +461,7 @@ function drawCrown(f: Frame, pts: Pt[], curl: number, part: Part, t: Tones, hand
 function drawFarArm(f: Frame): void {
   const { sk, o, light } = f;
   const q = layer();
-  limb(q, [sk.shF, sk.elF, sk.wF], 6 * (1 - 0.35 * o.melt), 4 * (1 - 0.3 * o.melt), FAR.M);
+  limb(q, [sk.shF, sk.elF, sk.wF], 5.5 * (1 - 0.35 * o.melt), 3.6 * (1 - 0.3 * o.melt), FAR.M);
   const flat = sk.wF[1] > GY - 9;
   hand(q, sk.wF, flat ? 8 : Math.atan2(sk.wF[1] - sk.elF[1], sk.wF[0] - sk.elF[0]) / DEG, o.fc, FAR.M);
   bands(q, FAR, light, 2, 2);
@@ -469,7 +514,7 @@ function drawTorso(f: Frame): void {
       }
     });
   }
-  blobShade(q, blobs, MUD, light, { hi: GLOSS, hiAt: 0.97, lit: 0.62, shade: -0.05 });
+  blobShade(q, blobs, MUD, light, { hi: GLOSS, hiAt: 0.9, lit: 0.6, shade: 0.22 });
   despeckle(q, 2);
   for (const [x, y] of drops) q.rect(rnd(x), rnd(y), 2, 2, MUD.L);
   // runnels: short wet streaks slumping down the mid / shade planes (MA-2: the lit plane stays calm)
@@ -488,9 +533,24 @@ function drawHead(f: Frame): void {
   const { sk, light } = f;
   const q = layer();
   const [hx, hy] = [rnd(sk.head[0]), rnd(sk.head[1])];
-  q.ellipse(hx, hy, 7, 7, MUD.M);
+  // the mud COWL the mask peers out of: a lit lip of mud arching over and behind the mask (one value lighter than the
+  // mound, it frames the face) around a deep violet-black cavity open toward the foe — pale clay in a dark hole reads
+  // at 1x as the face of the creature
+  const cw = { x: hx - 0.5, y: hy - 3.5, rx: 10, ry: 11 };
+  q.ellipse(rnd(cw.x), rnd(cw.y), cw.rx, cw.ry, MUD.M);
   q.ellipse(hx + 3, hy + 6, 5, 3, MUD.M);
-  blobShade(q, [{ x: hx + 0.5, y: hy + 0.5, rx: 7.5, ry: 7.5 }, { x: hx + 3.5, y: hy + 6.5, rx: 5.5, ry: 3.5 }], MUD, light);
+  // the cowl's drooping tip, sagging back over the hump
+  q.poly([[hx - 3, hy - 13.5], [hx - 9, hy - 15.5], [hx - 13, hy - 12], [hx - 8, hy - 9]], MUD.M);
+  blobShade(q, [{ x: cw.x + 0.5, y: cw.y + 0.5, rx: cw.rx + 0.5, ry: cw.ry + 0.5 }, { x: hx + 3.5, y: hy + 6.5, rx: 5.5, ry: 3.5 }], MUD, light, { lit: 0.55, shade: 0.15 });
+  despeckle(q, 2);
+  // the cavity: void-black, a 2-px ring of it shows around the mask's top and back
+  const cav = { x: hx + 2.5, y: hy - 1.5, rx: 8.5, ry: 10.5 };
+  for (let y = rnd(cav.y - cav.ry); y <= rnd(cav.y + cav.ry); y++)
+    for (let x = rnd(cav.x - cav.rx); x <= rnd(cav.x + cav.rx); x++) {
+      const dx = (x + 0.5 - cav.x) / cav.rx;
+      const dy = (y + 0.5 - cav.y) / cav.ry;
+      if (dx * dx + dy * dy <= 1 && q.isOpaque(x, y)) q.set(x, y, dx * dx + dy * dy > 0.8 ? PAL.void1 : PAL.void0);
+    }
   f.comp.add(q, Part.head, { out: CREASE });
 }
 
@@ -498,25 +558,30 @@ function drawMask(f: Frame): void {
   const { sk, o, light } = f;
   if (o.mask <= 0) return;
   const q = layer();
-  q.stamp(MASK, light.side < 0 ? MASK_KEY_L : MASK_KEY_R, sk.maskO[0], sk.maskO[1]);
+  const [ox, oy] = sk.maskO;
+  for (let y = 0; y < MASK_H; y++)
+    for (let x = 0; x < MASK_W; x++) {
+      const ch = MASK[y][x];
+      if (ch !== '.') q.set(ox + x, oy + y, maskTone(ch, x, y, light));
+    }
   // slipped off: it lies in the puddle and sinks below its surface
   if (o.maskFree > 0) for (let y = GY - 2; y < H; y++) for (let x = 0; x < W; x++) q.erase(x, y);
-  f.comp.add(q, Part.mask, { out: CREASE });
+  f.comp.add(q, Part.mask, { out: PAL.ink });
 }
 
 function drawNearArm(f: Frame): void {
   const { sk, o, light } = f;
   const q = layer();
-  limb(q, [sk.shN, sk.elN, sk.wN], 7 * (1 - 0.35 * o.melt), 4.5 * (1 - 0.3 * o.melt), MUD.M);
+  limb(q, [sk.shN, sk.elN, sk.wN], 6 * (1 - 0.35 * o.melt), 3.8 * (1 - 0.3 * o.melt), ARM.M);
   const flat = sk.wN[1] > GY - 8;
   const dir = flat ? 6 : Math.atan2(sk.wN[1] - sk.elN[1], sk.wN[0] - sk.elN[0]) / DEG;
-  hand(q, sk.wN, dir, o.nc, MUD.M, drum(o));
-  bands(q, MUD, light, 2, 2);
+  hand(q, sk.wN, dir, o.nc, ARM.M, drum(o));
+  bands(q, ARM, light, 2, 2);
   // a gloss run on the forearm's lit top
   const mid: Pt = [(sk.elN[0] + sk.wN[0]) / 2, (sk.elN[1] + sk.wN[1]) / 2];
   for (let i = 0; i < 2; i++) {
     const x = rnd(mid[0]) + i - 1;
-    for (let y = rnd(mid[1]) - 4; y <= rnd(mid[1]); y++) if (q.get(x, y) === MUD.L) { q.set(x, y, GLOSS); break; }
+    for (let y = rnd(mid[1]) - 4; y <= rnd(mid[1]); y++) if (q.get(x, y) === ARM.L) { q.set(x, y, PAL.earth4); break; }
   }
   f.comp.add(q, Part.nearArm, { out: CREASE });
   if (o.ball > 0) {
@@ -588,31 +653,40 @@ function eyeLight(f: Frame): void {
   const lit = hot ? PAL.void4 : o.eye > 0.6 ? PAL.void3 : PAL.void2;
   const core = hot ? PAL.white : o.eye > 0.6 ? PAL.void4 : PAL.void3;
   const look = clamp(rnd(o.look), -1, 1);
-  // near eye socket: map x 3..5, rows 5..6 (bigger, toward the viewer); far eye: x 11..12 (foreshortened)
+  // near eye: a 3×2 glowing iris in the wide socket (the hollow rim stays void0), far eye 2×2 (foreshortened)
+  const nx0 = EYE_N.x0 + 1;
+  const fx0 = EYE_F.x0 + 1;
+  const ey = EYE_N.y;
   if (o.lid < 2) {
-    for (let x = 3; x <= 5; x++) {
-      if (o.lid === 0) put(ox + x, oy + 5, lit);
-      put(ox + x, oy + 6, lit);
+    for (let x = nx0; x < nx0 + 3; x++) {
+      if (o.lid === 0) put(ox + x, oy + ey, lit);
+      put(ox + x, oy + ey + 1, lit);
     }
-    put(ox + 4 + look, oy + (o.lid === 0 ? 5 : 6), core);
-    if (o.lid === 0) put(ox + 4 + look, oy + 6, core);
-    for (let x = 11; x <= 12; x++) {
-      if (o.lid === 0) put(ox + x, oy + 5, lit);
-      put(ox + x, oy + 6, o.eye > 0.6 ? PAL.void2 : PAL.void1);
+    put(ox + nx0 + 1 + look, oy + ey + 1, core);
+    if (o.lid === 0) put(ox + nx0 + 1 + look, oy + ey, core);
+    for (let x = fx0; x < fx0 + 2; x++) {
+      if (o.lid === 0) put(ox + x, oy + ey, lit);
+      put(ox + x, oy + ey + 1, o.eye > 0.6 ? PAL.void2 : PAL.void1);
     }
-    if (o.lid === 0) put(ox + 11 + Math.max(0, look), oy + 5, core);
+    if (o.lid === 0) put(ox + fx0 + Math.max(0, look), oy + ey, core);
   } else {
-    for (let x = 3; x <= 5; x++) put(ox + x, oy + 6, PAL.void2);
-    for (let x = 11; x <= 12; x++) put(ox + x, oy + 6, PAL.void1);
+    for (let x = nx0; x < nx0 + 3; x++) put(ox + x, oy + ey + 1, PAL.void2);
+    for (let x = fx0; x < fx0 + 2; x++) put(ox + x, oy + ey + 1, PAL.void1);
   }
-  // blazing: a violet spill on the brow above the eyes and under them
-  if (hot) for (const x of [3, 4, 5, 11, 12]) { put(ox + x, oy + 4, PAL.void3); put(ox + x, oy + 7, PAL.void3); }
+  // blazing: the whole sockets fill with violet, a spill under them
+  if (hot) {
+    for (let x = EYE_N.x0; x <= EYE_N.x1; x++) { put(ox + x, oy + ey, x === EYE_N.x0 || x === EYE_N.x1 ? PAL.void2 : PAL.void3); put(ox + x, oy + ey + 1, x === EYE_N.x0 || x === EYE_N.x1 ? PAL.void2 : PAL.void3); }
+    put(ox + nx0 + 1 + look, oy + ey, PAL.white);
+    put(ox + nx0 + 1 + look, oy + ey + 1, PAL.white);
+    for (let x = EYE_N.x0 + 1; x < EYE_N.x1; x++) put(ox + x, oy + ey + 2, PAL.void2);
+  }
   // the round mouth: a violet glow deep in the hole while it moans (mouth 1…3)
   if (o.mouth > 0.5) {
     const ring = o.mouth > 2.5 ? PAL.void2 : PAL.void1;
-    const core = o.mouth > 2.5 ? PAL.void4 : o.mouth > 1.5 ? PAL.void3 : PAL.void2;
-    for (const [x, y] of [[6, 11], [7, 11], [6, 12], [7, 12]] as const) put(ox + x, oy + y, core);
-    if (o.mouth > 1.5) for (const [x, y] of [[5, 11], [8, 11], [5, 12], [8, 12], [6, 10], [6, 13]] as const) put(ox + x, oy + y, ring);
+    const mc = o.mouth > 2.5 ? PAL.void4 : o.mouth > 1.5 ? PAL.void3 : PAL.void2;
+    const { x: mx, y: my } = MOUTH;
+    for (const [x, y] of [[0, 0], [1, 0], [0, 1], [1, 1]] as const) put(ox + mx - 1 + x, oy + my + y, mc);
+    if (o.mouth > 1.5) for (const [x, y] of [[-2, 0], [1, 0], [-2, 1], [1, 1], [-1, -1], [0, -1], [-1, 2], [0, 2]] as const) put(ox + mx + x, oy + my + y, ring);
   }
 }
 
@@ -640,6 +714,45 @@ function veinLight(f: Frame): void {
         if (body(x, y)) p.set(x, y, hot && k % 3 !== 0 ? PAL.void4 : PAL.void3);
         if (hot && body(x, y + 1) && k % 2 === 0) p.set(x, y + 1, PAL.void2);
       }
+    }
+}
+
+/** two violet cracks through the mound (the spirit's light inside the mud); they breathe with the swell */
+function crackLight(f: Frame): void {
+  const { p, o, sk, comp } = f;
+  if (o.melt > 0.6 || o.sink > 20) return;
+  const body = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H && comp.id[y * W + x] === Part.torso && p.get(x, y) !== PAL.ink;
+  const c1 = sk.sp(0.3);
+  const c2 = sk.sp(0.62);
+  const r1 = sk.rad(0.3);
+  const s = f.light.side < 0 ? 1 : -1;
+  const hot = o.swell > 0.5 || o.vein > 0 ? PAL.void3 : PAL.void2;
+  const cracks: [number, number, number][][] = [
+    // [dx, dy, hot?] relative to a spine sample: a zig-zag with a fork
+    [[0, 0, 0], [1, 1, 0], [1, 2, 1], [2, 3, 0], [2, 4, 0], [1, 5, 0], [3, 4, 0], [4, 5, 0]],
+    [[0, 0, 0], [0, 1, 1], [1, 2, 0], [1, 3, 0], [0, 4, 0]],
+  ];
+  const roots: Pt[] = [[c1[0] + s * (r1 * 0.35), c1[1] - 2], [c2[0] - s * 3, c2[1] + 3]];
+  cracks.forEach((cr, i) => {
+    const [rx, ry] = roots[i];
+    for (const [dx, dy, h] of cr) {
+      const x = rnd(rx) + dx * s;
+      const y = rnd(ry) + dy;
+      if (body(x, y)) p.set(x, y, h ? hot : PAL.void1);
+    }
+  });
+}
+
+/** violet bounce light from the puddle core on the shade-side lower rim of the mound (separates it from the ink) */
+function rimLight(f: Frame): void {
+  const { p, o, comp, light } = f;
+  if (o.melt > 0.5) return;
+  const d = -light.side;
+  for (let y = GY - 26; y < GY - 2; y++)
+    for (let x = 1; x < W - 1; x++) {
+      const id = comp.id[y * W + x];
+      if (id !== Part.torso || p.get(x, y) === PAL.ink || p.get(x, y) === null) continue;
+      if (p.get(x + d, y) === PAL.ink && p.get(x + 2 * d, y) === null) p.set(x, y, PAL.void1);
     }
 }
 
@@ -678,8 +791,8 @@ export function drawMudgrasp(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right
   const f: Frame & { pops?: Pt[] } = { p, comp, light, o, sk };
 
   const pud = drawPuddle(f);
-  drawRearArm(f);
-  drawCrown(f, sk.crownA, o.ac, Part.crownA, MUD, null, o.al);
+  drawRearArms(f);
+  drawCrown(f, sk.crownA, o.ac, Part.crownA, ARM, null, o.al);
   drawFarArm(f);
   drawTorso(f);
   drawCrown(f, sk.crownB, o.bc, Part.crownB, FAR, 90, o.bl);
@@ -705,6 +818,8 @@ export function drawMudgrasp(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right
 
   // light layer (never outlined)
   swirlLight(f);
+  rimLight(f);
+  crackLight(f);
   veinLight(f);
   popLight(f, f.pops ?? []);
   eyeLight(f);

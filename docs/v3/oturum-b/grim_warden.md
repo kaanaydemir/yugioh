@@ -239,3 +239,20 @@ gwSummon-r2z, gwKill-z, gwDrainSurvive-z, gwAttackP2-z, measure-r1.*, camera-bas
 - No independent critic rounds (no critic agents in this stage); 2 self-critique passes (thread arc/thickness,
   glide inset 5→11, mound flattening under the boots, burst white).
 - MP4 with audio (clip.mjs) not produced in this stage.
+
+## Critic round 1 (independent critic, 2026-10-31) — evidence `shots/v3/kart-b/grim_warden/critic-r1/`
+Verdict: below the golden-rule bar on the signature moments. Ranked findings (details in the critic report to the orchestrator):
+- BLOCKER drain unreadable at 1×: the thread is 10–20 px long (combatants are near-adjacent), 1 px wide, in the target's own
+  hue over the target (fire on ember_wolf, blue on coral_serpent) → `gwDrainFire-drain-z.png`, `gwDrainWaterP2-z.png`, `gwDrainFire-full.png`.
+- BLOCKER strike whirl trail draws as straight white/yellow polyline segments (reads as a debug line / laser), not a
+  circular soul-fire smear; contact burst = overlapping green/orange/purple dotted rings with "+" ticks (reads as a targeting
+  reticle) → `gwDrainFire-strike-z.png`, `gwDrainFire-contact-z.png`, `gwDirect-z.png`, `gwBlocked-z.png`.
+- MAJOR lantern drops back to green for ~600 ms after the strike before the `grimLantern` aura repaints it (target died) → `gwDrainFire-after-z.png`.
+- MAJOR helm/skull in earth tones reads as a brown waffle grille / wooden mask at 1× (sprite + cut-in) → `z-idle-f0-2.png`, `gwSummon-cutin-z.png`.
+- MAJOR low motion amplitude: attack whirl is a half arc (no full circle), special/roar/hitMagic barely leave the idle silhouette,
+  summon is an elevator rise → `z-attack-*.png`, `z-special-*.png`, `z-hitmagic-roar.png`, `z-summon-*.png`.
+- MAJOR skull mist is an opaque green "alien" figure standing on the floor ~400 ms before rising → `gwKill-z.png`, `gwGuard-z.png`.
+- MAJOR no visible swinging green floor light pool in idle (spec idle line) → `idle-board-z.png`.
+- MAJOR summon mound reads as a brown pie, headstone is a 3-px nub, no "fling" → `gwSummon-rise-z.png`.
+- minor: gwSiphon peak −18.7 dB (drone-dominant), impact lacks a glass-shatter high layer; gwGuard scenario has no "guard holds" branch;
+  cut-in lantern clipped by the band edge; idle pendulum has no vertical arc (muzzle y fixed).

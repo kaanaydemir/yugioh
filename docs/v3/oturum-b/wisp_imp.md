@@ -12,7 +12,7 @@ Lane B, branch `claude/kart-b`. Spec: `docs/v3/YENI_KARTLAR.md` §8 R3 (+ §5, �
 | Stage | State | Owner / notes |
 |---|---|---|
 | Sprite rig (`src/art/monsters-v3/wisp_imp*.ts`) | **done, round 1** (rig agent) | 64×62, floor (30,58), hover 6, floater, 13 anims / 134 frames; monster-gates small 21/21 ok |
-| Card art (`src/art/cardart-v3/wisp_imp.ts`) | **done, round 1** | native painting, big 88×68 + hand-corrected small 44×34 + 16×12 icon |
+| Card art (`src/art/cardart-v3/wisp_imp.ts`) | **done, round 2** (2026-10-31 night) | redrawn in the sprite's materials and silhouette; big 88×68 native + small 44×34 hand-drawn ghost + 16×12 icon |
 | `portrait()` hook | **added** to `monsters-v3/wisp_imp.ts` | 2 imports + 4 lines, additive (see below) |
 | Exclusion in `src/art/monsters/index.ts` | **removed** (rig stage) | only the wisp entry was deleted; the other three stay |
 | Light profile (`MONSTER_GLOW`) | **done** | gold-only emissive |
@@ -22,34 +22,38 @@ Lane B, branch `claude/kart-b`. Spec: `docs/v3/YENI_KARTLAR.md` §8 R3 (+ §5, �
 ## Card art (stage: CARD ART + LIGHT PROFILE)
 File: `src/art/cardart-v3/wisp_imp.ts` (no import from the rig: it survives any rig rewrite).
 Test: `tests/art/wisp_imp-cardart.test.ts` (5 tests: budgets for all 6 frames × 2 sizes incl. checker ≤ 0.5 %,
-outline ≥ 90 % ink, focus = white glint = brightest pixel with gold3 under it, blink on f4, determinism, icon).
+outline ≥ 90 % ink, focus = white glint with gold3 under it, nothing brighter, blink on f4, determinism, icon).
 
-**Picture** ("Ay ışığında tüy yığınından bakan hayalet, havada tek tüy"): DARK recipe, the eclipse used as the moon
-behind the hood; the white feather ghost (smooth hood + 3 tiers of shingled feathers with lilac scallop shadows,
-lowest tiers lilac), a dark face hollow with TWO gold3 DOT EYES (one white glint = focus, the brightest pixel),
-looking up-right at ONE loose feather adrift in the lead room (light layer); the question-mark tail feather curls
-up behind on the left; the ghost sinks into a soft lilac pile of DOWN (big round puffs — it foreshadows the feather
-pillow) with two flight feathers poking out; two tiny feather mittens hooked over the pile (peeking).
-Living art: 6 × 150 ms (loose feather rocks / drifts ≤ 1 px, eyes blink on f4).
+### Round 2 (2026-10-31 night): why it was redrawn
+Round 1 (kept for reference at `<scratch>/wisp_imp/v2/wisp_imp.round1.ts`) was a steel-grey hooded blob with
+horizontal wavy tiers in white/mist/steel. The body read as a "hooded slug", not "made of feathers", and its hue
+did not match the sprite (white + void lilac): that was rig open issue 6. Round 2 redraws it **in the sprite's
+own materials and silhouette**, so the card and the board show the same creature:
+- **Ramp** = the rig's feather ramp `void1 · void2 · void3 · void4 · white`, a void0 face hollow (ink brow, void1
+  lip), gold3 dot eyes with ONE white glint (the focus). No mist/steel any more.
+- **Silhouette** = the sprite's tear-drop: a round white hood, a cowlick curling forward on the crown (it echoes
+  the "?"), a lilac wing plume sticking out behind, then two rows of quilled plume shingles over the hood's lower
+  edge. They sweep back and down and converge on the tail root. The lower row is lilac and the upper row white.
+  Each plume has two half-vanes with a quill seam (the lit half is one value up), barb lines on the shade half
+  (big only) and a lilac tip. The ? tail curls up behind on the left.
+- **Directional line**: tail (lower left) → eyes (looking up-right) → a tiny three-feather hand REACHING up →
+  the loose feather adrift in the lead room (light layer). The spec's "peeking from a heap" stays: the ghost rises
+  out of a soft pile of down puffs (void4 / void3 / void2, one step under the ghost), with two flight feathers
+  poking out.
+- **Small 44×34**: the pile is sampled from the big geometry. The whole ghost is a **hand-drawn 1× map set**
+  (`S_GHOST`: tail, wing, cowlick, hood + hollow, 5 plume shingles, hand) on the same composition, because
+  sampled plumes and quills broke into noise at 1×. The eyes and the drifting feather are hand-placed.
+- **Icon 16×12** redrawn in the same ramp (white hood, void0 hollow, 2 gold3 eyes, lilac plumes over the pile).
+- **Iterations** (all LOOKed at, `<scratch>/wisp_imp/v2/a..n`): 14 renders. Rejected on the way: a white
+  orb on separate plumes (an astronaut helmet or a squid), long parallel plumes under the face (tentacles or a
+  beard), V-notch barb cuts (ink islands), short wide shingles under a fully outlined hood (an owl torso), and a
+  sampled small (a mangled tail, a blob hand).
 
-**Small (44×34):** the same geometry sampled natively at 1× (method 2), then hand maps for the eyes (2×2 near dot
-with glint + 1×2 far dot), hands, poking feathers and the drifting feather; `closeCheckers` closes every 2×2
-checker of the subject (creases become 4-connected).
-
-**Icon (16×12):** `export function wispImpIcon(p)` — the game's mini card downsamples the 44×34 picture by area
-average and the two eyes turn into one brown pixel (evidence `cardart-mini-downsample-today.png`). The icon keeps
-them as two gold3 pixels. **Not wired**: `src/art/cardface-v3/index.ts` (lane A5-B registry, `ICON` is empty for
-every card). Wiring it is a 2-line additive edit for whoever owns that file:
-`import { wispImpIcon } from '../cardart-v3/wisp_imp';` and `wisp_imp: wispImpIcon,` inside `ICON`.
-
-**Numbers (f0)** big: 14 colours (backdrop 6), isolated 1.8 %, checker 2, fill 0.735, outline 100 % ink, lead 23,
-brightOff 15.6. small: 12 colours, isolated 5.8 %, checker 3, fill 0.78 (a hair over 0.75; crystal_wyrm's small is
-0.88), outline 100 %, focus ok.
-
-**Iterations (LOOKed at every one):** 18 renders. Rejected on the way: horizontal feather rows (read as mummy
-bandages / bricks), radial and scale-pattern heaps (cobblestones), dark leaf-shaped heap feathers (a plant),
-stacked horizontal feather maps (pancakes), small puffs in alternating hues (grapes), a dark mound (a rock).
-The big-puff down pile was the first heap that read as soft feathers at 1×.
+**Numbers (f0)** big: 11 colours (backdrop 6), isolated 2.2 %, checker 2, outline 99.7 % ink, lead 22,
+brightOff 14.5. small: 9 colours, isolated 5.5 %, checker 1, outline 95.6 %, lead 10, brightOff 6.0, focus ok.
+**Subject bbox fill**: big 0.88 and small 0.90. KART_RESIMLERI §2 asks 0.60–0.75 (big). It sits over that because
+the pile spans the window and bleeds off the bottom and left, which the style sheet allows, and the cowlick nearly
+touches the top air. crystal_wyrm's small is 0.88 too. This is not test-enforced; it is logged as open issue 4.
 
 ## portrait() hook (added to the rig shell, additive)
 ```ts
@@ -71,31 +75,40 @@ If the rig agent rewrites `monsters-v3/wisp_imp.ts`, keep these lines.
 feathers). `light` = pieces drift up and flutter; matterRamp gold→white (white feathers, gold eyes). The custom
 deaths (pillow on the monsterEffect event, wind otherwise) belong to the cinematics stage; this is the fallback.
 
-## Evidence (`shots/v3/kart-b/wisp_imp/`)
+## Evidence (`shots/v3/kart-b/wisp_imp/`) — card art round 2
 - `cardart-sheet-f0.png` — big ×3 | small ×6; under them big ×1, small ×1, small ×2.
 - `cardart-sheet-f4-blink.png` — the blink frame.
-- `cardart-faces-vs-peers.png` — real v3 card faces (1× + mini + 2×) next to crystal_wyrm, grim_warden, ashen_drake
-  (rendered through `cardFaceCanvas` with the portrait set in memory; card text is stubbed in that render).
-- `cardart-face-1x-zoom.png` — the 1× hand face, zoomed.
-- `cardart-icon16.png` — the 16×12 icon ×12 / ×1 / ×2.
-- `cardart-mini-downsample-today.png` — today's mini (downsample): the eyes are lost → the icon.
+- `cardart-big-x8.png`, `cardart-small-x12.png` — the big and small pictures zoomed (pixel-level check).
+- `cardart-faces-vs-peers.png` — real v3 card faces (1×, mini, 2×) next to crystal_wyrm, grim_warden and
+  ashen_drake (rendered through `cardFaceCanvas`; the card text is stubbed in that render).
+- `cardart-hatcard.png` — `?dev=hatcard&id=wisp_imp&look=v3` ×3: the 1× hand face, the 2× inspect face, the art
+  window at 1× and 3×, and the iso field cards (P1/P2, up/side). The face shows the new art live in game.
+- `cardart-in-hand.png`, `cardart-in-hand-zoom.png` — `?dev=duel&s=wiSummon&look=v3`: the card in P1's hand (×6 zoom).
+- `cardart-icon16.png` — the 16×12 icon ×12 / ×1 / ×2 (redrawn in the new ramp).
+- `cardart-mini-downsample-today.png` — (round 1) today's mini, made by downsampling: the eyes are lost, hence the icon.
 
 Scratch tools (not in the tree): `/tmp/claude-0/-home-user-yugioh/77596f6a-069b-5204-8bfc-ba0d0b8509ca/scratchpad/wisp_imp/`
-`r.ts` (sheet + stats: `npx vite-node <S>/r.ts -- <outdir> [--all]`), `face.test.ts` + `vitest.face.config.mts`
-(real faces: `OUT=<S> npx vitest run --config <S>/vitest.face.config.mts`), `icon.ts`, `chk.ts` (checker spots).
+`r.ts` (sheet + stats: `npx vite-node <S>/r.ts -- <outdir> [--all]`), `v2/big.ts` (big ×8 / small ×12),
+`v2/dump.ts` (small subject as an ASCII map), `face.test.ts` + `vitest.face.config.mts`
+(real faces: `OUT=<S> npx vitest run --config <S>/vitest.face.config.mts`), `icon.ts` (`-- <out.png>`).
 
-## Tests run (card-art stage)
-- `tests/art/wisp_imp-cardart.test.ts` — 5/5 pass.
-- `tests/art/cardface-v3.test.ts` — 9/10 pass; the failure is `G1 … scrap_raiders: 0.692 ≥ 0.7`, another card's
-  face (not wisp_imp; wisp_imp's art is not even live while its sprite is excluded).
-- `tests/art/wisp_imp.test.ts` (rig test) not run here: it belongs to the rig stage and the rig is mid-rewrite.
+## Tests run (card-art stage, round 2)
+- `tests/art/wisp_imp-cardart.test.ts`: 5/5 pass. `tests/art/wisp_imp.test.ts` (rig): 7/7 pass.
+- `tests/art/cardface-v3.test.ts`: 9/10 pass. The one failure is `G1 … scrap_raiders: 0.692 ≥ 0.7`, which is another
+  card's face and fails the same way without this change.
+- `npm run typecheck`: no wisp_imp errors.
 
 ## Open issues
-1. Wire the 16×12 icon in `src/art/cardface-v3/index.ts` (A5-B registry) — see above.
-2. In game the face shows the new art only once the exclusion in `src/art/monsters/index.ts` is removed (rig stage).
-3. The rig's idle/summon could echo the card's pose (peeking from a down pile, looking up at a loose feather) —
-   the summon spec (a single feather falls, a feather fountain builds the ghost) fits it.
-4. Small subject fill 0.78 (budget 0.6–0.75): kept, the tighter crop reads better at 1×.
+1. Wire the 16×12 icon in `src/art/cardface-v3/index.ts` (the A5-B registry). It still is not wired: the iso
+   field cards in `cardart-hatcard.png` lose the eyes. The edit is 2 lines:
+   `import { wispImpIcon } from '../cardart-v3/wisp_imp';` and `wisp_imp: wispImpIcon,` inside `ICON`.
+2. ~~In game the face shows the new art only once the exclusion is removed~~. Done: the exclusion is gone and the
+   portrait is live (`cardart-hatcard.png`, `cardart-in-hand-zoom.png`).
+3. The rig's idle and summon could echo the card's pose (reaching a feather hand up toward a loose feather).
+4. Subject bbox fill is 0.88 big and 0.90 small, against the soft budget of 0.60–0.75 (see above). Not test-enforced.
+5. Light profile and death preset re-checked this round and left unchanged. The rig still uses gold only in its
+   light pass (`wisp_imp-rig.ts` ~630–783: eyes and sparks). If the rig re-run changes the eye tones, re-check
+   `MONSTER_GLOW`.
 
 ## Sprite rig (stage: RIG + ALL ANIMS, rig agent, 2026-10-31)
 
@@ -175,7 +188,7 @@ shell; the card-art agent's `portrait()` lines are kept), `tests/art/wisp_imp.te
 5. The dart volley in the sprite is tiny confetti; the real "Tüy Oku Sağanağı" (homing darts, 6 micro jabs,
    60 ms stop) is the strike cinematic's. The pillow's flight to the LP panel / "0 · KORUNDU" is the effect
    cinematic's; the sprite special ends at idle f0 (HA-14), so the cinematic must hide the sprite after release.
-6. Card art hue (white/mist/steel) vs sprite (white/void4 lilac) — align in a later round if a critic sees it.
+6. ~~Card art hue (white/mist/steel) vs sprite (white/void4 lilac)~~ — resolved by card art round 2 (sprite ramp).
 7. Sameness UYARI pairs above need a distinction note + blind test in the critique rounds (the silhouette is
    unique; the flags come from point-track motion proxies).
 8. Critique rounds with independent critics not run yet in this stage (only self-review, ~25 LOOKed renders).
@@ -267,3 +280,16 @@ NOTE: the handbook suggested ember_wolf for the cushion; it has its own on-destr
 13. No MP4 clip (`tools/clip.mjs`) made yet for the owner's ears; peaks from the audio page: all chain
     peaks ≤ 0.85.
 14. Revive pair (`wiReviveGather/Land`) written but not filmed (soul_recall scenario not run).
+
+## Rig re-run (stage: RIG + ALL ANIMS re-issued, 2026-10-31 evening)
+The rig stage was re-issued with the original brief, which still calls the files the "old puffball". They are not:
+the R3 feather ghost described above is the current design, and the exclusion entry is already gone. This pass
+checked it again and changed no code:
+- Fresh sheets P1 + P2 (`<scratch>/wisp_imp/sheet*`): `monster-gates --class small --ref none` gives **21 ok, 0 FAIL**
+  (`shots/v3/kart-b/wisp_imp/gates.txt`). The HA-21 phase (≈49 %) and HA-18 (≈15.8 %) margins are still tight.
+- `tests/art/wisp_imp.test.ts`, `wisp_imp-cardart.test.ts` and `tests/duel/monster-timing.test.ts` pass, and typecheck shows no wisp errors.
+- LOOKed again at idle ×6 (`recheck-idle-x6.png`), attack, special, death and summon, plus P2 roar, hit, hitMagic,
+  hitHeavy, toGuard, fromGuard, guard and revive (`recheck-p2-misc.png`). All are on-model; P2 is lit from the right and no anim is broken.
+- Spec gap noted (open issue 15): the spec asks for a "lazy figure-8" float. In the sprite it lives only in the hood/tail,
+  because a whole-body 1-px shift breaks HA-21 phase, and MonsterUnit has no hover bob. A unit-level floater drift
+  (sprite y/x tween in v3) would need a shared MonsterUnit change, so it needs an orchestrator decision.
