@@ -210,8 +210,8 @@ const HIT_HOLDS = [50, 60, 130, 100, 110, 130];
 const HH_N = 8;
 const HH_KEYS: Partial<Pose>[] = [
   { hx: -2, hy: -1, lid: 2, eye: 0.4, spray: 0.15, swell: -1, aa: -98, mx: -1 },
-  { hx: -3, hy: 2, sink: 4, hump: -2, lean: -4, bx: -1, lid: 2, eye: 0.5, spray: 0.5, swell: 1, aa: -88, ab: 4, ripple: 0.15, nx: 26, fx: 30, nc: 0.8, fc: 0.9 },
-  { hx: -2, hy: 3, sink: 5, hump: -2, lean: -4, bx: -1, lid: 2, eye: 0.6, spray: 0.85, swell: 2, aa: -86, ab: 6, ripple: 0.4, nx: 26, fx: 30, nc: 0.9, fc: 1 },
+  { nb: 1, hx: -3, hy: 2, sink: 4, hump: -2, lean: -4, bx: -1, lid: 2, eye: 0.5, spray: 0.5, swell: 1, aa: -88, ab: 4, ripple: 0.15, nx: 26, fx: 30, nc: 0.8, fc: 0.9 },
+  { nb: 1, hx: -2, hy: 3, sink: 5, hump: -2, lean: -4, bx: -1, lid: 2, eye: 0.6, spray: 0.85, swell: 2, aa: -86, ab: 6, ripple: 0.4, nx: 26, fx: 30, nc: 0.9, fc: 1 },
   { hx: -1, hy: 1, sink: 2, hump: 1, lean: -2, lid: 1, eye: 0.9, swell: 0, aa: -108, ab: -16, ripple: 0.65, nc: 0.4 },
 ];
 export function hitHeavyPose(f: number): Pose {

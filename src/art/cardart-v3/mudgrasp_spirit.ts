@@ -145,13 +145,10 @@ interface Hand {
   readonly palm: V;
   readonly r: number;
   readonly fingers: readonly (readonly [number, number, number])[]; // angle, length, width
-  /** finger width at 1× (px) */
-  readonly fw: 1 | 2;
 }
 const HAND_NEAR: Hand = {
   palm: [67, 55],
   r: 7.5,
-  fw: 2,
   fingers: [
     [-112, 9, 4.6],
     [-78, 11, 4.8],
@@ -163,7 +160,6 @@ const HAND_NEAR: Hand = {
 const HAND_FAR: Hand = {
   palm: [19, 55],
   r: 6.8,
-  fw: 2,
   fingers: [
     [-70, 8, 4.2],
     [-102, 10, 4.4],
@@ -183,20 +179,7 @@ function paintHand(t: Xf, h: Hand): PixelCanvas {
     const k: V = [h.palm[0] + Math.cos(r) * (h.r + len * 0.45), h.palm[1] + Math.sin(r) * (h.r + len * 0.45)];
     const r2 = r + (a > -90 && a < 90 ? 0.28 : -0.28);
     const tip: V = [k[0] + Math.cos(r2) * len * 0.55, k[1] + Math.sin(r2) * len * 0.55];
-    if (t.bw > 1) q.stroke(PS(t, [h.palm, k, tip]), w * t.s * 1.5, Math.max(1.6, w * t.s * 0.75), 1);
-    else {
-      // 1×: a finger is a straight run of the hand's finger width (1 or 2 px), parted from its neighbours by
-      // the outline — the hand-tuned small hand (KART_RESIMLERI §1 method 2)
-      const [ax, ay] = P(t, h.palm);
-      const [bx, by] = P(t, tip);
-      const n = Math.ceil(Math.max(Math.abs(bx - ax), Math.abs(by - ay)));
-      for (let i = 0; i <= n; i++) {
-        const x = Math.floor(ax + ((bx - ax) * i) / n);
-        const y = Math.floor(ay + ((by - ay) * i) / n);
-        q.set(x, y, 1);
-        if (h.fw === 2) q.set(Math.abs(bx - ax) > Math.abs(by - ay) ? x : x + 1, Math.abs(bx - ax) > Math.abs(by - ay) ? y + 1 : y, 1);
-      }
-    }
+    q.stroke(PS(t, [h.palm, k, tip]), w * t.s * 1.5, Math.max(1.6, w * t.s * 0.75), 1);
   }
   return q;
 }
@@ -218,7 +201,6 @@ const CROWN_PATH: readonly V[] = [
 const HAND_CROWN: Hand = {
   palm: [23, 16],
   r: 4,
-  fw: 1,
   fingers: [
     [-158, 6, 3.4],
     [-122, 7.5, 3.4],
@@ -230,7 +212,7 @@ const HAND_CROWN: Hand = {
 
 function paintCrown(t: Xf): PixelCanvas {
   const q = paintArm(t, CROWN_PATH, 7.5, 5.5);
-  q.blit(paintHand(t, HAND_CROWN), 0, 0);
+  if (t.bw > 1) q.blit(paintHand(t, HAND_CROWN), 0, 0);
   return q;
 }
 
@@ -372,21 +354,62 @@ function paintMask(t: Xf): PixelCanvas {
   return q;
 }
 
-// ---------------------------------------------------------------- the mask (small: a hand-drawn 1× map)
+// ---------------------------------------------------------------- the small hands (hand-drawn 1× maps)
+// At 1× a painted hand is a tangle of 1-px slivers and rim pixels: the three hands are drawn by hand instead
+// (KART_RESIMLERI §1 method 3), on the same palms as the big picture: 2-px fingers (lit left px, body right px)
+// parted by the outline, an earth0 underside and the recipe's earth3 rim on the shadow side.
+// key: k ink · 3 earth3 rim · 2 earth2 lit · 1 earth1 body · 0 earth0 shade · '.' keep · '_' erase
 
 // prettier-ignore
-const MASK_SMALL: readonly string[] = [
-  '..aab..',
-  '.aakbbh',
-  'aaakbbh',
-  'eeeabeh',
-  'eeeabeh',
-  'aaabbhh',
-  'aabeehh',
-  '.abeeh.',
-  '..bbhh.',
+const HAND_NEAR_SMALL: readonly string[] = [
+  '....kk.kk.....',
+  '...k22k22k....',
+  '.kkk21k21k.kk.',
+  'k22k21k21kk22k',
+  'k21k21k21k210k',
+  'k21k21k21k10k.',
+  '.k21121121110k',
+  '.k2111111110k.',
+  'kk2111111110k.',
+  'k21k11111100k.',
+  'k210k0000033k.',
+  '.kk.kk3333kk..',
+  '......kkkk....',
 ];
-const MASK_KEY: Readonly<Record<string, number>> = { a: PAL.stone4, b: PAL.stone3, h: PAL.stone2, k: PAL.stone1, e: PAL.void0 };
+// prettier-ignore
+const HAND_FAR_SMALL: readonly string[] = [
+  '.....kk.kk....',
+  '....k22k22k...',
+  '.kk.k21k21kkk.',
+  'k22kk21k21k22k',
+  'k211k21k21k21k',
+  '.k21k21k21k21k',
+  'k21112112110k.',
+  '.k2111111110k.',
+  '.k2111111110kk',
+  '.k21111111k10k',
+  '.k3000000k210k',
+  '..kk3333kk0kk.',
+  '....kkkk..k...',
+];
+// prettier-ignore
+const HAND_CROWN_SMALL: readonly string[] = [
+  '.k.k.k.k...',
+  'k2k2k2k2k..',
+  'k2k2k2k2k..',
+  'k2121211kk.',
+  'k2111111k2k',
+  '.k2111110k.',
+  '..k21110k..',
+  '..k2110k...',
+];
+const HAND_KEY: Readonly<Record<string, number>> = { k: PAL.ink, '3': PAL.earth3, '2': PAL.earth2, '1': PAL.earth1, '0': PAL.earth0 };
+/** where each small hand map is stamped (small px; palms on the big picture's palms ÷ 2) */
+const HANDS_SMALL: readonly (readonly [readonly string[], number, number])[] = [
+  [HAND_CROWN_SMALL, 7, 3],
+  [HAND_FAR_SMALL, 2, 19],
+  [HAND_NEAR_SMALL, 27, 19],
+];
 
 // ================================================================ assembly
 
@@ -402,7 +425,7 @@ function paintSubject(t: Xf, small: boolean): PixelCanvas {
   s.blit(crown, 0, 0);
   // the far arm and hand (behind the mound)
   const farArm = paintArm(t, FAR_ARM, 8, 6.5);
-  farArm.blit(paintHand(t, HAND_FAR), 0, 0);
+  if (!small) farArm.blit(paintHand(t, HAND_FAR), 0, 0);
   bandPart(farArm, MUD, lit, sh);
   palmHollow(farArm, t, HAND_FAR, -1);
   over(s, farArm, true);
@@ -426,7 +449,7 @@ function paintSubject(t: Xf, small: boolean): PixelCanvas {
   over(s, body, true);
   // the near arm and hand (in front)
   const nearArm = paintArm(t, NEAR_ARM, 8.5, 7);
-  nearArm.blit(paintHand(t, HAND_NEAR), 0, 0);
+  if (!small) nearArm.blit(paintHand(t, HAND_NEAR), 0, 0);
   bandPart(nearArm, MUD, lit, sh);
   palmHollow(nearArm, t, HAND_NEAR, 1);
   over(s, nearArm, true);
@@ -445,7 +468,6 @@ function paintSubject(t: Xf, small: boolean): PixelCanvas {
     }
   // the mask
   const mask = paintMask(t);
-  if (small) patch(mask, [], MASK_KEY, 0, 0);
   castShadow(s, mask, small ? 1 : 2, small ? 1 : 2);
   over(s, mask, true);
   // the card light's rim on the mud's shadow side (the clay keeps its own planes)
@@ -455,6 +477,7 @@ function paintSubject(t: Xf, small: boolean): PixelCanvas {
     only: (x, y) => open(x + 1, y) || open(x, y + 1) || open(x + 1, y + 1),
   });
   ink(s);
+  if (small) for (const [rows, x, y] of HANDS_SMALL) patch(s, rows, HAND_KEY, x, y);
   return s;
 }
 
