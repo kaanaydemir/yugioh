@@ -92,6 +92,8 @@ export class HumanInput {
   }
 
   private hoverKey = '';
+  /** v3: the board pick the hover last showed (a click at that same point selects it, even if an idle bob moved the body's edge since). */
+  private hoverPick: { x: number; y: number; ctx: unknown; st: unknown; mode: InputMode; hit: Pick | null } | null = null;
   private highlighted: { setHighlight(c: number | null): unknown }[] = [];
   /** Zones that react to a click in idle (pointer cursor). */
   private idleZones = new Set<string>();
@@ -153,7 +155,8 @@ export class HumanInput {
       }
       if (over.length) return;
       if (V3_A6_B && gravePanelOpen(scene)) return; // the panel holds the input
-      const hit = this.pick(p.x, p.y);
+      const hp = this.hoverPick;
+      const hit = LOOK_V3 && hp && hp.x === p.x && hp.y === p.y && hp.ctx === this.zoneHover && hp.st === this.state && hp.mode === this.mode ? hp.hit : this.pick(p.x, p.y);
       if (!hit) return;
       if (V3_A6_B) {
         this.lastClick = { x: p.x, y: p.y };
@@ -340,6 +343,7 @@ export class HumanInput {
   private setMode(m: InputMode): void {
     // v3 (A6B-11): a new instruction ends a refused click's reason (v1 lets it run its course)
     if (V3_A6_B && m !== this.mode) this.views.hud.endHintFlash();
+    this.hoverPick = null;
     this.mode = m;
     const hud = this.views.hud;
     const p = this.player;
@@ -1171,6 +1175,9 @@ export class HumanInput {
    * player is choosing among highlighted zones (or idle with actionable zones), a hit that is a
    * valid choice wins over one that is not — a big monster (Kristal Ejder's wings) covering the
    * tile behind it must not make that tile unclickable.
+   * v3: the body of a candidate (front-most) wins over a candidate tile, so a red monster standing
+   * behind a blue one is picked by its own visible pixels, not by the tile under them; when idle, a
+   * body in front also wins over an actionable tile it covers (hover inspects what is seen).
    */
   pick(sx: number, sy: number): Pick | null {
     const w = this.views.camera.worldPoint(sx, sy);
@@ -1183,19 +1190,39 @@ export class HumanInput {
       if (!b.contains(w.x, w.y)) continue;
       const fx = Math.floor((s.flipX ? b.right - w.x : w.x - b.left) / Math.abs(s.scaleX));
       const fy = Math.floor((w.y - b.top) / Math.abs(s.scaleY));
-      const a = this.scene.textures.getPixelAlpha(fx, fy, s.texture.key, s.frame.name);
-      if (a && a > 0) hits.push({ player: u.player, spot: 'monster', index: u.zone });
+      if (this.framePixelAlpha(s, fx, fy) > 0) hits.push({ player: u.player, spot: 'monster', index: u.zone });
     }
     const z = this.views.board.zoneAt(w.x, w.y);
     const tile: Pick | null = z ? { player: z.player, spot: z.spot, index: z.index } : null;
     const valid = this.validPick();
     if (valid) {
-      // the tile itself first (it is what the player aims at), then any unit body
-      if (tile && valid(tile)) return tile;
-      const v = hits.find(valid);
-      if (v) return v;
+      if (LOOK_V3) {
+        // v3: a valid body (front-most, even one partly covered by a non-valid body) first; then
+        // in a board pick the valid tile, in idle whatever body is in front (what the player sees)
+        const v = hits.find(valid);
+        if (v) return v;
+        if (tile && valid(tile) && (this.zoneHover || !hits.length)) return tile;
+      } else {
+        // the tile itself first (it is what the player aims at), then any unit body
+        if (tile && valid(tile)) return tile;
+        const v = hits.find(valid);
+        if (v) return v;
+      }
     }
     return hits[0] ?? tile;
+  }
+
+  /**
+   * Alpha of the pixel (fx, fy) of a sprite's FULL frame (realWidth × realHeight). A trimmed frame
+   * (v3 cropped atlas, src/art/atlas.ts) stores only its opaque box at offset (frame.x, frame.y):
+   * getPixelAlpha takes stored-rect coordinates, so the trim offset comes off first (0 untrimmed).
+   */
+  private framePixelAlpha(s: Phaser.GameObjects.Sprite, fx: number, fy: number): number {
+    const f = s.frame;
+    const tx = fx - (f.x || 0);
+    const ty = fy - (f.y || 0);
+    if (tx < 0 || ty < 0 || tx >= f.cutWidth || ty >= f.cutHeight) return 0;
+    return this.scene.textures.getPixelAlpha(tx, ty, s.texture.key, f.name) ?? 0;
   }
 
   /** The "is this a meaningful click right now" test used by pick(), or null. */
@@ -1222,6 +1249,7 @@ export class HumanInput {
     // v3 (K12): the other player's mini-hand by its panel
     const mini = V3_A6_B && !inHand ? this.miniAt(sx, sy) : null;
     const h = inHand || mini !== null ? null : this.pick(sx, sy);
+    this.hoverPick = LOOK_V3 && !inHand && mini === null ? { x: sx, y: sy, ctx: this.zoneHover, st: this.state, mode: this.mode, hit: h } : null;
     // board pick feedback: the candidate under the pointer lights up white
     const zh = this.zoneHover;
     if (inHand) {

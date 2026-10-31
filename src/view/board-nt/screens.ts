@@ -160,8 +160,9 @@ export function createScreensLayer(ctx: NtCtx): NtLayer {
 
     // ---- name plate (sheared with the screen): baked here from the HUD's text painter in two tones (idle / active)
     const R = who === 0 ? RAMPS.cyan : RAMPS.crim;
-    // the right plate must stay right of the duelist notch (art/arena-nt/screens.ts NOTCH): a longer name (BİLGİSAYAR) shows as CPU
-    const label = who === 1 && (textCanvas(names[who], 'sm', R[3]).bounds()?.w ?? 0) > 40 ? 'CPU' : names[who];
+    // the right plate must stay right of the duelist notch (art/arena-nt/screens.ts NOTCH): OYUNCU 2 (41 px) still fits; only the
+    // computer's longer name (BİLGİSAYAR, vs-CPU duels only) shows as CPU — a hot-seat duel always reads OYUNCU 2
+    const label = who === 1 && names[who] === 'BİLGİSAYAR' && (textCanvas(names[who], 'sm', R[3]).bounds()?.w ?? 0) > 41 ? 'CPU' : names[who];
     const plateKeys: [string, string] = [`nt:screens:plate:${who}:${label}:3`, `nt:screens:plate:${who}:${label}:4`];
     const plates = [3, 4].map((tone) => paintPlate(who, textCanvas(label, 'sm', R[tone])));
     plates.forEach((pl, i) => canvasTexture(scene, plateKeys[i], pl.canvas));

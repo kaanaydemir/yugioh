@@ -39,6 +39,8 @@ const ROW = 22;
 /** The list ends above the bottom buttons (y 322): with many entries (7 presets + 5 slots) the rows tighten. */
 const LIST_BOTTOM = 320;
 const RX = 250;
+/** Two clicks on the same deck row within this time (ms) confirm it (a single click only selects). */
+const DOUBLE_CLICK_MS = 400;
 /** Thumbnails: 5 columns x 4 rows visible; a deck of up to 80 cards shows its distinct cards (xN badge) and scrolls. */
 const T_COLS = 5;
 const T_ROWS = 4;
@@ -68,6 +70,10 @@ export class DeckPickScene extends Phaser.Scene {
   /** Row pitch of the deck list (ROW, or tighter when the list is long). */
   private rowH = ROW;
   private sel = 0;
+  /** The row under the mouse (-1: none); marked, but not selected. */
+  private hover = -1;
+  /** When a deck row was last clicked (scene time, ms): the double-click check. */
+  private lastRowClick = -1e9;
   private thumbSel = 0;
   private rows: ListRow[] = [];
   private thumbs: { img: Phaser.GameObjects.Image; frame: Phaser.GameObjects.Image; zone: Phaser.GameObjects.Zone; cntBg: Phaser.GameObjects.Rectangle; cnt: Phaser.GameObjects.BitmapText }[] = [];
@@ -104,6 +110,8 @@ export class DeckPickScene extends Phaser.Scene {
     this.bars = [];
     this.curveLabels = [];
     this.sel = 0;
+    this.hover = -1;
+    this.lastRowClick = -1e9;
     this.thumbSel = 0;
     this.thumbRow = 0;
     this.entries = [];
@@ -228,19 +236,33 @@ export class DeckPickScene extends Phaser.Scene {
       const tag = pixelText(this, LW - 4, 2, o.tag, { size: 'sm', color: PAL.night4, originX: 1 });
       box.add([hi, marker, title, sub, tag]);
       const zone = this.add.zone(LX, y, LW, this.rowH - 2).setOrigin(0).setDepth(12).setInteractive({ useHandCursor: true });
+      // hover only marks the row (moving the mouse to the confirm button must not change the pick);
+      // a click selects the row, a second click on the selected row (double-click) confirms it
       zone.on(Phaser.Input.Events.POINTER_OVER, () => {
-        if (this.busy || this.sel === i) return;
-        this.sel = i;
-        sfx.play('uiHover', { volume: 0.45 });
+        if (this.busy || this.hover === i) return;
+        this.hover = i;
         this.renderList();
-        this.renderPreview();
+      });
+      zone.on(Phaser.Input.Events.POINTER_OUT, () => {
+        if (this.hover !== i) return;
+        this.hover = -1;
+        this.renderList();
       });
       zone.on(Phaser.Input.Events.POINTER_UP, (p: Phaser.Input.Pointer) => {
         if (this.busy || p.rightButtonReleased()) return;
-        this.sel = i;
+        const now = this.time.now;
+        const again = this.sel === i && now - this.lastRowClick < DOUBLE_CLICK_MS;
+        this.lastRowClick = now;
+        if (again) {
+          void this.confirm();
+          return;
+        }
+        if (this.sel !== i) {
+          this.sel = i;
+          sfx.play('uiHover', { volume: 0.5 });
+          this.renderPreview();
+        }
         this.renderList();
-        this.renderPreview();
-        void this.confirm();
       });
       this.rows.push({ box, hi, marker, title, sub, tag, zone });
     });
@@ -301,7 +323,7 @@ export class DeckPickScene extends Phaser.Scene {
       const o = this.opts[i];
       const on = i === this.sel;
       const ok = this.pickable(o);
-      r.hi.setVisible(on).setFillStyle(ok ? PAL.night3 : PAL.night2);
+      r.hi.setVisible(on || i === this.hover).setFillStyle(on ? (ok ? PAL.night3 : PAL.night2) : PAL.night2);
       r.title.setTint(!ok ? PAL.night4 : on ? PAL.white : PAL.mist);
       r.sub.setTint(!ok ? PAL.crim2 : on ? PAL.mist : PAL.steel);
       r.tag.setTint(on ? PAL.gold3 : PAL.night4);
