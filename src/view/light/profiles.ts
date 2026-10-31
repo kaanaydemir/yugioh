@@ -92,7 +92,7 @@ export const MONSTER_GLOW: Record<MonsterId, MonsterGlow> = {
   reflection_archer: { emissive: [T(PAL.gold4, 1), T(PAL.white, 1), T(PAL.gold3, 0.6)], halo: 0.6, pool: 0.9 },
   scrap_raiders: { emissive: [T(PAL.fire4, 1), T(PAL.fire3, 0.7), T(PAL.white, 0.7)], halo: 0.6, pool: 0.9 },
   hollow_ogre: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
-  crag_axeman: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
+  crag_axeman: { emissive: [T(PAL.white, 0.6)], halo: 0.4, pool: 0.6 }, // the axe edge and the eyes; the real light is the floor seam (kartc/crag_axeman-yarik.ts)
   reed_heron: { emissive: [T(PAL.water4, 0.8), T(PAL.white, 0.8), T(PAL.cyan4, 0.6)], halo: 0.6, pool: 0.9 },
   kite_fencer: { emissive: [T(PAL.leaf4, 1), T(PAL.white, 0.8), T(PAL.leaf3, 0.4)], halo: 0.6, pool: 0.9 },
   mudgrasp_spirit: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },

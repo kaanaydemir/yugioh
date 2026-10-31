@@ -60,7 +60,7 @@ export const DEATH_PRESETS: Record<MonsterId, DeathPreset> = {
   reflection_archer: { material: 'crystal', accent: 'light' },
   scrap_raiders: { material: 'stone', accent: 'fire' },
   hollow_ogre: { material: 'plant', accent: 'stone' },
-  crag_axeman: { material: 'stone', accent: 'stone' },
+  crag_axeman: { material: 'light', accent: 'light' }, // §5.2: never a stone end — its own split death (kartc/crag_axeman-death.ts) draws the body
   reed_heron: { material: 'water', accent: 'plant' },
   kite_fencer: { material: 'plant', accent: 'light' },
   mudgrasp_spirit: { material: 'stone', accent: 'shadow' },

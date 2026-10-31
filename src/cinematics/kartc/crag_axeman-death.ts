@@ -13,7 +13,8 @@
 //           as the body goes; the planted axe stays 400 ms (its floor seam closing), then tips flat ("tok": caxAxeTok)
 //           and blinks out
 // The bookkeeping is the shared death kit's (the toGraveyard claimed, the tile released, the card born on the burst
-// frame and flown to the graveyard: _v3/card.ts cardLeaves); the body is this card's own (custom.death in the recipe).
+// frame and flown to the graveyard: _v3/card.ts cardLeaves); the body is this card's own (no recipe: this hook is
+// the card's only death handler above the defaults).
 
 import type Phaser from 'phaser';
 import { PAL } from '../../art/palette';
@@ -122,7 +123,7 @@ async function splitBody(ctx: DestroyCtx, u: MonsterUnit, home: XY, burst: () =>
     const at = { x: Math.round(ax.x), y: Math.round(ax.y) };
     biteChips(sc, at, { x: -sgn, y: 0 }, 6);
     void lightFlash(sc, at.x, at.y - 2, PAL.white, 14, 220, { floorY: at.y, intensity: 0.75 });
-  }, { late: false });
+  }, { late: true }); // a death joined past f2 (a heavy recoil) still shows the planted axe: its bite is heard then
   let pour: LightHandle | null = null;
   atFrame(u, 'death', 3, () => {
     play('caxSeamRise', { volume: 0.9, pan });

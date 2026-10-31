@@ -244,6 +244,8 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
       hitAt = { x: Math.round(seamTo.x), y: Math.round(s.to.y) };
     }
     s.impact(hitAt);
+    // the seam's own light on the struck body: white (the kit's contact light is the attribute's earth tone)
+    if (!s.blocked) void lightFlash(sc, hitAt.x, hitAt.y, PAL.white, 20, 260, { floorY: s.direct ? seamTo.y : s.toGround.y, intensity: 0.8 });
     if (loses) {
       // the stronger side answers on this frame: the battle owns the attacker now (it dies where it stands)
       driving = false;
@@ -313,8 +315,8 @@ function sleepAnimate(sc: Phaser.Scene, ms: number, fn: (t: number) => void): Pr
 
 if (LOOK_V3) registerStrike(ID, async (s) => (LOOK_V3 ? dagYaran(s) : s.base?.()));
 
-// ---- the struck body's human answer (v3 only): a grunt on a blow, the haft slap on a guarded one. The material sound
-// of the body (recipe `body`) plays under it from the reaction kit; this adds the baritone on the very contact frame.
+// ---- the struck body's human answer (v3 only): a grunt on a blow, the haft slap on a guarded one. The reaction kit's
+// body sound plays under it (no fur material exists yet: the generic one); this adds the baritone on the contact frame.
 if (LOOK_V3) {
   registerObserver((ev, ctx) => {
     if (ev.type === 'battle') {

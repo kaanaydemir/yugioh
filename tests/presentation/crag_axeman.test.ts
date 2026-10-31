@@ -1,6 +1,6 @@
-// Kaya Baltacı — the presentation contract of the card (src/presentation/cards/crag_axeman.ts, src/audio/v3/crag_axeman.ts,
-// src/duel/scenarios/crag_axeman.ts): the recipe draws strike / summon / death itself and leaves the flip on the recipe
-// layer; its voice resolves to the hand-made set and every role names a registered sound; the card's sounds are its own
+// Kaya Baltacı — the presentation contract of the card (src/cinematics/kartc/crag_axeman*.ts, src/audio/v3/crag_axeman.ts,
+// src/duel/scenarios/crag_axeman.ts): no recipe (strike / summon / death are its own files; the table rows hold the light and the death
+// preset); its voice resolves to the hand-made set and every role names a registered sound; the card's sounds are its own
 // (cax prefix, none of the lane-wide banned shared recipes); the scenario keys exist; the Yarık seam line is a clean
 // whole-pixel line.
 
@@ -12,18 +12,18 @@ import { SFX_NAMES } from '../../src/audio/sfx';
 import { AXEMAN_VOICE, V3_AXEMAN_RECIPES } from '../../src/audio/v3/crag_axeman';
 import { CHARACTER_SOUNDS } from '../../src/cinematics/_v3/sound';
 import { presentationOf } from '../../src/presentation/registry';
+import { DEATH_PRESETS } from '../../src/cinematics/_v3/presets';
+import { MONSTER_GLOW } from '../../src/view/light/profiles';
+import { PAL } from '../../src/art/palette';
 import scenarios from '../../src/duel/scenarios/crag_axeman';
 import { linePts } from '../../src/cinematics/kartc/crag_axeman-yarik';
 
 describe('crag_axeman presentation', () => {
-  it('draws its strike, summon and death itself; the flip stays on the recipe layer', () => {
-    const r = presentationOf('crag_axeman');
-    expect(r).toBeTruthy();
-    expect(r!.custom).toEqual({ strike: true, summon: true, death: true });
-    expect(r!.voice).toEqual({ custom: 'crag_axeman' });
-    expect(r!.flip?.accent).toBe('dust');
+  it('has no recipe (its strike, summon and death are its own files; the shared table rows carry the rest)', () => {
+    expect(presentationOf('crag_axeman')).toBeFalsy();
     // §5.2: never a stone end
-    expect(r!.death.material).not.toBe('stone');
+    expect(DEATH_PRESETS.crag_axeman.material).not.toBe('stone');
+    expect(MONSTER_GLOW.crag_axeman.emissive.map(([c]) => c)).toEqual([PAL.white]);
   });
 
   it('speaks with its own voice: every role is a registered cax sound', () => {
