@@ -89,7 +89,7 @@ function wingFrame(side: 'far' | 'near', a: number): { S: Pt; E: Pt; W: Pt; tips
 function paintWing(pl: Plane, side: 'far' | 'near', a: number, idBase: number, shim: (s: Pt) => number): void {
   const w = wingFrame(side, a);
   const far = side === 'far';
-  const base = far ? 0.5 : 0.9;
+  const base = far ? 0.8 : 1.2;
   const W = w.W;
   const edge: Pt[] = [w.tips[0]];
   // trailing edge: the finger tips with a scallop (pulled in towards the wrist) between each pair, then a last scallop to the body
@@ -212,7 +212,7 @@ function paintPlane(k: number, n: number): Plane {
   const torso = BACK.concat(FRONT).map(up);
   const rest0 = BACK.concat(FRONT);
   const seeds = grid(rest0, 9, 51).map(up);
-  paintFacets(pl, { poly: torso, seeds, base: 2.2, light: [-0.55, -0.8], gain: 1.9, salt: 52, jitter: 0.85, lo: 0, hi: 4, wires: 0.5, idBase: 4000, boost: shim });
+  paintFacets(pl, { poly: torso, seeds, base: 2.5, light: [-0.55, -0.8], gain: 2.0, salt: 52, jitter: 0.85, lo: 0, hi: 4, wires: 0.5, idBase: 4000, boost: shim });
   // belly strip: a lighter band of shard facets down the front of the chest
   const belly = tube(FRONT.slice(1, 7).map((p) => [p[0] - 4, p[1] + 1] as Pt).map(up), 6, 8);
   const bseeds: Pt[] = FRONT.slice(1, 7).map((p, i) => up([p[0] - 4 + (i % 2 ? 1.5 : -1.5), p[1] + 2]));
@@ -236,22 +236,36 @@ function paintPlane(k: number, n: number): Plane {
   };
   horn([[72, 20], [64, 11], [54, 7], [50, 11]], 5, 5000);
   horn([[78, 16], [72, 7], [66, 2], [63, 5]], 4, 5010);
-  const HEAD: Pt[] = ([[66, 20], [76, 14], [88, 15], [99, 21], [110, 28], [110, 33], [102, 34], [96, 39], [88, 41], [79, 37], [70, 30]] as Pt[]).map(upHead);
-  const hseeds: Pt[] = ([[72, 22], [82, 20], [92, 22], [102, 28], [106, 31], [84, 28], [92, 32], [98, 35], [78, 33], [88, 37]] as Pt[]).map(upHead);
-  paintFacets(pl, { poly: HEAD, seeds: hseeds, base: 3, light: [-0.5, -0.85], gain: 1.6, salt: 53, jitter: 0.6, lo: 1, hi: 4, wires: 0.7, idBase: 5100, boost: shim, sep: 1 });
-  // brow ridge + the eye + a lit jaw line
-  const eye = upHead([90, 22]);
-  pl.put(Math.round(eye[0]), Math.round(eye[1]), 5, 5200);
-  pl.put(Math.round(eye[0]) + 1, Math.round(eye[1]), 5, 5200);
-  pl.put(Math.round(eye[0]) - 1, Math.round(eye[1]) - 1, 1, 5201);
-  pl.put(Math.round(eye[0]), Math.round(eye[1]) - 1, 1, 5201);
-  const jaw0 = upHead([96, 37]);
-  const jaw1 = upHead([109, 33]);
-  for (let i = 0; i <= 8; i++) {
-    const x = Math.round(jaw0[0] + ((jaw1[0] - jaw0[0]) * i) / 8);
-    const y = Math.round(jaw0[1] + ((jaw1[1] - jaw0[1]) * i) / 8);
-    if (pl.has(x, y)) pl.put(x, y, 4, 5202);
+  // upper head: skull, brow and the long snout; lower jaw hinged under it, open a little and chewing slowly with the breath
+  const jawA = 0.2 + Math.sin(P.ph - 0.4) * 0.05;
+  const hinge: Pt = [82, 33];
+  const HEAD: Pt[] = ([[66, 20], [76, 14], [88, 15], [99, 20], [112, 27], [110, 31], [101, 31], [93, 33], [84, 32], [72, 30]] as Pt[]).map(upHead);
+  const hseeds: Pt[] = ([[72, 22], [82, 20], [92, 22], [102, 26], [108, 29], [84, 27], [94, 29], [78, 28]] as Pt[]).map(upHead);
+  const JAW: Pt[] = ([[82, 32], [94, 34], [106, 36], [111, 38], [101, 42], [90, 42], [80, 38]] as Pt[]).map((p) => upHead(rot(p, hinge, jawA)));
+  const jseeds: Pt[] = ([[86, 36], [96, 38], [105, 38], [92, 40]] as Pt[]).map((p) => upHead(rot(p, hinge, jawA)));
+  paintFacets(pl, { poly: JAW, seeds: jseeds, base: 2.2, light: [-0.4, -0.9], gain: 1.2, salt: 56, jitter: 0.5, lo: 1, hi: 4, wires: 0.7, idBase: 5300, boost: shim, sep: 0 });
+  // fangs: bright spikes up from the lower jaw, down from the upper
+  for (const fx of [96, 102, 108]) {
+    const a = upHead(rot([fx, 37], hinge, jawA));
+    spike(pl, a, [a[0] + 1, a[1] - 5], 3, 5, 5400 + fx);
   }
+  for (const fx of [95, 103]) {
+    const a = upHead([fx, 31]);
+    spike(pl, a, [a[0] - 1, a[1] + 5], 3, 5, 5450 + fx);
+  }
+  paintFacets(pl, { poly: HEAD, seeds: hseeds, base: 3, light: [-0.5, -0.85], gain: 1.6, salt: 53, jitter: 0.6, lo: 1, hi: 4, wires: 0.7, idBase: 5100, boost: shim, sep: 1 });
+  // the eye (a bright slanted pair of pixels under a dark brow) and a nostril
+  const eye = upHead([89, 22]);
+  const ex = Math.round(eye[0]);
+  const ey = Math.round(eye[1]);
+  pl.put(ex, ey, 5, 5200);
+  pl.put(ex + 1, ey, 5, 5200);
+  pl.put(ex + 2, ey - 1, 4, 5200);
+  pl.put(ex - 1, ey - 1, 0, 5201);
+  pl.put(ex, ey - 1, 0, 5201);
+  pl.put(ex + 1, ey - 1, 0, 5201);
+  const nose = upHead([108, 28]);
+  pl.put(Math.round(nose[0]), Math.round(nose[1]), 0, 5203);
   despeckle(pl);
   return pl;
 }

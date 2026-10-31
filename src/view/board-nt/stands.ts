@@ -8,16 +8,15 @@
 // stepped on the scene clock in tick(), no tweens. Painter: src/art/arena-nt/stands*.ts.
 
 import Phaser from 'phaser';
-import { NT_STANDS_KEY, bakeStandBody, ntStandBodyKey, paintStandsAtlas, standBodyRect, standRows } from '../../art/arena-nt/stands';
+import { NT_STANDS_KEY, bakeStandBody, ntStandBodyKey, standBodyRect, standRows, standsAtlasShared } from '../../art/arena-nt/stands';
 import type { NtAtlas } from '../../art/arena-nt/wall-kit';
 import { NT_DEPTH } from './layout-nt';
 import { type NtCtx, type NtLayer } from './layer';
 import { ALL_STANDS, railDepth } from './seats';
 import { ensureNtTexture } from './textures';
 
-let atlasCache: NtAtlas | null = null;
 function standsAtlas(): NtAtlas {
-  return (atlasCache ??= paintStandsAtlas());
+  return standsAtlasShared();
 }
 
 /** Register the stands atlas once (boot step 24 and, as a fallback, the layer). */
@@ -37,6 +36,11 @@ interface RailRun {
   /** ms per chase step and phase offset */
   step: number;
   phase: number;
+  last: number;
+}
+interface CapRun {
+  bobs: Bob[];
+  side: 0 | 1;
   last: number;
 }
 interface PostRun {
@@ -61,9 +65,11 @@ export function createStandsLayer(ctx: NtCtx): NtLayer {
   // the railings: one blitter per (side, row), at the depth between that row's spectators and the next row's
   const rails: RailRun[] = [];
   const posts: PostRun[] = [];
+  const caps: CapRun[] = [];
   for (const r of rows) {
     const b = ctx.add(scene.add.blitter(0, 0, NT_STANDS_KEY).setDepth(railDepth(r.row)));
     const bobs = r.rail.map((q) => b.create(q.x, q.y, q.frame));
+    if (r.cap.length) caps.push({ side: r.side, bobs: r.cap.map((q) => b.create(q.x, q.y, q.frame)), last: -1 });
     rails.push({ side: r.side, row: r.row, bobs, step: (r.side === 0 ? 170 : 130) + r.row * 25, phase: (r.row * 7 + r.side * 3) * 410, last: -1 });
     r.posts.forEach((q, i) => {
       const bob = b.create(q.x, q.y, q.frame);
@@ -86,6 +92,18 @@ export function createStandsLayer(ctx: NtCtx): NtLayer {
           const d = pos - i;
           const frame = d === 0 || d === 1 ? 1 : 0;
           run.bobs[i].setFrame(`rail:${run.side}:${frame}`);
+        }
+      }
+      // back wall light line: a slow swell travels along the wall (dim → mid → lit → mid), 6 steps a second
+      for (const c of caps) {
+        const n = c.bobs.length;
+        const pos = Math.floor(t / 160) % (n * 2 + 8);
+        if (pos === c.last) continue;
+        c.last = pos;
+        for (let i = 0; i < n; i++) {
+          const d = Math.abs(pos - 4 - i * 2);
+          const lvl = d <= 1 ? 2 : d <= 4 ? 1 : 0;
+          c.bobs[i].setFrame(`cap:${c.side}:${lvl}`);
         }
       }
       // post lights: lit for 360 ms every few seconds

@@ -57,17 +57,17 @@ function paintPlane(k: number, n: number): Plane {
   const capeTop: Pt[] = [
     [56, 38],
     [66, 40],
-    [78, 48 + gust * 0.8],
-    [88, 60 + gust],
-    [94 + tipW(0) * 0.4, 76],
+    [80, 46 + gust * 0.8],
+    [90, 58 + gust],
+    [95 + tipW(0) * 0.4, 74],
   ];
   const tips: Pt[] = [
-    [99 + tipW(0), 92],
-    [90 + tipW(1) * 1.1, 100],
-    [95 + tipW(2), 111],
-    [82 + tipW(3), 104],
-    [84 + tipW(4) * 1.2, 112],
-    [72 + tipW(5), 106],
+    [96 + tipW(0) * 0.6, 90],
+    [87 + tipW(1), 99],
+    [94 + tipW(2) * 0.7, 110],
+    [80 + tipW(3), 104],
+    [82 + tipW(4), 112],
+    [68 + tipW(5), 106],
   ];
   // streamers are separated by notches pulled up into the cape
   const capePoly: Pt[] = [...capeTop];
@@ -92,9 +92,11 @@ function paintPlane(k: number, n: number): Plane {
   );
 
   // ---- the front cloak panel: flares towards a hem that waves
+  // the gust pushes the whole hem away to the right: the lower robe leans, billowing a pixel or two with the beat
+  const lean = (y: number): number => Math.max(0, y - 40) * 0.16 + Math.sin(ph - y * 0.03) * 1.2;
   const hem = (x: number): number => 108 - Math.round(1.7 * Math.sin(x * 0.33 + ph) + 1.2 * Math.sin(x * 0.7 - ph * 2)) - (((x >> 1) + (x >> 3)) % 3 === 0 ? 1 : 0);
-  const L = (y: number): number => 36 - ((y - 40) * 12) / 68 - Math.sin(ph + y * 0.07) * 0.8;
-  const Rr = (y: number): number => 62 + ((y - 40) * 12) / 68 + Math.sin(ph - y * 0.06) * 1.4;
+  const L = (y: number): number => 36 - ((y - 40) * 8) / 68 + lean(y) - Math.sin(ph + y * 0.07) * 0.8;
+  const Rr = (y: number): number => 62 + ((y - 40) * 10) / 68 + lean(y) * 1.1 + Math.sin(ph - y * 0.06) * 1.4;
   const front: Pt[] = [];
   for (let y = 40; y <= 100; y += 10) front.push([L(y), y]);
   for (let x = Math.round(L(100)); x <= Math.round(Rr(100)); x += 3) front.push([x, hem(x)]);
@@ -117,17 +119,18 @@ function paintPlane(k: number, n: number): Plane {
   const panel: Pt[] = [
     [41, 52],
     [53, 52],
-    [56, hem(55) - 2],
-    [38, hem(40) - 2],
+    [56 + lean(hem(55)), hem(55) - 2],
+    [38 + lean(hem(40)), hem(40) - 2],
   ];
-  cloth(pl, panel, (x, y) => (Math.abs(x - 47) < 1 || ((y + k) % 9 === 0 && Math.abs(x - 47) < 2) ? 1 : 0), 7200);
+  cloth(pl, panel, (x, y) => (Math.abs(x - 47 - lean(y)) < 1 || ((y + k) % 9 === 0 && Math.abs(x - 47 - lean(y)) < 2) ? 1 : 0), 7200);
   for (const [x0, x1] of [
     [41, 38],
     [53, 56],
   ] as const)
-    for (let y = 54; y < hem((x0 + x1) / 2) - 3; y++) pl.put(Math.round(x0 + ((x1 - x0) * (y - 54)) / (hem((x0 + x1) / 2) - 57)), y, 3, 7201);
-  cloth(pl, [[44, 70], [50, 70], [50, 77], [44, 77]], (x, y) => (y === 70 || y === 71 ? 4 : 3), 7210);
-  cloth(pl, [[46, 72], [48, 72], [48, 76], [46, 76]], () => 5, 7211);
+    for (let y = 54; y < hem((x0 + x1) / 2) - 3; y++) pl.put(Math.round(x0 + ((x1 - x0) * (y - 54)) / (hem((x0 + x1) / 2) - 57) + lean(y)), y, 3, 7201);
+  const gl = Math.round(lean(74));
+  cloth(pl, [[44 + gl, 70], [50 + gl, 70], [50 + gl, 77], [44 + gl, 77]], (x, y) => (y === 70 || y === 71 ? 4 : 3), 7210);
+  cloth(pl, [[46 + gl, 72], [48 + gl, 72], [48 + gl, 76], [46 + gl, 76]], () => 5, 7211);
 
   // ---- mantle over the shoulders
   cloth(

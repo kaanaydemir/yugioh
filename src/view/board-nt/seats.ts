@@ -20,19 +20,31 @@
 // Seats are listed row by row, left to right, front row (nearest the platform) first. Every number is
 // an integer screen pixel (feet = bottom centre of the 14×22 spectator cell, CROWD_CELL).
 
-import { CROWD_CELL, NT_DEPTH, STANDS, type StandBlock } from './layout-nt';
+import { CROWD_CELL, NT_DEPTH, type StandBlock } from './layout-nt';
 
 /**
- * Front-left terrace (J-fit): the left stand of layout-nt STANDS sits beside the platform's left end cap; this block continues
- * the blue crowd along the platform's lower-left (front) face, row 0 8 px below the armour bottom (feet y = 162 + x/2, the same
- * offset the right stand has: 480 − x/2 vs 472 − x/2). Six tiers step outward (down-left) into the empty lower-left corner; it
- * stops left of the hint plate (x 174) and above the P1 panel (y 292). Same side / team as STANDS[0] (blue reactions).
+ * J5 re-fit to the thick platform (FACE_H 52, armour bottom y = 178 + x/2 left / 448 − x/2 right): large stepped terraces
+ * that fill the side bays. Row 0 is the highest tier (nearest the platform, a back wall rises behind it), every further tier
+ * lies 13 px lower and steps outward along the iso diagonal, so the terraces climb up to the wall like a flight of stairs.
+ * Left bay (beside the platform's left end cap, under the hologram plinth): 7 tiers down to the P1 panel (rows clamp at
+ * x = SEAT_X_MIN so the outer tiers stay inside the frame). Right bay: 7 tiers, ending above the button column.
+ */
+export const MAIN_STANDS: readonly StandBlock[] = [
+  { side: 0, rows: 7, feet0: { a: 128, slope: 0.5 }, x0: 76, x1: 150, rowDy: 13, shiftA: -16, shiftB: -16, xMax: 150, pitch: 8 },
+  { side: 1, rows: 7, feet0: { a: 480, slope: -0.5 }, x0: 476, x1: 626, rowDy: 13, shiftA: 16, shiftB: 0, xMax: 626, pitch: 8 },
+];
+/**
+ * Front-left terrace (J-fit): continues the blue crowd along the platform's lower-left (front) face, row 0 8 px below the armour
+ * bottom (feet y = 162 + x/2, the same offset the right stand has: 480 − x/2 vs 472 − x/2). Six tiers step outward (down-left) into
+ * the lower-left corner; it stops left of the hint plate (x 174) and above the P1 panel (y 292). Same side / team as block 0.
  */
 export const EXTRA_STANDS: readonly StandBlock[] = [
   { side: 0, rows: 6, feet0: { a: 162, slope: 0.5 }, x0: 126, x1: 190, rowDy: 13, shiftA: -16, shiftB: -16, xMax: 190, pitch: 8 },
 ];
-/** Every stand block: layout-nt STANDS first (ids unchanged), then the extra terraces. The index is the block id. */
-export const ALL_STANDS: readonly StandBlock[] = [...STANDS, ...EXTRA_STANDS];
+/** Every stand block: the two bays first (ids 0 = left, 1 = right), then the extra terraces. The index is the block id. */
+export const ALL_STANDS: readonly StandBlock[] = [...MAIN_STANDS, ...EXTRA_STANDS];
+/** Left-most spectator foot x (the cell is 14 wide and must stay in the frame). */
+export const SEAT_X_MIN = 8;
 
 /** Height of the railing in front of a row: the spectator cell's bottom RAIL_H pixels are covered. */
 export const RAIL_H = 4;
@@ -73,22 +85,28 @@ export function feetY(b: StandBlock, k: number, x: number): number {
 
 /** x range [xa, xb] (feet x of the first / last seat) of row `k` of block `b`. */
 export function rowRange(b: StandBlock, k: number): { xa: number; xb: number } {
-  return { xa: b.x0 + b.shiftA * k, xb: Math.min(b.xMax, b.x1 + b.shiftB * k) };
+  return { xa: Math.max(SEAT_X_MIN, b.x0 + b.shiftA * k), xb: Math.min(b.xMax, b.x1 + b.shiftB * k) };
 }
 
 /**
- * The aisle (a lit stair gap without seats) of each stand. Only the right stand has one (it is the long one): row k's
- * gap starts at x = x0 + shift·k (the tiers step outward, so the aisle runs down the iso diagonal), AISLE_W px
- * wide; seats keep AISLE_PAD px clear on both sides (half a spectator cell).
+ * The aisles (a lit stair gap without seats): one in the long right stand (row k's gap starts at x = x0 + shift·k, the tiers step
+ * outward so the aisle runs down the iso diagonal) and one in the left bay. AISLE_W px wide; seats keep AISLE_PAD px clear on both
+ * sides (half a spectator cell). A gap that would fall off a short row is dropped for that row.
  */
 export const AISLE_W = 16;
 export const AISLE_PAD = 7;
-export const AISLES: readonly ({ x0: number; shift: number } | null)[] = [null, { x0: 544, shift: 16 }];
+const AISLES = new Map<StandBlock, { x0: number; shift: number }>([
+  [ALL_STANDS[0], { x0: 92, shift: -16 }],
+  [ALL_STANDS[1], { x0: 544, shift: 16 }],
+]);
 
-/** Left x of the aisle gap in row `k` of block `b` (null = no aisle in that stand). */
+/** Left x of the aisle gap in row `k` of block `b` (null = no aisle in that stand / row). */
 export function aisleX(b: StandBlock, k: number): number | null {
-  const a = AISLES[b.side];
-  return a ? a.x0 + a.shift * k : null;
+  const a = AISLES.get(b);
+  if (!a) return null;
+  const x = a.x0 + a.shift * k;
+  const { xa, xb } = rowRange(b, k);
+  return x >= xa + 24 && x + AISLE_W <= xb - 8 ? x : null;
 }
 
 function hash(n: number): number {

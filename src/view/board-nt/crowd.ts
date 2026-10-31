@@ -172,7 +172,7 @@ export function createCrowdLayer(ctx: NtCtx): NtLayer {
     // looks: a seeded shuffle that avoids neighbours repeating (id-based hash, no Math.random)
     look[i] = Math.floor(mix(s.id, 11) * CROWD_LOOKS) % CROWD_LOOKS;
     if (i > 0 && look[i] === look[i - 1]) look[i] = (look[i] + 1 + Math.floor(mix(s.id, 12) * 6)) % CROWD_LOOKS;
-    holder[i] = mix(s.id, 21) < 0.32 ? 1 : 0;
+    holder[i] = mix(s.id, 21) < 0.4 ? 1 : 0;
     baseMode[i] = holder[i] ? M_STICK : M_SIT;
     mode[i] = baseMode[i];
     grp[i] = Math.floor(mix(s.id, 31) * 4) & 3;

@@ -51,7 +51,7 @@ export const HALO = [
 export const HALO_FRAMES = 2;
 export const SPILL = { rx: 96, ry: 40 } as const;
 export const SPILL_FRAMES = 2;
-export const ORB_R = 34;
+export const ORB_R = 40;
 export const ORB_FRAMES = 3;
 
 const N = { ink: PAL.ink, n0: PAL.night0, n1: PAL.night1, n2: PAL.night2, n3: PAL.night3, n4: PAL.night4, steel: PAL.steel } as const;
@@ -268,11 +268,14 @@ function paintGlow(w: number, h: number, rx: number, ry: number, tones: readonly
 function paintHalo(side: 0 | 1, k: number): PixelCanvas {
   const R = HOLO_LOOKS[side].ramp;
   const { rx, ry } = HALO[side];
-  return paintGlow(2 * rx + 3, 2 * ry + 3, rx, ry, [R[0], R[0], R[1]], k * 2, 1);
+  // violet adds more light per tone than blue does: its bloom starts one ramp step darker
+  const t = side === 0 ? [R[0], R[0], R[1], R[1]] : [PAL.void0, PAL.void0, PAL.void1];
+  return paintGlow(2 * rx + 3, 2 * ry + 3, rx, ry, t, k * 2, 1);
 }
 function paintSpill(side: 0 | 1, k: number): PixelCanvas {
   const R = HOLO_LOOKS[side].ramp;
-  return paintGlow(2 * SPILL.rx + 3, 2 * SPILL.ry + 3, SPILL.rx, SPILL.ry, [R[0], R[0], R[1], R[1]], k * 3, 1);
+  const t = side === 0 ? [R[0], R[1], R[1], R[1]] : [PAL.void0, PAL.void0, PAL.void1, PAL.void1];
+  return paintGlow(2 * SPILL.rx + 3, 2 * SPILL.ry + 3, SPILL.rx, SPILL.ry, t, k * 3, 1);
 }
 function paintOrb(k: number): PixelCanvas {
   const g = [PAL.mag0, PAL.mag0, PAL.mag1, PAL.mag1, PAL.mag2];

@@ -10,7 +10,14 @@
 // crowd are the glow sticks (team colour: blue on the left stand, crimson on the right).
 
 import { PAL, RAMPS } from '../palette';
-import { PixelCanvas, shade } from '../pixel';
+import { PixelCanvas, shade as rampShade } from '../pixel';
+
+const PAL_SET = new Set<number>(Object.values(PAL));
+/** Palette-safe ramp step: a colour the ramps do not know (or a step off the ramp's end) stays as it is. */
+function shade(c: number, steps: number): number {
+  const r = rampShade(c, steps);
+  return PAL_SET.has(r) ? r : c;
+}
 
 /** Texture key of the crowd atlas. */
 export const NT_CROWD_KEY = 'nt:crowd';
@@ -121,19 +128,19 @@ interface HeadMap {
   rows: readonly string[];
 }
 const HEADS: Record<Hair, HeadMap> = {
-  short: { rows: ['.hhhh.', 'hhhhhh', 'Hsssss', 'HsssEs', '.ssSs.', '..SS..'] },
-  long: { rows: ['.hhhh.', 'hhhhhh', 'hsssss', 'hhssEs', 'hHsss.', 'hH.SS.'] },
-  spiky: { above: '.h.h.h', rows: ['hhhhhh', 'hHhHhh', 'Hsssss', 'HsssEs', '.ssSs.', '..SS..'] },
-  bald: { rows: ['.sssl.', 'ssssll', 'Ssssss', 'SsssEs', '.ssSs.', '..SS..'] },
-  cap: { rows: ['.hhhh.', 'hhhhhh', 'Hsssss', 'HsssEs', '.ssSs.', '..SS..'] },
-  hood: { rows: ['.hhhh.', 'hhhhhh', 'hhsssh', 'hHssEh', '.hsSsh', '..hh..'] },
+  short: { rows: ['.hhgg.', 'hhhggh', 'Hhsssl', 'HsssEl', '.sssSl', '..SSS.'] },
+  long: { rows: ['.hhgg.', 'hhhghh', 'hhsssl', 'hhssEl', 'hHsssS', 'hH.SS.'] },
+  spiky: { above: '.h.hgh', rows: ['hhhhgh', 'hHhHgh', 'Hhsssl', 'HsssEl', '.sssSl', '..SSS.'] },
+  bald: { rows: ['.slll.', 'sslsll', 'Ssssll', 'SsssEl', '.sssSl', '..SSS.'] },
+  cap: { rows: ['.hhgg.', 'hhhhgh', 'Hhsssl', 'HsssEl', '.sssSl', '..SSS.'] },
+  hood: { rows: ['.hhgg.', 'hhhghh', 'hhsssh', 'hHssEh', '.hsSsh', '..hhh.'] },
   beanie: { above: '...b..', rows: ['.bbbb.', 'BBBBBB', 'hsssss', 'hsssEs', '.ssSs.', '..SS..'] },
 };
 
 /** Draw a head box at (hx, hy). `away` mirrors it (looking back, away from the platform). */
 function drawHead(p: PixelCanvas, L: Look, hx: number, hy: number, away: boolean, mouth: boolean): void {
   const map = HEADS[L.hair];
-  const key: Record<string, number> = { h: L.h0, H: L.h1, s: L.s0, S: L.s1, l: L.s2, E: PAL.ink, b: L.trim, B: L.trim };
+  const key: Record<string, number> = { h: L.h0, H: L.h1, g: shade(L.h0, 1), s: L.s0, S: L.s1, l: L.s2, E: PAL.ink, b: L.trim, B: L.trim };
   if (L.hair === 'cap') {
     key.h = L.h0;
     key.H = K[0] === L.s1 ? L.s1 : L.h1;
@@ -187,10 +194,20 @@ function drawTorso(p: PixelCanvas, L: Look, ty: number, tx: number): void {
   p.rect(x0 + 1, ty, 6, 1, L.c0); // shoulders
   p.rect(x0, ty + 1, 8, h - 1, L.c0);
   p.vline(x0, ty + 1, CROWD_FH - 1, L.c1); // far sleeve shade
+  p.vline(x0 + 1, ty + 3, CROWD_FH - 1, shade(L.c0, 0)); // keep the arm line readable
   p.vline(x0 + 6, ty + 2, CROWD_FH - 1, L.c1); // near sleeve seam
   p.vline(x0 + 7, ty + 1, CROWD_FH - 1, L.c2); // rim light on the platform side
   p.set(x0 + 6, ty, L.c2);
+  p.set(x0 + 5, ty, L.c2);
   p.set(x0 + 1, ty, L.c1);
+  // neck shadow under the chin + collar
+  p.set(x0 + 3, ty, L.s1);
+  p.set(x0 + 4, ty, L.s1);
+  p.set(x0 + 2, ty + 1, L.c1);
+  p.set(x0 + 5, ty + 1, L.c1);
+  // a soft fold across the chest
+  p.hline(x0 + 2, x0 + 5, ty + 4, L.c1);
+  p.set(x0 + 2, ty + 3, L.c2);
   switch (L.detail) {
     case 'zip':
       p.vline(x0 + 3, ty + 1, CROWD_FH - 1, L.c1);
@@ -234,19 +251,38 @@ function arm(p: PixelCanvas, L: Look, x: number, top: number, y1: number, near: 
 
 function drawStick(p: PixelCanvas, team: 0 | 1, bx: number, by: number, len: number, lean: 0 | 1 | 2): void {
   const [body, tip, halo] = STICK[team];
-  // base at (bx, by) going up; lean 1 steps right every 2 px, lean 2 steps left
+  // base at (bx, by) going up; lean 1 steps right every 2 px, lean 2 steps left. Two px thick: lit column + dim column.
   const dx = lean === 1 ? 1 : lean === 2 ? -1 : 0;
   let x = bx;
   for (let i = 0; i < len; i++) {
     const y = by - i;
     if (dx !== 0 && i === 2) x += dx;
     if (dx !== 0 && i === 4) x += dx;
-    p.set(x, y, i >= len - 2 ? tip : body);
+    const hot = i >= len - 3;
+    p.set(x, y, hot ? tip : body);
+    if (i < len - 1) p.set(x + 1, y, hot ? body : halo);
   }
   const ty = by - len + 1;
+  // bloom around the tip
   p.set(x - 1, ty, halo);
-  p.set(x + 1, ty, halo);
-  p.set(x, ty - 1, halo);
+  p.set(x + 2, ty, halo);
+  p.set(x, ty - 1, tip);
+  p.set(x + 1, ty - 1, body);
+  p.set(x, ty - 2, halo);
+  p.set(x + 1, ty - 2, halo);
+  p.set(x - 1, ty - 1, halo);
+  p.set(x + 2, ty - 1, halo);
+}
+
+/** A dark 1-px outline around the sprite (left, right and top; never the bottom edge the railing hides). */
+function outlineSprite(p: PixelCanvas): void {
+  const add: number[] = [];
+  for (let y = 0; y < p.h - 1; y++)
+    for (let x = 0; x < p.w; x++) {
+      if (p.isOpaque(x, y)) continue;
+      if (p.isOpaque(x - 1, y) || p.isOpaque(x + 1, y) || p.isOpaque(x, y + 1)) add.push(x, y);
+    }
+  for (let i = 0; i < add.length; i += 2) p.set(add[i], add[i + 1], N[0]);
 }
 
 /** One spectator frame in a fresh 14×22 canvas. */
@@ -258,6 +294,7 @@ function drawSpectator(L: Look, pose: Pose, team: 0 | 1): PixelCanvas {
   drawHead(p, L, 4 + tx, hy, !!pose.away, !!pose.mouth);
   rimLight(p, hy - 1, hy + 5);
   const x0 = 3 + tx;
+  let stick: (() => void) | null = null;
   switch (arms) {
     case 'down':
       break;
@@ -303,16 +340,18 @@ function drawSpectator(L: Look, pose: Pose, team: 0 | 1): PixelCanvas {
       break;
     case 'stickSit': {
       arm(p, L, 11, ty - 5, ty, true);
-      drawStick(p, team, 12, ty - 6, 7, pose.stick ?? 0);
+      stick = () => drawStick(p, team, 12, ty - 6, 7, pose.stick ?? 0);
       break;
     }
     case 'stickUp': {
       arm(p, L, 1, ty - 7, ty, false);
       arm(p, L, 11, ty - 6, ty, true);
-      drawStick(p, team, 12, ty - 7, 6, pose.stick ?? 0);
+      stick = () => drawStick(p, team, 12, ty - 7, 6, pose.stick ?? 0);
       break;
     }
   }
+  outlineSprite(p);
+  stick?.();
   return p;
 }
 

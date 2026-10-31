@@ -23,14 +23,16 @@ import {
   litName,
   overlayName,
   paintPlate,
-  paintReadout,
   picName,
   scanName,
   screensBake,
+  shearPiece,
+  PIC_AT,
 } from '../../art/arena-nt/screens';
 import { blinkAt, breathAt, flickerAt, scanAt, sweepAt, swayAt, tearAt } from '../../art/arena-nt/screens-anim';
 import { PORTRAIT_W } from '../../art/arena-nt/portraits';
 import { canvasTexture } from '../../art/textures';
+import { PixelCanvas } from '../../art/pixel';
 import { textCanvas } from '../v3/hudSkin';
 import { PAL, RAMPS } from '../../art/palette';
 import type { GameEvent, PlayerId } from '../../engine/types';
@@ -87,7 +89,7 @@ function plateNames(scene: Phaser.Scene): [string, string] {
   return names;
 }
 
-/** How long the LP readout stays on a screen after damage / healing (ms): pop, hold, two blinks, gone. */
+/** How long the LP readout stays on a screen after damage / healing (ms): pop, hold, two blinks, gone. (LP only: one hit = one number, at the impact.) */
 const READOUT_MS = 1500;
 
 /** Ceiling rods (a 3-px steel bar with a lit edge) the screens hang from: x offsets inside the screen, top y of the bezel there. */
@@ -116,7 +118,7 @@ export function createScreensLayer(ctx: NtCtx): NtLayer {
     frame: Phaser.GameObjects.Image;
     plate: Phaser.GameObjects.Image;
     plateKeys: [string, string];
-    /** the LP readout (a damage / gain amount + the LP now), shown on the picture for READOUT_MS */
+    /** the LP readout (the LP now, never the amount), shown on the picture for READOUT_MS */
     num: Phaser.GameObjects.Image;
     numKey: string;
     numAt: { x: number; y: number };
@@ -198,12 +200,26 @@ export function createScreensLayer(ctx: NtCtx): NtLayer {
   let rising = false;
   let powerRun = 0;
 
-  /** Show "−amount / LP now" (or "+amount") on a screen: the textures are baked on demand (small, cached by the texture manager). */
-  function readout(who: 0 | 1, amount: number, lpAfter: number, gain: boolean): void {
+  /**
+   * The LP readout of a screen: ONLY the life points now ("LP" over the number, small), parked in the free strip left of the face
+   * (never over the face, never a second damage number: the one amount of a hit is the number at the defender's impact point).
+   * The textures are baked on demand (tiny, cached by the texture manager).
+   */
+  function readout(who: 0 | 1, lpAfter: number, gain: boolean): void {
     const s = screens[who];
     const R = who === 0 ? RAMPS.cyan : RAMPS.crim;
-    const key = `nt:screens:num:${who}:${gain ? '+' : '-'}${amount}:${lpAfter}`;
-    const sh = paintReadout(who, textCanvas(`${gain ? '+' : '-'}${amount}`, 'md', gain ? PAL.white : R[4]), textCanvas(`LP ${lpAfter}`, 'sm', gain ? RAMPS.cyan[4] : PAL.white));
+    const key = `nt:screens:lp:${who}:${gain ? '+' : '-'}${lpAfter}`;
+    const crop = (c: PixelCanvas): PixelCanvas => {
+      const b = c.bounds();
+      return b ? c.crop(b.x, b.y, b.w, b.h) : c;
+    };
+    const lbl = crop(textCanvas('LP', 'sm', gain ? RAMPS.cyan[3] : R[3]));
+    const val = crop(textCanvas(String(lpAfter), 'sm', gain ? RAMPS.cyan[4] : PAL.white));
+    const w = Math.max(lbl.w, val.w);
+    const flat = new PixelCanvas(w, lbl.h + 1 + val.h);
+    flat.blit(lbl, 0, 0);
+    flat.blit(val, w - val.w, lbl.h + 1);
+    const sh = shearPiece(flat, who, PIC_AT.x + 1, PIC_AT.y + 4);
     if (!scene.textures.exists(key)) canvasTexture(scene, key, sh.canvas);
     s.numKey = key;
     s.numAt = { x: SCREENS[who].x + sh.x, y: SCREENS[who].y + sh.y };
@@ -409,11 +425,11 @@ export function createScreensLayer(ctx: NtCtx): NtLayer {
       switch (ev.type) {
         case 'damage':
           react(ev.player, 'hurt', ev.amount >= 2000 ? 1.7 : ev.amount >= 1000 ? 1.3 : 1);
-          readout(ev.player, ev.amount, Math.max(0, ev.lpAfter), false);
+          readout(ev.player, Math.max(0, ev.lpAfter), false);
           break;
         case 'lpGain':
           react(ev.player, 'glad', 1);
-          readout(ev.player, ev.amount, ev.lpAfter, true);
+          readout(ev.player, ev.lpAfter, true);
           break;
         case 'summon':
           screens[ev.player].kick = now;
