@@ -242,8 +242,9 @@ async function ashenRiseV3(S: Stage): Promise<void> {
       const x = Math.round(lerp(q.from.x, q.to.x, t));
       const y = Math.round(lerp(q.from.y, q.to.y, t) - Math.sin(t * Math.PI) * 6);
       // ≥ 2×3 with a 1-px ink outline so they read at 1× against the floor and the storm
-      const h = q.big ? 4 : 3;
-      tor.rect(x - 1, y - 1, 4, h + 2, PAL.ink).rect(x, y, 2, h, PAL.stone2).rect(x, y, 2, 1, PAL.stone3).rect(x, y + h - 1, 2, 1, PAL.stone1);
+      const h = q.big ? 3 : 2;
+      // (the ink only on the shadow edges — bottom and far side — so a plate reads as a lit chip, not a box)
+      tor.rect(x + 1, y + h, 3, 1, PAL.ink).rect(x + 3, y + 1, 1, h, PAL.ink).rect(x, y, 3, h, PAL.stone2).rect(x, y, 3, 1, PAL.stone3).rect(x, y + h - 1, 3, 1, PAL.stone1);
     }
     // ash grains rain off the skirt onto the floor
     if (Math.random() < 0.5) grains.push({ x: home.x + Math.round(RR(-w, w)), y: home.y + Math.round(RR(-3, 3)), age: 0 });
