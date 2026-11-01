@@ -1,16 +1,7 @@
 // Neon Tower painter: PLATFORM — owner A1 (docs/v3/ARENA_NEON_TOWER.md §2 / §5 / §6).
-// The ONE raised isometric metal battle platform drawn AROUND the existing tiles (layout.ts never changes):
-//   - a plain graphite top plate over the fixed 7×5 reference grid (the 5+5 board; 3+3 uses its middle
-//     columns, the outer lane cells stay empty graphite) with a rim, a free channel for BoardViewCalm's
-//     neon trim pieces (they keep their lit / dead / runner / ignition behaviour), panel seams and bolts;
-//   - ONE chamfered slab (layout-nt PLATE_OUTLINE: an octagon); the two duelist pads stand ON it (pads layer), nothing is cut into the outline;
-//   - layered armour side panels (FACE_H px: lip, rail, energy-strip channel, armour panel, ledge, skirt)
-//     on every camera-facing edge, panel seams, a few vents, corner pillars and four corner blocks;
-//   (the contact shadow and the footing under it live in the apron painter, apron.ts: flat bands, no dither)
-//   - the neutral dark centre strip (bridge row) with its dashed centre line and tiny split emblem.
-// Everything is drawn in screen pixels into ONE texture (BOX), plus a small fx atlas (white masks of the
-// strip pieces, vent puffs, corner glints) for the layer's ambient motion. Pure PixelCanvas code
-// (no Phaser): runs in Node for tests. Colours only from src/art/palette.ts (through NT_PAL).
+// Readability pass: calm smooth dark slate top plate with subtle texture, warm top-left key light rim along
+// the upper-left coping edges, and darkened low-contrast side armour without bright neon strip glare.
+// Pure PixelCanvas code (no Phaser): runs in Node for tests. Colours only from src/art/palette.ts.
 
 import { FACE_H, NT_COLS, NT_OX, NT_OY, NT_ROWS, PLATE_C0, PLATE_C1, PLATE_OUTLINE, PLATE_R0, PLATE_R1, PLATE_X0, PLATE_X1, PLATE_Y0, PLATE_Y1, ntIso } from '../../view/board-nt/layout-nt';
 import { type Color, PixelCanvas } from '../pixel';
@@ -38,12 +29,11 @@ const INK = NT_PAL.ink;
 const G0 = NT_PAL.graphite[0];
 const G1 = NT_PAL.graphite[1];
 const G2 = NT_PAL.graphite[2];
-const STONE3 = PAL.stone3;
 /** energy tones per side: 0 blue (player), 1 crimson (opponent), 2 neutral (the middle panel of the right face) */
 export const STRIP_TONES: Record<0 | 1 | 2, readonly [Color, Color, Color, Color, Color]> = {
-  0: NT_PAL.blue,
-  1: NT_PAL.red,
-  2: [N1, N2, N3, N4, STEEL],
+  0: [PAL.night0, PAL.cyan0, PAL.cyan1, PAL.cyan1, PAL.cyan2],
+  1: [PAL.night0, PAL.crim0, PAL.crim1, PAL.crim1, PAL.crim2],
+  2: [N0, N1, N2, N2, N3],
 };
 
 type Side = 0 | 1 | 2;
@@ -51,19 +41,11 @@ const sideOfRow = (r: number): Side => (r > 2.5 ? 0 : r < 1.5 ? 1 : 2);
 
 // ---------------------------------------------------------------- grid helpers
 
-/**
- * The plate is a convex octagon: the intersection of eight half-planes. Edge index (also the rim tone slot):
- * 0 −col, 1 +col, 2 −row, 3 +row, 4 far flat (−s), 5 near flat (+s), 6 left end cap (−u), 7 right end cap (+u); u = c − r, s = c + r.
- */
 const S_FAR = (PLATE_Y0 - NT_OY) / 16;
 const S_NEAR = (PLATE_Y1 - NT_OY) / 16;
 const U_LEFT = (PLATE_X0 - NT_OX) / 32;
 const U_RIGHT = (PLATE_X1 - NT_OX) / 32;
 
-/**
- * Depth of a point inside the plate in screen px (the distance to the nearest edge, measured vertically for the slanted and flat
- * edges, horizontally for the end caps; −1 outside), and which edge is nearest.
- */
 let depthSide = 0;
 function plateDepth(c: number, r: number): number {
   const s = c + r;
@@ -83,32 +65,22 @@ function plateDepth(c: number, r: number): number {
 // ---------------------------------------------------------------- public result
 
 export interface StripPiece {
-  /** frame name in the fx atlas (white mask of the strip's core row) */
   frame: string;
-  /** screen top-left of the mask */
   x: number;
   y: number;
   side: Side;
-  /** the face it lies on */
   face: number;
-  /** index along its face */
   n: number;
 }
 
 export interface PlatformArt {
-  /** the body texture at PLATFORM_BOX */
   canvas: PixelCanvas;
   fx: Atlas;
   strips: StripPiece[];
-  /** vent centres (screen) and which way the puff drifts (−1 left-down face, +1 right-down face) */
   vents: { x: number; y: number; dir: -1 | 1 }[];
-  /** the corner blocks' top vertex (screen), with the side of the board they stand on */
   corners: { x: number; y: number; side: 0 | 1 }[];
-  /** the rim lip pixels of each long face, left → right (for the light sweep) */
   rim: { x: number; y: number }[][];
-  /** the dashed centre line of the neutral strip: one pixel list per dash, from the P1 end to the P2 end */
   dashes: { x: number; y: number }[][];
-  /** build time, ms (total and per step) */
   ms: number;
   laps: Record<string, number>;
 }
@@ -118,19 +90,15 @@ export interface PlatformArt {
 interface FaceDef {
   a: [number, number];
   b: [number, number];
-  /** grid column of a shaded (+col) face's edge (the row follows x); unused on the other faces */
   col: number;
   lit: boolean;
-  /** a fixed owner for the whole face (the flat near edge), or null: the owner follows x */
   side: Side | null;
   seams: number[];
-  /** panel indices that carry a vent */
   vents: number[];
 }
 
 let cached: PlatformArt | null = null;
 
-/** Build (once) every platform layer: body texture, fx atlas and the layer's placement data. */
 export function buildPlatformArt(): PlatformArt {
   if (cached) return cached;
   const t0 = performance.now();
@@ -151,7 +119,6 @@ export function buildPlatformArt(): PlatformArt {
   const x1 = x0 + PLATFORM_BOX.w;
   const y1 = y0 + PLATFORM_BOX.h;
 
-  // faces first (a nearer top surface covers the part of a farther face behind it), then the top
   const faces = faceDefs();
   const cand: { x: number; y: number; tone: Color }[][] = [];
   faces.forEach((f, i) => paintFace(S, f, i, strips, cand, vents, rim));
@@ -159,7 +126,6 @@ export function buildPlatformArt(): PlatformArt {
   const dashes = paintTop(S, x0, y0, x1, y1);
   lap('top');
   for (const k of PILLARS()) paintPillar(S, k);
-  // keep only the strip pixels the top did not cover, cut the white masks from them
   const kept: Omit<StripPiece, 'frame'>[] = [];
   strips.forEach((st, i) => {
     const px = cand[i].filter((q) => S.at(q.x, q.y) === q.tone);
@@ -191,21 +157,20 @@ export function buildPlatformArt(): PlatformArt {
   return cached;
 }
 
-/** Placeholder-compatible painter (the skeleton's signature): the body texture. */
 export function paintPlatform(): PixelCanvas {
   return buildPlatformArt().canvas;
 }
 
 // ---------------------------------------------------------------- top surface
 
-/** Edge-side rim tone (coping highlight): the camera-facing lower-left edge is the lit one. −col, +col, −row, +row, far flat, near flat, left cap, right cap. */
-const RIM: readonly Color[] = [N3, N3, N2, N4, N2, N3, N3, N2];
-/** The coping's second row (one tone down). */
-const RIM2: readonly Color[] = [N2, N2, N1, N3, N1, N2, N2, N1];
-/** The coping's third row (the step down to the groove). */
-const RIM3: readonly Color[] = [N1, N1, N0, N2, N0, N1, N1, N0];
+/**
+ * Edge-side rim tone (coping highlight): warm key light from top-left illuminates the upper-left edge (0: -col),
+ * far flat edge (4), left cap (6), and upper-right edge (2: -row), while lower edges stay cool dark slate.
+ */
+const RIM: readonly Color[] = [PAL.earth2, N2, PAL.stone2, N2, PAL.earth2, N2, PAL.earth2, N1];
+const RIM2: readonly Color[] = [PAL.earth1, N1, PAL.stone1, N1, PAL.earth1, N1, PAL.earth1, N0];
+const RIM3: readonly Color[] = [G2, N0, G1, N0, G2, N0, G2, N0];
 
-/** A tiny deterministic hash (0..1) of a screen pixel: sparse plate noise that never moves. */
 function hash01(x: number, y: number): number {
   let h = (x * 374761393 + y * 668265263) | 0;
   h = (h ^ (h >>> 13)) * 1274126177;
@@ -214,9 +179,6 @@ function hash01(x: number, y: number): number {
 
 function paintTop(S: Surface, x0: number, y0: number, x1: number, y1: number): PlatformArt['dashes'] {
   const dashPx: { x: number; y: number }[][] = Array.from({ length: 13 }, () => []);
-  // the plate carries its own neon edge line along the whole slab outline (blue near / crimson far, steel in the neutral middle):
-  // BoardViewCalm's trim pieces follow the OLD calm outline (bumps included), so the host must skip them (NT_SKIP.trims)
-  const ownTrim = true;
   for (let y = Math.max(y0, PLATE_Y0); y < Math.min(y1, PLATE_Y1); y++) {
     const sum = (y + 0.5 - NT_OY) / 16;
     for (let x = Math.max(x0, PLATE_X0); x < Math.min(x1, PLATE_X1); x++) {
@@ -227,21 +189,20 @@ function paintTop(S: Surface, x0: number, y0: number, x1: number, y1: number): P
       if (d < 0) continue;
       const side = depthSide;
       const d32 = d * 32;
-      // the 7×5 tile grid (cells are 1 grid unit around their centre): PLAIN flat graphite, a cell reads by its 1-px border
       if (c >= -0.5 && c < NT_COLS - 0.5 && r >= -0.5 && r < NT_ROWS - 0.5) {
         const col = Math.floor(c + 0.5);
         const row = Math.floor(r + 0.5);
         if (row === 2) {
-          // the neutral strip: one continuous band, joints only along its two long edges
           const dr = (0.5 - Math.abs(r - 2)) * 32;
           if (dr < 1) S.put(x, y, N0);
           else {
             let tone: Color = G1;
-            // the dashed centre line (one row, 8 px long dashes every 16 px, the emblem's place empty)
             const k = Math.round(c * 2);
             if ((r - 2) * 32 >= -0.5 && (r - 2) * 32 < 0.5 && k >= 0 && k <= 12 && k !== 6 && Math.abs(c * 2 - k) <= 0.25) {
-              tone = N2;
+              tone = G2;
               dashPx[k].push({ x, y });
+            } else if (hash01(x, y) < 0.015) {
+              tone = G0;
             }
             S.put(x, y, tone);
           }
@@ -250,13 +211,12 @@ function paintTop(S: Surface, x0: number, y0: number, x1: number, y1: number): P
         const ccx = NT_OX + (col - row) * 32;
         const ccy = NT_OY + (col + row) * 16;
         const dv = 16 - (Math.abs(x + 0.5 - ccx) / 2 + Math.abs(y + 0.5 - ccy));
-        // an empty cell (3+3 outer lanes, or under a slot image): graphite panel, a dim owner line, a dark glow row inside it
         const ramp = row < 2 ? NT_PAL.red : row > 2 ? NT_PAL.blue : NT_PAL.metal;
-        S.put(x, y, dv < 1 ? N0 : dv < 2 ? ramp[row === 2 ? 1 : 2] : dv < 3 ? ramp[row === 2 ? 0 : 1] : y + 0.5 < ccy && dv < 4 ? G2 : G1);
+        // Calm dark slate empty cell with soft thin owner line (only visible in 5+5 outer lanes)
+        const h = hash01(x, y);
+        S.put(x, y, dv < 1 ? N0 : dv < 2 ? ramp[1] : h < 0.02 ? G0 : G1);
         continue;
       }
-      // the border band between the rim and the grid: a RAISED coping (lit lip, mid tone, dark step), a groove, the trim channel,
-      // a groove, then the rim wall's inner shadow on the plate
       if (d32 < 1) {
         S.put(x, y, RIM[side]);
         continue;
@@ -270,11 +230,9 @@ function paintTop(S: Surface, x0: number, y0: number, x1: number, y1: number): P
         continue;
       }
       if (d32 < 4) {
-        // the plate's own neon line, blue near / crimson far
-        if (ownTrim) {
-          const ramp = r > 2.5 ? NT_PAL.blue : r < 1.5 ? NT_PAL.red : NT_PAL.metal;
-          S.put(x, y, ramp === NT_PAL.metal ? N3 : ramp[3]);
-        } else S.put(x, y, N1);
+        // Subtle calm groove instead of bright neon perimeter tube
+        const ramp = r > 2.5 ? NT_PAL.blue : r < 1.5 ? NT_PAL.red : NT_PAL.metal;
+        S.put(x, y, ramp === NT_PAL.metal ? N1 : ramp[0]);
         continue;
       }
       if (d32 < 5) {
@@ -286,41 +244,32 @@ function paintTop(S: Surface, x0: number, y0: number, x1: number, y1: number): P
         continue;
       }
       let tone: Color = G1;
-      // a panel seam every tile along the edge, a bolt where it meets the band's middle
       const sAlong = side < 2 || side > 5 ? r : c;
       const t = sAlong + 0.5 - Math.floor(sAlong + 0.5);
-      if (t < 1 / 32) tone = d32 >= 8 && d32 < 10 ? STONE3 : N0;
-      else if (t >= 1 / 32 && t < 2 / 32 && d32 >= 5.5) tone = G2;
-      // very sparse noise: a few lighter flecks, never a pattern
-      else if (hash01(x, y) < 0.006) tone = G2;
+      if (t < 1 / 32) tone = N0;
+      else if (hash01(x, y) < 0.018) tone = G0;
+      else if (hash01(x + 17, y + 31) < 0.008) tone = G2;
       S.put(x, y, tone);
     }
   }
-  // the emblem: a tiny split diamond (blue toward the player, crimson toward the opponent) with short wings
   paintEmblem(S, 0);
   return dashPx.filter((_, k) => k !== 6);
 }
 
-/**
- * The centre emblem at ring levels (blue half, red half) 0..3, drawn at the board centre (320, 160): 16×8, a tiny
- * split diamond (the player's half toward the near side, the opponent's toward the far side) with short wings.
- */
 export function emblemCanvas(blueLevel: number, redLevel = blueLevel): PixelCanvas {
   const p = new PixelCanvas(16, 8);
   const lb = Math.max(0, Math.min(3, blueLevel));
   const lr = Math.max(0, Math.min(3, redLevel));
-  const blue = [NT_PAL.blue[1], NT_PAL.blue[2], NT_PAL.blue[3], NT_PAL.blue[4]][lb];
-  const red = [NT_PAL.red[1], NT_PAL.red[2], NT_PAL.red[3], NT_PAL.red[4]][lr];
+  const blue = [NT_PAL.blue[0], NT_PAL.blue[1], NT_PAL.blue[1], NT_PAL.blue[2]][lb];
+  const red = [NT_PAL.red[0], NT_PAL.red[1], NT_PAL.red[1], NT_PAL.red[2]][lr];
   for (let j = 0; j < 8; j++) {
     for (let i = 0; i < 16; i++) {
-      // the diamond (width 12, wings add 2 px each side at the middle rows)
       const dv = 3.5 - (Math.abs(i + 0.5 - 8) / 2 - 0.5 + Math.abs(j + 0.5 - 4));
       const wing = (j === 3 || j === 4) && (i < 2 || i >= 14);
       if (dv < 0 && !wing) continue;
-      // below the dividing line (slope 1/2 through the centre) = the player's half
       const s = j + 0.5 - 4 - (i + 0.5 - 8) / 2;
       const ring = dv < 1 || wing;
-      if (Math.abs(s) < 0.5) p.set(i, j, STEEL);
+      if (Math.abs(s) < 0.5) p.set(i, j, N2);
       else if (ring) p.set(i, j, s > 0 ? blue : red);
       else p.set(i, j, s > 0 ? N1 : N0);
     }
@@ -341,7 +290,6 @@ function paintEmblem(S: Surface, level: number): void {
 const rp = (q: { x: number; y: number }): [number, number] => [Math.round(q.x), Math.round(q.y)];
 
 function faceDefs(): FaceDef[] {
-  // the faces the camera sees: the lower-left long edge (lit), the flat near edge, the lower-right long edge (shaded)
   const V = PLATE_OUTLINE.map(([c, r]) => rp(ntIso(c, r)));
   const out: FaceDef[] = [];
   const mk = (a: [number, number], b: [number, number], lit: boolean, col: number, side: Side | null): FaceDef => {
@@ -349,7 +297,6 @@ function faceDefs(): FaceDef[] {
     let seams: number[];
     let vents: number[];
     if (side === null && !lit) {
-      // the right face: seams where the strip changes owner (rows 2.5 / 1.5 = x 428 / 460)
       seams = [a[0], 396, 428, 460, 493, b[0]];
       vents = [1, 3];
     } else {
@@ -359,46 +306,38 @@ function faceDefs(): FaceDef[] {
     }
     return { a, b, col, lit, side, seams, vents };
   };
-  out.push(mk(V[0], V[7], true, PLATE_C0, null)); // lower-left long edge (blue)
-  out.push(mk(V[7], V[6], false, 0, 0)); // flat near edge (blue, the near-corner tone)
-  out.push(mk(V[6], V[5], false, PLATE_C1, null)); // lower-right long edge: blue → neutral → crimson
+  out.push(mk(V[0], V[7], true, PLATE_C0, null));
+  out.push(mk(V[7], V[6], false, 0, 0));
+  out.push(mk(V[6], V[5], false, PLATE_C1, null));
   return out;
 }
 
-/**
- * v → tone of a face column (lit = the camera-facing left faces, shade = the right faces). 'S' = strip core, 'L' = the strip's glow
- * rows (outer 'l' = the dimmest). Top → bottom (FACE_H 52): coping (v0–2) and a groove, the UPPER armour plate (v4–15, bevel + five
- * tone bands), a groove, the recessed light channel (v17–22), a groove, the MAIN armour plate (v24–41: a big bevelled panel face, six
- * tone bands), a groove, the belt (v43–47: lip, dim owner line, hazard / bolts), the footing flange (v48–50) and the bottom outline.
- */
 type RowTone = Color | 'S' | 'L' | 'l';
 const rowsOf = (...segs: RowTone[][]): RowTone[] => segs.flat();
 const LIT_ROWS: RowTone[] = rowsOf(
-  [STEEL, N4, N3, INK],
-  [N4, N3, N3, N3, N2, N2, N2, N2, N2, N1, N1, N0],
+  [N3, N2, N1, INK],
+  [N2, N2, N1, N1, G1, G1, G1, G0, G0, N0, N0, N0],
   [INK],
   [N0, 'L', 'S', 'S', 'l', N0],
   [INK],
-  [N4, N3, N3, N3, N3, N2, N2, N2, N2, N2, N2, N2, N1, N1, N1, N1, N1, N0],
+  [N2, N2, N1, N1, G1, G1, G1, G1, G0, G0, G0, G0, N0, N0, N0, N0, N0, INK],
   [INK],
-  [N3, N2, 'l', N1, N0],
-  [N3, N2, N1, INK],
+  [N1, G1, 'l', N0, N0],
+  [N1, N0, N0, INK],
 );
 const SHD_ROWS: RowTone[] = rowsOf(
-  [N4, N3, N2, INK],
-  [N3, N2, N2, N2, N1, N1, N1, N1, N1, N0, N0, N0],
+  [N2, N1, G1, INK],
+  [N2, N1, N1, G1, G1, G0, G0, G0, N0, N0, N0, N0],
   [INK],
   [N0, 'L', 'S', 'S', 'l', N0],
   [INK],
-  [N3, N2, N2, N2, N2, N1, N1, N1, N1, N1, N1, N1, N0, N0, N0, N0, N0, N0],
+  [N2, N1, N1, G1, G1, G1, G0, G0, G0, G0, N0, N0, N0, N0, N0, N0, N0, INK],
   [INK],
-  [N2, N1, 'l', N0, N0],
-  [N2, N1, N0, INK],
+  [N1, G0, 'l', N0, INK],
+  [N1, N0, N0, INK],
 );
-/** rows of the strip core (the animated overlay masks cover both) */
 const STRIP_ROWS = [19, 20] as const;
-/** tone ladder used to shift a face tone up / down a step (pillars, bevels) */
-const LADDER: readonly Color[] = [INK, N0, N1, N2, N3, N4, STEEL];
+const LADDER: readonly Color[] = [INK, N0, G0, G1, N1, N2, N3];
 const shiftTone = (c: Color, d: number): Color => {
   const i = LADDER.indexOf(c);
   return i < 0 ? c : LADDER[Math.max(1, Math.min(LADDER.length - 1, i + d))];
@@ -409,7 +348,6 @@ function paintFace(S: Surface, f: FaceDef, id: number, strips: Omit<StripPiece, 
   const rows = f.lit ? LIT_ROWS : SHD_ROWS;
   const slope = (B[1] - A[1]) / (B[0] - A[0]);
   const yTop = (x: number): number => edgeTop(A[1], slope, A[0], x);
-  // which side's energy lies at x: the left faces are the player's; on a +col face the row follows x
   const sideAt = (x: number): Side => (f.side !== null ? f.side : f.lit ? 0 : sideOfRow(f.col - (x - NT_OX) / 32));
   const lipPts: { x: number; y: number }[] = [];
   const panelOf = (x: number): number => {
@@ -417,10 +355,9 @@ function paintFace(S: Surface, f: FaceDef, id: number, strips: Omit<StripPiece, 
     while (i + 1 < f.seams.length - 1 && x >= f.seams[i + 1]) i++;
     return i;
   };
-  const hi = f.lit ? N4 : N3;
-  const lo = f.lit ? N1 : N0;
-  const inner = (u: number): Color => (f.lit ? (u < 6 ? N2 : u < 11 ? N1 : N0) : u < 8 ? N1 : N0);
-  const gold = NT_PAL.gold;
+  const hi = f.lit ? N2 : N1;
+  const lo = N0;
+  const inner = (u: number): Color => (f.lit ? (u < 6 ? G1 : u < 11 ? G0 : N0) : u < 8 ? G0 : N0);
   const runs = new Map<number, { x: number; y: number; tone: Color }[]>();
   for (let x = A[0]; x < B[0]; x++) {
     const yt = yTop(x);
@@ -443,69 +380,33 @@ function paintFace(S: Surface, f: FaceDef, id: number, strips: Omit<StripPiece, 
       const t = rows[v];
       let c: Color = t === 'S' ? tones[2] : t === 'L' ? tones[1] : t === 'l' ? tones[0] : t;
       if (v >= 4 && v <= 46 && seam) {
-        // panel joints: a dark groove and a lit edge through every armour band
         c = isSeam1 ? INK : hi;
       } else if (v >= 4 && v <= 15) {
-        // upper plate: chamfered top corners, lit left bevel / shaded right edge, rivets, a recessed inset (vent grille or lamp)
         const u = v - 4;
         if (u === 0 && nearSeam) c = rows[5] as Color;
         else if (lx === 1 && u >= 1) c = hi;
         else if (lx === plen - 3 && u >= 1) c = lo;
-        else if (u === 2 && (lx === 3 || lx === plen - 5)) c = f.lit ? STEEL : N4;
-        else if (u === 9 && (lx === 3 || lx === plen - 5)) c = f.lit ? N4 : N3;
         else if (inVent && u >= 3 && u <= 8) c = u === 3 ? lo : u === 8 ? hi : u % 2 === 0 ? INK : lo;
-        else if (!hasVent && pi % 2 === 1 && lx >= 6 && lx <= plen - 8 && u >= 3 && u <= 8) {
-          // recessed inset: dark top lip, lit bottom lip, a lamp in the middle
-          const lampX = Math.abs(lx - (plen >> 1)) <= 1;
-          if (u === 3) c = lo;
-          else if (u === 8) c = hi;
-          else if (lampX && u === 5) c = tones[2];
-          else if (lampX && u === 6) c = tones[0];
-          else c = f.lit ? N1 : N0;
-        } else if (!hasVent && pi % 2 === 0 && lx >= 5 && lx <= plen - 7) {
-          // engraved line with a lit lip under it
-          if (u === 5) c = lo;
-          else if (u === 6) c = hi;
-        }
       } else if (v >= 24 && v <= 41) {
-        // main plate: a big bevelled inset (lit top / left, shaded bottom / right) with a tone gradient and a variant fixture
         const u = v - 24;
-        const iu = u - 2;
         if (inInset && u >= 2 && u <= 15) {
           const edge = u === 2 ? hi : u === 15 ? INK : lx === 3 ? hi : lx === plen - 5 ? lo : null;
           if (edge !== null) c = edge;
           else {
             c = inner(u);
             const lw = plen - 8;
-            const cx = lx - 4; // 0..lw-1 inside the inset
+            const cx = lx - 4;
             if (variant === 0) {
-              // vent grille: slats with a lit lip under each
-              if (cx >= 3 && cx <= lw - 4 && u >= 5 && u <= 12) c = u % 2 === 1 ? INK : f.lit ? N3 : N2;
+              if (cx >= 3 && cx <= lw - 4 && u >= 5 && u <= 12) c = u % 2 === 1 ? INK : f.lit ? N1 : G0;
             } else if (variant === 1) {
-              // lamp window
               if (Math.abs(cx - (lw >> 1)) <= 4 && u >= 6 && u <= 11) {
                 const wx = Math.abs(cx - (lw >> 1));
                 if (u === 6 || u === 11 || wx === 4) c = INK;
-                else c = u === 7 ? tones[3] : u === 8 || u === 9 ? tones[2] : tones[1];
-              }
-            } else {
-              // access hatch: a framed door with a handle and two lock pins
-              if (cx >= 4 && cx <= lw - 5 && u >= 5 && u <= 12) {
-                if (u === 5 || cx === 4) c = hi;
-                else if (u === 12 || cx === lw - 5) c = INK;
-                else if (u === 8 && Math.abs(cx - (lw >> 1)) <= 2) c = f.lit ? STEEL : N4;
-                else if ((u === 7 || u === 10) && (cx === 6 || cx === lw - 7)) c = f.lit ? N4 : N3;
+                else c = u === 7 ? tones[2] : tones[1];
               }
             }
-            // corner rivets
-            if ((iu === 2 || iu === 11) && (lx === 5 || lx === plen - 7)) c = f.lit ? STEEL : N4;
           }
-        } else if (u >= 16 && u <= 17 && inInset) c = f.lit ? (u === 16 ? N1 : N0) : N0;
-      } else if (v >= 43 && v <= 47) {
-        // belt: lip, a dim owner line, hazard stripes on some panels, bolts
-        const u = v - 43;
-        if (pi % 4 === 2 && lx >= 6 && lx <= plen - 7 && u >= 1 && u <= 3 && u !== 2) c = (lx + u * 3) % 6 < 3 ? gold[1] : gold[0];
-        else if (u === 3 && lx % 8 === 4) c = f.lit ? STEEL : N4;
+        } else if (u >= 16 && u <= 17 && inInset) c = N0;
       }
       S.put(x, yt + v, c);
       if ((v === STRIP_ROWS[0] || v === STRIP_ROWS[1]) && !seam) {
@@ -529,20 +430,15 @@ function paintFace(S: Surface, f: FaceDef, id: number, strips: Omit<StripPiece, 
   if (B[0] - A[0] > 60) rim.push(lipPts);
 }
 
-/** First row of a face band at column x under a top edge line through (kx, ky) with `slope`: the top's last row + 1. */
 function edgeTop(ky: number, slope: number, kx: number, x: number): number {
   return Math.floor(ky + slope * (x + 0.5 - kx) - 0.5) + 1;
 }
 
 interface Pillar {
-  /** the corner vertex (screen) */
   k: [number, number];
-  /** slope of the face line left / right of the vertex (+½ lower-left face, 0 flat near edge, −½ lower-right face) */
   sl: number;
   sr: number;
-  /** pillar centre column */
   cx: number;
-  /** 0 blue / 1 crimson / 2 neutral: the tone of the slit */
   side: Side;
 }
 
@@ -561,14 +457,8 @@ function PILLARS(): Pillar[] {
 }
 
 const PIL_HW = 6;
-/** Height of the pillar's cap block above the rim line. */
 const CAP_H = 7;
 
-/**
- * A chunky corner pillar (13 px wide) down the faces at a corner: the face rows lifted one step on the lit half and two on the
- * specular edge, dropped one on the shaded half; rivets, an owner-coloured slit in the light channel and a bevelled cap block that
- * stands CAP_H px above the rim.
- */
 function paintPillar(S: Surface, p: Pillar): void {
   const ramp = p.side === 0 ? NT_PAL.blue : p.side === 1 ? NT_PAL.red : NT_PAL.metal;
   for (let x = p.cx - PIL_HW; x <= p.cx + PIL_HW; x++) {
@@ -581,36 +471,23 @@ function paintPillar(S: Surface, p: Pillar): void {
       if (ak === PIL_HW) c = INK;
       else {
         const base: Color = t === 'S' || t === 'L' || t === 'l' ? N1 : t;
-        const d = k < -3 ? 1 : k < 0 ? 1 : k === 0 || k === 1 ? 2 : k < 4 ? -1 : -2;
+        const d = k < -3 ? 1 : k < 0 ? 1 : k === 0 || k === 1 ? 1 : k < 4 ? -1 : -1;
         c = base === INK ? INK : shiftTone(base, d);
-        // vertical bevel lines: a bright arris at the middle, a dark one on the shaded side
-        if (base !== INK && (k === 0 || k === -1) && v > 3 && v < 48) c = shiftTone(base, 2);
-        if (base !== INK && k === 3 && v > 3 && v < 48) c = shiftTone(base, -1);
-      }
-      if (v >= 4 && v <= 46 && v !== 16 && v !== 23 && v !== 42 && ak < PIL_HW) {
-        // bolts on the plates
-        if ((v === 7 || v === 13 || v === 28 || v === 38) && (k === -4 || k === 4)) c = k < 0 ? STEEL : N4;
-        // plate inset on the main face
-        if (v >= 27 && v <= 36 && ak === 3 && v !== 31) c = k < 0 ? N4 : INK;
       }
       if (v === STRIP_ROWS[0] || v === STRIP_ROWS[1]) {
-        if (ak <= 3) c = ak === 3 ? ramp[1] : ak === 2 ? ramp[2] : ramp[3];
+        if (ak <= 3) c = ak === 3 ? ramp[0] : ramp[1];
         else if (ak < PIL_HW) c = N0;
       }
-      if (v === 18 && ak <= 3) c = ramp[1];
-      if (v === 21 && ak <= 3) c = ramp[0];
       S.put(x, yt + v, c);
     }
-    // the cap block above the rim: a bevelled head, lit left, shaded right, a lit top edge and an owner lamp
     const top = ak <= 3 ? -CAP_H : ak <= 5 ? -CAP_H + 1 : -CAP_H + 2;
     for (let v = top; v < 0; v++) {
       let c: Color;
       if (ak === PIL_HW || v === top) c = INK;
-      else if (v === top + 1) c = k <= 0 ? STEEL : N4;
-      else if (v === -1) c = N1;
-      else c = k < -1 ? N4 : k < 1 ? N3 : k < 4 ? N2 : N1;
-      if (v === top + 2 && ak < PIL_HW && ak > 0) c = k < 0 ? N4 : N3;
-      if ((v === top + 3 || v === top + 4) && ak <= 1) c = v === top + 3 ? ramp[3] : ramp[1];
+      else if (v === top + 1) c = k <= 0 ? N2 : N1;
+      else if (v === -1) c = N0;
+      else c = k < -1 ? N2 : k < 1 ? N1 : G0;
+      if ((v === top + 3 || v === top + 4) && ak <= 1) c = ramp[1];
       S.put(x, yt + v, c);
     }
   }
@@ -623,11 +500,9 @@ function paintCorners(S: Surface): PlatformArt['corners'] {
   const HW = 18;
   const HH = 9;
   const H = 16;
-  // (the far corner stays free: the gate / emblem stand behind it). The left block sits at the lower end of its end cap, the
-  // right one at the upper end (point-symmetric), clear of the corner tiles; each base diamond touches its cap with a vertex.
   const spots: { cx: number; cy: number; side: 0 | 1 }[] = [
-    { cx: PLATE_X0 + HW, cy: 175, side: 0 }, // left end cap (player)
-    { cx: PLATE_X1 - HW, cy: 145, side: 1 }, // right end cap (opponent)
+    { cx: PLATE_X0 + HW, cy: 175, side: 0 },
+    { cx: PLATE_X1 - HW, cy: 145, side: 1 },
   ];
   for (const s of spots) {
     paintCube(S, s.cx, s.cy, HW, HH, H, s.side);
@@ -636,7 +511,6 @@ function paintCorners(S: Surface): PlatformArt['corners'] {
   return out;
 }
 
-/** An isometric armour block: base diamond (2·hw × 2·hh) centred (cx, cy), `h` px tall; top lit, left face mid, right face dark. */
 function paintCube(S: Surface, cx: number, cy: number, hw: number, hh: number, h: number, side: 0 | 1): void {
   const p = new PixelCanvas(2 * hw + 4, 2 * hh + h + 4);
   const ox = cx - hw - 2;
@@ -644,25 +518,17 @@ function paintCube(S: Surface, cx: number, cy: number, hw: number, hh: number, h
   const lx = (x: number) => x - ox;
   const ly = (y: number) => y - oy;
   const top = cy - h;
-  p.poly([[lx(cx - hw), ly(cy)], [lx(cx), ly(cy + hh)], [lx(cx), ly(cy + hh - h)], [lx(cx - hw), ly(top)]], N3);
-  p.poly([[lx(cx), ly(cy + hh)], [lx(cx + hw), ly(cy)], [lx(cx + hw), ly(top)], [lx(cx), ly(cy + hh - h)]], N2);
-  p.poly([[lx(cx - hw), ly(top)], [lx(cx), ly(top - hh)], [lx(cx + hw), ly(top)], [lx(cx), ly(top + hh)]], N4);
-  // the top: an inset darker plate with a small owner-coloured lamp, a lit rim along the far edges
-  p.poly([[lx(cx - hw + 5), ly(top)], [lx(cx), ly(top - hh + 2)], [lx(cx + hw - 5), ly(top)], [lx(cx), ly(top + hh - 2)]], N3);
-  p.line(lx(cx - hw), ly(top), lx(cx), ly(top - hh), STEEL);
-  p.line(lx(cx), ly(top - hh), lx(cx + hw), ly(top), N4);
+  p.poly([[lx(cx - hw), ly(cy)], [lx(cx), ly(cy + hh)], [lx(cx), ly(cy + hh - h)], [lx(cx - hw), ly(top)]], N1);
+  p.poly([[lx(cx), ly(cy + hh)], [lx(cx + hw), ly(cy)], [lx(cx + hw), ly(top)], [lx(cx), ly(cy + hh - h)]], N0);
+  p.poly([[lx(cx - hw), ly(top)], [lx(cx), ly(top - hh)], [lx(cx + hw), ly(top)], [lx(cx), ly(top + hh)]], N2);
+  p.poly([[lx(cx - hw + 5), ly(top)], [lx(cx), ly(top - hh + 2)], [lx(cx + hw - 5), ly(top)], [lx(cx), ly(top + hh - 2)]], N1);
+  p.line(lx(cx - hw), ly(top), lx(cx), ly(top - hh), side === 0 ? PAL.earth2 : N3);
+  p.line(lx(cx), ly(top - hh), lx(cx + hw), ly(top), N2);
   const ramp = side === 0 ? NT_PAL.blue : NT_PAL.red;
-  p.hline(lx(cx - 2), lx(cx + 1), ly(top), ramp[3]);
-  p.set(lx(cx - 1), ly(top - 1), ramp[4]);
-  // the shaft: a lit vertical edge, two ledge grooves, the owner's energy slit on the left face
-  p.vline(lx(cx), ly(cy + hh - h), ly(cy + hh), N4);
-  for (const dy of [3, h - 3]) {
-    p.line(lx(cx - hw + 1), ly(top + dy), lx(cx - 1), ly(top + dy + hh - 1), N2);
-    p.line(lx(cx + 1), ly(top + dy + hh - 1), lx(cx + hw - 1), ly(top + dy), N1);
-  }
+  p.hline(lx(cx - 2), lx(cx + 1), ly(top), ramp[1]);
+  p.vline(lx(cx), ly(cy + hh - h), ly(cy + hh), N2);
   const sy = cy - 4;
-  p.hline(lx(cx - hw + 3), lx(cx - 4), ly(sy), ramp[2]);
-  p.hline(lx(cx - hw + 3), lx(cx - 4), ly(sy + 1), ramp[1]);
+  p.hline(lx(cx - hw + 3), lx(cx - 4), ly(sy), ramp[1]);
   p.outline(INK);
   for (let j = 0; j < p.h; j++) for (let i = 0; i < p.w; i++) {
     const c = p.get(i, j);
@@ -672,7 +538,6 @@ function paintCube(S: Surface, cx: number, cy: number, hw: number, hh: number, h
 
 // ---------------------------------------------------------------- fx frames
 
-/** Vent puff: 4 frames 8×8 (a thin steam wisp that grows, drifts and thins out): metal tones only. */
 function puffFrames(): [string, PixelCanvas][] {
   const spec: string[][] = [
     ['........', '........', '........', '...3....', '..33....', '...3....', '........', '........'],
@@ -680,7 +545,7 @@ function puffFrames(): [string, PixelCanvas][] {
     ['........', '..3.....', '.343....', '.4343...', '..343...', '...43...', '....3...', '........'],
     ['.3......', '..3..3..', '.3.3....', '...3.3..', '.3......', '..3..3..', '....3...', '.....3..'],
   ];
-  const key: Record<string, Color> = { '3': N3, '4': N4 };
+  const key: Record<string, Color> = { '3': N1, '4': N2 };
   return spec.map((rows, i) => {
     const p = new PixelCanvas(8, 8);
     p.stamp(rows, key, 0, 0);
@@ -688,14 +553,13 @@ function puffFrames(): [string, PixelCanvas][] {
   });
 }
 
-/** Corner glint: 3 frames 7×7 (a small cross that blooms and dies): one white pixel at the heart, the rest steel / mist. */
 function glintFrames(): [string, PixelCanvas][] {
   const spec: string[][] = [
     ['.......', '.......', '.......', '...w...', '.......', '.......', '.......'],
     ['.......', '.......', '...s...', '..sws..', '...s...', '.......', '.......'],
     ['.......', '...m...', '...s...', '.mswsm.', '...s...', '...m...', '.......'],
   ];
-  const key: Record<string, Color> = { w: NT_PAL.white, s: STEEL, m: NT_PAL.glint };
+  const key: Record<string, Color> = { w: N3, s: N2, m: N1 };
   return spec.map((rows, i) => {
     const p = new PixelCanvas(7, 7);
     p.stamp(rows, key, 0, 0);
