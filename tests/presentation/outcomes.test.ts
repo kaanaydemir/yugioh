@@ -68,7 +68,7 @@ describe('the presentation layer does not touch the rules’ data (A3 §6.1)', (
       void [strikeLight(id), monsterGlow(id), roarPeakOf(id), flipRamp(id), isRanged(id), cutInRhythm(id), deathPreset(id), matterRamp(id)];
       void [blowKindOf({ art: { id, weight: 'medium' } }), materialOf(id, 'physical'), materialOf(id, 'magic'), soundsOf(id)];
     }
-    expect(read).toBe(3); // the two aces + the stand-in: the bridge really read recipes
+    expect(read).toBeGreaterThanOrEqual(3); // (≥: every new v3 monster with a recipe adds one — lane C) the two aces + the stand-in: the bridge really read recipes
     const after = SEEDS.map(game);
     for (let i = 0; i < SEEDS.length; i++) expect(after[i] === before[i], `seed ${SEEDS[i]}`).toBe(true);
   }, 30000); // ten full games: ~3 s alone, more under the whole suite's load
