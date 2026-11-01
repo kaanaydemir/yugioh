@@ -173,7 +173,7 @@ export function attackPose(f: number): Pose {
   const m = mixR({ ...k9, burst: 0, dust: 0 }, IDLE0, k);
   return key({ ...m, pin: true, hFront: false, la: [9, -4][f - 10], dust: f === 10 ? 0.55 : 0.85, dustX: 74, fs: f * 3 + 5 }, f, A_N);
 }
-const ATTACK_HOLDS = [70, 90, 110, 170, 60, 50, 70, 80, 60, 130, 110, 120, 140];
+const ATTACK_HOLDS = [70, 90, 110, 170, 60, 50, 70, 80, 90, 100, 110, 120, 140];
 
 // ------------------------------------------------------------------ roar (11 frames): the lantern raised, the flame white
 
@@ -238,15 +238,15 @@ const HIT_N = 5;
 const HIT_KEYS: Partial<Pose>[] = [
   { hx: -1, hy: -1, eye: 0.3, la: 14, hood: 1 },
   { hx: -4, hy: 0, lean: -5, sink: 1, eye: 0.3, la: 100, ax: 18, ay: 2, capeA: 5, hood: 3, wrap: 0.8, ha: -90 },
-  { hx: -3, hy: 1, lean: -4, sink: 1, eye: 0.6, la: -18, ax: 19, ay: 2, capeA: 4, hood: 1, wrap: 0.5, ha: -88 },
-  { hx: -1, lean: -1, eye: 0.8, la: 9, capeA: 2 },
+  { hx: -3, hy: 1, lean: -4, sink: 1, eye: 0.6, la: 70, ax: 19, ay: 2, capeA: 4, hood: 1, wrap: 0.5, ha: -88 },
+  { hx: -1, lean: -1, eye: 0.8, la: -18, capeA: 2 },
 ];
 export function hitPose(f: number): Pose {
   if (f >= HIT_N - 1) return home();
   return key(HIT_KEYS[f], f, HIT_N);
 }
-// critic r3: the lantern's fling (flung UP over the fist, clear of the attacker's hit FX) holds longer
-const HIT_HOLDS = [50, 110, 130, 120, 110];
+// critic r3: the lantern is flung UP over the fist (clear of the attacker's hit FX) and stays up through f2
+const HIT_HOLDS = [50, 60, 130, 120, 110];
 
 const HH_N = 7;
 const HH_KEYS: Partial<Pose>[] = [
@@ -263,7 +263,7 @@ export function hitHeavyPose(f: number): Pose {
   if (f >= HH_N - 1) return home();
   return key(HH_KEYS[f], f, HH_N);
 }
-const HH_HOLDS = [50, 110, 140, 150, 120, 120, 100];
+const HH_HOLDS = [50, 60, 140, 150, 120, 120, 100];
 
 const HM_N = 7;
 const HM_KEYS: Partial<Pose>[] = [
