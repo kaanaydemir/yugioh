@@ -231,6 +231,8 @@ export interface Skel {
   core: V;
   /** the grown lunge actually applied (px) */
   lu: V;
+  /** grown: how far the head + face stand up out of the mane (px; the mane stays where it was) */
+  faceUp: number;
 }
 
 /** The six sub-ages of the growth (one part each, §4.10). */
@@ -279,6 +281,10 @@ export function skel(P: HatchPose, age: number): Skel {
   // where the head would be without its own follow offsets (the rear mane stays with the body)
   const headRest: V = [hc[0] - lean - R(P.head[0]), hc[1] - R(P.head[1])];
   hc = addV(hc, lu);
+  // (crit c3r2 #4: the grown read as a sheep — the face sat low in the wool) the head and its snout stand
+  // 3 px higher out of the mane; the mane is laid where it was (maneLobes takes faceUp back off)
+  const faceUp = R(3 * sM);
+  hc = [hc[0], hc[1] - faceUp];
   const head: Ell = { c: hc, rx: L(10.5, 11, ht), ry: L(9.5, 10.5, ht) };
   const tl = P.tilt;
   // the face turns about the head centre with the pitch (tilt 2 ≈ the snout 30° up)
@@ -395,7 +401,7 @@ export function skel(P: HatchPose, age: number): Skel {
   const core: V = [R(body.c[0]), R(body.c[1])];
   void sH;
   void sN;
-  return { age, sB, sL, sM, sH, sW, sN, o, body, chest, belly, head, headRest, snout, jaw, mouthGeo, cheek, eye, mouth, crown, haunch, footN, footF, armN, armF, armW: [L(3.4, 7, sL), L(2.8, 5.6, sL)], pawN, pawF, tail, tailW, tailFront: sT >= 0.5 || tc > 0.5, sT, shell, wingN, wingF, core, lu };
+  return { age, sB, sL, sM, sH, sW, sN, o, body, chest, belly, head, headRest, snout, jaw, mouthGeo, cheek, eye, mouth, crown, haunch, footN, footF, armN, armF, armW: [L(3.4, 7, sL), L(2.8, 5.6, sL)], pawN, pawF, tail, tailW, tailFront: sT >= 0.5 || tc > 0.5, sT, shell, wingN, wingF, core, lu, faceUp };
 }
 
 // ------------------------------------------------------------------ the workspace
@@ -473,7 +479,7 @@ const lobeAt = (age: number, t0: number): number => clamp01((age - t0) / Math.ma
 
 /** the mane's lobes in draw order: the silhouette scallops first, then the masses back to front */
 function maneLobes(S: Skel, P: HatchPose, front: boolean): Lobe[] {
-  const hc = S.head.c;
+  const hc: V = [S.head.c[0], S.head.c[1] + S.faceUp];
   const list = front ? MANE_FRONT : MANE_BACK;
   const bris = P.mane + P.fluff;
   const masses: Lobe[] = [];
@@ -704,6 +710,9 @@ function grownEye(p: PixelCanvas, P: HatchPose, e: V): void {
   // the baby's catch-light carried over (critique c1r1 #3): the brightest pixel of the face, on the
   // pupil's top (it survives the brow: the brow covers row 0 only)
   put(narrow ? 1 : 2, 1, PAL.white);
+  // (crit c3r2 #4) the glint is 2 px wide (white over the pupil top + the iris beside it): the eye carries at
+  // 1× out of the mane (gold4 would be a 21st colour on roar f3)
+  if (!narrow) put(1, 1, PAL.white);
 }
 
 /**

@@ -536,14 +536,16 @@ async function eggDeath(ctx: Ctx<'destroy'>, u: MonsterUnit, home: XY, grown: bo
   // (grown: the lift-off comes on the anticipation frame f9 — its knit is longer; kaChGrownLose in budget)
   const liftF = Math.min(n - 1, grown ? FLOAT_SEQ[0] - 1 : FLOAT_SEQ[0]);
   // (crit c3r1 #7, c3r2 #2) the knitted egg never sits still: from the frame the egg is whole (baby f6,
-  // grown f7) its gathering cloud already carries it UP — whole-px steps every 45 ms with a 1-px bob back on
-  // every third step (2, 1, 3, 5, 4, 7, 9, 8, 10 … ≥ 8 px inside 300 ms), and 6×4 cloud puffs (a steel
+  // grown f7) its gathering cloud already carries it UP — whole-px steps every 24 ms (they land on every
+  // second display frame) with a 2-px bob back on every third step (2, 0, 4, 6, 4, 8 … ≥ 8 px on
+  // screen inside 300 ms of the egg closing), and 6×4 cloud puffs (a steel
   // edge) rise past it from the floor on both sides, going on through the float (the cloud that carries it)
   const bobF = Math.min(liftF - 1, grown ? 7 : 6);
   let bobbing = false;
   let puffsOn = true;
   let preLift = 0;
-  const PRE = [2, 1, 3, 5, 4, 7, 9, 8, 10, 12, 11, 13];
+  const PRE = [2, 0, 4, 6, 4, 8, 10, 8, 11, 13, 11, 14, 16, 14, 17];
+  let floatStarted = false;
   const puffL = layer(sc, DEPTH.FX - 3);
   const puffs: { x: number; y: number; age: number }[] = [];
   let nextPuff = 0;
@@ -578,11 +580,11 @@ async function eggDeath(ctx: Ctx<'destroy'>, u: MonsterUnit, home: XY, grown: bo
     if (!u.sprite.active || bobbing) return;
     bobbing = true;
     if (u.claimed) u.unclaim();
-    PRE.forEach((b, k) => void sleep(sc, 45 * (k + 1)).then(() => {
-      if (!u.sprite.active || u.frameInfo().anim !== 'death' || u.frameInfo().frame >= liftF) return;
+    PRE.forEach((b, k) => void sleep(sc, 24 * (k + 1)).then(() => {
+      // (it keeps carrying the egg up until the float takes over, whatever the frame clock does)
+      if (!u.sprite.active || u.frameInfo().anim !== 'death' || floatStarted) return;
       preLift = b;
       placeFeet(u, home, b);
-      console.log('[DBG pre]', k, b, u.frameInfo().frame, u.sprite.y, u.claimed, sc.time.now);
     }));
   }, { late: false });
   await untilFrame(liftF);
@@ -598,6 +600,7 @@ async function eggDeath(ctx: Ctx<'destroy'>, u: MonsterUnit, home: XY, grown: bo
   if (u.claimed) u.unclaim();
   const shadow = layer(sc, DEPTH.SHADOW + 0.5);
   // the float goes on from where the cloud has already carried the egg
+  floatStarted = true;
   let lift = preLift;
   let shadowRx = 13;
   let floating = true;

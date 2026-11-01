@@ -223,12 +223,16 @@ export const V3_HATCH_RECIPES = {
     verb: 0.3,
     duck: 0.25,
     play(v) {
-      glassBell(v, 2349, 0, 0.12, 0.06, { modes: 2 });
+      glassBell(v, 2349, 0, 0.16, 0.09, { modes: 2 });
       puff(v, 0, 0.08, 0.05, 3000, { kind: 'white' });
+      // (crit c3r2 #5 / SE-4) the ring's own air letting go: a narrow high band falling 7 → 2.6 kHz — keeps the
+      // contact apart from magusOrbBurst (LSD 9.7 dB) now that the pillow thump is louder
+      sweep(v, 0, 0.14, [7000, 4400, 2600], 0.09, { q: 2.6, peakAt: 0.15 });
       thump(v, 0, 300, 140, 0.18, 0.05);
       // (crit c3r1 #9) the wind's body arriving: a low, soft pillow thump under the ting (no click on top),
       // and a brown air-push that blooms a beat later — the baby's hit has weight without turning hard
-      thump(v, 0.004, 160, 62, 0.48, 0.16, { att: 0.006 });
+      // (crit c3r2 #5) +3.5 dB: the card's own low end carries the contact, not the shared impactHeavy
+      thump(v, 0.004, 160, 62, 0.72, 0.17, { att: 0.006 });
       puff(v, 0.01, 0.22, 0.18, 520, { kind: 'brown', att: 0.012 });
     },
   },
@@ -568,7 +572,12 @@ export const V3_HATCH_RECIPES = {
     duck: 0.55,
     play(v) {
       glassBell(v, 1175, 0, 0.14, 0.1, { modes: 3 });
+      // (SE-4) the baby's ting an octave over the boom and the ring's air letting go (LSD vs magusOrbBurst was 7.1 dB)
+      glassBell(v, 2349, 0.008, 0.08, 0.12, { modes: 2 });
+      sweep(v, 0, 0.18, [6500, 4000, 2200], 0.1, { q: 2.2, peakAt: 0.15 });
       thump(v, 0, 120, 50, 0.5, 0.2, { drive: 2 });
+      // (crit c3r2 #5) the card's own pillow under the boom (+3 dB of low end, ≥ 55 Hz: not ashen's 50 Hz beat)
+      thump(v, 0.006, 110, 58, 0.36, 0.2, { att: 0.008 });
       puff(v, 0, 0.3, 0.2, 1500, { kind: 'brown' });
     },
   },
