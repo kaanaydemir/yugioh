@@ -797,7 +797,7 @@ function glideTrail(sc: Phaser.Scene, u: MonsterUnit, ramp: Ramp): () => void {
  */
 function soulBurst(sc: Phaser.Scene, at: XY, floorY: number, ramp: Ramp, small: boolean, depth: number): void {
   const r = Raster.around(sc, at.x, at.y, 90, 70, depth);
-  const R0 = small ? 9 : 14;
+  const R0 = small ? 10 : 17;
   const N = 11;
   const spikes = Array.from({ length: N }, (_, i) => ({ a: (i / N) * TAU + RR(-0.18, 0.18), l: RR(0.65, 1.15) }));
   const star = (k: number): XY[] => {
@@ -818,8 +818,8 @@ function soulBurst(sc: Phaser.Scene, at: XY, floorY: number, ramp: Ramp, small: 
       const step = Math.min(4, Math.floor(el / 46));
       if (step <= 1) {
         // the solid star: outer ramp[3], inner ramp[4], white core
-        g.poly(star(step === 0 ? 0.85 : 1.1), ramp[3]);
-        g.poly(star(step === 0 ? 0.55 : 0.7), ramp[4]);
+        g.poly(star(step === 0 ? 1.0 : 1.12), ramp[3]);
+        g.poly(star(step === 0 ? 0.62 : 0.7), ramp[4]);
         g.disc(at.x, at.y, step === 0 ? 3 : 2, PAL.white);
       } else {
         // the rays break apart into flying shards along their own lines

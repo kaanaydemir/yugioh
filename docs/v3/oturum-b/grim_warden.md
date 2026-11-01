@@ -469,3 +469,51 @@ bounce on body edges (reflected, correctly NOT emissive). No change. **DEATH_PRE
   lower camera) would raise it toward the wyrm's mouth-open drama — not done this round.
 - The cut-in sleeve below the raised lantern reads as a thin strip in f2–f5.
 - No independent critic pass on the new card art / cut-in yet.
+
+## Stage — cinematics + SFX + scenarios, re-dispatch (agent: cinematics lane r3, 2026-11-01) — evidence `shots/v3/kart-b/grim_warden/cin3/`
+State found: the sound set (`src/audio/v3/grim_warden.ts`, every CharacterSounds role incl. the revive pair), the
+cinematics (`src/cinematics/kart-b/grim_warden.ts` + `-fx.ts`, all `if (LOOK_V3)`, priority 20) and the scenarios were
+complete from the earlier stage + fix r1/r2. This pass re-filmed every moment against the rig-r3 sprite and the art-3 cut-in
+and fixed what still fell short:
+- **Contact burst arrived after the hit-stop** (`gwDrainFire-contact-z.png`: during the ≈200 ms freeze only the shared
+  white spark showed; the soul star appeared when the clock resumed). `soulBurst` painted only from its `animate`
+  callback, which the show-clock freeze holds. It now paints frame 0 synchronously on `s.impact`, so the frozen beat
+  IS the solid soul star (stolen colour / green), and the star is larger (R0 14 → 17, blocked 9 → 10; step 0 at full
+  size). `gwDrainFire-contact-z2.png` #2–#9.
+- **Scenarios:** + `gwNegatedP2`, `gwBlockedP2`, `gwHitP2` (P2 coverage for negated / bounced / struck). Full list:
+  gwSummon(P2), gwAttack(P2), gwDrainFire, gwDrainWaterP2, gwDrainSurvive(P2), gwGiveBack(P2), gwDrainDecline,
+  gwNegated(P2), gwFaceDown, gwDefenseNoDrain, gwBlocked(P2), gwDirect(P2), gwHit(P2), gwKill(P2), gwGuard(P2),
+  gwGuardKill.
+- **Films looked at:** `gwDrainFire.png` (1×), `gwDrainFire-z.png` (drain), `gwDrainFire-strike-z.png`,
+  `gwDrainFire-contact-z2.png`, `gwSummon.png`, `gwSummon-rise-z.png`, `gwKill-z.png`, `gwHitP2-z.png`,
+  `gwNegatedP2.png`, `gwBlockedP2.png`.
+- **Measure** (`cin3/measure.json/.log`, 27 scenarios, 0 errors, game ms): tribute summon 4083 ≤ 4350; drain activate 1950
+  ≤ 2320; battle ≤ 2917 ≤ 3190; direct battle 2134 ≤ 2320; grim death ≤ 1583 ≤ 2030; declaration 316 ≤ 435. (Other
+  activates in the list are not ours: chains 2584, shield_titan 684, guardian_charm 2633, ember_wolf burn 2183.)
+- **Camera gate** vs `cin/camera-base.json`: 8 ok, 18 NOBASE ok, 1 FAIL = `gwGuard` focus 3 → 2. Not a camera move: the
+  base was taken when gwGuard was "ember_wolf breaks the defending warden" (3 focus calls incl. the death); fix r1 changed
+  the scenario to the storm_hawk guard-HOLDS case (no death → one fewer focus). The old case lives on as `gwGuardKill`.
+  Re-base gwGuard when the orchestrator re-takes the lane base.
+- **Palcheck** (gwDrainFire 80 frames, clip 220,60,200,140): Δoff max +0.07 (ok); white max 2.36 % at the whirl start
+  (rule 1.5 %) — the arena's own white baseline in this clip is already 1.6–1.8 % on every frame (same as noted in the
+  earlier stage, also in non-grim films); off-palette share falls during the moment (4.8 → 1.2 %).
+- tsc: no grim errors. vitest tests/art/grim_warden* + tests/cinematics + tests/audio 167/167, tests/duel 54/54.
+- filmdiff v1 not re-run: this pass touched only a v3-gated painter and added scenario keys (not in the v1 film sets).
+
+**Open issues (unchanged unless noted):** shared contact staging still adds DARK-violet attacker sparks/ring after the
+burst (`battle.ts combatImpact`) and the shared card slam's purple sparkles over the summon tile (orchestrator opt-out);
+the cut-in exit's summonBurst is faded, not removed; struck-shroud material sound (decision 4, gwJangle covers it); P2
+whirl ≈270°; MP4 with audio (clip.mjs) and a blind test vs abyss_magus still owed; gwGuard camera base stale (above).
+
+## Critic round 1 (lane-B pass 3, independent critic, 2026-11-01) — evidence `shots/v3/kart-b/grim_warden/critic-r1/pass3/`
+Verdict: no blockers left (every moment plays, gated, tests 12/12), but several majors keep it under the wyrm/magus bar.
+MAJOR: helm reads as a grey "monitor/robot visor" with a grille mouth (steel_silencer territory) and the shroud is mid-grey
+plastic cut in half by the belt (`idle-f0-p1p2-x6.png`, `compare-idle-f0-grim-magus-silencer-wyrm-x3.png`); back tatters
+still read as three black rods; special = lantern lifted beside the hood, 3 drinking frames ≈ identical, not "extended to the
+target" (`sheet-p1/grim_warden-v3-special.png`); hit/hitHeavy body barely recoils (`sheet-p1/...-hitHeavy.png`, `gwHit-z.png`);
+floorGlow pools read as sparse dot noise offset from the lantern, in every film (`gwSummon-finale-z.png`, `gwDrainFire-contact-z.png`);
+summon: generic slam ring + purple sparkles under the mound, headstone a 3–8 px nub that lies as a grey bar, rise jumps
+half→full in one frame, finale = generic double cyan/green rings (`gwSummon-rise-z2.png`, `gwSummon-finale-z.png`);
+direct = 1-px green laser line + star (`gwDirect-bolt-z.png`); contact stacks star + gold tick ring + violet ring (`gwDrainFire-contact-z.png`).
+minor: skull mist = opaque green emoji on a stick; survive branch plate restores ≈1 s after the light returns
+(`gwDrainSurvive-death-z.png`); thread low contrast on FIRE/LIGHT targets; freeze ≈150–200 ms vs spec 100; heap knock-out confetti; field mini mush.

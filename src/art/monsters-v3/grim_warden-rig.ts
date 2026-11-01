@@ -17,7 +17,7 @@
 import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
 import { ik2, lightOf, type Light } from '../rigkit';
-import { BONE, BONE_FAR, Comp, HAND, IRON, IRON_FAR, SHROUD, SHROUD_FAR, WOOD, bands, layer as kitLayer, lerp, planes, ribbon, spline, type Pt, type Tones } from './grim_warden-kit';
+import { BONE, BONE_FAR, Comp, HAND, IRON, IRON_FAR, SHROUD, SHROUD_FAR, SHROUD_RIM, WOOD, bands, layer as kitLayer, lerp, planes, ribbon, spline, type Pt, type Tones } from './grim_warden-kit';
 import { clods, driftMotes, dust, eyeLight, shards, soulBurst, soulFlame, whirlTrail } from './grim_warden-fx';
 
 export const W = 104;
@@ -206,9 +206,10 @@ export function skeleton(o: Pose): Skel {
   const R: Pt = [46, 70 + o.sink];
   const C: Pt = [46 + o.lean, 47 + o.sink + o.chy + col * 30];
   const N: Pt = [C[0] + 3 + o.lean * 0.3, C[1] - 9];
-  const S: Pt = [rnd(N[0] + 3 + o.hx), rnd(N[1] - 7 + o.hy)];
-  const Sh1: Pt = [C[0] + 7, C[1] - 5];
-  const Sh2: Pt = [C[0] - 6, C[1] - 4];
+  // critic pass-3 r1: a HUNCHED revenant — the head hangs forward and low, in front of the shoulder hump
+  const S: Pt = [rnd(N[0] + 5 + o.hx), rnd(N[1] - 5 + o.hy)];
+  const Sh1: Pt = [C[0] + 6, C[1] - 5];
+  const Sh2: Pt = [C[0] - 5, C[1] - 4];
   const Hn: Pt = [Sh1[0] + o.ax, Sh1[1] + o.ay];
   const E1 = pick(Sh1, Hn, 12, 12, 0.15, 1);
   const A1: Pt = [53 + o.f1x, GY - 2 + o.f1y];
@@ -282,9 +283,11 @@ function limb(f: Frame, a: Pt, b: Pt, w0: number, w1: number, t: Tones, part: Pa
 }
 
 /** Cloth planes for a shroud part: a 1-px lit edge toward the light, a fold band away from it, a deep fold line. */
-function clothBands(q: PixelCanvas, t: Tones, light: Light, folds: ((x: number, y: number) => boolean) | null = null, litW = 2): void {
+function clothBands(q: PixelCanvas, t: Tones, light: Light, folds: ((x: number, y: number) => boolean) | null = null, litW = 2, rim: number | null = null): void {
   const ls = light.side;
   planes(q, (x, y, src) => {
+    // the top-left rim of a fold (open toward the light AND above): the only stone2 on the black shroud
+    if (rim !== null && !src.isOpaque(x + ls, y - 1) && (!src.isOpaque(x + ls, y) || !src.isOpaque(x, y - 1))) return rim;
     let toL = 0;
     while (toL < litW + 1 && src.isOpaque(x + ls * (toL + 1), y)) toL++;
     let up = 0;
@@ -302,6 +305,8 @@ function clothBands(q: PixelCanvas, t: Tones, light: Light, folds: ((x: number, 
 
 // ---------------------------------------------------------------- back tatters (behind everything)
 
+/** critic pass-3 r1: the separate back strips read as rods / spider legs — they are merged into the hem (paintBody). */
+const TATTERS = false;
 function paintTatters(f: Frame): void {
   const { o, sk } = f;
   const col = o.col;
@@ -512,7 +517,7 @@ function paintLegs(f: Frame): void {
 // ---------------------------------------------------------------- shroud body + mantle + belt
 
 function hemY(o: Pose): number {
-  return GY - 13 + o.capeL;
+  return GY - 17 + o.capeL;
 }
 
 function paintBody(f: Frame): void {
@@ -523,24 +528,33 @@ function paintBody(f: Frame): void {
   const hem = Math.max(top + 8, hemY(o) + col * 7);
   const cx = sk.C[0];
   const spread = col * 14;
-  const left = (t: number) => lerp(cx - 7, sk.R[0] - 14 - spread, Math.pow(t, 1.25)) + o.capeA * Math.pow(t, 1.4) * 0.8 + wave(o, t, 0) * 1.6 * t;
-  const right = (t: number) => lerp(cx + 7, sk.R[0] + 12 + spread * 0.8, Math.pow(t, 1.5)) + o.capeA * Math.pow(t, 1.4) * 0.5 + wave(o, t, 0.25) * 0.9 * t + o.wrap * 3 * t;
+  // narrow, thin revenant (critic pass-3 r1: the squat rectangle): the back of the shroud flares a little more than the front
+  const left = (t: number) => lerp(cx - 6, sk.R[0] - 12 - spread, Math.pow(t, 1.25)) + o.capeA * Math.pow(t, 1.4) * 0.8 + wave(o, t, 0) * 1.6 * t;
+  const right = (t: number) => lerp(cx + 5, sk.R[0] + 8 + spread * 0.8, Math.pow(t, 1.5)) + o.capeA * Math.pow(t, 1.4) * 0.5 + wave(o, t, 0.25) * 0.9 * t + o.wrap * 3 * t;
   const pts: Pt[] = [];
   const n = 10;
   for (let i = 0; i <= n; i++) {
     const t = i / n;
     pts.push([left(t), lerp(top, hem, t)]);
   }
-  // torn hem: ≥ 2-px teeth whose depth breathes with the tatter phase
+  // the hem tears into SIX ragged strips of uneven length (critic pass-3 r1: the back tatters read as three rods — they
+  // are merged into the one sheet): each strip a tongue of cloth whose tip drifts back (left) with the cloth wave, the
+  // back strips the longest; V notches between them run up to the hem
   const x0 = left(1);
   const x1 = right(1);
-  const nt = 7;
+  const nt = 6;
+  const LEN = [9, 6.5, 8, 4.5, 7, 4];
+  const floorCap = GY - 7 + (col > 0 ? 5 : 0);
   for (let i = 0; i < nt; i++) {
     const a = lerp(x0, x1, i / nt);
     const b = lerp(x0, x1, (i + 1) / nt);
-    const d = 2.5 + 1.5 * (1 + sin((o.ragT + i * 0.23) * Math.PI * 2)) + (i % 2) * 2;
-    pts.push([a + 0.5, hem]);
-    pts.push([(a + b) / 2, Math.min(GY - 7 + (col > 0 ? 5 : 0), hem + d)]);
+    const w = sin((o.ragT + i * 0.19) * Math.PI * 2);
+    const len = LEN[i] * (1 - col * 0.5) + 1.2 * w;
+    const drift = -(nt - i) * 0.35 + wave(o, 1, i * 0.21) * 0.9 + o.capeA * 0.3;
+    pts.push([a + 0.4, hem - (i ? 1 : 0)]);
+    pts.push([a + 0.7 + drift * 0.5, Math.min(floorCap, hem + len * 0.55)]);
+    pts.push([(a + b) / 2 + drift, Math.min(floorCap, hem + len)]);
+    pts.push([b - 0.7 + drift * 0.5, Math.min(floorCap, hem + len * 0.5)]);
   }
   pts.push([x1, hem]);
   for (let i = n; i >= 0; i--) {
@@ -554,27 +568,41 @@ function paintBody(f: Frame): void {
     const t = (y - top) / Math.max(1, hem - top);
     if (t < 0.42) return false;
     return Math.abs(x - foldX(t, 0.38)) < 0.8 || Math.abs(x - foldX(t, 0.68)) < 0.8;
-  });
+  }, 2, SHROUD_RIM);
   // the shroud is torn into strips near the hem: the deepest fold opens into a dark slit
   planes(q, (x, y) => {
     const t = (y - top) / Math.max(1, hem - top);
     return t > 0.8 && Math.abs(x - foldX(t, 0.68)) < 0.6 ? SHROUD.D : null;
   });
   f.comp.add(q, Part.body);
-  // rope belt with the warden's key ring hanging at the front
+  // a thin grave-rope girdle SAGGING diagonally across the hips (critic pass-3 r1: a full-width belt cut the figure in
+  // half), knotted at the front with a loose end; the warden's key ring hangs from the knot
   if (col < 0.5) {
-    const by = rnd(sk.C[1] + 13);
+    const by = rnd(sk.C[1] + 12);
     const b = layer();
-    b.rect(rnd(left(0.45)) + 1, by, rnd(right(0.45) - left(0.45)) - 1, 2, WOOD.M);
-    bands(b, WOOD, light, 1, 1);
-    f.comp.add(b, Part.belt, { out: WOOD.D });
+    const xa = left(0.4) + 1;
+    const xb = right(0.5) - 2;
+    const sag = 2.5 + o.capeA * 0.2;
+    const rope: Pt[] = [];
+    for (let i = 0; i <= 8; i++) {
+      const t = i / 8;
+      rope.push([lerp(xa, xb, t), by - 1 + t * 4 + sag * 4 * t * (1 - t)]);
+    }
+    b.poly(ribbon(rope, () => 1.6), WOOD.S);
+    const kn = rope[8];
+    b.rect(rnd(kn[0]) - 1, rnd(kn[1]) - 1, 2, 2, WOOD.M);
+    // the loose end of the knot hangs and sways
+    b.poly(ribbon([[kn[0], kn[1]], [kn[0] + 0.5 + o.capeA * 0.2, kn[1] + 5]], () => 1.2), WOOD.S);
+    planes(b, (x, y, src) => (!src.isOpaque(x, y - 1) ? WOOD.M : null));
+    f.comp.add(b, Part.belt, { out: PAL.ink });
     const k = layer();
-    const kx = rnd(right(0.45)) - 4 + rnd(o.capeA * 0.3);
-    k.rect(kx, by + 2, 1, 2, IRON.S);
-    k.rect(kx - 1, by + 4, 3, 3, IRON.M);
-    k.set(kx, by + 5, PAL.stone0);
-    k.rect(kx + 1, by + 6, 2, 1, IRON.M);
-    k.rect(kx + 2, by + 7, 1, 2, IRON.M);
+    const kx = rnd(kn[0]) - 2 + rnd(o.capeA * 0.3);
+    const by0 = rnd(kn[1]) - 1;
+    k.rect(kx, by0 + 2, 1, 2, IRON.S);
+    k.rect(kx - 1, by0 + 4, 3, 3, IRON.M);
+    k.set(kx, by0 + 5, PAL.stone0);
+    k.rect(kx + 1, by0 + 6, 2, 1, IRON.M);
+    k.rect(kx + 2, by0 + 7, 1, 2, IRON.M);
     bands(k, IRON, light, 1, 1);
     f.comp.add(k, Part.belt, { out: IRON.D });
   }
@@ -586,13 +614,15 @@ function paintMantle(f: Frame): void {
   const q = layer();
   const [cx, cy] = sk.C;
   const lw = wave(o, 0.2, 0.15);
+  // the hunched shoulders: a high hump at the back, the cape sloping forward and down to the hanging head
   const pts: Pt[] = [
-    [cx - 9, cy - 3],
-    [cx - 6, cy - 9],
-    [cx + 2, cy - 11],
-    [cx + 9, cy - 8],
-    [cx + 11, cy - 3],
-    [cx + 10, cy + 3],
+    [cx - 8, cy - 2],
+    [cx - 7, cy - 9],
+    [cx - 2, cy - 13],
+    [cx + 4, cy - 12],
+    [cx + 9, cy - 7],
+    [cx + 10, cy - 2],
+    [cx + 9, cy + 3],
     [cx + 7, cy + 7 + lw],
     [cx + 5, cy + 4],
     [cx + 2, cy + 8 - lw],
@@ -602,7 +632,7 @@ function paintMantle(f: Frame): void {
     [cx - 10, cy + 4],
   ];
   q.poly(pts, SHROUD.M);
-  clothBands(q, SHROUD, light, null, 2);
+  clothBands(q, SHROUD, light, null, 2, SHROUD_RIM);
   // the collapsed shroud is EMPTY: the hood's dark opening gapes on top of the heap, its lip lit
   if (o.col > 0.6) {
     const hx = rnd(cx + 4);
@@ -758,8 +788,8 @@ function paintHood(f: Frame, front: boolean): void {
     if (o.col > 0.9) return;
     const q = layer();
     // the cowl: a pointed hood, its tip falling back over the shoulders and lagging the head
-    q.poly([[sx - 10, sy + 10], [sx - 12, sy + 1], [sx - 11 + sw * 0.5, sy - 6], [sx - 16 + sw, sy - 9], [sx - 13 + sw, sy - 12], [sx - 4, sy - 13], [sx + 3, sy - 12], [sx + 9, sy - 8], [sx + 10, sy - 2], [sx + 7, sy + 6], [sx + 1, sy + 10]], SHROUD.M);
-    clothBands(q, SHROUD, light, null, 2);
+    q.poly([[sx - 10, sy + 10], [sx - 12, sy + 1], [sx - 12 + sw * 0.5, sy - 5], [sx - 19 + sw, sy - 7], [sx - 15 + sw, sy - 11], [sx - 5, sy - 14], [sx + 3, sy - 13], [sx + 9, sy - 9], [sx + 10, sy - 2], [sx + 7, sy + 6], [sx + 1, sy + 10]], SHROUD.M);
+    clothBands(q, SHROUD, light, null, 2, SHROUD_RIM);
     f.comp.add(q, Part.hood, { out: SHROUD.D });
     // the dark opening the helm sits deep in
     const d = layer();
@@ -768,8 +798,8 @@ function paintHood(f: Frame, front: boolean): void {
   } else {
     // the brim: a heavy fold of cloth across the top of the cage, its lip lit
     const q = layer();
-    q.poly([[sx - 8, sy - 10], [sx - 2, sy - 12], [sx + 4, sy - 11], [sx + 10, sy - 6], [sx + 10, sy - 3], [sx + 6, sy - 6], [sx - 1, sy - 7], [sx - 7, sy - 5]], SHROUD.M);
-    clothBands(q, SHROUD, light, null, 1);
+    q.poly([[sx - 8, sy - 11], [sx - 2, sy - 13], [sx + 4, sy - 12], [sx + 10, sy - 7], [sx + 11, sy - 2], [sx + 7, sy - 6], [sx - 1, sy - 8], [sx - 7, sy - 6]], SHROUD.M);
+    clothBands(q, SHROUD, light, null, 1, SHROUD_RIM);
     f.comp.add(q, Part.brim, { out: SHROUD.D });
   }
 }
@@ -963,7 +993,7 @@ function drawBody(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right'): void {
   };
   // a lantern whirled behind the head passes BEHIND the body
   const lBack = o.la <= -40 && o.la >= -170 && o.lanDrop <= 0;
-  paintTatters(f);
+  if (TATTERS) paintTatters(f);
   if (lBack) {
     paintChain(f);
     paintLantern(f);

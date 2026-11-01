@@ -126,10 +126,14 @@ export interface Tones {
   D: number;
 }
 
-/** The tattered shroud: ash-grey cloth, violet-black folds. */
-export const SHROUD: Tones = { L: PAL.stone2, M: PAL.stone1, S: PAL.stone0, D: PAL.void0 };
+/**
+ * The black funeral shroud (critic pass-3 r1: the stone2/stone1 shroud read as dusty grey plastic): the body is stone0 /
+ * void0, stone1 only on the lit plane, stone2 only as the top-left rim of folds (`SHROUD_RIM`, painted by clothBands).
+ */
+export const SHROUD: Tones = { L: PAL.stone1, M: PAL.stone0, S: PAL.void0, D: PAL.ink };
+export const SHROUD_RIM = PAL.stone2;
 /** Its far side / inside of the hood (one value darker). */
-export const SHROUD_FAR: Tones = { L: PAL.stone1, M: PAL.stone0, S: PAL.void0, D: PAL.ink };
+export const SHROUD_FAR: Tones = { L: PAL.stone0, M: PAL.void0, S: PAL.void0, D: PAL.ink };
 /** Cage iron, boots, lantern frame, spade. */
 export const IRON: Tones = { L: PAL.stone4, M: PAL.stone3, S: PAL.stone2, D: PAL.stone1 };
 export const IRON_FAR: Tones = { L: PAL.stone3, M: PAL.stone2, S: PAL.stone1, D: PAL.stone0 };
