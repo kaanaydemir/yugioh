@@ -22,13 +22,16 @@
 //             that cut the hem into feather points), planes from its curvature, the recipe's void3 rim.
 //   plumes    two plume tips sticking out of the back edge (drawn behind the body: roof tiles, only the tips show).
 //   tail      the question-mark tail: one long feather curling up behind the body on the left.
-//   hand      one tiny three-feather hand reaching up toward the loose feather (the directional line:
+//   hand      one tiny hand of three feather fingers, inked apart, reaching up toward the loose feather (the directional line:
 //             tail → eyes → hand → feather).
-//   heap      a low mound of down with feathers lying on it, fanned from both sides (each feather inked, quilled).
-//   feather   one loose feather adrift in the lead room (light layer: moonlit, not outlined).
+//   heap      a low mound of down with feathers lying on it, fanned from both sides (each feather inked, with a PALE
+//             quill that catches the moon — round 4: the dark-seam quills read as shards / rocks).
+//   feather   one loose feather adrift in the lead room (light layer: moonlit, not outlined): a broad lit vane with
+//             one notch, a void4 quill, a void3 lower vane (round 4: the round-3 one read as a stick).
 // small: a hand-drawn 44×34 map (S_SUBJECT) on the same composition, made from the big geometry at 1× and then
 //        corrected by hand (sampled creases, plumes and the tail break into noise at 1×): white hood, round hollow,
-//        cowlick, the tear-drop with two creases, two back plume tips, the ? curl, the hand, five heap feathers.
+//        cowlick, the tear-drop with two creases, two back plume tips, the ? curl, the hand (a mitten with one finger
+//        raised toward the feather, round 4), five heap feathers with pale quills.
 //        Hand-placed eyes and drifting feather (light layer). Judged at 1× on the face.
 // icon: a hand-drawn 16×12 field icon (wispImpIcon) — the averaged mini loses the eyes; see its comment.
 // Living art (A5_PLAN §3.7.6): 6 frames × 150 ms — the loose feather rocks / drifts ≤ 1 px, the eyes blink once.
@@ -88,6 +91,8 @@ interface Plume {
   readonly bow: number;
   readonly tone: number;
   readonly split: number;
+  /** a pale quill (the heap's feathers lie in the moonlight: the rachis catches it) instead of a dark seam */
+  readonly lightQuill?: boolean;
 }
 
 /** Sample a plume's centre line (n + 1 points). */
@@ -148,7 +153,7 @@ function plumeAt(p: Plume, line: readonly V[], x: number, y: number): number {
   // barbs: short lines slanting from the quill toward the tip on the shade half-vane (the feather's tell)
   const barb = (s0: number) => a > 0.3 && a < 0.92 && Math.abs(bs - s0 - 0.09 * a) < 0.02;
   let t = lit ? p.tone : p.tone - 1;
-  if (Math.abs(side) < 0.55 && bs > 0.04 && bs < 0.9) t = p.tone - 2; // the quill seam
+  if (Math.abs(side) < 0.55 && bs > 0.04 && bs < 0.9) t = p.lightQuill ? p.tone + 1 : p.tone - 2; // the quill
   if (bs > 0.76) t -= 1; // the lilac tip
   else if (!lit && (barb(p.split) || barb(p.split - 0.24))) t -= 1;
   return clamp(t, 0, 4);
@@ -162,16 +167,16 @@ const BACK_PLUMES: readonly Plume[] = [
 
 /** The heap's feathers lying on the mound, fanned from both sides, back to front. */
 const HEAP: readonly Plume[] = [
-  { r: [-2, 60], t: [19, 57], w: 8, bow: 1.5, tone: 2, split: 0.6 },
-  { r: [90, 61], t: [66, 56], w: 8, bow: -1.5, tone: 2, split: 0.6 },
-  { r: [62, 63], t: [36, 56], w: 8, bow: -1.5, tone: 2, split: 0.6 },
-  { r: [12, 67], t: [35, 59], w: 9, bow: 1.5, tone: 3, split: 0.6 },
-  { r: [78, 68], t: [53, 59], w: 9, bow: -1.5, tone: 3, split: 0.6 },
-  { r: [-2, 70], t: [17, 63], w: 9, bow: 1, tone: 3, split: 0.6 },
-  { r: [90, 71], t: [70, 63], w: 9, bow: -1, tone: 2, split: 0.6 },
-  { r: [32, 72], t: [52, 62], w: 9.5, bow: 1.5, tone: 3, split: 0.6 },
-  { r: [62, 73], t: [41, 64], w: 9.5, bow: -1.5, tone: 3, split: 0.6 },
-  { r: [16, 74], t: [36, 67], w: 9, bow: 1, tone: 3, split: 0.6 },
+  { r: [-2, 60], t: [19, 57], w: 8, bow: 1.5, tone: 2, split: 0.6, lightQuill: true },
+  { r: [90, 61], t: [66, 56], w: 8, bow: -1.5, tone: 2, split: 0.6, lightQuill: true },
+  { r: [62, 63], t: [36, 56], w: 8, bow: -1.5, tone: 2, split: 0.6, lightQuill: true },
+  { r: [12, 67], t: [35, 59], w: 9, bow: 1.5, tone: 3, split: 0.6, lightQuill: true },
+  { r: [78, 68], t: [53, 59], w: 9, bow: -1.5, tone: 3, split: 0.6, lightQuill: true },
+  { r: [-2, 70], t: [17, 63], w: 9, bow: 1, tone: 3, split: 0.6, lightQuill: true },
+  { r: [90, 71], t: [70, 63], w: 9, bow: -1, tone: 2, split: 0.6, lightQuill: true },
+  { r: [32, 72], t: [52, 62], w: 9.5, bow: 1.5, tone: 3, split: 0.6, lightQuill: true },
+  { r: [62, 73], t: [41, 64], w: 9.5, bow: -1.5, tone: 3, split: 0.6, lightQuill: true },
+  { r: [16, 74], t: [36, 67], w: 9, bow: 1, tone: 3, split: 0.6, lightQuill: true },
 ];
 
 // ---------------------------------------------------------------- the body (one silhouette with the hood)
@@ -294,19 +299,21 @@ function tailTone(x: number, y: number): number {
 
 /** The tiny three-feather hand reaching up toward the loose feather (ink included). */
 const HAND_BIG = [
-  '.......kkk.',
-  '....kkkwwvk',
-  '..kkwwkwvvk',
-  '.kwwwvkvvLk',
-  '.kwwwvvvLk.',
+  '........kk.',
+  '.....kkkwvk',
+  '....kwwkwvk',
+  '.kk.kwvkvLk',
+  'kwwkkwvkvLk',
+  'kwvvkwvvvLk',
+  '.kwvvwvvLk.',
   '..kwwvvLLk.',
   '..kwvvLLk..',
-  '.kwvvLkk...',
-  '.kvLkk.....',
-  '.kkk.......',
-];
+  '.kwvvLLk...',
+  '.kvLLkk....',
+  '.kkkk......',
+]
 const HAND_KEY = { k: PAL.ink, w: PAL.white, v: PAL.void4, L: PAL.void3 };
-const HAND_AT: V = [53, 30];
+const HAND_AT: V = [53, 28];
 
 // ================================================================ painters
 
@@ -409,14 +416,14 @@ const S_SUBJECT = [
   '.............kwwwwwwwwwkkkk443k.............',
   '.............kwwwwwwww00000043k.............',
   '.............kwwwwwww000000033k.............',
-  '.............kwwwwwww000000133k.............',
-  '.............kwwwwwww400001122k.............',
-  '.............kwwwwwww44111122k..............',
-  '...........kk4wwwwww44443332kkkk............',
-  '.........kk444wwwwww4444333kkwwk............',
-  '........k33443wwwwww444433kkww4k............',
-  '....kkkkk222kkkwwww4444333kw44k.............',
-  '...kwwww4kkk333www44344333kkkk..............',
+  '.............kwwwwwww000000133k.k...........',
+  '.............kwwwwwww400001122kkwk..........',
+  '.............kwwwwwww44111122k.kwk..........',
+  '...........kk4wwwwww44443332kkkkwk..........',
+  '.........kk444wwwwww4444333kkwwkwk..........',
+  '........k33443wwwwww444433kkww443k..........',
+  '....kkkkk222kkkwwww4444333kw4443k...........',
+  '...kwwww4kkk333www44344333kkkkkk............',
   '..kw44kk44k2333w4w4344323222k...............',
   '..kw4k..kk22122w44434432322k................',
   '.kw4k...kkk112ww44344323222k................',
@@ -427,10 +434,10 @@ const S_SUBJECT = [
   '..kkkkkkk34333222222kk..........kkkkkkkkk...',
   '.k3333333k322222kkkk...........k333333333kk.',
   'k333333333kkkkkkkk........kkkkkkkk233333333k',
-  '33322222kk44444444k......k44444444kk22223333',
-  '2222222k4444444333kkkkkkkk3334444444kk222222',
-  'kkk22kk4444433333kk444444kk33333444444k222kk',
-  '..kkkk4443333333k44444433k1kk3333334444kkk..',
+  '33322222kk44444ww4k......k4ww44444kk22223333',
+  '2222222k4444ww4333kkkkkkkk3334ww4444kk222222',
+  'kkk22kk44ww433333kk44ww44kk333334ww444k222kk',
+  '..kkkk4w43333333k4ww44433k1kk3333334w44kkk..',
   '.k11k433333333kk44444333k1111k3333333344k1k.',
 ];
 const S_KEY = { k: PAL.ink, w: PAL.white, '4': PAL.void4, '3': PAL.void3, '2': PAL.void2, '1': PAL.void1, '0': PAL.void0 };
@@ -439,16 +446,19 @@ const S_KEY = { k: PAL.ink, w: PAL.white, '4': PAL.void4, '3': PAL.void3, '2': P
 
 /** The loose feather adrift (big): vane white over void4, a void3 quill. */
 const DRIFT_BIG = [
-  '.........wv',
-  '.......wwWv',
-  '.....wwwWvv',
-  '...wwwwWvv.',
-  '..wwwWWvv..',
-  '.wwWWvv....',
-  'wwWvv......',
-  'wWv........',
-  'v..........',
-];
+  '..........wW.',
+  '........wwwWv',
+  '......wwwwWv.',
+  '.....www.Wvv.',
+  '....wwwwWv...',
+  '...wwwwWvv...',
+  '..wwwwWv.....',
+  '..wwWWvv.....',
+  '.wwWv........',
+  '.Wv..........',
+  'W............',
+  'v............',
+]
 const DRIFT_SMALL = ['...wv', '.wwWv', 'wWv..', 'v....'];
 const DRIFT_KEY = { w: PAL.white, W: PAL.void4, v: PAL.void3 };
 
@@ -474,7 +484,7 @@ function paintLight(p: PixelCanvas, big: boolean, f: number): void {
       p.set(x0 + w - 1, y0 + 3, PAL.gold2);
       p.set(x0, y0, i === 0 ? PAL.white : PAL.gold4);
     }
-    patch(p, DRIFT_BIG, DRIFT_KEY, 69 + drift, 6 + rock);
+    patch(p, DRIFT_BIG, DRIFT_KEY, 68 + drift, 4 + rock);
   } else {
     patch(p, blink ? SMALL_EYES_BLINK : SMALL_EYES, EYE_KEY, SMALL_EYES_AT[0], SMALL_EYES_AT[1]);
     patch(p, DRIFT_SMALL, DRIFT_KEY, 34 + drift, 3 + rock);

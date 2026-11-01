@@ -12,7 +12,7 @@ Lane B, branch `claude/kart-b`. Spec: `docs/v3/YENI_KARTLAR.md` §8 R3 (+ §5, �
 | Stage | State | Owner / notes |
 |---|---|---|
 | Sprite rig (`src/art/monsters-v3/wisp_imp*.ts`) | **done, round 1** (rig agent) | 64×62, floor (30,58), hover 6, floater, 13 anims / 134 frames; monster-gates small 21/21 ok |
-| Card art (`src/art/cardart-v3/wisp_imp.ts`) | **done, round 3** (2026-11-01) | redrawn on the rig's model: ONE tear-drop silhouette (round hood + round face hollow + skirt) instead of six inked plumes; feather heap; small = new hand map; icon redrawn |
+| Card art (`src/art/cardart-v3/wisp_imp.ts`) | **done, round 4** (2026-11-01) | round 3 = the rig's tear-drop silhouette; round 4 = polish: pale-quill heap feathers, three-finger hand, a real loose feather, small hand with a raised finger |
 | `portrait()` hook | **added** to `monsters-v3/wisp_imp.ts` | 2 imports + 4 lines, additive (see below) |
 | Exclusion in `src/art/monsters/index.ts` | **removed** (rig stage) | only the wisp entry was deleted; the other three stay |
 | Light profile (`MONSTER_GLOW`) | **done** | gold-only emissive |
@@ -23,6 +23,30 @@ Lane B, branch `claude/kart-b`. Spec: `docs/v3/YENI_KARTLAR.md` §8 R3 (+ §5, �
 File: `src/art/cardart-v3/wisp_imp.ts` (no import from the rig: it survives any rig rewrite).
 Test: `tests/art/wisp_imp-cardart.test.ts` (5 tests: budgets for all 6 frames × 2 sizes incl. checker ≤ 0.5 %,
 outline ≥ 90 % ink, focus = white glint with gold3 under it, nothing brighter, blink on f4, determinism, icon).
+
+### Round 4 (2026-11-01, card-art stage re-issued): polish on round 3
+Round 3's composition and silhouette were kept (they match the rig). LOOKed at ×9 / ×16, three weak reads were fixed:
+- **Heap read as purple shards / rocks** → heap plumes get `lightQuill` (the rachis is one value UP, it catches the
+  moon) instead of the dark seam. Small: pale quill runs (w) hand-drawn into the three front heap feathers.
+- **Hand read as a mitten blob** → `HAND_BIG` redrawn 11×12 at (53,28): three feather fingers inked apart, the front
+  one reaching up toward the feather. Small: the blob gets one raised finger (rows 11–18, cols 26–33) that points
+  at the drifting feather — the directional line now reads at 1×.
+- **Loose feather read as a stick** → `DRIFT_BIG` redrawn 13×12 at (68,4): broad lit vane with one notch, void4
+  quill, void3 lower vane, curved. Still in the light layer (white = equal to the focus, never brighter).
+- Tried and dropped: herringbone barb chevrons inside the body strips (only ~2 px dots at this scale; the body
+  stays the spec's "çarşaf" sheet with feather tips at the hem).
+**Numbers (f0)** big 11 colours, isolated 2.2 %, checker 7 (0.13 %), outline 99.7 % ink, focus ok, lead 22;
+small 9 colours, isolated 3.8 %, checker 1, outline 100 %, focus ok, lead 9 (the raised finger takes 2 px of lead).
+**Evidence** `shots/v3/kart-b/wisp_imp/cardart-r4/`: `sheet-f0.png`, `sheet-f4-blink.png`, `big-x9.png` (big ×9 |
+small ×9 | 1×), `small-x16.png`, `round3-vs-round4.png` (top round 3, bottom round 4), `hatcard.png`
+(`?dev=hatcard&id=wisp_imp&look=v3` ×2), `in-hand.png` + `in-hand-zoom.png` (`?dev=duel&s=wiSummon&look=v3`).
+Round-3 copy: `<scratch>/wisp_imp/ca4/wisp_imp.round3.ts` (imports rewritten to absolute paths).
+**Tests (round 4)**: `tests/art/wisp_imp-cardart.test.ts` 5/5, `tests/art/wisp_imp.test.ts` 7/7,
+`tests/art/cardface-v3.test.ts` 9/10 (the same pre-existing `G1 … scrap_raiders 0.692 ≥ 0.7`, another card).
+tsc: no wisp errors. `portrait()` hook still present in `monsters-v3/wisp_imp.ts` (lines 17–18, 43–45).
+**Light profile / death preset**: re-checked against the current rig (gold4/gold3/gold2 only in the eye + spark
+light pass, `wisp_imp-rig.ts` ~650–803; the `hot` eye frame is white = body tone, not emissive by design):
+`MONSTER_GLOW` and `DEATH_PRESETS` lines left unchanged.
 
 ### Round 3 (2026-11-01): why it was redrawn again
 Round 2 (kept at `<scratch>/wisp_imp/ca3/wisp_imp.round2.ts`) hung six separately inked plumes under the face; on
@@ -515,3 +539,28 @@ Before copy of the anims file: `<scratch>/wisp_imp/r3/wisp_imp-anims.orig.ts`.
 25. Not re-filmed in-duel this pass. The change is confined to settle frames and the cinematics key on marks,
     but the next cinematics or critique pass should re-film `wiCushion` and `wiRevive` to confirm.
 26. Idle SFX, feather struck-body material, icon wiring and card-art bbox are unchanged (issues 1, 4, 10, 11).
+
+## Rig re-run 4 (stage: RIG + ALL ANIMS re-issued again, 2026-11-01)
+The brief still calls the rig files the "old violet puffball"; they are the R3 feather ghost (design note under
+"Sprite rig" above) and are registered (exclusion already removed). No rig code changed this pass — it was
+verified, and one untested route to the HA-21 phase deviation was measured:
+- Fresh sheets P1 + P2, LOOKed (idle ×6 zoom, all-anims sheets, P2 special / death / attack): on-model, P2 lit
+  from the right, every anim intact, consecutive frames visibly distinct.
+- `monster-gates --class small --ref none`: **20 ok, 1 FAIL = HA-21 phase** (unchanged: hit 68.9 %, hitHeavy /
+  death 71.2 %, hitMagic 73.7 % P1; 71.8–75.6 % P2). Liveliness 38.8 % / 40.4 %, HA-17 1.46, HA-19 0.66.
+- **New measurement — "centre-frame" struck f0** (`<scratch>/wisp_imp/r4/center.ts`): could hit f0 be drawn on a
+  more central idle phase instead of idle f0? No: the idle frames are 72–89 % apart pairwise (P1/P2), idle f0 is
+  already the most central frame (72 % / 73 %), and the hit's local overrides on any other base give 69–89 %.
+  By the triangle bound the phase metric can only fall under 50 % if the idle's pairwise spread falls under
+  ≈ 100 % AND a frame within 50 % of all others exists — i.e. only by cutting the idle motion the owner asked
+  for. The deviation stays; it still needs the orchestrator decision (SLICE-style exemption, or a v3-only
+  unit-level hover tween so the float moves the sprite rather than its pixels).
+- Tests: `tests/art/wisp_imp.test.ts`, `wisp_imp-cardart.test.ts`, `tests/duel/monster-timing.test.ts` 24/24 pass;
+  typecheck: no wisp errors.
+- Evidence `shots/v3/kart-b/wisp_imp/rig-r4/`: `sheet-all.png`, `sheet-all-p2.png`, `idle-zoom.png`,
+  `p2-special.png`, `p2-death.png`, `p2-attack.png`, `gates.txt`.
+
+### Open issues (after re-run 4)
+27. HA-21 phase deviation — orchestrator decision (issues 19 / 23), now with the centre-frame route ruled out.
+28. Unchanged: sameness UYARI blind test (24), idle SFX (decision 3), feather struck-body material (decision 4),
+    icon wiring in `cardface-v3/index.ts` (1), card-art bbox fill (4).
