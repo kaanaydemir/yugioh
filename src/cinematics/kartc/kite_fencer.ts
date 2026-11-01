@@ -60,8 +60,9 @@ const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const lerpXY = (a: XY, b: XY, t: number): XY => ({ x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) });
 const cubicOut = (t: number) => 1 - Math.pow(1 - t, 3);
-const sineIn = (t: number) => 1 - Math.cos((t * Math.PI) / 2);
 const sineOut = (t: number) => Math.sin((t * Math.PI) / 2);
+/** The downswing: a short hang at the top, then accelerating into the bottom (contact at full speed). */
+const swingEase = (t: number) => 0.4 * t + 0.6 * t * t;
 const quadOut = (t: number) => 1 - (1 - t) * (1 - t);
 const quadInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
 
@@ -306,11 +307,15 @@ async function pike(s: StrikeArgs, nth: number): Promise<void> {
   play('kfnFleche', { pan, volume: 0.95 });
   const dist = Math.hypot(stop.x - home.x, stop.y - home.y);
   const dirn: XY = dist > 0 ? { x: (stop.x - home.x) / dist, y: (stop.y - home.y) / dist } : { x: sgn, y: 0 };
-  const travel = Math.round(Math.min(110, 80 + dist * 0.12));
-  // the needle line trails the body at blade height: from where the hand started along the dash to the hand now,
-  // drawn just UNDER the dashing body, so it streams out from behind his back (the body hides its front end)
+  // linear at full speed (a fleche hits at its fastest; no ease-out creep before the tip lands): ~6 real frames
+  const travel = Math.round(Math.min(95, 66 + dist * 0.1));
+  // the needle line trails the body at blade height: along the dash line through the hand, from the hand now back
+  // past where it started (the dash is short — the rapier reaches most of the way — so the line is projected back by
+  // about the dash length, or the body would hide all of it), drawn just UNDER the dashing body: it streams out from
+  // behind him like the wake of the fleche
   const hand4 = offsetOf(u, framePoints('attack', 4).hand ?? tipOf('attack', 4));
-  const lineFrom: XY = { x: home.x + hand4.x, y: home.y + hand4.y };
+  const back = Math.min(34, Math.max(18, dist * 0.9));
+  const lineFrom: XY = { x: home.x + hand4.x - dirn.x * back, y: home.y + hand4.y - dirn.y * back };
   const flyD = !s.direct && s.target ? Math.max(depth0, tDepth + 0.5) : depth0;
   const nl = needleLine(
     sc,
@@ -430,10 +435,16 @@ async function blockedPike(s: StrikeArgs, at: XY, stop: XY, home: XY, depth0: nu
   void sleep(sc, 160).then(() => scuff.g.destroy());
   play('kfnSqueak', { pan, volume: 0.7, pitch: 0.9 });
   if (u.retired) return;
-  // wait out the battle's recoil pose (it hands the sprite back), then hop home
-  let guard = 0;
-  while (u.claimed && !u.retired && guard++ < 8) await sleep(sc, 30);
+  // the battle's recoil pose plays on him at the skid point (the cloak flipped forward); the moment it has played he
+  // hops home — no dead hold while the battle lets go of the sprite (it unclaims on the frame the recoil ends)
+  // (its last frames are the body already back in stance — he starts the hops there, taking the sprite back)
+  const recoilDone = () => {
+    const fi = u.frameInfo();
+    return u.retired || !u.claimed || !u.sprite.anims.isPlaying || (fi.anim !== null && fi.anim !== 'attack' && fi.frame >= 4);
+  };
+  await until(sc, recoilDone, 1200);
   if (u.retired) return;
+  if (u.claimed) u.unclaim();
   await backHops(s, skid, home, depth0, attackCount(s), pan);
 }
 
@@ -446,10 +457,9 @@ async function blockedPike(s: StrikeArgs, at: XY, stop: XY, home: XY, depth0: nu
  * declaration (spec 2.2 s ÷ 1.25 = 1.75 s scene, trimmed to fit the 3.19 s gate with a slow-dying target).
  */
 const KT = { c1: 50, c2: 55, c3: 55, c4: 60, r5: 85, r6: 85, down: 260, hold: 40, exit: 120, glide: 220, land: 100, settle: 60 };
-/** The pendulum: radius (px), the overshoot angle, the minimum start height above home / the cut (px). */
-const RP = 52;
-const TH1 = (62 * Math.PI) / 180;
-const CLEAR = 26;
+/** The pendulum: the overshoot angle, the start height above the higher of home / the cut (px). */
+const TH1 = (64 * Math.PI) / 180;
+const CLEAR = 40;
 /** The rapier's angle (deg, facing right; + = tip down) through the swing: coming over (f8) → swept across → follow-through. */
 const PHI_F8 = -38;
 const PHI_CUT = 46;
@@ -475,17 +485,23 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
   const tip9 = tipOffset(u, 'special', 9);
   const hand9 = offsetOf(u, framePoints('special', 9).hand ?? tipOf('special', 9));
   const Bc: XY = { x: T.x - tip9.x, y: Math.min(T.y - tip9.y, floorT - 1) };
-  // the arc's start must sit CLEAR px above both his home and the cut, so the swing always comes DOWN onto the target
-  // (player 2's target is ~35 px lower on screen than his home: the arc opens wider, up to 112°)
-  const hNeed = Bc.y - (Math.min(home.y, Bc.y) - CLEAR);
-  const th0 = Math.min((112 * Math.PI) / 180, Math.max((85 * Math.PI) / 180, Math.acos(Math.max(-1, Math.min(1, 1 - hNeed / RP)))));
+  // the arc's START (A) sits CLEAR px above the higher of his home and the cut on screen, and at least as far behind
+  // the cut as it is above it (so the swing never starts over the top: θ0 ≤ 90°); the pivot is the point straight
+  // above the cut that is equally far from A and from the cut. Player 1's target is ~35 px higher on screen than his
+  // home (he climbs high on the string, θ0 ≈ 80°); player 2's is ~35 px lower (A is behind and above his own tile, a
+  // wider arc, θ0 = 90°): mirrored, both rise, hang a beat and swing DOWN onto the target.
+  const topY = Math.min(home.y, Bc.y) - CLEAR;
+  const dyA = Math.max(CLEAR, Bc.y - topY);
+  const dxA = Math.max(46, dyA);
+  const RP = (dxA * dxA + dyA * dyA) / (2 * dyA);
+  const th0 = Math.atan2(dxA, RP - dyA);
   const pivot: XY = { x: Bc.x, y: Bc.y - RP };
   const body = (th: number): XY => ({ x: pivot.x + sgn * RP * Math.sin(th), y: pivot.y + RP * Math.cos(th) });
   // the blade's analytic sweep: from the downswing frame (f8, shown from 42 % of the swing time: k8 of the way down
   // the arc) the hand travels from its f8 spot to its f9 spot and the blade turns from f8's −38° through the cut to
   // the follow-through; before f8 the blade is cocked (no trail: nothing is cutting yet)
   const hand8 = offsetOf(u, framePoints('special', 8).hand ?? tipOf('special', 8));
-  const k8 = sineIn(0.42);
+  const k8 = swingEase(0.42);
   const sweep = (th: number): number => (th >= 0 ? 1 : clamp01((1 + th / th0 - k8) / (1 - k8)));
   const phi = (th: number): number => (th >= 0 ? PHI_CUT + (PHI_OUT - PHI_CUT) * clamp01(th / TH1) : PHI_F8 + (PHI_CUT - PHI_F8) * Math.pow(sweep(th), 1.4));
   const tipAt = (th: number): XY => {
@@ -538,9 +554,9 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
   play('kfnSqueak', { pan, volume: 0.55, pitch: 1.1 });
   await animate(sc, riseMs, (t) => {
     if (t >= KT.r5 / riseMs) show(u, 'special', 6);
-    // up first (sineOut), across later (quadInOut), a 4-px drift back as he leaves the floor
+    // pulled up (eased in and out: no hover at the top), across with it, a 4-px drift back as he leaves the floor
     const x = lerp(home.x, A.x, quadInOut(t)) - sgn * 4 * Math.sin(Math.PI * clamp01(t / 0.6));
-    const y = lerp(home.y, A.y, 1 - Math.pow(1 - t, 1.5));
+    const y = lerp(home.y, A.y, 0.5 * quadInOut(t) + 0.5 * (1 - Math.pow(1 - t, 1.5)));
     at({ x, y });
   });
   at(A);
@@ -550,7 +566,7 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
   play('kfnSwing', { pan: panAt(A.x), volume: 1 });
   await animate(sc, KT.down, (t) => {
     show(u, 'special', t < 0.42 ? 7 : t < 0.8 ? 8 : 9);
-    const th = -th0 * (1 - sineIn(t));
+    const th = -th0 * (1 - swingEase(t));
     at(body(th));
     if (t >= 0.42) trail.push(th);
   });
@@ -981,7 +997,6 @@ async function kiteDeath(ctx: DestroyCtx, unit: MonsterUnit): Promise<void> {
   let leave: Promise<void> | null = null;
   const onBorn = typeof ctx.hints.onBorn === 'function' ? (ctx.hints.onBorn as () => void) : null;
   const born = () => {
-    console.error('[kfnDBG] born', sc.time.now, new Error().stack?.split('\n')[2]);
     if (leave) return;
     try {
       onBorn?.();
@@ -1040,7 +1055,6 @@ async function kiteDeathPose(ctx: DestroyCtx, u: MonsterUnit, home: XY, born: ()
   atFrame(u, 'death', 6, () => play('kfnClatterTick', { pan, volume: 0.8 }), { late: false });
   atFrame(u, 'death', 8, () => play('kfnClatterTick', { pan, volume: 0.55 }), { late: false });
   atFrame(u, 'death', 9, () => play('kfnClatterTick', { pan, volume: 0.3, pitch: 0.9 }), { late: false });
-  console.error('[kfnDBG] pose', JSON.stringify({ fi: u.frameInfo(), t: sc.time.now }));
   await until(sc, () => !u.sprite.active || !inDeath() || u.frameInfo().frame >= n - 1 || !u.sprite.anims.isPlaying, 1600);
   if (!u.sprite.active) return;
   await sleep(sc, u.frameMs('death', n - 1));
@@ -1049,10 +1063,7 @@ async function kiteDeathPose(ctx: DestroyCtx, u: MonsterUnit, home: XY, born: ()
   const sgn = sgnOf(u);
   const at = u.framePoint(AX + 1, GY - 1);
   const depth = u.sprite.depth + 0.2;
-  console.error('[kfnDBG] fray', JSON.stringify({ at, depth, vis: u.sprite.visible, t: sc.time.now }));
   u.sprite.setVisible(false);
   play('kfnScrapFade', { pan, volume: 0.9 });
-  let dbgN = 0;
-  onFrame(sc, (_d, el) => { if (dbgN++ % 4 === 0) console.error('[kfnDBG] tick', Math.round(el), u.sprite.visible, u.sprite.active, u.frameInfo().frame, Math.round(sc.time.now)); return el < 400; });
   await scrapFray(sc, { x: R(at.x), y: R(at.y) }, sgn, depth, rng(u.uid * 71 + 9), born);
 }
