@@ -47,7 +47,7 @@ import { onDuelStart } from '../../duel/seeds';
 import { DEPTH, LOOK_V3, type XY, unitDepth, zoneXY } from '../../view/layout';
 import { lightFlash, lightPool, type LightHandle } from '../../view/light';
 import { Px, animate, onFrame, setCombatSfx, sleep, stopTime } from '../../vfx/combat';
-import { registerCardHook, registerObserver, registerStrike, type CinematicContext, type StrikeArgs } from '../api';
+import { registerCardHook, registerEvent, registerObserver, registerStrike, type CinematicContext, type StrikeArgs } from '../api';
 import { strikeStartFrame } from '../_v3/clash';
 import { cardLeaves, behindBodies } from '../_v3/card';
 import { contactFlash } from '../_v3/flash';
@@ -56,6 +56,7 @@ import { planGuardBreak, runGuardBreak, showsGuard } from '../_v3/guardbreak';
 import { warmPoses } from '../_v3/warm';
 import { atFrame, dropCharge, fade, panAt, play, start, takeCharge } from '../_v3/sound';
 import { setKiteCharge } from '../../audio/v3/kite_fencer';
+import { sfx, type SfxOpts } from '../../audio/sfx';
 import { sourceOwnsDeath } from '../strikes-b/_kit';
 import { runSummon, type Stage, type SummonCtx } from '../summon-a/_kit';
 import { anchoredImage, cutSlit, glanceSparks, kiteImage, kiteTexture, layer, needleLine, poseTexture, pendulumTrail, scrapFray, snapWhips, tautString, threadMote, type Light } from './kite_fencer-fx';
@@ -125,6 +126,27 @@ function show(u: MonsterUnit, anim: AnyMonsterAnim, f: number): void {
 function place(u: MonsterUnit, p: XY): void {
   const s = u.sprite;
   if (s.active) s.setPosition(R(p.x), R(p.y));
+}
+
+/** The struck body's contact bed: its material hit (hitStone* / hitCloth* / hitCrystal* …) or the generic body blow. */
+const contactBed = (name: string): boolean => /^hit[A-Z]/.test(name) || name === 'impactHeavy' || name === 'impactLight';
+
+/**
+ * Call s.impact() with the struck body's contact bed `k` × quieter: the card's own contact sound ("tsst", the curved
+ * cut) leads the frame and the target's material sits under it (crystal_wyrm's breath sits 6.6 dB over its stone hit;
+ * the kite's light blade otherwise vanished under a stone clunk). Only the sounds the battle plays synchronously inside
+ * this one call are touched; sfx.play is restored before it returns.
+ */
+function impactUnder(s: StrikeArgs, at: XY, k: number): void {
+  const orig = sfx.play;
+  sfx.play = function (name, opts?: SfxOpts) {
+    return orig.call(sfx, name, contactBed(name) ? { ...opts, volume: (opts?.volume ?? 1) * k } : opts);
+  };
+  try {
+    s.impact(at);
+  } finally {
+    sfx.play = orig;
+  }
 }
 
 // ================================================================ the indicator panel (one attack left)
@@ -331,6 +353,23 @@ function idleSound(sc: Phaser.Scene, u: MonsterUnit): void {
   });
 }
 
+/**
+ * A kite already on the board (placed by a scenario, or summoned before this module watched it) gets its idle watcher
+ * the first time the board turns a phase or a turn: a cheap scan of the field's units, the event itself untouched.
+ */
+if (LOOK_V3) {
+  const scan = async (ctx: CinematicContext<Extract<GameEvent, { type: 'phaseChange' | 'turnStart' }>>) => {
+    try {
+      for (const u of ctx.views.field.units()) if (u.cardId === ID && !u.retired) idleSound(ctx.scene, u);
+    } catch {
+      /* never break the event */
+    }
+    return ctx.base();
+  };
+  registerEvent('phaseChange', scan, { priority: -50, name: 'kartc:kite_fencer:idle-scan' });
+  registerEvent('turnStart', scan, { priority: -50, name: 'kartc:kite_fencer:idle-scan' });
+}
+
 // ================================================================ attack 1: "Pike"
 
 async function pike(s: StrikeArgs, nth: number): Promise<void> {
@@ -388,7 +427,7 @@ async function pike(s: StrikeArgs, nth: number): Promise<void> {
     await blockedPike(s, at, stop, home, depth0, pan);
     return;
   }
-  s.impact(at);
+  impactUnder(s, at, 0.5);
   play('kfnTsst', { pan: panAt(at.x), volume: 1 });
   void lightFlash(sc, at.x, at.y, PAL.white, 10, 120, { floorY: s.toGround.y, intensity: 0.7 });
   void stopTime(sc, 60);
@@ -504,19 +543,25 @@ async function blockedPike(s: StrikeArgs, at: XY, stop: XY, home: XY, depth0: nu
 /**
  * Attack 2's beat lengths (scene ms; the cinematic plays the frames on its own clock so the flight, the sounds and
  * the frames stay locked): charge 220 (f1–f4), rise 170 (f5–f6), the downswing 260 (f7 → f8 → f9, accelerating), the
- * cut's hold 40, the overshoot 120 (f10), the glide 220 (f11), the landing 100 + 60 (f12, f13) — ≈ 1.2 s + the 0.3 s
- * declaration (spec 2.2 s ÷ 1.25 = 1.75 s scene, trimmed to fit the 3.19 s gate with a slow-dying target).
+ * carry-through 160 (f10: it leaves the bottom at the downswing's own speed, the moment the hit-stop lets go, and
+ * slows over the top), the glide 220 (f11), the landing 100 + 60 (f12, f13) — ≈ 1.2 s + the 0.3 s declaration
+ * (spec 2.2 s ÷ 1.25 = 1.75 s scene, trimmed to fit the 3.19 s gate with a slow-dying target).
  */
-const KT = { c1: 50, c2: 55, c3: 55, c4: 60, r5: 85, r6: 85, down: 260, hold: 40, exit: 120, glide: 220, land: 100, settle: 60 };
-/** The pendulum: the start angle, the overshoot angle, how far behind his home tile the swing starts (px). */
+const KT = { c1: 50, c2: 55, c3: 55, c4: 60, r5: 85, r6: 85, down: 260, exit: 160, glide: 220, land: 100, settle: 60 };
+/** The pendulum: the start angle, how far behind his home tile the swing starts (px). */
 const TH0 = (85 * Math.PI) / 180;
-const TH1 = (52 * Math.PI) / 180;
 const BACK = 12;
+/**
+ * The carry-through after the cut, in SCREEN space (the same for both players, mirrored): the body runs on PAST the
+ * target's centre line by EX_PAST px and rises EX_RISE px over the cut point, along a circular arc that leaves the
+ * bottom level (the swing's own tangent) and turns up — drawn behind the target, so it never crosses its body.
+ */
+const EX_PAST = 20;
+const EX_RISE = 12;
 /** The rapier's angle (deg, facing right; + = tip down) through the swing: coming over (f8) → swept across → follow-through. */
 const PHI_F8 = -38;
 const PHI_CUT = 46;
 const PHI_OUT = 74;
-
 
 async function kiteFlight(s: StrikeArgs): Promise<void> {
   const u = s.attacker;
@@ -542,15 +587,25 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
   const Bc: XY = { x: T.x - tip9.x, y: Math.min(T.y - tip9.y, floorT - 1) };
   const hB = floorT - Bc.y; // his height above the floor at the cut
   const span = Math.abs(Bc.x - home.x) || 1;
-  /** The floor (screen y) under a body at screen x: the line from his home to the floor beside the target, extended. */
-  const floorY = (x: number): number => lerp(home.y, floorT, Math.max(-0.7, Math.min(1.9, (x - home.x) / (Bc.x - home.x || sgn))));
+  /**
+   * The floor (screen y) under a body at screen x: the line from his home to the floor beside the target — flat at
+   * the target's floor beyond it (the carry-through rises from THAT floor; never a floor line running on downhill
+   * past the target, which sank player 2 into it).
+   */
+  const floorY = (x: number): number => lerp(home.y, floorT, Math.max(-0.7, Math.min(1, (x - home.x) / (Bc.x - home.x || sgn))));
   const th0 = TH0;
   const RP = Math.max(46, span + BACK) / Math.sin(th0);
   const height = (th: number): number => hB + RP * (1 - Math.cos(th));
-  const body = (th: number): XY => {
+  const swingAt = (th: number): XY => {
     const x = Bc.x + sgn * RP * Math.sin(th);
     return { x, y: floorY(x) - height(th) };
   };
+  // the carry-through arc (θ > 0 is its own angle a: a circle of radius RC through the cut point, level there)
+  const C = swingAt(0);
+  const exDx = Math.max(10, sgn * (T.x - C.x) + EX_PAST);
+  const TH1 = 2 * Math.atan2(EX_RISE, exDx);
+  const RC = exDx / Math.sin(TH1);
+  const body = (th: number): XY => (th <= 0 ? swingAt(th) : { x: C.x + sgn * RC * Math.sin(th), y: C.y - RC * (1 - Math.cos(th)) });
   // the blade's analytic sweep: from the downswing frame (f8, shown from 42 % of the swing time: k8 of the way down
   // the arc) the hand travels from its f8 spot to its f9 spot and the blade turns from f8's −38° through the cut to
   // the follow-through; before f8 the blade is cocked (no trail: nothing is cutting yet)
@@ -565,6 +620,11 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
     const h = lerpXY(hand8, hand9, k);
     return { x: b.x + h.x + sgn * Math.cos(a) * 20, y: b.y + h.y + Math.sin(a) * 20 };
   };
+  // the carry-through leaves the bottom at the downswing's own speed (swingEase'(1) = 1.6: θ0·1.6 / down per ms, ×RP
+  // in px), then slows over the top: a power ease-out whose start slope matches that speed
+  const v0 = (1.6 * th0 * RP) / KT.down; // px / scene ms at the bottom
+  const exN = Math.max(1.6, Math.min(2.8, (v0 * KT.exit) / (RC * TH1)));
+  const exEase = (t: number): number => 1 - Math.pow(1 - t, exN);
   const A = body(-th0);
   /** Put the body at screen point p (the shadow stays on the floor under it: MonsterUnit.lift). */
   const at = (p: XY) => {
@@ -595,7 +655,8 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
   // ---- rise (f5–f6): he lifts off and is carried up to the top of the arc — climbing all the way, never sinking
   const flyDepth = Math.max(depth0, tDepth + 0.5);
   spr.setDepth(flyDepth);
-  const str = tautString(sc, () => (u.frameInfo().anim === 'special' && u.frameInfo().frame >= 5 && u.frameInfo().frame <= 10 ? tailW() : null), pin, flyDepth - 0.2, () => (u.frameInfo().frame >= 10 ? 5 : 0));
+  const tailInFlight = () => (u.frameInfo().anim === 'special' && u.frameInfo().frame >= 5 && u.frameInfo().frame <= 10 ? tailW() : null);
+  let str = tautString(sc, tailInFlight, pin, flyDepth - 0.2, () => (u.frameInfo().frame >= 10 ? 5 : 0));
   const riseMs = KT.r5 + KT.r6;
   show(u, 'special', 5);
   play('kfnSqueak', { pan, volume: 0.55, pitch: 1.1 });
@@ -623,7 +684,8 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
   trail.push(0);
   rise.stop(40);
   const cutAt: XY = { x: R(T.x), y: R(T.y) };
-  s.impact(cutAt);
+  // the curved cut leads the frame: the target's material hit sits ~12 dB under it
+  impactUnder(s, cutAt, 0.25);
   play('kfnCut', { pan: panAt(cutAt.x), volume: 1 });
   void stopTime(sc, 80);
   const slitDepth = Math.max(flyDepth, tDepth) + 0.7;
@@ -639,21 +701,25 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
     await yieldToDeath(sc, u);
     return;
   }
-  await sleep(sc, KT.hold);
+  // (no hold at the bottom: the scene clock is frozen by the hit-stop, and the frame it lets go the swing carries on)
+  await sleep(sc, 1);
   if (u.claimed || u.retired) {
     trail.stop();
     str.destroy();
     return;
   }
-  // ---- exit (f10): the arc carries on up past the target, the wind spills, the cloak half-collapses and flaps
+  // ---- exit (f10): the arc carries on THROUGH — past the target's centre line and up over the cut point, behind the
+  // target (it is the swing passing it, never a body crossing it); the wind spills, the cloak half-collapses and flaps
+  // (the blade's crescent stays where it cut, in front, and fades: the follow-through behind the body draws no trail)
+  trail.stop();
+  const behind = s.target && s.target.sprite.active ? Math.min(flyDepth, tDepth - 0.3) : flyDepth;
+  spr.setDepth(behind);
+  // the slackening string goes back behind the target with him (it runs from his home pin to the kite behind it)
+  str.destroy();
+  str = tautString(sc, tailInFlight, pin, behind - 0.05, () => 5);
   show(u, 'special', 10);
   play('kfnSpill', { pan: panAt(Bc.x), volume: 0.9 });
-  await animate(sc, KT.exit, (t) => {
-    const th = TH1 * sineOut(t);
-    at(body(th));
-    trail.push(th);
-  });
-  trail.stop();
+  await animate(sc, KT.exit, (t) => at(body(TH1 * exEase(t))));
   // ---- the braking glide home (f11), the cloak half open, the panel goes out; a knee dip on landing (f12)
   const E = body(TH1);
   show(u, 'special', 11);
@@ -664,6 +730,8 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
   await animate(sc, KT.glide, (t) => {
     // braking: fast off the swing, slow onto the tile; a last 3-px float before the touch-down
     const p = lerpXY(E, home, quadOut(t));
+    // out of the target's column he is back in front of it (his own row), before he reaches his tile
+    if (Math.abs(p.x - T.x) > 30) spr.setDepth(flyDepth);
     at({ x: p.x, y: p.y - Math.sin(Math.PI * t) * 3 * (1 - t) });
   });
   at(home);
@@ -908,12 +976,13 @@ function watchDeath(scene: Phaser.Scene, u: MonsterUnit): void {
         taut = true;
         tautAt = el;
         play('kfnDeathTaut', { pan });
-        // the taut line drawn ABOVE the units (an attacker standing over him must not hide it), out to its floor pin
+        // the taut line drawn ABOVE the units and the attacker's effects (DEPTH.FX + 3: a biting / burning killer in
+        // melee range must not hide it), out to its floor pin
         // 22 px behind him; it lives until the snap
         const tp = tailPoint('death', 1);
         const pinW = u.framePoint(AX - 22, GY);
         if (fi.frame === 1 && tp) {
-          const line = tautString(scene, () => (u.sprite.active && u.frameInfo().anim === 'death' && u.frameInfo().frame === 1 ? u.framePoint(tp.x, tp.y) : null), { x: R(pinW.x), y: R(pinW.y) }, Math.max(u.sprite.depth + 0.3, DEPTH.FX + 2));
+          const line = tautString(scene, () => (u.sprite.active && u.frameInfo().anim === 'death' && u.frameInfo().frame === 1 ? u.framePoint(tp.x, tp.y) : null), { x: R(pinW.x), y: R(pinW.y) }, Math.max(u.sprite.depth + 0.3, DEPTH.FX + 3));
           onFrame(scene, () => {
             if (u.sprite.active && u.frameInfo().anim === 'death' && u.frameInfo().frame <= 1) return true;
             line.destroy();
@@ -935,7 +1004,7 @@ function watchDeath(scene: Phaser.Scene, u: MonsterUnit): void {
           const nu = Math.hypot(up.x, up.y) || 1;
           const nd = Math.hypot(dn.x, dn.y) || 1;
           // in front of the units (an attacker standing on the tile must not hide the break), with a 1-frame spark of light
-          void snapWhips(scene, m, { x: up.x / nu, y: up.y / nu }, { x: dn.x / nd, y: dn.y / nd }, Math.max(u.sprite.depth + 0.3, DEPTH.FX + 2));
+          void snapWhips(scene, m, { x: up.x / nu, y: up.y / nu }, { x: dn.x / nd, y: dn.y / nd }, Math.max(u.sprite.depth + 0.3, DEPTH.FX + 3));
           void lightFlash(scene, m.x, m.y, PAL.white, 7, 90, { floorY: u.home.y, intensity: 0.55 });
         }
       }
