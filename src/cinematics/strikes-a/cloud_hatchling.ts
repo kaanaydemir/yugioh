@@ -175,7 +175,9 @@ async function hatchRingV3(s: StrikeArgs): Promise<void> {
   const core0: XY = target ? { x: Math.round(target.core().x), y: Math.round(target.core().y) } : { x: Math.round(s.to.x), y: Math.round(s.to.y) };
   // (crit c3r2 #1) a losing ring never gets round the stronger body: it is stopped a hand in front of it, in
   // full view (wrapped round the torso its far half hid and it read as a thin crescent, `c3r3/loseContact.png`)
-  const stopBack = loses && target ? (grown ? 9 : 7) : 0;
+  // (crit c3r3 #2) the winning ring too: wrapped round a narrow torso it read as a thin crescent for ≈ 5
+  // frames — it now closes a few px in front of the body, whole, and squeezes and snaps there
+  const stopBack = !target ? 0 : loses ? (grown ? 9 : 7) : blocked ? 0 : grown ? 5 : 4;
   const aim: XY = { x: Math.round(core0.x - travel.x * stopBack), y: Math.round(core0.y - travel.y * stopBack) };
   const from: XY = { ...mz };
   // the floor under the ring (for its pool and the pressed patches): from the hatchling's feet to the target's
@@ -239,9 +241,9 @@ async function hatchRingV3(s: StrikeArgs): Promise<void> {
         lastPatch = idx;
         patches.push({ x: Math.round(gx), y: Math.round(gy), age: 0 });
       }
-      if (!squeezed && el >= squeezeAt && !s.direct) {
+      if (!squeezed && el >= squeezeAt && !s.direct && !loses) {
         squeezed = true;
-        play('hatchRingSqueeze', { volume: loses ? 0.6 : 0.7, pitch: loses ? 0.85 : 1, pan: tpan });
+        play('hatchRingSqueeze', { volume: 0.7, pan: tpan });
       }
       if (t >= 1) {
         resolve();
@@ -275,25 +277,35 @@ async function hatchRingV3(s: StrikeArgs): Promise<void> {
     play(C?.impact ?? 'hatchRingTing', { volume: 0.6, pitch: 0.8, pan: tpan });
     void lightFlash(sc, ground.x, ground.y, PAL.water4, grown ? 26 : 20, 100, { floorY: ground.y, intensity: 0.8 });
     void ringLight.fadeOut(140);
-    const squeezeOut = async () => {
+    const squeezeOut = async (short: boolean) => {
       ringL(Dmax, PAL.water4);
-      await sleep(sc, STEP * 3);
+      await sleep(sc, STEP * (short ? 2 : 3));
+      // the squeeze it cannot finish (a lower, strained one; the sound on the frame it shows)
+      play('hatchRingSqueeze', { volume: 0.65, pitch: 0.8, pan: tpan });
       ringL(Dmax - 2, PAL.water4);
       await sleep(sc, STEP * 2);
-      ringL(Dmax - 4);
-      await sleep(sc, STEP * 2);
+      if (!short) {
+        ringL(Dmax - 4);
+        await sleep(sc, STEP * 2);
+      }
       frontL.g.destroy();
-      play('hatchRingFizzle', { volume: 0.75, pan: tpan });
+      // the pop's first frame carries its own sound (crit c3r3 #3: on the backlash's frame it was the
+      // fourth layer of four and was buried)
+      play('hatchRingFizzle', { volume: 0.8, pan: tpan });
       void anim4(sc, 200, (t) => {
         air.clear();
         drawFizzle(air, hit.x, hit.y, Dmax - 4, t);
       }).then(() => air.g.destroy());
     };
     if (grown) {
+      // (no budget: kaChGrownLose 3166 / 3190) the backlash starts at contact; the squeeze is one step
+      // shorter so the pop and its fizzle come ≈ 5 frames after the backlash's own sounds
       s.impact(hit);
-      void squeezeOut();
+      void squeezeOut(true);
     } else {
-      await squeezeOut();
+      // (crit c3r3 #3) the pop shows in the clear for 3 display frames before the backlash answers
+      await squeezeOut(false);
+      await sleep(sc, STEP * 3);
       s.impact(hit);
     }
     // the strike resolves at the pop (our death starts from the backlash at once); the puffs finish on their own
@@ -323,6 +335,11 @@ async function hatchRingV3(s: StrikeArgs): Promise<void> {
   const ringAt = (d: number, inner?: number) => {
     back.clear();
     front.clear();
+    if (!blocked) {
+      // (crit c3r3 #2) a won contact: the whole ring in front of the body (over its contact flash)
+      drawRing(front, hit.x, hit.y, d, travel, 'all', { inner });
+      return;
+    }
     drawRing(back, hit.x, hit.y, d, travel, 'far', { inner });
     drawRing(front, hit.x, hit.y, d, travel, 'near', { inner });
   };
@@ -330,7 +347,7 @@ async function hatchRingV3(s: StrikeArgs): Promise<void> {
   ringAt(Dmax, PAL.water4);
   play(C?.impact ?? 'hatchRingTing', { volume: blocked ? 0.7 : 0.95, pitch: blocked ? 0.9 : 1, pan: tpan });
   s.impact(hit);
-  void lightFlash(sc, ground.x, ground.y, PAL.mist, grown ? 30 : 24, 120, { floorY: ground.y, intensity: 0.9 });
+  void lightFlash(sc, ground.x, ground.y, PAL.mist, grown ? 18 : 14, 120, { floorY: ground.y, intensity: 0.9 });
   void ringLight.fadeOut(120);
   if (!blocked) void shake(sc, grown ? 220 : 140, grown ? 3 : s.power >= 3 ? 2 : 1);
   if (s.power >= 3 && !blocked) dustBurst(u, ground, 8, { spread: 8, speed: 50 });
@@ -366,8 +383,9 @@ async function hatchRingV3(s: StrikeArgs): Promise<void> {
     return;
   }
 
-  // the squeeze (the same table run backward, two steps) and the snap into 8 arcs
-  await sleep(sc, STEP * 2);
+  // the squeeze (the same table run backward, two steps) and the snap into 8 arcs; (crit c3r3 #2) the ring
+  // holds whole at full size 3 display frames first
+  await sleep(sc, STEP * 3);
   ringAt(Ds[Ds.length - 2], PAL.water4);
   await sleep(sc, STEP * 2);
   ringAt(Ds[Ds.length - 3]);
