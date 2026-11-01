@@ -446,7 +446,7 @@ function drawPuddle(f: Frame): PixelCanvas {
     if (bot >= 0 && Math.abs(x - cx) < rx - 1) q.set(x, bot, PAL.earth1);
   }
   // lumpy rim: small mud knobs along the back edge (fixed, so the feet band stays still)
-  for (const dx of [-30, -19, 12, 27]) {
+  for (const dx of o.mound > 0.5 ? [-30, -19, 12, 27] : []) {
     const x = cx + rnd(dx * o.puddle);
     if (Math.abs(x - cx) > rx - 2) continue;
     const yy = cy - Math.round(3 * Math.sqrt(Math.max(0, 1 - ((x - cx) / rx) ** 2))) - 1;

@@ -11,12 +11,34 @@ the 600 Hz suction "şlop", §5.2 ending "sıvı olup karoya geri akar"). Handbo
 ## Status by stage
 | Stage | State | Notes |
 |---|---|---|
-| Sprite rig (`src/art/monsters-v3/mudgrasp_spirit*.ts`) | **round 2 done** (readability redesign for the owner blocker; all 13 anims re-checked, gates 21 ok / 0 FAIL, test 11/11) | registered in v3 (file `mudgrasp_spirit.ts`); frame now 92×78, anchor (40, 71) |
+| Sprite rig (`src/art/monsters-v3/mudgrasp_spirit*.ts`) | **round 3 done** (planted claw hands, dark wet pool; gates 21 ok / 0 FAIL, tests 16/16) — round 2 done (readability redesign for the owner blocker; all 13 anims re-checked, gates 21 ok / 0 FAIL, test 11/11) | registered in v3 (file `mudgrasp_spirit.ts`); frame now 92×78, anchor (40, 71) |
 | Card art (`src/art/cardart-v3/mudgrasp_spirit.ts`) + `portrait()` | **done, round 2** (value pass for the owner's "brown mass" note) | `portrait()` wired in `monsters-v3/mudgrasp_spirit.ts` (unchanged); see *Card art* below |
 | `DEATH_PRESETS` | **done**: `material: 'water', accent: 'shadow'` (stone/ash endings are reserved) | `src/cinematics/_v3/presets.ts` own line |
 | `MONSTER_GLOW` | **done**: `void4 / void3 / white` emissive, `near void2`, `spill void3` (no body tone) | `src/view/light/profiles.ts` own line |
 | Scenarios (`src/duel/scenarios/mudgrasp_spirit.ts`) | **done** (21 keys, P1 + P2) | see *Cinematics stage* below |
 | Cinematics / SFX | **round 1 done** (summon, strike, death, pin effect + persistent aura; sound set wired, mgGrab reworked) | `src/cinematics/kart-b/mudgrasp_spirit.ts` (+ `-fx.ts`), `src/audio/v3/mudgrasp_spirit.ts` |
+
+## Round 3 — rig polish (stage RIG + ALL ANIMS re-run), 2026-11-01
+
+Re-checked every anim P1 + P2 against the spec and the owner's 1× note. The mask / hood / arm value ladder from round 2
+holds; the weakest read left was the GROUND CONTACT: planted hands were shapeless stubs merged into a puddle of the same
+value, so "hands grip the ground / the tile edges" (idle drum, summon slap, guard brace) did not read. Changes (rig only;
+Pose API, anim tables, marks, holds, points unchanged → cinematic frame numbers still hold):
+- **`plantedHand()`** (new, `-rig.ts`): any wrist on the ground (y > GY−9) now draws a splayed CLAW — a knuckle dome over the
+  wrist and four separate clay fingers (2 px wide, 1 px crease/ink gap, thumb bent back, fingers bent forward, tips dug
+  into the mud). Back hands use 1-px fingers (depth). A wrist under the surface sinks the claw row by row (summon start,
+  death, special plunge) instead of drawing it. Airborne hands (crown, burst, throw) keep the fanned `hand()`.
+- **Drumming**: the near claw drums (as before, now visible as lifted fingertips); the far claw drums two fingers out of
+  phase (its outermost finger never lifts, so the HA-9 feet row stays fixed) → idle liveliness 16.1 → 16.8 % (P2 15.7 %).
+- **Puddle** = a dark wet pool (`earth0` with `earth1` reflections + one `earth2` catch each, lit `earth1` front lip,
+  small rim knobs while the body stands) so the lighter clay claws and the mound's lit base stand on it.
+- **Elbow lumps**: mud gathers at each elbow (a lump + 1–2 px drip) so the arms read less like sticks (subtle).
+Evidence `shots/v3/kart-b/mudgrasp_spirit/r3/`: `idle-f0-p1p2-x5.png`, `idle-claws-x8.png`, `summon-f3-grip-x5.png`
+(claws gripping the puddle rim on the slap), `sheet-p1/`, `sheet-p2/` (all 13 anims ×2 with points), `gates.txt`
+(`--class medium --ref none`: 21 ok, 0 FAIL), `mgIdle-1x.png`, `mgIdle-x3.png` (in the duel with the light layer).
+Tests: `tests/art/mudgrasp_spirit.test.ts` 11/11, `-cardart` 5/5 (no test change needed). tsc: no errors in my files.
+Not re-run this round: sameness (round 2 UYARI set stands), cinematic films (rig change is visual only; the cinematic
+agents should re-LOOK `mgSummon` f3 — the claws now grip the rim — and `mgPin`).
 
 ## Cinematics stage (2026-10-31)
 
@@ -208,6 +230,9 @@ are used only by the eyes / mouth glow / veins / pops; emissive `void4, void3, w
 kept. DEATH_PRESETS `water / shadow` kept.
 
 ## Open issues
+11. (round 3) In the duel the light layer still darkens the claws a little; they read at ×3, at 1× they are a
+   ragged lit fringe on the dark pool. The card art's hands (chubby maps) are rounder than the sprite's thin claws —
+   acceptable (different scale), align if a critic asks.
 1. **Sameness UYARI (out of plan)**: attack point-track MOT vs steel_silencer 0.905 / stone_sentinel 0.845 / abyss_magus
    0.77; guard loop proxy vs thorn_lurker 0.91 (both near-still loops vs idle f0 — tried an asymmetric peek loop and a
    rising rampart, the proxy barely moved). Distinction header written in `mudgrasp_spirit-anims.ts`; a **blind eye

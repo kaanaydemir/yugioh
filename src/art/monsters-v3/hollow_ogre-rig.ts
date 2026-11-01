@@ -276,7 +276,7 @@ export function skeleton(o: Pose): Skel {
   const top: Pt = [base[0] + 15 + o.lean + sh, base[1] - height * 0.9 + o.bob];
   const ctrl: Pt = [base[0] - 3 + o.lean * 0.1, base[1] - height * 0.86];
   const sp = (t: number): Pt => bez(base, ctrl, top, t);
-  const rad = (t: number) => (9 + 4.5 * Math.max(0, 1 - ((t - 0.74) / 0.6) ** 2)) * (1 - 0.18 * col) + col * 3 * (1 - t);
+  const rad = (t: number) => (9 + 6 * Math.max(0, 1 - ((t - 0.76) / 0.55) ** 2)) * (1 - 0.18 * col) + col * 3 * (1 - t);
   const hc = sp(0.64);
   const hollow: Pt = [rnd(hc[0] + 1), rnd(hc[1])];
   // shoulders sit on the hunch, at the log's front and back edges (the hollow stays clear between them)
@@ -352,10 +352,10 @@ function drawFarArm(f: Frame): void {
   if (o.unfurl < 0.05 || o.unravel > 0.02) return;
   const q = layer();
   const pts: Pt[] = [sk.shF, sk.elF, sk.wF];
-  limb(q, pts, 7, 6, FAR.M);
+  limb(q, pts, 8.5, 6.5, FAR.M);
   rootFingers(q, f, sk.wF, sk.elF, FAR.M);
   bands(q, FAR, light, 2, 2);
-  twistSeams(q, pts, 6, FAR, 4, 1);
+  twistSeams(q, pts, 7, FAR, 4, 1);
   f.comp.add(q, Part.farArm, { out: CREASE });
 }
 
@@ -799,7 +799,7 @@ function drawNearArm(f: Frame): void {
   if (o.unfurl < 0.05 || o.unravel > 0.02) return;
   const q = layer();
   const pts: Pt[] = [sk.shN, sk.elN, sk.wN];
-  limb(q, pts, 7, 6, ROOT.M);
+  limb(q, pts, 10, 7.5, ROOT.M);
   // root fingers wrapped over the club grip (or splayed when the club is gone)
   if (o.clubFree <= 0 && o.unfurl > 0.35) {
     const d = o.ca;
@@ -807,7 +807,7 @@ function drawNearArm(f: Frame): void {
       const b = polar(sk.wN, d, -1 + i * 2);
       const a1 = polar(b, d - 90, 3.2);
       const a2 = polar(a1, d - 160, 2.2);
-      limb(q, [b, a1, a2], 2.6, 2, ROOT.M);
+      limb(q, [b, a1, a2], 3.2, 2.2, ROOT.M);
     }
   } else {
     const dir = Math.atan2(sk.wN[1] - sk.elN[1], sk.wN[0] - sk.elN[0]) / DEG;
@@ -818,7 +818,7 @@ function drawNearArm(f: Frame): void {
     }
   }
   bands(q, ROOT, light, 2, 2);
-  twistSeams(q, pts, 7, ROOT, 4, 0);
+  twistSeams(q, pts, 9, ROOT, 3, 0);
   const { p, comp } = f;
   const gap: number[] = [];
   for (let y = 1; y < H - 1; y++)
