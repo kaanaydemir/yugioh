@@ -21,7 +21,7 @@ import type { Px } from '../../vfx/combat';
 import { registerObserver } from '../api';
 import { atFrame, fade, panAt, play } from '../_v3/sound';
 import { layer } from '../strikes-a/_kit';
-import { drawCloud, drawCloudShadow, drawDust, drawPuff } from '../strikes-a/cloud_hatchling-fx';
+import { drawCloud, drawCloudPuff, drawCloudShadow, drawDust, drawPuff } from '../strikes-a/cloud_hatchling-fx';
 import { RR, bg, lightFlash, lightPool, playFrom, signatureSummon, untilFrame, type Stage } from './_kit';
 import { onFrame } from '../../vfx/combat';
 
@@ -157,6 +157,7 @@ async function eggDropV3(S: Stage): Promise<void> {
     play('hatchEggLand', { volume: 0.9, pan });
     bg(shake(sc, 120, 1));
     dust(sc, home, S.depth - 0.2);
+    landPuffs(sc, home, S.depth + 0.2);
     void lightFlash(sc, home.x, home.y, PAL.leaf4, 22, 160, { floorY: home.y, intensity: 0.6 });
   });
   [3, 4, 5].forEach((f, i) =>
@@ -218,6 +219,34 @@ function dust(sc: Phaser.Scene, home: XY, depth: number): void {
       const s = (el / 1000) * (1 - t * 0.5);
       for (const d of ds) drawDust(px, d.x + d.vx * s, d.y + d.vy * s, t);
       return true;
+    },
+    () => px.g.destroy(),
+  );
+}
+
+/**
+ * (crit c3r3 #6) The landing reads: four little cloud puffs squeeze out from under the egg (it lands on
+ * its cloud's last breath), two a side, sliding out and rising 4 px, thinning from the 6×4 lobe to the 4×3.
+ */
+function landPuffs(sc: Phaser.Scene, home: XY, depth: number): void {
+  const px = layer(sc, depth);
+  const ps = [-1, 1, -1, 1].map((side, i) => ({ side, x0: home.x + side * (5 + (i >> 1) * 2), y0: home.y - (i >> 1), v: 34 - (i >> 1) * 12, delay: (i >> 1) * 40 }));
+  onFrame(
+    sc,
+    (_dt, el) => {
+      px.clear();
+      let any = false;
+      for (const p of ps) {
+        const t = (el - p.delay) / 340;
+        if (t < 0 || t >= 1) {
+          any ||= t < 0;
+          continue;
+        }
+        any = true;
+        const s = (el - p.delay) / 1000;
+        drawCloudPuff(px, Math.round(p.x0 + p.side * p.v * s * (1 - t * 0.4)), Math.round(p.y0 - 4 * Math.sqrt(t)), t);
+      }
+      return any;
     },
     () => px.g.destroy(),
   );

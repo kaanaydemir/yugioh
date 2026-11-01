@@ -1815,3 +1815,69 @@ Evidence: `shots/kart-a/cloud_hatchling/c3r3/` (critic evidence: `c3r2/`). Files
   the torso and reads as a crescent on narrow targets; the backlash flash covers the baby's pop at 1500 ms; the
   contact's low end in the full mix is limited by the shared impactHeavy + the master limiter (+0.5 dB only);
   hatchGrownSneeze vs wyrmBreathFire LSD sits at the 10 dB minimum.
+
+### Cinematics + SFX — critic round 3 (c3r3 → c3r4) fixes, 2026-11-01
+Evidence: `shots/kart-a/cloud_hatchling/c3r4/` (critic evidence: `crit3/`). Files: `strikes-a/cloud_hatchling.ts`,
+`strikes-a/cloud_hatchling-fx.ts`, `summon-a/cloud_hatchling.ts`, `audio/v3/hatchling.ts`,
+`art/monsters-v3/cloud_hatchling-rig.ts`, `art/monsters-v3/cloud_hatchling-anims.ts`.
+- **#1 MEDIUM grown reads as a sheep — fixed (both of the critic's options, partly).** (a) A visible dragon tail:
+  the grown tail no longer wraps under the haunch (hidden by the mane and the ring puffs); it sweeps OUT behind the
+  haunch along the floor and curls up at the end, the shell cap on its tip (`grownTail` in the rig). It breaks the
+  round blob on the left at 1× (`grown-1x.png`, `grown-x4.png`, sheet `sheet2/`). The growth (special f8–f9)
+  swings it out continuously (`gates/g/cloud_hatchling-file-special.png`). (b) The haunch + back mane masses (and
+  their scallops) are laid one tone down (`dim`: white → mist, mist → steel, puffLobe's existing far-side map):
+  the bright cloud stays round the face (crown, nape, ruff), the green head, body, legs and tail now dominate.
+  Not done: ink-notch gaps in the mane outline (the tone split + tail already break the single blob; notches
+  would be cut into the silhouette by the global outline pass — left for a later art round if still needed).
+  Tail tip at x ≥ 9 so hitHeavy f2's knock keeps the 2-px margin (first try x 7 failed the art test).
+- **#2 MEDIUM winning ring crescent + burst — fixed.** A won contact now stops the ring 4 px (grown 5) in front of
+  the target's core and draws it WHOLE in front of the body (`ringAt`: 'all' on the front layer; blocked keeps
+  the wrap — it needs the "cannot close" read), so it shows over the contact flash; it holds at full size 3
+  display frames (was 2) before the 2-step squeeze and the snap. The card's own contact light is capped at the
+  ring's footprint (radius 30 → 18 grown, 24 → 14 baby). `gatk-before.png` (wrap → crescent 1420–1540) vs
+  `gatk.png` / `gatk2.png` (whole ring 1300–1760, squeeze, snap), baby `atk.png`. The remaining near-white fill
+  inside the ring on the 2 contact frames is the shared kit's target contact flash (`_v3/react.ts`
+  FLASH_COVER, every card) — now inside the ring's ellipse; not this card's file.
+- **#3 MEDIUM losing pop masked — fixed.** Baby: the backlash (and its shieldBlock / impactLight / hitClothMagic
+  stack) waits 2 more frames after the pop; the pop shows in the clear for 3 display frames (`lose3.png`:
+  1499–1533, backlash 1550). Sound log (`kaChLose.json`): ting 1317, squeeze 1400, **fizzle 1500 alone**, backlash
+  stack 1550. The pop itself is stronger (`drawFizzle`): a white 5-px "pıt" cross on its first frames, four 4×3
+  cloud lobes (white crown → mist → steel) drifting out and 3 px up, four 2×2 mist puffs between, 260 ms (was 4
+  2×2 dots, 200 ms); `lose2.png` (×4). Grown (no budget): the squeeze is one step shorter (hold 2 frames, one
+  squeeze step) — the backlash still starts at contact; the fizzle now sits 233 ms after the backlash stack
+  (1667 vs 1433 ms) instead of inside it (`kaChGrownLose.json`); the grown pop is under the kit's block-clang
+  hex (`glose2.png`) — known.
+- **#4 LOW sound sync — re-verified** with re-rendered audio (below).
+- **#5 LOW SE-4 margin — fixed (+1.7 dB).** Shifting only the sneeze's noise band ±1/3 octave moved the LSD vs
+  wyrmBreathFire by ±0.2 dB (`lsd-up/down.json`): the growl dominates the spectrum. Final
+  `hatchGrownSneeze`: the "ha-" growl a third higher (f 220…147 → 277…185 Hz), outer formants a third up
+  (520 / 2600 → 655 / 3275), the air band a third lower and softer (puff 4000 → 3175 Hz, sweep 1500/3200/900 →
+  1190/2540/715 at 0.12). **LSD vs wyrmBreathFire 10.0 → 11.7 dB**; vs magusOrbRelease 14.6 → 16.5, ashenExhale
+  13.6 → 15.8, baby hatchSneeze 17.5 → 16.5 (`lsd.md`, `lsd.json`; trials A–M in `lsd-*.json`). Table min is now
+  10.9 (hatchGrownRingBoom vs ashenIgnite, unchanged by this round). Not reached: the critic's 2–3 dB.
+- **#6 LOW summon static — fixed.** Landing: four 6×4 cloud puffs squeeze out from under the egg (two a side,
+  sliding out, rising 4 px, thinning to 4×3, 340 ms) with the dust; wobbles f3–f5 are real tilts now
+  (`eggTilt` ±1 → ±2: the top leans ≈ 3 px), the crack growing, the existing rattles + crack ticks in each.
+  `sum-before.png` vs `sum.png` (×4, 700–1460 ms). Sound: land 783 on the landing frame, crack ticks 883…1367,
+  burst 1517 (`kaChSummon.json`).
+- **#7–#9** — no action (pass / info).
+- **Audio re-rendered** (`clip.mjs --music off`; `kaChLose`, `kaChGrownLose`, `kaChGrownAtk`, `kaChAtk`,
+  `kaChSummon` .mp4/.wav/.json): peaks −2.1 / −1.9 / −1.9 / −2.1 / −2.0 dBFS, 0 clipped samples.
+- **Gates:** `tsc` 0 errors; vitest art/cloud_hatchling* + audio + presentation + duel/unit-variant 109/109
+  (the hatchling art test 14/14 after the tail-margin fix); monster-gates `c3r4/gates/baby.txt` 20 ok + HA-14,
+  `grown.txt` 19 ok + HA-14 / HA-15 (the declared shared-shell rows; IŞ-10 n/a with `--ref none`).
+- **Measured** (`c3r4/m.log`, `m.json`: all 55 `kaCh*` scenarios, `--look v3`, 0 errors; REHBER §5 × 1.45):
+  kaChSummon / P2 2366 (≤ 3340); kaChAtk / P2 / DefWin 2333, kaChBlocked 2466, kaChTie 3033, **kaChLose / P2 3150**
+  (was 3100; ≤ 3190, 40 ms headroom), kaChKill / P2 2600, kaChKillPhys 2883, kaChGuardKill 2216, kaChBolt 2466,
+  kaChHit 1533 (≤ 3190); kaChDirect / P2 2200, kaChGrownDirect 2316 (≤ 2320, unchanged path); kaChRevive 2133;
+  kaChFlip 733; kaChPos 4100; kaChGrownAtk / P2 2550, kaChGrownBlocked 2400, **kaChGrownLose 3166** (unchanged;
+  ≤ 3190), kaChGrownKill 2666, kaChGrownGuardKill 2583, kaChGrownHit 1533, kaChGrownVenomHit 2716,
+  kaChGrownAshenKill 3116; kaChGrow / P2 / Def / Fast 9083 (hook unchanged). kaChAtkWeak 3816 (wisp_imp's trigger,
+  accepted earlier).
+- **Rejected / not this card's:** capping the contact burst further — the remaining fill is the shared
+  `_v3/react.ts` contact flash (every card's hit); delaying the grown backlash — kaChGrownLose has 24 ms of
+  headroom (the critic's fallback, a one-step-shorter squeeze, was applied instead).
+- **Remaining weaknesses:** the grown mane is still a large cloud mass (now two-toned, tail out) — no ink notches;
+  the grown losing pop plays under the kit's block-clang hex; SE-4 margin vs wyrmBreathFire is +1.7 dB (not 2–3);
+  the dial build-up 6.0–7.2 s (not reworked); kaChGrownDirect 4 ms headroom; sameness (grown file vs tide_golem
+  MOTsig 0.726 ≥ 0.55 on roar) is a motion-rhythm warning on anims this round did not touch.

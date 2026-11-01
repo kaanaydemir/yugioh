@@ -363,14 +363,14 @@ export function skel(P: HatchPose, age: number): Skel {
     [24 + tc * 22, 64 + tap * 1 - tc * 6],
   ];
   // grown: round the haunch's back and bottom, then UP in front of it like a cat's (critique r3 #8)
+  // (crit c3r3 #1: at 1× the grown read as a sheep — one round wool blob) the tail now sweeps OUT behind
+  // the haunch along the floor and curls up at the end, a dragon's tail breaking the round silhouette
   const grownTail: V[] = [
-    [23, 61],
-    [17.5, 66.5],
-    [21, 70.5],
-    // (critique c1r1 #7) the tip curls out 4 px past the front of the haunch, in front of the ring's
-    // back half, so the shell band rides a visible tail tip
-    [33, 70],
-    [41, 62.5],
+    [24, 62],
+    [18, 66],
+    [12.5, 66],
+    [9, 61.5],
+    [9.5, 55.5],
   ];
   // f6: the baby tail already slides rearward with the swelling body (its shell still on the tip)
   // (critique c1r1 #2) the tail turns grown over f8–f9 (sT), a frame after the legs: f7 still carries
@@ -426,6 +426,8 @@ function lay(p: PixelCanvas, w: Workspace, r: Raster, seam = SEAM): PixelCanvas 
 interface Lobe {
   c: V;
   r: number;
+  /** laid one tone down (white → mist, mist → steel): the rear masses in the body's shade */
+  dim?: boolean;
 }
 
 /** A group of cloud lobes, each its own dome (calm flat planes), laid back to front with seams. */
@@ -433,7 +435,7 @@ function cloudLobes(p: PixelCanvas, w: Workspace, lobes: readonly Lobe[], light:
   for (const l of lobes) {
     if (l.r < 1) continue;
     const q = w.canvas();
-    puffLobe(q, l.c[0], l.c[1], l.r, light, l.r >= 3 ? spike : 0);
+    puffLobe(q, l.c[0], l.c[1], l.r, light, l.r >= 3 ? spike : 0, l.dim);
     composite(p, q, LOBE_SEAM);
   }
 }
@@ -452,12 +454,15 @@ interface Mass {
   r: number;
   t0: number;
   arc?: readonly [number, number];
+  dim?: boolean;
 }
 /** the age the crown mass starts at (the baby cowlick stays until it is half grown) */
 const CROWN_T0 = 2.5 / 6;
+// (crit c3r3 #1) the haunch and back masses are laid one tone down (`dim`): the white mass no longer
+// outshines the green body and head, the bright cloud stays round the face (crown, nape, ruff)
 const MANE_BACK: readonly Mass[] = [
-  { d: [-33, 10], r: 8, t0: 4 / 6, arc: [135, 290] },
-  { d: [-21, -1], r: 9.5, t0: 3 / 6, arc: [190, 300] },
+  { d: [-33, 10], r: 8, t0: 4 / 6, arc: [135, 290], dim: true },
+  { d: [-21, -1], r: 9.5, t0: 3 / 6, arc: [190, 300], dim: true },
   // (critique c1r1 #2) the cowlick spreads DOWN over the nape and shoulders first (f8), the crown
   // dome closes over the head only after (f9)
   { d: [-11, 6], r: 9, t0: 1.5 / 6 },
@@ -501,14 +506,14 @@ function maneLobes(S: Skel, P: HatchPose, front: boolean): Lobe[] {
     const hb: V = [S.headRest[0] + (headNoLunge[0] - S.headRest[0]) * fw + (S.lu[0] + P.lag * S.sL) * fl, S.headRest[1] + (headNoLunge[1] - S.headRest[1]) * fw + S.lu[1] * fl];
     const c: V = [R(hb[0] + dx * k + (dx / n) * bris * 2), R(hb[1] + dy * k + bob + (dy / n) * bris * 2)];
     const r = m.r * L(0.55, 1, t) * (1 + bris * 0.08);
-    masses.push({ c, r });
+    masses.push({ c, r, dim: m.dim });
     if (m.arc) {
       const [a0, a1] = m.arc;
       const len = (((a1 - a0) * Math.PI) / 180) * r;
       const cnt = Math.max(2, Math.round(len / 4.6));
       for (let j = 0; j <= cnt; j++) {
         const a = ((a0 + ((a1 - a0) * j) / cnt) * Math.PI) / 180;
-        scallops.push({ c: [R(c[0] + Math.cos(a) * r * 0.98), R(c[1] + Math.sin(a) * r * 0.9)], r: SCALLOP_R * L(0.6, 1, t) });
+        scallops.push({ c: [R(c[0] + Math.cos(a) * r * 0.98), R(c[1] + Math.sin(a) * r * 0.9)], r: SCALLOP_R * L(0.6, 1, t), dim: m.dim });
       }
     }
   });

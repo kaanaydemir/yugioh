@@ -243,9 +243,10 @@ const SUMMON_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[]
   [{ ...EGG, squash: 1 }, 'land'],
   // the egg rocks ±1 px with a 1-px squash while the zigzag crack grows 5 px a frame; f5 the peck
   // (critique r2 #5)
-  [{ ...EGG, eggTilt: -1, hip: [-1, 0], squash: 0.7, crack: 0.34 }],
-  [{ ...EGG, eggTilt: 1, hip: [1, 0], squash: -0.5, crack: 0.67 }],
-  [{ ...EGG, eggTilt: -1, hip: [-1, 0], squash: 0.7, crack: 1.2, glint: 2 }],
+  // (crit c3r3 #6) the rocks are real tilts (±2: the egg's top leans ≈ 3 px), not a 1-px nudge
+  [{ ...EGG, eggTilt: -2, hip: [-1, 0], squash: 0.7, crack: 0.34 }],
+  [{ ...EGG, eggTilt: 2, hip: [1, 0], squash: -0.5, crack: 0.67 }],
+  [{ ...EGG, eggTilt: -2, hip: [-1, 0], squash: 0.7, crack: 1.2, glint: 2 }],
   [{ ...EGG, shake: 1, crack: 1, burst: 0.17 }],
   [{ ball: 1, egg: 1, burst: 1 }],
   // the tucked ball bursting out of the shell at the baby's curled size (critique r2 #4: no pop to f9)
