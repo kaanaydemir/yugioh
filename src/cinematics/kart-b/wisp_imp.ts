@@ -31,6 +31,13 @@
 //    glints / finisher / quivering stuck darts, gust ribbons + whole peeled feathers synced to the
 //    sprite's peel frames, the clutch, a pillow with the ghost's face / cowlick / "?" tail and a
 //    popping, shining "0 · KORUNDU" that blinks out with the pof.)
+//   (FIX r1b, critic c2: NO field pillow — the hug's build-up (special f1–f4, a shuddering living
+//    hold with feathers escaping) swells once (f5) and BURSTS: white flash → an inked lumpy cumulus
+//    that blooms up and out and lifts off while whole inked feathers tumble out of it → the flock;
+//    the pillow is born only on the panel (sized over the whole LP digit run, bigger face, a tuft on
+//    the breath); the pof is an inked cumulus (pop → wide puff → torn ring) throwing whole feathers.
+//    Every loose feather that matters is a `stamp` (inked, quilled, lit vane, falling-leaf turn-over).
+//    Blocked darts ricochet off with a white "tink" spark; shorter, closer summon pre-roll.)
 //
 // Pixel language: every effect is drawn on whole-pixel rasters in palette tones (white / void4 /
 // void3 / void2 for the feathers, gold for the eyes), fading by stepping DOWN the ramp, never by
@@ -1200,8 +1207,8 @@ function paintPillow(pc: PixelCanvas, cx: number, cy: number, a: number, b: numb
 
 /** A pillow sprite on the HUD layer: a raster you re-paint with a size and a face. */
 function pillowView(scene: Phaser.Scene, at: XY, back: number): { set(a: number, b: number, face: Face, dy?: number): void; hide(): void; destroy(): void } {
-  const W = 104;
-  const H = 56;
+  const W = 124;
+  const H = 58;
   const r = new Raster(scene, at.x - W / 2, at.y - H / 2, W, H, DEPTH.HUD + 8);
   const pc = new PixelCanvas(W, H);
   return {
@@ -1329,33 +1336,34 @@ function burstCloud(scene: Phaser.Scene, at: XY, depth: number, rnd: Rnd, onLift
  * feathers fly off it and rock down, specks of down as filler (HUD space).
  */
 function pof(scene: Phaser.Scene, at: XY, rnd: Rnd): void {
-  const r = new Raster(scene, at.x - 60, at.y - 42, 120, 84, DEPTH.HUD + 9);
-  const L = Array.from({ length: 8 }, (_, i) => ({ a: (i / 8) * TAU + rr(rnd, -0.2, 0.2), r: rr(rnd, 5, 7.5) }));
+  const r = new Raster(scene, at.x - 70, at.y - 46, 140, 92, DEPTH.HUD + 9);
+  const L = Array.from({ length: 10 }, (_, i) => ({ a: (i / 10) * TAU + rr(rnd, -0.2, 0.2), r: rr(rnd, 5, 7.5) }));
   void animate(scene, 300, (t) => {
     r.draw(() => {
       const k = Math.floor(t * 5);
       if (k === 0) {
         // the pop: tight, tall (stretched), bright
-        const puffs: [number, number, number][] = [[0, -1, 9]];
-        for (const l of L) puffs.push([Math.cos(l.a) * 9, Math.sin(l.a) * 7 - 1, l.r * 0.85]);
+        // (as big as the pillow it replaces)
+        const puffs: [number, number, number][] = [[0, -1, 11], [-14, 0, 8], [14, 0, 8]];
+        for (const l of L) puffs.push([Math.cos(l.a) * 24, Math.sin(l.a) * 9 - 1, l.r * 0.95]);
         cumulus(r, at.x, at.y - 2, puffs);
       } else if (k === 1) {
         // the puff: wide and squat
-        const puffs: [number, number, number][] = [[0, 0, 10], [-6, -3, 7], [6, -3, 7]];
-        for (const l of L) puffs.push([Math.cos(l.a) * 19, Math.sin(l.a) * 10, l.r * 1.1]);
+        const puffs: [number, number, number][] = [[0, 0, 12], [-10, -3, 9], [10, -3, 9], [-22, 1, 8], [22, 1, 8]];
+        for (const l of L) puffs.push([Math.cos(l.a) * 34, Math.sin(l.a) * 13, l.r * 1.15]);
         cumulus(r, at.x, at.y - 1, puffs);
       } else if (k === 2) {
         // the cloud tears open: a lumpy ring of lobes
         for (let i = 0; i < 9; i++) {
           const a = (i / 9) * TAU;
-          cumulus(r, ri(at.x + Math.cos(a) * 24), ri(at.y + Math.sin(a) * 13), [[0, 0, 5], [2, 1, 3.5]], true, i % 3 === 0 ? 1 : 0);
+          cumulus(r, ri(at.x + Math.cos(a) * 40), ri(at.y + Math.sin(a) * 17), [[0, 0, 5.5], [2, 1, 4]], true, i % 3 === 0 ? 1 : 0);
         }
       } else if (k === 3) {
         for (let i = 0; i < 9; i++) {
           const a = (i / 9) * TAU + 0.2;
-          cumulus(r, ri(at.x + Math.cos(a) * 30), ri(at.y + Math.sin(a) * 16), [[0, 0, 3.5]], false, 1);
+          cumulus(r, ri(at.x + Math.cos(a) * 48), ri(at.y + Math.sin(a) * 20), [[0, 0, 3.5]], false, 1);
         }
-      } else r.ring(at.x, at.y, 34, 18, PAL.void2);
+      } else r.ring(at.x, at.y, 54, 22, PAL.void2);
     });
   }).then(() => r.destroy());
   const down = new Plumes(scene, at.x - 120, at.y - 90, 240, 190, DEPTH.HUD + 9);
@@ -1414,14 +1422,15 @@ async function pillowDeath(ctx: Ctx<'destroy'>, L: Leave | null, amount: number,
   // ---- it packs into a pillow (the ghost's face on it)
   play('wiStuff', { volume: 0.9, pan: panAt(at.x) });
   // its tail hangs off the side away from the field (the panel's outer side)
-  const P = pillowView(sc, at, at.x < GAME_W / 2 ? -1 : 1);
+  // (the lower panel's digit run sits 3 px right of its LP point: centre the pillow on the digits)
+  const P = pillowView(sc, { x: at.x + (top ? 0 : 3), y: at.y }, at.x < GAME_W / 2 ? -1 : 1);
   // it packs in with a plump overshoot (whole-pixel sizes, one per beat)
   const sizes: [number, number, number][] = [
-    [14, 6, 30],
-    [22, 10, 30],
-    [31, 14, 36],
-    [27, 12, 34],
-    [29, 13, 24],
+    [19, 6, 30],
+    [27, 10, 30],
+    [36, 14, 36],
+    [32, 12, 34],
+    [34, 13, 24],
   ];
   // the prevented damage is already on its way while the pillow plumps up: it comes in from the
   // field side of the panel (where the blow came from) and drops onto the pillow
@@ -1447,12 +1456,12 @@ async function pillowDeath(ctx: Ctx<'destroy'>, L: Leave | null, amount: number,
   // squash: wide and flat, the eyes squeeze, the number sinks into the down; then it springs
   // back up tall, wobbles twice and settles — the blow is soaked up, nothing gets through
   const squash: [number, number, Face, number, number][] = [
-    [34, 7, 'squeeze', 64, 3],
-    [32, 9, 'squeeze', 44, 4],
-    [26, 16, 'wide', 44, 0],
-    [31, 11, 'wide', 44, 0],
-    [27, 14, 'open', 40, 0],
-    [29, 13, 'happy', 34, 0],
+    [39, 7, 'squeeze', 64, 3],
+    [37, 9, 'squeeze', 44, 4],
+    [31, 16, 'wide', 44, 0],
+    [36, 11, 'wide', 44, 0],
+    [32, 14, 'open', 40, 0],
+    [34, 13, 'happy', 34, 0],
   ];
   for (const [a, b, face, ms, sink] of squash) {
     P.set(a, b, face, top ? -Math.min(1, sink) : Math.min(1, sink));
@@ -1473,10 +1482,10 @@ async function pillowDeath(ctx: Ctx<'destroy'>, L: Leave | null, amount: number,
   void panelFlash(sc, at);
   const shine = labelShine(sc, at.x, ly, 64);
   const breathe: [number, number][] = [
-    [30, 12],
-    [29, 13],
-    [28, 14],
-    [29, 13],
+    [35, 12],
+    [34, 13],
+    [33, 14],
+    [34, 13],
   ];
   for (let i = 0; i < 4; i++) {
     const [ba, bb] = breathe[i];

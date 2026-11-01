@@ -446,6 +446,25 @@ function tailDist(g: Geo, x: number, y: number): number {
   return dTail;
 }
 
+/** (FIX r2) two barb notches cut into the tail feather's edges (alternate sides): it reads as a
+ * feather, not a smooth tube */
+function tailNotch(g: Geo, x: number, y: number): boolean {
+  const n = g.tail.length;
+  for (const [t, sd] of [[0.42, 1], [0.62, -1], [0.78, 1]] as const) {
+    const i = Math.min(n - 2, Math.floor(t * (n - 1)));
+    const a = g.tail[i];
+    const b = g.tail[i + 1];
+    const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    const nx = (-(b[1] - a[1]) / l) * sd;
+    const ny = ((b[0] - a[0]) / l) * sd;
+    const w = g.tailW[i];
+    const cx = a[0] + nx * (w + 0.2);
+    const cy = a[1] + ny * (w + 0.2);
+    if (Math.hypot(x - cx, y - cy) < 1.25) return true;
+  }
+  return false;
+}
+
 function pillowSdf(g: Geo, x: number, y: number): number {
   const dx = Math.abs(x - g.px) / g.pa;
   const dy = Math.abs(y - g.py) / g.pb;
@@ -501,7 +520,7 @@ function buildField(pz: Pose, g: Geo, side: 1 | -1): Field {
       }
       if (inHood(pz, g, px, py)) put(i, HOOD, 100);
       else if (sheetSdf(g, px, py, 2.2) <= 0) put(i, BASE, 1);
-      if (pz.peel < 8 && tailDist(g, px, py) <= 0) put(i, TAIL, 2);
+      if (pz.peel < 8 && tailDist(g, px, py) <= 0 && !tailNotch(g, px, py)) put(i, TAIL, 2);
     }
   if (P < 0.55) {
     const tmp = new Int8Array(W * H);

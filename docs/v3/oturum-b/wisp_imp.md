@@ -564,3 +564,69 @@ verified, and one untested route to the HA-21 phase deviation was measured:
 27. HA-21 phase deviation — orchestrator decision (issues 19 / 23), now with the centre-frame route ruled out.
 28. Unchanged: sameness UYARI blind test (24), idle SFX (decision 3), feather struck-body material (decision 4),
     icon wiring in `cardface-v3/index.ts` (1), card-art bbox fill (4).
+
+## FIX round 1b (independent critic r1 / c2 → fixes, 2026-11-01)
+Critic report: `shots/v3/kart-b/wisp_imp/critic-r1/c2/` (2 blockers, 6 majors, 4 minors). Evidence of the fixes:
+`shots/v3/kart-b/wisp_imp/fix-r2/`. Scratch: `<scratch>/wisp_imp/f2/` (`z.ts` = zoom renderer
+`npx vite-node z.ts -- out.png SCALE "anim:f[:r];…"`, `PATCH='{json}'` overrides pose fields; before copies
+`wisp_imp-rig.orig.ts`, `wisp_imp-anims.orig.ts`, `cin.orig.ts`, `scen.orig.ts`; `m.json` = measure run).
+
+### What changed, finding by finding
+1. **BLOCKER field pillow before the payoff** — the effect hook no longer plays the cushion frames. The special
+   was re-keyed (12 → 15 frames, marks `charge 1, release 8, impact 8, recover 11`; total 137 frames, 2.17 MB):
+   f1 hug, **f2–f4 new build-up** (squeeze smaller, shudder left / right, feathers lifting and slipping out as
+   whole feathers), f5 the brief swell (pillow 0.35), f6–f8 cushion / squeeze / poof (kept for the sprite, unused
+   by the effect). The hook plays `held … SWELL (= release − 3)` at ×1.3, holds 60 ms, then bursts. The pillow
+   now appears only on the panel. `fix-r2/wiCushion-field.png`, `special-clutch-x6.png`.
+2. **BLOCKER no burst** — new `burstCloud()` (`kart-b/wisp_imp.ts`): flash frame (body shape, all white, ink rim)
+   → 4 beats of an inked lumpy `cumulus()` (overlapping puffs, top-left lit bands, 1-px creases where an upper puff
+   laps a lower one) that grows to ~1.5× the body and RISES (−3 → −23 px), tears into lobes, thins (ink → void0 →
+   no rim); 8 whole inked feathers tumble out of its upper rim; the flock leaves from the cloud's rim when it lifts
+   off. The body is retired on the flash frame. `fix-r2/wiCushion-burst.png` (t 3080–3575).
+3. **pof flat discs** — `pof()` rewritten on `cumulus()`: k0 tight pop (pillow-wide), k1 wide squat puff (~80 px),
+   both inked; k2 torn ring of inked lobes; k3 last wisps; then the ring. A third of the 30 down particles are
+   whole inked feather stamps. `fix-r2/wiCushion-pof.png`, `wiCushionP2-panel.png` #14–17.
+4. **frozen clutch egg** — the clutch observer now steps f1 → f2 → f3 → f4 → f3 … every 100 ms (distinct squeeze /
+   shudder frames) and lets a whole inked feather slip off the back every 170 ms and float up.
+   `fix-r2/wiCushion-field.png` #3–#16.
+5. **body reads as hooded squid** (rig) — `PLUMES` redrawn as 7 SHORT broad round-tipped shingles (upper row in
+   front of the lower one, two wing feathers notching the back edge, a lower hem row over the tail root); `leaf()`
+   got a `round` profile; a shingle is flat white with a lilac curl toward its tip, a quill, and a void1 rim round
+   its tip, so each tip laps the feather under it as a scallop line (kept from despeckle). Plume-on-plume cast
+   shade removed (the rims carry it). Hands = three slim fanned feather fingers parted by a void2 crease.
+   Tail: three barb notches on alternating edges. `fix-r2/body-idle-x8.png`, `body-1x-2x.png`, `sheet/`.
+6. **chip / confetti particles** — new `stamp()`: an inked, quilled 5–9 px feather with a lit vane and a round
+   tip, edge-on (quill only) when `flip < 0.3` (the falling-leaf turn-over); `Plumes` takes `ink: true` and flips
+   with its pendulum. Used in the summon fountain (every 3rd–2nd feather) + its fling, the "bö!" crown, the burst,
+   a third of the flock, the clutch escapees, the wind-death peel stream, flaking darts, ricochets, the pof, the
+   pillow tuft. The rig's built-in attack dart confetti (attack f5–f8 bursts) removed (the cinematic owns darts).
+7. **wind-death checker fray** (rig) — death f6 no longer erodes: the last shingle and the tail leave as three more
+   whole feathers and what is left is a shrunken hood round the eyes (no holes). f4/f5 keep the hem shingles
+   (peel 4 / 4.5), so f5 is not bald. `fix-r2/death-f4-f7-x6.png`, `wiDefDies-clip.png`.
+8. **guard eyes painted on the hands** (rig) — `paintEyes` takes the near-hand map: an eye pixel under a finger is
+   skipped unless it is a finger crease; guard hands moved 3 px down so the fingers cover the lower hollow and
+   the eyes peek over them (P1 + P2). `fix-r2/guard-x8.png`, `wiGuard-clip.png`.
+9. minors: **summon pre-roll** FALL 62 → 44 px, PRE 460 → 320 ms, the sprite's falling feather path ends flat on
+   the tile centre (summon event 2833 → 2583 ms) `fix-r2/wiSummon-clip.png`; **blocked darts** ricochet up and back
+   on a high spinning arc with a white "tink" spark (`wiBlocked-zoom.png`); **panel pillow** widened (+10 px, raster
+   124×58) to cover the whole digit run (P1 panel nudged 3 px to the digits' centre), face hollow 13×9, 2×3 eyes,
+   a feather tuft pops off on the breath.
+
+### Gates (round 1b)
+- `monster-gates --class small --ref none` (`fix-r2/gates.txt`): **20 ok, 1 FAIL = HA-21 phase** (the known,
+  documented deviation; orchestrator decision still pending). KK-13 frames/bytes ok (137 frames).
+- Tests: `tests/art/wisp_imp*.test.ts` (special marks updated in my own test), `tests/duel/monster-timing`,
+  `tests/presentation`: 101/101. `tsc`: 0 errors.
+- Timing (`<scratch>/wisp_imp/f2/m.json`): effect (activate) **2267 ms ≤ 2320**; wind death 1050; summon 2583;
+  declaration 316. No camera calls added.
+- v1: not re-filmed this round; every change is in v3-only files (`monsters-v3/wisp_imp-*`) or inside the
+  LOOK_V3-gated registrations of `kart-b/wisp_imp.ts`.
+
+### Open issues (after round 1b)
+29. HA-21 phase deviation — orchestrator decision (19 / 23 / 27).
+30. Revive: the shared soul_recall pillar still covers the sprite's own feather gather (no own revive hook yet).
+31. Unchanged: idle SFX (decision 3), feather struck-body material (decision 4), icon wiring in
+    `cardface-v3/index.ts` (1), card-art bbox (4), sameness blind test (24). Card art was not redrawn to the new
+    shingle body (it already shows tips at the hem; a re-check against the new rig is worth a pass).
+32. The stamps read as feathers at 2–3×; at 1× the heavier inked ones can still read as small shards in dense
+    streams (flock) — a critic should judge at 1×.
