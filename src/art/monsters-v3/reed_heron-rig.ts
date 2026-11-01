@@ -821,20 +821,33 @@ function coverPass(f: Frame): void {
 function coverBands(f: Frame): void {
   const { o, p, sk } = f;
   if (o.cover <= 0) return;
-  // the fog that swallows him: a stack of 2-row bands from just above the front down over what it has taken, thinning
-  // downward (and thinning everywhere as the last frames clear), drifting apart left / right as it rises
+  // the fog that swallows him: a loose stack of LAYERED wisps — the front wisp hugs the cover line, the ones under it
+  // sit 3–5 px apart (irregular), each its own length and lean, wider low down; the gaps between them show what the
+  // fog has already taken (the water, the reeds: he is gone underneath), so it reads as fog banks rolling up over a
+  // white bird, never a striped slab. They thin out as the last frames clear and drift apart left / right as it rises.
   const top = GY - rnd(o.cover * 66);
   const off = rnd(o.cover * 8);
   const thin = clamp((o.cover - 0.85) * 3, 0, 0.8);
-  for (let i = 0; i < 9; i++) {
-    const y = top - 3 + i * 2;
-    if (y > GY - 3) break;
-    if (hash2(i, 7, 3) < (i < 6 ? 0 : (i - 5) / 4) + thin) continue;
+  // [dy under the front, left reach, right reach, lean per side]
+  const WISPS: [number, number, number][] = [
+    [-3, 17, 10],
+    [1, 22, 13],
+    [5, 19, 17],
+    [8, 26, 12],
+    [12, 23, 18],
+    [17, 28, 15],
+    [21, 25, 20],
+    [26, 30, 17],
+  ];
+  WISPS.forEach(([dy, l, r], i) => {
+    const y = top + dy;
+    if (y > GY - 3) return;
+    if (hash2(i, 7, 3) < (i < 5 ? 0 : (i - 4) / 5) + thin) return;
     const dir = i % 2 ? 1 : -1;
-    const x0 = sk.B[0] - 25 + rnd(hash2(i, 8) * 6) + dir * off;
-    const x1 = sk.B[0] + 16 - rnd(hash2(i, 9) * 6) + dir * off;
+    const x0 = sk.B[0] - l + rnd(hash2(i, 8) * 5) + dir * off;
+    const x1 = sk.B[0] + r - rnd(hash2(i, 9) * 5) + dir * off;
     mistBand(p, x0, x1, y, dir * off + i * 3, 41 + i, true);
-  }
+  });
 }
 
 function moteLight(f: Frame): void {
