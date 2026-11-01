@@ -1865,7 +1865,8 @@ Evidence: `shots/kart-a/cloud_hatchling/c3r4/` (critic evidence: `crit3/`). File
   `kaChSummon` .mp4/.wav/.json): peaks −2.1 / −1.9 / −1.9 / −2.1 / −2.0 dBFS, 0 clipped samples.
 - **Gates:** `tsc` 0 errors; vitest art/cloud_hatchling* + audio + presentation + duel/unit-variant 109/109
   (the hatchling art test 14/14 after the tail-margin fix); monster-gates `c3r4/gates/baby.txt` 20 ok + HA-14,
-  `grown.txt` 19 ok + HA-14 / HA-15 (the declared shared-shell rows; IŞ-10 n/a with `--ref none`).
+  `grown.txt` 19 ok + HA-14 / HA-15 (the declared shared-shell rows; IŞ-10 n/a with `--ref none`); `filmdiff --set v1`
+  **17/17 IDENTICAL** (`c3r4/filmdiff-v1.log`).
 - **Measured** (`c3r4/m.log`, `m.json`: all 55 `kaCh*` scenarios, `--look v3`, 0 errors; REHBER §5 × 1.45):
   kaChSummon / P2 2366 (≤ 3340); kaChAtk / P2 / DefWin 2333, kaChBlocked 2466, kaChTie 3033, **kaChLose / P2 3150**
   (was 3100; ≤ 3190, 40 ms headroom), kaChKill / P2 2600, kaChKillPhys 2883, kaChGuardKill 2216, kaChBolt 2466,
@@ -1881,3 +1882,29 @@ Evidence: `shots/kart-a/cloud_hatchling/c3r4/` (critic evidence: `crit3/`). File
   the grown losing pop plays under the kit's block-clang hex; SE-4 margin vs wyrmBreathFire is +1.7 dB (not 2–3);
   the dial build-up 6.0–7.2 s (not reworked); kaChGrownDirect 4 ms headroom; sameness (grown file vs tide_golem
   MOTsig 0.726 ≥ 0.55 on roar) is a motion-rhythm warning on anims this round did not touch.
+
+### Gates round (after c3r4), 2026-11-01
+
+No code changed in this round. Every gate passes or fails only on a declared/shared item. Evidence is in `shots/kart-a/cloud_hatchling/gates5/`,
+with `now.json` / `now.log` one level up.
+
+| Gate | Command | Result |
+|---|---|---|
+| typecheck | `npm run typecheck` | clean, 0 errors (whole tree) |
+| tests | `npx vitest run` | 1351 passed, 4 failed. All 4 are on the known list: cardface-v3 G1, dusk_ashen (dusk_sorcerer validateArt), hourglass_imp registration, shield_titan death heap. No hatchling test fails. |
+| v1 look | `filmdiff --set v1 --base shots/v3/a3/baseline/v1films` | **17/17 IDENTICAL** |
+| a6 v1 look | `filmdiff --set a6v1 --base shots/v3/a56/baseline/a6v1films` | **26/26 IDENTICAL** |
+| camera | `measure --scenarios 'kaCh*,baseline' --look v3 --jobs 3 --norender --out now.json`; `measure --camera-gate shots/kart-a/camera-base.json now.json` | 15 ok, 55 ok NOBASE, **0 FAIL**; zoom 1 everywhere (`gates5/camera.txt`) |
+| budgets (REHBER §5 × 1.45) | same `now.json` | All within, unchanged from c3r4. Summon/P2 2366 ≤ 3340 · Atk/P2/DefWin 2333 · Blocked 2466 · Tie 3033 · Lose/P2 3150 ≤ 3190 · Kill/P2 2600 · KillPhys 2883 · GuardKill 2216 · Bolt 2466 · Hit 1533 · Direct/P2 2200 ≤ 2320 · GrownAtk/P2 2550 · GrownBlocked 2400 · GrownKill 2666 · GrownGuardKill 2583 · GrownLose 3166 ≤ 3190 · GrownDirect 2316 ≤ 2320 · Revive 2133 ≤ 3050 · Flip 733 ≤ 870 · position events 500 (baby) / 550 (grown) ≤ 580 (kaChPos 4100 / GrownPos 4200 are two batches with two turn passes) · growth `activate` 3033 ≤ 4060. kaChAtkWeak 3816 is wisp_imp's trigger (accepted earlier). |
+| page errors / watchdog | `now.json` `errors.*` | 0 neon / handlers / timeouts / page in all 55 `kaCh*`. One console warning in `kaChGrownBounce`, below. |
+| monster-gates (medium, P1 + P2, `--ref none`) | `monster-sheet` ×4 + `monster-gates` (`gates5/gates/baby.txt`, `grown.txt`) | Baby: 20 ok + HA-14 out(special) 13.61 / 13.51. Grown: 19 ok + HA-14 out(summon, revive) 3.49 / 3.51 + HA-15 in(special) 3.48 / 3.50. These are the declared shared-shell exceptions, with the same values as `c3r4/gates`. |
+| palcheck (a5, clip 120,40,400,230, 100 frames at 34 ms) | `palcheck gates5/pal-<s>` vs `palcheck shots/kart-a/shared/v3base-head` (same clip) | Fails the absolute a5 limits the same way the approved base films do (the ashen_drake convention). kaChAtk Δmax +1.16 / white 2.19 (base saWyrmAtk +1.48 / 2.65, same peak #14–15). kaChLose +1.28 / 2.22. kaChGrownKill +1.37 / 2.57 (base saWyrmBlocked +1.48 / 2.72). kaChSummon +4.53 at #3, which is the shared card flight with the card face (`pal-kaChSummon/f0003.png`), / white 2.25 (base suWyrm +5.56 / 5.07, suMagus +3.93 / 4.15). No white row above 32 %. |
+
+**Reported, not ours:** `kaChGrownBounce` logs `[director] projection drift: p0.hand 0≠1; p0.monsters [-,-,6,-,-]≠[-,-,-,-,-]`
+(also present in `c3r1/m.json` and `c3r4/m.json`). Temporary variants measured, then reverted, so the scenario file is unchanged:
+- grown, bounce only: the same drift;
+- baby, bounce only: the same drift;
+- the non-hatchling `st1HomeP2` (crystal_wyrm): `p1.hand 0≠1; p1.monsters [-,-,13,-,-]≠[-,-,-,-,-]`.
+
+So the cause is the shared `homecoming` / `attackBounceAttacker` projection (`src/cinematics/_core/project.ts`), not this card.
+The final state syncs correctly (`deps.sync(after, true)`).
