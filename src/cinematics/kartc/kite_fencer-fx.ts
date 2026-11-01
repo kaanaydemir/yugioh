@@ -410,8 +410,8 @@ export function scrapFray(scene: Phaser.Scene, at: XY, dir: 1 | -1, depth: numbe
   const threads = [0, 1, 2, 3].map((i) => ({
     x: at.x + dir * (-2 + i * 1.5),
     y: at.y - 1 - (i % 2),
-    vx: dir * (38 + rnd() * 18 + i * 9),
-    vy: -(30 + rnd() * 14 + (3 - i) * 5),
+    vx: dir * (70 + rnd() * 22 + i * 12),
+    vy: -(52 + rnd() * 16 + (3 - i) * 7),
     len: 3 + (i % 2),
     ph: rnd() * 6,
     c: i % 2 ? PAL.earth3 : PAL.earth4,
@@ -446,8 +446,8 @@ export function scrapFray(scene: Phaser.Scene, at: XY, dir: 1 | -1, depth: numbe
       for (const th of threads) {
         th.x += (th.vx * dt) / 1000;
         th.y += (th.vy * dt) / 1000;
-        th.vy += (40 * dt) / 1000; // the gust lets go of them: they slow and start to settle
-        th.vx *= 1 - (1.2 * dt) / 1000;
+        th.vy += (90 * dt) / 1000; // the gust lets go of them: they slow and start to settle
+        th.vx *= 1 - (2.2 * dt) / 1000;
         const c = step === 0 ? th.c : step === 1 ? PAL.earth3 : PAL.earth2;
         const w = Math.round(Math.sin(el * 0.035 + th.ph));
         const pts: [number, number][] = [];

@@ -2,15 +2,18 @@
 // YENI_KARTLAR C9, §5.2). v3 look only: every handler starts with `if (!LOOK_V3) …base()`, so v1 is untouched.
 //
 //   strike, 1st attack  "Pike": the shortest charge of the lane (the declaration's held charge pose + 140 ms of full
-//                       wind-up), ONE perfectly straight fleche home → target (Expo.Out, 150 ms) behind a 1-px needle
-//                       line at blade height (white → mist → steel → gone), the tip's white cross star on contact,
+//                       wind-up), ONE perfectly straight fleche home → target (linear, full speed, ≤ 95 ms: it hits at
+//                       its fastest) with a 1-px needle line at blade height streaming out behind him (white → mist →
+//                       steel → gone on real frames, whatever the hit-stop), the tip's white cross star on contact,
 //                       hit-stop 60, two small back-hops home — on landing the indicator panel LIGHTS (the plucked
 //                       string "one attack left"). Blocked: the blade bows (two drawn frames) and springs back, he skids.
 //                       Direct: the same fleche at the duelist (direct is only ever the first attack).
 //   strike, 2nd attack  "Uçurtma Süzülüşü" (monster only; the slot's attacksThisTurn === 2): the panel flares, the cloak
-//                       spreads and billows, the string goes taut to a pin on the home tile, he LIFTS OFF (18 px up and
-//                       back, hanging under the kite, shadow left on the floor), the kite carries him over and he swings
-//                       down a PENDULUM arc whose bottom is beside the target at body height — a lateral curved cut
+//                       spreads and billows, the string goes taut to a pin on the home tile, he LIFTS OFF (up and back,
+//                       hanging under the kite, shadow left on the floor) to the arc's start — built in SCREEN space
+//                       above the higher of his home and the target, so player 2's mirrored swing rises too — hangs a
+//                       beat and swings down a PENDULUM arc whose bottom is beside the target at body height (the blade's
+//                       trail drawn from the analytic swing: one smooth arc) — a lateral curved cut
 //                       across the body (a curved 1-px white slit, linen fibres), hit-stop 80 — the arc carries on up,
 //                       the wind spills, a braking glide home with a knee dip; the panel goes OUT (gold4 → gold3 → off).
 //                       The two attacks share nothing but the rapier: path, rhythm, trail and sound all differ.
@@ -18,10 +21,12 @@
 //                       the string trailing above — never a dive, never a vertical drop), lands flat on the tile (a cloth
 //                       flop; each panel throws a 1-frame coloured pool), a bump rises under it, he stands up under the
 //                       kite, the cloth slides onto his shoulders, the salute (a tip glint), snapped down: idle.
-//   death (decoration)  the recipe's deathV3 plays the art's death pose (string taut → SNAP → rapier drops → the cloak
-//                       tears off → the body thins to a sliver → a linen scrap, the rapier clattering twice); this file
-//                       adds the snapped ends whipping back, and the CLOAK FLYING OFF SCREEN (600 ms, swaying, 4 tilt
-//                       maps; top-right for player 1, top-left for player 2) with its receding flutter.
+//   death               owned end to end (no shared burst, reticle or floor ring): the art's death pose (string taut →
+//                       SNAP → rapier drops → the cloak tears off → the body thins, sways, buckles → a linen scrap, the
+//                       rapier bouncing 2 px / 1 px with its clatter ticks at 0 / 90 / 150 ms + a rest tick), the snapped
+//                       ends whipping back above every unit, the CLOAK FLYING OFF SCREEN (600 ms, swaying, 4 tilt maps;
+//                       top-right for player 1, top-left for player 2), then the scrap frays into threads that drift
+//                       after the cloak — the card is born on the last thread frame and flies to the graveyard.
 //   indicator panel     the upper leading kite panel glows gold (gold4 core, fire4 rim, a 2-step pulse on 1.2 s, a small
 //                       gold pool under that side) while: face-up, attack position, attacksThisTurn === 1, battle phase.
 //                       It dims out in 2 steps on the phase change / turn start; the 2nd attack's own flare takes over.
@@ -50,6 +55,7 @@ import { deathStartFrom, takePlannedEntry } from '../_v3/posematch';
 import { planGuardBreak, runGuardBreak, showsGuard } from '../_v3/guardbreak';
 import { warmPoses } from '../_v3/warm';
 import { atFrame, dropCharge, fade, panAt, play, start, takeCharge } from '../_v3/sound';
+import { setKiteCharge } from '../../audio/v3/kite_fencer';
 import { sourceOwnsDeath } from '../strikes-b/_kit';
 import { runSummon, type Stage, type SummonCtx } from '../summon-a/_kit';
 import { anchoredImage, cutSlit, glanceSparks, kiteImage, kiteTexture, layer, needleLine, poseTexture, pendulumTrail, scrapFray, snapWhips, tautString, threadMote, type Light } from './kite_fencer-fx';
@@ -262,10 +268,7 @@ function dimPanel(u: MonsterUnit | null | undefined, quiet = false): void {
 
 if (LOOK_V3) {
   registerObserver((ev: GameEvent) => {
-    if (ev.type === 'attackNegated' && kiteOnset.has(ev.attackerUid)) {
-      kiteOnset.get(ev.attackerUid)?.stop(90);
-      kiteOnset.delete(ev.attackerUid);
-    }
+    if (ev.type !== 'phaseChange' && ev.type !== 'turnStart') idleBusy = true;
     if (!lit.size) return;
     if (ev.type === 'phaseChange' || ev.type === 'turnStart') {
       for (const u of [...lit.values()]) dimPanel(u);
@@ -277,6 +280,54 @@ if (LOOK_V3) {
     } else if (ev.type === 'controlChange') {
       for (const u of [...lit.values()]) dimPanel(u);
     }
+  });
+}
+
+// ================================================================ the idle accent (cloth flutter + string hum)
+
+/**
+ * The idle's sound (oturum-c-tasarim §2.4 "Idle", §0.5): the cloth flutter and the faint string hum on the cloak's
+ * billow (idle f3), as an ambient tick — at most one per 4.5 s across every kite on the board, never within 2.5 s
+ * of any board action (a declaration, a battle, a summon, a card played), only while the unit stands in its idle
+ * loop. The codebase has no shared ambient-idle hook, so each kite unit carries its own watcher (started when it is
+ * summoned, attacks, defends or declares; it ends with the unit). Sound only: no pixels change, films stay identical.
+ */
+const idleWatched = new WeakSet<MonsterUnit>();
+/** Set by the observer on every board action; the idle watchers turn it into a scene-clock 'contact' time. */
+let idleBusy = false;
+/** Per scene: the last idle tick and the last battle contact (scene clock, ms). */
+const idleClock = new WeakMap<Phaser.Scene, { last: number; contact: number }>();
+function idleSound(sc: Phaser.Scene, u: MonsterUnit): void {
+  if (!LOOK_V3 || idleWatched.has(u)) return;
+  idleWatched.add(u);
+  let st = idleClock.get(sc);
+  if (!st) {
+    const s0 = { last: -1e9, contact: -1e9 };
+    st = s0;
+    idleClock.set(sc, s0);
+    sc.events.on('v3:contact', () => {
+      s0.contact = sc.time.now;
+    });
+  }
+  const clock = st;
+  let prevFrame = -1;
+  onFrame(sc, () => {
+    if (u.retired || !u.sprite.active) return false;
+    const fi = u.frameInfo();
+    const f = fi.anim === 'idle' ? fi.frame : -1;
+    const now = sc.time.now;
+    // any action on the board (a declaration, a battle, a summon, a card played …) counts as a contact: the idle
+    // stays quiet through another card's cinematic
+    if (idleBusy) {
+      idleBusy = false;
+      clock.contact = now;
+    }
+    if (f === 3 && prevFrame !== 3 && u.sprite.visible && !u.claimed && now - clock.last > 4500 && now - clock.contact > 2500) {
+      clock.last = now;
+      play('kfnIdleFlutter', { pan: panAt(u.home.x), volume: 0.8 });
+    }
+    prevFrame = f;
+    return true;
   });
 }
 
@@ -465,8 +516,6 @@ const PHI_F8 = -38;
 const PHI_CUT = 46;
 const PHI_OUT = 74;
 
-/** The declaration's own onset for the 2nd attack (the string tensing), handed to the strike (stopped on the rise). */
-const kiteOnset = new Map<number, { stop(ms?: number): void }>();
 
 async function kiteFlight(s: StrikeArgs): Promise<void> {
   const u = s.attacker;
@@ -535,9 +584,7 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
   show(u, 'special', 1);
   await sleep(sc, KT.c1);
   show(u, 'special', 2);
-  const onset = kiteOnset.get(u.uid);
-  kiteOnset.delete(u.uid);
-  onset?.stop(90);
+  dropCharge(u, 90);
   const rise = start('kfnStringRise', { pan, volume: 0.95 });
   await sleep(sc, KT.c2);
   show(u, 'special', 3);
@@ -638,6 +685,7 @@ registerStrike(
     const u = s.attacker;
     if (!u.has('special') || !u.has('attack')) return s.base?.();
     const nth = attackCount(s);
+    idleSound(s.scene, u);
     try {
       if (nth >= 2 && !s.direct && s.target) await kiteFlight(s);
       else await pike(s, nth);
@@ -660,27 +708,18 @@ registerCardHook(
     if (!LOOK_V3) return ctx.base();
     const ev = ctx.ev;
     warmPoses(ID, ev.player as PlayerId, ['special', 'death']);
-    // the 2nd attack shares nothing with the 1st, not even the declaration's breath: the shared declaration holds the
-    // attack's charge frame and starts the pike's charge voice on it — that voice is let go at once (10 ms, before its
-    // breath has risen) and the string tensing takes the beat (handed to the strike, stopped as the cloak fills)
-    const slot = ctx.state.players[ev.player]?.monsters[ev.attackerZone];
+    // the 2nd attack shares nothing with the 1st, not even the declaration's breath: the shared declaration holds
+    // the card's charge voice on its charge frame — for the 2nd attack that voice is the string tensing in the wind
+    // (handed to the strike, let go as the cloak fills)
+    const slot = ctx.stateNext.players[ev.player]?.monsters[ev.attackerZone];
     const u = ctx.unit(ev.attackerUid);
-    if (u && (slot?.attacksThisTurn ?? 1) >= 2) {
-      const pan = panAt(u.home.x);
-      atFrame(
-        u,
-        'attack',
-        1,
-        () =>
-          queueMicrotask(() => {
-            dropCharge(u, 10);
-            kiteOnset.get(u.uid)?.stop(30);
-            kiteOnset.set(u.uid, start('kfnKiteCharge', { pan, volume: 0.95 }));
-          }),
-        { maxMs: 1000 },
-      );
+    if (u) idleSound(ctx.scene, u);
+    setKiteCharge((slot?.attacksThisTurn ?? 1) >= 2 ? 'kfnKiteCharge' : 'kfnPikeCharge');
+    try {
+      return await ctx.base();
+    } finally {
+      setKiteCharge('kfnPikeCharge');
     }
-    return ctx.base();
   },
   { priority: 20, name: 'kartc:kite_fencer:warm' },
 );
@@ -696,6 +735,7 @@ registerCardHook(
     const sc = ctx.scene;
     const u = ev.targetUid !== null ? ctx.unit(ev.targetUid) : null;
     if (!u || !u.has('special')) return ctx.base();
+    idleSound(sc, u);
     const guard = ev.targetPosition === 'defense';
     const lethal = ctx.events.some((e, i) => i > ctx.index && e.type === 'destroy' && e.uid === ev.targetUid && e.reason === 'battle');
     const onContact = (uid: unknown) => {
@@ -736,9 +776,9 @@ async function leafKite(S: Stage): Promise<void> {
   const home = S.home;
   const pan = panAt(home.x);
   const rest = u.rest0;
-  // where the falling kite hands over to the summon pose: its first tipping frame (summon f2: the spar crossing at
-  // AX − 2, GY − 15); then it tips (f3) and lies flat on the tile (f4: AX − 1, GY − 7)
-  const land: XY = { x: rest.x + sgn * -2, y: rest.y - 15 };
+  // where the falling kite hands over to the summon pose: its first tipping frame (summon f0: the spar crossing at
+  // AX − 1, GY − 17); then it tips (f1) and lies flat on the tile (f2: AX − 1, GY − 7)
+  const land: XY = { x: rest.x + sgn * -1, y: rest.y - 17 };
   const flat: XY = { x: rest.x + sgn * -1, y: rest.y - 7 };
   const cam = sc.cameras.main;
   const top = cam.worldView.y - 40;
@@ -766,15 +806,15 @@ async function leafKite(S: Stage): Promise<void> {
     }
   });
   kite.destroy();
-  // ---- it tips over and flops (f2 tilt, f3 half flat), then lies FLAT (f4): the cloth slap on the flat frame;
+  // ---- it tips over and flops (f0 tilt, f1 half flat), then lies FLAT (f2): the cloth slap on the flat frame;
   // each panel throws a 1-frame coloured pool
   u.showSprite();
   place(u, rest);
+  show(u, 'summon', 0);
+  await sleep(sc, 45);
+  show(u, 'summon', 1);
+  await sleep(sc, 45);
   show(u, 'summon', 2);
-  await sleep(sc, 45);
-  show(u, 'summon', 3);
-  await sleep(sc, 45);
-  show(u, 'summon', 4);
   play('kfnKiteFlop', { pan });
   const pools: [number, number, number][] = [
     [-7, -2, PAL.gold3],
@@ -783,28 +823,28 @@ async function leafKite(S: Stage): Promise<void> {
     [5, 3, PAL.gold3],
   ];
   for (const [dx, dy, c] of pools) void lightFlash(sc, R(flat.x + sgn * dx), R(home.y + dy), c, 9, 90, { floorY: R(home.y + dy), intensity: 0.75, rise: 10 });
-  await sleep(sc, 55);
-  show(u, 'summon', 5);
-  await sleep(sc, 50);
+  await sleep(sc, 45);
+  show(u, 'summon', 3);
+  await sleep(sc, 35);
   // ---- a bump rises under the cloth, it tents
-  show(u, 'summon', 6);
+  show(u, 'summon', 4);
   play('kfnClothRustle', { pan, volume: 0.9 });
   await sleep(sc, 60);
-  show(u, 'summon', 7);
+  show(u, 'summon', 5);
   await sleep(sc, 60);
-  // ---- he stands up under the kite: his head lifts the cloth (f8), the shoulders come out as it slides back (f9),
-  // it slides onto his shoulders and the spars settle (f10–f12); the string uncoils
+  // ---- he stands up under the kite: his head lifts the cloth (f6), the shoulders come out as it slides back (f7),
+  // it slides onto his shoulders and the spars settle (f8–f10); the string uncoils
   for (const [f, ms] of [
-    [8, 70],
+    [6, 70],
+    [7, 60],
+    [8, 60],
     [9, 60],
     [10, 60],
-    [11, 60],
-    [12, 60],
   ] as const) {
     show(u, 'summon', f);
     await sleep(sc, ms);
   }
-  show(u, 'summon', 13);
+  show(u, 'summon', 11);
   play('kfnCloakSettle', { pan });
   await sleep(sc, 70);
   // ---- the salute: the rapier up before the mask (a 1-frame tip glint), then snapped down — idle
@@ -826,6 +866,7 @@ async function leafKite(S: Stage): Promise<void> {
   show(u, 'roar', 7);
   await sleep(sc, 40);
   if (!u.retired) u.rest();
+  idleSound(sc, u);
 }
 
 registerCardHook(
