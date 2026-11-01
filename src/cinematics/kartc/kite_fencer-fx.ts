@@ -7,9 +7,10 @@
 //                  one texture per tilt map, P1 / P2 light
 //   poseTexture    a fencer pose that is not a sheet frame (the blade bowing on a blocked lunge)
 //   KiteImage      an Image of one of those, origin on the art anchor, mirrored for P2 like a unit
-//   needleLine     attack 1's 1-px straight trail at blade height (white → mist → steel → gone)
-//   tipTrail       attack 2's 1-px curved trail behind the blade tip (the pendulum's sweep)
-//   cutSlit        attack 2's contact: a curved 1-px white slit across the body + linen fibre threads
+//   needleLine     attack 1's 1-px straight trail at blade height behind the dash (white → mist → steel → gone, real frames)
+//   pendulumTrail  attack 2's 1-px curved trail from the analytic swing (one monotonic arc, three age bands)
+//   cutSlit        attack 2's contact: a curved 1-px white slit across the body at ~60° + linen fibre threads
+//   scrapFray      the death's ending: the linen scrap twitches toward the wind and frays into drifting threads
 //   tautString     attack 2's string from the kite's tail to the pin on the home tile (world space, vibrating)
 //   snapWhips      the death's snapped string ends whipping back (two curling 1-px lines)
 //   threadMote     a tiny drifting thread (the panel going out)
@@ -85,15 +86,16 @@ function poly(px: Px, pts: readonly XY[], c: number): void {
 // ================================================================ attack 1: the needle line
 
 /**
- * The fleche's needle line: a 1-px straight line at blade height from where the tip started to where it is.
- * `tip()` is read every frame while the dash runs; `land()` freezes it and steps it white → mist → steel → gone
- * (one tone per `stepMs`).
+ * The fleche's needle line: a 1-px straight line at blade height that TRAILS the dash — from where the hand started
+ * (`from`) to just behind the dashing body (`tail()`, read every frame while the dash runs). `land()` freezes it and
+ * steps it white → mist → steel → gone, one tone per `stepFrames` REAL frames (the hit-stop freezes the scene clock,
+ * never this line: it is gone ~150 ms after the contact whatever the stop).
  */
-export function needleLine(scene: Phaser.Scene, from: XY, tip: () => XY, depth: number, stepMs = 50): { land(): void; destroy(): void } {
+export function needleLine(scene: Phaser.Scene, from: XY, tail: () => XY | null, depth: number, stepFrames = 3): { land(): void; destroy(): void } {
   const px = layer(scene, depth);
-  let now = 0;
   let landedAt = -1;
-  let end: XY = tip();
+  let frame = 0;
+  let end: XY | null = tail();
   let alive = true;
   const steps = [PAL.white, PAL.mist, PAL.steel];
   const destroy = () => {
@@ -102,22 +104,22 @@ export function needleLine(scene: Phaser.Scene, from: XY, tip: () => XY, depth: 
     stop();
     px.g.destroy();
   };
-  const stop = onFrame(scene, (_dt, el) => {
+  const stop = onFrame(scene, () => {
     if (!alive) return false;
-    now = el;
-    if (landedAt < 0) end = tip();
-    const k = landedAt < 0 ? 0 : Math.floor((el - landedAt) / stepMs);
+    frame++;
+    if (landedAt < 0) end = tail();
+    const k = landedAt < 0 ? 0 : Math.floor((frame - landedAt) / stepFrames);
     px.clear();
     if (k >= steps.length) {
       destroy();
       return false;
     }
-    px.line(R(from.x), R(from.y), R(end.x), R(end.y), steps[k]);
+    if (end) px.line(R(from.x), R(from.y), R(end.x), R(end.y), steps[k]);
     return true;
   });
   return {
     land() {
-      if (landedAt < 0) landedAt = now;
+      if (landedAt < 0) landedAt = frame;
     },
     destroy,
   };
@@ -125,34 +127,60 @@ export function needleLine(scene: Phaser.Scene, from: XY, tip: () => XY, depth: 
 
 // ================================================================ attack 2: the blade's curved trail
 
-/** The pendulum's 1-px trail behind the blade tip: the last `keepMs` of tip positions, newest white. */
-export function tipTrail(scene: Phaser.Scene, tip: () => XY | null, depth: number, keepMs = 150): { stop(): void; destroy(): void } {
+/**
+ * The pendulum's blade trail, drawn from the ANALYTIC swing (never from per-frame sprite points): `at(θ)` gives the
+ * blade tip for a swing angle; `push(θ)` records the angle each frame (it only ever grows: one monotonic arc). The
+ * arc behind the tip is sampled every ~1.5° and drawn as a 1-px line in three age bands — white (the newest
+ * `band` scene ms), mist, steel — and nothing older. `stop()` lets it go: one band drops every 3 real frames.
+ */
+export function pendulumTrail(scene: Phaser.Scene, at: (th: number) => XY, depth: number, band = 50): { push(th: number): void; stop(): void; destroy(): void } {
   const px = layer(scene, depth);
-  const pts: { p: XY; at: number }[] = [];
-  let recording = true;
-  let alive = true;
+  const hist: { th: number; el: number }[] = [];
   let now = 0;
+  let stoppedAt = -1;
+  let frame = 0;
+  let alive = true;
+  const thAt = (el: number): number => {
+    // the angle the swing had at scene time el (linear between the recorded samples)
+    if (!hist.length) return 0;
+    if (el <= hist[0].el) return hist[0].th;
+    for (let i = hist.length - 1; i > 0; i--) {
+      const a = hist[i - 1];
+      const b = hist[i];
+      if (el >= a.el) return b.el === a.el ? b.th : a.th + ((b.th - a.th) * (el - a.el)) / (b.el - a.el);
+    }
+    return hist[hist.length - 1].th;
+  };
+  const arc = (th0: number, th1: number, c: number) => {
+    if (th1 - th0 < 1e-4) return;
+    const n = Math.max(1, Math.ceil((th1 - th0) / 0.026));
+    let prev = at(th0);
+    for (let i = 1; i <= n; i++) {
+      const p = at(th0 + ((th1 - th0) * i) / n);
+      px.line(R(prev.x), R(prev.y), R(p.x), R(p.y), c);
+      prev = p;
+    }
+  };
   const halt = onFrame(scene, (_dt, el) => {
     if (!alive) return false;
     now = el;
-    if (recording) {
-      const p = tip();
-      if (p) {
-        const last = pts[pts.length - 1];
-        if (!last || R(last.p.x) !== R(p.x) || R(last.p.y) !== R(p.y)) pts.push({ p: { x: R(p.x), y: R(p.y) }, at: el });
-      }
-    }
-    while (pts.length && now - pts[0].at > keepMs) pts.shift();
+    frame++;
     px.clear();
-    if (!recording && pts.length < 2) {
+    if (hist.length < 1) return true;
+    const head = hist[hist.length - 1].th;
+    const drop = stoppedAt < 0 ? 0 : Math.floor((frame - stoppedAt) / 3);
+    if (drop >= 3) {
       destroy();
       return false;
     }
-    for (let i = 1; i < pts.length; i++) {
-      const age = now - pts[i].at;
-      const c = age < keepMs * 0.34 ? PAL.white : age < keepMs * 0.67 ? PAL.mist : PAL.steel;
-      px.line(pts[i - 1].p.x, pts[i - 1].p.y, pts[i].p.x, pts[i].p.y, c);
-    }
+    const t = stoppedAt < 0 ? now : hist[hist.length - 1].el;
+    const b1 = thAt(t - band);
+    const b2 = thAt(t - band * 2);
+    const b3 = thAt(t - band * 3);
+    // oldest first, so the newer bands lie over the joints
+    if (drop < 1) arc(b3, b2, PAL.steel);
+    if (drop < 2) arc(b2, b1, drop === 1 ? PAL.steel : PAL.mist);
+    arc(b1, head, drop === 0 ? PAL.white : drop === 1 ? PAL.mist : PAL.steel);
     return true;
   });
   const destroy = () => {
@@ -162,43 +190,62 @@ export function tipTrail(scene: Phaser.Scene, tip: () => XY | null, depth: numbe
     px.g.destroy();
   };
   return {
+    push(th: number) {
+      const last = hist[hist.length - 1];
+      if (last && th < last.th) th = last.th;
+      if (last && last.el === now) last.th = th;
+      else hist.push({ th, el: now });
+    },
     stop() {
-      recording = false;
+      if (stoppedAt < 0) stoppedAt = frame;
     },
     destroy,
   };
 }
 
 /**
- * The lateral cut on the target: a curved 1-px slit across the body at `at` (a shallow "smile", `dir` = the
- * swing's screen direction, ±1), stepping white → mist → steel → gone; with `fibres`, linen threads (earth4 /
- * earth3, 2–3 px) drift down from it. Whole pixels, palette only.
+ * The lateral cut on the target: a curved 1-px slit CROSSING the body at about 60° (top-back → bottom-front, `dir` =
+ * the swing's screen direction ±1), perpendicular to the fleche's level axis, so it reads as a cut, not a stab. It
+ * runs through on the first step (white, its middle 2 px), then steps white → mist → steel → gone; with `fibres`,
+ * linen threads (earth4 / earth3, 2–3 px) fall out of it. Whole pixels, palette only.
  */
-export function cutSlit(scene: Phaser.Scene, at: XY, dir: 1 | -1, depth: number, o: { fibres?: boolean; width?: number; stepMs?: number; rnd?: () => number } = {}): Promise<void> {
+export function cutSlit(scene: Phaser.Scene, at: XY, dir: 1 | -1, depth: number, o: { fibres?: boolean; len?: number; stepMs?: number; rnd?: () => number } = {}): Promise<void> {
   const px = layer(scene, depth);
-  const w = o.width ?? 18;
+  const L = o.len ?? 18;
   const stepMs = o.stepMs ?? 55;
   const rnd = o.rnd ?? Math.random;
   const steps = [PAL.white, PAL.white, PAL.mist, PAL.steel];
-  const fibres = o.fibres === false ? [] : Array.from({ length: 5 }, (_, i) => ({ x: at.x + dir * (-w / 2 + 3 + i * (w - 6) / 4) + (rnd() * 2 - 1), y: at.y + 1 + rnd() * 2, vy: 9 + rnd() * 10, vx: dir * (2 + rnd() * 4), len: 2 + Math.floor(rnd() * 2), c: i % 2 ? PAL.earth3 : PAL.earth4, tilt: rnd() < 0.5 ? 1 : 0 }));
+  const ang = (60 * Math.PI) / 180;
+  const d = { x: dir * Math.cos(ang), y: Math.sin(ang) };
+  const n = { x: -d.y, y: d.x }; // the bow of the cut (toward the swing's back)
+  const pt = (u: number): XY => {
+    const s = (u - 0.5) * L;
+    const bow = Math.sin(u * Math.PI) * 2.5;
+    return { x: at.x + d.x * s + n.x * bow * dir, y: at.y + d.y * s + n.y * bow * dir };
+  };
+  const fibres =
+    o.fibres === false
+      ? []
+      : Array.from({ length: 5 }, (_, i) => {
+          const p = pt(0.15 + i * 0.17);
+          return { x: p.x + (rnd() * 2 - 1), y: p.y, vy: 10 + rnd() * 12, vx: dir * (3 + rnd() * 5), len: 2 + Math.floor(rnd() * 2), c: i % 2 ? PAL.earth3 : PAL.earth4, tilt: rnd() < 0.5 ? 1 : 0 };
+        });
   return new Promise((resolve) => {
     onFrame(scene, (dt, el) => {
       px.clear();
       const k = Math.floor(el / stepMs);
       if (k < steps.length) {
-        // the slit grows across in the first step (the cut runs through), then stays and fades
-        const grow = Math.min(1, el / (stepMs * 0.8));
-        const n = Math.max(2, Math.round(w * grow));
+        const grow = Math.min(1, el / (stepMs * 0.7));
+        const m = Math.max(2, Math.round(L * grow));
         const pts: XY[] = [];
-        for (let i = 0; i <= n; i++) {
-          const u = i / w;
-          const x = at.x + dir * (-w / 2 + i);
-          const y = at.y - 2 + Math.round(Math.sin(u * Math.PI) * 3);
-          pts.push({ x, y });
-        }
+        for (let i = 0; i <= m; i++) pts.push(pt(i / L));
         poly(px, pts, steps[k]);
-        // the thick middle of the cut on its first frames (2 px)
-        if (k < 2) for (let i = Math.round(w * 0.3); i <= Math.min(n, Math.round(w * 0.7)); i++) px.dot(R(at.x + dir * (-w / 2 + i)), R(at.y - 1 + Math.sin((i / w) * Math.PI) * 3), steps[k]);
+        // the open middle of the cut on its first frames (2 px)
+        if (k < 2)
+          for (let i = Math.round(L * 0.3); i <= Math.min(m, Math.round(L * 0.7)); i++) {
+            const p = pt(i / L);
+            px.dot(R(p.x + dir), R(p.y), steps[k]);
+          }
       }
       for (const f of fibres) {
         f.y += (f.vy * dt) / 1000;
@@ -324,7 +371,7 @@ export function snapWhips(scene: Phaser.Scene, at: XY, up: XY, down: XY, depth: 
         }
         poly(px, pts, c);
       }
-      if (k === 0) px.dot(R(at.x), R(at.y), PAL.gold4);
+      if (k === 0) px.dot(R(at.x), R(at.y), PAL.white).dot(R(at.x) - 1, R(at.y), PAL.white).dot(R(at.x) + 1, R(at.y), PAL.white).dot(R(at.x), R(at.y) - 1, PAL.white).dot(R(at.x), R(at.y) + 1, PAL.white);
       return true;
     });
   });
@@ -346,6 +393,68 @@ export function threadMote(scene: Phaser.Scene, at: XY, back: number, depth: num
       const y = at.y - 9 * t;
       const c = t < 0.4 ? PAL.gold3 : PAL.earth3;
       px.dot(R(x), R(y), c).dot(R(x) + (Math.floor(el / 90) % 2 ? 1 : 0), R(y) + 1, c);
+      return true;
+    });
+  });
+}
+
+/**
+ * The death's own ending (no shared burst): the 6×4 linen scrap twitches toward the wind that took the cloak
+ * (`dir` ±1), FRAYS into four 1-px threads (earth4 / earth3) that drift up and after the cloak, and they blink out in
+ * palette steps (earth4 → earth3 → earth2 → gone). `onLast` fires on the last thread frame (the card is born there).
+ * Every step is counted in real frames' scene time (no alpha, whole pixels).
+ */
+export function scrapFray(scene: Phaser.Scene, at: XY, dir: 1 | -1, depth: number, rnd: () => number, onLast: () => void): Promise<void> {
+  const px = layer(scene, depth);
+  const threads = [0, 1, 2, 3].map((i) => ({
+    x: at.x + dir * (-2 + i * 1.6),
+    y: at.y - 1 - (i % 2),
+    vx: dir * (14 + rnd() * 16 + i * 4),
+    vy: -(16 + rnd() * 14 + (3 - i) * 3),
+    len: 3 + (i % 2),
+    ph: rnd() * 6,
+    c: i % 2 ? PAL.earth3 : PAL.earth4,
+  }));
+  const TWITCH = 70;
+  const FRAY = 220;
+  let fired = false;
+  return new Promise((resolve) => {
+    onFrame(scene, (dt, el) => {
+      px.clear();
+      if (el < TWITCH) {
+        // the scrap (6×4) flicks its back corner toward the wind, two poses
+        const up = el < TWITCH / 2 ? 1 : 2;
+        px.run(R(at.y), R(at.x - 3), R(at.x + 2), PAL.earth3);
+        px.run(R(at.y) - 1, R(at.x - 2), R(at.x + 2), PAL.earth4);
+        px.run(R(at.y) - 2, R(at.x - 1 + dir), R(at.x + 1 + dir), PAL.earth4);
+        px.dot(R(at.x + dir * 3), R(at.y) - 2 - up, PAL.earth4).dot(R(at.x + dir * 4), R(at.y) - 3 - up, PAL.earth3);
+        return true;
+      }
+      const t = (el - TWITCH) / FRAY;
+      if (t >= 1) {
+        if (!fired) {
+          fired = true;
+          onLast();
+        }
+        px.g.destroy();
+        resolve();
+        return false;
+      }
+      // the scrap comes apart into threads; the last ones are the last frame (the card's birth)
+      const step = t < 0.4 ? 0 : t < 0.7 ? 1 : 2;
+      for (const th of threads) {
+        th.x += (th.vx * dt) / 1000;
+        th.y += (th.vy * dt) / 1000;
+        th.vy += (8 * dt) / 1000;
+        const c = step === 0 ? th.c : step === 1 ? PAL.earth3 : PAL.earth2;
+        const w = Math.round(Math.sin(el * 0.03 + th.ph));
+        for (let j = 0; j < th.len; j++) px.dot(R(th.x - dir * j), R(th.y + (j === th.len - 1 ? w : 0)), c);
+      }
+      if (t < 0.25) px.run(R(at.y), R(at.x - 2), R(at.x + 1), PAL.earth3);
+      if (!fired && t >= 0.86) {
+        fired = true;
+        onLast();
+      }
       return true;
     });
   });
