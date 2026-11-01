@@ -17,6 +17,7 @@ import { V3_DAWN_RECIPES } from './v3/dawn';
 import { KART_B_RECIPES } from './v3/kart-b';
 import { V3_ASHEN_RECIPES } from './v3/ashen';
 import { V3_AXEMAN_RECIPES } from './v3/crag_axeman';
+import { V3_HATCH_RECIPES } from './v3/hatchling';
 import { UI_CARD_RECIPES } from './v3/ui-cards';
 import { UI_FLOW_RECIPES } from './v3/ui-flow';
 import { V3_KITE_RECIPES } from './v3/kite_fencer';
@@ -1103,6 +1104,7 @@ export const RECIPES: Record<SfxName, Recipe> = {
   ...KART_B_RECIPES, // lane B cards (./v3/kart-b.ts)
   ...V3_ASHEN_RECIPES, // Kül Ejderi, lane A (./v3/ashen.ts)
   ...V3_AXEMAN_RECIPES, // Kaya Baltacı (./v3/crag_axeman.ts)
+  ...V3_HATCH_RECIPES, // Bulut Yavrusu, lane A (./v3/hatchling.ts)
   ...UI_CARD_RECIPES, // A6 UI sounds, cards (./v3/ui-cards.ts; written by A6-A)
   ...UI_FLOW_RECIPES, // A6 UI sounds, flow (./v3/ui-flow.ts; written by A6-A)
   ...V3_KITE_RECIPES, // Uçurtma Eskrimci (kite_fencer, lane C) — ./v3/kite_fencer.ts

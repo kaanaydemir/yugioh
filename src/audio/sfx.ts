@@ -32,6 +32,7 @@ import type { DawnSfxName } from './v3/dawn';
 import type { KartBSfxName } from './v3/kart-b';
 import type { AshenSfxName } from './v3/ashen';
 import type { AxemanSfxName } from './v3/crag_axeman';
+import type { HatchSfxName } from './v3/hatchling';
 import type { UiCardSfxName } from './v3/ui-cards';
 import type { UiFlowSfxName } from './v3/ui-flow';
 import type { KiteSfxName } from './v3/kite_fencer';
@@ -74,6 +75,7 @@ export type SfxName =
   | KartBSfxName
   | AshenSfxName
   | AxemanSfxName
+  | HatchSfxName
   | UiCardSfxName
   | UiFlowSfxName;
 

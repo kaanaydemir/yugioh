@@ -1521,3 +1521,560 @@ Every claim was re-checked in the tree before acting on it. All 19 findings were
 - **Evidence (`shots/kart-a/cloud_hatchling/art/r2/`):** `i0` (baseline), `i1`–`i12` iterations, `final/sheet.png`,
   `final/big-x1|x3|x6.png`, `final/small-x1|x6|x8.png`, `final/frames.png` (6 frames, both sizes),
   `final/hand-1x.png` (duel `kaChSummon`, look=v3), `final/hand-card-x6.png`, `final/hand-card-1x-dev2.png`.
+
+### Sprite — resume check (2026-11-01)
+- Resumed after the usage-limit pause. The sprite stage (build + critic rounds 1–3 above) is complete and committed;
+  no sprite files changed in this pass. Re-verified on the current tree:
+  - Sheets re-rendered (P1 + P2, baby + grown, `--anims all --points`): `shots/kart-a/cloud_hatchling/r5/b/`, `r5/g/`;
+    contact sheets `r5/b/cloud_hatchling-v3-all.png`, `r5/g/cloud_hatchling-file-all.png` reviewed by eye.
+  - Gates (`r5/gates-b.txt`, `r5/gates-g.txt`; `--class medium --ref none`): baby 20 ok + 1 FAIL (HA-14 out special
+    13.39 / 13.11), grown 19 ok + 2 FAIL (HA-14 out summon / revive 3.73 / 3.85, HA-15 in special 3.72 / 3.83) — the same
+    three declared exceptions (special ends on the GROWN idle; grown summon / revive / special are drawn by the baby).
+  - `tests/art/cloud_hatchling.test.ts` 9/9 + `tests/duel/unit-variant.test.ts` pass; `tsc`: no errors in the card's files.
+  - Note for the card-art stage: `tests/art/cloud_hatchling-cardart.test.ts` currently fails 3/5 (WIND leaf share
+    118 < 478.7, subject materials check, living-frame Δ 75 vs 74.8) after the card-art critic round 2 changes — the
+    test thresholds were not fully updated with the art. Not a sprite file; left to that stage.
+
+### Sprite — critic c1r1 fixes (2026-11-01)
+- **Files:** `src/art/monsters-v3/cloud_hatchling-rig.ts`, `-parts.ts`, `-anims.ts` (art / grown / test files unchanged).
+  Checked on ×4–×12 renders of every changed anim, P1 + P2 (`tools/_ch_frames.ts`), full sheets and the 1× board.
+- **#1 grown death f2 (MAJOR):** no `ballG` any more. f2 is the HALF-curl: the sphinx crouch (forelegs folding under), head
+  tucked down 3 px and pitched −1.5 into the mane, the mane swept forward (`lag` 3, `lunge` [−1, 2]), the ring flared 2 px
+  (puffs drifting). The ball comes on f3 (`unAge` 0.05), un-ageing f4–f6 (0.3 / 0.55 / 1). Opaque 2554 → 2025 → 1699 →
+  1121 → 571 → 305 (was 2552 → 1764). Frame count unchanged (139). Δ f1→f2 stays ≈ 2300 px: it counts every MOVED pixel
+  (the whole body sinks 4 px); the silhouette no longer pops (lion → tucked lion → ball, `c2/w/death1.png`).
+- **#2 growth f7–f9 (MAJOR):** the head height now follows the muzzle / horn frames (`ht` = .2 sB + .2 sL + .3 sM + .3 sH),
+  so on f7 it sinks into the shoulders; the chest grows with the legs; the new forelegs stand 4 px back / 2 px lower under
+  the head until the chest has grown (`sC`), no foal legs in front of the body. Mane order: the nape mass starts on f7
+  (t0 1.5/6) and spreads over the shoulders on f8 while the cowlick is still on the head; the crown closes on f9
+  (`CROWN_T0` 2.5/6; the cowlick stays until it is half grown). The tail has its own sub-age `sT` (f8–f9): f7 still carries
+  the baby cup on the tip, f8 the tail swings round, f9 the band. The haunch is laid with a one-step SEAM (was a two-step
+  crease ring = the "coiled worm"). Opaque f5…f11: 974 → 1088 → 1251 → 1339 → 1796 → 2165 → 2624.
+- **#3 grown face (MAJOR):** muzzle 2.5 px shorter, 1 px broader, 1 px lower (snout (8, 6.2) rx 5.2 ry 5.6), the underjaw
+  0.8 px deeper; the skull one band darker (bias −0.14) so the leaf4 muzzle dome is the face's lit focal plane; a white
+  catch-light on the gold eye's pupil (after the outline: the baby's brightest point carried over); the brow's steel
+  underside runs its full 7 px plus a leaf2 cast-shadow row on the hide under it; night0 nostril. Mouth line kept leaf1
+  (darker than the asked leaf2: reads better at 1×).
+- **#4 grown forelegs (MAJOR):** elbow set back 1.5 px, wrist forward; near leg leaf4 front plane + one leaf3 band
+  (flat 1.7, bias .22), far leg leaf3-led; both laid with `LEG_SEAM` (two-step crease floored at leaf1 / night4 — no ink
+  stripe); broad paws (rx 5.1 / 4.4) with two skin3 claws each; one 1-px leaf1 elbow crease. HA-9 still x 16..62.
+- **#5 baby cup (MAJOR):** new `SHELL_CUP_L/_R` (10×9): mouth open up-and-back, 1-px zigzag tooth row (skin4 points, ink
+  gaps from the outline), inner wall skin3 / earth2 shadow inside, outer dome, two 2-px earth2 speckles on the shadow
+  plane; anchored where the tail enters its bottom. Idle tail sway moved to the back side only (`(round(3 sin) − 3) / 28`)
+  so the bigger cup never closes a pocket against the body (it was filled green on idle f3–f5).
+- **#6 horn:** 5×5 spiral (`HORN` + `HORN_TONE`, tones mirrored for P2, shape not): lit skin4 turn, earth2 groove arc,
+  earth3 centre, one ink pixel at its foot; moved to hc + (−3, −9) and the brow fringe shrunk (r 4 at (−10, −5)) so it shows.
+- **#7 band:** grown tail tip now (41, 62.5) — 4 px past the front of the haunch, in front of the ring's back half. Still
+  a small cap at 1× (the ring's front puffs cover the tail tube below it).
+- **#8 mouths:** a night0 throat band 1.6–2.6 px deep across the whole wedge at the hinge (+ the old core), fire1 lips,
+  fire2 tongue — all open mouths of both forms. Deviation: night0, not night1 (night1 would be a 21st colour on roar f3).
+- **#9 attack f8:** grown `lunge` 3 → 0 px on the release (recoil; the stamp carries the force), and `grownBlast` draws
+  only the ring's pixels right of the mouth (x ≥ mouth + 2) and never over the sprite — the leading arc.
+- **#10 baby attack f2–f5:** escalates: f2 a 2-px hop, f3 the chest swells (squash −0.6, tuft up), f4 cheeks 1.3 + the
+  cowlick lifts on a 5-px hop, f5 a 2-px squat (hip +2, squash 1) with the tail shell lifting (tailTap −1). The grown
+  keys keep their lunge / rear values (no `crouch` on f5: the grown sphinx crouch dropped the mane 5 px).
+- **#11 size (deviation, kept):** baby idle f0 ≈ 44×43 / 954 px, grown 60×56 / 2513 px vs §1.1's ≈ 32×37 / 600–680 and
+  ≈ 58×54 / 1650–1850. The grown/baby ratio (≈ 2.6) holds and both read in scale next to volt_lizard / storm_hawk on the
+  board; shrinking now would undo three critique rounds of readability work (mane masses, face). Recorded as deviation.
+- **#12** not the card's file (the gate tool's known list / REHBER §10): the FAILs are the same three declared exceptions.
+- **#13 KK-1:** builder 1× read only (`c2/board-kaChGrownIdle.png`, `c2/board-grown-zoom.png`): "a green lion-dragon in a
+  cloud mane with a broad blunt face and a gold eye". A separate blind critic sign-off next to crystal_wyrm is still open.
+- Colours: grown frames remap leaf0 → leaf1 (the crease floor) so every frame stays ≤ 20 colours.
+- **Gates** (`shots/kart-a/cloud_hatchling/c2/gates-b.txt`, `gates-g.txt`; `--class medium --ref none`, P1 + P2): baby 20 ok +
+  1 FAIL (HA-14 out special 12.9 / 12.96, declared); grown 19 ok + 2 FAIL (HA-14 out summon / revive 3.71 / 3.79, HA-15 in
+  special 3.69 / 3.79, declared). Baby / grown: HA-15 attack ≤ 1.77 / ok; HA-17 1.77 / 1.67; HA-18 19.6 % / 25.7 %; HA-19
+  0.77 / 0.51; HA-21 contact ≤ 26.9 % / ≤ 24.4 %, phase ≤ 46.1 % / ≤ 43.1 %; IŞ-10 idle 6.1 % / 3.4 %; HA-9 fixed (baby x
+  22..48, grown x 16..62); IŞ-1 P2 relight > mirror on every key frame; KK-13 139 frames, ≤ 3.04 ms, 3.56 MB. Tests
+  `tests/art/cloud_hatchling.test.ts` 9/9 + `tests/duel/unit-variant.test.ts`; `tsc` clean in the card's files.
+- **Evidence:** `shots/kart-a/cloud_hatchling/c2/` — `b/`, `g/` (full sheets P1 + P2), `gates-*.txt`, `board-kaChGrownIdle.png`,
+  `board-kaChGrownIdleP2.png`, `board-kaChAtk.png`, `board-grown-zoom.png`; `w/` working renders (`before-*` = c1r1 state,
+  `face*`, `horn`, `legs1`, `grow1/2`, `death1`, `atk1/2`, `cup1–3`, `mouths`).
+- **Remaining weaknesses:** the grown band is still small at 1× (the ring's front puffs hide the tail tube); the horn reads
+  as a curl at ×3+, a tan dot at 1×; growth f9 still shows a fairly upright head on the chest for one frame before the
+  mane frames it on f10; the grown forelegs read better but the lower body (haunch, tail, ring puffs) stays busy at 1×;
+  the size deviation (#11); KK-1 blind sign-off open.
+
+### Card art — critic round 3 fixes, finished (2026-11-01)
+- **Context:** a previous fixer was interrupted after one iteration (`art/r3/i1`, committed in `70b2159`); the round-3
+  critic's written notes did not survive, so this pass finished from that state and its renders
+  (`art/critic/*.png`, `art/r3/i0` = before, `i1` = the interrupted fix). Files: `src/art/cardart-v3/cloud_hatchling.ts`,
+  `tests/art/cloud_hatchling-cardart.test.ts`.
+- **State taken over (i1, big only):** the eye half shut with the sprite's gold3 slit under a heavy leaf2 lid, the jaws
+  shut on a fire1 / fire2 slit (after the sneeze), two upright cowlick lobes, the tail cup redrawn, the thick green
+  wake crescent cut to a thin open arc, the closed hiccup ring replaced by an open mist ")" puff.
+- **Finished here:**
+  - **Small = the same picture (major):** the small still showed the old squeezed chevron eye and the wide-open
+    mouth. `SMALL_EYE` is now the half-shut eye (leaf2 lid, ink lash line, 3-px gold3 slit); `SMALL_BOTTOM` closes the
+    jaws on a fire1 slit with one fire2 pixel, a leaf3 / leaf2 lower jaw and an ink chin (the sea shows in the 1-row gap
+    above the egg rim).
+  - **Puff removed (major):** at 1× the ")" puff touched the ring's steel trailing edge and read as part of the ring (a
+    smudge on its lower left); there is only 2–3 px between the snout knob and the ring. The ring now leaves the snout
+    on its own. `paintPuff` / `HIC` deleted.
+  - **WIND light (the thin arc alone was 2 % leaf at big, the card the dullest of the hand):** one static **echo gust
+    arc** a sky gap further out (`WAKE_ECHO_BIG` [7, 2], `WAKE_ECHO_SMALL` [4, 1]) — stepped open arcs, not a blob. Tried
+    two echoes with 1–1.5-px bands (`r3/i4`): aliased into dashed stripes, rejected.
+  - **Living frames:** the small's wake no longer follows the ring's 1-px step (Δ f2/f3 75 → 45 px, limit 74.8).
+- **Test changes (deviations, why):** the subject-materials check requires gold3 (the sprite's eye) instead of water4
+  (water4 lived only in the old whistle streaks, removed in round 2/3; the rim is leaf3 since round 2); the WIND leaf
+  share threshold 8 % → 3.5 % (big 4.1 %, small 3.9 %): round 3 replaced the thick crescent with thin arcs on purpose.
+- **Numbers (`art/r3/final/stats.txt`):** big 19 tones / backdrop 6, isolated 2.2 %, checker 19, fill 70.2 %, outline
+  100 % ink, lead 25, bright centroid 4.3 px from the ring; small 18 tones / backdrop 6, isolated 4.1 %, checker 2,
+  outline 92.8 %, lead 18, bright centroid 5.3 px.
+- **Tests:** `tests/art/cloud_hatchling*.test.ts` 14/14; `tests/art/` 349 passed, 4 failed = the 4 known lane-start
+  failures (cardface-v3 G1 scrap_raiders, dusk_ashen, hourglass_imp, shield_titan death heap); `tsc` clean in my files.
+- **Evidence (`shots/kart-a/cloud_hatchling/art/r3/`):** `i2` (= i1 re-rendered), `i3` (small eye/mouth, puff out),
+  `i4` (two thin echoes, rejected), `i5`/`i6`, `final/` (sheet, big ×1/×3/×6, small ×1/×6, frames, stats),
+  `final/hatcard-x3.png` (`?dev=hatcard&id=cloud_hatchling&look=v3` at ×3: hand 1×, inspect 2×, art 1×/3×, iso cards).
+- **Remaining weaknesses:** the shut mouth + half-shut eye read as "sleepy / smug" more than "just sneezed"; the ring
+  still lacks a visible link to the snout at 1× (no room for streaks); the card stays darker than its hand neighbours.
+
+### Cinematics + SFX (§5, §6, §8) — 2026-11-01, build round 1
+- **Files (new):** `src/audio/v3/hatchling.ts` (41 recipes, `HatchSfxName`, `HATCH_SUSTAINED`, `GROW_STEPS`),
+  `src/presentation/cards/cloud_hatchling.ts` (§8.2 recipe; custom strike / summon / death / effect, flip from the recipe),
+  `src/cinematics/strikes-a/cloud_hatchling-fx.ts` (windRing / drawRing / drawStreaks / drawShards / drawFizzle,
+  drawGrassPatch, drawDust, cloudPixels / drawCloud / drawPuff, drawCloudShadow, eggScatter; no registration),
+  `src/cinematics/strikes-a/cloud_hatchling.ts` (Hıçkırık Halkası all outcomes, baby / grown; the egg death),
+  `src/cinematics/strikes-a/cloud_hatchling-grow.ts` (the growth hook, the coin-call warm observer, the coinToss
+  staring-loop observer), `src/cinematics/summon-a/cloud_hatchling.ts` (Bulut Yumurtası + the cloud-drift observer).
+- **Additive edits:** `src/audio/sounds.ts` (`...V3_HATCH_RECIPES`), `src/audio/sfx.ts` (`| HatchSfxName`),
+  `src/cinematics/_v3/sound.ts` (`CHARACTER_SOUNDS.cloud_hatchling` + `VARIANT_SOUNDS['cloud_hatchling:grown']`),
+  `src/art/monsters-v3/cloud_hatchling-grown.ts` (`rewindSfx: 'hatchVoiceCrackRev'` now that the name exists).
+- **Deviations from the blueprint (why):**
+  1. Grass patches are `stone2` → `stone1` (dithered 3 steps), not "the next-darker floor tone": `stone0` vanished on
+     the dark v3 arena floor in the first film (`cine/atk1z.png`); a lighter pressed ring reads.
+  2. Sky dial centre = core − 22 px (on the head), radius 24, hands 20 / 12 (blueprint core − 6, r 22, 18 / 11): with the
+     centre in the baby's body the hands hid behind it (`cine/grow1z.png`); now the rim, ticks, hands and the sweep wedge
+     read round the head (`cine/grow2z.png`). Rim puffs 4×3 lobes (a 3×3 lobe was a dot at 1×).
+  3. Losing / direct: the strike resolves on contact (the fizzle / the shards finish on their own) to keep
+     `kaChGrownLose` / `kaChGrownDirect` inside their budgets; the grown direct flight is 230 ms (§5.2's fallback).
+  4. Hops: the hop sound is scored on the LANDING frames (f3 / f5, a thump), the body moves on the take-off frames
+     (f2 / f4, 8 px baby / 6 px grown); grown landings shake 1 px. Home in two steps on f11 / f12; a dying attacker is
+     taken home on the contact frame (the backlash knocks it back onto its tile).
+  5. The death unclaims a battle-claimed loser at lift-off (the kit pins a claimed sprite every frame; the egg could not
+     rise otherwise). `hatchUnAge` is scored on grown death f3 by the death itself (not a CHARACTER_SOUNDS role).
+  6. `hatchGrowHic` reads its step back from the voice's pitch factor (the scene passes `pitch` = GROW_STEPS[i]), so
+     voice AND body drop together and the FM index roughens as it drops.
+  7. Blocked: the kit's ranged backlash fires on contact; our rebounding ring rides it home in 180 ms (the backlash's
+     length) and the bonk plays the hatchling's `hit` on arrival (the kit does not pose a surviving ranged attacker).
+  8. Grown death: the lift-off (card birth, float start) comes on the anticipation frame f9, the float is 4 frame
+     changes (10 11 12 11, rise 4 / 5 / 5 = 14 px) and the card's arc is 220 ms — the grown knit runs 20 ms longer and
+     `kaChGrownLose` was 3.35 s (over 3.19); now 3.17 s. Baby keeps the blueprint's f10 lift-off and 6-step ping-pong.
+  9. The knit's skin4 pool steps out at lift-off (it lingered as a brown dither under the empty tile, `cine/gkillz.png`).
+  10. Growth swap: `playFrom(special, 3, hold)` already ends after f15's own hold; the extra f15 sleep was removed (it
+      left a ≈ 0.5 s dead beat before the stat beat, `cine/grow2end.png`).
+- **Measured (game ms, `--look v3`, 1×; `cine/measure1..5.json`)** vs REHBER §5 × 1.45: kaChSummon / P2 2450 (≤ 3340);
+  kaChAtk / P2 2333, kaChDefWin 2333, kaChBlocked 2466, kaChTie 3033, kaChLose / P2 2916 (≤ 3190); kaChDirect / P2 2200
+  (≤ 2320); kaChKill / P2 2600, kaChKillPhys 2883, kaChGuardKill 2216, kaChBolt 2466, kaChHit 1533; kaChRevive 2133
+  (≤ 3050); kaChFlip 733, kaChPos 4100 (two batches); kaChGrownAtk / P2 2550, kaChGrownBlocked 2400, kaChGrownLose 3166,
+  kaChGrownKill 2666, kaChGrownGuardKill 2583, kaChGrownHit 1533; kaChGrownDirect 2316 (≤ 2320, tight). The growth hook
+  (activate → statChange resolved): 3150 game ms (≤ 4060) in kaChGrow / P2 / Def; the whole kaChGrow batch 9.2 s is lane
+  D's coin (3.8 s) + massDestroy + the titan's death + ours. kaChAtkWeak 3816 is over: wisp_imp's own trigger (683 ms
+  activate) sits inside the battle — not this card's beat. 0 errors in every scenario.
+- **Sound** (`cine/{grow,atk,sum,gkill}.wav/.json`, `clip.mjs --music off`): peaks −2.0 / −2.6 / −2.0 / −1.9 dBFS (≤ −1),
+  0 clipped samples; every mark fired on its frame (the six growth hiccups at pitch 1 … 0.375 on f6 … f11 with the
+  alternating fwips, chime + wind stop on f11, gasp f12, `hatchVoiceDrop` on f13; sneeze + whistle on attack f8, squeeze
+  50 ms before contact, ting on the contact frame; land / three cracks / burst / cheep / hiccup on summon f2 / f3–f5 /
+  f7 / f10 / f12; grown curl f1, un-age f3, knit f4, lullaby f7, float on lift-off). The 1/3-octave LSD distinctness
+  table of §6.3 was NOT measured this round (known weakness).
+- **Gates:** `tsc` clean; tests/presentation + tests/audio + tests/art/cloud_hatchling + tests/duel/unit-variant 104/104;
+  `filmdiff --set v1` **17/17 IDENTICAL** (`cine/v1films`, `cine/filmdiff-v1.log`).
+- **Evidence (`shots/kart-a/cloud_hatchling/cine/`):** atk1 / atk1z (ring flight + contact ×3), sum1 / sum1z / sum1z2
+  (egg drop), grow1 / grow1z (r1: dial hidden), grow2z (dial fixed), grow2end (swap + "+1200"), growP2, growDef,
+  kaChKill / killz / killz2 (egg float + scatter), gkillz (grown un-aging death), kaChLose, kaChBlocked, kaChDirect,
+  gatkz (grown ring ×3), measure1–5.json, grow/atk/sum/gkill .mp4/.wav/.json.
+- **Known weaknesses:** the ring (D 14 → 17×10 px) is small at 1× next to big targets; the dial's rim puffs read as dots
+  at 1× and the spiral motes are faint; the egg sits ≈ 400 ms on the floor during the knit frames f7–f9 (art holds);
+  rewind (lane D) and the kaChGrown* cross-card films (chains, mirror, hat, equip, control, venom, ashen) were not
+  filmed this round; no LSD measurement; hatchhide still plays cloth (phase 1).
+
+### Cinematics + SFX — critic round 1 (c3r1) fixes, 2026-11-01
+Evidence: `shots/kart-a/cloud_hatchling/c3r1/` (crit evidence: `crit1/`).
+- **#1 HIGH dial readability — fixed** (`strikes-a/cloud_hatchling-grow.ts`). The dial now has a face: a 3-px band
+  (night4 body, steel inner lip) built clockwise with the puffs; the rim puffs are 7×4 cloud lobes (white crown,
+  mist flanks, steel belly; the falling ones 4×3); the ticks are 2×2 water4/water3; both hands 2 px thick (white
+  core + mist/steel side band, 3-px head) with a steel/white hub; the fast-revolution wedge is filled on every
+  radius from 0.35 R (was every second radius). Floor: the water4 pool now rises in STEPS (build → rev 1 → f7 → f9,
+  intensity 0.4 → 0.85, `setIntensity(k, 0)`), and a stepped iso floor ring (rx 26 / ry 12 + a sparse inner ring,
+  water2 → water3 → water4, sparse → full) is drawn over the card (CARD_ON_TILE + 1), blinking out with the hands
+  on f11. Films: `grow0z.png` (before), `grow1z.png`, `grow1zz.png` / `grow2zz.png` (×5 detail), `grow1x.png` (1×,
+  6000–9120 ms: the dial reads as a clock ring at 1× from 6.1 s).
+- **#2 HIGH stat beat late — fixed.** The stat beat no longer waits for the swap at the end of f15: it starts 60 scene
+  ms after the last sibling's roar-hold frame f14 begins (`BEAT_AFTER_ROAR`; after the roar's white flash). The
+  rim climbs the full-size roaring body (the silhouette is re-read every frame, so it follows the swap).
+  Measured (`m.json`, kaChGrow): roar 8167 (unchanged), `lpUp` / "+1200" **8833 → 8500 (−333 ms)**, statChange
+  8683 → 8350; growth hook (activate → resolved) 3150 → **3033 game ms** (≤ 4060). The number sits over the head
+  (`grow1x.png` #30).
+- **#3 MEDIUM grown form reads as a sheep — partly fixed** (`cloud_hatchling-rig.ts`, sprite). Grown only (sM ≥
+  0.5): a 1-px night4 band carved into every hide pixel with a cloud pixel above / beside it, plus a leaf1 second
+  step under overhanging masses (a 2-px cast shadow), laid in `late` (the despeckle pass ate it the first try,
+  `grown0.png` vs `grown1.png` / `grown2.png`). The face, chest and legs now separate from the mane at 1×. The eye
+  was already gold3/night0 and the horn skin4/earth: left as they are. Not done: a bigger head (art scope).
+- **#4 MEDIUM ring small — fixed** (`cloud_hatchling.ts`, `-fx.ts`). Ring D tables baby 8–14 → **10–18**, grown
+  12–24 → **14–28**; double-thick white (two white rows, then mist, steel on the far half); a steel afterimage
+  ring (the position three display frames back, D − 2) every second display frame; on the contact frame and the
+  first squeeze step the ring's body fills water4 inside the white. `atk1.png`, `atk1z.png`, `atkhit.png`,
+  `gatk.png` (grown vs magma_titan).
+- **#5 MEDIUM baby wind-up static — fixed** (`cloud_hatchling-anims.ts` ATTACK f2–f5 + scene). f2 nubs flap out,
+  f3 back lean + shell tap, f4 flap up on the high hop, f5 deepest lean back; the 160 ms "ha…" hold (f6) shivers
+  the body −1 px back / 1 px up / home in whole px. `atk1z.png` frames 0–8.
+- **#6 MEDIUM summon egg hold — fixed** (`summon-a/cloud_hatchling.ts`, summon holds). f3–f5 holds 150 → 130 ms
+  each, and inside each wobble the egg rattles 1 → 2 → 3 times (1-px knock sideways, the last one with a 1-px hop),
+  each with a small `hatchCrack` tick a step higher (vol 0.30–0.46, pitch 1.47–1.95). Hatch now ≈ 1400 ms
+  (was 1420–1660). kaChSummon **2450 → 2366**. `sum2z.png`.
+- **#7 LOW death egg hold — fixed.** From death f7 the knitted egg bobs in whole-px steps (1 / 0 / 1 / 0 over
+  f7–f9) and small cloud puffs rise past it on both sides every 90 ms (stepped 2 px / 40 ms), continuing through
+  the float (the cloud that carries it away); a 3 s guard stops the spawner. `kill1z.png`, `kill2z.png`.
+- **#8 timing — verified.** kaChPos: each `changePosition` batch is **500 ms** (0–517, 3617–4117); the 4100 total
+  is two endTurn batches (banners, draws) between them — inside REHBER §5 "Pozisyon değişimi" (≤ 1.6 s game).
+  kaChGrownDirect stays 2316 (≤ 2320): no change to the direct path's timing (ring art only). kaChAtkWeak 3816
+  is wisp_imp's trigger (accepted by the critic).
+- **#9 MEDIUM sound — fixed** (`audio/v3/hatchling.ts`). `hatchGrowWind` rewritten: the pink band climbs 500 →
+  2600 Hz with its level rising in steps and faster L↔R circling, a high white-noise breath band 3 → 6 kHz from
+  0.5 s, a soft glide D5 → D6 that rises into the first growth hiccup's pitch, a swelling brown low body (no
+  ticks: dial_jester owns ticking; no held note: the spiralhorn's). New `hatchDialPuff` (pink "pff" + tiny FM
+  bubble) on each of the 12 puffs, climbing D major (replaces the four 0.25 fwip ticks). Build-up RMS (400 ms
+  windows, 6.4–7.2 s): **−33.2 / −31.6 → −26.4 / −24.1 dBFS**. Contact: `hatchRingTing` gains a soft low pillow
+  thump (160 → 62 Hz, 0.48, 6 ms attack) and a brown air-push; the kit's `impactHeavy` 0.3 is react.ts's (shared,
+  not edited). Contact window 1.30–1.55 s: RMS −16.2 → −14.9, < 200 Hz −16.9 → −15.5 dBFS (`atk2.wav`). Peaks:
+  grow −2.0, atk −2.6 dBFS, 0 clipped (`clipgrow.log`, `clipatk.log`, `atk2.*`).
+- **#10 not filmed** — this round filmed: grow 1× and ×5, attack, contact, grown attack, kill, summon (P1). Still
+  open: P2 strips, blocked / lose / direct / revive films, cross-card grown films, the SE-4 LSD table.
+- **Measured** (`c3r1/m.json`, `m.log`, 55 kaCh* scenarios, 0 errors): kaChSummon/P2 2366 (≤ 3340); kaChAtk/P2/DefWin
+  2333, kaChBlocked 2466, kaChLose/P2 2916, kaChTie 3033, kaChKill/P2 2600, kaChKillPhys 2883, kaChBolt 2466,
+  kaChGuardKill 2216, kaChHit 1533 (≤ 3190); kaChDirect/P2 2200, kaChGrownDirect 2316 (≤ 2320); kaChRevive 2133;
+  kaChFlip 733; kaChGrownAtk/P2 2550, kaChGrownBlocked 2400, kaChGrownLose 3166, kaChGrownKill 2666,
+  kaChGrownGuardKill 2583, kaChGrownHit 1533; kaChGrow/P2/Fast/Def 9083 (hook 3033 ≤ 4060).
+- **Gates:** `tsc` 0 errors; vitest tests/art/cloud_hatchling* + tests/audio + tests/presentation +
+  tests/duel/unit-variant* 109/109. monster-gates (`c3r1/gates/baby.txt`, `grown.txt`): same FAIL rows as `c2/`
+  (HA-14 summon/revive/special delegated shell, HA-15 grown special — structural, known), plus IŞ-10 ref, which was
+  n/a in c2 and is now judged against a v1 idle f0 reference (baby 1.71×, untouched by this round; grown 1.62×).
+  `filmdiff --set v1`: **17/17 IDENTICAL** (`c3r1/filmdiff-v1.log`).
+- **Rejected / deferred:** a ticking dial sound (#9's alternative) — rejected: ticks/ratchet are dial_jester's
+  identity (§6.1). Raising `impactHeavy` itself — not this card's file (react.ts, shared). A larger grown head — art
+  scope beyond this round.
+
+### Cinematics + SFX — critic round 2 (c3r2) fixes, 2026-11-01
+Evidence: `shots/kart-a/cloud_hatchling/c3r3/` (critic evidence: `c3r2/`). Files: `strikes-a/cloud_hatchling.ts`,
+`strikes-a/cloud_hatchling-fx.ts`, `audio/v3/hatchling.ts`, `art/monsters-v3/cloud_hatchling-rig.ts`.
+- **#1 MEDIUM losing ring small / brief — fixed.** The ring's size steps are 50 ms (were 60), so it flies its last
+  ≈ 90 ms (5 display frames) at full size; baby full size 18 → **20** px (`RING_D.baby` 10/13/16/20). Losing: the
+  ring is stopped 7 px (grown 9) in front of the stronger body, **in full view** (wrapped round the torso as the
+  winning ring does, its far half hid and it read as a thin crescent — `c3r3/loseContact.png`, first try), holds
+  at full size 3 display frames with a 3-row bright water4 band (`windRing` now lays a third inner row when r ≥ 8),
+  then a 2-step strained squeeze (D − 2 water4, D − 4), then pops into four 2×2 puffs + 4 sparks (`drawFizzle`,
+  was four 1-px dots). Only then the kit's backlash fires (baby). Grown: kaChGrownLose was 3166 / 3190, so its
+  backlash still starts at contact and the same hold / squeeze / pop plays over its first frames (`gLose.png`).
+  Sound follows the picture: a dull ting (vol .6, pitch .8) on contact, the strained squeeze (pitch .8) on the
+  first squeeze frame, the fizzle on the pop (kaChLose clip: 1316 / 1400 / 1500 ms). Films: `loseRing.png`,
+  `loseContact2.png` (×2, 40 ms), `gLose.png`.
+- **#2 MEDIUM egg death quiet — fixed.** From the frame the egg is whole (baby f6, grown f7) its cloud already
+  carries it up: whole-px steps every 24 ms with a 2-px bob back every third step (2, 0, 4, 6, 4, 8, 10, 8 …), going
+  on until the float takes over; the float now starts from that height (+14 px more), the cloud shadow shrinks
+  slower to match. Filmed: egg closes 2320 ms, **9 px up by ≈ 2600 ms**, 14 px by 2800, then the float + scatter
+  (`loseEgg.png`, ×3; P2 `killP2.png`). Puffs: new `drawCloudPuff` 6×4 with a 1-px steel edge (white cap, mist
+  body), every 80 ms (was 4×3 / 90 ms), alternating sides 7–9 px out; they thin to the 4×3 puff at 70 % of life.
+- **#3 LOW full-screen crimson wash on direct — rejected (not this card's).** It is `edgePulse` / `directHit`
+  (`src/vfx/banners.ts`, `src/vfx/combat.ts` — shared direct-damage presentation, every card's direct attack).
+  Not edited; flagged to the orchestrator. (The critic's `kaChDirectP2.png` was also filmed without `look=v3`.)
+- **#4 MEDIUM grown reads as a sheep — improved.** The grown head + face stand **3 px higher** out of the mane
+  (`faceUp = round(3·sM)`; `maneLobes` takes it back off so the mane stays where it was) — the chin now clears
+  the chest ruff with an ink notch under the jaw, the snout reads as a muzzle against the dark at 1×
+  (`grown-before-after-x6.png`, `grownIdle-1x.png`). Eye: the catch-light is 2 px wide (white over the pupil top
+  and the iris beside it). Deviation: not gold4 / a new gold3 — the eye already is gold3 and gold4 made roar f3 21
+  colours (test ≤ 20). The dial build-up's "little payoff" (6.0–7.2 s) was not reworked this round.
+- **#5 LOW sound — fixed / measured.** `hatchRingTing`: the card's own pillow thump 0.48 → **0.72** (+3.5 dB on
+  the layer; solo ting < 200 Hz −20.1 → −18.0 dBFS, `soloTing*.wav`; in the full mix the limiter + the shared
+  impactHeavy leave the contact's low end at −14.2 dBFS, +0.5 dB on c3r1), bell 0.12 → 0.16 / longer decay, and a
+  new narrow high "air lets go" band 7 → 2.6 kHz. `hatchGrownRingBoom`: a second pillow thump (58 Hz, ≥ 55 Hz:
+  not ashen's 50 Hz beat), the baby's D7 ting an octave over, the same air band. **SE-4 measured** (`c3r3/lsd.md`,
+  `lsd.json`, `lsd-eval.js` + `lsd.py`: offline `renderSfx`, 1/3-octave A-weighted profiles, level-normalised,
+  LSD = RMS band difference, 60 dB floor) — every CHARACTER_SOUNDS role, baby and grown, against crystal_wyrm /
+  abyss_magus / ashen_drake (venom_drake has no table yet; stone_sentinel's roles are not in CHARACTER_SOUNDS):
+  64 pairs, **median 19.5 dB, min 10.0 dB** (hatchGrownSneeze vs wyrmBreathFire, on the line). Before the air band
+  the impacts failed against magusOrbBurst (baby 9.7, grown 7.1 dB); now 13.5 / 15.3. Audio re-rendered
+  (`kaChAtk`, `kaChLose`, `kaChGrownAtk`, `kaChKill` .wav/.json): peaks −1.9 … −2.2 dBFS, 0 clipped samples.
+- **#6 coverage — filmed** `look=v3`: `blocked.png` (ring wraps, stalls, rebounds to the face), `grownAtk.png`,
+  `gLose.png`, `pos.png` (×3), `killP2.png` (P2: the hatchling faces left at the wyrm, flipX — confirmed).
+- **#7 IŞ-10 ref — explicit waiver (same as ashen_drake's, `oturum-a.md`).** The tool's fallback reference is the
+  v1 idle f0 of a different, placeholder-era sprite (3.5 % isolated px); the blueprint runs the gates with
+  `--ref none` (§9.1). Against the slice ace's approved still (`src/still/wyrm.ts`, 5.96 %): baby idle f0 6.0 % =
+  **1.01×**, grown 5.8 % = **0.97×** (≤ 1.1×). The FAIL line stays in `c3r3/gates/*.txt`; treat as known/exempt.
+  HA-14/15 rows unchanged (the declared shared-shell exceptions). The dial ring overlapping the neighbour tile's
+  monster is not changed (the dial needs its radius to read at 1×).
+- **Measured** (`c3r3/m.log`, `m2.log`, `m3.log`; game ms, 0 errors): kaChLose / P2 **3100** (was 2916; ≤ 3190),
+  kaChTie 3033, kaChAtk / P2 / DefWin 2333, kaChBlocked 2466, kaChKill / P2 2600, kaChKillPhys 2883, kaChGuardKill
+  2216, kaChBolt 2466, kaChHit 1533, kaChDirect / P2 2200 (≤ 2320), kaChSummon / P2 2366, kaChRevive 2133, kaChFlip
+  733, kaChPos 4100; kaChGrownAtk / P2 2550, kaChGrownLose **3166** (unchanged), kaChGrownBlocked 2400,
+  kaChGrownKill 2666, kaChGrownGuardKill 2583, kaChGrownHit 1533, kaChGrownDirect 2316, kaChGrownPos 4200,
+  kaChGrownVenomHit 2716, kaChGrownAshenKill 3116; kaChGrow / P2 / Def / Fast 9083 (hook unchanged).
+- **Gates:** `tsc` 0 errors; vitest art/cloud_hatchling* + audio + presentation + duel/unit-variant 109/109;
+  `filmdiff --set v1` **17/17 IDENTICAL** (`c3r3/filmdiff-v1.log`); monster-gates `c3r3/gates/baby.txt` 20 ok + 2
+  FAIL, `grown.txt` 19 ok + 3 FAIL (the same rows as c3r1, see #7).
+- **Remaining weaknesses:** the grown form still has a lamb-like woolly mass at 1× (the head is clearer, the body
+  is still mostly mane); the dial build-up 6.0–7.2 s has little change for the eye; the winning contact still wraps
+  the torso and reads as a crescent on narrow targets; the backlash flash covers the baby's pop at 1500 ms; the
+  contact's low end in the full mix is limited by the shared impactHeavy + the master limiter (+0.5 dB only);
+  hatchGrownSneeze vs wyrmBreathFire LSD sits at the 10 dB minimum.
+
+### Cinematics + SFX — critic round 3 (c3r3 → c3r4) fixes, 2026-11-01
+Evidence: `shots/kart-a/cloud_hatchling/c3r4/` (critic evidence: `crit3/`). Files: `strikes-a/cloud_hatchling.ts`,
+`strikes-a/cloud_hatchling-fx.ts`, `summon-a/cloud_hatchling.ts`, `audio/v3/hatchling.ts`,
+`art/monsters-v3/cloud_hatchling-rig.ts`, `art/monsters-v3/cloud_hatchling-anims.ts`.
+- **#1 MEDIUM grown reads as a sheep — fixed (both of the critic's options, partly).** (a) A visible dragon tail:
+  the grown tail no longer wraps under the haunch (hidden by the mane and the ring puffs); it sweeps OUT behind the
+  haunch along the floor and curls up at the end, the shell cap on its tip (`grownTail` in the rig). It breaks the
+  round blob on the left at 1× (`grown-1x.png`, `grown-x4.png`, sheet `sheet2/`). The growth (special f8–f9)
+  swings it out continuously (`gates/g/cloud_hatchling-file-special.png`). (b) The haunch + back mane masses (and
+  their scallops) are laid one tone down (`dim`: white → mist, mist → steel, puffLobe's existing far-side map):
+  the bright cloud stays round the face (crown, nape, ruff), the green head, body, legs and tail now dominate.
+  Not done: ink-notch gaps in the mane outline (the tone split + tail already break the single blob; notches
+  would be cut into the silhouette by the global outline pass — left for a later art round if still needed).
+  Tail tip at x ≥ 9 so hitHeavy f2's knock keeps the 2-px margin (first try x 7 failed the art test).
+- **#2 MEDIUM winning ring crescent + burst — fixed.** A won contact now stops the ring 4 px (grown 5) in front of
+  the target's core and draws it WHOLE in front of the body (`ringAt`: 'all' on the front layer; blocked keeps
+  the wrap — it needs the "cannot close" read), so it shows over the contact flash; it holds at full size 3
+  display frames (was 2) before the 2-step squeeze and the snap. The card's own contact light is capped at the
+  ring's footprint (radius 30 → 18 grown, 24 → 14 baby). `gatk-before.png` (wrap → crescent 1420–1540) vs
+  `gatk.png` / `gatk2.png` (whole ring 1300–1760, squeeze, snap), baby `atk.png`. The remaining near-white fill
+  inside the ring on the 2 contact frames is the shared kit's target contact flash (`_v3/react.ts`
+  FLASH_COVER, every card) — now inside the ring's ellipse; not this card's file.
+- **#3 MEDIUM losing pop masked — fixed.** Baby: the backlash (and its shieldBlock / impactLight / hitClothMagic
+  stack) waits 2 more frames after the pop; the pop shows in the clear for 3 display frames (`lose3.png`:
+  1499–1533, backlash 1550). Sound log (`kaChLose.json`): ting 1317, squeeze 1400, **fizzle 1500 alone**, backlash
+  stack 1550. The pop itself is stronger (`drawFizzle`): a white 5-px "pıt" cross on its first frames, four 4×3
+  cloud lobes (white crown → mist → steel) drifting out and 3 px up, four 2×2 mist puffs between, 260 ms (was 4
+  2×2 dots, 200 ms); `lose2.png` (×4). Grown (no budget): the squeeze is one step shorter (hold 2 frames, one
+  squeeze step) — the backlash still starts at contact; the fizzle now sits 233 ms after the backlash stack
+  (1667 vs 1433 ms) instead of inside it (`kaChGrownLose.json`); the grown pop is under the kit's block-clang
+  hex (`glose2.png`) — known.
+- **#4 LOW sound sync — re-verified** with re-rendered audio (below).
+- **#5 LOW SE-4 margin — fixed (+1.7 dB).** Shifting only the sneeze's noise band ±1/3 octave moved the LSD vs
+  wyrmBreathFire by ±0.2 dB (`lsd-up/down.json`): the growl dominates the spectrum. Final
+  `hatchGrownSneeze`: the "ha-" growl a third higher (f 220…147 → 277…185 Hz), outer formants a third up
+  (520 / 2600 → 655 / 3275), the air band a third lower and softer (puff 4000 → 3175 Hz, sweep 1500/3200/900 →
+  1190/2540/715 at 0.12). **LSD vs wyrmBreathFire 10.0 → 11.7 dB**; vs magusOrbRelease 14.6 → 16.5, ashenExhale
+  13.6 → 15.8, baby hatchSneeze 17.5 → 16.5 (`lsd.md`, `lsd.json`; trials A–M in `lsd-*.json`). Table min is now
+  10.9 (hatchGrownRingBoom vs ashenIgnite, unchanged by this round). Not reached: the critic's 2–3 dB.
+- **#6 LOW summon static — fixed.** Landing: four 6×4 cloud puffs squeeze out from under the egg (two a side,
+  sliding out, rising 4 px, thinning to 4×3, 340 ms) with the dust; wobbles f3–f5 are real tilts now
+  (`eggTilt` ±1 → ±2: the top leans ≈ 3 px), the crack growing, the existing rattles + crack ticks in each.
+  `sum-before.png` vs `sum.png` (×4, 700–1460 ms). Sound: land 783 on the landing frame, crack ticks 883…1367,
+  burst 1517 (`kaChSummon.json`).
+- **#7–#9** — no action (pass / info).
+- **Audio re-rendered** (`clip.mjs --music off`; `kaChLose`, `kaChGrownLose`, `kaChGrownAtk`, `kaChAtk`,
+  `kaChSummon` .mp4/.wav/.json): peaks −2.1 / −1.9 / −1.9 / −2.1 / −2.0 dBFS, 0 clipped samples.
+- **Gates:** `tsc` 0 errors; vitest art/cloud_hatchling* + audio + presentation + duel/unit-variant 109/109
+  (the hatchling art test 14/14 after the tail-margin fix); monster-gates `c3r4/gates/baby.txt` 20 ok + HA-14,
+  `grown.txt` 19 ok + HA-14 / HA-15 (the declared shared-shell rows; IŞ-10 n/a with `--ref none`); `filmdiff --set v1`
+  **17/17 IDENTICAL** (`c3r4/filmdiff-v1.log`).
+- **Measured** (`c3r4/m.log`, `m.json`: all 55 `kaCh*` scenarios, `--look v3`, 0 errors; REHBER §5 × 1.45):
+  kaChSummon / P2 2366 (≤ 3340); kaChAtk / P2 / DefWin 2333, kaChBlocked 2466, kaChTie 3033, **kaChLose / P2 3150**
+  (was 3100; ≤ 3190, 40 ms headroom), kaChKill / P2 2600, kaChKillPhys 2883, kaChGuardKill 2216, kaChBolt 2466,
+  kaChHit 1533 (≤ 3190); kaChDirect / P2 2200, kaChGrownDirect 2316 (≤ 2320, unchanged path); kaChRevive 2133;
+  kaChFlip 733; kaChPos 4100; kaChGrownAtk / P2 2550, kaChGrownBlocked 2400, **kaChGrownLose 3166** (unchanged;
+  ≤ 3190), kaChGrownKill 2666, kaChGrownGuardKill 2583, kaChGrownHit 1533, kaChGrownVenomHit 2716,
+  kaChGrownAshenKill 3116; kaChGrow / P2 / Def / Fast 9083 (hook unchanged). kaChAtkWeak 3816 (wisp_imp's trigger,
+  accepted earlier).
+- **Rejected / not this card's:** capping the contact burst further — the remaining fill is the shared
+  `_v3/react.ts` contact flash (every card's hit); delaying the grown backlash — kaChGrownLose has 24 ms of
+  headroom (the critic's fallback, a one-step-shorter squeeze, was applied instead).
+- **Remaining weaknesses:** the grown mane is still a large cloud mass (now two-toned, tail out) — no ink notches;
+  the grown losing pop plays under the kit's block-clang hex; SE-4 margin vs wyrmBreathFire is +1.7 dB (not 2–3);
+  the dial build-up 6.0–7.2 s (not reworked); kaChGrownDirect 4 ms headroom; sameness (grown file vs tide_golem
+  MOTsig 0.726 ≥ 0.55 on roar) is a motion-rhythm warning on anims this round did not touch.
+
+### Gates round (after c3r4), 2026-11-01
+
+No code changed in this round. Every gate passes or fails only on a declared/shared item. Evidence is in `shots/kart-a/cloud_hatchling/gates5/`,
+with `now.json` / `now.log` one level up.
+
+| Gate | Command | Result |
+|---|---|---|
+| typecheck | `npm run typecheck` | clean, 0 errors (whole tree) |
+| tests | `npx vitest run` | 1351 passed, 4 failed. All 4 are on the known list: cardface-v3 G1, dusk_ashen (dusk_sorcerer validateArt), hourglass_imp registration, shield_titan death heap. No hatchling test fails. |
+| v1 look | `filmdiff --set v1 --base shots/v3/a3/baseline/v1films` | **17/17 IDENTICAL** |
+| a6 v1 look | `filmdiff --set a6v1 --base shots/v3/a56/baseline/a6v1films` | **26/26 IDENTICAL** |
+| camera | `measure --scenarios 'kaCh*,baseline' --look v3 --jobs 3 --norender --out now.json`; `measure --camera-gate shots/kart-a/camera-base.json now.json` | 15 ok, 55 ok NOBASE, **0 FAIL**; zoom 1 everywhere (`gates5/camera.txt`) |
+| budgets (REHBER §5 × 1.45) | same `now.json` | All within, unchanged from c3r4. Summon/P2 2366 ≤ 3340 · Atk/P2/DefWin 2333 · Blocked 2466 · Tie 3033 · Lose/P2 3150 ≤ 3190 · Kill/P2 2600 · KillPhys 2883 · GuardKill 2216 · Bolt 2466 · Hit 1533 · Direct/P2 2200 ≤ 2320 · GrownAtk/P2 2550 · GrownBlocked 2400 · GrownKill 2666 · GrownGuardKill 2583 · GrownLose 3166 ≤ 3190 · GrownDirect 2316 ≤ 2320 · Revive 2133 ≤ 3050 · Flip 733 ≤ 870 · position events 500 (baby) / 550 (grown) ≤ 580 (kaChPos 4100 / GrownPos 4200 are two batches with two turn passes) · growth `activate` 3033 ≤ 4060. kaChAtkWeak 3816 is wisp_imp's trigger (accepted earlier). |
+| page errors / watchdog | `now.json` `errors.*` | 0 neon / handlers / timeouts / page in all 55 `kaCh*`. One console warning in `kaChGrownBounce`, below. |
+| monster-gates (medium, P1 + P2, `--ref none`) | `monster-sheet` ×4 + `monster-gates` (`gates5/gates/baby.txt`, `grown.txt`) | Baby: 20 ok + HA-14 out(special) 13.61 / 13.51. Grown: 19 ok + HA-14 out(summon, revive) 3.49 / 3.51 + HA-15 in(special) 3.48 / 3.50. These are the declared shared-shell exceptions, with the same values as `c3r4/gates`. |
+| palcheck (a5, clip 120,40,400,230, 100 frames at 34 ms) | `palcheck gates5/pal-<s>` vs `palcheck shots/kart-a/shared/v3base-head` (same clip) | Fails the absolute a5 limits the same way the approved base films do (the ashen_drake convention). kaChAtk Δmax +1.16 / white 2.19 (base saWyrmAtk +1.48 / 2.65, same peak #14–15). kaChLose +1.28 / 2.22. kaChGrownKill +1.37 / 2.57 (base saWyrmBlocked +1.48 / 2.72). kaChSummon +4.53 at #3, which is the shared card flight with the card face (`pal-kaChSummon/f0003.png`), / white 2.25 (base suWyrm +5.56 / 5.07, suMagus +3.93 / 4.15). No white row above 32 %. |
+
+**Reported, not ours:** `kaChGrownBounce` logs `[director] projection drift: p0.hand 0≠1; p0.monsters [-,-,6,-,-]≠[-,-,-,-,-]`
+(also present in `c3r1/m.json` and `c3r4/m.json`). Temporary variants measured, then reverted, so the scenario file is unchanged:
+- grown, bounce only: the same drift;
+- baby, bounce only: the same drift;
+- the non-hatchling `st1HomeP2` (crystal_wyrm): `p1.hand 0≠1; p1.monsters [-,-,13,-,-]≠[-,-,-,-,-]`.
+
+So the cause is the shared `homecoming` / `attackBounceAttacker` projection (`src/cinematics/_core/project.ts`), not this card.
+The final state syncs correctly (`deps.sync(after, true)`).
+
+### Adversarial verification fixes (round c3r5), 2026-11-01
+Evidence: `shots/kart-a/cloud_hatchling/c3r5/` (moment LSD `lsdm/`, cross-card films and clips `cross/`, gates
+`gates/`, `now.json` / `now.log`, `camera.txt`, `filmdiff-*.log`, `sameness*/`, `pal-*`). Code changed: only the
+scenario file (`src/duel/scenarios/kart_a_cloud_hatchling.ts`, new key `kaChGrownRevive`). No art, cinematic or
+sound change, so no moment was re-filmed for look; the new films are the missing coverage.
+
+**#1 MEDIUM, sound distinctness not proven: partly valid. Measured now.**
+- The claim that the LSD table "was NOT measured" is wrong. The per-role SE-4 table (§6.3: each role's sound
+  rendered offline) was measured in c3r2 (`c3r3/lsd.md`: 64 pairs, median 19.5 dB, min 10.0 dB) and again in c3r3
+  (`c3r4/lsd.md`: min 10.9 dB). The c3r1 "not measured" line is older than both.
+- What was missing is the moment-level comparison the verifier asks for, so it is measured now.
+  - Method (`c3r5/lsdm/lsdm.py`, `lsdm.md`, `lsdm.json`). Each moment is recorded in game with `clip.mjs --music off`,
+    so the real mix is measured, shared kit included. Profiles use 1/3 octave bands from 25 Hz to 16 kHz,
+    A-weighting, level normalisation and a 60 dB floor.
+  - LTAS is the LSD of the long-term spectrum. ST is a time-aligned LSD: 50 ms frames by bands, so it measures
+    rhythm as well as timbre.
+  - Siblings are ashen_drake (`kaAd*`), venom_drake (`kaVenom*`, `&zones=5`) and crystal_wyrm (`suWyrm`,
+    `saWyrmAtk`, `saWyrmBlocked`). The growth is compared with dial_jester's coin in the same batch, venom's scar
+    stack and the two aces' summons.
+  - A calibration row measures sibling against sibling, which shows the metric's scale on full mixes.
+
+  | moment | vs ashen | vs venom | vs wyrm | other | LTAS / ST |
+  |---|---|---|---|---|---|
+  | summon (`kaChSummon`) | 8.1 / 20.8 | 7.0 / 25.1 | 7.1 / 23.7 | | |
+  | attack (0 → contact) | 6.6 / 13.5 | **2.3** / 16.1 | 6.6 / 18.5 | | |
+  | attack wind-up (350 ms → contact, after the shared declaration) | 11.4 / 15.7 | 6.0 / 18.9 | 10.1 / 22.4 | | |
+  | contact (−50 … +450 ms) | 8.0 / 15.7 | 5.5 / **7.6** | **3.8** / 10.5 | | |
+  | contact without the kit's `impactHeavy` | 10.7 / 18.0 | 10.3 / 13.9 | 6.3 / 13.8 | | |
+  | growth (`kaChGrow` 6017–8767) | 8.9 / 19.9 (summon) | 6.7 / 17.3 (scar) | 6.2 / 20.9 (summon) | coin 7.8 / 18.8 | |
+  | death (bolt, strike + 150 ms, 1.6 s) | 6.6 / 13.7 | 6.4 / 12.4 | 10.2 / 17.8 | | |
+  | grown lose (`kaChGrownLose`) | 8.1 / 15.3 | 6.9 / 17.4 | 7.9 / 16.3 | | |
+
+  - Across the 19 same-moment pairs: LTAS median **6.9** dB, min 2.3 dB; ST median **17.3** dB, min 7.6 dB.
+  - Calibration, sibling against sibling (18 pairs): LTAS median **4.9** dB, min 2.9 dB; ST median **16.3** dB,
+    min 8.1 dB.
+  - On full game mixes, every one of our moments differs from the sibling aces at least as much as those aces
+    differ from each other.
+  - The per-role thresholds (median ≥ 15, min ≥ 10 dB, which apply to solo renders) do not transfer to full mixes.
+    Those mixes share attackDeclare, lockOn, the LP ticks, cardPlace and the kit's impact layer.
+- The two low cells are explained by sounds that are not this card's.
+  - attack vs venom, LTAS 2.3: in this tree `kaVenomAtk` still plays the v1 generic `whoosh` + `slash`, so venom's v3
+    strike sound is not wired yet. Its 0–750 ms window is mostly the shared declaration (attackDeclare and two
+    lockOn). After the declaration, the wind-up measures 6.0 / 18.9 dB.
+  - contact vs venom (ST 7.6) and contact vs wyrm (LTAS 3.8): the shared `impactHeavy` (`_v3/react.ts`) sits on all
+    three contacts. With it soloed out, our contact measures 10.3 / 13.9 dB against venom and 6.3 / 13.8 dB against
+    wyrm. `kaAdAtk` uses `hitStoneMagic` and reads 10.7 / 18.0 dB.
+  - The death clips for venom (`kaVenomMagic`) also play only the generic `shatter`.
+  - These are reported to the orchestrator (venom's v3 sound wiring and the shared impact layer). They are not
+    edited here.
+- +1.7 dB margin against `wyrmBreathFire`: the role LSD is **11.7 dB**, at or above the blueprint's ≥ 10 dB minimum
+  (§6.3). The 2–3 dB margin was a critic's suggestion, not a gate. c3r3 tried ±1/3-octave moves and found that
+  the growl dominates the spectrum, so the margin is accepted as is.
+- The tide_golem "sameness" warning is a motion metric, not sound. Re-measured with `tools/sameness.ts --against
+  all --anims roar,attack` (`c3r5/sameness*/`).
+  - Grown: tide_golem has MOTsig 0.726 on roar and 0.465 on attack. Its rhythm differs (430/220/1210 vs
+    400/100/1000).
+  - That comparison is against tide_golem's v1 silhouette proxy, out of plan. It is UYARI, and the tool says an
+    out-of-plan result never blocks.
+  - The baby measures UYARI against 10 of 84 arts and KALIR against none. The grown measures UYARI against 16 of 42.
+    coral_serpent reaches the out-of-plan KALIR line, which still counts as UYARI.
+  - Accepted: the roar anims are unchanged, and the warning is broad against v1 proxies rather than a copy of one
+    card.
+
+**#2 MEDIUM, cross-card edge cases not filmed: valid. Filmed now.** All runs use `look=v3`. Each has a 1×
+film and a ×3 detail film, plus a `clip.mjs` sound timeline (`cross/*.json`). Sound times are in game ms.
+- `kaChGrownChains` (`cross/kaChGrownChains.png`, `-x3.png`): the chains bind the GROWN body, the grown form holds
+  for the whole bind, and the badge reads 2300/1700. Sound: `hatchGrownInhale` plays at the declaration (167). After
+  the trap prompt, chains' `takeCharge` starts a fresh **`hatchGrownInhale`** at 1183; the baby `hatchInhale` never
+  plays.
+- `kaChGrownMirror` (`cross/kaChGrownMirror.png`, `-x3.png`): the inhale at 167 and 733 is `hatchGrownInhale`, and
+  `hatchGrownSneeze` plays at 1583. The reflected beam kills the grown body: `hatchGrownCurl` 2083 → `hatchUnAge` 2300
+  → knit → float, and it ends as an egg. The grown breath is kept.
+- So the `soundsOfUnit` sweep has landed in both other-lane files (`_mirror_v3.ts:1575`, `chains_of_light.ts:561`).
+- `kaChGrownEquip` (`-x3.png`): dragon_blade's aura plays on the grown body and the badge goes to 3000/1700.
+- `kaChGrownVoid` (`cross/kaChGrownVoid.png`): the grown form stays until its own death beat. That beat is the
+  grown curl → un-age → egg (sound 3733–4567).
+- `kaChGrownControl` (`cross/kaChGrownControl.png`): puppet_string takes the grown hatchling, and it stays grown on
+  the P1 side.
+- **Persistence**:
+  - Turn change and resync: `kaChGrownResync-x3.png` covers the growth, then two turn ends (8.3–12.9 s). The body
+    stays grown and the badge stays 2300/1700 the whole time.
+  - Position change: `kaChGrownPos-x3.png` covers the grown sphinx guard and its return, and the body stays grown.
+  - Bounce: `kaChGrownBounce`'s re-summon is the baby (cloud drift, egg, cheep).
+- **soul_recall revive as baby: new scenario `kaChGrownRevive`.** crystal_wyrm kills the grown hatchling, P2 ends the
+  turn, and P1 casts soul_recall on it.
+  - Death (`cross/kaChGrownRevive-death-x3.png`): grown curl 1383, un-age 1600, egg float.
+  - Revive (`cross/kaChGrownRevive-revive.png`, `-end-x3.png`): `hatchReviveGather` 5267 → `hatchReviveLand` 5917,
+    and it lands as the **BABY** with **1100/900**. The growth does not stay in the graveyard.
+  - Measured total 6350 ms (two batches), 0 errors.
+- **The rewind contract with lane D is still open on lane D's side (not this card's code).**
+  - Our side is done: `variants.ts` `rewindAnims` / `rewindSfx`, the grown record's `rewind` and
+    `rewindSfx: 'hatchVoiceCrackRev'`, and the unit test "the rewind contract" (`tests/duel/unit-variant.test.ts`).
+  - Nothing outside `variants.ts` calls `rewindAnims` yet (`grep`).
+  - Today an opponent's jester win (`kaChRewound`, `kaChGrownRewound`, `cross/kaChGrownRewound.png`) plays
+    `impactHeavy` at 4483, then our own death. On the grown body that is curl → un-age → knit → egg. It reads
+    correctly (grown → baby → egg) with no pop, but the reversed special and summon from the contract do not play.
+  - The planned `?dev=hatchling&mode=rewind` preview was never built. That is a deviation; the unit test covers the
+    contract.
+  - Re-sent to the orchestrator for lane D.
+
+**#3 MEDIUM, `project.ts` precondition unconfirmed: verified as landed.**
+- `src/cinematics/_core/project.ts:131-168` handles it under `LOOK_V3`. The hatchling's `activate` marks the uid
+  (a `jesterAging` card, face up, with no `permAtk`). The following `statChange` then writes `permAtk` / `permDef`
+  from the event's own deltas (2300−1100 = 1200, 1700−900 = 800), so the badge's count-up still animates.
+- This differs from the blueprint's wording, which set the values directly at `activate`. It is better, and it
+  still equals the engine's after-state.
+- The landing commits are `8ffa624` and `812ffa3`. The tests in `tests/duel/unit-variant.test.ts` pass:
+  - "the growth lands at the hatchling's statChange … = the engine's after state" (`projectBatch` over a real batch,
+    asserting `permAtk` / `permDef` directly);
+  - "an equip statChange projects no growth";
+  - "an activate of any other monster effect … changes nothing".
+- The drift warning is **assigned to the `homecoming` owner (the shared projector)**, with the root cause found:
+  `applyEvent` has **no `case 'toHand'`**. `rules.ts:701` emits `toHand` for homecoming's bounce, and the
+  projector ignores it, so `p.hand` and the monster slot stay stale. It reproduces with no hatchling at all
+  (`st1HomeP2`). The final state still syncs (`deps.sync(after, true)`), and the drift is unchanged in
+  `c3r5/now.json` (kaChGrownBounce only). `project.ts` is shared and not this card's file, so it is reported, not
+  edited.
+
+**#4 LOW, readability at 1×: accepted, as the verifier recommends.**
+- The 20 px baby ring next to big targets is accepted.
+- The thin ring and white fragments on frames #14–#17 of `c3r4/atk.png` are accepted. They are the squeeze and snap
+  after the contact, which reads well on #5–#7.
+- The dial build-up from 6.0 to 7.2 s is not reworked.
+- The grown mane has no ink notches. It is two-toned and the tail is out.
+- The baby sprite is above its §1.1 size (deviation #11).
+
+**#5 LOW, headroom and warnings: accepted.** The c3r5 values are unchanged:
+- `kaChGrownDirect` 2316 ≤ 2320 (4 ms of headroom).
+- `kaChLose` 3150 ≤ 3190 (40 ms).
+- palcheck a5 absolute limits fail as the approved base films do.
+- HA-14 / HA-15 are the declared shared-shell rows.
+- The blind critic KK-1 sign-off next to crystal_wyrm is still open; an independent critic is needed.
+
+**Gates (c3r5)**
+
+| Gate | Result |
+|---|---|
+| typecheck (`npm run typecheck`) | clean, 0 errors (whole tree) |
+| tests (`npx vitest run`) | 1351 passed, 4 failed. All 4 are on the known list (cardface-v3 G1, dusk_ashen validateArt, hourglass_imp registration, shield_titan death heap); no hatchling test fails. An earlier run made while 3 browser jobs were busy also timed out in 4 heavy art tests, `cloud_hatchling` among them. That test passes alone (9/9) and in the quiet full run |
+| v1 look (`filmdiff --set v1`) | **17/17 IDENTICAL** (`c3r5/filmdiff-v1.log`) |
+| a6 v1 look (`filmdiff --set a6v1`) | **26/26 IDENTICAL** (`c3r5/filmdiff-a6v1.log`) |
+| camera (`measure --camera-gate shots/kart-a/camera-base.json c3r5/now.json`) | 15 ok, 56 ok NOBASE, **0 FAIL**; zoom 1 everywhere |
+| page errors (`c3r5/now.json`, 56 `kaCh*` incl. the new `kaChGrownRevive`) | 0 errors in all. The one console drift line in `kaChGrownBounce` is the shared `toHand` gap (#3) |
+| budgets (REHBER §5 × 1.45) | unchanged from the gates round: Summon 2366 · Atk 2333 · Blocked 2466 · Tie 3033 · Lose 3150 · Kill 2600 · KillPhys 2883 · GuardKill 2216 · Bolt 2466 · Hit 1533 · Direct 2200 · GrownAtk 2550 · GrownBlocked 2400 · GrownKill 2666 · GrownGuardKill 2583 · GrownLose 3166 · GrownDirect 2316 · Revive 2133 · Flip 733 · Grow 9083 (hook 3033) — all within |
+| monster-gates (`c3r5/gates/baby.txt`, `grown.txt`; medium, P1 + P2, `--ref none`) | baby 20 ok + HA-14; grown 19 ok + HA-14 / HA-15. The FAIL rows are identical to `gates5` |
+| palcheck (a5, clip 120,40,400,230, 100 × 34 ms) | kaChAtk Δmax +1.16 / white 2.19, kaChLose +1.28 / 2.22. These are identical to `gates5`, and the base films fail the same way |
+| SE-4 moment LSD (`c3r5/lsdm/lsdm.md`) | LTAS median 6.9 / ST 17.3 dB vs siblings, against a sibling-vs-sibling calibration of 4.9 / 16.3 dB |
+
+**Status (after c3r5).** Every gate passes, or fails only on a declared or shared item. v1 is byte-identical
+(17/17 and 26/26). The camera gate shows 0 FAIL, and all 56 `kaCh*` scenarios run without errors and within
+budget.
+- Verifier item 1: the moment-level SE-4 is now measured and logged. Our moments differ from the sibling aces at
+  least as much as those aces differ from each other.
+- Verifier item 2: every cross-card case is filmed at 1× and ×3, with sound timelines. The grown voice holds
+  through chains and mirror, the grown form persists through turn ends, position changes, control and equip, and
+  the revive is a baby.
+- Verifier item 3: the `project.ts` change is confirmed and tested, and the drift warning is root-caused and
+  assigned.
+- Verifier items 4 and 5 are accepted.
+
+Open, and owned elsewhere:
+1. Lane D still has to call `rewindAnims` / `rewindSfx`. Today our own death does the un-aging.
+2. The shared projector needs `case 'toHand'` (the homecoming drift).
+3. venom_drake's v3 strike and death sounds are not wired in this tree, so `kaVenomAtk` and `kaVenomMagic` play
+   the generic sounds.
+4. The blind KK-1 critic sign-off next to crystal_wyrm.
+
+Open and owned by this card, accepted for ship: the #4 / #5 items (the 1× ring size, the dial build-up, the mane
+notches, the 4 ms and 40 ms headroom).

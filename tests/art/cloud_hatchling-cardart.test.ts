@@ -48,8 +48,9 @@ describe('cloud_hatchling card art v3', () => {
       for (const c of foreign) expect([PAL.night1, PAL.night2, PAL.night3, PAL.night4]).toContain(c);
       let leaf = 0;
       for (let y = 0; y < l.backdrop.h; y++) for (let x = 0; x < l.backdrop.w; x++) if (l.backdrop.get(x, y) === PAL.leaf1 || l.backdrop.get(x, y) === PAL.leaf2) leaf++;
-      // the wake crescent (critic r2: the old 15 % disc swallowed the ring) still carries the WIND colour at 1×
-      expect(leaf).toBeGreaterThan(l.backdrop.w * l.backdrop.h * 0.08);
+      // the wake (critic r2: the old 15 % disc swallowed the ring; r3: the thick crescent read as a green blob, now
+      // a thin open arc + one echo gust arc) still carries the WIND colour at 1×
+      expect(leaf).toBeGreaterThan(l.backdrop.w * l.backdrop.h * 0.035);
     }
   });
 
@@ -58,7 +59,7 @@ describe('cloud_hatchling card art v3', () => {
     for (const pic of [r0.bigPx, r0.smallPx]) {
       const tones = new Set<number>();
       for (let y = 0; y < pic.h; y++) for (let x = 0; x < pic.w; x++) tones.add(pic.get(x, y)!);
-      for (const c of [PAL.leaf4, PAL.leaf3, PAL.water4, PAL.mist, PAL.earth4, PAL.white]) expect(tones.has(c)).toBe(true);
+      for (const c of [PAL.leaf4, PAL.leaf3, PAL.gold3, PAL.mist, PAL.earth4, PAL.white]) expect(tones.has(c)).toBe(true);
       for (const c of tones) expect(banned.has(c)).toBe(false);
     }
   });
@@ -76,7 +77,7 @@ describe('cloud_hatchling card art v3', () => {
       ] as const) {
         let d = 0;
         for (let i = 0; i < a.data.length; i += 4) if (a.data[i] !== b.data[i] || a.data[i + 1] !== b.data[i + 1] || a.data[i + 2] !== b.data[i + 2]) d++;
-        expect(d).toBeLessThan(a.w * a.h * 0.05); // the ring steps 1 px, the streaks swap tones, one far lobe steps
+        expect(d).toBeLessThan(a.w * a.h * 0.05); // the ring steps 1 px (the wake stays), one far lobe steps
       }
     }
   });

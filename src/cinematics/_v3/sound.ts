@@ -239,6 +239,22 @@ export const CHARACTER_SOUNDS: Partial<Record<CardId, CharacterSounds>> = {
   kite_fencer: KITE_VOICE,
   crag_axeman: AXEMAN_VOICE,
   steppe_spiralhorn: SPIRALHORN_VOICE,
+  // lane A (docs/v3/kart-a/cloud_hatchling.md §6.4); the grown body's roles: VARIANT_SOUNDS below
+  cloud_hatchling: {
+    roar: 'hatchCheep',
+    arrive: 'hatchCloudDrift',
+    land: 'hatchEggLand',
+    charge: 'hatchInhale',
+    swing: 'hatchHop',
+    release: 'hatchSneeze',
+    impact: 'hatchRingTing',
+    deathStart: 'hatchCurl',
+    dissolve: 'hatchKnit',
+    afterDissolve: [[3, 'hatchLullaby', 0.8]],
+    burst: 'hatchFloat',
+    reviveGather: 'hatchReviveGather',
+    reviveLand: 'hatchReviveLand',
+  },
 };
 
 /**
@@ -259,7 +275,10 @@ export function soundsOf(id: CardId | null | undefined): CharacterSounds | null 
  * `<cardId>:<variant>` (e.g. 'cloud_hatchling:grown'): the roles listed replace the card's own set
  * for a unit in that variant. Empty until a card registers its variant's voice here (additively).
  */
-export const VARIANT_SOUNDS: Record<string, Partial<CharacterSounds>> = {};
+export const VARIANT_SOUNDS: Record<string, Partial<CharacterSounds>> = {
+  // lane A (docs/v3/kart-a/cloud_hatchling.md §6.4): the grown cloud dragon's own voice
+  'cloud_hatchling:grown': { roar: 'hatchGrownRoar', charge: 'hatchGrownInhale', swing: 'hatchGrownStomp', release: 'hatchGrownSneeze', impact: 'hatchGrownRingBoom', deathStart: 'hatchGrownCurl' },
+};
 
 /**
  * A unit's character sounds: soundsOf(u.cardId), with its variant's roles over them (VARIANT_SOUNDS).

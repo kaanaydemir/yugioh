@@ -8,7 +8,7 @@ Branch `claude/kart-a` (from 684e290). Brief: `docs/v3/PARALEL_OTURUMLAR.md`.
 |---|---|---|---|---|---|---|---|---|---|
 | ashen_drake (R1, no rebirth) | done (rev 3) | done (vulture-perch rig, P1 + P2) | done | done | done (summon, attack/tie/direct, revive, position, flip, death) | done | 7 (sprite 3, cinematics 3, adversarial 1) | pass (see ashen_drake below; IŞ-10 exempt, palcheck a5 absolutes as base) | yes |
 | venom_drake (full redesign) | done (rev 3) | — | — | — | — | — | 0 | — | — |
-| cloud_hatchling (C3 + aged form) | done (rev 3) | — | — | n/a (not ace) | — | — | 0 | — | — |
+| cloud_hatchling (C3 + aged form) | done (rev 3) | done (baby + grown variant, P1 + P2) | done | n/a (not ace) | done (summon, growth/jesterAging, attack/direct, grown attack, revive, position, flip, death, cross-card) | done | 9 (sprite 3, film 3, adversarial 3: c3r3–c3r5) | pass (see cloud_hatchling below; HA-14/HA-15 shared-shell rows declared, palcheck a5 absolutes as base) | yes |
 
 ## Environment notes
 - The container's Chromium lives at `/opt/pw-browsers/chromium-1243/chrome-linux64/chrome`, but the tools look for
@@ -34,6 +34,9 @@ cloud_hatchling. Economy: film critique = 3 rounds with ONE combined visual+soun
 adversarial verification = ONE verifier covering golden rule + definition of done + sound (was three).
 At the switch: all 3 sprites through 3 sheet-critique rounds; card art for all 3 + cut-ins (ashen, venom) built and
 critiqued; cloud_hatchling card-art fix done; ashen/venom card-art fixes and all cinematics not yet done.
+
+## Owner decision 2026-11-01 17:53 UTC: no fixed animation time limit
+REHBER §5 × 1.45 budgets (TEMPO.md) are guidance only, not a gate: each moment takes the duration that makes it most striking and readable.
 
 ## Design docs
 - `docs/v3/kart-a/ashen_drake.md`, `docs/v3/kart-a/venom_drake.md`, `docs/v3/kart-a/cloud_hatchling.md`
@@ -162,9 +165,49 @@ are the ambient sky-flyer band (x 32–606, y 94–111), which differs between t
   (2) wide/boxy targets (tie's cannon mech) — target silhouette's straight top edge shows above the shorter edge flames
   for ~2 frames at the peak; (3) per-card slam sound request to the orchestrator still stands.
 
+## cloud_hatchling: done (2026-11-01)
+- Evidence: `shots/kart-a/cloud_hatchling/c3r5/` (gates in `c3r5/gates/`, cross-card films in `c3r5/cross/`, whole-moment
+  sound distinctness in `c3r5/lsdm/lsdm.md`; per-role LSD in `c3r4/lsd.md`); build log + Status in
+  `docs/v3/kart-a/cloud_hatchling.md` ("Adversarial verification fixes (round c3r5)").
+- Gates: typecheck clean · `npx vitest run` 1351 passed, 4 failed (the 4 known; no hatchling test) · filmdiff v1 17/17
+  and a6v1 26/26 identical · camera gate 0 FAIL, no zoom · measure 0 errors in 56 `kaCh*` films, all within budget
+  (`kaChGrownDirect` 2316 ≤ 2320, `kaChLose` 3150 ≤ 3190) · monster-gates baby 20 ok + HA-14, grown 19 ok + HA-14/HA-15
+  (declared shared-shell rows) · palcheck: same a5-absolute FAILs as the approved base films.
+- Sound: whole-moment LSD vs ashen/venom/crystal_wyrm median 6.9 dB (LTAS) / 17.3 dB (ST); the three low cells come
+  from sounds that are not this card's (venom's generic whoosh/slash, shared kit impact).
+- Open: (1) lane D never calls the rewind contract — an opponent jester win plays our death (grown → baby → egg)
+  instead of the reversed growth/summon; (2) shared `project.ts` projector has no `case 'toHand'` (homecoming bounce
+  → "projection drift" console line in `kaChGrownBounce`), orchestrator's file; (3) venom_drake's new attack/death
+  sounds not wired yet; (4) KK-1 blind critic sign-off (grown form next to crystal_wyrm) still needed.
+  Deviation: `?dev=hatchling&mode=rewind` preview not built; a unit test covers the contract.
+
 ## ashen_drake: IŞ-10 reference exemption (2026-10-31, lane-A builder, critic r3 #12)
 `tools/monster-gates.ts` compares idle f0 noise with the v1 idle f0 when a card has no approved still. For ashen_drake
 the v1 frame is the `placeholderTotem`-era sprite of a different creature (2.6 % isolated px), so the row prints
 FAIL (6.4 % / 2.6 % = 2.43×) and measures nothing about this drake. Decision: the reference for this card is the slice
 ace's approved still (`src/still/wyrm.ts`, 5.96 %): idle f0 6.4 % = **1.07×** (limit 1.1×). The gate tool is not
 lane A's to change, so the FAIL line stays in `gates.txt`; the orchestrator should treat it as known/exempt.
+
+## PAUSED 2026-11-01 (owner: weekly usage 92%) — exact resume instructions
+**State at pause.** ashen_drake: DONE, committed `b2fc32e` (all gates pass; open issues listed in its "done" section above).
+venom_drake: sprite (3 sheet-critique rounds), card art + cut-in (critiqued + fixed) done; NOT started: cinematics + SFX,
+3 film rounds, gates, verify, commit. cloud_hatchling: sprite both forms (3 sheet rounds), card art + critique done; its
+card-art FIX agent was interrupted mid-way, so 4 cloud_hatchling tests (tests/art/cloud_hatchling*.test.ts) fail at the pause
+and one shield_titan test fails besides its known one — re-check after the hatchling art fix. Typecheck is clean.
+
+**Resume (after the weekly reset), in this order, one card at a time:**
+1. Same container or new: `git checkout claude/kart-a && git pull`. If `node_modules` is missing: `npm ci`.
+   Browser tools need `PLAYWRIGHT_BROWSERS_PATH=<dir>` where `<dir>/chromium-9999/chrome-linux/chrome` symlinks to
+   `/opt/pw-browsers/chromium-1243/chrome-linux64/chrome` (do not install playwright).
+2. If `shots/` is gone (gitignored), re-film baselines from a v1-identical commit (e.g. `684e290`, via a worktree):
+   `node tools/filmdiff.mjs --set v1 --base shots/v3/a3/baseline/v1films --write`,
+   `node tools/filmdiff.mjs --set a6v1 --base shots/v3/a56/baseline/a6v1films --write`, and the camera base
+   `node tools/measure.mjs --look v3 --jobs 2 --scenarios baseline,<kaVenom*/kaCh* keys> --out shots/kart-a/camera-base.json`.
+3. Same session: resume the workflow (cached stages replay, nothing is redone):
+   `Workflow({ scriptPath: ".../workflows/scripts/kart-a-build-wf_cf41a606-b86.js", resumeFromRunId: "wf_cf41a606-b86", args: { only: ["venom_drake"] } })`,
+   then the same with `{ only: ["cloud_hatchling"] }`.
+   New session (no workflow cache): per card run, in order: cinematics + SFX per `docs/v3/kart-a/<id>.md` §5/§6/§8 →
+   3 rounds (one combined visual + sound critic, then fixer) → gates (typecheck, npm test, both filmdiff sets 17/17 + 26/26,
+   camera gate, palcheck, monster-gates, measure ≤ REHBER §5 × 1.45) → one adversarial verifier + fixes → per-card commit.
+   For cloud_hatchling, first finish its card-art fix (critique in its doc build log) and make tests/art/cloud_hatchling*.test.ts pass.
+4. Scratch helpers `tools/_*.ts` are local-only (excluded via .git/info/exclude); never commit them.

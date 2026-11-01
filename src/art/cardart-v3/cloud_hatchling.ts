@@ -7,21 +7,21 @@
 // crease), the wing nub behind the head (the dragon cue), a small cloud cowlick at the back of the crown blown back
 // (mist lobes, a white top line on the lit side), the cream belly plate (earth4), the eggshell in the sprite's tones
 // (skin4 lit, earth4 mid, earth3 shadow, earth2 speckles on the shadow plane only, skin3 inner shell) with its round
-// belly showing above the nest, the sprite's half-shell cup on the tail tip (teeth up), eyes squeezed for the sneeze
-// (a leaf2 scrunch band, a leaf3 tear), the mouth open in the sprite's warm reds (fire1 throat, fire2 tongue). The
+// belly showing above the nest, the sprite's half-shell cup on the tail tip (teeth up), the eye half shut just after the
+// sneeze (a heavy leaf2 lid, the sprite's gold3 eye as a slit), the jaws shut on a fire1 / fire2 slit (r3). The
 // IŞ-7 rim is the WIND recipe's leaf3 (the light behind is green), on the outer silhouette only.
 // Focus — the wind ring (attack "Hıçkırık Halkası"): a hollow ring tilted in flight, its leading crescent the
-// picture's only large solid white, a mist band, a dark night3 trailing edge; a smaller mist hiccup ring between
-// the mouth and the ring (rings blown out in a row), short whistle streaks at the mouth.
+// picture's only large solid white, a mist band, a steel trailing edge, just off the snout (r3: the hiccup ring /
+// puff and the whistle streaks are gone — the puff merged with the ring's trailing edge).
 // Backdrop — the WIND tones (leaf1 / leaf2) as the ring's wake: one thick stepped crescent behind its line of
-// flight, open to the upper right, the ring on its concave edge (hole and white crescent on the dark sky), over a
+// flight (r3: a thin open arc + one static echo gust arc a sky gap further out), the ring on its concave edge, over a
 // night1 / night2 sky; a far cloud sea as one flat night3 silhouette with a 1-px night4 lit top line (6 tones).
 // Layers — backdrop → subject (each part outlined in PAL.ink, back to front, so parts keep their seams) →
 // light (the rings, the streaks; never outlined).
 // small — the same geometry redrawn natively at 1× density on a tighter crop (KART_RESIMLERI §1 preference 2:
 // head + ring, the egg rim cut by the bottom edge; the tail and the nest fall out), then corrected by hand (patch).
-// Living art: 6 frames × 140 ms (f0 = the reduced-motion frame): the ring and the hiccup ring advance 1 px and
-// back, the streaks swap tones, one far cloud lobe steps (palette swaps and ≤ 1 px motion, both sizes). The game
+// Living art: 6 frames × 140 ms (f0 = the reduced-motion frame): the ring advances 1 px and back (the small's
+// wake stays put), one far cloud lobe steps (palette swaps and ≤ 1 px motion, both sizes). The game
 // shows f0 of the small picture only (src/art/cardface-v3/index.ts).
 
 import { PAL } from '../palette';
@@ -39,10 +39,11 @@ const SEA = [PAL.night4, PAL.night3] as const;
 /** The ring's centre (big px): the focus. The light shape sits 3 px behind it. */
 const RING: V = [71, 20];
 const FOCUS: V = RING;
-/** The hiccup ring between the mouth and the ring (big px). */
-const HIC: V = [64, 31];
 /** The wake's arc in the ring's frame (degrees, 90 = below, 180 = behind): its left and bottom. */
 const WAKE_ARC: readonly [number, number] = [70, 215];
+/** The wake's echo arcs ([inner offset, band width] px out from the ring): stepped gust arcs with sky between. */
+const WAKE_ECHO_BIG: readonly (readonly [number, number])[] = [[7, 2]];
+const WAKE_ECHO_SMALL: readonly (readonly [number, number])[] = [[4, 1]];
 /** small: the ring 1 px further from the right edge (≥ 4 px of air), its hiccup ring by the snout. */
 const RING_S: V = [34, 9];
 /** The ring's lean (radians): its top tips toward the flight, so it reads as a ring in the air, not a glyph. */
@@ -351,24 +352,6 @@ function paintRing(l: PixelCanvas, cx: number, cy: number, spec: RingSpec, dx: n
     }
 }
 
-/**
- * The hiccup before the ring (r3): an open 2-px mist arc, a ")" bowed toward the flight — a puff of the same wind,
- * not a closed loop (a closed 6×10 loop at the nostril read as a nose ring). Big only.
- */
-function paintPuff(l: PixelCanvas, cx: number, cy: number): void {
-  const X = cx + 0.5;
-  const Y = cy + 0.5;
-  for (let y = cy - 6; y <= cy + 6; y++)
-    for (let x = cx - 6; x <= cx + 6; x++) {
-      const u = x + 0.5 - X;
-      const v = y + 0.5 - Y;
-      const e0 = Math.hypot(u / 3.2, v / 4.6);
-      const e1 = Math.hypot(u / 1.4, v / 2.8);
-      const ang = (Math.atan2(v, u) * 180) / Math.PI;
-      if (e0 <= 1 && e1 >= 1 && ang > -75 && ang < 75 && u > -0.5) l.set(x, y, PAL.mist);
-    }
-}
-
 // ================================================================ backdrop
 
 /**
@@ -377,7 +360,7 @@ function paintPuff(l: PixelCanvas, cx: number, cy: number): void {
  * bottom (the way it came). It stays `clear` px of sky away from the subject, so the head and the wake never merge
  * into one green mass; the ring's hole stays one tone of sky. `w` is the width of each tone band.
  */
-function paintWake(b: PixelCanvas, sub: PixelCanvas, ring: V, spec: RingSpec, w: number, a0: number, a1: number, clear: number): void {
+function paintWake(b: PixelCanvas, sub: PixelCanvas, ring: V, spec: RingSpec, w: number, a0: number, a1: number, clear: number, g0 = 1): void {
   const X = Math.round(ring[0]) + 0.5;
   const Y = Math.round(ring[1]) + 0.5;
   const c = Math.cos(TILT);
@@ -396,9 +379,9 @@ function paintWake(b: PixelCanvas, sub: PixelCanvas, ring: V, spec: RingSpec, w:
       const A = ang < 0 ? ang + 360 : ang;
       if (A < a0 || A > a1) continue;
       const e = (g: number) => Math.hypot(u / (spec.rx + g), v / (spec.ry + g));
-      if (e(1) < 1 || e(1 + 2 * w) > 1) continue;
+      if (e(g0) < 1 || e(g0 + 2 * w) > 1) continue;
       if (near(x, y)) continue;
-      b.set(x, y, e(1 + w) > 1 ? RECIPE.tones[0] : RECIPE.tones[1]);
+      b.set(x, y, e(g0 + w) > 1 ? RECIPE.tones[0] : RECIPE.tones[1]);
     }
 }
 
@@ -437,6 +420,7 @@ const KEY: Readonly<Record<string, number>> = {
   D: PAL.earth3,
   q: PAL.fire1,
   r: PAL.fire2,
+  g: PAL.gold3,
 };
 
 /**
@@ -446,18 +430,18 @@ const KEY: Readonly<Record<string, number>> = {
  */
 /** The maps' x: the small crop lets the back of the head bleed decisively off the left edge (no tangent). */
 const SX = 0;
-/** The squeezed eye as a bold 5-row chevron (the native redraw's is 3 rows). */
-const SMALL_EYE: readonly string[] = ['222', 'k', 'kk', '.kkk', 'kk', 'k'];
+/** The half-shut eye as in big (r3): a leaf2 lid, the ink lash line, a 3-px gold3 slit (the sprite's gold eye). */
+const SMALL_EYE: readonly string[] = ['4222224', 'kkkkkkk', '4kgggk4', '44kkk44', '4444444', '4444444', '4444444'];
 /** One seam pixel between the cowlick lobes (the native redraw left an ink / mist checker there). */
 const SMALL_SEAM: readonly string[] = ['k'];
 const SMALL_BOTTOM: readonly string[] = [
   '____k',
-  '____k444444444444433311111111kk_',
-  '_____k44444444443332qqqqqquqk___',
-  '______k4444444443332qqqqqqqqk___',
-  '_______k33333333322qqrrrrqqk____',
-  '________kk3333322kqrrrrqqk______',
-  '__________kkkkkkkk2222222k______',
+  '____k44444444444444444443333kk__',
+  '_____k4444444444443kkkkkkkkk____',
+  '______k44444444443qqqqqrqqk_____',
+  '_______k3333333333222222kk______',
+  '________k3333333322222kk________',
+  '_________kkkkkkkkkkkkk__________',
   '____kuk11kuk11kEkkkkkkkkk______',
   '___kuEEkkuEEkkEEEkEkkEkkDDk_____',
   '__kuEEEEEEEEEEEEEEEEEEEEDDDk____',
@@ -480,7 +464,8 @@ const art: CardArtV3 = {
     const dx = f === 2 || f === 3 ? 1 : 0;
     const ring: V = [RING[0] + dx, RING[1]];
     paintWake(l.backdrop, l.subject, ring, RING_BIG, 2, WAKE_ARC[0], WAKE_ARC[1], 3);
-    paintPuff(l.light, HIC[0] + (f === 3 || f === 4 ? 1 : 0), HIC[1]);
+    // the ring's earlier passes: two more open arcs behind it, each a sky gap further out (gust arcs, not a blob)
+    for (const [g0, w] of WAKE_ECHO_BIG) paintWake(l.backdrop, l.subject, RING, RING_BIG, w, WAKE_ARC[0], WAKE_ARC[1], 3, g0);
     paintRing(l.light, RING[0], RING[1], RING_BIG, dx);
   },
   small(l: ArtLayers, f: number) {
@@ -488,9 +473,10 @@ const art: CardArtV3 = {
     paintSubject(l.subject, SMALL, f);
     outerRim(l.subject, RECIPE.rim);
     patch(l.subject, SMALL_BOTTOM, KEY, SX, 22);
-    patch(l.subject, SMALL_EYE, KEY, SX + 16, 14);
+    patch(l.subject, SMALL_EYE, KEY, SX + 15, 13);
     const dx = f === 2 || f === 3 ? 1 : 0;
-    paintWake(l.backdrop, l.subject, [RING_S[0] + dx, RING_S[1]], RING_SMALL, 1, WAKE_ARC[0], WAKE_ARC[1], 2);
+    paintWake(l.backdrop, l.subject, RING_S, RING_SMALL, 1, WAKE_ARC[0], WAKE_ARC[1], 2);
+    for (const [g0, w] of WAKE_ECHO_SMALL) paintWake(l.backdrop, l.subject, RING_S, RING_SMALL, w, WAKE_ARC[0], WAKE_ARC[1], 2, g0);
     paintRing(l.light, RING_S[0], RING_S[1], RING_SMALL, dx);
   },
 };
