@@ -38,3 +38,24 @@ Kanıtlar: `shots/v3/d/<kart>/`.
   `resumeFromRunId: wf_ec97f149-c20` ile sürdürülür.
   Bilinen konu (coil ajanı): kill senaryolarında ölüm kitinin ilk sesi atlanıyor (tepki ölüm animasyonunu önce başlatıyor);
   coil kendi ölüm kancasından çalarak aştı; anvil/needle için de bakılacak.
+
+## DURAKLATILDI (2026-11-01 06:10 UTC — sahip kararı: haftalık kullanım limiti)
+Workflow ve otomatik kontrol noktası döngüsü durduruldu. Son WIP commit bu dosyayı içerir; çalışma ağacı temiz.
+
+### Nerede kaldık (workflow `wf_ec97f149-c20` journal'ına göre)
+- Bitti: el kitabı; 7 kartın art'ı (dial_jester, reflection_archer, scrap_raiders, straw_decoy_token, polar_needle/anvil/coil);
+  7 kartın sinematik + SFX yapımı; 7 kartın 1. eleştirisi (crit1); polar_needle/anvil/coil için 1. düzeltme (fix1).
+- Yarıda/başlamadı: fix1 (dial_jester, reflection_archer, scrap_raiders, straw_decoy_token); crit2/fix2, crit3/fix3,
+  verify ve kart başı commit (tüm kartlar); polar_sovereign'in tamamı (art, sinematik, birleşme + ayrılma).
+- Kapılar (npm test, filmdiff v1/a6v1, camera-gate, palcheck) henüz hiçbir kart için koşulmadı. scrap_raiders cardface G1
+  düzeltmesi doğrulanmadı.
+
+### Sürdürme (haftalık sıfırlamadan sonra, orkestratör onayıyla)
+1. Ortam: `npm ci` (node_modules yoksa) ve Chromium symlink (yukarıdaki Ortam notu).
+2. Aynı oturumdaysa workflow'u önbellekten sürdür:
+   `Workflow({scriptPath: "/root/.claude/projects/-home-user-yugioh/075f4e29-85e5-5b7b-8195-968ba2bdb54b/workflows/scripts/lane-d-cards-wf_ec97f149-c20.js", resumeFromRunId: "wf_ec97f149-c20"})`
+   (bitmiş 30 ajan önbellekten döner; kalanlar canlı koşar.) Script ve journal konteynere özel: yeni konteynerde yoksa,
+   bu bölümdeki "Yarıda/başlamadı" listesinden aynı akışla (fix1 → crit2/fix2 → crit3/fix3 → verify → commit; sonra
+   sovereign) yeni bir workflow kur; el kitabı `docs/v3/oturum-d-rehber.md`.
+3. Her ~30 dakikada WIP commit + push (typecheck temizse).
+4. Tüm kartlar kapılardan geçince bu dosyaya son özeti yaz ve push et.
