@@ -1208,3 +1208,45 @@ Every claim was re-read in the code before it was accepted.
     cut-in's hood edge has no explicit lip on its top-right and the eye is small; the tornado ribbons are thin dotted rings
     rather than a dense column; the tie scenario runs 3.37 s game (death chain); no P2 summon film looked at frame by frame
     (measure only); the SE gates (LSD, clip markers, silence ≥ 100 ms under −40 dBFS) were NOT run this round.
+
+### Card art + cut-in stage (2026-11-01)
+Files: `src/art/cardart-v3/ashen_drake.ts` (rewritten painters, same export), `src/art/cutins-v3/ashen_drake.ts`
+(framing fixes), `src/dev/previews/ashen-card.ts` (new review preview: `?dev=ashen-card&look=v3[&ids=a,b,c]` shows
+the faces at 1×, at 3× and lying on P1 / P2 tiles). Registration was already in place (`cardface-v3/index.ts`
+`ART.ashen_drake` → `renderArt(…).smallPx`; cut-in in `cutins/index.ts`), no new shared edits.
+- **Card art (§7.1), big 88×68:** the final sprite's idle f0 1:1 (P1 light, arena rim relit to void3, plate
+  checkers resolved), DARK eclipse 4 px behind the heart. Changed this stage: (1) the ash streams were a uniform
+  scatter of 15 chips that read as noise; they are now three curving streams of plate chips peeling off the hood's
+  front edge (the first chip still on the outline, then shrinking 4×3 → 2×1 with growing gaps, climbing): one
+  gesture to the RIGHT. Tried and rejected on the way: continuous 2-px sine ribbons (read as wires / tentacles)
+  and tapered banners (read as horizontal spears). (2) The heap now runs under the talons to x 53 with a lit
+  stone3 crest and buried fire1/fire2 seams, and carries the heart's stepped light pool (fire2 over fire1) under
+  the rib cage: the glow spilling to the floor, which also anchors the brightest point.
+- **small 44×34:** same composition, reduced + hand-patched: cloak repaint (kept), RIBS_SMALL (kept), new
+  SKULL_SMALL (clean planes: lit top, side face, underside, the jaw line, eye socket; the reduction's stray inner
+  ink and lit pixels on the underside removed), streams reduced to their first 2×2 / 2×1 chips (no lone pixels),
+  the heart's pool on row 32.
+- **Numbers (big / small):** off-palette 0, tones 15 / 15 (backdrop 5), isolated 3.9 % / 4.9 %, checker 8 px
+  (0.15 %) / 1 px (0.07 %), outline ink 100 % / 94 %, focus in box, lead 8 / 4, not AUTO.
+- **Deviations (self-critique vs KART_RESIMLERI):** subject fill 89 % / 90 % (rule 60–75 %): the §7.1 crop (hood
+  peak → knees + heap) fills the window by design, like crystal_wyrm's 93 %. The wrist crown's 2-px peak sits 1 px
+  under the visible top: hood + hanging beak span 61 of the 64 visible rows, so 4 px of air at the top would put the
+  beak tip on the bottom bezel; the peak is a point, not a parallel contour, so it was kept. The eye (fire3) is a
+  second bright spot; the heart's gold4 stays the single brightest pixel.
+- **Cut-in (§7.2):** the hood's back edge ran into the portrait's left / bottom edge (a visible crop line inside
+  the band): it now rounds off on plate-sized scallops (`BACK_HEM`) and the hem ends above the frame bottom. The
+  lens glint landed on a hem ember (the eye was below the top-45 % search region of `findEyes`): the skull moved
+  8 px up, the glint is on the eye in P1 and P2. The beak was clipped by the right edge on f2–f4: the skull moved
+  11 px left (the head now emerges from the hood's shadow) and the hook got deeper (a vulture hook, not a tube).
+  Holds unchanged (900 ms), p2 relight unchanged.
+- **Tests:** `tests/art/ashen_drake.test.ts` 12/12; `tests/art/cardface-v3.test.ts` only the known lane-D
+  `scrap_raiders` G1 failure; `tests/art tests/v3 tests/view` 499 passed / 4 failed (the 4 known failures of other
+  owners). Card files typecheck clean.
+- **Evidence:** `shots/kart-a/ashen_drake/cardart/` — `final-cmp.png` (ashen vs crystal_wyrm, big | small×2 |
+  small, ×3), `final-big.png` / `final-small.png` (×8 / ×12), `final-faces.png` (`?dev=ashen-card`: 1× faces,
+  3× faces with crystal_wyrm and magma_titan, board tiles), `final-board.png` (tiles ×4), `e9-hand.png` (hand ×5),
+  iterations `e1…e9*`; cut-in `ci-sheet-4.png` (5 frames), `ci-f4-p1.png` / `ci-f3-p2.png` (in the band, glint
+  marked), `ci-f3-zoom.png` (×3).
+- **Remaining weaknesses:** at 1× the card is the darkest of the three aces (DARK attribute, grey hood) and the hood
+  still reads partly as a textured column; on the board tile the picture is a dark blob with an orange point; the
+  cut-in eye is small and the crest spines are plain triangles.

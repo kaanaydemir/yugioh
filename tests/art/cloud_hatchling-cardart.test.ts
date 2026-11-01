@@ -45,10 +45,11 @@ describe('cloud_hatchling card art v3', () => {
   it('keeps the WIND light: leaf tones, no foreign light colour beyond the sky and the far cloud sea', () => {
     for (const l of [r0.big, r0.small]) {
       const foreign = foreignBackdropTones(l.backdrop, 'WIND');
-      for (const c of foreign) expect([PAL.night2, PAL.night3, PAL.night4, PAL.steel]).toContain(c);
+      for (const c of foreign) expect([PAL.night1, PAL.night2, PAL.night3, PAL.night4]).toContain(c);
       let leaf = 0;
       for (let y = 0; y < l.backdrop.h; y++) for (let x = 0; x < l.backdrop.w; x++) if (l.backdrop.get(x, y) === PAL.leaf1 || l.backdrop.get(x, y) === PAL.leaf2) leaf++;
-      expect(leaf).toBeGreaterThan(l.backdrop.w * l.backdrop.h * 0.15);
+      // the wake crescent (critic r2: the old 15 % disc swallowed the ring) still carries the WIND colour at 1×
+      expect(leaf).toBeGreaterThan(l.backdrop.w * l.backdrop.h * 0.08);
     }
   });
 

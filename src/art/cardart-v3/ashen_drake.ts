@@ -7,17 +7,20 @@
 //       right third with 8 px of air in front of the beak, the rib cage with the heart; the far cloak's back edge
 //       bleeds off the left decisively (no tangent), the legs off the bottom. The sprite's arena rim (void2 on
 //       the outer contour) is relit to the DARK card light's void3 (§3); the plate texture's 2×2 checkers are
-//       resolved in the card's copy (§10). Added: an ash heap the cloak's hem sinks into (bottom left, stepped
-//       stone2 / stone1 / stone0 with two buried embers); the ash streams (R1, blowing RIGHT): plate chips torn
-//       off the hood's front edge drifting right across the eclipse in three loose streams with ember chips,
-//       above the neck so the air in front of the eye stays clear; the eye a 2-px slit.
+//       resolved in the card's copy (§10). Added: an ash heap the hem and the talons sink into (the bottom rows,
+//       stepped stone3 crest / stone2 / stone1 / stone0 with buried ember seams) and, on its crest under the rib
+//       cage, the heart's light pool (fire2 over fire1, stepped: the glow spilling down through the bars); the
+//       ash streams (R1, blowing RIGHT): plate chips peeling off the hood's front edge in three curving streams,
+//       shrinking and spreading out as they climb (one gesture, not a scatter), above the neck so the air in
+//       front of the eye stays clear; the eye a 2-px slit.
 //       The brightest point is the heart (the sprite's fire4 knot round ONE gold4).
 // small 44×34, the SAME composition (§1 "small made from big, then patched"): the big subject 2:1 (kit
 //       reduceSubject), then by hand: the cloak repainted in clean bands (the reduction turns the 1-px plate
 //       texture into a dapple) — the far cloak a value darker behind a stone0 crease, the near cloak stone3 lit
 //       band / stone2 body / stone1 turn / void3 rim with staggered 4-px plate scallops; the rib cage redrawn
-//       (RIBS_SMALL: bars, ember gaps, the heart a fire4 knot round ONE gold4); the eye one fire3 pixel in a
-//       stone0 socket; the flakes and embers placed natively at 1×. Never autoSmall.
+//       (RIBS_SMALL: bars, ember gaps, the heart a fire4 knot round ONE gold4); the skull recoloured in clean
+//       planes (SKULL_SMALL: lit top, side face, underside, the jaw line, the eye one fire3 pixel in a stone0
+//       socket); the streams' first chips, the embers and the heart's pool placed natively at 1×. Never autoSmall.
 // Backdrop: the kit's DARK recipe — the void eclipse centred 4 px behind the heart (§2: the light shape frames
 // the focus), wide (r 44): its stepped corona rings the whole drake — up the hood's back, through the arch of the
 // neck and behind the hanging skull — so the silhouette reads against the light; no floor (the drake perches
@@ -56,7 +59,9 @@ const HEART: V = [56 + OX, 59 + OY];
 const EYE: V = [85 + OX, 53 + OY];
 
 /** the heap's top line (big px), left → right: it rises under the hem and falls away under the rib cage */
-const HEAP: V[] = [[-1, 60], [4, 58], [9, 57], [14, 58], [19, 60], [24, 62], [28, 65], [30, 68]];
+const HEAP: V[] = [[-1, 60], [4, 58], [9, 57], [14, 58], [19, 60], [25, 62], [31, 63], [39, 63], [45, 64], [50, 66], [53, 69]];
+/** the heap's right end (big px) */
+const HEAP_X1 = 53;
 
 function heapTop(x: number): number {
   for (let i = 0; i < HEAP.length - 1; i++) {
@@ -69,45 +74,92 @@ function heapTop(x: number): number {
 
 function paintHeap(): PixelCanvas {
   const h = new PixelCanvas(88, 68);
-  for (let x = 0; x < 30; x++) {
+  for (let x = 0; x < HEAP_X1; x++) {
     const t = heapTop(x);
     const lump = (x * 7) % 11 < 2 ? -1 : 0; // ragged crest
-    for (let y = t + lump; y < 68; y++) {
-      const d = y - (t + lump);
-      h.set(x, y, d < 2 ? PAL.stone2 : d < 5 ? PAL.stone1 : PAL.stone0);
+    const top = t + lump;
+    // the slope faces the key light where the line climbs or stays flat (left of the summit): a lit crest
+    const lit = heapTop(x + 1) <= t;
+    for (let y = top; y < 68; y++) {
+      const d = y - top;
+      h.set(x, y, d === 0 && lit ? PAL.stone3 : d < 2 ? PAL.stone2 : d < 5 ? PAL.stone1 : PAL.stone0);
     }
   }
   return h.outline(PAL.ink);
 }
 
 /**
- * The ash streams (R1 "kanatlarından kül akar", blowing RIGHT): flakes torn off the hood's flaking front edge,
- * drifting right and a little up across the eclipse in three loose streams, big near the hood (3×2 plates with a
- * lit corner), smaller and sparser as they go (2×2, 2×1). The air in front of the eye stays clear (they stay
- * above the neck). A flake is a plate chip, flat stone2 with a stone3 lit corner; airborne particles ride the
- * light layer with the embers (an effect, like the cinematic's ash motes: never outlined, IŞ-9).
+ * The ash streams (R1 "kanatlarından kül akar", blowing RIGHT): the hood's plates peel off its flaking front
+ * edge and ride the wind to the right in three curving streams. Each stream is a run of plate chips: the first
+ * still half on the outline (a plate just lifting), then smaller and further apart as they go — the spacing
+ * grows, the chips shrink (4×3 → 3×2 → 2×2 → 2×1), the path climbs on a slow curve — so the eye reads one
+ * gesture, not a scatter. A chip is a tiny plate under the key light: stone3 lit top-left corner, stone2 face,
+ * stone1 lower-right. One ember rides each long stream. They cross the eclipse's corona (grey on violet) and
+ * stay above the neck, so the air in front of the eye stays clear. Airborne ash rides the light layer like the
+ * cinematic's motes (an effect: never outlined, IŞ-9).
  */
-const FLAKES: readonly (readonly [number, number, number, number])[] = [
-  // stream 1 (off the crown)
-  [47, 9, 3, 2], [53, 8, 2, 2], [58, 6, 2, 1], [64, 5, 2, 1], [71, 4, 2, 1],
-  // stream 2 (off the hood's front)
-  [46, 17, 3, 2], [52, 15, 2, 2], [57, 14, 2, 1], [63, 12, 2, 1], [70, 11, 2, 1], [77, 9, 2, 1],
-  // stream 3 (off the lower front, above the neck)
-  [48, 25, 3, 2], [54, 23, 2, 2], [60, 21, 2, 1], [67, 19, 2, 1],
+interface Stream {
+  readonly x: number;
+  readonly y: number;
+  /** chips: [dx, dy, w, h] from the root, big px */
+  readonly chips: readonly (readonly [number, number, number, number])[];
+  /** the chip index an ember replaces the last pixel of (or none) */
+  readonly ember?: number;
+}
+const STREAMS: readonly Stream[] = [
+  // off the crown, climbing
+  { x: 44, y: 8, chips: [[1, 0, 4, 3], [7, -1, 3, 2], [13, -3, 3, 2], [20, -5, 2, 2], [28, -7, 2, 1], [37, -8, 2, 1]], ember: 3 },
+  // off the hood's front, the long one
+  { x: 44, y: 16, chips: [[1, 0, 4, 3], [6, 0, 3, 3], [12, -1, 3, 2], [18, -3, 3, 2], [25, -4, 2, 2], [33, -6, 2, 1], [42, -7, 2, 1]], ember: 2 },
+  // off the lower front, short, above the neck
+  { x: 44, y: 24, chips: [[1, 0, 3, 2], [7, -1, 2, 2], [14, -2, 2, 1]] },
 ];
-function paintStreams(): PixelCanvas {
-  const c = new PixelCanvas(88, 68);
-  for (const [x, y, w, h] of FLAKES) {
-    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) c.set(x + i, y + j, PAL.stone2);
-    if (w * h >= 4) c.set(x, y, PAL.stone3);
-    if (w * h >= 6) c.set(x + w - 1, y + h - 1, PAL.stone1);
+function paintStreams(c: PixelCanvas, k: number): void {
+  for (const s of STREAMS) {
+    s.chips.forEach(([dx, dy, w, h], n) => {
+      const x = Math.round((s.x + dx) * k);
+      const y = Math.round((s.y + dy) * k);
+      if (k < 1) {
+        // the small: the first chips only, as 2×2 / 2×1 plates (a lone pixel would read as noise at 1×);
+        // the ember stays as one fire2 spark where its chip was
+        if (n === s.ember) c.set(x, y, PAL.fire2);
+        else if (n < 4) {
+          c.set(x, y, PAL.stone2).set(x + 1, y, PAL.stone2);
+          if (n === 0) c.set(x, y + 1, PAL.stone1).set(x + 1, y + 1, PAL.stone1);
+        }
+        return;
+      }
+      for (let j = 0; j < h; j++)
+        for (let i = 0; i < w; i++) {
+          let tone: number = PAL.stone2;
+          if (w * h >= 4 && i === 0 && j === 0) tone = PAL.stone3;
+          else if (w * h >= 6 && i === w - 1 && j === h - 1) tone = PAL.stone1;
+          c.set(x + i, y + j, tone);
+        }
+      if (n === s.ember) c.set(x + w - 1, y + h - 1, PAL.fire2);
+    });
   }
-  return c;
 }
 
-/** embers riding the streams and smouldering in the heap (light layer, never outlined): 2×1 fire chips */
+/**
+ * The heart's light spilling down through the rib gaps onto the heap under the talons (golden rule 3: the glow
+ * on the floor): a stepped pool on the heap's crest, fire2 over fire1 right under the heart, fire1 further out.
+ * Light layer, drawn over the crest rows.
+ */
+function paintHeartPool(c: PixelCanvas): void {
+  const cx = HEART[0] + 1;
+  for (let x = 0; x < HEAP_X1; x++) {
+    const d = Math.abs(x - cx);
+    if (d > 11) continue;
+    const top = heapTop(x) + ((x * 7) % 11 < 2 ? -1 : 0);
+    c.set(x, top, d <= 5 ? PAL.fire2 : PAL.fire1);
+    if (d <= 5) c.set(x, top + 1, PAL.fire1);
+  }
+}
+
+/** embers smouldering in the heap (light layer, never outlined): a short fire1 seam round a fire2 core */
 const EMBERS: readonly [number, number, number][] = [
-  [60, 10, PAL.fire2], [66, 16, PAL.fire1], [51, 20, PAL.fire2], [8, 60, PAL.fire2], [17, 62, PAL.fire1],
+  [6, 62, 4], [18, 64, 3], [25, 66, 2],
 ];
 
 /**
@@ -130,9 +182,10 @@ function paintBig(l: ArtLayers): void {
   paintBackdrop(l.backdrop, 'DARK', { focus: [HEART[0] - 4, HEART[1] - 4], radius: 44, horizon: 68 });
   l.subject.blit(sprite(), OX, OY);
   dechecker(l.subject);
-  l.light.blit(paintStreams(), 0, 0);
   l.subject.blit(paintHeap(), 0, 0);
-  for (const [x, y, c] of EMBERS) l.light.set(x, y, c).set(x + 1, y, c);
+  paintStreams(l.light, 1);
+  paintHeartPool(l.light);
+  for (const [x, y, n] of EMBERS) for (let i = 0; i < n; i++) l.light.set(x + i, y, i === n >> 1 ? PAL.fire2 : PAL.fire1);
   // the eye: the sprite's fire3 pixel opened into a 2-px slit toward the front
   l.light.set(EYE[0] + 1, EYE[1], PAL.fire2);
 }
@@ -202,8 +255,26 @@ const RIBS_SMALL: readonly string[] = [
   'knhhgn3d',
   'knnnnn3d',
 ];
-const SMALL_FLAKES: readonly V[] = [[24, 4], [29, 3], [24, 8], [29, 7], [35, 6], [26, 12], [32, 11]];
-const SMALL_EMBERS: readonly [number, number, number][] = [[30, 5, PAL.fire2], [26, 10, PAL.fire2], [4, 30, PAL.fire2], [9, 31, PAL.fire1]];
+/**
+ * The skull of the small picture (x 26…37, y 20…30), recoloured by hand inside the reduced outline: the lit
+ * top plane (stone3) along the upper edge, the side face stone2, the underside stone1, the eye one fire3 pixel
+ * in a stone0 socket under a stone3 brow, the jaw a clean ink line running down to the hook, the hook's
+ * underside on the void3 rim. '.' keeps the reduced pixel (the outline and the backdrop).
+ */
+const SKULL_SMALL: readonly string[] = [
+  '23333221',
+  '22333333',
+  '.22222333',
+  '..2222000',
+  '..11222233',
+  '..112222233',
+  '...11222223',
+  '.....111k223',
+  '......d11k23',
+  '........1dk2',
+  '..........3d',
+];
+const SMALL_EMBERS: readonly [number, number, number][] = [[3, 31, PAL.fire2], [9, 32, PAL.fire1]];
 
 function paintSmall(l: ArtLayers, _f: number, big: ArtLayers): void {
   l.backdrop.blit(reduce2x(big.backdrop, { min: 1, tie: 'first' }), 0, 0);
@@ -215,12 +286,13 @@ function paintSmall(l: ArtLayers, _f: number, big: ArtLayers): void {
   dechecker(s);
   // the rib cage by hand: bars and ember-lit gaps, the heart a fire4 knot round ONE gold4 (the focus)
   patch(s, RIBS_SMALL, SKEY, 16, 23);
-  // the eye: one fire3 pixel in a stone0 socket
-  s.set(32, 23, PAL.stone0).set(34, 23, PAL.stone0);
+  patch(s, SKULL_SMALL, SKEY, 26, 20);
   l.subject.blit(s, 0, 0);
-  for (const [x, y] of SMALL_FLAKES) l.light.set(x, y, PAL.stone2).set(x + 1, y, PAL.stone2);
+  paintStreams(l.light, 0.5);
   l.light.set(33, 23, PAL.fire3);
   for (const [x, y, c] of SMALL_EMBERS) l.light.set(x, y, c);
+  // the heart's pool on the heap's crest under the cage (row 32; row 33 is under the bezel)
+  for (let x = 14; x <= 25; x++) l.light.set(x, 32, Math.abs(x - 19.5) <= 2 ? PAL.fire2 : PAL.fire1);
 }
 
 const ashenArt: CardArtV3 = {

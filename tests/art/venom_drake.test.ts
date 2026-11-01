@@ -5,7 +5,7 @@
 // direct-attack seam), the shared hole mask grows with its step, and the card picture paints at both sizes
 // inside the palette.
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import art, { VENOM_DRAKE_DISTINCTION } from '../../src/art/monsters-v3/venom_drake-wyvern';
 import card from '../../src/art/cardart-v3/venom_drake';
 import { holeAt } from '../../src/art/monsters-v3/venom_drake-holes';
@@ -15,6 +15,10 @@ import { PAL } from '../../src/art/palette';
 import { artStats, renderArt } from '../../src/art/cardart-v3/_kit';
 import cutin from '../../src/art/cutins-v3/venom_drake';
 import type { AnyMonsterAnim } from '../../src/art/types';
+import { findGlint } from '../../src/dev/previews/cutin';
+
+// the cut-in dev preview imports Phaser (a browser module) for its scene code; findGlint itself is pure
+vi.mock('phaser', () => ({ default: {} }));
 
 const BASE: readonly AnyMonsterAnim[] = ['idle', 'guard', 'attack', 'roar', 'hit'];
 const EXTRAS: readonly AnyMonsterAnim[] = ['toGuard', 'fromGuard', 'hitHeavy', 'hitMagic', 'summon', 'death', 'revive', 'special'];
@@ -201,5 +205,15 @@ describe('venom_drake v3 (scorpion wyvern)', () => {
         // f0 / f1 the bulb is lit but not ignited; from the flare (f2) on, ONE gold4 core
         expect(g4).toBe(f < 2 ? 0 : 1);
       }
+  });
+
+  it('cut-in v3 (critic r5): the lens glint lands on the bulb\'s gold4 core, P1 and the P2 relit set', () => {
+    for (const lightFrom of ['left', 'right'] as const) {
+      const p = new PixelCanvas(cutin.w, cutin.h);
+      cutin.draw(p, cutin.frames - 1, { lightFrom });
+      const g = findGlint(p);
+      expect(g, lightFrom).not.toBeNull();
+      expect(p.get(g!.x, g!.y), lightFrom).toBe(PAL.gold4);
+    }
   });
 });

@@ -1478,3 +1478,46 @@ Every claim was re-checked in the tree before acting on it. All 19 findings were
   frames, both sizes), `final/faces.png` (1× faces ×4 and ×1: cloud_hatchling, crystal_wyrm, magma_titan, ember_wolf,
   venom_drake, storm_hawk), `final/board-hand.png` (1× board + hand with crystal_wyrm / magma_titan),
   `final/hand-card-x6.png`; iterations `i1`–`i33`; sprite references `ref-baby*.png`.
+
+### Card art — critic round 2 fixes (2026-11-01)
+- **Files:** `src/art/cardart-v3/cloud_hatchling.ts`, `tests/art/cloud_hatchling-cardart.test.ts` (two thresholds, below).
+- **Speech-balloon read (HIGH 1) + green-on-green (MEDIUM 4, option a):** the 15 % leaf2 disc is gone. The light
+  shape is now the ring's **wake**: one thick stepped crescent (5-px leaf1 outer band, leaf2 inner; small 3 px)
+  behind the ring's line of flight, open to the upper right, the ring on its concave edge so its hole and white
+  crescent sit on the dark sky (`paintWake`, stray single-pixel tips removed). It clears the head except the muzzle's
+  shadow corner, where the outline + leaf3 rim separate it. Backdrop leaf share ≈ 11 % (test threshold 15 % → 8 %).
+- **Weak ring (HIGH 2) + trailing edge (MED-HIGH 3) + edge tangent (MEDIUM 6):** main ring solid white leading
+  crescent (small t 2.5 → 3), trailing edge night3 (dark on the green wake) instead of steel. A smaller mist/steel
+  **hiccup ring** sits between the mouth and the ring (big 6×10 ellipse; small a hand-drawn 3×4 loop, since an
+  ellipse that small makes checkerboards), so the picture reads as rings blown out in a row. Big ring moved to
+  (73, 20) to make room; small ring (34, 9), rx 3.8 / ry 5.9: right edge at x 38, 4 px of air to the ink edge.
+  Streaks cut to two short ones (big) / one (small).
+- **Cowlick (MEDIUM 5):** three smaller lobes at the back of the crown, shrinking backward (blown left), mist body,
+  steel underside, a 1-px white top line on the lit side only; the old small hand patch (four-lobe grey "hat") is
+  removed and replaced by the native redraw plus one seam pixel.
+- **Dragon cue (MEDIUM 7):** the wing nub added behind the head (leaf2 fan, two leaf1 creases, ink outline, leaf3
+  rim); in small it bleeds off the left edge as a 3-px leaf2 hint.
+- **Rim (LOW-MED 8), decision:** the rim is now the WIND recipe's **leaf3** (option "switch the rim"), so the green
+  light behind is its source. Option 4(b) (a water light) was not taken: the kit makes the attribute colour of the
+  light shape mandatory (WIND = leaf). water4 stays only in the mouth streaks. The small egg's water4 pixels are gone.
+- **Egg (LOW-MED 9):** the nest is lowered about 5 px (big), so 7 px of the round belly with its earth3 shadow side
+  and speckles shows. Small: the band's right end curves down as a 2-step earth3 shoulder.
+- **Sea (LOW 10):** one flat night3 silhouette with a 1-px night4 lit top line (computed on the union of the lobes,
+  so no internal seams); only the nest carries mist. The sky moved to night1 / night2 so the sea separates from it
+  (test's allowed foreign sky tones: night1–night4).
+- **Tail cap (LOW 11):** redrawn as the sprite's cup: round bottom, zigzag teeth **up**, earth2 inside showing in the
+  notches, earth4 lit plane, earth3 shadow side, a 2-px skin4 highlight only.
+- **Eye (LOW 12):** big: a 2-px leaf2 scrunch band above the chevron and a 3-px leaf3 tear at its back corner. Small:
+  a 1-row leaf2 band, and the chevron is redrawn in 2-px stairs (the 1-px diagonal was 4 of the small's checkers).
+- **Numbers (`shots/kart-a/cloud_hatchling/art/r2/final/stats.txt`):** big 20 tones / backdrop 6, isolated 2.0 %,
+  checker 20 (limit 27), fill 60.4 %, outline 100 % ink, lead 26, bright centroid 5.1 px from the ring (was 16.1);
+  small 18 tones / backdrop 6, isolated 2.7 %, checker 0, outline 90.7 %, lead 18, bright centroid 8.5 px (limit 9:
+  the cowlick's white top lines pull it).
+- **Tests:** `tests/art/cloud_hatchling-cardart.test.ts` 5/5; `tests/art/` 346 passed, 6 failed = the 4 known lane-start
+  failures + 2 in venom_drake (another agent's work in progress); `tsc` clean in my file.
+- **Remaining weaknesses:** at 1× the wake + ring still reads partly as a green "comet" blob at the top right rather
+  than a clean arc; the small hiccup ring is 3×4 px and sits against the snout tip; the cowlick is grey-led (mist)
+  rather than the sprite's white, to keep the ring the brightest point.
+- **Evidence (`shots/kart-a/cloud_hatchling/art/r2/`):** `i0` (baseline), `i1`–`i12` iterations, `final/sheet.png`,
+  `final/big-x1|x3|x6.png`, `final/small-x1|x6|x8.png`, `final/frames.png` (6 frames, both sizes),
+  `final/hand-1x.png` (duel `kaChSummon`, look=v3), `final/hand-card-x6.png`, `final/hand-card-1x-dev2.png`.

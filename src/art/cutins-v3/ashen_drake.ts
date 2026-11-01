@@ -9,6 +9,10 @@
 //     streaming back (stone1 → void1 → void2), the vulture's hooked snout and slack jaw;
 //   - below the jaw the RIB CAGE with the ember heart — the slam's subject.
 // One key light (top-left; P2 relit from the right through `lightFrom`), flat bands, 1-px ink outline.
+// Framing (card-art stage): the hood's back edge rounds off inside the band on plate-sized scallops (BACK_HEM)
+// instead of running into the portrait's edge; the skull sits high enough that its eye is inside the lens-glint
+// search region (top 45 % of the bounds, cutin.ts findEyes) and far enough left that the hooked beak stays whole
+// on the slam frames.
 //
 // Rhythm (holds; the recipe's cut-in rhythm is flare 300 / slam 430 / exit 720):
 //   f0 180  the stare: the head deep in the hood's shadow, the eye a dull fire1 (one fire4 core: the lens
@@ -58,11 +62,34 @@ const POSES: readonly Pose[] = [
 const HOLDS: readonly number[] = [180, 120, 130, 140, 330];
 
 // the skull in skull space (x along the snout, y down), the sprite's polygons (ashen_drake-rig.ts)
-const CRANIUM: V[] = [[-3, 2], [-3.4, -1.5], [-1.5, -4.5], [2, -5.5], [6, -5], [8.6, -3.6], [11, -2.7], [14, -1.7], [16.6, -0.5], [18.4, 1.2], [18.8, 3.4], [18, 5.6], [17, 5.2], [16.6, 3.4], [12, 2.6], [6, 2.7], [0, 3]];
+const CRANIUM: V[] = [[-3, 2], [-3.4, -1.5], [-1.5, -4.5], [2, -5.5], [6, -5], [8.6, -3.6], [11, -2.7], [14, -1.7], [16.6, -0.5], [18.4, 1.2], [19.1, 3.6], [18.6, 6.2], [17.6, 7.9], [16.9, 6.3], [16.5, 3.6], [12, 2.6], [6, 2.7], [0, 3]];
 const TOPPLANE: V[] = [[-2.6, -1.6], [-1.2, -4.2], [2, -5.1], [6, -4.6], [8.4, -3.3], [11, -2.5], [14, -1.5], [16.6, -0.3], [18, 1], [15, 0.1], [11, -0.9], [8, -1.6], [4, -2.6], [0, -2.4]];
 const JAW: V[] = [[0.6, 2.7], [8, 2.7], [14.6, 2.9], [15, 3.9], [12.6, 5.3], [8, 6.1], [3, 5.9], [0, 4.8]];
 const BROW: V[] = [[3.2, -3.9], [9, -3.7], [10, -2.3], [8.2, -1.1], [5, -1.7]];
 const SK = 4.4;
+
+/**
+ * The hood's back edge (frame px, bottom → up): it rounds off inside the band instead of running into the
+ * portrait's edge (critic: a straight cut there reads as a crop), ragged where the embers ate the hem —
+ * plate-sized teeth, every other one bitten deeper.
+ */
+const BACK_HEM: readonly V[] = (() => {
+  const out: V[] = [];
+  const a: V = [46, 141];
+  const b: V = [5, 84];
+  const n = 14;
+  const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const nx = (b[1] - a[1]) / len; // the outward normal (away from the hood's body: left / down)
+  const ny = -(b[0] - a[0]) / len;
+  for (let i = 0; i <= n; i++) {
+    // the edge bows outward (a rounded back), the teeth bite inward
+    const t = i / n;
+    const bow = Math.sin(t * Math.PI) * 8;
+    const bite = i % 2 ? 3 : 0;
+    out.push([a[0] + (b[0] - a[0]) * t + nx * (bow - bite), a[1] + (b[1] - a[1]) * t + ny * (bow - bite)]);
+  }
+  return out;
+})();
 
 const hash = (a: number, b: number, c = 0): number => {
   let h = (a * 374761393 + b * 668265263 + c * 2147483647) | 0;
@@ -98,8 +125,9 @@ const factory: CutinFactory = (kit) => {
 
   /** the hood's outline (frame px, lift applied): the crown, the wrist, the front edge, the opening, the hem */
   const hoodPoly = (lift: number): V[] => [
-    [-2, 146], [-2, 60], [6, 34], [22, 14], [44, 3 - lift], [70, 0 - lift], [92, 4 - lift], [108, 12 - lift],
-    [118, 26 - lift], [122, 42 - lift * 0.5], [118, 56], [104, 62], [92, 82], [86, 104], [80, 126], [70, 146],
+    ...BACK_HEM,
+    [5, 72], [9, 48], [20, 26], [44, 3 - lift], [70, 0 - lift], [92, 4 - lift], [108, 12 - lift],
+    [118, 26 - lift], [122, 42 - lift * 0.5], [118, 56], [104, 62], [92, 82], [86, 104], [80, 126], [74, 146], [62, 139], [56, 143],
   ];
   /** the dark opening the neck comes out of */
   const opening = (lift: number): V[] => [[118, 50 - lift * 0.5], [104, 58], [92, 78], [86, 100], [100, 102], [112, 86], [120, 66]];
@@ -112,7 +140,7 @@ const factory: CutinFactory = (kit) => {
     const ln = Math.hypot(L0[0], L0[1], L0[2]);
     const light: readonly [number, number, number] = [L0[0] / ln, L0[1] / ln, L0[2] / ln];
     // ---- the skull frame
-    const S0: V = [126 + P.hx, 74 + P.hy];
+    const S0: V = [115 + P.hx, 66 + P.hy];
     const T = (x: number, y: number): V => {
       const r = rotV([x * SK, y * SK], P.pitch);
       return [S0[0] + r[0], S0[1] + r[1]];

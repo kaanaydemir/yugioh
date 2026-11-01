@@ -46,6 +46,8 @@ export interface BustPose {
   drop: number;
   /** the drop's landing y (units) */
   dropTo: number;
+  /** the hiss's acid glow in the throat (cut-in slam frame) */
+  acid?: boolean;
 }
 
 export const BUST_REST: BustPose = { jaw: 0.25, sac: 1, sacHot: false, eye: 0, hot: 1, hx: 0, hy: 0, tight: 0, bead: 1, drop: -1, dropTo: 33 };
@@ -65,6 +67,21 @@ export interface BustOpts {
   cape?: boolean;
   /** the hand-card level of detail: no quills, no far horn, no jaw frill (they read as noise at 1×) */
   lite?: boolean;
+  /**
+   * the cut-in's band separation (critic r5): the hide lifted off the DARK band (no void1 plane on the
+   * silhouette: the tail's shadow band and the cape void2, the lower jaw mag1 over a void2 underside), a
+   * continuous rim on every silhouette pixel the key light does not touch, the stinger hooked DOWN over the
+   * snout (the drop lands on the face it corrodes), one acid-eaten hole in the cape, the 2-px fang pairs.
+   */
+  cutin?: boolean;
+  /** (card, critic r5) the tail's arch lowered by this many units (its two inner control points), closing the dead pocket inside it */
+  archDrop?: number;
+  /** (hand card) the hide tail's radius multiplier: a thin, inked arch that survives 1× */
+  tailR?: number;
+  /** (card) the sac's centre below the jaw's underside, in sac radii (default 0.6: the cut-in's hanging sac) */
+  sacDrop?: number;
+  /** (hand card) the hide tail's own path (units), e.g. rising from behind the head so its curl reads whole */
+  tailPath?: readonly [V, V, V, V];
 }
 
 export interface BustOut {
@@ -104,6 +121,12 @@ const HOOK: readonly [V, V, V] = [
   [37.4, 11.0],
   [39.4, 11.6],
   [39.8, 14.4],
+];
+/** the cut-in's sickle hook: out from the bulb's front, then down and back over the snout */
+const HOOK_DOWN: readonly [V, V, V] = [
+  [37.9, 11.6],
+  [37.8, 15.2],
+  [34.4, 16.2],
 ];
 
 // head space (x along the snout, y down; origin = H0)
@@ -283,15 +306,19 @@ export function paintVenomBust(P: BustPose, o: BustOpts): BustOut {
   };
   const lineW = Math.max(1, Math.round(S * 0.5)); // a "thin" detail's width at this density
   const big = S >= 3;
+  const lift = o.cutin === true;
+  const HK = lift ? HOOK_DOWN : HOOK;
 
   const matter = new PixelCanvas(w, h);
   const light = new PixelCanvas(w, h);
 
   // ---------------------------------------------------------- 1. the tail (behind everything)
   const tail = new PixelCanvas(w, h);
-  const tailPath = bez(...(TAIL_HIDE.map(([x, y]) => U(x, y)) as [V, V, V, V]), 28);
+  const ad = o.archDrop ?? 0;
+  const tailPath = bez(...((o.tailPath ?? TAIL_HIDE).map(([x, y], i) => U(x, y + (i === 1 || i === 2 ? ad : 0))) as [V, V, V, V]), 28);
   const SEG = 7; // hide segments in view
-  bandTube(tail, tailPath, 3.0 * S, 1.75 * S, LV, (s, t, d) => {
+  const tr = o.tailR ?? 1;
+  bandTube(tail, tailPath, 3.0 * S * tr, 1.75 * S * Math.max(tr, 0.7), LV, (s, t, d) => {
     // the plate joints: a crease across the tube at each segment's end, the plate's front edge one value lighter
     const seg = t * SEG;
     const fr = seg - Math.floor(seg);
@@ -301,12 +328,13 @@ export function paintVenomBust(P: BustPose, o: BustOpts): BustOut {
     if (joint) return PAL.void0;
     if (s > 0.42) return fr < 0.18 && d > 0.5 ? PAL.void3 : PAL.mag1;
     if (s > -0.35) return PAL.void2;
-    return PAL.void1;
+    return lift ? PAL.void2 : PAL.void1;
   });
   // the chitin segments
   const chit = new PixelCanvas(w, h);
   const cp = [U(...CHIT[0]), U(...CHIT[1]), U(BULB_C[0] - 1.6, BULB_C[1] - 1.1)];
-  bandTube(chit, cp, 1.8 * S, 1.5 * S, LV, (s, t, d) => {
+  const cr = Math.max(tr, 0.6);
+  bandTube(chit, cp, 1.8 * S * cr, 1.5 * S * cr, LV, (s, t, d) => {
     const fr = (t * 2) % 1;
     if (d > 0.82 + 0.18 * Math.sin(Math.PI * Math.min(1, fr * 1.1))) return null;
     if (fr > 0.86) return PAL.stone1;
@@ -317,7 +345,7 @@ export function paintVenomBust(P: BustPose, o: BustOpts): BustOut {
   over(tail, chit, true);
   // the stinger hook: a tapering chitin claw, lit edge on its upper side
   const hook = new PixelCanvas(w, h);
-  const hp = bez(U(BULB_C[0] + 1.6, BULB_C[1] + 1.0), U(...HOOK[0]), U(...HOOK[1]), U(...HOOK[2]), 12);
+  const hp = bez(U(BULB_C[0] + 1.6, BULB_C[1] + (lift ? 1.4 : 1.0)), U(...HK[0]), U(...HK[1]), U(...HK[2]), 12);
   bandTube(hook, hp, 1.2 * S, 0.35 * S, LV, (s) => (s > 0.35 ? PAL.stone4 : s > -0.4 ? PAL.stone3 : PAL.stone1));
   // the bulb body: matter is only its casing ring (the venom is light)
   const bulbM = new PixelCanvas(w, h);
@@ -326,7 +354,7 @@ export function paintVenomBust(P: BustPose, o: BustOpts): BustOut {
   over(tail, bulbM, true);
   over(tail, hook, true);
   // motion lines along the tight arch (slam): short void3 dashes above the arch
-  if (P.tight > 0) {
+  if (P.tight > 0 && !lift) {
     for (let k = 0; k < 3; k++) {
       const i = 6 + k * 6;
       const a = tailPath[i];
@@ -349,10 +377,34 @@ export function paintVenomBust(P: BustPose, o: BustOpts): BustOut {
     cape.poly(C, PAL.void2);
     // a void1 web panel (the lower half) and ONE void0 fold line
     for (let y = 0; y < h; y++)
-      for (let x = 0; x < w; x++) if (cape.get(x, y) === PAL.void2 && y > U(0, 26)[1] + (x - U(0, 0)[0]) * 0.3) cape.set(x, y, PAL.void1);
+      for (let x = 0; x < w; x++) if (!lift && cape.get(x, y) === PAL.void2 && y > U(0, 26)[1] + (x - U(0, 0)[0]) * 0.3) cape.set(x, y, PAL.void1);
     line4(cape, U(4.4, 14.4), U(3.6, 36), PAL.void0, (c) => c !== null);
     // the wing bone along the front edge (chitin)
     line4(cape, U(4.4, 14.0), U(7.0, 17.6), PAL.stone3, (c) => c !== null);
+    if (lift) {
+      // ONE acid-eaten hole (critic r5: never an "o" glyph): an irregular cut-out showing the void0 dark
+      // behind the membrane, its LOWER inner lip lit leaf2 (the acid-eaten edge), an ink contact line round it
+      const HOLE: V[] = [[-1.1, -1.2], [-0.2, -1.7], [0.3, -0.8], [1.2, -0.6], [0.8, 0.5], [1.0, 1.2], [-0.1, 1.0], [-0.6, 1.6], [-0.9, 0.4], [-1.4, 0.1]];
+      const hp = HOLE.map(([x, y]) => U(3.5 + x, 21.2 + y));
+      const hm = new PixelCanvas(w, h);
+      hm.poly(hp, PAL.void0);
+      for (let y = 0; y < h; y++)
+        for (let x = 0; x < w; x++) {
+          if (!hm.isOpaque(x, y) || !cape.isOpaque(x, y)) continue;
+          // the lower lip: a hole pixel whose lower neighbour is membrane
+          const lip = !hm.isOpaque(x, y + 1) && cape.isOpaque(x, y + 1);
+          cape.set(x, y, lip ? PAL.leaf2 : PAL.void0);
+        }
+      // the ink contact line round the hole (on the membrane side, never on the lip's lower edge)
+      const ring: [number, number][] = [];
+      for (let y = 0; y < h; y++)
+        for (let x = 0; x < w; x++) {
+          if (hm.isOpaque(x, y) || !cape.isOpaque(x, y)) continue;
+          if (hm.isOpaque(x, y - 1) || hm.isOpaque(x - 1, y) || hm.isOpaque(x + 1, y)) ring.push([x, y]);
+        }
+      for (const [x, y] of ring) if (!hm.isOpaque(x, y - 1) || cape.get(x, y - 1) !== PAL.leaf2) cape.set(x, y, PAL.ink);
+      over(matter, cape, true);
+    } else {
     // eaten holes ringed leaf3 (light)
     const holes: [number, number, number][] = [
       [3.4, 21.0, 1.1],
@@ -378,6 +430,7 @@ export function paintVenomBust(P: BustPose, o: BustOpts): BustOut {
           const d = Math.hypot((x + 0.5 - c[0]) / 1.15, y + 0.5 - c[1]);
           if (d <= R) light.set(x, y, PAL.leaf3);
         }
+    }
     }
   }
 
@@ -410,7 +463,7 @@ export function paintVenomBust(P: BustPose, o: BustOpts): BustOut {
     const r = (NECK_R[0] + ((NECK_R[1] - NECK_R[0]) * i) / 20) * S;
     line4(neck, [a[0] + nx * sgn * r * 0.62, a[1] + ny * sgn * r * 0.62], [a[0] + nx * sgn * r * 1.1, a[1] + ny * sgn * r * 1.1 - 1], PAL.stone1, (c) => c === PAL.stone2);
     // scale teeth on the mid/shadow boundary
-    if (big || k % 2) line4(neck, [a[0] + nx * sgn * r * 0.15, a[1] + ny * sgn * r * 0.15], [a[0] + nx * sgn * r * 0.35 - S * 0.6, a[1] + ny * sgn * r * 0.35], PAL.void1, (c) => c === PAL.void2);
+    if (big) line4(neck, [a[0] + nx * sgn * r * 0.15, a[1] + ny * sgn * r * 0.15], [a[0] + nx * sgn * r * 0.35 - S * 0.6, a[1] + ny * sgn * r * 0.35], PAL.void1, (c) => c === PAL.void2);
   }
   over(matter, neck, true);
   // the weep-quills along the nape: hollow chitin spikes pointing back-up, a venom bead at each tip
@@ -421,7 +474,7 @@ export function paintVenomBust(P: BustPose, o: BustOpts): BustOut {
     [[7.0, 25.4], [3.0, 23.6]],
   ];
   const beads: V[] = [];
-  for (const [a0, b0] of quills) {
+  for (const [a0, b0] of big ? quills : quills.slice(0, 2)) {
     const a = U(a0[0] + P.hx * 0.5, a0[1] + P.hy * 0.5);
     const b = U(b0[0] + P.hx * 0.5, b0[1] + P.hy * 0.5);
     const hw = Math.max(1, 0.62 * S);
@@ -437,7 +490,8 @@ export function paintVenomBust(P: BustPose, o: BustOpts): BustOut {
     beads.push(b);
   }
   if (!o.lite) over(matter, quill, true);
-  else beads.length = 0;
+  // (critic r5) no venom beads on the card's quills: stray leaf points off the one-rim picture
+  if (o.lite || !big) beads.length = 0;
 
   // ---------------------------------------------------------- 4. the head
   const headL = new PixelCanvas(w, h);
@@ -453,18 +507,23 @@ export function paintVenomBust(P: BustPose, o: BustOpts): BustOut {
   if (!o.lite) headL.blit(farHorn, 0, 0);
   // ---------------------------------------------------------- 5. the sac (skin; the venom inside is light)
   const sacL = new PixelCanvas(w, h);
-  const sr = (2.0 + P.sac * 0.32) * S;
-  const scx = Hd(SAC_H[0] + P.sac * 0.15, SAC_H[1] + P.sac * 0.25 + P.jaw * 1.1);
+  // (critic r5) the sac hangs from the lower jaw: its centre follows the jaw's underside at its column (the
+  // gaping jaw never swallows it), its top 40 % tucked under the jaw so the two outlines join
+  const sr = (2.0 + P.sac * 0.32) * S + (P.sacHot && big ? 1 : 0);
+  const sacX = SAC_H[0] + P.sac * 0.15;
+  const jawUnder = 4.4 - Math.max(0, Math.min(1, (sacX - 3.6) / 6.4)) * 1.0;
+  const jawAt = Jw(sacX, jawUnder);
+  const scx: V = [jawAt[0], jawAt[1] + sr * (o.sacDrop ?? 0.6)];
   sacL.ellipse(scx[0], scx[1], sr * 1.08, sr, PAL.void1);
   // the throat (and the head over it) cast a void0 crescent on the sac's top; the skin's lit rim on the light side
   over(headL, sacL, true);
   // lower jaw
   const jaw = new PixelCanvas(w, h);
-  jaw.poly(JAW.map(([x, y]) => Jw(x, y)), PAL.void1);
-  jaw.poly(JAW_UNDER.map(([x, y]) => Jw(x, y)), PAL.void0);
-  // the gum line (mag1) on the jaw's top edge when it gapes
+  jaw.poly(JAW.map(([x, y]) => Jw(x, y)), lift ? PAL.mag1 : PAL.void1);
+  jaw.poly(JAW_UNDER.map(([x, y]) => Jw(x, y)), lift ? PAL.void2 : PAL.void0);
+  // the gum line (mag1; void3 on the cut-in's lifted mag1 jaw) on the jaw's top edge when it gapes
   if (P.jaw > 0.15) {
-    line4(jaw, Jw(0.0, 0.85), Jw(18.0, 1.15), PAL.mag1, (c) => c !== null);
+    line4(jaw, Jw(0.0, 0.85), Jw(18.0, 1.15), lift ? PAL.void3 : PAL.mag1, (c) => c !== null);
   }
   // the dark throat between the jaws
   const gape = new PixelCanvas(w, h);
@@ -473,7 +532,30 @@ export function paintVenomBust(P: BustPose, o: BustOpts): BustOut {
     gape.poly(g, PAL.void0);
     // the throat's dark back (ink) and a mag0 tongue lying on the lower jaw
     gape.poly([Hd(-1.4, 0.7), Hd(3.4, 0.9), Jw(3.0, 0.8), Jw(-0.4, 0.8)], PAL.ink);
+    // the hiss (cut-in slam): the acid glows in the throat behind the fangs — two stepped tones, leaf2 deep
+    // in the throat, leaf1 around it, only on the gape's dark
+    if (P.acid) {
+      const ga: V = Hd(9.6, 0.9);
+      const gb: V = Jw(9.6, 0.8);
+      const gc: V = [(ga[0] + gb[0]) / 2, (ga[1] + gb[1]) / 2];
+      for (let y = 0; y < h; y++)
+        for (let x = 0; x < w; x++) {
+          if (!gape.isOpaque(x, y)) continue;
+          const d = Math.hypot((x + 0.5 - gc[0]) / 1.6, y + 0.5 - gc[1]) / S;
+          if (d < 1.5) gape.set(x, y, PAL.leaf2);
+          else if (d < 3.0) gape.set(x, y, PAL.leaf1);
+        }
+    }
     if (P.jaw > 0.4) gape.poly([Jw(1.6, 0.6), Jw(8.8, 0.1), Jw(11.0, 0.5), Jw(9.4, 0.85), Jw(2.0, 0.9)], PAL.mag0);
+    // the card's mouth (critic r5): a 1-px leaf2 acid line along the throat's floor
+    if (!big && !o.lite && P.jaw > 0.4) {
+      const m = (x: number): V => {
+        const a = Hd(x, 0.8);
+        const b = Jw(x, 0.85);
+        return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2 + 0.5];
+      };
+      line4(gape, m(1.5), m(14.0), PAL.leaf2, (c) => c === PAL.void0 || c === PAL.mag0);
+    }
   }
   headL.blit(gape, 0, 0);
   over(headL, jaw, true);
@@ -483,9 +565,9 @@ export function paintVenomBust(P: BustPose, o: BustOpts): BustOut {
     p.poly([[base[0] - n, base[1]], [base[0] + n, base[1]], tip], shade);
     line4(p, [base[0] - n + (ls < 0 ? 0 : n), base[1]], tip, lit);
   };
-  if (P.jaw > 0.12) {
+  if (P.jaw > 0.12 && big) {
     tooth(headL, Jw(14.6, 1.1), Jw(14.9, -0.9 - P.jaw * 0.6), 0.45, PAL.stone4, PAL.stone2);
-    if (big) tooth(headL, Jw(11.2, 1.1), Jw(11.4, 0.0), 0.3, PAL.stone3, PAL.stone2);
+    if (big) tooth(headL, Jw(11.2, 1.1), Jw(11.4, -0.2 - P.jaw * 0.4), lift ? 0.42 : 0.3, PAL.stone3, PAL.stone2);
   }
   // upper head: void2 side, void1 lip band, the mag1 top plane
   const up = new PixelCanvas(w, h);
@@ -511,8 +593,9 @@ export function paintVenomBust(P: BustPose, o: BustOpts): BustOut {
   }
   // the eye socket (void0) — the iris is light
   const ec = Hd(...EYE_H);
-  const ew = Math.max(2, Math.round(1.4 * S));
-  const eh = Math.max(1, Math.round(0.55 * S));
+  // (critic r5) the card's eye is a 3-px slit eye (gold2 · ink · gold2, a gold3 lid pixel): never a pair
+  const ew = big ? Math.max(2, Math.round(1.4 * S)) : 1;
+  const eh = big ? Math.max(1, Math.round(0.55 * S)) : 1;
   for (let dy = -eh; dy <= eh; dy++)
     for (let dx = -ew - 1; dx <= ew + 1; dx++) {
       if (Math.abs(dx) / (ew + 1.2) + Math.abs(dy) / (eh + 0.8) > 1.05) continue;
@@ -522,7 +605,26 @@ export function paintVenomBust(P: BustPose, o: BustOpts): BustOut {
   // the upper fang (chitin) hanging at the lip near the tip
   const fangBase = Hd(15.4, 0.8);
   const fangTip = Hd(15.6, 0.8 + (big ? 1.7 : 1.4) + P.jaw * 0.2);
-  tooth(headL, fangBase, fangTip, 0.42, PAL.stone4, PAL.stone3);
+  if (big) {
+    tooth(headL, fangBase, fangTip, 0.42, PAL.stone4, PAL.stone3);
+    tooth(headL, Hd(12.2, 0.85), Hd(12.3, 0.85 + 1.4 + P.jaw * 0.15), 0.36, PAL.stone4, PAL.stone3);
+  } else {
+    // (critic r5) the card's fang PAIR: 2-px pixel triangles hanging from the upper jaw (stone4 lit column,
+    // stone3 shade), each 2 · 2 · 1 px tall — never a 1-px stroke
+    const fang = (hx: number, len: number) => {
+      const q = Hd(hx, 0.8);
+      const x = Math.round(q[0]);
+      const y = Math.round(q[1]);
+      const lit = ls < 0 ? x - 1 : x;
+      const sh = ls < 0 ? x : x - 1;
+      for (let k = 0; k < len; k++) {
+        if (k < len - 1) headL.set(lit, y + k, PAL.stone4).set(sh, y + k, PAL.stone3);
+        else headL.set(ls < 0 ? x - 1 : x, y + k, PAL.stone4);
+      }
+    };
+    fang(15.4, o.lite ? 2 : 3);
+    if (!o.lite) fang(12.0, 3);
+  }
   // near horn on top (over the skull)
   const nearHorn = new PixelCanvas(w, h);
   horn(nearHorn, [0.6, -3.6], [-2.2, -5.4], [-5.8, -6.4], [-9.4, -8.2], 1.45, false);
@@ -553,7 +655,7 @@ export function paintVenomBust(P: BustPose, o: BustOpts): BustOut {
     if (c === null) return true;
     return c === PAL.ink && (clear(x - 1, y) || clear(x + 1, y) || clear(x, y - 1) || clear(x, y + 1));
   };
-  const LIT = new Map<number, number>([[PAL.mag1, PAL.void3], [PAL.void2, PAL.mag1], [PAL.void1, PAL.void2], [PAL.stone3, PAL.stone4], [PAL.stone2, PAL.stone3]]);
+  const LIT = new Map<number, number>([[PAL.mag1, PAL.void3], [PAL.void2, lift ? PAL.void3 : PAL.mag1], [PAL.void1, PAL.void2], [PAL.stone3, PAL.stone4], [PAL.stone2, PAL.stone3]]);
   const edits: [number, number, number][] = [];
   for (let y = 0; y < h; y++)
     for (let x = 0; x < w; x++) {
@@ -565,8 +667,9 @@ export function paintVenomBust(P: BustPose, o: BustOpts): BustOut {
       if (toLight) {
         const n = LIT.get(c);
         if (n !== undefined) edits.push([x, y, n]);
-      } else if (away && c !== PAL.leaf2 && !CHITIN_TONES.has(c)) {
-        // the rim: only on hide (never on chitin, which keeps its own value)
+      } else if ((away || (lift && (open(x - 1, y) || open(x + 1, y) || open(x, y + 1)))) && c !== PAL.leaf2 && !CHITIN_TONES.has(c)) {
+        // the rim: only on hide (never on chitin, which keeps its own value); the cut-in runs it round every
+        // silhouette pixel the key light misses (critic r5: a continuous line between the hide and the band)
         edits.push([x, y, o.rim]);
       }
     }
@@ -620,11 +723,24 @@ export function paintVenomBust(P: BustPose, o: BustOpts): BustOut {
         // the hot band: leaf3 and gold3 side by side (chartreuse), around the hot point
         const hd = Math.hypot((x + 0.5 - hc[0]) / rx, (y + 0.5 - hc[1]) / ry);
         // (a gold3 inner lens, a leaf3 ring around it: the two tones side by side read chartreuse — no checker)
-        if (band > 0 && hd < band * 0.42) c = PAL.gold3;
+        if (band > 0 && hd < band * 0.42 && !(lift && P.hot < 2)) c = PAL.gold3;
+        // (cut-in) the venom darkens to leaf2 where it meets the ink casing: an orb lit from inside, and no
+        // leaf3 pixel on the outline can out-shine the core for the lens glint
+        if (lift && c === PAL.leaf3 && (matter.get(x - 1, y) === PAL.ink || matter.get(x + 1, y) === PAL.ink || matter.get(x, y - 1) === PAL.ink || matter.get(x, y + 1) === PAL.ink)) c = PAL.leaf2;
         light.set(x, y, c);
       }
     if (P.hot >= 1) light.set(core[0], core[1], PAL.gold4);
     else light.set(core[0], core[1], PAL.leaf3);
+    // (cut-in, critic r5) the settled lens: a 2×2 gold3 block with the gold4 core at its corner toward the
+    // light, a leaf3 ring, and the two pixels outside the core on the light side leaf2 — the core is the one
+    // isolated bright point the lens glint finds
+    if (lift && P.hot >= 1) {
+      const dx = -ls;
+      if (P.hot < 2) {
+        light.set(core[0] + dx, core[1], PAL.gold3).set(core[0], core[1] + 1, PAL.gold3).set(core[0] + dx, core[1] + 1, PAL.gold3);
+      }
+      light.set(core[0] - dx, core[1], PAL.leaf2).set(core[0], core[1] - 1, PAL.leaf2);
+    }
     // the bulb's casing outline stays ink (matter); clear the matter's placeholder fill under the light
     for (let y = Math.floor(bc[1] - ry - 1); y <= bc[1] + ry + 1; y++)
       for (let x = Math.floor(bc[0] - rx - 1); x <= bc[0] + rx + 1; x++) if (light.isOpaque(x, y) && (matter.get(x, y) === PAL.leaf2 || matter.get(x, y) === o.rim)) matter.set(x, y, PAL.leaf2);
@@ -640,21 +756,23 @@ export function paintVenomBust(P: BustPose, o: BustOpts): BustOut {
   {
     const ex = Math.floor(ec[0]);
     const ey = Math.floor(ec[1]);
-    for (let dy = -eh + 1; dy <= eh - 1 + (eh === 1 ? 1 : 0); dy++)
+    if (!big) light.set(ex - 1, ey, PAL.gold2).set(ex, ey, PAL.ink).set(ex + 1, ey, PAL.gold2).set(ex, ey - 1, PAL.gold3);
+    else for (let dy = -eh + 1; dy <= eh - 1 + (eh === 1 ? 1 : 0); dy++)
       for (let dx = -ew; dx <= ew; dx++) {
         if (Math.abs(dx) / (ew + 0.6) + Math.abs(dy) / (eh + 0.4) > 1) continue;
         light.set(ex + dx, ey + dy, P.eye >= 1 && Math.abs(dx) <= 1 ? PAL.gold3 : PAL.gold2);
       }
     // the slit
     const sw = P.eye >= 1 ? 0 : big ? 1 : 0;
-    for (let dy = -eh; dy <= eh; dy++) for (let dx = 0; dx <= sw; dx++) if (light.isOpaque(ex + dx, ey + dy)) light.set(ex + dx, ey + dy, PAL.ink);
+    if (big) for (let dy = -eh; dy <= eh; dy++) for (let dx = 0; dx <= sw; dx++) if (light.isOpaque(ex + dx, ey + dy)) light.set(ex + dx, ey + dy, PAL.ink);
   }
   // the stinger bead and the falling drop
-  const st = U(...HOOK[2]);
+  const st = U(...HK[2]);
   const sx = Math.round(st[0]);
   const sy = Math.round(st[1]);
   if (P.bead >= 1) {
-    light.set(sx, sy + 1, PAL.leaf3);
+    // a forming bead (1) is leaf2: never a bright point at the stinger's tip
+    light.set(sx, sy + 1, P.bead >= 2 ? PAL.leaf3 : PAL.leaf2);
     if (P.bead >= 2) light.set(sx, sy + 2, PAL.leaf2);
     if (P.bead >= 3) {
       light.set(sx - 1, sy + 2, PAL.leaf3).set(sx, sy + 3, PAL.leaf3);
