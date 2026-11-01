@@ -140,4 +140,24 @@ describe('tide_harpooner', () => {
     for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) { const c = p.get(x, y); if (c !== null) expect(PALETTE.has(c)).toBe(true); }
     expect(korunuyorPlate(false).w).toBeLessThan(korunuyorPlate(true).w);
   });
+
+  it('the shared-kit objects its contact sweep (cinematics/kartc/tide_harpooner-fx.ts ownContact) relies on still exist', () => {
+    // ownContact hides these by type + depth on the contact frame; a change in any of them breaks the sweep silently
+    const RAW = import.meta.glob(['../../src/cinematics/_v3/flash.ts', '../../src/cinematics/_v3/react.ts', '../../src/cinematics/_v3/clash.ts', '../../src/vfx/combat.ts'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
+    const src = (f: string) => RAW[`../../src/${f}`] ?? '';
+    const flash = src('cinematics/_v3/flash.ts');
+    expect(flash).toContain('`fx:cflash:${');
+    expect(flash).toContain('.setDepth(s.depth + 0.05)');
+    const react = src('cinematics/_v3/react.ts');
+    expect(react).toMatch(/function behindBody\(u: MonsterUnit\): number \{\s*return u\.sprite\.depth - 0\.4;/);
+    const combat = src('vfx/combat.ts');
+    const impact = combat.slice(combat.indexOf('export async function impact('), combat.indexOf('export async function impact(') + 2400);
+    expect(impact).toContain('new Sparks(scene, depth + 0.2)');
+    expect(impact).toContain('new Sparks(scene, depth + 0.3, Phaser.BlendModes.ADD)');
+    expect(impact).toContain('layer(scene, depth + 0.1)');
+    const clang = combat.slice(combat.indexOf('export async function blockClang('), combat.indexOf('export async function blockClang(') + 1200);
+    expect(clang).toContain('layer(scene, depth + 0.1)');
+    expect(clang).toContain('new Sparks(scene, depth + 0.2)');
+    expect(src('cinematics/_v3/clash.ts')).toMatch(/DEPTH\.FX \+ 3, ADD\)/);
+  });
 });
