@@ -17,7 +17,7 @@
 import type { Recipe } from '../sounds';
 import type { CharacterSounds } from '../../cinematics/_v3/sound';
 import { Voice, perc } from '../synth';
-import { puff, sweep } from './kit';
+import { sweep } from './kit';
 
 // ---------------------------------------------------------------- building blocks
 
@@ -37,10 +37,19 @@ function fuff(v: Voice, t: number, g: number, o: { lp?: readonly [number, number
   const dec = o.dec ?? 0.07;
   const out = o.pan !== undefined ? v.panner(o.pan) : undefined;
   const hp = v.filt('highpass', 250, 0.7, { to: out });
-  const lp = v.filt('lowpass', [[0, o.lp?.[0] ?? 1800], [dec, o.lp?.[1] ?? 900, 'e']], 0.8, { t, to: hp });
-  v.noise('pink', { t, g: [[0, 0], [dec * 0.28, g], [dec, 0.0001, 'e']], to: lp });
+  // (a sharp closing sweep, resonant at the top: the feathers' "f" opens bright and shuts — apart from the mist bed)
+  const lp = v.filt('lowpass', [[0, o.lp?.[0] ?? 1800], [dec * 0.6, o.lp?.[1] ?? 900, 'e']], 2.2, { t, to: hp });
+  v.noise('pink', { t, g: [[0, 0], [dec * 0.18, g], [dec, 0.0001, 'e']], to: lp });
   const fl = v.flutter(48, 0.45, { t, d: dec + 0.06, base: 0.5, to: v.filt('bandpass', 1400, 1.1, { to: out }) });
   v.noise('pink', { t, g: perc(g * 0.55, dec + 0.05, 0.01), to: fl });
+  // the feather edges: a short airy hiss at 3.2 kHz riding the opening of the sweep (the mist never has it)
+  v.noise('white', { t, g: perc(g * 0.22, dec * 0.6, 0.004), to: v.filt('bandpass', 3200, 1.4, { to: out }) });
+}
+
+/** A low slosh of still water (pink, high-passed at 150 Hz — no sub thump, never a "pof" — low-passed at `lp`). */
+function slosh(v: Voice, t: number, g: number, dec: number, lp = 600): void {
+  const hp = v.filt('highpass', 150, 0.7);
+  v.noise('pink', { t, g: perc(g, dec, 0.004), to: v.filt('lowpass', [[0, lp], [dec, lp * 0.45, 'e']], 0.8, { t, to: hp }) });
 }
 
 /** The reed rustle: pink noise in a 2.8 kHz band (Q 1), a slow wander on the band, swelling with the sway. */
@@ -76,7 +85,7 @@ function plip(v: Voice, t: number, g: number, f = 1200): void {
 function mist(v: Voice, t: number, f: readonly [number, number], env: readonly [number, number, ('e' | 'l')?][], pan?: readonly [number, number]): void {
   const d = env[env.length - 1][0];
   const out = pan ? v.panner([[0, pan[0]], [d, pan[1]]], { t }) : undefined;
-  const bp = v.filt('bandpass', [[0, f[0]], [d, f[1], 'e']], 0.9, { t, to: out });
+  const bp = v.filt('bandpass', [[0, f[0]], [d, f[1], 'e']], 3, { t, to: out });
   v.noise('pink', { t, g: env, to: bp });
 }
 
@@ -236,7 +245,7 @@ export const V3_HERON_RECIPES = {
     verb: 0.2,
     duck: 0.2,
     play(v0) {
-      level(v0, 14, (v) => {
+      level(v0, 12.5, (v) => {
         tak(v, 0, 2400, 0.2);
         plip(v, 0.03, 0.012, 1500);
       });
@@ -249,7 +258,7 @@ export const V3_HERON_RECIPES = {
     verb: 0.2,
     duck: 0.2,
     play(v0) {
-      level(v0, 13.5, (v) => {
+      level(v0, 12.5, (v) => {
         tak(v, 0, 2540, 0.2);
         plip(v, 0.028, 0.012, 1350);
       });
@@ -262,7 +271,7 @@ export const V3_HERON_RECIPES = {
     verb: 0.3,
     duck: 0.45,
     play(v0) {
-      level(v0, 11.5, (v) => {
+      level(v0, 14.5, (v) => {
         tak(v, 0, 2140, 0.28);
         v.bell(2140, { t: 0.004, g: 0.028, dec: 0.6, ratio: 3.53, index: 1.1 });
         v.bell(2140 * 2.01, { t: 0.004, g: 0.006, dec: 0.35, ratio: 3.53, index: 0.6 });
@@ -306,7 +315,7 @@ export const V3_HERON_RECIPES = {
       level(v0, 13.5, (v) => {
         const fl = v.flutter(60, 0.5, { d: 0.12, base: 0.5, to: v.filt('bandpass', 3200, 1.6) });
         v.noise('white', { g: perc(0.14, 0.09, 0.003), to: fl });
-        puff(v, 0, 0.12, 0.15, 600, { kind: 'pink' });
+        slosh(v, 0, 0.12, 0.15, 600);
         fuff(v, 0.01, 0.1, { dec: 0.05, lp: [2400, 1200] });
       });
     },
@@ -320,7 +329,7 @@ export const V3_HERON_RECIPES = {
       level(v0, 11.5, (v) => {
         const fl = v.flutter(60, 0.55, { d: 0.14, base: 0.5, to: v.filt('bandpass', 3000, 1.5) });
         v.noise('white', { g: perc(0.17, 0.11, 0.003), to: fl });
-        puff(v, 0, 0.16, 0.18, 620, { kind: 'pink' });
+        slosh(v, 0, 0.16, 0.18, 620);
         v.noise('white', { t: 0.06, g: perc(0.1, 0.1, 0.005), to: v.filt('bandpass', 1500, 1.8) });
         fuff(v, 0.0, 0.14, { dec: 0.06 });
         fuff(v, 0.08, 0.09, { dec: 0.06, lp: [1500, 800] });
@@ -338,7 +347,7 @@ export const V3_HERON_RECIPES = {
         v.noise('white', { g: perc(0.12, 0.1, 0.003), to: fl });
         v.tone('sine', [[0, 1900], [0.18, 2600, 'e']], { g: perc(0.02, 0.22, 0.004) });
         v.tone('sine', [[0, 2860], [0.18, 3900, 'e']], { g: perc(0.008, 0.16, 0.004) });
-        puff(v, 0, 0.08, 0.12, 560, { kind: 'pink' });
+        slosh(v, 0, 0.08, 0.12, 560);
       });
     },
   },
@@ -351,7 +360,7 @@ export const V3_HERON_RECIPES = {
       level(v0, 14.5, (v) => {
         fuff(v, 0, 0.2, { dec: 0.08, lp: [1500, 700] });
         rustle(v, 0.02, 0.3, 0.03);
-        puff(v, 0, 0.06, 0.1, 500, { kind: 'pink' });
+        slosh(v, 0, 0.06, 0.1, 500);
       });
     },
   },
@@ -402,6 +411,44 @@ export const V3_HERON_RECIPES = {
         v.tone('sine', [[0, 520], [0.5, 390, 'e']], { g: perc(0.09, 0.5, 0.004), to: e });
         v.tone('sine', [[0, 520], [0.5, 390, 'e']], { g: perc(0.09, 0.5, 0.004) });
         v.tone('sine', [[0, 1040], [0.3, 790, 'e']], { g: perc(0.012, 0.25, 0.004) });
+      });
+    },
+  },
+  /** Idle f13: the single drop from the beak tip — a sine flicked 1.2 → 2.4 kHz in 15 ms, a ripple 600 → 420 Hz. */
+  heronDrop: {
+    cap: 1,
+    gap: 1.5,
+    verb: 0.4,
+    duck: 0,
+    play(v0) {
+      level(v0, 1, (v) => {
+        v.tone('sine', [[0, 1200], [0.015, 2400, 'e'], [0.03, 1900, 'e']], { g: perc(0.05, 0.035, 0.001) });
+        v.tone('sine', [[0, 600], [0.08, 420, 'e']], { t: 0.014, g: perc(0.022, 0.08, 0.004) });
+      });
+    },
+  },
+  /** Idle: one distant frog (a single croak, 3–5 pulses, low-passed for distance) — the marsh around him. */
+  heronIdleFrog: {
+    cap: 1,
+    gap: 1.5,
+    verb: 0.45,
+    duck: 0,
+    play(v0) {
+      level(v0, 2.5, (v) => {
+        const f = [380, 460, 520][Math.floor(v.r(0, 3))];
+        croak(v, 0, f * v.r(0.985, 1.015), 0.03, 0, 3 + Math.floor(v.r(0, 3)), v.r(24, 30));
+      });
+    },
+  },
+  /** Idle: the reeds swell once with the sway (pink in a 2.8 kHz band, a slow wander). */
+  heronIdleReed: {
+    cap: 1,
+    gap: 1.5,
+    verb: 0.35,
+    duck: 0,
+    play(v0) {
+      level(v0, 22, (v) => {
+        rustle(v, 0, 0.9, 0.012, v.r(-0.3, 0.3));
       });
     },
   },

@@ -3,12 +3,15 @@
 // Rhythm: STILLNESS, then the triple. The idle is the slowest in the lane (16 f, holds 130–170): the body only
 // breathes 1 px while the world around it lives (straw hem period 16, crown plumes period 8 lagging 2 frames,
 // throat plumes +5, reeds period 16 on another phase, ripple lines crawling, ankle mist drifting), one slow S-neck
-// curl per loop (f8–12) and one drop from the beak tip (f12 forms, f13 falls, f14–15 one 1-px ripple ellipse).
-// attack "Gaga Hamlesi" = the neck folds into a tight coil (f1–f4, the 200 ms dead freeze on f4: the mist and the
-// water freeze too) → two bob-less glide strides (f5–f6, mist streaks trail) → the neck uncoils in one smeared frame
-// (f7, release) → three pistons on three points of a 6-px vertical triangle (top f8, bottom f9, centre f10 = contact,
-// each with its 1-frame white needle line and two flicked droplets) → the S re-coils, home, idle f0.
-// The water patch and the reeds stay HOME: attack f5–f12 do not draw them (the sprite is away; the strike
+// curl per loop (f8–12) and one drop from the beak tip (f12 forms, f13 falls, f14–15 one 1-px ripple ellipse;
+// the marsh aura plays its plip on f13).
+// attack "Gaga Hamlesi" = the neck begins to coil (f1, the declaration's hold) and snaps into a double S (f2–f3) →
+// the 200 ms dead freeze on f4 (head drawn back high, beak level, a white aim glint; the mist and the water freeze
+// too) → stride frames f5 / f6 (the strike alternates them to the distance, bob-less) → the neck uncoils in one
+// smeared frame (f7, release) → a PISTON: thrust top f8 → retract f9 → thrust bottom f10 → retract f11 → thrust
+// centre f12 = contact (each thrust: a 1-frame white needle reaching 5 px past the tip, a speed streak, droplets) →
+// f13 the deflect (blocked only: beak flicked up off the guard, one cold spark) → the S re-coils, home, idle f0.
+// The water patch and the reeds stay HOME: attack f5–f15 do not draw them (the sprite is away; the strike
 // cinematic keeps them on the tile with drawPond / drawGround from the rig). Every one-shot ends on idle f0.
 
 import type { AnimSpec, AnyMonsterAnim, MonsterAnim, MonsterAnimExtra, MonsterPoints } from '../types';
@@ -31,7 +34,7 @@ const PX: (keyof Pose)[] = ['bx', 'by', 'br', 'n1x', 'n1y', 'n2x', 'n2y', 'hx', 
 function snap(p: Pose): Pose {
   const o = { ...p } as Pose;
   for (const k of PX) (o as unknown as Record<string, number>)[k] = rnd(p[k]);
-  for (const k of ['pond', 'show', 'needle', 'smear', 'ruffle', 'glint', 'drop'] as (keyof Pose)[]) (o as unknown as Record<string, number>)[k] = rnd(p[k]);
+  for (const k of ['pond', 'show', 'needle', 'smear', 'ruffle', 'glint', 'drop', 'sil', 'aim', 'spark', 'streak', 'dots'] as (keyof Pose)[]) (o as unknown as Record<string, number>)[k] = rnd(p[k]);
   return o;
 }
 const blend = (a: Pose, b: Pose, t: number): Pose => snap(mix(a, b, t));
@@ -79,53 +82,72 @@ const home = (): Pose => ({ ...IDLE0 });
 // ------------------------------------------------------------------ guard (6 frames loop): the sheathed sword
 
 const GUARD_N = 6;
-const G0: Partial<Pose> = { wf: 1, by: 1, n1x: 12, n1y: -37, n2x: 2, n2y: -41, hx: 7, hy: -46, ba: 1.2, br: 0, reedA: 0.4 };
+// the S-neck and the head stay ABOVE the folded wing mass, the beak points down in front of the breast
+const G0: Partial<Pose> = { wf: 1, by: 1, n1x: 13, n1y: -40, n2x: 3, n2y: -46, hx: 9, hy: -51, ba: 1.15, br: 0, reedA: 0.4 };
+// calm but alive (HA-19): a 1-px breath, the hem sway, the crown plumes wave, the head nods 1 px with the breath
+const G_BR = [0, 0, 1, 1, 1, 0];
+const G_SW = [0, 1, 1, 0, -1, -1];
+const G_HY = [0, 0, -1, -1, 0, 0];
 export function guardPose(f: number): Pose {
   const k = f % GUARD_N;
   const ph = k / GUARD_N;
   return snap({
     ...IDLE0,
     ...G0,
-    br: k === 2 || k === 3 ? 1 : 0,
-    sway: [0, 0, 1, 1, 0, 0][k],
+    br: G_BR[k],
+    sway: G_SW[k],
+    hy: (G0.hy as number) + G_HY[k],
     plume: ph,
     throat: ph,
     reed: ph,
     rip: ph,
     mist: ph / 2,
-    t: 0,
+    t: ph,
     drop: -1,
   });
 }
 const GUARD0 = guardPose(0);
 const GUARD_HOLDS = [180, 170, 160, 180, 170, 160];
 
-// ------------------------------------------------------------------ attack (14 frames): coil, freeze, glide, ta-ta-TAK
+// ------------------------------------------------------------------ attack (17 frames): coil, freeze, glide, ta-ta-TAK
 
-const A_N = 14;
-const COIL: Partial<Pose> = { bx: -2, by: 1, n1x: 17, n1y: -42, n2x: -14, n2y: -40, hx: -6, hy: -46, ba: 0, br: 1 };
+// f0 idle-ish · f1 the neck begins to coil (the declaration holds here) · f2–f3 the coil snaps tight · f4 THE FREEZE
+// (a double S: the head drawn back high behind the shoulder line, the beak level and aimed, a white glint at the
+// tip, the body leaning back 2 px, the straw hem trailing) · f5–f6 strides · f7 release (one smeared frame) ·
+// f8 thrust (top) · f9 retract (tip 14 px back, the neck half re-coiled) · f10 thrust (bottom) · f11 retract ·
+// f12 thrust (centre) = contact · f13 the deflect (blocked only: beak flicked 25° up, head snapped back, one spark;
+// the strike skips it otherwise) · f14–f15 recover · f16 idle f0.
+const A_N = 17;
+const COIL: Partial<Pose> = { bx: -2, by: 1, n1x: 20, n1y: -38, n2x: -18, n2y: -46, hx: -6, hy: -55, ba: 0, br: 1, sway: -2 };
+const STANCE: Partial<Pose> = { pond: 0, mistK: 0, l2: 0.6, l2x: -7, l2y: -1 };
+const THRUST_TOP: Partial<Pose> = { ...STANCE, bx: 2, n1x: 13, n1y: -42, n2x: 19, n2y: -51, hx: 23, hy: -55, bl: 3, needle: 1, streak: 1, drops: 0.35 };
+const RETRACT: Partial<Pose> = { ...STANCE, bx: 2, n1x: 18, n1y: -40, n2x: 1, n2y: -50, hx: 13, hy: -53, bl: 0 };
 export function attackPose(f: number): Pose {
   const away = { pond: 0, mistK: 0 };
   switch (f) {
     case 0: return key({ n1x: 14, n2x: -1, hx: 7, hy: -54 }, f, A_N);
-    case 1: return key({ bx: -1, n1x: 15, n1y: -39, n2x: -4, n2y: -46, hx: 4, hy: -53, br: 1 }, f, A_N);
-    case 2: return key({ bx: -1, by: 1, n1x: 16, n1y: -40, n2x: -8, n2y: -44, hx: 0, hy: -51, br: 1 }, f, A_N);
-    case 3: return key({ bx: -2, by: 1, n1x: 16, n1y: -41, n2x: -11, n2y: -42, hx: -3, hy: -48, br: 1 }, f, A_N);
-    // the freeze: the mist and the water hold f3's phase exactly
-    case 4: return { ...key(COIL, 3, A_N), plume: key({}, 3, A_N).plume };
-    case 5: return key({ ...COIL, ...away, sway: -2, bx: 0, by: 0, fx: -5, l2: 1, l2x: 6, l2y: -1, trail: 0.7, dots: 1 }, f, A_N);
+    case 1: return key({ n1x: 15, n1y: -39, n2x: -2, n2y: -48, hx: 5, hy: -55, br: 1 }, f, A_N);
+    case 2: return key({ bx: -1, n1x: 17, n1y: -40, n2x: -7, n2y: -47, hx: 1, hy: -55, br: 1, sway: -1 }, f, A_N);
+    case 3: return key({ bx: -2, n1x: 19, n1y: -39, n2x: -13, n2y: -47, hx: -3, hy: -55, br: 1, sway: -2 }, f, A_N);
+    // the freeze: the world holds f3's phase exactly; one white glint on the aimed beak tip
+    case 4: return { ...key({ ...COIL, aim: 1 }, 3, A_N), plume: key({}, 3, A_N).plume };
+    case 5: return key({ ...COIL, ...away, sway: -3, bx: 0, by: 0, fx: -5, l2: 1, l2x: 6, l2y: -1, trail: 0.7, dots: 1 }, f, A_N);
     case 6: return key({ ...COIL, ...away, sway: -3, bx: 1, by: 0, fx: 5, l2: 1, l2x: -5, l2y: -1, trail: 1, dots: 1 }, f, A_N);
-    case 7: return key({ ...away, bx: 2, by: 0, n1x: 12, n1y: -40, n2x: 16, n2y: -48, hx: 20, hy: -52, sway: -2, smear: 1, bl: 1, fx: 0, l2: 0.6, l2x: -7, l2y: -1, trail: 0.5 }, f, A_N);
-    case 8: return key({ ...away, bx: 2, n1x: 13, n1y: -41, n2x: 18, n2y: -50, hx: 23, hy: -55, bl: 2, needle: 1, drops: 0.35, l2: 0.6, l2x: -7, l2y: -1 }, f, A_N);
-    case 9: return key({ ...away, bx: 2, n1x: 13, n1y: -39, n2x: 18, n2y: -45, hx: 23, hy: -49, ba: 0.04, bl: 2, needle: 1, drops: 0.35, l2: 0.6, l2x: -7, l2y: -1 }, f, A_N);
-    case 10: return key({ ...away, bx: 3, n1x: 14, n1y: -40, n2x: 19, n2y: -47, hx: 25, hy: -52, bl: 3, needle: 1, drops: 0.6, l2: 0.6, l2x: -7, l2y: -1 }, f, A_N);
-    case 11: return key({ ...away, bx: 0, n1x: 14, n1y: -38, n2x: 2, n2y: -46, hx: 6, hy: -53, drops: 1, fx: 3, l2: 0.6, l2x: -4, l2y: -1 }, f, A_N);
-    case 12: return key({ ...away, n1x: 13, n1y: -39, n2x: 0, n2y: -47, hx: 8, hy: -55, l2: 0.2, l2x: -3, l2y: -3, mistK: 1 }, f, A_N);
+    case 7: return key({ ...STANCE, bx: 2, by: 0, n1x: 12, n1y: -40, n2x: 16, n2y: -48, hx: 20, hy: -52, sway: -2, smear: 1, streak: 1, bl: 1, fx: 0, trail: 0.5 }, f, A_N);
+    case 8: return key(THRUST_TOP, f, A_N);
+    case 9: return key({ ...RETRACT, drops: 0.7 }, f, A_N);
+    case 10: return key({ ...THRUST_TOP, n1y: -39, n2y: -45, hy: -49 }, f, A_N);
+    case 11: return key({ ...RETRACT, n1y: -39, n2x: 0, n2y: -48, hx: 12, hy: -52, drops: 0.7 }, f, A_N);
+    case 12: return key({ ...THRUST_TOP, bx: 2, n1x: 14, n1y: -40, n2x: 19, n2y: -47, hx: 24, hy: -52, bl: 3, drops: 0.6 }, f, A_N);
+    case 13: return key({ ...STANCE, bx: 2, n1x: 13, n1y: -41, n2x: 14, n2y: -51, hx: 18, hy: -57, ba: -0.45, bl: 2, spark: 1 }, f, A_N);
+    case 14: return key({ ...away, bx: 0, n1x: 14, n1y: -38, n2x: 2, n2y: -46, hx: 6, hy: -53, drops: 1, fx: 3, l2: 0.6, l2x: -4, l2y: -1 }, f, A_N);
+    case 15: return key({ ...away, n1x: 13, n1y: -39, n2x: 0, n2y: -47, hx: 8, hy: -55, l2: 0.2, l2x: -3, l2y: -3, mistK: 1 }, f, A_N);
     default: return home();
   }
 }
-// (tempo gate: the attack incl. the target's death ≤ 3.19 s game time — measure.mjs rhrAttack; the strides are 120 ms each)
-const ATTACK_HOLDS = [90, 70, 60, 70, 200, 120, 120, 50, 40, 40, 80, 90, 100, 120];
+// (tempo gate: the attack incl. the target's death ≤ 3.19 s game time — measure.mjs rhrAttack. The two retract
+// frames are paid for by a tighter coil (f2–f3), 75-ms strides and a quicker recover: the contact lands where it did)
+const ATTACK_HOLDS = [80, 60, 40, 40, 200, 75, 75, 40, 40, 40, 40, 40, 80, 50, 60, 70, 100];
 
 // ------------------------------------------------------------------ roar (9 frames): the wings open once
 
@@ -212,43 +234,46 @@ export function fromGuardPose(f: number): Pose {
 }
 const FG_HOLDS = [60, 70, 80, 90, 90];
 
-// ------------------------------------------------------------------ summon (12): mist wall → eye glint → the mist parts → one wing fan
+// ------------------------------------------------------------------ summon (10): a shape in the fog → the gold glint → he is there → one wing fan
 
-const SU_N = 12;
+const SU_N = 10;
 export function summonPose(f: number): Pose {
   if (f >= SU_N - 1) return home();
-  const wall = { show: 0, mistK: 2 };
+  const fog = { sil: 1, eye: 0 };
   switch (f) {
-    case 0: return key({ ...wall, reedGrow: 0.35, mistK: 1.7, part: 15 }, f, SU_N);
-    case 1: return key({ ...wall, reedGrow: 0.75, part: 5 }, f, SU_N);
-    case 2: return key({ ...wall, glint: 1 }, f, SU_N);
-    case 3: return key({ ...wall, glint: 2 }, f, SU_N);
-    case 4: return key({ ...wall, glint: 1 }, f, SU_N);
-    case 5: return key({ mistK: 2, part: 5 }, f, SU_N);
-    case 6: return key({ mistK: 1.6, part: 11 }, f, SU_N);
-    case 7: return key({ wo: 0.5, by: 0, hy: -57, br: 1, mistK: 1.25, part: 16 }, f, SU_N);
-    case 8: return key({ wo: 1, by: -1, hx: 10, hy: -59, n1y: -44, n2y: -50, ba: -0.12, br: 1, reedFlat: 1, mist: 0.6 }, f, SU_N);
-    case 9: return key({ wo: 0.45, hx: 10, hy: -57, n2y: -48, br: 1, reedFlat: 0.3 }, f, SU_N);
-    default: return key({ wo: 0.1, by: 1 }, f, SU_N);
+    case 0: return key({ ...fog, reedGrow: 0.45 }, f, SU_N);
+    case 1: return key({ ...fog, reedGrow: 0.85 }, f, SU_N);
+    case 2: return key({ ...fog, glint: 1 }, f, SU_N);
+    case 3: return key({ ...fog, glint: 2 }, f, SU_N);
+    case 4: return key({ ...fog, glint: 1 }, f, SU_N);
+    // the fog parts: he is simply there — still, white, in full colour
+    case 5: return key({}, f, SU_N);
+    case 6: return key({ wo: 0.55, by: 0, hy: -57, br: 1 }, f, SU_N);
+    case 7: return key({ wo: 1, by: -1, hx: 10, hy: -59, n1y: -44, n2y: -50, ba: -0.12, br: 1, reedFlat: 1, mist: 0.6 }, f, SU_N);
+    default: return key({ wo: 0.4, hx: 9, hy: -57, n2y: -48, br: 1, reedFlat: 0.3 }, f, SU_N);
   }
 }
 // (summon ≤ 1.8 s scene incl. the card slam: GAME_DESIGN, measure.mjs rhrSummon; the glint keeps its 200 ms)
-const SU_HOLDS = [140, 130, 80, 200, 80, 130, 120, 90, 140, 90, 100, 120];
+const SU_HOLDS = [160, 150, 80, 200, 90, 170, 90, 140, 110, 120];
 
-// ------------------------------------------------------------------ death (10): wings close, one step back, the mist takes him
+// ------------------------------------------------------------------ death (10): wings close, one drawn step back, the mist takes him
 
 const D_N = 10;
+// wings shut, the S-neck and head still above the wing, the beak tipped down
+const SHUT: Partial<Pose> = { wf: 1, hx: 7, hy: -51, n1x: 13, n1y: -39, n2x: 2, n2y: -45, ba: 0.5, eye: 1 };
+// (the cover reaches the shoulders on f7; the head and beak go only in the last ~150 ms, f8–f9)
+const D_COVER = [0.14, 0.28, 0.42, 0.56, 0.8, 1.06];
 export function deathPose(f: number): Pose {
-  const shut = { wf: 1, hx: 4, hy: -49, n1x: 12, n1y: -37, n2x: 1, n2y: -42, ba: 0.35, eye: 1 };
   switch (f) {
     case 0: return key(HH_KEYS[0], f, D_N);
-    case 1: return key({ wf: 0.75, hx: 5, hy: -51, n1x: 13, n1y: -38, n2x: 0, n2y: -44, ba: 0.2, eye: 0 }, f, D_N);
-    case 2: return key({ ...shut, fl: 2, fx: -2, bx: -2, by: -1 }, f, D_N);
-    case 3: return key({ ...shut, fx: -4, bx: -4, by: 1, ring: 0.05 }, f, D_N);
+    case 1: return key({ wf: 0.75, hx: 6, hy: -53, n1x: 13, n1y: -39, n2x: 1, n2y: -46, ba: 0.25, eye: 0 }, f, D_N);
+    // the back-step: the tucked leg reaches back and lifts …
+    case 2: return key({ ...SHUT, l2: 1, l2x: -8, l2y: -4, bx: -1, by: -1 }, f, D_N);
+    // … and plants 6 px back (a ripple dot), the weight goes onto it, the old foot lifts
+    case 3: return key({ ...SHUT, l2: 1, l2x: -8, l2y: 0, bx: -3, fx: -1, fl: 3, dots: 1 }, f, D_N);
     default: {
       const k = f - 4;
-      const cover = [0.16, 0.34, 0.52, 0.7, 0.88, 1.06][k];
-      return key({ ...shut, fx: -4, bx: -4, by: 0, cover, motes: [0, 0, 0, 0.25, 0.6, 0.95][k], ring: [0.15, 0.3, 0.45, 0.6, 0.75, 0.9][k], eye: k < 3 ? 1 : 0 }, f, D_N);
+      return key({ ...SHUT, fx: -6, bx: -5, by: 0, cover: D_COVER[k], motes: [0, 0, 0, 0, 0.5, 0.95][k], ring: [0.15, 0.3, 0.45, 0.6, 0.75, 0.9][k], eye: k < 4 ? 1 : 0 }, f, D_N);
     }
   }
 }
@@ -258,15 +283,14 @@ const D_HOLDS = [50, 60, 80, 90, 90, 90, 90, 90, 90, 100];
 
 const RV_N = 10;
 export function revivePose(f: number): Pose {
-  const shut = { wf: 1, hx: 4, hy: -49, n1x: 12, n1y: -37, n2x: 1, n2y: -42, ba: 0.35 };
   if (f >= RV_N - 1) return home();
   if (f <= 4) {
-    const cover = [1.06, 0.86, 0.64, 0.42, 0.2][f];
-    return key({ ...shut, fx: -4, bx: -4, cover, motes: [0.95, 0.6, 0.3, 0, 0][f], ring: [0.9, 0.7, 0.5, 0.3, 0.1][f] }, f, RV_N);
+    const cover = [1.06, 0.8, 0.56, 0.36, 0.16][f];
+    return key({ ...SHUT, fx: -6, bx: -5, cover, motes: [0.95, 0.5, 0.2, 0, 0][f], ring: [0.9, 0.7, 0.5, 0.3, 0.1][f] }, f, RV_N);
   }
-  if (f === 5) return key({ ...shut, fx: -2, fl: 2, bx: -2, by: -1, cover: 0.04 }, f, RV_N);
-  if (f === 6) return key({ ...shut, wf: 0.7, fx: 0, fl: 0, bx: 0, by: 1 }, f, RV_N);
-  const m = blend(key({ ...shut, wf: 0.7 }, 6, RV_N), IDLE0, (f - 6) / 3);
+  if (f === 5) return key({ ...SHUT, l2: 1, l2x: -8, l2y: 0, bx: -3, fx: -1, fl: 3, cover: 0.04 }, f, RV_N);
+  if (f === 6) return key({ ...SHUT, wf: 0.7, fx: 0, fl: 0, bx: 0, by: 1 }, f, RV_N);
+  const m = blend(key({ ...SHUT, wf: 0.7 }, 6, RV_N), IDLE0, (f - 6) / 3);
   return { ...m, reed: f / (RV_N - 1), rip: f / (RV_N - 1), mist: f / (RV_N - 1) };
 }
 const RV_HOLDS = [80, 80, 90, 90, 100, 110, 100, 110, 120, 140];
@@ -280,11 +304,11 @@ export const ANIMS: Record<MonsterAnim, AnimSpec> = {
   idle: spec(IDLE_N, 7, true, IDLE_HOLDS),
   guard: spec(GUARD_N, 6, true, GUARD_HOLDS),
   roar: spec(R_N, 10, false, ROAR_HOLDS, { charge: 1, release: 3, impact: 3, recover: 5 }),
-  attack: spec(A_N, 10, false, ATTACK_HOLDS, { charge: 1, release: 7, impact: 7, contact: 10, recover: 11 }),
+  attack: spec(A_N, 10, false, ATTACK_HOLDS, { charge: 1, release: 7, impact: 7, contact: 12, recover: 14 }),
   hit: spec(HIT_N, 12, false, HIT_HOLDS, { impact: 0, contact: 0, recover: 4 }),
 };
 export const EXTRA_ANIMS: Partial<Record<MonsterAnimExtra, AnimSpec>> = {
-  summon: spec(SU_N, 8, false, SU_HOLDS, { land: 9 }),
+  summon: spec(SU_N, 8, false, SU_HOLDS, { land: 8 }),
   death: spec(D_N, 12, false, D_HOLDS, { impact: 0, contact: 0, dissolve: 4 }),
   revive: spec(RV_N, 10, false, RV_HOLDS, { land: 6 }),
   hitHeavy: spec(HH_N, 12, false, HH_HOLDS, { impact: 0, contact: 0, recover: 4 }),
@@ -293,8 +317,10 @@ export const EXTRA_ANIMS: Partial<Record<MonsterAnimExtra, AnimSpec>> = {
   fromGuard: spec(5, 14, false, FG_HOLDS),
 };
 
-/** The attack's two extra thrusts (top f8, bottom f9) before the contact (centre f10): micro hit-stop frames. */
-export const THRUSTS = [8, 9, 10] as const;
+/** The attack's thrusts (top f8, bottom f10, centre f12 = contact), the retracts between them, the deflect frame. */
+export const THRUSTS = [8, 10, 12] as const;
+export const RETRACTS = [9, 11] as const;
+export const DEFLECT = 13;
 
 const CACHE = new Map<string, Pose>();
 export function framePose(anim: AnyMonsterAnim, f: number): Pose {

@@ -1,6 +1,7 @@
 // Sazlık Balıkçılı (v3 art): every anim exists with marks and holds, validateArt (normal tier) reports no errors, a frame
 // is deterministic, P2 is a relight of the same silhouette, the body is the tall thin one-legged wader of the 64 class,
-// the attack keeps its signature rhythm (a 200 ms freeze, then three thrusts on three distinct points), the death leaves
+// the attack keeps its signature rhythm (a 200 ms freeze, then three piston thrusts on three distinct points, a
+// retract between them), the death leaves
 // only the ground (reeds + water) behind, and the card picture paints within the kit budgets at both sizes.
 
 import { describe, expect, it } from 'vitest';
@@ -27,7 +28,7 @@ describe('reed_heron', () => {
       expect(s.holds?.length, a).toBe(s.frames);
     }
     const m = spec('attack').marks!;
-    expect([m.charge, m.release, m.impact, m.contact, m.recover]).toEqual([1, 7, 7, 10, 11]);
+    expect([m.charge, m.release, m.impact, m.contact, m.recover]).toEqual([1, 7, 7, 12, 14]);
     expect(art.p2).toBe('relight');
     expect(art.weight).toBe('medium');
   });
@@ -61,10 +62,14 @@ describe('reed_heron', () => {
     const s = spec('attack');
     expect(s.holds![4]).toBe(200);
     expect(Math.max(...s.holds!)).toBe(200);
-    const tips = [8, 9, 10].map((f) => art.points!('attack', f).muzzle!);
+    const tips = [8, 10, 12].map((f) => art.points!('attack', f).muzzle!);
     expect(new Set(tips.map((t) => `${t.x},${t.y}`)).size).toBe(3);
     const ys = tips.map((t) => t.y);
     expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThanOrEqual(5);
+    // a piston, not one held stab: between thrusts the beak tip is pulled back at least 8 px
+    for (const [a, r] of [[8, 9], [10, 11]]) expect(art.points!('attack', a).muzzle!.x - art.points!('attack', r).muzzle!.x).toBeGreaterThanOrEqual(8);
+    // the deflect frame (blocked) flicks the beak up
+    expect(art.points!('attack', 13).muzzle!.y).toBeLessThan(art.points!('attack', 12).muzzle!.y - 4);
   });
 
   it('leaves only the ground behind on the last death frame (no heron pixels above the reeds band)', () => {

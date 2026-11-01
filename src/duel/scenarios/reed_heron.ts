@@ -41,8 +41,13 @@ const S: Record<string, Scenario> = {
     steps: [attack(2, 2)],
   },
   rhrHit: {
-    desc: 'struck by a weaker attacker (storm_hawk 1000 vs 1400): the S-neck spring, the attacker breaks',
-    stage: { zones: 5, phase: 'battle', p0: { monsters: [N, N, 'storm_hawk', N, N] }, p1: { monsters: [N, N, { id: 'reed_heron', position: 'attack' }, N, N] } },
+    desc: 'struck by a thrown rock (stone_sentinel 500 vs 1400, physical, from its own tile: nothing covers him): the S-neck spring, the attacker breaks',
+    stage: { zones: 5, phase: 'battle', p0: { monsters: [N, N, 'stone_sentinel', N, N] }, p1: { monsters: [N, N, { id: 'reed_heron', position: 'attack' }, N, N] } },
+    steps: [attack(2, 2)],
+  },
+  rhrHitMagic: {
+    desc: 'struck by a light bolt from range (lumen_sprite 400 vs 1400): hitMagic — the plumage edges light, the neck goes rigid',
+    stage: { zones: 5, phase: 'battle', p0: { monsters: [N, N, 'lumen_sprite', N, N] }, p1: { monsters: [N, N, { id: 'reed_heron', position: 'attack' }, N, N] } },
     steps: [attack(2, 2)],
   },
   rhrKill: {
