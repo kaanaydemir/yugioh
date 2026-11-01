@@ -114,7 +114,7 @@ function floorFront(t: MonsterUnit | null, aim: XY, sgn: number): number {
 }
 
 /** How far he backs off during the spin (px along the attack axis: the run-up starts behind home). */
-export const SPIN_BACK = 7;
+export const SPIN_BACK = 10;
 /** The three steps' share of the run-up (long, then shorter and quicker: 9 / 7 / 6). */
 export const STEP_SPLIT = [0, 9 / 22, 16 / 22, 1] as const;
 
@@ -128,7 +128,9 @@ export function cutPlan(home: XY, aim: XY, front: number, sgn: number, reachX: n
     const t = Math.abs(dir.x) > 0.05 ? (x - home.x) / dir.x : 0;
     return { x: home.x + dir.x * t, y: home.y + dir.y * t };
   };
-  const gap = o.blocked ? 16 : 5;
+  // the head bites 3 px short of the footprint (its 6-px crescent then touches the target's toes); blocked: 9 px short,
+  // so the seam runs on to the guard's front edge and dies there
+  const gap = o.blocked ? 9 : 3;
   const b = along(front - sgn * gap);
   const bite = { x: Math.round(b.x), y: Math.round(b.y) };
   const land = along(bite.x - reachX);
@@ -185,6 +187,7 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
     land = plan.land;
     SP = plan.steps;
     const dir = plan.dir;
+    console.log('CAXDBG', JSON.stringify({home: homeFeet, aim, front, bo, bite, land, SP, blocked: s.blocked}));
     seamTo = s.blocked ? { x: Math.round(front - sgn * 1), y: Math.round(homeFeet.y + dir.y * ((front - sgn - homeFeet.x) / (Math.abs(dir.x) > 0.05 ? dir.x : 1))) } : { x: aim.x + dir.x * 12, y: aim.y + dir.y * 12 };
   }
   const back = norm(sub(homeFeet, land.x === homeFeet.x && land.y === homeFeet.y ? { x: homeFeet.x + sgn, y: homeFeet.y } : land));
