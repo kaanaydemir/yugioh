@@ -222,7 +222,7 @@ const ROAR_KEYS: Pose[] = [
   key({ rot: -8, sx: -1, sy: -3, eye: 1.35, eL: -18, eR: 24, held: 1, grip: 0.5, hx: -9, hy: -40, ha: 0, fx: 6, fy: -60, sag: 4, puff: 0.55, nacre: 1 }),
   key({ sy: -1, eye: 1.1, eL: -14, eR: 20, held: 1, grip: 0.5, hx: 22, hy: -66, ha: 90, fx: 8, fy: -52, sag: 5, puff: 0.8 }),
   // the spin's flat frame: the shaft foreshortened (it turns through the view) with a 2-px smear, never a long bar
-  key({ sy: -1, eye: 1.1, eL: -12, eR: 18, held: 1, grip: 0.5, hx: 40, hy: -42, ha: 180, hl: 0.62, smear: 2, fx: 10, fy: -48, sag: 6, puff: 1 }),
+  key({ sy: -1, eye: 1.1, eL: -12, eR: 18, held: 1, grip: 0.5, hx: 26, hy: -42, ha: 180, hl: 0.7, smear: 2, fx: 10, fy: -48, sag: 6, puff: 1 }),
   key({ sy: 1, cy: -1, eye: 1.05, eL: -14, eR: 14, held: 1, hy: 0, spray: 0.4, tok: 1, fx: 13, fy: -44, sag: 9 }),
   key({ sy: 0, eye: 1, spray: 0.85, fx: 14, fy: -44, sag: 10, swing: 2 }),
 ];

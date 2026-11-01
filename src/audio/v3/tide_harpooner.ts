@@ -540,15 +540,17 @@ export const V3_HARPOONER_RECIPES = {
     verb: 0.3,
     duck: 0.25,
     play(v) {
-      // (review 3: woody and DRY, no low body — the shared heavy impact's spectrum is far from it; +5 dB)
-      crack(v, 0, 0.75, { hp: 1800, lp: 7000, n: 3, gap: 0.015, dec: 0.009 });
-      v.noise('pink', { g: perc(0.4, 0.05, 0.002), to: v.filt('bandpass', 1300, 2.4) });
+      // (review 3: woody and DRY, no low body — the shared heavy impact's spectrum is far from it; louder: the death's
+      // last beat is heard)
+      crack(v, 0, 1.4, { hp: 1800, lp: 7000, n: 3, gap: 0.015, dec: 0.012 });
+      v.noise('pink', { g: perc(1.1, 0.07, 0.002), to: v.filt('bandpass', 1300, 2.4) });
       // a small hollow driftwood knock at 300 Hz (a band, not a thump)
-      v.noise('white', { t: 0.02, g: perc(0.9, 0.04, 0.0005), to: v.filt('bandpass', 300, 7, { t: 0.02 }) });
+      v.noise('white', { t: 0.02, g: perc(2.4, 0.06, 0.0005), to: v.filt('bandpass', 300, 6, { t: 0.02 }) });
+      v.noise('white', { t: 0.021, g: perc(1.2, 0.05, 0.0005), to: v.filt('bandpass', 620, 6, { t: 0.021 }) });
       // two ticks as the bits land, then the scatter
-      crack(v, 0.16, 0.3, { hp: 2600, lp: 7000, n: 1, dec: 0.004 });
-      crack(v, 0.23, 0.24, { hp: 2900, lp: 7000, n: 1, dec: 0.004 });
-      v.crackle({ t: 0.12, d: 0.22, n: 7, g: 0.16, f: 2400, q: 1.6, dec: 0.006 });
+      crack(v, 0.16, 0.55, { hp: 2600, lp: 7000, n: 1, dec: 0.005 });
+      crack(v, 0.23, 0.45, { hp: 2900, lp: 7000, n: 1, dec: 0.005 });
+      v.crackle({ t: 0.12, d: 0.22, n: 7, g: 0.3, f: 2400, q: 1.6, dec: 0.006 });
     },
   },
 

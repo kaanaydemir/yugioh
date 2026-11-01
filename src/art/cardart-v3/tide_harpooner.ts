@@ -27,7 +27,7 @@ function cardPose(f: number, small = false): Pose {
   // small (review 3): the harpoon held upright over the shell so the spire's top whorls, the eye stalks and the head
   // all fit the 44×34 window; the nacre a step darker there, so the tip glint stays the brightest point
   return pose({
-    sx: 2, sy: -2, eye: 1.15, eL: L.eL, eR: L.eR, nacre: small ? 0 : 1,
+    sx: 2, sy: -2, eye: small ? 1.45 : 1.15, eL: L.eL, eR: L.eR, nacre: small ? 0 : 1,
     held: 1, ha: small ? -96 : -78, grip: 0.5, hy: -6,
     fx: 6, fy: -44, coil: 1, rope: 0, sag: 8, swing: 4,
   });
@@ -103,7 +103,7 @@ const APEX = [10, 12] as const;
 const SK0 = skeleton(cardPose(0));
 const FOCUS = [APEX[0] + Math.round(SK0.ht[0]) - Math.round(SK0.apex[0]), APEX[1] + Math.round(SK0.ht[1]) - Math.round(SK0.apex[1])] as const;
 /** Small: the tip near the top-right corner; the spire's top whorls at the left edge, the eye stalks in the middle. */
-const FOCUS_SMALL = [36, 5] as const;
+const FOCUS_SMALL = [36, 12] as const;
 
 const art: CardArtV3 = {
   id: 'tide_harpooner',
