@@ -60,7 +60,8 @@ describe('grim_warden (lantern warden)', () => {
     const f = drawFrame(art, 'idle', 0, 'left');
     const b = f.bounds()!;
     expect(b.h).toBeGreaterThanOrEqual(84);
-    expect(b.w).toBeGreaterThanOrEqual(64);
+    // thin revenant: the back tatters were merged into the hem (critic pass-3 r1), the "L" spans halberd → lantern
+    expect(b.w).toBeGreaterThanOrEqual(50);
     const pt = art.points!('idle', 0);
     // the lantern (muzzle) is well forward of the anchor, at mid height; the spade head is the top of the figure
     expect(pt.muzzle!.x - art.anchorX).toBeGreaterThanOrEqual(28);

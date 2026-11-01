@@ -63,17 +63,22 @@ const HOLDS: readonly number[] = [260, 110, 100, 110, 120, 420];
 
 // ================================================================ geometry (P1 frame px, head space before offset)
 
+// the cowl's lower edge is TORN (critic pass-3 r1: a flat grey mass): ragged teeth of uneven length along the hem
 const HOOD: readonly V[] = [
   [30, 82], [34, 58], [44, 36], [58, 20], [76, 9], [96, 5], [116, 8], [133, 18], [146, 31], [156, 44], [163, 52],
-  [156, 56], [150, 60], [149, 82], [152, 104], [146, 116], [124, 122], [86, 124], [50, 118], [34, 104],
+  [156, 56], [150, 60], [149, 82], [152, 104], [149, 118], [143, 112], [136, 124], [128, 116], [119, 127], [110, 117],
+  [99, 128], [90, 119], [80, 131], [71, 118], [61, 126], [54, 115], [45, 121], [40, 108], [32, 112], [34, 98],
 ];
 const CAVITY: readonly V[] = [
-  [104, 30], [122, 30], [137, 40], [146, 56], [147, 80], [143, 100], [130, 112], [112, 110], [100, 94], [97, 68], [99, 44],
+  [104, 30], [122, 30], [139, 38], [149, 53], [152, 72], [148, 92], [140, 106], [128, 112], [112, 110], [100, 94], [97, 68], [99, 44],
 ];
+// critic pass-3 r1: an ORGANIC skull (the old one read as a TV / robot visor): a domed cranium wider than the jaw, a
+// cheekbone that juts at the profile, a narrow maxilla, a separate mandible with a rounded chin
 const SKULL: readonly V[] = [
-  [108, 72], [106, 56], [112, 44], [122, 38], [134, 40], [142, 48], [146, 60], [147, 74], [144, 84], [140, 88], [139, 100],
-  [127, 106], [115, 102], [110, 90],
+  [107, 70], [105, 56], [109, 45], [118, 38], [130, 36], [141, 41], [147, 51], [149, 62], [150, 72], [146, 76], [143, 82],
+  [142, 88], [118, 88], [114, 80], [110, 76],
 ];
+const JAWBONE: readonly V[] = [[119, 90], [141, 90], [140, 98], [135, 103], [126, 104], [120, 99]];
 const CAPE: readonly V[] = [
   [8, 144], [12, 126], [22, 110], [40, 104], [80, 108], [124, 110], [156, 112], [176, 124], [186, 144],
 ];
@@ -82,13 +87,12 @@ const CAPE: readonly V[] = [
  * the temple behind the socket, one in front of it — bowing round the skull into the crown knob, a crown (brow) ring,
  * a jaw band over the teeth and a chin band under them. The socket sits between the two bars.
  */
+// critic pass-3 r1: only TWO bars (no brow ring / jaw / chin band frame), standing IN FRONT of the bone with a 1-px
+// void0 shadow beside them, bolted into the jaw with a rivet at each foot
 const BARS: readonly (readonly V[])[] = [
-  [[117, 104], [114, 82], [115, 60], [118, 44], [124, 31]],
-  [[143, 102], [145, 82], [144, 62], [139, 45], [126, 31]],
+  [[119, 92], [115, 76], [114, 60], [117, 46], [124, 31]],
+  [[143, 88], [146, 74], [145, 58], [139, 44], [126, 31]],
 ];
-/** the brow ring, the jaw band and the chin band round the cage (rows: lit, mid, shade) */
-const RING_Y = 48;
-const BANDS_Y: readonly number[] = [RING_Y, 84, 98];
 const KNOB: V = [124, 28];
 /** the eye socket centre (head space) */
 const EYE: V = [133, 61];
@@ -313,59 +317,55 @@ const factory: CutinFactory = () => ({
       const s = lit(x, y, add([124, 68], ho), 24);
       return s > 0.6 ? B4 : s > 0 ? B3 : s > -0.55 ? B2 : B1;
     });
-    // the socket (void0 oval, its lower rim in shadow), the nose hole, the cheek seam
-    hood.ellipse(eye[0] + 0.5, eye[1] + 0.5, 7.2, 6, PAL.void0);
-    hood.poly(T([[141, 70], [146, 70], [145, 79]], ho), PAL.void0);
-    // skull structure: the temple hollow behind the socket and the cheek hollow under the cheekbone (earth1), the
-    // cheekbone's lit ridge (earth4)
-    fillBy(hood, T([[112, 56], [120, 52], [124, 60], [118, 66], [111, 64]], ho), (x, y) => (inPoly(SK, x - ho[0], y - ho[1]) ? B2 : null));
-    fillBy(hood, T([[118, 76], [134, 72], [140, 80], [128, 86], [116, 84]], ho), (x, y) => (inPoly(SK, x - ho[0], y - ho[1]) ? B1 : null));
-    line4(hood, add([112, 72], ho), add([128, 70], ho), B4, (c, x, y) => c !== null && inPoly(SK, x - ho[0], y - ho[1]));
-    line4(hood, add([126, 68], ho), add([130, 82], ho), B1, (c, x, y) => c !== null && c !== PAL.void0 && inPoly(SK, x - ho[0], y - ho[1]));
-    line4(hood, add([130, 82], ho), add([142, 84], ho), B1, (c, x, y) => c !== null && c !== PAL.void0 && inPoly(SK, x - ho[0], y - ho[1]));
-    // the mouth: a row of upper teeth (stone4 lit tops, void0 gaps), the dark mouth line, the jaw
-    for (let x = 112; x <= 142; x++) {
-      const X = x + ho[0];
-      const gap = (x - 112) % 4 === 3;
-      for (let y = 88; y <= 96; y++) {
-        const Y = y + ho[1];
-        if (!inPoly(SK, x, y)) continue;
-        let c: number;
-        if (y <= 89) c = gap ? PAL.void0 : B4;
-        else if (y <= 91) c = gap ? PAL.void0 : B3;
-        else if (y === 92) c = PAL.void0;
-        else c = gap ? B1 : y === 93 ? B3 : B2;
-        hood.set(X, Y, c);
-      }
-    }
-    // the cage bars: 3 px — the lit column (toward the light) mist, steel middle, night3 shadow column
+    // the mandible (a separate bone under the mouth gap)
+    const JB = T(JAWBONE, ho);
+    fillBy(hood, JB, (x, y) => {
+      if (!inCav(x, y)) return null;
+      const s = lit(x, y, add([128, 96], ho), 10);
+      return y >= 101 + ho[1] ? B1 : s > 0.4 ? B3 : B2;
+    });
+    // the near socket (holds the eye) and the FAR socket at the profile (dark, unlit), the brow ridge over them
+    hood.ellipse(eye[0] + 0.5, eye[1] + 0.5, 6.2, 5.2, PAL.void0);
+    fillBy(hood, T([[142, 56], [147, 56], [148, 66], [143, 67]], ho), () => PAL.void0);
+    // a B2 ring of bone sunk round the sockets (they read deep, not as holes punched in a plate), the brow arching over
+    hood.ellipseRing(eye[0] + 0.5, eye[1] + 0.5, 7.4, 6.4, B2);
+    path4(hood, T([[125, 56], [128, 54], [134, 53], [139, 54], [141, 56]], ho), B4, (c, x, y) => c !== null && c !== PAL.void0 && inPoly(SK, x, y));
+    // the nose notch (a dark triangle under and between the sockets)
+    hood.poly(T([[140, 69], [145, 69], [143, 77]], ho), PAL.void0);
+    // the temple hollow behind the socket, the hollow under the cheekbone, the cheekbone's lit ridge
+    fillBy(hood, T([[110, 56], [119, 52], [123, 60], [117, 67], [110, 65]], ho), (x, y) => (inPoly(SK, x, y) ? B2 : null));
+    fillBy(hood, T([[117, 76], [131, 74], [136, 82], [122, 86], [116, 82]], ho), (x, y) => (inPoly(SK, x, y) ? B1 : null));
+    // the cheekbone: a short lit ridge slanting up to the profile (not a full-width line)
+    path4(hood, T([[131, 72], [137, 71], [142, 70]], ho), B4, (c, x, y) => c !== null && c !== PAL.void0 && inPoly(SK, x, y));
+    path4(hood, T([[131, 73], [137, 72]], ho), B3, (c, x, y) => c !== null && c !== PAL.void0 && inPoly(SK, x, y));
+    // the mouth: THREE irregular upper teeth and a missing one (no even comb), the dark gap, two lower stumps
+    const TEETH: readonly (readonly [number, number, number])[] = [
+      // x0, width, length
+      [121, 4, 5],
+      [126, 3, 4],
+      [134, 4, 6],
+      [139, 3, 3],
+    ];
+    for (let y = 85; y <= 91; y++)
+      for (let x = 119; x <= 142; x++) if (inPoly(SK, x + ho[0], y + ho[1]) || inPoly(JB, x + ho[0], y + ho[1]) || y === 89 || y === 90) hood.set(x + ho[0], y + ho[1], inCav(x + ho[0], y + ho[1]) ? PAL.void0 : hood.get(x + ho[0], y + ho[1]) ?? PAL.void0);
+    for (const [tx, tw, tl] of TEETH)
+      for (let y = 85; y < 85 + tl; y++)
+        for (let x = tx; x < tx + tw; x++) hood.set(x + ho[0], y + ho[1], y === 85 ? B4 : x === tx + tw - 1 ? B2 : B3);
+    for (const [tx, tw] of [[123, 3], [136, 3]] as const)
+      for (let y = 90; y <= 92; y++) for (let x = tx; x < tx + tw; x++) hood.set(x + ho[0], y + ho[1], y === 90 ? B3 : B2);
+    // the cage bars: 3 px (lit column, mid, shade) + a 1-px void0 SHADOW on the bone beside the shade column
     const cageOnly = (c: number | null, x: number, y: number) => c !== null && inCav(x, y);
+    const onBone = (c: number | null, x: number, y: number) => c !== null && inCav(x, y) && (c === B4 || c === B3 || c === B2 || c === B1);
     for (const bar of BARS) {
       const b = T(bar, ho);
+      path4(hood, b.map(([x, y]) => [x - side * 2, y + 1] as V), PAL.void0, onBone);
       path4(hood, b.map(([x, y]) => [x - side, y] as V), K1, cageOnly);
       path4(hood, b.map(([x, y]) => [x + side, y] as V), K3, cageOnly);
       path4(hood, b, K2, cageOnly);
+      // the rivet bolting the bar's foot into the bone
+      const f = b[0];
+      hood.set(f[0], f[1], K3).set(f[0] - side, f[1] + 1, K1);
     }
-    // the brow ring, the jaw band and the chin band: lit top row, mid, shade under — only over the skull's span
-    for (const by of BANDS_Y)
-      for (let x = 98; x <= 150; x++) {
-        const X = x + ho[0];
-        const rows: readonly [number, number][] = [
-          [by, K3],
-          [by + 1, K2],
-          [by + 2, K1],
-        ];
-        for (const [y, c] of rows) if (inCav(X, y + ho[1]) && (inPoly(SK, X, y + ho[1]) || inPoly(SK, X, y + ho[1] - 3) || inPoly(SK, X - 1, y + ho[1]) || inPoly(SK, X + 1, y + ho[1]))) hood.set(X, y + ho[1], c);
-      }
-    // rivets where the bars cross the bands
-    for (const by of BANDS_Y)
-      for (const bar of BARS) {
-        const b = T(bar, ho);
-        let best = b[0];
-        for (const q of b) if (Math.abs(q[1] - (by + 1 + ho[1])) < Math.abs(best[1] - (by + 1 + ho[1]))) best = q;
-        const rx = Math.round(best[0]);
-        if (inCav(rx, by + 1 + ho[1]) && hood.get(rx, by + 1 + ho[1]) === K2) hood.set(rx, by + 1 + ho[1], K1).set(rx + side, by + ho[1], K3);
-      }
     // the crown knob
     const kn = add(KNOB, ho);
     hood.disc(kn[0] + 0.5, kn[1] + 0.5, 3.2, PAL.steel);
@@ -390,9 +390,9 @@ const factory: CutinFactory = () => ({
     for (let i = 0; i < 4; i++) {
       const fx = hand[0] - 5 + i * 3;
       const fy = hand[1] - 3 + (i === 0 || i === 3 ? 1 : 0);
-      fillBy(bone, [[fx, fy], [fx + 3, fy], [fx + 3, fy + 7], [fx, fy + 7]], (x, y) => (x === fx + 2 ? PAL.earth1 : y < fy + 2 ? PAL.earth4 : y > fy + 5 ? PAL.earth2 : PAL.earth3));
+      fillBy(bone, [[fx, fy], [fx + 3, fy], [fx + 3, fy + 7], [fx, fy + 7]], (x, y) => (x === fx + 2 ? B1 : y < fy + 2 ? B4 : y > fy + 5 ? B2 : B3));
     }
-    fillBy(bone, [[hand[0] + 6, hand[1] - 1], [hand[0] + 12, hand[1] - 2], [hand[0] + 12, hand[1] + 4], [hand[0] + 6, hand[1] + 5]], (x, y) => (lit(x, y, [hand[0] + 9, hand[1] + 1], 3) > 0 ? PAL.earth3 : PAL.earth2));
+    fillBy(bone, [[hand[0] + 6, hand[1] - 1], [hand[0] + 12, hand[1] - 2], [hand[0] + 12, hand[1] + 4], [hand[0] + 6, hand[1] + 5]], (x, y) => (lit(x, y, [hand[0] + 9, hand[1] + 1], 3) > 0 ? B3 : B2));
     overInk(arm, bone);
     // chain: a link from the fist to the ring
     const chain = new PixelCanvas(W, H);
@@ -456,12 +456,34 @@ const factory: CutinFactory = () => ({
     out.outline(PAL.ink);
     // onto the warden's materials (the rig's design note, docs/v3/oturum-b/grim_warden.md): the shroud one value
     // down (stone2 lit / stone1 / stone0 / void0 folds), the iron on the stone ramp (stone4 / stone3 / stone1)
-    const CL: Record<number, number> = { [PAL.stone3]: PAL.stone2, [PAL.stone2]: PAL.stone1, [PAL.stone1]: PAL.stone0, [PAL.night0]: PAL.void0 };
+    // critic pass-3 r1: the black funeral shroud of the sprite (stone1 lit / stone0 / void0 folds / ink creases)
+    const CL: Record<number, number> = { [PAL.stone3]: PAL.stone1, [PAL.stone2]: PAL.stone0, [PAL.stone1]: PAL.void0, [PAL.night0]: PAL.ink };
     const IR: Record<number, number> = { [PAL.mist]: PAL.stone4, [PAL.steel]: PAL.stone3, [PAL.night3]: PAL.stone1 };
     out.map((c) => CL[c] ?? c);
     out.map((c) => IR[c] ?? c);
     // the skull (cool pale bone) and the cage iron (a value darker than the bone): their own tokens, mapped last
     out.map((c) => TOK[c] ?? c);
+
+    // ---------------------------------------------------------------- the lantern's stepped green UNDERLIGHT on the cloth
+    // (critic pass-3 r1: the cowl was a flat grey mass): the black shroud near the glass lifts one tone into the leaf ramp
+    // in two flat rings (stone1 → leaf1 / stone0, void0 → leaf0 near; stone1 → leaf0 farther), never on the skull
+    if (P.fire >= 1) {
+      const lcx = rx0;
+      const lcy = (top + 10 + top + 33) / 2;
+      const R0 = P.fire === 2 ? 34 : 26;
+      const R1 = P.fire === 2 ? 58 : 44;
+      for (let y = 0; y < H; y++)
+        for (let x = 0; x < W; x++) {
+          const c = out.get(x, y);
+          if (c === null || lan.isOpaque(x, y) || inPoly(CV, x, y)) continue;
+          const d = Math.hypot((x - lcx) * 0.9, y - lcy);
+          if (d > R1) continue;
+          if (d <= R0) {
+            if (c === PAL.stone1) out.set(x, y, PAL.leaf1);
+            else if (c === PAL.stone0 || c === PAL.void0) out.set(x, y, PAL.leaf0);
+          } else if (c === PAL.stone1) out.set(x, y, PAL.leaf0);
+        }
+    }
 
     // ---------------------------------------------------------------- lights (never outlined)
     // green cast on the lantern's side of the head (blaze): cage bars, lip, skull edges facing right

@@ -269,7 +269,7 @@ interface Frame {
 }
 
 const layer = () => kitLayer(W, H);
-const HAND_FAR: Tones = { L: PAL.earth2, M: PAL.earth1, S: PAL.earth0, D: PAL.ink };
+const HAND_FAR: Tones = { L: PAL.stone2, M: PAL.stone1, S: PAL.stone0, D: PAL.ink };
 const P = (v: Pt): Pt => [rnd(v[0]), rnd(v[1])];
 const wave = (o: Pose, t: number, ph: number) => sin((o.capeT - t * 0.6 + ph) * Math.PI * 2);
 
@@ -412,10 +412,12 @@ function paintHalberd(f: Frame): void {
     const v = (rx * nx + ry * ny) * lit;
     let edgeOut = 0;
     for (const [ex, ey] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) if (!s.isOpaque(x + ex, y + ey)) edgeOut++;
-    if (edgeOut && v > 0.5) return PAL.stone4;
-    if (Math.abs(v) < 1 && u > 2 && u < 11) return IRON.S;
-    if (v < -2.2) return IRON.S;
-    return v > 1 ? IRON.L : IRON.M;
+    // a value under the old blade (critic pass-3 r1: the spade was the brightest mass after the lantern): one stone4
+    // glint run on the lit edge's upper half, the rest stone3 / stone2 / stone1
+    if (edgeOut && v > 0.5) return u > 7 ? PAL.stone4 : PAL.stone3;
+    if (Math.abs(v) < 1 && u > 2 && u < 11) return IRON_FAR.S;
+    if (v < -2.2) return IRON_FAR.S;
+    return v > 1 ? IRON_FAR.L : IRON_FAR.M;
   });
   f.comp.add(bq, Part.halberd, { out: IRON.D });
 }
@@ -437,7 +439,7 @@ function paintSleeve(f: Frame, far: boolean): void {
   const wr: Pt = [lerp(E[0], Hd[0], 0.8), lerp(E[1], Hd[1], 0.8)];
   q.poly(ribbon([E, wr], (k) => lerp(5, 7, k)), t.M);
   // the bell of the sleeve hangs from the forearm's underside in ragged teeth, lagging the arm
-  const sway = o.capeA * 0.25 + wave(o, 0.3, far ? 0.5 : 0.1) * 1.3;
+  const sway = o.capeA * 0.25 + wave(o, 0.3, far ? 0.5 : 0.1) * 2;
   const droop = (far ? 6 : 8) + o.col * 3;
   const fx = wr[0] - E[0];
   const fy = wr[1] - E[1];
@@ -486,10 +488,9 @@ function paintLegs(f: Frame): void {
   if (o.col > 0.6) return;
   for (const [A, far] of [[sk.A2, true], [sk.A1, false]] as const) {
     const it = far ? IRON_FAR : IRON;
-    const bt = far ? BONE_FAR : BONE;
     // a bony shin wrapped in rags (barely seen under the hem)
     const top: Pt = [A[0] - 1, A[1] - 10];
-    limb(f, top, [A[0], A[1] - 2], 3, 3, bt, Part.legs);
+    limb(f, top, [A[0], A[1] - 2], 3, 3, far ? SHROUD_FAR : SHROUD, Part.legs);
     // the iron-shod boot: a heavy toe-cap pointing right, a cuff
     const q = layer();
     const [x, y] = P(A);
@@ -498,16 +499,17 @@ function paintLegs(f: Frame): void {
     // iron-shod boot planes (critic r1: flat wedges read as slippers): a lit cuff ring and instep edge, the mid
     // plate, a shaded heel / far side, a toe-cap glint, a dark sole line along the floor
     const ls = f.light.side;
-    const lo = far ? PAL.stone1 : PAL.stone2;
-    const mid = far ? PAL.stone1 : PAL.stone2;
-    const hi = far ? PAL.stone2 : PAL.stone3;
-    const glint = far ? PAL.stone3 : PAL.stone4;
+    // a value darker than before (critic pass-3 r1: the grey boots were the brightest mass of the figure)
+    const lo = far ? PAL.stone0 : PAL.stone1;
+    const mid = far ? PAL.stone0 : PAL.stone1;
+    const hi = far ? PAL.stone1 : PAL.stone2;
+    const glint = far ? PAL.stone2 : PAL.stone3;
     planes(q, (px, py, src) => {
-      if (py >= y + 2) return PAL.stone0;
+      if (py >= y + 2) return PAL.void0;
       if (py === y - 5) return hi;
       if (py === y - 4) return ls < 0 ? (px <= x - 2 ? hi : lo) : px >= x ? hi : lo;
       if (!src.isOpaque(px, py - 1)) return (px === x + 3 || px === x + 4) && py <= y - 1 ? glint : hi;
-      if (ls < 0 ? px >= x + 5 : px <= x - 4) return far ? PAL.stone0 : PAL.stone1;
+      if (ls < 0 ? px >= x + 5 : px <= x - 4) return far ? PAL.void0 : PAL.stone0;
       return mid;
     });
     f.comp.add(q, Part.legs, { out: far ? PAL.stone0 : PAL.ink });
@@ -549,8 +551,8 @@ function paintBody(f: Frame): void {
     const a = lerp(x0, x1, i / nt);
     const b = lerp(x0, x1, (i + 1) / nt);
     const w = sin((o.ragT + i * 0.19) * Math.PI * 2);
-    const len = LEN[i] * (1 - col * 0.5) + 1.2 * w;
-    const drift = -(nt - i) * 0.35 + wave(o, 1, i * 0.21) * 0.9 + o.capeA * 0.3;
+    const len = LEN[i] * (1 - col * 0.5) + 2 * w;
+    const drift = -(nt - i) * 0.35 + wave(o, 1, i * 0.21) * 1.5 + o.capeA * 0.3;
     pts.push([a + 0.4, hem - (i ? 1 : 0)]);
     pts.push([a + 0.7 + drift * 0.5, Math.min(floorCap, hem + len * 0.55)]);
     pts.push([(a + b) / 2 + drift, Math.min(floorCap, hem + len)]);
@@ -613,7 +615,7 @@ function paintMantle(f: Frame): void {
   const { o, sk, light } = f;
   const q = layer();
   const [cx, cy] = sk.C;
-  const lw = wave(o, 0.2, 0.15);
+  const lw = wave(o, 0.2, 0.15) * 1.8;
   // the hunched shoulders: a high hump at the back, the cape sloping forward and down to the hanging head
   const pts: Pt[] = [
     [cx - 8, cy - 2],
@@ -781,7 +783,8 @@ function paintHelm(f: Frame): void {
       case 'c':
         return PAL.stone2;
       case 'b':
-        return litU && v <= 4 ? PAL.stone2 : PAL.stone1;
+        // iron a value under the bone, a value over the hood's dark: it reads as a bar standing in front
+        return v <= 3 ? PAL.stone3 : PAL.stone2;
       case 'r':
         return PAL.stone3;
       case 'k':
@@ -817,7 +820,7 @@ function paintHood(f: Frame, front: boolean): void {
   const { o, sk, light } = f;
   if (o.helmOff > 0.15 && front) return;
   const [sx, sy] = sk.S;
-  const sw = o.hood + wave(o, 0.1, 0.35) * 0.8;
+  const sw = o.hood + wave(o, 0.1, 0.35) * 1.6;
   if (!front) {
     if (o.col > 0.9) return;
     const q = layer();

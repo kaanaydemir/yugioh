@@ -141,9 +141,11 @@ export const IRON_FAR: Tones = { L: PAL.stone3, M: PAL.stone2, S: PAL.stone1, D:
 export const BONE: Tones = { L: PAL.earth4, M: PAL.earth3, S: PAL.earth2, D: PAL.earth1 };
 export const BONE_FAR: Tones = { L: PAL.earth3, M: PAL.earth2, S: PAL.earth1, D: PAL.earth0 };
 /** The bony hands: a value darker than the skull's teeth so they never outshine the lantern. */
-export const HAND: Tones = { L: PAL.earth3, M: PAL.earth2, S: PAL.earth1, D: PAL.earth0 };
+// critic pass-3 r1: the bony hands are the SAME cool bone as the skull (earth hands read as brown mittens), a value
+// under it; the haft is old grave-wood, a value darker than before (a long orange stick pulled the eye off the lantern)
+export const HAND: Tones = { L: PAL.stone3, M: PAL.stone2, S: PAL.stone1, D: PAL.stone0 };
 /** Haft wood, rope belt. */
-export const WOOD: Tones = { L: PAL.earth3, M: PAL.earth2, S: PAL.earth1, D: PAL.earth0 };
+export const WOOD: Tones = { L: PAL.earth2, M: PAL.earth1, S: PAL.earth0, D: PAL.ink };
 
 /**
  * Flat three-band planes (IŞ-3): the band toward the key light, the shade band away from it, the mid tone

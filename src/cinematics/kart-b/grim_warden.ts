@@ -50,7 +50,7 @@ import { Raster } from '../../vfx/setpieces';
 import { Sparks, animate, onFrame, sleep } from '../../vfx/combat';
 import { shake } from '../../vfx/core';
 import { onDuelStart } from '../../duel/seeds';
-import { registerCardHook, registerObserver, registerStrike, type CinematicContext, type StrikeArgs } from '../api';
+import { fx, registerCardHook, registerObserver, registerStrike, type CinematicContext, type StrikeArgs } from '../api';
 import { atFrame, dropCharge, fade as fadeSnd, panAt, play, start, takeCharge } from '../_v3/sound';
 import { runSummon, type Stage } from '../summon-a/_kit';
 import { declarePoseFrame, strikeStartFrame } from '../_v3/clash';
@@ -60,7 +60,7 @@ import { deathStartFrom, takePlannedEntry } from '../_v3/posematch';
 import { planGuardBreak, runGuardBreak, showsGuard } from '../_v3/guardbreak';
 import { contactFlash } from '../_v3/flash';
 import { sourceOwnsDeath } from '../strikes-b/_kit';
-import { TAU, floorFlash, floorGlow, graveMound, gravestone, knockOut, lanternTint, skullMist, soulFade, soulThread, statDrop, type FloorGlow, type LanternTint, type SoulFade } from './grim_warden-fx';
+import { STONE_FLIGHT_MS, TAU, floorFlash, floorGlow, graveMound, gravestone, knockOut, lanternTint, skullMist, soulFade, soulThread, statDrop, type FloorGlow, type LanternTint, type SoulFade } from './grim_warden-fx';
 
 type Ev<T extends GameEvent['type']> = Extract<GameEvent, { type: T }>;
 type Ctx<T extends GameEvent['type']> = CinematicContext<Ev<T>>;
@@ -88,7 +88,7 @@ const rint = (p: XY): XY => ({ x: Math.round(p.x), y: Math.round(p.y) });
 const live = (u: MonsterUnit | null | undefined): MonsterUnit | null => (u && !u.retired && u.sprite.active ? u : null);
 
 /** A frame point of `anim` frame `f` in world space, wherever the sprite stands now. */
-function pointOf(u: MonsterUnit, anim: Parameters<MonsterUnit['frameCount']>[0], f: number, name: 'muzzle' | 'head' | 'core' | 'staff' | 'hand'): XY {
+function pointOf(u: MonsterUnit, anim: Parameters<MonsterUnit['frameCount']>[0], f: number, name: 'muzzle' | 'head' | 'core' | 'staff' | 'hand' | 'grip'): XY {
   const p = u.art.points ? u.art.points(anim, f)[name] : undefined;
   const q = p ?? (name === 'core' ? u.art.core : u.art.muzzle);
   return u.framePoint(q.x, q.y);
@@ -136,7 +136,7 @@ function endDrain(d: Drain): void {
  * The lantern's light on the floor under its live point (critic r2 blocker: the shared stepped light turned leaf light on
  * the Neon Tower's graphite slots into an opaque leaf0 stain over the grid lines — this one only ever ADDS bright pixels).
  */
-function lanternLight(sc: Phaser.Scene, u: MonsterUnit, ramp: Ramp, k: number, radius = 20): FloorGlow {
+function lanternLight(sc: Phaser.Scene, u: MonsterUnit, ramp: Ramp, k: number, radius = 16): FloorGlow {
   const h = floorGlow(sc, { x: u.home.x, floorY: u.home.y, ramp, radius, intensity: k });
   return h.follow(() => (live(u) && u.sprite.visible ? livePoint(u, 'muzzle') : null), () => u.worldPoint('feet').y);
 }
@@ -203,8 +203,18 @@ async function graveRiseV3(S: Stage): Promise<void> {
   const finale = () => {
     if (finaled) return;
     finaled = true;
-    flash(sc, home.x, home.y, LEAF, S.big ? 52 : 40, 520, 1.4);
-    S.finale({ ring: S.big ? 88 : 56, ramp: LEAF, freezeMs: S.big ? 50 : 0, sfx: null });
+    // critic pass-3 r1: no expanding rings (the shared summonBurst language). The finale is the LANTERN: its flame
+    // flares (the summon pose's raised-lantern frame), a stepped green light floods the tile from under it and decays
+    // in flat steps (2 → 1 → checker → off), and a handful of soul motes stream up off the glass.
+    const lp = livePoint(unit, 'muzzle');
+    const flare = floorGlow(sc, { x: Math.round(lp.x), floorY: home.y, ramp: LEAF, radius: S.big ? 46 : 36, intensity: 1.5, flicker: false });
+    void sleep(sc, 140).then(() => flare.fadeOut(480));
+    const sp = new Sparks(sc, S.depth + 0.6);
+    for (let i = 0; i < (S.big ? 12 : 8); i++)
+      sp.add({ x: Math.round(lp.x + RR(-4, 4)), y: Math.round(lp.y + RR(-3, 3)), vx: RR(-18, 18), vy: RR(-70, -34), drag: 1.5, life: RR(380, 620), colors: [PAL.leaf4, PAL.leaf3, PAL.leaf2, PAL.leaf1], shape: R() < 0.35 ? 'sq' : 'px', size: 1, fadeAt: 1, flicker: true });
+    sp.release();
+    void shake(sc, S.big ? 220 : 150, S.big ? 3 : 2);
+    void unit.badge.pop();
     // critic r2: the finale's own sound (the shared cut-in exit fires a generic summonBurst on the same tick: faded out)
     fadeSnd(['summonBurst'], 40);
     play('gwFinale', { volume: S.big ? 0.95 : 0.7, pan });
@@ -237,10 +247,13 @@ async function graveRiseV3(S: Stage): Promise<void> {
     stone.front();
     play('gwStone', { volume: 0.8, pan });
     clods(sc, home, rx, 9);
-    void sleep(sc, 110).then(() => {
+    void sleep(sc, STONE_FLIGHT_MS).then(() => {
       stone.pose = 2;
       void shake(sc, 90, 1);
-      dust(sc, { x: stoneAt.x - dir * 30, y: stoneAt.y + 6 }, 9);
+      // it cracks in two on landing: a dry stone split under the thud
+      play('gwStone', { volume: 0.55, pan, pitch: 0.82 });
+      dust(sc, { x: stoneAt.x - dir * 24, y: stoneAt.y + 6 }, 10);
+      clods(sc, { x: stoneAt.x - dir * 24, y: stoneAt.y + 6 }, 6, 5);
     });
   });
   // the mound sinks as the body climbs out of it
@@ -296,6 +309,25 @@ if (LOOK_V3)
     'summon',
     async (ctx) => {
       if (ctx.ev.from !== 'hand') return ctx.base();
+      // critic pass-3 r1: the shared card slam's impact (tile flash ring + attribute sparkles) made the first read the
+      // generic summon. The card is slammed here with `impact: false` (same flight, same sound), the tile only thumps
+      // a ring of grave soil, and runSummon is told the card is already down (noCard).
+      const ev = ctx.ev;
+      const hints = ctx.hints as { noCard?: boolean };
+      if (!hints.noCard && ev.type === 'summon') {
+        const card = fx.takeHandCard(ctx, ev.player, ev.uid, ev.cardId);
+        for (const o of card.inner.list) ctx.scene.tweens.killTweensOf(o);
+        ctx.scene.tweens.killTweensOf(card.inner);
+        void ctx.views.duelists?.get(ev.player).play('command');
+        ctx.sfx('cardSlam', { volume: 0.8 });
+        await fx.slamToZone(ctx, card, { player: ev.player, spot: 'monster', index: ev.zone, uid: ev.uid, cardId: ev.cardId, faceUp: true, ms: 340, shake: 2, impact: false });
+        const at = zoneXY(ev.player, 'monster', ev.zone);
+        clods(ctx.scene, at, 12, 7);
+        dust(ctx.scene, at, 6);
+        const c2 = Object.create(ctx, { hints: { value: { ...ctx.hints, noCard: true } } }) as typeof ctx;
+        await runSummon(c2, async () => undefined, graveRiseV3);
+        return;
+      }
       await runSummon(ctx, async () => undefined, graveRiseV3);
     },
     { priority: 20, name: 'kart-b:grim_warden:summon' },
@@ -415,7 +447,7 @@ async function drainV3(ctx: Ctx<'activate'>): Promise<void> {
   flash(sc, lantern().x, u.home.y, ramp, 18, 200, 1.2);
   light.setIntensity(0.9, 200);
   // ---- back to the strike's charge pose (the recovery a little brisker: the strike follows)
-  await u.playRange('special', HOLD + 1, u.frameCount('special') - 1, { timeScale: 1.35 });
+  await u.playRange('special', HOLD + 1, u.frameCount('special') - 1, { timeScale: 1.6 });
   const f = declarePoseFrame(u);
   await u.playRange('attack', 0, f);
   if (hold) ctx.keep('attack', hold);
@@ -613,7 +645,7 @@ function watchLanterns(ctx: CinematicContext): void {
       let p = idlePools.get(u.uid);
       if (!p || p.u !== u) {
         p?.h.destroy();
-        const h = floorGlow(sc, { x: u.home.x, floorY: u.home.y, ramp: want, radius: 24, intensity: 0 }).setIntensity(1, 300);
+        const h = floorGlow(sc, { x: u.home.x, floorY: u.home.y, ramp: want, radius: 16, intensity: 0 }).setIntensity(0.5, 300);
         h.follow(() => (live(u) && u.sprite.visible ? livePoint(u, 'muzzle') : null), () => u.worldPoint('feet').y);
         p = { u, h, ramp: want };
         idlePools.set(u.uid, p);
@@ -830,11 +862,8 @@ function soulBurst(sc: Phaser.Scene, at: XY, floorY: number, ramp: Ramp, small: 
         }
         if (step === 2) g.disc(at.x, at.y, 2, ramp[4]);
       }
-      // one clean ring, stepping out once (frames 1–2 only)
-      if (step === 1 || step === 2) {
-        const rad = Math.round(R0 * (step === 1 ? 1.1 : 1.45));
-        g.ring(at.x, at.y, rad, Math.round(rad * 0.8), step === 1 ? ramp[4] : ramp[3], 1);
-      }
+      // critic pass-3 r1: NO ring of our own — the shared contact staging already rings the blow (REHBER: one hard
+      // ring on screen); the star and its flying shards carry the burst
     });
   };
   paint(0);
@@ -854,43 +883,104 @@ function soulBurst(sc: Phaser.Scene, at: XY, floorY: number, ramp: Ramp, small: 
   sp.release();
 }
 
-/** The halberd's iron crescent through the low line (f8): 3 px arc, white → mist → steel, 2 frames. */
-function chopCrescent(sc: Phaser.Scene, at: XY, dir: 1 | -1, small: boolean): void {
-  const r = Raster.around(sc, at.x, at.y, 70, 50, DEPTH.FX + 2);
-  const R0 = small ? 12 : 17;
-  void animate(sc, 110, (_k, el) => {
-    const step = el < 55 ? 0 : 1;
+/**
+ * The halberd's SWEEP SMEAR (critic pass-3 r1: the chop read as a straight stick lying across the body): a crescent band
+ * pivoting on the warden's far hand, from the spade's raised point (f7) round to its chopped point (f8) — 2 frames: a
+ * fat band (white edge, mist / iron body, a soul-leaf trailing rim in the lantern's colour), then a thinning tail that
+ * peels off the leading end. Whole pixels, no alpha.
+ */
+function chopCrescent(sc: Phaser.Scene, u: MonsterUnit, fUp: number, fDown: number, ramp: Ramp, small: boolean): void {
+  const c = pointOf(u, 'attack', fDown, 'grip');
+  const p0 = pointOf(u, 'attack', fUp, 'staff');
+  const p1 = pointOf(u, 'attack', fDown, 'staff');
+  const R1 = Math.max(16, Math.round(Math.hypot(p1.x - c.x, p1.y - c.y)));
+  let a0 = Math.atan2(p0.y - c.y, p0.x - c.x);
+  let a1 = Math.atan2(p1.y - c.y, p1.x - c.x);
+  const dir = u.flipX ? -1 : 1;
+  // sweep the short way in the facing direction (P1 clockwise on screen, P2 mirrored)
+  if (dir > 0) while (a1 < a0) a1 += TAU;
+  else while (a1 > a0) a1 -= TAU;
+  if (Math.abs(a1 - a0) > Math.PI * 1.3) a1 = a0 + dir * Math.PI * 0.9;
+  const r = Raster.around(sc, c.x, c.y, R1 * 2 + 16, R1 * 2 + 16, DEPTH.FX + 2);
+  const W = small ? 4 : 6;
+  void animate(sc, 120, (_k, el) => {
+    const step = el < 60 ? 0 : 1;
     r.draw((g) => {
-      // from up-behind the target down through its front (screen angles), facing-aware
-      const a0 = -2.3;
-      const a1 = 0.5 + step * 0.3;
-      const n = 22;
+      const from = step === 0 ? 0.1 : 0.55;
+      const n = Math.ceil(Math.abs(a1 - a0) * R1);
       for (let i = 0; i <= n; i++) {
-        const a = lerp(a0, a1, i / n);
-        const ax = Math.cos(a) * dir;
-        const ay = Math.sin(a) * 0.75;
-        const tip = i > n * (step === 0 ? 0.25 : 0.55);
-        if (!tip) continue;
-        const cols = step === 0 ? [PAL.white, PAL.mist, IRON[3]] : [PAL.mist, IRON[3], IRON[2]];
-        for (let k = 0; k < 3; k++) g.px(Math.round(at.x + ax * (R0 - k)), Math.round(at.y + ay * (R0 - k)), cols[k]);
+        const t = from + (1 - from) * (i / n);
+        const a = lerp(a0, a1, t);
+        // the band swells toward the leading end (the spade), the trailing end a 1-px wisp
+        const w = Math.max(1, Math.round(W * (step === 0 ? t : t * 0.6)));
+        for (let k = 0; k < w; k++) {
+          const rr = R1 + 1 - k;
+          const col = k === 0 ? (step === 0 ? PAL.white : PAL.mist) : k === w - 1 ? ramp[3] : k === 1 ? PAL.mist : IRON[2];
+          g.px(Math.round(c.x + Math.cos(a) * rr), Math.round(c.y + Math.sin(a) * rr), col);
+        }
       }
     });
   }).then(() => r.destroy());
 }
 
 /** Direct attack: the burst throws a soul bolt the last stretch to the duelist (≈100 ms). */
+/** A tiny soul-fire skull (7×6; 4 = ramp[4], 3 = ramp[3], 2 = ramp[2], o = socket, t = tooth gap, # = ink). */
+const WISP = ['.#####.', '#44443#', '#4o4o3#', '#43332#', '.#3t3#.', '..###..'];
+
+/**
+ * The direct attack's SOUL-FIRE WISP (critic pass-3 r1: a 1-px green laser line + star): the lantern spits a small
+ * skull of soul fire that flies in a wobbling arc over 150–250 ms, a curling smoke-and-flame trail behind it (puffs on its
+ * past positions stepping ramp[3] → ramp[2] → ramp[1] → stone1, shrinking), its flame tongue flickering behind the skull.
+ */
 async function soulBolt(sc: Phaser.Scene, from: XY, to: XY, ramp: Ramp): Promise<void> {
   const r = new Raster(sc, 0, 0, 640, 360, DEPTH.FX_TOP - 1);
-  const ms = clamp(Math.round(Math.hypot(to.x - from.x, to.y - from.y) * 0.9), 80, 160);
-  const trail: XY[] = [];
-  await animate(sc, ms, (k) => {
-    const e = k * k;
-    const p = rint({ x: lerp(from.x, to.x, e), y: lerp(from.y, to.y, e) - Math.sin(Math.PI * k) * 8 });
-    trail.unshift(p);
-    if (trail.length > 6) trail.pop();
+  const dist = Math.hypot(to.x - from.x, to.y - from.y);
+  const ms = clamp(Math.round(dist * 1.3), 150, 250);
+  const nx = -(to.y - from.y) / (dist || 1);
+  const ny = (to.x - from.x) / (dist || 1);
+  const trail: { p: XY; age: number }[] = [];
+  let last = -1;
+  await animate(sc, ms, (k, el) => {
+    const e = k < 0.15 ? k * 0.6 : 0.09 + (k - 0.15) * (0.91 / 0.85);
+    const wob = Math.sin(k * Math.PI * 3) * 4 * (1 - k);
+    const p = rint({ x: lerp(from.x, to.x, e) + nx * wob, y: lerp(from.y, to.y, e) + ny * wob - Math.sin(Math.PI * k) * 14 });
+    const fr = Math.floor(el / 17);
+    if (fr !== last) {
+      last = fr;
+      for (const t of trail) t.age++;
+      trail.unshift({ p, age: 0 });
+      if (trail.length > 10) trail.pop();
+    }
     r.draw((g) => {
-      for (let i = trail.length - 1; i >= 1; i--) g.line(trail[i].x, trail[i].y, trail[i - 1].x, trail[i - 1].y, i < 2 ? ramp[4] : i < 4 ? ramp[3] : ramp[2], 1, i < 3 ? 3 : 1);
-      g.disc(p.x, p.y, 2, PAL.white);
+      // the smoke curls: older puffs drift up and sideways, shrink, and step down the ramp to cold stone
+      for (let i = trail.length - 1; i >= 1; i--) {
+        const t = trail[i];
+        const curl = Math.sin(t.age * 1.3 + i) * 1.5;
+        const x = Math.round(t.p.x + curl);
+        const y = Math.round(t.p.y - t.age * 0.8);
+        const rad = Math.max(0, 3 - Math.floor(t.age / 3));
+        const col = t.age < 2 ? ramp[3] : t.age < 4 ? ramp[2] : t.age < 6 ? ramp[1] : PAL.stone1;
+        if (rad > 0) g.disc(x, y, rad, col);
+        else g.px(x, y, col);
+      }
+      // the flame tongue behind the skull (flickers on whole frames)
+      const back = trail[1]?.p ?? from;
+      // a short tongue (≤ 5 px) pointing back along the flight — never a long streak
+      const bl = Math.hypot(back.x - p.x, back.y - p.y) || 1;
+      const tl = Math.min(5, bl);
+      const tx = Math.round(p.x + ((back.x - p.x) / bl) * tl);
+      const ty = Math.round(p.y + ((back.y - p.y) / bl) * tl) + (fr % 2);
+      g.line(p.x, p.y, tx, ty, ramp[4], 1, 3);
+      // the skull itself
+      const x0 = p.x - 3;
+      const y0 = p.y - 3;
+      WISP.forEach((row, y) => {
+        for (let x = 0; x < row.length; x++) {
+          const ch = row[x];
+          const c = ch === '#' ? PAL.ink : ch === '4' ? (fr % 3 === 0 ? PAL.white : ramp[4]) : ch === '3' ? ramp[3] : ch === '2' ? ramp[2] : ch === 'o' || ch === 't' ? PAL.ink : null;
+          if (c !== null) g.px(x0 + x, y0 + y, c);
+        }
+      });
     });
   });
   r.destroy();
@@ -920,7 +1010,7 @@ async function scytheV3(s: StrikeArgs): Promise<void> {
     play('gwRelease', { volume: 0.85, pan });
   };
   atFrame(u, 'attack', REL, rel, { late: false });
-  atFrame(u, 'attack', CON + 2, () => play('gwChop', { volume: loses ? 0.5 : 0.8, pan: panAt(u.sprite.x) }), { late: false });
+  if (!s.direct) atFrame(u, 'attack', CON + 2, () => play('gwChop', { volume: loses ? 0.5 : 0.8, pan: panAt(u.sprite.x) }), { late: false });
   // ---- geometry: where the warden must stand for the contact frame's lantern to land on the target
   const home = { ...u.home };
   const m = u.art.points ? u.art.points('attack', CON).muzzle : undefined;
@@ -998,10 +1088,9 @@ async function scytheV3(s: StrikeArgs): Promise<void> {
     return;
   }
   // ---- the spade-halberd sweeps through (f8), then the warden glides home on the recovery
-  atFrame(u, 'attack', CON + 2, () => {
-    const c = s.target && live(s.target) ? s.target.core() : s.to;
-    chopCrescent(sc, rint({ x: c.x, y: c.y + 4 }), u.flipX ? -1 : 1, s.blocked);
-  }, { late: false });
+  // the halberd sweep (melee only: after a direct hit it would chop empty air — critic pass-3 r1 — so the direct
+  // attack's f7–f8 play as a flourish, without the smear or the chop sound)
+  if (!s.direct) atFrame(u, 'attack', CON + 2, () => chopCrescent(sc, u, CON + 1, CON + 2, ramp, s.blocked), { late: false });
   const rest = u.playRange('attack', CON + 1, undefined, { hold: false });
   await sleep(sc, u.rangeMs('attack', CON + 1, REC));
   void light.fadeOut(200);
@@ -1182,6 +1271,14 @@ async function returnLight(sc: Phaser.Scene, from: XY, d: Drain, depth: number):
   thread.destroy();
   d.fade.destroy();
   if (live(t)) {
+    // critic pass-3 r1: the plate rolls back +400 on the very frame the light arrives (it used to wait ≈1 s for the
+    // shared plate refresh); a bright bell (the −400 bell pitched up) marks the give-back
+    const st = t.shownStats;
+    if (t.battleTint) {
+      t.battleTint = false;
+      void t.setStats(st.atk + 400, st.def, true);
+      play('gwDebuff', { volume: 0.6, pan: panAt(t.home.x), pitch: 1.5 });
+    }
     flash(sc, t.core().x, t.home.y, d.ramp, 24, 260, 1.3);
     embersUp(sc, rint(t.core()), d.ramp, t.sprite.depth + 0.4);
   }

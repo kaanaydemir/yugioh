@@ -20,6 +20,8 @@ import type { XY } from '../../view/layout';
 import { framePixels } from '../../vfx/hologram';
 import { Raster, bayer } from '../../vfx/setpieces';
 import { onFrame } from '../../vfx/combat';
+import { stepsAt } from '../../view/light/stepped';
+import { topAt } from '../../still/arena';
 
 export const TAU = Math.PI * 2;
 const PALSET = new Set<number>(Object.values(PAL) as number[]);
@@ -290,7 +292,8 @@ export function soulThread(scene: Phaser.Scene, from: () => XY, to: () => XY, ra
     const span = Math.max(14, Math.abs(A.x - B.x));
     // critic r2: the arc rises straight up out of the target, crosses ABOVE the warden's raised lantern and dives into
     // it from behind / above (the light is visibly pulled across, away from the target, into the warden's hand)
-    const p1 = { x: A.x + away * Math.min(10, span * 0.2), y: top - 6 };
+    // critic pass-3 r1: the foot leaves the target body steeply (clear of a same-hued body sooner)
+    const p1 = { x: A.x + away * Math.min(6, span * 0.12), y: top - 14 };
     const p2 = { x: B.x - away * Math.max(16, span * 0.35), y: top - 2 };
     const u = 1 - t;
     const x = u * u * u * A.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * B.x;
@@ -340,7 +343,9 @@ export function soulThread(scene: Phaser.Scene, from: () => XY, to: () => XY, ra
       const strong = st.width > 0.67;
       const mid = st.width > 0.34;
       // ---- the band: ink sheath (separates it from any body behind), ramp body, hot core
-      if (mid) for (let i = 0; i <= m; i++) g.disc(pts[i].x, pts[i].y, strong ? 2 : 1.5, PAL.ink);
+      // critic pass-3 r1: a fatter ink sheath (2 px each side) so a FIRE arc over the wolf's flames / a LIGHT arc over
+      // the white wyrm still reads as a separate band
+      if (mid) for (let i = 0; i <= m; i++) g.disc(pts[i].x, pts[i].y, strong ? 2.6 : 1.8, PAL.ink);
       for (let i = 0; i <= m; i++) {
         if (mid) g.disc(pts[i].x, pts[i].y, strong ? 1 : 0.6, strong ? ramp[3] : ramp[2]);
         else g.px(pts[i].x, pts[i].y, ramp[2]);
@@ -350,6 +355,7 @@ export function soulThread(scene: Phaser.Scene, from: () => XY, to: () => XY, ra
           // the hot core: ramp[4], with white dashes running toward the lantern (separates it from a same-hued body)
           const hot = ((i - Math.floor(el / 28) * st.flow) & 7) < 3;
           g.line(pts[i].x, pts[i].y - 1, pts[i + 1].x, pts[i + 1].y - 1, hot ? PAL.white : ramp[4]);
+          if (hot) g.px(pts[i].x, pts[i].y, ramp[4]);
         }
       // ---- the head: where the thread is drawn out to, a hot spark
       if (st.reach < 1) {
@@ -592,25 +598,27 @@ export interface Gravestone {
 
 /** The headstone (10×16, critic r2: taller and lighter so it reads at 1×): a rounded slab, carved cross, stone4 lit left edge, stone3 face, stone2 / stone1 shade, ink. */
 const STONE_UP = [
-  // (fix r2b: 2 px taller and one tone lighter, so the headstone reads at 1× over the dark soil)
-  '...####...',
-  '..#4444#..',
-  '.#444433#.',
-  '#4444c332#',
-  '#4444c332#',
-  '#44ccccc2#',
-  '#4444c332#',
-  '#4444c332#',
-  '#4443c332#',
-  '#44433332#',
-  '#44433332#',
-  '#44333322#',
-  '#43333322#',
-  '#43333222#',
-  '#33332221#',
-  '#33322211#',
-  '#32222111#',
-  '##########',
+  // critic pass-3 r1: ≥ 12×18 with a CARVED top — a round arch with a shoulder step, a sunk cross, a crack line
+  '....#####....',
+  '..##44443##..',
+  '.#444444333#.',
+  '#44444c43332#',
+  '#4444ccc3332#',
+  '#44444c43332#',
+  '#44444c43322#',
+  '#44444c43322#',
+  '##4444443322#',
+  '#c###444333##',
+  '#44444#43322#',
+  '#444443#3322#',
+  '#44443333#22#',
+  '#44433333#22#',
+  '#43333332#21#',
+  '#4333322#221#',
+  '#33332222#11#',
+  '#33322222111#',
+  '#32222211111#',
+  '#############',
 ];
 /** Rotate a stone map (nearest pixel) by `deg` round its bottom-centre; the outline is re-cut afterwards. */
 function rotMap(rows: readonly string[], deg: number, squashY = 1): string[] {
@@ -650,18 +658,31 @@ function rotMap(rows: readonly string[], deg: number, squashY = 1): string[] {
     }
   return out.map((r) => r.join(''));
 }
-const STONE_TILT = rotMap(STONE_UP, 42);
-const STONE_FLAT = rotMap(STONE_UP, 90, 0.5);
+const STONE_ROT = [rotMap(STONE_UP, 18), rotMap(STONE_UP, 42), rotMap(STONE_UP, 66), rotMap(STONE_UP, 90, 0.6)];
+const STONE_FLAT = STONE_ROT[3];
+/** The fallen stone CRACKED in two: the flat map split at its middle column (the two halves drawn apart). */
+const SPLIT = Math.floor(STONE_FLAT[0].length * 0.55);
+const recut = (rows: string[]): string[] =>
+  rows.map((r, y) => r.split('').map((ch, x) => (ch !== '.' && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => (rows[y + dy]?.[x + dx] ?? '.') === '.') ? '#' : ch)).join(''));
+const HALF_A = recut(STONE_FLAT.map((r) => r.slice(0, SPLIT)));
+const HALF_B = recut(STONE_FLAT.map((r) => r.slice(SPLIT)));
+
+/** Ms of the headstone's flight (shoved off the mound → lands beyond the rim). */
+export const STONE_FLIGHT_MS = 230;
 
 /**
  * The headstone at floor point `at` (`dir` = the side it falls toward). Rises out of the mound (rise 0…1), can be
- * flung up out of it (rise > 1), is shoved over (pose 1: tipped 42°, in the air) and lands flat (pose 2).
+ * flung up out of it (rise > 1), is shoved over (pose 1: it FLIES — a ≥ 12-px arc while it tips through 18° / 42° /
+ * 66° — critic pass-3 r1: it used to jump to a tipped pose and lie as a grey bar) and lands (pose 2): it CRACKS in two,
+ * the halves knock apart and sink into the soil.
  */
 export function gravestone(scene: Phaser.Scene, at: XY, dir: 1 | -1, depth: number): Gravestone {
-  const r = Raster.around(scene, at.x, at.y - 12, 90, 44, depth);
+  const r = Raster.around(scene, at.x + dir * 14, at.y - 18, 110, 60, depth);
   const S = RAMPS.stone;
   const st: Gravestone = { rise: 0, pose: 0, front: () => r.img.setDepth(depth + 1.2), destroy };
   let alive = true;
+  let lastPose = 0;
+  let el = 0;
   const col = (ch: string): number | null =>
     ch === '#' ? PAL.ink : ch === '4' ? S[4] : ch === '3' ? S[3] : ch === '2' ? S[2] : ch === '1' ? S[1] : ch === 'c' ? S[1] : null;
   const stamp = (g: Raster, rows: readonly string[], x0: number, y0: number, clipY: number) => {
@@ -675,16 +696,42 @@ export function gravestone(scene: Phaser.Scene, at: XY, dir: 1 | -1, depth: numb
       }
     }
   };
-  const stop = onFrame(scene, () => {
+  const W0 = STONE_UP[0].length;
+  const stop = onFrame(scene, (dt) => {
     if (!alive) return false;
+    if (st.pose !== lastPose) {
+      lastPose = st.pose;
+      el = 0;
+    }
+    el += dt;
     r.draw((g) => {
       if (st.pose === 0) {
-        const up = Math.max(0, st.rise - 1) * 6;
+        const up = Math.max(0, st.rise - 1) * 16;
         const hgt = Math.round(STONE_UP.length * Math.min(1, st.rise));
         if (hgt <= 0) return;
-        stamp(g, STONE_UP, at.x - 5, Math.round(at.y - hgt - up), at.y - 1);
-      } else if (st.pose === 1) stamp(g, STONE_TILT, at.x + dir * 14 - (dir === 1 ? 3 : STONE_TILT[0].length - 3), at.y - STONE_TILT.length - 4, at.y + 4);
-      else stamp(g, STONE_FLAT, at.x + dir * 24 - (dir === 1 ? 1 : STONE_FLAT[0].length - 1), at.y - STONE_FLAT.length + 7, at.y + 10);
+        stamp(g, STONE_UP, at.x - (W0 >> 1), Math.round(at.y - hgt - up), at.y - 1);
+      } else if (st.pose === 1) {
+        // the flight: an arc 14 px high, tipping as it goes (the map's bottom-centre rides the arc)
+        const k = Math.min(1, el / STONE_FLIGHT_MS);
+        const m = STONE_ROT[Math.min(2, Math.floor(k * 3))];
+        const bx = at.x + dir * Math.round(4 + 20 * k);
+        const by = Math.round(at.y - 2 - 14 * Math.sin(Math.PI * Math.min(1, k * 1.1)) + 6 * k);
+        const mw = m[0].length;
+        stamp(g, m, bx - (mw >> 1), by - m.length, at.y + 10);
+      } else {
+        // landed: cracked in two, the halves knocked 2 px apart (the outer one bounces once), then sinking into the soil
+        const sink = Math.max(0, Math.floor((el - 260) / 70));
+        const bounce = el < 70 ? 2 : el < 130 ? 1 : 0;
+        const fw = STONE_FLAT[0].length;
+        const x0 = at.x + dir * 24 - (fw >> 1);
+        const y0 = at.y + 6 - STONE_FLAT.length + sink;
+        const clip = at.y + 6;
+        const ax = dir === 1 ? x0 : x0 + fw - HALF_A[0].length;
+        const bxx = dir === 1 ? x0 + SPLIT + 2 : x0 - 2;
+        stamp(g, HALF_A, ax - dir, y0, clip);
+        stamp(g, HALF_B, bxx + dir, y0 - bounce, clip);
+        if (sink > STONE_FLAT.length) destroy();
+      }
     });
     return true;
   });
@@ -720,6 +767,10 @@ const SKULL = [
   '.....#####.....',
 ];
 const JAW = 13;
+/** Skull cells touching a socket / the nose (lit ramp[3]: the fire in the sockets catches their rims). */
+const SOCKET_RIM: boolean[][] = SKULL.map((row, y) =>
+  row.split('').map((ch, x) => ch !== 'o' && ch !== 'n' && ch !== '#' && ch !== '.' && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => 'on'.includes(SKULL[y + dy]?.[x + dx] ?? '.'))),
+);
 
 export interface SkullMist {
   /** 0..1: the skull comes apart (bayer knock-out of its pixels, the fringe first). */
@@ -756,7 +807,7 @@ export function skullMist(scene: Phaser.Scene, at: XY, ramp: Ramp, depth: number
       const W = SKULL[0].length;
       // ---- the ghost tail: a short tapering wisp under the jaw that curls side to side
       const ty0 = y0 + Math.round(SKULL.length * sh) + jaw - 1;
-      const TL = 12;
+      const TL = 8;
       for (let k = 0; k < TL; k++) {
         const u = k / TL;
         const yy = ty0 + k;
@@ -765,7 +816,7 @@ export function skullMist(scene: Phaser.Scene, at: XY, ramp: Ramp, depth: number
         const lvl = (1 - u) * (0.9 - st.gone);
         for (let xx = -w; xx <= w; xx++) {
           if (bayer(x + xx, yy) >= lvl) continue;
-          g.px(x + xx, yy, xx === 0 && u < 0.4 ? ramp[3] : ramp[2]);
+          g.px(x + xx, yy, xx === 0 && u < 0.4 ? ramp[2] : ramp[1]);
         }
       }
       // ---- the skull (rows stretched on whole pixels; the jaw rows dropped by `jaw`)
@@ -785,11 +836,14 @@ export function skullMist(scene: Phaser.Scene, at: XY, ramp: Ramp, depth: number
             if (b < st.gone * (edge ? 1.6 : 1.1)) continue;
             if (edge && b < 0.25) continue; // a soft vapour fringe, never a hard rim
             let c: number;
+            // critic pass-3 r1: a DARK, vaporous skull (it read as an opaque saturated emoji): ramp[1] / ramp[2] body,
+            // ramp[3] only on the brow, the rim of the sockets and the top fringe; the hot points live in the sockets
             if (ch === 'o' || ch === 'n' || ch === 't') c = PAL.ink;
-            else if (edge) c = ramp[1];
-            else if (ch === '4') c = el < 180 ? PAL.white : ramp[4];
-            else if (ch === '2') c = ramp[2];
-            else c = y < 5 || b < 0.55 ? ramp[3] : ramp[2];
+            else if (edge) c = y < 4 ? ramp[2] : ramp[1];
+            else if (ch === '4') c = el < 120 ? ramp[4] : ramp[3];
+            else if (ch === '2') c = ramp[1];
+            else if (SOCKET_RIM[y]?.[x]) c = ramp[3];
+            else c = y < 3 || b < 0.25 ? ramp[2] : ramp[1];
             g.px(X, yy, c);
           }
       }
@@ -848,7 +902,8 @@ export function knockOut(scene: Phaser.Scene, u: MonsterUnit, ramp: Ramp, ms = 1
               const b = bayer(lx, y) * 0.85 + (1 - y / fp.h) * 0.15;
               if (b < lvl) {
                 // just went out this step: a sparse flare of ash
-                if (b >= prev && (lx + y) % 5 === 0) g.pc.set(lx, y, ramp[3]);
+                // critic pass-3 r1: ONE ash family (cold stone, a rare soul ember) — never multicoloured confetti
+                if (b >= prev && (lx + y) % 5 === 0) g.pc.set(lx, y, (lx * 3 + y) % 17 === 0 ? ramp[3] : (lx + y) % 2 ? PAL.stone2 : PAL.stone1);
                 continue;
               }
               g.pc.set(lx, y, rgb(fp.data, i));
@@ -877,9 +932,28 @@ export interface FloorGlow {
   destroy(): void;
 }
 
-/** 4×4 world-aligned ordered dither (the floor never crawls). */
-const B4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-const b4 = (x: number, y: number): number => (B4[((y & 3) << 2) | (x & 3)] + 0.5) / 16;
+/** The calm floor's colour at a screen pixel for the pool (every matte surface: pads, joins, gaps, bridges — never the
+ *  neon zone lines, which stay crisp through the light), memoised. */
+const FLOOR = new Map<number, number | null>();
+function floorAt(x: number, y: number): number | null {
+  const k = y * 4096 + x;
+  let v = FLOOR.get(k);
+  if (v === undefined) {
+    const t = topAt(x, y);
+    v = t && t.kind !== 'line' && t.kind !== 'trim' && t.kind !== 'rim' ? t.color : null;
+    FLOOR.set(k, v);
+  }
+  return v;
+}
+const lumOf = (c: number): number => 0.2126 * ((c >> 16) & 255) + 0.7152 * ((c >> 8) & 255) + 0.0722 * (c & 255);
+/** A pad tone lifted `n` steps into the soul's ramp: step 1 is the first ramp tone clearly brighter than the pad. */
+function liftTone(base: number, ramp: Ramp, n: number): number {
+  const lb = lumOf(base) * 1.4 + 8;
+  let i = 0;
+  while (i < 4 && lumOf(ramp[i]) < lb) i++;
+  return ramp[Math.min(4, i + n - 1)];
+}
+
 
 /**
  * The soul lantern's light on the floor (critic r2 blocker: the shared stepped light maps leaf light on the Neon Tower's
@@ -940,18 +1014,26 @@ export function floorGlow(scene: Phaser.Scene, o: { x: number; floorY: number; r
     const cx = pos.x;
     const cy = pos.y;
     r.draw((g) => {
+      // critic pass-3 r1: the sparse bright dither read as dot noise / grass. Now a STEPPED POOL in the v3 light
+      // language: only the matte pad pixels (padColorAt — never the neon zone lines, which stay crisp through it) move
+      // one tone toward the soul's ramp on the rim, two in the core (inner 50 %); a level under a whole step is a 2×2
+      // world-aligned Bayer, so a dim pool or a fade is a flat checker of ONE lifted tone, never scattered dots.
+      // levels stay low (a full 1-step lift over the whole ellipse read as a stain): the core reaches one solid step only
+      // at full strength (two in a flash), the rim is a ≤ 75 % checker, the fringe ≤ 37 %
+      const lv = Math.min(2, lvl * 0.8);
+      const rim = Math.min(0.75, lv * 0.6);
       for (let y = cy - ry; y <= cy + ry; y++)
         for (let x = cx - rx; x <= cx + rx; x++) {
           const ux = (x + 0.5 - cx) / rx;
           const uy = (y + 0.5 - cy) / ry;
-          const d = Math.sqrt(ux * ux + uy * uy);
+          const d = ux * ux + uy * uy;
           if (d > 1) continue;
-          const b = b4(x, y);
-          // density falls off from the core; never more than 5/16 of a pixel block is lit
-          const dens = lvl * (d < 0.35 ? 0.31 : d < 0.65 ? 0.19 : 0.07);
-          if (b >= dens) continue;
-          const c = d < 0.35 && b < dens * 0.25 ? ramp[4] : d < 0.65 && b < dens * 0.6 ? ramp[3] : ramp[2];
-          g.px(x, y, c);
+          const base = floorAt(x, y);
+          if (base === null) continue;
+          const level = d < 0.22 ? lv : d < 0.6 ? rim : rim * 0.5;
+          const n = stepsAt(Math.round(level * 4) / 4, x, y);
+          if (n <= 0) continue;
+          g.px(x, y, liftTone(base, ramp, n));
         }
     });
     return true;

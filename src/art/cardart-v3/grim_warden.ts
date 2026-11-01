@@ -97,30 +97,45 @@ const HAFT_X = 9;
 // ---------------------------------------------------------------- hand maps
 
 /**
- * The cage helm at card density (17×18, facing right): k knob, I iron band, b meridian bar, P nape plate, h lit bone,
- * s bone, c crevice, o socket, n nose, t tooth, g tooth gap. The socket o (3×2) holds the eye (light layer).
+ * The cage helm at card density (18×18, facing right) — critic pass-3 r1: the old iron frame (crown ring + jaw band +
+ * chin band + nape plate) read as a TV / robot face. Now the rig's ORGANIC SKULL: a domed cranium wider than the jaw, a
+ * brow ridge, the near socket o (4×3, holds the eye — light layer) and a dark far socket, a nose notch n, lit cheekbones,
+ * three irregular teeth t and gaps g, a separate mandible; the cage is two dark iron BARS (`HELM_BARS`) arching from the
+ * knob k, each throwing a 1-px void0 shadow on the bone so it stands in front of it. h lit bone, s bone, c crevice.
  */
 // prettier-ignore
-const HELM: readonly string[] = [
-  '........kk........',
-  '.......IkkI.......',
-  '.....IIIbbIIII....',
-  '...PIIhbhhhhbI....',
-  '..PPshhbhhhhhhbI..',
-  '.PPPshhbhhhhhhbhh.',
-  '.PPPshhbhhhhhhbhhs',
-  'PPPPsshbhhhhhsbhss',
-  'PPPPsssbcccccsbsss',
-  'PPPPcssbcoooocbscs',
-  'PPPPcssbcoooocbccs',
-  'PPPPcssbccoocsbsns',
-  '.PPPccsbshhhhsbcnc',
-  '.PPIIIIIIIIIIIIIII',
-  '..PcttttbtttttbttI',
-  '...ctgtgbgtgtgbtg.',
-  '....IIIIIIIIIIIII.',
-  '......IIIIIIII....',
+const HELM_SKULL: readonly string[] = [
+  '..................',
+  '..................',
+  '.....sshhhhs......',
+  '...sshhhhhhhhs....',
+  '..sshhhhhhhhhhs...',
+  '.sshhhhhhhhhhhhs..',
+  '.shhhhhhhhhhhhhhs.',
+  'sshhhhhhhhhhhhhhs.',
+  'ssshhhhhhhhhhhhhhs',
+  'cssshhhhcoooohcoos',
+  '.cssshhhcoooohcoos',
+  '..csssshcooochnns.',
+  '...csshhhhhhhnnhs.',
+  '....cssshhhssnshs.',
+  '.....csttgtttggts.',
+  '.....cgtggtgggs...',
+  '......cssshhhs....',
+  '.......cssss......',
 ];
+const HELM_BARS: readonly (readonly [number, number])[][] = [
+  [[7, 1], [6, 2], [5, 3], [4, 4], [4, 5], [4, 6], [4, 7], [4, 8], [4, 9], [4, 10], [5, 11], [5, 12], [6, 13]],
+  [[10, 1], [11, 2], [12, 3], [13, 4], [14, 5], [15, 6], [16, 7], [16, 8], [16, 9], [16, 10], [16, 11], [16, 12]],
+];
+const HELM: readonly string[] = (() => {
+  const g = HELM_SKULL.map((r) => r.split(''));
+  const isBone = (ch: string | undefined) => ch !== undefined && ch !== '.' && ch !== 'b' && ch !== 'r' && ch !== 'k';
+  for (const bar of HELM_BARS) bar.forEach(([u, v], i) => (g[v][u] = i === bar.length - 1 ? 'r' : 'b'));
+  for (const bar of HELM_BARS) for (const [u, v] of bar) if (isBone(g[v][u + 1])) g[v][u + 1] = 'x';
+  for (const [u, v] of [[8, 0], [9, 0], [8, 1], [9, 1]] as const) g[v][u] = 'k';
+  return g.map((r) => r.join(''));
+})();
 /** the socket's top-left cell (map coords, 4×3) */
 const SOCK: V = [9, 9];
 
@@ -349,32 +364,31 @@ function paintHelm(): PixelCanvas {
         case 'o':
         case 'g':
         case 'n':
+        case 'x':
           c = PAL.void0;
           break;
         case 't':
           c = v === 14 ? PAL.stone4 : PAL.stone3;
           break;
         case 'h':
-          c = PAL.stone4;
+          // the brim shades the cranium's crown; the brow (row 8) and the cheekbones (row 12) catch the light
+          c = v <= 3 ? PAL.stone3 : lit || v === 8 || v === 12 ? PAL.stone4 : PAL.stone3;
           break;
         case 's':
-          c = v <= 5 && lit ? PAL.stone4 : PAL.stone3;
+          c = v <= 6 && lit ? PAL.stone3 : v >= 15 ? PAL.stone2 : PAL.stone3;
           break;
         case 'c':
           c = PAL.stone2;
           break;
         case 'b':
-          c = v <= 6 && lit ? PAL.stone2 : PAL.stone1;
+          c = v <= 3 ? PAL.stone3 : PAL.stone2;
           break;
-        case 'P':
-          c = v <= 6 ? PAL.stone2 : v <= 11 ? PAL.stone1 : PAL.stone0;
-          break;
-        case 'k':
-          c = u === 7 && v === 0 ? PAL.stone4 : PAL.stone3;
+        case 'r':
+          c = PAL.stone3;
           break;
         default:
-          // bands: the crown ring lit on its back half, the jaw band mid, the chin band in shade
-          c = v <= 2 ? (lit ? PAL.stone3 : PAL.stone2) : v >= 16 ? PAL.stone0 : lit ? PAL.stone2 : PAL.stone1;
+          // the knob
+          c = u === 8 && v === 0 ? PAL.stone4 : PAL.stone3;
       }
       p.set(HELM_X + u, HELM_Y + v, c);
     }
@@ -461,19 +475,30 @@ function paintSubjectBig(): PixelCanvas {
   const fig = new PixelCanvas(W, H);
   fig.blit(paintHalberd(), 0, 0);
   overInk(fig, paintFarHand());
-  overInk(fig, paintRobe());
-  const hood = paintHood();
+  // critic pass-3 r1: the BLACK funeral shroud of the sprite (the grey cloth read as dusty plastic): every cloth plane
+  // one value down (stone2 → stone1 → stone0 → void0); the helm inside the hood keeps its bone / iron tones
+  const helmBox = (x: number, y: number) => x >= HELM_X && x < HELM_X + 18 && y >= HELM_Y && y < HELM_Y + 18;
+  const down = (q: PixelCanvas, keep: (x: number, y: number) => boolean = () => false): PixelCanvas => {
+    for (let y = 0; y < q.h; y++)
+      for (let x = 0; x < q.w; x++) {
+        const c = q.get(x, y);
+        if (c !== null && !keep(x, y)) q.set(x, y, clothDown(c));
+      }
+    return q;
+  };
+  overInk(fig, down(paintRobe()));
+  const hood = down(paintHood(), helmBox);
   castShadow(fig, hood, 1, 2);
   overInk(fig, hood);
-  const sleeve = paintSleeve();
+  const sleeve = down(paintSleeve());
   castShadow(fig, sleeve, 0, 2);
   overInk(fig, sleeve);
   overInk(fig, paintFistChain());
   overInk(fig, paintLanternIron());
   // one-px lit edge on the shroud's light-facing silhouette (stone2 → stone3, IŞ-8): the cowl's crown, the sleeve's top
-  litEdge(fig, 1, { only: (c, _x, y) => c === PAL.stone2 && y < 36 });
+  litEdge(fig, 1, { only: (c, x, y) => c === PAL.stone1 && y < 36 && !helmBox(x, y) });
   // the DARK light's rim on the shroud's shadow side, on the OUTER silhouette only (contact lines are not a contour)
-  outerRim(fig, PAL.void3, (c, x, y) => (c === PAL.stone2 || c === PAL.stone1 || c === PAL.stone0) && !(x < 21 && y < 40) && !(x >= LAN_X - 1 && y >= LAN_Y - 1));
+  outerRim(fig, PAL.void3, (c, x, y) => (c === PAL.stone2 || c === PAL.stone1 || c === PAL.stone0 || c === PAL.void0) && !(x < 21 && y < 40) && !(x >= LAN_X - 1 && y >= LAN_Y - 1));
   ink(fig);
   return fig;
 }
@@ -540,6 +565,28 @@ function paintGraves(b: PixelCanvas, k: 1 | 2): void {
   b.rect(Math.round(s(68)), Math.round(s(49)), Math.round(s(6)), Math.max(1, Math.round(s(2))), PAL.night0);
 }
 
+/**
+ * Graveyard mist banks in the sky band (backdrop; `div` 1 big / 2 small): flat stepped lenses — a wide void1 bank low
+ * behind the graves, a narrower void2 crest over it on the lantern's side (the lantern's leaf glass stays the brightest
+ * point), and two thin void1 wisps higher up. Flat bands, whole pixels.
+ */
+function paintGraveMist(p: PixelCanvas, div: 1 | 2): void {
+  const lens = (x0: number, x1: number, yc: number, h: number, c: number) => {
+    const a = Math.round(x0 / div);
+    const b = Math.round(x1 / div);
+    const hh = Math.max(1, Math.round(h / div));
+    for (let x = a; x <= b; x++) {
+      const t = Math.min(x - a, b - x) / Math.max(1, (b - a) / 2);
+      const k = Math.max(1, Math.round(hh * Math.min(1, t * 1.6)));
+      for (let y = 0; y < k; y++) p.set(x, Math.round(yc / div) - y, c);
+    }
+  };
+  lens(0, 88, 48, 9, PAL.void1);
+  lens(44, 88, 46, 5, PAL.void2);
+  lens(8, 46, 34, 3, PAL.void1);
+  lens(54, 86, 26, 2, PAL.void1);
+}
+
 /** Graveyard mist: flat lenses (3 px at the middle, 1 px at the ends), unoutlined, after the ink. */
 function paintMist(s: PixelCanvas, strands: readonly (readonly [number, number, number, number])[]): void {
   for (const [x0, x1, y, c] of strands)
@@ -582,12 +629,12 @@ const SMALL: readonly string[] = [
   '...44433....2212222222222...................',
   '...44332...221222221a1111111................',
   '..444332..222122211a000011111...............',
-  '.3424322..22122211a2441444130...............',
-  '.322.32..222122111a234144a130...............',
-  '.33.331..222111111a1331332120...............',
-  '....hg...221111111a1111111110....ji.........',
-  '....hg..1220111111aa14a4a41a0...jjii........',
-  '....hg.01111111110aaa11111aa0..2jiih........',
+  '.3424322..22122211a2341444310...............',
+  '.322.32..222122111a23413aa310...............',
+  '.33.331..222111111a1331443a10...............',
+  '....hg...221111111aa2333321a0....ji.........',
+  '....hg..1220111111aaa44a4aaa0...jjii........',
+  '....hg.01111111110aaa2332aaa0..2jiih........',
   '....hg.0.1111111000aaaaaaaa2222aaih.........',
   '....hg...11111100000aaakk222222aa4..........',
   '....hg...111100000000kk22222221a11..........',
@@ -629,7 +676,10 @@ const art: CardArtV3 = {
   frames: 6,
   holdMs: 150,
   big(l: ArtLayers, f: number) {
-    paintBackdrop(l.backdrop, 'DARK', { focus: ECLIPSE, radius: ECLIPSE_R, horizon: HORIZON });
+    // critic pass-3 r1: the DARK eclipse's violet corona sat behind the lantern as a crescent (it read as a scythe blade
+    // the warden does not carry): the light shape is off, GRAVEYARD MIST banks rise behind the figure instead
+    paintBackdrop(l.backdrop, 'DARK', { focus: ECLIPSE, radius: ECLIPSE_R, horizon: HORIZON, shape: false });
+    paintGraveMist(l.backdrop, 1);
     paintGraves(l.backdrop, 1);
     const fig = subjectBig().clone();
     const k = f % 6;
@@ -644,10 +694,19 @@ const art: CardArtV3 = {
     paintEyeBig(l.light, f);
   },
   small(l: ArtLayers, f: number) {
-    paintBackdrop(l.backdrop, 'DARK', { focus: ECLIPSE, radius: ECLIPSE_R, horizon: HORIZON });
+    paintBackdrop(l.backdrop, 'DARK', { focus: ECLIPSE, radius: ECLIPSE_R, horizon: HORIZON, shape: false });
+    paintGraveMist(l.backdrop, 2);
     paintGraves(l.backdrop, 2);
     patch(l.subject, SMALL, SMALL_KEY, 0, 0);
-    outerRim(l.subject, PAL.void3, (c, x, y) => (c === PAL.stone2 || c === PAL.stone1 || c === PAL.stone0) && x > 9 && x < 29 && y < 30);
+    // the black shroud (critic pass-3 r1): cloth one value down — not the skull, the lantern, the halberd or the fist
+    for (let y = 0; y < l.subject.h; y++)
+      for (let x = 7; x < 31; x++) {
+        if (x >= 19 && x <= 27 && y >= 8 && y <= 13) continue;
+        if (x >= 28 && y >= 11) continue;
+        const c = l.subject.get(x, y);
+        if (c !== null) l.subject.set(x, y, clothDown(c));
+      }
+    outerRim(l.subject, PAL.void3, (c, x, y) => (c === PAL.stone2 || c === PAL.stone1 || c === PAL.stone0 || c === PAL.void0) && x > 9 && x < 29 && y < 30);
     ink(l.subject);
     paintMist(l.subject, [
       [1, 16, 31, PAL.void1],

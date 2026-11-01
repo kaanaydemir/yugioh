@@ -198,36 +198,40 @@ const ROAR_HOLDS = [80, 160, 100, 90, 110, 130, 100, 120, 130, 140];
 const SP_N = 12;
 const SPECIAL_KEYS: Partial<Pose>[] = [
   { hy: -1, eye: 1.3, eyeDx: 1, la: 4 },
-  // charge: the warden crouches and gathers the chain into a low fist, the lantern swung back
-  { ax: 15, ay: 4, la: -24, lean: -2, hx: -1, eye: 1.3, eyeDx: 1, fl: 1.1, flLean: 0.8, capeA: -2, hood: 1, sink: 2 },
-  // the arm sweeps up, the torso begins to arch back
-  { ax: 13, ay: -14, la: 14, cl: 4, lean: -2, hx: -1, hy: -1, eye: 1.4, eyeDx: 1, fl: 1.1, capeA: -3, hood: 2 },
-  // critic r2: the lantern RAISED high and forward over the hood (the fist above the shoulder), the torso arched back,
-  // the helm tipped up — a new, tall silhouette that keeps the lantern well clear of the target
-  { ax: 9, ay: -26, la: -6, cl: 2, lean: -4, hx: -3, hy: -2, hr: -6, eye: 1.5, eyeDx: 1, fl: 1, capeA: -5, hood: 3 },
-  // the inhale: the flame dips, the glass darkens, the lantern sinks a pixel
-  { ax: 9, ay: -25, la: -2, cl: 2, lean: -4, hx: -3, hy: -2, hr: -6, eye: 1.5, eyeDx: 1, fl: 0.35, capeA: -5, hood: 3 },
-  // release: the thread starts — the flame flares, a ring of glass light, the body arches deeper
-  { ax: 9, ay: -28, la: -4, cl: 2, lean: -5, hx: -4, hy: -3, hr: -9, eye: 1.5, eyeDx: 1, fl: 1.5, capeA: -6, hood: 4, burst: 0.55, burstR: 7 },
-  // drinking: the lantern pulses down / up / down (2–3 px), the flame swells and contracts, the helm nods with each gulp
-  { ax: 10, ay: -25, la: 6, cl: 2, lean: -4, hx: -2, hy: -1, hr: -4, eye: 1.4, eyeDx: 1, fl: 1.15, flLean: -0.8, capeA: -3, mote: 0.2, hood: 2 },
-  { ax: 8, ay: -29, la: -8, cl: 3, lean: -5, hx: -4, hy: -3, hr: -10, eye: 1.5, eyeDx: 1, fl: 1.6, flLean: 0.7, capeA: -6, mote: 0.55, fs: 77, hood: 4 },
-  { ax: 10, ay: -24, la: 5, cl: 2, lean: -3, hx: -2, hy: -1, hr: -3, eye: 1.3, eyeDx: 1, fl: 1.25, capeA: -2, mote: 0.85, hood: 1 },
+  // charge: the warden draws back and crouches, the lantern swung low behind the fist
+  { ax: 14, ay: 4, la: -26, lean: -3, hx: -2, eye: 1.3, eyeDx: 1, fl: 1.1, flLean: 0.8, capeA: -3, hood: 2, sink: 2 },
+  // the whole body begins to pitch forward, the arm coming up
+  { ax: 19, ay: -2, la: 18, cl: 4, lean: 3, hx: 1, eye: 1.4, eyeDx: 1, fl: 1.1, capeA: 2, hood: -1, sink: 1 },
+  // critic pass-3 r1: a FULL-BODY REACH toward the target — the torso leans far over, the near arm straight out at
+  // shoulder height, the lantern held up in front of the face on a short chain (the thread dives in from above)
+  { ax: 21, ay: -7, la: -4, cl: 2, lean: 7, hx: 3, hy: 1, eye: 1.5, eyeDx: 1, fl: 1, capeA: 5, hood: -2, sink: 1, wrap: 0.4, ha: -86 },
+  // the inhale: the flame dips, the hood lifts, the shroud drawn in
+  { ax: 21, ay: -8, la: -2, cl: 2, lean: 6, hx: 2, hy: -1, eye: 1.5, eyeDx: 1, fl: 0.35, capeA: 3, hood: 1, wrap: 0.1, ha: -85 },
+  // release: the thread starts — the flame flares, a ring of glass light, the body pitches deeper
+  { ax: 22, ay: -7, la: -5, cl: 2, lean: 8, hx: 4, hy: 2, eye: 1.5, eyeDx: 1, fl: 1.5, capeA: 7, hood: -3, sink: 2, wrap: 0.7, burst: 0.55, burstR: 7, ha: -87, hs: -1 },
+  // drinking: the whole body PUMPS — the hood dips and rises 3 px, the shroud is pulled toward the lantern in alternating
+  // waves, the far hand clenches and slides on the haft (the halberd rocks from its butt)
+  { ax: 21, ay: -5, la: 5, cl: 2, lean: 6, hx: 3, hy: 3, eye: 1.4, eyeDx: 1, fl: 1.15, flLean: -0.8, capeA: 8, mote: 0.2, hood: -3, sink: 2, wrap: 0.9, ha: -88, hs: -2 },
+  { ax: 22, ay: -8, la: -7, cl: 3, lean: 8, hx: 4, hy: 0, eye: 1.5, eyeDx: 1, fl: 1.6, flLean: 0.7, capeA: 4, mote: 0.55, fs: 77, hood: 1, sink: 0, wrap: 0.2, ha: -83, hs: 1 },
+  { ax: 20, ay: -5, la: 4, cl: 2, lean: 6, hx: 2, hy: 3, eye: 1.3, eyeDx: 1, fl: 1.25, capeA: 8, mote: 0.85, hood: -3, sink: 2, wrap: 0.9, ha: -88, hs: -2 },
 ];
 export function specialPose(f: number): Pose {
   if (f >= SP_N - 1) return home();
   if (f <= 8) return key(SPECIAL_KEYS[f], f, SP_N);
   return settle(key(SPECIAL_KEYS[8], 8, SP_N), f, 9, SP_N, [0.4, 0.75], (g) => ({ la: [-10, 6][g - 9], eyeDx: g === 9 ? 1 : 0, fl: 1.2 }));
 }
-const SPECIAL_HOLDS = [70, 100, 110, 160, 90, 60, 100, 200, 120, 110, 120, 130];
+const SPECIAL_HOLDS = [50, 80, 90, 130, 70, 60, 100, 200, 120, 110, 120, 130];
 
 // ------------------------------------------------------------------ hit / heavy / magic
 
 const HIT_N = 5;
+// critic pass-3 r1: a real RECOIL — torso and helm snap away from the blow, the helm jolts a pixel up out of the hood,
+// the hood flips back, the shroud flares forward, the halberd tilts back from its butt; the lantern's overshoot stays
+// as the secondary motion (f0 stays local for KK-4)
 const HIT_KEYS: Partial<Pose>[] = [
-  { hx: -2, hy: 1, eye: 0.3, la: 14 },
-  { hx: -3, hy: 1, lean: -3, sink: 1, eye: 0.3, la: 42, ax: 19, ay: 3, capeA: 2, hood: -1 },
-  { hx: -2, hy: 1, lean: -2, sink: 1, eye: 0.6, la: -18, ax: 20, ay: 2, capeA: 3 },
+  { hx: -1, hy: -1, eye: 0.3, la: 14, hood: 1 },
+  { hx: -4, hy: 0, lean: -5, sink: 1, eye: 0.3, la: 42, ax: 18, ay: 2, capeA: 5, hood: 3, wrap: 0.8, ha: -90 },
+  { hx: -3, hy: 1, lean: -4, sink: 1, eye: 0.6, la: -18, ax: 19, ay: 2, capeA: 4, hood: 1, wrap: 0.5, ha: -88 },
   { hx: -1, lean: -1, eye: 0.8, la: 9, capeA: 2 },
 ];
 export function hitPose(f: number): Pose {
@@ -238,11 +242,12 @@ const HIT_HOLDS = [50, 60, 130, 120, 110];
 
 const HH_N = 7;
 const HH_KEYS: Partial<Pose>[] = [
-  { hx: -3, hy: 1, eye: 0.2, la: 16 },
-  // the lantern flies to the chain's limit, overshoots back, and settles
-  { hx: -4, hy: 2, lean: -5, sink: 3, eye: 0.2, la: 66, ax: 16, ay: 5, capeA: 4, hood: -2, f1x: -2, f1y: -3 },
-  { hx: -3, hy: 2, lean: -5, sink: 4, eye: 0.4, la: 38, ax: 17, ay: 6, capeA: 5, f1x: -2, f1y: 0 },
-  { hx: -2, hy: 1, lean: -3, sink: 2, eye: 0.6, la: -40, ax: 19, ay: 3, capeA: 3, f1x: -1, f1y: -2 },
+  { hx: -1, hy: -1, eye: 0.2, la: 16, hood: 1 },
+  // the blow throws the whole upper body back: helm snapped away, hood flipped, shroud flared forward, the halberd
+  // rocked back on its butt; the lantern flies to the chain's limit, overshoots back, and settles
+  { hx: -5, hy: 0, lean: -7, sink: 3, eye: 0.2, la: 66, ax: 15, ay: 5, capeA: 7, hood: 4, wrap: 1, ha: -94, f1x: -2, f1y: -3 },
+  { hx: -4, hy: 2, lean: -6, sink: 4, eye: 0.4, la: 38, ax: 16, ay: 6, capeA: 6, hood: 2, wrap: 0.7, ha: -91, f1x: -2, f1y: 0 },
+  { hx: -2, hy: 1, lean: -3, sink: 2, eye: 0.6, la: -40, ax: 19, ay: 3, capeA: 3, ha: -87, f1x: -1, f1y: -2 },
   { hx: -1, lean: -1, sink: 1, eye: 0.8, la: 18, capeA: 2 },
   { la: -7, eye: 0.9, capeA: 1 },
 ];
@@ -273,43 +278,45 @@ const HM_HOLDS = [50, 60, 130, 90, 100, 120, 100];
 // ------------------------------------------------------------------ summon (12): rising out of the grave, lantern first
 
 const SU_N = 12;
-// the rise comes in jerks: claw out → pause → heave → pause (the shoulder shoves the headstone) → heave → squash on land
-const RISE = [72, 54, 52, 30, 28, 8, 0];
+// the rise comes in jerks: claw out → heave → pause (the shoulder shoves the headstone) → heave → heave → squash on land.
+// critic pass-3 r1: no frame-to-frame jump over 11 px (the old 28 → 8 px "elevator pop"); 8 rise frames, land@7.
+const RISE = [72, 62, 52, 43, 33, 22, 11, 0];
+const RN = RISE.length;
 export function summonPose(f: number): Pose {
   if (f >= SU_N - 1) return home();
-  if (f <= 6) {
+  if (f < RN) {
     const oy = RISE[f];
     return key(
       {
         oy,
         pin: oy === 0,
         // the near hand claws up out of the soil first, then the arm drags the body after it
-        ax: [9, 12, 15, 10, 13, 15, 14][f],
-        ay: [-30, -24, -14, -26, -18, -12, -10][f],
-        la: [0, 8, -12, 10, -6, 4, -2][f],
+        ax: [9, 12, 15, 10, 12, 14, 15, 14][f],
+        ay: [-30, -24, -16, -26, -20, -15, -12, -10][f],
+        la: [0, 8, -12, 10, -6, 6, -4, -2][f],
         cl: 6,
-        lean: [-1, 2, 4, -3, 3, 2, 1][f],
-        hx: [0, 1, 2, -2, 1, 1, 0][f],
-        sink: [0, 0, 2, 0, 2, 0, 4][f],
-        hy: [1, 1, 2, -1, 2, 1, 3][f],
-        eye: [0, 0.3, 0.6, 0.9, 1.1, 1.3, 1.4][f],
-        fl: [0.6, 0.9, 1.1, 1.2, 1.3, 1.3, 1.2][f],
-        capeA: [-4, -2, 2, -5, 1, -2, 3][f],
-        capeL: f < 5 ? 2 : 0,
-        hood: [2, 1, -1, 3, -1, 2, -2][f],
-        clod: f <= 5 ? 0.12 + f * 0.16 : 0,
-        dust: f === 6 ? 0.15 : 0,
+        lean: [-1, 2, 4, -3, 3, 4, 2, 1][f],
+        hx: [0, 1, 2, -2, 1, 2, 1, 0][f],
+        sink: [0, 0, 2, 0, 2, 2, 0, 4][f],
+        hy: [1, 1, 2, -1, 2, 2, 1, 3][f],
+        eye: [0, 0.3, 0.6, 0.9, 1.1, 1.2, 1.3, 1.4][f],
+        fl: [0.6, 0.9, 1.1, 1.2, 1.3, 1.3, 1.3, 1.2][f],
+        capeA: [-4, -2, 2, -5, 1, 3, -2, 3][f],
+        capeL: f < 6 ? 2 : 0,
+        hood: [2, 1, -1, 3, -1, -1, 2, -2][f],
+        clod: f <= 6 ? 0.12 + f * 0.14 : 0,
+        dust: f === RN - 1 ? 0.15 : 0,
         dustX: 46,
       },
       f,
       SU_N,
     );
   }
-  if (f === 7) return key({ ax: 13, ay: -26, la: -8, cl: 7, sink: 0, lean: -3, hy: -2, hx: -2, hr: -8, eye: 1.5, fl: 1.5, capeA: -4, burst: 0.3, burstR: 9, dust: 0.5, dustX: 46, hood: 3 }, f, SU_N);
-  if (f === 8) return key({ ax: 13, ay: -26, la: 7, cl: 7, lean: -2, hy: -1, hx: -1, hr: -6, eye: 1.5, fl: 1.4, capeA: -3, burst: 0.7, burstR: 9, dust: 0.8, dustX: 46, hood: 2 }, f, SU_N);
-  return settle(key({ ax: 13, ay: -25, la: 0, cl: 7, lean: -2, hy: -1, hx: -1, eye: 1.4, fl: 1.3, capeA: -2 }, 8, SU_N), f, 9, SU_N, [0.45, 0.8], (g) => ({ la: [-9, 5][g - 9] }));
+  // the lantern swung up high, its flame flaring (the cinematic's finale rides this beat)
+  if (f === RN) return key({ ax: 13, ay: -26, la: -8, cl: 7, sink: 0, lean: -3, hy: -2, hx: -2, hr: -8, eye: 1.5, fl: 1.6, capeA: -4, burst: 0.45, burstR: 9, dust: 0.6, dustX: 46, hood: 3 }, f, SU_N);
+  return settle(key({ ax: 13, ay: -25, la: 0, cl: 7, lean: -2, hy: -1, hx: -1, eye: 1.4, fl: 1.3, capeA: -2 }, RN, SU_N), f, RN + 1, SU_N, [0.45, 0.8], (g) => ({ la: [-9, 5][g - RN - 1] }));
 }
-const SU_HOLDS = [110, 70, 130, 70, 120, 70, 110, 130, 150, 110, 120, 140];
+const SU_HOLDS = [110, 70, 90, 130, 70, 80, 70, 120, 170, 110, 120, 140];
 
 // ------------------------------------------------------------------ death (10): the lantern shatters, the shroud falls empty
 
@@ -375,7 +382,7 @@ export const ANIMS: Record<MonsterAnim, AnimSpec> = {
   hit: spec(HIT_N, 12, false, HIT_HOLDS, { impact: 0, contact: 0, recover: 3 }),
 };
 export const EXTRA_ANIMS: Partial<Record<MonsterAnimExtra, AnimSpec>> = {
-  summon: spec(SU_N, 10, false, SU_HOLDS, { land: 6 }),
+  summon: spec(SU_N, 10, false, SU_HOLDS, { land: 7 }),
   death: spec(D_N, 12, false, D_HOLDS, { impact: 0, contact: 0, dissolve: 5 }),
   revive: spec(RV_N, 10, false, RV_HOLDS, { land: 6 }),
   special: spec(SP_N, 10, false, SPECIAL_HOLDS, { charge: 1, release: 5, impact: 5, recover: 9 }),
