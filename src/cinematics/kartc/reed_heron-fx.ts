@@ -5,8 +5,7 @@
 //                standing on the heron's tile, drawn by the art's own rig (drawHeron with the heron hidden): the
 //                pond stays HOME while he glides out to strike, and only the ground remains when the mist has
 //                taken him. P2: the relit sheet ('right' light) flipped, like the sprite.
-//   MistBands    horizontal fog bands in world space (two rows of flat stepped runs: steel over night4, a few
-//                mist crests): the summon's wall that rolls in from both sides and parts, the death's bank.
+//   (the mist itself is one shape for every moment: the WISP of src/art/monsters-v3/reed_heron-mist.ts)
 //   GlideTrail   the mist streaks the bob-less glide leaves behind (three heights, steel → night4 → gone) and the
 //                1-px ripple dots its feet leave on the floor.
 
@@ -131,107 +130,6 @@ export class Ground {
   }
 }
 
-// ================================================================ world mist bands
-
-export interface Band {
-  /** Window [x0, x1] and row y (world px). */
-  x0: number;
-  x1: number;
-  y: number;
-  /** Scroll offset of the stepped runs (px) and a seed. */
-  off: number;
-  seed: number;
-  /** 0 normal, 1 thin (wisps), 2 the darker far tone only. */
-  tone?: 0 | 1 | 2;
-}
-
-/**
- * Paint one band (two rows of flat runs in a 24-px period, gaps where the hash says so, frayed ends): the
- * rig's mist language, in world space.
- */
-export function paintBand(px: Px, b: Band): void {
-  const x0 = rnd(b.x0);
-  const x1 = rnd(b.x1);
-  const y = rnd(b.y);
-  if (x1 - x0 < 3) return;
-  const off = rnd(b.off);
-  for (let row = 0; row < 2; row++) {
-    let runC = -1;
-    let runX = 0;
-    const flush = (x: number) => {
-      if (runC >= 0 && x > runX) px.run(y + row, runX, x - 1, runC);
-      runC = -1;
-    };
-    for (let x = x0; x <= x1; x++) {
-      const u = (((x - off * (row ? 1 : -1) + b.seed * 5 + row * 2) % 24) + 24) % 24;
-      const cell = Math.floor(u / 4);
-      const h = hash(cell, b.seed, row);
-      const edge = Math.min(x - x0, x1 - x);
-      let c = -1;
-      const gap = b.tone === 1 ? 0.62 : row === 0 ? 0.42 : 0.3;
-      if (!(h < gap || (edge < 3 && h < 0.66) || edge < 1)) {
-        if (b.tone === 2) c = row === 0 ? PAL.night4 : PAL.night2;
-        else c = row === 0 ? (h > 0.86 ? PAL.mist : PAL.steel) : h > 0.82 ? PAL.steel : PAL.night4;
-      }
-      if (c !== runC) {
-        flush(x);
-        if (c >= 0) {
-          runC = c;
-          runX = x;
-        }
-      }
-    }
-    flush(x1 + 1);
-  }
-}
-
-export interface FogBand {
-  /** Window [x0, x1], top row y and height (2–4 rows) in world px. */
-  x0: number;
-  x1: number;
-  y: number;
-  h: number;
-  /** Scroll offset of the cells and a seed. */
-  off: number;
-  seed: number;
-  /** World x ranges left clear (the eye's dark gap in the fog). */
-  holes?: readonly (readonly [number, number])[];
-}
-
-/**
- * One low summon fog band (MA-4: partial cover only as a 2×2 Bayer, never alpha): `h` rows of flat runs, steel on
- * rows over a night4 bottom row — the top and bottom rows and the last 4 px at each end are a 2×2 Bayer checker, the middle rows
- * are solid but broken by gaps in 4-px cells. Darker than the heron's white plumage: the reveal is a value event.
- */
-export function paintFog(px: Px, b: FogBand): void {
-  const x0 = rnd(b.x0);
-  const x1 = rnd(b.x1);
-  if (x1 - x0 < 4) return;
-  const off = rnd(b.off);
-  for (let r = 0; r < b.h; r++) {
-    const y = rnd(b.y) + r;
-    const edgeRow = b.h >= 3 && (r === 0 || r === b.h - 1);
-    // (steel body rows — night4 alone vanishes into the dark board; only the bottom Bayer row steps down to night4)
-    const c = r < b.h - 1 || b.h < 3 ? PAL.steel : PAL.night4;
-    let runX = -1;
-    const flush = (x: number) => {
-      if (runX >= 0 && x > runX) px.run(y, runX, x - 1, c);
-      runX = -1;
-    };
-    for (let x = x0; x <= x1; x++) {
-      const cell = Math.floor((x - off + b.seed * 7) / 4);
-      const edge = Math.min(x - x0, x1 - x);
-      const bayer = ((x >> 1) + (y >> 1)) % 2 === 0;
-      let on = hash(cell, b.seed, r) > (edgeRow ? 0.2 : 0.07);
-      if ((edgeRow || edge < 4) && !bayer) on = false;
-      if (on && b.holes) for (const [a, z] of b.holes) if (x >= a && x <= z) on = false;
-      if (on && runX < 0) runX = x;
-      else if (!on) flush(x);
-    }
-    flush(x1 + 1);
-  }
-}
-
 // ================================================================ the glide trail + ripple dots
 
 interface Streak {
@@ -342,5 +240,148 @@ export class GlideTrail {
 
   destroy(): void {
     this.stop();
+  }
+}
+
+// ================================================================ the needle light (exactly one frame)
+
+/**
+ * The thrust's needle light: a 1-px white line along the beak blade, reaching 5 px past the tip, shown for exactly
+ * ONE rendered frame (counted in updates: the micro hit-stop freezes the scene clock, not the renderer). The art
+ * frame itself carries no needle, so the out-hold shows the bare blade.
+ */
+export function needleFlash(scene: Phaser.Scene, depth: number, tip: XY, dir: 1 | -1): void {
+  const px = new Px(scene.add.graphics().setDepth(depth));
+  const x = rnd(tip.x);
+  const y = rnd(tip.y);
+  // the back two thirds ride the blade's top edge, the last third and the reach past the tip run on the tip row
+  px.run(y - 1, Math.min(x - dir * 13, x - dir * 4), Math.max(x - dir * 13, x - dir * 4), PAL.white);
+  px.run(y, Math.min(x - dir * 3, x + dir * 5), Math.max(x - dir * 3, x + dir * 5), PAL.white);
+  let calls = 0;
+  // (made after an await, i.e. after this step's render: it survives the next update, is rendered once, and goes
+  // on the one after)
+  onFrame(scene, () => calls++ < 2, () => px.g.destroy());
+}
+
+// ================================================================ the pinpoint: three nicks, one triangle, a pool
+
+/**
+ * The heron's own contact mark (no shared round flash): every thrust leaves a NICK where its tip met the target —
+ * a white point with a 1-px mist tail back toward the beak (the third: a 3-px white cross). The nicks stay lit while
+ * the triple runs; when the third lands they flash together as one tiny filled white TRIANGLE for 2 frames (top,
+ * bottom and the deeper centre: the 6-px figure the spec names), step down to mist, then steel, and go. Under the
+ * target a small stepped pool lights the floor: a white core and a mist rim, two palette steps down, gone.
+ */
+export class Pinpoint {
+  private readonly air: Px;
+  private readonly floor: Px;
+  private readonly nicks: XY[] = [];
+  private tri = -1;
+  private triAge = 0;
+  private pool: XY | null = null;
+  private poolAge = 0;
+  private dead = false;
+  private readonly stop: () => void;
+
+  constructor(
+    readonly scene: Phaser.Scene,
+    airDepth: number,
+    floorDepth: number,
+    private readonly dir: 1 | -1,
+  ) {
+    this.air = new Px(scene.add.graphics().setDepth(airDepth));
+    this.floor = new Px(scene.add.graphics().setDepth(floorDepth));
+    this.stop = onFrame(scene, (dt) => this.tick(dt), () => this.kill());
+  }
+
+  /** A thrust's nick at the tip point (world). */
+  nick(p: XY): void {
+    this.nicks.push({ x: rnd(p.x), y: rnd(p.y) });
+  }
+
+  /** The third landed: the triangle flash (2 frames), the floor pool under the target. */
+  land(floorAt: XY | null): void {
+    this.tri = 0;
+    this.triAge = 0;
+    if (floorAt) {
+      this.pool = { x: rnd(floorAt.x), y: rnd(floorAt.y) };
+      this.poolAge = 0;
+    }
+  }
+
+  /** No triangle will come (blocked, or the strike ended early): the marks go out at once. */
+  close(): void {
+    if (this.tri < 0) this.destroy();
+  }
+
+  private tick(dt: number): boolean {
+    if (this.dead) return false;
+    this.air.clear();
+    this.floor.clear();
+    const d = this.dir;
+    if (this.tri >= 0) {
+      this.tri++;
+      this.triAge += dt;
+    }
+    // tone of the marks: lit while the triple runs; after the third — 2 frames the triangle, then mist, steel, gone
+    let tone: number | null = PAL.white;
+    if (this.tri > 2) tone = this.triAge < 140 ? PAL.mist : this.triAge < 260 ? PAL.steel : null;
+    if (tone !== null) {
+      if (this.tri >= 1 && this.tri <= 2 && this.nicks.length >= 3) {
+        // the filled triangle through the three points (scanline fill between the edges, whole pixels)
+        const [a, b, c] = this.nicks;
+        const ys = [a.y, b.y, c.y];
+        const y0 = Math.min(...ys);
+        const y1 = Math.max(...ys);
+        const edges: [XY, XY][] = [[a, b], [b, c], [c, a]];
+        for (let y = y0; y <= y1; y++) {
+          let lo = Infinity;
+          let hi = -Infinity;
+          for (const [p, q] of edges) {
+            if ((y < p.y && y < q.y) || (y > p.y && y > q.y)) continue;
+            const x = p.y === q.y ? [p.x, q.x] : [p.x + ((q.x - p.x) * (y - p.y)) / (q.y - p.y)];
+            for (const xx of x) {
+              lo = Math.min(lo, rnd(xx));
+              hi = Math.max(hi, rnd(xx));
+            }
+          }
+          if (lo <= hi) this.air.run(y, lo, hi, PAL.white);
+        }
+      }
+      this.nicks.forEach((n, i) => {
+        const third = i === 2;
+        this.air.dot(n.x, n.y, tone!);
+        // the tail: 1 px back toward the beak (mist), the cut's direction
+        this.air.dot(n.x - d, n.y, tone === PAL.white ? PAL.mist : tone!);
+        if (tone === PAL.white) this.air.dot(n.x - 2 * d, n.y, PAL.steel);
+        if (third) this.air.dot(n.x + d, n.y, tone!).dot(n.x, n.y - 1, tone!).dot(n.x, n.y + 1, tone!);
+      });
+    }
+    if (this.pool) {
+      this.poolAge += dt;
+      const p = this.pool;
+      const a = this.poolAge;
+      if (a < 320) {
+        // a small stepped pool: white core + mist rim → mist core + steel rim → steel rim only
+        const core = a < 110 ? PAL.white : a < 220 ? PAL.mist : null;
+        const rim = a < 110 ? PAL.mist : PAL.steel;
+        this.floor.ellipseRing(p.x, p.y, 8, 2.5, 1, rim);
+        if (core !== null) this.floor.ellipse(p.x, p.y, 4, 1.2, core);
+      } else this.pool = null;
+    }
+    const busy = this.tri < 0 || tone !== null || !!this.pool;
+    return busy;
+  }
+
+  private kill(): void {
+    if (this.dead) return;
+    this.dead = true;
+    this.air.g.destroy();
+    this.floor.g.destroy();
+  }
+
+  destroy(): void {
+    this.stop();
+    this.kill();
   }
 }
