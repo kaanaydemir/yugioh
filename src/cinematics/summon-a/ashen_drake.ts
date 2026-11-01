@@ -143,6 +143,9 @@ async function ashenRiseV3(S: Stage): Promise<void> {
   const storm = start('ashenTornado', { volume: 0.9, pan });
   holdFrame(u, 'summon', 0);
   u.showSprite();
+  // driven: an ace with a cut-in stops ON the spread frame (held under the band), else plays through
+  if (S.cutIn) bg(u.playRange('summon', 0, holdF));
+  else bg(playFrom(u, 'summon', 0));
   atMark(u, 'summon', 'land', () => play('ashenTalon', { volume: 0.85, pan }));
   atFrame(u, 'summon', 3, () => play('ashenHeartbeat', { volume: 0.9, pan }));
   const tor = lay(S, S.depth + 0.4);
@@ -242,7 +245,6 @@ async function ashenRiseV3(S: Stage): Promise<void> {
   // ---- f8: the cut-in on the spread hold (an ace's tribute summon), else straight on
   if (S.cutIn) {
     await untilFrame(u, 'summon', holdF);
-    if (live()) holdFrame(u, 'summon', holdF);
     pool.setIntensity(0.6, 120);
     await S.climax();
     if (live()) bg(playFrom(u, 'summon', holdF + 1));

@@ -1121,3 +1121,90 @@ Every claim was re-read in the code before it was accepted.
     bare-hand fingers still cross a little at attack f4 and poke above the regrowing hood at attack f11 (strutFan 0.4);
     (4) summon f10→f11 (the slam) is a ~3400 px step; (5) victory f2 (the swing into the canopy) is a bulky in-between;
     (6) the floor-pool double pulse is faint at 1×.
+- 2026-10-31 — **critic round 3 fixes (lane-A builder): the cinematics stage + the sprite majors.** Evidence:
+  `shots/kart-a/ashen_drake/r4/` (sheets P1 + P2 with points `ashen_drake-v3*.png/.json`, `gates.txt`, `board1x.png`,
+  zooms `idle0.png`, `idle0p2.png`, `att46.png`, `vic.png`, `sum.png`, `rev.png`, `roar34.png`, `iso.png` (isolated-pixel map
+  of idle f0), `cutin.png` (all 5 portrait frames P1 / P2), films `film/atk_b.png` (kaAdAtk ×2 at 33 ms: roll → veil →
+  silence → ignition + silhouette → burn-off), `film/atk_c.png` (fuse, spill, re-growth), `film/atkP2.png`,
+  `film/sum_full.png` (kaAdSummon 1.4–4.5 s), `film/sum_cutin.png`, `measure_atk2.json`, `measure_sum.json`,
+  `v1films/` (filmdiff)).
+  - **#1 (BLOCKER) — built.** New files: `src/cinematics/strikes-a/ashen_drake.ts` (strike + death hook, both inside
+    `if (LOOK_V3)`), `src/cinematics/summon-a/ashen_drake.ts` (`signatureSummon(…, { v3: ashenRiseV3 })` inside
+    `if (LOOK_V3)`), `src/audio/v3/ashen.ts` (all 27 §6.2 recipes) registered additively in `src/audio/sounds.ts`,
+    `src/audio/sfx.ts` and `CHARACTER_SOUNDS.ashen_drake` (`src/cinematics/_v3/sound.ts`); the recipe's voice is now
+    `{ custom: 'ashen_drake' }`. The cut-in (`src/art/cutins-v3/ashen_drake.ts`) is redrawn from the new rig: concept
+    "Başlık" (scale-plated hood upper-left, the hooked skull out of its opening, crest streaming back over the lip, the rib
+    cage + heart below the jaw; f0 stare / f1 LUB / f2 flare+DUB / f3 slam: the ribs flare and grains spill out / f4 held).
+    - Strike: inhale motes into the heart + fire2→fire3 pool; the bank is born at the jaw ON the floor, billows whose lips
+      tumble back toward the drake, plate chips in the first 140 ms, 14 buried embers (2 on / 3 off), a soot trail (stone1);
+      swallow → `ashenHush` + the ONE `ashenLub` + a heart light pulse + `lightDim −0.3`; **silence 150 ms scene** (≈ 200 ms
+      real, floor 140) with the embers going dark in three steps; `ashenSuck` 40 ms before; the VUF: white embers on frame 0,
+      fire2 bands +1, fire3 core +2…, the target's INK silhouette (with fire3 / fire4 tongues on its top edge) from +1 to
+      +6 frames over its current frame, a scorch, the veil burns away top-down from +5; the fuse back in 4 shrinking
+      segments → `playFrom(attack, recover)` + heartbeat, spill grains + `ashenSpill` / `ashenRegrow`; ash snow on the tile.
+      Blocked: pile-up on the guard plane, front-face ignition at 0.6 / pitch 0.85, a 30 px backwash, then re-growth (no
+      fuse). Lose: sputter, three embers pop, resolves at contact. Tie: full ignition, resolves at contact, no fuse.
+    - Death: `deathV3` with the ash heap as the cinematic's only heap (armed on death f9; cools, a gust strips it top-down,
+      the last ember pulses once and dies to stone0 with a smoke curl; it stops if another unit takes the slot).
+    - Summon: mound → falling ember → 3-px star → ring ignition (two flames meeting at the front) → the tornado (10 rising
+      2-px ribbons split front / back of the body on the SHOWN frame's `ASHEN_BUILD` bone line, plates flying to the next
+      frame's seats, grains on the floor) → f7 burst (plates + embers, one `lightFlash` ring) → f8 held under the cut-in →
+      f12 slam: `S.finale({ ring: 92, stone, freeze 50, shake 3, playerRing: false, sfx: null })` + `ashenLand` + 8 billows
+      riding the ring + 1 s grey dust → f13 spill → resolves at f14.
+    - Timing (measure, look v3, game ms): kaAdAtk total **3166** (limit 3190; contact 1350), kaAdAtkLongDeath 3133,
+      kaAdDirect 2283 (2320), kaAdBlocked 2183, kaAdLose 3300, kaAdTie 3366 (both deaths: over the win budget, the tie's
+      own death chain dominates — flagged), kaAdSummon / P2: entrance 1483 → cut-in 2667 → end 4117 (**≈ 4.1 s**, ≤ 4.35).
+    - Deviations: travel `clamp(dist × 1.6, 190, 240)` (min 200 → 190) and silence 160 → 150 ms scene, to bring kaAdAtk
+      under 3.19 s (it measured 3216 with the blueprint numbers). The heap's slot check reads `field.unitAt` when it exists
+      (else the heap just times out at 4 s). The ash snow does not poll the tile (it lasts ≤ 3.4 s and only on a kill).
+  - **#2 cloak material — fixed** (`-cloak.ts` tone pass rewritten): per-pixel (u, v) by inverse bilinear on the course
+    grid, staggered scale plates (rows 5 px, ≈ 6 px wide, rounded lower edges with one ragged bite on 40 % of plates), the
+    rim = the lower edge AND the sides where the lower row shows (one connected arc), a one-step cast shadow under each rim;
+    lit as one form (stone3 upper / light side → stone2 → stone1 toward hem and inside edge), the far cloak one whole
+    step lower. Hem: ember-eaten notches 2 per 6 px (deep 2×2: fire2 edge + fire1 above; shallow 2×1) with a hot block
+    walking along it (`-ember.ts`).
+  - **#3 silhouette — fixed:** the fold keys round both wrists into one crown with a shallow notch at x 47 (near peak
+    y 12.5, far 14.5), spurs shortened to 4 px backward claws; the neck is a real S (4 segments −55 / −5 / 70 / 30°,
+    Catmull-Rom smoothed, tube 9 → 5 px; pose offsets map root / mid / head / head); the skull's top plane biased up
+    (stone3 at 1×). `HEAD_DOWN` neck re-tuned (−6 → 20) so the release head stays at floor level.
+  - **#4 heart — fixed:** the three gaps round the heart show 2-row fire2 / fire3 bands (±5 px), gold4 kept; the recipe's
+    glow `pool 0.8 → 1.0`, `halo 0.55 → 0.65` (one more stepped level on the board pool).
+  - **#5 victory — fixed:** the mantle keys are a SHORT canopy (near hem ends at x 85, y ≤ 44) and `CANOPY_HEAD` puts the
+    skull below / in front of it (≥ 6 px floor gap above the crest on f3–f6, `vic.png`); f2 is a swing (open 0.3 + mantle
+    0.32, wrists up, the head ducking).
+  - **#6 burst sails — fixed:** the spread keys are WINGS (the wrist flung out to the far end of a long leading edge, the
+    fingers fanning back to a trailing edge that runs to the shoulder), the trailing edge is ragged and asymmetric (per-span
+    depths, notches leaning back, torn teeth); loose plates on diverging ballistic arcs, sizes 1×2 / 2×2 / 2×3, a lit edge,
+    two turned variants, staggered distances.
+  - **#7 pops — fixed:** summon gets an in-between (spread 0.16, welds on 14 plates) between the half-fold and the slam
+    (50 ms taken from the cooled-fan hold: summon 16 f, still 1350 ms); attack gets one between f10 and the spill (seated 21,
+    fingers folded `strutFan 0.15`); the attack's recovery holds were re-split 70 / 80 / 85 / 95 (sum unchanged) because
+    validateArt's HA-3 forbids a recovery frame shorter than the one before. 136 frames (≤ 140).
+  - **#8 revive — fixed:** f4 already shows the skull (low, jaw 0.5, crest flat); f4–f5 the arms carry only finger STUBS
+    (`armStubs`: the stub path with the arm when the heap is present); the fan opens on f6. No floating spur on a frame
+    without its wrist.
+  - **#9 roar — fixed:** the skull thrusts +3 → +5 → +7 px forward / up over f2–f4 with the crest lifting to 2.4, f4 held
+    130 ms (f3 70), the gape lit from inside (fire3 / fire4 at the hinge, fire2 outward, ≥ 3 px on f3–f4).
+  - **#10 fingers — fixed:** hand-drawn bones 2 px to 62 % of their length then 1 px (the second pixel always on the upper
+    side, so the P2 opaque mask is identical; only its tone follows the light), knuckle nodes on both joints; the near fan
+    narrowed (18 / 0 / −22°), the far fan rotated back (+22°, reach 0.58) so the hands no longer cross through the cage.
+    Some overlap of the two hands' tips in the upper-left remains on attack f4.
+  - **#11 summon head — fixed:** f7–f9 neck / head lowered (head +3 … +5 px) under the new wing-shaped sail.
+  - **#12 IŞ-10 ref — not reduced below 5 %; exemption recorded** in `docs/v3/oturum-a.md`. idle f0 6.4 % (`iso.png`): the
+    new plate texture adds no isolated pixels; they sit on the outline staircases (lit contour, void2 rim), the skull and the
+    hem notches. Against the wyrm still (5.96 %) that is 1.07× (limit 1.1×).
+  - **#13 KK-13 — kept under the limit** by honest work, not a frame cache (the game paints each sheet frame once, so a
+    per-pose cache would only flatter the gate): bbox-limited weld / hem scans, the cage composited with one blit,
+    `SID.fill` once. 7.58 / 7.32 ms ref-machine (it measured 9.2 before).
+  - Gates (`--class ace`, P1 + P2): **21 ok, 1 FAIL (IŞ-10 ref vs v1: exemption)** — margin 2, HA-17 1.42 / 1.41, HA-18
+    15.5 / 15.3 % (tail sweep ±6 → ±7 px to keep it over 15 %), IŞ-10 idle 6.2 / 5.5 %, body ≤ 9.4 %, effect ≤ 12.2 %,
+    HA-21 phase ≤ 43.3 %, HA-9 40/40, IŞ-1 P1 idle +11.0 (P2 relit +16.6 vs mirror −11.0), KK-13 136 f, 7.58 ms.
+    `tests/art/ashen_drake.test.ts` 12/12 (frame counts 136 / attack 15 / summon 16, spill frames re-indexed, the idle
+    area bound 3500 → 3700 for the rounded crown); `npm test`: only the 4 known failures of other owners;
+    `npm run typecheck`: clean for every file of this card; `filmdiff --set v1`: **17/17 IDENTICAL**
+    (`r4/v1films`).
+  - Remaining weaknesses: the hood's scale texture is clear at ×3+ but at 1× it reads as a soft dapple; the bank is short
+    on adjacent tiles (kaAdAtk) so the fuse is only a few px long there; the far-cloak scales are dark and quiet; the
+    cut-in's hood edge has no explicit lip on its top-right and the eye is small; the tornado ribbons are thin dotted rings
+    rather than a dense column; the tie scenario runs 3.37 s game (death chain); no P2 summon film looked at frame by frame
+    (measure only); the SE gates (LSD, clip markers, silence ≥ 100 ms under −40 dBFS) were NOT run this round.

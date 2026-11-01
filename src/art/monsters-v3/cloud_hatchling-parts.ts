@@ -272,7 +272,7 @@ export const CLOUD_KEY: Readonly<Record<string, number>> = Object.freeze({ W: PA
  * (hitMagic static): its rim breaks into 1-px points. Paints into `q` (a clear layer canvas).
  */
 /** the far-side tones of a cloud lobe (the back half of the ring, in the body's shade) */
-const DIM: Readonly<Record<number, number>> = Object.freeze({ [PAL.white]: PAL.mist, [PAL.mist]: PAL.steel, [PAL.steel]: PAL.night4 });
+const DIM: Readonly<Record<number, number>> = Object.freeze({ [PAL.white]: PAL.mist, [PAL.mist]: PAL.steel, [PAL.steel]: PAL.steel });
 
 export function puffLobe(q: PixelCanvas, cx: number, cy: number, r: number, light: Light, spike = 0, dim = false): void {
   if (dim) {
@@ -326,6 +326,7 @@ export const LOBE_SEAM = seamFrom(
     [PAL.white]: PAL.mist,
     [PAL.mist]: PAL.mist,
     [PAL.steel]: PAL.steel,
+    [PAL.night4]: PAL.night4,
   }),
 );
 

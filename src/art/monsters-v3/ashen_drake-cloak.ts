@@ -809,4 +809,3 @@ export function spurPts(s: CloakShape, wing: WingId, lean: number): { base: V; t
   const tip: V = add(wrist, [-2.6 - lean, -4.4]);
   return { base, tip };
 }
-export const __dbg = { SID, FV, FU };

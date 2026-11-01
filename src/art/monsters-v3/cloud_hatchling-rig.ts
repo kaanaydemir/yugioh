@@ -307,7 +307,7 @@ export function skel(P: HatchPose, age: number): Skel {
   // the sphinx crouch lays them forward along the floor)
   const lie = sL >= 0.5 ? cr : 0;
   // grown: two straight, separate forelegs (critique r3 #1), the far one 8 px behind the near one
-  const baseN: V[] = [LV([45.5, 61], [54.5, 53], sL), LV([47.5, 63.5], [55.5, 62 - lie * 3], sL), LV([49, 64.5], [55.5, 70.5 - lie * 0.5], sL)];
+  const baseN: V[] = [LV([45.5, 61], [54.5, 53], sL), LV([47.5, 63.5], [55.5, 62 - lie * 3], sL), LV([49, 64.5], [56, 70.5 - lie * 0.5], sL)];
   const baseF: V[] = [LV([42, 61.5], [46.5, 54], sL), LV([43.5, 64], [47, 62 - lie * 3], sL), LV([45, 65], [47, 70.5 - lie * 0.5], sL)];
   const raise = (k: number, p: V[]): V[] => {
     if (sL < 0.5) return p.map((q, i) => (i === 0 ? q : addV(q, [k * (i === 1 ? 2 : 4), -k * (i === 1 ? 6 : 10)])));
@@ -995,7 +995,7 @@ function drawHorn(p: PixelCanvas, w: Workspace, S: Skel, light: Light): void {
       const dy = r + 0.5 - cy;
       const s = (dx * lv[0] + dy * lv[1]) / Math.max(1, Math.hypot(dx, dy));
       let col: number = s > 0.4 ? PAL.skin4 : s > -0.3 ? PAL.earth4 : PAL.earth3;
-      if (ch === 't') col = PAL.earth2;
+      if (ch === 't') col = PAL.earth3;
       if (ch === 'h' && col === PAL.skin4 && r > 0) col = PAL.earth4;
       q.set(x0 + c, y0 + r, col);
     }
@@ -1039,7 +1039,7 @@ function mouthWedge(S: Skel, pad: number): V[] {
 }
 
 /** the grown tail-tip shell: a 5×5 cap, dome up, the baby's zigzag rim (3 skin4 teeth) at its foot */
-const TIP_BAND = { rows: ['.LLM.', 'LLMMS', 'LMMdS', 'LMMSS', 'r.r.r'], ax: 2, ay: 4 } as const;
+const TIP_BAND = { rows: ['.LLM.', 'LLMMS', 'LMMSS', 'LMMSS', 'r.r.r'], ax: 2, ay: 4 } as const;
 const BAND_KEY: Readonly<Record<string, number>> = Object.freeze({ L: PAL.skin4, M: PAL.earth4, S: PAL.earth3, d: PAL.earth2, r: PAL.skin4 });
 
 /** a seam that inks the contact edge (the baby's wing nub stands off its back) */
@@ -1053,8 +1053,7 @@ function surface(p: PixelCanvas, P: HatchPose, S: Skel): void {
   const my = R(sn.c[1] + sn.ry * 0.5);
   const inside = (x: number, y: number) => p.isOpaque(x, y) && p.isOpaque(x, y + 1) && p.isOpaque(x + 1, y);
   if (P.jaw > 0.2) {
-    // the open mouth (critique r2 #3, #8): a night0 wedge between the upper lip and the dropped lower
-    // jaw, a 2×2 skin3 tongue on its floor (never past the lips); grown: one white fang at the front
+    // the open mouth (critique r2 #3, #8; r3 #3): a wedge between the upper lip and the dropped lower jaw
     const g = S.mouthGeo;
     const wedge = (x: number, y: number) => {
       const d = rot([x + 0.5 - g.c0[0], y + 0.5 - g.c0[1]], -g.ta);
@@ -1254,9 +1253,11 @@ function drawStory(p: PixelCanvas, w: Workspace, P: HatchPose, light: Light, age
   if (P.float > 0) floatCloud(p, w, light, eggC, P.float, grownShell);
 
   const showBall = P.ball >= 0.5 && (P.egg <= 0 || P.burst > 0);
+  // the peeled mane lobes sinking round the shrinking ball as an iso ellipse of puffs (critique r3 #6):
+  // the far half behind the ball, the near half in front
+  if (P.loose > 0 && grownShell) looseLobes(p, w, light, P, age, true);
   if (showBall) drawBall(p, w, P, light, age);
-  // the peeled mane lobes sinking to the floor round the shrinking ball (in front: they must read)
-  if (P.loose > 0 && grownShell) looseLobes(p, w, light, P, age);
+  if (P.loose > 0 && grownShell) looseLobes(p, w, light, P, age, false);
 
   // the summon burst: the cup and the popped top + shards
   if (P.burst > 0) {
@@ -1430,15 +1431,27 @@ function floatCloud(p: PixelCanvas, w: Workspace, light: Light, eggC: V, phase: 
   cloudLobes(p, w, lobes, light);
 }
 
-function looseLobes(p: PixelCanvas, w: Workspace, light: Light, P: HatchPose, age: number): void {
+function looseLobes(p: PixelCanvas, w: Workspace, light: Light, P: HatchPose, age: number, back: boolean): void {
   const k = clamp01(P.loose);
+  const { c, r: br } = ballGeoOf(P, age);
+  const rx = Math.max(br + 3, L(16, 11, k));
+  const ry = L(5, 3, k);
+  const cy = L(c[1] + 2, 73 - ry - 2.5, k);
+  const lr = L(4, 2.8, k) * (0.85 + age * 0.15);
   const lobes: Lobe[] = [];
-  const spread = L(16, 11, k);
-  for (let i = 0; i < 6; i++) {
-    const x = 40 + (i - 2.5) * (spread / 2.5);
-    const r = L(4.5, 3, k) * (0.8 + age * 0.2);
-    const y = L(52 + (i % 2) * 6, 72.5 - r - (i % 2), k);
-    lobes.push({ c: [R(x), R(y)], r });
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + 0.2;
+    const s = Math.sin(a);
+    if ((s < 0) !== back) continue;
+    lobes.push({ c: [R(40 + Math.cos(a) * rx), R(cy + s * ry)], r: lr });
   }
-  cloudLobes(p, w, lobes, light);
+  lobes.sort((u, v) => u.c[1] - v.c[1]);
+  if (back) {
+    // the far half in the ball's shade (the ring's back puffs read the same way)
+    for (const l of lobes) {
+      const q = w.canvas();
+      puffLobe(q, l.c[0], l.c[1], l.r, light, 0, true);
+      composite(p, q, LOBE_SEAM);
+    }
+  } else cloudLobes(p, w, lobes, light);
 }

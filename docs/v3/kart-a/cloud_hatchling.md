@@ -1364,3 +1364,117 @@ Every claim was re-checked in the tree before acting on it. All 19 findings were
     lion read comes from the mane frame); growth f7–f8 show a tall white poof on a neck before the nape mass
     arrives; the grown band still reads as a small tan block at 1× near the hind foot; summon f3's crack is short
     (5 px); grown death f2 is ≈ 69 % of the idle mass, not 85 %.
+- 2026-10-31 — **critic round 3 fixes (sprite)**. Files: `cloud_hatchling-rig.ts`, `-parts.ts`, `-anims.ts` (art / grown /
+  test files unchanged). Checked on ×4–×16 renders of every changed anim, P1 + P2 (`tools/_ch_frames.ts` scratch, now
+  with `CLIP=x,y,w,h`), and on the board at 1× (`kaChGrownIdle`, `kaChGrownIdleP2`).
+  - **#1 grown body / legs.** The grown chest is a smaller breast (rx 8.5, ry 10 at (50, 53)) that ends above the legs; the
+    two forelegs are separate straight tubes 8 px apart (near x 54.5→56, far x 46.5→47), each laid with an INK seam (its
+    own 1-px ink outline over the body), the far one moved out of the "far parts" layer and drawn in front of the belly in
+    FAR tones (leaf3 lit, leaf2 shadow side); paws keep 3 / 2 skin3 toes. The haunch keeps its single crease arc. The
+    belly / haunch interior seams came mostly from the old tail running under the shell band; that is gone (#8).
+  - **#2 face.** Grown muzzle = its own convex dome raster (flat 2.2, leaf4) laid with a seam 1.5 px proud of the skull,
+    centred lower (hc + (10.5, 5.2)) so the forehead → muzzle has a stop; the lower jaw is a leaf3 underjaw band.
+    New `grownEye` (5×4 gold3 / gold2 ring, night0 pupil) + `grownBrow`: a hand-placed 7×3 cloud brow laid after the
+    eye, its steel underside over the eye's top row (P2: tones mirrored, shape symmetric). Horn = `HORN`, a 6×5 C-shaped
+    ram curl (opening forward-down, the tip curling in), toned by its own centre + key light (skin4 / earth4 / earth3),
+    behind the brow fringe (fringe lobe moved to hc + (−9, −5.5), covering its root ≈ 2 of 6 columns); no disc, no
+    outline of its own.
+  - **#3 open mouth.** night0 only in the ≤ 3-px throat core at the hinge, `fire1` mouth, `fire2` tongue pad (3×2),
+    a leaf3 lip rim on the hide pixels above / below the hole (grown), the upper fang (2 px) and a new lower fang.
+    Deviation: the critic's "pink" — the palette has no pink outside the banned crim / mag ramps; `fire1` / `fire2` are
+    the warm reds (no player colour). The wedge is ≥ 4 px tall at the lips on attack f8 / roar f4 / special f13.
+  - **#4 growth f6 → f7.** f6 (sB) now swells the body REARWARD (centre (37, 60)), the haunch to rx 7.2 lower-back, the
+    baby tail + cup slide 3 px back: opaque 968 → 1130 → 1391 → 1650 → 1848 → 2164 → 2631 (f5…f11), no jump. Mane masses
+    grow over TWO frames each (`lobeAt`), and the head stays low until the mane frames it (`low` ×2): f7 is a small crown
+    cluster, f8 a few nape lobes on the shoulders (no poof on a stalk).
+  - **#5 revive.** f2 + f3 merged into one hold (plates 0.85, 130 ms); the freed f3 (70 ms) is the curled body swelling
+    out of the half-open shell (ball 0.7, plates 0.6, the eye + cowlick out): 272 → 588 → 860. Deviation: a curled
+    emergence instead of "head and shoulders + paws on the rim" — the standing rig cannot sink below the floor rows
+    (Sİ-2 / HA-9), the ball reads as the same body un-curling. Count stays 139.
+  - **#6 grown death.** unAge 0.15 / 0.33 / 0.52 / 1 on f3–f6: opaque 1666 → 1064 → 591 → 305 (ratios 0.64 / 0.56 / 0.52;
+    no ×0.45 frame). The peeled lobes are now an iso ellipse of 8 puffs round the ball (far half dim, behind the ball;
+    near half in front), never a flat bar.
+  - **#7 ring.** RING cy 60, ry 6 (48×12); `ringPuffs` spaces the 12 puffs by ARC LENGTH (no side clusters; a 1/12 phase
+    shift still maps the pattern onto itself — the test holds); back-half puffs are dimmed (mist / steel) via
+    `puffLobe(..., dim)`; the front half keeps white caps + the 1-px steel shadow dots.
+  - **#8 tail.** The grown tail curls from behind the haunch along its bottom and UP in front of it (tip (36.5, 61)),
+    a leaf3 tube laid with an INK seam; the shell is `TIP_BAND`, a 5×5 cap on the tip with the zigzag rim (3 skin4
+    teeth). The old 10×8 "mug" band is gone.
+  - **#9 wing tips.** Longer (tip −15.5 / −13 from the root) and two planes each (leading half leaf3, trailing half leaf2,
+    by normal so P2 relights): ≈ 5×6 visible above the back mane.
+  - **#10 duplicates.** Guard f3 / f7 now breathe the mane (grown-only `mane` 0.6 / 0.2), hit f4 and hitMagic f5 carry
+    `mane` 0.25: no Δ < 40 frame left in grown guard / hit / hitMagic; baby hitMagic f6 Δ 12 is the end frame (kept).
+  - **#11 grown sneeze.** `grownBlast()`: on a grown frame with jaw ≥ 0.9 and puff ≥ 0.9 (attack f8) the FAT ring
+    (`hiccupRing` big, 6×10, 2-px band) is born at the lips, with lagging wind arcs above / below; attack f9 carries
+    puff 0.5 (two trailing arcs, both forms). Attack f8 lunge 4 → 3 px (room for the ring in the 82-px frame).
+    Special f13 uses puff 0.6 (arcs, not the ring) so the roaring mouth stays readable; roar f4 / special f13 lunge
+    x 1 → 0 (Sİ-2 margin after the longer muzzle).
+  - **#12** noted; idle f5 amplitude untouched (baby HA-21 phase still 48.3 %).
+  - **#13** not mine (REHBER §10 / the gate tool's known list); the FAILs below are the same three declared exceptions.
+  - Colours: the horn tip / band speckle use earth3 (not earth2), LOBE_SEAM keeps night4: every frame ≤ 20 colours.
+  - **Gates** (`shots/kart-a/cloud_hatchling/r4/gates/gates-b.txt`, `gates-g.txt`; `--class medium --ref none`, P1 + P2):
+    baby 20 ok + 1 FAIL (HA-14 out special 13.38 / 13.1, declared), grown 19 ok + 2 FAIL (HA-14 out summon / revive 3.74 /
+    3.85, HA-15 in special 3.73 / 3.83, declared). Grown: HA-17 1.66, HA-18 25.9 %, HA-19 0.54, HA-21 contact ≤ 24.7 %,
+    phase ≤ 43.4 %, IŞ-10 idle 3.2 %, body ≤ 6.0 %, effect ≤ 12.5 %, HA-9 fixed (x 16..62), IŞ-1 P2 relight > mirror
+    (idle +26.0 vs −13.2), KK-13 139 frames, 3.11 ms / frame, 3.56 MB. Baby: HA-17 1.77, HA-18 19.3 %, HA-19 0.77, HA-21
+    phase 48.3 %. Tests `tests/art/cloud_hatchling.test.ts` 9/9 + `tests/duel/unit-variant.test.ts`; `tsc` clean in
+    these files.
+  - Evidence: `shots/kart-a/cloud_hatchling/r4/` — `gates/` (b, b2, g, g2 sheets ×3 + logs), `board-grown.png`,
+    `board-grown-z.png` (×4 crop of the 1× board), `board-grown-p2.png`, `before-*.png` (the round-3 state), `w1`–`w15.png`
+    (working renders: idle body / face / horn zooms, growth f5–f12, attack / roar / special mouths, revive, death, guard).
+  - **Remaining weaknesses:** the horn is small at 1× (a tan hook behind the brow; legible at ×2+); the grown haunch +
+    tail + front ring puffs make the lower-left busy at ×1; the release ring at attack f8 sits over the muzzle (no room
+    in the 82-px frame — the cinematic's ring carries the flight); the revive's emergence is a curled body, not paws on
+    the rim; baby HA-21 phase 48.3 %.
+
+### Card art (§7) — `src/art/cardart-v3/cloud_hatchling.ts`, registered
+- **Files:** `src/art/cardart-v3/cloud_hatchling.ts` (new painter, big 88×68 + hand-tuned small 44×34, 6 living
+  frames × 140 ms); `src/art/cardface-v3/index.ts` (additive: one import + the `cloud_hatchling` entry in `ART`, the
+  `renderArt(x, 0).smallPx` pattern — the v3 sprite is registered); `tests/art/cloud_hatchling-cardart.test.ts` (new).
+- **Picture "Hapşırık":** the baby sits in the bottom half of its egg in a cloud nest and sneezes a hollow wind ring
+  toward the upper right. Big: the head (centre x 32, left third), eyes squeezed (a bold ink chevron), the muzzle dome,
+  the mouth open on the CHOO (fire1 throat, fire2 tongue, two skin4 fangs, a leaf1 upper-lip seam), the cowlick blown
+  back as four mist cloud lobes (a few white highlight pixels), the cream egg rim with zigzag teeth and earth2 speckles
+  on the shadow plane, the tail curling out over the left rim wearing its shell cap like a little hat (zigzag hanging
+  round the tail), the cloud nest in front (mist / steel / night4 lobes), a far cloud sea (steel tops, night4 body).
+  The ring (focus (71, 21)): a tilted hollow ellipse, white leading crescent, mist band, steel trailing edge; three
+  2-px-stair whistle streaks back to the mouth. Each part is its own outlined layer (seams stay ink); the IŞ-7 rim is
+  water4 on the OUTER silhouette only (the kit's `rim` would rim every internal ink seam — `outerRim` filters it).
+- **Small:** the same geometry redrawn natively at 1× density on a tighter crop (scale 0.66: head + ring, the egg rim
+  cut by the bottom edge, the tail and nest fall out), then corrected by hand with `patch`: the cowlick (3 mist lobes,
+  one white pixel each, one notch), the mouth + the lower jaw (the egg covered it) + clean shell teeth, a 5-row eye
+  chevron, 2 streaks. Not `autoSmall`.
+- **Deviations from §7 and why:**
+  - **Light shape:** the WIND recipe's tones (leaf1 / leaf2) in the kit's stepped disc (`as: 'halo', rays: false`,
+    radius 30 big / 34 small, centred 3 px behind the ring) instead of the `gust` arcs. The arcs (tried r 20–30) read at
+    ×1 as a thin green rainbow / scattered lines and the hand card was the dullest of the hand next to crystal_wyrm /
+    magma_titan / ember_wolf; the disc makes the white ring the single brightest point on a green glow and carries the
+    WIND colour at ×1. The blueprint's grey sky disc (night4 / steel) would have had no attribute colour at all.
+  - **Sky:** night2 / night3 bands (split 34) instead of night3 / night4 / steel (keeps the value order: the leaf4 head
+    is the lightest broad plane, the far cloud sea steel tops sit under it). Backdrop = 6 tones.
+  - **Rim:** water4 (the sprite's rim, as §7 says) — not the WIND recipe's leaf3, which vanishes on leaf hide.
+  - **No tumbling top cap above the head:** the sprite already wears that cap on its tail tip (§1.1 #3); two caps would
+    be two shells. The cap is on the tail, the egg's bottom half is the nest.
+  - **Cowlick tones:** mist-led with single white highlights (the sprite's cowlick is white-led): with white lobes the
+    bright centroid sat 24–33 px from the ring (two competing whites); now 16 px big / 6 px small.
+  - **Egg lit plane:** mostly earth4 with a small skin4 spot (same reason: skin4 is the second-brightest tone).
+- **Numbers (final, `shots/kart-a/cloud_hatchling/art/final/stats.txt`):** big 19 tones / backdrop 6, isolated 1.8 %,
+  checker 22 (limit 27), subject fill 73.8 %, outline 100 % ink, focus in box, lead 26, bright centroid 16.1 px from
+  the ring; small 17 tones / backdrop 6, isolated 3.1 %, checker 5, fill 62.5 %, outline 94.7 %, lead 15, bright
+  centroid 5.9 px. Palette only, fully opaque, no cyan / crim.
+- **Self-critique (KART_RESIMLERI §2/§3/§10) and fixes made:** two whites competing → cowlick to mist-led; the hat's
+  left contour 2 px from the visible edge (tangent) → moved in to 4.4 px; the small head's back sat on the left edge
+  (tangent, then cut) → small rescaled so the whole head is inside; 1-px diagonal streaks made checkerboards → 2-px
+  stairs; the ring read as the digit "0" → tilted 0.3 rad; the small's egg rim was a row of ink scraps → hand-drawn
+  teeth. **Known weaknesses:** the small cowlick reads as a grey puff/cap more than a white cloud; the small's egg is
+  only a cream band at the bottom; the squeezed eye costs the sprite's gold eye (the sneeze needs it shut).
+- **In game:** only `smallPx` is shown (hand, board card, inspect at 2× of the small) — nothing in the tree uses
+  `bigPx` yet; the big is judged from renders.
+- **Tests:** `tests/art/cloud_hatchling-cardart.test.ts` 5/5; `tests/art/` 348 passed, 4 failed = the 4 known
+  failures at lane start (cardface-v3 G1 scrap_raiders, dusk_ashen, hourglass_imp, shield_titan);
+  `tests/v3/a6-cards.test.ts` 36/36; `tsc` clean in my files.
+- **Evidence (`shots/kart-a/cloud_hatchling/art/`):** `final/sheet.png` (big ×3 | small ×3 / ×1 next to crystal_wyrm,
+  ember_wolf, judgment_bolt; small ×6), `final/big-x1|x3|x6.png`, `final/small-x1|x6.png`, `final/frames.png` (6 living
+  frames, both sizes), `final/faces.png` (1× faces ×4 and ×1: cloud_hatchling, crystal_wyrm, magma_titan, ember_wolf,
+  venom_drake, storm_hawk), `final/board-hand.png` (1× board + hand with crystal_wyrm / magma_titan),
+  `final/hand-card-x6.png`; iterations `i1`–`i33`; sprite references `ref-baby*.png`.

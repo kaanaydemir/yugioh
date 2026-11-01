@@ -143,3 +143,10 @@ are the ambient sky-flyer band (x 32–606, y 94–111), which differs between t
   three cards ticking/dripping between actions would clutter the board mix). Idle identities play inside cinematics.
 - Owner question (venom_drake §10.1). Owner silent → lane-A choice: only the venom_drake DEATH scar lasts the duel
   (memorable, flavor-true "nothing grows again"); attack scars fade after ~2.4 s so they never read as a game mechanic.
+
+## ashen_drake: IŞ-10 reference exemption (2026-10-31, lane-A builder, critic r3 #12)
+`tools/monster-gates.ts` compares idle f0 noise with the v1 idle f0 when a card has no approved still. For ashen_drake
+the v1 frame is the `placeholderTotem`-era sprite of a different creature (2.6 % isolated px), so the row prints
+FAIL (6.4 % / 2.6 % = 2.43×) and measures nothing about this drake. Decision: the reference for this card is the slice
+ace's approved still (`src/still/wyrm.ts`, 5.96 %): idle f0 6.4 % = **1.07×** (limit 1.1×). The gate tool is not
+lane A's to change, so the FAIL line stays in `gates.txt`; the orchestrator should treat it as known/exempt.

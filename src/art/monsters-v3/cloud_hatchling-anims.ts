@@ -59,7 +59,7 @@ export const BABY_HOLDS: Holds = Object.freeze({
   hitMagic: [50, 50, 70, 90, 110, 140, 80],
   summon: [70, 70, 80, 150, 150, 150, 80, 60, 70, 80, 130, 110, 110, 80],
   death: [50, 60, 90, 100, 70, 70, 70, 70, 70, 80, 50, 60, 50],
-  revive: [100, 90, 90, 90, 100, 80, 120, 110, 120, 130, 80],
+  revive: [100, 90, 130, 80, 70, 80, 120, 110, 120, 130, 80],
   special: [120, 120, 120, 100, 100, 160, 85, 85, 120, 85, 85, 120, 90, 70, 180, 130],
   victory: [90, 100, 110, 130, 400],
 });
@@ -144,6 +144,8 @@ const GUARD = (h: Holds): LoopDef<HatchPose> => ({
     look: [f === 6 ? 0 : 1, 0],
     ring: f === 6 || f === 7 ? 1 / 12 : 0,
     drift: f / 8,
+    // grown: the mane breathes a lobe out / in on the two frames that only changed the baby (r3 #10)
+    mane: f === 3 ? 0.6 : f === 7 ? 0.2 : 0.4,
   }),
 });
 
@@ -188,7 +190,7 @@ const ROAR_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[] =
   [{ lift: 2, wingOpen: 0.8, head: [0, -1], tilt: 1, jaw: 0.2, armN: 0.3, armF: 0.3, mane: 0.6 }],
   [{ lift: 3, rear: 3, wingOpen: 1, wingN: 1, wingF: 1, tilt: 1.5, jaw: 0.4, head: [1, -1], eye: 6, armN: 0.4, armF: 0.4, mane: 0.8, tuft: 0.8, lunge: [-1, 0] }],
   // the squeak goes UP: snout to the sky, mouth vertical, eyes wide, the nubs spread (≠ the attack's CHOO)
-  [{ lift: 2, wingOpen: 1, wingN: 3, wingF: 3, tilt: 2.6, jaw: 1, puff: 0.5, eye: 6, head: [0, -2], mane: 1.2, ringFlare: 2, cow: -2, tuft: 1, rear: 5, lunge: [1, -1], lag: -1 }, 'release'],
+  [{ lift: 2, wingOpen: 1, wingN: 3, wingF: 3, tilt: 2.6, jaw: 1, puff: 0.5, eye: 6, head: [0, -2], mane: 1.2, ringFlare: 2, cow: -2, tuft: 1, rear: 5, lunge: [0, -1], lag: -1 }, 'release'],
   [{ lift: 1, rear: 3, wingOpen: 0.8, wingN: 1, wingF: 2, tilt: 1.8, jaw: 0.6, puff: 0.3, eye: 6, head: [0, -1], mane: 0.8, ringFlare: 2, cow: 2, lunge: [1, 0], lag: 1 }],
   [{ lean: -2, wingOpen: 0.4, eye: 6, jaw: 0.2, cow: 2, mane: 0.4 }, 'recover'],
   [{ lean: 2, wingOpen: 0.2, cow: -2, look: [1, 0] }],
@@ -203,7 +205,7 @@ const HIT_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[] = 
   [{ head: [-1, 0], tilt: 0.5, eye: 1, squash: 0.2, cow: 3, tuft: 0.6, tail: -0.45, hip: [-1, 0], lag: 1 }],
   [{ head: [-1, 0], eye: 1, blink: 0.5, cow: -2, tail: 0.15, hip: [-1, 0], mane: 0.4, lag: -1 }],
   [{ head: [0, 0], blink: 0.5, cow: -1, hip: [-1, 0] }, 'recover'],
-  [{ cow: 1, hip: [0, 0] }],
+  [{ cow: 1, hip: [0, 0], mane: 0.25 }],
 ];
 const HIT_HEAVY_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[] = [
   [{ head: [-2, 0], tilt: 1, eye: 1, squash: 0.3, cow: 2 }],
@@ -220,7 +222,7 @@ const HIT_MAGIC_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?]
   [{ shake: -1, head: [-1, -1], eye: 3, fluff: 1, tuft: 1, wingN: 1, wingF: 2, mane: 1 }],
   [{ shake: 1, eye: 3, fluff: 0.7, tuft: 0.6, wingF: 1, mane: 0.6 }],
   [{ eye: 1, fluff: 0.4, tuft: 0.3, mane: 0.3 }, 'recover'],
-  [{ blink: 0.5, cow: -1 }],
+  [{ blink: 0.5, cow: -1, mane: 0.25 }],
 ];
 
 // ------------------------------------------------------------------ summon "Bulut Yumurtası" (§4.7)
@@ -257,9 +259,10 @@ const DEATH_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[] 
   // baby: tumbles back; grown (ballG): already the big ball, the mane wrapped round it
   [{ hip: [-2, 0], lean: -2, eye: 2, squash: 0.8, crouch: 0.7, head: [-2, 2], tilt: -1, cow: -2, armN: 0.6, armF: 0.6, tail: 0.6, mane: 1, ballG: 0.5 }],
   // the curl at ≈ 75 % of the standing mass, then it shrinks only while the plates rise (critique r1 #7)
-  [{ ball: 0.6, tumble: 0.04, unAge: 1 / 3, loose: 0.35 }],
-  [{ ball: 0.8, tumble: -0.03, knit: 0.25, unAge: 2 / 3, loose: 0.7 }, 'dissolve'],
-  [{ ball: 0.95, knit: 0.5, unAge: 1, loose: 1 }],
+  // (critique r3 #6) the grown un-ages in even steps (≈ 1300 → 950 → 650 px), never one ×0.45 drop
+  [{ ball: 0.6, tumble: 0.04, unAge: 0.15, loose: 0.35 }],
+  [{ ball: 0.8, tumble: -0.03, knit: 0.25, unAge: 0.33, loose: 0.7 }, 'dissolve'],
+  [{ ball: 0.95, knit: 0.5, unAge: 0.52, loose: 1 }],
   [{ ball: 1, knit: 0.75, unAge: 1, loose: 1 }],
   // the gathered cloud stays under the egg on every frame from here (no flicker)
   [{ ball: 1, knit: 1, unAge: 1, float: 2 }],
@@ -276,8 +279,10 @@ const DEATH_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[] 
 const REVIVE_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[] = [
   [{ ball: 1, knit: 0.75 }],
   [{ ball: 1, plates: 0.33 }],
-  [{ ball: 1, plates: 0.66, glint: 2 }],
-  [{ ball: 1, plates: 1, tumble: -0.04 }],
+  // (critique r3 #5) the two flat-plate frames merged into one hold; the freed frame is the half
+  // emergence: the curled body swelling up out of the opening shell (≈ 500 px), its head turning out
+  [{ ball: 1, plates: 0.85, glint: 2, tumble: -0.04 }],
+  [{ ball: 0.7, plates: 0.6, tumble: -0.07 }],
   // uncurls halfway: a crouched sit at ≈ 70 % of the standing mass, head peeking, tail still round the front
   [{ crouch: 1, tail: 1, plates: 1, head: [0, 2], tilt: -0.5, eye: 1, cow: 1, squash: 0.3 }],
   [{ crouch: 0.6, plates: 1, eye: 1, cow: 1 }, 'land'],
@@ -308,7 +313,7 @@ const SPECIAL_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[
   [{ grow: 1, tilt: 1, head: [0, -1], mane: 0.4, wingOpen: 0.3 }],
   // the payoff roar (critique r2 #9): the roar f4 pose — the chest up on the forelegs, the head ≈ 25° up,
   // the wide dark jaw, the mane masses flared 2–3 px
-  [{ grow: 1, tilt: 1.75, rear: 5, head: [1, -1], jaw: 1, puff: 0.6, wingOpen: 1, mane: 1.3, eye: 6, ringFlare: 2, lunge: [1, -1], lag: -1 }, 'release'],
+  [{ grow: 1, tilt: 1.75, rear: 5, head: [1, -1], jaw: 1, puff: 0.6, wingOpen: 1, mane: 1.3, eye: 6, ringFlare: 2, lunge: [0, -1], lag: -1 }, 'release'],
   [{ grow: 1, tilt: 1.4, rear: 3, head: [1, -1], jaw: 0.8, wingOpen: 0.8, mane: 0.9, eye: 1, ringFlare: 1, lunge: [1, 0], lag: 1 }],
   [{ grow: 1 }, 'recover'],
 ];

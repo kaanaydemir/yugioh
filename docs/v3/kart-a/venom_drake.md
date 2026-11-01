@@ -1614,3 +1614,132 @@ Each finding was checked against the tree (2026-10-31) before it was resolved.
     added edges); the guard's upper-back tear shows the neck behind it, so it reads as a dark notch more than a
     bite; the special rear steps are ≈ 6.8 × idleΔ; summon f4 still lies low over the back for its 60 ms; the
     forearm at 1× is a lit 4-px limb, readable but thin.
+
+### Card art + cut-in (§7), build pass 1
+
+**What I built**
+- `src/art/cutins-v3/_venom_drake-bust.ts` (new, `_` keeps it out of the cut-in glob): the bust is drawn
+  natively in shared UNITS (a 44 × 34 frame). The cut-in draws it at S = 4.4 px per unit and the card at
+  2.2 (big) and 1.5 (small). There is one set of shapes, never the 1× sprite scaled up (the crystal_wyrm
+  card / cut-in method). It uses the sprite's parts and tones:
+  - the head: a `mag1` top plane, `void2` side, `void1` cheek / lip, a `void3` brow ridge, the `gold2` slit
+    eye, two chitin horns swept back, the hinged jaw with a `mag1` gum line, a `void0` throat, a `mag0`
+    tongue and the fangs;
+  - the throat sac (`leaf2` body, `leaf3` core, `gold3` on the hiss);
+  - the segmented scorpion tail. Plates bulge, so the edge is scalloped and does not read as a hose. Each
+    plate has a `void0` joint and a `void3` front.
+  - two chitin segments, the bulb (`leaf2` lower side, `leaf3` body, a `gold3` lens inside the `leaf3`,
+    ONE `gold4` core, no checker) and the hooked stinger;
+  - weep-quills with beads, and the holed membrane cape (cut-in only).
+
+  Light: every upward or light-facing contour gets a 1-px lit edge (`void3` / `stone4`). The rim (shadow side,
+  hide only, never on chitin) is a parameter: `leaf2` in the cut-in (the sprite's), `void3` on the card (the
+  DARK card light, KART_RESIMLERI §3). P2 relight passes `lightFrom: 'right'`, which swaps the lit edges,
+  the rim and the tube bands. `lite` drops the quills, the far horn and the jaw frill for the hand card.
+- `src/art/cardart-v3/venom_drake.ts` (rewritten):
+  - **big 88×68**: S = 2.2, origin (−12, 5).
+    - The head is low at the right third, looking right, jaw cracked on the hiss (0.62), sac glowing.
+    - The tail rises off the left edge and arches over the head. The bulb (the focus, (64, 25)) hangs in the
+      DARK eclipse's dark centre: the corona (r 20) is centred 3 px behind it and frames the bulb, not the head.
+    - A 2-px stepped drip trail runs from the stinger to the etched ring of dead ground (`stone0` pit, `leaf1`
+      lip, `night0` cracks, a bubble) at the bottom right. There is no plant glyph.
+  - **small 44×34**: the same bust closer (S = 1.5, origin (−20, −6)): head, bulb, drop and pit, with the tail
+    bleeding in from the left. Its own eclipse is r 17, so the corona hugs the bulb and does not cross the
+    head. It is the `lite` LOD plus a hand `patch` that re-cuts the bulb as a crisp acid drop with one `gold4`.
+  - **Living art**: 6 frames × 150 ms, palette steps on fixed pixels only:
+    - the stinger bead 2 → 3 → 1;
+    - the hot band 1 → 2 at f2;
+    - the drop's head lights the fixed trail at f2 / f3 / f4;
+    - the bubble swells and pops (f3 / f4).
+
+    f0 is the reduced-motion frame.
+  - Registered additively in `src/art/cardface-v3/index.ts` `ART` (`venom_drake: (p) =>
+    p.blit(renderArt(venomDrake, 0).smallPx, 0, 0)`). Its v3 sprite is registered (`venom_drake-wyvern.ts`).
+    It only shows under `V3_CARDS`; v1 is unchanged.
+- `src/art/cutins-v3/venom_drake.ts` (new, auto-discovered under LOOK_V3): 200×144, `p2: 'relight'`,
+  `accent leaf3` / `accentDark void1`.
+  - Holds `[200, 80, 80, 160, 200, 120]` = 840 ms (≤ `CUTIN_V3_MAX_MS` 900).
+  - f0 is the cold stare with the bead swelling. f1: the sac inflates, head back 1 px.
+  - f2 is the flare: the pupil snaps (`gold3` iris, no slit) and the bulb ignites (the first `gold4`; f0–f1
+    have none).
+  - f3 is the slam: the full gape, the sac flashes `gold3`, motion lines on the arch, the drop lets go.
+  - f4: the drop lands at the bust's lower edge in front of the chin (a 5-px crown) and the first pit opens.
+  - f5 is held: jaw half closed, a new bead forming, and 3 craters eaten up into the bust's lower contour
+    (1-px `leaf3` rim, `leaf2` inner step, one `gold3` lip pixel, a `stone3` wisp over the largest).
+  - The bust's own cut is parallel to the band's lower border (y = 143 − 0.13x).
+  - The bust has a natural left silhouette. The cape's ragged back edge is inside the portrait, and the tail
+    root rises from behind the cape, so no straight portrait edge shows in the band. About 23 ms per frame.
+- `tests/art/venom_drake.test.ts`: two new tests.
+  - Card art, every living frame, both sizes: off-palette 0, ≤ 20 tones, backdrop ≤ 6, isolated ≤ 10 %, focus
+    in box, outline ink ≥ 90 %, lead ≥ 4 / 2, exactly one `gold4` and no `leaf4`.
+  - Cut-in: size, `relight`, holds ≤ 900 ms, palette and opaque only P1 + P2, `gold4` 0 before the flare and
+    exactly 1 from f2 on.
+
+**Changes from §7 and why**
+- **Big composition.** §7 has the whole wyvern on a ledge with the bulb at (64, 16) in front of the head. A
+  1:1 sprite crop was tried first (`venom_drake-vs-cw-x3.png` history): next to crystal_wyrm it read as a
+  small dark creature lost in its eclipse. With the sprite's tail length, the stinger can only hang over the
+  neck, so a drip from it lands on the drake's own head. I replaced it with the shared native bust: the head
+  is about 2× bigger, and the bulb is up-right in front of the face, so the drip falls clear to the pit.
+  Bulb (64, 25), head eye (40, 40).
+- **Small.** Not a 1:1 crop of the sprite. It is the same bust redrawn closer (KART_RESIMLERI §1 preference
+  2) plus a hand patch of the bulb. A 1.2–1.32 S crop left the head too small to read at 1×.
+- **Cut-in craters.** §7 puts the 3 craters where the drop lands on the band-parallel cut edge. In front of
+  the face, under the stinger, there is no matter on that edge (the jaw ends about 14 px earlier). Lowering
+  the head until the jaw reaches the cut hid the sac. So the crater notches are eaten up into the bust's
+  lower contour nearest the splash (the chin and lower jaw), and the crown lands on the cut line in front of
+  it.
+- **Subject fill.** Big 89 %, small 100 % of the visible window, above the 60–75 % guide. The approved
+  crystal_wyrm card is 93 % / 88 %; the bust bleeds left and bottom by design.
+
+**Numbers (render script, f0)**
+
+| | big | small |
+|---|---|---|
+| Tones | 19 | 19 |
+| Backdrop tones | 6 | 6 |
+| Off-palette | 0 | 0 |
+| Isolated | 3.0 % | 4.5 % |
+| Checker 2×2 | 14 (0.26 %) | 3 (0.22 %) |
+| Outline ink | 90.6 % | 90.7 % |
+| Focus OK | yes | yes |
+| Lead | 9 | 2 |
+| `brightOff` | 19.8 | 6.8 |
+
+`brightOff` is large on big because of the `void3` / `stone4` lit edges and the horns; the single brightest
+pixel is the bulb's `gold4`. Not auto.
+
+**Self-critique (KART_RESIMLERI)**
+- Fixed in this pass:
+  - a dithered hot band (an `(x + y) % 2` checker), now a `gold3` lens;
+  - a top tangent of the tail on both sizes (now ≥ 5 px / bleeds left);
+  - the eclipse's corona crossing the head;
+  - the hand art's lead (0 → 2);
+  - the drip as motion, now a palette step on a fixed trail;
+  - the backdrop at 8 tones (the ring moved to the subject layer).
+- Still weak:
+  - The drake is a dark violet subject (the sprite's own hide). Next to crystal_wyrm (white on gold) and
+    magma_titan (lava) it is the darker card. It reads by its silhouette (the C-arch over the head), the acid
+    bulb in the eclipse, the eye and the sac.
+  - At big, the gape is a thin wedge (jaw 0.62), so the mouth reads mostly through the fang.
+  - In the real cut-in the DARK band (`void0` / `void1`) sits close to the hide. The ink outline, the `void3`
+    lit edges and the `leaf2` rim carry the separation.
+  - The motion lines at f3 fall partly under the band's top mask.
+
+**Tests**
+- `tests/art/venom_drake.test.ts` 13/13.
+- `npx tsc` clean for my files.
+- `tests/art/cardface-v3.test.ts` 20/21. The one failure is "G1 … scrap_raiders 0.692 ≥ 0.7". It also fails
+  with `cardface-v3/index.ts` at HEAD, so it is not this card. The index file now also carries the
+  cloud_hatchling agent's line, added concurrently; both lines are kept.
+
+**Evidence: `shots/kart-a/venom_drake/art/`**
+- `venom_drake-big-x3.png` (×6), `venom_drake-small-x6.png` (×8), `venom_drake-vs-cw-x3.png` (big | crystal big |
+  small | crystal small).
+- `venom_drake-frames-big-x2.png`, `venom_drake-frames-small-x4.png` (living frames), `venom_drake-small-subject.txt`.
+- `hand-faces.png` / `hand-faces-crop.png`: the 1× and ×3 faces next to crystal_wyrm, magma_titan and
+  ashen_drake, rendered in the game.
+- `cutin-p1.png` / `cutin-p2.png` (all 6 frames, P2 mirrored as on screen).
+- `dev-cutin-f3.png`, `dev-cutin-frame-2.png`, `dev-cutin-frame-5.png`, `dev-cutin-frame-5-player-2.png`,
+  `dev-cutin-p2-f3.png` (`?dev=cutin&id=venom_drake&look=v3`).
+- `ref-cw-cutin.png` (the crystal_wyrm reference).

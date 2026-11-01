@@ -20,7 +20,7 @@ export default {
   // the hand-made set (src/audio/v3/ashen.ts, CHARACTER_SOUNDS.ashen_drake, §6.4)
   voice: { custom: 'ashen_drake' },
   light: {
-    glow: { emissive: [[PAL.fire4, 1], [PAL.gold4, 1], [PAL.fire3, 0.4]], halo: 0.55, pool: 0.8, spill: PAL.void2 },
+    glow: { emissive: [[PAL.fire4, 1], [PAL.gold4, 1], [PAL.fire3, 0.4]], halo: 0.65, pool: 1.0, spill: PAL.void2 },
     strike: PAL.fire3,
   },
   cutIn: { rhythm: { flare: 300, slam: 430, exit: 720 } },

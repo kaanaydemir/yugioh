@@ -12,7 +12,8 @@ import { holeAt } from '../../src/art/monsters-v3/venom_drake-holes';
 import { PixelCanvas } from '../../src/art/pixel';
 import { drawFrame, frameDelta, validateArt } from '../../src/art/rigkit';
 import { PAL } from '../../src/art/palette';
-import { renderArt } from '../../src/art/cardart-v3/_kit';
+import { artStats, renderArt } from '../../src/art/cardart-v3/_kit';
+import cutin from '../../src/art/cutins-v3/venom_drake';
 import type { AnyMonsterAnim } from '../../src/art/types';
 
 const BASE: readonly AnyMonsterAnim[] = ['idle', 'guard', 'attack', 'roar', 'hit'];
@@ -143,5 +144,62 @@ describe('venom_drake v3 (scorpion wyvern)', () => {
     }
     expect(r.bigPx.w).toBe(88);
     expect(r.smallPx.w).toBe(44);
+  });
+
+  it('card art v3: both sizes within the style sheet numbers, one gold4 core, every living frame', () => {
+    const n = card.frames ?? 1;
+    expect(n).toBe(6);
+    for (let f = 0; f < n; f++) {
+      const r = renderArt(card, f);
+      expect(r.auto).toBe(false);
+      const big = artStats(r.big, r.bigPx, card.focus);
+      const small = artStats(r.small, r.smallPx, card.focusSmall, true);
+      for (const st of [big, small]) {
+        expect(st.offPalette).toBe(0);
+        expect(st.colors).toBeLessThanOrEqual(20);
+        expect(st.backdropColors).toBeLessThanOrEqual(6);
+        expect(st.isolated).toBeLessThanOrEqual(0.1);
+        expect(st.focusOk).toBe(true);
+        expect(st.outlineInk).toBeGreaterThanOrEqual(0.9);
+      }
+      expect(big.lead).toBeGreaterThanOrEqual(4);
+      expect(small.lead).toBeGreaterThanOrEqual(2);
+      // the brightest point: ONE gold4 pixel per picture, and no leaf4 anywhere (blueprint §1)
+      for (const pic of [r.bigPx, r.smallPx]) {
+        let g4 = 0;
+        let l4 = 0;
+        for (let y = 0; y < pic.h; y++) for (let x = 0; x < pic.w; x++) {
+          if (pic.get(x, y) === PAL.gold4) g4++;
+          if (pic.get(x, y) === PAL.leaf4) l4++;
+        }
+        expect(g4).toBe(1);
+        expect(l4).toBe(0);
+      }
+    }
+  });
+
+  it('cut-in v3: 200×144, 6 held frames within the 900 ms budget, P2 relight, palette only, the bulb ignites at the flare', () => {
+    expect(cutin.id).toBe('venom_drake');
+    expect([cutin.w, cutin.h]).toEqual([200, 144]);
+    expect(cutin.p2).toBe('relight');
+    expect(cutin.holds?.length).toBe(cutin.frames);
+    expect((cutin.holds ?? []).reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(900);
+    const pal = new Set<number>(Object.values(PAL) as number[]);
+    for (const lightFrom of ['left', 'right'] as const)
+      for (let f = 0; f < cutin.frames; f++) {
+        const p = new PixelCanvas(cutin.w, cutin.h);
+        cutin.draw(p, f, { lightFrom });
+        let g4 = 0;
+        for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) {
+          const c = p.get(x, y);
+          if (c === null) continue;
+          expect(pal.has(c)).toBe(true);
+          expect(p.alpha(x, y)).toBe(255);
+          if (c === PAL.gold4) g4++;
+          expect(c).not.toBe(PAL.leaf4);
+        }
+        // f0 / f1 the bulb is lit but not ignited; from the flare (f2) on, ONE gold4 core
+        expect(g4).toBe(f < 2 ? 0 : 1);
+      }
   });
 });
