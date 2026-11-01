@@ -28,6 +28,13 @@ Branch `claude/kart-a` (from 684e290). Brief: `docs/v3/PARALEL_OTURUMLAR.md`.
   (visual + sound/timing critics) → gates → 3 adversarial verifiers → commit/push. cloud_hatchling starts when a
   builder slot frees (2 concurrent agents on this 4-CPU container).
 
+## Owner decision 2026-11-01 06:07 UTC (via orchestrator): weekly usage ~20% left
+Finish cards one at a time (all gates + per-card commit) before the next: order ashen_drake → venom_drake →
+cloud_hatchling. Economy: film critique = 3 rounds with ONE combined visual+sound critic each (was two);
+adversarial verification = ONE verifier covering golden rule + definition of done + sound (was three).
+At the switch: all 3 sprites through 3 sheet-critique rounds; card art for all 3 + cut-ins (ashen, venom) built and
+critiqued; cloud_hatchling card-art fix done; ashen/venom card-art fixes and all cinematics not yet done.
+
 ## Design docs
 - `docs/v3/kart-a/ashen_drake.md`, `docs/v3/kart-a/venom_drake.md`, `docs/v3/kart-a/cloud_hatchling.md`
 
