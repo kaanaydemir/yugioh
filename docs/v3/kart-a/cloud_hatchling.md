@@ -1593,3 +1593,37 @@ Every claim was re-checked in the tree before acting on it. All 19 findings were
   as a curl at ×3+, a tan dot at 1×; growth f9 still shows a fairly upright head on the chest for one frame before the
   mane frames it on f10; the grown forelegs read better but the lower body (haunch, tail, ring puffs) stays busy at 1×;
   the size deviation (#11); KK-1 blind sign-off open.
+
+### Card art — critic round 3 fixes, finished (2026-11-01)
+- **Context:** a previous fixer was interrupted after one iteration (`art/r3/i1`, committed in `70b2159`); the round-3
+  critic's written notes did not survive, so this pass finished from that state and its renders
+  (`art/critic/*.png`, `art/r3/i0` = before, `i1` = the interrupted fix). Files: `src/art/cardart-v3/cloud_hatchling.ts`,
+  `tests/art/cloud_hatchling-cardart.test.ts`.
+- **State taken over (i1, big only):** the eye half shut with the sprite's gold3 slit under a heavy leaf2 lid, the jaws
+  shut on a fire1 / fire2 slit (after the sneeze), two upright cowlick lobes, the tail cup redrawn, the thick green
+  wake crescent cut to a thin open arc, the closed hiccup ring replaced by an open mist ")" puff.
+- **Finished here:**
+  - **Small = the same picture (major):** the small still showed the old squeezed chevron eye and the wide-open
+    mouth. `SMALL_EYE` is now the half-shut eye (leaf2 lid, ink lash line, 3-px gold3 slit); `SMALL_BOTTOM` closes the
+    jaws on a fire1 slit with one fire2 pixel, a leaf3 / leaf2 lower jaw and an ink chin (the sea shows in the 1-row gap
+    above the egg rim).
+  - **Puff removed (major):** at 1× the ")" puff touched the ring's steel trailing edge and read as part of the ring (a
+    smudge on its lower left); there is only 2–3 px between the snout knob and the ring. The ring now leaves the snout
+    on its own. `paintPuff` / `HIC` deleted.
+  - **WIND light (the thin arc alone was 2 % leaf at big, the card the dullest of the hand):** one static **echo gust
+    arc** a sky gap further out (`WAKE_ECHO_BIG` [7, 2], `WAKE_ECHO_SMALL` [4, 1]) — stepped open arcs, not a blob. Tried
+    two echoes with 1–1.5-px bands (`r3/i4`): aliased into dashed stripes, rejected.
+  - **Living frames:** the small's wake no longer follows the ring's 1-px step (Δ f2/f3 75 → 45 px, limit 74.8).
+- **Test changes (deviations, why):** the subject-materials check requires gold3 (the sprite's eye) instead of water4
+  (water4 lived only in the old whistle streaks, removed in round 2/3; the rim is leaf3 since round 2); the WIND leaf
+  share threshold 8 % → 3.5 % (big 4.1 %, small 3.9 %): round 3 replaced the thick crescent with thin arcs on purpose.
+- **Numbers (`art/r3/final/stats.txt`):** big 19 tones / backdrop 6, isolated 2.2 %, checker 19, fill 70.2 %, outline
+  100 % ink, lead 25, bright centroid 4.3 px from the ring; small 18 tones / backdrop 6, isolated 4.1 %, checker 2,
+  outline 92.8 %, lead 18, bright centroid 5.3 px.
+- **Tests:** `tests/art/cloud_hatchling*.test.ts` 14/14; `tests/art/` 349 passed, 4 failed = the 4 known lane-start
+  failures (cardface-v3 G1 scrap_raiders, dusk_ashen, hourglass_imp, shield_titan death heap); `tsc` clean in my files.
+- **Evidence (`shots/kart-a/cloud_hatchling/art/r3/`):** `i2` (= i1 re-rendered), `i3` (small eye/mouth, puff out),
+  `i4` (two thin echoes, rejected), `i5`/`i6`, `final/` (sheet, big ×1/×3/×6, small ×1/×6, frames, stats),
+  `final/hatcard-x3.png` (`?dev=hatcard&id=cloud_hatchling&look=v3` at ×3: hand 1×, inspect 2×, art 1×/3×, iso cards).
+- **Remaining weaknesses:** the shut mouth + half-shut eye read as "sleepy / smug" more than "just sneezed"; the ring
+  still lacks a visible link to the snout at 1× (no room for streaks); the card stays darker than its hand neighbours.

@@ -39,5 +39,6 @@ export const HATCH_GROWN_VARIANT: MonsterVariant = {
     { anim: 'special', reverse: true },
     { anim: 'summon', reverse: true },
   ],
-  // rewindSfx: 'hatchVoiceCrackRev' joins with the card's SFX stage (§6.2; the name does not exist yet)
+  // the roar climbing back up into a squeak (§6.2; lane D plays it if it wants a per-victim voice)
+  rewindSfx: 'hatchVoiceCrackRev',
 };
