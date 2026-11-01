@@ -60,11 +60,12 @@ describe('reed_heron', () => {
 
   it('keeps the signature rhythm: the freeze is the longest hold and the three thrusts hit three different points', () => {
     const s = spec('attack');
-    // (the freeze ≈ 200 ms scene — 190, the tempo gate's share — is the longest hold; the glide strides f5 / f6
-    // hold 150 each, ≥ 300 ms of glide: "still … glide … ta-ta-TAK")
-    expect(s.holds![4]).toBeGreaterThanOrEqual(190);
+    // (the freeze, 200 ms scene, is the longest hold; the coil tightens on f3 before it (≥ 100 ms: the heron's own
+    // swell after the lock-on); the glide strides f5 / f6 hold ≥ 220 ms together: "still … glide … ta-ta-TAK")
+    expect(s.holds![4]).toBeGreaterThanOrEqual(200);
     expect(Math.max(...s.holds!)).toBe(s.holds![4]);
-    expect(s.holds![5] + s.holds![6]).toBeGreaterThanOrEqual(300);
+    expect(s.holds![3]).toBeGreaterThanOrEqual(100);
+    expect(s.holds![5] + s.holds![6]).toBeGreaterThanOrEqual(220);
     const tips = [8, 10, 12].map((f) => art.points!('attack', f).muzzle!);
     expect(new Set(tips.map((t) => `${t.x},${t.y}`)).size).toBe(3);
     const ys = tips.map((t) => t.y);
@@ -73,6 +74,20 @@ describe('reed_heron', () => {
     for (const [a, r] of [[8, 9], [10, 11]]) expect(art.points!('attack', a).muzzle!.x - art.points!('attack', r).muzzle!.x).toBeGreaterThanOrEqual(8);
     // the deflect frame (blocked) flicks the beak up
     expect(art.points!('attack', 13).muzzle!.y).toBeLessThan(art.points!('attack', 12).muzzle!.y - 4);
+  });
+
+  it('keeps every struck f0 on idle f0\'s extent (the contact frame stays local whatever the cropped atlas does)', () => {
+    const box = (c: ReturnType<typeof drawFrame>) => {
+      let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1;
+      for (let y = 0; y < c.h; y++) for (let x = 0; x < c.w; x++) if (c.isOpaque(x, y)) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+      return [x0, y0, x1, y1];
+    };
+    for (const light of ['left', 'right'] as const) {
+      const idle = box(drawFrame(art, 'idle', 0, light));
+      for (const a of ['hit', 'hitHeavy', 'hitMagic', 'death'] as const) expect(box(drawFrame(art, a, 0, light))).toEqual(idle);
+    }
+    // the give is drawn (knock 'pose'): the kit never shoves the sprite (the pond would slide)
+    expect(art.knock).toBe('pose');
   });
 
   it('leaves only the ground behind on the last death frame (no heron pixels above the reeds band)', () => {
