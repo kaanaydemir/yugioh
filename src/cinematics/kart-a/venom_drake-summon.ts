@@ -179,6 +179,8 @@ async function venomMistV3(S: Stage): Promise<void> {
     void lightFlash(sc, b.x, b.y, PAL.leaf3, 22, 280, { floorY: home.y, intensity: 1 });
     bulbL.setIntensity(1, 80).setRadius(14, 7, 80);
     glint(S, u);
+    // the circle closes on the ignition: the finale's etch ring owns a clean floor
+    if (S.circle) bg(S.circle.dismiss(360));
     if (S.cutIn) play('venomDrip', { volume: 0.5, pan });
     else play('venomRoar', { volume: 0.8, pan });
   }, { maxMs: 3500 });
@@ -207,7 +209,6 @@ async function venomMistV3(S: Stage): Promise<void> {
     bg(u.badge.pop());
     etchRing(S);
     scarTile(sc, zoneKey(S.player, S.ev.zone), home, { level: 1, life: 'brief' });
-    if (S.circle) bg(S.circle.dismiss(420));
   }
   void bulbL.setIntensity(0.4, 300);
   void pool.fadeOut(300);

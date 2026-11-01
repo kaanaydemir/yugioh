@@ -149,7 +149,8 @@ async function venomMortarV3(s: StrikeArgs): Promise<void> {
   splatCrown(sc, hit, ground.y, blocked ? 6 : 8, tDepth + 0.6, { side: -Math.sign(dir.x) });
   if (live()) {
     void playFrom(u, 'attack', conF);
-    atFrame(u, 'attack', conF, () => play('venomRattle', { volume: 0.7, pan }), { maxMs: 1500 });
+    // the stinger rattles once the acid has eaten (never inside the held breath after the splat)
+    void sleep(sc, 300).then(() => u.sprite.active ? play('venomRattle', { volume: 0.7, pan }) : undefined);
   }
   void pool.fadeOut(300);
 
@@ -184,7 +185,7 @@ async function venomMortarV3(s: StrikeArgs): Promise<void> {
   }
 
   // ---- the eat: the held breath, then three dry fizz-pops (the holes in 3 steps of 80 ms)
-  const EAT0 = 40;
+  const EAT0 = 100;
   const dies = !!target && (tie || result === 'targetDestroyed');
   const eat = async () => {
     for (let i = 1; i <= 3; i++) {
