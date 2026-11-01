@@ -172,9 +172,15 @@ export function drawShards(px: Px, cx: number, cy: number, D: number, travel: XY
 // (crit c3r2 #1: four 1-px dots were invisible at 1×)
 export function drawFizzle(px: Px, cx: number, cy: number, D: number, t: number): void {
   if (t >= 1) return;
-  const r = D / 2 + Math.round(t * 5);
-  const c = t < 0.34 ? PAL.white : t < 0.67 ? PAL.mist : PAL.steel;
-  const big = t < 0.67;
+  // (crit c3r3 #3) the pop must read at 1×: a white "pıt" cross on its first frames, then four small cloud
+  // lobes (4×3, white crown → mist → steel) drifting out and up, four 2×2 mist puffs between them
+  const r = D / 2 + Math.round(t * 6);
+  const rise = Math.round(t * 3);
+  if (t < 0.16) {
+    const X = Math.round(cx);
+    const Y = Math.round(cy);
+    px.run(Y, X - 2, X + 2, PAL.white).rect(X, Y - 2, 1, 5, PAL.white);
+  }
   for (const [dx, dy] of [
     [0, -1],
     [1, 0],
@@ -182,18 +188,22 @@ export function drawFizzle(px: Px, cx: number, cy: number, D: number, t: number)
     [-1, 0],
   ] as const) {
     const x = Math.round(cx + dx * r);
-    const y = Math.round(cy + dy * r * 0.7);
-    if (big) px.rect(x - 1, y - 1, 2, 2, c);
-    else px.dot(x, y, c);
+    const y = Math.round(cy + dy * r * 0.7) - rise;
+    if (t < 0.7) drawPuff(px, x, y, 1 - t);
+    else px.dot(x, y, PAL.steel);
   }
-  if (t < 0.5)
+  if (t < 0.55)
     for (const [dx, dy] of [
       [1, -1],
       [1, 1],
       [-1, 1],
       [-1, -1],
-    ] as const)
-      px.dot(Math.round(cx + dx * r * 0.62), Math.round(cy + dy * r * 0.45), PAL.mist);
+    ] as const) {
+      const x = Math.round(cx + dx * r * 0.62);
+      const y = Math.round(cy + dy * r * 0.45) - rise;
+      if (t < 0.3) px.rect(x - 1, y - 1, 2, 2, PAL.mist);
+      else px.dot(x, y, PAL.mist);
+    }
 }
 
 // ================================================================ floor marks

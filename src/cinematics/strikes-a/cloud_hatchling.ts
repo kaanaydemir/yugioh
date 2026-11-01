@@ -292,7 +292,7 @@ async function hatchRingV3(s: StrikeArgs): Promise<void> {
       // the pop's first frame carries its own sound (crit c3r3 #3: on the backlash's frame it was the
       // fourth layer of four and was buried)
       play('hatchRingFizzle', { volume: 0.8, pan: tpan });
-      void anim4(sc, 200, (t) => {
+      void anim4(sc, 260, (t) => {
         air.clear();
         drawFizzle(air, hit.x, hit.y, Dmax - 4, t);
       }).then(() => air.g.destroy());
@@ -303,9 +303,9 @@ async function hatchRingV3(s: StrikeArgs): Promise<void> {
       s.impact(hit);
       void squeezeOut(true);
     } else {
-      // (crit c3r3 #3) the pop shows in the clear for 3 display frames before the backlash answers
+      // (crit c3r3 #3) the pop shows in the clear (≈ 4 display frames, measured) before the backlash answers
       await squeezeOut(false);
-      await sleep(sc, STEP * 3);
+      await sleep(sc, STEP * 2);
       s.impact(hit);
     }
     // the strike resolves at the pop (our death starts from the backlash at once); the puffs finish on their own

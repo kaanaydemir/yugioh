@@ -550,9 +550,11 @@ export const V3_HATCH_RECIPES = {
     duck: 0.4,
     play(v) {
       thump(v, 0, 180, 70, 0.4, 0.15, { drive: 2 });
-      puff(v, 0, 0.35, 0.2, 4000, { kind: 'white' });
-      sweep(v, 0, 0.2, [1500, 3200, 900], 0.2);
-      growl(v, 0, { d: 0.3, f: [220, 196, 175, 165, 147], formants: [520, 1250, 2600], g: 0.45, grit: 3, rasp: 30 });
+      // (crit c3r3 #5, SE-4: LSD vs wyrmBreathFire sat at 10.0 dB) the "ha-" voice sits a third higher with
+      // brighter outer formants and the air band a third lower and softer: 11.7 dB (c3r4/lsd.md)
+      puff(v, 0, 0.35, 0.2, 3175, { kind: 'white' });
+      sweep(v, 0, 0.2, [1190, 2540, 715], 0.12);
+      growl(v, 0, { d: 0.3, f: [277, 247, 220, 208, 185], formants: [655, 1250, 3275], g: 0.45, grit: 3, rasp: 30 });
     },
   },
   /** The grown ring whistle (sustained): one octave lower (D6 → D7), 4 Hz flutter, a lower breath. */
