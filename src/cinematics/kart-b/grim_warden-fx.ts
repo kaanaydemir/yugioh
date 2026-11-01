@@ -92,7 +92,11 @@ export function soulFade(scene: Phaser.Scene, u: MonsterUnit, ramp?: Ramp): Soul
       return false;
     }
     r.img.setDepth(s.depth + 0.05);
-    r.img.setVisible(s.visible && (level > 0 || rimK > 0));
+    // critic pass-3 r2: the fade now rides into the target's DEATH (it is no longer dropped on v3:dying) — it follows
+    // the death pose frame by frame, steps out with the sprite's own alpha and hides under a white contact flash
+    r.img.setAlpha(s.alpha);
+    r.img.setVisible(s.visible && s.alpha > 0 && !s.tintFill && (level > 0 || rimK > 0));
+    if (s.tintFill) return true;
     if (!s.visible || (level <= 0 && rimK <= 0)) return true;
     const o = frameOrigin(u);
     r.moveTo(o.x, o.y);
@@ -288,12 +292,14 @@ export function soulThread(scene: Phaser.Scene, from: () => XY, to: () => XY, ra
   let B: XY = to();
   const bez = (t: number): XY => {
     const away = Math.sign(A.x - B.x) || 1;
-    const top = Math.min(A.y, B.y) - lift;
     const span = Math.max(14, Math.abs(A.x - B.x));
+    // critic pass-3 r2: an ADJACENT target (most battles) made a small constant hoop — a minimum arc height (the
+    // closer the pair, the higher the arc climbs) and a side bulge out past the target keep it a long drawn soul
+    const top = Math.min(A.y, B.y) - lift - Math.max(0, 70 - span) * 0.3;
     // critic r2: the arc rises straight up out of the target, crosses ABOVE the warden's raised lantern and dives into
     // it from behind / above (the light is visibly pulled across, away from the target, into the warden's hand)
     // critic pass-3 r1: the foot leaves the target body steeply (clear of a same-hued body sooner)
-    const p1 = { x: A.x + away * Math.min(6, span * 0.12), y: top - 14 };
+    const p1 = { x: A.x + away * Math.max(6, Math.min(14, (80 - span) * 0.2)), y: top - 14 };
     const p2 = { x: B.x - away * Math.max(16, span * 0.35), y: top - 2 };
     const u = 1 - t;
     const x = u * u * u * A.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * B.x;
@@ -345,9 +351,11 @@ export function soulThread(scene: Phaser.Scene, from: () => XY, to: () => XY, ra
       // ---- the band: ink sheath (separates it from any body behind), ramp body, hot core
       // critic pass-3 r1: a fatter ink sheath (2 px each side) so a FIRE arc over the wolf's flames / a LIGHT arc over
       // the white wyrm still reads as a separate band
-      if (mid) for (let i = 0; i <= m; i++) g.disc(pts[i].x, pts[i].y, strong ? 2.6 : 1.8, PAL.ink);
+      // critic pass-3 r2: the band TAPERS from the target (fat: the soul torn out) to the lantern (thin: drawn in)
+      const taper = (i: number) => 1 - i / n;
+      if (mid) for (let i = 0; i <= m; i++) g.disc(pts[i].x, pts[i].y, (strong ? 2.2 : 1.6) + taper(i) * 1.2, PAL.ink);
       for (let i = 0; i <= m; i++) {
-        if (mid) g.disc(pts[i].x, pts[i].y, strong ? 1 : 0.6, strong ? ramp[3] : ramp[2]);
+        if (mid) g.disc(pts[i].x, pts[i].y, (strong ? 0.7 : 0.5) + taper(i) * (strong ? 1 : 0.5), strong ? ramp[3] : ramp[2]);
         else g.px(pts[i].x, pts[i].y, ramp[2]);
       }
       if (strong)
@@ -365,17 +373,27 @@ export function soulThread(scene: Phaser.Scene, from: () => XY, to: () => XY, ra
       }
       // ---- the soul beads: fat 3×3 souls flowing along it (into the lantern, or back on the give-back)
       if (mid) {
+        // critic pass-3 r2: the beads ACCELERATE toward the lantern (they dawdle out of the body, then are sucked in)
+        // and shrink as they go — the direction of the flow reads even on a short arc
         const sp = 0.0011 * st.flow;
-        for (let k = 0; k < 5; k++) {
-          const t = (((k / 5 + el * sp) % 1) + 1) % 1;
+        for (let k = 0; k < 6; k++) {
+          const ph = (((k / 6 + el * sp) % 1) + 1) % 1;
+          const t = ph * ph;
           if (t > st.reach) continue;
           const p = bez(t);
-          g.rect(p.x - 1, p.y - 1, 3, 3, ramp[3]);
-          g.px(p.x, p.y - 1, ramp[4]);
-          g.px(p.x - 1, p.y, ramp[4]);
-          g.px(p.x + 1, p.y, ramp[4]);
-          g.px(p.x, p.y + 1, ramp[4]);
-          g.px(p.x, p.y, PAL.white);
+          if (t < 0.55) {
+            g.rect(p.x - 1, p.y - 1, 3, 3, ramp[3]);
+            g.px(p.x, p.y - 1, ramp[4]);
+            g.px(p.x - 1, p.y, ramp[4]);
+            g.px(p.x + 1, p.y, ramp[4]);
+            g.px(p.x, p.y + 1, ramp[4]);
+            g.px(p.x, p.y, PAL.white);
+          } else {
+            // a streak: the bead stretched along the arc as it is pulled in
+            const q = bez(Math.max(0, t - 0.06 * st.flow));
+            g.line(q.x, q.y, p.x, p.y, ramp[4]);
+            g.px(p.x, p.y, PAL.white);
+          }
         }
       }
       // ---- the wisps rising out of the body into the foot of the arc

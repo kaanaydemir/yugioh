@@ -125,10 +125,17 @@ interface Drain {
 const drains = new Map<number, Drain>();
 /** Wardens whose lantern keeps a stolen colour until the turn ends (uid → that colour's ramp). */
 const kept = new Map<number, Ramp>();
+/** Give-backs waiting for a guardian_charm's activation to be shown (keyed by the event that follows it). */
+const pendingGiveBacks = new Map<GameEvent, () => void>();
 
-function endDrain(d: Drain): void {
+function endDrain(d: Drain, keepFade = false): void {
   d.off();
-  d.fade.destroy();
+  if (!keepFade) d.fade.destroy();
+  else {
+    // the fade rides the target's death until its sprite retires (soulFade ends itself then); a safety net after 4 s
+    const f = d.fade;
+    d.target.sprite.scene?.time.delayedCall(4000, () => f.destroy());
+  }
   void d.light.fadeOut(200);
 }
 
@@ -365,7 +372,8 @@ async function drainV3(ctx: Ctx<'activate'>): Promise<void> {
   const d: Drain = { targetUid: tUid, target: t, ramp, fade: fadeT, tint, light, keptSounded: false, off: () => undefined };
   const onDying = (x: MonsterUnit) => {
     if (x !== t) return;
-    fadeT.destroy();
+    // critic pass-3 r2: the fade is NOT dropped here (the drained target lit back up the frame it started dying) —
+    // it rides the death pose until the sprite retires (soulFade ends itself then)
     // the target dies with its light in the lantern: the lantern locks the colour on that beat (critic r2: gwKeep landed
     // a second late with the card's graveyard thud)
     if (drains.get(u.uid) === d && live(u) && !d.keptSounded) {
@@ -477,7 +485,9 @@ function drainSpark(sc: Phaser.Scene, t: MonsterUnit): void {
   const b = t.badge.image;
   if (!b || !b.active || !b.visible) return;
   const x = Math.round(b.x);
-  const y = Math.round(b.y);
+  // critic pass-3 r2: the dashes ran THROUGH the digits ('1-000') — they now flare along the plate's lower edge
+  // (the stat mark rises above it), never over the numbers
+  const y = Math.round(b.y + (1 - b.originY) * b.displayHeight) + 2;
   const r = Raster.around(sc, x, y, 40, 20, DEPTH.FX_TOP);
   void animate(sc, 150, (k) =>
     r.draw((g) => {
@@ -517,7 +527,7 @@ async function afterBattle(ctx: Ctx<'battle'>, u: MonsterUnit | null, d: Drain):
     return;
   }
   // the target died: the lantern keeps its colour until the turn ends
-  endDrain(d);
+  endDrain(d, true);
   if (!d.keptSounded) play('gwKeep', { volume: 0.8, pan: panAt(u.home.x) });
   const light = lanternLight(sc, u, d.ramp, 0.8);
   kept.set(u.uid, d.ramp);
@@ -540,13 +550,30 @@ if (LOOK_V3) {
       const d = drains.get(ctx.ev.attackerUid);
       if (!d) return;
       drains.delete(ctx.ev.attackerUid);
+      // critic pass-3 r2: a guardian_charm that saves the drained target must be SEEN first (its activation explains
+      // why the target lives) — the give-back waits for the charm's activate to finish presenting (the next event's
+      // start), then plays alongside the charm breaking
+      const ai = ctx.findType('activate', (e) => e.cardId === 'guardian_charm', { until: (e) => e.type === 'battle' || e.type === 'turnStart' });
+      const next = ai >= 0 ? ctx.events[ai + 1] : undefined;
+      if (next) {
+        const uid = ctx.ev.attackerUid;
+        pendingGiveBacks.set(next, () => void afterBattle(ctx, live(ctx.unit(uid)), d).catch((e) => console.error('[grim give-back]', e)));
+        return;
+      }
       await afterBattle(ctx, live(ctx.unit(ctx.ev.attackerUid)), d);
     },
     { priority: 20, name: 'kart-b:grim_warden:attack' },
   );
   // the kept lantern colour ends with the turn (and never outlives a duel / a lost unit)
   registerObserver((ev, ctx) => {
+    const gb = pendingGiveBacks.get(ev);
+    if (gb) {
+      pendingGiveBacks.delete(ev);
+      gb();
+    }
     if (ev.type !== 'turnStart' && ev.type !== 'gameOver') return;
+    for (const run of [...pendingGiveBacks.values()]) run();
+    pendingGiveBacks.clear();
     for (const uid of [...kept.keys()]) {
       ctx.unit(uid)?.setAura('grimLantern', null);
       kept.delete(uid);
@@ -925,7 +952,13 @@ function chopCrescent(sc: Phaser.Scene, u: MonsterUnit, fUp: number, fDown: numb
 
 /** Direct attack: the burst throws a soul bolt the last stretch to the duelist (≈100 ms). */
 /** A tiny soul-fire skull (7×6; 4 = ramp[4], 3 = ramp[3], 2 = ramp[2], o = socket, t = tooth gap, # = ink). */
-const WISP = ['.#####.', '#44443#', '#4o4o3#', '#43332#', '.#3t3#.', '..###..'];
+/** The wisp skull (critic pass-3 r2: 7×6 read as a speck at 1× → 11×8 skull + a 2-frame flame crown = 11×10). */
+const WISP = ['..#######..', '.#4444443#.', '#444444433#', '#4oo44oo32#', '#4oo44oo32#', '.#3343332#.', '..#3t3t3#..', '...#####...'];
+/** Its flame crown, two frames (flickers on whole frames; light from the top-left). */
+const WISP_CROWN = [
+  ['...4...3...', '..434.343..'],
+  ['.....4.....', '.3.434.4.3.'],
+] as const;
 
 /**
  * The direct attack's SOUL-FIRE WISP (critic pass-3 r1: a 1-px green laser line + star): the lantern spits a small
@@ -940,6 +973,9 @@ async function soulBolt(sc: Phaser.Scene, from: XY, to: XY, ramp: Ramp): Promise
   const ny = (to.x - from.x) / (dist || 1);
   const trail: { p: XY; age: number }[] = [];
   let last = -1;
+  // critic pass-3 r2: the flight has its own voice (was a −45 dB hole between gwRelease and gwBoltHit), panned at
+  // the flight's middle
+  play('gwBolt', { volume: 1, pan: panAt((from.x + to.x) / 2) });
   await animate(sc, ms, (k, el) => {
     const e = k < 0.15 ? k * 0.6 : 0.09 + (k - 0.15) * (0.91 / 0.85);
     const wob = Math.sin(k * Math.PI * 3) * 4 * (1 - k);
@@ -958,7 +994,7 @@ async function soulBolt(sc: Phaser.Scene, from: XY, to: XY, ramp: Ramp): Promise
         const curl = Math.sin(t.age * 1.3 + i) * 1.5;
         const x = Math.round(t.p.x + curl);
         const y = Math.round(t.p.y - t.age * 0.8);
-        const rad = Math.max(0, 3 - Math.floor(t.age / 3));
+        const rad = Math.max(0, 4 - Math.floor(t.age / 3));
         const col = t.age < 2 ? ramp[3] : t.age < 4 ? ramp[2] : t.age < 6 ? ramp[1] : PAL.stone1;
         if (rad > 0) g.disc(x, y, rad, col);
         else g.px(x, y, col);
@@ -971,9 +1007,17 @@ async function soulBolt(sc: Phaser.Scene, from: XY, to: XY, ramp: Ramp): Promise
       const tx = Math.round(p.x + ((back.x - p.x) / bl) * tl);
       const ty = Math.round(p.y + ((back.y - p.y) / bl) * tl) + (fr % 2);
       g.line(p.x, p.y, tx, ty, ramp[4], 1, 3);
-      // the skull itself
-      const x0 = p.x - 3;
-      const y0 = p.y - 3;
+      g.line(p.x, p.y + 1, tx, ty + 1, ramp[3], 1, 3);
+      // the skull itself, under its flickering flame crown
+      const x0 = p.x - 5;
+      const y0 = p.y - 4;
+      WISP_CROWN[fr % 2].forEach((row, y) => {
+        for (let x = 0; x < row.length; x++) {
+          const ch = row[x];
+          if (ch === '4') g.px(x0 + x, y0 - 2 + y, fr % 3 === 0 ? PAL.white : ramp[4]);
+          else if (ch === '3') g.px(x0 + x, y0 - 2 + y, ramp[3]);
+        }
+      });
       WISP.forEach((row, y) => {
         for (let x = 0; x < row.length; x++) {
           const ch = row[x];
@@ -1007,7 +1051,7 @@ async function scytheV3(s: StrikeArgs): Promise<void> {
     if (relSounded) return;
     relSounded = true;
     charge.stop(40);
-    play('gwRelease', { volume: 0.85, pan });
+    play('gwRelease', { volume: 1, pan });
   };
   atFrame(u, 'attack', REL, rel, { late: false });
   if (!s.direct) atFrame(u, 'attack', CON + 2, () => play('gwChop', { volume: loses ? 0.5 : 0.8, pan: panAt(u.sprite.x) }), { late: false });
@@ -1197,7 +1241,9 @@ async function emptyShroudV3(ctx: Ctx<'destroy'>): Promise<void> {
       if (giveBack && d) {
         // the borrowed light leaves the broken glass and runs home into the surviving target; the lantern goes green
         d.tint.destroy();
-        void returnLight(sc, at, d, u.sprite.depth + 0.7);
+        // critic pass-3 r2: gwGiveBack was masked by gwWail on the same tick — the light leaves after the wail's peak
+        const depth = u.sprite.depth + 0.7;
+        void sleep(sc, 220).then(() => returnLight(sc, at, d, depth));
       }
       void skullLeaves(sc, { x: at.x, y: at.y - 2 }, soulRamp, u.sprite.depth + 0.6, home.y);
       play('gwWail', { volume: 0.9, pan });

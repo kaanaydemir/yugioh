@@ -212,7 +212,16 @@ export const GRIM_WARDEN_RECIPES = {
         v.lfo(s.osc.detune, [[0, 4], [D, 11, 'e']], [[0, 8], [D, 26]], { d: E });
       }
       soulBreath(v, 0, H, 1200, 0.12, { rate: 11 });
-      v.tone('sine', [[0, F1], [D, F1 * 1.5, 'e']], { g: [[0, 0], [D, 0.18], [H, 0.18], [E, 0.0001, 'e']] });
+      // critic pass-3 r2: the 65 Hz sine took the whole low end and small speakers drop it — a faint sub only, the
+      // body moves into a 130–260 Hz hollow hum (C3 → F3 through a low-pass) that phones can play
+      v.tone('sine', [[0, F1], [D, F1 * 1.5, 'e']], { g: [[0, 0], [D, 0.07], [H, 0.07], [E, 0.0001, 'e']] });
+      for (const [m, g] of [
+        [48, 0.07],
+        [53, 0.045],
+      ] as const) {
+        const hs = v.tone('sawtooth', [[0, midiHz(m - 5)], [D, midiHz(m), 'e']], { g: [[0, 0.0001], [D, g, 'e'], [H, g], [E, 0.0001, 'e']], to: v.filt('lowpass', [[0, 300], [D, 520, 'e']], 1.4) });
+        v.lfo(hs.osc.detune, 4.5, 9, { d: E });
+      }
     },
   },
   /** Strike f4: the whirl comes over the head — one heavy chain whoosh, a creak at the top. */
@@ -232,12 +241,18 @@ export const GRIM_WARDEN_RECIPES = {
     cap: 2,
     gap: 0.05,
     verb: 0.35,
-    duck: 0.35,
+    duck: 0.4,
     play(v) {
-      for (let i = 0; i < 7; i++) link(v, (i % 2 ? LINK_B : LINK_A) * (1 - i * 0.015) * v.r(0.99, 1.01), i * 0.016, 0.13 * (1 - i * 0.08), 0.05);
-      sweep(v, 0, 0.16, [700, 2200, 900], 0.75, { q: 1.3, kind: 'white', pan: [-0.2, 0.3], peakAt: 0.3 });
-      whine(v, 0.01, 0.2, midiHz(89), midiHz(82), 0.07);
-      soulBreath(v, 0, 0.18, 1600, 0.3, { rate: 14 });
+      // critic pass-3 r2: the throw is the arc's middle accent (≈ −11 dB loud, was −18): the chain RUNS OUT (a long,
+      // loud link run falling in pitch), SNAPS TAUT at full length (an iron clank) and the lantern whooshes away
+      for (let i = 0; i < 11; i++) link(v, (i % 2 ? LINK_B : LINK_A) * (1 - i * 0.012) * v.r(0.99, 1.01), i * 0.011, 0.28 * (1 - i * 0.055), 0.06);
+      sweep(v, 0, 0.26, [600, 2400, 800], 1.3, { q: 1.3, kind: 'white', pan: [-0.25, 0.35], peakAt: 0.3 });
+      sweep(v, 0.02, 0.22, [300, 900, 380], 0.9, { q: 1.2, kind: 'pink', peakAt: 0.35 });
+      // the snap taut: the chain hits the end of its run (FM iron, ratio 2.13, ≈ 1.1 kHz) with a dry click
+      clank(v, 1100, 0.12, 0.34, 0.22, { ratio: 2.13, index: 2.2, click: 1.4 });
+      clank(v, 360, 0.122, 0.16, 0.3, { ratio: 2.13, index: 1.6, click: 0.6 });
+      whine(v, 0.01, 0.3, midiHz(89), midiHz(82), 0.09);
+      soulBreath(v, 0, 0.3, 1600, 0.42, { rate: 14 });
     },
   },
   /** Strike 'contact': the lantern smashes — glass bursting (B♭ minor), a green soul burst, the whine breaks downward. */
@@ -294,21 +309,30 @@ export const GRIM_WARDEN_RECIPES = {
     verb: 0.5,
     duck: 0.45,
     play(v) {
-      const D = 1.25;
+      // critic pass-3 r2: the ladder is fitted to the REAL drain window (thread reach → snap ≈ 0.6 s): all 12 steps
+      // sound, accelerating, and the last one LANDS on B♭4 (a struck pane) just before the cinematic's gwSnap.
+      // (It used to be a 1.25 s ladder, cut after ≈ 8 steps.)
+      const D = 0.6;
       let t = 0;
-      let rise = 0.16;
-      for (let i = 0; i < SIPHON.length && t < D - 0.05; i++) {
+      let rise = 0.11;
+      for (let i = 0; i < SIPHON.length; i++) {
+        const last = i === SIPHON.length - 1;
         // critic r1: the reversed glass must lead (+≈5 dB), the drone sits under it
-        glassReverse(v, midiHz(SIPHON[i]), t, 0.25 + Math.min(i, 6) * 0.016, rise);
+        glassReverse(v, midiHz(SIPHON[i]), t, (last ? 0.34 : 0.25) + Math.min(i, 6) * 0.016, rise);
         // a low double an octave under every third step (the body of the pull)
-        if (i % 3 === 2) glassReverse(v, midiHz(SIPHON[i] - 12), t, 0.085, rise);
+        if (i % 3 === 2 || last) glassReverse(v, midiHz(SIPHON[i] - 12), t, last ? 0.12 : 0.085, rise);
+        // the landing: drawn INTO the lantern — the pane rings where the last swell stops dead
+        if (last) {
+          glassBell(v, midiHz(SIPHON[i]), t + rise, 0.16, 0.5, { modes: 3 });
+          glassBell(v, midiHz(SIPHON[i] - 12), t + rise + 0.003, 0.08, 0.7, { modes: 2 });
+        }
         t += rise * 0.72;
-        rise = Math.max(0.06, rise * 0.9);
+        rise = Math.max(0.045, rise * 0.9);
       }
       // the inhale: pink breath through a band falling 2.4 kHz → 500 Hz (drawn INTO the lantern)
-      v.noise('pink', { g: [[0, 0.0001], [0.25, 0.12, 'e'], [D - 0.2, 0.14], [D, 0.0001, 'e']], to: v.filt('bandpass', [[0, 2400], [D, 500, 'e']], 1.8) });
-      drone(v, 0, D + 0.15, F1, 0.017, { lp: [160, 420, 180], att: 0.4, beat: 0.5 });
-      v.tone('sine', [[0, F1 * 2], [D, F1 * 1.5, 'e']], { g: [[0, 0], [0.3, 0.035], [D, 0.0001, 'e']] });
+      v.noise('pink', { g: [[0, 0.0001], [0.15, 0.12, 'e'], [D - 0.1, 0.15], [D + 0.08, 0.0001, 'e']], to: v.filt('bandpass', [[0, 2400], [D, 500, 'e']], 1.8) });
+      drone(v, 0, D + 0.2, F1 * 2, 0.02, { lp: [220, 520, 240], att: 0.2, beat: 0.5 });
+      v.tone('sine', [[0, F1 * 4], [D, F1 * 3, 'e']], { g: [[0, 0], [0.2, 0.035], [D + 0.1, 0.0001, 'e']] });
     },
   },
   /** Effect: the target's own tone, a sine falling toward the lantern (the cinematic passes the target's `pitch`). */
@@ -390,10 +414,13 @@ export const GRIM_WARDEN_RECIPES = {
     verb: 0.5,
     duck: 0.25,
     play(v) {
-      v.noise('pink', { g: [[0, 0.0001], [0.1, 0.32, 'e'], [0.28, 0.0001, 'e']], to: v.filt('bandpass', [[0, 2600], [0.28, 600, 'e']], 2) });
-      soulBreath(v, 0, 0.3, 1400, 0.16, { rate: 6 });
-      glassReverse(v, midiHz(82), 0, 0.09, 0.22);
-      v.tone('sine', [[0, F1 * 3], [0.3, F1 * 2, 'e']], { g: [[0, 0], [0.1, 0.06], [0.3, 0.0001, 'e']] });
+      // critic pass-3 r2: +≈10 dB (it was inaudible, leaving a hole before the thread) — the inhale is the
+      // signature's lead-in: a drawn breath, a low reversed-glass swell and the hum sinking with it
+      v.noise('pink', { g: [[0, 0.0001], [0.12, 0.8, 'e'], [0.34, 0.0001, 'e']], to: v.filt('bandpass', [[0, 2600], [0.34, 600, 'e']], 2) });
+      soulBreath(v, 0, 0.36, 1400, 0.4, { rate: 6 });
+      glassReverse(v, midiHz(82), 0, 0.2, 0.26);
+      glassReverse(v, midiHz(70), 0.02, 0.16, 0.3);
+      v.tone('sine', [[0, F1 * 6], [0.34, F1 * 4, 'e']], { g: [[0, 0], [0.12, 0.09], [0.36, 0.0001, 'e']] });
     },
   },
   /** Effect: the thread snaps into the glass — a glass click, a reversed swell cut dead, the chain creaks as the lantern swings back. */
@@ -408,7 +435,12 @@ export const GRIM_WARDEN_RECIPES = {
       glassBell(v, midiHz(89), 0.09, 0.17, 0.35, { modes: 3 });
       glassBell(v, midiHz(70), 0.092, 0.12, 0.6, { modes: 2 });
       creak(v, 0.2, 0.28, { up: true, pan: 0.15 });
-      creak(v, 0.42, 0.18, { pan: -0.1 });
+      creak(v, 0.42, 0.2, { pan: -0.1 });
+      // critic pass-3 r2: no hole before the strike's charge — the lantern swings on, a third creak and the soul fire
+      // breathing in its new colour carry the tail into gwCharge
+      creak(v, 0.64, 0.14, { up: true, pan: 0.05 });
+      soulBreath(v, 0.12, 0.8, 1100, 0.07, { rate: 7 });
+      glassBell(v, midiHz(77), 0.5, 0.05, 0.9, { modes: 2 });
     },
   },
   /** Struck / guarding: the lantern flies wild on its chain — a run of links, glass tinkling in B♭ minor, the helm's dull knock. */
@@ -445,6 +477,25 @@ export const GRIM_WARDEN_RECIPES = {
         v.lfo(s.osc.detune, 5, 10, { d: 1.1 });
       }
       creak(v, 0.3, 0.12, { pan: 0.2 });
+    },
+  },
+  /**
+   * Direct attack: the soul-skull wisp FLIES (critic pass-3 r2: the 150–250 ms flight was a −45 dB hole) — the ghost
+   * whine screams down F6 → B♭5, the soul fire roars past (a doppler band), the chain's last links tick behind it.
+   */
+  gwBolt: {
+    cap: 2,
+    gap: 0.05,
+    verb: 0.45,
+    duck: 0.3,
+    play(v) {
+      const D = 0.26;
+      whine(v, 0, D + 0.04, midiHz(89), midiHz(82), 0.12);
+      whine(v, 0.01, D, midiHz(77), midiHz(70), 0.05);
+      soulBreath(v, 0, D + 0.06, 1500, 0.5, { rate: 16 });
+      sweep(v, 0, D, [500, 1900, 2600], 0.8, { q: 1.6, kind: 'pink', peakAt: 0.7 });
+      for (let i = 0; i < 4; i++) link(v, (i % 2 ? LINK_B : LINK_A) * v.r(0.99, 1.01), 0.02 + i * 0.045, 0.07 * (1 - i * 0.2), 0.05);
+      v.crackle({ t: 0.02, d: D, n: 10, g: 0.12, f: 3800, q: 1.4, curve: 1.2, dec: 0.008 });
     },
   },
   /** Direct attack: the soul bolt hits the duelist — a short glass burst and a falling whine (the bolt's own hit). */

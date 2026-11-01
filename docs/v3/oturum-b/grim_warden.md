@@ -517,3 +517,117 @@ half→full in one frame, finale = generic double cyan/green rings (`gwSummon-ri
 direct = 1-px green laser line + star (`gwDirect-bolt-z.png`); contact stacks star + gold tick ring + violet ring (`gwDrainFire-contact-z.png`).
 minor: skull mist = opaque green emoji on a stick; survive branch plate restores ≈1 s after the light returns
 (`gwDrainSurvive-death-z.png`); thread low contrast on FIRE/LIGHT targets; freeze ≈150–200 ms vs spec 100; heap knock-out confetti; field mini mush.
+
+## Fix round 1 (lane-B pass 3, agent: fix lane, 2026-11-01) — evidence `shots/v3/kart-b/grim_warden/fix-p3r1/`
+Answering the pass-3 critic r1 (above). Every major addressed, most minors. Files (all mine): `src/art/monsters-v3/grim_warden-rig.ts`,
+`-anims.ts`, `-kit.ts`; `src/art/cutins-v3/grim_warden.ts`; `src/art/cardart-v3/grim_warden.ts`; `src/cinematics/kart-b/grim_warden.ts`,
+`grim_warden-fx.ts`; `tests/art/grim_warden.test.ts` (bbox width 64 → 50: the back tatters are gone). No shared file touched.
+
+**MAJOR helm = robot visor → fixed (sprite, cut-in, card art).** The helm map is now an ORGANIC skull (15×16): a domed cranium wider
+than the jaw, brow ridge, a near socket (the eye) + a dark far socket, nose notch, lit cheekbones, a narrow maxilla with three
+irregular teeth and a missing one, a separate mandible + chin. The cage is only TWO bars (+ knob) laid in programmatically
+(`HELM_BARS`), each throwing a 1-px void0 shadow on the bone away from the light, a rivet bolting each foot into the bone; no
+crown ring / jaw band / chin band / nape plate (that frame was the "TV" read). The brim shades the cranium's crown (skull deep in
+the hood). Cut-in: new skull polygon (cranium > jaw), separate jawbone, a B2 ring sinking the socket, an arched brow, a short
+slanted cheekbone ridge, far socket at the profile, nose notch, 3 irregular teeth + 2 lower stumps, the two bars with a void0
+shadow and rivets, no bands; the cavity widened on the profile side. Card art: HELM rebuilt the same way (18×18) and the small
+map's head redrawn (irregular teeth, socket). Evidence: `sheet-p1/`, `sheet-p2/`, `cutin-sheet.png`, `gwSummon-cutin-finale.png`, `hatcard.png`.
+
+**MAJOR silhouette / materials → fixed.** Shroud ramp down one step (`SHROUD` = stone1 lit / stone0 / void0 / ink seams;
+`SHROUD_RIM` stone2 only on the top-left rim of folds via `clothBands(..., rim)`); shins rag-wrapped dark; boots one value darker
+(were the brightest mass); hands are cool bone (stone3/2/1, match the skull, no brown mittens); haft earth2/1/0 (no orange
+stick); spade one value down. Torso narrowed (shoulders C±5/6, body top cx−6..cx+5, hem R−12..R+8), the head pushed 2 px
+forward + 2 px down in front of a higher shoulder hump (hunch). The full-width belt became a thin rope SAGGING diagonally with
+a knot, a loose end and the key ring. The three back tatters are gone (`TATTERS = false`); the hem (raised to GY−17) tears into
+SIX ragged strips of uneven length (9 / 6.5 / 8 / 4.5 / 7 / 4 px) drifting back on the cloth wave. Card art + cut-in cloth also one
+value down (black shroud). `fix-p3r1/sheet-p1/grim_warden-v3-idle.png`, `-guard.png`.
+
+**MAJOR special = lifted lantern → fixed.** Re-keyed as a FULL-BODY REACH: draw back + crouch (f1) → pitch forward (f2) → lean
++7, near arm straight out at shoulder height, the lantern held in front of the face on a short chain (f3) → inhale (hood lifts,
+f4) → release pitches deeper (+8, f5) → three drinking frames that PUMP: hood dips/rises 3 px, shroud pulled toward the lantern
+(wrap 0.9 / 0.2 / 0.9, capeA 8/4/8), the far hand slides on the haft and the halberd rocks from its butt (ha −88/−83/−88, hs −2/+1/−2).
+`sheet-p1/grim_warden-v3-special.png`, film `gwDrainFire-z.png` #4–#11, P2 `gwDrainWaterP2-z.png` #3–#9.
+
+**MAJOR hit body barely recoils → fixed.** hit f1–f2 / hitHeavy f1–f3: torso + helm snap 4–5 px away (lean −5/−7), the hood flips
+back, the shroud flares forward (capeA +5…+7, wrap), the halberd tilts back from its butt (−90/−94); f0 jolts the helm a pixel up
+out of the hood and stays local (HA-21 phase < 50 %). The lantern overshoot stays as the secondary motion. `sheet-p1/...-hit*.png`, `gwHit-z.png`.
+
+**MAJOR floorGlow dot noise → fixed.** `floorGlow` is a STEPPED POOL now: every matte floor pixel (calm arena `topAt`: pads, joins,
+gaps, bridges — never the neon zone lines, which stay crisp) lifts one tone into the soul's ramp (first ramp tone clearly brighter
+than the floor), the core (inner 22 %) up to two; levels are kept low (core ≤ 1 step at full strength, the rim a ≤ 75 % 2×2
+world Bayer checker, the fringe ≤ 37 %), so a pool reads as a flat stepped light, not a stain and not scattered dots. Idle pool
+radius 16 / level 0.5 (a faint checker under the lantern); strike/drain lantern light radius 20 → 16.
+(First attempt used `padColorAt` only: the card on the tile hid the pool and only a neighbour pad lit as a green block — fixed by
+including joins/gaps.) `gwDrainFire-z.png`, `gwKill-death-z.png`, `gwSummon-finale-z.png`.
+
+**MAJOR summon → fixed (1, 2, 3, 4).** (1) The hand card is slammed by our hook with `slamToZone(..., impact: false)` (same flight
+and sound, no tile flash ring / dust star), soil clods + dust on the tile, then `runSummon` with `noCard` (ctx via Object.create).
+The violet sparkles still seen over the tile in gwSummon #0–#5 are the shared TRIBUTE beat (`tributeStream` of the DARK
+tributed monster), not the summon — logged, not ours to change. (2) Headstone 13×20 with a carved arch, sunk cross and a crack;
+flung 11 px up on the seep beat; shoved over it FLIES (230 ms, a 14 px arc, tipping 18° → 42° → 66°), lands CRACKED IN TWO (the
+halves knock apart, one bounces) with a dry split sound (gwStone pitched 0.82) + clods, then sinks into the soil. (3) Summon
+rise = 8 frames (72/62/52/43/33/22/11/0: ≤ 11 px a frame, land@7), lantern-raise frame f8, settle f9–f10. (4) Finale: no
+`S.finale` rings; the lantern's flame flares (summon f8), a stepped green pool floods the tile from under it and decays in flat
+steps, 12 soul motes stream up off the glass, a shake, the badge pop. `gwSummon-rise-z.png`, `gwSummon-finale-z.png`, `gwSummon-1x.png`.
+
+**MAJOR direct laser → fixed.** `soulBolt` = a 7×6 soul-fire SKULL wisp (ink case, ramp[4]/[3] body flickering white, ink sockets)
+on a wobbling arc (150–250 ms, 14 px high, damped sideways wobble), a curling smoke trail (10 past positions drifting up and
+sideways, shrinking, ramp[3] → ramp[2] → ramp[1] → stone1) and a ≤ 5 px flame tongue; it bursts on the duelist into the melee
+soul star. The after-hit halberd chop no longer plays its smear / gwChop on a direct attack (the frames read as a flourish).
+`gwDirect-z.png`, `gwDirect-wisp-z.png`.
+
+**MAJOR contact staging → partly fixed.** Our own ring is removed from `soulBurst` (star + shards only; the shared contact
+staging's ring is the one ring). The chop is a real SWEEP SMEAR now: a crescent band pivoting on the far hand (`grip`) from the
+spade's raised point (f7) to its chopped point (f8), 2 frames (6 px band: white edge, mist / iron body, a trailing rim in the
+lantern's colour → a thinning tail). Still open (shared, orchestrator): the DARK-violet attacker sparks/ring of `battle.ts`
+combatImpact. The bent-shaft swing frame in the sprite was not done (the smear carries the sweep).
+
+**minors.** Skull mist: ramp[1]/ramp[2] vapour, ramp[3] only on the brow / socket rims / top fringe, the white flash on the brow
+cut to 120 ms, tail 12 → 8 px (`gwKill-skull-x5b.png`). Knock-out ash = one family (stone2/stone1 + a rare soul ember). Survive
+branch: `returnLight` rolls the target plate +400 (and clears its battle tint) on the frame the light arrives, with the −400 bell
+pitched up (`gwDrainSurvive-death-z.png`: 3100 → 3500 starts at ≈4.3 s, right on the arrival; was ≈5.2 s). Thread: a fatter ink
+sheath (2.6 px) + ramp[4] beads between the white dashes, the foot leaves the target steeply (p1 lift 14). Drain trimmed: special
+f0–f4 holds −120 ms, the recovery at ×1.6. Hit-stop: the ≈150–200 ms freeze is the SHARED battle weight-profile freeze (`hitReact`
+/ the defender's own freeze) — not clamped from the card file (documented, orchestrator if a per-card stop is wanted). Card art:
+the eclipse corona (read as a scythe blade) replaced by graveyard mist banks (`paintGraveMist`), black shroud, new skull.
+
+**Gates.** tsc: no grim errors. `tests/art/grim_warden*` 12/12; `tests/art/cardface-v3` only the known scrap_raiders G1;
+tests/cinematics + audio + presentation + duel 285/286 under load — the 1 failure is the known `engine-boundary` 5 s timeout
+(passes alone, 5/5). Sprite gates `fix-p3r1/gates.txt` (`--class large --ref none`): 21 ok / 0 FAIL (idle liveliness kept ≥ 15 % by
+a livelier mantle hem / sleeve teeth / hood tip wave after the tatters went; HA-21 phase < 50 %). Frames still 122 (summon 12).
+filmdiff v1 not re-run: every change is in v3-only files (monsters-v3, cutins-v3, cardart-v3) or LOOK_V3-gated cinematics.
+Measure (`fix-p3r1/measure.json/.log`, 26 gw* scenarios, 0 errors, game ms): tribute summon 4033 ≤ 4350; drain activate 1750
+(was 1950) ≤ 2320; battle ≤ 2967 ≤ 3190 (gwGuardKill 5034 includes ember_wolf's burn, as before); direct battle 2234 ≤ 2320;
+grim death ≤ 1633 ≤ 2030; declaration 316. Camera gate vs `cin/camera-base.json`: 7 ok, 18 NOBASE ok, 1 FAIL = gwGuard focus
+3 → 2 — the known stale base (the scenario changed to the guard-HOLDS case in fix r1; re-base when the lane base is re-taken).
+Sameness re-run (`fix-p3r1/sameness/`): no KALIR; out-of-plan UYARI: abyss_magus MOTsig 0.586, lumen_sprite 0.583, thorn_lurker,
+dusk_sorcerer 0.556, mudgrasp_spirit MOTsig 0.628, seal_head MOTloop 0.740, ashen_drake / wisp_imp rhythm — a blind eye test is owed.
+
+**Open issues after this round:**
+- Shared: DARK-violet attacker sparks/ring at contact (`battle.ts combatImpact`); the tribute beat's violet `tributeStream`
+  sparkles over the summon tile; the battle freeze length (per-card hit-stop) — orchestrator decisions.
+- Sprite: no bent-shaft swing frame on the chop (smear only); P2 whirl ≈ 270°; a sameness re-run is owed after the special /
+  hit re-key (motion changed).
+- The skull mist still reads fairly saturated at 1× on the dark arena (it is leaf1/leaf2 now); a further step would be a
+  void-tinted body with leaf only at the sockets.
+- Wood/mud material sounds (decision 4) and idle SFX as before; MP4 with audio still not produced.
+
+## Critic round 2 (lane-B pass 3, independent critic, 2026-11-01) — evidence `shots/v3/kart-b/grim_warden/critic-r2/p3/`
+Verdict: no blockers; every branch plays, all registrations LOOK_V3-gated, tests 12/12, tsc clean for grim files, budgets in
+(measure.json: summon 4016 / activate 1750 / battle ≤ 2967 / direct 2234 (tight vs 2320) / death ≤ 1633). Sound + timing majors:
+- MAJOR siphon truncated: gwSiphon (1.25 s, 12 descending steps) is stopped at gwSnap ≈ 617 ms game after start
+  (clips/gwDrainFire.json 916 → 1533) — only ≈ 8 steps play; the fastest steps and the B♭4 landing never sound
+  (clips/gwDrainFire-spec.png). Fix: compress the ladder to the real window (D ≈ 0.6 s, rise 0.11 → 0.045) or pass the
+  drain length in and schedule the last 3 steps before the snap.
+- MAJOR direct: the soul-skull flight is SILENT (clips/gwDirect.wav −45 dB from 1350 to 1500 ms, between gwRelease and gwBoltHit),
+  and the 7×6 wisp is a speck at 1× (gwDirect-bolt-z.png). Fix: a gwBolt flight voice (whine + soulBreath, panned from→to)
+  started with soulBolt; a bigger wisp (≈11×10) or a 2-frame flame body.
+- MAJOR gwRelease is ≈ 8 dB under the reference releases (−18.3 vs magusOrbRelease −9.9 / wyrmBreathFire −9.7, then ×0.85).
+- minor: gwInhale −23 dB → a −40 dB hole just before the thread (800–900 ms); a −37 dB gap 1850–2050 ms between gwSnap and the
+  strike gwCharge; gwGiveBack masked by gwWail on the same tick (gwDrainSurvive 3733); gwCharge's 65 Hz sine sub dominates
+  2.2–3.0 s (spectrogram) with no audible content on small speakers.
+Picture: drained target re-lights to full brightness the frame it starts dying (gwDrainFire-strike-z.png #17–#19, soulFade
+destroyed on v3:dying); drainSpark crim3 lines strike through the DEF digits (gwDrainFire-drain-z.png #6–#7); thread is a small
+hoop over an adjacent target; skull mist still an opaque leaf "emoji" (gwKill-death-z.png #10–#14); special reach is a stub arm
+with the lantern beside the face (z-special-f0-3-5-7-x6.png); summon mound reads as a brown turtle shell with ≈ 350 ms of near
+stillness (gwSummon-rise-z.png #5–#10); cut-in dark-green slab beside the lantern (gwSummon-cutin-z.png #1/#3).
