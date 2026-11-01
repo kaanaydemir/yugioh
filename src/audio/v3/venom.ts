@@ -86,9 +86,11 @@ export const V3_VENOM_RECIPES = {
     verb: 0.3,
     duck: 0.65,
     play(v) {
-      gurgle(v, 0, [[0, 52], [0.15, 58, 'e'], [1.0, 50, 'e']], [[0, 0], [0.06, 0.5], [0.8, 0.4], [1.1, 0.0001, 'e']], 1.1);
+      // crit r2 #4: the sac punches (0.5) then sinks (0.26 → 0.2) instead of holding 0.4 for 0.8 s — the
+      // sustained sub carried the summon's loudest 400 ms (−8 dBFS solo); the hiss body likewise steps down
+      gurgle(v, 0, [[0, 52], [0.15, 58, 'e'], [1.0, 50, 'e']], [[0, 0], [0.06, 0.5], [0.22, 0.26], [0.8, 0.2], [1.1, 0.0001, 'e']], 1.1);
       thump(v, 0, 70, 38, 0.5, 0.25);
-      hiss(v, 0.04, [[0, 0], [0.08, 0.24], [0.7, 0.18], [1.0, 0.0001, 'e']]);
+      hiss(v, 0.04, [[0, 0], [0.08, 0.24], [0.25, 0.14], [0.7, 0.11], [1.0, 0.0001, 'e']]);
       rattle(v, 0.05, rattleTimes(0.95, 1 / 26, 1 / 26), 0.28, 0.5);
     },
   },
@@ -168,6 +170,9 @@ export const V3_VENOM_RECIPES = {
       const h = v.amp(0.5);
       v.noise('white', { g: [[0, 0], [0.02, 0.03], [0.24, 0.02], [0.28, 0.0001, 'e']], to: v.filt('highpass', 5500, 0.7, { to: h }) });
       v.lfo(h.gain, 11, 0.45, { d: 0.28 });
+      // crit r2 #2: the flight is audible — the glob's own dense high fizz rides the arc (≥ 6.5 kHz, static,
+      // no sweep: the identity forbids a rising whistle), thinning toward the splat's held breath
+      v.crackle({ t: 0.03, d: 0.3, n: 44, g: 0.03, f: 7000, q: 0.9, dec: 0.003, curve: 1.4 });
     },
   },
   /** `impact`: the splat — its body ends at 0.12 s: the held breath (the hard duck is the exception, §6). */

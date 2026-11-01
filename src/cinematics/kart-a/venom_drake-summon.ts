@@ -62,8 +62,9 @@ type Lobe = readonly [cx: number, cy: number, rx: number, ry: number];
  * lobes in 3 flat stepped bands measured from each column's top — a flat 2-px leaf3 top rim, a leaf2 band,
  * the leaf1 body — a leaf0 floor row and a 1-px void1 edge round the whole.
  */
-function gas(px: Px, lobes: readonly Lobe[]): void {
-  if (!lobes.length) return;
+function gas(px: Px, lobes: readonly Lobe[]): XY[] {
+  const rim: XY[] = [];
+  if (!lobes.length) return rim;
   let x0 = 1e9;
   let x1 = -1e9;
   let y0 = 1e9;
@@ -75,7 +76,7 @@ function gas(px: Px, lobes: readonly Lobe[]): void {
     y0 = Math.min(y0, cy - ry - 1);
     y1 = Math.max(y1, cy + ry + 1);
   }
-  if (x1 < x0) return;
+  if (x1 < x0) return rim;
   const W = x1 - x0 + 1;
   const H = y1 - y0 + 1;
   const m = new Uint8Array(W * H);
@@ -104,6 +105,53 @@ function gas(px: Px, lobes: readonly Lobe[]): void {
       px.dot(x + x0, y + y0, c);
     }
     px.dot(x + x0, top + y0 - 1, PAL.void1);
+    rim.push({ x: x + x0, y: top + y0 });
+  }
+  return rim;
+}
+
+/**
+ * Crit r2 #3: life on the dome at rest — a gold3 glint (2 px, a leaf3 tail) sliding along the rim every
+ * ~1.1 s, and three bubble slots that bulge from the rim, swell to a 3×3 leaf3 ring round a leaf1 eye and
+ * pop into two leaf2 flecks (stepped 80 ms phases, never in step with each other). `rim` is the top pixel of
+ * every column of the gas (left → right), `el` the dome's clock.
+ */
+function domeLife(px: Px, rim: readonly XY[], el: number): void {
+  const n = rim.length;
+  if (n < 8) return;
+  // the glint: steps 1 column per 34 ms over the rim, then rests out of sight for ~10 columns
+  const gi = Math.floor(el / 34) % (n + 10);
+  if (gi >= 1 && gi < n - 1) {
+    const a = rim[gi];
+    const b = rim[gi - 1];
+    px.dot(a.x, a.y, PAL.gold3).dot(rim[gi + 1].x, rim[gi + 1].y, PAL.gold3).dot(b.x, b.y, PAL.leaf3);
+  }
+  // the bubbles: slot s lives on the column at fraction F[s] of the rim, a 6-step cycle (80 ms each)
+  const F = [0.28, 0.62, 0.45];
+  for (let s = 0; s < 3; s++) {
+    const ph = Math.floor((el + s * 190) / 80) % 6;
+    const c = rim[Math.round(F[s] * (n - 1))];
+    if (!c) continue;
+    if (ph === 0) px.dot(c.x, c.y - 1, PAL.leaf3);
+    else if (ph === 1 || ph === 2) {
+      const y = c.y - 1 - ph; // it rises 1 px per step
+      px.dot(c.x, y - 1, PAL.leaf3).dot(c.x - 1, y, PAL.leaf3).dot(c.x + 1, y, PAL.leaf3).dot(c.x, y + 1, PAL.leaf2).dot(c.x, y, PAL.leaf1);
+      px.dot(c.x - 1, y - 1, PAL.void1).dot(c.x + 1, y - 1, PAL.void1);
+      if (ph === 2) px.dot(c.x, y - 1, PAL.gold3); // the bubble's skin catches the bulb's light at its peak
+    } else if (ph === 3) px.dot(c.x - 2, c.y - 5, PAL.leaf2).dot(c.x + 2, c.y - 4, PAL.leaf2);
+  }
+  // the boil inside the body: two leaf3 caps (a leaf2 eye, a leaf0 shadow under) rising through the leaf1 body toward the rim (1 px per 90 ms),
+  // bursting as a leaf3 dot under the top band
+  for (const [fx, off] of [[0.36, 0], [0.71, 300]] as const) {
+    const c = rim[Math.round(fx * (n - 1))];
+    if (!c) continue;
+    const ph = Math.floor((el + off) / 90) % 6;
+    if (ph >= 4) {
+      if (ph === 4) px.dot(c.x, c.y + 4, PAL.leaf3);
+      continue;
+    }
+    const y = c.y + 9 - ph;
+    px.dot(c.x - 1, y, PAL.leaf3).dot(c.x + 1, y, PAL.leaf3).dot(c.x, y - 1, PAL.leaf3).dot(c.x, y, PAL.leaf2).dot(c.x, y + 1, PAL.leaf0).dot(c.x - 1, y + 1, PAL.leaf0).dot(c.x + 1, y + 1, PAL.leaf0);
   }
 }
 
@@ -168,7 +216,8 @@ async function venomMistV3(S: Stage): Promise<void> {
         lobes.push([home.x + r((dx + ox) * wk), home.y + r(dy * g * hk) + (side && roll === 2 ? 1 : 0), r(rx * g * wk), Math.max(1, r(ry * g * hk))]);
       }
     }
-    gas(domeL, lobes);
+    const rim = gas(domeL, lobes);
+    if (domeOn && dome >= 4) domeLife(domeL, rim, el);
     return true;
   });
   await S.wait(260);

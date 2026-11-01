@@ -321,6 +321,22 @@ export function flyGlob(sc: Phaser.Scene, from: XY, to: XY, o: FlightOpts): Prom
             px.dot(dx, dy, PAL.leaf3).dot(dx, dy + 1, PAL.leaf2).dot(dx, dy + 2, PAL.ink);
           }
         }
+        // crit r2 #1: the launch smear — for the first 3 frames a stepped wet streak ties the glob to the
+        // stinger (2 px wide: leaf3 on top, leaf1 under), a gold3 muzzle spark on the first, the streak
+        // shortening to the glob's end (full / ½ / ¼) so the eye catches the shot leaving
+        if (!o.small && tick <= 3) {
+          const L = Math.hypot(pos.x - from.x, pos.y - from.y);
+          const keep = tick === 1 ? 1 : tick === 2 ? 0.5 : 0.25;
+          for (let i = 0; i <= L; i++) {
+            const q = i / Math.max(1, L);
+            if (q < 1 - keep) continue;
+            const sx = r(from.x + (pos.x - from.x) * q);
+            const sy = r(from.y + (pos.y - from.y) * q);
+            px.dot(sx, sy, q > 0.6 ? PAL.leaf3 : PAL.leaf2).dot(sx, sy + 1, PAL.leaf1);
+          }
+          if (tick === 1) px.dot(from.x, from.y, PAL.gold4).dot(from.x - 1, from.y, PAL.gold3).dot(from.x + 1, from.y, PAL.gold3).dot(from.x, from.y - 1, PAL.gold3).dot(from.x, from.y + 1, PAL.gold3);
+          else if (tick === 2) px.dot(from.x - 1, from.y - 1, PAL.gold3).dot(from.x + 1, from.y + 1, PAL.gold3);
+        }
         drawGlob(px, pos.x, pos.y, vx, vy, tick, o.small);
         return true;
       },
