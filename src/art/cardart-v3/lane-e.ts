@@ -8,7 +8,7 @@ import type { CardArtV3 } from './_types';
 import { renderArt } from './_kit';
 
 const mods = import.meta.glob<{ default: CardArtV3 }>(
-  ['./well_pail.ts', './puppet_string.ts', './void_eye.ts', './sweeping_gale.ts', './winnow_sieve.ts', './auger_lance.ts', './soul_leash.ts', './straw_decoys.ts', './spite_axe.ts', './page_turner.ts', './lucky_die.ts'],
+  ['./well_pail.ts', './puppet_string.ts', './void_eye.ts', './sweeping_gale.ts', './winnow_sieve.ts', './auger_lance.ts', './soul_leash.ts', './straw_decoys.ts', './spite_axe.ts', './page_turner.ts', './lucky_die.ts', './crystal_wyrm.ts', './abyss_magus.ts'],
   { eager: true },
 );
 

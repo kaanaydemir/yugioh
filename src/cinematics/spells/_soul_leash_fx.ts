@@ -122,7 +122,7 @@ export class Collar {
     this.rx = rx;
     this.ry = ry;
     this.back = new Raster(sc, 0, 0, 2 * rx + 8, 2 * ry + 10, DEPTH.UNIT);
-    this.front = new Raster(sc, 0, 0, 2 * rx + 8, 2 * ry + 14, DEPTH.UNIT);
+    this.front = new Raster(sc, 0, 0, 2 * rx + 8, 2 * ry + 16, DEPTH.UNIT);
   }
 
   get alive(): boolean {
@@ -162,10 +162,13 @@ export class Collar {
             // the break: the front pieces fall away (every other run of 4 drops a pixel more)
             const d = fall > 0 ? fall + ((i >> 2) % 2) : 0;
             // a 2-row leather band (lit void4 stitch row over void3) between two ink rows: it reads on any body
+            // a 3-row band between two ink rows: a gold rim (it reads on purple bodies too), the lit leather,
+            // the shaded leather underside
             f.px(x, y - 2 + d, PAL.ink);
-            f.px(x, y + 1 + d, PAL.ink);
-            f.px(x, y + d, g ? PAL.white : PAL.void3);
-            f.px(x, y - 1 + d, g ? PAL.white : i % 3 === 0 ? PAL.gold3 : PAL.void4);
+            f.px(x, y + 2 + d, PAL.ink);
+            f.px(x, y - 1 + d, g ? PAL.white : i % 4 === 0 ? PAL.gold4 : PAL.gold3);
+            f.px(x, y + d, g ? PAL.white : i % 3 === 0 ? PAL.void4 : PAL.void3);
+            f.px(x, y + 1 + d, g ? PAL.void4 : PAL.void2);
           } else if (fall <= 0) {
             b.px(x, y, PAL.void2);
             b.px(x, y - 1, PAL.void3);
@@ -173,6 +176,17 @@ export class Collar {
           }
         }
         if (L.ghost) return;
+        // the weaving tip: while the band is still being wrapped, its leading end burns white-gold
+        if (L.prog > 0 && L.prog < 1) {
+          const a = Math.PI / 2 + (lim / n) * TAU;
+          const x = R(c.x + Math.cos(a) * rx);
+          const y = R(c.y + Math.sin(a) * ry);
+          const tgt = Math.sin(a) >= -0.15 ? f : b;
+          tgt.px(x, y - 1, PAL.white);
+          tgt.px(x, y, PAL.white);
+          tgt.px(x, y - 2, PAL.gold4);
+          tgt.px(x + (Math.cos(a) > 0 ? 1 : -1), y - 1, PAL.gold4);
+        }
         // studs: two gold rivets on the front of the band
         if (shown >= steps * 0.4) {
           const off = rx <= 4 ? 2 : 3;
@@ -185,7 +199,7 @@ export class Collar {
         // the buckle: a 3×3 gold square ring at the front centre in an ink frame, the leash ring under it
         if (L.buckle !== 'none' && shown >= steps) {
           const bx = c.x - 1;
-          const by = c.y + ry - 2 + (L.buckle === 'open' ? fall + 1 : 0);
+          const by = c.y + ry - 1 + (L.buckle === 'open' ? fall + 1 : 0);
           const flash = L.buckle === 'flash';
           for (let yy = -1; yy < 4; yy++) for (let xx = -1; xx < 4; xx++) f.px(bx + xx, by + yy, PAL.ink);
           for (let yy = 0; yy < 3; yy++)
@@ -206,7 +220,7 @@ export class Collar {
 
   /** Where the leash hooks on (the ring under the buckle). */
   ring(c: XY): XY {
-    return { x: c.x, y: c.y + this.ry + 1 };
+    return { x: c.x, y: c.y + this.ry + 2 };
   }
 
   destroy(): void {
@@ -348,9 +362,21 @@ export function drawLeash(r: Raster, a: XY, b: XY, L: LeashLook): void {
     const dy = L.drop && L.drop > 0 ? R((L.drop * i) / Math.max(1, cut)) : 0;
     let c: number;
     if (L.mode === 'chain') {
-      // links: two lit, one dark, one gold — a dark underline so it reads over the floor and the bodies
-      const k = i % 4;
-      c = k === 3 ? PAL.gold3 : k === 2 ? PAL.void3 : L.hot ? PAL.white : PAL.void4;
+      // chunky links, 2 rows tall: a purple link (lit top, shaded bottom), a thin gold connector, a gold link,
+      // a thin connector — an ink underline so it reads over the floor and the bodies
+      const k = i % 6;
+      const thick = k === 0 || k === 1 || k === 3 || k === 4;
+      const gold = k === 3 || k === 4;
+      const d0 = Math.abs(i - pulseAt);
+      if (thick) {
+        const top = d0 <= 2 ? PAL.white : L.hot ? PAL.white : gold ? PAL.gold4 : PAL.void4;
+        r.px(p.x, p.y + dy - 1, top);
+        r.px(p.x, p.y + dy, gold ? PAL.gold2 : PAL.void2);
+        r.px(p.x, p.y + dy + 1, PAL.ink);
+        if (k === 0 || k === 3) r.px(p.x, p.y + dy - 2, PAL.ink);
+        continue;
+      }
+      c = k === 2 ? PAL.gold3 : PAL.void3;
       r.px(p.x, p.y + dy + 1, PAL.ink);
     } else {
       c = i % 3 === 0 ? (L.hot ? PAL.white : PAL.void4) : L.hot ? PAL.void4 : PAL.void3;

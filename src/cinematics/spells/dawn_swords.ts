@@ -25,6 +25,8 @@ import { panAt, play as playV3 } from '../_v3/sound';
 import { cardLeaves } from '../_v3/card';
 import { fx, registerCardHook, registerEvent, registerObserver, type CinematicContext } from '../api';
 import { DAWN, DawnFence, allFences, dawnCasting, fenceOf, resolutionParts, revealSweep, sweepReaches } from './_dawn_v3';
+// lane E (v3 look): the new signature — the gilded dawn cage (./_dawn_e.ts); the old look keeps the fence below
+import { cageActivate, cageCounter, cageDestroyed, cageObserve } from './_dawn_e';
 
 type AnyCtx = CinematicContext<GameEvent>;
 type ActCtx = CinematicContext<Extract<GameEvent, { type: 'activate' }>>;
@@ -32,6 +34,7 @@ type ActCtx = CinematicContext<Extract<GameEvent, { type: 'activate' }>>;
 const ID = 'dawn_swords';
 
 registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
+  if (V3_A5_A) return cageActivate(ctx);
   const ev = ctx.ev;
   const sc = ctx.scene;
   const rich = V3_A5_A;
@@ -89,6 +92,7 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
 registerEvent('counter', async (ctx) => {
   const ev = ctx.ev;
   if (ev.cardId !== ID) return ctx.base();
+  if (V3_A5_A) return cageCounter(ctx);
   const sc = ctx.scene;
   let f = fenceOf(sc, ev.uid);
   const tile = ctx.views.field.tileAt(ev.player, 'spellTrap', ev.zone);
@@ -113,6 +117,7 @@ registerEvent('counter', async (ctx) => {
 registerCardHook(ID, 'destroyed', async (ctx) => {
   const ev = ctx.ev;
   if (ev.location !== 'spellTrap') return ctx.base();
+  if (V3_A5_A) return cageDestroyed(ctx);
   const sc = ctx.scene;
   const field = ctx.views.field;
   const gi = ctx.findType('toGraveyard', (e) => e.uid === ev.uid, { until: (e) => e.type !== 'toGraveyard' && e.type !== 'destroy' });
@@ -154,6 +159,7 @@ registerCardHook(ID, 'destroyed', async (ctx) => {
 
 /** A staged / restored board shows its fence; a fence whose card is gone is removed. */
 registerObserver((_ev, ctx: AnyCtx) => {
+  if (V3_A5_A) return cageObserve(ctx);
   const sc = ctx.scene;
   const present = new Set<Uid>();
   ctx.state.players.forEach((p, pi) => {

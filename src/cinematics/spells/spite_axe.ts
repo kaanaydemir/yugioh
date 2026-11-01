@@ -460,6 +460,9 @@ async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void
   chainR.begin();
   chainR.end();
   bg(run(sc, 120, (t) => cracks.grow(quant(t, 3))));
+  // impact frame: white for two frames only, then the ember silhouette holds the hit-stop (stepped cooling)
+  await frames(sc, 2);
+  axe.set({ look: 'ember' }).bury(bite.y);
   await freeze(sc, T.stop);
   axe.set({ look: 'plain', heat: 3 });
   // the haft quivers
@@ -579,6 +582,8 @@ async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void
   axe.set({ look: 'hot' }).bury(null);
   cracks.slit(true);
   void shake(sc, 120, 2);
+  await frames(sc, 2);
+  axe.set({ look: 'ember' });
   await freeze(sc, T.snapStop);
   axe.set({ look: 'plain', heat: 2 });
   bg(cracks.cool(520).then(() => cracks.destroy()));
@@ -867,6 +872,8 @@ async function returnScene(ctx: DeckCtx): Promise<void> {
     const v = 40 + rnd() * 90;
     sparks.add({ x: slamO.x, y: slamO.y + 2, vx: Math.cos(a) * v, vy: Math.sin(a) * v, ay: 300, life: 260 + rnd() * 220, colors: EMBER, shape: i % 3 === 0 ? 'plus' : 'px', fadeAt: 1 });
   }
+  await frames(sc, 2);
+  axe.set({ look: 'ember' });
   await freeze(sc, RET.slamStop);
   axe.set({ look: 'plain', heat: 3 });
   // it sinks into the pile (cut from the bottom row up, ember)
@@ -886,7 +893,8 @@ async function returnScene(ctx: DeckCtx): Promise<void> {
   const root: XY = { x: R(deck.x), y: R(deck.y - 6) };
   const whip = new Raster(sc, 0, 0, 640, 360, DEPTH.HUD + 6);
   playV3('e_axeLash', { volume: 1, pan: panAt(tip.x) });
-  const mid = { x: lerp(root.x, tip.x, 0.5), y: Math.min(root.y, tip.y) - 70 };
+  // the whip's arc stays on screen (P2's panel is at the top edge): the apex is clamped inside the frame
+  const mid = { x: lerp(root.x, tip.x, 0.5), y: Math.max(12, Math.min(root.y, tip.y) - 70) };
   const drawWhip = (pts: readonly XY[], hot: boolean): void => {
     whip.begin();
     // an ember line under the links (the chain is red-hot from the axe), then the iron links over it
@@ -916,7 +924,7 @@ async function returnScene(ctx: DeckCtx): Promise<void> {
       const w = Math.sin(s2 * 14 - el / 12) * 5 * (1 - s2);
       pts.push({ x: p.x, y: p.y + w });
     }
-    drawWhip(pts, t > 0.7);
+    drawWhip(pts, t > 0.35);
     const h = pts[pts.length - 1];
     sparks.add({ x: h.x, y: h.y, life: 80, colors: [PAL.fire4, PAL.fire3], shape: 'px', fadeAt: 1 });
   });

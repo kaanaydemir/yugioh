@@ -1,7 +1,7 @@
 // Ruh Tasması (soul_leash) — v3 card art (style sheet docs/v3/KART_RESIMLERI.md, contract ./_types.ts).
 //
 // "A glowing collar; a beast whose shadow has come away from its body walks ahead" (YENI_KARTLAR §7 S8). Two
-// hounds on the floor: behind (left) the BODY, grey stone tones, head hung low, its eye dull; ahead (right) its
+// hounds on the floor: behind (left) the BODY, grey stone tones, the same pose frozen mid-step, its eye dull; ahead (right) its
 // SHADOW, standing and striding, flat void planes with a void3 rim — round its neck the purple-gold COLLAR, the
 // brightest point (gold buckle, white heart), held by a chain that sags in from the top-left corner. On the floor
 // a dark ribbon ties the body's feet to the shadow's feet (the body has no shadow of its own).
@@ -24,7 +24,7 @@ type Size = 'big' | 'small';
 type P = readonly [number, number];
 
 /** The picture's focus (the collar's buckle) in BIG px. */
-const FOCUS = [66, 37] as const;
+const FOCUS = [70, 37] as const;
 
 interface Tones {
   base: number;
@@ -64,10 +64,10 @@ function paintHound(p: PixelCanvas, ox: number, oy: number, k: number, low: bool
   return { neck, eye };
 }
 
-/** The body stands farther back (smaller, higher, cut by the back edge); the shadow strides in front. */
+/** The body stands farther back (smaller, higher, whole in the frame); the shadow strides in front. */
 const CFG: Readonly<Record<Size, { k: number; kb: number; body: P; shadow: P; anchor: P; horizon: number }>> = {
-  big: { k: 1.15, kb: 0.85, body: [-9, 27], shadow: [27, 28], anchor: [3, 6], horizon: 48 },
-  small: { k: 0.56, kb: 0.42, body: [-4, 14], shadow: [14, 14], anchor: [1, 3], horizon: 24 },
+  big: { k: 1.15, kb: 0.72, body: [1, 30], shadow: [31, 28], anchor: [3, 6], horizon: 48 },
+  small: { k: 0.56, kb: 0.36, body: [0, 15], shadow: [16, 14], anchor: [1, 3], horizon: 24 },
 };
 
 function paint(size: Size, l: ArtLayers, f: number): void {
@@ -83,7 +83,7 @@ function paint(size: Size, l: ArtLayers, f: number): void {
   floor.thickLine(bf[0], bf[1], sf[0], sf[1], big ? 3 : 1, PAL.ink);
   floor.ellipse(sf[0], sf[1], big ? 13 : 6, big ? 2 : 1, PAL.ink);
   const body = new PixelCanvas(l.subject.w, l.subject.h);
-  const bp = paintHound(body, C.body[0], C.body[1], C.kb, true, -1, { base: PAL.stone2, far: PAL.stone1 });
+  const bp = paintHound(body, C.body[0], C.body[1], C.kb, false, -1, { base: PAL.stone2, far: PAL.stone1 });
   litEdge(body, 1, { only: (c) => c === PAL.stone2 || c === PAL.stone1 });
   ink(body);
   if (big) rim(body, PAL.teal3);
@@ -160,7 +160,7 @@ function paint(size: Size, l: ArtLayers, f: number): void {
 const art: CardArtV3 = {
   id: 'soul_leash',
   focus: FOCUS,
-  focusSmall: [33, 19],
+  focusSmall: [35, 19],
   frames: 4,
   holdMs: 160,
   big: (l, f) => paint('big', l, f),

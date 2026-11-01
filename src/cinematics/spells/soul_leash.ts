@@ -395,7 +395,7 @@ async function takeScene(ctx: CCCtx): Promise<void> {
   const ux = { x: dir.x / dlen, y: dir.y / dlen };
 
   // ---- THROW: the chain shoots from the card to the neck
-  rig.leash = { mode: 'chain', sag: 7, prog: 0, pulse: -1, phase: 0 };
+  rig.leash = { mode: 'chain', sag: 12, prog: 0, pulse: -1, phase: 0 };
   rig.leashTarget = { x: neck0.x, y: neck0.y + neck.ry + 1 };
   const cardGlow = lightPool(sc, A.x, A.y, { color: PAL.void3, radius: 16, intensity: 0, fadeIn: 0, anim: 'breathe' });
   cardGlow.setIntensity(0.7, 120);
@@ -403,7 +403,7 @@ async function takeScene(ctx: CCCtx): Promise<void> {
   await run(sc, T.throw, (t) => {
     if (rig.leash) {
       rig.leash.prog = q(t * t * 0.3 + t * 0.7, 9);
-      rig.leash.sag = R(7 - 4 * t);
+      rig.leash.sag = R(12 - 8 * t);
     }
   });
   if (rig.leash) rig.leash.prog = 1;
@@ -541,7 +541,7 @@ async function takeScene(ctx: CCCtx): Promise<void> {
     const c = rig.collarPoint();
     if (rig.leash && c) {
       const d = Math.hypot(c.x - A.x, c.y - A.y);
-      rig.leash.sag = Math.max(2, Math.min(8, R(d / 14)));
+      rig.leash.sag = Math.max(2, Math.min(10, R(d / 12)));
     }
     if (c) collarLight.setPosition(c.x, c.y, b.ground.y);
     cardGlow.setIntensity(0.5 + 0.2 * (Math.floor(el / 240) % 2), 0);
@@ -893,27 +893,43 @@ registerCardHook(ID, 'lpGain', async (ctx) => {
     void lightFlash(sc, from.x, from.y, PAL.leaf3, 14, 240, { intensity: 0.8 });
     const ctrl = { x: (from.x + lp.x) / 2, y: Math.min(from.y, lp.y) - 40 };
     const trail = new PxSparks(sc, DEPTH.HUD + 5);
-    const orb = new Raster(sc, 0, 0, 11, 11, DEPTH.HUD + 6);
+    // one raster over the whole flight: a pulsing orb with a ring and a tapering comet tail of its last positions
+    const bx0 = R(Math.min(from.x, lp.x, (from.x + lp.x) / 2) - 12);
+    const by0 = R(Math.min(from.y, lp.y, Math.min(from.y, lp.y) - 40) - 12);
+    const bx1 = R(Math.max(from.x, lp.x) + 12);
+    const by1 = R(Math.max(from.y, lp.y) + 12);
+    const orb = new Raster(sc, bx0, by0, bx1 - bx0, by1 - by0, DEPTH.HUD + 6);
     const glow = lightPool(sc, from.x, from.y, { color: PAL.leaf3, radius: 12, air: 0.7, airRadius: 9, intensity: 0.8, fadeIn: 0 });
     let lastX = from.x;
     let lastY = from.y;
     const f0 = from;
     let n = 0;
+    const tail: XY[] = [];
     await run(sc, 520, (t, el) => {
       const k = t * t * 0.55 + t * 0.45;
       const p = qbez(f0, ctrl, lp, k);
       const x = R(p.x);
       const y = R(p.y);
       const beat = Math.floor(el / 80) % 2;
-      orb.moveTo(x - 5, y - 5);
+      if (!tail.length || tail[0].x !== x || tail[0].y !== y) {
+        tail.unshift({ x, y });
+        if (tail.length > 12) tail.pop();
+      }
       orb.draw((r) => {
-        r.disc(x + 0.5, y + 0.5, 4 + beat * 0.5, PAL.leaf1);
-        r.disc(x + 0.5, y + 0.5, 3, PAL.leaf2);
-        r.disc(x + 0.5, y + 0.5, 2, PAL.leaf3);
+        // the tail: older points are smaller and darker (stepped, no blending)
+        for (let i = tail.length - 1; i >= 1; i--) {
+          const q0 = tail[i];
+          const rad = i < 3 ? 3 : i < 6 ? 2 : i < 9 ? 1.5 : 1;
+          r.disc(q0.x + 0.5, q0.y + 0.5, rad, i < 4 ? PAL.leaf3 : i < 8 ? PAL.leaf2 : PAL.leaf1);
+          if (i < 4) r.px(q0.x, q0.y, PAL.leaf4);
+        }
+        // the orb: a ring that beats, a bright core, a white heart
+        if (beat) r.ring(x + 0.5, y + 0.5, 6, 6, PAL.leaf2);
+        r.disc(x + 0.5, y + 0.5, 4.5, PAL.leaf1);
+        r.disc(x + 0.5, y + 0.5, 3.5, PAL.leaf3);
+        r.disc(x + 0.5, y + 0.5, 2, PAL.leaf4);
         r.px(x, y, PAL.white);
-        r.px(x - 1, y, PAL.leaf4);
-        r.px(x, y - 1, PAL.leaf4);
-        r.px(x - 1, y - 1, PAL.leaf4);
+        r.px(x - 1, y - 1, PAL.white);
       });
       glow.setPosition(x, y, y + 20);
       if (x !== lastX || y !== lastY) {
@@ -925,9 +941,10 @@ registerCardHook(ID, 'lpGain', async (ctx) => {
       lastY = y;
     });
     // the arrival: a leaf burst on the panel
-    for (let i = 0; i < 10; i++) {
-      const a = (i / 10) * Math.PI * 2;
-      trail.add({ x: R(lp.x), y: R(lp.y), vx: Math.cos(a) * 40, vy: Math.sin(a) * 26, drag: 3, life: 300, colors: [PAL.white, PAL.leaf4, PAL.leaf3, PAL.leaf2], shape: i % 3 === 0 ? 'plus' : 'px', fadeAt: 0.6 });
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      const sp = i % 2 ? 34 : 56;
+      trail.add({ x: R(lp.x), y: R(lp.y), vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.6, drag: 3, life: 300, colors: [PAL.white, PAL.leaf4, PAL.leaf3, PAL.leaf2], shape: i % 3 === 0 ? 'plus' : 'px', fadeAt: 0.6 });
     }
     trail.release();
     orb.destroy();

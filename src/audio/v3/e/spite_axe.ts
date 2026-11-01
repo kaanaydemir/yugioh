@@ -214,11 +214,15 @@ export const RECIPES = {
     verb: 0.28,
     play(v) {
       // spinning home: four whirring air pulses (the blade cutting round), chains rattling behind
-      for (let i = 0; i < 4; i++) {
-        sweep(v, i * 0.085, 0.09, [700, 2300, 900], 0.3 - i * 0.03, { q: 2.4, peakAt: 0.5 });
-        thump(v, i * 0.085 + 0.04, 180, 120, 0.06, 0.05);
+      // six turns over the whole ~0.58 s flight, spinning slightly faster and higher as it closes on the pile
+      let at = 0;
+      for (let i = 0; i < 6; i++) {
+        const up = 1 + i * 0.07;
+        sweep(v, at, 0.095, [650 * up, 2400 * up, 850 * up], 0.42 + i * 0.02, { q: 2.6, peakAt: 0.5 });
+        thump(v, at + 0.045, 170 + i * 8, 115, 0.075, 0.05);
+        at += 0.105 - i * 0.006;
       }
-      links(v, 0.02, 0.34, 12, 0.11, 1800, 3200, { curve: 0.9, pan: 0.6 });
+      links(v, 0.02, 0.52, 16, 0.14, 1800, 3400, { curve: 0.9, pan: 0.6 });
     },
   },
   e_axeDeck: {

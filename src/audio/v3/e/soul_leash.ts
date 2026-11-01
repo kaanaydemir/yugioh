@@ -198,9 +198,9 @@ export const RECIPES = {
       // … and the soft bell (D5, a fifth and an octave over it, slow attack: never struck metal)
       const f = midiHz(74);
       for (const [r, g, d] of [
-        [1, 0.07, 1.1],
-        [2, 0.025, 0.7],
-        [3.01, 0.012, 0.4],
+        [1, 0.12, 1.2],
+        [2, 0.04, 0.75],
+        [3.01, 0.018, 0.45],
       ] as const)
         v.tone('sine', f * r, { t: 0.2, g: [[0, 0], [0.018, g], [d, 0.0001, 'e']] });
     },

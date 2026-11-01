@@ -50,6 +50,9 @@
 import type { AnyMonsterAnim, DrawOpts, MonsterAnim, MonsterAnimExtra, MonsterArt, MonsterPoints } from '../types';
 import type { PixelCanvas } from '../pixel';
 import v1 from '../monsters/crystal_wyrm';
+import card from '../cardart-v3/crystal_wyrm';
+import { V3_CARDS } from '../../view/v3flags';
+import { renderArt } from '../cardart-v3/_kit';
 import { OX, OY, W, H, setLight } from './crystal_wyrm-gbuf';
 import { drawDragon } from './crystal_wyrm-rig';
 import { ANIMS, EXTRA_ANIMS, IMPACT, drawPose, framePoints, MUZZLE } from './crystal_wyrm-anims';
@@ -87,8 +90,13 @@ const crystalWyrmV3: MonsterArt = {
   points(anim: AnyMonsterAnim, frame: number): MonsterPoints {
     return framePoints(anim, frame);
   },
-  // the card artwork stays the v1 close-up until the card art pass (A5)
-  portrait: v1.portrait,
+  // The card picture: the v3 hand version (44×34, src/art/cardart-v3/crystal_wyrm.ts) on the v3 card faces
+  // (V3_CARDS); with the v3 faces off (&cards=v1 / a5=off) the v1 close-up stays, byte for byte.
+  portrait: V3_CARDS
+    ? (p: PixelCanvas) => {
+        p.blit(renderArt(card, 0).smallPx, 0, 0);
+      }
+    : v1.portrait,
 };
 
 export default crystalWyrmV3;

@@ -91,6 +91,9 @@
 import type { AnyMonsterAnim, DrawOpts, MonsterAnim, MonsterAnimExtra, MonsterArt, MonsterPoints } from '../types';
 import type { PixelCanvas } from '../pixel';
 import v1 from '../monsters/abyss_magus';
+import card from '../cardart-v3/abyss_magus';
+import { renderArt } from '../cardart-v3/_kit';
+import { V3_CARDS } from '../../view/v3flags';
 import { H, OX, OY, W, drawMagus } from './abyss_magus-rig';
 import { ANIMS, EXTRA_ANIMS, IMPACT, MUZZLE, framePoints, framePose } from './abyss_magus-anims';
 
@@ -117,8 +120,13 @@ const abyssMagusV3: MonsterArt = {
   points(anim: AnyMonsterAnim, frame: number): MonsterPoints {
     return framePoints(anim, frame);
   },
-  // the card artwork stays the v1 close-up until the card art pass (A5)
-  portrait: v1.portrait,
+  // The card picture: the v3 hand version (44×34, src/art/cardart-v3/abyss_magus.ts) on the v3 card faces
+  // (V3_CARDS); with the v3 faces off (&cards=v1 / a5=off) the v1 close-up stays, byte for byte.
+  portrait: V3_CARDS
+    ? (p: PixelCanvas) => {
+        p.blit(renderArt(card, 0).smallPx, 0, 0);
+      }
+    : v1.portrait,
 };
 
 export default abyssMagusV3;
