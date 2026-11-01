@@ -61,11 +61,14 @@ export const V3_ASHEN_RECIPES = {
     verb: 0.3,
     duck: 0.2,
     play(v) {
-      puff(v, 0, 0.3, 0.4, 600, { kind: 'brown' });
-      crack(v, 0.03, 0.06, { hp: 3000, lp: 7000, n: 10, gap: 0.03, dec: 0.004 });
-      sweep(v, 0, 0.35, [900, 600, 300], 0.04, { kind: 'pink' });
+      // r2 (SE-4 vs magusPresence): a low brown slump and dry grains sliding off it, no mid sweep
+      puff(v, 0, 0.45, 0.4, 320, { kind: 'brown' });
+      thump(v, 0, 70, 44, 0.25, 0.22);
+      crack(v, 0.03, 0.3, { hp: 3500, lp: 7000, n: 12, gap: 0.025, dec: 0.004 });
+      sweep(v, 0.02, 0.3, [5200, 4200, 3400], 0.18, { kind: 'white', q: 2 });
     },
   },
+
   /** A single ember touches the mound. */
   ashenEmber: {
     cap: 2,
@@ -126,10 +129,12 @@ export const V3_ASHEN_RECIPES = {
     duck: 0.3,
     play(v) {
       thump(v, 0, 110, 50, 0.4, 0.3, { drive: 1.5 });
-      crack(v, 0, 0.12, { hp: 2500, lp: 5000, n: 3, gap: 0.012, dec: 0.01 });
-      puff(v, 0.005, 0.2, 0.3, 900, { kind: 'brown' });
+      // r2 (SE-4 vs magusLand): the talons crunch into ash: a dry ember spray up top, the dust kept low
+      crack(v, 0, 0.6, { hp: 5000, lp: 10000, n: 6, gap: 0.014, dec: 0.008 });
+      puff(v, 0.005, 0.25, 0.3, 380, { kind: 'brown' });
     },
   },
+
   /** The hollow roar (the cut-in flare). */
   ashenRoar: {
     cap: 1,
@@ -137,18 +142,25 @@ export const V3_ASHEN_RECIPES = {
     verb: 0.45,
     duck: 0.65,
     play(v) {
-      // hollow and dry: low formants, a raspier throat, and the two rib tubes carried loud (the drake
-      // roars THROUGH its rib cage; the wyrm's glassy 330 / 760 / 1950 formants stay far away)
-      growl(v, 0, { d: 1.6, f: [46, 74, 64, 52, 36], formants: [220, 470, 1100], g: 0.8, grit: 7.5, rasp: 70 });
-      sweep(v, 0.05, 1.4, [150, 200, 150], 0.3, { kind: 'pink', q: 8 });
-      sweep(v, 0.05, 1.4, [300, 400, 300], 0.15, { kind: 'pink', q: 9 });
-      // the ash breath: a dry brown rush under the voice
-      puff(v, 0.02, 0.35, 1.2, 700, { kind: 'brown' });
-      heartbeat(v, 0, 0.7);
-      crack(v, 0.9, 0.12, { hp: 1500, lp: 6000, n: 6, gap: 0.08, dec: 0.01 });
-      v.noise('pink', { t: 0.8, g: [[0, 0], [0.05, 0.03], [0.8, 0.0001, 'e']], to: v.filt('highpass', 3000, 0.7, { t: 0.8 }) });
+      // r2 (critic r1 #8, SE-4): no formant growl at all (that is the wyrm's and the magus' voice). The drake
+      // roars THROUGH its rib cage: brown-noise bellows in the two rib tubes throbbing at 24 Hz, a driven
+      // 46 Hz saw kept under 300 Hz, the double heartbeat under it, and a dry ember storm (3.5–7 kHz)
+      // riding over a hollow, empty middle (500 Hz – 2.5 kHz stays quiet)
+      const D = 1.5;
+      const tube = v.filt('bandpass', [[0, 130], [0.25, 175, 'e'], [D, 120, 'e']], 6);
+      const tube2 = v.filt('bandpass', [[0, 260], [0.25, 340, 'e'], [D, 240, 'e']], 7);
+      const fl = v.flutter(24, 0.65, { d: D, base: 0.5, to: tube });
+      v.noise('brown', { g: hold(1.1, 0.12, 0.8, D), to: fl });
+      const fl2 = v.flutter(24, 0.6, { d: D, base: 0.5, to: tube2 });
+      v.noise('brown', { g: hold(0.7, 0.12, 0.8, D), to: fl2 });
+      const lp = v.filt('lowpass', [[0, 180], [0.2, 300, 'e'], [D, 150, 'e']], 1.2);
+      v.tone('sawtooth', [[0, 40], [0.25, 62, 'e'], [D, 34, 'e']], { g: hold(0.32, 0.1, 0.9, D), to: v.drive(3, { to: lp, trim: 0.8 }) });
+      heartbeat(v, 0, 0.9);
+      heartbeat(v, 0.75, 0.6);
+      for (let i = 0; i < 34; i++) crack(v, 0.04 + i * 0.04 + v.r(0, 0.02), 0.42 * (1 - i / 40), { hp: 3500, lp: 7000, dec: 0.004 });
     },
   },
+
   /** The cloak slams over the shoulders: the landing ash shock (summon finale, played by the cinematic). */
   ashenLand: {
     cap: 1,
@@ -241,7 +253,9 @@ export const V3_ASHEN_RECIPES = {
     cap: 1,
     gap: 0.1,
     verb: 0,
-    duck: 0.95,
+    // the deepest duck the shared engine gives (applyDuck: depth = 1 − 0.5 × duck × volume ≥ 0.5, −6 dB);
+    // ashenLub re-anchors it 40 ms later so the music stays down through the suck (critic r1 #10)
+    duck: 1,
     play(v) {
       v.noise('brown', { g: [[0, 0], [0.015, 0.03], [0.05, 0.0001, 'e']], to: v.filt('lowpass', 300, 0.7) });
     },
@@ -251,6 +265,7 @@ export const V3_ASHEN_RECIPES = {
     cap: 1,
     gap: 0.1,
     verb: 0,
+    duck: 1,
     play(v) {
       thump(v, 0, 62, 46, 0.35, 0.05, { drive: 1.5 });
       thump(v, 0, 124, 92, 0.15, 0.04, { drive: 2.5 });
@@ -274,15 +289,19 @@ export const V3_ASHEN_RECIPES = {
     verb: 0.4,
     duck: 0.8,
     play(v) {
-      thump(v, 0, 90, 34, 0.7, 0.45, { drive: 2.5 });
-      puff(v, 0, 0.6, 0.5, 2600, { kind: 'brown', att: 0.002 });
-      v.noise('brown', { g: [[0, 0], [0.002, 0.25], [0.9, 0.0001, 'e']], to: v.filt('lowpass', [[0, 300], [0.03, 6000, 'e'], [0.9, 800, 'e']], 0.9) });
-      crack(v, 0.002, 0.5, { hp: 900, lp: 5000, n: 3, gap: 0.009, dec: 0.02 });
-      // the fire bed, then the sizzle
-      v.noise('brown', { t: 0.02, g: [[0, 0], [0.03, 0.2], [1.0, 0.0001, 'e']], to: v.filt('bandpass', 300, 1.2, { t: 0.02 }) });
-      for (let i = 0; i < 8; i++) crack(v, 0.13 + i * 0.06 + v.r(0, 0.03), 0.12 * (1 - i * 0.09), { hp: 2500, lp: 7000, dec: 0.006 });
+      thump(v, 0, 90, 34, 0.5, 0.45, { drive: 2.5 });
+      // the whomp's floor: a 55 → 28 Hz sine under it (the ash bank's weight; the wyrm's impact has none)
+      thump(v, 0, 55, 28, 0.7, 0.7);
+      puff(v, 0, 0.6, 0.5, 600, { kind: 'brown', att: 0.002 });
+      // the low-pass slams open — to 3 kHz only (r2, SE-4 vs wyrmBreathImpact: the glassy top stays the wyrm's)
+      v.noise('brown', { g: [[0, 0], [0.002, 0.25], [0.9, 0.0001, 'e']], to: v.filt('lowpass', [[0, 250], [0.03, 1200, 'e'], [0.9, 300, 'e']], 0.9) });
+      crack(v, 0.002, 0.7, { hp: 5000, lp: 10000, n: 4, gap: 0.009, dec: 0.02 });
+      // the fire bed, then the ember sizzle (3.5–7 kHz)
+      v.noise('brown', { t: 0.02, g: [[0, 0], [0.03, 0.2], [1.0, 0.0001, 'e']], to: v.filt('bandpass', 260, 1.2, { t: 0.02 }) });
+      for (let i = 0; i < 14; i++) crack(v, 0.1 + i * 0.045 + v.r(0, 0.02), 0.5 * (1 - i * 0.05), { hp: 5500, lp: 10000, dec: 0.006 });
     },
   },
+
   /** The fuse back: 4 shrinking whomps from the target toward the attacker. */
   ashenFuse: {
     cap: 2,
@@ -339,11 +358,15 @@ export const V3_ASHEN_RECIPES = {
     verb: 0.35,
     duck: 0.35,
     play(v) {
-      sweep(v, 0, 0.6, [3000, 1800, 700], 0.1, { kind: 'pink' });
-      for (let i = 0; i < 20; i++) crack(v, i * 0.025 + v.r(0, 0.01), 0.07 * (1 - i * 0.03), { hp: 3500, lp: 8000, dec: 0.004 });
-      puff(v, 0.1, 0.25, 0.5, 700, { kind: 'brown' });
+      // r2: +7 dB (critic r1 #9: the collapse sat at about −40 dB) and re-voiced away from magusCollapse
+      // (SE-4): a sand-and-ember sizzle up top and a soft low slump, the middle left empty
+      sweep(v, 0, 0.6, [6000, 4500, 3200], 0.25, { kind: 'white', q: 2 });
+      for (let i = 0; i < 22; i++) crack(v, i * 0.025 + v.r(0, 0.01), 0.16 * (1 - i * 0.03), { hp: 3500, lp: 8000, dec: 0.004 });
+      puff(v, 0.1, 0.6, 0.5, 260, { kind: 'brown' });
+      thump(v, 0.12, 80, 40, 0.3, 0.25, { drive: 1.5 });
     },
   },
+
   /** The heart drops into the heap. */
   ashenCoreDrop: {
     cap: 1,
@@ -397,14 +420,15 @@ export const V3_ASHEN_RECIPES = {
     verb: 0.35,
     duck: 0.4,
     play(v) {
-      sweep(v, 0, 1.2, [200, 700, 1500], 0.08, { kind: 'brown', peakAt: 0.5 });
+      // r2 (SE-4 vs magusReviveGather): the riser stays low, the gathering embers crackle up top
+      sweep(v, 0, 1.2, [150, 400, 600], 0.08, { kind: 'brown', peakAt: 0.5 });
       ribs(v, 0.1, 1.0, 0.12);
-      for (let i = 0; i < 24; i++) {
-        const t = 1.2 * Math.sqrt(i / 24);
-        crack(v, t, 0.04 + i * 0.002, { hp: 3000, lp: 8000, dec: 0.004 });
+      for (let i = 0; i < 30; i++) {
+        const t = 1.2 * Math.sqrt(i / 30);
+        crack(v, t, 0.18 + i * 0.006, { hp: 3500, lp: 7500, dec: 0.004 });
       }
       for (const t of [0.15, 0.32, 0.62, 0.79]) {
-        thump(v, t, 56, 42, 0.3, 0.14, { drive: 1.5 });
+        thump(v, t, 50, 36, 0.45, 0.18, { drive: 1.5 });
         thump(v, t, 112, 84, 0.12, 0.1, { drive: 2.5 });
         knock(v, t, 0.12, 0.06);
       }
@@ -418,7 +442,9 @@ export const V3_ASHEN_RECIPES = {
     duck: 0.5,
     play(v) {
       heartbeat(v, 0, 1.4);
-      puff(v, 0.02, 0.2, 0.3, 1800, { kind: 'brown' });
+      puff(v, 0.02, 0.2, 0.3, 500, { kind: 'brown' });
+      // r2 (SE-4 vs magusReviveSettle): the re-lit plates flare as a dry ember burst
+      crack(v, 0.01, 0.3, { hp: 3500, lp: 7500, n: 8, gap: 0.02, dec: 0.006 });
     },
   },
 } satisfies Record<string, Recipe>;

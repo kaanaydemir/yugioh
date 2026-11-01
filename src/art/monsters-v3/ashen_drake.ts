@@ -16,6 +16,8 @@
 import type { DistinctionCard } from '../bodyplans/types';
 import type { AnyMonsterAnim, MonsterArt } from '../types';
 import { toMonsterArt, type ArtShell } from '../rigkit';
+import { lightOf } from '../rigkit/light';
+import type { PixelCanvas } from '../pixel';
 import { AX, GY, H, W } from './ashen_drake-gbuf';
 import { cloakPose, drawAshen, type AshenPose } from './ashen_drake-rig';
 import { rig } from './ashen_drake-rig';
@@ -80,6 +82,19 @@ export const ASHEN_BUILD: readonly AshenBuildFrame[] = Object.freeze(
   }),
 );
 export { ASHEN_ORDER, plateRank };
+
+/**
+ * A frame of `anim` drawn with only the first `seated` plates of the cloak (ASHEN_ORDER), the last 8 of them
+ * still welding (fire2 seams): the strike's re-seat after a lost / tied clash, where the bare-boned drake
+ * takes the backlash and its cloak flies home plate by plate instead of popping on in one frame
+ * (strikes-a/ashen_drake.ts, critic r1 #3). `seated` ≥ 44 = the frame as the sheet draws it.
+ */
+export function drawAshenSeated(p: PixelCanvas, anim: AnyMonsterAnim, frame: number, seated: number, lightFrom: 'left' | 'right' = 'left'): void {
+  const P0 = framePose(anim, frame);
+  const s = Math.max(0, Math.min(44, Math.round(seated)));
+  const P: AshenPose = s >= 44 ? P0 : { ...P0, seated: Math.min(P0.seated, s), weld: Math.max(0, s - 8) };
+  drawAshen(p, P, lightOf({ lightFrom }));
+}
 
 const shell: ArtShell<AshenPose> = {
   id: 'ashen_drake',

@@ -97,6 +97,31 @@ export function veilSlots(W: number, H: number, wall = false): VeilSlot[] {
 }
 
 /**
+ * The swallowing veil over a monster (critic r1 #2): a LATTICE of ash cells climbing the body to `H`
+ * (60–70 % of its bounding box), `VW` wide at the base and narrowing up. Each cell is a billow with a 1-px
+ * ink seam round it (the caller draws it), so grey ash reads against grey stone targets; the lower rows are
+ * packed (seams only), the top two rows leave open gaps the body shows through (EF-2). Rows step in brick
+ * order; `row` 0 = the top third (it burns off first) … 2 = the base third.
+ */
+export function latticeSlots(VW: number, H: number): VeilSlot[] {
+  const out: VeilSlot[] = [];
+  const rows = Math.max(3, Math.round(H / 7));
+  for (let j = 0; j < rows; j++) {
+    const k = rows === 1 ? 0 : j / (rows - 1);
+    const r = Math.max(3, Math.round(6 - 2.5 * k));
+    const span = VW * (1 - 0.5 * k);
+    const gap = j >= rows - 2 ? 3 : 0;
+    const n = Math.max(1, Math.round(span / (2 * r + gap)));
+    for (let i = 0; i < n; i++) {
+      const u = n === 1 ? 0 : i / (n - 1) - 0.5;
+      const x = u * (span - 2 * r) + (j % 2 ? 2 : -1);
+      out.push({ x: Math.round(x), h: Math.round(k * (H - r * 1.6)), r, z: 3 - k, row: k > 0.62 ? 0 : k > 0.3 ? 1 : 2 });
+    }
+  }
+  return out.sort((a, b) => a.z - b.z || b.h - a.h);
+}
+
+/**
  * Flame tongues on a burning puff's top: 2-px columns of fire2 / fire3 with a fire4 tip, jagged heights
  * re-rolled every 2 frames (stepped, never boiling every frame). `heat` 0..1 scales them.
  */

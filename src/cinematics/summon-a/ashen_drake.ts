@@ -21,9 +21,10 @@ import { ASHEN_BUILD } from '../../art/monsters-v3/ashen_drake';
 import { DEPTH, LOOK_V3, type XY } from '../../view/layout';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { atFrame, atMark, fade, panAt, play, start } from '../_v3/sound';
-import { Sparks, layer } from '../strikes-a/_kit';
+import { Sparks, currentPixels, layer } from '../strikes-a/_kit';
 import type { Px } from '../../vfx/combat';
-import { RR, bg, clamp, holdFrame, lerp, lightFlash, lightPool, onFrame, playFrom, signatureSummon, untilFrame, type Stage } from './_kit';
+import { RR, bg, clamp, freeze, holdFrame, lerp, lightFlash, lightPool, onFrame, playFrom, signatureSummon, untilFrame, type Stage } from './_kit';
+import { shake } from '../../vfx/core';
 
 const STEP = 1000 / 60;
 
@@ -204,7 +205,6 @@ async function ashenRiseV3(S: Stage): Promise<void> {
       const rw = Math.round(w * (0.7 + 0.3 * Math.sin(i * 0.9 + el * 0.004)));
       const ry = Math.max(2, Math.round(rw * 0.28));
       const ph = (el * 0.012 * S.dir + i * 1.3) % (Math.PI * 2);
-      const col = [PAL.stone1, PAL.stone2, PAL.stone3][(i + Math.floor(el / 80)) % 3];
       // a continuous 2-px ribbon: the front arc in front of the body, the back arc behind it; tone bands
       // and one torn gap travel round it with the spin (whole-pixel steps), two embers ride each ribbon
       for (let x = -rw; x <= rw; x++) {
@@ -216,14 +216,20 @@ async function ashenRiseV3(S: Stage): Promise<void> {
           const band = Math.floor((u / (Math.PI * 2)) * 7);
           if (band >= 5) continue; // the torn gap
           const front = side > 0;
-          const tone = front ? [PAL.stone3, PAL.stone2, PAL.stone2, PAL.stone1, PAL.stone2, PAL.stone1][band] : band < 3 ? PAL.stone1 : PAL.stone0;
           const L = front ? tor : back;
           const yy = y + side * dy;
-          L.rect(home.x + x, yy, 1, front ? 1 : 2, tone);
-          if (band === 2 && i % 3 === 0 && x % 5 === 0) L.dot(home.x + x, yy, front ? PAL.fire3 : PAL.fire1);
+          const X = home.x + x;
+          if (front) {
+            // a 2-px band: the lit top (stone3 on the leading bands) over a stone1 / stone0 underside
+            L.dot(X, yy, band < 2 ? PAL.stone3 : PAL.stone2).dot(X, yy + 1, band < 3 ? PAL.stone1 : PAL.stone0);
+          } else L.rect(X, yy, 1, 2, band < 3 ? PAL.stone1 : PAL.stone0);
+          // fire3 embers riding the ribbons (a fire4 head on the front arc)
+          if (band === 2 && i % 2 === 0 && ((x + i * 3) & 3) === 0) {
+            L.dot(X, yy, front ? PAL.fire3 : PAL.fire2);
+            if (front) L.dot(X + S.dir, yy, PAL.fire4);
+          }
         }
       }
-      void col;
     }
     // the plates in flight (2×2 / 2×3: stone2 with a stone1 crease, a stone3 lit edge)
     for (let i = flies.length - 1; i >= 0; i--) {
@@ -235,7 +241,9 @@ async function ashenRiseV3(S: Stage): Promise<void> {
       }
       const x = Math.round(lerp(q.from.x, q.to.x, t));
       const y = Math.round(lerp(q.from.y, q.to.y, t) - Math.sin(t * Math.PI) * 6);
-      tor.rect(x, y, 2, q.big ? 3 : 2, PAL.stone2).rect(x, y, 2, 1, PAL.stone3).rect(x, y + (q.big ? 2 : 1), 2, 1, PAL.stone1);
+      // ≥ 2×3 with a 1-px ink outline so they read at 1× against the floor and the storm
+      const h = q.big ? 4 : 3;
+      tor.rect(x - 1, y - 1, 4, h + 2, PAL.ink).rect(x, y, 2, h, PAL.stone2).rect(x, y, 2, 1, PAL.stone3).rect(x, y + h - 1, 2, 1, PAL.stone1);
     }
     // ash grains rain off the skirt onto the floor
     if (Math.random() < 0.5) grains.push({ x: home.x + Math.round(RR(-w, w)), y: home.y + Math.round(RR(-3, 3)), age: 0 });
@@ -273,17 +281,55 @@ async function ashenRiseV3(S: Stage): Promise<void> {
   if (S.cutIn) {
     await untilFrame(u, 'summon', holdF);
     pool.setIntensity(0.6, 120);
+    // the spread is never a still under the band: ash flakes peel off the wing hems and embers lift out
+    // of the plates (sampled from the shown frame's own opaque pixels), the floor pool beats twice
+    let holding = true;
+    const hold = new Sparks(sc, S.depth + 0.3);
+    let hAcc = 0;
+    let beats = 0;
+    onFrame(sc, (dt, el) => {
+      if (!holding || !live()) {
+        hold.release();
+        return false;
+      }
+      hAcc += dt;
+      const b = Math.floor(el / 170);
+      if (b !== beats && b <= 4) {
+        beats = b;
+        pool.setIntensity(b % 2 ? 0.85 : 0.6, 40);
+      }
+      if (hAcc < 45) return true;
+      hAcc = 0;
+      const pc = currentPixels(u).pc;
+      for (let tries = 0, made = 0; tries < 30 && made < 2; tries++) {
+        const fx0 = Math.floor(RR(4, pc.w - 4));
+        const fy0 = Math.floor(RR(6, Math.min(pc.h - 30, 64)));
+        if (!pc.isOpaque(fx0, fy0) || pc.isOpaque(fx0, fy0 + 1)) continue; // a lower edge (a hem)
+        const w = fpt(u, fx0, fy0);
+        const ember = made === 1 && Math.random() < 0.6;
+        hold.add({ x: w.x, y: w.y + 1, vx: RR(-10, 10), vy: ember ? RR(-30, -14) : RR(4, 16), ay: ember ? -10 : 40, drag: 1, life: RR(320, 520), colors: ember ? [PAL.fire4, PAL.fire3, PAL.fire2, PAL.fire1] : [PAL.stone3, PAL.stone2, PAL.stone1], shape: 'px', fadeAt: 1 });
+        made++;
+      }
+      return true;
+    });
     await S.climax();
+    holding = false;
     if (live()) bg(playFrom(u, 'summon', holdF + 1));
   }
 
-  // ---- f12: the cloak slams down — the landing ash shock
-  await untilFrame(u, 'summon', SLAM_F);
+  // ---- f10: the cloak slams down — the landing ash shock. It fires on f10, the frame the cloaks come down
+  // over the shoulders (the picture closes there, filmed: f11 / f12 only weld the seams), and everything is
+  // drawn on that same game frame: our own ash ring and its 8 billows, the stone dust burst and the fire
+  // flash under the chest, all ABOVE the summoned card lying on the tile (the kit's finale ring sits under
+  // it on TILE_FX and only showed once it had outgrown the card, ~160 ms late: critic r1 #1)
+  await untilFrame(u, 'summon', SLAM_F - 2);
   if (live()) {
-    S.finale({ ring: 92, ramp: RAMPS.stone, freezeMs: 50, shake: 3, playerRing: false, sfx: null });
     play('ashenLand', { volume: 0.95, pan });
+    ashShock(S);
     void lightFlash(sc, home.x, home.y - 20, PAL.fire2, 30, 300, { floorY: home.y, intensity: 0.8 });
-    billowRing(S);
+    bg(shake(sc, 280, 3));
+    bg(freeze(sc, 50));
+    bg(u.badge.pop());
     greyDust(S);
   }
   await untilFrame(u, 'summon', SPILL_F);
@@ -302,24 +348,59 @@ async function ashenRiseV3(S: Stage): Promise<void> {
   bg(S.wait(300).then(() => (gone = true)));
 }
 
-/** 8 ash billows riding the finale's shockwave front (debris on the one ring, never a second ring). */
-function billowRing(S: Stage): void {
-  const px = lay(S, DEPTH.TILE_FX + 7);
+/**
+ * The landing ash shock (one ring, never a second): from the slam frame on, an iso ring of packed ash races
+ * out along the floor (a stone3 lit leading lip, a stone2 body, a stone1 wake, stone0 under it), 8 ash
+ * billows (3-band discs, r 4 → 2) riding its front, a stone dust burst thrown off the feet and a fire splash
+ * under the chest (fire3 → fire2 → fire1 in stepped frames). Frame 0 is drawn synchronously, so the floor
+ * answers on the very frame the cloak lands, through the 50 ms freeze.
+ */
+function ashShock(S: Stage): void {
+  const px = lay(S, DEPTH.SHADOW - 1);
   const home = S.home;
-  let el = 0;
-  onFrame(S.scene, (dt) => {
-    el += dt;
+  const MS = 560;
+  const R0 = 13;
+  const R1 = 50;
+  const sp = new Sparks(S.scene, DEPTH.SHADOW - 1);
+  for (let i = 0; i < 14; i++) {
+    const a = (i / 14) * Math.PI * 2 + RR(-0.2, 0.2);
+    const v = RR(70, 120);
+    sp.add({ x: home.x + Math.round(Math.cos(a) * 8), y: home.y + Math.round(Math.sin(a) * 3), vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.5 - RR(30, 70), ay: 260, drag: 2.2, life: RR(260, 420), colors: i % 2 ? [PAL.stone3, PAL.stone2, PAL.stone1] : [PAL.stone2, PAL.stone1], shape: i % 3 ? 'sq' : 'px', fadeAt: 1, floor: home.y + 6, bounce: 0 });
+  }
+  sp.release();
+  onFrame(S.scene, (_dt, el) => {
     px.clear();
-    if (el > 560) return false;
-    const t = el / 560;
-    const r = 92 * (1 - (1 - t) * (1 - t)) * 0.5;
+    if (el > MS) return false;
+    const t = el / MS;
+    const e = 1 - (1 - t) * (1 - t) * (1 - t);
+    const r = Math.round(R0 + (R1 - R0) * e);
+    const ry = Math.max(3, Math.round(r * 0.5));
+    // the ring: thick first, thinning as it runs; whole-pixel stepped tones (no alpha)
+    const th = Math.max(1, Math.round(4 * (1 - t)));
+    if (t < 0.85) {
+      px.ellipseRing(home.x, home.y + 1, r + 1, ry + 1, 1, t < 0.6 ? PAL.stone0 : PAL.stone1);
+      px.ellipseRing(home.x, home.y, r, ry, th, t < 0.5 ? PAL.stone2 : PAL.stone1);
+      px.ellipseRing(home.x, home.y - 1, r, ry, 1, t < 0.3 ? PAL.stone3 : t < 0.6 ? PAL.stone2 : PAL.stone1);
+    }
+    // the fire splash under the chest (the cloak landing on the embers): 3 stepped frames bright, then dull
+    const fk = Math.floor(el / (1000 / 60));
+    if (fk <= 6) {
+      const fr = fk <= 2 ? 10 : 8;
+      px.ellipse(home.x, home.y, fr, Math.round(fr * 0.4), fk <= 2 ? PAL.fire2 : PAL.fire1);
+      if (fk <= 2) px.ellipse(home.x, home.y - 1, 5, 2, PAL.fire3).run(home.y - 1, home.x - 1, home.x + 1, PAL.fire4);
+      else if (fk <= 4) px.ellipse(home.x, home.y, 4, 1, PAL.fire2);
+    }
+    // 8 billows riding the front, lit cap up-left, falling behind and shrinking as the ring runs out
     for (let i = 0; i < 8; i++) {
       const a = (i / 8) * Math.PI * 2 + 0.2;
-      const x = Math.round(home.x + Math.cos(a) * r);
-      const y = Math.round(home.y + Math.sin(a) * r * 0.5);
-      const rx = Math.max(1, Math.round(5 * (1 - t)));
-      const col = t < 0.35 ? PAL.stone3 : t < 0.7 ? PAL.stone2 : PAL.stone1;
-      px.ellipse(x, y - 1, rx, Math.max(1, rx * 0.55), PAL.stone1).ellipse(x, y - 2, Math.max(1, rx - 1), Math.max(1, rx * 0.4), col);
+      const rr = r - 1 - (i % 2);
+      const x = Math.round(home.x + Math.cos(a) * rr);
+      const y = Math.round(home.y + Math.sin(a) * rr * 0.5);
+      const br = Math.max(1, Math.round(4 * (1 - t * 0.8)));
+      const lift = Math.round(br * 0.8) + Math.round(Math.sin(t * Math.PI) * 3);
+      px.disc(x, y - lift, br, t < 0.7 ? PAL.stone1 : PAL.stone0);
+      if (br >= 2) px.disc(x, y - lift - 1, br - 1, t < 0.55 ? PAL.stone2 : PAL.stone1);
+      if (br >= 2) px.rect(x - br + 1, y - lift - br, Math.max(1, br), 1, t < 0.4 ? PAL.stone3 : PAL.stone2);
     }
     return true;
   });
@@ -327,7 +408,7 @@ function billowRing(S: Stage): void {
 
 /** The 1 s grey dust layer on the tile and its four neighbours: sparse 2×1 clumps, stone1 → night2 → gone. */
 function greyDust(S: Stage): void {
-  const px = lay(S, DEPTH.TILE_FX + 4);
+  const px = lay(S, DEPTH.SHADOW - 1);
   const pts: XY[] = [];
   for (let i = 0; i < 26; i++) pts.push({ x: S.home.x + Math.round(RR(-60, 60)), y: S.home.y + Math.round(RR(-26, 26)) });
   let el = 0;
