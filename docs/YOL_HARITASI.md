@@ -62,3 +62,5 @@ Her şerit kendi dalına push eder; ana oturum dalları `claude/yugioh-card-game
 Haftalık kullanım %20'ye düştü. SAHİP KARARI: yalnız A, B, C şeritleri devam; D, E, F DURAKLATILDI
 (işlerini push edip kendi oturum-*.md dosyalarına devam talimatı yazdılar). Haftalık sıfırlamadan sonra
 D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (kapılar + kart başına commit).
+- D (c64b368), E (fda4f8e), F (f776d8e) duraklatıldı; devam talimatları oturum-d/e/f.md'de.
+- UYARI: claude/kart-f dalında shield_titan ve hourglass_imp v3 dışlama listesinden çıkarılmış ama eleştiri/kapılardan geçmedi → F devam edip kartlar geçmeden bu dal ana dala BİRLEŞTİRİLMEZ.
