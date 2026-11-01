@@ -165,24 +165,37 @@ const ATTACK_HOLDS = [70, 60, 60, 140, 50, 60, 100, 110, 120, 130];
 // to the pin on the home tile is the cinematic's (src/cinematics/kartc/kite_fencer.ts, drawn in world space).
 
 const PIN: Partial<Pose> = { pinX: AX - 14, pinY: GY };
+// The cloak's four stamped states (§2.4 "Frame and rig"): folded along the spine / half / OPEN / BILLOWED — the open
+// and billowed maps are much wider than the body (ko 1.45–1.6), the panel edges bulge (kbl 4–5) and the cross spar
+// bows back under the wind (rig paintKite); the spill half-collapses it (ko 0.6, edges sagging) and it glides half open.
+const OPEN: Partial<Pose> = { ko: 1.42, kh: 1.04, kbl: 3 };
+const BILLOWED: Partial<Pose> = { ko: 1.58, kh: 1.06, kbl: 5 };
+const HALF: Partial<Pose> = { ko: 0.78, kh: 0.94, kbl: 0 };
+const SPILL: Partial<Pose> = { ko: 0.6, kh: 0.9, kbl: -2 };
 const SPECIAL_KEYS: Partial<Pose>[] = [
   { lamp: 2 },
-  // charge: the panel flares, the rear arm flung up, the cloak spreads open and billows, the string goes taut
-  { lamp: 3, fx: -10, fy: -14, ko: 1.05, kbl: 1, ka: -5, sink: 2 },
-  { lamp: 3, fx: -6, fy: -17, ko: 1.12, kbl: 2, ky: -10, ka: -3, sink: 2, smode: 1, svib: 1, ...PIN, rlift: 1 },
-  { lamp: 3, fx: -5, fy: -18, ko: 1.18, kbl: 3, ky: -11, ka: -2, sink: 3, smode: 1, svib: -1, ...PIN, rlift: 1, hx: 9, hy: 2, ba: -8 },
-  { lamp: 3, fx: -4, fy: -18, ko: 1.2, kbl: 3, ky: -12, ka: -1, sink: 4, lean: -1, smode: 1, svib: 1, ...PIN, rlift: 1, hx: 8, hy: 3, ba: -4 },
-  // rise: lifts off, hanging under the kite (the kite rides above and behind his head), legs dangling and trailing
-  { lamp: 2, fx: -3, fy: -16, ko: 1.2, kh: 0.86, kbl: 3, kx: -8, ky: -13, ka: 4, sink: 0, lift: 2, f1x: -6, f1y: -2, f2x: 2, f2y: -1, smode: 3, rlift: 2, hx: 9, hy: 4, ba: 0 },
-  { lamp: 2, fx: -2, fy: -16, ko: 1.18, kh: 0.86, kbl: 2, kx: -8, ky: -12, ka: 8, sink: 0, lift: 3, f1x: -9, f1y: -3, f2x: 3, f2y: -2, smode: 3, rlift: 2, hx: 9, hy: 5, ba: 2, lean: -1 },
-  // the pendulum swing: body swung back, rapier low and horizontal, the curved trail grows
-  { lamp: 2, fx: -2, fy: -16, ko: 1.18, kh: 0.86, kbl: 2, kx: -8, ky: -12, ka: 14, sink: 0, lift: 3, lean: -2, f1x: -11, f1y: -3, f2x: 1, f2y: -3, smode: 3, rlift: 2, hx: 9, hy: 6, ba: 6, arc: 0.35 },
-  { lamp: 2, fx: -3, fy: -16, ko: 1.18, kh: 0.86, kbl: 2, kx: -8, ky: -12, ka: 4, sink: 0, lift: 3, lean: 2, f1x: -7, f1y: -3, f2x: 2, f2y: -2, smode: 3, rlift: 2, hx: 12, hy: 4, ba: 0, arc: 0.7 },
-  // release / contact at the lowest point: the lateral cut
-  { lamp: 2, fx: -3, fy: -16, ko: 1.14, kh: 0.86, kbl: 2, kx: -8, ky: -12, ka: -6, sink: 0, lift: 3, lean: 3, f1x: -3, f1y: -3, f2x: 4, f2y: -2, smode: 3, rlift: 2, hx: 13, hy: 3, ba: -4, arc: 1, smear: 1 },
-  // exit: the arc carries on up, the wind spills, the cloak collapses, the panel goes out
-  { lamp: 2, fx: -6, fy: -14, ko: 0.85, kh: 0.9, kbl: -1, kx: -8, ky: -12, ka: -14, sink: 0, lift: 3, lean: 2, f1x: 0, f1y: -1, f2x: -4, f2y: 1, smode: 3, rlift: 1, hx: 10, hy: -4, ba: -38 },
-  { lamp: 1, fx: -10, fy: -10, ko: 0.9, kbl: -1, ky: -10, ka: -16, sink: 0, lift: 1, lean: 1, f1x: 1, f1y: 0, f2x: -2, f2y: 0, smode: 0, rlift: 1, hx: 10, hy: -1, ba: -22 },
+  // charge: the panel flares, the cloak starts to fill, the rear arm swings up
+  { lamp: 3, fx: -8, fy: -15, ko: 1.15, kbl: 2, ka: -5, ky: -10, sink: 2 },
+  // the rear arm FLUNG up above the head, the cloak spreads fully open, the string goes taut to its pin
+  { lamp: 3, fx: -3, fy: -21, ...OPEN, kx: -8, ky: -11, ka: -3, sink: 2, smode: 1, svib: 1, ...PIN, rlift: 1, hx: 9, hy: 2, ba: -8 },
+  // the wind fills it: BILLOWED (the "vump"), he sinks into the pull
+  { lamp: 3, fx: -2, fy: -21, ...BILLOWED, kx: -7, ky: -12, ka: -2, sink: 3, smode: 1, svib: -1, ...PIN, rlift: 2, hx: 8, hy: 3, ba: -4 },
+  { lamp: 3, fx: -2, fy: -20, ...BILLOWED, kx: -7, ky: -12, ka: -1, sink: 4, lean: -1, smode: 1, svib: 1, ...PIN, rlift: 2, hx: 8, hy: 3, ba: -2 },
+  // rise: lifts off, hanging under the open kite (the rear hand on the spar), legs dangling and trailing
+  { lamp: 2, fx: -4, fy: -19, ...OPEN, kbl: 4, kx: -5, ky: -14, ka: 4, sink: 0, lift: 1, f1x: -5, f1y: -2, f2x: 1, f2y: -1, smode: 3, rlift: 2, hx: 9, hy: 4, ba: 10 },
+  { lamp: 2, fx: -4, fy: -19, ...OPEN, kbl: 4, kx: -5, ky: -14, ka: 8, sink: 0, lift: 1, f1x: -8, f1y: -3, f2x: 2, f2y: -2, smode: 3, rlift: 2, hx: 8, hy: 4, ba: 14, lean: -1 },
+  // the top of the swing: leaning back, the feet trailing behind, the rapier cocked up over the rear shoulder
+  { lamp: 2, fx: -4, fy: -19, ...OPEN, kbl: 4, kx: -4, ky: -14, ka: 12, sink: 0, lift: 1, lean: -2, chy: 0, f1x: -11, f1y: -4, f2x: -5, f2y: -3, smode: 3, rlift: 2, hx: 6, hy: -7, ba: -78 },
+  // the downswing: the body tips forward along the arc, the feet trail far behind, the blade comes over
+  { lamp: 2, fx: -4, fy: -18, ...OPEN, kbl: 3, kx: -5, ky: -13, ka: 2, sink: 0, lift: 1, lean: 2, f1x: -12, f1y: -2, f2x: -8, f2y: -1, smode: 3, rlift: 3, hx: 10, hy: -5, ba: -38 },
+  // CONTACT at the lowest point: the legs swing through under him, the blade SWEPT down across the body (top-back →
+  // bottom-front), a 2-px smear behind the torso
+  { lamp: 2, fx: -4, fy: -17, ...OPEN, kbl: 2, kx: -6, ky: -12, ka: -8, sink: 0, lift: 1, lean: 3, f1x: -2, f1y: -2, f2x: 3, f2y: -2, smode: 3, rlift: 2, hx: 12, hy: 0, ba: 46, smear: 1 },
+  // exit: the arc carries on up, the WIND SPILLS — the cloak half-collapses and flaps, the blade follows through
+  { lamp: 2, fx: -9, fy: -12, ...SPILL, kx: -8, ky: -11, ka: -24, sink: 0, lift: 1, lean: 2, f1x: 3, f1y: -2, f2x: 5, f2y: 0, smode: 3, rlift: 1, hx: 9, hy: 4, ba: 74 },
+  // the braking glide home, the cloak half open (the panel: gold3, then out)
+  { lamp: 1, fx: -10, fy: -10, ...HALF, ky: -10, ka: -14, sink: 0, lift: 1, lean: 1, f1x: 1, f1y: 0, f2x: -2, f2y: 0, smode: 0, rlift: 1, hx: 10, hy: -1, ba: -22 },
+  // landing: a knee dip, the cloak drops back onto his back
   { lamp: 0, fx: -12, fy: -8, ko: 1, kbl: -1, ky: -9, ka: -7, sink: 4, lean: -1, hx: 9, hy: 2, ba: -10, sph: -1 },
   {},
 ];
@@ -213,11 +226,13 @@ const ROAR_HOLDS = [70, 90, 80, 140, 120, 90, 100, 110, 120];
 
 const HIT_KEYS: Partial<Pose>[] = [
   { hdx: -1, hx: 10, hy: 1 },
-  { lean: -2, chy: 1, hdx: -1, hx: 8, hy: 3, ba: 4, ka: 8, kx: -9, ky: -10, sink: 2 },
-  // bent at the waist, the cloak flaps forward over him
-  { lean: 0, chy: 2, hdx: 1, hdy: 1, hx: 8, hy: 4, ba: 14, ka: 30, kx: -5, ky: -12, kbl: 1, sink: 2, fx: -11, fy: -5 },
-  { lean: 0, chy: 1, hx: 9, hy: 3, ba: 2, ka: 16, kx: -8, ky: -11, kbl: 1, sink: 2, fx: -12, fy: -7 },
-  { lean: 0, hx: 10, hy: 2, ba: -8, ka: 4, kx: -9, ky: -10, sink: 1 },
+  // knocked back a step: the cloak starts to flip forward
+  { lean: -3, chy: 1, hdx: -1, hx: 7, hy: 3, ba: 6, ka: 30, kx: -6, ky: -13, kbl: 2, sink: 2, fx: -10, fy: -11 },
+  // bent at the waist (4 px), head down, the cloak FLIPPED forward over his head
+  { lean: 3, chy: 4, hdx: 1, hdy: 2, hx: 6, hy: 6, ba: 32, ka: 72, kx: -1, ky: -14, kbl: 2, sink: 3, fx: -9, fy: -4 },
+  { lean: 1, chy: 2, hdy: 1, hx: 8, hy: 3, ba: 6, ka: 40, kx: -4, ky: -13, kbl: 1, sink: 2, fx: -12, fy: -7 },
+  // the body is back in stance; the cloak still flaps one beat behind
+  { lean: 0, hx: 10, hy: 2, ba: -8, ka: 14, kx: -8, ky: -10, kbl: -1, sink: 1 },
   {},
 ];
 export function hitPose(f: number): Pose {
@@ -258,6 +273,9 @@ const MAGIC_HOLDS = [50, 60, 70, 90, 90, 100, 110, 120];
 // ------------------------------------------------------------------ death (10 frames): string snaps, cloak flies, cloth scrap
 
 const SWORD_FLOOR: Partial<Pose> = { sword: 1, swx: AX - 3, swy: GY - 1, swa: 0 };
+/** The rapier's bounce on the tile: up 2 px, down, up 1 px, down (each landing is a clatter tick). */
+const SWORD_UP2: Partial<Pose> = { ...SWORD_FLOOR, swy: GY - 3, swa: -3 };
+const SWORD_UP1: Partial<Pose> = { ...SWORD_FLOOR, swy: GY - 2, swa: -1 };
 const DEATH_KEYS: Partial<Pose>[] = [
   HEAVY_KEYS[0],
   // the string pulls taut: a straight bright line, vibrating
@@ -266,18 +284,21 @@ const DEATH_KEYS: Partial<Pose>[] = [
   { lean: -2, chy: 2, hdx: -1, hdy: 1, sink: 4, hx: 6, hy: 5, ba: 40, ka: -20, ky: -13, kbl: 3, smode: 2, svib: 1, pinX: AX - 22, pinY: GY, fx: -10, fy: -6, rlift: 2 },
   // the rapier drops; the cloak tears off his shoulders
   { lean: -1, chy: 3, hdy: 2, sink: 5, hx: 5, hy: 7, sword: 1, swx: AX + 8, swy: GY - 5, swa: -58, kmode: 2, kx: AX - 8, ky: 21, ka: -26, ko: 1.05, kbl: 3, smode: 3, fx: -8, fy: -2, rlift: 2 },
-  // dissolve: the cloak flies up and away (the cinematic takes it off screen); the fencer thins; the rapier lands
-  { lean: -1, chy: 3, hdy: 2, sink: 5, hx: 4, hy: 7, ...SWORD_FLOOR, kmode: 2, kx: AX + 14, ky: 15, ka: 24, ko: 0.8, kh: 0.78, kbl: 2, smode: 3, fx: -6, fy: 0, thin: 0.45, rlift: 2 },
-  { lean: 0, chy: 3, sink: 5, hx: 4, hy: 7, ...SWORD_FLOOR, swy: GY - 3, kmode: 3, smode: 3, fx: -5, fy: 0, thin: 0.72 },
-  { body: 0, sliver: 1, ...SWORD_FLOOR, kmode: 3, smode: 3 },
-  { body: 0, sliver: 2, ...SWORD_FLOOR, swy: GY - 2, kmode: 3, smode: 3 },
+  // dissolve: the cloak flies up and away (the cinematic takes it off screen); the rapier hits the tile; without its
+  // frame the body THINS, swaying (1 px a frame), the shoulders sagging, the knees going
+  { lean: -1, chy: 4, hdy: 2, sink: 5, rx: -1, hx: 4, hy: 7, ...SWORD_FLOOR, kmode: 2, kx: AX + 14, ky: 15, ka: 24, ko: 0.8, kh: 0.78, kbl: 2, smode: 3, fx: -6, fy: 0, thin: 0.42, rlift: 2 },
+  { lean: 1, chy: 5, hdy: 3, sink: 6, rx: 1, hx: 3, hy: 8, ...SWORD_UP2, kmode: 3, smode: 3, fx: -4, fy: 1, thin: 0.68 },
+  { body: 0, sliver: 1, rx: -1, ...SWORD_FLOOR, kmode: 3, smode: 3 },
+  { body: 0, sliver: 4, rx: 0, ...SWORD_UP1, kmode: 3, smode: 3 },
+  { body: 0, sliver: 2, ...SWORD_FLOOR, kmode: 3, smode: 3 },
+  // the limp linen scrap; then it twitches toward the wind that took the cloak (the cinematic frays it away)
   { body: 0, sliver: 3, ...SWORD_FLOOR, kmode: 3, smode: 3 },
-  { body: 0, sliver: 3, ...SWORD_FLOOR, kmode: 3, smode: 3, glint: 0 },
+  { body: 0, sliver: 5, ...SWORD_FLOOR, kmode: 3, smode: 3, glint: 0 },
 ];
 export function deathPose(f: number): Pose {
   return key(DEATH_KEYS[Math.min(f, DEATH_KEYS.length - 1)], f);
 }
-const DEATH_HOLDS = [50, 70, 80, 80, 90, 90, 90, 100, 100, 110];
+const DEATH_HOLDS = [50, 60, 70, 70, 45, 45, 30, 30, 50, 60, 60];
 
 // ------------------------------------------------------------------ revive (10 frames): the death reversed
 
@@ -305,13 +326,20 @@ const SUMMON_KEYS: Partial<Pose>[] = [
   // the empty kite sways down like a leaf (never a dive): tilted right, then left
   { body: 0, sword: 3, kmode: 2, kx: AX - 2, ky: 24, ka: 24, ko: 1, kbl: 2, smode: 5 },
   { body: 0, sword: 3, kmode: 2, kx: AX - 4, ky: 36, ka: -22, ko: 1, kbl: 1, smode: 5 },
+  // it tips over just above the tile (tilt, then the flop): never from upright to flat in one frame
+  { body: 0, sword: 3, kmode: 2, kx: AX - 2, ky: GY - 15, ka: 30, kflat: 0.36, ko: 1, kbl: 2, smode: 5 },
+  { body: 0, sword: 3, kmode: 2, kx: AX - 1, ky: GY - 10, ka: 8, kflat: 0.74, ko: 1.06, kbl: 3, smode: 4 },
   // land: flat on the tile as an iso diamond, a cloth flop
   { body: 0, sword: 3, kmode: 2, kx: AX - 1, ky: GY - 7, ka: 0, kflat: 1, ko: 1.05, kbl: 2, smode: 4 },
   { body: 0, sword: 3, kmode: 2, kx: AX - 1, ky: GY - 7, ka: 0, kflat: 1, ko: 1, kbl: 0, smode: 4 },
   // a bump rises under the cloth, then it tents
   { body: 0, sword: 3, kmode: 2, kx: AX - 1, ky: GY - 7, ka: 0, kflat: 1, ko: 1, kbl: 0, kbump: 4, smode: 4 },
   { body: 0, sword: 3, kmode: 2, kx: AX - 1, ky: GY - 8, ka: 0, kflat: 0.85, ko: 0.95, kbl: 1, kbump: 9, smode: 4 },
-  // he stands up under the kite: the cloth slides onto his shoulders
+  // his head lifts the cloth: the kite draped over a crouched figure (only the shoes show under the hem)
+  { sink: 12, lean: 2, chy: 3, hdy: 2, hx: 6, hy: 6, ba: 40, sword: 3, kmode: 1, kx: -3, ky: -3, ka: 84, ko: 1, kh: 0.92, kbl: 2, smode: 4, fx: -3, fy: -2 },
+  // the shoulders come out, the cloth slides back over them
+  { sink: 10, lean: 1, chy: 2, hdy: 1, hdx: 1, hx: 6, hy: 6, ba: 36, kx: 1, ky: -5, ka: 76, ko: 0.95, kh: 0.92, kbl: 2, smode: 4, fx: -4, fy: -2 },
+  // he stands up under the kite: the cloth slides onto his shoulders, the spars settle
   { sink: 9, lean: 1, chy: 2, hdy: 1, hx: 7, hy: 4, ba: 18, kx: -1, ky: -5, ka: 62, ko: 0.95, kbl: 1, smode: 4, fx: -5, fy: -2 },
   { sink: 5, lean: 0, chy: 1, hx: 8, hy: 4, ba: 14, kx: -4, ky: -8, ka: 34, ko: 1, kbl: 2, smode: 4, fx: -8, fy: -5 },
   { sink: 2, hx: 8, hy: 4, ba: 18, kx: -8, ky: -9, ka: 10, kbl: 2, smode: 0, sph: 1, fx: -11, fy: -7 },
@@ -322,7 +350,7 @@ const SUMMON_KEYS: Partial<Pose>[] = [
 export function summonPose(f: number): Pose {
   return key(SUMMON_KEYS[Math.min(f, SUMMON_KEYS.length - 1)], f);
 }
-const SUMMON_HOLDS = [100, 100, 80, 90, 90, 100, 100, 90, 90, 100, 110, 120];
+const SUMMON_HOLDS = [100, 100, 50, 50, 80, 90, 90, 100, 70, 70, 70, 70, 75, 90, 110, 120];
 
 // ------------------------------------------------------------------ specs
 
@@ -338,8 +366,8 @@ export const ANIMS: Record<MonsterAnim, AnimSpec> = {
   hit: spec(6, false, HIT_HOLDS, { impact: 0, contact: 0, recover: 3 }),
 };
 export const EXTRA_ANIMS: Partial<Record<MonsterAnimExtra, AnimSpec>> = {
-  summon: spec(12, false, SUMMON_HOLDS, { land: 2 }),
-  death: spec(10, false, DEATH_HOLDS, { impact: 0, contact: 0, dissolve: 4 }),
+  summon: spec(16, false, SUMMON_HOLDS, { land: 4 }),
+  death: spec(11, false, DEATH_HOLDS, { impact: 0, contact: 0, dissolve: 4 }),
   revive: spec(10, false, REVIVE_HOLDS, { land: 5 }),
   special: spec(14, false, SPECIAL_HOLDS, { charge: 1, release: 9, impact: 9, contact: 9, recover: 10 }),
   hitHeavy: spec(8, false, HEAVY_HOLDS, { impact: 0, contact: 0, recover: 4 }),
@@ -405,9 +433,9 @@ export function framePoints(anim: AnyMonsterAnim, f: number): MonsterPoints {
   if (o.sword === 1) muzzle = P([o.swx + Math.cos((o.swa * Math.PI) / 180) * 20, o.swy + Math.sin((o.swa * Math.PI) / 180) * 20]);
   if (!o.body) {
     // the cloth scrap / sliver / the lying kite: the matter that is there
-    const y = o.sliver === 1 ? 44 : o.sliver === 2 ? 50 : GY - 3;
+    const y = o.sliver === 1 ? 47 : o.sliver === 4 ? 47 : o.sliver === 2 ? 50 : GY - 3;
     core = { x: AX + o.rx + (o.sliver === 2 ? 3 : 0), y };
-    head = { x: AX + o.rx, y: o.sliver === 1 ? 31 : y - 1 };
+    head = { x: AX + o.rx, y: o.sliver === 1 ? 36 : o.sliver === 4 ? 37 : y - 1 };
     if (o.sword === 3) muzzle = sk.kite ? P(sk.kite.X) : core;
   }
   const feet = STILL.has(anim) ? { x: AX, y: GY } : { x: rnd((sk.A1[0] + sk.A2[0]) / 2), y: GY - rnd(o.lift) };
@@ -433,4 +461,12 @@ export function tailPoint(anim: AnyMonsterAnim, f: number): { x: number; y: numb
   const sk = skeleton(framePose(anim, f));
   if (!sk.kite) return null;
   return { x: sk.kite.B[0], y: sk.kite.B[1] };
+}
+
+/** The indicator panel's triangle (top point, leading corner, crossing; frame px, facing right) or null. */
+export function panelTri(anim: AnyMonsterAnim, f: number): { T: Pt; R: Pt; X: Pt } | null {
+  const o = framePose(anim, f);
+  const sk = skeleton(o);
+  if (!sk.kite || o.kmode !== 0) return null;
+  return { T: sk.kite.T, R: sk.kite.R, X: sk.kite.X };
 }

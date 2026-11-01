@@ -294,11 +294,14 @@ export function skeleton(o: Pose): Skel {
   return { R: r(R), H1: r(H1), H2: r(H2), K1: r(K1), K2: r(K2), A1: r(A1), A2: r(A2), C: r(C), N: r(N), Hd: r(Hd), Sn: r(Sn), Sf: r(Sf), En: r(En), Ef: r(Ef), Hn: r(Hn), Hf: r(Hf), dir, tip: r(tip), kite };
 }
 
-/** Centre of the indicator panel (the upper LEADING panel: top-right in P1's sprite). */
+/**
+ * The indicator's hotspot on the upper LEADING panel (top-right in P1's sprite): a third of the way from the panel's
+ * centre toward its top point, so the head (which overlaps the panel's lower corner) never covers it.
+ */
 export function panelCentre(k: KiteGeom): Pt {
   const bx = (k.T[0] + k.R[0] + k.X[0]) / 3;
   const by = (k.T[1] + k.R[1] + k.X[1]) / 3;
-  return [rnd(bx), rnd(by)];
+  return [rnd(lerp(bx, k.T[0], 0.34)), rnd(lerp(by, k.T[1], 0.34))];
 }
 
 // ---------------------------------------------------------------- frame helpers
@@ -475,7 +478,7 @@ export function paintKite(q: PixelCanvas, k: KiteGeom, light: Light, o: { flash?
   const R2 = ext(X, R);
   along(T2, B, (x, y) => q.set(x, y, SPAR_LIT));
   // the cross spar bows backward with the wind (1 px at its middle when the cloth is billowed)
-  const bowY = bl > 1 ? 1 : 0;
+  const bowY = bl >= 4 ? 2 : bl > 1 ? 1 : 0;
   const mL: Pt = [rnd((L2[0] + X[0]) / 2), rnd((L2[1] + X[1]) / 2) - bowY];
   const mR: Pt = [rnd((R2[0] + X[0]) / 2), rnd((R2[1] + X[1]) / 2) - bowY];
   along(L2, mL, (x, y) => q.set(x, y, SPAR));
@@ -725,30 +728,71 @@ function paintSliver(f: Frame): void {
   const rib = layer();
   if (o.sliver === 1) {
     // cloth that lost its frame: a narrow wavy linen strip standing on the floor, the mask a limp knob on top
-    q.poly([[x - 1, 33], [x + 2, 34], [x + 1, 40], [x + 2, 46], [x + 3, 52], [x + 2, GY], [x - 2, GY], [x - 1, 52], [x - 2, 46], [x - 1, 40]], LINEN.M);
-    q.ellipse(x, 31, 2.2, 2.6, LINEN.M);
-    rib.rect(x - 3, 31, 2, 5, RIBBON.S);
+    q.poly([[x - 1, 38], [x + 2, 39], [x + 1, 44], [x + 2, 49], [x + 3, 54], [x + 2, GY], [x - 2, GY], [x - 1, 54], [x - 2, 49], [x - 1, 44]], LINEN.M);
+    q.ellipse(x + 1, 36, 2.2, 2.6, LINEN.M);
+    rib.rect(x - 2, 36, 2, 5, RIBBON.S);
   } else if (o.sliver === 2) {
     // folding at the middle: the top half droops forward over itself
     q.poly([[x - 2, 47], [x, 44], [x + 4, 43], [x + 7, 46], [x + 8, 51], [x + 6, 52], [x + 5, 48], [x + 2, 47], [x + 2, GY], [x - 2, GY]], LINEN.M);
     q.ellipse(x + 7, 52, 2, 2, LINEN.M);
     rib.rect(x + 9, 52, 1, 4, RIBBON.S);
+  } else if (o.sliver === 4) {
+    // the knees go: the strip buckles at two points and sinks, the mask knob lolls forward
+    q.poly([[x, 39], [x + 3, 40], [x + 2, 45], [x + 4, 50], [x + 1, 54], [x + 2, GY], [x - 2, GY], [x - 2, 54], [x, 50], [x - 1, 45]], LINEN.M);
+    q.ellipse(x + 2, 37, 2.2, 2.4, LINEN.M);
+    rib.rect(x - 1, 37, 2, 4, RIBBON.S);
   } else if (o.sliver === 3) {
     // the limp linen scrap on the floor (about 6×4) with a fold, one ribbon tail
     q.poly([[x - 3, GY - 2], [x, GY - 4], [x + 3, GY - 3], [x + 4, GY], [x - 3, GY]], LINEN.M);
     rib.rect(x + 4, GY - 1, 3, 1, RIBBON.S);
+  } else if (o.sliver === 5) {
+    // the scrap twitches toward the wind that took the cloak: its back corner lifts, the ribbon streams out
+    q.poly([[x - 2, GY - 1], [x + 1, GY - 5], [x + 4, GY - 4], [x + 5, GY], [x - 2, GY]], LINEN.M);
+    rib.line(x + 5, GY - 2, x + 8, GY - 3, RIBBON.S);
   }
   bands(q, LINEN, f.light, 1, 1);
   if (o.sliver === 3) q.set(x, GY - 2, LINEN.S);
+  if (o.sliver === 5) q.set(x + 1, GY - 3, LINEN.S);
   f.comp.add(q, Part.scrap);
   f.comp.add(rib, Part.scrap);
 }
 
 // ---------------------------------------------------------------- light
 
+/** One tone step up the panel ramps (the lit indicator panel). */
+export const PANEL_STEP: ReadonlyMap<number, number> = new Map([
+  [PAL.gold1, PAL.gold2],
+  [PAL.gold2, PAL.gold3],
+  [PAL.gold3, PAL.gold4],
+  [PAL.fire1, PAL.fire2],
+  [PAL.fire2, PAL.fire3],
+  [PAL.fire3, PAL.fire4],
+]);
+
+/** Is (x, y) strictly inside the triangle a b c (1-px inset from its edges, so the outline and spars stay)? */
+export function insidePanel(a: Pt, b: Pt, c: Pt, x: number, y: number): boolean {
+  const e = (p: Pt, q: Pt) => (q[0] - p[0]) * (y - p[1]) - (q[1] - p[1]) * (x - p[0]);
+  const s = e(a, b) * e(b, c) >= 0 && e(b, c) * e(c, a) >= 0 && e(c, a) * e(a, b) >= 0;
+  return s && e(a, b) !== 0 && e(b, c) !== 0 && e(c, a) !== 0;
+}
+
 function paintLight(f: Frame): void {
   const { p, o, sk } = f;
   const k = sk.kite;
+  if (o.lamp >= 2 && k && o.kmode === 0) {
+    // the whole leading panel (top point, leading corner, crossing) one tone step brighter
+    const x0 = Math.min(k.T[0], k.R[0], k.X[0]);
+    const x1 = Math.max(k.T[0], k.R[0], k.X[0]);
+    const y0 = Math.min(k.T[1], k.R[1], k.X[1]);
+    const y1 = Math.max(k.T[1], k.R[1], k.X[1]);
+    for (let y = y0; y <= y1; y++)
+      for (let x = x0; x <= x1; x++) {
+        if (!insidePanel(k.T, k.R, k.X, x, y)) continue;
+        const c = p.get(x, y);
+        const up = c === null ? undefined : PANEL_STEP.get(c);
+        if (up !== undefined) p.set(x, y, up);
+      }
+  }
   if (o.lamp > 0 && k && o.kmode !== 2) {
     const [cx, cy] = panelCentre(k);
     if (o.lamp === 1) {

@@ -21,7 +21,8 @@
 //   kfnTsst          attack 1 contact: "tsst-çın"
 //   kfnSqueak        a back-hop / landing shoe squeak
 //   kfnPanelOn       the indicator lights: a soft "fwump" + one plucked string (1320 Hz)
-//   kfnVump          attack 2 charge: the wind fills the cloak (cloth drum)
+//   kfnKiteCharge    attack 2 declaration: the slack string tensing in the wind (replaces the pike's charge voice)
+//   kfnVump          attack 2 charge: the wind fills the cloak (pink bloom + the 1.8 kHz panel snap), on the billow frame
 //   kfnStringRise    attack 2: the string tension rising through the lift-off (sustained; stopped on the cut)
 //   kfnSwing         attack 2: the pendulum swing — air + the string peaking at the low point
 //   kfnCut           attack 2 contact: the curved lateral cut "sşhk"
@@ -38,7 +39,7 @@
 //   kfnClothFold     death: the body folds to a linen scrap (a soft cloth flop)
 //   kfnClatter       death: the rapier hits the tile (FM steel, 3 partials)
 //   kfnClatterTick   death: the rapier's bounces and the final rest tick
-//   kfnScrapFade     death burst: the scrap lets go (a short cloth exhale)
+//   kfnScrapFade     death ending: the scrap twitches and frays into threads (fibre ticks + a receding breath)
 //   kfnReviveGather  revive: the string hum gathers (sustained; stopped on 'land')
 
 import type { Recipe } from '../sounds';
@@ -223,9 +224,26 @@ const KITE_RECIPES = {
     verb: 0.35,
     duck: 0.3,
     play(v) {
-      v.noise('pink', { g: [[0, 0], [0.06, 0.24], [0.36, 0.0001, 'e']], to: v.filt('lowpass', [[0, 500], [0.06, 700], [0.36, 380, 'e']], 0.9) });
-      thump(v, 0.04, 90, 70, 0.3, 0.2, { att: 0.012 });
-      clothSnap(v, 0.05, 0.12, 1500, 0.02, 2);
+      // the cloth BLOOMS with wind (a pink swell low-passed at 700 Hz, its rustle a step higher), the stretched panels
+      // catch it with a drum-like snap at 1.8 kHz, the spars creak; the cloth drum's low body is only a felt hint
+      v.noise('pink', { g: [[0, 0], [0.06, 0.26], [0.34, 0.0001, 'e']], to: v.filt('lowpass', [[0, 520], [0.06, 760], [0.34, 420, 'e']], 0.9) });
+      const fl = v.flutter(46, 0.5, { t: 0.03, d: 0.3, base: 0.45 });
+      v.noise('white', { t: 0.03, g: [[0, 0], [0.05, 0.07], [0.3, 0.0001, 'e']], to: v.filt('bandpass', [[0, 1100], [0.3, 1500, 'e']], 1.3, { to: fl }) });
+      clothSnap(v, 0.055, 0.2, 1800, 0.018, 2.5);
+      bamboo(v, 0.07, 0.09, 1);
+      thump(v, 0.05, 110, 80, 0.15, 0.16, { att: 0.012 });
+    },
+  },
+  kfnKiteCharge: {
+    cap: 1,
+    gap: 0.15,
+    verb: 0.3,
+    play(v) {
+      // the 2nd attack's declaration (nothing of the pike's breath or squeak): the slack string tensing in the wind —
+      // a low wire 440 → 660 Hz swelling, the cloth ruffling once as the wind finds it
+      stringBuzz(v, 0, [[0, 440], [0.32, 660, 'e'], [0.45, 680]], [[0, 0], [0.12, 0.02], [0.34, 0.035], [0.46, 0.0001, 'e']], { flutter: 70, q: 5 });
+      const fl = v.flutter(52, 0.5, { t: 0.08, d: 0.26, base: 0.4 });
+      v.noise('white', { t: 0.08, g: [[0, 0], [0.08, 0.035], [0.26, 0.0001, 'e']], to: v.filt('bandpass', 1500, 1.5, { to: fl }) });
     },
   },
   kfnStringRise: {
@@ -301,8 +319,9 @@ const KITE_RECIPES = {
     play(v) {
       clothSnap(v, 0, 0.5, 1800, 0.015, 3);
       bamboo(v, 0.003, 0.22, 2);
-      for (let i = 0; i < 3; i++) v.tone('sine', 4000 + i * 130, { t: 0.02 + i * 0.024, g: perc(0.03 * (1 - i * 0.25), 0.02, 0.0005) });
-      thump(v, 0, 300, 180, 0.05, 0.035);
+      for (let i = 0; i < 3; i++) v.tone('sine', 4000 + i * 130, { t: 0.02 + i * 0.024, g: perc(0.04 * (1 - i * 0.25), 0.02, 0.0005) });
+      // the membrane's tap, high and short (no low thud: the 1.8 kHz snap leads)
+      thump(v, 0, 620, 420, 0.025, 0.02);
     },
   },
   kfnStruckHeavy: {
@@ -412,8 +431,12 @@ const KITE_RECIPES = {
     gap: 0.2,
     verb: 0.4,
     play(v) {
-      v.noise('pink', { g: [[0, 0], [0.03, 0.08], [0.3, 0.0001, 'e']], to: v.filt('bandpass', [[0, 1800], [0.3, 800, 'e']], 1.2) });
-      v.tone('triangle', [[0, 1320], [0.25, 1180, 'e']], { g: perc(0.018, 0.25, 0.01) });
+      // the scrap twitches (a small cloth flick), then frays: four fibre ticks pulling apart, a thin breath carrying
+      // the threads off after the cloak (band falling = going away), the string's memory a last faint harmonic
+      clothSnap(v, 0, 0.12, 2200, 0.012, 3);
+      for (let i = 0; i < 4; i++) v.noise('white', { t: 0.07 + i * 0.045 + (i % 2) * 0.008, g: perc(0.07 * (1 - i * 0.18), 0.004, 0.0002), to: v.filt('bandpass', 5200 - i * 500, 2.5) });
+      v.noise('pink', { t: 0.06, g: [[0, 0], [0.05, 0.06], [0.3, 0.0001, 'e']], to: v.filt('bandpass', [[0, 2000], [0.3, 900, 'e']], 1.3) });
+      v.tone('triangle', [[0, 2640], [0.28, 2400, 'e']], { t: 0.08, g: perc(0.01, 0.26, 0.01) });
     },
   },
   kfnReviveGather: {
@@ -447,6 +470,7 @@ const TRIM_DB: Partial<Record<keyof typeof KITE_RECIPES, number>> = {
   kfnSqueak: 8,
   kfnPanelOn: 5,
   kfnVump: 0,
+  kfnKiteCharge: 6,
   kfnStringRise: 7,
   kfnSwing: 9,
   kfnCut: 10,

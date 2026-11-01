@@ -87,6 +87,11 @@ const S: Record<string, Scenario> = {
     stage: { zones: 5, phase: 'battle', p0: { monsters: [N, N, { id: 'kite_fencer', attacks: 1 }, N, N] }, p1: { monsters: [N, N, { id: 'stone_sentinel', position: 'attack' }, N, N] } },
     steps: [attack(2, 2)],
   },
+  kfnSecondP2: {
+    desc: 'Yalnız 2. saldırı, Oyuncu 2 (aynalı: hedef ekranda daha aşağıda — salınım yine yukarıdan iner)',
+    stage: { zones: 5, phase: 'battle', active: 1, p0: { monsters: [N, N, { id: 'stone_sentinel', position: 'attack' }, N, N] }, p1: { monsters: [N, N, { id: 'kite_fencer', attacks: 1 }, N, N] } },
+    steps: [attack(2, 2, 1)],
+  },
   // The rules forbid "1st attack direct, then the 2nd at a monster" (legal.ts: a direct attack only when the opponent
   // has nothing to attack, the 2nd attack only at a monster, and no monster can appear in our battle phase). The
   // nearest legal sequence: the direct fleche lights the panel (one attack left, nothing to spend it on), then the
