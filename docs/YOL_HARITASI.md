@@ -77,3 +77,10 @@ D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (ka
   planlanacak; o zamana kadar mevcut Türkçe metinler kalır.
 - Kalan şerit işleri (A–F) yine haftalık sıfırlamadan sonra; şu an yalnız A şeridi (Bulut Yavrusu, Zehir Ejderi) çalışıyor.
 - Açık soru (sahipte): büyük büyülerin süre istisnası (Boşluk Gözü ~5,4 sn).
+- SAHİP GERİ BİLDİRİMİ (2026-11-01): "her şey birbirine girmiş" (Witchbrook ile karşılaştırma). Okunurluk / sanat
+  yönetimi turu planlanacak (haftalık sıfırlamadan sonra, kart resimleriyle birlikte değerlendir):
+  1) arka plan katmanı (tribün, hologram, makineler) koyu + az doygun, az detay — sahne ön planda kalsın;
+  2) her bölgeye sınırlı palet; neon/doygun renk yalnız odak noktalarında (birimler, seçili kare, düğmeler);
+  3) saha zemini birimlerden net ayrışan, sakin, geniş yüzey; ızgara çizgileri inceltilsin;
+  4) arayüz: daha az ve daha düzenli panel, sahayı örtmeyen yerleşim, tek yazı boyu düzeni;
+  5) ışık yönü + yumuşak gölge ile derinlik. Hızlı maket: arka planı soldurmak tek başına ayrışmayı belirgin artırdı.
