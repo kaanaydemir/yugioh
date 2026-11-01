@@ -1627,3 +1627,32 @@ Every claim was re-checked in the tree before acting on it. All 19 findings were
   `final/hatcard-x3.png` (`?dev=hatcard&id=cloud_hatchling&look=v3` at ×3: hand 1×, inspect 2×, art 1×/3×, iso cards).
 - **Remaining weaknesses:** the shut mouth + half-shut eye read as "sleepy / smug" more than "just sneezed"; the ring
   still lacks a visible link to the snout at 1× (no room for streaks); the card stays darker than its hand neighbours.
+
+### Cinematics + SFX (§5, §6, §8) — 2026-11-01, build round 1
+- **Files (new):** `src/audio/v3/hatchling.ts` (41 recipes, `HatchSfxName`, `HATCH_SUSTAINED`, `GROW_STEPS`),
+  `src/presentation/cards/cloud_hatchling.ts` (§8.2 recipe; custom strike / summon / death / effect, flip from the recipe),
+  `src/cinematics/strikes-a/cloud_hatchling-fx.ts` (windRing / drawRing / drawStreaks / drawShards / drawFizzle,
+  drawGrassPatch, drawDust, cloudPixels / drawCloud / drawPuff, drawCloudShadow, eggScatter; no registration),
+  `src/cinematics/strikes-a/cloud_hatchling.ts` (Hıçkırık Halkası all outcomes, baby / grown; the egg death),
+  `src/cinematics/strikes-a/cloud_hatchling-grow.ts` (the growth hook, the coin-call warm observer, the coinToss
+  staring-loop observer), `src/cinematics/summon-a/cloud_hatchling.ts` (Bulut Yumurtası + the cloud-drift observer).
+- **Additive edits:** `src/audio/sounds.ts` (`...V3_HATCH_RECIPES`), `src/audio/sfx.ts` (`| HatchSfxName`),
+  `src/cinematics/_v3/sound.ts` (`CHARACTER_SOUNDS.cloud_hatchling` + `VARIANT_SOUNDS['cloud_hatchling:grown']`),
+  `src/art/monsters-v3/cloud_hatchling-grown.ts` (`rewindSfx: 'hatchVoiceCrackRev'` now that the name exists).
+- **Deviations from the blueprint (why):**
+  1. Grass patches are `stone2` → `stone1` (dithered 3 steps), not "the next-darker floor tone": `stone0` vanished on
+     the dark v3 arena floor in the first film (`cine/atk1z.png`); a lighter pressed ring reads.
+  2. Sky dial centre = core − 22 px (on the head), radius 24, hands 20 / 12 (blueprint core − 6, r 22, 18 / 11): with the
+     centre in the baby's body the hands hid behind it (`cine/grow1z.png`); now the rim, ticks, hands and the sweep wedge
+     read round the head (`cine/grow2z.png`). Rim puffs 4×3 lobes (a 3×3 lobe was a dot at 1×).
+  3. Losing / direct: the strike resolves on contact (the fizzle / the shards finish on their own) to keep
+     `kaChGrownLose` / `kaChGrownDirect` inside their budgets; the grown direct flight is 230 ms (§5.2's fallback).
+  4. Hops: the hop sound is scored on the LANDING frames (f3 / f5, a thump), the body moves on the take-off frames
+     (f2 / f4, 8 px baby / 6 px grown); grown landings shake 1 px. Home in two steps on f11 / f12; a dying attacker is
+     taken home on the contact frame (the backlash knocks it back onto its tile).
+  5. The death unclaims a battle-claimed loser at lift-off (the kit pins a claimed sprite every frame; the egg could not
+     rise otherwise). `hatchUnAge` is scored on grown death f3 by the death itself (not a CHARACTER_SOUNDS role).
+  6. `hatchGrowHic` reads its step back from the voice's pitch factor (the scene passes `pitch` = GROW_STEPS[i]), so
+     voice AND body drop together and the FM index roughens as it drops.
+  7. Blocked: the kit's ranged backlash fires on contact; our rebounding ring rides it home in 180 ms (the backlash's
+     length) and the bonk plays the hatchling's `hit` on arrival (the kit does not pose a surviving ranged attacker).

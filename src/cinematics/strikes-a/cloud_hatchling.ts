@@ -155,7 +155,7 @@ async function hatchRingV3(s: StrikeArgs): Promise<void> {
   void lightFlash(sc, mz.x, mz.y, PAL.mist, 14, 160, { floorY: feetAt(hop * 2).y, intensity: 0.6 });
   const Ds = grown ? RING_D.grown : RING_D.baby;
   const Dmax = Ds[Ds.length - 1];
-  const flightMs = s.direct ? 260 : grown ? 260 : 240;
+  const flightMs = s.direct ? (grown ? 230 : 240) : grown ? 230 : 240;
   const aim: XY = target ? { x: Math.round(target.core().x), y: Math.round(target.core().y) } : { x: Math.round(s.to.x), y: Math.round(s.to.y) };
   const from: XY = { ...mz };
   // the floor under the ring (for its pool and the pressed patches): from the hatchling's feet to the target's
@@ -239,11 +239,13 @@ async function hatchRingV3(s: StrikeArgs): Promise<void> {
     // the fizzle: it pops into four dots, no squeeze ("pıt")
     s.impact(hit);
     void ringLight.fadeOut(80);
-    await anim4(sc, 160, (t) => {
+    // the strike resolves on contact (our death starts from the backlash at once); the dots finish on their own
+    alive = false;
+    whistle.stop(30);
+    void anim4(sc, 160, (t) => {
       air.clear();
       drawFizzle(air, hit.x, hit.y, D, t);
-    });
-    finish();
+    }).then(() => air.g.destroy());
     return;
   }
 
@@ -256,7 +258,7 @@ async function hatchRingV3(s: StrikeArgs): Promise<void> {
       air.clear();
       drawShards(air, hit.x, hit.y, Dmax, travel, t);
     });
-    await anim;
+    // (the hatchling's recovery overlaps the LP flow: the strike lets go now, the walk home finishes itself)
     finish();
     return;
   }
@@ -362,6 +364,9 @@ type ToGraveyardEv = Extract<GameEvent, { type: 'toGraveyard' }>;
 /** The float's ping-pong (death frames, 50 ms each) and the whole-px rise each frame change carries (14 px). */
 const FLOAT_SEQ = [10, 11, 12, 11, 10, 11] as const;
 const FLOAT_RISE = [0, 3, 2, 3, 3, 3] as const;
+/** The grown body's float is two changes shorter (its knit is longer; kaChGrownLose stays in budget), same 14 px. */
+const FLOAT_SEQ_GROWN = [10, 11, 12, 11] as const;
+const FLOAT_RISE_GROWN = [0, 4, 5, 5] as const;
 const FLOAT_MS = 50;
 
 async function hatchDeathV3(ctx: Ctx<'destroy'>): Promise<void> {
@@ -392,7 +397,8 @@ async function hatchDeathV3(ctx: Ctx<'destroy'>): Promise<void> {
     } catch (e) {
       console.error('[hatchling death] onBorn', e);
     }
-    if (gEv) leave = cardLeaves(ctx, { owner, cardId: ev.cardId, from: home, tile, depthAt: behindBodies(ctx, u) }).catch((e) => console.error('[hatchling death] card', e));
+    // (grown: a quick 220 ms arc — its knit runs longer; the losing grown attack stays in budget)
+    if (gEv) leave = cardLeaves(ctx, { owner, cardId: ev.cardId, from: home, tile, depthAt: behindBodies(ctx, u), ...(grown ? { ms: 220 } : {}) }).catch((e) => console.error('[hatchling death] card', e));
     else if (tile && tile.active)
       leave = tile
         .dissolve(420)
@@ -458,6 +464,7 @@ async function eggDeath(ctx: Ctx<'destroy'>, u: MonsterUnit, home: XY, grown: bo
   };
   // ---- the death's own beats on their frames (its voice through soundsOfUnit: the grown curl is its own)
   const C = soundsOfUnit(u);
+  let knitPool: ReturnType<typeof lightPool> | null = null;
   const dissolveF = u.markFrame('death', 'dissolve', 4);
   if (C) {
     if (C.deathStart) atFrame(u, 'death', 1, () => play(C.deathStart!, { pan }), { late: false });
@@ -469,14 +476,18 @@ async function eggDeath(ctx: Ctx<'destroy'>, u: MonsterUnit, home: XY, grown: bo
   atFrame(u, 'death', dissolveF, () => {
     const p = lightPool(sc, home.x, home.y, { color: PAL.skin4, radius: 16, intensity: 0.2, fadeIn: 0 });
     p.setIntensity(0.7, Math.max(60, u.rangeMs('death', dissolveF, Math.min(n - 1, dissolveF + 3))));
+    knitPool = p;
     setPool(p);
   }, { late: false });
-  const liftF = Math.min(n - 1, FLOAT_SEQ[0]);
+  // (grown: the lift-off comes on the anticipation frame f9 — its knit is longer; kaChGrownLose in budget)
+  const liftF = Math.min(n - 1, grown ? FLOAT_SEQ[0] - 1 : FLOAT_SEQ[0]);
   await untilFrame(liftF);
   if (!u.sprite.active || !u.sprite.visible) return;
   // ---- lift-off = the burst frame: the card is born, the egg rides its cloud up
   burst();
   if (C) play(C.burst, { pan });
+  // the knit's pool steps down as the egg leaves the floor
+  void (knitPool as ReturnType<typeof lightPool> | null)?.fadeOut(160);
   u.shadow.setVisible(false);
   // a battle loser is claimed (its position pinned every frame): the death owns it now, the egg rises
   if (u.claimed) u.unclaim();
@@ -494,12 +505,13 @@ async function eggDeath(ctx: Ctx<'destroy'>, u: MonsterUnit, home: XY, grown: bo
     },
     () => shadow.g.destroy(),
   );
-  const seq = FLOAT_SEQ.map((f) => Math.min(n - 1, f));
+  const seq = (grown ? FLOAT_SEQ_GROWN : FLOAT_SEQ).map((f) => Math.min(n - 1, f));
+  const rise = grown ? FLOAT_RISE_GROWN : FLOAT_RISE;
   const scatterAt = seq.length - 2; // the last 100 ms
   let scatter: Promise<void> | null = null;
   for (let i = 0; i < seq.length; i++) {
     if (!u.sprite.active) break;
-    lift += FLOAT_RISE[i];
+    lift += rise[i];
     u.asClaimant(() => u.pose('death', seq[i]));
     placeFeet(u, home, lift);
     shadowRx = Math.max(7, 13 - Math.round(lift / 2.4));
