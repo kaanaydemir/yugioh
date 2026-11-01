@@ -268,44 +268,81 @@ export interface TideState {
 }
 
 /**
- * The tide sheet across a tile at `c` (the tile centre on the floor): a flat water2 / water3 sheet with a white leading
- * edge slides in from the back-left corner; drawing back, it leaves wet sand (earth1 / earth2, Bayer 2×2 on the floor
- * only) and a foam line on its edge. `k` scales the tile (TILE_W / 64). Whole pixels, palette only.
+ * The tide sheet across a tile at `c` (the tile centre on the floor). Review 3: a thin sheet of WATER, not a lit tile —
+ *  - the front is SCALLOPED: uneven tongues (two sines and a per-3-row hash) advance from the back-left corner, laced
+ *    with a 1–2 px white / water4 foam line that breaks up into beads at the tongue tips;
+ *  - the body is a band pattern (water3 / water2 rows, every third row left open) drifting along the sheet, so the
+ *    tile reads THROUGH the water;
+ *  - drawing back, it leaves wet sand (earth1 / earth2, Bayer 2×2, drying in two steps), a 1-px water4 sheen line on
+ *    the sand just behind the receding edge, and three foam beads stranded where the sheet reached furthest.
+ * Whole pixels, palette only, always inside the tile's diamond.
  */
-export function paintTide(s: Surface, c: XY, st: TideState, seed = 1): void {
-  const hw = Math.floor(TILE_W / 2) - 2;
-  const hh = Math.floor(TILE_H / 2) - 1;
-  // the iso axis from the back-left edge to the front-right edge: u = 0 … 1
+export function paintTide(s: Surface, c: XY, st: TideState, seed = 1, scale = 1): void {
+  // `scale` > 1 (the death's wash only): the sheet spills past the tile so the burial reads round the damage number
+  const hw = Math.floor((TILE_W / 2) * scale) - 2;
+  const hh = Math.floor((TILE_H / 2) * scale) - 1;
+  const drift = Math.floor((st.t ?? 0) / 110);
+  /** the front's scallop offset for row y (ring fraction of the u axis) */
+  const scallop = (y: number): number => 0.045 * Math.sin(y * 0.62 + seed) + 0.03 * Math.sin(y * 0.23 + seed * 2.1) + (hash(Math.floor((y + 64) / 3), seed, 3) - 0.5) * 0.04;
+  const edgeIn = st.inK * 1.12;
+  const edgeOut = st.outK * 1.12;
   for (let y = -hh; y <= hh; y++) {
-    const span = Math.floor(hw * (1 - Math.abs(y) / (hh + 0.5)));
+    // the sheet's sides are ragged too (0–2 px in from the tile's edge, per row): never the tile's own outline
+    const span = Math.floor(hw * (1 - Math.abs(y) / (hh + 0.5))) - Math.floor(hash(y + 90, seed, 5) * 2.6);
+    const sc = scallop(y);
     for (let x = -span; x <= span; x++) {
-      // diamond-local coordinates along the two iso axes (each −1 … 1)
-      const a = x / (2 * hw) + y / (2 * hh); // back-left (−0.5) → front-right (+0.5) over the diamond
-      const u = a + 0.5;
+      // back-left (u = 0) → front-right (u = 1) across the diamond
+      const u = x / (2 * hw) + y / (2 * hh) + 0.5;
       const px = c.x + x;
       const py = c.y + y;
-      const edgeIn = st.inK * 1.08;
-      const edgeOut = st.outK * 1.08;
-      const wobble = (hash(y + 40, seed, 3) - 0.5) * 0.05;
-      if (u <= edgeOut + wobble) {
-        // uncovered: wet sand (fades back in two steps)
-        if (st.dry >= 1) continue;
+      const fIn = edgeIn + sc;
+      const fOut = edgeOut + sc * 0.6;
+      if (st.outK > 0 && u <= fOut) {
+        // uncovered: wet sand (drying back in two steps), the sheen line just behind the receding edge — only where
+        // the sheet actually reached
+        if (st.dry >= 1 || u > fIn) continue;
+        if (st.dry < 0.5 && st.outK < 1 && fOut - u < 0.025 && ((px + drift) & 1) === 0) {
+          s.set(px, py, PAL.water4);
+          continue;
+        }
         const bayer = (px + py) & 1;
-        const dark = st.dry < 0.5 ? (bayer ? PAL.earth1 : PAL.earth2) : bayer ? PAL.night2 : PAL.earth1;
         if (st.dry >= 0.5 && bayer) continue;
-        s.set(px, py, dark);
+        s.set(px, py, st.dry < 0.5 ? (bayer ? PAL.earth1 : PAL.earth2) : PAL.earth1);
         continue;
       }
-      if (u <= edgeIn + wobble) {
-        const d = edgeIn + wobble - u;
-        const fromOut = u - (edgeOut + wobble);
-        // the leading edge white, a water3 band behind it, the water2 body; a foam line on the receding edge
-        // ripple dashes drift along the sheet (water3 on every 4th row, broken into 3-px dashes)
-        const drift = Math.floor((st.t ?? 0) / 110);
-        const ripple = ((y + 64) % 4 === 0) && ((x + drift + (y >> 2) * 3 + 64) % 7 < 3);
-        const c0 = d < 0.035 ? PAL.white : d < 0.09 ? PAL.water3 : st.outK > 0 && fromOut < 0.03 ? (hash(px, py, seed) < 0.6 ? PAL.white : PAL.water4) : ripple ? PAL.water3 : PAL.water2;
-        s.set(px, py, c0);
+      if (u > fIn) continue;
+      const d = fIn - u;
+      // the foam lace on the advancing front: 1 px everywhere, 2 px on the tongue tips (where the scallop leads)
+      const lace = sc > 0.02 ? 0.05 : 0.028;
+      if (st.outK <= 0 || st.inK < 1) {
+        if (d < lace) {
+          s.set(px, py, d < 0.018 ? PAL.white : hash(px, py, seed) < 0.5 ? PAL.white : PAL.water4);
+          continue;
+        }
       }
+      // the receding edge's foam line (it trails the water drawing back)
+      const fromOut = u - fOut;
+      if (st.outK > 0 && fromOut < 0.03) {
+        s.set(px, py, hash(px, py, seed + 1) < 0.55 ? PAL.white : PAL.water4);
+        continue;
+      }
+      // the sheet's body: drifting bands, every third row open (the tile shows through)
+      const band = (((y + drift + Math.floor(x / 6)) % 3) + 3) % 3;
+      if (band === 2) continue;
+      s.set(px, py, band === 0 ? PAL.water3 : PAL.water2);
+    }
+  }
+  // three foam beads stranded where the sheet reached furthest, left on the sand as it draws back
+  if (st.outK > 0.15 && st.dry < 1) {
+    for (let i = 0; i < 3; i++) {
+      const y = rnd((i - 1) * hh * 0.55 + (hash(i, seed, 9) - 0.5) * 3);
+      const span = Math.floor(hw * (1 - Math.abs(y) / (hh + 0.5)));
+      // the furthest reach on this row: u = min(1.12, …) → x
+      const uMax = Math.min(0.97, edgeIn + scallop(y) - 0.04);
+      const x = clamp(rnd((uMax - 0.5 - y / (2 * hh)) * 2 * hw), -span + 1, span - 1);
+      const col = st.dry >= 0.5 ? PAL.water3 : PAL.white;
+      s.set(c.x + x, c.y + y, col);
+      if (st.dry < 0.5) s.set(c.x + x + 1, c.y + y, PAL.water4);
     }
   }
 }

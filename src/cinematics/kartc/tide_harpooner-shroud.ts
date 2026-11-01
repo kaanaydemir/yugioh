@@ -70,6 +70,8 @@ export class ShroudAura {
   run = -1;
   /** the running raise 0…1 (1 = every column up) */
   rise = 1;
+  /** the first lap's white wake behind the crest (ring fraction) */
+  wake = 0;
   private curlAt = 0;
   private curlK = 0;
   collapse = 0;
@@ -109,9 +111,9 @@ export class ShroudAura {
     ambient(sc, (el) => {
       if (this.dead) return false;
       el0 = el;
-      // a 10-px column at once (2–3 frames held), then down over 220 ms
-      this.curlK = el < 34 ? 0.8 : el < 160 ? 1 : Math.max(0, 1 - (el - 160) / 200);
-      return el0 < 340 + 20;
+      // the full 10-px column at once, held ≥ 4 frames with its white crest, then down over 200 ms
+      this.curlK = el < 170 ? 1 : Math.max(0, 1 - (el - 170) / 200);
+      return el0 < 370 + 20;
     });
   }
   private draw(): void {
@@ -121,7 +123,7 @@ export class ShroudAura {
     const rx = Math.floor(TILE_W / 2) - 1;
     const ry = Math.floor(TILE_H / 2) - 1;
     const crest = this.run >= 0 ? this.run : this.crest;
-    const o = { height: this.height, crest, curlAt: this.curlAt, curl: this.curlK, collapse: this.collapse, rx, ry, rise: this.rise };
+    const o = { height: this.height, crest, curlAt: this.curlAt, curl: this.curlK, collapse: this.collapse, rx, ry, rise: this.rise, wake: this.run >= 0 ? this.wake : 0 };
     // the back arc a px lower than the front (1 px vs 2 px, EF-2: the front stays at the feet)
     shroudWall(this.back.canvas, this.c.x, this.c.y, 'back', { ...o, height: Math.max(0, this.height - 1) });
     shroudWall(this.front.canvas, this.c.x, this.c.y, 'front', o);
@@ -137,7 +139,13 @@ export class ShroudAura {
     this.rise = 0;
     await animate(sc, up, (t) => (this.rise = t));
     this.rise = 1;
-    void animate(sc, short ? 360 : 600, (t) => (this.run = t >= 1 ? -1 : t)).then(() => (this.run = -1));
+    // at the 4-px peak the crest throws foam flecks off the front arc; the first lap leaves a white wake (~3 px)
+    if (!short) foamFlecks(sc, this.c, rx0(), ry0(), this.u.uid);
+    this.wake = 0.03;
+    void animate(sc, short ? 360 : 600, (t) => (this.run = t >= 1 ? -1 : t)).then(() => {
+      this.run = -1;
+      this.wake = 0;
+    });
     await animate(sc, short ? 160 : 260, (t) => (this.height = t < 0.34 ? 4 : t < 0.67 ? 3 : 2));
     this.height = 2;
   }
@@ -170,6 +178,72 @@ export class ShroudAura {
 }
 
 type AnyCtx = CinematicContext;
+
+const rx0 = (): number => Math.floor(TILE_W / 2) - 1;
+const ry0 = (): number => Math.floor(TILE_H / 2) - 1;
+
+/** Four foam flecks thrown off the wall's crest at its 4-px peak (front arc), arcing out and landing as wet dots. */
+function foamFlecks(sc: Phaser.Scene, c: XY, rx: number, ry: number, seed: number): void {
+  const s = new Surface(sc, unitDepth(c.y) + 0.6);
+  const fl = [0.08, 0.36, 0.64, 0.92].map((k, i) => {
+    const a = Math.PI / 2 + (k - 0.5) * Math.PI * 0.9; // spread over the front arc
+    const ox = Math.cos(a);
+    const oy = Math.sin(a);
+    return { x: c.x + ox * rx, y: c.y + oy * ry - 5, vx: ox * (34 + ((seed + i * 7) % 5) * 6), vy: -50 - i * 6, floor: c.y + oy * ry + 3, land: -1 as number, lx: 0 };
+  });
+  void animate(sc, 420, (_t, el) => {
+    s.clear();
+    const k = el / 1000;
+    for (const f of fl) {
+      let x = f.x + f.vx * k;
+      let y = f.y + f.vy * k + 400 * k * k;
+      if (f.land < 0 && y >= f.floor && k > 0.05) {
+        f.land = el;
+        f.lx = x;
+      }
+      if (f.land >= 0) {
+        x = f.lx;
+        y = f.floor;
+        s.set(x, y, el - f.land < 140 ? PAL.water4 : PAL.water3);
+      } else s.set(x, y, PAL.white).set(x, y + 1, PAL.water4);
+    }
+  }).then(() => s.destroy());
+}
+
+/** The plant's sand spray: six earth clods flung up off the harpoon's foot, falling back and lying a beat. */
+function sandSpray(sc: Phaser.Scene, foot: XY, floorY: number, depth: number, seed: number): void {
+  const s = new Surface(sc, depth);
+  // wet sand: dark earth clods with a water glint among them, flung high and wide so they read off the crab's own tan
+  const tones = [PAL.earth2, PAL.white, PAL.earth1, PAL.water4, PAL.earth2, PAL.earth3];
+  const cl = Array.from({ length: 6 }, (_, i) => ({ vx: (i - 2.5) * 30 + ((seed * 13 + i * 5) % 7) - 3, vy: -120 - ((seed + i * 11) % 4) * 14, c: tones[i] }));
+  void animate(sc, 460, (t, el) => {
+    s.clear();
+    const k = el / 1000;
+    for (const q of cl) {
+      const x = foot.x + q.vx * k;
+      const y = Math.min(floorY + 1, foot.y + q.vy * k + 640 * k * k);
+      if (t > 0.8 && (rnd(el / 34) & 1)) continue;
+      s.set(x, y, q.c);
+      if (y < floorY) s.set(x + 1, y, q.c);
+    }
+  }).then(() => s.destroy());
+}
+
+/** The nacre brightens for a frame on the plant: a white band along the lip (then water4, then gone). */
+function nacreFlare(sc: Phaser.Scene, u: MonsterUnit): void {
+  const c = u.core();
+  const s = new Surface(sc, u.sprite.depth + 0.06);
+  const sgn = u.flipX ? -1 : 1;
+  void animate(sc, 100, (t) => {
+    s.clear();
+    const col = t < 0.4 ? PAL.white : PAL.water4;
+    for (let i = 0; i < 11; i++) {
+      const a = -Math.PI * 0.9 + (i / 10) * Math.PI * 0.95;
+      s.set(c.x + Math.cos(a) * 7 * sgn, c.y + Math.sin(a) * 6, col);
+      if (t < 0.4 && i % 2 === 0) s.set(c.x + Math.cos(a) * 6 * sgn, c.y + Math.sin(a) * 5, PAL.water4);
+    }
+  }).then(() => s.destroy());
+}
 
 /** The aura at rest at once (no raise): a harpooner found shrouded without its wall (a staged duel, a missed event). */
 export function ensureShroud(u: MonsterUnit): ShroudAura | null {
@@ -221,6 +295,8 @@ export async function syncShroud(ctx: AnyCtx, u: MonsterUnit, o: { short?: boole
       // the plant that calls the bay: a white stepped flash pool at the harpoon's foot
       const foot = u.framePoint(...staffOf(u));
       void lightFlash(u.scene, foot.x, u.home.y, PAL.white, 16, 260, { floorY: u.home.y, intensity: 0.75 });
+      sandSpray(u.scene, { x: foot.x, y: u.home.y - 1 }, u.home.y + 2, unitDepth(u.home.y) + 0.4, u.uid);
+      nacreFlare(u.scene, u);
       void a.raise(false).then(raisedOk, raisedOk);
     };
     if (u.has('special')) atFrame(u, 'special', relF, go, { maxMs: 3000 });
@@ -299,6 +375,7 @@ function deflect(scene: Phaser.Scene, u: MonsterUnit, _views: DuelViews): void {
   const plate = scene.add.image(0, 0, plateKey(scene, true, 0).key).setOrigin(0, 0).setDepth(DEPTH.FX_TOP + 3).setVisible(false);
   let hitDone = false;
   let stamped = false;
+  const dropAt: (XY | null)[] = [null, null];
   const top = u.worldPoint('top');
   const plateAt = (big: boolean, dy: number): void => {
     const k = plateKey(scene, big, 0);
@@ -330,7 +407,8 @@ function deflect(scene: Phaser.Scene, u: MonsterUnit, _views: DuelViews): void {
       if (!hitDone) {
         hitDone = true;
         aura?.hit(at);
-        play('harpShlup', { volume: 0.9, pan });
+        play('harpShlup', { volume: 1, pan });
+        startle(scene, u);
       }
       // 100–320: they SKID along the wall (15 px of the ellipse, riding its top), 320–420: flung off outward + up,
       // fading in two tone steps
@@ -357,6 +435,28 @@ function deflect(scene: Phaser.Scene, u: MonsterUnit, _views: DuelViews): void {
       } else if (t > 0.8) col = PAL.white;
       void p;
       corners(ret, cx - half, cy - half, cx + half, cy + half, col);
+      // two foam drops thrown off the curl along the skid (they arc, land as wet dots and soak in)
+      const fe = el - 100;
+      const s0 = ringPt(at);
+      const a0 = Math.PI / 2 + at * Math.PI * 2;
+      const tg0 = { x: -Math.sin(a0) * dirK, y: Math.cos(a0) * dirK * 0.5 };
+      for (let i = 0; i < 2; i++) {
+        const sp = 70 + i * 30;
+        const kk = fe / 1000;
+        const floorY = s0.y + 2 + i * 2;
+        let dx = s0.x + tg0.x * sp * kk;
+        let dy: number = s0.y - 9 + (-60 + i * 15) * kk + 420 * kk * kk;
+        const landed = dy >= floorY && kk > 0.05;
+        if (landed) {
+          // it stays where it first touched the floor
+          dropAt[i] ??= { x: rnd(dx), y: floorY };
+          dx = dropAt[i]!.x;
+          dy = dropAt[i]!.y;
+        }
+        const cdrop = landed ? (fe < 260 ? PAL.water4 : PAL.water3) : PAL.white;
+        ret.set(dx, dy, cdrop);
+        if (!landed) ret.set(dx, dy + 1, PAL.water4);
+      }
     }
     // the plate: pops at 120 ms (one size bigger for 34 ms), holds 500, slides down 3 px and sinks in two steps
     if (el >= 120) {
@@ -384,6 +484,22 @@ function deflect(scene: Phaser.Scene, u: MonsterUnit, _views: DuelViews): void {
 }
 
 const lerpN = (a: number, b: number, t: number): number => a + (b - a) * clamp(t, 0, 1);
+
+/**
+ * The crab answers the strike on its wall: for two frames it starts up — the special pose's first rise (the body up a
+ * px, the eye stalks lifted toward the noise, the rope claw raised over the shell, the harpoon pulled a step out of the
+ * sand) — then settles back into its idle. Only while it idles (real time: the UI layer).
+ */
+function startle(scene: Phaser.Scene, u: MonsterUnit): void {
+  if (!u.has('special') || !u.sprite.active || u.retired || u.frameInfo().anim !== 'idle') return;
+  if (!u.pose('special', 1)) return;
+  ambient(scene, (el) => {
+    if (!u.sprite.active || u.retired) return false;
+    if (el < 70) return true;
+    if (u.frameInfo().anim === 'special') u.rest();
+    return false;
+  });
+}
 
 /** Four 4-px L corners (1-px line, an ink pixel at each outer tip) on a box. */
 function corners(s: Surface, x0: number, y0: number, x1: number, y1: number, c: number): void {

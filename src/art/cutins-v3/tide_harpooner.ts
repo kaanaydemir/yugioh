@@ -41,6 +41,8 @@ interface P {
   grip: number;
   /** the coil's swing (px) */
   coil: number;
+  /** the eye stalks bob forward (px) — the slam's beat as the tip crosses the band */
+  bob?: number;
 }
 const POSES: readonly P[] = [
   { eye: 0, lit: 0, harp: -1, glint: 0, stalk: 0, claws: 0.3, grip: 0, coil: 0 },
@@ -49,7 +51,7 @@ const POSES: readonly P[] = [
   { eye: 1, lit: 1, harp: 0.22, glint: 1, stalk: 2, claws: 0.85, grip: 0.4, coil: -2 },
   { eye: 1, lit: 1, harp: 0.48, glint: 1, stalk: 2, claws: 1, grip: 0.7, coil: -3 },
   { eye: 2, lit: 1, harp: 0.75, glint: 1, stalk: 2, claws: 1, grip: 1, coil: -1 },
-  { eye: 2, lit: 1, harp: 1, glint: 2, stalk: 2, claws: 1, grip: 1, coil: 1 },
+  { eye: 2, lit: 1, harp: 1, glint: 2, stalk: 2, claws: 1, grip: 1, coil: 1, bob: 2 },
   { eye: 2, lit: 1, harp: 1, glint: 3, stalk: 2, claws: 1, grip: 1, coil: 0 },
 ];
 const HOLDS: readonly number[] = [160, 70, 80, 70, 70, 70, 90, 600];
@@ -166,6 +168,40 @@ const factory: CutinFactory = () => {
         cord(cx, cy, rx, rx * 0.6, 0.44);
       }
     }
+    // the SPIRAL: on every upper whorl a suture seam runs DOWN-RIGHT across its strip (earth1, its lit lip one earth4
+    // pixel on the key-light side), each seam stepped further along than the one above — the eye follows them round
+    // the spire as one continuous winding line (review 3: "no spiral suture")
+    const pdx = Math.cos(perp);
+    const pdy = Math.sin(perp);
+    const adx = Math.cos(axis);
+    const ady = Math.sin(axis);
+    const topmost = (k: number, x: number, y: number): boolean => {
+      const qi = NW - 1 - k; // whorls[] holds the apex first
+      if (!whorls[qi]?.isOpaque(x, y)) return false;
+      for (let j = qi + 1; j < NW; j++) if (whorls[j].isOpaque(x, y)) return false;
+      return true;
+    };
+    for (let k = 1; k < NW; k++) {
+      const t = k / NW;
+      const cx = B[0] + (A[0] - B[0]) * t * 0.95;
+      const cy = B[1] + (A[1] - B[1]) * t * 0.95;
+      const rx = 60 * Math.pow(1 - t, 1.05) + 5;
+      // (the whorl's ellipse is rx across the axis, 0.6 rx along it; its visible strip is the apex-side rim)
+      const o = rx * (0.05 - 0.1 * k);
+      for (let u = 0; u <= 1; u += 0.01) {
+        const along = rx * 0.6 * (1.02 - u * 0.75);
+        const side = o + u * rx * 0.42;
+        const x = Math.round(cx + pdx * side + adx * along);
+        const y = Math.round(cy + pdy * side + ady * along);
+        if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1 || !topmost(k, x, y)) continue;
+        const c0 = p.get(x, y);
+        if (c0 !== SHELL.L && c0 !== SHELL.M && c0 !== SHELL.S && c0 !== PAL.earth4) continue;
+        p.set(x, y, PAL.earth1);
+        const lx = x + ls;
+        const ly = y - 1;
+        if (topmost(k, lx, ly) && (p.get(lx, ly) === SHELL.L || p.get(lx, ly) === SHELL.M)) p.set(lx, ly, PAL.earth4);
+      }
+    }
     // a mussel cluster low on the body whorl (night2 / night3, water0 hinges)
     for (const [mx, my] of [[20, 116], [31, 124], [16, 130]] as const) {
       const m = lay();
@@ -267,19 +303,43 @@ const factory: CutinFactory = () => {
       q.poly(ellPoly(sk[0], sk[1], 6, 3.5, 0, 20), PAL.night1);
       p.blit(q, 0, 0);
     }
-    // mouthparts: three stacked plate pairs (maxillipeds) under the brow, ink seams, fire tips
-    for (let r = 0; r < 3; r++)
-      for (const sd of [-1, 1]) {
-        const x0 = 121 + sd * (2 + r);
-        const y0 = 112 + r * 7;
-        const w = 9 - r;
-        const m = lay();
-        m.poly(sd < 0 ? [[x0 - w, y0], [x0, y0 - 1], [x0, y0 + 6], [x0 - w + 1, y0 + 7]] : [[x0, y0 - 1], [x0 + w, y0], [x0 + w - 1, y0 + 7], [x0, y0 + 6]], C.S);
-        bands(m, { L: C.M, M: C.S, S: C.D, D: C.D }, ls, { lit: 2, top: 1, shade: 2, bottom: 1 });
-        p.blit(m, 0, 0);
-        p.set(sd < 0 ? x0 - w : x0 + w - 1, y0 + 1, P_.lit > 0 ? PAL.fire2 : PAL.fire1);
+    // the carapace in PLATES (review 3: no button grid): an H of grooves — two branchial arcs down either side of the
+    // gastric plate and the cervical arc across them — each an earth1 seam with its lit lip on the lower side
+    const groove = (pts: readonly Pt[]): void => {
+      for (let i = 0; i < pts.length - 1; i++) {
+        const [x0, y0] = pts[i];
+        const [x1, y1] = pts[i + 1];
+        const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+        for (let j = 0; j <= n; j++) {
+          const x = Math.round(x0 + ((x1 - x0) * j) / n);
+          const y = Math.round(y0 + ((y1 - y0) * j) / n);
+          const c0 = p.get(x, y);
+          if (!face.isOpaque(x, y) || (c0 !== C.L && c0 !== C.M && c0 !== C.S)) continue;
+          p.set(x, y, C.D);
+          if (face.isOpaque(x, y + 1) && (p.get(x, y + 1) === C.M || p.get(x, y + 1) === C.S)) p.set(x, y + 1, C.L);
+        }
       }
-    p.rect(120, 110, 2, 32, PAL.earth0);
+    };
+    groove([[92, 100], [96, 110], [102, 120], [106, 130]]);
+    groove([[150, 98], [146, 108], [140, 119], [136, 130]]);
+    groove([[97, 108], [108, 104], [121, 103], [134, 104], [146, 107]]);
+    // the mouthparts: ONE pair of long third-maxilliped plates closing the mouth like a two-leaf door (converging
+    // downward on an ink seam), a fire tip on each, a short palp outside each
+    for (const sd of [-1, 1]) {
+      const m = lay();
+      m.poly(sd < 0 ? [[111, 110], [120, 108], [120, 138], [114, 135]] : [[121, 108], [130, 110], [127, 135], [121, 138]], C.S);
+      bands(m, { L: C.M, M: C.S, S: C.D, D: C.D }, ls, { lit: 2, top: 1, shade: 2, bottom: 1 });
+      p.blit(m, 0, 0);
+      // a cross-groove a third of the way down (the plate's joint), and the fire tip at its foot
+      for (let x = sd < 0 ? 113 : 122; x < (sd < 0 ? 120 : 129); x++) if (m.isOpaque(x, 119)) p.set(x, 119, C.D);
+      p.set(sd < 0 ? 115 : 126, 134, P_.lit > 0 ? PAL.fire2 : PAL.fire1).set(sd < 0 ? 116 : 125, 135, PAL.fire1);
+      // the palp
+      const q = lay();
+      q.poly(taperPoly([sd < 0 ? 110 : 131, 113], [sd < 0 ? 106 : 135, 124], 4, 3), C.M);
+      bands(q, C, ls, { lit: 1, top: 1, shade: 1, bottom: 0 });
+      p.blit(q, 0, 0);
+    }
+    p.rect(120, 108, 1, 31, PAL.ink);
 
     // ---- the SHORT JOINTED eye stalks: base segment, a fire ring, the eye segment; the eyes are light (below)
     const eyes: Pt[] = [];
@@ -288,7 +348,8 @@ const factory: CutinFactory = () => {
       const ext = P_.stalk === 0 ? 0.45 : 1;
       for (const [sk, lean] of [[sockL, -1], [sockR, 1]] as const) {
         const j1: Pt = [sk[0] + lean * 3 * ext, sk[1] - 10 * ext + pop * 0.5];
-        const e: Pt = [sk[0] + lean * 5 * ext, sk[1] - 21 * ext + pop];
+        const bob = P_.bob ?? 0;
+        const e: Pt = [sk[0] + lean * 5 * ext + bob, sk[1] - 21 * ext + pop + bob * 0.5];
         part(p, taperPoly([sk[0], sk[1] + 1], j1, 7, 6), C, ls, { lit: 2, top: 1, shade: 2, bottom: 0, sep: PAL.night0 });
         part(p, taperPoly(j1, e, 6, 5), C, ls, { lit: 2, top: 1, shade: 2, bottom: 0, sep: PAL.night0 });
         // the joint ring
