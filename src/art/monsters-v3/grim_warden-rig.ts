@@ -451,7 +451,7 @@ function paintSleeve(f: Frame, far: boolean): void {
   }
   const at = (k: number, d: number): Pt => [E[0] + fx * k + ux * d - sway * (d / droop), E[1] + fy * k + uy * d];
   q.poly([at(0.1, 1), at(1.05, 1), at(1.05, droop - 1), at(0.85, droop + 1), at(0.7, droop - 2), at(0.5, droop), at(0.35, droop - 3), at(0.15, 2)], t.M);
-  clothBands(q, t, f.light, null, 1);
+  clothBands(q, t, f.light, null, 1, far ? null : SHROUD_RIM);
   f.comp.add(q, part, { out: t.D });
 }
 
@@ -652,32 +652,57 @@ function paintMantle(f: Frame): void {
 // ---------------------------------------------------------------- hood + cage helm
 
 /**
- * The cage helm (15×13, facing right), a hand map: a PALE BONE SKULL (h lit cranium / cheek, s bone, c crevice) caged in
- * DARK iron — two meridian bars (b) over the face, the crown ring, the jaw and chin bands (I), the nape plate (P), the
- * knob (k). The skull is cool bone (stone4 / stone3 / stone2) so it reads as bone behind iron at 1×, the iron is a value
- * darker than the bone; the socket (o, 3×2, void0) holds the one eye (2×2 core + halo, light), n = the nose cavity,
- * t / g = teeth and gaps behind the bars. Critic r1: four bars + earth bone read as a brown grille.
+ * The cage helm (15×16, facing right) — critic pass-3 r1: the old map (a full iron frame of crown ring + jaw band +
+ * chin band + nape plate round a flat face) read as a robot visor / TV face. Now an ORGANIC SKULL: a domed cranium wider
+ * than the jaw, a brow ridge, two sockets (the near one holds the eye, the far one is dark), a nose notch, lit
+ * cheekbones, a narrow maxilla with THREE irregular teeth and a missing one, a separate mandible and chin. The cage is
+ * only two dark iron BARS bolted into the bone (`HELM_BARS`), arching from a knob over the cranium and down either side
+ * of the face; each bar throws a 1-px void0 shadow onto the bone (away from the light), so the bars read as standing IN
+ * FRONT of the skull. h lit bone / s bone / c crevice (bone tones are cool stone: stone4 / stone3 / stone2), o socket,
+ * n nose, t tooth, g gap (void0).
  */
 const HELM: readonly string[] = [
-  '......kk.......',
-  '....IIIIIII....',
-  '..Phhhbhhhhbs..',
-  '.PPshhbhhhsbss.',
-  '.PPsshbhsssbsss',
-  'PPPsssbscccbssc',
-  'PPPcssbsooobsss',
-  'PPPcssbcooobsnc',
-  '.PPcssbshhsbccc',
-  '.IIIIIIIIIIIII.',
-  '..ctgtbtgtgbtc.',
-  '...ctgbtgtgbc..',
-  '....IIIIIIII...',
+  '...............',
+  '...............',
+  '....sshhhs.....',
+  '..sshhhhhhhs...',
+  '.sshhhhhhhhhs..',
+  '.shhhhhhhhhhhs.',
+  'sshhhhhhhhhhhhs',
+  'ssshhcoooohoos.',
+  'cssshcoooohoos.',
+  '.cssshcooshcos.',
+  '..csshhhhhnnhs.',
+  '...cssshhsnshs.',
+  '....csttgtggts.',
+  '.....cgtgtggs..',
+  '.....cssshhs...',
+  '......cssss....',
 ];
+/** The two cage bars + the knob (map cells, top → bottom); a rivet bolts each bar's foot into the bone. */
+const HELM_BARS: readonly (readonly [number, number])[][] = [
+  [[6, 1], [5, 2], [4, 3], [3, 4], [3, 5], [3, 6], [3, 7], [3, 8], [3, 9], [4, 10], [4, 11]],
+  [[7, 1], [8, 2], [9, 3], [10, 4], [11, 5], [12, 6], [12, 7], [12, 8], [12, 9], [12, 10], [12, 11]],
+];
+const HELM_KNOB: readonly (readonly [number, number])[] = [[6, 0], [7, 0], [6, 1], [7, 1]];
 const HELM_CX = 7;
-const HELM_CY = 6;
-/** The socket the eye burns in (map coords of its top-left cell; the 2×2 core scans 0 / +1 inside the 3×2 socket). */
-const SOCK_U = 8;
-const SOCK_V = 6;
+const HELM_CY = 8;
+/** The socket the eye burns in (map coords of its top-left cell; the 2×2 core scans 0 / +1 inside the 4×2 socket). */
+const SOCK_U = 7;
+const SOCK_V = 7;
+
+/** The helm's cell map with the bars, their shadows and the knob laid in ('b' bar, 'r' rivet, 'k' knob, 'x' shadow). */
+const HELM_CELLS: readonly string[] = (() => {
+  const g = HELM.map((r) => r.split(''));
+  const set = (u: number, v: number, ch: string) => {
+    if (g[v] && u >= 0 && u < 15) g[v][u] = ch;
+  };
+  for (const bar of HELM_BARS) {
+    bar.forEach(([u, v], i) => set(u, v, i === bar.length - 1 ? 'r' : 'b'));
+  }
+  for (const [u, v] of HELM_KNOB) set(u, v, 'k');
+  return g.map((r) => r.join(''));
+})();
 
 /** Helm origin (map top-left) in frame px, and its tilt; a dropped helm leaves the hood. */
 function helmPlace(o: Pose, sk: Skel): { x: number; y: number; rot: number } {
@@ -696,7 +721,7 @@ function helmPlace(o: Pose, sk: Skel): { x: number; y: number; rot: number } {
 }
 
 function helmCell(u: number, v: number): string {
-  const r = HELM[v];
+  const r = HELM_CELLS[v];
   if (!r) return '.';
   return r[u] ?? '.';
 }
@@ -724,43 +749,52 @@ function paintHelm(f: Frame): void {
       cells.set(y * W + x, ch);
       q.set(x, y, IRON.M);
     }
-  // bars: the bar on the lit side pale, the rest mid / shade; bands: lit top row, shade under; the skull inside: one
-  // value dimmer than the teeth, its cranium lit toward the light; the nape plate shaded away from the light
+  // the bars' shadows on the bone: the skull cell beside a bar on the side AWAY from the light goes void0
+  const ls = light.side;
+  const shadowed = new Set<number>();
+  for (const [k, ch] of cells) {
+    if (ch !== 'b' && ch !== 'r') continue;
+    const x = k % W;
+    const y = Math.floor(k / W);
+    const sk2 = y * W + x - ls;
+    const n = cells.get(sk2);
+    if (n && n !== 'b' && n !== 'r' && n !== 'k') shadowed.add(sk2);
+  }
   planes(q, (x, y) => {
     const ch = cells.get(y * W + x)!;
     const [u, v] = uv(x, y);
-    const litU = light.side < 0 ? u <= 7 : u >= 7;
+    const litU = ls < 0 ? u <= 7 : u >= 7;
+    if (shadowed.has(y * W + x)) return PAL.void0;
     switch (ch) {
       case 'o':
       case 'g':
       case 'n':
         return PAL.void0;
       case 't':
-        return v === 10 ? PAL.stone4 : PAL.stone3;
+        return v === 12 ? PAL.stone4 : PAL.stone3;
       case 'h':
-        return litU || v === 8 ? PAL.stone4 : PAL.stone3;
+        // the brim shades the top of the cranium; the cheekbones and the brow catch the light
+        if (v <= 3) return PAL.stone3;
+        return litU || v === 10 || v === 6 ? PAL.stone4 : PAL.stone3;
       case 's':
-        return v <= 3 && litU ? PAL.stone4 : PAL.stone3;
+        return v <= 5 && litU ? PAL.stone3 : v >= 12 ? PAL.stone2 : PAL.stone3;
       case 'c':
         return PAL.stone2;
       case 'b':
         return litU && v <= 4 ? PAL.stone2 : PAL.stone1;
-      case 'P':
-        return litU && v <= 5 ? PAL.stone2 : PAL.stone1;
-      case 'k':
+      case 'r':
         return PAL.stone3;
+      case 'k':
+        return v === 0 ? PAL.stone3 : PAL.stone2;
       default:
-        // a band: the crown ring lit on the light's half, the jaw band mid, the chin band in shade
-        if (v === 12) return PAL.stone1;
-        if (v === 1) return litU ? PAL.stone3 : PAL.stone2;
-        return litU ? PAL.stone2 : PAL.stone1;
+        return PAL.stone2;
     }
   });
   f.comp.add(q, Part.helm, { out: PAL.stone0 });
   // a magic blow: the soul fire flashes through the bars (light, after the outline)
   if (o.zap > 0) {
     const bars: Pt[] = [];
-    for (const [k, ch] of cells) if (ch === 'b' || (ch === 'I' && o.zap > 0.6)) bars.push([k % W, Math.floor(k / W)]);
+    for (const [k, ch] of cells) if (ch === 'b' || ch === 'k' || (ch === 'o' && o.zap > 0.6)) bars.push([k % W, Math.floor(k / W)]);
     const col = o.zap > 0.6 ? PAL.leaf4 : PAL.leaf3;
     f.after.push((p) => {
       for (const [x, y] of bars) if (f.comp.id[y * W + x] === Part.helm) p.set(x, y, col);
