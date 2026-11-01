@@ -1379,3 +1379,94 @@ blocked the battle's shared backlash bolt dominates the wall ignition; the bank 
 frames of roll); the summon cut-in hold frame and the slam ring are unchanged from r3; the heap is dark at 1× (stone0
 / stone1 on the grey tile) and there is one empty-tile frame between the crumble and the heap's first row; the SE-4
 numbers above are not on the project's calibrated scale; kaAdAtk sits 24 ms under its limit.
+
+### Critic round 1/3 fixes (2026-11-01, lane-A cinematics builder)
+Evidence root: `shots/kart-a/ashen_drake/fix1/` (critic's: `shots/kart-a/ashen_drake/crit1/`). Every changed moment
+re-filmed and looked at (3× zooms + 1× board strips).
+Files: `src/cinematics/summon-a/ashen_drake.ts`, `src/cinematics/strikes-a/ashen_drake.ts`,
+`src/cinematics/strikes-a/ashen_drake-fx.ts`, `src/audio/v3/ashen.ts`, `src/art/monsters-v3/ashen_drake.ts`
+(new export `drawAshenSeated`), `src/art/monsters-v3/ashen_drake-anims.ts` (hit tails only). No shared file touched.
+
+1. **HIGH summon slam — fixed.** Root cause: the kit finale's ring and our billows / dust lived on `TILE_FX`, UNDER the
+   summoned card lying on the tile (`CARD_ON_TILE` 50), so nothing showed until the ring outgrew the card (~160 ms).
+   Also the picture closes on f10 (filmed, `fix1/sum_slam_before.png`: f10 reads closed, f11/f12 only weld), not f12.
+   Now on **f10**: `ashShock` (own ring on `DEPTH.SHADOW − 1`: stone0 under-line, stone2 body, stone3 lit lip, 8
+   3-band billows r 4, a 14-piece stone dust burst, a fire3/fire2 → fire1 splash under the chest), frame 0 drawn
+   synchronously (visible through the 50 ms freeze), `ashenLand`, shake 3, freeze 50, badge pop. `S.finale` is no
+   longer called (its ring was the white dotted one under the card). `greyDust` moved above the card too.
+   Evidence `fix1/sum_slam.png` (3640–3895: ring + billows from 3674, the frame the cloak lands).
+2. **HIGH attack signature — fixed (number placement: orchestrator ask).** Over a monster the veil is now a LATTICE
+   (`latticeSlots` in `-fx.ts`): rows of ash cells to **65 % of the target's bounding box** (sprite bounds, was
+   ~35 % via `core()`), ≥ the target's width × 0.85, each cell with a 1-px ink seam (fire1 once burning) so grey ash
+   reads on grey stone; the top two rows leave open gaps (EF-2); the cells CLIMB a row per ~8 px a frame. The
+   silhouette holds **18 frames** (through the kit flash + hit-stop + 2), with flame tongues CLIMBING its contour
+   feet → crown (re-rolled every 2 frames) and a ragged crest once at the top, then 2 stepped charring frames.
+   `fix1/atk_zz.png` (3×), `fix1/atk_z.png`, `fix1/tie_z.png`, `fix1/atkp2.png` (1×). **Not fixed here:** the −1900
+   number covering the ignition (P1) / the drake's chest (P2) is the shared battle number placement
+   (`battle/battle.ts NUMBER_CLEAR_PX`); **orchestrator ask:** an additive per-recipe number offset / delay
+   (e.g. `attack.numberDelayMs`) so the number lands one beat after the ignition frame.
+3. **HIGH cloaked hit pop — fixed.** Lose and tie: the drake now takes the backlash BARE and its cloak re-seats plate by
+   plate in the accretion order (`reseat()`: the shown hit / death frame redrawn by `drawAshenSeated` with `seated`
+   0 → 44 in 8 stepped 2-frame steps, the newest 8 plates welding fire2; sprite hidden under the overlay, alpha
+   restored at once when done), the 9 chips flying home faster (170 ms) to land on them. `fix1/lose_hit.png`
+   (bare 1366–1600 under the bolt, plates 1630–1860), `fix1/tie_z.png`. hit / hitHeavy tails: the heart flickers
+   (beat 1 / 3 / 2), the head bobs back up, two hem flakes lift (`ashen_drake.test.ts` 12/12).
+4. **MEDIUM heap — fixed.** The heap starts on death **f8** (was f9), grows in ~120 ms (was 260), a 1-px ink outline,
+   stone1 foot / stone2 body / stone3 lit top with the far flank a band darker and strata creases, a 2×2 fire3 eye with
+   a fire4 pulse and fire1 cheeks. No empty-tile frame: `fix1/kill_heap.png` (crumble 1799–1832 → heap 1865).
+5. **MEDIUM direct — partly fixed.** The bank is a low pile at the podium front (base / back row only, puffs × 0.7),
+   one narrow flame column (r 4, ≤ 11 px) under the chest, the fire4 cores ≤ 2 frames, our ignition light has no
+   ring at a duelist. `fix1/direct_z.png`. **Remaining (shared, not ours):** the white star over the duelist
+   (1364–1595) and the white-then-orange rings are the battle kit's direct-hit presentation (they stay with every
+   ring of ours removed) — orchestrator to judge.
+6. **MEDIUM blocked — fixed.** The pile climbs to 75 % of the guard's height (the climb as in #2), splays sideways
+   over 7 frames, a 3-frame wall of fire (5 tongue columns, up to ~19 px) on the guard face at the ignition, and the
+   backwash is 5 billows (burning → cooling → charred, 36 px, 440 ms) on `DEPTH.FX_TOP − 1`, above the backlash
+   bolt. `fix1/blocked_z.png`. It starts after the kit's hit-stop (~1580), not under it.
+7. **MEDIUM tornado — fixed.** Front arcs 2-px bands (stone3 / stone2 lit top over a stone1 / stone0 underside), back
+   arcs stone1 / stone0, fire3 embers with a fire4 head every 4 px on alternate ribbons, plates 3×2 / 3×3 with an
+   ink shadow edge (a full ink box read as black squares). `fix1/sum_a.png`, `fix1/sum_a_z.png`. The accreting body
+   itself (the art) unchanged.
+8. **MEDIUM SE-4 — improved, not proven on the A2 scale.** Re-voiced `ashenRoar` (no formant growl at all: brown
+   bellows in the 160 / 320 Hz rib tubes throbbing at 24 Hz, a driven 40–62 Hz saw under 300 Hz, two heartbeats, an
+   ember storm at 3.5–7 kHz over an empty middle), `ashenMound`, `ashenTalon`, `ashenCrumble`, `ashenIgnite` (the
+   low-pass opens to 1.2 kHz, a 55 → 28 Hz floor, crackle at 5–10 kHz), `ashenReviveGather`, `ashenReviveBeat`.
+   Same in-page profile script as before (`<scratch>/lsd2.js`): vs crystal_wyrm median 12.5, **min 5.7 → 9.5**
+   (impact); vs abyss_magus **median 8.7 → 13.5, min 3.6/6.0 → 8.7** (reviveGather). Every role pair rose; the
+   script reads ~0.6–0.8× A2's scale (r1 calibration), so on A2's scale the minima are ≈ 11–15 dB. No calibrated
+   shared tool exists to prove it (orchestrator: the A2 `palette.txt` script is not in the tree).
+9. **MEDIUM `ashenCrackle` — fixed.** `_v3/death.ts` plays `deathStart` only when the pose is first seen on f0; a
+   lethal recoil enters death later. `ashenDeathV3` now watches the pose: first seen past f0 → it plays the crackle
+   on that frame (f0 first → the kit's own beat). In the logs now: kaAdKill 1300, kaAdLose 1717, kaAdTie 1683.
+   `ashenCrumble` +7 dB (and a low thump).
+10. **LOW–MEDIUM hush duck — improved to the engine's floor.** `applyDuck` (shared `audio/engine.ts`) gives
+    `depth = max(0.35, 1 − 0.5 × duck × volume)`, i.e. **−6 dB at most** for any one sound; ≥ 10 dB is not reachable
+    from a recipe. `ashenHush` duck 1 at volume 1 (was 0.95 × 0.7), `ashenLub` duck 1 re-anchors it 66 ms later.
+    Measured (music − sfx render, `fix1/clips/kaAdAtk-music.wav` − `kaAdAtk.wav`): music −20.9 dBFS before the
+    attack → **−27.2** across the silence (crit1: −24.7), −19.2 in the tail = a 6.3–8 dB duck. **Orchestrator ask:**
+    a deeper duck needs the shared engine.
+11. **LOW timing — fixed.** Tie bank floor 170 → 150 ms: kaAdTie **3150** (40 ms headroom); kaAdAtk 3166 (24 ms,
+    > 1 frame, unchanged).
+12. **LOW summon hold — fixed (life on the hold).** During the cut-in hold: ash flakes peel off the frame's own hem
+    pixels and embers lift (every 45 ms), the floor pool beats twice. The hold length is the cut-in's (`c.exit`
+    resolves when the band starts to leave; `playFrom(9)` already starts then). `summonBurst` is the cut-in's own
+    exit beat (shared `_v3/cutin.ts`), kept.
+13. **LOW fuse — fixed visually; start time rejected.** 2×2 segments (fire3 → fire2 → fire1 → soot) with a 3×3 fire3
+    head (fire4 heart) running toward the drake; the fuse and the soot moved to `DEPTH.SHADOW − 1 / − 2` (over the
+    cards on the tiles). The +383 ms start is +130 ms after the kit's ~250 ms hit-stop: starting it inside the stop
+    would only freeze it (our layers step on scaled time), so it stays.
+14. **INFO board shift — flagged** (shared, not this card): the board view shifting ~20 px after the drake's death
+    (measure: cam 2f/~18 px in every kaAd scenario, also visible in `fix1/kill_heap.png` 2327).
+
+**Measured** (`fix1/measure.json`, `--look v3`, game ms; limit = REHBER §5 × 1.45): kaAdSummon / P2 4166 (≤ 4350) ·
+kaAdAtk / P2 3166 (≤ 3190) · kaAdAtkLongDeath 3133 · kaAdLose / P2 3083 · kaAdTie 3150 (≤ 3190) · kaAdDirect / P2 2233
+(≤ 2320) · kaAdRevive 2200 (≤ 3050) · kaAdPos 533 (≤ 580) · kaAdFlip 766 (≤ 870) · kaAdBlocked 2133 · kaAdDefWin 2966 ·
+kaAdAtkTitan 2500 · kaAdHit 1700 · kaAdKill / P2 2583 · kaAdKillPhys 2366 · kaAdGuardKill 2683 · kaAdBolt 2483 ·
+kaAdChains 4850 · kaAdMirror 4066 · kaAdSummonOnHeap 6283 · errors 0 everywhere; number on the contact frame.
+**Sound** (`fix1/clips/`, kaAdAtk, kaAdAtk-music, kaAdKill, kaAdLose, kaAdTie, kaAdSummon): peaks −1.8 … −2.1 dBFS,
+0 clipped; the silence (kaAdAtk, sfx only, 10 ms peaks) < −40 dBFS from ~1180 to ~1330 ms (≥ 150 ms).
+**Gates:** `npm run typecheck` clean · `tests/art/ashen_drake.test.ts`, `materials`, `tests/presentation`, `tests/v3`
+pass (one flaky timeout under the parallel clip renders, clean on re-run) · `filmdiff --set v1` **17/17 IDENTICAL**
+(`fix1/v1films`) · `monster-gates` (`fix1/gates/gates.txt`): 20 ok; IŞ-10 = the known exemption; **KK-13 ms is at the
+limit and noisy**: the same current art measures 7.57 / 8.09 / 8.47 ms (limit 8) in three runs minutes apart on a
+shared machine (P2 7.49–7.54); the rise is over r2–r4 (6.85 → 7.58), this round only added beats / flakes to 3 hit frames.
