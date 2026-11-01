@@ -9,7 +9,7 @@
 //   KiteImage      an Image of one of those, origin on the art anchor, mirrored for P2 like a unit
 //   needleLine     attack 1's 1-px straight trail at blade height behind the dash (white → mist → steel → gone, real frames)
 //   pendulumTrail  attack 2's 1-px curved trail from the analytic swing (one monotonic arc, three age bands)
-//   cutSlit        attack 2's contact: a curved 1-px white slit across the body at ~60° + linen fibre threads
+//   cutSlit        attack 2's contact: a 1-px white crescent lying across the body under the blade + linen fibres
 //   scrapFray      the death's ending: the linen scrap twitches toward the wind and frays into drifting threads
 //   tautString     attack 2's string from the kite's tail to the pin on the home tile (world space, vibrating)
 //   snapWhips      the death's snapped string ends whipping back (two curling 1-px lines)
@@ -207,55 +207,69 @@ export function pendulumTrail(scene: Phaser.Scene, at: (th: number) => XY, depth
 }
 
 /**
- * The lateral cut on the target: a curved 1-px slit CROSSING the body at about 60° (top-back → bottom-front, `dir` =
- * the swing's screen direction ±1), perpendicular to the fleche's level axis, so it reads as a cut, not a stab. It
- * runs through on the first step (white, its middle 2 px), then steps white → mist → steel → gone; with `fibres`,
- * linen threads (earth4 / earth3, 2–3 px) fall out of it. Whole pixels, palette only.
+ * The lateral cut on the target: a 1-px white CRESCENT lying across the body (mostly level, `len` px, sagging 2–3 px in
+ * the middle like the bottom of the swing that made it), 4 px under the blade's tip and 2 px on past it — so it never
+ * sits on the blade (which runs up and back from the tip). It opens across in 2 real frames (the hit-stop freezes the
+ * scene clock, not the opening), its middle gapes 1 px on the first steps (a slit, not a scratch), and it HOLDS white
+ * until `holdMs` of scene time after the stop has let go (so it outlives the shared contact flash by several frames),
+ * then steps mist → steel → gone. With `fibres`, 2–3 linen threads (earth4, one earth3) peel off its lower edge and
+ * drift 4–6 px forward and down. `dir` = the swing's screen direction ±1. Whole pixels, palette only.
  */
-export function cutSlit(scene: Phaser.Scene, at: XY, dir: 1 | -1, depth: number, o: { fibres?: boolean; len?: number; stepMs?: number; rnd?: () => number } = {}): Promise<void> {
+export function cutSlit(scene: Phaser.Scene, at: XY, dir: 1 | -1, depth: number, o: { fibres?: boolean; len?: number; holdMs?: number; stepMs?: number; rnd?: () => number } = {}): Promise<void> {
   const px = layer(scene, depth);
-  const L = o.len ?? 18;
-  const stepMs = o.stepMs ?? 55;
+  const L = o.len ?? 11;
+  const holdMs = o.holdMs ?? 150;
+  const stepMs = o.stepMs ?? 50;
   const rnd = o.rnd ?? Math.random;
-  const steps = [PAL.white, PAL.white, PAL.mist, PAL.steel];
-  const ang = (60 * Math.PI) / 180;
-  const d = { x: dir * Math.cos(ang), y: Math.sin(ang) };
-  const n = { x: -d.y, y: d.x }; // the bow of the cut (toward the swing's back)
-  const pt = (u: number): XY => {
-    const s = (u - 0.5) * L;
-    const bow = Math.sin(u * Math.PI) * 2.5;
-    return { x: at.x + d.x * s + n.x * bow * dir, y: at.y + d.y * s + n.y * bow * dir };
-  };
+  const c0 = { x: at.x + dir * 2, y: at.y + 4 };
+  const sag = 2.5;
+  /** u 0 → 1 runs along the swing (back → front); the middle sags `sag` px. */
+  const pt = (u: number): XY => ({ x: c0.x + dir * (u - 0.5) * L, y: c0.y + Math.sin(u * Math.PI) * sag - (u - 0.5) * 1.2 });
+  // the threads leave from the lower edge between 30 % and 75 % of the cut
   const fibres =
     o.fibres === false
       ? []
-      : Array.from({ length: 5 }, (_, i) => {
-          const p = pt(0.15 + i * 0.17);
-          return { x: p.x + (rnd() * 2 - 1), y: p.y, vy: 10 + rnd() * 12, vx: dir * (3 + rnd() * 5), len: 2 + Math.floor(rnd() * 2), c: i % 2 ? PAL.earth3 : PAL.earth4, tilt: rnd() < 0.5 ? 1 : 0 };
+      : Array.from({ length: 3 }, (_, i) => {
+          const p = pt(0.3 + i * 0.22 + rnd() * 0.05);
+          const dist = 4 + rnd() * 2;
+          return { x0: p.x, y0: p.y + 1, dx: dir * dist * (0.5 + rnd() * 0.3), dy: dist * 0.85, len: i === 1 ? 1 : 2, c: i === 2 ? PAL.earth3 : PAL.earth4, lean: i === 0 ? 0 : 1 };
         });
+  let frame = 0;
+  let open = -1; // the scene time the hit-stop let go (the hold counts from there)
   return new Promise((resolve) => {
-    onFrame(scene, (dt, el) => {
+    onFrame(scene, (_dt, el) => {
+      frame++;
       px.clear();
-      const k = Math.floor(el / stepMs);
-      if (k < steps.length) {
-        const grow = Math.min(1, el / (stepMs * 0.7));
-        const m = Math.max(2, Math.round(L * grow));
-        const pts: XY[] = [];
-        for (let i = 0; i <= m; i++) pts.push(pt(i / L));
-        poly(px, pts, steps[k]);
-        // the open middle of the cut on its first frames (2 px)
-        if (k < 2)
-          for (let i = Math.round(L * 0.3); i <= Math.min(m, Math.round(L * 0.7)); i++) {
-            const p = pt(i / L);
-            px.dot(R(p.x + dir), R(p.y), steps[k]);
+      if (open < 0 && el > 0) open = el;
+      const after = open < 0 ? 0 : el - open;
+      const k = after < holdMs ? 0 : 1 + Math.floor((after - holdMs) / stepMs);
+      const col = [PAL.white, PAL.mist, PAL.steel][k];
+      if (col !== undefined) {
+        const reach = Math.min(1, frame / 2);
+        const n = Math.max(2, Math.round(L * reach));
+        let prev = pt(0);
+        for (let i = 1; i <= n; i++) {
+          const q = pt(i / L);
+          px.line(R(prev.x), R(prev.y), R(q.x), R(q.y), col);
+          prev = q;
+        }
+        // the gaping middle (1 px under the 3 middle pixels) while it is fresh
+        if (k === 0 && reach >= 1)
+          for (let i = Math.round(L * 0.38); i <= Math.round(L * 0.62); i++) {
+            const q = pt(i / L);
+            px.dot(R(q.x), R(q.y) + 1, PAL.mist);
           }
       }
-      for (const f of fibres) {
-        f.y += (f.vy * dt) / 1000;
-        f.x += (f.vx * dt) / 1000;
-        if (el > stepMs) for (let j = 0; j < f.len; j++) px.dot(R(f.x + j * f.tilt), R(f.y + j), f.c);
-      }
-      if (el > 520 || (k >= steps.length && !fibres.length)) {
+      // the threads: they appear as the cut has opened and drift for 360 ms (eased), then go
+      const ft = clamp01((after - 10) / 360);
+      if (frame > 2 && ft < 1)
+        for (const f of fibres) {
+          const e = 1 - (1 - ft) * (1 - ft);
+          const x = f.x0 + f.dx * e;
+          const y = f.y0 + f.dy * e;
+          for (let j = 0; j < f.len; j++) px.dot(R(x + j * f.lean * dir), R(y + j), ft > 0.8 && f.c === PAL.earth4 ? PAL.earth3 : f.c);
+        }
+      if (k >= 3 && ft >= 1) {
         px.g.destroy();
         resolve();
         return false;
@@ -264,6 +278,8 @@ export function cutSlit(scene: Phaser.Scene, at: XY, dir: 1 | -1, depth: number,
     });
   });
 }
+
+const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 /** Sparks of a glancing cut on a guard (no fibres): 4 short steel streaks off the slit. */
 export function glanceSparks(scene: Phaser.Scene, at: XY, dir: 1 | -1, depth: number): Promise<void> {
