@@ -23,6 +23,7 @@ import { LOOK_V3 } from '../../view/layout';
 import { setCombatSfx } from '../../vfx/combat';
 import { hitSfxName } from '../../audio/v3/materials';
 import { voiceSounds } from '../../audio/v3/voices';
+import { KART_B_VOICES } from '../../audio/v3/kart-b';
 import type { MaterialId } from '../../art/materials';
 import { v3Recipe } from '../../presentation/registry';
 import type { BlowKind } from './blow';
@@ -205,6 +206,7 @@ export const CHARACTER_SOUNDS: Partial<Record<CardId, CharacterSounds>> = {
     reviveGather: 'magusReviveGather',
     reviveLand: 'magusReviveSettle',
   },
+  ...KART_B_VOICES, // lane B cards (src/audio/v3/kart-b.ts)
 };
 
 /**

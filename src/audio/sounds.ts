@@ -11,6 +11,7 @@ import { V3_MATERIAL_RECIPES } from './v3/materials';
 import { V3_VOICE_RECIPES } from './v3/voices';
 import { V3_SPELL_RECIPES } from './v3/spells';
 import { V3_DAWN_RECIPES } from './v3/dawn';
+import { KART_B_RECIPES } from './v3/kart-b';
 import { UI_CARD_RECIPES } from './v3/ui-cards';
 import { UI_FLOW_RECIPES } from './v3/ui-flow';
 
@@ -1090,6 +1091,7 @@ export const RECIPES: Record<SfxName, Recipe> = {
   // A5 / A6 (registered once in A56.0; the lanes fill their own modules, never this table)
   ...V3_SPELL_RECIPES, // A5-A spell / trap sounds (./v3/spells.ts)
   ...V3_DAWN_RECIPES, // Şafak Kılıçları (./v3/dawn.ts)
+  ...KART_B_RECIPES, // lane B cards (./v3/kart-b.ts)
   ...UI_CARD_RECIPES, // A6 UI sounds, cards (./v3/ui-cards.ts; written by A6-A)
   ...UI_FLOW_RECIPES, // A6 UI sounds, flow (./v3/ui-flow.ts; written by A6-A)
 };
