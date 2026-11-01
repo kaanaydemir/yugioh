@@ -16,7 +16,7 @@
 //     to the generic dissolve. Every one-shot ends on idle f0.
 
 import type { AnimSpec, AnyMonsterAnim, MonsterAnim, MonsterAnimExtra, MonsterPoints } from '../types';
-import { AX, GY, HARP_L, pose, skeleton, type Pose } from './tide_harpooner-rig';
+import { AX, GY, pose, skeleton, twirlPose, type Pose } from './tide_harpooner-rig';
 
 const rnd = Math.round;
 const TAU = Math.PI * 2;
@@ -31,7 +31,7 @@ export function mix(a: Pose, b: Pose, t: number): Pose {
   }
   return o;
 }
-const DISCRETE = new Set<keyof Pose>(['rot', 'shell', 'sink', 'held', 'rope', 'feet', 'door', 'peek', 'mus', 'ring', 'glint', 'taut', 'eyeLit', 'nacre']);
+const DISCRETE = new Set<keyof Pose>(['dart', 'rot', 'shell', 'sink', 'held', 'rope', 'feet', 'door', 'peek', 'mus', 'ring', 'glint', 'taut', 'eyeLit', 'nacre']);
 const PX: (keyof Pose)[] = ['sx', 'sy', 'cx', 'cy', 'nx', 'ny', 'fx', 'fy', 'hx', 'hy', 'ox', 'oy', 'coral', 'tok'];
 function snap(p: Pose): Pose {
   const o = { ...p } as Pose;
@@ -145,52 +145,69 @@ const FG_HOLDS = [60, 60, 70, 80, 90];
 
 // ------------------------------------------------------------------ attack (16 frames): twirl – throw – haul
 
-const A_N = 16;
-/** the twirl: harpoon on an iso ellipse overhead, tangent to it; back positions foreshortened */
-const TW = { x: AX + 2, y: 30, rx: 24, ry: 7 };
-function twirl(theta: number, hl: number, ha: number): Partial<Pose> {
-  const cx = TW.x + Math.cos((theta * Math.PI) / 180) * TW.rx;
-  const cy = TW.y + Math.sin((theta * Math.PI) / 180) * TW.ry;
-  const L = HARP_L * hl;
-  const dx = Math.cos((ha * Math.PI) / 180);
-  const dy = Math.sin((ha * Math.PI) / 180);
-  return { hx: rnd(cx - dx * L * 0.55 - AX), hy: rnd(cy - dy * L * 0.55 - GY), ha, hl, held: 0, rope: 3, hBack: theta === 90 ? 0 : 1 };
-}
+/** the twirl: 8 drawn harpoon positions over 1.5 turns of the overhead iso ellipse (back → top → front → back → top) */
+const TW_TH = [180, 244, 308, 372, 436, 500, 566, 630];
+const TW_N = TW_TH.length;
+/** first frame of the twirl, of the aim, of the release */
+export const A_TW = 2;
+export const A_AIM = A_TW + TW_N;
+export const A_REL = A_AIM + 1;
+const A_N = A_REL + 8;
 /** the raised rope claw during the twirl */
 const TWC = { fx: 12, fy: -62, coil: 0.5, nOpen: 0.6 };
+function twirlKey(i: number): Pose {
+  const th = TW_TH[i];
+  const front = Math.sin((th * Math.PI) / 180);
+  // the body counter-swings with the harpoon: eyes follow it, the big claw reaches toward its side
+  const side = Math.cos((th * Math.PI) / 180);
+  return key({
+    ...TWC,
+    ...twirlPose(th),
+    held: 0,
+    rope: 3,
+    arc: i === 0 ? 30 : 54,
+    sy: front > 0.3 ? 0 : -1,
+    sx: rnd(side * 0.6),
+    eL: rnd(-8 + side * 12),
+    eR: rnd(8 + side * 10),
+    nx: rnd(18 + side * 2),
+    ny: rnd(-38 - front * 2),
+    sag: 2 + (i % 2),
+    swing: rnd(-side * 4),
+    beads: i === 4 ? 0.3 : i === 5 ? 0.8 : 0,
+  });
+}
 const ATTACK_KEYS: Pose[] = [
   // f0: settle into it (claws a hair in, eyes on the target)
   key({ cy: 1, eL: 2, eR: 12, fx: 13, fy: -42, sag: 10 }),
   // f1: DECLARE — the rope claw lifts the coil, the harpoon is pulled from the sand
   key({ sy: 0, eL: 4, eR: 14, fx: 12, fy: -54, coil: 0.8, hy: -6, grip: 0.36, sag: 4, spray: 0.3 }),
-  // f2–f6: the twirl, 1.5 turns (back, top, front, back, top)
-  key({ ...TWC, ...twirl(180, 0.55, 105), sy: -1, eL: -20, eR: -6, nx: 18, ny: -40, nOpen: 0.4, sag: 2, swing: -4 }),
-  key({ ...TWC, ...twirl(270, 1, 182), sy: -1, eL: -10, eR: 4, nx: 18, ny: -38, sag: 3, swing: 0 }),
-  key({ ...TWC, ...twirl(90, 1, -2), sy: 0, eL: 6, eR: 18, nx: 20, ny: -36, sag: 2, swing: 3, beads: 0.3 }),
-  key({ ...TWC, ...twirl(180, 0.55, 75), sy: -1, eL: -18, eR: -4, nx: 18, ny: -40, sag: 2, swing: -4, beads: 0.8 }),
-  key({ ...TWC, ...twirl(270, 1, 178), sy: -1, eL: -8, eR: 6, nx: 16, ny: -42, sag: 3 }),
-  // f7: AIM — the big claw has the harpoon cocked behind, the body leans on its rear legs, the shell tipped back
-  key({ rot: -8, sx: -2, sy: 1, cx: -2, eL: 10, eR: 22, held: 1, grip: 0.36, hx: -25, hy: -45, ha: -6, hl: 1, rope: 1, fx: 4, fy: -40, coil: 0.9, sag: 6, nOpen: 0 }),
-  // f8: RELEASE (60 ms) — the throw, harpoon horizontal at full reach, 2-px smear
-  key({ sx: 1, cx: 2, eL: 18, eR: 26, held: 1, grip: 0.36, hx: 2, hy: -41, ha: 0, hl: 1, smear: 2, rope: 1, fx: 10, fy: -42, coil: 0.7, sag: 2, nOpen: 0.5 }),
-  // f9: the rope pays out (the harpoon is the cinematic's now), the big claw follows through
-  key({ sx: 1, cx: 2, eL: 18, eR: 26, hOn: 0, held: 0, nx: 26, ny: -38, nOpen: 0.8, rope: 2, ox: 66, oy: -44, sag: 1, fx: 14, fy: -42, coil: 0.5 }),
-  // f10: HAUL 1 — rear legs plant, both claws haul, the rope snaps straight and a step brighter
-  key({ rot: -8, sx: -3, sy: 1, cx: -2, feet: 1, eL: 6, eR: 16, hOn: 0, held: 0, nx: 10, ny: -33, nOpen: 0, nAng: 0, rope: 2, taut: 1, ox: 66, oy: -44, sag: 0, fx: 6, fy: -42, coil: 0.9, tok: 1 }),
-  // f11: haul 2 — the rip-out: the rope goes slack and wobbles
-  key({ sx: -1, feet: 1, eL: 0, eR: 12, hOn: 0, held: 0, nx: 16, ny: -34, nOpen: 0.3, rope: 2, ox: 62, oy: -40, sag: 5, swing: -3, fx: 10, fy: -42, coil: 0.9 }),
-  // f12: the reel — the harpoon flies back head-first, the rope coiling, its tail wet
-  key({ eL: -4, eR: 10, hOn: 1, held: 0, hx: 58, hy: -50, ha: 180, hl: 1, nx: 20, ny: -36, nOpen: 0.8, rope: 1, sag: 3, swing: 2, wet: 1, fx: 12, fy: -44 }),
-  // f13: caught (recover) — the big claw has it again, lifted
+  // the twirl, 1.5 turns overhead, every 64° drawn (smear arc trailing the head)
+  ...TW_TH.map((_, i) => twirlKey(i)),
+  // AIM — the big claw has the harpoon cocked behind, the body leans on its rear legs, the shell tipped back
+  key({ rot: -8, sx: -2, sy: 1, cx: -2, eL: 10, eR: 22, held: 1, grip: 0.7, hx: -44, hy: -44, ha: -8, hl: 1, rope: 1, fx: 4, fy: -40, coil: 0.9, sag: 6, nOpen: 0 }),
+  // RELEASE (60 ms) — the thrust: the claw drives the shaft forward, choked up at the socket; the toggle head leaves
+  // it on the line (the cinematic flies it from this frame); the shaft's own 2-px smear trails behind
+  key({ sx: 1, cx: 2, eL: 18, eR: 26, held: 1, dart: 0, grip: 0.58, hx: 0, hy: -46, ha: 0, hl: 1, smear: 2, rope: 4, fx: 10, fy: -44, coil: 0.7, sag: 3, nOpen: 0.5 }),
+  // PAY — the follow-through: the shaft points down the line, the coil feeds the claw
+  key({ sx: 1, cx: 2, eL: 18, eR: 26, held: 1, dart: 0, grip: 0.58, hx: 2, hy: -44, ha: 4, hl: 1, rope: 4, fx: 12, fy: -46, coil: 0.5, sag: 4, swing: 1 }),
+  // HAUL 1 — rear legs plant, the claw hauls the shaft back, the coil claw clamps the line; the shell tips back
+  key({ rot: -8, sx: -3, sy: 1, cx: -2, feet: 1, eL: 6, eR: 16, held: 1, dart: 0, grip: 0.58, hx: -10, hy: -42, ha: -6, hl: 1, rope: 4, taut: 1, fx: 6, fy: -44, coil: 0.9, sag: 0, tok: 1 }),
+  // HAUL 2 — the rip-out: the shaft jerked up and back, the line slack
+  key({ sx: -1, feet: 1, eL: 0, eR: 12, held: 1, dart: 0, grip: 0.58, hx: -12, hy: -40, ha: -28, hl: 1, rope: 4, sag: 5, swing: -2, fx: 8, fy: -46, coil: 0.9 }),
+  // CATCH — the head has come home tail-first and seats in the socket ("tok"): the harpoon held short, raised back
+  // over the shell (never out over the lane)
+  key({ sy: -1, eL: -4, eR: 12, held: 1, grip: 0.5, hx: -6, hy: -40, ha: -62, hl: 1, rope: 1, wet: 1, sag: 4, swing: 2, fx: 12, fy: -46, glint: 1 }),
+  // lifted upright
   key({ sy: -1, eL: -10, eR: 12, held: 1, hy: -5, grip: 0.36, rope: 1, wet: 1, sag: 6, fx: 14, fy: -45 }),
-  // f14: re-planted ("tok"): sand spray
+  // re-planted ("tok"): sand spray
   key({ sy: 1, cy: -1, held: 1, hy: 0, spray: 0.45, tok: 1, wet: 1, sag: 9, fx: 14, fy: -44, swing: 1 }),
 ];
 export function attackPose(f: number): Pose {
   if (f >= A_N - 1) return home();
   return ATTACK_KEYS[f];
 }
-const ATTACK_HOLDS = [80, 70, 70, 90, 90, 80, 70, 160, 60, 80, 120, 150, 100, 110, 120, 140];
+const ATTACK_HOLDS = [70, 60, ...TW_TH.map(() => 50), 150, 60, 80, 120, 130, 90, 80, 100, 130];
 
 // ------------------------------------------------------------------ roar (10 frames): the conch sounds — rear, vapour, spin, plant
 
@@ -292,7 +309,7 @@ export function summonPose(f: number): Pose {
   if (f >= SU_N - 1) return home();
   return SUMMON_KEYS[f];
 }
-const SU_HOLDS = [90, 80, 80, 100, 90, 100, 80, 80, 90, 80, 90, 100, 110, 130];
+const SU_HOLDS = [70, 60, 60, 100, 90, 90, 70, 70, 90, 70, 80, 90, 100, 120];
 
 // ------------------------------------------------------------------ death (10): into the shell, the shell buried in sand
 
@@ -346,17 +363,17 @@ const RV_HOLDS = [80, 80, 80, 80, 90, 90, 90, 90, 100, 100, 120, 140];
 const SP_N = 12;
 const SPECIAL_KEYS: Pose[] = [
   key({ cy: 1, eye: 0.9, eL: -4, eR: 12 }),
-  // charge: the harpoon is lifted, the rope claw rises with the coil
-  key({ sy: 0, eye: 1.05, eL: -4, eR: 16, hy: -5, grip: 0.36, fx: 10, fy: -54, coil: 0.9, sag: 4, nacre: 1 }),
-  key({ sy: -1, eye: 1.15, eL: 0, eR: 20, hy: -9, grip: 0.4, fx: 8, fy: -60, coil: 0.9, sag: 3, coilSw: 2, nacre: 1 }),
-  key({ sy: -2, eye: 1.2, eL: 2, eR: 22, hy: -11, grip: 0.42, fx: 6, fy: -62, coil: 0.9, sag: 2, coilSw: 3, nacre: 1 }),
-  // release (60 ms): PLANT — the harpoon slams into the sand, the nacre flares
-  key({ sy: 1, cy: -1, eye: 1.1, eL: -2, eR: 14, hy: 0, grip: 0.3, fx: 6, fy: -60, coil: 0.9, sag: 3, coilSw: -2, nacre: 2, spray: 0.3, tok: 1, bub: 0.1, bub2: 0.5 }),
-  key({ sy: 0, eye: 1.1, eL: -6, eR: 12, fx: 6, fy: -60, coil: 0.9, sag: 3, coilSw: -3, nacre: 1, spray: 0.7, bub: 0.45, bub2: 0.85, ring: 2 }),
-  // the rope claw circles the coil over the shell (the tide answers)
-  key({ sy: -1, eye: 1.1, eL: -10, eR: 10, fx: 2, fy: -58, coil: 0.9, sag: 3, coilSw: -1, swing: -3, nacre: 1, bub: 0.8, ring: 1 }),
-  key({ sy: -1, eye: 1.1, eL: -12, eR: 8, fx: 4, fy: -56, coil: 0.9, sag: 3, coilSw: 2, swing: 2, nacre: 1, bub: 1.2 }),
-  key({ sy: 0, eye: 1.1, eL: -14, eR: 10, fx: 8, fy: -58, coil: 0.9, sag: 4, coilSw: 3, swing: 3, nacre: 1 }),
+  // charge: the harpoon wrenched up out of the sand, the body rears, the rope claw swings the coil up high
+  key({ sy: -1, eye: 1.05, eL: -4, eR: 16, hy: -8, grip: 0.36, fx: 10, fy: -58, coil: 0.9, sag: 4, nacre: 1 }),
+  key({ sy: -2, cy: -1, eye: 1.15, eL: 0, eR: 20, hy: -14, grip: 0.4, fx: 6, fy: -66, coil: 0.9, sag: 3, coilSw: 3, nacre: 1 }),
+  key({ sy: -3, cy: -1, eye: 1.25, eL: 2, eR: 24, hy: -18, grip: 0.42, fx: 4, fy: -70, coil: 0.9, sag: 2, coilSw: 4, nacre: 1, glint: 2 }),
+  // release (60 ms): PLANT — the harpoon slams into the sand, the nacre flares, the rope claw stays up
+  key({ sy: 1, cy: -1, eye: 1.1, eL: -2, eR: 14, hy: 0, grip: 0.3, fx: 4, fy: -68, coil: 0.9, sag: 3, coilSw: -3, nacre: 2, spray: 0.3, tok: 1, bub: 0.1, bub2: 0.5 }),
+  key({ sy: 0, eye: 1.1, eL: -6, eR: 12, fx: 4, fy: -68, coil: 0.9, sag: 3, coilSw: -4, nacre: 1, spray: 0.7, bub: 0.45, bub2: 0.85, ring: 2 }),
+  // the rope claw circles the coil high over the shell (the tide answers)
+  key({ sy: -1, eye: 1.1, eL: -10, eR: 10, fx: 0, fy: -66, coil: 0.9, sag: 3, coilSw: -1, swing: -3, nacre: 1, bub: 0.8, ring: 1 }),
+  key({ sy: -1, eye: 1.1, eL: -12, eR: 8, fx: 4, fy: -64, coil: 0.9, sag: 3, coilSw: 3, swing: 2, nacre: 1, bub: 1.2 }),
+  key({ sy: 0, eye: 1.1, eL: -14, eR: 10, fx: 8, fy: -60, coil: 0.9, sag: 4, coilSw: 3, swing: 3, nacre: 1 }),
   // recover
   key({ sy: 0, eye: 1.05, eL: -14, eR: 12, fx: 12, fy: -50, coil: 0.9, sag: 6, coilSw: 1 }),
   key({ sy: 0, eye: 1, eL: -14, eR: 14, fx: 14, fy: -46, sag: 8 }),
@@ -365,18 +382,18 @@ export function specialPose(f: number): Pose {
   if (f >= SP_N - 1) return home();
   return SPECIAL_KEYS[f];
 }
-const SP_HOLDS = [80, 110, 120, 160, 60, 90, 110, 110, 110, 120, 130, 140];
+const SP_HOLDS = [60, 90, 100, 130, 60, 90, 110, 110, 110, 120, 130, 140];
 
 // ------------------------------------------------------------------ tables
 
 const spec = (frames: number, fps: number, loop: boolean, holds: number[], marks?: AnimSpec['marks']): AnimSpec => ({ frames, fps, loop, holds, ...(marks ? { marks } : {}) });
 
-export const IMPACT = 8;
+export const IMPACT = A_REL;
 export const ANIMS: Record<MonsterAnim, AnimSpec> = {
   idle: spec(IDLE_N, 8, true, IDLE_HOLDS),
   guard: spec(GUARD_N, 6, true, GUARD_HOLDS),
   roar: spec(R_N, 10, false, ROAR_HOLDS, { charge: 1, release: 3, impact: 3, recover: 7 }),
-  attack: spec(A_N, 10, false, ATTACK_HOLDS, { charge: 1, release: 8, impact: 8, contact: 9, recover: 13 }),
+  attack: spec(A_N, 10, false, ATTACK_HOLDS, { charge: 1, release: A_REL, impact: A_REL, contact: A_REL + 1, recover: A_REL + 5 }),
   hit: spec(HIT_N, 12, false, HIT_HOLDS, { impact: 0, contact: 0, recover: 4 }),
 };
 export const EXTRA_ANIMS: Partial<Record<MonsterAnimExtra, AnimSpec>> = {
@@ -419,17 +436,13 @@ export function framePose(anim: AnyMonsterAnim, f: number): Pose {
 export const MUZZLE = { x: 71, y: 38 };
 export const CORE = { x: 44, y: 66 };
 
-/** The rope's out end (frame px) of the throw / haul frames: the source of the line the cinematic continues. */
-function ropeOut(o: Pose): { x: number; y: number } {
-  return { x: AX + o.ox, y: GY + o.oy };
-}
-
 export function framePoints(anim: AnyMonsterAnim, f: number): MonsterPoints {
   const o = framePose(anim, f);
   const sk = skeleton(o);
   const pt = (p: readonly [number, number]) => ({ x: rnd(p[0]), y: rnd(p[1]) });
-  // muzzle: the harpoon head when the harpoon is in the frame, else where the rope leaves the frame (or the claw)
-  const muzzle = o.hOn > 0.05 ? pt(sk.ht) : o.rope === 2 ? ropeOut(o) : pt(sk.hN);
+  // muzzle: the harpoon head when the harpoon is whole in the frame; while the toggle head is out on the line, the
+  // shaft's socket in the big claw (where the line leaves the crab); else the claw
+  const muzzle = o.hOn > 0.05 ? pt(o.dart === 0 ? sk.hs : sk.ht) : pt(sk.hN);
   return {
     muzzle,
     hand: pt(sk.hN),

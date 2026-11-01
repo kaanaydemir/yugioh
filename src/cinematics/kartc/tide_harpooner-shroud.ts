@@ -30,8 +30,8 @@ import { shrouded } from '../../engine/query';
 import type { GameState, PlayerId } from '../../engine/types';
 import type { BoardSpot } from '../../view/layout';
 import { DEPTH, LOOK_V3, TILE_H, TILE_W, type XY, unitDepth } from '../../view/layout';
-import { lightPool, type LightHandle } from '../../view/light';
-import { animate } from '../../vfx/combat';
+import { lightFlash, lightPool, type LightHandle } from '../../view/light';
+import { animate, sleep } from '../../vfx/combat';
 import type { CinematicContext } from '../_core/types';
 import { atFrame, panAt, play } from '../_v3/sound';
 import { Surface, clamp, plateKey, rnd } from './tide_harpooner-fx';
@@ -68,6 +68,8 @@ export class ShroudAura {
   height = 0;
   /** an extra crest run (the raise): 0…1 progress round the ring, −1 none */
   run = -1;
+  /** the running raise 0…1 (1 = every column up) */
+  rise = 1;
   private curlAt = 0;
   private curlK = 0;
   collapse = 0;
@@ -107,9 +109,9 @@ export class ShroudAura {
     ambient(sc, (el) => {
       if (this.dead) return false;
       el0 = el;
-      // up to 10 px in 60 ms, then down over 260 ms
-      this.curlK = el < 60 ? el / 60 : Math.max(0, 1 - (el - 60) / 260);
-      return el0 < 340;
+      // a 10-px column at once (2–3 frames held), then down over 220 ms
+      this.curlK = el < 34 ? 0.6 : el < 110 ? 1 : Math.max(0, 1 - (el - 110) / 220);
+      return el0 < 340 + 20;
     });
   }
   private draw(): void {
@@ -119,7 +121,7 @@ export class ShroudAura {
     const rx = Math.floor(TILE_W / 2) - 1;
     const ry = Math.floor(TILE_H / 2) - 1;
     const crest = this.run >= 0 ? this.run : this.crest;
-    const o = { height: this.height, crest, curlAt: this.curlAt, curl: this.curlK, collapse: this.collapse, rx, ry };
+    const o = { height: this.height, crest, curlAt: this.curlAt, curl: this.curlK, collapse: this.collapse, rx, ry, rise: this.rise };
     // the back arc a px lower than the front (1 px vs 2 px, EF-2: the front stays at the feet)
     shroudWall(this.back.canvas, this.c.x, this.c.y, 'back', { ...o, height: Math.max(0, this.height - 1) });
     shroudWall(this.front.canvas, this.c.x, this.c.y, 'front', o);
@@ -127,11 +129,16 @@ export class ShroudAura {
   /** A: the wall rises (0 → 4 px over 400 ms, then 2 px; one crest run round it over 600 ms). */
   async raise(short: boolean): Promise<void> {
     const sc = this.u.scene;
-    const up = short ? 240 : 400;
+    const up = short ? 260 : 400;
     this.setLight(0.5, up);
-    await animate(sc, up, (t) => (this.height = 4 * t));
+    // the columns stand up in a running wave from the front (where the harpoon was planted) round both sides to the
+    // back, each in whole-pixel steps to 4 px; the white crest starts running as the wave closes behind the crab
+    this.height = 4;
+    this.rise = 0;
+    await animate(sc, up, (t) => (this.rise = t));
+    this.rise = 1;
     void animate(sc, short ? 360 : 600, (t) => (this.run = t >= 1 ? -1 : t)).then(() => (this.run = -1));
-    await animate(sc, short ? 160 : 220, (t) => (this.height = 4 - 2 * t));
+    await animate(sc, short ? 160 : 260, (t) => (this.height = t < 0.34 ? 4 : t < 0.67 ? 3 : 2));
     this.height = 2;
   }
   /** D: the wall collapses into a splash ring that soaks into the tile (400 ms), then it is gone. */
@@ -206,22 +213,35 @@ export async function syncShroud(ctx: AnyCtx, u: MonsterUnit, o: { short?: boole
     // the plant that calls the bay: the special pose; the wall rises from its release (the harpoon hits the sand)
     const relF = u.markFrame('special', 'release', 4);
     const anim = u.has('special') ? u.play('special') : Promise.resolve();
-    let raised: Promise<void> = Promise.resolve();
+    let raisedOk!: () => void;
+    const raised = new Promise<void>((r) => (raisedOk = r));
     const go = () => {
       play('harpBayRaise', { volume: 0.9, pan });
-      play('harpPlant', { volume: 0.7, pan, pitch: 1.05 });
-      raised = a.raise(false);
+      play('harpPlant', { volume: 0.9, pan, pitch: 1.05 });
+      // the plant that calls the bay: a white stepped flash pool at the harpoon's foot
+      const foot = u.framePoint(...staffOf(u));
+      void lightFlash(u.scene, foot.x, u.home.y, PAL.white, 16, 260, { floorY: u.home.y, intensity: 0.75 });
+      void a.raise(false).then(raisedOk, raisedOk);
     };
-    if (u.has('special')) atFrame(u, 'special', relF, go);
+    if (u.has('special')) atFrame(u, 'special', relF, go, { maxMs: 3000 });
     else go();
-    await anim;
-    await raised;
-    if (u.sprite.active && !u.retired && u.frameInfo().anim !== 'special') u.rest();
+    // the pose's recover frames play on under whatever follows; the caller goes on once the wall stands
+    void anim.then(() => {
+      if (u.sprite.active && !u.retired && u.frameInfo().anim !== 'special') u.rest();
+    });
+    await Promise.race([raised, anim.then(() => sleep(u.scene, 700))]);
   } else if (!on && cur) {
     play('harpBayDrop', { volume: 0.9, pan: panAt(u.home.x) });
     await cur.drop();
     if (u.aura(AURA) === cur) u.setAura(AURA, null);
   }
+}
+
+/** The special pose's planted harpoon foot (frame px) on its release frame. */
+function staffOf(u: MonsterUnit): [number, number] {
+  const f = u.markFrame('special', 'release', 4);
+  const p = u.art.points?.('special', f).staff ?? u.art.muzzle;
+  return [p.x, p.y];
 }
 
 // ================================================================ C. the deflection (UI layer)
@@ -264,12 +284,11 @@ function deflect(scene: Phaser.Scene, u: MonsterUnit, _views: DuelViews): void {
   const pan = panAt(u.home.x);
   const c = u.home;
   const aura = u.aura(AURA) as ShroudAura | null;
-  // the box the corners close on: the crab's body above its tile
   const core = u.core();
-  const box = { x0: rnd(core.x - 22), x1: rnd(core.x + 22), y0: rnd(core.y - 24), y1: rnd(c.y + 2) };
   // where they strike the wall: the front of the ring, on the side the corners come from (the opponent's side)
   const fromRight = u.player === 0; // P2 sits up-right of P1's monsters
-  const at = fromRight ? 0.88 : 0.12; // (u grows from the front centre toward the LEFT on screen)
+  // the side of the ring facing the attacker, just on the front (tall) arc: right-front for P2's attacks, left-front for P1's
+  const at = fromRight ? 0.79 : 0.21;
   const rx = Math.floor(TILE_W / 2) - 1;
   const ry = Math.floor(TILE_H / 2) - 1;
   const ringPt = (k: number): XY => {
@@ -287,28 +306,41 @@ function deflect(scene: Phaser.Scene, u: MonsterUnit, _views: DuelViews): void {
   };
   ambient(scene, (el) => {
     ret.clear();
-    // 0–90: the corners close in (gap 10 → 0) on the crab
-    if (el < 90) {
-      const g = rnd(10 * (1 - el / 90));
-      corners(ret, box.x0 - g, box.y0 - g, box.x1 + g, box.y1 + g, PAL.white);
-    } else if (el < 300) {
+    const p0 = ringPt(at);
+    const dirK = fromRight ? -1 : 1;
+    // 0–100: the reticle corners close in — not on the crab: onto the FRONT ARC of the wave wall, where they strike
+    if (el < 100) {
+      const t = el / 100;
+      const e = t * t;
+      const cx = rnd(lerpN(core.x, p0.x, e));
+      const cy = rnd(lerpN(core.y - 4, p0.y - 4, e));
+      const half = rnd(lerpN(24, 6, e));
+      corners(ret, cx - half, cy - half, cx + half, cy + half, PAL.white);
+    } else if (el < 420) {
       if (!hitDone) {
         hitDone = true;
         aura?.hit(at);
         play('harpShlup', { volume: 0.9, pan });
       }
-      // 90–300: they skid 12 px along the ellipse and are flung off, two tone steps out
-      const t = (el - 90) / 210;
-      const p0 = ringPt(at);
-      const p1 = ringPt(at + (fromRight ? -0.06 : 0.06));
-      const sk = { x: p0.x + (p1.x - p0.x) * Math.min(1, t * 1.6), y: p0.y + (p1.y - p0.y) * Math.min(1, t * 1.6) };
-      const fling = t > 0.55 ? (t - 0.55) * 30 : 0;
-      const dx = rnd(sk.x - p0.x + (fromRight ? fling : -fling));
-      const dy = rnd(sk.y - p0.y - fling * 0.8);
-      const col = t < 0.5 ? PAL.white : t < 0.8 ? PAL.water4 : PAL.water2;
-      const half = rnd(lerpN(22, 8, t));
-      const cx = rnd(core.x + dx);
-      const cy = rnd(core.y + dy + 6);
+      // 100–320: they SKID along the wall (15 px of the ellipse, riding its top), 320–420: flung off outward + up,
+      // fading in two tone steps
+      const t = (el - 100) / 220;
+      const k = Math.min(1, t);
+      const skidAt = at + dirK * 0.1 * (1 - (1 - k) * (1 - k));
+      const p = ringPt(skidAt);
+      let cx = p.x;
+      let cy = p.y - 5;
+      let half = 6;
+      let col: number = PAL.white;
+      if (el >= 320) {
+        const f = (el - 320) / 100;
+        const out = { x: p.x - c.x, y: p.y - c.y };
+        const ol = Math.hypot(out.x, out.y) || 1;
+        cx = rnd(p.x + (out.x / ol) * 18 * f);
+        cy = rnd(p.y - 5 + (out.y / ol) * 8 * f - 10 * f);
+        half = rnd(6 + 3 * f);
+        col = f < 0.5 ? PAL.water4 : PAL.water2;
+      } else if (t > 0.8) col = PAL.white;
       corners(ret, cx - half, cy - half, cx + half, cy + half, col);
     }
     // the plate: pops at 120 ms (one size bigger for 34 ms), holds 500, slides down 3 px and sinks in two steps

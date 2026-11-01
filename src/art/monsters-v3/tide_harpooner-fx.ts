@@ -20,7 +20,7 @@
 import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
 import { getFont } from '../font';
-import { drawHarpooner, pose, W as RW, H as RH, AX, GY, HARP_L, skeleton } from './tide_harpooner-rig';
+import { drawHarpooner, pose, W as RW, H as RH, AX, GY, DART, HARP_L, skeleton } from './tide_harpooner-rig';
 import { hash2, rope2, sagCurve, type Pt } from './tide_harpooner-kit';
 
 const rnd = Math.round;
@@ -44,9 +44,9 @@ const HCACHE = new Map<string, HarpoonFrame>();
  * the canvas centre. `bury` px of the head are cut off (stuck in the LP panel); `smear` adds the release smear; `wet`
  * darkens nothing on the harpoon (the rope carries the wet tail) but is kept in the key for symmetry with the rope.
  */
-export function harpoonFrame(ha: number, light: 'left' | 'right' = 'left', o: { bury?: number; smear?: number } = {}): HarpoonFrame {
+export function harpoonFrame(ha: number, light: 'left' | 'right' = 'left', o: { bury?: number; smear?: number; dart?: boolean } = {}): HarpoonFrame {
   const a = Math.round(ha);
-  const key = `${a}|${light}|${o.bury ?? 0}|${o.smear ?? 0}`;
+  const key = `${a}|${light}|${o.bury ?? 0}|${o.smear ?? 0}|${o.dart ? 1 : 0}`;
   const hit = HCACHE.get(key);
   if (hit) return hit;
   const dx = Math.cos((a * Math.PI) / 180);
@@ -55,7 +55,7 @@ export function harpoonFrame(ha: number, light: 'left' | 'right' = 'left', o: { 
   const cy = RH / 2;
   const hx = rnd(cx - dx * HARP_L * 0.5) - AX;
   const hy = rnd(cy - dy * HARP_L * 0.5) - GY;
-  const ps = pose({ shell: 0, ext: 0, eye: 0, legs: 0, nOn: 0, fOn: 0, rope: 0, coil: 0, held: 0, hx, hy, ha: a, smear: o.smear ?? 0 });
+  const ps = pose({ shell: 0, ext: 0, eye: 0, legs: 0, nOn: 0, fOn: 0, rope: 0, coil: 0, held: 0, hx, hy, ha: a, smear: o.smear ?? 0, dart: o.dart ? 2 : 1 });
   const px = new PixelCanvas(RW, RH);
   drawHarpooner(px, ps, light);
   const sk = skeleton(ps);
@@ -69,7 +69,9 @@ export function harpoonFrame(ha: number, light: 'left' | 'right' = 'left', o: { 
         if (along > lim) px.erase(x, y);
       }
   }
-  const f: HarpoonFrame = { px, tip, butt: [rnd(sk.hb[0]), rnd(sk.hb[1])], ring: [rnd(sk.hring[0]), rnd(sk.hring[1])] };
+  // the toggle head alone: its "butt" is its tail (the socket end), where the line is tied
+  const butt: Pt = o.dart ? [rnd(sk.hs[0]), rnd(sk.hs[1])] : [rnd(sk.hb[0]), rnd(sk.hb[1])];
+  const f: HarpoonFrame = { px, tip, butt, ring: [rnd(sk.hring[0]), rnd(sk.hring[1])] };
   HCACHE.set(key, f);
   return f;
 }
@@ -155,6 +157,8 @@ export interface WallOpts {
   curl?: number;
   /** the drop: 0 standing … 1 soaked into the tile (splash ring) */
   collapse?: number;
+  /** the raise: 0…1 — the columns stand up in a running wave from the front centre round both sides (absent = all up) */
+  rise?: number;
   /** the ellipse radii (default RING: the 64×32 tile; the cinematics pass the arena's tile) */
   rx?: number;
   ry?: number;
@@ -182,6 +186,14 @@ export function shroudWall(p: PixelCanvas, cx: number, cy: number, half: 'back' 
     const x = rnd(cx + sx * (o.rx ?? RING.rx) * r);
     const y = rnd(cy + sy * (o.ry ?? RING.ry) * r);
     let h = o.height * (1 - col);
+    if (o.rise !== undefined && o.rise < 1) {
+      // the running raise: a column 0.5 of the ring away from the front stands up last
+      let dr = Math.abs(u);
+      dr = Math.min(dr, 1 - dr);
+      const k = Math.max(0, Math.min(1, (o.rise - dr * 1.2) / 0.4));
+      // stepped: whole pixels, with a 1-px overshoot just behind the running front
+      h = k >= 1 ? h : Math.min(h + 1, Math.ceil(h * k * 1.25));
+    }
     // the curl: a bump of up to 10 px where the attempt hit, its lip curling over
     if (o.curl && o.curlAt !== undefined) {
       let d = Math.abs(u - o.curlAt);
@@ -190,6 +202,8 @@ export function shroudWall(p: PixelCanvas, cx: number, cy: number, half: 'back' 
       h = Math.max(h, 10 * o.curl * k * k * (3 - 2 * k));
     }
     const hh = rnd(h);
+    // a 1-px night0 under-line: the wall stands on the floor, apart from the tile grid
+    if (hh >= 1 && col <= 0) p.set(x, y + 1, PAL.night0);
     if (col > 0 && hh <= 0) {
       // soaked: a broken 1-px splash ring
       if ((i & 3) !== 3) p.set(x, y, col < 0.6 ? PAL.water4 : PAL.water3);
@@ -261,6 +275,9 @@ export function korunuyorPlate(big = false, fade = 0): PixelCanvas {
  * The standing harpoon breaking at `phase` 0…1 on a canvas of the rig's size: 6 driftwood bits fly out and fall flat on the
  * floor row, the stone head drops flat; from 0.7 they blink out in palette steps (earth2 → earth1 → gone).
  */
+/** px of the toggle head along the axis (re-exported for the cinematics) */
+export const DART_LEN = DART;
+
 export function splinters(p: PixelCanvas, butt: Pt, phase: number, light: 'left' | 'right' = 'left'): void {
   const ph = Math.max(0, Math.min(1, phase));
   const fade = ph < 0.7 ? 0 : ph < 0.85 ? 1 : 2;

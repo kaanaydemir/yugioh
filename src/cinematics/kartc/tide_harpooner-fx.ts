@@ -11,7 +11,8 @@ import { PAL } from '../../art/palette';
 import type { PixelCanvas } from '../../art/pixel';
 import { harpoonFrame, korunuyorPlate, type HarpoonFrame } from '../../art/monsters-v3/tide_harpooner-fx';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
-import { TILE_H, TILE_W, type XY } from '../../view/layout';
+import { DEPTH, TILE_H, TILE_W, type XY } from '../../view/layout';
+import { sfx, type SfxName } from '../../audio/sfx';
 import { canvasTexture } from '../../view/v3/hudSkin';
 import { Px, onFrame } from '../../vfx/combat';
 
@@ -105,17 +106,32 @@ export class HarpoonImg {
   readonly img: Phaser.GameObjects.Image;
   private f: HarpoonFrame | null = null;
   private tipAt: XY = { x: 0, y: 0 };
-  constructor(private readonly scene: Phaser.Scene, depth: number, o: { screen?: boolean } = {}) {
+  /** the toggle head only (the shaft stays in the claw) */
+  readonly dart: boolean;
+  /** the angle last set (deg) */
+  angle = 0;
+  constructor(private readonly scene: Phaser.Scene, depth: number, o: { screen?: boolean; dart?: boolean } = {}) {
     this.img = scene.add.image(0, 0, '__DEFAULT').setOrigin(0, 0).setDepth(depth).setVisible(false);
     if (o.screen) this.img.setScrollFactor(0);
+    this.dart = !!o.dart;
+  }
+  /** Place it by its tail (the line end) instead of its tip. */
+  setTail(tail: XY, angle: number, o: { bury?: number; smear?: number } = {}): this {
+    const f = this.frame(angle, o);
+    return this.set({ x: tail.x + f.tip[0] - f.butt[0], y: tail.y + f.tip[1] - f.butt[1] }, angle, o);
+  }
+  private frame(angle: number, o: { bury?: number; smear?: number }): HarpoonFrame {
+    const a = (((Math.round(angle / STEP) * STEP) % 360) + 360) % 360;
+    return harpoonFrame(a, 'left', { bury: o.bury ?? 0, smear: o.smear ?? 0, dart: this.dart });
   }
   set(tip: XY, angle: number, o: { bury?: number; smear?: number } = {}): this {
     if (!this.img.active) return this;
     const a = (((Math.round(angle / STEP) * STEP) % 360) + 360) % 360;
     const bury = o.bury ?? 0;
     const smear = o.smear ?? 0;
-    const f = harpoonFrame(a, 'left', { bury, smear });
-    const key = canvasTexture(this.scene, `thp:harp:${a}:${bury}:${smear}`, () => f.px);
+    this.angle = angle;
+    const f = this.frame(angle, o);
+    const key = canvasTexture(this.scene, `thp:harp:${a}:${bury}:${smear}:${this.dart ? 1 : 0}`, () => f.px);
     if (this.img.texture.key !== key) this.img.setTexture(key);
     this.f = f;
     this.tipAt = snapXY(tip);
@@ -242,12 +258,12 @@ export function paintTide(s: Surface, c: XY, st: TideState, seed = 1): void {
     const span = Math.floor(hw * (1 - Math.abs(y) / (hh + 0.5)));
     for (let x = -span; x <= span; x++) {
       // diamond-local coordinates along the two iso axes (each −1 … 1)
-      const a = x / (2 * hw) + y / (2 * hh); // back-left (−) → front-right (+)
-      const u = (a + 1) / 2;
+      const a = x / (2 * hw) + y / (2 * hh); // back-left (−0.5) → front-right (+0.5) over the diamond
+      const u = a + 0.5;
       const px = c.x + x;
       const py = c.y + y;
-      const edgeIn = st.inK * 1.1;
-      const edgeOut = st.outK * 1.1;
+      const edgeIn = st.inK * 1.08;
+      const edgeOut = st.outK * 1.08;
       const wobble = (hash(y + 40, seed, 3) - 0.5) * 0.05;
       if (u <= edgeOut + wobble) {
         // uncovered: wet sand (fades back in two steps)
@@ -314,4 +330,47 @@ export function haul(u: MonsterUnit, toward: XY, px: number, o: { hold?: boolean
     },
   });
   pulls.set(s, tw);
+}
+
+// ================================================================ the contact frame is the card's own
+
+/** The shared kit's generic body-blow and clang sounds (v1 recipes, §0.2): never heard on this card's contacts. */
+const GENERIC_HIT: readonly SfxName[] = ['impactLight', 'impactHeavy', 'shieldBlock'];
+
+/**
+ * Call synchronously ON a contact frame, just before the battle kit stages it (inside the strike, before s.impact; or
+ * from a 'v3:contact' listener, which the kit emits right before it stages the contact). For that one synchronous stage:
+ *  - the generic sounds above are dropped at the source (they never start: no transient leaks through a fade);
+ *  - `motifs`: the foreign shared motifs the stage draws are hidden on their first frame — the ranged counter's white
+ *    lightning bolt (clash.backlash: an ADD image at DEPTH.FX + 3) and the hex-shield clang (vfx blockClang: graphics at
+ *    DEPTH.FX + 0.1 / + 0.2). The card draws its own beat in their place (`after`).
+ * `after` runs once the stage is done (a microtask: still the contact frame, before anything renders).
+ */
+export function ownContact(scene: Phaser.Scene, o: { motifs?: boolean } = {}, after?: () => void): void {
+  const before = o.motifs ? new Set(scene.children.list) : null;
+  const orig = sfx.play;
+  const ban = new Set(GENERIC_HIT);
+  const mine: typeof sfx.play = (name, opts) => {
+    if (ban.has(name)) return;
+    orig.call(sfx, name, opts);
+  };
+  sfx.play = mine;
+  queueMicrotask(() => {
+    if (sfx.play === mine) sfx.play = orig;
+    if (before) {
+      for (const c of scene.children.list) {
+        if (before.has(c)) continue;
+        const g = c as Phaser.GameObjects.Image;
+        const d = g.depth;
+        const bolt = c.type === 'Image' && d === DEPTH.FX + 3 && g.blendMode === Phaser.BlendModes.ADD;
+        const clang = c.type === 'Graphics' && (d === DEPTH.FX + 0.1 || d === DEPTH.FX + 0.2);
+        if (bolt || clang) g.setVisible(false);
+      }
+    }
+    try {
+      after?.();
+    } catch (e) {
+      console.error('[tide_harpooner] contact', e);
+    }
+  });
 }
