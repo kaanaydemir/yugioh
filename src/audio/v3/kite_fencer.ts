@@ -26,7 +26,8 @@
 //   kfnStringRise    attack 2: the string tension rising through the lift-off (sustained; stopped on the cut)
 //   kfnSwing         attack 2: the pendulum swing — air + the string peaking at the low point
 //   kfnCut           attack 2 contact: the curved lateral cut "sşhk"
-//   kfnSpill         attack 2 exit: the wind spills out of the cloak
+//   kfnLiftOff       attack 2 carry-through: the open cloak catches the updraft and snatches him up over the foe
+//   kfnSpill         attack 2 apex: the wind spills out of the cloak
 //   kfnPanelOff      the indicator goes out: the pluck muted and lower (880 Hz)
 //   kfnLand          attack 2 landing: a soft thud + a squeak
 //   kfnStruck        the struck body (kite cloth): a stretched-fabric snap, a bamboo click, rapier rattle ticks
@@ -318,6 +319,21 @@ const KITE_RECIPES = {
       for (let i = 0; i < 3; i++) tick(v, D - 0.01 + i * 0.019, 0.05 * (1 - i * 0.2), { hp: 4200, lp: 9000, dec: 0.004, att: 0.001 });
     },
   },
+  kfnLiftOff: {
+    cap: 1,
+    gap: 0.15,
+    verb: 0.3,
+    play(v) {
+      // the open cloak catches the updraft and snatches him up over the foe: a rising pink "fwoom" (the air filling
+      // the panels from below, high-passed: no low body), the cloth edges rippling faster as it climbs, and the
+      // slack string twanging taut again for a beat (an upward flick, never the swing's held buzz)
+      const hp = v.filt('highpass', 260, 0.7);
+      v.noise('pink', { g: [[0, 0], [0.05, 0.3], [0.13, 0.22], [0.26, 0.0001, 'e']], to: v.filt('bandpass', [[0, 520], [0.14, 1250, 'e'], [0.26, 1050]], 1.3, { to: hp }) });
+      const fl = v.flutter(56, 0.5, { t: 0.02, d: 0.24, base: 0.4 });
+      v.noise('white', { t: 0.02, g: [[0, 0], [0.06, 0.07], [0.22, 0.0001, 'e']], to: v.filt('bandpass', [[0, 1100], [0.22, 1700, 'e']], 1.6, { to: fl }) });
+      stringBuzz(v, 0.03, [[0, 990], [0.08, 1240, 'e'], [0.16, 1180]], [[0, 0], [0.012, 0.028], [0.17, 0.0001, 'e']], { flutter: 100, q: 6 });
+    },
+  },
   kfnSpill: {
     cap: 1,
     gap: 0.15,
@@ -526,6 +542,7 @@ const TRIM_DB: Partial<Record<keyof typeof KITE_RECIPES, number>> = {
   kfnStringRise: 7,
   kfnSwing: 9,
   kfnCut: 15,
+  kfnLiftOff: 8,
   kfnSpill: 8,
   kfnPanelOff: 6,
   kfnLand: 7,

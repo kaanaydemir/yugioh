@@ -167,11 +167,10 @@ const ATTACK_HOLDS = [70, 60, 60, 140, 50, 60, 100, 110, 120, 130];
 const PIN: Partial<Pose> = { pinX: AX - 14, pinY: GY };
 // The cloak's four stamped states (§2.4 "Frame and rig"): folded along the spine / half / OPEN / BILLOWED — the open
 // and billowed maps are much wider than the body (ko 1.45–1.6), the panel edges bulge (kbl 4–5) and the cross spar
-// bows back under the wind (rig paintKite); the spill half-collapses it (ko 0.6, edges sagging) and it glides half open.
+// bows back under the wind (rig paintKite); at the apex the wind spills and it glides half open.
 const OPEN: Partial<Pose> = { ko: 1.42, kh: 1.04, kbl: 3 };
 const BILLOWED: Partial<Pose> = { ko: 1.58, kh: 1.06, kbl: 5 };
 const HALF: Partial<Pose> = { ko: 0.78, kh: 0.94, kbl: 0 };
-const SPILL: Partial<Pose> = { ko: 0.6, kh: 0.9, kbl: -2 };
 const SPECIAL_KEYS: Partial<Pose>[] = [
   { lamp: 2 },
   // charge: the panel flares, the cloak starts to fill, the rear arm swings up
@@ -186,15 +185,19 @@ const SPECIAL_KEYS: Partial<Pose>[] = [
   { lamp: 2, fx: -4, fy: -19, ...OPEN, kbl: 4, kx: -5, ky: -13, ka: 8, sink: 0, lift: 1, f1x: -8, f1y: -3, f2x: 2, f2y: -2, smode: 3, rlift: 2, hx: 8, hy: 4, ba: 14, lean: -1 },
   // the top of the swing: leaning back, the feet trailing behind, the rapier cocked up over the rear shoulder
   { lamp: 2, fx: -4, fy: -19, ...OPEN, kbl: 4, kx: -4, ky: -13, ka: 12, sink: 0, lift: 1, lean: -2, chy: 0, f1x: -11, f1y: -4, f2x: -5, f2y: -3, smode: 3, rlift: 2, hx: 6, hy: -7, ba: -78 },
-  // the downswing: the body tips forward along the arc, the feet trail far behind, the blade comes over
-  { lamp: 2, fx: -4, fy: -18, ...OPEN, kbl: 3, kx: -5, ky: -12, ka: 2, sink: 0, lift: 1, lean: 2, f1x: -12, f1y: -2, f2x: -8, f2y: -1, smode: 3, rlift: 3, hx: 10, hy: -5, ba: -38 },
-  // CONTACT at the lowest point: the legs swing through under him, the blade SWEPT down across the body (top-back →
-  // bottom-front), a 2-px smear behind the torso
-  { lamp: 2, fx: -4, fy: -17, ...OPEN, kbl: 2, kx: -6, ky: -12, ka: -8, sink: 0, lift: 1, lean: 3, f1x: -2, f1y: -2, f2x: 3, f2y: -2, smode: 3, rlift: 2, hx: 12, hy: 0, ba: 46, smear: 1 },
-  // exit: the arc carries on up, the WIND SPILLS — the cloak half-collapses and flaps, the blade follows through
-  { lamp: 2, fx: -9, fy: -12, ...SPILL, kx: -8, ky: -11, ka: -24, sink: 0, lift: 1, lean: 2, f1x: 3, f1y: -2, f2x: 5, f2y: 0, smode: 3, rlift: 1, hx: 9, hy: 4, ba: 74 },
-  // the braking glide home, the cloak half open (the panel: gold3, then out)
-  { lamp: 1, fx: -10, fy: -10, ...HALF, ky: -10, ka: -14, sink: 0, lift: 1, lean: 1, f1x: 1, f1y: 0, f2x: -2, f2y: 0, smode: 0, rlift: 1, hx: 10, hy: -1, ba: -22 },
+  // the downswing: the body tips forward along the arc, the feet trail far behind, the blade DRAWN BACK LEVEL at hip
+  // height (a backhand coil: the edge leads, the tip points back past his hip) — the low lateral cut is coming
+  { lamp: 2, fx: -4, fy: -18, ...OPEN, kbl: 3, kx: -5, ky: -12, ka: 2, sink: 0, lift: 1, lean: 2, f1x: -12, f1y: -2, f2x: -8, f2y: -1, smode: 3, rlift: 3, hx: 1, hy: 9, ba: 178 },
+  // CONTACT at the lowest point, beside the target at body height: the legs swing through under him, the blade SWEPT
+  // LEVEL across (hip height, the tip trailing along the sweep's tangent — never pointing down into the foe), a 2-px
+  // smear behind the torso. The cut is horizontal: at right angles to attack 1's straight needle
+  { lamp: 2, fx: -5, fy: -16, ...OPEN, kbl: 2, kx: -6, ky: -12, ka: -6, sink: 0, lift: 1, lean: 2, f1x: -1, f1y: -3, f2x: 2, f2y: -2, smode: 3, rlift: 2, hx: 13, hy: 9, ba: 2, smear: 1 },
+  // exit: the cloak catches the updraft and SNATCHES him up and over (still open: no collapse while he is near the
+  // foe), the legs dangling and trailing, the blade held UP before the body (a fencer's flourish; it never lies across the target)
+  { lamp: 2, fx: -4, fy: -19, ...OPEN, kbl: 5, kx: -5, ky: -13, ka: 8, sink: 0, lift: 1, lean: -1, f1x: -5, f1y: -5, f2x: -9, f2y: -3, smode: 3, rlift: 3, hx: 8, hy: -2, ba: -80 },
+  // the apex: the WIND SPILLS (the cloak half-collapses), then the braking glide home, the blade still tucked
+  // (the panel: gold3, then out)
+  { lamp: 1, fx: -10, fy: -11, ...HALF, ky: -10, ka: -14, sink: 0, lift: 1, lean: 1, f1x: -4, f1y: -4, f2x: -8, f2y: -2, smode: 3, rlift: 1, hx: 7, hy: -1, ba: -84 },
   // landing: a knee dip, the cloak drops back onto his back
   { lamp: 0, fx: -12, fy: -8, ko: 1, kbl: -1, ky: -9, ka: -7, sink: 4, lean: -1, hx: 9, hy: 2, ba: -10, sph: -1 },
   {},
@@ -453,6 +456,15 @@ export function panelPoint(anim: AnyMonsterAnim, f: number): { x: number; y: num
   if (!sk.kite || o.kmode !== 0) return null;
   const [x, y] = panelCentre(sk.kite);
   return { x, y };
+}
+
+/**
+ * The body's leading edge on this frame (frame px, facing right): the furthest forward of the hips, knees, ankles,
+ * chest and head, + 2 px for the outline and the shoes (the hand and the blade are left out: they may reach the foe).
+ */
+export function bodyFront(anim: AnyMonsterAnim, f: number): number {
+  const sk = skeleton(framePose(anim, f));
+  return Math.max(sk.R[0], sk.K1[0], sk.K2[0], sk.A1[0], sk.A2[0], sk.C[0], sk.Hd[0]) + 2;
 }
 
 /** The kite's tail point (where the string leaves the cloak) on this frame, or null. */
