@@ -60,7 +60,8 @@ async function ashenRiseV3(S: Stage): Promise<void> {
   // ---- 0–260: the mound, the ember, the ring
   fade(['summonCharge'], 120);
   play('ashenMound', { volume: 0.9, pan });
-  const ground = lay(S, DEPTH.TILE_FX + 6);
+  // above the summoned card lying on the tile (CARD_ON_TILE), under the shadows and the bodies
+  const ground = lay(S, DEPTH.SHADOW - 1);
   const air = lay(S, S.depth + 0.6);
   let el0 = 0;
   let starAt = -1;
@@ -69,6 +70,7 @@ async function ashenRiseV3(S: Stage): Promise<void> {
   let moundK = 0;
   let ringK = 0;
   let tornado = false;
+  let liftAt = 1e9;
   const pool = lightPool(sc, home.x, home.y, { color: PAL.fire2, spill: PAL.fire1, radius: 30, intensity: 0, anim: 'flicker', fadeIn: 0 });
   const emberLight = lightPool(sc, home.x, home.y - 90, { color: PAL.fire3, radius: 8, floorY: home.y, air: 0.6, intensity: 0.3 });
   const drawMound = (k: number, lift = 0) => {
@@ -81,7 +83,10 @@ async function ashenRiseV3(S: Stage): Promise<void> {
       const y = home.y + 2 - j;
       ground.run(y, home.x - half, home.x + half, q > 0.55 ? PAL.stone2 : PAL.stone1);
       ground.dot(home.x - half, y, q > 0.3 ? PAL.stone2 : PAL.stone1);
+      // a stone0 shadow edge on the far (right) flank and the foot: the mound reads on the grey tile
+      ground.dot(home.x + half, y, PAL.stone0);
     }
+    ground.run(home.y + 3, home.x - rx + 1, home.x + rx - 1, PAL.stone0);
     ground.run(home.y + 2 - h, home.x - 1, home.x + 1, PAL.stone3);
   };
   onFrame(sc, (dt) => {
@@ -126,16 +131,27 @@ async function ashenRiseV3(S: Stage): Promise<void> {
             const x = Math.round(home.x + Math.cos(a) * 14);
             const y = Math.round(home.y + 2 + Math.sin(a) * 6);
             const head = i >= Math.round(steps * ringK) - 1;
-            ground.dot(x, y, head ? PAL.fire4 : i % 2 ? PAL.fire2 : PAL.fire1);
-            if (head) ground.dot(x, y - 1, PAL.fire3);
+            // a burning rim: low tongues (1–2 px, re-rolled every 3 frames), the chasing heads taller and white-hot
+            const fl = (i * 7 + side * 3 + Math.floor(el0 / 50)) % 4;
+            ground.dot(x, y, head ? PAL.fire4 : PAL.fire2);
+            if (head) ground.dot(x, y - 1, PAL.fire4).dot(x, y - 2, PAL.fire3).dot(x, y - 3, PAL.fire2);
+            else if (fl < 2) ground.dot(x, y - 1, fl === 0 ? PAL.fire3 : PAL.fire2);
+            else if (fl === 2) ground.dot(x, y - 1, PAL.fire2).dot(x, y - 2, PAL.fire3);
           }
         }
       }
       return true;
     }
+    // the mound lifts into the tornado: it sinks in 3 stepped rows over 200 ms, grains spinning off
+    const lk = el0 - liftAt;
+    if (lk < 200) {
+      drawMound(1, Math.floor(lk / 50) * 2);
+      return true;
+    }
     return false;
   });
   await S.wait(260);
+  liftAt = el0;
 
   // ---- 260: the pose starts; the mound lifts into the tornado
   tornado = true;
@@ -189,14 +205,25 @@ async function ashenRiseV3(S: Stage): Promise<void> {
       const ry = Math.max(2, Math.round(rw * 0.28));
       const ph = (el * 0.012 * S.dir + i * 1.3) % (Math.PI * 2);
       const col = [PAL.stone1, PAL.stone2, PAL.stone3][(i + Math.floor(el / 80)) % 3];
-      // the front half of each ribbon in front of the body, the back half behind it
-      for (let k = 0; k < 28; k++) {
-        const a = ph + (k / 28) * Math.PI * 2;
-        const x = Math.round(home.x + Math.cos(a) * rw);
-        const yy = Math.round(y + Math.sin(a) * ry);
-        const L = Math.sin(a) > 0 ? tor : back;
-        L.rect(x, yy, 2, 2, k % 7 === 0 ? PAL.fire2 : col);
+      // a continuous 2-px ribbon: the front arc in front of the body, the back arc behind it; tone bands
+      // and one torn gap travel round it with the spin (whole-pixel steps), two embers ride each ribbon
+      for (let x = -rw; x <= rw; x++) {
+        const q = 1 - (x / rw) * (x / rw);
+        const dy = Math.round(ry * Math.sqrt(Math.max(0, q)));
+        for (const side of [1, -1]) {
+          const ang = Math.atan2(side * Math.sqrt(Math.max(0, q)), x / rw);
+          const u = (((ang - ph) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+          const band = Math.floor((u / (Math.PI * 2)) * 7);
+          if (band >= 5) continue; // the torn gap
+          const front = side > 0;
+          const tone = front ? [PAL.stone3, PAL.stone2, PAL.stone2, PAL.stone1, PAL.stone2, PAL.stone1][band] : band < 3 ? PAL.stone1 : PAL.stone0;
+          const L = front ? tor : back;
+          const yy = y + side * dy;
+          L.rect(home.x + x, yy, 1, front ? 1 : 2, tone);
+          if (band === 2 && i % 3 === 0 && x % 5 === 0) L.dot(home.x + x, yy, front ? PAL.fire3 : PAL.fire1);
+        }
       }
+      void col;
     }
     // the plates in flight (2×2 / 2×3: stone2 with a stone1 crease, a stone3 lit edge)
     for (let i = flies.length - 1; i >= 0; i--) {

@@ -37,6 +37,7 @@ import { deathV3 } from '../_v3/death';
 import { atFrame, fade, panAt, play, start, takeCharge } from '../_v3/sound';
 import { Sparks, clamp, currentPixels, followLight, holdFrame, layer, lerp, onFrame, overlay, playFrom, seed, sleep, sourceOwnsDestroy, RR, type Ctx } from './_kit';
 import type { Px } from '../../vfx/combat';
+import { ASH_T, BURN_T, CHAR_T, COOL_T, DEAD_T, HOT_T, WHITE_T, drawPuff, hash, tongues, veilSlots, type Tones } from './ashen_drake-fx';
 
 const ASH = [PAL.stone1, PAL.stone2, PAL.stone3] as const;
 const STEP = 1000 / 60;
@@ -62,29 +63,6 @@ interface Billow {
   lip: number;
   born: number;
   chip: boolean;
-}
-
-/**
- * One billow: a stepped disc on the floor line — stone1 underside, stone2 body, stone3 lip toward the
- * light — with ry = 0.55 rx. `fire` 0 ash, 1 the ignition's white embers only, 2 fire2 body, 3 fire3 core.
- */
-function billow(px: Px, cx: number, floorY: number, rx: number, lip: number, fire: number, dir: number): void {
-  const ry = Math.max(1, rx * 0.55);
-  const cy = floorY - ry;
-  const x = Math.round(cx);
-  const y = Math.round(cy);
-  const body = fire >= 2 ? PAL.fire2 : PAL.stone2;
-  const under = fire >= 2 ? PAL.fire1 : PAL.stone1;
-  const top = fire >= 3 ? PAL.fire4 : fire >= 2 ? PAL.fire3 : PAL.stone3;
-  px.ellipse(x, y, rx, ry, under);
-  px.ellipse(x, y - 1, Math.max(1, rx - 1), Math.max(1, ry - 1), body);
-  if (fire >= 3) px.ellipse(x, y, Math.max(1, rx * 0.5), Math.max(1, ry * 0.45), PAL.fire3);
-  // the lip: a short bright arc on the rim, rotating toward the drake (the flow tumbles over itself)
-  const a = lip;
-  const lx = Math.round(x + Math.cos(a) * (rx - 1.5) * -dir);
-  const ly = Math.round(y + Math.sin(a) * (ry - 1));
-  px.rect(lx - 1, ly, 3, 1, top);
-  px.dot(lx + (dir > 0 ? -2 : 2), ly + 1, top);
 }
 
 // ================================================================ the strike
@@ -183,14 +161,15 @@ async function ashStormV3(s: StrikeArgs): Promise<void> {
   for (let i = 0; i < 14; i++) embers.push({ s: RR(-W * 0.5, W * 0.5), o: RR(-W * 0.4, W * 0.4), dy: RR(2, 14), ph: Math.floor(RR(0, 5)) });
   const relAt = sc.time.now;
   let front = 0;
-  let phase: 'roll' | 'veil' | 'silence' | 'ignite' | 'burn' | 'fizzle' | 'pile' | 'done' = 'roll';
+  let phase: 'roll' | 'veil' | 'silence' | 'ignite' | 'burn' | 'fizzle' | 'done' = 'roll';
   let phaseAt = 0;
   let darkSteps = 0;
   let frames = 0;
   let igniteFrame = -1;
   const floorL = layer(sc, DEPTH.TILE_FX + 6);
   const bankL = layer(sc, DEPTH.FX - 2);
-  const veilDepth = target ? target.sprite.depth + 0.4 : unitDepth(ground.y) + 0.4;
+  // over the target body; at a duelist the bank swallows the podium base in front of the figure
+  const veilDepth = target ? target.sprite.depth + 0.4 : DEPTH.FX - 2;
   const veilL = layer(sc, veilDepth);
   const trailPool = lightPool(sc, A.x, A.y, { color: PAL.fire1, radius: 14, intensity: 0.2, anim: 'flicker' });
   let spawnAcc = 0;
@@ -200,78 +179,143 @@ async function ashStormV3(s: StrikeArgs): Promise<void> {
   const chips: { a: number; r: number; age: number }[] = [];
   for (let i = 0; i < 7; i++) chips.push({ a: RR(0, Math.PI * 2), r: RR(2, 6), age: 0 });
 
-  const drawVeil = (fire: number, cut = -1e9) => {
-    // a lattice veil: billows stacked over the target, slits every 4 px (EF-2: the silhouette reads)
+  // ---- the veil: the bank's billows settle into a soft mound over the target (EF-2: gaps between the
+  // upper puffs, ≤ 70 % of its height); the blocked bank piles up as a wide low wall on the guard plane
+  const slots = veilSlots(W, veilH, blocked);
+  const pr = slots.map((sl, i) => ({ r: sl.r, gone: false, charred: false, seed: i * 7 + 3, start: 0 }));
+  slots.forEach((sl, i) => (pr[i].start = 6 + sl.row * 3 + Math.floor(hash(i, 5) * 3)));
+  let swallowFrame = -1;
+  const veilXY = (i: number): XY => {
+    const sl = slots[i];
+    const fy = B.y - (sl.z === 0 ? 2 : 0);
+    const r = pr[i].r;
+    const k = clamp((frames - swallowFrame) / 4, 0, 1);
+    const tx = B.x + sl.x;
+    const ty = fy - sl.h - r * 0.8 + 1;
+    if (k >= 1) return { x: tx, y: ty };
+    // settling: the puffs swell out of the bank's nose
+    const n = at(Math.max(0, L - 4));
+    return { x: Math.round(lerp(n.x, tx, k)), y: Math.round(lerp(n.y - 4, ty, k)) };
+  };
+  const capOf = (i: number, slow: number): number => -Math.PI / 2 + dir * (0.7 - ((Math.floor((frames + i * 2) / slow) % 6) / 5) * 1.4);
+  const drawVeil = (fire: number) => {
     veilL.clear();
-    const cx = B.x;
-    const fy = B.y;
-    const rows = [
-      { dy: 0, rx: W * 0.55, o: 0 },
-      { dy: 0, rx: W * 0.35, o: -W * 0.45 },
-      { dy: 0, rx: W * 0.35, o: W * 0.45 },
-      { dy: veilH * 0.4, rx: W * 0.42, o: -W * 0.15 },
-      { dy: veilH * 0.45, rx: W * 0.36, o: W * 0.25 },
-      { dy: veilH * 0.72, rx: W * 0.28, o: 0 },
-    ];
-    for (const [i, r] of rows.entries()) {
-      const rx = Math.max(3, Math.round(r.rx));
-      const ry = Math.max(2, Math.round(rx * 0.55));
-      const x0 = Math.round(cx + r.o);
-      const y0 = Math.round(fy - r.dy - ry);
-      const lip = ((frames + i * 3) % 8) / 8;
-      for (let y = y0 - ry; y <= y0 + ry; y++) {
-        const dy = (y + 0.5 - y0) / ry;
-        const q = 1 - dy * dy;
-        if (q <= 0) continue;
-        const h = rx * Math.sqrt(q);
-        const band = dy > 0.45 ? 0 : dy < -0.55 ? 2 : 1;
-        let col: number = ASH[band];
-        if (fire === 2) col = band === 0 ? PAL.fire1 : band === 1 ? PAL.fire2 : PAL.stone2;
-        else if (fire >= 3) col = band === 0 ? PAL.fire2 : band === 1 ? PAL.fire3 : PAL.fire4;
-        // the lattice: a 1-px slit every 4 px, drifting with the tumble
-        if (y < cut) continue;
-        for (let x = Math.ceil(x0 - h - 0.5); x <= Math.floor(x0 + h - 0.5); x++) {
-          if ((x + Math.floor(y / 3) + Math.floor(lip * 4)) % 4 === 0 && band !== 0) continue;
-          // the burn line: the row right under the cut glows (the veil burns away top-down)
-          if (cut > -1e8 && y - cut < 1) {
-            veilL.dot(x, y, PAL.fire3);
-            continue;
+    const k = frames - igniteFrame;
+    const grow = clamp(0.6 + (frames - swallowFrame) / 8, 0.6, 1);
+    let any = false;
+    for (let i = 0; i < slots.length; i++) {
+      const P = pr[i];
+      if (P.gone) continue;
+      const sl = slots[i];
+      const inner = sl.row < 2 || Math.abs(sl.x) < W * 0.3;
+      let t: Tones = ASH_T;
+      let core = -1;
+      let heat = 0;
+      let r = P.r * grow;
+      if (fire === -1) {
+        // the fizzle: the veil sinks as dead grey ash
+        t = DEAD_T;
+        r = P.r * clamp(1 - (frames - igniteFrame) / 18, 0, 1);
+      } else if (fire >= 1) {
+        if (k <= 0) t = ASH_T;
+        else if (k === 1) t = inner ? WHITE_T : COOL_T;
+        else if (k < P.start) {
+          t = HOT_T;
+          heat = 1;
+          if (inner && k < 5) core = PAL.fire4;
+        } else {
+          const st = Math.floor((k - P.start) / 2);
+          if (st === 0) (t = BURN_T), (heat = 0.6);
+          else if (st === 1) (t = COOL_T), (heat = 0.25);
+          else {
+            t = CHAR_T;
+            if (!P.charred) {
+              P.charred = true;
+              const c = veilXY(i);
+              puffEnds(c, P.r);
+            }
+            r = P.r - (st - 1) * 1.5;
           }
-          veilL.dot(x, y, col);
         }
       }
-    }
-    // the buried embers
-    for (const [i, e] of embers.entries()) {
-      const x = Math.round(cx + e.o);
-      const y = Math.round(fy - e.dy * (veilH / 16));
-      if (fire >= 1) {
-        veilL.dot(x, y, fire === 1 || i % 3 === 0 ? PAL.white : PAL.fire4);
+      if (r < 1.5) {
+        if (fire >= 1 || fire === -1) P.gone = fire >= 1;
         continue;
       }
-      // the silence: a third of them go dark per step (fire2 → fire1 → gone)
-      const k = i % 3;
-      const step = darkSteps - k;
+      any = true;
+      const c = veilXY(i);
+      drawPuff(veilL, c.x, c.y + (P.r - r) * 0.8, r, t, capOf(i, fire >= 1 ? 2 : 6), 0.8, core);
+      if (heat > 0) tongues(veilL, c.x, Math.round(c.y + (P.r - r) * 0.8 - r * 0.8), r, heat * (blocked && sl.row < 2 ? 1.4 : 1), frames, P.seed + k);
+    }
+    // direct: a 3-frame column of flame climbs the podium front out of the burning bank
+    if (fire >= 1 && !target && !blocked && k >= 1 && k <= 4) {
+      const top = Math.round(B.y - veilH * 0.75);
+      tongues(veilL, B.x - 4, top, 9, 2.6 - (k - 1) * 0.5, frames, 91);
+      tongues(veilL, B.x + 5, top + 3, 7, 2.0 - (k - 1) * 0.4, frames, 57);
+    }
+    // the buried embers: white on the ignition frame; in the silence a third of them go dark per step
+    for (const [i, e] of embers.entries()) {
+      const x = Math.round(B.x + e.o * (blocked ? 1.25 : 1));
+      const y = Math.round(B.y - e.dy * (veilH / 16));
+      if (fire >= 1) {
+        if (k === 0) {
+          veilL.dot(x, y, PAL.white);
+          if (i % 3 === 0) veilL.dot(x - 1, y, PAL.fire4).dot(x + 1, y, PAL.fire4).dot(x, y - 1, PAL.fire4).dot(x, y + 1, PAL.fire4);
+        }
+        continue;
+      }
+      if (fire === -1) continue;
+      const kk = i % 3;
+      const step = darkSteps - kk;
       if (step >= 2) continue;
       const on = (frames + e.ph) % 5 < 2;
       if (!on && darkSteps === 0) continue;
-      veilL.dot(x, y, step >= 1 ? PAL.fire1 : PAL.fire2);
+      // the last frame before the VUF: the surviving embers flicker one px inward
+      const inward = darkSteps >= 3 ? Math.sign(B.x - x) : 0;
+      veilL.dot(x + inward, y, step >= 1 ? PAL.fire1 : PAL.fire2);
     }
+    return any;
   };
+  /** a charred puff lets go: two embers rise, two ash flakes fall */
+  const puffEnds = (c: XY, r: number) => {
+    const sp = new Sparks(sc, veilDepth + 0.2);
+    for (let j = 0; j < 4; j++) {
+      const ember = j < 2;
+      sp.add({ x: Math.round(c.x + RR(-r, r) * 0.6), y: Math.round(c.y - RR(0, r) * 0.6), vx: RR(-14, 14), vy: ember ? RR(-46, -24) : RR(-12, -4), ay: ember ? 30 : 110, drag: 1.2, life: RR(320, 560), colors: ember ? [PAL.fire4, PAL.fire3, PAL.fire2, PAL.fire1] : [PAL.stone2, PAL.stone1], shape: 'px', fadeAt: 1 });
+    }
+    sp.release();
+  };
+
+  // the soot trail lives on its own (≈ 2 s): the fuse burns along it after the bank is gone
+  let soot = 0;
+  onFrame(sc, (dt) => {
+    soot += dt;
+    floorL.clear();
+    if (soot > 2300 || !sc.sys.isActive()) return false;
+    const fadeCol = PAL.stone0;
+    // soot (stone0, darker than the tiles) with a few smouldering fire1 grains, blinking slowly
+    trail.forEach((p, i) => {
+      // the last 300 ms the soot thins out in two steps (stepped, no alpha)
+      if (soot > 2000 && i % (soot > 2150 ? 3 : 2) !== 0) return;
+      const x = Math.round(p.x);
+      const y = Math.round(p.y);
+      floorL.rect(x - 1, y, 3, 1, fadeCol).dot(x + ((i % 2) ? 1 : -1), y + 1, fadeCol);
+      if (i % 4 === 1 && soot < 1600 && (Math.floor(soot / 70) + i) % 7 < 4) floorL.dot(x, y, PAL.fire1);
+    });
+    return true;
+  }, () => floorL.g.destroy());
 
   onFrame(sc, (dt) => {
     if (phase === 'done') return false;
     frames++;
     const el = sc.time.now - relAt;
     bankL.clear();
-    floorL.clear();
     // the soot trail (kept for the fuse)
-    for (const p of trail) floorL.rect(Math.round(p.x) - 1, Math.round(p.y), 3, 1, PAL.stone1).dot(Math.round(p.x), Math.round(p.y) + 1, PAL.stone0);
-    if (phase === 'roll' || phase === 'pile') {
+    if (phase === 'roll') {
       const k = clamp(el / T, 0, 1);
       front = L * (1 - (1 - k) * (1 - k));
       spawnAcc += dt;
-      if (el < 170 && spawnAcc >= 40) {
+      if (el < 200 && spawnAcc >= 30) {
         spawnAcc = 0;
         billows.push({ s: 0, o: RR(-3, 3), rx: RR(4, 6), lip: RR(0, 1), born: el, chip: billows.length < 3 });
       }
@@ -279,57 +323,64 @@ async function ashStormV3(s: StrikeArgs): Promise<void> {
       const nb = billows.length;
       billows.forEach((b, i) => {
         // the bank travels as one: the newest billows trail, the front billow leads (a low nose)
-        b.s = Math.max(0, front - (nb - 1 - i) * 7 * (0.6 + 0.4 * k));
+        b.s = Math.max(0, front - (nb - 1 - i) * 6 * (0.6 + 0.4 * k));
         const grow = clamp((el - b.born) / 160, 0, 1);
         const mid = 1 - Math.abs((i + 0.5) / nb - 0.45) * 1.2;
-        b.rx = lerp(3, 6 + 8 * mid * (0.5 + 0.5 * k), grow) * (i === nb - 1 ? 0.75 : 1);
-        b.lip += (dt / STEP) * 0.35;
+        b.rx = lerp(3, 5 + 8 * mid * (0.5 + 0.5 * k), grow) * (i === nb - 1 ? 0.7 : 1);
+        b.lip += 0.06;
       });
       // the leading edge leaves soot
       const lead = at(front);
       const last = trail[trail.length - 1];
-      if (!last || Math.hypot(last.x - lead.x, last.y - lead.y) >= 3) trail.push({ x: Math.round(lead.x), y: Math.round(lead.y) });
-      trailPool.setPosition(lead.x, lead.y);
-      for (const b of billows) {
-        const p = at(b.s, b.o);
-        billow(bankL, p.x, p.y, b.rx, b.lip, 0, dir);
+      if (!last) trail.push({ x: Math.round(lead.x), y: Math.round(lead.y) });
+      else {
+        // fill the gap every 3 px (the front moves up to ~20 px a frame)
+        const d = Math.hypot(lead.x - last.x, lead.y - last.y);
+        const n = Math.floor(d / 3);
+        for (let j = 1; j <= n; j++) trail.push({ x: Math.round(lerp(last.x, lead.x, (j * 3) / d)), y: Math.round(lerp(last.y, lead.y, (j * 3) / d)) });
       }
-      // the cloak, exhaled: plate chips tumble in the first billows' lip (the first 120 ms)
+      trailPool.setPosition(lead.x, lead.y);
+      const drawn = billows.map((b, i) => ({ b, i, p: at(b.s, b.o) })).sort((x, y) => x.p.y - y.p.y || x.i - y.i);
+      for (const { b, p } of drawn) {
+        const r = Math.max(2, b.rx);
+        const cap = -Math.PI / 2 + dir * (0.9 - ((Math.floor(b.lip * 6) % 6) / 5) * 1.8);
+        drawPuff(bankL, p.x, p.y - r * 0.72 + 1, r, ASH_T, cap, 0.75);
+      }
+      // the cloak, exhaled: plate chips tumble in the first billows' lip (the first 140 ms)
       if (el < 140)
         for (const c of chips) {
           c.age += dt;
           const p = at(Math.max(0, front - 4));
           const a = c.a + c.age * 0.02 * -dir;
           const x = Math.round(p.x + Math.cos(a) * c.r);
-          const y = Math.round(p.y - 6 + Math.sin(a) * c.r * 0.6);
-          bankL.rect(x, y, 2, 3, PAL.stone2).rect(x, y + 1, 2, 1, PAL.stone1);
+          const y = Math.round(p.y - 8 + Math.sin(a) * c.r * 0.6);
+          bankL.rect(x, y, 2, 3, PAL.stone2).rect(x, y + 1, 2, 1, PAL.stone1).dot(x, y, PAL.stone3);
         }
       // buried embers blink slowly (2 on / 3 off)
       for (const [i, e] of embers.entries()) {
         if ((frames + e.ph) % 5 >= 2) continue;
         const b = billows[i % billows.length];
         const p = at(b.s, b.o * 0.5);
-        bankL.dot(Math.round(p.x + (i % 5) - 2), Math.round(p.y - 2 - (i % 3)), PAL.fire2);
+        bankL.dot(Math.round(p.x + (i % 5) - 2), Math.round(p.y - 2 - (i % 3) * 2), PAL.fire2);
       }
       return true;
     }
-    if (phase === 'veil' || phase === 'silence' || phase === 'fizzle') {
+    if (phase === 'veil' || phase === 'silence') {
+      if (swallowFrame < 0) swallowFrame = frames;
       drawVeil(0);
       return true;
     }
+    if (phase === 'fizzle') {
+      return drawVeil(-1) || frames - igniteFrame < 4;
+    }
     if (phase === 'ignite' || phase === 'burn') {
-      // frame 0 the white embers, +1 fire2 bands, +2… fire3 core; from +5 the veil burns away top-down
       const k = frames - igniteFrame;
-      const top = B.y - veilH - 8;
-      const cut = k < 5 ? -1e9 : top + ((k - 5) / 9) * (veilH + 10);
-      if (k > 14) return false;
-      drawVeil(k <= 0 ? 1 : k === 1 ? 2 : k < 9 ? 3 : 2, cut);
-      return true;
+      if (k > 40) return false;
+      return drawVeil(1) || k < 6;
     }
     return false;
   }, () => {
     bankL.g.destroy();
-    floorL.g.destroy();
     veilL.g.destroy();
     void trailPool.fadeOut(120);
   });
@@ -348,19 +399,20 @@ async function ashStormV3(s: StrikeArgs): Promise<void> {
     await sleep(sc, Math.max(0, T - 40));
     play('ashenHush', { volume: 0.7 });
     fade(['ashenRoll'], 40);
+    roll.stop(40);
     await sleep(sc, 40);
     // ---- SWALLOW
-    phase = blocked ? 'pile' : 'veil';
+    phase = 'veil';
     void trailPool.fadeOut(60);
     if (blocked) play('ashenSnuff', { volume: 0.9, pan: tpan });
-    play('ashenLub', { volume: 1, pan: tpan });
+    play('ashenLub', { volume: 0.7, pan: tpan });
     void lightDim(sc, -0.3, 60);
     // LUB: the drake's heart beats once (light only, 3 stepped frames at its core)
     const c0 = framePt(u, 'core');
     const lub = lightPool(sc, c0.x, c0.y, { color: PAL.fire3, radius: 8, floorY: home.y, air: 0.7, intensity: 0, fadeIn: 0 });
     lub.setIntensity(0.7, 50);
     void sleep(sc, 50).then(() => lub.fadeOut(60));
-    phase = blocked ? 'pile' : 'silence';
+    phase = 'silence';
     // the silence: three visible dark steps, nothing to hear
     const SIL = 150;
     for (let i = 1; i <= 3; i++) {
@@ -374,12 +426,15 @@ async function ashStormV3(s: StrikeArgs): Promise<void> {
     // ---- losing: the fire does not take
     if (loses) {
       phase = 'fizzle';
+      igniteFrame = frames;
       play('ashenSputter', { volume: 0.9, pan: tpan });
       s.impact(hit);
       void lightDim(sc, 0, 300);
       const sp = new Sparks(sc, veilDepth + 0.1);
       for (let i = 0; i < 3; i++) sp.add({ x: B.x + RR(-6, 6), y: B.y - RR(4, 12), vx: RR(-20, 20), vy: RR(-60, -30), ay: 200, life: RR(200, 320), colors: [PAL.fire4, PAL.fire2, PAL.fire1], shape: 'px', fadeAt: 1 });
       sp.release();
+      // the cloak tries to come home: plate chips fly BACK toward the drake on the backlash line
+      chipsHome(sc, { x: B.x, y: B.y - 6 }, framePt(u, 'core'), DEPTH.FX - 1);
       // the veil sinks as grey ash
       void sleep(sc, 300).then(() => finish());
       void pool.fadeOut(200);
@@ -407,7 +462,6 @@ async function ashStormV3(s: StrikeArgs): Promise<void> {
     if (blocked) {
       // half of the bank rolls back as a cooling backwash, then the cloak re-grows on the bare bones
       void backwash(sc, B, A, dir).then(() => {
-        phase = 'done';
         if (live()) {
           void playFrom(u, 'attack', recF);
           play('ashenRegrow', { volume: 0.8, pan });
@@ -416,11 +470,8 @@ async function ashStormV3(s: StrikeArgs): Promise<void> {
       void marks;
       return;
     }
-    if (tie) {
-      phase = 'done';
-      return;
-    }
-    void fuseBack(sc, u, trail, recF, pan, () => (phase = 'done'));
+    if (tie) return;
+    void fuseBack(sc, u, trail, recF, pan, () => undefined);
     if (s.direct || target) void ashSnow(sc, ground);
   } catch (e) {
     finish();
@@ -439,7 +490,9 @@ function silhouette(sc: Phaser.Scene, t: MonsterUnit): void {
         if (!src.isOpaque(x, y)) continue;
         // the flame tongues: 1–2 px of fire3 / fire4 on the top edge, every few columns
         const top = !src.isOpaque(x, y - 1);
-        pc.set(x, y, PAL.ink);
+        // backlit by the blaze: a 1-px fire rim inside the contour (fire2 low, fire1 high), ink inside
+        const edge = top || !src.isOpaque(x - 1, y) || !src.isOpaque(x + 1, y) || !src.isOpaque(x, y + 1);
+        pc.set(x, y, edge ? (y > src.h * 0.55 ? PAL.fire2 : PAL.fire1) : PAL.ink);
         if (top && (x * 7 + y) % 5 === 0) {
           pc.set(x, y - 1, PAL.fire3);
           if ((x + y) % 2 === 0) pc.set(x, y - 2, PAL.fire4);
@@ -456,6 +509,32 @@ function silhouette(sc: Phaser.Scene, t: MonsterUnit): void {
     else if (k > 2 && k <= 6) ov?.redraw(make());
     return k <= 6;
   }, () => (ov as ReturnType<typeof overlay> | null)?.destroy());
+}
+
+/** Losing: 9 plate chips (2×3 / 2×2, stone2 with a stone1 crease) arc back from the fizzled veil to the drake. */
+function chipsHome(sc: Phaser.Scene, from: XY, to: XY, depth: number): void {
+  const px = layer(sc, depth);
+  const chips = Array.from({ length: 9 }, (_, i) => ({ d: i * 22 + RR(0, 14), h: RR(6, 16), o: RR(-6, 6), big: i % 2 === 0 }));
+  let el = 0;
+  onFrame(sc, (dt) => {
+    el += dt;
+    px.clear();
+    let any = false;
+    for (const c of chips) {
+      const t = (el - c.d) / 240;
+      if (t < 0) {
+        any = true;
+        continue;
+      }
+      if (t >= 1) continue;
+      any = true;
+      const e = 1 - (1 - t) * (1 - t);
+      const x = Math.round(lerp(from.x + c.o, to.x, e));
+      const y = Math.round(lerp(from.y, to.y + c.o * 0.5, e) - Math.sin(t * Math.PI) * c.h);
+      px.rect(x, y, 2, c.big ? 3 : 2, PAL.stone2).rect(x, y + (c.big ? 2 : 1), 2, 1, PAL.stone1).dot(x, y, PAL.stone3);
+    }
+    return any;
+  }, () => px.g.destroy());
 }
 
 /** Floor scorch: a stone0 blob and six glowing cracks (fire2 → fire1 → stone0). */
@@ -508,27 +587,7 @@ function burnOff(sc: Phaser.Scene, B: XY, W: number, h: number, depth: number): 
     });
   }
   sp.release();
-  // the tongues: three frames of fire3 flames over the veil's top
-  const px = layer(sc, depth + 0.15);
-  let k = 0;
-  return new Promise((res) => {
-    onFrame(sc, () => {
-      k++;
-      px.clear();
-      if (k > 9) return false;
-      const lift = [3, 6, 8, 6, 4, 2, 1, 0, 0][k - 1];
-      for (let i = -3; i <= 3; i++) {
-        const x = Math.round(B.x + i * (W / 7));
-        const y0 = Math.round(B.y - h * (0.85 - Math.abs(i) * 0.08));
-        const hh = Math.max(1, lift - Math.abs(i) + ((i + k) % 2));
-        px.rect(x, y0 - hh, 2, hh, PAL.fire2).rect(x, y0 - hh, 1, Math.max(1, hh - 2), PAL.fire3);
-      }
-      return true;
-    }, () => {
-      px.g.destroy();
-      res();
-    });
-  });
+  return Promise.resolve();
 }
 
 /** Blocked: half of the bank rolls back toward the drake as a cooling backwash (≈ 30 px). */
@@ -549,7 +608,7 @@ function backwash(sc: Phaser.Scene, B: XY, A: XY, dir: number): Promise<void> {
         const s = d - i * 6;
         if (s < 0) continue;
         const rx = Math.max(1, (6 - i) * (1 - t * 0.7));
-        billow(px, B.x + ux * s, B.y + uy * s, rx, el * 0.02 + i, 0, -dir);
+        drawPuff(px, B.x + ux * s, B.y + uy * s - rx * 0.72 + 1, rx, t < 0.5 ? COOL_T : CHAR_T, -Math.PI / 2 - dir * (0.9 - ((Math.floor(el / 50 + i) % 6) / 5) * 1.8), 0.75);
       }
       return true;
     }, () => {
@@ -675,7 +734,8 @@ async function ashSnow(sc: Phaser.Scene, g: XY): Promise<void> {
  */
 function ashHeap(ctx: Ctx<'destroy'>, u: MonsterUnit, home: XY): { burst(at: XY): void } {
   const sc = ctx.scene;
-  const px = layer(sc, DEPTH.TILE_FX + 6);
+  // above the card born on the tile (CARD_ON_TILE), under shadows and bodies
+  const px = layer(sc, DEPTH.SHADOW - 1);
   const dir = u.flipX ? -1 : 1;
   let el = 0;
   let burstAt = -1;
@@ -738,7 +798,7 @@ function ashHeap(ctx: Ctx<'destroy'>, u: MonsterUnit, home: XY): { burst(at: XY)
       burstAt = el;
       void at;
       // the gust: rows of particles stripped off top-down (P1 → +x)
-      const sp = new Sparks(sc, DEPTH.TILE_FX + 7);
+      const sp = new Sparks(sc, DEPTH.SHADOW);
       for (let i = 0; i < 26; i++)
         sp.add({ x: home.x + RR(-12, 12), y: home.y - RR(1, 13), vx: dir * RR(60, 110), vy: RR(-30, -10), drag: 1.2, delay: 420 + i * 22, life: RR(500, 800), colors: i % 2 ? [PAL.stone2, PAL.stone1] : [PAL.stone1, PAL.stone0], shape: 'px', fadeAt: 1 });
       sp.release();
@@ -758,7 +818,8 @@ async function ashenDeathV3(ctx: Ctx<'destroy'>): Promise<void> {
   if (u && !u.retired && u.sprite.active) {
     const home = { ...u.home };
     atFrame(u, 'death', 9, () => {
-      heap = ashHeap(ctx, u, home);
+      // the burst may already have made it (the shatter runs on the dissolve mark): never a second heap
+      if (!heap) heap = ashHeap(ctx, u, home);
     });
   }
   return deathV3(ctx, {

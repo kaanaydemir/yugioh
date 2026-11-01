@@ -137,9 +137,13 @@ export const V3_ASHEN_RECIPES = {
     verb: 0.45,
     duck: 0.65,
     play(v) {
-      growl(v, 0, { d: 1.6, f: [46, 74, 64, 52, 36], formants: [260, 540, 1350], g: 0.9, grit: 6.5, rasp: 55 });
-      sweep(v, 0.05, 1.4, [150, 200, 150], 0.12, { kind: 'pink', q: 8 });
-      sweep(v, 0.05, 1.4, [300, 400, 300], 0.06, { kind: 'pink', q: 9 });
+      // hollow and dry: low formants, a raspier throat, and the two rib tubes carried loud (the drake
+      // roars THROUGH its rib cage; the wyrm's glassy 330 / 760 / 1950 formants stay far away)
+      growl(v, 0, { d: 1.6, f: [46, 74, 64, 52, 36], formants: [220, 470, 1100], g: 0.8, grit: 7.5, rasp: 70 });
+      sweep(v, 0.05, 1.4, [150, 200, 150], 0.3, { kind: 'pink', q: 8 });
+      sweep(v, 0.05, 1.4, [300, 400, 300], 0.15, { kind: 'pink', q: 9 });
+      // the ash breath: a dry brown rush under the voice
+      puff(v, 0.02, 0.35, 1.2, 700, { kind: 'brown' });
       heartbeat(v, 0, 0.7);
       crack(v, 0.9, 0.12, { hp: 1500, lp: 6000, n: 6, gap: 0.08, dec: 0.01 });
       v.noise('pink', { t: 0.8, g: [[0, 0], [0.05, 0.03], [0.8, 0.0001, 'e']], to: v.filt('highpass', 3000, 0.7, { t: 0.8 }) });
@@ -179,7 +183,7 @@ export const V3_ASHEN_RECIPES = {
   ashenInhale: {
     cap: 2,
     gap: 0.1,
-    verb: 0.3,
+    verb: 0.15,
     duck: 0.3,
     play(v) {
       const D = 0.45;
@@ -210,7 +214,7 @@ export const V3_ASHEN_RECIPES = {
   ashenExhale: {
     cap: 2,
     gap: 0.1,
-    verb: 0.3,
+    verb: 0.15,
     duck: 0.35,
     play(v) {
       puff(v, 0, 0.45, 0.35, 2500, { kind: 'pink' });
@@ -222,7 +226,7 @@ export const V3_ASHEN_RECIPES = {
   ashenRoll: {
     cap: 2,
     gap: 0.1,
-    verb: 0.3,
+    verb: 0.1,
     duck: 0.3,
     play(v) {
       sweep(v, 0, 1.2, [800, 1800, 2500], 0.12, { kind: 'pink', q: 1.1, peakAt: 0.6 });
@@ -236,7 +240,7 @@ export const V3_ASHEN_RECIPES = {
   ashenHush: {
     cap: 1,
     gap: 0.1,
-    verb: 0.1,
+    verb: 0,
     duck: 0.95,
     play(v) {
       v.noise('brown', { g: [[0, 0], [0.015, 0.03], [0.05, 0.0001, 'e']], to: v.filt('lowpass', 300, 0.7) });
@@ -393,14 +397,16 @@ export const V3_ASHEN_RECIPES = {
     verb: 0.35,
     duck: 0.4,
     play(v) {
-      sweep(v, 0, 1.2, [300, 1200, 2400], 0.1, { kind: 'pink', peakAt: 0.5 });
+      sweep(v, 0, 1.2, [200, 700, 1500], 0.08, { kind: 'brown', peakAt: 0.5 });
+      ribs(v, 0.1, 1.0, 0.12);
       for (let i = 0; i < 24; i++) {
         const t = 1.2 * Math.sqrt(i / 24);
         crack(v, t, 0.04 + i * 0.002, { hp: 3000, lp: 8000, dec: 0.004 });
       }
-      for (const t of [0.15, 0.32]) {
+      for (const t of [0.15, 0.32, 0.62, 0.79]) {
         thump(v, t, 56, 42, 0.3, 0.14, { drive: 1.5 });
-        knock(v, t, 0.08, 0.06);
+        thump(v, t, 112, 84, 0.12, 0.1, { drive: 2.5 });
+        knock(v, t, 0.12, 0.06);
       }
     },
   },
