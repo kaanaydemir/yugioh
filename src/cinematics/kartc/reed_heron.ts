@@ -100,21 +100,24 @@ function summonFog(S: Stage): { set(k: Partial<{ inK: number; part: number; push
   const home = S.home;
   const back = new Px(sc.add.graphics().setDepth(S.depth - 0.4));
   const front = new Px(sc.add.graphics().setDepth(S.depth + 0.4));
-  // [dy above the floor, half width, layer 0 back / 1 front, rows, seed, start delay 0…1] — ≥ 1.5 tiles wide low down
-  const rows: [number, number, 0 | 1, number, number, number][] = [
-    [-54, 30, 0, 3, 3, 0.35],
-    [-46, 42, 1, 4, 5, 0.25],
-    [-38, 50, 0, 4, 7, 0.15],
-    [-30, 56, 1, 4, 9, 0.08],
-    [-22, 60, 0, 4, 11, 0.03],
-    [-14, 62, 1, 4, 13, 0],
-    [-6, 58, 1, 3, 15, 0],
+  // [dy above the floor, half width, layer 0 back / 1 front, rows, seed, start delay 0…1, x offset] — a fog BANK
+  // lying on the water: dense, wide and thick low down (≥ 1.5 tiles), fraying upward into fewer, thinner, shorter
+  // wisps at irregular gaps (5 → 10 px), so his neck and head stand as a dark shape above it, never a striped egg
+  const rows: [number, number, 0 | 1, number, number, number, number][] = [
+    [-57, 14, 0, 2, 3, 0.4, 9],
+    [-48, 22, 1, 2, 5, 0.32, -6],
+    [-38, 34, 0, 2, 7, 0.22, 4],
+    [-30, 44, 1, 3, 9, 0.14, -3],
+    [-22, 54, 0, 4, 11, 0.07, 2],
+    [-15, 60, 1, 3, 13, 0.02, 0],
+    [-9, 66, 0, 4, 15, 0, -2],
+    [-4, 64, 1, 3, 17, 0, 1],
   ];
   let st: { inK: number; part: number; push: number; thin: number; hole: XY | null } = { inK: 0, part: 0, push: 0, thin: 0, hole: null };
   const draw = (el: number) => {
     back.clear();
     front.clear();
-    rows.forEach(([dy, hw, layer, h, seed, delay], i) => {
+    rows.forEach(([dy, hw, layer, h, seed, delay, ox], i) => {
       if (st.thin > 0 && hash(i, 77) < st.thin) return;
       const L = layer ? front : back;
       const k = clamp((st.inK - delay) / (1 - delay), 0, 1);
@@ -126,7 +129,7 @@ function summonFog(S: Stage): { set(k: Partial<{ inK: number; part: number; push
       const y = home.y + dy;
       const holes = st.hole && Math.abs(y + 1 - st.hole.y) <= 4 ? [[st.hole.x - 5, st.hole.x + 5] as const] : undefined;
       if (k <= 0) return;
-      const cx = home.x + from;
+      const cx = home.x + from + ox * sgnOf(S.unit);
       if (st.part <= 0) paintFog(L, { x0: cx - half, x1: cx + half, y, h, off: drift, seed, holes });
       else {
         // the two halves slide apart from his centre line
@@ -414,6 +417,8 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
     if (struckSnd) play(struckSnd, { volume: s.blocked ? 0.5 : 0.42, pan: panAt(aim.x) });
     if (s.blocked) {
       coolGlance(sc, u, before, at, sgn);
+    } else if (loses) {
+      noBacklash(sc, before);
     }
     if (DBG) console.warn(`[rhr] impact @${Math.round(sc.time.now)} loop ${Math.round(sc.game.loop.time)}`);
     void hitStop(sc, 80);
@@ -463,6 +468,21 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
  * Only objects created by that one synchronous contact call, at the counter burst's depth band behind his body, are
  * touched.
  */
+/**
+ * The beak is a melee weapon, but its tip stands a long neck away from his body, so the battle reads the clash as a
+ * RANGED one and sends the generic backlash bolt (a jagged line in the stronger side's warm ramp) up his neck. That
+ * one additive image (`_v3/clash.ts backlash`: an ADD-blended Raster at DEPTH.FX + 3) created by the contact call is
+ * kept hidden: the answer lands on him through his own recoil and the cold spark, never as a beam.
+ */
+function noBacklash(sc: Phaser.Scene, before: number): void {
+  const list = sc.children.list;
+  for (let i = before; i < list.length; i++) {
+    const o = list[i] as Phaser.GameObjects.GameObject & { depth?: number; blendMode?: number | string; setVisible?: (v: boolean) => unknown };
+    // (blend mode 1 = Phaser.BlendModes.ADD; Phaser is a type-only import here)
+    if (o.type === 'Image' && o.depth === DEPTH.FX + 3 && o.blendMode === 1 && o.setVisible) o.setVisible(false);
+  }
+}
+
 function coolGlance(sc: Phaser.Scene, u: MonsterUnit, before: number, at: XY, sgn: 1 | -1): void {
   const d0 = u.sprite.depth - 0.45;
   const d1 = u.sprite.depth - 0.05;
@@ -471,6 +491,7 @@ function coolGlance(sc: Phaser.Scene, u: MonsterUnit, before: number, at: XY, sg
     const o = list[i] as Phaser.GameObjects.GameObject & { depth?: number; setVisible?: (v: boolean) => unknown };
     if (typeof o.depth === 'number' && o.depth >= d0 && o.depth <= d1 && o.setVisible) o.setVisible(false);
   }
+  noBacklash(sc, before);
   void lightFlash(sc, at.x, at.y, PAL.white, 10, 120, { floorY: u.home.y, intensity: 0.55, air: 0.6, rise: 0 });
   const sp = new Sparks(sc, DEPTH.FX - 1);
   for (let i = 0; i < 3; i++) {
