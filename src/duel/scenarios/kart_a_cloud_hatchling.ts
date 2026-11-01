@@ -13,7 +13,7 @@
 //                                         kaChGrownLose kaChGrownKill kaChGrownGuardKill kaChGrownHit kaChGrownPos
 //   the grown form vs the rest of the game kaChGrownControl kaChGrownResync kaChGrownChains kaChGrownEquip
 //                                         kaChGrownVenomHit kaChGrownAshenKill kaChGrownHat kaChGrownBounce
-//                                         kaChGrownVoid kaChGrownMirror kaChGrownBond
+//                                         kaChGrownVoid kaChGrownMirror kaChGrownRevive kaChGrownBond
 //   victory                               kaChWinBaby kaChWinGrown
 import type { CardId } from '../../data/cards';
 import type { Action, GameState, PlayerId, ZoneRef } from '../../engine/types';
@@ -320,6 +320,11 @@ const KA_CH: Record<string, Scenario> = {
     desc: 'Ayna Bariyeri: büyümüş yavrunun saldırısı yansıtılır (büyümüş nefes korunur)',
     stage: { zones: 5, phase: 'battle', p0: { monsters: five(N, N, GROWN) }, p1: { monsters: five(N, N, 'volt_lizard'), spellTraps: fiveST('mirror_barrier') } },
     steps: [attack(2, 2), respond('mirror_barrier', 1)],
+  },
+  kaChGrownRevive: {
+    desc: 'Büyümüş yavru ölür, Ruh Çağrısı onu BEBEK olarak geri getirir (büyüme mezarlıkta kalmaz)',
+    stage: { zones: 5, phase: 'battle', active: 1, turn: 2, p0: { hand: ['soul_recall'], monsters: five(N, N, GROWN) }, p1: { monsters: five(N, N, 'crystal_wyrm') } },
+    steps: [attack(2, 2, 1), endTurn(1), recall(0, 0, 2)],
   },
   kaChGrownBond: {
     desc: 'Ejder Kılıcı bağı: büyümüş yavru victory pozunu oynar',
