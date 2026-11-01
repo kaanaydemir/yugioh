@@ -71,3 +71,26 @@ Orkestratörün isteğiyle ara kayıt (kullanım sınırı yaklaşıyor). İş a
 kurucu → 3 bağımsız eleştiri+düzeltme turu → çekişmeli doğrulama → commit) sürüyor; bu commit o anki ağacı
 olduğu gibi (yarım kartlar dahil) kaydeder. Sıradaki: kalan kartların turları, sonra v1 / a6v1 film kapıları,
 kamera kapısı, palcheck ve son özet. Kart başına bitmiş commit'ler "Lane E: <id>" başlığıyla gelecek.
+
+## DURAKLATILDI (2026-11-01, sahip kararı: haftalık kullanım sınırı) — devam talimatı
+Durum: 14 öğenin hepsinin ilk yapımı (kurucu) ve 1. bağımsız eleştirisi bitti (iş akışı önbelleğinde).
+1. tur düzeltmeleri (fix1) çalışırken durduruldu: yarım düzeltmeler ağaçta ve bu commit'te (WIP). Hiçbir kart
+henüz 3 turu, doğrulamayı ve kendi "Lane E: <id>" commit'ini tamamlamadı.
+
+**Devam (aynı oturumda, önbellekten):**
+`Workflow({ scriptPath: "/root/.claude/projects/-home-user-yugioh/5469a051-b52a-5876-bb1d-752cb3b1b10f/workflows/scripts/lane-e-cards-wf_1a820ab7-95d.js", resumeFromRunId: "wf_1a820ab7-95d" })`
+— tools + 14 build + 14 crit1 sonucu önbellekten döner; fix1'den itibaren canlı çalışır (fix1 ajanları ağaçtaki
+yarım düzenlemeleri görüp sürdürür). 30 dakikalık WIP commit döngüsü:
+`/tmp/claude-0/-home-user-yugioh/5469a051-b52a-5876-bb1d-752cb3b1b10f/scratchpad/autockpt.sh` (arka planda başlat).
+
+**Yeni oturumdan devam (önbellek yoksa):** betik dosyası yukarıdaki yolda (yoksa bu belgenin altyapı bölümü +
+`docs/v3/PARALEL_OTURUMLAR.md` ile yeniden yazılır). Her kart için sıradaki adımlar: 1. tur eleştirisini
+yeniden üret (yeni bağımsız eleştirmen) → düzelt → 2. ve 3. eleştiri+düzeltme turları → çekişmeli doğrulama
+(typecheck, ilgili vitest, palcheck, measure + kamera, P1/P2 senaryoları) → kart başına commit + push.
+Sonda: `filmdiff --set v1` (17/17) ve `--set a6v1` (26/26) kapıları (tabanlar `shots/` altında, konteynere özel —
+yeni konteynerde 684e290'dan yeniden yazılmalı), tam `npm test`, son özet.
+
+**Ortam:** yeni konteynerde `npm ci` ve `ln -s /opt/pw-browsers/chromium-1243/chrome-linux64 /opt/pw-browsers/chromium-1243/chrome-linux`.
+
+**Zamanlama kararı (orkestratör):** §7 storyboard süresi REHBER §5 2,9 sn sınırına üstün gelir:
+kabul = (açılış ≤ 0,7 sn + §7 imza süresi) × 1,35 + 0,3 sn. Sahibe açık soru olarak kalır.

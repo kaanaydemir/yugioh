@@ -252,8 +252,8 @@ const EXIT_SMALL: readonly (readonly string[])[] = [
 const C_KEY: Readonly<Record<string, number>> = { w: PAL.white, m: PAL.mist, s: PAL.steel };
 // prettier-ignore
 const HOOKS: readonly (readonly string[])[] = [
-  ['.mm.', 'm..s', 'mw.s', '.ss.'],
-  ['.ss.', 's.wm', 's..m', '.mm.'],
+  ['mmmm', 'm..s', 'm.ws', 'mss.'],
+  ['.ssm', 'sw.m', 's..m', 'mmmm'],
 ];
 
 function paint(l: ArtLayers, f: number, g: Geo): void {

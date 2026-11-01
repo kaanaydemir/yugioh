@@ -105,38 +105,58 @@ export function puppetPose(scene: Phaser.Scene, sprite: Phaser.GameObjects.Sprit
     return key;
   };
 
-  // eyes: in the head band, the brightest pixels that have dark pixels around them (a lit slit / dot in a face)
+  // eyes: in the face band (below the horns / crest, above the chest), inside the silhouette, the brightest
+  // marks that sit in a socket (darker pixels above AND below: a lit slit or dot in a face, not a highlight on
+  // the rim of a horn or a crest)
   const eyes: XY[] = [];
   {
     const lum = (i: number) => 0.3 * data[i] + 0.59 * data[i + 1] + 0.11 * data[i + 2];
-    const y1 = Math.round(top + h * 0.42);
+    const ya = Math.round(top + h * 0.1);
+    const yb = Math.round(top + h * 0.4);
     const cand: { x: number; y: number; s: number }[] = [];
-    for (let y = top + 1; y <= y1; y++)
-      for (let x = 1; x < W - 1; x++) {
+    for (let y = Math.max(1, ya); y <= Math.min(H - 2, yb); y++) {
+      // the row's opaque span: candidates keep 2 px inside it
+      let x0 = -1;
+      let x1 = -1;
+      for (let x = 0; x < W; x++)
+        if (data[(y * W + x) * 4 + 3] > 0) {
+          if (x0 < 0) x0 = x;
+          x1 = x;
+        }
+      if (x0 < 0) continue;
+      for (let x = Math.max(1, x0 + 2); x <= Math.min(W - 2, x1 - 2); x++) {
         const i = (y * W + x) * 4;
         if (data[i + 3] === 0) continue;
+        const up = ((y - 1) * W + x) * 4;
+        const dn = ((y + 1) * W + x) * 4;
+        if (data[up + 3] === 0 || data[dn + 3] === 0) continue;
         const L = lum(i);
-        let dark = 0;
-        let n = 0;
-        for (const [ax, ay] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
-          const j = ((y + ay) * W + (x + ax)) * 4;
-          if (data[j + 3] === 0) continue;
-          n++;
-          dark = Math.max(dark, L - lum(j));
-        }
-        // inner pixels only (an eye is set into the face, not on the silhouette's edge)
-        if (n < 4) continue;
-        // saturation helps: glowing eyes are coloured light, horns' highlights are pale
+        const socket = Math.min(L - lum(up), L - lum(dn));
+        if (socket < 40 || L < 120) continue;
         const mx = Math.max(data[i], data[i + 1], data[i + 2]);
         const mn = Math.min(data[i], data[i + 1], data[i + 2]);
-        cand.push({ x, y, s: L + dark * 1.2 + (mx - mn) * 0.25 });
+        cand.push({ x, y, s: L + socket * 1.5 + (mx - mn) * 0.3 });
       }
+    }
     cand.sort((a, b) => b.s - a.s);
     const first = cand[0];
     if (first) {
-      eyes.push({ x: first.x, y: first.y });
-      const second = cand.find((c) => Math.abs(c.x - first.x) >= 3 && Math.abs(c.x - first.x) <= 12 && Math.abs(c.y - first.y) <= 3 && c.s >= first.s * 0.7);
-      if (second) eyes.push({ x: second.x, y: second.y });
+      // an eye is often a 2–3 px slit: aim the spiral at its middle
+      const run = (c: { x: number; y: number }) => {
+        let l = c.x;
+        let r = c.x;
+        const L0 = lum((c.y * W + c.x) * 4);
+        while (l > 0 && data[(c.y * W + l - 1) * 4 + 3] > 0 && lum((c.y * W + l - 1) * 4) > L0 - 50) l--;
+        while (r < W - 1 && data[(c.y * W + r + 1) * 4 + 3] > 0 && lum((c.y * W + r + 1) * 4) > L0 - 50) r++;
+        return { l: Math.max(l, c.x - 2), r: Math.min(r, c.x + 2) };
+      };
+      const r1 = run(first);
+      eyes.push({ x: Math.round((r1.l + r1.r) / 2), y: first.y });
+      const second = cand.find((c) => (c.x < r1.l - 1 || c.x > r1.r + 1) && Math.abs(c.x - first.x) <= 12 && Math.abs(c.y - first.y) <= 2 && c.s >= first.s * 0.75);
+      if (second) {
+        const r2 = run(second);
+        eyes.push({ x: Math.round((r2.l + r2.r) / 2), y: second.y });
+      }
     }
   }
   // frame px → sprite-relative (P1 facing: unflipped art)

@@ -880,6 +880,7 @@ async function signature(ctx: AnyCtx, s: SigArgs): Promise<void> {
   // the card snaps face-on under the flash (the drilled face reads), the bore opens in it
   theta = Math.round(theta / TAU) * TAU;
   wob = 0;
+  tint = 0;
   jit = 0;
   vortex = 0;
   tipY = contactY + 18;

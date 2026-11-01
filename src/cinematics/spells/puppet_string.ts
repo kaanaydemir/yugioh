@@ -340,7 +340,10 @@ function bodyTop(b: Body): number {
   return Math.min(...b.limbs.map((l) => l.y)) + bodyAnchor(b).y;
 }
 
-/** Other units' stat badges the body passes over fade back while it is over them (restored by the returned fn). */
+/**
+ * Other units' stat badges the body passes over fade back (and stay faded until the walk ends: no flicker, and a
+ * neighbour's numbers never read as the puppet's own). Restored by the returned fn.
+ */
 function badgeDimmer(sc: Phaser.Scene, field: FieldView, b: Body): () => void {
   const touched = new Set<Phaser.GameObjects.Image>();
   const stop = onFrame(sc, () => {
@@ -349,18 +352,21 @@ function badgeDimmer(sc: Phaser.Scene, field: FieldView, b: Body): () => void {
     for (const u of field.units()) {
       if (u === b.unit || u.retired) continue;
       const img = u.badge.image;
-      if (!img.active || !img.visible) continue;
+      if (!img.active || !img.visible || touched.has(img)) continue;
       const bx0 = img.x - img.displayOriginX;
       const by0 = img.y - img.displayOriginY;
-      const over = box.right > bx0 && box.left < bx0 + img.displayWidth && box.bottom > by0 && box.top < by0 + img.displayHeight;
-      img.setAlpha(over ? 0.25 : 1);
-      if (over) touched.add(img);
+      // the body's box, grown 4 px down (its feet and shadow)
+      const over = box.right > bx0 && box.left < bx0 + img.displayWidth && box.bottom + 4 > by0 && box.top < by0 + img.displayHeight;
+      if (over) {
+        touched.add(img);
+        img.setAlpha(0.2);
+      }
     }
     return true;
   });
   return () => {
     stop();
-    for (const img of touched) if (img.active) img.setAlpha(1);
+    for (const img of touched) if (img.active) sc.tweens.add({ targets: img, alpha: 1, duration: 200 });
   };
 }
 
