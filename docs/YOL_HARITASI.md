@@ -84,3 +84,7 @@ D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (ka
   3) saha zemini birimlerden net ayrışan, sakin, geniş yüzey; ızgara çizgileri inceltilsin;
   4) arayüz: daha az ve daha düzenli panel, sahayı örtmeyen yerleşim, tek yazı boyu düzeni;
   5) ışık yönü + yumuşak gölge ile derinlik. Hızlı maket: arka planı soldurmak tek başına ayrışmayı belirgin artırdı.
+- HEDEF GÖRÜNÜM (sahip onayı bekliyor): docs/v3/ref/hedef-gorunum-1.png (ChatGPT ile şimdiki ekrandan
+  — docs/v3/ref/simdiki-gorunum-1.png — üretildi). Alınacaklar: koyu/sakin arka plan + sıcak meşale ışık
+  noktaları, düz sakin arduvaz saha + ince ızgara, sol üstten tek ışık + birim altı gölgeler, daha az parlak arayüz.
+  Alınmayacaklar: piksel yoğunluğu (resim 640×360 ızgarasında değil, yumuşak) ve değişmiş birim çizimleri.
