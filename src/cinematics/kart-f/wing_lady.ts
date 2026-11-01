@@ -710,7 +710,6 @@ async function glideIn(S: Stage): Promise<void> {
     'summon',
     landF,
     () => {
-      console.log('[kh] land', sc.time.now);
       setFeet(u, home);
       play('khBackwing', { volume: 0.9, pan: panAt(home.x) });
       void lightFlash(sc, home.x, home.y, PAL.gold3, 20, 200, { floorY: home.y, intensity: 0.6 });
@@ -727,7 +726,6 @@ async function glideIn(S: Stage): Promise<void> {
   stopLight();
   if (glow.g.active) glow.g.destroy();
   setFeet(u, home);
-  console.log('[kh] salute', sc.time.now);
   jewelFlare(sc, u, 140);
   play('khSong', { volume: 0.85, pan: panAt(home.x) });
   S.finale({ ring: 36, ramp: RAMPS.gold, shake: 0, sfx: null, playerRing: false });
@@ -745,7 +743,6 @@ if (LOOK_V3)
       await runSummon(ctx, async () => undefined, glideIn);
       // Kanat Selamı follows at once (inside this handler: no sync snaps the allies' plates in between)
       const run = takeAuraRun(ctx as unknown as AnyCtx, ctx.index + 1, 0);
-      console.log('[kh] run', run.length, ctx.events.map((e) => e.type).join(','), ctx.scene.time.now);
       await playRun(ctx as unknown as AnyCtx, run, 'afterSummon');
     },
     { priority: 20, name: `kart-f:${ID}:summon` },
@@ -899,9 +896,10 @@ async function kestrel(s: StrikeArgs): Promise<void> {
       }
       play('khKickOff', { volume: 0.85, pan: panAt(perch.x) });
       u.pose('attack', 8);
-      const kick = { x: perch.x - dir * 22, y: perch.y - 6 };
-      await animate(sc, 160, (t) => setFeet(u, { x: perch.x + (kick.x - perch.x) * E.outQ(t), y: perch.y + (kick.y - perch.y) * E.outQ(t) }, home));
-      await flapHome(u, kick, home, 380, true);
+      // a short push back off the head (not a climb: high over the back rows she would read as standing there)
+      const kick = { x: perch.x - dir * 12, y: perch.y - 3 };
+      await animate(sc, 120, (t) => setFeet(u, { x: perch.x + (kick.x - perch.x) * E.outQ(t), y: perch.y + (kick.y - perch.y) * E.outQ(t) }, home));
+      await flapHome(u, kick, home, 340, false);
     } else if (s.direct) {
       // ---- direct: she bursts up off the clap and the wind carries her home on a high backward arc
       u.pose('attack', 7);
@@ -941,7 +939,8 @@ async function kestrel(s: StrikeArgs): Promise<void> {
 /** Two strong back-beats (attack f8 / f9) along a shallow arc to just above her tile, then the touch down. */
 async function flapHome(u: MonsterUnit, from: XY, home: XY, ms: number, high: boolean): Promise<void> {
   const sc = u.scene;
-  const mid = { x: (from.x + home.x) / 2, y: Math.min(from.y, home.y) - (high ? 10 : 6) };
+  // a descending arc: from a high start (the perch) she sinks all the way home instead of cruising at head height
+  const mid = { x: (from.x + home.x) / 2, y: Math.min(Math.min(from.y, home.y) + Math.abs(home.y - from.y) * 0.45, Math.max(from.y, home.y) - 4) - (high ? 10 : 6) };
   let beat = 0;
   await animate(sc, ms, (t) => {
     const p = quad(from, mid, { x: home.x, y: home.y - 2 }, E.inOutQ(t));
@@ -983,7 +982,7 @@ function paintBird(px: Px, cx: number, cy: number, span: number, up: number, rim
     for (let x = -S; x <= S; x++) {
       const a = Math.abs(x) / S;
       const yc = Math.round(cy - up * a - a * a * 1.5);
-      const th = Math.max(1, Math.round(3 - a * 2));
+      const th = Math.max(1, Math.round(4 - a * 2.6));
       for (let y = 0; y < th; y++) put(cx + x, yc + y);
     }
     // body + head + tail
@@ -1118,7 +1117,7 @@ async function fallingCape(ctx: Ctx<'destroy'>): Promise<void> {
     for (let k = 0; k < 3; k++) {
       px.clear();
       if (k === 0) paintBird(px, body.x, body.y, 13, 0, PAL.gold2, PAL.night0, true);
-      else paintBird(px, body.x, body.y - k * 3, k === 1 ? 13 : 20, k === 1 ? 2 : 6, PAL.gold3, PAL.night0);
+      else paintBird(px, body.x, body.y - k * 3, k === 1 ? 14 : 23, k === 1 ? 2 : 6, PAL.gold3, PAL.night0);
       await sleep(sc, STEP_MS);
     }
     const from = { x: body.x, y: body.y - 6 };
@@ -1127,7 +1126,7 @@ async function fallingCape(ctx: Ctx<'destroy'>): Promise<void> {
       px.clear();
       if (t >= 1) return;
       const p = rint(quad(from, ctl, { x: pile.x, y: pile.y - 4 }, E.inOutQ(t)));
-      const span = Math.max(7, Math.round(20 - Math.max(0, t - 0.4) * 20));
+      const span = Math.max(8, Math.round(23 - Math.max(0, t - 0.4) * 24));
       const flap = Math.floor(t * 7) % 4;
       const up = flap === 0 ? 7 : flap === 1 ? 2 : flap === 2 ? -3 : 3;
       const rim = t < 0.45 ? PAL.gold3 : t < 0.75 ? PAL.gold2 : PAL.gold1;
@@ -1188,10 +1187,13 @@ if (LOOK_V3)
       }
       // steady state only (the bonus was already on before this event): a rebuild dropped it, or a staged board
       const b0 = bonusIn(s0, u.uid);
-      if (b0 > 0 && b1 > 0 && !pendingStat(ctx, u.uid) && u.sprite.visible && ev.type !== 'summon') {
+      // (or a loss is about to be played on a staged board: show what it takes away, at once, no bloom)
+      const steady = b0 > 0 && b1 > 0 && !pendingStat(ctx, u.uid);
+      const losing = b0 > 0 && b1 < b0 && pendingStat(ctx, u.uid);
+      if ((steady || losing) && u.sprite.visible && ev.type !== 'summon') {
         const field = ctx.views.field;
         const p = u.player;
-        u.setAura(AURA_KEY, wingAura(ctx.scene, u, { count: b1 / 300, bloom: true, ladies: () => ladyUnitsOf(field, p) }) as never);
+        u.setAura(AURA_KEY, wingAura(ctx.scene, u, { count: (steady ? b1 : b0) / 300, bloom: steady, ladies: () => ladyUnitsOf(field, p) }) as never);
       }
     }
   });

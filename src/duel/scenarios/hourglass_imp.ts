@@ -42,6 +42,16 @@ const scenarios: Record<string, Scenario> = {
     stage: { p0: { hand: [IMP] }, p1: { monsters: ['ember_wolf', null, 'volt_lizard'] } },
     steps: [summon(IMP, 1), pick(0, 0), endTurn(0), battle(1), endTurn(1)],
   },
+  ksFreezeFlip: {
+    desc: 'The sealed set card is flip-summoned next turn: the emblem follows the flip, the strain on entering battle',
+    stage: { p0: { hand: [IMP] }, p1: { monsters: [{ id: 'shade_assassin', faceUp: false, position: 'defense' }, null, 'ember_wolf'] } },
+    steps: [summon(IMP, 1), pick(0, 0), endTurn(0), { type: 'flipSummon', player: 1, zone: 0 }, battle(1)],
+  },
+  ksFreezeDef: {
+    desc: 'The sealed Kor Kurdu sits in defense: the bite at turn start but no strain on entering battle',
+    stage: { p0: { hand: [IMP] }, p1: { monsters: [{ id: 'ember_wolf', position: 'defense' }, null, 'volt_lizard'] } },
+    steps: [summon(IMP, 1), pick(0, 0), endTurn(0), battle(1), endTurn(1)],
+  },
   ksFreezeDies: {
     desc: 'The sealed Kor Kurdu is destroyed by Kristal Ejder: its emblem falls with it',
     stage: { p0: { hand: [IMP], monsters: ['crystal_wyrm'] }, p1: { monsters: ['ember_wolf', null, 'volt_lizard'] } },

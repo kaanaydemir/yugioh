@@ -182,8 +182,8 @@ function pourColumn(p: PixelCanvas, x: number, y0: number, y1: number, ph: numbe
 // ================================================================ summon: "Dökülüş"
 
 const HANG_TOP = 48;
-/** The hanging glass: upside down, its stopper hole right over the sprite's pour column (frame x 20–21, y ≈ −2). */
-const HANG: GlassPose = { ...GLASS0, a: 180, ox: 21, oy: -32, sA: 0.95, sB: 0.08, flow: 1, open: 1 };
+/** The hanging glass: upside down, its stopper hole right over the sprite's pour column (frame x 20–21, y ≈ 18, ≈ 42 px over the tile: low enough to read as his own glass, above the cone crest). */
+const HANG: GlassPose = { ...GLASS0, a: 180, ox: 21, oy: -10, sA: 0.95, sB: 0.08, flow: 1, open: 1 };
 
 /** Is the batch waiting for THIS imp's target pick (the effect follows in the next batch)? */
 function aimPending(ctx: CinematicContext, uid: Uid): boolean {

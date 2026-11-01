@@ -780,3 +780,10 @@ Films use `node tools/shot.mjs "?dev=duel&s=<key>&look=v3" --fresh --film N --ev
 - The death's rivulet is small (8 px by design) and partly hidden by the glass foot from some angles; the "dune" of the direct attack is faint at 1×.
 - The jet keeps spraying while the lumen_sprite death plays (by design, but busy).
 - Not built: dormant emblem while the sealed monster is borrowed (`controlChange`), `ksBoard5`, `ksFreezeSteal/Def/Flip` scenarios; the strain is a 1-px nudge + hairline clamp only. LSD sound separation vs windmane_knight / crystal_wyrm not measured. Critique by independent agents not run in this stage.
+
+### 13.1 Round 3 (Build-cinematics re-run)
+- **Looked at:** `r3/ksSummon.png`, `r3/ksSummon-zoom.png`, `r3/ksSummon-pour.png` → `-pour2.png`, `r3/ksSummon-effect.png`, `-effect2.png`, `r3/ksAttackP2.png`, `r3/ksKillP2.png` / `-zoom.png`, `r3/ksFreezeFlip.png`.
+- **Fixed:** the hanging glass of the summon hung ≈ 90 px over the tile, beside the opposing back-row monster (read as "their" object). `HANG.oy` −32 → −10: it now hangs ≈ 42 px over the tile (design §5.1: 38 px), its mouth just above the cone's crest, so the pour reads as one short column from his own glass.
+- **Added scenarios:** `ksFreezeFlip` (sealed set card flip-summoned next turn: the emblem follows the flip and the plate shows the lock), `ksFreezeDef` (sealed monster in defense: bite, no strain). Both filmed / measured.
+- **Gates:** typecheck clean; `tests/art/hourglass_imp.test.ts` 12/12; camera gate `measure-r4.json` 21 ok + 2 NOBASE (the two new keys), 0 FAIL; `filmdiff --set v1` 17/17 IDENTICAL. Budgets unchanged (summon 1983, effect 1850, death 1966, attack battle 2150, direct 2167 game ms).
+- **Still open:** the overhead flip (special f2–f6) is partly hidden behind a back-row neighbour's stat plate when one stands right above (ksSummon: volt_lizard); dormant emblem on `controlChange`, `ksBoard5`, `ksFreezeSteal` not built; LSD sound separation not measured; independent critique agents not run.
