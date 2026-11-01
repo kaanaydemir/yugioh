@@ -99,7 +99,8 @@ export function idleDelta(f: number): D {
     lean,
     // the breath (period 6) and the tail's slow sway: every frame changes a little (HA-18)
     squash: [0, -0.2, -0.4, -0.4, -0.2, 0][f % 6],
-    tail: Math.round(Math.sin((f / 18) * Math.PI * 2) * 3) / 20,
+    // (c1r1: the sway sits on the back side only, so the bigger open cup never touches the body)
+    tail: (Math.round(Math.sin((f / 18) * Math.PI * 2) * 3) - 3) / 28,
     // the followers (HA-6): the head +1 frame behind the body, the cowlick and the tuft +2
     head: [leanAt(f - 1) - lean, 0],
     cow: (leanAt(f - 2) - lean) * 1,
@@ -168,13 +169,17 @@ const ATTACK_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[]
   // grown (lunge / rear / stomp / lag are grown-only): the chest and the mane sink back 3 px, the haunch
   // squashes; the near foreleg lifts on the "ha…" and stamps on the CHOO, the mane a frame late (r2 #3)
   [{ cheeks: 1, squash: -0.4, tuft: 0.7, head: [0, -1], mane: 0.6, eye: 6, lunge: [-2, 1], rear: -1 }, 'charge'],
-  [{ cheeks: 1, lift: 4, armN: 0.5, armF: 0.3, tuft: 0.4, cow: -2, mane: 0.6, lunge: [-3, 1], rear: -1.5, lag: 1 }],
-  [{ cheeks: 1, squash: 1, cow: 2, mane: 0.8, drift: 0.5, lunge: [-3, 2], rear: -2 }],
-  [{ cheeks: 1, lift: 4, armF: 0.5, armN: 0.3, tuft: 0.4, cow: -2, mane: 0.6, lunge: [-1, 0], lag: -1 }],
-  [{ cheeks: 1, squash: 1, cow: 2, mane: 0.8, lunge: [-2, 1], rear: -1, lag: 1 }],
+  // (critique c1r1 #10) the charge ESCALATES: f2 a small hop, f3 the chest swells, f4 the cheeks puff
+  // and the cowlick lifts on the second, higher hop, f5 a 2-px crouch with the tail shell lifting — f6's
+  // squint hold is the top of a rising curve
+  [{ cheeks: 0.7, lift: 2, armN: 0.3, armF: 0.2, tuft: 0.3, cow: -1, mane: 0.6, lunge: [-3, 1], rear: -1.5, lag: 1 }],
+  [{ cheeks: 0.85, squash: -0.6, tuft: 1, head: [0, -1], cow: 1, mane: 0.8, drift: 0.5, lunge: [-3, 2], rear: -2 }],
+  [{ cheeks: 1.3, lift: 5, armF: 0.6, armN: 0.5, tuft: 0.6, cow: -4, fluff: 0.3, mane: 0.6, lunge: [-1, 0], lag: -1 }],
+  [{ cheeks: 1.3, squash: 1, hip: [0, 2], tailTap: -1, tail: -0.2, cow: 3, mane: 0.8, lunge: [-2, 1], rear: -1, lag: 1 }],
   [{ head: [-2, -2], tilt: 2, eye: 1, cheeks: 0.6, jaw: 0.3, squash: -0.5, cow: -2, tuft: 0.6, wingOpen: 0.5, mane: 0.7, lunge: [-3, 0], stomp: 3, rear: 1 }],
   [{ head: [2, 1], tilt: -0.5, eye: 1, jaw: 0.3, cow: -1, wingOpen: 0.7, mane: 0.5, lunge: [1, 0], stomp: 2, lag: -2 }, 'swing'],
-  [{ head: [3, 1], tilt: -1, eye: 1, jaw: 1, puff: 1, smear: 2, squash: 0.3, cow: 2, wingOpen: 1, mane: 1, lunge: [3, 1], lag: -2 }, 'release', true],
+  // (critique c1r1 #9) grown: the blast recoils the head (lunge 3 → 0 px, the stamp carries the force)
+  [{ head: [3, 1], tilt: -1, eye: 1, jaw: 1, puff: 1, smear: 2, squash: 0.3, cow: 2, wingOpen: 1, mane: 1, lunge: [0, 1], lag: -2 }, 'release', true],
   // the wind lags the ring out of the mouth for a frame (critique r3 #11)
   [{ hip: [-2, 1], squash: 0.7, head: [-2, 1], eye: 1, jaw: 0.3, puff: 0.5, tail: -0.3, cow: 2, wingOpen: 0.6, mane: 0.6, lunge: [2, 1], lag: 1 }, 'follow'],
   [{ hip: [-1, 0], squash: 0.3, eye: 4, cow: 3, tuft: 0.6, mane: 0.5, drift: 0.5, lunge: [1, 0], lag: 0 }, 'recover'],
@@ -256,13 +261,15 @@ const SUMMON_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[]
 const DEATH_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[] = [
   [{ head: [-2, -1], tilt: 0.6, eye: 1, squash: 0.3, cow: 1 }, 'struck'],
   [{ head: [-3, 0], hip: [-1, 0], tilt: 1.5, eye: 2, squash: 0.5, cow: 2, mane: 0.6 }],
-  // baby: tumbles back; grown (ballG): already the big ball, the mane wrapped round it
-  [{ hip: [-2, 0], lean: -2, eye: 2, squash: 0.8, crouch: 0.7, head: [-2, 2], tilt: -1, cow: -2, armN: 0.6, armF: 0.6, tail: 0.6, mane: 1, ballG: 0.5 }],
+  // baby: tumbles back; grown (critique c1r1 #1): the HALF-curl — the head tucked down into the mane,
+  // the forelegs folding under (the sphinx crouch), the mane swept forward over the back (lag), the ring
+  // puffs starting to drift out; the round ball comes on f3
+  [{ hip: [-2, 0], lean: -2, eye: 2, squash: 0.8, crouch: 0.7, head: [-2, 3], tilt: -1.5, cow: -2, armN: 0.6, armF: 0.6, tail: 0.6, mane: 1, lag: 3, lunge: [-1, 2], ringFlare: 2, ringY: -1 }],
   // the curl at ≈ 75 % of the standing mass, then it shrinks only while the plates rise (critique r1 #7)
   // (critique r3 #6) the grown un-ages in even steps (≈ 1300 → 950 → 650 px), never one ×0.45 drop
-  [{ ball: 0.6, tumble: 0.04, unAge: 0.15, loose: 0.35 }],
-  [{ ball: 0.8, tumble: -0.03, knit: 0.25, unAge: 0.33, loose: 0.7 }, 'dissolve'],
-  [{ ball: 0.95, knit: 0.5, unAge: 0.52, loose: 1 }],
+  [{ ball: 0.6, tumble: 0.04, unAge: 0.05, loose: 0.3 }],
+  [{ ball: 0.8, tumble: -0.03, knit: 0.25, unAge: 0.3, loose: 0.7 }, 'dissolve'],
+  [{ ball: 0.95, knit: 0.5, unAge: 0.55, loose: 1 }],
   [{ ball: 1, knit: 0.75, unAge: 1, loose: 1 }],
   // the gathered cloud stays under the egg on every frame from here (no flicker)
   [{ ball: 1, knit: 1, unAge: 1, float: 2 }],

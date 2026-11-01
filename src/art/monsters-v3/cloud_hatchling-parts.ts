@@ -339,16 +339,19 @@ export const LOBE_SEAM = seamFrom(
  * into). L skin4 · M earth4 · S earth3 · d earth2 speckles (2-px, shadow plane only). Anchor = where the
  * tail tip enters the cup. 10×8.
  */
+// (critique c1r1 #5) the cup tipped so its MOUTH shows, opening up and back: a crisp 1-px zigzag rim
+// (skin4 on the lit tooth points; the gaps between them become ink with the outline), the inside of the
+// half shell visible — `i` skin3 on the inner wall that faces the light, `c` earth2 shadow in the cup —
+// the outer dome below it, two 2-px earth2 speckles on its shadow plane. The tail enters the bottom.
 export const SHELL_CUP_L: Stamp = {
-  // (the top row: 3 skin4 teeth breaking the outline, the broken edge read at 1×; critique r2 #12)
-  rows: ['..L.L.L...', '..LLLLM...', '..LLLLMMi.', '.LLLLMMcc.', 'LLLLMMMSi.', 'LLLMMSdcc.', 'LLMMMSdSi.', '.MMMSSScc.', '..MSSSSi..'],
-  ax: 8,
-  ay: 5,
+  rows: ['L..L..L...', 'LL.LL.LLM.', 'LcccciiiMS', 'LccciiiiMS', 'LLcciiiMMS', 'LLLMMMMMSS', '.LMMMMdSS.', '..MMSSdS..', '...MSSS...'],
+  ax: 7,
+  ay: 8,
 };
 export const SHELL_CUP_R: Stamp = {
-  rows: ['..L.L.L...', '..SMMLL...', '..SMMLLLi.', '.SSMMLLcc.', 'SSSMMLLLi.', 'SdSMMLLcc.', 'SdSMMMLLi.', '.SSSMMLcc.', '..SSSMMi..'],
-  ax: 8,
-  ay: 5,
+  rows: ['S..M..L...', 'SS.MM.LLL.', 'SiiiicccML', 'SiiiccccML', 'SSiicccMLL', 'SSSMMMMMLL', '.SdSMMMML.', '..SdSMML..', '...SSML...'],
+  ax: 7,
+  ay: 8,
 };
 export const CUP_KEY: Readonly<Record<string, number>> = Object.freeze({ L: PAL.skin4, M: PAL.earth4, S: PAL.earth3, d: PAL.earth2, i: PAL.skin3, c: PAL.earth2 });
 

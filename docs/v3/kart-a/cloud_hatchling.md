@@ -1521,3 +1521,75 @@ Every claim was re-checked in the tree before acting on it. All 19 findings were
 - **Evidence (`shots/kart-a/cloud_hatchling/art/r2/`):** `i0` (baseline), `i1`–`i12` iterations, `final/sheet.png`,
   `final/big-x1|x3|x6.png`, `final/small-x1|x6|x8.png`, `final/frames.png` (6 frames, both sizes),
   `final/hand-1x.png` (duel `kaChSummon`, look=v3), `final/hand-card-x6.png`, `final/hand-card-1x-dev2.png`.
+
+### Sprite — resume check (2026-11-01)
+- Resumed after the usage-limit pause. The sprite stage (build + critic rounds 1–3 above) is complete and committed;
+  no sprite files changed in this pass. Re-verified on the current tree:
+  - Sheets re-rendered (P1 + P2, baby + grown, `--anims all --points`): `shots/kart-a/cloud_hatchling/r5/b/`, `r5/g/`;
+    contact sheets `r5/b/cloud_hatchling-v3-all.png`, `r5/g/cloud_hatchling-file-all.png` reviewed by eye.
+  - Gates (`r5/gates-b.txt`, `r5/gates-g.txt`; `--class medium --ref none`): baby 20 ok + 1 FAIL (HA-14 out special
+    13.39 / 13.11), grown 19 ok + 2 FAIL (HA-14 out summon / revive 3.73 / 3.85, HA-15 in special 3.72 / 3.83) — the same
+    three declared exceptions (special ends on the GROWN idle; grown summon / revive / special are drawn by the baby).
+  - `tests/art/cloud_hatchling.test.ts` 9/9 + `tests/duel/unit-variant.test.ts` pass; `tsc`: no errors in the card's files.
+  - Note for the card-art stage: `tests/art/cloud_hatchling-cardart.test.ts` currently fails 3/5 (WIND leaf share
+    118 < 478.7, subject materials check, living-frame Δ 75 vs 74.8) after the card-art critic round 2 changes — the
+    test thresholds were not fully updated with the art. Not a sprite file; left to that stage.
+
+### Sprite — critic c1r1 fixes (2026-11-01)
+- **Files:** `src/art/monsters-v3/cloud_hatchling-rig.ts`, `-parts.ts`, `-anims.ts` (art / grown / test files unchanged).
+  Checked on ×4–×12 renders of every changed anim, P1 + P2 (`tools/_ch_frames.ts`), full sheets and the 1× board.
+- **#1 grown death f2 (MAJOR):** no `ballG` any more. f2 is the HALF-curl: the sphinx crouch (forelegs folding under), head
+  tucked down 3 px and pitched −1.5 into the mane, the mane swept forward (`lag` 3, `lunge` [−1, 2]), the ring flared 2 px
+  (puffs drifting). The ball comes on f3 (`unAge` 0.05), un-ageing f4–f6 (0.3 / 0.55 / 1). Opaque 2554 → 2025 → 1699 →
+  1121 → 571 → 305 (was 2552 → 1764). Frame count unchanged (139). Δ f1→f2 stays ≈ 2300 px: it counts every MOVED pixel
+  (the whole body sinks 4 px); the silhouette no longer pops (lion → tucked lion → ball, `c2/w/death1.png`).
+- **#2 growth f7–f9 (MAJOR):** the head height now follows the muzzle / horn frames (`ht` = .2 sB + .2 sL + .3 sM + .3 sH),
+  so on f7 it sinks into the shoulders; the chest grows with the legs; the new forelegs stand 4 px back / 2 px lower under
+  the head until the chest has grown (`sC`), no foal legs in front of the body. Mane order: the nape mass starts on f7
+  (t0 1.5/6) and spreads over the shoulders on f8 while the cowlick is still on the head; the crown closes on f9
+  (`CROWN_T0` 2.5/6; the cowlick stays until it is half grown). The tail has its own sub-age `sT` (f8–f9): f7 still carries
+  the baby cup on the tip, f8 the tail swings round, f9 the band. The haunch is laid with a one-step SEAM (was a two-step
+  crease ring = the "coiled worm"). Opaque f5…f11: 974 → 1088 → 1251 → 1339 → 1796 → 2165 → 2624.
+- **#3 grown face (MAJOR):** muzzle 2.5 px shorter, 1 px broader, 1 px lower (snout (8, 6.2) rx 5.2 ry 5.6), the underjaw
+  0.8 px deeper; the skull one band darker (bias −0.14) so the leaf4 muzzle dome is the face's lit focal plane; a white
+  catch-light on the gold eye's pupil (after the outline: the baby's brightest point carried over); the brow's steel
+  underside runs its full 7 px plus a leaf2 cast-shadow row on the hide under it; night0 nostril. Mouth line kept leaf1
+  (darker than the asked leaf2: reads better at 1×).
+- **#4 grown forelegs (MAJOR):** elbow set back 1.5 px, wrist forward; near leg leaf4 front plane + one leaf3 band
+  (flat 1.7, bias .22), far leg leaf3-led; both laid with `LEG_SEAM` (two-step crease floored at leaf1 / night4 — no ink
+  stripe); broad paws (rx 5.1 / 4.4) with two skin3 claws each; one 1-px leaf1 elbow crease. HA-9 still x 16..62.
+- **#5 baby cup (MAJOR):** new `SHELL_CUP_L/_R` (10×9): mouth open up-and-back, 1-px zigzag tooth row (skin4 points, ink
+  gaps from the outline), inner wall skin3 / earth2 shadow inside, outer dome, two 2-px earth2 speckles on the shadow
+  plane; anchored where the tail enters its bottom. Idle tail sway moved to the back side only (`(round(3 sin) − 3) / 28`)
+  so the bigger cup never closes a pocket against the body (it was filled green on idle f3–f5).
+- **#6 horn:** 5×5 spiral (`HORN` + `HORN_TONE`, tones mirrored for P2, shape not): lit skin4 turn, earth2 groove arc,
+  earth3 centre, one ink pixel at its foot; moved to hc + (−3, −9) and the brow fringe shrunk (r 4 at (−10, −5)) so it shows.
+- **#7 band:** grown tail tip now (41, 62.5) — 4 px past the front of the haunch, in front of the ring's back half. Still
+  a small cap at 1× (the ring's front puffs cover the tail tube below it).
+- **#8 mouths:** a night0 throat band 1.6–2.6 px deep across the whole wedge at the hinge (+ the old core), fire1 lips,
+  fire2 tongue — all open mouths of both forms. Deviation: night0, not night1 (night1 would be a 21st colour on roar f3).
+- **#9 attack f8:** grown `lunge` 3 → 0 px on the release (recoil; the stamp carries the force), and `grownBlast` draws
+  only the ring's pixels right of the mouth (x ≥ mouth + 2) and never over the sprite — the leading arc.
+- **#10 baby attack f2–f5:** escalates: f2 a 2-px hop, f3 the chest swells (squash −0.6, tuft up), f4 cheeks 1.3 + the
+  cowlick lifts on a 5-px hop, f5 a 2-px squat (hip +2, squash 1) with the tail shell lifting (tailTap −1). The grown
+  keys keep their lunge / rear values (no `crouch` on f5: the grown sphinx crouch dropped the mane 5 px).
+- **#11 size (deviation, kept):** baby idle f0 ≈ 44×43 / 954 px, grown 60×56 / 2513 px vs §1.1's ≈ 32×37 / 600–680 and
+  ≈ 58×54 / 1650–1850. The grown/baby ratio (≈ 2.6) holds and both read in scale next to volt_lizard / storm_hawk on the
+  board; shrinking now would undo three critique rounds of readability work (mane masses, face). Recorded as deviation.
+- **#12** not the card's file (the gate tool's known list / REHBER §10): the FAILs are the same three declared exceptions.
+- **#13 KK-1:** builder 1× read only (`c2/board-kaChGrownIdle.png`, `c2/board-grown-zoom.png`): "a green lion-dragon in a
+  cloud mane with a broad blunt face and a gold eye". A separate blind critic sign-off next to crystal_wyrm is still open.
+- Colours: grown frames remap leaf0 → leaf1 (the crease floor) so every frame stays ≤ 20 colours.
+- **Gates** (`shots/kart-a/cloud_hatchling/c2/gates-b.txt`, `gates-g.txt`; `--class medium --ref none`, P1 + P2): baby 20 ok +
+  1 FAIL (HA-14 out special 12.9 / 12.96, declared); grown 19 ok + 2 FAIL (HA-14 out summon / revive 3.71 / 3.79, HA-15 in
+  special 3.69 / 3.79, declared). Baby / grown: HA-15 attack ≤ 1.77 / ok; HA-17 1.77 / 1.67; HA-18 19.6 % / 25.7 %; HA-19
+  0.77 / 0.51; HA-21 contact ≤ 26.9 % / ≤ 24.4 %, phase ≤ 46.1 % / ≤ 43.1 %; IŞ-10 idle 6.1 % / 3.4 %; HA-9 fixed (baby x
+  22..48, grown x 16..62); IŞ-1 P2 relight > mirror on every key frame; KK-13 139 frames, ≤ 3.04 ms, 3.56 MB. Tests
+  `tests/art/cloud_hatchling.test.ts` 9/9 + `tests/duel/unit-variant.test.ts`; `tsc` clean in the card's files.
+- **Evidence:** `shots/kart-a/cloud_hatchling/c2/` — `b/`, `g/` (full sheets P1 + P2), `gates-*.txt`, `board-kaChGrownIdle.png`,
+  `board-kaChGrownIdleP2.png`, `board-kaChAtk.png`, `board-grown-zoom.png`; `w/` working renders (`before-*` = c1r1 state,
+  `face*`, `horn`, `legs1`, `grow1/2`, `death1`, `atk1/2`, `cup1–3`, `mouths`).
+- **Remaining weaknesses:** the grown band is still small at 1× (the ring's front puffs hide the tail tube); the horn reads
+  as a curl at ×3+, a tan dot at 1×; growth f9 still shows a fairly upright head on the chest for one frame before the
+  mane frames it on f10; the grown forelegs read better but the lower body (haunch, tail, ring puffs) stays busy at 1×;
+  the size deviation (#11); KK-1 blind sign-off open.
