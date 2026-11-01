@@ -13,6 +13,7 @@ import { V3_SPELL_RECIPES } from './v3/spells';
 import { V3_DAWN_RECIPES } from './v3/dawn';
 import { V3_ASHEN_RECIPES } from './v3/ashen';
 import { V3_HATCH_RECIPES } from './v3/hatchling';
+import { V3_VENOM_RECIPES } from './v3/venom';
 import { UI_CARD_RECIPES } from './v3/ui-cards';
 import { UI_FLOW_RECIPES } from './v3/ui-flow';
 
@@ -1094,6 +1095,7 @@ export const RECIPES: Record<SfxName, Recipe> = {
   ...V3_DAWN_RECIPES, // Şafak Kılıçları (./v3/dawn.ts)
   ...V3_ASHEN_RECIPES, // Kül Ejderi, lane A (./v3/ashen.ts)
   ...V3_HATCH_RECIPES, // Bulut Yavrusu, lane A (./v3/hatchling.ts)
+  ...V3_VENOM_RECIPES, // Zehir Ejderi, lane A (./v3/venom.ts)
   ...UI_CARD_RECIPES, // A6 UI sounds, cards (./v3/ui-cards.ts; written by A6-A)
   ...UI_FLOW_RECIPES, // A6 UI sounds, flow (./v3/ui-flow.ts; written by A6-A)
 };
