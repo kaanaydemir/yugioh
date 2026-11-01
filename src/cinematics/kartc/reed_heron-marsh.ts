@@ -4,7 +4,7 @@
 //
 //   - the negative pool: a night2 multiply pool on the tile — the still water is the darkest floor patch in the
 //     game, and it stays that way in play (oturum-c-tasarim §2.2 Light, §0.4.3);
-//   - the ambient mist: three low stepped bands (2 rows, steel over night4) framing the pond on both sides, drifting
+//   - the ambient mist: four low wisps (3-row stepped lenses, reed_heron-mist.ts) framing the pond on both sides, drifting
 //     1 px every 400 ms (a bounded ±2 px sway, never more than 4 px past the tile); frozen by the strike's freeze;
 //   - the idle soundscape (§2.2 idle bed, §0.5): ambient ticks only while he idles — the drop "plip" on idle f13,
 //     a distant frog croak, a reed swell — at most one per 4 s, never within 1.5 s of any contact on the board.
@@ -14,10 +14,11 @@ import { PAL } from '../../art/palette';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { Disposable } from '../../duel/types';
 import { lightPool, type LightHandle } from '../../view/light';
-import { TILE_H, TILE_W, unitDepth } from '../../view/layout';
+import { TILE_W, unitDepth } from '../../view/layout';
 import { Px, onFrame } from '../../vfx/combat';
 import { panAt, play } from '../_v3/sound';
-import { hash, paintFog } from './reed_heron-fx';
+import { hash } from './reed_heron-fx';
+import { paintWisp } from '../../art/monsters-v3/reed_heron-mist';
 
 const rnd = Math.round;
 const DBG = typeof location !== 'undefined' && location.search.includes('rhrdbg');
@@ -84,22 +85,23 @@ export class MarshAura implements Disposable {
     const h = u.home;
     const d = this.drift(this.el);
 
-    // three low bands on the tile, where the sprite's own pond does not hide them: one behind him just past the
-    // pond's far rim, two side wisps flanking the pond at the waterline, one in front between the near rim and the
-    // badge; each ends ≤ 4 px past the tile's diamond at its height
+    // the ambient bank: four low wisps on the tile (reed_heron-mist.ts: 3-row stepped lenses — a crest, a body, an
+    // underside — with Bayer ends, the summon's and the death's mist language), where the sprite's own pond does not
+    // hide them: a far one behind him past the pond's far rim, two side wisps flanking the pond at the waterline,
+    // a near one in front between the near rim and the badge; clipped ≤ 4 px past the tile's diamond
     const half = TILE_W / 2;
-    const rows: [number, 0 | 1, number, number][] = [
-      [-9, 0, 61, 0],
-      [-1, 1, 63, 26],
-      [8, 1, 67, 0],
+    const clip: [number, number] = [h.x - half - 4, h.x + half + 4];
+    const run = (L: Px) => (y: number, x0: number, x1: number, c: number) => void L.run(y, x0, x1, c);
+    // [dy, layer 0 back / 1 front, x offset, half width, tone, seed]
+    const rows: [number, 0 | 1, number, number, 0 | 1, number][] = [
+      [-11, 0, -3, 21, 1, 61],
+      [-3, 1, -29, 8, 0, 63],
+      [-3, 1, 30, 8, 0, 64],
+      [7, 1, 2, 20, 0, 67],
     ];
-    rows.forEach(([dy, layer, seed, hole], i) => {
-      const hw = rnd(half * (1 - Math.abs(dy) / (TILE_H / 2))) + 4;
+    rows.forEach(([dy, layer, ox, hw, tone, seed], i) => {
       const off = d * (i % 2 ? -1 : 1);
-      const L = layer ? this.front : this.back;
-      // (2 solid steel rows, Bayer-frayed ends, broken in 4-px cells: legible over the dark floor)
-      const holes = hole ? [[h.x - hole + off, h.x + hole + off] as const] : undefined;
-      paintFog(L, { x0: h.x - hw + off, x1: h.x + hw + off, y: h.y + dy - 1, h: 2, off: off * 3 + i * 7, seed, holes });
+      paintWisp(run(layer ? this.front : this.back), { cx: h.x + ox + off, y: h.y + dy - 1, h: 3, hw, lean: 0, seed, tone, clip });
     });
     this.idleSound();
     return true;

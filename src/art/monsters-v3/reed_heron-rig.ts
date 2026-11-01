@@ -18,6 +18,7 @@ import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
 import { ik2, lightOf, type Light } from '../rigkit';
 import { Comp, bands, bezier, castOn, clamp, fatPath, hash2, mixPoly, shift, type Pt, type Tones } from './reed_heron-kit';
+import { paintWisp } from './reed_heron-mist';
 
 export const W = 96;
 export const H = 84;
@@ -163,19 +164,6 @@ function darker(c: number): number {
     case PAL.earth2: return PAL.earth1;
     default: return c;
   }
-}
-
-/** The death mist: a body pixel under the front steps toward the mist tones (white → mist → steel → night4). */
-function misted(c: number, k: number): number {
-  const ladder: number[] = [PAL.white, PAL.mist, PAL.steel, PAL.night4];
-  let i = ladder.indexOf(c);
-  if (i < 0) {
-    // warm / dark matter joins the ladder by value
-    if (c === PAL.earth4 || c === PAL.gold4 || c === PAL.stone4) i = 1;
-    else if (c === PAL.earth3 || c === PAL.gold3 || c === PAL.stone3 || c === PAL.gold2) i = 2;
-    else i = 3;
-  }
-  return ladder[Math.min(3, i + k)];
 }
 
 // ---------------------------------------------------------------- skeleton
@@ -497,7 +485,46 @@ function drawWing(f: Frame): void {
         bb.x0 = Math.min(bb.x0, x);
         bb.x1 = Math.max(bb.x1, x);
       }
-  if (bb.x1 >= 0) {
+  if (bb.x1 >= 0 && o.wf >= 0.5 && o.wo < 0.2) {
+    // FOLDED (guard / death): three overlapping feather tiers read top-down, flat bands per column measured from
+    // the wing's own top edge — a white lit edge, the covert tier (mist) ending in a steel crease with 2-px teeth,
+    // the secondary tier (mist) ending in a second toothed crease, the primaries (steel) — a night4 shadow band
+    // along the underside where the wing meets the body, and 2–3 px primary tips hanging over the straw cloak in
+    // the rear half (steel, a night4 last pixel)
+    const span = bb.x1 - bb.x0;
+    const rear = bb.x0 + span * 0.5;
+    // the tiers follow the wing's back line smoothed over 5 columns (the stair-stepped top edge never zigzags
+    // the creases); each crease is a sawtooth whose teeth step DOWN toward the tail (feather tips pointing back)
+    const sTop = new Int16Array(W).fill(-1);
+    for (let x = bb.x0; x <= bb.x1; x++) {
+      let m = 9999;
+      for (let k = -2; k <= 2; k++) if (x + k >= 0 && x + k < W && topY[x + k] >= 0) m = Math.min(m, topY[x + k]);
+      sTop[x] = m === 9999 ? topY[x] : m;
+    }
+    for (let x = bb.x0; x <= bb.x1; x++) {
+      if (topY[x] < 0) continue;
+      const saw = Math.floor((((sk.B[0] - x) + 600) % 6) / 2);
+      for (let y = topY[x]; y <= botY[x]; y++) {
+        if (src.get(x, y) === null) continue;
+        const d = y - sTop[x];
+        let c: number;
+        if (y === botY[x] && y - topY[x] > 2) c = PAL.night4;
+        else if (y === topY[x]) c = PAL.white;
+        else if (d < 4 + saw) c = PAL.mist;
+        else if (d === 4 + saw) c = PAL.steel;
+        else if (d === 5 + saw) c = PAL.white;
+        else if (d < 9 + saw) c = PAL.mist;
+        else if (d === 9 + saw) c = PAL.steel;
+        else c = PAL.steel;
+        q.set(x, y, c);
+      }
+      if (x < rear && botY[x] - topY[x] > 3) {
+        const g = ((x - sk.B[0] + 90) % 3 + 3) % 3;
+        const len = g === 2 ? 0 : 2 + ((Math.floor((x - sk.B[0] + 90) / 3) % 2) ? 1 : 0);
+        for (let k = 1; k <= len; k++) q.set(x, botY[x] + k, k === len ? PAL.night4 : PAL.steel);
+      }
+    }
+  } else if (bb.x1 >= 0) {
     const span = bb.x1 - bb.x0;
     const rear = bb.x0 + span * 0.42;
     const open = o.wo > 0.5;
@@ -664,42 +691,24 @@ function dropLight(f: Frame): void {
   }
 }
 
-/** One horizontal mist band: two rows of flat stepped runs (steel over night4, a few mist crests) scrolling through a
- * fixed window [x0, x1] with a 24-px period (so a loop that drifts by 24 px is seamless); no alpha, no outline. */
-function mistBand(p: PixelCanvas, x0: number, x1: number, y: number, off: number, seed: number, cover = false): void {
-  x0 = Math.max(3, x0);
-  x1 = Math.min(W - 4, x1);
-  if (y < 3 || y > H - 5) return;
-  for (let row = 0; row < 2; row++)
-    for (let x = x0; x <= x1; x++) {
-      const u = (((x - off * (row ? 1 : -1) + seed * 5 + row * 2) % 24) + 24) % 24;
-      const cell = Math.floor(u / 4);
-      const h = hash2(cell, seed, row);
-      const edge = Math.min(x - x0, x1 - x);
-      if (h < (cover ? 0.08 : row === 0 ? 0.5 : 0.3)) continue;
-      if (edge < 3 && h < 0.6) continue;
-      if (edge < 1) continue;
-      // (the death's covering fog has no mist crests: steel over night4, darker than the white body it takes)
-      const c = row === 0 ? (h > 0.84 && !cover ? PAL.mist : PAL.steel) : h > 0.8 && !cover ? PAL.steel : PAL.night4;
-      if (p.inBounds(x, y + row)) p.set(x, y + row, c);
-    }
-}
-
 function mistLight(f: Frame): void {
   const { o, p } = f;
   if (o.mistK <= 0) return;
-  const drift = rnd(o.mist * 24);
-  // the low bank round the ankle: a band behind the reeds, one over the ankle, one over the far water, one near
-  const low: [number, number, number, number][] = [
-    [-27, -12, -8, 4],
-    [-21, -1, -3, 1],
-    [3, 25, -6, 2],
-    [-9, 13, 1, 3],
+  // the low bank round the ankle: three marsh WISPS (reed_heron-mist.ts, 3-row stepped lenses with Bayer ends —
+  // the same vapour as the summon's bank, the death's cover and the board's marsh): one behind the reeds on the
+  // left, one over the far water on the right, one low over the near water; each breathes ±2 px on its own phase
+  // (bounded: the bank never drifts away from idle f0). Never 1-px lines: the water's ripples are the only lines.
+  const run = (y: number, x0: number, x1: number, c: number) => {
+    for (let x = Math.max(3, x0); x <= Math.min(W - 4, x1); x++) if (p.inBounds(x, y)) p.set(x, y, c);
+  };
+  const low: [number, number, number, number, 0 | 1][] = [
+    [-19, -10, 8, 3, 1],
+    [14, -7, 10, 5, 1],
+    [1, 0, 11, 7, 0],
   ];
-  // each band breathes back and forth ±2 px on its own phase (bounded: the bank never drifts away from idle f0)
-  low.forEach(([a, b, dy, s], i) => {
+  low.forEach(([cx, dy, hw, seed, tone], i) => {
     const sway = rnd(1.6 * Math.sin(TAU * (2 * o.mist + i * 0.27)));
-    mistBand(p, AX + a + (i % 2 ? sway : 0), AX + b + (i % 2 ? sway : 0), GY + dy, sway, s);
+    paintWisp(run, { cx: AX + cx + sway, y: GY + dy, h: 3, hw, lean: 0, seed: 70 + seed, tone });
   });
 }
 
@@ -794,7 +803,7 @@ function silhouette(f: Frame): void {
 function coverPass(f: Frame): void {
   const { o, p, comp } = f;
   if (o.cover <= 0) return;
-  const top = GY - rnd(o.cover * 66);
+  const top = coverTop(o.cover);
   for (let y = top; y < H; y++)
     for (let x = 0; x < W; x++) {
       const id = comp.id[y * W + x];
@@ -814,40 +823,54 @@ function coverPass(f: Frame): void {
           p.set(x, y, g);
           comp.id[y * W + x] = f.groundId![y * W + x];
         }
-      } else p.set(x, y, misted(c, depth < 4 ? 2 : 3));
+      } else {
+        // flat fog volume, never the body's own stripes misted: a steel band under the front, night4 below it
+        // (matter under fog has no detail)
+        p.set(x, y, depth < 4 ? PAL.steel : PAL.night4);
+      }
     }
 }
 
 function coverBands(f: Frame): void {
   const { o, p, sk } = f;
   if (o.cover <= 0) return;
-  // the fog that swallows him: a loose stack of LAYERED wisps — the front wisp hugs the cover line, the ones under it
-  // sit 3–5 px apart (irregular), each its own length and lean, wider low down; the gaps between them show what the
-  // fog has already taken (the water, the reeds: he is gone underneath), so it reads as fog banks rolling up over a
-  // white bird, never a striped slab. They thin out as the last frames clear and drift apart left / right as it rises.
-  const top = GY - rnd(o.cover * 66);
-  const off = rnd(o.cover * 8);
-  const thin = clamp((o.cover - 0.85) * 3, 0, 0.8);
-  // [dy under the front, left reach, right reach, lean per side]
-  const WISPS: [number, number, number][] = [
-    [-3, 17, 10],
-    [1, 22, 13],
-    [5, 19, 17],
-    [8, 26, 12],
-    [12, 23, 18],
-    [17, 28, 15],
-    [21, 25, 20],
-    [26, 30, 17],
+  // the fog that swallows him: THREE wisps riding the cover line (reed_heron-mist.ts: 3–6 px stepped lenses — a
+  // mist crest, a steel body, a night4 underside — frayed with 2×2 Bayer, ≥ 3 px of air between them). The front
+  // wisp hugs the line, the two under it lean the other way; the whole stack climbs in 2-px steps with the line.
+  // Under the stack the fog has already taken him: only the water and the reeds are left (coverPass). Near the top
+  // the wisps thin to the far tone, narrow and drift apart left / right.
+  const top = coverTop(o.cover);
+  const off = 2 * rnd(o.cover * 4);
+  const thin = o.cover > 0.9;
+  const run = (y: number, x0: number, x1: number, c: number) => {
+    for (let x = Math.max(0, x0); x <= Math.min(W - 1, x1); x++) if (p.inBounds(x, y)) p.set(x, y, c);
+  };
+  // [dy under the front, height, half width, x offset, lean]
+  const WISPS: [number, number, number, number, number][] = [
+    [-3, 4, 15, -2, 1],
+    [4, 5, 20, 3, -1],
+    [12, 4, 23, -3, 1],
   ];
-  WISPS.forEach(([dy, l, r], i) => {
+  WISPS.forEach(([dy, h, hw, dx, lean], i) => {
     const y = top + dy;
-    if (y > GY - 3) return;
-    if (hash2(i, 7, 3) < (i < 5 ? 0 : (i - 4) / 5) + thin) return;
+    if (y > GY - 4) return;
     const dir = i % 2 ? 1 : -1;
-    const x0 = sk.B[0] - l + rnd(hash2(i, 8) * 5) + dir * off;
-    const x1 = sk.B[0] + r - rnd(hash2(i, 9) * 5) + dir * off;
-    mistBand(p, x0, x1, y, dir * off + i * 3, 41 + i, true);
+    paintWisp(run, {
+      cx: sk.B[0] - 3 + dx + dir * off,
+      y,
+      h: thin ? Math.max(3, h - 1) : h,
+      hw: thin ? hw - 5 : hw,
+      lean,
+      seed: 41 + i * 7,
+      tone: thin ? 2 : i === 0 ? 0 : 1,
+      clip: [2, W - 3],
+    });
   });
+}
+
+/** The death cover line (rises in whole 2-px steps: the fog climbs, it never slides). */
+function coverTop(cover: number): number {
+  return GY - 2 * rnd(cover * 33);
 }
 
 function moteLight(f: Frame): void {

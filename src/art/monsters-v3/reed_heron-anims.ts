@@ -120,7 +120,8 @@ const GUARD_HOLDS = [180, 170, 160, 180, 170, 160];
 const A_N = 17;
 const COIL: Partial<Pose> = { bx: -2, by: 1, n1x: 20, n1y: -38, n2x: -18, n2y: -46, hx: -6, hy: -55, ba: 0, br: 1, sway: -2 };
 const STANCE: Partial<Pose> = { pond: 0, mistK: 0, l2: 0.6, l2x: -7, l2y: -1 };
-const THRUST_TOP: Partial<Pose> = { ...STANCE, bx: 2, n1x: 13, n1y: -42, n2x: 19, n2y: -51, hx: 23, hy: -55, bl: 3, needle: 1, streak: 1, drops: 0.35 };
+// (no needle in the art: the cinematic draws the needle light for exactly one frame; the out-hold shows the blade)
+const THRUST_TOP: Partial<Pose> = { ...STANCE, bx: 2, n1x: 13, n1y: -42, n2x: 19, n2y: -51, hx: 23, hy: -55, bl: 3, streak: 1, drops: 0.35 };
 const RETRACT: Partial<Pose> = { ...STANCE, bx: 2, n1x: 18, n1y: -40, n2x: 1, n2y: -50, hx: 13, hy: -53, bl: 0 };
 export function attackPose(f: number): Pose {
   const away = { pond: 0, mistK: 0 };
@@ -145,9 +146,12 @@ export function attackPose(f: number): Pose {
     default: return home();
   }
 }
-// (tempo gate: the attack incl. the target's death ≤ 3.19 s game time — measure.mjs rhrAttack. The two retract
-// frames are paid for by a tighter coil (f2–f3), 75-ms strides and a quicker recover: the contact lands where it did)
-const ATTACK_HOLDS = [80, 60, 40, 40, 200, 75, 75, 40, 40, 40, 40, 40, 80, 50, 60, 70, 100];
+// (tempo gate: the attack incl. the target's death ≤ 3.19 s game time — measure.mjs rhrAttack. The glide is the
+// identity — "still … glide … ta-ta-TAK": f5 / f6 hold 150 each = a 300-ms scene glide, slower than any dash in the
+// lane. It is paid for by the thrusts: the strike shows each thrust only for its 40-ms micro-stop (no extra frame
+// hold), retract 1 is 40 and retract 2 is 62 (ta-ta…TAK), the freeze 180; the release f7 rides the glide's braking tail; a snappier
+// coil snap (f2–f3 30 each) and a quicker recover f14–f16.)
+const ATTACK_HOLDS = [80, 60, 30, 30, 180, 150, 150, 40, 40, 40, 40, 62, 80, 50, 50, 50, 50];
 
 // ------------------------------------------------------------------ roar (9 frames): the wings open once
 
@@ -171,13 +175,16 @@ const ROAR_HOLDS = [80, 120, 90, 60, 120, 100, 110, 120, 140];
 // ------------------------------------------------------------------ hit / heavy / magic
 
 const HIT_N = 6;
-const SPRING: Partial<Pose> = { n1x: 15, n1y: -37, n2x: -6, n2y: -42, hx: 3, hy: -49, eye: 0, ruffle: 1 };
+// the neck is a SPRING: struck, it compresses into a tight low S with the head pulled in (f0–f1, the beak tipped
+// down), releases past the idle S into a 2-px overshoot (f2: taller, the bends opened, the beak tipped up), then
+// settles back through a small undershoot to the idle S (f3–f4) — never a straight-up neck
+const SPRING: Partial<Pose> = { n1x: 16, n1y: -36, n2x: -7, n2y: -41, hx: 2, hy: -47, ba: 0.18, eye: 0, ruffle: 1, by: 1 };
 const HIT_KEYS: Partial<Pose>[] = [
   SPRING,
-  { n1x: 16, n1y: -36, n2x: -8, n2y: -41, hx: 1, hy: -48, eye: 0, ruffle: 2, bx: -1 },
-  { n1x: 14, n1y: -38, n2x: -2, n2y: -45, hx: 6, hy: -53, eye: 0, ruffle: 1 },
-  { n1x: 12, n1y: -40, n2x: 2, n2y: -48, hx: 9, hy: -56 },
-  { n1x: 13, n1y: -39, n2x: 1, n2y: -47, hx: 8, hy: -55 },
+  { n1x: 17, n1y: -35, n2x: -9, n2y: -40, hx: 0, hy: -45, ba: 0.25, eye: 0, ruffle: 2, bx: -1, by: 1 },
+  { n1x: 11, n1y: -41, n2x: 3, n2y: -50, hx: 10, hy: -58, ba: -0.12, eye: 1, ruffle: 1 },
+  { n1x: 14, n1y: -38, n2x: -1, n2y: -46, hx: 7, hy: -54, ba: 0.04 },
+  { n1x: 13, n1y: -39, n2x: 0, n2y: -47, hx: 8, hy: -55 },
 ];
 export function hitPose(f: number): Pose {
   if (f >= HIT_N - 1) return home();
@@ -239,7 +246,10 @@ const FG_HOLDS = [60, 70, 80, 90, 90];
 const SU_N = 10;
 export function summonPose(f: number): Pose {
   if (f >= SU_N - 1) return home();
-  const fog = { sil: 1, eye: 0 };
+  // f0–f4: he is NOT drawn (no ghost, no build, no alpha — MA-4): the water and the reeds come up, the summon's
+  // world fog bank lies over the tile, and the only sign of him is the eye glint (IŞ-8 1 → 3-px cross → 1) hanging
+  // in a dark hole of the fog. f5 is the first time the body is seen: white, still, already there.
+  const fog = { show: 0, eye: 0 };
   switch (f) {
     case 0: return key({ ...fog, reedGrow: 0.45 }, f, SU_N);
     case 1: return key({ ...fog, reedGrow: 0.85 }, f, SU_N);
@@ -254,7 +264,8 @@ export function summonPose(f: number): Pose {
   }
 }
 // (summon ≤ 1.8 s scene incl. the card slam: GAME_DESIGN, measure.mjs rhrSummon; the glint keeps its 200 ms)
-const SU_HOLDS = [160, 150, 80, 200, 90, 170, 90, 140, 110, 120];
+// (f0–f1 the marsh and the fog with the frogs; f2–f4 the glint in SILENCE — 220 ms (≈ 300 game ms) of nothing before the parting)
+const SU_HOLDS = [200, 190, 70, 100, 50, 170, 90, 140, 110, 120];
 
 // ------------------------------------------------------------------ death (10): wings close, one drawn step back, the mist takes him
 
