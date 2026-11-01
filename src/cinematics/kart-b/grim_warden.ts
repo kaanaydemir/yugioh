@@ -811,7 +811,9 @@ function soulBurst(sc: Phaser.Scene, at: XY, floorY: number, ramp: Ramp, small: 
     }
     return out;
   };
-  void animate(sc, 230, (_k, el) => {
+  // painted once at once: the battle's hit-stop freezes the show clock on this very tick, so the frozen beat must
+  // already show the solid soul star (not the bare white silhouette with the burst arriving after the freeze)
+  const paint = (el: number): void => {
     r.draw((g) => {
       const step = Math.min(4, Math.floor(el / 46));
       if (step <= 1) {
@@ -834,7 +836,9 @@ function soulBurst(sc: Phaser.Scene, at: XY, floorY: number, ramp: Ramp, small: 
         g.ring(at.x, at.y, rad, Math.round(rad * 0.8), step === 1 ? ramp[4] : ramp[3], 1);
       }
     });
-  }).then(() => r.destroy());
+  };
+  paint(0);
+  void animate(sc, 230, (_k, el) => paint(el)).then(() => r.destroy());
   // glass shards in the lantern's colour: whole pixels, bouncing on the struck body's floor, blinking out
   const sp = new Sparks(sc, depth + 0.1);
   const n = small ? 9 : 16;

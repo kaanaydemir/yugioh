@@ -411,3 +411,61 @@ Measure `fix-r2b/measure.json/.log`: all 23 gw* scenarios, 0 errors (budgets unc
 - Struck-body material sound for the warden's shroud: shared material tables untouched (decision 4); gwJangle covers it.
 - P2 whirl ring closes to ≈270° (the lantern's mirrored f1 sits closer to the fist); readable, not a full 360° as P1.
 - MP4 with audio still not produced; a blind eye test vs abyss_magus (MOTsig UYARI) still owed.
+
+## Stage — rig + all anims, re-dispatch (agent: rig lane r3, 2026-11-01) — evidence `shots/v3/kart-b/grim_warden/rig-r3/`
+The rig + all 13 anims were already complete (stage 1 + fix r1/r2, gates green). This pass re-verified everything on
+fresh sheets (P1 + P2, every anim, ×3/×4 zooms) and fixed the one weak read left on idle f0 at zoom:
+- **Back tatters read as three black logs / spider legs** (uniform-width tubes nearly level, forked "claw" tips; worst in
+  guard). `paintTatters` (`grim_warden-rig.ts`) now draws ONE torn sheet: strips broad at the back (10→4.5 px) with a
+  slight hem flare, drooping under their weight, the cloth between neighbours kept for the first 50–62 % of their length
+  and ending in a ragged V notch; tips = 2–3 short teeth packed inside the strip width (no splay); 2-px lit top band
+  (SHROUD.M) over the far tones. End-wave amplitude trimmed (HA-21 phase stays < 50 %), x clamped (Sİ-2 margin in
+  special f7). Files touched: `src/art/monsters-v3/grim_warden-rig.ts` only.
+- **Gates** (`rig-r3/gates.txt`, `--class large --ref none`): 21 ok / 0 FAIL (HA-21 phase max 49.5 % hitMagic — at the
+  edge; any future idle-amplitude increase must re-check it; IŞ-10 idle 7.3 %). `tests/art/grim_warden*` 12/12, tsc clean
+  for grim files. Sheets `rig-r3/p1/`, `rig-r3/p2/`; zooms `zoom-idle-guard.png` (idle f0 / guard f0 / special f7),
+  `zoom-p2.png`, `combo-p1.png`, `combo-p2.png`.
+- Open: sameness not re-run after this cloth-only change (motion unchanged); the earlier open issues stand.
+
+## Stage — card art + cut-in + light profile, round 3 (agent: card-art lane, 2026-11-01) — evidence `shots/v3/kart-b/grim_warden/art3/`
+Why: the card art still carried the pre-fix-r1 helm (earth-tone bone in a 3-bar "birdcage" = the brown grille critic r1
+flagged on the sprite) and the lantern hung small at the side (spec: lantern held out TOWARD THE VIEWER = brightest point).
+The cut-in's cage was a cross (one vertical bar + a brow ring), not the rig's two-meridian-bar helm.
+
+**Card art** `src/art/cardart-v3/grim_warden.ts` — rewritten (native drawing, DARK recipe):
+- Composition: three-quarter figure, hunched, hood pushed forward; near arm thrust out, the lantern BIG in the right
+  foreground (15×23 map vs an 18×18 helm: it reads nearer than the head) = "L" with the upright spade-halberd.
+- Helm = the rig's design at card density (`HELM` 18×18 map): pale cool bone (stone4/3/2, void0 socket/nose/gaps), dark
+  iron (two meridian bars, crown ring + knob, jaw + chin bands, nape plate); eye = 2×2 leaf4 + leaf3/leaf2 halo in a 4×3
+  socket, scans 1 px (f3–f4). Bony claw (earth4/3/2, fingers separated by ink gaps) round a 3-link chain.
+- Lantern light: leaf2 pane / leaf3 dome / leaf4 teardrop flame (flickers 6 f × 150 ms); green soul bounce (leaf1, leaf2
+  near) on the edges that FACE the flame (sleeve underside, fist, posts) — not on the robe below (read as a vine);
+  spill on the horizon line + a leaf1 edge on the night0 headstone (no floor puddle: every pool shape read as a green bar).
+- Rim void3 on the true outer silhouette only (own `outerRim`; the kit rim also lit internal contact lines).
+- Small 44×34 = full hand map `SMALL` (matter only, ink() adds the outline), 7×13 lantern block, eye pixel at (24,9).
+- Stats f0: big colours 19 / backdrop 6 / isolated 2.0 % / outlineInk 0.97 / focus ok (flame 66,49); small colours 19 /
+  isolated 4.5 % / focus ok (33,26). Subject fill 0.84 (halberd + lantern span the window, same as before; accepted).
+- Evidence: `cardart-big-f0-x3.png`, `-x9.png`, `cardart-big-head-x15.png`, `cardart-big-living-f0-f5.png`,
+  `cardart-small-f0-x1.png`, `-x12.png`, `hatcard.png` (real faces 1×/2×, art, field minis).
+- `portrait()` in `monsters-v3/grim_warden.ts` is already wired (unchanged, rig agent keep it).
+
+**Cut-in** `src/art/cutins-v3/grim_warden.ts` — edited, not rewritten: the cage is now the rig's helm (two meridian bars
+either side of the socket bowing into the knob; brow ring, jaw band, chin band clipped to the skull, rivets where bars
+cross bands) — reads "bone behind bars", no cross. Lantern swing widened into a pendulum toward the face (f1 173,86 →
+f2 167,66 → f3 163,58 peak, lighting the jaw → f4 169,70 → f5 166,63). Holds/rhythm unchanged (default beats).
+Lens glint still the eye (test 134,62 passes, P1+P2). Films: `gwSummon-cutin-z.png`, `gwSummonP2-cutin-z.png`
+(v3 band in the real tribute summon: glint cross on the eye at t≈3570, lantern swings up, P2 relit + flipped);
+sheets `cutin-sheet-p1.png`, `cutin-sheet-p2.png`, zoom `cutin-f2-x3.png`.
+
+**Light profile** `MONSTER_GLOW.grim_warden` — re-checked against the rig (fx `soulFlame`/`eyeLight`, rig `zap`): leaf3,
+leaf4 and white appear only in lights; leaf2 only as lit glass / eye glow (kept as `near` 0.45); leaf1 is the soul
+bounce on body edges (reflected, correctly NOT emissive). No change. **DEATH_PRESETS** `{shadow, shadow}`: unchanged.
+
+**Tests:** `tests/art/grim_warden-cardart.test.ts` + `tests/art/grim_warden.test.ts` 12/12. `tests/art/cardface-v3.test.ts`
+9/10 — the only failure is G1 `scrap_raiders` 0.692 < 0.7 (not lane B, pre-existing). tsc: no grim errors.
+
+**Open issues:**
+- Cut-in hood is still a large mass of flat cowl planes (left two thirds); a bigger redesign (tatters streaming, a
+  lower camera) would raise it toward the wyrm's mouth-open drama — not done this round.
+- The cut-in sleeve below the raised lantern reads as a thin strip in f2–f5.
+- No independent critic pass on the new card art / cut-in yet.

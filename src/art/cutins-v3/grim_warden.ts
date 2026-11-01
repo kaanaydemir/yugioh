@@ -53,11 +53,11 @@ interface Pose {
 
 const POSES: readonly Pose[] = [
   { head: [0, 0], eye: 0, lan: [174, 118], fire: 0, cast: false, wisps: 0, t: 0 },
-  { head: [0, 0], eye: 1, lan: [172, 80], fire: 1, cast: false, wisps: 0, t: 1 },
-  { head: [1, 0], eye: 2, lan: [170, 70], fire: 2, cast: true, wisps: 0, t: 2 },
-  { head: [2, 1], eye: 2, lan: [167, 62], fire: 2, cast: true, wisps: 1, t: 3 },
-  { head: [1, 1], eye: 2, lan: [171, 72], fire: 2, cast: true, wisps: 3, t: 4 },
-  { head: [1, 1], eye: 2, lan: [173, 68], fire: 2, cast: true, wisps: 2, t: 5 },
+  { head: [0, 0], eye: 1, lan: [173, 86], fire: 1, cast: false, wisps: 0, t: 1 },
+  { head: [1, 0], eye: 2, lan: [167, 66], fire: 2, cast: true, wisps: 0, t: 2 },
+  { head: [2, 1], eye: 2, lan: [163, 58], fire: 2, cast: true, wisps: 1, t: 3 },
+  { head: [1, 1], eye: 2, lan: [169, 70], fire: 2, cast: true, wisps: 3, t: 4 },
+  { head: [1, 1], eye: 2, lan: [166, 63], fire: 2, cast: true, wisps: 2, t: 5 },
 ];
 const HOLDS: readonly number[] = [260, 110, 100, 110, 120, 420];
 
@@ -77,14 +77,18 @@ const SKULL: readonly V[] = [
 const CAPE: readonly V[] = [
   [8, 144], [12, 126], [22, 110], [40, 104], [80, 108], [124, 110], [156, 112], [176, 124], [186, 144],
 ];
-/** the cage bars (bowing round the skull into the crown knob) */
+/**
+ * The cage (the rig's helm, src/art/monsters-v3/grim_warden-rig.ts HELM): TWO meridian bars over the face — one over
+ * the temple behind the socket, one in front of it — bowing round the skull into the crown knob, a crown (brow) ring,
+ * a jaw band over the teeth and a chin band under them. The socket sits between the two bars.
+ */
 const BARS: readonly (readonly V[])[] = [
-  [[104, 100], [100, 76], [102, 56], [110, 40], [123, 30]],
-  [[124, 31], [124, 56], [125, 84], [125, 108]],
-  [[140, 104], [142, 80], [141, 60], [136, 44], [125, 31]],
+  [[117, 104], [114, 82], [115, 60], [118, 44], [124, 31]],
+  [[143, 102], [145, 82], [144, 62], [139, 45], [126, 31]],
 ];
-/** the brow ring round the cage (rows: mist, steel, night3) */
+/** the brow ring, the jaw band and the chin band round the cage (rows: lit, mid, shade) */
 const RING_Y = 48;
+const BANDS_Y: readonly number[] = [RING_Y, 84, 98];
 const KNOB: V = [124, 28];
 /** the eye socket centre (head space) */
 const EYE: V = [133, 61];
@@ -342,24 +346,26 @@ const factory: CutinFactory = () => ({
       path4(hood, b.map(([x, y]) => [x + side, y] as V), K3, cageOnly);
       path4(hood, b, K2, cageOnly);
     }
-    // the brow ring round the cage: mist top row, steel, night3 under
-    for (let x = 98; x <= 150; x++) {
-      const X = x + ho[0];
-      const rows: readonly [number, number][] = [
-        [RING_Y, K3],
-        [RING_Y + 1, K2],
-        [RING_Y + 2, K1],
-      ];
-      for (const [y, c] of rows) if (inCav(X, y + ho[1])) hood.set(X, y + ho[1], c);
-    }
-    // rivets where the bars cross the ring
-    for (const bar of BARS) {
-      const b = T(bar, ho);
-      let best = b[0];
-      for (const q of b) if (Math.abs(q[1] - (RING_Y + 1 + ho[1])) < Math.abs(best[1] - (RING_Y + 1 + ho[1]))) best = q;
-      const rx = Math.round(best[0]);
-      if (inCav(rx, RING_Y + 1 + ho[1])) hood.set(rx, RING_Y + 1 + ho[1], K1).set(rx + side, RING_Y + ho[1], K3);
-    }
+    // the brow ring, the jaw band and the chin band: lit top row, mid, shade under — only over the skull's span
+    for (const by of BANDS_Y)
+      for (let x = 98; x <= 150; x++) {
+        const X = x + ho[0];
+        const rows: readonly [number, number][] = [
+          [by, K3],
+          [by + 1, K2],
+          [by + 2, K1],
+        ];
+        for (const [y, c] of rows) if (inCav(X, y + ho[1]) && (inPoly(SK, X, y + ho[1]) || inPoly(SK, X, y + ho[1] - 3) || inPoly(SK, X - 1, y + ho[1]) || inPoly(SK, X + 1, y + ho[1]))) hood.set(X, y + ho[1], c);
+      }
+    // rivets where the bars cross the bands
+    for (const by of BANDS_Y)
+      for (const bar of BARS) {
+        const b = T(bar, ho);
+        let best = b[0];
+        for (const q of b) if (Math.abs(q[1] - (by + 1 + ho[1])) < Math.abs(best[1] - (by + 1 + ho[1]))) best = q;
+        const rx = Math.round(best[0]);
+        if (inCav(rx, by + 1 + ho[1]) && hood.get(rx, by + 1 + ho[1]) === K2) hood.set(rx, by + 1 + ho[1], K1).set(rx + side, by + ho[1], K3);
+      }
     // the crown knob
     const kn = add(KNOB, ho);
     hood.disc(kn[0] + 0.5, kn[1] + 0.5, 3.2, PAL.steel);

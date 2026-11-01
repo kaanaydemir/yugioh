@@ -313,22 +313,52 @@ function paintTatters(f: Frame): void {
     [sk.C[0] - 8, sk.C[1] + 14],
     [sk.R[0] - 10, sk.R[1] + 6],
   ];
+  const paths: Pt[][] = [];
   roots.forEach((a, i) => {
-    const len = [17, 19, 14][i] * (1 - col * 0.6);
+    const len = [18, 20, 15][i] * (1 - col * 0.6);
     const w1 = wave(o, 0.35 + i * 0.3, i * 0.29);
     const w2 = wave(o, 0.85 + i * 0.3, i * 0.29 + 0.18);
-    const m: Pt = [a[0] - len * 0.5 + o.capeA * 0.4, a[1] + 3 + i + w1 * 1.6];
-    const b: Pt = [a[0] - len + o.capeA * 0.8 + w2 * 1.5, Math.min(GY - 8, a[1] + 7 + i * 2 + w2 * 2.6)];
-    const path = spline([a, m, b], 5);
-    q.poly(ribbon(path, (k) => lerp(7 - i, 3, k)), SHROUD.M);
-    // a forked tip: two ≥ 2-px teeth
-    const bx = rnd(b[0]);
-    const by = rnd(b[1]);
-    q.rect(bx - 2, by - 1, 2, 3, SHROUD.M);
-    q.rect(bx, by + 1, 2, 2, SHROUD.M);
+    // cloth hangs: each strip leaves the back almost level, then droops under its own weight (not a stiff stick)
+    const m: Pt = [a[0] - len * 0.55 + o.capeA * 0.4, a[1] + 2 + i + w1 * 1.6];
+    const b: Pt = [Math.max(8, a[0] - len + o.capeA * 0.8 + w2 * 1.2), Math.min(GY - 8, a[1] + 8 + i * 2 + len * 0.22 + w2 * 1.8)];
+    const path = spline([a, m, b], 6);
+    paths.push(path);
+    // broad at the back (the strips overlap into one torn sheet), narrowing, then a slight flare at the hem: cloth, not a rope
+    q.poly(ribbon(path, (k) => (k < 0.7 ? lerp(10 - i, 4.5, k / 0.7) : lerp(4.5, 5, (k - 0.7) / 0.3))), SHROUD.M);
+    // a ragged end: two or three ≥ 2-px teeth torn along the strip's direction, their lengths breathing with the wave
+    const n = path.length;
+    const [px, py] = path[n - 2];
+    let dx = b[0] - px;
+    let dy = b[1] - py;
+    const dl = Math.hypot(dx, dy) || 1;
+    dx /= dl;
+    dy /= dl;
+    const nx = -dy;
+    const ny = dx;
+    const teeth = i === 1 ? 3 : 2;
+    for (let k = 0; k < teeth; k++) {
+      const off = (k - (teeth - 1) / 2) * 1.7;
+      const tl = 2 + ((k + i) % 2) * 2;
+      const c0: Pt = [b[0] + nx * (off - 1), b[1] + ny * (off - 1)];
+      const c1: Pt = [b[0] + nx * (off + 1), b[1] + ny * (off + 1)];
+      const tip: Pt = [Math.max(3, b[0] + nx * off + dx * tl), Math.min(GY - 7, b[1] + ny * off + dy * tl)];
+      q.poly([c0, c1, tip], SHROUD.M);
+    }
   });
+  // one torn sheet, not three ropes: the cloth between neighbouring strips is kept for the first ~60 % of their length
+  // and ends in a ragged V notch, so the strips read as tails ripped out of the shroud's back
+  for (let i = 0; i + 1 < paths.length; i++) {
+    const pa = paths[i];
+    const pb = paths[i + 1];
+    const j = Math.max(1, Math.min(pa.length, pb.length) * (i === 0 ? 0.62 : 0.5) | 0);
+    const ea = pa[j];
+    const eb = pb[j];
+    const back = (i === 0 ? 0.35 : 0.45);
+    const notch: Pt = [lerp(ea[0], eb[0], 0.5) * (1 - back) + pa[0][0] * back, lerp(ea[1], eb[1], 0.5) * (1 - back) + pa[0][1] * back];
+    q.poly([...pa.slice(0, j + 1), notch, ...pb.slice(0, j + 1).reverse()], SHROUD.M);
+  }
   // behind the body: the far tone set, but its lit top edge reads against the dark arena
-  planes(q, (x, y, src) => (!src.isOpaque(x, y - 1) ? SHROUD.M : src.isOpaque(x, y + 1) && src.isOpaque(x, y + 2) ? SHROUD_FAR.M : SHROUD_FAR.S));
+  planes(q, (x, y, src) => (!src.isOpaque(x, y - 1) || !src.isOpaque(x, y - 2) ? SHROUD.M : src.isOpaque(x, y + 1) && src.isOpaque(x, y + 2) ? SHROUD_FAR.M : SHROUD_FAR.S));
   f.comp.add(q, Part.tatters, { out: SHROUD.D });
 }
 
