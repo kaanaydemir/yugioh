@@ -33,7 +33,7 @@ import { registerStrike } from '../api';
 import { strikeStartFrame } from '../_v3/clash';
 import { atFrame, panAt, play, takeCharge } from '../_v3/sound';
 import { followLight, holdFrame, layer, onFrame, playFrom, seed, sleep } from '../strikes-a/_kit';
-import { STEP, acidHoles, etchDot, flyGlob, podiumKey, scarRemembers, scarTile, splatCrown, steamThreads, surfaceOf, zoneKey } from './venom_drake-acid';
+import { STEP, acidHoles, splatBurst, etchDot, flyGlob, podiumKey, scarRemembers, scarTile, splatCrown, steamThreads, surfaceOf, zoneKey } from './venom_drake-acid';
 
 const r = Math.round;
 
@@ -94,7 +94,9 @@ async function venomMortarV3(s: StrikeArgs): Promise<void> {
   swellAt(4, 1.26, 20);
   atFrame(u, 'attack', 5, () => live() && play('venomWhip', { volume: 0.85, pan }), { maxMs: 3000 });
 
-  const anim = u.playRange('attack', f0, watchF);
+  // crit r1 #10: the wind-up runs 1.25× (≈ −80 ms of a frequent attack's dead time); the bigger glob's flight
+  // gets 20 ms of it back
+  const anim = u.playRange('attack', f0, watchF, { timeScale: 1.25 });
   try {
     await u.playToFrame('attack', relF);
   } catch {
@@ -129,7 +131,7 @@ async function venomMortarV3(s: StrikeArgs): Promise<void> {
     return face;
   };
   const key = target ? tileKey(target) : '';
-  const FLIGHT = 260;
+  const FLIGHT = 280;
   // "the scar remembers" fires just before the splat
   let remembered = false;
   void sleep(sc, FLIGHT - 150).then(() => {
@@ -147,6 +149,8 @@ async function venomMortarV3(s: StrikeArgs): Promise<void> {
   s.impact(hit);
   void lightFlash(sc, hit.x, hit.y, PAL.leaf3, 26, 260, { floorY: ground.y, intensity: 0.9 });
   splatCrown(sc, hit, ground.y, blocked ? 6 : 8, tDepth + 0.6, { side: -Math.sign(dir.x) });
+  // the splat in front of the kit's contact star (crit r1 #2)
+  splatBurst(sc, hit, tDepth + 0.7, { small: blocked });
   if (live()) {
     void playFrom(u, 'attack', conF);
     // the stinger rattles once the acid has eaten (never inside the held breath after the splat)

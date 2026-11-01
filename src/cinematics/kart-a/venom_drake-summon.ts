@@ -23,7 +23,9 @@ import { shake } from '../../vfx/core';
 import { registerCardHook } from '../api';
 import { fade, panAt, play, soundsOfUnit, start, atFrame, atMark } from '../_v3/sound';
 import { flipV3With, type FlipAccentFn } from '../summon-b/flip';
-import { Sparks, layer, onFrame } from '../strikes-a/_kit';
+import { Sparks, currentPixels, layer, onFrame, overlay } from '../strikes-a/_kit';
+import { PixelCanvas } from '../../art/pixel';
+import { unitFrame } from '../../duel/unit-variant';
 import type { Px } from '../../vfx/combat';
 import { RR, bg, clamp, holdFrame, lightFlash, lightPool, playFrom, signatureSummon, untilFrame, type Stage } from '../summon-a/_kit';
 import { etchDot, scarTile, zoneKey } from './venom_drake-acid';
@@ -52,22 +54,56 @@ function pt(u: MonsterUnit, name: 'staff' | 'head' | 'muzzle' | 'core'): XY {
   return { x: r(w.x), y: r(w.y) };
 }
 
-/** 2×2 Bayer thresholds (0…3): a pixel shows at `level` 0…4 quarters. */
-const bayer = (x: number, y: number) => [0, 2, 3, 1][(x & 1) + ((y & 1) << 1)];
+/** One gas lobe: an iso blob centre / radii. */
+type Lobe = readonly [cx: number, cy: number, rx: number, ry: number];
 
-/** One stepped gas puff (an iso blob) at `level` quarters of coverage: leaf1 heart, leaf0 body, void1 edge. */
-function puff(px: Px, cx: number, cy: number, rx: number, ry: number, level: number): void {
-  if (level <= 0) return;
-  for (let y = -ry; y <= ry; y++) {
-    const w = Math.floor(rx * Math.sqrt(Math.max(0, 1 - (y * y) / ((ry + 0.4) * (ry + 0.4)))));
-    for (let x = -w; x <= w; x++) {
-      const X = cx + x;
-      const Y = cy + y;
-      if (bayer(X, Y) >= level) continue;
-      const e = (x * x) / Math.max(1, w * w) + (y * y) / Math.max(1, ry * ry);
-      const top = y < -ry * 0.35;
-      px.dot(X, Y, e > 0.82 ? PAL.void1 : top ? (e < 0.25 ? PAL.leaf3 : PAL.leaf2) : e < 0.4 ? PAL.leaf2 : PAL.leaf1);
+/**
+ * The gas as ONE rolling body (crit r1 #4: no dither checker — it read as a texture fault): the union of its
+ * lobes in 3 flat stepped bands measured from each column's top — a flat 2-px leaf3 top rim, a leaf2 band,
+ * the leaf1 body — a leaf0 floor row and a 1-px void1 edge round the whole.
+ */
+function gas(px: Px, lobes: readonly Lobe[]): void {
+  if (!lobes.length) return;
+  let x0 = 1e9;
+  let x1 = -1e9;
+  let y0 = 1e9;
+  let y1 = -1e9;
+  for (const [cx, cy, rx, ry] of lobes) {
+    if (rx <= 0 || ry <= 0) continue;
+    x0 = Math.min(x0, cx - rx - 1);
+    x1 = Math.max(x1, cx + rx + 1);
+    y0 = Math.min(y0, cy - ry - 1);
+    y1 = Math.max(y1, cy + ry + 1);
+  }
+  if (x1 < x0) return;
+  const W = x1 - x0 + 1;
+  const H = y1 - y0 + 1;
+  const m = new Uint8Array(W * H);
+  for (const [cx, cy, rx, ry] of lobes) {
+    if (rx <= 0 || ry <= 0) continue;
+    for (let y = -ry; y <= ry; y++) {
+      const w = Math.floor(rx * Math.sqrt(Math.max(0, 1 - (y * y) / ((ry + 0.4) * (ry + 0.4)))));
+      for (let x = -w; x <= w; x++) m[(cy + y - y0) * W + (cx + x - x0)] = 1;
     }
+  }
+  const at = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H && m[y * W + x] === 1;
+  for (let x = 0; x < W; x++) {
+    let top = -1;
+    let bot = -1;
+    for (let y = 0; y < H; y++)
+      if (at(x, y)) {
+        if (top < 0) top = y;
+        bot = y;
+      }
+    if (top < 0) continue;
+    for (let y = top; y <= bot; y++) {
+      if (!at(x, y)) continue;
+      const edge = !at(x - 1, y) || !at(x + 1, y) || !at(x, y - 1) || !at(x, y + 1);
+      const d = y - top;
+      const c = edge && d > 0 ? PAL.void1 : y === bot ? PAL.leaf0 : d < 2 ? PAL.leaf3 : d < 5 ? PAL.leaf2 : PAL.leaf1;
+      px.dot(x + x0, y + y0, c);
+    }
+    px.dot(x + x0, top + y0 - 1, PAL.void1);
   }
 }
 
@@ -105,8 +141,10 @@ async function venomMistV3(S: Stage): Promise<void> {
     domeL.clear();
     if (gone) return false;
     const k = clamp(el / 260, 0, 1);
+    const lobes: Lobe[] = [];
     if (tonguesOn) {
-      // four tongues: a train of puffs from each corner toward the centre, their heads reaching it at 240 ms
+      // four tongues: a train of lobes from each corner toward the centre, their heads reaching it at 240 ms,
+      // each lobe rolling (a stepped 1-px bob) as it comes
       for (const [ci, c] of corners.entries()) {
         for (let j = 0; j < 4; j++) {
           const q = clamp(k - j * 0.12, 0, 1);
@@ -114,17 +152,23 @@ async function venomMistV3(S: Stage): Promise<void> {
           const wob = Math.floor((el + ci * 40 + j * 30) / 70) % 2;
           const x = r(c.x + (home.x - c.x) * q * 0.85);
           const y = r(c.y + (home.y - c.y) * q * 0.85) - wob;
-          puff(domeL, x, y, 7 - (j >> 1), 3, 2);
+          lobes.push([x, y, 7 - (j >> 1), 3]);
         }
       }
     }
-    // the dome heaps on the tile (≈ 30×22), never solid: 50 % at most, then the inhale thins it
-    if (domeOn || k >= 0.45) {
+    // the dome heaps on the tile (≈ 30×22); the inhale rolls it OUTWARD and DOWN (lower, wider) until it is a
+    // floor lip, never a dither fade
+    if (dome >= 0 && (domeOn || k >= 0.45)) {
       const g = domeOn ? 1 : (k - 0.45) / 0.55;
-      const lvl = Math.min(2, dome >= 4 ? 2 : dome);
-      const roll = Math.floor(el / 90) % 2;
-      for (const [dx, dy, rx, ry] of [[0, -10, 15, 9], [-11, -4, 10, 6], [11, -5, 10, 6], [r(-3 + roll * 2), -19, 9, 6], [r(5 - roll * 2), -6, 8, 5]] as const) puff(domeL, home.x + dx, home.y + r(dy * g), r(rx * g), Math.max(1, r(ry * g)), lvl);
+      const [hk, wk] = dome >= 4 ? [1, 1] : dome === 2 ? [0.62, 1.18] : dome === 1 ? [0.36, 1.34] : [0.16, 1.5];
+      const roll = Math.floor(el / 90) % 3;
+      // the lobes roll: the side ones step outward and down in a 3-step cycle, the crown one bobs
+      for (const [dx, dy, rx, ry, side] of [[0, -8, 16, 8, 0], [-13, -3, 10, 5, -1], [13, -4, 10, 5, 1], [-4 + (roll === 1 ? 2 : 0), -13, 9, 5, 0], [6, -11, 8, 5, 1], [-7, -1, 9, 4, -1]] as const) {
+        const ox = side * (roll === 2 ? 1 : 0);
+        lobes.push([home.x + r((dx + ox) * wk), home.y + r(dy * g * hk) + (side && roll === 2 ? 1 : 0), r(rx * g * wk), Math.max(1, r(ry * g * hk))]);
+      }
     }
+    gas(domeL, lobes);
     return true;
   });
   await S.wait(260);
@@ -134,6 +178,9 @@ async function venomMistV3(S: Stage): Promise<void> {
   // ---- 260: the pose starts, curled in the fog (driven: an ace with a cut-in stops ON the hold frame)
   holdFrame(u, 'summon', 0);
   u.showSprite();
+  // crit r1 #3: the body rises OUT of the gas (no pop): 4 steps of 40 ms, rows revealed from its feet up, the
+  // gas clinging to the cut row (a leaf3 rim row, a leaf2 checker row over the body above it)
+  void riseIn(S, u);
   if (S.cutIn) bg(u.playRange('summon', 0, holdF));
   else bg(playFrom(u, 'summon', 0));
   // the two lights in the fog: the eye slit and the bulb
@@ -175,6 +222,7 @@ async function venomMistV3(S: Stage): Promise<void> {
   atFrame(u, 'summon', PEAK_F, () => {
     if (!live()) return;
     domeOn = false;
+    dome = -1; // the gas is gone into the drake
     const b = pt(u, 'staff');
     void lightFlash(sc, b.x, b.y, PAL.leaf3, 22, 280, { floorY: home.y, intensity: 1 });
     bulbL.setIntensity(1, 80).setRadius(14, 7, 80);
@@ -233,7 +281,57 @@ function glint(S: Stage, u: MonsterUnit): void {
   }, () => px.g.destroy());
 }
 
-/** ONE etch ring spreads from the feet in 3 steps (60 ms each): jagged night0 cracks with a leaf1 lip. */
+/**
+ * The body rises out of the gas: for 4 steps of 34 ms the sprite is hidden and an overlay in its exact frame
+ * space shows only the rows from its feet up to a rising cut, the gas clinging to the cut (a leaf3 rim row, a
+ * leaf2 checker row over the body above it); then the sprite shows again.
+ */
+async function riseIn(S: Stage, u: MonsterUnit): Promise<void> {
+  const spr = u.sprite;
+  const STEPS = [0.28, 0.52, 0.76];
+  const shown = () => {
+    const fi = u.frameInfo();
+    return fi.anim ? unitFrame(u, fi.anim, fi.frame) : currentPixels(u).pc;
+  };
+  const pc0 = shown();
+  const ov = overlay(u, new PixelCanvas(pc0.w, pc0.h));
+  spr.setVisible(false);
+  try {
+    for (const k of STEPS) {
+      if (!spr.active || u.retired) break;
+      const pc = shown();
+      let ty = pc.h;
+      let by = -1;
+      for (let y = 0; y < pc.h; y++)
+        for (let x = 0; x < pc.w; x++)
+          if (pc.isOpaque(x, y)) {
+            ty = Math.min(ty, y);
+            by = Math.max(by, y);
+            break;
+          }
+      if (by < 0) break;
+      const cut = Math.round(by - (by - ty) * k);
+      const out = new PixelCanvas(pc.w, pc.h);
+      for (let y = cut; y < pc.h; y++)
+        for (let x = 0; x < pc.w; x++) {
+          const c = pc.get(x, y);
+          if (c === null) continue;
+          out.set(x, y, y === cut ? PAL.leaf3 : y === cut + 1 && (x + y) % 2 === 0 ? PAL.leaf2 : c);
+        }
+      ov.redraw(out);
+      await S.wait(34);
+    }
+  } finally {
+    ov.destroy();
+    if (spr.active && !u.retired) spr.setVisible(true);
+  }
+}
+
+/**
+ * ONE etch ring spreads from the feet (crit r1 #5: it read thin and dim at 1×): two growth steps of 60 ms, then
+ * the PEAK held 100 ms — a 2-px ring of night0 cracks with a leaf3 lip and three gold3 glyph ticks — then it
+ * cools in 4 steps of 80 ms (leaf2 lip, leaf1, the cracks only, broken).
+ */
 function etchRing(S: Stage): void {
   // the back half under the drake, the front half over its feet (the floor in front of the body)
   const back = lay(S, S.depth - 0.5);
@@ -244,12 +342,13 @@ function etchRing(S: Stage): void {
     el += dt;
     back.clear();
     front.clear();
-    const k = Math.floor(el / 80);
-    if (k >= 9) return false;
-    const step = Math.min(2, k);
+    // phases: 0 (0–60) R0, 1 (60–120) R1, 2 = peak (120–220), 3…6 cooling (80 ms each)
+    const ph = el < 60 ? 0 : el < 120 ? 1 : el < 220 ? 2 : 3 + Math.floor((el - 220) / 80);
+    if (ph > 6) return false;
+    const step = Math.min(2, ph);
     const R = [SX(13), SX(20), SX(27)][step];
-    const fade = k >= 5;
-    const N = 56;
+    const peak = ph === 2;
+    const N = 64;
     for (let i = 0; i < N; i++) {
       const a = (i / N) * Math.PI * 2;
       const px = Math.sin(a) > 0 ? front : back;
@@ -257,13 +356,33 @@ function etchRing(S: Stage): void {
       const rr = R + jag * 0.6;
       const x = r(cx + Math.cos(a) * rr);
       const y = r(cy + Math.sin(a) * rr * 0.5);
-      if (fade && (i + k) % 3 === 0) continue;
-      // a 2-px crack (night0) with a lit acid lip on its outer side (leaf3 while the ring spreads, then leaf2)
+      if (ph >= 5 && (i + ph) % 3 === 0) continue;
       const ox = Math.cos(a) > 0 ? 1 : -1;
-      px.dot(x, y, k >= 6 ? PAL.leaf0 : PAL.night0).dot(x - ox, y, k >= 6 ? PAL.night1 : PAL.night0);
-      if (!fade) px.dot(x + ox, y + (Math.sin(a) > 0 ? 1 : -1), k < 3 ? PAL.leaf3 : PAL.leaf2).dot(x, y + (Math.sin(a) > 0 ? 1 : -1), PAL.leaf1);
+      const oy = Math.sin(a) > 0 ? 1 : -1;
+      // the crack: 2 px wide (3 at the peak, one row thicker)
+      const crack = ph >= 5 ? PAL.leaf0 : PAL.night0;
+      px.dot(x, y, crack).dot(x - ox, y, crack);
+      if (peak) px.dot(x, y - oy, crack);
+      // the lit acid lip on its outer side: leaf3 while it spreads and peaks (2 px at the peak), cooling after
+      if (ph <= 4) {
+        const lip = ph <= 2 ? PAL.leaf3 : ph === 3 ? PAL.leaf2 : PAL.leaf1;
+        px.dot(x + ox, y + oy, lip).dot(x, y + oy, ph <= 2 ? PAL.leaf2 : PAL.leaf1);
+        if (peak) px.dot(x + ox, y + oy * 2, PAL.leaf3).dot(x + ox * 2, y + oy, PAL.leaf2);
+      }
       // short radial forks every 4th crack
-      if (i % 4 === 0 && !fade) px.dot(r(cx + Math.cos(a) * (rr - 2)), r(cy + Math.sin(a) * (rr - 2) * 0.5), PAL.night0);
+      if (i % 4 === 0 && ph <= 4) px.dot(r(cx + Math.cos(a) * (rr - 2)), r(cy + Math.sin(a) * (rr - 2) * 0.5), PAL.night0);
+    }
+    // three gold3 glyph ticks on the ring at the peak (a 3-px radial bar with an ink foot)
+    if (peak || ph === 3) {
+      // (back left, back right, front left — clear of the stat badge under the feet)
+      for (const a of [-2.3, -0.6, 2.55]) {
+        const px = Math.sin(a) > 0 ? front : back;
+        const c = peak ? PAL.gold3 : PAL.leaf2;
+        const gx = r(cx + Math.cos(a) * (R + 3));
+        const gy = r(cy + Math.sin(a) * (R + 3) * 0.5);
+        // a small upright glyph: a 3-px stem with a 1-px foot to each side, an ink cap
+        px.dot(gx, gy - 4, PAL.ink).dot(gx, gy - 3, c).dot(gx, gy - 2, c).dot(gx, gy - 1, c).dot(gx - 1, gy, c).dot(gx + 1, gy, c).dot(gx, gy, PAL.ink);
+      }
     }
     return true;
   });

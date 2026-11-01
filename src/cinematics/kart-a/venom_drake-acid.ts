@@ -28,8 +28,9 @@ const GLOB_CACHE = new Map<string, Cell[]>();
 /**
  * The glob's pixels: shape 0 round, 1 stretched along the velocity, 2 squashed across it; `oct` the velocity
  * octant (0 = right, 2 = down …). No rotation of a sprite: each octant's shape is rasterised by hand rules.
- * A 1-px ink outline, a leaf2 body, a leaf3 lit upper side, a gold3 highlight on the upper front and ONE
- * gold4 core pixel.
+ * Crit r1 #1: an 8×7 body (9×8 stretched) so it reads at 1× — a 1-px ink outline, a leaf3 body, a leaf2
+ * lower band (the belly of the drop), a 2×2 gold3 core with ONE gold4 heart pixel, a gold3 highlight on the
+ * upper front.
  */
 function globCells(shape: 0 | 1 | 2, oct: number, small = false): Cell[] {
   const key = `${shape}:${oct}:${small ? 1 : 0}`;
@@ -38,21 +39,27 @@ function globCells(shape: 0 | 1 | 2, oct: number, small = false): Cell[] {
   const a = (oct * Math.PI) / 4;
   const ca = Math.cos(a);
   const sa = Math.sin(a);
-  const [A, B] = small ? ([2.2, 1.7] as const) : shape === 0 ? ([2.9, 2.5] as const) : shape === 1 ? ([3.7, 2.1] as const) : ([2.3, 3.0] as const);
+  const [A, B] = small ? ([2.2, 1.7] as const) : shape === 0 ? ([3.9, 3.4] as const) : shape === 1 ? ([4.7, 2.9] as const) : ([3.1, 4.0] as const);
   const inside = (x: number, y: number) => {
-    const u = x * ca + y * sa;
-    const v = -x * sa + y * ca;
+    const u = (x - 0.5) * ca + (y - 0.5) * sa;
+    const v = -(x - 0.5) * sa + (y - 0.5) * ca;
     return (u * u) / (A * A) + (v * v) / (B * B) <= 1;
   };
   const S = new Set<string>();
-  for (let y = -4; y <= 4; y++) for (let x = -4; x <= 4; x++) if (inside(x, y)) S.add(`${x},${y}`);
+  for (let y = -6; y <= 6; y++) for (let x = -6; x <= 6; x++) if (inside(x, y)) S.add(`${x},${y}`);
   cells = [];
   let top = 99;
-  for (const k of S) top = Math.min(top, Number(k.split(',')[1]));
-  for (let y = -5; y <= 5; y++)
-    for (let x = -5; x <= 5; x++) {
+  let bot = -99;
+  for (const k of S) {
+    const yy = Number(k.split(',')[1]);
+    top = Math.min(top, yy);
+    bot = Math.max(bot, yy);
+  }
+  for (let y = -7; y <= 7; y++)
+    for (let x = -7; x <= 7; x++) {
       if (S.has(`${x},${y}`)) {
-        cells.push([x, y, y < 0 ? PAL.leaf3 : PAL.leaf2]);
+        // the belly: the lowest 2 rows (1 for the small drop) are leaf2, the rest leaf3
+        cells.push([x, y, y > bot - (small ? 1 : 2) ? PAL.leaf2 : PAL.leaf3]);
         continue;
       }
       if (S.has(`${x - 1},${y}`) || S.has(`${x + 1},${y}`) || S.has(`${x},${y - 1}`) || S.has(`${x},${y + 1}`)) cells.push([x, y, PAL.ink]);
@@ -62,6 +69,7 @@ function globCells(shape: 0 | 1 | 2, oct: number, small = false): Cell[] {
   const hl = cells.filter((c) => c[2] !== PAL.ink && c[1] === top).sort((p, q) => fx * (q[0] - p[0]))[0];
   if (hl) hl[2] = PAL.gold3;
   if (!small) {
+    for (const c of cells) if (c[2] !== PAL.ink && (c[0] === 0 || c[0] === 1) && (c[1] === 0 || c[1] === 1)) c[2] = PAL.gold3;
     const core = cells.find((c) => c[0] === 0 && c[1] === 0);
     if (core) core[2] = PAL.gold4;
   }
@@ -145,6 +153,68 @@ export function splatCrown(sc: Phaser.Scene, at: XY, floorY: number, n: number, 
   sp.release();
 }
 
+/**
+ * The splat itself, drawn IN FRONT of the battle kit's contact star (crit r1 #2: the white star hid the first
+ * 3 frames of the splat): 4 frames of 50 ms — a round blob with a closed gold3 ring, a flattened lobed splat
+ * with the ring breaking into dashes, a wide smear dropping three drips, a thin leaf2 smear — then the stuck
+ * blob of the acid-hole overlay carries on. Whole pixels, ink outline, leaf3 / leaf2 bands, gold3 / gold4 core.
+ */
+export function splatBurst(sc: Phaser.Scene, at: XY, depth: number, o: { small?: boolean } = {}): void {
+  const px = layer(sc, depth);
+  const cx = r(at.x);
+  const cy = r(at.y);
+  const k0 = o.small ? 0.7 : 1;
+  const blob = (rx: number, ry: number, lobes: number, core: boolean) => {
+    const inside = (x: number, y: number) => {
+      const a = Math.atan2(y, x);
+      const wob = 1 + 0.18 * Math.cos(a * lobes + 0.6);
+      return (x * x) / (rx * rx * wob * wob) + (y * y) / (ry * ry * wob * wob) <= 1;
+    };
+    const R = Math.ceil(rx * 1.3) + 1;
+    const Ry = Math.ceil(ry * 1.3) + 1;
+    for (let y = -Ry; y <= Ry; y++)
+      for (let x = -R; x <= R; x++) {
+        if (inside(x, y)) px.dot(cx + x, cy + y, y > ry * 0.35 ? PAL.leaf2 : PAL.leaf3);
+        else if (inside(x - 1, y) || inside(x + 1, y) || inside(x, y - 1) || inside(x, y + 1)) px.dot(cx + x, cy + y, PAL.ink);
+      }
+    if (core) px.run(cy - 1, cx - 1, cx + 1, PAL.gold3).run(cy, cx - 1, cx + 1, PAL.gold3).dot(cx, cy - 1, PAL.gold4);
+  };
+  const ring = (rx: number, ry: number, dashes: boolean) => {
+    const N = 40;
+    for (let i = 0; i < N; i++) {
+      if (dashes && i % 7 > 3) continue;
+      const a = (i / N) * Math.PI * 2;
+      px.dot(r(cx + Math.cos(a) * rx), r(cy + Math.sin(a) * ry), PAL.gold3);
+    }
+  };
+  const drips = (len: number, c: number) => {
+    for (const [dx, L] of [[-4, len], [1, len + 1], [5, len - 1]] as const) for (let j = 1; j <= L; j++) px.dot(cx + r(dx * k0), cy + r(3 * k0) + j, j === L ? PAL.ink : c);
+  };
+  onFrame(
+    sc,
+    (_dt, el) => {
+      px.clear();
+      const f = Math.floor(el / 50);
+      if (f >= 4) return false;
+      if (f === 0) {
+        blob(4.6 * k0, 3.8 * k0, 3, true);
+        ring(8 * k0, 6 * k0, false);
+      } else if (f === 1) {
+        blob(6 * k0, 3.4 * k0, 4, true);
+        ring(10 * k0, 7 * k0, true);
+      } else if (f === 2) {
+        blob(7 * k0, 2.6 * k0, 5, false);
+        drips(2, PAL.leaf3);
+      } else {
+        blob(6.5 * k0, 1.8 * k0, 5, false);
+        drips(4, PAL.leaf2);
+      }
+      return true;
+    },
+    () => px.g.destroy(),
+  );
+}
+
 // ================================================================ glob flight
 
 export interface FlightOpts {
@@ -223,21 +293,33 @@ export function flyGlob(sc: Phaser.Scene, from: XY, to: XY, o: FlightOpts): Prom
             drops.splice(i, 1);
             continue;
           }
-          px.dot(r(d.x), r(d.y), PAL.leaf2);
+          // a falling drop: 2 px tall (leaf3 head, leaf2 tail) for the glob, 1 px for a spray drop
+          px.dot(r(d.x), r(d.y), PAL.leaf3);
+          if (!o.small) px.dot(r(d.x), r(d.y) - 1, PAL.leaf2);
         }
         last = { ...pos };
         if (t >= 1) {
           resolve(pos);
           return drops.length > 0;
         }
-        // the wet streak behind it: its last two places, a leaf2 then a leaf1 pixel pair (stepped, no alpha)
+        // the wet streak behind it (crit r1 #1): a stepped drip trail over its last places — a 3-px leaf3 smear,
+        // a 2-px leaf2, then leaf1 and leaf0 single pixels (no alpha)
         hist.unshift({ ...pos });
-        if (hist.length > 4) hist.length = 4;
+        if (hist.length > 6) hist.length = 6;
         if (!o.small) {
-          const [, h1, h2, h3] = hist;
-          if (h1) px.dot(h1.x, h1.y, PAL.leaf2).dot(h1.x, h1.y + 1, PAL.leaf1);
-          if (h2) px.dot(h2.x, h2.y, PAL.leaf1);
-          if (h3) px.dot(h3.x, h3.y + 1, PAL.leaf0);
+          const [, h1, h2, h3, h4, h5] = hist;
+          const back = Math.sign(vx) || 1;
+          if (h5) px.dot(h5.x - back, h5.y + 1, PAL.leaf0);
+          if (h4) px.dot(h4.x - back, h4.y + 1, PAL.leaf1);
+          if (h3) px.dot(h3.x - back, h3.y, PAL.leaf1).dot(h3.x - back, h3.y + 1, PAL.leaf2);
+          if (h2) px.dot(h2.x - back, h2.y, PAL.leaf2).dot(h2.x - back, h2.y + 1, PAL.leaf2).dot(h2.x, h2.y + 1, PAL.leaf1);
+          if (h1) px.dot(h1.x, h1.y, PAL.leaf3).dot(h1.x - back, h1.y, PAL.leaf3).dot(h1.x, h1.y + 1, PAL.leaf2);
+          // a 1-frame drip decal hangs off the glob's belly every 4th frame (3 px: leaf3, leaf2, ink)
+          if (tick % 4 === 2) {
+            const dx = pos.x - back;
+            const dy = pos.y + 5;
+            px.dot(dx, dy, PAL.leaf3).dot(dx, dy + 1, PAL.leaf2).dot(dx, dy + 2, PAL.ink);
+          }
         }
         drawGlob(px, pos.x, pos.y, vx, vy, tick, o.small);
         return true;
@@ -343,6 +425,8 @@ export function acidHoles(t: MonsterUnit, at: XY, power: 1 | 2 | 3): AcidHoles {
   let lastKey = '';
   let mouthsAt: XY[] = [];
   let dead = false;
+  let closing = false;
+  let lastOut: PixelCanvas | null = null;
   const paint = () => {
     const { anim, frame, pc } = currentPixels(t);
     const key = `${String(t.sprite.frame?.name ?? anim + frame)}|${step}|${blob}`;
@@ -435,6 +519,7 @@ export function acidHoles(t: MonsterUnit, at: XY, power: 1 | 2 | 3): AcidHoles {
       for (const [dx, len] of [[-1, 3], [2, 2]] as const) for (let j = 1; j <= len; j++) if (pc.isOpaque(cp.x + dx, cp.y + R + j)) out.set(cp.x + dx, cp.y + R + j, j === len ? PAL.leaf3 : PAL.leaf2);
     }
     ov.redraw(out);
+    lastOut = out;
   };
   const destroy = () => {
     if (dead) return;
@@ -445,6 +530,9 @@ export function acidHoles(t: MonsterUnit, at: XY, power: 1 | 2 | 3): AcidHoles {
   onFrame(sc, () => {
     if (dead) return false;
     if (!t.sprite.active || !t.sprite.visible || t.retired) {
+      // crit r1 #8: a body that breaks (the kit's burst hides it) leaves its holes behind for a moment: the
+      // acid rims hang in the air and drip to the tile, outlasting the break
+      if (step > 0 && !closing && lastOut && t.sprite.active) residue(t, lastOut);
       destroy();
       return false;
     }
@@ -461,6 +549,7 @@ export function acidHoles(t: MonsterUnit, at: XY, power: 1 | 2 | 3): AcidHoles {
     },
     async close(ms = 300) {
       blob = 0;
+      closing = true;
       for (let s = step - 1; s >= 0 && !dead; s--) {
         await new Promise<void>((res) => sc.time.delayedCall(ms / 3, res));
         step = s;
@@ -473,6 +562,57 @@ export function acidHoles(t: MonsterUnit, at: XY, power: 1 | 2 | 3): AcidHoles {
     },
     destroy,
   };
+}
+
+/**
+ * The holes outlive the body's break: their acid pixels (world copies of the last overlay) hold 2 frames,
+ * the ink depths go, then every rim / wall pixel drips to the tile with gravity (leaf3 → leaf2 → leaf1 as it
+ * falls), every 4th landing etches a dot. Drawn over the break (DEPTH.FX + 0.5).
+ */
+function residue(t: MonsterUnit, out: PixelCanvas): void {
+  const sc = t.scene;
+  const floor = r(t.home.y);
+  const ps: { x: number; y: number; c: number; vy: number; delay: number; done: boolean }[] = [];
+  for (let y = 0; y < out.h; y++)
+    for (let x = 0; x < out.w; x++) {
+      const c = out.get(x, y);
+      if (c === null || c === undefined) continue;
+      const w = t.framePoint(x, y);
+      ps.push({ x: r(w.x), y: r(w.y), c, vy: 0, delay: 40 + ((x * 37 + y * 11) % 7) * 30, done: false });
+    }
+  if (!ps.length) return;
+  const px = layer(sc, DEPTH.FX + 0.5);
+  let n = 0;
+  onFrame(
+    sc,
+    (dt, el) => {
+      px.clear();
+      if (el > 1100) return false;
+      let alive = 0;
+      for (const p of ps) {
+        if (p.done) continue;
+        if (el > p.delay) {
+          if (p.c === PAL.ink) {
+            p.done = true;
+            continue;
+          }
+          p.vy += 420 * (dt / 1000);
+          p.y += p.vy * (dt / 1000);
+          if (p.y >= floor) {
+            p.done = true;
+            if (n++ % 4 === 0) etchDot(sc, p.x, floor + (n % 3));
+            continue;
+          }
+        }
+        alive++;
+        const fall = Math.max(0, el - p.delay);
+        const c = p.c === PAL.ink ? PAL.ink : fall < 80 ? (p.c === PAL.gold3 ? PAL.gold3 : PAL.leaf3) : fall < 220 ? PAL.leaf2 : PAL.leaf1;
+        px.dot(p.x, r(p.y), c);
+      }
+      return alive > 0;
+    },
+    () => px.g.destroy(),
+  );
 }
 
 // ================================================================ the scar ("Zehirli Toprak")
@@ -553,15 +693,18 @@ function drawScar(px: Px, s: Scar, lvlShown: number, now: number): void {
     // the chitin hook tip standing in it (stone2, one stone3 lit pixel, no green)
     const rx = SX(13);
     const ry = 5;
-    ell(px, x, fy, rx + 1, ry + 1, PAL.leaf0);
-    ell(px, x, fy, rx, ry, rim);
+    // crit r1 #7: the death ring sits one value step up (leaf2 rim, leaf1 outer step) so it reads at 1×
+    ell(px, x, fy, rx + 1, ry + 1, PAL.leaf1);
+    ell(px, x, fy, rx, ry, rim === PAL.leaf1 ? PAL.leaf2 : rim);
     ell(px, x, fy, rx - 1, ry - 1, PAL.stone0);
     // the cracks: three night0 forks from the hook outward
     for (const [dx, dy, len] of [[-1, 0, 7], [1, 0, 6], [-1, 1, 3]] as const) for (let i = 1; i <= len; i++) px.dot(x + dx * (i + 1), fy + (i % 3 === 2 ? dy : 0) + (dx < 0 && i > 4 ? -1 : 0), PAL.night0);
     px.dot(x - 4, fy + 2, PAL.night0).dot(x + 5, fy - 2, PAL.night0).dot(x + 6, fy - 2, PAL.night0);
-    // the hook tip: 3 px tall, curled toward the owner's front
+    // the hook tip (crit r1 #7: 4 px tall, 2 px wide at its foot, curled toward the owner's front, ONE gold4
+    // pixel on its point — the last of the venom's heart)
     const hx = x + 2;
-    px.dot(hx, fy, PAL.stone2).dot(hx, fy - 1, PAL.stone2).dot(hx + 1, fy - 2, PAL.stone3).dot(hx - 1, fy + 1, PAL.ink).dot(hx + 1, fy, PAL.ink);
+    px.dot(hx - 1, fy + 1, PAL.ink).dot(hx + 2, fy + 1, PAL.ink).dot(hx + 2, fy, PAL.ink).dot(hx - 1, fy, PAL.ink).dot(hx - 1, fy - 1, PAL.ink).dot(hx + 2, fy - 1, PAL.ink).dot(hx + 1, fy - 3, PAL.ink).dot(hx + 2, fy - 3, PAL.ink).dot(hx + 3, fy - 2, PAL.ink).dot(hx, fy - 2, PAL.ink);
+    px.dot(hx, fy + 1, PAL.stone1).dot(hx + 1, fy + 1, PAL.stone1).dot(hx, fy, PAL.stone2).dot(hx + 1, fy, PAL.stone2).dot(hx, fy - 1, PAL.stone2).dot(hx + 1, fy - 1, PAL.stone3).dot(hx + 1, fy - 2, PAL.stone3).dot(hx + 2, fy - 2, PAL.gold4);
     // the bubble at the hook's base: 1 px → a 3-px plus → gone (leaf2, the leaf3 centre only in the middle)
     if (s.popAt >= 0) {
       const k = Math.floor((now - s.popAt) / 70);
