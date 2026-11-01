@@ -1,20 +1,21 @@
 // Sazlık Balıkçılı (reed_heron) — the card's own v3 cinematics (lane C, C8; docs/v3/oturum-c-tasarim.md §2.2).
 // ?look=v3 only: every handler starts with the LOOK_V3 gate, so the old look stays byte-identical.
 //
-//   summon   "the mist brings him": the card slams (kit) → low, wide fog bands step in from both sides close to the
-//            water (2×2 Bayer edges, steel over night4) and the tile drops one light step (the only entrance in the
-//            game that LOWERS light) while the frogs croak; inside the fog he is only a dark shape → ONE gold glint in
-//            a dark hole of the fog (the frogs stop dead) → the bands part and he is simply there, WHITE (a value
-//            event: no hologram, no build, no rising) → the straw cloak fans open once (fuff fuff), the downdraft
-//            pushes the bands out → settle; the marsh aura (./reed_heron-marsh.ts) takes the tile over.
+//   summon   "the mist brings him": the frogs croak from the card slam on → marsh WISPS (3–6 px stepped lenses,
+//            reed_heron-mist.ts) step in from both tile edges, clipped to the tile, and the tile drops one light step
+//            (the only entrance in the game that LOWERS light); he is NOT drawn (no ghost, no alpha) → ONE gold glint
+//            in a dark hole of the fog: the frogs and the mist stop dead, ~270 ms of silence → the wisps part and he
+//            is simply there, WHITE (a value event: no hologram, no build, no rising) → the straw cloak fans open
+//            once (fuff fuff), the downdraft pushes the wisps out → settle; the marsh aura takes the tile over.
 //   board    the marsh aura on his tile: the negative pool, three drifting low mist bands, the idle soundscape.
 //   strike   "Gaga Hamlesi": the neck begins to coil (declare) → snaps into a double S → a 200 ms DEAD freeze,
 //            silent (the marsh's bands freeze too) → strides matched to the distance (bob-less, a ripple dot per
-//            planted foot, two-row mist bands trailing; the pond and the reeds stay home; his badge steps out) →
-//            the neck uncoils in one smeared frame → ta-ta-TAK as a PISTON: out (stop 40) · back · out (stop 40) ·
-//            back · OUT (stop 80) on three points of a 6-px triangle, each with a needle light, droplets and a 1-px
-//            give of the target; the number, the flash and the reaction on the third, the struck body's material
-//            blow ~7 dB under the TAK → a single backward glide home. Blocked: tak-tak-TING — the third glances UP
+//            planted foot (one slip each), mist trailing; a 300-ms scene glide; the pond and the reeds stay home)
+//            → the neck uncoils in one smeared frame as he stops → ta-ta…TAK as a PISTON: out (stop 40) · back ·
+//            out (stop 40) · back longer · OUT (stop 80) on three points of a 6-px triangle, each with a ONE-frame
+//            needle light, droplets, a nick left on the target and a 1-px give; on the third the nicks flash as one
+//            white triangle and a small stepped pool lights the floor (the shared contact flash and burst are hidden:
+//            the pinpoint IS the contact), the struck body's material blow ~7 dB under the TAK → a glide home. Blocked: tak-tak-TING — the third glances UP
 //            off the guard (the deflect frame is the contact, one cold spark; the counter's warm burst is kept off
 //            him), he hops back a stride. Direct: the glide ends at the duelist plate.
 //   struck   the heron's own body sound (feather + still water) on the frame it is struck (hit / heavy / magic),
