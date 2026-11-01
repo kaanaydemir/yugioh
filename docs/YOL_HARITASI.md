@@ -12,7 +12,7 @@ Kart isimleri ve tasarımları ORİJİNAL olur; Yu-Gi-Oh kartları yalnızca "ro
 | 3 | Animasyonları yavaşlat (v3 genel tempo çarpanı + kilit anlarda uzun bekleme; v1 aynı) | bitti (587828c, test sürümü 9) |
 | 4 | Akşam Büyücüsü (dusk_sorcerer) kartını oyundan çıkar (cards.ts'de "retired", desteler göç eder) | bitti (587828c, test sürümü 9) |
 | 5 | Kül Ejderi (ashen_drake) komple yeniden tasarım — altın kural | şerit A çalışıyor |
-| 6 | Hortlak Muhafız (grim_warden) yeniden tasarım | şerit B çalışıyor |
+| 6 | Hortlak Muhafız (grim_warden) yeniden tasarım | bitti (şerit B 09446f8, ana dal bb9e8f6, test sürümü 12) |
 | 7 | Pot of Greed rolünde büyü kartı (2 kart çek) — orijinal isim (Kuyu Kovası) | kural bitti (6178b55); sunum: şerit E |
 | 8 | Tüy Hayalet yeniden tasarım | şerit B çalışıyor |
 | 9 | The Legendary Fisherman rolünde canavar | kural bitti (6178b55, test sürümü 10); sunum: şerit C çalışıyor |
