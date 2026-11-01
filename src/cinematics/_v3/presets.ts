@@ -50,9 +50,9 @@ export const DEATH_PRESETS: Record<MonsterId, DeathPreset> = {
   seal_leg_r: { material: 'shadow', accent: 'crystal' },
   seal_leg_l: { material: 'shadow', accent: 'crystal' },
   hourglass_imp: { material: 'light', accent: 'light' },
-  windmane_knight: { material: 'stone', accent: 'stone' },
-  shield_titan: { material: 'stone', accent: 'stone' },
-  wing_lady: { material: 'light', accent: 'plant' },
+  windmane_knight: { material: 'light', accent: 'stone' },
+  shield_titan: { material: 'light', accent: 'light' },
+  wing_lady: { material: 'light', accent: 'light' },
   // batch 2 (docs/v3/YENI_KARTLAR.md; placeholder flavours until each monster gets its own)
   tide_harpooner: { material: 'water', accent: 'water' },
   dial_jester: { material: 'light', accent: 'crystal' },
@@ -133,6 +133,7 @@ const RHYTHM: Partial<Record<MonsterId, Partial<CutInRhythm>>> = {
   abyss_magus: { flare: 250, slam: 320, exit: 660 },
   magma_titan: { flare: 300, slam: 430, exit: 740 },
   tide_golem: { flare: 290, slam: 410, exit: 720 },
+  windmane_knight: { flare: 260, slam: 330, exit: 740 },
 };
 
 /**

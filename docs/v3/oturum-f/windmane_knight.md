@@ -1,12 +1,16 @@
 # windmane_knight — Fırtına Şövalyesi (lane F design)
 
 TOPRAK / Savaşçı · Sv7 (2 kurban) · 2300/2100 · ★ As (cut-in) · effect `summonTurnAtk500`
-Card text: "Normal çağrıldığı tur saldırırken ATK +500." Draft: 2026-10-31. Status: design only (no code yet).
+Card text: "Normal çağrıldığı tur saldırırken ATK +500." Draft: 2026-10-31. Status: **art built** (sprite rig,
+card art, cut-in, glow line; §11). Cinematics, sounds and scenarios: not built yet.
 
-One line: **a heavy foot-knight who carries a sand storm in his helm's mane. On the turn he arrives
-the storm is his weapon; on every other turn it is only wind.** Whatever moves on him (mane,
-pennon, dust) shows the game state: a quiet stream means normal, a stream with grit and gold static
-means +500, and dead stillness means death.
+One line: **a heavy foot-knight who carries a steppe GALE in his helm's horsehair mane. On the turn he
+arrives the gale is his weapon; on every other turn it is only wind.** Whatever moves on him (mane,
+pennon, grey dust) shows the game state: a quiet stream means normal, a taut, longer stream means +500,
+and dead stillness means death.
+
+> **Read §0.1 first.** The design critique (verdict needs-work, 15 findings) was folded in at the build stage.
+> Where §0.1 and the older text below disagree, **§0.1 wins** (the old text is kept for the reasoning).
 
 ---
 
@@ -40,6 +44,34 @@ end:    endTurn → phaseChange('end') → statChange{uid:knight, prevAtk:2800, 
   `summonTurnBonus(ctx.state, CARDS.windmane_knight, player, slot) > 0`, read from `engine/query`.
   `spells/_blade_v3.ts` already imports engine/query. Never derive it from `attackerAtk − 2300`:
   equips, the field spell and the titan's −500 change that number.
+
+## 0.1 Critique fold-in (build stage, 2026-10-31) — these decisions supersede the text below
+
+| # | finding | decision |
+|---|---|---|
+| 1 | the storm is SAND, which belongs to hourglass_imp alone | **Accepted.** The storm is a dry steppe **GALE of horsehair and grey dust**: tawny hair ribbons (the mane itself), torn chaff, dust in stone1/stone2/stone3/steel. "Haboob", "sand wall", "grit", "grain", "trickle" are dropped everywhere. The summon's front = a **gale front of streaming hair ribbons and grey dust**. Rule: the knight's dust/FX **never use earth3/earth4 together with gold3** (the imp's sand signature); earth tones stay on the mane and the pennon only. Sound renames: `wmkSandWall` → `wmkGaleFront` (band-passed wind 300–900 Hz with cloth/hair whisper, no grain ticks), `wmkStrandRain` → `wmkPlateFall` (plate pieces clanking one by one), `wmkLastGrain` → `wmkPennonFlop` (a final cloth flop). Ask the hourglass_imp designer to confirm no overlap (open). |
+| 2 | the death repeats grim_warden's kneel-and-sink | **Accepted, rebuilt in the sprite.** New ending **"Kof Zırh" (the hollow armour)**, see the rewritten §4.9 and the proposed §5.2 row. No kneel, no sinking. |
+| 3 | statChange branches key on prevAtk vs atk | **Accepted** (cinematics stage): up = `summonTurnBonus(ctx.state)===0 && summonTurnBonus(ctx.stateNext)>0`, down = the reverse, anything else → `ctx.base()`; a combined delta rolls the badge to the true value and shows the calm only for the 500. |
+| 4 | end-phase calm swallowed by battle_cry expiry grouping | **Accepted** (cinematics stage): the charge and the calm are driven by the observer + a `phaseChange` hook (battle with the bonus on in stateNext; end with the bonus on in state); the statChange path only settles the badge. Scenario `fsCalmBattleCry` (P1+P2). |
+| 5 | turn 1 has no battle phase | **Accepted** (cinematics stage): brew level 1 only when `s.turn > 1`; otherwise the "wind dies before it rises" variant (unfurl, one soft gust, no aura); dim the brew under `attackLocked`. Scenarios `fsTurn1Summon`, `fsLocked`. |
+| 6 | no headroom to raise the lance | **Accepted, option (a)+(b), built.** The idle lance is planted butt-down and tilted 15° forward (tip ≈ y 17); the roar lifts it to **45° in front** (tip ≈ y 16); the special's spin is a **horizontal propeller at helm height** (0°, 45° foreshortened, end-on). Every mane pose is additionally squeezed toward the crest on any axis where it would leave the frame (`maneDrawn`). All 125 frames keep ≥ 2 px margins (test + KK-3). |
+| 7 | the summon's big beat hides under the cut-in; generic tribute streams | **Accepted.** Sprite: the mane stays **gathered** (short, tight) from the walk-in through the land and the held breath (f0–f9); the **unfurl whip-crack is f10** (60 ms smear, pennon snaps taut) and f11 the full stream — the cinematic places f10 right after the cut-in exit (≈ 1800–1950 ms) and puts `S.finale()` on it. The cut-in's job is now the held breath (eyes ignite, mane gathered tight). The own tribute hook (tributes torn into hair ribbons and dust pulled into the gale front) is **mandatory** for the cinematics stage. |
+| 8 | the normal strike is only adequate | **Accepted, built: the double hit.** attack f6 = the lance contact, f7 = **the mane whips forward over the helm like a lash** (the second blow, "ŞAK" at the target's head), f8 it falls back. Smaller than the storm strike (no glide, no propeller, no taut blade). |
+| 9 | the gold static / thunder drifts to judgment_bolt / volt_lizard | **Accepted.** No lightning layer anywhere. The charge reads through wind and hair only: roar f1–f3 the mane spirals up, **f4 (release) it snaps into a rigid taut horizontal blade**, the pennon cracks taut, the eye-points flare (the only gold). hitMagic = **the mane flares and frizzes** (kinked, fanned strands). The storm contact's "dry thunder" becomes a **gale BOOM** (pressure wave + grey dust ring); keep the LSD check against thunder. |
+| 10 | sound collisions (trickle, cloth whomp) and the generic struck body | **Accepted** (sound stage): renames in #1; the banner snap is a dry bright crack with no low whomp (or a 2–3 kHz hair "whssh"), LSD against kite_fencer once it exists. **Request to the orchestrator (open):** an additive `plate` struck material (clank 330 Hz / ratio 2.76 + a hollow helm ring at 131 Hz). |
+| 11 | no 5+5 board check; iso axis wrong | **Accepted** (cinematics stage): the gale front runs along `forward(player)` clipped to the knight's tile column; the storm-direct sweep is capped to the lane in front, ending at `fx.lpPoint`, as a stepped low band; scenarios `fsBoard5` / `fsBoard5P2` (knight in zone 0 and 4, neighbours filled). The sprite's own mane depth: drawn behind the helm/body inside the sprite; the unit-level depth vs the back neighbour is the default field order. |
+| 12 | DEATH_PRESETS light/light is shared and odd | **Accepted:** the preset line becomes `{ material: 'plant', accent: 'crystal' }` (fibres + bright plate glints) in the cinematics stage (it is a shared line; changed together with the death cinematic). fsMagic relabelled "hitMagic, then the judgment_bolt-owned death (expected)". |
+| 13 | cut-in f4/f5 barely visible | **Accepted, built:** holds `[180, 80, 80, 90, 230, 600]` — f4 starts at 430 ms, f5 at 660 ms, so f4+f5 show 310 ms before a 740 ms exit. Proposed RHYTHM line (cinematics stage): `windmane_knight: { flare: 260, slam: 330, exit: 740 }` (flare on f2, the eye flare). |
+| 14 | `tail` is not a legal point name; missing budgets | **Accepted, built:** the mane tip is the **`staff`** point (per frame, after the squeeze and the death transform). Budgets added to §9 below. |
+| 15 | scenario gaps | **Accepted** (cinematics stage): P2 twins for every storm scenario and fsCalm / fsRevive; `fsStolen` (puppet_string: no storm, aura off), `fsOneTribute` (double_offering), `fsTurn1Summon`; storm strike and charge filmed at `&speed=3` too. |
+
+**Added game-clock budgets (§9):** normal attack on a monster ≤ 2.97 s, normal direct ≤ 2.16 s, blocked ≤ 2.97 s,
+revive ≤ 2.7 s, end-phase calm ≤ 1.0 s, storm attack ≤ 3.19 s, storm direct ≤ 2.32 s, charge ≤ 2.32 s, death ≤ 2.03 s.
+
+**Proposed YENI_KARTLAR §5.2 row:** `windmane_knight | "Kof Zırh" — dead calm: mane and pennon freeze, the rigid mane
+snaps off whole and shatters flat behind him, the empty helm falls off, the plate comes apart standing from the top
+down, the lance topples like a felled flagpole, the pennon lands last, flat; only the empty boots stand | material:
+plate + horsehair (fibres + plate glints) | must avoid: kneel, sinking, ash/stone heap, sideways wind scatter`.
 
 ## 1. Concept and silhouette
 
@@ -124,7 +156,7 @@ end:    endTurn → phaseChange('end') → statChange{uid:knight, prevAtk:2800, 
 
 ## 4. Storyboards (scene ms; game ≈ ×1.35; limits = REHBER §5)
 
-### 4.1 Summon — "Kum Seli'nden Çıkış" (tribute ace, ≤ 3.0 s scene / 4.35 s game; plan ≈ 2.85 s)
+### 4.1 Summon — "Rüzgâr Cephesi'nden Çıkış" (was "Kum Seli"; gale, not sand — §0.1 #1, #7) (tribute ace, ≤ 3.0 s scene / 4.35 s game; plan ≈ 2.85 s)
 
 Generic tribute streams `summon-a/tribute.ts` ≈ 600 ms first. Then `runSummon` with a v3 entrance (`noCard` from the tribute flow).
 
@@ -287,34 +319,36 @@ Generic tribute streams `summon-a/tribute.ts` ≈ 600 ms first. Then `runSummon`
   forward and the head is down. The mane drapes over the back like a cape and ripples slowly.
 - **toGuard (6 f)** has an intermediate mane-sweep frame. **fromGuard (5 f)** ends on idle f0. Feet fixed.
 
-### 4.9 Death — "Durgun Hava" / dead calm (a unique ending; ≈ 1.25 s ≤ 1.4 s)
+### 4.9 Death — "Kof Zırh" / the hollow armour (rewritten after critique #2; sprite built)
 
-**Final material (new, not in §5.2):** the wind stops, the knight kneels at his planted lance, and he
-comes apart into **fibres and slivers that fall straight down** into his tile in dead calm.
+The first stillness, then the knight turns out to have been only the wind inside the plate. **He never kneels and
+nothing sinks into the floor.** Sprite `death` (10 f, 890 ms, impact = contact 0, dissolve 4):
 
-- The scatter is exactly the opposite of every wind ending (C9, C11, R3 scatter sideways).
-- It is not a heap: the strands sink through the floor line, so no ash or stone pile is left.
-- It uses option (b), our own `destroyed` hook with deathV3-style bookkeeping. Fall back to
-  `ctx.base()` when `sourceOwnsDeath`.
+| f | hold | picture | sound (sound stage) |
+|---|---|---|---|
+| 0 | 50 | the hit lands: helm snaps back, eye flare (local: 29 % of idle f0, HA-21) | struck material |
+| 1 | 60 | he staggers back half a step | — |
+| 2 | 160 | **CALM:** the mane and pennon **freeze mid-stream**, the eye-points dim — everything that always moved is still | `wmkCalmCut` (intake, then a cut to silence ≈ 120 ms) |
+| 3 | 80 | the frozen mane **snaps off the crest** as one rigid comet piece (a gap at the root), eyes out | `wmkManeSnap` (a rigid crack) |
+| 4 | 70 | **dissolve:** the rigid mane tips over backward (−32°), the empty helm tilts off, the lance starts to lean | `wmkPlateFall` start |
+| 5 | 80 | the mane hits the floor and **shatters flat** (comet shards behind him); the helm lies on its side behind — **nobody inside** (empty dark collar); the front pauldron drops; the lance leans further, its foot kicking back | plate clank 1–2 |
+| 6 | 80 | the back pauldron falls, the cuirass sags, the arms hang | clank 3 |
+| 7 | 90 | the cuirass rolls off backward, the fauld drops onto the boots; only the **empty boots** still stand; the lance goes down like a **felled flagpole** | the pole falling |
+| 8 | 100 | everything lies flat; the lance lies along the floor in front | — |
+| 9 | 120 | the pennon lands last, flat | `wmkPennonFlop` (burst) |
 
-| ms | picture | sound |
-|---|---|---|
-| 0 | death f0 = the hit continues | struck material |
-| 50–110 | f1: he staggers back | — |
-| 110 (f2, hold 150) | **CALM:** the mane and pennon **freeze mid-stream**, the first time anything on him is still. The aura is killed in the same frame (streaks and specks gone). | `wmkCalmCut` (deathStart: a short intake, then the bed **cuts to silence** for ≈120 ms) |
-| 260–330 | f3: he drops to one knee and plants the lance upright with his front hand | `wmkKneel` (afterDissolve −70) |
-| 330 (dissolve f4) | The mane **goes limp**: it slides down off the crest and hangs straight down his back like a lowered banner. The pennon droops. | `wmkStrandRain` start (dissolve) |
-| 400–870 | f5–f9: his head bows and the limp mane covers the helm. Last frame: a low kneeling figure, everything hanging vertical. | — |
-| 870–1170 | **Strand rain:** the whole sprite is cut into 1–2 px vertical strands (earth tones from the mane, night/steel slivers from the plate, the lance as 2 px segments). Each falls straight down with gravity and vanishes on the tile line, staggered from the lance (front) to the mane tip (back) over 180 ms. **Zero sideways drift.** | trickle continues |
-| 1100–1250 | The last 150 ms: whole-pixel break of the remaining strands. **One last earth4 grain** drops after them. The card is born on the break frame (EF-12) and flies to the graveyard. | `wmkLastGrain` (burst) |
-
-- **`DEATH_PRESETS`** (shared one-liner, my own line): `windmane_knight: { material: 'light', accent: 'light' }`.
-  - The custom death owns the picture.
-  - The preset only feeds `matterRamp` (gold: hologram onset, revive motes) and the
-    source-owned-death fallback.
-  - It is no longer stone.
+- The last frame is a low pile (top ≥ anchorY − 34; tested) with the lance's tip on the floor band far in front.
+- Option (b) cinematic (own `destroyed` hook with deathV3 bookkeeping) plays the sprite death and then a short
+  dust ring in stone2/stone3; the card is born on the f9 flop. `ctx.base()` when `sourceOwnsDeath`.
+- **`DEATH_PRESETS`:** `{ material: 'plant', accent: 'crystal' }` (critique #12), set with the death cinematic.
 
 ### 4.10 Revive (soul_recall; ≈ 1.65 s ≤ 2.0)
+
+**Built (supersedes the strand text below):** sprite `revive` (10 f, 1.1 s, land 7) is the hollow-armour death
+backwards — the pennon lifts off the floor, the lance rises, the plate climbs back onto the boots, the helm returns,
+the rigid mane reattaches (f6, the calm, eyes dim) — then **land f7: the wind returns**: the mane lifts off rigid
+into a stream, the pennon snaps taut, the eyes relight; f8 full stream, f9 idle f0.
+
 
 The revive is the reverse of the death (HA-28). The anim runs from the death last frame to idle f0. The `reviveGather`/`reviveLand` voice comes from soul_recall.
 
@@ -488,3 +522,121 @@ cinematic, add the new keys to the camera base (`measure --scenarios 'fs*,m1Knig
 - **The "+500 FIRTINA" chip** needs a text style from `src/ui/text.ts` (API is shared). Use an existing
   style; do not add one without checking.
 - **The `tail` point** may not be allowed by `MonsterPoints`. Fall back to constants in `-fx.ts`.
+
+## 11. Build log (art stage, 2026-10-31)
+
+**Built (new files, owned by this card):**
+
+| what | path | notes |
+|---|---|---|
+| sprite shell | `src/art/monsters-v3/windmane_knight.ts` | drafted as `_windmane_knight.ts`, renamed after the gates passed — **registered in v3 now** |
+| rig | `src/art/monsters-v3/windmane_knight-rig.ts` | 104×96, AX 50, GY 91; polygon / tube parts shaded by flat planes from their own edges + geometric ridge splits (P1); rigkit `composite` one-step seams; one `outline(ink)`; eye-points + one glint + grey dust after the outline; mane = 6 ribbon strokes (earth1–4) with a travelling wave, squeezed into the frame (`maneDrawn`); death pieces are geometry transformed before raster; the planted ferrule keeps the butt fixed in the calm loops |
+| anims | `src/art/monsters-v3/windmane_knight-anims.ts` | 13 anims / **125 frames** (idle 16, guard 6, toGuard 5, fromGuard 5, attack 13, special 14, roar 11, hit 6, hitHeavy 8, hitMagic 8, summon 13, death 10, revive 10) = 4.99 MB (large class) |
+| card art | `src/art/cardart-v3/windmane_knight.ts` | EARTH backdrop, the sprite rig in a card pose; small = 1× hand crop (focus 28,18), big = EPX + fresh ink + earth3 rim + eye light; 4 living frames (mane wave, eye pulse); `portrait()` wired |
+| cut-in | `src/art/cutins-v3/windmane_knight.ts` | 200×144 native; held breath (eyes kindle → flare → helm lifts, gathered mane strains); holds `[180,80,80,90,230,600]`; `p2: 'relight'` |
+| test | `tests/art/windmane_knight.test.ts` | 7 tests pass: marks/holds, validateArt normal (0 findings), file registered + ≤ 140 f + ≤ 5 MB, determinism + P2 silhouette + 2-px margins on all 125 frames, no cyan/crim/teal/mag, the hollow-armour death ending, card art + cut-in budgets |
+
+**Shared one-liner edited:** `src/view/light/profiles.ts` `MONSTER_GLOW.windmane_knight` → `[T(PAL.gold4, 1), T(PAL.gold3, 0.7)]`
+(white / leaf3 dropped: white is a body glint, leaf3 foreign). **Not touched yet** (cinematics stage): `DEATH_PRESETS`
+(still `'stone'`), `RHYTHM`, the sound file, scenarios.
+
+**Points:** muzzle = grip = lance tip (follows the fall), hand = near gauntlet, head = grille, core = chest, staff =
+mane tip, feet = between the soles. `attackImpactFrame` 5 = attack release.
+
+**Gates / evidence** (all under `shots/v3/kart-f/windmane_knight/`, gitignored):
+- sheets: `sheet/windmane_knight-v3-all.png` (P1), `sheet-p2/windmane_knight-v3-p2-all.png` (P2) + per-anim strips; close-ups
+  `death.png` (f4–f9), `attack.png` (f6–f8, the lash), `special.png`, `roar.png`, `summon.png` (land → unfurl), `hit.png`.
+- `monster-gates … --class large --ref none`: **24 rows, 21 ok, 0 FAIL** (HA-17 1.65, HA-18 15.2 %, HA-19 0.38, HA-21 23–29 % /
+  phase 45–47 %, HA-9 feet + planted butt fixed, KK-13 125 f, 3.7 ms/frame).
+- `sameness --ids windmane_knight --against all` (`sameness/sameness.txt`): **no KALIR; KEY green against every card**
+  (max 0.49 vs seal_head). UYARI (out of plan): MOTsig vs abyss_magus 0.58 / lumen_sprite 0.60 / coral_serpent 0.56,
+  MOTloop vs dusk_sorcerer 0.93 / magma_titan 0.90 (the near-still guard loops) / shade_assassin 0.73 / seal_arm_l 0.66,
+  MOTavg vs ember_wolf 0.49 / coral_serpent 0.47. The distinction header is in the shell; a blind eye test is still owed.
+- board scale: `board.png` (P1 + P2 on tiles); in-game with placeholder cinematics: `m1Knight.png`, `m1Knight-b.png`
+  (hand card shows the new portrait, the cut-in band shows the new cut-in, the knight reads on the tile).
+- card art: `card.png` (big | small | small ×2 | 16×12 mini); cut-in: `cutin.png` (f0–f5 P1 + f2 P2).
+- iterations: ≥ 3 look/fix rounds on the mane (stick → horn → comet wedge), the torso planes and the P2 balance,
+  the death (lance skid, floor fit, empty boots, gauntlets), the headroom (squeeze + AX shift), the lash shape.
+
+**Known weaknesses (to fix in the next round):**
+- The plate is clean but plain at 1×: few rivets/fluting; the torso still reads a little boxy.
+- The mane is one tawny wedge; strand separation is subtle at 1× (seams one step down only).
+- Propeller spin (special f1–f3) reads weakly as a spin: the foreshortened frames are short sticks; the cinematic should
+  add a 1-frame whole-pixel arc overlay (owned fx) as critique #6(c) allows.
+- Guard: the pennon hangs close to the grille; its loop is near-still (the MOTloop UYARI vs other still guards).
+- Card art big is an EPX of the 1× bust (flat helm planes at 2×); a native 2× redraw of the helm would lift it.
+- The cut-in mane is a flat bundle; the helm is strong. The lens glint must be checked in-game with `&eyes=1`.
+- `tests/art/cardface-v3.test.ts` G1 fails on `scrap_raiders` (not this card).
+
+## 12. Build log (cinematics + sound stage, 2026-10-31)
+
+**Built (owned files):**
+
+| what | path | notes |
+|---|---|---|
+| cinematics | `src/cinematics/kart-f/windmane_knight.ts` | all registrations `if (LOOK_V3)`, priority 20, names `kart-f:windmane_knight:{tribute,summon,statChange,declare,strike,death}` + one gated observer (aura lifetime) |
+| sounds | `src/audio/v3/windmane_knight.ts` | 24 `wmk*` recipes from `./kit.ts` blocks + Voice only (helpers `howl`, `bannerSnap`, `plate`, `footfall`, `flutterBed` are compositions of kit blocks, no new DSP); `WINDMANE_KNIGHT_VOICE` set (all roles incl. revive pair) |
+| scenarios | `src/duel/scenarios/windmane_knight.ts` | 30 `fs*` keys: Summon(P2), Turn1Summon, Charge(P2), Effect, StormAtk(P2), StormDirect(P2), StormBlocked(P2), StormDies, Calm(P2), NoBattle, Attack(P2), Direct(P2), Blocked(P2), Guard(P2), Kill(P2), Trade, Revive(P2) |
+
+**Shared one-liners:** `_v3/presets.ts` `DEATH_PRESETS.windmane_knight` → `{ material: 'light', accent: 'stone' }` (no longer the reserved
+stone ending; NOT plant/crystal as §0.1 #12 proposed: `plant` sheds green leaf motes and the `crystal` accent cyan glints — both foreign
+to the knight. The preset only matters on fallback paths: the knight's own death never shatters); `RHYTHM.windmane_knight` →
+`{ flare: 260, slam: 330, exit: 740 }`. `MONSTER_GLOW` was already gold4/gold3 (art stage).
+
+**How the +500 surfaces (research):** no `activate`. `rules.ts:1129` sets `slot.normalSummoned`; `query.ts:228 summonTurnBonus` is
+read by `currentAtk`; the engine emits `statChange` (withStats diff) right after `phaseChange('battle')` (+500) and after
+`phaseChange('end')` (−500). Today's placeholder = `flow:statChange` generic green rim + number. Gotchas found: (1) at the
+statChange both `ctx.state` and `ctx.stateNext` are already in the battle phase, so "up" is keyed on `stormOn(stateNext)` + a
++500 ATK delta (never on the raw ATK value); (2) `FieldView.sync` after the phaseChange rolled the badge to 2800 BEFORE the beat —
+fixed by the observer setting `u.battleTint` on that phaseChange (FieldView keeps a battle-tinted plate in the battle phase) and
+the beat rolling it on the roar's release; (3) the storm strike decides with `stormOn(s.ctx.state)` (titan's −500 changes the
+number, not the decision).
+
+**Presentation as built:**
+- tribute (`tribute` card hook, additive): a gust band crosses each tribute toward his tile + grey dust, then `ctx.base()` (generic streams).
+- summon: an ace focus identical to the placeholder's (camera gate), the gale front (dust billows behind, hair ribbons in front, 760 ms,
+  along `forwardOf(player)`, clipped to ±35 px), eye-points kindle in it, the body forms (palette-step onset, stone ramp) and walks
+  (steps on f1/f3), land f6 = lance plant (dust ring, shake 2, gold3 flash, `wmkLancePlant`), cut-in holds f7–f9, then the UNFURL f10
+  (`wmkManeUnfurl`, grit + hair spray downwind, stone-ramp finale, no player ring), brew aura (6 circling specks) when a battle can follow.
+- Fırtına Yükü (statChange up, 1.9 s game): ring contracts, `wmkStormCharge` (howl C3→C4 + VUMM), roar, at release a gust of ribbons
+  bursts off the taut mane, gold pool on his tile only, the badge rolls with a gold "+500 FIRTINA" chip at the plate, aura → storm
+  (12 specks, storm tail off the mane tip `staff` point, wind streaks, gold3 pool).
+- Fırtına diner (statChange down, 0.93 s): specks fall to the tile in 3 steps, tail drifts and blinks out, muted "-500" chip, `wmkStormSettle`.
+- declaration (storm only): the aura becomes the dust devil; on the charge frame the normal charge is dropped and `wmkChargeStorm` starts.
+- normal strike: couch (×1.6), two-step lunge 220 ms (`wmkLunge`), thrust on contact (`wmkThrust` / `wmkBlocked` + skid sparks), f7 the
+  mane LASH crescent at the target's head (`wmkLash`), blocked shove 6 px, two steps home. Direct lunge capped at 48 px.
+- storm strike: propeller arc overlay f1–f3, dust devil bands, gale wall builds behind (f4–f5), glide 260 ms with the wall riding,
+  contact = gale BOOM (stepped pressure ring white→mist→steel, grey dust ring, hit-stop +30, shake 4, `wmkGaleBoom`), the wall blows past
+  the target / on to the duelist (direct, lunge capped 64 px) / SPLITS around the guard (blocked, `wmkStormSplit`, shove 8 px).
+- death "Kof Zırh" (option b, deathV3 bookkeeping copied: toGraveyard consumed, release, v3:dying/v3:dead, planned-entry / guard-break
+  join, onBorn): the sprite's 10 frames; f1 `wmkCalmCut` (late-safe), f2 aura freezes + falls, f3 `wmkManeSnap`, f4 `wmkPlateFall`,
+  f5/f6 `wmkPlateClank` (+ flat mane shards on f5), f7 `wmkPoleFall`, f8 dust where the lance lands, f9 `wmkPennonFlop` + the card is
+  born + flat dust ring; the pile settles in grey dust and goes out in 3 tint steps (`wmkHollowBurst`). No shatter.
+
+**Gates / evidence** (`shots/v3/kart-f/windmane_knight/`):
+- camera base (placeholder presentation): `camera-base.json` (30 scenarios). After: `r2/measure.json` — camera gate **30/30 ok**.
+- budgets (game clock, r2): tribute+summon 4.30 s (≤ 4.35), statChange up 1.90 s (≤ 2.32), calm 0.93 s (≤ 1.0), storm attack battle 2.48 s
+  (≤ 3.19), storm direct 2.32 s (= limit), storm blocked 2.33 s, normal attack 1.90 s, normal direct 1.85 s, death 1.42 s (≤ 2.03),
+  declaration 0.32 s; number on contact (numberAfterContactMs 0).
+- v1: `filmdiff --set v1` **17/17 IDENTICAL**. (`a6v1` set not run this stage.)
+- films (LOOKED): `r1/fsSummon.png`, `r1/fsSummon-zoom.png`, `r1/fsSummon-zoom2.png`, `r1/fsStormAtk.png`, `r1/fsStormAtk-b.png`,
+  `r1/fsAttack.png`, `r1/fsKill.png`, `r1/fsStormBlockedP2.png`, `r1/fsCalm.png`, `r2/fsSummonP2.png`, `r2/fsStormDirect.png`,
+  `r2/fsStormDirect-b.png`, `r2/fsKillP2.png`.
+- sound: audio pages `audio/wmk*.png` (24, titles checked); first pass found the howl-based beds 15 dB too quiet (−31 dB vs the wyrm/magus
+  charges at −13…−15) — raised (charges now −18, gale front −20); clips `clips/fsStormAtk.{mp4,wav,json}` and `clips/fsKill.*`: peak
+  −2.0 dBFS, 0 clipped samples; every death beat lands on its frame in `clips/fsKill.json`.
+- tests: `tests/art/windmane_knight.test.ts` pass; `tests/presentation/engine-boundary.test.ts` timed out (5 s import timeout) on a
+  machine at load 12 — not investigated further.
+
+**Iterations:** r1 → r2: gale front denser/taller (two billow rows, 18 ribbons), eye-points with halo, no generic player ring in the
+finale, brighter brew specks, the dust devil bands, a bigger gale wall closer to his heels, couch sped ×1.6, the +500 chip moved onto the
+plate, the badge held through the phase sync, the camera focus restored (gate), the direct lunges capped (he no longer crosses the
+board), the calm cut made late-safe, the howl beds +15 dB, the unfurl / lash louder.
+
+**Known weaknesses (next round):**
+- The tribute is additive (gusts over the generic pixel streams), not the full own "torn into hair ribbons" choreography (§0.1 #7).
+- The dust devil and the propeller arc read weakly at 1×; the gale wall reads mostly as low dust at his heels.
+- Calm: the end-phase sync drops the plate to 2300 ≈ 130 ms before the "-500" beat (battleTint only holds in the battle phase).
+- No independent critic rounds yet (2 self LOOK rounds); `fsRevive`, `fsGuard`, `fsTrade`, `fsStormDies`, `fsNoBattle`,
+  `fsTurn1Summon` were measured (camera/budget) but not filmed; no `&speed=3` film; no LSD comparison against thunder / S4.
+- Struck-body sound when the knight is hit is still the generic material (plate material needs orchestrator approval).

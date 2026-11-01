@@ -1,122 +1,119 @@
-// Card art v3 — Kalkan Devi (shield_titan, EARTH warrior): the sprite's own pixels, 1:1, in a new composition
-// (style sheet docs/v3/KART_RESIMLERI.md §5, contract ./_types.ts).
+// Card art v3 — Kalkan Devi (shield_titan, EARTH warrior): a close-up of the wall waking (style sheet
+// docs/v3/KART_RESIMLERI.md, contract ./_types.ts; design docs/v3/oturum-f/shield_titan.md §5).
 //
-// big (88×68)   the whole creature as the board draws it (idle, the sprite's pixels moved by whole pixels, never
-//               scaled), standing on the kit's EARTH floor in front of the low dusty sun: the tall ogive slab with
-//               the amber eyes in its sight slot, the gold tower on the crest, the dark pauldron and gauntlet on its
-//               left rim. The slab BRISTLES with what has failed against it: three more arrows than the one the
-//               sprite carries, each planted in the face and reaching out past the rim (they carry the silhouette
-//               to the right so the creature fills the window), a snapped sword-blade stuck in the ground leaning on
-//               it, pebbles at its foot. Light (after the outline): the eyes' amber, the tower's gold windows, one
-//               spark where the last arrow struck.
-// small (44×34) the SAME picture, closer (KART_RESIMLERI §1): a 1:1 crop of the sprite's upper half — the eyes, the
-//               crest's tower, the pauldron and the arch — on the same floor and sun; the arrows' tails come in from
-//               the right.
-// Living (4 frames, 160 ms): the sprite's idle breath (its own frames 0 / 3 / 6 / 9: pauldron, crown creak, the
-// glint, the lids), the spark steps through three positions.
-// Colours only from PAL (the sprite and the kit).
+// Source of the subject: the sprite rig itself (src/art/monsters-v3/shield_titan-rig.ts drawTitan), posed as the ward
+// waking (the sunstone open, the first iris ring, the bottom course lit). small = the sprite's own pixels cropped to
+// the bust (the bald head and white beard on the left, the four fingers hooked over the arched rim, the tall copper
+// face with the boss), then corrected by hand (the eye, the brow, a 1-px air row over the fingers); big = the SAME
+// bust redrawn at 2× density through the edge-preserving Scale2x (EPX) rule — flat bands stay bands, diagonals get half
+// steps — after the sprite's outline is stripped and a fresh 1-px PAL.ink outline is run round the new silhouette;
+// the light (sunstone, iris ring, lit course, the copper glint) is repainted after the outline, never outlined.
+// Ground: the kit's EARTH recipe; rim earth3. The 16×12 mini card reads: a copper bar, a gold dot, a white blob.
+// Living (2 frames, 260 ms): the sunstone breathes (core ↔ white-hot) and the iris ring steps out.
 
 import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
-import shieldTitan from '../monsters-v3/shield_titan';
-import { ink, paintBackdrop } from './_kit';
-import type { ArtLayers, CardArtV3 } from './_types';
+import { W, H, drawTitan, pose } from '../monsters-v3/shield_titan-rig';
+import { ink, paintBackdrop, patch, recolor, rim } from './_kit';
+import type { CardArtV3 } from './_types';
 
-/** The eyes' centre in BIG px (the frame (36, 31) of the sprite, moved by BIG_AT). */
-const FOCUS = [40, 19] as const;
-/** The sprite frame → the big picture (whole px). */
-const BIG_AT = [4, -12] as const;
-/** The sprite frame's crop that is the small picture, and where it lands (1:1). */
-const SMALL_CROP = [12, 17, 44, 34] as const;
-const FOCUS_SMALL = [29, 13] as const;
-
-/** The idle frame of the card's loop (the sprite's own: 0 = rest, 3 = inhale + glint, 6 = the blink, 9 = the exhale). */
-const IDLE_FRAMES = [0, 3, 6, 9] as const;
-
-/** The creature as the board draws it. */
+/** The posed sprite on its own frame (outline included), lit from the left. */
 function sprite(f: number): PixelCanvas {
-  const p = new PixelCanvas(shieldTitan.w, shieldTitan.h);
-  shieldTitan.draw(p, 'idle', IDLE_FRAMES[f % IDLE_FRAMES.length], { lightFrom: 'left' });
+  const p = new PixelCanvas(W, H);
+  drawTitan(p, pose({ boss: f % 2 ? 3 : 2, iris: f % 2 ? 2 : 1, courses: 1, glint: 1, gx: 2, cy: -1, bx: 1, nu: 24 }), 'left');
   return p;
 }
 
-/** A planted arrow: a 1-px shaft of earth3 stepping up by `rise` px over `run` px, a mist fletching at the tail. */
-function arrow(q: PixelCanvas, x0: number, y0: number, run: number, rise: number): void {
-  for (let i = 0; i <= run; i++) {
-    const x = x0 + i;
-    const y = y0 - Math.floor((i * rise) / run);
-    q.set(x, y, i < 3 ? PAL.earth2 : PAL.earth3);
-    if (i > 0 && Math.floor(((i - 1) * rise) / run) !== Math.floor((i * rise) / run)) q.set(x - 1, y, i < 3 ? PAL.earth2 : PAL.earth3); // keep the shaft 4-connected
-  }
-  const tx = x0 + run;
-  const ty = y0 - rise;
-  // the fletching: a three-px vane that opens toward the tail
-  q.set(tx + 1, ty, PAL.mist).set(tx + 1, ty - 1, PAL.steel).set(tx + 1, ty + 1, PAL.steel).set(tx + 2, ty - 1, PAL.mist).set(tx + 2, ty + 1, PAL.mist);
+/** Scale2x / EPX: each pixel becomes 2×2, corners rounded by the neighbours (transparent counts as a colour). */
+function epx(src: PixelCanvas): PixelCanvas {
+  const out = new PixelCanvas(src.w * 2, src.h * 2);
+  const at = (x: number, y: number) => (src.inBounds(x, y) ? src.get(x, y) : null);
+  for (let y = 0; y < src.h; y++)
+    for (let x = 0; x < src.w; x++) {
+      const p = at(x, y);
+      const a = at(x, y - 1);
+      const b = at(x + 1, y);
+      const c = at(x - 1, y);
+      const d = at(x, y + 1);
+      const eq = (u: number | null, v: number | null) => u === v;
+      let e0 = p;
+      let e1 = p;
+      let e2 = p;
+      let e3 = p;
+      if (eq(c, a) && !eq(c, d) && !eq(a, b)) e0 = a;
+      if (eq(a, b) && !eq(a, c) && !eq(b, d)) e1 = b;
+      if (eq(d, c) && !eq(d, b) && !eq(c, a)) e2 = c;
+      if (eq(b, d) && !eq(b, a) && !eq(d, c)) e3 = d;
+      for (const [k, col] of [[0, e0], [1, e1], [2, e2], [3, e3]] as [number, number | null][]) {
+        if (col !== null) out.set(x * 2 + (k & 1), y * 2 + (k >> 1), col);
+      }
+    }
+  return out;
 }
 
-/** The snapped blade stuck in the ground, leaning on the slab: iron planes (lit left edge, mid, shade right), a broken top. */
-function blade(q: PixelCanvas): void {
-  // base on the floor at x 71..74, y 60; leaning left as it rises to the snap at (67..70, 33)
-  for (let y = 33; y <= 60; y++) {
-    const lean = Math.round(((60 - y) * 4) / 27); // 0 at the foot … 4 at the snap
-    const x0 = 71 - lean;
-    q.set(x0, y, PAL.steel);
-    q.set(x0 + 1, y, PAL.night4);
-    q.set(x0 + 2, y, PAL.night3);
-    q.set(x0 + 3, y, PAL.night2);
-  }
-  // the snap: a jagged top
-  q.set(67, 32, PAL.steel).set(68, 32, PAL.night4).set(69, 31, PAL.night3).set(70, 32, PAL.night2);
-  // the fuller: a darker groove down the middle
-  for (let y = 38; y <= 56; y++) q.set(Math.round(71 - ((60 - y) * 4) / 27) + 1, y, PAL.night3);
+/** Remove the sprite's outer outline (ink touching transparency) so a fresh 1-px outline can be drawn. */
+function stripOutline(p: PixelCanvas): PixelCanvas {
+  const out = p.clone();
+  for (let y = 0; y < p.h; y++)
+    for (let x = 0; x < p.w; x++) {
+      if (p.get(x, y) !== PAL.ink) continue;
+      const open = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]].some(([dx, dy]) => !p.isOpaque(x + dx, y + dy));
+      if (open) out.erase(x, y);
+    }
+  return out;
 }
 
-/** Pebbles and a clod at the foot of the slab (big px). */
-function pebbles(q: PixelCanvas): void {
-  for (const [x, y, w] of [[12, 61, 3], [17, 62, 2], [6, 62, 2], [66, 62, 3], [79, 61, 2]] as const) {
-    q.rect(x, y, w, 1, PAL.earth3);
-    q.rect(x, y + 1, w, 1, PAL.earth1);
-  }
+// crop box of the bust in sprite px (44 × 34): the head at the left third, the boss right of centre
+const BX = 18;
+const BY = 15;
+const BW = 44;
+const BH = 34;
+/** Light tones (painted after the outline, never outlined). */
+const LIGHT = new Set<number>([PAL.gold3, PAL.gold4]);
+
+/** The card's tighter palette (≤ 20 tones with the backdrop): the deepest bronze, skin crease and beard seam fold into
+ *  their neighbours, the copper glint into the light's white-gold. */
+const MERGE: Readonly<Record<number, number>> = { [PAL.gold0]: PAL.earth0, [PAL.skin0]: PAL.earth0, [PAL.stone2]: PAL.stone3, [PAL.fire4]: PAL.gold4 };
+
+function split(src: PixelCanvas): { body: PixelCanvas; light: PixelCanvas } {
+  recolor(src, MERGE);
+  const body = src.clone();
+  const light = new PixelCanvas(src.w, src.h);
+  for (let y = 0; y < src.h; y++)
+    for (let x = 0; x < src.w; x++) {
+      const c = src.get(x, y);
+      if (c !== null && LIGHT.has(c)) {
+        light.set(x, y, c);
+        body.set(x, y, PAL.gold1);
+      }
+    }
+  return { body, light };
 }
 
-/** The spark where the last arrow struck (light layer; 3 positions of the loop). */
-const SPARK: readonly (readonly [number, number])[] = [[63, 38], [64, 37], [63, 36]];
-
-function big(l: ArtLayers, f: number): void {
-  paintBackdrop(l.backdrop, 'EARTH', { focus: FOCUS });
-  const behind = new PixelCanvas(l.subject.w, l.subject.h);
-  blade(behind);
-  pebbles(behind);
-  l.subject.blit(ink(behind), 0, 0);
-  l.subject.blit(sprite(f), BIG_AT[0], BIG_AT[1]);
-  // the arrows planted in the face, reaching out to the right past the rim (card coords): drawn over the sprite with their own ink
-  const front = new PixelCanvas(l.subject.w, l.subject.h);
-  arrow(front, 50, 27, 11, 3); // the upper face, a shallow rise
-  arrow(front, 52, 46, 14, 4); // the lower face
-  arrow(front, 36, 8, 0, 0); // a stub in the crown's shoulder (the head of a shaft that broke off)
-  l.subject.blit(ink(front), 0, 0);
-  const [sx, sy] = SPARK[f % SPARK.length];
-  l.light.set(sx, sy, PAL.white).set(sx - 1, sy, PAL.mist).set(sx + 1, sy, PAL.mist).set(sx, sy - 1, PAL.mist).set(sx, sy + 1, PAL.mist);
-}
-
-function small(l: ArtLayers, f: number): void {
-  paintBackdrop(l.backdrop, 'EARTH', { focus: FOCUS_SMALL, horizon: 24 });
-  const spr = sprite(f);
-  l.subject.blit(spr.crop(SMALL_CROP[0], SMALL_CROP[1], SMALL_CROP[2], SMALL_CROP[3]), 0, 0);
-  // the arrows' tails come in from the right at 1× density
-  const front = new PixelCanvas(l.subject.w, l.subject.h);
-  arrow(front, 36, 16, 6, 2);
-  l.subject.blit(ink(front), 0, 0);
-}
+/** Hand corrections of the small picture (1× density): the eye's white catch-light and the brow's tuft. */
+const EYE_PATCH = ['bw', 'ik'];
+const EYE_KEY = { b: PAL.white, w: PAL.stone4, i: PAL.ink, k: PAL.skin1 } as const;
 
 const art: CardArtV3 = {
   id: 'shield_titan',
-  focus: FOCUS,
-  focusSmall: FOCUS_SMALL,
-  frames: 4,
-  holdMs: 160,
-  big,
-  small,
+  focus: [59, 51],
+  focusSmall: [29, 25],
+  frames: 2,
+  holdMs: 260,
+  big(l, f) {
+    paintBackdrop(l.backdrop, 'EARTH', { focus: [62, 40], horizon: 54 });
+    const { body, light } = split(sprite(f).crop(BX, BY, BW, BH));
+    l.subject.blit(epx(stripOutline(body)), 0, 0);
+    ink(l.subject);
+    rim(l.subject, PAL.earth3, { skip: [PAL.white, PAL.gold2, PAL.fire3] });
+    l.light.blit(epx(light), 0, 0);
+  },
+  small(l, f) {
+    paintBackdrop(l.backdrop, 'EARTH', { focus: [62, 40], horizon: 54 });
+    const { body, light } = split(sprite(f).crop(BX, BY, BW, BH));
+    l.subject.blit(body, 0, 0);
+    patch(l.subject, EYE_PATCH, EYE_KEY, 12, 16);
+    l.light.blit(light, 0, 0);
+  },
 };
-
 export default art;

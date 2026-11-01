@@ -4,7 +4,7 @@
 
 **Design note:** "a giant with a tower shield taller than himself". The card is a pure wall, and its guard is its hero pose.
 
-**Status:** design only (this doc). Rig, art, cinematics and SFX are not built yet.
+**Status:** design revised by the design critique (§12 supersedes the sections it names). Build-art stage: rig + card art + test (§13 log). Cinematics and SFX are the next stage.
 
 **Evidence:** `shots/v3/kart-f/shield_titan/` (gitignored).
 - `draft/` holds the rejected draft's sheet.
@@ -625,3 +625,266 @@ Every key gets filmed with `--fresh &look=v3` and LOOKED at.
 2. **Generic hex `guardGlint`** in `MonsterUnit.guardHit` draws over the titan's masonry ward on blocks. Proposed: a per-art opt-out flag (shared file).
 3. **Struck-body material** for copper/metal does not exist (`GENERATED_HIT_MATERIALS` = stone). Blocks are carried by `kdRepel`.
 4. **Gold emissive** is also used by hourglass_imp (lane F, LIGHT sand). They are kept apart by shape (masonry wall and chevrons vs sand) and by the copper body. Re-check in the blind sameness test.
+
+---
+
+## 12. Design critique fold-in (round D1, verdict needs-work) — supersedes the named sections
+
+Every finding was checked against the code; decisions below. Where a row says *accepted*, the
+earlier section is superseded by the text here.
+
+### 12.1 Frame, geometry and axes (findings 1, 13) — accepted, approach (b) with the side-view convention
+
+| item | value |
+|---|---|
+| Frame | **84 × 82**, anchor **(34, 77)** (`GY` 77), hover 0, walker, `heavy`, `p2:'relight'` |
+| Frames | idle 16, guard 8, toGuard 6, fromGuard 6, attack 12, roar 10, hit 6, hitHeavy 8, hitMagic 8, summon 14, death 11, revive 12, special 12 = **129** → 84×82×4×129 = **3.55 MB ≤ 3.6 MB** (medium) |
+| Shield | face 22 × 56 (u = length, v = width), 2-px back edge + 1-px top edge visible, top rim y 22, foot on GY; the giant's crown is at y 29 (**7 px under the rim in idle; ≥ 5 px in every standing pose**) |
+| Rendering | the shield is ONE texture `tex(u, v)` drawn through a 2-D affine map `O + u·U + v·V` (+ thickness vector T): every slab state (upright, tilted, lying, rising) is the same hand-authored texture, so bands, boss and rivets stay coherent and whole-pixel in the upright / idle state (identity map, IŞ-12) |
+| **Lying-away (summon f0–f3)** | the slab lies face-up **into the screen** along the tile's vertical diagonal: `U = (0, −0.5)` (iso depth is half scale), `V = (1, 0)`. Projected face 22 × 28 px + a 2-px front (near) edge; the boss is an oval 9 × 5. Rising to upright is the projection `top = L·(0.5 cos θ + sin θ)` at θ 0/25/55/80/90° (28 → 49 → 62 → 60 → 56 px). Fits: top ≥ y 15. |
+| **Lying-back (death f8–f10, revive f0–f1)** | the lid lies face-up **along screen-x** (the tile's horizontal diagonal, the side-view convention every v3 death uses for a prone body): `U = (−1, 0)`, `V = (0, 0.5)` → face 56 × 11 px + 3-px front edge, x 8–63, **top row y 64 = GY − 13** (the ≥ GY − 24 low-death test passes with 11 px to spare). The foot skids from x 36 to x 64 while the top falls back (a slab falling onto a body kicks its foot out), which is what makes 56 px fit in 84. |
+| P2 | all of the above is P1 geometry; P2 is the same silhouette relit (`lightFrom 'right'`) and flipped by the game, so every axis mirrors automatically (lying-back runs right→left on screen for P2, the summon rise is symmetric). |
+| Attack reach | the bash tilts the slab forward at most **16°** about its front-bottom corner, lifted ≤ 8 px: the top-front rim reaches x ≤ 78 (margin ≥ 2). `points().muzzle` on every attack frame IS the rim corner, so the strike's stride is derived from `framePoints('attack', contact).muzzle` (finding 13), not from a fixed 18 px. |
+
+### 12.2 Death direction (findings 2, 11) — accepted
+
+The blow shoves the shield **back**; he buckles and folds forward onto his knees and face behind it;
+the shield **teeters upright alone for 2 frames** (the weight is felt: 1° forward, then back); then it
+falls **backward onto him like a tomb lid, hinged on its back-bottom edge, boss UP**, the foot skidding
+out. Final: the lid with the boss visible, the white beard tip and three fingers peeking from under its
+near edge, the last gold pulse in the boss; the tarnish runs far → near (screen top → bottom; P2 the same
+after the flip). This is "the gate closes OVER its bearer" — not hourglass_imp's sideways topple of a
+held prop along the tile diagonal (coordinate with that author; noted for §5.2).
+
+| f | ms | picture |
+|---|---|---|
+| 0 | 50 | struck: shield shoved 2 px into him, head snapped back (impact = contact = 0) |
+| 1 | 70 | stagger; the shield leans back 4°, fingers slip off the rim |
+| 2 | 90 | knees buckle, he drops 6 px |
+| 3 | 80 | he folds forward, face down on his knees behind the shield |
+| 4 | 70 | **teeter**: the shield stands alone, rocks 3° forward |
+| 5 | 60 | teeter back to 0° (upright, alone) |
+| 6 | 50 | **dissolve**: it tips backward, 30° (foot starts to skid) |
+| 7 | 50 | 65° |
+| 8 | 110 | **SLAM** flat (lying-back state) — dust ring is the cinematic's |
+| 9 | 90 | bounce 1 px; tarnish starts at the far edge |
+| 10 | 120 | tarnished dark copper, the boss's last pulse, beard tip + fingers under the near edge |
+
+Total 840 ms (≤ 900). `DEATH_PRESETS` stays as planned (`light`/`light`).
+
+### 12.3 Silhouette and accent vs stone_sentinel (finding 3) — accepted
+
+- **No vertical seam anywhere.** The emissive lives only in (a) the sunstone core and **iris rings**
+  (concentric, around the boss) and (b) **horizontal bronze courses** across the face (three 2-px bands
+  with rivets, like masonry) whose top rows light **course by course** (`courses` 1–3) in guard, special,
+  roar and summon land.
+- The shield is clearly taller than the head in every standing pose (≥ 5 px) and the **four fingers over
+  the rim** are visible in idle, guard, roar, hit, special and summon land.
+- The 1× side-by-side vs stone_sentinel is part of every critique round (`shots/v3/kart-f/shield_titan/build/vs-sentinel-1x.png`).
+
+### 12.4 Direct attack (finding 4) — accepted: "Kalkan Kızağı" (the shield sledge)
+
+He drops the slab face-down flat, kicks it, it **skids along the lane on its boss** like a sledge throwing a
+whole-pixel dust wake and slams into the duelist (contact = arrival); he hauls it back by its leather
+strap (a stepped 1-px strap line across the lane). Sound: copper scrape (band-passed noise riding the
+98 Hz ring with wobble) + strap creak on the haul. **No floor crack line, no gravel crackle run.**
+`kdShockRun` is renamed `kdSledScrape` (+ `kdStrapHaul`). The sprite contributes attack f4–f6 (heave and
+drop) and the cinematic draws the sliding slab as an overlay (lying-back texture, P2 mirrored via `forward(player)`).
+
+### 12.5 Effect hook robustness (findings 5, 6, 7, 8, 9, 10, 15, 16, 17) — accepted, cinematic stage
+
+- **Contact fallback (5):** the defend hook subscribes to `v3:contact` AND arms a fallback (the first
+  `destroy`/`damage` of this battle played, or a timer from the strike's contact estimate) behind a `once`
+  guard; the aura is cleared in a `finally` after `await ctx.base()`. Scenarios `kdWallBreakPierce`
+  (coral_serpent) and `kdWallBreak` (shade_assassin + dragon_blade ×2) film both paths.
+- **Weak attackers (6):** `pre = currentAtk(stateBefore, attacker)`, `drop = pre − ev.attackerAtk`;
+  pulses = clamp(ceil(drop / 100), 1, 5), each −100, the last takes the remainder; gongs from the top of the
+  descending list; the tag shows `−${drop}`. Scenario `kdWallWeak` (wisp_imp 300 → 0).
+- **Timeline from the holds (7):** special holds `[80,110,170,60,70,140,140,140,140,140,140,150]`
+  (marks charge 2, release 3, recover 9 → HA-3 longest 170 is the charge frame). f0–f1 0–190; f2 charge
+  190–360 (iris rings, `kdWardWake`); f3 release 360 (wall, `kdWardWall`); f4 420; **five shove frames
+  f5–f9 = five pulses** departing 490 / 630 / 770 / 910 / 1050 (140 ms spacing); f10 bridge 1190; ≈ 1.35 s scene,
+  ≈ 1.85 s game (≤ 2.32).
+- **Gong spacing (8):** 140 ms, each gong choked by the next; `kdSapStep` flutter 8–9 Hz with ≥ 1 cycle; pitch
+  carried on the 196 Hz and 2.76× partials (A♭1 step audible through a 300 Hz high-pass); `kdWardWake` drops the
+  49 Hz sine for the 98 Hz ring swell + strap creak (clear of R1 and S10).
+- **Pulse shape (9):** each pulse is a **crenellation profile** (⊓⊓⊓ merlon outline, 1-px gold3, 3-px merlons)
+  sliding off the wall like a shove of masonry, flexing 1 px as it travels. **No ▼/▲/V shapes anywhere** in this card.
+- **Travel (10):** constant ≈ 1.3 px/ms, travel clamped 90–200 ms, quantized ≤ 8 px per frame; the next pulse's
+  launch shifts, not its arrival. Scenario `kdWallRanged` on the 5+5 board, far lane.
+- **Outcomes (15):** tie → the wall holds, both shiver, a "stalemate" spall, no recoil number (`kdWallTie`);
+  guardian_charm → the wall cracks diagonally, then the guard re-plant ("DUNK") instead of the death, and the
+  charm's break plays (`kdWallCharm`). §4.3 reworded: the titan attacking (ATK 100) usually **loses**; blocked
+  happens only vs DEF monsters.
+- **P2 / 5-lane (16):** wall length = tile edge − 4 px; depth = titan depth + 0.5 (under row+1 sprites); every
+  overlay direction from `forward(player)` / `facesLeft`; tarnish far→near after the flip. Scenario `kdWall5`.
+- **Plates (17):** the shared `plates.ts` request is raised with the orchestrator together with lane B's; if it is
+  refused, the fallback at least skips the debuff when the target is face-down (one line), and that change is a
+  blocker for `kdWallFlip`.
+
+### 12.6 Summon / revive (finding 14) — accepted
+
+Summon f0: the giant is **real from frame 0**, a crouched mass to the left of the slab's hinge, both fists hauling
+two taut leather straps tied to the slab's far (top) edge; the slab lies face-up into the screen (§12.1). f1–f4 the
+slab rises toward him as he hauls and straightens (θ 25/55/80/90°); f5–f7 he steps into the grip, fingers over the
+rim; **f8 land**: the plant. Revive starts with **no giant visible**: the tarnished lid (death final) re-brightens
+first (f1), then the lid lifts from its near edge with his back under it (f2–f5) — a different axis (lying-back →
+upright) from the summon's (lying-away → upright). The 1× check of summon f1–f3 vs revive f2–f4 is in the build log.
+
+### 12.7 Hit sound (finding 12) — accepted for the SFX stage
+
+A `defend` hook on every battle where the titan is the target layers `kdPlateHit` (98/196 Hz, 2.76 FM, 0.3 s
+flutter, ≈ 0.6) under the generic stone material; `kdRepel` stays for warded blocks. The copper struck-material
+request is raised with the orchestrator (§11 item 3).
+
+### 12.8 Rejected or changed
+
+- **Finding 1, approach (a)** (prone slab as a tile overlay only) is rejected for the sprite: the death and revive
+  must be self-contained sprite anims (`deathV3` plays them in every context, also soul_recall). The overlay is
+  used only for the direct-attack sledge, which leaves the sprite.
+- The doc's "~10 px tall" lying slab is replaced by the measured numbers in §12.1 (lying-back 14 px with its edge).
+- §4.2's crack line on the summon land is dropped (it echoed C7's crack): the land beat is the plant, a
+  sideways whole-pixel dust spray and the courses lighting bottom → top.
+
+---
+
+## 13. Build log — stage "Build art" (rig, card art, test)
+
+### 13.1 What was built
+
+| file | content |
+|---|---|
+| `src/art/monsters-v3/shield_titan.ts` | shell: hand-built `MonsterArt`, 84×82, anchor (34, 77), `heavy`, `p2:'relight'`, `points()`, `joints()`, `portrait()` → `renderArt(card,0).smallPx`; distinction header vs stone_sentinel |
+| `src/art/monsters-v3/shield_titan-rig.ts` | `Pose` / `NEUTRAL`, skeleton (IK arms + legs), part painters (legs with leather wraps + iron knee guards, kilt with belt + buckle, torso + bandolier, arms + bracers + fists, bald head + brow + eye, white beard with combed strands + braid, hanging strap, four fingers over the rim, summon haul straps, death peek), and **the shield as one texture `tex(u,v)` through an affine map** (upright / tilted / lying-away / lying-back) with a thickness sweep, arched top, convex copper profile (fire0–fire3), bronze rims with studs, three bronze courses (the middle one runs through the boss), the boss; light pass after the outline: sunstone core (3 levels), iris rings, lit courses (+ white-hot top course), rim crackle, plus the dim bronze ripple and the copper glint |
+| `src/art/monsters-v3/shield_titan-anims.ts` | 13 anims / **129 frames**: idle 16, guard 8, toGuard 6, fromGuard 6, attack 12, roar 10, hit 6, hitHeavy 8, hitMagic 8, summon 14, death 11, revive 12, special 12; marks per §4/§12; `framePoints` (attack muzzle = the rim corner, else the boss; core = the face centre) |
+| `src/art/monsters-v3/shield_titan-kit.ts` | bbox `planes` / `Comp`, flat `bands`, tone sets |
+| `src/art/cardart-v3/shield_titan.ts` | rewritten: the bust of the ward waking (rig pose: boss open, iris ring, bottom course lit), small = sprite crop + hand patch (eye / brow), big = EPX of the same crop with a fresh outline, light repainted after the outline; 2 living frames (260 ms); colours merged to ≤ 20 |
+| `tests/art/shield_titan.test.ts` | rewritten (13 tests): registration (no exclusion, no draft / cut-in file), validateArt normal = [], marks, 129-frame budget, palette (no cyan/crim/teal/mag) + margin in both lights, points, HA-18/17/19 both lights, KK-4 phase + HA-9 feet band, P2 silhouette, gold3/gold4 only as light, bash reach + contact flare, the lid death (low, long, last pulse, peek, teeter) + revive from it, summon (slab low + giant real from f0; ≠ revive f2–f4), card art budgets + portrait wiring |
+| deleted | the draft `-build/-fx/-parts/-shield/-maps` files and `src/art/cutins-v3/shield_titan.ts` (§6) |
+| shared one-liners | `src/art/monsters/index.ts`: **only** the `shield_titan` exclusion removed (gates green); `src/view/light/profiles.ts`: `emissive [gold4 1, gold3 0.7], halo 0.5, pool 0.85` (white removed); `src/cinematics/_v3/presets.ts`: `material 'light', accent 'light'` (stone removed) |
+
+Changes against §12 found while building: the death is `dissolve @ 6` (f6 is the tip-over); the lying-back
+map turns the width axis UP (front edge far) so the face never mirrors mid-fall (det = cos² + ½ sin² > 0);
+special `recover @ 10` (five shove frames f5–f9, f10 = guard f0, f11 = idle f0). The idle's liveliness comes from
+an alternating one-thing-per-frame schedule (chest → head → the shield settling 1 px into its rut / hefted → beard
+tip), a dim bronze ripple stepping out from the boss (the sleeping ward) and a copper sheen drift; feet and the
+shield's foot never leave the feet band.
+
+### 13.2 Iterations (looked at every PNG)
+
+1. **r1** — first render: read as a door / ladder (flat copper, three even bands), a lidded block of a hand on top,
+   the lying-back fall collapsed to a line at 55° (degenerate map), liveliness 5 %.
+   Fixes: arched top + convex sheen + studded rims; middle course through the boss; four distinct fingertips with
+   gaps over a knuckle hump; rotation-consistent lying-back map; idle schedule rebuilt.
+2. **r2** — gates: Sİ-2 (roar f1 elbow at the edge), HA-9 (idle dust speck + toGuard dust outside the feet band);
+   liveliness 7.7 → 15.2 %; KK-4 phase 0.57 → 0.40 (the shove moved from hit/death f0 to f1). Fixed.
+3. **r3** — knee guards shrunk (they read as grey blobs when the knee bends far forward in revive). All gates green.
+
+### 13.3 Gates and evidence (`shots/v3/kart-f/shield_titan/build/`)
+
+| gate | result | evidence |
+|---|---|---|
+| `monster-gates --class medium --ref none` (P1 + P2) | **21 ok, 0 FAIL** (HA-18 15.2 / 15.4 %, HA-17 1.27, HA-19 0.45, KK-4 phase ≤ 42.6 %, KK-13 3.55 MB / 129 f / 2.8 ms) | `gates-r3.txt`, sheets `r3/`, `r3-p2/` (`r1/`, `r2*` earlier rounds) |
+| `validateArt(normal, melee)` | `[]` | test |
+| `tests/art/shield_titan.test.ts` | 13/13 | — |
+| full `vitest run` | 3 failures, none ours: dusk_ashen, hourglass_imp (known), cardface-v3 G1 `scrap_raiders` 0.692 (not this card) | — |
+| typecheck | clean for owned files | — |
+| sameness `--against all` | UYARI only (no KALIR in plan). Closest: **stone_sentinel** (KEY 0.677, MOTloop 0.745, MOTavg 0.561, SIL0 0.75), windmane_knight MOTsig 0.839 (that rig is mid-build by the other lane-F agent; re-run when it lands), steel_silencer KEY 0.628 / MOTsig 0.559. The roster baseline is similar (stone_sentinel itself has 44 UYARI rows). Distinction header in the shell; blind 1× side-by-side | `same/sameness.txt`, `same/shield_titan__stone_sentinel.png`, `vs-sentinel.png` / `vs-sentinel-1x.png` |
+| 1× vs stone_sentinel | copper + flesh vs grey stone; the shield a head taller than the giant (sentinel's stops at the shoulder); fingers over the rim; boss with rings and horizontal courses (no vertical rune seam) | `vs-sentinel-1x.png` |
+| summon f1–f3 vs revive f2–f4 | different axes (slab rising into view with the haul straps vs the lid lifted from under it) — also asserted in the test (Δ > 50 %) | `vs-sentinel.png` row 2 |
+| zooms | idle / guard P1 + P2, attack + roar, summon / death / revive, P2 key frames | `z-idle.png`, `z-attack.png`, `z-sd.png`, `z-dr.png`, `z-roar.png`, `z-p2.png` |
+| board / in duel | `?dev=monster&mode=board`; `m1Shield` (P2 titan in DEF vs shade_assassin, guard + blocked with today's generic cinematics) | `board.png`, `m1Shield-film.png`, `m1Shield-clip.png` |
+| card art | big 88×68 (2 frames) + small 44×34 + 16×12 read (copper bar, gold dot, white blob); colours 20 / 20, focusOk, lead 5 / 2 | `card.png` |
+
+### 13.4 Known weaknesses / open for the next stages
+
+- **Sameness vs stone_sentinel stays UYARI** (KEY / MOTloop / SIL0): both are a figure left of a slab with a calm
+  breathing idle. The 1× read is clearly distinct (colour, height, hand on the rim); a blind critic round should
+  confirm. The guard loop is quiet (ripple + breath) like sentinel's.
+- **The idle reaches HA-18 by a thin margin (15.2 %)**: the shield's 1-px settle/heft on 4 of 16 frames and the dim
+  ripple carry much of it. Any idle edit must re-run the gates.
+- **The summon's mid-rise frames (θ 25–55°) project taller than the upright slab** (correct for the projection, but it
+  can read as stretching); the cinematic's dust + strap creak must sell the rotation.
+- **The face is small**: at 1× the eye is 1 px under the white brow; the bald dome + beard carry the read.
+- **Card art is the sprite's bust** (pattern B: crop + EPX + hand patch), not a native painting with the low camera
+  of §5; it passes the budgets and the 16×12 read but is a candidate for a native redraw.
+- The **death lid** reads as a long low slab; its dust ring, tarnish sweep timing and the boss's last pulse are left
+  to the cinematic (`deathV3` + `atFrame` layers). `DEATH_PRESETS` is now `light/light`; the death plays through
+  the generic v3 death until the lane's cinematic lands.
+- Not in this stage: cinematics (summon, strike incl. the sledge direct, ward, defend layer, death), sounds and the
+  `SHIELD_TITAN_VOICE`, scenarios `kd*`, camera / v1 film gates.
+
+---
+
+## 14. Build log — stage "Cinematics + sound"
+
+### 14.1 What was built
+
+| file | content |
+|---|---|
+| `src/cinematics/kart-f/shield_titan.ts` | every registration gated on `LOOK_V3`, priority 20, names `kart-f:shield_titan:<part>`: `summon` (runSummon + "Kalkan Kapısı Kalkar"), `attackDeclare` layer (event, see 14.2), `effect` (the ward "Sur Kalkanı"), `defend` (the repel / wall-break layer + the plate ring), strike (the gate fall + the direct "Kalkan Kızağı" sledge), `destroyed` (deathV3 + layers), `positionChange` layer (kdPlant on toGuard f3, kdFistBang on roar f3/f5), the ward expiry observer. Seeded per uid, reset on `onDuelStart`. |
+| `src/audio/v3/shield_titan.ts` | 23 recipes from `./kit` blocks + Voice primitives only (a local `plate()` helper = FM 2.76 ring on G2 + 196 Hz partial + body, through an LFO "thunder-sheet" wobble that dies with the ring; `creak()` leather; `hup()` chest grunt). `SHIELD_TITAN_VOICE` set (roar, arrive, land, charge, release, impact, dissolve, afterDissolve [2, kdLidSlam], burst, reviveGather, reviveLand). `deathStart` is left out on purpose: a lethal recoil usually hands over to the death past f1, so the death layer fires `kdKneel` itself on f2 (late-tolerant, only before the dissolve). |
+| `src/duel/scenarios/shield_titan.ts` | 22 keys: kdSummon(P2), kdGuard, kdWall(P2), kdWallFlip, kdWallRanged, kdWallWeak, kdWallBreak(P2), kdWallPierce, kdNegated, kdAttack(P2), kdAttackDie, kdDirect(P2), kdKill(P2), kdRevive(P2) |
+| rig (own files) | `Pose.bare` (additive, NEUTRAL 0: the giant without the shield); the shell exposes `titanSled(p, kind, lightFrom)` (cinematic-only frames: `kick`, `reach`, `haul`, the lying slab `sled` / `sledHot`) — read by the strike through `u.art`, so the v1 look never imports v3 art. Sprite sheets / gates untouched (no new anim frames). |
+| shared one-liners | none new in this stage (DEATH_PRESETS `light/light` and MONSTER_GLOW gold were set in the art stage). `plates.ts` is NOT edited: see 14.2. |
+
+### 14.2 Decisions
+
+- **The declaration's early −500 (open issue §11.1) solved without a shared edit:** an `attackDeclare` event layer
+  (priority 20, acts only when the target is shield_titan and `battleNumbers().attackerDebuffBy` is it) runs the
+  declaration and in the same tick puts the attacker's plate back to its real ATK (`setStats(..., false)`, the
+  badge's pop tween killed). The unit stays in plates.ts' `tinted` set, so the battle's roll-back is unchanged. The
+  ward then rolls the plate −100 per pulse (1900 → 1853 → … → 1400 visibly stepping). This also stops the face-down
+  identity leak (kdWallFlip). If the orchestrator later lands lane B's `holdDrain`-style change in plates.ts for
+  the attacker side, this layer can be deleted.
+- **Ward timeline** from the special holds: wake f0 (kdWardWake sustained), iris f2, release f3 → the rampart rises in
+  4 whole-pixel steps (30 ms each, 36 px, depth titan + 0.5), one crenellation pulse launched per shove frame f5…
+  (≈1.3 px/ms, 90–200 ms), on arrival kdSapStep with the G2 F2 D2 C2 A♭1 ladder (weak attackers start lower on the
+  ladder so the last step is always A♭1), attacker shoved 1 px/pulse (≤ 3, springs home), 4–6 pixels of its
+  attribute ramp peeled off, plate −100; last pulse kdSapDrain + the "-500" tag (crimson, `pixelText`, 600 ms,
+  2-step rise + blink); the wall settles in 3 steps into the 1-px rampart line (aura `kdWard`) kept until contact.
+- **Direct "Kalkan Kızağı"**: implemented as designed: the sprite is hidden after the heave (attack ≤ release) and two
+  cinematic frames take over at the sprite's exact origin / flip (the bare giant; the lying slab as the sledge,
+  boss up — the face-down back side has no texture, so it rides boss-up, glowing), the strap is a stepped 2-tone
+  leather line with a sag, the wake is whole-pixel dust every 8 px. P2 mirrors through flipX + `lightFrom 'right'`.
+- **Blocked strike**: battleV3 claims the melee survivor's animation for its recoil on the contact frame, so the
+  cinematic's own beat is positional (1 px jolt, ±1 px shiver, 3 px heel-dust slide) + kdPlateShiver; the walk home
+  and the f10 re-plant follow.
+
+### 14.3 Evidence (`shots/v3/kart-f/shield_titan/`)
+
+| what | file |
+|---|---|
+| camera base (placeholder presentation, before any cinematic) | `camera-base.json` |
+| measure + camera gate after (22 ok, 0 FAIL) | `measure-r1.json`, `measure-r1.txt` |
+| films (LOOKED at) | `cin/kdWall-r1.png` (overview), `cin/kdWall-r1z.png` (ward, zoom), `cin/kdWall-r1c.png` (contact + repel), `cin/kdWallP2-r1.png`, `cin/kdWallBreak-r1.png`, `cin/kdAttack-r1.png`, `cin/kdDirect-r1.png`, `cin/kdDirectP2-r1.png`, `cin/kdSummon-r1.png`, `cin/kdSummon-land-r1.png`, `cin/kdKill-r1.png`, `cin/kdRevive-r1.png`, round 2: `cin/*-r2*.png` |
+| clips (MP4 + WAV + JSON, music off) | `clips/kdWall.mp4`, `clips/kdWallBreak.mp4`, `clips/kdDirect.mp4`, `clips/kdKill.mp4` — peaks −1.8…−1.9 dBFS, 0 clipped; every beat present in the sfx timeline |
+| audio pages | `clips/a-kdLidSlam.png` (the wobble visible as AM in the waveform), `clips/a-kdSapStep.png` |
+| v1 | `filmdiff-v1.txt` (17/17 IDENTICAL), `filmdiff-a6v1.txt` |
+
+**Timings (measure, game clock):** ward `activate` 1.77 s (≤ 2.32), attack on a monster `battle` 1.58 s (≤ 3.19),
+direct `battle` 2.02 s (≤ 2.32), death `destroy` 1.48 s (≤ 2.03), revive 2.2 s (≤ 2.9), summon 2.07 s total incl.
+the card slam. Number = contact on every battle.
+
+### 14.4 Iterations
+
+1. **r1** — everything filmed P1 + P2. Fixes: the repel's last crenellation aimed at the attacker's HOME (shade
+   assassin strikes from behind the titan) → aims at where the attacker stands now; the sledge's dust wake spawned
+   ahead of the slab (sign error) → behind it; `deathStart` never fired (the death joins past f1) → kdKneel on f2
+   from the layer; kdLidSlam raw peak 1.08 → trimmed; kdSapStep too dull → +gain, more 196 Hz partial.
+2. **r2** — the summon's land beat was not legible at 1× (the boss flare only) → the plant now also flashes the
+   rampart line on the tile's front edge (white → gold → dim, stepped, 360 ms; it foreshadows the ward) and the
+   sideways dust spray is denser and higher.
+
+### 14.5 Known weaknesses / open
+
+- The lying slab (sledge, death lid) is 56 × 11 px: at 1× it reads as a copper bar with a gold dot rather than a
+  door-sized slab. The geometry is the rig's (§12.1); a fatter lying view would need a rig change.
+- The ward wall is drawn in FRONT of the titan on P1 too (the far tile edge), overlaying his shield; it reads as an
+  energy rampart, not as iso-correct masonry behind him.
+- The generic hex `guardGlint` / water-blue `blockClang` of battleV3 still plays under the repel (§11.2 unchanged).
+- The death's ending keeps the generic `light` material burst (a yellow ring + sparkles) after our tarnish and last
+  pulse; our own gold motes rise with it.
+- No dedicated revive cinematic: soul_recall's own frame + the sprite's revive + the voice pair (kdWardReturn /
+  kdReviveHeave) carry it.
+- Critique rounds were done by me (LOOK), not by independent critic agents.
