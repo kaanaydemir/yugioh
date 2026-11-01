@@ -35,6 +35,9 @@ adversarial verification = ONE verifier covering golden rule + definition of don
 At the switch: all 3 sprites through 3 sheet-critique rounds; card art for all 3 + cut-ins (ashen, venom) built and
 critiqued; cloud_hatchling card-art fix done; ashen/venom card-art fixes and all cinematics not yet done.
 
+## Owner decision 2026-11-01 17:53 UTC: no fixed animation time limit
+REHBER §5 × 1.45 budgets (TEMPO.md) are guidance only, not a gate: each moment takes the duration that makes it most striking and readable.
+
 ## Design docs
 - `docs/v3/kart-a/ashen_drake.md`, `docs/v3/kart-a/venom_drake.md`, `docs/v3/kart-a/cloud_hatchling.md`
 

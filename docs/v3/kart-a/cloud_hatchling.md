@@ -1908,3 +1908,151 @@ with `now.json` / `now.log` one level up.
 
 So the cause is the shared `homecoming` / `attackBounceAttacker` projection (`src/cinematics/_core/project.ts`), not this card.
 The final state syncs correctly (`deps.sync(after, true)`).
+
+### Adversarial verification fixes (round c3r5), 2026-11-01
+Evidence: `shots/kart-a/cloud_hatchling/c3r5/` (moment LSD `lsdm/`, cross-card films and clips `cross/`, gates
+`gates/`, `now.json` / `now.log`, `camera.txt`, `filmdiff-*.log`, `sameness*/`, `pal-*`). Code changed: only the
+scenario file (`src/duel/scenarios/kart_a_cloud_hatchling.ts`, new key `kaChGrownRevive`). No art, cinematic or
+sound change, so no moment was re-filmed for look; the new films are the missing coverage.
+
+**#1 MEDIUM, sound distinctness not proven: partly valid. Measured now.**
+- The claim that the LSD table "was NOT measured" is wrong. The per-role SE-4 table (§6.3: each role's sound
+  rendered offline) was measured in c3r2 (`c3r3/lsd.md`: 64 pairs, median 19.5 dB, min 10.0 dB) and again in c3r3
+  (`c3r4/lsd.md`: min 10.9 dB). The c3r1 "not measured" line is older than both.
+- What was missing is the moment-level comparison the verifier asks for, so it is measured now.
+  - Method (`c3r5/lsdm/lsdm.py`, `lsdm.md`, `lsdm.json`). Each moment is recorded in game with `clip.mjs --music off`,
+    so the real mix is measured, shared kit included. Profiles use 1/3 octave bands from 25 Hz to 16 kHz,
+    A-weighting, level normalisation and a 60 dB floor.
+  - LTAS is the LSD of the long-term spectrum. ST is a time-aligned LSD: 50 ms frames by bands, so it measures
+    rhythm as well as timbre.
+  - Siblings are ashen_drake (`kaAd*`), venom_drake (`kaVenom*`, `&zones=5`) and crystal_wyrm (`suWyrm`,
+    `saWyrmAtk`, `saWyrmBlocked`). The growth is compared with dial_jester's coin in the same batch, venom's scar
+    stack and the two aces' summons.
+  - A calibration row measures sibling against sibling, which shows the metric's scale on full mixes.
+
+  | moment | vs ashen | vs venom | vs wyrm | other | LTAS / ST |
+  |---|---|---|---|---|---|
+  | summon (`kaChSummon`) | 8.1 / 20.8 | 7.0 / 25.1 | 7.1 / 23.7 | | |
+  | attack (0 → contact) | 6.6 / 13.5 | **2.3** / 16.1 | 6.6 / 18.5 | | |
+  | attack wind-up (350 ms → contact, after the shared declaration) | 11.4 / 15.7 | 6.0 / 18.9 | 10.1 / 22.4 | | |
+  | contact (−50 … +450 ms) | 8.0 / 15.7 | 5.5 / **7.6** | **3.8** / 10.5 | | |
+  | contact without the kit's `impactHeavy` | 10.7 / 18.0 | 10.3 / 13.9 | 6.3 / 13.8 | | |
+  | growth (`kaChGrow` 6017–8767) | 8.9 / 19.9 (summon) | 6.7 / 17.3 (scar) | 6.2 / 20.9 (summon) | coin 7.8 / 18.8 | |
+  | death (bolt, strike + 150 ms, 1.6 s) | 6.6 / 13.7 | 6.4 / 12.4 | 10.2 / 17.8 | | |
+  | grown lose (`kaChGrownLose`) | 8.1 / 15.3 | 6.9 / 17.4 | 7.9 / 16.3 | | |
+
+  - Across the 19 same-moment pairs: LTAS median **6.9** dB, min 2.3 dB; ST median **17.3** dB, min 7.6 dB.
+  - Calibration, sibling against sibling (18 pairs): LTAS median **4.9** dB, min 2.9 dB; ST median **16.3** dB,
+    min 8.1 dB.
+  - On full game mixes, every one of our moments differs from the sibling aces at least as much as those aces
+    differ from each other.
+  - The per-role thresholds (median ≥ 15, min ≥ 10 dB, which apply to solo renders) do not transfer to full mixes.
+    Those mixes share attackDeclare, lockOn, the LP ticks, cardPlace and the kit's impact layer.
+- The two low cells are explained by sounds that are not this card's.
+  - attack vs venom, LTAS 2.3: in this tree `kaVenomAtk` still plays the v1 generic `whoosh` + `slash`, so venom's v3
+    strike sound is not wired yet. Its 0–750 ms window is mostly the shared declaration (attackDeclare and two
+    lockOn). After the declaration, the wind-up measures 6.0 / 18.9 dB.
+  - contact vs venom (ST 7.6) and contact vs wyrm (LTAS 3.8): the shared `impactHeavy` (`_v3/react.ts`) sits on all
+    three contacts. With it soloed out, our contact measures 10.3 / 13.9 dB against venom and 6.3 / 13.8 dB against
+    wyrm. `kaAdAtk` uses `hitStoneMagic` and reads 10.7 / 18.0 dB.
+  - The death clips for venom (`kaVenomMagic`) also play only the generic `shatter`.
+  - These are reported to the orchestrator (venom's v3 sound wiring and the shared impact layer). They are not
+    edited here.
+- +1.7 dB margin against `wyrmBreathFire`: the role LSD is **11.7 dB**, at or above the blueprint's ≥ 10 dB minimum
+  (§6.3). The 2–3 dB margin was a critic's suggestion, not a gate. c3r3 tried ±1/3-octave moves and found that
+  the growl dominates the spectrum, so the margin is accepted as is.
+- The tide_golem "sameness" warning is a motion metric, not sound. Re-measured with `tools/sameness.ts --against
+  all --anims roar,attack` (`c3r5/sameness*/`).
+  - Grown: tide_golem has MOTsig 0.726 on roar and 0.465 on attack. Its rhythm differs (430/220/1210 vs
+    400/100/1000).
+  - That comparison is against tide_golem's v1 silhouette proxy, out of plan. It is UYARI, and the tool says an
+    out-of-plan result never blocks.
+  - The baby measures UYARI against 10 of 84 arts and KALIR against none. The grown measures UYARI against 16 of 42.
+    coral_serpent reaches the out-of-plan KALIR line, which still counts as UYARI.
+  - Accepted: the roar anims are unchanged, and the warning is broad against v1 proxies rather than a copy of one
+    card.
+
+**#2 MEDIUM, cross-card edge cases not filmed: valid. Filmed now.** All runs use `look=v3`. Each has a 1×
+film and a ×3 detail film, plus a `clip.mjs` sound timeline (`cross/*.json`). Sound times are in game ms.
+- `kaChGrownChains` (`cross/kaChGrownChains.png`, `-x3.png`): the chains bind the GROWN body, the grown form holds
+  for the whole bind, and the badge reads 2300/1700. Sound: `hatchGrownInhale` plays at the declaration (167). After
+  the trap prompt, chains' `takeCharge` starts a fresh **`hatchGrownInhale`** at 1183; the baby `hatchInhale` never
+  plays.
+- `kaChGrownMirror` (`cross/kaChGrownMirror.png`, `-x3.png`): the inhale at 167 and 733 is `hatchGrownInhale`, and
+  `hatchGrownSneeze` plays at 1583. The reflected beam kills the grown body: `hatchGrownCurl` 2083 → `hatchUnAge` 2300
+  → knit → float, and it ends as an egg. The grown breath is kept.
+- So the `soundsOfUnit` sweep has landed in both other-lane files (`_mirror_v3.ts:1575`, `chains_of_light.ts:561`).
+- `kaChGrownEquip` (`-x3.png`): dragon_blade's aura plays on the grown body and the badge goes to 3000/1700.
+- `kaChGrownVoid` (`cross/kaChGrownVoid.png`): the grown form stays until its own death beat. That beat is the
+  grown curl → un-age → egg (sound 3733–4567).
+- `kaChGrownControl` (`cross/kaChGrownControl.png`): puppet_string takes the grown hatchling, and it stays grown on
+  the P1 side.
+- **Persistence**:
+  - Turn change and resync: `kaChGrownResync-x3.png` covers the growth, then two turn ends (8.3–12.9 s). The body
+    stays grown and the badge stays 2300/1700 the whole time.
+  - Position change: `kaChGrownPos-x3.png` covers the grown sphinx guard and its return, and the body stays grown.
+  - Bounce: `kaChGrownBounce`'s re-summon is the baby (cloud drift, egg, cheep).
+- **soul_recall revive as baby: new scenario `kaChGrownRevive`.** crystal_wyrm kills the grown hatchling, P2 ends the
+  turn, and P1 casts soul_recall on it.
+  - Death (`cross/kaChGrownRevive-death-x3.png`): grown curl 1383, un-age 1600, egg float.
+  - Revive (`cross/kaChGrownRevive-revive.png`, `-end-x3.png`): `hatchReviveGather` 5267 → `hatchReviveLand` 5917,
+    and it lands as the **BABY** with **1100/900**. The growth does not stay in the graveyard.
+  - Measured total 6350 ms (two batches), 0 errors.
+- **The rewind contract with lane D is still open on lane D's side (not this card's code).**
+  - Our side is done: `variants.ts` `rewindAnims` / `rewindSfx`, the grown record's `rewind` and
+    `rewindSfx: 'hatchVoiceCrackRev'`, and the unit test "the rewind contract" (`tests/duel/unit-variant.test.ts`).
+  - Nothing outside `variants.ts` calls `rewindAnims` yet (`grep`).
+  - Today an opponent's jester win (`kaChRewound`, `kaChGrownRewound`, `cross/kaChGrownRewound.png`) plays
+    `impactHeavy` at 4483, then our own death. On the grown body that is curl → un-age → knit → egg. It reads
+    correctly (grown → baby → egg) with no pop, but the reversed special and summon from the contract do not play.
+  - The planned `?dev=hatchling&mode=rewind` preview was never built. That is a deviation; the unit test covers the
+    contract.
+  - Re-sent to the orchestrator for lane D.
+
+**#3 MEDIUM, `project.ts` precondition unconfirmed: verified as landed.**
+- `src/cinematics/_core/project.ts:131-168` handles it under `LOOK_V3`. The hatchling's `activate` marks the uid
+  (a `jesterAging` card, face up, with no `permAtk`). The following `statChange` then writes `permAtk` / `permDef`
+  from the event's own deltas (2300−1100 = 1200, 1700−900 = 800), so the badge's count-up still animates.
+- This differs from the blueprint's wording, which set the values directly at `activate`. It is better, and it
+  still equals the engine's after-state.
+- The landing commits are `8ffa624` and `812ffa3`. The tests in `tests/duel/unit-variant.test.ts` pass:
+  - "the growth lands at the hatchling's statChange … = the engine's after state" (`projectBatch` over a real batch,
+    asserting `permAtk` / `permDef` directly);
+  - "an equip statChange projects no growth";
+  - "an activate of any other monster effect … changes nothing".
+- The drift warning is **assigned to the `homecoming` owner (the shared projector)**, with the root cause found:
+  `applyEvent` has **no `case 'toHand'`**. `rules.ts:701` emits `toHand` for homecoming's bounce, and the
+  projector ignores it, so `p.hand` and the monster slot stay stale. It reproduces with no hatchling at all
+  (`st1HomeP2`). The final state still syncs (`deps.sync(after, true)`), and the drift is unchanged in
+  `c3r5/now.json` (kaChGrownBounce only). `project.ts` is shared and not this card's file, so it is reported, not
+  edited.
+
+**#4 LOW, readability at 1×: accepted, as the verifier recommends.**
+- The 20 px baby ring next to big targets is accepted.
+- The thin ring and white fragments on frames #14–#17 of `c3r4/atk.png` are accepted. They are the squeeze and snap
+  after the contact, which reads well on #5–#7.
+- The dial build-up from 6.0 to 7.2 s is not reworked.
+- The grown mane has no ink notches. It is two-toned and the tail is out.
+- The baby sprite is above its §1.1 size (deviation #11).
+
+**#5 LOW, headroom and warnings: accepted.** The c3r5 values are unchanged:
+- `kaChGrownDirect` 2316 ≤ 2320 (4 ms of headroom).
+- `kaChLose` 3150 ≤ 3190 (40 ms).
+- palcheck a5 absolute limits fail as the approved base films do.
+- HA-14 / HA-15 are the declared shared-shell rows.
+- The blind critic KK-1 sign-off next to crystal_wyrm is still open; an independent critic is needed.
+
+**Gates (c3r5)**
+
+| Gate | Result |
+|---|---|
+| typecheck (`npm run typecheck`) | clean, 0 errors (whole tree) |
+| tests (`npx vitest run`) | see the Status paragraph |
+| v1 look (`filmdiff --set v1`) | **17/17 IDENTICAL** (`c3r5/filmdiff-v1.log`) |
+| a6 v1 look (`filmdiff --set a6v1`) | see the Status paragraph (`c3r5/filmdiff-a6v1.log`) |
+| camera (`measure --camera-gate shots/kart-a/camera-base.json c3r5/now.json`) | 15 ok, 56 ok NOBASE, **0 FAIL**; zoom 1 everywhere |
+| page errors (`c3r5/now.json`, 56 `kaCh*` incl. the new `kaChGrownRevive`) | 0 errors in all. The one console drift line in `kaChGrownBounce` is the shared `toHand` gap (#3) |
+| budgets (REHBER §5 × 1.45) | unchanged from the gates round: Summon 2366 · Atk 2333 · Blocked 2466 · Tie 3033 · Lose 3150 · Kill 2600 · KillPhys 2883 · GuardKill 2216 · Bolt 2466 · Hit 1533 · Direct 2200 · GrownAtk 2550 · GrownBlocked 2400 · GrownKill 2666 · GrownGuardKill 2583 · GrownLose 3166 · GrownDirect 2316 · Revive 2133 · Flip 733 · Grow 9083 (hook 3033) — all within |
+| monster-gates (`c3r5/gates/baby.txt`, `grown.txt`; medium, P1 + P2, `--ref none`) | baby 20 ok + HA-14; grown 19 ok + HA-14 / HA-15. The FAIL rows are identical to `gates5` |
+| palcheck (a5, clip 120,40,400,230, 100 × 34 ms) | kaChAtk Δmax +1.16 / white 2.19, kaChLose +1.28 / 2.22. These are identical to `gates5`, and the base films fail the same way |
+| SE-4 moment LSD (`c3r5/lsdm/lsdm.md`) | LTAS median 6.9 / ST 17.3 dB vs siblings, against a sibling-vs-sibling calibration of 4.9 / 16.3 dB |
