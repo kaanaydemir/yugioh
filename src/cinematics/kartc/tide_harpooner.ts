@@ -165,12 +165,13 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
   // ---- the twirl: the declaration's held coil continues; the charge voice is the declaration's own
   const held = strikeStartFrame(u);
   const f0 = held > 0 ? Math.min(held + 1, relF) : 0;
-  const charge = takeCharge(u, 'harpTwirl', { volume: 0.85, pan });
-  // one swish per half turn (four over the 1.5 turns), pitch +8 % a pass, the pan swinging in front of / behind the shell
+  const charge = takeCharge(u, 'harpTwirl', { volume: 1, pan });
+  // one swish per half turn (four over the 1.5 turns), each pass LOUDER (+1.5 dB) and +8 % higher — a crescendo into the
+  // throw, the last pass the loudest — the pan swinging in front of / behind the shell
   for (let k = 0; k < 4; k++) {
     const f = twF + 1 + k * 2;
     if (f < Math.max(twF, f0)) continue;
-    atFrame(u, 'attack', f, () => play('harpSwish', { volume: 0.7 + 0.05 * k, pitch: 1 + 0.08 * k, pan: clamp(pan + (k % 2 ? 0.18 : -0.18) * sgn, -0.5, 0.5) }), { late: false });
+    atFrame(u, 'attack', f, () => play('harpSwish', { volume: [0.74, 0.84, 0.93, 1][k], pitch: 1 + 0.08 * k, pan: clamp(pan + (k % 2 ? 0.18 : -0.18) * sgn, -0.5, 0.5) }), { late: false });
   }
   // the front pass flings foam beads (they land as wet dots in front of the shell)
   atFrame(u, 'attack', twF + 4, () => {
@@ -209,7 +210,7 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
     if (!alive()) return;
     // ---- RELEASE: the claw thrusts the shaft; the toggle head leaves the socket ON this frame
     charge.stop(40);
-    play('harpLoose', { volume: 0.95, pan });
+    play('harpLoose', { volume: 0.66, pan });
     const sock0 = socket() ?? M(u.core());
     // aim a little above the core (the throw comes from shoulder height: the head goes through the body, not the floor)
     const tCore = tgt ? add(tgt.core(), { x: 0, y: -4 }) : s.to;
@@ -217,13 +218,22 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
     let tipEnd: XY;
     let hitAt: XY;
     let passT = -1; // direct: where the head passes the duelist (the blow lands there)
+    /** direct: where the head enters the panel face, and the border column it crosses */
+    let stakeIn: { at: XY; edgeX: number } | null = null;
+    let dent: (() => void) | null = null;
     if (s.direct) {
       // over the field, past the duelist, staked into the LP PANEL'S FRAME on the side that faces the crab, level with
       // the readout but outside it: the head never covers a digit while the number rolls
+      // (review 3: IN the panel — the head goes in 4 px inside the border, level with the LP digits, never the corner)
       const lp = lpPoint(s.ctx, defender);
       const r = panelRect(defender);
-      const stake = { x: sock0.x < lp.x ? r.x + 2 : r.x + r.w - 3, y: lp.y };
-      dir = norm(sub(stake, sock0));
+      // (the v3 panel's drawn trim sits 3 px inside its layout rect)
+      const left = sock0.x < lp.x;
+      const edgeX = left ? r.x + 3 : r.x + r.w - 4;
+      const entryP = { x: left ? edgeX + 4 : edgeX - 4, y: rnd(lp.y) };
+      dir = norm(sub(entryP, sock0));
+      stakeIn = { at: entryP, edgeX };
+      const stake = add(entryP, dir, 7);
       tipEnd = add(stake, dir, -4);
       hitAt = s.to;
     } else {
@@ -383,7 +393,9 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
       // the stake: the head buried in the LP digits, a dry thock, a few splinters of the panel trim
       harp.set(add(tipEnd, dir, 4), ang, { bury: 7 });
       play('harpStake', { volume: 0.95, pan: dir.x > 0 ? 0.35 : -0.35 });
-      stakeChips(sc, tipEnd, dir, seedN);
+      const inAt = stakeIn?.at ?? tipEnd;
+      stakeChips(sc, inAt, dir, seedN, defender);
+      if (stakeIn) dent = panelDent(sc, stakeIn.at, stakeIn.edgeX, dir);
     } else {
       if (!bite && tgt && tipFar && entry) {
         // THE PUNCTURE, on the contact frame: the head goes in at the near silhouette edge (an ink notch and a water4
@@ -443,7 +455,7 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
     const toHaul = u.playRange('attack', haulF, ripF);
     look.taut = true;
     look.sag = 0;
-    play('harpHaul', { volume: 0.8, pan });
+    play('harpHaul', { volume: 0.5, pan });
     // the water wrung out of the line as it snaps taut: three white beads squeezed off it, dropping
     if (!s.direct && ropeFrom) wring(sc, ropeFrom, ropeTo ? ropeTo() : harp.butt(), fxDepth + 0.05, seedN);
     void shake(sc, 90, 1);
@@ -476,13 +488,15 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
     }
     stuck = false;
     ride();
+    dent?.();
+    dent = null;
     look.taut = false;
     look.sag = 3;
     look.wobble = bite ? 3 : 2;
     look.wet = 1;
     const tail0 = harp.butt();
     if (!bite && !s.direct) {
-      play('harpRip', { volume: 0.9, pan: panAt(tail0.x) });
+      play('harpRip', { volume: 0.55, pan: panAt(tail0.x) });
       sprayOut(sc, spray, tCore, { x: -dir.x, y: -dir.y }, floorB.y + 2, seedN + 3, 0.6);
     } else play('harpRip', { volume: 0.7, pan: panAt(tail0.x), pitch: 1.12 });
     harp.setDepth(fxDepth);
@@ -495,7 +509,7 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
     const reelDist = Math.hypot(cSock.x - tail0.x, cSock.y - tail0.y);
     const reelMs = clamp(rnd(reelDist * 2.6), 150, s.direct ? 260 : 220);
     const turn = ((((catchAng - ang) % 360) + 540) % 360) - 180; // shortest way round
-    void sleep(sc, 30).then(() => play('harpReel', { volume: 0.68, pan: panAt(lerp(tail0.x, u.home.x, 0.5)) }));
+    void sleep(sc, 30).then(() => play('harpReel', { volume: 0.45, pan: panAt(lerp(tail0.x, u.home.x, 0.5)) }));
     await animate(sc, reelMs, (t) => {
       const e = E.inQ(t) * 0.55 + t * 0.45;
       // tail first along the line (the head trails, still pointing where it flew); on the last third it swings round
@@ -737,18 +751,43 @@ function nacreRim(sc: Phaser.Scene, u: MonsterUnit): void {
 }
 
 /** The panel trim splinters where the head goes in (screen plane). */
-function stakeChips(sc: Phaser.Scene, at: XY, dir: XY, seed: number): void {
+function stakeChips(sc: Phaser.Scene, at: XY, dir: XY, seed: number, owner: PlayerId): void {
   const own = new Surface(sc, DEPTH.HUD + 7, { screen: true });
-  void animate(sc, 260, (t, el) => {
+  // four 2-px chips of the panel's trim (its ink, its frame tone — the owner's panel colour — and a white glint)
+  const cols = owner === 1 ? [PAL.white, PAL.crim3, PAL.ink, PAL.crim2] : [PAL.white, PAL.cyan3, PAL.ink, PAL.cyan2];
+  void animate(sc, 320, (t, el) => {
     own.clear();
     const k = el / 1000;
     for (let i = 0; i < 4; i++) {
-      const vx = -dir.x * (30 + hash(seed, i, 12) * 40) + (hash(seed, i, 13) - 0.5) * 50;
-      const vy = -30 - hash(seed, i, 14) * 50;
-      if (t > 0.7 && (rnd(el / 34) & 1)) continue;
-      own.set(at.x + vx * k, at.y + vy * k + 260 * k * k, i % 2 ? PAL.white : PAL.earth3);
+      const vx = -dir.x * (40 + hash(seed, i, 12) * 50) + (hash(seed, i, 13) - 0.5) * 60;
+      const vy = -40 - hash(seed, i, 14) * 60;
+      if (t > 0.75 && (rnd(el / 34) & 1)) continue;
+      const x = at.x + vx * k;
+      const y = at.y + vy * k + 300 * k * k;
+      own.set(x, y, cols[i]).set(x + 1, y, cols[i]).set(x, y + 1, cols[(i + 2) % 4]).set(x + 1, y + 1, cols[i]);
     }
   }).then(() => own.destroy());
+}
+
+/**
+ * The stake's dent in the LP panel (screen plane, held until the rip): a 1-px ink crack star round the entry and the
+ * border broken where the shaft crosses it (two ink pixels and a white chip edge). Returns its remover.
+ */
+function panelDent(sc: Phaser.Scene, at: XY, edgeX: number, dir: XY): () => void {
+  const s = new Surface(sc, DEPTH.HUD + 5.5, { screen: true });
+  const x = rnd(at.x);
+  const y = rnd(at.y);
+  // the crack: short ink rays out of the hole (never over the digits: they run up / down and back toward the border)
+  // each ink ray has its lit lip a pixel beside it (night3: the dent's bevel catches the light on the dark glass)
+  const back = dir.x > 0 ? -1 : 1;
+  const ray: [number, number][] = [[0, -1], [0, -2], [back, -3], [0, 1], [back, 2], [-back, 1], [-back, -2]];
+  for (const [dx, dy] of ray) s.set(x + dx - back, y + dy, PAL.night3);
+  for (const [dx, dy] of ray) s.set(x + dx, y + dy, PAL.ink);
+  // the border, broken where the shaft crosses it
+  const t = dir.x !== 0 ? (edgeX - at.x) / dir.x : 0;
+  const by = rnd(at.y + dir.y * t);
+  s.set(edgeX, by - 1, PAL.ink).set(edgeX, by + 1, PAL.ink).set(edgeX, by - 2, PAL.white);
+  return () => s.destroy();
 }
 
 /** The lost throw: the harpoon falls flat to the floor, lies a beat, blinks out (the rope with it). */
@@ -771,7 +810,7 @@ registerStrike(ID, (s) => (LOOK_V3 ? zipkinAtisi(s) : (s.base?.() ?? Promise.res
 // ================================================================ summon: the tide uncovers the conch
 
 /** A held tide sheet over the tile (state set by the caller, redrawn every frame). */
-function tideSheet(sc: Phaser.Scene, home: XY, depth: number, seed: number): { st: TideState; destroy(): void } {
+function tideSheet(sc: Phaser.Scene, home: XY, depth: number, seed: number, scale = 1): { st: TideState; destroy(): void } {
   const s = new Surface(sc, depth);
   const st: TideState = { inK: 0, outK: 0, dry: 0 };
   let alive = true;
@@ -783,7 +822,7 @@ function tideSheet(sc: Phaser.Scene, home: XY, depth: number, seed: number): { s
     if (key !== last) {
       last = key;
       s.clear();
-      paintTide(s, home, st, seed);
+      paintTide(s, home, st, seed, scale);
     }
     return true;
   }, () => s.destroy());
@@ -810,7 +849,8 @@ async function tideEntrance(S: Stage): Promise<void> {
   const arrive = start('harpTideIn', { volume: 0.9, pan });
   // 0–180: tide in — a flat sheet slides over the tile from the back-left, its white leading edge moving every frame
   // (a near-linear ease: the edge never parks)
-  await animate(sc, 180, (t) => (tide.st.inK = t * 0.7 + E.outQ(t) * 0.3));
+  // (review 3: it never fills the tile — the scalloped foam front stops ~3/4 across, so it reads as water, not a tile)
+  await animate(sc, 200, (t) => (tide.st.inK = (t * 0.7 + E.outQ(t) * 0.3) * 0.8));
   // 180–480: tide out — the sheet draws back toward the front-right, its foam line on the receding edge, and the
   // half-buried shell is UNCOVERED behind it (revealed column by column through that edge: the apex first, then the
   // length of the shell); sand clods slide off the apex once it is clear
@@ -864,6 +904,7 @@ async function tideEntrance(S: Stage): Promise<void> {
   // dipping on the release) under the cut-in's held conch
   // (the roar range starts ON its release frame, f3, where the first puff leaves the apex)
   play('harpVent', { volume: 0.95, pan });
+  ventPuffs(sc, u, roarFrom);
   atFrame(u, 'roar', 5, () => play('harpSwish', { volume: 0.75, pan, pitch: 1.1 }));
   atFrame(u, 'roar', 7, () => {
     play('harpPlant', { volume: 1, pan });
@@ -880,6 +921,31 @@ async function tideEntrance(S: Stage): Promise<void> {
   void wet.fadeOut(300);
   // summoned while the Bay is already up: the short (600 ms) wall rises as the turn is handed back
   void syncShroud(S.ctx, u, { short: true });
+}
+
+/**
+ * The conch SOUNDS: three staggered 2-px vapour puffs leave the apex (80 ms apart), rise 12–16 px drifting back,
+ * stretching into 1×3 wisps and thinning out in palette steps (white → mist → water4). Whole pixels, ~620 ms.
+ */
+function ventPuffs(sc: Phaser.Scene, u: MonsterUnit, f: number): void {
+  const apex = artPt(u, 'roar', f, 'head');
+  const top = u.worldPoint('top');
+  const a0 = { x: rnd(lerp(apex.x, top.x, 0.6)), y: rnd(Math.min(apex.y, top.y) + 2) };
+  const back = u.flipX ? 1 : -1;
+  const s = new Surface(sc, unitDepth(u.home.y) + 0.7);
+  void animate(sc, 620, (_t, el) => {
+    s.clear();
+    for (let i = 0; i < 3; i++) {
+      const e = (el - i * 80) / 460;
+      if (e <= 0 || e >= 1) continue;
+      const x = a0.x + back * rnd(e * (4 + i * 2)) + (i - 1) * 2;
+      const y = a0.y - rnd(e * (12 + i * 2));
+      const col = e < 0.35 ? PAL.white : e < 0.7 ? PAL.mist : PAL.water4;
+      if (e < 0.3) s.set(x, y, col).set(x + 1, y, col).set(x, y - 1, col).set(x + 1, y - 1, col);
+      else if (e < 0.75) s.set(x, y, col).set(x, y - 1, col).set(x, y - 2, col);
+      else if ((Math.floor(el / 34) + i) & 1) s.set(x, y - 1, col);
+    }
+  }).then(() => s.destroy());
 }
 
 /** Sand clods sliding off the uncovered shell (earth3, 2 px) — they fall and lie, then blink out. */
@@ -1069,7 +1135,7 @@ function burial(ctx: DestroyCtx): void {
       }
       if (!tide && fi.frame >= dissF) {
         // the tile goes wet again: the summon's wash comes in under the sinking shell and recedes
-        tide = tideSheet(sc, u.home, DEPTH.CARD_ON_TILE + 3, u.uid + 9);
+        tide = tideSheet(sc, u.home, DEPTH.CARD_ON_TILE + 3, u.uid + 9, 1.35);
         const t0 = tide;
         const inMs = u.rangeMs('death', dissF, dissF + 1);
         void animate(sc, inMs, (t) => (t0.st.inK = E.outQ(t))).then(() => animate(sc, u.rangeMs('death', dissF + 1, n - 1), (t) => (t0.st.outK = t)));
@@ -1129,7 +1195,7 @@ function sinkApex(sc: Phaser.Scene, u: MonsterUnit, home: XY, pan: number, bury:
   const sandS = new Surface(sc, spr.depth + 0.05);
   const y0 = spr.y;
   // the apex's columns at the floor (where the sand piles): the frame's opaque span on its floor row … a few rows up
-  const half = 9;
+  const half = 13;
   // the burst role: the hiss closes as the sand does, the last breath and the settle answer it
   if (bury) void sleep(sc, 220).then(() => bury.stop(160));
   else play('harpBury', { volume: 0.9, pan });
@@ -1180,7 +1246,12 @@ registerCardHook(
     if (!LOOK_V3) return ctx.base();
     // the plant and the wall FIRST (the cause), then the +400 outline and number (the effect): never under each other
     const u = ctx.unit(ctx.ev.uid);
-    if (u) await syncShroud(ctx, u);
+    if (u) {
+      const had = u.hasAura('bayShroud');
+      await syncShroud(ctx, u);
+      // the raise finishes (its crest lap and wake) before the +400 outline takes the eye
+      if (!had && u.hasAura('bayShroud')) await sleep(ctx.scene, 200);
+    }
     await ctx.base();
   },
   { priority: 20, name: 'kartc:tide_harpooner:shroud' },

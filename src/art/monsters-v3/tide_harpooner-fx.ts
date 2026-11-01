@@ -159,6 +159,8 @@ export interface WallOpts {
   collapse?: number;
   /** the raise: 0…1 — the columns stand up in a running wave from the front centre round both sides (absent = all up) */
   rise?: number;
+  /** the raise's first lap: the running crest leaves a white wake this long behind it (ring fraction, 0 = none) */
+  wake?: number;
   /** the ellipse radii (default RING: the 64×32 tile; the cinematics pass the arena's tile) */
   rx?: number;
   ry?: number;
@@ -195,11 +197,16 @@ export function shroudWall(p: PixelCanvas, cx: number, cy: number, half: 'back' 
       h = k >= 1 ? h : Math.min(h + 1, Math.ceil(h * k * 1.25));
     }
     // the curl: a bump of up to 10 px where the attempt hit, its lip curling over
+    let curlCol = false;
     if (o.curl && o.curlAt !== undefined) {
       let d = Math.abs(u - o.curlAt);
       d = Math.min(d, 1 - d);
-      const k = Math.max(0, 1 - d / 0.075);
-      h = Math.max(h, 10 * o.curl * k * k * (3 - 2 * k));
+      const k = Math.max(0, 1 - d / 0.09);
+      const ch = 10 * o.curl * k * k * (3 - 2 * k);
+      if (ch > h) {
+        h = ch;
+        curlCol = ch > 3;
+      }
     }
     // the travelling crest bumps: three 1-px lumps on the top edge a third of the ring apart, riding the crest clock
     // (the lead one 2 px), so the standing wall laps instead of reading as a rigid hoop
@@ -222,13 +229,21 @@ export function shroudWall(p: PixelCanvas, cx: number, cy: number, half: 'back' 
     // the lap texture: the body's water2 broken by short water3 runs that drift round with the crest clock
     const lap = (Math.floor(u * 96 + o.crest * 192) % 6 + 6) % 6 < 2;
     for (let k = 0; k <= hh; k++) {
-      const c = k === hh ? (bump > 0 && k >= 2 ? PAL.white : PAL.water4) : k >= hh - 1 && hh >= 3 ? PAL.water3 : k === 0 ? PAL.water3 : lap ? PAL.water3 : PAL.water2;
+      // a curling column reads as a breaking wave: a 2-px white crest, a water4 band under it, then banded body
+      const c = curlCol
+        ? k >= hh - 1 ? PAL.white : k >= hh - 3 ? PAL.water4 : k % 3 === 1 ? PAL.water3 : PAL.water2
+        : k === hh ? (bump > 0 && k >= 2 ? PAL.white : PAL.water4) : k >= hh - 1 && hh >= 3 ? PAL.water3 : k === 0 ? PAL.water3 : lap ? PAL.water3 : PAL.water2;
       p.set(x, y - k, c);
     }
     // crest: a 3-px white foam run on the top edge
     let dc = Math.abs(u - o.crest);
     dc = Math.min(dc, 1 - dc);
     if (dc < 0.012 && hh >= 1) p.set(x, y - hh, PAL.white).set(x, y - hh - 1, PAL.white);
+    // the first lap's wake: the top edge stays white for a stretch behind the running crest
+    if (o.wake && hh >= 1) {
+      const behind = (((o.crest - u) % 1) + 1) % 1;
+      if (behind > 0 && behind < o.wake) p.set(x, y - hh, PAL.white);
+    }
     // the curl's lip: white tipped over toward the outside
     if (o.curl && hh >= 6) {
       p.set(x, y - hh - 1, PAL.white);

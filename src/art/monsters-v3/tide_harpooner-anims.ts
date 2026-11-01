@@ -79,7 +79,8 @@ export function idlePose(f: number): Pose {
   });
 }
 const IDLE0 = idlePose(0);
-const IDLE_HOLDS = [120, 110, 110, 130, 140, 130, 110, 110, 120, 110, 110, 130, 140, 130, 110, 110];
+// (review 3: an accent hold on each bubble pop, f6 and f12, so the loop's rhythm is the crab's own, not an even beat)
+const IDLE_HOLDS = [120, 110, 100, 130, 150, 120, 180, 100, 120, 110, 100, 120, 180, 140, 110, 90];
 
 /** A one-shot key over idle f0. */
 function key(d: Partial<Pose>, base: Pose = IDLE0): Pose {
@@ -215,11 +216,13 @@ const R_N = 10;
 const ROAR_KEYS: Pose[] = [
   key({ cy: 1, eye: 0.8, eL: -14, eR: 6 }),
   key({ sy: 2, cy: 1, eye: 0.7, ext: 0.8, eL: -24, eR: -6, fx: 10, fy: -38, nOpen: 0.2, sag: 7 }),
-  key({ rot: -8, sx: -1, sy: -2, eye: 1.2, eL: -18, eR: 24, hy: -12, grip: 0.42, fx: -4, fy: -58, nOpen: 0.6, sag: 3, coil: 0.8 }),
-  key({ rot: -8, sx: -1, sy: -3, eye: 1.3, eL: -24, eR: 30, hy: -15, grip: 0.42, fx: -6, fy: -62, nOpen: 0.8, sag: 2, coil: 0.8, puff: 0.25, nacre: 1 }),
-  key({ rot: -8, sx: -1, sy: -2, eye: 1.2, eL: -18, eR: 24, held: 1, grip: 0.5, hx: -9, hy: -40, ha: 0, fx: 6, fy: -58, sag: 4, puff: 0.55, nacre: 1 }),
+  // the REAR (review 3: it reads): three frames 3–4 px up, claws flung wide, eye stalks at full length
+  key({ rot: -8, sx: -1, sy: -3, cx: -1, eye: 1.35, eL: -18, eR: 24, hy: -12, grip: 0.42, fx: -6, fy: -60, nOpen: 1, sag: 3, coil: 0.8 }),
+  key({ rot: -8, sx: -1, sy: -4, cx: -1, eye: 1.4, eL: -24, eR: 30, hy: -15, grip: 0.42, fx: -8, fy: -64, nOpen: 1, sag: 2, coil: 0.8, puff: 0.25, nacre: 1 }),
+  key({ rot: -8, sx: -1, sy: -3, eye: 1.35, eL: -18, eR: 24, held: 1, grip: 0.5, hx: -9, hy: -40, ha: 0, fx: 6, fy: -60, sag: 4, puff: 0.55, nacre: 1 }),
   key({ sy: -1, eye: 1.1, eL: -14, eR: 20, held: 1, grip: 0.5, hx: 22, hy: -66, ha: 90, fx: 8, fy: -52, sag: 5, puff: 0.8 }),
-  key({ sy: -1, eye: 1.1, eL: -12, eR: 18, held: 1, grip: 0.5, hx: 46, hy: -42, ha: 180, fx: 10, fy: -48, sag: 6, puff: 1 }),
+  // the spin's flat frame: the shaft foreshortened (it turns through the view) with a 2-px smear, never a long bar
+  key({ sy: -1, eye: 1.1, eL: -12, eR: 18, held: 1, grip: 0.5, hx: 40, hy: -42, ha: 180, hl: 0.62, smear: 2, fx: 10, fy: -48, sag: 6, puff: 1 }),
   key({ sy: 1, cy: -1, eye: 1.05, eL: -14, eR: 14, held: 1, hy: 0, spray: 0.4, tok: 1, fx: 13, fy: -44, sag: 9 }),
   key({ sy: 0, eye: 1, spray: 0.85, fx: 14, fy: -44, sag: 10, swing: 2 }),
 ];

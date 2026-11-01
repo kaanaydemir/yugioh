@@ -22,18 +22,20 @@ const LOOP = [
   { eL: -10, eR: 20, glint: 0, crown: 1 },
 ] as const;
 
-function cardPose(f: number): Pose {
+function cardPose(f: number, small = false): Pose {
   const L = LOOP[f % 4];
+  // small (review 3): the harpoon held upright over the shell so the spire's top whorls, the eye stalks and the head
+  // all fit the 44×34 window; the nacre a step darker there, so the tip glint stays the brightest point
   return pose({
-    sx: 2, sy: -2, eye: 1.15, eL: L.eL, eR: L.eR, nacre: 1,
-    held: 1, ha: -78, grip: 0.5, hy: -6,
+    sx: 2, sy: -2, eye: 1.15, eL: L.eL, eR: L.eR, nacre: small ? 0 : 1,
+    held: 1, ha: small ? -96 : -78, grip: 0.5, hy: -6,
     fx: 6, fy: -44, coil: 1, rope: 0, sag: 8, swing: 4,
   });
 }
 
 /** The rig drawn for the picture; returns the frame and the harpoon tip (frame px). */
-function rigFrame(f: number): { q: PixelCanvas; tip: readonly [number, number] } {
-  const o = cardPose(f);
+function rigFrame(f: number, small = false): { q: PixelCanvas; tip: readonly [number, number] } {
+  const o = cardPose(f, small);
   const q = new PixelCanvas(RW, RH);
   drawHarpooner(q, o, 'left');
   const sk = skeleton(o);
@@ -67,7 +69,7 @@ function crown(l: PixelCanvas, cx: number, cy: number, rx: number, ry: number, p
 
 function paint(l: ArtLayers, f: number, small: boolean): void {
   const L = LOOP[f % 4];
-  const { q, tip } = rigFrame(f);
+  const { q, tip } = rigFrame(f, small);
   // where the tip lands in the window (big: the conch's apex sits at APEX, so the whole spiral shows)
   const T = small ? FOCUS_SMALL : FOCUS;
   const ox = T[0] - tip[0];
@@ -77,6 +79,9 @@ function paint(l: ArtLayers, f: number, small: boolean): void {
   l.subject.blit(q, ox, oy);
   // the picture's colour budget (≤ 20): fold the sprite's rarest steps into their neighbours
   recolor(l.subject, PICTURE_FOLD);
+  // small: the subject's own whites (the nacre lip's top band) step down to water4 — at hand size the tip glint must be
+  // the one white in the picture
+  if (small) recolor(l.subject, { [PAL.white]: PAL.water4 });
   // the moonlit rim runs on the conch's shadow side only (the crab's thin limbs stay calm)
   const sub = l.subject.clone();
   rim(l.subject, PAL.water3, { only: (x, y) => { const c = sub.get(x, y); return c === PAL.earth1 || (c === PAL.earth2 && x < ox + 58); } });
@@ -97,8 +102,8 @@ const PICTURE_FOLD: Readonly<Record<number, number>> = {
 const APEX = [10, 12] as const;
 const SK0 = skeleton(cardPose(0));
 const FOCUS = [APEX[0] + Math.round(SK0.ht[0]) - Math.round(SK0.apex[0]), APEX[1] + Math.round(SK0.ht[1]) - Math.round(SK0.apex[1])] as const;
-/** Small: the same picture closer — the tip near the top-right corner, the crab's eyes and the nacre lip below-left. */
-const FOCUS_SMALL = [34, 6] as const;
+/** Small: the tip near the top-right corner; the spire's top whorls at the left edge, the eye stalks in the middle. */
+const FOCUS_SMALL = [36, 5] as const;
 
 const art: CardArtV3 = {
   id: 'tide_harpooner',
