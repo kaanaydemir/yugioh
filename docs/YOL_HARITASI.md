@@ -96,3 +96,4 @@ D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (ka
   REHBER §5 × 1.45 (docs/v3/TEMPO.md) artık sert bir kapı değil, yalnız yol gösterici; bir an daha
   etkileyici ve okunur oluyorsa daha uzun olabilir (ör. Boşluk Gözü ~5,4 sn kabul). Ölçüt: akıcı, okunur,
   oyunu yavaşlatmayan tempo — sık görülen anlar (sıradan saldırı/çağırma) kısa kalır, nadir/büyük anlar uzar.
+- Bulut Yavrusu (cloud_hatchling) BİTTİ: şerit A 3cd1647, ana dal 03b0221, test sürümü 14. Sırada Zehir Ejderi (şerit A çalışıyor).
