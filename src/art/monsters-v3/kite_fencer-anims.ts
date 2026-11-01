@@ -257,10 +257,12 @@ const HEAVY_HOLDS = [50, 60, 70, 90, 90, 100, 110, 120];
 
 const MAGIC_KEYS: Partial<Pose>[] = [
   { hdx: -1, hx: 10, hy: 0 },
-  { lean: -1, hdx: -1, hx: 9, hy: 0, ba: -18, flash: 1, shiver: 1, sink: 0, kbl: 1 },
-  { lean: -1, hdx: -1, hx: 9, hy: 0, ba: -18, flash: 0, shiver: -1, sink: 0, kbl: 2, ka: -7 },
-  { lean: -1, hdx: -1, hx: 9, hy: 0, ba: -18, flash: 1, shiver: 1, sink: 0, kbl: 1, ka: -6 },
-  { lean: 0, hx: 9, hy: 2, ba: -6, sink: 3, kbl: -1, ka: -2 },
+  // jolted back: every panel flashes, the cloak flares wide, the rear arm thrown up, the blade knocked high
+  { lean: -3, hdx: -2, rx: -1, sink: 2, hx: 7, hy: -1, ba: -30, flash: 1, shiver: 1, kbl: 3, ko: 1.06, ka: -7, fx: -12, fy: -13 },
+  { lean: -2, hdx: -2, rx: 0, sink: 3, hx: 7, hy: 0, ba: -24, flash: 0, shiver: -1, kbl: 4, ko: 1.08, ka: -8, fx: -11, fy: -12 },
+  // the charge runs out of him: a last flash, he sags (chest down 2 px, head dropped), the blade drops
+  { lean: -1, chy: 2, hdy: 1, rx: -1, sink: 3, hx: 8, hy: 3, ba: 10, flash: 1, shiver: 1, kbl: 2, ka: -8, fx: -12, fy: -9 },
+  { lean: -1, chy: 1, sink: 3, hx: 9, hy: 2, ba: -4, kbl: -1, ka: -4 },
   { sink: 2, hx: 10, hy: 2, ba: -10, kbl: -1, ka: -3 },
   { sink: 1, kbl: 0 },
   {},

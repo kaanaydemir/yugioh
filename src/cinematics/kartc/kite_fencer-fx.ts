@@ -399,62 +399,63 @@ export function threadMote(scene: Phaser.Scene, at: XY, back: number, depth: num
 }
 
 /**
- * The death's own ending (no shared burst): the 6×4 linen scrap twitches toward the wind that took the cloak
- * (`dir` ±1), FRAYS into four 1-px threads (earth4 / earth3) that drift up and after the cloak, and they blink out in
- * palette steps (earth4 → earth3 → earth2 → gone). `onLast` fires on the last thread frame (the card is born there).
- * Every step is counted in real frames' scene time (no alpha, whole pixels).
+ * The death's own ending (no shared burst): the linen scrap (its twitch toward the wind is the sheet's last death frame)
+ * FRAYS into four 1-px threads (earth4 / earth3) that tear off up and after the cloak (`dir` ±1) and blink out in
+ * palette steps (earth4 → earth3 → earth2 → gone). Each thread carries a 1-px ink shadow under it, so it reads over the
+ * lit card face that the body uncovers. The first two frames keep a shrinking stub of the scrap (inked) where the
+ * threads leave it. `onLast` fires on the last thread frame (the card is born there). Scene-time steps (no alpha).
  */
 export function scrapFray(scene: Phaser.Scene, at: XY, dir: 1 | -1, depth: number, rnd: () => number, onLast: () => void): Promise<void> {
   const px = layer(scene, depth);
   const threads = [0, 1, 2, 3].map((i) => ({
-    x: at.x + dir * (-2 + i * 1.6),
+    x: at.x + dir * (-2 + i * 1.5),
     y: at.y - 1 - (i % 2),
-    vx: dir * (14 + rnd() * 16 + i * 4),
-    vy: -(16 + rnd() * 14 + (3 - i) * 3),
+    vx: dir * (38 + rnd() * 18 + i * 9),
+    vy: -(30 + rnd() * 14 + (3 - i) * 5),
     len: 3 + (i % 2),
     ph: rnd() * 6,
     c: i % 2 ? PAL.earth3 : PAL.earth4,
   }));
-  const TWITCH = 70;
-  const FRAY = 220;
+  const FRAY = 260;
   let fired = false;
+  const fire = () => {
+    if (fired) return;
+    fired = true;
+    onLast();
+  };
   return new Promise((resolve) => {
     onFrame(scene, (dt, el) => {
       px.clear();
-      if (el < TWITCH) {
-        // the scrap (6×4) flicks its back corner toward the wind, two poses
-        const up = el < TWITCH / 2 ? 1 : 2;
-        px.run(R(at.y), R(at.x - 3), R(at.x + 2), PAL.earth3);
-        px.run(R(at.y) - 1, R(at.x - 2), R(at.x + 2), PAL.earth4);
-        px.run(R(at.y) - 2, R(at.x - 1 + dir), R(at.x + 1 + dir), PAL.earth4);
-        px.dot(R(at.x + dir * 3), R(at.y) - 2 - up, PAL.earth4).dot(R(at.x + dir * 4), R(at.y) - 3 - up, PAL.earth3);
-        return true;
-      }
-      const t = (el - TWITCH) / FRAY;
+      const t = el / FRAY;
       if (t >= 1) {
-        if (!fired) {
-          fired = true;
-          onLast();
-        }
+        fire();
         px.g.destroy();
         resolve();
         return false;
       }
-      // the scrap comes apart into threads; the last ones are the last frame (the card's birth)
-      const step = t < 0.4 ? 0 : t < 0.7 ? 1 : 2;
+      // the stub of the scrap the threads tear out of (inked, shrinking toward the wind)
+      if (t < 0.22) {
+        const w = t < 0.11 ? 4 : 2;
+        const x0 = R(at.x + (dir > 0 ? 4 - w : -4));
+        px.run(R(at.y) + 1, x0 - 1, x0 + w, PAL.ink);
+        px.run(R(at.y), x0 - 1, x0 + w, PAL.ink);
+        px.run(R(at.y), x0, x0 + w - 1, PAL.earth3);
+        px.run(R(at.y) - 1, x0, x0 + w - 1, PAL.ink);
+      }
+      const step = t < 0.45 ? 0 : t < 0.75 ? 1 : 2;
       for (const th of threads) {
         th.x += (th.vx * dt) / 1000;
         th.y += (th.vy * dt) / 1000;
-        th.vy += (8 * dt) / 1000;
+        th.vy += (40 * dt) / 1000; // the gust lets go of them: they slow and start to settle
+        th.vx *= 1 - (1.2 * dt) / 1000;
         const c = step === 0 ? th.c : step === 1 ? PAL.earth3 : PAL.earth2;
-        const w = Math.round(Math.sin(el * 0.03 + th.ph));
-        for (let j = 0; j < th.len; j++) px.dot(R(th.x - dir * j), R(th.y + (j === th.len - 1 ? w : 0)), c);
+        const w = Math.round(Math.sin(el * 0.035 + th.ph));
+        const pts: [number, number][] = [];
+        for (let j = 0; j < th.len; j++) pts.push([R(th.x - dir * j), R(th.y + (j === th.len - 1 ? w : 0))]);
+        for (const [x, y] of pts) px.dot(x, y + 1, PAL.ink);
+        for (const [x, y] of pts) px.dot(x, y, c);
       }
-      if (t < 0.25) px.run(R(at.y), R(at.x - 2), R(at.x + 1), PAL.earth3);
-      if (!fired && t >= 0.86) {
-        fired = true;
-        onLast();
-      }
+      if (t >= 0.9) fire();
       return true;
     });
   });

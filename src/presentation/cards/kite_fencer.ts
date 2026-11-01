@@ -9,8 +9,10 @@
 // nearest in kind — a thin stretched membrane): hitSoundFor() gives null and the card's own defend hook scores the
 // struck kite cloth (kfnStruck / kfnGuardWrap) on the contact frame instead of the generic body blow. The magus'
 // 'cloth' would play its robe-and-shadow exhale, which §2.4 forbids for this card.
-// death: §5.2 — not a material finale of its own (the string snap and the flight are the cinematic's): the linen
-// scrap lets go as light motes in the kite's gold, with the gold accent (light) — no leaves (C11), no rubble.
+// death: §5.2 — the card's own destroy hook (priority 20) plays the WHOLE death (string snap → the cloak off screen →
+// the body thins → the linen scrap frays into threads → the card is born on the last thread), so this pair only
+// matters on the fallback path (no art / a source that owns the death). It is a pair no other card uses, and never the
+// shared light burst (its reticle + floor ring belong to lumen_sprite / hourglass_imp).
 // light: §2.4 "Light" — gold4 (the indicator panel) and the rapier's white tip; no leaf tones (those are C11's).
 
 import { PAL } from '../../art/palette';
@@ -22,7 +24,7 @@ export default {
   body: { physical: 'scale' },
   attack: { type: 'lunge', blow: 'physical', from: 'muzzle', vfx: 'needle', tone: PAL.gold4 },
   summon: { style: 'swoop', matter: 'light' },
-  death: { material: 'light', accent: 'light' },
+  death: { material: 'shadow', accent: 'water' },
   flip: { accent: 'dust' },
   voice: { custom: 'kite_fencer' },
   light: { glow: { emissive: [[PAL.gold4, 1], [PAL.white, 0.6]], halo: 0.5, pool: 0.6 }, strike: PAL.gold4 },
