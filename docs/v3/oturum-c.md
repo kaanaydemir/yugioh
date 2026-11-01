@@ -13,15 +13,30 @@ Branch: `claude/kart-c` · Kartlar: tide_harpooner (C1), reed_heron (C8), crag_a
 ## Ortam notu
 - playwright-core 1.56.1 tarayıcı revizyonu 1194 ister; ortamda 1243 var. `/opt/pw-browsers/chromium*-1194` symlink'leri eklendi.
 
-## Kart durumu (WIP checkpoint, 2026-10-31 ~20:00 UTC)
-Tüm kartların worktree'lerde commit'lenmiş hâli `claude/kart-c`'ye birleştirildi (typecheck temiz). Eleştiri turları henüz başlamadı.
+## Kart durumu (DURAKLATILDI, 2026-11-01 ~12:00 UTC — sahip kararı: haftalık kullanım %92)
 
-| Kart | Durum | Sonraki adım |
+Workflow ve 30 dk otomatik checkpoint durduruldu. Tüm worktree işi `claude/kart-c`'ye birleştirildi ve push edildi
+(her `kartc/<id>` dalı lane dalının içinde; ileride bağımsız worktree gerekmez).
+
+| Kart | Durum | Kalan iş |
 |---|---|---|
-| tide_harpooner | rig, anim, kart resmi, cut-in, sesler, recipe, saldırı/çağırma/ölüm/Körfez kalkanı sinematikleri, senaryolar — WIP checkpoint — sunum yapıldı, eleştiri turları sürüyor | ≥3 eleştiri turu → kapılar |
-| reed_heron | rig + kart resmi + sunum (sis çağırma, üçlü gaga 40/40/80, sis ölümü, sesler, rhr senaryoları) — WIP checkpoint — sunum yapıldı, eleştiri turları sürüyor | ≥3 eleştiri turu → kapılar |
-| crag_axeman | rig + anim + kart resmi + sunum (yarık, dönüş+yarma, ikiye ayrılma, SFX) — WIP checkpoint — sunum yapıldı, eleştiri turları sürüyor | ≥3 eleştiri turu → kapılar |
-| kite_fencer | rig + kart resmi + sunum (pike, uçurtma uçuşu 2. saldırı, yaprak çağırma, ölüm uçuşu, panel, sesler) — WIP checkpoint — sunum yapıldı, eleştiri turları sürüyor | ≥3 eleştiri turu → kapılar |
-| steppe_spiralhorn | rig + anim + ölüm finali + kart resmi + sunum (sekmeler, tohum patlaması, flüt sesi) — WIP checkpoint — sunum yapıldı, eleştiri turları sürüyor | ≥3 eleştiri turu → kapılar |
+| tide_harpooner | **BİTTİ** (67baa70). 3 eleştiri turu (r1–r3 hepsi "fail" + her turdan sonra düzeltme; r3: 0 blocker, 3 major, 13 minor → hepsi düzeltildi, 2'si kısmen). Kapılar: typecheck temiz; test yalnız bilinen hatalar; monster-gates `--class ace --ref none` 21 ok / 0 FAIL (`--class large` bayt ve v1-yer-tutucu-ref satırlarında düşer: kart as ★); filmdiff v1 17/17 + a6v1 26/26 IDENTICAL; camera gate 15 ok + 21 NOBASE ok, 0 FAIL; palcheck thpAttack FAIL ama referans as `saWyrmAtk` aynı renklerle (cyan0/crim0/void2, tahta+ortak kit) ve daha yüksek beyazla düşüyor — kart kaynaklı değil | r3 düzeltmeleri yeniden eleştirilmedi (bilinçli: tasarruf). |
+| kite_fencer | 3 eleştiri turu bitti; **r3 düzeltmesi yarıda kesildi** (2. saldırı temas pozu/çıkış kısmen yapıldı) | r3 bulgularını uygula: `docs/v3/oturum-c-bulgular/kite_fencer-r3.md` (0 blocker, 4 major) → kapılar → birleştir |
+| reed_heron | 3 eleştiri turu bitti; **r3 düzeltmesi yarıda kesildi** | `docs/v3/oturum-c-bulgular/reed_heron-r3.md` (3 major, 7 minor) → kapılar → birleştir |
+| crag_axeman | sunum tam; r1 eleştirisi yapıldı, r1 düzeltmesi kısmen (yarıda) | `oturum-c-bulgular/crag_axeman-r1.md` bitir → r2, r3 → kapılar. ⚠ lane dalında `tests/presentation/crag_axeman.test.ts` "speaks with its own voice" düşüyor (WIP) |
+| steppe_spiralhorn | sunum tam; r1 eleştirisi yapıldı, düzeltme başlamadı | `oturum-c-bulgular/steppe_spiralhorn-r1.md` uygula → r2, r3 → kapılar |
 
-Süreç: Workflow `kart-c-lane` (run wf_c8c99914-3bc) her kartı worktree'de sürdürüyor; her kart bitince birleştirme + kapılar + push.
+## Devam talimatı (haftalık sıfırlamadan sonra)
+1. Taze bir oturumda `claude/kart-c`'yi çek. `npm ci`. Tarayıcı: playwright-core 1.56.1 revizyon 1194 ister; ortamda yoksa
+   `/opt/pw-browsers/chromium-1194/chrome-linux -> ../chromium-1243/chrome-linux64` ve
+   `/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux -> ../chromium_headless_shell-1243/chrome-headless-shell-linux64`
+   symlink'leri + `.../chrome-headless-shell-linux64/headless_shell -> chrome-headless-shell` + her iki 1194 dizinine `INSTALLATION_COMPLETE`.
+2. Kapı taban çizgileri `shots/` altında git'e girmez: 684e290'dan yeniden üret (temiz bir worktree'de):
+   `node tools/filmdiff.mjs --set v1 --base shots/v3/a3/baseline/v1films --write --jobs 3`,
+   `node tools/filmdiff.mjs --set a6v1 --base shots/v3/a56/baseline/a6v1films --write --jobs 3`,
+   `node tools/measure.mjs --scenarios baseline --look v3 --jobs 3 --norender --out shots/v3/kartc/camera-base.json`.
+3. Öncelik sırası: kite_fencer → reed_heron (her biri: bulgu dosyasını uygula, film-bak doğrula, kapılar, "finished" commit + push) →
+   crag_axeman → steppe_spiralhorn (r2 ve r3 bağımsız eleştiri + düzeltme, sonra kapılar).
+4. Komutlar: `docs/v3/oturum-c-mimari.md` §8 (gates), tasarım: `docs/v3/oturum-c-tasarim.md`. Kart başına senaryo önekleri:
+   thp (Zıpkıncı), rhr (Balıkçıl), cax (Baltacı), kfn (Eskrimci), ssh (Boynuzlu). monster-gates'e `--class` ver (as: ace, 64: medium, 48: small).
+5. `tests/presentation/outcomes.test.ts` recipe sayısı artık alt sınır (≥3); her yeni recipe ekler.
