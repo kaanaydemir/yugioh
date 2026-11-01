@@ -7,7 +7,7 @@ Branch `claude/kart-a` (from 684e290). Brief: `docs/v3/PARALEL_OTURUMLAR.md`.
 | Card | Design | Sprite rig (P1/P2) | Card art | Cut-in | Cinematics | SFX | Critique rounds | Gates | Pushed |
 |---|---|---|---|---|---|---|---|---|---|
 | ashen_drake (R1, no rebirth) | done (rev 3) | done (vulture-perch rig, P1 + P2) | done | done | done (summon, attack/tie/direct, revive, position, flip, death) | done | 7 (sprite 3, cinematics 3, adversarial 1) | pass (see ashen_drake below; IŞ-10 exempt, palcheck a5 absolutes as base) | yes |
-| venom_drake (full redesign) | done (rev 3) | — | — | — | — | — | 0 | — | — |
+| venom_drake (full redesign) | done (rev 3) | done (scorpion-wyvern rig, P1 + P2) | done | done | done (summon, attack/lose/tie, direct, death + lasting scar, revive, position, flip, struck) | done (24 recipes, `src/audio/v3/venom.ts`) | 8 (sprite 3, card art 1, cinematics 3, adversarial 1) | pass (see venom_drake below; palcheck a5 absolutes as base, camera NOBASE) | yes |
 | cloud_hatchling (C3 + aged form) | done (rev 3) | done (baby + grown variant, P1 + P2) | done | n/a (not ace) | done (summon, growth/jesterAging, attack/direct, grown attack, revive, position, flip, death, cross-card) | done | 9 (sprite 3, film 3, adversarial 3: c3r3–c3r5) | pass (see cloud_hatchling below; HA-14/HA-15 shared-shell rows declared, palcheck a5 absolutes as base) | yes |
 
 ## Environment notes
@@ -181,6 +181,20 @@ are the ambient sky-flyer band (x 32–606, y 94–111), which differs between t
   sounds not wired yet; (4) KK-1 blind critic sign-off (grown form next to crystal_wyrm) still needed.
   Deviation: `?dev=hatchling&mode=rewind` preview not built; a unit test covers the contract.
 
+## venom_drake: done (2026-11-01)
+- Evidence: `shots/kart-a/venom_drake/final/` (gates; acid death re-filmed ×2 in `final/dies-z.png`), earlier rounds in
+  `crit1/`, `crit4/`, `gates/`; build log, definition-of-done checklist and Status in `docs/v3/kart-a/venom_drake.md`
+  ("Adversarial verifier (2026-11-01): fixes and final gates").
+- Gates: typecheck clean · `npm test` 1352 passed, 4 failed (the 4 known; every venom_drake test passes) · filmdiff v1
+  17/17 and a6v1 26/26 identical · camera gate 15 ok, 20 ok NOBASE, 0 FAIL, zoom 1 · monster-gates (ace, P1 + P2)
+  21 ok, 0 FAIL, 2 n/a, 1 info (137 frames, 5.04 MB) · measure 0 errors in every `kaVenom*` + baseline film (Summon
+  3833, Revive 2166, Flip 733, Pos 1000 ms; guidance only) · palcheck: same a5-absolute FAILs as the approved base
+  films, only on shared frames (declaration frame, card flight, post-scene number fade).
+- Verifier: stale `src/vfx/shatter.ts` comment on the `acid` recipe fixed (comment only); DoD checklist added to the doc.
+- Open (none blocking, none owned by this card): (1) shared contact ring — battle kit owner; (2) the summon's loudest
+  window is the shared `_v3/cutin.ts` sting — cut-in owner; (3) palcheck a5 absolute limits fail on shared frames as
+  in the base films; (4) camera base has no `kaVenom*` entries (NOBASE).
+
 ## ashen_drake: IŞ-10 reference exemption (2026-10-31, lane-A builder, critic r3 #12)
 `tools/monster-gates.ts` compares idle f0 noise with the v1 idle f0 when a card has no approved still. For ashen_drake
 the v1 frame is the `placeholderTotem`-era sprite of a different creature (2.6 % isolated px), so the row prints
@@ -211,3 +225,27 @@ and one shield_titan test fails besides its known one — re-check after the hat
    camera gate, palcheck, monster-gates, measure ≤ REHBER §5 × 1.45) → one adversarial verifier + fixes → per-card commit.
    For cloud_hatchling, first finish its card-art fix (critique in its doc build log) and make tests/art/cloud_hatchling*.test.ts pass.
 4. Scratch helpers `tools/_*.ts` are local-only (excluded via .git/info/exclude); never commit them.
+
+## LANE A DONE (2026-11-01 ~21:15 UTC)
+All three cards are finished, gate-checked and pushed on `claude/kart-a`:
+
+| Card | Finished commit | Notes |
+|---|---|---|
+| ashen_drake (Kül Ejderi, R1, no rebirth) | `b2fc32e` (already merged to main as `bd5cf12`) | vulture-perch ash dragon; cloak-as-ammunition ash-bank breath with delayed ignition; crumble-to-ash-heap death |
+| cloud_hatchling (Bulut Yavrusu, C3) | `3cd1647` | baby + permanent grown form (variant mechanism); egg summon; hiccup wind-ring attack; egg re-knit death; growth signature after a won jester toss |
+| venom_drake (Zehir Ejderi, full redesign) | `dd6ce16` | scorpion wyvern; venom-mortar glob that eats holes; self-corrosion death leaving a duel-long acid scar |
+
+Gates at each card's finish: typecheck clean; vitest only the known failures; filmdiff v1 17/17 + a6v1 26/26 IDENTICAL;
+camera gate 0 FAIL; all card scenarios play without errors; monster-gates pass (declared rows only).
+Process: design 3 rounds (design + 2 critiques), sprite 3 sheet-critique rounds, card art (+cut-in) critique, cinematics +
+3 film-critique rounds, gates, adversarial verification, per card.
+
+**Open, owned outside lane A (for the merging orchestrator):**
+- Lane D: call our `rewindAnims()` / `rewindSfx` contract (`src/art/variants.ts`) when a jester win destroys an opponent's
+  cloud_hatchling (today it plays the hatchling's own death; reads fine, but the reversed growth is not shown).
+- Shared `src/cinematics/_core/project.ts` has no `toHand` case (projection-drift console warning on bounces).
+- Shared impact star / damage number covers the direct-attack contact frame (ashen_drake); shared cut-in sound is the summon's
+  loudest moment (venom_drake); per-card slam / victory sound roles requested.
+- `shots/kart-a/camera-base.json` has no kaVenom*/kaCh*/kaAd* keys (they pass as NOBASE); re-base at merge if wanted.
+- palcheck absolute a5 limits fail on shared frames exactly as the approved base films do (no regression).
+- Owner questions answered by default: no ambient idle sounds; only venom_drake's death scar persists.

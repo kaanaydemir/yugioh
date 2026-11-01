@@ -1825,3 +1825,386 @@ Tests:
   frame. The per-pixel expects took about 5 s and timed out in a full `tests/art` run.
 - `tsc` is clean for my files.
 - `cardface-v3` G1 still fails only on scrap_raiders, as before. It is not this card.
+
+### Cinematics + SFX (§5 / §6 / §8), build pass 1 — 2026-11-01
+
+**Files (new):** `src/audio/v3/venom.ts` (24 recipes, `V3_VENOM_RECIPES`, `VenomSfxName`, `V3_VENOM_SUSTAINED`),
+`src/presentation/cards/venom_drake.ts` (the recipe; every part custom), `src/cinematics/kart-a/venom_drake-acid.ts`
+(glob, flight, trail/etch dots, splat crown, steam threads, `acidHoles` on the shared `holeAt` web, `surfaceOf`, the
+module-level scar store), `venom_drake-strike.ts` ("Zehir Havanı" + "Zehir Sağanağı", blocked / losing / tie),
+`venom_drake-summon.ts` ("Zehirli Sis" + the custom flip), `venom_drake-death.ts` (watcher + puddle → duel scar).
+**Additive lines:** `src/audio/sounds.ts` (import + spread), `src/audio/sfx.ts` (`| VenomSfxName`),
+`src/cinematics/_v3/sound.ts` (`CHARACTER_SOUNDS.venom_drake`). Every registration is under `LOOK_V3`.
+
+**What plays now**
+- Mortar: the declaration's held charge rattle (power-picked variant), three swells (glug ladder 1 / 1.12 / 1.26) each
+  dropping a drop from the bulb that etches a dot on its own tile, the bulb's follow light grows, the whip band, the
+  spit (3-px crown, 1 px shake), a 260 ms wobbling 7×6 glob with a wet streak, a night0 floor shadow and etching trail
+  drops, landing on the flank that faces the drake (`surfaceOf` from the core toward the drake's side, re-read every
+  frame). Splat: crown, stuck blob, leaf3 floor flash, then the held breath and the THREE dry eat ticks with the
+  acid holes (emissive craters: leaf3 rim on the body, leaf2 lower wall, leaf1 upper wall, ink depth, one gold3 lip),
+  steam threads from the newest holes, `venomSteam` on the third; a brief scar on the target's tile ("the scar
+  remembers" lights an old one before the splat). Survivors close their holes; victims die holed (the overlay
+  follows the recoil frames, re-anchored 3 px inside the body when a pose moves it).
+- Blocked: no holes, an acid sheet slides down the guard in 4 frames and drips onto the tile, `venomFizz`, brief scar.
+- Losing: holes to step 1, the backlash answers, the winner's holes close with a fizz; venom's own death follows.
+- Direct: the `special` pose from f1, five drops along the fan sweep (four splash on the opponent's side with the
+  falling drip ladder 1 / 0.94 / 0.89 / 0.84 and a brief podium pit; the fifth hits the duelist with a gold3 →
+  leaf3 flash and a fizz).
+- Summon: void circle, four gas tongues (Bayer 50 %, leaf1–leaf3 with void1 edges) heap into a dome over the tile, the
+  curled pose under it, the knuckle slam (wet dust, circle pulse), the inhale (three spiralling waves into the
+  mouth, the dome thins 50 → 25 → 0 %), the bulb ignition (leaf3 flash + a 3-frame gold3 plus glint round the gold4
+  core), the cut-in held on f10 while the bulb pulses, the hand-made finale: one etch ring (night0 cracks, leaf3 →
+  leaf2 lip, 3 steps), a medium shake, the badge, a brief level-1 scar.
+- Death: the art's 13 frames scored by CHARACTER_SOUNDS (tear f1, melt f3, eat ×3 f4–f6, slump f8, marker f10, drip
+  f11); the watcher's leaf3 light under the body (widens with the holes, shrinks onto the stinger, dims as it
+  sinks), steam per hole step; on the burst the puddle boils 240 ms and eats into the tile in 3 × 70 ms → the level-3
+  `'duel'` scar with the chitin hook tip and the capped bubble.
+- Flip: three drops roll off the card (drip ladder), a brief pit, the land voice on the rise.
+
+**Deviations, and why**
+- The death accent is the shared `'acid'` (it landed in the shared-infrastructure step), not the interim `'stone'`.
+- The recipe sets `attack.ramp: 'leaf'`: the battle kit's contact flash, sparks and reaction ring were DARK violet on
+  an acid blow (filmed r1: a violet ring round a green splat). `RAMPS.leaf` contains leaf4, which the kit uses for
+  its own flash tone; our own pixels never use leaf4.
+- Afterdissolve offsets follow the 13-frame death (eat f4/f5/f6 = +1/+2/+3, slump f8 = +5, marker f10 = +7, drip
+  f11 = +8), not the 11-frame table of §6.
+- The first eat tick sits at contact + 100 scene ms (not +40): on the full mix of `kaVenomAtk` the kit's
+  impactHeavy + the target's Heavy material tail kept the gap at −16…−19 dB under the splat peak for only ~40 ms;
+  +100 gives the ≥ 80 ms quiet window (§5.2 allows up to +120). `venomRattle` moved from the contact frame to
+  contact + 300 ms (it sat inside the held breath).
+- Scars live on TWO layers: the duel scar at `DEPTH.TILE_FX − 1` (as designed), the brief ones at `DEPTH.UNIT − 1`,
+  because the card lying on the tile covers the slot interior (filmed: a level-1 pit at TILE_FX − 1 is invisible
+  under a summoned card). Brief pits sit on the left / right front edge, clear of the stat badge.
+- The summon circle is dismissed on the f9 ignition (before the cut-in), so the finale's etch ring reads on a clean
+  floor; the ring is drawn in two halves (behind the body / over its feet).
+- The scar store keeps plain data and draws from one ticker per scene into Px layers (no Raster per scar).
+
+**Measured** (`node tools/measure.mjs --look v3 --norender --scenarios 'kaVenom*'`, game ms, budget = REHBER §5 × 1.45,
+guidance only): kaVenomSummon / P2 3833 (≤ 4350) · kaVenomAtk / P2 2250 (≤ 3190) · kaVenomLose 3050 · kaVenomBoth
+3050 · kaVenomDirect / P2 2183 (≤ 2320) · kaVenomBlocked 1950 · kaVenomRevive 2166 (≤ 3050) · kaVenomFlip 733
+(≤ 870) · kaVenomPos 1000 · kaVenomDies 2716 · kaVenomDiesDef 2666 · kaVenomHit 2433 · kaVenomMagic 2616 ·
+kaVenomAtkDark 2250 · kaVenomDefKill 4066 (volt_lizard's own death effect + its damage) · errors 0 everywhere.
+(`shots/kart-a/venom_drake/cine/measure-r2.json`; taken before EAT0 40 → 100, i.e. +~80 ms on the attack keys.)
+
+**Sound:** offline renders (`tools/clip.mjs --music off`): kaVenomAtk peak −2.5 dBFS, kaVenomLose −1.9, kaVenomSummon
+−1.9 (all ≤ −1). Valley check on the solo render of every strike sound (300 Hz–1.5 kHz vs the louder outer band,
+first 250 ms): −13 … −41 dB (rule ≥ 12 dB under). Sound marks are fired with `atFrame` / `atMark` / on the drawn beat.
+
+**Evidence:** `shots/kart-a/venom_drake/cine/` — `r1/` (first films), `r2/atk-w.png`, `r2/atk-c.png` (holes ×3),
+`r2/direct.png`, `r2/direct-z.png`, `r2/kaVenomBlocked.png`, `r2/kaVenomLose.png`, `r2/lose-death.png`,
+`r2/lose-scar.png`, `r2/lose-scar2.png` (the duel scar + bubble), `r2/summon.png`, `r2/summon-gas.png`,
+`r2/summon-ring.png`, `r2/flip.png`, `r2/defkill.png`, `r3/dies.png`, `r3/revive.png`; audio `audio/*.wav|json|mp4`.
+
+**Known weaknesses**
+- A v1-art victim (ember_wolf) dies by the kit's reaction + shatter: the shatter copies the plain body, so the holes
+  vanish ~250 ms after the third tick (only v3 bodies with a death pose die visibly holed).
+- The kit's white contact star covers the splat's first 2–3 frames (shared, as ashen request #9).
+- The summon gas reads as a cluster of round dithered puffs more than one rolling dome; the etch ring is thin at 1×.
+- The direct-spray drops are small at the far end of the board; the flip drops are barely visible.
+- The brief scar pits are subtle on NT graphite; the death scar reads, its hook tip is 3 px.
+- Spectral LSD vs the other lane-A rows and the full gate set (palcheck, camera gate, a6v1) are for the film rounds.
+
+**Gates run here:** `npm run typecheck` clean · `tests/art/venom_drake`, `tests/presentation`, `tests/art/materials`,
+`tests/audio` pass (engine-boundary only times out under parallel load; passes alone) · `filmdiff --set v1` **17/17
+IDENTICAL** (`shots/kart-a/venom_drake/cine/filmdiff-v1.txt`).
+
+### Cinematics + SFX, critic round 1 fix pass — 2026-11-01
+
+Critique: round 1 (combined visual + sound + timing, `shots/kart-a/venom_drake/crit1/`). Every finding was checked
+against a fresh film before it was changed. Evidence for this pass is in `shots/kart-a/venom_drake/fix1/`.
+
+**Fixed**
+- **#1 (MAJOR) The glob reads at 1×.** `venom_drake-acid.ts` `globCells`: the body is now 8×7 round, 9×6
+  stretched or 6×8 squashed, plus the ink outline (it was 6×5). It has a leaf3 body, a 2-row leaf2 belly, a 2×2
+  gold3 core with one gold4 heart pixel, and a gold3 highlight. `flyGlob` draws a stepped drip trail over the
+  last 5 places (a 3-px leaf3 smear, then leaf2, leaf1 and leaf0). Every 4th frame a 1-frame drip decal hangs
+  from the belly (leaf3, leaf2, ink, 3 px). The trail drops are now 2 px tall (a leaf3 head over a leaf2 tail).
+  Flight 260 → 280 ms. Films: `fix1/atk-glob.png`, `fix1/atkp2.png`.
+- **#2 (MAJOR) The splat is no longer hidden by the kit's star.** New `splatBurst` in acid.ts, drawn at the target
+  depth + 0.7, in front of the star (the star sits behind the body at −0.4) and of the contact flash. It runs 4
+  frames of 50 ms on the frozen hit-stop clock: a round blob with a closed gold3 ring, then a lobed flat splat
+  whose ring breaks into dashes, then a wide smear with 3 drips, then a thin leaf2 smear. After that the stuck
+  blob of the hole overlay carries on. Shared code is untouched. The star's rays now frame a green splat
+  (`fix1/atk-splat.png`).
+- **#3 (MAJOR) The summon no longer pops in.** New `riseIn` in summon.ts. For 3 steps of 34 ms the sprite is
+  hidden, and an overlay in its exact frame space shows the rows from the feet up to a rising cut (28 / 52 / 76 %
+  of the body). A leaf3 rim row and a leaf2 checker row cling to the cut, then the sprite shows again
+  (`fix1/summon-rise.png`). Build note: `currentPixels()` returns idle f0 for the `summon` anim, because that
+  regex only knows the base anims. The pass reads `unitFrame(u, frameInfo())` instead. `setCrop` was tried and
+  rejected, because the sheet frames are trimmed.
+- **#4 (MAJOR) The gas reads as one rolling body.** The 2×2 Bayer checker is gone (`puff` and `bayer` were
+  removed). New `gas()` draws the union of the lobes in flat bands measured from each column's top: a 2-px leaf3
+  top rim, a leaf2 band, a leaf1 body, a leaf0 floor row and a 1-px void1 edge. The dome is lower and wider (6
+  lobes) and rolls in a stepped 3-phase cycle (the side lobes step outward and down). The inhale no longer
+  dithers it out: it rolls the dome lower and wider at hk/wk 1/1 → .62/1.18 → .36/1.34 → .16/1.5 until it is a
+  floor lip, and it is cleared on the f9 ignition. Fixed a latent bug in the same place: the dome branch no
+  longer draws after the ignition (`dome = -1`). Previously the level-0 "invisible" puff hid this, but with the
+  band renderer the floor lip lingered through the cut-in. Film: `fix1/summon.png`.
+- **#5 (minor) The etch ring has a peak.** It grows in 2 steps of 60 ms, then holds a PEAK for 100 ms: 3-px night0
+  cracks, a 2-px leaf3 lip and three gold3 glyph ticks (back left, back right, front left, clear of the stat
+  badge). It then cools in 4 steps of 80 ms (`fix1/summon-ringz.png`).
+- **#7 (minor) Death scar.** The level-3 ring is one value step up (a leaf2 rim, a leaf1 outer step). The scar's
+  hook tip is now 4 px tall and 2 px wide at its foot, fully ink-outlined, with one gold4 pixel on its point
+  (`fix1/lose-scarz.png`).
+- **#8 (minor) The holes outlive the body's break.** When the kit's burst hides a holed victim (a v1-art
+  ember_wolf), new `residue()` in acid.ts copies the last overlay into world pixels on top of the break
+  (DEPTH.FX + 0.5). The ink depths drop out, then every rim and wall pixel drips to the tile with gravity
+  (leaf3 → leaf2 → leaf1) and every 4th landing etches a dot. It runs about 1 s. Survivors that close their holes
+  do not leave residue (`fix1/atk-holes.png`).
+- **#10 (timing) Wind-up.** The mortar's `playRange` for the wind-up uses `timeScale: 1.25`. The splat moves from
+  1166.7 to 1100 ms in `kaVenomAtk` (audio timeline): −67 ms net after the +20 ms of flight.
+
+**Rejected (with reasons)**
+- **#1, second half ("cut the cyan arc from 800 ms").** The cyan arc is the shared declaration aim (the targeting
+  UI). In a fresh film it is gone by about 460 ms, before the strike starts, so there is nothing at 800 ms to
+  cut. The glob already leaves from the `muzzle` art point on the release frame.
+- **#6 (white-yellow streak + hex in Lose / DefKill).** This is not the drake's. In `kaVenomLose` it is the
+  battle kit's backlash in the WINNER's ramp (`battle.ts` `backlash(sc, p, hitAt, tRamp)`, crystal_wyrm's light
+  ramp) plus the shared `blockClang` hex. That is the stronger side answering, as designed (§5.2 "Losing"). In
+  DefKill the bolt is volt_lizard's own death effect. Recolouring either is out of this card's scope.
+- **#7, death-art marker width.** The stinger marker inside the `death` frames (`venom_drake-rig.ts` markerPass)
+  is unchanged, to keep the reviewed art and its gates stable. The duel scar's hook, which is what lasts on the
+  tile, was widened instead.
+
+**Measured** (`tools/measure.mjs --look v3 --norender --scenarios 'kaVenom*'`, `fix1/measure.json`, game ms, budget
+= REHBER §5 × 1.45, guidance only; errors 0 everywhere): kaVenomSummon / P2 3833 (≤ 4350, unchanged: the rise sits
+inside the existing 260 ms fog beat) · kaVenomAtk / P2 2183 (was 2250; contact 1100) · kaVenomDirect / P2 2183 ·
+kaVenomBlocked 1883 · kaVenomLose / Both 2983 · kaVenomDefKill 4000 · kaVenomDies 2716 · kaVenomDiesDef 2666 ·
+kaVenomHit 2433 · kaVenomMagic 2616 · kaVenomRevive 2166 · kaVenomFlip 733 · kaVenomPos 1000 · kaVenomAtkDark 2183.
+**Sound** (`tools/clip.mjs --music off`, `fix1/audio/`): kaVenomAtk peaks at −2.5 dBFS with 0 clipped samples.
+venomSplat + impactHeavy now fire at 1100.0 ms and the −300 number appears at 1116.7 ms. The first eat comes at
++250 ms (the held breath includes the hit-stop) and the eat ticks are about 117 ms apart. kaVenomSummon peaks at
+−1.9 / −2.0 dBFS with 0 clipped samples; its loudest 400 ms is −8.2 dBFS, unchanged. No recipe changed in this
+pass (only the timing of the attack).
+**Gates:** `npm run typecheck` has no venom errors. `tests/art/venom_drake` and `tests/presentation` pass (94/94).
+Every file touched is reached only from `LOOK_V3` registrations (strike / summon / death / flip).
+
+**Remaining weaknesses**
+- At rest the dome is clean but fairly static. Its roll is a 1-px stepped cycle, and a small wisp layer on the
+  rim would add life.
+- The splat burst holds its first frame through the whole kit hit-stop (about 130 ms, frozen clock). It reads,
+  but it is a still.
+- The summon's loudest 400 ms (−8.2 dBFS around the cut-in climax) is still high next to other summons. The
+  shared cut-in contributes to it.
+- The P2 attack was filmed (`fix1/atkp2.png`: correct mirrored arc, glob, splat and holes). Direct, Blocked
+  (`fix1/blocked.png`) and Lose were spot-checked. DiesDef, Hit, Magic, Flip, Revive and Pos are unchanged by
+  this pass and were not re-filmed.
+
+### Critique round 2 (2026-11-01): fixes and rejections
+I checked every finding in round 2 (`shots/kart-a/venom_drake/crit4/`) against a fresh film or render before acting
+on it. Evidence for this pass is in `shots/kart-a/venom_drake/fix2/`.
+
+**Fixed**
+- **#1 (minor) Glob legibility at launch.** In `venom_drake-acid.ts` `flyGlob`, the large glob (and the spray's last
+  drop) gets a launch smear for its first 3 frames. It is a 2-px stepped wet streak from the stinger to the glob:
+  leaf3/leaf2 on top, leaf1 under. It covers the full length, then ½, then ¼. Frame 1 also has a gold3 plus with a
+  gold4 centre at the muzzle, and frame 2 has two diagonal gold3 sparks. Films: `fix2/atk-launch.png` and
+  `fix2/atk-launch-z.png` (×5). Verification note: a fresh `--film` (`fix2/atk-before-arc.png`) shows the glob
+  already clear of the stinger at 733 ms, one frame after `venomSpit`. So the "no glob until about 980 ms" reading
+  does not match. The arc rises above a tight clip, which is probably what hid it.
+- **#2 (minor, second half) Flight sound gap.** `venomSpit` now ends with a 0.3 s dense high fizz (crackle at
+  7 kHz, 44 clicks, front-weighted, so it thins toward the splat's held breath). It rides the arc between the spit
+  and the splat. A rising whistle was **rejected**: §6's identity rules out rising sweeps, and the whip is the
+  card's only sweep.
+- **#3 (minor) The dome at rest.** In `venom_drake-summon.ts`, `gas()` now returns the top pixel of every column,
+  and a new `domeLife()` draws over the dome only while it is at rest (`dome >= 4`):
+  - a gold3 glint, 2 px with a leaf3 tail, steps along the rim at 1 column per 34 ms, then rests for about 10
+    columns;
+  - three rim bubbles swell from 1 px to a 3×3 leaf3 ring with a leaf1 eye and a gold3 skin pixel at the peak,
+    then pop into two leaf2 flecks, all in 80 ms phases and out of step with each other;
+  - two body bubbles (leaf3 caps, a leaf2 eye, a leaf0 shadow) rise 1 px per 90 ms through the leaf1 body and burst
+    under the top band.
+
+  The inhale still rolls the dome out cleanly. Film: `fix2/sum-dome.png` (×3, 2200–2550 ms).
+- **#4 (minor/moderate) Summon loudness.** Solo renders (`fix2/audio/solo-*.json`) show the loudest 400 ms came
+  from `venomRoar` itself, at −8.0 dBFS solo. The shared cut-in's `cutIn` sting reached −12.6, and `venomScar`
+  only −25.6. The roar's sac gurgle now punches at 0.5 and sinks to 0.26 → 0.2 instead of holding 0.4, and its hiss
+  body steps from 0.24 to 0.14 / 0.11. The roar is now −10.6 dBFS solo. The full summon's loudest 400 ms is
+  **−9.8 dBFS** (was −8.2), peak −1.95, 0 clipped. The roar tail windows dropped 3–6 dB.
+  - **Rejected:** dropping `cardSlam` or pulling `impactHeavy`. Both live in the shared `_v3/cutin.ts`, which this
+    card does not own, and they already play at 0.45 / 0.2 for a voiced monster.
+  - **Rejected:** spacing `summonBurst` and `venomScar`. The scar is about 15 dB under the mix, so the stack adds
+    nothing measurable. The scar also stays locked to the etch ring's frame.
+
+  What now sets the loudest window (around 3.0 s) is the shared cut-in sting over the roar's attack.
+
+**Rejected (with reasons)**
+- **#2, first half (move `venomSpit` to about 820 ms).** The film shows the glob leaving at 717–733 ms, on the
+  release frame where `venomSpit` fires, so moving the sound would desync it. The whip at 650 ms is on attack f5,
+  the tail's peak, as asked.
+- **#5 (splat holds through the hit-stop, faint residue ring).** The hit-stop is the shared impact freeze: every
+  layer holds by design, so a still splat during it is correct hit-stop language. The pale expanding green ring at
+  1300–1650 ms (`fix2/atk-residue.png`) is not drawn by any venom file. It is the shared contact kit's ring in the
+  attacker's ramp, out of this card's scope. The card's own residue (holes and drips) reads in the same film.
+
+**Measured** (`fix2/measure.json`, game ms, errors 0 everywhere). Budgets are guidance only (owner, 2026-11-01).
+All times are unchanged from round 1:
+
+| Scenario | Game ms |
+|---|---|
+| Summon / P2 | 3850 |
+| Atk / P2 | 2200 (contact 1100) |
+| Direct / P2 | 2200 |
+| Blocked | 1900 |
+| Lose / Both | 3000 |
+| DefKill | 4017 |
+| Dies | 2733 |
+| DiesDef | 2683 |
+| Hit | 2450 |
+| Magic | 2633 |
+| Revive | 2183 |
+| Flip | 750 |
+| Pos | 1017 |
+
+**Sound** (`fix2/audio/`, music off, 0 clipped samples everywhere):
+
+| Scenario | Peak dBFS | Loudest 400 ms dBFS |
+|---|---|---|
+| Summon | −1.95 | −9.8 |
+| Atk | −2.45 | −15.1 |
+| Direct | −2.45 | −15.9 |
+
+**Gates**
+- `npx tsc --noEmit` reports no venom errors.
+- `tests/art/venom_drake` and `tests/presentation` pass 94/94. `engine-boundary` timed out at 5 s while the
+  filmdiff ran alongside, then passed 5/5 alone once the filmdiff had finished.
+- `filmdiff --set v1` gives **17/17 IDENTICAL** (`fix2/filmdiff-v1.txt`).
+- `filmdiff --set a6v1` gives **26/26 IDENTICAL** (`fix2/filmdiff-a6v1.txt`).
+- Every file touched is reached only from `LOOK_V3` registrations.
+
+**Remaining weaknesses**
+- The summon's loudest window (−9.8 dBFS) is now set by the shared cut-in sting over the roar's attack. Lowering it
+  further needs the cut-in owner.
+- The expanding contact ring after the splat comes from the shared kit, in the attacker's ramp. It is pale at 1×.
+- The splat still holds as a still through the hit-stop, by design.
+- The launch smear is short (the glob is only 3–8 px from the muzzle in its first frames). It ties the glob to the
+  stinger, but the main read is still the glob itself.
+
+### Critique round 3 (2026-11-01): fixes and rejections
+The round-3 critic gave a ship-quality "yes". I checked each finding against a fresh film. Evidence for this pass is in
+`shots/kart-a/venom_drake/fix3/`.
+
+**Fixed**
+- **#1 (minor) The direct spray now has visible mass.** Before the fix it was 2–3 px dots and a dark floor smudge
+  (`fix3/direct-before.png`). The change is in `venom_drake-acid.ts`, and it touches only the `small` drop, which
+  nothing but the spray uses.
+  - **Drops.** Each spray drop is an ink-outlined 6×5 drop instead of 4×3, with a leaf3 body, a leaf2 belly and a
+    gold3 heart pixel. Each drop now trails a short stepped 2-px streak over its last 4 places
+    (leaf3 → leaf2 → leaf1 → leaf0). Trail drops fall as 2-px drops (a leaf3 head over a leaf2 tail) for every drop:
+    in `venom_drake-strike.ts`, `trail: true` replaces `i % 2 === 0`.
+  - **Puddle.** New `sprayPuddle()` runs where each of the 4 floor drops lands, synced with its `venomDrip`. It is
+    stepped and uses no alpha:
+    - 50 ms: a 5×3 leaf3 splash.
+    - 50 ms: a 9×5 puddle.
+    - About 260 ms at the peak: an 11×5 leaf1 pool with a bright leaf2 rim, a leaf3 front-top lip, and a
+      gold4/gold3 glint that steps along the lip at 1 px per 65 ms, plus one acid bubble.
+    - Then it soaks in: a leaf0/leaf1 pool, then a 7×3 leaf0 pool, gone by about 760 ms.
+    - A night0 row under the front edge seats it on the tile.
+  - **Result.** The 1100–1250 ms ground beat now reads as bright puddles with gold glints, before the 1300 ms
+    starburst and number.
+  - **Films.**
+    - `fix3/direct-z.png`: P2 ×2, 850–1400 ms.
+    - `fix3/puddle-z.png`: ×4.
+    - `fix3/direct-1x.png`: P2 at 1×.
+    - `fix3/direct-p1.png`: P1 at 1×.
+  - **Deviation.** I chose the critic's "fan of larger drops with short stepped trails" over a continuous 2-px stream.
+    The spray is five separate drops, one per landing point, as in the blueprint's §5.3 storyboard. A stream would
+    blur the five landings.
+
+**Rejected / out of scope**
+- **#2: shared contact ring.** The shared battle kit draws it, not a venom file. The critic agrees it does not block
+  this card.
+- **#4: summon loudest window.** The loudest 400 ms is set by the shared `_v3/cutin.ts` sting, which belongs to the
+  cut-in owner, as noted in round 2.
+- **#3, #5: notes.** No action needed.
+
+**Measured** (`fix3/measure.json`, errors 0):
+- kaVenomDirect / P2: 2183 game ms, with contact and number at 1300. This is unchanged, because the pass changes art
+  only. Budgets are guidance only.
+
+**Sound** (`fix3/audio/kaVenomDirectP2.*`, music off):
+- Peak −2.45 dBFS, loudest 400 ms −15.9 dBFS, 0 clipped samples.
+- No recipe changed. The puddle onsets share the frame of their `venomDrip`.
+
+**Gates**
+- `npx tsc --noEmit` reports no venom errors.
+- `tests/art/venom_drake` and `tests/presentation` pass 94/94.
+- `filmdiff --set v1` gives **17/17 IDENTICAL** (`fix3/filmdiff-v1.txt`).
+- Both edited files are reached only from `LOOK_V3` registrations.
+
+**Remaining weaknesses**
+- The spray drops are still separate drops, not one mass. They read clearly at 1× near the duelist, but they are
+  smaller at the far end of the arc.
+- The brief level-1 scar (dark dither) still shows behind the first puddle. The puddle now dominates it.
+- The shared contact ring and the summon's cut-in loudness are still for their shared owners.
+
+### Gates round (2026-11-01, after critique round 3)
+
+All gates were run on the working tree, which includes the fix3 spray/puddle changes. No card file needed a fix, and no code changed in this round. Evidence is in `shots/kart-a/venom_drake/gates/`.
+
+| Gate | Result |
+|---|---|
+| `npm run typecheck` | clean (0 errors in the whole tree) |
+| `npm test` | 1352 pass / 4 fail, all on the known list: cardface-v3 G1, dusk_ashen (dusk_sorcerer validateArt), hourglass_imp, shield_titan. All venom_drake tests pass. |
+| `filmdiff --set v1` | 17/17 IDENTICAL (`gates/filmdiff-v1.txt`) |
+| `filmdiff --set a6v1` | 26/26 IDENTICAL (`gates/filmdiff-a6v1.txt`) |
+| camera gate (`now.json` = `kaVenom*` + `baseline`, `--look v3`) | 15 ok, 20 ok NOBASE (the kaVenom keys have no base entry), 0 FAIL. zoom 1 everywhere (`gates/camera-gate.txt`, `shots/kart-a/venom_drake/now.json`). |
+| monster-gates (`--class ace --ref none`, P1 + P2) | 21 ok, 0 FAIL, 2 n/a, 1 info. 137 frames, 5.04 MB, render 7.05 ms P1 (`gates/sheet/`) |
+| palcheck (a5, clip 120,40,400,230, 100 frames at 34 ms) | Fails the absolute a5 limits in the same way the approved base films do (lane convention). Atk Δmax +1.32 at #14 (the shared declaration; base saWyrmAtk +1.48) and Lose +1.60 at #14 (the same shared frame). Direct stays at Δ ≤ +0.89 for the whole spray. Its +2.16 peak at t ≥ 2822 comes after the scene ends (ready 2200): it is the shared −2000 number fading plus the hint bar (`pal/kaVenomDirect/f0084.png`). The Summon peak of +3.55 at #35 is the shared card flight with its card face (base suWyrm +5.56). No white row is above 43 % (`gates/pal/palcheck.txt`). |
+| Times (guidance only) | Summon/P2 3833, Atk/P2 2183, Direct/P2 2183, Blocked 1883, Lose/Both 2983, DefKill 4000, Dies 2716, DiesDef 2666, Hit 2433, Magic 2616, Revive 2166, Flip 733, Pos 1000, AtkDark 2183, ScarStack/Persist 15683. Each is within its REHBER §5 × 1.45 figure where the doc sets one. |
+| Page errors / watchdog | errors 0 in every kaVenom* and baseline scenario (`gates/measure.log`) |
+
+### Adversarial verifier (2026-11-01): fixes and final gates
+The verifier said SHIP: yes and found no blocking defect. I checked each item. Evidence for this pass is in
+`shots/kart-a/venom_drake/final/`.
+
+**#1 (LOW) Stale comment in `src/vfx/shatter.ts`: valid, fixed (comment only).** The comment was stale, but the
+verifier's premise was wrong. The `acid` shatter recipe was never tuned. It is not on the card's path:
+`src/presentation/cards/venom_drake.ts` breaks the body as `shadow` + `accent: 'acid'`, and no code calls
+`shatterMaterial(…, 'acid')`. Only `defs/venomscale.ts` names it, as `death.shatter`, to satisfy the materials test
+(see the infrastructure deviation at the top of this log). The comment now says this: "Final as shipped, untuned:
+venom_drake's recipe breaks as 'shadow' + the 'acid' ACCENT; only the venomscale def names this." No values changed.
+
+**#2 (LOW) No definition-of-done checklist: valid, added below.** These are the "What done means" items for
+monsters in `docs/v3/PARALEL_OTURUMLAR.md`.
+
+| Done item | Status | Code | Evidence |
+|---|---|---|---|
+| v3 rig: idle, summon, attack, hit, guard, death, signature (special), plus roar, revive, hitHeavy, hitMagic, toGuard/fromGuard; P1 + P2 | done | `src/art/monsters-v3/venom_drake-*.ts` | `final/sheet/venom_drake-v3-all.png`, `final/sheet/venom_drake-v3-p2-all.png` (and per-anim strips in `gates/sheet/`) |
+| Card art, big + small | done | `src/art/cardart-v3/venom_drake.ts` | `card-big.png`, `card-small.png`, `r5/big-x8.png`, `r5/small-x12.png` |
+| Cut-in (tribute/ace) | done | `src/art/cutins-v3/venom_drake.ts` | `r5/cut-p1-x2.png`, `r5/cut-p2-x2.png`, `r5/cut-x3.png` |
+| Unique summon cinematic "Zehirli Sis" | done | `src/cinematics/kart-a/venom_drake-summon.ts` | `fix1/summon.png`, `fix1/summon-rise.png`, `fix2/sum-dome.png` |
+| Unique attack "Zehir Havanı" + losing-attack scar | done | `venom_drake-strike.ts`, `venom_drake-acid.ts` | `fix2/atk-launch.png`, `fix1/atk-glob.png`, `fix1/lose-scarz.png` |
+| Unique direct attack "Zehir Sağanağı" | done | `venom_drake-strike.ts` | `fix3/direct-z.png`, `fix3/puddle-z.png`, `fix3/direct-p1.png` |
+| Unique death "Kendi Zehri" | done | `venom_drake-death.ts` | `final/dies-z.png`, `cine/r3/dies.png` |
+| Effect/flip/revive/position | done | recipe + `venom_drake-death.ts` (revive) | `cine/r3/revive.png`; measure `final/now.json` (Flip, Pos, Revive) |
+| Unique synthesized SFX for every moment (24 recipes) | done | `src/audio/v3/venom.ts` | `fix2/audio/*` (summon, atk, direct, roar, land, scar, cut-in), `fix3/audio/kaVenomDirectP2.*`, `crit5/audio/*` |
+| At least 3 critique rounds + adversarial verifier | done | — | critique rounds 1–3 above, plus this verifier pass |
+
+**#3, #4 (INFO):** nothing to change. The palette overruns are on the shared frames, as the verifier accepted. The
+camera base has no kaVenom keys (NOBASE), and the zoom is 1 everywhere.
+
+**Final gates** (working tree after the comment fix):
+
+| Gate | Result |
+|---|---|
+| `npm run typecheck` | clean, whole tree (`final/typecheck.txt`) |
+| `npm test` | 1352 pass / 4 fail. All 4 are on the known list: cardface-v3 G1, dusk_ashen, hourglass_imp, shield_titan. Every venom_drake test passes (`final/test.txt`). |
+| `filmdiff --set v1` | 17/17 IDENTICAL (`final/filmdiff-v1.txt`) |
+| `filmdiff --set a6v1` | 26/26 IDENTICAL (`final/filmdiff-a6v1.txt`) |
+| camera gate (`measure 'kaVenom*,baseline' --look v3` vs `shots/kart-a/camera-base.json`) | 15 ok, 20 ok NOBASE, 0 FAIL. zoom 1 in every kaVenom scenario (`final/camera-gate.txt`, `final/now.json`). |
+| monster-gates (`--class ace --ref none`, P1 + P2) | 21 ok, 0 FAIL, 2 n/a, 1 info. 137 frames, 5.04 MB. The sheet JSON is byte-identical to `gates/sheet/` (`final/monster-gates.txt`). |
+| palcheck (a5, clip 120,40,400,230, 100 frames at 34 ms; re-filmed) | Same shape as the gates round, with the a5-absolute FAILs that match the base films. Atk Δmax +1.23, Lose +1.54 and Dies +1.60, all at #14 (the shared declaration frame). Direct +2.10, after the scene ends (number fade + hint bar). Summon +3.49, at #35 (the shared card flight). Row-white max 42.7 % (`final/pal/palcheck.txt`). |
+| measure (times, guidance only) | Summon 3833, Revive 2166, Flip 733, Pos 1000, the others unchanged. errors 0 in every kaVenom* and baseline scenario (`final/measure.log`). |
+
+**Re-filmed moment:** the acid death (`final/dies-z.png`, ×2, 1200–2550 ms). I looked at it. The acid web spreads
+over the hide, the body slumps into lace, the chitin stinger stands in the green pool, and the etched scar stays.
+There is no white wash. It is unchanged, as expected, because only a comment changed.
+
+**Status (final):** venom_drake is done and ready to ship. Every gate passes or matches its documented lane
+convention. Open issues for other owners, none of which block this card:
+- The shared contact ring is owned by the battle kit.
+- The summon's loudest window comes from the shared `_v3/cutin.ts` sting, owned by the cut-in owner.
+- The palcheck a5 absolute limits fail on shared frames, the same way they do for the approved base films.
+- The camera base has no kaVenom entries (NOBASE).

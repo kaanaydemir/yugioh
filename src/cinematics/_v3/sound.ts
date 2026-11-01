@@ -255,6 +255,31 @@ export const CHARACTER_SOUNDS: Partial<Record<CardId, CharacterSounds>> = {
     reviveGather: 'hatchReviveGather',
     reviveLand: 'hatchReviveLand',
   },
+  // lane A (docs/v3/kart-a/venom_drake.md §6). Death frames (13 f): dissolve = f3 (the seam web), f4–f6 the
+  // three hole steps (the same three ticks it gave its victims), f8 the slump, f10 the stinger marker, f11 the
+  // bead falls into the pool (the drip leitmotif closes the card)
+  venom_drake: {
+    roar: 'venomRoar',
+    arrive: 'venomArrive',
+    land: 'venomLand',
+    charge: 'venomCharge',
+    swing: 'venomWhip',
+    release: 'venomSpit',
+    impact: 'venomSplat',
+    deathStart: 'venomTear',
+    dissolve: 'venomMelt',
+    afterDissolve: [
+      [1, 'venomEat', 0.8],
+      [2, 'venomEat', 0.9],
+      [3, 'venomEat', 1],
+      [5, 'venomSlump', 0.8],
+      [7, 'venomMarker', 0.7],
+      [8, 'venomDrip', 0.7],
+    ],
+    burst: 'venomPuddle',
+    reviveGather: 'venomReviveGather',
+    reviveLand: 'venomReviveLand',
+  },
 };
 
 /**
