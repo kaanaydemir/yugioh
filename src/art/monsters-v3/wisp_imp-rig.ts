@@ -151,9 +151,8 @@ export interface Pose {
   gust: number;
 }
 
-/** the order the wind takes the plumes (PLUMES indices, front row first) */
-const PEEL_ORDER = [4, 3, 2, 1, 0];
-export const peeledPlume = (pz: Pose, k: number): boolean => pz.peel >= 2 + PEEL_ORDER.indexOf(k);
+/** the wind takes the plumes by their `stage` (front first: the breast at peel 2, the hem last at 6) */
+export const peeledPlume = (pz: Pose, k: number): boolean => pz.peel >= (PLUMES[k]?.stage ?? 2);
 
 const HAND0: Hand = { x: 0, y: 0, ang: 0, spread: 0, len: 0 };
 /** the loose feather in its slot: sticking out of the back of the hood like a little wing */
@@ -351,15 +350,20 @@ function skirtW(g: Geo, s: number): number {
  * whole plumage darkens into lilac on the shadow side and toward the tail.
  * Keys are hood-relative (x forward, y down) at rest; `side` −1 = back row, +1 = front row.
  */
-const PLUMES: readonly { r: [number, number]; t: [number, number]; w: number; bow: number; row: number }[] = [
-  // back row (behind, half hidden): the back plume sweeping out behind like a wing, the breast feather
-  { r: [-6, 3], t: [-15, 7.5], w: 7, bow: -1.6, row: 0 },
-  { r: [6, 5], t: [8.5, 13.5], w: 6.4, bow: 0.8, row: 0 },
-  // middle row
-  { r: [-4, 6], t: [-12.5, 15.5], w: 7.6, bow: -1.2, row: 1 },
-  { r: [3, 7], t: [1.5, 16.5], w: 7.2, bow: 0.5, row: 1 },
-  // front row
-  { r: [-1, 9], t: [-7, 19.5], w: 7, bow: -0.8, row: 2 },
+const PLUMES: readonly { r: [number, number]; t: [number, number]; w: number; bow: number; row: number; stage: number }[] = [
+  // (FIX r2) shingled like a bird's back: SHORT broad feathers with rounded tips, the upper row in
+  // front of the lower one, so every tip laps over the feather under it (a scallop of overlap
+  // shade under each tip) and the tips themselves notch the outer silhouette. Painted back to front.
+  // the lowest row, behind (its tips form the hem over the tail root)
+  { r: [-4, 11], t: [-8.5, 20.5], w: 6.6, bow: -0.6, row: 0, stage: 6 },
+  { r: [1, 12], t: [-0.5, 21.5], w: 6.4, bow: 0.4, row: 0, stage: 5 },
+  // the wing: two feathers fanned out behind the hood (they notch the back edge)
+  { r: [-6, 7], t: [-15, 12.5], w: 6, bow: -1, row: 0, stage: 5 },
+  { r: [-6, 1], t: [-16.5, 5], w: 6, bow: -1.2, row: 0, stage: 4 },
+  // the upper row, in front, right under the hood's hem
+  { r: [-5, 6], t: [-10, 15.5], w: 7.2, bow: -0.8, row: 1, stage: 4 },
+  { r: [0, 6], t: [-1.5, 16.5], w: 7.4, bow: 0.3, row: 1, stage: 3 },
+  { r: [5, 5], t: [8, 14], w: 6.6, bow: 0.9, row: 2, stage: 2 },
 ];
 
 export interface Plume {
@@ -504,7 +508,7 @@ function buildField(pz: Pose, g: Geo, side: 1 | -1): Field {
     plumesOf(pz, g).forEach((pl, k) => {
       if (peeledPlume(pz, k)) return;
       tmp.fill(-1);
-      leaf(tmp, pl.rx, pl.ry, pl.tx, pl.ty, pl.bow, pl.w, side, 0, true);
+      leaf(tmp, pl.rx, pl.ry, pl.tx, pl.ty, pl.bow, pl.w, side, pl.row === 0 ? 1 : 0, true, true);
       for (let i = 0; i < W * H; i++) {
         if (tmp[i] < 0) continue;
         if (depth[i] >= 100) continue; // the hood lies over the plumes' roots
@@ -524,7 +528,7 @@ function buildField(pz: Pose, g: Geo, side: 1 | -1): Field {
  * what faces the light (lit edge / vane / underside), `dark` shifts it one value down (far hand).
  * Writes tone indices (into F) into `out` (a tone map), and marks the mask.
  */
-function leaf(out: Int8Array, rx: number, ry: number, tx: number, ty: number, bow: number, width: number, side: 1 | -1, dark: number, quill = false): void {
+function leaf(out: Int8Array, rx: number, ry: number, tx: number, ty: number, bow: number, width: number, side: 1 | -1, dark: number, quill = false, round = false): void {
   const mask = new Uint8Array(W * H);
   /** signed offset across the feather (px, + = toward the axis normal) and progress along it */
   const across = new Float32Array(W * H).fill(99);
@@ -543,7 +547,9 @@ function leaf(out: Int8Array, rx: number, ry: number, tx: number, ty: number, bo
     const f = i / n;
     const px = rx + dx * f + nx * bow * Math.sin(Math.PI * f);
     const py = ry + dy * f + ny * bow * Math.sin(Math.PI * f);
-    const wd = Math.max(0.55, (width / 2) * Math.pow(Math.sin(Math.PI * (0.12 + f * 0.8)), 0.6));
+    // a round feather (the plumage shingles) keeps its width out to a rounded tip; a plain one tapers
+    const prof = round ? (f < 0.66 ? 0.5 + 0.5 * Math.sin((Math.PI / 2) * (f / 0.66)) : Math.sqrt(Math.max(0, 1 - Math.pow((f - 0.66) / 0.36, 2)))) : Math.pow(Math.sin(Math.PI * (0.12 + f * 0.8)), 0.6);
+    const wd = Math.max(0.55, (width / 2) * prof);
     bx0 = Math.min(bx0, Math.floor(px - wd - 2));
     by0 = Math.min(by0, Math.floor(py - wd - 2));
     bx1 = Math.max(bx1, Math.ceil(px + wd + 2));
@@ -586,9 +592,21 @@ function leaf(out: Int8Array, rx: number, ry: number, tx: number, ty: number, bo
         t = a > 0.5 ? 4 : 3;
         if (Math.abs(across[k]) <= 0.5 && along[k] > 0.12 && along[k] < 0.8) t = 2;
         if (away && !toLight && t > 2) t -= 1;
+        // a round shingle: its rounded tip has a dark rim (void2) on the lower / shadow edge, so where
+        // it laps over the feather behind it a scallop line is drawn — the overlap reads as a feather
+        if (round) {
+          // a shingle: flat halves (lit / lilac) split by the quill, and a dark rim all round its
+          // rounded tip (any edge pixel past a third of its length)
+          t = 4;
+          // the shade half goes lilac only toward the tip (the vane curls away from the light there)
+          if (a < -0.5 && along[k] > 0.5) t = 3;
+          if (Math.abs(across[k]) <= 0.5 && along[k] > 0.1 && along[k] < 0.78) t = 3;
+          const edge = !has(x + 1, y) || !has(x - 1, y) || !has(x, y + 1) || !has(x, y - 1);
+          if (edge && along[k] > 0.34) t = dark ? 1 : 0;
+        }
       } else if (toLight && !away) t = 4;
       else if (away && !toLight) t = 2;
-      out[k] = Math.max(1, t - dark);
+      out[k] = round && t <= 1 ? t : Math.max(1, t - dark);
     }
 }
 
@@ -604,13 +622,27 @@ function paintHand(out: Int8Array, g: Geo, h: Hand, near: boolean, side: 1 | -1)
   const rx = rx0 + h.x;
   const ry = ry0 + h.y;
   const base = (near ? 30 : 150) + (near ? h.ang : -h.ang);
-  const spread = 34 + h.spread;
-  const len = (near ? 6 : 5) + h.len;
+  // (FIX r2) three separate feather FINGERS, not a mitten: slimmer, fanned wider, and where one
+  // finger lies over another a dark crease (void2) parts them, so the fingers read at 1×
+  const spread = 50 + h.spread;
+  const len = (near ? 6.5 : 5.5) + h.len;
   const dark = near ? 0 : 1;
-  for (let k = -1; k <= 1; k++) {
+  const own = new Int8Array(W * H).fill(-1);
+  const tmp = new Int8Array(W * H);
+  for (const k of [-1, 1, 0]) {
     const a = ((base + k * spread * 0.5) * Math.PI) / 180;
-    const l = len - (k === 0 ? 0 : 0.8);
-    leaf(out, rx, ry, rx + Math.cos(a) * l, ry + Math.sin(a) * l, k * 0.6 * (near ? 1 : -1), 3.2, side, dark);
+    const l = len - (k === 0 ? 0 : 1);
+    tmp.fill(-1);
+    leaf(tmp, rx, ry, rx + Math.cos(a) * l, ry + Math.sin(a) * l, k * 0.6 * (near ? 1 : -1), 2.5, side, dark);
+    for (let i = 0; i < W * H; i++) {
+      if (tmp[i] < 0) continue;
+      const x = i % W;
+      const nb = [i - 1, i + 1, i - W, i + W];
+      // an edge of this finger lying on an earlier finger: the crease (not at the shared root)
+      const crease = nb.some((j) => j >= 0 && j < W * H && tmp[j] < 0 && own[j] >= 0) && Math.hypot(x + 0.5 - rx, Math.floor(i / W) + 0.5 - ry) > 2;
+      out[i] = crease ? 1 : tmp[i];
+      own[i] = k + 1;
+    }
   }
 }
 
@@ -639,7 +671,7 @@ function inHollow(pz: Pose, g: Geo, x: number, y: number): number {
 }
 
 /** the two dot eyes (light, after the outline) */
-function paintEyes(p: PixelCanvas, pz: Pose, g: Geo): void {
+function paintEyes(p: PixelCanvas, pz: Pose, g: Geo, cover?: Int8Array): void {
   if (pz.erode > 0.93) return;
   const [cx, cy] = hollowCentre(pz, g);
   const lx = clamp(pz.lookX, -1, 1);
@@ -650,7 +682,11 @@ function paintEyes(p: PixelCanvas, pz: Pose, g: Geo): void {
   const c4 = hot ? PAL.white : PAL.gold4;
   const c3 = hot ? PAL.gold4 : pz.glow >= 1 ? PAL.gold4 : PAL.gold3;
   const set = (x: number, y: number, c: number) => {
-    if (x >= 1 && y >= 1 && x < W - 1 && y < H - 1) p.set(x, y, c);
+    if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1) return;
+    // a hand over the face hides the eye under it — only a crease between two fingers lets it peek
+    const h = cover ? cover[y * W + x] : -1;
+    if (h >= 0 && h !== 1) return;
+    p.set(x, y, c);
   };
   eyesX.forEach((ex, i) => {
     const near = i === 1;
@@ -925,8 +961,9 @@ export function drawWisp(p: PixelCanvas, pz: Pose, lightFrom: 'left' | 'right' =
         // a feather's own bands, shifted by where it hangs: the shadow side and the lower plumage go lilac
         const [nx, ny, nz] = normalAt(g, x + 0.5, y + 0.5, BASE);
         const dl = nx * L[0] + ny * L[1] + nz * L[2];
-        const shift = dl >= 0.05 ? 0 : dl >= -0.3 ? -1 : -2;
-        tone[i] = clamp(field.band[i] + shift, 1, 4);
+        const shift = dl >= -0.55 ? 0 : -1;
+        tone[i] = field.band[i] <= 1 ? field.band[i] : clamp(field.band[i] + shift, 2, 4);
+        if (field.band[i] <= 1) keep[i] = 1; // the shingle rims are thin diagonal lines: never despeckled
         continue;
       }
       const [nx, ny, nz] = normalAt(g, x + 0.5, y + 0.5, k);
@@ -949,7 +986,8 @@ export function drawWisp(p: PixelCanvas, pz: Pose, lightFrom: 'left' | 'right' =
         const d = dep[i];
         const up = dep[i - W];
         const lt = dep[i + side]; // toward the light
-        if ((kind[i - W] >= 0 && up > d) || (kind[i + side] >= 0 && lt > d && kind[i + side] === PLUME)) sh.push(i);
+        if (kind[i] === PLUME && kind[i - W] === PLUME) continue; // shingles carry their own rims
+        if ((kind[i - W] >= 0 && up > d) || (kind[i + side] >= 0 && lt > d && kind[i + side] === PLUME && kind[i] !== PLUME)) sh.push(i);
       }
     for (const i of sh) {
       tone[i] = Math.max(1, tone[i] - 1);
@@ -1058,7 +1096,7 @@ export function drawWisp(p: PixelCanvas, pz: Pose, lightFrom: 'left' | 'right' =
   // light after the outline
   const bodyNow = new Uint8Array(W * H);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (p.isOpaque(x, y)) bodyNow[y * W + x] = 1;
-  paintEyes(p, pz, g);
+  paintEyes(p, pz, g, nearHand);
   for (const [x, y, att, far] of drift) confetti(p, x, y, att, far === 1);
   paintBursts(p, g, pz);
   paintSwirl(p, g, pz, bodyNow);

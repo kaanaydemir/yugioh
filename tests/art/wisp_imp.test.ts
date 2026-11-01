@@ -33,7 +33,7 @@ describe('wisp_imp v3 art (R3 feather ghost)', () => {
     }
     expect(art.anims.attack.marks).toMatchObject({ charge: 1, release: 5, impact: 5, contact: 6, recover: 8 });
     expect(art.attackImpactFrame).toBe(art.anims.attack.marks!.release);
-    expect(art.extraAnims!.special!.marks).toMatchObject({ charge: 1, release: 5, impact: 5, recover: 8 });
+    expect(art.extraAnims!.special!.marks).toMatchObject({ charge: 1, release: 8, impact: 8, recover: 11 });
     expect(art.extraAnims!.death!.marks).toMatchObject({ impact: 0, contact: 0, dissolve: 4 });
     expect(art.extraAnims!.summon!.marks?.land).toBeDefined();
     expect(art.extraAnims!.revive!.marks?.land).toBeDefined();
@@ -57,7 +57,7 @@ describe('wisp_imp v3 art (R3 feather ghost)', () => {
   });
 
   it('is deterministic, palette-only, gold only as the eye light, and P2 keeps the silhouette', () => {
-    for (const [a, f] of [['idle', 0], ['idle', 7], ['attack', 5], ['special', 3], ['death', 6], ['summon', 6]] as const) {
+    for (const [a, f] of [['idle', 0], ['idle', 7], ['attack', 5], ['special', 6], ['death', 6], ['summon', 6]] as const) {
       const p = drawFrame(art, a, f, 'left');
       const q = drawFrame(art, a, f, 'left');
       expect(delta(p, q), `${a} ${f}`).toBe(0);

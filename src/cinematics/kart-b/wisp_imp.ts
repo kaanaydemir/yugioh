@@ -139,6 +139,101 @@ function feather(r: Raster, x: number, y: number, ang: number, len: number, step
   }
 }
 
+/**
+ * (FIX r2) The feather STAMP: a whole quilled feather, 5–9 px, with a 1-px ink outline (it is matter,
+ * like the sprite's own peeled feathers), a lit vane on the light side, a lilac vane on the other, a
+ * quill one step down and a broad rounded tip — the card's motif, readable at 1×. `flip` 0..1 is
+ * how open it is to the eye: under 0.3 it is seen edge-on (a quill line only: the falling-leaf
+ * turn-over frame). `step` fades it down the ramp (the last step drops the ink rim).
+ */
+function stamp(r: Raster, x: number, y: number, ang: number, len: number, step = 0, flip = 1): void {
+  if (step >= TONES.length) return;
+  const [lit, shade, quill] = TONES[step];
+  const cx = ri(x);
+  const cy = ri(y);
+  const dx = Math.cos(ang);
+  const dy = Math.sin(ang);
+  let nx = -dy;
+  let ny = dx;
+  if (nx + ny * 1.6 > 0) {
+    nx = -nx;
+    ny = -ny;
+  }
+  const px = new Map<number, number>();
+  const put = (X: number, Y: number, c: number) => px.set(Y * 4096 + X, c);
+  const half = (len - 1) / 2;
+  const edgeOn = flip < 0.3;
+  // vane half-width along the feather: narrow at the root, broadest two-thirds out, a round tip
+  const vw = (f: number) => (edgeOn ? 0 : (f < 0.15 ? 0 : f < 0.7 ? 1 + (len >= 7 && f > 0.35 ? 1 : 0) : f < 0.93 ? 1 : 0) * (flip < 0.6 ? 0.5 : 1));
+  for (let i = 0; i < len; i++) {
+    const f = i / Math.max(1, len - 1);
+    const k = i - half;
+    const qx = cx + dx * k;
+    const qy = cy + dy * k;
+    const w = vw(f);
+    for (let j = 1; j <= Math.ceil(w); j++) {
+      put(ri(qx + nx * j), ri(qy + ny * j), lit);
+      put(ri(qx - nx * j), ri(qy - ny * j), j === 2 ? quill : shade);
+    }
+    put(ri(qx), ri(qy), f > 0.9 ? lit : quill);
+  }
+  if (step < TONES.length - 1) {
+    const ink = step === 0 ? PAL.ink : PAL.void0;
+    for (const key of px.keys()) {
+      const X = key % 4096;
+      const Y = Math.floor(key / 4096);
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const kk = (Y + oy) * 4096 + X + ox;
+        if (!px.has(kk)) r.px(X + ox, Y + oy, ink);
+      }
+    }
+  }
+  for (const [key, c] of px) r.px(key % 4096, Math.floor(key / 4096), c);
+}
+
+/**
+ * A lumpy CUMULUS of down (the burst cloud, the pof): overlapping puffs, each a little dome lit from
+ * the top-left in flat bands (white / void4 / void3 / void2), the lower puffs first so every upper
+ * puff laps over the one under it with a 1-px lilac crease, one ink rim round the whole mass.
+ * `puffs` = [dx, dy, r] round (cx, cy) in the raster's world coords; `rim` false = no ink (a fading cloud).
+ */
+function cumulus(r: Raster, cx: number, cy: number, puffs: readonly (readonly [number, number, number])[], rim = true, dim = 0): void {
+  const pc = r.pc;
+  const ox = r.x;
+  const oy = r.y;
+  const RAMP = [PAL.white, PAL.void4, PAL.void3, PAL.void2, PAL.void1];
+  const order = [...puffs].sort((a, b) => b[1] - a[1]);
+  const owner = new Map<number, number>();
+  order.forEach(([dx, dy, rad], idx) => {
+    const x0 = cx + dx;
+    const y0 = cy + dy;
+    for (let y = Math.floor(y0 - rad - 1); y <= y0 + rad + 1; y++)
+      for (let x = Math.floor(x0 - rad - 1); x <= x0 + rad + 1; x++) {
+        const u = (x + 0.5 - x0) / rad;
+        const v = (y + 0.5 - y0) / (rad * 0.86);
+        const d2 = u * u + v * v;
+        if (d2 > 1) continue;
+        const nz = Math.sqrt(1 - d2);
+        const l = -u * 0.55 - v * 0.75 + nz * 0.45;
+        let b = l > 0.22 ? 0 : l > -0.2 ? 1 : l > -0.55 ? 2 : 3;
+        // where it laps over an earlier (lower) puff, its lower rim is a crease
+        const key = (y - oy) * 4096 + (x - ox);
+        if (owner.has(key) && d2 > 0.72 && v > 0) b = Math.max(b, 2);
+        b = Math.min(4, b + dim);
+        owner.set(key, idx);
+        pc.set(x - ox, y - oy, RAMP[b]);
+      }
+  });
+  if (rim) {
+    const ink = dim >= 1 ? PAL.void0 : PAL.ink;
+    for (const key of owner.keys()) {
+      const X = key % 4096;
+      const Y = Math.floor(key / 4096);
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (!owner.has((Y + dy) * 4096 + X + dx)) pc.set(X + dx, Y + dy, ink);
+    }
+  }
+}
+
 /** A free feather particle: drifts, tumbles like a pendulum, steps down its ramp to nothing. */
 interface Plume {
   x: number;
@@ -159,6 +254,8 @@ interface Plume {
   delay: number;
   /** Lateral flutter amplitude (px/s). */
   flut: number;
+  /** A whole inked feather stamp (falling-leaf: rocks and turns over edge-on) instead of a plain feather. */
+  ink?: boolean;
 }
 
 /** A pool of free feathers drawn on one raster (stepped fades, whole pixels). */
@@ -222,7 +319,8 @@ class Plumes {
       p.x += (p.vx + Math.cos(p.ph) * p.flut) * s;
       p.y += p.vy * s;
       const step = Math.floor(clamp((a / p.life - 0.55) / 0.45, 0, 0.999) * TONES.length);
-      feather(this.r, p.x, p.y, p.ang + Math.sin(p.ph) * p.swing, p.len, step);
+      if (p.ink && p.len >= 5) stamp(this.r, p.x, p.y, p.ang + Math.sin(p.ph) * p.swing, p.len, step, Math.abs(Math.cos(p.ph * 0.5)));
+      else feather(this.r, p.x, p.y, p.ang + Math.sin(p.ph) * p.swing, p.len, step);
     }
     this.r.end();
     if (this.closed && this.list.length === 0) {
@@ -294,7 +392,9 @@ function fountain(S: Stage, rnd: Rnd): { fling(): void; end(): void } {
         const r = Math.sin(a) > 0 ? front : back;
         // tangent of the whirl, tilted up the spiral
         const ang = a + Math.PI / 2 + (S.dir > 0 ? -0.5 : 0.5);
-        feather(r, x, yy, ang, f.len, t > 0.92 ? 1 : 0);
+        // every other one a whole inked feather stamp (it turns over as it whirls), the rest plain
+        if (f.len >= 7) stamp(r, x, yy, ang, f.len + 1, t > 0.92 ? 1 : 0, Math.abs(Math.cos(a)));
+        else feather(r, x, yy, ang, f.len, t > 0.92 ? 1 : 0);
       }
     }
     back.end();
@@ -312,7 +412,7 @@ function fountain(S: Stage, rnd: Rnd): { fling(): void; end(): void } {
         const rad = lerp(8, 17, Math.sin(Math.PI * Math.min(1, t * 1.1))) + 2;
         const y = lerp(home.y + 2, top + 6, t * t * (3 - 2 * t));
         const x = home.x + Math.cos(a) * rad;
-        loose.add({ x, y: y + Math.sin(a) * rad * 0.35, vx: Math.cos(a) * rr(rnd, 50, 90), vy: rr(rnd, -60, -20) + Math.sin(a) * 12, len: f.len, grav: 70, drag: 3, life: rr(rnd, 520, 820), ang: a + Math.PI / 2 }, rnd);
+        loose.add({ x, y: y + Math.sin(a) * rad * 0.35, vx: Math.cos(a) * rr(rnd, 50, 90), vy: rr(rnd, -60, -20) + Math.sin(a) * 12, len: f.len >= 7 ? f.len + 1 : f.len, grav: 70, drag: 3, life: rr(rnd, 520, 820), ang: a + Math.PI / 2, ink: f.len >= 7 }, rnd);
       }
       loose.close();
     },
@@ -408,8 +508,8 @@ async function summonV3(S: Stage): Promise<void> {
     const w = u.framePoint(c.x, c.y);
     return { x: w0.x - w.x, y: w0.y - w.y };
   });
-  const FALL = 62;
-  const PRE = 460;
+  const FALL = 44;
+  const PRE = 320;
   u.pose('summon', 0);
   u.showSprite();
   spr.setPosition(rest.x, rest.y - FALL);
@@ -506,7 +606,7 @@ async function summonV3(S: Stage): Promise<void> {
     const crown = new Plumes(sc, head.x - 50, head.y - 50, 100, 100, spr.depth + 0.6);
     for (let i = 0; i < 6; i++) {
       const a = -Math.PI / 2 + (i - 2.5) * 0.42;
-      crown.add({ x: head.x + Math.cos(a) * 6, y: head.y + 8 + Math.sin(a) * 4, vx: Math.cos(a) * 70, vy: Math.sin(a) * 80, len: i % 2 ? 4 : 5, grav: 90, drag: 2.5, life: rr(rnd, 560, 760), ang: a }, rnd);
+      crown.add({ x: head.x + Math.cos(a) * 6, y: head.y + 8 + Math.sin(a) * 4, vx: Math.cos(a) * 70, vy: Math.sin(a) * 80, len: i % 2 ? 6 : 7, grav: 90, drag: 2.5, life: rr(rnd, 560, 760), ang: a, ink: true }, rnd);
     }
     crown.close();
     void u.badge.pop();
@@ -590,8 +690,17 @@ function volley(s: StrikeArgs, from: XY, rnd: Rnd, onHit: (i: number, at: XY) =>
   let resolveAll!: () => void;
   const allIn = new Promise<void>((res) => (resolveAll = res));
   const STICK = 320;
+  const sparksAt: (XY & { t: number })[] = [];
   onFrame(sc, (dt, el) => {
     r.begin();
+    for (const k of sparksAt) {
+      const a = el - k.t;
+      if (a > 90) continue;
+      // the tink: a white 4-point spark that flares and shrinks off the guard
+      const n = a < 30 ? 3 : a < 60 ? 2 : 1;
+      r.px(k.x, k.y, PAL.white);
+      for (let j = 1; j <= n; j++) for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) r.px(k.x + ox * j, k.y + oy * j, j === n ? PAL.void4 : PAL.white);
+    }
     let flying = 0;
     let cx = 0;
     let cy = 0;
@@ -628,9 +737,11 @@ function volley(s: StrikeArgs, from: XY, rnd: Rnd, onHit: (i: number, at: XY) =>
           landed++;
           onHit(i, d.to);
           if (s.blocked) {
-            // it glances off the guard and tumbles away (never sticks)
+            // (FIX r2) it glances off the guard: a white "tink" spark, then it ricochets back up on a
+            // high arc, spinning end over end, and tumbles to the floor (never sticks)
             d.state = 'gone';
-            falls.add({ x: d.to.x, y: d.to.y, vx: -dirX * rr(rnd, 40, 80), vy: rr(rnd, -70, -40), len: d.len - 1, grav: 160, drag: 2, life: rr(rnd, 460, 640), ang: d.ang + Math.PI, swing: 1.1, hz: 3 }, rnd);
+            sparksAt.push({ x: d.to.x, y: d.to.y, t: el });
+            falls.add({ x: d.to.x - dirX * 2, y: d.to.y, vx: -dirX * rr(rnd, 110, 170), vy: rr(rnd, -150, -100), len: Math.max(6, d.len - 1), grav: 420, drag: 0.8, life: rr(rnd, 420, 560), ang: d.ang + Math.PI, swing: 2.4, hz: rr(rnd, 4, 6), flut: 4, ink: true }, rnd);
           } else {
             d.state = 'stuck';
             d.stuckAt = el;
@@ -655,13 +766,13 @@ function volley(s: StrikeArgs, from: XY, rnd: Rnd, onHit: (i: number, at: XY) =>
         if (el - d.stuckAt > STICK + i * 40 || !host) {
           // it flakes off and flutters down
           d.state = 'gone';
-          falls.add({ x: back.x, y: back.y, vx: -dirX * rr(rnd, 10, 30), vy: rr(rnd, -20, 5), len: Math.max(3, d.len - 2), grav: 55, drag: 2.4, life: rr(rnd, 560, 760), ang: d.ang }, rnd);
+          falls.add({ x: back.x, y: back.y, vx: -dirX * rr(rnd, 10, 30), vy: rr(rnd, -20, 5), len: Math.max(5, d.len - 2), grav: 55, drag: 2.4, life: rr(rnd, 560, 760), ang: d.ang, ink: true }, rnd);
         }
       }
     }
     r.end();
     if (flying > 0) glow.setPosition(ri(cx / flying), ri(cy / flying), lerp(g0.y, g1.y, 0.5));
-    if (darts.every((d) => d.state === 'gone')) {
+    if (darts.every((d) => d.state === 'gone') && sparksAt.every((k) => el - k.t > 90)) {
       r.destroy();
       falls.close();
       void glow.fadeOut(120);
@@ -878,7 +989,7 @@ function gust(scene: Phaser.Scene, u: MonsterUnit, dir: number, ms: number, rnd:
       const b = u.core();
       for (let i = 0; i < n; i++) {
         // they leave from the back edge of the body, where the sprite's own peeled feathers exit
-        plumes.add({ x: b.x + dir * rr(rnd, 12, 18), y: b.y + rr(rnd, -18, 10), vx: dir * rr(rnd, 90, 150), vy: rr(rnd, -55, -15), len: i % 3 === 0 ? 8 : 7, grav: -4, drag: 1, life: rr(rnd, 700, 1000), flut: rr(rnd, 8, 16), hz: rr(rnd, 1.6, 2.4), ang: dir > 0 ? 0.3 : Math.PI - 0.3, swing: 1.1 }, rnd);
+        plumes.add({ x: b.x + dir * rr(rnd, 12, 18), y: b.y + rr(rnd, -18, 10), vx: dir * rr(rnd, 90, 150), vy: rr(rnd, -55, -15), len: i % 3 === 0 ? 9 : 7, grav: -4, drag: 1, life: rr(rnd, 700, 1000), flut: rr(rnd, 8, 16), hz: rr(rnd, 1.6, 2.4), ang: dir > 0 ? 0.3 : Math.PI - 0.3, swing: 1.1, ink: true }, rnd);
       }
     },
     end() {
@@ -1038,12 +1149,12 @@ function paintPillow(pc: PixelCanvas, cx: number, cy: number, a: number, b: numb
   // the ghost's face hollow (11×7) and its gold eyes (lights: drawn after the outline)
   const fx0 = ri(cx - back * 1);
   const fy0 = ri(cy);
-  const hw = face === 'wide' ? 5.6 : 5.2;
-  const hh = face === 'wide' ? 3.8 : 3.3;
-  for (let y = -4; y <= 4; y++) for (let x = -6; x <= 6; x++) if ((x * x) / (hw * hw) + (y * y) / (hh * hh) <= 1) pc.set(fx0 + x, fy0 + y, PAL.void0);
+  const hw = face === 'wide' ? 7.2 : 6.6;
+  const hh = face === 'wide' ? 4.8 : 4.3;
+  for (let y = -5; y <= 5; y++) for (let x = -8; x <= 8; x++) if ((x * x) / (hw * hw) + (y * y) / (hh * hh) <= 1) pc.set(fx0 + x, fy0 + y, PAL.void0);
   // its brow: the cushion's lip overhangs the hollow (ink), the lower lip catches a little light
-  for (let x = -4; x <= 4; x++) pc.set(fx0 + x, fy0 - 4, PAL.ink);
-  for (let x = -3; x <= 3; x++) if (pc.get(fx0 + x, fy0 + 4) !== null) pc.set(fx0 + x, fy0 + 4, PAL.void1);
+  for (let x = -5; x <= 5; x++) pc.set(fx0 + x, fy0 - 5, PAL.ink);
+  for (let x = -4; x <= 4; x++) if (pc.get(fx0 + x, fy0 + 5) !== null) pc.set(fx0 + x, fy0 + 5, PAL.void1);
   const G4 = PAL.gold4;
   const G3 = PAL.gold3;
   const eye = (ex: number, near: boolean): void => {
@@ -1069,7 +1180,9 @@ function paintPillow(pc: PixelCanvas, cx: number, cy: number, a: number, b: numb
       pc.set(ex, fy0, G3);
       pc.set(ex + 1, fy0, G3);
     } else {
-      // 2×2 dots
+      // 2×3 dots (they read at 1×)
+      pc.set(ex, fy0 - 2, G4);
+      pc.set(ex + 1, fy0 - 2, G4);
       pc.set(ex, fy0 - 1, G4);
       pc.set(ex + 1, fy0 - 1, G4);
       pc.set(ex, fy0, G3);
@@ -1077,18 +1190,18 @@ function paintPillow(pc: PixelCanvas, cx: number, cy: number, a: number, b: numb
     }
   };
   if (face === 'squeeze') {
-    eye(fx0 - 2, false);
-    eye(fx0 + 2, true);
-  } else {
     eye(fx0 - 3, false);
-    eye(fx0 + 2, true);
+    eye(fx0 + 3, true);
+  } else {
+    eye(fx0 - 4, false);
+    eye(fx0 + 3, true);
   }
 }
 
 /** A pillow sprite on the HUD layer: a raster you re-paint with a size and a face. */
 function pillowView(scene: Phaser.Scene, at: XY, back: number): { set(a: number, b: number, face: Face, dy?: number): void; hide(): void; destroy(): void } {
-  const W = 80;
-  const H = 48;
+  const W = 104;
+  const H = 56;
   const r = new Raster(scene, at.x - W / 2, at.y - H / 2, W, H, DEPTH.HUD + 8);
   const pc = new PixelCanvas(W, H);
   return {
@@ -1108,86 +1221,149 @@ function pillowView(scene: Phaser.Scene, at: XY, back: number): { set(a: number,
   };
 }
 
-/** The flock: feathers stream from `from` to `to` (HUD space), packing in; resolves on arrival. */
-function flock(scene: Phaser.Scene, from: XY, to: XY, rnd: Rnd, ms: number): Promise<void> {
-  const N = 42;
+/**
+ * The flock: feathers stream from the burst cloud (`from`, its rim radius `rim`) to `to` (HUD
+ * space), packing in; a third of them are whole inked feather stamps rocking on the way (the rest
+ * down specks as filler). Resolves on arrival.
+ */
+function flock(scene: Phaser.Scene, from: XY, to: XY, rnd: Rnd, ms: number, rim = 14): Promise<void> {
+  const N = 36;
   const r = new Raster(scene, 0, 0, GAME_W, GAME_H, DEPTH.HUD + 7);
   const up = to.y < from.y ? -1 : 1;
   const fs = Array.from({ length: N }, (_, i) => {
-    const a = rr(rnd, 0, TAU);
-    const burst = rr(rnd, 6, 20);
-    const p0 = { x: from.x + Math.cos(a) * burst, y: from.y + Math.sin(a) * burst * 0.8 };
+    // they leave from all round the cloud, the upper rim first (the cloud lifts off)
+    const a = -Math.PI / 2 + (i % 2 ? 1 : -1) * rr(rnd, 0, Math.PI * 0.95);
+    const p0 = { x: from.x + Math.cos(a) * rim, y: from.y + Math.sin(a) * rim * 0.8 };
     const side = rr(rnd, -1, 1);
+    const heavy = i % 3 === 0;
     return {
-      a,
       p0,
-      c1: { x: lerp(p0.x, to.x, 0.25) + side * 40, y: lerp(p0.y, to.y, 0.2) - 30 * (up < 0 ? 0.6 : 1.2) + rr(rnd, -10, 10) },
-      c2: { x: lerp(p0.x, to.x, 0.7) + side * 18, y: lerp(p0.y, to.y, 0.75) - 16 * (up < 0 ? -0.4 : 1) },
-      d: { x: to.x + rr(rnd, -12, 12), y: to.y + rr(rnd, -5, 5) },
-      delay: (i / N) * ms * 0.32 + rr(rnd, 0, 30),
-      len: i % 4 === 0 ? 7 : i % 4 === 1 ? 5 : i % 4 === 2 ? 4 : 2,
+      c1: { x: lerp(p0.x, to.x, 0.2) + side * 34 + Math.cos(a) * 16, y: lerp(p0.y, to.y, 0.15) - 34 * (up < 0 ? 0.6 : 1.2) + rr(rnd, -10, 10) },
+      c2: { x: lerp(p0.x, to.x, 0.7) + side * 16, y: lerp(p0.y, to.y, 0.75) - 16 * (up < 0 ? -0.4 : 1) },
+      d: { x: to.x + rr(rnd, -14, 14), y: to.y + rr(rnd, -5, 5) },
+      delay: (Math.abs(a + Math.PI / 2) / Math.PI) * ms * 0.3 + rr(rnd, 0, 40),
+      len: heavy ? (i % 2 ? 8 : 7) : i % 3 === 1 ? 4 : 2,
+      heavy,
       ph: rr(rnd, 0, TAU),
       prev: p0,
     };
   });
-  const BURST = 90;
   return animate(scene, ms, (_t, el) => {
     r.begin();
     for (const f of fs) {
-      let p: XY;
-      if (el < BURST) {
-        // the ghost bursts: the cloud blooms outward first
-        const k = el / BURST;
-        p = { x: lerp(from.x, f.p0.x, 1 - (1 - k) * (1 - k)), y: lerp(from.y, f.p0.y, 1 - (1 - k) * (1 - k)) };
-      } else {
-        const lt = clamp((el - BURST - f.delay) / Math.max(1, ms - BURST - f.delay), 0, 1);
-        const e = lt * lt * (3 - 2 * lt);
-        p = cbez(f.p0, f.c1, f.c2, f.d, e);
-        const wob = Math.sin(f.ph + el * 0.03) * 2 * (1 - lt);
-        p = { x: p.x + wob, y: p.y };
-        if (lt >= 1) continue;
-      }
-      const ang = Math.atan2(p.y - f.prev.y, p.x - f.prev.x) + Math.sin(f.ph + el * 0.02) * 0.6;
+      const lt = clamp((el - f.delay) / Math.max(1, ms - f.delay), 0, 1);
+      if (lt <= 0 || lt >= 1) continue;
+      const e = lt * lt * (3 - 2 * lt);
+      let p = cbez(f.p0, f.c1, f.c2, f.d, e);
+      const wob = Math.sin(f.ph + el * 0.03) * 2.5 * (1 - lt);
+      p = { x: p.x + wob, y: p.y };
+      const ang = Math.atan2(p.y - f.prev.y, p.x - f.prev.x) + Math.sin(f.ph + el * 0.02) * 0.7;
       f.prev = p;
-      feather(r, p.x, p.y, ang, f.len, 0);
+      if (f.heavy) stamp(r, p.x, p.y, ang + Math.PI, f.len, 0, Math.abs(Math.cos(f.ph + el * 0.012)));
+      else feather(r, p.x, p.y, ang, f.len, 0);
     }
     r.end();
   }).then(() => r.destroy());
 }
 
-/** The pof: a round puff of down bursting off the pillow, specks drifting down (HUD space). */
+/**
+ * The BURST (FIX r2): the swollen ghost goes off like a pillow split open — one white flash frame at
+ * body size (ink rim), then a lumpy outlined cloud of down blooms UP and OUT to ~1.5× the body over
+ * four beats, tears into lobes and thins while whole inked feathers tumble out of its edge; it
+ * rises the whole time (it never lies on the floor). `onLift` fires when the cloud lifts off (the
+ * flock leaves). World space, on the field.
+ */
+function burstCloud(scene: Phaser.Scene, at: XY, depth: number, rnd: Rnd, onLift: (rim: number, c: XY) => void): Promise<void> {
+  const r = new Raster(scene, at.x - 60, at.y - 80, 120, 120, depth);
+  const tumble = new Plumes(scene, at.x - 90, at.y - 110, 180, 170, depth + 0.1);
+  // the body's own shape: hood, chest, skirt toward the tail
+  const BODY: [number, number, number][] = [[1, -7, 10], [-1, 3, 9], [-4, 10, 6], [5, 2, 6]];
+  const LOBES = Array.from({ length: 9 }, (_, i) => {
+    const a = (i / 9) * TAU + rr(rnd, -0.2, 0.2);
+    return { a, r: rr(rnd, 5.5, 8), out: rr(rnd, 0.85, 1.15) };
+  });
+  let lifted = false;
+  let thrown = false;
+  const BEAT = 52;
+  return animate(scene, BEAT * 6, (_t, el) => {
+    const k = Math.floor(el / BEAT);
+    r.begin();
+    if (k === 0) {
+      // the flash: the body shape, all white, inked
+      cumulus(r, at.x, at.y, BODY);
+      for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) {
+        const c = r.pc.get(x, y);
+        if (c !== null && c !== PAL.ink) r.pc.set(x, y, PAL.white);
+      }
+    } else {
+      const j = Math.min(5, k) - 1; // 0..4
+      const grow = [1.0, 1.3, 1.5, 1.55, 1.5][j];
+      const rise = [-3, -8, -13, -18, -23][j];
+      const shrink = [1, 1, 0.95, 0.75, 0.5][j];
+      const c = { x: at.x, y: at.y + rise };
+      const puffs: [number, number, number][] = [[0, -2, (9 + j * 1.5) * shrink], [-4, -6, 6 * shrink], [5, -5, 6 * shrink]];
+      for (const L of LOBES) puffs.push([Math.cos(L.a) * 9 * grow * L.out, Math.sin(L.a) * 7 * grow * L.out - 2, L.r * shrink * (j === 0 ? 1.15 : 1)]);
+      cumulus(r, c.x, c.y, j >= 3 ? puffs.filter((_, i) => i % 2 === 0) : puffs, j < 3, j >= 3 ? j - 2 : 0);
+      if (j === 0 && !thrown) {
+        thrown = true;
+        // whole feathers tumble out of its edge
+        for (let i = 0; i < 8; i++) {
+          // out of its upper rim mostly: the cloud is lifting
+          const a = -Math.PI / 2 + ((i / 7) - 0.5) * Math.PI * 1.5 + rr(rnd, -0.15, 0.15);
+          tumble.add({ x: c.x + Math.cos(a) * 12, y: c.y + Math.sin(a) * 9, vx: Math.cos(a) * rr(rnd, 35, 60), vy: Math.sin(a) * rr(rnd, 30, 50) - 25, len: i % 3 === 0 ? 9 : i % 3 === 1 ? 8 : 7, grav: -6, drag: 2.2, life: rr(rnd, 420, 600), ang: a, ink: true, hz: rr(rnd, 1.6, 2.4), swing: 1 }, rnd);
+        }
+        tumble.close();
+      }
+      if (j === 2 && !lifted) {
+        lifted = true;
+        onLift(15, c);
+      }
+    }
+    r.end();
+  }).then(() => r.destroy());
+}
+
+/**
+ * The pof (FIX r2): a lumpy CUMULUS of down pops off the pillow — a tight pop (k0), a wide puff
+ * (k1), both inked, top-left lit — then the torn ring of lobes (k2) and its last wisps; whole inked
+ * feathers fly off it and rock down, specks of down as filler (HUD space).
+ */
 function pof(scene: Phaser.Scene, at: XY, rnd: Rnd): void {
-  const r = new Raster(scene, at.x - 50, at.y - 34, 100, 68, DEPTH.HUD + 9);
-  void animate(scene, 260, (t) => {
+  const r = new Raster(scene, at.x - 60, at.y - 42, 120, 84, DEPTH.HUD + 9);
+  const L = Array.from({ length: 8 }, (_, i) => ({ a: (i / 8) * TAU + rr(rnd, -0.2, 0.2), r: rr(rnd, 5, 7.5) }));
+  void animate(scene, 300, (t) => {
     r.draw(() => {
       const k = Math.floor(t * 5);
       if (k === 0) {
-        r.ell(at.x, at.y, 20, 11, PAL.white);
-        r.ell(at.x + 3, at.y + 3, 14, 6, PAL.void4);
+        // the pop: tight, tall (stretched), bright
+        const puffs: [number, number, number][] = [[0, -1, 9]];
+        for (const l of L) puffs.push([Math.cos(l.a) * 9, Math.sin(l.a) * 7 - 1, l.r * 0.85]);
+        cumulus(r, at.x, at.y - 2, puffs);
       } else if (k === 1) {
-        r.ell(at.x, at.y, 26, 14, PAL.void4);
-        r.ell(at.x - 1, at.y - 1, 20, 10, PAL.white);
-        r.ell(at.x + 2, at.y + 3, 13, 5, PAL.void4);
+        // the puff: wide and squat
+        const puffs: [number, number, number][] = [[0, 0, 10], [-6, -3, 7], [6, -3, 7]];
+        for (const l of L) puffs.push([Math.cos(l.a) * 19, Math.sin(l.a) * 10, l.r * 1.1]);
+        cumulus(r, at.x, at.y - 1, puffs);
       } else if (k === 2) {
-        // the cloud tears open: a lumpy ring of puffs
+        // the cloud tears open: a lumpy ring of lobes
         for (let i = 0; i < 9; i++) {
           const a = (i / 9) * TAU;
-          r.ell(at.x + Math.cos(a) * 24, at.y + Math.sin(a) * 13, 6, 4, i % 3 === 0 ? PAL.void3 : PAL.void4);
-          r.ell(at.x + Math.cos(a) * 23 - 1, at.y + Math.sin(a) * 12 - 1, 4, 2, PAL.white);
+          cumulus(r, ri(at.x + Math.cos(a) * 24), ri(at.y + Math.sin(a) * 13), [[0, 0, 5], [2, 1, 3.5]], true, i % 3 === 0 ? 1 : 0);
         }
       } else if (k === 3) {
         for (let i = 0; i < 9; i++) {
           const a = (i / 9) * TAU + 0.2;
-          r.ell(at.x + Math.cos(a) * 30, at.y + Math.sin(a) * 16, 4, 2, PAL.void3);
+          cumulus(r, ri(at.x + Math.cos(a) * 30), ri(at.y + Math.sin(a) * 16), [[0, 0, 3.5]], false, 1);
         }
       } else r.ring(at.x, at.y, 34, 18, PAL.void2);
     });
   }).then(() => r.destroy());
-  const down = new Plumes(scene, at.x - 110, at.y - 80, 220, 170, DEPTH.HUD + 9);
-  for (let i = 0; i < 34; i++) {
-    const a = (i / 34) * TAU + rr(rnd, -0.15, 0.15);
+  const down = new Plumes(scene, at.x - 120, at.y - 90, 240, 190, DEPTH.HUD + 9);
+  for (let i = 0; i < 30; i++) {
+    const a = (i / 30) * TAU + rr(rnd, -0.15, 0.15);
     const v = rr(rnd, 80, 170);
-    down.add({ x: at.x + Math.cos(a) * 12, y: at.y + Math.sin(a) * 6, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.6 - 25, len: i % 3 === 0 ? 6 : i % 3 === 1 ? 4 : 2, grav: 45, drag: 2.8, life: rr(rnd, 900, 1300), ang: a }, rnd);
+    const heavy = i % 3 === 0;
+    down.add({ x: at.x + Math.cos(a) * 14, y: at.y + Math.sin(a) * 7, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.6 - 30, len: heavy ? (i % 2 ? 8 : 7) : i % 3 === 1 ? 3 : 2, grav: 45, drag: 2.8, life: rr(rnd, 900, 1300), ang: a, ink: heavy, swing: heavy ? 1.1 : 0.7 }, rnd);
   }
   down.close();
 }
@@ -1202,35 +1378,38 @@ async function pillowDeath(ctx: Ctx<'destroy'>, L: Leave | null, amount: number,
   const pan = panAt(home.x);
   let burstAt: XY = { x: home.x, y: home.y - 18 };
   if (u && live(u)) {
-    // it hugs itself into a cushion (special 0 … release: hug, round, squeeze)
-    const REL = u.markFrame('special', 'release', 5);
-    atFrame(u, 'special', 2, () => play('wiStuff', { volume: 0.6, pan }), { late: false });
-    // (held in the hug since the blow landed: it plays on from there)
-    const from = clutched.has(u) && u.frameInfo().anim === 'special' ? u.frameInfo().frame : 0;
+    // (FIX r2) NO field pillow: the hug's build-up plays on (squeeze, shudder, feathers slipping
+    // out) to the brief swell (special f5, release − 3), and from there it bursts straight into the
+    // cloud — the pillow shape is kept for the panel (the payoff)
+    const REL = u.markFrame('special', 'release', 8);
+    const SWELL = Math.max(1, REL - 3);
+    atFrame(u, 'special', SWELL, () => play('wiStuff', { volume: 0.6, pan }), { late: false });
+    const held = clutched.has(u) && u.frameInfo().anim === 'special' ? u.frameInfo().frame : 0;
     clutched.delete(u);
-    await u.asClaimant(() => u.playRange('special', from, REL, { timeScale: 1.45 }));
-    burstAt = artPoint(u, 'special', REL, 'core');
-    // its poof frame shows one beat (the sprite's own ring of down), then the body IS the cloud
-    await sleep(sc, 50);
+    const from = Math.min(SWELL - 1, held);
+    await u.asClaimant(() => u.playRange('special', from, SWELL, { timeScale: 1.3 }));
+    burstAt = artPoint(u, 'special', SWELL, 'core');
+    burstAt = { x: burstAt.x, y: burstAt.y - 4 };
+    await sleep(sc, 60);
   }
   play('wiCloud', { volume: 0.9, pan });
-  void lightFlash(sc, burstAt.x, burstAt.y, PAL.white, 22, 260, { floorY: home.y, air: 0.8, intensity: 0.7 });
+  void lightFlash(sc, burstAt.x, burstAt.y, PAL.white, 26, 300, { floorY: home.y, air: 0.8, intensity: 0.75 });
+  let lift!: (v: { rim: number; c: XY }) => void;
+  const lifted = new Promise<{ rim: number; c: XY }>((res) => (lift = res));
+  const cloudDone = burstCloud(sc, burstAt, (u?.sprite.depth ?? DEPTH.FX) + 0.5, rnd, (rim, c) => lift({ rim, c }));
+  // the flash covers the body: it is gone from this frame on
   L?.finish();
-  // a few feathers too heavy for the stream float down where it stood
-  const left = new Plumes(sc, burstAt.x - 60, burstAt.y - 50, 120, 110, DEPTH.FX + 2);
-  for (let i = 0; i < 9; i++) {
-    const a = (i / 9) * TAU + rr(rnd, -0.2, 0.2);
-    left.add({ x: burstAt.x + Math.cos(a) * 5, y: burstAt.y + Math.sin(a) * 4, vx: Math.cos(a) * rr(rnd, 40, 80), vy: Math.sin(a) * 50 - 30, len: i % 2 ? 3 : 5, grav: 40, drag: 2.6, life: rr(rnd, 700, 1000), ang: a }, rnd);
-  }
-  left.close();
+  const lf = await lifted;
+  burstAt = lf.c;
   // ---- the cloud streams to the owner's LP panel (HUD space)
   const from = fx.screenPoint(ctx, burstAt);
   const lp = fx.lpPoint(ctx, owner);
   const top = lp.y < GAME_H / 2;
   const at = { x: ri(lp.x), y: ri(lp.y) };
   const flight = start('wiFlock', { volume: 0.85, pan: panAt(at.x) });
-  const FLY = 390;
-  await flock(sc, from, at, rnd, FLY);
+  const FLY = 420;
+  await flock(sc, from, at, rnd, FLY, lf.rim);
+  void cloudDone;
   flight.stop(80);
   // ---- it packs into a pillow (the ghost's face on it)
   play('wiStuff', { volume: 0.9, pan: panAt(at.x) });
@@ -1238,11 +1417,11 @@ async function pillowDeath(ctx: Ctx<'destroy'>, L: Leave | null, amount: number,
   const P = pillowView(sc, at, at.x < GAME_W / 2 ? -1 : 1);
   // it packs in with a plump overshoot (whole-pixel sizes, one per beat)
   const sizes: [number, number, number][] = [
-    [9, 5, 30],
-    [17, 9, 30],
-    [26, 13, 36],
-    [22, 11, 34],
-    [24, 12, 24],
+    [14, 6, 30],
+    [22, 10, 30],
+    [31, 14, 36],
+    [27, 12, 34],
+    [29, 13, 24],
   ];
   // the prevented damage is already on its way while the pillow plumps up: it comes in from the
   // field side of the panel (where the blow came from) and drops onto the pillow
@@ -1268,12 +1447,12 @@ async function pillowDeath(ctx: Ctx<'destroy'>, L: Leave | null, amount: number,
   // squash: wide and flat, the eyes squeeze, the number sinks into the down; then it springs
   // back up tall, wobbles twice and settles — the blow is soaked up, nothing gets through
   const squash: [number, number, Face, number, number][] = [
-    [29, 6, 'squeeze', 64, 3],
-    [27, 8, 'squeeze', 44, 4],
-    [19, 15, 'wide', 44, 0],
-    [26, 10, 'wide', 44, 0],
-    [22, 13, 'open', 40, 0],
-    [24, 12, 'happy', 34, 0],
+    [34, 7, 'squeeze', 64, 3],
+    [32, 9, 'squeeze', 44, 4],
+    [26, 16, 'wide', 44, 0],
+    [31, 11, 'wide', 44, 0],
+    [27, 14, 'open', 40, 0],
+    [29, 13, 'happy', 34, 0],
   ];
   for (const [a, b, face, ms, sink] of squash) {
     P.set(a, b, face, top ? -Math.min(1, sink) : Math.min(1, sink));
@@ -1294,14 +1473,20 @@ async function pillowDeath(ctx: Ctx<'destroy'>, L: Leave | null, amount: number,
   void panelFlash(sc, at);
   const shine = labelShine(sc, at.x, ly, 64);
   const breathe: [number, number][] = [
-    [25, 11],
-    [24, 12],
-    [23, 13],
-    [24, 12],
+    [30, 12],
+    [29, 13],
+    [28, 14],
+    [29, 13],
   ];
   for (let i = 0; i < 4; i++) {
     const [ba, bb] = breathe[i];
     P.set(ba, bb, 'happy');
+    if (i === 1) {
+      // a tuft pops out of the pillow's top seam on the breath and rocks away
+      const tuft = new Plumes(sc, at.x - 60, at.y - 60, 120, 110, DEPTH.HUD + 9);
+      tuft.add({ x: at.x + 8, y: at.y - bb - 1, vx: 26, vy: -60, len: 7, grav: 60, drag: 1.8, life: 520, ang: -1.2, ink: true, swing: 1.1, hz: 2.2 }, rnd);
+      tuft.close();
+    }
     if (label.active) {
       if (i === 1) label.setTint(PAL.gold4).setY(ly + pop);
       else if (i === 2) label.setY(ly);
@@ -1462,10 +1647,18 @@ if (LOOK_V3)
         sc.events.off('v3:contact', onContact);
         let t0 = 0;
         let held = false;
+        let lastEsc = 0;
+        // feathers already escaping the hold: whole inked feathers slip off its back and float up
+        const esc = new Plumes(sc, u.home.x - 70, u.home.y - 110, 140, 130, u.sprite.depth + 0.3);
+        const escRnd = mulberry32(u.uid * 7 + 3);
         onFrame(sc, (_dt, el) => {
-          if (!live(u) || u.retired || el > 3000) return false;
+          const quit = (): false => {
+            esc.close();
+            return false;
+          };
+          if (!live(u) || u.retired || el > 3000) return quit();
           if (el < 50) return true;
-          if (held && !clutched.has(u)) return false; // the effect took over
+          if (held && !clutched.has(u)) return quit(); // the effect took over
           if (!held) {
             if (u.frameInfo().anim !== 'idle') return true;
             held = true;
@@ -1474,11 +1667,20 @@ if (LOOK_V3)
             t0 = el;
             return true;
           }
-          // it trembles, holding itself together: the hug and the first rounding, every 110 ms
+          // (FIX r2) a living hold, not a frozen egg: after the hug (f1) it squeezes and shudders
+          // through the build-up frames f2 → f3 → f4 → f3 … while feathers slip out of it
           const fi = u.frameInfo();
-          if (fi.anim !== 'special' || fi.frame > CLUTCH_FRAME + 1) return false;
-          const want = Math.floor((el - t0) / 110) % 2 ? CLUTCH_FRAME + 1 : CLUTCH_FRAME;
+          if (fi.anim !== 'special' || fi.frame > CLUTCH_FRAME + 3) return quit();
+          const beat = Math.floor((el - t0) / 100);
+          const want = beat === 0 ? CLUTCH_FRAME : CLUTCH_FRAME + [1, 2, 3, 2][(beat - 1) % 4];
           if (fi.frame !== want) u.pose('special', want);
+          if (beat >= 1 && el - lastEsc > 170) {
+            lastEsc = el;
+            const c = u.core();
+            const side = u.flipX ? 1 : -1;
+            const a = -Math.PI / 2 + side * rr(escRnd, 0.3, 1.3);
+            esc.add({ x: c.x + Math.cos(a) * 10, y: c.y - 6 + Math.sin(a) * 8, vx: Math.cos(a) * rr(escRnd, 20, 40), vy: rr(escRnd, -45, -25), len: rr(escRnd, 0, 1) < 0.5 ? 6 : 7, grav: -8, drag: 1.4, life: rr(escRnd, 520, 720), ang: a + Math.PI / 2, ink: true, swing: 1.1, hz: 2 }, escRnd);
+          }
           return true;
         });
       };
