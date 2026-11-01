@@ -1686,3 +1686,69 @@ Every claim was re-checked in the tree before acting on it. All 19 findings were
   at 1× and the spiral motes are faint; the egg sits ≈ 400 ms on the floor during the knit frames f7–f9 (art holds);
   rewind (lane D) and the kaChGrown* cross-card films (chains, mirror, hat, equip, control, venom, ashen) were not
   filmed this round; no LSD measurement; hatchhide still plays cloth (phase 1).
+
+### Cinematics + SFX — critic round 1 (c3r1) fixes, 2026-11-01
+Evidence: `shots/kart-a/cloud_hatchling/c3r1/` (crit evidence: `crit1/`).
+- **#1 HIGH dial readability — fixed** (`strikes-a/cloud_hatchling-grow.ts`). The dial now has a face: a 3-px band
+  (night4 body, steel inner lip) built clockwise with the puffs; the rim puffs are 7×4 cloud lobes (white crown,
+  mist flanks, steel belly; the falling ones 4×3); the ticks are 2×2 water4/water3; both hands 2 px thick (white
+  core + mist/steel side band, 3-px head) with a steel/white hub; the fast-revolution wedge is filled on every
+  radius from 0.35 R (was every second radius). Floor: the water4 pool now rises in STEPS (build → rev 1 → f7 → f9,
+  intensity 0.4 → 0.85, `setIntensity(k, 0)`), and a stepped iso floor ring (rx 26 / ry 12 + a sparse inner ring,
+  water2 → water3 → water4, sparse → full) is drawn over the card (CARD_ON_TILE + 1), blinking out with the hands
+  on f11. Films: `grow0z.png` (before), `grow1z.png`, `grow1zz.png` / `grow2zz.png` (×5 detail), `grow1x.png` (1×,
+  6000–9120 ms: the dial reads as a clock ring at 1× from 6.1 s).
+- **#2 HIGH stat beat late — fixed.** The stat beat no longer waits for the swap at the end of f15: it starts 60 scene
+  ms after the last sibling's roar-hold frame f14 begins (`BEAT_AFTER_ROAR`; after the roar's white flash). The
+  rim climbs the full-size roaring body (the silhouette is re-read every frame, so it follows the swap).
+  Measured (`m.json`, kaChGrow): roar 8167 (unchanged), `lpUp` / "+1200" **8833 → 8500 (−333 ms)**, statChange
+  8683 → 8350; growth hook (activate → resolved) 3150 → **3033 game ms** (≤ 4060). The number sits over the head
+  (`grow1x.png` #30).
+- **#3 MEDIUM grown form reads as a sheep — partly fixed** (`cloud_hatchling-rig.ts`, sprite). Grown only (sM ≥
+  0.5): a 1-px night4 band carved into every hide pixel with a cloud pixel above / beside it, plus a leaf1 second
+  step under overhanging masses (a 2-px cast shadow), laid in `late` (the despeckle pass ate it the first try,
+  `grown0.png` vs `grown1.png` / `grown2.png`). The face, chest and legs now separate from the mane at 1×. The eye
+  was already gold3/night0 and the horn skin4/earth: left as they are. Not done: a bigger head (art scope).
+- **#4 MEDIUM ring small — fixed** (`cloud_hatchling.ts`, `-fx.ts`). Ring D tables baby 8–14 → **10–18**, grown
+  12–24 → **14–28**; double-thick white (two white rows, then mist, steel on the far half); a steel afterimage
+  ring (the position three display frames back, D − 2) every second display frame; on the contact frame and the
+  first squeeze step the ring's body fills water4 inside the white. `atk1.png`, `atk1z.png`, `atkhit.png`,
+  `gatk.png` (grown vs magma_titan).
+- **#5 MEDIUM baby wind-up static — fixed** (`cloud_hatchling-anims.ts` ATTACK f2–f5 + scene). f2 nubs flap out,
+  f3 back lean + shell tap, f4 flap up on the high hop, f5 deepest lean back; the 160 ms "ha…" hold (f6) shivers
+  the body −1 px back / 1 px up / home in whole px. `atk1z.png` frames 0–8.
+- **#6 MEDIUM summon egg hold — fixed** (`summon-a/cloud_hatchling.ts`, summon holds). f3–f5 holds 150 → 130 ms
+  each, and inside each wobble the egg rattles 1 → 2 → 3 times (1-px knock sideways, the last one with a 1-px hop),
+  each with a small `hatchCrack` tick a step higher (vol 0.30–0.46, pitch 1.47–1.95). Hatch now ≈ 1400 ms
+  (was 1420–1660). kaChSummon **2450 → 2366**. `sum2z.png`.
+- **#7 LOW death egg hold — fixed.** From death f7 the knitted egg bobs in whole-px steps (1 / 0 / 1 / 0 over
+  f7–f9) and small cloud puffs rise past it on both sides every 90 ms (stepped 2 px / 40 ms), continuing through
+  the float (the cloud that carries it away); a 3 s guard stops the spawner. `kill1z.png`, `kill2z.png`.
+- **#8 timing — verified.** kaChPos: each `changePosition` batch is **500 ms** (0–517, 3617–4117); the 4100 total
+  is two endTurn batches (banners, draws) between them — inside REHBER §5 "Pozisyon değişimi" (≤ 1.6 s game).
+  kaChGrownDirect stays 2316 (≤ 2320): no change to the direct path's timing (ring art only). kaChAtkWeak 3816
+  is wisp_imp's trigger (accepted by the critic).
+- **#9 MEDIUM sound — fixed** (`audio/v3/hatchling.ts`). `hatchGrowWind` rewritten: the pink band climbs 500 →
+  2600 Hz with its level rising in steps and faster L↔R circling, a high white-noise breath band 3 → 6 kHz from
+  0.5 s, a soft glide D5 → D6 that rises into the first growth hiccup's pitch, a swelling brown low body (no
+  ticks: dial_jester owns ticking; no held note: the spiralhorn's). New `hatchDialPuff` (pink "pff" + tiny FM
+  bubble) on each of the 12 puffs, climbing D major (replaces the four 0.25 fwip ticks). Build-up RMS (400 ms
+  windows, 6.4–7.2 s): **−33.2 / −31.6 → −26.4 / −24.1 dBFS**. Contact: `hatchRingTing` gains a soft low pillow
+  thump (160 → 62 Hz, 0.48, 6 ms attack) and a brown air-push; the kit's `impactHeavy` 0.3 is react.ts's (shared,
+  not edited). Contact window 1.30–1.55 s: RMS −16.2 → −14.9, < 200 Hz −16.9 → −15.5 dBFS (`atk2.wav`). Peaks:
+  grow −2.0, atk −2.6 dBFS, 0 clipped (`clipgrow.log`, `clipatk.log`, `atk2.*`).
+- **#10 not filmed** — this round filmed: grow 1× and ×5, attack, contact, grown attack, kill, summon (P1). Still
+  open: P2 strips, blocked / lose / direct / revive films, cross-card grown films, the SE-4 LSD table.
+- **Measured** (`c3r1/m.json`, `m.log`, 55 kaCh* scenarios, 0 errors): kaChSummon/P2 2366 (≤ 3340); kaChAtk/P2/DefWin
+  2333, kaChBlocked 2466, kaChLose/P2 2916, kaChTie 3033, kaChKill/P2 2600, kaChKillPhys 2883, kaChBolt 2466,
+  kaChGuardKill 2216, kaChHit 1533 (≤ 3190); kaChDirect/P2 2200, kaChGrownDirect 2316 (≤ 2320); kaChRevive 2133;
+  kaChFlip 733; kaChGrownAtk/P2 2550, kaChGrownBlocked 2400, kaChGrownLose 3166, kaChGrownKill 2666,
+  kaChGrownGuardKill 2583, kaChGrownHit 1533; kaChGrow/P2/Fast/Def 9083 (hook 3033 ≤ 4060).
+- **Gates:** `tsc` 0 errors; vitest tests/art/cloud_hatchling* + tests/audio + tests/presentation +
+  tests/duel/unit-variant* 109/109. monster-gates (`c3r1/gates/baby.txt`, `grown.txt`): same FAIL rows as `c2/`
+  (HA-14 summon/revive/special delegated shell, HA-15 grown special — structural, known), plus IŞ-10 ref, which was
+  n/a in c2 and is now judged against a v1 idle f0 reference (baby 1.71×, untouched by this round; grown 1.62×).
+  `filmdiff --set v1`: **17/17 IDENTICAL** (`c3r1/filmdiff-v1.log`).
+- **Rejected / deferred:** a ticking dial sound (#9's alternative) — rejected: ticks/ratchet are dial_jester's
+  identity (§6.1). Raising `impactHeavy` itself — not this card's file (react.ts, shared). A larger grown head — art
+  scope beyond this round.

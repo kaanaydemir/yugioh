@@ -228,8 +228,8 @@ export const V3_HATCH_RECIPES = {
       thump(v, 0, 300, 140, 0.18, 0.05);
       // (crit c3r1 #9) the wind's body arriving: a low, soft pillow thump under the ting (no click on top),
       // and a brown air-push that blooms a beat later — the baby's hit has weight without turning hard
-      thump(v, 0.004, 160, 62, 0.3, 0.14, { att: 0.006 });
-      puff(v, 0.01, 0.16, 0.16, 520, { kind: 'brown', att: 0.012 });
+      thump(v, 0.004, 160, 62, 0.48, 0.16, { att: 0.006 });
+      puff(v, 0.01, 0.22, 0.18, 520, { kind: 'brown', att: 0.012 });
     },
   },
   /** It plops back on its tail (the recovery). */

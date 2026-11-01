@@ -172,9 +172,10 @@ async function eggDropV3(S: Stage): Promise<void> {
         const dx = (k + i) % 2 === 0 ? 1 : -1;
         void S.wait(gapMs * k).then(() => {
           if (!live() || u.frameInfo().anim !== 'summon' || u.frameInfo().frame !== f) return;
-          u.sprite.setPosition(S.rest.x + dx, S.rest.y);
+          // a knock sideways with a 1-px hop (the chick inside kicks)
+          u.sprite.setPosition(S.rest.x + dx, S.rest.y - (k === n ? 1 : 0));
           play('hatchCrack', { volume: 0.3 + 0.08 * i, pitch: 1.35 + 0.12 * (i + k), pan });
-          return S.wait(34).then(() => {
+          return S.wait(Math.min(45, gapMs - 4)).then(() => {
             if (live() && u.lift === 0) u.sprite.setPosition(S.rest.x, S.rest.y);
           });
         });

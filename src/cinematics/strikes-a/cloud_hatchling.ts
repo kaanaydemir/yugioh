@@ -40,13 +40,16 @@ import { deathStartFrom, takePlannedEntry } from '../_v3/posematch';
 import { planGuardBreak, runGuardBreak, showsGuard } from '../_v3/guardbreak';
 import { atFrame, panAt, play, soundsOfUnit, start, takeCharge } from '../_v3/sound';
 import { followLight, layer, norm, onFrame, placeFeet, playFrom, seed, sleep, sourceOwnsDestroy, sub, RR, type Ctx } from './_kit';
-import { drawCloudShadow, drawDust, drawFizzle, drawGrassPatch, drawPuff, drawRing, drawShards, drawStreaks, eggScatter } from './cloud_hatchling-fx';
+import { drawCloudPuff, drawCloudShadow, drawDust, drawFizzle, drawGrassPatch, drawRing, drawShards, drawStreaks, eggScatter } from './cloud_hatchling-fx';
 
 const STEP = 1000 / 60;
 
 /** The ring's diameters through its flight, one step per 60 ms (baby / grown, §5.2). */
 // (crit c3r1 #4: the baby's 14 px ring was easy to miss at 1×; 18 now, the grown 28)
-const RING_D = { baby: [10, 12, 15, 18], grown: [14, 19, 24, 28] } as const;
+// (crit c3r2 #1: the ring reached its size only for the last ≈ 60 ms; the steps are 50 ms now, so it flies the
+// last 90 ms (5 display frames) at full size, and the baby's full size is 20)
+const RING_D = { baby: [10, 13, 16, 20], grown: [14, 19, 24, 28] } as const;
+const RING_STEP_MS = 50;
 
 /** The frame-space point `name` of the frame the unit shows, in world px. */
 function framePt(u: MonsterUnit, name: 'muzzle' | 'core'): XY {
@@ -169,7 +172,11 @@ async function hatchRingV3(s: StrikeArgs): Promise<void> {
   const Ds = grown ? RING_D.grown : RING_D.baby;
   const Dmax = Ds[Ds.length - 1];
   const flightMs = s.direct ? (grown ? 230 : 240) : grown ? 230 : 240;
-  const aim: XY = target ? { x: Math.round(target.core().x), y: Math.round(target.core().y) } : { x: Math.round(s.to.x), y: Math.round(s.to.y) };
+  const core0: XY = target ? { x: Math.round(target.core().x), y: Math.round(target.core().y) } : { x: Math.round(s.to.x), y: Math.round(s.to.y) };
+  // (crit c3r2 #1) a losing ring never gets round the stronger body: it is stopped a hand in front of it, in
+  // full view (wrapped round the torso its far half hid and it read as a thin crescent, `c3r3/loseContact.png`)
+  const stopBack = loses && target ? (grown ? 9 : 7) : 0;
+  const aim: XY = { x: Math.round(core0.x - travel.x * stopBack), y: Math.round(core0.y - travel.y * stopBack) };
   const from: XY = { ...mz };
   // the floor under the ring (for its pool and the pressed patches): from the hatchling's feet to the target's
   const g0 = feetAt(hop * 2);
@@ -216,7 +223,7 @@ async function hatchRingV3(s: StrikeArgs): Promise<void> {
       const k = t < 0.33 ? 0.2 * (1 - Math.cos((t / 0.33) * (Math.PI / 2))) : 0.2 + ((t - 0.33) / 0.67) * 0.8;
       const arc = s.direct ? -10 * Math.sin(Math.PI * Math.min(1, k)) : 0;
       pos = { x: Math.round(from.x + (aim.x - from.x) * k), y: Math.round(from.y + (aim.y - from.y) * k + arc) };
-      D = Ds[Math.min(Ds.length - 1, Math.floor(el / 60))];
+      D = Ds[Math.min(Ds.length - 1, Math.floor(el / RING_STEP_MS))];
       tick = Math.floor(el / STEP);
       // (crit c3r1 #4) an afterimage ring every second display frame: where the ring was three frames ago
       trail.push({ ...pos });
@@ -234,7 +241,7 @@ async function hatchRingV3(s: StrikeArgs): Promise<void> {
       }
       if (!squeezed && el >= squeezeAt && !s.direct) {
         squeezed = true;
-        play(loses ? 'hatchRingFizzle' : 'hatchRingSqueeze', { volume: 0.7, pan: tpan });
+        play('hatchRingSqueeze', { volume: loses ? 0.6 : 0.7, pitch: loses ? 0.85 : 1, pan: tpan });
       }
       if (t >= 1) {
         resolve();
@@ -254,16 +261,44 @@ async function hatchRingV3(s: StrikeArgs): Promise<void> {
     placeFeet(u, home);
   }
   if (loses) {
-    // the fizzle: it pops into four dots, no squeeze ("pıt")
-    s.impact(hit);
-    void ringLight.fadeOut(80);
-    // the strike resolves on contact (our death starts from the backlash at once); the dots finish on their own
+    // (crit c3r2 #1) the ring is the star of the losing strike too: it closes round the stronger target at
+    // full size (2 frames, its body a bright water4 band), tries to squeeze in two steps (2 frames each),
+    // cannot, and pops into its puffs ("pıt") — only then the kit's backlash answers. The baby pays ≈ 100 ms
+    // for it (kaChLose 2916 → ≈ 3020, ≤ 3190); the grown (kaChGrownLose 3166) cannot: its backlash starts at
+    // contact as before and the same ring plays over the backlash's first frames.
+    const tDepthL = target && target.sprite.active ? target.sprite.depth : DEPTH.FX - 2;
+    const frontL = layer(sc, tDepthL + 0.5);
+    const ringL = (d: number, inner?: number) => {
+      frontL.clear();
+      drawRing(frontL, hit.x, hit.y, d, travel, 'all', { inner });
+    };
+    play(C?.impact ?? 'hatchRingTing', { volume: 0.6, pitch: 0.8, pan: tpan });
+    void lightFlash(sc, ground.x, ground.y, PAL.water4, grown ? 26 : 20, 100, { floorY: ground.y, intensity: 0.8 });
+    void ringLight.fadeOut(140);
+    const squeezeOut = async () => {
+      ringL(Dmax, PAL.water4);
+      await sleep(sc, STEP * 3);
+      ringL(Dmax - 2, PAL.water4);
+      await sleep(sc, STEP * 2);
+      ringL(Dmax - 4);
+      await sleep(sc, STEP * 2);
+      frontL.g.destroy();
+      play('hatchRingFizzle', { volume: 0.75, pan: tpan });
+      void anim4(sc, 200, (t) => {
+        air.clear();
+        drawFizzle(air, hit.x, hit.y, Dmax - 4, t);
+      }).then(() => air.g.destroy());
+    };
+    if (grown) {
+      s.impact(hit);
+      void squeezeOut();
+    } else {
+      await squeezeOut();
+      s.impact(hit);
+    }
+    // the strike resolves at the pop (our death starts from the backlash at once); the puffs finish on their own
     alive = false;
     whistle.stop(30);
-    void anim4(sc, 160, (t) => {
-      air.clear();
-      drawFizzle(air, hit.x, hit.y, D, t);
-    }).then(() => air.g.destroy());
     return;
   }
 
@@ -500,12 +535,15 @@ async function eggDeath(ctx: Ctx<'destroy'>, u: MonsterUnit, home: XY, grown: bo
   }, { late: false });
   // (grown: the lift-off comes on the anticipation frame f9 — its knit is longer; kaChGrownLose in budget)
   const liftF = Math.min(n - 1, grown ? FLOAT_SEQ[0] - 1 : FLOAT_SEQ[0]);
-  // (crit c3r1 #7) the knitted egg never sits still before it lifts: from f7 it bobs on its gathering cloud
-  // in whole-px steps (1 up, back, 1 up …) and small cloud puffs rise past it from the floor on both sides
-  // (they go on through the float: the cloud that carries it away)
-  const bobF = Math.min(liftF - 1, 7);
+  // (crit c3r1 #7, c3r2 #2) the knitted egg never sits still: from the frame the egg is whole (baby f6,
+  // grown f7) its gathering cloud already carries it UP — whole-px steps every 45 ms with a 1-px bob back on
+  // every third step (2, 1, 3, 5, 4, 7, 9, 8, 10 … ≥ 8 px inside 300 ms), and 6×4 cloud puffs (a steel
+  // edge) rise past it from the floor on both sides, going on through the float (the cloud that carries it)
+  const bobF = Math.min(liftF - 1, grown ? 7 : 6);
   let bobbing = false;
   let puffsOn = true;
+  let preLift = 0;
+  const PRE = [2, 1, 3, 5, 4, 7, 9, 8, 10, 12, 11, 13];
   const puffL = layer(sc, DEPTH.FX - 3);
   const puffs: { x: number; y: number; age: number }[] = [];
   let nextPuff = 0;
@@ -516,21 +554,21 @@ async function eggDeath(ctx: Ctx<'destroy'>, u: MonsterUnit, home: XY, grown: bo
       puffL.clear();
       if (el > 3000) puffsOn = false; // last-resort guard (a failed death never leaves a puff spawner)
       if (bobbing && el >= nextPuff && puffsOn) {
-        nextPuff = el + 90;
-        puffs.push({ x: home.x + side * (5 + (puffs.length % 2) * 2), y: home.y - 2, age: 0 });
+        nextPuff = el + 80;
+        puffs.push({ x: home.x + side * (7 + (puffs.length % 2) * 2), y: home.y - 2 - (puffs.length % 3), age: 0 });
         side = -side;
       }
       for (let i = puffs.length - 1; i >= 0; i--) {
         const q = puffs[i];
         q.age += dt;
-        const t = q.age / 320;
+        const t = q.age / 380;
         if (t >= 1) {
           puffs.splice(i, 1);
           continue;
         }
         // stepped rise (2 px per 40 ms), drifting 1 px outward halfway
         const up = 2 * Math.floor(q.age / 40);
-        drawPuff(puffL, q.x + (t > 0.5 ? Math.sign(q.x - home.x) : 0), q.y - up, t);
+        drawCloudPuff(puffL, q.x + (t > 0.5 ? Math.sign(q.x - home.x) : 0), q.y - up, t);
       }
       return puffsOn || puffs.length > 0;
     },
@@ -540,9 +578,11 @@ async function eggDeath(ctx: Ctx<'destroy'>, u: MonsterUnit, home: XY, grown: bo
     if (!u.sprite.active || bobbing) return;
     bobbing = true;
     if (u.claimed) u.unclaim();
-    const step = Math.max(40, Math.round(u.rangeMs('death', bobF, liftF) / 4));
-    [1, 0, 1, 0].forEach((b, k) => void sleep(sc, step * k).then(() => {
-      if (u.sprite.active && u.frameInfo().anim === 'death' && u.frameInfo().frame < liftF) placeFeet(u, home, b);
+    PRE.forEach((b, k) => void sleep(sc, 45 * (k + 1)).then(() => {
+      if (!u.sprite.active || u.frameInfo().anim !== 'death' || u.frameInfo().frame >= liftF) return;
+      preLift = b;
+      placeFeet(u, home, b);
+      console.log('[DBG pre]', k, b, u.frameInfo().frame, u.sprite.y, u.claimed, sc.time.now);
     }));
   }, { late: false });
   await untilFrame(liftF);
@@ -557,7 +597,8 @@ async function eggDeath(ctx: Ctx<'destroy'>, u: MonsterUnit, home: XY, grown: bo
   // a battle loser is claimed (its position pinned every frame): the death owns it now, the egg rises
   if (u.claimed) u.unclaim();
   const shadow = layer(sc, DEPTH.SHADOW + 0.5);
-  let lift = 0;
+  // the float goes on from where the cloud has already carried the egg
+  let lift = preLift;
   let shadowRx = 13;
   let floating = true;
   onFrame(
@@ -579,7 +620,7 @@ async function eggDeath(ctx: Ctx<'destroy'>, u: MonsterUnit, home: XY, grown: bo
     lift += rise[i];
     u.asClaimant(() => u.pose('death', seq[i]));
     placeFeet(u, home, lift);
-    shadowRx = Math.max(7, 13 - Math.round(lift / 2.4));
+    shadowRx = Math.max(6, 13 - Math.round(lift / 3.4));
     if (i === scatterAt && !scatter) {
       const fi = u.frameInfo();
       const pc = unitFrame(u, 'death', fi.frame, u.sheetKey.endsWith(':p2') ? { lightFrom: 'right' } : undefined);

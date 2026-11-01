@@ -100,6 +100,8 @@ export function windRing(D: number, travel: XY, inner?: number, ghost?: number):
     if (inner !== undefined) {
       put(r - 2, inner, false, 2);
       if (r - 3 >= 1.5) put(r - 3, inner, false, 3);
+      // (crit c3r2 #1) a full ring gets a third band row: the closing ring reads as a solid water4 hoop
+      if (r - 4 >= 4) put(r - 4, inner, false, 4);
     } else {
       put(r - 2, PAL.mist, false, 2);
       if (r - 3 >= 1.5) put(r - 3, PAL.steel, true, 3);
@@ -163,18 +165,35 @@ export function drawShards(px: Px, cx: number, cy: number, D: number, travel: XY
   }
 }
 
-/** The fizzle: the ring pops into 4 dots that drift 2–4 px out and blink off (t 0 … 1). */
+/**
+ * The fizzle (t 0 … 1 over ≈ 200 ms): the ring pops into 4 little 2×2 puffs (white → mist → steel) on its
+ * vertical and side axes that drift 2–5 px out, with 4 single sparks between them blinking off at half-time.
+ */
+// (crit c3r2 #1: four 1-px dots were invisible at 1×)
 export function drawFizzle(px: Px, cx: number, cy: number, D: number, t: number): void {
   if (t >= 1) return;
-  const r = D / 2 + Math.round(t * 4);
-  const c = t < 0.5 ? PAL.mist : PAL.steel;
+  const r = D / 2 + Math.round(t * 5);
+  const c = t < 0.34 ? PAL.white : t < 0.67 ? PAL.mist : PAL.steel;
+  const big = t < 0.67;
   for (const [dx, dy] of [
     [0, -1],
     [1, 0],
     [0, 1],
     [-1, 0],
-  ] as const)
-    px.dot(Math.round(cx + dx * r), Math.round(cy + dy * r * 0.7), c);
+  ] as const) {
+    const x = Math.round(cx + dx * r);
+    const y = Math.round(cy + dy * r * 0.7);
+    if (big) px.rect(x - 1, y - 1, 2, 2, c);
+    else px.dot(x, y, c);
+  }
+  if (t < 0.5)
+    for (const [dx, dy] of [
+      [1, -1],
+      [1, 1],
+      [-1, 1],
+      [-1, -1],
+    ] as const)
+      px.dot(Math.round(cx + dx * r * 0.62), Math.round(cy + dy * r * 0.45), PAL.mist);
 }
 
 // ================================================================ floor marks
@@ -271,6 +290,28 @@ export function drawPuff(px: Px, x: number, y: number, t: number): void {
   const Y = Math.round(y);
   const top = t > 0.5 ? PAL.white : PAL.mist;
   px.run(Y - 1, X, X + 1, top).run(Y, X - 1, X + 2, PAL.mist).run(Y + 1, X, X + 1, PAL.steel);
+}
+
+/**
+ * (crit c3r2 #2) The death's rising cloud puff, 6×4 with a 1-px steel edge (a 4×3 puff vanished at 1×):
+ *   . s W W s .
+ *   s W M M M s
+ *   s M M M M s
+ *   . s s s s .
+ * Late in its life (t ≥ 0.7) it thins to the 4×3 puff.
+ */
+export function drawCloudPuff(px: Px, x: number, y: number, t: number): void {
+  if (t >= 0.7) {
+    drawPuff(px, x, y, t);
+    return;
+  }
+  const X = Math.round(x) - 3;
+  const Y = Math.round(y) - 2;
+  const S = PAL.steel;
+  px.dot(X + 1, Y, S).run(Y, X + 2, X + 3, PAL.white).dot(X + 4, Y, S);
+  px.dot(X, Y + 1, S).dot(X + 1, Y + 1, PAL.white).run(Y + 1, X + 2, X + 4, PAL.mist).dot(X + 5, Y + 1, S);
+  px.dot(X, Y + 2, S).run(Y + 2, X + 1, X + 4, PAL.mist).dot(X + 5, Y + 2, S);
+  px.run(Y + 3, X + 1, X + 4, S);
 }
 
 /** An ink 2×2-dither ellipse on the floor (the drop-shadow algorithm of MonsterUnit, at its 0.5 alpha). */
