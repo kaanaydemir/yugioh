@@ -57,3 +57,8 @@ Her şerit kendi dalına push eder; ana oturum dalları `claude/yugioh-card-game
 - Sıra sıra oyunda sağ ekran "OYUNCU 2" (CPU yalnız bilgisayara karşı).
 - Deste seçimi: fareyle tıklama seçer; üzerine gelmek seçimi değiştirmez; ikinci tıklama/düğme/Enter ilerletir.
 - Saman korkuluk "takılma": oyun hatası değil, test aracının perde geçişini iki kez tıklamasıymış (tools/playtest.mjs passCurtain düzeltildi).
+
+## Haftalık hak kararı (2026-11-01 08:35 TR)
+Haftalık kullanım %20'ye düştü. SAHİP KARARI: yalnız A, B, C şeritleri devam; D, E, F DURAKLATILDI
+(işlerini push edip kendi oturum-*.md dosyalarına devam talimatı yazdılar). Haftalık sıfırlamadan sonra
+D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (kapılar + kart başına commit).
