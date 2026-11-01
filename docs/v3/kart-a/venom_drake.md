@@ -2154,3 +2154,57 @@ All gates were run on the working tree, which includes the fix3 spray/puddle cha
 | palcheck (a5, clip 120,40,400,230, 100 frames at 34 ms) | Fails the absolute a5 limits in the same way the approved base films do (lane convention). Atk Δmax +1.32 at #14 (the shared declaration; base saWyrmAtk +1.48) and Lose +1.60 at #14 (the same shared frame). Direct stays at Δ ≤ +0.89 for the whole spray. Its +2.16 peak at t ≥ 2822 comes after the scene ends (ready 2200): it is the shared −2000 number fading plus the hint bar (`pal/kaVenomDirect/f0084.png`). The Summon peak of +3.55 at #35 is the shared card flight with its card face (base suWyrm +5.56). No white row is above 43 % (`gates/pal/palcheck.txt`). |
 | Times (guidance only) | Summon/P2 3833, Atk/P2 2183, Direct/P2 2183, Blocked 1883, Lose/Both 2983, DefKill 4000, Dies 2716, DiesDef 2666, Hit 2433, Magic 2616, Revive 2166, Flip 733, Pos 1000, AtkDark 2183, ScarStack/Persist 15683. Each is within its REHBER §5 × 1.45 figure where the doc sets one. |
 | Page errors / watchdog | errors 0 in every kaVenom* and baseline scenario (`gates/measure.log`) |
+
+### Adversarial verifier (2026-11-01): fixes and final gates
+The verifier said SHIP: yes and found no blocking defect. I checked each item. Evidence for this pass is in
+`shots/kart-a/venom_drake/final/`.
+
+**#1 (LOW) Stale comment in `src/vfx/shatter.ts`: valid, fixed (comment only).** The comment was stale, but the
+verifier's premise was wrong. The `acid` shatter recipe was never tuned. It is not on the card's path:
+`src/presentation/cards/venom_drake.ts` breaks the body as `shadow` + `accent: 'acid'`, and no code calls
+`shatterMaterial(…, 'acid')`. Only `defs/venomscale.ts` names it, as `death.shatter`, to satisfy the materials test
+(see the infrastructure deviation at the top of this log). The comment now says this: "Final as shipped, untuned:
+venom_drake's recipe breaks as 'shadow' + the 'acid' ACCENT; only the venomscale def names this." No values changed.
+
+**#2 (LOW) No definition-of-done checklist: valid, added below.** These are the "What done means" items for
+monsters in `docs/v3/PARALEL_OTURUMLAR.md`.
+
+| Done item | Status | Code | Evidence |
+|---|---|---|---|
+| v3 rig: idle, summon, attack, hit, guard, death, signature (special), plus roar, revive, hitHeavy, hitMagic, toGuard/fromGuard; P1 + P2 | done | `src/art/monsters-v3/venom_drake-*.ts` | `final/sheet/venom_drake-v3-all.png`, `final/sheet/venom_drake-v3-p2-all.png` (and per-anim strips in `gates/sheet/`) |
+| Card art, big + small | done | `src/art/cardart-v3/venom_drake.ts` | `card-big.png`, `card-small.png`, `r5/big-x8.png`, `r5/small-x12.png` |
+| Cut-in (tribute/ace) | done | `src/art/cutins-v3/venom_drake.ts` | `r5/cut-p1-x2.png`, `r5/cut-p2-x2.png`, `r5/cut-x3.png` |
+| Unique summon cinematic "Zehirli Sis" | done | `src/cinematics/kart-a/venom_drake-summon.ts` | `fix1/summon.png`, `fix1/summon-rise.png`, `fix2/sum-dome.png` |
+| Unique attack "Zehir Havanı" + losing-attack scar | done | `venom_drake-strike.ts`, `venom_drake-acid.ts` | `fix2/atk-launch.png`, `fix1/atk-glob.png`, `fix1/lose-scarz.png` |
+| Unique direct attack "Zehir Sağanağı" | done | `venom_drake-strike.ts` | `fix3/direct-z.png`, `fix3/puddle-z.png`, `fix3/direct-p1.png` |
+| Unique death "Kendi Zehri" | done | `venom_drake-death.ts` | `final/dies-z.png`, `cine/r3/dies.png` |
+| Effect/flip/revive/position | done | recipe + `venom_drake-death.ts` (revive) | `cine/r3/revive.png`; measure `final/now.json` (Flip, Pos, Revive) |
+| Unique synthesized SFX for every moment (24 recipes) | done | `src/audio/v3/venom.ts` | `fix2/audio/*` (summon, atk, direct, roar, land, scar, cut-in), `fix3/audio/kaVenomDirectP2.*`, `crit5/audio/*` |
+| At least 3 critique rounds + adversarial verifier | done | — | critique rounds 1–3 above, plus this verifier pass |
+
+**#3, #4 (INFO):** nothing to change. The palette overruns are on the shared frames, as the verifier accepted. The
+camera base has no kaVenom keys (NOBASE), and the zoom is 1 everywhere.
+
+**Final gates** (working tree after the comment fix):
+
+| Gate | Result |
+|---|---|
+| `npm run typecheck` | clean, whole tree (`final/typecheck.txt`) |
+| `npm test` | 1352 pass / 4 fail. All 4 are on the known list: cardface-v3 G1, dusk_ashen, hourglass_imp, shield_titan. Every venom_drake test passes (`final/test.txt`). |
+| `filmdiff --set v1` | 17/17 IDENTICAL (`final/filmdiff-v1.txt`) |
+| `filmdiff --set a6v1` | 26/26 IDENTICAL (`final/filmdiff-a6v1.txt`) |
+| camera gate (`measure 'kaVenom*,baseline' --look v3` vs `shots/kart-a/camera-base.json`) | 15 ok, 20 ok NOBASE, 0 FAIL. zoom 1 in every kaVenom scenario (`final/camera-gate.txt`, `final/now.json`). |
+| monster-gates (`--class ace --ref none`, P1 + P2) | 21 ok, 0 FAIL, 2 n/a, 1 info. 137 frames, 5.04 MB. The sheet JSON is byte-identical to `gates/sheet/` (`final/monster-gates.txt`). |
+| palcheck (a5, clip 120,40,400,230, 100 frames at 34 ms; re-filmed) | Same shape as the gates round, with the a5-absolute FAILs that match the base films. Atk Δmax +1.23, Lose +1.54 and Dies +1.60, all at #14 (the shared declaration frame). Direct +2.10, after the scene ends (number fade + hint bar). Summon +3.49, at #35 (the shared card flight). Row-white max 42.7 % (`final/pal/palcheck.txt`). |
+| measure (times, guidance only) | Summon 3833, Revive 2166, Flip 733, Pos 1000, the others unchanged. errors 0 in every kaVenom* and baseline scenario (`final/measure.log`). |
+
+**Re-filmed moment:** the acid death (`final/dies-z.png`, ×2, 1200–2550 ms). I looked at it. The acid web spreads
+over the hide, the body slumps into lace, the chitin stinger stands in the green pool, and the etched scar stays.
+There is no white wash. It is unchanged, as expected, because only a comment changed.
+
+**Status (final):** venom_drake is done and ready to ship. Every gate passes or matches its documented lane
+convention. Open issues for other owners, none of which block this card:
+- The shared contact ring is owned by the battle kit.
+- The summon's loudest window comes from the shared `_v3/cutin.ts` sting, owned by the cut-in owner.
+- The palcheck a5 absolute limits fail on shared frames, the same way they do for the approved base films.
+- The camera base has no kaVenom entries (NOBASE).
