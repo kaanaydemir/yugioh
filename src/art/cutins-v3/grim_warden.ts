@@ -381,10 +381,26 @@ const factory: CutinFactory = () => ({
       [hand[0] - 2, hand[1] + 2], [hand[0] + 10, hand[1] - 2], [hand[0] + 16, hand[1] + 8], [hand[0] + 34, hand[1] + 44],
       [W + 4, H + 2], [hand[0] + 14, H + 2], [hand[0] + 12, hand[1] + 30], [hand[0] + 6, hand[1] + 22], [hand[0] + 4, hand[1] + 12],
     ];
+    // critic pass-3 r2: the sleeve read as a flat slab — FOLD BANDS run down it diagonally (a dark seam with a lit
+    // lip above it), and its lantern-side edge tears into tatter teeth
     fillBy(arm, SL, (x, y) => {
       const s = lit(x, y, [hand[0] + 18, hand[1] + 26], 14);
-      return s > 0.4 ? PAL.stone3 : s > -0.35 ? PAL.stone2 : PAL.stone1;
+      const f = (((x - hand[0]) * 0.55 - (y - hand[1]) + 400) | 0) % 11;
+      const base = s > 0.4 ? PAL.stone3 : s > -0.35 ? PAL.stone2 : PAL.stone1;
+      if (y > hand[1] + 8 && f <= 1) return PAL.stone1;
+      if (y > hand[1] + 8 && f === 2) return base === PAL.stone1 ? PAL.stone2 : PAL.stone3;
+      return base;
     });
+    // tatter teeth along the sleeve's inner (left) edge, below the wrist bell: notches of uneven depth
+    for (let i = 0; i < 9; i++) {
+      const ty = hand[1] + 16 + i * 7;
+      if (ty >= H) break;
+      let lx = -1;
+      for (let x = 0; x < W; x++) if (arm.isOpaque(x, ty)) { lx = x; break; }
+      if (lx < 0) continue;
+      const dep = [3, 5, 2, 4, 6, 3, 5, 2, 4][i];
+      for (let k = 0; k < dep; k++) for (let yy = ty - (dep - k); yy <= ty; yy++) arm.erase(lx + k, yy);
+    }
     // the bone hand: four finger bones curled over the ring (stone4 lit knuckles, stone2 gaps), a thumb
     const bone = new PixelCanvas(W, H);
     for (let i = 0; i < 4; i++) {
@@ -478,6 +494,14 @@ const factory: CutinFactory = () => ({
           if (c === null || lan.isOpaque(x, y) || inPoly(CV, x, y)) continue;
           const d = Math.hypot((x - lcx) * 0.9, y - lcy);
           if (d > R1) continue;
+          // critic pass-3 r2: on the SLEEVE the bounce is only its 1–2 px edge facing the flame (a whole green plane
+          // read as a block beside the lantern)
+          if (arm.isOpaque(x, y)) {
+            const tx = Math.sign(lcx - x);
+            const ty = Math.sign(lcy - y);
+            const edge = !arm.isOpaque(x + tx, y) || !arm.isOpaque(x, y + ty) || !arm.isOpaque(x + 2 * tx, y + 2 * ty);
+            if (!edge || d > R0) continue;
+          }
           if (d <= R0) {
             if (c === PAL.stone1) out.set(x, y, PAL.leaf1);
             else if (c === PAL.stone0 || c === PAL.void0) out.set(x, y, PAL.leaf0);

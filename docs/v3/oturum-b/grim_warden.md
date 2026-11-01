@@ -631,3 +631,57 @@ destroyed on v3:dying); drainSpark crim3 lines strike through the DEF digits (gw
 hoop over an adjacent target; skull mist still an opaque leaf "emoji" (gwKill-death-z.png #10–#14); special reach is a stub arm
 with the lantern beside the face (z-special-f0-3-5-7-x6.png); summon mound reads as a brown turtle shell with ≈ 350 ms of near
 stillness (gwSummon-rise-z.png #5–#10); cut-in dark-green slab beside the lantern (gwSummon-cutin-z.png #1/#3).
+
+## Fix round 2 (lane-B pass 3, agent: fix lane, 2026-11-01) — evidence `shots/v3/kart-b/grim_warden/fix-p3r2/`
+Answering critic r2 (above): all 4 majors fixed, 9 of the 9 minors addressed. Files (all mine): `src/audio/v3/grim_warden.ts`,
+`src/cinematics/kart-b/grim_warden.ts`, `grim_warden-fx.ts`, `src/art/monsters-v3/grim_warden-anims.ts`, `src/art/cutins-v3/grim_warden.ts`.
+No shared file touched (declare.ts / plates.ts unchanged this round).
+
+**MAJOR siphon truncated → fixed.** gwSiphon's ladder is fitted to the real drain window (thread reach → gwSnap ≈ 0.6 s): D 0.6,
+rise 0.11 → min 0.045, all 12 steps always play (no `t < D` cut), and the last step LANDS on B♭4 (louder swell + its octave double +
+a struck B♭4/B♭3 pane) right before the snap (916 → ≈ 1516 vs gwSnap 1533). Breath / drone / hum re-timed to 0.6 s and moved up
+an octave (no sub). `siphon.stop(90)` stays as a safety. Clip `clips/gwDrainFire.{mp4,wav,json}`.
+**MAJOR direct flight silent + speck → fixed.** New recipe `gwBolt` (whine F6→B♭5 + a lower whine, a fast soulBreath, a doppler
+pink sweep, 4 trailing links, crackle) played by `soulBolt` at the flight's start (panned at the flight's midpoint). gwDirect
+envelope 1350/1400/1450 ms: −15.8/−13.8/−17.5 dB (was −42/−42/−43). WISP map 7×6 → 11×8 skull + a 2-frame flame crown (11×10),
+a 2-px trail head, puffs radius 4. `gwDirect-bolt-z.png`, `gwDirect-bolt-1x.png`, `clips/gwDirect.*`.
+**MAJOR gwRelease weak → fixed.** 11-link run at 0.28, white whoosh 1.3 + a pink body sweep, a "snap taut" FM iron clank (1100 Hz,
+ratio 2.13) + a low partner at 0.12 s, 0.3 s long, louder whine/breath; played at volume 1 (was 0.85). gwDirect 1150–1300 ms:
+−17.8/−13.3/−12.7 dB (was −22/−19/−21).
+**MAJOR drained target re-lights on death → fixed.** onDying no longer destroys the fade; it marks it `dying()`. `soulFade` follows
+the sprite's alpha / hides under a tint-fill flash, and when the dying body is handed to the shared break (sprite hidden by
+`vfx/shatter`, unit retired) it LINGERS on the last darkened frame ABOVE the facet copy (depth +0.6) and knocks out in 4 bayer
+steps over 200 ms as the pieces fly. `endDrain(d, true)` in the died branch keeps the fade + the v3:dying listener (4 s safety
+net); gwKeep no longer can double. `gwDrainFire-death-z.png` #5–#7 (wolf stays dark through the break; was full-bright).
+
+**minors.** (1) gwInhale +≈10 dB (noise 0.8, soulBreath 0.4, two reversed glass swells, faster attack) + gwReach gets a soul-fire
+flutter tail into it; gwSnap adds a creak at 0.31 s + 0.64 s, a louder soul breath and a soft glass tail → 1850–2050 ms now
+−32/−33/−25/−28 dB (was −36/−37/−37/−39; the 800 ms dip before the inhale is still −37: the inhale starts at 816). (2) gwCharge sub
+0.18 → 0.07, energy moved to a C3→F3 / F3 saw pair through a 300→520 Hz low-pass (phones play it). (3) Survive branch:
+returnLight + gwGiveBack start 220 ms after gwWail (clip: wail 3733 → give-back 4033, was same tick). (4) drainSpark dashes moved to
+the plate's lower edge (+2 px), never through the digits (`gwDrainFire-drain-z.png` #4). (5) Thread: minimum arc height grows as
+the pair gets closer (+0.3 px per px under 70 px span), a side bulge out past the target, the band TAPERS fat at the target → thin at
+the lantern, 6 beads that ACCELERATE (t = phase²) and stretch into streaks near the lantern (`gwDrainFire-drain-z.png`,
+`gwDrainWaterP2-1x.png`). (6) Skull mist: cold stone vapour body (stone3/2 crown, stone1/0 below), the soul colour only on the
+socket's upper rim (sides ramp[1], lower rim stone), the brow flash and the top fringe; teeth = void gaps, no ink under the jaw;
+tail stone; dithers apart from the bottom up (`gwKill-skull-x5.png`, `gwKill-death-z.png`). (7) Special reach: release /
+drinking frames thrust the fist 4–7 px further (ax 25–28) and higher, the lantern swings ahead of the hood on a longer chain
+(cl 4–5, la +10…+22, ly −2…−4) (`sheet-p1/z-special-f3-f8.png`). (8) Summon mound: jagged zigzag cracks, the soil HEAVES on uneven
+75 ms beats (dome +1/+2 px, 1-px sideways shiver), clods pop off its skin every ≈ 95 ms, the crack light pulses outward in waves
+(`gwSummon-rise-z.png`). (9) Cut-in: the sleeve gets diagonal fold bands (dark seam + lit lip) and tatter teeth on its inner edge;
+the green underlight on the sleeve is only its 1–2 px edge facing the flame — no more green slab (`gwSummon-cutin-z.png`,
+`cutin-sheet.png`). (10) Give-back order: when a guardian_charm activation follows the battle, the give-back is deferred to the
+start of the event after the charm's activate (its card zoom covers the board for ≈ 2 s, so a give-back under it is hidden) — clip
+`clips/gwGiveBack.json`: spellActivate 4100 → gwGiveBack 6216; film `gwGiveBack-z.png`.
+
+**Gates.** tsc: no grim errors. `tests/art/grim_warden*` 12/12. Measure `fix-p3r2/measure.json/.log`: 26 gw* scenarios, 0 errors,
+timings unchanged (summon 4016, drainFire 4166, direct 2550 total / contact 1517, kill 2783, gwGiveBack 6716 / P2 6866 — the
+give-back now plays after the charm's card). Sprite gates not re-run (only special keys changed; bbox max 74 ≤ W 104, margin 2).
+
+**Open issues after this round:**
+- Shared: DARK-violet contact ring, violet tribute sparkles, shared summon slam outline (as before); in gwGiveBack the shared plate
+  refresh restores the wolf's 1700 during the charm presentation, before our give-back (our returnLight +400 roll only covers the
+  warden-death branch).
+- The ≈ 37 dB dip at 750–850 ms (between gwReach and gwInhale) is shorter but not gone; could fire gwInhale a frame earlier.
+- Skull mist could still use a sameness / blind check at 1×; P2 whirl ≈ 270°; no bent-shaft chop frame; wood/mud material sounds
+  and idle SFX as before; a sameness re-run is owed after the special re-key.

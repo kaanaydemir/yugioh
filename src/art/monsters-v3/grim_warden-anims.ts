@@ -202,18 +202,20 @@ const SPECIAL_KEYS: Partial<Pose>[] = [
   { ax: 14, ay: 4, la: -26, lean: -3, hx: -2, eye: 1.3, eyeDx: 1, fl: 1.1, flLean: 0.8, capeA: -3, hood: 2, sink: 2 },
   // the whole body begins to pitch forward, the arm coming up
   { ax: 19, ay: -2, la: 18, cl: 4, lean: 3, hx: 1, eye: 1.4, eyeDx: 1, fl: 1.1, capeA: 2, hood: -1, sink: 1 },
+  // critic pass-3 r2: the near arm THRUSTS 4–7 px further toward the target and the lantern swings AHEAD of the hood on
+  // a longer chain (release / drinking frames), never beside the face
   // critic pass-3 r1: a FULL-BODY REACH toward the target — the torso leans far over, the near arm straight out at
   // shoulder height, the lantern held up in front of the face on a short chain (the thread dives in from above)
-  { ax: 21, ay: -7, la: -4, cl: 2, lean: 7, hx: 3, hy: 1, eye: 1.5, eyeDx: 1, fl: 1, capeA: 5, hood: -2, sink: 1, wrap: 0.4, ha: -86 },
+  { ax: 25, ay: -9, la: 10, cl: 4, ly: -2, lean: 7, hx: 3, hy: 1, eye: 1.5, eyeDx: 1, fl: 1, capeA: 5, hood: -2, sink: 1, wrap: 0.4, ha: -86 },
   // the inhale: the flame dips, the hood lifts, the shroud drawn in
-  { ax: 21, ay: -8, la: -2, cl: 2, lean: 6, hx: 2, hy: -1, eye: 1.5, eyeDx: 1, fl: 0.35, capeA: 3, hood: 1, wrap: 0.1, ha: -85 },
+  { ax: 25, ay: -10, la: 6, cl: 3, ly: -2, lean: 6, hx: 2, hy: -1, eye: 1.5, eyeDx: 1, fl: 0.35, capeA: 3, hood: 1, wrap: 0.1, ha: -85 },
   // release: the thread starts — the flame flares, a ring of glass light, the body pitches deeper
-  { ax: 22, ay: -7, la: -5, cl: 2, lean: 8, hx: 4, hy: 2, eye: 1.5, eyeDx: 1, fl: 1.5, capeA: 7, hood: -3, sink: 2, wrap: 0.7, burst: 0.55, burstR: 7, ha: -87, hs: -1 },
+  { ax: 28, ay: -10, la: 18, cl: 5, ly: -3, lean: 8, hx: 4, hy: 2, eye: 1.5, eyeDx: 1, fl: 1.5, capeA: 7, hood: -3, sink: 2, wrap: 0.7, burst: 0.55, burstR: 7, ha: -87, hs: -1 },
   // drinking: the whole body PUMPS — the hood dips and rises 3 px, the shroud is pulled toward the lantern in alternating
   // waves, the far hand clenches and slides on the haft (the halberd rocks from its butt)
-  { ax: 21, ay: -5, la: 5, cl: 2, lean: 6, hx: 3, hy: 3, eye: 1.4, eyeDx: 1, fl: 1.15, flLean: -0.8, capeA: 8, mote: 0.2, hood: -3, sink: 2, wrap: 0.9, ha: -88, hs: -2 },
-  { ax: 22, ay: -8, la: -7, cl: 3, lean: 8, hx: 4, hy: 0, eye: 1.5, eyeDx: 1, fl: 1.6, flLean: 0.7, capeA: 4, mote: 0.55, fs: 77, hood: 1, sink: 0, wrap: 0.2, ha: -83, hs: 1 },
-  { ax: 20, ay: -5, la: 4, cl: 2, lean: 6, hx: 2, hy: 3, eye: 1.3, eyeDx: 1, fl: 1.25, capeA: 8, mote: 0.85, hood: -3, sink: 2, wrap: 0.9, ha: -88, hs: -2 },
+  { ax: 27, ay: -8, la: 22, cl: 5, ly: -3, lean: 6, hx: 3, hy: 3, eye: 1.4, eyeDx: 1, fl: 1.15, flLean: -0.8, capeA: 8, mote: 0.2, hood: -3, sink: 2, wrap: 0.9, ha: -88, hs: -2 },
+  { ax: 28, ay: -11, la: 12, cl: 5, ly: -4, lean: 8, hx: 4, hy: 0, eye: 1.5, eyeDx: 1, fl: 1.6, flLean: 0.7, capeA: 4, mote: 0.55, fs: 77, hood: 1, sink: 0, wrap: 0.2, ha: -83, hs: 1 },
+  { ax: 26, ay: -8, la: 20, cl: 5, ly: -3, lean: 6, hx: 2, hy: 3, eye: 1.3, eyeDx: 1, fl: 1.25, capeA: 8, mote: 0.85, hood: -3, sink: 2, wrap: 0.9, ha: -88, hs: -2 },
 ];
 export function specialPose(f: number): Pose {
   if (f >= SP_N - 1) return home();

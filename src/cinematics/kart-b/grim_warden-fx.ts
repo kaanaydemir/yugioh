@@ -71,6 +71,8 @@ export interface SoulFade {
   set(level: number): void;
   /** 0..1: a share of the silhouette's top / side edge pixels shows the stolen colour (the soul peeling off). */
   rim(level: number): void;
+  /** The target is dying: when its body is handed to the shared break, the fade lingers and knocks out (no re-light). */
+  dying(): void;
   destroy(): void;
 }
 
@@ -83,10 +85,39 @@ export function soulFade(scene: Phaser.Scene, u: MonsterUnit, ramp?: Ramp): Soul
   let key = '';
   let alive = true;
   let el = 0;
+  let dying = false;
+  let shown = false;
+  let lingerAt = -1;
+  let lingerStep = -1;
+  let lastPx: [number, number, number][] = [];
   const stop = onFrame(scene, (dt) => {
     if (!alive) return false;
     el += dt;
     const s = u.sprite;
+    // critic pass-3 r2: a DYING target's body is handed to the shared break (a facet copy of its plain frame) — the
+    // fade lingers on the last frame it darkened and knocks out in bayer steps over ≈ 200 ms as the pieces fly, so
+    // the drained body never flashes back to full brightness
+    if (lingerAt >= 0 || (dying && shown && (u.retired || !s.active || !s.visible))) {
+      if (lingerAt < 0) {
+        lingerAt = el;
+        // above the break's facet copy (vfx/shatter draws it at the sprite's depth + 0.5)
+        r.img.setDepth(r.img.depth + 0.6);
+      }
+      const k = (el - lingerAt) / 200;
+      if (k >= 1) {
+        destroy();
+        return false;
+      }
+      const step = Math.floor(k * 4) / 4;
+      if (step !== lingerStep) {
+        lingerStep = step;
+        r.img.setVisible(true).setAlpha(1);
+        r.draw((g) => {
+          for (const [x, y, c] of lastPx) if (bayer(x, y) >= step) g.pc.set(x, y, c);
+        });
+      }
+      return true;
+    }
     if (u.retired || !s.active) {
       destroy();
       return false;
@@ -96,6 +127,7 @@ export function soulFade(scene: Phaser.Scene, u: MonsterUnit, ramp?: Ramp): Soul
     // the death pose frame by frame, steps out with the sprite's own alpha and hides under a white contact flash
     r.img.setAlpha(s.alpha);
     r.img.setVisible(s.visible && s.alpha > 0 && !s.tintFill && (level > 0 || rimK > 0));
+    shown = s.visible && level > 0;
     if (s.tintFill) return true;
     if (!s.visible || (level <= 0 && rimK <= 0)) return true;
     const o = frameOrigin(u);
@@ -137,6 +169,7 @@ export function soulFade(scene: Phaser.Scene, u: MonsterUnit, ramp?: Ramp): Soul
     }
     // level 0.3 (the spec's 30 %) = a 7-px band one tone darker, its outer 3 px two tones; the inner edge dithers
     const deep = level * 24;
+    const px: [number, number, number][] = [];
     r.draw((g) => {
       for (let y = 0; y < fp.h; y++)
         for (let x = 0; x < fp.w; x++) {
@@ -159,8 +192,10 @@ export function soulFade(scene: Phaser.Scene, u: MonsterUnit, ramp?: Ramp): Soul
           if (d1 === null) continue;
           const c = d <= deep * 0.4 ? (darker(d1) ?? d1) : d1;
           g.pc.set(lx, y, c);
+          px.push([lx, y, c]);
         }
     });
+    lastPx = px;
     return true;
   });
   const destroy = () => {
@@ -176,6 +211,9 @@ export function soulFade(scene: Phaser.Scene, u: MonsterUnit, ramp?: Ramp): Soul
     },
     rim(l) {
       rimK = Math.max(0, Math.min(1, l));
+    },
+    dying() {
+      dying = true;
     },
     destroy,
   };
@@ -457,8 +495,9 @@ export function graveMound(scene: Phaser.Scene, at: XY, rx: number, depth: numbe
     const pts: XY[] = [{ x, y }];
     const forkAt = 2 + Math.floor(rnd() * 2);
     for (let k = 0; k < 5; k++) {
-      a += (rnd() - 0.5) * 0.8;
-      x += Math.cos(a) * rx * 0.19;
+      // critic pass-3 r2: jagged, irregular cracks (they read as a turtle shell's even seams) — a sharp zigzag
+      a += (rnd() - 0.5) * 1.4 + (k % 2 ? 0.45 : -0.45);
+      x += Math.cos(a) * rx * (0.12 + rnd() * 0.14);
       // critic r2: the cracks run DOWN the dome's slopes (never along the crown, where they read as a green lid)
       y += Math.abs(Math.sin(a)) * rx * 0.1 + 0.9;
       pts.push({ x, y });
@@ -480,17 +519,38 @@ export function graveMound(scene: Phaser.Scene, at: XY, rx: number, depth: numbe
   }
   const clods = Array.from({ length: 16 }, () => ({ a: rnd() * TAU, d: 0.55 + rnd() * 0.6, c: rnd() < 0.5 ? E[1] : E[2], big: rnd() < 0.35 }));
   const pebbles = Array.from({ length: 7 }, () => ({ u: rnd() * 1.4 - 0.7, v: rnd() * 0.8 - 0.3 }));
+  /** Clods popping off the heaving skin (offsets from the crown, whole-pixel ballistic hops). */
+  const hops: { x: number; y: number; vx: number; vy: number; t: number; c: number }[] = [];
+  let spit = 0;
   let alive = true;
   let el = 0;
   const stop = onFrame(scene, (dt) => {
     if (!alive) return false;
     el += dt;
     if (st.burst > 0) r.img.setDepth(floorDepth);
+    // critic pass-3 r2: the mound never holds still once the light seeps — the soil HEAVES on uneven beats (the dome
+    // jolts up a pixel and shivers sideways), clods pop off its skin, and the cracks' light pulses outward in waves
+    const seeping = st.seep > 0 && st.burst <= 0;
+    const beat = Math.floor(el / 75);
+    const heave = seeping ? [0, 1, 0, 0, 1, 2, 0, 1][beat % 8] : 0;
+    const jit = seeping ? [0, 1, 0, -1, 0, 0, 1, -1][(beat * 5) % 8] : 0;
+    if (seeping) {
+      spit += dt;
+      while (spit > 95) {
+        spit -= 95;
+        const a = rnd() * TAU;
+        hops.push({ x: Math.cos(a) * rx * 0.6, y: Math.sin(a) * rx * 0.2, vx: Math.cos(a) * (8 + rnd() * 14), vy: -(28 + rnd() * 26), t: 0, c: rnd() < 0.5 ? E[2] : E[1] });
+      }
+    }
+    for (const h of hops) {
+      h.t += dt / 1000;
+    }
+    while (hops.length && hops[0].t > 0.42) hops.shift();
     r.draw((g) => {
-      const cx = at.x;
+      const cx = at.x + jit;
       const cy = at.y;
       const bk = st.burst;
-      const H = Math.round(9 * st.swell * (1 - bk));
+      const H = Math.round(9 * st.swell * (1 - bk)) + heave;
       const ry = Math.max(2, Math.round(rx * 0.45));
       // the disturbed soil patch on the floor (stays through the burst): earth0 rim, earth1 fill
       g.ell(cx, cy + 1, rx + 3, ry + 2, E[0], 1);
@@ -575,12 +635,20 @@ export function graveMound(scene: Phaser.Scene, at: XY, rx: number, depth: numbe
               // critic r2: only the crack lines glow (1 px; no second band under them — that read as a green lid):
               // void0 where the light has not reached yet, leaf3 where it has, leaf4 pulses running out of the crown
               const lit = k <= Math.ceil(cr.pts.length * Math.min(1, st.seep * 1.4));
-              const hot = cr.trunk && lit && ((k + Math.floor(el / 110)) % 3 === 0) && st.seep > 0.4;
+              // the light pulses OUT along the cracks in waves (from the crown down the branches), on whole beats
+              const hot = lit && ((k - Math.floor(el / 90)) % 4 === 0 || (cr.trunk && heave === 2)) && st.seep > 0.3;
               g.line(x0, y0, x1, y1, !lit ? PAL.void0 : hot ? (pulse > 0.5 ? PAL.leaf4 : PAL.leaf3) : PAL.leaf3);
               // the light spills from the crack's mouth: a mote or two hovering just above its open end
               if (lit && k === cr.pts.length - 1 && st.seep > 0.5 && ((Math.floor(el / 90) + k) & 1)) g.px(x1, y1 - 1 - (Math.floor(el / 140) % 2), PAL.leaf2);
             }
           }
+        }
+        for (const h of hops) {
+          const x = Math.round(cx + h.x + h.vx * h.t);
+          const y = Math.round(crownY + 2 + h.y + h.vy * h.t + 160 * h.t * h.t);
+          g.px(x, y, h.c);
+          g.px(x + 1, y, E[0]);
+          if (h.t < 0.12) g.px(x, y - 1, E[3]);
         }
         if (st.seep > 0.55) {
           const flick = Math.floor(el / 70) % 2;
@@ -834,7 +902,7 @@ export function skullMist(scene: Phaser.Scene, at: XY, ramp: Ramp, depth: number
         const lvl = (1 - u) * (0.9 - st.gone);
         for (let xx = -w; xx <= w; xx++) {
           if (bayer(x + xx, yy) >= lvl) continue;
-          g.px(x + xx, yy, xx === 0 && u < 0.4 ? ramp[2] : ramp[1]);
+          g.px(x + xx, yy, xx === 0 && u < 0.4 ? PAL.stone1 : PAL.stone0);
         }
       }
       // ---- the skull (rows stretched on whole pixels; the jaw rows dropped by `jaw`)
@@ -850,18 +918,28 @@ export function skullMist(scene: Phaser.Scene, at: XY, ramp: Ramp, depth: number
             const X = cx - (W >> 1) + x + Math.round(Math.sin(el * 0.02 + y * 0.6) * st.gone * 2.5);
             const b = bayer(X, yy);
             const edge = ch === '#';
-            // whole while it holds; the fringe goes first, then the body tears in bayer steps
-            if (b < st.gone * (edge ? 1.6 : 1.1)) continue;
+            // critic pass-3 r2: the vapour comes apart FROM THE BOTTOM UP as it rises (the jaw thins first, a standing
+            // dither under it even before the tear), then the whole body tears in bayer steps
+            const rowK = (y + 1) / SKULL.length;
+            const lowTear = Math.max(0, rowK - 0.55) * 0.9;
+            if (b < st.gone * (edge ? 1.6 : 1.1) * (0.45 + rowK) + lowTear) continue;
             if (edge && b < 0.25) continue; // a soft vapour fringe, never a hard rim
             let c: number;
-            // critic pass-3 r1: a DARK, vaporous skull (it read as an opaque saturated emoji): ramp[1] / ramp[2] body,
-            // ramp[3] only on the brow, the rim of the sockets and the top fringe; the hot points live in the sockets
-            if (ch === 'o' || ch === 'n' || ch === 't') c = PAL.ink;
-            else if (edge) c = y < 4 ? ramp[2] : ramp[1];
+            // critic pass-3 r2: VOID / STONE vapour (the leaf-green body still read as an emoji at 1×): the body is cold
+            // grave-mist stone, the soul's colour only on the socket rims, the brow flash and the top fringe; no ink
+            // under the jaw (the teeth are gaps of dark stone, not outlined)
+            if (ch === 'o' || ch === 'n') c = PAL.ink;
+            else if (ch === 't') c = PAL.void0;
+            else if (edge) c = y < 4 ? ramp[2] : y < JAW ? PAL.stone1 : PAL.stone0;
             else if (ch === '4') c = el < 120 ? ramp[4] : ramp[3];
-            else if (ch === '2') c = ramp[1];
-            else if (SOCKET_RIM[y]?.[x]) c = ramp[3];
-            else c = y < 3 || b < 0.25 ? ramp[2] : ramp[1];
+            else if (ch === '2') c = PAL.stone0;
+            else if (SOCKET_RIM[y]?.[x]) {
+              // the fire catches only the socket's UPPER rim (a brow glint); the sides glow faintly, the lower rim is
+              // stone (a full green ring read as goggles)
+              const below = SKULL[y + 1]?.[x];
+              const side = row[x - 1] === 'o' || row[x + 1] === 'o';
+              c = below === 'o' || below === 'n' ? ramp[3] : side ? ramp[1] : PAL.stone1;
+            } else c = y < 3 ? (x < W / 2 ? PAL.stone3 : PAL.stone2) : b < 0.25 ? PAL.stone1 : y < JAW ? PAL.stone2 : PAL.stone1;
             g.px(X, yy, c);
           }
       }

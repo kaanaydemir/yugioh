@@ -405,6 +405,8 @@ export const GRIM_WARDEN_RECIPES = {
       creak(v, 0.2, 0.36, { pan: 0.1 });
       sweep(v, 0.16, 0.26, [300, 1500, 700], 0.95, { q: 1.5, kind: 'pink', pan: [-0.2, 0.2], peakAt: 0.55 });
       v.tone('triangle', [[0, midiHz(58)], [0.3, midiHz(65), 'e']], { t: 0.18, g: [[0, 0], [0.12, 0.11], [0.36, 0.0001, 'e']] });
+      // critic pass-3 r2: no hole before the inhale — the lantern's soul fire flutters up as it is thrust out
+      soulBreath(v, 0.22, 0.32, 1250, 0.22, { rate: 8 });
     },
   },
   /** Effect (special f4): the flame dips — a falling soul breath drawn in, the lantern glass darkening (low glass hush). */
@@ -416,7 +418,7 @@ export const GRIM_WARDEN_RECIPES = {
     play(v) {
       // critic pass-3 r2: +≈10 dB (it was inaudible, leaving a hole before the thread) — the inhale is the
       // signature's lead-in: a drawn breath, a low reversed-glass swell and the hum sinking with it
-      v.noise('pink', { g: [[0, 0.0001], [0.12, 0.8, 'e'], [0.34, 0.0001, 'e']], to: v.filt('bandpass', [[0, 2600], [0.34, 600, 'e']], 2) });
+      v.noise('pink', { g: [[0, 0.05], [0.08, 0.8], [0.34, 0.0001, 'e']], to: v.filt('bandpass', [[0, 2600], [0.34, 600, 'e']], 2) });
       soulBreath(v, 0, 0.36, 1400, 0.4, { rate: 6 });
       glassReverse(v, midiHz(82), 0, 0.2, 0.26);
       glassReverse(v, midiHz(70), 0.02, 0.16, 0.3);
@@ -438,8 +440,9 @@ export const GRIM_WARDEN_RECIPES = {
       creak(v, 0.42, 0.2, { pan: -0.1 });
       // critic pass-3 r2: no hole before the strike's charge — the lantern swings on, a third creak and the soul fire
       // breathing in its new colour carry the tail into gwCharge
+      creak(v, 0.31, 0.16, { up: true, pan: 0.05 });
       creak(v, 0.64, 0.14, { up: true, pan: 0.05 });
-      soulBreath(v, 0.12, 0.8, 1100, 0.07, { rate: 7 });
+      soulBreath(v, 0.12, 0.8, 1100, 0.16, { rate: 7 });
       glassBell(v, midiHz(77), 0.5, 0.05, 0.9, { modes: 2 });
     },
   },

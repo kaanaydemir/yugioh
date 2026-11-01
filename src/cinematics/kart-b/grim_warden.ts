@@ -129,12 +129,18 @@ const kept = new Map<number, Ramp>();
 const pendingGiveBacks = new Map<GameEvent, () => void>();
 
 function endDrain(d: Drain, keepFade = false): void {
-  d.off();
-  if (!keepFade) d.fade.destroy();
-  else {
-    // the fade rides the target's death until its sprite retires (soulFade ends itself then); a safety net after 4 s
+  if (!keepFade) {
+    d.off();
+    d.fade.destroy();
+  } else {
+    // the fade rides the target's death until its sprite retires (soulFade ends itself then; the v3:dying listener
+    // stays to mark it dying if the death plays after the battle); a safety net after 4 s
     const f = d.fade;
-    d.target.sprite.scene?.time.delayedCall(4000, () => f.destroy());
+    const off = d.off;
+    d.target.sprite.scene?.time.delayedCall(4000, () => {
+      off();
+      f.destroy();
+    });
   }
   void d.light.fadeOut(200);
 }
@@ -374,6 +380,7 @@ async function drainV3(ctx: Ctx<'activate'>): Promise<void> {
     if (x !== t) return;
     // critic pass-3 r2: the fade is NOT dropped here (the drained target lit back up the frame it started dying) —
     // it rides the death pose until the sprite retires (soulFade ends itself then)
+    fadeT.dying();
     // the target dies with its light in the lantern: the lantern locks the colour on that beat (critic r2: gwKeep landed
     // a second late with the card's graveyard thud)
     if (drains.get(u.uid) === d && live(u) && !d.keptSounded) {
@@ -529,6 +536,7 @@ async function afterBattle(ctx: Ctx<'battle'>, u: MonsterUnit | null, d: Drain):
   // the target died: the lantern keeps its colour until the turn ends
   endDrain(d, true);
   if (!d.keptSounded) play('gwKeep', { volume: 0.8, pan: panAt(u.home.x) });
+  d.keptSounded = true;
   const light = lanternLight(sc, u, d.ramp, 0.8);
   kept.set(u.uid, d.ramp);
   u.setAura('grimLantern', {
@@ -551,9 +559,10 @@ if (LOOK_V3) {
       if (!d) return;
       drains.delete(ctx.ev.attackerUid);
       // critic pass-3 r2: a guardian_charm that saves the drained target must be SEEN first (its activation explains
-      // why the target lives) — the give-back waits for the charm's activate to finish presenting (the next event's
-      // start), then plays alongside the charm breaking
+      // why the target lives) — the give-back waits for the charm's activate event and starts once it has flared
       const ai = ctx.findType('activate', (e) => e.cardId === 'guardian_charm', { until: (e) => e.type === 'battle' || e.type === 'turnStart' });
+      // (the charm's activation zooms its card over the board for ≈ 2 s — a give-back under it would be hidden — so the
+      // light starts home on the next event's start, right as the charm's card has been shown and leaves)
       const next = ai >= 0 ? ctx.events[ai + 1] : undefined;
       if (next) {
         const uid = ctx.ev.attackerUid;
