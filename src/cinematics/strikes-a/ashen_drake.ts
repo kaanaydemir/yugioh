@@ -213,6 +213,9 @@ async function ashStormV3(s: StrikeArgs): Promise<void> {
   // starts from it (adv #2)
   let bankTop: number[] | null = null;
   const sheetHalf = lattice && tBox ? Math.round(Math.max(VW, tBox.w) / 2) + 3 : Math.round(W * 0.42);
+  // centred on the target's own body (a sprite's box is rarely centred on its ground point: the sheet sat
+  // half off a wide target and left a straight black side bare)
+  const sheetDx = lattice && tBox && target ? Math.round(target.framePoint(tBox.x + tBox.w / 2, tBox.y + tBox.h).x - B.x) : 0;
   const bankAt = (x: number): number => {
     if (!bankTop) {
       bankTop = [];
@@ -308,9 +311,9 @@ async function ashStormV3(s: StrikeArgs): Promise<void> {
     // adv #2: the IGNITION is a flame sheet grown out of the bank's own top: uneven tongues climb 2–4 px a
     // frame (each column on its own start), break out above the target's top, outlined only on the outer
     // flame edge (fire0); the valleys between them show the black silhouette
-    if (fire >= 1 && lattice && k >= 1) {
+    if (fire >= 1 && lattice && k >= 0) {
       const peak = Math.round(ground.y - tTop) + 6;
-      if (flameSheet(veilL, B.x, B.y + 1, sheetHalf, k, 41, bankAt, peak, 7)) any = true;
+      if (flameSheet(veilL, B.x + sheetDx, B.y + 1, sheetHalf, k + 1, 41, (x) => bankAt(x + sheetDx), peak, 8)) any = true;
     }
     // blocked: a 3-frame WALL of fire on the guard face, as high as the pile again (critic r1 #6)
     if (fire >= 1 && blocked && k >= 1 && k <= 3) {
@@ -319,8 +322,9 @@ async function ashStormV3(s: StrikeArgs): Promise<void> {
     }
     // direct: the podium bank ignites as the same flame sheet (adv #2: the critic r3 solid column read as a
     // box), ~34 px of uneven tongues over the podium base, sinking from k 9
-    if (fire >= 1 && !target && !blocked && k >= 1) {
-      if (flameSheet(veilL, B.x, B.y + 1, sheetHalf, k, 77, bankAt, 34, 9)) any = true;
+    if (fire >= 1 && !target && !blocked && k >= 0) {
+      // (k + 1: the sheet's first frame is the ignition frame itself, held white-rooted through the hit-stop)
+      if (flameSheet(veilL, B.x, B.y + 1, sheetHalf, k + 1, 77, bankAt, 36, 16)) any = true;
     }
     // the buried embers: white on the ignition frame; in the silence a third of them go dark per step
     for (const [i, e] of embers.entries()) {
@@ -1142,59 +1146,104 @@ function ashHeap(ctx: Ctx<'destroy'>, u: MonsterUnit, home: XY): { burst(at: XY)
   };
 }
 
-/** The break: 14 plate chips (2×3 / 3×2, stone2 face, stone1 crease, ink edge) drop off the body and land. */
+/**
+ * The cloak DROPS (adv #4: the old break threw 14 ink-boxed 2×3 chips outward from f7, the shared square-chip
+ * scatter look, and buried the art's top-down collapse at 1×). From death f6 (the cloak's drop frame) the
+ * cloak comes off in SIX plates, top to bottom (the highest strip first, one every 30 ms): each is a 6–9 px
+ * slab sampled from the shown frame's own cloak span at its height (a stone3-lit stone2 top, a stone1 under-
+ * row, an ink line only under it, a fire1 ember pixel under the first frames: the heart is still lit),
+ * falling STRAIGHT down (no outward throw) onto the heap point, where it lands one row above the last
+ * (they stack), slides 1–3 px down the slope over 3 frames and flattens into a stone1 smear that goes stone0
+ * and out as the heap takes over. Only after the last plate has landed do 6 ash grains slip down off the pile.
+ */
 const fell = new WeakSet<MonsterUnit>();
-function plateFall(sc: Phaser.Scene, u: MonsterUnit, home: XY): void {
+function cloakDrop(sc: Phaser.Scene, u: MonsterUnit, home: XY): void {
   if (!u.sprite.active || fell.has(u)) return;
   fell.add(u);
   const pc = currentPixels(u).pc;
   const b = pc.bounds();
   if (!b) return;
-  // over the death kit's remains / dissolve layers (under them the chips were lost on the body)
+  const cloak = new Set<number>([PAL.stone0, PAL.stone1, PAL.stone2, PAL.stone3]);
   const px = layer(sc, DEPTH.FX - 1);
-  const ch: { x: number; y: number; vx: number; vy: number; fy: number; flip: boolean; land: number }[] = [];
-  for (let tries = 0; tries < 200 && ch.length < 14; tries++) {
-    const fx = Math.floor(b.x + RR(0, b.w));
-    const fy = Math.floor(b.y + RR(b.h * 0.35, b.h * 0.85));
-    if (!pc.isOpaque(fx, fy)) continue;
-    const w = u.framePoint(fx, fy);
-    ch.push({ x: w.x, y: w.y, vx: RR(-40, 40), vy: RR(-40, 0), fy: home.y + Math.round(RR(-4, 5)), flip: ch.length % 3 === 0, land: -1 });
+  const dir = u.flipX ? -1 : 1;
+  interface Slab { x: number; y: number; w: number; vy: number; t0: number; land: number; slide: number; ly: number }
+  const slabs: Slab[] = [];
+  // the cloak's own rows (≥ 4 cloak pixels: stray specks never count), top first
+  const rows: { y: number; x0: number; x1: number }[] = [];
+  for (let y = b.y; y < b.y + b.h; y++) {
+    let n = 0;
+    let x0 = -1;
+    let x1 = -1;
+    for (let x = b.x; x < b.x + b.w; x++) {
+      const c = pc.get(x, y);
+      if (c !== null && cloak.has(c as number)) {
+        n++;
+        if (x0 < 0) x0 = x;
+        x1 = x;
+      }
+    }
+    // (the top third is already gone under the kit's dissolve on f6: start where the cloak still shows)
+    if (n >= 4 && y >= b.y + b.h * 0.3 && y <= b.y + b.h * 0.85) rows.push({ y, x0, x1 });
   }
+  const N = 6;
+  const span = Math.max(1, rows.length - 1);
+  for (let i = 0; i < N && rows.length; i++) {
+    const r = rows[Math.min(rows.length - 1, Math.round((span * i) / (N - 1)))];
+    const mid = (r.x0 + r.x1) / 2;
+    const w = clamp(Math.round((r.x1 - r.x0) * 0.45), 6, 9);
+    const p = u.framePoint(mid, r.y);
+    slabs.push({ x: Math.round(p.x - w / 2), y: p.y, w, vy: 40, t0: i * 30, land: -1, slide: (i % 2 ? 1 : -1) * dir * (1 + (i % 3)), ly: 0 });
+  }
+  let landed = 0;
+  let grainsAt = -1;
+  const sp = new Sparks(sc, DEPTH.FX - 1);
   let el = 0;
   onFrame(sc, (dt) => {
     el += dt;
     px.clear();
-    if (el > 900 || !sc.sys.isActive()) return false;
+    if (el > 1000 || !sc.sys.isActive()) return false;
     const s = dt / 1000;
-    for (const c of ch) {
-      if (c.land < 0) {
-        c.vy += 1500 * s;
-        c.x += c.vx * s;
-        c.y += c.vy * s;
-        if (c.y >= c.fy) {
-          c.y = c.fy;
-          c.land = el;
+    for (const p of slabs) {
+      if (el < p.t0) continue;
+      if (p.land < 0) {
+        p.vy += 1400 * s;
+        p.y += p.vy * s;
+        const floorY = home.y - 1 - landed;
+        if (p.y >= floorY) {
+          p.y = floorY;
+          p.ly = floorY;
+          p.land = el;
+          landed++;
+          if (landed === slabs.length) grainsAt = el;
         }
       }
-      if (c.land >= 0 && el - c.land > 320) continue;
-      const cool = c.land >= 0 && el - c.land > 140;
-      const X = Math.round(c.x);
-      const Y = Math.round(c.y);
-      if (cool) {
-        px.rect(X, Y - 1, 2, 1, PAL.stone0);
+      const X = Math.round(p.x);
+      const Y = Math.round(p.y);
+      if (p.land >= 0) {
+        const a = el - p.land;
+        if (a > 520) continue;
+        // slide down the slope over 3 frames, then flatten into a smear
+        const sl = Math.round(p.slide * clamp(a / 50, 0, 1));
+        if (a < 70) {
+          px.run(Y + 1, X + sl, X + sl + p.w - 1, PAL.ink).run(Y, X + sl, X + sl + p.w - 1, PAL.stone1).run(Y - 1, X + sl + 1, X + sl + p.w - 2, PAL.stone2);
+        } else px.run(Y, X + sl, X + sl + p.w - 1, a < 300 ? PAL.stone1 : PAL.stone0);
         continue;
       }
-      // a chunky plate (critic r3 #9: 2×3 grey chips vanished into the floor dust): ink-outlined, a lit
-      // stone3 edge, a stone2 face and, while it falls, a hot fire2 underside (the heart still lit inside)
-      const wide = c.flip !== (c.land < 0 && Math.floor(el / 60) % 2 === 1);
-      const w = wide ? 3 : 2;
-      const h = wide ? 2 : 3;
-      const y0 = Y - h;
-      px.rect(X - 1, y0 - 1, w + 2, h + 2, PAL.ink).rect(X, y0, w, h, PAL.stone2).run(y0, X, X + w - 1, PAL.stone3);
-      px.run(y0 + h - 1, X, X + w - 1, c.land < 0 ? PAL.fire2 : PAL.stone1);
+      // a falling plate: lit top, under-row, ink only under it, a still-hot ember pixel on the first frames
+      px.run(Y - 2, X + 1, X + p.w - 2, PAL.stone3).run(Y - 1, X, X + p.w - 1, PAL.stone2).run(Y, X, X + p.w - 1, PAL.stone1).run(Y + 1, X + 1, X + p.w - 2, PAL.ink);
+      if (el - p.t0 < 120) px.dot(X + Math.floor(p.w / 2), Y, PAL.fire1);
+    }
+    if (grainsAt >= 0 && el - grainsAt < 20) {
+      grainsAt = -2;
+      for (let i = 0; i < 6; i++)
+        sp.add({ x: home.x + RR(-4, 4), y: home.y - landed - 1, vx: (i % 2 ? 1 : -1) * RR(10, 22), vy: RR(-4, 4), ay: 60, drag: 2, life: RR(260, 420), colors: [PAL.stone2, PAL.stone1, PAL.stone0], shape: 'px', fadeAt: 1, floor: home.y + 1, bounce: 0 });
+      sp.release();
     }
     return true;
-  }, () => px.g.destroy());
+  }, () => {
+    px.g.destroy();
+    if (grainsAt !== -2) sp.release();
+  });
 }
 
 async function ashenDeathV3(ctx: Ctx<'destroy'>): Promise<void> {
@@ -1203,9 +1252,9 @@ async function ashenDeathV3(ctx: Ctx<'destroy'>): Promise<void> {
   let heap: { burst(at: XY): void } | null = null;
   if (u && !u.retired && u.sprite.active) {
     const home = { ...u.home };
-    // critic r3 #9: the break read as a few dark specks at 1× — 14 cloak plates fall off the body on the
-    // break frame (f7), tumble, land round the feet and lie there until the heap takes over
-    atFrame(u, 'death', 7, () => plateFall(ctx.scene, u, home));
+    // adv #4: the cloak drops top-down in six plates from its drop frame (f6), straight onto the heap
+    // (no outward chip scatter)
+    atFrame(u, 'death', 6, () => cloakDrop(ctx.scene, u, home));
     atFrame(u, 'death', 8, () => {
       // the burst may already have made it (the shatter runs on the dissolve mark): never a second heap
       if (!heap) heap = ashHeap(ctx, u, home);

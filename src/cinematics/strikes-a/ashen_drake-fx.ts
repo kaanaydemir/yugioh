@@ -433,6 +433,7 @@ export function flameSheet(
     tx += w;
     ti++;
   }
+  const u0 = (x: number): number => x / Math.max(1, half);
   let t = 0;
   for (let x = x0; x <= half; x++) {
     while (t < tongueOf.length - 1 && x >= tongueOf[t].s + tongueOf[t].w) t++;
@@ -441,12 +442,15 @@ export function flameSheet(
     const tri = 1 - Math.abs(q * 2 - 1); // 0 at the valleys, 1 at the tip
     const u = x / Math.max(1, half);
     const env = 1 - u * u * 0.7;
-    const b = bank(x);
+    // the bank's own ragged top, rounded down at the ends (never a flat lid or a straight side, even where
+    // the bank is clamped level)
+    const b = Math.max(1, bank(x) - Math.floor(hash(sd + x * 11, 25) * 4) - Math.round(u0(x) * u0(x) * bank(x) * 0.6));
     const jitter = Math.round((hash(sd + x * 3, step) - 0.5) * 4);
     const top = Math.max(b, Math.round(b + (peak - b) * env * (0.15 + 0.85 * tri * T.a)) + jitter);
     const s0 = Math.floor(hash(sd + x, 21) * 3) + Math.round(Math.abs(u) * 2);
     const v = 2 + Math.floor(hash(sd + x * 5, 22) * 3);
-    let h = Math.min(top, b + Math.max(0, k - s0) * v);
+    // each tongue already licks 0–3 px over the bank on its first frame (a ragged lid from frame 1)
+    let h = Math.min(top, b + Math.round(tri * 3) + Math.max(0, k - s0) * v);
     if (k >= fallAt) h = Math.min(h, top - (k - fallAt) * (3 + Math.floor(hash(sd + t, 24) * 2)) - Math.floor(hash(sd + t, 23) * 4));
     if (k - s0 < 0) h = Math.min(h, b);
     hs.push(Math.max(0, h));

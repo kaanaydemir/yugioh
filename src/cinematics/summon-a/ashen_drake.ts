@@ -295,18 +295,12 @@ async function ashenRiseV3(S: Stage): Promise<void> {
     let holding = true;
     const hold = new Sparks(sc, S.depth + 0.3);
     let hAcc = 0;
-    let beats = 0;
-    onFrame(sc, (dt, el) => {
+    onFrame(sc, (dt) => {
       if (!holding || !live()) {
         hold.release();
         return false;
       }
       hAcc += dt;
-      const b = Math.floor(el / 170);
-      if (b !== beats && b <= 4) {
-        beats = b;
-        pool.setIntensity(b % 2 ? 0.85 : 0.6, 40);
-      }
       if (hAcc < 45) return true;
       hAcc = 0;
       const pc = currentPixels(u).pc;
@@ -321,6 +315,8 @@ async function ashenRiseV3(S: Stage): Promise<void> {
       }
       return true;
     });
+    // adv #3: the drake itself stays alive on the held frame (the band covers only the lower left)
+    holdLife(S, pool, () => holding);
     await S.climax();
     holding = false;
     if (live()) bg(playFrom(u, 'summon', holdF + 1));
@@ -363,6 +359,144 @@ async function ashenRiseV3(S: Stage): Promise<void> {
   // the cinematic resolves; the fan cools on its own, the pools fade
   void pool.fadeOut(240);
   bg(S.wait(300).then(() => (gone = true)));
+}
+
+/**
+ * The held spread under the cut-in (adv #3: ~800 ms on one frame read as a freeze) kept alive ON the drake:
+ *  - the RIBS beat with the heartbeat's own rhythm (ashenHeartbeat: LUB, DUB 170 ms later, a 680 ms cycle):
+ *    every fire pixel of the chest steps one tone up for 3 frames on LUB (fire1 spills onto the bone round
+ *    it), 2 frames on DUB; the floor pool answers each beat;
+ *  - the wing hems FLUTTER: a 1-px ripple (the hem pixel's own tone one pixel lower) travels along the hem,
+ *    one step every 2 frames;
+ *  - embers DRIP off the hem's ember pixels (fire3 → fire1, a 1-px trail) and die on the floor as stone0;
+ *  - grey ash GRAINS settle slowly through the frame (stone3 / stone2, 10–16 px/s, a stepped 1-px sway).
+ */
+function holdLife(S: Stage, pool: { setIntensity(v: number, ms?: number): unknown }, holding: () => boolean): void {
+  const u = S.unit;
+  const home = S.home;
+  const px = lay(S, S.depth + 0.25);
+  const flr = lay(S, DEPTH.SHADOW - 1);
+  const fireUp = new Map<number, number>([
+    [PAL.fire1, PAL.fire2],
+    [PAL.fire2, PAL.fire3],
+    [PAL.fire3, PAL.fire4],
+    [PAL.fire4, PAL.fire4],
+  ]);
+  const pc = currentPixels(u).pc;
+  const ribs: { x: number; y: number; c: number }[] = [];
+  const spill: XY[] = [];
+  const hem: { x: number; y: number; c: number; fire: boolean }[] = [];
+  const b = pc.bounds();
+  for (let y = 0; y < pc.h; y++)
+    for (let x = 0; x < pc.w; x++) {
+      const c = pc.get(x, y);
+      if (c === null) continue;
+      const fire = fireUp.has(c as number);
+      const lower = !pc.isOpaque(x, y + 1);
+      // the ribs: the chest's ember pixels only (within 16 px of the art's core, the tail tip stays out)
+      if (fire && !lower && Math.abs(x - u.art.core.x) <= 16 && Math.abs(y - u.art.core.y) <= 16) ribs.push({ x, y, c: c as number });
+      // the wing hems: lower edges in the upper two thirds of the frame (the feet / tail stay put)
+      if (lower && b && y < b.y + b.h * 0.62) hem.push({ x, y, c: c as number, fire });
+    }
+  const isRib = new Set(ribs.map((r) => r.y * pc.w + r.x));
+  for (const r of ribs)
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const x = r.x + dx;
+      const y = r.y + dy;
+      if (pc.isOpaque(x, y) && !isRib.has(y * pc.w + x)) spill.push({ x, y });
+    }
+  interface Drip { x: number; y: number; vy: number; age: number; land: number }
+  const drips: Drip[] = [];
+  const grains: { x: number; y: number; vy: number; ph: number; land: number }[] = [];
+  const specks: { x: number; y: number; age: number }[] = [];
+  const top = b ? fpt(u, b.x + b.w / 2, b.y).y : home.y - 80;
+  const halfW = b ? Math.round(b.w / 2) : 30;
+  let tick = -1;
+  let lastBeat = -1;
+  let gAcc = 0;
+  onFrame(S.scene, (dt, el) => {
+    px.clear();
+    flr.clear();
+    if (!holding() || !u.sprite.active || u.retired) return false;
+    // the heartbeat: LUB 0–50 ms, DUB 170–203 ms of every 680 ms
+    const cyc = el % 680;
+    const beat = cyc < 50 ? 1 : cyc >= 170 && cyc < 203 ? 2 : 0;
+    const beatId = Math.floor(el / 680) * 2 + (beat === 2 ? 1 : 0);
+    if (beat && beatId !== lastBeat) {
+      lastBeat = beatId;
+      pool.setIntensity(beat === 1 ? 0.95 : 0.8, 30);
+      bg(S.wait(beat === 1 ? 90 : 60).then(() => pool.setIntensity(0.6, 120)));
+    }
+    if (beat) {
+      for (const r of ribs) {
+        const w = fpt(u, r.x, r.y);
+        px.dot(w.x, w.y, fireUp.get(r.c) ?? r.c);
+      }
+      if (beat === 1)
+        for (const p of spill) {
+          const w = fpt(u, p.x, p.y);
+          px.dot(w.x, w.y, PAL.fire1);
+        }
+    }
+    const t = Math.floor(el / (2 * STEP));
+    if (t !== tick) {
+      tick = t;
+      const fh = hem.filter((h) => h.fire);
+      if (fh.length && t % 2 === 0) {
+        const h = fh[Math.floor(RR(0, fh.length))];
+        const w = fpt(u, h.x, h.y + 1);
+        drips.push({ x: w.x, y: w.y, vy: RR(8, 24), age: 0, land: home.y + Math.round(RR(-4, 5)) });
+      }
+    }
+    // the hem flutter: a 1-px ripple travelling along the hem
+    for (const h of hem) {
+      const ph = ((((h.x >> 1) + tick) % 5) + 5) % 5;
+      if (ph > 1) continue;
+      const w = fpt(u, h.x, h.y + 1);
+      px.dot(w.x, w.y, h.c);
+      if (ph === 0) px.dot(w.x, w.y + 1, h.fire ? PAL.fire1 : PAL.stone0);
+    }
+    for (let i = drips.length - 1; i >= 0; i--) {
+      const d = drips[i];
+      d.age += dt;
+      d.vy += (240 * dt) / 1000;
+      d.y += (d.vy * dt) / 1000;
+      const y = Math.round(d.y);
+      if (y >= d.land) {
+        specks.push({ x: d.x, y: d.land, age: 0 });
+        drips.splice(i, 1);
+        continue;
+      }
+      px.dot(d.x, y, d.age < 90 ? PAL.fire3 : d.age < 200 ? PAL.fire2 : PAL.fire1).dot(d.x, y - 1, d.age < 90 ? PAL.fire2 : PAL.fire1);
+    }
+    // the settling ash grains
+    gAcc += dt;
+    while (gAcc > 40) {
+      gAcc -= 40;
+      grains.push({ x: home.x + Math.round(RR(-halfW, halfW)), y: top + RR(-6, (home.y - top) * 0.7), vy: RR(10, 16), ph: Math.floor(RR(0, 4)), land: home.y + Math.round(RR(-5, 5)) });
+    }
+    for (let i = grains.length - 1; i >= 0; i--) {
+      const g = grains[i];
+      g.y += (g.vy * dt) / 1000;
+      if (g.y >= g.land) {
+        specks.push({ x: g.x, y: g.land, age: 0 });
+        grains.splice(i, 1);
+        continue;
+      }
+      const sway = (Math.floor(el / 120) + g.ph) % 4 < 2 ? 0 : 1;
+      px.dot(g.x + sway, Math.round(g.y), g.ph % 2 ? PAL.stone3 : PAL.stone2);
+    }
+    for (let i = specks.length - 1; i >= 0; i--) {
+      const s = specks[i];
+      s.age += dt;
+      if (s.age > 500) {
+        specks.splice(i, 1);
+        continue;
+      }
+      flr.dot(s.x, s.y, s.age < 80 ? PAL.stone2 : PAL.stone0);
+    }
+    return true;
+  });
 }
 
 /**
