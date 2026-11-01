@@ -453,7 +453,7 @@ function ashShock(S: Stage): void {
   const px = lay(S, DEPTH.SHADOW - 1);
   const home = S.home;
   const MS = 620;
-  const R0 = 14;
+  const R0 = 26; // critic r3 #3: the ring has a shape on the slam frame itself (was 14: a stain)
   const R1 = 64; // past the tile edge (a tile is ±32 px wide): the slam owns the neighbouring tiles too
   const N = 12;
   const sp = new Sparks(S.scene, DEPTH.SHADOW - 1);
@@ -465,8 +465,14 @@ function ashShock(S: Stage): void {
   sp.release();
   // the underglow sits under the CHEST (the heart is forward of the feet), not under the hips
   const gx = home.x + S.dir * 5;
+  let rf = -1;
+  // the underglow sits OVER the unit's dithered drop shadow (DEPTH.SHADOW), still under every unit:
+  // under it the checker shadow turned the pool into a muddy half-tone (critic r3 #3)
+  const gl = lay(S, DEPTH.SHADOW + 0.5);
   const draw = (el: number): boolean => {
+    rf++;
     px.clear();
+    gl.clear();
     if (el > MS) return false;
     const t = el / MS;
     const e = 1 - (1 - t) * (1 - t) * (1 - t);
@@ -493,14 +499,32 @@ function ashShock(S: Stage): void {
       if (br >= 3) px.rect(x - br + 1, y - lift - br, Math.max(1, br - 1), 1, t < 0.35 ? PAL.stone3 : PAL.stone2);
     }
     // (drawn over the billows: they would bury it)
-    // the fire2 underglow flash under the chest (the cloak landing on the embers): 3 stepped frames big and
-    // bright (fire2 pool, fire3 core, a fire4 heart line), 2 dull (fire1), then a last fire1 ember line
-    const fk = Math.floor(el / (1000 / 60));
-    if (fk <= 6) {
-      const fr = fk <= 2 ? 16 : fk <= 4 ? 11 : 6;
-      px.ellipse(gx, home.y, fr, Math.max(1, Math.round(fr * 0.4)), fk <= 2 ? PAL.fire2 : PAL.fire1);
-      if (fk <= 2) px.ellipse(gx, home.y - 1, 8, 3, PAL.fire3).run(home.y - 1, gx - 2, gx + 2, PAL.fire4);
-      else if (fk <= 4) px.ellipse(gx, home.y, 5, 1, PAL.fire2);
+    // the underglow (critic r3 #3: a flat maroon stain, held through the freeze): counted in RENDERED frames,
+    // so it steps down on every frame, the freeze included; frame 0 is the brightest step. It spills FORWARD
+    // of the feet (the body hides what lies under the chest) as a wide iso pool with a ≥ 6-px fire3 core and
+    // a ≥ 6-px fire4 heart line on whole pixels, so it reads at 1×.
+    const G = [
+      { r: 22, c: PAL.fire3, core: 10, cc: PAL.fire4, line: 8, lc: PAL.white },
+      { r: 20, c: PAL.fire2, core: 8, cc: PAL.fire3, line: 6, lc: PAL.fire4 },
+      { r: 17, c: PAL.fire2, core: 7, cc: PAL.fire3, line: 6, lc: PAL.fire3 },
+      { r: 14, c: PAL.fire1, core: 6, cc: PAL.fire2, line: 4, lc: PAL.fire3 },
+      { r: 10, c: PAL.fire1, core: 4, cc: PAL.fire2, line: 0, lc: 0 },
+      { r: 7, c: PAL.fire1, core: 0, cc: 0, line: 0, lc: 0 },
+      { r: 4, c: PAL.stone0, core: 0, cc: 0, line: 0, lc: 0 },
+    ];
+    const g = G[rf];
+    if (g) {
+      const gy = home.y + 5; // forward of the toes: the feet and tail must not bury the core
+      gl.ellipse(gx, gy - 2, g.r, Math.max(1, Math.round(g.r * 0.42)), g.c);
+      if (g.core) gl.ellipse(gx, gy, g.core, Math.max(1, Math.round(g.core * 0.4)), g.cc);
+      if (g.line) gl.run(gy, gx - (g.line >> 1), gx + (g.line >> 1) - 1, g.lc).run(gy + 1, gx - (g.line >> 1) + 1, gx + (g.line >> 1) - 2, g.lc);
+      // the cracks the slam opens: 4 short fire rays out of the pool on the first 3 frames
+      if (rf <= 2)
+        for (let i = 0; i < 4; i++) {
+          const a = (i / 4) * Math.PI * 2 + 0.6;
+          const l = g.r + 4 - rf * 2;
+          gl.line(Math.round(gx + Math.cos(a) * (g.r - 2)), Math.round(gy + Math.sin(a) * (g.r - 2) * 0.42), Math.round(gx + Math.cos(a) * l), Math.round(gy + Math.sin(a) * l * 0.42), rf === 0 ? PAL.fire3 : PAL.fire2);
+        }
     }
     return true;
   };

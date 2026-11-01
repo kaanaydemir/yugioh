@@ -54,6 +54,8 @@ export function drawPuff(px: Px, cx: number, cy: number, r: number, t: Tones, ca
   }
 }
 
+const clamp3 = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+
 /** A cheap deterministic hash in [0, 1). */
 export function hash(a: number, b = 0): number {
   const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
@@ -115,7 +117,9 @@ export function latticeSlots(VW: number, H: number): VeilSlot[] {
     for (let i = 0; i < n; i++) {
       const u = n === 1 ? 0 : i / (n - 1) - 0.5;
       const x = u * (span - 2 * r) + (j % 2 ? 2 : -1);
-      out.push({ x: Math.round(x), h: Math.round(k * (H - r * 1.6)), r, z: 3 - k, row: k > 0.62 ? 0 : k > 0.3 ? 1 : 2 });
+      // critic r3 #1: radii vary per cell (3–9), so the rows never read as identical stacked balls
+      const rv = clamp3(r + Math.round((hash(j * 7 + i, 9) - 0.4) * 4), 3, 9);
+      out.push({ x: Math.round(x + (hash(i, j + 3) - 0.5) * 3), h: Math.round(k * (H - r * 1.6) + (hash(j, i + 5) - 0.5) * 3), r: rv, z: 3 - k + hash(i, j) * 0.1, row: k > 0.62 ? 0 : k > 0.3 ? 1 : 2 });
     }
   }
   return out.sort((a, b) => a.z - b.z || b.h - a.h);
@@ -144,5 +148,121 @@ export function tongues(px: Px, cx: number, topY: number, r: number, heat: numbe
     }
     // a lick that leans with the step
     if (h >= 4 && hash(seedN + i * 3, step) > 0.5) px.dot(x + (step % 2 ? 1 : -1), yTop - h, PAL.fire3);
+  }
+}
+
+/**
+ * One LUMP of ash (critic r3 #1: the round `drawPuff` discs stacked into "cannonballs"): an irregular puff
+ * whose outline is bent by three low-frequency waves seeded per lump (so no two lumps share a shape), with
+ * a 1-px ink outline, stepped dark-to-light bands toward `capA` (rim → underside → body → lit cap), one or
+ * two secondary bulges with their own small lit crescent (the boil), and buried ember specks in the dark
+ * bands (`embers` = share of dark-band pixels, re-rolled every 3 frames by `tick`). Whole pixels only.
+ */
+export function drawLump(
+  px: Px,
+  cx: number,
+  cy: number,
+  r: number,
+  t: Tones,
+  capA: number,
+  sd: number,
+  o: { squash?: number; ink?: number | null; embers?: number; tick?: number; core?: number; emberC?: readonly number[] } = {},
+): void {
+  const R = Math.max(1.5, r);
+  const sq = o.squash ?? 0.78;
+  const x0 = Math.round(cx);
+  const y0 = Math.round(cy);
+  const p1 = hash(sd, 1) * 6.283;
+  const p2 = hash(sd, 2) * 6.283;
+  const p3 = hash(sd, 3) * 6.283;
+  const a1 = 0.1 + hash(sd, 4) * 0.12;
+  const a2 = 0.06 + hash(sd, 5) * 0.1;
+  const lx = Math.cos(capA + (hash(sd, 6) - 0.5) * 0.7);
+  const ly = Math.sin(capA + (hash(sd, 6) - 0.5) * 0.7);
+  // a secondary bulge on the lit side: its own small crescent breaks the single big highlight
+  const ba = capA + (hash(sd, 7) < 0.5 ? -1 : 1) * (0.9 + hash(sd, 8) * 0.6);
+  const bx = Math.cos(ba) * 0.55;
+  const by = Math.sin(ba) * 0.55;
+  const ext = Math.ceil(R * 1.25) + 1;
+  const extY = Math.ceil(R * sq * 1.25) + 1;
+  const W = ext * 2 + 1;
+  const H = extY * 2 + 1;
+  const inside = new Uint8Array(W * H);
+  const m = (x: number, y: number): boolean => {
+    const nx = x / R;
+    const ny = y / (R * sq);
+    const d = Math.sqrt(nx * nx + ny * ny);
+    if (d < 0.35) return true;
+    const th = Math.atan2(ny, nx);
+    const lim = 1 + a1 * Math.sin(3 * th + p1) + a2 * Math.sin(5 * th + p2) + 0.05 * Math.sin(8 * th + p3);
+    // flat bottom: the lump sits on what is under it
+    if (ny > 0.75) return false;
+    return d <= lim;
+  };
+  for (let y = -extY; y <= extY; y++) for (let x = -ext; x <= ext; x++) if (m(x, y)) inside[(y + extY) * W + (x + ext)] = 1;
+  const isIn = (x: number, y: number) => x >= -ext && x <= ext && y >= -extY && y <= extY && inside[(y + extY) * W + (x + ext)] === 1;
+  const tick = o.tick ?? 0;
+  const ec = o.emberC ?? [];
+  for (let y = -extY; y <= extY; y++)
+    for (let x = -ext; x <= ext; x++) {
+      if (!isIn(x, y)) {
+        if (o.ink != null && (isIn(x - 1, y) || isIn(x + 1, y) || isIn(x, y - 1) || isIn(x, y + 1))) px.dot(x0 + x, y0 + y, o.ink);
+        continue;
+      }
+      const nx = x / R;
+      const ny = y / (R * sq);
+      const d = Math.min(1, Math.sqrt(nx * nx + ny * ny));
+      const l = d > 0.01 ? (nx * lx + ny * ly) / Math.max(0.35, d) : 0;
+      const edge = !isIn(x - 1, y) || !isIn(x + 1, y) || !isIn(x, y - 1) || !isIn(x, y + 1);
+      // the bulge's own lit crescent
+      const bdx = nx - bx;
+      const bdy = ny - by;
+      const bd = Math.sqrt(bdx * bdx + bdy * bdy);
+      const bl = bd > 0.01 ? (bdx * lx + bdy * ly) / bd : 0;
+      let c: number;
+      let band: number;
+      if (o.core != null && o.core >= 0 && d < 0.4) (c = o.core), (band = 4);
+      else if (edge && l < 0.1) (c = t[0]), (band = 0);
+      else if (bd < 0.42 && bd > 0.22 && bl > 0.35) (c = t[3]), (band = 3);
+      else if (l > 0.55 && d > 0.45) (c = t[3]), (band = 3);
+      else if (l > -0.25 + (hash(sd + x, y) - 0.5) * 0.25) (c = t[2]), (band = 2);
+      else (c = t[1]), (band = 1);
+      // a crease: a dark fold line where the bulge meets the body
+      if (band >= 2 && bd > 0.42 && bd < 0.52 && bl < 0) c = t[1];
+      if (band <= 1 && ec.length && o.embers && hash(x0 + x * 13, y0 + y * 7 + Math.floor(tick / 3) * 31 + sd) < o.embers) c = ec[(x + y + tick) & 1 ? 0 : Math.min(1, ec.length - 1)];
+      px.dot(x0 + x, y0 + y, c);
+    }
+}
+
+/** The 2×3 cloak plate chip (stone2 face, stone1 crease, stone3 lit corner, ink under-edge). */
+export function plateChip(px: Px, x: number, y: number, flip: boolean): void {
+  const X = Math.round(x);
+  const Y = Math.round(y);
+  if (flip) px.rect(X, Y, 3, 2, PAL.stone2).rect(X, Y + 1, 3, 1, PAL.stone1).dot(X, Y, PAL.stone3).run(Y + 2, X, X + 2, PAL.ink);
+  else px.rect(X, Y, 2, 3, PAL.stone2).rect(X, Y + 2, 2, 1, PAL.stone1).dot(X, Y, PAL.stone3).run(Y + 3, X, X + 1, PAL.ink);
+}
+
+/**
+ * A solid flame COLUMN (critic r3 #4: the direct ignition read as a puff under the number): `w` px wide at
+ * the base (≥ 16 at 1×), `h` tall, a ragged top re-rolled every 2 frames, banded outside-in fire1 → fire2 →
+ * fire3 → fire4 (white at the root on the first frame), narrowing to tongues. Whole pixels, no alpha.
+ */
+export function flameColumn(px: Px, cx: number, baseY: number, w: number, h: number, frame: number, sd: number, hot: boolean): void {
+  const half = w / 2;
+  const step = Math.floor(frame / 2);
+  for (let x = -Math.floor(half); x <= Math.ceil(half) - 1; x++) {
+    const u = (x + 0.5) / half; // -1..1
+    const prof = Math.max(0, 1 - u * u * 0.85);
+    const rag = 0.65 + 0.35 * hash(sd + x * 3, step) + (x % 3 === 0 ? 0.12 : 0);
+    const colH = Math.round(h * prof * rag);
+    for (let j = 0; j < colH; j++) {
+      const y = baseY - j;
+      const v = j / Math.max(1, colH);
+      const edge = Math.abs(u) > 0.78 || v > 0.86;
+      const c = edge ? PAL.fire1 : Math.abs(u) > 0.5 || v > 0.62 ? PAL.fire2 : Math.abs(u) > 0.22 || v > 0.35 ? PAL.fire3 : hot && v < 0.18 ? PAL.white : PAL.fire4;
+      px.dot(Math.round(cx + x), y, c);
+    }
+    // a detached flame lick above some columns
+    if (colH > 4 && hash(sd + x * 7, step) > 0.78) px.dot(Math.round(cx + x), baseY - colH - 2, PAL.fire3).dot(Math.round(cx + x), baseY - colH - 3, PAL.fire4);
   }
 }

@@ -38,7 +38,7 @@ import { atFrame, fade, panAt, play, start, takeCharge } from '../_v3/sound';
 import { Sparks, clamp, currentPixels, followLight, holdFrame, layer, lerp, onFrame, overlay, playFrom, seed, sleep, sourceOwnsDestroy, RR, type Ctx } from './_kit';
 import type { Px } from '../../vfx/combat';
 import { drawAshenSeated } from '../../art/monsters-v3/ashen_drake';
-import { ASH_T, BURN_T, CHAR_T, COOL_T, DEAD_T, HOT_T, WHITE_T, drawPuff, hash, latticeSlots, tongues, veilSlots, type Tones } from './ashen_drake-fx';
+import { ASH_T, BURN_T, CHAR_T, COOL_T, DEAD_T, HOT_T, WHITE_T, drawLump, flameColumn, hash, plateChip, latticeSlots, tongues, veilSlots, type Tones } from './ashen_drake-fx';
 
 const ASH = [PAL.stone1, PAL.stone2, PAL.stone3] as const;
 const STEP = 1000 / 60;
@@ -50,20 +50,6 @@ function framePt(u: MonsterUnit, name: 'muzzle' | 'core'): XY {
   if (!p) return name === 'muzzle' ? u.muzzle() : u.core();
   const w = u.framePoint(p.x, p.y);
   return { x: Math.round(w.x), y: Math.round(w.y) };
-}
-
-// ================================================================ the bank
-
-interface Billow {
-  /** position along the path (px from the start) */
-  s: number;
-  /** lateral offset (px, ± across the path) */
-  o: number;
-  rx: number;
-  /** the top lip's angle (rad), tumbling BACK toward the drake */
-  lip: number;
-  born: number;
-  chip: boolean;
 }
 
 // ================================================================ the strike
@@ -147,7 +133,12 @@ async function ashStormV3(s: StrikeArgs): Promise<void> {
   play('ashenExhale', { volume: 0.9, pan });
   const roll = start('ashenRoll', { volume: 0.8, pan });
   const mz = framePt(u, 'muzzle');
-  const A: XY = { x: mz.x, y: home.y + 1 };
+  // the bank starts on the floor just in front of the drake's feet (critic r3 #1: under the muzzle it was
+  // already at the target's tile, so it never travelled); it pours there from the jaw
+  const A0: XY = { x: home.x, y: home.y + 1 };
+  const towards = { x: (blocked ? ground.x - dir * 12 : ground.x) - A0.x, y: ground.y + 1 - A0.y };
+  const tl = Math.max(1, Math.hypot(towards.x, towards.y));
+  const A: XY = { x: Math.round(A0.x + (towards.x / tl) * 12), y: Math.round(A0.y + (towards.y / tl) * 12) };
   // blocked: the bank stops on the guard plane in front of the target
   const B: XY = blocked ? { x: ground.x - dir * 12, y: ground.y + 1 } : { x: ground.x, y: ground.y + 1 };
   const L = Math.max(1, Math.hypot(B.x - A.x, B.y - A.y));
@@ -157,7 +148,6 @@ async function ashStormV3(s: StrikeArgs): Promise<void> {
   const uy = (B.y - A.y) / L;
   const at = (sAlong: number, o = 0): XY => ({ x: A.x + ux * sAlong + -uy * o, y: A.y + uy * sAlong + ux * o * 0.5 });
   const W = Math.round(TILE_W * 0.5);
-  const billows: Billow[] = [];
   const trail: XY[] = [];
   const embers: { s: number; o: number; dy: number; ph: number }[] = [];
   for (let i = 0; i < 14; i++) embers.push({ s: RR(-W * 0.5, W * 0.5), o: RR(-W * 0.4, W * 0.4), dy: RR(2, 14), ph: Math.floor(RR(0, 5)) });
@@ -174,7 +164,6 @@ async function ashStormV3(s: StrikeArgs): Promise<void> {
   const veilDepth = target ? target.sprite.depth + 0.4 : DEPTH.FX - 2;
   const veilL = layer(sc, veilDepth);
   const trailPool = lightPool(sc, A.x, A.y, { color: PAL.fire1, radius: 14, intensity: 0.2, anim: 'flicker' });
-  let spawnAcc = 0;
   // the veil's own height: 65 % of the target's bounding box (critic r1 #2: it covered ~35 %, read as rubble)
   const tBox = target ? currentPixels(target).pc.bounds() : null;
   const tTop = target ? (tBox ? Math.round(target.framePoint(0, tBox.y).y) : Math.min(target.core().y - 6, ground.y - 18)) : ground.y - 22;
@@ -185,8 +174,6 @@ async function ashStormV3(s: StrikeArgs): Promise<void> {
       ? clamp(Math.round((ground.y - tTop) * 0.75), 18, 36) // the pile-up climbs the guard face (critic r1 #6)
       : clamp(Math.round((ground.y - tTop) * 0.7), 14, 30);
   const VW = lattice && tBox ? clamp(Math.round(tBox.w * 0.85), W, Math.round(W * 1.7)) : W;
-  const chips: { a: number; r: number; age: number }[] = [];
-  for (let i = 0; i < 7; i++) chips.push({ a: RR(0, Math.PI * 2), r: RR(2, 6), age: 0 });
 
   // ---- the veil: the bank's billows settle into a soft mound over the target (EF-2: gaps between the
   // upper puffs, ≤ 70 % of its height); the blocked bank piles up as a wide low wall on the guard plane
@@ -200,6 +187,7 @@ async function ashStormV3(s: StrikeArgs): Promise<void> {
   const pr = slots.map((sl, i) => ({ r: sl.r, gone: false, charred: false, seed: i * 7 + 3, start: 0 }));
   slots.forEach((sl, i) => (pr[i].start = 6 + sl.row * 3 + Math.floor(hash(i, 5) * 3)));
   let swallowFrame = -1;
+  let lastHead: { x: number; y: number; r: number; sd: number; cap: number }[] = [];
   const veilXY = (i: number): XY => {
     const sl = slots[i];
     const fy = B.y - (sl.z === 0 ? 2 : 0);
@@ -213,14 +201,18 @@ async function ashStormV3(s: StrikeArgs): Promise<void> {
     const ty = fy - sl.h - r * 0.8 + 1;
     if (k >= 1) return { x: tx, y: ty };
     // settling: the puffs swell out of the bank's nose
+    // (critic r3 #1: un-risen cells wait INSIDE the arriving head, a squashed copy of their slot, so the
+    // head opens into the lattice without a pop)
     const n = at(Math.max(0, L - 4));
-    return { x: Math.round(lerp(n.x, tx, k)), y: Math.round(lerp(n.y - 4, ty, k)) };
+    const hx0 = n.x - dir * (target ? 4 : 14) + sl.x * 0.45;
+    const hy0 = Math.min(n.y - r * 0.6, n.y - 4 - sl.h * 0.45);
+    return { x: Math.round(lerp(hx0, tx, k)), y: Math.round(lerp(hy0, ty, k)) };
   };
   const capOf = (i: number, slow: number): number => -Math.PI / 2 + dir * (0.7 - ((Math.floor((frames + i * 2) / slow) % 6) / 5) * 1.4);
   const drawVeil = (fire: number) => {
     veilL.clear();
     const k = frames - igniteFrame;
-    const grow = clamp(0.6 + (frames - swallowFrame) / 8, 0.6, 1);
+    const grow = clamp(0.9 + (frames - swallowFrame) / 20, 0.9, 1);
     let any = false;
     for (let i = 0; i < slots.length; i++) {
       const P = pr[i];
@@ -264,9 +256,19 @@ async function ashStormV3(s: StrikeArgs): Promise<void> {
       any = true;
       const c = veilXY(i);
       // the lattice: not yet risen → nothing; the ink seam round every cell
-      if ((lattice || blocked) && frames - swallowFrame < sl.h / 8) continue;
-      if (lattice) veilL.ellipse(c.x, Math.round(c.y + (P.r - r) * 0.8), Math.round(r) + 1, Math.round(r * 0.8) + 1, fire === 0 || fire === -1 ? PAL.ink : PAL.fire1);
-      drawPuff(veilL, c.x, c.y + (P.r - r) * 0.8, r, t, capOf(i, fire >= 1 ? 2 : 6), 0.8, core);
+      // critic r3 #1: irregular lumps (per-slot seed: no two alike), ink-outlined so grey ash reads on grey
+      // stone; burning lumps keep a fire1 outline and carry live ember specks in their dark bands
+      const cold = fire === 0 || fire === -1;
+      drawLump(veilL, c.x, c.y + (P.r - r) * 0.8, r, t, capOf(i, fire >= 1 ? 2 : 6), P.seed * 3 + 5, {
+        // burning lumps lose the outline (critic r3 #1: outlined fire lumps read as stacked oranges): the
+        // fire reads as one mass with tongues; the cold ash keeps its ink seams
+        ink: cold && (lattice || fire === 0) ? PAL.ink : null,
+        squash: 0.8,
+        core,
+        embers: cold ? (fire === -1 ? 0 : 0.07 * (1 - darkSteps / 3)) : 0.12,
+        emberC: cold ? [PAL.fire1] : [PAL.fire4, PAL.fire3],
+        tick: frames,
+      });
       if (heat > 0) tongues(veilL, c.x, Math.round(c.y + (P.r - r) * 0.8 - r * 0.8), r, heat * (blocked && sl.row < 2 ? 1.4 : 1), frames, P.seed + k);
     }
     // blocked: a 3-frame WALL of fire on the guard face, as high as the pile again (critic r1 #6)
@@ -277,12 +279,16 @@ async function ashStormV3(s: StrikeArgs): Promise<void> {
     // direct: the podium ignites as a 3-frame FLAME COLUMN clearly above the base (critic r2 #6: the old
     // ~11 px splash read as a generic hit under the number): a centre column (r 6, up to ~24 px) flanked
     // by two lower ones at the podium corners, stepping down 3 → 2 → 1.4 heat, a 4th frame of embers
-    if (fire >= 1 && !target && !blocked && k >= 1 && k <= 4) {
+    if (fire >= 1 && !target && !blocked && k >= 1 && k <= 5) {
+      // critic r3 #4: a SOLID column, 20 → 14 px wide at 1×, up to 34 px tall, in front of the podium,
+      // with the ragged side tongues kept at the corners
       const top = Math.round(B.y - 6);
-      const hc = [0, 3.6, 3, 1.8, 0.8][k];
-      tongues(veilL, B.x, top - (k <= 2 ? 2 : 0), 6, hc, frames, 91);
-      tongues(veilL, B.x - Math.round(W * 0.32), top + 2, 4, hc * 0.6, frames, 57);
-      tongues(veilL, B.x + Math.round(W * 0.32), top + 2, 4, hc * 0.6, frames, 23);
+      const hc = [0, 3.6, 3, 1.8, 1, 0.5][k];
+      const cw = [0, 20, 20, 18, 14, 10][k];
+      const ch = [0, 30, 34, 28, 18, 9][k];
+      flameColumn(veilL, B.x, B.y + 1, cw, ch, frames, 77, k === 1);
+      tongues(veilL, B.x - Math.round(W * 0.38), top + 2, 4, hc * 0.6, frames, 57);
+      tongues(veilL, B.x + Math.round(W * 0.38), top + 2, 4, hc * 0.6, frames, 23);
     }
     // the buried embers: white on the ignition frame; in the silence a third of them go dark per step
     for (const [i, e] of embers.entries()) {
@@ -343,61 +349,99 @@ async function ashStormV3(s: StrikeArgs): Promise<void> {
     bankL.clear();
     // the soot trail (kept for the fuse)
     if (phase === 'roll') {
+      // critic r3 #1: the bank has to LEAVE the jaw and travel visibly. It pours out of the muzzle down to
+      // the floor in front of the drake (the cloak, exhaled), gathers into a HEAD ≥ 24 px tall and rolls the
+      // whole way to the target, boiling backwards over itself, its tail thinning into the soot trail.
       const k = clamp(el / T, 0, 1);
-      front = L * (1 - (1 - k) * (1 - k));
-      spawnAcc += dt;
-      if (el < 200 && spawnAcc >= 30) {
-        spawnAcc = 0;
-        billows.push({ s: 0, o: RR(-3, 3), rx: RR(4, 6), lip: RR(0, 1), born: el, chip: billows.length < 3 });
-      }
-      if (billows.length === 0) billows.push({ s: 0, o: 0, rx: 5, lip: 0, born: el, chip: true });
-      const nb = billows.length;
-      billows.forEach((b, i) => {
-        // the bank travels as one: the newest billows trail, the front billow leads (a low nose)
-        b.s = Math.max(0, front - (nb - 1 - i) * 6 * (0.6 + 0.4 * k));
-        const grow = clamp((el - b.born) / 160, 0, 1);
-        const mid = 1 - Math.abs((i + 0.5) / nb - 0.45) * 1.2;
-        b.rx = lerp(3, 5 + 8 * mid * (0.5 + 0.5 * k), grow) * (i === nb - 1 ? 0.7 : 1);
-        b.lip += 0.06;
-      });
-      // the leading edge leaves soot
+      // an even roll with a soft arrival (critic r3 #1: the ease-out parked the head at the target for half
+      // the travel time): 70 % linear + 30 % ease-out, so the head is on its way for the whole roll
+      front = L * (0.7 * k + 0.3 * (1 - (1 - k) * (1 - k)));
+      const grow = clamp(el / 70, 0, 1);
       const lead = at(front);
+      // the soot trail: fill the gap every 3 px (the front moves up to ~10 px a frame)
       const last = trail[trail.length - 1];
       if (!last) trail.push({ x: Math.round(lead.x), y: Math.round(lead.y) });
       else {
-        // fill the gap every 3 px (the front moves up to ~20 px a frame)
         const d = Math.hypot(lead.x - last.x, lead.y - last.y);
-        const n = Math.floor(d / 3);
-        for (let j = 1; j <= n; j++) trail.push({ x: Math.round(lerp(last.x, lead.x, (j * 3) / d)), y: Math.round(lerp(last.y, lead.y, (j * 3) / d)) });
+        const nn = Math.floor(d / 3);
+        for (let j = 1; j <= nn; j++) trail.push({ x: Math.round(lerp(last.x, lead.x, (j * 3) / d)), y: Math.round(lerp(last.y, lead.y, (j * 3) / d)) });
       }
       trailPool.setPosition(lead.x, lead.y);
-      const drawn = billows.map((b, i) => ({ b, i, p: at(b.s, b.o) })).sort((x, y) => x.p.y - y.p.y || x.i - y.i);
-      for (const { b, p } of drawn) {
-        const r = Math.max(2, b.rx);
-        const cap = -Math.PI / 2 + dir * (0.9 - ((Math.floor(b.lip * 6) % 6) / 5) * 1.8);
-        drawPuff(bankL, p.x, p.y - r * 0.72 + 1, r, ASH_T, cap, 0.75);
-      }
-      // the cloak, exhaled: plate chips tumble in the first billows' lip (the first 140 ms)
-      if (el < 140)
-        for (const c of chips) {
-          c.age += dt;
-          const p = at(Math.max(0, front - 4));
-          const a = c.a + c.age * 0.02 * -dir;
-          const x = Math.round(p.x + Math.cos(a) * c.r);
-          const y = Math.round(p.y - 8 + Math.sin(a) * c.r * 0.6);
-          bankL.rect(x, y, 2, 3, PAL.stone2).rect(x, y + 1, 2, 1, PAL.stone1).dot(x, y, PAL.stone3);
+      // the pour: lumps fall from the jaw to the bank's start for the first ~110 ms, the column thinning from
+      // the top down (the last of the cloak leaves the mouth)
+      const pourEnd = 110;
+      if (el < pourEnd + 40) {
+        const top = Math.min(1, Math.max(0, (el - pourEnd + 60) / 100));
+        for (let j = 0; j < 5; j++) {
+          const q = ((j / 5 + el / 90) % 1);
+          if (q < top) continue;
+          const x = Math.round(lerp(mz.x + dir * 2, A.x, q) + Math.sin(q * 9 + j) * 1.5);
+          const y = Math.round(lerp(mz.y + 2, A.y - 4, q * q));
+          drawLump(bankL, x, y, 2.5 + q * 2.5, ASH_T, -Math.PI / 2 - dir * 0.5, 40 + j * 7 + Math.floor(el / 50), { ink: PAL.ink, squash: 0.85 });
+          if (j < 3 && el < pourEnd) plateChip(bankL, x - dir * 3, y - 2 - j, (j + frames) % 2 === 0);
         }
-      // buried embers blink slowly (2 on / 3 off)
-      for (const [i, e] of embers.entries()) {
-        if ((frames + e.ph) % 5 >= 2) continue;
-        const b = billows[i % billows.length];
-        const p = at(b.s, b.o * 0.5);
-        bankL.dot(Math.round(p.x + (i % 5) - 2), Math.round(p.y - 2 - (i % 3) * 2), PAL.fire2);
+      }
+      // the tail: lumps strung back along the path, shrinking toward the drake
+      const tailN = Math.min(7, Math.floor(front / 7));
+      for (let j = tailN; j >= 1; j--) {
+        const sA = front - 6 - j * 6;
+        if (sA < 0) continue;
+        const p = at(sA, Math.sin(j * 2.1 + frames * 0.2) * 2);
+        const rr = Math.max(2, 7 - j * 0.8 - (1 - grow) * 2);
+        drawLump(bankL, p.x, p.y - rr * 0.6, rr, ASH_T, -Math.PI / 2 + dir * 0.6, 70 + j * 5 + Math.floor((frames + j) / 4), { ink: PAL.ink, embers: 0.06, emberC: [PAL.fire1], tick: frames });
+      }
+      // the head: three floor lumps (the nose is the lowest, the bank never crests) and a boiling crown of
+      // seven lumps orbiting the head centre BACKWARDS (their tops move toward the drake), r 3–9
+      // at a duelist the head stops in front of the podium (never over the figure)
+      const hx = lead.x - dir * (target ? 4 : 14);
+      const fy = lead.y;
+      const H = Math.round(lerp(8, 26, grow) * (0.85 + 0.15 * Math.min(1, k * 2)));
+      // a dark contact shadow under the head anchors it on the floor
+      bankL.ellipse(Math.round(hx), Math.round(fy + 1), Math.round(11 * grow + 4), Math.max(2, Math.round((11 * grow + 4) * 0.35)), PAL.ink);
+      type L2 = { x: number; y: number; r: number; sd: number; cap: number; chip: boolean };
+      const lumps: L2[] = [];
+      const R9 = [8, 9, 7, 6, 5, 4, 3];
+      const omega = frames * 0.22;
+      for (let j = 0; j < 7; j++) {
+        const phi = (j / 7) * Math.PI * 2 + omega;
+        const rho = H * 0.32;
+        const cyH = fy - H * 0.5;
+        const r = Math.max(2, R9[j] * (0.55 + 0.45 * grow));
+        lumps.push({
+          x: hx + dir * Math.cos(phi) * rho * 1.15,
+          // the front half is pressed down (the nose hugs the floor)
+          y: Math.min(fy - r * 0.6, cyH - Math.sin(phi) * rho + (Math.cos(phi) > 0.3 ? rho * 0.35 : 0)),
+          r,
+          sd: 11 + j * 17,
+          cap: -Math.PI / 2 + dir * 0.9,
+          chip: el < 170 && j < 4,
+        });
+      }
+      for (let j = 0; j < 3; j++) {
+        const r = Math.max(2, [7, 6, 4][j] * (0.6 + 0.4 * grow));
+        lumps.push({ x: hx + dir * (j * 6 - 6), y: fy - r * 0.55, r, sd: 101 + j * 13, cap: -Math.PI / 2 + dir * 0.4, chip: false });
+      }
+      lumps.sort((p, q) => p.y + p.r * 0.5 - (q.y + q.r * 0.5));
+      lastHead = lumps;
+      for (const [j, lp] of lumps.entries()) {
+        drawLump(bankL, lp.x, lp.y, lp.r, ASH_T, lp.cap, lp.sd, { ink: PAL.ink, embers: 0.09, emberC: (frames + j) % 5 < 2 ? [PAL.fire2, PAL.fire1] : [PAL.fire1], tick: frames });
+        // the cloak, exhaled: plate chips tumble in the leading lumps' lips before they break into bands
+        if (lp.chip) {
+          const ca = frames * 0.5 + j * 2;
+          plateChip(bankL, lp.x + Math.cos(ca) * lp.r * 0.5, lp.y - lp.r * 0.6 + Math.sin(ca) * 2, (frames + j) % 3 === 0);
+        }
       }
       return true;
     }
     if (phase === 'veil' || phase === 'silence') {
       if (swallowFrame < 0) swallowFrame = frames;
+      // the head collapses INTO the lattice over 6 frames (no pop between the arriving head and the veil)
+      const hf = frames - swallowFrame;
+      if (hf < 6)
+        for (const lp of lastHead) {
+          const r = lp.r * (1 - hf / 6);
+          if (r >= 1.5) drawLump(bankL, lp.x, lp.y + (lp.r - r) * 0.7, r, ASH_T, lp.cap, lp.sd, { ink: PAL.ink, embers: 0.09, emberC: [PAL.fire1], tick: frames });
+        }
       drawVeil(0);
       return true;
     }
@@ -519,68 +563,113 @@ async function ashStormV3(s: StrikeArgs): Promise<void> {
 }
 
 /**
- * The target as a BLACK silhouette inside the orange (R1, §5.2.2): from frame +1 it holds through the kit's
- * heavy flash and its hit-stop (+2 frames past it; critic r1 #2: it showed for 2 film frames only), while
- * flame tongues CLIMB its contour from the feet to the crown (re-rolled every 2 frames); then it chars in
- * two stepped frames (ink → stone0 inside, the rim cooling) and lets the body go.
+ * The target as a BLACK silhouette inside the orange (R1, §5.2.2), cut back to the blueprint (critic r3 #2:
+ * it held 18 frames, then dithered back to clean colours): the overlay starts on frame +1 (the kit's flash
+ * owns frame 0) and the full ink shape holds through +5 with flame tongues climbing its fire-rimmed contour.
+ * Then it CRUMBLES from the contour inward in 6 frames: the ink shrinks by edge distance, a fire2 / fire1
+ * burning front receding with it, and what it uncovers is BURNT, not clean: the target's top bands keep a
+ * stone0 / stone1 soot crust and its contour smoulders (fire embers thinning, soot pips staying) for as long
+ * as the target is shown (its reaction / death included), with ash flakes rising off its top edges.
  */
 function silhouette(sc: Phaser.Scene, t: MonsterUnit): void {
   if (!t.sprite.active) return;
-  const HOLD = 18;
+  const FULL = 5; // frames +1 … +5: the full ink shape (flash + 2 clean frames on a heavy hit)
+  const CRUMBLE = 6;
+  const distOf = new WeakMap<PixelCanvas, { d: Int16Array; max: number }>();
+  const depthMap = (src: PixelCanvas) => {
+    const hit = distOf.get(src);
+    if (hit) return hit;
+    const d = new Int16Array(src.w * src.h).fill(-1);
+    const q: number[] = [];
+    for (let y = 0; y < src.h; y++)
+      for (let x = 0; x < src.w; x++)
+        if (src.isOpaque(x, y) && (!src.isOpaque(x - 1, y) || !src.isOpaque(x + 1, y) || !src.isOpaque(x, y - 1) || !src.isOpaque(x, y + 1))) {
+          d[y * src.w + x] = 0;
+          q.push(y * src.w + x);
+        }
+    let max = 0;
+    for (let h = 0; h < q.length; h++) {
+      const i = q[h];
+      const x = i % src.w;
+      const y = (i - x) / src.w;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= src.w || ny >= src.h || !src.isOpaque(nx, ny)) continue;
+        const j = ny * src.w + nx;
+        if (d[j] >= 0) continue;
+        d[j] = d[i] + 1;
+        max = Math.max(max, d[j]);
+        q.push(j);
+      }
+    }
+    const r = { d, max };
+    distOf.set(src, r);
+    return r;
+  };
   const make = (k: number): PixelCanvas => {
     const src = currentPixels(t).pc;
     const pc = new PixelCanvas(src.w, src.h);
     const b = src.bounds();
     if (!b) return pc;
-    const climb = clamp((k - 2) / 9, 0, 1);
+    const { d, max } = depthMap(src);
+    const climb = clamp((k - 1) / 3, 0, 1);
     const front = b.y + b.h - Math.round(b.h * climb);
-    const charred = k > HOLD;
     const step = Math.floor(k / 2);
+    // the crumble's ink front: pixels deeper than `cut` are still black (cut grows 0 → max + 1)
+    const ck = k - FULL;
+    const cut = ck <= 0 ? -1 : Math.ceil(((max + 1) * ck) / CRUMBLE);
+    const sootTop = b.y + Math.round(b.h * 0.45);
+    const life = clamp(1 - (k - FULL - CRUMBLE) / 90, 0.25, 1);
     for (let y = 0; y < src.h; y++)
       for (let x = 0; x < src.w; x++) {
         if (!src.isOpaque(x, y)) continue;
-        const top = !src.isOpaque(x, y - 1);
-        const edge = top || !src.isOpaque(x - 1, y) || !src.isOpaque(x + 1, y) || !src.isOpaque(x, y + 1);
-        if (charred) {
-          // two stepped charring frames: the rim dulls to fire1, the inside to stone0; then the char lets the
-          // body go through a 2×2 lattice in three 2-frame steps (3/4 → 2/4 → 1/4 of the pixels, whole pixels;
-          // critic r2 #5: it was a hard cut to the clean body), the rim staying a smouldering fire1 / stone0
-          const ck = k - HOLD;
-          if (ck <= 2) {
-            pc.set(x, y, edge ? PAL.fire1 : PAL.stone0);
-            continue;
-          }
-          const keep = 3 - Math.floor((ck - 3) / 2); // 3, 2, 1, then 0 (the smoulder only)
-          if (keep > 0 && BAYER2[(y & 1) * 2 + (x & 1)] < keep) {
-            pc.set(x, y, edge ? ((x + y + ck) % 3 === 0 ? PAL.fire1 : PAL.stone0) : PAL.stone0);
-            continue;
-          }
-          // the smoulder: the contour keeps a few live embers and soot pips, fewer as it cools
-          if (edge) {
-            const life = clamp(1 - (ck - 9) / SMOULDER, 0, 1);
-            const hsh = hash(x * 5 + y * 11, Math.floor(ck / 4));
-            if (hsh < 0.26 * life) pc.set(x, y, hsh < 0.06 * life ? PAL.fire3 : hsh < 0.15 * life ? PAL.fire2 : PAL.fire1);
-            else if (hsh > 1 - 0.2 * life) pc.set(x, y, PAL.stone0);
+        const dd = d[y * src.w + x];
+        const edge = dd === 0;
+        if (ck <= 0) {
+          // backlit by the blaze: a 1-px fire rim inside the contour (fire2 low, fire1 high), ink inside
+          pc.set(x, y, edge ? (y > b.y + b.h * 0.55 || y >= front ? PAL.fire2 : PAL.fire1) : PAL.ink);
+          if (!edge || y < front) continue;
+          // the climbing flames: tongues lick OUT of the burning contour, 1–3 px
+          const hsh = hash(x * 3 + y * 7, step);
+          if (hsh < 0.55) continue;
+          const len = 1 + Math.floor(hsh * 3.2);
+          const dx = !src.isOpaque(x - 1, y) ? -1 : !src.isOpaque(x + 1, y) ? 1 : 0;
+          for (let j = 1; j <= len; j++) {
+            const xx = x + (dx !== 0 && j <= 1 ? dx : 0);
+            const yy = y - j;
+            if (xx < 0 || xx >= pc.w || yy < 0 || src.isOpaque(xx, yy)) break;
+            pc.set(xx, yy, j === len ? PAL.fire4 : j === 1 ? PAL.fire2 : PAL.fire3);
           }
           continue;
         }
-        // backlit by the blaze: a 1-px fire rim inside the contour (fire2 low, fire1 high), ink inside
-        pc.set(x, y, edge ? (y > b.y + b.h * 0.55 || y >= front ? PAL.fire2 : PAL.fire1) : PAL.ink);
-        if (!edge || y < front) continue;
-        // the climbing flames: tongues lick OUT of the burning contour (left / right / up), 1–3 px
-        const hsh = hash(x * 3 + y * 7, step);
-        if (hsh < 0.55) continue;
-        const len = 1 + Math.floor(hsh * 3.2);
-        const dx = !src.isOpaque(x - 1, y) ? -1 : !src.isOpaque(x + 1, y) ? 1 : 0;
-        for (let j = 1; j <= len; j++) {
-          const xx = x + (dx !== 0 ? (j <= 1 ? dx : 0) : 0);
-          const yy = y - j;
-          if (xx < 0 || xx >= pc.w || yy < 0 || src.isOpaque(xx, yy)) break;
-          pc.set(xx, yy, j === len ? PAL.fire4 : j === 1 ? PAL.fire2 : PAL.fire3);
+        if (ck <= CRUMBLE && dd >= cut) {
+          // still black; the burning front (the first 1–2 px inside the cut) glows and recedes inward
+          pc.set(x, y, dd === cut ? PAL.fire2 : dd === cut + 1 ? PAL.fire1 : PAL.ink);
+          continue;
+        }
+        // uncovered: burnt. The top bands keep a soot crust (whole pixels, a fixed per-pixel pattern so it
+        // stays put on the body), the contour smoulders
+        const hs = hash(x * 5 + y * 11, 3);
+        if (y < sootTop) {
+          const deep = y < b.y + b.h * 0.25 ? 0.62 : 0.4;
+          if (edge || hs < deep * 0.6) {
+            pc.set(x, y, PAL.stone0);
+            continue;
+          }
+          if (hs < deep) {
+            pc.set(x, y, PAL.stone1);
+            continue;
+          }
+        }
+        if (edge) {
+          const he = hash(x * 5 + y * 11, Math.floor(k / 4));
+          if (he < 0.22 * life) pc.set(x, y, he < 0.05 * life ? PAL.fire3 : he < 0.12 * life ? PAL.fire2 : PAL.fire1);
+          else if (he > 0.72) pc.set(x, y, PAL.stone0);
         }
       }
-    // the crown catches last: a ragged fire3 / fire4 crest once the front has climbed all the way
-    if (climb >= 1 && k <= HOLD + 2)
+    // the crown catches last: a ragged fire3 / fire4 crest once the front has climbed (the full frames only)
+    if (climb >= 1 && ck <= 0)
       for (let x = b.x; x < b.x + b.w; x++)
         for (let y = b.y; y < b.y + b.h; y++)
           if (src.isOpaque(x, y)) {
@@ -591,16 +680,15 @@ function silhouette(sc: Phaser.Scene, t: MonsterUnit): void {
   };
   let ov: ReturnType<typeof overlay> | null = null;
   let k = 0;
-  const END = HOLD + 9 + SMOULDER;
-  // ash flakes rising off the burnt outline while it smoulders (a lower-left → upper drift, stone tones)
+  const END = 200; // the burnt look stays as long as the target is shown (≈ 3.3 s cap)
   const flakes = new Sparks(sc, t.sprite.depth + 0.3);
   onFrame(sc, () => {
     k++;
-    // it follows the shown frame (the target's own death pose included) until its body breaks (hidden)
-    if (!t.sprite.active || !t.sprite.visible) return false;
-    if (k === 2) ov = overlay(t, make(k), { depth: t.sprite.depth + 0.2 });
-    else if (k > 2 && k <= END) ov?.redraw(make(k));
-    if (k > HOLD + 2 && k % 3 === 0 && k < END - 6) {
+    // it follows the shown frame (the target's own reaction / death pose included) until its body is hidden
+    if (!t.sprite.active || !t.sprite.visible || t.retired) return false;
+    if (k === 1) ov = overlay(t, make(k), { depth: t.sprite.depth + 0.2 });
+    else ov?.redraw(make(k));
+    if (k > FULL && k % 3 === 0 && k < FULL + CRUMBLE + 70) {
       const pc = currentPixels(t).pc;
       for (let tries = 0, made = 0; tries < 24 && made < 2; tries++) {
         const fx = Math.floor(RR(0, pc.w));
@@ -618,11 +706,6 @@ function silhouette(sc: Phaser.Scene, t: MonsterUnit): void {
     flakes.release();
   });
 }
-
-/** 2×2 ordered-dither thresholds (the char's lattice fade) */
-const BAYER2 = [0, 2, 3, 1] as const;
-/** frames the burnt outline keeps smouldering after the char has let the body go (≈ 1 s) */
-const SMOULDER = 60;
 
 /**
  * Lost / tied clash (critic r1 #3): the drake takes the backlash BARE (the cloak was the ammunition) and the
@@ -775,7 +858,7 @@ function backwash(sc: Phaser.Scene, B: XY, A: XY, dir: number): Promise<void> {
         const tones = t < 0.25 ? BURN_T : t < 0.55 ? COOL_T : CHAR_T;
         const x = B.x + ux * s + (i % 2 ? 0 : -uy * 4);
         const y = B.y + uy * s - rx * 0.72 + 1;
-        drawPuff(px, x, y, rx, tones, -Math.PI / 2 - dir * (0.9 - ((Math.floor(el / 50 + i) % 6) / 5) * 1.8), 0.75);
+        drawLump(px, x, y, rx, tones, -Math.PI / 2 - dir * (0.9 - ((Math.floor(el / 50 + i) % 6) / 5) * 1.8), 200 + i * 9, { squash: 0.75, ink: PAL.ink });
         if (t < 0.3) tongues(px, Math.round(x), Math.round(y - rx * 0.7), rx, 1 - t * 3, Math.floor(el / 17), 7 + i);
       }
       return true;
@@ -1014,12 +1097,70 @@ function ashHeap(ctx: Ctx<'destroy'>, u: MonsterUnit, home: XY): { burst(at: XY)
   };
 }
 
+/** The break: 14 plate chips (2×3 / 3×2, stone2 face, stone1 crease, ink edge) drop off the body and land. */
+const fell = new WeakSet<MonsterUnit>();
+function plateFall(sc: Phaser.Scene, u: MonsterUnit, home: XY): void {
+  if (!u.sprite.active || fell.has(u)) return;
+  fell.add(u);
+  const pc = currentPixels(u).pc;
+  const b = pc.bounds();
+  if (!b) return;
+  // over the death kit's remains / dissolve layers (under them the chips were lost on the body)
+  const px = layer(sc, DEPTH.FX - 1);
+  const ch: { x: number; y: number; vx: number; vy: number; fy: number; flip: boolean; land: number }[] = [];
+  for (let tries = 0; tries < 200 && ch.length < 14; tries++) {
+    const fx = Math.floor(b.x + RR(0, b.w));
+    const fy = Math.floor(b.y + RR(b.h * 0.35, b.h * 0.85));
+    if (!pc.isOpaque(fx, fy)) continue;
+    const w = u.framePoint(fx, fy);
+    ch.push({ x: w.x, y: w.y, vx: RR(-40, 40), vy: RR(-40, 0), fy: home.y + Math.round(RR(-4, 5)), flip: ch.length % 3 === 0, land: -1 });
+  }
+  let el = 0;
+  onFrame(sc, (dt) => {
+    el += dt;
+    px.clear();
+    if (el > 900 || !sc.sys.isActive()) return false;
+    const s = dt / 1000;
+    for (const c of ch) {
+      if (c.land < 0) {
+        c.vy += 1500 * s;
+        c.x += c.vx * s;
+        c.y += c.vy * s;
+        if (c.y >= c.fy) {
+          c.y = c.fy;
+          c.land = el;
+        }
+      }
+      if (c.land >= 0 && el - c.land > 320) continue;
+      const cool = c.land >= 0 && el - c.land > 140;
+      const X = Math.round(c.x);
+      const Y = Math.round(c.y);
+      if (cool) {
+        px.rect(X, Y - 1, 2, 1, PAL.stone0);
+        continue;
+      }
+      // a chunky plate (critic r3 #9: 2×3 grey chips vanished into the floor dust): ink-outlined, a lit
+      // stone3 edge, a stone2 face and, while it falls, a hot fire2 underside (the heart still lit inside)
+      const wide = c.flip !== (c.land < 0 && Math.floor(el / 60) % 2 === 1);
+      const w = wide ? 3 : 2;
+      const h = wide ? 2 : 3;
+      const y0 = Y - h;
+      px.rect(X - 1, y0 - 1, w + 2, h + 2, PAL.ink).rect(X, y0, w, h, PAL.stone2).run(y0, X, X + w - 1, PAL.stone3);
+      px.run(y0 + h - 1, X, X + w - 1, c.land < 0 ? PAL.fire2 : PAL.stone1);
+    }
+    return true;
+  }, () => px.g.destroy());
+}
+
 async function ashenDeathV3(ctx: Ctx<'destroy'>): Promise<void> {
   if (ctx.ev.location !== 'monster' || sourceOwnsDestroy(ctx)) return ctx.base();
   const u = ctx.views.field.unit(ctx.ev.uid);
   let heap: { burst(at: XY): void } | null = null;
   if (u && !u.retired && u.sprite.active) {
     const home = { ...u.home };
+    // critic r3 #9: the break read as a few dark specks at 1× — 14 cloak plates fall off the body on the
+    // break frame (f7), tumble, land round the feet and lie there until the heap takes over
+    atFrame(u, 'death', 7, () => plateFall(ctx.scene, u, home));
     atFrame(u, 'death', 8, () => {
       // the burst may already have made it (the shatter runs on the dissolve mark): never a second heap
       if (!heap) heap = ashHeap(ctx, u, home);

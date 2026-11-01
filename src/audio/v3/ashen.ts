@@ -429,16 +429,19 @@ export const V3_ASHEN_RECIPES = {
     duck: 0.4,
     play(v) {
       // r2 (SE-4 vs magusReviveGather): the riser stays low, the gathering embers crackle up top
-      sweep(v, 0, 1.2, [150, 400, 600], 0.08, { kind: 'brown', peakAt: 0.5 });
-      ribs(v, 0.1, 1.0, 0.12);
+      // r3 (critic #7): the bed sat at −35…−50 dBFS RMS: the sweep and the ribs +8 dB, the grains +6 dB
+      sweep(v, 0, 1.2, [150, 400, 600], 0.2, { kind: 'brown', peakAt: 0.5 });
+      ribs(v, 0.1, 1.0, 0.3);
       for (let i = 0; i < 30; i++) {
         const t = 1.2 * Math.sqrt(i / 30);
-        crack(v, t, 0.18 + i * 0.006, { hp: 3500, lp: 7500, dec: 0.004 });
+        crack(v, t, 0.36 + i * 0.012, { hp: 3500, lp: 7500, dec: 0.004 });
       }
-      for (const t of [0.15, 0.32, 0.62, 0.79]) {
-        thump(v, t, 50, 36, 0.45, 0.18, { drive: 1.5 });
-        thump(v, t, 112, 84, 0.12, 0.1, { drive: 2.5 });
-        knock(v, t, 0.12, 0.06);
+      // two heartbeat pairs; r3 (critic #7): the second pair (0.62 / 0.79) is the RE-LIGHT beat on the heart's
+      // re-light frame, kept but at the soft level so the land's `ashenReviveBeat` stays the loudest hit
+      for (const [t, k] of [[0.15, 1], [0.32, 1], [0.62, 0.45], [0.79, 0.4]] as const) {
+        thump(v, t, 50, 36, 0.45 * k, 0.18, { drive: 1.5 });
+        thump(v, t, 112, 84, 0.12 * k, 0.1, { drive: 2.5 });
+        knock(v, t, 0.12 * k, 0.06);
       }
     },
   },
