@@ -11,11 +11,11 @@ Kart isimleri ve tasarımları ORİJİNAL olur; Yu-Gi-Oh kartları yalnızca "ro
 | 2 | Arenadan seyircileri kaldır (tribün yapısı kalır) | bitti (587828c, test sürümü 9) |
 | 3 | Animasyonları yavaşlat (v3 genel tempo çarpanı + kilit anlarda uzun bekleme; v1 aynı) | bitti (587828c, test sürümü 9) |
 | 4 | Akşam Büyücüsü (dusk_sorcerer) kartını oyundan çıkar (cards.ts'de "retired", desteler göç eder) | bitti (587828c, test sürümü 9) |
-| 5 | Kül Ejderi (ashen_drake) komple yeniden tasarım — altın kural | şerit A çalışıyor |
+| 5 | Kül Ejderi (ashen_drake) komple yeniden tasarım — altın kural | bitti (şerit A b2fc32e, ana dal bd5cf12, test sürümü 13) |
 | 6 | Hortlak Muhafız (grim_warden) yeniden tasarım | bitti (şerit B 09446f8, ana dal bb9e8f6, test sürümü 12) |
 | 7 | Pot of Greed rolünde büyü kartı (2 kart çek) — orijinal isim (Kuyu Kovası) | kural bitti (6178b55); sunum: şerit E |
 | 8 | Tüy Hayalet yeniden tasarım | şerit B çalışıyor |
-| 9 | The Legendary Fisherman rolünde canavar | kural bitti (6178b55, test sürümü 10); sunum: şerit C çalışıyor |
+| 9 | The Legendary Fisherman rolünde canavar | kural bitti (6178b55, test sürümü 10); sunum: bitti (Kabuk Zıpkıncı, şerit C 67baa70, ana dal 7bae67e, test sürümü 13) |
 | 10 | Time Wizard rolünde yeni kart (yazı-tura; doğru: rakip canavarlar yok, yanlış: kendi canavarların yok + yarı ATK hasar) — sahip onayladı | kural bitti (6178b55, test sürümü 10); sunum: şerit D çalışıyor |
 | 11 | Baby Dragon rolünde canavar | kural bitti (6178b55, test sürümü 10); sunum: şerit A çalışıyor |
 | 12 | Gemini Elf rolünde canavar | kural bitti (6178b55, test sürümü 10); sunum: şerit D çalışıyor |
@@ -63,4 +63,8 @@ Haftalık kullanım %20'ye düştü. SAHİP KARARI: yalnız A, B, C şeritleri d
 (işlerini push edip kendi oturum-*.md dosyalarına devam talimatı yazdılar). Haftalık sıfırlamadan sonra
 D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (kapılar + kart başına commit).
 - D (c64b368), E (fda4f8e), F (f776d8e) duraklatıldı; devam talimatları oturum-d/e/f.md'de.
+- %92 KARARI (2026-11-01 14:20 TR): B hemen duraklatıldı (4ec15a3); A yalnız Kül Ejderi'ni, C yalnız
+  Kabuk Zıpkıncı'yı bitirip duraklatıldı (A 811d832, C 03c8952). İkisi ana dala alındı, test sürümü 13.
+  Şu an TÜM şeritler duraklı. Ana dalda yarım işlerden gelen bilinen test hataları: cloud_hatchling (4, şerit A),
+  crag_axeman "own voice" (şerit C) — şeritler devam edince düzelecek.
 - UYARI: claude/kart-f dalında shield_titan ve hourglass_imp v3 dışlama listesinden çıkarılmış ama eleştiri/kapılardan geçmedi → F devam edip kartlar geçmeden bu dal ana dala BİRLEŞTİRİLMEZ.
