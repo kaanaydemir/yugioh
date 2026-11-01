@@ -54,18 +54,18 @@ interface TorchLight {
   lastFrame: number;
 }
 
-/** Perimeter positions for the small warm flickering torches (matching hedef-gorunum-2.png). */
+/** Perimeter positions for the small warm flickering torches (matching hedef-gorunum-2.png, clear of screens & statues). */
 const TORCH_SPOTS: readonly { x: number; y: number; depth: number; period: number; phase: number }[] = [
-  // Upper-left & upper-right wall/stand perimeter
-  { x: 58, y: 76, depth: NT_DEPTH.stands + 2.2, period: 420, phase: 0 },
-  { x: 166, y: 96, depth: NT_DEPTH.stands + 2.2, period: 470, phase: 190 },
-  { x: 474, y: 96, depth: NT_DEPTH.stands + 2.2, period: 450, phase: 310 },
-  { x: 582, y: 76, depth: NT_DEPTH.stands + 2.2, period: 410, phase: 90 },
-  // Mid/lower perimeter beside the hologram plinths and front stands
-  { x: 66, y: 178, depth: NT_DEPTH.platform - 0.08, period: 390, phase: 140 },
-  { x: 132, y: 234, depth: NT_DEPTH.platform - 0.08, period: 460, phase: 270 },
-  { x: 508, y: 234, depth: NT_DEPTH.platform - 0.08, period: 440, phase: 60 },
-  { x: 574, y: 178, depth: NT_DEPTH.platform - 0.08, period: 400, phase: 350 },
+  // Upper-outer stand / wall perimeter
+  { x: 38, y: 146, depth: NT_DEPTH.stands + 2.2, period: 420, phase: 0 },
+  { x: 118, y: 156, depth: NT_DEPTH.stands + 2.2, period: 470, phase: 190 },
+  { x: 522, y: 156, depth: NT_DEPTH.stands + 2.2, period: 450, phase: 310 },
+  { x: 602, y: 146, depth: NT_DEPTH.stands + 2.2, period: 410, phase: 90 },
+  // Lower perimeter along the stands and apron around the platform
+  { x: 64, y: 194, depth: NT_DEPTH.platform - 0.08, period: 390, phase: 140 },
+  { x: 132, y: 236, depth: NT_DEPTH.platform - 0.08, period: 460, phase: 270 },
+  { x: 508, y: 236, depth: NT_DEPTH.platform - 0.08, period: 440, phase: 60 },
+  { x: 576, y: 194, depth: NT_DEPTH.platform - 0.08, period: 400, phase: 350 },
 ];
 
 export function createLightsLayer(ctx: NtCtx): NtLayer {
