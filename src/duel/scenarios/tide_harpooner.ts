@@ -121,14 +121,17 @@ const S: Record<string, Scenario> = {
   },
   thpShroud: {
     desc: 'KORUNUYOR: P2 picks Kristal Ejder, clicks the shrouded harpooner (the reticle skids off the wave wall), then attacks Taş Muhafız',
-    stage: { zones: 5, phase: 'battle', active: 1, p0: { field: 'tidal_bay', monsters: [N, N, 'tide_harpooner', 'stone_sentinel', N] }, p1: { monsters: [N, N, 'crystal_wyrm', N, N] } },
+    // staged in main: P2 enters battle first (a real event: the shroud's resting wall is synced from it, idle aura B
+    // visible before anyone targets the crab)
+    stage: { zones: 5, active: 1, p0: { field: 'tidal_bay', monsters: [N, N, 'tide_harpooner', N, 'stone_sentinel'] }, p1: { monsters: [N, N, 'crystal_wyrm', N, N] } },
     steps: [
+      () => ({ type: 'enterBattle', player: 1 }),
       { ui: 'move', at: { unit: [1, 2] }, ms: 120 },
       { ui: 'click', at: { unit: [1, 2] }, ms: 300 },
       { ui: 'move', at: { unit: [0, 2] }, ms: 150 },
       { ui: 'click', at: { unit: [0, 2] }, ms: 1100 },
-      { ui: 'move', at: { unit: [0, 3] }, ms: 150 },
-      { ui: 'click', at: { unit: [0, 3] } },
+      { ui: 'move', at: { unit: [0, 4] }, ms: 150 },
+      { ui: 'click', at: { unit: [0, 4] } },
     ],
   },
   thpShroudSpell: {

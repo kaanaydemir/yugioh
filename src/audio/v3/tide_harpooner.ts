@@ -23,6 +23,9 @@
 //   harpRip           haul 2: the harpoon rips out ("şlk") and the slack tone falls 247→196
 //   harpReel          the harpoon reeled back along the rope toward the crab
 //   harpReplant       recover: re-planted ("tok") with a sand click
+//   harpSeat          the reeled head seats back in the shaft's socket (a hollow wooden tock + the wet line slapping the coil)
+//   harpWhip          blocked: the failed pull — the line whips back slack off the guard, wet, falling
+//   harpClack         the crab outclasses its attacker: the claw door clacks, the nacre lip flicks, the shell tok answers
 //   harpTang          blocked: the harpoon bites the guard and pops free (a woody knock + a slack twang)
 //   harpStake         direct: the harpoon stakes into the LP panel (a dry board thock + the line snapping taut)
 //   harpStruck(…)     the shell struck: Light (tok + slosh), Heavy (deeper rings + two glugs), Magic (rings up + fizz)
@@ -31,7 +34,7 @@
 //   harpRoll          death dissolve: the shell tips and rolls (tok 620, then tok 520)
 //   harpBury          death burst: buried in sand ("şşş" + thinning grains) and a last breathy whisper 220→196
 //   harpSplinter      the planted harpoon splinters (+0.5 s): dry wood cracks + a small thud
-//   harpBayRaise      Körfez kalkanı rises: circling water (drone on A2, NO tritone, sloshing 0.42 Hz) + plips
+//   harpBayRaise      Körfez kalkanı rises: circling water on A3/A2 (NO tritone, no sub, a deep 0.42 Hz slosh in 300–900 Hz) + plips
 //   harpBayLap        the aura: one soft lap every 4 crest cycles (−32 dB class)
 //   harpShlup         deflect: the oily "şlup" (sine 900→260) + the skid along the wall
 //   harpStamp         the KORUNUYOR plate: a soft stamp + a conch hint on 220
@@ -40,7 +43,7 @@
 import type { Recipe } from '../sounds';
 import type { CharacterSounds } from '../../cinematics/_v3/sound';
 import { perc, type Pt, type Voice } from '../synth';
-import { crack, drone, puff, sweep, thump } from './kit';
+import { crack, puff, sweep, thump } from './kit';
 
 /** The hollow seashell resonance: a click into two resonant band-passes (620 / 1240 Hz by default). */
 function shellTok(v: Voice, t: number, g: number, o: { f?: number; dec?: number; to?: AudioNode } = {}): void {
@@ -163,8 +166,8 @@ export const V3_HARPOONER_RECIPES = {
       // the breath itself through the formants (pink, conical)
       v.noise('pink', { g: [[0, 0], [0.08, 0.16], [D, 0.11], [D + R, 0.0001, 'e']], to: f1 });
       v.noise('pink', { g: [[0, 0], [0.1, 0.07], [D, 0.05], [D + R, 0.0001, 'e']], to: f2 });
-      // the low body (felt, not heard)
-      v.tone('sine', [[0, 98], [0.12, 110, 'e'], [D + R, 108]], { g: env(0.12) });
+      // the fundamental's own weight: a sine ON A3 (no sub partial: 220 Hz must stay the dominant)
+      v.tone('sine', [[0, 196], [0.12, 220, 'e'], [D + R, 216]], { g: env(0.1) });
     },
   },
   harpPlant: {
@@ -302,6 +305,49 @@ export const V3_HARPOONER_RECIPES = {
       thump(v, 0, 200, 120, 0.3, 0.06);
       crack(v, 0.006, 0.09, { hp: 2400, lp: 7000, n: 2, gap: 0.01, dec: 0.005 });
       sand(v, 0.01, 0.1, 0.1, 900);
+    },
+  },
+  harpSeat: {
+    cap: 2,
+    gap: 0.05,
+    verb: 0.25,
+    duck: 0.2,
+    play(v) {
+      // the toggle head seats in the socket: a hollow wooden tock (driftwood on driftwood, the collar rings once)
+      thump(v, 0, 300, 190, 0.22, 0.04, { drive: 1.2 });
+      v.noise('white', { g: perc(0.26, 0.008, 0.0003), to: v.filt('bandpass', 1750, 6) });
+      shellTok(v, 0.001, 0.035, { f: 880, dec: 0.06 });
+      // the wet line slapping into the coil, a drip off it
+      v.noise('pink', { t: 0.03, g: perc(0.14, 0.05, 0.002), to: v.filt('bandpass', 900, 1.5, { t: 0.03 }) });
+      plip(v, 0.11, 0.03, 880, 1760, 0.014);
+    },
+  },
+  harpWhip: {
+    cap: 2,
+    gap: 0.05,
+    verb: 0.3,
+    duck: 0.3,
+    play(v) {
+      // the pull failed: the line whips back slack (a falling pink whip), its tone sagging 233 → 185, water flicked off
+      sweep(v, 0, 0.2, [1500, 700, 300], 0.22, { kind: 'pink', q: 1.6, peakAt: 0.15, pan: [0.15, -0.15] });
+      ropeTone(v, 0.01, [[0, 233], [0.26, 185, 'e']], [[0, 0], [0.015, 0.09], [0.28, 0.0001, 'e']], { rate: 12, depth: 0.7, d: 0.3, lp: 1100 });
+      v.crackle({ t: 0.04, d: 0.16, n: 8, g: 0.05, f: 3800, q: 1, dec: 0.005, curve: 1.4 });
+      plip(v, 0.16, 0.03, 900, 1800, 0.015);
+    },
+  },
+  harpClack: {
+    cap: 2,
+    gap: 0.05,
+    verb: 0.3,
+    duck: 0.35,
+    play(v) {
+      // the attacker breaks on the shell: the claw door clacks twice, the shell tok rings (620 / 1240), a slosh inside
+      crack(v, 0, 0.24, { hp: 3000, lp: 8000, n: 2, gap: 0.014, dec: 0.005 });
+      shellTok(v, 0.004, 0.13, { f: 620, dec: 0.14 });
+      thump(v, 0, 150, 90, 0.22, 0.07);
+      // the nacre lip flicks: a short wet upward chirp (water, not glass)
+      plip(v, 0.03, 0.05, 700, 1500, 0.02);
+      v.noise('pink', { t: 0.02, g: [[0, 0], [0.04, 0.12], [0.22, 0.0001, 'e']], to: v.filt('lowpass', 700, 1.4, { t: 0.02 }) });
     },
   },
   harpTang: {
@@ -451,20 +497,28 @@ export const V3_HARPOONER_RECIPES = {
     duck: 0.4,
     play(v) {
       const D = 2.4;
-      // circling water: a drone on A2 (110 Hz, tritone 0 — never the magus), sloshing AM + a pan circling at 0.42 Hz
-      const pan = v.panner([[0, -0.4], [0.6, 0.4], [1.2, -0.4], [1.8, 0.4], [2.4, -0.3]]);
-      const slosh = v.amp(0.7, { to: pan });
-      v.lfo(slosh.gain, 0.42, 0.3, { d: D });
-      drone(v, 0, D, 110, 0.07, { lp: [200, 900, 300], tritone: 0, beat: 0.4, to: slosh, att: 0.5 });
-      // the water body itself (brown noise through the same breathing low-pass)
-      const lp = v.filt('lowpass', [[0, 300], [0.5, 900, 'e'], [D, 300, 'e']], 1.4, { to: slosh });
-      v.lfo(lp.frequency, 0.42, 200, { d: D });
-      v.noise('brown', { g: [[0, 0], [0.4, 0.14], [1.8, 0.1], [D, 0.0001, 'e']], to: lp });
+      // circling water on A (110 / 220, the 220 leading — never the magus' D sub drone, no tritone), nothing under
+      // 90 Hz; the energy is the SLOSH: pink noise in the 300–900 Hz band, deeply amplitude-modulated at 0.42 Hz (the
+      // crest's period) while a panner circles at the same rate
+      const pan = v.panner([[0, -0.45], [0.6, 0.45], [1.2, -0.45], [1.8, 0.45], [2.4, -0.3]]);
+      const hp = v.filt('highpass', 95, 0.7, { to: pan });
+      const slosh = v.amp(0.9, { to: hp });
+      v.lfo(slosh.gain, 0.42, 0.72, { d: D });
+      // the tone: triangle 220 over a quieter 110, breathing through a low-pass that opens with each lap
+      const lpT = v.filt('lowpass', [[0, 500], [0.5, 1300, 'e'], [D, 600, 'e']], 1.2, { to: slosh });
+      v.lfo(lpT.frequency, 0.42, 380, { d: D });
+      const envT = (g: number): Pt[] => [[0, 0], [0.45, g], [1.9, g * 0.8], [D, 0.0001, 'e']];
+      v.tone('triangle', [[0, 208], [0.3, 220, 'e'], [D, 218]], { g: envT(0.075), to: lpT });
+      v.tone('triangle', [[0, 104], [0.3, 110, 'e'], [D, 109]], { g: envT(0.03), to: lpT });
+      v.tone('sine', [[0, 440], [D, 436]], { g: envT(0.018), to: lpT });
+      // the water: pink through a band rocking 300 ↔ 900 Hz with the laps
+      const bp = v.filt('bandpass', [[0, 340], [0.6, 820, 'e'], [1.2, 380, 'e'], [1.8, 860, 'e'], [D, 420, 'e']], 2.6, { to: slosh });
+      v.noise('pink', { g: [[0, 0], [0.4, 0.34], [1.9, 0.26], [D, 0.0001, 'e']], to: bp });
       // the wall rising: a pink swell
-      sweep(v, 0, 0.45, [300, 1200, 800], 0.1, { kind: 'pink', q: 1.2, peakAt: 0.8 });
+      sweep(v, 0, 0.45, [300, 1200, 800], 0.12, { kind: 'pink', q: 1.2, peakAt: 0.8 });
       // the foam crest running round once: a fizz that travels with the pan, bubble plips
-      v.crackle({ t: 0.3, d: 0.6, n: 22, g: 0.03, f: 6000, q: 0.7, dec: 0.006, to: pan });
-      [0.5, 0.86, 1.3, 1.75].forEach((t, i) => plip(v, t, 0.035 - i * 0.004, 700 + i * 60, 1500 + i * 90, 0.018));
+      v.crackle({ t: 0.3, d: 0.6, n: 22, g: 0.035, f: 6000, q: 0.7, dec: 0.006, to: pan });
+      [0.5, 0.86, 1.3, 1.75].forEach((t, i) => plip(v, t, 0.04 - i * 0.004, 700 + i * 60, 1500 + i * 90, 0.018));
     },
   },
   harpBayLap: {

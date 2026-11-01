@@ -30,6 +30,8 @@ export const SCY = 64;
 export const HARP_X = 71;
 /** full harpoon length (px) */
 export const HARP_L = 60;
+/** the toggle head (stone head + foreshaft + the line lashing) that leaves the shaft on the throw (px along the axis) */
+export const DART = 22;
 
 export const enum Part {
   none = 0,
@@ -94,6 +96,11 @@ export interface Pose {
   smear: number;
   /** 1 = the harpoon (and its rope) pass BEHIND the shell (the far side of the twirl) */
   hBack: number;
+  /** the toggle head: 1 seated on the shaft (the whole harpoon), 0 shaft only (the head is out on the line), 2 head only */
+  dart: number;
+  /** twirl: the harpoon centre's angle on the overhead ellipse (deg) and the trailing smear arc (deg, 0 none) */
+  tw: number;
+  arc: number;
   /** 1 = the big claw grips the shaft (its hand goes to the grip point; nx / ny ignored) */
   held: number;
   /** grip point along the shaft (0 butt … 1 tip) */
@@ -143,12 +150,39 @@ export const NEUTRAL: Pose = {
   legs: 1, feet: 0,
   nx: 16, ny: -30, nOpen: 0, nOn: 1, nAng: 0,
   fx: 14, fy: -44, fOn: 1,
-  hx: HARP_X - AX, hy: 0, ha: -90, hl: 1, hOn: 1, hBack: 0, smear: 0, held: 1, grip: 0.3,
+  hx: HARP_X - AX, hy: 0, ha: -90, hl: 1, hOn: 1, hBack: 0, smear: 0, held: 1, grip: 0.3, dart: 1, tw: 0, arc: 0,
   rope: 1, sag: 9, swing: 0, taut: 0, ox: 66, oy: -40, wet: 0, coil: 1, coilSw: 0,
   nacre: 0, mus: 0, door: 0, peek: 0, coral: 0,
   bub: -1, bub2: -1, ring: 0, puff: 0, spray: 0, beads: 0, sand: 0, glint: 0, tok: 0, diss: 0, t: 0,
 };
 export const pose = (o: Partial<Pose>): Pose => ({ ...NEUTRAL, ...o });
+
+/** the twirl: the harpoon's centre on an iso ellipse overhead (frame px), the shaft tangent to it, foreshortened */
+export const TW = { x: AX + 2, y: 30, rx: 24, ry: 7 };
+/**
+ * The harpoon on the twirl ellipse at angle `theta` (deg; 90 = the near / front point, 270 = the far top, 180 = behind
+ * the shell): butt, angle and length factor of a harpoon lying tangent to a horizontal circle seen from the iso camera.
+ */
+export function twirlPose(theta: number): Pick<Pose, 'hx' | 'hy' | 'ha' | 'hl' | 'hBack' | 'tw'> {
+  const t = theta * DEG;
+  const cx = TW.x + Math.cos(t) * TW.rx;
+  const cy = TW.y + Math.sin(t) * TW.ry;
+  // the tangent (head leading, theta increasing), projected: x full, depth squashed; a slight upward tilt
+  const vx = -Math.sin(t);
+  const vy = Math.cos(t) * 0.42 - 0.12;
+  const hl = Math.max(0.5, Math.min(1, Math.hypot(vx, vy)));
+  const ha = Math.atan2(vy, vx) / DEG;
+  const L = HARP_L * hl;
+  const dx = Math.cos(ha * DEG);
+  const dy = Math.sin(ha * DEG);
+  return { hx: rnd(cx - dx * L * 0.5 - AX), hy: rnd(cy - dy * L * 0.5 - GY), ha: rnd(ha), hl, hBack: Math.sin(t) > 0.35 ? 0 : 1, tw: theta };
+}
+/** the twirled harpoon's head (frame px) at `theta` */
+export function twirlHead(theta: number): Pt {
+  const p = twirlPose(theta);
+  const L = HARP_L * p.hl;
+  return [AX + p.hx + Math.cos(p.ha * DEG) * L, GY + p.hy + Math.sin(p.ha * DEG) * L];
+}
 
 // ---------------------------------------------------------------- tones
 
@@ -182,6 +216,8 @@ export interface Skel {
   ht: Pt;
   hd: Pt;
   hring: Pt;
+  /** shaft tip: the socket the toggle head sits in (the line leaves here while the head is out) */
+  hs: Pt;
   /** legs: hip, knee, ankle, tip, ×4 (0, 1 near; 2, 3 far) */
   legs: { hip: Pt; knee: Pt; ank: Pt; tip: Pt; near: boolean }[];
   apex: Pt;
@@ -244,12 +280,15 @@ export function skeleton(o: Pose): Skel {
     dirN = [Math.cos(o.nAng * DEG), Math.sin(o.nAng * DEG)];
   }
   const ht: Pt = [hb[0] + hd[0] * L, hb[1] + hd[1] * L];
-  const hring: Pt = [hb[0] + hd[0] * (L - 15 * o.hl), hb[1] + hd[1] * (L - 15 * o.hl)];
+  const hring: Pt = [hb[0] + hd[0] * (L - (DART - 3) * o.hl), hb[1] + hd[1] * (L - (DART - 3) * o.hl)];
+  const hs: Pt = [hb[0] + hd[0] * (L - DART * o.hl), hb[1] + hd[1] * (L - DART * o.hl)];
   const hN2 = hN;
   const elN = ik2(shN, hN2, 8.5, 9.5, -1) as Pt;
   const shF: Pt = [C[0] - 1, C[1] + 5];
-  const hF = reach(shF, [AX + o.fx, GY + o.fy], 16);
-  const elF = ik2(shF, hF, 8, 8, -1) as Pt;
+  // the rope claw raised high (twirl, the Bay plant) stretches its arm a little further
+  const fr = o.fy < -56 ? 20 : 16;
+  const hF = reach(shF, [AX + o.fx, GY + o.fy], fr);
+  const elF = ik2(shF, hF, fr / 2, fr / 2, -1) as Pt;
   // legs
   const hipShift: Pt = [S[0] - SCX, S[1] - SCY];
   const legs = FEET.map((L0, i) => {
@@ -283,7 +322,7 @@ export function skeleton(o: Pose): Skel {
     return { hip, knee, ank, tip, near: L0.near };
   });
   return {
-    R, S, C, eyeL, eyeR, baseL, baseR, shN, elN, hN: hN2, dirN, shF, elF, hF, hb, ht, hd, hring, legs,
+    R, S, C, eyeL, eyeR, baseL, baseR, shN, elN, hN: hN2, dirN, shF, elF, hF, hb, ht, hd, hring, hs, legs,
     apex: sp(SHELL_POI.apex[0], SHELL_POI.apex[1]),
     vent: sp(SHELL_POI.vent[0], SHELL_POI.vent[1]),
   };
@@ -481,12 +520,17 @@ function drawHarpoon(f: Frame): void {
   const [bx, by] = sk.hb;
   const [dx, dy] = sk.hd;
   const L = HARP_L * o.hl;
+  const k = o.hl;
+  const D = DART * k;
+  const shaft = o.dart !== 2;
+  const head = o.dart !== 0;
   const nx = -dy;
   const ny = dx;
   const at = (a: number, c: number): Pt => [bx + dx * a + nx * c, by + dy * a + ny * c];
   const q = layer();
-  // shaft: driftwood, 2 px (3 at the butt)
-  q.poly([at(0, -1.4), at(L - 12 * o.hl, -1.1), at(L - 12 * o.hl, 1.1), at(0, 1.4)], PAL.earth2);
+  // shaft: driftwood, 2 px (3 at the butt); the toggle head's foreshaft a hair thinner
+  if (shaft) q.poly([at(0, -1.4), at(L - D, -1.1), at(L - D, 1.1), at(0, 1.4)], PAL.earth2);
+  if (head) q.poly([at(L - D - 0.5, -1), at(L - 12 * k, -0.9), at(L - 12 * k, 0.9), at(L - D - 0.5, 1)], PAL.earth2);
   // tone: the lit half earth2, the shade half earth1 — decided per pixel by the side of the axis vs the light
   const lit = layer();
   const sh = q.clone();
@@ -499,19 +543,28 @@ function drawHarpoon(f: Frame): void {
       lit.set(x, y, facing > 0 ? PAL.earth2 : PAL.earth1);
     }
   // knots
-  for (const a of [14, 33]) {
-    const [kx, ky] = at(a * o.hl, 0);
-    if (lit.isOpaque(rnd(kx), rnd(ky))) lit.set(rnd(kx), rnd(ky), PAL.earth0);
+  if (shaft)
+    for (const a of [14, 30]) {
+      const [kx, ky] = at(a * k, 0);
+      if (lit.isOpaque(rnd(kx), rnd(ky))) lit.set(rnd(kx), rnd(ky), PAL.earth0);
+    }
+  if (shaft || head) f.comp.add(lit, Part.harp, { out: PAL.earth0 });
+  const T: Tones = { L: PAL.earth4, M: PAL.earth3, S: PAL.earth2, D: PAL.earth1 };
+  // the socket collar at the shaft tip (the toggle head seats in it)
+  if (shaft) {
+    const cq = layer();
+    cq.poly([at(L - D - 3 * k, -1.8), at(L - D, -1.8), at(L - D, 1.8), at(L - D - 3 * k, 1.8)], PAL.earth3);
+    bands(cq, T, ls, { lit: 1, top: 1, shade: 1, bottom: 1 });
+    f.comp.add(cq, Part.harp, { out: PAL.earth1 });
   }
-  f.comp.add(lit, Part.harp, { out: PAL.earth0 });
-  // lashing (rope binding) where the head sits
+  if (!head) return;
+  // the line lashing on the foreshaft (the rope is tied here)
   const lq = layer();
-  lq.poly([at(L - 15 * o.hl, -2), at(L - 11 * o.hl, -2), at(L - 11 * o.hl, 2), at(L - 15 * o.hl, 2)], PAL.earth3);
-  bands(lq, { L: PAL.earth4, M: PAL.earth3, S: PAL.earth2, D: PAL.earth1 }, ls, { lit: 1, top: 1, shade: 1, bottom: 1 });
+  lq.poly([at(L - (D - 1), -2), at(L - (D - 5 * k), -2), at(L - (D - 5 * k), 2), at(L - (D - 1), 2)], PAL.earth3);
+  bands(lq, T, ls, { lit: 1, top: 1, shade: 1, bottom: 1 });
   f.comp.add(lq, Part.harp, { out: PAL.earth1 });
   // stone head: a leaf blade with two 2-px barbs pointing back
   const hq = layer();
-  const k = o.hl;
   hq.poly([at(L - 12 * k, -1.6), at(L - 7 * k, -3.2), at(L, 0), at(L - 7 * k, 3.2), at(L - 12 * k, 1.6)], STONE.M);
   hq.poly([at(L - 11 * k, -2.4), at(L - 14.5 * k, -4.6), at(L - 9 * k, -3.4)], STONE.M);
   hq.poly([at(L - 11 * k, 2.4), at(L - 14.5 * k, 4.6), at(L - 9 * k, 3.4)], STONE.M);
@@ -532,7 +585,10 @@ function drawSmear(f: Frame): void {
   const [dx, dy] = sk.hd;
   const q = layer();
   for (let i = 1; i <= o.smear; i++) {
-    for (let a = -4; a < HARP_L * o.hl - 14; a += 0.5) {
+    // the whole harpoon / the shaft: along its length; the flying head alone: only just behind it
+    const a0 = o.dart === 2 ? HARP_L * o.hl - DART - 2 : -4;
+    const a1 = o.dart === 1 ? HARP_L * o.hl - 14 : o.dart === 2 ? HARP_L * o.hl - 12 : HARP_L * o.hl - DART;
+    for (let a = a0; a < a1; a += 0.5) {
       const x = rnd(bx + dx * (a - i * 4));
       const y = rnd(by + dy * (a - i * 4)) + (i % 2 ? -1 : 1);
       if (!f.p.isOpaque(x, y)) q.set(x, y, i === 1 ? PAL.earth2 : PAL.earth1);
@@ -549,6 +605,10 @@ function ropePts(f: Frame): Pt[] {
     // the line runs out of the big claw's grip (it pays out / is hauled through the chela), the coil feeds it
     const from: Pt = o.nOn > 0.05 ? [sk.hN[0] + sk.dirN[0] * 9, sk.hN[1] + sk.dirN[1] * 9] : coilTop;
     return sagCurve(from, [AX + o.ox, GY + o.oy], o.sag, o.swing, 22);
+  }
+  if (o.rope === 4) {
+    // the line fed from the coil into the big claw's socket (the rest of it is out, drawn by the cinematic)
+    return sagCurve(coilTop, sk.hs, o.sag, o.swing, 8);
   }
   if (o.rope === 3) {
     // the twirl: the rope from the raised small claw to the spinning harpoon's ring
@@ -716,6 +776,26 @@ function sandLight(f: Frame): void {
   }
 }
 
+/** the twirl's smear arc: a 1-px trail along the head's path on the iso ellipse (white near the head, earth4 behind) */
+function arcLight(f: Frame): void {
+  const { p, o } = f;
+  if (o.arc <= 0) return;
+  const seen = new Set<number>();
+  for (let a = o.arc; a >= 8; a -= 2) {
+    const [x0, y0] = twirlHead(o.tw - a);
+    const x = rnd(x0);
+    const y = rnd(y0);
+    const key = y * W + x;
+    if (seen.has(key) || x < 1 || y < 1 || x >= W - 1 || y >= H - 1) continue;
+    seen.add(key);
+    // behind the shell on the far half: only where nothing opaque covers it
+    const back = Math.sin((o.tw - a) * DEG) <= 0.35;
+    if (back && p.isOpaque(x, y)) continue;
+    if (p.get(x, y) === PAL.ink) continue;
+    p.set(x, y, a < o.arc * 0.4 ? PAL.white : PAL.earth4);
+  }
+}
+
 function glintLight(f: Frame): void {
   const { p, o, sk } = f;
   if (o.glint <= 0 || o.hOn <= 0.05) return;
@@ -788,6 +868,24 @@ export function drawHarpooner(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'righ
       for (let x = 0; x < W; x++) if (comp.id[y * W + x] === Part.shell) p.erase(x, y);
   }
 
+  // value separation at 1×: where a crab part lies over the conch, the shell pixel beside it drops a step (a 1-px cast
+  // shadow): the limbs (earth3 / earth4) never merge into the shell's earth3 / earth2 mass
+  {
+    const crab = (id: number) => id === Part.legN || id === Part.clawN || id === Part.body || id === Part.clawF;
+    const drop = new Map<number, number>([[PAL.earth3, PAL.earth1], [PAL.earth2, PAL.earth1], [PAL.earth1, PAL.earth0]]);
+    const hits: [number, number, number][] = [];
+    for (let y = 1; y < H - 1; y++)
+      for (let x = 1; x < W - 1; x++) {
+        const i = y * W + x;
+        if (comp.id[i] !== Part.shell) continue;
+        if (!(crab(comp.id[i - 1]) || crab(comp.id[i + 1]) || crab(comp.id[i - W]) || crab(comp.id[i + W]))) continue;
+        const c = p.get(x, y);
+        const d = c === null ? undefined : drop.get(c);
+        if (d !== undefined) hits.push([x, y, d]);
+      }
+    for (const [x, y, d] of hits) p.set(x, y, d);
+  }
+
   // rope pixels are not outlined: lift them out, outline, put them back (only the visible ones)
   const bare: [number, number][] = [];
   for (const [i] of f.bare) {
@@ -810,5 +908,6 @@ export function drawHarpooner(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'righ
   puffLight(f);
   sprayLight(f);
   beadsLight(f);
+  arcLight(f);
   glintLight(f);
 }
