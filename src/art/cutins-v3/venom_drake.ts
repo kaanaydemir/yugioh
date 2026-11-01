@@ -35,7 +35,11 @@ const W = 200;
 const H = 144;
 const S = 4.4;
 const OX = 4;
-const OY = -4;
+const OY = -10;
+/** (critic art r1) the head 1.25× about the eye (CW's head fills ≈ 55 % of its portrait) */
+const HEAD_K = 1.25;
+/** (critic art r1) the bust raised 6 px (OY: the sac clears the band's lower border), the arch lowered back over the bigger head (it crosses the band's top border at the left only: a bleed, no tangent) */
+const ARCH_LIFT = 2.4;
 
 /** the lower edge of the bust: cut parallel to the band's lower border (slope −0.13 in P1) */
 const cutY = (x: number): number => Math.floor(143 - 0.13 * x);
@@ -50,18 +54,18 @@ const POSES: readonly BustPose[] = [
 ];
 const HOLDS: readonly number[] = [200, 80, 80, 160, 200, 120];
 
-/** the acid pits (f5) along the snout's top plane: x offset from the landing column, pit size (1 = 2×2, 2 = 3×2) */
+/** the acid notches (f5) eaten into the snout's top contour: x offset of the centre from the landing column, width (px, odd); the first (the largest, the steam) clear of the hook */
 const PITS: readonly (readonly [number, number])[] = [
-  [-1, 2],
-  [-8, 1],
-  [6, 1],
+  [-12, 7],
+  [0, 5],
+  [10, 5],
 ];
 
 function draw(p: PixelCanvas, frame: number, o?: DrawOpts): void {
   const f = Math.max(0, Math.min(POSES.length - 1, frame));
   const P = POSES[f];
   const lightFrom = o?.lightFrom ?? 'left';
-  const b = paintVenomBust(P, { S, w: W, h: H, ox: OX, oy: OY, lightFrom, rim: PAL.leaf2, cape: true, cutin: true });
+  const b = paintVenomBust(P, { S, w: W, h: H, ox: OX, oy: OY, lightFrom, rim: PAL.leaf2, cape: true, cutin: true, headK: HEAD_K, hornK: 0.5, archDrop: ARCH_LIFT });
   const pic = new PixelCanvas(W, H);
   pic.blit(b.matter, 0, 0);
   // the bust's slanted lower edge (an ink line along the cut where matter is cut)
@@ -101,18 +105,25 @@ function draw(p: PixelCanvas, frame: number, o?: DrawOpts): void {
     pic.set(lx + 2, ly - 1, PAL.leaf3).set(lx + 3, ly - 2, PAL.leaf3).set(lx + 4, ly - 3, PAL.leaf2);
     for (let x = lx - 4; x <= lx + 5; x++) pic.set(x, topAt(x) + 1, Math.abs(x - lx - 0.5) < 3 ? PAL.leaf3 : PAL.leaf2);
   }
-  // f5: the acid has eaten the snout — separate pits, each an ink hole with a leaf3 lip on its lower side
+  // f5 (critic art r1): the acid has eaten notches INTO the snout's top contour — real cuts through the
+  // silhouette (the band shows through), each ≥ 5 px wide and 3 px deep: a leaf3 rim on the eaten floor, a
+  // leaf2 inner step under it, one gold3 lip pixel in the largest, and a 4-px stepped stone3 steam wisp over it
   if (f === 5) {
-    PITS.forEach(([dx, size], i) => {
-      const x = lx + dx;
-      const y = topAt(x) + 2;
-      const wpx = size + 1;
-      for (let k = 0; k < wpx; k++) pic.set(x + k, y, PAL.ink).set(x + k, y + 1, PAL.ink).set(x + k, y + 2, PAL.leaf3);
-      pic.set(x - 1, y + 1, PAL.leaf2).set(x + wpx, y + 1, PAL.leaf2);
+    PITS.forEach(([dx, wpx], i) => {
+      const cx = lx + dx;
+      const half = (wpx - 1) / 2;
+      for (let k = -half; k <= half; k++) {
+        const x = cx + k;
+        const y0 = topAt(x);
+        const d = Math.max(2, Math.round((wpx > 5 ? 4 : 3) * (1 - (k / (half + 1)) ** 2)));
+        for (let y = y0; y < y0 + d; y++) pic.erase(x, y);
+        pic.set(x, y0 + d, PAL.leaf3);
+        if (Math.abs(k) < half) pic.set(x, y0 + d + 1, PAL.leaf2);
+        if (i === 0 && k === 0) pic.set(x, y0 + d, PAL.gold3);
+      }
       if (i === 0) {
-        pic.set(x + 1, y + 2, PAL.gold3);
-        // a 1-px stepped steam wisp over the largest pit (stone3 low, stone2 high)
-        pic.set(x + 1, y - 2, PAL.stone3).set(x + 1, y - 3, PAL.stone3).set(x + 2, y - 4, PAL.stone3).set(x + 2, y - 5, PAL.stone2).set(x + 1, y - 6, PAL.stone2).set(x + 1, y - 7, PAL.stone2);
+        const y = topAt(cx - half - 1) - 1;
+        pic.set(cx, y, PAL.stone3).set(cx, y - 1, PAL.stone3).set(cx + 1, y - 2, PAL.stone3).set(cx + 1, y - 3, PAL.stone3).set(cx, y - 4, PAL.stone2).set(cx, y - 5, PAL.stone2);
       }
     });
   }

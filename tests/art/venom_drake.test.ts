@@ -194,14 +194,15 @@ describe('venom_drake v3 (scorpion wyvern)', () => {
         const p = new PixelCanvas(cutin.w, cutin.h);
         cutin.draw(p, f, { lightFrom });
         let g4 = 0;
+        // (one expect per frame, not per pixel: the per-pixel expects timed the test out under a full run)
+        const bad: string[] = [];
         for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) {
           const c = p.get(x, y);
           if (c === null) continue;
-          expect(pal.has(c)).toBe(true);
-          expect(p.alpha(x, y)).toBe(255);
+          if (!pal.has(c) || p.alpha(x, y) !== 255 || c === PAL.leaf4) bad.push(`${x},${y}`);
           if (c === PAL.gold4) g4++;
-          expect(c).not.toBe(PAL.leaf4);
         }
+        expect(bad, `${lightFrom} f${f}`).toEqual([]);
         // f0 / f1 the bulb is lit but not ignited; from the flare (f2) on, ONE gold4 core
         expect(g4).toBe(f < 2 ? 0 : 1);
       }
