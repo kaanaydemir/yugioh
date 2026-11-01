@@ -176,6 +176,8 @@ export interface CharacterSounds {
   reviveGather: SfxName;
   /** Revive 'land' mark. */
   reviveLand: SfxName;
+  /** The struck body's own hit sounds when it has no material recipe (hitSoundFor): light / heavy / magic, and a guarded blow. */
+  struck?: { light: SfxName; heavy: SfxName; magic: SfxName; guard?: SfxName };
 }
 
 export const CHARACTER_SOUNDS: Partial<Record<CardId, CharacterSounds>> = {
@@ -353,6 +355,8 @@ export function materialOf(id: CardId | null | undefined, kind: BlowKind): Mater
  */
 export function hitSoundFor(u: MonsterUnit | null | undefined, o: { kind: BlowKind; heavy: boolean }): SfxName | null {
   if (!LOOK_V3 || !u) return null;
+  const own = soundsOf(u.cardId)?.struck;
+  if (own) return o.kind === 'magic' ? own.magic : u.guarding && !o.heavy && own.guard ? own.guard : o.heavy ? own.heavy : own.light;
   const m = materialOf(u.cardId, o.kind);
   if (!m) return null;
   try {

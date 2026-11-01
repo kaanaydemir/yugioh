@@ -5,7 +5,7 @@
 
 import { PAL } from '../palette';
 import type { PixelCanvas } from '../pixel';
-import { AX, FUR, GY, H, W, axeUV, bands, clamp, hash2, layer as kitLayer, planes, xf, xfInv, type Pt, type Xf } from './crag_axeman-kit';
+import { AX, FUR, GY, H, W, axeUV, bands, clamp, hash2, layer as kitLayer, lerp, planes, xf, xfInv, type Pt, type Xf } from './crag_axeman-kit';
 import type { Frame } from './crag_axeman-rig';
 
 const rnd = Math.round;
@@ -14,9 +14,9 @@ const layer = () => kitLayer(W, H);
 
 // ---------------------------------------------------------------- the boulder (summon)
 
-const BR = 19;
+const BR = 16;
 const BCX = AX + 1;
-const BCY = GY - 18;
+const BCY = GY - 16;
 /** A lumpy boulder outline (a 14-gon) turned by the roll frame; slightly flattened (it rests on the floor). */
 function boulderPts(cx: number, cy: number, roll: number, sq = 0.95): Pt[] {
   const pts: Pt[] = [];
@@ -67,6 +67,62 @@ function stoneFacets(q: PixelCanvas, f: Frame, cx: number, cy: number, roll: num
   });
 }
 
+
+/** One half of the boulder (s = −1 left, +1 right) in boulder-local points, the flat cut face on x = BCX. */
+function halfPts(s: number, roll: number): Pt[] {
+  const pts = boulderPts(BCX, BCY, roll).filter(([x]) => (s < 0 ? x <= BCX : x >= BCX));
+  pts.push([BCX, BCY + BR * 0.95], [BCX, BCY - BR * 0.95]);
+  pts.sort((a, b) => Math.atan2(a[1] - BCY, a[0] - BCX) - Math.atan2(b[1] - BCY, b[0] - BCX));
+  return pts;
+}
+
+/** The cut face's light band: within 2 px of the cut line (white at the face's very edge, earth4 behind it). */
+function cutFaceLight(h: PixelCanvas, toLocal: (x: number, y: number) => Pt, s: number, k: number): void {
+  const LIT = [PAL.white, PAL.earth4, PAL.stone3, PAL.stone2];
+  planes(h, (x, y) => {
+    const [lx] = toLocal(x, y);
+    const d = (lx - BCX) * s; // 0 at the cut, growing into the half
+    if (d < 1) return LIT[Math.min(3, k)];
+    if (d < 2.6) return LIT[Math.min(3, k + 1)];
+    return null;
+  });
+}
+
+function halvesFalling(f: Frame, deg: number, roll: number): void {
+  for (const s of [-1, 1]) {
+    const h = layer();
+    // pivot: the half's bottom outer corner; the top swings out (left half counter-clockwise, right clockwise)
+    const px = BCX + s * (BR - 2);
+    const py = GY - 1;
+    const a = s * deg * (Math.PI / 180);
+    const c = Math.cos(a);
+    const sn = Math.sin(a);
+    const rot = ([x, y]: Pt): Pt => [px + (x - px) * c - (y - py) * sn, py + (x - px) * sn + (y - py) * c];
+    const inv = (x: number, y: number): Pt => [px + (x - px) * c + (y - py) * sn, py - (x - px) * sn + (y - py) * c];
+    const shown = halfPts(s, roll).map(rot);
+    h.poly(shown, PAL.stone2);
+    stoneFacets(h, f, BCX + s * 8, GY - 8, roll + (s > 0 ? 1 : 2), 0);
+    cutFaceLight(h, inv, s, 0);
+    f.comp.add(h, 14, { out: PAL.stone0 });
+  }
+}
+
+function halvesLying(f: Frame, sink: number, roll: number): void {
+  for (const s of [-1, 1]) {
+    const h = layer();
+    const cx = BCX + s * 22;
+    const hh = Math.max(2, 8 - sink * 2);
+    const cy = GY;
+    const w = 10;
+    // a low dome on its round back, the cut face up (its top 2 rows)
+    h.poly([[cx - w, cy - hh], [cx + w, cy - hh], [cx + w + 1, cy - hh + 3], [cx + w - 3, cy], [cx - w + 3, cy], [cx - w - 1, cy - hh + 3]], PAL.stone2);
+    stoneFacets(h, f, cx, GY - 4, roll + (s > 0 ? 1 : 2), Math.min(2, sink));
+    const top = cy - hh;
+    planes(h, (_x, y) => (y <= top + 1 ? [PAL.earth4, PAL.stone3, PAL.stone2, PAL.stone1][Math.min(3, sink)] : y === top + 2 && sink === 0 ? PAL.stone4 : null));
+    f.comp.add(h, 14, { out: PAL.stone0 });
+  }
+}
+
 export function boulderFx(f: Frame, matter: boolean): void {
   const { o, p } = f;
   const st = o.bould;
@@ -81,7 +137,7 @@ export function boulderFx(f: Frame, matter: boolean): void {
       if (st >= 2) {
         // the blade punched out through the front face (the axe head pokes out, chips fly — chipFx)
         const a = layer();
-        const ox = cx + 10 + (st === 3 ? 1 : 0);
+        const ox = cx + BR - 7 + (st === 3 ? 1 : 0);
         const oy = cy - 2;
         // the crescent edge out of the boulder's right face (it punched through from inside)
         const pts: Pt[] = [];
@@ -91,35 +147,14 @@ export function boulderFx(f: Frame, matter: boolean): void {
         bands(a, { L: PAL.stone4, M: PAL.stone3, S: PAL.stone2, D: PAL.stone1 }, f.light, 1, 1);
         f.comp.add(a, 14, { out: PAL.stone0 });
       }
+    } else if (st === 4) {
+      // the halves FALL APART: each half turns out about its own bottom outer corner (bk = the tilt in degrees: 30, 60),
+      // re-rasterised as a polygon (never a sprite rotation); the flat cut face turns up toward the light
+      halvesFalling(f, o.bk, o.roll);
     } else {
-      // two halves: apart and falling (4), then lying on the floor and sinking in palette steps (5)
-      const k = st === 4 ? o.bk : 1;
-      const sink = st === 5 ? o.bk : 0;
-      for (const s of [-1, 1]) {
-        const h = layer();
-        const off = rnd(3 + k * 13);
-        const cx = BCX + s * off;
-        if (st === 4 && k < 0.7) {
-          // upright halves leaning out: the half boulder, sheared away from the cut
-          const pts = boulderPts(BCX, BCY, o.roll).filter(([x]) => (s < 0 ? x <= BCX : x >= BCX));
-          pts.push([BCX, BCY + BR * 0.95], [BCX, BCY - BR * 0.95]);
-          pts.sort((a, b) => Math.atan2(a[1] - BCY, a[0] - BCX) - Math.atan2(b[1] - BCY, b[0] - BCX));
-          const lean = k * 9;
-          h.poly(pts.map(([x, y]) => [x + s * (off - 2) + s * lean * ((GY - y) / 28), y + k * 2] as Pt), PAL.stone2);
-        } else {
-          // lying: a dome on its round back, the flat cut face up
-          const hh = Math.max(2, 10 - sink * 3);
-          const cy = GY - 1;
-          const w = 12;
-          h.poly([[cx - w, cy - hh], [cx + w, cy - hh], [cx + w + 1, cy - hh + 3], [cx + w - 3, cy], [cx - w + 3, cy], [cx - w - 1, cy - hh + 3]], PAL.stone2);
-        }
-        stoneFacets(h, f, cx, GY - 6, o.roll + (s > 0 ? 1 : 2), st === 5 ? sink : 0);
-        if (st === 5 || k >= 0.7) {
-          // the flat cut face on top: a 2-px band, earth4 while the light is in it, dimming in palette steps as it sinks
-          planes(h, (x, y, src) => (!src.isOpaque(x, y - 1) || !src.isOpaque(x, y - 2) ? [PAL.earth4, PAL.stone3, PAL.stone2, PAL.stone1][Math.min(3, sink)] : null));
-        }
-        f.comp.add(h, 14, { out: PAL.stone0 });
-      }
+      // landed: two half-domes lying BESIDE his boots (left and right, drawn before the body: behind the boots), the
+      // flat cut face up — lit while the light is in it, then sinking in palette steps (bk 0…3)
+      halvesLying(f, o.bk, o.roll);
     }
     return;
   }
@@ -134,16 +169,6 @@ export function boulderFx(f: Frame, matter: boolean): void {
       if (p.isOpaque(x + 1, y)) p.set(x + 1, y, PAL.earth4);
     }
     if (p.isOpaque(x, top)) p.set(x, top, PAL.gold4);
-  }
-  if (st === 4 || (st === 5 && o.bk < 1)) {
-    // the light still in the cut faces: the inner edge column of each half (earth4, the halves lying: stone4 rim)
-    for (let y = 0; y < H; y++)
-      for (let x = 1; x < W - 1; x++) {
-        if (f.comp.id[y * W + x] !== 14) continue;
-        const inner = x < BCX ? !p.isOpaque(x + 1, y) || p.get(x + 1, y) === PAL.ink : !p.isOpaque(x - 1, y) || p.get(x - 1, y) === PAL.ink;
-        const nearCut = Math.abs(x - BCX) < 20;
-        if (inner && nearCut && st === 4) p.set(x, y, PAL.earth4);
-      }
   }
 }
 
@@ -240,6 +265,10 @@ export function floorSeamFx(f: Frame): void {
 export function smearFx(f: Frame): void {
   const { o, p, sk } = f;
   if (o.smear === 0) return;
+  if (o.spx !== 0 || o.spy !== 0) {
+    arcSmear(f);
+    return;
+  }
   // the arc the head just swept (around the grip): two 1-px arcs trailing the edge, the outer white, the inner stone4;
   // smear > 0 = the axe turns clockwise (the chop), < 0 = counter-clockwise (the spin's last quarter)
   const sgn = o.smear > 0 ? -1 : 1;
@@ -259,6 +288,47 @@ export function smearFx(f: Frame): void {
       p.set(X, Y, k === 0 && d < 24 ? PAL.white : PAL.stone4);
     }
   }
+}
+
+/**
+ * The arc the axe head swept since the last frame, on its own path: from (smx, smy) round the pivot (spx, spy) to the
+ * head now (all anchor-relative), the radius easing between the two ends. A 3-px curved band — a white core with a
+ * stone4 edge either side, thinning to 1 px at the tail — stopping short of the head's own outline. Light: not
+ * outlined, never over the body's own colours.
+ */
+function arcSmear(f: Frame): void {
+  const { o, p, sk } = f;
+  const px0 = AX + o.spx;
+  const py0 = GY + o.spy;
+  const a0 = Math.atan2(GY + o.smy - py0, AX + o.smx - px0);
+  const r0 = Math.hypot(AX + o.smx - px0, GY + o.smy - py0);
+  const a1 = Math.atan2(sk.axe[1] - py0, sk.axe[0] - px0);
+  const r1 = Math.hypot(sk.axe[0] - px0, sk.axe[1] - py0);
+  let da = a1 - a0;
+  while (da > Math.PI) da -= TAU;
+  while (da < -Math.PI) da += TAU;
+  // the band rides just outside the head centre's path (the crescent's rim), a solid 3-px stroke (white core, stone4
+  // edges) that thins to 1 px at its tail
+  const steps = Math.max(16, Math.ceil(Math.abs(da) * Math.max(r0, r1) * 2.5));
+  const free = (x: number, y: number) => x >= 1 && y >= 1 && x <= W - 2 && y <= GY && (!p.isOpaque(x, y) || p.get(x, y) === PAL.ink);
+  const put = new Map<number, number>();
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    if (t > 0.84) break; // stop short of the head
+    const a = a0 + da * t;
+    const r = lerp(r0, r1, t) + 3;
+    const half = t < 0.25 ? 0 : t < 0.5 ? 0.6 : 1.2;
+    for (let d = -half; d <= half + 0.01; d += 0.5) {
+      const X = rnd(px0 + Math.cos(a) * (r + d));
+      const Y = rnd(py0 + Math.sin(a) * (r + d));
+      if (!free(X, Y)) continue;
+      const k = Y * W + X;
+      const c = Math.abs(d) < 0.4 && t > 0.25 ? PAL.white : PAL.stone4;
+      if (put.get(k) !== PAL.white) put.set(k, c);
+    }
+  }
+  for (const [k, c] of put) p.set(k % W, Math.floor(k / W), c);
+  void o;
 }
 
 /** Sparks off the stone bite (white → gold3 / earth4), or the idle tap's single spark. */

@@ -22,13 +22,17 @@ import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { LOOK_V3, unitDepth, type XY } from '../../view/layout';
 import { lightFlash } from '../../view/light';
 import { shake } from '../../vfx/core';
-import { E, Sparks, onFrame } from '../../vfx/combat';
+import { E, Sparks, onFrame, sleep } from '../../vfx/combat';
+import { PixelCanvas } from '../../art/pixel';
+import { framePose } from '../../art/monsters-v3/crag_axeman-anims';
+import { H, W, drawAxeman, type Pose } from '../../art/monsters-v3/crag_axeman-rig';
+import { overlay } from '../strikes-a/_kit';
 import { registerCardHook } from '../api';
 import { atFrame, fade, panAt, play } from '../_v3/sound';
 import { poseEntrance } from '../_v3/summon';
 import { runSummon, type Stage } from '../summon-a/_kit';
 import { biteChips, plantDust } from './crag_axeman';
-import { Seam } from './crag_axeman-yarik';
+import { Seam, SEAM_DEPTH } from './crag_axeman-yarik';
 
 const ID = 'crag_axeman';
 
@@ -39,6 +43,23 @@ function placeAt(u: MonsterUnit, feet: XY, lift = 0): void {
   s.setDepth(unitDepth(feet.y));
 }
 
+/** Rig-drawn canvases for the parts of the entrance that are not sprite frames (cached per light side). */
+const CANVAS = new Map<string, PixelCanvas>();
+function rigCanvas(key: string, pose: Pose, light: 'left' | 'right'): PixelCanvas {
+  const k = `${key}:${light}`;
+  let pc = CANVAS.get(k);
+  if (!pc) {
+    pc = new PixelCanvas(W, H);
+    drawAxeman(pc, pose, light);
+    CANVAS.set(k, pc);
+  }
+  return pc;
+}
+/** The rolling boulder two palette steps down (night-tinted as it comes in from the dark, then one step lit). */
+const dimBoulder = (roll: number, dim: number, light: 'left' | 'right') => rigCanvas(`dim${dim}:${roll}`, { ...framePose('summon', roll), dim }, light);
+/** The two fallen halves lying on the floor, sinking in palette steps (0…3). */
+const lyingHalves = (sink: number, light: 'left' | 'right') => rigCanvas(`halves:${sink}`, { ...framePose('summon', 9), hide: true, bould: 5, bk: sink, fseam: 0, chips: 0, dust: 0 }, light);
+
 async function boulderEntrance(S: Stage): Promise<void> {
   const sc: Phaser.Scene = S.scene;
   const u = S.unit;
@@ -48,53 +69,85 @@ async function boulderEntrance(S: Stage): Promise<void> {
     await poseEntrance({ scene: sc, unit: u, home, player: S.player, ramp: S.ramp, big: S.big, cutIn: S.cutIn, lightColor: S.lightColor, finale: () => void u.badge.pop() });
     return;
   }
+  const light: 'left' | 'right' = u.flipX ? 'right' : 'left';
   // a tribute's riser (if any) gives way: the boulder is the arrival
   fade(['summonCharge'], 140);
-  const n = u.frameCount('summon');
-  const rollEnd = 4; // f0–3 roll
-  const landF = u.markFrame('summon', 'land', 8);
-  // from off the tile's back edge (P1 the back-left, P2 mirrored), along the iso axis
-  const from: XY = { x: home.x - S.dir * 26, y: home.y - 13 };
-  const rollMs = u.rangeMs('summon', 0, rollEnd);
+  const landF = u.markFrame('summon', 'land', 10);
+  // from 1.5 tiles out beyond the tile's back edge (P1 the back-left, P2 mirrored), along the iso axis: a long roll in
+  const from: XY = { x: home.x - S.dir * 58, y: home.y - 29 };
+  const ROLL_MS = 340;
+  const STILL_MS = 130;
   u.pose('summon', 0);
   placeAt(u, from);
-  u.showSprite();
+  // it comes in out of the dark in two palette steps (no pop-in): two dim rig canvases over the hidden sprite, then lit
+  const ov = overlay(u, dimBoulder(0, 2, light), { depth: u.sprite.depth });
+  u.sprite.setVisible(false);
   play('caxRoll', { volume: 0.9, pan: panAt(from.x) });
-  // it tumbles in over the tile's edge: a kick of dust where it first touches
-  plantDust(sc, { x: Math.round(from.x), y: Math.round(from.y) }, 1, { x: -S.dir, y: -0.5 });
-  // ---- the roll: two bounces while it travels, then the stop and two 1-px rocks in the still beat
+  // ---- the roll: the 4 drawn frames cycled by the distance rolled (never setAngle), two bounces (2 px, then 1 px) with
+  // a dust kick on each touch, then the stop and two 1-px rocks in the silent still beat
   let bounce = 0;
-  const bounceAt = [0.42, 0.78];
-  onFrame(sc, (_dt, el) => {
-    if (!u.sprite.active) return false;
-    const t = Math.min(1, el / Math.max(1, rollMs));
-    const e = E.outQ(t);
-    const p = { x: from.x + (home.x - from.x) * e, y: from.y + (home.y - from.y) * e };
-    // the hops: 3 px before the first touch, 1 px before the second
-    let lift = 0;
-    if (t < bounceAt[0]) lift = Math.sin((t / bounceAt[0]) * Math.PI) * 3;
-    else if (t < bounceAt[1]) lift = Math.sin(((t - bounceAt[0]) / (bounceAt[1] - bounceAt[0])) * Math.PI) * 1.6;
-    while (bounce < 2 && t >= bounceAt[bounce]) {
-      const k = bounce++;
-      play('caxBounce', { volume: k ? 0.95 : 0.6, pitch: k ? 0.94 : 1.04, pan: panAt(p.x) });
-      plantDust(sc, { x: Math.round(p.x), y: Math.round(p.y) }, k, { x: -S.dir, y: 0 });
-      if (k === 1) void shake(sc, 80, 1);
-    }
-    if (t >= 1) {
-      // the stop: it rocks 1 px forward and back (the still beat follows, silent)
-      const r = el - rollMs;
-      const rock = r < 50 ? 1 : r < 100 ? 0 : r < 150 ? -1 : 0;
-      placeAt(u, { x: home.x + rock * S.dir, y: home.y });
-      return r < 160;
-    }
-    placeAt(u, p, Math.round(lift));
-    return true;
-  }, () => placeAt(u, home));
+  const bounceAt = [0.5, 0.8];
+  let dimNow = 2;
+  let ovLive = true;
+  const total = Math.hypot(home.x - from.x, home.y - from.y);
+  await new Promise<void>((resolve) => {
+    onFrame(sc, (_dt, el) => {
+      if (!u.sprite.active) return false;
+      const t = Math.min(1, el / ROLL_MS);
+      const e = E.outQ(t);
+      const p = { x: from.x + (home.x - from.x) * e, y: from.y + (home.y - from.y) * e };
+      const roll = Math.floor((total * e) / 6) % 4;
+      const dim = t < 0.18 ? 2 : t < 0.36 ? 1 : 0;
+      if (ovLive) {
+        if (dim === 0) {
+          ov.destroy();
+          ovLive = false;
+          u.showSprite();
+          u.sprite.setVisible(true);
+        } else if (dim !== dimNow || true) {
+          dimNow = dim;
+          ov.redraw(dimBoulder(roll, dim, light));
+        }
+      }
+      if (!ovLive) u.pose('summon', roll);
+      // the hops: 2 px before the first touch, 1 px before the second (held a frame at the top so they read)
+      let lift = 0;
+      if (t < bounceAt[0]) lift = Math.min(2, Math.sin((t / bounceAt[0]) * Math.PI) * 2.6);
+      else if (t < bounceAt[1]) lift = Math.min(1, Math.sin(((t - bounceAt[0]) / (bounceAt[1] - bounceAt[0])) * Math.PI) * 1.6);
+      while (bounce < 2 && t >= bounceAt[bounce]) {
+        const k = bounce++;
+        play('caxBounce', { volume: k ? 0.95 : 0.6, pitch: k ? 0.94 : 1.04, pan: panAt(p.x) });
+        plantDust(sc, { x: Math.round(p.x), y: Math.round(p.y) }, k, { x: -S.dir, y: 0 });
+        if (k === 1) void shake(sc, 80, 1);
+      }
+      if (t >= 1) {
+        // the stop: it rocks 1 px forward and back (the still beat, silent)
+        const r = el - ROLL_MS;
+        const rock = r < 40 ? 1 : r < 80 ? 0 : r < 115 ? -1 : 0;
+        placeAt(u, { x: home.x + rock * S.dir, y: home.y });
+        if (r >= STILL_MS) {
+          resolve();
+          return false;
+        }
+        return true;
+      }
+      placeAt(u, p, Math.round(lift));
+      return true;
+    }, () => {
+      if (ovLive) {
+        ov.destroy();
+        ovLive = false;
+      }
+      u.sprite.setVisible(true);
+      placeAt(u, home);
+      resolve();
+    });
+  });
   // ---- the beats on the pose's own frames
-  atFrame(u, 'summon', 5, () => {
+  atFrame(u, 'summon', 4, () => {
     // the blade punches out through the boulder's front: chips toward the camera side, one white spark
     play('caxPunch', { volume: 0.95, pan });
-    const at = u.framePoint(u.art.anchorX + 20, u.art.anchorY - 18);
+    const at = u.framePoint(u.art.anchorX + 12, u.art.anchorY - 16);
     biteChips(sc, { x: Math.round(at.x), y: Math.round(home.y) }, { x: S.dir, y: 0.2 }, 6);
     const sp = new Sparks(sc, unitDepth(home.y) + 1);
     sp.add({ x: Math.round(at.x), y: Math.round(at.y), life: 70, colors: [PAL.white], shape: 'plus', size: 2, fadeAt: 1 });
@@ -102,11 +155,11 @@ async function boulderEntrance(S: Stage): Promise<void> {
     void lightFlash(sc, Math.round(at.x), Math.round(at.y), PAL.white, 14, 200, { floorY: home.y, intensity: 0.7 });
     void shake(sc, 60, 1);
   });
-  atFrame(u, 'summon', 6, () => {
+  atFrame(u, 'summon', 5, () => {
     // the light seam runs up the boulder's face (drawn by the art); the light it pours on the floor, and the Yarık it
     // leaves: a short floor seam along the axis where the boulder split
     play('caxSplit', { volume: 0.95, pan });
-    const c = u.framePoint(u.art.anchorX + 1, u.art.anchorY - 16);
+    const c = u.framePoint(u.art.anchorX + 1, u.art.anchorY - 14);
     void lightFlash(sc, Math.round(c.x), Math.round(c.y), PAL.white, 22, 320, { floorY: home.y, intensity: 0.9 });
     const fwd = { x: S.dir * 2, y: -1 };
     const L = Math.hypot(fwd.x, fwd.y);
@@ -118,20 +171,46 @@ async function boulderEntrance(S: Stage): Promise<void> {
       ticks: false,
       spark: false,
       quiet: true,
+      light: false,
     });
   });
-  atFrame(u, 'summon', 7, () => play('caxHalves', { volume: 0.85, pan }));
+  // the halves fall apart (f7, f8) and land (f9): the landing thumps
+  atFrame(u, 'summon', 9, () => {
+    play('caxHalves', { volume: 0.85, pan });
+    // from here the halves are FLOOR props (decal depth: behind his boots), sinking in palette steps over ~600 ms
+    const halves = overlay(u, lyingHalves(0, light), { depth: SEAM_DEPTH + 0.5 });
+    void (async () => {
+      try {
+        for (let k = 1; k <= 3; k++) {
+          await sleep(sc, 190);
+          halves.redraw(lyingHalves(k, light));
+        }
+        await sleep(sc, 160);
+      } finally {
+        halves.destroy();
+      }
+    })();
+  });
   atFrame(u, 'summon', landF, () => {
     play('caxStepOut', { volume: 0.95, pan });
     void shake(sc, 90, 2);
     plantDust(sc, { x: Math.round(home.x + S.dir * 6), y: Math.round(home.y) }, 2, { x: -S.dir, y: 0 });
     plantDust(sc, { x: Math.round(home.x - S.dir * 6), y: Math.round(home.y) }, 1, { x: S.dir, y: 0 });
   });
-  atFrame(u, 'summon', Math.min(n - 1, landF + 1), () => {
-    play('caxNara', { volume: 0.95, pan });
-    void u.badge.pop();
-  });
-  await u.playRange('summon', 0, undefined, { hold: false });
+  await u.playRange('summon', 4, landF);
+  await sleep(sc, u.frameMs('summon', landF));
+  // ---- the NARA: the roar's own drawn frames (build, the axe raised one-handed with the mouth open held ~300 ms, the
+  // release) — the shout lasts as long as its picture
+  if (u.has('roar') && u.sprite.active) {
+    const beats: [number, number][] = [[2, 100], [3, 90], [4, 150], [5, 150], [7, 90], [8, 90]];
+    for (const [f, ms] of beats) {
+      if (!u.sprite.active) break;
+      u.pose('roar', f);
+      if (f === 2) play('caxNara', { volume: 0.95, pan });
+      if (f === 3) void u.badge.pop();
+      await sleep(sc, ms);
+    }
+  } else void u.badge.pop();
   placeAt(u, home);
 }
 

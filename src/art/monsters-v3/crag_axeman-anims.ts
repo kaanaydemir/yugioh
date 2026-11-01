@@ -24,7 +24,7 @@ import { axeUV } from './crag_axeman-kit';
 const rnd = Math.round;
 
 /** fields that switch (never lerp): facing, axe layer, blade side, grips, boulder state */
-const STEP = new Set<keyof Pose>(['fc', 'az', 'hd', 'fh', 'ag', 'bould', 'roll', 'bury', 'tap']);
+const STEP = new Set<keyof Pose>(['fc', 'az', 'hd', 'fh', 'ag', 'bould', 'roll', 'bury', 'tap', 'smx', 'smy', 'spx', 'spy', 'smear']);
 
 /** In-between of two poses (numbers lerp, the rest comes from b once t ≥ 0.5). */
 export function mix(a: Pose, b: Pose, t: number): Pose {
@@ -81,8 +81,8 @@ const CAPE = [0, 0, 1, 1, 1, 0, 0, -1, -1, -1, 0, 1, 2, 1, 0, 0];
 const EYE = [1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1];
 /** the axe: rest on the shoulder, lift, over, fall, TAP, rebound, lift back, settle (nx, ny, ba, az) */
 const AXE: [number, number, number, number][] = [
-  [13, -32, -120, 0], [13, -32, -120, 0], [13, -33, -120, 0], [13, -33, -121, 0], [13, -32, -120, 0], [13, -32, -122, 0],
-  [13, -33, -136, 0],
+  [13, -32, -130, 0], [13, -32, -130, 0], [13, -33, -130, 0], [13, -33, -131, 0], [13, -32, -130, 0], [13, -32, -132, 0],
+  [13, -33, -144, 0],
   [13, -33, -166, -0.5],
   [12, -32, 162, -0.5],
   [12, -31, 126, -0.5],
@@ -91,15 +91,19 @@ const AXE: [number, number, number, number][] = [
   [13, -32, 118, -0.5],
   [13, -33, 164, -0.5],
   [13, -33, -164, -0.5],
-  [13, -33, -134, 0],
+  [13, -33, -142, 0],
 ];
+/** grip → head: resting on the shoulder the hand holds the haft low (the crescent rides high, clear of the head) */
+const AXE_HL = [32, 32, 32, 32, 32, 32, 31, 29, 28, 28, 28, 28, 28, 29, 30, 31];
+/** one edge glint while it rests (IŞ-8: one per anim) */
+const GLINT = [0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 export function idlePose(f: number): Pose {
   const k = ((f % IDLE_N) + IDLE_N) % IDLE_N;
   const t = k / IDLE_N;
   const [nx, ny, ba, az] = AXE[k];
   let p = pose({
     chy: CHY[k], shr: SHR[k], tilt: TILT[k], hx: HX[k], hy: HY[k], bead: BEAD[k], cape: CAPE[k], eye: EYE[k], hem: t,
-    nx, ny, ba, az, t, hd: k >= 9 && k <= 12 ? 1 : -1,
+    nx, ny, ba, az, t, hd: k >= 9 && k <= 12 ? 1 : -1, hl: AXE_HL[k], glint: GLINT[k],
   });
   p = above(p, GY - 1);
   if (k === 10) p = { ...plant(p, GY), tap: 2, dust: 0.25 };
@@ -145,17 +149,34 @@ const GUARD_HOLDS = [170, 150, 160, 170, 150, 160];
 // ------------------------------------------------------------------ attack (17 frames): "Dağ Yaran"
 
 const A_N = 17;
-/** the spin's six facings — the axe leads the turn: [facing, near hand x, y, haft angle, haft length, axe layer, clods, smear] */
-const SPIN: [Facing, number, number, number, number, number, number, number][] = [
-  [1, 13, -34, 10, 21, 1, 0.15, 0],
-  [2, 19, -38, -24, 15, -1, 0.3, 0],
-  [3, -13, -39, -152, 15, -1, 0.45, 0],
-  [4, -11, -36, 178, 15, -1, 0.6, 0],
-  [5, -9, -33, 160, 15, 1, 0.75, -1],
-  [6, 2, -31, 95, 11, 1, 0.9, -1],
+/**
+ * The spin's six facings — the axe swept round him at arm's length on a flat circle (an ellipse on screen: out to the
+ * right, the far side up behind him, out to the left, the near side low in front), the hands always on the haft:
+ * [facing, near hand x, y, haft angle, foreshortening, axe layer, clods, smear, blade side]
+ */
+const SPIN: [Facing, number, number, number, number, number, number, number, number][] = [
+  [1, 19, -38, -10, 0.65, 1, 0.15, 0, 1],
+  [2, 24, -44, -30, 0.55, -1, 0.3, 0, 1],
+  [3, -16, -45, -155, 0.45, -1, 0.45, 0, -1],
+  [4, -19, -38, 172, 0.36, 1, 0.6, 0, -1],
+  [5, -10, -32, 140, 0.6, 1, 0.75, -1, -1],
+  [6, 3, -30, 95, 0.5, 1, 0.9, -1, 1],
 ];
+/** the spin's pivot (the arc smear sweeps round his middle) */
+const SPIN_PIVOT = { x: 0, y: -36 };
 /** the cocked pose: both hands over the head, the axe dropped down the back (the full wind-up) */
 const COCK: Partial<Pose> = { hl: 23, hd: 1, sink: 2, lean: -1, nx: 3, ny: -50, ba: -138, az: 0, fh: 1, g2: -5, hy: -1, eye: 2, shr: -1, mant: -1, cape: -2, bead: -1 };
+/** Where the axe head is in a pose (anchor-relative): the arc smear's start for the next frame. */
+function headAt(p: Pose): { x: number; y: number } {
+  const sk = skeleton(p);
+  return { x: sk.axe[0] - AX, y: sk.axe[1] - GY };
+}
+function spinPose(f: number): Pose {
+  const n = A_N;
+  const i = f - 2;
+  const [fc, nx, ny, ba, fore, az, clods, smear, hd] = SPIN[i];
+  return key({ fc, nx, ny, ba, hl: 23, fore, hd, az, fh: 1, g2: -6, sink: 3, clods, smear, cape: [3, 4, 5, 5, 4, 3][i] * (fc >= 4 ? -1 : 1), bead: [2, 2, 0, -2, -2, 0][i], eye: 2, f1x: [0, 1, 1, 0, -1, 0][i], f2x: [0, -1, 0, 1, 1, 0][i] }, f, n);
+}
 export function attackPose(f: number): Pose {
   const n = A_N;
   if (f >= n - 1) return home();
@@ -164,22 +185,32 @@ export function attackPose(f: number): Pose {
       return key({ nx: 14, ny: -35, ba: -118, hl: 26, az: 0, fx: -10, fy: -29, bead: 1, eye: 2 }, f, n);
     case 1: // charge (the declaration holds it): crouched, the axe held out low in front at arm's length
       return key({ nx: 13, ny: -33, ba: 32, hl: 23, hd: 1, az: 1, fh: 1, g2: -6, sink: 3, lean: 1, eye: 2, bead: 1, cape: 1 }, f, n);
-    case 2: case 3: case 4: case 5: case 6: case 7: {
-      const [fc, nx, ny, ba, hl, az, clods, smear] = SPIN[f - 2];
-      return key({ fc, nx, ny, ba, hl: 23, fore: hl / 23, hd: 1, az, fh: 1, g2: -6, sink: 3, clods, smear, cape: [3, 4, 5, 5, 4, 3][f - 2] * (fc >= 4 ? -1 : 1), bead: [2, 2, 0, -2, -2, 0][f - 2], eye: 2, f1x: [0, 1, 1, 0, -1, 0][f - 2], f2x: [0, -1, 0, 1, 1, 0][f - 2] }, f, n);
+    case 2: case 3: case 4: case 5:
+      return spinPose(f);
+    case 6: case 7: { // the two fastest facings: the head's own arc smear behind it, round his middle
+      const prev = headAt(spinPose(f - 1));
+      return { ...spinPose(f), smx: rnd(prev.x), smy: rnd(prev.y), spx: SPIN_PIVOT.x, spy: SPIN_PIVOT.y };
     }
     case 8: // cocked: the longest frame; one axe-edge glint at the apex
       return key({ ...COCK, glint: 2 }, f, n);
-    case 9: // step 1: the near boot forward
-      return key({ ...COCK, f1x: 4, f1y: -3, lean: 0, sink: 1 }, f, n);
-    case 10: // step 2: the near boot planted (dust), the far boot follows
-      return key({ ...COCK, f1x: 5, f2x: 2, f2y: -3, lean: 0, sink: 2, dust: 0.3, bead: 1 }, f, n);
-    case 11: // step 3: the far boot planted, the near boot lifting for the stamp
-      return key({ ...COCK, f1x: 7, f1y: -2, f2x: 3, lean: 1, sink: 2, dust: 0.3, bead: 0 }, f, n);
-    case 12: // release: the chop comes down, smeared
-      return key({ nx: 12, ny: -46, ba: -55, hl: 23, hd: 1, az: 1, fh: 1, g2: -6, sink: 3, lean: 3, f1x: 8, f2x: 3, smear: 1, eye: 2, hy: 1, mant: 1, bead: -2, cape: 2 }, f, n);
-    case 13: { // contact: the bite — the edge buried in the floor in front, the seam starting, chips burst back
-      const p = key({ nx: 13, ny: -27, ba: 42, hl: 23, hd: 1, az: 1, fh: 1, g2: -7, sink: 5, lean: 4, f1x: 8, f2x: 3, eye: 2, hy: 2, mant: 1, bead: 2, cape: 3, chips: 0.25, crack: 7, crackK: 1, bury: 1, spark: 0.2 }, f, n);
+    // the three heavy steps: each frame shows the boot that has just PLANTED (the weight dropped into it, the other heel
+    // lifting); the cinematic slides him between plants at the end of the frame before — STOMP-stomp-STOMP on the
+    // frame changes, the upper body locked in the cocked pose
+    case 9: // plant 1: the near boot down in front, the far heel up
+      return key({ ...COCK, f1x: 4, f2x: -1, f2y: -2, lean: 0, sink: 3, dust: 0.3, bead: 0 }, f, n);
+    case 10: // plant 2: the far boot down, the near heel up
+      return key({ ...COCK, f1x: 1, f1y: -2, f2x: 3, lean: 0, sink: 3, dust: 0.3, bead: 1, cape: -1 }, f, n);
+    case 11: // plant 3, the STOMP: the near boot slammed down wide in front, the deepest crouch of the run-up
+      return key({ ...COCK, f1x: 7, f2x: 1, lean: 1, sink: 4, chy: 1, dust: 0.6, bead: 1, cape: -1 }, f, n);
+    case 12: { // release: the chop comes over — the head mid-swing in front, its arc smeared from overhead behind
+      const p = key({ nx: 15, ny: -44, ba: 8, hl: 23, hd: 1, az: 1, fh: 1, g2: -6, sink: 4, lean: 3, f1x: 9, f2x: 1, smear: 1, eye: 2, hy: 1, mant: 1, bead: -2, cape: 2 }, f, n);
+      const from = headAt(attackPose(8));
+      const sk = skeleton(p);
+      return { ...p, smx: rnd(from.x), smy: rnd(from.y), spx: rnd(sk.Sn[0] - AX), spy: rnd(sk.Sn[1] - GY) };
+    }
+    case 13: { // contact: the BITE — a deep lunge (front knee bent, torso pitched over, both arms driven straight down the
+      // haft, the beads thrown forward), the edge buried in the floor in front, the seam starting, chips burst back
+      const p = key({ nx: 21, ny: -22, ba: 62, hl: 23, hd: 1, az: 1, fh: 1, g2: -9, sink: 8, lean: 8, chy: 2, f1x: 12, f2x: -3, eye: 2, hx: 3, hy: 5, mant: 2, bead: 4, cape: 4, chips: 0.25, crack: 7, crackK: 1, bury: 1, spark: 0.2 }, f, n);
       return plant(p, GY + 4);
     }
     case 14: // the heave: the axe torn out of the floor, chips and a clod fly
@@ -284,19 +315,23 @@ const FG_HOLDS = [60, 70, 70, 80, 80];
 
 const SU_N = 12;
 const CROUCH: Partial<Pose> = { hl: 23, hd: 1, sink: 4, lean: 2, nx: 15, ny: -30, ba: 28, az: 1, hy: 2, eye: 2, cape: 2, bead: 2 };
+// f0–3 the roll cycle (the cinematic cycles it along a long path in from off the tile), f4 the blade punches out, f5–6
+// the seam climbs the face, f7–8 the halves fall apart (30°, 60°), f9 they land beside his boots, f10 'land': he steps
+// out (the halves now lie on the floor as decals, sinking — the cinematic's), f11 idle f0. The NARA that follows is
+// the roar anim, played by the cinematic.
 export function summonPose(f: number): Pose {
   const n = SU_N;
   if (f >= n - 1) return home();
   if (f <= 3) return key({ hide: true, bould: 1, roll: f, rock: 0 }, f, n);
-  if (f === 4) return key({ hide: true, bould: 1, roll: 0, rock: 1 }, f, n);
-  if (f === 5) return key({ hide: true, bould: 2, roll: 0, rock: 0, chips: 0.3 }, f, n);
-  if (f === 6) return key({ hide: true, bould: 3, roll: 0, bk: 0.55, chips: 0.7 }, f, n);
-  if (f === 7) return key({ ...CROUCH, bould: 4, bk: 0.35, fseam: 4, fseamK: 1 }, f, n);
-  if (f === 8) return key({ ...CROUCH, sink: 2, lean: 1, bould: 5, bk: 0, f1x: 3, dust: 0.3, fseam: 8, fseamK: 1, nx: 18, ny: -38, ba: -50, hl: 23 }, f, n);
-  if (f === 9) return key({ ...RAISED, bould: 5, bk: 1, fseam: 8, fseamK: 1, bead: -2, cape: -2 }, f, n);
-  return snap(key({ ...mix(key({ nx: 15, ny: -44, ba: -128, hl: 25, hd: -1, az: 0, bead: 1 }, f, n), IDLE0, 0.3), bould: 5, bk: 2, fseam: 6, fseamK: 0.5 }, f, n));
+  if (f === 4) return key({ hide: true, bould: 2, roll: 0, rock: 0, chips: 0.3 }, f, n);
+  if (f === 5) return key({ hide: true, bould: 3, roll: 0, bk: 0.5, chips: 0.6 }, f, n);
+  if (f === 6) return key({ hide: true, bould: 3, roll: 0, bk: 1, chips: 0.9 }, f, n);
+  if (f === 7) return key({ ...CROUCH, bould: 4, bk: 30, fseam: 4, fseamK: 1 }, f, n);
+  if (f === 8) return key({ ...CROUCH, sink: 3, bould: 4, bk: 60, fseam: 6, fseamK: 1, bead: 1 }, f, n);
+  if (f === 9) return key({ ...CROUCH, sink: 3, lean: 1, bould: 5, bk: 0, fseam: 8, fseamK: 1, nx: 15, ny: -34, ba: -42, bead: 1 }, f, n);
+  return key({ ...CROUCH, sink: 2, lean: 1, f1x: 3, dust: 0.4, fseam: 8, fseamK: 1, nx: 17, ny: -37, ba: -60, hl: 25, bead: -1, cape: -1 }, f, n);
 }
-const SU_HOLDS = [100, 100, 100, 100, 200, 80, 80, 90, 110, 180, 140, 140];
+const SU_HOLDS = [90, 90, 90, 90, 70, 50, 50, 45, 45, 55, 85, 100];
 
 // ------------------------------------------------------------------ death (12): the axe bites, the seam climbs, he splits in two
 
@@ -349,7 +384,7 @@ export const ANIMS: Record<MonsterAnim, AnimSpec> = {
   hit: spec(HIT_N, 12, false, HIT_HOLDS, { impact: 0, contact: 0, recover: 4 }),
 };
 export const EXTRA_ANIMS: Partial<Record<MonsterAnimExtra, AnimSpec>> = {
-  summon: spec(SU_N, 10, false, SU_HOLDS, { land: 8 }),
+  summon: spec(SU_N, 10, false, SU_HOLDS, { land: 10 }),
   death: spec(D_N, 12, false, D_HOLDS, { impact: 0, contact: 0, dissolve: 4 }),
   revive: spec(RV_N, 10, false, RV_HOLDS, { land: 6 }),
   hitHeavy: spec(HH_N, 12, false, HH_HOLDS, { impact: 0, contact: 0, recover: 4 }),

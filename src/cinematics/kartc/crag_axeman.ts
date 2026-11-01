@@ -73,31 +73,68 @@ export function biteChips(sc: Phaser.Scene, at: XY, back: XY, n: number): void {
   sp.release();
 }
 
-/** Earth clods spiralling up off the boots during the spin (one or two per facing). */
+/** Earth clods spiralling up off the boots during the spin: 3–4 per facing, 2 px, rising 8–12 px on a spiral. */
 function spinClods(sc: Phaser.Scene, feet: XY, k: number, sgn: number): void {
   const sp = new Sparks(sc, unitDepth(feet.y) + 0.2);
-  for (let i = 0; i < 1 + (k > 0.5 ? 1 : 0); i++) {
+  const n = 3 + (k > 0.5 ? 1 : 0);
+  for (let i = 0; i < n; i++) {
     const a = RR(0, TAU);
-    const r = RR(6, 12);
-    sp.add({ x: feet.x + Math.cos(a) * r, y: feet.y + Math.sin(a) * r * 0.45, vx: -Math.sin(a) * RR(30, 60) * sgn, vy: RR(-70, -40) * (0.6 + k * 0.6), ay: 360, life: RR(300, 420), colors: CLODS, shape: 'sq', size: i ? 1 : 2, floor: feet.y + RR(0, 2), bounce: 0.25, fadeAt: 1 });
+    const r = RR(8, 14);
+    // tangential (the turn's direction) + up: v² / 2g ≈ 8–12 px of rise
+    const up = RR(76, 92);
+    sp.add({ x: feet.x + Math.cos(a) * r, y: feet.y + Math.sin(a) * r * 0.45, vx: -Math.sin(a) * RR(40, 70) * sgn, vy: -up, ay: 340, life: RR(420, 520), colors: CLODS, shape: 'sq', size: 2, floor: feet.y + RR(0, 2), bounce: 0.25, fadeAt: 1 });
   }
   sp.release();
 }
 
-/** Screen x of the side of the target's body facing the attacker (`sgn` = the attacker's facing), else the aim. */
-function frontOf(t: MonsterUnit | null, aim: XY, sgn: number): number {
+/** Screen x of the front of a unit's FOOTPRINT (its lowest rows, the frame it shows) facing the attacker (`sgn`). */
+function floorFront(t: MonsterUnit | null, aim: XY, sgn: number): number {
   if (!t || !t.sprite.active) return aim.x - sgn * 12;
   try {
-    const b = monsterFrame(t.cardId, 'idle', 0).bounds();
+    const fi = t.frameInfo();
+    const pc = monsterFrame(t.cardId, fi.anim ?? 'idle', fi.frame);
+    const b = pc.bounds();
     if (!b) return aim.x - sgn * 12;
-    const a = t.framePoint(b.x, 0).x;
-    const c = t.framePoint(b.x + b.w, 0).x;
-    // the body's edge toward him, but never past half a tile in front of its feet
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let y = b.y + b.h - 8; y < b.y + b.h; y++)
+      for (let x = b.x; x < b.x + b.w; x++)
+        if (pc.isOpaque(x, y)) {
+          lo = Math.min(lo, x);
+          hi = Math.max(hi, x);
+        }
+    if (lo > hi) return aim.x - sgn * 12;
+    const a = t.framePoint(lo, 0).x;
+    const c = t.framePoint(hi + 1, 0).x;
     const edge = sgn > 0 ? Math.min(a, c) : Math.max(a, c);
     return sgn > 0 ? Math.max(edge, aim.x - 26) : Math.min(edge, aim.x + 26);
   } catch {
     return aim.x - sgn * 12;
   }
+}
+
+/** How far he backs off during the spin (px along the attack axis: the run-up starts behind home). */
+export const SPIN_BACK = 7;
+/** The three steps' share of the run-up (long, then shorter and quicker: 9 / 7 / 6). */
+export const STEP_SPLIT = [0, 9 / 22, 16 / 22, 1] as const;
+
+/**
+ * The strike's floor plan (pure; tested): where the axe bites (`gap` px in front of the target's footprint), where he
+ * plants for it (the bite less the contact frame's reach), the spin's back-step point, and the four step points.
+ */
+export function cutPlan(home: XY, aim: XY, front: number, sgn: number, reachX: number, o: { blocked?: boolean } = {}): { bite: XY; land: XY; start: XY; steps: XY[]; dir: XY } {
+  const dir = norm(sub(aim, home));
+  const along = (x: number): XY => {
+    const t = Math.abs(dir.x) > 0.05 ? (x - home.x) / dir.x : 0;
+    return { x: home.x + dir.x * t, y: home.y + dir.y * t };
+  };
+  const gap = o.blocked ? 16 : 5;
+  const b = along(front - sgn * gap);
+  const bite = { x: Math.round(b.x), y: Math.round(b.y) };
+  const land = along(bite.x - reachX);
+  const start = { x: home.x - dir.x * SPIN_BACK, y: home.y - dir.y * SPIN_BACK };
+  const steps = STEP_SPLIT.map((k) => ({ x: lerp(start.x, land.x, k), y: lerp(start.y, land.y, k) }));
+  return { bite, land, start, steps, dir };
 }
 
 /** The bite's floor point at the contact frame relative to the feet (art px → world, flip aware). */
@@ -126,34 +163,31 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
   const loses = s.ctx.ev.result === 'attackerDestroyed' || s.ctx.ev.result === 'bothDestroyed';
   const target = s.direct || s.blocked ? null : s.target;
 
-  // ---- geometry: where the axe bites, where he plants for it
+  // ---- geometry: where the axe bites, where he plants for it, the back-step of the spin, the three step points
   const homeFeet: XY = { ...u.home };
   const bo = biteOffset(u, conF);
   let bite: XY;
   let seamTo: XY;
   let land: XY;
+  let SP: XY[];
   if (s.direct) {
     land = { ...homeFeet };
-    bite = { x: land.x + bo.x, y: land.y };
+    bite = { x: Math.round(land.x + bo.x), y: Math.round(land.y) };
     seamTo = { x: s.toGround.x, y: s.toGround.y };
+    SP = [land, land, land, land];
   } else {
     const aim = s.toGround;
-    const dir = norm(sub(aim, homeFeet));
-    // the target's front (the side of its body facing him, at its feet's height): the bite lands a stride short of it
-    const front = frontOf(s.target, aim, sgn);
-    const gap = s.blocked ? 18 : 16;
-    const along = (x: number): XY => {
-      const t = Math.abs(dir.x) > 0.05 ? (x - homeFeet.x) / dir.x : 0;
-      return { x: homeFeet.x + dir.x * t, y: homeFeet.y + dir.y * t };
-    };
-    bite = along(front - sgn * gap);
-    land = { x: bite.x - bo.x, y: bite.y - bo.y };
-    // the seam runs under the target past its feet (blocked: it stops on the guard's front edge and forks)
-    seamTo = s.blocked ? along(front - sgn * 2) : { x: aim.x + dir.x * 12, y: aim.y + dir.y * 12 };
+    // the bite lands just in front of the target's FOOTPRINT (blocked: a stride short of the guard, so the seam has
+    // room to run up to its front edge and die there)
+    const front = floorFront(s.target, aim, sgn);
+    const plan = cutPlan(homeFeet, aim, front, sgn, bo.x, { blocked: s.blocked });
+    bite = plan.bite;
+    land = plan.land;
+    SP = plan.steps;
+    const dir = plan.dir;
+    seamTo = s.blocked ? { x: Math.round(front - sgn * 1), y: Math.round(homeFeet.y + dir.y * ((front - sgn - homeFeet.x) / (Math.abs(dir.x) > 0.05 ? dir.x : 1))) } : { x: aim.x + dir.x * 12, y: aim.y + dir.y * 12 };
   }
-  bite = { x: Math.round(bite.x), y: Math.round(bite.y) };
-  const P = [0, 0.3, 0.62, 0.93, 1].map((k) => ({ x: lerp(homeFeet.x, land.x, k), y: lerp(homeFeet.y, land.y, k) }));
-  const back = norm(sub(homeFeet, land));
+  const back = norm(sub(homeFeet, land.x === homeFeet.x && land.y === homeFeet.y ? { x: homeFeet.x + sgn, y: homeFeet.y } : land));
 
   // ---- sound on the marks: the declaration's grip goes on until the spin takes over
   const grip = takeCharge(u, 'caxGrip', { volume: 0.8, pan });
@@ -164,11 +198,22 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
   atFrame(u, 'attack', cockF, () => play('caxCock', { volume: 0.9, pan }));
   atFrame(u, 'attack', relF, () => play('caxChop', { volume: 0.9, pan: panAt(land.x) }));
 
-  // ---- the body's path: one clock reads the frame on screen (the steps move during their frames, plant on the next)
+  // ---- the body's path, on one clock that reads the frame on screen:
+  //   spin    he drifts back SPIN_BACK px (centrifugal), so the run-up starts behind home
+  //   cock    held, then in its last 45 % he lunges into step 1
+  //   f9–f11  each step frame opens on a PLANT (shake 1 / 1 / 2, dust, pebble, the gravel crunch rising) — the boot
+  //           the art shows planted — holds the weight, then slides into the next step in its last half; the third
+  //           (the STOMP) holds its whole frame, so the chop starts a full frame (~150 ms) after it
   let lastF = -1;
   let fStart = 0;
   let driving = true;
   let at: XY = { ...homeFeet };
+  const glide = (a: XY, b: XY, t: number, from: number): { p: XY; lift: number } => {
+    if (t <= from) return { p: a, lift: 0 };
+    const k = (t - from) / (1 - from);
+    const e = E.inOutQ(k);
+    return { p: { x: lerp(a.x, b.x, e), y: lerp(a.y, b.y, e) }, lift: Math.round(Math.sin(Math.PI * k) * 2) };
+  };
   onFrame(sc, (_dt, el) => {
     if (!driving || !u.sprite.active) return false;
     const fi = u.frameInfo();
@@ -178,11 +223,11 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
       lastF = f;
       fStart = el;
       // spin: clods spiral up off the boots
-      if (f > spinF0 && f < cockF) spinClods(sc, at, (f - spinF0) / (cockF - spinF0), sgn);
-      // plants on entering the frame after each step frame
-      const k = stepF.indexOf(f - 1);
+      if (f > spinF0 && f <= cockF) spinClods(sc, at, (f - spinF0) / (cockF - spinF0), sgn);
+      // the plants: on entering each step frame
+      const k = s.direct ? -1 : stepF.indexOf(f);
       if (k >= 0) {
-        const foot = P[k + 1];
+        const foot = SP[k + 1];
         void shake(sc, 90, k === 2 ? 2 : 1);
         plantDust(sc, { x: Math.round(foot.x + sgn * (k % 2 ? -4 : 5)), y: Math.round(foot.y) }, k, back);
         play('caxStep', { volume: [0.5, 0.7, 1][k], pitch: [1, 1.055, 1.11][k], pan: panAt(foot.x) });
@@ -190,16 +235,20 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
     }
     const t = Math.min(1, (el - fStart) / Math.max(1, u.frameMs('attack', f)));
     let lift = 0;
-    const si = stepF.indexOf(f);
-    if (si >= 0) {
-      const e = E.inOutQ(t);
-      at = { x: lerp(P[si].x, P[si + 1].x, e), y: lerp(P[si].y, P[si + 1].y, e) };
-      lift = Math.round(Math.sin(Math.PI * t) * 2);
-    } else if (f === relF) {
-      const e = E.inQ(t);
-      at = { x: lerp(P[3].x, P[4].x, e), y: lerp(P[3].y, P[4].y, e) };
-    } else if (f > relF) at = P[4];
-    else at = P[0];
+    if (f >= spinF0 && f < cockF) {
+      const k = E.outQ(Math.min(1, (f - spinF0 + t) / (cockF - spinF0)));
+      at = { x: lerp(homeFeet.x, SP[0].x, k), y: lerp(homeFeet.y, SP[0].y, k) };
+    } else if (f === cockF) {
+      const g = glide(SP[0], SP[1], t, 0.55);
+      at = g.p;
+      lift = g.lift;
+    } else if (f === stepF[0] || f === stepF[1]) {
+      const i = f === stepF[0] ? 1 : 2;
+      const g = glide(SP[i], SP[i + 1], t, 0.5);
+      at = g.p;
+      lift = g.lift;
+    } else if (f >= stepF[2]) at = SP[3];
+    else at = homeFeet;
     if (!u.locked) placeAt(u, at, lift);
     return f < conF || driving;
   });
@@ -230,8 +279,10 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
     let hitAt: XY = s.to;
     if (target && target.sprite.active && target.sprite.visible) {
       play('caxClimb', { volume: 0.9, pan: panAt(target.home.x) });
-      const c = climbBody(sc, target, { stepMs: 17, holdMs: 40 });
+      const c = climbBody(sc, target, { stepMs: 20, holdMs: 60 });
       await c.top;
+      // the blow lands ON the climb column (the kit's contact flash centres on it: an upright oval on the seam, not a
+      // blob on the body's front edge)
       const core = target.core();
       hitAt = { x: Math.round(target.home.x), y: Math.round(core.y) };
     } else if (s.direct) {
@@ -240,7 +291,9 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
       void climbLine(sc, seamTo, h, { stepMs: 17, holdMs: 120, depth: DEPTH.FX + 2 });
       await sleep(sc, 34);
     } else {
-      // blocked: the seam dies on the guard's front edge; the blow is the axe ringing in the floor
+      // blocked: the seam dies on the guard's front edge (it forks: a tiny "tik"); the blow is the axe ringing in the floor
+      play('caxFork', { volume: 0.8, pan: panAt(seamTo.x) });
+      play('caxRing', { volume: 0.9, pan: panAt(bite.x) });
       hitAt = { x: Math.round(seamTo.x), y: Math.round(s.to.y) };
     }
     s.impact(hitAt);
@@ -315,25 +368,11 @@ function sleepAnimate(sc: Phaser.Scene, ms: number, fn: (t: number) => void): Pr
 
 if (LOOK_V3) registerStrike(ID, async (s) => (LOOK_V3 ? dagYaran(s) : s.base?.()));
 
-// ---- the struck body's human answer (v3 only): a grunt on a blow, the haft slap on a guarded one. The reaction kit's
-// body sound plays under it (no fur material exists yet: the generic one); this adds the baritone on the contact frame.
+// ---- the haft coming across the chest on a position change (the struck body's own sounds — fur / hide, the haft
+// slap on a guarded blow, the grunt on a heavy one — are the voice's `struck` set: src/audio/v3/crag_axeman.ts)
 if (LOOK_V3) {
   registerObserver((ev, ctx) => {
-    if (ev.type === 'battle') {
-      if (ev.targetUid === null || ev.result === 'direct') return;
-      const t = ctx.unit(ev.targetUid);
-      if (!t || t.cardId !== ID) return;
-      const sc = ctx.scene;
-      const guard = ev.targetPosition === 'defense';
-      const pan = panAt(t.home.x);
-      const on = (uid: unknown) => {
-        if (uid !== ev.attackerUid) return;
-        sc.events.off('v3:contact', on);
-        play(guard ? 'caxGuard' : 'caxGrunt', { volume: guard ? 0.9 : 0.75, pan });
-      };
-      sc.events.on('v3:contact', on);
-      void sleep(sc, 5000).then(() => sc.events.off('v3:contact', on));
-    } else if (ev.type === 'positionChange' && ev.position === 'defense') {
+    if (ev.type === 'positionChange' && ev.position === 'defense') {
       const u = ctx.unit(ev.uid);
       if (!u || u.cardId !== ID) return;
       // the haft comes across the chest as a bar on the guard's last in-between frame

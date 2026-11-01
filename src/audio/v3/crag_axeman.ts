@@ -24,7 +24,10 @@
 //   caxStepOut    summon 'land': he steps out of the split boulder (gravel crunch, heavier)
 //   caxNara       roar: the human "HAA" shout
 //   caxGuard      guard: the haft slaps across the chest (a wood knock)
-//   caxGrunt      struck: a short baritone grunt (over the struck body's own material)
+//   caxGrunt      a short baritone grunt (kept; the heavy struck body carries its own)
+//   caxStruckLight / Heavy / Magic   the struck body (fur / hide: no material recipe exists) — the voice's `struck` set
+//   caxSeamTik    the seam's last dry tick as it fades
+//   caxFork / caxRing   blocked: the seam forks on the guard ("tik"); the axe rings and bounces in the floor
 //   caxAxeSlip    death f1: the axe slips from the hands (leather slide + a breath out)
 //   caxAxeBite    death: the dropped axe bites the floor head-first
 //   caxSeamRise   death: the seam climbs his centre line (a rising tsss)
@@ -162,7 +165,8 @@ export const V3_AXEMAN_RECIPES = {
     gap: 0.05,
     verb: 0.18,
     play(v) {
-      gravel(v, 0, 0.7, { f: 92, dec: 0.09, n: 10 });
+      // f 83: the dominants land at 90 / 95 / 100 Hz with the run-up's pitches 1 / 1.055 / 1.11
+      gravel(v, 0, 0.7, { f: 83, dec: 0.09, n: 10 });
       // a pebble hops off the boot
       v.noise('white', { t: 0.05, g: perc(0.06, 0.006, 0.0002), to: v.filt('bandpass', 3600, 2) });
       fur(v, 0.006, 0.1);
@@ -242,6 +246,88 @@ export const V3_AXEMAN_RECIPES = {
     play(v) {
       v.crackle({ d: 0.03, n: 3, g: 0.18, f: 4400, q: 0.9, dec: 0.004 });
       v.noise('white', { g: perc(0.03, 0.06, 0.01), to: v.filt('highpass', 6000, 0.8) });
+    },
+  },
+  /** The seam's last breath: a drier, shorter "tik" (no air), as it starts to fade. */
+  caxSeamTik: {
+    cap: 1,
+    gap: 0.05,
+    verb: 0.1,
+    play(v) {
+      v.noise('white', { g: perc(0.22, 0.004, 0.0001), to: v.filt('bandpass', 5200, 3) });
+      v.crackle({ t: 0.004, d: 0.012, n: 1, g: 0.12, f: 3600, q: 1, dec: 0.003 });
+    },
+  },
+  /** Blocked: the seam forks on the guard's front edge — a tiny bright "tik" splitting in two (L / R, 12 ms apart). */
+  caxFork: {
+    cap: 1,
+    gap: 0.05,
+    verb: 0.3,
+    play(v) {
+      v.noise('white', { g: perc(0.3, 0.006, 0.0002), to: v.filt('bandpass', 4800, 4, { to: v.panner(-0.25) }) });
+      v.noise('white', { t: 0.012, g: perc(0.26, 0.006, 0.0002), to: v.filt('bandpass', 5600, 4, { to: v.panner(0.25) }) });
+      v.crackle({ t: 0.01, d: 0.09, n: 5, g: 0.12, f: 5000, q: 0.9, dec: 0.003 });
+    },
+  },
+  /**
+   * Blocked: the axe rings in the stone floor and bounces — a stone "tonk" (a short inharmonic ring at 410 / 1130 Hz,
+   * the haft's wood knock under it), then a smaller second knock as it hops (70 ms).
+   */
+  caxRing: {
+    cap: 1,
+    gap: 0.1,
+    verb: 0.35,
+    duck: 0.5,
+    play(v) {
+      thump(v, 0, 140, 70, 0.45, 0.1, { drive: 1.4 });
+      for (const [f, g, d] of [[410, 0.14, 0.32], [1130, 0.07, 0.2], [1790, 0.035, 0.12]] as const) v.tone('triangle', [[0, f], [d, f * 0.97, 'e']], { g: perc(g, d, 0.002) });
+      v.noise('white', { g: perc(0.22, 0.03, 0.0005), to: v.filt('bandpass', 700, 3.5) });
+      thump(v, 0.07, 160, 90, 0.22, 0.06);
+      v.tone('triangle', [[0.07, 400], [0.2, 390, 'e']], { g: perc(0.05, 0.13, 0.002), t: 0.07 });
+      v.crackle({ t: 0.01, d: 0.14, n: 6, g: 0.1, f: 3000, q: 0.8, dec: 0.004 });
+    },
+  },
+  /**
+   * The struck body (fur / hide over skin — no material recipe exists for it): a pink fur thump (lp 900), a body knock
+   * 110 → 60 and a LEATHER SLAP (bp 1.2 kHz, 20 ms). Light: just that. Never the v1 impacts.
+   */
+  caxStruckLight: {
+    cap: 2,
+    gap: 0.05,
+    verb: 0.2,
+    play(v) {
+      v.noise('pink', { g: perc(0.42, 0.08, 0.002), to: v.filt('lowpass', 900, 0.8) });
+      thump(v, 0, 110, 60, 0.5, 0.07, { drive: 1.2 });
+      v.noise('white', { t: 0.002, g: perc(0.4, 0.02, 0.0004), to: v.filt('bandpass', 1200, 2.2) });
+      // the beads clack on the chest
+      for (const t of [0.03, 0.055]) v.noise('white', { t, g: perc(0.05, 0.006, 0.0002), to: v.filt('bandpass', 3300, 3) });
+    },
+  },
+  /** Heavy: the same body blow, deeper and longer, the cloak flopping, and the baritone grunt (breath knocked out). */
+  caxStruckHeavy: {
+    cap: 2,
+    gap: 0.05,
+    verb: 0.25,
+    duck: 0.4,
+    play(v) {
+      v.noise('pink', { g: perc(0.55, 0.12, 0.002), to: v.filt('lowpass', 800, 0.8) });
+      thump(v, 0, 100, 52, 0.7, 0.11, { drive: 1.5 });
+      v.noise('white', { t: 0.002, g: perc(0.45, 0.024, 0.0004), to: v.filt('bandpass', 1150, 2.2) });
+      fur(v, 0.03, 0.2);
+      vox(v, 0.02, 0.25, [[0, 130], [0.05, 124, 'e'], [0.25, 100, 'e']], 0.32, { formants: [480, 900, 2300], breath: 0.45, grit: 2.2, att: 0.008 });
+    },
+  },
+  /** Magic: the body locks rigid (the war paint flashes) — a tight sinew snap and a short sizzle of light on the skin over the fur thump. */
+  caxStruckMagic: {
+    cap: 2,
+    gap: 0.05,
+    verb: 0.35,
+    play(v) {
+      v.noise('pink', { g: perc(0.3, 0.06, 0.002), to: v.filt('lowpass', 900, 0.8) });
+      thump(v, 0, 120, 70, 0.35, 0.06);
+      v.noise('white', { g: [[0, 0], [0.01, 0.12], [0.14, 0.0001, 'e']], to: v.filt('highpass', [[0, 3500], [0.14, 6500, 'e']], 1.2) });
+      // the sinews lock: a fast flutter of a muscle held rigid (a closed hum through the teeth)
+      vox(v, 0.01, 0.16, [[0, 150], [0.16, 140]], 0.16, { formants: [300, 2200, 2900], breath: 0.6, grit: 1.4, att: 0.01 });
     },
   },
   /** Summon: the boulder rolls in from the back-left (gravel + an AM rumble slowing 6 → 3 Hz), ~0.42 s. */
@@ -488,4 +574,5 @@ export const AXEMAN_VOICE = {
   burst: 'caxBurn',
   reviveGather: 'caxReviveGather',
   reviveLand: 'caxReviveSeal',
+  struck: { light: 'caxStruckLight', heavy: 'caxStruckHeavy', magic: 'caxStruckMagic', guard: 'caxGuard' },
 } satisfies CharacterSounds;
