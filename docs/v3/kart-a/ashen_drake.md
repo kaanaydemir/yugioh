@@ -1578,3 +1578,120 @@ peaks −1.8 … −2.3 dBFS, 0 clipped.
 - KK-13 frames (139/140) and bytes (6.94/7 MB) are at the edge: no room for more summon in-betweens.
 - The slam underglow holds through the 50 ms freeze (≈ 5 frames on film), not exactly 3.
 - SE-4 is still unproven on a calibrated tool.
+
+### Critic round 3 fixes (2026-11-01, lane-A cinematics builder)
+Critic evidence: `shots/kart-a/ashen_drake/c3r/`. Ours: `shots/kart-a/ashen_drake/c4/`. Every changed moment was
+re-filmed and looked at (3× zooms and 1× strips). Files changed: `src/cinematics/strikes-a/ashen_drake.ts`,
+`src/cinematics/strikes-a/ashen_drake-fx.ts`, `src/cinematics/summon-a/ashen_drake.ts`, `src/audio/v3/ashen.ts`,
+and this doc (§6.3 correction). The art is unchanged.
+
+1. **HIGH, the bank does not read or travel: fixed.**
+   - *Why it failed:* the bank was born under the muzzle, which on the attack pose is already on the target's
+     tile, so it "travelled" ~15 px. The ease-out also parked it at the target for half the roll.
+   - *Start and travel:* the bank now **pours out of the jaw** as a falling column of lumps, carrying plate chips
+     for ~110 ms. It is born on the floor 12 px in front of the drake's feet and rolls the whole tile distance on
+     an even curve (70 % linear, 30 % ease-out). It is on its way for ≥ 9 game frames: `c4/atk_roll_z.png`,
+     857 → 1010.
+   - *The head:* three floor lumps, with the nose lowest, so it never crests. Above them sits a boiling crown of 7
+     lumps (r 3–9) orbiting **backwards**. The head is **≥ 24 px tall** with an ink contact shadow under it. The
+     tail is a string of shrinking lumps that ends in the soot trail.
+   - *New `drawLump` (`-fx.ts`):* an irregular puff whose outline is bent by three per-seed waves, with a flat
+     bottom and a 1-px ink outline. Shading steps rim → underside → body → lit cap. A secondary bulge adds its own
+     crescent and a crease, and the dark bands carry blinking `fire1`/`fire2` ember specks. No two lumps share a
+     shape or a highlight.
+   - *Chips:* plate chips (`plateChip`, 2×3 / 3×2 with an ink edge) tumble in the four leading lumps for 170 ms.
+   - *Veil:* `latticeSlots` radii vary per cell (3–9, jittered x/h), and the veil uses `drawLump`. Un-risen cells
+     wait inside the arriving head, and the head collapses into the lattice over 6 frames, so the hand-over does
+     not pop. Burning lumps drop their outline, so the ignition reads as one fire mass with tongues instead of
+     stacked oranges (`c4/atk_ign_z.png`).
+   - *Blocked backwash:* also drawn with `drawLump`.
+   - *Other films:* P2 `c4/atkp2.png`, tie `c4/tie_z.png`, lose `c4/lose_z.png`, direct `c4/direct_z.png`.
+2. **HIGH, target fully covered ~300 ms, then pops back clean: fixed by cutting back to the blueprint (no
+   exception asked).**
+   - *Silhouette:* the overlay starts on frame +1, and the full ink silhouette (fire rim, climbing tongues, crown)
+     holds frames +1 … +5. Then it **crumbles from the contour inward** in 6 frames: the ink shrinks by
+     edge-distance (a BFS depth map per frame), and a `fire2`/`fire1` burning front recedes with it.
+   - *What it uncovers is burnt:* the top 45 % of the target keeps a fixed `stone0`/`stone1` soot crust, denser on
+     the top quarter, with `stone0` contour pixels. The contour keeps smouldering embers that thin to a floor of
+     25 %.
+   - *How long it lasts:* this stays as long as the target is shown, up to 200 frames, through its reaction and
+     death pose, with ash flakes rising off its top edges. The 2×2 dither is gone.
+   - Evidence: `c4/atk_ign_z.png` (ink from 1348 to ~1416, crumble 1416–1450), `c4/atk_after_z.png` (the soot
+     stays to the death), `c4/tie_z.png`.
+3. **MEDIUM, summon underglow muddy and held: fixed.** The root cause was depth. The underglow was drawn at
+   `DEPTH.SHADOW − 1`, *under* the unit's dithered drop shadow, so it read as a maroon half-tone.
+   - It now has its own layer at `DEPTH.SHADOW + 0.5`, which is over the shadow and still under every unit.
+   - It is counted in **rendered frames**, so it steps down on every frame including the 50 ms freeze. It runs
+     7 steps: fire3 r22 / fire4 core 10 / **white heart line 8 px** → fire2/fire3/fire4 line 6 → … → stone0.
+   - It sits 5 px forward of the toes, so the feet no longer bury the core, and 4 fire crack rays open on the
+     first 3 frames.
+   - The ring starts at r 26 on the slam frame (was 14).
+   - `c4/sum_ring_z.png`: 3690 white-hot, 3707 fire2, 3724 … 3775 out.
+4. **MEDIUM, direct ignition swamped: improved.**
+   - The bank now travels the full distance to the podium (finding 1). Its head stops 14 px short of the duelist
+     instead of covering the figure.
+   - The ignition is a solid `flameColumn` (`-fx.ts`): **20 px wide at 1×**, 30–34 px tall, banded fire1 → fire4,
+     white at the root on frame 1, 5 frames (20/20/18/14/10 px), plus the corner tongues (`c4/direct_1x.png`,
+     `c4/direct_z.png`).
+   - The shared white star and the number still sit on top: orchestrator `numberDelayMs` ask #9 stands.
+5. **MEDIUM, generic low hits under the signature: not ours to change; §6.3 corrected.**
+   - `impactHeavy` 0.28 on a direct hit with any custom-voice card (`cinematics/battle/battle.ts:472`) and the
+     cut-in slam (`cardSlam` + `impactHeavy`, `_v3/cutin.ts`) are shared code.
+   - **Orchestrator asks:** (a) an additive per-recipe `attack.directBody?: SfxName | null` in battle.ts (we would
+     pass `null`); (b) a per-card `cutIn.slamSfx?: SfxName | null` (we would pass `null`).
+   - §6.3 now states the facts.
+6. **LOW, lose backlash yellow lightning and `shieldBlock` 1.0: rejected for the tint, asked for the volume.**
+   - The backlash is the **defender's** answer: `battle.ts:515` uses `tRamp` (crystal_wyrm's light ramp, EF-13).
+     Tinting it fire would give our identity to the other card's counter.
+   - `shieldBlock` comes from the shared `blockClang` (`vfx/combat.ts:3482`, volume 1). **Orchestrator ask:** a
+     volume option on `blockClang`, or ducking it under a custom-voice attacker's sputter.
+7. **LOW, revive gather faint / loud third beat: fixed** (`ashenReviveGather`).
+   - The sweep and ribs are +8 dB and the ember grains +6 dB.
+   - The second heartbeat pair (0.62 / 0.79 s) is kept as the documented **re-light beat** but at the soft level
+     (×0.45 / ×0.4).
+   - Solo render (`c4/clips/rev_gather.wav`): RMS through the rise −14.5 … −31 dBFS (was −35 … −50). The 0.62
+     beat peaks −5.5 … −7.5 (was −2.9). The land's `ashenReviveBeat` (−2.0) is the loudest hit again.
+8. **LOW, music duck depth:** orchestrator (engine floor), unchanged.
+9. **LOW, death small at 1×: partly fixed.**
+   - On death f7 (the break) **14 cloak plates** (`plateFall`) drop off the body. They are 2×3 / 3×2 with ink
+     outlines, a stone3 lit edge, and a hot fire2 underside while falling. They land round the feet, cool to stone0
+     and go out after ~320 ms (`c4/kill_break_z.png`).
+   - Not done: the crouch in-between frame (KK-13 frames 139/140, no budget).
+   - The card flight belongs to the shared death kit: it starts ~2190, ~350 ms after the body breaks (~1840). The
+     ask stands.
+10. **INFO:** not ours (volt_lizard's v1 tint; the blocked / kill-phys films stay provisional).
+
+**Measured** (`c4/measure.json`, `--look v3`, 0 errors, no zoom; limit = REHBER §5 × 1.45):
+
+| Scenario | Measured | Limit |
+|---|---|---|
+| kaAdSummon / P2 | 4166 | ≤ 4350 |
+| kaAdAtk / P2 | 3166 (contact 1350) | ≤ 3190 |
+| kaAdTie | 3150 (contact 1283) | ≤ 3190 |
+| kaAdDirect / P2 | **2283** (contact 1400, was 1350: the longer roll) | ≤ 2320 |
+| kaAdRevive | 2200 | ≤ 3050 |
+| kaAdPos | 533 | ≤ 580 |
+| kaAdFlip | 766 | ≤ 870 |
+| kaAdLose / P2 | 3083 | — |
+| kaAdKill / P2 | 2583 | — |
+| kaAdBlocked | 2133 | — |
+
+**Sound** (`c4/clips/`, music off):
+- Peaks −1.8 … −2.6 dBFS and 0 clipped samples in kaAdAtk, kaAdDirect, kaAdRevive and the gather solo.
+- The silence still holds:
+  - Atk: LUB 1133, then under −44 dBFS from 1183 to 1353 (170 ms); the ignition onset is at 1363.
+  - Direct: LUB 1183, then under −43 from 1233 to 1403 (170 ms).
+
+**Gates:**
+- `npm run typecheck`: clean (whole tree).
+- `tests/art/ashen_drake.test.ts`: 12/12.
+- `filmdiff --set v1`: **17/17 IDENTICAL** (`c4/filmdiff_v1.txt`). Every change is inside `LOOK_V3`-registered ashen files and the
+  ashen recipe set.
+
+**Remaining weaknesses:**
+- The direct contact frame is still owned by the shared white star and number (#4 / #9 asks).
+- Direct slack is only 37 ms.
+- On the blocked film the arriving head briefly overlaps the small `polar_sovereign` (provisional target).
+- The death crouch in-between needs frame budget.
+- The plate fall reads as a burst of small chips at 1×, not as cloak shards.
+- SE-4 is still unproven on a calibrated tool.
