@@ -478,7 +478,7 @@ export const SHATTER_MATERIALS: Record<ShatterMaterial, MaterialPreset> = {
   },
   // acid (venom_drake, docs/v3/kart-a/venom_drake.md §5.4): the body is eaten — small wet pieces drop
   // straight down, rest on the floor and go dark (leaf → void), green drops fall with them. No white.
-  // Placeholder (venom's recipe breaks as 'shadow' with the 'acid' ACCENT); the venom builder tunes it.
+  // Final as shipped, untuned: venom_drake's recipe breaks as 'shadow' + the 'acid' ACCENT; only the venomscale def names this.
   acid: {
     brick: [1, 2], speed: 0.3, up: [0, 10], gravity: 520, drag: 1.6, life: [520, 820], floor: 'rest', bounce: 0, flutter: 0, attract: 0,
     flash: [PAL.leaf3], late: [PAL.leaf1, PAL.void0], lateAt: 0.45, blinkAt: 0.8,

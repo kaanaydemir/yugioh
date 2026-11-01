@@ -2138,3 +2138,19 @@ The round-3 critic gave a ship-quality "yes". I checked each finding against a f
   smaller at the far end of the arc.
 - The brief level-1 scar (dark dither) still shows behind the first puddle. The puddle now dominates it.
 - The shared contact ring and the summon's cut-in loudness are still for their shared owners.
+
+### Gates round (2026-11-01, after critique round 3)
+
+All gates were run on the working tree, which includes the fix3 spray/puddle changes. No card file needed a fix, and no code changed in this round. Evidence is in `shots/kart-a/venom_drake/gates/`.
+
+| Gate | Result |
+|---|---|
+| `npm run typecheck` | clean (0 errors in the whole tree) |
+| `npm test` | 1352 pass / 4 fail, all on the known list: cardface-v3 G1, dusk_ashen (dusk_sorcerer validateArt), hourglass_imp, shield_titan. All venom_drake tests pass. |
+| `filmdiff --set v1` | 17/17 IDENTICAL (`gates/filmdiff-v1.txt`) |
+| `filmdiff --set a6v1` | 26/26 IDENTICAL (`gates/filmdiff-a6v1.txt`) |
+| camera gate (`now.json` = `kaVenom*` + `baseline`, `--look v3`) | 15 ok, 20 ok NOBASE (the kaVenom keys have no base entry), 0 FAIL. zoom 1 everywhere (`gates/camera-gate.txt`, `shots/kart-a/venom_drake/now.json`). |
+| monster-gates (`--class ace --ref none`, P1 + P2) | 21 ok, 0 FAIL, 2 n/a, 1 info. 137 frames, 5.04 MB, render 7.05 ms P1 (`gates/sheet/`) |
+| palcheck (a5, clip 120,40,400,230, 100 frames at 34 ms) | Fails the absolute a5 limits in the same way the approved base films do (lane convention). Atk Δmax +1.32 at #14 (the shared declaration; base saWyrmAtk +1.48) and Lose +1.60 at #14 (the same shared frame). Direct stays at Δ ≤ +0.89 for the whole spray. Its +2.16 peak at t ≥ 2822 comes after the scene ends (ready 2200): it is the shared −2000 number fading plus the hint bar (`pal/kaVenomDirect/f0084.png`). The Summon peak of +3.55 at #35 is the shared card flight with its card face (base suWyrm +5.56). No white row is above 43 % (`gates/pal/palcheck.txt`). |
+| Times (guidance only) | Summon/P2 3833, Atk/P2 2183, Direct/P2 2183, Blocked 1883, Lose/Both 2983, DefKill 4000, Dies 2716, DiesDef 2666, Hit 2433, Magic 2616, Revive 2166, Flip 733, Pos 1000, AtkDark 2183, ScarStack/Persist 15683. Each is within its REHBER §5 × 1.45 figure where the doc sets one. |
+| Page errors / watchdog | errors 0 in every kaVenom* and baseline scenario (`gates/measure.log`) |
