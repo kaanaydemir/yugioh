@@ -225,3 +225,27 @@ and one shield_titan test fails besides its known one — re-check after the hat
    camera gate, palcheck, monster-gates, measure ≤ REHBER §5 × 1.45) → one adversarial verifier + fixes → per-card commit.
    For cloud_hatchling, first finish its card-art fix (critique in its doc build log) and make tests/art/cloud_hatchling*.test.ts pass.
 4. Scratch helpers `tools/_*.ts` are local-only (excluded via .git/info/exclude); never commit them.
+
+## LANE A DONE (2026-11-01 ~21:15 UTC)
+All three cards are finished, gate-checked and pushed on `claude/kart-a`:
+
+| Card | Finished commit | Notes |
+|---|---|---|
+| ashen_drake (Kül Ejderi, R1, no rebirth) | `b2fc32e` (already merged to main as `bd5cf12`) | vulture-perch ash dragon; cloak-as-ammunition ash-bank breath with delayed ignition; crumble-to-ash-heap death |
+| cloud_hatchling (Bulut Yavrusu, C3) | `3cd1647` | baby + permanent grown form (variant mechanism); egg summon; hiccup wind-ring attack; egg re-knit death; growth signature after a won jester toss |
+| venom_drake (Zehir Ejderi, full redesign) | `dd6ce16` | scorpion wyvern; venom-mortar glob that eats holes; self-corrosion death leaving a duel-long acid scar |
+
+Gates at each card's finish: typecheck clean; vitest only the known failures; filmdiff v1 17/17 + a6v1 26/26 IDENTICAL;
+camera gate 0 FAIL; all card scenarios play without errors; monster-gates pass (declared rows only).
+Process: design 3 rounds (design + 2 critiques), sprite 3 sheet-critique rounds, card art (+cut-in) critique, cinematics +
+3 film-critique rounds, gates, adversarial verification, per card.
+
+**Open, owned outside lane A (for the merging orchestrator):**
+- Lane D: call our `rewindAnims()` / `rewindSfx` contract (`src/art/variants.ts`) when a jester win destroys an opponent's
+  cloud_hatchling (today it plays the hatchling's own death; reads fine, but the reversed growth is not shown).
+- Shared `src/cinematics/_core/project.ts` has no `toHand` case (projection-drift console warning on bounces).
+- Shared impact star / damage number covers the direct-attack contact frame (ashen_drake); shared cut-in sound is the summon's
+  loudest moment (venom_drake); per-card slam / victory sound roles requested.
+- `shots/kart-a/camera-base.json` has no kaVenom*/kaCh*/kaAd* keys (they pass as NOBASE); re-base at merge if wanted.
+- palcheck absolute a5 limits fail on shared frames exactly as the approved base films do (no regression).
+- Owner questions answered by default: no ambient idle sounds; only venom_drake's death scar persists.
