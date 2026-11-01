@@ -2047,12 +2047,34 @@ film and a ×3 detail film, plus a `clip.mjs` sound timeline (`cross/*.json`). S
 | Gate | Result |
 |---|---|
 | typecheck (`npm run typecheck`) | clean, 0 errors (whole tree) |
-| tests (`npx vitest run`) | see the Status paragraph |
+| tests (`npx vitest run`) | 1351 passed, 4 failed. All 4 are on the known list (cardface-v3 G1, dusk_ashen validateArt, hourglass_imp registration, shield_titan death heap); no hatchling test fails. An earlier run made while 3 browser jobs were busy also timed out in 4 heavy art tests, `cloud_hatchling` among them. That test passes alone (9/9) and in the quiet full run |
 | v1 look (`filmdiff --set v1`) | **17/17 IDENTICAL** (`c3r5/filmdiff-v1.log`) |
-| a6 v1 look (`filmdiff --set a6v1`) | see the Status paragraph (`c3r5/filmdiff-a6v1.log`) |
+| a6 v1 look (`filmdiff --set a6v1`) | **26/26 IDENTICAL** (`c3r5/filmdiff-a6v1.log`) |
 | camera (`measure --camera-gate shots/kart-a/camera-base.json c3r5/now.json`) | 15 ok, 56 ok NOBASE, **0 FAIL**; zoom 1 everywhere |
 | page errors (`c3r5/now.json`, 56 `kaCh*` incl. the new `kaChGrownRevive`) | 0 errors in all. The one console drift line in `kaChGrownBounce` is the shared `toHand` gap (#3) |
 | budgets (REHBER §5 × 1.45) | unchanged from the gates round: Summon 2366 · Atk 2333 · Blocked 2466 · Tie 3033 · Lose 3150 · Kill 2600 · KillPhys 2883 · GuardKill 2216 · Bolt 2466 · Hit 1533 · Direct 2200 · GrownAtk 2550 · GrownBlocked 2400 · GrownKill 2666 · GrownGuardKill 2583 · GrownLose 3166 · GrownDirect 2316 · Revive 2133 · Flip 733 · Grow 9083 (hook 3033) — all within |
 | monster-gates (`c3r5/gates/baby.txt`, `grown.txt`; medium, P1 + P2, `--ref none`) | baby 20 ok + HA-14; grown 19 ok + HA-14 / HA-15. The FAIL rows are identical to `gates5` |
 | palcheck (a5, clip 120,40,400,230, 100 × 34 ms) | kaChAtk Δmax +1.16 / white 2.19, kaChLose +1.28 / 2.22. These are identical to `gates5`, and the base films fail the same way |
 | SE-4 moment LSD (`c3r5/lsdm/lsdm.md`) | LTAS median 6.9 / ST 17.3 dB vs siblings, against a sibling-vs-sibling calibration of 4.9 / 16.3 dB |
+
+**Status (after c3r5).** Every gate passes, or fails only on a declared or shared item. v1 is byte-identical
+(17/17 and 26/26). The camera gate shows 0 FAIL, and all 56 `kaCh*` scenarios run without errors and within
+budget.
+- Verifier item 1: the moment-level SE-4 is now measured and logged. Our moments differ from the sibling aces at
+  least as much as those aces differ from each other.
+- Verifier item 2: every cross-card case is filmed at 1× and ×3, with sound timelines. The grown voice holds
+  through chains and mirror, the grown form persists through turn ends, position changes, control and equip, and
+  the revive is a baby.
+- Verifier item 3: the `project.ts` change is confirmed and tested, and the drift warning is root-caused and
+  assigned.
+- Verifier items 4 and 5 are accepted.
+
+Open, and owned elsewhere:
+1. Lane D still has to call `rewindAnims` / `rewindSfx`. Today our own death does the un-aging.
+2. The shared projector needs `case 'toHand'` (the homecoming drift).
+3. venom_drake's v3 strike and death sounds are not wired in this tree, so `kaVenomAtk` and `kaVenomMagic` play
+   the generic sounds.
+4. The blind KK-1 critic sign-off next to crystal_wyrm.
+
+Open and owned by this card, accepted for ship: the #4 / #5 items (the 1× ring size, the dial build-up, the mane
+notches, the 4 ms and 40 ms headroom).

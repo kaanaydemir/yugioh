@@ -8,7 +8,7 @@ Branch `claude/kart-a` (from 684e290). Brief: `docs/v3/PARALEL_OTURUMLAR.md`.
 |---|---|---|---|---|---|---|---|---|---|
 | ashen_drake (R1, no rebirth) | done (rev 3) | done (vulture-perch rig, P1 + P2) | done | done | done (summon, attack/tie/direct, revive, position, flip, death) | done | 7 (sprite 3, cinematics 3, adversarial 1) | pass (see ashen_drake below; IŞ-10 exempt, palcheck a5 absolutes as base) | yes |
 | venom_drake (full redesign) | done (rev 3) | — | — | — | — | — | 0 | — | — |
-| cloud_hatchling (C3 + aged form) | done (rev 3) | — | — | n/a (not ace) | — | — | 0 | — | — |
+| cloud_hatchling (C3 + aged form) | done (rev 3) | done (baby + grown variant, P1 + P2) | done | n/a (not ace) | done (summon, growth/jesterAging, attack/direct, grown attack, revive, position, flip, death, cross-card) | done | 9 (sprite 3, film 3, adversarial 3: c3r3–c3r5) | pass (see cloud_hatchling below; HA-14/HA-15 shared-shell rows declared, palcheck a5 absolutes as base) | yes |
 
 ## Environment notes
 - The container's Chromium lives at `/opt/pw-browsers/chromium-1243/chrome-linux64/chrome`, but the tools look for
@@ -164,6 +164,22 @@ are the ambient sky-flyer band (x 32–606, y 94–111), which differs between t
 - Open: (1) direct attack — shared white star + damage number cover the contact frame (request #9);
   (2) wide/boxy targets (tie's cannon mech) — target silhouette's straight top edge shows above the shorter edge flames
   for ~2 frames at the peak; (3) per-card slam sound request to the orchestrator still stands.
+
+## cloud_hatchling: done (2026-11-01)
+- Evidence: `shots/kart-a/cloud_hatchling/c3r5/` (gates in `c3r5/gates/`, cross-card films in `c3r5/cross/`, whole-moment
+  sound distinctness in `c3r5/lsdm/lsdm.md`; per-role LSD in `c3r4/lsd.md`); build log + Status in
+  `docs/v3/kart-a/cloud_hatchling.md` ("Adversarial verification fixes (round c3r5)").
+- Gates: typecheck clean · `npx vitest run` 1351 passed, 4 failed (the 4 known; no hatchling test) · filmdiff v1 17/17
+  and a6v1 26/26 identical · camera gate 0 FAIL, no zoom · measure 0 errors in 56 `kaCh*` films, all within budget
+  (`kaChGrownDirect` 2316 ≤ 2320, `kaChLose` 3150 ≤ 3190) · monster-gates baby 20 ok + HA-14, grown 19 ok + HA-14/HA-15
+  (declared shared-shell rows) · palcheck: same a5-absolute FAILs as the approved base films.
+- Sound: whole-moment LSD vs ashen/venom/crystal_wyrm median 6.9 dB (LTAS) / 17.3 dB (ST); the three low cells come
+  from sounds that are not this card's (venom's generic whoosh/slash, shared kit impact).
+- Open: (1) lane D never calls the rewind contract — an opponent jester win plays our death (grown → baby → egg)
+  instead of the reversed growth/summon; (2) shared `project.ts` projector has no `case 'toHand'` (homecoming bounce
+  → "projection drift" console line in `kaChGrownBounce`), orchestrator's file; (3) venom_drake's new attack/death
+  sounds not wired yet; (4) KK-1 blind critic sign-off (grown form next to crystal_wyrm) still needed.
+  Deviation: `?dev=hatchling&mode=rewind` preview not built; a unit test covers the contract.
 
 ## ashen_drake: IŞ-10 reference exemption (2026-10-31, lane-A builder, critic r3 #12)
 `tools/monster-gates.ts` compares idle f0 noise with the v1 idle f0 when a card has no approved still. For ashen_drake
