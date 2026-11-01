@@ -14,7 +14,7 @@
 // Every one-shot ends on idle f0.
 
 import type { AnimSpec, AnyMonsterAnim, MonsterAnim, MonsterAnimExtra, MonsterPoints } from '../types';
-import { GY, RX, pose, skeleton, type Pose } from './polar_needle-rig';
+import { GY, RX, pose, resolveAim, skeleton, type Pose } from './polar_needle-rig';
 
 const rnd = Math.round;
 
@@ -216,33 +216,41 @@ export function hitMagicPose(f: number): Pose {
 }
 const HM_HOLDS = [50, 60, 70, 70, 90, 100, 110, 120];
 
-// ------------------------------------------------------------------ summon (14): drop on the point, two compass turns, lock, unfold
+// ------------------------------------------------------------------ summon (15): drop on the point, two compass turns, lock, unfold
 
-const SU_N = 14;
-/** The folded needle: legs closed on one point, arms at the chest, the spear held as a compass needle. */
+const SU_N = 15;
+/** The summon frame on which the needle locks onto the opponent ("TIK"). */
+export const SUMMON_LOCK = 12;
+/** The folded needle: en pointe, arms round the spear held as a compass card at the pivot. */
 const FOLD: Partial<Pose> = {
   toe: 1, nfx: -6, ffx: 7, py: -1, nx: 7, ny: -41, fx: 0, fy: -45, spin: 1, yaw: 0, roseK: 0, lid: 0, eye: 1.2, lean: 0, hx: 0, poleN: 1.5, poleS: 1.5, tip: 1.5,
 };
-const SPIN: [number, number][] = [
-  // [yaw deg, trail deg] after the land: two decelerating turns, overshoot past the foe, back, lock at 720 (= 0)
-  [150, 120], [290, 130], [420, 120], [530, 100], [620, 80], [680, 55], [712, 30], [736, 18], [714, 12], [720, 0],
+/** After the land: the body yaws through two full turns — side, front, away, back — whipping fast, then slowing
+ *  (each [yaw deg, trail deg, whip]); the whole needle (body + spear + rose crown) turns as one compass card. */
+const SPIN: [number, number, number][] = [
+  [90, 90, 1], [180, 90, 2], [270, 90, 1], [360, 90, 2],
+  [450, 90, 1], [540, 80, 2], [630, 70, 0], [700, 50, 0],
 ];
 export function summonPose(f: number): Pose {
   if (f >= SU_N - 1) return home();
   const ph = f / (SU_N - 1);
   const base: Pose = { ...IDLE0, ...FOLD, rose: 0, dust: -1, t: ph };
   if (f === 0) return { ...base, py: -3, streak: 1, yaw: 0, eye: 0.6 };
-  if (f === 1) return { ...base, py: 0, ring: 0.25, shake: 1, yaw: 30, trail: 30 };
-  if (f <= 11) {
-    const [yaw, trail] = SPIN[f - 2];
-    const lock = f === 11;
-    return { ...base, py: 0, yaw, trail, ring: f === 2 ? 0.6 : f === 3 ? 0.9 : 0, tip: lock ? 3 : 1.5, poleN: lock ? 2.5 : 1.5, poleS: lock ? 2.5 : 1.5, eye: lock ? 2 : 1.2, glint: lock ? 2 : 0, roseK: lock ? 0.5 : 0, field: f >= 9 ? 0.6 : 0, fph: ph };
+  if (f === 1) return { ...base, py: 0, ring: 0.25, shake: 1, yaw: 0, trail: 40 };
+  if (f <= 9) {
+    const [yaw, trail, whip] = SPIN[f - 2];
+    return { ...base, py: 0, yaw, trail, whip, rose: (yaw / 360) % 1, roseK: 0.6, ring: f === 2 ? 0.6 : f === 3 ? 0.9 : 0, field: f >= 7 ? 0.6 : 0, fph: ph };
   }
-  // f12: unfold — the spear drops level into the hand, the legs open into the stance, the rose crown opens
+  // f10–f12: out of the turn the spear swings past the foe's bearing (overshoot), back a hair, and LOCKS on it
+  const aimK: Partial<Pose> = { spin: 0, yaw: 0, aim: 1, roseK: 0.8, nx: 11, ny: -42, fx: -3, fy: -47, field: 0.6, fph: ph };
+  if (f === 10) return snap({ ...base, ...aimK, sa: -16, hx: -1, rose: 0.08, tip: 2 });
+  if (f === 11) return snap({ ...base, ...aimK, sa: 6, hx: 1, rose: 0.1, tip: 2, shake: 2 });
+  if (f === SUMMON_LOCK) return snap({ ...base, ...aimK, sa: 0, hx: 1, rose: 0.12, tip: 3, poleN: 2.5, poleS: 2.5, eye: 2, glint: 2, roseK: 1, field: 1, roseG: 2 });
+  // f13: unfold — the spear drops level into the hand, the legs open into the stance, the rose crown opens
   const open = { ...IDLE0, ...FOLD, spin: 0, sa: -4, toe: 0, roseK: 1, rose: 0.9, dust: -1, t: ph };
   return { ...blend(open, IDLE0, 0.55), spin: 0, toe: 0, roseK: 1, rose: 0.95, tip: 2, poleN: 1.5, eye: 1.4, dust: -1, field: 0.4, fph: ph };
 }
-const SU_HOLDS = [70, 80, 60, 60, 60, 70, 80, 90, 100, 110, 110, 150, 120, 140];
+const SU_HOLDS = [70, 80, 60, 60, 60, 65, 70, 85, 100, 120, 110, 90, 200, 120, 140];
 
 // ------------------------------------------------------------------ death (10): seized → ripped out → spins away → the shell falls
 
@@ -300,9 +308,9 @@ export function specialPose(f: number): Pose {
 }
 const SP_HOLDS = [80, 110, 130, 170, 50, 60, 90, 100, 110, 120, 140];
 
-// ------------------------------------------------------------------ victory (6): the fencer's salute (spear upright before the visor)
+// ------------------------------------------------------------------ victory (8): the fencer's salute (spear upright before the visor), then back to guard-ready
 
-const V_N = 6;
+const V_N = 9;
 export function victoryPose(f: number): Pose {
   const keys: Partial<Pose>[] = [
     { nx: 12, ny: -42, sa: -40 },
@@ -312,9 +320,13 @@ export function victoryPose(f: number): Pose {
     { nx: 7, ny: -47, sa: -90, fy: -64, poleN: 2, poleS: 2, tip: 2, eye: 1.8, glint: 1, field: 0.6, fph: 0.5 },
     { nx: 7, ny: -47, sa: -90, fy: -64, poleN: 2, poleS: 1.5, tip: 2, eye: 1.6 },
   ];
+  if (f >= V_N - 1) return home();
+  // the salute held: the point breathes once (pole glow up a step), then the spear comes down to the stance
+  if (f === 6) return snap(key({ ...keys[5], tip: 2.5, poleS: 2, eye: 1.8 }, f, V_N));
+  if (f === 7) return toward(key(keys[5], 5, V_N), 0.6, f, V_N, { sa: -40, glint: 0, field: 0 });
   return snap(key(keys[Math.min(f, 5)], f, V_N));
 }
-const V_HOLDS = [100, 110, 120, 130, 140, 400];
+const V_HOLDS = [100, 110, 120, 130, 140, 190, 180, 110, 120];
 
 // ------------------------------------------------------------------ tables
 
@@ -370,7 +382,8 @@ export function framePose(anim: AnyMonsterAnim, f: number): Pose {
 export const MUZZLE = { x: RX + 35, y: GY - 42 };
 
 export function framePoints(anim: AnyMonsterAnim, f: number): MonsterPoints {
-  const o = framePose(anim, f);
+  // P1 frame (the P2 relit sheet aims the other way; the cinematics resolve that with resolveAim)
+  const o = resolveAim(framePose(anim, f), 'left');
   const sk = skeleton(o);
   const pt = (q: readonly [number, number]) => ({ x: rnd(q[0]), y: rnd(q[1]) });
   return {

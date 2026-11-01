@@ -16,7 +16,9 @@
 //   charge  polarCoilCharge        the dust gathers into three spikes orbiting the coil (circular pan, rising, sustained → release)
 //   release polarCoilFling         the whips crack forward, the three spikes are flung (crack + three whooshes)
 //           polarCoilOrbit         the spikes orbit the target: a circling three-voice whirr, faster (sustained → converge)
-//   impact  polarCoilTshak         the three converge: "tşak-tşak-tşak" in 28 ms + magnetic thump
+//   impact  polarCoilTshak         the three converge: "tşak-tşak-tşak" 52 ms apart, each brighter, then the magnetic thump
+//   (flip)  polarCoilFlipWind      flip summon: the card turns, a fast 3-turn wind on the bare spindle (→ polarCoilSnap)
+//   (toGuard) polarCoilWrap        position change: the whips wrap the drum (twang + lug ticks)
 //           polarCoilDeflect       blocked: the spikes splinter on the guard into dust
 //   (death f1) polarCoilUnwind     the wire unwinds (played by the hook, see cinematics/d/polar_coil.ts), the spools spin backwards: buzz falling, ticks slowing
 //   dissolve   polarCoilWobble     the empty spindle wobbles on its pin (creak + the hum dying)
@@ -227,7 +229,10 @@ export const V3_POLAR_COIL_RECIPES = {
       poleHum(v, 0, [[0, 0], [0.04, 0.16], [D, 0.2], [E, 0.0001, 'e']]);
     },
   },
-  /** The converge: three spikes meet in the body — "tşak-tşak-tşak" 28 ms apart, a magnetic thump, the hum bursts. */
+  /**
+   * The converge: three spikes meet in the body — "tşak-tşak-tşak" 52 ms apart (three hits, not a flam), each a
+   * step brighter (higher band, a little louder), then the magnetic thump AFTER the third, the hum bursts.
+   */
   polarCoilTshak: {
     cap: 2,
     gap: 0.05,
@@ -235,16 +240,18 @@ export const V3_POLAR_COIL_RECIPES = {
     duck: 0.6,
     play(v) {
       const pans = [-0.45, 0.45, 0];
+      const GAP = 0.052;
       for (let i = 0; i < 3; i++) {
-        const t = i * 0.028;
+        const t = i * GAP;
         const p = v.panner(pans[i]);
-        crack(v, t, 0.42 - i * 0.04, { hp: 2600 + i * 400, n: 2, gap: 0.006, dec: 0.018, to: p });
-        clank(v, 1180 + i * 170, t, 0.12, 0.2, { ratio: 2.76, index: 1.8, click: 1.2, to: p });
+        crack(v, t, 0.38 + i * 0.06, { hp: 2400 + i * 700, n: 2, gap: 0.006, dec: 0.018, to: p });
+        clank(v, 1180 + i * 220, t, 0.08 + i * 0.015, 0.16, { ratio: 2.76, index: 1.8, click: 1 + i * 0.25, to: p });
       }
-      thump(v, 0.056, 120, 44, 0.4, 0.24, { drive: 1.5 });
-      poleHum(v, 0.05, perc(0.3, 0.4, 0.003));
-      v.tone('sawtooth', [[0, D3 * 2], [0.25, D3, 'e']], { t: 0.056, g: perc(0.06, 0.25, 0.002), to: v.filt('lowpass', 1400, 1) });
-      glassRain(v, { t: 0.07, d: 0.35, n: 8, g: 0.03, notes: DUST, dec: [0.03, 0.1], curve: 1.6, modes: 2 });
+      const T3 = 2 * GAP + 0.03;
+      thump(v, T3, 110, 44, 0.26, 0.2, { drive: 1.4 });
+      poleHum(v, T3, perc(0.22, 0.4, 0.003));
+      v.tone('sawtooth', [[0, D3 * 2], [0.25, D3, 'e']], { t: T3, g: perc(0.05, 0.25, 0.002), to: v.filt('lowpass', 1400, 1) });
+      glassRain(v, { t: T3 + 0.01, d: 0.35, n: 8, g: 0.026, notes: DUST, dec: [0.03, 0.1], curve: 1.6, modes: 2 });
     },
   },
   /** Blocked: the spikes splinter on the guard — three bent tinks scattering, dust raining off. */
@@ -323,6 +330,37 @@ export const V3_POLAR_COIL_RECIPES = {
       v.tone('sine', [[0, 110], [0.8, 66, 'e']], { g: [[0, 0], [0.02, 0.1], [0.8, 0.0001, 'e']] });
       v.tone('sine', [[0, 111], [0.8, 65, 'e']], { g: [[0, 0], [0.02, 0.09], [0.8, 0.0001, 'e']] });
       glassRain(v, { t: 0.04, d: 0.7, n: 14, g: 0.028, notes: DUST, dec: [0.04, 0.14], curve: 1.6, modes: 2 });
+    },
+  },
+  /** Flip summon: the card turns, the bare spindle takes a fast 3-turn wind — a short buzz whipping up D3 → D4, quickening ticks. */
+  polarCoilFlipWind: {
+    cap: 1,
+    gap: 0.2,
+    verb: 0.3,
+    duck: 0.3,
+    play(v) {
+      const D = 0.42;
+      const E = D + 0.06;
+      const env: Pt[] = [[0, 0], [0.03, 0.08], [D, 0.17], [E, 0.0001, 'e']];
+      windBuzz(v, 0, E, [[0, D3], [D, D3 * 2, 'e'], [E, D3 * 2]], [[0, 14], [D, 48, 'e']], [[0, 700], [D, 2800, 'e']], env);
+      sweep(v, 0, 0.2, [900, 2600, 1400], 0.1, { kind: 'pink', q: 1.8, pan: [-0.4, 0.1], peakAt: 0.75 });
+      spoolTicks(v, 0.02, turnTimes(D, 14, 40), 0.07, 2700);
+      poleHum(v, 0, [[0, 0], [D, 0.12], [E, 0.0001, 'e']]);
+    },
+  },
+  /** toGuard: the whips swing up and wrap the drum — a quick copper twang, the lugs ticking onto the windings. */
+  polarCoilWrap: {
+    cap: 1,
+    gap: 0.1,
+    verb: 0.3,
+    duck: 0.25,
+    play(v) {
+      sweep(v, 0, 0.14, [1400, 3000, 1800], 0.07, { kind: 'pink', q: 2, pan: [0.3, -0.3], peakAt: 0.6 });
+      twang(v, 0.09, D3 * 2, 0.09, 0.32);
+      spoolTicks(v, 0.12, [0, 0.045, 0.085], 0.09, 2600);
+      link(v, 1500, 0.2, 0.05, 0.12);
+      thump(v, 0.2, 120, 80, 0.22, 0.1);
+      poleHum(v, 0.09, perc(0.08, 0.35, 0.004));
     },
   },
   /** Revive: the wire snaps back onto the spindle top → bottom (a reverse wind: buzz rising, ticks quickening; stopped on land). */

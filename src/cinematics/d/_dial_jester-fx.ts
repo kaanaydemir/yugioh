@@ -22,7 +22,7 @@
 import Phaser from 'phaser';
 import type { CardId } from '../../data/cards';
 import type { GameEvent, PlayerId } from '../../engine/types';
-import { PAL } from '../../art/palette';
+import { PAL, RAMPS } from '../../art/palette';
 import { PixelCanvas } from '../../art/pixel';
 import { ISO_CX, ISO_CY, ISO_TEX_H, ISO_TEX_W, cardIsoKey } from '../../art/cards';
 import type { AnyMonsterAnim } from '../../art/types';
@@ -33,7 +33,8 @@ import { coin as drawCoin, cog, floorDial } from '../../art/monsters-v3/dial_jes
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { sfx } from '../../audio/sfx';
 import { BOARD_CENTER, DEPTH, zoneXY, LANE_MID, type XY } from '../../view/layout';
-import { lightFlash } from '../../view/light';
+import { lightBeam, lightFlash } from '../../view/light';
+import { clearHologram, holoRamp, setHologram } from '../../vfx/hologram';
 import type { TileCard } from '../../view/TileCard';
 import { Raster } from '../../vfx/setpieces';
 import { Sparks, animate, onFrame } from '../../vfx/combat';
@@ -171,8 +172,14 @@ export interface ArenaDial {
   hot: number;
   /** extra glow on the side of the dial at this dial angle (deg; null = none) */
   glowAt: number | null;
+  /** the minute hand's length (radius fraction; 0.5 by default — longer when it reaches out to a card) */
+  minLen: number;
+  /** the "12" marker's strike pulse 0..1 (0 = none; the caller animates it 1 → 0) */
+  pulse12: number;
   /** The world point at a dial angle and radius fraction. */
   at(deg: number, k: number): XY;
+  /** A world point in dial terms: its angle (deg, 0 = the 12) and radius fraction. */
+  toDial(p: XY): { deg: number; k: number };
   readonly center: XY;
   destroy(): void;
 }
@@ -199,7 +206,13 @@ export function arenaDial(sc: Phaser.Scene, opp: PlayerId, depth: number = FLOOR
     min: 0,
     hot: 0,
     glowAt: null,
+    minLen: 0.5,
+    pulse12: 0,
     at: ptAt,
+    toDial: (p) => {
+      const a = Math.atan2((p.x - c.x) / RXA, -(p.y - c.y) / RYA);
+      return { deg: ((((a - base) * 180) / Math.PI) % 360 + 360) % 360, k: Math.hypot((p.x - c.x) / RXA, (p.y - c.y) / RYA) };
+    },
     center: c,
     destroy() {
       stop();
@@ -222,6 +235,7 @@ export function arenaDial(sc: Phaser.Scene, opp: PlayerId, depth: number = FLOOR
         const y = Math.floor(c.y + Math.sin(a) * RYA);
         if (k < 0.6 && (x + y) % 2) continue;
         g.px(x, y, hot ? PAL.gold4 : k > 0.66 ? PAL.gold3 : PAL.gold2);
+        if (k > 0.66 && (i & 1) === 0) g.px(Math.floor(c.x + Math.cos(a) * (RXA - 2)), Math.floor(c.y + Math.sin(a) * (RYA - 1)), hot ? PAL.gold3 : PAL.gold2);
         if (k > 0.4) g.dpx(c.x + Math.cos(a) * (RXA - 5), c.y + Math.sin(a) * (RYA - 2.5), PAL.gold1, (lvl - 0.4) * 1.2);
       }
       if (d.glowAt !== null) {
@@ -250,24 +264,43 @@ export function arenaDial(sc: Phaser.Scene, opp: PlayerId, depth: number = FLOOR
       const sparkle = Math.floor(el / 45) % 12;
       const sp = ptAt(sparkle * 30, 0.95);
       g.px(sp.x, sp.y, PAL.white);
-      // the hands: short, from the hub, tapering to a bright tip with an arrow head (they read as clock hands,
-      // not as beams); they pass under the bodies (floor depth)
-      const hand = (deg: number, k2: number, body: number, tip: number, w: number) => {
+      // the "12" strike pulse: the marker blazes white and an iso ring of light runs out of it
+      if (d.pulse12 > 0.02) {
+        const pk = d.pulse12;
+        const m12 = ptAt(0, 0.92);
+        const rr = Math.round(4 + (1 - pk) * 14);
+        g.ring(m12.x, m12.y, rr, Math.max(1, rr >> 1), pk > 0.5 ? PAL.white : PAL.gold4);
+        if (pk > 0.3) g.ring(m12.x, m12.y, Math.max(2, rr - 3), Math.max(1, (rr - 3) >> 1), PAL.gold3);
+        for (const off of [-6, 0, 6]) {
+          const a2 = ptAt(off, 1.02);
+          const b2 = ptAt(off, 0.8);
+          g.line(a2.x, a2.y, b2.x, b2.y, pk > 0.4 ? PAL.white : PAL.gold4);
+        }
+      }
+      // the hands: 2 px, from a brass hub, with an ink underside (they read over the busy board) and a lit
+      // arrow tip; they pass under the bodies (floor depth)
+      const hand = (deg: number, k2: number, body: number, tip: number) => {
         const e = ptAt(deg, k2);
-        const m = ptAt(deg, k2 * 0.75);
-        g.line(c.x, c.y, m.x, m.y, body, 1, w);
-        g.line(m.x, m.y, e.x, e.y, tip);
-        const l1 = ptAt(deg - 7, k2 * 0.88);
-        const l2 = ptAt(deg + 7, k2 * 0.88);
+        const m = ptAt(deg, Math.max(0.05, k2 - 0.09));
+        const s0 = ptAt(deg, 0.04);
+        g.line(s0.x, s0.y + 1, m.x, m.y + 1, PAL.ink, 1, 2);
+        g.line(s0.x, s0.y, m.x, m.y, body, 1, 2);
+        const l1 = ptAt(deg - 6, k2 - 0.1);
+        const l2 = ptAt(deg + 6, k2 - 0.1);
+        g.line(l1.x, l1.y + 1, e.x, e.y + 1, PAL.ink);
+        g.line(l2.x, l2.y + 1, e.x, e.y + 1, PAL.ink);
         g.line(l1.x, l1.y, e.x, e.y, tip);
         g.line(l2.x, l2.y, e.x, e.y, tip);
+        g.line(m.x, m.y, e.x, e.y, tip, 1, 2);
         g.px(e.x, e.y, PAL.white);
+        g.px(e.x, e.y - 1, PAL.white);
       };
-      hand(d.hour, 0.3, hot ? PAL.gold3 : PAL.gold2, PAL.gold4, 2);
-      hand(d.min, 0.5, hot ? PAL.gold4 : PAL.gold3, hot ? PAL.white : PAL.gold4, 1);
-      g.disc(c.x, c.y, 3, PAL.gold3);
-      g.ring(c.x, c.y, 3, 3, PAL.ink);
-      g.px(c.x, c.y, PAL.white);
+      hand(d.hour, 0.3, hot ? PAL.gold3 : PAL.gold2, PAL.gold4);
+      hand(d.min, d.minLen, hot ? PAL.gold4 : PAL.gold3, PAL.white);
+      g.disc(c.x, c.y, 4, PAL.gold2);
+      g.disc(c.x - 1, c.y - 1, 2, PAL.gold4);
+      g.ring(c.x, c.y, 4, 4, PAL.ink);
+      g.px(c.x - 1, c.y - 1, PAL.white);
     });
     return true;
   });
@@ -438,58 +471,139 @@ export function gearsAndSprings(sc: Phaser.Scene, home: XY, dir: 1 | -1, depth: 
 
 // ================================================================ rewind: the card rectangle
 
+/** One drawn card in any lie (4 corners: bottom-left, bottom-right, top-right, top-left): night fill, an inner gold
+ *  frame line, a lit rim (the edges toward the top-left light gold4, the others gold2), an ink outline, the emblem. */
+function cardQuad(g: Raster, q: readonly XY[], o: { glint?: number; hot?: boolean } = {}): void {
+  const P = q.map(rx);
+  const c = { x: (P[0].x + P[1].x + P[2].x + P[3].x) / 4, y: (P[0].y + P[1].y + P[2].y + P[3].y) / 4 };
+  g.poly(P, PAL.night1);
+  const inner = P.map((p) => ({ x: Math.round(lerp(p.x, c.x, 0.28)), y: Math.round(lerp(p.y, c.y, 0.28)) }));
+  g.poly(inner, PAL.night2);
+  g.path([...inner, inner[0]], PAL.gold1);
+  // the rim: lit edges toward the light (top, left), shaded ones away from it
+  const lit = o.hot ? PAL.white : PAL.gold4;
+  g.line(P[3].x, P[3].y, P[2].x, P[2].y, lit);
+  g.line(P[0].x, P[0].y, P[3].x, P[3].y, lit);
+  g.line(P[0].x, P[0].y, P[1].x, P[1].y, PAL.gold2);
+  g.line(P[1].x, P[1].y, P[2].x, P[2].y, PAL.gold3);
+  // the emblem: a little gold dial (ring + 12 tick) in the middle
+  const cx = Math.round(c.x);
+  const cy = Math.round(c.y);
+  g.px(cx, cy, PAL.gold4);
+  g.px(cx - 1, cy, PAL.gold3);
+  g.px(cx + 1, cy, PAL.gold3);
+  g.px(cx, cy - 1, PAL.white);
+  g.px(cx, cy + 1, PAL.gold2);
+  // a glint sliding across the face (0..1)
+  if (o.glint !== undefined && o.glint > 0 && o.glint < 1) {
+    const a = { x: lerp(P[3].x, P[2].x, o.glint), y: lerp(P[3].y, P[2].y, o.glint) };
+    const b = { x: lerp(P[0].x, P[1].x, o.glint), y: lerp(P[0].y, P[1].y, o.glint) };
+    const m1 = { x: lerp(a.x, b.x, 0.2), y: lerp(a.y, b.y, 0.2) };
+    const m2 = { x: lerp(a.x, b.x, 0.55), y: lerp(a.y, b.y, 0.55) };
+    g.line(Math.round(m1.x), Math.round(m1.y), Math.round(m2.x), Math.round(m2.y), PAL.white);
+  }
+}
+
 /**
- * The rewind's fold (C2 step 4): a gold card rectangle closes round the body's box to an upright card, then lies
- * down on the tile in three steps (upright → tilted → flat iso diamond). Resolves when it lies flat.
+ * The rewind's fold (C2 step 4): the body is poured back into its CARD — a drawn card stands up out of the tile in
+ * front of the draining body (3 steps, a glint running over its face), then lies back down onto the tile through
+ * three drawn lies (upright → leaning → low → flat on the tile, its rim flashing white as it lands). Resolves when
+ * it lies flat. `box` is the body's box (the card rises to a third of its height, never past the body).
  */
 export function foldRect(sc: Phaser.Scene, box: { x: number; y: number; w: number; h: number }, home: XY, ms: number, depth: number): Promise<void> {
   const r = new Raster(sc, 0, 0, 640, 360, depth);
-  const CW = 16;
-  const CH = 22;
-  const close = Math.round(ms * 0.6);
-  return animate(sc, ms, (t, el) => {
+  const x = Math.round(home.x);
+  const y = Math.round(home.y) + 1;
+  const HW = 8;
+  const CH = Math.round(Math.max(18, Math.min(24, box.h * 0.5)));
+  // the four lies of the card: upright → flat (corners: bl, br, tr, tl), the flat one is the tile's iso diamond
+  const UP: XY[] = [{ x: x - HW, y }, { x: x + HW, y }, { x: x + HW, y: y - CH }, { x: x - HW, y: y - CH }];
+  const FLAT: XY[] = [{ x: x - 17, y }, { x, y: y + 8 }, { x: x + 17, y }, { x, y: y - 8 }];
+  const lie = (k: number): XY[] => UP.map((p, i) => ({ x: lerp(p.x, FLAT[i].x, k), y: lerp(p.y, FLAT[i].y, k) }));
+  const rise = Math.round(ms * 0.42);
+  return animate(sc, ms, (_t, el) => {
     r.draw((g) => {
-      if (el < close) {
-        // closing: the rectangle shrinks from the body's box to the card (whole px, 4 steps)
-        const k = Math.min(1, Math.floor((el / close) * 4) / 3);
-        const w = Math.round(lerp(box.w + 4, CW, k));
-        const h = Math.round(lerp(box.h + 4, CH, k));
-        const cx = Math.round(lerp(box.x + box.w / 2, home.x, k));
-        const by = Math.round(lerp(box.y + box.h + 2, home.y - 2, k));
-        const x0 = cx - (w >> 1);
-        const y0 = by - h;
-        if (k >= 1) g.rect(x0 + 1, y0 + 1, w - 2, h - 2, PAL.night1);
-        g.line(x0, y0, x0 + w - 1, y0, PAL.gold4);
-        g.line(x0, y0 + h - 1, x0 + w - 1, y0 + h - 1, PAL.gold3);
-        g.line(x0, y0, x0, y0 + h - 1, PAL.gold4);
-        g.line(x0 + w - 1, y0, x0 + w - 1, y0 + h - 1, PAL.gold2);
-        // the card's gold diamond appears in the last step
-        if (k >= 1) {
-          g.px(cx, y0 + (h >> 1) - 2, PAL.gold4);
-          g.line(cx - 2, y0 + (h >> 1), cx + 2, y0 + (h >> 1), PAL.gold3);
-          g.px(cx, y0 + (h >> 1) + 2, PAL.gold4);
-        }
+      if (el < rise) {
+        // standing up out of the tile: its top edge climbs in 3 whole steps, a glint on the last
+        const st = Math.min(3, 1 + Math.floor((el / rise) * 3));
+        const h = Math.round((CH * st) / 3);
+        const q: XY[] = [UP[0], UP[1], { x: x + HW, y: y - h }, { x: x - HW, y: y - h }];
+        cardQuad(g, q, { glint: st === 3 ? (el / rise - 0.66) * 3 : undefined });
+        // a seam of light on the tile where it comes out
+        g.line(x - HW - 2, y, x + HW + 2, y, PAL.gold4);
         return;
       }
-      // lying down: upright → tilted (a parallelogram) → flat (the iso diamond on the tile)
-      const step = Math.min(2, Math.floor(((el - close) / (ms - close)) * 3));
-      const hx = CW / 2;
-      if (step === 0) {
-        g.poly([{ x: home.x - hx, y: home.y - 2 }, { x: home.x + hx, y: home.y - 2 }, { x: home.x + hx + 3, y: home.y - 14 }, { x: home.x - hx + 3, y: home.y - 14 }], PAL.night1);
-        g.path([{ x: home.x - hx, y: home.y - 2 }, { x: home.x + hx, y: home.y - 2 }, { x: home.x + hx + 3, y: home.y - 14 }, { x: home.x - hx + 3, y: home.y - 14 }, { x: home.x - hx, y: home.y - 2 }], PAL.gold4);
-      } else {
-        const d = step === 1 ? 0.7 : 1;
-        const pts = [
-          { x: home.x - 14 * d, y: home.y },
-          { x: home.x, y: home.y - 7 * d },
-          { x: home.x + 14 * d, y: home.y },
-          { x: home.x, y: home.y + 7 * d },
-        ];
-        g.poly(pts, step === 2 ? PAL.gold2 : PAL.night1, step === 2 ? 0.5 : 1);
-        g.path([...pts, pts[0]], step === 2 ? PAL.white : PAL.gold4);
+      // lying down: 3 drawn lies, the last flat on the tile with a white rim
+      const st = Math.min(3, 1 + Math.floor(((el - rise) / (ms - rise)) * 3));
+      const k = st === 1 ? 0.38 : st === 2 ? 0.72 : 1;
+      cardQuad(g, lie(k), { hot: st === 3 });
+      if (st === 3) {
+        // the landing: a 1-px light line round the tile's diamond
+        const F = FLAT.map(rx);
+        g.path([{ x: F[0].x - 2, y: F[0].y }, { x: F[1].x, y: F[1].y + 1 }, { x: F[2].x + 2, y: F[2].y }, { x: F[3].x, y: F[3].y - 1 }, { x: F[0].x - 2, y: F[0].y }], PAL.gold3, 0.6);
       }
     });
   }).then(() => r.destroy());
+}
+
+/**
+ * The rewind of a body with NO summon pose (an old art) — its entrance played backwards: the body runs back
+ * through its own idle frames fast (time unwinding, gold echoes peeling off), turns to a gold hologram in three
+ * palette steps, and is drawn back DOWN into the tile from the head to the feet in whole-px steps while the light
+ * column it came out of stands on the tile again and pinches out. Resolves when the body is gone (hidden).
+ */
+export async function drainBody(sc: Phaser.Scene, u: MonsterUnit, home: XY, ms: number): Promise<void> {
+  const s = u.sprite;
+  if (!s.active) return;
+  const P = setHologram(s, { reveal: 1, scan: 0, glitch: 0, tint: PAL.gold4, ramp: holoRamp(RAMPS.gold), tintMix: 0, gain: 0.7, flicker: 0, alpha: 1, white: 0, clipY: null });
+  const beam = lightBeam(sc, { x: home.x, y: Math.max(-10, home.y - 150) }, { x: home.x, y: home.y }, PAL.gold3, 0, { width: 10, depth: s.depth - 1.5, intensity: 0.6, shimmer: 0.3 });
+  const n = u.has('idle') ? u.frameCount('idle') : 0;
+  let f = n ? Math.max(0, u.frameInfo().frame) : 0;
+  let lastStep = -1;
+  const TINT = Math.round(ms * 0.3);
+  await new Promise<void>((resolve) => {
+    onFrame(
+      sc,
+      (_dt, el) => {
+        if (!s.active) return false;
+        // backwards through the idle, one frame every 30 ms, a gold echo on every third
+        const step = Math.floor(el / 30);
+        if (n && step !== lastStep) {
+          lastStep = step;
+          f = (f - 1 + n) % n;
+          u.pose('idle', f);
+          if (step % 3 === 1) afterEcho(sc, s, step % 2 ? PAL.gold3 : PAL.gold2);
+        }
+        if (el < TINT) {
+          const k = (1 + Math.floor((el / TINT) * 3)) / 3;
+          P.tintMix = 0.8 * k;
+          P.scan = k;
+          P.glitch = 0.04 * k;
+        } else {
+          P.tintMix = 0.8;
+          P.scan = 1;
+          // drawn down into the tile, head first, in 8 whole steps
+          const k = Math.min(1, (el - TINT) / Math.max(1, ms - TINT));
+          P.reveal = 1 - Math.ceil(k * 8) / 8;
+        }
+        return el < ms;
+      },
+      () => {
+        if (s.active) {
+          clearHologram(s);
+          s.setVisible(false);
+        }
+        void beam.fadeOut(140);
+        resolve();
+      },
+    );
+  });
+}
+
+/** A still gold echo of a sprite's current frame that steps out (palette tint, alpha steps; never scaled). */
+function afterEcho(sc: Phaser.Scene, s: Phaser.GameObjects.Sprite, color: number): void {
+  const g = sc.add.image(Math.round(s.x), Math.round(s.y), s.texture.key, s.frame.name).setOrigin(s.originX, s.originY).setFlipX(s.flipX).setDepth(s.depth - 0.2).setTintFill(color).setAlpha(0.4);
+  void animate(sc, 120, (t) => g.active && g.setAlpha(t < 0.5 ? 0.4 : 0.2)).then(() => g.destroy());
 }
 
 /** A small floor dial ring under a rewinding body: its hands race BACKWARDS for `ms`, then it shrinks away. */
@@ -518,6 +632,8 @@ export interface SpinCardOpts {
   /** land on the owner's graveyard pile at the end (count / top / bump) */
   land?: boolean;
   trail?: readonly number[];
+  /** without `land`: at the end the card shows its edge (flattened against what it hit) for this many ms */
+  hold?: number;
 }
 
 /**
@@ -549,6 +665,10 @@ export async function spinCard(ctx: AnyCtx, o: SpinCardOpts): Promise<void> {
   });
   trail.release();
   if (!o.land) {
+    if (o.hold && img.active) {
+      img.setTexture(keys[1]);
+      await animate(sc, o.hold, () => undefined);
+    }
     img.destroy();
     return;
   }

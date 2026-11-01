@@ -7,7 +7,7 @@
 //   coinToss       (moved: lane D's own coin toss, src/cinematics/d/dial_jester-coin.ts)
 //   diceRoll       a white die tumbles through faces and stops on the value
 //   banish         a void wisp rises out of the owner's graveyard: "OYUNDAN ÇIKTI"
-//   tokenVanish    the straw token squashes and scatters into straw bits
+//   tokenVanish    (moved: lane D's own straw-token vanish, src/cinematics/d/straw_decoy_token.ts)
 // Only the new event types are registered (never an old one), so v1 and every old card are untouched.
 
 import Phaser from 'phaser';
@@ -214,33 +214,6 @@ registerEvent(
     await floatWord(scene, { x: at.x, y: at.y - 18 }, `${CARDS[ev.cardId].name}: OYUNDAN ÇIKTI`, PAL.void4, 800);
   },
   { name: 'b2:banish' },
-);
-
-// ================================================================ token leaves (Saman Korkuluk)
-
-registerEvent(
-  'tokenVanish',
-  async (ctx: Ctx<'tokenVanish'>) => {
-    const ev = ctx.ev;
-    const scene = ctx.scene;
-    const field = ctx.views.field;
-    const at = zoneXY(ev.player, 'monster', ev.zone);
-    const { tile, unit } = field.release(ev.uid);
-    ctx.sfx('cardSlide', { volume: 0.6, pitch: 1.4 });
-    sparks(scene, { x: at.x, y: at.y - 10 }, PAL.gold3, 12, 20, 520);
-    const jobs: Promise<void>[] = [];
-    let ghost: Phaser.GameObjects.Image | null = null;
-    if (unit) {
-      ghost = ghostOf(scene, unit);
-      jobs.push(tween(scene, { targets: ghost, scaleY: 0.2, alpha: 0, duration: 260, ease: 'Quad.In' }));
-    }
-    if (tile) jobs.push(tween(scene, { targets: tile, alpha: 0, duration: 260 }));
-    await Promise.all(jobs);
-    ghost?.destroy();
-    tile?.destroy();
-    if (unit) field.forget(ev.uid);
-  },
-  { name: 'b2:tokenVanish' },
 );
 
 // ================================================================ spite_axe back onto its owner's deck

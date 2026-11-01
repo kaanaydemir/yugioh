@@ -27,6 +27,7 @@
 //   burst   archerShatter       the archer shatters into glass: harmonic-series shards, each echoed 80 ms lower
 //   reviveGather archerReviveGather  the shards come home (rising, converging 660 shimmer; sustained → land)
 //   reviveLand   archerReviveLand    the mirror note and its echo again — the reflection answers once more
+//   (position / flip) archerPane     the guard's mirror pane forms: glass "shing" + 660 pair, 330 answer
 // Levels follow the slice (pre-chain linear amplitudes); big beats duck ≥ 0.55, small ≤ 0.3 (SE-7).
 
 import type { Recipe } from '../sounds';
@@ -51,9 +52,12 @@ function mirror(v: Voice, f: number, t: number, env: readonly Pt[], o: { w?: num
   const l = v.panner(-w, { to: o.to });
   const r = v.panner(w, { to: o.to });
   const split = v.amp(1, { t, to: l });
-  const inv = v.amp(-(o.inv ?? 0.5), { t, to: r });
+  const inv = v.amp(-(o.inv ?? 0.3), { t, to: r });
   split.connect(inv);
   v.tone(o.wave ?? 'sine', f, { t, g: env, to: split, detune: o.detune });
+  // a centred core of the same note: on a mono / phone speaker the 660 still leads and the 330 answers it
+  // (the inverted side alone folds to almost nothing in mono)
+  v.tone(o.wave ?? 'sine', f, { t, g: scaled(env, 0.55), to: o.to, detune: o.detune });
 }
 
 /** The reflection's answer: `f` an octave down, `ECHO` later, darker (low-passed), from the side `side`. */
@@ -70,7 +74,7 @@ function wire(v: Voice, f: number, t: number, g: number, dec: number, o: { echo?
   v.tone('sine', f * 2, { t, g: perc(g * 0.28, dec * 0.45, 0.002) });
   v.tone('sine', f * 3, { t, g: perc(g * 0.1, dec * 0.25, 0.002) });
   v.noise('white', { t, g: perc(g * 0.5, 0.006, 0.0003), to: v.filt('bandpass', f * 6, 2.5) });
-  if (o.echo !== false) reflect(v, f, t, perc(g * 0.62, dec * 1.1, 0.004));
+  if (o.echo !== false) reflect(v, f, t, perc(g * 0.5, dec * 1.1, 0.004));
 }
 
 /** A small glass shard of the archer's series (pure partial pair, very short), optionally echoed. */
@@ -91,6 +95,23 @@ function surface(v: Voice, t: number, d: number, g: number, f0: number, f1: numb
 }
 
 export const V3_ARCHER_RECIPES = {
+  /**
+   * Position change / flip into guard: the mirror pane forms between bow and string — a glass "shing" swept flat
+   * (narrow → wide), the 660 mirror pair struck once, and the 330 answer 80 ms later from the other side.
+   */
+  archerPane: {
+    cap: 1,
+    gap: 0.12,
+    verb: 0.45,
+    duck: 0.3,
+    play(v) {
+      surface(v, 0, 0.16, 0.05, 4200, 9500, [-0.3, 0.3]);
+      wire(v, F, 0.03, 0.11, 0.55, { w: 0.45 });
+      shard(v, GLASS[0], 0.035, 0.04, 0.3, 0.25, true);
+      shard(v, GLASS[2], 0.06, 0.025, 0.22, -0.25, false);
+      v.noise('white', { t: 0.03, g: perc(0.05, 0.05, 0.001), to: v.filt('bandpass', 6600, 3) });
+    },
+  },
   /** Summon f0: a drop of light falls out of the dark — a thin falling glint. */
   archerDrop: {
     cap: 1,
@@ -245,12 +266,12 @@ export const V3_ARCHER_RECIPES = {
     play(v) {
       const D = 0.6;
       // above: a thin whistle (the arrow of light), panning across
-      const hi = v.tone('sine', [[0, 3960], [D, 3300, 'e']], { g: [[0, 0], [0.03, 0.045], [D, 0.035], [D + 0.05, 0.0001, 'e']], to: v.panner([[0, -0.3], [D, 0.35]]) });
+      const hi = v.tone('sine', [[0, 3960], [D, 3300, 'e']], { g: [[0, 0], [0.03, 0.07], [D, 0.055], [D + 0.05, 0.0001, 'e']], to: v.panner([[0, -0.3], [D, 0.35]]) });
       v.lfo(hi.osc.detune, 31, 14, { d: D + 0.05 });
       sweep(v, 0, D, [5000, 7000, 5600], 0.04, { kind: 'white', q: 4, pan: [-0.3, 0.35], peakAt: 0.4 });
       // below: the reflection's arrow under the floor — the same whistle an octave down, muffled, lagging
       const lp = v.filt('lowpass', 900, 1.2, { to: v.panner([[0, -0.2], [D, 0.3]]) });
-      const lo = v.tone('triangle', [[0, 1980], [D, 1650, 'e']], { t: ECHO * 0.5, g: [[0, 0], [0.05, 0.08], [D, 0.06], [D + 0.05, 0.0001, 'e']], to: lp });
+      const lo = v.tone('triangle', [[0, 1980], [D, 1650, 'e']], { t: ECHO * 0.5, g: [[0, 0], [0.05, 0.12], [D, 0.09], [D + 0.05, 0.0001, 'e']], to: lp });
       v.lfo(lo.osc.detune, 19, 20, { t: ECHO * 0.5, d: D });
       v.noise('pink', { g: [[0, 0], [0.06, 0.06], [D, 0.05], [D + 0.05, 0.0001, 'e']], to: v.filt('bandpass', 420, 1.4) });
     },

@@ -69,7 +69,7 @@ function idleMain(f: number): Pose {
 function idleRefl(f: number): Pose {
   const k = ((f % IDLE_N) + IDLE_N) % IDLE_N;
   const r = idleMain(k - 2);
-  return k >= 11 && k <= 14 ? { ...r, look: 1, hdx: 0, eye: k === 12 || k === 13 ? 1.6 : 1 } : r;
+  return k >= 11 && k <= 14 ? { ...r, look: 1, hdx: 0, eye: 1.6 } : r;
 }
 export function idlePose(f: number): Pose {
   return { ...idleMain(f), R: idleRefl(f) };
@@ -160,7 +160,7 @@ const ATTACK_KEYS: Partial<Pose>[] = [
   { ...DRAW, nx: 3, ny: -39, arrow: 3, eye: 2, lean: -1, hdx: 1, bowG: 2.5, crownG: 2.5, gem: 2, hairY: 1, cloth: -1, py: 1 },
   { ...DRAW, nx: 2, ny: -39, arrow: 3, eye: 2, lean: -1, hdx: 1, bowG: 3, crownG: 2.5, gem: 2, hairY: 1, cloth: -1, py: 1, shake: 1 },
   // release: the string snaps straight, the hand flies back open, the streak leaves the bow
-  { bx: 16, by: -37, ba: 0, bowFront: 1, draw: 0, nx: -2, ny: -40, shot: 0.55, smear: 1, eye: 2, lean: 1, hdx: 1, bowG: 3, gem: 2, crownG: 2, hairY: 2, cloth: 2, under: 0.25, spark: 0.2 },
+  { bx: 16, by: -37, ba: 0, bowFront: 1, draw: 0, nx: -2, ny: -40, shot: 0.3, smear: 1, eye: 2, lean: 1, hdx: 1, bowG: 3, gem: 2, crownG: 2, hairY: 2, cloth: 2, under: 0.25, spark: 0.2 },
   { bx: 16, by: -37, ba: -2, bowFront: 1, nx: -3, ny: -39, shot: 1, eye: 1.8, lean: 1, hdx: 1, bowG: 2, gem: 1.5, crownG: 1.5, hairY: 1, cloth: 1, under: 0.65, spark: 0.6, glint: 2 },
   { bx: 16, by: -36, ba: -1, bowFront: 1, nx: -1, ny: -36, eye: 1.6, lean: 1, bowG: 1.5, crownG: 1.5, under: 1, glint: 1 },
 ];
@@ -319,11 +319,14 @@ export function deathPose(f: number): Pose {
     { hdx: -1, hx: -1, lean: -1, py: 1, lid: 1, eye: 0.6, by: -27, ba: 10, crack: 1, rbreak: 0.45, crownG: 0.3, bowG: 0.3 },
     { hdx: 0, lean: 0, py: 1, lid: 0, eye: 0.6, by: -28, ba: 8, crack: 1, rbreak: 0.85, crownG: 0.2, bowG: 0.2 },
     { py: 1, eye: 0, crack: 1, rv: 0, flat: 1, crownG: 0, bowG: 0, gem: 0, hairK: 0 },
+    // the crack web runs out of the chest gem (two frames, whole), the shards part (one frame), one short frame
+    // of glass dust, then the figure is gone: the burst (glass slivers + their mirrored twins) is the cinematic's
+    // (src/cinematics/d/_reflection_archer-fx.ts glassFall), never the generic material break
     { py: 1, eye: 0, crack: 1, rv: 0, flat: 1, crownG: 0, bowG: 0, gem: 0, hairK: 0, shatter: 0.15 },
-    { py: 1, eye: 0, crack: 1, rv: 0, flat: 1, crownG: 0, bowG: 0, gem: 0, hairK: 0, shatter: 0.42 },
-    { py: 1, eye: 0, crack: 1, rv: 0, flat: 1, crownG: 0, bowG: 0, gem: 0, hairK: 0, shatter: 0.62 },
-    { py: 1, eye: 0, crack: 1, rv: 0, flat: 1, crownG: 0, bowG: 0, gem: 0, hairK: 0, shatter: 0.8, diss: 0.25 },
-    { py: 1, eye: 0, crack: 1, rv: 0, flat: 1, crownG: 0, bowG: 0, gem: 0, hairK: 0, shatter: 0.96, diss: 0.6, pudG: 0.5 },
+    { py: 1, eye: 0, crack: 1, rv: 0, flat: 1, crownG: 0, bowG: 0, gem: 0, hairK: 0, shatter: 0.25 },
+    { py: 1, eye: 0, crack: 1, rv: 0, flat: 1, crownG: 0, bowG: 0, gem: 0, hairK: 0, shatter: 0.4 },
+    { py: 1, eye: 0, crack: 1, rv: 0, flat: 1, crownG: 0, bowG: 0, gem: 0, hairK: 0, shatter: 0.62, diss: 0.45 },
+    { py: 1, eye: 0, crack: 1, rv: 0, flat: 1, crownG: 0, bowG: 0, gem: 0, hairK: 0, shatter: 1, diss: 1, pudG: 0.5 },
   ];
   const base = { ...hh0, lid: 0, shake: 0, rip: -1, mote: -1, t: f / (D_N - 1), hair: 0.2 };
   const m = snap({ ...base, ...keys[f], R: null });
@@ -333,7 +336,7 @@ function deathPoseLag(f: number): Pose {
   if (f <= 0) return { ...hitHeavyMain(0), R: null };
   return { ...deathPose(f), R: null, spark: 0 };
 }
-const D_HOLDS = [50, 60, 70, 80, 140, 80, 70, 70, 80, 90];
+const D_HOLDS = [50, 60, 70, 80, 140, 80, 70, 70, 70, 90];
 
 // ------------------------------------------------------------------ revive (11): the glass gathers, the reflection reforms first, the puddle heals
 
@@ -353,11 +356,12 @@ export function revivePose(f: number): Pose {
   if (f <= 6) {
     const m = snap({ ...IDLE_M, rip: -1, mote: -1, t: ph, hair: ph, ...keys[f], R: null });
     // the reflection reforms first: whole while the archer is still glass
-    return { ...m, R: { ...IDLE_M, eye: f >= 2 ? 1.6 : 0, look: f === 3 || f === 4 ? 1 : 0, R: null } };
+    // on the land (f6) the reflection answers once more: it looks up at the viewer with white eyes (to f7)
+    return { ...m, R: { ...IDLE_M, eye: f >= 6 ? 2 : f >= 2 ? 1.6 : 0, look: f === 3 || f === 4 || f === 6 ? 1 : 0, R: null } };
   }
   const k6 = key({ ...keys[6], glint: 0, spark: 0 }, 6, RV_N);
   const m = toward(k6, f === 7 ? 0.4 : f === 8 ? 0.7 : 0.9, f, RV_N, { rip: 0.1 + (f - 6) * 0.15, mote: (f - 6) / 4 });
-  return { ...m, R: { ...m, R: null } };
+  return { ...m, R: f === 7 ? { ...m, look: 1, hdx: 0, eye: 2, R: null } : { ...m, R: null } };
 }
 const RV_HOLDS = [80, 80, 80, 90, 100, 110, 110, 110, 120, 130, 140];
 

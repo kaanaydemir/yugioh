@@ -195,12 +195,14 @@ export const V3_POLAR_NEEDLE_RECIPES = {
       const D = 0.75;
       const H = D + 0.5;
       const E = H + 0.15;
-      const env: Pt[] = [[0, 0], [0.12, 0.05], [D, 0.11], [H, 0.11], [E, 0.0001, 'e']];
+      // SE-7 "darbe kutsaldır": the aim is a BED under the pierce — it swells to D, then draws back (the breath
+      // held before the lunge), so the contact is clearly the loudest event of the strike
+      const env: Pt[] = [[0, 0], [0.12, 0.025], [D, 0.05], [H - 0.2, 0.04], [H, 0.022], [E, 0.0001, 'e']];
       const bp = v.filt('bandpass', [[0, 500], [D, 1500, 'e'], [E, 1500]], [[0, 1.2], [D, 4]]);
       v.tone('sawtooth', A3, { g: env, to: bp });
       v.tone('sawtooth', A3 * 1.004, { g: scaled(env, 0.7), to: bp });
-      needleTone(v, 0, [[0, 0], [D, 0.1], [H, 0.1], [E, 0.0001, 'e']]);
-      poleHum(v, 0, [[0, 0], [D, 0.16], [H, 0.16], [E, 0.0001, 'e']]);
+      needleTone(v, 0, [[0, 0], [D, 0.06], [H - 0.2, 0.05], [H, 0.03], [E, 0.0001, 'e']]);
+      poleHum(v, 0, [[0, 0], [D, 0.08], [H - 0.2, 0.07], [H, 0.04], [E, 0.0001, 'e']]);
       // the aim trembles: a high whine (A5 → E6) with a quickening vibrato
       const w = v.tone('sine', [[0, 880], [D, 1320, 'e'], [E, 1320]], { g: [[0, 0], [D, 0.03], [H, 0.034], [E, 0.0001, 'e']] });
       v.lfo(w.osc.detune, [[0, 5], [H, 14, 'e']], [[0, 6], [H, 18]], { d: E });
@@ -238,11 +240,12 @@ export const V3_POLAR_NEEDLE_RECIPES = {
         [0.75, 3400, 0.09],
       ] as const) {
         const p = v.panner(pan);
-        v.noise('white', { t: dt, g: perc(0.2, 0.03, 0.0003), to: v.filt('bandpass', f, 1.6, { to: p }) });
+        v.noise('white', { t: dt, g: perc(0.24, 0.035, 0.0003), to: v.filt('bandpass', f, 1.6, { to: p }) });
+        v.noise('white', { t: dt, g: perc(0.09, 0.012, 0.0002), to: v.filt('highpass', 6000, 0.7, { to: p }) });
         clank(v, f * 0.4, dt, 0.06, 0.12, { ratio: 1.17, index: 1.4, click: 0, to: p });
       }
-      needleTone(v, 0.09, perc(0.08, 0.3, 0.003));
-      poleHum(v, 0.09, perc(0.12, 0.35, 0.003));
+      needleTone(v, 0.09, perc(0.05, 0.3, 0.003));
+      poleHum(v, 0.09, perc(0.08, 0.35, 0.003));
     },
   },
   /** Strike release: the lunge — a thin steel whistle cutting the air, rising. */
@@ -265,13 +268,15 @@ export const V3_POLAR_NEEDLE_RECIPES = {
     verb: 0.45,
     duck: 0.6,
     play(v) {
-      pierceRing(v, 0, 0.16, 0.8);
-      v.noise('white', { g: perc(0.18, 0.006, 0.0002), to: v.filt('bandpass', 5200, 1.2) });
-      crack(v, 0.006, 0.16, { hp: 3200, n: 2, gap: 0.012, to: v.panner(-0.6) });
-      crack(v, 0.014, 0.16, { hp: 3600, n: 2, gap: 0.01, to: v.panner(0.6) });
-      thump(v, 0, 170, 80, 0.24, 0.09, { drive: 1.3 });
-      needleTone(v, 0, perc(0.07, 0.4, 0.003));
-      poleHum(v, 0, perc(0.1, 0.45, 0.003));
+      pierceRing(v, 0, 0.2, 0.8);
+      v.noise('white', { g: perc(0.24, 0.006, 0.0002), to: v.filt('bandpass', 5200, 1.2) });
+      crack(v, 0.006, 0.2, { hp: 3200, n: 2, gap: 0.012, to: v.panner(-0.6) });
+      crack(v, 0.014, 0.2, { hp: 3600, n: 2, gap: 0.01, to: v.panner(0.6) });
+      thump(v, 0, 170, 80, 0.34, 0.11, { drive: 1.4 });
+      // the body of the hit: a short low-mid knock under the ring (the needle going THROUGH, not just ringing)
+      thump(v, 0.004, 320, 140, 0.16, 0.05, { drive: 1.2 });
+      needleTone(v, 0, perc(0.1, 0.4, 0.003));
+      poleHum(v, 0, perc(0.14, 0.45, 0.003));
       glassRain(v, { t: 0.02, d: 0.45, n: 10, g: 0.035, notes: DUST, dec: [0.04, 0.12], curve: 1.6, modes: 2 });
     },
   },

@@ -113,9 +113,11 @@ export interface Pose {
   pulse: number;
   /** guard: copper wrapped over the front 0…3 bands */
   wrap: number;
-  /** death: the bare spindle topples 0 … 1 (≈ 60°), dissolve 0…1 */
+  /** death: the bare spindle topples 0 … 1 (≈ 82°: it ends lying along its own tile), dissolve 0…1 */
   tilt: number;
   diss: number;
+  /** death remains: the near shoulder spool has rolled off the fallen spindle (0 on it … 1 gone) */
+  spoolOff: number;
   /** global phase 0…1 */
   t: number;
 }
@@ -127,7 +129,7 @@ export const NEUTRAL: Pose = {
   climb: 0, rings: 2, ringB: 1, wind: 1, fromTop: 0, girth: 1,
   feed: 0, fex: -40, fey: -60, floops: 3, heap: 0,
   dust: 0, dustK: 1, sg: 0, orb: 0, fly: 0, conv: 0,
-  rattle: 0, zap: 0, flash: 0, pulse: 0, wrap: 0, tilt: 0, diss: 0, t: 0,
+  rattle: 0, zap: 0, flash: 0, pulse: 0, wrap: 0, tilt: 0, diss: 0, spoolOff: 0, t: 0,
 };
 export const pose = (o: Partial<Pose>): Pose => ({ ...NEUTRAL, ...o });
 
@@ -416,16 +418,25 @@ function drawHeap(f: Frame): void {
 
 // ---------------------------------------------------------------- the topple (death end): bare spindle parts as rotated polygons
 
-function drawTopple(f: Frame): void {
-  const { o, light } = f;
-  const th = (clamp(o.tilt, 0, 1) * 60 * Math.PI) / 180;
+/** The topple's transform: a spindle-local point (x lateral, y up from the pin, negative) → frame px. */
+export function toppleRot(o: Pose): (p: Pt) => Pt {
+  const th = (clamp(o.tilt, 0, 1) * 82 * Math.PI) / 180;
   const cs = Math.cos(th);
   const sn = Math.sin(th);
-  const P: Pt = [RX, GY];
+  // the foot slides forward as it rolls over the bottom flange's rim, so the fallen spindle lies inside its own
+  // tile (along the tile's long axis), not across the lane behind it
+  const P: Pt = [RX + Math.round(clamp(o.tilt, 0, 1) * 16), GY];
   // it tips on the pin, then rolls onto the flange rim: lift the whole spindle so its lowest corner stays on the floor
   const lowest = Math.max(...([[-14, -7], [14, -7], [-14, -3], [14, -3], [-1, 0], [1, 0]] as Pt[]).map(([x, y]) => -x * sn + y * cs));
   const lift = Math.max(0, lowest);
-  const rot = ([x, y]: Pt): Pt => [P[0] + x * cs + y * sn, P[1] - x * sn + y * cs - lift];
+  return ([x, y]: Pt): Pt => [P[0] + x * cs + y * sn, P[1] - x * sn + y * cs - lift];
+}
+/** Spindle-local centre of the near shoulder spool (the one that rolls away in the death's remains). */
+export const SPOOL_N_LOCAL: Pt = [14, -34];
+
+function drawTopple(f: Frame): void {
+  const { o, light } = f;
+  const rot = toppleRot(o);
   const box = (x0: number, y0: number, x1: number, y1: number): Pt[] => ([[x0, y0], [x1, y0], [x1, y1], [x0, y1]] as Pt[]).map(rot);
   const part = (pts: Pt[], t: typeof MAG, id: Part, out: number, lw = 2) => {
     const q = layer();
@@ -445,7 +456,8 @@ function drawTopple(f: Frame): void {
   part(box(-1, -49, 1, -44), MAG, Part.head, PAL.ink, 1);
   part(box(-2, -51, 2, -48), GOLD, Part.head, GOLD.D, 1);
   part(box(-6, -44, 7, -35), MAG, Part.head, PAL.stone0);
-  const sN = rot([14, -34]);
+  if (o.spoolOff >= 1) return;
+  const sN = rot(SPOOL_N_LOCAL);
   const sq = layer();
   paintSpool(sq, rnd(sN[0]), rnd(sN[1]), SP_N_R, o.spinN, light, 0, false);
   f.comp.add(sq, Part.spoolN, { out: PAL.stone0 });
@@ -497,13 +509,21 @@ function coreLight(f: Frame): void {
       const y = sk.yb + s - r;
       const u = (x + 0.5 - sk.cx) / (sk.rx + 0.5);
       const edge = Math.abs(u) > 0.62;
-      // a single lit slit between two dark rows (the overhang shadows); the glow spills into them when charged
+      // a single lit slit between two dark rows (the overhang shadows); the glow spills into them when charged.
+      // The two halves must read apart against the copper: N = a hot yellow sliver (fire4 / gold4) with a dark
+      // copper band either side (value contrast), S = water4 / water3 with a deep-blue band either side.
       const mid = r === WIN_LO + 1;
-      if (!mid && (k < 3 || Math.abs(u) > 0.45) && o.flash < 0.5) continue;
+      const northHalf = x + 0.5 < sk.cx;
+      const ramp = northHalf ? POLE_N : POLE_S;
+      if (!mid && (k < 3 || Math.abs(u) > 0.45) && o.flash < 0.5) {
+        if (k >= 1 && !edge) set(x, y, northHalf ? PAL.fire0 : PAL.water0);
+        continue;
+      }
       const seam = Math.abs(x + 0.5 - sk.cx) <= 1;
-      const ramp = x + 0.5 < sk.cx ? POLE_N : POLE_S;
       let c: number = ramp[clamp(k + 1 - (edge ? 2 : mid ? 0 : 1), 0, 3)];
-      if (seam && k >= 2) c = k >= 3 || o.flash > 0.5 ? PAL.white : PAL.gold4;
+      if (mid && northHalf && !edge && k >= 2) c = Math.abs(u) < 0.3 ? PAL.gold4 : PAL.fire4;
+      if (mid && !northHalf && !edge && k >= 2) c = Math.abs(u) < 0.3 ? PAL.water4 : PAL.water3;
+      if (seam && k >= 2) c = k >= 3 || o.flash > 0.5 ? PAL.white : northHalf ? PAL.gold4 : PAL.cyan4;
       if (o.flash > 0.6 && !edge) c = PAL.white;
       set(x, y, c);
     }
@@ -517,13 +537,17 @@ function coreLight(f: Frame): void {
     for (let r = 0; r < DRUM_ROWS; r++) {
       const [turn, row] = turnOf(r);
       if (turn < 0 || row !== 0 || r === 0 || !isWound(r, d)) continue;
-      // only the two seams next to the window leak in idle; a charged core leaks through every seam
+      // the two seams next to the window leak in idle, plus the seam the climbing ring is passing (the leak
+      // pulses up the drum with it); a charged core leaks through every seam
       const near = r === WIN_LO - 3 || r === WIN_HI + 1;
-      if (!near && lv < 2.5) continue;
-      const on = (x + turn * 3 + fl(o.t * 16)) % 6 < (lv >= 2.5 ? 3 : 2);
+      const climbing = turn === fl(o.climb * TURNS) % TURNS;
+      if (!near && !climbing && lv < 2.5) continue;
+      const on = (x + turn * 3 + fl(o.t * 16)) % 6 < (lv >= 2.5 || climbing ? 3 : 2);
       if (!on) continue;
-      const ramp = r > WIN_HI ? POLE_N : POLE_S;
-      set(x, sk.yb + s - r, ramp[clamp(k + (r > WIN_HI ? 1 : 0) - (near ? 0 : 1), 0, 3)]);
+      // N leaks above the window (hot yellow, never copper orange), S leaks below (blue)
+      const nTop = r > WIN_HI;
+      const hot = k + (near || climbing ? 1 : 0);
+      set(x, sk.yb + s - r, nTop ? (hot >= 3 ? PAL.gold4 : hot >= 2 ? PAL.fire4 : PAL.gold3) : POLE_S[clamp(hot, 1, 3)]);
     }
   }
 }
@@ -681,34 +705,45 @@ function spikes(f: Frame): void {
     const dl = Math.hypot(dir[0], dir[1]) || 1;
     dir = [dir[0] / dl, dir[1] / dl];
     const behind = fly < 0.05 && Math.sin(a) < -0.15;
+    // each spike's pole colours: N (fire), S (water), the gold binder
+    const HEAD = [PAL.fire4, PAL.water4, PAL.gold4][i];
+    const LIT = [PAL.fire3, PAL.water3, PAL.gold3][i];
+    const MID = [PAL.fire2, PAL.water2, PAL.gold2][i];
+    const DK = [PAL.fire1, PAL.water1, PAL.gold1][i];
     if (o.sg < 0.55) {
-      // still dust: grains drawn in toward the spike's place
+      // still dust: grains drawn in toward the spike's place (2-px clumps, the pole tint already in them)
       const sp = (1 - o.sg / 0.55) * 7 + 1;
-      for (let g = 0; g < 6; g++) {
-        const b = (g / 6) * TAU + i;
-        put(f, pos[0] + Math.cos(b) * sp, pos[1] + Math.sin(b) * sp * 0.6, g % 2 ? PAL.steel : PAL.mist, true);
+      for (let g = 0; g < 7; g++) {
+        const b = (g / 7) * TAU + i;
+        const gx = pos[0] + Math.cos(b) * sp;
+        const gy = pos[1] + Math.sin(b) * sp * 0.6;
+        put(f, gx, gy, g % 3 === 0 ? LIT : g % 3 === 1 ? PAL.mist : MID, true);
+        put(f, gx + 1, gy, g % 2 ? PAL.steel : DK, true);
       }
+      put(f, pos[0], pos[1], HEAD, true);
       continue;
     }
     if (fly >= 0.98 && o.conv > 0) continue;
-    // the orbit's wake: iron grains strung out behind each spike along the ellipse
+    // the orbit's wake: grains strung out behind each spike along the ellipse, cooling from the pole colour
     if (fly < 0.05)
-      for (let g = 1; g <= 4; g++) {
-        const b = a - g * 0.16;
+      for (let g = 1; g <= 5; g++) {
+        const b = a - g * 0.15;
         const gx = O[0] + Math.cos(b) * (sk.rx + 15);
         const gy = O[1] + Math.sin(b) * 7 - 2;
-        put(f, gx, gy, g < 3 ? PAL.mist : PAL.steel, Math.sin(b) < -0.15);
+        put(f, gx, gy, g < 3 ? LIT : g < 4 ? PAL.mist : PAL.steel, Math.sin(b) < -0.15);
       }
-    const len = o.sg < 0.8 ? 4 : 6;
+    // a solid dart: 10–14 px long, 4–5 px thick at the shoulder, ink outline, dark / mid / lit facets, hot head
+    const len = o.sg < 0.8 ? 5 : 7;
     const q = new PixelCanvas(W, H);
     const tip: Pt = [pos[0] + dir[0] * len, pos[1] + dir[1] * len];
-    const back: Pt = [pos[0] - dir[0] * len, pos[1] - dir[1] * len];
-    const nrm: Pt = [-dir[1] * 1.4, dir[0] * 1.4];
-    q.poly([tip, [pos[0] + nrm[0], pos[1] + nrm[1]], back, [pos[0] - nrm[0], pos[1] - nrm[1]]], MAG.L);
+    const back: Pt = [pos[0] - dir[0] * (len - 1), pos[1] - dir[1] * (len - 1)];
+    const sh: Pt = [pos[0] + dir[0] * 1.5, pos[1] + dir[1] * 1.5];
+    const nrm: Pt = [-dir[1] * 2.1, dir[0] * 2.1];
+    q.poly([tip, [sh[0] + nrm[0], sh[1] + nrm[1]], [back[0] + nrm[0] * 0.4, back[1] + nrm[1] * 0.4], [back[0] - nrm[0] * 0.4, back[1] - nrm[1] * 0.4], [sh[0] - nrm[0], sh[1] - nrm[1]]], MID);
     // the lit facet (toward the top-left) and the dark facet
     const lit = nrm[1] < 0 ? 1 : -1;
-    q.poly([tip, [pos[0] - nrm[0] * lit, pos[1] - nrm[1] * lit], back], MAG.S);
-    q.set(rnd(tip[0]), rnd(tip[1]), PAL.white);
+    q.poly([tip, [sh[0] - nrm[0] * lit, sh[1] - nrm[1] * lit], back], DK);
+    q.poly([tip, [sh[0] + nrm[0] * lit * 0.6, sh[1] + nrm[1] * lit * 0.6], [pos[0], pos[1]]], LIT);
     q.outline(PAL.ink);
     for (let y = 0; y < H; y++)
       for (let x = 0; x < W; x++) {
@@ -717,8 +752,14 @@ function spikes(f: Frame): void {
         if (behind && p.isOpaque(x, y)) continue;
         p.set(x, y, c);
       }
+    // the hot head (light, after the outline): 3 px of the pole colour and a white point
+    if (!behind) {
+      put(f, tip[0] - dir[0] * 2, tip[1] - dir[1] * 2, HEAD);
+      put(f, tip[0] - dir[0], tip[1] - dir[1], HEAD);
+      put(f, tip[0], tip[1], PAL.white);
+    }
     // a short streak behind a flying spike
-    if (fly > 0.05 && fly < 0.98) for (let s = 2; s <= 5; s++) put(f, back[0] - dir[0] * s, back[1] - dir[1] * s, s < 4 ? PAL.mist : PAL.steel);
+    if (fly > 0.05 && fly < 0.98) for (let s = 1; s <= 5; s++) put(f, back[0] - dir[0] * s, back[1] - dir[1] * s, s < 3 ? LIT : s < 4 ? MID : PAL.steel);
   }
   if (o.conv > 0) {
     // the three meet: a white star with three rays (N / S / gold)

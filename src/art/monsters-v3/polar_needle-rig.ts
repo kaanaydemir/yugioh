@@ -128,6 +128,11 @@ export interface Pose {
   gather: boolean;
   /** the anim's one metal glint: 0 none, 1 = 1 px, 2 = 3-px cross (at the spear collar) */
   glint: number;
+  /** aim along the iso bearing to the opposing lane: sa becomes an offset from that bearing (P1 up-right, P2 relit
+   *  sheet down-right — mirrored by flipX it points down-left at P1); 0 = sa is absolute */
+  aim: number;
+  /** fast spin frame: a lit leading edge + a 1-px smear on the trailing side of the turning body */
+  whip: number;
   /** global phase 0…1 */
   t: number;
 }
@@ -144,9 +149,29 @@ export const NEUTRAL: Pose = {
   smear: 0, flare: 0, spark: 0, shake: 0, zap: 0,
   rip: 0, rx: 0, ry: 0, ra: 0, gap: 0, hdrop: 0, pdrop: 0,
   streak: 0, trail: 0, ring: 0,
-  diss: 0, gather: false, glint: 0, t: 0,
+  diss: 0, gather: false, glint: 0, aim: 0, whip: 0, t: 0,
 };
 export const pose = (o: Partial<Pose>): Pose => ({ ...NEUTRAL, ...o });
+
+/** Screen angle (deg) of the iso bearing to the opposing lane (TILE_W : TILE_H = 2 : 1). */
+export const AIM_DEG = 27;
+/** Resolve `aim` for a side: P1 ('left' light) aims up-right, the P2 relit sheet down-right (flipX → down-left). */
+export function resolveAim(o: Pose, lightFrom: 'left' | 'right'): Pose {
+  if (o.aim <= 0) return o;
+  return { ...o, aim: 0, sa: o.sa + (lightFrom === 'left' ? -AIM_DEG : AIM_DEG) };
+}
+
+/** Which way the body faces in compass (spin) mode: side = toward the foe (the idle profile), front = toward the
+ *  viewer, sideL = away from the foe (drawn mirrored), back = away from the viewer. */
+export type View = 'side' | 'front' | 'sideL' | 'back';
+export function viewOf(o: Pose): View {
+  if (o.spin <= 0) return 'side';
+  const v = ((o.yaw % 360) + 360) % 360;
+  if (v > 35 && v < 145) return 'front';
+  if (v >= 145 && v <= 215) return 'sideL';
+  if (v > 215 && v < 325) return 'back';
+  return 'side';
+}
 
 // ---------------------------------------------------------------- skeleton
 
@@ -180,6 +205,10 @@ export interface Skel {
   sS: number;
   spt: Pt;
   eye: Pt;
+  /** foot bottom y (near / far): the floor, or just under the ankle for the raised (passé) foot */
+  ft1: number;
+  ft2: number;
+  view: View;
 }
 
 export const TORSO_N = 17;
@@ -209,24 +238,52 @@ export function skeleton(o: Pose): Skel {
   }
   const ntip: Pt = [nc[0] + nd[0] * TORSO_N, nc[1] + nd[1] * TORSO_N];
   const stip: Pt = [nc[0] - nd[0] * TORSO_S, nc[1] - nd[1] * TORSO_S];
-  const head: Pt = [ntip0[0] + 1 + o.hx, ntip0[1] - 5 + o.hy + o.hdrop];
+  const view = viewOf(o);
+  const fb = view === 'front' || view === 'back';
+  const head: Pt = [ntip0[0] + (fb ? 0 : 1) + o.hx, ntip0[1] - 5 + o.hy + o.hdrop];
   const roseC: Pt = [head[0], head[1] - 9 - o.roseY];
   // the shoulders hang on the needle's upper collar: they take only the lean beyond a px and half the breath
   const sl = Math.trunc(o.lean * 0.6);
   const sb = Math.trunc(o.ty * 0.5);
-  const sh1: Pt = [C[0] + 2 + sl, C[1] - o.ty + sb - 13 + o.pdrop];
-  const sh2: Pt = [C[0] - 3 + sl, C[1] - o.ty + sb - 14 + o.pdrop];
-  const w1 = reach(sh1, [RX + o.nx, GY + o.ny], 18.6);
-  const el1 = ik2(sh1, w1, 9, 10, 1) as Pt;
-  const w2 = reach(sh2, [RX + o.fx, GY + o.fy], 18.6);
-  const el2 = ik2(sh2, w2, 9, 10, -1) as Pt;
-  const hip1: Pt = [pel[0] + 3, pel[1]];
-  const hip2: Pt = [pel[0] - 3, pel[1] - 1];
+  // the character's right side (spear arm, near leg) is screen-left when it faces the viewer, screen-right from behind
+  const rs = view === 'front' ? -1 : 1;
+  // compass mode: both hands hold the spear at the pivot like a compass card; the grip turns with the body
+  const grip: Pt = [C[0] + Math.cos(o.yaw * DEG) * 3, C[1] + 3 + Math.sin(o.yaw * DEG) * 1.3];
+  const sh1: Pt = fb ? [C[0] + rs * 5, C[1] - o.ty - 13 + o.pdrop] : [C[0] + 2 + sl, C[1] - o.ty + sb - 13 + o.pdrop];
+  const sh2: Pt = fb ? [C[0] - rs * 5, C[1] - o.ty - 13 + o.pdrop] : [C[0] - 3 + sl, C[1] - o.ty + sb - 14 + o.pdrop];
+  const w1 = reach(sh1, o.spin > 0 ? grip : [RX + o.nx, GY + o.ny], 18.6);
+  const el1 = ik2(sh1, w1, 9, 10, fb ? -rs : 1) as Pt;
+  const w2 = reach(sh2, o.spin > 0 ? [grip[0] - (fb ? rs : 1), grip[1] + 1] : [RX + o.fx, GY + o.fy], 18.6);
+  const el2 = ik2(sh2, w2, 9, 10, fb ? rs : -1) as Pt;
   const lift = o.toe > 0 ? 3 : 0;
-  const an1: Pt = [RX + 6 + o.nfx, GY - 3 - lift - o.nfl];
-  const an2: Pt = [RX - 7 + o.ffx, GY - 3 - lift - o.ffl];
-  const kn1 = ik2(hip1, an1, 12, 12, -1) as Pt;
-  const kn2 = ik2(hip2, an2, 12, 12, -1) as Pt;
+  let hip1: Pt = [pel[0] + 3, pel[1]];
+  let hip2: Pt = [pel[0] - 3, pel[1] - 1];
+  let an1: Pt = [RX + 6 + o.nfx, GY - 3 - lift - o.nfl];
+  let an2: Pt = [RX - 7 + o.ffx, GY - 3 - lift - o.ffl];
+  let ft1 = GY - o.nfl;
+  let ft2 = GY - o.ffl;
+  let kb1 = -1;
+  let kb2 = -1;
+  if (o.spin > 0) {
+    // the pirouette: the far (left) leg stands en pointe under the pivot, the near (right) leg in passé — its
+    // pointed foot at the standing knee, the knee turned out toward the facing (side) or the right side (front/back)
+    const bx = pel[0];
+    if (fb) {
+      hip1 = [bx + rs * 2, pel[1]];
+      hip2 = [bx - rs * 2, pel[1]];
+      an1 = [bx + rs * 1, GY - 19 + o.py];
+      an2 = [bx - rs * 1, GY - 6];
+      kb1 = rs > 0 ? -1 : 1;
+      kb2 = rs > 0 ? 1 : -1;
+    } else {
+      an1 = [bx + 1, GY - 19 + o.py];
+      an2 = [bx - 1, GY - 6];
+    }
+    ft1 = an1[1] + 7;
+    ft2 = GY;
+  }
+  const kn1 = ik2(hip1, an1, 12, 12, kb1) as Pt;
+  const kn2 = ik2(hip2, an2, 12, 12, kb2) as Pt;
   // spear
   let sc: Pt;
   let sd: Pt;
@@ -239,7 +296,7 @@ export function skeleton(o: Pose): Skel {
     sd = [cx / m, sy / m];
     sN = SPEAR_N * m;
     sS = SPEAR_S * m;
-    sc = w1;
+    sc = grip;
   } else {
     sd = [Math.cos(o.sa * DEG), Math.sin(o.sa * DEG)];
     sc = o.sfree > 0 ? [RX + o.spx, GY + o.spy] : [w1[0] + sd[0] * 2, w1[1] + sd[1] * 2];
@@ -248,7 +305,8 @@ export function skeleton(o: Pose): Skel {
   return {
     base, pel, C, nc, nd, ntip, stip, head, rose: roseC, sh1, sh2, el1, w1, el2, w2, hip1, hip2, kn1, kn2, an1, an2,
     sc, sd, sN, sS, spt,
-    eye: [head[0] + 2, head[1] - 1],
+    eye: fb ? [head[0], head[1] - 1] : [head[0] + 2, head[1] - 1],
+    ft1, ft2, view,
   };
 }
 
@@ -316,7 +374,7 @@ function drawLeg(f: Frame, near: boolean): void {
   bands(sg, { H: t.H, L: t.H, M: t.L, S: t.M }, light, 1, 1);
   q.blit(sg, 0, 0);
   // sabaton: a pointed dancer's foot (flat: toe forward; en pointe: the point under the ankle)
-  const fy = GY - (near ? o.nfl : o.ffl);
+  const fy = near ? sk.ft1 : sk.ft2;
   const ax = an[0];
   const ay = an[1];
   if (o.toe > 0) q.poly([[ax - 2, ay - 1], [ax + 2, ay - 1], [ax + 1, fy], [ax, fy]], t.L);
@@ -346,7 +404,14 @@ function drawTorso(f: Frame): void {
   const { sk, o, light } = f;
   if (o.rip >= 2) return;
   const q = layer();
-  needle(q, { c: sk.nc, d: sk.nd, lenN: TORSO_N, lenS: TORSO_S, hw: 6, band: 3, flip: o.flip > 0, collar: true, pivot: 2 }, light);
+  const back = sk.view === 'back';
+  needle(q, { c: sk.nc, d: sk.nd, lenN: TORSO_N, lenS: TORSO_S, hw: 6, band: 3, flip: o.flip > 0, collar: true, pivot: back ? 0 : 2, far: back }, light);
+  if (back) {
+    // seen from behind: the needle's back plate — a dark spine seam and a magnetite boss where the pivot pin ends
+    const [cx, cy] = [rnd(sk.nc[0] - 0.5), rnd(sk.nc[1] - 0.5)];
+    for (let y = cy - TORSO_N + 4; y <= cy + TORSO_S - 5; y++) if (q.isOpaque(cx, y)) q.set(cx, y, PAL.stone1);
+    q.rect(cx - 1, cy - 1, 3, 3, MAG.M).set(cx - 1, cy - 1, MAG.L);
+  }
   // plate shudder: a hinge seam across the waist opens a px (gap) in death
   if (o.gap > 0 && o.rip === 0) {
     const [cx, cy] = sk.nc;
@@ -359,6 +424,24 @@ function drawHead(f: Frame): void {
   const { sk, o, light } = f;
   const [hx, hy] = [rnd(sk.head[0]), rnd(sk.head[1])];
   const q = layer();
+  if (sk.view === 'front' || sk.view === 'back') {
+    // the helm face-on: a narrow shield shape with the visor point toward the viewer (front) or the back plate
+    q.poly([[hx - 4, hy - 5], [hx + 4, hy - 5], [hx + 5, hy - 2], [hx + 4, hy + 3], [hx + 1, hy + 5], [hx - 1, hy + 5], [hx - 4, hy + 3], [hx - 5, hy - 2]], MAG.M);
+    const back = sk.view === 'back';
+    bands(q, back ? MAG_FAR : MAG, light, 2, 2, { rim: true });
+    if (!back) {
+      // visor well across the face and a gold brow, the needle-point nose plate down the middle
+      for (let x = hx - 3; x <= hx + 3; x++) if (q.isOpaque(x, hy - 1)) q.set(x, hy - 1, PAL.stone1);
+      for (let x = hx - 3; x <= hx + 3; x++) if (q.isOpaque(x, hy - 3)) q.set(x, hy - 3, x <= hx ? GOLD.L : GOLD.M);
+      q.set(hx, hy + 1, MAG.L).set(hx, hy + 2, MAG.L).set(hx, hy + 3, MAG.H);
+    } else {
+      // the back of the helm: no visor, one gold crest seam from the rose pin down to the nape
+      for (let y = hy - 5; y <= hy + 3; y++) if (q.isOpaque(hx, y)) q.set(hx, y, y < hy - 2 ? GOLD.M : GOLD.S);
+      for (let x = hx - 3; x <= hx + 3; x++) if (q.isOpaque(x, hy + 3)) q.set(x, hy + 3, PAL.stone1);
+    }
+    f.comp.add(q, Part.head, { out: PAL.stone1 });
+    return;
+  }
   // a close helm whose visor comes to a needle point toward the foe
   q.poly([[hx - 3, hy - 5], [hx + 2, hy - 5], [hx + 4, hy - 3], [hx + 5, hy - 1], [hx + 7, hy], [hx + 4, hy + 2], [hx + 1, hy + 4], [hx - 3, hy + 4], [hx - 4, hy + 2], [hx - 4, hy - 3]], MAG.M);
   bands(q, MAG, light, 2, 2, { rim: true });
@@ -429,7 +512,7 @@ function poleLight(f: Frame): void {
     tipAt(sk.ntip, sk.nd, o.poleN, fN ? PAL.water4 : PAL.fire4, fN ? PAL.water3 : PAL.gold4);
     tipAt(sk.stip, [-sk.nd[0], -sk.nd[1]], o.poleS, fN ? PAL.fire4 : PAL.water4, fN ? PAL.gold4 : PAL.water3);
     // the pivot gem
-    if (o.diss < 0.6) {
+    if (o.diss < 0.6 && sk.view !== 'back') {
       const [cx, cy] = [rnd(sk.nc[0] - 0.5), rnd(sk.nc[1] - 0.5)];
       dot(cx, cy, o.poleN >= 2 ? PAL.white : PAL.gold4);
     }
@@ -440,10 +523,15 @@ function poleLight(f: Frame): void {
 function eyeLight(f: Frame): void {
   const { p, o, sk } = f;
   if (o.eye <= 0.05 || o.lid >= 2) return;
-  if (o.spin > 0 && Math.cos(o.yaw * DEG) < -0.35) return;
+  if (sk.view === 'back') return;
   const [ex, ey] = [rnd(sk.eye[0]), rnd(sk.eye[1])];
-  const off = o.spin > 0 ? rnd(Math.cos(o.yaw * DEG) * 2) - 2 : 0;
   const col = o.eye >= 1.8 ? PAL.white : o.eye >= 1.2 ? PAL.gold4 : PAL.gold3;
+  if (sk.view === 'front') {
+    // face-on: the slit glows across, hottest in the middle
+    for (let i = -2; i <= 2; i++) p.set(ex + i, ey, i === 0 ? col : Math.abs(i) === 1 ? (o.eye >= 1.8 ? PAL.gold4 : PAL.gold3) : PAL.gold2);
+    return;
+  }
+  const off = 0;
   const n = o.lid === 1 ? 2 : 3;
   for (let i = 0; i < n; i++) p.set(ex + off + i - (o.lid === 1 ? 0 : 1) + 1, ey, i === n - 1 ? col : o.eye >= 1.8 ? PAL.gold4 : PAL.gold3);
 }
@@ -672,7 +760,8 @@ function dissolvePass(f: Frame): void {
 // ---------------------------------------------------------------- draw
 
 export function drawNeedle(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right'): void {
-  if (o.spin > 0 && Math.cos(o.yaw * DEG) < -0.15) {
+  if (o.aim > 0) o = resolveAim(o, lightFrom);
+  if (viewOf(o) === 'sideL') {
     // pirouette: while the compass turns its back on the foe, the dancer faces the other way — the same rig drawn
     // with the opposite light and mirrored about the root (pixel-exact; the key light stays at the top-left)
     const q = new PixelCanvas(W, H);
@@ -692,20 +781,25 @@ export function drawNeedle(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right')
   // compass mode: each half of the spear sits in front of / behind the body by its yaw
   const nFront = o.spin > 0 ? Math.sin(o.yaw * DEG) > 0 : true;
 
+  const spinning = o.spin > 0;
+  const fb = sk.view === 'front' || sk.view === 'back';
   drawRose(f, false);
   drawArm(f, false);
-  drawPauldron(f, false);
+  // compass mode: both arms wrap round to the grip below the pivot, behind the needle (the N half stays bare)
+  if (spinning) drawArm(f, true);
+  if (!fb) drawPauldron(f, false);
   drawLeg(f, false);
   if (o.sfree > 0) comp.add(spearLayer(f), Part.spear, { out: PAL.stone1 });
-  if (o.spin > 0) comp.add(spearLayer(f, nFront ? -1 : 1), Part.spear, { out: PAL.stone1 });
+  if (spinning) comp.add(spearLayer(f, nFront ? -1 : 1), Part.spear, { out: PAL.stone1 });
   drawLeg(f, true);
   drawPelvis(f);
   drawTorso(f);
   drawHead(f);
   drawRose(f, true);
+  if (fb) drawPauldron(f, false);
   drawPauldron(f, true);
-  drawArm(f, true);
-  if (o.spin > 0) comp.add(spearLayer(f, nFront ? 1 : -1), Part.spear, { out: PAL.stone1 });
+  if (!spinning) drawArm(f, true);
+  if (spinning) comp.add(spearLayer(f, nFront ? 1 : -1), Part.spear, { out: PAL.stone1 });
   if (o.spin === 0 && o.sfree === 0) comp.add(spearLayer(f), Part.spear, { out: PAL.stone1 });
   if (o.shake > 0) {
     // 1-px plate tremble: the helm and pauldron rows jump alternately (whole px, restored geometry)
@@ -739,4 +833,23 @@ export function drawNeedle(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right')
   sparkLight(f);
   zapLight(f);
   glintLight(f);
+  whipLight(f);
+}
+
+/** Fast spin frames: the turning body's leading (left) edge catches the light, a 1-px smear trails on the right. */
+function whipLight(f: Frame): void {
+  const { p, comp, o, sk } = f;
+  if (o.whip <= 0) return;
+  const body = (id: number) => id === Part.torso || id === Part.head || id === Part.pelvis || id === Part.pauldron;
+  const top = rnd(sk.head[1]) - 6;
+  const bot = rnd(sk.pel[1]) + 2;
+  const lit: number[] = [];
+  const smear: number[] = [];
+  for (let y = Math.max(1, top); y <= Math.min(H - 2, bot); y++)
+    for (let x = 1; x < W - 3; x++) {
+      if (body(comp.id[y * W + x]) && p.get(x - 1, y) === PAL.ink) lit.push(x, y);
+      if (p.get(x, y) === PAL.ink && !p.isOpaque(x + 1, y) && body(comp.id[y * W + x - 1]) && (y & 1) === (o.whip > 1 ? 1 : 0)) smear.push(x + 2, y);
+    }
+  for (let i = 0; i < lit.length; i += 2) p.set(lit[i], lit[i + 1], PAL.steel);
+  for (let i = 0; i < smear.length; i += 2) if (!p.isOpaque(smear[i], smear[i + 1])) p.set(smear[i], smear[i + 1], PAL.stone2);
 }

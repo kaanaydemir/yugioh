@@ -267,8 +267,7 @@ export function twinArrows(sc: Phaser.Scene, o: TwinArrowOpts): Promise<void> {
   const trailD: XY[] = [];
   const ripples: { x: number; y: number; at: number }[] = [];
   const g0: XY = { x: o.fromUnder.x, y: o.ground };
-  const fl = lightPool(sc, o.from.x, o.from.y, { color: PAL.gold4, radius: 12, floorY: o.ground, air: 0.9, intensity: 0.6, fadeIn: 0 });
-  const fd = lightPool(sc, o.fromUnder.x, o.ground, { color: PAL.water3, radius: 12, floorY: o.ground, air: 0, intensity: 0.7, fadeIn: 0 });
+  // no floor pools under the arrows: on the dark marble a moving stepped pool reads as a dark blob, not light
   let lastRip = -99;
   const dx = o.to.x - o.from.x;
   const dy = o.to.y - o.from.y;
@@ -282,7 +281,8 @@ export function twinArrows(sc: Phaser.Scene, o: TwinArrowOpts): Promise<void> {
   const vx = mdx / mL;
   const vy = mdy / mL;
   return animate(sc, o.ms, (t, el) => {
-    const e = 0.25 * t + 0.75 * t * t;
+    // a loosed arrow: fast from the first frame, a touch faster at the end (no slow start: EF readability)
+    const e = 0.65 * t + 0.35 * t * t;
     // the reflection is a step ahead (it "shoots first"), and they still meet together
     const eu = Math.min(1, e + 0.07 * Math.sin(Math.PI * e));
     const p = rx({ x: o.from.x + dx * e, y: o.from.y + dy * e });
@@ -296,14 +296,12 @@ export function twinArrows(sc: Phaser.Scene, o: TwinArrowOpts): Promise<void> {
     }
     if (!trailD.length || trailD[0].x !== q.x || trailD[0].y !== q.y) {
       trailD.unshift(q);
-      if (trailD.length > 9) trailD.pop();
+      if (trailD.length > 12) trailD.pop();
     }
     if (el - lastRip > 34) {
       lastRip = el;
       ripples.push({ x: Math.round(gx), y: Math.round(gy), at: el });
     }
-    fl.setPosition(p.x, p.y, gy);
-    fd.setPosition(q.x, gy, gy);
     top.draw((g) => {
       // the streak: a stepped wake behind the point (gold → dark gold, thinning)
       for (let i = trailU.length - 1; i >= 1; i--) {
@@ -326,34 +324,45 @@ export function twinArrows(sc: Phaser.Scene, o: TwinArrowOpts): Promise<void> {
     under.draw((g) => {
       // the floor surface ripples where the arrow passes beneath (small iso rings, stepped out)
       for (const r of ripples) {
-        const k = (el - r.at) / 200;
+        const k = (el - r.at) / 220;
         if (k < 0 || k >= 1) continue;
-        const rr = 2 + 6 * k;
-        ring(g, r.x, r.y, rr, rr * 0.5, k < 0.4 ? PAL.water4 : PAL.water3, k < 0.6 ? 1 : 0.5, 3);
+        const rr = 2 + 7 * k;
+        ring(g, r.x, r.y, rr, rr * 0.5, k < 0.3 ? PAL.mist : k < 0.6 ? PAL.water4 : PAL.water3, k < 0.6 ? 1 : 0.5, 3);
       }
-      // the dark wake under the glass
+      // the light of the reflection's arrow seen THROUGH the glass floor: a bright slit on the surface right
+      // above it, with a short glowing wake (the surface is the mirror; the arrow runs just beneath it)
+      const sx = Math.round(gx);
+      const sy = Math.round(gy);
+      for (let k = 0; k <= 12; k++) {
+        const x = Math.round(sx - vx * k);
+        const y = Math.round(sy - vy * k);
+        g.dpx(x, y, k < 2 ? PAL.white : k < 6 ? PAL.mist : PAL.water4, k < 8 ? 1 : 0.5);
+      }
+      // the dark wake under the glass (a cut through the floor, closing behind it)
       for (let i = trailD.length - 1; i >= 1; i--) {
         const a = trailD[i];
         const b = trailD[i - 1];
-        g.line(a.x, a.y, b.x, b.y, i < 3 ? PAL.water2 : PAL.night3, i < 3 ? 1 : 0.5);
+        g.line(a.x, a.y, b.x, b.y, i < 4 ? PAL.water3 : i < 7 ? PAL.water2 : PAL.night3, i < 5 ? 1 : 0.5);
+        g.line(a.x, a.y - 1, b.x, b.y - 1, PAL.night2, i < 5 ? 1 : 0.5);
       }
       // the reflected arrow: the same shape in the reflection's tones (a 2-row shaft), its point a cold glint
-      for (let k = 0; k <= 10; k++) {
+      for (let k = 0; k <= 12; k++) {
         const x = Math.round(q.x - vx * k);
         const y = Math.round(q.y - vy * k);
-        g.px(x, y, k < 1 ? PAL.white : k < 3 ? PAL.water4 : k < 8 ? PAL.water3 : PAL.water2);
-        if (k >= 1 && k < 8) g.px(x, y + 1, k < 4 ? PAL.water3 : PAL.water2);
+        g.px(x, y, k < 2 ? PAL.white : k < 4 ? PAL.mist : k < 9 ? PAL.water4 : PAL.water3);
+        if (k >= 1 && k < 10) g.px(x, y + 1, k < 5 ? PAL.water4 : PAL.water3);
       }
-      const bx = Math.round(q.x - vx * 10);
-      const by = Math.round(q.y - vy * 10);
-      g.px(bx, by - 1, PAL.water2);
-      g.px(bx, by + 2, PAL.water2);
+      g.px(Math.round(q.x + vx), Math.round(q.y + vy), PAL.water4);
+      const bx = Math.round(q.x - vx * 12);
+      const by = Math.round(q.y - vy * 12);
+      g.px(bx, by - 1, PAL.water3);
+      g.px(bx, by + 2, PAL.water3);
+      g.px(bx - Math.round(vx), by - 2, PAL.water2);
+      g.px(bx - Math.round(vx), by + 3, PAL.water2);
     });
   }).then(() => {
     top.destroy();
     under.destroy();
-    fl.destroy();
-    fd.destroy();
   });
 }
 
@@ -530,69 +539,155 @@ export function reflectionShards(sc: Phaser.Scene, ground: XY, dir: 1 | -1, dept
   sp.release();
 }
 
+/** Glass sliver masks (cells, top-left first): thin flat shards 2–4 px long, never single pixels. */
+const SLIVERS: readonly (readonly [number, number][])[] = [
+  [[0, 0], [0, 1], [1, 2]],
+  [[0, 0], [1, 0], [1, 1], [2, 2]],
+  [[1, 0], [0, 1], [0, 2]],
+  [[0, 0], [1, 1], [2, 1]],
+  [[0, 0], [0, 1], [0, 2], [1, 3]],
+  [[1, 0], [1, 1], [0, 2]],
+];
+
+/** One sliver at (x, y): a 1-px outline, the first cell lit (a glint on its top edge), the body in `body`. Its
+ *  mirrored twin (flip: cells upside down) uses the reflection's tones. */
+function sliver(g: Raster, x: number, y: number, m: readonly [number, number][], flip: boolean, out: number, lit: number, body: number): void {
+  const cells = flip ? m.map(([dx, dy]) => [dx, -dy] as const) : m;
+  for (const [dx, dy] of cells) for (const [ox, oy] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) g.px(x + dx + ox, y + dy + oy, out);
+  cells.forEach(([dx, dy], k) => g.px(x + dx, y + dy, k === 0 ? lit : body));
+}
+
 /**
- * Death burst: the archer's glass falls; each shard's dark reflection rises under the floor line to meet it and
- * the two vanish together on the floor (a 1-px glint); the puddle drains to nothing.
+ * Death burst (§5.2 "yansıma kırılır, okçu cam kırıklarına"): the archer's glass falls as flat white / mist
+ * slivers (1-px ink outline, whole-px steps); under the floor line each sliver's dark-blue mirrored twin rises to
+ * meet it; where they meet on the floor line they vanish together in a short horizontal mirror glint. The puddle
+ * (both lobes) drains to nothing. No crystal heap, no teal: this replaces the generic material break.
  */
 export function glassFall(sc: Phaser.Scene, u: MonsterUnit, ground: XY, dir: 1 | -1): Promise<void> {
   const gy = Math.round(ground.y);
-  const top = gy - 60;
-  const ras = new Raster(sc, ground.x - 50, top - 10, 100, gy - top + 40, DEPTH.FX - 2);
-  const floor = Raster.around(sc, ground.x + dir, gy + 5, 60, 30, FLOOR_DEPTH);
-  interface Shard { x: number; y: number; vx: number; vy: number; c: number; done: number }
+  const top = gy - 64;
+  const ras = new Raster(sc, ground.x - 50, top - 10, 100, gy - top + 80, DEPTH.FX - 2);
+  const floor = Raster.around(sc, ground.x + dir, gy + 18, 64, 56, FLOOR_DEPTH);
+  interface Shard { x: number; y: number; vx: number; vy: number; m: number; lit: number; body: number; done: number; meet: number }
   const shards: Shard[] = [];
-  for (let i = 0; i < 24; i++) {
+  for (let i = 0; i < 16; i++) {
+    const hy = RR(8, 52);
     shards.push({
-      x: ground.x + dir * RR(-8, 12),
-      y: gy - RR(8, 52),
-      vx: RR(-40, 40),
-      vy: RR(-60, 10),
-      c: GLASS[i % 3],
+      x: ground.x + dir * RR(-9, 12),
+      y: gy - hy,
+      vx: dir * RR(-12, 34) + RR(-14, 14),
+      vy: RR(-70, -10),
+      m: i % SLIVERS.length,
+      lit: i % 3 === 0 ? PAL.white : PAL.mist,
+      body: i % 3 === 2 ? PAL.steel : PAL.mist,
       done: -1,
+      // each lands on its own row of the floor (iso depth), so the meetings ripple across the puddle
+      meet: gy + Math.round(RR(-2, 4)),
     });
   }
   const pud: XY = { x: ground.x + dir, y: gy + 5 };
-  const MS = 620;
+  const MS = 640;
   void u;
   return animate(sc, MS, (t, el, dt) => {
     const s = dt / 1000;
     floor.draw((g) => {
-      // the puddle drains: a stepped dark ellipse shrinking to nothing (on the floor, under every body)
-      const pk = 1 - t;
+      // the puddle drains (both lobes shrink toward the feet, stepped tones), under every body
+      const pk = Math.round((1 - t) * 6) / 6;
       if (pk > 0.05) {
-        const rr = Math.round(25 * pk);
-        g.ell(pud.x, pud.y, rr, Math.max(1, Math.round(rr * 0.48)), pk > 0.6 ? PAL.night3 : PAL.night2);
-        ring(g, pud.x, pud.y, rr, rr * 0.48, pk > 0.6 ? PAL.water3 : PAL.water2);
+        const fill = pk > 0.6 ? PAL.night4 : PAL.night3;
+        const rim = pk > 0.6 ? PAL.steel : PAL.night4;
+        const by = pud.y + Math.round(21 * pk);
+        g.ell(pud.x, pud.y, Math.round(25 * pk), Math.max(1, Math.round(12 * pk)), rim);
+        g.ell(pud.x, by, Math.round(17 * pk), Math.max(1, Math.round(15 * pk)), rim);
+        g.ell(pud.x, pud.y, Math.round(25 * pk) - 2, Math.max(1, Math.round(12 * pk) - 1), fill);
+        g.ell(pud.x, by, Math.max(1, Math.round(17 * pk) - 2), Math.max(1, Math.round(15 * pk) - 1), fill);
       }
     });
     ras.draw((g) => {
       for (const sh of shards) {
         if (sh.done >= 0) {
-          // the shard and its twin met: a glint on the floor for two steps, then gone
+          // the sliver and its twin met: a horizontal mirror glint on the floor line, two steps, then gone
           const k = el - sh.done;
-          if (k < 70) g.px(Math.round(sh.x), gy, PAL.white);
-          else if (k < 160) g.dpx(Math.round(sh.x), gy, PAL.water4, 0.6);
+          const x = Math.round(sh.x);
+          if (k < 60) {
+            g.px(x - 1, sh.meet, PAL.white);
+            g.px(x, sh.meet, PAL.white);
+            g.px(x + 1, sh.meet, PAL.white);
+            g.px(x - 2, sh.meet, PAL.water4);
+            g.px(x + 2, sh.meet, PAL.water4);
+          } else if (k < 130) {
+            g.px(x, sh.meet, PAL.water4);
+            g.px(x - 1, sh.meet, PAL.water3);
+            g.px(x + 1, sh.meet, PAL.water3);
+          }
           continue;
         }
-        sh.vy += 420 * s;
+        if (el < 30) continue;
+        sh.vy += 440 * s;
+        sh.vx *= 1 - 1.4 * s;
         sh.x += sh.vx * s;
         sh.y += sh.vy * s;
-        if (sh.y >= gy) {
-          sh.y = gy;
+        if (sh.y >= sh.meet - 1) {
+          sh.y = sh.meet;
           sh.done = el;
           continue;
         }
         const x = Math.round(sh.x);
         const y = Math.round(sh.y);
-        g.px(x, y, sh.c);
-        if (sh.c === PAL.white) g.px(x + 1, y, PAL.mist);
-        // its reflection under the floor line
-        const my = mirrorY(y, gy);
-        g.px(x, my, sh.c === PAL.white ? PAL.water3 : PAL.water2);
+        const m = SLIVERS[sh.m];
+        sliver(g, x, y, m, false, PAL.ink, sh.lit, sh.body);
+        // its twin under the floor line, rising as the sliver falls
+        sliver(g, x, mirrorY(y, sh.meet), m, true, PAL.night0, PAL.water3, PAL.water2);
       }
     });
   }).then(() => {
     ras.destroy();
     floor.destroy();
   });
+}
+
+// ================================================================ position: the mirror pane
+
+/**
+ * The guard's mirror pane forms in front of the archer (position change to defense): a vertical pane of glass
+ * light 3 px wide builds from its middle out (whole-px rows), a diagonal shimmer runs down it, and under the floor
+ * line its dark-blue mirrored twin builds a step later; then both go out in two stepped tones.
+ */
+export function paneFlash(sc: Phaser.Scene, at: XY, ground: number, dir: 1 | -1, ms = 320): Promise<void> {
+  const H2 = 11;
+  const gy = Math.round(ground);
+  const ras = new Raster(sc, at.x - 8, at.y - H2 - 4, 17, gy - at.y + H2 + 40, DEPTH.FX - 1);
+  const x0 = Math.round(at.x);
+  const cy = Math.round(at.y);
+  return animate(sc, ms, (t) => {
+    ras.draw((g) => {
+      const grow = Math.min(1, t / 0.35);
+      const out = t < 0.7 ? 0 : t < 0.85 ? 1 : 2;
+      const h = Math.round(H2 * grow);
+      const shim = Math.floor(t * 14);
+      for (let dy = -h; dy <= h; dy++) {
+        const y = cy + dy;
+        for (let k = 0; k < 3; k++) {
+          const x = x0 + dir * (k - 1);
+          const band = (((k + dy + shim) % 5) + 5) % 5;
+          let c: number = band === 0 ? PAL.white : band < 3 ? PAL.water4 : PAL.mist;
+          if (out === 1) c = band === 0 ? PAL.water4 : PAL.steel;
+          if (out === 2) { if ((dy + k) % 2) continue; c = PAL.steel; }
+          g.px(x, y, c);
+        }
+        // the pane's lit edge toward the foe
+        if (out < 2) g.px(x0 + dir * 2, y, PAL.white);
+      }
+      // the twin under the floor line, a step behind
+      const tg = Math.max(0, Math.min(1, (t - 0.1) / 0.35));
+      const hm = Math.round(H2 * tg * KR);
+      const my = mirrorY(cy, gy);
+      for (let dy = -hm; dy <= hm; dy++) {
+        if (out === 2 && dy % 2) continue;
+        for (let k = 0; k < 3; k++) g.px(x0 + dir * (k - 1), my + dy, k === 1 ? PAL.water3 : out ? PAL.water1 : PAL.water2);
+      }
+      // where pane and twin meet the floor: the horizontal mirror glint
+      if (t > 0.3 && t < 0.75) for (let dx = -4; dx <= 4; dx++) g.px(x0 + dx, gy, Math.abs(dx) < 2 ? PAL.white : PAL.water4);
+    });
+  }).then(() => ras.destroy());
 }

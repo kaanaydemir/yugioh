@@ -1,7 +1,9 @@
 // Kutup Bobini (polar_coil, lane D, C14) — the living copper coil. Strike, summon and death are its own
 // (src/cinematics/d/polar_coil*.ts, registered at priority 20, v3 only); the recipe gives the body material
 // (a blow on it sounds and sparks as metal), the ranged flag (the orbiting spikes are a ranged blow), the death
-// preset (the bare magnetite spindle breaks as stone after its own unwinding pose), the flip accent, the glow
+// preset (only a fallback now: the death keeps the fallen spindle as its own remains, rolls the empty spool off it
+// and breaks it in the last 150 ms — no generic material break; the 'stone' accent is the topple's floor dust), the
+// flip accent (unused in v3: the coil's flip is its own, custom.flip), the glow
 // of its two-colour core (N orange / S blue) and copper winding, and its hand-made voice
 // (_v3/sound.ts CHARACTER_SOUNDS.polar_coil).
 
@@ -21,5 +23,5 @@ export default {
     glow: { emissive: [[PAL.fire3, 0.9], [PAL.water4, 0.8], [PAL.gold4, 0.6]], halo: 0.5, pool: 0.85, spill: PAL.fire2 },
     strike: PAL.gold4,
   },
-  custom: { strike: true, summon: true, death: true },
+  custom: { strike: true, summon: true, death: true, flip: true, position: true },
 } satisfies PresentationRecipe;

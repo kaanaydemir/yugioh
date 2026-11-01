@@ -33,7 +33,7 @@ import { lightFlash, lightPool } from '../../view/light';
 import { Raster } from '../../vfx/setpieces';
 import { Sparks, animate, onFrame, sleep } from '../../vfx/combat';
 import { framePose } from '../../art/monsters-v3/polar_needle-anims';
-import { TORSO_N, TORSO_S, skeleton } from '../../art/monsters-v3/polar_needle-rig';
+import { TORSO_N, TORSO_S, resolveAim, skeleton } from '../../art/monsters-v3/polar_needle-rig';
 import { needle } from '../../art/monsters-v3/polar_needle-kit';
 
 export const TAU = Math.PI * 2;
@@ -61,14 +61,14 @@ const rx = (p: XY): XY => ({ x: Math.round(p.x), y: Math.round(p.y) });
 export function needlePoint(u: MonsterUnit, which: 'spear' | 'n' | 's' | 'pivot' | 'head', anim?: Parameters<typeof framePose>[0], frame?: number): XY | null {
   if (!u.sprite.active || u.cardId !== 'polar_needle') return null;
   const fi = u.frameInfo();
-  const sk = skeleton(framePose(anim ?? fi.anim ?? 'idle', frame ?? fi.frame));
+  const sk = skeleton(resolveAim(framePose(anim ?? fi.anim ?? 'idle', frame ?? fi.frame), u.flipX ? 'right' : 'left'));
   const p = which === 'spear' ? sk.spt : which === 'n' ? sk.ntip : which === 's' ? sk.stip : which === 'head' ? sk.head : sk.nc;
   return rx(u.framePoint(Math.floor(p[0]) + 0.5, Math.floor(p[1]) + 0.5));
 }
 
 /** The world offset of a frame point of `anim` f from the unit's feet (facing aware). */
 export function needleOffset(u: MonsterUnit, which: 'spear' | 'pivot', anim: Parameters<typeof framePose>[0], frame: number): XY {
-  const sk = skeleton(framePose(anim, frame));
+  const sk = skeleton(resolveAim(framePose(anim, frame), u.flipX ? 'right' : 'left'));
   const p = which === 'spear' ? sk.spt : sk.nc;
   const sgn = u.flipX ? -1 : 1;
   return { x: Math.round(sgn * (p[0] - u.art.anchorX)), y: Math.round(p[1] - u.art.anchorY) };
@@ -79,22 +79,32 @@ export function needleOffset(u: MonsterUnit, which: 'spear' | 'pivot', anim: Par
 /** The needle falls point-first out of the sky: a white head with an orange (N, upper) / blue (S) wake. */
 export function dropStreak(sc: Phaser.Scene, home: XY, ms: number, depth: number): Promise<void> {
   const top = Math.max(-10, home.y - 150);
-  const bot = home.y - 64;
-  const r = new Raster(sc, home.x - 6, top - 50, 12, bot - top + 60, depth);
+  const bot = home.y - 2;
+  const r = new Raster(sc, home.x - 6, top - 100, 12, bot - top + 110, depth);
+  // the needle itself rides the head of the streak (the death's spin sheet, frame 0 = N up, S point first)
+  const img = sc.add.image(home.x, top, spinSheet(sc), 0).setDepth(depth + 0.1);
+  const S_OFF = TORSO_S; // frame centre → its S point
   return animate(sc, ms, (t) => {
     const e = t * t;
     const head = Math.round(top + (bot - top) * e);
     const len = Math.round(18 + 30 * e);
+    img.setPosition(home.x, head - S_OFF);
+    const tail = head - TORSO_S - TORSO_N;
     r.draw((g) => {
       for (let i = 0; i < len; i++) {
-        const y = head - i;
+        const y = tail - i;
         const k = i / len;
         g.px(home.x, y, i < 2 ? PAL.white : k < 0.45 ? PAL.water4 : PAL.water2);
-        if (i > 3 && k < 0.85) g.dpx(home.x - 1, y - 3, k < 0.5 ? PAL.fire4 : PAL.fire2, 1 - k);
-        if (i > 6 && k < 0.7) g.dpx(home.x + 1, y - 6, PAL.water3, 0.75 - k);
+        if (i > 1 && k < 0.85) g.dpx(home.x - 2, y - 2, k < 0.5 ? PAL.fire4 : PAL.fire2, 1 - k);
+        if (i > 3 && k < 0.7) g.dpx(home.x + 2, y - 4, PAL.water3, 0.75 - k);
       }
+      // the point's white glint
+      g.px(home.x, head + 1, PAL.white);
     });
-  }).then(() => r.destroy());
+  }).then(() => {
+    img.destroy();
+    r.destroy();
+  });
 }
 
 export interface Dial {
@@ -142,12 +152,13 @@ export function compassDial(sc: Phaser.Scene, u: MonsterUnit, home: XY, dir: 1 |
       const drawn = Math.min(1, el / 260);
       const fi = u.sprite.active ? u.frameInfo() : { anim: null, frame: 0 };
       const P = fi.anim === 'summon' ? framePose('summon', fi.frame) : null;
-      const yaw = P && P.spin > 0 ? P.yaw : lockedAt >= 0 ? 720 : lastYaw;
+      const aimed = lockedAt >= 0 || (P !== null && P.aim > 0);
+      const yaw = P && P.spin > 0 ? P.yaw : lastYaw;
       lastYaw = yaw;
-      // screen angle of the spear on the floor: yaw 0 = toward the foe (dir), iso squashed
+      // screen angle of the spear on the floor: yaw 0 = toward the foe (dir), iso squashed; aimed = on the bearing
       const ya = (yaw * Math.PI) / 180;
-      const vx = Math.cos(ya) * dir;
-      const vy = Math.sin(ya) * 0.5;
+      const vx = aimed ? Math.cos(aF) : Math.cos(ya) * dir;
+      const vy = aimed ? Math.sin(aF) * 0.5 : Math.sin(ya) * 0.5;
       const lv = 1 - fadeK;
       r.draw((g) => {
         if (lv <= 0) return;
@@ -225,34 +236,56 @@ export function compassDial(sc: Phaser.Scene, u: MonsterUnit, home: XY, dir: 1 |
   };
 }
 
-/** The lock: a stepped bearing line shoots out over the floor from the tile toward the foe, then fades in steps. */
+/**
+ * The lock: a stepped bearing line shoots out over the floor from the needle's feet all the way to the foe's tile
+ * (~90 ms), a tick ring snaps round the foe (white → fire), the whole bearing holds at full value ~200 ms, then
+ * fades in steps.
+ */
 export function lockBeam(sc: Phaser.Scene, home: XY, foe: XY, depth = FLOOR_DEPTH): Promise<void> {
   const fd = { x: foe.x - home.x, y: foe.y - home.y };
   const fl = Math.hypot(fd.x, fd.y) || 1;
   const ux = fd.x / fl;
   const uy = fd.y / fl;
-  const L = Math.round(Math.min(fl * 0.62, 90));
-  const r = Raster.around(sc, home.x, home.y, 2 * L + 24, 2 * L + 24, depth);
-  return animate(sc, 520, (t, el) => {
-    const reach = Math.min(L, Math.round((el / 110) * L));
-    const lv = el < 260 ? 1 : el < 360 ? 0.66 : el < 450 ? 0.33 : 0.15;
+  const K0 = 7;
+  const L = Math.max(K0 + 4, Math.round(fl) - 3);
+  const RING = 17;
+  const r = Raster.around(sc, (home.x + foe.x) / 2, (home.y + foe.y) / 2, Math.abs(fd.x) + 2 * RING + 24, Math.abs(fd.y) + RING + 24, depth);
+  const SHOOT = 90;
+  const HOLD = SHOOT + 200;
+  return animate(sc, HOLD + 260, (_t, el) => {
+    const reach = Math.min(L, K0 + Math.round((el / SHOOT) * (L - K0)));
+    const lv = el < HOLD ? 1 : el < HOLD + 80 ? 0.66 : el < HOLD + 170 ? 0.33 : 0.15;
+    const march = Math.floor(el / 50) % 3;
     r.draw((g) => {
-      for (let k = 30; k <= reach; k++) {
-        if (k % 3 === 2) continue;
-        const near = reach - k < 6;
-        g.dpx(home.x + ux * k, home.y + uy * k, near && el < 200 ? PAL.white : k % 3 === 0 ? PAL.fire4 : PAL.fire2, lv);
+      for (let k = K0; k <= reach; k++) {
+        if ((k + march) % 3 === 2) continue;
+        const head = reach - k < 5 && el < SHOOT + 40;
+        const c = head ? PAL.white : (k + march) % 3 === 0 ? PAL.fire4 : PAL.fire3;
+        g.dpx(home.x + ux * k, home.y + uy * k, c, lv);
+        // the 1-px darker under-edge keeps the line legible on the lit marble
+        g.dpx(home.x + ux * k, home.y + uy * k + 1, PAL.fire1, lv * 0.8);
       }
-      // the arrowhead chevron at the front (two 3-px barbs back along the bearing)
-      if (reach >= 32) {
-        const x = home.x + ux * reach;
-        const y = home.y + uy * reach;
-        for (let i = 1; i <= 3; i++) {
-          g.dpx(x - ux * i - uy * i * 1.4, y - uy * i + ux * i * 0.7, PAL.fire3, lv);
-          g.dpx(x - ux * i + uy * i * 1.4, y - uy * i - ux * i * 0.7, PAL.fire3, lv);
-        }
+      if (reach < L) return;
+      // arrived: the chevron at the foe and a tick ring snapped round its tile
+      const x = home.x + ux * L;
+      const y = home.y + uy * L;
+      for (let i = 1; i <= 3; i++) {
+        g.dpx(x - ux * i - uy * i * 1.4, y - uy * i + ux * i * 0.7, PAL.fire4, lv);
+        g.dpx(x - ux * i + uy * i * 1.4, y - uy * i - ux * i * 0.7, PAL.fire4, lv);
+      }
+      const ta = el - SHOOT;
+      const rr = ta < 50 ? RING + 4 : RING;
+      const rc = ta < 50 ? PAL.white : ta < 120 ? PAL.fire4 : PAL.fire3;
+      for (let i = 0; i < 32; i++) {
+        if (i % 4 === 3) continue;
+        const a = (i / 32) * TAU;
+        g.dpx(foe.x + Math.cos(a) * rr, foe.y + Math.sin(a) * rr * 0.5, i % 8 === 0 ? PAL.white : rc, lv);
+      }
+      // four ticks on the ring's cardinals point in at the foe
+      for (const a of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
+        for (let k = 1; k <= 3; k++) g.dpx(foe.x + Math.cos(a) * (rr + k), foe.y + Math.sin(a) * (rr + k) * 0.5, ta < 120 ? PAL.gold4 : PAL.gold3, lv);
       }
     });
-    void t;
   }).then(() => r.destroy());
 }
 
@@ -321,28 +354,42 @@ export interface Brackets {
  * steps, slam shut on the lock and quiver; while locked, iron dust flows between them along three field arcs.
  */
 export function brackets(sc: Phaser.Scene, o: BracketOpts): Brackets {
-  const W = o.half + 40;
+  const W = o.half + 48;
   const r = Raster.around(sc, o.at.x, o.at.y, 2 * W, 2 * o.h + 24, o.depth);
-  let state: 'off' | 'appear' | 'clamp' | 'bounce' | 'gone' = 'off';
+  let state: 'off' | 'appear' | 'clamp' | 'bounce' | 'crack' | 'gone' = 'off';
   let t0 = 0;
   let el = 0;
   const near = { ramp: FIRE };
   const far = { ramp: WATER };
   /** One bracket at x offset `off` from the centre on `sx` side (−1 left), its glyph opening to the centre. */
-  const glyph = (g: Raster, sx: number, off: number, ramp: readonly number[], lv: number, white: boolean): void => {
+  const glyph = (g: Raster, sx: number, off: number, ramp: readonly number[], lv: number, white: boolean, cracked = false, piece?: { seg: number; dx: number; dy: number; shade: number }): void => {
     const h = o.h;
     const b = Math.max(3, Math.round(h * 0.28));
+    // segment bounds (4 arcs) for the crack and the shards
+    const cuts = [-h, Math.round(-h * 0.45), 0, Math.round(h * 0.45), h + 1];
     for (let yy = -h; yy <= h; yy++) {
+      let dx = 0;
+      let dy = 0;
+      let sh = 0;
+      if (piece) {
+        if (yy < cuts[piece.seg] || yy >= cuts[piece.seg + 1]) continue;
+        dx = piece.dx;
+        dy = piece.dy;
+        sh = piece.shade - 1;
+      }
+      if (cracked && (yy === cuts[1] || yy === cuts[2] || yy === cuts[3])) continue;
       const k = yy / h;
-      const x = o.at.x + sx * (off - Math.round(b * k * k));
-      const y = o.at.y + yy;
+      const x = o.at.x + sx * (off - Math.round(b * k * k)) + dx;
+      const y = o.at.y + yy + dy;
       const mid = Math.abs(k) < 0.35;
-      g.dpx(x, y, white ? PAL.white : mid ? ramp[1] : Math.abs(k) < 0.8 ? ramp[2] : ramp[3], lv);
+      const ti = Math.min(4, (mid ? 1 : Math.abs(k) < 0.8 ? 2 : 3) + sh);
+      g.dpx(x, y, white ? PAL.white : ramp[ti], lv);
       // the 2-px stroke: the outer edge one tone down
-      g.dpx(x + sx, y, white ? ramp[1] : Math.abs(k) < 0.8 ? ramp[3] : ramp[4], lv);
+      g.dpx(x + sx, y, white ? ramp[1] : ramp[Math.min(4, (Math.abs(k) < 0.8 ? 3 : 4) + (sh > 0 ? 1 : 0))], lv);
     }
     // the serifs at both ends, pointing in
-    for (const yy of [-o.h, o.h]) g.dpx(o.at.x + sx * (off - b - 1), o.at.y + yy, ramp[2], lv);
+    if (!piece || piece.seg === 0) g.dpx(o.at.x + sx * (off - b - 1) + (piece?.dx ?? 0), o.at.y - o.h + (piece?.dy ?? 0), white ? PAL.white : ramp[2], lv);
+    if (!piece || piece.seg === 3) g.dpx(o.at.x + sx * (off - b - 1) + (piece?.dx ?? 0), o.at.y + o.h + (piece?.dy ?? 0), white ? PAL.white : ramp[2], lv);
   };
   const stopFn = onFrame(
     sc,
@@ -359,12 +406,13 @@ export function brackets(sc: Phaser.Scene, o: BracketOpts): Brackets {
         if (state === 'appear') {
           // in by whole steps: wide and dim → mid
           const step = Math.min(3, Math.floor(t / 70));
-          off = o.half + 26 - step * 4;
+          // then they keep creeping in, a pixel at a time, while the aim holds (never static, HA-*)
+          off = o.half + 36 - step * 4 - Math.min(6, Math.max(0, Math.floor((t - 210) / 70)));
           lv = [0.33, 0.66, 1, 1][step];
         } else if (state === 'clamp') {
           // slam: two steps, a white frame, then a 1-px quiver
           const step = Math.min(2, Math.floor(t / 35));
-          off = [o.half + 10, o.half + 5, o.half + 3][step];
+          off = [o.half + 14, o.half + 6, o.half + 3][step];
           white = t >= 35 && t < 90;
           if (t > 140) off += Math.floor(t / 50) % 2;
           // the field: dust flows near → far along three arcs over / through / under the body
@@ -381,6 +429,29 @@ export function brackets(sc: Phaser.Scene, o: BracketOpts): Brackets {
               }
             }
           }
+        } else if (state === 'crack') {
+          // contact: one white frame of the brackets themselves, cracked across at three points; then each glyph
+          // breaks into 4 whole arc segments in its own ramp that fly apart, fall and blink out in steps
+          off = o.half + 3;
+          if (t < 50) {
+            glyph(g, ns, off, near.ramp, 1, true, true);
+            glyph(g, -ns, off, far.ramp, 1, true, true);
+            return;
+          }
+          const k = Math.floor((t - 50) / 40); // 40 ms steps
+          if (k > 8) return;
+          const lvS = k < 4 ? 1 : k < 6 ? 0.66 : 0.33;
+          for (const [sx, ramp] of [[ns, near.ramp], [-ns, far.ramp]] as const)
+            for (let seg = 0; seg < 4; seg++) {
+              if (k >= 6 && (seg + k) % 2 === 1) continue; // blinking out
+              const up = seg < 2 ? -1 : 1;
+              const out = 2 + (seg === 0 || seg === 3 ? 2 : 1);
+              const dx = sx * out * (k + 1);
+              const dy = Math.round(up * (seg === 0 || seg === 3 ? 2 : 1) * (k + 1) + 0.9 * (k + 1) * (k + 1));
+              const shade = k < 2 ? 1 : k < 5 ? 2 : 3;
+              glyph(g, sx, off, ramp, lvS, false, false, { seg, dx, dy, shade });
+            }
+          return;
         } else {
           // bounce: they spring out and flicker away
           const step = Math.min(3, Math.floor(t / 50));
@@ -405,19 +476,18 @@ export function brackets(sc: Phaser.Scene, o: BracketOpts): Brackets {
     shatter(floorY: number) {
       const ns = -o.side;
       const off = o.half + 3;
-      state = 'gone';
-      stopFn();
-      r.destroy();
+      go('crack');
+      // a few fine chips in each bracket's own colour (white only on their first frame) under the big arc pieces
       const sp = new Sparks(sc, o.depth + 0.1);
       for (const [sx, ramp] of [
         [ns, FIRE],
         [-ns, WATER],
       ] as const) {
-        for (let i = 0; i < 12; i++) {
+        for (let i = 0; i < 6; i++) {
           const k = RR(-1, 1);
           const y = o.at.y + k * o.h;
           const x = o.at.x + sx * (off - Math.round(o.h * 0.28 * k * k));
-          sp.add({ x, y, vx: sx * RR(30, 110), vy: RR(-90, -10) + k * 30, ay: 420, drag: 1.2, life: RR(280, 460), colors: [PAL.white, ramp[1], ramp[2], ramp[3]], shape: i % 3 === 0 ? 'sq' : 'px', size: 2, floor: floorY + RR(-3, 4), bounce: 0.3, fadeAt: 0.8 });
+          sp.add({ x, y, vx: sx * RR(30, 90), vy: RR(-70, -10) + k * 30, ay: 420, drag: 1.2, life: RR(260, 420), delay: 50, colors: [ramp[1], ramp[1], ramp[2], ramp[3]], shape: 'px', floor: floorY + RR(-3, 4), bounce: 0.3, fadeAt: 0.8 });
         }
       }
       sp.release();
@@ -585,12 +655,12 @@ function spinSheet(sc: Phaser.Scene): string {
  * The torn needle spins madly up and off the top of the screen (`back`: the side it flies to, ±1). Starts at
  * `from` with angle `deg` (the death pose's ra) and a two-colour spiral wake behind it.
  */
-export function flyingNeedle(sc: Phaser.Scene, o: { from: XY; deg: number; back: 1 | -1; depth: number; flip: boolean }): Promise<void> {
+export function flyingNeedle(sc: Phaser.Scene, o: { from: XY; deg: number; back: 1 | -1; depth: number; flip: boolean; drift?: number }): Promise<void> {
   const key = spinSheet(sc);
   let fr = Math.round(((((o.deg % 360) + 360) % 360) / 360) * SPIN_N) % SPIN_N;
   const img = sc.add.image(Math.round(o.from.x), Math.round(o.from.y), key, fr).setDepth(o.depth).setFlipX(o.flip);
   const wake = new Sparks(sc, o.depth - 0.1);
-  const vx = o.back * 150;
+  const vx = o.back * 150 * (o.drift ?? 1);
   const vy = -360;
   let acc = 0;
   let spinAcc = 0;

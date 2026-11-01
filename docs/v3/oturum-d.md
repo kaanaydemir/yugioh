@@ -28,6 +28,7 @@ Kanıtlar: `shots/v3/d/<kart>/`.
 
 ## Günlük
 
+- 2026-11-01 ikinci limit duraklaması: crit1 + fix1 turları polar parçaları, archer, jester için kısmen bitti; sovereign başlamadı. Workflow yeniden sürdürüldü.
 - 2026-10-31 WIP kontrol noktası (orkestratör isteği: kullanım limiti yaklaşıyor). Workflow `wf_ec97f149-c20` sürüyor:
   el kitabı `docs/v3/oturum-d-rehber.md` yazıldı; yedi kartın rig + kart görseli + art testleri, polar parçalarının ve
   dial_jester'ın sinematik/SFX'i kısmen hazır. `npm run typecheck` temiz. Kapılar (filmdiff, camera-gate, palcheck) bu

@@ -17,8 +17,10 @@
 // the field to the duelist.
 // Death: the art's pose (poles swap wildly f1–f3, the pieces repel f4–f8); the floor light strobes orange /
 // blue with the swap (polarAnvilSwap), on 'dissolve' two half rings shoot apart — orange back, blue forward —
-// with the iron dust (polarAnvilRepel), plates land (polarAnvilPlate ×2), and on the burst frame iron plates
-// skid out over the floor while the last pole sparks die (polarAnvilBurst). Camera never moves (EF-8).
+// with the iron dust (polarAnvilRepel), the arms fall and clang on the floor (polarAnvilPlate ×2: near arm f7,
+// far arm f8); the last frame becomes remains on the floor (anvilRemains: poles swapping as they die, two
+// twitches, a 150-ms break) while iron plates and gold weld beads skid out (polarAnvilBurst). No generic
+// shatter. Camera never moves (EF-8).
 
 import { PAL, RAMPS, type Ramp } from '../../art/palette';
 import type { GameEvent } from '../../engine/types';
@@ -33,8 +35,10 @@ import { deathV3 } from '../_v3/death';
 import { summonPose } from '../_v3/summon';
 import { atFrame, atMark, panAt, play, start, takeCharge } from '../_v3/sound';
 import { sourceOwnsDeath } from '../strikes-b/_kit';
+import { knock } from '../_v3/react';
 import { runSummon, type Stage } from '../summon-a/_kit';
-import { faceSparks, fieldLines, fieldSeam, ironPlates, poleOf, poleStrobe, pushWave, repelBurst, seedFx, sparkFountain, waveContact, waveRebound } from './_polar_anvil-fx';
+import { flipV3With } from '../summon-b/flip';
+import { anvilRemains, deadPoles, faceSparks, fieldLines, fieldSeam, fieldSnap, ironPlates, poleOf, poleStrobe, pushWave, repelBurst, seedFx, sparkFountain, waveContact, waveRebound } from './_polar_anvil-fx';
 
 const ID = 'polar_anvil';
 /** The hologram onset's tones: the blue field. */
@@ -74,6 +78,19 @@ async function entranceV3(S: Stage): Promise<void> {
     pool.setIntensity(1.1, 40);
     S.finale({ ring: 56, ramp: RAMPS.water, shake: 2, sfx: null, freezeMs: 40, playerRing: false });
   });
+  // f3, the halves touching: the arc is pinched into the seam (the art) and the floor flashes blue under it —
+  // the tension right before the KLAK
+  atFrame(
+    u,
+    'summon',
+    3,
+    () => {
+      void lightFlash(sc, S.home.x, S.home.y - 16, PAL.water4, 30, 180, { floorY: S.home.y, intensity: 1, air: 0.5 });
+      pool.setIntensity(0.9, 30);
+      seam.squeeze();
+    },
+    { late: false },
+  );
   atFrame(u, 'summon', 5, () => play('polarAnvilFount', { volume: 0.7, pan }), { late: false });
   atFrame(u, 'summon', 7, () => play('polarAnvilArms', { volume: 0.85, pan }), { late: false });
   await p.done;
@@ -92,6 +109,29 @@ registerCardHook(
     await runSummon(ctx, entranceV3, entranceV3);
   },
   { priority: 20, name: 'd:polar_anvil:summon' },
+);
+
+// ================================================================ flip
+
+// The flip: the field ring snaps on round the turning card with a weld spark (fieldSnap); the KLAK plays once —
+// on the rise of a flip summon, or with the snap when it is turned by an attack (no rise then).
+registerCardHook(
+  ID,
+  'flip',
+  (ctx) => {
+    if (!LOOK_V3) return ctx.base();
+    const flipSummon = ctx.ev.cause === 'flipSummon';
+    return flipV3With(
+      ctx,
+      (_c, _id, x, y) => {
+        const home = { x: Math.round(x), y: Math.round(y) };
+        fieldSnap(ctx.scene, home, DEPTH.FX);
+        if (!flipSummon) play('polarAnvilKlak', { volume: 0.55, pan: panAt(home.x) });
+      },
+      { burst: false, rise: (_c, u) => play('polarAnvilKlak', { volume: 0.6, pan: panAt(u.home.x) }) },
+    );
+  },
+  { priority: 20, name: 'd:polar_anvil:flip' },
 );
 
 // ================================================================ strike
@@ -137,7 +177,8 @@ registerStrike(
     // the fronts land on the body's near side, not in its core
     const to: XY = s.direct ? { x: Math.round(aim.x), y: Math.round(aim.y) } : { x: Math.round(aim.x - dir.x * 9), y: Math.round(aim.y - dir.y * 9) };
     const dist = Math.hypot(to.x - from.x, to.y - from.y);
-    const ms = Math.round(Math.max(110, Math.min(s.direct ? 380 : 320, dist * 2.1)));
+    // a readable flight even next door (three rings must be seen growing), longer across the field
+    const ms = Math.round(Math.max(240, Math.min(s.direct ? 420 : 340, dist * 2.1)));
     const waveSnd = start('polarAnvilWave', { volume: 0.85, pan });
     let arrived!: () => void;
     const arrival = new Promise<void>((r) => (arrived = r));
@@ -155,11 +196,22 @@ registerStrike(
       onArrive: () => {
         waveSnd.stop(40);
         s.impact(to);
-        play(s.blocked ? 'polarAnvilRebound' : 'polarAnvilWaveHit', { volume: s.blocked ? 0.8 : 0.85, pan: panAt(to.x) });
-        if (s.blocked) {
+        // the anvil loses: no rebound rolling home while it dies — the struck body and the death's pole swap
+        // carry the beat (and four sound layers on one frame would mask each other)
+        if (s.blocked && loses) waveContact(sc, to, ground, { dir, depth, small: true });
+        else play(s.blocked ? 'polarAnvilRebound' : 'polarAnvilWaveHit', { volume: s.blocked ? 0.8 : 0.85, pan: panAt(to.x) });
+        if (s.blocked && !loses) {
           waveContact(sc, to, ground, { dir, depth, small: true });
           void waveRebound(sc, { from, to, depth });
-        } else waveContact(sc, to, ground, { dir, depth, small: false });
+        } else if (!s.blocked) {
+          waveContact(sc, to, ground, { dir, depth, small: false });
+          // "İtme Dalgası": the field shoves the body a full 4 px back (the kit's knock is sized by weight)
+          const t = s.target;
+          if (t && t.sprite.active && t.position === 'attack') {
+            const tDies = res === 'targetDestroyed' || res === 'bothDestroyed';
+            void knock(t, { x: Math.sign(dir.x) || 1, y: dir.y }, 4, { hold: tDies });
+          }
+        }
         arrived();
       },
       onEcho: (i, at) => {
@@ -200,6 +252,13 @@ registerCardHook(
     const home = { ...u.home };
     const dir: 1 | -1 = u.flipX ? -1 : 1;
     const dissolveF = u.markFrame('death', 'dissolve', 4);
+    // the blow's reaction often starts the death pose before this handler runs: the voice's deathStart
+    // (frame 1, never late) is then skipped — play the pole swap here, cut on 'dissolve' (the repel takes over)
+    const fi = u.frameInfo();
+    if (fi.anim === 'death' && fi.frame >= 1 && fi.frame < dissolveF) {
+      const swap = start('polarAnvilSwap', { volume: 0.9, pan: panAt(home.x) });
+      atFrame(u, 'death', dissolveF, () => swap.stop(40), { maxMs: 3000 });
+    }
     atFrame(u, 'death', 1, () => poleStrobe(sc, home, Math.max(120, u.rangeMs('death', 1, dissolveF))), { maxMs: 3000 });
     atFrame(
       u,
@@ -211,9 +270,33 @@ registerCardHook(
       },
       { maxMs: 3000 },
     );
+    // the last frame (the halves apart, the arms on the floor) becomes the remains as soon as it shows: the
+    // sprite hides, so deathV3's hold runs on the remains and no generic shatter follows — the final material is
+    // the anvil's own (iron plates, gold weld beads, the dying poles, a 150-ms break at the very end)
+    const lastF = u.frameCount('death') - 1;
+    let remains = false;
+    atFrame(
+      u,
+      'death',
+      lastF,
+      () => {
+        if (remains || !u.sprite.active || !u.sprite.visible || u.retired) return;
+        const poles = deadPoles(u);
+        if (!poles) return;
+        remains = true;
+        // the remains live through the hold, the burst and ~330 ms after it (the last 150 ms break them up)
+        anvilRemains(sc, u.sprite, home, poles.heel, poles.horn, u.frameMs('death', lastF) * 2 + 330);
+        u.sprite.setVisible(false);
+      },
+      { maxMs: 3000 },
+    );
     return deathV3(ctx, {
       fallback: () => ctx.base(),
-      onBurst: () => ironPlates(sc, home, dir, DEPTH.FX - 1),
+      onBurst: () => {
+        ironPlates(sc, home, dir, DEPTH.FX - 1);
+        // the shatter (and its burst cue) was skipped: the remains' own burst sound
+        if (remains) play('polarAnvilBurst', { pan: panAt(home.x) });
+      },
     });
   },
   { priority: 20, name: 'd:polar_anvil:death' },

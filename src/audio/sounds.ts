@@ -16,6 +16,8 @@ import { V3_POLAR_NEEDLE_RECIPES } from './v3/polar_needle';
 import { V3_POLAR_COIL_RECIPES } from './v3/polar_coil';
 import { V3_JESTER_RECIPES } from './v3/jester';
 import { V3_ARCHER_RECIPES } from './v3/archer';
+import { V3_RAIDERS_RECIPES } from './v3/raiders';
+import { V3_STRAW_RECIPES } from './v3/straw';
 import { UI_CARD_RECIPES } from './v3/ui-cards';
 import { UI_FLOW_RECIPES } from './v3/ui-flow';
 
@@ -1100,6 +1102,8 @@ export const RECIPES: Record<SfxName, Recipe> = {
   ...V3_POLAR_COIL_RECIPES, // Kutup Bobini (./v3/polar_coil.ts)
   ...V3_JESTER_RECIPES, // Kadran Soytarısı (./v3/jester.ts)
   ...V3_ARCHER_RECIPES, // Yansıyan Okçu (./v3/archer.ts)
+  ...V3_RAIDERS_RECIPES, // Hurda Akıncıları (./v3/raiders.ts)
+  ...V3_STRAW_RECIPES, // Saman Korkuluk jetonu (./v3/straw.ts)
   ...UI_CARD_RECIPES, // A6 UI sounds, cards (./v3/ui-cards.ts; written by A6-A)
   ...UI_FLOW_RECIPES, // A6 UI sounds, flow (./v3/ui-flow.ts; written by A6-A)
 };

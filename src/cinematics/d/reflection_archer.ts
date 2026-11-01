@@ -27,10 +27,10 @@
 import { PAL, type Ramp } from '../../art/palette';
 import type { GameEvent } from '../../engine/types';
 import { LOOK_V3, type XY } from '../../view/layout';
-import { lightFlash } from '../../view/light';
+import { lightFlash, lightPool } from '../../view/light';
 import { shake } from '../../vfx/core';
 import { sleep } from '../../vfx/combat';
-import { registerCardHook, registerStrike } from '../api';
+import { registerCardHook, registerEvent, registerStrike } from '../api';
 import type { StrikeArgs } from '../_core/types';
 import { strikeStartFrame } from '../_v3/clash';
 import { deathV3 } from '../_v3/death';
@@ -38,8 +38,9 @@ import { summonPose } from '../_v3/summon';
 import { atFrame, atMark, panAt, play, start, takeCharge } from '../_v3/sound';
 import { sourceOwnsDeath } from '../strikes-b/_kit';
 import { runSummon, type Stage } from '../summon-a/_kit';
+import { capped } from '../summon-b/_kit';
 import {
-  FLOOR_DEPTH, archerPoint, drawMotes, echoRings, glassFall, lightDrop, mirrorMeet, mirrorPlane, puddleCracks, reflectionShards, seedFx, splinters, twinArrows,
+  FLOOR_DEPTH, archerPoint, drawMotes, echoRings, glassFall, lightDrop, mirrorMeet, mirrorPlane, paneFlash, puddleCracks, reflectionShards, seedFx, splinters, twinArrows,
 } from './_reflection_archer-fx';
 
 const ID = 'reflection_archer';
@@ -112,6 +113,172 @@ registerCardHook(
   { priority: 20, name: 'd:reflection_archer:summon' },
 );
 
+// ================================================================ flip
+
+// The flip: no generic hologram — the card turns and the light drop's last beat plays short on the tile: the
+// mirror puddle spreads ("tıp": archerTip), the reflection wakes in it first (archerReflect), the archer rises
+// over it (archerRise → archerLand) — the summon's own frames from the splash, quicker (≤ ~0.9 s). Turned by an
+// attack (defense): only the reflection-first beat and the rise, then the guard's mirror pane forms.
+registerCardHook(
+  ID,
+  'flip',
+  async (ctx) => {
+    if (!LOOK_V3) return ctx.base();
+    const ev = ctx.ev;
+    const v = ctx.views;
+    const field = v.field;
+    const sc = ctx.scene;
+    const flipSummon = ev.cause === 'flipSummon';
+    if (flipSummon) {
+      const si = ctx.findType('summon', (e) => e.uid === ev.uid && e.method === 'flip');
+      if (si >= 0) ctx.consumeAt(si);
+      void v.duelists?.get(ev.player).play('command');
+      void v.camera.unfocus(120);
+    }
+    let tile = field.tileOf(ev.uid);
+    if (!tile) tile = field.placeCard(ev.player, 'monster', ev.zone, ev.uid, ev.cardId, false, 'side');
+    tile.setCard(ev.cardId);
+    const home: XY = { x: Math.round(tile.home.x), y: Math.round(tile.home.y) };
+    const pan = panAt(home.x);
+    ctx.sfx('flipReveal', { volume: 0.8 });
+    const FLIP = flipSummon ? 240 : 200;
+    const flipP = tile.flipUp(FLIP);
+    const t0 = tile;
+    if (flipSummon) void ctx.wait(Math.round(FLIP * 0.7)).then(() => (t0.active && t0.orientation !== 'up' ? t0.rotateTo('up', 200) : undefined));
+    await ctx.wait(Math.round(FLIP * 0.45));
+    const unit = field.addUnit(ev.uid, {
+      hidden: true,
+      atk: ctx.atk(ev.uid, flipSummon ? 'after' : 'next'),
+      def: ctx.def(ev.uid, flipSummon ? 'after' : 'next'),
+      position: flipSummon ? 'attack' : 'defense',
+    });
+    if (!unit) {
+      await flipP;
+      return;
+    }
+    seedFx(unit.uid * 31 + 5);
+    unit.position = flipSummon ? 'attack' : 'defense';
+    unit.badge.setPosition(unit.position);
+    unit.posed = true;
+    const u = unit;
+    const s = u.sprite;
+    const pool = lightPool(sc, home.x, home.y - 4, { color: PAL.gold4, radius: 20, floorY: home.y, intensity: 0.6, fadeIn: 0 });
+    let plane: ReturnType<typeof mirrorPlane> | null = null;
+    try {
+      s.setScale(1).setPosition(u.rest0.x, u.rest0.y);
+      const SPLASH = 2;
+      const from = flipSummon ? SPLASH : 5;
+      const ts = flipSummon ? 1.45 : 1.7;
+      u.pose('summon', from);
+      u.showSprite();
+      if (flipSummon) {
+        // the card's light falls into the tile as the drop's splash: "tıp", rings out over the marble
+        play('archerTip', { volume: 0.85, pan });
+        void echoRings(sc, home, { r: 28, ms: 300 });
+        void lightFlash(sc, home.x, home.y, PAL.white, 16, 160, { floorY: home.y, intensity: 0.6 });
+      }
+      atFrame(u, 'summon', 5, () => {
+        play('archerReflect', { volume: 0.85, pan });
+        pool.setColor(PAL.water3);
+        plane = mirrorPlane(sc, home, s.depth + 0.4);
+      }, { late: false });
+      const snd: { rise: ReturnType<typeof start> | null } = { rise: null };
+      atFrame(u, 'summon', 7, () => {
+        snd.rise = start('archerRise', { volume: 0.8, pan });
+        pool.setColor(PAL.gold4);
+      }, { late: false });
+      atMark(u, 'summon', 'land', () => {
+        snd.rise?.stop(30);
+        snd.rise = null;
+        play('archerLand', { volume: 0.9, pan });
+        void (plane as ReturnType<typeof mirrorPlane> | null)?.collapse(160);
+        void echoRings(sc, home, { r: 34, ms: 360, bright: true });
+        u.badge.setVisible(true);
+        void u.badge.pop();
+      }, { late: false });
+      const LAND = u.markFrame('summon', 'land', 10);
+      await u.playRange('summon', from, LAND, { timeScale: ts });
+      snd.rise?.stop(30);
+      if (!flipSummon && u.has('toGuard') && s.active) {
+        // turned by an attack: the mirror pane forms between bow and string
+        play('archerPane', { volume: 0.7, pan });
+        await u.playRange('toGuard', 0, undefined, { hold: false });
+      }
+      await capped(sc, flipP, 120);
+    } finally {
+      (plane as ReturnType<typeof mirrorPlane> | null)?.destroy();
+      void pool.fadeOut(240);
+      u.posed = false;
+      u.lift = 0;
+      if (s.active && !u.retired) {
+        s.setScale(1).setPosition(u.rest0.x, u.rest0.y);
+        u.badge.setVisible(true);
+        u.show();
+        if (!s.anims.isPlaying) u.rest();
+      }
+    }
+  },
+  { priority: 20, name: 'd:reflection_archer:flip' },
+);
+
+// ================================================================ position
+
+// To defense: the guard pose, and on its landing the mirror pane forms between bow and string with its twin under
+// the floor line (archerPane) — no generic hex shield. To attack: the pane breaks off into the puddle as rings
+// (archerTip) and the badge pops. ≤ 0.4 s like every position change.
+registerEvent(
+  'positionChange',
+  async (ctx) => {
+    const ev = ctx.ev;
+    if (!LOOK_V3 || ctx.cardId(ev.uid) !== ID) return ctx.base();
+    const unit = ctx.unit(ev.uid);
+    const tile = ctx.tile(ev.uid);
+    const toDef = ev.position === 'defense';
+    const o = toDef ? 'side' : 'up';
+    const sc = ctx.scene;
+    const anim = toDef ? 'toGuard' : 'fromGuard';
+    if (!unit || unit.retired || !unit.sprite.visible || !unit.has(anim)) return ctx.base();
+    const u = unit;
+    const s = u.sprite;
+    const dir: 1 | -1 = u.flipX ? -1 : 1;
+    const pan = panAt(u.home.x);
+    u.posed = true;
+    try {
+      ctx.sfx('cardSlide', { volume: 0.5 });
+      const jobs: Promise<unknown>[] = [];
+      if (tile && tile.orientation !== o) jobs.push(tile.rotateTo(o, 240));
+      u.position = ev.position;
+      u.badge.setPosition(ev.position);
+      const n = u.frameCount(anim);
+      const land = u.markFrame(anim, 'land', n - 1);
+      jobs.push(u.playRange(anim, 0, undefined, { hold: true }).then(() => u.rest()));
+      jobs.push(
+        u.playToFrame(anim, Math.max(0, land - 1)).then(() => {
+          const c = u.core();
+          const home = { x: Math.round(u.home.x), y: Math.round(u.home.y) };
+          if (toDef) {
+            play('archerPane', { volume: 0.8, pan });
+            void paneFlash(sc, { x: Math.round(c.x + dir * 12), y: Math.round(c.y - 2) }, home.y, dir);
+            void lightFlash(sc, Math.round(c.x + dir * 12), Math.round(c.y), PAL.water4, 16, 220, { floorY: home.y, intensity: 0.5 });
+          } else {
+            play('archerTip', { volume: 0.7, pan });
+            void echoRings(sc, home, { r: 26, ms: 300 });
+            void u.badge.pop();
+          }
+        }),
+      );
+      await capped(sc, Promise.all(jobs), 420);
+    } finally {
+      u.posed = false;
+      if (s.active && !u.retired) {
+        const want = u.position === 'defense' ? 'guard' : 'idle';
+        if (u.frameInfo().anim !== want || !s.anims.isPlaying) u.rest();
+      }
+    }
+  },
+  { priority: 20, name: 'd:reflection_archer:position' },
+);
+
 // ================================================================ strike
 
 registerStrike(
@@ -146,7 +313,13 @@ registerStrike(
     await u.playRange('attack', f0, REL);
     release();
     const flight = start('archerFlight', { volume: 0.85, pan });
-    void u.playRange('attack', REL, HOLD);
+    // the release frame's short flash at the bow shows for its hold, then the art goes straight to the
+    // follow-through frame without a streak: the only arrow in flight is twinArrows', on the true aim line
+    // (P2, direct and off-row targets included) — never a frozen horizontal streak beside it
+    void sleep(sc, u.frameMs('attack', REL)).then(() => {
+      const fi = u.frameInfo();
+      if (u.sprite.active && !u.retired && fi.anim === 'attack' && fi.frame === REL) u.pose('attack', HOLD);
+    });
     // ---- the meeting point: the target's core (blocked: in front of its guard), or the duelist
     const back = s.blocked && s.target ? 9 : 0;
     const to: XY = { x: Math.round(s.to.x - dir * back), y: Math.round(s.to.y) };
@@ -198,6 +371,8 @@ registerCardHook(
     let cracks: ReturnType<typeof puddleCracks> | null = null;
     // f1: the puddle cracks — cracks of light run out over the marble (the voice's deathStart scores it)
     atFrame(u, 'death', 1, () => {
+      // the death kit's own deathStart cue is lost when the reaction already started the pose: score it here
+      play('archerCrack', { volume: 0.95, pan: panAt(ground.x) });
       cracks = puddleCracks(sc, ground, dir);
       void lightFlash(sc, ground.x, ground.y + 4, PAL.water4, 18, 200, { floorY: ground.y, intensity: 0.7 });
     }, { maxMs: 3000 });
@@ -206,13 +381,30 @@ registerCardHook(
       reflectionShards(sc, ground, dir, u.sprite.depth + 0.2);
       void shake(sc, 70, 1);
     }, { maxMs: 3000 });
+    // f8: it shatters into glass — the card's own burst (slivers falling, their mirrored twins rising to meet
+    // them at the floor line); one short frame of glass dust in the art
+    const n = u.frameCount('death');
+    let fell = false;
+    const fall = () => {
+      if (fell || !u.sprite.active) return;
+      fell = true;
+      play('archerShatter', { volume: 0.95, pan: panAt(ground.x) });
+      void glassFall(sc, u, ground, dir);
+    };
+    atFrame(u, 'death', n - 2, fall, { maxMs: 3000 });
+    // the last frame: the body is gone and the glass burst owns the floor — hide the sprite so the death kit
+    // skips the generic material break (no crystal heap, no generic shatter sound), the card is born on the burst
+    atFrame(u, 'death', n - 1, () => {
+      fall();
+      if (u.sprite.active) u.sprite.setVisible(false);
+    }, { maxMs: 3000 });
     return deathV3(ctx, {
       fallback: () => {
         (cracks as ReturnType<typeof puddleCracks> | null)?.destroy();
         return ctx.base();
       },
       onBurst: () => {
-        void glassFall(sc, u, ground, dir);
+        fall();
         void (cracks as ReturnType<typeof puddleCracks> | null)?.fade(360);
       },
     });

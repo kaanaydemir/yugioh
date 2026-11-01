@@ -31,6 +31,8 @@ import type { PolarNeedleSfxName } from './v3/polar_needle';
 import type { PolarCoilSfxName } from './v3/polar_coil';
 import type { JesterSfxName } from './v3/jester';
 import type { ArcherSfxName } from './v3/archer';
+import type { RaidersSfxName } from './v3/raiders';
+import type { StrawSfxName } from './v3/straw';
 import type { UiCardSfxName } from './v3/ui-cards';
 import type { UiFlowSfxName } from './v3/ui-flow';
 
@@ -70,6 +72,8 @@ export type SfxName =
   | PolarCoilSfxName
   | JesterSfxName
   | ArcherSfxName
+  | RaidersSfxName
+  | StrawSfxName
   | UiCardSfxName
   | UiFlowSfxName;
 

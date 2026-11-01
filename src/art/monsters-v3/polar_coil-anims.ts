@@ -258,9 +258,10 @@ export function deathPose(f: number): Pose {
     const s = st[f - 2];
     return snap(key({ ...s, lid: 1, eye: f < 4 ? 1 : 0.5, hx: -1, nwx: -2, nwy: 12, nlag: 4, fwx: -8, fwy: 12, flag: -4, core: f < 5 ? 1.5 - (f - 2) * 0.4 : 0, rings: 0, fromTop: 1, floops: 3 + f, spinN: -f * 0.45, spinF: f * 0.45, reel: 1 - (f - 1) * 0.25, dust: -1 }, f, D_N));
   }
-  // the empty spindle wobbles on its pin and topples back; the last frames break to grit
-  const tilt = [0.08, 0.3, 0.55, 1][f - 6];
-  return key({ legs: 0, whips: 0, wind: 0, girth: 0, eye: 0, core: 0, rings: 0, dust: -1, heap: 1, reel: 0, tilt, spinN: -f * 0.5, spinF: f * 0.5, diss: f === 8 ? 0.16 : f === 9 ? 0.7 : 0 }, f, D_N);
+  // the empty spindle wobbles on its pin and topples back; it lands clean and intact on its own tile (the cinematic
+  // keeps it as remains, rolls the empty spool off it and breaks it only in the last 150 ms)
+  const tilt = [0.06, 0.2, 0.4, 1][f - 6];
+  return key({ legs: 0, whips: 0, wind: 0, girth: 0, eye: 0, core: 0, rings: 0, dust: -1, heap: 1, reel: 0, tilt, spinN: -f * 0.5, spinF: f * 0.5, diss: 0 }, f, D_N);
 }
 const D_HOLDS = [50, 60, 70, 80, 80, 90, 100, 110, 120, 130];
 
@@ -271,7 +272,7 @@ const RV_LAND = 7;
 export function revivePose(f: number): Pose {
   if (f >= RV_N - 1) return home();
   const bare = { legs: 0, whips: 0, wind: 0, girth: 0, eye: 0, core: 0, rings: 0, dust: -1, reel: 0 };
-  if (f <= 2) return key({ ...bare, heap: 1, tilt: [1, 0.55, 0.15][f], diss: f === 0 ? 0.45 : 0 }, f, RV_N);
+  if (f <= 2) return key({ ...bare, heap: 1, tilt: [1, 0.4, 0.15][f], diss: f === 0 ? 0.45 : 0 }, f, RV_N);
   if (f <= 6) {
     const wind = [0.15, 0.45, 0.8, 1][f - 3];
     return key({ ...bare, heap: 1 - wind, wind, fromTop: 1, girth: Math.min(1, wind + 0.2), feed: wind < 1 ? 1 : 0, fex: -32, fey: -2, floops: 4, core: wind * 2.4, rings: wind > 0.4 ? 1 : 0, ringB: 3, climb: 1 - wind, reel: wind, spinN: f * 0.4, spinF: -f * 0.4, eye: f >= 5 ? 1.2 : 0, legs: f === 6 ? 0.4 : 0, whips: f === 6 ? 0.3 : 0 }, f, RV_N);

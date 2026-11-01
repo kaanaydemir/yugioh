@@ -26,22 +26,24 @@
 // curls spring out and an EMPTY SPOOL rolls away spinning free and runs down (polarCoilBurst). Camera never
 // moves (EF-8).
 
-import { PAL, RAMPS, type Ramp } from '../../art/palette';
+import { PAL, PLAYER_COLOR, RAMPS, type Ramp } from '../../art/palette';
 import type { SfxHandle } from '../../audio/sfx';
 import type { GameEvent } from '../../engine/types';
 import { DEPTH, LOOK_V3, type XY } from '../../view/layout';
 import { lightFlash } from '../../view/light';
 import { shake } from '../../vfx/core';
 import { sleep } from '../../vfx/combat';
-import { registerCardHook, registerStrike } from '../api';
-import type { StrikeArgs } from '../_core/types';
+import { registerCardHook, registerEvent, registerStrike } from '../api';
+import type { CinematicContext, StrikeArgs } from '../_core/types';
+import type { MonsterUnit } from '../../duel/MonsterUnit';
+import type Phaser from 'phaser';
 import { strikeStartFrame } from '../_v3/clash';
 import { deathV3 } from '../_v3/death';
 import { summonPose } from '../_v3/summon';
 import { atFrame, atMark, panAt, play, start, takeCharge } from '../_v3/sound';
 import { sourceOwnsDeath } from '../strikes-b/_kit';
 import { runSummon, type Stage } from '../summon-a/_kit';
-import { coilPoint, convergeStar, coreSpill, emptySpool, seedFx, spikeVolley, spindleDust, splinter, spoolTrack, unwindGlints, whipSparks } from './_polar_coil-fx';
+import { coilPoint, coilRemains, convergeStar, coreSpill, emptySpool, seedFx, spikeVolley, spindleDust, splinter, spoolTrack, unwindGlints, whipSparks, type Remains } from './_polar_coil-fx';
 
 const ID = 'polar_coil';
 /** The hologram onset's tones: copper. */
@@ -104,6 +106,130 @@ registerCardHook(
   { priority: 20, name: 'd:polar_coil:summon' },
 );
 
+// ================================================================ flip summon (≤ 0.7 s)
+
+/**
+ * Flip summon: the card turns and the bare spindle stands on it, takes a fast wind of copper (summon f2 → f8 at 1.4×,
+ * the art's own winding) — polarCoilFlipWind, the track turning under it, copper glints — and snaps taut on 'land'
+ * (polarCoilSnap, whip sparks, the core light). No hologram, no generic chime. A flip from an attack (face-down
+ * guard turned over in battle) keeps the shared quick reveal (ctx.base()).
+ */
+registerCardHook(
+  ID,
+  'flip',
+  async (ctx) => {
+    if (!LOOK_V3) return ctx.base();
+    const ev = ctx.ev;
+    if (ev.cause !== 'flipSummon') return ctx.base();
+    const field = ctx.views.field;
+    const tile0 = field.tileOf(ev.uid);
+    if (!tile0) return ctx.base();
+    const sc = ctx.scene;
+    const si = ctx.findType('summon', (e) => e.uid === ev.uid && e.method === 'flip');
+    if (si >= 0) ctx.consumeAt(si);
+    void ctx.views.duelists?.get(ev.player).play('command');
+    const tile = tile0;
+    tile.setCard(ev.cardId);
+    const home = { x: tile.home.x, y: tile.home.y };
+    const pan = panAt(home.x);
+    seedFx(ev.uid * 29 + 3);
+    void tile.pulse(PLAYER_COLOR[ev.player], 220);
+    const FLIP = 220;
+    const flipP = tile.flipUp(FLIP);
+    void ctx.wait(Math.round(FLIP * 0.7)).then(() => (tile.active && tile.orientation !== 'up' ? tile.rotateTo('up', 160) : undefined));
+    play('polarCoilFlipWind', { volume: 0.85, pan });
+    await ctx.wait(Math.round(FLIP * 0.45));
+    const unit = field.addUnit(ev.uid, { hidden: true, atk: ctx.atk(ev.uid, 'after'), def: ctx.def(ev.uid, 'after'), position: 'attack' });
+    if (!unit) {
+      await flipP;
+      return;
+    }
+    const u = unit;
+    u.position = 'attack';
+    u.badge.setPosition('attack');
+    u.posed = true;
+    const dir: 1 | -1 = u.flipX ? -1 : 1;
+    const track = spoolTrack(sc, u, home, u.sprite.depth);
+    const spill = coreSpill(sc, home, dir, 0.3);
+    try {
+      u.sprite.setPosition(u.rest0.x, u.rest0.y);
+      u.pose('summon', 2);
+      u.showSprite();
+      atFrame(u, 'summon', 4, () => spill.level(0.5), { maxMs: 1500 });
+      atFrame(u, 'summon', 6, () => spill.level(0.8), { maxMs: 1500 });
+      atMark(u, 'summon', 'land', () => {
+        play('polarCoilSnap', { volume: 0.8, pan });
+        track.snap();
+        whipSparks(sc, u, home.y);
+        spill.level(1.2, 30);
+        const core = coilPoint(u, 'core');
+        if (core) void lightFlash(sc, core.x, core.y, PAL.gold4, 30, 320, { floorY: home.y, intensity: 0.8, air: 0.5 });
+        void shake(sc, 70, 1);
+        u.badge.setVisible(true);
+        void u.badge.pop();
+      });
+      // f2 → f8 at 1.4× (the bare spindle takes its wind fast, then the snap), f9 / f10 settle into idle
+      await u.playRange('summon', 2, 10, { timeScale: 1.4 });
+      spill.fadeOut(240);
+    } finally {
+      track.destroy();
+      u.posed = false;
+      if (u.sprite.active && !u.retired) {
+        u.sprite.setPosition(u.rest0.x, u.rest0.y);
+        u.show();
+        u.badge.setVisible(true);
+        u.rest();
+      }
+    }
+    await flipP;
+  },
+  { priority: 20, name: 'd:polar_coil:flip' },
+);
+
+// ================================================================ position change (toGuard: the whips wrap the drum)
+
+registerEvent(
+  'positionChange',
+  async (ctx) => {
+    if (!LOOK_V3 || ctx.cardId(ctx.ev.uid) !== ID || ctx.ev.position !== 'defense') return ctx.base();
+    const u = ctx.views.field.unit(ctx.ev.uid);
+    const tile = ctx.views.field.tileOf(ctx.ev.uid);
+    if (!u || u.retired || !u.sprite.visible || !u.has('toGuard')) return ctx.base();
+    const sc = ctx.scene;
+    const pan = panAt(u.home.x);
+    const dir: 1 | -1 = u.flipX ? -1 : 1;
+    u.posed = true;
+    try {
+      ctx.sfx('cardSlide', { volume: 0.5 });
+      const jobs: Promise<unknown>[] = [];
+      if (tile && tile.orientation !== 'side') jobs.push(tile.rotateTo('side', 240));
+      u.position = 'defense';
+      u.badge.setPosition('defense');
+      // the whips swing up and wrap the drum (the wrap bands appear f2 / f3): twang + the lugs ticking on
+      atFrame(u, 'toGuard', 1, () => play('polarCoilWrap', { volume: 0.85, pan }), { maxMs: 1500 });
+      const n = u.frameCount('toGuard');
+      jobs.push(u.playRange('toGuard', 0, undefined, { hold: true }).then(() => u.rest()));
+      jobs.push(
+        u.playToFrame('toGuard', n - 1).then(() => {
+          // wrapped: the field closes round the drum — a two-pole light step at the core (N behind, S in front)
+          const c = coilPoint(u, 'core') ?? u.core();
+          void lightFlash(sc, c.x - dir * 6, c.y, PAL.fire3, 14, 200, { floorY: u.home.y, intensity: 0.55 });
+          void lightFlash(sc, c.x + dir * 6, c.y, PAL.water3, 14, 200, { floorY: u.home.y, intensity: 0.55 });
+          whipSparks(sc, u, u.home.y);
+        }),
+      );
+      await Promise.race([Promise.all(jobs), sleep(sc, 400)]);
+    } finally {
+      u.posed = false;
+      if (u.sprite.active && !u.retired) {
+        u.sprite.setPosition(u.rest0.x, u.rest0.y);
+        if (u.frameInfo().anim !== 'guard' || !u.sprite.anims.isPlaying) u.rest();
+      }
+    }
+  },
+  { priority: 20, name: 'd:polar_coil:position' },
+);
+
 // ================================================================ strike
 
 registerStrike(
@@ -147,7 +273,7 @@ registerStrike(
       ground,
       R: s.direct ? 32 : 26,
       flyMs: Math.round(Math.max(150, Math.min(s.direct ? 300 : 260, dist * 1.25))),
-      orbitMs: s.direct ? 420 : 380,
+      orbitMs: s.direct ? 380 : 330,
       plungeMs: 70,
       bodyDepth: depth,
       stopR: s.blocked ? 8 : 0,
@@ -178,6 +304,65 @@ registerStrike(
 
 // ================================================================ death
 
+/**
+ * The unwinding beat (death f1 → f5): polarCoilUnwind, copper flicks off the top, the two-colour core light on the
+ * floor stepping down to dark, and the spindle's head hitting the marble. Bound to the death POSE's frames and
+ * armed as early as possible — before the blow lands (attack / defend hooks below), because the blow's reaction
+ * starts the death pose at the contact, ~130 ms before the destroy event reaches the 'destroyed' hook. Armed once
+ * per unit; arming again is a no-op, and an arm that never sees the death pose expires on its own.
+ */
+const armed = new WeakMap<MonsterUnit, { fired: boolean }>();
+function armUnwind(sc: Phaser.Scene, u: MonsterUnit, maxMs: number): void {
+  if (armed.has(u)) return;
+  const st = { fired: false };
+  armed.set(u, st);
+  const cancel = atFrame(
+    u,
+    'death',
+    1,
+    () => {
+      st.fired = true;
+      const home = { ...u.home };
+      const dir: 1 | -1 = u.flipX ? -1 : 1;
+      const dissolveF = u.markFrame('death', 'dissolve', 7);
+      const n = u.frameCount('death');
+      play('polarCoilUnwind', { volume: 0.9, pan: panAt(home.x) });
+      unwindGlints(sc, u, Math.max(120, u.rangeMs('death', 1, 6)));
+      // the core light dies with the winding: 4 steps down to dark (it starts lit, the pose's f1 core)
+      const spill = coreSpill(sc, home, dir, 0.9);
+      atFrame(u, 'death', 2, () => spill.level(0.65, 30), { maxMs: 3000 });
+      atFrame(u, 'death', 3, () => spill.level(0.4, 30), { maxMs: 3000 });
+      atFrame(u, 'death', 4, () => spill.level(0.2, 30), { maxMs: 3000 });
+      atFrame(u, 'death', 5, () => spill.fadeOut(80), { maxMs: 3000 });
+      void sleep(sc, 1600).then(() => spill.fadeOut(60));
+      // the spindle's head hits the marble on the last tilt frame (dissolve + 2: polarCoilTok via the voice)
+      atFrame(u, 'death', Math.min(n - 1, dissolveF + 2), () => {
+        spindleDust(sc, { x: home.x - dir * 18, y: home.y }, home.y);
+        void shake(sc, 80, 1);
+      }, { maxMs: 3000 });
+    },
+    { maxMs },
+  );
+  // the arm expires (no death came): a later destroy may arm it again
+  void sleep(sc, maxMs + 20).then(() => {
+    if (!st.fired && armed.get(u) === st) {
+      cancel();
+      armed.delete(u);
+    }
+  });
+}
+
+/** A battle the coil is in (attacking or attacked): arm the unwinding before the blow lands. */
+function armForBattle(ctx: CinematicContext<BattleEv>, uid: number | null): Promise<void> {
+  if (LOOK_V3 && uid !== null) {
+    const u = ctx.views.field.unit(uid);
+    if (u && !u.retired && u.sprite.active && u.cardId === ID) armUnwind(ctx.scene, u, 6000);
+  }
+  return ctx.base();
+}
+registerCardHook(ID, 'attack', (ctx) => armForBattle(ctx as CinematicContext<BattleEv>, (ctx.ev as BattleEv).attackerUid), { priority: 30, name: 'd:polar_coil:arm-attack' });
+registerCardHook(ID, 'defend', (ctx) => armForBattle(ctx as CinematicContext<BattleEv>, (ctx.ev as BattleEv).targetUid), { priority: 30, name: 'd:polar_coil:arm-defend' });
+
 registerCardHook(
   ID,
   'destroyed',
@@ -190,31 +375,35 @@ registerCardHook(
     seedFx(u.uid * 59 + 11);
     const home = { ...u.home };
     const dir: 1 | -1 = u.flipX ? -1 : 1;
-    const dissolveF = u.markFrame('death', 'dissolve', 7);
-    const n = u.frameCount('death');
-    // the core light dies with the winding: 4 steps down to dark
-    const spill = coreSpill(sc, home, dir, 0.9);
-    // the unwinding (its own beat, not the voice's deathStart: the blow's reaction often has already started
-    // the death pose when this handler runs, and the kit skips a frame that has passed)
-    atFrame(u, 'death', 1, () => {
-      play('polarCoilUnwind', { volume: 0.9, pan: panAt(home.x) });
-      unwindGlints(sc, u, Math.max(120, u.rangeMs('death', 1, 6)));
-    }, { maxMs: 3000 });
-    atFrame(u, 'death', 2, () => spill.level(0.65, 30), { maxMs: 3000 });
-    atFrame(u, 'death', 3, () => spill.level(0.4, 30), { maxMs: 3000 });
-    atFrame(u, 'death', 4, () => spill.level(0.2, 30), { maxMs: 3000 });
-    atFrame(u, 'death', 5, () => spill.fadeOut(80), { maxMs: 3000 });
-    // the spindle's head hits the marble on the last tilt frame (dissolve + 2: polarCoilTok via the voice)
-    atFrame(u, 'death', Math.min(n - 1, dissolveF + 2), () => {
-      spindleDust(sc, { x: home.x - dir * 16, y: home.y }, home.y);
-      void shake(sc, 80, 1);
-    }, { maxMs: 3000 });
-    return deathV3(ctx, {
-      fallback: () => {
-        spill.fadeOut(60);
-        return ctx.base();
+    // a death with no blow (an effect destroy): arm the unwinding now (it fires on the pose's f1)
+    armUnwind(sc, u, 3000);
+    // the last frame (the bare spindle lying clean on its own tile) becomes the remains as soon as it shows: the
+    // sprite hides, so deathV3 holds on the remains and no generic material break follows — the final material is
+    // the coil's own (the empty spool rolling off, copper curls, a 150-ms break of the spindle at the very end)
+    const lastF = u.frameCount('death') - 1;
+    let remains: Remains | null = null;
+    atFrame(
+      u,
+      'death',
+      lastF,
+      () => {
+        if (remains || !u.sprite.active || !u.sprite.visible || u.retired) return;
+        remains = coilRemains(sc, u);
+        u.sprite.setVisible(false);
       },
-      onBurst: () => emptySpool(sc, home, dir, DEPTH.FX - 1),
+      { maxMs: 3000 },
+    );
+    return deathV3(ctx, {
+      fallback: () => ctx.base(),
+      onBurst: () => {
+        const r = remains as Remains | null;
+        emptySpool(sc, home, dir, DEPTH.FX - 1, r?.spoolAt);
+        // the shatter (and its burst cue) was skipped: the coil's own burst sound (the spool spinning free)
+        if (r) {
+          play('polarCoilBurst', { pan: panAt(home.x) });
+          r.burst(380);
+        }
+      },
     });
   },
   { priority: 20, name: 'd:polar_coil:death' },

@@ -29,7 +29,7 @@ import type Phaser from 'phaser';
 import { PAL, PLAYER_COLOR } from '../../art/palette';
 import type { GameEvent, PlayerId, Uid } from '../../engine/types';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
-import { DEPTH, LOOK_V3, zoneXY, type XY } from '../../view/layout';
+import { DEPTH, LOOK_V3, panelRect, zoneXY, type XY } from '../../view/layout';
 import { lightDim, lightFlash, lightPool, type LightHandle } from '../../view/light';
 import type { TileCard } from '../../view/TileCard';
 import { pixelText } from '../../ui/text';
@@ -42,7 +42,7 @@ import { warmPoses } from '../_v3/warm';
 import { panAt, play, start } from '../_v3/sound';
 import { worldBox } from '../strikes-b/_kit';
 import { afterimage } from '../summon-a/_kit';
-import { SPIN_W, arenaDial, blitCoin, flatCoin, foldRect, jesterPoint, rewindRing, seedFx, spinCard, tileDial, type ArenaDial } from './_dial_jester-fx';
+import { SPIN_W, arenaDial, blitCoin, drainBody, flatCoin, foldRect, jesterOffset, jesterPoint, rewindRing, seedFx, spinCard, tileDial, type ArenaDial } from './_dial_jester-fx';
 
 const ID = 'dial_jester';
 type Ctx<T extends GameEvent['type']> = CinematicContext<Extract<GameEvent, { type: T }>>;
@@ -69,11 +69,15 @@ interface Show {
   mode: 'idle' | 'race' | 'strike' | 'back';
   stopHands: (() => void) | null;
   dimmed: boolean;
+  /** the jester's living hold (watching loop / dismay loop) */
+  watch: (() => void) | null;
+  /** the jester's reaction to the result (cheer / dismay), awaited before the show ends */
+  react: Promise<void>;
 }
 let show: Show | null = null;
 
 function newShow(): Show {
-  return { dial: null, under: null, underStop: null, pool: null, coin: null, coinAt: null, face: 'tails', words: [], win: false, mode: 'idle', stopHands: null, dimmed: false };
+  return { dial: null, under: null, underStop: null, pool: null, coin: null, coinAt: null, face: 'tails', words: [], win: false, mode: 'idle', stopHands: null, dimmed: false, watch: null, react: Promise.resolve() };
 }
 
 function disposeUnder(s: Show): void {
@@ -85,6 +89,7 @@ function disposeUnder(s: Show): void {
 
 function dispose(sc: Phaser.Scene, s: Show): void {
   disposeUnder(s);
+  stopWatch(s);
   s.stopHands?.();
   s.dial?.destroy();
   s.coin?.destroy();
@@ -207,17 +212,28 @@ registerEvent(
     let c0: XY = { x: home.x + (own === 0 ? 10 : -10), y: home.y - 50 };
     if (u && u.sprite.active && u.has('special')) {
       const fi = u.frameInfo();
-      const from = fi.anim === 'special' && fi.frame <= 4 ? fi.frame + 1 : 2;
+      const from = fi.anim === 'special' && fi.frame <= 4 ? fi.frame + 1 : 3;
       await u.playRange('special', from, 5, { hold: true });
       c0 = jesterPoint(u, 'coin') ?? c0;
       u.pose('special', 6);
-    } else await sleep(sc, 200);
+    } else await sleep(sc, 160);
     disposeUnder(s);
     play('jesterFlick', { volume: 0.95, pan });
     const spin = start('jesterSpin', { volume: 0.75, pan });
     const race = start('jesterHandsRace', { volume: 0.6 });
     s.mode = 'race';
-    ctx.views.speed.slowMo(0.35, 260);
+    ctx.views.speed.slowMo(0.5, 160);
+    // the jester watches its coin: thumb up / leaning in, bobbing on the flight's beat, its brow-hands whirling
+    stopWatch(s);
+    if (u && u.has('special')) {
+      const uu = u;
+      s.watch = onFrame(sc, (_dt, el) => {
+        if (!uu.sprite.active || uu.retired) return false;
+        const f = Math.floor(el / 110) % 2 ? 7 : 6;
+        if (uu.frameInfo().frame !== f || uu.frameInfo().anim !== 'special') uu.pose('special', f);
+        return true;
+      });
+    }
     // the coin's own raster (over everything on the board, under the HUD)
     const coinR = new Raster(sc, 0, 0, 640, 360, DEPTH.FX + 6);
     s.coin = coinR;
@@ -225,17 +241,17 @@ registerEvent(
     const lane = u ? u.zone : 2;
     const across = zoneXY(opp, 'monster', lane);
     const L: XY = { x: R(lerp(home.x, across.x, 0.5)), y: R(lerp(home.y, across.y, 0.5)) };
-    const peakUp = Math.min(70, c0.y - 26);
+    const peakUp = Math.min(64, c0.y - 26);
     const glow = lightPool(sc, c0.x, c0.y, { color: PAL.gold4, radius: 12, air: 0.9, floorY: home.y, intensity: 0.7, fadeIn: 60 });
     s.pool?.setIntensity(0.4, 200);
-    const FLY = 700;
+    const FLY = 560;
     // a parabola from c0 to L whose apex is about peakUp above c0
     const A = peakUp + Math.max(0, L.y - c0.y) * 0.5;
     await animate(sc, FLY, (t, el) => {
       const x = lerp(c0.x, L.x, t);
       const y = lerp(c0.y, L.y, t) - 4 * A * t * (1 - t);
       const floorY = lerp(home.y, L.y, t);
-      const ph = Math.floor(el / 36) % 8;
+      const ph = Math.floor(el / 32) % 8;
       coinR.draw((g) => {
         // its shadow on the marble grows as it falls
         const k = 1 - Math.min(1, (floorY - y) / 90);
@@ -251,15 +267,15 @@ registerEvent(
     void lightFlash(sc, L.x, L.y, PAL.gold4, 16, 160, { floorY: L.y, intensity: 0.7 });
     tinSparks(sc, L);
     const drift = own === 0 ? 3 : -3;
-    await hop(sc, coinR, L, { x: L.x + drift, y: L.y + 1 }, 13, 200, glow);
+    await hop(sc, coinR, L, { x: L.x + drift, y: L.y + 1 }, 12, 170, glow);
     play('jesterTin2', { volume: 0.8, pan: panAt(L.x) });
     tinSparks(sc, { x: L.x + drift, y: L.y + 1 });
     const L2 = { x: L.x + drift * 2, y: L.y + 2 };
-    await hop(sc, coinR, { x: L.x + drift, y: L.y + 1 }, L2, 5, 120, glow);
+    await hop(sc, coinR, { x: L.x + drift, y: L.y + 1 }, L2, 5, 100, glow);
     play('jesterWobble', { volume: 0.85, pan: panAt(L2.x) });
     let ph = 0;
-    await animate(sc, 380, (t, _el, dt) => {
-      ph += dt * (0.025 + t * 0.075);
+    await animate(sc, 270, (t, _el, dt) => {
+      ph += dt * (0.03 + t * 0.09);
       coinR.draw((g) => flatCoin(g, L2.x, L2.y, 6, 1 - t, ph));
     });
     s.coinAt = L2;
@@ -267,7 +283,7 @@ registerEvent(
     // the face: the coin stands up out of its rest, face-on, a word over it
     play('jesterReveal', { volume: 0.95, pan: panAt(L2.x) });
     const w = ev.result === 'heads' ? 1 : -1;
-    await animate(sc, 200, (t) => {
+    await animate(sc, 160, (t) => {
       const st = Math.min(3, Math.floor(t * 4));
       coinR.draw((g) => {
         if (st === 0) flatCoin(g, L2.x, L2.y, 6, 0, 0, 1);
@@ -282,8 +298,9 @@ registerEvent(
     const res = word(sc, { x: coinTop.x, y: coinTop.y - 20 }, ev.win ? 'BİLDİ!' : 'BİLEMEDİ!', ev.win ? PAL.white : PAL.crim4);
     s.words.push(res);
     if (call.active) call.destroy();
+    stopWatch(s);
     if (ev.win) {
-      // the hands strike 12 on the opponent's side
+      // the hands strike 12 on the opponent's side: the marker blazes, a ring of light runs out of it
       s.mode = 'strike';
       const h0 = dial.hour;
       const m0 = dial.min;
@@ -296,27 +313,38 @@ registerEvent(
         dial.k = 1;
         const p12 = dial.at(0, 0.9);
         void lightFlash(sc, p12.x, p12.y, PAL.gold4, 40, 320, { floorY: p12.y, intensity: 0.9 });
+        void animate(sc, 420, (t) => (dial.pulse12 = 1 - t)).then(() => (dial.pulse12 = 0));
         void shake(sc, 70, 1);
       });
       play('jesterWin', { volume: 0.95 });
+      // the cheer: the coin leaps off the board back over the jester's head and it catches it — ta-da, a bow
+      s.react = cheer(sc, s, u);
     } else {
       s.mode = 'back';
       dial.glowAt = 180;
       dial.k = 1;
       play('jesterLose', { volume: 0.95 });
       void shake(sc, 90, 1);
+      // dismay: time already runs back — the coin un-flips up into its thumb, the brow-hands whirl, it trembles
+      s.react = dismay(sc, s, u);
     }
     void animate(sc, 300, (_t, el) => res.active && res.setTint(Math.floor(el / 70) % 2 ? (ev.win ? PAL.gold4 : PAL.crim3) : ev.win ? PAL.white : PAL.crim4));
-    await sleep(sc, 300);
     void glow.fadeOut(300);
     // no wipe follows (nothing to destroy): the show ends here
     if (mi < 0) {
-      await coinHome(sc, s, u);
+      await sleep(sc, 300);
+      await s.react;
+      if (s.coin) await coinHome(sc, s, u);
       dispose(sc, s);
     }
   },
   { priority: 20, name: 'd:dial_jester:coinToss' },
 );
+
+function stopWatch(s: Show): void {
+  s.watch?.();
+  s.watch = null;
+}
 
 /** Gold ticks off the coin's landing. */
 function tinSparks(sc: Phaser.Scene, at: XY): void {
@@ -339,7 +367,62 @@ function hop(sc: Phaser.Scene, r: Raster, a: XY, b: XY, h: number, ms: number, g
   });
 }
 
-/** Win: the coin hops back into the jester's hand and the special pose closes on it (f8 → idle). */
+/** The coin flies from where it lies to a world point in a spinning arc (`back`: the spin runs backwards). */
+function coinFly(sc: Phaser.Scene, s: Show, to: XY, ms: number, arc: number, back = false): Promise<void> {
+  const r = s.coin;
+  const a = s.coinAt;
+  if (!r || !a) return Promise.resolve();
+  const from = { x: a.x, y: a.y - 13 };
+  return animate(sc, ms, (t, el) => {
+    const x = lerp(from.x, to.x, t);
+    const y = lerp(from.y, to.y, t) - Math.sin(Math.PI * t) * arc;
+    const ph = Math.floor(el / 34) % 8;
+    r.draw((g) => blitCoin(g, x, y, SPIN_W[back ? 7 - ph : ph], 6));
+  }).then(() => {
+    r.destroy();
+    if (s.coin === r) s.coin = null;
+  });
+}
+
+/** Win: the coin leaps off the board high over the jester and drops into the victory pose (f2 air → f3 caught, the
+ *  brow-hands on 12 → the bow). */
+async function cheer(sc: Phaser.Scene, s: Show, u: MonsterUnit | null): Promise<void> {
+  if (!u || !u.sprite.active || u.retired || !u.sprite.visible || !u.has('victory')) {
+    await coinHome(sc, s, u);
+    return;
+  }
+  const off = jesterOffset(u, 'coin', 'victory', 2);
+  const to = { x: u.home.x + off.x, y: u.home.y + off.y };
+  u.pose('special', 6);
+  play('jesterBow', { volume: 0.6, pan: panAt(to.x), pitch: 1.1 });
+  await coinFly(sc, s, to, 230, 22);
+  if (!u.sprite.active || u.retired) return;
+  await u.playRange('victory', 2);
+}
+
+/** Lose: the coin un-flips backwards up into the thumb, then the jester trembles with its brow-hands whirling
+ *  (hitMagic f1–f3 looping) until its own rewind takes it. */
+async function dismay(sc: Phaser.Scene, s: Show, u: MonsterUnit | null): Promise<void> {
+  if (!u || !u.sprite.active || u.retired || !u.sprite.visible) {
+    if (s.coin) {
+      s.coin.destroy();
+      s.coin = null;
+    }
+    return;
+  }
+  const c = jesterOffset(u, 'coin', 'hitMagic', 0);
+  await coinFly(sc, s, { x: u.home.x + c.x, y: u.home.y + c.y }, 200, 16, true);
+  if (!u.sprite.active || u.retired || !u.has('hitMagic')) return;
+  const uu = u;
+  s.watch = onFrame(sc, (_dt, el) => {
+    if (!uu.sprite.active || uu.retired || uu.posed) return false;
+    const f = 1 + (Math.floor(el / 70) % 3);
+    if (uu.frameInfo().frame !== f || uu.frameInfo().anim !== 'hitMagic') uu.pose('hitMagic', f);
+    return el < 4000;
+  });
+}
+
+/** The coin hops back into the jester's hand and the special pose closes on it (f8 → idle). */
 async function coinHome(sc: Phaser.Scene, s: Show, u: MonsterUnit | null): Promise<void> {
   const r = s.coin;
   const a = s.coinAt;
@@ -351,13 +434,7 @@ async function coinHome(sc: Phaser.Scene, s: Show, u: MonsterUnit | null): Promi
   }
   const hand = jesterPoint(u, 'hand') ?? u.core();
   play('jesterBow', { volume: 0.6, pan: panAt(hand.x), pitch: 1.1 });
-  await animate(sc, 240, (t, el) => {
-    const x = lerp(a.x, hand.x, t);
-    const y = lerp(a.y - 13, hand.y - 4, t) - Math.sin(Math.PI * t) * 20;
-    r.draw((g) => blitCoin(g, x, y, SPIN_W[Math.floor(el / 40) % 8], 6));
-  });
-  r.destroy();
-  s.coin = null;
+  await coinFly(sc, s, { x: hand.x, y: hand.y - 4 }, 220, 20);
   if (u.sprite.active && !u.retired) void u.playRange('special', 8);
 }
 
@@ -376,10 +453,10 @@ registerEvent(
     const ev = ctx.ev;
     if (!LOOK_V3 || ev.sourceUid === null || ctx.cardId(ev.sourceUid) !== ID) return ctx.base();
     const sc = ctx.scene;
-    const field = ctx.views.field;
     const s = show ?? newShow();
     show = s;
     const own = ev.player;
+    const src = ev.sourceUid;
     const win = ev.refs.length ? ev.refs[0].player !== own : s.win;
     if (!s.dial) {
       s.dial = arenaDial(sc, win ? (own === 0 ? 1 : 0) : own);
@@ -392,66 +469,120 @@ registerEvent(
       void lightDim(sc, 0.4, 200);
     }
     const dial = s.dial;
-    // ---- the doomed: this source's monster destroys (+ their graveyard moves) are ours
+    // ---- the pass: this source's monster destroys (+ their graveyard moves) are ours. A guardian_charm saving a
+    // monster puts its own activate / destroy / toGraveyard IN the pass: those are left to their handlers and
+    // played in place (the shield breaks while the others rewind); the pass ends at the first event that is not
+    // part of it.
     const doomed: Doomed[] = [];
+    const inPass: number[] = [];
+    const stUids = new Set<Uid>();
     for (let i = ctx.index + 1; i < ctx.events.length; i++) {
       const e = ctx.events[i];
       if (ctx.isConsumed(i)) continue;
-      if (e.type === 'destroy' && e.sourceUid === ev.sourceUid && e.location === 'monster') {
+      if (e.type === 'destroy' && e.sourceUid === src && e.location === 'monster') {
         ctx.consumeAt(i);
         const gi = ctx.findType('toGraveyard', (g) => g.uid === e.uid);
         const g = gi >= 0 ? (ctx.events[gi] as Extract<GameEvent, { type: 'toGraveyard' }>) : null;
         if (gi >= 0) ctx.consumeAt(gi);
         doomed.push({ uid: e.uid, owner: g ? g.owner : e.player, cardId: e.cardId, zone: e.zone });
-      } else if (e.type !== 'destroy' && e.type !== 'toGraveyard' && e.type !== 'tokenVanish' && e.type !== 'damage') break;
+      } else if (e.type === 'destroy' && e.sourceUid === src) {
+        stUids.add(e.uid);
+        inPass.push(i);
+      } else if (e.type === 'activate' && e.kind !== 'monsterEffect' && ctx.find((x) => x.type === 'destroy' && x.uid === e.uid && x.sourceUid === src) > i) {
+        stUids.add(e.uid);
+        inPass.push(i);
+      } else if (e.type === 'toGraveyard' && stUids.has(e.uid)) inPass.push(i);
+      else if (e.type === 'toGraveyard' || e.type === 'tokenVanish' || (e.type === 'damage' && e.sourceUid === src)) continue;
+      else break;
     }
-    const di = ctx.findType('damage', (e) => e.sourceUid === ev.sourceUid && e.source === 'effect');
-    seedFx((ev.sourceUid ?? 1) * 7 + doomed.length);
+    const di = ctx.findType('damage', (e) => e.sourceUid === src && e.source === 'effect');
+    // the shield's own events, in order, once the doomed bodies are in their cards (its card show would cover them)
+    let charm: Promise<void> = Promise.resolve();
+    let folded = 0;
+    let charmOn = false;
+    const onFolded = () => {
+      folded++;
+      if (folded < doomed.length || !inPass.length || charmOn) return;
+      charmOn = true;
+      charm = (async () => {
+        for (const i of inPass) if (!ctx.isConsumed(i)) await ctx.play(i);
+      })();
+    };
+    // lose: the jester watches its own side rewind and goes last
+    if (!win) doomed.sort((a, b) => (a.uid === src ? 1 : 0) - (b.uid === src ? 1 : 0));
+    seedFx(src * 7 + doomed.length);
     const rew = start('jesterRewind', { volume: 0.85 });
-    // lose: the coin on the board loses its shine and is gone (its jester is rewinding too)
-    if (!win && s.coin) {
-      const cr = s.coin;
-      const at = s.coinAt;
-      s.coin = null;
-      if (at) void animate(sc, 220, (t) => cr.draw((g) => (t < 0.66 ? flatCoin(g, at.x, at.y, 6, 0, 0) : undefined))).then(() => cr.destroy());
-      else cr.destroy();
-    }
-    for (const w of s.words) {
-      const ww = w;
-      if (ww.active) void animate(sc, 200, (t) => ww.active && ww.setAlpha(t < 0.5 ? 1 : 0.5)).then(() => ww.destroy());
-    }
+    // the words hold over the strike a moment, then fade
+    const words = s.words;
     s.words = [];
+    void sleep(sc, 420).then(() => {
+      for (const ww of words) if (ww.active) void animate(sc, 200, (t) => ww.active && ww.setAlpha(t < 0.5 ? 1 : 0.5)).then(() => ww.destroy());
+    });
     // ---- each body rewinds into its card (staggered), then the card leaves
     const lp = lpPoint(ctx, own);
-    let hitPlayed = false;
     let dmg: Promise<void> = Promise.resolve();
-    const lpHit = () => {
-      if (hitPlayed) return;
-      hitPlayed = true;
-      play('jesterLpHit', { volume: 0.95, pan: panAt(lp.x) });
-      void lightFlash(sc, lp.x, lp.y, PAL.crim3, 34, 300, { intensity: 0.9 });
-      void shake(sc, 140, 2);
-      if (di >= 0) dmg = ctx.play(di, { delivered: true });
+    let hits = 0;
+    let flights = 0;
+    let fading: Promise<void> | null = null;
+    const fadeDial = () => {
+      if (fading) return;
+      s.mode = 'idle';
+      dial.hot = 0;
+      dial.glowAt = null;
+      fading = animate(sc, 300, (t) => (dial.k = Math.min(dial.k, 1 - t)));
     };
-    const jobs = doomed.map((d, i) => rewindOne(ctx, s, d, { delay: i * 90, win, lp, onPanel: lpHit, dial }));
+    const lpHit = () => {
+      hits++;
+      if (hits === 1) {
+        play('jesterLpHit', { volume: 0.95, pan: panAt(lp.x) });
+        void lightFlash(sc, lp.x, lp.y, PAL.crim3, 34, 300, { intensity: 0.9 });
+        void shake(sc, 140, 2);
+        if (di >= 0) dmg = ctx.play(di, { delivered: true });
+      } else play('jesterFold', { volume: 0.5, pan: panAt(lp.x), pitch: 1.3 });
+      panelFlash(sc, own, hits === 1);
+      if (hits >= doomed.length) fadeDial();
+    };
+    const onFlight = () => {
+      flights++;
+      if (win && flights >= doomed.length) fadeDial();
+    };
+    const t0 = win ? 0 : 160;
+    const jobs = doomed.map((d, i) => rewindOne(ctx, s, d, { delay: t0 + i * 90 + (!win && d.uid === src ? 120 : 0), lead: i === 0, win, lp, onPanel: lpHit, onFlight, onFolded, dial }));
     await Promise.all(jobs);
+    if (!doomed.length) onFolded();
     rew.stop(120);
-    if (!win) lpHit();
+    if (!win && hits === 0) lpHit();
+    fadeDial();
     await dmg;
-    // ---- the end: the coin goes home (win), the dial fades, the light returns
-    const ju = ctx.unit(ev.sourceUid);
-    if (win) await coinHome(sc, s, ju);
-    s.mode = 'idle';
-    dial.hot = 0;
-    dial.glowAt = null;
-    await animate(sc, 260, (t) => (dial.k = 1 - t));
+    await charm;
+    // ---- the end: the cheer finishes, the dial is gone, the light returns
+    await s.react;
+    if (s.coin) await coinHome(sc, s, ctx.unit(src));
+    await fading;
     dispose(sc, s);
   },
   { priority: 20, name: 'd:dial_jester:massDestroy' },
 );
 
-/** One doomed monster: its summon played backwards with gold echoes, the card rectangle, the card's flight. */
-async function rewindOne(ctx: Ctx<'massDestroy'>, s: Show, d: Doomed, o: { delay: number; win: boolean; lp: XY; onPanel: () => void; dial: ArenaDial }): Promise<void> {
+/** The LP panel's frame flashes gold (white on the first card) where a rewound card hits it. */
+function panelFlash(sc: Phaser.Scene, p: PlayerId, first: boolean): void {
+  const rc = panelRect(p);
+  const r = new Raster(sc, 0, 0, 640, 360, DEPTH.HUD + 8);
+  const x0 = R(rc.x) - 1;
+  const y0 = R(rc.y) - 1;
+  const x1 = R(rc.x + rc.w);
+  const y1 = R(rc.y + rc.h);
+  void animate(sc, first ? 260 : 160, (t) =>
+    r.draw((g) => {
+      const c = t < 0.33 ? (first ? PAL.white : PAL.gold4) : t < 0.66 ? PAL.gold4 : PAL.gold2;
+      g.path([{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }, { x: x0, y: y0 }], c);
+      if (t < 0.5) g.path([{ x: x0 - 1, y: y0 - 1 }, { x: x1 + 1, y: y0 - 1 }, { x: x1 + 1, y: y1 + 1 }, { x: x0 - 1, y: y1 + 1 }, { x: x0 - 1, y: y0 - 1 }], PAL.gold3, 0.6);
+    }),
+  ).then(() => r.destroy());
+}
+
+/** One doomed monster: its entrance played backwards with gold echoes, poured into its card, the card's flight. */
+async function rewindOne(ctx: Ctx<'massDestroy'>, s: Show, d: Doomed, o: { delay: number; lead: boolean; win: boolean; lp: XY; onPanel: () => void; onFlight: () => void; onFolded: () => void; dial: ArenaDial }): Promise<void> {
   const sc = ctx.scene;
   const field = ctx.views.field;
   if (o.delay) await sleep(sc, o.delay);
@@ -465,12 +596,15 @@ async function rewindOne(ctx: Ctx<'massDestroy'>, s: Show, d: Doomed, o: { delay
     body.badge.setVisible(false);
     body.posed = true;
   }
-  void rewindRing(sc, home, 560);
+  // the jester's own dismay loop lets go when its rewind takes it
+  if (body && body.cardId === ID) stopWatch(s);
+  void rewindRing(sc, home, 520);
   if (live && body) {
     const box = worldBox(body);
     const n = body.has('summon') ? body.frameCount('summon') : 0;
-    const step = n ? Math.max(22, Math.min(40, Math.round(380 / n))) : 0;
-    const fold = sleep(sc, Math.round(n * step * 0.45)).then(() => foldRect(sc, box, home, 300, body.sprite.depth + 0.6));
+    const step = n ? Math.max(20, Math.min(32, Math.round(320 / n))) : 0;
+    const bodyMs = n ? n * step : 300;
+    const fold = sleep(sc, Math.round(bodyMs * 0.4)).then(() => foldRect(sc, box, home, 300, body.sprite.depth + 0.6));
     if (n) {
       for (let f = n - 1; f >= 0; f--) {
         if (!body.sprite.active) break;
@@ -479,9 +613,9 @@ async function rewindOne(ctx: Ctx<'massDestroy'>, s: Show, d: Doomed, o: { delay
         await sleep(sc, step);
       }
     } else {
-      // no summon pose (an old art): it is drawn down into the card in two gold echoes
-      afterimage(sc, body.sprite, PAL.gold3, { alpha: 0.6, ms: 180, depth: body.sprite.depth + 0.2 });
-      await sleep(sc, 90);
+      // no summon pose (an old art): its entrance runs backwards — it unwinds through its own idle, turns to a gold
+      // hologram and is drawn back down into the tile through the light column it came from; no dust
+      await drainBody(sc, body, home, bodyMs);
     }
     if (body.sprite.active) body.sprite.setVisible(false);
     play('jesterFold', { volume: 0.8, pan });
@@ -495,10 +629,12 @@ async function rewindOne(ctx: Ctx<'massDestroy'>, s: Show, d: Doomed, o: { delay
   // a face-down card shows its face before it goes
   if (tile && tile.active && !tile.faceUp) {
     tile.setCard(d.cardId);
-    await tile.flipUp(160);
+    await tile.flipUp(140);
   }
   void lightFlash(sc, home.x, home.y, PAL.gold4, 18, 160, { floorY: home.y, intensity: 0.6 });
   play('jesterCardWhirl', { volume: 0.75, pan });
+  o.onFolded();
+  o.onFlight();
   if (o.win) {
     const to = ctx.views.field.pile(d.owner, 'graveyard').topXY();
     const arc = Math.min(40, 16 + Math.hypot(to.x - home.x, to.y - home.y) * 0.12);
@@ -507,37 +643,54 @@ async function rewindOne(ctx: Ctx<'massDestroy'>, s: Show, d: Doomed, o: { delay
       cardId: d.cardId,
       from: home,
       tile: tile as TileCard | null,
-      ms: 440,
+      ms: 420,
       land: true,
       path: (t) => ({ x: lerp(home.x, to.x, t), y: lerp(home.y, to.y, t) - Math.sin(Math.PI * t) * arc - 6 * (1 - t) }),
     });
     return;
   }
-  // lose: the card sweeps along the arena dial's hand into the own LP panel, the hand following it
-  const c = o.dial.center;
-  const a0 = Math.atan2((home.x - c.x) / 2, home.y - c.y);
-  const a1raw = Math.atan2((o.lp.x - c.x) / 2, o.lp.y - c.y);
-  // backwards (the rewind's sense): the long way round when the short way would be forwards
-  let a1 = a1raw;
-  while (a1 > a0) a1 -= Math.PI * 2;
-  if (a0 - a1 > Math.PI * 1.4) a1 += Math.PI * 2;
-  const r0 = Math.hypot((home.x - c.x) / 2, home.y - c.y);
-  const r1 = Math.hypot((o.lp.x - c.x) / 2, o.lp.y - c.y);
-  const path = (t: number): XY => {
-    const a = lerp(a0, a1, t);
-    const rr = lerp(r0, r1, t);
-    return { x: c.x + Math.sin(a) * rr * 2, y: c.y + Math.cos(a) * rr };
-  };
+  // lose: the card rides the arena dial's minute hand — the hand reaches out to it (hand tip = card), sweeps it
+  // round BACKWARDS inside the arena (the short way when backwards would be the long way round), then shoots out
+  // along the hand's line into the own LP panel
+  const dl = o.dial;
+  const A0 = dl.toDial(home);
+  const B = dl.toDial(o.lp);
+  const kArc = Math.min(0.9, Math.max(0.35, A0.k));
+  const back = (A0.deg - B.deg + 360) % 360;
+  const sweep = back <= 200 ? -back : 360 - back;
+  const ARC = 0.62;
+  const at = (t: number): { deg: number; k: number } =>
+    t < ARC ? { deg: A0.deg + sweep * (t / ARC), k: lerp(A0.k, kArc, t / ARC) } : { deg: B.deg, k: lerp(kArc, B.k, (t - ARC) / (1 - ARC)) };
+  if (o.lead) {
+    s.mode = 'idle';
+    dl.min = A0.deg;
+    dl.minLen = A0.k;
+  }
   await spinCard(ctx, {
     owner: d.owner,
     cardId: d.cardId,
     from: home,
     tile: tile as TileCard | null,
-    ms: 460,
-    depth: DEPTH.HUD + 6,
+    ms: 500,
+    rate: 10,
+    depth: DEPTH.FX_TOP - 1,
+    hold: 60,
     trail: [PAL.white, PAL.crim4, PAL.gold3],
-    path,
+    path: (t) => {
+      const q = at(t);
+      if (o.lead) {
+        dl.min = (q.deg + 720) % 360;
+        dl.minLen = q.k;
+        dl.glowAt = q.deg;
+      }
+      return dl.at(q.deg, q.k);
+    },
   });
+  if (o.lead) {
+    s.mode = 'back';
+    dl.minLen = 0.5;
+    dl.glowAt = 180;
+  }
   o.onPanel();
   // then it drops off the panel onto its graveyard
   const to = ctx.views.field.pile(d.owner, 'graveyard').topXY();
@@ -545,10 +698,9 @@ async function rewindOne(ctx: Ctx<'massDestroy'>, s: Show, d: Doomed, o: { delay
     owner: d.owner,
     cardId: d.cardId,
     from: o.lp,
-    ms: 230,
+    ms: 220,
     rate: 8,
     land: true,
     path: (t) => ({ x: lerp(o.lp.x, to.x, t), y: lerp(o.lp.y, to.y, t) - Math.sin(Math.PI * t) * 14 }),
   });
-  void s;
 }

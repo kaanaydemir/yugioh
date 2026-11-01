@@ -247,9 +247,11 @@ export function deathPose(f: number): Pose {
   if (f === 1) return snap(key({ lid: 2, eye: 0.5, shake: 2, tx: -2, py: 2, nx: 4, ny: -42, fx: -14, fy: -41, pole: 3, swap: 1, zap: 0.5, crack: 0.3 }, f, D_N));
   if (f === 2) return snap(key({ lid: 0, eye: 2, shake: 1, tx: -2, py: 3, nx: 3, ny: -41, fx: -15, fy: -40, pole: 3, swap: 0, zap: 0.8, crack: 0.7 }, f, D_N));
   if (f === 3) return snap(key({ lid: 2, eye: 1, shake: 2, tx: -1, py: 3, nx: 5, ny: -40, fx: -13, fy: -39, pole: 3, swap: 1, zap: 1, crack: 1, ring: 3 }, f, D_N));
-  // dissolve: the repulsion — pieces fly out
-  const s = [0.22, 0.5, 0.78, 0.94, 1][f - 4];
-  return snap(key({ lid: 2, eye: 0, py: 3, tx: -1, nx: 5, ny: -40, fx: -13, fy: -39, pole: f < 7 ? 3 : 1, swap: f % 2, shards: s, crack: f < 5 ? 0.5 : 0, ring: f < 7 ? 2 : 0, zap: f === 4 ? 0.6 : 0, spark: f === 4 ? 0.3 : f === 5 ? 0.6 : 0, diss: f === 8 ? 0.3 : f === 7 ? 0.1 : 0, face: 0, dust: -1 }, f, D_N));
+  // dissolve: the repulsion — pieces fly out, the halves slide apart and brake, the arms are thrown up and fall:
+  // the near arm clangs on the floor on f7, the far one on f8 (the voice's two polarAnvilPlate cues); the poles
+  // keep swapping while their glow dies (pole 3 → 2 → 1, never a grey erosion: the remains are iron)
+  const s = [0.24, 0.5, 0.74, 0.92, 1][f - 4];
+  return snap(key({ lid: 2, eye: 0, py: 3, tx: -1, nx: 5, ny: -40, fx: -13, fy: -39, pole: f < 6 ? 3 : f < 8 ? 2 : 1.5, swap: f % 2, shards: s, crack: f < 5 ? 0.5 : 0, ring: f < 6 ? 2 : f < 8 ? 1 : 0, zap: f === 4 ? 0.6 : f === 7 ? 0.25 : 0, spark: f === 4 ? 0.3 : f === 5 ? 0.6 : 0, diss: 0, face: 0, dust: -1 }, f, D_N));
 }
 const D_HOLDS = [50, 60, 70, 80, 90, 100, 110, 120, 130];
 
@@ -271,8 +273,11 @@ const RV_HOLDS = [90, 90, 90, 80, 70, 140, 100, 110, 120, 130, 150];
 
 // ------------------------------------------------------------------ victory (6): mauls raised high, poles lit
 
-const V_N = 6;
+const V_N = 8;
 export function victoryPose(f: number): Pose {
+  // the mauls come down to the face again and the smith's rhythm resumes (the one-shot ends on idle f0)
+  if (f >= V_N - 1) return home();
+  if (f === V_N - 2) return snap(key({ ...mix({ ...IDLE0, nx: 15, ny: -50, fx: -16, fy: -50 }, IDLE0, 0.6), eye: 1.3, pole: 2, face: 2 }, f, V_N));
   const keys: Partial<Pose>[] = [
     { nx: 10, ny: -41, fx: -11, fy: -41, eye: 1.3 },
     { nx: 14, ny: -47, fx: -15, fy: -47, eye: 1.6, pole: 2 },
@@ -283,7 +288,7 @@ export function victoryPose(f: number): Pose {
   ];
   return snap(key(keys[Math.min(f, 5)], f, V_N));
 }
-const V_HOLDS = [100, 120, 70, 110, 140, 400];
+const V_HOLDS = [100, 120, 70, 110, 140, 200, 110, 150];
 
 // ------------------------------------------------------------------ tables
 

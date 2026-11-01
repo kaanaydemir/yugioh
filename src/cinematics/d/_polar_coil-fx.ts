@@ -30,7 +30,8 @@ import { lightFlash, lightPool, type LightHandle } from '../../view/light';
 import { Raster } from '../../vfx/setpieces';
 import { Sparks, onFrame, sleep } from '../../vfx/combat';
 import { framePose } from '../../art/monsters-v3/polar_coil-anims';
-import { W, skeleton } from '../../art/monsters-v3/polar_coil-rig';
+import { H as RIG_H, SPOOL_N_LOCAL, W, drawCoil, skeleton, toppleRot, type Pose } from '../../art/monsters-v3/polar_coil-rig';
+import { PixelCanvas } from '../../art/pixel';
 
 export const TAU = Math.PI * 2;
 /** Floor marks just above the cards on the tiles. */
@@ -40,6 +41,9 @@ const DUST = [PAL.mist, PAL.steel, PAL.stone3] as const;
 /** The three spikes' tip colours: N pole, S pole, the gold binder. */
 const TIPS = [PAL.fire4, PAL.water4, PAL.gold4] as const;
 const TIPS_DIM = [PAL.fire3, PAL.water3, PAL.gold3] as const;
+/** The spikes' magnetised shafts: dark / mid tone of each pole's ramp. */
+const SHAFT_DK = [PAL.fire1, PAL.water1, PAL.gold1] as const;
+const SHAFT_MD = [PAL.fire2, PAL.water2, PAL.gold2] as const;
 
 let seedV = 1;
 /** Deterministic random (films repeat). */
@@ -266,10 +270,8 @@ export function spikeVolley(sc: Phaser.Scene, o: VolleyOpts): Promise<void> {
   const T1 = o.flyMs;
   const T2 = T1 + o.orbitMs;
   const T3 = T2 + o.plungeMs;
-  const TURNS = 1.35;
-  const pool: LightHandle = lightPool(sc, o.ground.x, o.ground.y, { color: PAL.water3, spill: PAL.water2, radius: 14, intensity: 0, fadeIn: 0 });
-  // each spike carries its own small light (its pole colour on the air and the marble under it)
-  const lights: LightHandle[] = [0, 1, 2].map((i) => lightPool(sc, o.from.x, o.from.y, { color: TIPS_DIM[i], radius: 9, intensity: 0.7, air: 0.8, floorY: o.ground.y, fadeIn: 40 }));
+  const TURNS = 1.5;
+  const pool: LightHandle = lightPool(sc, o.ground.x, o.ground.y, { color: PAL.water3, spill: PAL.water2, radius: o.R + 6, intensity: 0, fadeIn: 0 });
   let orbited = false;
   let lastLap = -1;
   const stopR = o.stopR ?? 0;
@@ -326,17 +328,18 @@ export function spikeVolley(sc: Phaser.Scene, o: VolleyOpts): Promise<void> {
             behind = Math.sin(a) < -0.1 && k < 0.7;
           }
           dirs.push(d);
-          lights[i].setPosition(Math.round(p.x), Math.round(p.y), Math.round(t < T1 ? o.from.y + (o.ground.y - o.from.y) * clamp(t / T1, 0, 1) + 26 : o.ground.y + Math.sin(a) * fry));
-          // the wake: iron grains strung out behind (last positions)
+          // the wake: magnetised grains strung out behind (last positions), hot pole colour cooling to iron
           const tr = trail[i];
           tr.unshift(rx(p));
-          if (tr.length > 11) tr.pop();
+          if (tr.length > 13) tr.pop();
           const ras = behind ? back : front;
-          for (let g = 3; g < tr.length; g += 1) {
-            const c = g < 5 ? TIPS_DIM[i] : g < 7 ? PAL.mist : g < 9 ? PAL.steel : PAL.stone2;
+          // the wake: a 2-px stepped trail of the pole colour cooling to iron, then two afterimages
+          for (let g = 5; g < tr.length; g += 1) {
+            const c = g < 7 ? TIPS_DIM[i] : g < 10 ? SHAFT_MD[i] : PAL.steel;
             ras.px(tr[g].x, tr[g].y, c);
-            if (g < 7) ras.px(tr[g].x - Math.round(d.x), tr[g].y + 1 - (g & 1), g < 5 ? PAL.mist : PAL.steel);
+            ras.px(tr[g].x, tr[g].y + 1, g < 8 ? SHAFT_MD[i] : SHAFT_DK[i]);
           }
+          drawGhosts(ras, tr, d, i);
           drawSpike(ras, p, d, i);
           // the spike's shadow on the floor under the orbit
           if (t >= T1) {
@@ -355,8 +358,9 @@ export function spikeVolley(sc: Phaser.Scene, o: VolleyOpts): Promise<void> {
           const lap = Math.min(2, Math.floor(turns * 2));
           if (lap !== lastLap) {
             lastLap = lap;
-            pool.setIntensity([0.35, 0.6, 0.9][lap], 30);
-            pool.setColor(lap === 2 ? PAL.gold3 : PAL.water3);
+            // stepped and warmer each half lap: cold iron blue → copper → gold
+            pool.setIntensity([0.5, 0.75, 1][lap], 30);
+            pool.setColor([PAL.water3, PAL.fire3, PAL.gold3][lap]);
           }
           const R = (o.R + 4) * shrink;
           const n = 30;
@@ -364,7 +368,11 @@ export function spikeVolley(sc: Phaser.Scene, o: VolleyOpts): Promise<void> {
           for (let s = 0; s < n; s++) {
             if ((s + Math.floor(run * n)) % 5 === 4) continue;
             const aa = (s / n) * TAU;
-            floor.dpx(o.ground.x + Math.cos(aa) * R, o.ground.y + Math.sin(aa) * R * 0.5, lap === 2 ? PAL.gold4 : lap === 1 ? PAL.water4 : PAL.water3, 1);
+            const fx = o.ground.x + Math.cos(aa) * R;
+            const fy = o.ground.y + Math.sin(aa) * R * 0.5;
+            // the dust ring: a 2-px band (bright outer grain, dim inner) warming every half lap
+            floor.dpx(fx, fy, [PAL.water4, PAL.fire4, PAL.gold4][lap], 1);
+            floor.dpx(o.ground.x + Math.cos(aa) * (R - 2), o.ground.y + Math.sin(aa) * (R - 2) * 0.5, [PAL.water2, PAL.fire2, PAL.gold2][lap], 1);
           }
         }
         back.end();
@@ -381,34 +389,55 @@ export function spikeVolley(sc: Phaser.Scene, o: VolleyOpts): Promise<void> {
         front.destroy();
         floor.destroy();
         void pool.fadeOut(140);
-        for (const l of lights) void l.fadeOut(90);
         resolve();
       },
     );
   });
 }
 
-/** One iron-dust spike: a 10-px magnetite thorn with an ink outline, a lit facet and a hot coloured tip. */
-function drawSpike(r: Raster, p: XY, d: XY, i: number): void {
+/** The dart outline of a spike at `p` heading `d` (world px): tip, shoulders, a narrow tail. */
+function dartPts(p: XY, d: XY, len: number, half: number): XY[] {
   const nx = -d.y;
   const ny = d.x;
-  const tip = { x: p.x + d.x * 5, y: p.y + d.y * 5 };
-  const tail = { x: p.x - d.x * 5, y: p.y - d.y * 5 };
-  const litUp = ny < 0 ? 1 : -1;
-  // ink outline: the shaft offset to both sides (wide at the middle), a pixel past the tip and the tail
-  r.line(tail.x + nx * 1.2, tail.y + ny * 1.2, p.x + nx * 1.8, p.y + ny * 1.8, PAL.ink);
-  r.line(p.x + nx * 1.8, p.y + ny * 1.8, tip.x + d.x, tip.y + d.y, PAL.ink);
-  r.line(tail.x - nx * 1.2, tail.y - ny * 1.2, p.x - nx * 1.8, p.y - ny * 1.8, PAL.ink);
-  r.line(p.x - nx * 1.8, p.y - ny * 1.8, tip.x + d.x, tip.y + d.y, PAL.ink);
-  r.px(Math.round(tail.x - d.x), Math.round(tail.y - d.y), PAL.ink);
-  // body: the dark facet, then the lit facet toward the top-left key light
-  r.line(tail.x - nx * 0.7 * litUp, tail.y - ny * 0.7 * litUp, tip.x, tip.y, PAL.stone1);
-  r.line(tail.x, tail.y, tip.x, tip.y, PAL.stone2);
-  r.line(tail.x + nx * 0.8 * litUp, tail.y + ny * 0.8 * litUp, p.x + nx * 0.9 * litUp, p.y + ny * 0.9 * litUp, PAL.stone4);
-  // the hot tip (light: drawn after the outline): 3 px in the spike's pole colour, white point
-  r.px(Math.round(tip.x - d.x * 2), Math.round(tip.y - d.y * 2), TIPS_DIM[i]);
-  r.px(Math.round(tip.x - d.x), Math.round(tip.y - d.y), TIPS[i]);
-  r.px(Math.round(tip.x), Math.round(tip.y), PAL.white);
+  const tip = { x: p.x + d.x * len * 0.55, y: p.y + d.y * len * 0.55 };
+  const sh = { x: p.x + d.x * len * 0.05, y: p.y + d.y * len * 0.05 };
+  const tail = { x: p.x - d.x * len * 0.45, y: p.y - d.y * len * 0.45 };
+  return [tip, { x: sh.x + nx * half, y: sh.y + ny * half }, { x: tail.x + nx * half * 0.45, y: tail.y + ny * half * 0.45 }, { x: tail.x - nx * half * 0.45, y: tail.y - ny * half * 0.45 }, { x: sh.x - nx * half, y: sh.y - ny * half }];
+}
+
+/** Two stepped afterimages of a spike along its last positions: a dim pole-coloured dart, then a dark one. */
+function drawGhosts(r: Raster, tr: readonly XY[], d: XY, i: number): void {
+  const G: [number, number, number][] = [[2, SHAFT_MD[i], 1], [4, SHAFT_DK[i], 0.5]];
+  for (const [g, c, lv] of G) {
+    if (tr.length <= g) continue;
+    r.poly(dartPts(tr[g], d, 11, 1.6), c, lv);
+  }
+}
+
+/**
+ * One iron-dust spike: a solid 14-px dart, 4–5 px thick at the shoulder — an ink outline all round, a dark iron
+ * facet away from the key light, the shaft in its pole's colour (N orange / S blue / gold binder), a lit facet and
+ * a 3-px hot head with a white point — so the three read apart at 1× on any target, the duelist portrait included.
+ */
+function drawSpike(r: Raster, p: XY, d: XY, i: number): void {
+  const LEN = 14;
+  const pts = dartPts(p, d, LEN, 2.4);
+  // ink: the dart stamped one pixel out in the four directions (a 1-px outline), then a pixel past the tip
+  for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) r.poly(pts.map((q) => ({ x: q.x + ox, y: q.y + oy })), PAL.ink);
+  r.px(Math.round(pts[0].x + d.x), Math.round(pts[0].y + d.y), PAL.ink);
+  r.poly(pts, SHAFT_MD[i]);
+  // the dark facet: the half away from the top-left key light
+  const nx = -d.y;
+  const ny = d.x;
+  const darkSide = ny > 0 || (ny === 0 && nx < 0) ? 1 : -1;
+  r.poly([pts[0], darkSide > 0 ? pts[1] : pts[4], darkSide > 0 ? pts[2] : pts[3], p], SHAFT_DK[i]);
+  // the lit facet: a sliver along the spine toward the light
+  r.line(p.x - nx * darkSide * 0.8 - d.x * 4, p.y - ny * darkSide * 0.8 - d.y * 4, pts[0].x - d.x * 2, pts[0].y - d.y * 2, TIPS_DIM[i]);
+  // the hot head (light: after the outline): pole colour, white point
+  r.px(Math.round(pts[0].x - d.x * 3), Math.round(pts[0].y - d.y * 3), TIPS[i]);
+  r.px(Math.round(pts[0].x - d.x * 2), Math.round(pts[0].y - d.y * 2), TIPS[i]);
+  r.px(Math.round(pts[0].x - d.x), Math.round(pts[0].y - d.y), PAL.white);
+  r.px(Math.round(pts[0].x), Math.round(pts[0].y), PAL.white);
 }
 
 /** The three meet in the body: a three-rayed star (N / S / gold), one stepped ring round the body, dust. */
@@ -515,53 +544,159 @@ export function spindleDust(sc: Phaser.Scene, at: XY, floorY: number): void {
   sp.release();
 }
 
+// ---------------------------------------------------------------- the remains (death end, §5.2 "tel çözülür, makara boş döner")
+
+/** The remains' pictures: the fallen spindle with its spool (0), without it (1), breaking (2, 3: the last 150 ms). */
+const REMAINS = [
+  { spoolOff: 0, diss: 0 },
+  { spoolOff: 1, diss: 0 },
+  { spoolOff: 1, diss: 0.4 },
+  { spoolOff: 1, diss: 0.8 },
+] as const;
+
+function remainsKey(sc: Phaser.Scene, i: number, right: boolean): string {
+  const key = `pc:remains:${right ? 'r' : 'l'}:${i}`;
+  if (sc.textures.exists(key)) return key;
+  const base = framePose('death', 9);
+  const p = new PixelCanvas(W, RIG_H);
+  const o: Pose = { ...base, spoolOff: REMAINS[i].spoolOff, diss: REMAINS[i].diss };
+  drawCoil(p, o, right ? 'right' : 'left');
+  sc.textures.addCanvas(key, p.toCanvas());
+  return key;
+}
+
+export interface Remains {
+  /** World centre of the near shoulder spool on the fallen spindle. */
+  spoolAt: XY;
+  /** The burst: the spool leaves the spindle (the picture without it) — the remains live `ms` more, the last 150 ms break. */
+  burst(ms: number): void;
+  destroy(): void;
+}
+
 /**
- * Death burst: loose copper curls spring out of the wire heap, and an empty spool rolls away over the marble,
- * spinning free (its spoke turns in whole steps), slowing, rocking and fading in dither steps.
+ * The death's last frame (the bare spindle lying clean on its own tile) taken over as remains: the sprite is hidden
+ * by the caller, so no generic material break follows. On burst() the empty spool comes off it (emptySpool), the
+ * spindle lies a beat, and only its last 150 ms break up — in two dissolve steps of its own grit (copper / iron).
  */
-export function emptySpool(sc: Phaser.Scene, home: XY, dir: 1 | -1, depth: number): void {
+export function coilRemains(sc: Phaser.Scene, u: MonsterUnit): Remains {
+  const spr = u.sprite;
+  const right = spr.texture.key.includes(':p2');
+  const img = sc.add.image(spr.x, spr.y, remainsKey(sc, 0, right)).setOrigin(spr.originX, spr.originY).setFlipX(spr.flipX).setDepth(spr.depth);
+  const lp = toppleRot(framePose('death', 9))(SPOOL_N_LOCAL);
+  const spoolAt = rx(u.framePoint(Math.floor(lp[0]) + 0.5, Math.floor(lp[1]) + 0.5));
+  let stop: (() => void) | null = null;
+  const destroy = () => {
+    stop?.();
+    if (img.active) img.destroy();
+  };
+  return {
+    spoolAt,
+    burst(ms) {
+      if (!img.active) return;
+      img.setTexture(remainsKey(sc, 1, right));
+      const BREAK = 150;
+      let shown = 1;
+      stop = onFrame(
+        sc,
+        (_dt, el) => {
+          if (!img.active) return false;
+          const k = el < ms - BREAK ? 1 : el < ms - BREAK / 2 ? 2 : 3;
+          if (k !== shown) {
+            shown = k;
+            img.setTexture(remainsKey(sc, k, right));
+            if (k === 2) {
+              // the grit of the break: copper flecks and iron grains dropping off the spindle
+              const sp = new Sparks(sc, img.depth + 0.2);
+              const home = u.home;
+              const dir = u.flipX ? -1 : 1;
+              for (let i = 0; i < 12; i++)
+                sp.add({ x: home.x - dir * RR(-14, 30), y: home.y - RR(2, 9), vx: RR(-25, 25), vy: RR(-50, -15), ay: 320, drag: 1, life: RR(200, 360), colors: i % 2 ? [PAL.skin3, PAL.fire3, PAL.fire2] : [PAL.stone3, PAL.stone2, PAL.stone1], shape: 'px', floor: home.y + RR(-2, 3), bounce: 0.2, fadeAt: 0.7 });
+              sp.release();
+            }
+          }
+          return el < ms;
+        },
+        () => {
+          if (img.active) img.destroy();
+        },
+      );
+    },
+    destroy,
+  };
+}
+
+/** Paints the empty spool as a wheel on its rim: back flange, the bare hub barrel, the front flange with 3 spokes. */
+function paintReel(g: Raster, x: number, y: number, step: number, side: number, lv: number): void {
+  const R = 5.5;
+  const bx = x - side * 3;
+  // the back flange (dark gold), the barrel between (the bare copper-stained hub)
+  g.disc(bx, y, R + 1, PAL.ink, lv);
+  g.disc(bx, y, R, PAL.gold1, lv);
+  g.rect(Math.min(x, bx) - 0, y - 3, Math.abs(x - bx) + 1, 7, PAL.ink, lv);
+  g.rect(Math.min(x, bx), y - 2, Math.abs(x - bx) + 1, 5, PAL.fire1, lv);
+  g.rect(Math.min(x, bx), y - 2, Math.abs(x - bx) + 1, 1, PAL.fire2, lv);
+  // the front flange: ink rim, gold face lit top-left, shadowed bottom-right
+  g.disc(x, y, R + 1, PAL.ink, lv);
+  g.disc(x, y, R, PAL.gold2, lv);
+  g.disc(x - 1, y - 1, R - 1.5, PAL.gold3, lv);
+  g.ring(x, y, R, R, PAL.gold1, lv, 0, Math.PI / 2);
+  g.dpx(x - 3, y - 4, PAL.gold4, lv);
+  g.dpx(x - 4, y - 3, PAL.gold4, lv);
+  // three spokes from the hub, turned in whole 15° steps (8 per third of a turn)
+  for (let k = 0; k < 3; k++) {
+    const a = (step / 8) * (TAU / 3) * side + (k * TAU) / 3;
+    g.line(x, y, x + Math.cos(a) * 4.4, y + Math.sin(a) * 4.4, PAL.gold1, lv);
+    g.dpx(x + Math.cos(a) * 4.4, y + Math.sin(a) * 4.4, PAL.gold4, lv);
+  }
+  // the hub: an iron boss with the empty bore
+  g.disc(x, y, 1.6, PAL.stone2, lv);
+  g.dpx(x, y, PAL.ink, lv);
+}
+
+/**
+ * Death burst: loose copper curls spring out of the wire heap, and the EMPTY SPOOL pops off the fallen spindle,
+ * lands on its rim and rolls away over the marble spinning free (its spokes turn in whole steps, faster than it
+ * travels: a reel with nothing on it), slows, rocks and settles, then fades in dither steps.
+ */
+export function emptySpool(sc: Phaser.Scene, home: XY, dir: 1 | -1, depth: number, from?: XY): void {
   const sp = new Sparks(sc, depth);
   for (let i = 0; i < 14; i++) {
     const side = i % 2 ? 1 : -1;
     sp.add({ x: home.x + RR(-8, 8), y: home.y - RR(2, 8), vx: side * RR(30, 80), vy: RR(-90, -40), ay: 420, drag: 1.4, life: RR(520, 820), colors: COPPER, shape: i % 3 === 0 ? 'ring' : 'streak', size: 2, len: 0.03, floor: home.y + RR(-4, 5), bounce: 0.35, fadeAt: 0.75 });
   }
   sp.release();
-  // the spool: thrown off the falling spindle, it rolls on the way the spindle fell (to the coil's back)
-  dir = (-dir) as 1 | -1;
-  const r = Raster.around(sc, home.x + dir * 20, home.y, 80, 30, depth);
-  const MS = 900;
-  const start = { x: home.x + dir * 10, y: home.y + 3 };
-  const dist = 26;
+  // it rolls toward the front of its own tile, down the tile's near edge (iso: x and y/2 together)
+  const start = from ?? { x: home.x - dir * 14, y: home.y - 6 };
+  const land = { x: start.x + dir * 4, y: home.y + 2 };
+  const roll = { x: dir * 22, y: 9 };
+  const r = Raster.around(sc, home.x, home.y - 16, 120, 100, depth);
+  const MS = 1000;
   onFrame(
     sc,
     (_dt, el) => {
       if (el >= MS) return false;
-      const t = el / MS;
-      // decelerating roll, a little hop at the start
-      const e = 1 - (1 - Math.min(1, t / 0.75)) ** 2;
-      const x = Math.round(start.x + dir * dist * e);
-      const y = Math.round(start.y - (t < 0.18 ? Math.sin((t / 0.18) * Math.PI) * 5 : 0));
-      const spin = Math.floor(e * 9) + (t > 0.75 ? Math.round(Math.sin((t - 0.75) * 30) * 0.6) : 0);
-      const lv = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
+      let x: number;
+      let y: number;
+      let spin: number;
+      if (el < 160) {
+        // the pop: off the spindle in a short arc, spinning
+        const k = el / 160;
+        x = start.x + (land.x - start.x) * k;
+        y = start.y + (land.y - 6 - start.y) * k - Math.sin(k * Math.PI) * 7 + 6 * k * k;
+        spin = Math.floor(el / 30);
+      } else {
+        const t = Math.min(1, (el - 160) / 640);
+        const e = 1 - (1 - t) ** 2;
+        x = land.x + roll.x * e;
+        y = land.y + roll.y * e - (el < 220 ? 2 : 0);
+        // free spin: fast at first, slowing with the roll, a last rock back and forth
+        spin = Math.floor(5 + e * 14) + (t >= 1 ? Math.round(Math.sin((el - 800) / 40)) : 0);
+      }
+      const lv = el < MS - 150 ? 1 : el < MS - 75 ? 0.6 : 0.3;
       r.draw((g) => {
-        // side view of the reel: two gold flange discs (ellipses), the bare copper-stained hub between
-        g.ell(x - 2, y - 3, 1.6, 3.4, PAL.ink, lv);
-        g.ell(x + 2, y - 3, 1.6, 3.4, PAL.ink, lv);
-        g.rect(x - 2, y - 5, 4, 4, PAL.ink, lv);
-        g.rect(x - 1, y - 4, 3, 2, PAL.fire1, lv);
-        g.ell(x + 2, y - 3, 1.1, 2.6, PAL.gold3, lv);
-        g.ell(x - 2, y - 3, 1.1, 2.6, PAL.gold2, lv);
-        // the spoke on the near flange (side view): its bright end runs round the rim in whole steps
-        const s = ((spin % 8) + 8) % 8;
-        const sy = [-2, -1, 0, 1, 2, 1, 0, -1][s];
-        const sx = s > 0 && s < 4 ? 1 : s > 4 ? -1 : 0;
-        g.dpx(x + 2 + (sx > 0 ? 0 : sx), y - 3 + sy, PAL.gold4, lv);
-        g.dpx(x + 2, y - 3 - sy, PAL.gold1, lv);
-        g.dpx(x + 2, y - 3, PAL.white, lv);
-        // its floor shadow
-        g.dpx(x - 1, y + 1, PAL.night1, lv);
-        g.dpx(x, y + 1, PAL.night1, lv);
-        g.dpx(x + 1, y + 1, PAL.night1, lv);
+        // the floor shadow under the rim
+        g.ell(Math.round(x) - dir, Math.round(Math.max(y, land.y)) + 6, 5, 1.2, PAL.night1, lv);
+        paintReel(g, Math.round(x), Math.round(y), spin, dir, lv);
       });
       return true;
     },

@@ -366,13 +366,31 @@ function movePieces(f: Frame, piece: (x: number, y: number, part: number) => num
   }
 }
 
-/** death / revive piece vectors at shards = 1: base left, base right, far arm, heel chunk, horn chunk, near arm. */
-export const SHARD_OFF: readonly Pt[] = [[-4, 0], [5, 0], [-9, -11], [-8, 2], [15, 3], [9, -12]];
+/** death / revive piece vectors at shards = 1: base left, base right, far arm, heel chunk, horn chunk, near arm.
+ *  The arms' y is where they come to rest ON THE FLOOR (they fly up first, then fall and clang down). */
+export const SHARD_OFF: readonly Pt[] = [[-5, 0], [6, 0], [-9, 21], [-7, 2], [16, 3], [11, 24]];
+
+/** apex of the arms' flight (px above their start) and the shards value where each arm hits the floor */
+const ARM_UP = 12;
+const ARM_LAND = [0, 0, 1, 0, 0, 0.9];
 
 function shardOffsets(s: number): Pt[] {
-  // pushed out on a short arc: they jump up-and-out first, then settle lower (the arms tumble higher)
-  const up = Math.sin(Math.PI * Math.min(1, s * 1.15)) * 5;
-  return SHARD_OFF.map(([x, y], i) => (i <= 1 ? [x * s, 0] : [x * s, y < 0 ? y * s : y * s - up]) as Pt);
+  // the halves / chunks slide out and decelerate (a magnetic shove, then friction); the chunks hop up and
+  // settle lower; the arms are thrown up and out, then fall and land on the floor (near arm first)
+  const out = 1 - (1 - Math.min(1, s)) * (1 - Math.min(1, s));
+  const up = s >= 1 ? 0 : Math.sin(Math.PI * Math.min(1, s * 1.15)) * 5;
+  return SHARD_OFF.map(([x, y], i) => {
+    // past 1 (the death's remains): the field's last kicks shove the halves / chunks a further px apart
+    const kick = s > 1 ? Math.sign(x) * (s - 1) * 10 : 0;
+    if (i <= 1) return [x * out + kick, 0] as Pt;
+    if (i === 2 || i === 5) {
+      const k = Math.min(1, s / ARM_LAND[i]);
+      const top = 0.42;
+      const ay = k < top ? -ARM_UP * (k / top) * (2 - k / top) : -ARM_UP + (y + ARM_UP) * ((k - top) / (1 - top)) ** 2;
+      return [x * Math.min(1, k * 1.1), ay] as Pt;
+    }
+    return [x * out + kick, y * Math.min(1, s) - up] as Pt;
+  });
 }
 
 // ---------------------------------------------------------------- light layer
@@ -638,21 +656,49 @@ function wardLight(f: Frame): void {
   }
 }
 
-/** The summon's blue arc jumping between the two half-anvils. */
+/** The summon's blue arc jumping between the two half-anvils (2 px thick); at arc >= 1 (the halves touching,
+ *  the beat before the KLAK) it flares and squeezes into the seam: a white-hot column with a blue halo. */
 function arcLight(f: Frame): void {
   const { o, sk } = f;
   if (o.arc <= 0 || o.split <= 0) return;
   const gx = sk.B[0] + 1;
   const ph = fl(o.t * 23);
+  if (o.arc >= 1) {
+    // squeezed: the field is pinched into the seam, it bulges out top and bottom like a pinched spark
+    for (let y = sk.T[1] - 31; y <= sk.B[1] - 1; y++) {
+      const j = hash2(y, ph, 9);
+      put(f, gx, y, j < 0.75 ? PAL.white : PAL.water4);
+      put(f, gx - 1, y, PAL.water4);
+      put(f, gx + 1, y, j < 0.4 ? PAL.white : PAL.water4);
+      put(f, gx - 2, y, PAL.water3);
+      put(f, gx + 2, y, PAL.water3);
+      if ((y & 1) === 0) {
+        put(f, gx - 3, y, PAL.water2);
+        put(f, gx + 3, y, PAL.water2);
+      }
+    }
+    // the pinch's two flares: short forks off the seam's ends
+    for (const [y, dy] of [[sk.T[1] - 31, -1], [sk.B[1] - 1, 1]] as const) {
+      for (let i = 1; i <= 4; i++) {
+        put(f, gx - i, y + dy * i, i < 2 ? PAL.white : PAL.water4);
+        put(f, gx + i, y + dy * i, i < 2 ? PAL.white : PAL.water4);
+      }
+    }
+    return;
+  }
   for (const [y0, y1, seed] of [[sk.T[1] - 27, sk.T[1] - 19, 1], [sk.B[1] - 9, sk.B[1] - 3, 2]] as const) {
-    let x = gx - o.split;
+    let x = gx - o.split - 1;
     let y = y0 + rnd(hash2(ph, seed, 3) * (y1 - y0));
-    const x1 = gx + o.split;
+    const x1 = gx + o.split + 1;
     let k = 0;
     while (x < x1) {
       const step = 2;
-      for (let s = 0; s < step && x < x1; s++, x++) put(f, x, y, k % 3 === 0 && o.arc > 0.6 ? PAL.white : PAL.water4);
-      put(f, x - 1, y + 1, PAL.water2);
+      for (let s = 0; s < step && x < x1; s++, x++) {
+        const hot = k % 3 === 0 && o.arc > 0.6;
+        put(f, x, y, hot ? PAL.white : PAL.water4);
+        put(f, x, y + 1, hot ? PAL.water4 : PAL.water3);
+      }
+      put(f, x - 1, y + 2, PAL.water2);
       y = clamp(y + (hash2(k, ph, seed) < 0.5 ? -1 : 1), y0, y1);
       k++;
     }

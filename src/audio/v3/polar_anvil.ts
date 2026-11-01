@@ -93,9 +93,9 @@ export const V3_POLAR_ANVIL_RECIPES = {
     gap: 0.1,
     verb: 0.45,
     play(v) {
-      v.noise('white', { g: [[0, 0], [0.03, 0.15], [0.5, 0.0001, 'e']], to: v.filt('highpass', [[0, 5200], [0.5, 2600, 'e']], 0.8) });
-      v.crackle({ d: 0.55, n: 22, g: 0.22, f: 6000, q: 1.2, curve: 1.4, dec: 0.005 });
-      glassRain(v, { t: 0.08, d: 0.6, n: 12, g: 0.06, notes: DUST, dec: [0.04, 0.12], curve: 1.2, modes: 2 });
+      v.noise('white', { g: [[0, 0], [0.03, 0.24], [0.5, 0.0001, 'e']], to: v.filt('highpass', [[0, 5200], [0.5, 2600, 'e']], 0.8) });
+      v.crackle({ d: 0.55, n: 22, g: 0.34, f: 6000, q: 1.2, curve: 1.4, dec: 0.005 });
+      glassRain(v, { t: 0.08, d: 0.6, n: 12, g: 0.09, notes: DUST, dec: [0.04, 0.12], curve: 1.2, modes: 2 });
     },
   },
   /** Summon: the hammer-arms unfold and tap the face twice — the idle's smith rhythm. */
@@ -144,13 +144,14 @@ export const V3_POLAR_ANVIL_RECIPES = {
       const D = 0.6;
       const H = D + 0.35;
       const E = H + 0.15;
-      const env: Pt[] = [[0, 0], [0.1, 0.05], [D, 0.13], [H, 0.13], [E, 0.0001, 'e']];
+      // ~4 dB under the DANG / WaveHit, and it eases off toward the release (the wind-up never outweighs the ring)
+      const env: Pt[] = [[0, 0], [0.1, 0.03], [D, 0.057], [H, 0.04], [E, 0.0001, 'e']];
       const lp = v.filt('lowpass', [[0, 220], [D, 1300, 'e'], [E, 1300]], 3);
       v.tone('sawtooth', E2, { g: env, to: lp });
       v.tone('sawtooth', E2 * 1.006, { g: scaled(env, 0.8), to: lp });
-      poleHum(v, 0, [[0, 0], [D, 0.2], [H, 0.2], [E, 0.0001, 'e']]);
+      poleHum(v, 0, [[0, 0], [D, 0.09], [H, 0.062], [E, 0.0001, 'e']]);
       // a field whine climbing a fifth (FM: it thickens as it rises)
-      const w = v.tone('sine', [[0, 330], [D, 495, 'e'], [E, 500]], { g: [[0, 0], [D, 0.035], [H, 0.035], [E, 0.0001, 'e']] });
+      const w = v.tone('sine', [[0, 330], [D, 495, 'e'], [E, 500]], { g: [[0, 0], [D, 0.024], [H, 0.018], [E, 0.0001, 'e']] });
       v.lfo(w.osc.detune, [[0, 3], [D, 9, 'e']], [[0, 4], [D, 14]], { d: E });
       // iron dust streams in: pings thickening toward the top
       glassRain(v, { t: 0.05, d: D, n: 10, g: 0.03, notes: DUST, dec: [0.03, 0.08], curve: 0.6, fade: 0, modes: 2 });

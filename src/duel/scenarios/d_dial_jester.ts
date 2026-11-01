@@ -83,6 +83,15 @@ const scenarios: Record<string, Scenario> = {
     stage: { zones: 5, p0: { monsters: five(N, 'dial_jester', 'crag_axeman', 'storm_hawk') }, p1: { monsters: five('magma_titan', N, 'reed_heron') } },
     steps: coin(0, 1, 'heads'),
   },
+  djCoinWinCharm: {
+    desc: 'Yazı-tura: bildi — Koruma Tılsımı Magma Titanı’nı kurtarır, diğer ikisi geri sarılır',
+    stage: {
+      zones: 5,
+      p0: { monsters: five(N, 'dial_jester', 'crag_axeman') },
+      p1: { monsters: five('magma_titan', N, 'reed_heron', 'steppe_spiralhorn'), spellTraps: [{ id: 'guardian_charm', equippedTo: 0 }, N, N, N, N] },
+    },
+    steps: coin(0, 1, 'tails'),
+  },
   djCoinWinP2: {
     desc: 'Yazı-tura (oyuncu 2): bildi',
     stage: { zones: 5, active: 1, p0: { monsters: five('magma_titan', N, 'reed_heron') }, p1: { monsters: five(N, 'dial_jester', 'cloud_hatchling') } },

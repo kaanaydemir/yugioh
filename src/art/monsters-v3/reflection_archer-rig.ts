@@ -24,16 +24,22 @@ import {
 } from './reflection_archer-kit';
 
 export const W = 76;
-export const H = 84;
+export const H = 108;
 export const RX = 30;
 export const GY = 64;
 /** The reflection's vertical foreshortening (mirror at the ground line). */
-export const KR = 0.36;
+export const KR = 0.66;
 /** The puddle (iso ellipse) centre and radii. */
 export const PCX = RX + 1;
 export const PCY = GY + 5;
 export const PRX = 25;
 export const PRY = 12;
+/** The puddle's second lobe: light spilt toward the viewer, so the long reflection (head, crown, bow arc) lies
+ *  below the stat plate and stays readable on the board (the plate covers the rows GY+6…GY+15). */
+export const PBX = RX + 1;
+export const PBY = GY + 26;
+export const PBRX = 17;
+export const PBRY = 15;
 
 export const enum Part {
   none = 0,
@@ -471,18 +477,28 @@ function drawFigure(p: PixelCanvas, o: Pose, light: Light, v: View): Comp {
 
 // ---------------------------------------------------------------- the puddle and the reflection
 
-/** Inside test of the puddle ellipse scaled by s (1 = full). */
+/** Inside test of the puddle scaled by s (1 = full): the iso ellipse round the feet, smoothly joined with the
+ *  spill lobe toward the viewer. Returns the squared normalised distance (≤ 1 inside; the rim ≈ 0.8…1). */
 function inPuddle(x: number, y: number, s: number): number {
   if (s <= 0) return 99;
-  const dx = (x + 0.5 - PCX) / (PRX * s);
-  const dy = (y + 0.5 - PCY) / (PRY * s);
-  return dx * dx + dy * dy;
+  const ax = (x + 0.5 - PCX) / (PRX * s);
+  const ay = (y + 0.5 - PCY) / (PRY * s);
+  const sa = (Math.sqrt(ax * ax + ay * ay) - 1) * PRY * s;
+  const by = PCY + (PBY - PCY) * s;
+  const bx = (x + 0.5 - PBX) / (PBRX * s);
+  const bz = (y + 0.5 - by) / (PBRY * s);
+  const sb = (Math.sqrt(bx * bx + bz * bz) - 1) * PBRY * s * 0.8;
+  const k = 11 * s;
+  const hh = clamp(0.5 + (0.5 * (sb - sa)) / k, 0, 1);
+  const d = sb + (sa - sb) * hh - k * hh * (1 - hh);
+  const n = Math.max(0, 1 + d / (PRY * s));
+  return n * n;
 }
 
 /** The reflection's tone for a figure tone (dark blue: night / water darks, YENI_KARTLAR §C4). */
 export const REFL_MAP = new Map<number, number>([
   [PAL.white, PAL.water2], [PAL.mist, PAL.water2], [PAL.steel, PAL.water1], [GLASS, PAL.water3],
-  [PAL.night4, PAL.night1], [PAL.night3, PAL.night1], [PAL.night2, PAL.night1], [PAL.night1, PAL.night0],
+  [PAL.night4, PAL.water1], [PAL.night3, PAL.night2], [PAL.night2, PAL.night1], [PAL.night1, PAL.night0],
   [PAL.gold4, PAL.water4], [PAL.gold3, PAL.water3], [PAL.gold2, PAL.water3], [PAL.gold1, PAL.water2],
 ]);
 
@@ -490,7 +506,7 @@ function drawPuddle(p: PixelCanvas, o: Pose, light: Light): void {
   if (o.pud <= 0) return;
   const s = clamp(o.pud, 0, 1);
   const ys = Math.max(1, rnd(PCY - PRY * s - 1));
-  const ye = Math.min(H - 1, rnd(PCY + PRY * s + 1));
+  const ye = Math.min(H - 2, rnd(PCY + (PBY - PCY + PBRY) * s + 1));
   const ls = light.side;
   for (let y = ys; y <= ye; y++)
     for (let x = 1; x < W - 1; x++) {
@@ -520,6 +536,19 @@ function drawPuddle(p: PixelCanvas, o: Pose, light: Light): void {
         p.set(x, y, ph < 0.55 ? PAL.mist : PAL.steel);
       }
     }
+  // the spill lobe's own slow ring (a quarter cycle behind): the reflection's water is alive too
+  if (o.rip >= 0 && s >= 0.95) {
+    const ph = (o.rip + 0.25) % 1;
+    const r = 0.3 + ph * 0.62;
+    const n = rnd(r * 70);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * TAU;
+      const x = rnd(PBX - 0.5 + Math.cos(a) * PBRX * r);
+      const y = rnd(PBY - 0.5 + Math.sin(a) * PBRY * 0.8 * r);
+      if (y < GY + 4 || inPuddle(x, y, 1) > 0.7) continue;
+      p.set(x, y, ph < 0.5 ? PAL.steel : PAL.night3);
+    }
+  }
 }
 
 function drawReflection(p: PixelCanvas, o: Pose, light: Light): void {
