@@ -82,8 +82,10 @@ describe('kite_fencer', () => {
     const charge = (x: Spec) => x.holds!.slice(x.marks!.charge, x.marks!.release).reduce((m, h) => m + h, 0);
     expect(charge(a)).toBeLessThan(charge(s));
     expect(s.frames).toBeGreaterThan(a.frames);
-    // attack 2 lifts off (the feet leave the floor) and the string goes taut; attack 1 never lifts beyond a hop
-    expect(Math.max(...Array.from({ length: s.frames }, (_, f) => framePose('special', f).lift))).toBeGreaterThanOrEqual(3);
+    // attack 2 lifts off (the feet leave the floor: the flight itself is the cinematic's, the sprite hangs its legs
+    // from f5 to f11 with the string pinned in world space) and the string goes taut first; attack 1 only hops
+    const lifted = Array.from({ length: s.frames }, (_, f) => framePose('special', f).lift > 0).filter(Boolean).length;
+    expect(lifted).toBeGreaterThanOrEqual(6);
     expect(Array.from({ length: s.frames }, (_, f) => framePose('special', f).smode).includes(1)).toBe(true);
     expect(Math.max(...Array.from({ length: a.frames }, (_, f) => framePose('attack', f).lift))).toBeLessThanOrEqual(1);
   });
@@ -106,7 +108,9 @@ describe('kite_fencer', () => {
     const modes = Array.from({ length: n }, (_, f) => framePose('death', f).smode);
     expect(modes.indexOf(1)).toBeLessThan(modes.indexOf(2));
     expect(framePose('death', n - 1).kmode).toBe(3);
-    expect(framePose('death', n - 1).sliver).toBe(3);
+    // the limp linen scrap (3), on the last frame twitching toward the wind (5) before the cinematic frays it away
+    expect([3, 5]).toContain(framePose('death', n - 1).sliver);
+    expect(framePose('death', n - 2).sliver).toBe(3);
     expect(framePose('death', n - 1).sword).toBe(1);
   });
 

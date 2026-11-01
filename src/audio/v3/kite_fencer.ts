@@ -63,10 +63,10 @@ function needle(v: Voice, t: number, g: number, dec = 0.18): void {
 }
 
 /** Stretched kite cloth struck: a drum-like snap band-passed at `f` (Hz), 15 ms. */
-function clothSnap(v: Voice, t: number, g: number, f = 1800, dec = 0.015, q = 3): void {
+function clothSnap(v: Voice, t: number, g: number, f = 1800, dec = 0.015, q = 3, body = 0.16, bodyG = 0.35): void {
   v.noise('white', { t, g: perc(g, dec, 0.0006), to: v.filt('bandpass', f, q) });
   // the membrane's short pitched body (a drum, not a puff)
-  v.tone('triangle', [[0, f * 0.16], [dec * 3, f * 0.11, 'e']], { t, g: perc(g * 0.35, dec * 3, 0.001) });
+  v.tone('triangle', [[0, f * body], [dec * 3, f * body * 0.69, 'e']], { t, g: perc(g * bodyG, dec * 3, 0.001) });
 }
 
 /** The bamboo spar click (`crack` band-passed at 3 kHz, two ticks 6 ms apart). */
@@ -226,12 +226,14 @@ const KITE_RECIPES = {
     play(v) {
       // the cloth BLOOMS with wind (a pink swell low-passed at 700 Hz, its rustle a step higher), the stretched panels
       // catch it with a drum-like snap at 1.8 kHz, the spars creak; the cloth drum's low body is only a felt hint
-      v.noise('pink', { g: [[0, 0], [0.06, 0.26], [0.34, 0.0001, 'e']], to: v.filt('lowpass', [[0, 520], [0.06, 760], [0.34, 420, 'e']], 0.9) });
+      v.noise('pink', { g: [[0, 0], [0.06, 0.4], [0.34, 0.0001, 'e']], to: v.filt('bandpass', [[0, 560], [0.06, 820], [0.34, 520, 'e']], 1.1) });
+      // the panels' edges flapping as they fill (a short dry crackle, high)
+      v.crackle({ t: 0.04, d: 0.2, n: 6, g: 0.05, f: 3000, q: 1.4, dec: 0.008, kind: 'white' });
       const fl = v.flutter(46, 0.5, { t: 0.03, d: 0.3, base: 0.45 });
-      v.noise('white', { t: 0.03, g: [[0, 0], [0.05, 0.07], [0.3, 0.0001, 'e']], to: v.filt('bandpass', [[0, 1100], [0.3, 1500, 'e']], 1.3, { to: fl }) });
-      clothSnap(v, 0.055, 0.2, 1800, 0.018, 2.5);
-      bamboo(v, 0.07, 0.09, 1);
-      thump(v, 0.05, 110, 80, 0.15, 0.16, { att: 0.012 });
+      v.noise('white', { t: 0.03, g: [[0, 0], [0.05, 0.25], [0.3, 0.0001, 'e']], to: v.filt('bandpass', [[0, 1150], [0.3, 1450, 'e']], 1.6, { to: fl }) });
+      clothSnap(v, 0.055, 0.5, 1800, 0.018, 2.5, 0.3, 0.25);
+      bamboo(v, 0.07, 0.1, 1);
+      thump(v, 0.05, 150, 110, 0.02, 0.08, { att: 0.012 }); // the cloth drum: felt, not heard
     },
   },
   kfnKiteCharge: {
@@ -317,11 +319,11 @@ const KITE_RECIPES = {
     gap: 0.03,
     verb: 0.25,
     play(v) {
-      clothSnap(v, 0, 0.5, 1800, 0.015, 3);
-      bamboo(v, 0.003, 0.22, 2);
-      for (let i = 0; i < 3; i++) v.tone('sine', 4000 + i * 130, { t: 0.02 + i * 0.024, g: perc(0.04 * (1 - i * 0.25), 0.02, 0.0005) });
-      // the membrane's tap, high and short (no low thud: the 1.8 kHz snap leads)
-      thump(v, 0, 620, 420, 0.025, 0.02);
+      // the stretched panel's snap leads (1.8 kHz, its drum body a tight 900 Hz knock — never a low thud), the bamboo
+      // click at 3 kHz, the rapier's rattle ticks at 4 kHz
+      clothSnap(v, 0, 0.55, 1800, 0.015, 3, 0.5, 0.1);
+      bamboo(v, 0.003, 0.24, 2);
+      for (let i = 0; i < 3; i++) v.tone('sine', 4000 + i * 130, { t: 0.02 + i * 0.024, g: perc(0.045 * (1 - i * 0.25), 0.02, 0.0005) });
     },
   },
   kfnStruckHeavy: {
@@ -329,7 +331,7 @@ const KITE_RECIPES = {
     gap: 0.03,
     verb: 0.3,
     play(v) {
-      clothSnap(v, 0, 0.55, 1600, 0.02, 2.5);
+      clothSnap(v, 0, 0.55, 1600, 0.02, 2.5, 0.45, 0.18);
       bamboo(v, 0.003, 0.3, 2);
       for (let i = 0; i < 5; i++) v.tone('sine', 4000 + (i % 2) * 260 - i * 40, { t: 0.02 + i * 0.03, g: perc(0.045 * (1 - i * 0.16), 0.022, 0.0005) });
       // the heavier blow: a second, looser fabric snap (the cloth slapping back) rather than more low end
@@ -344,10 +346,11 @@ const KITE_RECIPES = {
     verb: 0.3,
     play(v) {
       // the wrapped cloak (a closed diamond) takes it: a tighter, higher taut-cloth snap + the spars
-      clothSnap(v, 0, 0.5, 2200, 0.012, 4);
+      clothSnap(v, 0, 0.55, 2200, 0.012, 4, 0.4, 0.2);
       bamboo(v, 0.002, 0.3, 2);
       stringBuzz(v, 0.005, [[0, 990], [0.1, 950, 'e']], [[0, 0], [0.005, 0.03], [0.12, 0.0001, 'e']], { flutter: 110, q: 5 });
-      thump(v, 0, 210, 130, 0.12, 0.05);
+      // the two layers of the wrap meeting (a tight knock, not a low thud)
+      thump(v, 0, 420, 300, 0.07, 0.035);
     },
   },
   kfnBlockBow: {
@@ -516,12 +519,23 @@ export const V3_KITE_RECIPES = Object.fromEntries(
 
 export type KiteSfxName = keyof typeof KITE_RECIPES;
 
+/**
+ * The declaration's charge voice: the pike's breath + squeak for the 1st attack, the string tensing in the wind for
+ * the 2nd (the two attacks share no sound). The cinematic's attackDeclare hook sets it for the declaration it wraps.
+ */
+let declareCharge: 'kfnPikeCharge' | 'kfnKiteCharge' = 'kfnPikeCharge';
+export function setKiteCharge(name: 'kfnPikeCharge' | 'kfnKiteCharge'): void {
+  declareCharge = name;
+}
+
 /** The card's voice (CHARACTER_SOUNDS.kite_fencer): the death kit and the declaration play these on their marks. */
 export const KITE_VOICE = {
   roar: 'kfnSaluteTsing',
   arrive: 'kfnKiteDrift',
   land: 'kfnKiteFlop',
-  charge: 'kfnPikeCharge',
+  get charge(): 'kfnPikeCharge' | 'kfnKiteCharge' {
+    return declareCharge;
+  },
   release: 'kfnFleche',
   impact: 'kfnTsst',
   // (deathStart is the cinematic's: the death pose may join at f1 or later — kfnDeathTaut is scored on the first

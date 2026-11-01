@@ -123,7 +123,7 @@ const TO_GUARD_KEYS: Partial<Pose>[] = [
   { sink: 2, ka: 10, ky: -11, kx: -9, kbl: 1, hx: 8, hy: 0, ba: -40 },
   { sink: 2, ka: 28, ky: -15, kx: -5, ko: 0.8, kbl: 2, hx: 6, hy: -1, ba: -70, fx: -8, fy: -6, lean: -1 },
   { sink: 3, kmode: 1, ka: 12, ky: -11, kx: 3, ko: 0.82, kbl: 1, hx: 4, hy: -1, ba: -86, fx: -5, fy: -3, lean: -1, sph: 1 },
-  { sink: 3, kmode: 1, ka: 3, ky: -6, kx: 5, ko: 0.82, kh: 0.92, kbl: 1, hx: 3, hy: -1, ba: -90, fx: -4, fy: -2, lean: -1, hdx: -1, sph: 1 },
+  { sink: 3, kmode: 1, ka: 1, ky: -5, kx: 5, ko: 0.82, kh: 0.92, kbl: 1, hx: 3, hy: -1, ba: -90, fx: -4, fy: -2, lean: -1, hdx: -1, sph: 1 },
 ];
 export function toGuardPose(f: number): Pose {
   if (f >= 4) return { ...GUARD0 };
@@ -182,12 +182,12 @@ const SPECIAL_KEYS: Partial<Pose>[] = [
   { lamp: 3, fx: -2, fy: -21, ...BILLOWED, kx: -7, ky: -12, ka: -2, sink: 3, smode: 1, svib: -1, ...PIN, rlift: 2, hx: 8, hy: 3, ba: -4 },
   { lamp: 3, fx: -2, fy: -20, ...BILLOWED, kx: -7, ky: -12, ka: -1, sink: 4, lean: -1, smode: 1, svib: 1, ...PIN, rlift: 2, hx: 8, hy: 3, ba: -2 },
   // rise: lifts off, hanging under the open kite (the rear hand on the spar), legs dangling and trailing
-  { lamp: 2, fx: -4, fy: -19, ...OPEN, kbl: 4, kx: -5, ky: -14, ka: 4, sink: 0, lift: 1, f1x: -5, f1y: -2, f2x: 1, f2y: -1, smode: 3, rlift: 2, hx: 9, hy: 4, ba: 10 },
-  { lamp: 2, fx: -4, fy: -19, ...OPEN, kbl: 4, kx: -5, ky: -14, ka: 8, sink: 0, lift: 1, f1x: -8, f1y: -3, f2x: 2, f2y: -2, smode: 3, rlift: 2, hx: 8, hy: 4, ba: 14, lean: -1 },
+  { lamp: 2, fx: -4, fy: -19, ...OPEN, kbl: 4, kx: -5, ky: -13, ka: 4, sink: 0, lift: 1, f1x: -5, f1y: -2, f2x: 1, f2y: -1, smode: 3, rlift: 2, hx: 9, hy: 4, ba: 10 },
+  { lamp: 2, fx: -4, fy: -19, ...OPEN, kbl: 4, kx: -5, ky: -13, ka: 8, sink: 0, lift: 1, f1x: -8, f1y: -3, f2x: 2, f2y: -2, smode: 3, rlift: 2, hx: 8, hy: 4, ba: 14, lean: -1 },
   // the top of the swing: leaning back, the feet trailing behind, the rapier cocked up over the rear shoulder
-  { lamp: 2, fx: -4, fy: -19, ...OPEN, kbl: 4, kx: -4, ky: -14, ka: 12, sink: 0, lift: 1, lean: -2, chy: 0, f1x: -11, f1y: -4, f2x: -5, f2y: -3, smode: 3, rlift: 2, hx: 6, hy: -7, ba: -78 },
+  { lamp: 2, fx: -4, fy: -19, ...OPEN, kbl: 4, kx: -4, ky: -13, ka: 12, sink: 0, lift: 1, lean: -2, chy: 0, f1x: -11, f1y: -4, f2x: -5, f2y: -3, smode: 3, rlift: 2, hx: 6, hy: -7, ba: -78 },
   // the downswing: the body tips forward along the arc, the feet trail far behind, the blade comes over
-  { lamp: 2, fx: -4, fy: -18, ...OPEN, kbl: 3, kx: -5, ky: -13, ka: 2, sink: 0, lift: 1, lean: 2, f1x: -12, f1y: -2, f2x: -8, f2y: -1, smode: 3, rlift: 3, hx: 10, hy: -5, ba: -38 },
+  { lamp: 2, fx: -4, fy: -18, ...OPEN, kbl: 3, kx: -5, ky: -12, ka: 2, sink: 0, lift: 1, lean: 2, f1x: -12, f1y: -2, f2x: -8, f2y: -1, smode: 3, rlift: 3, hx: 10, hy: -5, ba: -38 },
   // CONTACT at the lowest point: the legs swing through under him, the blade SWEPT down across the body (top-back →
   // bottom-front), a 2-px smear behind the torso
   { lamp: 2, fx: -4, fy: -17, ...OPEN, kbl: 2, kx: -6, ky: -12, ka: -8, sink: 0, lift: 1, lean: 3, f1x: -2, f1y: -2, f2x: 3, f2y: -2, smode: 3, rlift: 2, hx: 12, hy: 0, ba: 46, smear: 1 },
@@ -300,36 +300,32 @@ const DEATH_KEYS: Partial<Pose>[] = [
 export function deathPose(f: number): Pose {
   return key(DEATH_KEYS[Math.min(f, DEATH_KEYS.length - 1)], f);
 }
-const DEATH_HOLDS = [50, 60, 70, 70, 45, 45, 30, 30, 50, 60, 60];
+const DEATH_HOLDS = [50, 60, 70, 70, 45, 45, 40, 40, 50, 60, 60];
 
-// ------------------------------------------------------------------ revive (10 frames): the death reversed
+// ------------------------------------------------------------------ revive (8 frames): the death reversed
 
 const REVIVE_KEYS: Partial<Pose>[] = [
   { body: 0, sliver: 3, ...SWORD_FLOOR, kmode: 3, smode: 3 },
   { body: 0, sliver: 2, ...SWORD_FLOOR, kmode: 3, smode: 3 },
-  { body: 0, sliver: 1, ...SWORD_FLOOR, swy: GY - 3, kmode: 3, smode: 3 },
   { lean: 0, chy: 3, sink: 5, hx: 4, hy: 7, thin: 0.6, sword: 1, swx: AX + 7, swy: GY - 5, swa: -62, kmode: 2, kx: AX + 6, ky: 15, ka: 22, ko: 0.8, kh: 0.8, kbl: 2, smode: 3, fx: -5, fy: 0 },
   { lean: -1, chy: 2, hdy: 1, sink: 4, hx: 6, hy: 4, ba: 40, thin: 0.3, kmode: 2, kx: AX - 5, ky: 17, ka: -10, ko: 0.95, kbl: 2, smode: 3, fx: -8, fy: -3 },
   // the cloak lands on his shoulders
   { lean: -1, chy: 1, sink: 3, hx: 8, hy: 3, ba: 10, ka: -2, ky: -8, kbl: 3, ko: 1.08, smode: 1, svib: 1, pinX: AX - 16, pinY: GY, fx: -11, fy: -8 },
   { sink: 2, hx: 9, hy: 2, ba: -4, ka: -6, kbl: 2, smode: 0, sph: 1, fx: -12, fy: -8 },
   { sink: 1, hx: 10, hy: 1, ba: -12, ka: -5, kbl: 0, sph: 0 },
-  { sink: 1, kbl: -1, sph: -1 },
   {},
 ];
 export function revivePose(f: number): Pose {
   return key(REVIVE_KEYS[Math.min(f, REVIVE_KEYS.length - 1)], f);
 }
-const REVIVE_HOLDS = [90, 90, 80, 80, 90, 110, 100, 100, 110, 120];
+const REVIVE_HOLDS = [90, 100, 90, 100, 120, 110, 110, 130];
 
-// ------------------------------------------------------------------ summon (12 frames): the kite drifts down, he rises under it
+// ------------------------------------------------------------------ summon (13 frames): the kite lands, he rises under it
 
 const SUMMON_KEYS: Partial<Pose>[] = [
-  // the empty kite sways down like a leaf (never a dive): tilted right, then left
-  { body: 0, sword: 3, kmode: 2, kx: AX - 2, ky: 24, ka: 24, ko: 1, kbl: 2, smode: 5 },
-  { body: 0, sword: 3, kmode: 2, kx: AX - 4, ky: 36, ka: -22, ko: 1, kbl: 1, smode: 5 },
-  // it tips over just above the tile (tilt, then the flop): never from upright to flat in one frame
-  { body: 0, sword: 3, kmode: 2, kx: AX - 2, ky: GY - 15, ka: 30, kflat: 0.36, ko: 1, kbl: 2, smode: 5 },
+  // (the empty kite's leaf-like fall from above the screen is the cinematic's free kite object; the pose takes over
+  // just above the tile) it tips over (tilt, then the flop): never from upright to flat in one frame
+  { body: 0, sword: 3, kmode: 2, kx: AX - 1, ky: GY - 17, ka: 24, kflat: 0.36, ko: 1, kbl: 2, smode: 5 },
   { body: 0, sword: 3, kmode: 2, kx: AX - 1, ky: GY - 10, ka: 8, kflat: 0.74, ko: 1.06, kbl: 3, smode: 4 },
   // land: flat on the tile as an iso diamond, a cloth flop
   { body: 0, sword: 3, kmode: 2, kx: AX - 1, ky: GY - 7, ka: 0, kflat: 1, ko: 1.05, kbl: 2, smode: 4 },
@@ -340,19 +336,18 @@ const SUMMON_KEYS: Partial<Pose>[] = [
   // his head lifts the cloth: the kite draped over a crouched figure (only the shoes show under the hem)
   { sink: 12, lean: 2, chy: 3, hdy: 2, hx: 6, hy: 6, ba: 40, sword: 3, kmode: 1, kx: -3, ky: -3, ka: 84, ko: 1, kh: 0.92, kbl: 2, smode: 4, fx: -3, fy: -2 },
   // the shoulders come out, the cloth slides back over them
-  { sink: 10, lean: 1, chy: 2, hdy: 1, hdx: 1, hx: 6, hy: 6, ba: 36, kx: 1, ky: -5, ka: 76, ko: 0.95, kh: 0.92, kbl: 2, smode: 4, fx: -4, fy: -2 },
+  { sink: 10, lean: 1, chy: 2, hdy: 1, hdx: 1, hx: 6, hy: 6, ba: 30, kx: 1, ky: -6, ka: 76, ko: 0.95, kh: 0.92, kbl: 2, smode: 4, fx: -4, fy: -2 },
   // he stands up under the kite: the cloth slides onto his shoulders, the spars settle
   { sink: 9, lean: 1, chy: 2, hdy: 1, hx: 7, hy: 4, ba: 18, kx: -1, ky: -5, ka: 62, ko: 0.95, kbl: 1, smode: 4, fx: -5, fy: -2 },
   { sink: 5, lean: 0, chy: 1, hx: 8, hy: 4, ba: 14, kx: -4, ky: -8, ka: 34, ko: 1, kbl: 2, smode: 4, fx: -8, fy: -5 },
   { sink: 2, hx: 8, hy: 4, ba: 18, kx: -8, ky: -9, ka: 10, kbl: 2, smode: 0, sph: 1, fx: -11, fy: -7 },
   { sink: 1, hx: 9, hy: 2, ba: 0, ka: -4, kbl: 3, ko: 1.06, smode: 0, sph: 0, fx: -12, fy: -8 },
-  { sink: 1, hx: 10, hy: 1, ba: -10, ka: -5, kbl: -1, sph: -1 },
   {},
 ];
 export function summonPose(f: number): Pose {
   return key(SUMMON_KEYS[Math.min(f, SUMMON_KEYS.length - 1)], f);
 }
-const SUMMON_HOLDS = [100, 100, 50, 50, 80, 90, 90, 100, 70, 70, 70, 70, 75, 90, 110, 120];
+const SUMMON_HOLDS = [50, 50, 80, 90, 90, 100, 70, 70, 70, 70, 75, 90, 120];
 
 // ------------------------------------------------------------------ specs
 
@@ -368,9 +363,9 @@ export const ANIMS: Record<MonsterAnim, AnimSpec> = {
   hit: spec(6, false, HIT_HOLDS, { impact: 0, contact: 0, recover: 3 }),
 };
 export const EXTRA_ANIMS: Partial<Record<MonsterAnimExtra, AnimSpec>> = {
-  summon: spec(16, false, SUMMON_HOLDS, { land: 4 }),
+  summon: spec(13, false, SUMMON_HOLDS, { land: 2 }),
   death: spec(11, false, DEATH_HOLDS, { impact: 0, contact: 0, dissolve: 4 }),
-  revive: spec(10, false, REVIVE_HOLDS, { land: 5 }),
+  revive: spec(8, false, REVIVE_HOLDS, { land: 4 }),
   special: spec(14, false, SPECIAL_HOLDS, { charge: 1, release: 9, impact: 9, contact: 9, recover: 10 }),
   hitHeavy: spec(8, false, HEAVY_HOLDS, { impact: 0, contact: 0, recover: 4 }),
   hitMagic: spec(8, false, MAGIC_HOLDS, { impact: 0, contact: 0, recover: 4 }),
