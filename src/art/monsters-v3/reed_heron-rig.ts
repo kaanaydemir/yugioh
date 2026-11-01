@@ -852,14 +852,17 @@ function coverBands(f: Frame): void {
     [12, 4, 23, -3, 1],
   ];
   WISPS.forEach(([dy, h, hw, dx, lean], i) => {
-    const y = top + dy;
+    // (the last frame keeps two thin far wisps: the bank is going, only the ground stays)
+    if (thin && i === 2) return;
+    // (never closer than 2 px to the frame's top edge: Sİ-2)
+    const y = Math.max(2, top + dy);
     if (y > GY - 4) return;
     const dir = i % 2 ? 1 : -1;
     paintWisp(run, {
       cx: sk.B[0] - 3 + dx + dir * off,
       y,
       h: thin ? Math.max(3, h - 1) : h,
-      hw: thin ? hw - 5 : hw,
+      hw: thin ? hw - 6 : hw,
       lean,
       seed: 41 + i * 7,
       tone: thin ? 2 : i === 0 ? 0 : 1,

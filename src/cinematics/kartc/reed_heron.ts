@@ -307,7 +307,8 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
   const feet: XY = { x: rnd(aim.x - tip.x), y: rnd(aim.y - tip.y) };
   // continue from the declaration's held charge pose
   const held = strikeStartFrame(u);
-  const f0 = held > 0 ? Math.min(held + 1, freezeF) : 0;
+  // (from the held coil f1 the neck SNAPS: straight to f3, the f2 in-between is the sheet's, not the strike's)
+  const f0 = held > 0 ? Math.min(held + 2, freezeF) : 0;
   const charge = takeCharge(u, 'heronCoil', { volume: 0.85, pan });
   // the home badge would sit on his neck when he glides toward the camera (P2): it steps out for the strike
   u.badge.setVisible(false);
