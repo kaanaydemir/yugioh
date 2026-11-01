@@ -110,7 +110,7 @@ export class ShroudAura {
       if (this.dead) return false;
       el0 = el;
       // a 10-px column at once (2–3 frames held), then down over 220 ms
-      this.curlK = el < 34 ? 0.6 : el < 110 ? 1 : Math.max(0, 1 - (el - 110) / 220);
+      this.curlK = el < 34 ? 0.6 : el < 140 ? 1 : Math.max(0, 1 - (el - 140) / 200);
       return el0 < 340 + 20;
     });
   }
@@ -304,16 +304,25 @@ function deflect(scene: Phaser.Scene, u: MonsterUnit, _views: DuelViews): void {
     const k = plateKey(scene, big, 0);
     plate.setTexture(k.key).setPosition(rnd(c.x - k.w / 2), rnd(top.y - 14 - k.h / 2 + dy)).setVisible(true);
   };
+  /** the reticle box rests just OUTSIDE the wall at ring position k (its inner edge touching the water, so the
+   *  curl column at the strike point stands clear beside it, never under the corners) */
+  const outside = (k: number, half: number): XY => {
+    const p = ringPt(k);
+    const ox = p.x - c.x;
+    const oy = (p.y - c.y) * 2; // iso: the ellipse's outward normal is twice as steep as the radius
+    const ol = Math.hypot(ox, oy) || 1;
+    return { x: rnd(p.x + (ox / ol) * (half + 2)), y: rnd(p.y - 4 + (oy / ol) * (half + 2) * 0.5) };
+  };
   ambient(scene, (el) => {
     ret.clear();
-    const p0 = ringPt(at);
+    const p0 = outside(at, 6);
     const dirK = fromRight ? -1 : 1;
     // 0–100: the reticle corners close in — not on the crab: onto the FRONT ARC of the wave wall, where they strike
     if (el < 100) {
       const t = el / 100;
       const e = t * t;
       const cx = rnd(lerpN(core.x, p0.x, e));
-      const cy = rnd(lerpN(core.y - 4, p0.y - 4, e));
+      const cy = rnd(lerpN(core.y - 4, p0.y, e));
       const half = rnd(lerpN(24, 6, e));
       corners(ret, cx - half, cy - half, cx + half, cy + half, PAL.white);
     } else if (el < 420) {
@@ -326,18 +335,20 @@ function deflect(scene: Phaser.Scene, u: MonsterUnit, _views: DuelViews): void {
       // fading in two tone steps
       const t = (el - 100) / 220;
       const k = Math.min(1, t);
-      const skidAt = at + dirK * 0.1 * (1 - (1 - k) * (1 - k));
+      // 0.12 of the ring ≈ 13–16 px of travel along the wall, riding just outside it (decelerating: friction)
+      const skidAt = at + dirK * 0.12 * (1 - (1 - k) * (1 - k));
       const p = ringPt(skidAt);
-      let cx = p.x;
-      let cy = p.y - 5;
+      const q = outside(skidAt, 6);
+      let cx = q.x;
+      let cy = q.y;
       let half = 6;
       let col: number = PAL.white;
       if (el >= 320) {
         const f = (el - 320) / 100;
         const out = { x: p.x - c.x, y: p.y - c.y };
         const ol = Math.hypot(out.x, out.y) || 1;
-        cx = rnd(p.x + (out.x / ol) * 18 * f);
-        cy = rnd(p.y - 5 + (out.y / ol) * 8 * f - 10 * f);
+        cx = rnd(q.x + (out.x / ol) * 18 * f);
+        cy = rnd(q.y + (out.y / ol) * 8 * f - 10 * f);
         half = rnd(6 + 3 * f);
         col = f < 0.5 ? PAL.water4 : PAL.water2;
       } else if (t > 0.8) col = PAL.white;

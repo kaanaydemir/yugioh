@@ -198,7 +198,7 @@ export function shroudWall(p: PixelCanvas, cx: number, cy: number, half: 'back' 
     if (o.curl && o.curlAt !== undefined) {
       let d = Math.abs(u - o.curlAt);
       d = Math.min(d, 1 - d);
-      const k = Math.max(0, 1 - d / 0.07);
+      const k = Math.max(0, 1 - d / 0.06);
       h = Math.max(h, 10 * o.curl * k * k * (3 - 2 * k));
     }
     const hh = rnd(h);

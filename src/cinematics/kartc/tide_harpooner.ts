@@ -216,7 +216,7 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
     const dist = Math.hypot(tipEnd.x - tip0.x, tipEnd.y - tip0.y);
     // a short gap is lobbed higher so the travel reads; the shaft never turns more than ~15° in the air
     const lob = s.direct ? 4 : clamp(rnd(dist * 0.16), 5, 8);
-    const flyMs = s.direct ? clamp(rnd(dist * 0.8), 200, 260) : clamp(rnd(dist * 3.4), 150, 230);
+    const flyMs = s.direct ? clamp(rnd(dist * 0.6), 180, 210) : clamp(rnd(dist * 3.4), 150, 230);
     const floorA = u.home;
     const floorB = tgt ? tgt.home : { x: s.toGround.x, y: s.toGround.y };
     const floorDir = norm(sub(floorB, floorA));
@@ -235,7 +235,9 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
     };
     harp.set(tip0, ang, { smear: 2 });
     await animate(sc, flyMs, (t) => {
-      const e = E.outQ(t) * 0.35 + t * 0.65;
+      // direct: the pass over the duelist sits at 3/4 of the flight time, so the stake lands ≈ 100 ms after the
+      // number (the head keeps its speed: the panel is closer to the duelist than the duelist is to the crab)
+      const e = passT >= 0 ? (t < 0.75 ? passT * (t / 0.75) : passT + (1 - passT) * ((t - 0.75) / 0.25)) : E.outQ(t) * 0.35 + t * 0.65;
       // straight with a gravity sag (the angle follows the curve, clamped)
       const sag = lob * 4 * e * (1 - e);
       const p = lerpXY(tip0, tipEnd, e);
