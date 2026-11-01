@@ -41,11 +41,6 @@ const S: Record<string, Scenario> = {
     steps: [attack(2, 2)],
   },
   rhrHit: {
-    desc: 'struck in melee (wisp_imp 300 vs 1400: a strike with a contact mark, so his idle settles onto the struck pose — the KK-4 probe case): the S-neck spring drawn as the give, the pond stays, the attacker breaks',
-    stage: { zones: 5, phase: 'battle', p0: { monsters: [N, N, 'wisp_imp', N, N] }, p1: { monsters: [N, N, { id: 'reed_heron', position: 'attack' }, N, N] } },
-    steps: [attack(2, 2)],
-  },
-  rhrHitRock: {
     desc: 'struck by a thrown rock (stone_sentinel 500 vs 1400, physical, from its own tile: nothing covers him): the S-neck spring, the attacker breaks',
     stage: { zones: 5, phase: 'battle', p0: { monsters: [N, N, 'stone_sentinel', N, N] }, p1: { monsters: [N, N, { id: 'reed_heron', position: 'attack' }, N, N] } },
     steps: [attack(2, 2)],

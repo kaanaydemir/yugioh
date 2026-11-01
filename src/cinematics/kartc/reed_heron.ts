@@ -265,6 +265,66 @@ registerObserver((_ev, ctx) => {
   }
 });
 
+// ================================================================ threatened: the heron goes still
+
+/**
+ * A heron that is attacked FREEZES: from the declaration on, its idle loop walks the shortest way (one frame per
+ * ~2 game frames, forward or back) to idle f0 and holds it — the statue-still wader — until the blow (its struck
+ * f0 is drawn from idle f0: the contact frame stays local whatever phase the loop was in, KK-4 / HA-21) or, when
+ * no blow comes, ~4.5 s later, when the loop simply resumes from f0. The marsh around him keeps living.
+ */
+function stillOnThreat(sc: Phaser.Scene, u: MonsterUnit): void {
+  if (DBG) console.error(`[rhr] still? locked ${u.locked} pos ${u.position} guarding ${u.guarding} anim ${u.frameInfo().anim}:${u.frameInfo().frame}`);
+  if (!u.sprite.active || u.retired || u.locked || u.position !== 'attack' || u.guarding) return;
+  const fi = u.frameInfo();
+  if (fi.anim !== 'idle') return;
+  const n = u.frameCount('idle');
+  let k = fi.frame;
+  const dir = k <= n / 2 ? -1 : 1;
+  let acc = 0;
+  let held = k === 0;
+  // (stop the loop on the frame it shows now; the walk to f0 starts on the next step)
+  u.pose('idle', k);
+  // a loop restarted later in the same step is pulled back before the frame is drawn
+  const guard = () => {
+    const f = u.frameInfo();
+    if (u.sprite.active && !u.retired && !u.locked && f.anim === 'idle' && (f.frame !== k || u.sprite.anims.isPlaying)) u.pose('idle', k);
+  };
+  sc.events.on('prerender', guard);
+  onFrame(sc, (dt, el) => {
+    if (!u.sprite.active || u.retired || u.locked) return false;
+    // something else took the sprite over (the struck pose, a strike of his own, a flip): it owns him now; a
+    // restarted idle loop (the battle's settle of the rest pose) is pulled back to where the walk is
+    const f = u.frameInfo();
+    if (f.anim !== 'idle') {
+      if (DBG) console.error(`[rhr] still: taken over at ${f.anim}:${f.frame} (k ${k}, el ${Math.round(el)})`);
+      return false;
+    }
+    if (f.frame !== k || u.sprite.anims.isPlaying) u.pose('idle', k);
+    if (!held) {
+      acc += dt;
+      if (acc < 30 && k !== 0) return true;
+      acc = 0;
+      if (k !== 0) k = (k + dir + n) % n;
+      u.pose('idle', k);
+      if (k === 0) held = true;
+      return true;
+    }
+    if (el > 4500) {
+      u.rest();
+      return false;
+    }
+    return true;
+  }, () => sc.events.off('prerender', guard));
+}
+
+registerObserver((ev, ctx) => {
+  if (!LOOK_V3 || ev.type !== 'attackDeclare' || ev.targetUid === null) return;
+  if (ctx.state.cards[ev.targetUid]?.cardId !== ID) return;
+  const u = ctx.unit(ev.targetUid);
+  if (u) stillOnThreat(ctx.scene, u);
+});
+
 // ================================================================ strike: Gaga Hamlesi
 
 /**
@@ -577,6 +637,39 @@ function coolGlance(sc: Phaser.Scene, u: MonsterUnit, before: number, at: XY, sg
 
 registerStrike(ID, (s) => (LOOK_V3 ? beakTriple(s) : (s.base?.() ?? Promise.resolve())), { name: 'kartc:reed_heron:strike' });
 
+// ================================================================ the pond never slides: no kit shove
+
+/**
+ * The heron's recoils and its death DRAW the give (knock 'pose': the body rocks back, the death steps back); the
+ * shared kit still shoves the whole sprite on a blow from behind and on a lethal blow — and the sprite carries the
+ * still pond and the reeds, so the floor would slide under him. While `ms` run, after every update (the shove's
+ * tween runs in the update, the frame is drawn after), a sprite pushed 1–4 px off its rest spot is put back and
+ * the shove's tween stopped. A unit standing far from home (his own strike) is never touched.
+ */
+function pinHome(sc: Phaser.Scene, u: MonsterUnit, ms: number): () => void {
+  const spr = u.sprite;
+  const home = { ...u.rest0 };
+  const t0 = sc.time.now;
+  let on = true;
+  const off = () => {
+    if (!on) return;
+    on = false;
+    sc.events.off('postupdate', hold);
+  };
+  function hold(): void {
+    if (!spr.active || u.retired || sc.time.now - t0 > ms) return off();
+    const a = u.frameInfo().anim;
+    if (a === 'attack' || a === 'summon') return;
+    const dx = spr.x - home.x;
+    const dy = spr.y - home.y;
+    if ((dx === 0 && dy === 0) || Math.abs(dx) > 4 || Math.abs(dy) > 4) return;
+    for (const tw of sc.tweens.getTweensOf(spr)) if (tw.data.some((d) => d.key === 'x' || d.key === 'y')) tw.stop();
+    spr.setPosition(home.x, home.y);
+  }
+  sc.events.on('postupdate', hold);
+  return off;
+}
+
 // ================================================================ struck: feather + still water
 
 /**
@@ -610,6 +703,8 @@ function watchStruck(ctx: BattleCtx): void {
     });
   };
   sc.events.on('v3:contact', onContact);
+  // the drawn give replaces the kit's shove for the whole battle (pinHome)
+  pinHome(sc, u, 6000);
   // never outlive the battle
   void sleep(sc, 6000).then(() => sc.events.off('v3:contact', onContact));
 }
@@ -644,22 +739,8 @@ function mistDeath(ctx: DestroyCtx): void {
   let slipped = false;
   // the bank's own world bands: two thin wisps either side, widening the art's cover bands past the body
   const wisps = new Px(sc.add.graphics().setDepth(unitDepth(u.home.y) + 0.4));
-  // the killing blow does not shove him: the death's own drawn back-step is the give (the kit's shared lethal knock
-  // would drag the still pond and the reeds with the body). The spot he stood on at the struck frame is kept,
-  // after every update (the kit's shove tween runs in the update), until the mist has him.
-  let pin: { x: number; y: number } | null = null;
-  const spr = u.sprite;
-  const hold = () => {
-    if (done || !spr.active) return void sc.events.off('postupdate', hold);
-    if (u.frameInfo().anim !== 'death') return;
-    if (!pin) pin = { x: spr.x, y: spr.y };
-    if (spr.x === pin.x && spr.y === pin.y) return;
-    for (const tw of sc.tweens.getTweensOf(spr)) {
-      if (tw.data.some((d) => d.key === 'x' || d.key === 'y')) tw.stop();
-    }
-    spr.setPosition(pin.x, pin.y);
-  };
-  sc.events.on('postupdate', hold);
+  // the killing blow does not shove him: the death's own drawn back-step is the give (pinHome)
+  const unpin = pinHome(sc, u, 4000);
   const keep = onFrame(sc, (_dt, el) => {
     if (done || el > 4000) return false;
     const fi = u.frameInfo();
@@ -704,7 +785,7 @@ function mistDeath(ctx: DestroyCtx): void {
     return true;
   }, () => {
     wisps.g.destroy();
-    sc.events.off('postupdate', hold);
+    unpin();
   });
   void keep;
 }
