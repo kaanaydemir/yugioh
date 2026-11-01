@@ -150,7 +150,8 @@ async function ashStormV3(s: StrikeArgs): Promise<void> {
   // blocked: the bank stops on the guard plane in front of the target
   const B: XY = blocked ? { x: ground.x - dir * 12, y: ground.y + 1 } : { x: ground.x, y: ground.y + 1 };
   const L = Math.max(1, Math.hypot(B.x - A.x, B.y - A.y));
-  const T = clamp(L * 1.6, 190, 240);
+  // a tie kills the drake too: its own death has to fit the budget, so the bank's floor speed is a bit higher
+  const T = clamp(L * 1.6, tie ? 170 : 190, 240);
   const ux = (B.x - A.x) / L;
   const uy = (B.y - A.y) / L;
   const at = (sAlong: number, o = 0): XY => ({ x: A.x + ux * sAlong + -uy * o, y: A.y + uy * sAlong + ux * o * 0.5 });
@@ -414,7 +415,7 @@ async function ashStormV3(s: StrikeArgs): Promise<void> {
     void sleep(sc, 50).then(() => lub.fadeOut(60));
     phase = 'silence';
     // the silence: three visible dark steps, nothing to hear
-    const SIL = 150;
+    const SIL = tie ? 140 : 150; // never below 140 (§5.7)
     for (let i = 1; i <= 3; i++) {
       await sleep(sc, (SIL - 40) / 3);
       darkSteps = i;

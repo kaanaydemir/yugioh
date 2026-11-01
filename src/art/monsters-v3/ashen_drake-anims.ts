@@ -15,7 +15,7 @@
 //   hit / hitHeavy / hitMagic the struck region only on f0, the in-between on f1
 //   summon    15 f / 1350 ms  land 1: bones bottom-up + the cloak by accretion; the wings burst (f7), spread f8,
 //                             a half-fold in-between (f9) inside the old 200 ms hold
-//   death     12 f / 860 ms   top-down crumble; from f9 the heap is the cinematic's
+//   death     12 f / 730 ms   top-down crumble; from f9 the heap is the cinematic's
 //   revive    12 f / 1180 ms  land 6: bones out of the heap, plates fly in wrist first, each re-lit
 //   victory   10 f / 1270 ms  "Kor Dökülmesi": the canopy, the head out under its edge roaring, the rib spill,
 //                             held on the cooled mound
@@ -343,17 +343,17 @@ const DEATH: AnimDef<AshenPose> = {
   struck: { regions: ['head', 'chest'] },
   beats: [
     k({ neck: [0, -6, -8], head: [-2, -2], headPitch: -10, eye: 0, crest: 0.8, beat: 4, heat: 0.7 }, 50),
-    k({ body: [-2, 0], neck: [-24, -18, -24], head: [-4, -3], headPitch: -20, eye: 0, crest: 1, heat: 0.7, wingN: W({ wrist: [-2, -2], open: 0.3 }), wingF: W({ wrist: [-1, -2], open: 0.3 }) }, 60),
-    k({ body: [-2, 1], neck: [-18, -10, -14], head: [-3, -2], headPitch: -12, eye: 1, heat: 0.4, beat: 4, wingN: W({ wrist: [-1, -1], open: 0.15 }), wingF: W({ open: 0.15 }) }, 60),
-    k({ body: [-1, 3], neck: [-6, 6, 10], head: [-2, 0], headPitch: 4, eye: 1, heat: 0.4, wingN: W({ wrist: [0, 2] }), wingF: W({ wrist: [0, 2] }) }, 70),
+    k({ body: [-2, 0], neck: [-24, -18, -24], head: [-4, -3], headPitch: -20, eye: 0, crest: 1, heat: 0.7, wingN: W({ wrist: [-2, -2], open: 0.3 }), wingF: W({ wrist: [-1, -2], open: 0.3 }) }, 55),
+    k({ body: [-2, 1], neck: [-18, -10, -14], head: [-3, -2], headPitch: -12, eye: 1, heat: 0.4, beat: 4, wingN: W({ wrist: [-1, -1], open: 0.15 }), wingF: W({ open: 0.15 }) }, 55),
+    k({ body: [-1, 3], neck: [-6, 6, 10], head: [-2, 0], headPitch: 4, eye: 1, heat: 0.4, wingN: W({ wrist: [0, 2] }), wingF: W({ wrist: [0, 2] }) }, 60),
     k({ body: [-1, 4], neck: [-2, 12, 16], head: [-2, 1], headPitch: 10, eye: 0, heat: 0.35, smoke: 0.5, wingN: W({ wrist: [0, 3] }), wingF: W({ wrist: [0, 3] }) }, 60),
-    k({ body: [-1, 4], neck: [0, 14, 18], head: [-2, 1], headPitch: 12, eye: 0, heat: 0.35, crumble: 0.16, wingN: W({ wrist: [0, 3] }), wingF: W({ wrist: [0, 3] }) }, 70, 'dissolve'),
-    k({ body: [-1, 5], neck: [8, 26, 30], head: [-3, 4], headPitch: 22, eye: 0, heat: 0.35, crumble: 0.36, wingN: W({ wrist: [0, 5] }), wingF: W({ wrist: [0, 5] }) }, 70),
-    k({ body: [-1, 6], neck: [10, 30, 34], head: [-3, 5], headPitch: 26, eye: 0, heat: 0.6, crumble: 0.52, wingN: W({ wrist: [0, 7] }), wingF: W({ wrist: [0, 7] }) }, 70),
-    k({ body: [-1, 7], neck: [10, 30, 34], eye: 0, heat: 0.45, crumble: 0.7, drop: 9 }, 80),
-    k({ body: [-1, 8], eye: 0, heat: 0.25, crumble: 0.86, drop: 22 }, 80),
-    k({ body: [-1, 8], eye: 0, heat: 0.22, crumble: 0.94, drop: 26 }, 90),
-    k({ body: [-1, 8], eye: 0, heat: 0.2, crumble: 1, drop: 28 }, 100),
+    k({ body: [-1, 4], neck: [0, 14, 18], head: [-2, 1], headPitch: 12, eye: 0, heat: 0.35, crumble: 0.16, wingN: W({ wrist: [0, 3] }), wingF: W({ wrist: [0, 3] }) }, 60, 'dissolve'),
+    k({ body: [-1, 5], neck: [8, 26, 30], head: [-3, 4], headPitch: 22, eye: 0, heat: 0.35, crumble: 0.36, wingN: W({ wrist: [0, 5] }), wingF: W({ wrist: [0, 5] }) }, 65),
+    k({ body: [-1, 6], neck: [10, 30, 34], head: [-3, 5], headPitch: 26, eye: 0, heat: 0.6, crumble: 0.52, wingN: W({ wrist: [0, 7] }), wingF: W({ wrist: [0, 7] }) }, 65),
+    k({ body: [-1, 7], neck: [10, 30, 34], eye: 0, heat: 0.45, crumble: 0.7, drop: 9 }, 60),
+    k({ body: [-1, 8], eye: 0, heat: 0.25, crumble: 0.86, drop: 22 }, 60),
+    k({ body: [-1, 8], eye: 0, heat: 0.22, crumble: 0.94, drop: 26 }, 65),
+    k({ body: [-1, 8], eye: 0, heat: 0.2, crumble: 1, drop: 28 }, 75),
   ],
   end: 'hold',
 };

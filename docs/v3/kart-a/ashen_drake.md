@@ -1294,3 +1294,88 @@ Files: `src/art/cardart-v3/ashen_drake.ts`, `src/art/cutins-v3/ashen_drake.ts` (
   `smalls-x4.png` (vs crystal_wyrm / shield_titan), `faces.png` (`?dev=ashen-card`: hand 1×, 3×, board tiles).
 - **Remaining:** the crest spines lie over the hood rather than against the band (the band's top edge would clip
   spines raised above the crown); on the board tile the small is still dark, but the head now reads as a light shape.
+
+### Cinematics + SFX stage (2026-11-01, lane-A cinematics builder)
+Built on the r3 cinematics (strike / death hook / summon / `ashen.ts` already registered); this stage filmed every
+moment frame by frame, rebuilt what did not read, and ran the timing and sound gates. Evidence root:
+`shots/kart-a/ashen_drake/cin/` (`cin/…` below; final strips in `cin/final/`).
+- **Files:** `src/cinematics/strikes-a/ashen_drake-fx.ts` (NEW: `drawPuff` — a stepped round billow with a rim,
+  an underside, a body and a lit cap that TUMBLES backwards (the cap angle steps toward the attacker), `veilSlots`
+  (the veil as a soft mound of billows with gaps between the upper puffs, EF-2; `wall` = the blocked pile-up),
+  `tongues` (stepped 2-px flame columns re-rolled every 2 frames), tone sets ash / white / hot / burn / cool / char /
+  dead), `src/cinematics/strikes-a/ashen_drake.ts`, `src/cinematics/summon-a/ashen_drake.ts`,
+  `src/audio/v3/ashen.ts`, `src/art/monsters-v3/ashen_drake-anims.ts` (death holds only),
+  `src/duel/scenarios/kart_a_ashen_drake.ts` (`kaAdSummonOnHeap` restaged). No shared file touched.
+- **Strike (what changed and why):**
+  - The bank and the veil were flat stacked ellipses with a diagonal slit pattern (read as a striped grey box, then
+    a striped orange cake, then a flat red plank at 1×: `cin/atk_ign.png`). Now every piece is a billow puff: the bank
+    rolls as 7 puffs (spawn every 30 ms for 200 ms, mid puffs up to r 13) whose lit caps tumble back; at the swallow
+    the front puffs swell into the veil mound over 4 frames (no gap frame); the ignition is inside-out (frame +1 the
+    inner puffs white-hot / the outer ones fire-rimmed, then all `fire1/2/3/4` with fire4 cores and flame tongues),
+    and the burn-off cools PER PUFF top row first (burn → cool → char → shrink), each charred puff letting go 2
+    rising embers + 2 falling flakes. No slab, no stripes (`cin/atk_ign2.png`, `cin/atk_sil.png`).
+  - The black silhouette gets a 1-px fire rim inside its contour (fire2 low, fire1 high: back-lit by the blaze), so the
+    shape reads against the dark floor (`cin/kaAdTie_z.png` shows it clean on steel_silencer).
+  - The soot trail was invisible (stone1 = the tile tone, and the points were ~19 px apart because the front moves up
+    to 20 px a frame): now stone0 every 3 px (gap-filled) with smouldering fire1 grains, on its own 2.3 s layer
+    (thins in two steps), so the fuse visibly burns back along it (`cin/direct_z3.png` #23–27).
+  - Direct: the veil sits in FRONT of the duelist (it was behind the figure and its podium: a blank gap,
+    `cin/direct_gap.png`), plus a 3-frame flame column up the podium front (blueprint §5.3).
+  - Blocked: the wall layout (wide, low, splayed along the guard plane). Lose: 9 plate chips arc back to the drake on
+    the backlash line (§5.5, was missing); the veil sinks as dead ash. Tie / blocked: a `phase = 'done'` bug that
+    destroyed the veil layer at the ignition is gone (the layers now end when their own puffs are spent).
+  - Sound in the strike: `ashenRoll` is faded AND stopped 40 ms before the swallow; `ashenLub` 1.0 → 0.7 (it peaked
+    at −2.6 dBFS, as loud as the VUF; the VUF must be the loudest event).
+- **Death:** the heap was created twice (the burst made one, then death f9 overwrote it with a new heap that never
+  burst and sat on the tile for 4 s, `cin/kill2.png` before the fix) and it was drawn UNDER the card born on the tile
+  (`CARD_ON_TILE` 50 > `TILE_FX + 6`). Now one heap (whoever comes first makes it), on `DEPTH.SHADOW − 1`, and the gust
+  particles too. Death holds f0–f11 `50 60 60 70 60 70 70 70 80 80 90 100` → `50 55 55 60 60 60 65 65 60 60 65 75`
+  (860 → 730 ms; the near-empty tail frames lost most): the lose / tie scenarios were over the attack budget
+  (`kaAdLose` 3250, `kaAdTie` 3366 game ms). Deviation from §4 (860 ms); tests pass (`ashen_drake.test.ts` 12/12).
+- **Tie only:** bank travel floor 190 → 170 ms and silence 150 → 140 ms (the §5.7 floor) — its own death is in the
+  same budget.
+- **Summon:** the ash mound / ember / ring were drawn under the summoned card lying on the tile (invisible,
+  `cin/sum_mound.png`): now on `DEPTH.SHADOW − 1` with a stone0 foot and far flank; the mound sinks in 3 stepped rows
+  over 200 ms as the tornado lifts it; the ring burns with stepped 1–2 px tongues and 3-px white-hot chasing heads
+  (`cin/sum_mound2.png`). The tornado ribbons were dotted rings: now continuous arcs (front 1 px in front of the
+  body, back 2 px behind it) whose tone bands and a torn gap travel with the spin, embers riding them
+  (`cin/sum_tor.png`).
+- **SFX:** `ashenRoar` re-voiced away from the wyrm (formants 220 / 470 / 1100, rasp 70, the rib tubes ×2.5, a brown
+  ash rush); `ashenReviveGather` now a brown riser + rib tubes + 4 heart thumps with the harmonic layer (it sat on
+  abyss_magus's gather); reverb sends lowered on `ashenRoll` 0.1 / `ashenInhale` 0.15 / `ashenExhale` 0.15 /
+  `ashenHush` 0 so the silence really is silent.
+- **Scenario fix:** `kaAdSummonOnHeap` threw "illegal action" (a battle-phase attack staged in the main phase, and a
+  summon onto the OTHER player's tile). The rules allow no summon on the drake's tile in the turn it dies (no main 2;
+  judgment_bolt only hits the opponent), so it is now bolt → endTurn → the owner summons on that tile. The arrival
+  comes 1.7 s after the heap is gone, so the kill-on-arrival path is not exercised by any legal duel; it stays as a
+  guard.
+
+**Measured (`measure.mjs --look v3`, game ms; `cin/measure2.json`)** vs the limit (REHBER §5 × 1.45):
+kaAdSummon / P2 4166 (≤ 4350) · kaAdAtk / P2 3166 (≤ 3190; contact 1350, number at contact ±0) · kaAdAtkLongDeath 3133 ·
+kaAdAtkTitan 2500 · kaAdDefWin 2966 · kaAdLose / P2 3083 · kaAdTie 3183 · kaAdDirect / P2 2233 (≤ 2320) · kaAdBlocked 2133 ·
+kaAdHit 1700 · kaAdKill / P2 2583 · kaAdKillPhys 2366 · kaAdGuardKill 2683 · kaAdBolt 2483 · drake destroy 1300–1466
+(≤ 2030; 1633 under mirror_barrier) · kaAdRevive 2200 (≤ 3050) · kaAdPos 533 (≤ 580) · kaAdFlip 766 (≤ 870) ·
+kaAdChains 4850 / kaAdMirror 4066 (trap scenarios incl. the full attack; tbChains baseline 4.90 s) · errors 0 everywhere.
+
+**Sound (`tools/clip.mjs`, `cin/clips/*.mp4` + `.wav` + `.json`):** kaAdAtk, kaAdAtk-music, kaAdAtkP2, kaAdDirect,
+kaAdBlocked, kaAdLose, kaAdTie, kaAdKill, kaAdBolt, kaAdHit, kaAdRevive, kaAdSummon, kaAdSummonP2. Every clip peak
+−1.8 … −2.3 dBFS, 0 clipped samples. Markers: `ashenIgnite` @ 1350 ms → video frame 41 (on the ignition frame, < 1
+frame at 30 fps) in every strike clip; `ashenSputter` the same in kaAdLose; `ashenLand` @ 3817 → frame 115 (the slam).
+**Silence gate** (kaAdAtk, music off, 10 ms peak windows): the LUB is under −40 dBFS from +45 ms, then 1190–1325 ms
+stays at −43 … −48 dBFS (≈ 135 ms ≥ 100 ms) until the suck; before the reverb change the floor sat at −39 … −41 (the
+roll's verb tail). With music: the music sits at −18.5 … −20 dBFS across the silence vs −13 … −16 before the attack
+(≈ 5 dB duck).
+**SE-4 (indicative):** no shared LSD tool exists; an in-page 1/3-octave A-weighted profile on `renderSfx` raw voices
+(script `<scratch>/lsd.js`) gives ashen vs crystal_wyrm roles median 12.5 dB (min roar 5.7), vs abyss_magus median
+8.7 (min 6.0); the same script gives wyrm vs magus 11.9–25 and existing Heavy hit materials 3–8 dB, i.e. it reads
+~0.6–0.8× the A2 numbers, so these are relative only. `hitAsh*` vs `hitStone*` 4.4 / 4.6 / 8.3 on that scale (stone vs
+cloth 3.5): comparable to existing pairs, not proven ≥ 9 dB.
+
+**Gates:** `filmdiff --set v1`: **17/17 IDENTICAL** (`cin/v1films`, `cin/filmdiff_v1.txt`); `npm run typecheck` clean; `tests/art/ashen_drake.test.ts`, `tests/art/materials.test.ts`,
+`tests/presentation`, `tests/v3`: 242 / 242 pass; no `setScale` / `setAngle` in the card's cinematic files.
+
+**Known weaknesses:** the damage number covers the ignition at 1× on adjacent tiles (shared number placement); on
+blocked the battle's shared backlash bolt dominates the wall ignition; the bank on an adjacent tile is short (≈ 3
+frames of roll); the summon cut-in hold frame and the slam ring are unchanged from r3; the heap is dark at 1× (stone0
+/ stone1 on the grey tile) and there is one empty-tile frame between the crumble and the heap's first row; the SE-4
+numbers above are not on the project's calibrated scale; kaAdAtk sits 24 ms under its limit.

@@ -34,9 +34,16 @@ const scenarios: Record<string, Scenario> = {
     steps: [{ ui: 'wait', ms: 4000 }],
   },
   kaAdSummonOnHeap: {
-    desc: 'Kül Ejderi dies; a monster is summoned on the same tile within 1 s (the heap layer must vanish)',
-    stage: { active: 1, p1: { hand: ['ember_wolf'], monsters: ['crystal_wyrm'] }, p0: { monsters: [{ id: 'ashen_drake', position: 'attack' }] } },
-    steps: [attack(0, 0, 1), summon('ember_wolf', 0, [], 1)],
+    // the rules allow no summon in the turn the drake dies on its owner's tile (no main phase 2, the
+    // bolt only hits the opponent): judgment_bolt kills it, the turn passes, its owner summons onto the
+    // same tile as soon as it can — the heap (or what is left of it) must vanish on the arrival
+    desc: 'Kül Ejderi dies (judgment_bolt); the turn passes and a monster is summoned on the same tile (the heap layer must vanish)',
+    stage: { p0: { hand: ['judgment_bolt'] }, p1: { hand: ['ember_wolf'], monsters: ['ashen_drake'] } },
+    steps: [
+      (D) => ({ type: 'activateSpell', player: 0, uid: D.uid('judgment_bolt', 0), target: { kind: 'monster', ref: { player: 1, zone: 'monster', index: 0 } } }),
+      { type: 'endTurn', player: 0 },
+      summon('ember_wolf', 0, [], 1),
+    ],
   },
   // ---- the strike: Kül Fırtınası Nefesi
   kaAdAtk: {
