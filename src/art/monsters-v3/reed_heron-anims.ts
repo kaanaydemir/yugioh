@@ -149,9 +149,9 @@ export function attackPose(f: number): Pose {
 // (tempo gate: the attack incl. the target's death ≤ 3.19 s game time — measure.mjs rhrAttack. The glide is the
 // identity — "still … glide … ta-ta-TAK": f5 / f6 hold 150 each = a 300-ms scene glide, slower than any dash in the
 // lane. It is paid for by the thrusts: the strike shows each thrust only for its 40-ms micro-stop (no extra frame
-// hold), retract 1 is 40 and retract 2 is 62 (ta-ta…TAK), the freeze 180; the release f7 rides the glide's braking tail; a snappier
-// coil snap (f2–f3 30 each) and a quicker recover f14–f16.)
-const ATTACK_HOLDS = [80, 60, 30, 30, 180, 150, 150, 40, 40, 40, 40, 62, 80, 50, 50, 50, 50];
+// hold), retract 1 is 40 and retract 2 is 56 (ta-ta…TAK), the freeze 190; the release f7 rides the glide's braking tail; from the
+// declaration's held f1 the coil SNAPS straight to f3 (the strike skips the f2 in-between); a quicker recover.)
+const ATTACK_HOLDS = [80, 60, 40, 40, 190, 150, 150, 40, 40, 40, 40, 56, 80, 50, 50, 50, 50];
 
 // ------------------------------------------------------------------ roar (9 frames): the wings open once
 
@@ -178,7 +178,8 @@ const HIT_N = 6;
 // the neck is a SPRING: struck, it compresses into a tight low S with the head pulled in (f0–f1, the beak tipped
 // down), releases past the idle S into a 2-px overshoot (f2: taller, the bends opened, the beak tipped up), then
 // settles back through a small undershoot to the idle S (f3–f4) — never a straight-up neck
-const SPRING: Partial<Pose> = { n1x: 16, n1y: -36, n2x: -7, n2y: -41, hx: 2, hy: -47, ba: 0.18, eye: 0, ruffle: 1, by: 1 };
+// (f0 is the contact frame: the compression starts there — kept local to the neck and head, HA-21 — and peaks on f1)
+const SPRING: Partial<Pose> = { n1x: 15, n1y: -37, n2x: -6, n2y: -42, hx: 3, hy: -49, ba: 0.12, eye: 0, ruffle: 1 };
 const HIT_KEYS: Partial<Pose>[] = [
   SPRING,
   { n1x: 17, n1y: -35, n2x: -9, n2y: -40, hx: 0, hy: -45, ba: 0.25, eye: 0, ruffle: 2, bx: -1, by: 1 },

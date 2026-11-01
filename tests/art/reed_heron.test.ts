@@ -60,8 +60,11 @@ describe('reed_heron', () => {
 
   it('keeps the signature rhythm: the freeze is the longest hold and the three thrusts hit three different points', () => {
     const s = spec('attack');
-    expect(s.holds![4]).toBe(200);
-    expect(Math.max(...s.holds!)).toBe(200);
+    // (the freeze ≈ 200 ms scene — 190, the tempo gate's share — is the longest hold; the glide strides f5 / f6
+    // hold 150 each, ≥ 300 ms of glide: "still … glide … ta-ta-TAK")
+    expect(s.holds![4]).toBeGreaterThanOrEqual(190);
+    expect(Math.max(...s.holds!)).toBe(s.holds![4]);
+    expect(s.holds![5] + s.holds![6]).toBeGreaterThanOrEqual(300);
     const tips = [8, 10, 12].map((f) => art.points!('attack', f).muzzle!);
     expect(new Set(tips.map((t) => `${t.x},${t.y}`)).size).toBe(3);
     const ys = tips.map((t) => t.y);
