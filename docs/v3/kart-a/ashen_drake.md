@@ -1250,3 +1250,47 @@ the faces at 1×, at 3× and lying on P1 / P2 tiles). Registration was already i
 - **Remaining weaknesses:** at 1× the card is the darkest of the three aces (DARK attribute, grey hood) and the hood
   still reads partly as a textured column; on the board tile the picture is a dark blob with an orange point; the
   cut-in eye is small and the crest spines are plain triangles.
+
+### Card art + cut-in, critic art r4 fixes (2026-11-01)
+Files: `src/art/cardart-v3/ashen_drake.ts`, `src/art/cutins-v3/ashen_drake.ts` (no shared edits).
+- **#1 heart hidden at the slam (fixed).** Measured first: the v3 band (`_v3/cutin.ts`, H_BAND 120, portrait k 1)
+  leaves frame rows ≈ 12 … 122 visible at the heart's column, the r3 heart sat at y 122. The cage was rebuilt
+  ≈ 20 px higher and tucked under the jaw (bars y 84/94/104/114, heart (134, 103)); the head moved up with it.
+  In-game check `--fresh` at 2800…3350 ms (P1 / P2): every rib gap and the whole heart glow are inside the band on
+  the slam and the hold (`art4/film-p1.png`, `film-p2.png`, `after-p1-3150.png`, `after-p2-3150.png`).
+- **#2 crest invisible (fixed).** Cause: the v3 band never uses the portrait's `accent`; it paints
+  `BAND_TONES[attribute]` (DARK = void0/1/2), so violet spines sat on violet. Spines are now ash plates: stone3 /
+  stone2 lit side, stone1 shade, ink outline, a fire2 tip on the lit edge; raised to a steeper angle.
+- **#3 anteater head (fixed).** New skull geometry: domed cranium, brow ridge over the eye, a stone1 CERE bump with
+  an ink seam and nostril, the upper beak tapering ≈ 15 px → ≈ 4 px before the hook, the hook dropping ≈ 7 px with
+  a lit ridge on its upper edge, and a lower jaw that rotates about a hinge, its underside curving to a jaw angle and
+  back into the neck (stone0 lip following the contour, no straight slab).
+- **#4 eye (fixed).** 4×2 in a stone0 almond socket under an ink brow shadow: f0 fire1 with ONE fire4 (the glint
+  pixel), f1–f2 fire4 over fire3, f3–f4 fire4 round ONE white core with a fire2 under-lid. Deviation: the head now
+  pivots on the eye for f0–f2 (pitch changes only) because the in-game glint is placed on f0's eye and plays over
+  f1–f2; with the r3 head travel it landed ≈ 10 px off. The slam (f3–f4) moves the eye 3 px forward / up.
+- **#5 small unreadable (fixed, deviation from §7.1).** The small is no longer the big reduced 2:1: it is the
+  closer 1:1 crop of the same frame (KART_RESIMLERI §5, as the critic recommended): big x 34…77, y 31…64 — hood front
+  edge, neck arch bleeding off the top, the whole hooked skull, the rib cage. A crop with the heart at (23, 17)
+  is impossible (heart and eye are 29 px apart in the sprite), so the cage is redrawn whole inside the window
+  (RIBS_SMALL, heart at (8, 23) = `focusSmall`). Hand corrections: hood repainted in clean bands with a stone0 fold
+  at its front edge, skull planes one value up (top plane stone4, side stone3) so the head is the lightest shape,
+  eye 2×2 (fire4 over fire3) in a stone0 socket. Numbers: off-palette 0, 14 tones (backdrop 4), isolated 7.6 %,
+  checker 7 px (0.47 %), outline ink 100 %, focus in box; subject fill 100 % (a close crop, like crystal_wyrm).
+- **#6 streams (fixed).** Big: two chip streams off the hem front edge and the heap crest, BELOW the jaw line,
+  drifting right and sinking, ending at x ≤ 77 (≥ 4 px before the edge); every ember sits on a chip. Small: none.
+- **#7 backdrop slab (fixed):** the sky is one night0 band (`split: 68`). **#8 corona (fixed):** void3 kept only as
+  the 1-px inner edge, the rest of that step is void2 (both sizes).
+- **#9 hood (fixed):** plates graded by row (≈ 11 tall × 15 wide at the crown → ≈ 7 × 9 at the hem), plate tone
+  from each plate's centroid; a fold band one value darker within 6 px of the opening (IŞ-5); a continuous void2
+  rim inside the outline on the back hem and the crown's front edge; sparse 3-px fire1/fire2 ember notches on the
+  lower plates' edges (y ≥ 100).
+- **Tests / gates:** typecheck clean; `tests/art/ashen_drake.test.ts` passes; `tests/art tests/v3 tests/view`
+  499 passed / 5 failed — the known cardface-v3 G1 (scrap_raiders), dusk_ashen, hourglass_imp, shield_titan, plus
+  `cloud_hatchling.test.ts` (another lane-A agent's work in progress, not these files).
+- **Evidence** `shots/kart-a/ashen_drake/art4/`: `before-p1.png` / `before-p2.png` (r3 at 3150 ms), `ci.png` (5 frames
+  P1 / P2 in the predicted band window), `f0z.png` / `f3z.png` (head ×5), `f4full.png`, `film-p1.png` /
+  `film-p2.png` (in-game 2800–3350 ms, glint on the eye), `big-x8.png`, `small-x14.png`, `small-try1-up.png`,
+  `smalls-x4.png` (vs crystal_wyrm / shield_titan), `faces.png` (`?dev=ashen-card`: hand 1×, 3×, board tiles).
+- **Remaining:** the crest spines lie over the hood rather than against the band (the band's top edge would clip
+  spines raised above the crown); on the board tile the small is still dark, but the head now reads as a light shape.

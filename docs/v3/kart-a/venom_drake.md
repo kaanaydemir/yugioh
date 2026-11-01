@@ -1743,3 +1743,85 @@ pixel is the bulb's `gold4`. Not auto.
 - `dev-cutin-f3.png`, `dev-cutin-frame-2.png`, `dev-cutin-frame-5.png`, `dev-cutin-frame-5-player-2.png`,
   `dev-cutin-p2-f3.png` (`?dev=cutin&id=venom_drake&look=v3`).
 - `ref-cw-cutin.png` (the crystal_wyrm reference).
+
+### Card art + cut-in, critic art round 1 (fix pass)
+Critic findings: `shots/kart-a/venom_drake/critic-art/`. Before/after renders: `shots/kart-a/venom_drake/art-fix/before/`
+and `art-fix/r1/` (`venom_drake-big-x4.png`, `venom_drake-small-x8.png`, `venom-frames-{big-x3,small-x6}.png`,
+`cutin-{left,right}-{a,b,x1}.png` = the 6 frames on a mock DARK band with its rays, `cutin-left-raw-*`,
+`f5-snout-zoom.png`, `big-head-zoom.png`, in-game `summon-p1-film.png` / `summon-p2-film.png`,
+`summon-p1-t2250-x3.png`, `summon-p1-t2950-x3.png`, `summon-p2-t2950-1x.png`, `hat-venom_drake-x3.png`).
+Render script (scratch): `vart/r.mts` in the session scratchpad.
+
+Fixed (finding numbers from the critique):
+1. **Bulb**: the gold3 disc and the cut-in's 2×2 "settled lens" are gone. gold3 is now a crescent offset toward
+   the light, beside the gold4 core. It is 3 px on the card (4 at the flare) and 4 / 6 px in the cut-in. leaf3
+   touches the core on its shadow sides. The hand card patch is 2 gold3 px at the core's upper left.
+2. **Sac**: no gold disc. It is leaf2 with a leaf3 core; on the hiss the core is wider, with 2 gold3 pixels. The
+   dark top crescent is gone. The ink contact line under the jaw is now a leaf2 rim, so the sac joins the throat
+   and keeps ink only on its free lower contour. The venom is never painted over the jaw. The skin's mag1 rim no
+   longer lands on jaw pixels, which caused a stray mag1 block on the hand card.
+3. **Eye**: gold2 only, with no gold3 lid and no gold3 "snapped" iris. The cut-in snap is now the slit narrowing
+   2 → 1 px.
+   - Big card: a 3×2 gold2 eye cut by a 1-px ink vertical slit, in a void0 almond, with a void3 brow pixel over its
+     back corner.
+   - Hand card: a gold2 1×2 with the ink pupil beside it.
+4. **Head**:
+   - The skull's top contour has a brow step over the eye (it drops 1.4 units in front of it) and a nostril notch
+     with a nose boss behind the tip.
+   - The mag1 top plane is generated from the contour at a density-dependent depth: ≥ 2 px under the 1-px lit
+     edge at every size. A void0 brow shadow sits under it over the eye.
+   - Big card: jaw 0.78, lifted (mag1 over void2) round a void0 gape with the 2 fangs. The green lip line is
+     dropped (it read as a bill's edge).
+   - Hand card: own pose (jaw 0.08, head 1.4 units higher, `headKy` 1.25). The mouth is one ink line between the
+     lip and a void1 jaw band, with the fang.
+5. **Hand-card stinger**: the tube hook is replaced by a 4-px stepped chitin hook. It comes off the bulb's lower
+   right, points down and forward, and has its own ink with the casing ink as the seam. The bead hangs at its tip.
+   It no longer reads as a beak.
+6. **Cut-in versus the DARK band**:
+   - The tail's top half is mag1.
+   - The arch has a 2-px void3 lit edge on its outer contour and a 2-px leaf2 rim on its inner curve. The jaw
+     underside also gets the 2-px rim.
+   - The stone3 → stone4 lit edge is dropped everywhere.
+   - `accentDark` is left alone: cutin.ts does not read it (only the dev preview does).
+7. **Chitin**:
+   - Horns are 3 bands (stone1 / stone2 / stone3) with stone4 only at the tip, and no dark base cap.
+   - Cut-in: near horn at half length, far horn and jaw frill dropped.
+   - Big card: horn 0.72 length.
+   - Quills are 55 % length. The cut-in keeps 3 quills with leaf3 beads; the big card keeps 2 quills.
+8. **Corroded edge**: f5 cuts 3 notches into the snout's top contour (7 / 5 / 5 px wide, 3–4 px deep). Each has a
+   leaf3 floor rim, a leaf2 inner step, one gold3 lip pixel, and a 6-px stepped steam wisp over the largest, which
+   is placed clear of the hook. **Deviation:** the critic proposed the jaw's lower edge. The snout top is where
+   the f4 drop lands, and it sits deep inside the band, so I kept it there and made the notches real cuts through
+   the silhouette.
+9. **Drip**:
+   - There is no fixed dashed trail. Each frame shows the drop's head plus one trailing leaf2 pixel, stepping down
+     (f5 10 %, f0–f3 30–90 %, f4 the splash). f0, the reduced-motion frame, holds it mid-fall.
+   - The stinger bead is 1 2 2 3 3 1.
+   - Hand card: the drop column is x 38 and the pit is centred under it at x 37, 1 px higher.
+10. **Big card**:
+    - The sac is at 0.78 radius, hangs 0.5 radius under the jaw, mostly leaf2 with a small leaf3 core.
+    - The pit lip is leaf1; the bubble is one leaf2 pixel (it swells to leaf1 above on f1 and pops on f2).
+    - The bust is raised 3 px (`BIG_O` y 2), so the jaw and the sac are in frame. The eclipse's top bleeds off the
+      top edge.
+11. **Cut-in neck**: three value planes (mag1, void2, the stone belly). The void1 stripe is replaced by 2-px void1
+    scale teeth every 5.5 px along the neck's arc, biting up from the belly. **Not done:** the leaf2 seam-seep
+    pixels.
+12. **Cut-in head**:
+    - `headK` 1.25 about the eye, with the neck following the hinge.
+    - The bust is raised 9 px (OY −13) so the sac clears the band's lower border. The arch is lowered 2.4 units
+      over the bigger head.
+    - **Deviation:** in game the arch's top sits about 10 px inside the band's top border instead of bleeding off.
+      Raising it to bleed left only a sliver of the tail visible under the mask, which was worse.
+13. **White glint**: shared code, not touched. The core is still the one gold4 pixel, and the glint test passes on
+    P1 and P2. Note for the orchestrator: a per-card glint tone would be an additive cutin.ts option.
+14. **Summon timing**: information only. The cinematic is not this task.
+15. **Hand-card horn**: dropped. It read as a pipe joint at the left edge.
+
+New additive `BustOpts`: `headK`, `headKy`, `hornK`, `liftJaw`, `sacK`. The bust file is only used by this card's
+art and cut-in.
+
+Tests:
+- `tests/art/venom_drake.test.ts` 14/14. The cut-in palette test now collects bad pixels and makes one expect per
+  frame. The per-pixel expects took about 5 s and timed out in a full `tests/art` run.
+- `tsc` is clean for my files.
+- `cardface-v3` G1 still fails only on scrap_raiders, as before. It is not this card.

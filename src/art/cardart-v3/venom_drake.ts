@@ -22,6 +22,12 @@
 // Living art (A5_PLAN §3.7.6), 6 frames × 150 ms, f0 = the reduced-motion frame: the stinger bead swells and
 // lets go (palette steps on fixed pixels), the drop's head steps down its fixed trail, the bulb's hot band
 // breathes (palette) and the ring's bubble swells and pops. Nothing moves more than 2 px.
+// (critic art r1) the bulb's gold3 is a 3-px crescent on the core's lit side (never a gold lens); the eye
+// gold2 + an ink slit (no gold3 lid); the head's mag1 top plane ≥ 2 px with a brow step and a nostril notch;
+// the big card's jaw lifted (mag1 over void2) round a void0 gape, the sac smaller and joined to the jaw;
+// the hand card's mouth closed to an ink line over a void1 jaw band, a 4-px hook off the bulb (no beak),
+// no horn at its left edge; the drop is ONE head + one trailing pixel stepping down per frame (no dashed
+// trail), the hand card's pit under its stinger.
 
 import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
@@ -199,7 +205,7 @@ const KEY: Record<string, number> = {
 function paintSmall(l: ArtLayers, f: number): void {
   const b = bust('small', f);
   paintBackdrop(l.backdrop, 'DARK', { focus: [FOCUS_SMALL[0] * 2 - 3, FOCUS_SMALL[1] * 2], radius: 17, horizon: HORIZON });
-  paintRing(l.subject, l.light, 0.5, f, b.sting[0]);
+  paintRing(l.subject, l.light, 0.5, f, b.sting[0] - 1);
   l.subject.blit(b.matter, 0, 0);
   l.light.blit(b.light, 0, 0);
   // hand corrections: the bulb as a crisp acid drop (the hot band, ONE gold4 core)

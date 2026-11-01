@@ -19,12 +19,14 @@
 //   f3 160  [slam 360] the jaws gape in the HISS, the sac flashes gold3, the tail drawn tight (motion lines on
 //           the arch — no two-frame tremble); the drop lets go
 //   f4 200  the hiss holds; the drop falls in front of the face and lands on the bust's lower edge
-//   f5 120  [exit 720] held: the jaws half-closed, a new bead forming on the stinger; THE LOWER EDGE IS
-//           CORRODED — 3 acid craters eaten through the portrait's bottom edge where the splash landed (each a
-//           notch 3–5 px wide, a 1-px leaf3 rim, a leaf2 inner step, one gold3 lip pixel), a 2-px stone3 steam
-//           wisp over the largest. The band itself is drawn by the shared cutin.ts under the portrait, so the
-//           notches show the band behind them (real holes through the band would need a per-card band-mask
-//           hook in cutin.ts: not asked).
+//   f5 120  [exit 720] held: the jaws half-closed, a new bead forming on the stinger; THE CONTOUR IS
+//           CORRODED — (critic art r1) 3 notches eaten INTO the snout's top contour where the drop landed
+//           (5–7 px wide, 3–4 px deep, real cuts through the silhouette so the band shows through; a leaf3
+//           rim on the eaten floor, a leaf2 inner step, one gold3 lip pixel, a 6-px stepped stone3 / stone2
+//           steam wisp over the largest). The snout's top lies well inside the band; the lower cut edge sits
+//           on the band's lower border, where notches would be masked.
+// (critic art r1) the head is 1.25× about the eye, the near horn half length, no far horn / jaw frill; the
+// bust is 9 px higher than r5 so the sac clears the band's lower border.
 
 import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
@@ -35,10 +37,10 @@ const W = 200;
 const H = 144;
 const S = 4.4;
 const OX = 4;
-const OY = -10;
+const OY = -13;
 /** (critic art r1) the head 1.25× about the eye (CW's head fills ≈ 55 % of its portrait) */
 const HEAD_K = 1.25;
-/** (critic art r1) the bust raised 6 px (OY: the sac clears the band's lower border), the arch lowered back over the bigger head (it crosses the band's top border at the left only: a bleed, no tangent) */
+/** (critic art r1) the bust raised 9 px (OY: the sac clears the band's lower border), the arch lowered back over the bigger head (it crosses the band's top border at the left only: a bleed, no tangent) */
 const ARCH_LIFT = 2.4;
 
 /** the lower edge of the bust: cut parallel to the band's lower border (slope −0.13 in P1) */

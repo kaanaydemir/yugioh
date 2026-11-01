@@ -37,13 +37,14 @@ const RECIPE: BackdropRecipe = { ...BACKDROPS.WIND, sky: [PAL.night1, PAL.night2
 const SEA = [PAL.night4, PAL.night3] as const;
 
 /** The ring's centre (big px): the focus. The light shape sits 3 px behind it. */
-const RING: V = [73, 20];
+const RING: V = [71, 20];
 const FOCUS: V = RING;
 /** The hiccup ring between the mouth and the ring (big px). */
-const HIC: V = [63, 30];
+const HIC: V = [64, 31];
+/** The wake's arc in the ring's frame (degrees, 90 = below, 180 = behind): its left and bottom. */
+const WAKE_ARC: readonly [number, number] = [70, 215];
 /** small: the ring 1 px further from the right edge (≥ 4 px of air), its hiccup ring by the snout. */
 const RING_S: V = [34, 9];
-const HIC_S: V = [29, 16];
 /** The ring's lean (radians): its top tips toward the flight, so it reads as a ring in the air, not a glyph. */
 const TILT = 0.3;
 
@@ -142,11 +143,11 @@ function paintSubject(sub: PixelCanvas, g: Geo, f: number): void {
   const base = Math.round(ty(g, rimY));
   const front = (x: number, y: number) => y >= zig(x, base, toothW, toothH);
 
-  // 1. the egg's inner back wall (skin3 in the light, earth3 in its own shadow), the back rim higher
+  // 1. the egg's inner back wall (earth4 in the light, earth3 in its own shadow), the back rim higher
   part(sub, (p) => {
-    blob(p, g, egg[0], egg[1], eggR[0] - 1, eggR[1] - 1, [PAL.skin3], [], (x, y) => y >= zig(x, Math.round(ty(g, rimY - 3.5)), toothW, toothH - 1) && !front(x, y));
+    blob(p, g, egg[0], egg[1], eggR[0] - 1, eggR[1] - 1, [PAL.earth4], [], (x, y) => y >= zig(x, Math.round(ty(g, rimY - 3.5)), toothW, toothH - 1) && !front(x, y));
     // the inner wall facing the key light (right) is lit, the left one lies in the shell's own shadow
-    for (let y = 0; y < p.h; y++) for (let x = 0; x < Math.round(tx(g, egg[0] - 2)); x++) if (p.get(x, y) === PAL.skin3) p.set(x, y, PAL.earth3);
+    for (let y = 0; y < p.h; y++) for (let x = 0; x < Math.round(tx(g, egg[0] - 2)); x++) if (p.get(x, y) === PAL.earth4) p.set(x, y, PAL.earth3);
   });
 
   // 2. the body: the chest seen above the front rim, the cream belly plate
@@ -169,47 +170,65 @@ function paintSubject(sub: PixelCanvas, g: Geo, f: number): void {
     }
   });
 
-  // 4. the head: a big round skull; the muzzle dome thrust forward; the jaw dropped on the CHOO
+  // 3b. the sprite's tan horn hook behind the brow (the dragon cue on the skull), hooking back; the head covers
+  // its root
+  part(sub, (p) => {
+    if (g.big) {
+      const [hx, hy] = R(34, 10);
+      // 3 wide × 4 tall: a skin4 lit front, an earth4 back, the tip hooked back over the crown
+      p.rect(hx, hy + 1, 3, 4, PAL.earth4).rect(hx + 1, hy + 1, 2, 3, PAL.skin4);
+      p.set(hx - 1, hy, PAL.earth4).set(hx, hy, PAL.earth4).set(hx + 1, hy, PAL.skin4);
+    } else {
+      const [hx, hy] = R(34, 10.5);
+      p.set(hx, hy, PAL.earth4).set(hx + 1, hy + 1, PAL.skin4).set(hx, hy + 1, PAL.earth4);
+    }
+  });
+
+  // 4. the head: a big round skull; the muzzle dome thrust forward; the jaws nearly shut on the CHOO (a slit)
   part(sub, (p) => {
     blob(p, g, 30, 24.5, 16, 14, HIDE, [-0.1, -0.45]);
-    // the mouth cavity first (fire1 throat), the jaws over it
-    poly(p, [[39.5, 31], [50, 30], [53.5, 31], [53.5, 36.5], [50.5, 39.5], [42, 39.5]], PAL.fire1);
-    blob(p, g, 45, 40.8, 7, 2.6, [PAL.leaf3, PAL.leaf2], [-0.05]); // the lower jaw (in the head's shadow)
-    blob(p, g, 45, 27.5, 7.5, 4.8, HIDE, [-0.08, -0.4]); // the muzzle dome
-    // the tongue curled on the floor of the mouth
-    p.ellipse(tx(g, 46), ty(g, 38), 2.8 * g.s, 1.2 * g.s, PAL.fire2);
+    // the mouth: a short fire1 slit (the sprite's sneeze slit) between the dome and the lower jaw
+    poly(p, [[41.5, 31], [53.8, 30.2], [53.8, 33.4], [43.5, 34.2]], PAL.fire1);
+    blob(p, g, 45.5, 36, 7.6, 3, [PAL.leaf3, PAL.leaf2], [-0.05]); // the lower jaw (in the head's shadow)
+    blob(p, g, 45, 27, 8, 5, HIDE, [-0.08, -0.4]); // the muzzle dome
+    // the snout bump: the sprite's round nose knob at the front of the dome
+    blob(p, g, 51.5, 26.4, 3, 3, HIDE, [-0.08, -0.4]);
     if (g.big) {
-      // the upper lip's underside (a 1-px leaf1 seam where the dome meets the cavity)
-      const [lx0] = R(41, 0);
-      const [lx1] = R(52, 0);
+      // the slit's top edge in ink (the upper lip's shadow), the tongue tip and one white fang
+      const [lx0] = R(42.5, 0);
+      const [lx1] = R(54, 0);
+      let tongue = 0;
       for (let x = lx0; x <= lx1; x++) {
         let y = 0;
         while (y < p.h && p.get(x, y) !== PAL.fire1) y++;
-        if (y < p.h && y > 0) p.set(x, y - 1, PAL.leaf1);
+        if (y >= p.h) continue;
+        p.set(x, y, PAL.ink);
+        if (x >= lx1 - 6 && x <= lx1 - 5 && tongue < 3 && p.get(x, y + 2) === PAL.fire1) p.set(x, y + 2, PAL.fire2), tongue++;
       }
-      // two small fangs: upper at the front, lower at the back
-      const [fx, fy] = R(51, 32.6);
-      p.set(fx, fy, PAL.skin4).set(fx, fy + 1, PAL.skin4);
-      const [bx, by] = R(49.5, 38.6);
-      p.set(bx, by, PAL.skin4).set(bx, by - 1, PAL.skin4);
-      // the deflating cheek: two short crease arcs behind the mouth corner
-      const [cx, cy] = R(36.5, 30);
-      p.line(cx, cy, cx + 2, cy + 2, PAL.leaf3).line(cx, cy + 2, cx + 1, cy + 4, PAL.leaf3);
-      // the squeezed eye: a bold 2-px ink chevron pointing to the snout, scrunch lines above and beside
+      const [tx0, ty0] = R(49.2, 33.2);
+      if (p.get(tx0, ty0) === PAL.fire1) p.set(tx0, ty0, PAL.fire2);
+      const [fx, fy] = R(52.5, 31.5);
+      p.set(fx, fy, PAL.white);
+      // the deflating cheek: one short crease arc behind the mouth corner
+      const [cx, cy] = R(38.5, 30.5);
+      p.line(cx, cy, cx + 2, cy + 2, PAL.leaf3);
+      // the half-shut eye: a heavy leaf2 lid, its ink lash line, a 2-px gold3 slit (the sprite's gold eye) under it
       const [ex, ey] = R(38, 21);
-      p.line(ex - 5, ey - 4, ex, ey, PAL.ink).line(ex - 5, ey + 4, ex, ey, PAL.ink).set(ex + 1, ey, PAL.ink);
-      p.line(ex - 4, ey - 4, ex, ey - 1, PAL.ink).line(ex - 4, ey + 4, ex, ey + 1, PAL.ink);
-      // the scrunch: a 2-px leaf2 band over the chevron (a flat tone, not ink lines), a leaf3 sneeze tear at its back
-      for (let x = ex - 6; x <= ex - 1; x++) p.set(x, ey - 6, PAL.leaf2).set(x, ey - 5, PAL.leaf2);
-      p.set(ex - 7, ey - 5, PAL.leaf2).set(ex, ey - 5, PAL.leaf2);
-      p.set(ex - 7, ey + 2, PAL.leaf3).set(ex - 7, ey + 3, PAL.leaf3).set(ex - 8, ey + 3, PAL.leaf3);
-      // the nostril
-      const [nx, ny] = R(51.5, 25);
+      for (let x = ex - 5; x <= ex + 1; x++) p.set(x, ey - 3, PAL.leaf2).set(x, ey - 2, PAL.leaf2).set(x, ey - 1, PAL.leaf2);
+      p.set(ex - 6, ey - 1, PAL.leaf2).set(ex + 2, ey - 1, PAL.leaf2);
+      for (let x = ex - 6; x <= ex + 2; x++) p.set(x, ey, PAL.ink);
+      p.set(ex - 7, ey + 1, PAL.ink).set(ex + 3, ey - 1, PAL.ink);
+      p.rect(ex - 3, ey + 1, 4, 2, PAL.gold3).set(ex - 4, ey + 1, PAL.ink).set(ex + 1, ey + 1, PAL.ink);
+      for (let x = ex - 3; x <= ex; x++) p.set(x, ey + 3, PAL.ink);
+      p.set(ex - 4, ey + 2, PAL.ink).set(ex + 1, ey + 2, PAL.ink);
+      // the brow ridge: a leaf2 band over the lid, rising back toward the horn
+      for (let x = ex - 6; x <= ex + 1; x++) p.set(x, ey - 5, PAL.leaf2);
+      p.set(ex - 7, ey - 6, PAL.leaf2).set(ex - 6, ey - 6, PAL.leaf2).set(ex - 8, ey - 6, PAL.leaf2);
+      // the nostril on the knob
+      const [nx, ny] = R(52.5, 25.5);
       p.set(nx, ny, PAL.leaf1).set(nx + 1, ny, PAL.leaf1);
     } else {
-      const [ex, ey] = R(37, 21);
-      p.line(ex - 2, ey - 1, ex, ey, PAL.ink).line(ex - 2, ey + 1, ex, ey, PAL.ink);
-      const [nx, ny] = R(51, 25);
+      const [nx, ny] = R(52, 25.5);
       p.set(nx, ny, PAL.leaf1);
     }
   });
@@ -217,17 +236,24 @@ function paintSubject(sub: PixelCanvas, g: Geo, f: number): void {
   // 5. the cowlick: the sprite's small tuft at the back of the crown, blown back to the left — three lobes shrinking
   // backward (back lobes first, so each one's ink scallops the next), a mist body, a steel underside and a 1-px
   // white top line on the lit (upper left) side only
-  const lobes: [number, number, number][] = [
-    [13.5, 17, 2.8],
-    [18, 14, 3.5],
-    [23.5, 12, 4.1],
+  // (r3: two upright lobes standing on the crown, leaning back; white only on a few top pixels of the front lobe)
+  const lobes: [number, number, number, number][] = [
+    [21.5, 8.5, 3, 4.2],
+    [26.5, 7, 3.4, 5],
   ];
-  for (const [x, y, r] of lobes)
+  lobes.forEach(([x, y, rx, ry], i) =>
     part(sub, (p) => {
-      blob(p, g, x, y, r, r * 0.8, COWLICK, [9, -0.05]);
-      const [cx] = S(x + r * 0.35, y);
-      for (let py = 1; py < p.h; py++) for (let px = 0; px < cx; px++) if (p.get(px, py) !== null && p.get(px, py - 1) === null) p.set(px, py, PAL.white);
-    });
+      blob(p, g, x, y, rx, ry, COWLICK, [9, -0.2]);
+      // the lobe leans back: its top shifted 1 px left of its root
+      if (i === lobes.length - 1) {
+        const [cx, cy] = R(x - 0.5, y - ry);
+        const n = g.big ? 4 : 1;
+        let done = 0;
+        for (let py = cy; py < cy + 3 && done < n; py++)
+          for (let px = cx - 2; px <= cx + 2 && done < n; px++) if (p.get(px, py) !== null && p.get(px, py - 1) === null) p.set(px, py, PAL.white), done++;
+      }
+    }),
+  );
 
   // 6. the front shell: the lower half of the egg, its zigzag rim across the chest; speckles on the shadow plane
   part(sub, (p) => {
@@ -250,22 +276,28 @@ function paintSubject(sub: PixelCanvas, g: Geo, f: number): void {
       p.thickLine(ax, ay, bx, by, 1.4 * g.s, PAL.leaf4);
     }
   });
-  // ... and the eggshell helmet on its tip: the shell cap worn like a little hat, dome up, the zigzag rim
-  // hanging round the tail
+  // ... and the sprite's half-shell cup on its tip: round bottom, zigzag teeth up against the sky (r3: an earth4
+  // body with a 2-px skin4 band on the lit left side; earth2 only 1 px deep inside the notches, nothing below the rim)
   part(sub, (p) => {
-    // the sprite's cup: the half shell sits on the tail tip, round bottom, zigzag teeth up (earth4 lit plane, earth3
-    // shadow side, a 2-px skin4 highlight on the lit lip), the tail running into its bottom
     const c: V = [10.5, 36];
     const top = Math.round(ty(g, c[1] - 0.5));
     const tw = g.big ? 6 : 4;
-    // the inside (earth2) shows in the notches between the teeth and above the front lip
-    blob(p, g, c[0], c[1], 5.6, 5, [PAL.earth2], [], (_x, y) => y >= top - (g.big ? 4 : 2));
-    blob(p, g, c[0], c[1], 5.6, 5, [PAL.earth4, PAL.earth4, PAL.earth3], [0.75, -0.25], (x, y) => y >= zig(x + 2, top + 1, tw, g.big ? 4 : 2));
-    if (g.big) {
-      const [hx, hy] = R(c[0] - 3.5, c[1] - 1);
-      p.set(hx, hy, PAL.skin4).set(hx, hy + 1, PAL.skin4);
-      p.rect(...R(c[0] + 2.5, c[1] + 2.5), 2, 1, PAL.earth2);
-    }
+    const th = g.big ? 4 : 2;
+    const edge = (x: number) => zig(x + 2, top + 1, tw, th);
+    blob(p, g, c[0], c[1], 5.6, 5, [PAL.earth4], [], (x, y) => y >= edge(x) - 1);
+    let x0 = p.w;
+    for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) if (p.get(x, y) !== null) x0 = Math.min(x0, x);
+    for (let y = 0; y < p.h; y++)
+      for (let x = 0; x < p.w; x++) {
+        if (p.get(x, y) === null) continue;
+        // the inside shows as one earth2 pixel where the rim dips (a notch), never below the rim
+        if (y === edge(x) - 1) p.set(x, y, edge(x) >= top + 1 ? PAL.earth2 : PAL.earth4);
+        else {
+          let l = x;
+          while (l > 0 && p.get(l - 1, y) !== null) l--;
+          if (x - l < 2 && l <= x0 + 2) p.set(x, y, PAL.skin4);
+        }
+      }
   });
 
   // 9. the cloud nest in front of the egg: lobes with lit mist tops, steel, night4 undersides
@@ -293,10 +325,8 @@ interface RingSpec {
   readonly tones: readonly [number, number, number];
 }
 /** The main ring: a solid white leading crescent, a mist band, a dark night3 trailing edge (it lies on the green wake). */
-const RING_BIG: RingSpec = { rx: 8.5, ry: 13.5, t: 3.6, tones: [PAL.white, PAL.mist, PAL.night3] };
-const RING_SMALL: RingSpec = { rx: 3.8, ry: 5.9, t: 3, tones: [PAL.white, PAL.mist, PAL.night3] };
-/** The hiccup before it: a smaller ring nearer the mouth in mist / steel (rings blown out in a row, not a "0"). */
-const HIC_BIG: RingSpec = { rx: 3.2, ry: 4.8, t: 1.8, tones: [PAL.mist, PAL.mist, PAL.steel] };
+const RING_BIG: RingSpec = { rx: 8, ry: 13, t: 3.4, tones: [PAL.white, PAL.mist, PAL.steel] };
+const RING_SMALL: RingSpec = { rx: 3.8, ry: 5.9, t: 3, tones: [PAL.white, PAL.mist, PAL.steel] };
 
 function paintRing(l: PixelCanvas, cx: number, cy: number, spec: RingSpec, dx: number): void {
   const X = Math.round(cx) + dx + 0.5;
@@ -321,53 +351,59 @@ function paintRing(l: PixelCanvas, cx: number, cy: number, spec: RingSpec, dx: n
     }
 }
 
-function paintStreaks(l: PixelCanvas, big: boolean, f: number): void {
-  // short 1-px whistle streaks from the mouth along the rings' line, parallel, 45° up-right
-  const a = f % 2 === 0 ? PAL.mist : PAL.water4;
-  const b = f % 2 === 0 ? PAL.water4 : PAL.mist;
-  const lines: [V, V, number][] = big
-    ? [
-        [[56, 30], [58, 28], a],
-        [[61, 36], [64, 33], b],
-      ]
-    : [[[29, 22], [30, 21], b]];
-  // each streak is a 2-px stair (a 1-px diagonal on a flat field is a checkerboard)
-  for (const [[x0, y0], [x1, y1], c] of lines) for (const o of [0, 1]) l.line(x0 + o, y0, x1 + o, y1, c);
+/**
+ * The hiccup before the ring (r3): an open 2-px mist arc, a ")" bowed toward the flight — a puff of the same wind,
+ * not a closed loop (a closed 6×10 loop at the nostril read as a nose ring). Big only.
+ */
+function paintPuff(l: PixelCanvas, cx: number, cy: number): void {
+  const X = cx + 0.5;
+  const Y = cy + 0.5;
+  for (let y = cy - 6; y <= cy + 6; y++)
+    for (let x = cx - 6; x <= cx + 6; x++) {
+      const u = x + 0.5 - X;
+      const v = y + 0.5 - Y;
+      const e0 = Math.hypot(u / 3.2, v / 4.6);
+      const e1 = Math.hypot(u / 1.4, v / 2.8);
+      const ang = (Math.atan2(v, u) * 180) / Math.PI;
+      if (e0 <= 1 && e1 >= 1 && ang > -75 && ang < 75 && u > -0.5) l.set(x, y, PAL.mist);
+    }
 }
 
 // ================================================================ backdrop
 
 /**
- * The light shape: the ring's wake — a thick stepped crescent (leaf1 outer band, leaf2 inner band) behind the
- * ring's line of flight, open to the upper right (KART §4 WIND "arcs open to the right", thick enough for 1×).
- * The ring sits on its concave edge: its hole and its white leading crescent stay on the dark sky, its trailing
- * edge on the green. Canvas px of either size: `c` the crescent's centre, `r` its outer radius, `cut` the disc
- * (centre offset along the flight, radius) that opens it.
+ * The light shape: the ring's wake (r3) — an OPEN stepped arc (KART §4 WIND "arcs open to the right"): a band of
+ * leaf1 outside, leaf2 inside, concentric with the tilted ring and 1 px off it, curving behind the ring's left and
+ * bottom (the way it came). It stays `clear` px of sky away from the subject, so the head and the wake never merge
+ * into one green mass; the ring's hole stays one tone of sky. `w` is the width of each tone band.
  */
-function paintWake(b: PixelCanvas, c: V, r: number, band: number, cut: readonly [number, number, number]): void {
-  const [ccx, ccy, cr] = cut;
+function paintWake(b: PixelCanvas, sub: PixelCanvas, ring: V, spec: RingSpec, w: number, a0: number, a1: number, clear: number): void {
+  const X = Math.round(ring[0]) + 0.5;
+  const Y = Math.round(ring[1]) + 0.5;
+  const c = Math.cos(TILT);
+  const sn = Math.sin(TILT);
+  const near = (x: number, y: number) => {
+    for (let j = -clear; j <= clear; j++) for (let i = -clear; i <= clear; i++) if (i * i + j * j <= clear * clear + 1 && sub.get(x + i, y + j) !== null) return true;
+    return false;
+  };
   for (let y = 0; y < b.h; y++)
     for (let x = 0; x < b.w; x++) {
-      const d = Math.hypot(x + 0.5 - c[0], y + 0.5 - c[1]);
-      if (d > r) continue;
-      if (Math.hypot(x + 0.5 - ccx, y + 0.5 - ccy) < cr) continue;
-      b.set(x, y, d > r - band ? RECIPE.tones[0] : RECIPE.tones[1]);
-    }
-  // no stray tips: a wake pixel with fewer than two wake neighbours (where the two circles meet) goes back to sky
-  const wake = (c: number | null) => c === RECIPE.tones[0] || c === RECIPE.tones[1];
-  const sky = (y: number) => (y < (b.w > 60 ? RECIPE.split : RECIPE.split / 2) ? RECIPE.sky[0] : RECIPE.sky[1]);
-  for (let y = 0; y < b.h; y++)
-    for (let x = 0; x < b.w; x++) {
-      if (!wake(b.get(x, y))) continue;
-      const n = [b.get(x + 1, y), b.get(x - 1, y), b.get(x, y + 1), b.get(x, y - 1)].filter(wake).length;
-      if (n < 2) b.set(x, y, sky(y));
+      const px0 = x + 0.5 - X;
+      const py0 = y + 0.5 - Y;
+      const u = px0 * c - py0 * sn;
+      const v = px0 * sn + py0 * c;
+      const ang = (Math.atan2(v, u) * 180) / Math.PI;
+      const A = ang < 0 ? ang + 360 : ang;
+      if (A < a0 || A > a1) continue;
+      const e = (g: number) => Math.hypot(u / (spec.rx + g), v / (spec.ry + g));
+      if (e(1) < 1 || e(1 + 2 * w) > 1) continue;
+      if (near(x, y)) continue;
+      b.set(x, y, e(1 + w) > 1 ? RECIPE.tones[0] : RECIPE.tones[1]);
     }
 }
 
 function paintSky(b: PixelCanvas, g: Geo, f: number): void {
   paintBackdrop(b, RECIPE, { horizon: 200, shape: false });
-  if (g.big) paintWake(b, [68, 25], 17, 5, [78.5, 14.5, 12.5]);
-  else paintWake(b, [31.5, 12.5], 8, 3, [36, 7, 6.5]);
   // the far cloud sea: one flat night3 silhouette, a 1-px night4 lit top line (one lobe steps in the loop)
   const lobes: [number, number, number][] = [
     [8, 58, 9],
@@ -412,8 +448,6 @@ const KEY: Readonly<Record<string, number>> = {
 const SX = 0;
 /** The squeezed eye as a bold 5-row chevron (the native redraw's is 3 rows). */
 const SMALL_EYE: readonly string[] = ['222', 'k', 'kk', '.kkk', 'kk', 'k'];
-/** The small hiccup ring: a 3×4 hand-drawn loop (an ellipse this small steps into checkerboards). */
-const SMALL_HIC: readonly string[] = ['mmm', 'm.m', 'm.m', 'mmm'];
 /** One seam pixel between the cowlick lobes (the native redraw left an ink / mist checker there). */
 const SMALL_SEAM: readonly string[] = ['k'];
 const SMALL_BOTTOM: readonly string[] = [
@@ -444,8 +478,9 @@ const art: CardArtV3 = {
     paintSubject(l.subject, BIG, f);
     outerRim(l.subject, RECIPE.rim);
     const dx = f === 2 || f === 3 ? 1 : 0;
-    paintStreaks(l.light, true, f);
-    paintRing(l.light, HIC[0], HIC[1], HIC_BIG, f === 3 || f === 4 ? 1 : 0);
+    const ring: V = [RING[0] + dx, RING[1]];
+    paintWake(l.backdrop, l.subject, ring, RING_BIG, 2, WAKE_ARC[0], WAKE_ARC[1], 3);
+    paintPuff(l.light, HIC[0] + (f === 3 || f === 4 ? 1 : 0), HIC[1]);
     paintRing(l.light, RING[0], RING[1], RING_BIG, dx);
   },
   small(l: ArtLayers, f: number) {
@@ -455,9 +490,7 @@ const art: CardArtV3 = {
     patch(l.subject, SMALL_BOTTOM, KEY, SX, 22);
     patch(l.subject, SMALL_EYE, KEY, SX + 16, 14);
     const dx = f === 2 || f === 3 ? 1 : 0;
-    paintStreaks(l.light, false, f);
-    patch(l.subject, SMALL_SEAM, KEY, 7, 12);
-    patch(l.light, SMALL_HIC, KEY, HIC_S[0], HIC_S[1]);
+    paintWake(l.backdrop, l.subject, [RING_S[0] + dx, RING_S[1]], RING_SMALL, 1, WAKE_ARC[0], WAKE_ARC[1], 2);
     paintRing(l.light, RING_S[0], RING_S[1], RING_SMALL, dx);
   },
 };

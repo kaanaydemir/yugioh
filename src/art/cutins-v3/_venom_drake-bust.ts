@@ -803,7 +803,7 @@ export function paintVenomBust(P: BustPose, o: BustOpts): BustOut {
     // the skin's lit rim pixel row on the light side (mag1)
     for (let y = Math.floor(scx[1] - sr); y <= scx[1] + sr; y++)
       for (let x = Math.floor(scx[0] - sr * 1.1); x <= scx[0] + sr * 1.1; x++) {
-        if (matter.get(x, y) !== PAL.void1 || light.isOpaque(x, y)) continue;
+        if (matter.get(x, y) !== PAL.void1 || light.isOpaque(x, y) || sacHidden(x, y)) continue;
         if ((x + 0.5 - scx[0]) * ls > 0 && y + 0.5 < scx[1] + sr * 0.3) matter.set(x, y, PAL.mag1);
       }
   }
