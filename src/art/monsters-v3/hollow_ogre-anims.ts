@@ -87,7 +87,7 @@ export function idlePose(f: number): Pose {
     moss: I.moss[k],
     // the mane follows the creak two frames late and keeps rocking in the wind after the log has settled
     maneSway: late * 5 + rnd(3 * Math.sin(TAU * (ph * 2 - 0.15))),
-    ...planted(55 + 11 * Math.sin(TAU * (ph - 0.1))),
+    ...planted(55 + 9.5 * Math.sin(TAU * (ph - 0.1))),
     nb: -1,
     fx: -15 + rnd(2 * Math.sin(TAU * (ph - 0.3))),
     fy: -16 + rnd(Math.sin(TAU * (ph * 2 - 0.2)) * 1.2),
@@ -124,7 +124,7 @@ const hand = (x: number, y: number, ca: number): Partial<Pose> => ({ nx: x - AX,
 
 const GUARD_N = 8;
 const G0: Partial<Pose> = {
-  crouch: 2, lean: 2, bob: 1, lid: 1, look: 1, eye: 1.2, mane: 0.7,
+  crouch: 2, lean: 2, bob: 1, lid: 1, look: 1, eye: 1.7, mane: 0.7,
   ...hand(61, 55, -142), nb: -1,
   fx: -11, fy: -18, fc: 0.6, fs: 12,
 };
@@ -264,7 +264,7 @@ const HH_HOLDS = [50, 70, 160, 120, 120, 140, 140, 150];
 
 const HM_N = 8;
 const HM_KEYS: Partial<Pose>[] = [
-  { eye: 2, scar: 2, fc: 0, fs: 30, probe: -1, fly: -1 },
+  { eye: 2, scar: 2, probe: -1, fly: -1 },
   { eye: 2, scar: 2, shake: 1, fc: 0, fs: 34, mane: 0.6, probe: -1, fly: -1 },
   { eye: 2, scar: 2, shake: 2, fc: 0, fs: 34, mane: 0.8, probe: -1, fly: -1 },
   { eye: 2, scar: 1, shake: 1, fc: 0.1, fs: 28, mane: 0.6, probe: -1, fly: -1 },
@@ -287,8 +287,8 @@ const SUMMON_KEYS: Partial<Pose>[] = [
   // the shudder: the door seam glows
   { ...SEALED, sink: 4, bob: 1, shake: 1, eye: 0.8, dust: 0.65, splinter: 0.5, sx: 1, sy: -1 },
   // the bark doors burst open from inside
-  { ...SEALED, sink: 4, shake: 2, door: 0.5, eye: 1.5, splinter: 0.25, sx: 8, sy: -36 },
-  { ...SEALED, sink: 4, door: 1, eye: 2, unfurl: 0.3, splinter: 0.6, sx: 8, sy: -36 },
+  { ...SEALED, sink: 4, shake: 2, door: 0.4, eye: 1.5, splinter: 0.25, sx: 8, sy: -36 },
+  { ...SEALED, sink: 4, door: 0.75, eye: 2, unfurl: 0.3, splinter: 0.6, sx: 8, sy: -36 },
   // shoulders out: the arms unfurl, the log rises out of its hole on root legs
   { ...SEALED, sink: 2, door: 1, eye: 2, unfurl: 0.7, legs: 0.45, mane: 0.4, ...hand(56, 34, -110), splinter: 0.9, sx: 8, sy: -36 },
   // out: club in hand, the near root foot steps
@@ -308,7 +308,7 @@ const SU_HOLDS = [100, 90, 100, 80, 90, 100, 100, 90, 140, 60, 100, 120, 140];
 
 // ------------------------------------------------------------------ death (10): roots unravel into the tile, the trunk caves in, one sprout wilts
 
-const D_N = 10;
+const D_N = 11;
 const DROP = { clubFree: 1, cfx: 13, cfy: -4 };
 const DEATH_KEYS: Partial<Pose>[] = [
   { ...HH_KEYS[0] },
@@ -318,7 +318,9 @@ const DEATH_KEYS: Partial<Pose>[] = [
   // dissolve: the trunk caves inward and sinks into its own roots
   { unravel: 1, roots: 0.8, collapse: 0.4, sink: 3, legs: 0.6, ...DROP, ca: 8, cfy: -2, eye: 0.1, lid: 2, probe: -1, fly: -1 },
   { unravel: 1, roots: 1, collapse: 0.62, sink: 7, legs: 0.3, ...DROP, ca: 8, cfy: 1, eye: 0, probe: -1, fly: -1 },
-  { unravel: 1, roots: 1, collapse: 0.82, sink: 13, legs: 0.1, ...DROP, ca: 8, cfy: 5, eye: 0, sproutG: 1, probe: -1, fly: -1 },
+  // the in-between: the top ring drops into the hollow, the trunk folds in on itself (no pop from cage to mound)
+  { unravel: 1, roots: 1, collapse: 0.72, sink: 10, legs: 0.2, ...DROP, ca: 8, cfy: 3, eye: 0, probe: -1, fly: -1 },
+  { unravel: 1, roots: 1, collapse: 0.84, sink: 14, legs: 0.1, ...DROP, ca: 8, cfy: 5, eye: 0, sproutG: 1, probe: -1, fly: -1 },
   { unravel: 1, roots: 0.7, collapse: 1, sink: 22, legs: 0, ...DROP, ca: 8, cfy: 9, eye: 0, sproutG: 1, probe: -1, fly: -1 },
   // only the sprout is left …
   { unravel: 1, roots: 0, collapse: 1, sink: 60, legs: 0, ...DROP, ca: 8, cfy: 20, eye: 0, sproutG: 1, probe: -1, fly: -1 },
@@ -329,14 +331,14 @@ export function deathPose(f: number): Pose {
   const n = Math.min(f, D_N - 1);
   return key(DEATH_KEYS[n], n, D_N);
 }
-const D_HOLDS = [50, 70, 80, 80, 90, 90, 90, 100, 110, 120];
+const D_HOLDS = [50, 60, 70, 70, 80, 70, 70, 80, 90, 110, 130];
 
 // ------------------------------------------------------------------ revive (10): the sprout perks up, roots braid up, the trunk rebuilds
 
 const RV_N = 10;
 const REVIVE_KEYS: Partial<Pose>[] = [
-  { ...DEATH_KEYS[9] },
-  { ...DEATH_KEYS[8], sproutG: 1 },
+  { ...DEATH_KEYS[10] },
+  { ...DEATH_KEYS[9], sproutG: 1 },
   { unravel: 1, roots: 0.6, collapse: 1, sink: 22, legs: 0, eye: 0, sproutG: 1, clubFree: 1, cfx: 13, cfy: 20, probe: -1, fly: -1 },
   { unravel: 1, roots: 1, collapse: 0.8, sink: 12, legs: 0.1, eye: 0, sproutG: 1, clubFree: 1, cfx: 13, cfy: 20, probe: -1, fly: -1 },
   { unravel: 0.7, roots: 0.9, collapse: 0.5, sink: 6, legs: 0.4, eye: 0.3, clubFree: 1, cfx: 13, cfy: 20, probe: -1, fly: -1 },

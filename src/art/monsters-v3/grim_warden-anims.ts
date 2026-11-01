@@ -142,7 +142,9 @@ const ATTACK_KEYS: Partial<Pose>[] = [
   // f0 anticipation: the warden crouches and draws back, the fist low, the lantern swung back behind the knee
   { ax: 19, ay: 3, la: -12, cl: 9, eye: 1.2, flLean: 0.6, capeA: -1 },
   // f1 charge: the arm flies up and back, the lantern swings up BEHIND the body on a lengthening chain
-  { ax: 6, ay: -12, la: -105, cl: 11, sink: 1, lean: -3, hx: -2, eye: 1.3, fl: 1.15, flLean: 1, capeA: -4, trail: 1, trA: scr(-30), trB: scr(-105), hood: 2 },
+  // (critic r2: the lantern must be SEEN behind the body: the fist crosses in front of the chest, the chain at full length
+  // swings the lantern out past the halberd on the back side — the circle reads back → up → front → down)
+  { ax: -6, ay: -10, la: -100, cl: 14, sink: 1, lean: -3, hx: -2, eye: 1.3, fl: 1.15, flLean: 1, capeA: -4, trail: 1, trA: scr(-12), trB: scr(-100), hood: 2 },
   // f2 the fist overhead, the lantern circling over the back of the hood
   { ax: 8, ay: -16, la: -163, cl: 12, lean: -3, hx: -1, hy: -1, eye: 1.4, fl: 1.25, flLean: 0.6, capeA: -5, trail: 1, trA: scr(-105), trB: scr(-163), hood: 3 },
   // f3 the apex: the lantern high above the helm, tipping forward (the longest hold); the torso counter-turns
@@ -196,20 +198,21 @@ const ROAR_HOLDS = [80, 160, 100, 90, 110, 130, 100, 120, 130, 140];
 const SP_N = 12;
 const SPECIAL_KEYS: Partial<Pose>[] = [
   { hy: -1, eye: 1.3, eyeDx: 1, la: 4 },
-  // charge: the warden rears back, the fist drawn in, the lantern swung behind, the hood tipped up
-  { ax: 11, ay: 2, la: -32, lean: -3, hx: -2, hy: -1, eye: 1.3, eyeDx: 1, fl: 1.1, flLean: 0.8, capeA: -3, hood: 2 },
-  // the arm rises forward, gathering the chain up into the fist
-  { ax: 20, ay: -6, la: 16, cl: 6, lean: 1, hx: 1, eye: 1.4, eyeDx: 1, fl: 1.1, capeA: 0 },
-  // the whole body thrusts forward, the hood tipping over the cage, the lantern held out at eye level at the target
-  { ax: 27, ay: -12, la: 6, cl: 2, lean: 6, hx: 3, hy: 1, eye: 1.5, eyeDx: 1, fl: 1, capeA: 4, sink: 2, hood: -2 },
-  // the inhale: the flame dips, the glass darkens
-  { ax: 27, ay: -12, la: 2, cl: 2, lean: 6, hx: 3, hy: 1, eye: 1.5, eyeDx: 1, fl: 0.35, capeA: 4, sink: 2, hood: -2 },
-  // release: the thread starts — the flame flares, a ring of glass light, the body jolts deeper
-  { ax: 28, ay: -13, la: 0, cl: 2, lean: 7, hx: 4, hy: 1, eye: 1.5, eyeDx: 1, fl: 1.5, capeA: 5, sink: 3, burst: 0.55, burstR: 7, hood: -3 },
-  // drinking: the lantern pulses down / up / back (±2 px), the flame swells and contracts, the shroud blown toward it
-  { ax: 27, ay: -10, la: 8, cl: 2, lean: 6, hx: 3, hy: 2, eye: 1.4, eyeDx: 1, fl: 1.2, flLean: -0.8, capeA: 7, sink: 3, mote: 0.2, hood: -2 },
-  { ax: 28, ay: -14, la: -6, cl: 3, lean: 7, hx: 4, hy: 0, eye: 1.5, eyeDx: 1, fl: 1.5, flLean: 0.7, capeA: 9, sink: 2, mote: 0.55, fs: 77, hood: -4 },
-  { ax: 26, ay: -11, la: 4, cl: 2, lean: 5, hx: 2, hy: 1, eye: 1.3, eyeDx: 1, fl: 1.3, capeA: 6, sink: 3, mote: 0.85, hood: -1 },
+  // charge: the warden crouches and gathers the chain into a low fist, the lantern swung back
+  { ax: 15, ay: 4, la: -24, lean: -2, hx: -1, eye: 1.3, eyeDx: 1, fl: 1.1, flLean: 0.8, capeA: -2, hood: 1, sink: 2 },
+  // the arm sweeps up, the torso begins to arch back
+  { ax: 13, ay: -14, la: 14, cl: 4, lean: -2, hx: -1, hy: -1, eye: 1.4, eyeDx: 1, fl: 1.1, capeA: -3, hood: 2 },
+  // critic r2: the lantern RAISED high and forward over the hood (the fist above the shoulder), the torso arched back,
+  // the helm tipped up — a new, tall silhouette that keeps the lantern well clear of the target
+  { ax: 9, ay: -26, la: -6, cl: 2, lean: -4, hx: -3, hy: -2, hr: -6, eye: 1.5, eyeDx: 1, fl: 1, capeA: -5, hood: 3 },
+  // the inhale: the flame dips, the glass darkens, the lantern sinks a pixel
+  { ax: 9, ay: -25, la: -2, cl: 2, lean: -4, hx: -3, hy: -2, hr: -6, eye: 1.5, eyeDx: 1, fl: 0.35, capeA: -5, hood: 3 },
+  // release: the thread starts — the flame flares, a ring of glass light, the body arches deeper
+  { ax: 9, ay: -28, la: -4, cl: 2, lean: -5, hx: -4, hy: -3, hr: -9, eye: 1.5, eyeDx: 1, fl: 1.5, capeA: -6, hood: 4, burst: 0.55, burstR: 7 },
+  // drinking: the lantern pulses down / up / down (2–3 px), the flame swells and contracts, the helm nods with each gulp
+  { ax: 10, ay: -25, la: 6, cl: 2, lean: -4, hx: -2, hy: -1, hr: -4, eye: 1.4, eyeDx: 1, fl: 1.15, flLean: -0.8, capeA: -3, mote: 0.2, hood: 2 },
+  { ax: 8, ay: -29, la: -8, cl: 3, lean: -5, hx: -4, hy: -3, hr: -10, eye: 1.5, eyeDx: 1, fl: 1.6, flLean: 0.7, capeA: -6, mote: 0.55, fs: 77, hood: 4 },
+  { ax: 10, ay: -24, la: 5, cl: 2, lean: -3, hx: -2, hy: -1, hr: -3, eye: 1.3, eyeDx: 1, fl: 1.25, capeA: -2, mote: 0.85, hood: 1 },
 ];
 export function specialPose(f: number): Pose {
   if (f >= SP_N - 1) return home();

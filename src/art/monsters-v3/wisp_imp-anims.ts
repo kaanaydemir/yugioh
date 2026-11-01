@@ -5,36 +5,42 @@
 // Its motion is AIR, not muscle: everything lags (hood one frame behind the float, the plumes and the
 // tail two to three frames behind, the loose feather a whole story behind), every stop overshoots and
 // settles in soft wobbles, and the long holds sit at the top of a breath, never at an impact.
-//   idle     20 f / 1.96 s loop  a lazy figure eight (the float ±1 px, the skirt's sway at twice the
-//                                rate → the tail tip draws the 8), edge plumes lift in a wave twice
-//                                per loop, the cowlick and the hands trail; one feather slips out of
-//                                its slot at the back of the hood, rocks down like a pendulum, glides
-//                                back up and clicks in — the eyes follow it down and back; one blink
-//   guard     8 f / 1.04 s loop  ducked into its sheet: squashed, plumes bristled, both hands over
-//                                the face, only the eyes peeking over them; the plumes shiver, the
-//                                eyes peek / blink, the hands tremble
+//   idle     20 f / 1.96 s loop  (FIX r1, owner blocker) a real lazy figure eight drawn into the
+//                                pose: the hood leads (x once, y twice per loop, whole px), squashes
+//                                and stretches on the turns, the skirt drift / tail / cowlick / hands
+//                                lag it by 1–3 frames, the plume tips lift in a travelling wave, the
+//                                near hand waves; the loose feather slips out, rocks down and clicks
+//                                back in, the eyes follow it; one blink
+//   guard     8 f / 1.04 s loop  ducked into its sheet, both hands over the face: a shivering
+//                                breath (the hood bobs), the hands tremble, the eyes peek left /
+//                                right / up between them, the cowlick twitches, one blink
 //   toGuard   6 f / 0.39 s       a startled hop up, then the duck (dx 0: the float never slides)
 //   fromGuard 5 f / 0.37 s       it pops up out of the duck, stretches, settles on idle f0
 //   roar     11 f / 1.10 s       "bö!": a deep inhale (charge@1), it rears up tall, the hollow gapes,
 //                                hands flung up, feathers puff off (release = impact@4), a shiver,
 //                                recover@7 → idle f0
-//   attack   14 f / 1.42 s       "Tüy Oku Sağanağı": it puffs to 130 % (charge@1, the long hold at the
-//                                full puff f3), rocks back (f4), snaps flat and fires a sheaf of
-//                                feather darts from its front (release = impact@5), contact@6, a
-//                                second volley trails, recover@8, deflated wobble → idle f0
-//   hit       6 f / 0.51 s       contact local (hood knocked back, eyes squeezed, cowlick flinches),
-//                                then the whole sheet recoils, three feathers knocked loose
+//   attack   14 f / 1.42 s       "Tüy Oku Sağanağı": inhale, it puffs to a real 130 % with every plume
+//                                fanned out and the tail uncurled (charge@1, long hold f3), rocks
+//                                back (f4), SNAPS: hood thrust forward and stretched long, plumes and
+//                                tail whipped back (release = impact@5, smear held on contact@6),
+//                                recoil squash (f7), then a tall-squat-tall wobble that settles → idle
+//   hit       6 f / 0.57 s       contact local (eyes squeezed, cowlick flinches), then it is knocked
+//                                away: tilted back 4 px and squashed, plumes / tail flung forward,
+//                                four whole feathers pop out and fly off
 //   hitHeavy  8 f / 0.74 s       = death f0, tumbles back, the float drops, dizzy, springs up
 //   hitMagic  8 f / 0.74 s       eyes white-hot, every feather one value up and on end, sparks, a
 //                                rigid 1-px jolt, then a sag
-//   summon   14 f / 1.35 s       one feather rocks down like a pendulum to the tile (f0–f4), a
-//                                fountain of feathers whirls up and builds the ghost face first,
+//   summon   14 f / 1.35 s       one big feather rocks down in three tilts to the tile (f0–f4), a
+//                                helix of whole feathers whirls up round two eyes (the face locks in
+//                                first), the hood forms, then tail / hands / plumes shingle on,
 //                                land@9 (a soft squash), "bö!" (f10), settle → idle f0
-//   death    10 f / 0.86 s       the heavy struck pose → thrown back → it crumples; the WIND strips
-//                                it from the front edge backward, feathers streaming back
-//                                (dissolve@4), the eyes go last. (No "pof": that is the special's.)
-//   revive   12 f / 1.22 s       the wind brought back: feathers stream in from behind and lay
-//                                themselves in, land@5 (crumpled), it fills, first breath, looks
+//   death    10 f / 0.86 s       the heavy struck pose → thrown back → a gust ribbon crosses it and
+//                                PEELS it part by part (cowlick, the plumes front to back, the hands,
+//                                the tail unhooks), each part leaving as a whole tumbling feather
+//                                (dissolve@4); the bare sheet frays (the only pixel dissolve), the
+//                                eyes hang alone in the air, then blink out. (No "pof".)
+//   revive   12 f / 1.22 s       the wind brought back: the eyes open in the air, the bare sheet
+//                                forms, the parts come back in reverse order, land@5, it fills, looks
 //                                around → idle f0
 //   special  12 f / 1.30 s       the FEATHER PILLOW (signature): it hugs itself, rounds into a
 //                                cushion with four tufted corners (the long hold f3), squeezes

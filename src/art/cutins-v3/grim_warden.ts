@@ -473,44 +473,80 @@ const factory: CutinFactory = () => ({
         }
       for (let i = 0; i < marks.length; i += 3) out.set(marks[i], marks[i + 1], marks[i + 2]);
     }
-    // the eye light
+    // the eye light (critic r2: a 2-px dot on a big skull read weakly — the eye now flares to a 3×3 core with a white
+    // heart, its halo floods the socket and catches the cage bars round it)
     const [ex, ey] = eye;
+    const dark = (c: number | null) => c === PAL.void0 || c === PAL.ink || c === PAL.stone0;
     if (P.eye >= 1) {
-      out.ellipse(ex + 0.5, ey + 0.5, P.eye === 2 ? 5 : 4, P.eye === 2 ? 3.6 : 3, PAL.leaf1);
-      out.ellipse(ex + 0.5, ey + 0.5, P.eye === 2 ? 4 : 3, P.eye === 2 ? 2.6 : 2, PAL.leaf2);
+      const R1 = P.eye === 2 ? 9 : 6;
+      for (let y = ey - R1; y <= ey + R1; y++)
+        for (let x = ex - R1 - 2; x <= ex + R1 + 2; x++) {
+          const dx = (x - ex) / (R1 + 2);
+          const dy = (y - ey) / R1;
+          const d = dx * dx + dy * dy;
+          if (d > 1) continue;
+          const c = out.get(x, y);
+          if (c === null) continue;
+          // the halo fills the dark socket; iron / bone edges inside it catch the light
+          if (dark(c)) out.set(x, y, d < 0.3 ? PAL.leaf2 : d < 0.65 ? PAL.leaf1 : c);
+          else if (d < 0.8 && (c === PAL.stone2 || c === PAL.stone1)) out.set(x, y, d < 0.4 ? PAL.leaf3 : PAL.leaf2);
+        }
     }
-    out.rect(ex - 2, ey - 1, 5, 3, PAL.leaf3);
-    out.rect(ex - 1, ey - 1, 3, 2, PAL.leaf4);
-    out.set(ex, ey - 1, PAL.white);
+    out.rect(ex - 2, ey - 2, 5, 4, PAL.leaf3);
+    out.rect(ex - 1, ey - 1, 3, 3, PAL.leaf4);
+    out.set(ex, ey, PAL.white);
     if (P.eye === 2) {
+      out.set(ex - 1, ey, PAL.white).set(ex + 1, ey, PAL.white).set(ex, ey - 1, PAL.white);
       // two short scan streaks out of the socket (forward and back), 1 px, leaf3 then leaf2
-      for (let i = 1; i <= 6; i++) {
-        out.set(ex + 5 + i, ey, i < 4 ? PAL.leaf3 : PAL.leaf2);
-        if (i <= 3) out.set(ex - 5 - i, ey, PAL.leaf2);
+      for (let i = 1; i <= 7; i++) {
+        out.set(ex + 5 + i, ey, i < 4 ? PAL.leaf4 : i < 6 ? PAL.leaf3 : PAL.leaf2);
+        if (i <= 4) out.set(ex - 5 - i, ey, i < 2 ? PAL.leaf3 : PAL.leaf2);
       }
     }
-    // the soul fire in the glass
+    // the soul fire in the glass (critic r2: no flat diamond — a real flame with tone bands, the glass glowing round
+    // it in rings, the light spilling onto the cage posts)
     const cx = rx0;
-    const midY = top + 22;
-    const glassTone: number = P.fire === 0 ? PAL.leaf1 : PAL.leaf2;
+    const fb = g1 - 2;
+    const fh = P.fire === 0 ? 8 : P.fire === 1 ? 14 : 20;
+    const fcy = fb - fh * 0.42;
     for (let y = g0; y <= g1; y++)
       for (let x = rx0 - 12; x <= rx0 + 12; x++) {
-        const d = Math.abs(x - cx) / 12 + Math.abs(y - midY) / 13;
-        let c: number = glassTone;
-        if (P.fire >= 1 && d < 0.75) c = PAL.leaf3;
-        if (P.fire === 2 && d < 0.95) c = d < 0.75 ? PAL.leaf3 : PAL.leaf2;
+        const dx = (x - cx) / 12;
+        const dy = (y - fcy) / 14;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        let c: number = PAL.leaf1;
+        if (P.fire >= 1 && d < 0.8) c = PAL.leaf2;
+        if (P.fire === 2 && d < 0.55) c = PAL.leaf3;
+        if (P.fire === 0 && d < 0.5) c = PAL.leaf2;
         out.set(x, y, c);
       }
-    // flame: a teardrop (tip up), leaf4 body, a white core when it blazes
-    const fh = P.fire === 0 ? 7 : P.fire === 1 ? 13 : 19;
-    const fb = g1 - 2;
+    // the panes' frame bars catch the light on their inner edge
+    for (let y = g0; y <= g1; y++) {
+      const k = Math.abs(y - fcy) < 9 ? (P.fire === 2 ? PAL.leaf3 : PAL.leaf2) : PAL.leaf1;
+      out.set(rx0 - 13, y, k).set(rx0 + 13, y, k);
+    }
+    // the flame: a teardrop that leans and licks (tip swaying per frame), outer leaf3 → leaf4 body → white heart
+    const sway = [0, 1, -1, 1, 0, -1][P.t % 6];
     for (let i = 0; i < fh; i++) {
       const y = fb - i;
       const u = i / fh;
-      const hw = Math.round(u < 0.5 ? 2 + u * 6 : (1 - u) * 10);
-      for (let x = cx - hw; x <= cx + hw; x++) out.set(x, y, P.fire === 0 ? PAL.leaf3 : PAL.leaf4);
+      const hw = u < 0.35 ? 3 + u * 10 : (1 - u) * 10;
+      const ox = Math.round(sway * u * u * 3);
+      for (let x = Math.round(cx + ox - hw); x <= Math.round(cx + ox + hw); x++) {
+        const e = Math.abs(x - cx - ox) / Math.max(1, hw);
+        const c = P.fire === 0 ? (e < 0.5 ? PAL.leaf3 : PAL.leaf2) : e > 0.7 ? PAL.leaf3 : PAL.leaf4;
+        out.set(x, y, c);
+      }
     }
-    if (P.fire === 2) for (let i = 1; i < 8; i++) out.set(cx, fb - i, PAL.white).set(cx - side, fb - i - 1, i < 5 ? PAL.white : PAL.leaf4);
+    if (P.fire === 2)
+      for (let i = 1; i < Math.round(fh * 0.55); i++) {
+        const u = i / fh;
+        const ox = Math.round(sway * u * u * 3);
+        out.set(cx + ox, fb - i, PAL.white);
+        if (i < fh * 0.35) out.set(cx + ox - side, fb - i, PAL.white);
+      }
+    // a base ember row under the flame
+    for (let x = cx - 4; x <= cx + 4; x++) out.set(x, g1, PAL.leaf3);
     // soul wisps off the roof: small flames rising, leaf3 with leaf2 tails
     for (let w = 0; w < P.wisps; w++) {
       const wx = cx - 10 + w * 10;

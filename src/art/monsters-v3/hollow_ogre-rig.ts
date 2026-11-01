@@ -208,10 +208,11 @@ const BARK: Tones = { L: PAL.earth3, M: PAL.earth2, S: PAL.earth1 };
 const FAR: Tones = { L: PAL.earth2, M: PAL.earth1, S: PAL.earth0 };
 const ROOT: Tones = { L: PAL.earth3, M: PAL.earth2, S: PAL.earth1 };
 const CLUB: Tones = { L: PAL.earth2, M: PAL.earth1, S: PAL.earth0 };
-const MOSS: Tones = { L: PAL.leaf1, M: PAL.leaf1, S: PAL.leaf0 };
+const MOSS: Tones = { L: PAL.leaf2, M: PAL.leaf1, S: PAL.leaf0 };
 const MOSS_FAR: Tones = { L: PAL.leaf1, M: PAL.leaf0, S: PAL.leaf0 };
 const CREASE = PAL.earth0;
 const HEART = PAL.earth4;
+const HILITE = true;
 
 export const CLUB_LEN = 25;
 /** crown shards: position across the top (−1…1), height, forward slant */
@@ -493,7 +494,24 @@ function drawTrunk(f: Frame): void {
     const h = h0 * lift + 1;
     q.poly([[bx - 2.8, by + 2], [bx + 2.8, by + 2], [bx + sl + tdx * h * 0.25, by - h]], BARK.M);
   }
-  cylBands(q, BARK, light, 0.17, 0.5, 2);
+  // cylinder planes: a broad lit plane toward the key light, the body, a clear shadow CORE, and a reflected rim one
+  // step up again on the far edge (the log reads round and heavy, not a flat tan field)
+  cylBands(q, BARK, light, 0.26, 0.56, 2);
+  {
+    const sb = q.clone();
+    for (let y = 0; y < H; y++) {
+      let l = -1;
+      let r = -1;
+      for (let x = 0; x < W; x++) if (sb.isOpaque(x, y)) { if (l < 0) l = x; r = x; }
+      if (l < 0 || r - l < 10) continue;
+      // the reflected rim: the outermost shade column (inside the ink) goes back to the body tone
+      const xr = light.side < 0 ? r - 1 : l + 1;
+      if (sb.get(xr, y) === BARK.S && sb.get(xr + (light.side < 0 ? -1 : 1), y) === BARK.S) q.set(xr, y, BARK.M);
+      // a single highlight column inside the lit plane (the cylinder's specular ridge), skipping every 5th row
+      const xl = rnd(light.side < 0 ? l + (r - l) * 0.12 : r - (r - l) * 0.12);
+      if (HILITE && sb.get(xl, y) === BARK.L && (y - rnd(sk.base[1]) + 82) % 5 !== 0 && y > sk.top[1] + 4) q.set(xl, y, HEART);
+    }
+  }
   // bark grain: seams that follow the log (dashes), mid / shade planes only; ring cracks
   const b0 = rnd(sk.top[1]) - 8;
   const b1 = rnd(sk.base[1]) + 4;
@@ -505,7 +523,7 @@ function drawTrunk(f: Frame): void {
     if (l < 0 || r - l < 8) continue;
     // long vertical bark furrows (they follow the log and break every few rows into plates); the lit plane keeps
     // only its two widest furrows, one step down, so it stays calm (MA-2)
-    for (const [k, u] of [0.1, 0.34, 0.55, 0.74, 0.9].entries()) {
+    for (const [k, u] of [0.12, 0.47, 0.7, 0.88].entries()) {
       // trunk-local rows (from the base, which never bobs) so the grain rides with the log instead of crawling
       const yl = y - rnd(sk.base[1]) + 80;
       if (jag(Math.floor((yl + k * 5) / 6), k + 3) < 0.13) continue;
@@ -541,6 +559,43 @@ function drawTrunk(f: Frame): void {
       q.set(x0 + 1, y0, PAL.earth0);
       q.set(x0, y0 + 1, BARK.L);
       q.set(x0 + 1, y0 + 1, BARK.L);
+    }
+  }
+  // two loose bark PLATES on the mid plane (irregular quads: a dark seam round them, a lit top lip), so the furrows
+  // break into plates that follow the form, and a long lightning BURN scar down the shade side (charred, ragged)
+  if (col < 0.5) {
+    for (const [t, du, w, h] of [[0.2, 0.42, 5, 6], [0.46, 0.5, 4, 5]] as const) {
+      const c = sk.sp(t);
+      const r = sk.rad(t);
+      const x0 = rnd(c[0] - r + (light.side < 0 ? du : 1 - du) * 2 * r);
+      const y0 = rnd(c[1]) - 2;
+      for (let j = 0; j <= h; j++)
+        for (let i = 0; i <= w; i++) {
+          const x = x0 + i + (j > h / 2 ? 1 : 0);
+          const y = y0 + j;
+          const cc = q.get(x, y);
+          if (cc === null || cc === CREASE) continue;
+          // an overlapping bark scale: a lit upper lip, a dark seam down its near side and a ragged lower seam
+          const bottom = j === h && jag(i, 41 + w) < 0.75;
+          if (j === 0 && i > 0 && i < w) q.set(x, y, BARK.L);
+          else if ((i === 0 && j > 0) || bottom) q.set(x, y, CREASE);
+          else if (cc === BARK.S && i < w - 1) q.set(x, y, BARK.M);
+        }
+    }
+    const b = sk.sp(0.12);
+    const m = sk.sp(0.5);
+    const rb = sk.rad(0.12);
+    const rm = sk.rad(0.5);
+    for (let y = rnd(m[1]); y <= rnd(b[1]) - 1; y++) {
+      const t = (y - m[1]) / Math.max(1, b[1] - m[1]);
+      const cx = lerp(m[0], b[0], t);
+      const rr = lerp(rm, rb, t);
+      const x = rnd(cx + (light.side < 0 ? 1 : -1) * rr * 0.62) + (jag(y >> 1, 31) < 0.5 ? 0 : 1);
+      for (const dx of [0, 1]) {
+        const cc = q.get(x + dx, y);
+        if (cc === null || cc === BARK.L) continue;
+        q.set(x + dx, y, dx === 0 ? PAL.earth0 : PAL.earth1);
+      }
     }
   }
   // crown shards: charred tips, a pale heartwood split on the lit face of the tall ones
@@ -581,16 +636,26 @@ function drawTrunk(f: Frame): void {
   // the open top of the hollow log: an end-grain ring (seen from above on the 2:1 board) around a dark hole
   if (col < 0.55) {
     const [cx, cy] = [rnd(top[0]), rnd(top[1] - rt * 0.5 + 2)];
-    const rx = Math.max(3, rnd(rt * 0.72));
-    const ry = Math.max(2, rnd(rt * 0.3));
+    const rx = Math.max(3, rnd(rt * 0.6));
+    const ry = Math.max(2, rnd(rt * 0.26));
     for (let y = cy - ry; y <= cy + ry; y++)
       for (let x = cx - rx; x <= cx + rx; x++) {
         const e = ((x - cx) / (rx + 0.4)) ** 2 + ((y - cy) / (ry + 0.4)) ** 2;
         if (e > 1) continue;
-        const ei = ((x - cx) / (rx - 2.2)) ** 2 + ((y - cy + 0.5) / Math.max(1, ry - 1.2)) ** 2;
-        // end grain lit toward the light, a growth-ring step, the dark hole (its near lip catches no light)
-        q.set(x, y, ei <= 1 ? (y > cy + ry - 2 ? PAL.void1 : PAL.void0) : (x - cx) * -light.side > rx * 0.25 ? HEART : PAL.earth3);
+        const ei = ((x - cx) / (rx - 2.6)) ** 2 + ((y - cy + 0.5) / Math.max(1, ry - 1.4)) ** 2;
+        // a broken stump top: charred end grain (earth2, the lit quarter earth3), a small dark hole
+        q.set(x, y, ei <= 1 ? PAL.void0 : (x - cx) * -light.side > rx * 0.35 ? PAL.earth3 : PAL.earth2);
       }
+    // the near crown shards stand IN FRONT of the ring's lip (it reads as a splintered stump, not a second mouth)
+    for (const [u, h0, sl] of SHARDS) {
+      if (u > -0.6 && u < 0.3) continue;
+      const bx = top[0] + u * (rt - 1);
+      const by = top[1] - rt * 0.5 * Math.sqrt(1 - u * u) + 3;
+      const h = h0 * lift * 0.55 + 1;
+      const tri = layer();
+      tri.poly([[bx - 2.4, by + 2], [bx + 2.4, by + 2], [bx + sl * 0.6, by - h]], PAL.earth1);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (tri.isOpaque(x, y) && q.isOpaque(x, y)) q.set(x, y, tri.isOpaque(x + light.side, y) ? PAL.earth1 : PAL.earth2);
+    }
   }
   // the hollow: a bark lip (lit top-left, shade low-right), a charred rim, darkness, the lit inner far wall
   const shut = o.door >= 0 && o.door < 0.05;
@@ -653,19 +718,44 @@ function drawDoor(f: Frame): void {
   }
   const q = layer();
   const fall = clamp(o.doorFall, 0, 1);
-  const ph = sk.hry * 2 + 3;
-  // two bark slabs swung out on the hollow's sides like shutters (sheared outward), then shaken loose and dropping
+  const ph = sk.hry * 2 + 5;
+  const DW = 9;
+  // two thick bark slabs hinged on the hollow's sides, swinging OUT toward the viewer like shutters: closed they lie
+  // over the hollow (bark out), edge-on they are a thin plank, open they show their pale heartwood inner face; the
+  // free edge drops a little as it comes toward us (2:1 board). Then the SLAM shakes them loose and they fall.
+  const theta = lerp(Math.PI * 0.92, 0.55, k);
+  const proj = Math.cos(theta);
+  const inner = proj > 0.12;
   for (const s of [-1, 1]) {
-    const x0 = hx + s * (sk.hrx + 2 + rnd(k * 2 + fall * 5)) - (s < 0 ? 2 : 0);
+    const hinge = hx + s * (sk.hrx + 1);
+    const free = hinge + s * DW * proj + s * fall * 4;
+    const x0 = Math.min(hinge, free);
+    const x1 = Math.max(hinge, free);
     const dy = rnd(fall * fall * 28);
     for (let j = 0; j < ph; j++) {
-      const y = rnd(hy - ph / 2) + j + dy;
-      if (y > GY) continue;
-      const sh = rnd(s * k * 2 * (j / ph - 0.5));
-      q.rect(x0 + sh, y, 3, 1, BARK.M);
+      const y0 = rnd(hy - ph / 2) + j + dy;
+      for (let x = rnd(x0); x <= rnd(x1); x++) {
+        // the free edge comes forward and down: rows shear by the swing
+        const u = Math.abs(x - hinge) / Math.max(1, DW);
+        const y = y0 + rnd(u * Math.sin(theta) * 2.2 * (inner ? 1 : 0));
+        if (y > GY) continue;
+        q.set(x, y, BARK.M);
+      }
     }
   }
-  bands(q, BARK, light, 1, 1, { top: 1, bottom: 1 });
+  if (inner) {
+    // the inner faces: heartwood (earth4) with an earth3 grain band and a charred inner edge by the hinge
+    const src = q.clone();
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        if (!src.isOpaque(x, y)) continue;
+        const s = x < hx ? -1 : 1;
+        const hinge = hx + s * (sk.hrx + 1);
+        const d = Math.abs(x - hinge);
+        const edge = !src.isOpaque(x, y - 1) || !src.isOpaque(x, y + 1);
+        q.set(x, y, d <= 0 ? CREASE : edge ? PAL.earth3 : (d + (y >> 2)) % 4 === 0 ? PAL.earth3 : HEART);
+      }
+  } else bands(q, BARK, light, 1, 1, { top: 1, bottom: 1 });
   f.comp.add(q, Part.door, { out: PAL.ink });
 }
 
@@ -685,7 +775,7 @@ function drawClub(f: Frame): void {
   // a broken branch stub near the head
   const st = polar(g, o.ca, CLUB_LEN * 0.68);
   limb(q, [st, polar(st, o.ca - 58, 4)], 2.4, 2, CLUB.M);
-  bands(q, CLUB, light, 2, 2);
+  bands(q, CLUB, light, 1, 3);
   // knot holes (dark eyes in the wood) on the mid plane; the sawn end shows pale rings
   for (const [t, off] of [[0.5, 0], [0.82, -1]] as const) {
     const c = polar(polar(g, o.ca, CLUB_LEN * t), o.ca + 90, off);
@@ -729,7 +819,14 @@ function drawNearArm(f: Frame): void {
   }
   bands(q, ROOT, light, 2, 2);
   twistSeams(q, pts, 7, ROOT, 4, 0);
+  const { p, comp } = f;
+  const gap: number[] = [];
+  for (let y = 1; y < H - 1; y++)
+    for (let x = 1; x < W - 1; x++)
+      if (!q.isOpaque(x, y) && comp.id[y * W + x] === Part.club && (q.isOpaque(x - 1, y) || q.isOpaque(x + 1, y) || q.isOpaque(x, y - 1) || q.isOpaque(x, y + 1))) gap.push(x, y);
   f.comp.add(q, Part.nearArm, { out: CREASE });
+  // the hand grips the club: a 1-px ink gap between the root fingers and the charred log (two values, two shapes)
+  for (let i = 0; i < gap.length; i += 2) p.set(gap[i], gap[i + 1], PAL.ink);
 }
 
 function drawNearMoss(f: Frame): void {
@@ -972,14 +1069,14 @@ function knotLight(f: Frame): void {
   if (o.knots <= 0.05 || o.collapse > 0.7) return;
   const [hx, hy] = sk.hollow;
   const ok = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H && comp.id[y * W + x] === Part.trunk;
-  const spots: Pt[] = [[hx - 2, hy + 2], [hx + 1, hy + 3]];
+  const spots: Pt[] = [[hx - 5, hy + sk.hry + 4], [hx + 2, hy + sk.hry + 7]];
   const n = Math.min(2, Math.ceil(o.knots - 0.05));
   for (let i = 0; i < n; i++) {
     const [x, y] = spots[i];
     const hot = o.knotHot > 0.5 && i === n - 1;
     // a 2×2 knot light, a 1-px ring in the hollow's dark (white heart on the flare)
     for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]] as const) if (ok(x + dx, y + dy)) p.set(x + dx, y + dy, hot && dx === 0 && dy === 0 ? PAL.white : PAL.void4);
-    for (const [dx, dy] of [[-1, 0], [2, 0], [0, -1], [1, -1], [-1, 1], [2, 1], [0, 2], [1, 2]] as const) if (ok(x + dx, y + dy) && (hot || (dx + dy) % 2 === 0)) p.set(x + dx, y + dy, hot ? PAL.void3 : PAL.void2);
+    for (const [dx, dy] of [[-1, 0], [2, 0], [0, -1], [1, -1], [-1, 1], [2, 1], [0, 2], [1, 2]] as const) if (ok(x + dx, y + dy)) p.set(x + dx, y + dy, hot ? PAL.void3 : (dx + dy) % 2 === 0 ? PAL.void2 : PAL.earth0);
   }
 }
 

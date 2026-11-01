@@ -377,25 +377,73 @@ export const HOLLOW_OGRE_RECIPES = {
       });
     },
   },
-  /** Effect (per seed): the seed's arc through the air — the rising round sine "fiuuu". */
+  /** Effect (per seed): the seed's arc through the air — the rising round sine "fiuuu" and a sparkling tail. */
   hoSeed: {
     cap: 4,
     gap: 0.01,
     verb: 0.55,
     play(v) {
-      const D = 0.42;
-      // the arc: the round sine "fiuuu" (+ a detuned twin and a quiet fifth above = a living, breathing light)
-      seedArc(v, 0, D, 720, 1320, 0.2, { pan: [0.35, -0.1] });
-      seedArc(v, 0.01, D - 0.01, 720 * 1.5, 1320 * 1.5, 0.045, { pan: [0.3, -0.15] });
-      // a warm hollow body an octave under it (the seed is a piece of a creature, not a spark)
-      v.tone('triangle', [[0, 360], [D * 0.7, 660, 'e'], [D, 620, 'e']], { g: [[0, 0], [D * 0.3, 0.05], [D, 0.0001, 'e']], to: v.filt('lowpass', 1200, 0.8) });
-      // the sparks it sheds: tiny pentatonic plinks scattered along the arc, climbing with it
-      const notes = [78, 80, 82, 85, 87];
-      for (let i = 0; i < 6; i++) {
-        const t = 0.04 + (i / 6) * (D - 0.08) + v.r(-0.012, 0.012);
-        const f = midiHz(notes[Math.min(notes.length - 1, Math.floor((i / 6) * notes.length + v.rnd() * 1.5))]);
-        v.tone('sine', f, { t, g: perc(0.03, 0.12, 0.002), to: v.panner(0.3 - i * 0.08) });
-      }
+      // +3 dB over round 0 (the critic: the seed was under-voiced next to the knot tok)
+      trim(v, 1.41, () => {
+        const D = 0.42;
+        // the arc: the round sine "fiuuu" (+ a detuned twin and a quiet fifth above = a living, breathing light)
+        seedArc(v, 0, D, 720, 1320, 0.2, { pan: [0.35, -0.1] });
+        seedArc(v, 0.01, D - 0.01, 720 * 1.5, 1320 * 1.5, 0.045, { pan: [0.3, -0.15] });
+        // a warm hollow body an octave under it (the seed is a piece of a creature, not a spark)
+        v.tone('triangle', [[0, 360], [D * 0.7, 660, 'e'], [D, 620, 'e']], { g: [[0, 0], [D * 0.3, 0.05], [D, 0.0001, 'e']], to: v.filt('lowpass', 1200, 0.8) });
+        // the sparks it sheds: tiny pentatonic plinks scattered along the arc, climbing with it
+        const notes = [78, 80, 82, 85, 87];
+        for (let i = 0; i < 6; i++) {
+          const t = 0.04 + (i / 6) * (D - 0.08) + v.r(-0.012, 0.012);
+          const f = midiHz(notes[Math.min(notes.length - 1, Math.floor((i / 6) * notes.length + v.rnd() * 1.5))]);
+          v.tone('sine', f, { t, g: perc(0.03, 0.12, 0.002), to: v.panner(0.3 - i * 0.08) });
+        }
+        // the sparkling tail that follows it in (the lingering trail): a quick shimmer of high pentatonic glints,
+        // falling a little and thinning out, panned to where the seed lands
+        const tail = [90, 87, 89, 85, 87, 82, 85];
+        tail.forEach((m, i) => {
+          const t = D - 0.06 + i * 0.026 + v.r(-0.006, 0.006);
+          v.tone('sine', midiHz(m), { t, g: perc(0.022 * (1 - i / 9), 0.09, 0.001), to: v.panner(-0.1 - i * 0.03) });
+          v.tone('triangle', midiHz(m) * 2.01, { t: t + 0.003, g: perc(0.006, 0.05, 0.001), to: v.panner(-0.1 - i * 0.03) });
+        });
+      });
+    },
+  },
+  /** Guard: a blow lands on the club barred across the belly — a dead charred-wood knock, chips, the roots plant. */
+  hoBlock: {
+    cap: 2,
+    gap: 0.1,
+    verb: 0.3,
+    duck: 0.4,
+    play(v) {
+      // the knock: the knot tok a fourth down with a short decay (charred, dense wood), a body thump
+      tok(v, 0, midiHz(61), 0.32, { dec: 0.12, cavity: 0.35 });
+      thump(v, 0, 140, 60, 0.45, 0.14, { drive: 1.8 });
+      // bark chips skitter off it
+      crack(v, 0.004, 0.35, { hp: 1800, lp: 7500, n: 2, gap: 0.01, dec: 0.01 });
+      v.crackle({ t: 0.03, d: 0.3, n: 10, g: 0.09, f: 3000, q: 1.2, curve: 1.4, dec: 0.006 });
+      // the roots dig in: a short rustle and a strained creak
+      rustle(v, 0.03, 0.18, 0.12, { c0: 1000, c1: 1600, rate: 34 });
+      creak(v, 0.05, 0.22, 0.12, { f0: 190, f1: 170, rate: 42 });
+    },
+  },
+  /** Idle (very quiet, sparse): the log creaks once as it settles — the 180 Hz slow glide. */
+  hoIdleCreak: {
+    cap: 1,
+    gap: 1.5,
+    verb: 0.3,
+    play(v) {
+      creak(v, 0, 0.42, 0.07, { f0: 172, f1: 188, rate: 26 });
+    },
+  },
+  /** Idle (very quiet, sparse): the firefly leaves the hollow — one soft high tick and a glint. */
+  hoFirefly: {
+    cap: 1,
+    gap: 1.5,
+    verb: 0.5,
+    play(v) {
+      v.tone('sine', midiHz(94), { g: perc(0.07, 0.07, 0.001) });
+      v.tone('sine', midiHz(99), { t: 0.05, g: perc(0.035, 0.09, 0.001) });
     },
   },
   /** Effect (per seed): the seed lands on the root tip and the tendril wraps it — a soft high tok, a dry rustle. */

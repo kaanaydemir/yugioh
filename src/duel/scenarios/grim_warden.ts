@@ -65,6 +65,24 @@ const scenarios: Record<string, Scenario> = {
     0,
     0,
   ),
+  // the drain where BOTH live (critic r2: the give-back branch had no scenario): Muhafız Tılsımı (guardian_charm) saves
+  // the drained Kor Kurdu once — the warden survives, the light flows back into the wolf
+  gwGiveBack: battle(
+    'Hortlak Muhafız drains a charmed Kor Kurdu (1700 → 1300): the charm breaks instead, the light flows back',
+    0,
+    { monsters: ['grim_warden'] },
+    { monsters: ['ember_wolf'], spellTraps: [{ id: 'guardian_charm', equippedTo: 0 }] },
+    0,
+    0,
+  ),
+  gwGiveBackP2: battle(
+    'P2 Hortlak Muhafız drains a charmed Kor Kurdu: both live, the light flows back',
+    1,
+    { monsters: ['grim_warden'] },
+    { monsters: ['ember_wolf'], spellTraps: [{ id: 'guardian_charm', equippedTo: 0 }] },
+    0,
+    0,
+  ),
   // the drain after a trap window the defender declines (activate in batch 2: the hold is kept again)
   gwDrainDecline: battle(
     'Hortlak Muhafız attacks Kor Kurdu; the defender declines its set trap; the drain follows',

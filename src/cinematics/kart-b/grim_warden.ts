@@ -46,7 +46,6 @@ import { ATTRIBUTE_RAMP, PAL, RAMPS, type Ramp } from '../../art/palette';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { GameEvent } from '../../engine/types';
 import { DEPTH, LOOK_V3, type XY, unitDepth, zoneXY } from '../../view/layout';
-import { lightFlash, lightPool, type LightHandle } from '../../view/light';
 import { Raster } from '../../vfx/setpieces';
 import { Sparks, animate, onFrame, sleep } from '../../vfx/combat';
 import { shake } from '../../vfx/core';
@@ -60,9 +59,8 @@ import { behindBodies, cardLeaves } from '../_v3/card';
 import { deathStartFrom, takePlannedEntry } from '../_v3/posematch';
 import { planGuardBreak, runGuardBreak, showsGuard } from '../_v3/guardbreak';
 import { contactFlash } from '../_v3/flash';
-import { impactNumber } from '../_v3/number';
 import { sourceOwnsDeath } from '../strikes-b/_kit';
-import { TAU, graveMound, gravestone, knockOut, lanternTint, skullMist, soulFade, soulThread, type LanternTint, type SoulFade } from './grim_warden-fx';
+import { TAU, floorFlash, floorGlow, graveMound, gravestone, knockOut, lanternTint, skullMist, soulFade, soulThread, statDrop, type FloorGlow, type LanternTint, type SoulFade } from './grim_warden-fx';
 
 type Ev<T extends GameEvent['type']> = Extract<GameEvent, { type: T }>;
 type Ctx<T extends GameEvent['type']> = CinematicContext<Ev<T>>;
@@ -119,7 +117,9 @@ interface Drain {
   fade: SoulFade;
   tint: LanternTint;
   /** The lantern's light on the floor (in the stolen colour). */
-  light: LightHandle;
+  light: FloorGlow;
+  /** gwKeep already sounded (the target died with its light in the lantern). */
+  keptSounded: boolean;
   off: () => void;
 }
 const drains = new Map<number, Drain>();
@@ -132,11 +132,18 @@ function endDrain(d: Drain): void {
   void d.light.fadeOut(200);
 }
 
-/** A soft follow light at the lantern (the stepped light layer; v3 only). */
-function lanternLight(sc: Phaser.Scene, u: MonsterUnit, color: number, k: number): LightHandle {
-  const h = lightPool(sc, u.home.x, u.home.y, { color, radius: 18, floorY: u.home.y, air: 0.8, intensity: k, anim: 'flicker', fadeIn: 60 });
-  h.follow(() => (live(u) && u.sprite.visible ? livePoint(u, 'muzzle') : null), { floorY: () => u.worldPoint('feet').y });
-  return h;
+/**
+ * The lantern's light on the floor under its live point (critic r2 blocker: the shared stepped light turned leaf light on
+ * the Neon Tower's graphite slots into an opaque leaf0 stain over the grid lines — this one only ever ADDS bright pixels).
+ */
+function lanternLight(sc: Phaser.Scene, u: MonsterUnit, ramp: Ramp, k: number, radius = 20): FloorGlow {
+  const h = floorGlow(sc, { x: u.home.x, floorY: u.home.y, ramp, radius, intensity: k });
+  return h.follow(() => (live(u) && u.sprite.visible ? livePoint(u, 'muzzle') : null), () => u.worldPoint('feet').y);
+}
+
+/** A floor flash under an air point (lighten-only dither; replaces the stepped lightFlash for the same reason). */
+function flash(sc: Phaser.Scene, x: number, floorY: number, ramp: Ramp, radius: number, ms: number, k = 1.2): void {
+  floorFlash(sc, Math.round(x), Math.round(floorY), ramp, radius, ms, k);
 }
 
 /** Pitch factor of a soul's tone (gwThread) by its attribute: fire / light high, earth / water low. */
@@ -159,7 +166,7 @@ async function graveRiseV3(S: Stage): Promise<void> {
   // the headstone stands at the mound's back rim (its foot hidden by the dome), on the far side of the fall
   const stoneAt = { x: home.x - dir * 4, y: home.y - ry + 1 };
   const stone = S.own(gravestone(sc, stoneAt, (-dir as 1 | -1), S.depth - 0.6));
-  const pool = S.glow({ color: PAL.leaf3, radius: rx + 12, intensity: 0, anim: 'flicker', fadeIn: 0 });
+  const pool = S.own(floorGlow(sc, { x: home.x, floorY: home.y, ramp: LEAF, radius: rx + 12, intensity: 0 }));
   const motes = new Sparks(sc, S.depth + 0.5);
   S.own({ destroy: () => motes.release() });
   let seeping = true;
@@ -196,9 +203,11 @@ async function graveRiseV3(S: Stage): Promise<void> {
   const finale = () => {
     if (finaled) return;
     finaled = true;
-    void lightFlash(sc, S.coreRest.x, S.coreRest.y, PAL.leaf3, S.big ? 52 : 40, 520, { floorY: home.y, ring: true, intensity: 0.9 });
+    flash(sc, home.x, home.y, LEAF, S.big ? 52 : 40, 520, 1.4);
     S.finale({ ring: S.big ? 88 : 56, ramp: LEAF, freezeMs: S.big ? 50 : 0, sfx: null });
-    play('summonBurst', { volume: S.big ? 0.4 : 0.28 });
+    // critic r2: the finale's own sound (the shared cut-in exit fires a generic summonBurst on the same tick: faded out)
+    fadeSnd(['summonBurst'], 40);
+    play('gwFinale', { volume: S.big ? 0.95 : 0.7, pan });
   };
   const pose = S.pose({
     ramp: LEAF,
@@ -315,59 +324,69 @@ async function drainV3(ctx: Ctx<'activate'>): Promise<void> {
   u.posed = true;
   const ramp = ATTRIBUTE_RAMP[t.attribute];
   const pan = panAt(u.home.x);
-  // the drain object lives on into the battle (the strike burns in its colour; the battle hook ends it)
+  const tPan = panAt(t.home.x);
+  // the drain object lives on into the battle (the strike burns in its colour; the battle hook / the death end it)
   drains.get(u.uid) && endDrain(drains.get(u.uid)!);
   const fadeT = soulFade(sc, t, ramp);
   const tint = lanternTint(sc, u, ramp);
-  const light = lanternLight(sc, u, PAL.leaf3, 0.5);
+  const light = lanternLight(sc, u, LEAF, 0.6);
+  const d: Drain = { targetUid: tUid, target: t, ramp, fade: fadeT, tint, light, keptSounded: false, off: () => undefined };
   const onDying = (x: MonsterUnit) => {
-    if (x === t) fadeT.destroy();
-    if (x === u) {
-      tint.destroy();
-      void light.fadeOut(120);
+    if (x !== t) return;
+    fadeT.destroy();
+    // the target dies with its light in the lantern: the lantern locks the colour on that beat (critic r2: gwKeep landed
+    // a second late with the card's graveyard thud)
+    if (drains.get(u.uid) === d && live(u) && !d.keptSounded) {
+      d.keptSounded = true;
+      play('gwKeep', { volume: 0.85, pan });
+      flash(sc, livePoint(u, 'muzzle').x, u.home.y, ramp, 20, 260, 1);
     }
   };
   sc.events.on('v3:dying', onDying);
-  const d: Drain = { targetUid: tUid, target: t, ramp, fade: fadeT, tint, light, off: () => sc.events.off('v3:dying', onDying) };
+  d.off = () => sc.events.off('v3:dying', onDying);
   drains.set(u.uid, d);
-  // ---- the special: rear back, thrust the lantern out, inhale; play up to the held drinking frame
+  // ---- the special: crouch and gather the chain (gwReach: the pendulum creaks, the thrust), RAISE the lantern high
+  // over the hood, inhale (gwInhale), then play up to the held drinking frame
   const REL = u.markFrame('special', 'release', 5);
   const HOLD = Math.min(u.frameCount('special') - 2, REL + 2);
   const toRel = u.rangeMs('special', 0, REL);
+  atFrame(u, 'special', 1, () => play('gwReach', { volume: 0.95, pan }), { late: false });
+  atFrame(u, 'special', Math.max(2, REL - 1), () => play('gwInhale', { volume: 0.9, pan }), { late: false });
   const posed = u.playRange('special', 0, HOLD);
   // the target feels it coming: its outline starts to glow in its own colour before the thread
   void animate(sc, toRel, (k) => fadeT.rim(0.25 * k));
   await sleep(sc, toRel);
-  // ---- release: the thread is drawn out of the target, arcs high over both, and dives into the lantern
+  // ---- release: the thread is drawn straight up out of the target, crosses over the warden's raised lantern and
+  // dives into it from above
   const soulAt = () => (live(t) && t.sprite.visible ? rint(t.core()) : rint(t.home));
   const lantern = () => rint(livePoint(u, 'muzzle'));
-  const thread = soulThread(sc, soulAt, lantern, ramp, DEPTH.FX + 1, 30);
+  const thread = soulThread(sc, soulAt, lantern, ramp, DEPTH.FX + 1, 22);
   const siphon = start('gwSiphon', { volume: 1, pan });
-  play('gwThread', { volume: 0.75, pan: panAt(t.home.x), pitch: SOUL_PITCH[t.attribute] ?? 1 });
-  // the light layer: a pool riding the arc's apex (the streak over the floor) and a flare at the lantern
-  const apex = lightPool(sc, u.home.x, u.home.y, { color: ramp[3], radius: 26, floorY: u.home.y, air: 1, intensity: 0, anim: 'flicker', fadeIn: 0 });
-  apex.follow(() => (thread ? thread.at(0.5) : null), { floorY: () => Math.max(u.home.y, t.home.y) });
-  const tgtGlow = lightPool(sc, t.home.x, t.home.y, { color: ramp[3], radius: 22, floorY: t.home.y, air: 0.6, intensity: 0, anim: 'flicker', fadeIn: 0 });
-  tgtGlow.follow(() => (live(t) && t.sprite.visible ? t.core() : null), { floorY: () => t.home.y });
-  void lightFlash(sc, lantern().x, lantern().y, PAL.leaf4, 22, 220, { floorY: u.home.y, air: 0.9, intensity: 0.9 });
+  play('gwThread', { volume: 1, pan: tPan, pitch: SOUL_PITCH[t.attribute] ?? 1 });
+  // the light layer (lighten-only): a pool under the arc's apex and a glow under the target, both in the stolen colour
+  const apex = floorGlow(sc, { x: u.home.x, floorY: u.home.y, ramp, radius: 22, intensity: 0 });
+  apex.follow(() => (thread ? thread.at(0.5) : null), () => Math.max(u.home.y, t.home.y));
+  const tgtGlow = floorGlow(sc, { x: t.home.x, floorY: t.home.y, ramp, radius: 22, intensity: 0 });
+  tgtGlow.follow(() => (live(t) && t.sprite.visible ? t.core() : null), () => t.home.y);
+  flash(sc, lantern().x, u.home.y, LEAF, 22, 220, 1.1);
   const REACH_MS = 170;
   apex.setIntensity(0.9, REACH_MS);
-  tgtGlow.setIntensity(0.8, REACH_MS);
+  tgtGlow.setIntensity(1, REACH_MS);
   await animate(sc, REACH_MS, (k) => {
     thread.reach = k * k * (3 - 2 * k);
     fadeT.set(0.08 * k);
     fadeT.rim(0.25 + 0.35 * k);
   });
   thread.reach = 1;
-  // ---- the drain beat: −400 pops over the target and rolls on its plate, it fades, the lantern pours full
+  // ---- the drain beat: the plate rolls −400 with a small STAT mark over it (never a damage number: critic r2), the
+  // target darkens from its outline in, the lantern pours full
   showBattlePlates({ state: ctx.state, ev: { attackerUid: ev.uid, targetUid: tUid } }, u, t);
-  play('gwDebuff', { volume: 0.85, pan: panAt(t.home.x) });
-  const tc = rint(t.core());
-  // the big −400 pops on the target's FAR side (clear of the arc and the lantern), level with its body
-  const away = Math.sign(t.home.x - u.home.x) || (u.flipX ? -1 : 1);
-  void impactNumber(sc, tc.x + away * 26, tc.y - 2, 400, { size: 2, rise: 12 });
-  void lightFlash(sc, lantern().x, lantern().y, ramp[3], 30, 320, { floorY: u.home.y, air: 0.9, intensity: 1.1 });
-  light.setColor(ramp[3]).setIntensity(1.3, 200);
+  play('gwDebuff', { volume: 0.85, pan: tPan });
+  const b = t.badge.image;
+  const mark = b && b.active && b.visible ? { x: Math.round(b.x), y: Math.round(b.y) - 8 } : { x: Math.round(t.home.x), y: Math.round(t.home.y) - 6 };
+  void statDrop(sc, mark, ramp, 460, DEPTH.FX_TOP + 2);
+  flash(sc, lantern().x, u.home.y, ramp, 30, 320, 1.3);
+  light.setRamp(ramp).setIntensity(1.2, 200);
   drainSpark(sc, t);
   await posed;
   holdFrameTremble(sc, u, HOLD, DRINK_MS);
@@ -380,10 +399,12 @@ async function drainV3(ctx: Ctx<'activate'>): Promise<void> {
   });
   tint.set(1);
   thread.fill = 1;
-  // ---- the thread thins in steps and snaps into the glass
-  siphon.stop(110);
+  // ---- the thread thins in steps and snaps into the glass (gwSnap: the click, the swell cut dead, the chain creaks
+  // as the lantern swings back down — no silent hole before the strike's charge)
+  siphon.stop(90);
+  play('gwSnap', { volume: 0.95, pan });
   apex.setIntensity(0, 120);
-  tgtGlow.setIntensity(0.25, 160);
+  tgtGlow.setIntensity(0.3, 160);
   await animate(sc, 110, (k) => {
     thread.width = 1 - k;
     fadeT.rim(0.25 * (1 - k));
@@ -391,7 +412,7 @@ async function drainV3(ctx: Ctx<'activate'>): Promise<void> {
   thread.destroy();
   void apex.fadeOut(80);
   void tgtGlow.fadeOut(260);
-  void lightFlash(sc, lantern().x, lantern().y, ramp[4], 18, 200, { floorY: u.home.y, air: 1, intensity: 1 });
+  flash(sc, lantern().x, u.home.y, ramp, 18, 200, 1.2);
   light.setIntensity(0.9, 200);
   // ---- back to the strike's charge pose (the recovery a little brisker: the strike follows)
   await u.playRange('special', HOLD + 1, u.frameCount('special') - 1, { timeScale: 1.35 });
@@ -450,23 +471,23 @@ async function afterBattle(ctx: Ctx<'battle'>, u: MonsterUnit | null, d: Drain):
     const thread = soulThread(sc, () => rint(t.core()), () => rint(livePoint(u, 'muzzle')), d.ramp, DEPTH.FX + 1);
     thread.flow = -1;
     thread.reach = 1;
-    thread.width = 0.5;
-    play('gwGiveBack', { volume: 0.8, pan: panAt(t.home.x) });
-    await animate(sc, 260, (k) => {
+    thread.width = 0.9;
+    play('gwGiveBack', { volume: 1, pan: panAt(t.home.x) });
+    await animate(sc, 380, (k) => {
       d.fade.set(0.3 * (1 - k));
       d.tint.set(1 - k);
-      thread.width = k < 0.7 ? 0.5 : 0.2;
+      thread.width = k < 0.6 ? 0.9 : k < 0.85 ? 0.5 : 0.2;
     });
     thread.destroy();
     endDrain(d);
     d.tint.destroy();
-    void lightFlash(sc, t.core().x, t.core().y, d.ramp[3], 22, 220, { floorY: t.home.y, intensity: 0.6 });
+    flash(sc, t.core().x, t.home.y, d.ramp, 22, 240, 1.1);
     return;
   }
   // the target died: the lantern keeps its colour until the turn ends
   endDrain(d);
-  play('gwKeep', { volume: 0.7, pan: panAt(u.home.x) });
-  const light = lanternLight(sc, u, d.ramp[3], 0.6);
+  if (!d.keptSounded) play('gwKeep', { volume: 0.8, pan: panAt(u.home.x) });
+  const light = lanternLight(sc, u, d.ramp, 0.8);
   kept.set(u.uid, d.ramp);
   u.setAura('grimLantern', {
     destroy: () => {
@@ -514,8 +535,36 @@ if (LOOK_V3) {
  * watcher per scene (started by the first event it sees, v3 only) keeps a pool glued to every warden's live lantern
  * point; it takes the stolen colour while the lantern holds one and leaves with the unit.
  */
-const idlePools = new Map<number, { u: MonsterUnit; h: LightHandle; color: number }>();
+const idlePools = new Map<number, { u: MonsterUnit; h: FloorGlow; ramp: Ramp }>();
+/** Per warden: the last anim seen (hit / guard sounds on the transition), the idle creak's swing counter. */
+const unitState = new WeakMap<MonsterUnit, { anim: string | null; frame: number; swings: number; lastCreak: number }>();
+const HIT_ANIMS = new Set(['hit', 'hitHeavy', 'hitMagic']);
 let poolScene: Phaser.Scene | null = null;
+
+/**
+ * The warden's own voice when it is STRUCK or GUARDS (critic r2: only shared sounds played — the lantern flying wild on
+ * its chain is the hit anims' readable signature, so it sounds): gwJangle on the first frame of hit / hitHeavy /
+ * hitMagic and on the guard's struck beat (the unit's guardHit), quieter as it braces into the guard.
+ */
+const lastJangle = new WeakMap<MonsterUnit, number>();
+function jangle(u: MonsterUnit, volume: number): void {
+  // one jangle per blow (the guard's struck beat and its recoil anim arrive on neighbouring ticks)
+  const now = u.scene.time.now;
+  if (now - (lastJangle.get(u) ?? -1e9) < 260) return;
+  lastJangle.set(u, now);
+  play('gwJangle', { volume, pan: panAt(u.sprite.x) });
+}
+const guarded = new WeakSet<MonsterUnit>();
+function hookGuard(u: MonsterUnit): void {
+  if (guarded.has(u)) return;
+  guarded.add(u);
+  const orig = u.guardHit.bind(u);
+  (u as { guardHit: MonsterUnit['guardHit'] }).guardHit = ((o: Parameters<MonsterUnit['guardHit']>[0]) => {
+    jangle(u, 0.6);
+    return orig(o);
+  }) as MonsterUnit['guardHit'];
+}
+
 function watchLanterns(ctx: CinematicContext): void {
   const sc = ctx.scene;
   if (poolScene === sc) return;
@@ -523,27 +572,54 @@ function watchLanterns(ctx: CinematicContext): void {
   for (const p of idlePools.values()) p.h.destroy();
   idlePools.clear();
   let acc = 250;
+  let clock = 0;
   onFrame(sc, (dt) => {
     if (poolScene !== sc || !sc.sys.isActive()) return false;
+    clock += dt;
+    const field = ctx.views.field;
+    // ---- every tick: the struck / guard sounds and the sparse idle creak (anim transitions)
+    for (const u of field.units()) {
+      if (u.cardId !== ID || u.retired || !u.sprite.active) continue;
+      hookGuard(u);
+      const fi = u.frameInfo();
+      let st = unitState.get(u);
+      if (!st) {
+        st = { anim: fi.anim, frame: fi.frame, swings: 0, lastCreak: clock };
+        unitState.set(u, st);
+        continue;
+      }
+      if (fi.anim !== st.anim) {
+        if (fi.anim && HIT_ANIMS.has(fi.anim)) jangle(u, fi.anim === 'hit' ? 0.6 : 0.75);
+        else if (fi.anim === 'toGuard') jangle(u, 0.35);
+      } else if (fi.anim === 'idle' && fi.frame !== st.frame && (fi.frame === 5 || fi.frame === 15)) {
+        // decision 3: a very quiet pendulum creak at the end of every second swing, never closer than 3.6 s
+        st.swings++;
+        if (st.swings % 2 === 0 && clock - st.lastCreak > 3600) {
+          st.lastCreak = clock;
+          play('gwIdle', { volume: 0.16, pan: panAt(u.sprite.x) });
+        }
+      }
+      st.anim = fi.anim;
+      st.frame = fi.frame;
+    }
     acc += dt;
     if (acc < 120) return true;
     acc = 0;
-    const field = ctx.views.field;
     const seen = new Set<number>();
     for (const u of field.units()) {
       if (u.cardId !== ID || u.retired || !u.sprite.active || u.frameInfo().anim === 'death') continue;
       seen.add(u.uid);
-      const want = (drains.get(u.uid)?.ramp ?? kept.get(u.uid) ?? LEAF)[3];
+      const want = drains.get(u.uid)?.ramp ?? kept.get(u.uid) ?? LEAF;
       let p = idlePools.get(u.uid);
       if (!p || p.u !== u) {
         p?.h.destroy();
-        const h = lightPool(sc, u.home.x, u.home.y, { color: want, radius: 26, floorY: u.home.y, air: 0.6, intensity: 1.15, anim: 'flicker', fadeIn: 300 });
-        h.follow(() => (live(u) && u.sprite.visible ? livePoint(u, 'muzzle') : null), { floorY: () => u.worldPoint('feet').y });
-        p = { u, h, color: want };
+        const h = floorGlow(sc, { x: u.home.x, floorY: u.home.y, ramp: want, radius: 24, intensity: 0 }).setIntensity(1, 300);
+        h.follow(() => (live(u) && u.sprite.visible ? livePoint(u, 'muzzle') : null), () => u.worldPoint('feet').y);
+        p = { u, h, ramp: want };
         idlePools.set(u.uid, p);
-      } else if (p.color !== want) {
-        p.h.setColor(want);
-        p.color = want;
+      } else if (p.ramp !== want) {
+        p.h.setRamp(want);
+        p.ramp = want;
       }
     }
     for (const [uid, p] of [...idlePools]) {
@@ -570,6 +646,8 @@ if (LOOK_V3) registerObserver((_ev, ctx) => watchLanterns(ctx));
  * ages — with afterimage lanterns (ink-cased, ramp glass) left on the circle and a few shed embers. Painted in the
  * lantern's current colour (the stolen ramp after a drain, else leaf).
  */
+/** Ms a key of the whirl smear lives (critic r2: long enough that a full turn closes into a readable ring at 1×). */
+const TRAIL_MS = 340;
 function whirlTrail(sc: Phaser.Scene, u: MonsterUnit, ramp: Ramp, untilF: number): () => void {
   const r = new Raster(sc, 0, 0, 640, 360, u.sprite.depth + 0.3);
   const embers = new Sparks(sc, u.sprite.depth + 0.35);
@@ -580,7 +658,7 @@ function whirlTrail(sc: Phaser.Scene, u: MonsterUnit, ramp: Ramp, untilF: number
   const stop = onFrame(sc, (dt) => {
     if (!alive && !pts.length && !ghosts.length) return false;
     const fi = u.frameInfo();
-    const whirling = alive && fi.anim === 'attack' && fi.frame >= 1 && fi.frame <= untilF && u.sprite.visible;
+    const whirling = alive && fi.anim === 'attack' && fi.frame <= untilF && (fi.frame >= 1 || pts.length > 0) && u.sprite.visible;
     const c = livePoint(u, 'hand');
     if (whirling) {
       const m = livePoint(u, 'muzzle');
@@ -607,8 +685,8 @@ function whirlTrail(sc: Phaser.Scene, u: MonsterUnit, ramp: Ramp, untilF: number
     }
     for (const q of pts) q.age += dt;
     for (const q of ghosts) q.age += dt;
-    while (pts.length > 1 && pts[0].age > 240 && pts[1].age > 240) pts.shift();
-    if (pts.length === 1 && pts[0].age > 240) pts.shift();
+    while (pts.length > 1 && pts[0].age > TRAIL_MS && pts[1].age > TRAIL_MS) pts.shift();
+    if (pts.length === 1 && pts[0].age > TRAIL_MS) pts.shift();
     while (ghosts.length && ghosts[0].age > 130) ghosts.shift();
     r.img.setDepth(u.sprite.depth + 0.3);
     r.draw((g) => {
@@ -623,8 +701,8 @@ function whirlTrail(sc: Phaser.Scene, u: MonsterUnit, ramp: Ramp, untilF: number
           const rad = lerp(p0.rad, p1.rad, t);
           // age along the band: the head (newest end) young, the tail old
           const age = lerp(p0.age, p1.age, t);
-          if (age > 240) continue;
-          const half = age < 70 ? 2 : age < 150 ? 1 : 0;
+          if (age > TRAIL_MS) continue;
+          const half = age < 90 ? 2 : age < 200 ? 1 : 0;
           if (half === 0 && (k & 1)) continue;
           for (let d = -half; d <= half; d++) {
             const x = Math.round(c.x + Math.cos(a) * (rad + d));
@@ -830,7 +908,6 @@ async function scytheV3(s: StrikeArgs): Promise<void> {
     charge.stop(40);
     play('gwRelease', { volume: 0.85, pan });
   };
-  if (REL - 1 > f0) atFrame(u, 'attack', REL - 1, () => u.frameInfo().frame === REL - 1 && play('gwSwing', { volume: 0.8, pan }), { late: false });
   atFrame(u, 'attack', REL, rel, { late: false });
   atFrame(u, 'attack', CON + 2, () => play('gwChop', { volume: loses ? 0.5 : 0.8, pan: panAt(u.sprite.x) }), { late: false });
   // ---- geometry: where the warden must stand for the contact frame's lantern to land on the target
@@ -854,36 +931,54 @@ async function scytheV3(s: StrikeArgs): Promise<void> {
   if ((feet.x - home.x) * nd.x + (feet.y - home.y) * nd.y < 0) feet = home;
   feet = rint(feet);
   const trail = whirlTrail(sc, u, ramp, REL);
-  const light = lanternLight(sc, u, ramp[3], 0.4);
-  light.setIntensity(1, u.rangeMs('attack', f0, REL));
-  // ---- play to the contact frame and hold it; glide on the whirl (from frame 2 to the contact)
-  const toCon = u.rangeMs('attack', f0, CON);
-  const glide0 = u.rangeMs('attack', f0, Math.max(f0, 2));
-  void u.playRange('attack', f0, CON);
+  const light = lanternLight(sc, u, ramp, 0.5);
+  // ---- critic r2 "tam daire": the lantern goes round TWICE — a quick spin-up turn (f1 → f4, back through the low f0)
+  // and the big final turn with its apex hold — every turn creaks the pendulum chain and whooshes (gwSwing), the
+  // warden gliding toward the target over both
+  const SPIN = 2;
+  const spinFrom = Math.max(1, f0);
+  const spinMs = f0 <= 4 ? Math.round(u.rangeMs('attack', spinFrom, 4) / SPIN) + Math.round(u.frameMs('attack', 0) / SPIN) : 0;
+  const finalMs = u.rangeMs('attack', 1, CON);
+  light.setIntensity(1.1, spinMs + u.rangeMs('attack', 1, REL));
+  const glide0 = Math.round(spinMs * 0.35);
+  const toCon = spinMs + finalMs;
   const stopGlideTrail = glideTrail(sc, u, ramp);
+  const playing = (async () => {
+    if (spinMs > 0) {
+      play('gwSwing', { volume: 0.6, pan, pitch: 1.12 });
+      await u.playRange('attack', spinFrom, 4, { timeScale: SPIN });
+      await u.playRange('attack', 0, 0, { timeScale: SPIN });
+    }
+    if (REL - 1 > 1) atFrame(u, 'attack', REL - 1, () => play('gwSwing', { volume: 0.85, pan }), { late: false });
+    await u.playRange('attack', spinMs > 0 ? 1 : f0, CON);
+  })();
   await sleep(sc, glide0);
   const gms = Math.max(60, toCon - glide0);
   await animate(sc, gms, (k) => {
     const e = 0.5 - 0.5 * Math.cos(Math.PI * k);
     placeFeet(u, { x: lerp(home.x, feet.x, e), y: lerp(home.y, feet.y, e) });
   });
+  await Promise.race([playing, sleep(sc, 120)]);
   placeFeet(u, feet);
   rel();
   // ---- contact: the lantern smashes (the battle stages the hit-stop, the number, the reactions)
   const at = rint(livePoint(u, 'muzzle'));
   const floorY = s.target ? s.target.home.y : s.toGround.y;
   if (s.direct) {
+    // the lantern bursts at the chain's end and throws a soul bolt; the bolt's OWN hit lands on the duelist with the
+    // number (critic r2: the impact sound played 117 ms early at the lantern, the duelist got only shared sounds)
     soulBurst(sc, at, u.home.y, ramp, true, DEPTH.FX + 2);
-    play('gwImpact', { volume: 0.55, pan: panAt(at.x) });
     await soulBolt(sc, at, s.to, ramp);
     s.impact(s.to);
-    void lightFlash(sc, s.to.x, s.to.y, ramp[3], 30, 320, { floorY: s.toGround.y, intensity: 0.9 });
+    play('gwBoltHit', { volume: 1, pan: panAt(s.to.x) });
+    soulBurst(sc, rint(s.to), s.toGround.y, ramp, false, DEPTH.FX_TOP - 1);
+    flash(sc, s.to.x, s.toGround.y, ramp, 30, 320, 1.3);
   } else {
     s.impact(at);
-    play('gwImpact', { volume: s.blocked ? 0.6 : 0.85, pan: panAt(at.x) });
+    play('gwImpact', { volume: s.blocked ? 0.75 : 1, pan: panAt(at.x) });
     const victim = s.target && s.target.sprite.active && s.target.sprite.visible ? s.target.sprite : null;
     soulBurst(sc, at, floorY, ramp, s.blocked, victim ? victim.depth + 0.4 : DEPTH.FX + 2);
-    void lightFlash(sc, at.x, at.y, ramp[3], s.blocked ? 28 : 40, 360, { floorY, air: 0.8, intensity: 1 });
+    flash(sc, at.x, floorY, ramp, s.blocked ? 28 : 40, 360, 1.3);
   }
   stopGlideTrail();
   trail();
@@ -950,10 +1045,14 @@ async function emptyShroudV3(ctx: Ctx<'destroy'>): Promise<void> {
   const home = tile ? { x: tile.home.x, y: tile.home.y } : zoneXY(ev.player, 'monster', ev.zone);
   u.badge.setVisible(false);
   u.posed = true;
-  // a kept lantern colour dies with it (the skull mist leaves in that colour)
+  // a kept lantern colour dies with it (the skull mist leaves in that colour). Critic r2 "the light returns": when the
+  // warden dies in a drain whose target LIVES, the lantern keeps the stolen colour until it shatters, the stolen light
+  // then flows back into the target, and the skull mist leaves GREEN (the warden's own soul)
   const keptAura = kept.has(u.uid);
   const d = drains.get(u.uid);
+  const giveBack = !!d && live(d.target) !== null && d.target.sprite.visible && d.target.frameInfo().anim !== 'death';
   const ramp: Ramp = d ? d.ramp : (kept.get(u.uid) ?? LEAF);
+  const soulRamp: Ramp = giveBack ? LEAF : ramp;
   kept.delete(u.uid);
   const onBorn = typeof ctx.hints.onBorn === 'function' ? (ctx.hints.onBorn as () => void) : null;
   let leave: Promise<void> | null = null;
@@ -994,9 +1093,14 @@ async function emptyShroudV3(ctx: Ctx<'destroy'>): Promise<void> {
     atFrame(u, 'death', 4, () => {
       const at = lanternFloor();
       shatterGlass(sc, at, home.y);
-      void lightFlash(sc, at.x, at.y, ramp[3], 30, 300, { floorY: home.y, air: 0.8, intensity: 0.9 });
-      void skullLeaves(sc, { x: at.x, y: at.y - 2 }, ramp, u.sprite.depth + 0.6, home.y);
-      play('gwWail', { volume: 0.8, pan });
+      flash(sc, at.x, home.y, ramp, 30, 300, 1.3);
+      if (giveBack && d) {
+        // the borrowed light leaves the broken glass and runs home into the surviving target; the lantern goes green
+        d.tint.destroy();
+        void returnLight(sc, at, d, u.sprite.depth + 0.7);
+      }
+      void skullLeaves(sc, { x: at.x, y: at.y - 2 }, soulRamp, u.sprite.depth + 0.6, home.y);
+      play('gwWail', { volume: 0.9, pan });
     }, { late: false });
     // dissolve: the shroud collapses empty
     const dissolveF = u.markFrame('death', 'dissolve', 5);
@@ -1006,13 +1110,24 @@ async function emptyShroudV3(ctx: Ctx<'destroy'>): Promise<void> {
       play('gwHelm', { volume: 0.8, pan });
       dust(sc, rint(pointOf(u, 'death', Math.min(n - 1, dissolveF + 1), 'head')), 4);
     }, { late: false });
+    // the heap is never static while it waits (critic r2): soul embers drift off it, the dust settles in puffs
+    const heapLife = onFrame(sc, (dt, el) => {
+      if (!u.sprite.active || !inDeath() || u.frameInfo().frame < dissolveF + 1) return u.sprite.active && el < 3000;
+      if (R() < dt / 70) {
+        const c = rint(pointOf(u, 'death', n - 1, 'core'));
+        embersUp(sc, { x: c.x + Math.round(RR(-9, 9)), y: home.y - Math.round(RR(2, 9)) }, soulRamp, u.sprite.depth + 0.5);
+      }
+      if (R() < dt / 260) dust(sc, { x: Math.round(home.x + RR(-12, 12)), y: home.y }, 2);
+      return true;
+    });
     await until(sc, () => !u.sprite.active || (inDeath() && u.frameInfo().frame >= n - 1), u.animMs('death') + 300);
     if (u.sprite.active) await sleep(sc, u.frameMs('death', n - 1));
+    heapLife();
     if (keptAura) u.setAura('grimLantern', null);
     // the last 150 ms: the empty heap goes out in four bayer steps (the card is born on that frame)
     play('gwFade', { volume: 0.8, pan });
     burst();
-    if (u.sprite.active) await knockOut(sc, u, ramp, 150, 4);
+    if (u.sprite.active) await knockOut(sc, u, soulRamp, 150, 4);
   } catch (e) {
     console.error('[grim death] failed', e);
   } finally {
@@ -1028,6 +1143,37 @@ async function emptyShroudV3(ctx: Ctx<'destroy'>): Promise<void> {
     ctx.scene.events.emit('v3:dead', u);
   }
   await leave;
+}
+
+/** A soul ember or two drifting up off the empty heap (whole pixels, flickering out). */
+function embersUp(sc: Phaser.Scene, at: XY, ramp: Ramp, depth: number): void {
+  const sp = new Sparks(sc, depth);
+  sp.add({ x: at.x, y: at.y, vx: RR(-6, 6), vy: RR(-26, -14), drag: 1, life: RR(320, 480), colors: [ramp[4], ramp[3], ramp[2], ramp[1]], shape: 'px', fadeAt: 1, flicker: true });
+  sp.release();
+}
+
+/**
+ * The target survives the warden's death: the stolen light leaves the broken lantern as a run of soul beads arcing back
+ * into the target's core (a reverse thread, gwGiveBack), its fade steps out and a flash of its own colour lands on it.
+ */
+async function returnLight(sc: Phaser.Scene, from: XY, d: Drain, depth: number): Promise<void> {
+  const t = d.target;
+  if (!live(t)) return;
+  play('gwGiveBack', { volume: 1, pan: panAt(t.home.x) });
+  const thread = soulThread(sc, () => (live(t) ? rint(t.core()) : rint(t.home)), () => from, d.ramp, depth, 16);
+  thread.flow = -1;
+  thread.reach = 1;
+  thread.width = 0.9;
+  await animate(sc, 400, (k) => {
+    d.fade.set(0.3 * (1 - k));
+    thread.width = k < 0.6 ? 0.9 : k < 0.85 ? 0.5 : 0.2;
+  });
+  thread.destroy();
+  d.fade.destroy();
+  if (live(t)) {
+    flash(sc, t.core().x, t.home.y, d.ramp, 24, 260, 1.3);
+    embersUp(sc, rint(t.core()), d.ramp, t.sprite.depth + 0.4);
+  }
 }
 
 /** The lantern's glass on the floor: shards skitter out and blink away; a few soul sparks hop up. */
@@ -1049,8 +1195,8 @@ function shatterGlass(sc: Phaser.Scene, at: XY, floorY: number): void {
 async function skullLeaves(sc: Phaser.Scene, at: XY, ramp: Ramp, depth: number, floorY: number): Promise<void> {
   const sk = skullMist(sc, { x: at.x, y: at.y - 4 }, ramp, depth);
   sk.root = { x: at.x, y: at.y };
-  const glow = lightPool(sc, at.x, at.y, { color: ramp[3], radius: 20, floorY, air: 1, intensity: 0.8, anim: 'flicker', fadeIn: 40 });
-  glow.follow(() => sk.pos, { floorY: () => floorY });
+  const glow = floorGlow(sc, { x: at.x, floorY, ramp, radius: 20, intensity: 0.9 });
+  glow.follow(() => sk.pos, () => floorY);
   await animate(sc, 600, (k, el) => {
     const e = 1 - (1 - k) * (1 - k);
     sk.pos = { x: at.x + Math.round(Math.sin(el * 0.012) * 3 * k), y: at.y - 6 - Math.round(38 * e) };
@@ -1058,6 +1204,8 @@ async function skullLeaves(sc: Phaser.Scene, at: XY, ramp: Ramp, depth: number, 
     // a puff (squashed) that springs into the skull, then is torn upward and apart
     sk.stretch = k < 0.15 ? 0.55 + 3 * k : 1 + Math.max(0, k - 0.45) * 1.6;
     sk.gone = k < 0.4 ? 0 : Math.min(1, (k - 0.4) / 0.5);
+    // the jaw drops wide on the wail's peak, then hangs
+    sk.open = k < 0.1 ? 0 : k < 0.18 ? 0.6 : k < 0.42 ? 1 : 0.4;
     if (k > 0.5) glow.setIntensity(0.8 * (1 - k) * 2, 0);
   });
   void glow.fadeOut(100);

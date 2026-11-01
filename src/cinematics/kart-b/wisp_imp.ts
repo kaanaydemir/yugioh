@@ -25,6 +25,12 @@
 //            it reads "0 · KORUNDU" (gold bell); then the pillow goes POF and the down drifts away.
 //            The effect hook owns the wisp's death (the battle kit cannot take it on the contact
 //            frame: the activate breaks its consequence scan) — ctx.play(destroy, { pillow }).
+//            Between the blow and the activation "the clutch" observer holds the body in the
+//            pillow's trembling hug (special f1/f2) instead of letting it spring back to idle.
+//   (FIX r1: bigger 3-tilt pre-roll feather + brighter ring, 6–8 px fountain feathers, dart trails /
+//    glints / finisher / quivering stuck darts, gust ribbons + whole peeled feathers synced to the
+//    sprite's peel frames, the clutch, a pillow with the ghost's face / cowlick / "?" tail and a
+//    popping, shining "0 · KORUNDU" that blinks out with the pof.)
 //
 // Pixel language: every effect is drawn on whole-pixel rasters in palette tones (white / void4 /
 // void3 / void2 for the feathers, gold for the eyes), fading by stepping DOWN the ramp, never by
@@ -997,40 +1003,37 @@ function paintPillow(pc: PixelCanvas, cx: number, cy: number, a: number, b: numb
     const y0 = ri(cy + sy * (b - 1.5));
     const lit = sy < 0 ? PAL.white : PAL.void4;
     const dim = sy < 0 ? PAL.void4 : PAL.void3;
-    for (let k = 1; k <= 4; k++) pc.set(x0 + sx * k, y0 + sy * k, k === 4 ? dim : lit);
-    for (let k = 1; k <= 3; k++) pc.set(x0 + sx * (k + 1), y0 + sy * (k - 1), dim);
-    for (let k = 1; k <= 3; k++) pc.set(x0 + sx * (k - 1), y0 + sy * (k + 1), dim);
+    // a solid wedge of feather tips fanning out of the corner (three points: the middle one longest)
+    for (let i = 0; i <= 5; i++)
+      for (let j = 0; j <= 5; j++) {
+        const d = i + j;
+        if (d > 5 || Math.abs(i - j) > 2 || (d === 5 && i !== j + 1 && j !== i + 1 && i !== j)) continue;
+        if (d >= 4 && Math.abs(i - j) === 2) continue;
+        pc.set(x0 + sx * i, y0 + sy * j, d >= 4 ? dim : lit);
+      }
   }
   // the cowlick curling up off the top, leaning forward (it is the ghost's)
   const tx = ri(cx - back * 3);
   const ty = ri(cy - b);
-  const curl: [number, number, number][] = [
-    [0, 0, PAL.white],
-    [0, -1, PAL.white],
-    [-back, -1, PAL.void4],
-    [0, -2, PAL.white],
-    [-back, -3, PAL.white],
-    [-back * 2, -4, PAL.white],
-    [-back * 3, -4, PAL.void4],
-    [-back * 3, -3, PAL.void4],
-    [back, -2, PAL.void4],
-  ];
+  const curl: [number, number, number][] = [];
+  // a 3-px-wide feather rising 6 px and curling forward over the top (lit side white, back lilac)
+  for (let k = 0; k <= 5; k++) {
+    const dx = k < 3 ? 0 : -back * (k - 2);
+    curl.push([dx, -k, PAL.white], [dx + back, -k, PAL.void4]);
+    if (k < 4) curl.push([dx - back, -k, PAL.white]);
+  }
+  curl.push([-back * 4, -5, PAL.white], [-back * 4, -4, PAL.void4], [-back * 5, -4, PAL.void4]);
   for (const [dx, dy, c] of curl) pc.set(tx + dx, ty + dy, c);
-  // the "?" tail feather hooking off the back corner
-  const qx = ri(cx + back * (a + 1));
+  // the "?" tail feather hooking off the back side: out, down and back up in a 2-px stroke
+  const qx = ri(cx + back * (a - 1));
   const qy = ri(cy + 1);
-  const hook: [number, number, number][] = [
-    [0, 0, PAL.void4],
-    [back, 0, PAL.void4],
-    [back * 2, -1, PAL.void4],
-    [back * 2, -2, PAL.void3],
-    [back * 2, -3, PAL.void3],
-    [back, -4, PAL.void4],
-    [0, -4, PAL.white],
-    [back, 1, PAL.void3],
-    [back * 2, 0, PAL.void3],
+  const hook: [number, number][] = [
+    [1, 0], [2, 0], [3, 1], [4, 2], [4, 3], [3, 4], [2, 4], [1, 3], [5, 1], [5, 2],
   ];
-  for (const [dx, dy, c] of hook) pc.set(qx + dx, qy + dy, c);
+  for (const [dx, dy] of hook) {
+    pc.set(qx + back * dx, qy + dy, dy <= 1 ? PAL.void4 : PAL.void3);
+    pc.set(qx + back * dx, qy + dy - 1, dy <= 1 ? PAL.white : PAL.void4);
+  }
   pc.outline(PAL.ink);
   // the ghost's face hollow (11×7) and its gold eyes (lights: drawn after the outline)
   const fx0 = ri(cx - back * 1);
@@ -1203,7 +1206,7 @@ async function pillowDeath(ctx: Ctx<'destroy'>, L: Leave | null, amount: number,
     const REL = u.markFrame('special', 'release', 5);
     atFrame(u, 'special', 2, () => play('wiStuff', { volume: 0.6, pan }), { late: false });
     // (held in the hug since the blow landed: it plays on from there)
-    const from = clutched.has(u) && u.frameInfo().anim === 'special' ? CLUTCH_FRAME : 0;
+    const from = clutched.has(u) && u.frameInfo().anim === 'special' ? u.frameInfo().frame : 0;
     clutched.delete(u);
     await u.asClaimant(() => u.playRange('special', from, REL, { timeScale: 1.45 }));
     burstAt = artPoint(u, 'special', REL, 'core');
@@ -1284,7 +1287,10 @@ async function pillowDeath(ctx: Ctx<'destroy'>, L: Leave | null, amount: number,
   play('wiSafe', { volume: 0.85, pan: panAt(at.x) });
   const pr = panelRect(owner);
   const ly = top ? pr.y + pr.h + 9 : pr.y - 9;
-  const label = pixelText(sc, at.x, ly, '0 · KORUNDU', { size: 'lg', color: PAL.gold4, originX: 0.5, originY: 0.5 }).setDepth(DEPTH.HUD + 10);
+  // it pops: out of the panel edge with a whole-pixel overshoot (−4, +1, 0 px), a white first frame
+  const pop = top ? 1 : -1;
+  const label = pixelText(sc, at.x, ly - pop * 4, '0 · KORUNDU', { size: 'md', color: PAL.white, originX: 0.5, originY: 0.5 }).setDepth(DEPTH.HUD + 10);
+  labelRef = label;
   void panelFlash(sc, at);
   const shine = labelShine(sc, at.x, ly, 64);
   const breathe: [number, number][] = [
@@ -1296,9 +1302,9 @@ async function pillowDeath(ctx: Ctx<'destroy'>, L: Leave | null, amount: number,
   for (let i = 0; i < 4; i++) {
     const [ba, bb] = breathe[i];
     P.set(ba, bb, 'happy');
-    if (i === 1 && label.active) {
-      label.destroy();
-      labelRef = pixelText(sc, at.x, ly, '0 · KORUNDU', { size: 'md', color: PAL.gold4, originX: 0.5, originY: 0.5 }).setDepth(DEPTH.HUD + 10);
+    if (label.active) {
+      if (i === 1) label.setTint(PAL.gold4).setY(ly + pop);
+      else if (i === 2) label.setY(ly);
     }
     await sleep(sc, 75);
   }
@@ -1447,18 +1453,37 @@ if (LOOK_V3)
       }
       const u = ctx.unit(uid);
       if (!comes || !live(u)) continue;
-      let struck = false;
-      onFrame(ctx.scene, (_dt, el) => {
-        if (!live(u) || u.retired || el > 4000) return false;
-        const a = u.frameInfo().anim;
-        if (a === 'hit' || a === 'hitHeavy' || a === 'hitMagic') struck = true;
-        else if (struck && a === 'idle') {
-          u.pose('special', CLUTCH_FRAME);
-          clutched.add(u);
-          return false;
-        }
-        return true;
-      });
+      const sc = ctx.scene;
+      const atk = ev.attackerUid;
+      // the blow lands (the battle kit's contact): from the next frame on, the moment the body is
+      // back in its idle loop (straight away, or once a hit reaction lets go) it is held in the hug
+      const onContact = (who: number): void => {
+        if (who !== atk) return;
+        sc.events.off('v3:contact', onContact);
+        let t0 = 0;
+        let held = false;
+        onFrame(sc, (_dt, el) => {
+          if (!live(u) || u.retired || el > 3000) return false;
+          if (el < 50) return true;
+          if (held && !clutched.has(u)) return false; // the effect took over
+          if (!held) {
+            if (u.frameInfo().anim !== 'idle') return true;
+            held = true;
+            u.pose('special', CLUTCH_FRAME);
+            clutched.add(u);
+            t0 = el;
+            return true;
+          }
+          // it trembles, holding itself together: the hug and the first rounding, every 110 ms
+          const fi = u.frameInfo();
+          if (fi.anim !== 'special' || fi.frame > CLUTCH_FRAME + 1) return false;
+          const want = Math.floor((el - t0) / 110) % 2 ? CLUTCH_FRAME + 1 : CLUTCH_FRAME;
+          if (fi.frame !== want) u.pose('special', want);
+          return true;
+        });
+      };
+      sc.events.on('v3:contact', onContact);
+      void sleep(sc, 8000).then(() => sc.events.off('v3:contact', onContact));
     }
   });
 

@@ -370,3 +370,100 @@ hoKillDef.png, hoTrade.png.
 - The seed arc reads at ×2 zoom and as a violet bead at 1×; a critic might still want it bigger / a brighter trail.
 - No clip/MP4 (`tools/clip.mjs`) rendered for the owner this stage; independent critic rounds still owed.
 - v1 filmdiff not re-run (every registration is LOOK_V3-gated; no shared file touched).
+
+## Stage: FIX — round 1 (independent critic round 1)
+
+Critic evidence: `shots/v3/kart-b/hollow_ogre/critic-r1/`. Fix evidence: `shots/v3/kart-b/hollow_ogre/fix-r1/`.
+Verdict being answered: "the picture is too small / generic at 1×; the signature 'Kovuğa ekim' fails at 1×".
+
+### Findings → what changed
+1. **BLOCKER — seed flight unreadable.** New hero seed `drawHeroSeed` (9×11 teardrop: void2 rim with a gold4 lit
+   top-left edge, void3 body, void4 heart, 2×2 white core, gold4 tip glint; whole-row squash/stretch on launch / catch).
+   `seedFlight` rewritten: a 2-px stepped trail of time-stamped beads that hangs 150 ms and lingers after the arrival,
+   sparks every 22 ms (some gold4 / plus), a turning 4-spark halo, the light pool follows the seed with a floor point
+   lerped pile floor → giant floor (light layer), plus a sparse void3 glint ring + void4 dot on the floor under it (a
+   first try used a dithered void1/void2 ellipse: it read as a dark puddle → replaced). New `heldSeed`: the hero seed
+   rides the tendril tip from the catch (squash) down into the hollow (special f4–f5), so the object never drops out.
+   New `reachRoot`: while the card shrinks, a 2-px earth root (ink edge, forked violet-lit tip) grows out of the tendril
+   tip along the coming arc (≈ 42 %) and retracts as the seed flies (fills the old 0.4 s gap, points the eye — minor
+   "pacing" finding). Knot beat: `knotBloom` (16-px 8-ray burst tilted off the axes — a first version read as a cross-
+   hair — white heart, one ring expanding to 24 px out of the chest, 14 motes) + a 44-px void3 light flash + a 150 ms
+   2-px body shudder of the sprite. Club sprouts (aura) now 6–9 px with leaf pairs, an ink-edged stem and a 3×3 violet
+   bud with a dithered halo and a gold4 glint; the bud flares white on the knot. Slow-mo on the first catch NOT done:
+   the effect is at its budget (k = 2: 2316 ms ≤ 2320).
+2. **MAJOR — stale +400 numbers.** The shared `impactNumber` (1.5 s) is gone from the effect: own `seedNumber` (same
+   fx:num:heal sheet, 2-frame ×2 slam, 6-px jump, stepped blink-out, no alpha) pinned 9 px above the new sprout's bud
+   (live point), 620 ms for seed 1 (destroyed when seed 2's appears), 440 ms for the last one → gone before the next
+   declaration (fix-r1/hoEatAttack.png row 0: only the badge carries 2200).
+3. **MAJOR — summon.** The falling log is now far taller than the giant: `logColumn` tiles the sealed log's own base
+   rows (ping-pong band, a knot hole every 17 rows, ink end; it covers the sprite's base outline → one log, no seam) 46 px
+   below the sprite, clipped at the floor; on the stake the column is DRIVEN into the tile over 130 ms (telescopes away),
+   4-px shake, `dustWall` (30 big pale puffs climbing 20+ px, 14 skittering chips), a bigger crack / pale ring. Bark
+   doors (rig `drawDoor` rewritten): two 9-px slabs hinged on the hollow's sides, closed (bark out) → edge-on planks
+   (summon f3 door 0.4) → open showing a heartwood (earth4/earth3 grain) inner face (f4 0.75, f5 1), sheared as they
+   swing toward the viewer; f2 `emberCrack` (the seam blazes white → gold4, short gold rays leak out, 2 frames) + a gold
+   floor light pool; f3 chips burst off both hinge edges + 1-px shake. SLAM set-piece unique to the card: `rootStar`
+   (9 branching root cracks with heartwood lips running 40 px across the tile, each forking), `sproutRing` (13 moss
+   tufts + sprouts pop up round the blow, stand, wither brown and sink), two waves of leaves raining off the crown, a
+   leaf-green light pool; the shared finale shockwave ring is no longer used (badge pop + own shake instead).
+   Summon now 2666 ms (was 2550; normal summon, no budget row; ace limit 4.35 s).
+4. **MAJOR — boosted attack.** Knot lights moved OUT of the eye zone: burning knots in the bark under the hollow
+   (rig `knotLight` spots (−5, hry+4) / (+2, hry+7), ring alternating void2 / charred earth0; the aura's KNOT_SPOTS
+   match) — no more four-eyed face. Sprouts pulse on every heavy step (`aura.pulse()`), the club head flares violet
+   (two stepped rings + 6 orbiting white/void4 sparks) on the release → contact+1 frames. Contact: `pollen` 64 motes
+   in 2 sizes (2-px squares) drifting up, an 18-puff cloud hanging ≈ 0.8–1.2 s, a 4-step ring to 20 px, a violet light
+   pool 600 ms, a void4 44-px flash (fix-r1/hoEatAttack-pollen.png).
+5. **MAJOR — death.** Rig: one in-between collapse frame (death 11 f, 127 frames total, 3.58 MB ≤ 3.6): f5 0.62 → f6
+   0.72 (top ring drops in) → f7 0.84 → mound; holds re-timed to the same 880 ms. `rootsIntoTile`: 9 strands 22–34 px,
+   2 px with ink edges, a dust puff where each digs in, holes, pulled in toward the holes; it now also starts when the
+   death enters past f2 (atFrame `late` default — it was silently skipped in battle: that was the critic's "no strands").
+   The roots finish before the sprout beat; the lone sprout gets a gold → void light flicker and is HELD upright 260 ms
+   (anim pause) before it wilts; the card plate is born after the wilt (fix-r1/hoKill-roots.png, hoKill-sprout.png).
+   Death destroy 1934 ms (≤ 2.03 s).
+6. **MAJOR — sprite craft.** Trunk: broader lit plane (cylBands 0.26 / 0.56), a reflected rim column back to the body
+   tone on the shade edge, a dashed earth4 specular ridge in the lit plane (trunk-local rows), 4 furrows instead of 5,
+   two overlapping bark SCALES (lit upper lip, dark near seam, ragged lower seam) and a long charred burn scar down the
+   shade side. Top ring: smaller (0.6·r × 0.26·r) charred earth2/earth3 end grain, small void0 hole, the near crown shards
+   re-stamped IN FRONT of its lip → reads as a splintered stump, not a mouth. Club: charred (bands 1 / 3 → mostly earth1
+   / earth0, one earth2 highlight) and a 1-px INK gap wherever the root hand overlaps it → two values, two shapes at
+   contact. Moss: leaf2 lit band on top (MOSS L leaf2 / M leaf1 / S leaf0).
+7. **MAJOR — guard.** The darker club barred across the belly separates from the trunk; guard eyes 1.2 → 1.7 (blazing,
+   lid narrowed). New guard-only beat (observer on `battle` where the ogre is the surviving target in defence /
+   guard; fires on `v3:contact` of that attacker): `guardChips` (22 charred + heartwood 2-px chips off the club,
+   bouncing), loam at both root feet, root-grip marks, a gold4 eye flare, `hoBlock` sound.
+8. minor — direct: `rupture` is now a 2-px ink crack with earth4 / earth2 lips, loam + heartwood + leaf spurts every
+   other step, and three roots (12–21 px) erupt under the duelist, then the crack chars out.
+9. minor — sound: `hoSeed` +3 dB (trim 1.41; −13.6 → −11.0 dB loud) + a sparkling pentatonic tail that follows the seed
+   in (a high-pass noise burst I tried clicked on the master chain → removed). New `hoBlock` (−12.7 dB),
+   `hoIdleCreak` (180 Hz glide, −26 dB, played at 0.32) and `hoFirefly` (two soft high sines, −31 dB, played at 0.28). Idle
+   voice (`idleVoice`, own file, v3 only): every 3rd idle loop the creak on idle f3, every 4th the firefly tick on f4;
+   started after the summon / effect / strike.
+10. Gate fallout: the new trunk texture pushed HA-21 phase (hitMagic f0 vs idle f5) to 50.9 % → idle club pendulum
+   ±11° → ±9.5° (HA-21 phase 49.4 %, HA-17 1.77 ≤ 1.8).
+
+### Numbers / gates
+- monster-gates (medium, P1 | P2): **21 ok, 0 FAIL** (`shots/v3/kart-b/hollow_ogre/gates.txt`, sheets regenerated in
+  `sheet/`, `sheet-p2/`). 127 frames.
+- measure `ho*` + camera gate: **21 ok, 0 FAIL**; summon 2666, battle 2200, direct 2300 (≤ 2320), declare 316, death
+  1934 (≤ 2030), effect k=1 1833 / k=2 2316 (≤ 2320), number − contact 0.
+- `tsc` clean; `vitest tests/art/hollow_ogre* tests/audio` 21/21; `tests/presentation` 76/77 (the registry-load test
+  timed out at 5 s under machine load — the known flake).
+
+### Evidence (shots/v3/kart-b/hollow_ogre/fix-r1/)
+hoEat2.png (1×), hoEat2-zoom.png, hoEat2-flight.png, hoEat2-hollow.png (×4: held seed, bloom, sprouts, +400 on the bud),
+hoEat2P2.png, hoSummon.png, hoSummon-zoom.png (fall / drive / doors), hoSummon-slam.png (root star + sprout ring),
+hoEatAttack.png, hoEatAttack-contact.png, hoEatAttack-pollen.png, hoKill.png, hoKill-death.png, hoKill-roots.png,
+hoKill-sprout.png, hoDirect.png, hoDirect-rupture.png, hoGuard.png, hoGuard-zoom.png, snd-hoSeed.png, snd-hoBlock.png,
+snd-hoIdleCreak.png, snd-hoFirefly.png, snd-hoKnot.png.
+
+### Open issues (after round 1)
+- The seed reads clearly at ×2 and as a moving violet drop with a trail at 1×; still small next to the shared numbers on
+  a 640×360 board — a further step would be a short time-scale dip on the first catch, which needs budget the effect
+  does not have (2316 / 2320 ms).
+- The near (right) bark door slab is mostly hidden behind the near shoulder moss / arm in summon f4–f8 (drawn under
+  them); the left slab carries the "door" read.
+- Guard chips are partly covered by the attacker's own impact VFX (wisp beam); readable after the hit-stop.
+- The SLAM's dark patch to the club's right is the shared cast shadow of the lowered club, not an FX of ours.
+- Struck-wood material sound when the ogre is hit by other attacks: unchanged (orchestrator decision 4).
+- `knotFlare` (old painter) is still exported from `hollow_ogre-fx.ts`, unused.
+- No MP4 clip rendered this round; sameness / blind test still owed.
