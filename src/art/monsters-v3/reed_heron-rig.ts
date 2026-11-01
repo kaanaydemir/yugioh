@@ -111,6 +111,13 @@ export interface Pose {
   /** death: mist front 0 (none) … 1 (covers the head), motes 0 (none) … 1; revive gather = the same run backwards */
   cover: number;
   motes: number;
+  /** summon: the heron is a dark shape inside the fog (night tones, ink outline; the glint is the only light) 0/1 */
+  sil: number;
+  /** attack: the aim glint (1 white px at the beak tip, the freeze), the deflect spark at the tip (blocked TING) */
+  aim: number;
+  spark: number;
+  /** attack: the thrust smear (a 2-px speed streak behind the head on the beak's row) 0/1 */
+  streak: number;
   /** global phase 0…1 */
   t: number;
 }
@@ -130,6 +137,7 @@ export const NEUTRAL: Pose = {
   needle: 0, drops: 0, smear: 0, trail: 0, dots: 0,
   ruffle: 0, rim: 0,
   cover: 0, motes: 0,
+  sil: 0, aim: 0, spark: 0, streak: 0,
   t: 0,
 };
 export const pose = (o: Partial<Pose>): Pose => ({ ...NEUTRAL, ...o });
@@ -137,7 +145,8 @@ export const pose = (o: Partial<Pose>): Pose => ({ ...NEUTRAL, ...o });
 // ---------------------------------------------------------------- tones
 
 const PLUME: Tones = { L: PAL.white, M: PAL.mist, S: PAL.steel };
-const WING: Tones = { L: PAL.mist, M: PAL.steel, S: PAL.night4 };
+// the folded wing is plumage too: white on the lit top, mist body, steel only in the creases / underside
+const WING: Tones = { L: PAL.white, M: PAL.mist, S: PAL.steel };
 const FAR: Tones = { L: PAL.steel, M: PAL.night4, S: PAL.night3 };
 const STRAW: Tones = { L: PAL.earth4, M: PAL.earth3, S: PAL.earth1 };
 const LEG: Tones = { L: PAL.earth2, M: PAL.earth2, S: PAL.earth1 };
@@ -214,11 +223,14 @@ const BODY: Pt[] = [[-17, -25], [-11, -23], [-3, -22], [3, -23], [7, -27], [9, -
 // near wing: folded on the body side / spread up and back / wrapped forward round the breast (the guard cloak)
 const WING_FOLD: Pt[] = [[5, -37], [0, -39], [-6, -38], [-12, -34], [-17, -29], [-22, -25], [-14, -27], [-6, -30], [0, -32], [4, -34]];
 const WING_OPEN: Pt[] = [[6, -36], [6, -45], [3, -53], [-3, -58], [-9, -59], [-13, -55], [-12, -49], [-9, -43], [-4, -37], [2, -32]];
-const WING_GUARD: Pt[] = [[11, -36], [5, -40], [-4, -39], [-11, -34], [-17, -28], [-20, -24], [-10, -21], [0, -21], [8, -24], [11, -30]];
+// (the guard: a shoulder hump in front, a straight back line, the primaries crossing out past the tail to a point)
+const WING_GUARD: Pt[] = [[11, -34], [8, -40], [1, -42], [-7, -40], [-15, -35], [-27, -26], [-17, -25], [-7, -23], [3, -23], [9, -27]];
 // the straw cloak hangs from the wing's trailing edge; hem teeth are 3 px wide (MA-2)
-const CLOAK_FOLD: Pt[] = [[-6, -29], [-11, -31], [-16, -29], [-20, -24], [-22, -16], [-20, -12], [-18, -15], [-16, -11], [-14, -14], [-12, -11], [-10, -14], [-8, -20]];
+// (its top starts UNDER the wing's coverts and it flares to the hem: a straw raincoat, never a box; the hem
+// teeth are cut per column in drawCloak, so every pose keeps ragged ≥ 2-px teeth)
+const CLOAK_FOLD: Pt[] = [[-4, -30], [-10, -32], [-15, -30], [-19, -26], [-23, -19], [-25, -13], [-21, -11], [-16, -10], [-11, -11], [-7, -12], [-5, -17], [-3, -24]];
 const CLOAK_OPEN: Pt[] = [[-3, -58], [-10, -61], [-19, -63], [-28, -61], [-31, -56], [-28, -56], [-28, -51], [-25, -52], [-23, -47], [-20, -49], [-15, -45], [-9, -47]];
-const CLOAK_GUARD: Pt[] = [[-4, -27], [-12, -29], [-17, -25], [-19, -19], [-18, -11], [-15, -14], [-12, -10], [-9, -13], [-6, -10], [-3, -13], [1, -11], [7, -20]];
+const CLOAK_GUARD: Pt[] = [[-4, -28], [-11, -30], [-16, -27], [-19, -22], [-22, -16], [-23, -10], [-18, -9], [-13, -8], [-8, -9], [-3, -10], [2, -13], [6, -20]];
 // far wing (only behind an open wing): rises up and forward behind the neck
 const FAR_FOLD: Pt[] = [[2, -36], [0, -38], [-2, -38], [-4, -37], [-2, -35], [0, -35], [1, -35]];
 const FAR_OPEN: Pt[] = [[4, -37], [9, -47], [11, -57], [5, -64], [-3, -62], [-2, -53], [-1, -43]];
@@ -393,8 +405,9 @@ function bodyPoly(f: Frame): Pt[] {
 function drawBody(f: Frame): void {
   const q = layer();
   q.poly(bodyPoly(f), PLUME.M);
-  bands(q, PLUME, f.light, 3, 3, { top: 2, bottom: 2 });
-  f.comp.add(q, Part.body, { out: PAL.night4 });
+  // the plumage is the largest, brightest plane: a wide white back, mist in the middle, steel only underneath
+  bands(q, PLUME, f.light, 5, 2, { top: 3, bottom: 2 });
+  f.comp.add(q, Part.body, { out: PAL.steel });
 }
 
 function neckPath(f: Frame): Pt[] {
@@ -406,7 +419,7 @@ function drawNeck(f: Frame): void {
   const { o, sk, light } = f;
   const q = layer();
   const path = neckPath(f);
-  fatPath(q, path, (t) => 2.4 - 0.8 * t, PLUME.M);
+  fatPath(q, path, (t) => 2.0 - 0.7 * t, PLUME.M);
   bands(q, PLUME, light, 2, 1, { top: 1, bottom: 0 });
   // the foreneck streak: a dotted night4 line just inside the front (right) edge, upper two-thirds
   for (let i = rnd(path.length * 0.25); i < path.length * 0.85; i += 3) {
@@ -463,23 +476,51 @@ function drawBeak(f: Frame): void {
 }
 
 function drawWing(f: Frame): void {
-  const { o, light } = f;
+  const { o, light, sk } = f;
   const fold = mixPoly(WING_FOLD, WING_GUARD, o.wf);
   const pts = B(f, mixPoly(fold, WING_OPEN, o.wo));
   const q = layer();
   q.poly(pts, WING.M);
-  bands(q, WING, light, 2, 2, { top: 1, bottom: 2 });
-  // covert scallops: 1-px steel/night4 seams in the body plane, 2 rows (MA-2), never on the lit plane
-  const b = q.clone();
-  for (let y = 0; y < H; y++)
-    for (let x = 0; x < W; x++) {
-      if (!b.isOpaque(x, y) || b.get(x, y) !== WING.M) continue;
-      const u = x - f.sk.B[0];
-      const v = y - f.sk.B[1];
-      if ((v + 40) % 5 === 0 && ((u + 40) % 6 === 1 || (u + 40) % 6 === 2)) q.set(x, y, WING.S);
+  bands(q, WING, light, 2, 2, { top: 2, bottom: 1 });
+  // feather tiers (MA-2, flat 1-px creases, never a speckle grid): the scapular edge 4 rows under the top line and
+  // a covert tier 4 rows under it, both with 2-px teeth that point back; the primaries cross over the tail as two
+  // steel quills running parallel to the underside in the rear third. The white lit rim stays clean.
+  const src = q.clone();
+  const bb = { x0: W, x1: -1 };
+  const topY = new Int16Array(W).fill(-1);
+  const botY = new Int16Array(W).fill(-1);
+  for (let x = 0; x < W; x++)
+    for (let y = 0; y < H; y++)
+      if (src.isOpaque(x, y)) {
+        if (topY[x] < 0) topY[x] = y;
+        botY[x] = y;
+        bb.x0 = Math.min(bb.x0, x);
+        bb.x1 = Math.max(bb.x1, x);
+      }
+  if (bb.x1 >= 0) {
+    const span = bb.x1 - bb.x0;
+    const rear = bb.x0 + span * 0.42;
+    const open = o.wo > 0.5;
+    for (let x = bb.x0; x <= bb.x1; x++) {
+      if (topY[x] < 0) continue;
+      const h = botY[x] - topY[x];
+      const tooth = ((x - sk.B[0] + 60) % 4) < 2 ? 0 : 1;
+      const tiers = open ? [4, 9] : [4, 8];
+      for (const d of tiers) {
+        const y = topY[x] + d + tooth;
+        if (h > d + 2 && src.get(x, y) !== null && y < botY[x] - 1) q.set(x, y, WING.S);
+      }
+      if (!open && x < rear && h > 4) {
+        // primaries: two quills a row and three rows above the underside, crossing out past the tail
+        for (const d of [2, 4]) {
+          const y = botY[x] - d;
+          if (y > topY[x] + 2 && src.get(x, y) !== null) q.set(x, y, d === 2 ? PAL.night4 : WING.S);
+        }
+      }
     }
+  }
+  f.comp.add(q, Part.wing, { out: PAL.steel });
   // cast shadow of the wing onto the body below it (IŞ-6)
-  f.comp.add(q, Part.wing, { out: PAL.night4 });
   castOn(f.comp, q, 0, 1, [Part.body], darker);
 }
 
@@ -496,6 +537,17 @@ function drawCloak(f: Frame): void {
   );
   const q = layer();
   q.poly(pts, STRAW.M);
+  // ragged hem: columns in 2–3 px groups lose 0–4 px from the bottom (a different length per group: teeth, MA-2)
+  if (o.wo < 0.5) {
+    for (let x = 0; x < W; x++) {
+      let bot = -1;
+      for (let y = H - 1; y >= 0; y--) if (q.isOpaque(x, y)) { bot = y; break; }
+      if (bot < 0) continue;
+      const g = Math.floor((x - sk.B[0] + 90) / 3);
+      const cut = [0, 3, 1, 4, 0, 2, 3][((g % 7) + 7) % 7];
+      for (let k = 0; k < cut; k++) q.erase(x, bot - k);
+    }
+  }
   bands(q, STRAW, light, 2, 2, { top: 1, bottom: 1 });
   // straw tiers (a mino): a ragged earth1 crease every 6 rows where the next tier's tips overlap, and earth2 straw
   // strands every 3 px in the body / shade planes; the lit plane stays calm (MA-2). The strands rustle with the phase.
@@ -555,7 +607,7 @@ function needleLight(f: Frame): void {
   const [ux, uy] = sk.dir;
   if (o.needle > 0) {
     const len = 16 + o.bl;
-    for (let s = 5; s <= len + 3; s++) {
+    for (let s = 5; s <= len + 5; s++) {
       const x = rnd(sk.beak0[0] + ux * s);
       const y = rnd(sk.beak0[1] + uy * s) - (s <= len * 0.72 ? 1 : 0);
       p.set(x, y, PAL.white);
@@ -569,13 +621,35 @@ function needleLight(f: Frame): void {
   }
 }
 
+/** The moon's reflection on the still water: a full 1×6 white streak (+ a 3-px mist under-row), always drawn —
+ *  in the near water right of the leg, clear of the reeds and the leg's ring. */
+/** Attack lights: the freeze's aim glint at the tip, the thrust's speed streak behind the head, the TING spark. */
+function strikeLight(f: Frame): void {
+  const { o, sk, p } = f;
+  const [tx, ty] = [rnd(sk.tip[0]), rnd(sk.tip[1])];
+  if (o.aim) p.set(tx, ty, PAL.white);
+  if (o.streak) {
+    // a 2-row speed streak trailing the head on the beak's row: mist then steel, broken (light, not matter)
+    const y = rnd(sk.beak0[1]);
+    const x0 = rnd(sk.Hd[0]) - 5;
+    for (let k = 0; k < 7; k++) if (!p.isOpaque(x0 - k, y) && k !== 3) p.set(x0 - k, y, k < 3 ? PAL.mist : PAL.steel);
+    for (let k = 1; k < 5; k++) if (!p.isOpaque(x0 - k, y - 2)) p.set(x0 - k, y - 2, PAL.steel);
+  }
+  if (o.spark) {
+    // the deflect: one cold spark at the tip — white core, stone4 rays (4 px up-right, 2 px elsewhere)
+    p.set(tx, ty, PAL.white);
+    for (const [dx, dy, n] of [[1, -1, 3], [-1, -1, 2], [1, 1, 2], [0, -1, 2], [1, 0, 2]] as const)
+      for (let k = 1; k <= n; k++) p.set(tx + dx * k, ty + dy * k, k === 1 ? PAL.white : PAL.stone4);
+  }
+}
+
 function moonStreak(f: Frame): void {
   const { p, o } = f;
   if (!o.pond) return;
-  const cx = AX + 13;
-  const y = GY - 1;
-  for (let x = cx; x < cx + 6; x++) if (p.get(x, y) === PAL.night0 || p.get(x, y) === PAL.water1) p.set(x, y, PAL.white);
-  for (let x = cx + 1; x < cx + 4; x++) if (p.get(x, y + 1) === PAL.night0 || p.get(x, y + 1) === PAL.water1) p.set(x, y + 1, PAL.mist);
+  const cx = AX + 8;
+  const y = GY + 2;
+  for (let x = cx; x < cx + 6; x++) p.set(x, y, PAL.white);
+  for (let x = cx + 2; x < cx + 5; x++) p.set(x, y + 1, PAL.mist);
 }
 
 function dropLight(f: Frame): void {
@@ -605,7 +679,8 @@ function mistBand(p: PixelCanvas, x0: number, x1: number, y: number, off: number
       if (h < (cover ? 0.08 : row === 0 ? 0.5 : 0.3)) continue;
       if (edge < 3 && h < 0.6) continue;
       if (edge < 1) continue;
-      const c = row === 0 ? (h > 0.84 ? PAL.mist : PAL.steel) : h > 0.8 ? PAL.steel : PAL.night4;
+      // (the death's covering fog has no mist crests: steel over night4, darker than the white body it takes)
+      const c = row === 0 ? (h > 0.84 && !cover ? PAL.mist : PAL.steel) : h > 0.8 && !cover ? PAL.steel : PAL.night4;
       if (p.inBounds(x, y + row)) p.set(x, y + row, c);
     }
 }
@@ -626,27 +701,6 @@ function mistLight(f: Frame): void {
     const sway = rnd(1.6 * Math.sin(TAU * (2 * o.mist + i * 0.27)));
     mistBand(p, AX + a + (i % 2 ? sway : 0), AX + b + (i % 2 ? sway : 0), GY + dy, sway, s);
   });
-  if (o.mistK > 1) {
-    // the summon wall: a fog bank of contiguous 2-row bands inside an egg-shaped envelope round the heron; with
-    // mistK < 2 it thins from the top, and `part` slides its two halves apart (the gap opens down the middle)
-    const k = Math.min(1, o.mistK - 1);
-    const cx = AX + 2;
-    const cy = GY - 30;
-    const top = cy - 33 + rnd((1 - k) * 40);
-    for (let y = GY - 4; y >= top; y -= 2) {
-      const v = (y - cy) / (y < cy ? 34 : 30);
-      const hw = 29 * Math.sqrt(Math.max(0, 1 - v * v));
-      if (hw < 4) continue;
-      const i = (GY - y) >> 1;
-      const x0 = rnd(cx - hw + hash2(i, 5) * 4);
-      const x1 = rnd(cx + hw - hash2(i, 6) * 4);
-      const d = drift * (i % 2 ? 1 : -1) + i * 5;
-      if (o.part > 0) {
-        mistBand(p, x0 - o.part, cx - o.part, y, d, 10 + i, true);
-        mistBand(p, cx + o.part, x1 + o.part, y, d, 30 + i, true);
-      } else mistBand(p, x0, x1, y, d, 10 + i, true);
-    }
-  }
 }
 
 function trailLight(f: Frame): void {
@@ -678,7 +732,8 @@ function glintLight(f: Frame): void {
   const { o, sk, p } = f;
   if (o.glint <= 0) return;
   const [ex, ey] = sk.eye;
-  p.set(ex, ey, o.glint >= 2 ? PAL.white : PAL.gold4);
+  // IŞ-8: gold4 1 px → a 3-px gold4 cross → 1 px (never a white star)
+  p.set(ex, ey, PAL.gold4);
   if (o.glint >= 2) for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) p.set(ex + dx, ey + dy, PAL.gold4);
 }
 
@@ -720,6 +775,21 @@ function ruffle(f: Frame): void {
   }
 }
 
+/** The summon: the heron as a dark shape inside the fog — lit plane night3, the rest night2 (the ink outline comes
+ *  after); the eye glint is the only light on him, and the reveal to white is a value event. */
+function silhouette(f: Frame): void {
+  const { o, p, comp } = f;
+  if (!o.sil) return;
+  for (let i = 0; i < comp.id.length; i++) {
+    if (!HERON.includes(comp.id[i])) continue;
+    const x = i % W;
+    const y = (i / W) | 0;
+    const c = p.get(x, y);
+    if (c === null) continue;
+    p.set(x, y, c === PAL.white || c === PAL.earth4 || c === PAL.stone4 || c === PAL.gold3 ? PAL.night3 : PAL.night2);
+  }
+}
+
 /** The death mist front: heron pixels under it step toward the mist (bottom up), and the edge band rolls. */
 function coverPass(f: Frame): void {
   const { o, p, comp } = f;
@@ -732,6 +802,9 @@ function coverPass(f: Frame): void {
       const c = p.get(x, y);
       if (c === null) continue;
       const depth = y - top;
+      // the front edge is a 2×2 Bayer step (MA-4: partial cover, never alpha): the first 2 rows keep every other
+      // 2×2 cell of the body as it was
+      if (depth < 2 && ((x >> 1) + (y >> 1)) % 2 === 0) continue;
       if (depth > 8 + hash2(x >> 1, y >> 1, 7) * 4) {
         const g = f.ground?.get(x, y) ?? null;
         if (g === null) {
@@ -741,7 +814,7 @@ function coverPass(f: Frame): void {
           p.set(x, y, g);
           comp.id[y * W + x] = f.groundId![y * W + x];
         }
-      } else p.set(x, y, misted(c, depth < 3 ? 1 : depth < 6 ? 2 : 3));
+      } else p.set(x, y, misted(c, depth < 4 ? 2 : 3));
     }
 }
 
@@ -810,6 +883,7 @@ export function drawHeron(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right'):
     drawWing(f);
     ruffle(f);
   }
+  silhouette(f);
   coverPass(f);
   if (o.pond) drawReeds(f, true);
 
@@ -818,11 +892,12 @@ export function drawHeron(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right'):
   // light layer (never outlined)
   if (o.show) {
     if (o.cover < 0.85) plumes(f);
-    if (o.cover < 0.8) {
+    if (o.cover < 0.8 && !o.sil) {
       eyeLight(f);
       beakGlint(f);
     }
-    needleLight(f);
+    if (!o.sil) needleLight(f);
+    strikeLight(f);
     rimLight(f);
   }
   moonStreak(f);

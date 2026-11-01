@@ -185,6 +185,53 @@ export function paintBand(px: Px, b: Band): void {
   }
 }
 
+export interface FogBand {
+  /** Window [x0, x1], top row y and height (2–4 rows) in world px. */
+  x0: number;
+  x1: number;
+  y: number;
+  h: number;
+  /** Scroll offset of the cells and a seed. */
+  off: number;
+  seed: number;
+  /** World x ranges left clear (the eye's dark gap in the fog). */
+  holes?: readonly (readonly [number, number])[];
+}
+
+/**
+ * One low summon fog band (MA-4: partial cover only as a 2×2 Bayer, never alpha): `h` rows of flat runs, steel on
+ * rows over a night4 bottom row — the top and bottom rows and the last 4 px at each end are a 2×2 Bayer checker, the middle rows
+ * are solid but broken by gaps in 4-px cells. Darker than the heron's white plumage: the reveal is a value event.
+ */
+export function paintFog(px: Px, b: FogBand): void {
+  const x0 = rnd(b.x0);
+  const x1 = rnd(b.x1);
+  if (x1 - x0 < 4) return;
+  const off = rnd(b.off);
+  for (let r = 0; r < b.h; r++) {
+    const y = rnd(b.y) + r;
+    const edgeRow = b.h >= 3 && (r === 0 || r === b.h - 1);
+    // (steel body rows — night4 alone vanishes into the dark board; only the bottom Bayer row steps down to night4)
+    const c = r < b.h - 1 || b.h < 3 ? PAL.steel : PAL.night4;
+    let runX = -1;
+    const flush = (x: number) => {
+      if (runX >= 0 && x > runX) px.run(y, runX, x - 1, c);
+      runX = -1;
+    };
+    for (let x = x0; x <= x1; x++) {
+      const cell = Math.floor((x - off + b.seed * 7) / 4);
+      const edge = Math.min(x - x0, x1 - x);
+      const bayer = ((x >> 1) + (y >> 1)) % 2 === 0;
+      let on = hash(cell, b.seed, r) > (edgeRow ? 0.2 : 0.07);
+      if ((edgeRow || edge < 4) && !bayer) on = false;
+      if (on && b.holes) for (const [a, z] of b.holes) if (x >= a && x <= z) on = false;
+      if (on && runX < 0) runX = x;
+      else if (!on) flush(x);
+    }
+    flush(x1 + 1);
+  }
+}
+
 // ================================================================ the glide trail + ripple dots
 
 interface Streak {
@@ -251,17 +298,22 @@ export class GlideTrail {
     for (let i = this.streaks.length - 1; i >= 0; i--) {
       const s = this.streaks[i];
       s.age += dt;
-      if (s.age > 330) {
+      if (s.age > 420) {
         this.streaks.splice(i, 1);
         continue;
       }
-      // fresh: steel with a mist crest; then night4; the front end frays back as it ages
-      const c = s.age < 110 ? PAL.steel : s.age < 220 ? PAL.night4 : PAL.night2;
-      const fray = rnd((s.age / 330) * (s.x1 - s.x0) * 0.5);
+      // a two-row stepped band: steel over night4 while fresh, then night4 over night2, then a last night2 row; the
+      // front end frays back in 3-px steps as it ages (it lasts 2–3 game frames at full strength)
+      const top = s.age < 150 ? PAL.steel : s.age < 300 ? PAL.night4 : PAL.night2;
+      const bot = s.age < 150 ? PAL.night4 : PAL.night2;
+      const fray = 3 * Math.floor(((s.age / 420) * (s.x1 - s.x0) * 0.6) / 3);
       const x0 = this.dir > 0 ? s.x0 : s.x0 + fray;
       const x1 = this.dir > 0 ? s.x1 - fray : s.x1;
-      if (x1 >= x0) this.air.run(s.y, x0, x1, c);
-      if (s.age < 70 && x1 > x0 + 2) this.air.dot(this.dir > 0 ? x1 : x0, s.y, PAL.mist);
+      if (x1 >= x0) {
+        this.air.run(s.y, x0, x1, top);
+        if (s.age < 300 && x1 - x0 > 4) this.air.run(s.y + 1, this.dir > 0 ? x0 : x0 + 3, this.dir > 0 ? x1 - 3 : x1, bot);
+      }
+      if (s.age < 90 && x1 > x0 + 2) this.air.dot(this.dir > 0 ? x1 : x0, s.y, PAL.mist);
     }
     for (let i = this.dots.length - 1; i >= 0; i--) {
       const d = this.dots[i];

@@ -14,7 +14,7 @@ export default {
   id: 'reed_heron',
   tier: 'normal',
   body: { physical: 'water' },
-  attack: { type: 'melee', blow: 'physical', from: 'muzzle', vfx: 'beakTriple', tone: PAL.white, blocked: 'rebound', ranged: false },
+  attack: { type: 'melee', blow: 'physical', from: 'muzzle', vfx: 'beakTriple', tone: PAL.white, ranged: false },
   summon: { style: 'pool', matter: 'water', roarPeak: 3 },
   death: { material: 'water', accent: 'plant' },
   flip: { accent: 'mist', ramp: 'water' },
