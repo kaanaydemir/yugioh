@@ -41,6 +41,8 @@ const cos = Math.cos;
 export type Facing = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 export interface Pose {
+  /** WIP (summon boulder): palette steps darker (not yet drawn by the rig) */
+  dim?: number;
   /** facing layout (0 = the normal 3/4 right) */
   fc: Facing;
   /** pelvis drop (px: the knees bend, the boots stay), upper-body lean (px, + forward), breath (px, + = chest down), shoulder heave (px, − = up) */
