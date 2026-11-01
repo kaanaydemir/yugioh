@@ -315,13 +315,22 @@ export function glanceSparks(scene: Phaser.Scene, at: XY, dir: 1 | -1, depth: nu
  * The kite string in world space: a 1-px earth4 line from `tail()` to the pin, taut (straight, a 1-px vibration
  * at the middle on alternate frames) or slack (a sag of `sag()` px). The pin is a 2-px earth2 peg on the floor.
  */
-export function tautString(scene: Phaser.Scene, tail: () => XY | null, pin: XY, depth: number, sag: () => number = () => 0): { destroy(): void } {
+export function tautString(
+  scene: Phaser.Scene,
+  tail: () => XY | null,
+  pin: XY,
+  depth: number,
+  sag: () => number = () => 0,
+  o: { color?: number; flashFrames?: number; flash?: number; ink?: boolean } = {},
+): { destroy(): void } {
   const px = layer(scene, depth);
   let alive = true;
   let tick = 0;
+  let frames = 0;
   const halt = onFrame(scene, (dt) => {
     if (!alive) return false;
     if (dt > 0) tick++;
+    frames++;
     px.clear();
     const t = tail();
     if (!t) return true;
@@ -344,7 +353,10 @@ export function tautString(scene: Phaser.Scene, tail: () => XY | null, pin: XY, 
       const cy = 2 * m.y - (t.y + pin.y) / 2;
       pts.push({ x: a * t.x + b * cx + c * pin.x, y: a * t.y + b * cy + c * pin.y });
     }
-    poly(px, pts, PAL.earth4);
+    // (an ink shadow 1 px under it: the line reads over a burning / flashing attacker)
+    if (o.ink) poly(px, pts.map((q) => ({ x: q.x, y: q.y + 1 })), PAL.ink);
+    // (the first flashFrames real frames in the flash tone: a line twanging bright as it pulls tight)
+    poly(px, pts, frames <= (o.flashFrames ?? 0) ? (o.flash ?? PAL.white) : (o.color ?? PAL.earth4));
     // a tail bow on the string, a third of the way down (the kite's ribbon ties)
     const bq = pts[Math.max(1, Math.round(n / 3))];
     px.dot(R(bq.x) - 1, R(bq.y), PAL.fire2).dot(R(bq.x) + 1, R(bq.y), PAL.gold2);
