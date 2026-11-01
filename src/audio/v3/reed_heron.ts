@@ -213,19 +213,21 @@ export const V3_HERON_RECIPES = {
       });
     },
   },
-  /** The bow tension of the neck coil (charge, sustained): a sine 300 → 600 Hz with a little breath, no creak. */
+  /** The bow tension of the neck coil (charge, sustained): a sine 300 → 700 Hz with a little breath, no creak. */
   heronCoil: {
     cap: 1,
     gap: 0.1,
     verb: 0.2,
     play(v0) {
-      level(v0, 2, (v) => {
-        // a crescendo that keeps climbing (+6 dB over its last 150 ms before the usual cut at ≈ 0.45 s): the bow is
-        // at its tightest exactly when the freeze cuts it — stop(20) leaves a hole, not a fade
-        v.tone('sine', [[0, 300], [0.5, 640, 'e'], [1.1, 700, 'e']], { g: [[0, 0], [0.12, 0.04], [0.3, 0.05], [0.47, 0.1, 'e'], [0.9, 0.12], [1.1, 0.0001, 'e']] });
-        v.tone('sine', [[0, 452], [0.5, 962, 'e'], [1.1, 1050, 'e']], { g: [[0, 0], [0.2, 0.01], [0.3, 0.012], [0.47, 0.026, 'e'], [0.9, 0.03], [1.1, 0.0001, 'e']] });
-        const bp = v.filt('bandpass', [[0, 1300], [0.5, 2500, 'e']], 1.3);
-        v.noise('pink', { g: [[0, 0], [0.3, 0.02], [0.47, 0.04, 'e'], [0.9, 0.045], [1.1, 0.0001, 'e']], to: bp });
+      level(v0, 9, (v) => {
+        // a held breath under the declaration (≈ −30 dB while the battle's lock-on rings), then — as the S snaps tight
+        // and the lock-on has faded (≥ 0.28 s) — a steep crescendo that is still climbing when the freeze cuts it
+        // (≈ 0.35 s): stop(20) leaves a hole after the loudest moment of the build-up, not a fade
+        const g: [number, number, ('e' | 'l')?][] = [[0, 0], [0.1, 0.008], [0.26, 0.012], [0.31, 0.05, 'e'], [0.37, 0.15, 'e'], [0.6, 0.18], [1.1, 0.0001, 'e']];
+        v.tone('sine', [[0, 300], [0.26, 420, 'e'], [0.4, 700, 'e'], [1.1, 760, 'e']], { g });
+        v.tone('sine', [[0, 452], [0.26, 630, 'e'], [0.4, 1050, 'e'], [1.1, 1140, 'e']], { g: g.map(([x, y, c]) => [x, y * 0.25, c] as [number, number, ('e' | 'l')?]) });
+        const bp = v.filt('bandpass', [[0, 1300], [0.4, 2600, 'e']], 1.3);
+        v.noise('pink', { g: g.map(([x, y, c]) => [x, y * 0.35, c] as [number, number, ('e' | 'l')?]), to: bp });
       });
     },
   },
@@ -241,18 +243,19 @@ export const V3_HERON_RECIPES = {
       });
     },
   },
-  /** The mist trail of the glide: a pink sweep 600 → 1200 → 500 Hz over 0.42 s (the caller pans it to the target). */
+  /** The mist trail of the glide: a LOW breath of air over still water + the skim hiss (no mid: never a wing). */
   heronTrail: {
     cap: 1,
     gap: 0.1,
     verb: 0.35,
     play(v0) {
-      // (the glide is AIR over still water: a long low breath 420 → 900 → 380 Hz that leans across the stereo field
-      // with the bird, a faint reed brush at its crest — no flutter, no attack: unlike any wing sound in the set)
-      level(v0, 20, (v) => {
-        sweep(v, 0, 0.5, [260, 520, 240], 0.09, { kind: 'pink', q: 1.4, peakAt: 0.55, pan: [-0.25, 0.25] });
-        // the skim of air over the water: a thin 6.5 kHz hiss riding the crest (low + high, no mid: never a wing)
-        v.noise('white', { t: 0.12, g: [[0, 0], [0.18, 0.006], [0.36, 0.0001, 'e']], to: v.filt('bandpass', 6500, 1.6) });
+      // (the glide is AIR over still water: a long low breath 140 → 300 → 130 Hz that leans across the stereo field
+      // with the bird, and a thin 6.5 kHz skim riding its crest — nothing between 400 Hz and 5 kHz, where the wing
+      // fuffs, the slips and the beak live)
+      level(v0, 22, (v) => {
+        sweep(v, 0, 0.5, [140, 300, 130], 0.11, { kind: 'pink', q: 1.1, peakAt: 0.55, pan: [-0.25, 0.25] });
+        v.noise('pink', { g: [[0, 0], [0.25, 0.05], [0.5, 0.0001, 'e']], to: v.filt('lowpass', 260, 0.8) });
+        v.noise('white', { t: 0.1, g: [[0, 0], [0.2, 0.009], [0.4, 0.0001, 'e']], to: v.filt('bandpass', 6500, 1.8) });
       });
     },
   },
@@ -302,13 +305,16 @@ export const V3_HERON_RECIPES = {
     play(v0) {
       // (the loudest heron-owned event of the attack: soft-saturated so its loudest 50 ms comes up to ≈ −11 dB
       // while the click stays under the −1 dBTP ceiling; ~4 dB under the aces' contacts — sparse, not inaudible)
-      level(v0, 15, (v) => {
+      // (the body held a little longer — a second 1.1 kHz wood knock under the click — and driven harder into the soft
+      // shaper: the first 33 ms are the loudest window of the whole strike, the shared LP tick included)
+      level(v0, 17.5, (v) => {
         tak(v, 0, 2140, 0.28, 0.045);
+        v.noise('white', { t: 0.002, g: perc(0.3, 0.05, 0.0008), to: v.filt('bandpass', 1100, 2.2) });
         v.bell(2140, { t: 0.004, g: 0.028, dec: 0.6, ratio: 3.53, index: 1.1 });
         v.bell(2140 * 2.01, { t: 0.004, g: 0.006, dec: 0.35, ratio: 3.53, index: 0.6 });
         plip(v, 0.05, 0.016, 1400);
         plip(v, 0.11, 0.011, 1150);
-      }, { sat: 2.6, ceil: 0.76 });
+      }, { sat: 3.4, ceil: 0.76 });
     },
   },
   /** Blocked: the third thrust glances off the guard — a bright steel "TING" that bends up, a short scrape. */
@@ -405,36 +411,45 @@ export const V3_HERON_RECIPES = {
       });
     },
   },
-  /** Death f1: the wings close around the body — a closing pair of fuffs, the second softer and darker. */
+  /** Death f1: the wings close around the body — the fuff PAIR, closing: the second softer and darker. */
   heronWingClose: {
     cap: 1,
     gap: 0.1,
     verb: 0.35,
     play(v0) {
-      // (CLOSING, the reverse contour of the opening fuff: no bright attack — a swell that a low-pass pulls down
-      // 1500 → 500 Hz as the wings wrap, then the cloth fold of the straw cloak tucking under)
-      level(v0, 11, (v) => {
-        const hp = v.filt('highpass', 380, 0.7);
-        const lp = v.filt('lowpass', [[0, 1500], [0.22, 500, 'e']], 1.2, { to: hp });
-        v.noise('pink', { g: [[0, 0], [0.09, 0.2], [0.16, 0.12], [0.26, 0.0001, 'e']], to: lp });
-        fold(v, 0.15, 0.09, 0.18, -0.15);
+      // (the wing language — a PAIR of feather brushes with a flutter, 120 ms apart — but CLOSING and from the inside:
+      // the wing edges brushing the body, high and narrow (hp 900, the low-pass shutting 2600 → 1300 and 2200 → 1100),
+      // a 34 Hz flutter on 2 kHz, no low "fuff" body at all — the opening fuff of the summon is low and round; then
+      // the straw cloak's fold tucking under)
+      level(v0, 13, (v) => {
+        for (const [t, g, lp0, lp1, pan] of [[0, 0.24, 2600, 1300, -0.1], [0.12, 0.15, 2200, 1100, 0.1]] as const) {
+          const out = v.panner(pan);
+          const hp = v.filt('highpass', 900, 0.7, { to: out });
+          const lp = v.filt('lowpass', [[0, lp0], [0.08, lp1, 'e']], 1.6, { t, to: hp });
+          v.noise('pink', { t, g: [[0, 0], [0.03, g], [0.11, 0.0001, 'e']], to: lp });
+          const fl = v.flutter(34, 0.5, { t, d: 0.14, base: 0.5, to: v.filt('bandpass', 2000, 1.4, { to: out }) });
+          v.noise('pink', { t, g: perc(g * 0.5, 0.12, 0.01), to: fl });
+        }
+        fold(v, 0.2, 0.05, 0.16, -0.15);
       });
     },
   },
-  /** Death f2: the one step back — a slip on the still water. */
+  /** Death f2: the one step back — a short WET slip on the still water (≥ 120 ms after the wing close). */
   heronBackSlip: {
     cap: 1,
     gap: 0.1,
     verb: 0.3,
     play(v0) {
-      // (slower and lower than a stride's slip, 900 → 480 Hz over 0.2 s, the weight going BACK; a water lick trails it)
-      level(v0, 14.5, (v) => {
-        const bp = v.filt('bandpass', [[0, 900], [0.2, 480, 'e']], 2.6);
-        v.noise('pink', { g: [[0, 0], [0.03, 0.16], [0.2, 0.0001, 'e']], to: bp });
-        v.tone('sine', [[0, 560], [0.2, 330, 'e']], { g: perc(0.03, 0.18, 0.01) });
-        // the lick: a short wet upward chirp after the slide
-        v.tone('sine', [[0, 700], [0.04, 1150, 'e']], { t: 0.19, g: perc(0.018, 0.05, 0.003) });
-        slosh(v, 0.17, 0.05, 0.12, 520);
+      // (wet and short, LOWER than a stride's slip — the weight going back: white noise in a narrow band 850 → 480 Hz
+      // over 0.12 s, a sucking sine under it, then two bubbles flicking up — no pink, no long tail: never the mist)
+      level(v0, 15, (v) => {
+        const hp = v.filt('highpass', 300, 0.7);
+        const bp = v.filt('bandpass', [[0, 850], [0.12, 480, 'e']], 4.5, { to: hp });
+        v.noise('white', { g: perc(0.2, 0.12, 0.004), to: bp });
+        v.tone('sine', [[0, 430], [0.12, 290, 'e']], { g: perc(0.06, 0.12, 0.006) });
+        // the bubbles: two quick upward chirps (the water closing behind the lifted foot)
+        v.tone('sine', [[0, 900], [0.025, 1500, 'e']], { t: 0.1, g: perc(0.03, 0.035, 0.002) });
+        v.tone('sine', [[0, 1100], [0.02, 1750, 'e']], { t: 0.15, g: perc(0.02, 0.03, 0.002) });
       });
     },
   },

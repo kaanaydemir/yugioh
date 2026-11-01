@@ -35,6 +35,10 @@ const art: MonsterArt = {
   anims: ANIMS,
   attackImpactFrame: IMPACT,
   weight: 'medium',
+  // the recoils DRAW the give (the body rocks back 2–4 px over f1–f2, feet planted): the kit never shoves the
+  // sprite, so the still pond and the reeds stay on the tile under every front blow (KK-4 / HA-11)
+  knock: 'pose',
+  poseKnockPx: [3, 3, 4],
   p2: 'relight',
   draw(p: PixelCanvas, anim: MonsterAnim, frame: number, o?: DrawOpts) {
     drawHeron(p, framePose(anim, frame), o?.lightFrom ?? 'left');

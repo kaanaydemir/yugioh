@@ -13,9 +13,10 @@
 //            planted foot (one slip each), mist trailing; a 300-ms scene glide; the pond and the reeds stay home)
 //            → the neck uncoils in one smeared frame as he stops → ta-ta…TAK as a PISTON: out (stop 40) · back ·
 //            out (stop 40) · back longer · OUT (stop 80) on three points of a 6-px triangle, each with a ONE-frame
-//            needle light, droplets, a nick left on the target and a 1-px give; on the third the nicks flash as one
-//            white triangle and a small stepped pool lights the floor (the shared contact flash and burst are hidden:
-//            the pinpoint IS the contact), the struck body's material blow ~7 dB under the TAK → a glide home. Blocked: tak-tak-TING — the third glances UP
+//            needle light, droplets, a nick left on the target and a 1-px give; on the third the nicks join into the
+//            white triangle outline with a 4-ray star on the third point, held 3 frames, then mist → steel → gone,
+//            and a small white light pool on the target's core (the shared contact flash and burst are hidden: the
+//            pinpoint IS the contact), the struck body's material blow ~7 dB under the TAK → a glide home. Blocked: tak-tak-TING — the third glances UP
 //            off the guard (the deflect frame is the contact, one cold spark; the counter's warm burst is kept off
 //            him), he hops back a stride. Direct: the glide ends at the duelist plate.
 //   struck   the heron's own body sound (feather + still water) on the frame it is struck (hit / heavy / magic),
@@ -44,7 +45,7 @@ import { runSummon, type Stage } from '../summon-a/_kit';
 import { placeFeet } from '../strikes-a/_kit';
 import { sourceOwnsDeath } from '../strikes-b/_kit';
 import { GlideTrail, Ground, Pinpoint, hash, needleFlash } from './reed_heron-fx';
-import { paintWisp } from '../../art/monsters-v3/reed_heron-mist';
+import { paintBank, paintWisp, type BankState } from '../../art/monsters-v3/reed_heron-mist';
 import { ensureMarsh, marshOf, MARSH } from './reed_heron-marsh';
 
 const ID = 'reed_heron';
@@ -92,68 +93,31 @@ function groundOf(anim: 'attack' | 'death', f: number): { reed: number; rip: num
 // ================================================================ summon: the mist brings him
 
 /**
- * The summon's world fog bank: a few marsh WISPS (reed_heron-mist.ts — 3–6 px stepped lenses: a mist crest, a steel
- * body, a night4 underside, 2×2 Bayer ends, ≥ 3 px of air between them; never 1-px lines, never alpha). Three lie
- * low on the water in front of the tile, one far wisp hangs behind at head height, and one near wisp crosses the
- * eye's row with a dark hole in it — the glint shows in that hole. They step in from both tile edges in 3-px steps,
- * clipped to the tile diamond + 8 px (never over a neighbour's tile); they part down his centre line, the wing fan
- * pushes them out, and they thin to the far tone and go.
+ * The summon's fog BANK (reed_heron-mist.ts paintBank): ten overlapping marsh lenses standing from the water line up
+ * past his crown, a little wider than the bird at every height, drawn IN FRONT of the body — an occluder, not a
+ * decoration. They step in from both tile edges in 3-px steps (clipped to the tile diamond + 8 px), breathe 1 px
+ * every 400 ms, keep a small dark hole at the eye for the glint; he stands in it hidden (≥ 95 % of his pixels under
+ * mist on the frame he is first drawn), then the bank tears down his centre line in three stepped moves (3, 3, 4 px a
+ * half, head first, the water lenses last) and the wing fan's downdraft blows the halves out in 3-px steps.
  */
-function summonFog(S: Stage, eyeDy: number): { set(k: Partial<{ inK: number; part: number; push: number; thin: number; hole: XY | null }>): void; destroy(): void } {
+function summonFog(S: Stage): { set(k: Partial<BankState & { hole: readonly [number, number, number, number] | null }>): void; destroy(): void } {
   const sc = S.scene;
   const home = S.home;
   const sgn = sgnOf(S.unit);
-  const back = new Px(sc.add.graphics().setDepth(S.depth - 0.4));
   const front = new Px(sc.add.graphics().setDepth(S.depth + 0.4));
   const maxHalf = Math.round(TILE_W / 2 + 8);
   const clip: [number, number] = [home.x - maxHalf, home.x + maxHalf];
-  // [dy of the top row above the floor, height, half width, layer 0 back / 1 front, x offset (facing), lean,
-  //  start delay 0…1, tone]
-  const ey = Math.round(eyeDy);
-  const rows: [number, number, number, 0 | 1, number, number, number, 0 | 1][] = [
-    [-7, 5, 27, 1, 5, 1, 0, 0],
-    [-16, 4, 19, 1, -9, -1, 0.1, 0],
-    [-26, 4, 14, 0, 10, 1, 0.22, 1],
-    [ey + 7, 3, 10, 0, -6, -1, 0.35, 1],
-    [ey - 2, 5, 14, 1, 2, 1, 0.45, 0],
-  ];
-  let st: { inK: number; part: number; push: number; thin: number; hole: XY | null } = { inK: 0, part: 0, push: 0, thin: 0, hole: null };
-  const draw = (el: number) => {
-    back.clear();
-    front.clear();
-    rows.forEach(([dy, h, hw0, layer, ox, lean, delay, tone], i) => {
-      if (st.thin > 0 && hash(i, 77) < st.thin * 0.9) return;
-      const L = layer ? front : back;
-      const k = clamp((st.inK - delay) / (1 - delay), 0, 1);
-      if (k <= 0) return;
-      // odd rows step in from the right edge, even rows from the left, in 3-px steps (never a smooth slide)
-      const side = i % 2 ? 1 : -1;
-      const from = side * 3 * Math.round((maxHalf * 0.9 * (1 - E.outQ(k))) / 3);
-      const drift = (Math.floor(el / 400) % 3) * side; // 1 px every 400 ms (frozen while the show is stopped)
-      const hw = hw0 + st.push;
-      const y = home.y + dy;
-      const cx = home.x + from + ox * sgn + drift;
-      const t: 0 | 1 | 2 = st.thin > 0.5 ? 2 : tone;
-      const r = (yy: number, x0: number, x1: number, c: number) => void L.run(yy, x0, x1, c);
-      const holes = st.hole && st.hole.y >= y - 1 && st.hole.y <= y + h ? [[rnd(st.hole.x) - 3, rnd(st.hole.x) + 3] as const] : undefined;
-      if (st.part <= 0) paintWisp(r, { cx, y, h, hw, lean, seed: 11 + i * 13, tone: t, clip, holes });
-      else {
-        // the two halves slide apart from his centre line, each with its own frayed ends
-        const half = Math.max(4, Math.round(hw / 2));
-        paintWisp(r, { cx: cx - half - st.part, y, h, hw: half, lean, seed: 11 + i * 13, tone: t, clip });
-        paintWisp(r, { cx: cx + half + st.part, y, h, hw: half, lean: -lean, seed: 12 + i * 13, tone: t, clip });
-      }
-    });
-  };
+  let st: BankState & { hole: readonly [number, number, number, number] | null } = { inK: 0, steps: 0, push: 0, thin: 0, hole: null };
+  const run = (y: number, x0: number, x1: number, c: number) => void front.run(y, x0, x1, c);
   let alive = true;
   onFrame(sc, (_dt, el) => {
     if (!alive) return false;
-    draw(el);
+    front.clear();
+    // 1 px every 400 ms, 0 → 1 → 0 (frozen while the show is stopped)
+    const drift = [0, 1, 1, 0][Math.floor(el / 400) % 4];
+    paintBank(run, rnd(home.x), rnd(home.y), sgn, { ...st, drift: st.steps > 0 ? 0 : drift }, { clip, hole: st.hole });
     return true;
-  }, () => {
-    back.g.destroy();
-    front.g.destroy();
-  });
+  }, () => front.g.destroy());
   return {
     set(k) {
       st = { ...st, ...k };
@@ -178,7 +142,7 @@ async function heronEntrance(S: Stage): Promise<void> {
   const mistIn = start('heronMistIn', { volume: 0.95, pan });
   const eye = u.art.points?.('summon', 3).head;
   const eyeW = eye ? u.framePoint(eye.x, eye.y) : null;
-  const fog = S.own(summonFog(S, eyeW ? eyeW.y - S.home.y : -60));
+  const fog = S.own(summonFog(S));
   // the tile drops one light step (the still dark water): a cool multiply pool under the tile (the marsh aura
   // takes it over, at full strength, when he has landed)
   const dark = lightPool(sc, S.home.x, S.home.y, { color: PAL.night2, radius: 30, intensity: 0.0, blend: 'multiply', fadeIn: 0, spill: null });
@@ -191,32 +155,40 @@ async function heronEntrance(S: Stage): Promise<void> {
   u.badge.setVisible(false);
   const played = u.playRange('summon', 0, undefined, { hold: false });
   void animate(sc, u.rangeMs('summon', 0, 2), (t) => fog.set({ inK: t }));
-  // the eye glint (f2–f4): the frogs AND the mist stop dead — silence, one cold gold point in a dark hole of the fog
+  // the eye glint (f2–f4): the frogs AND the mist stop dead — silence, one cold gold point in a dark hole of the bank
   atFrame(u, 'summon', 2, () => {
     bed.stop(8);
     mistIn.stop(12);
     if (eyeW) {
-      fog.set({ hole: eyeW });
+      fog.set({ hole: [rnd(eyeW.x) - 3, rnd(eyeW.x) + 3, rnd(eyeW.y) - 1, rnd(eyeW.y) + 1] });
       void lightFlash(sc, eyeW.x, eyeW.y, PAL.gold4, 7, u.rangeMs('summon', 2, 5), { floorY: S.home.y, intensity: 0.5, air: 0.6 });
     }
   });
-  // the fog parts (the halves slide 10 px apart): he is simply there, white — the value event
+  // f5: the glint goes out and he is drawn — standing IN the bank, hidden; the bank tears down his centre line in
+  // three stepped moves (head first, the water last): the white plumage is uncovered band by band
   atFrame(u, 'summon', 5, () => {
-    play('heronMistPart', { volume: 0.9, pan });
     fog.set({ hole: null });
-    void animate(sc, u.rangeMs('summon', 5, 6), (t) => fog.set({ part: 2 * rnd(5 * E.outQ(t)), thin: 0.15 * t }));
+    void (async () => {
+      await sleep(sc, 50);
+      play('heronMistPart', { volume: 0.9, pan });
+      for (let k = 1; k <= 3; k++) {
+        fog.set({ steps: k, thin: k === 3 ? 0.15 : 0 });
+        if (k < 3) await sleep(sc, 70);
+      }
+    })();
   });
-  // the straw cloak fans open once: fuff fuff; the downdraft pushes the wisps out 4 px and thins them
+  // the straw cloak fans open once: fuff fuff; the downdraft blows the torn halves out (3-px steps) and thins them
   atFrame(u, 'summon', 6, () => play('heronWingFuff', { volume: 0.95, pan }));
   atFrame(u, 'summon', 7, () => {
-    fog.set({ push: 4, thin: 0.45 });
+    fog.set({ steps: 3 });
+    void animate(sc, 200, (t) => fog.set({ push: 3 * Math.min(5, Math.floor(t * 6)), thin: 0.2 + 0.6 * t }));
     void lightFlash(sc, S.home.x, S.home.y - 2, PAL.steel, 26, 260, { floorY: S.home.y, intensity: 0.35 });
   });
   // 'land': the cloak closes, the reeds stand back up; the badge comes in quietly (no ring, no thump)
   const landF = u.markFrame('summon', 'land', Math.max(0, n - 2));
   atFrame(u, 'summon', landF, () => {
     play('heronSettle', { volume: 0.9, pan });
-    fog.set({ thin: 0.8 });
+    fog.set({ steps: 3, push: 18, thin: 0.9 });
     void u.badge.pop();
   });
   atFrame(u, 'summon', landF + 1, () => fog.set({ thin: 1 }));
@@ -265,6 +237,66 @@ registerObserver((_ev, ctx) => {
   }
 });
 
+// ================================================================ threatened: the heron goes still
+
+/**
+ * A heron that is attacked FREEZES: from the declaration on, its idle loop walks the shortest way (one frame per
+ * ~2 game frames, forward or back) to idle f0 and holds it — the statue-still wader — until the blow (its struck
+ * f0 is drawn from idle f0: the contact frame stays local whatever phase the loop was in, KK-4 / HA-21) or, when
+ * no blow comes, ~4.5 s later, when the loop simply resumes from f0. The marsh around him keeps living.
+ */
+function stillOnThreat(sc: Phaser.Scene, u: MonsterUnit): void {
+  if (DBG) console.error(`[rhr] still? locked ${u.locked} pos ${u.position} guarding ${u.guarding} anim ${u.frameInfo().anim}:${u.frameInfo().frame}`);
+  if (!u.sprite.active || u.retired || u.locked || u.position !== 'attack' || u.guarding) return;
+  const fi = u.frameInfo();
+  if (fi.anim !== 'idle') return;
+  const n = u.frameCount('idle');
+  let k = fi.frame;
+  const dir = k <= n / 2 ? -1 : 1;
+  let acc = 0;
+  let held = k === 0;
+  // (stop the loop on the frame it shows now; the walk to f0 starts on the next step)
+  u.pose('idle', k);
+  // a loop restarted later in the same step is pulled back before the frame is drawn
+  const guard = () => {
+    const f = u.frameInfo();
+    if (u.sprite.active && !u.retired && !u.locked && f.anim === 'idle' && (f.frame !== k || u.sprite.anims.isPlaying)) u.pose('idle', k);
+  };
+  sc.events.on('prerender', guard);
+  onFrame(sc, (dt, el) => {
+    if (!u.sprite.active || u.retired || u.locked) return false;
+    // something else took the sprite over (the struck pose, a strike of his own, a flip): it owns him now; a
+    // restarted idle loop (the battle's settle of the rest pose) is pulled back to where the walk is
+    const f = u.frameInfo();
+    if (f.anim !== 'idle') {
+      if (DBG) console.error(`[rhr] still: taken over at ${f.anim}:${f.frame} (k ${k}, el ${Math.round(el)})`);
+      return false;
+    }
+    if (f.frame !== k || u.sprite.anims.isPlaying) u.pose('idle', k);
+    if (!held) {
+      acc += dt;
+      if (acc < 30 && k !== 0) return true;
+      acc = 0;
+      if (k !== 0) k = (k + dir + n) % n;
+      u.pose('idle', k);
+      if (k === 0) held = true;
+      return true;
+    }
+    if (el > 4500) {
+      u.rest();
+      return false;
+    }
+    return true;
+  }, () => sc.events.off('prerender', guard));
+}
+
+registerObserver((ev, ctx) => {
+  if (!LOOK_V3 || ev.type !== 'attackDeclare' || ev.targetUid === null) return;
+  if (ctx.state.cards[ev.targetUid]?.cardId !== ID) return;
+  const u = ctx.unit(ev.targetUid);
+  if (u) stillOnThreat(ctx.scene, u);
+});
+
 // ================================================================ strike: Gaga Hamlesi
 
 /**
@@ -292,6 +324,7 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
   const recF = u.markFrame('attack', 'recover', conF + 2);
   const n = u.frameCount('attack');
   const freezeF = relF - 3; // f4: the 200 ms dead freeze
+  const coilF = freezeF - 1; // f3: the S snaps tight (and he settles back a half step when the target is close)
   const glideF = relF - 2; // f5, f6: the stride pair
   const [t1, r1, t2, r2] = [relF + 1, relF + 2, relF + 3, relF + 4];
   const deflF = conF + 1;
@@ -311,12 +344,15 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
   // (from the held coil f1 the neck SNAPS: straight to f3, the f2 in-between is the sheet's, not the strike's)
   const f0 = held > 0 ? Math.min(held + 2, freezeF) : 0;
   const charge = takeCharge(u, 'heronCoil', { volume: 0.85, pan });
+  // the battle's lock-on chime gives the build-up over to his own coil: it fades out under the tightening S, so the
+  // swell heard before the freeze — and the hole the freeze cuts — are the heron's
+  fade(['lockOn'], 110);
   // the home badge would sit on his neck when he glides toward the camera (P2): it steps out for the strike
   u.badge.setVisible(false);
   // layers: the glide trail (air streaks just behind the body, ripple dots on the floor) and the thrust droplets
   const trail = new GlideTrail(sc, new Px(sc.add.graphics().setDepth(unitDepth(Math.max(home.y, feet.y)) - 0.6)), new Px(sc.add.graphics().setDepth(DEPTH.CARD_ON_TILE + 3)), sgn);
   // the heron's own contact mark: a nick per thrust, the triangle on the third, a small floor pool
-  const pin = new Pinpoint(sc, DEPTH.FX - 0.5, DEPTH.CARD_ON_TILE + 3, sgn);
+  const pin = new Pinpoint(sc, DEPTH.FX - 0.5, sgn);
   let ground: Ground | null = null;
   let groundF = -1;
   const keepGround = onFrame(sc, (_dt, el) => {
@@ -324,8 +360,8 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
     const fi = u.frameInfo();
     const on = spr.active && fi.anim === 'attack';
     if (!on) return el < 100 || !!ground;
-    if (fi.frame >= glideF && fi.frame < n - 1) {
-      if (!ground) ground = new Ground(sc, u, home, unitDepth(home.y) - 0.2, { ...groundOf('attack', freezeF), mistK: 1 });
+    if (fi.frame >= coilF && fi.frame < n - 1) {
+      if (!ground) ground = new Ground(sc, u, home, unitDepth(home.y) - 0.2, { ...groundOf('attack', coilF), mistK: 1 });
       if (fi.frame !== groundF) {
         groundF = fi.frame;
         ground.set({ ...groundOf('attack', fi.frame), mistK: 1 });
@@ -349,7 +385,25 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
   try {
     // ---- the coil (declare → f4): the tension rises… and is cut at the freeze — the hold is SILENT, the marsh's
     // mist bands and the idle sounds stop with him
-    await seg(u, f0, freezeF);
+    // a heron settles back before it strikes: when the target stands close, the coil carries him back a half step
+    // (two 4–5 px shuffles over the tightening f3, the pond and the reeds staying home), so the glide that follows
+    // covers ≥ 20 px — two real strides, never a foot-slide on the spot
+    const dist0 = Math.hypot(feet.x - home.x, feet.y - home.y);
+    const backPx = dist0 < 22 ? clamp(Math.round(22 - dist0), 0, 10) : 0;
+    let from: XY = { ...home };
+    if (backPx > 0 && f0 <= coilF) {
+      const ux = (home.x - feet.x) / Math.max(1, dist0);
+      const uy = (home.y - feet.y) / Math.max(1, dist0);
+      const far: XY = { x: rnd(home.x + ux * backPx), y: rnd(home.y + uy * backPx * 0.6) };
+      const mid: XY = { x: rnd(lerp(home.x, far.x, 0.5)), y: rnd(lerp(home.y, far.y, 0.5)) };
+      const coilMs = u.rangeMs('attack', f0, freezeF);
+      const coiled = seg(u, f0, freezeF);
+      void sleep(sc, coilMs * 0.3).then(() => alive() && placeFeet(u, mid));
+      void sleep(sc, coilMs * 0.62).then(() => alive() && placeFeet(u, far));
+      await coiled;
+      if (alive()) placeFeet(u, far);
+      from = far;
+    } else await seg(u, f0, freezeF);
     // the cut: the coil (at its crest) and the shared declaration's tail stop together — the freeze is SILENT
     charge.stop(20);
     fade(['attackDeclare', 'lockOn'], 30);
@@ -362,9 +416,9 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
     // vertical bob; a ripple dot under each planted foot; mist bands trail behind
     const glideMs = u.rangeMs('attack', glideF, relF);
     if (DBG) console.warn(`[rhr] glide @${Math.round(sc.time.now)} loop ${Math.round(sc.game.loop.time)}`);
-    const dist = Math.hypot(feet.x - home.x, feet.y - home.y);
+    const dist = Math.hypot(feet.x - from.x, feet.y - from.y);
     const strides = clamp(2 * Math.round(dist / 25), 2, 6);
-    play('heronTrail', { volume: 0.85, pan: panAt(lerp(home.x, feet.x, 0.5)) });
+    play('heronTrail', { volume: 0.85, pan: panAt(lerp(from.x, feet.x, 0.5)) });
     let stride = -1;
     // the release rides the glide's braking tail: the neck uncoils in one smeared frame as the body comes to rest
     // (the last `relMs` of the glide), so the first thrust leaves straight from the stop
@@ -373,7 +427,7 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
     let released = false;
     await animate(sc, glideMs + relMs, (t) => {
       const k = glide(Math.min(1, t / relAt));
-      const p = { x: lerp(home.x, feet.x, k), y: lerp(home.y, feet.y, k) };
+      const p = { x: lerp(from.x, feet.x, k), y: lerp(from.y, feet.y, k) };
       if (t >= relAt && !released) {
         released = true;
         if (spr.active && !u.locked) u.pose('attack', relF);
@@ -412,9 +466,13 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
       sp.release();
       return at;
     };
-    /** Thrusts 1 and 2 register on the target too: a 1-px give away from the beak for the micro stop. */
+    /**
+     * Thrusts 1 and 2 register on the target too: a 1-px give away from the beak for the micro stop (the battle
+     * holds the target, so its sprite is moved directly and put back before the third; the third's push is the
+     * battle's own recoil, never on its contact frame).
+     */
     const give = (on: boolean) => {
-      if (!tgt || !tgt.sprite.active || tgt.retired || tgt.locked) return;
+      if (!tgt || !tgt.sprite.active || tgt.retired) return;
       tgt.sprite.x = on ? tx0 + sgn : tx0;
     };
     // (the out-hold IS the 40 ms micro-stop — snapped, not held; the time goes to the retract and the re-aim:
@@ -448,8 +506,10 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
     if (s.blocked) pin.close();
     else {
       pin.nick(at);
-      // (the pool lights the floor at the target's near edge, between the two: under its body it would be hidden)
-      pin.land(tgt ? { x: s.toGround.x - sgn * 13, y: s.toGround.y + 3 } : null);
+      pin.land();
+      // the light answers on the struck body: a small white pool on its core (the floor spill under it)
+      const lit = tgt ? tgt.core() : at;
+      void lightFlash(sc, lit.x, lit.y, PAL.white, 10, 120, { floorY: s.toGround.y, intensity: 0.85, air: 0.7, rise: 0 });
     }
     const mat = tgt ? [hitSoundFor(tgt, { kind: 'physical', heavy: true }), hitSoundFor(tgt, { kind: 'physical', heavy: false })] : [];
     // (blocked: the guard's shared shield bell is skipped in the contact call and re-played far under the TING)
@@ -461,7 +521,7 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
     const struckSnd = mat[0];
     if (struckSnd) play(struckSnd, { volume: s.blocked ? 0.5 : 0.42, pan: panAt(aim.x) });
     // the target's shared contact flash (_v3/flash.ts: a white banded disc on the struck body) is the most
-    // generic frame of any strike: the heron's pinpoint (three nicks → the triangle, the floor pool) IS its contact
+    // generic frame of any strike: the heron's pinpoint (three nicks → the triangle and its star, the light on the core) IS its contact
     hideContactFlash(sc, before, tgt ? tgt.sprite.depth : null);
     if (s.blocked) {
       play('shieldBlock', { volume: 0.3, pitch: 1.25, pan: panAt(aim.x) });
@@ -480,22 +540,29 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
     }
     // ---- recover: a single backward glide home (blocked: the third glanced off — he hops back one stride first,
     // while the battle's recoil plays the spring of his neck)
-    let from: XY = { ...feet };
+    let ret: XY = { ...feet };
     if (s.blocked) {
       const hop: XY = { x: feet.x - sgn * 9, y: feet.y + 4 };
       await animate(sc, 110, (t) => {
         const e = E.outQ(t);
         if (spr.active) placeFeet(u, { x: lerp(feet.x, hop.x, e), y: lerp(feet.y, hop.y, e) }, Math.sin(Math.PI * t) * 3);
       });
-      from = hop;
+      ret = hop;
     }
     const backHome = seg(u, recF, n - 1);
     atFrame(u, 'attack', Math.min(recF + 1, n - 1), () => play('heronMistClose', { volume: 0.9, pan }));
-    const backMs = Math.max(140, u.rangeMs('attack', recF, n - 1));
+    // the way home is a glide too, never a snap: a long one (a direct attack, a far target) takes ≥ 200 scene ms
+    // (≈ 270 game ms) and leaves the same mist trail, streaming the other way
+    const backDist = Math.hypot(home.x - ret.x, home.y - ret.y);
+    const backMs = Math.max(140, u.rangeMs('attack', recF, n - 1), backDist > 30 ? 200 + rnd(backDist) : 0);
+    const backTrail = backDist > 20 ? new GlideTrail(sc, new Px(sc.add.graphics().setDepth(unitDepth(Math.max(home.y, ret.y)) - 0.6)), new Px(sc.add.graphics().setDepth(DEPTH.CARD_ON_TILE + 3)), (-sgn) as 1 | -1) : null;
     await animate(sc, backMs, (t) => {
-      const e = E.inOutQ(t);
-      if (spr.active) placeFeet(u, { x: lerp(from.x, home.x, e), y: lerp(from.y, home.y, e) });
+      const e = glide(t);
+      const p = { x: lerp(ret.x, home.x, e), y: lerp(ret.y, home.y, e) };
+      if (spr.active) placeFeet(u, p);
+      backTrail?.at(p);
     });
+    backTrail?.close();
     if (spr.active) placeFeet(u, home);
     await Promise.race([backHome, sleep(sc, u.frameMs('attack', n - 1) + 30)]);
   } finally {
@@ -577,6 +644,39 @@ function coolGlance(sc: Phaser.Scene, u: MonsterUnit, before: number, at: XY, sg
 
 registerStrike(ID, (s) => (LOOK_V3 ? beakTriple(s) : (s.base?.() ?? Promise.resolve())), { name: 'kartc:reed_heron:strike' });
 
+// ================================================================ the pond never slides: no kit shove
+
+/**
+ * The heron's recoils and its death DRAW the give (knock 'pose': the body rocks back, the death steps back); the
+ * shared kit still shoves the whole sprite on a blow from behind and on a lethal blow — and the sprite carries the
+ * still pond and the reeds, so the floor would slide under him. While `ms` run, after every update (the shove's
+ * tween runs in the update, the frame is drawn after), a sprite pushed 1–4 px off its rest spot is put back and
+ * the shove's tween stopped. A unit standing far from home (his own strike) is never touched.
+ */
+function pinHome(sc: Phaser.Scene, u: MonsterUnit, ms: number): () => void {
+  const spr = u.sprite;
+  const home = { ...u.rest0 };
+  const t0 = sc.time.now;
+  let on = true;
+  const off = () => {
+    if (!on) return;
+    on = false;
+    sc.events.off('postupdate', hold);
+  };
+  function hold(): void {
+    if (!spr.active || u.retired || sc.time.now - t0 > ms) return off();
+    const a = u.frameInfo().anim;
+    if (a === 'attack' || a === 'summon') return;
+    const dx = spr.x - home.x;
+    const dy = spr.y - home.y;
+    if ((dx === 0 && dy === 0) || Math.abs(dx) > 4 || Math.abs(dy) > 4) return;
+    for (const tw of sc.tweens.getTweensOf(spr)) if (tw.data.some((d) => { const k = (d as { key?: string }).key; return k === 'x' || k === 'y'; })) tw.stop();
+    spr.setPosition(home.x, home.y);
+  }
+  sc.events.on('postupdate', hold);
+  return off;
+}
+
 // ================================================================ struck: feather + still water
 
 /**
@@ -610,6 +710,8 @@ function watchStruck(ctx: BattleCtx): void {
     });
   };
   sc.events.on('v3:contact', onContact);
+  // the drawn give replaces the kit's shove for the whole battle (pinHome)
+  pinHome(sc, u, 6000);
   // never outlive the battle
   void sleep(sc, 6000).then(() => sc.events.off('v3:contact', onContact));
 }
@@ -635,15 +737,17 @@ function mistDeath(ctx: DestroyCtx): void {
   const pan = panAt(u.home.x);
   let seen = false;
   let lastF = -1;
-  let seenBefore = false;
   let done = false;
   // the back-step slips on the still water; the single ring opens as the mist reaches the head
   // the wings close (f1) and the back-step slips on the still water (f2) — scored here, on whichever frame the
   // death pose actually starts from (posematch may join it past f1 from the recoil)
   let closed = false;
   let slipped = false;
+  let closedAt = -1e9;
   // the bank's own world bands: two thin wisps either side, widening the art's cover bands past the body
   const wisps = new Px(sc.add.graphics().setDepth(unitDepth(u.home.y) + 0.4));
+  // the killing blow does not shove him: the death's own drawn back-step is the give (pinHome)
+  const unpin = pinHome(sc, u, 4000);
   const keep = onFrame(sc, (_dt, el) => {
     if (done || el > 4000) return false;
     const fi = u.frameInfo();
@@ -669,14 +773,16 @@ function mistDeath(ctx: DestroyCtx): void {
       lastF = fi.frame;
       if (!closed && fi.frame >= 1) {
         closed = true;
+        closedAt = sc.time.now;
         play('heronWingClose', { volume: 0.9, pan });
       }
-      if (!slipped && fi.frame >= 2) {
+      // the slip lands with the foot planting back (f3) — never on top of the closing wings: ≥ 150 scene ms
+      // (≈ 200 ms heard) after the wing close began, so the pair, then the wet step, read as two events
+      if (!slipped && fi.frame >= 3) {
         slipped = true;
-        const late = !seenBefore; // joined past f1: the slip follows the wing close by a beat
-        void (late ? sleep(sc, 90) : Promise.resolve()).then(() => play('heronBackSlip', { volume: 0.9, pan }));
+        const wait = Math.max(0, 150 - (sc.time.now - closedAt));
+        void (wait > 0 ? sleep(sc, wait) : Promise.resolve()).then(() => play('heronBackSlip', { volume: 0.9, pan }));
       }
-      seenBefore = true;
       if (fi.frame === n - 1) {
         // the mist has him: the sprite goes, the ground stays (the kit finds no body to break)
         remains(u, sc, pan);
@@ -686,7 +792,10 @@ function mistDeath(ctx: DestroyCtx): void {
       }
     }
     return true;
-  }, () => wisps.g.destroy());
+  }, () => {
+    wisps.g.destroy();
+    unpin();
+  });
   void keep;
 }
 

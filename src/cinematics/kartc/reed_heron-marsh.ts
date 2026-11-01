@@ -4,7 +4,7 @@
 //
 //   - the negative pool: a night2 multiply pool on the tile — the still water is the darkest floor patch in the
 //     game, and it stays that way in play (oturum-c-tasarim §2.2 Light, §0.4.3);
-//   - the ambient mist: four low wisps (3-row stepped lenses, reed_heron-mist.ts) framing the pond on both sides, drifting
+//   - the ambient mist: five low wisps (3–4-row stepped lenses with a lit mist crest, reed_heron-mist.ts) framing the pond and one across his ankles, drifting
 //     1 px every 400 ms (a bounded ±2 px sway, never more than 4 px past the tile); frozen by the strike's freeze;
 //   - the idle soundscape (§2.2 idle bed, §0.5): ambient ticks only while he idles — the drop "plip" on idle f13,
 //     a distant frog croak, a reed swell — at most one per 4 s, never within 1.5 s of any contact on the board.
@@ -85,23 +85,25 @@ export class MarshAura implements Disposable {
     const h = u.home;
     const d = this.drift(this.el);
 
-    // the ambient bank: four low wisps on the tile (reed_heron-mist.ts: 3-row stepped lenses — a crest, a body, an
+    // the ambient bank: five low wisps on the tile (one crossing his ankles over the pond) (reed_heron-mist.ts: 3-row stepped lenses — a crest, a body, an
     // underside — with Bayer ends, the summon's and the death's mist language), where the sprite's own pond does not
     // hide them: a far one behind him past the pond's far rim, two side wisps flanking the pond at the waterline,
     // a near one in front between the near rim and the badge; clipped ≤ 4 px past the tile's diamond
     const half = TILE_W / 2;
     const clip: [number, number] = [h.x - half - 4, h.x + half + 4];
     const run = (L: Px) => (y: number, x0: number, x1: number, c: number) => void L.run(y, x0, x1, c);
-    // [dy, layer 0 back / 1 front, x offset, half width, tone, seed]
-    const rows: [number, 0 | 1, number, number, 0 | 1, number][] = [
-      [-11, 0, -3, 21, 1, 61],
-      [-3, 1, -29, 8, 0, 63],
-      [-3, 1, 30, 8, 0, 64],
-      [7, 1, 2, 20, 0, 67],
+    // [dy, layer 0 back / 1 front, x offset, half width, tone, seed, rows] — every band carries the lit mist crest
+    // (tone 0) so the vapour reads at 1× over the dark board; one band crosses his ankles over the pond itself
+    const rows: [number, 0 | 1, number, number, 0 | 1, number, number][] = [
+      [-12, 0, -2, 22, 0, 61, 4],
+      [-2, 1, -26, 11, 0, 63, 3],
+      [-2, 1, 28, 11, 0, 64, 3],
+      [-7, 1, 1, 15, 0, 65, 3],
+      [7, 1, 2, 20, 0, 67, 3],
     ];
-    rows.forEach(([dy, layer, ox, hw, tone, seed], i) => {
+    rows.forEach(([dy, layer, ox, hw, tone, seed, rh], i) => {
       const off = d * (i % 2 ? -1 : 1);
-      paintWisp(run(layer ? this.front : this.back), { cx: h.x + ox + off, y: h.y + dy - 1, h: 3, hw, lean: 0, seed, tone, clip });
+      paintWisp(run(layer ? this.front : this.back), { cx: h.x + ox + off, y: h.y + dy - 1, h: rh, hw, lean: 0, seed, tone, clip });
     });
     this.idleSound();
     return true;
