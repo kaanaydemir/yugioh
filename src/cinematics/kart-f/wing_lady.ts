@@ -350,7 +350,7 @@ async function blessBeat(ctx: AnyCtx, ladyUid: Uid | null, ladyHome: XY, allies:
     if (mode === 'arrive') n0 = Math.max(0, field.units().filter((u) => u.player === (lady?.player ?? list[0]?.unit?.player) && auraOf(u) && !list.some((a) => a.uid === u.uid)).length);
     const jobs = list.map(async (a, k) => {
       const u = a.unit!;
-      await sleep(sc, k * 120);
+      await sleep(sc, k * 100);
       const near = ladyOk && lady ? (u.home.x >= lady.home.x ? (lady.flipX ? 'claw' : 'staff') : lady.flipX ? 'staff' : 'claw') : 'staff';
       const from = ladyOk && lady ? pointNow(lady, near as MonsterPointName, { x: ladyHome.x, y: ladyHome.y - 34 }) : { x: ladyHome.x, y: ladyHome.y - 30 };
       const dist = Math.hypot(u.home.x - ladyHome.x, u.home.y - ladyHome.y);
@@ -372,12 +372,12 @@ async function blessBeat(ctx: AnyCtx, ladyUid: Uid | null, ladyHome: XY, allies:
     await Promise.all(jobs);
     // ---- the first beat together (it teaches that they belong together)
     if (total > 0 && mode !== 'compact') {
-      await sleep(sc, mode === 'arrive' ? 120 : 160);
+      await sleep(sc, mode === 'arrive' ? 100 : 120);
       const side = list[0].unit!.player;
       for (const u of field.units()) if (u.player === side) auraOf(u)?.beat();
     }
     // her salute settles on its own (the next event may start: the sprite returns to idle by itself)
-    if (ladyOk && lady) await capped(sc, anim, mode === 'arrive' ? 0 : 200);
+    if (ladyOk && lady) await capped(sc, anim, mode === 'arrive' ? 0 : mode === 'afterSummon' ? 80 : 200);
   } finally {
     if (lady) lady.posed = false;
     for (const a of allies) BUSY.delete(a.uid);
@@ -647,7 +647,7 @@ async function glideIn(S: Stage): Promise<void> {
   });
   const pool = lightPool(sc, startFloor.x, startFloor.y, { color: PAL.gold3, spill: PAL.gold1, radius: 16, floorY: startFloor.y, intensity: 0.4, fadeIn: 120 });
   S.own({ destroy: () => (pool.alive ? void pool.fadeOut(200) : undefined) });
-  await animate(sc, 200, (t) => {
+  await animate(sc, 160, (t) => {
     const k = E.outQ(t);
     lightAt = { x: startFloor.x + (home.x - startFloor.x) * k * 0.35, y: startFloor.y + (home.y - startFloor.y) * k * 0.35 };
     lightSpan = 6 + Math.floor(t * 4) * 3;
@@ -662,7 +662,7 @@ async function glideIn(S: Stage): Promise<void> {
   void holoOnset(sc, u, RAMPS.gold, 200);
   const streams = layer(sc, DEPTH.FX - 5);
   let prev = { ...p0, y: p0.y - lift0 };
-  const GLIDE = 420;
+  const GLIDE = 360;
   await animate(sc, GLIDE, (t) => {
     const k = Math.sin((t * Math.PI) / 2);
     const fl = { x: p0.x + (home.x - p0.x) * k, y: p0.y + (home.y - p0.y) * k };

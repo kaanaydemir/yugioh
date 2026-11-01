@@ -1,0 +1,40 @@
+{
+ "cards": [
+  {
+   "id": "windmane_knight",
+   "name": "Fırtına Şövalyesi",
+   "prefix": "fs",
+   "ace": true,
+   "draft": null,
+   "brief": "EARTH / Savaşçı, Lv7 tribute ACE, 2300/2100. Design note: NOT mounted — a heavy knight with a great maned helm (the mane streams like a storm). Effect summonTurnAtk500: +500 ATK while attacking on the turn it was Normal/Tribute Summoned — the 'storm charge' of its arrival turn must be visible (e.g. the mane/storm surges when it attacks that turn, a distinct boosted strike vs a normal-turn strike). It needs a cut-in. Large sprite class (~80 px). Stone/ash death endings are reserved — pick its own ending (DEATH_PRESETS currently 'stone': change it).",
+   "effectNote": "summonTurnAtk500 has no 'activate' event of its own at summon: research how the +500 surfaces (query.ts:228, rules.ts:1129, battle plates/statChange, how m1Knight presents it today) and present the boosted attack on its summon turn uniquely (and the plain attack on later turns)"
+  },
+  {
+   "id": "shield_titan",
+   "name": "Kalkan Devi",
+   "prefix": "kd",
+   "ace": false,
+   "draft": "src/art/monsters-v3/shield_titan*.ts, src/art/cardart-v3/shield_titan.ts, src/art/cutins-v3/shield_titan.ts, tests/art/shield_titan.test.ts (fails: death heap too tall)",
+   "brief": "EARTH / Savaşçı, Lv4, 100/2600 — a pure wall. Design note: a giant with a tower shield taller than himself. Effect defenseAtkDebuff500: while face-up in DEFENSE and attacked, the attacker has −500 ATK in that battle — the shield must visibly sap/repel the attacker (the signature moment). Its guard/defense posture is its hero pose. Medium sprite (~64 px). Stone/ash death ending is reserved — choose its own (DEATH_PRESETS currently 'stone': change it). A cut-in exists from the draft; it is not an ace, so a cut-in is optional — keep only if it is excellent and used.",
+   "effectNote": "defenseAtkDebuff500: see engine/query.ts:276 and rules.ts:1804 (contextual ATK debuffs announce themselves — find the exact event: activate/statChange and its order relative to attackDeclare/battle) and how m1Shield presents it today"
+  },
+  {
+   "id": "hourglass_imp",
+   "name": "Kum Saati Cücesi",
+   "prefix": "ks",
+   "ace": false,
+   "draft": "src/art/monsters-v3/hourglass_imp*.ts, src/art/cardart-v3/hourglass_imp.ts, tests/art/hourglass_imp.test.ts (fails: not registered, excluded)",
+   "brief": "LIGHT / Büyücü, Lv2, 500/400 — small. Design note: a dwarf/imp with a big hourglass and a pointed hat. Sand belongs ONLY to this card (YENI_KARTLAR: dial_jester has clockwork, no sand). Effect summonFreezeAttack: on summon, the summoner picks one opposing monster (face-down allowed); it cannot attack on the opponent's next turn — the freeze on the target must be unmistakable AND persist visibly on the frozen monster until it expires (and be presented when that monster tries/fails to attack or when the freeze ends, if the engine exposes it). Small sprite (~48 px).",
+   "effectNote": "summonFreezeAttack: rules.ts:1196 (on summon: target choice decision then the freeze), rules.ts:1703, types.ts:60 frozen state; describe.ts:324; find the events (activate / decision / any status event) and how m1Freeze / m1Imp present it today; persistent status visual pattern: handbook §6.5 and src/duel/auras-v3.ts"
+  },
+  {
+   "id": "wing_lady",
+   "name": "Kanat Hanımı",
+   "prefix": "kh",
+   "ace": false,
+   "draft": null,
+   "brief": "WIND / Kanatlı, Lv4, 1300/1400. Design note: a woman with bird wings and a short sword. Effect windAura300: the OTHER face-up WIND monsters on her controller's field get +300 ATK — a persistent aura that must read clearly (which allies are buffed) and appear/disappear with her and with allies arriving/leaving. Must not look/sound like storm_hawk (dive entrance belongs to storm_hawk), cloud_hatchling's wind ring, wisp_imp's feathers/pillow 'pof', reed_heron's 'fuff' or kite_fencer's kite cloth (§5.1/§5.2). Medium sprite (~48 px).",
+   "effectNote": "windAura300: query.ts:218 (a passive aura with no activation event?) — research how it surfaces (statChange events on summon/leave? m1Aura / m1AuraAttack today) and how the existing aura view src/duel/auras-v3.ts (flameAuraV3) works; present the aura birth, its persistent look on buffed allies, and its loss"
+  }
+ ]
+}

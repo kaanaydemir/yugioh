@@ -22,4 +22,42 @@ Per-card design + critique log: docs/v3/oturum-f/<id>.md.
   are out of the exclusion list. Critique rounds 1–3, gate verification and per-card ship are pending (two
   usage-limit stops; the workflow resumes from cache).
 
+- 2026-11-01 ~05:45 UTC: **PAUSED (owner decision via orchestrator: weekly usage nearly exhausted).** Workflow
+  run stopped, auto-checkpoint loop stopped, all work pushed as WIP.
+
+## Resume instructions (lane F is PAUSED — resume only when the orchestrator says so)
+
+Per-card state at the pause (workflow stages: design → design-critic → art → cine → 3× critic/fix → verify/gatefix → ship):
+
+| card | design | design-critic | art (rig + card art + cut-in) | cine + SFX + scenarios | critique rounds | verify | shipped |
+|---|---|---|---|---|---|---|---|
+| windmane_knight | ✓ | ✓ | ✓ (cut-in ✓) | ✓ | 0/3 | — | WIP only |
+| shield_titan | ✓ | ✓ | ✓ (draft rebuilt; old cut-in removed) | ✓ | 0/3 | — | WIP only |
+| hourglass_imp | ✓ | ✓ | ✓ (draft rebuilt) | ✓ | 0/3 | — | WIP only |
+| wing_lady | ✓ | ✓ | ✓ | **interrupted mid-stage** (partial files: kart-f/wing_lady, scenarios, aura test) | 0/3 | — | WIP only |
+
+shield_titan and hourglass_imp are already removed from the v3 exclusion list (src/art/monsters/index.ts) although
+they have not passed the critique rounds / gates yet — if the merge happens before lane F resumes, decide whether
+to re-exclude them.
+
+**Workflow script:** `docs/v3/oturum-f/workflow/lane-f.js`, args `docs/v3/oturum-f/workflow/lane-f-args.json`
+(the session copy is `/tmp/claude-0/-home-user-yugioh/02a8b144-a81d-507c-a48a-87bdc0b28d49/scratchpad/lane-f.js`).
+
+1. **Same container / session still alive:** `Workflow({ scriptPath: "<scratchpad>/lane-f.js", resumeFromRunId:
+   "wf_c30b1120-ef4", args: <lane-f-args.json content> })`. Completed agents (designs, design critics, art ×4, cine for
+   windmane_knight / shield_titan / hourglass_imp) replay from cache; `cine:wing_lady` re-runs (it will find its partial
+   files) and everything after it runs live. The script stops a card if one of its agents returns nothing (limit).
+2. **Fresh session (the journal in ~/.claude is gone, cache unavailable):** do NOT rerun from the top. Copy the script,
+   delete the design + art stages for all cards and the cine stage for the first three (the work is in the tree), and
+   start each card at: wing_lady → cine (finish), then all four → critique rounds 1–3 → verify → ship. Re-create the
+   gitignored baselines first on a tree WITHOUT lane-F changes to the v1 look (lane F never touches v1, so the current
+   tree is fine): `node tools/filmdiff.mjs --set v1 --base shots/v3/a3/baseline/v1films --write`,
+   `--set a6v1 --base shots/v3/a56/baseline/a6v1films --write`, and the camera base
+   `node tools/measure.mjs --look v3 --scenarios 'm1Shield,m1Freeze,m1Knight,m1Imp,m1Aura,m1AuraAttack,m1Board5' --jobs 1 --out shots/v3/kart-f/camera-base.json`
+   (note: the cards' own placeholder bases `shots/v3/kart-f/<id>/camera-base.json` are lost too; re-measure with the
+   cards' cinematics files temporarily moved aside, or accept NOBASE for the new kd/ks/fs/kh keys).
+   Container: `ln -sfn chrome-linux64 /opt/pw-browsers/chromium-1243/chrome-linux`; `npm ci`.
+3. Keep committing + pushing WIP at least every 30 min (orchestrator rule); each card ships with its own commit
+   once its verify passes; then write the final summary here.
+
 ## Open issues
