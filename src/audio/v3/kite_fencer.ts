@@ -125,7 +125,7 @@ const KITE_RECIPES = {
     gap: 0.5,
     verb: 0.25,
     play(v) {
-      const fl = v.flutter(70, 0.5, { d: 0.19, base: 0.5 });
+      const fl = v.flutter(70, 0.35, { d: 0.19, base: 0.6 });
       v.noise('white', { g: [[0, 0], [0.04, 0.07], [0.17, 0.0001, 'e']], to: v.filt('bandpass', 1650, 1.4, { to: fl }) });
       stringBuzz(v, 0.02, [[0, 880], [0.2, 880]], [[0, 0], [0.06, 0.012], [0.2, 0.0001, 'e']], { flutter: 90, q: 6 });
     },
@@ -151,7 +151,7 @@ const KITE_RECIPES = {
       // the flat cloth slapping the tile: a mid band (no low body: kite cloth is light), the spars' click on top
       v.noise('pink', { g: [[0, 0], [0.003, 0.3], [0.03, 0.12], [0.09, 0.0001, 'e']], to: v.filt('bandpass', 1100, 0.9) });
       clothBody(v, 0, 0.12, 1700, 0.06);
-      thump(v, 0, 160, 110, 0.05, 0.05);
+      thump(v, 0, 160, 110, 0.03, 0.05);
       bamboo(v, 0.004, 0.26);
     },
   },
@@ -171,9 +171,9 @@ const KITE_RECIPES = {
     gap: 0.1,
     verb: 0.3,
     play(v) {
-      clothSnap(v, 0, 0.4, 1800, 0.018, 3, 0.4, 0.1);
-      clothBody(v, 0.002, 0.1, 1800, 0.05, 2);
-      bamboo(v, 0.006, 0.12, 1);
+      clothSnap(v, 0, 0.26, 1800, 0.018, 3, 0.4, 0.1);
+      clothBody(v, 0.002, 0.22, 1800, 0.06, 2);
+      bamboo(v, 0.006, 0.05, 1);
       stringBuzz(v, 0.01, [[0, 880], [0.14, 860, 'e']], [[0, 0], [0.01, 0.02], [0.14, 0.0001, 'e']]);
     },
   },
@@ -239,9 +239,9 @@ const KITE_RECIPES = {
     verb: 0.45,
     play(v) {
       // fwump: the cloth panel catches a breath of wind
-      v.noise('pink', { g: [[0, 0], [0.04, 0.09], [0.16, 0.0001, 'e']], to: v.filt('lowpass', 900, 0.8, { to: v.filt('highpass', 160, 0.7) }) });
+      v.noise('pink', { g: [[0, 0], [0.04, 0.15], [0.18, 0.0001, 'e']], to: v.filt('lowpass', 900, 0.8, { to: v.filt('highpass', 160, 0.7) }) });
       // one plucked string: "one attack left"
-      pluck(v, 0.04, 1320, 0.075, 0.4);
+      pluck(v, 0.04, 1320, 0.06, 0.4);
     },
   },
   kfnVump: {
@@ -376,8 +376,8 @@ const KITE_RECIPES = {
       clothSnap(v, 0.045, 0.14, 2100, 0.016, 3);
       clothBody(v, 0.046, 0.2, 1300, 0.06);
       // … and the torn panels flapping on for a beat after it (a 58 Hz flutter on a falling band)
-      const fl = v.flutter(58, 0.55, { t: 0.03, d: 0.15, base: 0.45 });
-      v.noise('white', { t: 0.03, g: [[0, 0], [0.02, 0.4], [0.08, 0.24], [0.15, 0.0001, 'e']], to: v.filt('bandpass', [[0, 1300], [0.15, 900, 'e']], 1.5, { to: fl }) });
+      const fl = v.flutter(58, 0.55, { t: 0.03, d: 0.17, base: 0.45 });
+      v.noise('white', { t: 0.03, g: [[0, 0], [0.02, 0.55], [0.1, 0.38], [0.17, 0.0001, 'e']], to: v.filt('bandpass', [[0, 1300], [0.15, 900, 'e']], 1.5, { to: fl }) });
       // the spars knock together under the blow (a second, lower bamboo click), no low thud: that is the robe's
       bamboo(v, 0.05, 0.16, 1);
     },
@@ -427,7 +427,7 @@ const KITE_RECIPES = {
       // the string's last note rings out (a triangle that drops a hair as the tension goes) …
       v.tone('triangle', [[0, 1780], [0.1, 1700, 'e']], { g: perc(0.17, 0.12, 0.0012) });
       v.tone('sine', 3520, { g: perc(0.05, 0.05, 0.0012) });
-      tick(v, 0, 0.1, { hp: 3000, lp: 10000, dec: 0.006 });
+      tick(v, 0, 0.05, { hp: 3000, lp: 10000, dec: 0.006 });
       // … and the two ends whip back
       sweep(v, 0.02, 0.1, [2600, 4200, 3000], 0.09, { kind: 'white', q: 3, peakAt: 0.4, pan: [-0.3, -0.4] });
       sweep(v, 0.04, 0.11, [2400, 3800, 2600], 0.08, { kind: 'white', q: 3, peakAt: 0.4, pan: [0.3, 0.4] });
@@ -451,8 +451,10 @@ const KITE_RECIPES = {
     gap: 0.1,
     verb: 0.2,
     play(v) {
+      // (light linen folding: a soft mid band, only a felt hint of weight)
       puff(v, 0, 0.12, 0.09, 1100, { kind: 'pink' });
-      thump(v, 0.01, 130, 85, 0.07, 0.06);
+      clothBody(v, 0.004, 0.08, 1300, 0.08, 1.2);
+      thump(v, 0.01, 150, 110, 0.025, 0.05);
     },
   },
   kfnClatter: {
@@ -482,10 +484,10 @@ const KITE_RECIPES = {
     play(v) {
       // the scrap twitches (a small cloth flick), then frays: four fibre ticks pulling apart, a thin breath carrying
       // the threads off after the cloak (band falling = going away), the string's memory a last faint harmonic
-      clothSnap(v, 0, 0.05, 2200, 0.012, 3);
+      clothSnap(v, 0, 0.03, 2200, 0.012, 3);
       clothBody(v, 0.001, 0.06, 2100, 0.05, 2);
-      for (let i = 0; i < 4; i++) v.noise('white', { t: 0.07 + i * 0.045 + (i % 2) * 0.008, g: perc(0.03 * (1 - i * 0.18), 0.008, 0.002), to: v.filt('bandpass', 5200 - i * 500, 2.5) });
-      v.noise('pink', { t: 0.04, g: [[0, 0], [0.06, 0.17], [0.34, 0.0001, 'e']], to: v.filt('bandpass', [[0, 2000], [0.34, 900, 'e']], 1.3) });
+      for (let i = 0; i < 4; i++) v.noise('white', { t: 0.07 + i * 0.045 + (i % 2) * 0.008, g: perc(0.018 * (1 - i * 0.18), 0.01, 0.002), to: v.filt('bandpass', 5200 - i * 500, 2.5) });
+      v.noise('pink', { t: 0.04, g: [[0, 0], [0.06, 0.22], [0.34, 0.0001, 'e']], to: v.filt('bandpass', [[0, 2000], [0.34, 900, 'e']], 1.3) });
       v.tone('triangle', [[0, 2640], [0.28, 2400, 'e']], { t: 0.08, g: perc(0.01, 0.26, 0.01) });
     },
   },
@@ -528,7 +530,7 @@ const TRIM_DB: Partial<Record<keyof typeof KITE_RECIPES, number>> = {
   kfnPanelOff: 6,
   kfnLand: 7,
   kfnStruck: 14,
-  kfnStruckHeavy: 18,
+  kfnStruckHeavy: 19,
   kfnGuardWrap: 13,
   kfnBlockBow: 8,
   kfnDeathTaut: 21,

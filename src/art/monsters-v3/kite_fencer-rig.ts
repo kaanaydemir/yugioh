@@ -104,7 +104,7 @@ export interface Pose {
   ko: number;
   kh: number;
   kbl: number;
-  /** 0 = on his back, 1 = wrapped in front (guard), 2 = loose (absolute position: summon fall / death flight), 3 = none */
+  /** 0 = on his back, 1 = wrapped in front (guard), 2 = loose (absolute position: summon fall / death flight), 3 = none, 4 = over his head (summon: in front above the shoulders, behind below) */
   kmode: number;
   /** lying flat on the floor 0…1 (summon landing): the diamond squashed into an iso diamond */
   kflat: number;
@@ -423,7 +423,11 @@ function bowTie(q: PixelCanvas, at: Pt, c: number): void {
 
 /** Paint the kite (cloth panels, spars, spar shadows) on a frame-sized layer. Used by the rig and the loose-kite maps. */
 export function paintKite(q: PixelCanvas, k: KiteGeom, light: Light, o: { flash?: number; lowShade?: boolean; bump?: number } = {}): void {
-  const { T, L, R, B, X, bl } = k;
+  const { T, L, R, B, bl } = k;
+  // something rising under the lying cloth TENTS it: the spar crossing is lifted (the ridge is the highest point) and
+  // the four two-tone panels slope down from it to the corners — never a blank dome over the panels
+  const lift = o.bump ? Math.round(o.bump * 0.9) : 0;
+  const X: Pt = lift ? [k.X[0] + 1, k.X[1] - lift] : k.X;
   const hot = (o.flash ?? 0) > 0.5;
   // The gold pair always sits toward the key light: on the P2 relight sheet (lit from the frame's right, then
   // flipped) the pairs swap, so on screen both players' kites read gold top-left / fire top-right (IŞ-1, IŞ-2).
@@ -464,7 +468,10 @@ export function paintKite(q: PixelCanvas, k: KiteGeom, light: Light, o: { flash?
     const n = Math.max(Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1]), 1);
     for (let i = 0; i <= n; i++) fn(rnd(lerp(a[0], b[0], i / n)), rnd(lerp(a[1], b[1], i / n)));
   };
-  along(T, B, (x, y) => deep(x - ls, y));
+  if (lift) {
+    along(T, X, (x, y) => deep(x - ls, y));
+    along(X, B, (x, y) => deep(x - ls, y));
+  } else along(T, B, (x, y) => deep(x - ls, y));
   along(L, R, (x, y) => deep(x, y + 1));
   // spars: bamboo, the spine lit toward the light; tips poke 1 px out of the cloth
   const ext = (a: Pt, b: Pt): Pt => {
@@ -476,7 +483,10 @@ export function paintKite(q: PixelCanvas, k: KiteGeom, light: Light, o: { flash?
   const T2 = ext(X, T);
   const L2 = ext(X, L);
   const R2 = ext(X, R);
-  along(T2, B, (x, y) => q.set(x, y, SPAR_LIT));
+  if (lift) {
+    along(T2, X, (x, y) => q.set(x, y, SPAR_LIT));
+    along(X, B, (x, y) => q.set(x, y, SPAR_LIT));
+  } else along(T2, B, (x, y) => q.set(x, y, SPAR_LIT));
   // the cross spar bows backward with the wind (1 px at its middle when the cloth is billowed)
   const bowY = bl >= 4 ? 2 : bl > 1 ? 1 : 0;
   const mL: Pt = [rnd((L2[0] + X[0]) / 2), rnd((L2[1] + X[1]) / 2) - bowY];
@@ -486,22 +496,20 @@ export function paintKite(q: PixelCanvas, k: KiteGeom, light: Light, o: { flash?
   along(X, mR, (x, y) => q.set(x, y, SPAR));
   along(mR, R2, (x, y) => q.set(x, y, SPAR));
   q.set(X[0], X[1], SPAR_LIT);
-  if (o.bump) {
-    // something rising under the lying cloth: a lit dome in the middle
-    const s = kitLayer(q.w, q.h);
-    s.ellipse(X[0] + 1, X[1] - o.bump / 2, 5 + o.bump / 3, Math.max(1, o.bump / 2 + 1), gold.M);
-    bands(s, gold, light, 2, 2);
-    q.blit(s, 0, 0);
-    s.clear();
+  if (lift) {
+    // the ridge catches the light: the crossing and the pixel over it lit
+    q.set(X[0], X[1] - 1, SPAR_LIT);
   }
 }
 
-function paintKitePart(f: Frame): void {
+function paintKitePart(f: Frame, above?: number): void {
   const { o, sk } = f;
   const k = sk.kite;
   if (!k) return;
   const q = layer();
   paintKite(q, k, f.light, { flash: o.flash, bump: o.kbump });
+  // kmode 4's front pass: only the cloth above the shoulder line (draped over the head)
+  if (above !== undefined) for (let y = above; y < q.h; y++) for (let x = 0; x < q.w; x++) q.erase(x, y);
   // the tie at the neck (the kite sits on his shoulders): a fire knot under the head
   if (o.kmode === 0 && o.body) {
     const n = sk.N;
@@ -882,7 +890,7 @@ export function drawFencer(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right' 
   const sk = skeleton(o);
   const f: Frame = { p, comp: new Comp(p), light, o, sk };
   paintString(f);
-  if (o.kmode === 0 || o.kmode === 2) paintKitePart(f);
+  if (o.kmode === 0 || o.kmode === 2 || o.kmode === 4) paintKitePart(f);
   if (o.body) {
     if (o.thin > 0) {
       // the whole body painted aside, then squashed toward its centre column and laid over the frame
@@ -909,6 +917,9 @@ export function drawFencer(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right' 
   if (o.sliver) paintSliver(f);
   if (o.sword === 1 || (o.sword === 0 && o.body && o.thin === 0)) paintSword(f);
   if (o.kmode === 1) paintKitePart(f);
+  // kmode 4 (summon, the cloth sliding back over his head): the hem lies at his shoulders — the cloth above them is
+  // in front (over the head), the rest hangs behind the body
+  if (o.kmode === 4) paintKitePart(f, sk.N[1] + 1);
   p.outline(PAL.ink);
   paintLight(f);
 }
