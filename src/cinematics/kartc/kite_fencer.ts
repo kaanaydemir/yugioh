@@ -891,19 +891,20 @@ async function leafKite(S: Stage): Promise<void> {
     [5, 3, PAL.gold3],
   ];
   for (const [dx, dy, c] of pools) void lightFlash(sc, R(flat.x + sgn * dx), R(home.y + dy), c, 9, 90, { floorY: R(home.y + dy), intensity: 0.75, rise: 10 });
-  await sleep(sc, 45);
+  // (the flat frame holds: the cloth settles on the tile)
+  await sleep(sc, 80);
+  // ---- a bump rises under the cloth, it tents (the spar crossing lifted: the ridge is the highest point)
   show(u, 'summon', 3);
-  await sleep(sc, 35);
-  // ---- a bump rises under the cloth, it tents
-  show(u, 'summon', 4);
   play('kfnClothRustle', { pan, volume: 0.9 });
   await sleep(sc, 60);
-  show(u, 'summon', 5);
+  show(u, 'summon', 4);
   await sleep(sc, 60);
-  // ---- he stands up under the kite: his head lifts the cloth (f6), the shoulders come out as it slides back (f7),
-  // it slides onto his shoulders and the spars settle (f8–f10); the string uncoils
+  // ---- he stands up under the kite: his head lifts the cloth (f5), the cloth slides back over his head — its hem at
+  // his shoulders, in front above them and behind below (f6) — the shoulders come out as it slides back (f7), it
+  // slides onto his shoulders and the spars settle (f8–f10); the string uncoils
   for (const [f, ms] of [
-    [6, 70],
+    [5, 55],
+    [6, 45],
     [7, 60],
     [8, 60],
     [9, 60],

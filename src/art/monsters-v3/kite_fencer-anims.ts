@@ -328,13 +328,15 @@ const SUMMON_KEYS: Partial<Pose>[] = [
   { body: 0, sword: 3, kmode: 2, kx: AX - 1, ky: GY - 17, ka: 24, kflat: 0.36, ko: 1, kbl: 2, smode: 5 },
   { body: 0, sword: 3, kmode: 2, kx: AX - 1, ky: GY - 10, ka: 8, kflat: 0.74, ko: 1.06, kbl: 3, smode: 4 },
   // land: flat on the tile as an iso diamond, a cloth flop
+  // (the flop's settle is the first bump frame's flat cloth: one frame for both keeps the sheet in its byte budget)
   { body: 0, sword: 3, kmode: 2, kx: AX - 1, ky: GY - 7, ka: 0, kflat: 1, ko: 1.05, kbl: 2, smode: 4 },
-  { body: 0, sword: 3, kmode: 2, kx: AX - 1, ky: GY - 7, ka: 0, kflat: 1, ko: 1, kbl: 0, smode: 4 },
   // a bump rises under the cloth, then it tents
   { body: 0, sword: 3, kmode: 2, kx: AX - 1, ky: GY - 7, ka: 0, kflat: 1, ko: 1, kbl: 0, kbump: 4, smode: 4 },
   { body: 0, sword: 3, kmode: 2, kx: AX - 1, ky: GY - 8, ka: 0, kflat: 0.85, ko: 0.95, kbl: 1, kbump: 9, smode: 4 },
   // his head lifts the cloth: the kite draped over a crouched figure (only the shoes show under the hem)
   { sink: 12, lean: 2, chy: 3, hdy: 2, hx: 6, hy: 6, ba: 40, sword: 3, kmode: 1, kx: -3, ky: -3, ka: 84, ko: 1, kh: 0.92, kbl: 2, smode: 4, fx: -3, fy: -2 },
+  // the cloth slides back over his head: its hem crosses his shoulders — over the head in front, behind the body below
+  { sink: 11, lean: 1, chy: 2, hdy: 1, hx: 6, hy: 6, ba: 35, sword: 3, kmode: 4, kx: -1, ky: -5, ka: 80, ko: 0.96, kh: 0.92, kbl: 2, smode: 4, fx: -3, fy: -2 },
   // the shoulders come out, the cloth slides back over them
   { sink: 10, lean: 1, chy: 2, hdy: 1, hdx: 1, hx: 6, hy: 6, ba: 30, kx: 1, ky: -6, ka: 76, ko: 0.95, kh: 0.92, kbl: 2, smode: 4, fx: -4, fy: -2 },
   // he stands up under the kite: the cloth slides onto his shoulders, the spars settle
@@ -347,7 +349,7 @@ const SUMMON_KEYS: Partial<Pose>[] = [
 export function summonPose(f: number): Pose {
   return key(SUMMON_KEYS[Math.min(f, SUMMON_KEYS.length - 1)], f);
 }
-const SUMMON_HOLDS = [50, 50, 80, 90, 90, 100, 70, 70, 70, 70, 75, 90, 120];
+const SUMMON_HOLDS = [50, 50, 110, 90, 100, 55, 45, 70, 70, 70, 75, 90, 120];
 
 // ------------------------------------------------------------------ specs
 
