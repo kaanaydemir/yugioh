@@ -38,6 +38,7 @@ import { monsterFrame, monsterTextureKey } from '../../art/textures';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { ZoneEntry } from '../../duel/FieldView';
 import { DEPTH, duelistXY, GAME_H, GAME_W, LOOK_V3, type XY } from '../layout';
+import { ntGrid, PLATE_C0, PLATE_C1, PLATE_R0, PLATE_R1, PLATE_X0, PLATE_X1, PLATE_Y0, PLATE_Y1 } from '../board-nt/layout-nt';
 import { onDuelStart } from '../../duel/seeds';
 import { type Stamp, StepPatch, quantize } from './stepped';
 import { CAUSTIC_FRAMES, LIGHT_TEX, LT, ensureLightTextures } from './textures';
@@ -987,50 +988,97 @@ class UnitLight {
 }
 
 /**
- * Build (or get) a cached opaque dithered foot texture: soft contact shadow at the centre +
- * faint warm/slate light pool around its rim.
+ * Build (or get) a cached smooth foot texture: soft contact shadow at the centre +
+ * faint warm/slate light pool around its rim (smooth radial alpha, no checkerboard speckles).
  */
 function ensureFootTex(scene: Phaser.Scene, rx: number, ry: number): string {
   const key = `light:v3foot:${rx}x${ry}`;
   if (scene.textures.exists(key)) return key;
-  const rxP = rx + 5;
-  const ryP = ry + 3;
-  const W = rxP * 2 + 1;
-  const H = ryP * 2 + 1;
-  const p = new PixelCanvas(W, H);
-  const rxS = Math.max(5, Math.round(rx * 0.85));
-  const ryS = Math.max(3, Math.round(ry * 0.85));
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const dxS = (x - rxP) / (rxS + 0.5);
-      const dyS = (y - ryP) / (ryS + 0.5);
-      const d2S = dxS * dxS + dyS * dyS;
-      if (d2S <= 1.0) {
-        // Soft opaque contact shadow (replaces MonsterUnit's 0.5-alpha shadow in v3)
-        if (d2S < 0.42) {
-          p.set(x, y, PAL.ink);
-        } else if (d2S < 0.76) {
-          p.set(x, y, ((x + y) & 1) === 0 ? PAL.ink : PAL.night0);
-        } else if (((x + y) & 1) === 0) {
-          p.set(x, y, PAL.night0);
-        }
-        continue;
-      }
-      const dxP = (x - rxP) / (rxP + 0.5);
-      const dyP = (y - ryP) / (ryP + 0.5);
-      const d2P = dxP * dxP + dyP * dyP;
-      if (d2P <= 1.0) {
-        // Faint light pool around the feet (warm key light from top-left + slate bounce)
-        const topLeft = x - rxP <= 2 && y - ryP <= 1;
-        if (d2P < 0.72) {
-          if (((x + y) & 1) === 0) p.set(x, y, topLeft ? PAL.earth1 : PAL.stone1);
-        } else if ((x & 1) === 0 && (y & 1) === 0) {
-          p.set(x, y, topLeft ? PAL.stone1 : PAL.night2);
-        }
-      }
-    }
+  const rxP = rx + 12;
+  const ryP = ry + 6;
+  const W = rxP * 2;
+  const H = ryP * 2;
+  const cv = document.createElement('canvas');
+  cv.width = W;
+  cv.height = H;
+  const g = cv.getContext('2d');
+  if (g) {
+    // 1. Outer soft ambient ground shadow around the unit
+    g.save();
+    g.translate(rxP, ryP);
+    g.scale(rxP, ryP);
+    const amb = g.createRadialGradient(0, 0, 0.25, 0, 0, 1);
+    amb.addColorStop(0, 'rgba(5, 6, 17, 0.55)');
+    amb.addColorStop(0.65, 'rgba(5, 6, 17, 0.28)');
+    amb.addColorStop(1, 'rgba(5, 6, 17, 0)');
+    g.fillStyle = amb;
+    g.beginPath();
+    g.arc(0, 0, 1, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
+
+    // 2. Faint warm-amber light pool at the unit's feet
+    const rxL = Math.max(8, rx + 4);
+    const ryL = Math.max(4, ry + 2);
+    g.save();
+    g.translate(rxP, ryP);
+    g.scale(rxL, ryL);
+    const pool = g.createRadialGradient(0, 0, 0.15, 0, 0, 1);
+    pool.addColorStop(0, 'rgba(235, 188, 118, 0.28)');
+    pool.addColorStop(0.65, 'rgba(155, 170, 205, 0.14)');
+    pool.addColorStop(1, 'rgba(155, 170, 205, 0)');
+    g.fillStyle = pool;
+    g.beginPath();
+    g.arc(0, 0, 1, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
+
+    // 3. Crisp dark contact shadow core right under the feet (no dither speckles)
+    const rxS = Math.max(6, Math.round(rx * 0.82));
+    const ryS = Math.max(3, Math.round(ry * 0.82));
+    g.save();
+    g.translate(rxP, ryP);
+    g.scale(rxS, ryS);
+    const shd = g.createRadialGradient(0, 0, 0, 0, 0, 1);
+    shd.addColorStop(0, 'rgba(5, 6, 17, 0.82)');
+    shd.addColorStop(0.58, 'rgba(5, 6, 17, 0.48)');
+    shd.addColorStop(1, 'rgba(5, 6, 17, 0)');
+    g.fillStyle = shd;
+    g.beginPath();
+    g.arc(0, 0, 1, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
   }
-  scene.textures.addCanvas(key, p.toCanvas());
+  scene.textures.addCanvas(key, cv);
+  return key;
+}
+
+/** Wide soft drop shadow on the board floor under a monster card/unit or duelist podium. */
+function ensureFloorShadowTex(scene: Phaser.Scene, rx: number, ry: number): string {
+  const key = `light:v3floorshd:${rx}x${ry}`;
+  if (scene.textures.exists(key)) return key;
+  const W = rx * 2;
+  const H = ry * 2;
+  const cv = document.createElement('canvas');
+  cv.width = W;
+  cv.height = H;
+  const g = cv.getContext('2d');
+  if (g) {
+    g.save();
+    g.translate(rx, ry);
+    g.scale(rx, ry);
+    const shd = g.createRadialGradient(0, 0, 0.1, 0, 0, 1);
+    shd.addColorStop(0, 'rgba(4, 5, 14, 0.76)');
+    shd.addColorStop(0.55, 'rgba(4, 5, 14, 0.42)');
+    shd.addColorStop(0.82, 'rgba(4, 5, 14, 0.16)');
+    shd.addColorStop(1, 'rgba(4, 5, 14, 0)');
+    g.fillStyle = shd;
+    g.beginPath();
+    g.arc(0, 0, 1, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
+  }
+  scene.textures.addCanvas(key, cv);
   return key;
 }
 
@@ -1088,6 +1136,7 @@ class SteppedUnitLight {
   readonly unit: MonsterUnit;
   private readonly scene: Phaser.Scene;
   private readonly patch: StepPatch;
+  private readonly floorShdImg: Img;
   private readonly footImg: Img;
   private readonly rimImg: Img;
   private readonly lvl = new Ramp(0);
@@ -1112,6 +1161,8 @@ class SteppedUnitLight {
     this.rx = Math.round(Math.max(12, Math.min(24, ow.w * 0.36)));
     this.ry = Math.max(4, Math.round(this.rx * 0.37));
     this.patch = layer.makePatch();
+    const floorShdKey = ensureFloorShadowTex(this.scene, 40, 21);
+    this.floorShdImg = layer.makeSteppedImage(floorShdKey, DEPTH.CARD_ON_TILE - 0.2);
     const footKey = ensureFootTex(this.scene, this.rx, this.ry);
     this.footImg = layer.makeSteppedImage(footKey, DEPTH.SHADOW + 0.05);
     this.rimImg = layer.makeSteppedImage('__DEFAULT', unit.sprite.depth + 0.01);
@@ -1120,10 +1171,6 @@ class SteppedUnitLight {
   tick(dt: number, _t: number, gain: number, onField: boolean, layer: LightLayer): boolean {
     const u = this.unit;
     const s = u.sprite;
-    // In stepped v3 mode, suppress the unit's 0.5-alpha shadow so only opaque palette pixels render
-    if (u.shadow?.active && u.shadow.visible) {
-      u.shadow.setVisible(false);
-    }
     let vis = 0;
     if ((onField || (s.active && !u.retired)) && s.active && !u.retired && s.visible) vis = Math.min(1, s.alpha);
     if (Math.abs(this.lvl.target - vis) > 0.01) void this.lvl.set(vis, vis > this.lvl.v ? 240 : 200, (x) => x);
@@ -1132,6 +1179,7 @@ class SteppedUnitLight {
     if (!onField && lv <= 0.003 && vis <= 0.003) return false;
     if (!s.active) {
       this.patch.draw([]);
+      this.floorShdImg.setVisible(false);
       this.footImg.setVisible(false);
       this.rimImg.setVisible(false);
       return lv > 0.003 && onField;
@@ -1144,10 +1192,13 @@ class SteppedUnitLight {
     const cy = Math.round(groundY - 1);
     this.patch.draw(level > 0 ? [{ kind: 'ellipse', cx, cy, rx: this.rx, ry: this.ry, level: Math.min(1, level), hue: this.color, core: 0 }] : []);
 
-    // Soft contact shadow + faint light pool under the unit's feet
+    // Replace MonsterUnit's checkerboard dither shadow with smooth radial contact shadow + floor shadow + light pool
+    if (u.shadow?.active) u.shadow.setAlpha(0);
     const showFoot = this.shown && s.visible && !u.retired && lv > 0.25 && u.lift < 28;
+    this.floorShdImg.setVisible(showFoot);
     this.footImg.setVisible(showFoot);
     if (showFoot) {
+      this.floorShdImg.setPosition(Math.round(s.x + 2), Math.round(groundY + 3));
       this.footImg.setPosition(Math.round(s.x), Math.round(groundY));
     }
 
@@ -1174,13 +1225,14 @@ class SteppedUnitLight {
   }
 
   images(): Img[] {
-    return [this.patch.img, this.footImg, this.rimImg];
+    return [this.patch.img, this.floorShdImg, this.footImg, this.rimImg];
   }
 
   setShown(on: boolean): void {
     this.shown = on;
     this.patch.setShown(on);
     if (!on) {
+      this.floorShdImg.setVisible(false);
       this.footImg.setVisible(false);
       this.rimImg.setVisible(false);
     }
@@ -1193,6 +1245,7 @@ class SteppedUnitLight {
   destroy(): void {
     this.dead = true;
     this.patch.destroy();
+    if (this.floorShdImg.active) this.floorShdImg.destroy();
     if (this.footImg.active) this.footImg.destroy();
     if (this.rimImg.active) this.rimImg.destroy();
     this.lvl.flush();
@@ -1247,28 +1300,50 @@ function fieldColor(id: string): number {
   return id === 'volcano_arena' ? PAL.fire3 : PAL.teal3;
 }
 
-/** Build (or get) a subtle dithered warm top-left key-light wash for the v3 platform. */
+/** Build (or get) a smooth warm top-left key-light wash strictly clipped inside the v3 platform octagon. */
 function ensureKeyLightTex(scene: Phaser.Scene): string {
   const key = 'light:v3keywash';
   if (scene.textures.exists(key)) return key;
-  const W = 240;
-  const H = 120;
-  const p = new PixelCanvas(W, H);
-  // Warm top-left key light grazing the upper-left rim and floor of the platform
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const dx = (x - 40) / 170;
-      const dy = (y - 24) / 85;
-      const d2 = dx * dx + dy * dy;
-      if (d2 > 1) continue;
-      if (d2 < 0.35 && (x & 3) === 0 && (y & 3) === 0) {
-        p.set(x, y, PAL.earth1);
-      } else if (d2 < 0.75 && ((x + y) & 3) === 0 && (y & 1) === 0) {
-        p.set(x, y, PAL.stone0);
+  const OX = 104;
+  const OY = 52;
+  const W = 280;
+  const H = 168;
+  const cv = document.createElement('canvas');
+  cv.width = W;
+  cv.height = H;
+  const ctx = cv.getContext('2d');
+  if (ctx) {
+    const imgData = ctx.createImageData(W, H);
+    const data = imgData.data;
+    for (let y = 0; y < H; y++) {
+      const sy = OY + y;
+      if (sy < PLATE_Y0 || sy >= PLATE_Y1) continue;
+      for (let x = 0; x < W; x++) {
+        const sx = OX + x;
+        if (sx < PLATE_X0 || sx >= PLATE_X1) continue;
+        const [c, r] = ntGrid(sx + 0.5, sy + 0.5);
+        if (c < PLATE_C0 || c > PLATE_C1 || r < PLATE_R0 || r > PLATE_R1) continue;
+        // Distance from the upper-left edge of the platform (c = PLATE_C0) and radial falloff from (162, 124)
+        const edgeDist = (c - PLATE_C0) * 32;
+        const dx = (sx - 162) / 185;
+        const dy = (sy - 124) / 100;
+        const d = Math.hypot(dx, dy);
+        if (d >= 1) continue;
+        const falloff = Math.pow(1 - d, 1.65);
+        const rimBoost = edgeDist < 24 ? (1 - edgeDist / 24) * 0.18 : 0;
+        const alpha = Math.min(0.38, falloff * 0.26 + rimBoost);
+        if (alpha <= 0.005) continue;
+        const idx = (y * W + x) * 4;
+        // Warm golden-amber key light grazing from the upper-left
+        data[idx] = 252;
+        data[idx + 1] = 196;
+        data[idx + 2] = 114;
+        data[idx + 3] = Math.round(alpha * 255);
       }
     }
+    ctx.putImageData(imgData, 0, 0);
   }
-  scene.textures.addCanvas(key, p.toCanvas());
+  scene.textures.addCanvas(key, cv);
   return key;
 }
 
@@ -1341,16 +1416,20 @@ export class LightLayer {
     this.excludeUi(this.veil);
     this.excludeUi(this.wash);
     if (this.stepped) {
-      // Subtle top-left warm key-light wash + duelist foot contact shadows & faint light pools
+      // Smooth top-left warm key-light wash on the board floor + duelist foot contact shadows & faint light pools
       try {
         const keyTex = ensureKeyLightTex(scene);
-        const keyImg = this.makeSteppedImage(keyTex, DEPTH.PLATFORM + 0.05);
-        keyImg.setOrigin(0).setPosition(140, 56).setVisible(this.on);
+        const keyImg = this.makeSteppedImage(keyTex, DEPTH.TILE + 2.2);
+        keyImg.setOrigin(0).setPosition(104, 52).setVisible(this.on);
         this.steppedStaticImgs.push(keyImg);
-        const dFootTex = ensureFootTex(scene, 11, 5);
+        const padShdTex = ensureFloorShadowTex(scene, 34, 18);
+        const dFootTex = ensureFootTex(scene, 14, 7);
         for (const p of [0, 1] as const) {
           const xy = duelistXY(p);
-          const dImg = this.makeSteppedImage(dFootTex, DEPTH.SHADOW - 0.1);
+          const pShd = this.makeSteppedImage(padShdTex, DEPTH.PLATFORM + 8.5);
+          pShd.setPosition(Math.round(xy.x + 2), Math.round(xy.y + 4)).setVisible(this.on);
+          this.steppedStaticImgs.push(pShd);
+          const dImg = this.makeSteppedImage(dFootTex, DEPTH.SHADOW + 0.1);
           dImg.setPosition(Math.round(xy.x), Math.round(xy.y)).setVisible(this.on);
           this.steppedStaticImgs.push(dImg);
         }

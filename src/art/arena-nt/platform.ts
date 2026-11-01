@@ -23,8 +23,6 @@ const N0 = M[0];
 const N1 = M[1];
 const N2 = M[2];
 const N3 = M[3];
-const N4 = M[4];
-const STEEL = M[5];
 const INK = NT_PAL.ink;
 const G0 = NT_PAL.graphite[0];
 const G1 = NT_PAL.graphite[1];
@@ -171,12 +169,6 @@ const RIM: readonly Color[] = [PAL.earth2, N2, PAL.stone2, N2, PAL.earth2, N2, P
 const RIM2: readonly Color[] = [PAL.earth1, N1, PAL.stone1, N1, PAL.earth1, N1, PAL.earth1, N0];
 const RIM3: readonly Color[] = [G2, N0, G1, N0, G2, N0, G2, N0];
 
-function hash01(x: number, y: number): number {
-  let h = (x * 374761393 + y * 668265263) | 0;
-  h = (h ^ (h >>> 13)) * 1274126177;
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
-}
-
 function paintTop(S: Surface, x0: number, y0: number, x1: number, y1: number): PlatformArt['dashes'] {
   const dashPx: { x: number; y: number }[][] = Array.from({ length: 13 }, () => []);
   for (let y = Math.max(y0, PLATE_Y0); y < Math.min(y1, PLATE_Y1); y++) {
@@ -190,31 +182,15 @@ function paintTop(S: Surface, x0: number, y0: number, x1: number, y1: number): P
       const side = depthSide;
       const d32 = d * 32;
       if (c >= -0.5 && c < NT_COLS - 0.5 && r >= -0.5 && r < NT_ROWS - 0.5) {
-        const col = Math.floor(c + 0.5);
         const row = Math.floor(r + 0.5);
         if (row === 2) {
-          const dr = (0.5 - Math.abs(r - 2)) * 32;
-          if (dr < 1) S.put(x, y, N0);
-          else {
-            let tone: Color = G1;
-            const k = Math.round(c * 2);
-            if ((r - 2) * 32 >= -0.5 && (r - 2) * 32 < 0.5 && k >= 0 && k <= 12 && k !== 6 && Math.abs(c * 2 - k) <= 0.25) {
-              tone = G2;
-              dashPx[k].push({ x, y });
-            } else if (hash01(x, y) < 0.015) {
-              tone = G0;
-            }
-            S.put(x, y, tone);
+          const k = Math.round(c * 2);
+          if ((r - 2) * 32 >= -0.5 && (r - 2) * 32 < 0.5 && k >= 0 && k <= 12 && k !== 6 && Math.abs(c * 2 - k) <= 0.25) {
+            dashPx[k].push({ x, y });
           }
-          continue;
         }
-        const ccx = NT_OX + (col - row) * 32;
-        const ccy = NT_OY + (col + row) * 16;
-        const dv = 16 - (Math.abs(x + 0.5 - ccx) / 2 + Math.abs(y + 0.5 - ccy));
-        const ramp = row < 2 ? NT_PAL.red : row > 2 ? NT_PAL.blue : NT_PAL.metal;
-        // Calm dark slate empty cell with soft thin owner line (only visible in 5+5 outer lanes)
-        const h = hash01(x, y);
-        S.put(x, y, dv < 1 ? N0 : dv < 2 ? ramp[1] : h < 0.02 ? G0 : G1);
+        // Clean smooth dark slate board surface (tile lines are drawn solely by nt:floor play zones)
+        S.put(x, y, G1);
         continue;
       }
       if (d32 < 1) {
@@ -243,16 +219,10 @@ function paintTop(S: Surface, x0: number, y0: number, x1: number, y1: number): P
         S.put(x, y, G0);
         continue;
       }
-      let tone: Color = G1;
-      const sAlong = side < 2 || side > 5 ? r : c;
-      const t = sAlong + 0.5 - Math.floor(sAlong + 0.5);
-      if (t < 1 / 32) tone = N0;
-      else if (hash01(x, y) < 0.018) tone = G0;
-      else if (hash01(x + 17, y + 31) < 0.008) tone = G2;
-      S.put(x, y, tone);
+      // Clean smooth dark slate border without speckles
+      S.put(x, y, G1);
     }
   }
-  paintEmblem(S, 0);
   return dashPx.filter((_, k) => k !== 6);
 }
 
@@ -275,14 +245,6 @@ export function emblemCanvas(blueLevel: number, redLevel = blueLevel): PixelCanv
     }
   }
   return p;
-}
-
-function paintEmblem(S: Surface, level: number): void {
-  const e = emblemCanvas(level);
-  for (let j = 0; j < e.h; j++) for (let i = 0; i < e.w; i++) {
-    const c = e.get(i, j);
-    if (c !== null) S.put(312 + i, 156 + j, c);
-  }
 }
 
 // ---------------------------------------------------------------- faces

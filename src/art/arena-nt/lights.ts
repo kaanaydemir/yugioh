@@ -223,49 +223,51 @@ function paintFogWisp(variant: number): PixelCanvas {
   return p;
 }
 
-/** Small warm flickering torch light (36 × 28): dithered warm radial pool + dark sconce + 3-frame flickering flame. */
+/** Sculpted dark iron sconce/brazier with a warm flickering flame (18 × 24, opaque PAL pixels). */
 function paintTorch(frame: number): PixelCanvas {
-  const W = 36;
-  const H = 28;
-  const cx = 18;
-  const cy = 14;
+  const W = 18;
+  const H = 24;
+  const cx = 9;
+  const cy = 11;
   const p = new PixelCanvas(W, H);
-  const rx = frame === 1 ? 17 : frame === 2 ? 15 : 16;
-  const ry = frame === 1 ? 12 : frame === 2 ? 10 : 11;
-  // Warm dithered glow halo around the torch
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const dx = (x - cx) / rx;
-      const dy = (y - cy) / ry;
-      const r = Math.hypot(dx, dy);
-      if (r >= 1) continue;
-      const d = (1 - r) * (1 - r);
-      const th = bayer4(x + frame, y);
-      if (r < 0.28) {
-        p.set(x, y, r < 0.16 ? PAL.earth2 : th < 0.6 ? PAL.earth2 : PAL.earth1);
-      } else if (r < 0.56) {
-        if (d * 1.45 > th) p.set(x, y, th < 0.45 ? PAL.earth1 : PAL.earth0);
-      } else {
-        if (d * 1.3 > th) p.set(x, y, PAL.earth0);
-      }
-    }
-  }
-  // Iron sconce / bracket under the flame
-  p.rect(cx - 1, cy + 2, 3, 4, PAL.ink);
-  p.hline(cx - 1, cx + 1, cy + 2, PAL.earth1);
-  p.set(cx, cy + 3, PAL.earth0);
 
-  // Flickering warm flame (core gold4/gold3, body fire3/gold2, tip fire2/fire1)
+  // Dark iron brazier bowl & stem below the flame (cy + 1 .. cy + 10)
+  p.hline(cx - 3, cx + 3, cy + 1, PAL.ink);
+  p.hline(cx - 2, cx + 2, cy + 1, PAL.earth2);
+  p.hline(cx - 3, cx + 3, cy + 2, PAL.night2);
+  p.set(cx - 3, cy + 2, PAL.ink);
+  p.set(cx + 3, cy + 2, PAL.ink);
+  p.hline(cx - 2, cx + 2, cy + 3, PAL.night1);
+  p.set(cx - 2, cy + 3, PAL.ink);
+  p.set(cx + 2, cy + 3, PAL.ink);
+  // Stem / post
+  for (let y = cy + 4; y <= cy + 9; y++) {
+    p.set(cx - 1, y, PAL.night2);
+    p.set(cx, y, PAL.night1);
+    p.set(cx + 1, y, PAL.ink);
+  }
+  p.hline(cx - 2, cx + 2, cy + 10, PAL.ink);
+
+  // Multi-tone flickering warm flame (white/gold4 core -> gold3/fire3 body -> fire2/fire1 tip)
   const tipDx = frame === 0 ? 0 : frame === 1 ? -1 : 1;
-  const topY = frame === 1 ? cy - 4 : cy - 3;
+  const topY = frame === 1 ? cy - 7 : frame === 2 ? cy - 5 : cy - 6;
   p.set(cx + tipDx, topY, PAL.fire1);
   p.set(cx + tipDx, topY + 1, PAL.fire2);
-  p.hline(cx - 1, cx + 1, cy - 1, PAL.fire3);
-  p.set(cx, cy - 1, PAL.gold3);
-  p.hline(cx - 1, cx + 1, cy, PAL.gold2);
+  p.set(cx, topY + 1, PAL.fire3);
+  p.hline(cx - 1, cx + 1, cy - 4, PAL.fire2);
+  p.set(cx + tipDx, cy - 4, PAL.fire3);
+  p.hline(cx - 2, cx + 2, cy - 3, PAL.fire2);
+  p.hline(cx - 1, cx + 1, cy - 3, PAL.fire3);
+  p.set(cx, cy - 3, PAL.gold3);
+  p.hline(cx - 2, cx + 2, cy - 2, PAL.fire3);
+  p.hline(cx - 1, cx + 1, cy - 2, PAL.gold3);
+  p.set(cx, cy - 2, PAL.gold4);
+  p.hline(cx - 2, cx + 2, cy - 1, PAL.fire3);
+  p.hline(cx - 1, cx + 1, cy - 1, PAL.gold4);
+  p.set(cx, cy - 1, PAL.white);
+  p.hline(cx - 2, cx + 2, cy, PAL.fire2);
+  p.hline(cx - 1, cx + 1, cy, PAL.gold3);
   p.set(cx, cy, PAL.gold4);
-  p.hline(cx - 1, cx + 1, cy + 1, PAL.fire3);
-  p.set(cx, cy + 1, PAL.gold3);
   return p;
 }
 

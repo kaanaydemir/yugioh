@@ -24,7 +24,7 @@ function paintPad(player: 0 | 1, level: number): PixelCanvas {
   const p = new PixelCanvas(w, h);
   const ramp = player === 0 ? NT_PAL.blue : NT_PAL.red;
   const neon: Color = ramp[Math.min(2, 1 + (level >> 1))];
-  const glow: Color = N[0];
+  const glow: Color = ramp[0];
   const dvOf = (i: number, j: number): number => PAD_HALF.h - (Math.abs(i + 0.5 - cx) * (PAD_HALF.h / PAD_HALF.w) + Math.abs(j + 0.5 - cy));
   for (let j = 0; j < h; j++) {
     for (let i = 0; i < w; i++) {
@@ -34,7 +34,7 @@ function paintPad(player: 0 | 1, level: number): PixelCanvas {
       const depth = -dv;
       const T = PAD_HALF.thick;
       if (depth > T) continue;
-      p.set(i, j, depth > T - 1 ? N[0] : i + 0.5 < cx ? (depth < 1 ? N[2] : depth < 2 ? N[1] : N[0]) : depth < 1 ? N[1] : N[0]);
+      p.set(i, j, depth > T - 1 ? N[0] : i + 0.5 < cx ? (depth < 1 ? N[3] : depth < 2 ? N[2] : N[1]) : depth < 1 ? N[1] : N[0]);
     }
   }
   for (let j = 0; j < h; j++) {
@@ -42,10 +42,16 @@ function paintPad(player: 0 | 1, level: number): PixelCanvas {
       const dv = dvOf(i, j);
       if (dv < 0) continue;
       let c: Color;
-      if (dv < 1) c = i + 0.5 < cx ? N[2] : N[1];
+      if (dv < 1) c = i + 0.5 < cx ? (player === 0 ? N[4] : N[3]) : N[2];
       else if (dv < 2) c = neon;
       else if (dv < 3) c = glow;
-      else c = G[1];
+      else {
+        // Lighter slate podium top so the dark contact shadow under the duelist's feet contrasts clearly
+        const dx = (i - cx) / 10.5;
+        const dy = (j - cy) / 4.8;
+        const r2 = dx * dx + dy * dy;
+        c = r2 < 0.42 ? NT_PAL.ink : r2 < 0.92 ? N[0] : r2 < 1.35 ? G[0] : G[2];
+      }
       p.set(i, j, c);
     }
   }

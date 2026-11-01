@@ -38,8 +38,8 @@ function slotFrame(player: 0 | 1, pile: boolean, state: number, boost: number): 
   const p = new PixelCanvas(64, 32);
   const ramp = player === 0 ? NT_PAL.blue : NT_PAL.red;
   const empty = state === SLOT_EMPTY;
-  // Thinner, softer 1-px tile border with less glow (cyan1 / crim1 at rest, cyan2 / crim2 when active or occupied)
-  const line: Color = ramp[Math.min(2, (empty ? 1 : 2) + (boost && empty ? 1 : 0))];
+  // Crisp 1-px tile border (calm muted cyan1/crim1 when empty, cyan2/crim2 when occupied) on smooth G[1] slate
+  const line: Color = empty ? ramp[1] : ramp[2];
   const stud: Color = NT_PAL.metal[3];
   const G = NT_PAL.graphite;
   const isLine = (i: number, j: number): boolean => i >= 0 && j >= 0 && i < 64 && j < 32 && m.line.get(i, j) !== null;
@@ -47,21 +47,7 @@ function slotFrame(player: 0 | 1, pile: boolean, state: number, boost: number): 
   for (let j = 0; j < 32; j++) {
     for (let i = 0; i < 64; i++) {
       if (m.tile.get(i, j) === null) continue;
-      let c: Color;
-      if (isLine(i, j)) c = line;
-      else if (!isFill(i, j)) {
-        // Calm dark gap ring outside the thin line — no neon halo bleeding into the floor seams
-        c = NT_PAL.metal[0];
-      } else {
-        // Calm smooth dark slate interior with subtle texture, no bright inner bevel ring
-        const d1 = isLine(i - 1, j) || isLine(i + 1, j) || isLine(i, j - 1) || isLine(i, j + 1);
-        const h = ((i * 73 + j * 151) ^ (i * 19)) & 31;
-        if (empty) {
-          c = d1 ? G[0] : h === 0 ? G[0] : G[1];
-        } else {
-          c = d1 ? ramp[0] : G[1];
-        }
-      }
+      let c: Color = isLine(i, j) ? line : G[1];
       if (state === SLOT_DOWN && !isFill(i, j)) {
         const dx = Math.abs(i + 0.5 - 32);
         const dy = Math.abs(j + 0.5 - 16);
@@ -71,6 +57,7 @@ function slotFrame(player: 0 | 1, pile: boolean, state: number, boost: number): 
     }
   }
   void pile;
+  void boost;
   return p;
 }
 

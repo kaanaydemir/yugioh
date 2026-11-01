@@ -3,7 +3,6 @@
 
 import type Phaser from 'phaser';
 import { FLOOR_FRAMES, NT_FLOOR_KEY, SLOT_DOWN, SLOT_EMPTY, SLOT_OCCUPIED, buildFloorArt } from '../../art/arena-nt/floor';
-import { NT_PAL } from '../../art/arena-nt/palette';
 import type { FloorArt } from '../../art/arena-nt/floor';
 import { APRON_BOX, NT_APRON_FX_KEY, NT_APRON_KEY, buildApronArt, type ApronArt } from '../../art/arena-nt/apron';
 import { calmZones } from '../board-calm/art';
@@ -35,11 +34,6 @@ export function registerApronTextures(scene: Phaser.Scene): ApronArt {
   const tex = scene.textures.get(NT_APRON_FX_KEY);
   for (const [name, r] of art.fx.frames) if (!tex.has(name)) tex.add(name, 0, r.x, r.y, r.w, r.h);
   return art;
-}
-
-function breath(u: number): number {
-  const f = ((u % 1) + 1) % 1;
-  return f < 0.3 ? 0 : f < 0.45 ? 1 : f < 0.75 ? 2 : f < 0.9 ? 1 : 0;
 }
 
 export function createFloorLayer(ctx: NtCtx): NtLayer {
@@ -82,8 +76,7 @@ export function createFloorLayer(ctx: NtCtx): NtLayer {
   const liftUntil: [number, number] = [0, 0];
   let nextScan = 0;
 
-  const emblem = ctx.add(scene.add.image(CENTER_EMBLEM.x, CENTER_EMBLEM.y, NT_FLOOR_KEY, FLOOR_FRAMES.emblem(0, 0)).setOrigin(0).setDepth(NT_DEPTH.floor + 0.1));
-  const dashTones = [NT_PAL.metal[1], NT_PAL.metal[2], NT_PAL.metal[2]];
+  const emblem = ctx.add(scene.add.image(CENTER_EMBLEM.x, CENTER_EMBLEM.y, NT_FLOOR_KEY, FLOOR_FRAMES.emblem(0, 0)).setOrigin(0).setDepth(NT_DEPTH.floor + 0.1).setVisible(false));
   const dashes: Img[] = art.dashes.map((d, k) =>
     ctx.add(scene.add.image(d.x, d.y, NT_FLOOR_KEY, FLOOR_FRAMES.dash(k)).setOrigin(0).setDepth(NT_DEPTH.floor + 0.1).setVisible(false)),
   );
@@ -91,8 +84,6 @@ export function createFloorLayer(ctx: NtCtx): NtLayer {
   let onAt = 0;
   let active: PlayerId | null = null;
   let now = 0;
-  let lastB = -1;
-  let lastR = -1;
   let pending: { until: number; done: () => void } | null = null;
 
   return {
@@ -141,28 +132,10 @@ export function createFloorLayer(ctx: NtCtx): NtLayer {
         pending.done();
         pending = null;
       }
-      const on = lights && t >= onAt;
-      let b = on ? Math.max(breath(t / 4800), active === 0 ? 1 : 0) : 0;
-      let r = on ? Math.max(breath(t / 4800 + 0.5), active === 1 ? 1 : 0) : 0;
-      if (on && b === 0 && r === 0) b = 1;
-      if (b !== lastB || r !== lastR) {
-        emblem.setFrame(FLOOR_FRAMES.emblem(b, r));
-        lastB = b;
-        lastR = r;
-      }
+      emblem.setVisible(false);
       for (const img of railImgs) img.setVisible(false);
       for (const img of lampImgs) img.setVisible(false);
-      const n = dashes.length;
-      dashes.forEach((d, k) => {
-        if (!on) {
-          d.setVisible(false);
-          return;
-        }
-        const u = (t / 7200) * (n + 4) - k;
-        const lv = ((u % (n + 4)) + (n + 4)) % (n + 4);
-        const level = lv < 0.8 ? 2 : lv < 1.8 ? 1 : 0;
-        d.setVisible(level > 0).setTint(dashTones[level]);
-      });
+      for (const d of dashes) d.setVisible(false);
     },
     destroy() {
       if (pending) pending.done();
