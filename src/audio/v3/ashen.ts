@@ -168,7 +168,11 @@ export const V3_ASHEN_RECIPES = {
     verb: 0.4,
     duck: 0.6,
     play(v) {
-      thump(v, 0, 70, 30, 0.8, 0.6, { drive: 3 });
+      // r3 (critic r2 #3): a hard onset of its own (the roar is faded out 90 ms before, see the summon): a
+      // dry plate clack on the first ms, the body thump, a sub drop under it and the ash billow
+      crack(v, 0, 0.55, { hp: 1800, lp: 6500, n: 3, gap: 0.006, dec: 0.006 });
+      thump(v, 0, 70, 30, 0.9, 0.6, { drive: 3 });
+      thump(v, 0.008, 44, 24, 0.55, 0.45, { drive: 1.5 });
       puff(v, 0.004, 0.5, 0.9, 1200, { kind: 'brown' });
       sweep(v, 0.05, 1.0, [1200, 600, 300], 0.08, { kind: 'pink' });
       heartbeat(v, 0.25, 0.6);

@@ -34,8 +34,8 @@ const count = (p: PixelCanvas, c: number) => {
 };
 
 describe('ashen_drake (rev. 3, the ash vulture)', () => {
-  it('has the 13 anims with the blueprint holds and marks (136 frames: the summon fold-back + the slam / regrowth in-betweens, critic r3 #7)', () => {
-    const frames: Record<string, number> = { idle: 20, guard: 8, toGuard: 6, fromGuard: 6, attack: 15, roar: 9, hit: 6, hitHeavy: 8, hitMagic: 8, summon: 16, death: 12, revive: 12, victory: 10 };
+  it('has the 13 anims with the blueprint holds and marks (139 frames: the summon fold-back + the slam / regrowth in-betweens, critic r3 #7; the revive plates in 7 batches, kart-a r3)', () => {
+    const frames: Record<string, number> = { idle: 20, guard: 8, toGuard: 6, fromGuard: 6, attack: 15, roar: 9, hit: 6, hitHeavy: 8, hitMagic: 8, summon: 16, death: 12, revive: 15, victory: 10 };
     let total = 0;
     for (const a of ALL) {
       const s = spec(a);
@@ -44,7 +44,7 @@ describe('ashen_drake (rev. 3, the ash vulture)', () => {
       expect(s.holds?.length, a).toBe(s.frames);
       total += s.frames;
     }
-    expect(total).toBe(136);
+    expect(total).toBe(139);
     expect(spec('summon').holds!.reduce((x, y) => x + y, 0)).toBe(1350);
     const idle = spec('idle').holds!;
     expect(idle.reduce((x, y) => x + y, 0)).toBe(2000);
@@ -54,7 +54,7 @@ describe('ashen_drake (rev. 3, the ash vulture)', () => {
     expect(Math.max(...spec('attack').holds!)).toBe(spec('attack').holds![4]);
     expect(spec('roar').marks).toMatchObject({ charge: 1, release: 4, recover: 6 });
     for (const a of ['hit', 'hitHeavy', 'hitMagic', 'death'] as const) expect(spec(a).marks, a).toMatchObject({ impact: 0, contact: 0 });
-    expect(spec('death').marks?.dissolve).toBe(5);
+    expect(spec('death').marks?.dissolve).toBe(6);
     expect(spec('summon').marks?.land).toBe(1);
     expect(spec('revive').marks?.land).toBe(6);
     expect(art.p2).toBe('relight');

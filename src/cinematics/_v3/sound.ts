@@ -214,9 +214,13 @@ export const CHARACTER_SOUNDS: Partial<Record<CardId, CharacterSounds>> = {
     charge: 'ashenInhale',
     release: 'ashenExhale',
     impact: 'ashenIgnite',
-    deathStart: 'ashenCrackle',
-    dissolve: 'ashenCrumble',
-    afterDissolve: [[3, 'ashenCoreDrop', 0.9]],
+    // r3 (critic r2 #4): the death scored on the frames the picture moves — the crackle on the cloak's drop
+    // (the 'dissolve' mark, death f6), the crumble as the plates break (f7), the core on the floor (f9)
+    dissolve: 'ashenCrackle',
+    afterDissolve: [
+      [1, 'ashenCrumble', 1],
+      [3, 'ashenCoreDrop', 0.9],
+    ],
     burst: 'ashenCool',
     reviveGather: 'ashenReviveGather',
     reviveLand: 'ashenReviveBeat',

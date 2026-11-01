@@ -16,7 +16,7 @@
 //   summon    15 f / 1350 ms  land 1: bones bottom-up + the cloak by accretion; the wings burst (f7), spread f8,
 //                             a half-fold in-between (f9) inside the old 200 ms hold
 //   death     12 f / 730 ms   top-down crumble; from f9 the heap is the cinematic's
-//   revive    12 f / 1180 ms  land 6: bones out of the heap, plates fly in wrist first, each re-lit
+//   revive    15 f / 1210 ms  land 6: bones out of the heap, plates fly in wrist first, each re-lit
 //   victory   10 f / 1270 ms  "Kor Dökülmesi": the canopy, the head out under its edge roaring, the rib spill,
 //                             held on the cooled mound
 
@@ -347,8 +347,8 @@ const DEATH: AnimDef<AshenPose> = {
     k({ body: [-2, 1], neck: [-18, -10, -14], head: [-3, -2], headPitch: -12, eye: 1, heat: 0.4, beat: 4, wingN: W({ wrist: [-1, -1], open: 0.15 }), wingF: W({ open: 0.15 }) }, 55),
     k({ body: [-1, 3], neck: [-6, 6, 10], head: [-2, 0], headPitch: 4, eye: 1, heat: 0.4, wingN: W({ wrist: [0, 2] }), wingF: W({ wrist: [0, 2] }) }, 60),
     k({ body: [-1, 4], neck: [-2, 12, 16], head: [-2, 1], headPitch: 10, eye: 0, heat: 0.35, smoke: 0.5, wingN: W({ wrist: [0, 3] }), wingF: W({ wrist: [0, 3] }) }, 60),
-    k({ body: [-1, 4], neck: [0, 14, 18], head: [-2, 1], headPitch: 12, eye: 0, heat: 0.35, crumble: 0.16, wingN: W({ wrist: [0, 3] }), wingF: W({ wrist: [0, 3] }) }, 60, 'dissolve'),
-    k({ body: [-1, 5], neck: [8, 26, 30], head: [-3, 4], headPitch: 22, eye: 0, heat: 0.35, crumble: 0.36, wingN: W({ wrist: [0, 5] }), wingF: W({ wrist: [0, 5] }) }, 65),
+    k({ body: [-1, 4], neck: [0, 14, 18], head: [-2, 1], headPitch: 12, eye: 0, heat: 0.35, crumble: 0.16, wingN: W({ wrist: [0, 3] }), wingF: W({ wrist: [0, 3] }) }, 60),
+    k({ body: [-1, 5], neck: [8, 26, 30], head: [-3, 4], headPitch: 22, eye: 0, heat: 0.35, crumble: 0.36, wingN: W({ wrist: [0, 5] }), wingF: W({ wrist: [0, 5] }) }, 65, 'dissolve'),
     k({ body: [-1, 6], neck: [10, 30, 34], head: [-3, 5], headPitch: 26, eye: 0, heat: 0.6, crumble: 0.52, wingN: W({ wrist: [0, 7] }), wingF: W({ wrist: [0, 7] }) }, 65),
     k({ body: [-1, 7], neck: [10, 30, 34], eye: 0, heat: 0.45, crumble: 0.7, drop: 9 }, 60),
     k({ body: [-1, 8], eye: 0, heat: 0.25, crumble: 0.86, drop: 22 }, 60),
@@ -377,10 +377,15 @@ const REVIVE: AnimDef<AshenPose> = {
     // f5: the finger bones come in as STUBS, folded; f6 they extend; never the full fan before f6
     k({ heap: 0.12, boneTop: 0.5, seated: 0, strutFan: 0, heat: 1.1, drop: 2, eye: 0, body: [0, 1], neck: [14, 18, 14], head: [0, 1], headPitch: 8, jaw: 0.3, crest: -0.5, wingN: W({ wrist: [0, 2] }), wingF: W({ wrist: [0, 2] }) }, 100),
     k({ seated: 0, strutFan: 0.55, heat: 1.2, beat: 1, eye: 1, neck: [0, 4, 4], wingN: W({ open: 0.1 }) }, 110, 'land'),
-    k({ seated: 6, weld: 0, strutFan: 0.7, order: 1, heat: 1.3, beat: 1, eye: 1 }, 90),
-    k({ seated: 16, weld: 6, strutFan: 0.45, order: 1, heat: 1, beat: 0 }, 100),
-    k({ seated: 28, weld: 16, strutFan: 0.2, order: 1, heat: 1.3, beat: 1 }, 110),
-    k({ seated: 40, weld: 28, strutFan: 0, order: 1, heat: 1, beat: 0 }, 120),
+    // the plates fly in 6 at a time over 7 frames (r3, critic r2 #7: 16 → 28 read as half the cloak in
+    // one step), every batch re-lit by the heart: LUB (beat 1, heat up) on its arrival, the weld a batch behind
+    k({ seated: 6, weld: 0, strutFan: 0.7, order: 1, heat: 1.3, beat: 1, eye: 1 }, 70),
+    k({ seated: 12, weld: 6, strutFan: 0.6, order: 1, heat: 1, beat: 0, eye: 1 }, 60),
+    k({ seated: 18, weld: 12, strutFan: 0.5, order: 1, heat: 1.3, beat: 1 }, 60),
+    k({ seated: 24, weld: 18, strutFan: 0.38, order: 1, heat: 1, beat: 0 }, 60),
+    k({ seated: 30, weld: 24, strutFan: 0.25, order: 1, heat: 1.3, beat: 1 }, 60),
+    k({ seated: 36, weld: 30, strutFan: 0.12, order: 1, heat: 1, beat: 0 }, 60),
+    k({ seated: 42, weld: 36, strutFan: 0, order: 1, heat: 1.3, beat: 1 }, 80),
   ],
   end: 'idle0',
   endMs: 130,

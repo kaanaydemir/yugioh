@@ -195,7 +195,7 @@ async function ashStormV3(s: StrikeArgs): Promise<void> {
   const slots = lattice
     ? latticeSlots(VW, veilH)
     : !target && !blocked
-      ? veilSlots(W, veilH, true).filter((sl) => sl.row === 2).map((sl) => ({ ...sl, r: Math.max(3, Math.round(sl.r * 0.7)) }))
+      ? veilSlots(W, veilH, true).filter((sl) => sl.row === 2).map((sl) => ({ ...sl, r: Math.max(4, Math.round(sl.r * 0.85)) }))
       : veilSlots(W, veilH, blocked);
   const pr = slots.map((sl, i) => ({ r: sl.r, gone: false, charred: false, seed: i * 7 + 3, start: 0 }));
   slots.forEach((sl, i) => (pr[i].start = 6 + sl.row * 3 + Math.floor(hash(i, 5) * 3)));
@@ -274,11 +274,15 @@ async function ashStormV3(s: StrikeArgs): Promise<void> {
       const top = Math.round(B.y - veilH * 0.8);
       for (let j = 0; j < 5; j++) tongues(veilL, B.x + Math.round((j / 4 - 0.5) * W * 1.1), top + (j % 2) * 2, 5, 2.4 - (k - 1) * 0.5, frames, 31 + j * 13);
     }
-    // direct: a 3-frame column of flame climbs the podium front out of the burning bank
-    // (narrow, at the podium front, under the duelist's chest: critic r1 #5)
+    // direct: the podium ignites as a 3-frame FLAME COLUMN clearly above the base (critic r2 #6: the old
+    // ~11 px splash read as a generic hit under the number): a centre column (r 6, up to ~24 px) flanked
+    // by two lower ones at the podium corners, stepping down 3 → 2 → 1.4 heat, a 4th frame of embers
     if (fire >= 1 && !target && !blocked && k >= 1 && k <= 4) {
       const top = Math.round(B.y - 6);
-      tongues(veilL, B.x, top, 4, 1.5 - (k - 1) * 0.25, frames, 91);
+      const hc = [0, 3.6, 3, 1.8, 0.8][k];
+      tongues(veilL, B.x, top - (k <= 2 ? 2 : 0), 6, hc, frames, 91);
+      tongues(veilL, B.x - Math.round(W * 0.32), top + 2, 4, hc * 0.6, frames, 57);
+      tongues(veilL, B.x + Math.round(W * 0.32), top + 2, 4, hc * 0.6, frames, 23);
     }
     // the buried embers: white on the ignition frame; in the silence a third of them go dark per step
     for (const [i, e] of embers.entries()) {
@@ -538,10 +542,26 @@ function silhouette(sc: Phaser.Scene, t: MonsterUnit): void {
         const top = !src.isOpaque(x, y - 1);
         const edge = top || !src.isOpaque(x - 1, y) || !src.isOpaque(x + 1, y) || !src.isOpaque(x, y + 1);
         if (charred) {
-          // two stepped charring frames: the rim dulls to fire1, the inside to stone0; then only the rim
-          if (k > HOLD + 2) {
-            if (edge) pc.set(x, y, PAL.stone0);
-          } else pc.set(x, y, edge ? PAL.fire1 : PAL.stone0);
+          // two stepped charring frames: the rim dulls to fire1, the inside to stone0; then the char lets the
+          // body go through a 2×2 lattice in three 2-frame steps (3/4 → 2/4 → 1/4 of the pixels, whole pixels;
+          // critic r2 #5: it was a hard cut to the clean body), the rim staying a smouldering fire1 / stone0
+          const ck = k - HOLD;
+          if (ck <= 2) {
+            pc.set(x, y, edge ? PAL.fire1 : PAL.stone0);
+            continue;
+          }
+          const keep = 3 - Math.floor((ck - 3) / 2); // 3, 2, 1, then 0 (the smoulder only)
+          if (keep > 0 && BAYER2[(y & 1) * 2 + (x & 1)] < keep) {
+            pc.set(x, y, edge ? ((x + y + ck) % 3 === 0 ? PAL.fire1 : PAL.stone0) : PAL.stone0);
+            continue;
+          }
+          // the smoulder: the contour keeps a few live embers and soot pips, fewer as it cools
+          if (edge) {
+            const life = clamp(1 - (ck - 9) / SMOULDER, 0, 1);
+            const hsh = hash(x * 5 + y * 11, Math.floor(ck / 4));
+            if (hsh < 0.26 * life) pc.set(x, y, hsh < 0.06 * life ? PAL.fire3 : hsh < 0.15 * life ? PAL.fire2 : PAL.fire1);
+            else if (hsh > 1 - 0.2 * life) pc.set(x, y, PAL.stone0);
+          }
           continue;
         }
         // backlit by the blaze: a 1-px fire rim inside the contour (fire2 low, fire1 high), ink inside
@@ -560,7 +580,7 @@ function silhouette(sc: Phaser.Scene, t: MonsterUnit): void {
         }
       }
     // the crown catches last: a ragged fire3 / fire4 crest once the front has climbed all the way
-    if (climb >= 1)
+    if (climb >= 1 && k <= HOLD + 2)
       for (let x = b.x; x < b.x + b.w; x++)
         for (let y = b.y; y < b.y + b.h; y++)
           if (src.isOpaque(x, y)) {
@@ -571,14 +591,38 @@ function silhouette(sc: Phaser.Scene, t: MonsterUnit): void {
   };
   let ov: ReturnType<typeof overlay> | null = null;
   let k = 0;
+  const END = HOLD + 9 + SMOULDER;
+  // ash flakes rising off the burnt outline while it smoulders (a lower-left → upper drift, stone tones)
+  const flakes = new Sparks(sc, t.sprite.depth + 0.3);
   onFrame(sc, () => {
     k++;
+    // it follows the shown frame (the target's own death pose included) until its body breaks (hidden)
     if (!t.sprite.active || !t.sprite.visible) return false;
     if (k === 2) ov = overlay(t, make(k), { depth: t.sprite.depth + 0.2 });
-    else if (k > 2 && k <= HOLD + 4) ov?.redraw(make(k));
-    return k <= HOLD + 4;
-  }, () => (ov as ReturnType<typeof overlay> | null)?.destroy());
+    else if (k > 2 && k <= END) ov?.redraw(make(k));
+    if (k > HOLD + 2 && k % 3 === 0 && k < END - 6) {
+      const pc = currentPixels(t).pc;
+      for (let tries = 0, made = 0; tries < 24 && made < 2; tries++) {
+        const fx = Math.floor(RR(0, pc.w));
+        const fy = Math.floor(RR(0, pc.h));
+        if (!pc.isOpaque(fx, fy) || pc.isOpaque(fx, fy - 1)) continue; // a top edge
+        const w = t.framePoint(fx, fy);
+        const hot = made === 0 && Math.random() < 0.35;
+        flakes.add({ x: Math.round(w.x), y: Math.round(w.y) - 1, vx: RR(-8, 8), vy: RR(-26, -12), ay: -6, drag: 1, life: RR(380, 620), colors: hot ? [PAL.fire2, PAL.fire1, PAL.stone1] : [PAL.stone2, PAL.stone1, PAL.stone0], shape: 'px', fadeAt: 1 });
+        made++;
+      }
+    }
+    return k <= END;
+  }, () => {
+    (ov as ReturnType<typeof overlay> | null)?.destroy();
+    flakes.release();
+  });
 }
+
+/** 2×2 ordered-dither thresholds (the char's lattice fade) */
+const BAYER2 = [0, 2, 3, 1] as const;
+/** frames the burnt outline keeps smouldering after the char has let the body go (≈ 1 s) */
+const SMOULDER = 60;
 
 /**
  * Lost / tied clash (critic r1 #3): the drake takes the backlash BARE (the cloak was the ammunition) and the
@@ -781,9 +825,11 @@ async function fuseBack(sc: Phaser.Scene, u: MonsterUnit, trail: XY[], recF: num
         const a = Math.floor((N - 1) * (1 - (i + 1) / seg));
         const b = Math.ceil((N - 1) * (1 - i / seg));
         const run = age < 60 ? Math.round(b - (b - a) * (age / 60)) : a;
+        // (r3, critic r2 #6: read as 1–2 px at 1×) a 3-px band: the 2×2 burn on a 1-px under-row a tone darker
+        const under = age < 60 ? PAL.fire2 : age < 120 ? PAL.fire1 : PAL.stone0;
         for (let j = run; j <= b; j++) {
           const p = trail[j];
-          px.rect(p.x - 1, p.y - 1, 2, 2, col);
+          px.rect(p.x - 1, p.y + 1, 3, 1, under).rect(p.x - 1, p.y - 1, 2, 2, col);
         }
         if (age < 60) {
           const h = trail[run];
@@ -887,14 +933,22 @@ function ashHeap(ctx: Ctx<'destroy'>, u: MonsterUnit, home: XY): { burst(at: XY)
   onFrame(sc, (dt) => {
     el += dt;
     px.clear();
-    if (killed || occupied()) return false;
-    // it grows fast (≈ 120 ms) from death f8, while the crumble still falls into it (no empty-tile frame)
-    const grow = clamp(el / 120, 0, 1);
+    if (killed || occupied()) {
+      killed = true;
+      return false;
+    }
     const sinceBurst = burstAt < 0 ? -1 : el - burstAt;
+    // it grows OUT of the remains in visible steps (critic r2 #8: the old 120 ms growth ran hidden under
+    // the remains sprite and the full cone popped in when the body broke): from death f8 only its base
+    // rows (under the falling crumble: no empty-tile frame), then as the remains flatten (death f10, ≈ 120 ms
+    // later) the mid rows, the lit top, and last the eye — 3 stepped stages of 3 frames each
+    const stage = el < 120 && sinceBurst < 0 ? 0 : Math.min(3, 1 + Math.floor(Math.max(el - 120, 0) / 50));
+    const baseK = clamp(el / 100, 0, 1);
     // the wind strips it top-down from +420 ms
     const strip = sinceBurst < 420 ? 0 : clamp((sinceBurst - 420) / 580, 0, 1);
-    const H = Math.round(14 * Math.sqrt(grow) * (1 - strip));
-    const hw = Math.round(15 * Math.sqrt(grow));
+    const H0 = stage === 0 ? Math.round(4 * baseK) : [4, 8, 11, 14][stage];
+    const H = Math.round(H0 * (1 - strip));
+    const hw = stage === 0 ? Math.round(15 * Math.sqrt(baseK)) : 15;
     const cx = home.x + dir * 1;
     const halfAt = (j: number): number => Math.round(hw * Math.sqrt(1 - (j + 1) / (H + 1)));
     // a 1-px ink outline round the cone, so it separates from the dark tile (critic r1 #4)
@@ -916,11 +970,11 @@ function ashHeap(ctx: Ctx<'destroy'>, u: MonsterUnit, home: XY): { burst(at: XY)
       // strata: a stone1 crease every 4 rows on the lit side
       if (j % 4 === 2 && half > 3) px.run(y, cx - half + 1, cx - 1, PAL.stone1);
     }
-    if (H > 2) px.run(home.y - H + 1, cx - 1, cx, PAL.stone3);
+    if (H > 2 && stage >= 2) px.run(home.y - H + 1, cx - 1, cx, PAL.stone3);
     // the heart through a 2-px eye: fire3 with a fire4 pulse → (cooling) fire2 → fire1 → stone1
     const pulse = sinceBurst < 0 && Math.floor(el / 130) % 3 === 0;
     const hc = sinceBurst < 0 ? (pulse ? PAL.fire4 : PAL.fire3) : sinceBurst < 120 ? PAL.fire2 : sinceBurst < 240 ? PAL.fire1 : sinceBurst < 360 ? PAL.stone1 : -1;
-    if (H > 4 && hc >= 0) {
+    if (stage >= 3 && H > 4 && hc >= 0) {
       const ey = home.y - Math.round(H * 0.42);
       px.rect(cx - 1, ey, 2, 2, hc).run(ey - 1, cx - 1, cx, PAL.ink);
       if (sinceBurst < 0) px.dot(cx - 2, ey + 1, PAL.fire1).dot(cx + 1, ey + 1, PAL.fire1);
@@ -950,7 +1004,8 @@ function ashHeap(ctx: Ctx<'destroy'>, u: MonsterUnit, home: XY): { burst(at: XY)
       for (let i = 0; i < 26; i++)
         sp.add({ x: home.x + RR(-12, 12), y: home.y - RR(1, 13), vx: dir * RR(60, 110), vy: RR(-30, -10), drag: 1.2, delay: 420 + i * 22, life: RR(500, 800), colors: i % 2 ? [PAL.stone2, PAL.stone1] : [PAL.stone1, PAL.stone0], shape: 'px', fadeAt: 1 });
       sp.release();
-      void sleep(sc, 1000).then(() => play('ashenLastBeat', { volume: 0.8, pan: panAt(home.x) }));
+      // the last beat only while the heap is still there (a card summoned onto the tile kills both)
+      void sleep(sc, 1000).then(() => !killed && !occupied() && play('ashenLastBeat', { volume: 0.8, pan: panAt(home.x) }));
       // a faint grey stain fades last (stepped: stone0 then gone)
       const st = layer(sc, DEPTH.TILE_FX + 3);
       st.ellipse(home.x, home.y, 12, 5, PAL.stone0);
@@ -970,19 +1025,9 @@ async function ashenDeathV3(ctx: Ctx<'destroy'>): Promise<void> {
       if (!heap) heap = ashHeap(ctx, u, home);
     });
   }
-  // the death's first crackle (critic r1 #9): the shared kit plays `deathStart` only when the pose is seen
-  // on f0 first; a lethal recoil hands over to death on a later frame, so the crackle was never heard.
-  // Here: the pose first seen past f0 → we play it on that frame (f0 first → the kit's own beat on f1).
-  if (u && u.sprite.active) {
-    const pan = panAt(u.home.x);
-    onFrame(ctx.scene, (_dt, el) => {
-      if (!u.sprite.active || el > 1500) return false;
-      const fi = u.frameInfo();
-      if (fi.anim !== 'death') return true;
-      if (fi.frame >= 1) play('ashenCrackle', { volume: 1, pan });
-      return false;
-    });
-  }
+  // the death's crackle / crumble: CHARACTER_SOUNDS.ashen_drake scores them on the dissolve mark (death f6,
+  // the cloak's drop) and dissolve + 1 (f7, the plates break) — critic r2 #4: the old f1 crackle sounded
+  // ~250 ms before the picture moved, under the bolt's tail
   return deathV3(ctx, {
     fallback: () => ctx.base(),
     onBurst: (unit, at) => {
