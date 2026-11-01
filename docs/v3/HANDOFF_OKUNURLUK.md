@@ -55,8 +55,11 @@ Change ONLY these (all for the default `v3` look):
   - `npm run typecheck` clean.
   - `npx vitest run` — no NEW failures (known: cardface-v3 G1, dusk_ashen, hourglass_imp, shield_titan,
     crag_axeman "own voice"; cloud_hatchling "no cyan" may time out under load).
-  - v1 unchanged: `node tools/filmdiff.mjs --set v1 --base shots/v3/a3/baseline/v1films` → 17/17 IDENTICAL,
-    `node tools/filmdiff.mjs --set a6v1 --base shots/v3/a56/baseline/a6v1films` → 26/26 IDENTICAL.
+  - v1 unchanged. The baseline films are NOT in git (`shots/` is ignored, ~1 GB), so create them yourself
+    ONCE, BEFORE you change any code (on the untouched branch):
+    `node tools/filmdiff.mjs --set v1 --base shots/v3/a3/baseline/v1films --write`
+    `node tools/filmdiff.mjs --set a6v1 --base shots/v3/a56/baseline/a6v1films --write`
+    Then after every change: the same two commands WITHOUT `--write` must print 17/17 and 26/26 IDENTICAL.
   - Colours only from palette: `node tools/palcheck.mjs`.
 - Keep a log in `docs/v3/oturum-okunurluk.md`: what you changed, before/after screenshot paths, open issues.
 
