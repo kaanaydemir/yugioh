@@ -654,7 +654,7 @@ interface Dart {
 }
 
 /** The six homing darts (see the header). Resolves when the last has landed; `onHit(i, at)` per arrival. */
-function volley(s: StrikeArgs, from: XY, rnd: Rnd, onHit: (i: number, at: XY) => void): Promise<void> {
+function volley(s: StrikeArgs, from: XY, rnd: Rnd, onHit: (i: number, at: XY) => void, onFlake?: () => void): Promise<void> {
   const sc = s.scene;
   const u = s.attacker;
   const tgt = s.target && live(s.target) ? s.target : null;
@@ -678,7 +678,8 @@ function volley(s: StrikeArgs, from: XY, rnd: Rnd, onHit: (i: number, at: XY) =>
       launch: i * 34 + (i > 2 ? 30 : 0) + (i === N - 1 ? 40 : 0),
       flight: clamp(ri(dist * 1.15 + 90), 200, 330),
       // the first is the contact; the last is the big finisher feather
-      len: i === N - 1 ? 11 : i === 0 ? 9 : i % 3 === 0 ? 7 : 8,
+      // (FIX r2: one px longer each, and every one an inked stamp, so they read at 1×)
+      len: i === N - 1 ? 12 : i === 0 ? 10 : i % 3 === 0 ? 8 : 9,
       hist: [],
       state: 'fly',
       rel: null,
@@ -697,6 +698,7 @@ function volley(s: StrikeArgs, from: XY, rnd: Rnd, onHit: (i: number, at: XY) =>
   let resolveAll!: () => void;
   const allIn = new Promise<void>((res) => (resolveAll = res));
   const STICK = 320;
+  let flaked = false;
   const sparksAt: (XY & { t: number })[] = [];
   onFrame(sc, (dt, el) => {
     r.begin();
@@ -731,7 +733,8 @@ function volley(s: StrikeArgs, from: XY, rnd: Rnd, onHit: (i: number, at: XY) =>
         const TR = d.len >= 10 ? 6 : 4;
         for (let k = 0; k < TR; k++) r.px(ri(p.x - cA * (tail0 + k)), ri(p.y - sA * (tail0 + k)), k < 1 ? PAL.white : k < 2 ? PAL.void4 : k < TR - 1 ? PAL.void3 : PAL.void2);
         for (let k = 2; k < d.hist.length; k += 2) r.px(d.hist[k].x, d.hist[k].y, k < 4 ? PAL.void3 : PAL.void2);
-        feather(r, p.x, p.y, d.ang, d.len, 0);
+        // quill first (the narrow root is the dart's point, the broad vane its fletching)
+        stamp(r, p.x, p.y, d.ang + Math.PI, d.len, 0, 1);
         // the white leading glint: a cross on the launch frames, then one bright point ahead of the tip
         const hx = ri(p.x + cA * (tail0 + 0.5));
         const hy = ri(p.y + sA * (tail0 + 0.5));
@@ -767,11 +770,16 @@ function volley(s: StrikeArgs, from: XY, rnd: Rnd, onHit: (i: number, at: XY) =>
         const ny = Math.cos(d.ang);
         const sl = Math.max(5, d.len - 1);
         const back = { x: at.x - Math.cos(d.ang) * 2 + nx * wob, y: at.y - Math.sin(d.ang) * 2 + ny * wob };
-        feather(r, back.x, back.y, d.ang + wob * 0.12, sl, 0);
+        stamp(r, back.x, back.y, d.ang + Math.PI + wob * 0.12, sl, 0, 1);
         const end = (sl - 1) / 2 + 1;
         r.px(ri(back.x - Math.cos(d.ang) * end), ri(back.y - Math.sin(d.ang) * end), PAL.white);
-        if (el - d.stuckAt > STICK + i * 40 || !host) {
-          // it flakes off and flutters down
+        // (a direct hit has no host sprite: the darts stay stuck in the duelist for the same beat)
+        if (el - d.stuckAt > STICK + i * 40 || (tgt && !host)) {
+          // it flakes off and flutters down (the first flake carries the deflate sigh)
+          if (!flaked) {
+            flaked = true;
+            onFlake?.();
+          }
           d.state = 'gone';
           falls.add({ x: back.x, y: back.y, vx: -dirX * rr(rnd, 10, 30), vy: rr(rnd, -20, 5), len: Math.max(5, d.len - 2), grav: 55, drag: 2.4, life: rr(rnd, 560, 760), ang: d.ang, ink: true }, rnd);
         }
@@ -797,7 +805,6 @@ async function strikeV3(s: StrikeArgs): Promise<void> {
   const rnd = mulberry32(u.uid * 97 + (s.target?.uid ?? 3) * 13 + 5);
   const f0 = strikeStartFrame(u);
   const REL = u.markFrame('attack', 'release', u.impactFrame);
-  const REC = u.markFrame('attack', 'recover', REL + 3);
   const pan = panAt(u.home.x);
   // (the declaration's charge pose started the puff already: the strike takes that voice over)
   const charge = takeCharge(u, 'wiPuff', { volume: 0.85, pan });
@@ -809,7 +816,8 @@ async function strikeV3(s: StrikeArgs): Promise<void> {
     play('wiVolley', { volume: 0.9, pan });
   };
   atFrame(u, 'attack', REL, relSound, { late: false });
-  atFrame(u, 'attack', REC, () => !s.blocked && play('wiShed', { volume: 0.7, pan }), { late: false });
+  // (FIX r2) the deflate sigh is no longer on the sprite's recover mark (that lands on the contact):
+  // it plays when the stuck darts really flake off (volley's onFlake, contact + ~320 ms)
   const run = u.playRange('attack', f0);
   await sleep(sc, u.rangeMs('attack', f0, REL));
   relSound();
@@ -854,7 +862,7 @@ async function strikeV3(s: StrikeArgs): Promise<void> {
       void lightFlash(sc, at.x, at.y, PAL.white, 20, 240, { floorY: s.target ? s.target.home.y : s.toGround.y, air: 0.7, intensity: 0.7 });
     } else play('wiTsk', { volume: 0.75, pan: panAt(at.x) });
     void i;
-  });
+  }, () => play('wiShed', { volume: 0.75, pan }));
   sparks.close();
   void sleep(sc, 200).then(() => {
     stopTsk();
@@ -863,9 +871,12 @@ async function strikeV3(s: StrikeArgs): Promise<void> {
   });
   if (!u.sprite.active || u.retired) return;
   if (s.blocked) {
-    // the guard holds and throws the volley back: a feather-light recoil
+    // the guard holds and throws the volley back: a feather-light recoil and a tiny "hu!"
     await sleep(sc, 40);
-    if (live(u)) await u.play('hit');
+    if (live(u)) {
+      play('wiHu', { volume: 0.55, pan });
+      await u.play('hit');
+    }
     return;
   }
   await run;
@@ -1077,64 +1088,95 @@ async function windDeath(ctx: Ctx<'destroy'>, L: Leave): Promise<void> {
 type Face = 'happy' | 'squeeze' | 'open' | 'wide';
 
 /**
- * The pillow = the ghost turned cushion: a puffy square with four tufted feather corners and a
- * piped seam, the ghost's cowlick curling up off its top and its "?" tail feather hooking off the
- * back corner; on its front the ghost's own dark face hollow (11×7) with 2-px gold eyes that change
- * expression ("> <" squeezed, wide, "^ ^"). Drawn into `pc` centred at (cx, cy), half-size a × b,
- * `back` = −1 / +1 the side the tail hangs off (away from the field). Light from the top-left.
+ * The pillow = the ghost turned CUSHION (FIX r2: a real cushion silhouette, not a pill): four corners
+ * pulled out into points, each with a tuft of feather tips; the edges between them pinched IN (the
+ * seam pulls the stuffing: top / bottom dip 2 px, the sides 1 px); a piped seam dashed all round
+ * 2 px inside the ink; a lit top-left plane, a mid band and a shaded lower band; two button dimples
+ * (tufting) either side of the face; the ghost's cowlick curling up off its top and its "?" tail
+ * hooking off the back side. On its front the ghost's own dark face hollow sits IN the cushion (a
+ * 1-px crease round it: shadow above, a lit lip below) with 2-px gold eyes that change expression
+ * ("> <" squeezed, wide, "^ ^"). Drawn into `pc` centred at (cx, cy), half-size a × b; `back` = −1 / +1
+ * the side the tail hangs off (away from the field). Light from the top-left.
  */
 function paintPillow(pc: PixelCanvas, cx: number, cy: number, a: number, b: number, face: Face, back = -1): void {
   pc.clear();
-  const inside = (x: number, y: number): boolean => {
-    const u = (x + 0.5 - cx) / a;
-    const v = (y + 0.5 - cy) / b;
-    return Math.pow(Math.abs(u), 3.2) + Math.pow(Math.abs(v), 3.2) <= 1;
+  const dipY = Math.max(1.5, ri(b * 0.3 * 2) / 2);
+  const dipX = Math.max(1, ri(a * 0.1 * 2) / 2);
+  /** inside the cushion shrunk by `s` px: pinched edges, pointed (slightly blunted) corners */
+  const inside = (x: number, y: number, s = 0): boolean => {
+    const A = a - s;
+    const B = b - s;
+    if (A <= 1 || B <= 1) return false;
+    const u = (x + 0.5 - cx) / A;
+    const v = (y + 0.5 - cy) / B;
+    const au = Math.abs(u);
+    const av = Math.abs(v);
+    if (av > 1 - (dipY / B) * (1 - au * au)) return false;
+    if (au > 1 - (dipX / A) * (1 - av * av)) return false;
+    return au ** 5 + av ** 5 <= 1.18;
   };
   for (let y = Math.floor(cy - b - 1); y <= cy + b + 1; y++) {
     for (let x = Math.floor(cx - a - 1); x <= cx + a + 1; x++) {
       if (!inside(x, y)) continue;
       const u = (x + 0.5 - cx) / a;
       const v = (y + 0.5 - cy) / b;
-      // light: the top-left of the dome is lit; flat bands
-      const l = -u * 0.45 - v + (1 - u * u) * 0.2;
-      const c = l > 0.45 ? PAL.white : l > -0.15 ? PAL.void4 : l > -0.7 ? PAL.void3 : PAL.void2;
+      // a stuffed dome: a round lit plane up-left of the middle, the lower band in shade (flat bands)
+      const nz = Math.sqrt(Math.max(0, 1 - u * u * 0.55 - v * v * 0.9));
+      const l = -u * 0.3 - v * 0.62 + nz * 0.75;
+      const c = l > 0.84 ? PAL.white : l > 0.46 ? PAL.void4 : l > 0.04 ? PAL.void3 : PAL.void2;
       pc.set(x, y, c);
     }
   }
-  // the piped seam: one step down, 2 px inside the edge (only on the lit part, where it reads)
+  // the piped seam: a dashed line all round, 2 px inside the edge (one step down from its band)
   for (let y = Math.floor(cy - b); y <= cy + b; y++) {
     for (let x = Math.floor(cx - a); x <= cx + a; x++) {
-      if (!inside(x, y)) continue;
-      const edge = !inside(x - 2, y) || !inside(x + 2, y) || !inside(x, y - 2) || !inside(x, y + 2);
-      const deep = !inside(x - 1, y) || !inside(x + 1, y) || !inside(x, y - 1) || !inside(x, y + 1);
-      if (edge && !deep && (x + y) % 2 === 0 && pc.get(x, y) === PAL.white) pc.set(x, y, PAL.void4);
+      if (!inside(x, y, 2) || inside(x, y, 3)) continue;
+      if ((x * 3 + y * 5) % 4 === 0) continue;
+      const c = pc.get(x, y);
+      pc.set(x, y, c === PAL.white ? PAL.void4 : c === PAL.void4 ? PAL.void3 : PAL.void2);
     }
   }
-  // four tufted corners: a little fan of three feather tips each
+  // two button dimples (the tufting pulls the cushion in): a dark pit, creases radiating, a lit rim above
+  if (a >= 24 && b >= 9) {
+    for (const s of [-1, 1]) {
+      const bx = ri(cx + s * a * 0.58);
+      const by = ri(cy + 1);
+      pc.set(bx, by, PAL.void1);
+      pc.set(bx + 1, by, PAL.void2);
+      for (const [dx, dy] of [[-1, -1], [2, -1], [-1, 1], [2, 1]]) if (pc.get(bx + dx, by + dy) !== null) pc.set(bx + dx, by + dy, PAL.void3);
+      if (pc.get(bx, by - 2) !== null) pc.set(bx, by - 2, PAL.white);
+      if (pc.get(bx + 1, by - 2) !== null) pc.set(bx + 1, by - 2, PAL.white);
+    }
+  }
+  // the four corners: tufts of feather tips fanning out of each pointed corner (3–4 px)
   for (const [sx, sy] of [
     [-1, -1],
     [1, -1],
     [-1, 1],
     [1, 1],
   ] as const) {
-    const x0 = ri(cx + sx * (a - 2));
+    const x0 = ri(cx + sx * (a - 1.5));
     const y0 = ri(cy + sy * (b - 1.5));
     const lit = sy < 0 ? PAL.white : PAL.void4;
     const dim = sy < 0 ? PAL.void4 : PAL.void3;
-    // a solid wedge of feather tips fanning out of the corner (three points: the middle one longest)
-    for (let i = 0; i <= 5; i++)
-      for (let j = 0; j <= 5; j++) {
-        const d = i + j;
-        if (d > 5 || Math.abs(i - j) > 2 || (d === 5 && i !== j + 1 && j !== i + 1 && i !== j)) continue;
-        if (d >= 4 && Math.abs(i - j) === 2) continue;
-        pc.set(x0 + sx * i, y0 + sy * j, d >= 4 ? dim : lit);
+    // three feather tips: the diagonal one longest (4 px), one along each edge (3 px)
+    const tips: [number, number, number][] = [
+      [1, 1, 4],
+      [1, 0.45, 3],
+      [0.45, 1, 3],
+    ];
+    for (const [ux, uy, len] of tips) {
+      for (let k = 1; k <= len; k++) {
+        const px = ri(x0 + sx * ux * k);
+        const py = ri(y0 + sy * uy * k);
+        pc.set(px, py, k >= len - 1 ? dim : lit);
       }
+    }
   }
   // the cowlick curling up off the top, leaning forward (it is the ghost's)
   const tx = ri(cx - back * 3);
-  const ty = ri(cy - b);
+  const ty = ri(cy - b + dipY);
   const curl: [number, number, number][] = [];
-  // a 3-px-wide feather rising 6 px and curling forward over the top (lit side white, back lilac)
   for (let k = 0; k <= 5; k++) {
     const dx = k < 3 ? 0 : -back * (k - 2);
     curl.push([dx, -k, PAL.white], [dx + back, -k, PAL.void4]);
@@ -1153,15 +1195,20 @@ function paintPillow(pc: PixelCanvas, cx: number, cy: number, a: number, b: numb
     pc.set(qx + back * dx, qy + dy - 1, dy <= 1 ? PAL.white : PAL.void4);
   }
   pc.outline(PAL.ink);
-  // the ghost's face hollow (11×7) and its gold eyes (lights: drawn after the outline)
+  // the ghost's face hollow, sunk IN the cushion, and its gold eyes (lights: drawn after the outline)
   const fx0 = ri(cx - back * 1);
   const fy0 = ri(cy);
   const hw = face === 'wide' ? 7.2 : 6.6;
-  const hh = face === 'wide' ? 4.8 : 4.3;
-  for (let y = -5; y <= 5; y++) for (let x = -8; x <= 8; x++) if ((x * x) / (hw * hw) + (y * y) / (hh * hh) <= 1) pc.set(fx0 + x, fy0 + y, PAL.void0);
-  // its brow: the cushion's lip overhangs the hollow (ink), the lower lip catches a little light
-  for (let x = -5; x <= 5; x++) pc.set(fx0 + x, fy0 - 5, PAL.ink);
-  for (let x = -4; x <= 4; x++) if (pc.get(fx0 + x, fy0 + 5) !== null) pc.set(fx0 + x, fy0 + 5, PAL.void1);
+  const hh = Math.min(face === 'wide' ? 4.8 : 4.3, b - 2.5);
+  const inHollow = (x: number, y: number): boolean => (x * x) / (hw * hw) + (y * y) / (hh * hh) <= 1;
+  const inCrease = (x: number, y: number): boolean => (x * x) / ((hw + 1.2) * (hw + 1.2)) + (y * y) / ((hh + 1.2) * (hh + 1.2)) <= 1;
+  for (let y = -7; y <= 7; y++)
+    for (let x = -9; x <= 9; x++) {
+      if (inHollow(x, y)) pc.set(fx0 + x, fy0 + y, PAL.void0);
+      else if (inCrease(x, y) && pc.get(fx0 + x, fy0 + y) !== null && pc.get(fx0 + x, fy0 + y) !== PAL.ink)
+        // the crease: in shadow above (the cushion swells over the face), a lit lip below
+        pc.set(fx0 + x, fy0 + y, y < 0 ? PAL.void1 : y > 1 ? PAL.white : PAL.void2);
+    }
   const G4 = PAL.gold4;
   const G3 = PAL.gold3;
   const eye = (ex: number, near: boolean): void => {
@@ -1627,6 +1674,12 @@ if (LOOK_V3)
  * from. One watcher per battle, ends on the hold, the unit leaving, or after 4 s.
  */
 const clutched = new WeakSet<MonsterUnit>();
+/** (FIX r2) The hold's own sustained voice (wiClutch): started with the hold, faded when the pillow takes over. */
+const clutchVoice = new WeakMap<MonsterUnit, { stop(ms?: number): void }>();
+function endClutchVoice(u: MonsterUnit, ms = 120): void {
+  clutchVoice.get(u)?.stop(ms);
+  clutchVoice.delete(u);
+}
 const CLUTCH_FRAME = 1;
 if (LOOK_V3)
   registerObserver((ev, ctx) => {
@@ -1654,6 +1707,8 @@ if (LOOK_V3)
       const onContact = (who: number): void => {
         if (who !== atk) return;
         sc.events.off('v3:contact', onContact);
+        // the blow lands on it: a tiny "hu!" (not when the contact is its own volley landing)
+        if (uid !== atk) play('wiHu', { volume: 0.6, pan: panAt(u.home.x) });
         let t0 = 0;
         let held = false;
         let lastEsc = 0;
@@ -1663,6 +1718,7 @@ if (LOOK_V3)
         onFrame(sc, (_dt, el) => {
           const quit = (): false => {
             esc.close();
+            if (clutched.has(u)) endClutchVoice(u, 200);
             return false;
           };
           if (!live(u) || u.retired || el > 3000) return quit();
@@ -1673,6 +1729,7 @@ if (LOOK_V3)
             held = true;
             u.pose('special', CLUTCH_FRAME);
             clutched.add(u);
+            clutchVoice.set(u, start('wiClutch', { volume: 0.7, pan: panAt(u.home.x) }));
             t0 = el;
             return true;
           }

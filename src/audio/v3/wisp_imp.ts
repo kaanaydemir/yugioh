@@ -21,15 +21,21 @@
 //   wiLand       summon 'land': the ghost settles on its float (a down cushion "fumf", feathers settle)
 //   wiBoo        summon peak / roar: "bö!" (also its quieter "hu?" variant via pitch)
 //   wiPuff       strike charge (sustained): it inhales and puffs to 130 % (breath + bristling feathers)
-//   wiVolley     strike 'release': the sheaf of homing feather darts leaves (six staggered swishes)
+//   wiVolley     strike 'release': the sheaf of homing feather darts leaves (six clicked "fft"s on the
+//                picture's launch beats, 3 + 3, each with a little whistle flying off; an exhale + breath thump)
 //   wiImpact     strike contact: the first dart jabs in (cloth thump + tsk + feather burst)
 //   wiTsk        strike: each of the micro jabs that follow (cap 8, tiny gap)
-//   wiShed       strike recover: the stuck feathers flake off, the ghost deflates (a little sigh)
+//   wiShed       strike: the stuck darts flake off (fired on the first flake, contact + ~320 ms), the ghost
+//                deflates with a little sigh
+//   wiHu         a tiny "hu!" when it takes a blow it survives (guard holds, blocked volley) or the lethal one
 //   wiGust       death 'dissolve' (no event): the wind strips the feathers off — gust + rustle + whimper
 //   wiAway       death: the last feathers flutter off on the wind (soft; NOT a pof)
 //   wiCloud      effect: the ghost bursts into a feather cloud (bright airy whump + dense rustle)
 //   wiFlock      effect (sustained): the cloud streams to the LP panel (swirling rustle, panned)
-//   wiStuff      effect: the feathers pack into a pillow (two soft fabric fluffs + a seam squeak)
+//   wiClutch     effect run-up (sustained, ≤1.9 s): the trembling hug — a held, shivering "uu" (9 Hz
+//                tremolo), a swelling 5 kHz rustle, a quill tick + a tiny breath per escaping feather
+//   wiSwell      effect: the hug's last squeeze before the burst (a rising inhale + bristling rustle)
+//   wiStuff      effect: the feathers pack into a pillow on the panel (two fabric fluffs + a seam squeak)
 //   wiCatch      effect: the prevented damage hits the pillow (muffled LP thump + a springy bounce)
 //   wiSafe       effect: "0 · KORUNDU" (a gold bell pair in F lydian + shimmer)
 //   wiPof        effect: THE pillow pof (the game's only one)
@@ -209,21 +215,35 @@ export const WISP_IMP_RECIPES = {
       ghostVoice(v, 0.25, D - 0.2, [430, 480, 560], 0.08, { from: 'u', breath: 0.8, vib: 25 });
     },
   },
-  /** Strike 'release': the sheaf of homing feather darts leaves — six staggered high swishes + a "ffft". */
+  /**
+   * Strike 'release': the sheaf of homing feather darts leaves. (FIX r2) Six audible darts on the
+   * picture's own launch beats (0 / 34 / 68 ms, a gap, 132 / 166 ms, the finisher at 240 ms): each one a
+   * 2-ms click + a narrow 5–7 kHz "fft" with a fast decay + a little whistle that flies off toward the
+   * target; under them the "ffft" exhale that fires them and a low breath thump.
+   */
   wiVolley: {
     cap: 2,
     gap: 0.06,
     verb: 0.3,
-    duck: 0.3,
+    duck: 0.35,
     play(v) {
-      // the exhale that fires them: a quick airy "ffft"
-      sweep(v, 0, 0.16, [1800, 3600, 2200], 0.5, { kind: 'pink', q: 1.2, peakAt: 0.2 });
-      for (let i = 0; i < 6; i++) {
-        const t = i * 0.032 + v.r(0, 0.008);
-        sweep(v, t, 0.13, [4200, 8200 - i * 300, 5200], 0.26, { q: 3, pan: [-0.2 + i * 0.02, 0.3 + (i % 2) * 0.15], peakAt: 0.25 });
-      }
-      quills(v, 0.02, 0.2, 10, 0.06, { f: 7200 });
-      thump(v, 0, 180, 120, 0.1, 0.05);
+      // the exhale: a quick airy "ffft" with a body
+      sweep(v, 0, 0.26, [1500, 3400, 2000], 1.25, { kind: 'pink', q: 1.1, peakAt: 0.15 });
+      thump(v, 0, 180, 120, 0.45, 0.09, { att: 0.003 });
+      const LAUNCH = [0, 0.034, 0.068, 0.132, 0.166, 0.24];
+      LAUNCH.forEach((t, i) => {
+        const fin = i === LAUNCH.length - 1;
+        const side = i % 2 ? 1 : -1;
+        const out = v.panner([[0, side * 0.12], [0.16, 0.3 + side * 0.12]], { t });
+        // the click: the quill snapping out of the hood
+        v.noise('white', { t, g: perc(fin ? 0.9 : 0.7, 0.002, 0.0002), to: v.filt('highpass', 3000, 0.7, { to: out }) });
+        // the "fft": a narrow band that falls a little as it leaves
+        const f = 5200 + ((i * 397) % 1600);
+        v.noise('white', { t: t + 0.001, g: perc(fin ? 1.15 : 1.0, fin ? 0.08 : 0.06, 0.002), to: v.filt('bandpass', [[0, f * 1.1], [0.06, f * 0.85, 'e']], 3.6, { t, to: out }) });
+        // its whistle in flight: a thin sine glide that fades as it flies off
+        v.tone('sine', [[0, f * 1.25], [0.12, f * 1.45, 'e']], { t: t + 0.006, g: [[0, 0], [0.012, fin ? 0.08 : 0.05], [0.13, 0.0001, 'e']], to: out });
+      });
+      quills(v, 0.01, 0.28, 10, 0.07, { f: 7200 });
     },
   },
   /** Strike contact: the first dart jabs in — a fabric thump, a sharp "tsk" and a burst of loose down. */
@@ -256,7 +276,7 @@ export const WISP_IMP_RECIPES = {
       rustle(v, 0.004, [[0, 0], [0.01, 0.08], [0.09, 0.0001, 'e']], { rate: 70 });
     },
   },
-  /** Strike recover: the stuck feathers flake off and the ghost deflates with a little sigh. */
+  /** Strike: the stuck darts flake off (on the first flake, not on the sprite's recover mark) and it deflates with a sigh. */
   wiShed: {
     cap: 2,
     gap: 0.1,
@@ -354,8 +374,9 @@ export const WISP_IMP_RECIPES = {
     duck: 0.55,
     play(v) {
       // the blow, muffled by the down: a deep dull thump with the top cut
-      thump(v, 0, 120, 46, 0.55, 0.26, { drive: 1.4, att: 0.003 });
-      puff(v, 0, 0.38, 0.2, 700, { kind: 'pink', att: 0.004 });
+      // (FIX r2: −3.5 dB, so the pof after it stays the loudest beat of the pillow)
+      thump(v, 0, 120, 46, 0.36, 0.26, { drive: 1.4, att: 0.003 });
+      puff(v, 0, 0.24, 0.2, 700, { kind: 'pink', att: 0.004 });
       // the pillow springs back: a soft damped "boing" (A4 → E5 → C5)
       const spr = v.tone('sine', [[0, midiHz(69)], [0.07, midiHz(76), 'e'], [0.3, midiHz(72), 'e']], { t: 0.04, g: [[0, 0], [0.02, 0.1], [0.32, 0.0001, 'e']] });
       v.lfo(spr.osc.detune, 11, [[0, 70], [0.3, 5]], { t: 0.04, d: 0.32 });
@@ -376,7 +397,12 @@ export const WISP_IMP_RECIPES = {
       quills(v, 0.18, 0.5, 10, 0.03, { f: 7600 });
     },
   },
-  /** Effect: THE pillow pof — the only "pof" in the game. A thick low burst, a cloth body, an airy tail, down drifting. */
+  /**
+   * Effect: THE pillow pof — the only "pof" in the game, and (FIX r2) the loudest beat of the pillow.
+   * A soft "p", then a fat, long "o": two staggered pink puffs (the cumulus's two lobes, 40 ms apart)
+   * through low-passes that close 800 → 500 Hz, a cloth body, the "f" of the air hissing out, the
+   * down scattering wide to both sides, and a short gold sparkle tying it back to the KORUNDU bell.
+   */
   wiPof: {
     cap: 2,
     gap: 0.1,
@@ -385,15 +411,75 @@ export const WISP_IMP_RECIPES = {
     play(v) {
       // the "p": a soft plosive pop
       v.noise('white', { g: perc(0.22, 0.004, 0.0003), to: v.filt('bandpass', 2400, 1.4) });
-      // the "o": a thick, round burst of air from the bursting pillow (pink, low-passed, closing)
-      puff(v, 0.002, 0.7, 0.22, 950, { kind: 'pink', att: 0.005 });
-      puff(v, 0.004, 0.35, 0.12, 2200, { kind: 'pink', att: 0.003 });
-      thump(v, 0.002, 160, 58, 0.42, 0.17, { att: 0.004 });
+      // the "o": two fat lobes, each a closing low-passed pink burst
+      for (const [t, g, pan] of [[0.002, 1.2, -0.18], [0.042, 0.95, 0.18]] as const) {
+        const out = v.panner(pan, { t });
+        v.noise('pink', { t, g: [[0, 0], [0.008, g], [0.14, g * 0.72], [0.4, 0.0001, 'e']], to: v.filt('lowpass', [[0, 800], [0.3, 500, 'e']], 0.9, { t, to: out }) });
+      }
+      puff(v, 0.004, 0.32, 0.12, 2000, { kind: 'pink', att: 0.003 });
+      thump(v, 0.012, 150, 52, 0.5, 0.26, { att: 0.006 });
+      thump(v, 0.05, 130, 50, 0.36, 0.2, { att: 0.005 });
       // the "f": the air hisses out
-      sweep(v, 0.03, 0.28, [1600, 1100, 700], 0.14, { kind: 'pink', q: 1, peakAt: 0.15 });
-      // and the down drifts out of it
-      rustle(v, 0.05, [[0, 0], [0.06, 0.18], [0.7, 0.0001, 'e']], { rate: 42, f: 5200, fTo: 4600 });
-      quills(v, 0.06, 0.8, 18, 0.05, { curve: 1.5 });
+      sweep(v, 0.04, 0.32, [1600, 1100, 650], 0.18, { kind: 'pink', q: 1, peakAt: 0.12 });
+      // the down scatters out wide: two rustles flying apart to the sides
+      rustle(v, 0.05, [[0, 0], [0.05, 0.2], [0.75, 0.0001, 'e']], { rate: 42, f: 5200, fTo: 4400, pan: [[0, -0.15], [0.7, -0.65]] });
+      rustle(v, 0.07, [[0, 0], [0.05, 0.17], [0.7, 0.0001, 'e']], { rate: 50, f: 5600, fTo: 4800, pan: [[0, 0.15], [0.7, 0.65]] });
+      quills(v, 0.06, 0.85, 20, 0.055, { curve: 1.5 });
+      // the gold sparkle tail (the KORUNDU bell's lydian B and C, very small)
+      chime(v, 95, 0.12, 0.035, 0.55);
+      chime(v, 96, 0.19, 0.025, 0.6);
+    },
+  },
+  /**
+   * Effect run-up (sustained, stopped when the pillow takes over): the trembling hug. A held,
+   * shivering "uu" through the ghost's formants with a fast 9 Hz tremolo, the 5 kHz rustle swelling
+   * under it, and a quill tick + a tiny breath every 170 ms (each feather that slips out of the hold).
+   */
+  wiClutch: {
+    cap: 1,
+    gap: 0.2,
+    verb: 0.4,
+    duck: 0.15,
+    play(v) {
+      const D = 1.9;
+      const trem = v.amp(0.42);
+      v.lfo(trem.gain, [[0, 8], [D, 10]], [[0, 0.22], [D, 0.36]], { d: D + 0.1 });
+      ghostVoice(v, 0.02, D, [470, 455, 500], 0.1, { from: 'u', breath: 0.7, vib: 18, out: trem });
+      // a second, octave-down hum (the hollow shivering) that only joins late
+      ghostVoice(v, 0.5, D - 0.5, [235, 230, 250], 0.05, { from: 'u', breath: 0.4, vib: 10, out: trem });
+      rustle(v, 0, [[0, 0], [0.25, 0.06], [D * 0.8, 0.12], [D, 0.09], [D + 0.1, 0.0001, 'e']], { rate: 62, f: 5000, fTo: 5400 });
+      // the escaping feathers: one tick + a tiny breath each, panned a little off the body
+      for (let t = 0.12, i = 0; t < D - 0.05; t += 0.17, i++) {
+        const out = v.panner(i % 2 ? 0.25 : -0.1, { t });
+        v.noise('white', { t, g: perc(0.05 + i * 0.003, 0.004, 0.0003), to: v.filt('bandpass', 6600, 2.2, { to: out }) });
+        v.noise('pink', { t: t + 0.004, g: perc(0.035 + i * 0.002, 0.07, 0.003), to: v.filt('bandpass', 2600, 1.6, { to: out }) });
+      }
+    },
+  },
+  /** Effect: the hug's last squeeze before the burst — a quick rising inhale and every feather bristling. */
+  wiSwell: {
+    cap: 2,
+    gap: 0.1,
+    verb: 0.35,
+    duck: 0.25,
+    play(v) {
+      const D = 0.24;
+      v.noise('pink', { g: [[0, 0], [D * 0.85, 0.3], [D + 0.03, 0.0001, 'e']], to: v.filt('bandpass', [[0, 600], [D, 2000, 'e']], 2.4) });
+      rustle(v, 0, [[0, 0], [D * 0.9, 0.24], [D + 0.05, 0.0001, 'e']], { rate: 80, f: 4600, fTo: 6000 });
+      quills(v, 0.02, D, 10, 0.06, { curve: 0.5 });
+      ghostVoice(v, 0.02, D, [440, 520, 640], 0.07, { from: 'u', breath: 0.9, vib: 30 });
+    },
+  },
+  /** A tiny "hu!": it takes a blow (the guard holds, the volley is thrown back, or the lethal one). */
+  wiHu: {
+    cap: 2,
+    gap: 0.15,
+    verb: 0.35,
+    duck: 0.1,
+    play(v) {
+      ghostVoice(v, 0, 0.15, [620, 760, 560], 0.11, { from: 'u', to: 'o', breath: 0.55, vib: 30 });
+      rustle(v, 0, [[0, 0], [0.02, 0.09], [0.22, 0.0001, 'e']], { rate: 66 });
+      quills(v, 0.01, 0.2, 5, 0.04, { curve: 1.6 });
     },
   },
   /** Revive (sustained, stopped on 'land'): the wind turns round and brings the feathers back. */

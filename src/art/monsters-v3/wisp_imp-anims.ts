@@ -30,10 +30,10 @@
 //   hitHeavy  8 f / 0.74 s       = death f0, tumbles back, the float drops, dizzy, springs up
 //   hitMagic  8 f / 0.74 s       eyes white-hot, every feather one value up and on end, sparks, a
 //                                rigid 1-px jolt, then a sag
-//   summon   14 f / 1.35 s       one big feather rocks down in three tilts to the tile (f0–f4), a
+//   summon   15 f / 1.35 s       one big feather rocks down in three tilts to the tile (f0–f4), a
 //                                helix of whole feathers whirls up round two eyes (the face locks in
 //                                first), the hood forms, then tail / hands / plumes shingle on,
-//                                land@9 (a soft squash), "bö!" (f10), settle → idle f0
+//                                land@10 (a soft squash), "bö!" (f11), settle → idle f0
 //   death    10 f / 0.86 s       the heavy struck pose → thrown back → a gust ribbon crosses it and
 //                                PEELS it part by part (cowlick, the plumes front to back, the hands,
 //                                the tail unhooks), each part leaving as a whole tumbling feather
@@ -210,8 +210,9 @@ const ATTACK: Table = {
     [60, { puff: 0.25, fluff: 1.6, eyes: 'wide', lookX: 1, bx: 2, hx: 3, by: 0, sw: 3, sh: -2, hollow: 3, drift: -6, handN: Hd(4, -2, -15, 14, 1), handF: Hd(3, -2, 150, 14), crestX: -5, crestY: 2, tailSwing: -4, tailCurl: 0, tailLift: 1, rippleAmp: 1.2, ripple: 0.1 }],
     // contact: the smear holds a frame, the second volley leaves
     [70, { puff: 0.05, fluff: 1.2, eyes: 'wide', lookX: 1, bx: 2, hx: 2, by: 0, sw: 2, sh: -1, hollow: 2, drift: -5, handN: Hd(3, -1, -5, 8), handF: Hd(3, -1, 130, 8), crestX: -4, crestY: 2, tailSwing: -5, tailCurl: 0.1 }],
-    // recoil squash: knocked back by its own volley, flattened
-    [90, { fluff: 0.8, eyes: 'squeeze', bx: -1, hx: -2, by: 2, sw: 2, sh: -3, len: -2, drift: 3, hollow: -1, handN: Hd(-1, 1, 60, 6), handF: Hd(-1, 1, -50, 6), crestX: 3, crestY: 2, tailSwing: 3, tailCurl: 0.5, rippleAmp: 1, ripple: 0.4 }],
+    // recoil squash: knocked back by its own volley, flattened — a pleased blink, not a pained
+    // face (FIX r2: the darts are still in flight here; it must not read as already hurt)
+    [90, { fluff: 0.8, eyes: 'blink', bx: -1, hx: -1, by: 2, sw: 2, sh: -3, len: -2, drift: 3, hollow: 0, handN: Hd(-1, 1, 60, 6), handF: Hd(-1, 1, -50, 6), crestX: 3, crestY: 2, tailSwing: 3, tailCurl: 0.5, rippleAmp: 1, ripple: 0.4 }],
     // recover: the 3-beat wobble that settles (tall → squat → tall)
     [100, { fluff: 0.4, eyes: 'open', lookX: 1, bx: 0, hx: 1, by: -2, sw: -1, sh: 2, len: 1, drift: -2, handN: Hd(0, -2, -30, 6), handF: Hd(0, -2, 40, 6), crestX: -2, crestY: -2, tailSwing: -2, tailCurl: 0.8, rippleAmp: 0.9, ripple: 0.7 }],
     [100, { eyes: 'blink', hx: -1, by: 1, sw: 1, sh: -2, len: -1, drift: 1.5, handN: Hd(0, 1, 30), handF: Hd(0, 1, -25), crestX: 2, crestY: 1, tailSwing: 2, tailCurl: 0.45, rippleAmp: 0.8, ripple: 0.95 }],
@@ -311,7 +312,7 @@ function whirl(n: number, t: number, r: number, yTop: number, yBot: number): Fea
 }
 const BIG_FALL = (x: number, y: number, ang: number, bow: number): Feather => ({ x, y, ang, len: 11, bow, w: 4.6 });
 const SUMMON: Table = {
-  marks: { land: 9 },
+  marks: { land: 10 },
   keys: [
     [100, { ...GONE, free: [BIG_FALL(2, -14, 160, -2)] }],
     [100, { ...GONE, free: [BIG_FALL(-6, -6, 210, 2)] }],
@@ -320,9 +321,12 @@ const SUMMON: Table = {
     // touch: it settles flat on the tile's centre (the floor point), the first feathers lift off round it
     [80, { ...GONE, free: [BIG_FALL(4, 32, 180, -0.6), ...whirl(4, 0, 9, 18, 27)] }],
     // the whirl climbs; the face locks in first: two eyes in the middle of the feathers
-    [70, { ...GONE, eyesOnly: true, eyes: 'wide', by: 2, free: whirl(9, 1, 15, -8, 26) }],
+    [60, { ...GONE, eyesOnly: true, eyes: 'wide', by: 2, free: whirl(9, 1, 15, -8, 26) }],
+    // (FIX r2) a bud of a hood closes round the eyes first (small, no sheet yet), so the body never
+    // pops in whole in one frame
+    [50, { by: 6, sh: -6, sw: -4, len: -12, peel: 8, eyes: 'wide', crestY: 3, loose: null, tailCurl: 0, free: whirl(9, 1.5, 15, -9, 24) }],
     // the hood and the bare sheet form round the eyes
-    [70, { by: 2, sh: -1, peel: 8, eyes: 'blink', crestY: 2, free: whirl(8, 2, 15, -10, 22) }],
+    [60, { by: 2, sh: -1, peel: 8, eyes: 'blink', crestY: 2, free: whirl(8, 2, 15, -10, 22) }],
     // the tail hooks on, the hands, the wing plume shingles on
     [70, { by: 1, peel: 5, eyes: 'open', loose: null, free: whirl(6, 3, 14, -12, 14) }],
     // the plumes lay themselves on one by one; the last feathers close in over the crown

@@ -43,3 +43,21 @@ Open issues for the orchestrator (non-blocking):
 - sameness KK-15: 10 UYARI pairs (no KALIR); blind eye test not done.
 - `glassReverse` is also used by crystal_wyrm in `src/audio/v3/slice.ts` (pre-lane-B) — §5.1 says R2 is its sole owner.
 - shared edits: `battle/declare.ts` one-line v3-only `holdDrain`; `battle/plates.ts` optional argument (default unchanged).
+
+## PAUSED (2026-11-01 ~11:25 UTC, owner decision: weekly usage 92%) — exact resume instructions
+State: grim_warden FINISHED (09446f8). wisp_imp: critique round 1 + fix done, round 2 critic was running when paused (its
+partial notes may be in docs/v3/oturum-b/wisp_imp.md). hollow_ogre: built; one earlier critique+fix round (not counted in
+the sequential run). mudgrasp_spirit: built; one earlier critique round, its fix never ran. Owner BLOCKERs still open:
+mudgrasp reads as a blurry brown mass at 1× (critic: "does not read as mud"); wisp frames too similar (see the notes files).
+
+Resume (same session, cache available):
+  Workflow({ scriptPath: "/root/.claude/projects/-home-user-yugioh/77596f6a-069b-5204-8bfc-ba0d0b8509ca/workflows/scripts/laneb-seq.js",
+             resumeFromRunId: "wf_506f6e7d-dc8" })
+  Order wisp_imp → hollow_ogre → mudgrasp_spirit; build stages skipped (SKIP_BUILD); per card exactly 3 critic+fix rounds,
+  then the adversarial gate verifier (typecheck, vitest, filmdiff v1 + a6v1, camera gate, palcheck, budgets), then commit.
+  Note: the cache has missed before on resume; if a finished stage restarts, stop and trim ORDER / rounds by hand.
+New session (no cache): a copy of the script is `docs/v3/oturum-b/laneb-seq.workflow.js` — run it with Workflow({scriptPath})
+after setting the scratchpad paths (SCR) to the new session's scratchpad; build the Chromium shim first:
+  mkdir -p $SCR/pwb/chromium-1243 && ln -sfn /opt/pw-browsers/chromium-1243/chrome-linux64 $SCR/pwb/chromium-1243/chrome-linux
+v1 baselines (shots/, gitignored) must be re-filmed at 684e290 in a fresh container before the filmdiff gates
+(`git worktree add /tmp/base 684e290`, npm ci there, filmdiff --write into this checkout's shots/ paths).
