@@ -6,7 +6,7 @@ Branch `claude/kart-a` (from 684e290). Brief: `docs/v3/PARALEL_OTURUMLAR.md`.
 
 | Card | Design | Sprite rig (P1/P2) | Card art | Cut-in | Cinematics | SFX | Critique rounds | Gates | Pushed |
 |---|---|---|---|---|---|---|---|---|---|
-| ashen_drake (R1, no rebirth) | done (rev 3) | — | — | — | — | — | 0 | — | — |
+| ashen_drake (R1, no rebirth) | done (rev 3) | done (vulture-perch rig, P1 + P2) | done | done | done (summon, attack/tie/direct, revive, position, flip, death) | done | 7 (sprite 3, cinematics 3, adversarial 1) | pass (see ashen_drake below; IŞ-10 exempt, palcheck a5 absolutes as base) | yes |
 | venom_drake (full redesign) | done (rev 3) | — | — | — | — | — | 0 | — | — |
 | cloud_hatchling (C3 + aged form) | done (rev 3) | — | — | n/a (not ace) | — | — | 0 | — | — |
 
@@ -150,6 +150,17 @@ are the ambient sky-flyer band (x 32–606, y 94–111), which differs between t
   three cards ticking/dripping between actions would clutter the board mix). Idle identities play inside cinematics.
 - Owner question (venom_drake §10.1). Owner silent → lane-A choice: only the venom_drake DEATH scar lasts the duel
   (memorable, flavor-true "nothing grows again"); attack scars fade after ~2.4 s so they never read as a game mechanic.
+
+## ashen_drake: done (2026-11-01)
+- Evidence: `shots/kart-a/ashen_drake/adv2/` (gate outputs in `adv2/gates/`); build log + Status in
+  `docs/v3/kart-a/ashen_drake.md`.
+- Gates: typecheck clean · `npm test` 1345 passed, 9 failed, none ashen_drake's (4 known, cloud_hatchling ×4, one
+  shield_titan) · filmdiff v1 17/17 and a6v1 26/26 identical · camera gate 0 FAIL, zoom 1 · measure 0 errors in 26
+  `kaAd*` films, all within budget · monster-gates 21 ok, 1 FAIL = IŞ-10 exemption below · palcheck: no regression,
+  same a5-absolute FAILs as the approved base films.
+- Open: (1) direct attack — shared white star + damage number cover the contact frame (request #9);
+  (2) wide/boxy targets (tie's cannon mech) — target silhouette's straight top edge shows above the shorter edge flames
+  for ~2 frames at the peak; (3) per-card slam sound request to the orchestrator still stands.
 
 ## ashen_drake: IŞ-10 reference exemption (2026-10-31, lane-A builder, critic r3 #12)
 `tools/monster-gates.ts` compares idle f0 noise with the v1 idle f0 when a card has no approved still. For ashen_drake

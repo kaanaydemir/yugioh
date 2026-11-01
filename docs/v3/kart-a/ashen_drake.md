@@ -1713,3 +1713,95 @@ No code change was needed. Evidence: `shots/kart-a/ashen_drake/gates/`.
 | `palcheck` (`--rules all`, 9 films at 33 ms, `gates/pal/palcheck.txt`) | Fails the absolute a5 limits in the same way the approved base films do (`shots/kart-a/shared/v3base-head`, also FAIL): summon Δoff 1.70 / white 3.62 vs suWyrm 2.81 / 5.07 and suMagus 3.40 / 4.15. Attack-family peaks at t=462 (#14, the shared declaration) are 1.23–1.43 vs saWyrmBlocked 1.43. kaAdAtk's peak (+1.53, t ≥ 2970) is the shared `-1900` number fading plus the card flight to the grave after the death. Our ash residue in the effect clip stays Δ ≤ +0.08 until then. No white row > 21 %. |
 
 **Not ours (reported):** `tests/art/cloud_hatchling-cardart.test.ts` fails 3 tests deterministically: the WIND light test (118 > 478.72), the subject-material test and the living-frames test (75 < 74.8). The source is `src/art/cardart-v3/cloud_hatchling.ts` (the cloud_hatchling card). `tests/art/cloud_hatchling.test.ts` "no cyan / crim…" timed out at 5 s under load and passes when run alone (3.7 s).
+
+### Adversarial round fixes (2026-11-01, lane-A builder)
+Verifier evidence: `shots/kart-a/ashen_drake/adv/`. Ours: `shots/kart-a/ashen_drake/adv2/` (every changed moment
+re-filmed and looked at, 3× zooms and 1× strips). Files changed: `src/cinematics/strikes-a/ashen_drake-fx.ts`,
+`src/cinematics/strikes-a/ashen_drake.ts`, `src/cinematics/summon-a/ashen_drake.ts`, this doc. No shared file, no
+art, no sound file touched.
+
+1. **HIGH, the bank read as grey rocks: fixed.**
+   - New `AshMass` (`-fx.ts`): the bank's billows are drawn into one collector with **no outline per puff**. `flush`
+     inks only the **outer silhouette** of the whole mass. The upper rim is a 1-px dither: every other pixel of the
+     top ink line becomes a stone2 grain, with loose grains thrown 3 px up. Both re-roll every 2 frames.
+   - New `drawBillow` (`-fx.ts`) replaces the ink-outlined `drawLump` in the roll, the pour, the tail, the head
+     collapse, the cold veil and the fizzle. It is a soft puff: a stone1 body, a dithered stone1/stone2 band, a
+     stone2 top and a dithered stone3/stone2 lit cap. It has a broken stone0 under-rim and a stone0 **curl** arc
+     opposite the cap.
+   - *Rolling:* the cap and the curl step round every billow **every 2 frames**. The veil's caps also step every
+     2 frames now (was 6).
+   - *Direction:* the tumble stays **backwards** (the lit lip steps toward the drake). That is blueprint §5.2 /
+     line 431, the anti-`tide_golem` rule. The verifier's "roll forward" is read as "visibly roll", not as a
+     direction change (deviation logged).
+   - *Embers:* fire2 embers with a fire1 halo pixel glow inside the bank all the way to the ignition. The silence
+     thins them to a floor of 3 %, never to none.
+   - *Check at 1×:* against stone_sentinel at 1×, clip only: `adv2/atk_bank_1x.png`. The bank is a speckled,
+     dithered ash cloud with red embers, not outlined lumps. Also `adv2/atk_z.png` (3×) and `adv2/atk_clip.png`.
+2. **HIGH, the ignition was a hard box: fixed.** New `flameSheet` (`-fx.ts`) grows the ignition out of the bank's
+   own top (`bankAt`, sampled once from the veil slots).
+   - *Climb:* each column climbs 2–4 px a frame from its own start frame (0–3, the edges later), into uneven
+     tongues 3–6 px wide. Their peaks reach the target's top + 6 px, so they break above the silhouette.
+   - *Valleys:* the valleys between tongues let the black silhouette show through.
+   - *Outline:* only the outer flame edge is outlined, in fire0: the tops, and any side whose neighbour column is
+     lower.
+   - *Bank edge:* the bank's top is ragged and rounded down at both ends, so the lid is never flat and no side is
+     straight.
+   - *Sinking:* from k 8 (monster) / k 16 (direct) the sheet sinks unevenly, tongue by tongue, at 3–4 px a frame.
+   - *Width and position:* the sheet is centred on the target's body box (`sheetDx`), so a wide target is not left
+     with a bare straight black side.
+   - *Direct:* the solid `flameColumn` is replaced by the same sheet (peak 36).
+   - Evidence: `adv2/atk_ign_z.png` (1390: black silhouette inside the blaze, tongues over its top),
+     `adv2/tie_ign_z.png`, `adv2/direct_z2.png`, `adv2/tie.png`.
+3. **MEDIUM, ~800 ms freeze under the cut-in: fixed.** New `holdLife` runs on the held spread frame from the
+   hold to the end of the climax. It draws over the drake:
+   - *Ribs:* the chest's ember pixels (within 16 px of the art core) step one tone up on LUB (3 frames, with a
+     fire1 spill onto the bone round them) and on DUB 170 ms later (2 frames). That is the `ashenHeartbeat`
+     rhythm, on a 680 ms cycle, and the floor pool answers each beat. The old flat 170 ms pool pulse is removed.
+   - *Hem flutter:* a 1-px ripple (2 px at its head) travels along the wing hems, one step every 2 frames.
+   - *Drips:* ember drips fall from the hem's ember pixels.
+   - *Ash grains:* stone3/stone2 grains settle at 10–16 px/s with a stepped sway and die as floor specks.
+   - Evidence: `adv2/sum_hold_z.png` (LUB at 2718–2752), `adv2/summon_1x.png`.
+4. **MEDIUM, generic square-chip death: fixed in the card's own death path.** `plateFall` (14 ink-boxed chips
+   thrown outward from f7) is replaced by `cloakDrop` from **f6**, the cloak's drop frame:
+   - *Plates:* six cloak plates, 6–9 px slabs sampled from the shown frame's cloak rows. Each has a stone3/stone2
+     top, a stone1 under-row and ink only under it.
+   - *Fall:* they fall **straight down, top strip first**, one every 30 ms, and stack on the heap point. Each
+     slides 1–3 px down the slope and flattens into a stone1 → stone0 smear.
+   - *Particles:* only after the last plate has landed do 6 ash grains slip off the pile.
+   - *The strips:* they start at 30 % of the frame height. The top third is already gone under the kit's dissolve
+     on f6, and slabs sampled from there floated above the visible body (filmed, then corrected).
+   - *Not changed:* `ACCENTS.ash` and the `'fire'` accent. The blueprint asks for `accent: 'fire'` (§5.6), and
+     the square chips were ours (`plateFall`), not the accent.
+   - Evidence: `adv2/kill_before_z3.png` (before), `adv2/kill_z3.png` (3×), `adv2/kill_1x.png`, `adv2/lose.png`,
+     `adv2/gk.png`.
+5. **LOW, stuck tornado: fixed.** Everything from `start('ashenTornado')` through `untilFrame(BURST_F)` is in
+   `try { … } finally { storm.stop(90) }`.
+6. **LOW, budget risk: rejected, no change needed.** None of the fixes adds time: the bank, the sheet and the hold
+   life are drawing changes inside existing beats. Measured totals are unchanged (Atk 3166 ≤ 3190, Direct
+   2283 ≤ 2320, Tie 3150 ≤ 3190). Taking 60–80 ms out of the 130 ms post-hit-stop wait would cut the ignition's
+   held frames for nothing.
+7. **INFO, shared `impactHeavy` under the slam:** not ours. It stands with the existing orchestrator ask
+   (critic r3 #5b, `cutIn.slamSfx?: SfxName | null`).
+
+**Gates** (`adv2/gates/`):
+
+| Gate | Result |
+|---|---|
+| `npm run typecheck` | clean, whole tree (`typecheck.txt`) |
+| `npm test` | 1345 passed, 9 failed (`test.txt`). Not ours: the 4 known, cloud_hatchling ×4, shield_titan heap test. `ashen_drake.test.ts` timed out once under the filmdiff load and passes alone 12/12 (art unchanged). |
+| `filmdiff --set v1` | **17/17 IDENTICAL** (`filmdiff_v1.txt`) |
+| `filmdiff --set a6v1` | **26/26 IDENTICAL** (`filmdiff_a6v1.txt`) |
+| camera gate | `kaAd*`: 26 ok NOBASE, 0 FAIL. Base set: 15 ok, 0 FAIL. Zoom 1 everywhere (`camera.txt`, `camera_base15.txt`). |
+| measure (`now.json`, `measure.txt`) | errors 0 in all 26 `kaAd*`. Summon/P2 4166 ≤ 4350 · Atk/P2 3166 ≤ 3190 · Tie 3150 ≤ 3190 · Direct/P2 2283 ≤ 2320 · Revive 2200 ≤ 3050 · Pos 533 ≤ 580 · Flip 766 ≤ 870 · Lose 3083 · Kill 2583 · GuardKill 2683 |
+| monster-gates (`--class ace`, P1 + P2) | 21 ok, 1 FAIL = IŞ-10 ref, the recorded exemption (`gates.txt`). Art unchanged. |
+| palcheck (`--rules all`, 9 films at 33 ms, `pal/palcheck.txt`) | Same verdicts as the gates round, with no regression: every Δmax and white max is equal to or lower than `gates/pal`. They fail the absolute a5 limits in the same way the approved base films do. |
+
+**Status:** all seven findings are handled: five fixed, one rejected with measurements (#6), and one info item that
+is not ours (#7). Every gate is as it was in the gates round or better, v1 is byte-identical and there are 0 page
+errors.
+
+Still open:
+- The direct contact frame is still owned by the shared white star and number (ask #9).
+- On very wide or boxy targets (the tie's cannon mech), part of the black silhouette's straight contour still
+  shows above the shorter edge tongues during the 2 peak frames. That is the R1 silhouette itself, not the fire.
+- The shared cut-in slam sound (#7) stands as an orchestrator ask.
