@@ -131,9 +131,10 @@ export function needleLine(scene: Phaser.Scene, from: XY, tail: () => XY | null,
  * The pendulum's blade trail, drawn from the ANALYTIC swing (never from per-frame sprite points): `at(θ)` gives the
  * blade tip for a swing angle; `push(θ)` records the angle each frame (it only ever grows: one monotonic arc). The
  * arc behind the tip is sampled every ~1.5° and drawn as a 1-px line in three age bands — white (the newest
- * `band` scene ms), mist, steel — and nothing older. `stop()` lets it go: one band drops every 3 real frames.
+ * `band` scene ms), mist, steel — and nothing older than `maxSpan` radians of swing (a short crescent hugging the
+ * blade). `stop()` lets it go: one band drops every 3 real frames.
  */
-export function pendulumTrail(scene: Phaser.Scene, at: (th: number) => XY, depth: number, band = 50): { push(th: number): void; stop(): void; destroy(): void } {
+export function pendulumTrail(scene: Phaser.Scene, at: (th: number) => XY, depth: number, band = 50, maxSpan = 0.42): { push(th: number): void; stop(): void; destroy(): void } {
   const px = layer(scene, depth);
   const hist: { th: number; el: number }[] = [];
   let now = 0;
@@ -174,9 +175,11 @@ export function pendulumTrail(scene: Phaser.Scene, at: (th: number) => XY, depth
       return false;
     }
     const t = stoppedAt < 0 ? now : hist[hist.length - 1].el;
-    const b1 = thAt(t - band);
-    const b2 = thAt(t - band * 2);
-    const b3 = thAt(t - band * 3);
+    // never more than maxSpan radians of swing behind the tip (a short crescent hugging the blade, not the whole path)
+    const lo = head - maxSpan;
+    const b1 = Math.max(lo + (maxSpan * 2) / 3, thAt(t - band));
+    const b2 = Math.max(lo + maxSpan / 3, thAt(t - band * 2));
+    const b3 = Math.max(lo, thAt(t - band * 3));
     // oldest first, so the newer bands lie over the joints
     if (drop < 1) arc(b3, b2, PAL.steel);
     if (drop < 2) arc(b2, b1, drop === 1 ? PAL.steel : PAL.mist);

@@ -508,9 +508,10 @@ async function blockedPike(s: StrikeArgs, at: XY, stop: XY, home: XY, depth0: nu
  * declaration (spec 2.2 s ÷ 1.25 = 1.75 s scene, trimmed to fit the 3.19 s gate with a slow-dying target).
  */
 const KT = { c1: 50, c2: 55, c3: 55, c4: 60, r5: 85, r6: 85, down: 260, hold: 40, exit: 120, glide: 220, land: 100, settle: 60 };
-/** The pendulum: the overshoot angle, the start height above the higher of home / the cut (px). */
-const TH1 = (64 * Math.PI) / 180;
-const CLEAR = 40;
+/** The pendulum: the start angle, the overshoot angle, how far behind his home tile the swing starts (px). */
+const TH0 = (85 * Math.PI) / 180;
+const TH1 = (52 * Math.PI) / 180;
+const BACK = 12;
 /** The rapier's angle (deg, facing right; + = tip down) through the swing: coming over (f8) → swept across → follow-through. */
 const PHI_F8 = -38;
 const PHI_CUT = 46;
@@ -528,24 +529,28 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
   dimPanel(u, true);
   const depth0 = spr.depth;
   const tDepth = s.target ? s.target.sprite.depth : depth0;
-  // ---- geometry, all in SCREEN space: the cut point, the body at the cut, the pivot straight above it
+  // ---- geometry: a WORLD pendulum seen in iso. The swing hangs in the vertical plane through his home and the target:
+  // its horizontal reach runs along the floor line home → the floor beside the target, its height is measured up from
+  // that floor (screen y = the floor under him − his height). Both players get the same swing in the world — player 2's
+  // target is ~35 px lower on screen than his home, player 1's ~35 px higher — so the mirrored films read alike: he is
+  // carried up and back behind his tile (θ0 = 85°, he hangs high over his own tile, never sinking onto it), and the arc
+  // falls fastest into its lowest point beside the target at body height.
   const T: XY = { x: s.to.x, y: s.to.y }; // the target core
   const floorT = s.toGround.y;
   const tip9 = tipOffset(u, 'special', 9);
   const hand9 = offsetOf(u, framePoints('special', 9).hand ?? tipOf('special', 9));
   const Bc: XY = { x: T.x - tip9.x, y: Math.min(T.y - tip9.y, floorT - 1) };
-  // the arc's START (A) sits CLEAR px above the higher of his home and the cut on screen, and at least as far behind
-  // the cut as it is above it (so the swing never starts over the top: θ0 ≤ 90°); the pivot is the point straight
-  // above the cut that is equally far from A and from the cut. Player 1's target is ~35 px higher on screen than his
-  // home (he climbs high on the string, θ0 ≈ 80°); player 2's is ~35 px lower (A is behind and above his own tile, a
-  // wider arc, θ0 = 90°): mirrored, both rise, hang a beat and swing DOWN onto the target.
-  const topY = Math.min(home.y, Bc.y) - CLEAR;
-  const dyA = Math.max(CLEAR, Bc.y - topY);
-  const dxA = Math.max(46, dyA);
-  const RP = (dxA * dxA + dyA * dyA) / (2 * dyA);
-  const th0 = Math.atan2(dxA, RP - dyA);
-  const pivot: XY = { x: Bc.x, y: Bc.y - RP };
-  const body = (th: number): XY => ({ x: pivot.x + sgn * RP * Math.sin(th), y: pivot.y + RP * Math.cos(th) });
+  const hB = floorT - Bc.y; // his height above the floor at the cut
+  const span = Math.abs(Bc.x - home.x) || 1;
+  /** The floor (screen y) under a body at screen x: the line from his home to the floor beside the target, extended. */
+  const floorY = (x: number): number => lerp(home.y, floorT, Math.max(-0.7, Math.min(1.9, (x - home.x) / (Bc.x - home.x || sgn))));
+  const th0 = TH0;
+  const RP = Math.max(46, span + BACK) / Math.sin(th0);
+  const height = (th: number): number => hB + RP * (1 - Math.cos(th));
+  const body = (th: number): XY => {
+    const x = Bc.x + sgn * RP * Math.sin(th);
+    return { x, y: floorY(x) - height(th) };
+  };
   // the blade's analytic sweep: from the downswing frame (f8, shown from 42 % of the swing time: k8 of the way down
   // the arc) the hand travels from its f8 spot to its f9 spot and the blade turns from f8's −38° through the cut to
   // the follow-through; before f8 the blade is cocked (no trail: nothing is cutting yet)
@@ -561,14 +566,9 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
     return { x: b.x + h.x + sgn * Math.cos(a) * 20, y: b.y + h.y + Math.sin(a) * 20 };
   };
   const A = body(-th0);
-  // the floor under the flight (for the shadow): the line from home to the floor beside the target
-  const G1: XY = { x: Bc.x, y: floorT };
-  const gd = { x: G1.x - home.x, y: G1.y - home.y };
-  const gl = gd.x * gd.x + gd.y * gd.y || 1;
-  const floorAt = (p: XY): number => home.y + gd.y * Math.max(-0.3, Math.min(1.6, ((p.x - home.x) * gd.x + (p.y - home.y) * gd.y) / gl));
   /** Put the body at screen point p (the shadow stays on the floor under it: MonsterUnit.lift). */
   const at = (p: XY) => {
-    u.lift = Math.max(0, R(floorAt(p) - p.y));
+    u.lift = Math.max(0, R(floorY(p.x) - p.y));
     place(u, p);
   };
   const pinW = u.framePoint(AX - 14, GY);
@@ -608,7 +608,7 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
   });
   at(A);
   // ---- the pendulum (f7 → f8 → f9): θ −θ0 → 0, accelerating into the bottom; the blade's analytic trail
-  const trail = pendulumTrail(sc, tipAt, flyDepth + 0.3, 45);
+  const trail = pendulumTrail(sc, tipAt, flyDepth + 0.3, 24, 0.3);
   show(u, 'special', 7);
   play('kfnSwing', { pan: panAt(A.x), volume: 1 });
   await animate(sc, KT.down, (t) => {
