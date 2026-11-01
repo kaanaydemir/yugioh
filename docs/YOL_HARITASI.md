@@ -76,7 +76,7 @@ D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (ka
 - Oyunun TAMAMI İngilizce olacak (arayüz, kart adları, kart yazıları). Geçiş haftalık sıfırlamadan sonra
   planlanacak; o zamana kadar mevcut Türkçe metinler kalır.
 - Kalan şerit işleri (A–F) yine haftalık sıfırlamadan sonra; şu an yalnız A şeridi (Bulut Yavrusu, Zehir Ejderi) çalışıyor.
-- Açık soru (sahipte): büyük büyülerin süre istisnası (Boşluk Gözü ~5,4 sn).
+- ~~Açık soru: büyük büyülerin süre istisnası~~ → ÇÖZÜLDÜ (aşağıda).
 - SAHİP GERİ BİLDİRİMİ (2026-11-01): "her şey birbirine girmiş" (Witchbrook ile karşılaştırma). Okunurluk / sanat
   yönetimi turu planlanacak (haftalık sıfırlamadan sonra, kart resimleriyle birlikte değerlendir):
   1) arka plan katmanı (tribün, hologram, makineler) koyu + az doygun, az detay — sahne ön planda kalsın;
@@ -92,3 +92,7 @@ D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (ka
   yalnız arka plan/ışık/arayüz değişti. Sahip özellikle SİS'i sevdi: arka planda katmanlı, yavaş sürüklenen
   sis + soluk hologramlar + sıcak meşale ışık noktaları korunacak. Saha zemini sakin arduvaz, ince ızgara,
   sol üstten tek ışık, birim altı gölge.
+- SAHİP KARARI (2026-11-01 21:00 TR): animasyonlar için SABİT SÜRE SINIRI YOK. Süreleri Claude belirler.
+  REHBER §5 × 1.45 (docs/v3/TEMPO.md) artık sert bir kapı değil, yalnız yol gösterici; bir an daha
+  etkileyici ve okunur oluyorsa daha uzun olabilir (ör. Boşluk Gözü ~5,4 sn kabul). Ölçüt: akıcı, okunur,
+  oyunu yavaşlatmayan tempo — sık görülen anlar (sıradan saldırı/çağırma) kısa kalır, nadir/büyük anlar uzar.

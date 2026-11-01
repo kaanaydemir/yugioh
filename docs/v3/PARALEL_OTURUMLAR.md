@@ -31,7 +31,7 @@ main branch.
   - For mechanic events (control switch, mass destroy, coin, dice, banish, token vanish, return to deck), replace the placeholder handlers in src/cinematics/b2/placeholders.ts with the lane's own versions.
 - **Spec and guides:**
   - The per-card storyboards and sound identities are in docs/v3/YENI_KARTLAR.md §5–§8. Read §5.1 and §5.2 so your sounds and death materials do not collide with other cards.
-  - The style and motion guide is docs/v3/REHBER.md. The time budgets are REHBER §5 × 1.45 (see docs/v3/TEMPO.md).
+  - The style and motion guide is docs/v3/REHBER.md. The time budgets are REHBER §5 × 1.45 (see docs/v3/TEMPO.md). OWNER DECISION 2026-11-01: there is NO fixed time limit any more — the budgets are guidance only, not a gate. Pick the duration that makes the moment most striking and readable; frequent moments stay snappy, rare/big moments may run longer.
 - **Critique rounds:** at least 3 rounds per card. Each round: film it (`node tools/shot.mjs ... --film`), LOOK at the PNGs, critique, fix. Use independent critic agents.
 
 ## Gates before every push
