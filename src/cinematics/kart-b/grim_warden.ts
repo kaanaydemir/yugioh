@@ -1378,8 +1378,8 @@ async function returnLight(sc: Phaser.Scene, from: XY, d: Drain, depth: number):
   thread.flow = -1;
   thread.width = 0.9;
   // critic r3: the rivulet pours from the glass to the target (180 ms) and the plate rolls +400 on the frame its
-  // first drop lands (it used to wait for the end of the flow, ≈ 0.6 s after the light arrived)
-  await animate(sc, 180, (k) => {
+  // first drop lands (it used to wait for the end of the flow, ≈ 0.6 s after the light arrived); 130 ms pour
+  await animate(sc, 130, (k) => {
     thread.reach = k * (2 - k);
     d.fade.set(0.3 * (1 - 0.3 * k));
   });

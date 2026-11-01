@@ -349,10 +349,11 @@ export function soulThread(scene: Phaser.Scene, from: () => XY, to: () => XY, ra
       p1 = { x: A.x + dx * 0.1, y: Math.min(A.y - 14, apex) };
       p2 = { x: B.x - side * Math.max(8, Math.abs(dx) * 0.45), y: B.y + Math.max(-2, Math.min(3, dy * 0.1)) };
     } else {
-      // the rivulet: leaves the glass sideways, sags below the straight line like poured water, drops onto the core
-      const sag = 6 + Math.abs(dx) * 0.12;
-      p2 = { x: B.x - side * Math.max(6, Math.abs(dx) * 0.3), y: Math.max(A.y, B.y) - 2 + sag * 0.4 };
-      p1 = { x: A.x + dx * 0.15, y: A.y - 10 };
+      // the rivulet: it spills UP out of the glass and arcs over to FALL onto the target's core from above (a pour,
+      // never the drain's S that enters the glass level from the side)
+      const top = Math.min(A.y, B.y) - 12 - Math.abs(dx) * 0.08;
+      p2 = { x: B.x - dx * 0.15, y: top };
+      p1 = { x: A.x + dx * 0.05, y: top - 4 };
     }
   };
   function path(t: number): XY {
@@ -471,10 +472,15 @@ export function soulThread(scene: Phaser.Scene, from: () => XY, to: () => XY, ra
             }
           }
         } else {
-          // a falling drop: 1×2, a hot top
+          // a drop: 1×2, a hot top, an ink side so it reads over a pale body
+          g.px(x + 1, y, PAL.ink);
+          g.px(x + 1, y + 1, PAL.ink);
           g.px(x, y, ramp[4]);
           g.px(x, y + 1, ramp[3]);
-          if (m.big) g.px(x, y + 2, ramp[2]);
+          if (m.big) {
+            g.px(x, y + 2, ramp[2]);
+            g.px(x - 1, y, ramp[3]);
+          }
         }
       }
       // ---- the head (the stream still being drawn out): a hot spark

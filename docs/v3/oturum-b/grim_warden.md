@@ -684,3 +684,88 @@ give-back now plays after the charm's card). Sprite gates not re-run (only speci
 - A short −33 dB dip remains at ≈ 800 ms (one 50 ms window before gwInhale at 816); acceptable, could fire gwInhale a frame earlier.
 - Skull mist could still use a sameness / blind check at 1×; P2 whirl ≈ 270°; no bent-shaft chop frame; wood/mud material sounds
   and idle SFX as before; a sameness re-run is owed after the special re-key.
+
+## Critic round 3 (lane-B pass 3, independent critic, 2026-11-01) — evidence `shots/v3/kart-b/grim_warden/critic-r3/`
+Verdict: no crash / missing-branch blockers, but the signature is under the golden-rule bar. BLOCKER (3rd round running): the drain
+thread drew as a fat ink-sheathed inverted-U hoop ("paperclip") round the target's head — at the declaration the pair stands so close
+that the held lantern hung INSIDE ember_wolf's sprite (P2: a tall candy-cane hook off coral_serpent). MAJORS: special pose = lantern
+hanging straight down under a shoulder-height fist, drinking frames ≈ identical, same skeleton as abyss_magus' special; whirl = thin
+closed orange ring round the helm, contact star swamped by the shared −1200 / violet ring / white chop → "the card's VFX language is
+rings"; body = near-black mass at 1× (no lit plane, 2–3 px stick arm); cut-in skull = grey egg split by a bar, flat hood, small
+lantern. minors: halberd reads as a spear; chop f7→f8 jump; death rigid wedge + 14 px mist rising ≈10 px; summon not lantern-first;
+survive plate +400 ≈0.6 s after the light; glassReverse also used by crystal_wyrm (slice.ts:364); hit lantern swing hidden.
+
+## Fix round 3 (lane-B pass 3, agent: fix lane, 2026-11-01) — evidence `shots/v3/kart-b/grim_warden/fix-r3/`
+Files (all mine): `src/cinematics/kart-b/grim_warden.ts`, `grim_warden-fx.ts`, `src/art/monsters-v3/grim_warden-rig.ts`,
+`-anims.ts`, `src/art/cutins-v3/grim_warden.ts`. No shared file touched this round (declare.ts / plates.ts unchanged).
+
+**BLOCKER drain hoop → fixed (spacing + new shape).**
+- Spacing: `drainShuffle()` measures the drinking frame's glass against the target's core; when it is < `DRAIN_GAP` 30 px
+  (horizontal) the special opens with a two-scuff SHUFFLE BACK along the line away from the target (≤ 18 px, dust puff on f1) and
+  the recovery steps home before the strike (the strike still glides from `u.home`). P1 vs ember_wolf: glass 16 → ≈ 30 px clear.
+- Shape: `soulThread` rewritten as a STREAM (same API, so the give-back / return-light reuse it): a shallow S (up and forward out
+  of the core, apex ≤ 12 px, a LEVEL entry into the glass from the target's side); 40 soul motes in the target's ramp — a loose
+  cloud ±8 px where they leave the body, squeezed into single file at the glass, accelerating (t = phase^1.7), stretched into
+  streaks, white-hot as they are swallowed; fat 2×2 souls every 3rd, ink foot pixels while over the same-hued body; a 1-px ramp[2]
+  guide ONLY in the middle third; wisps torn off the whole body drift into the stream's foot; NO full-length ink sheath; the
+  lantern's ring halo is replaced by a stepped 4-ray swallow flare (longest ray toward the target).
+- Evidence: `gwDrainFire-drain-z.png` (#6–#14: colour pours out of the wolf into the lantern), `gwDrainFire-stream-x5.png`,
+  `gwDrainFire-1x.png` (full frame), P2 `gwDrainWaterP2-z.png` (#5–#11: the serpent's blue rises and curls into the glass).
+- Give-back / return light (flow −1) is a different shape: a RIVULET of 1×2 ink-sided drops that spills UP out of the glass and
+  FALLS onto the target's core from above (`gwDrainSurvive-return-x4.png`).
+
+**MAJOR special pose → fixed.** f3–f8 re-keyed: the fist comes up to eye level (ay −11…−13) and the chain is drawn TAUT toward the
+target (la 50 → 76–86°), the lantern at the end of a level chain line; f6 swells to the white heart (fl 1.6), f7 contracts (fl
+0.75) with the lantern TUGGED out (+1 cl, +1 ax, la 86, the hood dips, the body pitches deeper), f8 swells again; the far hand
+braces higher on the haft (hs +3). The cinematic's held beat alternates f6 ↔ f7, so the drink pumps. (cl kept ≤ 5: longer chains
+cross the 104-px frame edge.) `sheet-p1/grim_warden-v3-special.png`. Silhouette now = level chain + lantern (not magus' arm + orb).
+
+**MAJOR whirl ring / contact → fixed.** `whirlTrail` is an OPEN tapered crescent: cut `ARC_MAX` (≈ 190°) behind the head, width by
+angular distance from the head (5 px with a white core → 3 px → a broken 1-px ramp[1] tail whose gaps widen), embers flung off
+TANGENTIALLY; afterimage lanterns kept. `soulBurst` star R 17 → 22 (blocked 13), held 3 frames with an ink rim, white heart 5 → 4 → 2,
+22 shards. `gwDrainFire-strike-z.png` (#3–#17 crescent, #19–#23 star). Shapes are now distinct: stream (drain), rivulet
+(give-back), smear crescent (whirl), star (contact).
+
+**MAJOR value structure → fixed (partly).** `capPlane()` paints a stone2 LIT PLANE on the hood's crown (3 rows × 8 px toward the
+light), the mantle's top-left shoulder (2 × 7) and the near sleeve's top (1 × 9); deep folds stay void0. The near sleeve is 1 px
+wider at the shoulder / forearm / bell and hangs 1 px longer; a leaf1 soul-bounce band on the sleeve's lowest row on the lantern's
+half. `sheet-p1/grim_warden-v3-idle.png`. (Shroud body tones unchanged — the black funeral shroud is the pass-3 r1 decision.)
+
+**MAJOR cut-in → fixed.** The lantern SWINGS TOWARD THE LENS: per-pose size `ls` (1 → 1.2 → 1.6 on the slam → 1.5 / 1.35 / 1.4),
+the whole lantern (roof steps, brim, glass, posts, flame, underlight radius) scales; on the slam it is ≈ 54 px wide, the brightest
+point, cropped by the frame edge like a foreground prop. Skull: a real profile (brow overhang, socket dip, jutting nasal bone, the
+face stepping back under the cheekbone, maxilla, a jaw NOTCH at the back), the socket sunk with a B1 upper rim, a long lit
+cheekbone ridge with a B1 hollow under it, the cranium behind the temple bar one tone down (the face is the lit plane); only the
+temple bar shows (the two bars bracketed the face = the "egg with a seam"). Hood: 4 tone planes (a lit crown plane), 5 longer
+streaming tatters. Green UNDERLIGHT on the lower face (cheek / maxilla / teeth / jaw edges facing down or toward the lantern).
+`cutin-sheet.png` (dev sheet ×3), in game `gwSummon-cutin-z.png`, `gwSummon-1x.png`. f0 unchanged (lens glint region).
+
+**minors.**
+- Halberd: a FLAT square-shouldered spade (short blunt point) + a back crescent hook off the socket (`sheet-p1/...-idle.png`).
+- Chop: attack f8 is now the 45° in-between (haft over the shoulder), f9 the chopped-through frame (was the first recovery mix);
+  `chopCrescent` spans f7 → f9. Holds unchanged (HA-3). `sheet-p1/...-attack.png`.
+- Death: f2–f4 fold the shroud AT THE WAIST (lean +5/+7, the hood pitches down over the belt) while the halberd still stands; the
+  halberd starts its fall a frame later (own beat). Skull mist rises 34 px over 760 ms, whole until halfway (jaw wide on the wail),
+  then stretches (×2.2) and tears; its light pool rides it and fades with the tear. `sheet-p1/...-death.png`, `gwKill-death-z.png`.
+- Summon: the LANTERN leads — f0–f2 the fist thrusts it straight up out of the mound (ay −42/−38/−30, chain 0/1/3) while the
+  halberd trails tilted back (−116…−95). `sheet-p1/...-summon.png`.
+- Survive branch: `returnLight` rolls the plate +400 after a 130 ms pour (first drops land), then the flow thins (was: at the end of
+  the 400 ms flow). `gwDrainSurvive-z.png`, `gwDrainSurvive-return-x4.png`.
+- Hit: hit / hitHeavy fling the lantern UP over the fist (la 100 / 125) and keep it up through f2 (la 70 / 72), clear of the
+  attacker's bite FX; f3 hitHeavy overshoot hold 110 → 150 ms. HA-4 keeps f1 ≤ 70 ms. In gwHit the warden is mostly covered by the
+  wolf's own FX anyway (`gwHit-z.png`) — partially verified.
+
+**Gates.** tsc: 0 errors. `tests/art/grim_warden*` + tests/cinematics + tests/presentation: 237/237. Sprite gates
+`fix-r3/gates.txt` (`--class large --ref none`): 21 ok / 0 FAIL (HA-18 liveliness kept ≥ 15 % — the wider sleeve raised the opaque
+count, its tooth sway was raised 2 → 2.8), still 122 frames / 4.97 MB. Measure `fix-r3/measure.json/.log`: 26 gw* scenarios, 0 errors; timings as
+before (tribute summon 4016, drainFire / WaterP2 4166, survive 4983/5033, direct 2550, kill 2783, gwHit 2050); gwGuardKill 5350
+(was 5034: the hitHeavy overshoot hold +40 ms and ember_wolf's own burn trigger inside it).
+
+**Open issues after this round:**
+- glassReverse ownership (critic minor): `src/audio/v3/slice.ts:364` (crystal_wyrm `wyrmReviveGather`) also builds on it; not a
+  grim file — orchestrator decision (move the wyrm revive to another shimmer primitive, or record the exception in YENI_KARTLAR §5.1).
+- Shared (as before): DARK-violet contact ring (`battle.ts combatImpact`), violet tribute sparkles, shared freeze length.
+- Sound not re-auditioned this round (no recipe changed); the new shuffle-back has no own scuff sound (uses the existing gwReach).
+- The body is still dark at 1× by design (black shroud); a further lift would need a value-structure decision for the whole card
+  (card art + cut-in + rig).
+- A sameness re-run is owed after the special / summon / hit / death re-keys; idle SFX / wood-mud material sounds as before.
