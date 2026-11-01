@@ -655,8 +655,7 @@ steps over 200 ms as the pieces fly. `endDrain(d, true)` in the died branch keep
 net); gwKeep no longer can double. `gwDrainFire-death-z.png` #5–#7 (wolf stays dark through the break; was full-bright).
 
 **minors.** (1) gwInhale +≈10 dB (noise 0.8, soulBreath 0.4, two reversed glass swells, faster attack) + gwReach gets a soul-fire
-flutter tail into it; gwSnap adds a creak at 0.31 s + 0.64 s, a louder soul breath and a soft glass tail → 1850–2050 ms now
-−32/−33/−25/−28 dB (was −36/−37/−37/−39; the 800 ms dip before the inhale is still −37: the inhale starts at 816). (2) gwCharge sub
+flutter tail into it; gwSnap adds a creak at 0.31 s + 0.64 s, a louder soul breath and a soft glass tail → final clip: 800 ms −33 dB (was −39.6), 850 −25 (was −31); 1850–2050 ms −25/−28/−25/−27 dB (was −36/−37/−37/−39). (2) gwCharge sub
 0.18 → 0.07, energy moved to a C3→F3 / F3 saw pair through a 300→520 Hz low-pass (phones play it). (3) Survive branch:
 returnLight + gwGiveBack start 220 ms after gwWail (clip: wail 3733 → give-back 4033, was same tick). (4) drainSpark dashes moved to
 the plate's lower edge (+2 px), never through the digits (`gwDrainFire-drain-z.png` #4). (5) Thread: minimum arc height grows as
@@ -682,6 +681,6 @@ give-back now plays after the charm's card). Sprite gates not re-run (only speci
 - Shared: DARK-violet contact ring, violet tribute sparkles, shared summon slam outline (as before); in gwGiveBack the shared plate
   refresh restores the wolf's 1700 during the charm presentation, before our give-back (our returnLight +400 roll only covers the
   warden-death branch).
-- The ≈ 37 dB dip at 750–850 ms (between gwReach and gwInhale) is shorter but not gone; could fire gwInhale a frame earlier.
+- A short −33 dB dip remains at ≈ 800 ms (one 50 ms window before gwInhale at 816); acceptable, could fire gwInhale a frame earlier.
 - Skull mist could still use a sameness / blind check at 1×; P2 whirl ≈ 270°; no bent-shaft chop frame; wood/mud material sounds
   and idle SFX as before; a sameness re-run is owed after the special re-key.

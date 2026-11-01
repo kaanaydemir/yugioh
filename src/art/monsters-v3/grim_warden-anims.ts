@@ -157,19 +157,23 @@ const ATTACK_KEYS: Partial<Pose>[] = [
   { ax: 22, ay: 4, la: 35, cl: 11, lean: 6, hx: 3, hy: 2, eye: 1.5, fl: 1.5, flLean: -0.6, capeA: 6, burst: 0.18, burstR: 8, sink: 4, hood: -2 },
   // f7 the halberd is hauled up behind the head …
   { ax: 21, ay: 6, la: 20, cl: 10, lean: 4, hx: 2, hy: 1, eye: 1.4, fl: 1.3, capeA: 6, burst: 0.55, burstR: 8, sink: 2, pin: false, ha: -104, gx: -8, gy: -23 },
-  // f8 … and chopped down through the low line in front
-  { ax: 20, ay: 6, la: 8, cl: 9, lean: 6, hx: 3, hy: 1, eye: 1.3, fl: 1.2, capeA: 5, burst: 0.85, burstR: 8, sink: 3, pin: false, hFront: true, ha: -26, gx: 4, gy: -9, dust: 0.2, dustX: 74 },
+  // f8 critic r3: the IN-BETWEEN of the chop (the halberd jumped upright → flat in one frame): the haft at 45° coming
+  // over the shoulder, the body already pitching into it
+  { ax: 20, ay: 6, la: 14, cl: 10, lean: 6, hx: 3, hy: 2, eye: 1.4, fl: 1.25, capeA: 6, burst: 0.7, burstR: 8, sink: 3, pin: false, hFront: true, ha: -62, gx: -1, gy: -17 },
 ];
+/** f9: chopped down through the low line in front (the first frame of the recovery holds it). */
+const CHOP_LOW: Partial<Pose> = { ax: 20, ay: 6, la: 8, cl: 9, lean: 6, hx: 3, hy: 1, eye: 1.3, fl: 1.2, capeA: 5, burst: 0.9, burstR: 8, sink: 3, pin: false, hFront: true, ha: -26, gx: 4, gy: -9, dust: 0.2, dustX: 74 };
 export function attackPose(f: number): Pose {
   if (f >= A_N - 1) return home();
   if (f <= 8) return key(ATTACK_KEYS[f], f, A_N);
   // recovery: the halberd swings back to its planted line, the chain rewinds into the pendulum
-  const k8 = key(ATTACK_KEYS[8], 8, A_N);
-  const k = [0.3, 0.58, 0.82][f - 9];
-  const m = mixR({ ...k8, burst: 0, dust: 0 }, IDLE0, k);
-  return key({ ...m, pin: f >= 10, hFront: f < 10, la: [-14, 9, -4][f - 9], dust: f === 9 ? 0.55 : f === 10 ? 0.85 : 0, dustX: 74, fs: f * 3 + 5 }, f, A_N);
+  const k9 = key(CHOP_LOW, 9, A_N);
+  if (f === 9) return k9;
+  const k = [0.5, 0.82][f - 10];
+  const m = mixR({ ...k9, burst: 0, dust: 0 }, IDLE0, k);
+  return key({ ...m, pin: true, hFront: false, la: [9, -4][f - 10], dust: f === 10 ? 0.55 : 0.85, dustX: 74, fs: f * 3 + 5 }, f, A_N);
 }
-const ATTACK_HOLDS = [70, 90, 110, 170, 60, 50, 70, 80, 90, 100, 110, 120, 140];
+const ATTACK_HOLDS = [70, 90, 110, 170, 60, 50, 70, 80, 60, 130, 110, 120, 140];
 
 // ------------------------------------------------------------------ roar (11 frames): the lantern raised, the flame white
 
@@ -202,20 +206,21 @@ const SPECIAL_KEYS: Partial<Pose>[] = [
   { ax: 14, ay: 4, la: -26, lean: -3, hx: -2, eye: 1.3, eyeDx: 1, fl: 1.1, flLean: 0.8, capeA: -3, hood: 2, sink: 2 },
   // the whole body begins to pitch forward, the arm coming up
   { ax: 19, ay: -2, la: 18, cl: 4, lean: 3, hx: 1, eye: 1.4, eyeDx: 1, fl: 1.1, capeA: 2, hood: -1, sink: 1 },
-  // critic pass-3 r2: the near arm THRUSTS 4–7 px further toward the target and the lantern swings AHEAD of the hood on
-  // a longer chain (release / drinking frames), never beside the face
-  // critic pass-3 r1: a FULL-BODY REACH toward the target — the torso leans far over, the near arm straight out at
-  // shoulder height, the lantern held up in front of the face on a short chain (the thread dives in from above)
-  { ax: 25, ay: -9, la: 10, cl: 4, ly: -2, lean: 7, hx: 3, hy: 1, eye: 1.5, eyeDx: 1, fl: 1, capeA: 5, hood: -2, sink: 1, wrap: 0.4, ha: -86 },
-  // the inhale: the flame dips, the hood lifts, the shroud drawn in
-  { ax: 25, ay: -10, la: 6, cl: 3, ly: -2, lean: 6, hx: 2, hy: -1, eye: 1.5, eyeDx: 1, fl: 0.35, capeA: 3, hood: 1, wrap: 0.1, ha: -85 },
-  // release: the thread starts — the flame flares, a ring of glass light, the body pitches deeper
-  { ax: 28, ay: -10, la: 18, cl: 5, ly: -3, lean: 8, hx: 4, hy: 2, eye: 1.5, eyeDx: 1, fl: 1.5, capeA: 7, hood: -3, sink: 2, wrap: 0.7, burst: 0.55, burstR: 7, ha: -87, hs: -1 },
-  // drinking: the whole body PUMPS — the hood dips and rises 3 px, the shroud is pulled toward the lantern in alternating
-  // waves, the far hand clenches and slides on the haft (the halberd rocks from its butt)
-  { ax: 27, ay: -8, la: 22, cl: 5, ly: -3, lean: 6, hx: 3, hy: 3, eye: 1.4, eyeDx: 1, fl: 1.15, flLean: -0.8, capeA: 8, mote: 0.2, hood: -3, sink: 2, wrap: 0.9, ha: -88, hs: -2 },
-  { ax: 28, ay: -11, la: 12, cl: 5, ly: -4, lean: 8, hx: 4, hy: 0, eye: 1.5, eyeDx: 1, fl: 1.6, flLean: 0.7, capeA: 4, mote: 0.55, fs: 77, hood: 1, sink: 0, wrap: 0.2, ha: -83, hs: 1 },
-  { ax: 26, ay: -8, la: 20, cl: 5, ly: -3, lean: 6, hx: 2, hy: 3, eye: 1.3, eyeDx: 1, fl: 1.25, capeA: 8, mote: 0.85, hood: -3, sink: 2, wrap: 0.9, ha: -88, hs: -2 },
+  // critic r3: the drain PULLS the lantern — the fist comes up to eye level and the chain is drawn TAUT and nearly
+  // horizontal toward the target (la 70–85°, a long chain), so the silhouette is a level chain line ending in the lantern
+  // (never abyss_magus's straight arm + orb); the far hand braces high on the haft
+  // reaching: the lantern swung up and out on the lengthening chain
+  { ax: 20, ay: -11, la: 50, cl: 5, ly: -2, lean: 6, hx: 3, hy: 1, eye: 1.5, eyeDx: 1, fl: 1, capeA: 5, hood: -2, sink: 1, wrap: 0.4, ha: -86, hs: 2 },
+  // the inhale: the flame dips to an ember, the hood lifts, the shroud drawn in, the chain eases
+  { ax: 20, ay: -12, la: 40, cl: 4, ly: -2, lean: 5, hx: 2, hy: -1, eye: 1.5, eyeDx: 1, fl: 0.3, capeA: 3, hood: 1, wrap: 0.1, ha: -85, hs: 2 },
+  // release: the chain SNAPS taut toward the target, the flame flares, the body pitches deeper
+  { ax: 21, ay: -13, la: 76, cl: 5, ly: -3, lean: 8, hx: 4, hy: 2, eye: 1.5, eyeDx: 1, fl: 1.5, capeA: 7, hood: -3, sink: 2, wrap: 0.7, burst: 0.55, burstR: 7, ha: -87, hs: 3 },
+  // drinking (f6 ↔ f7 alternate on the cinematic's held beat, f8 the last gulp): each gulp TUGS the lantern ±3 px
+  // toward the target on the taut chain — f6 swells to the white heart, f7 contracts (the lantern yanked out, the fist
+  // dragged forward, the hood dipping), f8 swells again; the shroud is pulled after it, the far hand clenches on the haft
+  { ax: 20, ay: -12, la: 80, cl: 5, ly: -3, lean: 7, hx: 3, hy: 2, eye: 1.4, eyeDx: 1, fl: 1.6, flLean: -0.8, capeA: 8, mote: 0.2, hood: -3, sink: 2, wrap: 0.9, ha: -88, hs: 3 },
+  { ax: 21, ay: -11, la: 86, cl: 5, ly: -2, lean: 9, hx: 5, hy: 3, eye: 1.2, eyeDx: 1, fl: 0.75, flLean: 0.9, capeA: 5, mote: 0.55, fs: 77, hood: -1, sink: 3, wrap: 0.5, ha: -84, hs: 1 },
+  { ax: 20, ay: -13, la: 74, cl: 5, ly: -4, lean: 7, hx: 3, hy: 1, eye: 1.5, eyeDx: 1, fl: 1.6, capeA: 8, mote: 0.85, hood: -3, sink: 2, wrap: 0.9, ha: -88, hs: 3 },
 ];
 export function specialPose(f: number): Pose {
   if (f >= SP_N - 1) return home();
@@ -232,7 +237,7 @@ const HIT_N = 5;
 // as the secondary motion (f0 stays local for KK-4)
 const HIT_KEYS: Partial<Pose>[] = [
   { hx: -1, hy: -1, eye: 0.3, la: 14, hood: 1 },
-  { hx: -4, hy: 0, lean: -5, sink: 1, eye: 0.3, la: 42, ax: 18, ay: 2, capeA: 5, hood: 3, wrap: 0.8, ha: -90 },
+  { hx: -4, hy: 0, lean: -5, sink: 1, eye: 0.3, la: 100, ax: 18, ay: 2, capeA: 5, hood: 3, wrap: 0.8, ha: -90 },
   { hx: -3, hy: 1, lean: -4, sink: 1, eye: 0.6, la: -18, ax: 19, ay: 2, capeA: 4, hood: 1, wrap: 0.5, ha: -88 },
   { hx: -1, lean: -1, eye: 0.8, la: 9, capeA: 2 },
 ];
@@ -240,15 +245,16 @@ export function hitPose(f: number): Pose {
   if (f >= HIT_N - 1) return home();
   return key(HIT_KEYS[f], f, HIT_N);
 }
-const HIT_HOLDS = [50, 60, 130, 120, 110];
+// critic r3: the lantern's fling (flung UP over the fist, clear of the attacker's hit FX) holds longer
+const HIT_HOLDS = [50, 110, 130, 120, 110];
 
 const HH_N = 7;
 const HH_KEYS: Partial<Pose>[] = [
   { hx: -1, hy: -1, eye: 0.2, la: 16, hood: 1 },
   // the blow throws the whole upper body back: helm snapped away, hood flipped, shroud flared forward, the halberd
   // rocked back on its butt; the lantern flies to the chain's limit, overshoots back, and settles
-  { hx: -5, hy: 0, lean: -7, sink: 3, eye: 0.2, la: 66, ax: 15, ay: 5, capeA: 7, hood: 4, wrap: 1, ha: -94, f1x: -2, f1y: -3 },
-  { hx: -4, hy: 2, lean: -6, sink: 4, eye: 0.4, la: 38, ax: 16, ay: 6, capeA: 6, hood: 2, wrap: 0.7, ha: -91, f1x: -2, f1y: 0 },
+  { hx: -5, hy: 0, lean: -7, sink: 3, eye: 0.2, la: 125, ax: 15, ay: 5, capeA: 7, hood: 4, wrap: 1, ha: -94, f1x: -2, f1y: -3 },
+  { hx: -4, hy: 2, lean: -6, sink: 4, eye: 0.4, la: 72, ax: 16, ay: 6, capeA: 6, hood: 2, wrap: 0.7, ha: -91, f1x: -2, f1y: 0 },
   { hx: -2, hy: 1, lean: -3, sink: 2, eye: 0.6, la: -40, ax: 19, ay: 3, capeA: 3, ha: -87, f1x: -1, f1y: -2 },
   { hx: -1, lean: -1, sink: 1, eye: 0.8, la: 18, capeA: 2 },
   { la: -7, eye: 0.9, capeA: 1 },
@@ -257,7 +263,7 @@ export function hitHeavyPose(f: number): Pose {
   if (f >= HH_N - 1) return home();
   return key(HH_KEYS[f], f, HH_N);
 }
-const HH_HOLDS = [50, 60, 140, 110, 120, 120, 100];
+const HH_HOLDS = [50, 110, 140, 150, 120, 120, 100];
 
 const HM_N = 7;
 const HM_KEYS: Partial<Pose>[] = [
@@ -293,10 +299,13 @@ export function summonPose(f: number): Pose {
         oy,
         pin: oy === 0,
         // the near hand claws up out of the soil first, then the arm drags the body after it
-        ax: [9, 12, 15, 10, 12, 14, 15, 14][f],
-        ay: [-30, -24, -16, -26, -20, -15, -12, -10][f],
-        la: [0, 8, -12, 10, -6, 6, -4, -2][f],
-        cl: 6,
+        // critic r3: the LANTERN leads — the fist thrusts it straight up out of the mound a full beat before the hood
+        // (short chain, fist high), while the halberd trails tilted back (its spade lower than the lantern)
+        ax: [12, 13, 15, 10, 12, 14, 15, 14][f],
+        ay: [-42, -38, -30, -26, -20, -15, -12, -10][f],
+        la: [0, 6, -10, 10, -6, 6, -4, -2][f],
+        cl: [0, 1, 3, 5, 6, 6, 6, 6][f],
+        ...(f <= 3 ? { ha: [-116, -110, -102, -95][f] } : {}),
         lean: [-1, 2, 4, -3, 3, 4, 2, 1][f],
         hx: [0, 1, 2, -2, 1, 2, 1, 0][f],
         sink: [0, 0, 2, 0, 2, 2, 0, 4][f],
@@ -327,9 +336,12 @@ const DEATH_KEYS: Partial<Pose>[] = [
   { ...HH_KEYS[0] },
   { hx: -4, hy: 2, lean: -4, sink: 3, eye: 0.3, la: 42, ax: 17, ay: 5, capeA: 4, hood: -2 },
   { hx: -3, hy: 3, lean: -3, sink: 5, eye: 0.2, ax: 14, ay: 9, lanDrop: 0.35, hr: -8, col: 0.1, capeA: 3, ha: -82 },
-  { hx: -2, hy: 3, lean: -2, sink: 5, eye: 0.1, ax: 10, ay: 12, lanDrop: 0.8, helmOff: 0.2, col: 0.25, capeA: 2, ha: -76 },
-  { lean: -1, sink: 5, eye: 0, ax: 8, ay: 14, lanDrop: 1, helmOff: 0.45, col: 0.45, capeA: 1, ha: -64, bx: -2, burst: 0.12, burstR: 11, shard: 0.2 },
-  { sink: 5, eye: 0, ax: 6, ay: 15, lanDrop: 1, helmOff: 0.75, col: 0.66, ha: -44, bx: -5, burst: 0.4, burstR: 11, shard: 0.5 },
+  // critic r3: the shroud FOLDS AT THE WAIST before it collapses (it tipped with the halberd as one rigid wedge): the
+  // upper body pitches forward and down over the belt while the halberd still stands, then the heap drops; the halberd
+  // only starts to fall once the body has folded (its own beat)
+  { hx: 2, hy: 5, lean: 5, sink: 6, eye: 0.1, ax: 12, ay: 14, lanDrop: 0.8, helmOff: 0.2, col: 0.2, capeA: -2, hood: -3, ha: -84 },
+  { hx: 3, hy: 7, lean: 7, sink: 7, eye: 0, ax: 10, ay: 16, lanDrop: 1, helmOff: 0.45, col: 0.42, capeA: -3, hood: -4, ha: -78, bx: -1, burst: 0.12, burstR: 11, shard: 0.2 },
+  { lean: 3, sink: 6, eye: 0, ax: 6, ay: 15, lanDrop: 1, helmOff: 0.75, col: 0.68, ha: -58, bx: -4, burst: 0.4, burstR: 11, shard: 0.5 },
   { sink: 5, eye: 0, ax: 5, ay: 15, lanDrop: 1, helmOff: 1, col: 0.82, ha: -20, bx: -9, burst: 0.7, burstR: 11, shard: 0.78 },
   { sink: 5, eye: 0, ax: 4, ay: 15, lanDrop: 1, helmOff: 1, col: 0.93, ha: -3, bx: -12, burst: 0.92, burstR: 11, shard: 0.95, fl: 0.5, dust: 0.3, dustX: 70 },
   { sink: 5, eye: 0, ax: 4, ay: 15, lanDrop: 1, helmOff: 1, col: 1, ha: -6, bx: -12, fl: 0.3, dust: 0.6, dustX: 70 },

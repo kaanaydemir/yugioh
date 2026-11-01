@@ -316,37 +316,67 @@ export interface SoulThread {
 }
 
 /**
- * The thread of soul light from `from()` (the target's core) to `to()` (the lantern), in `ramp`. The two
- * stand nearly side by side, so the thread is lifted into a TALL ARC over both sprites (apex ≥ `lift` px above
- * the higher end, bulging out past both ends): an ink-sheathed band 3 px wide (ramp[3] body, a ramp[4] core while
- * strong), fat 3×3 soul beads flowing along it, soul wisps torn out of the target's body rising into its foot, and
- * a stepped halo round the lantern that grows as it fills (critic r1: a 1-px thread in the target's own hue over
- * the target was invisible at 1×).
+ * The drain as a STREAM of soul light from `from()` (the target's core) to `to()` (the lantern), in `ramp` (critic r3
+ * blocker, third round: the ink-sheathed band read as a fat hoop / paperclip round the target's head). Now:
+ * - a shallow S path: it leaves the target's core forward-up (apex ≤ `lift` px over the higher end), turns and enters
+ *   the glass LEVEL from the side facing the target;
+ * - 34 soul motes in the target's ramp ride it — a loose cloud where they are torn out of the body (lanes spread
+ *   ±6 px), squeezed into a single file as they near the glass, ACCELERATING (t = phase^1.7), stretching into 2–3 px
+ *   streaks and turning white-hot the instant they are swallowed; each has a 1-px ink back-pixel while it is still
+ *   over the target's own (same-hued) body;
+ * - a thin 1-px ramp[2] guide only in the path's MIDDLE THIRD, crawling toward the glass (no full-length sheath);
+ * - wisps torn off the target's whole body drift into the stream's foot;
+ * - the lantern SWALLOWS (no halo ring): a stepped 4-ray flare on the glass, longest toward the target, grows with fill.
+ * flow −1 (the give-back) is a different shape: a RIVULET — the light POURS out of the glass and droops down to the
+ * target as 1×2 drops (sagging path, slower, no guide), never the drain's S.
  */
-export function soulThread(scene: Phaser.Scene, from: () => XY, to: () => XY, ramp: Ramp, depth: number, lift = 30): SoulThread {
+export function soulThread(scene: Phaser.Scene, from: () => XY, to: () => XY, ramp: Ramp, depth: number, lift = 12): SoulThread {
   const r = new Raster(scene, 0, 0, 640, 360, depth);
   let el = 0;
   let A: XY = from();
   let B: XY = to();
-  const bez = (t: number): XY => {
-    const away = Math.sign(A.x - B.x) || 1;
-    const span = Math.max(14, Math.abs(A.x - B.x));
-    // critic pass-3 r2: an ADJACENT target (most battles) made a small constant hoop — a minimum arc height (the
-    // closer the pair, the higher the arc climbs) and a side bulge out past the target keep it a long drawn soul
-    const top = Math.min(A.y, B.y) - lift - Math.max(0, 70 - span) * 0.3;
-    // critic r2: the arc rises straight up out of the target, crosses ABOVE the warden's raised lantern and dives into
-    // it from behind / above (the light is visibly pulled across, away from the target, into the warden's hand)
-    // critic pass-3 r1: the foot leaves the target body steeply (clear of a same-hued body sooner)
-    const p1 = { x: A.x + away * Math.max(6, Math.min(14, (80 - span) * 0.2)), y: top - 14 };
-    const p2 = { x: B.x - away * Math.max(16, span * 0.35), y: top - 2 };
+  const st: SoulThread = { reach: 0, width: 1, flow: 1, fill: 0, at: (t) => path(Math.max(0, Math.min(1, t))), destroy };
+  // control points (recomputed each tick from the live ends)
+  let p1: XY = A;
+  let p2: XY = B;
+  const ctrl = (): void => {
+    const dx = B.x - A.x;
+    const dy = B.y - A.y;
+    const side = Math.sign(dx) || 1;
+    if (st.flow === 1) {
+      // the S: up and forward out of the body, then a level entry into the glass from the target's side
+      const apex = Math.min(A.y, B.y) - Math.min(lift, 6 + Math.abs(dx) * 0.2);
+      p1 = { x: A.x + dx * 0.1, y: Math.min(A.y - 14, apex) };
+      p2 = { x: B.x - side * Math.max(8, Math.abs(dx) * 0.45), y: B.y + Math.max(-2, Math.min(3, dy * 0.1)) };
+    } else {
+      // the rivulet: leaves the glass sideways, sags below the straight line like poured water, drops onto the core
+      const sag = 6 + Math.abs(dx) * 0.12;
+      p2 = { x: B.x - side * Math.max(6, Math.abs(dx) * 0.3), y: Math.max(A.y, B.y) - 2 + sag * 0.4 };
+      p1 = { x: A.x + dx * 0.15, y: A.y - 10 };
+    }
+  };
+  function path(t: number): XY {
     const u = 1 - t;
     const x = u * u * u * A.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * B.x;
     const y = u * u * u * A.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * B.y;
-    // a travelling 1-px shimmer along the arc, damped at both ends
-    const wig = Math.sin(t * 11 - el * 0.02) * 1.2 * Math.sin(Math.PI * t);
-    return { x: Math.round(x + wig), y: Math.round(y) };
+    return { x, y };
+  }
+  /** The path's unit normal at t (for the motes' lanes). */
+  const normal = (t: number): XY => {
+    const a = path(Math.max(0, t - 0.01));
+    const b = path(Math.min(1, t + 0.01));
+    const l = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    return { x: -(b.y - a.y) / l, y: (b.x - a.x) / l };
   };
-  const st: SoulThread = { reach: 0, width: 1, flow: 1, fill: 0, at: (t) => bez(Math.max(0, Math.min(1, t))), destroy };
+  // the motes: a fixed set, each with its own phase / lane / speed / size (deterministic)
+  const N = 40;
+  const motes = Array.from({ length: N }, (_, i) => {
+    const h = Math.sin(i * 12.9898) * 43758.5453;
+    const f = h - Math.floor(h);
+    const h2 = Math.sin(i * 78.233) * 12543.123;
+    const f2 = h2 - Math.floor(h2);
+    return { ph: i / N + f * 0.03, lane: f2 * 2 - 1, sp: 0.9 + f * 0.35, big: i % 3 === 0, wob: f * 6.28 };
+  });
   const wisps: { x: number; y: number; t: number; life: number }[] = [];
   let spawn = 0;
   let alive = true;
@@ -355,96 +385,116 @@ export function soulThread(scene: Phaser.Scene, from: () => XY, to: () => XY, ra
     el += dt;
     A = from();
     B = to();
-    const n = 64;
-    const pts: XY[] = [];
-    for (let i = 0; i <= n; i++) pts.push(bez(i / n));
-    // the soul wisps torn out of the target's body: they rise from round its core into the thread's foot
-    if (st.flow === 1 && st.width > 0.34 && st.reach > 0) {
+    ctrl();
+    const pour = st.flow === 1;
+    // wisps torn off the target's WHOLE body drift into the stream's foot (the colour leaves the body)
+    if (pour && st.width > 0.34 && st.reach > 0) {
       spawn += dt;
-      while (spawn > 55) {
-        spawn -= 55;
-        const k = (el * 7 + wisps.length * 13) % 20;
-        wisps.push({ x: A.x + (k - 10) * 0.9, y: A.y + ((k * 7) % 11) - 3, t: 0, life: 320 });
+      while (spawn > 40) {
+        spawn -= 40;
+        const k = (Math.floor(el / 7) * 17 + wisps.length * 13) % 29;
+        wisps.push({ x: A.x + (k - 14) * 0.9, y: A.y + ((k * 7) % 17) - 6, t: 0, life: 300 + (k % 5) * 30 });
       }
     }
     for (const w of wisps) w.t += dt;
     while (wisps.length && wisps[0].t > wisps[0].life) wisps.shift();
     r.draw((g) => {
-      // ---- the lantern's halo (light: never outlined), growing with the fill and pulsing
+      // ---- the swallow flare on the glass (light: never outlined) — 4 rays, longest toward the target, stepping
       if (st.fill > 0) {
-        const pulse = Math.floor(el / 90) % 2;
-        const rad = Math.round(5 + 6 * st.fill) + pulse;
-        for (let a = 0; a < 40; a++) {
-          const an = (a / 40) * TAU;
-          const x = Math.round(B.x + Math.cos(an) * rad);
-          const y = Math.round(B.y + Math.sin(an) * rad * 0.85);
-          if ((a + pulse) % 2 === 0) g.px(x, y, st.fill > 0.6 ? ramp[4] : ramp[3]);
-          else if (st.fill > 0.35) g.px(Math.round(B.x + Math.cos(an) * (rad - 2)), Math.round(B.y + Math.sin(an) * (rad - 2) * 0.85), ramp[2]);
+        const pulse = Math.floor(el / 80) % 3;
+        const L = Math.round(2 + 5 * st.fill) + (pulse === 1 ? 1 : 0);
+        const side = Math.sign(A.x - B.x) || 1;
+        const bx = Math.round(B.x);
+        const by = Math.round(B.y);
+        for (let i = 1; i <= L; i++) {
+          const c = i <= L * 0.4 ? PAL.white : i <= L * 0.75 ? ramp[4] : ramp[3];
+          g.px(bx + side * (i + 1), by, c);
+          if (i <= L - 2) {
+            g.px(bx - side * i, by, i < 2 ? ramp[4] : ramp[3]);
+            g.px(bx, by - i - 1, i < 2 ? ramp[4] : ramp[3]);
+          }
+          if (i <= L - 3) g.px(bx, by + i + 1, ramp[3]);
+        }
+        if (st.fill > 0.5 && pulse !== 2) {
+          g.px(bx + side * 2, by - 2, ramp[3]);
+          g.px(bx - side * 2, by + 2, ramp[3]);
         }
       }
       if (st.reach <= 0 || st.width <= 0) return;
-      const m = Math.max(1, Math.round(n * st.reach));
-      const strong = st.width > 0.67;
-      const mid = st.width > 0.34;
-      // ---- the band: ink sheath (separates it from any body behind), ramp body, hot core
-      // critic pass-3 r1: a fatter ink sheath (2 px each side) so a FIRE arc over the wolf's flames / a LIGHT arc over
-      // the white wyrm still reads as a separate band
-      // critic pass-3 r2: the band TAPERS from the target (fat: the soul torn out) to the lantern (thin: drawn in)
-      const taper = (i: number) => 1 - i / n;
-      if (mid) for (let i = 0; i <= m; i++) g.disc(pts[i].x, pts[i].y, (strong ? 2.2 : 1.6) + taper(i) * 1.2, PAL.ink);
-      for (let i = 0; i <= m; i++) {
-        if (mid) g.disc(pts[i].x, pts[i].y, (strong ? 0.7 : 0.5) + taper(i) * (strong ? 1 : 0.5), strong ? ramp[3] : ramp[2]);
-        else g.px(pts[i].x, pts[i].y, ramp[2]);
-      }
-      if (strong)
-        for (let i = 0; i < m; i++) {
-          // the hot core: ramp[4], with white dashes running toward the lantern (separates it from a same-hued body)
-          const hot = ((i - Math.floor(el / 28) * st.flow) & 7) < 3;
-          g.line(pts[i].x, pts[i].y - 1, pts[i + 1].x, pts[i + 1].y - 1, hot ? PAL.white : ramp[4]);
-          if (hot) g.px(pts[i].x, pts[i].y, ramp[4]);
+      const live = Math.round(N * Math.min(1, st.width + 0.05));
+      // the visible part of the path: from the target out to `reach` (drain) or from the glass back to it (rivulet)
+      const tLo = pour ? 0 : 1 - st.reach;
+      const tHi = pour ? st.reach : 1;
+      // ---- the guide: 1-px ramp[2] in the middle third only, crawling toward the flow's end
+      if (pour && st.width > 0.67) {
+        const n = 40;
+        for (let i = 0; i <= n; i++) {
+          const t = 0.33 + 0.34 * (i / n);
+          if (t > tHi) break;
+          if (((i - Math.floor(el / 35)) & 7) > 4) continue;
+          const p = path(t);
+          g.px(Math.round(p.x), Math.round(p.y), ramp[2]);
         }
-      // ---- the head: where the thread is drawn out to, a hot spark
-      if (st.reach < 1) {
-        const h = pts[m];
-        g.disc(h.x, h.y, 2, ramp[4]);
-        g.px(h.x, h.y, PAL.white);
       }
-      // ---- the soul beads: fat 3×3 souls flowing along it (into the lantern, or back on the give-back)
-      if (mid) {
-        // critic pass-3 r2: the beads ACCELERATE toward the lantern (they dawdle out of the body, then are sucked in)
-        // and shrink as they go — the direction of the flow reads even on a short arc
-        const sp = 0.0011 * st.flow;
-        for (let k = 0; k < 6; k++) {
-          const ph = (((k / 6 + el * sp) % 1) + 1) % 1;
-          const t = ph * ph;
-          if (t > st.reach) continue;
-          const p = bez(t);
-          if (t < 0.55) {
-            g.rect(p.x - 1, p.y - 1, 3, 3, ramp[3]);
-            g.px(p.x, p.y - 1, ramp[4]);
-            g.px(p.x - 1, p.y, ramp[4]);
-            g.px(p.x + 1, p.y, ramp[4]);
-            g.px(p.x, p.y + 1, ramp[4]);
-            g.px(p.x, p.y, PAL.white);
-          } else {
-            // a streak: the bead stretched along the arc as it is pulled in
-            const q = bez(Math.max(0, t - 0.06 * st.flow));
-            g.line(q.x, q.y, p.x, p.y, ramp[4]);
-            g.px(p.x, p.y, PAL.white);
+      // ---- the motes
+      for (let i = 0; i < live; i++) {
+        const m = motes[i];
+        const ph = (((m.ph + el * 0.0009 * m.sp * (pour ? 1 : 0.8)) % 1) + 1) % 1;
+        const tt = pour ? Math.pow(ph, 1.7) : 1 - Math.pow(ph, 1.4);
+        if (tt < tLo || tt > tHi) continue;
+        // lanes: a loose cloud at the body, a single file into the glass (drain); the rivulet stays narrow
+        const spread = pour ? 8 * Math.pow(1 - tt, 1.2) * Math.min(1, 0.4 + tt * 4) : 1.5 * tt;
+        const nn = normal(tt);
+        const wob = Math.sin(el * 0.012 + m.wob) * (pour ? 1.2 * (1 - tt) : 0.5);
+        const p = path(tt);
+        const off = m.lane * spread + wob;
+        const x = Math.round(p.x + nn.x * off);
+        const y = Math.round(p.y + nn.y * off);
+        if (pour) {
+          // stretched along the path as it speeds up (a back pixel or two toward the target)
+          const q = path(Math.max(0, tt - (tt > 0.7 ? 0.07 : tt > 0.4 ? 0.04 : 0.015)));
+          const qx = Math.round(q.x + nn.x * off);
+          const qy = Math.round(q.y + nn.y * off);
+          if (tt < 0.4 && !m.big) g.px(x + 1, y + 1, PAL.ink);
+          if (qx !== x || qy !== y) g.line(qx, qy, x, y, tt > 0.6 ? ramp[3] : ramp[2]);
+          const head = tt > 0.85 ? PAL.white : m.big || tt > 0.55 ? ramp[4] : ramp[3];
+          g.px(x, y, head);
+          if (m.big && tt < 0.7) {
+            // a fat soul (2×2, hot top-left) with an ink foot so it reads over a same-hued body
+            g.px(x + 1, y, ramp[3]);
+            g.px(x, y + 1, ramp[3]);
+            g.px(x + 1, y + 1, ramp[2]);
+            if (tt < 0.4) {
+              g.px(x + 2, y + 1, PAL.ink);
+              g.px(x, y + 2, PAL.ink);
+              g.px(x + 1, y + 2, PAL.ink);
+            }
           }
+        } else {
+          // a falling drop: 1×2, a hot top
+          g.px(x, y, ramp[4]);
+          g.px(x, y + 1, ramp[3]);
+          if (m.big) g.px(x, y + 2, ramp[2]);
         }
       }
-      // ---- the wisps rising out of the body into the foot of the arc
-      const foot = bez(0.1);
-      for (const w of wisps) {
-        const k = w.t / w.life;
-        const e = k * k;
-        const x = Math.round(w.x + (foot.x - w.x) * e);
-        const y = Math.round(w.y + (foot.y - w.y) * e - Math.sin(Math.PI * k) * 3);
-        g.px(x, y, k < 0.5 ? ramp[4] : ramp[3]);
-        g.px(x + 1, y, ramp[3]);
-        g.px(x, y + 1, ramp[2]);
-        if (k > 0.2) g.px(x, y + 2, ramp[1]);
+      // ---- the head (the stream still being drawn out): a hot spark
+      if (st.reach < 1) {
+        const h = path(pour ? st.reach : 1 - st.reach);
+        g.disc(Math.round(h.x), Math.round(h.y), 1.6, ramp[4]);
+        g.px(Math.round(h.x), Math.round(h.y), PAL.white);
+      }
+      // ---- the wisps leaving the body into the foot of the stream
+      if (pour) {
+        const foot = path(0.06);
+        for (const w of wisps) {
+          const k = w.t / w.life;
+          const e = k * k;
+          const x = Math.round(w.x + (foot.x - w.x) * e);
+          const y = Math.round(w.y + (foot.y - w.y) * e - Math.sin(Math.PI * k) * 2);
+          g.px(x, y, k < 0.5 ? ramp[3] : ramp[4]);
+          if (k < 0.6) g.px(x + 1, y + 1, PAL.ink);
+          if (k > 0.3) g.px(x, y + 1, ramp[2]);
+        }
       }
     });
     return true;

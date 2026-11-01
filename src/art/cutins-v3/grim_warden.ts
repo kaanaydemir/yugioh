@@ -49,15 +49,17 @@ interface Pose {
   wisps: number;
   /** tatter phase */
   t: number;
+  /** lantern size (critic r3: the lantern SWINGS TOWARD THE LENS on the slam — big in the foreground, the brightest point) */
+  ls: number;
 }
 
 const POSES: readonly Pose[] = [
-  { head: [0, 0], eye: 0, lan: [174, 118], fire: 0, cast: false, wisps: 0, t: 0 },
-  { head: [0, 0], eye: 1, lan: [173, 86], fire: 1, cast: false, wisps: 0, t: 1 },
-  { head: [1, 0], eye: 2, lan: [167, 66], fire: 2, cast: true, wisps: 0, t: 2 },
-  { head: [2, 1], eye: 2, lan: [163, 58], fire: 2, cast: true, wisps: 1, t: 3 },
-  { head: [1, 1], eye: 2, lan: [169, 70], fire: 2, cast: true, wisps: 3, t: 4 },
-  { head: [1, 1], eye: 2, lan: [166, 63], fire: 2, cast: true, wisps: 2, t: 5 },
+  { head: [0, 0], eye: 0, lan: [174, 118], fire: 0, cast: false, wisps: 0, t: 0, ls: 1 },
+  { head: [0, 0], eye: 1, lan: [172, 84], fire: 1, cast: false, wisps: 0, t: 1, ls: 1.2 },
+  { head: [1, 0], eye: 2, lan: [177, 60], fire: 2, cast: true, wisps: 0, t: 2, ls: 1.6 },
+  { head: [2, 1], eye: 2, lan: [175, 56], fire: 2, cast: true, wisps: 1, t: 3, ls: 1.5 },
+  { head: [1, 1], eye: 2, lan: [176, 64], fire: 2, cast: true, wisps: 3, t: 4, ls: 1.35 },
+  { head: [1, 1], eye: 2, lan: [175, 60], fire: 2, cast: true, wisps: 2, t: 5, ls: 1.4 },
 ];
 const HOLDS: readonly number[] = [260, 110, 100, 110, 120, 420];
 
@@ -74,9 +76,12 @@ const CAVITY: readonly V[] = [
 ];
 // critic pass-3 r1: an ORGANIC skull (the old one read as a TV / robot visor): a domed cranium wider than the jaw, a
 // cheekbone that juts at the profile, a narrow maxilla, a separate mandible with a rounded chin
+// critic r3: the skull read as a grey egg — a real PROFILE now: the brow ridge overhangs the socket, the nasal bone juts,
+// the face steps back under the cheekbone, the maxilla juts again over the teeth; at the back the jaw NOTCH (the gap
+// between the cranium and the jaw's hinge) breaks the oval
 const SKULL: readonly V[] = [
-  [107, 70], [105, 56], [109, 45], [118, 38], [130, 36], [141, 41], [147, 51], [149, 62], [150, 72], [146, 76], [143, 82],
-  [142, 88], [118, 88], [114, 80], [110, 76],
+  [108, 66], [105, 55], [109, 45], [118, 38], [130, 36], [141, 40], [147, 48], [150, 55], [146, 59], [148, 63], [152, 70],
+  [149, 74], [145, 75], [147, 81], [143, 88], [119, 88], [116, 81], [112, 79], [114, 74],
 ];
 const JAWBONE: readonly V[] = [[119, 90], [141, 90], [140, 98], [135, 103], [126, 104], [120, 99]];
 const CAPE: readonly V[] = [
@@ -89,9 +94,10 @@ const CAPE: readonly V[] = [
  */
 // critic pass-3 r1: only TWO bars (no brow ring / jaw / chin band frame), standing IN FRONT of the bone with a 1-px
 // void0 shadow beside them, bolted into the jaw with a rivet at each foot
+// critic r3: the two bars bracketed the face like parentheses (the "egg with a seam" read) — in this 3/4 close-up only
+// the TEMPLE bar shows; the front one is behind the profile
 const BARS: readonly (readonly V[])[] = [
   [[119, 92], [115, 76], [114, 60], [117, 46], [124, 31]],
-  [[143, 88], [146, 74], [145, 58], [139, 44], [126, 31]],
 ];
 const KNOB: V = [124, 28];
 /** the eye socket centre (head space) */
@@ -104,10 +110,13 @@ const FOLDS: readonly (readonly V[])[] = [
   [[150, 62], [148, 70], [144, 112], [150, 106]],
 ];
 /** the cowl's back tatters: root on the hood's back edge, tip (fluttering) */
+// critic r3: longer, streaming back (5 strips of uneven length, the tips flutter per frame)
 const TATTERS: readonly (readonly [V, V])[] = [
-  [[38, 62], [26, 94]],
-  [[34, 82], [20, 114]],
-  [[40, 98], [30, 130]],
+  [[44, 40], [24, 62]],
+  [[38, 62], [16, 92]],
+  [[34, 82], [10, 116]],
+  [[40, 98], [22, 134]],
+  [[52, 112], [44, 142]],
 ];
 
 // ================================================================ tokens
@@ -261,9 +270,10 @@ const factory: CutinFactory = () => ({
     const hood = new PixelCanvas(W, H);
     const HD = T(HOOD, ho);
     const CV = T(CAVITY, ho);
+    // critic r3: 4 tone planes (a lit crown plane stone4 → stone2 after the cloth map, then stone1 / stone0 / void0)
     fillBy(hood, HD, (x, y) => {
       const s = lit(x, y, add([92, 60], ho), 52);
-      return s > 0.42 ? PAL.stone3 : s > -0.3 ? PAL.stone2 : PAL.stone1;
+      return s > 0.85 && y < 60 + ho[1] ? PAL.stone4 : s > 0.42 ? PAL.stone3 : s > -0.3 ? PAL.stone2 : PAL.stone1;
     });
     // tatters off the back edge (2-px strips, the tips flutter with the frame)
     TATTERS.forEach(([root, tip], i) => {
@@ -315,6 +325,9 @@ const factory: CutinFactory = () => ({
     fillBy(hood, SK, (x, y) => {
       if (!inCav(x, y)) return null;
       const s = lit(x, y, add([124, 68], ho), 24);
+      // critic r3: the cranium behind the temple bar sits in the hood's shadow (one tone down) — the FACE is the lit plane
+      const back = x < 116 + ho[0] + (y - ho[1] - 40) * 0.05;
+      if (back) return s > 0.6 ? B3 : s > -0.2 ? B2 : B1;
       return s > 0.6 ? B4 : s > 0 ? B3 : s > -0.55 ? B2 : B1;
     });
     // the mandible (a separate bone under the mouth gap)
@@ -329,6 +342,18 @@ const factory: CutinFactory = () => ({
     fillBy(hood, T([[142, 56], [147, 56], [148, 66], [143, 67]], ho), () => PAL.void0);
     // a B2 ring of bone sunk round the sockets (they read deep, not as holes punched in a plate), the brow arching over
     hood.ellipseRing(eye[0] + 0.5, eye[1] + 0.5, 7.4, 6.4, B2);
+    // critic r3: the socket SINKS — its upper half rimmed in B1 shadow under the brow, a second B2 ring round that
+    for (let a = 0; a < 48; a++) {
+      const an = (a / 48) * Math.PI * 2;
+      if (Math.sin(an) > 0.1) continue;
+      const x = Math.round(eye[0] + 0.5 + Math.cos(an) * 7.4);
+      const y = Math.round(eye[1] + 0.5 + Math.sin(an) * 6.4);
+      if (hood.get(x, y) === B2) hood.set(x, y, B1);
+      const x2 = Math.round(eye[0] + 0.5 + Math.cos(an) * 8.6);
+      const y2 = Math.round(eye[1] + 0.5 + Math.sin(an) * 7.6);
+      const c2 = hood.get(x2, y2);
+      if (c2 === B3 || c2 === B4) hood.set(x2, y2, B2);
+    }
     path4(hood, T([[125, 56], [128, 54], [134, 53], [139, 54], [141, 56]], ho), B4, (c, x, y) => c !== null && c !== PAL.void0 && inPoly(SK, x, y));
     // the nose notch (a dark triangle under and between the sockets)
     hood.poly(T([[140, 69], [145, 69], [143, 77]], ho), PAL.void0);
@@ -338,6 +363,9 @@ const factory: CutinFactory = () => ({
     // the cheekbone: a short lit ridge slanting up to the profile (not a full-width line)
     path4(hood, T([[131, 72], [137, 71], [142, 70]], ho), B4, (c, x, y) => c !== null && c !== PAL.void0 && inPoly(SK, x, y));
     path4(hood, T([[131, 73], [137, 72]], ho), B3, (c, x, y) => c !== null && c !== PAL.void0 && inPoly(SK, x, y));
+    // critic r3: the hollow UNDER the cheekbone (a B1 wedge stepping back to the jaw notch) so the cheek juts
+    fillBy(hood, T([[128, 75], [144, 74], [141, 79], [130, 82], [118, 81]], ho), (x, y) => (inPoly(SK, x, y) && !inPoly(T([[121, 84], [143, 84], [143, 92], [121, 92]], ho), x, y) ? B1 : null));
+    path4(hood, T([[128, 71], [134, 69], [140, 68], [147, 69], [151, 71]], ho), B4, (c, x, y) => c !== null && c !== PAL.void0 && inPoly(SK, x, y));
     // the mouth: THREE irregular upper teeth and a missing one (no even comb), the dark gap, two lower stumps
     const TEETH: readonly (readonly [number, number, number])[] = [
       // x0, width, length
@@ -421,29 +449,35 @@ const factory: CutinFactory = () => ({
       const s = lit(x, y, [rx0, y], edge);
       return s > 0.35 ? PAL.mist : s > -0.25 ? PAL.steel : PAL.night3;
     };
+    const z = P.ls;
+    const NR = Math.round(7 * z);
+    const BR = Math.round(17 * z);
+    const GW = Math.round(15 * z);
     lan.frame(rx0 - 2, top - 2, 5, 3, PAL.steel);
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < NR; i++) {
       const hw = 2 + i * 2;
       for (let x = rx0 - hw; x <= rx0 + hw; x++) lan.set(x, top + 1 + i, iron(x, top + 1 + i, hw + 1));
     }
-    for (let x = rx0 - 17; x <= rx0 + 17; x++) {
-      lan.set(x, top + 8, PAL.mist);
-      lan.set(x, top + 9, PAL.night3);
+    for (let x = rx0 - BR; x <= rx0 + BR; x++) {
+      lan.set(x, top + NR + 1, PAL.mist);
+      lan.set(x, top + NR + 2, PAL.night3);
     }
-    const g0 = top + 10;
-    const g1 = top + 33;
+    const g0 = top + NR + 3;
+    const g1 = g0 + Math.round(23 * z);
+    const PW = z > 1.3 ? 3 : 2;
     for (let y = g0; y <= g1; y++) {
-      for (let x = rx0 - 15; x <= rx0 + 15; x++) {
-        const post = x <= rx0 - 13 || x >= rx0 + 13;
-        lan.set(x, y, post ? iron(x, y, 15) : PAL.night0); // glass placeholder (painted by the light pass)
+      for (let x = rx0 - GW; x <= rx0 + GW; x++) {
+        const post = x <= rx0 - GW + PW || x >= rx0 + GW - PW;
+        lan.set(x, y, post ? iron(x, y, GW) : PAL.night0); // glass placeholder (painted by the light pass)
       }
     }
-    for (let x = rx0 - 17; x <= rx0 + 17; x++) {
+    for (let x = rx0 - BR; x <= rx0 + BR; x++) {
       lan.set(x, g1 + 1, PAL.mist);
-      lan.set(x, g1 + 2, iron(x, g1 + 2, 18));
+      lan.set(x, g1 + 2, iron(x, g1 + 2, BR + 1));
       lan.set(x, g1 + 3, PAL.night3);
     }
-    for (let x = rx0 - 9; x <= rx0 + 9; x++) lan.set(x, g1 + 4, iron(x, g1 + 4, 10));
+    const FW = Math.round(9 * z);
+    for (let x = rx0 - FW; x <= rx0 + FW; x++) lan.set(x, g1 + 4, iron(x, g1 + 4, FW + 1));
     overInk(arm, chain);
     overInk(arm, lan);
 
@@ -473,7 +507,7 @@ const factory: CutinFactory = () => ({
     // onto the warden's materials (the rig's design note, docs/v3/oturum-b/grim_warden.md): the shroud one value
     // down (stone2 lit / stone1 / stone0 / void0 folds), the iron on the stone ramp (stone4 / stone3 / stone1)
     // critic pass-3 r1: the black funeral shroud of the sprite (stone1 lit / stone0 / void0 folds / ink creases)
-    const CL: Record<number, number> = { [PAL.stone3]: PAL.stone1, [PAL.stone2]: PAL.stone0, [PAL.stone1]: PAL.void0, [PAL.night0]: PAL.ink };
+    const CL: Record<number, number> = { [PAL.stone4]: PAL.stone2, [PAL.stone3]: PAL.stone1, [PAL.stone2]: PAL.stone0, [PAL.stone1]: PAL.void0, [PAL.night0]: PAL.ink };
     const IR: Record<number, number> = { [PAL.mist]: PAL.stone4, [PAL.steel]: PAL.stone3, [PAL.night3]: PAL.stone1 };
     out.map((c) => CL[c] ?? c);
     out.map((c) => IR[c] ?? c);
@@ -485,9 +519,9 @@ const factory: CutinFactory = () => ({
     // in two flat rings (stone1 → leaf1 / stone0, void0 → leaf0 near; stone1 → leaf0 farther), never on the skull
     if (P.fire >= 1) {
       const lcx = rx0;
-      const lcy = (top + 10 + top + 33) / 2;
-      const R0 = P.fire === 2 ? 34 : 26;
-      const R1 = P.fire === 2 ? 58 : 44;
+      const lcy = (g0 + g1) / 2;
+      const R0 = Math.round((P.fire === 2 ? 34 : 26) * Math.sqrt(z));
+      const R1 = Math.round((P.fire === 2 ? 58 : 44) * Math.sqrt(z));
       for (let y = 0; y < H; y++)
         for (let x = 0; x < W; x++) {
           const c = out.get(x, y);
@@ -510,6 +544,7 @@ const factory: CutinFactory = () => ({
     }
 
     // ---------------------------------------------------------------- lights (never outlined)
+    const dark = (c: number | null) => c === PAL.void0 || c === PAL.ink || c === PAL.stone0;
     // green cast on the lantern's side of the head (blaze): cage bars, lip, skull edges facing right
     if (P.cast) {
       const marks: number[] = [];
@@ -524,11 +559,23 @@ const factory: CutinFactory = () => ({
           else if (c === PAL.stone2) marks.push(x, y, PAL.leaf2);
         }
       for (let i = 0; i < marks.length; i += 3) out.set(marks[i], marks[i + 1], marks[i + 2]);
+      // critic r3: the lantern UNDERLIGHTS the skull — every bone pixel of the lower face (cheek, maxilla, teeth, jaw)
+      // whose neighbour below or toward the lantern is dark catches leaf; the jaw's lower edge glows
+      const under: number[] = [];
+      for (let y = 66 + ho[1]; y < 108 + ho[1]; y++)
+        for (let x = 104; x < 156; x++) {
+          const c = out.get(x, y);
+          if (c === null || !inCav(x, y)) continue;
+          if (c !== PAL.stone4 && c !== PAL.stone3 && c !== PAL.stone2) continue;
+          const dn = out.get(x, y + 1);
+          const rt = out.get(x - side, y);
+          if (dark(dn) || (dark(rt) && y > 78 + ho[1])) under.push(x, y, c === PAL.stone2 ? PAL.leaf2 : PAL.leaf3);
+        }
+      for (let i = 0; i < under.length; i += 3) out.set(under[i], under[i + 1], under[i + 2]);
     }
     // the eye light (critic r2: a 2-px dot on a big skull read weakly — the eye now flares to a 3×3 core with a white
     // heart, its halo floods the socket and catches the cage bars round it)
     const [ex, ey] = eye;
-    const dark = (c: number | null) => c === PAL.void0 || c === PAL.ink || c === PAL.stone0;
     if (P.eye >= 1) {
       const R1 = P.eye === 2 ? 9 : 6;
       for (let y = ey - R1; y <= ey + R1; y++)
@@ -559,12 +606,13 @@ const factory: CutinFactory = () => ({
     // it in rings, the light spilling onto the cage posts)
     const cx = rx0;
     const fb = g1 - 2;
-    const fh = P.fire === 0 ? 8 : P.fire === 1 ? 14 : 20;
+    const fh = Math.round((P.fire === 0 ? 8 : P.fire === 1 ? 14 : 20) * z);
     const fcy = fb - fh * 0.42;
+    const GI = GW - PW - 1;
     for (let y = g0; y <= g1; y++)
-      for (let x = rx0 - 12; x <= rx0 + 12; x++) {
-        const dx = (x - cx) / 12;
-        const dy = (y - fcy) / 14;
+      for (let x = rx0 - GI; x <= rx0 + GI; x++) {
+        const dx = (x - cx) / GI;
+        const dy = (y - fcy) / (14 * z);
         const d = Math.sqrt(dx * dx + dy * dy);
         let c: number = PAL.leaf1;
         if (P.fire >= 1 && d < 0.8) c = PAL.leaf2;
@@ -574,16 +622,16 @@ const factory: CutinFactory = () => ({
       }
     // the panes' frame bars catch the light on their inner edge
     for (let y = g0; y <= g1; y++) {
-      const k = Math.abs(y - fcy) < 9 ? (P.fire === 2 ? PAL.leaf3 : PAL.leaf2) : PAL.leaf1;
-      out.set(rx0 - 13, y, k).set(rx0 + 13, y, k);
+      const k = Math.abs(y - fcy) < 9 * z ? (P.fire === 2 ? PAL.leaf3 : PAL.leaf2) : PAL.leaf1;
+      out.set(rx0 - GW + PW, y, k).set(rx0 + GW - PW, y, k);
     }
     // the flame: a teardrop that leans and licks (tip swaying per frame), outer leaf3 → leaf4 body → white heart
     const sway = [0, 1, -1, 1, 0, -1][P.t % 6];
     for (let i = 0; i < fh; i++) {
       const y = fb - i;
       const u = i / fh;
-      const hw = u < 0.35 ? 3 + u * 10 : (1 - u) * 10;
-      const ox = Math.round(sway * u * u * 3);
+      const hw = (u < 0.35 ? 3 + u * 10 : (1 - u) * 10) * z;
+      const ox = Math.round(sway * u * u * 3 * z);
       for (let x = Math.round(cx + ox - hw); x <= Math.round(cx + ox + hw); x++) {
         const e = Math.abs(x - cx - ox) / Math.max(1, hw);
         const c = P.fire === 0 ? (e < 0.5 ? PAL.leaf3 : PAL.leaf2) : e > 0.7 ? PAL.leaf3 : PAL.leaf4;
@@ -593,12 +641,13 @@ const factory: CutinFactory = () => ({
     if (P.fire === 2)
       for (let i = 1; i < Math.round(fh * 0.55); i++) {
         const u = i / fh;
-        const ox = Math.round(sway * u * u * 3);
+        const ox = Math.round(sway * u * u * 3 * z);
         out.set(cx + ox, fb - i, PAL.white);
         if (i < fh * 0.35) out.set(cx + ox - side, fb - i, PAL.white);
+        if (z > 1.3 && i < fh * 0.3) out.set(cx + ox + side, fb - i, PAL.white);
       }
     // a base ember row under the flame
-    for (let x = cx - 4; x <= cx + 4; x++) out.set(x, g1, PAL.leaf3);
+    for (let x = cx - Math.round(4 * z); x <= cx + Math.round(4 * z); x++) out.set(x, g1, PAL.leaf3);
     // soul wisps off the roof: small flames rising, leaf3 with leaf2 tails
     for (let w = 0; w < P.wisps; w++) {
       const wx = cx - 10 + w * 10;

@@ -303,6 +303,25 @@ function clothBands(q: PixelCanvas, t: Tones, light: Light, folds: ((x: number, 
   });
 }
 
+/**
+ * critic r3 (value structure): the black shroud read as one near-black mass at 1× — a LIT PLANE of `c` (stone2) on the
+ * part's top surface toward the light: every cloth pixel within `rows` of the part's top edge and within `wide` of its
+ * lit side edge (never the ink seams or the void0 deep folds, which stay dark).
+ */
+function capPlane(q: PixelCanvas, light: Light, rows: number, wide: number, c: number): void {
+  const ls = light.side;
+  planes(q, (x, y, src) => {
+    const cur = src.get(x, y);
+    if (cur === null || cur === SHROUD.D || cur === PAL.void0 || cur === PAL.ink) return null;
+    let up = 0;
+    while (up < rows && src.isOpaque(x, y - up - 1)) up++;
+    if (up >= rows) return null;
+    let toL = 0;
+    while (toL < wide && src.isOpaque(x + ls * (toL + 1), y)) toL++;
+    return toL < wide ? c : null;
+  });
+}
+
 // ---------------------------------------------------------------- back tatters (behind everything)
 
 /** critic pass-3 r1: the separate back strips read as rods / spider legs — they are merged into the hem (paintBody). */
@@ -400,9 +419,15 @@ function paintHalberd(f: Frame): void {
   kq.poly([loc(L - 7, 1), loc(L - 5, 4), loc(L - 6, 7.5), loc(L - 9, 9), loc(L - 8, 6.5), loc(L - 9, 3.5), loc(L - 10, 1)], IRON.M);
   bands(kq, IRON, light, 1, 1);
   f.comp.add(kq, Part.halberd, { out: IRON.D });
+  // critic r3: a back CRESCENT hook off the socket, curling up and back (the polearm reads as a grave tool at 1×)
+  const cq = layer();
+  cq.poly([loc(L - 3, -1), loc(L - 1, -4), loc(L + 2, -6.5), loc(L + 6, -7.5), loc(L + 4, -5.5), loc(L + 2, -3.5), loc(L, -1)], IRON.M);
+  bands(cq, IRON, light, 1, 1);
+  f.comp.add(cq, Part.halberd, { out: IRON.D });
   // the spade blade: a pointed shovel, rounded shoulders, a darker hollow down its middle
   const bq = layer();
-  const blade: Pt[] = [[0, -2.5], [1.5, -4.6], [6, -4.8], [10.5, -3.2], [13.5, -0.8], [14.5, 0], [13.5, 0.8], [10.5, 3.2], [6, 4.8], [1.5, 4.6], [0, 2.5]];
+  // critic r3: a FLAT grave-digger's spade (square shoulders, a short blunt point), not a leaf spear tip
+  const blade: Pt[] = [[0, -2.5], [1, -5.4], [8.5, -5.6], [11.5, -4.2], [13.5, -1.6], [14.5, 0], [13.5, 1.6], [11.5, 4.2], [8.5, 5.6], [1, 5.4], [0, 2.5]];
   bq.poly(blade.map(([u, v]) => loc(L + 1 + u, v)), IRON.M);
   const lit = nx * light.v2[0] + ny * light.v2[1] > 0 ? 1 : -1;
   planes(bq, (x, y, s) => {
@@ -434,13 +459,13 @@ function paintSleeve(f: Frame, far: boolean): void {
   const part = far ? Part.armF : Part.armN;
   const q = layer();
   // upper arm and forearm: thin tubes of shroud cloth (the bone inside is never seen)
-  q.poly(ribbon([Sh, E], (k) => lerp(6, 5, k)), t.M);
-  q.disc(E[0], E[1], 2.5, t.M);
+  q.poly(ribbon([Sh, E], (k) => lerp(far ? 6 : 7, far ? 5 : 6, k)), t.M);
+  q.disc(E[0], E[1], far ? 2.5 : 3, t.M);
   const wr: Pt = [lerp(E[0], Hd[0], 0.8), lerp(E[1], Hd[1], 0.8)];
-  q.poly(ribbon([E, wr], (k) => lerp(5, 7, k)), t.M);
+  q.poly(ribbon([E, wr], (k) => lerp(far ? 5 : 6, far ? 7 : 8, k)), t.M);
   // the bell of the sleeve hangs from the forearm's underside in ragged teeth, lagging the arm
-  const sway = o.capeA * 0.25 + wave(o, 0.3, far ? 0.5 : 0.1) * 2;
-  const droop = (far ? 6 : 8) + o.col * 3;
+  const sway = o.capeA * 0.25 + wave(o, 0.3, far ? 0.5 : 0.1) * (far ? 2 : 2.8);
+  const droop = (far ? 6 : 9) + o.col * 3;
   const fx = wr[0] - E[0];
   const fy = wr[1] - E[1];
   const fl = Math.hypot(fx, fy) || 1;
@@ -454,6 +479,24 @@ function paintSleeve(f: Frame, far: boolean): void {
   const at = (k: number, d: number): Pt => [E[0] + fx * k + ux * d - sway * (d / droop), E[1] + fy * k + uy * d];
   q.poly([at(0.1, 1), at(1.05, 1), at(1.05, droop - 1), at(0.85, droop + 1), at(0.7, droop - 2), at(0.5, droop), at(0.35, droop - 3), at(0.15, 2)], t.M);
   clothBands(q, t, f.light, null, 1, far ? null : SHROUD_RIM);
+  if (!far) {
+    capPlane(q, f.light, 1, 9, SHROUD_RIM);
+    // the soul fire under the arm: the sleeve's lowest cloth row on the lantern's half takes a leaf1 bounce band
+    if (o.fl >= 0.5 && o.lanDrop < 0.3) {
+      const x0 = Math.round(Math.min(E[0], wr[0]));
+      const x1 = Math.round(Math.max(E[0], wr[0])) + 2;
+      const xm = Math.round(lerp(E[0], wr[0], 0.35));
+      for (let x = x0; x <= x1; x++) {
+        if ((x - xm) * Math.sign(wr[0] - E[0] || 1) < 0) continue;
+        for (let y = H - 2; y > 0; y--) {
+          if (!q.isOpaque(x, y)) continue;
+          const c = q.get(x, y);
+          if (c !== PAL.void0) q.set(x, y, PAL.leaf1);
+          break;
+        }
+      }
+    }
+  }
   f.comp.add(q, part, { out: t.D });
 }
 
@@ -635,6 +678,7 @@ function paintMantle(f: Frame): void {
   ];
   q.poly(pts, SHROUD.M);
   clothBands(q, SHROUD, light, null, 2, SHROUD_RIM);
+  capPlane(q, light, 2, 7, SHROUD_RIM);
   // the collapsed shroud is EMPTY: the hood's dark opening gapes on top of the heap, its lip lit
   if (o.col > 0.6) {
     const hx = rnd(cx + 4);
@@ -827,6 +871,7 @@ function paintHood(f: Frame, front: boolean): void {
     // the cowl: a pointed hood, its tip falling back over the shoulders and lagging the head
     q.poly([[sx - 10, sy + 10], [sx - 12, sy + 1], [sx - 12 + sw * 0.5, sy - 5], [sx - 19 + sw, sy - 7], [sx - 15 + sw, sy - 11], [sx - 5, sy - 14], [sx + 3, sy - 13], [sx + 9, sy - 9], [sx + 10, sy - 2], [sx + 7, sy + 6], [sx + 1, sy + 10]], SHROUD.M);
     clothBands(q, SHROUD, light, null, 2, SHROUD_RIM);
+    capPlane(q, light, 3, 8, SHROUD_RIM);
     f.comp.add(q, Part.hood, { out: SHROUD.D });
     // the dark opening the helm sits deep in
     const d = layer();

@@ -399,7 +399,21 @@ async function drainV3(ctx: Ctx<'activate'>): Promise<void> {
   const toRel = u.rangeMs('special', 0, REL);
   atFrame(u, 'special', 1, () => play('gwReach', { volume: 0.95, pan }), { late: false });
   atFrame(u, 'special', Math.max(2, REL - 1), () => play('gwInhale', { volume: 0.9, pan }), { late: false });
+  // critic r3 blocker: the pair stands nearly touching, so the held lantern hung INSIDE the target's sprite and the
+  // stream had nowhere to run — the special opens with a shuffle BACK (two dragging steps along the line away from
+  // the target) until the drinking frame's glass is ≥ GAP px clear of the target's core; the recovery steps home
+  const shuffle = drainShuffle(u, t, HOLD);
   const posed = u.playRange('special', 0, HOLD);
+  if (shuffle.x || shuffle.y) {
+    const home = { ...u.home };
+    const ms = Math.max(120, Math.min(260, Math.round(toRel * 0.6)));
+    void animate(sc, ms, (k) => {
+      // two scuffs: 0 → 60 % on the first half, a catch, 60 → 100 % on the second (the boots drag, the hem lags)
+      const e = k < 0.5 ? 0.6 * Math.sin((k / 0.5) * Math.PI * 0.5) : 0.6 + 0.4 * Math.sin(((k - 0.5) / 0.5) * Math.PI * 0.5);
+      placeFeet(u, { x: home.x + shuffle.x * e, y: home.y + shuffle.y * e });
+    });
+    atFrame(u, 'special', 1, () => dust(sc, u.worldPoint('feet'), 4), { late: false });
+  }
   // the target feels it coming: its outline starts to glow in its own colour before the thread
   void animate(sc, toRel, (k) => fadeT.rim(0.25 * k));
   await sleep(sc, toRel);
@@ -407,7 +421,7 @@ async function drainV3(ctx: Ctx<'activate'>): Promise<void> {
   // dives into it from above
   const soulAt = () => (live(t) && t.sprite.visible ? rint(t.core()) : rint(t.home));
   const lantern = () => rint(livePoint(u, 'muzzle'));
-  const thread = soulThread(sc, soulAt, lantern, ramp, DEPTH.FX + 1, 22);
+  const thread = soulThread(sc, soulAt, lantern, ramp, DEPTH.FX + 1, 12);
   const siphon = start('gwSiphon', { volume: 1, pan });
   play('gwThread', { volume: 1, pan: tPan, pitch: SOUL_PITCH[t.attribute] ?? 1 });
   // the light layer (lighten-only): a pool under the arc's apex and a glow under the target, both in the stolen colour
@@ -462,11 +476,39 @@ async function drainV3(ctx: Ctx<'activate'>): Promise<void> {
   flash(sc, lantern().x, u.home.y, ramp, 18, 200, 1.2);
   light.setIntensity(0.9, 200);
   // ---- back to the strike's charge pose (the recovery a little brisker: the strike follows)
-  await u.playRange('special', HOLD + 1, u.frameCount('special') - 1, { timeScale: 1.6 });
+  const recov = u.playRange('special', HOLD + 1, u.frameCount('special') - 1, { timeScale: 1.6 });
+  if (shuffle.x || shuffle.y) {
+    const home = { ...u.home };
+    const ms = Math.max(100, u.rangeMs('special', HOLD + 1, u.frameCount('special') - 1) / 1.6);
+    await animate(sc, ms, (k) => {
+      const e = 0.5 - 0.5 * Math.cos(Math.PI * k);
+      placeFeet(u, { x: home.x + shuffle.x * (1 - e), y: home.y + shuffle.y * (1 - e) });
+    });
+    placeFeet(u, home);
+  }
+  await recov;
   const f = declarePoseFrame(u);
   await u.playRange('attack', 0, f);
   if (hold) ctx.keep('attack', hold);
   else u.posed = false;
+}
+
+/** Min px between the drinking frame's glass and the target's core (horizontal), and the most the warden steps back. */
+const DRAIN_GAP = 30;
+const DRAIN_STEP_MAX = 18;
+/** The shuffle-back offset (whole px) that clears the held lantern off the target, along the line away from it. */
+function drainShuffle(u: MonsterUnit, t: MonsterUnit, holdF: number): XY {
+  const lan = pointOf(u, 'special', holdF, 'muzzle');
+  const core = t.core();
+  const need = DRAIN_GAP - Math.abs(lan.x - core.x);
+  if (need <= 0) return { x: 0, y: 0 };
+  const ax = u.home.x - t.home.x;
+  const ay = u.home.y - t.home.y;
+  const al = Math.hypot(ax, ay) || 1;
+  const nx = ax / al;
+  const ny = ay / al;
+  const len = Math.min(DRAIN_STEP_MAX, need / Math.max(0.5, Math.abs(nx)));
+  return { x: Math.round(nx * len), y: Math.round(ny * len) };
 }
 
 /** The held drinking frame: the lantern trembles a whole pixel on uneven beats (never static). */
@@ -519,10 +561,10 @@ async function afterBattle(ctx: Ctx<'battle'>, u: MonsterUnit | null, d: Drain):
     const t = d.target;
     const thread = soulThread(sc, () => rint(t.core()), () => rint(livePoint(u, 'muzzle')), d.ramp, DEPTH.FX + 1);
     thread.flow = -1;
-    thread.reach = 1;
     thread.width = 0.9;
     play('gwGiveBack', { volume: 1, pan: panAt(t.home.x) });
-    await animate(sc, 380, (k) => {
+    await animate(sc, 420, (k) => {
+      thread.reach = Math.min(1, k * 2.5);
       d.fade.set(0.3 * (1 - k));
       d.tint.set(1 - k);
       thread.width = k < 0.6 ? 0.9 : k < 0.85 ? 0.5 : 0.2;
@@ -716,6 +758,8 @@ if (LOOK_V3) registerObserver((_ev, ctx) => watchLanterns(ctx));
  */
 /** Ms a key of the whirl smear lives (critic r2: long enough that a full turn closes into a readable ring at 1×). */
 const TRAIL_MS = 340;
+/** The smear's longest arc behind its head (rad): an open crescent, never a closed loop (critic r3). */
+const ARC_MAX = Math.PI * 1.05;
 function whirlTrail(sc: Phaser.Scene, u: MonsterUnit, ramp: Ramp, untilF: number): () => void {
   const r = new Raster(sc, 0, 0, 640, 360, u.sprite.depth + 0.3);
   const embers = new Sparks(sc, u.sprite.depth + 0.35);
@@ -751,7 +795,9 @@ function whirlTrail(sc: Phaser.Scene, u: MonsterUnit, ramp: Ramp, untilF: number
         // shed embers off the swing
         for (let i = 0; i < 3; i++) {
           const ea = a - 0.25 * i * (last ? Math.sign(a - last.a) : 1);
-          embers.add({ x: Math.round(c.x + Math.cos(ea) * rad), y: Math.round(c.y + Math.sin(ea) * rad), vx: RR(-30, 30), vy: RR(-40, -10), drag: 3, life: RR(220, 340), colors: [ramp[4], ramp[3], ramp[2], ramp[1]], shape: 'px', fadeAt: 1, flicker: true });
+          // critic r3: flung off TANGENTIALLY (along the swing), not puffed up
+          const tv = RR(60, 110);
+          embers.add({ x: Math.round(c.x + Math.cos(ea) * rad), y: Math.round(c.y + Math.sin(ea) * rad), vx: -Math.sin(ea) * spinDir * tv + RR(-10, 10), vy: Math.cos(ea) * spinDir * tv * 0.8 - 15, drag: 3, life: RR(220, 340), colors: [ramp[4], ramp[3], ramp[2], ramp[1]], shape: 'px', fadeAt: 1, flicker: true });
         }
       } else if (last) {
         last.a = a;
@@ -765,8 +811,11 @@ function whirlTrail(sc: Phaser.Scene, u: MonsterUnit, ramp: Ramp, untilF: number
     while (ghosts.length && ghosts[0].age > 130) ghosts.shift();
     r.img.setDepth(u.sprite.depth + 0.3);
     r.draw((g) => {
-      // the band: from the oldest key toward the newest, sampled along the circle
-      for (let i = 1; i < pts.length; i++) {
+      // critic r3: an OPEN tapered smear crescent, never a closed ring (it read as a halo / targeting ring round the
+      // helm): the band is cut ARC_MAX behind the head; its width tapers by the angular distance from the head (5 px
+      // white-cored head → 3 px → a BROKEN 1-px tail), not by age alone
+      const head = pts.length ? pts[pts.length - 1] : null;
+      for (let i = 1; i < pts.length && head; i++) {
         const p0 = pts[i - 1];
         const p1 = pts[i];
         const steps = Math.max(4, Math.ceil(Math.abs(p1.a - p0.a) * Math.max(p0.rad, p1.rad)));
@@ -777,13 +826,17 @@ function whirlTrail(sc: Phaser.Scene, u: MonsterUnit, ramp: Ramp, untilF: number
           // age along the band: the head (newest end) young, the tail old
           const age = lerp(p0.age, p1.age, t);
           if (age > TRAIL_MS) continue;
-          const half = age < 90 ? 2 : age < 200 ? 1 : 0;
-          if (half === 0 && (k & 1)) continue;
+          const behind = (head.a - a) * spinDir;
+          if (behind > ARC_MAX || behind < -0.05) continue;
+          const q = behind / ARC_MAX;
+          const half = q < 0.22 && age < 120 ? 2 : q < 0.55 && age < 230 ? 1 : 0;
+          // the broken tail: gaps that open wider toward its end
+          if (half === 0 && (k % (q > 0.8 ? 4 : 2)) !== 0) continue;
           for (let d = -half; d <= half; d++) {
             const x = Math.round(c.x + Math.cos(a) * (rad + d));
             const y = Math.round(c.y + Math.sin(a) * (rad + d));
             const core = d === 0;
-            const col = half === 2 ? (core ? ramp[4] : Math.abs(d) === 1 ? ramp[3] : ramp[2]) : half === 1 ? (core ? ramp[3] : ramp[2]) : ramp[2];
+            const col = half === 2 ? (core ? (q < 0.08 ? PAL.white : ramp[4]) : Math.abs(d) === 1 ? ramp[3] : ramp[2]) : half === 1 ? (core ? ramp[3] : ramp[2]) : q > 0.8 ? ramp[1] : ramp[2];
             g.px(x, y, col);
           }
         }
@@ -864,8 +917,9 @@ function glideTrail(sc: Phaser.Scene, u: MonsterUnit, ramp: Ramp): () => void {
  * overlapping dotted rings with "+" ticks read as a targeting reticle).
  */
 function soulBurst(sc: Phaser.Scene, at: XY, floorY: number, ramp: Ramp, small: boolean, depth: number): void {
-  const r = Raster.around(sc, at.x, at.y, 90, 70, depth);
-  const R0 = small ? 10 : 17;
+  const r = Raster.around(sc, at.x, at.y, 110, 90, depth);
+  // critic r3: the card's own burst must beat the shared contact ring — R 22 (13 blocked), held 3 frames
+  const R0 = small ? 13 : 22;
   const N = 11;
   const spikes = Array.from({ length: N }, (_, i) => ({ a: (i / N) * TAU + RR(-0.18, 0.18), l: RR(0.65, 1.15) }));
   const star = (k: number): XY[] => {
@@ -883,13 +937,17 @@ function soulBurst(sc: Phaser.Scene, at: XY, floorY: number, ramp: Ramp, small: 
   // already show the solid soul star (not the bare white silhouette with the burst arriving after the freeze)
   const paint = (el: number): void => {
     r.draw((g) => {
-      const step = Math.min(4, Math.floor(el / 46));
-      if (step <= 1) {
-        // the solid star: outer ramp[3], inner ramp[4], white core
-        g.poly(star(step === 0 ? 1.0 : 1.12), ramp[3]);
-        g.poly(star(step === 0 ? 0.62 : 0.7), ramp[4]);
-        g.disc(at.x, at.y, step === 0 ? 3 : 2, PAL.white);
+      const step0 = Math.min(5, Math.floor(el / 46));
+      if (step0 <= 2) {
+        // the solid star, 3 frames: an ink rim (it separates from the shared white chop / violet ring), outer ramp[3],
+        // inner ramp[4], a white heart that shrinks
+        const sz = [1.0, 1.12, 1.18][step0];
+        g.poly(star(sz * 1.1), PAL.ink);
+        g.poly(star(sz), ramp[3]);
+        g.poly(star(sz * 0.62), ramp[4]);
+        g.disc(at.x, at.y, [5, 4, 2][step0], PAL.white);
       } else {
+        const step = step0 - 1;
         // the rays break apart into flying shards along their own lines
         for (const sp of spikes) {
           const d0 = R0 * sp.l * (0.7 + 0.35 * step);
@@ -903,10 +961,10 @@ function soulBurst(sc: Phaser.Scene, at: XY, floorY: number, ramp: Ramp, small: 
     });
   };
   paint(0);
-  void animate(sc, 230, (_k, el) => paint(el)).then(() => r.destroy());
+  void animate(sc, 290, (_k, el) => paint(el)).then(() => r.destroy());
   // glass shards in the lantern's colour: whole pixels, bouncing on the struck body's floor, blinking out
   const sp = new Sparks(sc, depth + 0.1);
-  const n = small ? 9 : 16;
+  const n = small ? 12 : 22;
   for (let i = 0; i < n; i++) {
     const a = RR(0, TAU);
     const v = RR(50, 130);
@@ -1143,7 +1201,8 @@ async function scytheV3(s: StrikeArgs): Promise<void> {
   // ---- the spade-halberd sweeps through (f8), then the warden glides home on the recovery
   // the halberd sweep (melee only: after a direct hit it would chop empty air — critic pass-3 r1 — so the direct
   // attack's f7–f8 play as a flourish, without the smear or the chop sound)
-  if (!s.direct) atFrame(u, 'attack', CON + 2, () => chopCrescent(sc, u, CON + 1, CON + 2, ramp, s.blocked), { late: false });
+  // critic r3: the smear spans the chop's in-between (f8) to the chopped-through frame (f9)
+  if (!s.direct) atFrame(u, 'attack', CON + 2, () => chopCrescent(sc, u, CON + 1, CON + 3, ramp, s.blocked), { late: false });
   const rest = u.playRange('attack', CON + 1, undefined, { hold: false });
   await sleep(sc, u.rangeMs('attack', CON + 1, REC));
   void light.fadeOut(200);
@@ -1317,23 +1376,30 @@ async function returnLight(sc: Phaser.Scene, from: XY, d: Drain, depth: number):
   play('gwGiveBack', { volume: 1, pan: panAt(t.home.x) });
   const thread = soulThread(sc, () => (live(t) ? rint(t.core()) : rint(t.home)), () => from, d.ramp, depth, 16);
   thread.flow = -1;
-  thread.reach = 1;
   thread.width = 0.9;
-  await animate(sc, 400, (k) => {
-    d.fade.set(0.3 * (1 - k));
-    thread.width = k < 0.6 ? 0.9 : k < 0.85 ? 0.5 : 0.2;
+  // critic r3: the rivulet pours from the glass to the target (180 ms) and the plate rolls +400 on the frame its
+  // first drop lands (it used to wait for the end of the flow, ≈ 0.6 s after the light arrived)
+  await animate(sc, 180, (k) => {
+    thread.reach = k * (2 - k);
+    d.fade.set(0.3 * (1 - 0.3 * k));
   });
-  thread.destroy();
-  d.fade.destroy();
+  thread.reach = 1;
   if (live(t)) {
-    // critic pass-3 r1: the plate rolls back +400 on the very frame the light arrives (it used to wait ≈1 s for the
-    // shared plate refresh); a bright bell (the −400 bell pitched up) marks the give-back
     const st = t.shownStats;
     if (t.battleTint) {
       t.battleTint = false;
       void t.setStats(st.atk + 400, st.def, true);
       play('gwDebuff', { volume: 0.6, pan: panAt(t.home.x), pitch: 1.5 });
     }
+    flash(sc, t.core().x, t.home.y, d.ramp, 18, 200, 1.1);
+  }
+  await animate(sc, 260, (k) => {
+    d.fade.set(0.21 * (1 - k));
+    thread.width = k < 0.5 ? 0.9 : k < 0.8 ? 0.5 : 0.2;
+  });
+  thread.destroy();
+  d.fade.destroy();
+  if (live(t)) {
     flash(sc, t.core().x, t.home.y, d.ramp, 24, 260, 1.3);
     embersUp(sc, rint(t.core()), d.ramp, t.sprite.depth + 0.4);
   }
@@ -1360,16 +1426,18 @@ async function skullLeaves(sc: Phaser.Scene, at: XY, ramp: Ramp, depth: number, 
   sk.root = { x: at.x, y: at.y };
   const glow = floorGlow(sc, { x: at.x, floorY, ramp, radius: 20, intensity: 0.9 });
   glow.follow(() => sk.pos, () => floorY);
-  await animate(sc, 600, (k, el) => {
+  // critic r3: the mist read as a 14-px green speck that dithered out ≈ 10 px up — it now RISES 34 px over 760 ms, holds
+  // whole until halfway, wails (jaw drops wide) on the way up, then STRETCHES and tears apart; its light rides with it
+  await animate(sc, 760, (k, el) => {
     const e = 1 - (1 - k) * (1 - k);
-    sk.pos = { x: at.x + Math.round(Math.sin(el * 0.012) * 3 * k), y: at.y - 6 - Math.round(38 * e) };
+    sk.pos = { x: at.x + Math.round(Math.sin(el * 0.011) * 3 * k), y: at.y - 6 - Math.round(34 * e) };
     sk.root = { x: at.x + Math.round(Math.sin(el * 0.01) * 2), y: at.y - Math.round(14 * Math.max(0, k - 0.3)) };
     // a puff (squashed) that springs into the skull, then is torn upward and apart
-    sk.stretch = k < 0.15 ? 0.55 + 3 * k : 1 + Math.max(0, k - 0.45) * 1.6;
-    sk.gone = k < 0.4 ? 0 : Math.min(1, (k - 0.4) / 0.5);
+    sk.stretch = k < 0.12 ? 0.55 + 3.75 * k : 1 + Math.max(0, k - 0.5) * 2.2;
+    sk.gone = k < 0.55 ? 0 : Math.min(1, (k - 0.55) / 0.42);
     // the jaw drops wide on the wail's peak, then hangs
-    sk.open = k < 0.1 ? 0 : k < 0.18 ? 0.6 : k < 0.42 ? 1 : 0.4;
-    if (k > 0.5) glow.setIntensity(0.8 * (1 - k) * 2, 0);
+    sk.open = k < 0.1 ? 0 : k < 0.16 ? 0.6 : k < 0.5 ? 1 : 0.5;
+    glow.setIntensity(k < 0.55 ? 0.9 : 0.9 * Math.max(0, 1 - (k - 0.55) / 0.45), 0);
   });
   void glow.fadeOut(100);
   sk.destroy();
