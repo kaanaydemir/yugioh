@@ -243,8 +243,8 @@ function etchRing(S: Stage): void {
     el += dt;
     back.clear();
     front.clear();
-    const k = Math.floor(el / 60);
-    if (k >= 8) return false;
+    const k = Math.floor(el / 80);
+    if (k >= 9) return false;
     const step = Math.min(2, k);
     const R = [SX(13), SX(20), SX(27)][step];
     const fade = k >= 5;
@@ -257,8 +257,10 @@ function etchRing(S: Stage): void {
       const x = r(cx + Math.cos(a) * rr);
       const y = r(cy + Math.sin(a) * rr * 0.5);
       if (fade && (i + k) % 3 === 0) continue;
-      px.dot(x, y, k >= 6 ? PAL.leaf0 : PAL.night0).dot(x, y + 1, k >= 6 ? PAL.night1 : PAL.leaf0);
-      if (!fade) px.dot(x, y - 1, k <= step + 1 && k < 3 ? PAL.leaf3 : PAL.leaf2);
+      // a 2-px crack (night0) with a lit acid lip on its outer side (leaf3 while the ring spreads, then leaf2)
+      const ox = Math.cos(a) > 0 ? 1 : -1;
+      px.dot(x, y, k >= 6 ? PAL.leaf0 : PAL.night0).dot(x - ox, y, k >= 6 ? PAL.night1 : PAL.night0);
+      if (!fade) px.dot(x + ox, y + (Math.sin(a) > 0 ? 1 : -1), k < 3 ? PAL.leaf3 : PAL.leaf2).dot(x, y + (Math.sin(a) > 0 ? 1 : -1), PAL.leaf1);
       // short radial forks every 4th crack
       if (i % 4 === 0 && !fade) px.dot(r(cx + Math.cos(a) * (rr - 2)), r(cy + Math.sin(a) * (rr - 2) * 0.5), PAL.night0);
     }

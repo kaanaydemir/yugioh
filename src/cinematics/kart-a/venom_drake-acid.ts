@@ -583,10 +583,11 @@ function drawScar(px: Px, s: Scar, lvlShown: number, now: number): void {
     px.dot(bx - 2, by, PAL.night0).dot(bx + 3, by + 1, PAL.night0);
   }
   if (lvlShown >= 1) {
-    // three etched pits in a row along the front of the interior (2-px stone0 cores in leaf1 lips)
+    // three etched pits along the front of the interior, clear of the stat badge under the body's feet
+    // (two on the left front edge, one on the right)
     for (let i = 0; i < 3; i++) {
-      const pxx = x - SX(9) + i * SX(9) + (i === 1 ? 1 : 0);
-      const pyy = fy + 3 + (i === 1 ? 1 : 0) - (lvlShown >= 2 ? 0 : 0);
+      const pxx = x + [-SX(19), -SX(13), SX(15)][i];
+      const pyy = fy + [-3, 0, -1][i];
       if (lvlShown >= 2 && Math.abs(pxx - (x - SX(2))) < SX(8)) continue; // inside the blot
       px.run(pyy - 1, pxx - 1, pxx + 2, PAL.leaf0);
       px.run(pyy, pxx - 1, pxx + 2, rim);
