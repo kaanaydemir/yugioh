@@ -110,10 +110,12 @@ function halvesFalling(f: Frame, deg: number, roll: number): void {
 function halvesLying(f: Frame, sink: number, roll: number): void {
   for (const s of [-1, 1]) {
     const h = layer();
-    const cx = BCX + s * 22;
-    const hh = Math.max(2, 8 - sink * 2);
-    const cy = GY;
-    const w = 10;
+    // staggered on the floor (the left half fell back-left, the right half front-right): two separate slabs clear of
+    // his boots, never one bar through them
+    const cx = BCX + s * (s < 0 ? 25 : 26);
+    const hh = Math.max(2, 7 - sink * 2);
+    const cy = s < 0 ? GY - 5 : GY - 1;
+    const w = 8;
     // a low dome on its round back, the cut face up (its top 2 rows)
     h.poly([[cx - w, cy - hh], [cx + w, cy - hh], [cx + w + 1, cy - hh + 3], [cx + w - 3, cy], [cx - w + 3, cy], [cx - w - 1, cy - hh + 3]], PAL.stone2);
     stoneFacets(h, f, cx, GY - 4, roll + (s > 0 ? 1 : 2), Math.min(2, sink));

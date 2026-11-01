@@ -17,7 +17,7 @@
 //   - light (eyes, the Yarık seam, sparks, the axe glint, dust) is painted after the outline and never outlined (IŞ-9).
 // Frame 88×88, 1 art px = 1 game px; the anchor (AX, GY) is the floor point between the boots.
 
-import { PAL } from '../palette';
+import { PAL, RAMPS } from '../palette';
 import { PixelCanvas } from '../pixel';
 import { ik2, lightOf, type Light } from '../rigkit';
 import {
@@ -41,7 +41,7 @@ const cos = Math.cos;
 export type Facing = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 export interface Pose {
-  /** WIP (summon boulder): palette steps darker (not yet drawn by the rig) */
+  /** palette steps darker, toward the night floor (the summon boulder coming in out of the dark: 2, 1, 0 = lit) */
   dim?: number;
   /** facing layout (0 = the normal 3/4 right) */
   fc: Facing;
@@ -618,7 +618,7 @@ function paintMantle(f: Frame): void {
 // A moustache-and-chin mass only (the cheek and the jaw's back stay skin), then THREE separate braids hanging onto the
 // chest with dark gaps between them, each ending in a 2×2 stone bead: never a solid plate over the lower face.
 const BEARDS: Record<'r34' | 'side' | 'front' | 'back34', { mass: (readonly [number, number])[]; braids: [number, number, number][] }> = {
-  r34: { mass: [[3, 0.5], [5.5, -0.5], [8, 0.5], [8.5, 2.5], [7, 4], [4.5, 4], [3, 2.5]], braids: [[1.2, 3, 8], [4.2, 3.5, 10], [7.2, 3, 7]] },
+  r34: { mass: [[3, 0.5], [5.5, -0.5], [8, 0.5], [8.5, 2.5], [7, 4], [4.5, 4], [3, 2.5]], braids: [[0.4, 3, 8], [3.3, 3.5, 10], [6.2, 3, 7]] },
   side: { mass: [[4, 0.5], [6.5, -0.5], [9, 0.5], [9.5, 2.5], [8, 4], [5.5, 4], [4, 2.5]], braids: [[2.2, 3, 8], [5.2, 3.5, 10], [8.2, 3, 7]] },
   front: { mass: [[-4.5, 0.5], [0, -0.5], [4.5, 0.5], [5, 2.5], [3.5, 4], [-3.5, 4], [-5, 2.5]], braids: [[-3, 3, 8], [0, 3.5, 10], [3, 3, 8]] },
   back34: { mass: [[4.5, 1], [6.5, 1], [7, 4], [5.5, 5.5]], braids: [[6.2, 4, 7]] },
@@ -644,7 +644,7 @@ function paintBeard(f: Frame): void {
     const x0 = hx + dx * mx;
     const sw = o.bead * (len / 9) * (i === 1 ? 1.2 : 0.9);
     const path = spline([[x0, hy + y0], [x0 + sw * 0.4, hy + y0 + len * 0.5], [x0 + sw, hy + y0 + len]], 4);
-    polyT(f, bq, ribbon(path, (k) => lerp(2.4, 1.8, k)), BEARD.M);
+    polyT(f, bq, ribbon(path, (k) => lerp(1.9, 1.5, k)), BEARD.M);
     planes(bq, (x, y, src) => {
       const [, by] = xfInv(f.T, x, y);
       if (!src.isOpaque(x + f.light.side, y)) return BEARD.L;
@@ -1052,6 +1052,24 @@ export function drawAxeman(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right')
   chipFx(f);
   clodFx(f);
   dustFx(f);
+  if (o.dim) dimPass(p, o.dim);
+}
+
+/** Each ramp colour `k` steps down its own ramp; off the ramp's dark end it sinks into the night floor tones. */
+const DIM_RAMPS: readonly (readonly number[])[] = [RAMPS.stone, RAMPS.earth, RAMPS.skin, RAMPS.leaf, RAMPS.fire, RAMPS.gold];
+export function dimColor(c: number, k: number): number {
+  if (c === PAL.ink || k <= 0) return c;
+  if (c === PAL.white) return k === 1 ? PAL.stone3 : PAL.stone2;
+  for (const r of DIM_RAMPS) {
+    const i = r.indexOf(c);
+    if (i < 0) continue;
+    const j = i - k;
+    return j >= 0 ? r[j] : j === -1 ? PAL.night1 : PAL.night0;
+  }
+  return c;
+}
+function dimPass(p: PixelCanvas, k: number): void {
+  p.map((c) => dimColor(c, k));
 }
 
 export { clamp, hash2 };
