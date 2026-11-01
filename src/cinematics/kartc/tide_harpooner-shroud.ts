@@ -110,7 +110,7 @@ export class ShroudAura {
       if (this.dead) return false;
       el0 = el;
       // a 10-px column at once (2–3 frames held), then down over 220 ms
-      this.curlK = el < 34 ? 0.6 : el < 140 ? 1 : Math.max(0, 1 - (el - 140) / 200);
+      this.curlK = el < 34 ? 0.8 : el < 160 ? 1 : Math.max(0, 1 - (el - 160) / 200);
       return el0 < 340 + 20;
     });
   }
@@ -316,7 +316,8 @@ function deflect(scene: Phaser.Scene, u: MonsterUnit, _views: DuelViews): void {
   ambient(scene, (el) => {
     ret.clear();
     const p0 = outside(at, 6);
-    const dirK = fromRight ? -1 : 1;
+    // the skid runs toward the FRONT centre (down the near arc, away from the stat labels), along the ellipse tangent
+    const dirK = fromRight ? 1 : -1;
     // 0–100: the reticle corners close in — not on the crab: onto the FRONT ARC of the wave wall, where they strike
     if (el < 100) {
       const t = el / 100;
@@ -336,7 +337,7 @@ function deflect(scene: Phaser.Scene, u: MonsterUnit, _views: DuelViews): void {
       const t = (el - 100) / 220;
       const k = Math.min(1, t);
       // 0.12 of the ring ≈ 13–16 px of travel along the wall, riding just outside it (decelerating: friction)
-      const skidAt = at + dirK * 0.12 * (1 - (1 - k) * (1 - k));
+      const skidAt = at + dirK * 0.1 * (1 - (1 - k) * (1 - k));
       const p = ringPt(skidAt);
       const q = outside(skidAt, 6);
       let cx = q.x;
@@ -344,14 +345,17 @@ function deflect(scene: Phaser.Scene, u: MonsterUnit, _views: DuelViews): void {
       let half = 6;
       let col: number = PAL.white;
       if (el >= 320) {
+        // it slides on off the wall along the ellipse's tangent (no fling up over the labels), fading in two steps
         const f = (el - 320) / 100;
-        const out = { x: p.x - c.x, y: p.y - c.y };
-        const ol = Math.hypot(out.x, out.y) || 1;
-        cx = rnd(q.x + (out.x / ol) * 18 * f);
-        cy = rnd(q.y + (out.y / ol) * 8 * f - 10 * f);
-        half = rnd(6 + 3 * f);
+        const a = Math.PI / 2 + skidAt * Math.PI * 2;
+        const tg = { x: -Math.sin(a) * rx * dirK, y: Math.cos(a) * ry * dirK };
+        const tl = Math.hypot(tg.x, tg.y) || 1;
+        cx = rnd(q.x + (tg.x / tl) * 8 * f);
+        cy = rnd(q.y + (tg.y / tl) * 8 * f);
+        half = rnd(6 - 2 * f);
         col = f < 0.5 ? PAL.water4 : PAL.water2;
       } else if (t > 0.8) col = PAL.white;
+      void p;
       corners(ret, cx - half, cy - half, cx + half, cy + half, col);
     }
     // the plate: pops at 120 ms (one size bigger for 34 ms), holds 500, slides down 3 px and sinks in two steps

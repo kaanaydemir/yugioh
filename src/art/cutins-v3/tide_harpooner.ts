@@ -1,22 +1,21 @@
 // Kabuk Zıpkıncı — v3 cut-in portrait (200×144, faces right; ?look=v3 only), painted at the cut-in's own density
-// (about 3× the sprite: every whorl band, nacre band and stalk segment is drawn at this density, never the sprite enlarged).
+// (about 3× the sprite: every whorl step, nacre band, carapace plate and stalk joint is drawn at this density, never the
+// sprite enlarged). Repainted after critique round 2 (the stalks read as chopsticks, the mouth as an empty oval).
 //
-// "Kabuk ağzının karanlığında parlayan iki göz sapı": the band is filled by the MOUTH of the conch — the dark aperture well
-// (night0, a water0 depth band under its upper rim) framed on the right by the flared NACRE LIP in three flat bands
-// (white rim, water4, water3, a water2 underside), the shell's exterior whorls with spiral cords at the left and the top,
-// a mussel cluster and a coral sprig on the lip. Out of the darkness rise TWO EYE STALKS whose gold eyes light one after the
-// other; then the harpoon's stone head crosses the band on a diagonal and its tip glints. One key light from the top left,
-// flat value planes measured from each shape's edges, 1-px ink outline; light (eyes, glint) after the outline, never outlined.
-// P2 sees a RELIT set (p2: 'relight'): every band follows `lightFrom`.
+// "Kabuk ağzının karanlığında parlayan iki göz sapı": the band is the MOUTH of the conch, and the crab FILLS it — its
+// carapace front (a broad dome, a serrated brow with a fire joint band, granules), the mouthparts in stacked plates, two
+// SHORT JOINTED eye stalks (base segment, fire ring, eye segment) carrying big gold4 eyes that GLOW as light pixels (never
+// outlined) with a 1-px halo spilling into the dark well; the big claw raised across the lower band, gripping the harpoon,
+// the small claw with its rope coil at the lower left. The nacre lip frames it in three flat bands. The conch exterior is
+// a real spire: six stepped whorls along one axis, each a crescent strip under the next (an earth0 suture, a cast-shadow
+// band under it, a lit shoulder run, knobs on the shoulder, spiral cords) — a staircase of rounded steps.
 //
-// Rhythm (played once, last frame held; 8 drawn beats): f0 darkness, the lip barely lit · f1 the eye stalks POP up out of
-// the well (overshoot, eyes still dark) · f2 they settle, the left eye lights · f3 the right eye lights, the nacre brightens
-// · f4 the claws rise into the band: the small one with its rope coil, the big one gripping the harpoon · f5 the big
-// claw tightens on the shaft (fingers close a step), the harpoon slides up · f6 it crosses the band, the tip glints (cross),
-// eyes white-hot · f7 held: the coil swings back a px, the glint settles.
-// The conch exterior: four whorls of the spire (each its own flat earth bands, a 1-px earth0 seam between whorls, spiral
-// cords on their mid / shade planes, growth notches, shoulder knobs). The crab's face in the mouth: carapace brow with
-// its fire band, the mouth plates, two antennules; real eyeballs (an ink ball, a gold4 iris crescent, a white glint).
+// Rhythm (played once, last frame held; 8 drawn beats): f0 darkness — the face in shadow tones, only the two eyes glow
+// (gold3 + halo) · f1 the stalks POP (overshoot), the eyes flare gold4 · f2 they settle, the face is lit, the nacre
+// brightens and the harpoon's tip ENTERS the band at the lower right · f3 the claws rise · f4–f5 the big claw closes on
+// the shaft, the harpoon slides up · f6 it crosses the band: the tip glint (a white star) is the brightest point, the eyes
+// white-hot · f7 held: the eye flare HOLDS over the voice hand-off, the glint settles to a cross.
+// One key light from the top left (P2: relit, p2: 'relight'), flat value planes, 1-px ink outline; light after it.
 
 import type { CutinFactory } from '../cutins/index';
 import { PAL } from '../palette';
@@ -28,13 +27,14 @@ const W = 200;
 const H = 144;
 
 interface P {
-  eyeL: number;
-  eyeR: number;
-  nacre: number;
-  /** harpoon progress 0 (out of the band) … 1 (crossed) */
+  /** eye glow 0 dim (gold3) · 1 lit (gold4) · 2 white-hot flare */
+  eye: number;
+  /** the face lit (0 shadow tones, 1 lit) and the nacre bright */
+  lit: number;
+  /** harpoon progress 0 (just entering the band) … 1 (crossed); < 0 not in the band */
   harp: number;
   glint: number;
-  /** stalk extension 0 none · 1 popped (overshoot) · 2 settled */
+  /** stalk extension 1 popped (overshoot) · 2 settled · 0 tucked */
   stalk: number;
   /** claws rising into the band 0 … 1; the big claw's grip 0 open … 1 shut tight */
   claws: number;
@@ -43,16 +43,16 @@ interface P {
   coil: number;
 }
 const POSES: readonly P[] = [
-  { eyeL: 0, eyeR: 0, nacre: 0, harp: 0, glint: 0, stalk: 0, claws: 0, grip: 0, coil: 0 },
-  { eyeL: 0, eyeR: 0, nacre: 0, harp: 0, glint: 0, stalk: 1, claws: 0, grip: 0, coil: 0 },
-  { eyeL: 1, eyeR: 0, nacre: 0, harp: 0, glint: 0, stalk: 2, claws: 0, grip: 0, coil: 0 },
-  { eyeL: 1, eyeR: 1, nacre: 1, harp: 0, glint: 0, stalk: 2, claws: 0.2, grip: 0.3, coil: 0 },
-  { eyeL: 1, eyeR: 1, nacre: 1, harp: 0.3, glint: 0, stalk: 2, claws: 0.7, grip: 0.4, coil: -2 },
-  { eyeL: 1, eyeR: 1, nacre: 1, harp: 0.66, glint: 0, stalk: 2, claws: 1, grip: 1, coil: -3 },
-  { eyeL: 2, eyeR: 2, nacre: 1, harp: 1, glint: 2, stalk: 2, claws: 1, grip: 1, coil: 1 },
-  { eyeL: 2, eyeR: 2, nacre: 1, harp: 1, glint: 1, stalk: 2, claws: 1, grip: 1, coil: 0 },
+  { eye: 0, lit: 0, harp: -1, glint: 0, stalk: 0, claws: 0.3, grip: 0, coil: 0 },
+  { eye: 1, lit: 0, harp: -1, glint: 0, stalk: 1, claws: 0.45, grip: 0, coil: 0 },
+  { eye: 1, lit: 1, harp: 0, glint: 1, stalk: 2, claws: 0.6, grip: 0.2, coil: -1 },
+  { eye: 1, lit: 1, harp: 0.22, glint: 1, stalk: 2, claws: 0.85, grip: 0.4, coil: -2 },
+  { eye: 1, lit: 1, harp: 0.48, glint: 1, stalk: 2, claws: 1, grip: 0.7, coil: -3 },
+  { eye: 2, lit: 1, harp: 0.75, glint: 1, stalk: 2, claws: 1, grip: 1, coil: -1 },
+  { eye: 2, lit: 1, harp: 1, glint: 2, stalk: 2, claws: 1, grip: 1, coil: 1 },
+  { eye: 2, lit: 1, harp: 1, glint: 3, stalk: 2, claws: 1, grip: 1, coil: 0 },
 ];
-const HOLDS: readonly number[] = [170, 70, 80, 80, 70, 60, 90, 600];
+const HOLDS: readonly number[] = [160, 70, 80, 70, 70, 70, 90, 600];
 
 const SHELL: Tones = { L: PAL.earth3, M: PAL.earth2, S: PAL.earth1, D: PAL.earth0 };
 const CRAB: Tones = { L: PAL.earth4, M: PAL.earth3, S: PAL.earth2, D: PAL.earth1 };
@@ -73,56 +73,101 @@ function part(p: PixelCanvas, pts: readonly Pt[], t: Tones, ls: number, o: { lit
   return q;
 }
 
+const CRAB_DARK: Tones = { L: PAL.earth2, M: PAL.earth1, S: PAL.earth0, D: PAL.earth0 };
+
+/** Aperture-local radius (1 on the mouth's rim) of (x, y) for the mouth ellipse. */
+function apR(x: number, y: number, cx: number, cy: number, rx: number, ry: number, tilt: number): { r: number; u: number; v: number } {
+  const dx = x - cx;
+  const dy = y - cy;
+  const c = Math.cos(-tilt);
+  const s = Math.sin(-tilt);
+  const u = (dx * c - dy * s) / rx;
+  const v = (dx * s + dy * c) / ry;
+  return { r: Math.hypot(u, v), u, v };
+}
+
 const factory: CutinFactory = () => {
   function draw(p: PixelCanvas, frame: number, o?: DrawOpts): void {
     const ls: -1 | 1 = (o?.lightFrom ?? 'left') === 'left' ? -1 : 1;
     const P_ = POSES[Math.min(frame, POSES.length - 1)];
     const TILT = -0.42;
+    const C = P_.lit > 0 ? CRAB : CRAB_DARK;
 
-    // ---- the conch exterior: four whorls of the spire stacked up-left, the body whorl over them; every whorl its own
-    // flat bands, a 1-px earth0 seam where it overlaps the one above (the spiral reads as a staircase of rounded steps)
-    const WH: readonly [number, number, number, number][] = [
-      [4, 2, 14, 10],
-      [18, 14, 22, 15],
-      [36, 30, 32, 21],
-      [56, 50, 44, 29],
-    ];
+    // ---- the conch's SPIRE: six whorls along one axis from the body (lower left) to the apex (top left corner), drawn
+    // apex first so every lower whorl overlaps the one above — each upper whorl shows as a crescent strip, the spiral
+    // reads as a staircase of rounded steps (an earth0 suture, a cast-shadow band under it, a lit shoulder run)
+    const B: Pt = [62, 96];
+    const A: Pt = [-2, 0];
+    const axis = Math.atan2(A[1] - B[1], A[0] - B[0]);
+    const perp = axis + Math.PI / 2;
+    const NW = 6;
     const whorls: PixelCanvas[] = [];
-    for (const [cx, cy, rx, ry] of WH) whorls.push(part(p, ellPoly(cx, cy, rx, ry, TILT, 40), SHELL, ls, { lit: 3, top: 3, shade: 3, bottom: 3, deep: 1, sep: PAL.earth0 }));
-    const body = part(p, ellPoly(84, 100, 82, 66, TILT, 64), SHELL, ls, { lit: 6, top: 5, shade: 6, bottom: 5, deep: 4, sep: PAL.earth0 });
-    whorls.push(body);
-    // the lit crest of each whorl: one earth4 run along its upper-left edge (the key light catches the rounded step)
+    for (let k = NW - 1; k >= 0; k--) {
+      const t = k / NW;
+      const cx = B[0] + (A[0] - B[0]) * t * 0.95;
+      const cy = B[1] + (A[1] - B[1]) * t * 0.95;
+      const rx = 60 * Math.pow(1 - t, 1.05) + 5;
+      const ry = rx * 0.6;
+      const q = part(p, ellPoly(cx, cy, rx, ry, perp, 56), SHELL, ls, { lit: k === 0 ? 6 : 3, top: k === 0 ? 5 : 3, shade: k === 0 ? 6 : 3, bottom: 3, deep: k === 0 ? 4 : 1, sep: PAL.earth0 });
+      whorls.push(q);
+    }
+    // under every suture (the earth0 seam the next whorl drew on this one): a 2-px cast-shadow band on the upper whorl
+    for (let y = 1; y < H - 1; y++)
+      for (let x = 1; x < W - 1; x++) {
+        if (p.get(x, y) !== PAL.earth0) continue;
+        // walk up-left (toward the apex) two pixels: those sit in the overlapped whorl's shade
+        for (let d = 1; d <= 2; d++) {
+          const sx = Math.round(x + Math.cos(axis) * d);
+          const sy = Math.round(y + Math.sin(axis) * d);
+          const c = p.get(sx, sy);
+          if (c === SHELL.L || c === SHELL.M) p.set(sx, sy, d === 1 ? SHELL.D : SHELL.S);
+          else if (c === PAL.earth4) p.set(sx, sy, SHELL.S);
+        }
+      }
+    // the lit shoulder of each whorl: one earth4 run along its upper-left rim (the key light catches each step)
     for (const q of whorls)
       for (let y = 1; y < H; y++)
-        for (let x = 1; x < W; x++) if (q.isOpaque(x, y) && !q.isOpaque(x, y - 1) && !q.isOpaque(x + ls, y - 1) && p.get(x, y) === SHELL.L) p.set(x, y, PAL.earth4);
-    // shoulder knobs on the body whorl's top edge
-    for (const [kx, ky] of [[44, 40], [64, 30], [86, 24]] as const) part(p, [[kx - 7, ky + 12], [kx, ky - 3], [kx + 7, ky + 10]], SHELL, ls, { lit: 3, top: 2, shade: 3, bottom: 2 });
-    // spiral cords: 1-px seams following each whorl's lower curve, on its mid / shade planes only
+        for (let x = 1; x < W; x++) if (q.isOpaque(x, y) && !q.isOpaque(x + ls, y - 1) && p.get(x, y) === SHELL.L) p.set(x, y, PAL.earth4);
+    // knobs on the shoulders (one row per whorl), spiral cords inside each strip
+    for (let k = 1; k < NW - 1; k++) {
+      const t = k / NW;
+      const cx = B[0] + (A[0] - B[0]) * t * 0.95;
+      const cy = B[1] + (A[1] - B[1]) * t * 0.95;
+      const rx = 60 * Math.pow(1 - t, 1.05) + 5;
+      for (const a of [-0.55, -0.15, 0.25]) {
+        const kx = cx + Math.cos(perp) * rx * a * 1.4 + Math.cos(axis) * rx * 0.48;
+        const ky = cy + Math.sin(perp) * rx * a * 1.4 + Math.sin(axis) * rx * 0.48;
+        if (kx < 0 || ky < 0 || !p.isOpaque(Math.round(kx), Math.round(ky))) continue;
+        const r = Math.max(2, Math.round(rx * 0.09));
+        part(p, [[kx - r - 1, ky + r], [kx - 1, ky - r - 1], [kx + r, ky + r - 1]], SHELL, ls, { lit: 1, top: 1, shade: 1, bottom: 1 });
+      }
+    }
     const cord = (cx: number, cy: number, rx: number, ry: number, k: number) => {
-      const c = Math.cos(TILT);
-      const s2 = Math.sin(TILT);
-      for (let a = 0.1; a < Math.PI - 0.1; a += 0.01) {
+      const c = Math.cos(perp);
+      const s2 = Math.sin(perp);
+      for (let a = 0.15; a < Math.PI - 0.15; a += 0.008) {
         const ex = Math.cos(a) * rx * k;
-        const ey = Math.sin(a) * ry * k;
+        const ey = -Math.sin(a) * ry * k;
         const x = Math.round(cx + ex * c - ey * s2);
         const y = Math.round(cy + ex * s2 + ey * c);
         const col = p.get(x, y);
         if (col === SHELL.M) p.set(x, y, SHELL.S);
-        else if (col === SHELL.S) p.set(x, y, SHELL.D);
+        else if (col === SHELL.L) p.set(x, y, SHELL.M);
       }
     };
-    for (const [cx, cy, rx, ry] of WH) cord(cx, cy, rx, ry, 0.62);
-    cord(84, 100, 82, 66, 0.55);
-    cord(84, 100, 82, 66, 0.72);
-    cord(84, 100, 82, 66, 0.86);
-    // growth notches (mid / shade only): short 2-px dark ticks across the cords
-    for (const [nx, ny] of [[34, 100], [46, 112], [24, 64], [58, 124]] as const)
-      for (let d = 0; d < 3; d++) {
-        const col = p.get(nx + d, ny - d);
-        if (col === SHELL.M || col === SHELL.S) p.set(nx + d, ny - d, SHELL.D);
+    for (let k = 0; k < NW; k++) {
+      const t = k / NW;
+      const cx = B[0] + (A[0] - B[0]) * t * 0.95;
+      const cy = B[1] + (A[1] - B[1]) * t * 0.95;
+      const rx = 60 * Math.pow(1 - t, 1.05) + 5;
+      cord(cx, cy, rx, rx * 0.6, 0.8);
+      if (k === 0) {
+        cord(cx, cy, rx, rx * 0.6, 0.62);
+        cord(cx, cy, rx, rx * 0.6, 0.44);
       }
-    // a mussel cluster on the exterior (night2 / night3, water0 hinges)
-    for (const [mx, my] of [[18, 92], [28, 100], [14, 106]] as const) {
+    }
+    // a mussel cluster low on the body whorl (night2 / night3, water0 hinges)
+    for (const [mx, my] of [[20, 116], [31, 124], [16, 130]] as const) {
       const m = lay();
       m.poly(ellPoly(mx, my, 7, 4.5, -0.5, 20), PAL.night2);
       for (let y = my - 6; y <= my + 6; y++) for (let x = mx - 8; x <= mx + 8; x++) if (m.isOpaque(x, y) && run2(m, x, y)) m.set(x, y, PAL.night3);
@@ -131,11 +176,15 @@ const factory: CutinFactory = () => {
       p.blit(m, 0, 0);
     }
 
-    // ---- the nacre lip (three flat bands) and the dark mouth
+    // ---- the nacre lip (three flat bands) and the mouth (smaller than before: the crab fills it)
+    const MX = 122;
+    const MY = 78;
+    const MRX = 40;
+    const MRY = 52;
     const lipQ = lay();
-    lipQ.poly(ellPoly(122, 80, 66, 78, TILT, 64), PAL.water3);
+    lipQ.poly(ellPoly(MX + 12, MY - 2, MRX + 22, MRY + 18, TILT, 64), PAL.water3);
     const ap = lay();
-    ap.poly(ellPoly(106, 84, 48, 66, TILT, 64), PAL.night0);
+    ap.poly(ellPoly(MX, MY, MRX, MRY, TILT, 64), PAL.night0);
     for (let y = 0; y < H; y++)
       for (let x = 0; x < W; x++) {
         if (!lipQ.isOpaque(x, y)) continue;
@@ -143,94 +192,131 @@ const factory: CutinFactory = () => {
           lipQ.erase(x, y);
           continue;
         }
-        // distance (in aperture units) from the mouth: inner white rim, water4, water3, a water2 underside
-        const dx = x - 106;
-        const dy = y - 84;
-        const c = Math.cos(-TILT);
-        const s = Math.sin(-TILT);
-        const u = (dx * c - dy * s) / 48;
-        const v = (dx * s + dy * c) / 66;
-        const r = Math.hypot(u, v);
-        const bright = P_.nacre > 0;
-        let col: number = r < 1.07 ? (bright ? PAL.white : PAL.water4) : r < 1.2 ? (bright ? PAL.water4 : PAL.water3) : PAL.water3;
-        if (r >= 1.2 && v > 0.55) col = PAL.water2;
+        const { r, v } = apR(x, y, MX, MY, MRX, MRY, TILT);
+        const bright = P_.lit > 0;
+        let col: number = r < 1.07 ? (bright ? PAL.white : PAL.water3) : r < 1.22 ? (bright ? PAL.water4 : PAL.water2) : bright ? PAL.water3 : PAL.water2;
+        if (r >= 1.22 && v > 0.5) col = bright ? PAL.water2 : PAL.water1;
         lipQ.set(x, y, col);
       }
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (!lipQ.isOpaque(x, y) && p.isOpaque(x, y) && (lipQ.isOpaque(x - 1, y) || lipQ.isOpaque(x, y - 1) || lipQ.isOpaque(x, y + 1))) p.set(x, y, PAL.water1);
     p.blit(lipQ, 0, 0);
+    // growth lines across the lip (1-px water2 arcs on the outer bands)
+    for (const k of [1.32, 1.46]) {
+      for (let a = -1.3; a < 1.6; a += 0.006) {
+        const ex = Math.cos(a) * MRX * k;
+        const ey = Math.sin(a) * MRY * k;
+        const x = Math.round(MX + ex * Math.cos(TILT) - ey * Math.sin(TILT));
+        const y = Math.round(MY + ex * Math.sin(TILT) + ey * Math.cos(TILT));
+        const c = p.get(x, y);
+        if (c === PAL.water3) p.set(x, y, PAL.water2);
+        else if (c === PAL.water4) p.set(x, y, PAL.water3);
+      }
+    }
     // the well: night0, a water0 depth band under its upper rim
     for (let y = 0; y < H; y++)
       for (let x = 0; x < W; x++) {
         if (!ap.isOpaque(x, y)) continue;
-        const dx = x - 106;
-        const dy = y - 84;
-        const c = Math.cos(-TILT);
-        const s = Math.sin(-TILT);
-        const u = (dx * c - dy * s) / 48;
-        const v = (dx * s + dy * c) / 66;
-        const r = Math.hypot(u, v);
-        ap.set(x, y, r > 0.84 && v < 0.1 ? PAL.water0 : PAL.night0);
+        const { r, v } = apR(x, y, MX, MY, MRX, MRY, TILT);
+        ap.set(x, y, r > 0.86 && v < 0.2 ? PAL.water0 : PAL.night0);
+      }
+    // the columella: the inner spiral turning away into the dark (two night1 / night2 bands on the well's left side)
+    for (let a = 2.0; a < 4.3; a += 0.006)
+      for (const [k, col] of [[0.7, PAL.night2], [0.62, PAL.night1], [0.44, PAL.night1]] as const) {
+        const ex = Math.cos(a) * MRX * k;
+        const ey = Math.sin(a) * MRY * k * 0.95;
+        const x = Math.round(MX - 4 + ex * Math.cos(TILT) - ey * Math.sin(TILT));
+        const y = Math.round(MY + ex * Math.sin(TILT) + ey * Math.cos(TILT));
+        if (ap.isOpaque(x, y) && ap.get(x, y) === PAL.night0) ap.set(x, y, col);
       }
     p.blit(ap, 0, 0);
-    // coral sprig on the lip's top (fire2 / fire3, ≥ 3-px branches)
+    // coral sprig on the lip's top
     const cq = lay();
-    cq.poly(taperPoly([150, 26], [160, 4], 7, 5), PAL.fire2);
-    cq.poly(taperPoly([154, 16], [146, 2], 5, 4), PAL.fire2);
-    cq.poly(taperPoly([157, 14], [172, 8], 5, 4), PAL.fire2);
+    cq.poly(taperPoly([160, 22], [168, 2], 7, 5), PAL.fire2);
+    cq.poly(taperPoly([163, 13], [155, 0], 5, 4), PAL.fire2);
+    cq.poly(taperPoly([166, 11], [180, 6], 5, 4), PAL.fire2);
     bands(cq, { L: PAL.fire3, M: PAL.fire2, S: PAL.fire1, D: PAL.fire1 }, ls, { lit: 2, top: 2, shade: 2, bottom: 0 });
     p.blit(cq, 0, 0);
 
-    // ---- out of the dark: the carapace's brow, the mouth plates, two antennules and the two eye stalks
-    const pop = P_.stalk === 1 ? -7 : 0; // the overshoot
-    const sl: Pt = [84, 46 + pop];
-    const sr: Pt = [124, 38 + pop - 2];
-    if (P_.stalk > 0) {
-      part(p, ellPoly(104, 136, 36, 22, -0.1, 40), CRAB, ls, { lit: 4, top: 3, shade: 4, bottom: 3, sep: PAL.night0 });
-      // the fire band across the brow, the brow's lit ridge
-      for (let x = 70; x < 140; x++) for (let y = 124; y < 127; y++) if (p.get(x, y) === CRAB.M || p.get(x, y) === CRAB.L) p.set(x, y, PAL.fire1);
-      // mouth plates (maxillipeds): three flat slats under the brow
-      for (const mx of [94, 102, 110]) {
+    // ---- the crab's FACE in the mouth: carapace front (dome + serrated brow), eye sockets, mouthparts
+    const pop = P_.stalk === 1 ? -6 : 0;
+    const face = part(p, ellPoly(120, 114, 52, 32, -0.08, 56), C, ls, { lit: 5, top: 4, shade: 6, bottom: 4, deep: 2, sep: PAL.night0 });
+    // the frontal teeth along the brow (five small points), the rostrum in the middle
+    for (const [tx, ty, r] of [[82, 92, 4], [96, 86, 4], [120, 82, 5], [143, 84, 4], [158, 90, 4]] as const)
+      part(p, [[tx - r, ty + r + 3], [tx, ty - r], [tx + r, ty + r + 3]], C, ls, { lit: 2, top: 2, shade: 2, bottom: 1, sep: PAL.night0 });
+    // the brow's fire joint band (2 px under the brow ridge) and granules on the dome
+    for (let x = 70; x < 172; x++) {
+      let top = -1;
+      for (let y = 78; y < 130; y++)
+        if (face.isOpaque(x, y)) {
+          top = y;
+          break;
+        }
+      if (top < 0) continue;
+      for (const y of [top + 6, top + 7]) if (p.get(x, y) === C.M || p.get(x, y) === C.L || p.get(x, y) === C.S) p.set(x, y, P_.lit > 0 ? PAL.fire2 : PAL.fire1);
+      if (p.get(x, top + 8) === C.M || p.get(x, top + 8) === C.L) p.set(x, top + 8, PAL.fire1);
+    }
+    for (const [gx2, gy2] of [[96, 104], [104, 110], [138, 104], [146, 110], [90, 116], [152, 118], [84, 108], [158, 110]] as const) {
+      p.set(gx2, gy2, P_.lit > 0 ? PAL.earth4 : PAL.earth2);
+      p.set(gx2 + 1, gy2 + 1, C.S);
+    }
+    // eye sockets (two dark notches the stalks rise out of)
+    const sockL: Pt = [106, 96];
+    const sockR: Pt = [136, 94];
+    for (const sk of [sockL, sockR]) {
+      const q = lay();
+      q.poly(ellPoly(sk[0], sk[1], 6, 3.5, 0, 20), PAL.night1);
+      p.blit(q, 0, 0);
+    }
+    // mouthparts: three stacked plate pairs (maxillipeds) under the brow, ink seams, fire tips
+    for (let r = 0; r < 3; r++)
+      for (const sd of [-1, 1]) {
+        const x0 = 121 + sd * (2 + r);
+        const y0 = 112 + r * 7;
+        const w = 9 - r;
         const m = lay();
-        m.poly([[mx, 130], [mx + 6, 130], [mx + 5, 144], [mx + 1, 144]], CRAB.S);
-        bands(m, { L: CRAB.M, M: CRAB.S, S: CRAB.D, D: CRAB.D }, ls, { lit: 1, top: 1, shade: 1, bottom: 0 });
+        m.poly(sd < 0 ? [[x0 - w, y0], [x0, y0 - 1], [x0, y0 + 6], [x0 - w + 1, y0 + 7]] : [[x0, y0 - 1], [x0 + w, y0], [x0 + w - 1, y0 + 7], [x0, y0 + 6]], C.S);
+        bands(m, { L: C.M, M: C.S, S: C.D, D: C.D }, ls, { lit: 2, top: 1, shade: 2, bottom: 1 });
         p.blit(m, 0, 0);
-        for (let y = 130; y < 144; y++) if (p.get(mx - 1, y) !== null) p.set(mx - 1, y, PAL.earth0);
+        p.set(sd < 0 ? x0 - w : x0 + w - 1, y0 + 1, P_.lit > 0 ? PAL.fire2 : PAL.fire1);
       }
-      // antennules: two thin feelers flicking out between the stalks
-      const ant = lay();
-      ant.poly(taperPoly([100, 122], [92 - (P_.stalk === 1 ? 4 : 0), 92], 3, 1.5), CRAB.L);
-      ant.poly(taperPoly([108, 122], [114 + (P_.stalk === 1 ? 4 : 0), 90], 3, 1.5), CRAB.L);
-      p.blit(ant, 0, 0);
-      part(p, taperPoly([92, 128], sl, 11, 8), CRAB, ls, { lit: 3, top: 2, shade: 3, bottom: 0 });
-      part(p, taperPoly([114, 126], sr, 11, 8), CRAB, ls, { lit: 3, top: 2, shade: 3, bottom: 0 });
-      // stalk joint bands
-      for (const [a, b] of [[[92, 128], sl], [[114, 126], sr]] as const) {
-        const jx = Math.round(a[0] + (b[0] - a[0]) * 0.55);
-        const jy = Math.round(a[1] + (b[1] - a[1]) * 0.55);
-        for (let x = jx - 5; x <= jx + 5; x++) for (let y = jy - 1; y <= jy + 1; y++) if (p.get(x, y) === CRAB.M || p.get(x, y) === CRAB.L || p.get(x, y) === CRAB.S) p.set(x, y, PAL.fire1);
-      }
-      // the eyeballs: an ink ball on each stalk (the iris and glint are light, after the outline)
-      for (const e of [sl, sr]) {
-        const b = lay();
-        b.poly(ellPoly(e[0], e[1] - 5, 8, 8, 0, 28), PAL.night1);
-        p.blit(b, 0, 0);
+    p.rect(120, 110, 2, 32, PAL.earth0);
+
+    // ---- the SHORT JOINTED eye stalks: base segment, a fire ring, the eye segment; the eyes are light (below)
+    const eyes: Pt[] = [];
+    {
+      // tucked (f0): only the eye segment shows above the socket; popped / settled: the two segments
+      const ext = P_.stalk === 0 ? 0.45 : 1;
+      for (const [sk, lean] of [[sockL, -1], [sockR, 1]] as const) {
+        const j1: Pt = [sk[0] + lean * 3 * ext, sk[1] - 10 * ext + pop * 0.5];
+        const e: Pt = [sk[0] + lean * 5 * ext, sk[1] - 21 * ext + pop];
+        part(p, taperPoly([sk[0], sk[1] + 1], j1, 7, 6), C, ls, { lit: 2, top: 1, shade: 2, bottom: 0, sep: PAL.night0 });
+        part(p, taperPoly(j1, e, 6, 5), C, ls, { lit: 2, top: 1, shade: 2, bottom: 0, sep: PAL.night0 });
+        // the joint ring
+        for (let d = -3; d <= 3; d++) {
+          p.set(Math.round(j1[0] + d), Math.round(j1[1]), P_.lit > 0 ? PAL.fire2 : PAL.fire1);
+          p.set(Math.round(j1[0] + d), Math.round(j1[1]) + 1, PAL.fire1);
+        }
+        // the eye's cup (an ink-dark socket the light sits in)
+        const cupQ = lay();
+        cupQ.poly(ellPoly(e[0], e[1] - 3, 8, 7, 0, 24), PAL.night1);
+        p.blit(cupQ, 0, 0);
+        eyes.push([e[0], e[1] - 3]);
       }
     }
 
-    // ---- the small claw with its rope coil (lower left) and the big claw (lower right) rising into the band
-    const rise = Math.round((1 - P_.claws) * 40);
-    if (P_.claws > 0) {
-      // small claw: arm, palm, two short fingers holding the coil
+    // ---- the small claw with its rope coil (lower left)
+    const rise = Math.round((1 - P_.claws) * 36);
+    {
       const fy = 120 + rise;
-      part(p, taperPoly([46, 150], [62, fy + 4], 12, 9), CRAB, ls, { lit: 3, top: 2, shade: 3, bottom: 2, sep: PAL.night0 });
-      part(p, ellPoly(64, fy, 11, 8, -0.3, 28), CRAB, ls, { lit: 3, top: 2, shade: 3, bottom: 2 });
-      part(p, taperPoly([70, fy - 4], [80, fy - 12], 5, 3), CRAB, ls, { lit: 2, top: 1, shade: 2, bottom: 1 });
-      part(p, taperPoly([72, fy + 2], [82, fy - 4], 5, 3), CRAB, ls, { lit: 2, top: 1, shade: 2, bottom: 1 });
-      for (const [tx, ty] of [[79, fy - 11], [81, fy - 4]] as const) p.rect(tx - 1, ty - 1, 2, 2, PAL.fire2);
-      // the rope coil hanging from it: three loops, a 3-px rope (lit earth4 top, earth1 underside)
+      part(p, taperPoly([40, 152], [58, fy + 6], 14, 10), C, ls, { lit: 3, top: 2, shade: 3, bottom: 2, sep: PAL.night0 });
+      part(p, ellPoly(62, fy, 13, 9, -0.3, 28), C, ls, { lit: 3, top: 2, shade: 3, bottom: 2, deep: 1 });
+      part(p, taperPoly([70, fy - 5], [82, fy - 14], 6, 3), C, ls, { lit: 2, top: 1, shade: 2, bottom: 1 });
+      part(p, taperPoly([72, fy + 2], [84, fy - 5], 6, 3), C, ls, { lit: 2, top: 1, shade: 2, bottom: 1 });
+      for (const [tx, ty] of [[81, fy - 13], [83, fy - 5]] as const) p.rect(tx - 1, ty - 1, 2, 2, PAL.fire2);
+      for (let x = 50; x < 58; x++) for (let y = fy + 2; y < fy + 5; y++) if (p.get(x, y) === C.M || p.get(x, y) === C.S) p.set(x, y, PAL.fire1);
       for (let j = 2; j >= 0; j--) {
         const cx = 76 + j * 2 + P_.coil * (0.5 + j * 0.3);
-        const cy = fy + 10 + j * 2;
+        const cy = fy + 12 + j * 2;
         const r = 7 + j * 1.5;
         for (let a = 0; a < Math.PI * 2; a += 0.04) {
           const x = Math.round(cx + Math.cos(a) * r * 0.62);
@@ -241,96 +327,98 @@ const factory: CutinFactory = () => {
         }
       }
     }
-    // ---- the harpoon crossing the band up the right side, held in the big claw's grip (in front of everything): the
-    // claw rises with it from below, its fixed finger under the shaft, the dactyl closing OVER it
-    const hdir: Pt = [0.45, -0.89];
-    const tipAt = (t: number): Pt => [150 + 40 * t, 112 - 80 * t];
-    const GRIP_A = 60;
-    const ht = P_.harp > 0 ? P_.harp : P_.claws > 0 ? -0.2 + 0.2 * P_.claws : -1;
-    const tipNow = tipAt(ht);
-    const n: Pt = [-hdir[1], hdir[0]];
-    const at = (a: number, c: number): Pt => [tipNow[0] - hdir[0] * a + n[0] * c, tipNow[1] - hdir[1] * a + n[1] * c];
-    const [gx, gy] = at(GRIP_A, 0);
-    if (P_.claws > 0) {
-      part(p, taperPoly([206, 160], [gx + 16, gy + 14], 18, 14), CRAB, ls, { lit: 4, top: 3, shade: 4, bottom: 3, sep: PAL.night0 });
-      part(p, ellPoly(gx + 8, gy + 7, 17, 12, 0.5, 36), CRAB, ls, { lit: 5, top: 4, shade: 5, bottom: 4, deep: 2, sep: PAL.night0 });
-      // the fixed finger: under the shaft, across it toward the far side
-      const ff = at(GRIP_A - 2, -12);
-      part(p, taperPoly([gx + 2, gy + 4], ff, 9, 4), CRAB, ls, { lit: 2, top: 2, shade: 2, bottom: 2, sep: PAL.earth0 });
-      p.rect(Math.round(ff[0]) - 1, Math.round(ff[1]) - 1, 3, 2, PAL.fire2);
-      for (let x = Math.round(gx + 14); x < gx + 20; x++) for (let y = Math.round(gy + 10); y < gy + 20; y++) if (p.get(x, y) === CRAB.M || p.get(x, y) === CRAB.S) p.set(x, y, PAL.fire1);
+
+    // ---- the BIG claw raised across the lower band, gripping the harpoon; the harpoon crosses the band up the right
+    const hdir: Pt = [0.42, -0.91];
+    const hn: Pt = [-hdir[1], hdir[0]];
+    const tipAt = (t: number): Pt => [166 + 22 * t, 98 - 74 * t];
+    const harpIn = P_.harp >= 0;
+    const tipNow = tipAt(Math.max(0, P_.harp));
+    const at = (a: number, c: number): Pt => [tipNow[0] - hdir[0] * a + hn[0] * c, tipNow[1] - hdir[1] * a + hn[1] * c];
+    const GRIP_A = 52;
+    const [gx, gy] = harpIn ? at(GRIP_A, 0) : [170, 132];
+    const cy0 = gy + rise * 0.6;
+    part(p, taperPoly([212, 164], [gx + 18, cy0 + 16], 22, 16), C, ls, { lit: 4, top: 3, shade: 4, bottom: 3, sep: PAL.night0 });
+    // the palm: a big flat-banded chela across the lower right of the face
+    part(p, ellPoly(gx + 4, cy0 + 8, 24, 15, 0.35, 40), C, ls, { lit: 5, top: 4, shade: 6, bottom: 4, deep: 2, sep: PAL.night0 });
+    for (let x = Math.round(gx + 16); x < gx + 24; x++) for (let y = Math.round(cy0 + 14); y < cy0 + 24; y++) if (p.get(x, y) === C.M || p.get(x, y) === C.S) p.set(x, y, PAL.fire1);
+    for (const [kx, ky] of [[gx - 6, cy0 + 4], [gx + 2, cy0 + 1], [gx + 10, cy0 + 3]] as const) {
+      p.set(Math.round(kx), Math.round(ky), P_.lit > 0 ? PAL.earth4 : PAL.earth2);
+      p.set(Math.round(kx) + 1, Math.round(ky) + 1, C.S);
     }
-    if (P_.harp > 0) {
-      const dir = hdir;
+    // the fixed finger (under the shaft, across toward the face)
+    const ff: Pt = harpIn ? at(GRIP_A - 2, -14) : [gx - 22, cy0 - 2];
+    part(p, taperPoly([gx - 6, cy0 + 4], ff, 11, 4), C, ls, { lit: 2, top: 2, shade: 2, bottom: 2, sep: PAL.earth0 });
+    p.rect(Math.round(ff[0]) - 1, Math.round(ff[1]) - 1, 3, 2, PAL.fire2);
+    if (harpIn) {
       const head = 30;
       const shaft = lay();
       shaft.poly([at(head - 4, -4), at(240, -4), at(240, 4), at(head - 4, 4)], PAL.earth2);
-      bands(shaft, { L: PAL.earth2, M: PAL.earth2, S: PAL.earth1, D: PAL.earth1 }, ls, { lit: 3, top: 3, shade: 4, bottom: 4 });
-      // driftwood knots
-      for (const k of [84, 118]) {
+      bands(shaft, { L: PAL.earth3, M: PAL.earth2, S: PAL.earth1, D: PAL.earth1 }, ls, { lit: 2, top: 2, shade: 3, bottom: 3 });
+      for (const k of [78, 112]) {
         const [x, y] = at(k, 1);
         shaft.rect(Math.round(x), Math.round(y), 2, 2, PAL.earth0);
       }
       p.blit(shaft, 0, 0);
-      // lashing
       const lash = lay();
       lash.poly([at(head + 8, -6), at(head - 2, -6), at(head - 2, 6), at(head + 8, 6)], PAL.earth3);
       bands(lash, { L: PAL.earth4, M: PAL.earth3, S: PAL.earth2, D: PAL.earth1 }, ls, { lit: 2, top: 2, shade: 2, bottom: 2 });
       for (const k of [2, 5]) for (let c = -6; c <= 6; c++) { const [x, y] = at(head + k, c); lash.set(Math.round(x), Math.round(y), PAL.earth1); }
       p.blit(lash, 0, 0);
-      // stone head: leaf blade + two barbs
       const hq = lay();
       hq.poly([at(head, -5), at(head * 0.55, -10), at(0, 0), at(head * 0.55, 10), at(head, 5)], STONE.M);
       hq.poly([at(head - 2, -8), at(head + 8, -15), at(head * 0.62, -10)], STONE.M);
       hq.poly([at(head - 2, 8), at(head + 8, 15), at(head * 0.62, 10)], STONE.M);
       bands(hq, STONE, ls, { lit: 3, top: 3, shade: 3, bottom: 3 });
-      // the blade's ridge
       for (let a = 2; a < head - 2; a++) { const [x, y] = at(a, 0); hq.set(Math.round(x), Math.round(y), PAL.stone4); }
       p.blit(hq, 0, 0);
-      void dir;
     }
-    if (P_.claws > 0) {
-      // the dactyl closing over the shaft (a step tighter from f4 to f5)
-      const close = P_.grip;
-      const df = at(GRIP_A + 6 - close * 6, 9 - close * 3);
-      part(p, taperPoly([gx + 6, gy - 2], df, 10, 4), CRAB, ls, { lit: 3, top: 2, shade: 2, bottom: 2, sep: PAL.earth0 });
-      p.rect(Math.round(df[0]) - 1, Math.round(df[1]) - 1, 3, 2, PAL.fire2);
-    }
+    // the dactyl closing over the shaft (tighter frame by frame)
+    const df: Pt = harpIn ? at(GRIP_A + 8 - P_.grip * 8, 12 - P_.grip * 4) : [gx - 18, cy0 - 14];
+    part(p, taperPoly([gx + 4, cy0 - 4], df, 12, 4), C, ls, { lit: 3, top: 2, shade: 2, bottom: 2, sep: PAL.earth0 });
+    p.rect(Math.round(df[0]) - 1, Math.round(df[1]) - 1, 3, 2, PAL.fire2);
 
     p.outline(PAL.ink);
 
-    // ---- light: the eyes (gold iris crescent + white glint on the ink ball), the tip glint
-    const eye = (e: Pt, lvl: number) => {
-      if (lvl <= 0) return;
+    // ---- light (never outlined): the EYES glow in the dark well, a 1-px halo spills onto the dark pixels round them
+    const dark = (c: number | null) => c === PAL.night0 || c === PAL.night1 || c === PAL.water0 || c === PAL.ink || c === null;
+    for (const e of eyes) {
       const x = Math.round(e[0]);
-      const y = Math.round(e[1] - 5);
-      const fx = ls < 0 ? 1 : -1; // the iris looks forward (right), the glint sits toward the light
-      // iris crescent on the forward half of the ball
-      for (let dy = -4; dy <= 4; dy++)
-        for (let dx = -4; dx <= 4; dx++) {
+      const y = Math.round(e[1]);
+      const R = P_.eye >= 2 ? 6.2 : 5.6;
+      // halo first (only on dark pixels): gold1 ring, gold2 inner ring when flaring
+      for (let dy = -10; dy <= 10; dy++)
+        for (let dx = -10; dx <= 10; dx++) {
           const r = Math.hypot(dx, dy);
-          if (r > 4.6 || r < 2.2) continue;
-          if (dx * 1 + dy * 0.2 < 0.5) continue;
-          p.set(x + dx, y + dy, lvl >= 2 ? PAL.gold4 : PAL.gold3);
+          if (r <= R + 0.4 || r > R + (P_.eye >= 2 ? 2.6 : 1.6)) continue;
+          if (!dark(p.get(x + dx, y + dy))) continue;
+          p.set(x + dx, y + dy, P_.eye >= 2 && r <= R + 1.5 ? PAL.gold2 : PAL.gold1);
         }
-      p.rect(x + 1, y - 1, 3, 3, lvl >= 2 ? PAL.white : PAL.gold4);
-      // the glint: 2 px toward the key light
-      p.rect(x - 3 + (fx < 0 ? 4 : 0), y - 4, 2, 1, PAL.white);
-      p.set(x - 3 + (fx < 0 ? 4 : 0), y - 3, PAL.white);
-    };
-    if (P_.stalk > 0) {
-      eye(sl, P_.eyeL);
-      eye(sr, P_.eyeR);
+      for (let dy = -7; dy <= 7; dy++)
+        for (let dx = -7; dx <= 7; dx++) {
+          const r = Math.hypot(dx, dy * 1.08);
+          if (r > R) continue;
+          let col: number = P_.eye === 0 ? PAL.gold2 : PAL.gold3;
+          if (r < R - 1.4) col = P_.eye === 0 ? PAL.gold3 : PAL.gold4;
+          if (dy > R - 2 && P_.eye > 0) col = PAL.gold2;
+          p.set(x + dx, y + dy, col);
+        }
+      // the hot core toward the key light, and the forward-looking pupil slit (ink-free: a gold1 bar)
+      const kx = ls < 0 ? -1 : 1;
+      const core = P_.eye >= 2 ? 3 : 2;
+      if (P_.eye > 0) p.rect(x + kx * 2 - (core > 2 ? 1 : 0), y - 2, core, core, PAL.white);
+      p.rect(x + (ls < 0 ? 2 : -2), y - 1, 1, 3, PAL.gold1);
     }
-    if (P_.harp > 0 && P_.glint > 0) {
-      const [tx, ty] = tipAt(P_.harp);
-      const x = Math.round(tx) - 2;
-      const y = Math.round(ty) + 1;
+    // the tip glint: the brightest point of the band (a white star; a cross on the held frame)
+    if (harpIn && P_.glint > 0) {
+      const [tx, ty] = tipNow;
+      const x = Math.round(tx);
+      const y = Math.round(ty);
       p.rect(x - 1, y - 1, 3, 3, PAL.white);
-      if (P_.glint >= 2) {
-        p.rect(x - 5, y, 11, 1, PAL.white);
-        p.rect(x, y - 5, 1, 11, PAL.white);
-      }
+      const arm = P_.glint === 2 ? 7 : P_.glint === 3 ? 5 : 3;
+      p.rect(x - arm, y, arm * 2 + 1, 1, PAL.white);
+      p.rect(x, y - arm, 1, arm * 2 + 1, PAL.white);
+      if (P_.glint === 2) for (let d = 1; d <= 3; d++) for (const [sx, sy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]] as const) p.set(x + sx * d, y + sy * d, d < 3 ? PAL.white : PAL.water4);
     }
   }
   return { id: 'tide_harpooner', w: W, h: H, frames: POSES.length, fps: 8, accent: PAL.water3, accentDark: PAL.water1, holds: HOLDS, p2: 'relight', draw };

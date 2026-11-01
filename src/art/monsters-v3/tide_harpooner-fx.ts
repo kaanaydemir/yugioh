@@ -198,9 +198,19 @@ export function shroudWall(p: PixelCanvas, cx: number, cy: number, half: 'back' 
     if (o.curl && o.curlAt !== undefined) {
       let d = Math.abs(u - o.curlAt);
       d = Math.min(d, 1 - d);
-      const k = Math.max(0, 1 - d / 0.06);
+      const k = Math.max(0, 1 - d / 0.075);
       h = Math.max(h, 10 * o.curl * k * k * (3 - 2 * k));
     }
+    // the travelling crest bumps: three 1-px lumps on the top edge a third of the ring apart, riding the crest clock
+    // (the lead one 2 px), so the standing wall laps instead of reading as a rigid hoop
+    let bump = 0;
+    if (col <= 0 && h >= 1)
+      for (let b = 0; b < 3; b++) {
+        let db = Math.abs(u - ((o.crest + b * 0.34) % 1));
+        db = Math.min(db, 1 - db);
+        if (db < 0.022) bump = Math.max(bump, b === 0 && db < 0.01 ? 2 : 1);
+      }
+    if (!(o.curl && o.curl > 0.3 && h > 3)) h += bump;
     const hh = rnd(h);
     // a 1-px night0 under-line: the wall stands on the floor, apart from the tile grid
     if (hh >= 1 && col <= 0) p.set(x, y + 1, PAL.night0);
@@ -209,8 +219,10 @@ export function shroudWall(p: PixelCanvas, cx: number, cy: number, half: 'back' 
       if ((i & 3) !== 3) p.set(x, y, col < 0.6 ? PAL.water4 : PAL.water3);
       continue;
     }
+    // the lap texture: the body's water2 broken by short water3 runs that drift round with the crest clock
+    const lap = (Math.floor(u * 96 + o.crest * 192) % 6 + 6) % 6 < 2;
     for (let k = 0; k <= hh; k++) {
-      const c = k === hh ? PAL.water4 : k >= hh - 1 && hh >= 3 ? PAL.water3 : k === 0 ? PAL.water3 : PAL.water2;
+      const c = k === hh ? (bump > 0 && k >= 2 ? PAL.white : PAL.water4) : k >= hh - 1 && hh >= 3 ? PAL.water3 : k === 0 ? PAL.water3 : lap ? PAL.water3 : PAL.water2;
       p.set(x, y - k, c);
     }
     // crest: a 3-px white foam run on the top edge
