@@ -40,7 +40,7 @@ import type { GameEvent, PlayerId } from '../../engine/types';
 import { PAL } from '../../art/palette';
 import type { AnyMonsterAnim } from '../../art/types';
 import { AX, GY, PANEL_STEP, insidePanel } from '../../art/monsters-v3/kite_fencer-rig';
-import { attackPose, framePoints, panelPoint, panelTri, tailPoint } from '../../art/monsters-v3/kite_fencer-anims';
+import { attackPose, bodyFront, framePoints, panelPoint, panelTri, tailPoint } from '../../art/monsters-v3/kite_fencer-anims';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { Disposable } from '../../duel/types';
 import { onDuelStart } from '../../duel/seeds';
@@ -543,25 +543,97 @@ async function blockedPike(s: StrikeArgs, at: XY, stop: XY, home: XY, depth0: nu
 /**
  * Attack 2's beat lengths (scene ms; the cinematic plays the frames on its own clock so the flight, the sounds and
  * the frames stay locked): charge 220 (f1–f4), rise 170 (f5–f6), the downswing 260 (f7 → f8 → f9, accelerating), the
- * carry-through 160 (f10: it leaves the bottom at the downswing's own speed, the moment the hit-stop lets go, and
- * slows over the top), the glide 220 (f11), the landing 100 + 60 (f12, f13) — ≈ 1.2 s + the 0.3 s declaration
+ * carry-through 210 (f10: the cloak snatches him UP beside the foe and over its head to the far side, leaving the
+ * bottom at the downswing's own speed and slowing to the apex), the glide 250 (f11: the wind spills at the apex, he
+ * glides back over the foe's head and home), the landing 90 + 50 (f12, f13) — ≈ 1.27 s + the 0.3 s declaration
  * (spec 2.2 s ÷ 1.25 = 1.75 s scene, trimmed to fit the 3.19 s gate with a slow-dying target).
  */
-const KT = { c1: 50, c2: 55, c3: 55, c4: 60, r5: 85, r6: 85, down: 260, exit: 160, glide: 220, land: 100, settle: 60 };
+const KT = { c1: 50, c2: 55, c3: 55, c4: 60, r5: 85, r6: 85, down: 260, exit: 210, glide: 250, land: 90, settle: 50 };
 /** The pendulum: the start angle, how far behind his home tile the swing starts (px). */
 const TH0 = (85 * Math.PI) / 180;
 const BACK = 12;
+/** The gap (px) between his body's leading edge and the target's near edge at the bottom of the swing. */
+const CUT_GAP = 4;
+/** Clearances of the carry-through / glide over the target (px): feet over its top row, past its far edge. */
+const OVER_TOP = 5;
+const PAST_FAR = 8;
+/** Half the body's width around the anchor while it flies (px), for the clearance checks. */
+const FLY_HALF_W = 8;
+/** The blade's sweep in the FLOOR plane (deg, facing right: 180 = drawn back behind the hip, 0 = level forward). */
+const SWEEP_FROM = 178;
+/** The iso flattening of that floor-plane circle on screen (a horizontal sweep reads as a flat ellipse). */
+const SWEEP_SQ = 0.3;
+
+type Box = { x0: number; x1: number; y0: number; y1: number };
+const boundsCache = new Map<string, { x0: number; y0: number; x1: number; y1: number } | null>();
 /**
- * The carry-through after the cut, in SCREEN space (the same for both players, mirrored): the body runs on PAST the
- * target's centre line by EX_PAST px and rises EX_RISE px over the cut point, along a circular arc that leaves the
- * bottom level (the swing's own tangent) and turns up — drawn behind the target, so it never crosses its body.
+ * The target's live silhouette box (screen px), read from the pixels of the frame its sprite shows now (frame px →
+ * world through MonsterUnit.framePoint: flip, trim and position aware); a face-down card: a box round its core.
  */
-const EX_PAST = 20;
-const EX_RISE = 12;
-/** The rapier's angle (deg, facing right; + = tip down) through the swing: coming over (f8) → swept across → follow-through. */
-const PHI_F8 = -38;
-const PHI_CUT = 46;
-const PHI_OUT = 74;
+function targetBox(t: MonsterUnit | null | undefined, core: XY, floor: number): Box {
+  const spr = t?.sprite;
+  if (t && spr && spr.active && spr.visible) {
+    const fr = spr.frame;
+    const key = `${spr.texture.key}|${fr.name}`;
+    let b = boundsCache.get(key);
+    if (b === undefined) {
+      b = null;
+      const tm = spr.scene.textures;
+      let x0 = Infinity;
+      let y0 = Infinity;
+      let x1 = -1;
+      let y1 = -1;
+      // (TextureManager.getPixel takes the art's full-frame px and handles a trimmed / cropped frame itself)
+      for (let y = 0; y < fr.realHeight; y++)
+        for (let x = 0; x < fr.realWidth; x++) {
+          const c = tm.getPixel(x, y, spr.texture.key, fr.name);
+          if (!c || c.alpha < 128) continue;
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+          if (y < y0) y0 = y;
+          if (y > y1) y1 = y;
+        }
+      if (x1 >= 0) b = { x0, y0, x1: x1 + 1, y1: y1 + 1 };
+      boundsCache.set(key, b);
+    }
+    if (b) {
+      const p = t.framePoint(b.x0, b.y0);
+      const q = t.framePoint(b.x1, b.y1);
+      return { x0: Math.min(p.x, q.x), x1: Math.max(p.x, q.x), y0: Math.min(p.y, q.y), y1: Math.max(p.y, q.y) };
+    }
+  }
+  return { x0: core.x - 12, x1: core.x + 12, y0: core.y - 14, y1: floor };
+}
+
+/** Does a flying body (feet at p) overlap the box? (its feet under the top row while its width meets the box) */
+function overlaps(p: XY, box: Box, clear: number): boolean {
+  return p.x + FLY_HALF_W > box.x0 && p.x - FLY_HALF_W < box.x1 && p.y > box.y0 - clear;
+}
+
+/** A sampled path with arc-length lookup: at(d) for d 0…1 of its length. */
+function arcPath(pts: XY[]): { at(d: number): XY; len: number } {
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+  const len = cum[cum.length - 1] || 1;
+  return {
+    len,
+    at(d: number): XY {
+      const s = clamp01(d) * len;
+      let i = 1;
+      while (i < cum.length - 1 && cum[i] < s) i++;
+      const k = (s - cum[i - 1]) / (cum[i] - cum[i - 1] || 1);
+      return lerpXY(pts[i - 1], pts[i], k);
+    },
+  };
+}
+const cubic = (a: XY, b: XY, c: XY, d: XY, t: number): XY => {
+  const u = 1 - t;
+  return { x: u * u * u * a.x + 3 * u * u * t * b.x + 3 * u * t * t * c.x + t * t * t * d.x, y: u * u * u * a.y + 3 * u * u * t * b.y + 3 * u * t * t * c.y + t * t * t * d.y };
+};
+const quad = (a: XY, b: XY, c: XY, t: number): XY => {
+  const u = 1 - t;
+  return { x: u * u * a.x + 2 * u * t * b.x + t * t * c.x, y: u * u * a.y + 2 * u * t * b.y + t * t * c.y };
+};
 
 async function kiteFlight(s: StrikeArgs): Promise<void> {
   const u = s.attacker;
@@ -576,56 +648,80 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
   const tDepth = s.target ? s.target.sprite.depth : depth0;
   // ---- geometry: a WORLD pendulum seen in iso. The swing hangs in the vertical plane through his home and the target:
   // its horizontal reach runs along the floor line home → the floor beside the target, its height is measured up from
-  // that floor (screen y = the floor under him − his height). Both players get the same swing in the world — player 2's
-  // target is ~35 px lower on screen than his home, player 1's ~35 px higher — so the mirrored films read alike: he is
-  // carried up and back behind his tile (θ0 = 85°, he hangs high over his own tile, never sinking onto it), and the arc
-  // falls fastest into its lowest point beside the target at body height.
+  // that floor (screen y = the floor under him − his height). Both players get the same swing in the world, so the
+  // mirrored films read alike: he is carried up and back behind his tile (θ0 = 85°), and the arc falls fastest into its
+  // lowest point BESIDE the target (his leading edge CUT_GAP px outside its near edge) with his rapier hand at the
+  // target's mid-height: the blade sweeps LEVEL across its body — a lateral cut, at right angles to attack 1's needle.
   const T: XY = { x: s.to.x, y: s.to.y }; // the target core
   const floorT = s.toGround.y;
-  const tip9 = tipOffset(u, 'special', 9);
+  const box = targetBox(s.target, T, floorT);
+  const near = sgn > 0 ? box.x0 : box.x1;
+  const far = sgn > 0 ? box.x1 : box.x0;
+  const midY = (box.y0 + box.y1) / 2;
   const hand9 = offsetOf(u, framePoints('special', 9).hand ?? tipOf('special', 9));
-  const Bc: XY = { x: T.x - tip9.x, y: Math.min(T.y - tip9.y, floorT - 1) };
+  const front9 = bodyFront('special', 9) - AX;
+  const Bc: XY = { x: near - sgn * (front9 + CUT_GAP), y: Math.min(midY - hand9.y, floorT - 1) };
   const hB = floorT - Bc.y; // his height above the floor at the cut
   const span = Math.abs(Bc.x - home.x) || 1;
-  /**
-   * The floor (screen y) under a body at screen x: the line from his home to the floor beside the target — flat at
-   * the target's floor beyond it (the carry-through rises from THAT floor; never a floor line running on downhill
-   * past the target, which sank player 2 into it).
-   */
+  /** The floor (screen y) under a body at screen x: home → the floor beside the target, flat beyond it. */
   const floorY = (x: number): number => lerp(home.y, floorT, Math.max(-0.7, Math.min(1, (x - home.x) / (Bc.x - home.x || sgn))));
   const th0 = TH0;
   const RP = Math.max(46, span + BACK) / Math.sin(th0);
   const height = (th: number): number => hB + RP * (1 - Math.cos(th));
-  const swingAt = (th: number): XY => {
+  const body = (th: number): XY => {
     const x = Bc.x + sgn * RP * Math.sin(th);
     return { x, y: floorY(x) - height(th) };
   };
-  // the carry-through arc (θ > 0 is its own angle a: a circle of radius RC through the cut point, level there)
-  const C = swingAt(0);
-  const exDx = Math.max(10, sgn * (T.x - C.x) + EX_PAST);
-  const TH1 = 2 * Math.atan2(EX_RISE, exDx);
-  const RC = exDx / Math.sin(TH1);
-  const body = (th: number): XY => (th <= 0 ? swingAt(th) : { x: C.x + sgn * RC * Math.sin(th), y: C.y - RC * (1 - Math.cos(th)) });
   // the blade's analytic sweep: from the downswing frame (f8, shown from 42 % of the swing time: k8 of the way down
-  // the arc) the hand travels from its f8 spot to its f9 spot and the blade turns from f8's −38° through the cut to
-  // the follow-through; before f8 the blade is cocked (no trail: nothing is cutting yet)
+  // the arc) the hand travels from its f8 spot (hip, blade drawn back) to its f9 spot (hip, arm out) and the blade
+  // turns through a HORIZONTAL half circle — back → round the near side (toward the camera: lower on screen) → level
+  // forward at the contact: on screen a flat ellipse at hip height, never a chop; before f8 nothing is cutting yet
   const hand8 = offsetOf(u, framePoints('special', 8).hand ?? tipOf('special', 8));
   const k8 = swingEase(0.42);
   const sweep = (th: number): number => (th >= 0 ? 1 : clamp01((1 + th / th0 - k8) / (1 - k8)));
-  const phi = (th: number): number => (th >= 0 ? PHI_CUT + (PHI_OUT - PHI_CUT) * clamp01(th / TH1) : PHI_F8 + (PHI_CUT - PHI_F8) * Math.pow(sweep(th), 1.4));
   const tipAt = (th: number): XY => {
-    const b = body(th);
-    const a = (phi(th) * Math.PI) / 180;
+    const b = body(Math.min(0, th));
     const k = sweep(th);
+    const a = (SWEEP_FROM * (1 - Math.pow(k, 1.3)) * Math.PI) / 180;
     const h = lerpXY(hand8, hand9, k);
-    return { x: b.x + h.x + sgn * Math.cos(a) * 20, y: b.y + h.y + Math.sin(a) * 20 };
+    return { x: b.x + h.x + sgn * Math.cos(a) * 20, y: b.y + h.y + Math.sin(a) * 20 * SWEEP_SQ };
   };
-  // the carry-through leaves the bottom at the downswing's own speed (swingEase'(1) = 1.6: θ0·1.6 / down per ms, ×RP
-  // in px), then slows over the top: a power ease-out whose start slope matches that speed
-  const v0 = (1.6 * th0 * RP) / KT.down; // px / scene ms at the bottom
-  const exN = Math.max(1.6, Math.min(2.8, (v0 * KT.exit) / (RC * TH1)));
-  const exEase = (t: number): number => 1 - Math.pow(1 - t, exN);
   const A = body(-th0);
+  const C = body(0);
+  // ---- the carry-through (screen space, from the live silhouette): the cloak catches the updraft and SNATCHES him
+  // up beside the target's near edge (the swing's level tangent turning up at once), then over its head to the apex
+  // past its far edge — his feet OVER_TOP px above its top row whenever his body is over it: he never touches it
+  // two cubic segments: the J (the level tangent turning straight up within 3 px, rising beside the near edge until
+  // his feet are over the top row) and the hop over the head to the apex P — the highest point, past the far edge
+  const S: XY = { x: C.x + sgn * 3, y: box.y0 - OVER_TOP - 1 };
+  const P: XY = { x: far + sgn * PAST_FAR, y: box.y0 - OVER_TOP - 9 };
+  const seg1 = Array.from({ length: 25 }, (_, i) => cubic(C, { x: C.x + sgn * 3, y: C.y }, { x: S.x, y: S.y + 12 }, S, i / 24));
+  let arch = 8;
+  let exitPts: XY[] = seg1;
+  for (let tries = 0; tries < 12; tries++) {
+    const seg2 = Array.from({ length: 25 }, (_, i) => cubic(S, { x: S.x, y: S.y - arch }, { x: P.x - sgn * 12, y: P.y - 2 }, P, i / 24));
+    exitPts = [...seg1, ...seg2.slice(1)];
+    if (!seg2.some((p) => overlaps(p, box, OVER_TOP))) break;
+    arch += 4;
+  }
+  { const sp = s.target?.sprite; const tm = sc.textures; const rows: string[] = []; if (sp) for (let y = 0; y < sp.frame.realHeight; y += 1) { let n = 0; let c0 = ""; for (let x = 0; x < sp.frame.realWidth; x++) { const c = tm.getPixel(x, y, sp.texture.key, sp.frame.name); if (c && c.alpha >= 128) { n++; if (!c0) c0 = x + ":" + c.color.toString(16) + "/" + c.alpha; } } if (n) rows.push(y + "=" + n + "@" + c0); } console.log("KFROWS", sp?.frame.name, sp?.frame.realWidth, sp?.frame.realHeight, sp?.y, sp?.displayOriginY, sp?.scaleY, rows.slice(0, 12).join(" ")); }
+  console.log("KFDBG", JSON.stringify({ box, C, S, P, arch, T, floorT, home, Bc, front9 }));
+  const exitPath = arcPath(exitPts);
+  // the glide home goes back OVER the target's head (apex → above its near edge → home): never into its box
+  let hq = 10;
+  let glidePts: XY[] = [];
+  for (let tries = 0; tries < 12; tries++) {
+    const q: XY = { x: near - sgn * 6, y: box.y0 - OVER_TOP - hq };
+    glidePts = Array.from({ length: 49 }, (_, i) => quad(P, q, home, i / 48));
+    if (!glidePts.some((p) => overlaps(p, box, OVER_TOP) && Math.abs(p.x - home.x) > 10)) break;
+    hq += 6;
+  }
+  const glidePath = arcPath(glidePts);
+  // the carry-through leaves the bottom at the downswing's own speed (swingEase'(1) = 1.6: θ0·1.6 / down per ms, ×RP
+  // in px), then slows into the apex: a power ease-out whose start slope matches that speed
+  const v0 = (1.6 * th0 * RP) / KT.down; // px / scene ms at the bottom
+  const exN = Math.max(1.6, Math.min(3, (v0 * KT.exit) / exitPath.len));
+  const exEase = (t: number): number => 1 - Math.pow(1 - t, exN);
   /** Put the body at screen point p (the shadow stays on the floor under it: MonsterUnit.lift). */
   const at = (p: XY) => {
     u.lift = Math.max(0, R(floorY(p.x) - p.y));
@@ -653,6 +749,7 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
   show(u, 'special', 4);
   await sleep(sc, KT.c4);
   // ---- rise (f5–f6): he lifts off and is carried up to the top of the arc — climbing all the way, never sinking
+  // (in front of the target for the whole flight: the path never enters its box, so the draw order never flips)
   const flyDepth = Math.max(depth0, tDepth + 0.5);
   spr.setDepth(flyDepth);
   const tailInFlight = () => (u.frameInfo().anim === 'special' && u.frameInfo().frame >= 5 && u.frameInfo().frame <= 10 ? tailW() : null);
@@ -669,7 +766,7 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
   });
   at(A);
   // ---- the pendulum (f7 → f8 → f9): θ −θ0 → 0, accelerating into the bottom; the blade's analytic trail
-  const trail = pendulumTrail(sc, tipAt, flyDepth + 0.3, 24, 0.3);
+  const trail = pendulumTrail(sc, tipAt, flyDepth + 0.3, 24, 0.45);
   show(u, 'special', 7);
   play('kfnSwing', { pan: panAt(A.x), volume: 1 });
   await animate(sc, KT.down, (t) => {
@@ -678,19 +775,22 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
     at(body(th));
     if (t >= 0.42) trail.push(th);
   });
-  // ---- contact at the lowest point: the blade swept across the body — the lateral cut, hit-stop 80
+  // ---- contact at the lowest point: the blade level across the body — the lateral cut, hit-stop 80
   show(u, 'special', 9);
-  at(body(0));
+  at(C);
   trail.push(0);
   rise.stop(40);
-  const cutAt: XY = { x: R(T.x), y: R(T.y) };
-  // the curved cut leads the frame: the target's material hit sits ~12 dB under it
-  impactUnder(s, cutAt, 0.25);
+  // the cut runs along the blade at hip height (the target's mid-height), from the hand across the near half of the
+  // body: the slit lies on that line, the contact point is its middle
+  const handW: XY = { x: C.x + hand9.x, y: C.y + hand9.y };
+  const cutAt: XY = { x: R(handW.x + sgn * 11), y: R(handW.y + 1) };
+  // the curved cut leads the frame: the target's material hit plays under it (≈ −5 dB: the struck body still sounds)
+  impactUnder(s, cutAt, 0.55);
   play('kfnCut', { pan: panAt(cutAt.x), volume: 1 });
   void stopTime(sc, 80);
   const slitDepth = Math.max(flyDepth, tDepth) + 0.7;
   if (s.blocked) void glanceSparks(sc, cutAt, sgn, slitDepth);
-  void cutSlit(sc, cutAt, sgn, slitDepth, { fibres: !s.blocked, rnd });
+  void cutSlit(sc, cutAt, sgn, slitDepth, { fibres: !s.blocked, rnd, len: 15 });
   void lightFlash(sc, cutAt.x, cutAt.y, PAL.white, 12, 140, { floorY: floorT, intensity: 0.6 });
   if (attackerLoses(s)) {
     // the cut fails and kills him at the bottom of the swing (a few px over the floor): the wind dies, the string
@@ -708,31 +808,29 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
     str.destroy();
     return;
   }
-  // ---- exit (f10): the arc carries on THROUGH — past the target's centre line and up over the cut point, behind the
-  // target (it is the swing passing it, never a body crossing it); the wind spills, the cloak half-collapses and flaps
-  // (the blade's crescent stays where it cut, in front, and fades: the follow-through behind the body draws no trail)
+  // ---- exit (f10): the cloak, still OPEN, catches the updraft and snatches him up beside the foe and over its head
+  // (the blade flourished up before his body); the string slackens behind the target (it runs from his home pin)
   trail.stop();
-  const behind = s.target && s.target.sprite.active ? Math.min(flyDepth, tDepth - 0.3) : flyDepth;
-  spr.setDepth(behind);
-  // the slackening string goes back behind the target with him (it runs from his home pin to the kite behind it)
   str.destroy();
-  str = tautString(sc, tailInFlight, pin, behind - 0.05, () => 5);
+  str = tautString(sc, tailInFlight, pin, Math.min(flyDepth, tDepth) - 0.3, () => 5);
   show(u, 'special', 10);
-  play('kfnSpill', { pan: panAt(Bc.x), volume: 0.9 });
-  await animate(sc, KT.exit, (t) => at(body(TH1 * exEase(t))));
-  // ---- the braking glide home (f11), the cloak half open, the panel goes out; a knee dip on landing (f12)
-  const E = body(TH1);
+  play('kfnLiftOff', { pan: panAt(C.x), volume: 0.9 });
+  await animate(sc, KT.exit, (t) => at(exitPath.at(exEase(t))));
+  at(P);
+  console.log("KFAPEX", sc.time.now, spr.x, spr.y, JSON.stringify(u.framePoint(AX, GY)), sc.cameras.main.scrollX, sc.cameras.main.scrollY, sc.cameras.main.zoom);
+  // ---- the apex: the WIND SPILLS (f11: the cloak half-collapses), the panel goes out; the braking glide back over
+  // the foe's head and home, a knee dip on landing (f12)
   show(u, 'special', 11);
   str.destroy();
+  play('kfnSpill', { pan: panAt(P.x), volume: 0.9 });
   play('kfnPanelOff', { pan, volume: 0.9 });
-  const pp = panelPoint('special', 10);
+  const pp = panelPoint('special', 11) ?? panelPoint('special', 10);
   if (pp) void threadMote(sc, u.framePoint(pp.x, pp.y), -sgn, flyDepth + 0.2);
   await animate(sc, KT.glide, (t) => {
-    // braking: fast off the swing, slow onto the tile; a last 3-px float before the touch-down
-    const p = lerpXY(E, home, quadOut(t));
-    // out of the target's column he is back in front of it (his own row), before he reaches his tile
-    if (Math.abs(p.x - T.x) > 30) spr.setDepth(flyDepth);
-    at({ x: p.x, y: p.y - Math.sin(Math.PI * t) * 3 * (1 - t) });
+    // off the apex from rest, fastest over the foe, braking onto the tile; a last 2-px float before the touch-down
+    const e = t * t * (3 - 2 * t) * 0.35 + quadOut(t) * 0.65;
+    const p = glidePath.at(e);
+    at({ x: p.x, y: p.y - Math.sin(Math.PI * t) * 2 * t });
   });
   at(home);
   show(u, 'special', 12);
