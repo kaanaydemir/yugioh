@@ -13,7 +13,7 @@ import { PAL } from '../../art/palette';
 import { monsterFrame } from '../../art/textures';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { DEPTH, type XY } from '../../view/layout';
-import { lightBeam, lightFlash, type BeamHandle } from '../../view/light';
+import { lightBeam, lightFlash, lightPool, type BeamHandle, type LightHandle } from '../../view/light';
 import { Px, onFrame } from '../../vfx/combat';
 import { play } from '../_v3/sound';
 
@@ -86,6 +86,7 @@ export class Seam {
   private head = 0;
   private gone = false;
   private beam: BeamHandle | null = null;
+  private pools: LightHandle[] = [];
   private stopFn: () => void = () => undefined;
 
   constructor(private readonly scene: Phaser.Scene, private readonly o: SeamOpts) {
@@ -103,8 +104,8 @@ export class Seam {
     let arrivedAt = -1;
     let lastTick = -1;
     if (o.light !== false) {
-      this.beam = lightBeam(scene, o.from, o.from, PAL.white, 0, { air: false, floor: { from: o.from, to: o.from }, floorWidth: 9, intensity: 0, shimmer: 0 });
-      this.beam.setIntensity(1.4, Math.max(40, o.runMs));
+      this.beam = lightBeam(scene, o.from, o.from, PAL.white, 0, { air: false, floor: { from: o.from, to: o.from }, floorWidth: 13, intensity: 0, shimmer: 0 });
+      this.beam.setIntensity(2.4, Math.max(40, o.runMs));
     }
     this.stopFn = onFrame(
       scene,
@@ -119,6 +120,20 @@ export class Seam {
           if (this.head >= n) {
             arrivedAt = el;
             arrive();
+            // the floor pool along the line: white stepped pools strung on it (the light layer's own steps), so the
+            // floor beside the crack reads lit at 1× (EF-6: white, never warm)
+            if (o.light !== false) {
+              const L = Math.hypot(o.to.x - o.from.x, o.to.y - o.from.y);
+              const k = Math.max(1, Math.round(L / 14));
+              for (let i = 0; i < k; i++) {
+                const t = (i + 0.5) / k;
+                const x = Math.round(o.from.x + (o.to.x - o.from.x) * t);
+                const y = Math.round(o.from.y + (o.to.y - o.from.y) * t);
+                const lp = lightPool(scene, x, y, { color: PAL.white, radius: 11, floorY: y, air: 0, intensity: 0, anim: 'steady', fadeIn: 0 });
+                lp.setIntensity(1.1, 60);
+                this.pools.push(lp);
+              }
+            }
           }
         }
         // ---- the tone: full while running, then breathing every 200 ms, then 3 fade steps
@@ -133,13 +148,18 @@ export class Seam {
               void this.beam.fadeOut(fadeStep * 2);
               this.beam = null;
             }
+            if (st === 1 && this.pools.length) {
+              for (const lp of this.pools) void lp.fadeOut(fadeStep * 2);
+              this.pools = [];
+            }
           } else tone = Math.floor(since / 200) % 2 === 1 ? 1 : 0;
-          // faint crackle ticks on the breathing (the last one dry): ≤ 4
-          if (o.ticks !== false && el < fadeAt + fadeStep) {
-            const tk = Math.floor(since / 200);
-            if (tk !== lastTick && tk >= 1 && tk % 2 === 1 && tk <= 7) {
+          // faint crackle ticks, one on each breathing swap (every 200 ms, at most four), then a dry "tik" as it fades
+          if (o.ticks !== false) {
+            const tk = el >= fadeAt ? 99 : Math.floor(since / 200);
+            if (tk !== lastTick && tk >= 1 && (tk <= 4 || tk === 99)) {
               lastTick = tk;
-              play('caxSeamTick', { volume: tk >= 7 ? 0.5 : 0.75, pitch: tk >= 7 ? 0.8 : 1 });
+              if (tk === 99) play('caxSeamTik', { volume: 0.6 });
+              else play('caxSeamTick', { volume: 0.5, pitch: 1 + (tk % 2) * 0.06 });
             }
           }
         }
@@ -151,31 +171,61 @@ export class Seam {
     if (o.fork) void this.arrived.then(() => undefined);
   }
 
+  /** The crack's 1-px jog (perpendicular, every 7 px, alternating): one straight line overall, never branching. */
+  private jog(i: number): number {
+    return Math.floor(i / 7) % 2 === 1 ? 1 : 0;
+  }
+
   private draw(tone: number, el: number, arrivedAt: number, fadeAt: number): void {
     const px = this.px.clear();
     const [core, lip] = TONES[tone];
     const n = Math.min(this.head, this.pts.length);
-    // lips: the lower lip runs the whole seam; the upper one every px but the head (a 2–3 px crack, lit from inside)
+    // a CRACK, not a stick: night0 ink lips either side (they also cover whatever floor marking lies under it), the
+    // earth4 lips lit from inside, the white core; a 1-px jog every 7 px (the joints of the rock), filled at each step
+    const edge = tone >= 3 ? PAL.night1 : PAL.night0;
     for (let i = 0; i < n; i++) {
       const p = this.pts[i];
-      px.dot(p.x, p.y + 1, lip);
-      if (i % 3 !== 1) px.dot(p.x, p.y - 1, lip);
+      const y = p.y + this.jog(i);
+      px.dot(p.x, y - 2, edge).dot(p.x, y + 2, edge);
+      if (i > 0 && this.jog(i) !== this.jog(i - 1)) px.dot(p.x, y - 3 + (this.jog(i) ? 0 : 1) * 2, edge);
     }
-    for (let i = 0; i < n; i++) px.dot(this.pts[i].x, this.pts[i].y, core);
+    for (let i = 0; i < n; i++) {
+      const p = this.pts[i];
+      const y = p.y + this.jog(i);
+      px.dot(p.x, y - 1, lip).dot(p.x, y + 1, lip);
+    }
+    for (let i = 0; i < n; i++) {
+      const p = this.pts[i];
+      const y = p.y + this.jog(i);
+      px.dot(p.x, y, core);
+      // the jog's riser: the core steps one row, its corner stays lit
+      if (i > 0 && this.jog(i) !== this.jog(i - 1)) px.dot(p.x, p.y + this.jog(i - 1), core);
+    }
     // the running head: gold4, a 1-px white flare just ahead
     if (n < this.pts.length) {
       const h = this.pts[n - 1];
-      px.dot(h.x, h.y, PAL.gold4);
+      px.dot(h.x, h.y + this.jog(n - 1), PAL.gold4);
       const a = this.pts[Math.min(this.pts.length - 1, n)];
-      px.dot(a.x, a.y, PAL.white);
-    } else if (this.o.fork && tone < 3) {
-      // blocked: a tiny "Y" at the guard's front edge (2 px arms, splayed across the line)
+      px.dot(a.x, a.y + this.jog(n), PAL.white);
+    } else if (this.o.fork && arrivedAt >= 0) {
+      // blocked: a "Y" at the guard's front edge — a white flash at the split (one frame), then two 3–4 px prongs
+      // splayed across the line that die in two palette steps, faster than the seam
       const e = this.pts[this.pts.length - 1];
-      const nx = -this.dir.y;
-      const ny = this.dir.x;
-      for (let k = 1; k <= 2; k++) {
-        px.dot(Math.round(e.x + this.dir.x * k + nx * k), Math.round(e.y + this.dir.y * k + ny * k), k === 1 ? core : lip);
-        px.dot(Math.round(e.x + this.dir.x * k - nx * k), Math.round(e.y + this.dir.y * k - ny * k), k === 1 ? core : lip);
+      const ey = e.y + this.jog(this.pts.length - 1);
+      const since = el - arrivedAt;
+      const st = since < 140 ? 0 : since < 260 ? 1 : since < 360 ? 2 : 3;
+      if (since < 40) px.dot(e.x - 1, ey, PAL.white).dot(e.x + 1, ey, PAL.white).dot(e.x, ey - 1, PAL.white).dot(e.x, ey + 1, PAL.white);
+      if (st < 3) {
+        const [pc, pl] = TONES[Math.min(3, st + (st > 0 ? 1 : 0))];
+        const nx = -this.dir.y;
+        const ny = this.dir.x;
+        for (const sd of [1, -1])
+          for (let k = 1; k <= 4; k++) {
+            const x = Math.round(e.x + this.dir.x * k * 0.7 + nx * sd * k * 0.9);
+            const y = Math.round(ey + this.dir.y * k * 0.7 + ny * sd * k * 0.9);
+            px.dot(x, y + 1, edge);
+            px.dot(x, y, k <= 2 ? pc : pl);
+          }
       }
     }
     // the spark: one gold4 pixel running from the attacker toward the target along the breathing seam
@@ -185,8 +235,8 @@ export class Seam {
       if (el >= T0 && el <= T1) {
         const i = Math.round(((el - T0) / Math.max(1, T1 - T0)) * (this.pts.length - 1));
         const p = this.pts[i];
-        px.dot(p.x, p.y, PAL.gold4);
-        if (i + 1 < this.pts.length) px.dot(this.pts[i + 1].x, this.pts[i + 1].y, PAL.white);
+        px.dot(p.x, p.y + this.jog(i), PAL.gold4);
+        if (i + 1 < this.pts.length) px.dot(this.pts[i + 1].x, this.pts[i + 1].y + this.jog(i + 1), PAL.white);
       }
     }
   }
@@ -201,6 +251,8 @@ export class Seam {
     this.gone = true;
     if (this.beam) void this.beam.fadeOut(120);
     this.beam = null;
+    for (const lp of this.pools) void lp.fadeOut(120);
+    this.pools = [];
     if (this.px.g.active) this.px.g.destroy();
   }
 }
@@ -253,14 +305,19 @@ export function climbBody(scene: Phaser.Scene, u: MonsterUnit, o: { stepMs: numb
       }
       const b = pc.bounds();
       if (!b) return true;
-      const yTop = Math.round(b.y + b.h - b.h * k);
+      const kk = k >= 1 ? 1 : 0.55;
+      const wide = k >= 1;
+      const yTop = Math.round(b.y + b.h - b.h * kk);
       for (let fy = b.y + b.h - 1; fy >= yTop; fy--) {
         if (!pc.isOpaque(ax, fy)) continue;
         const p = u.framePoint(ax + 0.5, fy + 0.5);
         const x = Math.floor(p.x);
         const y = Math.floor(p.y);
-        // 1 px of light; an earth4 lip only every third row (the seam's edge catching it), never a 3-px pole
-        if (fy % 3 === 0 && pc.isOpaque(ax - 1, fy)) g.dot(x - 1, y, lip);
+        // frame A: a 1-px white line; frame B on: light pouring out — the white core with earth4 lips on every row
+        if (wide) {
+          if (pc.isOpaque(ax - 1, fy)) g.dot(x - 1, y, lip);
+          if (pc.isOpaque(ax + 1, fy)) g.dot(x + 1, y, lip);
+        }
         g.dot(x, y, core);
       }
       return true;
