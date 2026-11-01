@@ -149,12 +149,12 @@ export function attackPose(f: number): Pose {
   }
 }
 // (tempo gate: the attack incl. the target's death ≤ 3.19 s game time — measure.mjs rhrAttack. The glide is the
-// identity — "still … glide … ta-ta-TAK": f5 / f6 hold 120 each = a 240-ms scene glide (≥ 20 px: a close target
+// identity — "still … glide … ta-ta-TAK": f5 / f6 hold 112 each = a 224-ms scene glide (≥ 20 px: a close target
 // gets the coil's half step back first), slower than any dash in the lane. The build-up is the heron's own: from the
 // declaration's held f1 the coil SNAPS to f3 and tightens there 110 ms while the battle's lock-on fades under it,
 // then the 200-ms freeze (≥ 270 game ms after the declaration's arc has gone). The thrusts show only their 40-ms
 // micro-stops, retract 1 is 40 and retract 2 is 50 (ta-ta…TAK); the release f7 rides the glide's braking tail.)
-const ATTACK_HOLDS = [80, 60, 40, 110, 200, 120, 120, 40, 40, 40, 40, 50, 80, 50, 50, 50, 50];
+const ATTACK_HOLDS = [80, 60, 40, 110, 200, 112, 112, 40, 40, 40, 40, 50, 80, 50, 50, 50, 50];
 
 // ------------------------------------------------------------------ roar (9 frames): the wings open once
 
