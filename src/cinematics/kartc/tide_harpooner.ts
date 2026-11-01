@@ -32,7 +32,7 @@ import { DART_LEN, exitSpray, ropeLine, splinters } from '../../art/monsters-v3/
 import type { MonsterPointName } from '../../art/types';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { GameEvent, PlayerId } from '../../engine/types';
-import { DEPTH, LOOK_V3, TILE_W, type XY, unitDepth } from '../../view/layout';
+import { DEPTH, LOOK_V3, TILE_W, type XY, panelRect, unitDepth } from '../../view/layout';
 import { lightFlash, lightPool } from '../../view/light';
 import { shake } from '../../vfx/core';
 import { E, animate, onFrame, sleep } from '../../vfx/combat';
@@ -44,7 +44,7 @@ import { atFrame, fade, panAt, play, start, takeCharge } from '../_v3/sound';
 import { runSummon, type Stage } from '../summon-a/_kit';
 import { worldToScreen } from '../strikes-a/_kit';
 import { groundRing, sourceOwnsDeath } from '../strikes-b/_kit';
-import { HarpoonImg, Surface, add, angleOf, clamp, flingBeads, hash, haul, lerp, lerpXY, norm, ownContact, paintTide, pt, rnd, snapXY, sub, type TideState } from './tide_harpooner-fx';
+import { HarpoonImg, Surface, add, angleOf, clamp, cutinVoice, farEdge, flingBeads, hash, haul, lerp, lerpXY, norm, opaqueAt, ownContact, paintTide, pt, rnd, snapXY, sub, type TideState } from './tide_harpooner-fx';
 import { A_REL } from '../../art/monsters-v3/tide_harpooner-anims';
 import { HARP_L } from '../../art/monsters-v3/tide_harpooner-rig';
 import { ensureShroud, syncShroud } from './tide_harpooner-shroud';
@@ -125,6 +125,8 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
     return M(artPt(u, 'attack', fr, 'muzzle'));
   };
   let ropeFrom: XY | null = null;
+  /** pierced: the line ends where it goes INTO the body (the head itself is behind it) */
+  let ropeTo: (() => XY) | null = null;
   let shadowAt: { p: XY; d: XY } | null = null;
   let phase = 0;
   let closed = false;
@@ -138,7 +140,7 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
     if (look.on && harp.visible) {
       const src = socket();
       if (src) ropeFrom = src;
-      if (ropeFrom) ropeLine(rope.canvas, pt(snapXY(ropeFrom)), pt(harp.butt()), { sag: look.sag, taut: look.taut, wobble: look.wobble, phase, wet: look.wet });
+      if (ropeFrom) ropeLine(rope.canvas, pt(snapXY(ropeFrom)), pt(ropeTo ? ropeTo() : harp.butt()), { sag: look.sag, taut: look.taut, wobble: look.wobble, phase, wet: look.wet });
     }
     if (shadowAt) {
       // the head's shadow on the floor: a short night1 dash under it (reads its height over the lane)
@@ -190,22 +192,25 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
     let hitAt: XY;
     let passT = -1; // direct: where the head passes the duelist (the blow lands there)
     if (s.direct) {
-      // over the field, past the duelist, staked into the LP readout: the digits' edge that faces the crab
+      // over the field, past the duelist, staked into the LP PANEL'S FRAME on the side that faces the crab, level with
+      // the readout but outside it: the head never covers a digit while the number rolls
       const lp = lpPoint(s.ctx, defender);
-      dir = norm(sub(lp, sock0));
-      tipEnd = add(add(lp, dir, -9), { x: 0, y: -3 });
+      const r = panelRect(defender);
+      const stake = { x: sock0.x < lp.x ? r.x + 2 : r.x + r.w - 3, y: lp.y };
+      dir = norm(sub(stake, sock0));
+      tipEnd = add(stake, dir, -4);
       hitAt = s.to;
     } else {
       dir = norm(sub(tCore, sock0));
-      const r = tgt ? clamp(rnd(tgt.art.w * 0.12), 5, 12) : 6;
-      // pierce: the head comes out of the far side; bite: it stops on the near face
-      tipEnd = bite ? add(tCore, dir, -r) : add(tCore, dir, 9);
-      hitAt = bite ? tipEnd : tCore;
+      tipEnd = tCore;
+      hitAt = tCore;
     }
-    const tip0 = snapXY(add(sock0, dir, DART_LEN));
+    let tip0 = snapXY(add(sock0, dir, DART_LEN));
     tipEnd = snapXY(tipEnd);
-    const travel = Math.max(10, (tipEnd.x - tip0.x) * dir.x + (tipEnd.y - tip0.y) * dir.y);
-    if (travel < 14) tipEnd = snapXY(add(tip0, dir, 14));
+    if (!s.direct) {
+      const travel = (tipEnd.x - tip0.x) * dir.x + (tipEnd.y - tip0.y) * dir.y;
+      if (travel < 14) tipEnd = snapXY(add(tip0, dir, 14));
+    }
     if (s.direct) {
       const chest = M(s.to);
       const d = sub(tipEnd, tip0);
@@ -213,10 +218,58 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
     }
     void lightFlash(sc, sock0.x, sock0.y, PAL.white, 10, 120, { floorY: u.home.y, intensity: 0.45, air: 0.5 });
     const ang = angleOf(dir);
-    const dist = Math.hypot(tipEnd.x - tip0.x, tipEnd.y - tip0.y);
-    // a short gap is lobbed higher so the travel reads; the shaft never turns more than ~15° in the air
-    const lob = s.direct ? 4 : clamp(rnd(dist * 0.16), 5, 8);
-    const flyMs = s.direct ? clamp(rnd(dist * 0.6), 180, 210) : clamp(rnd(dist * 3.4), 150, 230);
+    let dist = Math.hypot(tipEnd.x - tip0.x, tipEnd.y - tip0.y);
+    // the throw rises a little (an upward lob, never a dip through the lower body); direct throws keep their arc
+    let lob = s.direct ? 4 : clamp(rnd(dist * 0.08), 2, 4);
+    const pathAt = (e: number, a: XY, b: XY, l: number): XY => {
+      const p = lerpXY(a, b, e);
+      return { x: p.x, y: p.y - l * 4 * e * (1 - e) };
+    };
+    // ---- the puncture geometry: the flight ENDS on the target's near silhouette edge (the first opaque pixel of its
+    // current frame along the real flight path), so the head never slides over the body before it goes in; a pierce
+    // then steps the head through to the FAR edge + 4 px (drawn behind the body: only the tip and barbs poke out)
+    let entry: XY | null = null;
+    let tipFar: XY | null = null;
+    let farAt: XY | null = null;
+    if (tgt && !s.direct) {
+      let eHit = -1;
+      for (let i = 0; i <= 120; i++) {
+        const e = i / 120;
+        if (opaqueAt(tgt, pathAt(e, tip0, tipEnd, lob))) {
+          eHit = e;
+          break;
+        }
+      }
+      if (eHit > 0) {
+        entry = snapXY(pathAt(eHit, tip0, tipEnd, lob));
+      } else if (eHit === 0) {
+        // the claw already overlaps the target on screen: no lob, the entry where the straight line first meets it
+        lob = 0;
+        for (let d = 2; d <= DART_LEN && !entry; d++) if (opaqueAt(tgt, add(sock0, dir, d))) entry = snapXY(add(sock0, dir, d));
+        entry ??= tip0;
+      } else {
+        // the core misses the silhouette (a thin pose): march on along dir from the core's front
+        for (let d = -30; d <= 30 && !entry; d++) if (opaqueAt(tgt, add(tCore, dir, d))) entry = snapXY(add(tCore, dir, d));
+        entry ??= snapXY(add(tCore, dir, -6));
+      }
+      // point blank (facing tiles: the near edge is where the head already sits): the head is launched OUT of the
+      // shaft's socket instead — it starts telescoped back along the shaft, so at least 12 px of flight are seen
+      const run = (entry.x - sock0.x) * dir.x + (entry.y - sock0.y) * dir.y;
+      if (run - DART_LEN < 12) {
+        lob = 0;
+        tip0 = snapXY(add(sock0, dir, clamp(run - 12, 6, DART_LEN)));
+        if ((entry.x - tip0.x) * dir.x + (entry.y - tip0.y) * dir.y < 8) entry = snapXY(add(tip0, dir, 8));
+      }
+      tipEnd = entry;
+      hitAt = entry;
+      if (!bite) {
+        const fe = farEdge(tgt, entry, dir, 90, 3) ?? snapXY(add(entry, dir, 16));
+        farAt = fe;
+        tipFar = snapXY(add(fe, dir, 9));
+      }
+      dist = Math.hypot(tipEnd.x - tip0.x, tipEnd.y - tip0.y);
+    }
+    const flyMs = s.direct ? clamp(rnd(dist * 0.6), 180, 210) : clamp(rnd(dist * 4.2), 100, 230);
     const floorA = u.home;
     const floorB = tgt ? tgt.home : { x: s.toGround.x, y: s.toGround.y };
     const floorDir = norm(sub(floorB, floorA));
@@ -228,27 +281,28 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
       impacted = true;
       // the contact is the card's: no generic body blow / shield clang, no lightning backlash or hex clang (its own
       // bite, tang and failed pull answer instead); struck by the counter, the shell answers with its own tok
-      ownContact(sc, { motifs: true }, () => {
+      ownContact(sc, { motifs: true, glint: bite, stage: () => s.impact(hitAt) }, () => {
         if (loses && spr.active) play('harpStruckHeavy', { volume: 0.9, pan });
       });
-      s.impact(hitAt);
     };
+    let stuck = true;
+    let stuckTip: XY = tipEnd;
     harp.set(tip0, ang, { smear: 2 });
     await animate(sc, flyMs, (t) => {
       // direct: the pass over the duelist sits at 3/4 of the flight time, so the stake lands ≈ 100 ms after the
       // number (the head keeps its speed: the panel is closer to the duelist than the duelist is to the crab)
       const e = passT >= 0 ? (t < 0.75 ? passT * (t / 0.75) : passT + (1 - passT) * ((t - 0.75) / 0.25)) : E.outQ(t) * 0.35 + t * 0.65;
       // straight with a gravity sag (the angle follows the curve, clamped)
-      const sag = lob * 4 * e * (1 - e);
-      const p = lerpXY(tip0, tipEnd, e);
-      const slope = (lob * 4 * (1 - 2 * e)) / Math.max(1, dist);
+      const p = s.direct ? (() => { const q = lerpXY(tip0, tipEnd, e); return { x: q.x, y: q.y + lob * 4 * e * (1 - e) }; })() : pathAt(e, tip0, tipEnd, lob);
+      const slope = ((s.direct ? 1 : -1) * lob * 4 * (1 - 2 * e)) / Math.max(1, dist);
       const tilt = clamp((Math.atan(slope) * 180) / Math.PI, -15, 15) * (dir.x >= 0 ? 1 : -1);
-      harp.set({ x: p.x, y: p.y + sag }, ang + tilt, { smear: t < 0.3 ? 2 : 0 });
+      harp.set(p, ang + tilt, { smear: t < 0.3 ? 2 : 0 });
       look.sag = lerp(7, 1, e);
       if (!screen) shadowAt = { p: snapXY(lerpXY(floorA, floorB, e * 0.85 + 0.1)), d: floorDir };
       if (passT >= 0 && e >= passT && !impacted) {
         doImpact();
-        play('harpWetTok', { volume: 0.85, pan: panAt(s.to.x) });
+        // a dry air-pass over the duelist (nothing is pierced there: the wet puncture belongs to a body)
+        play('harpFwip', { volume: 0.9, pan: panAt(s.to.x) });
       }
     });
     shadowAt = null;
@@ -263,14 +317,35 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
       play('harpStake', { volume: 0.95, pan: dir.x > 0 ? 0.35 : -0.35 });
       stakeChips(sc, tipEnd, dir, seedN);
     } else {
-      doImpact();
-      play(bite ? 'harpTang' : 'harpWetTok', { volume: 1, pan: panAt(hitAt.x) });
-      if (!bite && tgt) {
-        // the head now runs THROUGH the body: drawn behind it, the line going into the near side, the head out of the far one
+      if (!bite && tgt && tipFar && entry) {
+        // THE PUNCTURE, on the contact frame: the head goes in at the near silhouette edge (an ink notch and a water4
+        // burst there), and from this frame it is drawn BEHIND the body, stepping through in two raw frames (they run
+        // through the hit-stop) to the far edge + 4 px: the stone tip and barbs poke out past the silhouette while the
+        // near side shows only the line going in; the exit spray leaves the far edge on this same frame
+        const t0 = { x: tgt.sprite.x, y: tgt.sprite.y };
+        const off = (): XY => (tgt.sprite.active ? sub({ x: tgt.sprite.x, y: tgt.sprite.y }, t0) : { x: 0, y: 0 });
+        const en = entry;
+        const far = tipFar;
         harp.setDepth(tgt.sprite.depth - 0.3);
-        rope.setDepth(tgt.sprite.depth - 0.35);
-        sprayOut(sc, spray, add(tCore, dir, 9), dir, floorB.y + 2, seedN);
-      } else biteChips(sc, spray, tipEnd, dir, seedN);
+        stuckTip = snapXY(lerpXY(en, far, 0.55));
+        harp.set(stuckTip, ang);
+        ropeTo = () => add(en, off());
+        doImpact();
+        play('harpWetTok', { volume: 1, pan: panAt(hitAt.x) });
+        entryMark(sc, en, dir, off, fxDepth + 0.1, () => stuck && !closed);
+        rawFrames(sc, 1, () => {
+          stuckTip = far;
+          harp.set(add(far, off()), ang);
+        });
+        exitBurst(sc, farAt ?? far, dir, off, fxDepth + 0.15);
+        sprayOut(sc, spray, farAt ?? far, dir, floorB.y + 2, seedN);
+      } else {
+        // armed BEFORE the contact is staged: the guard kit opens its glint and the counter flash synchronously
+        if (bite && tgt) muteGuardKit(sc, tgt, u);
+        doImpact();
+        play(bite ? 'harpTang' : 'harpWetTok', { volume: 1, pan: panAt(hitAt.x) });
+        biteChips(sc, spray, tipEnd, dir, seedN);
+      }
     }
     if (loses) {
       // the stronger side answers on this frame (the handler owns the attacker now): the line goes slack, the
@@ -282,11 +357,10 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
     }
     // the head rides the struck body (the kit's knock, then the pull)
     const tPos0 = tgt ? { x: tgt.sprite.x, y: tgt.sprite.y } : null;
-    let stuck = true;
     let panelJolt: XY = { x: 0, y: 0 };
     const ride = onFrame(sc, () => {
       if (!stuck || closed) return false;
-      if (tgt && tPos0 && tgt.sprite.active) harp.set(add(tipEnd, sub({ x: tgt.sprite.x, y: tgt.sprite.y }, tPos0)), ang);
+      if (tgt && tPos0 && tgt.sprite.active) harp.set(add(stuckTip, sub({ x: tgt.sprite.x, y: tgt.sprite.y }, tPos0)), ang);
       else if (s.direct) harp.set(add(add(tipEnd, dir, 4), panelJolt), ang, { bury: 7 });
       return true;
     });
@@ -297,7 +371,7 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
     const toHaul = u.playRange('attack', haulF, ripF);
     look.taut = true;
     look.sag = 0;
-    play('harpHaul', { volume: 1, pan });
+    play('harpHaul', { volume: 0.8, pan });
     void shake(sc, 90, 1);
     if (tgt && tgt.sprite.active) haul(tgt, u.home, bite ? 1 : 3, { hold: tDies });
     if (bite) {
@@ -316,6 +390,16 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
     if (!alive()) return;
 
     // ---- HAUL 2: the rip-out (a small spray), the slack wobble; the head reeled back TAIL-FIRST along the wet line
+    if (!bite && !s.direct && tgt && entry && tipFar && stuckTip !== tipEnd) {
+      // pierced: the head is drawn back out through the body (still behind it) to the near edge first
+      const from = stuckTip;
+      const to = entry;
+      const o0 = tPos0 ? sub({ x: tgt.sprite.x, y: tgt.sprite.y }, tPos0) : { x: 0, y: 0 };
+      stuck = false;
+      ride();
+      await animate(sc, 50, (t) => harp.set(add(snapXY(lerpXY(from, to, t < 0.5 ? 0.5 : 1)), o0), ang));
+      ropeTo = null;
+    }
     stuck = false;
     ride();
     look.taut = false;
@@ -324,7 +408,7 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
     look.wet = 1;
     const tail0 = harp.butt();
     if (!bite && !s.direct) {
-      play('harpRip', { volume: 0.95, pan: panAt(tail0.x) });
+      play('harpRip', { volume: 0.9, pan: panAt(tail0.x) });
       sprayOut(sc, spray, tCore, { x: -dir.x, y: -dir.y }, floorB.y + 2, seedN + 3, 0.6);
     } else play('harpRip', { volume: 0.7, pan: panAt(tail0.x), pitch: 1.12 });
     harp.setDepth(fxDepth);
@@ -337,7 +421,7 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
     const reelDist = Math.hypot(cSock.x - tail0.x, cSock.y - tail0.y);
     const reelMs = clamp(rnd(reelDist * 2.6), 150, s.direct ? 260 : 220);
     const turn = ((((catchAng - ang) % 360) + 540) % 360) - 180; // shortest way round
-    void sleep(sc, 30).then(() => play('harpReel', { volume: 0.9, pan: panAt(lerp(tail0.x, u.home.x, 0.5)) }));
+    void sleep(sc, 30).then(() => play('harpReel', { volume: 0.68, pan: panAt(lerp(tail0.x, u.home.x, 0.5)) }));
     await animate(sc, reelMs, (t) => {
       const e = E.inQ(t) * 0.55 + t * 0.45;
       // tail first along the line (the head trails, still pointing where it flew); on the last third it swings round
@@ -351,12 +435,12 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
     // ---- seated: the art draws the whole harpoon (and the coiled line) from here
     look.on = false;
     harp.hide();
-    play('harpSeat', { volume: 0.85, pan });
+    play('harpSeat', { volume: 0.48, pan });
     // the battle has its blow: hand it back now — the lift and the re-plant play on by themselves
     // (the crab never left its tile: nothing to bring home)
     const rest = u.playRange('attack', catchF);
     atFrame(u, 'attack', plantF, () => {
-      play('harpReplant', { volume: 0.9, pan });
+      play('harpReplant', { volume: 0.64, pan });
       const foot = artPt(u, 'attack', plantF, 'staff');
       void lightFlash(sc, foot.x, u.home.y, PAL.white, 12, 220, { floorY: u.home.y, intensity: 0.5 });
     });
@@ -402,6 +486,130 @@ function biteChips(sc: Phaser.Scene, s: Surface, at: XY, dir: XY, seed: number):
       own.set(x, y, c.c);
     }
   }).then(() => own.destroy());
+}
+
+/** Run `fn` after `n` RAW rendered frames (scene updates, counted even through a hit-stop's frozen clock). */
+function rawFrames(sc: Phaser.Scene, n: number, fn: () => void): void {
+  let k = 0;
+  const upd = () => {
+    if (++k < n + 1) return;
+    sc.events.off('update', upd);
+    try {
+      fn();
+    } catch (e) {
+      console.error('[tide_harpooner]', e);
+    }
+  };
+  sc.events.on('update', upd);
+  sc.events.once('shutdown', () => sc.events.off('update', upd));
+}
+
+/**
+ * The entry wound where the head goes in: on the contact frame and the next an ink notch (3 px across the line) and a
+ * water4 burst of 2–3 px flung back toward the crab; then a 1-px ink notch stays while the head is stuck. Follows the
+ * struck body (`off`). Raw frames: it plays through the hit-stop.
+ */
+function entryMark(sc: Phaser.Scene, at: XY, dir: XY, off: () => XY, depth: number, keep: () => boolean): void {
+  const s = new Surface(sc, depth);
+  const nx = -dir.y;
+  const ny = dir.x;
+  let k = 0;
+  const upd = () => {
+    s.clear();
+    const o = off();
+    const x = at.x + o.x;
+    const y = at.y + o.y;
+    if (k < 2) {
+      for (let d = -1; d <= 1; d++) s.set(x + nx * d, y + ny * d, PAL.ink);
+      const r = k === 0 ? 2 : 3;
+      s.set(x - dir.x * r + nx * 2, y - dir.y * r + ny * 2, PAL.water4);
+      s.set(x - dir.x * r - nx * 2, y - dir.y * r - ny * 2, PAL.water4);
+      s.set(x - dir.x * (r + 1), y - dir.y * (r + 1), k === 0 ? PAL.white : PAL.water4);
+    } else s.set(x, y, PAL.ink);
+    k++;
+    if (k > 2 && !keep()) {
+      sc.events.off('update', upd);
+      s.destroy();
+    }
+  };
+  upd();
+  sc.events.on('update', upd);
+  sc.events.once('shutdown', () => {
+    sc.events.off('update', upd);
+    s.destroy();
+  });
+}
+
+/**
+ * The exit, ON the contact frame (raw frames: through the hit-stop): a white jet of 4 px out of the far edge along the
+ * throw and two water4 drops beside it, growing for 3 frames — the exit spray (time-scaled) takes over from there.
+ */
+function exitBurst(sc: Phaser.Scene, at: XY, dir: XY, off: () => XY, depth: number): void {
+  const s = new Surface(sc, depth);
+  const nx = -dir.y;
+  const ny = dir.x;
+  let k = 0;
+  const upd = () => {
+    s.clear();
+    if (k > 3) {
+      sc.events.off('update', upd);
+      s.destroy();
+      return;
+    }
+    const o = off();
+    const x = at.x + o.x + dir.x * 2;
+    const y = at.y + o.y + dir.y * 2;
+    const len = 2 + k * 2;
+    for (let d = 0; d < len; d++) s.set(x + dir.x * d, y + dir.y * d, d >= len - 2 ? PAL.white : PAL.water4);
+    s.set(x + dir.x * (len - 1) + nx * (1 + k), y + dir.y * (len - 1) + ny * (1 + k), PAL.water4);
+    s.set(x + dir.x * (len - 2) - nx * (1 + k), y + dir.y * (len - 2) - ny * (1 + k), k < 2 ? PAL.white : PAL.water4);
+    k++;
+  };
+  upd();
+  sc.events.on('update', upd);
+  sc.events.once('shutdown', () => {
+    sc.events.off('update', upd);
+    s.destroy();
+  });
+}
+
+/**
+ * The bite on a guard owns its beat: the shared guard kit's dashed hex glint over the target (an ADD image at the
+ * target's depth + 0.5, opened after the hit-stop) and the attacker's contact-flash disc (an `fx:cflash` image at the
+ * crab's depth + 0.05) are faded out on their first frame; the crab's lip answers with a small 1-px nacre rim instead.
+ */
+function muteGuardKit(sc: Phaser.Scene, tgt: MonsterUnit, me: MonsterUnit): void {
+  const before = new Set(sc.children.list);
+  let rimDone = false;
+  onFrame(sc, (_dt, el) => {
+    for (const c of sc.children.list) {
+      if (before.has(c) || c.type !== 'Image') continue;
+      before.add(c);
+      const im = c as Phaser.GameObjects.Image;
+      const glint = tgt.sprite.active && Math.abs(im.depth - (tgt.sprite.depth + 0.5)) < 0.001 && im.blendMode === 1;
+      const disc = me.sprite.active && im.texture.key.startsWith('fx:cflash:') && Math.abs(im.depth - (me.sprite.depth + 0.05)) < 0.06;
+      if (glint || disc) im.setAlpha(0);
+      if (disc && !rimDone) {
+        rimDone = true;
+        nacreRim(sc, me);
+      }
+    }
+    return el < 700;
+  });
+}
+
+/** A 1-px nacre rim round the crab's aperture (white → water4 → gone over 3 frames): the shell takes the backlash. */
+function nacreRim(sc: Phaser.Scene, u: MonsterUnit): void {
+  const c = u.core();
+  const s = new Surface(sc, u.sprite.depth + 0.06);
+  void animate(sc, 110, (t) => {
+    s.clear();
+    const col = t < 0.35 ? PAL.white : t < 0.7 ? PAL.water4 : PAL.water3;
+    for (let i = 0; i < 9; i++) {
+      const a = -Math.PI * 0.85 + (i / 8) * Math.PI * 0.9;
+      s.set(c.x + Math.cos(a) * 6 * (u.flipX ? -1 : 1), c.y + Math.sin(a) * 5, col);
+    }
+  }).then(() => s.destroy());
 }
 
 /** The panel trim splinters where the head goes in (screen plane). */
@@ -493,7 +701,7 @@ async function tideEntrance(S: Stage): Promise<void> {
   u.showSprite();
   u.badge.setVisible(false);
   let clodsOut = false;
-  await animate(sc, 300, (t) => {
+  await animate(sc, 270, (t) => {
     const k = t * 0.5 + E.inOutQ(t) * 0.5;
     tide.st.outK = k;
     // the receding edge on the floor row (paintTide: u = x / 2hw + 0.5 there, the edge at u = outK · 1.08)
@@ -514,19 +722,24 @@ async function tideEntrance(S: Stage): Promise<void> {
   atFrame(u, 'summon', landF, () => {
     arrive.stop(220);
     cut = S.climax(); // the band passes under the tile while the shell heaves out
-    play('harpHeave', { volume: 0.95, pan });
+    cutinVoice(sc, cut); // the band's whoosh / plate thud answered by the card's own rope and shell
+    play('harpHeave', { volume: 0.7, pan });
     void shake(sc, 120, 1);
     clods(sc, home, unitDepth(home.y) + 0.4, u.uid);
   });
-  atFrame(u, 'summon', landF + 1, () => play('harpHeave', { volume: 0.85, pan, pitch: 1.08 }));
+  atFrame(u, 'summon', landF + 1, () => play('harpHeave', { volume: 0.62, pan, pitch: 1.08 }));
   atFrame(u, 'summon', landF + 2, () => play('harpShellTok', { volume: 0.8, pan }));
-  atFrame(u, 'summon', landF + 5, () => play('harpBubble', { volume: 1, pan, pitch: 1.2 })); // the eye stalks pop
+  atFrame(u, 'summon', landF + 5, () => play('harpTik', { volume: 1, pan })); // the eye stalks pop (their own wet tik)
   atFrame(u, 'summon', Math.max(landF + 6, uprightF - 1), () => play('harpShellTok', { volume: 0.9, pan, pitch: 0.92 }));
   await run;
   // the roar: rears, vapour from the apex, the harpoon spun once in the claw — and PLANTED
   const roarFrom = 3;
   if (!S.cutIn) play('harpConch', { volume: 0.9, pan });
   const roar = u.playRange('roar', roarFrom);
+  // the VENT: vapour out of the apex on the roar's release — a breath burst and the conch swelling (+4 dB, the pitch
+  // dipping on the release) under the cut-in's held conch
+  // (the roar range starts ON its release frame, f3, where the first puff leaves the apex)
+  play('harpVent', { volume: 0.95, pan });
   atFrame(u, 'roar', 5, () => play('harpSwish', { volume: 0.75, pan, pitch: 1.1 }));
   atFrame(u, 'roar', 7, () => {
     play('harpPlant', { volume: 1, pan });
@@ -677,6 +890,7 @@ function burial(ctx: DestroyCtx): void {
   let lastAt = -1;
   let sank = false;
   let poolHidden = false;
+  let buryH: { stop(ms?: number): void } | null = null;
   const before = new Set(sc.children.list);
   const stop = onFrame(sc, (_dt, el) => {
     if (el > 5000) return false;
@@ -710,7 +924,8 @@ function burial(ctx: DestroyCtx): void {
       // (no burst, no splash, no ring) — the kit then sees no body to break and only hands the card over
       if (el - lastAt >= 50) {
         sank = true;
-        sinkApex(sc, u, u.home, pan);
+        sinkApex(sc, u, u.home, pan, buryH);
+        buryH = null;
         u.sprite.setVisible(false);
         gone = true;
         return false;
@@ -718,6 +933,10 @@ function burial(ctx: DestroyCtx): void {
     }
     if (fi.frame !== lastF) {
       lastF = fi.frame;
+      // the second roll-map frame lands on its side (the kit's dissolve beat played the first tok)
+      if (fi.frame === dissF + 1) play('harpRoll2', { volume: 1, pan });
+      // the first SINK frame: the burial hiss starts ON the picture (faded on the burst, sinkApex)
+      if (!buryH && fi.frame >= dissF + 2) buryH = start('harpBury', { volume: 0.95, pan });
       if (!left && fi.frame >= harpF) {
         left = true;
         const tip = artPt(u, 'idle', 0, 'muzzle');
@@ -734,6 +953,8 @@ function burial(ctx: DestroyCtx): void {
     }
     return true;
   }, () => {
+    buryH?.stop(200);
+    buryH = null;
     void (async () => {
       try {
         if (!gone && !left) return;
@@ -747,7 +968,7 @@ function burial(ctx: DestroyCtx): void {
         await sleep(sc, 500);
         const butt = harp.butt();
         harp.hide();
-        play('harpSplinter', { volume: 0.9, pan });
+        play('harpSplinter', { volume: 1, pan });
         const s = new Surface(sc, unitDepth(u.home.y) + 0.3);
         await animate(sc, 620, (t) => {
           s.clear();
@@ -775,7 +996,7 @@ function burial(ctx: DestroyCtx): void {
  * grains (earth1 / earth2, 2 px) close over it from both edges, one wet sheen (water4) runs across the sand, then the
  * sand flattens back into the tile. ~380 ms, whole pixels, palette only.
  */
-function sinkApex(sc: Phaser.Scene, u: MonsterUnit, home: XY, pan: number): void {
+function sinkApex(sc: Phaser.Scene, u: MonsterUnit, home: XY, pan: number, bury: { stop(ms?: number): void } | null): void {
   const spr = u.sprite;
   const img = sc.add.image(spr.x, spr.y, spr.texture.key, spr.frame.name).setOrigin(spr.originX, spr.originY).setFlipX(spr.flipX).setScale(spr.scaleX, spr.scaleY).setDepth(spr.depth);
   const fw = spr.frame.realWidth;
@@ -785,7 +1006,10 @@ function sinkApex(sc: Phaser.Scene, u: MonsterUnit, home: XY, pan: number): void
   const y0 = spr.y;
   // the apex's columns at the floor (where the sand piles): the frame's opaque span on its floor row … a few rows up
   const half = 9;
-  play('harpBury', { volume: 0.9, pan });
+  // the burst role: the hiss closes as the sand does, the last breath and the settle answer it
+  if (bury) void sleep(sc, 220).then(() => bury.stop(160));
+  else play('harpBury', { volume: 0.9, pan });
+  play('harpSettle', { volume: 0.95, pan });
   void animate(sc, 380, (t, el) => {
     const k = Math.min(14, Math.floor(el / 22)); // px sunk
     img.setCrop(0, 0, fw, Math.max(0, floorRow - k + 1));

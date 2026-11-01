@@ -309,7 +309,7 @@ export function summonPose(f: number): Pose {
   if (f >= SU_N - 1) return home();
   return SUMMON_KEYS[f];
 }
-const SU_HOLDS = [70, 60, 60, 100, 90, 90, 70, 70, 90, 70, 80, 90, 100, 120];
+const SU_HOLDS = [70, 60, 60, 100, 90, 90, 70, 70, 70, 70, 70, 70, 100, 120];
 
 // ------------------------------------------------------------------ death (10): into the shell, the shell buried in sand
 

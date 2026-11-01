@@ -338,15 +338,18 @@ export function haul(u: MonsterUnit, toward: XY, px: number, o: { hold?: boolean
 const GENERIC_HIT: readonly SfxName[] = ['impactLight', 'impactHeavy', 'shieldBlock'];
 
 /**
- * Call synchronously ON a contact frame, just before the battle kit stages it (inside the strike, before s.impact; or
- * from a 'v3:contact' listener, which the kit emits right before it stages the contact). For that one synchronous stage:
+ * Call synchronously ON a contact frame, wrapped round the call that stages it: `stage` is the synchronous contact stack
+ * (the strike's s.impact, or the kit's own staging when called from a 'v3:contact' listener — then pass a no-op and the
+ * filter stays up only until the end of this tick's microtasks). For that stack only:
  *  - the generic sounds above are dropped at the source (they never start: no transient leaks through a fade);
  *  - `motifs`: the foreign shared motifs the stage draws are hidden on their first frame — the ranged counter's white
- *    lightning bolt (clash.backlash: an ADD image at DEPTH.FX + 3) and the hex-shield clang (vfx blockClang: graphics at
- *    DEPTH.FX + 0.1 / + 0.2). The card draws its own beat in their place (`after`).
- * `after` runs once the stage is done (a microtask: still the contact frame, before anything renders).
+ *    lightning bolt (clash.backlash: an ADD image at DEPTH.FX + 3), the hex-shield clang (vfx blockClang: graphics at
+ *    DEPTH.FX + 0.1 / + 0.2) and, with `glint`, the guard's dashed hex glint (react guard: graphics at DEPTH.FX + 0.3).
+ *    The card draws its own beat in their place (`after`).
+ * The global sfx.play is restored in a finally right after `stage` returns (a throw never leaves it patched); a
+ * listener-side call (no stage of its own) restores it in the same microtask as before, still the contact frame.
  */
-export function ownContact(scene: Phaser.Scene, o: { motifs?: boolean } = {}, after?: () => void): void {
+export function ownContact(scene: Phaser.Scene, o: { motifs?: boolean; glint?: boolean; stage?: () => void } = {}, after?: () => void): void {
   const before = o.motifs ? new Set(scene.children.list) : null;
   const orig = sfx.play;
   const ban = new Set(GENERIC_HIT);
@@ -354,16 +357,18 @@ export function ownContact(scene: Phaser.Scene, o: { motifs?: boolean } = {}, af
     if (ban.has(name)) return;
     orig.call(sfx, name, opts);
   };
-  sfx.play = mine;
-  queueMicrotask(() => {
+  const restore = () => {
     if (sfx.play === mine) sfx.play = orig;
+  };
+  const finish = () => {
+    restore();
     if (before) {
       for (const c of scene.children.list) {
         if (before.has(c)) continue;
         const g = c as Phaser.GameObjects.Image;
         const d = g.depth;
         const bolt = c.type === 'Image' && d === DEPTH.FX + 3 && g.blendMode === Phaser.BlendModes.ADD;
-        const clang = c.type === 'Graphics' && (d === DEPTH.FX + 0.1 || d === DEPTH.FX + 0.2);
+        const clang = c.type === 'Graphics' && (d === DEPTH.FX + 0.1 || d === DEPTH.FX + 0.2 || (o.glint === true && d === DEPTH.FX + 0.3));
         if (bolt || clang) g.setVisible(false);
       }
     }
@@ -372,5 +377,83 @@ export function ownContact(scene: Phaser.Scene, o: { motifs?: boolean } = {}, af
     } catch (e) {
       console.error('[tide_harpooner] contact', e);
     }
+  };
+  sfx.play = mine;
+  if (o.stage) {
+    try {
+      o.stage();
+    } finally {
+      restore();
+    }
+    // the kit may open its motifs a microtask later (async stage): sweep them then, still the contact frame
+    queueMicrotask(finish);
+    return;
+  }
+  queueMicrotask(finish);
+}
+
+// ================================================================ the target's silhouette (the puncture)
+
+/** Is world point `p` on an opaque pixel of the unit's sprite, as it shows NOW (frame, flip, position)? */
+export function opaqueAt(u: MonsterUnit, p: XY): boolean {
+  const s = u.sprite;
+  if (!s.active || !s.visible) return false;
+  const l = s.getWorldTransformMatrix().applyInverse(p.x, p.y);
+  const w = s.frame.realWidth;
+  const v = l.x + s.displayOriginX;
+  const fx = Math.floor(s.flipX ? w - v : v);
+  const fy = Math.floor(l.y + s.displayOriginY);
+  if (fx < 0 || fy < 0 || fx >= w || fy >= s.frame.realHeight) return false;
+  try {
+    return (s.scene.textures.getPixelAlpha(fx, fy, s.texture.key, s.frame.name) ?? 0) >= 128;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Along `dir` from `from` (inside the body): the last opaque pixel before the silhouette is left for good (`gap` clear
+ * pixels in a row), within `max` px. Null when it never leaves.
+ */
+export function farEdge(u: MonsterUnit, from: XY, dir: XY, max = 90, gap = 3): XY | null {
+  let last: XY = from;
+  let clear = 0;
+  for (let d = 1; d <= max; d++) {
+    const p = add(from, dir, d);
+    if (opaqueAt(u, p)) {
+      last = p;
+      clear = 0;
+    } else if (++clear >= gap) return snapXY(last);
+  }
+  return null;
+}
+
+// ================================================================ the cut-in speaks with the card's own kit
+
+/**
+ * While `until` runs (the shared cut-in inside the summon), the shared kit's banned v1 recipes are answered by this
+ * card's own sounds (§0.2: lane C never plays 'whoosh' / 'impactHeavy', not even as a quiet fill): the band's whoosh
+ * becomes a rope whirr (harpSwish, lower), its plate thud a low conch-shell tok. The cut-in file itself is never
+ * edited; the global sfx.play is restored when `until` settles (or after `maxMs`, whichever comes first).
+ */
+export function cutinVoice(scene: Phaser.Scene, until: Promise<unknown>, maxMs = 1600): void {
+  const orig = sfx.play;
+  const mine: typeof sfx.play = (name, opts) => {
+    if (name === 'whoosh') return orig.call(sfx, 'harpSwish', { ...opts, pitch: 0.8 * (opts?.pitch ?? 1), volume: Math.min(1, (opts?.volume ?? 1) * 1.0) });
+    if (name === 'impactHeavy') return orig.call(sfx, 'harpShellTok', { ...opts, pitch: 0.72, volume: Math.min(1, (opts?.volume ?? 1) * 3.5) });
+    return orig.call(sfx, name, opts);
+  };
+  sfx.play = mine;
+  let done = false;
+  const restore = () => {
+    if (done) return;
+    done = true;
+    if (sfx.play === mine) sfx.play = orig;
+  };
+  void until.then(restore, restore);
+  const t = scene.time.delayedCall(maxMs, restore);
+  scene.events.once('shutdown', () => {
+    t.remove(false);
+    restore();
   });
 }
