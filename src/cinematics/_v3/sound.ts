@@ -19,6 +19,7 @@ import { sfx, type SfxHandle, type SfxName, type SfxOpts } from '../../audio/sfx
 import type { AnimMark, AnyMonsterAnim } from '../../art/types';
 import type { CardId } from '../../data/cards';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
+import { variantOf } from '../../duel/unit-variant';
 import { LOOK_V3 } from '../../view/layout';
 import { setCombatSfx } from '../../vfx/combat';
 import { hitSfxName } from '../../audio/v3/materials';
@@ -207,6 +208,25 @@ export const CHARACTER_SOUNDS: Partial<Record<CardId, CharacterSounds>> = {
     reviveLand: 'magusReviveSettle',
   },
   ...KART_B_VOICES, // lane B cards (src/audio/v3/kart-b.ts)
+  // lane A (docs/v3/kart-a/ashen_drake.md §6.4)
+  ashen_drake: {
+    roar: 'ashenRoar',
+    arrive: 'ashenMound',
+    land: 'ashenTalon',
+    charge: 'ashenInhale',
+    release: 'ashenExhale',
+    impact: 'ashenIgnite',
+    // r3 (critic r2 #4): the death scored on the frames the picture moves — the crackle on the cloak's drop
+    // (the 'dissolve' mark, death f6), the crumble as the plates break (f7), the core on the floor (f9)
+    dissolve: 'ashenCrackle',
+    afterDissolve: [
+      [1, 'ashenCrumble', 1],
+      [3, 'ashenCoreDrop', 0.9],
+    ],
+    burst: 'ashenCool',
+    reviveGather: 'ashenReviveGather',
+    reviveLand: 'ashenReviveBeat',
+  },
 };
 
 /**
@@ -220,6 +240,25 @@ export function soundsOf(id: CardId | null | undefined): CharacterSounds | null 
   const v = v3Recipe(id)?.voice;
   if (v && !('custom' in v)) return voiceSounds(id);
   return CHARACTER_SOUNDS[(v?.custom ?? id) as CardId] ?? null;
+}
+
+/**
+ * Per-variant voice overrides (lane A shared infrastructure; src/art/variants.ts), keyed
+ * `<cardId>:<variant>` (e.g. 'cloud_hatchling:grown'): the roles listed replace the card's own set
+ * for a unit in that variant. Empty until a card registers its variant's voice here (additively).
+ */
+export const VARIANT_SOUNDS: Record<string, Partial<CharacterSounds>> = {};
+
+/**
+ * A unit's character sounds: soundsOf(u.cardId), with its variant's roles over them (VARIANT_SOUNDS).
+ * Exactly soundsOf(u.cardId) for every unit without a variant (and null when the card has no set).
+ */
+export function soundsOfUnit(u: MonsterUnit): CharacterSounds | null {
+  const C = soundsOf(u.cardId);
+  if (!C) return null;
+  const v = variantOf(u);
+  const o = v ? VARIANT_SOUNDS[`${u.cardId}:${v}`] : undefined;
+  return o ? { ...C, ...o } : C;
 }
 
 /** The card of a blow's source (react.ts `by`: a unit, a monster art, `{ art }`, a weight class). */
@@ -250,7 +289,7 @@ const TAKE_MS = 320;
 
 /** The attacker's charge pose is on screen (the declaration): its own charge sound starts now. */
 export function holdCharge(u: MonsterUnit, o: { volume?: number } = {}): void {
-  const C = soundsOf(u.cardId);
+  const C = soundsOfUnit(u);
   if (!C) return;
   dropCharge(u, 40);
   const h = start(C.charge, { volume: o.volume ?? 0.85, pan: panAt(u.home.x) });

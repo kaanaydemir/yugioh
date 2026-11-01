@@ -27,6 +27,7 @@ import type { V3VoiceSfxName } from './v3/voices';
 import type { V3SpellSfxName } from './v3/spells';
 import type { DawnSfxName } from './v3/dawn';
 import type { KartBSfxName } from './v3/kart-b';
+import type { AshenSfxName } from './v3/ashen';
 import type { UiCardSfxName } from './v3/ui-cards';
 import type { UiFlowSfxName } from './v3/ui-flow';
 
@@ -62,6 +63,7 @@ export type SfxName =
   | V3SpellSfxName
   | DawnSfxName
   | KartBSfxName
+  | AshenSfxName
   | UiCardSfxName
   | UiFlowSfxName;
 

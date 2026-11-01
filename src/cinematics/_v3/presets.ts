@@ -97,6 +97,10 @@ export const MATTER_RAMP: Record<ShatterMaterial, Ramp> = {
   plant: RAMPS.leaf,
   fire: RAMPS.fire,
   water: RAMPS.water,
+  // lane A (additive): ash keeps the stone greys (fire1 is darker than stone3, so no ember on top: the
+  // ramp must climb in value); acid is venom's matter — the dark hide eaten into the green
+  ash: RAMPS.stone,
+  acid: [PAL.void0, PAL.void1, PAL.leaf1, PAL.leaf2, PAL.leaf3],
 };
 
 /** The tones of one matter (a recipe's `summon.matter`, A3). */

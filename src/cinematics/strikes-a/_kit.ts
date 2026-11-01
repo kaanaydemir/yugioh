@@ -27,6 +27,7 @@ import { cardToGraveyard } from '../_core/helpers';
 import { onDuelStart } from '../../duel/seeds';
 import { isExtraAnim } from '../../art/animtime';
 import { deathV3 } from '../_v3/death';
+import { unitFrame } from '../../duel/unit-variant';
 
 export type AnyCtx = CinematicContext<GameEvent>;
 export type Ctx<T extends GameEvent['type']> = CinematicContext<Extract<GameEvent, { type: T }>>;
@@ -229,10 +230,10 @@ export function currentPixels(u: MonsterUnit): { anim: MonsterAnim; frame: numbe
   // v3: a frame of an extra anim ('death:4', 'hitHeavy:1' …; never shown in the old look) breaks
   // as itself, not as idle 0 (the `anim` field stays the base anim the old flavours expect)
   const x = LOOK_V3 && !m ? /^([A-Za-z]+):(\d+)$/.exec(name) : null;
-  if (x && isExtraAnim(x[1]) && u.has(x[1])) return { anim: 'hit', frame: Number(x[2]), pc: monsterFrame(u.cardId, x[1], Number(x[2])) };
+  if (x && isExtraAnim(x[1]) && u.has(x[1])) return { anim: 'hit', frame: Number(x[2]), pc: unitFrame(u, x[1], Number(x[2])) };
   const anim = m && (MONSTER_ANIMS as string[]).includes(m[1]) ? (m[1] as MonsterAnim) : 'idle';
   const frame = m ? Number(m[2]) : 0;
-  return { anim, frame, pc: monsterFrame(u.cardId, anim, frame) };
+  return { anim, frame, pc: unitFrame(u, anim, frame) };
 }
 
 let ovSeq = 0;

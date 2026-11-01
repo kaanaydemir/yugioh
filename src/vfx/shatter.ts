@@ -23,8 +23,9 @@ import type { Attribute, MonsterId } from '../data/cards';
 import { monsterArt } from '../art/monsters';
 import { ATTRIBUTE_RAMP, PAL } from '../art/palette';
 import { PixelCanvas, mulberry32 } from '../art/pixel';
-import { addStaticCanvas, monsterFrame, monsterP2TextureKey } from '../art/textures';
-import type { AnyMonsterAnim, DrawOpts } from '../art/types';
+import { addStaticCanvas, artFrame, monsterFrame, monsterP2TextureKey } from '../art/textures';
+import type { AnyMonsterAnim, DrawOpts, MonsterArt } from '../art/types';
+import { variantArt, variantOfSheetKey } from '../art/variants';
 import { MONSTER_ANIMS } from '../art/types';
 import { animSpec, isExtraAnim } from '../art/animtime';
 import { DEPTH, type XY } from '../view/layout';
@@ -100,10 +101,12 @@ function currentFrame(sprite: Phaser.GameObjects.Sprite | Phaser.GameObjects.Ima
  * The cached `shatter:<id>:<anim>:<frame>` texture (`…:p2` for a P2 'relight' sheet): exactly the
  * pixels of that monster frame. Created on first use; warmShatter() makes it ahead of time.
  */
-function shatterTexture(scene: Phaser.Scene, id: MonsterId, anim: AnyMonsterAnim, frame: number, relit = false) {
+function shatterTexture(scene: Phaser.Scene, id: MonsterId, anim: AnyMonsterAnim, frame: number, relit = false, variant: string | null = null) {
   const o: DrawOpts | undefined = relit ? { lightFrom: 'right' } : undefined;
-  const pc = monsterFrame(id, anim, frame, o);
-  const key = `shatter:${id}:${anim}:${frame}${relit ? ':p2' : ''}`;
+  // a variant's sprite (src/art/variants.ts: cloud_hatchling's grown form) breaks as its own pixels, cached apart
+  const vArt = variant ? variantArt(id, variant) : null;
+  const pc = vArt ? artFrame(vArt, anim, frame, o) : monsterFrame(id, anim, frame, o);
+  const key = `shatter:${id}${vArt ? `:${variant}` : ''}:${anim}:${frame}${relit ? ':p2' : ''}`;
   if (!scene.textures.exists(key)) addStaticCanvas(scene, key, pc.toCanvas());
   return { key, pc };
 }
@@ -115,6 +118,14 @@ function shatterTexture(scene: Phaser.Scene, id: MonsterId, anim: AnyMonsterAnim
 export function warmShatter(scene: Phaser.Scene, id: MonsterId, anim: AnyMonsterAnim = 'hit', frame = 1, relit = false): string {
   const f = Math.max(0, Math.min(frame, (animSpec(monsterArt(id), anim)?.frames ?? 1) - 1));
   return shatterTexture(scene, id, anim, f, relit).key;
+}
+
+/** The variant sheet a monster sprite shows (src/art/variants.ts), or null (every sprite without one: today's path). */
+function spriteVariant(sprite: Phaser.GameObjects.Sprite | Phaser.GameObjects.Image, id: MonsterId): { name: string; p2: boolean; art: MonsterArt } | null {
+  const v = variantOfSheetKey(sprite.texture?.key);
+  if (!v || v.id !== id) return null;
+  const art = variantArt(id, v.name);
+  return art ? { name: v.name, p2: v.p2, art } : null;
 }
 
 interface Brick {
@@ -133,16 +144,17 @@ export async function shatter(scene: Phaser.Scene, sprite: Phaser.GameObjects.Sp
   const cur = currentFrame(sprite);
   const anim = opts.anim ?? cur.anim;
   const fi = opts.frame ?? cur.frame;
-  const art = monsterArt(opts.monsterId);
+  const sv = spriteVariant(sprite, opts.monsterId);
+  const art = sv?.art ?? monsterArt(opts.monsterId);
   // a P2 'relight' sheet on screen (v3): shatter its pixels, lit the same way
-  const relit = sprite.texture?.key === monsterP2TextureKey(opts.monsterId);
+  const relit = sv ? sv.p2 : sprite.texture?.key === monsterP2TextureKey(opts.monsterId);
   const ramp = ATTRIBUTE_RAMP[opts.attribute];
   const depth = opts.depth ?? sprite.depth + 0.5;
   const rnd = mulberry32(++seed * 7919);
   const RR = (a: number, b: number) => a + (b - a) * rnd();
 
   // texture of exactly these pixels, with sub-frames for slices / bricks
-  const { key, pc } = shatterTexture(scene, opts.monsterId, anim, fi, relit);
+  const { key, pc } = shatterTexture(scene, opts.monsterId, anim, fi, relit, sv?.name ?? null);
   const tex = scene.textures.get(key);
   const W = pc.w;
   const H = pc.h;
@@ -321,8 +333,9 @@ export async function shatter(scene: Phaser.Scene, sprite: Phaser.GameObjects.Sp
 
 // ==================================================================================== v3 materials
 
-export type ShatterMaterial = 'crystal' | 'stone' | 'light' | 'shadow' | 'plant' | 'fire' | 'water';
-export const SHATTER_MATERIALS_LIST: readonly ShatterMaterial[] = ['crystal', 'stone', 'light', 'shadow', 'plant', 'fire', 'water'];
+// 'ash' (ashen_drake) and 'acid' (venom_drake): lane A, additive (docs/v3/oturum-a.md "Shared infrastructure").
+export type ShatterMaterial = 'crystal' | 'stone' | 'light' | 'shadow' | 'plant' | 'fire' | 'water' | 'ash' | 'acid';
+export const SHATTER_MATERIALS_LIST: readonly ShatterMaterial[] = ['crystal', 'stone', 'light', 'shadow', 'plant', 'fire', 'water', 'ash', 'acid'];
 
 /** How one matter breaks (v3). Colours are palette tones; every tint is a whole palette step. */
 export interface MaterialPreset {
@@ -366,6 +379,8 @@ export interface MaterialPreset {
   moteColors: readonly number[];
   /** Mote vertical speed range (px/s, negative = up) and shape. */
   moteVy: readonly [number, number];
+  /** Optional sideways mote drift range (px/s) along the blow (push.x's side; +x without a push). Default: ±12 both ways. */
+  moteVx?: readonly [number, number];
   moteShape: 'px' | 'plus' | 'puff';
   /** Burst ring + star at the core. */
   ring: readonly number[] | null;
@@ -451,6 +466,26 @@ export const SHATTER_MATERIALS: Record<ShatterMaterial, MaterialPreset> = {
     motes: 0, moteColors: [], moteVy: [0, 0], moteShape: 'px',
     ring: null, shake: 2, stopMs: 30, pitch: 1.05,
   },
+  // ash (ashen_drake, docs/v3/kart-a/ashen_drake.md §5.6): it does not break, it SETTLES — fine grains
+  // sag onto the floor and rest, grey puffs drift off with the blow. No white, no shake, no stop.
+  // Placeholder values from the blueprint; the ashen_drake builder tunes them.
+  ash: {
+    brick: [1, 2], speed: 0.15, up: [0, 6], gravity: 120, drag: 2.2, life: [600, 900], floor: 'rest', bounce: 0, flutter: 6, attract: 0,
+    flash: [PAL.stone1], late: [PAL.stone1, PAL.stone0], lateAt: 0.5, blinkAt: 0.8,
+    shards: 0, shardColors: [], shardShape: 'px',
+    motes: 8, moteColors: [PAL.stone2, PAL.stone1], moteVy: [-14, -4], moteVx: [4, 16], moteShape: 'puff',
+    ring: null, shake: 0, stopMs: 0, pitch: 0.8,
+  },
+  // acid (venom_drake, docs/v3/kart-a/venom_drake.md §5.4): the body is eaten — small wet pieces drop
+  // straight down, rest on the floor and go dark (leaf → void), green drops fall with them. No white.
+  // Placeholder (venom's recipe breaks as 'shadow' with the 'acid' ACCENT); the venom builder tunes it.
+  acid: {
+    brick: [1, 2], speed: 0.3, up: [0, 10], gravity: 520, drag: 1.6, life: [520, 820], floor: 'rest', bounce: 0, flutter: 0, attract: 0,
+    flash: [PAL.leaf3], late: [PAL.leaf1, PAL.void0], lateAt: 0.45, blinkAt: 0.8,
+    shards: 0, shardColors: [], shardShape: 'px',
+    motes: 8, moteColors: [PAL.leaf3, PAL.leaf2], moteVy: [10, 40], moteShape: 'px',
+    ring: null, shake: 1, stopMs: 20, pitch: 0.85,
+  },
 };
 
 interface MBrick {
@@ -480,12 +515,13 @@ export async function shatterMaterial(scene: Phaser.Scene, sprite: Phaser.GameOb
   const cur = currentFrame(sprite);
   const anim = opts.anim ?? cur.anim;
   const fi = opts.frame ?? cur.frame;
-  const art = monsterArt(opts.monsterId);
-  const relit = sprite.texture?.key === monsterP2TextureKey(opts.monsterId);
+  const sv = spriteVariant(sprite, opts.monsterId);
+  const art = sv?.art ?? monsterArt(opts.monsterId);
+  const relit = sv ? sv.p2 : sprite.texture?.key === monsterP2TextureKey(opts.monsterId);
   const depth = opts.depth ?? sprite.depth + 0.5;
   const rnd = mulberry32(++seed * 7919 + 17);
   const RR = (a: number, b: number) => a + (b - a) * rnd();
-  const { key, pc } = shatterTexture(scene, opts.monsterId, anim, fi, relit);
+  const { key, pc } = shatterTexture(scene, opts.monsterId, anim, fi, relit, sv?.name ?? null);
   const tex = scene.textures.get(key);
   const W = pc.w;
   const H = pc.h;
@@ -597,7 +633,7 @@ export async function shatterMaterial(scene: Phaser.Scene, sprite: Phaser.GameOb
   }
   for (let i = 0; i < M.motes; i++) {
     const p = toWorld(bounds.x + rnd() * bounds.w, bounds.y + rnd() * bounds.h);
-    motes.add({ x: Math.round(p.x), y: Math.round(p.y), vx: RR(-12, 12), vy: RR(M.moteVy[0], M.moteVy[1]), drag: 0.6, delay: RR(0, 220), life: RR(420, 900), colors: M.moteColors, shape: M.moteShape, size: M.moteShape === 'puff' ? RR(1.5, 3) : 1, flicker: M.moteShape !== 'puff', fadeAt: 1 });
+    motes.add({ x: Math.round(p.x), y: Math.round(p.y), vx: M.moteVx ? (push.x < 0 ? -1 : 1) * RR(M.moteVx[0], M.moteVx[1]) : RR(-12, 12), vy: RR(M.moteVy[0], M.moteVy[1]), drag: 0.6, delay: RR(0, 220), life: RR(420, 900), colors: M.moteColors, shape: M.moteShape, size: M.moteShape === 'puff' ? RR(1.5, 3) : 1, flicker: M.moteShape !== 'puff', fadeAt: 1 });
   }
   if (M.ring) {
     shards.add({ x: core.x, y: core.y, life: 260, size: 6, grow: 110, shape: 'ring', colors: M.ring, fadeAt: 1 });
