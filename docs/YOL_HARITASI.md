@@ -68,3 +68,12 @@ D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (ka
   Şu an TÜM şeritler duraklı. Ana dalda yarım işlerden gelen bilinen test hataları: cloud_hatchling (4, şerit A),
   crag_axeman "own voice" (şerit C) — şeritler devam edince düzelecek.
 - UYARI: claude/kart-f dalında shield_titan ve hourglass_imp v3 dışlama listesinden çıkarılmış ama eleştiri/kapılardan geçmedi → F devam edip kartlar geçmeden bu dal ana dala BİRLEŞTİRİLMEZ.
+
+## Sahip kararları (2026-11-01 akşam)
+- Kart resimleri: yapay zekâ ile (sahip üretir, Claude prompt verir ve oyuna bağlar). Sabit ana çerçeve,
+  Yu-Gi-Oh! oranı, sade koyu isim, piksel yazı/yıldız. Ayrıntı: docs/v3/KART_RESIM_AI.md.
+  Bu iş Perşembe (2026-11-05 23:00 TR) haftalık sıfırlamadan SONRA ele alınacak.
+- Oyunun TAMAMI İngilizce olacak (arayüz, kart adları, kart yazıları). Geçiş haftalık sıfırlamadan sonra
+  planlanacak; o zamana kadar mevcut Türkçe metinler kalır.
+- Kalan şerit işleri (A–F) yine haftalık sıfırlamadan sonra; şu an yalnız A şeridi (Bulut Yavrusu, Zehir Ejderi) çalışıyor.
+- Açık soru (sahipte): büyük büyülerin süre istisnası (Boşluk Gözü ~5,4 sn).

@@ -41,8 +41,7 @@ Stil referansı + "do NOT copy its low resolution" ile çözüldü.
   (Altın geçişli/kenarlı başlıklar sahip tarafından reddedildi.)
 - Yıldızlar: elle piksel yıldız (9×9, ×4), yazı kutusunun üstünde.
 - Tür satırı, açıklama, çizgi, ATK/DEF: piksel yazı, koyu mürekkep.
-- Dil: maketler İngilizce yapıldı ("her şeyi İngilizce yap"); oyunun tamamının İngilizceye geçip
-  geçmeyeceği AÇIK SORU.
+- Dil: SAHİP KARARI (2026-11-01) — oyunun TAMAMI İngilizce olacak; kartlar İngilizce yazılır.
 - Maket araçları: `tools/cardart-ai/kart4.py` (son hal; kart2/kart3 önceki denemeler; yollar scratchpad'e
   göredir, çalıştırmadan önce düzelt). Son maket: `assets/cardart-ai/mockup-v4.png`.
 
@@ -52,7 +51,7 @@ Stil referansı + "do NOT copy its low resolution" ile çözüldü.
 - Uçurum Büyücüsü: taslak 1 çok sprite-gibi; yeni promptla tekrar üretilecek.
 - Sırada: Hortlak Muhafız, Kabuk Zıpkıncı, sonra diğer canavarlar, en son büyü/tuzak.
 
-## Oyuna bağlama (yapılacak, haftalık sıfırlamadan sonra)
+## Oyuna bağlama — SAHİP: Perşembe (2026-11-05, 23:00 TR) haftalık sıfırlamadan SONRA bakılacak
 - İnceleme panelinde tam kart, ekran çözünürlüğünde (kamera/oyun 640×360 değişmez).
 - Elde/sahada: sahnenin canavar bölümü küçültülmüş kırpım.
 - Steam: yapay zekâ içeriği mağaza sayfasında beyan edilmeli.
