@@ -176,8 +176,17 @@ async function heronEntrance(S: Stage): Promise<void> {
   u.showSprite();
   u.badge.setVisible(false);
   const played = u.playRange('summon', 0, undefined, { hold: false });
-  // the bands step in over the first two frames (the heron is only a dark shape in them)
+  // the bands step in over the first two frames (the heron is only a dark shape in them); the fog arrives FIRST:
+  // his dark shape condenses inside it in three hard steps (nothing there → a ghost → the shape) as the bands close
   void animate(sc, u.rangeMs('summon', 0, 2), (t) => fog.set({ inK: t }));
+  const spr = u.sprite;
+  spr.setAlpha(0);
+  const condense = u.rangeMs('summon', 0, 2);
+  void animate(sc, condense, (t) => {
+    if (spr.active) spr.setAlpha(t < 0.3 ? 0 : t < 0.55 ? 0.4 : t < 0.8 ? 0.75 : 1);
+  }).then(() => {
+    if (spr.active) spr.setAlpha(1);
+  });
   // the eye glint (f2–f4): the frogs stop DEAD; one cold gold point in a dark hole of the fog
   const eye = u.art.points?.('summon', 3).head;
   const eyeW = eye ? u.framePoint(eye.x, eye.y) : null;
