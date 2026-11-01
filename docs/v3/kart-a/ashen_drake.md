@@ -1695,3 +1695,21 @@ and this doc (§6.3 correction). The art is unchanged.
 - The death crouch in-between needs frame budget.
 - The plate fall reads as a burst of small chips at 1×, not as cloak shards.
 - SE-4 is still unproven on a calibrated tool.
+
+### Gates round (2026-11-01, HEAD 52c179b)
+
+No code change was needed. Evidence: `shots/kart-a/ashen_drake/gates/`.
+
+| Gate | Result |
+|---|---|
+| `npm run typecheck` | clean (whole tree) |
+| `npm test` | 1346 passed, 8 failed. The 4 known ones plus 4 in cloud_hatchling (not ours: see below). `tests/art/ashen_drake.test.ts` 12/12 and the ashen v1 test 3/3. |
+| `filmdiff --set v1` | **17/17 IDENTICAL** (`gates/filmdiff_v1.txt`) |
+| `filmdiff --set a6v1` | **26/26 IDENTICAL** (`gates/filmdiff_a6v1.txt`) |
+| camera gate (`kaAd*` + `baseline`, `--look v3`, `now.json`) | 15 ok, 26 ok NOBASE, **0 FAIL** (`gates/camera.txt`); zoom 1 everywhere |
+| budgets (REHBER §5 × 1.45) | all within: Summon/P2 4166 ≤ 4350 · Atk/P2 3166 ≤ 3190 · Tie 3150 · LongDeath 3133 · Lose/P2 3083 · Direct/P2 2283 ≤ 2320 · Revive 2200 ≤ 3050 · Pos 533 ≤ 580 · Flip 766 ≤ 870 (`gates/measure.txt`) |
+| page errors / watchdog | 0 in all 26 `kaAd*` scenarios (neon, handlers, timeouts, page, console all empty) |
+| monster-gates (`--class ace`, P1 + P2) | 20 ok + IŞ-10 ref (the recorded exemption, `oturum-a.md` §"ashen_drake: IŞ-10 reference exemption"). KK-13 ms is noisy under the shared machine's load: 7.66/8.10 in the first run (load avg 8.4), then 7.36/6.85 and 7.80/7.54 ok. Frames 139 ≤ 140, bytes 6.94 ≤ 7 MB (`gates/gates.txt`). |
+| `palcheck` (`--rules all`, 9 films at 33 ms, `gates/pal/palcheck.txt`) | Fails the absolute a5 limits in the same way the approved base films do (`shots/kart-a/shared/v3base-head`, also FAIL): summon Δoff 1.70 / white 3.62 vs suWyrm 2.81 / 5.07 and suMagus 3.40 / 4.15. Attack-family peaks at t=462 (#14, the shared declaration) are 1.23–1.43 vs saWyrmBlocked 1.43. kaAdAtk's peak (+1.53, t ≥ 2970) is the shared `-1900` number fading plus the card flight to the grave after the death. Our ash residue in the effect clip stays Δ ≤ +0.08 until then. No white row > 21 %. |
+
+**Not ours (reported):** `tests/art/cloud_hatchling-cardart.test.ts` fails 3 tests deterministically: the WIND light test (118 > 478.72), the subject-material test and the living-frames test (75 < 74.8). The source is `src/art/cardart-v3/cloud_hatchling.ts` (the cloud_hatchling card). `tests/art/cloud_hatchling.test.ts` "no cyan / crim…" timed out at 5 s under load and passes when run alone (3.7 s).

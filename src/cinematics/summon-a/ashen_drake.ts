@@ -161,112 +161,117 @@ async function ashenRiseV3(S: Stage): Promise<void> {
   tornado = true;
   pool.setIntensity(0.9, 120);
   const storm = start('ashenTornado', { volume: 0.9, pan });
-  holdFrame(u, 'summon', 0);
-  u.showSprite();
-  // driven: an ace with a cut-in stops ON the spread frame (held under the band), else plays through
-  if (S.cutIn) bg(u.playRange('summon', 0, holdF));
-  else bg(playFrom(u, 'summon', 0));
-  atMark(u, 'summon', 'land', () => play('ashenTalon', { volume: 0.85, pan }));
-  atFrame(u, 'summon', 3, () => play('ashenHeartbeat', { volume: 0.9, pan }));
-  const tor = lay(S, S.depth + 0.4);
-  const back = lay(S, S.depth - 0.4);
-  const floor = lay(S, DEPTH.TILE_FX + 5);
-  interface Fly { from: XY; to: XY; t0: number; big: boolean }
-  const flies: Fly[] = [];
-  const grains: { x: number; y: number; age: number }[] = [];
-  let el = 0;
-  let lastF = -1;
   let burst = false;
-  onFrame(sc, (dt) => {
-    el += dt;
-    tor.clear();
-    back.clear();
-    floor.clear();
-    if (gone || !live()) return false;
-    if (burst) return false;
-    const fi = u.frameInfo();
-    const f = fi.anim === 'summon' ? fi.frame : lastF;
-    const b = ASHEN_BUILD[Math.max(0, Math.min(ASHEN_BUILD.length - 1, f))];
-    const bandY = fpt(u, 52, b.boneY > 0 ? b.boneY : 22).y;
-    // plates for the NEXT frame's seats fly now, landing as the art seats them
-    if (f !== lastF && f >= 0) {
-      lastF = f;
-      const nx = ASHEN_BUILD[f + 1];
-      if (nx)
-        for (const seat of nx.seats) {
-          const to = fpt(u, seat.x, seat.y);
-          const a = RR(0, Math.PI * 2);
-          flies.push({ from: { x: home.x + Math.round(Math.cos(a) * 20), y: bandY + Math.round(Math.sin(a) * 4) }, to, t0: el, big: Math.random() < 0.5 });
-        }
-    }
-    // 10 stacked ribbons RISING by whole-pixel phase steps (2 px tall each), 34 → 44 px wide, on the band
-    const w = lerp(17, 22, clamp(el / 540, 0, 1));
-    const rise = Math.floor(el / 40) % 3;
-    for (let i = 0; i < 10; i++) {
-      const y = bandY + 10 - i * 3 - rise;
-      if (y > home.y + 2) continue;
-      const rw = Math.round(w * (0.7 + 0.3 * Math.sin(i * 0.9 + el * 0.004)));
-      const ry = Math.max(2, Math.round(rw * 0.28));
-      const ph = (el * 0.012 * S.dir + i * 1.3) % (Math.PI * 2);
-      // a continuous 2-px ribbon: the front arc in front of the body, the back arc behind it; tone bands
-      // and one torn gap travel round it with the spin (whole-pixel steps), two embers ride each ribbon
-      for (let x = -rw; x <= rw; x++) {
-        const q = 1 - (x / rw) * (x / rw);
-        const dy = Math.round(ry * Math.sqrt(Math.max(0, q)));
-        for (const side of [1, -1]) {
-          const ang = Math.atan2(side * Math.sqrt(Math.max(0, q)), x / rw);
-          const u = (((ang - ph) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-          const band = Math.floor((u / (Math.PI * 2)) * 7);
-          if (band >= 5) continue; // the torn gap
-          const front = side > 0;
-          const L = front ? tor : back;
-          const yy = y + side * dy;
-          const X = home.x + x;
-          if (front) {
-            // a 2-px band: the lit top (stone3 on the leading bands) over a stone1 / stone0 underside
-            L.dot(X, yy, band < 2 ? PAL.stone3 : PAL.stone2).dot(X, yy + 1, band < 3 ? PAL.stone1 : PAL.stone0);
-          } else L.rect(X, yy, 1, 2, band < 3 ? PAL.stone1 : PAL.stone0);
-          // fire3 embers riding the ribbons (a fire4 head on the front arc)
-          if (band === 2 && i % 2 === 0 && ((x + i * 3) & 3) === 0) {
-            L.dot(X, yy, front ? PAL.fire3 : PAL.fire2);
-            if (front) L.dot(X + S.dir, yy, PAL.fire4);
+  // adv #5: the sustained tornado always stops, even if the summon is cut short (the sprite leaves, the duel
+  // restarts) while the storm is building
+  try {
+    holdFrame(u, 'summon', 0);
+    u.showSprite();
+    // driven: an ace with a cut-in stops ON the spread frame (held under the band), else plays through
+    if (S.cutIn) bg(u.playRange('summon', 0, holdF));
+    else bg(playFrom(u, 'summon', 0));
+    atMark(u, 'summon', 'land', () => play('ashenTalon', { volume: 0.85, pan }));
+    atFrame(u, 'summon', 3, () => play('ashenHeartbeat', { volume: 0.9, pan }));
+    const tor = lay(S, S.depth + 0.4);
+    const back = lay(S, S.depth - 0.4);
+    const floor = lay(S, DEPTH.TILE_FX + 5);
+    interface Fly { from: XY; to: XY; t0: number; big: boolean }
+    const flies: Fly[] = [];
+    const grains: { x: number; y: number; age: number }[] = [];
+    let el = 0;
+    let lastF = -1;
+    onFrame(sc, (dt) => {
+      el += dt;
+      tor.clear();
+      back.clear();
+      floor.clear();
+      if (gone || !live()) return false;
+      if (burst) return false;
+      const fi = u.frameInfo();
+      const f = fi.anim === 'summon' ? fi.frame : lastF;
+      const b = ASHEN_BUILD[Math.max(0, Math.min(ASHEN_BUILD.length - 1, f))];
+      const bandY = fpt(u, 52, b.boneY > 0 ? b.boneY : 22).y;
+      // plates for the NEXT frame's seats fly now, landing as the art seats them
+      if (f !== lastF && f >= 0) {
+        lastF = f;
+        const nx = ASHEN_BUILD[f + 1];
+        if (nx)
+          for (const seat of nx.seats) {
+            const to = fpt(u, seat.x, seat.y);
+            const a = RR(0, Math.PI * 2);
+            flies.push({ from: { x: home.x + Math.round(Math.cos(a) * 20), y: bandY + Math.round(Math.sin(a) * 4) }, to, t0: el, big: Math.random() < 0.5 });
+          }
+      }
+      // 10 stacked ribbons RISING by whole-pixel phase steps (2 px tall each), 34 → 44 px wide, on the band
+      const w = lerp(17, 22, clamp(el / 540, 0, 1));
+      const rise = Math.floor(el / 40) % 3;
+      for (let i = 0; i < 10; i++) {
+        const y = bandY + 10 - i * 3 - rise;
+        if (y > home.y + 2) continue;
+        const rw = Math.round(w * (0.7 + 0.3 * Math.sin(i * 0.9 + el * 0.004)));
+        const ry = Math.max(2, Math.round(rw * 0.28));
+        const ph = (el * 0.012 * S.dir + i * 1.3) % (Math.PI * 2);
+        // a continuous 2-px ribbon: the front arc in front of the body, the back arc behind it; tone bands
+        // and one torn gap travel round it with the spin (whole-pixel steps), two embers ride each ribbon
+        for (let x = -rw; x <= rw; x++) {
+          const q = 1 - (x / rw) * (x / rw);
+          const dy = Math.round(ry * Math.sqrt(Math.max(0, q)));
+          for (const side of [1, -1]) {
+            const ang = Math.atan2(side * Math.sqrt(Math.max(0, q)), x / rw);
+            const u = (((ang - ph) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+            const band = Math.floor((u / (Math.PI * 2)) * 7);
+            if (band >= 5) continue; // the torn gap
+            const front = side > 0;
+            const L = front ? tor : back;
+            const yy = y + side * dy;
+            const X = home.x + x;
+            if (front) {
+              // a 2-px band: the lit top (stone3 on the leading bands) over a stone1 / stone0 underside
+              L.dot(X, yy, band < 2 ? PAL.stone3 : PAL.stone2).dot(X, yy + 1, band < 3 ? PAL.stone1 : PAL.stone0);
+            } else L.rect(X, yy, 1, 2, band < 3 ? PAL.stone1 : PAL.stone0);
+            // fire3 embers riding the ribbons (a fire4 head on the front arc)
+            if (band === 2 && i % 2 === 0 && ((x + i * 3) & 3) === 0) {
+              L.dot(X, yy, front ? PAL.fire3 : PAL.fire2);
+              if (front) L.dot(X + S.dir, yy, PAL.fire4);
+            }
           }
         }
       }
-    }
-    // the plates in flight (2×2 / 2×3: stone2 with a stone1 crease, a stone3 lit edge)
-    for (let i = flies.length - 1; i >= 0; i--) {
-      const q = flies[i];
-      const t = (el - q.t0) / 90;
-      if (t >= 1) {
-        flies.splice(i, 1);
-        continue;
+      // the plates in flight (2×2 / 2×3: stone2 with a stone1 crease, a stone3 lit edge)
+      for (let i = flies.length - 1; i >= 0; i--) {
+        const q = flies[i];
+        const t = (el - q.t0) / 90;
+        if (t >= 1) {
+          flies.splice(i, 1);
+          continue;
+        }
+        const x = Math.round(lerp(q.from.x, q.to.x, t));
+        const y = Math.round(lerp(q.from.y, q.to.y, t) - Math.sin(t * Math.PI) * 6);
+        // ≥ 2×3 with a 1-px ink outline so they read at 1× against the floor and the storm
+        const h = q.big ? 3 : 2;
+        // (the ink only on the shadow edges — bottom and far side — so a plate reads as a lit chip, not a box)
+        tor.rect(x + 1, y + h, 3, 1, PAL.ink).rect(x + 3, y + 1, 1, h, PAL.ink).rect(x, y, 3, h, PAL.stone2).rect(x, y, 3, 1, PAL.stone3).rect(x, y + h - 1, 3, 1, PAL.stone1);
       }
-      const x = Math.round(lerp(q.from.x, q.to.x, t));
-      const y = Math.round(lerp(q.from.y, q.to.y, t) - Math.sin(t * Math.PI) * 6);
-      // ≥ 2×3 with a 1-px ink outline so they read at 1× against the floor and the storm
-      const h = q.big ? 3 : 2;
-      // (the ink only on the shadow edges — bottom and far side — so a plate reads as a lit chip, not a box)
-      tor.rect(x + 1, y + h, 3, 1, PAL.ink).rect(x + 3, y + 1, 1, h, PAL.ink).rect(x, y, 3, h, PAL.stone2).rect(x, y, 3, 1, PAL.stone3).rect(x, y + h - 1, 3, 1, PAL.stone1);
-    }
-    // ash grains rain off the skirt onto the floor
-    if (Math.random() < 0.5) grains.push({ x: home.x + Math.round(RR(-w, w)), y: home.y + Math.round(RR(-3, 3)), age: 0 });
-    for (let i = grains.length - 1; i >= 0; i--) {
-      const g = grains[i];
-      g.age += dt;
-      if (g.age > 900) {
-        grains.splice(i, 1);
-        continue;
+      // ash grains rain off the skirt onto the floor
+      if (Math.random() < 0.5) grains.push({ x: home.x + Math.round(RR(-w, w)), y: home.y + Math.round(RR(-3, 3)), age: 0 });
+      for (let i = grains.length - 1; i >= 0; i--) {
+        const g = grains[i];
+        g.age += dt;
+        if (g.age > 900) {
+          grains.splice(i, 1);
+          continue;
+        }
+        floor.dot(g.x, g.y, g.age < 450 ? PAL.stone1 : PAL.stone0);
       }
-      floor.dot(g.x, g.y, g.age < 450 ? PAL.stone1 : PAL.stone0);
-    }
-    return true;
-  });
+      return true;
+    });
 
-  // ---- f7: the wings burst out of the storm
-  await untilFrame(u, 'summon', BURST_F);
+    // ---- f7: the wings burst out of the storm
+    await untilFrame(u, 'summon', BURST_F);
+  } finally {
+    storm.stop(90);
+  }
   burst = true;
-  storm.stop(90);
   if (live()) {
     const c = fpt(u, 55, 50);
     void lightFlash(sc, c.x, c.y, PAL.fire3, 36, 260, { ring: true, floorY: home.y });

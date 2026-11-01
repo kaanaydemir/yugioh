@@ -266,3 +266,214 @@ export function flameColumn(px: Px, cx: number, baseY: number, w: number, h: num
     if (colH > 4 && hash(sd + x * 7, step) > 0.78) px.dot(Math.round(cx + x), baseY - colH - 2, PAL.fire3).dot(Math.round(cx + x), baseY - colH - 3, PAL.fire4);
   }
 }
+
+// ---------------------------------------------------------------------------------------------------
+// adversarial round (adv #1 / #2): the bank as GAS, the ignition as a flame sheet grown out of the bank.
+
+/** Anything that takes whole-pixel dots (a Px layer, or an AshMass collecting a bank before it is inked). */
+export interface Dotter {
+  dot(x: number, y: number, c: number): unknown;
+}
+
+/**
+ * The bank as ONE mass (adv #1: every lump carried its own ink outline, so the bank read as a heap of grey
+ * rocks): billows are drawn into this collector back-to-front with no outline, then `flush` inks only the
+ * OUTER silhouette of the whole mass and breaks its upper rim into a 1-px dithered, ragged stone2 / stone3
+ * fringe (re-rolled every 2 frames), so the bank reads as rolling ash, not as stacked stones.
+ */
+export class AshMass implements Dotter {
+  private m = new Map<number, number>();
+  private static key(x: number, y: number): number {
+    return (y + 1024) * 4096 + (x + 1024);
+  }
+  dot(x: number, y: number, c: number): this {
+    this.m.set(AshMass.key(Math.round(x), Math.round(y)), c);
+    return this;
+  }
+  has(x: number, y: number): boolean {
+    return this.m.has(AshMass.key(x, y));
+  }
+  clear(): this {
+    this.m.clear();
+    return this;
+  }
+  get size(): number {
+    return this.m.size;
+  }
+  flush(px: Px, frame: number, ink: number | null = PAL.ink): void {
+    const step = Math.floor(frame / 2);
+    const pts: [number, number, number][] = [];
+    for (const [k, c] of this.m) {
+      const y = Math.floor(k / 4096) - 1024;
+      const x = (k % 4096) - 1024;
+      pts.push([x, y, c]);
+    }
+    // 1) the ink: every empty 4-neighbour of the mass (the outer silhouette only, never between billows)
+    if (ink != null)
+      for (const [x, y] of pts) {
+        if (!this.has(x - 1, y)) px.dot(x - 1, y, ink);
+        if (!this.has(x + 1, y)) px.dot(x + 1, y, ink);
+        if (!this.has(x, y + 1)) px.dot(x, y + 1, ink);
+        if (!this.has(x, y - 1)) px.dot(x, y - 1, ink);
+      }
+    // 2) the body
+    for (const [x, y, c] of pts) px.dot(x, y, c);
+    // 3) the ragged upper rim: on the top edge every other pixel of the ink line becomes a lit ash grain
+    // (a 1-px dither), and a few columns throw a loose grain one more pixel up (stepped, every 2 frames)
+    for (const [x, y, c] of pts) {
+      if (this.has(x, y - 1)) continue;
+      const lit = c === PAL.stone2 || c === PAL.stone3;
+      if (((x + step) & 1) === 0) px.dot(x, y - 1, lit ? PAL.stone2 : PAL.stone1);
+      else if (lit && hash(x * 3 + 1, step) < 0.35) px.dot(x, y, PAL.stone1);
+      if (hash(x * 7 + y, step) < 0.12) px.dot(x + (step & 1 ? 1 : 0), y - 3, PAL.stone2);
+    }
+  }
+}
+
+/**
+ * One soft ash BILLOW (adv #1, replaces the outlined `drawLump` in the bank): a wobbly puff with no outline;
+ * a stone1 body, a dithered stone1 / stone2 transition into a stone2 top with a dithered stone3 lit cap toward
+ * `capA`, a broken stone0 under-rim, and a stone0 CURL (a 1-px crease arc) at `capA + 2.3`: as the caller
+ * steps capA every 1–2 frames the cap and the curl travel round the billow, so it visibly rolls. Hot ash:
+ * fire2 embers (with a fire1 halo pixel) glow in the body, re-rolled every 3 frames (`embers` = share).
+ */
+export function drawBillow(
+  px: Dotter,
+  cx: number,
+  cy: number,
+  r: number,
+  capA: number,
+  sd: number,
+  o: { squash?: number; embers?: number; tick?: number; emberC?: number } = {},
+): void {
+  const R = Math.max(1.5, r);
+  const sq = o.squash ?? 0.8;
+  const x0 = Math.round(cx);
+  const y0 = Math.round(cy);
+  const p1 = hash(sd, 1) * 6.283;
+  const p2 = hash(sd, 2) * 6.283;
+  const a1 = 0.1 + hash(sd, 4) * 0.1;
+  const a2 = 0.05 + hash(sd, 5) * 0.08;
+  const lx = Math.cos(capA);
+  const ly = Math.sin(capA);
+  const cxl = Math.cos(capA + 2.3);
+  const cyl = Math.sin(capA + 2.3);
+  const ext = Math.ceil(R * 1.2) + 1;
+  const extY = Math.ceil(R * sq * 1.2) + 1;
+  const tick = o.tick ?? 0;
+  const ec = o.emberC ?? PAL.fire2;
+  const inside = (x: number, y: number): boolean => {
+    const nx = x / R;
+    const ny = y / (R * sq);
+    const d = Math.sqrt(nx * nx + ny * ny);
+    if (d < 0.35) return true;
+    if (ny > 0.8) return false;
+    const th = Math.atan2(ny, nx);
+    return d <= 1 + a1 * Math.sin(3 * th + p1) + a2 * Math.sin(5 * th + p2);
+  };
+  for (let y = -extY; y <= extY; y++)
+    for (let x = -ext; x <= ext; x++) {
+      if (!inside(x, y)) continue;
+      const nx = x / R;
+      const ny = y / (R * sq);
+      const d = Math.min(1, Math.sqrt(nx * nx + ny * ny));
+      const l = d > 0.01 ? (nx * lx + ny * ly) / Math.max(0.4, d) : 0;
+      const chk = ((x0 + x + y0 + y) & 1) === 0;
+      const under = !inside(x, y + 1);
+      let c: number;
+      if (under && ny > 0.2) c = chk ? PAL.stone0 : PAL.stone1;
+      else if (l > 0.62 && d > 0.4) c = chk ? PAL.stone3 : PAL.stone2;
+      else if (l > 0.25) c = PAL.stone2;
+      else if (l > 0.1) c = chk ? PAL.stone2 : PAL.stone1;
+      else c = PAL.stone1;
+      // the curl: a crease arc on the far side of the cap, travelling round with it
+      const cl = d > 0.01 ? (nx * cxl + ny * cyl) / d : 0;
+      if (R >= 4 && d > 0.5 && d < 0.66 && cl > 0.72) c = PAL.stone0;
+      if (o.embers && d < 0.85 && l < 0.4) {
+        const h = hash(x0 + x * 13 + sd, y0 + y * 7 + Math.floor(tick / 3) * 31);
+        if (h < o.embers) c = ec;
+        else if (h < o.embers * 1.6) c = PAL.fire1;
+      }
+      px.dot(x0 + x, y0 + y, c);
+    }
+}
+
+/**
+ * The IGNITION as a flame SHEET grown out of the bank (adv #2: the old ignition read as a black box with a
+ * battlement top): `bank(x)` gives the bank's own top height per column (px over `baseY`); from there each
+ * column climbs 2–4 px a frame from its own start frame (0–3, the edges later), into uneven tongues whose
+ * peaks reach `peak(u)` (above the target's top: they break out over it). Valleys between the tongues let
+ * the black silhouette show through. Banded outside-in fire1 → fire2 → fire3 → fire4 (white at the root on
+ * k ≤ 1), outlined in fire0 on the OUTER flame edge only; from `fallAt` the tongues sink 3–4 px a frame (unevenly).
+ * Whole pixels, no straight outer edge (every column has its own height, re-rolled every 2 frames).
+ */
+export function flameSheet(
+  px: Px,
+  cx: number,
+  baseY: number,
+  half: number,
+  k: number,
+  sd: number,
+  bank: (x: number) => number,
+  peak: number,
+  fallAt = 12,
+): boolean {
+  if (k < 1) return false;
+  const step = Math.floor(k / 2);
+  const hs: number[] = [];
+  const x0 = -half;
+  let any = false;
+  // tongues: a triangle wave of per-tongue width 3–6 px and per-tongue amplitude, so peaks and valleys alternate
+  let tx = x0;
+  let ti = 0;
+  const tongueOf: { a: number; w: number; s: number }[] = [];
+  while (tx <= half) {
+    const w = 3 + Math.floor(hash(sd + ti * 5, 11) * 4);
+    tongueOf.push({ a: 0.55 + 0.45 * hash(sd + ti * 3, 12), w, s: tx });
+    tx += w;
+    ti++;
+  }
+  let t = 0;
+  for (let x = x0; x <= half; x++) {
+    while (t < tongueOf.length - 1 && x >= tongueOf[t].s + tongueOf[t].w) t++;
+    const T = tongueOf[t];
+    const q = (x - T.s + 0.5) / T.w; // 0..1 across the tongue
+    const tri = 1 - Math.abs(q * 2 - 1); // 0 at the valleys, 1 at the tip
+    const u = x / Math.max(1, half);
+    const env = 1 - u * u * 0.7;
+    const b = bank(x);
+    const jitter = Math.round((hash(sd + x * 3, step) - 0.5) * 4);
+    const top = Math.max(b, Math.round(b + (peak - b) * env * (0.15 + 0.85 * tri * T.a)) + jitter);
+    const s0 = Math.floor(hash(sd + x, 21) * 3) + Math.round(Math.abs(u) * 2);
+    const v = 2 + Math.floor(hash(sd + x * 5, 22) * 3);
+    let h = Math.min(top, b + Math.max(0, k - s0) * v);
+    if (k >= fallAt) h = Math.min(h, top - (k - fallAt) * (3 + Math.floor(hash(sd + t, 24) * 2)) - Math.floor(hash(sd + t, 23) * 4));
+    if (k - s0 < 0) h = Math.min(h, b);
+    hs.push(Math.max(0, h));
+  }
+  const H = (x: number): number => (x < x0 || x > half ? 0 : hs[x - x0]);
+  for (let x = x0; x <= half; x++) {
+    const h = H(x);
+    if (h <= 0) continue;
+    any = true;
+    const u = Math.abs(x) / Math.max(1, half);
+    const X = Math.round(cx + x);
+    for (let j = 0; j < h; j++) {
+      const y = baseY - j;
+      const fromTop = h - 1 - j;
+      // the outer edge only: the column's top, or a side whose neighbour column is lower here
+      const exposed = j >= H(x - 1) || j >= H(x + 1);
+      let c: number;
+      if (fromTop === 0 || exposed) c = PAL.fire0;
+      else if (fromTop === 1) c = PAL.fire1;
+      else {
+        const v = j / Math.max(1, h);
+        c = fromTop <= 2 ? PAL.fire2 : u < 0.3 && v < 0.4 ? (k <= 1 && v < 0.15 ? PAL.white : PAL.fire4) : u < 0.65 && v < 0.7 ? PAL.fire3 : PAL.fire2;
+      }
+      px.dot(X, y, c);
+    }
+    // the tip of a tall tongue: a lick of fire4 / fire3 one pixel inside the fire0 rim
+    if (h > 6 && hash(sd + x * 7, step) > 0.7) px.dot(X, baseY - h + 2, PAL.fire4);
+  }
+  return any;
+}
