@@ -27,7 +27,8 @@
 import Phaser from 'phaser';
 import { PAL } from '../../art/palette';
 import { STAND_H, isoProject } from '../../art/cards';
-import type { GameEvent } from '../../engine/types';
+import type { CardId } from '../../data/cards';
+import type { GameEvent, PlayerId, Uid } from '../../engine/types';
 import type { TileCard } from '../../view/TileCard';
 import { DEPTH, LANE_MID, type XY, zoneXY } from '../../view/layout';
 import { lightFlash, lightPool } from '../../view/light';
@@ -35,6 +36,7 @@ import { pixelLetters } from '../../ui/text';
 import { shake, wait } from '../../vfx/core';
 import { Sparks as PxSparks, stopTime } from '../../vfx/combat';
 import { E, Raster, floorRing, onFrame, run, seg, tileFlash } from '../../vfx/setpieces';
+import { cardLeaves } from '../_v3/card';
 import { dropAllCharges, play as playV3 } from '../_v3/sound';
 import { fxRng } from '../_v3/spellfx';
 import type { CinematicContext } from '../api';
@@ -54,6 +56,8 @@ export interface QuickReveal {
   face: XY;
   /** Resolves when the "HIZLI BÜYÜ!" plate has fully left. */
   word: Promise<void>;
+  /** Resolves on the frame the plate starts leaving (the card may lie down WITH it, never after). */
+  leaving?: Promise<void>;
   /** Stop the card's aura (motes, edge spark, light). */
   stopAura(): void;
 }
@@ -198,11 +202,20 @@ function quickAura(scene: Phaser.Scene, tile: TileCard, seed = 11): () => void {
   };
 }
 
+export interface QuickWordOpts {
+  /** A subtitle under the plate (the card's name), typed on in teal on its own thin plate. */
+  sub?: string;
+  /** Extra hold (ms) once every letter is in (default 0; the base hold is 90 ms). */
+  hold?: number;
+  /** Called on the frame the word starts whipping out (the card may lie down with it). */
+  onOut?: () => void;
+}
+
 /**
  * "HIZLI BÜYÜ!" (v3): stamped over the standing card on a small dark plate with turquoise chevron ends; the
  * letters slide in from the right (speed), held a beat, then whip out to the left. World space, ≈ 0.4 s.
  */
-export function quickWord(scene: Phaser.Scene, at: XY, text = 'HIZLI BÜYÜ!'): Promise<void> {
+export function quickWord(scene: Phaser.Scene, at: XY, text = 'HIZLI BÜYÜ!', o: QuickWordOpts = {}): Promise<void> {
   const cx = Math.round(at.x);
   const cy = Math.round(at.y);
   const L = pixelLetters(scene, cx, cy, text, { size: 'lg', color: PAL.white, originX: 0.5, originY: 0.5, shadow: 1 });
@@ -240,6 +253,25 @@ export function quickWord(scene: Phaser.Scene, at: XY, text = 'HIZLI BÜYÜ!'): 
         g.px(gx, t + 1, PAL.teal4);
       }
     });
+  // the subtitle (the card's name): a thin ink plate hanging under the main one, letters typed on left → right
+  const SL = o.sub ? pixelLetters(scene, cx, cy + H / 2 + 7, o.sub, { size: 'sm', color: PAL.teal4, originX: 0.5, originY: 0.5, shadow: 1 }) : null;
+  const subL = SL ? SL.letters : [];
+  for (const l of subL) l.obj.setDepth(DEPTH.FX_TOP + 21).setVisible(false).setPosition(Math.round(l.x), Math.round(l.y));
+  const SW = SL ? Math.round(SL.w) + 10 : 0;
+  const SH = 11;
+  const subPlate = SL ? new Raster(scene, cx - SW / 2 - 2, cy + H / 2, SW + 4, SH + 2, DEPTH.FX_TOP + 20) : null;
+  let subOpen = 0;
+  const drawSub = () =>
+    subPlate?.draw((g) => {
+      const w = Math.round(SW * subOpen);
+      if (w < 2) return;
+      const l = cx - Math.floor(w / 2);
+      const t = cy + H / 2;
+      g.rect(l, t, w, SH, PAL.ink);
+      g.rect(l, t + SH - 1, w, 1, PAL.teal1);
+      g.px(l, t + SH - 1, PAL.teal3);
+      g.px(l + w - 1, t + SH - 1, PAL.teal3);
+    });
   const STAG = 13;
   return (async () => {
     // the plate cuts open from the centre (3 steps)
@@ -264,7 +296,25 @@ export function quickWord(scene: Phaser.Scene, at: XY, text = 'HIZLI BÜYÜ!'): 
     });
     streak = 0;
     drawPlate();
-    await wait(scene, 90);
+    if (SL) {
+      // the name drops in under the word: its plate unrolls from the centre, the letters type on (5 ms apart)
+      await run(scene, 40 + subL.length * 5, (_t, el) => {
+        subOpen = Math.min(1, Math.ceil((el / 40) * 3) / 3);
+        drawSub();
+        subL.forEach((l, i) => {
+          const lt = el - 20 - i * 5;
+          if (lt < 0 || !l.obj.active) return;
+          l.obj.setVisible(true).setTint(lt < 20 ? PAL.white : PAL.teal4);
+        });
+      });
+      for (const l of subL) if (l.obj.active) l.obj.setVisible(true).setTint(PAL.teal4);
+    }
+    await wait(scene, 90 + (o.hold ?? 0));
+    try {
+      o.onOut?.();
+    } catch (e) {
+      console.error('[quick] onOut', e);
+    }
     // out: the letters whip to the left (first ones first), the plate closes in steps
     await run(scene, 80, (t, el) => {
       letters.forEach((l, i) => {
@@ -273,16 +323,26 @@ export function quickWord(scene: Phaser.Scene, at: XY, text = 'HIZLI BÜYÜ!'): 
         if (lt > 0) l.obj.setX(Math.round(l.x) - Math.round(lt * 0.5)).setTint(PAL.teal3);
         l.obj.setVisible(lt < 40);
       });
+      subL.forEach((l, i) => {
+        if (!l.obj.active) return;
+        const lt = el - i * 3;
+        if (lt > 0) l.obj.setX(Math.round(l.x) - Math.round(lt * 0.6)).setTint(PAL.teal2);
+        l.obj.setVisible(lt < 36);
+      });
       open = Math.max(0, 1 - Math.ceil(t * 3) / 3);
+      subOpen = open;
       drawPlate();
+      drawSub();
     });
     for (const l of letters) l.obj.destroy();
+    for (const l of subL) l.obj.destroy();
     plate.destroy();
+    subPlate?.destroy();
   })();
 }
 
 /** The quick-spell reveal (see the header). v3 look only; the caller checks LOOK_V3. */
-export async function quickReveal(ctx: ActCtx, o: { word?: string; focus?: XY } = {}): Promise<QuickReveal> {
+export async function quickReveal(ctx: ActCtx, o: { word?: string; focus?: XY; sub?: string; hold?: number } = {}): Promise<QuickReveal> {
   const sc = ctx.scene;
   const ev = ctx.ev;
   const tile = ev.zone !== null ? ctx.views.field.tileAt(ev.player, 'spellTrap', ev.zone) : null;
@@ -309,10 +369,13 @@ export async function quickReveal(ctx: ActCtx, o: { word?: string; focus?: XY } 
   await stand;
   const face = live && live.active ? standFaceOf(live) : face0;
   const stopAura = live && live.active ? quickAura(sc, live, 11 + ev.uid) : () => undefined;
-  const word = quickWord(sc, { x: at.x, y: face.y - 38 }, o.word);
+  let onOut: () => void = () => undefined;
+  const leaving = new Promise<void>((res) => (onOut = res));
+  const word = quickWord(sc, { x: at.x, y: face.y - 38 }, o.word, { sub: o.sub, hold: o.hold, onOut: () => onOut() });
+  void word.then(() => onOut());
   // the reveal holds so the card and its word read before the signature
   await wait(sc, 170);
-  return { tile: live, at, face, word, stopAura };
+  return { tile: live, at, face, word, leaving, stopAura };
 }
 
 /** The kept-handle key of a primed quick spell (see prime). */
@@ -320,16 +383,32 @@ export function primeKey(uid: number): string {
   return `quickPrimed:${uid}`;
 }
 
+/** What prime() keeps under primeKey(uid) (ctx.take returns it; destroy() stops the cocked loop). */
+export interface PrimedHandle {
+  destroy(): void;
+  /** The cocked card's tile (null when it was not on screen). */
+  tile: TileCard | null;
+  /** Floor point of its zone. */
+  at: XY;
+}
+
 /**
- * The target is picked in a later batch: the revealed card lies back down on its tile, COCKED — a turquoise
- * pulse loops round the tile, a zig-zag spark ticks on it — until the next batch takes the handle
- * (ctx.take(primeKey(uid))) or the Director drops it. Resolves when the card lies flat.
+ * The target is picked in a later batch: the revealed card lies back down on its tile WITH the word leaving
+ * (never after it), COCKED — e_quickPrime (a cocking click + a low teal hum tick) on the lie-down frame, a
+ * turquoise pulse loops round the tile, a zig-zag spark ticks on it — until the next batch takes the handle
+ * (ctx.take(primeKey(uid)), then quickFire) or the Director drops it. Resolves when the card lies flat.
  */
 export async function prime(ctx: AnyCtx, q: QuickReveal, uid: number): Promise<void> {
   const sc = ctx.scene;
+  // the card lies down as the word starts whipping out (the plate is gone 80 ms later, the card flat at 140)
+  if (q.leaving) await q.leaving;
+  else await q.word;
   q.stopAura();
   const t = q.tile;
-  if (t && t.active && t.standing) await t.layDown(180);
+  if (t && t.active && t.standing) {
+    void wait(sc, 95).then(() => playV3('e_quickPrime', { volume: 0.8 }));
+    await t.layDown(140);
+  }
   const at = q.at;
   const ras = Raster.around(sc, at.x, at.y, 64, 36, DEPTH.SHADOW - 1);
   const glow = lightPool(sc, at.x, at.y, { color: PAL.teal2, radius: 20, floorY: at.y, intensity: 0.55, anim: 'breathe', fadeIn: 120 });
@@ -355,7 +434,9 @@ export async function prime(ctx: AnyCtx, q: QuickReveal, uid: number): Promise<v
     });
     return true;
   });
-  ctx.keep(primeKey(uid), {
+  const handle: PrimedHandle = {
+    tile: t && t.active ? t : null,
+    at,
     destroy() {
       if (dead) return;
       dead = true;
@@ -363,5 +444,88 @@ export async function prime(ctx: AnyCtx, q: QuickReveal, uid: number): Promise<v
       ras.destroy();
       void glow.fadeOut(160);
     },
-  });
+  };
+  ctx.keep(primeKey(uid), handle);
+}
+
+/** A primed (cocked) quick spell firing in the batch that brings its target (see quickFire). */
+export interface QuickFire {
+  /** The standing card (null when it was not on screen). */
+  tile: TileCard | null;
+  /** Floor point of its zone. */
+  at: XY;
+  /** The standing card's top edge: where the spell's orb leaves it. */
+  top: XY;
+  /** The spent card goes to its owner's graveyard from its tile (consumes toGraveyard `gi`; −1: it just fades). */
+  leave(gi: number): Promise<void>;
+  /** Nothing to resolve: the card dissolves on its tile. */
+  close(): Promise<void>;
+}
+
+/**
+ * The cocked card FIRES (≤ 130 ms scene, no second opening, no name banner): it snaps upright in one move
+ * (90 ms) with a single short turquoise zig-zag tick out of its tile, a teal floor ring and e_quickFire; the
+ * caller then launches its effect from `top` at once. The card leaves the field's bookkeeping here (the spell
+ * owns it until leave()).
+ */
+export async function quickFire(ctx: AnyCtx, o: { uid: Uid; cardId: CardId; player: PlayerId; zone: number | null }): Promise<QuickFire> {
+  const sc = ctx.scene;
+  const field = ctx.views.field;
+  const kept = ctx.take(primeKey(o.uid)) as PrimedHandle | null;
+  kept?.destroy();
+  const t0 = o.zone !== null ? field.tileAt(o.player, 'spellTrap', o.zone) : null;
+  const tile = t0 && t0.active ? t0 : null;
+  const at = tile ? { x: Math.round(tile.home.x), y: Math.round(tile.home.y) } : kept ? kept.at : zoneXY(o.player, 'spellTrap', o.zone ?? LANE_MID);
+  void ctx.views.duelists?.get(o.player)?.play('command');
+  playV3('e_quickFire', { volume: 0.95 });
+  if (tile) tile.setCard(o.cardId);
+  const stand = tile ? tile.standUp(90, { reveal: true }) : Promise.resolve();
+  // the tick: one short zig-zag (3 strokes, 30 px) out of the tile, a ring, a stepped light
+  void tileFlash(sc, at.x, at.y, [...QUICK_RAMP], 200);
+  void floorRing(sc, at.x, at.y, { r0: 6, r1: 30, ms: 220, ramp: [...QUICK_RAMP], depth: DEPTH.SHADOW - 1 });
+  void lightFlash(sc, at.x, at.y, PAL.teal3, 28, 260, { floorY: at.y, intensity: 0.9 });
+  const ras = new Raster(sc, at.x - 16, at.y - 70, 32, 74, DEPTH.FX + 6);
+  const bolt = zigzag({ x: at.x, y: at.y - 2 }, 66, 3, 5, 0);
+  void run(sc, 160, (k) => {
+    ras.draw((g) => {
+      const grow = Math.ceil(E.outCubic(seg(k, 0, 0.35)) * 3);
+      const gone = Math.floor(seg(k, 0.5, 1) * 4);
+      const vis = bolt.slice(gone);
+      for (let i = 1; i < Math.min(vis.length, grow - gone + 1); i++) {
+        g.line(vis[i - 1].x, vis[i - 1].y, vis[i].x, vis[i].y, PAL.teal3, 1, 3);
+        g.line(vis[i - 1].x, vis[i - 1].y, vis[i].x, vis[i].y, k < 0.5 ? PAL.white : PAL.teal4, 1, 1);
+      }
+    });
+  }).then(() => ras.destroy());
+  await stand;
+  if (tile) field.release(o.uid);
+  const face = tile && tile.active ? standFaceOf(tile) : { x: at.x, y: at.y - 36 };
+  const top = { x: face.x, y: face.y - 24 };
+  return {
+    tile,
+    at,
+    top,
+    async leave(gi) {
+      const g = gi >= 0 && !ctx.isConsumed(gi) ? ctx.events[gi] : null;
+      if (!g || g.type !== 'toGraveyard') {
+        if (tile && tile.active) {
+          await tile.dissolve(240);
+          tile.destroy();
+        }
+        return;
+      }
+      ctx.consumeAt(gi);
+      if (tile && tile.active) {
+        await tile.layDown(180);
+        return cardLeaves(ctx, { owner: g.owner, cardId: g.cardId, from: at, tile });
+      }
+      return cardLeaves(ctx, { owner: g.owner, cardId: g.cardId, from: at });
+    },
+    async close() {
+      if (tile && tile.active) {
+        await tile.dissolve(320);
+        tile.destroy();
+      }
+    },
+  };
 }

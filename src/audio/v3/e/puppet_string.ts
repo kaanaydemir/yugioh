@@ -4,8 +4,9 @@
 //
 // Identity (§5.1 S2 Kukla): five taut strings "tsing" (a stiff plucked string: slightly inharmonic partials, a
 // bright pick and a 3 % downward settle of the pitch — it sounds STRUNG, not struck like glass or chain), wood
-// (the cross: a hollow two-mode "tok"; the puppet's limbs: knocks and joint clicks) and rope (creak: stick-slip
-// friction through a wooden body). The five strings sit on an E-minor pentatonic (E5 G5 A5 B5 D6): the scene
+// (the cross: SMALL, DRY, HIGH marionette wood — body modes above 900 Hz, short, with a string ringing on after
+// the tok; the puppet's limbs: knocks and joint clicks) and string-on-wood (creak: a thin, narrow stick-slip squeak
+// — not a rope: Kuyu Kovası owns the hollow wood frame and the rope creak, §5.1). The five strings sit on an E-minor pentatonic (E5 G5 A5 B5 D6): the scene
 // passes `pitch` per string. The return is the same strings breaking: a high "ping" with a release glide down.
 //   e_puppetCross    the puppeteer's cross appears: an air draw-in + a hollow wooden "tok" with a low knock
 //   e_puppetTsing    one string drops and goes taut ("tsing", ×5, the scene pans and pitches it)
@@ -17,6 +18,9 @@
 //   e_puppetSettle   the strings draw back up (a rising strum), one string stays: a thin held shimmer
 //   e_puppetPing     one string snaps at the End Phase ("ping", ×5 descending): pluck + break crack + glide down
 //   e_puppetStagger  the freed monster staggers: uneven knocks and a scrape
+//   e_puppetHopString  the strings yank the puppet up for a hop (a short taut pluck + the whip of the line)
+//   e_puppetCrossBreak the cross breaks after the last snap: a dry wood crack, splinters, a falling gold tinkle
+//   e_puppetDenied   no room at home: it hits an invisible wall — a dry "tok" + a two-pulse denied buzz
 //   e_puppetFree     it shakes the spell off: a wooden rattle slowing down, a breath, a falling chime
 
 import type { Recipe } from '../../sounds';
@@ -27,6 +31,9 @@ import { crack, link, puff, sweep, thump } from '../kit';
 /** E minor pentatonic E5 G5 A5 B5 D6 (the five strings, left → right on the cross). */
 export const PUPPET_STRING_MIDI = [76, 79, 81, 83, 86] as const;
 
+/** Clamp a frequency so that ×pitch stays under 18 kHz (WebAudio's nominal range ends at Nyquist). */
+const hz = (v: Voice, f: number) => Math.min(f, 18000 / v.pm);
+
 /** A stiff plucked string at f: inharmonic partials (B = stiffness), pick click, a short downward settle. */
 function pluck(v: Voice, f: number, t: number, g: number, dec: number, o: { bright?: number; settle?: number; to?: AudioNode } = {}): void {
   const B = 0.0009;
@@ -34,12 +41,20 @@ function pluck(v: Voice, f: number, t: number, g: number, dec: number, o: { brig
   const n = 7;
   for (let k = 1; k <= n; k++) {
     const fk = f * k * Math.sqrt(1 + B * k * k);
-    if (fk > 14000) break;
+    if (fk * v.pm > 14000) break;
     const gk = (g * (k === 1 ? 1 : (o.bright ?? 0.7) / k)) * (k === 2 ? 1.1 : 1);
     v.tone(k % 2 ? 'sine' : 'triangle', [[0, fk * (1 + settle)], [0.05, fk, 'e']], { t, g: perc(gk, dec / Math.sqrt(k), 0.0008), to: o.to });
   }
   // the pick: a 4 ms bright noise click
-  crack(v, t, g * 0.7, { hp: 3500, lp: 11000, dec: 0.004, to: o.to });
+  crack(v, t, g * 0.7, { hp: hz(v, 3500), lp: hz(v, 11000), dec: 0.004, to: o.to });
+}
+
+/** Small dry marionette wood (a little lath, not a hollow frame): modes f, 1.71 f, 2.93 f, very short, a click. */
+function woodSmall(v: Voice, f: number, t: number, g: number, dec: number, to?: AudioNode): void {
+  v.tone('sine', [[0, f * 1.04], [0.008, f, 'e']], { t, g: perc(g, dec, 0.0004), to });
+  v.tone('sine', hz(v, f * 1.71), { t, g: perc(g * 0.6, dec * 0.6, 0.0004), to });
+  v.tone('triangle', hz(v, f * 2.93), { t, g: perc(g * 0.3, dec * 0.35, 0.0004), to });
+  v.noise('white', { t, g: perc(g * 1.3, 0.004, 0.0002), to: v.filt('bandpass', hz(v, f * 3.6), 3.5, { to }) });
 }
 
 /** Hollow wood: two body modes (1 : 1.58) + a band-passed knock. */
@@ -47,13 +62,13 @@ function wood(v: Voice, f: number, t: number, g: number, dec: number, to?: Audio
   v.tone('sine', [[0, f * 1.06], [0.02, f, 'e']], { t, g: perc(g, dec, 0.0008), to });
   v.tone('sine', f * 1.58, { t, g: perc(g * 0.45, dec * 0.6, 0.0008), to });
   v.tone('sine', f * 2.71, { t, g: perc(g * 0.18, dec * 0.3, 0.0008), to });
-  v.noise('white', { t, g: perc(g * 1.6, 0.012, 0.0003), to: v.filt('bandpass', f * 3.2, 2.2, { to }) });
+  v.noise('white', { t, g: perc(g * 1.6, 0.012, 0.0003), to: v.filt('bandpass', hz(v, f * 3.2), 2.2, { to }) });
 }
 
-/** Rope / joint creak: a stick-slip buzz through a wooden formant, pitch bending. */
+/** A thin string drawn over wood (stick-slip): a squeak through two narrow high formants, pitch bending. */
 function creak(v: Voice, t: number, d: number, f0: number, f1: number, g: number, to?: AudioNode): void {
-  const body = v.filt('bandpass', [[0, 950], [d, 720, 'e']], 4, { t, to });
-  const body2 = v.filt('bandpass', 2100, 6, { t, to });
+  const body = v.filt('bandpass', [[0, hz(v, 2600)], [d, hz(v, 2050), 'e']], 9, { t, to });
+  const body2 = v.filt('bandpass', hz(v, 4300), 12, { t, to });
   const fl = v.flutter(34, 0.8, { t, d, base: 0.35, to: body });
   fl.connect(body2);
   v.tone('sawtooth', [[0, f0], [d * 0.5, (f0 + f1) * 0.55, 'e'], [d, f1, 'e']], { t, g: [[0, 0], [d * 0.15, g], [d * 0.7, g * 0.8], [d, 0.0001, 'e']], to: fl });
@@ -66,14 +81,17 @@ export const RECIPES = {
     verb: 0.35,
     duck: 0.15,
     play(v) {
-      // the cross draws in from the air, lands with a hollow "tok" (the bar) and a lower knock (the cross-piece)
-      sweep(v, 0, 0.16, [1800, 3600, 2200], 0.05, { kind: 'pink', q: 2.2, peakAt: 0.85 });
-      wood(v, 610, 0.15, 0.34, 0.16);
-      wood(v, 415, 0.215, 0.24, 0.2);
-      thump(v, 0.15, 150, 82, 0.2, 0.12);
-      // a gold hum under it (the spell's light in the wood)
-      v.tone('sine', midiHz(64), { t: 0.15, g: [[0, 0], [0.04, 0.026], [0.5, 0.0001, 'e']] });
-      v.tone('sine', midiHz(76), { t: 0.17, g: [[0, 0], [0.03, 0.014], [0.4, 0.0001, 'e']] });
+      // the cross pops in from the air (a bright draw-in + a sparkle), lands on its strings with a small dry
+      // double "tik-tok" of a marionette control, its five strings ring on after it (a sympathetic shimmer)
+      sweep(v, 0, 0.12, [2600, 6200, 4200], 0.06, { kind: 'white', q: 3, peakAt: 0.85 });
+      v.bell(midiHz(100), { t: 0.1, g: 0.05, dec: 0.25, ratio: 2.4, index: 0.6 });
+      woodSmall(v, 1580, 0.12, 0.42, 0.045);
+      woodSmall(v, 1180, 0.165, 0.36, 0.05);
+      // a light weight on the strings (short, high: not a frame knock)
+      thump(v, 0.12, 260, 170, 0.12, 0.05);
+      // the strings ring on (E6 / B6 / E7 partials of one taut string, slow decay)
+      pluck(v, midiHz(88), 0.18, 0.06, 0.9, { bright: 0.5, settle: 0.008 });
+      v.tone('sine', midiHz(95), { t: 0.19, g: [[0, 0], [0.02, 0.016], [0.7, 0.0001, 'e']], detune: 4 });
     },
   },
   e_puppetTsing: {
@@ -93,9 +111,10 @@ export const RECIPES = {
     gap: 0.02,
     verb: 0.3,
     play(v) {
-      link(v, 3100, 0, 0.13, 0.05);
-      v.noise('white', { t: 0, g: perc(0.22, 0.006, 0.0002), to: v.filt('bandpass', 5200, 3) });
-      v.bell(midiHz(100), { t: 0.012, g: 0.035, dec: 0.16, ratio: 2, index: 0.4 });
+      link(v, 3100, 0, 0.24, 0.06);
+      v.noise('white', { t: 0, g: perc(0.36, 0.006, 0.0002), to: v.filt('bandpass', 5200, 3) });
+      thump(v, 0, 320, 200, 0.1, 0.03);
+      v.bell(midiHz(100), { t: 0.012, g: 0.06, dec: 0.18, ratio: 2, index: 0.4 });
     },
   },
   e_puppetGlint: {
@@ -132,7 +151,7 @@ export const RECIPES = {
     verb: 0.25,
     vary: 0.06,
     play(v) {
-      creak(v, 0, 0.22, 165, 210, 0.24);
+      creak(v, 0, 0.2, 290, 360, 0.3);
       // the strings strain (a faint high harmonic under tension)
       v.tone('sine', [[0, midiHz(88)], [0.2, midiHz(88) * 1.02, 'e']], { g: [[0, 0], [0.05, 0.012], [0.22, 0.0001, 'e']] });
     },
@@ -142,10 +161,13 @@ export const RECIPES = {
     gap: 0.15,
     verb: 0.3,
     play(v) {
-      creak(v, 0, 0.3, 230, 150, 0.09);
+      creak(v, 0, 0.3, 380, 260, 0.14);
       // the ratchet: four joint clicks, quickening
-      [0, 0.07, 0.125, 0.17].forEach((t, i) => wood(v, 1500 + i * 120, t, 0.09, 0.025));
-      wood(v, 380, 0.22, 0.2, 0.1);
+      [0, 0.05, 0.09, 0.12].forEach((t, i) => woodSmall(v, 1500 + i * 140, t, 0.13, 0.025));
+      // the whirl on the strings (a quick rising whip) and the landing knock
+      sweep(v, 0.04, 0.14, [1800, 5200, 3000], 0.05, { kind: 'white', q: 4, peakAt: 0.7 });
+      v.bell(midiHz(91), { t: 0.12, g: 0.03, dec: 0.25, ratio: 2, index: 0.4 });
+      wood(v, 380, 0.2, 0.26, 0.1);
     },
   },
   e_puppetSettle: {
@@ -154,10 +176,11 @@ export const RECIPES = {
     verb: 0.55,
     play(v) {
       // the strings draw up: a rising strum through the five notes, then one thin held string
-      [76, 79, 81, 83, 86].forEach((m, i) => pluck(v, midiHz(m), i * 0.045, 0.045, 0.35, { bright: 0.6, settle: -0.02 }));
+      [76, 79, 81, 83, 86].forEach((m, i) => pluck(v, midiHz(m), i * 0.045, 0.075, 0.38, { bright: 0.6, settle: -0.02 }));
       sweep(v, 0, 0.3, [2400, 6000, 8000], 0.03, { kind: 'white', q: 4, peakAt: 0.7 });
-      v.tone('sine', midiHz(88), { t: 0.25, g: [[0, 0], [0.12, 0.016], [0.6, 0.008], [0.95, 0.0001, 'e']] });
-      v.tone('sine', midiHz(88) * 1.004, { t: 0.25, g: [[0, 0], [0.12, 0.01], [0.6, 0.005], [0.95, 0.0001, 'e']] });
+      v.bell(midiHz(100), { t: 0.24, g: 0.04, dec: 0.3, ratio: 2, index: 0.5 });
+      v.tone('sine', midiHz(88), { t: 0.25, g: [[0, 0], [0.12, 0.026], [0.6, 0.012], [0.95, 0.0001, 'e']] });
+      v.tone('sine', midiHz(88) * 1.004, { t: 0.25, g: [[0, 0], [0.12, 0.016], [0.6, 0.008], [0.95, 0.0001, 'e']] });
     },
   },
   e_puppetPing: {
@@ -165,15 +188,18 @@ export const RECIPES = {
     gap: 0.02,
     verb: 0.45,
     play(v) {
-      // the snap: a hard high pluck (B5 at pitch 1) whose tension lets go (glide down), a dry break crack
+      // the snap: a hard broadband crack (2–3 ms), the released tension's low "thwack", then the high pluck (B5 at
+      // pitch 1) whose tension lets go — a long glide down (−35 % over 0.28 s)
       const f = midiHz(83);
-      crack(v, 0, 0.16, { hp: 2800, lp: 10000, n: 2, gap: 0.006, dec: 0.006 });
+      crack(v, 0, 0.42, { hp: hz(v, 1600), lp: hz(v, 12000), n: 2, gap: 0.004, dec: 0.0028 });
+      thump(v, 0, 210, 118, 0.34, 0.045);
+      v.noise('white', { t: 0, g: perc(0.16, 0.02, 0.0003), to: v.filt('bandpass', 700, 1.6) });
       for (let k = 1; k <= 4; k++) {
-        const fk = f * k * Math.sqrt(1 + 0.0009 * k * k);
-        v.tone('sine', [[0, fk * 1.01], [0.02, fk, 'e'], [0.3, fk * 0.82, 'e']], { g: perc(0.1 / k, 0.32 / Math.sqrt(k), 0.0005) });
+        const fk = hz(v, f * k * Math.sqrt(1 + 0.0009 * k * k));
+        v.tone(k === 1 ? 'triangle' : 'sine', [[0, fk * 1.015], [0.015, fk, 'e'], [0.28, fk * 0.65, 'e']], { t: 0.002, g: perc(0.2 / k, 0.4 / Math.sqrt(k), 0.0005) });
       }
       // the loose end whips away
-      sweep(v, 0.01, 0.12, [6000, 3800, 1600], 0.03, { kind: 'white', q: 3, peakAt: 0.2 });
+      sweep(v, 0.01, 0.14, [6000, 3800, 1400], 0.05, { kind: 'white', q: 3, peakAt: 0.2 });
     },
   },
   e_puppetStagger: {
@@ -197,9 +223,52 @@ export const RECIPES = {
     play(v) {
       // it shakes the spell off: a wooden rattle slowing down, a breath out, the last gold falls (D6 B5 G5)
       const ts = [0, 0.035, 0.068, 0.104, 0.145, 0.195, 0.255];
-      ts.forEach((t, i) => wood(v, 1100 - i * 60 + (i % 2) * 180, t, 0.08 * (1 - i * 0.08), 0.03));
-      puff(v, 0.05, 0.07, 0.35, 900, { kind: 'brown', att: 0.06 });
-      [86, 83, 79].forEach((m, i) => v.bell(midiHz(m), { t: 0.22 + i * 0.09, g: 0.026, dec: 0.4, ratio: 2, index: 0.35 }));
+      ts.forEach((t, i) => woodSmall(v, 1300 - i * 60 + (i % 2) * 220, t, 0.16 * (1 - i * 0.08), 0.03));
+      puff(v, 0.05, 0.12, 0.35, 900, { kind: 'brown', att: 0.06 });
+      [86, 83, 79].forEach((m, i) => v.bell(midiHz(m), { t: 0.22 + i * 0.09, g: 0.05, dec: 0.45, ratio: 2, index: 0.35 }));
+    },
+  },
+  e_puppetHopString: {
+    cap: 3,
+    gap: 0.05,
+    verb: 0.3,
+    play(v) {
+      // the strings yank: the whip of five lines going taut at once (a short bright swish) and one low taut pluck
+      sweep(v, 0, 0.08, [2400, 5600, 3400], 0.04, { kind: 'white', q: 4, peakAt: 0.5 });
+      pluck(v, midiHz(71), 0.03, 0.06, 0.24, { bright: 0.55, settle: 0.04 });
+      pluck(v, midiHz(78), 0.036, 0.03, 0.18, { bright: 0.5, settle: 0.04 });
+    },
+  },
+  e_puppetCrossBreak: {
+    cap: 1,
+    gap: 0.2,
+    verb: 0.5,
+    duck: 0.12,
+    play(v) {
+      // the cross breaks: a dry splitting crack of small wood, the splinters clatter, the gold falls tinkling
+      crack(v, 0, 0.36, { hp: 1100, lp: 7000, n: 3, gap: 0.007, dec: 0.006 });
+      woodSmall(v, 1450, 0.002, 0.34, 0.05);
+      woodSmall(v, 980, 0.012, 0.3, 0.06);
+      thump(v, 0, 190, 110, 0.2, 0.06);
+      [0.09, 0.13, 0.2, 0.24].forEach((t, i) => woodSmall(v, 1700 - i * 150 + (i % 2) * 300, t, 0.12 - i * 0.015, 0.025));
+      [98, 95, 91, 88, 86].forEach((m, i) => v.bell(midiHz(m), { t: 0.08 + i * 0.065, g: 0.05 - i * 0.006, dec: 0.32, ratio: 2.7, index: 0.5 }));
+      sweep(v, 0.06, 0.42, [7000, 5200, 2600], 0.025, { kind: 'white', q: 2.4, peakAt: 0.2 });
+    },
+  },
+  e_puppetDenied: {
+    cap: 1,
+    gap: 0.2,
+    verb: 0.3,
+    duck: 0.12,
+    play(v) {
+      // it hits an invisible wall: a dry tok and the body's knock, then a two-pulse low denied buzz
+      woodSmall(v, 1050, 0, 0.4, 0.05);
+      thump(v, 0, 150, 70, 0.32, 0.1);
+      const lp = v.filt('lowpass', 1400, 1.2);
+      for (const t0 of [0.06, 0.2]) {
+        v.tone('square', 98, { t: t0, g: [[0, 0], [0.006, 0.07], [0.09, 0.06], [0.11, 0.0001, 'e']], to: lp });
+        v.tone('sawtooth', 104, { t: t0, g: [[0, 0], [0.006, 0.05], [0.09, 0.04], [0.11, 0.0001, 'e']], to: lp });
+      }
     },
   },
 } satisfies Record<string, Recipe>;

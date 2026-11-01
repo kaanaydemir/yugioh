@@ -11,11 +11,19 @@
 //   e_augerLock     the target is marked: two dry steel ticks and a short rising glint
 //   e_augerDescend  the lance screws down out of the sky: the 1 → 8 kHz whistle over the 120 Hz rotor saw
 //   e_augerBite     the tip bites the card's corner: a hard steel clank + a dry crack
-//   e_augerDrill    the drilling (start / stop): the rotor saw climbing 120 → 165 Hz, a grinding band of noise
-//                   with a screech partial, the card spinning under it (stopped on the pierce frame)
-//   e_augerCurls    the steel shavings curling out of the grooves: dry ticks RISING in pitch (talaş)
-//   e_augerPierce   the card is drilled through: a crack, a deep punch, a ringing steel partial
+//   e_quickPrime    the revealed quick card lies back down COCKED: a two-stage cocking click + a low teal hum tick
+//   e_quickFire     the cocked card fires (snaps up, one zig-zag tick): a short 2-stroke FM zap + a snap + a
+//                   high "go" ping — the reveal's material, shorter and harder (no arpeggio)
+//   e_augerDrill    the drilling (start / stop, D = the 480 ms drill beat × 1.35 = 0.65 s): the rotor saw climbing
+//                   120 → 165 Hz exactly up to the pierce frame, a grinding band of noise with a screech partial
+//   e_augerCurls    the steel shavings curling out of the grooves: bright metallic PINGS (3.5 → 9 kHz, inharmonic
+//                   sine pairs) over the whole drill window, one per thrown spiral, above the grind (talaş)
+//   e_augerPierce   the card is drilled through: the rotor SURGES and cuts off hard (a pitch jump, an abrupt
+//                   stop), a burr rip (2 → 6 kHz noise up-sweep, 60 ms), a high inharmonic steel TING ringing
+//                   0.4 s, over a short punch — a drill breaking through, not a hammer
 //   e_augerRetract  the lance pulls back up: "vuuş" — a rising air swish with the rotor spinning down
+//   e_augerSlap     the broken card slaps flat on its tile: a dry card slap + a little steel rattle of curls
+//   e_augerRift     (field spell drilled) cracks run along the floor: a dry crackle running away + a low rumble
 
 import type { Recipe } from '../../sounds';
 import { midiHz, perc, type Pt } from '../../synth';
@@ -60,6 +68,42 @@ export const RECIPES = {
       sweep(v, 0.1, 0.22, [1800, 6200, 3600], 0.06, { kind: 'white', q: 2.5, peakAt: 0.3 });
     },
   },
+  /** The revealed quick card lies back down COCKED: a two-stage cocking click and a low teal hum tick. */
+  e_quickPrime: {
+    cap: 2,
+    gap: 0.1,
+    verb: 0.2,
+    play(v) {
+      // ka-chik: two dry clicks (a lower one, then a higher, tighter one), like a mechanism catching
+      v.noise('white', { t: 0, g: perc(0.3, 0.006, 0.0002), to: v.filt('bandpass', 1900, 3) });
+      thump(v, 0, 420, 200, 0.12, 0.025);
+      v.noise('white', { t: 0.045, g: perc(0.36, 0.005, 0.0002), to: v.filt('bandpass', 3600, 4) });
+      link(v, 2650, 0.045, 0.03, 0.05);
+      // the hum tick: a low square on the turquoise pulse, one short swell
+      v.tone('square', 110, { t: 0.06, g: [[0, 0], [0.03, 0.04], [0.16, 0.0001, 'e']], to: v.filt('lowpass', 700, 1.2) });
+      v.tone('sine', 220, { t: 0.06, g: [[0, 0], [0.03, 0.05], [0.2, 0.0001, 'e']] });
+    },
+  },
+  /** The cocked card fires: a short 2-stroke zig-zag zap, a snap, a high "go" ping. */
+  e_quickFire: {
+    cap: 2,
+    gap: 0.08,
+    verb: 0.25,
+    duck: 0.25,
+    play(v) {
+      const zz: Pt[] = [
+        [0, 900],
+        [0.025, 3200, 'e'],
+        [0.05, 1400, 'e'],
+        [0.075, 4400, 'e'],
+      ];
+      const bp = v.filt('bandpass', [[0, 1600], [0.075, 5200, 'e']], 1.6);
+      v.tone('square', zz, { g: [[0, 0], [0.003, 0.1], [0.07, 0.07], [0.09, 0.0001, 'e']], to: bp });
+      crack(v, 0, 0.32, { hp: 3000, n: 1 });
+      thump(v, 0.004, 300, 110, 0.24, 0.05, { drive: 1.5 });
+      v.bell(midiHz(100), { t: 0.07, g: 0.06, dec: 0.22, ratio: 3.5, index: 0.9 });
+    },
+  },
   /** The target is marked: two steel ticks and a short rising glint. */
   e_augerLock: {
     cap: 2,
@@ -98,49 +142,68 @@ export const RECIPES = {
       thump(v, 0, 190, 70, 0.3, 0.08, { drive: 1.6 });
     },
   },
-  /** The drilling (start / stop): rotor saw 120 → 165 Hz, a grinding noise band and a thin screech partial. */
+  /** The drilling (start / stop): rotor saw 120 → 165 Hz over the drill beat, a grinding band, a screech partial. */
   e_augerDrill: {
     cap: 1,
     gap: 0.1,
     verb: 0.2,
     play(v) {
-      const D = 0.9;
-      rotor(v, 0, D, [[0, 120], [D, 165, 'e']], 0.11, [[0, 900], [D, 2400, 'e']]);
-      // grinding: band noise that climbs with the rotor, a flutter at the rotor's own rate (no 40 Hz AM)
-      const gbp = v.filt('bandpass', [[0, 1600], [D, 3200, 'e']], 2.2);
-      const fl = v.flutter(120, 0.35, { d: D, base: 0.65, to: gbp });
-      v.noise('white', { g: [[0, 0], [0.05, 0.16], [D * 0.85, 0.2], [D, 0.0001, 'e']], to: fl });
+      // D = DRILL_MS 480 × tempo 1.35: the climb and the noise swell complete on the pierce frame
+      const D = 0.65;
+      rotor(v, 0, D + 0.04, [[0, 120], [D, 165, 'e']], 0.11, [[0, 900], [D, 2600, 'e']]);
+      // grinding: band noise that climbs with the rotor, a flutter at the rotor's own rate (no 40 Hz AM);
+      // kept ~4 dB under the old level so the curl pings (3.5 kHz +) sit on top of it
+      const gbp = v.filt('bandpass', [[0, 1500], [D, 3000, 'e']], 2.4);
+      const fl = v.flutter(120, 0.35, { d: D + 0.04, base: 0.65, to: gbp });
+      v.noise('white', { g: [[0, 0], [0.05, 0.1], [D * 0.95, 0.15], [D + 0.04, 0.0001, 'e']], to: fl });
       // the steel screech: a thin partial bending up
-      v.tone('triangle', [[0, 2400], [D, 3300, 'e']], { g: [[0, 0], [0.08, 0.012], [D * 0.8, 0.02], [D, 0.0001, 'e']], to: v.filt('bandpass', 2800, 4) });
+      v.tone('triangle', [[0, 2400], [D, 3400, 'e']], { g: [[0, 0], [0.08, 0.012], [D * 0.9, 0.024], [D + 0.04, 0.0001, 'e']], to: v.filt('bandpass', 2900, 4) });
     },
   },
-  /** Shavings curl out of the grooves: dry ticks rising in pitch (each one a short metal-wood tick). */
+  /** Shavings curl out of the grooves: bright metallic pings rising 3.5 → 9 kHz over the whole drill window. */
   e_augerCurls: {
     cap: 2,
     gap: 0.05,
-    verb: 0.2,
+    verb: 0.22,
     play(v) {
-      const n = 11;
+      const n = 16;
+      const W = 0.62;
       for (let i = 0; i < n; i++) {
         const k = i / (n - 1);
-        const t = 0.4 * Math.pow(k, 0.85) + v.r(-0.008, 0.008);
-        const f = 1900 * Math.pow(3.4, k);
-        v.noise('white', { t: Math.max(0, t), g: perc(0.36 * (1 - k * 0.35), 0.007, 0.0002), to: v.filt('bandpass', f, 6) });
-        v.tone('sine', f * 1.02, { t: Math.max(0, t), g: perc(0.035, 0.03, 0.0004) });
+        const t = Math.max(0, W * Math.pow(k, 0.9) + v.r(-0.01, 0.01));
+        const f = 3500 * Math.pow(9000 / 3500, k) * v.r(0.94, 1.06);
+        const g = 0.09 + 0.04 * Math.sin(k * Math.PI);
+        // an inharmonic sine pair (a thin steel ribbon ringing) + a needle of high noise for the tick
+        v.tone('sine', f, { t, g: perc(g, 0.045, 0.0004) });
+        v.tone('sine', f * 1.47, { t, g: perc(g * 0.5, 0.03, 0.0004) });
+        v.noise('white', { t, g: perc(0.1, 0.003, 0.0002), to: v.filt('highpass', Math.min(9000, f), 1.2) });
       }
     },
   },
-  /** The pierce: a crack, a deep punch through, a ringing steel partial and a puff of card dust. */
+  /** The pierce: the rotor surges and cuts off, a burr rip, a high steel ting, over a short punch. */
   e_augerPierce: {
     cap: 1,
     gap: 0.1,
     verb: 0.35,
     duck: 0.4,
     play(v) {
-      crack(v, 0, 0.7, { hp: 1800, n: 3, gap: 0.01, dec: 0.016 });
-      thump(v, 0, 150, 42, 0.95, 0.24, { drive: 2.4 });
-      clank(v, 990, 0.004, 0.1, 0.5, { ratio: 1.41, index: 2.2, click: 0 });
-      puff(v, 0.01, 0.12, 0.2, 2600, { kind: 'pink' });
+      // the rotor SURGES (165 → 240 Hz in 50 ms), jumps up a fifth and stops dead at 75 ms
+      const rl = v.filt('lowpass', [[0, 2600], [0.07, 5200, 'e']], 1.6);
+      const rotG: Pt[] = [[0, 0], [0.004, 0.16], [0.05, 0.2], [0.072, 0.2], [0.076, 0.0001]];
+      v.tone('sawtooth', [[0, 165], [0.05, 240, 'e'], [0.051, 360], [0.075, 400, 'e']], { g: rotG, to: rl });
+      v.tone('sawtooth', [[0, 330], [0.05, 480, 'e'], [0.051, 720], [0.075, 800, 'e']], { g: rotG.map(([t, g]) => [t, g * 0.4] as Pt), to: rl, detune: 8 });
+      // the burr rip: band noise sweeping 2 → 6 kHz in 60 ms (the bit tearing out of the back of the card)
+      v.noise('white', { t: 0.045, g: [[0, 0], [0.008, 0.5], [0.05, 0.35], [0.065, 0.0001, 'e']], to: v.filt('bandpass', [[0, 2000], [0.06, 6000, 'e']], 2.2, { t: 0.045 }) });
+      // the punch through (short, lower than a hammer's) + one dry crack at the break
+      thump(v, 0.07, 120, 60, 0.3, 0.09, { drive: 1.4 });
+      crack(v, 0.07, 0.4, { hp: 2200, n: 2, gap: 0.012 });
+      // the steel TING: inharmonic partials 2.5 – 4 kHz ringing 0.4 s (the lance's own steel)
+      v.bell(2870, { t: 0.075, g: 0.16, dec: 0.45, ratio: 1.53, index: 1.1, idxDec: 0.1 });
+      link(v, 3540, 0.078, 0.09, 0.38);
+      link(v, 2510, 0.08, 0.08, 0.42);
+      v.tone('sine', [[0, 3980], [0.4, 3940]], { t: 0.075, g: perc(0.06, 0.3, 0.0005) });
+      // the whistle's last breath: the descent's 8 kHz edge flicks once more as the bit clears the card
+      v.tone('sine', [[0, 5200], [0.12, 8200, 'e']], { t: 0.07, g: [[0, 0], [0.01, 0.04], [0.14, 0.0001, 'e']] });
     },
   },
   /** The retract: "vuuş" — a rising swish as the lance leaves, the rotor spinning down under it. */
@@ -152,6 +215,36 @@ export const RECIPES = {
       sweep(v, 0, 0.32, [500, 1700, 3800], 0.32, { kind: 'pink', q: 1.3, peakAt: 0.35 });
       rotor(v, 0, 0.34, [[0, 150], [0.34, 70, 'e']], 0.05, [[0, 1500], [0.34, 400, 'e']]);
       v.tone('sine', [[0, 3000], [0.3, 6000, 'e']], { g: [[0, 0], [0.04, 0.015], [0.3, 0.0001, 'e']] });
+    },
+  },
+  /** The broken card slaps flat on its tile: a dry slap + a little steel rattle of falling curls. */
+  e_augerSlap: {
+    cap: 2,
+    gap: 0.08,
+    verb: 0.2,
+    play(v) {
+      // the slap: a short flat body + a papery crack (card stock, not stone)
+      thump(v, 0, 260, 120, 0.24, 0.04, { drive: 1.2 });
+      crack(v, 0, 0.22, { hp: 1100, lp: 6000, n: 1, dec: 0.02 });
+      puff(v, 0.004, 0.12, 0.09, 1800, { kind: 'pink' });
+      // the rattle: shavings landing round it, small steel pings thinning out
+      const ts = [0.03, 0.055, 0.085, 0.11, 0.15, 0.2, 0.26];
+      ts.forEach((t, i) => {
+        const f = [4400, 5600, 3900, 6300, 4800, 5200, 4100][i];
+        link(v, f, t + v.r(-0.004, 0.004), 0.08 * (1 - i * 0.1), 0.06);
+      });
+    },
+  },
+  /** Field spell drilled: a dry crackle running away along the floor + a low rumble under it. */
+  e_augerRift: {
+    cap: 1,
+    gap: 0.1,
+    verb: 0.35,
+    play(v) {
+      v.crackle({ t: 0, d: 0.32, n: 18, g: 0.22, f: 3000, q: 1.2, dec: 0.008, curve: 0.7 });
+      v.tone('sawtooth', [[0, 70], [0.35, 52, 'e']], { g: [[0, 0], [0.03, 0.09], [0.3, 0.05], [0.42, 0.0001, 'e']], to: v.filt('lowpass', 260, 1) });
+      sweep(v, 0, 0.3, [2400, 1400, 600], 0.12, { kind: 'pink', q: 1.4, peakAt: 0.2 });
+      v.tone('sine', [[0, 1800], [0.25, 900, 'e']], { g: [[0, 0], [0.01, 0.02], [0.25, 0.0001, 'e']] });
     },
   },
 } satisfies Record<string, Recipe>;
