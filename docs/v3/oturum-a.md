@@ -168,3 +168,27 @@ the v1 frame is the `placeholderTotem`-era sprite of a different creature (2.6 %
 FAIL (6.4 % / 2.6 % = 2.43×) and measures nothing about this drake. Decision: the reference for this card is the slice
 ace's approved still (`src/still/wyrm.ts`, 5.96 %): idle f0 6.4 % = **1.07×** (limit 1.1×). The gate tool is not
 lane A's to change, so the FAIL line stays in `gates.txt`; the orchestrator should treat it as known/exempt.
+
+## PAUSED 2026-11-01 (owner: weekly usage 92%) — exact resume instructions
+**State at pause.** ashen_drake: DONE, committed `b2fc32e` (all gates pass; open issues listed in its "done" section above).
+venom_drake: sprite (3 sheet-critique rounds), card art + cut-in (critiqued + fixed) done; NOT started: cinematics + SFX,
+3 film rounds, gates, verify, commit. cloud_hatchling: sprite both forms (3 sheet rounds), card art + critique done; its
+card-art FIX agent was interrupted mid-way, so 4 cloud_hatchling tests (tests/art/cloud_hatchling*.test.ts) fail at the pause
+and one shield_titan test fails besides its known one — re-check after the hatchling art fix. Typecheck is clean.
+
+**Resume (after the weekly reset), in this order, one card at a time:**
+1. Same container or new: `git checkout claude/kart-a && git pull`. If `node_modules` is missing: `npm ci`.
+   Browser tools need `PLAYWRIGHT_BROWSERS_PATH=<dir>` where `<dir>/chromium-9999/chrome-linux/chrome` symlinks to
+   `/opt/pw-browsers/chromium-1243/chrome-linux64/chrome` (do not install playwright).
+2. If `shots/` is gone (gitignored), re-film baselines from a v1-identical commit (e.g. `684e290`, via a worktree):
+   `node tools/filmdiff.mjs --set v1 --base shots/v3/a3/baseline/v1films --write`,
+   `node tools/filmdiff.mjs --set a6v1 --base shots/v3/a56/baseline/a6v1films --write`, and the camera base
+   `node tools/measure.mjs --look v3 --jobs 2 --scenarios baseline,<kaVenom*/kaCh* keys> --out shots/kart-a/camera-base.json`.
+3. Same session: resume the workflow (cached stages replay, nothing is redone):
+   `Workflow({ scriptPath: ".../workflows/scripts/kart-a-build-wf_cf41a606-b86.js", resumeFromRunId: "wf_cf41a606-b86", args: { only: ["venom_drake"] } })`,
+   then the same with `{ only: ["cloud_hatchling"] }`.
+   New session (no workflow cache): per card run, in order: cinematics + SFX per `docs/v3/kart-a/<id>.md` §5/§6/§8 →
+   3 rounds (one combined visual + sound critic, then fixer) → gates (typecheck, npm test, both filmdiff sets 17/17 + 26/26,
+   camera gate, palcheck, monster-gates, measure ≤ REHBER §5 × 1.45) → one adversarial verifier + fixes → per-card commit.
+   For cloud_hatchling, first finish its card-art fix (critique in its doc build log) and make tests/art/cloud_hatchling*.test.ts pass.
+4. Scratch helpers `tools/_*.ts` are local-only (excluded via .git/info/exclude); never commit them.
