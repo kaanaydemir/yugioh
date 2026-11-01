@@ -13,9 +13,10 @@
 //            planted foot (one slip each), mist trailing; a 300-ms scene glide; the pond and the reeds stay home)
 //            → the neck uncoils in one smeared frame as he stops → ta-ta…TAK as a PISTON: out (stop 40) · back ·
 //            out (stop 40) · back longer · OUT (stop 80) on three points of a 6-px triangle, each with a ONE-frame
-//            needle light, droplets, a nick left on the target and a 1-px give; on the third the nicks flash as one
-//            white triangle and a small stepped pool lights the floor (the shared contact flash and burst are hidden:
-//            the pinpoint IS the contact), the struck body's material blow ~7 dB under the TAK → a glide home. Blocked: tak-tak-TING — the third glances UP
+//            needle light, droplets, a nick left on the target and a 1-px give; on the third the nicks join into the
+//            white triangle outline with a 4-ray star on the third point, held 3 frames, then mist → steel → gone,
+//            and a small white light pool on the target's core (the shared contact flash and burst are hidden: the
+//            pinpoint IS the contact), the struck body's material blow ~7 dB under the TAK → a glide home. Blocked: tak-tak-TING — the third glances UP
 //            off the guard (the deflect frame is the contact, one cold spark; the counter's warm burst is kept off
 //            him), he hops back a stride. Direct: the glide ends at the duelist plate.
 //   struck   the heron's own body sound (feather + still water) on the frame it is struck (hit / heavy / magic),
@@ -323,6 +324,7 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
   const recF = u.markFrame('attack', 'recover', conF + 2);
   const n = u.frameCount('attack');
   const freezeF = relF - 3; // f4: the 200 ms dead freeze
+  const coilF = freezeF - 1; // f3: the S snaps tight (and he settles back a half step when the target is close)
   const glideF = relF - 2; // f5, f6: the stride pair
   const [t1, r1, t2, r2] = [relF + 1, relF + 2, relF + 3, relF + 4];
   const deflF = conF + 1;
@@ -342,12 +344,15 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
   // (from the held coil f1 the neck SNAPS: straight to f3, the f2 in-between is the sheet's, not the strike's)
   const f0 = held > 0 ? Math.min(held + 2, freezeF) : 0;
   const charge = takeCharge(u, 'heronCoil', { volume: 0.85, pan });
+  // the battle's lock-on chime gives the build-up over to his own coil: it fades out under the tightening S, so the
+  // swell heard before the freeze — and the hole the freeze cuts — are the heron's
+  fade(['lockOn'], 110);
   // the home badge would sit on his neck when he glides toward the camera (P2): it steps out for the strike
   u.badge.setVisible(false);
   // layers: the glide trail (air streaks just behind the body, ripple dots on the floor) and the thrust droplets
   const trail = new GlideTrail(sc, new Px(sc.add.graphics().setDepth(unitDepth(Math.max(home.y, feet.y)) - 0.6)), new Px(sc.add.graphics().setDepth(DEPTH.CARD_ON_TILE + 3)), sgn);
   // the heron's own contact mark: a nick per thrust, the triangle on the third, a small floor pool
-  const pin = new Pinpoint(sc, DEPTH.FX - 0.5, DEPTH.CARD_ON_TILE + 3, sgn);
+  const pin = new Pinpoint(sc, DEPTH.FX - 0.5, sgn);
   let ground: Ground | null = null;
   let groundF = -1;
   const keepGround = onFrame(sc, (_dt, el) => {
@@ -355,8 +360,8 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
     const fi = u.frameInfo();
     const on = spr.active && fi.anim === 'attack';
     if (!on) return el < 100 || !!ground;
-    if (fi.frame >= glideF && fi.frame < n - 1) {
-      if (!ground) ground = new Ground(sc, u, home, unitDepth(home.y) - 0.2, { ...groundOf('attack', freezeF), mistK: 1 });
+    if (fi.frame >= coilF && fi.frame < n - 1) {
+      if (!ground) ground = new Ground(sc, u, home, unitDepth(home.y) - 0.2, { ...groundOf('attack', coilF), mistK: 1 });
       if (fi.frame !== groundF) {
         groundF = fi.frame;
         ground.set({ ...groundOf('attack', fi.frame), mistK: 1 });
@@ -380,7 +385,25 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
   try {
     // ---- the coil (declare → f4): the tension rises… and is cut at the freeze — the hold is SILENT, the marsh's
     // mist bands and the idle sounds stop with him
-    await seg(u, f0, freezeF);
+    // a heron settles back before it strikes: when the target stands close, the coil carries him back a half step
+    // (two 4–5 px shuffles over the tightening f3, the pond and the reeds staying home), so the glide that follows
+    // covers ≥ 20 px — two real strides, never a foot-slide on the spot
+    const dist0 = Math.hypot(feet.x - home.x, feet.y - home.y);
+    const backPx = dist0 < 22 ? clamp(Math.round(22 - dist0), 0, 10) : 0;
+    let from: XY = { ...home };
+    if (backPx > 0 && f0 <= coilF) {
+      const ux = (home.x - feet.x) / Math.max(1, dist0);
+      const uy = (home.y - feet.y) / Math.max(1, dist0);
+      const far: XY = { x: rnd(home.x + ux * backPx), y: rnd(home.y + uy * backPx * 0.6) };
+      const mid: XY = { x: rnd(lerp(home.x, far.x, 0.5)), y: rnd(lerp(home.y, far.y, 0.5)) };
+      const coilMs = u.rangeMs('attack', f0, freezeF);
+      const coiled = seg(u, f0, freezeF);
+      void sleep(sc, coilMs * 0.3).then(() => alive() && placeFeet(u, mid));
+      void sleep(sc, coilMs * 0.62).then(() => alive() && placeFeet(u, far));
+      await coiled;
+      if (alive()) placeFeet(u, far);
+      from = far;
+    } else await seg(u, f0, freezeF);
     // the cut: the coil (at its crest) and the shared declaration's tail stop together — the freeze is SILENT
     charge.stop(20);
     fade(['attackDeclare', 'lockOn'], 30);
@@ -393,9 +416,9 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
     // vertical bob; a ripple dot under each planted foot; mist bands trail behind
     const glideMs = u.rangeMs('attack', glideF, relF);
     if (DBG) console.warn(`[rhr] glide @${Math.round(sc.time.now)} loop ${Math.round(sc.game.loop.time)}`);
-    const dist = Math.hypot(feet.x - home.x, feet.y - home.y);
+    const dist = Math.hypot(feet.x - from.x, feet.y - from.y);
     const strides = clamp(2 * Math.round(dist / 25), 2, 6);
-    play('heronTrail', { volume: 0.85, pan: panAt(lerp(home.x, feet.x, 0.5)) });
+    play('heronTrail', { volume: 0.85, pan: panAt(lerp(from.x, feet.x, 0.5)) });
     let stride = -1;
     // the release rides the glide's braking tail: the neck uncoils in one smeared frame as the body comes to rest
     // (the last `relMs` of the glide), so the first thrust leaves straight from the stop
@@ -404,7 +427,7 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
     let released = false;
     await animate(sc, glideMs + relMs, (t) => {
       const k = glide(Math.min(1, t / relAt));
-      const p = { x: lerp(home.x, feet.x, k), y: lerp(home.y, feet.y, k) };
+      const p = { x: lerp(from.x, feet.x, k), y: lerp(from.y, feet.y, k) };
       if (t >= relAt && !released) {
         released = true;
         if (spr.active && !u.locked) u.pose('attack', relF);
@@ -443,9 +466,13 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
       sp.release();
       return at;
     };
-    /** Thrusts 1 and 2 register on the target too: a 1-px give away from the beak for the micro stop. */
+    /**
+     * Thrusts 1 and 2 register on the target too: a 1-px give away from the beak for the micro stop (the battle
+     * holds the target, so its sprite is moved directly and put back before the third; the third's push is the
+     * battle's own recoil, never on its contact frame).
+     */
     const give = (on: boolean) => {
-      if (!tgt || !tgt.sprite.active || tgt.retired || tgt.locked) return;
+      if (!tgt || !tgt.sprite.active || tgt.retired) return;
       tgt.sprite.x = on ? tx0 + sgn : tx0;
     };
     // (the out-hold IS the 40 ms micro-stop — snapped, not held; the time goes to the retract and the re-aim:
@@ -479,8 +506,10 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
     if (s.blocked) pin.close();
     else {
       pin.nick(at);
-      // (the pool lights the floor at the target's near edge, between the two: under its body it would be hidden)
-      pin.land(tgt ? { x: s.toGround.x - sgn * 13, y: s.toGround.y + 3 } : null);
+      pin.land();
+      // the light answers on the struck body: a small white pool on its core (the floor spill under it)
+      const lit = tgt ? tgt.core() : at;
+      void lightFlash(sc, lit.x, lit.y, PAL.white, 10, 120, { floorY: s.toGround.y, intensity: 0.85, air: 0.7, rise: 0 });
     }
     const mat = tgt ? [hitSoundFor(tgt, { kind: 'physical', heavy: true }), hitSoundFor(tgt, { kind: 'physical', heavy: false })] : [];
     // (blocked: the guard's shared shield bell is skipped in the contact call and re-played far under the TING)
@@ -492,7 +521,7 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
     const struckSnd = mat[0];
     if (struckSnd) play(struckSnd, { volume: s.blocked ? 0.5 : 0.42, pan: panAt(aim.x) });
     // the target's shared contact flash (_v3/flash.ts: a white banded disc on the struck body) is the most
-    // generic frame of any strike: the heron's pinpoint (three nicks → the triangle, the floor pool) IS its contact
+    // generic frame of any strike: the heron's pinpoint (three nicks → the triangle and its star, the light on the core) IS its contact
     hideContactFlash(sc, before, tgt ? tgt.sprite.depth : null);
     if (s.blocked) {
       play('shieldBlock', { volume: 0.3, pitch: 1.25, pan: panAt(aim.x) });
@@ -511,22 +540,29 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
     }
     // ---- recover: a single backward glide home (blocked: the third glanced off — he hops back one stride first,
     // while the battle's recoil plays the spring of his neck)
-    let from: XY = { ...feet };
+    let ret: XY = { ...feet };
     if (s.blocked) {
       const hop: XY = { x: feet.x - sgn * 9, y: feet.y + 4 };
       await animate(sc, 110, (t) => {
         const e = E.outQ(t);
         if (spr.active) placeFeet(u, { x: lerp(feet.x, hop.x, e), y: lerp(feet.y, hop.y, e) }, Math.sin(Math.PI * t) * 3);
       });
-      from = hop;
+      ret = hop;
     }
     const backHome = seg(u, recF, n - 1);
     atFrame(u, 'attack', Math.min(recF + 1, n - 1), () => play('heronMistClose', { volume: 0.9, pan }));
-    const backMs = Math.max(140, u.rangeMs('attack', recF, n - 1));
+    // the way home is a glide too, never a snap: a long one (a direct attack, a far target) takes ≥ 200 scene ms
+    // (≈ 270 game ms) and leaves the same mist trail, streaming the other way
+    const backDist = Math.hypot(home.x - ret.x, home.y - ret.y);
+    const backMs = Math.max(140, u.rangeMs('attack', recF, n - 1), backDist > 30 ? 200 + rnd(backDist) : 0);
+    const backTrail = backDist > 20 ? new GlideTrail(sc, new Px(sc.add.graphics().setDepth(unitDepth(Math.max(home.y, ret.y)) - 0.6)), new Px(sc.add.graphics().setDepth(DEPTH.CARD_ON_TILE + 3)), (-sgn) as 1 | -1) : null;
     await animate(sc, backMs, (t) => {
-      const e = E.inOutQ(t);
-      if (spr.active) placeFeet(u, { x: lerp(from.x, home.x, e), y: lerp(from.y, home.y, e) });
+      const e = glide(t);
+      const p = { x: lerp(ret.x, home.x, e), y: lerp(ret.y, home.y, e) };
+      if (spr.active) placeFeet(u, p);
+      backTrail?.at(p);
     });
+    backTrail?.close();
     if (spr.active) placeFeet(u, home);
     await Promise.race([backHome, sleep(sc, u.frameMs('attack', n - 1) + 30)]);
   } finally {
@@ -701,13 +737,13 @@ function mistDeath(ctx: DestroyCtx): void {
   const pan = panAt(u.home.x);
   let seen = false;
   let lastF = -1;
-  let seenBefore = false;
   let done = false;
   // the back-step slips on the still water; the single ring opens as the mist reaches the head
   // the wings close (f1) and the back-step slips on the still water (f2) — scored here, on whichever frame the
   // death pose actually starts from (posematch may join it past f1 from the recoil)
   let closed = false;
   let slipped = false;
+  let closedAt = -1e9;
   // the bank's own world bands: two thin wisps either side, widening the art's cover bands past the body
   const wisps = new Px(sc.add.graphics().setDepth(unitDepth(u.home.y) + 0.4));
   // the killing blow does not shove him: the death's own drawn back-step is the give (pinHome)
@@ -737,14 +773,16 @@ function mistDeath(ctx: DestroyCtx): void {
       lastF = fi.frame;
       if (!closed && fi.frame >= 1) {
         closed = true;
+        closedAt = sc.time.now;
         play('heronWingClose', { volume: 0.9, pan });
       }
-      if (!slipped && fi.frame >= 2) {
+      // the slip lands with the foot planting back (f3) — never on top of the closing wings: ≥ 150 scene ms
+      // (≈ 200 ms heard) after the wing close began, so the pair, then the wet step, read as two events
+      if (!slipped && fi.frame >= 3) {
         slipped = true;
-        const late = !seenBefore; // joined past f1: the slip follows the wing close by a beat
-        void (late ? sleep(sc, 90) : Promise.resolve()).then(() => play('heronBackSlip', { volume: 0.9, pan }));
+        const wait = Math.max(0, 150 - (sc.time.now - closedAt));
+        void (wait > 0 ? sleep(sc, wait) : Promise.resolve()).then(() => play('heronBackSlip', { volume: 0.9, pan }));
       }
-      seenBefore = true;
       if (fi.frame === n - 1) {
         // the mist has him: the sprite goes, the ground stays (the kit finds no body to break)
         remains(u, sc, pan);

@@ -6,6 +6,7 @@
 //                pond stays HOME while he glides out to strike, and only the ground remains when the mist has
 //                taken him. P2: the relit sheet ('right' light) flipped, like the sprite.
 //   (the mist itself is one shape for every moment: the WISP of src/art/monsters-v3/reed_heron-mist.ts)
+//   Pinpoint     the contact mark: three nicks → the triangle outline + a 4-ray star on the third point.
 //   GlideTrail   the mist streaks the bob-less glide leaves behind (three heights, steel → night4 → gone) and the
 //                1-px ripple dots its feet leave on the floor.
 
@@ -263,34 +264,30 @@ export function needleFlash(scene: Phaser.Scene, depth: number, tip: XY, dir: 1 
   onFrame(scene, () => calls++ < 2, () => px.g.destroy());
 }
 
-// ================================================================ the pinpoint: three nicks, one triangle, a pool
+// ================================================================ the pinpoint: three nicks, one triangle, a star
 
 /**
  * The heron's own contact mark (no shared round flash): every thrust leaves a NICK where its tip met the target —
- * a white point with a 1-px mist tail back toward the beak (the third: a 3-px white cross). The nicks stay lit while
- * the triple runs; when the third lands they flash together as one tiny filled white TRIANGLE for 2 frames (top,
- * bottom and the deeper centre: the 6-px figure the spec names), step down to mist, then steel, and go. Under the
- * target a small stepped pool lights the floor: a white core and a mist rim, two palette steps down, gone.
+ * a white point with a 1-px tail back toward the beak. When the third lands, the three nicks are joined into the
+ * 6-px TRIANGLE (its 1-px outline, white) and four 1-px white rays, 4 px long, burst diagonally out of the third
+ * point (the star of the pinpoint). The figure holds white for 3 rendered frames, then steps down mist → steel →
+ * gone over ~200 ms. Nothing is drawn on the floor: the light layer lights the target (the caller's lightFlash).
  */
 export class Pinpoint {
   private readonly air: Px;
-  private readonly floor: Px;
   private readonly nicks: XY[] = [];
+  /** Rendered frames since the third landed (-1: not yet) and the ms since. */
   private tri = -1;
   private triAge = 0;
-  private pool: XY | null = null;
-  private poolAge = 0;
   private dead = false;
   private readonly stop: () => void;
 
   constructor(
     readonly scene: Phaser.Scene,
     airDepth: number,
-    floorDepth: number,
     private readonly dir: 1 | -1,
   ) {
     this.air = new Px(scene.add.graphics().setDepth(airDepth));
-    this.floor = new Px(scene.add.graphics().setDepth(floorDepth));
     this.stop = onFrame(scene, (dt) => this.tick(dt), () => this.kill());
   }
 
@@ -299,14 +296,10 @@ export class Pinpoint {
     this.nicks.push({ x: rnd(p.x), y: rnd(p.y) });
   }
 
-  /** The third landed: the triangle flash (2 frames), the floor pool under the target. */
-  land(floorAt: XY | null): void {
+  /** The third landed: the triangle and the star. */
+  land(): void {
     this.tri = 0;
     this.triAge = 0;
-    if (floorAt) {
-      this.pool = { x: rnd(floorAt.x), y: rnd(floorAt.y) };
-      this.poolAge = 0;
-    }
   }
 
   /** No triangle will come (blocked, or the strike ended early): the marks go out at once. */
@@ -314,70 +307,56 @@ export class Pinpoint {
     if (this.tri < 0) this.destroy();
   }
 
+  /** A 1-px line between two points (whole pixels, the longer axis stepped). */
+  private line(a: XY, b: XY, c: number): void {
+    const n = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+    for (let i = 0; i <= n; i++) {
+      const t = n ? i / n : 0;
+      this.air.dot(rnd(a.x + (b.x - a.x) * t), rnd(a.y + (b.y - a.y) * t), c);
+    }
+  }
+
   private tick(dt: number): boolean {
     if (this.dead) return false;
     this.air.clear();
-    this.floor.clear();
     const d = this.dir;
     if (this.tri >= 0) {
       this.tri++;
       this.triAge += dt;
     }
-    // tone of the marks: lit while the triple runs; after the third — 2 frames the triangle, then mist, steel, gone
+    // lit while the triple runs; after the third: 3 frames white, then mist (~80 ms), steel (~80 ms), gone
     let tone: number | null = PAL.white;
-    if (this.tri > 2) tone = this.triAge < 140 ? PAL.mist : this.triAge < 260 ? PAL.steel : null;
+    if (this.tri > 3) tone = this.triAge < 130 ? PAL.mist : this.triAge < 210 ? PAL.steel : null;
     if (tone !== null) {
-      if (this.tri >= 1 && this.tri <= 2 && this.nicks.length >= 3) {
-        // the filled triangle through the three points (scanline fill between the edges, whole pixels)
+      const landed = this.tri >= 1;
+      if (landed && this.nicks.length >= 3) {
         const [a, b, c] = this.nicks;
-        const ys = [a.y, b.y, c.y];
-        const y0 = Math.min(...ys);
-        const y1 = Math.max(...ys);
-        const edges: [XY, XY][] = [[a, b], [b, c], [c, a]];
-        for (let y = y0; y <= y1; y++) {
-          let lo = Infinity;
-          let hi = -Infinity;
-          for (const [p, q] of edges) {
-            if ((y < p.y && y < q.y) || (y > p.y && y > q.y)) continue;
-            const x = p.y === q.y ? [p.x, q.x] : [p.x + ((q.x - p.x) * (y - p.y)) / (q.y - p.y)];
-            for (const xx of x) {
-              lo = Math.min(lo, rnd(xx));
-              hi = Math.max(hi, rnd(xx));
-            }
-          }
-          if (lo <= hi) this.air.run(y, lo, hi, PAL.white);
+        this.line(a, b, tone);
+        this.line(b, c, tone);
+        this.line(c, a, tone);
+        // the star: four diagonal rays out of the third point, 4 px each (the inner pixel left dark so the point
+        // reads as a point); the two pointing back at the beak are 1 px shorter
+        for (const [sx, sy] of [[1, -1], [1, 1], [-1, -1], [-1, 1]] as const) {
+          const len = sx === d ? 4 : 3;
+          for (let i = 2; i <= len + 1; i++) this.air.dot(c.x + sx * i, c.y + sy * i, i === len + 1 && tone === PAL.white ? PAL.mist : tone);
         }
       }
       this.nicks.forEach((n, i) => {
-        const third = i === 2;
         this.air.dot(n.x, n.y, tone!);
-        // the tail: 1 px back toward the beak (mist), the cut's direction
-        this.air.dot(n.x - d, n.y, tone === PAL.white ? PAL.mist : tone!);
-        if (tone === PAL.white) this.air.dot(n.x - 2 * d, n.y, PAL.steel);
-        if (third) this.air.dot(n.x + d, n.y, tone!).dot(n.x, n.y - 1, tone!).dot(n.x, n.y + 1, tone!);
+        if (!landed) {
+          // the tail: back toward the beak, the cut's direction
+          this.air.dot(n.x - d, n.y, tone === PAL.white ? PAL.mist : tone!);
+          this.air.dot(n.x - 2 * d, n.y, PAL.steel);
+        } else if (i === 2) this.air.dot(n.x + d, n.y, tone!).dot(n.x - d, n.y, tone!).dot(n.x, n.y - 1, tone!).dot(n.x, n.y + 1, tone!);
       });
     }
-    if (this.pool) {
-      this.poolAge += dt;
-      const p = this.pool;
-      const a = this.poolAge;
-      if (a < 320) {
-        // a small stepped pool: white core + mist rim → mist core + steel rim → steel rim only
-        const core = a < 110 ? PAL.white : a < 220 ? PAL.mist : null;
-        const rim = a < 110 ? PAL.mist : PAL.steel;
-        this.floor.ellipseRing(p.x, p.y, 8, 2.5, 1, rim);
-        if (core !== null) this.floor.ellipse(p.x, p.y, 4, 1.2, core);
-      } else this.pool = null;
-    }
-    const busy = this.tri < 0 || tone !== null || !!this.pool;
-    return busy;
+    return this.tri < 0 || tone !== null;
   }
 
   private kill(): void {
     if (this.dead) return;
     this.dead = true;
     this.air.g.destroy();
-    this.floor.g.destroy();
   }
 
   destroy(): void {

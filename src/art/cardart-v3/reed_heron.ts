@@ -6,7 +6,8 @@
 //               has lead room. Ground: the kit's WATER recipe, its slanted moonlight shaft falling on the head. Light:
 //               the beak blade burns as ONE white line in the moonlight (the focus), the gold eye.
 // small (44×34) the SAME picture, closer (KART_RESIMLERI §1 (1)): a 1:1 crop of the same rig frame — head, the white line
-//               of the beak, the S-neck and the wing's top — on the same shaft.
+//               of the beak, the S-neck and the wing's top — on the same shaft, with the marsh motif: two reed tips
+//               behind the beak and one low stepped mist band across the neck base.
 // Living (4 frames, 170 ms): the rig's own idle frames 0 / 4 / 8 / 12 (reeds, mist, water, straw), whole pixels.
 // Imports the RIG (not the monster module, which imports this file for its portrait). Colours only from PAL.
 
@@ -19,9 +20,9 @@ import type { ArtLayers, CardArtV3 } from './_types';
 
 /** Sprite frame → picture offsets (picture = sprite shifted by these, 1:1). */
 const BIG_DX = 10;
-const BIG_DY = -11;
-const SMALL_DX = -29;
-const SMALL_DY = -10;
+const BIG_DY = -7;
+const SMALL_DX = -30;
+const SMALL_DY = -8;
 const IDLE_FRAMES = [0, 4, 8, 12] as const;
 
 const SK = skeleton(idlePose(0));
@@ -65,10 +66,42 @@ function big(l: ArtLayers, f: number): void {
   moonBeak(l.light, l.subject, BIG_DX, BIG_DY);
 }
 
+/**
+ * The marsh in the close-up (the storyboard's "sisli sazlık"): two reed tips with their cattail heads behind the
+ * beak, swaying 1 px with the living frames, and one low stepped mist band (a mist crest over a steel body, flat,
+ * no dither) drifting across the neck base, in front of him (on the light layer: vapour is never outlined).
+ */
+function smallMarsh(l: ArtLayers, f: number): void {
+  const b = l.backdrop;
+  const sway = f % 2;
+  for (const [x0, top] of [[35, 17], [40, 21]] as const) {
+    for (let y = top; y < 34; y++) {
+      const x = x0 + (y < top + 5 ? sway : 0);
+      b.set(x, y, y < top + 3 ? PAL.earth2 : PAL.leaf1);
+      if (y < top + 3) b.set(x + 1, y, PAL.earth1);
+    }
+  }
+  // (vapour, not matter: the light layer — drawn over him, never outlined, IŞ-9)
+  const s = l.light;
+  const drift = [0, 1, 2, 1][f % 4];
+  const bands: [number, number, number, number][] = [
+    // [y, x0, x1, colour]: two humps of mist crest over a steel body whose ends step in (a lens of vapour drifting
+    // through the frame, its far end open past the reeds), never a full-width bar
+    [25, 8 + drift, 13 + drift, PAL.mist],
+    [26, 4 + drift, 16 + drift, PAL.mist],
+    [26, 21 + drift, 27 + drift, PAL.mist],
+    [27, 1 + drift, 31 + drift, PAL.steel],
+    [28, 0, 25 + drift, PAL.steel],
+    [28, 28 + drift, 35 + drift, PAL.steel],
+  ];
+  for (const [y, x0, x1, c] of bands) for (let x = x0; x <= Math.min(43, x1); x++) s.set(x, y, c);
+}
+
 function small(l: ArtLayers, f: number): void {
   paintBackdrop(l.backdrop, 'WATER', { focus: [FOCUS_SMALL[0] * 2, FOCUS_SMALL[1] * 2], radius: 30 });
   l.subject.blit(sprite(f), SMALL_DX, SMALL_DY);
   moonBeak(l.light, l.subject, SMALL_DX, SMALL_DY);
+  smallMarsh(l, f);
 }
 
 const art: CardArtV3 = {

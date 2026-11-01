@@ -11,7 +11,7 @@
 // smeared frame (f7, release) → a PISTON: thrust top f8 → retract f9 → thrust bottom f10 → retract f11 → thrust
 // centre f12 = contact (each thrust: a 1-frame white needle reaching 5 px past the tip, a speed streak, droplets) →
 // f13 the deflect (blocked only: beak flicked up off the guard, one cold spark) → the S re-coils, home, idle f0.
-// The water patch and the reeds stay HOME: attack f5–f15 do not draw them (the sprite is away; the strike
+// The water patch and the reeds stay HOME: attack f3–f15 do not draw them (the sprite is away; the strike
 // cinematic keeps them on the tile with drawPond / drawGround from the rig). Every one-shot ends on idle f0.
 
 import type { AnimSpec, AnyMonsterAnim, MonsterAnim, MonsterAnimExtra, MonsterPoints } from '../types';
@@ -120,6 +120,8 @@ const GUARD_HOLDS = [180, 170, 160, 180, 170, 160];
 const A_N = 17;
 const COIL: Partial<Pose> = { bx: -2, by: 1, n1x: 20, n1y: -38, n2x: -18, n2y: -46, hx: -6, hy: -55, ba: 0, br: 1, sway: -2 };
 const STANCE: Partial<Pose> = { pond: 0, mistK: 0, l2: 0.6, l2x: -7, l2y: -1 };
+// (from the tightening f3 on he is 'away': the strike keeps the pond and the reeds home — he may settle back a step)
+const AWAY: Partial<Pose> = { pond: 0, mistK: 0 };
 // (no needle in the art: the cinematic draws the needle light for exactly one frame; the out-hold shows the blade)
 const THRUST_TOP: Partial<Pose> = { ...STANCE, bx: 2, n1x: 13, n1y: -42, n2x: 19, n2y: -51, hx: 23, hy: -55, bl: 3, streak: 1, drops: 0.35 };
 const RETRACT: Partial<Pose> = { ...STANCE, bx: 2, n1x: 18, n1y: -40, n2x: 1, n2y: -50, hx: 13, hy: -53, bl: 0 };
@@ -129,9 +131,9 @@ export function attackPose(f: number): Pose {
     case 0: return key({ n1x: 14, n2x: -1, hx: 7, hy: -54 }, f, A_N);
     case 1: return key({ n1x: 15, n1y: -39, n2x: -2, n2y: -48, hx: 5, hy: -55, br: 1 }, f, A_N);
     case 2: return key({ bx: -1, n1x: 17, n1y: -40, n2x: -7, n2y: -47, hx: 1, hy: -55, br: 1, sway: -1 }, f, A_N);
-    case 3: return key({ bx: -2, n1x: 19, n1y: -39, n2x: -13, n2y: -47, hx: -3, hy: -55, br: 1, sway: -2 }, f, A_N);
+    case 3: return key({ ...AWAY, bx: -2, n1x: 19, n1y: -39, n2x: -13, n2y: -47, hx: -3, hy: -55, br: 1, sway: -2 }, f, A_N);
     // the freeze: the world holds f3's phase exactly; one white glint on the aimed beak tip
-    case 4: return { ...key({ ...COIL, aim: 1 }, 3, A_N), plume: key({}, 3, A_N).plume };
+    case 4: return { ...key({ ...COIL, ...AWAY, aim: 1 }, 3, A_N), plume: key({}, 3, A_N).plume };
     case 5: return key({ ...COIL, ...away, sway: -3, bx: 0, by: 0, fx: -5, l2: 1, l2x: 6, l2y: -1, trail: 0.7, dots: 1 }, f, A_N);
     case 6: return key({ ...COIL, ...away, sway: -3, bx: 1, by: 0, fx: 5, l2: 1, l2x: -5, l2y: -1, trail: 1, dots: 1 }, f, A_N);
     case 7: return key({ ...STANCE, bx: 2, by: 0, n1x: 12, n1y: -40, n2x: 16, n2y: -48, hx: 20, hy: -52, sway: -2, smear: 1, streak: 1, bl: 1, fx: 0, trail: 0.5 }, f, A_N);
@@ -147,11 +149,12 @@ export function attackPose(f: number): Pose {
   }
 }
 // (tempo gate: the attack incl. the target's death ≤ 3.19 s game time — measure.mjs rhrAttack. The glide is the
-// identity — "still … glide … ta-ta-TAK": f5 / f6 hold 150 each = a 300-ms scene glide, slower than any dash in the
-// lane. It is paid for by the thrusts: the strike shows each thrust only for its 40-ms micro-stop (no extra frame
-// hold), retract 1 is 40 and retract 2 is 56 (ta-ta…TAK), the freeze 190; the release f7 rides the glide's braking tail; from the
-// declaration's held f1 the coil SNAPS straight to f3 (the strike skips the f2 in-between); a quicker recover.)
-const ATTACK_HOLDS = [80, 60, 40, 40, 190, 150, 150, 40, 40, 40, 40, 56, 80, 50, 50, 50, 50];
+// identity — "still … glide … ta-ta-TAK": f5 / f6 hold 120 each = a 240-ms scene glide (≥ 20 px: a close target
+// gets the coil's half step back first), slower than any dash in the lane. The build-up is the heron's own: from the
+// declaration's held f1 the coil SNAPS to f3 and tightens there 110 ms while the battle's lock-on fades under it,
+// then the 200-ms freeze (≥ 270 game ms after the declaration's arc has gone). The thrusts show only their 40-ms
+// micro-stops, retract 1 is 40 and retract 2 is 50 (ta-ta…TAK); the release f7 rides the glide's braking tail.)
+const ATTACK_HOLDS = [80, 60, 40, 110, 200, 120, 120, 40, 40, 40, 40, 50, 80, 50, 50, 50, 50];
 
 // ------------------------------------------------------------------ roar (9 frames): the wings open once
 
