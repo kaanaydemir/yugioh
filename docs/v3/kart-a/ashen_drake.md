@@ -1470,3 +1470,111 @@ pass (one flaky timeout under the parallel clip renders, clean on re-run) · `fi
 (`fix1/v1films`) · `monster-gates` (`fix1/gates/gates.txt`): 20 ok; IŞ-10 = the known exemption; **KK-13 ms is at the
 limit and noisy**: the same current art measures 7.57 / 8.09 / 8.47 ms (limit 8) in three runs minutes apart on a
 shared machine (P2 7.49–7.54); the rise is over r2–r4 (6.85 → 7.58), this round only added beats / flakes to 3 hit frames.
+
+### Critic round 2 fixes (2026-11-01, lane-A cinematics builder)
+Critic evidence: `shots/kart-a/ashen_drake/crit2/`. Ours: `shots/kart-a/ashen_drake/fix2/` (every changed moment
+re-filmed at `--every 17` and looked at, 3× zooms + 1× strips). Files: `src/cinematics/summon-a/ashen_drake.ts`,
+`src/cinematics/strikes-a/ashen_drake.ts`, `src/audio/v3/ashen.ts`, `src/art/monsters-v3/ashen_drake-anims.ts`
+(death `dissolve` mark f5 → f6; revive plates 4 → 7 batches), `tests/art/ashen_drake.test.ts` (those two numbers),
+and our own `CHARACTER_SOUNDS.ashen_drake` entry in `src/cinematics/_v3/sound.ts` (no other line of that file).
+
+1. **HIGH slam sync — fixed.** Verified first (`fix2/sheet/ashen_drake-v3-summon.png`, `fix2/sum_land_before.png`):
+   f10 is the hanging, translucent half-fold; the dense plates first show on **f11** (the critic's 3774 frame). The
+   shock fired on f10, and also one frame late, because it ran after an awaited `untilFrame` (a microtask after the
+   rendered step). Now the slam beat (`ashenLand`, `ashShock`, light flash, shake, 50 ms freeze, badge) runs
+   **inside the sprite's animation update** via `atFrame(u, 'summon', 11)`. On film the ring/underglow, the plates and
+   the freeze are on the same frame: `fix2/sum_slam_z.png` 3689 (P1), `fix2/sum_p2.png` 3723 (P2). In the clip
+   timeline `ashenLand` is logged at 3733 = video frame 112, the first dense-cloak frame
+   (`fix2/clips/sum_sync_f109-114.png`). The onset is at 3740–3760, 1 frame of WebAudio latency.
+2. **HIGH pre-slam hold — fixed.** The hold was f10 stretched by the misplaced freeze (≈ 190 ms). It is now f9 + f10 =
+   160 ms (the freeze moved onto the slam pose). It also carries motion now (`windUp`): every 2 frames the shown
+   frame's own hem ember pixels are re-lit in stepped fire2/3/4 (a crawling glow), drips fall off the hem
+   (fire3 → fire1 with a 1-px trail) and land as fire1 → stone0 specks, and the floor pool throbs per frame change.
+   Evidence: `fix2/sum_land.png`, `fix2/sum_slam_z.png` #0–1. The art itself is unchanged; a 1-px plate tremble
+   would need new summon frames, and KK-13 frames are 139/140.
+3. **MEDIUM land masked / small shock — fixed.** At f10 (≈ 90 ms before the slam) `fade(['ashenRoar'], 70)` runs.
+   The solo-roar render (`fix2/clips/kaAdSummon_roar.wav`) falls from −9 dBFS RMS to −19.5 at 3680 and −34 at 3700.
+   In the mix the floor before the land is **−25 dBFS** (3700–3740, was −9…−11), and the land peaks at −4.1
+   (3760): a ≥ 16 dB separation. `ashenLand` also gets its own onset: a dry plate clack and a 44 Hz sub thump under
+   the body thump. The visual shock is bigger and darker:
+   - The ring runs to r 64 (past the tile edge), on an ink under-line with a stone1 → stone0 body.
+   - 12 billows of r 5–6 with ink bases.
+   - 18 dust chips, half of them stone1/stone0.
+   - A 3-frame **fire2 underglow under the chest** (r 16, fire3 core, fire4 heart line), then 2 dull frames, drawn
+     over the billows. It holds through the freeze.
+
+   Evidence: `fix2/sum_ring.png`.
+4. **MEDIUM death sound leads — fixed.** Filmed (`fix2/kill_drop_before.png`): the cloak drops on death **f6** and
+   the plates break on **f7**. The kit scored `deathStart` on f1 and `dissolve` on f5, and our own hook added an f1
+   crackle. Now the `dissolve` mark is on f6 and our sound entry maps `dissolve: 'ashenCrackle'` and
+   `afterDissolve: [[1, 'ashenCrumble', 1], [3, 'ashenCoreDrop', 0.9]]`; `deathStart` and our hook are gone. Clip:
+   - Crackle logged 1550, onset 1570 at −12 dBFS (the floor before it is −43). The drop is on video frame 47 (1567).
+   - Crumble logged 1633, onset 1650 at −9. The break is on frame 49 (1633).
+
+   `fix2/clips/kill_sync_f45-50.png`. The crumble now opens with a plate snap and a short knock, so the break is
+   heard. The death accent starts with the mark at f6 (was f5).
+5. **MEDIUM target pops back clean — fixed.** After the 18-frame hold the silhouette now chars for 2 frames, then
+   lets the body go through a **2×2 lattice in three 2-frame steps** (3/4 → 2/4 → 1/4 of the pixels, whole pixels).
+   After that it **smoulders ≈ 1 s**: the contour keeps re-rolled fire3/fire2/fire1 embers and stone0 soot pips
+   (EF-3: only contour pixels, the body is never painted), thinning to nothing, and ash/ember flakes rise from top
+   edges every 3 frames. It follows the target's own (death) pose until its body breaks. The ash snow is unchanged.
+   Found on the way: the crown-crest flames were drawn on every frame past the climb, so they now stop with the
+   burn, and a stop-on-'death' check was wrong (the killed target is in death f0 for the whole beat).
+   Evidence: `fix2/atk_char.png` (3×), `fix2/atk_smoulder.png` (1×), `fix2/atkp2.png` (P2).
+6. **MEDIUM direct — improved.**
+   - The podium bank is larger (row 2 puffs × 0.85, was 0.7).
+   - The ignition is a **3-frame flame column**: a centre column (r 6, heat 3.6 → 3 → 1.8, up to ~29 px) flanked by
+     two corner columns, plus an ember frame.
+   - The fuse is a 3-px band (the 2×2 burn on a darker under-row).
+
+   Evidence: `fix2/direct_z.png`, `fix2/direct_1x.png`, `fix2/direct_fuse.png`. **Not done:** a black duelist
+   silhouette. The duelist is not a `MonsterUnit` (no frame pixels in our API), and the shared white star and the
+   −2400 number still own the contact frame at 1× (orchestrator, #9).
+7. **LOW revive pop — fixed.** The revive plates seat in 7 batches of 6 (6/12/18/24/30/36/42, 60–80 ms each, was
+   6/16/28/40), alternating LUB re-light (beat 1, heat 1.3) with the weld one batch behind. Revive is 12 → 15 frames,
+   1180 → 1210 ms. `fix2/revive.png`: no step adds more than ~1/7 of the cloak.
+8. **LOW heap pop — fixed.** Root cause: the heap grew in 120 ms *under* the remains sprite, so the full cone appeared
+   when the body broke. Now it grows in visible stages: base rows from death f8 (under the falling crumble), then
+   +120 ms the mid rows, +170 the lit top, +220 the eye. `fix2/kill_heap.png`: 1874 base → 1891 mid → 1959 lit top/eye.
+9. **Number covering the ignition — orchestrator** (shared `battle/battle.ts`, unchanged). The ask stands: an
+   additive per-recipe `attack.numberDelayMs` / offset.
+10. **Duck depth — orchestrator** (shared `audio/engine.ts` floor of −6 dB per sound, unchanged).
+11. **`ashenLastBeat` after a heap kill — fixed.** The heap layer now records `killed` when the tile is occupied, and
+    the delayed last beat plays only while the heap is still there.
+
+**Measured** (`fix2/measure.json`, `--look v3`, game ms; limit = REHBER §5 × 1.45):
+
+| Scenario | Measured | Limit |
+|---|---|---|
+| kaAdSummon / P2 | 4166 | ≤ 4350 |
+| kaAdAtk / P2 | 3166 | ≤ 3190 |
+| kaAdAtkLongDeath | 3133 | — |
+| kaAdLose / P2 | 3083 | — |
+| kaAdTie | 3150 | ≤ 3190 |
+| kaAdDirect / P2 | 2233 | ≤ 2320 |
+| kaAdBlocked | 2133 | — |
+| kaAdRevive | 2200 | ≤ 3050 |
+| kaAdPos | 533 | ≤ 580 |
+| kaAdFlip | 766 | ≤ 870 |
+| kaAdKill / P2 | 2583 | — |
+| kaAdSummonOnHeap | 6283 | — |
+
+Errors 0 everywhere; the number is on the contact frame.
+
+**Sound** (`fix2/clips/`: kaAdSummon, kaAdSummon_roar (solo), kaAdKill, kaAdAtk, kaAdDirect, kaAdRevive; music off):
+peaks −1.8 … −2.3 dBFS, 0 clipped.
+
+**Gates:**
+- `npm run typecheck`: clean for our files.
+- `tests/art/ashen_drake.test.ts`: 12/12.
+- materials / presentation / v3: pass except three 5 s timeouts while the measure and clip renders ran in parallel.
+  `ashen_drake` is clean on a re-run.
+- `filmdiff --set v1`: **17/17 IDENTICAL** (`fix2/filmdiff_v1.txt`).
+- `monster-gates` (`fix2/gates/`): frames 139 ≤ 140, bytes 6.94 ≤ 7 MB. KK-13 ms is still noisy around the limit:
+  8.29 / 7.85 under load, then 6.99 / 7.59 and 6.44 / 6.35 on re-runs. IŞ-10 is the known exemption.
+
+**Remaining weaknesses:**
+- The direct contact frame is still dominated by the shared white star and number.
+- KK-13 frames (139/140) and bytes (6.94/7 MB) are at the edge: no room for more summon in-betweens.
+- The slam underglow holds through the 50 ms freeze (≈ 5 frames on film), not exactly 3.
+- SE-4 is still unproven on a calibrated tool.

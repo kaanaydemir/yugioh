@@ -364,6 +364,10 @@ export const V3_ASHEN_RECIPES = {
     play(v) {
       // r2: +7 dB (critic r1 #9: the collapse sat at about −40 dB) and re-voiced away from magusCollapse
       // (SE-4): a sand-and-ember sizzle up top and a soft low slump, the middle left empty
+      // r3 (critic r2 #4): it now lands ON the frame the plates break, so it opens with that break: a dry
+      // 4-crack plate snap and a short knock, before the sizzle and the slump
+      crack(v, 0, 0.3, { hp: 1500, lp: 5000, n: 4, gap: 0.012, dec: 0.006 });
+      thump(v, 0, 95, 50, 0.28, 0.14, { drive: 2 });
       sweep(v, 0, 0.6, [6000, 4500, 3200], 0.25, { kind: 'white', q: 2 });
       for (let i = 0; i < 22; i++) crack(v, i * 0.025 + v.r(0, 0.01), 0.16 * (1 - i * 0.03), { hp: 3500, lp: 8000, dec: 0.004 });
       puff(v, 0.1, 0.6, 0.5, 260, { kind: 'brown' });
