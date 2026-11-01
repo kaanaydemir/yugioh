@@ -592,21 +592,24 @@ export interface Gravestone {
 
 /** The headstone (10×16, critic r2: taller and lighter so it reads at 1×): a rounded slab, carved cross, stone4 lit left edge, stone3 face, stone2 / stone1 shade, ink. */
 const STONE_UP = [
+  // (fix r2b: 2 px taller and one tone lighter, so the headstone reads at 1× over the dark soil)
   '...####...',
-  '..#4433#..',
-  '.#443332#.',
-  '#4433c321#',
-  '#433cc321#',
-  '#43ccccc1#',
-  '#433cc321#',
-  '#433cc321#',
-  '#433cc321#',
-  '#43333221#',
-  '#43333221#',
-  '#43332221#',
+  '..#4444#..',
+  '.#444433#.',
+  '#4444c332#',
+  '#4444c332#',
+  '#44ccccc2#',
+  '#4444c332#',
+  '#4444c332#',
+  '#4443c332#',
+  '#44433332#',
+  '#44433332#',
+  '#44333322#',
+  '#43333322#',
+  '#43333222#',
+  '#33332221#',
   '#33322211#',
-  '#33222111#',
-  '#32221111#',
+  '#32222111#',
   '##########',
 ];
 /** Rotate a stone map (nearest pixel) by `deg` round its bottom-centre; the outline is re-cut afterwards. */

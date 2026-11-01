@@ -339,3 +339,75 @@ Balıkçılı: no drain, it breaks) to cover that branch explicitly.
 were 5 s timeouts (the cut-in test above, and `engine-boundary` "registry loads", not a grim file). filmdiff v1: 16/16 filmed
 IDENTICAL (`fix-r1/filmdiff-v1.txt`; the 17th film was cut by my 590 s shell timeout, not a diff) — every change is v3-gated.
 Sprite gates 21 ok / 0 FAIL (`fix-r1/gates.txt`).
+
+## Critic round 2 (independent critic, 2026-11-01) — evidence `shots/v3/kart-b/grim_warden/critic-r2/`
+Verdict: still below the golden-rule bar. BLOCKERS: (1) the lantern light pool drew as an opaque dark-green blotch over the
+tile grid; (2) the drain's −400 was a size-2 damage number (largest element, overlapped the real number, corrupted measure's
+first-number metric). MAJORS: two ~0.5 s silent holes in the drain; the pendulum-chain motif nearly absent; impact/roar
+3–8 dB under the wyrm/magus; no card sound when hit/guarding; attack whirl a half arc; thread a hoop over the target;
+skull mist a "lollipop"; summon finale = generic summonBurst ×2; survive case loses the stolen colour, light never
+returns; special barely leaves idle. Minors: mound crown band, headstone nub, direct sound sync, gwKeep late, static heap,
+cut-in eye/lantern, sameness owed, gwSummonP2 unfilmed, no give-back scenario.
+
+## Fix round 2 (two passes: fix-r2 agent, then fix-r2b, 2026-11-01) — evidence `fix-r2/` + `fix-r2b/`
+The first fix-r2 pass was cut off before writing notes (its work is in the WIP checkpoint commit 189d354); fix-r2b
+verified every finding on fresh films, closed what was left and wrote this section. Files (all mine):
+`src/cinematics/kart-b/grim_warden.ts`, `grim_warden-fx.ts`, `src/audio/v3/grim_warden.ts`,
+`src/art/monsters-v3/grim_warden-anims.ts`, `src/art/cutins-v3/grim_warden.ts`, `src/duel/scenarios/grim_warden.ts`,
+`tests/art/grim_warden-cardart.test.ts` (glint coordinate). No shared file touched in this round.
+
+- **BLOCKER pool → fixed.** `floorGlow` (fx) replaces the stepped light for every grim pool (idle, drain, apex, target
+  glow, skull, summon) and every flash (`floorFlash`): a lighten-only bayer of ramp[2..4] pixels, density ≤ 5/16, never a
+  darkening tone, so the tile lines stay visible. `fix-r2b/guard-pool-x4.png`, `gwSummon-seep-x4.png`.
+- **BLOCKER −400 → fixed.** No damage number: the plate rolls (showBattlePlates) and `statDrop` draws a small −400 in the
+  target's ramp ON the plate for 460 ms, plus the crisp plate flare; measure now logs only the contact number
+  (gwDrainFire numbers = [3250 −1200]). `fix-r2b/gwDrainFire-drain-z.png` #12–#16, `gwDrainFire-strike-z.png`.
+- **MAJOR drain sound holes → fixed.** New beats on frames: `gwReach` (special f1: two chain creaks + the lantern-thrust
+  whoosh + a rising tone), `gwInhale` (f4: falling soul breath, glass hush), `gwSnap` (glass click, reversed swell cut
+  dead, two creaks as the lantern swings back). Timeline: 333 lockOn · 433 gwReach · 933 gwInhale · 1050 siphon/thread ·
+  1283 gwDebuff · 1667 gwSnap (tail to ≈2.2 s) · 2283 gwCharge. fix-r2b raised gwReach +7 dB (loud −18.4), gwSnap +3 dB.
+- **MAJOR chain motif → fixed.** `creak()` friction +3 dB / links +4 dB; one creak per whirl turn under gwCharge; creaks in
+  gwReach, gwSnap, gwJangle, gwFinale, gwRoar, gwSwing; sparse v3-only idle creak `gwIdle` (vol 0.16, every 2nd swing,
+  ≥ 3.6 s apart) on the watchLanterns watcher (decision 3).
+- **MAJOR loudness → fixed.** gwImpact (fix-r2b): glass burst/glitter/bells/rain up, crack/crackle spikes down, the sub
+  back to a full body → loud −9.7 / rms −17.9 dB (wyrm −7.7/−17.6), spectrogram glass-led 3–16 kHz
+  (`fix-r2b/snd/gwImpact.png`); played at 1.0. gwRoar −8.6/−17.2 (= magusCall). gwThread −12.3/−19.4 (+voice formant saw). gwGiveBack
+  −12.7/−20.3. gwCharge −13.1/−17.2 (magusCharge −12.0/−16.7).
+- **MAJOR hit/guard sound → fixed.** `gwJangle` (link run, B♭ glass tinkle, 330 Hz helm knock, two creaks; fix-r2b +6 dB,
+  loud −14.0) on the first frame of hit/hitHeavy/hitMagic, on the guard's struck beat (wrapped `guardHit`) and softly on
+  toGuard; one per blow. measure: gwHit 950, gwGuard 1350, gwDrainSurvive 3267.
+- **MAJOR whirl → fixed.** Two turns: a quick spin-up turn (f1→f4→f0 at 2×) and the big final turn; attack f1 now swings
+  the lantern out behind the body. fix-r2b found the trail's nearest-way angle unwrap folded the low (f4→f0→f1) jump back
+  over the top — it now turns one way only (P1 clockwise, P2 mirrored), so a full RING closes round the helm at 1×.
+  `fix-r2b/gwDrainFire-whirl-z.png` #5–#9 (P1 full ring), `gwAttackP2-whirl-x4.png` (P2 ≈ 270° mirrored arcs).
+- **MAJOR thread geometry + special amplitude → fixed.** Special re-keyed: the lantern raised high over the hood (fist
+  above the shoulder), torso arched back, helm tipped, three distinct drinking frames (±2–3 px, flame swell, helm nods).
+  The thread is drawn up out of the target, over the warden's raised lantern and dives in from above (ink sheath, ramp[4]
+  core, beads); the target fade darkens from the outline in. `fix-r2b/gwDrainFire-drain-z.png` #10–#16.
+- **MAJOR skull mist → fixed.** 15×16 skull map (domed cranium, big sockets, nose notch, teeth, separate jaw that drops
+  on the wail), ghost tail, bayer vapour tears apart from 40 %. `fix-r2b/gwKill-skull-x4.png`.
+- **MAJOR summon finale → fixed.** `gwFinale` (soul-fire whoomp, B♭ glass chord, choir tail, creak); the base finale's
+  sound is null and the shared cut-in exit's summonBurst (the same tick, vol 0.3) is faded in 40 ms (one listed in
+  measure, inaudible).
+- **MAJOR survive branch → fixed.** The lantern keeps the stolen colour until it shatters (death f4); `returnLight` then
+  runs the stolen light back into the surviving target (reverse thread, gwGiveBack, its fade steps out, a flash in its
+  colour) and the skull leaves GREEN. New `gwGiveBack`/`gwGiveBackP2` (guardian_charm saves the drained wolf: both live):
+  the afterBattle give-back plays, the plate rolls back up, the lantern returns to green.
+  `fix-r2b/gwDrainSurvive-z.png` #7–#17, `fix-r2b/gwGiveBack-z.png` #10–#17.
+- **minors.** Mound: only the crack lines glow (no crown band); headstone 2 px taller + one tone lighter (fix-r2b)
+  (`gwSummon-seep-x4.png`). Direct: gwRelease at the burst, `gwBoltHit` + a soulBurst in the lantern ramp on `s.impact(s.to)`
+  (`gwDirect-z.png`). gwKeep fires on the target's v3:dying. Heap: soul embers drift off it + dust puffs during the hold.
+  Cut-in: 3×3 eye flare with halo, lantern with a flame shape + bands (`fix-r2/cutin-sheet.png`; the cardart test's glint
+  coordinate updated to the new 3×3 core, 134,62). gwSummonP2 filmed (`fix-r2b/gwSummonP2-z.png`). Sameness re-run
+  (`fix-r2b/sameness.txt`): no KALIR; out-of-plan UYARI (MOTsig) vs abyss_magus 0.586 (was 0.60), steel_silencer GEÇER.
+
+**Gates (fix-r2b):** tsc: no grim errors; `tests/art/grim_warden*` 12/12; tests/cinematics + tests/audio green.
+Measure `fix-r2b/measure.json/.log`: all 23 gw* scenarios, 0 errors (budgets unchanged from critic r2: summon 4083, drain 1950, battle ≤ 2617, death ≤ 1583, direct 1834).
+
+**Open issues after fix r2:**
+- Shared staging still adds DARK-violet attacker-attribute sparks/rings at contact (battle.ts combatImpact) and the shared
+  card slam's purple sparkles over the summon tile — need a shared opt-out (orchestrator).
+- The cut-in exit's shared summonBurst is faded, not removed (a per-card cut-in sfx opt-out would be cleaner).
+- Struck-body material sound for the warden's shroud: shared material tables untouched (decision 4); gwJangle covers it.
+- P2 whirl ring closes to ≈270° (the lantern's mirrored f1 sits closer to the fist); readable, not a full 360° as P1.
+- MP4 with audio still not produced; a blind eye test vs abyss_magus (MOTsig UYARI) still owed.

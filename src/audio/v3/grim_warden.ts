@@ -247,23 +247,23 @@ export const GRIM_WARDEN_RECIPES = {
     verb: 0.45,
     duck: 0.6,
     play(v) {
-      crack(v, 0, 0.45, { hp: 2400, lp: 9000, n: 4, gap: 0.012, dec: 0.014 });
-      // the sub is the peak: trimmed so the limiter leaves room for the glass (the body is carried by the whoomp)
-      thump(v, 0.004, 130, 38, 0.22, 0.4, { drive: 2.6 });
+      crack(v, 0, 0.16, { hp: 2400, lp: 9000, n: 4, gap: 0.012, dec: 0.014 });
+      // the sub (fix r2b: back to a full body under the glass — loud −9.7 / rms −17.9 dB, the wyrm's bar)
+      thump(v, 0.004, 120, 36, 0.6, 0.45, { drive: 2.2 });
       // the lantern glass SHATTERS (critic r1: no clear high layer): a bright 3–9 kHz burst of shards
       // (critic r2: the glass layers +5 dB so the impact reads as GLASS, not a thump; the sub is unchanged)
-      v.noise('white', { g: [[0, 0], [0.006, 0.42], [0.05, 0.3], [0.2, 0.14, 'e'], [0.42, 0.0001, 'e']], to: v.drive(2.5, { to: v.filt('bandpass', [[0, 7000], [0.2, 4200, 'e']], 0.9), trim: 0.8 }) });
+      v.noise('white', { g: [[0, 0], [0.006, 0.5], [0.08, 0.42], [0.25, 0.18, 'e'], [0.45, 0.0001, 'e']], to: v.drive(2.5, { to: v.filt('bandpass', [[0, 7000], [0.2, 4200, 'e']], 0.9), trim: 0.8 }) });
       // a sustained glitter of falling glass under the burst (body, not just a transient)
-      v.noise('white', { t: 0.03, g: [[0, 0], [0.04, 0.16], [0.3, 0.07], [0.5, 0.0001, 'e']], to: v.filt('highpass', 5000, 0.8) });
-      v.crackle({ t: 0.008, d: 0.36, n: 26, g: 0.42, f: 6200, q: 1.4, curve: 1.6, dec: 0.006 });
+      v.noise('white', { t: 0.03, g: [[0, 0], [0.04, 0.26], [0.3, 0.11], [0.55, 0.0001, 'e']], to: v.filt('highpass', 5000, 0.8) });
+      v.crackle({ t: 0.008, d: 0.4, n: 30, g: 0.34, f: 6200, q: 1.4, curve: 1.6, dec: 0.006 });
       // the soul burst: a pink whoomp swelling through a rising band, its hollow hum under it
-      v.noise('pink', { g: [[0, 0], [0.02, 0.5], [0.12, 0.32], [0.42, 0.0001, 'e']], to: v.drive(3.5, { to: v.filt('bandpass', [[0, 500], [0.08, 1800, 'e'], [0.42, 600, 'e']], 1.3), trim: 0.75 }) });
+      v.noise('pink', { g: [[0, 0], [0.02, 0.62], [0.14, 0.42], [0.45, 0.0001, 'e']], to: v.drive(3.5, { to: v.filt('bandpass', [[0, 500], [0.08, 1800, 'e'], [0.42, 600, 'e']], 1.3), trim: 0.75 }) });
       v.tone('sawtooth', [[0, F1 * 2], [0.4, F1, 'e']], { g: perc(0.045, 0.42, 0.004), to: v.filt('lowpass', 320, 1.2) });
       // the glass: struck panes and a shard rain in the warden's key
-      glassBell(v, midiHz(82), 0.002, 0.21, 0.9, { modes: 4 });
-      glassBell(v, midiHz(77), 0.006, 0.15, 0.8, { modes: 3 });
-      glassBell(v, midiHz(89), 0.012, 0.07, 0.6, { modes: 3 });
-      glassRain(v, { t: 0.01, d: 0.6, n: 30, g: 0.3, notes: GLASS, curve: 1.8, dec: [0.04, 0.22], spread: 0.7 });
+      glassBell(v, midiHz(82), 0.002, 0.3, 1, { modes: 4 });
+      glassBell(v, midiHz(77), 0.006, 0.22, 0.9, { modes: 3 });
+      glassBell(v, midiHz(89), 0.012, 0.11, 0.7, { modes: 3 });
+      glassRain(v, { t: 0.01, d: 0.6, n: 34, g: 0.42, notes: GLASS, curve: 1.8, dec: [0.04, 0.22], spread: 0.7 });
       // the ghost's whine breaks and falls away
       whine(v, 0.02, 0.4, midiHz(87), midiHz(70), 0.07);
     },
@@ -354,9 +354,9 @@ export const GRIM_WARDEN_RECIPES = {
     verb: 0.5,
     play(v) {
       // (critic r2: +10 dB — it was inaudible) the borrowed light runs home: reversed glass climbing, a rising breath
-      sweep(v, 0, 0.45, [600, 2200, 3000], 0.6, { q: 2.2, kind: 'pink', peakAt: 0.7 });
-      [70, 73, 77].forEach((m, i) => glassReverse(v, midiHz(m + 12), i * 0.08, 0.12, 0.14));
-      [70, 73, 77, 82].forEach((m, i) => glassBell(v, midiHz(m), 0.12 + i * 0.07, 0.17, 0.6, { modes: 3 }));
+      sweep(v, 0, 0.45, [600, 2200, 3000], 0.85, { q: 2.2, kind: 'pink', peakAt: 0.7 });
+      [70, 73, 77].forEach((m, i) => glassReverse(v, midiHz(m + 12), i * 0.08, 0.18, 0.14));
+      [70, 73, 77, 82].forEach((m, i) => glassBell(v, midiHz(m), 0.12 + i * 0.07, 0.22, 0.6, { modes: 3 }));
     },
   },
   /** Effect aftermath: the target died — the lantern locks its colour (a low glass knock and its ring). */
@@ -377,10 +377,10 @@ export const GRIM_WARDEN_RECIPES = {
     verb: 0.4,
     duck: 0.3,
     play(v) {
-      creak(v, 0, 0.2, { up: true, pan: -0.15 });
-      creak(v, 0.2, 0.17, { pan: 0.1 });
-      sweep(v, 0.16, 0.26, [300, 1500, 700], 0.5, { q: 1.5, kind: 'pink', pan: [-0.2, 0.2], peakAt: 0.55 });
-      v.tone('triangle', [[0, midiHz(58)], [0.3, midiHz(65), 'e']], { t: 0.18, g: [[0, 0], [0.12, 0.05], [0.36, 0.0001, 'e']] });
+      creak(v, 0, 0.42, { up: true, pan: -0.15 });
+      creak(v, 0.2, 0.36, { pan: 0.1 });
+      sweep(v, 0.16, 0.26, [300, 1500, 700], 0.95, { q: 1.5, kind: 'pink', pan: [-0.2, 0.2], peakAt: 0.55 });
+      v.tone('triangle', [[0, midiHz(58)], [0.3, midiHz(65), 'e']], { t: 0.18, g: [[0, 0], [0.12, 0.11], [0.36, 0.0001, 'e']] });
     },
   },
   /** Effect (special f4): the flame dips — a falling soul breath drawn in, the lantern glass darkening (low glass hush). */
@@ -403,12 +403,12 @@ export const GRIM_WARDEN_RECIPES = {
     verb: 0.45,
     duck: 0.35,
     play(v) {
-      glassReverse(v, midiHz(77), 0, 0.2, 0.09);
-      v.noise('white', { t: 0.09, g: perc(0.35, 0.012, 0.0005), to: v.filt('bandpass', 5200, 2) });
-      glassBell(v, midiHz(89), 0.09, 0.12, 0.35, { modes: 3 });
-      glassBell(v, midiHz(70), 0.092, 0.08, 0.6, { modes: 2 });
-      creak(v, 0.2, 0.17, { up: true, pan: 0.15 });
-      creak(v, 0.42, 0.11, { pan: -0.1 });
+      glassReverse(v, midiHz(77), 0, 0.3, 0.09);
+      v.noise('white', { t: 0.09, g: perc(0.5, 0.012, 0.0005), to: v.filt('bandpass', 5200, 2) });
+      glassBell(v, midiHz(89), 0.09, 0.17, 0.35, { modes: 3 });
+      glassBell(v, midiHz(70), 0.092, 0.12, 0.6, { modes: 2 });
+      creak(v, 0.2, 0.28, { up: true, pan: 0.15 });
+      creak(v, 0.42, 0.18, { pan: -0.1 });
     },
   },
   /** Struck / guarding: the lantern flies wild on its chain — a run of links, glass tinkling in B♭ minor, the helm's dull knock. */
@@ -419,11 +419,11 @@ export const GRIM_WARDEN_RECIPES = {
     duck: 0.25,
     vary: 0.04,
     play(v) {
-      for (let i = 0; i < 9; i++) link(v, (i % 2 ? LINK_B : LINK_A) * v.r(0.97, 1.03), i * 0.022 + v.r(0, 0.008), 0.11 * (1 - i * 0.07), 0.06);
-      glassRain(v, { t: 0.01, d: 0.3, n: 8, g: 0.07, notes: GLASS, curve: 1.5, dec: [0.05, 0.18], spread: 0.6 });
-      clank(v, 330, 0.004, 0.12, 0.3, { ratio: 2.13, index: 2.4, click: 1 });
-      creak(v, 0.18, 0.14, { up: true });
-      creak(v, 0.42, 0.1);
+      for (let i = 0; i < 9; i++) link(v, (i % 2 ? LINK_B : LINK_A) * v.r(0.97, 1.03), i * 0.022 + v.r(0, 0.008), 0.22 * (1 - i * 0.07), 0.06);
+      glassRain(v, { t: 0.01, d: 0.3, n: 10, g: 0.16, notes: GLASS, curve: 1.5, dec: [0.05, 0.18], spread: 0.6 });
+      clank(v, 330, 0.004, 0.24, 0.3, { ratio: 2.13, index: 2.4, click: 1 });
+      creak(v, 0.18, 0.28, { up: true });
+      creak(v, 0.42, 0.2);
     },
   },
   /** Summon finale: the lantern catches at full flame — a soul-fire whoomp, the B♭ glass bell chord, a short choir tail. */

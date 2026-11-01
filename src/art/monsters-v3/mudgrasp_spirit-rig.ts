@@ -380,9 +380,53 @@ function hand(q: PixelCanvas, w: Pt, dir: number, curl: number, c: number, lifts
   }
 }
 
+/**
+ * A PLANTED claw (palm down on the puddle, seen from the side in 3/4): a knuckle dome over the wrist and four separate
+ * clay fingers that arch forward and dig their tips into the mud surface, each tip one iso step nearer the viewer, with a
+ * 1-px crease between them so every finger reads at 1x. `s` = +1 reaching forward (right), -1 back. `lifts` raise a
+ * fingertip off the mud (drumming), `curl` draws the tips in toward the palm (a grip).
+ */
+function plantedHand(q: PixelCanvas, w: Pt, s: 1 | -1, curl: number, c: number, lifts: readonly number[] = [0, 0, 0, 0], scale = 1): void {
+  // a wrist below the mud surface sinks the whole claw with it (summon start, death): it goes under, row by row
+  const sub = Math.max(0, rnd(w[1]) - (GY - 2));
+  if (sub >= 5) return;
+  const g = GY - 2 + sub;
+  const fw = scale >= 0.9 ? 2 : 1;
+  const step = fw + 1;
+  const wx = rnd(w[0]);
+  const top = sub > 0 ? g - 5 : Math.min(rnd(w[1]) - 3, g - 5);
+  // the knuckle bar: a low dome from the wrist over the finger roots
+  const span = step * 4;
+  const mid = wx + s * rnd(span / 2 - 1);
+  q.ellipse(mid, top, Math.max(2, rnd(span / 2)), 2, c);
+  q.disc(wx, top, fw, c);
+  const pull = curl > 0.7 ? 1 : 0;
+  for (let i = 0; i < 4; i++) {
+    const lift = lifts[i] ?? 0;
+    const x0 = wx + s * (1 + i * step - (i > 0 ? pull : 0));
+    const y0 = top + (i === 0 || i === 3 ? 1 : 0) - lift;
+    const tipY = g - lift - (i === 0 ? 1 : 0) - (pull && i > 0 ? 1 : 0);
+    // knuckle → straight down 2 rows → the last rows bend (thumb back, fingers forward): a splayed claw, not a rake
+    const lean = i === 0 ? -1 : 1;
+    const bendAt = y0 + 2;
+    for (let y = y0; y <= tipY; y++) {
+      const dx = y < bendAt ? 0 : lean * Math.min(2, y - bendAt + (i === 3 ? 1 : 0));
+      for (let k = 0; k < fw; k++) q.set(x0 + s * (k + dx), y, c);
+    }
+  }
+}
+
+/** mud gathers and sags at an elbow: a fat lump under the joint and a short drip hanging off it (not a stick limb) */
+function elbowLump(q: PixelCanvas, el: Pt, r: number, c: number, drip: number): void {
+  const x = rnd(el[0]);
+  const y = rnd(el[1]);
+  q.disc(x, y + 1, Math.max(1, r), c);
+  for (let i = 1; i <= drip; i++) if (y + r + 1 + i < GY - 2) q.set(x, y + r + 1 + i, c);
+}
+
 /** finger lifts of a drumming hand */
-function drum(o: Pose): number[] {
-  return [0, 1, 2, 3].map((i) => (o.nd < 0 ? 0 : rnd(o.ndh * Math.max(0, 1 - Math.abs(o.nd - i)))));
+function drum(o: Pose, shift = 0): number[] {
+  return [0, 1, 2, 3].map((i) => (o.nd < 0 ? 0 : rnd(o.ndh * Math.max(0, 1 - Math.abs(((o.nd + shift) % 4) - i)))));
 }
 
 // ---------------------------------------------------------------- parts
@@ -393,19 +437,29 @@ function drawPuddle(f: Frame): PixelCanvas {
   const rx = Math.max(4, rnd(36 * o.puddle));
   const cx = AX + 2;
   const cy = GY - 2;
-  q.ellipse(cx, cy, rx, 3, PAL.earth1);
+  // a DARK wet pool (earth0) so the lighter clay hands and the mound's lit base read on it; a lit front lip
+  q.ellipse(cx, cy, rx, 3, PAL.earth0);
   for (let y = GY + 1; y < H; y++) for (let x = 0; x < W; x++) q.erase(x, y);
-  // the back rim shadow (top row) and the wet front lip (bottom row)
   for (let x = cx - rx; x <= cx + rx; x++) {
-    let top = -1;
     let bot = -1;
-    for (let y = cy - 4; y <= cy + 4; y++) if (q.isOpaque(x, y)) { if (top < 0) top = y; bot = y; }
-    if (top >= 0) q.set(x, top, PAL.earth0);
-    if (bot >= 0 && bot !== top) q.set(x, bot, PAL.earth0);
+    for (let y = cy - 4; y <= cy + 4; y++) if (q.isOpaque(x, y)) bot = y;
+    if (bot >= 0 && Math.abs(x - cx) < rx - 1) q.set(x, bot, PAL.earth1);
   }
-  // gloss streaks on the wet surface (toward the light)
+  // lumpy rim: small mud knobs along the back edge (fixed, so the feet band stays still)
+  for (const dx of [-30, -19, 12, 27]) {
+    const x = cx + rnd(dx * o.puddle);
+    if (Math.abs(x - cx) > rx - 2) continue;
+    const yy = cy - Math.round(3 * Math.sqrt(Math.max(0, 1 - ((x - cx) / rx) ** 2))) - 1;
+    q.set(x, yy, PAL.earth0);
+    q.set(x + 1, yy, PAL.earth0);
+  }
+  // reflections on the wet surface (toward the light): earth1 streaks with one earth2 catch each
   const gx = cx + light.lx(-14);
-  for (const [dx, dy, n] of [[0, 0, 4], [7, 1, 3], [30, 0, 3]] as const) for (let i = 0; i < n; i++) { const x = gx + light.lx(dx) + i; if (q.get(x, cy + dy) === PAL.earth1) q.set(x, cy + dy, PAL.earth2); }
+  for (const [dx, dy, n] of [[0, 0, 5], [9, 1, 3], [31, 0, 4], [-12, 1, 3]] as const)
+    for (let i = 0; i < n; i++) {
+      const x = gx + light.lx(dx) + i;
+      if (q.get(x, cy + dy) === PAL.earth0) q.set(x, cy + dy, i === 1 ? PAL.earth2 : PAL.earth1);
+    }
   // ripple ring
   if (o.ripple > 0) {
     const r = 6 + o.ripple * 26;
@@ -414,7 +468,7 @@ function drawPuddle(f: Frame): PixelCanvas {
       const a = (i / 64) * TAU;
       const x = rnd(cx + Math.cos(a) * r);
       const y = rnd(cy + Math.sin(a) * r * 0.16);
-      if (q.isOpaque(x, y)) q.set(x, y, o.ripple < 0.5 ? PAL.earth2 : PAL.earth2);
+      if (q.isOpaque(x, y)) q.set(x, y, o.ripple < 0.5 ? PAL.earth2 : PAL.earth1);
     }
   }
   // vortex: three spiral arms winding into a dark core
@@ -442,12 +496,16 @@ function drawRearArms(f: Frame): void {
   // the far rear arm first (a value darker), then the near rear arm over it
   const q2 = layer();
   limb(q2, [sk.rear2Root, sk.elR2, sk.wR2], 4.5 * k, 3.2 * k, FAR.M);
-  hand(q2, sk.wR2, 180 + 30, Math.min(1, o.rc + 0.2), FAR.M, undefined, 0.8, 2);
+  elbowLump(q2, sk.elR2, 2, FAR.M, 1);
+  if (sk.wR2[1] > GY - 9) plantedHand(q2, sk.wR2, -1, Math.min(1, o.rc + 0.2), FAR.M, undefined, 0.7);
+  else hand(q2, sk.wR2, 180 + 30, Math.min(1, o.rc + 0.2), FAR.M, undefined, 0.8, 2);
   bands(q2, FAR, light, 1, 2);
   f.comp.add(q2, Part.rear, { out: CREASE });
   const q = layer();
   limb(q, [sk.rearRoot, sk.elR, sk.wR], 5.5 * k, 3.6 * k, ARM.M);
-  hand(q, sk.wR, 180 + 12, o.rc, ARM.M, undefined, 0.9);
+  elbowLump(q, sk.elR, 2, ARM.M, 2);
+  if (sk.wR[1] > GY - 9) plantedHand(q, sk.wR, -1, o.rc, ARM.M, undefined, 0.85);
+  else hand(q, sk.wR, 180 + 12, o.rc, ARM.M, undefined, 0.9);
   bands(q, ARM, light, 2, 2);
   f.comp.add(q, Part.rear, { out: CREASE });
 }
@@ -468,8 +526,10 @@ function drawFarArm(f: Frame): void {
   const { sk, o, light } = f;
   const q = layer();
   limb(q, [sk.shF, sk.elF, sk.wF], 5.5 * (1 - 0.35 * o.melt), 3.6 * (1 - 0.3 * o.melt), FAR.M);
+  elbowLump(q, sk.elF, 2, FAR.M, 2);
   const flat = sk.wF[1] > GY - 9;
-  hand(q, sk.wF, flat ? 8 : Math.atan2(sk.wF[1] - sk.elF[1], sk.wF[0] - sk.elF[0]) / DEG, o.fc, FAR.M);
+  if (flat) plantedHand(q, sk.wF, 1, o.fc, FAR.M, drum(o, 2).map((v, i) => (i === 3 ? 0 : v)), 0.9);
+  else hand(q, sk.wF, Math.atan2(sk.wF[1] - sk.elF[1], sk.wF[0] - sk.elF[0]) / DEG, o.fc, FAR.M);
   bands(q, FAR, light, 2, 2);
   f.comp.add(q, Part.farArm, { out: CREASE });
 }
@@ -579,9 +639,11 @@ function drawNearArm(f: Frame): void {
   const { sk, o, light } = f;
   const q = layer();
   limb(q, [sk.shN, sk.elN, sk.wN], 6 * (1 - 0.35 * o.melt), 3.8 * (1 - 0.3 * o.melt), ARM.M);
+  elbowLump(q, sk.elN, 2, ARM.M, 1 + ((rnd(o.t * 8) >> 1) & 1));
   const flat = sk.wN[1] > GY - 8;
   const dir = flat ? 6 : Math.atan2(sk.wN[1] - sk.elN[1], sk.wN[0] - sk.elN[0]) / DEG;
-  hand(q, sk.wN, dir, o.nc, ARM.M, drum(o));
+  if (flat) plantedHand(q, sk.wN, 1, o.nc, ARM.M, drum(o));
+  else hand(q, sk.wN, dir, o.nc, ARM.M, drum(o));
   bands(q, ARM, light, 2, 2);
   // a gloss run on the forearm's lit top
   const mid: Pt = [(sk.elN[0] + sk.wN[0]) / 2, (sk.elN[1] + sk.wN[1]) / 2];

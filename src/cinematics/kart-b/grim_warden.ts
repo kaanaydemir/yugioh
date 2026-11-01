@@ -655,6 +655,7 @@ function whirlTrail(sc: Phaser.Scene, u: MonsterUnit, ramp: Ramp, untilF: number
   const ghosts: { a: number; rad: number; age: number }[] = [];
   let lastFrame = -1;
   let alive = true;
+  const spinDir = u.flipX ? -1 : 1;
   const stop = onFrame(sc, (dt) => {
     if (!alive && !pts.length && !ghosts.length) return false;
     const fi = u.frameInfo();
@@ -666,8 +667,14 @@ function whirlTrail(sc: Phaser.Scene, u: MonsterUnit, ramp: Ramp, untilF: number
       const rad = Math.hypot(m.x - c.x, m.y - c.y);
       const last = pts[pts.length - 1];
       if (last) {
-        while (a - last.a > Math.PI) a -= TAU;
-        while (a - last.a < -Math.PI) a += TAU;
+        // the whirl only ever turns ONE way (P1 clockwise on screen: back → up → front → down → back), so a frame jump
+        // across the low side (f4 → f0 → f1 of the spin-up turn) is drawn round the bottom and the ring closes
+        // (critic r2: the nearest-way unwrap folded that jump back over the top — a half arc, never a circle)
+        let dl = a - last.a;
+        while (dl > Math.PI) dl -= TAU;
+        while (dl <= -Math.PI) dl += TAU;
+        if (dl * spinDir < -0.6) dl += spinDir * TAU;
+        a = last.a + dl;
       }
       if (fi.frame !== lastFrame) {
         lastFrame = fi.frame;

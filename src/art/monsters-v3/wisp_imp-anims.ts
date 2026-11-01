@@ -122,6 +122,10 @@ export function idlePose(f: number): Pose {
 /** idle amplitudes (px / deg): hood figure eight, squash, skirt drift, plume wave, tail, cowlick, hands */
 const IA = { hx: 1.2, hy: 1.2, sq: 0.6, drift: 0.8, rip: 1.0, tail: 3, crest: 2.5, hand: 35 };
 
+/** the idle loop's last frame: every settle tail passes through it, so the hand-off into idle f0 is the
+ * loop's own step (≈ 30 % Δ) and no two closing frames are near-duplicates (owner blocker) */
+const PRE_IDLE = (d: Partial<Pose> = {}): Partial<Pose> => ({ ...idlePose(IDLE_N - 1), ...d });
+
 const IDLE_HOLDS = [100, 90, 90, 100, 110, 100, 90, 90, 100, 110, 100, 90, 90, 100, 110, 100, 90, 90, 100, 110];
 
 // ------------------------------------------------------------------ guard (8 frames)
@@ -230,8 +234,9 @@ const ROAR: Table = {
     [90, { by: -1, bx: 1, sh: 2, sw: -1, len: 2, eyes: 'wide', hollow: 3, fluff: 2, glow: 1, handN: Hd(1, -6, -110, 28, 1), handF: Hd(-1, -6, 270, 28, 1), crestX: 2, crestY: -2, tailCurl: 0.25, tailSwing: 2, rippleAmp: 1.4, ripple: 0.35, bursts: [burst(1, 6, -2, -9, -Math.PI / 2, 2.4, 1.3, 51, 0.16)] }],
     [80, { by: -1, bx: 0, sh: 1, len: 1, eyes: 'wide', hollow: 2, fluff: 1.5, handN: Hd(1, -5, -95, 20), handF: Hd(-1, -5, 255, 20), crestX: 3, crestY: -2, tailCurl: 0.3, tailSwing: -1, rippleAmp: 1.2, ripple: 0.6, bursts: [burst(2, 6, -2, -9, -Math.PI / 2, 2.4, 1.3, 51, 0.16)] }],
     [100, { by: 1, sh: -1, sw: 1, eyes: 'happy', hollow: 0, fluff: 0.6, handN: Hd(0, -1, -20), handF: Hd(0, -1, 30), crestX: -1, crestY: 1, tailCurl: 0.7, tailSwing: 1, rippleAmp: 0.8, ripple: 0.85, bursts: [burst(3, 5, -2, -9, -Math.PI / 2, 2.4, 1.3, 51, 0.16)] }],
-    [110, { by: 0, sh: 1, sw: 0, eyes: 'open', fluff: 0.2, handN: Hd(0, 0, 8), handF: Hd(0, 0, -6), crestX: 1, tailSwing: -0.6, tailCurl: 0.6 }],
-    [120, { sh: 0, crestX: -0.4, tailSwing: 0.3 }],
+    // a proud little after-shiver: it puffs its chest, the near hand pats it, the cowlick springs
+    [110, { by: -1, sh: 1, sw: -1, eyes: 'happy', fluff: 0.6, handN: Hd(-1, 1, 70, 8), handF: Hd(0, -1, -30), crestX: 3, crestY: -2, tailSwing: -2, tailCurl: 0.45, rippleAmp: 1, ripple: 0.3 }],
+    [120, PRE_IDLE({ eyes: 'open' })],
     [130, {}],
   ],
 };
@@ -246,7 +251,7 @@ const HIT: Table = {
     [60, { hx: -4, bx: -3, by: -1, drift: 5, sw: 2, sh: -2, len: -1, eyes: 'squeeze', hollow: -1, fluff: 2, crestX: -4, crestY: 3, handN: Hd(-2, -3, -60, 16), handF: Hd(-2, -3, 60, 16), tailSwing: 5, tailCurl: 0.1, rippleAmp: 1.4, ripple: 0.2, loose: Fe(-13, -2, 205, 6, 1), free: [Fe(-14, -9, 230, 5.5, 1), Fe(9, 6, 20, 5.5, -1), Fe(-3, -11, 280, 5, 1)], bursts: [burst(0, 4, 9, 4, Math.PI * 0.85, 0.9, 1.2, 61, 0.2)] }],
     [130, { hx: -2, bx: -2, drift: 2, sw: -1, sh: 1, eyes: 'blink', fluff: 1, crestX: 2, crestY: 0, handN: Hd(0, 0, 25), handF: Hd(0, 0, -20), tailSwing: -2, tailCurl: 0.4, rippleAmp: 1, ripple: 0.5, loose: Fe(-15, 3, 170, 6, -1), free: [Fe(-16, -9, 200, 5.5, -1), Fe(12, 8, 60, 5.5, 1), Fe(-5, -12, 250, 5, -1)], bursts: [burst(1, 4, 9, 4, Math.PI * 0.85, 0.9, 1.2, 61, 0.2)] }],
     [100, { hx: 0, bx: -1, drift: -1, sw: 1, sh: -1, eyes: 'open', crestX: -1, handN: Hd(0, 0, -10), handF: Hd(0, 0, 10), tailSwing: 1.5, tailCurl: 0.65, rippleAmp: 0.6, ripple: 0.8, loose: Fe(-12, 2, 160, 6.5, -1.2), free: [Fe(-18, -6, 175, 5.5, 1), Fe(13, 13, 100, 5.5, -1)], bursts: [burst(3, 4, 9, 4, Math.PI * 0.85, 0.9, 1.2, 61, 0.2)] }],
-    [110, { drift: 0.4, sh: 0, crestX: 0.5, tailSwing: -0.5, free: [Fe(-18, 0, 150, 5.5, -1)] }],
+    [110, PRE_IDLE({ lookX: -1, free: [Fe(-18, 1, 150, 5.5, -1)] })],
     [120, {}],
   ],
 };
@@ -259,8 +264,10 @@ const HIT_HEAVY: Table = {
     [130, { free: [Fe(-16, -11, 205, 6, -1), Fe(12, 9, 70, 5.5, 1), Fe(-4, -12, 250, 5.5, -1), Fe(-17, 8, 160, 5.5, 1)], hx: -1, bx: -3, by: 3, drift: 2, sw: 1, sh: -2, fluff: 1.5, eyes: 'dizzy', hollow: -1, crestX: -1, crestY: 2, handN: Hd(-1, 2, 50), handF: Hd(-1, 2, -40), tailSwing: 1, tailCurl: 0.4, rippleAmp: 1.2, ripple: 0.45, loose: Fe(-14, 3, 170, 6, -1), bursts: [burst(1, 6, 8, 3, Math.PI * 0.9, 1.4, 1.4, 71, 0.18)] }],
     [100, { free: [Fe(-17, -8, 175, 6, 1), Fe(13, 14, 110, 5.5, -1), Fe(-18, 13, 140, 5.5, -1)], bx: -2, by: 2, drift: 0, sw: 1, sh: -1, fluff: 1, eyes: 'dizzy', crestX: 1, handN: Hd(0, 1, 30), handF: Hd(0, 1, -20), tailSwing: -1, tailCurl: 0.5, rippleAmp: 1, ripple: 0.7, loose: Fe(-11, 2, 158, 6.5, -1.2), bursts: [burst(3, 5, 8, 3, Math.PI * 0.9, 1.4, 1.4, 71, 0.18)] }],
     [110, { bx: -1, by: -1, sw: -1, sh: 1, fluff: 0.5, eyes: 'blink', crestX: 1.5, crestY: -1, handN: Hd(0, -1, -10), handF: Hd(0, -1, 10), tailSwing: 1, tailCurl: 0.6, rippleAmp: 0.6, ripple: 0.95 }],
-    [120, { bx: 0, by: 0, sw: 0, sh: -1, eyes: 'open', crestX: -0.6, tailSwing: -0.6 }],
-    [130, { sh: 0, crestX: 0.3, tailSwing: 0.3 }],
+    // it shakes the dizziness off: a head-shake left (hood, cowlick, tail all swung) …
+    [120, { hx: -1, bx: 0, by: 0, sw: 1, sh: -1, eyes: 'squeeze', lookX: -1, crestX: 3, crestY: 1, handN: Hd(0, 0, 40, 6), handF: Hd(0, 0, -35), tailSwing: 3, tailCurl: 0.5, drift: 1.5, rippleAmp: 1, ripple: 0.4 }],
+    // … and right, eyes open again
+    [130, PRE_IDLE({ hx: 1, eyes: 'open', lookX: 1, crestX: -3, tailSwing: -2 })],
     [140, {}],
   ],
 };
@@ -273,8 +280,10 @@ const HIT_MAGIC: Table = {
     [130, { glow: 1, lit: 0, eyes: 'wide', fluff: 2, spark: 1, bx: -1, hollow: 1, crestX: -1, crestY: -2, handN: Hd(0, -2, -36, 16), handF: Hd(0, -2, 36, 16), rippleAmp: 1.3, ripple: 0.55, tailCurl: 0.9, seed: 3 }],
     [100, { glow: 0, eyes: 'blink', fluff: 1, by: 2, sh: -1, sw: 1, hollow: -1, crestX: -1, crestY: 2, handN: Hd(0, 2, 40), handF: Hd(0, 2, -40), tailCurl: 0.5, tailSwing: 1, rippleAmp: 0.8, ripple: 0.8 }],
     [110, { eyes: 'open', fluff: 0.5, by: 1, sh: -1, crestX: 0.6, crestY: 1, handN: Hd(0, 1, 20), handF: Hd(0, 1, -20), tailCurl: 0.55, tailSwing: -0.6 }],
-    [120, { by: 0, sh: 1, fluff: 0, crestX: -0.4, handN: Hd(0, 0, -5), handF: Hd(0, 0, 5), tailSwing: 0.3 }],
-    [130, { sh: 0, crestX: 0.2 }],
+    // one last residual jolt: it stiffens, feathers on end for a beat, a single spark …
+    [120, { by: -1, sh: 1, sw: -1, eyes: 'wide', fluff: 1.2, spark: 1, seed: 5, crestX: 1, crestY: -3, handN: Hd(0, -2, -30, 12), handF: Hd(0, -2, 30, 12), tailCurl: 0.85, tailSwing: -1, rippleAmp: 1.2, ripple: 0.7 }],
+    // … and it shudders it off
+    [130, PRE_IDLE({ eyes: 'blink' })],
     [140, {}],
   ],
 };
@@ -394,8 +403,10 @@ const REVIVE: Table = {
     [90, { bx: -1, by: 1, drift: 1, sw: 1, sh: -1, eyes: 'open', handN: Hd(0, 1, 30), handF: Hd(0, 1, -20), tailCurl: 0.4, tailSwing: 1, crestX: -1, crestY: 1 }],
     [100, { by: -2, sh: 2, sw: -1, len: 1, eyes: 'wide', hollow: 1, fluff: 1, handN: Hd(0, -3, -40, 10), handF: Hd(0, -3, 230, 10), crestX: 2, crestY: -2, tailCurl: 0.5, rippleAmp: 1, ripple: 0.1 }],
     [110, { by: 1, sh: -1, sw: 1, eyes: 'blink', handN: Hd(0, 0, 10), handF: Hd(0, 0, -10), crestX: -1, tailCurl: 0.7 }],
-    [110, { lookX: -1, eyes: 'open', crestX: 0.6, tailSwing: -0.6 }],
-    [120, { lookX: 1, crestX: -0.4, tailSwing: 0.4 }],
+    // where am I? it turns back over its shoulder (hood, cowlick, near hand pointing) …
+    [110, { hx: -1, lookX: -1, lookY: -1, eyes: 'open', crestX: 3, crestY: -1, tailSwing: 2, tailCurl: 0.5, drift: 1.5, handN: Hd(-1, -2, -55, 10), handF: Hd(0, 0, -20), rippleAmp: 0.9, ripple: 0.4 }],
+    // … then forward again
+    [120, PRE_IDLE({ hx: 1, lookX: 1, crestX: -3, tailSwing: -2 })],
     [130, {}],
   ],
 };
@@ -413,8 +424,9 @@ const SPECIAL: Table = {
     [90, { pillow: 0.4, puff: 0.3, fluff: 2, eyes: 'wide', loose: null, bursts: [burst(2, 12, 0, 7, 0, TAU, 4.5, 101, 0.1)] }],
     [100, { pillow: 0, fluff: 1.5, sw: 2, sh: -2, eyes: 'blink', rippleAmp: 1.4, ripple: 0.3, handN: Hd(0, -2, -40, 16), handF: Hd(0, -2, 40, 16), tailCurl: 0.4, bursts: [burst(3, 12, 0, 7, 0, TAU, 4.5, 101, 0.1)] }],
     [100, { fluff: 0.8, sw: -1, sh: 1, eyes: 'open', rippleAmp: 1, ripple: 0.6, handN: Hd(0, 0, 10), handF: Hd(0, 0, -10), tailCurl: 0.7, tailSwing: 1, loose: Fe(-9, 1.5, 165, 6.5, -1.3), bursts: [burst(4, 10, 0, 7, 0, TAU, 4.5, 101, 0.1)] }],
-    [110, { fluff: 0.3, sw: 1, sh: -1, eyes: 'happy', crestX: 1, tailSwing: -0.6 }],
-    [120, { sh: 0, sw: 0, crestX: -0.4, tailSwing: 0.3 }],
+    // the hug's afterglow: it pats its own cheek with the near hand, cowlick bouncing
+    [110, { fluff: 0.5, by: -1, sw: -1, sh: 1, eyes: 'happy', crestX: 3, crestY: -2, handN: Hd(1, -3, -70, 10), handF: Hd(0, 0, -20), tailSwing: -2, tailCurl: 0.5, rippleAmp: 1, ripple: 0.85 }],
+    [120, PRE_IDLE({ eyes: 'happy' })],
     [130, {}],
   ],
 };

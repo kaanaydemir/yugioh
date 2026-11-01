@@ -99,7 +99,8 @@ describe('grim_warden card art + cut-in (v3)', () => {
             best = [x, y];
           }
         }
-      expect(best, light).toEqual([133, 60]);
+      // (fix r2: the eye is a 3×3 core round the socket centre 133,61 — its white heart sits at 134,62)
+      expect(best, light).toEqual([134, 62]);
     }
   });
 });
