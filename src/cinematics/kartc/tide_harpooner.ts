@@ -44,13 +44,15 @@ import { atFrame, fade, panAt, play, start, takeCharge } from '../_v3/sound';
 import { runSummon, type Stage } from '../summon-a/_kit';
 import { worldToScreen } from '../strikes-a/_kit';
 import { groundRing, sourceOwnsDeath } from '../strikes-b/_kit';
-import { HarpoonImg, Surface, add, angleOf, clamp, cutinVoice, farEdge, flingBeads, hash, haul, lerp, lerpXY, norm, opaqueAt, ownContact, paintTide, pt, rnd, snapXY, sub, type TideState } from './tide_harpooner-fx';
+import { HarpoonImg, Surface, add, angleOf, clamp, cutinVoice, farEdge, flingBeads, hash, haul, lerp, lerpXY, norm, opaqueAt, ownContact, paintTide, pt, rawFramesFx, rnd, snapXY, sub, type TideState } from './tide_harpooner-fx';
 import { A_REL } from '../../art/monsters-v3/tide_harpooner-anims';
 import { HARP_L } from '../../art/monsters-v3/tide_harpooner-rig';
 import { ensureShroud, syncShroud } from './tide_harpooner-shroud';
 import { shrouded } from '../../engine/query';
 
 const ID = 'tide_harpooner';
+/** the twirl's last drawn pass (the front-top head position the point-blank sling leaves from) */
+const TW_LAST = 7;
 
 type DestroyCtx = CinematicContext<Extract<GameEvent, { type: 'destroy' }>>;
 type BattleCtx = CinematicContext<Extract<GameEvent, { type: 'battle' }>>;
@@ -177,8 +179,32 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
   }, { late: false });
   atFrame(u, 'attack', twF + 5, () => flingBeads(sc, artPt(u, 'attack', twF + 5, 'muzzle'), sgn, u.home.y + 3, unitDepth(u.home.y) + 0.6, seedN + 5, 3), { late: false });
 
+  // POINT BLANK (facing tiles on the 5-zone board: the shaft's socket already rests against the target's near edge):
+  // the head is NOT thrown along the flat line (a 12-px poke). It is slung DOWN off the twirl's last pass instead —
+  // from where the twirl's front-top frame holds it, ~40 px over the claw — on a short steep lob into the target's
+  // top / near edge (≥ 30 px of visible flight); the aim hold is skipped (the swing goes straight into the throw)
+  const pbSock = artPt(u, 'attack', relF, 'muzzle');
+  let pointBlank = false;
+  if (tgt) {
+    const d0 = norm(sub(add(tgt.core(), { x: 0, y: -4 }), pbSock));
+    let run = 999;
+    for (let d = 0; d <= 140; d++)
+      if (opaqueAt(tgt, add(pbSock, d0, d))) {
+        run = d;
+        break;
+      }
+    pointBlank = run - DART_LEN < 24;
+  }
+  const slingF = twF + TW_LAST;
+
   try {
-    void u.playRange('attack', f0, payF);
+    if (pointBlank && f0 <= slingF) {
+      await u.playRange('attack', f0, slingF);
+      if (!alive()) return;
+      await sleep(sc, u.rangeMs('attack', slingF, slingF + 1));
+      if (!spr.active || u.retired) return;
+      void u.playRange('attack', relF, payF);
+    } else void u.playRange('attack', f0, payF);
     await u.playToFrame('attack', relF);
     if (!alive()) return;
     // ---- RELEASE: the claw thrusts the shaft; the toggle head leaves the socket ON this frame
@@ -217,7 +243,7 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
       passT = clamp(((chest.x - tip0.x) * d.x + (chest.y - tip0.y) * d.y) / (d.x * d.x + d.y * d.y || 1), 0.3, 0.92);
     }
     void lightFlash(sc, sock0.x, sock0.y, PAL.white, 10, 120, { floorY: u.home.y, intensity: 0.45, air: 0.5 });
-    const ang = angleOf(dir);
+    let ang = angleOf(dir);
     let dist = Math.hypot(tipEnd.x - tip0.x, tipEnd.y - tip0.y);
     // the throw rises a little (an upward lob, never a dip through the lower body); direct throws keep their arc
     let lob = s.direct ? 4 : clamp(rnd(dist * 0.08), 2, 4);
@@ -231,6 +257,8 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
     let entry: XY | null = null;
     let tipFar: XY | null = null;
     let farAt: XY | null = null;
+    /** point blank: the sling's own path (e 0…1 → the entry) and its tangent angle */
+    let sling: { at: (e: number) => XY; ang: (e: number) => number; len: number } | null = null;
     if (tgt && !s.direct) {
       let eHit = -1;
       for (let i = 0; i <= 120; i++) {
@@ -252,24 +280,59 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
         for (let d = -30; d <= 30 && !entry; d++) if (opaqueAt(tgt, add(tCore, dir, d))) entry = snapXY(add(tCore, dir, d));
         entry ??= snapXY(add(tCore, dir, -6));
       }
-      // point blank (facing tiles: the near edge is where the head already sits): the head is launched OUT of the
-      // shaft's socket instead — it starts telescoped back along the shaft, so at least 12 px of flight are seen
-      const run = (entry.x - sock0.x) * dir.x + (entry.y - sock0.y) * dir.y;
-      if (run - DART_LEN < 12) {
-        lob = 0;
-        tip0 = snapXY(add(sock0, dir, clamp(run - 12, 6, DART_LEN)));
-        if ((entry.x - tip0.x) * dir.x + (entry.y - tip0.y) * dir.y < 8) entry = snapXY(add(tip0, dir, 8));
+      if (pointBlank) {
+        // the sling: from the twirl's front-top head position, a short steep lob DOWN into the target's upper near
+        // edge (the path is aimed past the target so the first opaque pixel on it is the entry)
+        const start = snapXY(artPt(u, 'attack', slingF, 'muzzle'));
+        // the arc RISES first (L px over the chord's middle), then comes DOWN into the upper body, below the head (the
+        // shared damage number pops over the target's head on the contact frame: the entry must never sit under it)
+        const top = tgt.worldPoint('top');
+        const c = tgt.core();
+        const aim = { x: c.x, y: rnd(lerp(top.y, c.y, 0.8)) };
+        const far = add(start, sub(aim, start), 1.15);
+        const L = clamp(rnd(16 + Math.max(0, start.y - top.y) * 0.4), 14, 24);
+        const at = (e: number): XY => pathAt(e, start, far, L);
+        let eHit = -1;
+        for (let i = 40; i <= 160; i++) {
+          if (opaqueAt(tgt, at(i / 160))) {
+            eHit = i / 160;
+            break;
+          }
+        }
+        if (eHit < 0) eHit = 1 / 1.15;
+        const tan = (e: number): XY => norm({ x: far.x - start.x, y: far.y - start.y - L * 4 * (1 - 2 * e) });
+        entry = snapXY(at(eHit));
+        tip0 = start;
+        dir = tan(eHit);
+        ang = angleOf(dir);
+        sling = { at: (e) => at(e * eHit), ang: (e) => angleOf(tan(e * eHit)), len: 0 };
+        let len = 0;
+        for (let i = 1; i <= 20; i++) len += Math.hypot(at((i / 20) * eHit).x - at(((i - 1) / 20) * eHit).x, at((i / 20) * eHit).y - at(((i - 1) / 20) * eHit).y);
+        sling.len = len;
+      } else {
+        // close but not point blank: the head starts telescoped back along the shaft, ≥ 12 px of flight are seen
+        const run = (entry.x - sock0.x) * dir.x + (entry.y - sock0.y) * dir.y;
+        if (run - DART_LEN < 12) {
+          lob = 0;
+          tip0 = snapXY(add(sock0, dir, clamp(run - 12, 6, DART_LEN)));
+          if ((entry.x - tip0.x) * dir.x + (entry.y - tip0.y) * dir.y < 8) entry = snapXY(add(tip0, dir, 8));
+        }
       }
       tipEnd = entry;
       hitAt = entry;
       if (!bite) {
         const fe = farEdge(tgt, entry, dir, 90, 3) ?? snapXY(add(entry, dir, 16));
         farAt = fe;
-        tipFar = snapXY(add(fe, dir, 9));
+        // 9 px past the far edge — and the last 4 px of it (the tip and barbs) must clear the silhouette's opaque mask
+        // (a raised shoulder past the edge would swallow it again): extend up to 18 px until they do
+        const clearAt = (x: number) => [0, 1, 2, 3].every((k) => !opaqueAt(tgt, add(fe, dir, x - k)));
+        let ext = 9;
+        while (ext < 18 && !clearAt(ext)) ext++;
+        tipFar = snapXY(add(fe, dir, ext));
       }
-      dist = Math.hypot(tipEnd.x - tip0.x, tipEnd.y - tip0.y);
+      dist = sling ? sling.len : Math.hypot(tipEnd.x - tip0.x, tipEnd.y - tip0.y);
     }
-    const flyMs = s.direct ? clamp(rnd(dist * 0.6), 180, 210) : clamp(rnd(dist * 4.2), 100, 230);
+    const flyMs = s.direct ? clamp(rnd(dist * 0.6), 180, 210) : sling ? clamp(rnd(dist * 3.4), 150, 200) : clamp(rnd(dist * 4.2), 100, 230);
     const floorA = u.home;
     const floorB = tgt ? tgt.home : { x: s.toGround.x, y: s.toGround.y };
     const floorDir = norm(sub(floorB, floorA));
@@ -281,7 +344,7 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
       impacted = true;
       // the contact is the card's: no generic body blow / shield clang, no lightning backlash or hex clang (its own
       // bite, tang and failed pull answer instead); struck by the counter, the shell answers with its own tok
-      ownContact(sc, { motifs: true, glint: bite, stage: () => s.impact(hitAt) }, () => {
+      ownContact(sc, { motifs: true, glint: bite, struck: tgt, stage: () => s.impact(hitAt) }, () => {
         if (loses && spr.active) play('harpStruckHeavy', { volume: 0.9, pan });
       });
     };
@@ -293,10 +356,15 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
       // number (the head keeps its speed: the panel is closer to the duelist than the duelist is to the crab)
       const e = passT >= 0 ? (t < 0.75 ? passT * (t / 0.75) : passT + (1 - passT) * ((t - 0.75) / 0.25)) : E.outQ(t) * 0.35 + t * 0.65;
       // straight with a gravity sag (the angle follows the curve, clamped)
-      const p = s.direct ? (() => { const q = lerpXY(tip0, tipEnd, e); return { x: q.x, y: q.y + lob * 4 * e * (1 - e) }; })() : pathAt(e, tip0, tipEnd, lob);
-      const slope = ((s.direct ? 1 : -1) * lob * 4 * (1 - 2 * e)) / Math.max(1, dist);
-      const tilt = clamp((Math.atan(slope) * 180) / Math.PI, -15, 15) * (dir.x >= 0 ? 1 : -1);
-      harp.set(p, ang + tilt, { smear: t < 0.3 ? 2 : 0 });
+      if (sling) {
+        // the sling: the head follows its own steep curve, nose along the tangent, smeared on the first third
+        harp.set(sling.at(e), sling.ang(e), { smear: t < 0.35 ? 2 : 0 });
+      } else {
+        const p = s.direct ? (() => { const q = lerpXY(tip0, tipEnd, e); return { x: q.x, y: q.y + lob * 4 * e * (1 - e) }; })() : pathAt(e, tip0, tipEnd, lob);
+        const slope = ((s.direct ? 1 : -1) * lob * 4 * (1 - 2 * e)) / Math.max(1, dist);
+        const tilt = clamp((Math.atan(slope) * 180) / Math.PI, -15, 15) * (dir.x >= 0 ? 1 : -1);
+        harp.set(p, ang + tilt, { smear: t < 0.3 ? 2 : 0 });
+      }
       look.sag = lerp(7, 1, e);
       if (!screen) shadowAt = { p: snapXY(lerpXY(floorA, floorB, e * 0.85 + 0.1)), d: floorDir };
       if (passT >= 0 && e >= passT && !impacted) {
@@ -328,16 +396,20 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
         const far = tipFar;
         harp.setDepth(tgt.sprite.depth - 0.3);
         stuckTip = snapXY(lerpXY(en, far, 0.55));
-        harp.set(stuckTip, ang);
+        // drawn behind the body from here: the part that pokes out gets the ink outline + the white tip glint
+        harp.set(stuckTip, ang, { pop: true });
         ropeTo = () => add(en, off());
         doImpact();
         play('harpWetTok', { volume: 1, pan: panAt(hitAt.x) });
-        entryMark(sc, en, dir, off, fxDepth + 0.1, () => stuck && !closed);
-        rawFrames(sc, 1, () => {
+        // the card's own contact (the shared flash / burst ring are swept by ownContact): a wet rosette where the head
+        // goes in, flecks pulled back up the line toward the crab; the head through in one raw frame; the exit
+        // streaks out of the far edge, two droplets landing as wet dots
+        entryRosette(sc, en, norm(sub(sock0, en)), dir, off, fxDepth + 0.1, () => stuck && !closed);
+        rawFramesFx(sc, 1, () => {
           stuckTip = far;
-          harp.set(add(far, off()), ang);
+          harp.set(add(far, off()), ang, { pop: true });
         });
-        exitBurst(sc, farAt ?? far, dir, off, fxDepth + 0.15);
+        exitBurst(sc, farAt ?? far, dir, off, fxDepth + 0.15, floorB.y + 2);
         sprayOut(sc, spray, farAt ?? far, dir, floorB.y + 2, seedN);
       } else {
         // armed BEFORE the contact is staged: the guard kit opens its glint and the counter flash synchronously
@@ -360,7 +432,7 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
     let panelJolt: XY = { x: 0, y: 0 };
     const ride = onFrame(sc, () => {
       if (!stuck || closed) return false;
-      if (tgt && tPos0 && tgt.sprite.active) harp.set(add(stuckTip, sub({ x: tgt.sprite.x, y: tgt.sprite.y }, tPos0)), ang);
+      if (tgt && tPos0 && tgt.sprite.active) harp.set(add(stuckTip, sub({ x: tgt.sprite.x, y: tgt.sprite.y }, tPos0)), ang, { pop: !bite });
       else if (s.direct) harp.set(add(add(tipEnd, dir, 4), panelJolt), ang, { bury: 7 });
       return true;
     });
@@ -372,6 +444,8 @@ async function zipkinAtisi(s: StrikeArgs): Promise<void> {
     look.taut = true;
     look.sag = 0;
     play('harpHaul', { volume: 0.8, pan });
+    // the water wrung out of the line as it snaps taut: three white beads squeezed off it, dropping
+    if (!s.direct && ropeFrom) wring(sc, ropeFrom, ropeTo ? ropeTo() : harp.butt(), fxDepth + 0.05, seedN);
     void shake(sc, 90, 1);
     if (tgt && tgt.sprite.active) haul(tgt, u.home, bite ? 1 : 3, { hold: tDies });
     if (bite) {
@@ -488,46 +562,45 @@ function biteChips(sc: Phaser.Scene, s: Surface, at: XY, dir: XY, seed: number):
   }).then(() => own.destroy());
 }
 
-/** Run `fn` after `n` RAW rendered frames (scene updates, counted even through a hit-stop's frozen clock). */
-function rawFrames(sc: Phaser.Scene, n: number, fn: () => void): void {
-  let k = 0;
-  const upd = () => {
-    if (++k < n + 1) return;
-    sc.events.off('update', upd);
-    try {
-      fn();
-    } catch (e) {
-      console.error('[tide_harpooner]', e);
-    }
-  };
-  sc.events.on('update', upd);
-  sc.events.once('shutdown', () => sc.events.off('update', upd));
-}
-
 /**
- * The entry wound where the head goes in: on the contact frame and the next an ink notch (3 px across the line) and a
- * water4 burst of 2–3 px flung back toward the crab; then a 1-px ink notch stays while the head is stuck. Follows the
- * struck body (`off`). Raw frames: it plays through the hit-stop.
+ * The entry wound, the card's own contact mark (raw frames: it plays through the hit-stop). Frame 0: a 5–7 px wet
+ * rosette — an ink notch across the line, a white 3-px star on it and four water4 / white flecks; frames 1–2: the flecks
+ * are pulled back UP THE LINE toward the crab (`back`: entry → socket) and thin out; then a 1-px ink notch stays while
+ * the head is stuck. Follows the struck body (`off`).
  */
-function entryMark(sc: Phaser.Scene, at: XY, dir: XY, off: () => XY, depth: number, keep: () => boolean): void {
+function entryRosette(sc: Phaser.Scene, at: XY, back: XY, dir: XY, off: () => XY, depth: number, keep: () => boolean): void {
   const s = new Surface(sc, depth);
   const nx = -dir.y;
   const ny = dir.x;
+  const bx = -back.y;
+  const by = back.x;
   let k = 0;
   const upd = () => {
     s.clear();
     const o = off();
     const x = at.x + o.x;
     const y = at.y + o.y;
-    if (k < 2) {
+    if (k < 3) {
+      // the notch (ink, 3 px across the throw) and, on the contact frame, the white star over it
       for (let d = -1; d <= 1; d++) s.set(x + nx * d, y + ny * d, PAL.ink);
-      const r = k === 0 ? 2 : 3;
-      s.set(x - dir.x * r + nx * 2, y - dir.y * r + ny * 2, PAL.water4);
-      s.set(x - dir.x * r - nx * 2, y - dir.y * r - ny * 2, PAL.water4);
-      s.set(x - dir.x * (r + 1), y - dir.y * (r + 1), k === 0 ? PAL.white : PAL.water4);
+      if (k === 0) {
+        s.set(x, y, PAL.white).set(x - 1, y, PAL.white).set(x + 1, y, PAL.white).set(x, y - 1, PAL.white).set(x, y + 1, PAL.white);
+      }
+      // four flecks round the hole, dragged back along the line a step a frame (2 → 4 → 6 px)
+      const r = 2 + k * 2;
+      const fl: [number, number, number][] = [
+        [r, 2, k === 0 ? PAL.white : PAL.water4],
+        [r + 1, -2, PAL.water4],
+        [r + 2 + k, 1, k < 2 ? PAL.white : PAL.water4],
+        [r - 1, -3 + k, PAL.water4],
+      ];
+      for (const [along, side, c] of fl) {
+        if (k === 2 && side > 0) continue; // thinning out
+        s.set(x + back.x * along + bx * side, y + back.y * along + by * side, c);
+      }
     } else s.set(x, y, PAL.ink);
     k++;
-    if (k > 2 && !keep()) {
+    if (k > 3 && !keep()) {
       sc.events.off('update', upd);
       s.destroy();
     }
@@ -541,29 +614,59 @@ function entryMark(sc: Phaser.Scene, at: XY, dir: XY, off: () => XY, depth: numb
 }
 
 /**
- * The exit, ON the contact frame (raw frames: through the hit-stop): a white jet of 4 px out of the far edge along the
- * throw and two water4 drops beside it, growing for 3 frames — the exit spray (time-scaled) takes over from there.
+ * The exit, ON the contact frame (raw frames: through the hit-stop): out of the far edge along the throw a white-headed
+ * water4 jet that grows 4 → 12 px over six frames with two side streaks fanning off it; on frame 3 two droplets break
+ * off the head, fall and land as 1-px wet dots on the floor row (water4 → water3, gone after ~400 ms).
  */
-function exitBurst(sc: Phaser.Scene, at: XY, dir: XY, off: () => XY, depth: number): void {
+function exitBurst(sc: Phaser.Scene, at: XY, dir: XY, off: () => XY, depth: number, floorY: number): void {
   const s = new Surface(sc, depth);
   const nx = -dir.y;
   const ny = dir.x;
   let k = 0;
+  const drops: { x: number; y: number; vx: number; vy: number; land: number }[] = [];
+  let t = 0;
   const upd = () => {
     s.clear();
-    if (k > 3) {
-      sc.events.off('update', upd);
-      s.destroy();
-      return;
-    }
+    t += 1;
     const o = off();
     const x = at.x + o.x + dir.x * 2;
     const y = at.y + o.y + dir.y * 2;
-    const len = 2 + k * 2;
-    for (let d = 0; d < len; d++) s.set(x + dir.x * d, y + dir.y * d, d >= len - 2 ? PAL.white : PAL.water4);
-    s.set(x + dir.x * (len - 1) + nx * (1 + k), y + dir.y * (len - 1) + ny * (1 + k), PAL.water4);
-    s.set(x + dir.x * (len - 2) - nx * (1 + k), y + dir.y * (len - 2) - ny * (1 + k), k < 2 ? PAL.white : PAL.water4);
+    if (k < 6) {
+      const len = Math.min(12, 4 + k * 2);
+      const gap = k >= 4 ? 2 + (k - 4) * 2 : 0; // the jet's root lets go on the last two frames
+      for (let d = gap; d < len; d++) s.set(x + dir.x * d, y + dir.y * d, d >= len - 2 ? PAL.white : PAL.water4);
+      const sl = Math.max(2, len - 4);
+      for (let d = Math.max(gap, 2); d < sl; d++) {
+        const w = 1 + Math.floor(d / 4);
+        s.set(x + dir.x * d + nx * w, y + dir.y * d + ny * w, d === sl - 1 ? PAL.white : PAL.water4);
+        s.set(x + dir.x * (d - 1) - nx * w, y + dir.y * (d - 1) - ny * w, d === sl - 1 ? PAL.white : PAL.water4);
+      }
+      if (k === 3) {
+        for (const side of [1, -1]) drops.push({ x: x + dir.x * (len - 1) + nx * side * 2, y: y + dir.y * (len - 1) + ny * side * 2, vx: dir.x * 50 + nx * side * 25, vy: -30 + dir.y * 30, land: -1 });
+      }
+    }
+    let alive = k < 6;
+    for (const d of drops) {
+      if (d.land < 0) {
+        d.vy += 520 / 60;
+        d.x += d.vx / 60;
+        d.y += d.vy / 60;
+        if (d.y >= floorY && d.vy > 0) {
+          d.y = floorY;
+          d.land = t;
+        }
+        s.set(d.x, d.y, PAL.white).set(d.x, d.y + 1, PAL.water4);
+        alive = true;
+      } else if (t - d.land < 24) {
+        s.set(d.x, d.y, t - d.land < 10 ? PAL.water4 : PAL.water3).set(d.x + 1, d.y, PAL.water3);
+        alive = true;
+      }
+    }
     k++;
+    if (!alive || t > 120) {
+      sc.events.off('update', upd);
+      s.destroy();
+    }
   };
   upd();
   sc.events.on('update', upd);
@@ -571,6 +674,27 @@ function exitBurst(sc: Phaser.Scene, at: XY, dir: XY, off: () => XY, depth: numb
     sc.events.off('update', upd);
     s.destroy();
   });
+}
+
+/**
+ * Haul 1's water wring: as the line snaps taut, three white 1-px beads are squeezed off it (at 30 / 52 / 74 % of the
+ * line), hang one frame on it, then drop off it under gravity (white → water4 → water3) and are gone in ~260 ms.
+ */
+function wring(sc: Phaser.Scene, from: XY, to: XY, depth: number, seed: number): void {
+  const s = new Surface(sc, depth);
+  const beads = [0.3, 0.52, 0.74].map((k, i) => ({ p: lerpXY(from, to, k), vx: (hash(seed, i, 21) - 0.5) * 30, side: i % 2 ? 1 : -1 }));
+  void animate(sc, 260, (t, el) => {
+    s.clear();
+    const kk = el / 1000;
+    for (const b of beads) {
+      const hang = el < 34;
+      const x = b.p.x + (hang ? 0 : b.vx * kk);
+      const y = b.p.y - (hang ? 1 : 1 - 360 * kk * kk);
+      const c = t < 0.35 ? PAL.white : t < 0.7 ? PAL.water4 : PAL.water3;
+      s.set(x, y, c);
+      if (hang) s.set(x + b.side, y, PAL.water4);
+    }
+  }).then(() => s.destroy());
 }
 
 /**

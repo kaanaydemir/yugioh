@@ -15,6 +15,7 @@ import { DEPTH, TILE_H, TILE_W, type XY } from '../../view/layout';
 import { sfx, type SfxName } from '../../audio/sfx';
 import { canvasTexture } from '../../view/v3/hudSkin';
 import { Px, onFrame } from '../../vfx/combat';
+import { lightLayer } from '../../view/light';
 
 export const rnd = Math.round;
 export const clamp = (v: number, a: number, b: number): number => (v < a ? a : v > b ? b : v);
@@ -42,6 +43,9 @@ export function hash(a: number, b = 0, c = 0): number {
 
 // ================================================================ a PixelCanvas-like surface over a Px
 
+/** Every display object this card's cinematics create carries this name (the contact sweep never touches them). */
+export const OWN = 'thp:own';
+
 /**
  * The painters' surface in world (or screen) pixels: set() paints one whole pixel through the Px and remembers its
  * colour (rope2 reads it back), clear() wipes both. `ox / oy` offset every pixel.
@@ -52,7 +56,7 @@ export class Surface {
   ox = 0;
   oy = 0;
   constructor(scene: Phaser.Scene, depth: number, o: { screen?: boolean } = {}) {
-    const g = scene.add.graphics().setDepth(depth);
+    const g = scene.add.graphics().setDepth(depth).setName(OWN);
     if (o.screen) g.setScrollFactor(0);
     this.px = new Px(g);
   }
@@ -111,27 +115,28 @@ export class HarpoonImg {
   /** the angle last set (deg) */
   angle = 0;
   constructor(private readonly scene: Phaser.Scene, depth: number, o: { screen?: boolean; dart?: boolean } = {}) {
-    this.img = scene.add.image(0, 0, '__DEFAULT').setOrigin(0, 0).setDepth(depth).setVisible(false);
+    this.img = scene.add.image(0, 0, '__DEFAULT').setOrigin(0, 0).setDepth(depth).setVisible(false).setName(OWN);
     if (o.screen) this.img.setScrollFactor(0);
     this.dart = !!o.dart;
   }
   /** Place it by its tail (the line end) instead of its tip. */
-  setTail(tail: XY, angle: number, o: { bury?: number; smear?: number } = {}): this {
+  setTail(tail: XY, angle: number, o: HarpOpts = {}): this {
     const f = this.frame(angle, o);
     return this.set({ x: tail.x + f.tip[0] - f.butt[0], y: tail.y + f.tip[1] - f.butt[1] }, angle, o);
   }
-  private frame(angle: number, o: { bury?: number; smear?: number }): HarpoonFrame {
+  private frame(angle: number, o: HarpOpts): HarpoonFrame {
     const a = (((Math.round(angle / STEP) * STEP) % 360) + 360) % 360;
     return harpoonFrame(a, 'left', { bury: o.bury ?? 0, smear: o.smear ?? 0, dart: this.dart });
   }
-  set(tip: XY, angle: number, o: { bury?: number; smear?: number } = {}): this {
+  set(tip: XY, angle: number, o: HarpOpts = {}): this {
     if (!this.img.active) return this;
     const a = (((Math.round(angle / STEP) * STEP) % 360) + 360) % 360;
     const bury = o.bury ?? 0;
     const smear = o.smear ?? 0;
+    const pop = o.pop ? 1 : 0;
     this.angle = angle;
     const f = this.frame(angle, o);
-    const key = canvasTexture(this.scene, `thp:harp:${a}:${bury}:${smear}:${this.dart ? 1 : 0}`, () => f.px);
+    const key = canvasTexture(this.scene, `thp:harp:${a}:${bury}:${smear}:${this.dart ? 1 : 0}:${pop}`, () => (pop ? popped(f) : f.px));
     if (this.img.texture.key !== key) this.img.setTexture(key);
     this.f = f;
     this.tipAt = snapXY(tip);
@@ -163,6 +168,23 @@ export class HarpoonImg {
   destroy(): void {
     if (this.img.active) this.img.destroy();
   }
+}
+
+export interface HarpOpts {
+  bury?: number;
+  smear?: number;
+  /**
+   * The head where it pokes out of a body: a 1-px ink outline round the whole head and the tip pixel white (a grey
+   * stone head on a grey stone body would otherwise melt into it).
+   */
+  pop?: boolean;
+}
+
+/** The harpoon frame with a 1-px ink outline and a white tip glint (see HarpOpts.pop). */
+function popped(f: HarpoonFrame): PixelCanvas {
+  const c = f.px.clone().outline(PAL.ink);
+  c.set(f.tip[0], f.tip[1], PAL.white);
+  return c;
 }
 
 /** Screen angle (deg) of a direction. */
@@ -345,12 +367,18 @@ const GENERIC_HIT: readonly SfxName[] = ['impactLight', 'impactHeavy', 'shieldBl
  *  - `motifs`: the foreign shared motifs the stage draws are hidden on their first frame — the ranged counter's white
  *    lightning bolt (clash.backlash: an ADD image at DEPTH.FX + 3), the hex-shield clang (vfx blockClang: graphics at
  *    DEPTH.FX + 0.1 / + 0.2) and, with `glint`, the guard's dashed hex glint (react guard: graphics at DEPTH.FX + 0.3).
- *    The card draws its own beat in their place (`after`).
- * The global sfx.play is restored in a finally right after `stage` returns (a throw never leaves it patched); a
- * listener-side call (no stage of its own) restores it in the same microtask as before, still the contact frame.
+ *  - `struck`: the shared reaction kit's contact visuals on THAT body are the card's to draw (the puncture: an entry
+ *    rosette, the exit streaks, the wring on the line): its contact flash (an `fx:cflash:` image at the body's depth
+ *    + 0.05, re-made whenever the frame size changes, so it is watched for ~450 ms) and the impact burst drawn behind
+ *    the body (vfx/combat impact at the body's depth − 0.4: the star / shock-ring layer at + 0.1 and the glow motes at
+ *    + 0.3 hidden at once; the material sparks at + 0.2 allowed for 2 raw frames — a ≤ 8-px fleck — then hidden).
+ *    tests/art/tide_harpooner.test.ts pins those depths in the shared kits' source.
+ * The card draws its own beat in their place (`after`). The global sfx.play is restored in a finally right after
+ * `stage` returns (a throw never leaves it patched); a listener-side call (no stage of its own) restores it in the
+ * same microtask, still the contact frame. Objects named OWN (this card's) are never touched.
  */
-export function ownContact(scene: Phaser.Scene, o: { motifs?: boolean; glint?: boolean; stage?: () => void } = {}, after?: () => void): void {
-  const before = o.motifs ? new Set(scene.children.list) : null;
+export function ownContact(scene: Phaser.Scene, o: { motifs?: boolean; glint?: boolean; stage?: () => void; struck?: MonsterUnit | null } = {}, after?: () => void): void {
+  const before = o.motifs || o.struck ? new Set(scene.children.list) : null;
   const orig = sfx.play;
   const ban = new Set(GENERIC_HIT);
   const mine: typeof sfx.play = (name, opts) => {
@@ -360,16 +388,50 @@ export function ownContact(scene: Phaser.Scene, o: { motifs?: boolean; glint?: b
   const restore = () => {
     if (sfx.play === mine) sfx.play = orig;
   };
+  const tDepth = o.struck && o.struck.sprite.active ? o.struck.sprite.depth : null;
+  const near = (a: number, b: number) => Math.abs(a - b) < 0.02;
+  /** sweep one object the contact stack made (true: it is a struck-kit object and was dealt with) */
+  const sweepStruck = (c: Phaser.GameObjects.GameObject): void => {
+    if (tDepth === null || c.name === OWN) return;
+    const g = c as Phaser.GameObjects.Image;
+    const d = g.depth;
+    // alpha, not visibility: the kits re-assert setVisible every tick (contactFlash syncs it to the body's)
+    if (c.type === 'Image' && g.texture?.key?.startsWith('fx:cflash:') && near(d, tDepth + 0.05)) g.setAlpha(0);
+    else if (c.type === 'Graphics') {
+      const rel = d - (tDepth - 0.4);
+      if (near(rel, 0.1) || near(rel, 0.3)) g.setAlpha(0);
+      else if (near(rel, 0.2)) rawFramesFx(scene, 2, () => g.active && g.setAlpha(0));
+    }
+  };
   const finish = () => {
     restore();
     if (before) {
       for (const c of scene.children.list) {
-        if (before.has(c)) continue;
+        if (before.has(c) || c.name === OWN) continue;
         const g = c as Phaser.GameObjects.Image;
         const d = g.depth;
-        const bolt = c.type === 'Image' && d === DEPTH.FX + 3 && g.blendMode === Phaser.BlendModes.ADD;
-        const clang = c.type === 'Graphics' && (d === DEPTH.FX + 0.1 || d === DEPTH.FX + 0.2 || (o.glint === true && d === DEPTH.FX + 0.3));
-        if (bolt || clang) g.setVisible(false);
+        if (o.motifs) {
+          const bolt = c.type === 'Image' && d === DEPTH.FX + 3 && g.blendMode === Phaser.BlendModes.ADD;
+          const clang = c.type === 'Graphics' && (d === DEPTH.FX + 0.1 || d === DEPTH.FX + 0.2 || (o.glint === true && d === DEPTH.FX + 0.3));
+          if (bolt || clang) g.setVisible(false);
+        }
+        sweepStruck(c);
+      }
+      if (tDepth !== null) {
+        // the contact flash re-makes its image when the struck frame changes size: keep watching for a moment
+        const seen = new Set(scene.children.list);
+        let k = 0;
+        const upd = () => {
+          if (++k > 28) return void scene.events.off('update', upd);
+          for (const c of scene.children.list) {
+            if (seen.has(c)) continue;
+            seen.add(c);
+            const g = c as Phaser.GameObjects.Image;
+            if (c.type === 'Image' && c.name !== OWN && g.texture?.key?.startsWith('fx:cflash:') && near(g.depth, tDepth + 0.05)) g.setAlpha(0);
+          }
+        };
+        scene.events.on('update', upd);
+        scene.events.once('shutdown', () => scene.events.off('update', upd));
       }
     }
     try {
@@ -379,17 +441,45 @@ export function ownContact(scene: Phaser.Scene, o: { motifs?: boolean; glint?: b
     }
   };
   sfx.play = mine;
+  // the shared contact light (battle contactLight: a 36-px pale pool + air bloom over the struck body, which read as a
+  // white egg over the entry) is the card's too while the stage runs: a small wet water4 glint at the hole instead
+  const L = tDepth !== null ? lightLayer(scene) : null;
+  const lflash = L?.flash;
+  if (L && lflash) {
+    L.flash = (x, y, _c, radius, ms, fo = {}) => lflash.call(L, x, y, PAL.water4, Math.min(radius, 14), Math.min(ms, 160), { ...fo, ring: false, air: 0.15, intensity: Math.min(fo.intensity ?? 0.6, 0.35) });
+  }
+  const unlight = () => {
+    if (L && lflash) delete (L as { flash?: unknown }).flash;
+  };
   if (o.stage) {
     try {
       o.stage();
     } finally {
       restore();
+      unlight();
     }
     // the kit may open its motifs a microtask later (async stage): sweep them then, still the contact frame
     queueMicrotask(finish);
     return;
   }
+  unlight();
   queueMicrotask(finish);
+}
+
+/** Run `fn` after `n` RAW rendered frames (scene updates, counted even through a hit-stop's frozen clock). */
+export function rawFramesFx(sc: Phaser.Scene, n: number, fn: () => void): void {
+  let k = 0;
+  const upd = () => {
+    if (++k < n + 1) return;
+    sc.events.off('update', upd);
+    try {
+      fn();
+    } catch (e) {
+      console.error('[tide_harpooner]', e);
+    }
+  };
+  sc.events.on('update', upd);
+  sc.events.once('shutdown', () => sc.events.off('update', upd));
 }
 
 // ================================================================ the target's silhouette (the puncture)
@@ -431,25 +521,38 @@ export function farEdge(u: MonsterUnit, from: XY, dir: XY, max = 90, gap = 3): X
 // ================================================================ the cut-in speaks with the card's own kit
 
 /**
- * While `until` runs (the shared cut-in inside the summon), the shared kit's banned v1 recipes are answered by this
- * card's own sounds (§0.2: lane C never plays 'whoosh' / 'impactHeavy', not even as a quiet fill): the band's whoosh
- * becomes a rope whirr (harpSwish, lower), its plate thud a low conch-shell tok. The cut-in file itself is never
- * edited; the global sfx.play is restored when `until` settles (or after `maxMs`, whichever comes first).
+ * While the shared cut-in inside the summon runs, ONLY its four known stingers are answered by this card's own sounds
+ * (§0.2: lane C never plays 'whoosh' / 'impactHeavy', not even as a quiet fill; the slam / exit stingers are the
+ * wyrm's too): the band's whoosh becomes a rope whirr (harpSwish, lower), the plate's cardSlam the conch-shell slam
+ * (a low harpShellTok), its impactHeavy layer is dropped (the tok IS the slam) and the exit's summonBurst a foam
+ * spray (harpBeads). Every other name passes through untouched, whoever plays it. The global sfx.play is restored on
+ * the exit stinger (the cut-in's last sound), when `until` settles or after `maxMs`, whichever comes first.
  */
-export function cutinVoice(scene: Phaser.Scene, until: Promise<unknown>, maxMs = 1600): void {
+export function cutinVoice(scene: Phaser.Scene, until: Promise<unknown>, maxMs = 1700): void {
   const orig = sfx.play;
-  const mine: typeof sfx.play = (name, opts) => {
-    if (name === 'whoosh') return orig.call(sfx, 'harpSwish', { ...opts, pitch: 0.8 * (opts?.pitch ?? 1), volume: Math.min(1, (opts?.volume ?? 1) * 1.0) });
-    if (name === 'impactHeavy') return orig.call(sfx, 'harpShellTok', { ...opts, pitch: 0.72, volume: Math.min(1, (opts?.volume ?? 1) * 3.5) });
-    return orig.call(sfx, name, opts);
-  };
-  sfx.play = mine;
   let done = false;
   const restore = () => {
     if (done) return;
     done = true;
     if (sfx.play === mine) sfx.play = orig;
   };
+  const vol = (opts: Parameters<typeof sfx.play>[1], k: number) => Math.min(1, (opts?.volume ?? 1) * k);
+  const mine: typeof sfx.play = (name, opts) => {
+    switch (name) {
+      case 'whoosh':
+        return orig.call(sfx, 'harpSwish', { ...opts, pitch: 0.8 * (opts?.pitch ?? 1), volume: vol(opts, 1.2) });
+      case 'cardSlam':
+        return orig.call(sfx, 'harpShellTok', { ...opts, pitch: 0.72, volume: vol(opts, 2.2) });
+      case 'impactHeavy':
+        return;
+      case 'summonBurst':
+        restore();
+        return orig.call(sfx, 'harpBeads', { ...opts, pitch: 0.9, volume: vol(opts, 2.6) });
+      default:
+        return orig.call(sfx, name, opts);
+    }
+  };
+  sfx.play = mine;
   void until.then(restore, restore);
   const t = scene.time.delayedCall(maxMs, restore);
   scene.events.once('shutdown', () => {
