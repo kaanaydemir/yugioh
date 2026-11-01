@@ -88,3 +88,7 @@ D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (ka
   — docs/v3/ref/simdiki-gorunum-1.png — üretildi). Alınacaklar: koyu/sakin arka plan + sıcak meşale ışık
   noktaları, düz sakin arduvaz saha + ince ızgara, sol üstten tek ışık + birim altı gölgeler, daha az parlak arayüz.
   Alınmayacaklar: piksel yoğunluğu (resim 640×360 ızgarasında değil, yumuşak) ve değişmiş birim çizimleri.
+- HEDEF GÖRÜNÜM v2 (SAHİP BEĞENDİ, ana referans): docs/v3/ref/hedef-gorunum-2.png — canavarlar korunarak
+  yalnız arka plan/ışık/arayüz değişti. Sahip özellikle SİS'i sevdi: arka planda katmanlı, yavaş sürüklenen
+  sis + soluk hologramlar + sıcak meşale ışık noktaları korunacak. Saha zemini sakin arduvaz, ince ızgara,
+  sol üstten tek ışık, birim altı gölge.
