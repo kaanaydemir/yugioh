@@ -44,7 +44,7 @@ import { runSummon, type Stage } from '../summon-a/_kit';
 import { placeFeet } from '../strikes-a/_kit';
 import { sourceOwnsDeath } from '../strikes-b/_kit';
 import { GlideTrail, Ground, Pinpoint, hash, needleFlash } from './reed_heron-fx';
-import { paintWisp } from '../../art/monsters-v3/reed_heron-mist';
+import { paintBank, paintWisp, type BankState } from '../../art/monsters-v3/reed_heron-mist';
 import { ensureMarsh, marshOf, MARSH } from './reed_heron-marsh';
 
 const ID = 'reed_heron';
@@ -92,68 +92,31 @@ function groundOf(anim: 'attack' | 'death', f: number): { reed: number; rip: num
 // ================================================================ summon: the mist brings him
 
 /**
- * The summon's world fog bank: a few marsh WISPS (reed_heron-mist.ts — 3–6 px stepped lenses: a mist crest, a steel
- * body, a night4 underside, 2×2 Bayer ends, ≥ 3 px of air between them; never 1-px lines, never alpha). Three lie
- * low on the water in front of the tile, one far wisp hangs behind at head height, and one near wisp crosses the
- * eye's row with a dark hole in it — the glint shows in that hole. They step in from both tile edges in 3-px steps,
- * clipped to the tile diamond + 8 px (never over a neighbour's tile); they part down his centre line, the wing fan
- * pushes them out, and they thin to the far tone and go.
+ * The summon's fog BANK (reed_heron-mist.ts paintBank): ten overlapping marsh lenses standing from the water line up
+ * past his crown, a little wider than the bird at every height, drawn IN FRONT of the body — an occluder, not a
+ * decoration. They step in from both tile edges in 3-px steps (clipped to the tile diamond + 8 px), breathe 1 px
+ * every 400 ms, keep a small dark hole at the eye for the glint; he stands in it hidden (≥ 95 % of his pixels under
+ * mist on the frame he is first drawn), then the bank tears down his centre line in three stepped moves (3, 3, 4 px a
+ * half, head first, the water lenses last) and the wing fan's downdraft blows the halves out in 3-px steps.
  */
-function summonFog(S: Stage, eyeDy: number): { set(k: Partial<{ inK: number; part: number; push: number; thin: number; hole: XY | null }>): void; destroy(): void } {
+function summonFog(S: Stage): { set(k: Partial<BankState & { hole: readonly [number, number, number, number] | null }>): void; destroy(): void } {
   const sc = S.scene;
   const home = S.home;
   const sgn = sgnOf(S.unit);
-  const back = new Px(sc.add.graphics().setDepth(S.depth - 0.4));
   const front = new Px(sc.add.graphics().setDepth(S.depth + 0.4));
   const maxHalf = Math.round(TILE_W / 2 + 8);
   const clip: [number, number] = [home.x - maxHalf, home.x + maxHalf];
-  // [dy of the top row above the floor, height, half width, layer 0 back / 1 front, x offset (facing), lean,
-  //  start delay 0…1, tone]
-  const ey = Math.round(eyeDy);
-  const rows: [number, number, number, 0 | 1, number, number, number, 0 | 1][] = [
-    [-7, 5, 27, 1, 5, 1, 0, 0],
-    [-16, 4, 19, 1, -9, -1, 0.1, 0],
-    [-26, 4, 14, 0, 10, 1, 0.22, 1],
-    [ey + 7, 3, 10, 0, -6, -1, 0.35, 1],
-    [ey - 2, 5, 14, 1, 2, 1, 0.45, 0],
-  ];
-  let st: { inK: number; part: number; push: number; thin: number; hole: XY | null } = { inK: 0, part: 0, push: 0, thin: 0, hole: null };
-  const draw = (el: number) => {
-    back.clear();
-    front.clear();
-    rows.forEach(([dy, h, hw0, layer, ox, lean, delay, tone], i) => {
-      if (st.thin > 0 && hash(i, 77) < st.thin * 0.9) return;
-      const L = layer ? front : back;
-      const k = clamp((st.inK - delay) / (1 - delay), 0, 1);
-      if (k <= 0) return;
-      // odd rows step in from the right edge, even rows from the left, in 3-px steps (never a smooth slide)
-      const side = i % 2 ? 1 : -1;
-      const from = side * 3 * Math.round((maxHalf * 0.9 * (1 - E.outQ(k))) / 3);
-      const drift = (Math.floor(el / 400) % 3) * side; // 1 px every 400 ms (frozen while the show is stopped)
-      const hw = hw0 + st.push;
-      const y = home.y + dy;
-      const cx = home.x + from + ox * sgn + drift;
-      const t: 0 | 1 | 2 = st.thin > 0.5 ? 2 : tone;
-      const r = (yy: number, x0: number, x1: number, c: number) => void L.run(yy, x0, x1, c);
-      const holes = st.hole && st.hole.y >= y - 1 && st.hole.y <= y + h ? [[rnd(st.hole.x) - 3, rnd(st.hole.x) + 3] as const] : undefined;
-      if (st.part <= 0) paintWisp(r, { cx, y, h, hw, lean, seed: 11 + i * 13, tone: t, clip, holes });
-      else {
-        // the two halves slide apart from his centre line, each with its own frayed ends
-        const half = Math.max(4, Math.round(hw / 2));
-        paintWisp(r, { cx: cx - half - st.part, y, h, hw: half, lean, seed: 11 + i * 13, tone: t, clip });
-        paintWisp(r, { cx: cx + half + st.part, y, h, hw: half, lean: -lean, seed: 12 + i * 13, tone: t, clip });
-      }
-    });
-  };
+  let st: BankState & { hole: readonly [number, number, number, number] | null } = { inK: 0, steps: 0, push: 0, thin: 0, hole: null };
+  const run = (y: number, x0: number, x1: number, c: number) => void front.run(y, x0, x1, c);
   let alive = true;
   onFrame(sc, (_dt, el) => {
     if (!alive) return false;
-    draw(el);
+    front.clear();
+    // 1 px every 400 ms, 0 → 1 → 0 (frozen while the show is stopped)
+    const drift = [0, 1, 1, 0][Math.floor(el / 400) % 4];
+    paintBank(run, rnd(home.x), rnd(home.y), sgn, { ...st, drift: st.steps > 0 ? 0 : drift }, { clip, hole: st.hole });
     return true;
-  }, () => {
-    back.g.destroy();
-    front.g.destroy();
-  });
+  }, () => front.g.destroy());
   return {
     set(k) {
       st = { ...st, ...k };
@@ -178,7 +141,7 @@ async function heronEntrance(S: Stage): Promise<void> {
   const mistIn = start('heronMistIn', { volume: 0.95, pan });
   const eye = u.art.points?.('summon', 3).head;
   const eyeW = eye ? u.framePoint(eye.x, eye.y) : null;
-  const fog = S.own(summonFog(S, eyeW ? eyeW.y - S.home.y : -60));
+  const fog = S.own(summonFog(S));
   // the tile drops one light step (the still dark water): a cool multiply pool under the tile (the marsh aura
   // takes it over, at full strength, when he has landed)
   const dark = lightPool(sc, S.home.x, S.home.y, { color: PAL.night2, radius: 30, intensity: 0.0, blend: 'multiply', fadeIn: 0, spill: null });
@@ -191,32 +154,40 @@ async function heronEntrance(S: Stage): Promise<void> {
   u.badge.setVisible(false);
   const played = u.playRange('summon', 0, undefined, { hold: false });
   void animate(sc, u.rangeMs('summon', 0, 2), (t) => fog.set({ inK: t }));
-  // the eye glint (f2–f4): the frogs AND the mist stop dead — silence, one cold gold point in a dark hole of the fog
+  // the eye glint (f2–f4): the frogs AND the mist stop dead — silence, one cold gold point in a dark hole of the bank
   atFrame(u, 'summon', 2, () => {
     bed.stop(8);
     mistIn.stop(12);
     if (eyeW) {
-      fog.set({ hole: eyeW });
+      fog.set({ hole: [rnd(eyeW.x) - 3, rnd(eyeW.x) + 3, rnd(eyeW.y) - 1, rnd(eyeW.y) + 1] });
       void lightFlash(sc, eyeW.x, eyeW.y, PAL.gold4, 7, u.rangeMs('summon', 2, 5), { floorY: S.home.y, intensity: 0.5, air: 0.6 });
     }
   });
-  // the fog parts (the halves slide 10 px apart): he is simply there, white — the value event
+  // f5: the glint goes out and he is drawn — standing IN the bank, hidden; the bank tears down his centre line in
+  // three stepped moves (head first, the water last): the white plumage is uncovered band by band
   atFrame(u, 'summon', 5, () => {
-    play('heronMistPart', { volume: 0.9, pan });
     fog.set({ hole: null });
-    void animate(sc, u.rangeMs('summon', 5, 6), (t) => fog.set({ part: 2 * rnd(5 * E.outQ(t)), thin: 0.15 * t }));
+    void (async () => {
+      await sleep(sc, 50);
+      play('heronMistPart', { volume: 0.9, pan });
+      for (let k = 1; k <= 3; k++) {
+        fog.set({ steps: k, thin: k === 3 ? 0.15 : 0 });
+        if (k < 3) await sleep(sc, 70);
+      }
+    })();
   });
-  // the straw cloak fans open once: fuff fuff; the downdraft pushes the wisps out 4 px and thins them
+  // the straw cloak fans open once: fuff fuff; the downdraft blows the torn halves out (3-px steps) and thins them
   atFrame(u, 'summon', 6, () => play('heronWingFuff', { volume: 0.95, pan }));
   atFrame(u, 'summon', 7, () => {
-    fog.set({ push: 4, thin: 0.45 });
+    fog.set({ steps: 3 });
+    void animate(sc, 200, (t) => fog.set({ push: 3 * Math.min(5, Math.floor(t * 6)), thin: 0.2 + 0.6 * t }));
     void lightFlash(sc, S.home.x, S.home.y - 2, PAL.steel, 26, 260, { floorY: S.home.y, intensity: 0.35 });
   });
   // 'land': the cloak closes, the reeds stand back up; the badge comes in quietly (no ring, no thump)
   const landF = u.markFrame('summon', 'land', Math.max(0, n - 2));
   atFrame(u, 'summon', landF, () => {
     play('heronSettle', { volume: 0.9, pan });
-    fog.set({ thin: 0.8 });
+    fog.set({ steps: 3, push: 18, thin: 0.9 });
     void u.badge.pop();
   });
   atFrame(u, 'summon', landF + 1, () => fog.set({ thin: 1 }));
@@ -663,7 +634,7 @@ function pinHome(sc: Phaser.Scene, u: MonsterUnit, ms: number): () => void {
     const dx = spr.x - home.x;
     const dy = spr.y - home.y;
     if ((dx === 0 && dy === 0) || Math.abs(dx) > 4 || Math.abs(dy) > 4) return;
-    for (const tw of sc.tweens.getTweensOf(spr)) if (tw.data.some((d) => d.key === 'x' || d.key === 'y')) tw.stop();
+    for (const tw of sc.tweens.getTweensOf(spr)) if (tw.data.some((d) => { const k = (d as { key?: string }).key; return k === 'x' || k === 'y'; })) tw.stop();
     spr.setPosition(home.x, home.y);
   }
   sc.events.on('postupdate', hold);
