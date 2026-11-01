@@ -146,8 +146,8 @@ export function attackPose(f: number): Pose {
   }
 }
 // (tempo gate: the attack incl. the target's death ≤ 3.19 s game time — measure.mjs rhrAttack. The two retract
-// frames are paid for by a tighter coil (f2–f3), 100-ms strides and a 40-ms release: the contact lands where it did)
-const ATTACK_HOLDS = [80, 60, 50, 50, 200, 100, 100, 40, 40, 40, 40, 40, 80, 50, 80, 90, 100];
+// frames are paid for by a tighter coil (f2–f3), 75-ms strides and a quicker recover: the contact lands where it did)
+const ATTACK_HOLDS = [80, 60, 40, 40, 200, 75, 75, 40, 40, 40, 40, 40, 80, 50, 60, 70, 100];
 
 // ------------------------------------------------------------------ roar (9 frames): the wings open once
 
