@@ -233,7 +233,9 @@ async function logFallV3(S: Stage): Promise<void> {
     play('hoClubSlam', { volume: 1, pan });
     const at = rint(pointOf(u, 'summon', 9, 'muzzle'));
     const g = { x: at.x, y: Math.min(home.y + 4, at.y + 1) };
-    floorCrack(sc, g, 16, S.ev.uid * 5 + 2, 520);
+    floorCrack(sc, g, 22, S.ev.uid * 5 + 2, 620);
+    floorRing(sc, g, 24, 300);
+    loam(sc, g, 10, 60, R);
     splinters(sc, g, home.y + 2, 10, R, { up: 1 });
     leaves(sc, rint(pointOf(u, 'summon', 9, 'head')), home.y, 7, R, s.depth + 0.3);
     void lightFlash(sc, g.x, g.y, PAL.earth4, 34, 320, { floorY: home.y, ring: true, intensity: 0.8 });
@@ -310,9 +312,9 @@ if (LOOK_V3)
   );
 
 /** Planting timeline (scene ms): a seed rises + shrinks, flies, is caught; the next one starts SEED_GAP later. */
-const RISE_MS = 110;
-const SHRINK_MS = 240;
-const FLIGHT_MS = 320;
+const RISE_MS = 90;
+const SHRINK_MS = 200;
+const FLIGHT_MS = 315;
 
 async function plantV3(ctx: Ctx<'banish'>): Promise<void> {
   const ev = ctx.ev;
@@ -401,7 +403,8 @@ async function plantV3(ctx: Ctx<'banish'>): Promise<void> {
     boost.aura.n = i + 1;
     boost.light.setIntensity(0.45 + 0.25 * i, 120);
     const top = u.worldPoint('top');
-    void impactNumber(sc, top.x + (u.flipX ? 10 : -10) * i, top.y - 6, 400, { kind: 'heal' });
+    const nx = group.length < 2 ? 0 : (i === 0 ? -17 : 17) * (u.flipX ? -1 : 1);
+    void impactNumber(sc, top.x + nx, top.y - 6 + (i % 2) * 3, 400, { kind: 'heal' });
     void u.setStats(atk0 + 400 * (i + 1), def, true);
     await sleep(sc, u.frameMs('special', 6));
     // f7: a sprout springs on the club
@@ -437,7 +440,8 @@ async function plantV3(ctx: Ctx<'banish'>): Promise<void> {
     void lightFlash(sc, c.x, c.y, PAL.void4, 22, 300, { floorY: u.home.y, air: 1, intensity: 0.8 });
     if (sEv) void u.setStats(sEv.atk, sEv.def, true);
     const rest = u.playRange('special', 8, undefined, { hold: false });
-    await sleep(sc, u.frameMs('special', 8));
+    // the glow is read on its first 120 ms (REHBER §5: the effect stays ≤ 1.6 s scene for two seeds); the rest runs on
+    await sleep(sc, Math.min(120, u.frameMs('special', 8)));
     void rest.then(() => {
       if (live(u)) u.posed = false;
     });
@@ -578,7 +582,7 @@ async function smashV3(s: StrikeArgs): Promise<void> {
     if (boosted && boost) {
       boost.aura.flare();
       const sp = rint(livePoint(u, 'staff'));
-      pollen(sc, { x: sp.x, y: sp.y - 4 }, 26, R, DEPTH.FX + 2);
+      pollen(sc, { x: sp.x, y: sp.y - 4 }, 40, R, DEPTH.FX + 2);
       play('hoPollen', { volume: 0.8, pan: panAt(sp.x) });
       void lightFlash(sc, sp.x, sp.y, PAL.void3, 34, 380, { floorY: fy, air: 0.9, intensity: 0.9 });
     }

@@ -15,8 +15,66 @@ the 600 Hz suction "şlop", §5.2 ending "sıvı olup karoya geri akar"). Handbo
 | Card art (`src/art/cardart-v3/mudgrasp_spirit.ts`) + `portrait()` | **done, round 2** (value pass for the owner's "brown mass" note) | `portrait()` wired in `monsters-v3/mudgrasp_spirit.ts` (unchanged); see *Card art* below |
 | `DEATH_PRESETS` | **done**: `material: 'water', accent: 'shadow'` (stone/ash endings are reserved) | `src/cinematics/_v3/presets.ts` own line |
 | `MONSTER_GLOW` | **done**: `void4 / void3 / white` emissive, `near void2`, `spill void3` (no body tone) | `src/view/light/profiles.ts` own line |
-| Scenarios (`src/duel/scenarios/mudgrasp_spirit.ts`) | base set: `mgSummon(P2)`, `mgPin(P2)`, `mgPinKill`, `mgAttack`, `mgKill`, `mgIdle` | cinematic stage adds `mgSet`, `mgPinFlip`, `mgPinLock` |
-| Cinematics / SFX | not started | summon / strike / death / pin effect + aura; `src/audio/v3/mudgrasp_spirit.ts` |
+| Scenarios (`src/duel/scenarios/mudgrasp_spirit.ts`) | **done** (21 keys, P1 + P2) | see *Cinematics stage* below |
+| Cinematics / SFX | **round 1 done** (summon, strike, death, pin effect + persistent aura; sound set wired, mgGrab reworked) | `src/cinematics/kart-b/mudgrasp_spirit.ts` (+ `-fx.ts`), `src/audio/v3/mudgrasp_spirit.ts` |
+
+## Cinematics stage (2026-10-31)
+
+Files: `src/cinematics/kart-b/mudgrasp_spirit.ts` (new; every registration `if (LOOK_V3)`, priority 20, names
+`kart-b:mudgrasp_spirit:{summon,strike,effect,death}`), `src/cinematics/kart-b/mudgrasp_spirit-fx.ts` (painters; no side
+effects), `src/audio/v3/mudgrasp_spirit.ts` (recipes + `MUDGRASP_SPIRIT_VOICE`, all roles incl. revive pair),
+`src/duel/scenarios/mudgrasp_spirit.ts`. No shared file touched in this stage. No `ctx.focus` (EF-8).
+
+- **Summon "the climb"** (`runSummon` + own v3 entrance): a turning mud vortex opens on the tile under the sprite's
+  puddle (`mudVortex`, violet pit light, bubbles, ripples; `mgVortex` sustained → stopped at land) → f2 hands burst
+  (`mgBurst`, clods, violet flash + motes) → f3 palms slap the tile edges (`mgSlap`, 2-px shake, mud stains under both
+  palms, earth flash) → f4 haul (`mgHaul`) → land f7 (`mgLand`, vortex closes in 3 steps, ripple ring, finale with the
+  earth ramp) → f8 the eyes ignite (void4 flash at the head) → f9 shake-off (clods, two `mgDrip`).
+- **Strike "Çamur Atışı"**: from `strikeStartFrame`; `takeCharge('mgCharge')`; clods at the scoop (f2); plays to the
+  release frame (f6) and HOLDS it while a sticky lump (`drawBall`, violet ember + a following violet light) lobs in a high
+  arc (arc 18–40 px, 230–340 ms), its ink shadow sliding over the floor, shedding drops; `s.impact()` on arrival (battle's
+  medium hit-stop, number at +0 ms), `mgImpact`, splat star, goo decal sliding down the struck body, floor stain;
+  then f7–8 the hand slaps into the ground and sinks (`mgSink`, stain + clods). Direct: lands on the duelist, stain stays.
+- **Effect "Pençe kilidi"** (`registerCardHook('effect')`, consumes the `positionChange`): finds the battle that targeted
+  the mud; mud alive → it rears (special f1–4) while the floor under the attacker grumbles (`mgGrumble`), ripple rings run
+  out and the pool seeps; f5 it plunges its hands into its own tile (`mgSink` on the mud, clods, violet flash) → under the
+  attacker four fat clay hands (lighter `HAND` tones so they read on the dark floor) burst up (`mgBurst`) → arch over and
+  clamp the feet on their own sides (`mgGrab`: four distinct suction cups, each with a seat knock) — the attacker is yanked
+  2 px down and trembles → clamp (`mgClamp`, 2-px shake): the attacker is FORCED into toGuard (or straight into its guard
+  loop when it has no toGuard), its card turns side-on, badge → defense; the pool contracts into the 6-px ring (`mgRing`),
+  the hands sink, and the persistent **`mudPin` aura** takes over on the same pixels (ring band, churning inside, lumpy
+  front lip over the feet, three hands rising/flexing/sinking in turn with wet glints, violet pops, breathing violet light).
+  Meanwhile the mud holds the pull (f8, moan `mgRoar`), comes back out (f9–11) and closes its wall again (toGuard).
+  Mud dead (`from:'graveyard'`) → a violet flash on its old tile and its spilled mud CRAWLS over the floor to the attacker
+  (`mudCrawl`), then the same grab. Expiry: an observer clears the aura on `turnStart`/`phaseChange`/`controlChange`/
+  `destroy`/`gameOver` once `turn > lockPositionTurn` (verified with logs on `mgPinLock`: cleared at turn 6 = lock 5 + 1).
+- **Death "sıvı olup karoya geri akar"** (option (b), bookkeeping as `_v3/death.ts`): contact flash / guard-break entry,
+  f1 the mask slips (`mgMaskSlip`, clods), f2 six cracks open in the tile (`cracks`, reach 40 px so they show past the
+  sprite's puddle), dissolve: the mud runs out along the cracks and drains into them (`mgDrain` sustained, violet glow),
+  the mask sinks last (`mgGlk`, violet flash + ripple), then the puddle is drunk into the centre and the cracks close in
+  three steps in the last 150 ms while the card is born. No shatter, no dry/crumble, no 28 Hz swell.
+- Sounds: `mgGrab` reworked this stage (four separated cups + seat knocks; the squelch bed lowered) —
+  `shots/v3/kart-b/mudgrasp_spirit/sfx/mgGrab.png`; `mgGrumble`, `mgClamp`, `mgRing` spectrograms in the same folder.
+
+**Scenario keys** (prefix mg): `mgSummon`, `mgSummonP2`, `mgSet`, `mgPin`, `mgPinP2`, `mgPinWide` (stone_sentinel bounced
+and pinned), `mgPinKill`, `mgPinKillP2` (mud dies, pin resolves from the graveyard), `mgPinFlip`, `mgPinFlipP2` (face-down),
+`mgPinLock` (+3 turn ends: aura persists, then clears), `mgAttack`, `mgAttackP2`, `mgBlocked`, `mgDirect`, `mgDirectP2`,
+`mgKill`, `mgKillP2`, `mgRevive`, `mgReviveP2`, `mgIdle`.
+
+**Gates** (scratch `/tmp/claude-0/-home-user-yugioh/77596f6a-069b-5204-8bfc-ba0d0b8509ca/scratchpad/mudgrasp_spirit/cin/`):
+- camera base `camera-base.json` taken BEFORE the cinematic file existed; `m1.json` `--camera-gate`: **21 ok, 0 FAIL**
+  (zoom 1, focusCalls = base).
+- Budgets (game clock): effect 1.80 s (mgPin), 1.88 (mgPinWide), 1.52 (mgPinKill) ≤ 2.32; mud's battle 2.88 s (mgAttack,
+  incl. reactions) ≤ 3.19; blocked 1.95; direct 2.08–2.10 ≤ 2.32; death 1.43–1.53 ≤ 2.03; summon 2.38 s (spec 2.2 s scene);
+  number vs contact 0 ms. (The attacker's `battle` durations in the pin scenarios include the effect, because
+  `battleV3` plays the battle triggers inside the battle event.)
+- palcheck (a5) on the effect windows: Δoff ≤ 0.1 pt in my windows (mgKill 1.23 pt for one frame = the wolf's flame hit
+  before the death); white 1.8–2.2 % is the HUD badges/digits and the mask already present in frame 0 (1.48 %).
+- `npm test`: only the known failures (cardface G1 scrap_raiders, dusk_ashen, hourglass_imp, shield_titan).
+- v1: `filmdiff --set v1` **17/17 IDENTICAL** (a6v1 set not run this stage).
+
+Evidence `shots/v3/kart-b/mudgrasp_spirit/cin/`: `mgSummon-z.png`, `mgPin-z3.png`, `mgPin-hands.png`, `mgPinKill.png`,
+`mgPinFlipP2.png`, `mgPinLock.png`, `mgPinLock-z.png`, `mgAttack-z.png`, `mgKill-z.png`, `mgDirect.png` (+ wide films).
 
 ## Round 2 — readability redesign (owner blocker "blurry brown mass at 1×"), 2026-10-31
 
@@ -160,7 +218,13 @@ kept. DEATH_PRESETS `water / shadow` kept.
 3. The sprite death ends on a puddle with a violet core (sprite ≤ 0.9 s); the "flows into the tile cracks" beat
    is cinematic work (option (b) death, HANDBOOK §6.3).
 4. The pin: special f8 is the hold frame; the attacker-side mud hands + 6 px ring + aura are cinematic / aura work.
-5. Idle SFX (glub + finger drum) and struck-body mud material sound: see orchestrator decisions (3)/(4) — later stage.
+5. Idle SFX (glub + finger drum): NOT built (orchestrator decision 3 — optional; no per-unit hook in my files without a
+   new animationupdate listener). Struck-body mud material sound: not built (decision 4, shared material tables) — when
+   the mud is struck the generic hit sound plays; its own sounds carry the identity when it strikes / pins / dies.
+10. (cinematics r1) Only one critique round so far (my own LOOKs). Candidates for the next rounds: the pin's burst arms
+   still read a little like stakes for a frame or two at full height; the seep phase (≈450 ms while the spirit rears)
+   is quiet visually; the aura clears ≈0.5 s before the padlock disappears (observer fires on turnStart, the badge
+   sync comes later); the lump is small (r 3.5) on long direct throws; an independent critic + blind test still open.
 7. (round 2) Summon f6: the near rear arm's arch leaves a small squarish gap against the body (reads as a gripping arm,
    minor). Special pull f6–f8: the plunged near arm is nearly straight; the far front arm's plunge is mostly hidden.
    Both are candidates for the critic round.

@@ -93,13 +93,23 @@ describe('wisp_imp v3 art (R3 feather ghost)', () => {
     }
   });
 
-  it('contact frames are local in every idle phase (HA-21 < 50 %)', () => {
+  // FIX round 1 (owner blocker "frames too similar"): the idle is now a real figure-eight float, so
+  // the HA-21 *phase* row (struck f0 vs EVERY idle frame) is a documented deviation, like the slice
+  // cards (docs/v3/oturum-b/wisp_imp.md, round 1). What still holds: the contact frame is local
+  // against idle f0 (HA-21), the frames round idle f0 stay close enough for the pre-contact settle
+  // (posematch.ts) to land on, and the idle really moves (liveliness ≥ 30 %, far over HA-18's 15 %).
+  it('contact frames are local against idle f0, the settle has frames to land on, and the idle is lively', () => {
     const idle = Array.from({ length: art.anims.idle.frames }, (_, k) => drawFrame(art, 'idle', k, 'left'));
     const o = opaque(idle[0]);
     for (const a of ['hit', 'hitHeavy', 'hitMagic', 'death'] as const) {
       const c = drawFrame(art, a, 0, 'left');
-      for (let k = 0; k < idle.length; k++) expect(delta(c, idle[k]) / o, `${a} vs idle ${k}`).toBeLessThan(0.5);
+      expect(delta(c, idle[0]) / o, `${a} vs idle 0`).toBeLessThan(0.25);
+      const near = idle.filter((f) => delta(c, f) / o < 0.5).length;
+      expect(near, `${a}: idle frames within 50 %`).toBeGreaterThanOrEqual(3);
     }
+    const cons = idle.map((f, k) => delta(f, idle[(k + 1) % idle.length]));
+    expect(cons.reduce((s, v) => s + v, 0) / cons.length / o).toBeGreaterThanOrEqual(0.3);
+    expect(Math.min(...cons) / o, 'no near-identical consecutive idle frames').toBeGreaterThanOrEqual(0.15);
   });
 
   it('keeps a 2-px empty margin on every frame', () => {

@@ -42,7 +42,7 @@ import { lightFlash, lightPool } from '../../view/light';
 import { shake } from '../../vfx/core';
 import { Raster } from '../../vfx/setpieces';
 import { pixelText } from '../../ui/text';
-import { fx, registerCardHook, registerStrike } from '../api';
+import { fx, registerCardHook, registerObserver, registerStrike } from '../api';
 import type { StrikeArgs } from '../_core/types';
 import { behindBodies, cardLeaves } from '../_v3/card';
 import { strikeStartFrame } from '../_v3/clash';
@@ -268,7 +268,7 @@ function fountain(S: Stage, rnd: Rnd): { fling(): void; end(): void } {
   const H = Math.ceil(home.y - top + 34);
   const back = new Raster(sc, home.x - W / 2, top - 20, W, H, S.sprite.depth - 0.5);
   const front = new Raster(sc, home.x - W / 2, top - 20, W, H, S.sprite.depth + 0.5);
-  const fs = Array.from({ length: N }, (_, i) => ({ a0: (i / N) * TAU + rr(rnd, -0.2, 0.2), d: rr(rnd, 0, 0.35), len: i % 3 === 0 ? 6 : i % 3 === 1 ? 5 : 3, spd: rr(rnd, 0.9, 1.15) }));
+  const fs = Array.from({ length: N }, (_, i) => ({ a0: (i / N) * TAU + rr(rnd, -0.2, 0.2), d: rr(rnd, 0, 0.35), len: i % 3 === 0 ? 8 : i % 3 === 1 ? 7 : 6, spd: rr(rnd, 0.9, 1.15) }));
   const loose = new Plumes(sc, home.x - 70, top - 50, 140, H + 70, S.sprite.depth + 0.6);
   let flung = false;
   let el0 = 0;
@@ -362,10 +362,12 @@ function fallTrail(S: Stage, rnd: Rnd, at: () => XY | null): { touch(): void; en
       // a ring of down-light on the tile that TIGHTENS onto the landing spot as it comes down
       // (the touch's ripple then answers it by opening back out)
       const k = clamp(1 - (home.y - 6 - p.y) / 90, 0, 1);
-      const rx = Math.round(lerp(13, 4, k));
-      const c = k < 0.35 ? PAL.void3 : k < 0.7 ? PAL.void4 : PAL.white;
+      const rx = Math.round(lerp(15, 4, k));
+      const c = k < 0.3 ? PAL.void4 : PAL.white;
       shadow.ring(home.x, home.y, rx, Math.max(2, rx * 0.45), c);
-      if (k > 0.7) shadow.px(home.x, home.y, PAL.void4);
+      // a second, lilac ring just outside it (the down-light reads at 1×)
+      if (rx + 2 <= 16) shadow.ring(home.x, home.y, rx + 2, Math.max(3, (rx + 2) * 0.45), k < 0.5 ? PAL.void3 : PAL.void4);
+      if (k > 0.6) shadow.px(home.x, home.y, PAL.white);
     }
     shadow.end();
     return true;
@@ -392,13 +394,16 @@ async function summonV3(S: Stage): Promise<void> {
   const pan = panAt(S.home.x);
   const rest = { x: spr.x, y: spr.y };
   // ---- the pre-roll: frame 0's lone feather swings down from high above (frames 0 / 1 = its two tilts)
-  const c0 = frameCentre(u, 'summon', 0);
-  const c1 = frameCentre(u, 'summon', 1);
-  const w0 = u.framePoint(c0.x, c0.y);
-  const w1 = u.framePoint(c1.x, c1.y);
-  const off1 = { x: w0.x - w1.x, y: w0.y - w1.y };
+  // frames 0 / 1 / 2 are the feather's three drawn tilts (level, tipped back, tipped forward): the
+  // sprite is offset so the feather's centre never jumps when the tilt changes
+  const w0 = u.framePoint(frameCentre(u, 'summon', 0).x, frameCentre(u, 'summon', 0).y);
+  const offs = [0, 1, 2].map((f) => {
+    const c = frameCentre(u, 'summon', f);
+    const w = u.framePoint(c.x, c.y);
+    return { x: w0.x - w.x, y: w0.y - w.y };
+  });
   const FALL = 62;
-  const PRE = 500;
+  const PRE = 460;
   u.pose('summon', 0);
   u.showSprite();
   spr.setPosition(rest.x, rest.y - FALL);
@@ -425,14 +430,17 @@ async function summonV3(S: Stage): Promise<void> {
   await animate(sc, PRE, (t) => {
     if (!spr.active) return;
     const e = 1 - (1 - t) * (1 - t * 0.6);
-    const sway = Math.sin(t * TAU * 1.5) * lerp(9, 3, t);
-    const f = sway * S.dir >= 0 ? 0 : 1;
+    // a wide pendulum (±10 px), the feather rising a little at each end of its swing like a leaf
+    const ph = Math.sin(t * TAU * 1.5);
+    const sway = ph * lerp(11, 6, t);
+    const rise = -Math.abs(ph) * 3;
+    const f = Math.abs(ph) < 0.45 ? 0 : ph * S.dir > 0 ? 2 : 1;
     if (f !== lastF) {
       u.pose('summon', f);
       lastF = f;
     }
-    const ox = f === 1 ? off1.x : 0;
-    const oy = f === 1 ? off1.y : 0;
+    const ox = offs[f].x;
+    const oy = offs[f].y + rise;
     const y = rest.y - FALL * (1 - e);
     spr.setPosition(ri(rest.x + sway + ox), ri(y + oy));
     moon.setPosition(ri(w0.x + sway), ri(w0.y - FALL * (1 - e)), S.home.y);
@@ -554,9 +562,10 @@ function volley(s: StrikeArgs, from: XY, rnd: Rnd, onHit: (i: number, at: XY) =>
       ctrl1: { x: from.x + (to.x - from.x) * 0.15 + nx * fan, y: from.y + (to.y - from.y) * 0.15 + ny * fan - 10 },
       ctrl2: { x: from.x + (to.x - from.x) * 0.7 + nx * fan * 0.35, y: from.y + (to.y - from.y) * 0.7 + ny * fan * 0.35 - 4 },
       to,
-      launch: i * 34 + (i > 2 ? 30 : 0),
+      launch: i * 34 + (i > 2 ? 30 : 0) + (i === N - 1 ? 40 : 0),
       flight: clamp(ri(dist * 1.15 + 90), 200, 330),
-      len: i === 0 ? 9 : i % 3 === 0 ? 7 : 8,
+      // the first is the contact; the last is the big finisher feather
+      len: i === N - 1 ? 11 : i === 0 ? 9 : i % 3 === 0 ? 7 : 8,
       hist: [],
       state: 'fly',
       rel: null,
@@ -593,12 +602,19 @@ function volley(s: StrikeArgs, from: XY, rnd: Rnd, onHit: (i: number, at: XY) =>
         if (Math.abs(p.x - q.x) + Math.abs(p.y - q.y) > 0.6) d.ang = Math.atan2(p.y - q.y, p.x - q.x);
         d.hist.unshift({ x: ri(p.x), y: ri(p.y) });
         if (d.hist.length > 6) d.hist.pop();
-        // the trail: a few specks of down stepping down the ramp
-        for (let k = 2; k < d.hist.length; k += 1) {
-          const h = d.hist[k];
-          r.px(h.x, h.y, k < 3 ? PAL.void4 : k < 5 ? PAL.void3 : PAL.void2);
-        }
+        // the trail: an unbroken thread of down behind the feather, stepping down the ramp
+        const cA = Math.cos(d.ang);
+        const sA = Math.sin(d.ang);
+        const tail0 = (d.len - 1) / 2 + 1;
+        const TR = d.len >= 10 ? 6 : 4;
+        for (let k = 0; k < TR; k++) r.px(ri(p.x - cA * (tail0 + k)), ri(p.y - sA * (tail0 + k)), k < 1 ? PAL.white : k < 2 ? PAL.void4 : k < TR - 1 ? PAL.void3 : PAL.void2);
+        for (let k = 2; k < d.hist.length; k += 2) r.px(d.hist[k].x, d.hist[k].y, k < 4 ? PAL.void3 : PAL.void2);
         feather(r, p.x, p.y, d.ang, d.len, 0);
+        // the white leading glint: a cross on the launch frames, then one bright point ahead of the tip
+        const hx = ri(p.x + cA * (tail0 + 0.5));
+        const hy = ri(p.y + sA * (tail0 + 0.5));
+        r.px(hx, hy, PAL.white);
+        if (lt < 50 || (i === N - 1 && t > 0.85)) for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) r.px(hx + ox, hy + oy, PAL.white);
         flying++;
         cx += p.x;
         cy += p.y;
@@ -620,10 +636,16 @@ function volley(s: StrikeArgs, from: XY, rnd: Rnd, onHit: (i: number, at: XY) =>
       } else if (d.state === 'stuck') {
         const host = tgt && tgt.sprite.active && tgt.sprite.visible ? tgt.sprite : null;
         const at = host && d.rel ? { x: host.x + d.rel.x, y: host.y + d.rel.y } : d.to;
-        // stuck in the body: the quill buried, the vane quivering a pixel
-        const q = Math.floor((el - d.stuckAt) / 50) % 2;
-        const back = { x: at.x - Math.cos(d.ang) * 2, y: at.y - Math.sin(d.ang) * 2 + (q ? 0 : 0) };
-        feather(r, back.x, back.y, d.ang + (q ? 0.18 : -0.18), Math.max(3, d.len - 2), 0);
+        // stuck in the body: the quill buried, the whole feather quivering ±1 px, its end a white tip
+        const q = Math.floor((el - d.stuckAt) / 45) % 3;
+        const wob = q === 0 ? -1 : q === 1 ? 1 : 0;
+        const nx = -Math.sin(d.ang);
+        const ny = Math.cos(d.ang);
+        const sl = Math.max(5, d.len - 1);
+        const back = { x: at.x - Math.cos(d.ang) * 2 + nx * wob, y: at.y - Math.sin(d.ang) * 2 + ny * wob };
+        feather(r, back.x, back.y, d.ang + wob * 0.12, sl, 0);
+        const end = (sl - 1) / 2 + 1;
+        r.px(ri(back.x - Math.cos(d.ang) * end), ri(back.y - Math.sin(d.ang) * end), PAL.white);
         if (el - d.stuckAt > STICK + i * 40 || !host) {
           // it flakes off and flutters down
           d.state = 'gone';
@@ -794,21 +816,51 @@ function takeDeath(ctx: Ctx<'destroy'>): Leave | null {
 
 // ================================================================ death: the wind takes it
 
-/** Gust streaks across the tile + the feathers peeling off downwind (`dir` ±1), for `ms`. */
+/**
+ * The gust: three big curved ribbons of wind (white head with a rolling curl, lilac body) cross the
+ * tile from the front first, thin streaks follow; `peel(n)` hands on the sprite's peeled feathers —
+ * whole quilled feathers that leave its back edge and tumble downwind (`dir` ±1) on pendulum paths.
+ */
 function gust(scene: Phaser.Scene, u: MonsterUnit, dir: number, ms: number, rnd: Rnd): { peel(n: number): void; end(): void } {
   const c = u.core();
-  const W = 200;
+  const W = 220;
   const r = new Raster(scene, c.x - W / 2, c.y - 50, W, 90, u.sprite.depth + 0.4);
   const plumes = new Plumes(scene, c.x - W / 2 - 40, c.y - 90, W + 80, 150, u.sprite.depth + 0.5);
-  const lines = Array.from({ length: 9 }, (_, i) => ({ y: ri(c.y - 28 + i * 6 + rr(rnd, -2, 2)), x0: rr(rnd, -60, 20), len: ri(rr(rnd, 7, 15)), spd: rr(rnd, 240, 330), delay: rr(rnd, 0, ms * 0.5) }));
+  const ribbons = [
+    { y: c.y - 22, len: 34, amp: 2.2, spd: 420, delay: 0 },
+    { y: c.y - 6, len: 28, amp: 1.8, spd: 470, delay: 60 },
+    { y: c.y + 9, len: 24, amp: 1.6, spd: 400, delay: 150 },
+  ];
+  const lines = Array.from({ length: 7 }, (_, i) => ({ y: ri(c.y - 26 + i * 7 + rr(rnd, -2, 2)), x0: rr(rnd, -60, 0), len: ri(rr(rnd, 8, 14)), spd: rr(rnd, 260, 340), delay: rr(rnd, 120, ms * 0.55) }));
   const stop = onFrame(scene, (_dt, el) => {
     r.begin();
+    for (const g of ribbons) {
+      const a = el - g.delay;
+      if (a < 0) continue;
+      const head = c.x - dir * (W / 2 - 6) + dir * (a / 1000) * g.spd;
+      for (let k = 0; k < g.len; k++) {
+        const x = ri(head - dir * k);
+        if (Math.abs(x - c.x) > W / 2 - 2) continue;
+        const y = ri(g.y + Math.sin((x - c.x) / 7 + g.delay) * g.amp);
+        r.px(x, y, k < 4 ? PAL.white : k < g.len * 0.6 ? PAL.void4 : PAL.void3);
+        if (k > 2 && k < g.len * 0.4 && k % 3 === 0) r.px(x, y + 1, PAL.void3);
+      }
+      // the rolling curl at its head
+      const hx = ri(head);
+      if (Math.abs(hx - c.x) < W / 2 - 4) {
+        const hy = ri(g.y + Math.sin((hx - c.x) / 7 + g.delay) * g.amp);
+        r.px(hx + dir, hy - 1, PAL.white);
+        r.px(hx + dir, hy - 2, PAL.white);
+        r.px(hx, hy - 3, PAL.white);
+        r.px(hx - dir, hy - 3, PAL.void4);
+        r.px(hx - 2 * dir, hy - 2, PAL.void4);
+      }
+    }
     for (const l of lines) {
       const a = el - l.delay;
       if (a < 0) continue;
       const x = c.x - dir * 50 + dir * (l.x0 + (a / 1000) * l.spd);
       if (Math.abs(x - c.x) > W / 2 - l.len) continue;
-      // a whole-pixel streak, brighter at its head (downwind)
       for (let k = 0; k < l.len; k++) r.px(ri(x - dir * k), l.y, k < 3 ? PAL.void4 : k < 8 ? PAL.void3 : PAL.void2);
     }
     r.end();
@@ -819,7 +871,8 @@ function gust(scene: Phaser.Scene, u: MonsterUnit, dir: number, ms: number, rnd:
       if (!u.sprite.active) return;
       const b = u.core();
       for (let i = 0; i < n; i++) {
-        plumes.add({ x: b.x + rr(rnd, -9, 9), y: b.y + rr(rnd, -14, 8), vx: dir * rr(rnd, 70, 130), vy: rr(rnd, -45, -10), len: i % 3 === 0 ? 6 : i % 3 === 1 ? 5 : 3, grav: -6, drag: 1.1, life: rr(rnd, 600, 900), flut: rr(rnd, 6, 14), ang: dir > 0 ? 0 : Math.PI, swing: 0.9 }, rnd);
+        // they leave from the back edge of the body, where the sprite's own peeled feathers exit
+        plumes.add({ x: b.x + dir * rr(rnd, 12, 18), y: b.y + rr(rnd, -18, 10), vx: dir * rr(rnd, 90, 150), vy: rr(rnd, -55, -15), len: i % 3 === 0 ? 8 : 7, grav: -4, drag: 1, life: rr(rnd, 700, 1000), flut: rr(rnd, 8, 16), hz: rr(rnd, 1.6, 2.4), ang: dir > 0 ? 0.3 : Math.PI - 0.3, swing: 1.1 }, rnd);
       }
     },
     end() {
@@ -861,18 +914,21 @@ async function windDeath(ctx: Ctx<'destroy'>, L: Leave): Promise<void> {
   // the wind blows backward (away from the side it faces), like the pose's own streaming feathers
   const dir = u.flipX ? 1 : -1;
   const wind = gust(sc, u, dir, 1100, rnd);
-  atFrame(u, 'death', Math.max(1, DIS - 1), () => wind.peel(4), { late: false });
+  // the sprite peels the cowlick (f2), two plumes (f3), two more (f4: dissolve), the wing and the
+  // hands (f5), the tail (f6): each part it lets go of flies on here as a whole feather
+  atFrame(u, 'death', Math.max(1, DIS - 1), () => wind.peel(2), { late: false });
   atFrame(
     u,
     'death',
     DIS,
     () => {
       play('wiGust', { volume: 0.9, pan });
-      wind.peel(7);
+      wind.peel(3);
     },
     { late: false },
   );
-  atFrame(u, 'death', Math.min(n - 1, DIS + 2), () => wind.peel(6), { late: false });
+  atFrame(u, 'death', Math.min(n - 1, DIS + 1), () => wind.peel(3), { late: false });
+  atFrame(u, 'death', Math.min(n - 1, DIS + 2), () => wind.peel(2), { late: false });
   // the card is born once the body is mostly gone
   atFrame(u, 'death', Math.min(n - 1, DIS + 3), () => L.born(), { late: false });
   atFrame(u, 'death', n - 1, () => play('wiAway', { volume: 0.8, pan }), { late: false });
@@ -887,21 +943,23 @@ async function windDeath(ctx: Ctx<'destroy'>, L: Leave): Promise<void> {
     }),
   );
   if (u.sprite.active) await sleep(sc, u.frameMs('death', n - 1));
-  wind.peel(3);
   L.born();
-  void sleep(sc, 500).then(() => wind.end());
+  void sleep(sc, 600).then(() => wind.end());
 }
 
 // ================================================================ effect: the feather pillow
 
 /** The pillow's face states. */
-type Face = 'happy' | 'squeeze' | 'open';
+type Face = 'happy' | 'squeeze' | 'open' | 'wide';
 
 /**
- * The pillow (the ghost's face on a cushion with four tufted corners and a piped seam), drawn into
- * `pc` centred at (cx, cy) with half-size a × b; outlined in ink. Light from the top-left.
+ * The pillow = the ghost turned cushion: a puffy square with four tufted feather corners and a
+ * piped seam, the ghost's cowlick curling up off its top and its "?" tail feather hooking off the
+ * back corner; on its front the ghost's own dark face hollow (11×7) with 2-px gold eyes that change
+ * expression ("> <" squeezed, wide, "^ ^"). Drawn into `pc` centred at (cx, cy), half-size a × b,
+ * `back` = −1 / +1 the side the tail hangs off (away from the field). Light from the top-left.
  */
-function paintPillow(pc: PixelCanvas, cx: number, cy: number, a: number, b: number, face: Face): void {
+function paintPillow(pc: PixelCanvas, cx: number, cy: number, a: number, b: number, face: Face, back = -1): void {
   pc.clear();
   const inside = (x: number, y: number): boolean => {
     const u = (x + 0.5 - cx) / a;
@@ -928,56 +986,111 @@ function paintPillow(pc: PixelCanvas, cx: number, cy: number, a: number, b: numb
       if (edge && !deep && (x + y) % 2 === 0 && pc.get(x, y) === PAL.white) pc.set(x, y, PAL.void4);
     }
   }
-  // four tufts at the corners (little feather spikes)
+  // four tufted corners: a little fan of three feather tips each
   for (const [sx, sy] of [
     [-1, -1],
     [1, -1],
     [-1, 1],
     [1, 1],
   ] as const) {
-    const x0 = ri(cx + sx * (a - 1.5));
+    const x0 = ri(cx + sx * (a - 2));
     const y0 = ri(cy + sy * (b - 1.5));
-    for (let k = 1; k <= 3; k++) pc.set(x0 + sx * k, y0 + sy * k, k === 3 ? PAL.void3 : sy < 0 ? PAL.white : PAL.void4);
-    pc.set(x0 + sx * 2, y0 + sy * 1, sy < 0 ? PAL.void4 : PAL.void3);
+    const lit = sy < 0 ? PAL.white : PAL.void4;
+    const dim = sy < 0 ? PAL.void4 : PAL.void3;
+    for (let k = 1; k <= 4; k++) pc.set(x0 + sx * k, y0 + sy * k, k === 4 ? dim : lit);
+    for (let k = 1; k <= 3; k++) pc.set(x0 + sx * (k + 1), y0 + sy * (k - 1), dim);
+    for (let k = 1; k <= 3; k++) pc.set(x0 + sx * (k - 1), y0 + sy * (k + 1), dim);
   }
+  // the cowlick curling up off the top, leaning forward (it is the ghost's)
+  const tx = ri(cx - back * 3);
+  const ty = ri(cy - b);
+  const curl: [number, number, number][] = [
+    [0, 0, PAL.white],
+    [0, -1, PAL.white],
+    [-back, -1, PAL.void4],
+    [0, -2, PAL.white],
+    [-back, -3, PAL.white],
+    [-back * 2, -4, PAL.white],
+    [-back * 3, -4, PAL.void4],
+    [-back * 3, -3, PAL.void4],
+    [back, -2, PAL.void4],
+  ];
+  for (const [dx, dy, c] of curl) pc.set(tx + dx, ty + dy, c);
+  // the "?" tail feather hooking off the back corner
+  const qx = ri(cx + back * (a + 1));
+  const qy = ri(cy + 1);
+  const hook: [number, number, number][] = [
+    [0, 0, PAL.void4],
+    [back, 0, PAL.void4],
+    [back * 2, -1, PAL.void4],
+    [back * 2, -2, PAL.void3],
+    [back * 2, -3, PAL.void3],
+    [back, -4, PAL.void4],
+    [0, -4, PAL.white],
+    [back, 1, PAL.void3],
+    [back * 2, 0, PAL.void3],
+  ];
+  for (const [dx, dy, c] of hook) pc.set(qx + dx, qy + dy, c);
   pc.outline(PAL.ink);
-  // the ghost's face hollow and its gold eyes (lights: drawn after the outline)
-  const fx0 = ri(cx + 1);
+  // the ghost's face hollow (11×7) and its gold eyes (lights: drawn after the outline)
+  const fx0 = ri(cx - back * 1);
   const fy0 = ri(cy);
-  for (let y = -2; y <= 2; y++) for (let x = -4; x <= 4; x++) if ((x * x) / 20 + (y * y) / 5.5 <= 1) pc.set(fx0 + x, fy0 + y, PAL.void0);
-  for (let x = -3; x <= 3; x++) pc.set(fx0 + x, fy0 - 3, PAL.ink);
-  const eye = (ex: number): void => {
+  const hw = face === 'wide' ? 5.6 : 5.2;
+  const hh = face === 'wide' ? 3.8 : 3.3;
+  for (let y = -4; y <= 4; y++) for (let x = -6; x <= 6; x++) if ((x * x) / (hw * hw) + (y * y) / (hh * hh) <= 1) pc.set(fx0 + x, fy0 + y, PAL.void0);
+  // its brow: the cushion's lip overhangs the hollow (ink), the lower lip catches a little light
+  for (let x = -4; x <= 4; x++) pc.set(fx0 + x, fy0 - 4, PAL.ink);
+  for (let x = -3; x <= 3; x++) if (pc.get(fx0 + x, fy0 + 4) !== null) pc.set(fx0 + x, fy0 + 4, PAL.void1);
+  const G4 = PAL.gold4;
+  const G3 = PAL.gold3;
+  const eye = (ex: number, near: boolean): void => {
+    const s = near ? 1 : -1;
     if (face === 'squeeze') {
-      // > <
-      pc.set(ex - 1, fy0 - 1, PAL.gold3);
-      pc.set(ex, fy0, PAL.gold4);
-      pc.set(ex - 1, fy0 + 1, PAL.gold3);
+      // > <  (3 px tall chevrons pointing at each other)
+      pc.set(ex - s, fy0 - 1, G3);
+      pc.set(ex, fy0, G4);
+      pc.set(ex - s, fy0 + 1, G3);
+      pc.set(ex + s, fy0, G3);
     } else if (face === 'happy') {
-      pc.set(ex - 1, fy0, PAL.gold3);
-      pc.set(ex, fy0 - 1, PAL.gold4);
-      pc.set(ex + 1, fy0, PAL.gold3);
+      // ^ ^
+      pc.set(ex - 1, fy0 + 1, G3);
+      pc.set(ex, fy0, G4);
+      pc.set(ex + 1, fy0, G4);
+      pc.set(ex + 2, fy0 + 1, G3);
+    } else if (face === 'wide') {
+      // big round 2×3 eyes
+      pc.set(ex, fy0 - 2, G4);
+      pc.set(ex + 1, fy0 - 2, G4);
+      pc.set(ex, fy0 - 1, G4);
+      pc.set(ex + 1, fy0 - 1, G4);
+      pc.set(ex, fy0, G3);
+      pc.set(ex + 1, fy0, G3);
     } else {
-      pc.set(ex, fy0 - 1, PAL.gold4);
-      pc.set(ex, fy0, PAL.gold3);
+      // 2×2 dots
+      pc.set(ex, fy0 - 1, G4);
+      pc.set(ex + 1, fy0 - 1, G4);
+      pc.set(ex, fy0, G3);
+      pc.set(ex + 1, fy0, G4);
     }
   };
-  eye(fx0 - 2);
   if (face === 'squeeze') {
-    pc.set(fx0 + 3, fy0 - 1, PAL.gold3);
-    pc.set(fx0 + 2, fy0, PAL.gold4);
-    pc.set(fx0 + 3, fy0 + 1, PAL.gold3);
-  } else eye(fx0 + 2);
+    eye(fx0 - 2, false);
+    eye(fx0 + 2, true);
+  } else {
+    eye(fx0 - 3, false);
+    eye(fx0 + 2, true);
+  }
 }
 
 /** A pillow sprite on the HUD layer: a raster you re-paint with a size and a face. */
-function pillowView(scene: Phaser.Scene, at: XY): { set(a: number, b: number, face: Face, dy?: number): void; hide(): void; destroy(): void } {
-  const W = 76;
-  const H = 44;
+function pillowView(scene: Phaser.Scene, at: XY, back: number): { set(a: number, b: number, face: Face, dy?: number): void; hide(): void; destroy(): void } {
+  const W = 80;
+  const H = 48;
   const r = new Raster(scene, at.x - W / 2, at.y - H / 2, W, H, DEPTH.HUD + 8);
   const pc = new PixelCanvas(W, H);
   return {
     set(a, b, face, dy = 0) {
-      paintPillow(pc, W / 2, H / 2 + dy, a, b, face);
+      paintPillow(pc, W / 2, H / 2 + dy, a, b, face, back);
       r.begin();
       r.pc.blit(pc, 0, 0);
       r.end();
@@ -1081,6 +1194,7 @@ async function pillowDeath(ctx: Ctx<'destroy'>, L: Leave | null, amount: number,
   const sc = ctx.scene;
   const u = L?.unit ?? null;
   const rnd = mulberry32((u?.uid ?? 7) * 41 + amount);
+  let labelRef: Phaser.GameObjects.BitmapText | null = null;
   const home = L?.home ?? zoneXY(ctx.ev.player, 'monster', ctx.ev.zone);
   const pan = panAt(home.x);
   let burstAt: XY = { x: home.x, y: home.y - 18 };
@@ -1088,7 +1202,10 @@ async function pillowDeath(ctx: Ctx<'destroy'>, L: Leave | null, amount: number,
     // it hugs itself into a cushion (special 0 … release: hug, round, squeeze)
     const REL = u.markFrame('special', 'release', 5);
     atFrame(u, 'special', 2, () => play('wiStuff', { volume: 0.6, pan }), { late: false });
-    await u.asClaimant(() => u.playRange('special', 0, REL, { timeScale: 1.45 }));
+    // (held in the hug since the blow landed: it plays on from there)
+    const from = clutched.has(u) && u.frameInfo().anim === 'special' ? CLUTCH_FRAME : 0;
+    clutched.delete(u);
+    await u.asClaimant(() => u.playRange('special', from, REL, { timeScale: 1.45 }));
     burstAt = artPoint(u, 'special', REL, 'core');
     // its poof frame shows one beat (the sprite's own ring of down), then the body IS the cloud
     await sleep(sc, 50);
@@ -1114,7 +1231,8 @@ async function pillowDeath(ctx: Ctx<'destroy'>, L: Leave | null, amount: number,
   flight.stop(80);
   // ---- it packs into a pillow (the ghost's face on it)
   play('wiStuff', { volume: 0.9, pan: panAt(at.x) });
-  const P = pillowView(sc, at);
+  // its tail hangs off the side away from the field (the panel's outer side)
+  const P = pillowView(sc, at, at.x < GAME_W / 2 ? -1 : 1);
   // it packs in with a plump overshoot (whole-pixel sizes, one per beat)
   const sizes: [number, number, number][] = [
     [9, 5, 30],
@@ -1149,8 +1267,8 @@ async function pillowDeath(ctx: Ctx<'destroy'>, L: Leave | null, amount: number,
   const squash: [number, number, Face, number, number][] = [
     [29, 6, 'squeeze', 64, 3],
     [27, 8, 'squeeze', 44, 4],
-    [19, 15, 'squeeze', 44, 0],
-    [26, 10, 'open', 44, 0],
+    [19, 15, 'wide', 44, 0],
+    [26, 10, 'wide', 44, 0],
     [22, 13, 'open', 40, 0],
     [24, 12, 'happy', 34, 0],
   ];
@@ -1161,28 +1279,82 @@ async function pillowDeath(ctx: Ctx<'destroy'>, L: Leave | null, amount: number,
     await sleep(sc, ms);
   }
   num.destroy();
-  // "0 · KORUNDU"
+  // "0 · KORUNDU": it pops in big and settles (whole text sizes), a gold glint sweeps along it and
+  // a sparkle flashes on the bell; meanwhile the pillow breathes, smug ("^ ^")
   play('wiSafe', { volume: 0.85, pan: panAt(at.x) });
   const pr = panelRect(owner);
-  const label = pixelText(sc, at.x, top ? pr.y + pr.h + 7 : pr.y - 7, '0 · KORUNDU', { size: 'sm', color: PAL.gold4, originX: 0.5, originY: 0.5 }).setDepth(DEPTH.HUD + 10);
+  const ly = top ? pr.y + pr.h + 9 : pr.y - 9;
+  const label = pixelText(sc, at.x, ly, '0 · KORUNDU', { size: 'lg', color: PAL.gold4, originX: 0.5, originY: 0.5 }).setDepth(DEPTH.HUD + 10);
   void panelFlash(sc, at);
-  await sleep(sc, 300);
+  const shine = labelShine(sc, at.x, ly, 64);
+  const breathe: [number, number][] = [
+    [25, 11],
+    [24, 12],
+    [23, 13],
+    [24, 12],
+  ];
+  for (let i = 0; i < 4; i++) {
+    const [ba, bb] = breathe[i];
+    P.set(ba, bb, 'happy');
+    if (i === 1 && label.active) {
+      label.destroy();
+      labelRef = pixelText(sc, at.x, ly, '0 · KORUNDU', { size: 'md', color: PAL.gold4, originX: 0.5, originY: 0.5 }).setDepth(DEPTH.HUD + 10);
+    }
+    await sleep(sc, 75);
+  }
   // ---- POF
   play('wiPof', { volume: 1, pan: panAt(at.x) });
   P.destroy();
   pof(sc, at, rnd);
-  // the label stays a beat, then blinks out (whole frames, no alpha)
+  shine.end();
+  // the label blinks out with the pof (whole frames, no alpha)
+  const lab = labelRef;
   void (async () => {
-    await sleep(sc, 380);
-    for (let i = 0; i < 3 && label.active; i++) {
-      label.setVisible(false);
-      await sleep(sc, 50);
-      label.setVisible(true);
-      await sleep(sc, 50);
+    for (let i = 0; i < 3 && lab && lab.active; i++) {
+      lab.setVisible(false);
+      await sleep(sc, 40);
+      lab.setVisible(true);
+      await sleep(sc, 40);
     }
-    label.destroy();
+    lab?.destroy();
+    if (label.active) label.destroy();
   })();
   await (L?.landed() ?? Promise.resolve());
+}
+
+/**
+ * The label's shine: a gold-white 4-point glint that runs along the top edge of the label (w px
+ * wide) and ends in a sparkle burst at its right end, on the chime (HUD space).
+ */
+function labelShine(scene: Phaser.Scene, x: number, y: number, w: number): { end(): void } {
+  const r = new Raster(scene, x - w / 2 - 8, y - 14, w + 16, 28, DEPTH.HUD + 11);
+  const stop = onFrame(scene, (_dt, el) => {
+    r.begin();
+    const t = el / 220;
+    if (t < 1) {
+      const gx = ri(x - w / 2 + w * t);
+      const gy = ri(y - 5);
+      r.px(gx, gy, PAL.white);
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) r.px(gx + dx, gy + dy, PAL.gold4);
+      r.px(gx - 3, gy + 1, PAL.gold3);
+    } else if (t < 1.8) {
+      // the sparkle: a 4-point star that flares and shrinks
+      const k = t < 1.25 ? 3 : t < 1.5 ? 2 : 1;
+      const sx = ri(x + w / 2 - 2);
+      const sy = ri(y - 6);
+      r.px(sx, sy, PAL.white);
+      for (let i = 1; i <= k; i++) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) r.px(sx + dx * i, sy + dy * i, i === k ? PAL.gold3 : PAL.gold4);
+      if (k >= 2) for (const [dx, dy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) r.px(sx + dx, sy + dy, PAL.gold3);
+    }
+    r.end();
+    return el < 500;
+  });
+  return {
+    end() {
+      stop();
+      r.destroy();
+    },
+  };
 }
 
 /** A gold ring of light round the pillow on the panel (one stepped ring). */
@@ -1243,5 +1415,51 @@ if (LOOK_V3)
     },
     { priority: 20, name: 'kart-b:wisp_imp:effect' },
   );
+
+// ================================================================ the clutch: no idle after the lethal blow
+
+/**
+ * The engine's activation breaks the battle kit's consequence scan, so the blow that kills the wisp
+ * plays as a non-lethal reaction and the body would spring back to idle — alive again for a beat —
+ * before the effect arrives. Here: when a battle's wisp (target or attacker) has its own activation
+ * coming in the same batch, the moment its hit reaction lets go of the sprite it is held in the
+ * pillow's HUG pose (special f1: eyes shut, clutching itself), which the effect hook then plays on
+ * from. One watcher per battle, ends on the hold, the unit leaving, or after 4 s.
+ */
+const clutched = new WeakSet<MonsterUnit>();
+const CLUTCH_FRAME = 1;
+if (LOOK_V3)
+  registerObserver((ev, ctx) => {
+    if (ev.type !== 'battle') return;
+    const i0 = ctx.events.indexOf(ev);
+    if (i0 < 0) return;
+    const uids = [ev.targetUid, ev.attackerUid].filter((x): x is number => typeof x === 'number');
+    for (const uid of uids) {
+      if (ctx.cardId(uid) !== ID) continue;
+      let comes = false;
+      for (let i = i0 + 1; i < ctx.events.length; i++) {
+        const e = ctx.events[i];
+        if (e.type === 'battle') break;
+        if (e.type === 'activate' && e.kind === 'monsterEffect' && e.uid === uid) {
+          comes = true;
+          break;
+        }
+      }
+      const u = ctx.unit(uid);
+      if (!comes || !live(u)) continue;
+      let struck = false;
+      onFrame(ctx.scene, (_dt, el) => {
+        if (!live(u) || u.retired || el > 4000) return false;
+        const a = u.frameInfo().anim;
+        if (a === 'hit' || a === 'hitHeavy' || a === 'hitMagic') struck = true;
+        else if (struck && a === 'idle') {
+          u.pose('special', CLUTCH_FRAME);
+          clutched.add(u);
+          return false;
+        }
+        return true;
+      });
+    }
+  });
 
 export type { GameEvent };

@@ -253,14 +253,14 @@ export async function shrinkToSeed(sc: Phaser.Scene, cardId: MonsterId, at: XY, 
         const c = e > 0.85 ? PAL.void4 : e > 0.5 ? (p.c === PAL.void0 || p.c === PAL.void1 ? PAL.void2 : PAL.void3) : p.c;
         g.px(x, y, c);
       }
-      if (k > 0.6) drawSeed(g, seedAt, k > 0.85 ? 2 : 1);
+      if (k > 0.6) drawSeed(g, seedAt, k > 0.92 ? 3 : k > 0.78 ? 2 : 1);
     });
   });
   r.destroy();
 }
 
-/** The light seed itself: a violet drop (void3 rim, void4 heart, a gold4 core on size 2). */
-export function drawSeed(g: Raster, at: XY, size: 1 | 2 = 2): void {
+/** The light seed itself: a violet drop (void3 rim, void4 heart, a gold4 core on size ≥ 2; size 3 = the flying seed). */
+export function drawSeed(g: Raster, at: XY, size: 1 | 2 | 3 = 2): void {
   const { x, y } = rint(at);
   if (size === 1) {
     g.px(x, y, PAL.void4);
@@ -268,6 +268,19 @@ export function drawSeed(g: Raster, at: XY, size: 1 | 2 = 2): void {
     g.px(x - 1, y, PAL.void3);
     g.px(x + 1, y, PAL.void3);
     g.px(x, y + 1, PAL.void3);
+    return;
+  }
+  if (size === 3) {
+    // a 5×6 teardrop: void2 rim, void3 body, void4 heart, gold4 core (the brightest pixel of the moment)
+    for (let dy = -3; dy <= 2; dy++)
+      for (let dx = -2; dx <= 2; dx++) {
+        const r = Math.abs(dx) + Math.max(0, -dy - 1) + Math.max(0, dy);
+        if (r > 2 || (dy === -3 && dx !== 0)) continue;
+        g.px(x + dx, y + dy, r === 2 ? PAL.void2 : r === 1 ? PAL.void3 : PAL.void4);
+      }
+    g.px(x, y - 1, PAL.void4);
+    g.px(x, y, PAL.gold4);
+    g.px(x - 1, y - 1, PAL.gold3);
     return;
   }
   for (const [dx, dy] of [[0, -2], [-1, -1], [1, -1], [-1, 0], [1, 0], [0, 1]] as const) g.px(x + dx, y + dy, PAL.void3);
@@ -282,7 +295,7 @@ export function drawSeed(g: Raster, at: XY, size: 1 | 2 = 2): void {
 export async function seedFlight(sc: Phaser.Scene, from: XY, to: () => XY, ms: number, lift: number, depth: number, R: Rng): Promise<void> {
   const r = new Raster(sc, 0, 0, 640, 360, depth);
   const sp = new Sparks(sc, depth - 0.1);
-  const light = lightPool(sc, from.x, from.y, { color: PAL.void3, spill: PAL.void2, radius: 10, floorY: from.y + 14, air: 0.9, intensity: 0.8, anim: 'flicker', fadeIn: 40 });
+  const light = lightPool(sc, from.x, from.y, { color: PAL.void3, spill: PAL.void2, radius: 14, floorY: from.y + 14, air: 0.9, intensity: 1, anim: 'flicker', fadeIn: 40 });
   const path = (k: number, t: XY): XY => {
     const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
     return { x: lerp(from.x, t.x, e), y: lerp(from.y, t.y, e) - Math.sin(Math.PI * e) * lift };
@@ -298,20 +311,23 @@ export async function seedFlight(sc: Phaser.Scene, from: XY, to: () => XY, ms: n
       sp.add({ x: p.x, y: p.y, vx: (R() - 0.5) * 16, vy: 8 + R() * 12, drag: 2, life: 200 + R() * 140, colors: [PAL.void4, PAL.void3, PAL.void2, PAL.void1], shape: 'px', fadeAt: 1, flicker: R() < 0.5 });
     }
     r.draw((g) => {
-      // the trail: beads back along the arc (every ≈ 4 px of path), dimmer as they age — never a straight streak
+      // the trail: beads back along the arc (every ≈ 3 px of path), stepping down the ramp — never a straight streak
       let prev = p;
-      for (let j = 1; j <= 7; j++) {
-        const q = rint(path(Math.max(0, k - j * 0.035), t));
+      for (let j = 1; j <= 12; j++) {
+        const q = rint(path(Math.max(0, k - j * 0.03), t));
         if (Math.abs(q.x - prev.x) + Math.abs(q.y - prev.y) < 3 && j > 1) continue;
-        g.px(q.x, q.y, j < 3 ? PAL.void4 : j < 5 ? PAL.void3 : PAL.void2);
-        if (j < 3) g.px(q.x, q.y + 1, PAL.void2);
+        const c = j < 4 ? PAL.void4 : j < 7 ? PAL.void3 : j < 10 ? PAL.void2 : PAL.void1;
+        g.px(q.x, q.y, c);
+        if (j < 7) g.px(q.x, q.y + 1, j < 4 ? PAL.void3 : PAL.void2);
+        if (j < 3) g.px(q.x + 1, q.y, PAL.void3);
         prev = q;
       }
-      // the halo (a dithered void2 ring that turns), the seed, one turning glint
-      g.ring(p.x, p.y - 1, 4, 4, PAL.void2, 0.5);
-      drawSeed(g, p, 2);
+      // the halo (a dithered void2 ring that turns), the seed, two turning glints
+      g.ring(p.x, p.y - 1, 6, 5, PAL.void2, 0.5);
+      drawSeed(g, p, 3);
       const a = el * 0.02;
-      g.px(Math.round(p.x + Math.cos(a) * 3), Math.round(p.y - 1 + Math.sin(a) * 3), PAL.void4);
+      g.px(Math.round(p.x + Math.cos(a) * 5), Math.round(p.y - 1 + Math.sin(a) * 4), PAL.void4);
+      g.px(Math.round(p.x - Math.cos(a) * 5), Math.round(p.y - 1 - Math.sin(a) * 4), PAL.void3);
     });
   });
   void light.fadeOut(120);
@@ -472,7 +488,12 @@ export function pollen(sc: Phaser.Scene, at: XY, n: number, R: Rng, depth: numbe
   for (let i = 0; i < n; i++) {
     const a = R() * TAU;
     const v = 30 + R() * 60;
-    sp.add({ x: at.x, y: at.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.6 - 30, drag: 3.2, ay: -18, life: 420 + R() * 300, delay: Math.floor(R() * 40), colors: i % 4 === 0 ? [PAL.gold4, PAL.void4, PAL.void3, PAL.void2] : [PAL.void4, PAL.void3, PAL.void2, PAL.void1], shape: i % 5 === 0 ? 'plus' : 'px', fadeAt: 1, flicker: i % 3 === 0 });
+    sp.add({ x: at.x, y: at.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.6 - 30, drag: 3.2, ay: -18, life: 420 + R() * 300, delay: Math.floor(R() * 40), colors: i % 4 === 0 ? [PAL.gold4, PAL.void4, PAL.void3, PAL.void2] : [PAL.void4, PAL.void3, PAL.void2, PAL.void1], shape: i % 5 === 0 ? 'plus' : i % 7 === 0 ? 'sq' : 'px', size: i % 7 === 0 ? 2 : 1, fadeAt: 1, flicker: i % 3 === 0 });
+  }
+  // a slow cloud of pollen motes that hangs over the hit and drifts up (the bloom stays readable after the hit-stop)
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * TAU + R() * 0.4;
+    sp.add({ x: at.x + Math.cos(a) * 6, y: at.y + Math.sin(a) * 3 - 2, vx: Math.cos(a) * 14, vy: -12 - R() * 10, drag: 1.2, ay: -6, life: 760 + R() * 360, delay: 60 + Math.floor(R() * 120), colors: [PAL.void4, PAL.void3, PAL.void3, PAL.void2], shape: 'puff', size: 1.5, fadeAt: 1, flicker: i % 2 === 0 });
   }
   sp.release();
   // the burst's ring: one stepped violet ring (≤ 1 ring)

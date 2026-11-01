@@ -85,31 +85,36 @@ const LOOSE_PATH: (Feather | null)[] = [
 export function idlePose(f: number): Pose {
   const k = ((f % IDLE_N) + IDLE_N) % IDLE_N;
   const t = k / IDLE_N;
-  // the float lives in the hood (it rises a pixel on the in-breath, once per loop, while the loose
-  // feather is home) and in the sway of the tail under it: the sheet never shifts as a whole, so a
-  // blow in any idle phase lands on a body that is still mostly idle f0 (HA-21 phase)
-  const hy = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -0.4, -0.8, -1, -1, -0.7, -0.3][k];
+  // the lazy figure eight: X once per loop, Y twice (the hood leads, the skirt / plumes / tail lag)
+  const X = (lag = 0) => sin((t - lag) * TAU);
+  const Y = (lag = 0) => -sin(2 * (t - lag) * TAU);
   const lp = LOOSE_PATH[k];
-  // the eyes follow the feather down and back
   const look = lp ? -1 : 0;
   const lookY = lp && lp.y > 9 ? 1 : 0;
   const eyes = k === 17 ? 'blink' : k === 18 ? 'shut' : 'open';
   return pose({
-    hy,
+    hx: Math.round(IA.hx * X()),
+    hy: Math.round(IA.hy * Y()),
+    sh: Math.round(-IA.sq * Y(0.05)),
+    sw: Math.round(IA.sq * Y(0.05)),
+    len: Math.round(0.6 * -Y(0.1) + 0.5),
+    drift: -IA.drift * X(0.1),
     ripple: (2 * t) % 1,
-    rippleAmp: 0.62,
-    tailSwing: 1.3 * (sin((t - 0.15) * TAU) - sin(-0.15 * TAU)),
-    tailCurl: 0.6 + 0.22 * (sin((2 * t - 0.3) * TAU) - sin(-0.3 * TAU)),
-    crestX: 1.3 * (sin((t - 0.1) * TAU) - sin(-0.1 * TAU)),
-    crestY: 0.8 * (sin((2 * t - 0.2) * TAU) - sin(-0.2 * TAU)),
-    handN: Hd(0, 0, 10 * (sin((2 * t - 0.1) * TAU) - sin(-0.1 * TAU))),
-    handF: Hd(0, Math.round(0.9 * (sin((t - 0.2) * TAU) - sin(-0.2 * TAU))), 14 * (sin((t - 0.2) * TAU) - sin(-0.2 * TAU))),
+    rippleAmp: IA.rip,
+    tailSwing: -IA.tail * X(0.15),
+    tailCurl: 0.6 + 0.3 * Y(0.15),
+    crestX: -IA.crest * X(0.08),
+    crestY: 1.4 * Y(0.08),
+    handN: Hd(0, Math.round(Y(0.05)), IA.hand * sin(2 * t * TAU), 6 * Math.max(0, sin(2 * t * TAU))),
+    handF: Hd(0, Math.round(Y(0.12)), IA.hand * 0.7 * sin(2 * (t - 0.1) * TAU)),
     eyes,
     lookX: look,
     lookY,
     loose: lp ?? REST_FEATHER,
   });
 }
+/** idle amplitudes (px / deg): hood figure eight, squash, skirt drift, plume wave, tail, cowlick, hands */
+const IA = { hx: 1.2, hy: 1.2, sq: 0.6, drift: 0.8, rip: 1.0, tail: 3, crest: 2.5, hand: 35 };
 
 const IDLE_HOLDS = [100, 90, 90, 100, 110, 100, 90, 90, 100, 110, 100, 90, 90, 100, 110, 100, 90, 90, 100, 110];
 
@@ -138,17 +143,29 @@ const GUARD_BASE: Partial<Pose> = {
 export function guardPose(f: number): Pose {
   const k = ((f % GUARD_N) + GUARD_N) % GUARD_N;
   const t = k / GUARD_N;
-  const tremble = k % 2 === 1 ? 1 : 0;
+  // a frightened little body: a quick shivering breath (the hood bobs and squashes every other
+  // frame), the plumes bristle and rattle in a fast wave, both hands tremble over the face while
+  // the eyes peek left, right, up between them; one blink
+  const odd = k % 2 === 1;
+  const breath = [0, 0, -1, -1, 0, 0, 0, 0][k];
+  const peek: [number, number][] = [[0, 0], [1, 0], [1, -1], [0, 0], [-1, 0], [-1, 0], [0, -1], [1, 0]];
   return pose({
     ...GUARD_BASE,
+    hy: breath,
+    sh: -2 + (breath ? 1 : 0),
+    sw: 1 - (breath ? 1 : 0),
     ripple: t,
-    rippleAmp: 0.55,
-    handN: Hd(-5, -5 + (k === 3 || k === 4 ? 1 : 0), -62, -12, -1),
-    handF: Hd(7 - tremble, -5, 205, -12, -1),
+    rippleAmp: 0.8,
+    fluff: 1.15,
+    handN: Hd(-5 + (odd ? 1 : -1), -5 + (k === 3 || k === 4 ? 1 : 0), -62 + (odd ? 14 : -10), -12 + (odd ? 8 : 0), -1),
+    handF: Hd(7 + (odd ? -1 : 1), -5 + (k === 1 || k === 6 ? -1 : 0), 205 + (odd ? -14 : 10), -12 + (odd ? 0 : 8), -1),
     eyes: k === 5 ? 'blink' : 'peek',
-    lookX: k >= 1 && k <= 3 ? 1 : 0,
-    tailSwing: Math.round(1.2 * sin((t - 0.25) * TAU)),
-    crestX: -2 + (k === 6 || k === 7 ? 1 : 0),
+    lookX: peek[k][0],
+    lookY: peek[k][1],
+    tailSwing: 2.4 * sin((t - 0.25) * TAU),
+    tailCurl: 0.85 + (odd ? 0.15 : -0.1),
+    crestX: -2 + [0, 1, 2, 1, 0, -1, 0, 1][k],
+    crestY: 1 + (odd ? -1 : 0),
   });
 }
 
@@ -170,19 +187,27 @@ const STRUCK_HEAVY: Partial<Pose> = { eyes: 'x', hollow: -1, crestX: -3, crestY:
 const ATTACK: Table = {
   marks: { charge: 1, release: 5, impact: 5, contact: 6, recover: 8 },
   keys: [
-    [70, { eyes: 'squint', lookX: 1, handN: Hd(-1, 0, 25), handF: Hd(1, 0, -15) }],
-    [90, { puff: 0.3, fluff: 0.5, eyes: 'squint', lookX: 1, by: 1, sh: -1, handN: Hd(-2, -1, 50, 8), handF: Hd(2, -1, -35, 8), crestX: -1, tailCurl: 0.8 }],
-    [110, { puff: 0.65, fluff: 1.2, eyes: 'squint', lookX: 1, by: 0, handN: Hd(-1, -2, 70, 16, 1), handF: Hd(1, -2, -55, 16, 1), crestX: -2, crestY: -1, tailCurl: 0.9, tailLift: 1, rippleAmp: 0.6, ripple: 0.3 }],
-    [170, { puff: 1, fluff: 2, eyes: 'squint', lookX: 1, by: -1, hollow: 1, handN: Hd(0, -3, 85, 24, 1), handF: Hd(0, -3, -70, 24, 1), crestX: -2, crestY: -2, tailCurl: 1, tailLift: 2, rippleAmp: 1.2, ripple: 0.6 }],
-    [50, { puff: 1, fluff: 2, eyes: 'squint', lookX: 1, by: -1, bx: -1, hx: -1, hollow: 1, handN: Hd(-1, -3, 95, 26, 1), handF: Hd(-1, -3, -80, 26, 1), crestX: -3, crestY: -2, tailCurl: 1, tailLift: 2, drift: 1, rippleAmp: 1.2, ripple: 0.8 }],
-    [60, { puff: 0.15, fluff: 1.5, eyes: 'wide', lookX: 1, bx: 2, hx: 1, by: 0, hollow: 2, drift: -3, handN: Hd(3, -1, -20, 10, 1), handF: Hd(4, -2, 140, 10), crestX: -3, crestY: 1, tailSwing: -3, tailCurl: 0.3, bursts: [burst(0, 7, 8, 1, 0, 0.55, 2.6, 41, 0)] }],
-    [80, { puff: 0, fluff: 1, eyes: 'wide', lookX: 1, bx: 1, by: 0, hollow: 1, drift: -2, handN: Hd(2, -1, -10, 6), handF: Hd(3, -1, 120, 6), crestX: -2, crestY: 1, tailSwing: -2, tailCurl: 0.35, bursts: [burst(1, 7, 8, 1, 0, 0.55, 2.6, 41, 0), burst(0, 4, 7, 3, 0.1, 0.4, 2.2, 43, 0)] }],
-    [90, { fluff: 0.6, eyes: 'open', lookX: 1, bx: 1, by: -1, sw: -1, sh: 1, drift: 0, handN: Hd(1, 0, 5), handF: Hd(2, 0, 60), crestX: 1, crestY: 0, tailSwing: 1, tailCurl: 0.5, bursts: [burst(2, 7, 8, 1, 0, 0.55, 2.6, 41, 0), burst(1, 4, 7, 3, 0.1, 0.4, 2.2, 43, 0)] }],
-    [100, { fluff: 0.3, eyes: 'open', lookX: 1, bx: 0, by: -1, sw: -1, sh: 1, drift: 1.5, handN: Hd(0, 1, 15), handF: Hd(1, 1, 20), crestX: 2, crestY: 0, tailSwing: 2, tailCurl: 0.7, rippleAmp: 0.8, ripple: 0.1, bursts: [burst(3, 4, 7, 3, 0.1, 0.4, 2.2, 43, 0)] }],
-    [100, { eyes: 'blink', bx: 0, by: 1, sw: 1, sh: -1, drift: 0.5, handN: Hd(0, 0, -6), handF: Hd(0, 0, -8), crestX: 0, crestY: 1, tailSwing: -1, tailCurl: 0.55, rippleAmp: 0.8, ripple: 0.35 }],
-    [110, { by: 0, sw: 0, sh: 1, drift: -0.6, handN: Hd(0, 0, 6), handF: Hd(0, 0, 6), crestX: -1, tailSwing: 1, tailCurl: 0.65, rippleAmp: 0.6, ripple: 0.6 }],
-    [120, { by: 0, sh: 0, drift: 0.4, crestX: 0.6, tailSwing: -0.5, rippleAmp: 0.4, ripple: 0.85 }],
-    [130, { drift: -0.2, crestX: -0.3, tailSwing: 0.3 }],
+    // a sharp little inhale: it shrinks and squints at the target
+    [70, { eyes: 'squint', lookX: 1, by: 1, sh: -1, sw: 1, len: -1, handN: Hd(-1, 1, 40), handF: Hd(1, 1, -30), crestX: -1, crestY: 1, tailCurl: 0.8 }],
+    // charge: it swells, the plumes start to fan out round it
+    [90, { puff: 0.4, fluff: 0.9, eyes: 'squint', lookX: 1, by: 0, handN: Hd(-2, -1, 60, 10), handF: Hd(2, -1, -45, 10), crestX: -2, crestY: -1, tailCurl: 0.6, tailLift: 1, rippleAmp: 0.8, ripple: 0.2 }],
+    [110, { puff: 0.75, fluff: 1.7, eyes: 'squint', lookX: 1, by: -1, hollow: 1, handN: Hd(-2, -3, 80, 20, 1), handF: Hd(2, -3, -65, 20, 1), crestX: -3, crestY: -2, tailCurl: 0.3, tailLift: 2, tailSwing: -2, rippleAmp: 1.2, ripple: 0.45 }],
+    // the full 130 % puff, every plume fanned out radially, the tail uncurled behind, hands spread
+    [170, { puff: 1, fluff: 2.4, eyes: 'squint', lookX: 1, by: -1, hollow: 1, handN: Hd(-1, -4, 95, 30, 1), handF: Hd(1, -4, -85, 30, 1), crestX: -3, crestY: -1, tailCurl: 0, tailLift: 3, tailSwing: -4, rippleAmp: 1.5, ripple: 0.7 }],
+    // rock back (the wind-up): hood leans away, the skirt swings forward under it
+    [50, { puff: 1, fluff: 2.4, eyes: 'squint', lookX: 1, by: -1, bx: -2, hx: -2, hollow: 1, drift: 3, handN: Hd(-2, -4, 110, 30, 1), handF: Hd(-2, -4, -95, 30, 1), crestX: -4, crestY: -1, tailCurl: 0, tailLift: 3, tailSwing: -1, rippleAmp: 1.5, ripple: 0.9 }],
+    // RELEASE — the snap: the hood thrust forward and stretched long, plumes and tail whipped back
+    [60, { puff: 0.25, fluff: 1.6, eyes: 'wide', lookX: 1, bx: 2, hx: 3, by: 0, sw: 3, sh: -2, hollow: 3, drift: -6, handN: Hd(4, -2, -15, 14, 1), handF: Hd(3, -2, 150, 14), crestX: -5, crestY: 2, tailSwing: -4, tailCurl: 0, tailLift: 1, rippleAmp: 1.2, ripple: 0.1, bursts: [burst(0, 7, 9, 1, 0, 0.55, 2.6, 41, 0)] }],
+    // contact: the smear holds a frame, the second volley leaves
+    [70, { puff: 0.05, fluff: 1.2, eyes: 'wide', lookX: 1, bx: 2, hx: 2, by: 0, sw: 2, sh: -1, hollow: 2, drift: -5, handN: Hd(3, -1, -5, 8), handF: Hd(3, -1, 130, 8), crestX: -4, crestY: 2, tailSwing: -5, tailCurl: 0.1, bursts: [burst(1, 7, 9, 1, 0, 0.55, 2.6, 41, 0), burst(0, 5, 8, 3, 0.1, 0.4, 2.2, 43, 0)] }],
+    // recoil squash: knocked back by its own volley, flattened
+    [90, { fluff: 0.8, eyes: 'squeeze', bx: -1, hx: -2, by: 2, sw: 2, sh: -3, len: -2, drift: 3, hollow: -1, handN: Hd(-1, 1, 60, 6), handF: Hd(-1, 1, -50, 6), crestX: 3, crestY: 2, tailSwing: 3, tailCurl: 0.5, rippleAmp: 1, ripple: 0.4, bursts: [burst(2, 7, 9, 1, 0, 0.55, 2.6, 41, 0), burst(1, 5, 8, 3, 0.1, 0.4, 2.2, 43, 0)] }],
+    // recover: the 3-beat wobble that settles (tall → squat → tall)
+    [100, { fluff: 0.4, eyes: 'open', lookX: 1, bx: 0, hx: 1, by: -2, sw: -1, sh: 2, len: 1, drift: -2, handN: Hd(0, -2, -30, 6), handF: Hd(0, -2, 40, 6), crestX: -2, crestY: -2, tailSwing: -2, tailCurl: 0.8, rippleAmp: 0.9, ripple: 0.7, bursts: [burst(3, 5, 8, 3, 0.1, 0.4, 2.2, 43, 0)] }],
+    [100, { eyes: 'blink', hx: -1, by: 1, sw: 1, sh: -2, len: -1, drift: 1.5, handN: Hd(0, 1, 30), handF: Hd(0, 1, -25), crestX: 2, crestY: 1, tailSwing: 2, tailCurl: 0.45, rippleAmp: 0.8, ripple: 0.95 }],
+    [110, { eyes: 'open', hx: 1, by: -1, sw: -1, sh: 1, drift: -1, handN: Hd(0, -1, -15), handF: Hd(0, -1, 15), crestX: -1, crestY: -1, tailSwing: -1, tailCurl: 0.7, rippleAmp: 0.6, ripple: 0.2 }],
+    [120, { eyes: 'happy', by: 1, sw: 1, sh: -1, drift: 0.6, handN: Hd(0, 0, 12), handF: Hd(0, 0, -10), crestX: 1, tailSwing: 1, tailCurl: 0.55, rippleAmp: 0.5, ripple: 0.45 }],
+    [130, { eyes: 'open', drift: -0.3, crestX: -0.4, tailSwing: -0.5, handN: Hd(0, 0, -5) }],
     [140, {}],
   ],
 };
@@ -210,10 +235,12 @@ const HIT: Table = {
   marks: { impact: 0, contact: 0, recover: 3 },
   keys: [
     [50, { eyes: 'squeeze', hollow: -1, crestX: -2, crestY: 1, handN: Hd(0, -1, -15) }],
-    [60, { hx: -2, bx: -2, drift: 2.5, sw: 1, sh: -1, eyes: 'squeeze', hollow: -1, fluff: 1, crestX: -3, crestY: 2, handN: Hd(-1, -2, -45, 10), handF: Hd(-1, -2, 45, 10), tailSwing: 3, tailCurl: 0.3, rippleAmp: 1.2, ripple: 0.2, bursts: [burst(0, 3, 9, 4, Math.PI * 0.85, 0.9, 1.2, 61, 0.2)] }],
-    [130, { hx: -1, bx: -1, drift: 0.5, sw: -1, sh: 1, eyes: 'blink', fluff: 0.5, crestX: 1, crestY: 0, handN: Hd(0, 0, 15), handF: Hd(0, 0, -10), tailSwing: -1, tailCurl: 0.5, rippleAmp: 0.8, ripple: 0.5, bursts: [burst(1, 3, 9, 4, Math.PI * 0.85, 0.9, 1.2, 61, 0.2)] }],
-    [100, { hx: 0, bx: 0, drift: -0.6, sw: 0, sh: -1, eyes: 'open', crestX: -0.6, handN: Hd(0, 0, -6), handF: Hd(0, 0, 6), tailSwing: 1, tailCurl: 0.65, rippleAmp: 0.5, ripple: 0.8, bursts: [burst(3, 3, 9, 4, Math.PI * 0.85, 0.9, 1.2, 61, 0.2)] }],
-    [110, { drift: 0.3, sh: 0, crestX: 0.4, tailSwing: -0.4 }],
+    // knocked away: the body tilts back 4 px and squashes, the plumes and tail are flung forward,
+    // four whole feathers pop out of it
+    [60, { hx: -4, bx: -3, by: -1, drift: 5, sw: 2, sh: -2, len: -1, eyes: 'squeeze', hollow: -1, fluff: 2, crestX: -4, crestY: 3, handN: Hd(-2, -3, -60, 16), handF: Hd(-2, -3, 60, 16), tailSwing: 5, tailCurl: 0.1, rippleAmp: 1.4, ripple: 0.2, loose: Fe(-13, -2, 205, 6, 1), free: [Fe(-14, -9, 230, 5.5, 1), Fe(9, 6, 20, 5.5, -1), Fe(-3, -11, 280, 5, 1)], bursts: [burst(0, 4, 9, 4, Math.PI * 0.85, 0.9, 1.2, 61, 0.2)] }],
+    [130, { hx: -2, bx: -2, drift: 2, sw: -1, sh: 1, eyes: 'blink', fluff: 1, crestX: 2, crestY: 0, handN: Hd(0, 0, 25), handF: Hd(0, 0, -20), tailSwing: -2, tailCurl: 0.4, rippleAmp: 1, ripple: 0.5, loose: Fe(-15, 3, 170, 6, -1), free: [Fe(-16, -9, 200, 5.5, -1), Fe(12, 8, 60, 5.5, 1), Fe(-5, -12, 250, 5, -1)], bursts: [burst(1, 4, 9, 4, Math.PI * 0.85, 0.9, 1.2, 61, 0.2)] }],
+    [100, { hx: 0, bx: -1, drift: -1, sw: 1, sh: -1, eyes: 'open', crestX: -1, handN: Hd(0, 0, -10), handF: Hd(0, 0, 10), tailSwing: 1.5, tailCurl: 0.65, rippleAmp: 0.6, ripple: 0.8, loose: Fe(-12, 2, 160, 6.5, -1.2), free: [Fe(-18, -6, 175, 5.5, 1), Fe(13, 13, 100, 5.5, -1)], bursts: [burst(3, 4, 9, 4, Math.PI * 0.85, 0.9, 1.2, 61, 0.2)] }],
+    [110, { drift: 0.4, sh: 0, crestX: 0.5, tailSwing: -0.5, free: [Fe(-18, 0, 150, 5.5, -1)] }],
     [120, {}],
   ],
 };
@@ -222,9 +249,9 @@ const HIT_HEAVY: Table = {
   marks: { impact: 0, contact: 0, recover: 3 },
   keys: [
     [50, { ...STRUCK_HEAVY }],
-    [60, { ...STRUCK_HEAVY, bx: -3, by: -1, drift: 4, sw: 2, sh: -2, fluff: 2, eyes: 'x', handN: Hd(-2, -3, -60, 20), handF: Hd(-2, -3, 60, 20), tailSwing: 4, tailCurl: 0.2, rippleAmp: 1.5, ripple: 0.2, loose: Fe(-12, -1, 200, 6, 1), bursts: [burst(0, 6, 8, 3, Math.PI * 0.9, 1.4, 1.4, 71, 0.18)] }],
-    [130, { hx: -1, bx: -3, by: 3, drift: 2, sw: 1, sh: -2, fluff: 1.5, eyes: 'dizzy', hollow: -1, crestX: -1, crestY: 2, handN: Hd(-1, 2, 50), handF: Hd(-1, 2, -40), tailSwing: 1, tailCurl: 0.4, rippleAmp: 1.2, ripple: 0.45, loose: Fe(-14, 3, 170, 6, -1), bursts: [burst(1, 6, 8, 3, Math.PI * 0.9, 1.4, 1.4, 71, 0.18)] }],
-    [100, { bx: -2, by: 2, drift: 0, sw: 1, sh: -1, fluff: 1, eyes: 'dizzy', crestX: 1, handN: Hd(0, 1, 30), handF: Hd(0, 1, -20), tailSwing: -1, tailCurl: 0.5, rippleAmp: 1, ripple: 0.7, loose: Fe(-11, 2, 158, 6.5, -1.2), bursts: [burst(3, 5, 8, 3, Math.PI * 0.9, 1.4, 1.4, 71, 0.18)] }],
+    [60, { ...STRUCK_HEAVY, bx: -4, hx: -2, by: -1, drift: 6, free: [Fe(-13, -9, 230, 6, 1), Fe(10, 5, 15, 5.5, -1), Fe(-2, -11, 280, 5.5, 1), Fe(-15, 4, 190, 5.5, -1)], sw: 2, sh: -2, fluff: 2, eyes: 'x', handN: Hd(-2, -3, -60, 20), handF: Hd(-2, -3, 60, 20), tailSwing: 4, tailCurl: 0.2, rippleAmp: 1.5, ripple: 0.2, loose: Fe(-12, -1, 200, 6, 1), bursts: [burst(0, 6, 8, 3, Math.PI * 0.9, 1.4, 1.4, 71, 0.18)] }],
+    [130, { free: [Fe(-16, -11, 205, 6, -1), Fe(12, 9, 70, 5.5, 1), Fe(-4, -12, 250, 5.5, -1), Fe(-17, 8, 160, 5.5, 1)], hx: -1, bx: -3, by: 3, drift: 2, sw: 1, sh: -2, fluff: 1.5, eyes: 'dizzy', hollow: -1, crestX: -1, crestY: 2, handN: Hd(-1, 2, 50), handF: Hd(-1, 2, -40), tailSwing: 1, tailCurl: 0.4, rippleAmp: 1.2, ripple: 0.45, loose: Fe(-14, 3, 170, 6, -1), bursts: [burst(1, 6, 8, 3, Math.PI * 0.9, 1.4, 1.4, 71, 0.18)] }],
+    [100, { free: [Fe(-17, -8, 175, 6, 1), Fe(13, 14, 110, 5.5, -1), Fe(-18, 13, 140, 5.5, -1)], bx: -2, by: 2, drift: 0, sw: 1, sh: -1, fluff: 1, eyes: 'dizzy', crestX: 1, handN: Hd(0, 1, 30), handF: Hd(0, 1, -20), tailSwing: -1, tailCurl: 0.5, rippleAmp: 1, ripple: 0.7, loose: Fe(-11, 2, 158, 6.5, -1.2), bursts: [burst(3, 5, 8, 3, Math.PI * 0.9, 1.4, 1.4, 71, 0.18)] }],
     [110, { bx: -1, by: -1, sw: -1, sh: 1, fluff: 0.5, eyes: 'blink', crestX: 1.5, crestY: -1, handN: Hd(0, -1, -10), handF: Hd(0, -1, 10), tailSwing: 1, tailCurl: 0.6, rippleAmp: 0.6, ripple: 0.95 }],
     [120, { bx: 0, by: 0, sw: 0, sh: -1, eyes: 'open', crestX: -0.6, tailSwing: -0.6 }],
     [130, { sh: 0, crestX: 0.3, tailSwing: 0.3 }],
@@ -246,21 +273,46 @@ const HIT_MAGIC: Table = {
   ],
 };
 
-// summon: one feather rocks down, the fountain builds the ghost, "bö!" ----------------------
+// summon: one feather rocks down, the whirl of feathers builds the ghost, "bö!" -----------------
 const GONE: Partial<Pose> = { erode: 1, erodeDir: 1, seed: 4, loose: null };
+/**
+ * The whirl: n whole quilled feathers on a helix round the body (skirt-relative), rising and
+ * tightening frame by frame; the far half goes behind the body. `t` is the frame phase.
+ */
+function whirl(n: number, t: number, r: number, yTop: number, yBot: number): Feather[] {
+  const out: Feather[] = [];
+  for (let i = 0; i < n; i++) {
+    const u = i / n;
+    const a = (u + t * 0.23) * TAU * 1.6;
+    const y = yBot + (yTop - yBot) * u + Math.sin(a) * r * 0.32;
+    const rr = r * (1.05 - 0.3 * u);
+    const x = 1 + Math.cos(a) * rr;
+    const tx = -Math.sin(a) * rr;
+    const ty = Math.cos(a) * rr * 0.32 - 4;
+    const ang = (Math.atan2(ty, tx) * 180) / Math.PI;
+    out.push({ x: Math.round(x), y: Math.round(y), ang: Math.round(ang / 15) * 15, len: 6.5 + (i % 3 === 0 ? 1 : 0), bow: i % 2 ? 1.2 : -1.2, back: Math.sin(a) < 0.45 || Math.abs(Math.cos(a)) < 0.55 });
+  }
+  return out;
+}
+const BIG_FALL = (x: number, y: number, ang: number, bow: number): Feather => ({ x, y, ang, len: 11, bow, w: 4.6 });
 const SUMMON: Table = {
   marks: { land: 9 },
   keys: [
-    [100, { ...GONE, free: [Fe(0, -12, 165, 8, -1.4)] }],
-    [100, { ...GONE, free: [Fe(-4, -4, 205, 8, 1.4)] }],
-    [100, { ...GONE, free: [Fe(3, 5, 150, 8, -1.4)] }],
-    [90, { ...GONE, free: [Fe(-3, 14, 200, 8, 1.2)] }],
-    [80, { ...GONE, free: [Fe(-2, 24, 172, 8, -0.4)], swirl: 0.15, swirlT: 0, swirlRise: 0 }],
-    [70, { ...GONE, erode: 0.92, swirl: 0.5, swirlT: 0.25, swirlRise: 3, by: 3, sh: -2, bursts: [burst(0, 6, 0, 18, -Math.PI / 2, 1.6, 1.4, 81, 0.1)] }],
-    [70, { ...GONE, erode: 0.7, swirl: 0.85, swirlT: 0.55, swirlRise: 9, by: 2, sh: -1, eyes: 'blink', bursts: [burst(1, 6, 0, 18, -Math.PI / 2, 1.6, 1.4, 81, 0.1)] }],
-    [70, { ...GONE, erode: 0.45, swirl: 1, swirlT: 0.85, swirlRise: 15, by: 1, eyes: 'open', bursts: [burst(2, 6, 0, 18, -Math.PI / 2, 1.6, 1.4, 81, 0.1)] }],
-    [80, { ...GONE, erode: 0.18, swirl: 0.7, swirlT: 1.15, swirlRise: 20, by: -1, sh: 1, eyes: 'open', loose: REST_FEATHER }],
-    [90, { by: 2, sh: -2, sw: 2, len: -2, eyes: 'shut', fluff: 1, swirl: 0.3, swirlT: 1.4, swirlRise: 24, handN: Hd(-1, 1, 45, 10), handF: Hd(1, 1, -35, 10), tailCurl: 0.9, crestY: 2 }],
+    [100, { ...GONE, free: [BIG_FALL(2, -14, 160, -2)] }],
+    [100, { ...GONE, free: [BIG_FALL(-6, -6, 210, 2)] }],
+    [100, { ...GONE, free: [BIG_FALL(5, 3, 150, -1.6)] }],
+    [90, { ...GONE, free: [BIG_FALL(-4, 12, 205, 1.6)] }],
+    // touch: it lies on the floor point, the first feathers lift off round it
+    [80, { ...GONE, free: [BIG_FALL(-4, 24, 178, -0.6), ...whirl(4, 0, 9, 18, 27)] }],
+    // the whirl climbs; the face locks in first: two eyes in the middle of the feathers
+    [70, { ...GONE, eyesOnly: true, eyes: 'wide', by: 2, free: whirl(9, 1, 15, -8, 26) }],
+    // the hood and the bare sheet form round the eyes
+    [70, { by: 2, sh: -1, peel: 8, eyes: 'blink', crestY: 2, free: whirl(8, 2, 15, -10, 22) }],
+    // the tail hooks on, the hands, the wing plume shingles on
+    [70, { by: 1, peel: 5, eyes: 'open', loose: null, free: whirl(6, 3, 14, -12, 14) }],
+    // the plumes lay themselves on one by one; the last feathers close in over the crown
+    [80, { by: -1, sh: 1, peel: 2, eyes: 'open', loose: REST_FEATHER, free: whirl(4, 4, 12, -14, 0) }],
+    [90, { by: 2, sh: -2, sw: 2, len: -2, eyes: 'shut', fluff: 1, handN: Hd(-1, 1, 45, 10), handF: Hd(1, 1, -35, 10), tailCurl: 0.9, crestY: 2 }],
     [140, { by: -1, sh: 2, sw: -1, len: 2, eyes: 'wide', hollow: 3, fluff: 1.5, glow: 1, handN: Hd(1, -6, -100, 24, 1), handF: Hd(-1, -6, 260, 24, 1), crestX: 3, crestY: -3, tailCurl: 0.25, rippleAmp: 1.2, ripple: 0.2 }],
     [110, { by: 1, sh: -1, sw: 1, eyes: 'happy', hollow: 0, fluff: 0.5, handN: Hd(0, -1, -15), handF: Hd(0, -1, 25), crestX: -1, crestY: 1, tailCurl: 0.7, rippleAmp: 0.8, ripple: 0.6 }],
     [120, { by: 0, sh: 1, eyes: 'open', crestX: 0.6, tailSwing: -0.6 }],
@@ -271,19 +323,53 @@ const SUMMON: Table = {
 // death: the wind takes it (no event: no pillow, no pof) ----------------------------------------
 const WIND = Math.PI; // backward, away from the attacker
 const SLUMP: Partial<Pose> = { bx: -3, by: 3, drift: 2, sw: 2, sh: -3, len: -2, eyes: 'dizzy', hollow: -1, handN: Hd(0, 3, 60), handF: Hd(0, 3, -50), tailCurl: 0.2, tailSwing: 3, crestX: -3, crestY: 2, loose: null };
+/**
+ * The wind peels it apart front to back, part by part — every peeled part leaves as a whole quilled
+ * feather that tumbles downwind on a pendulum path (they leave the frame to the cinematic's stream):
+ * [frame it peels, start (skirt-relative), its length, its angle].
+ */
+const PEELS: readonly [f: number, x: number, y: number, len: number, ang: number][] = [
+  [2, 2, -14, 6.5, 300], // the cowlick
+  [3, -4, 16, 8, 120], // front plume
+  [3, 2, 12, 7.5, 95], // middle-front plume
+  [4, -8, 11, 8, 135], // middle-back plume
+  [4, 7, 9, 7, 60], // breast plume
+  [5, -10, 5, 8, 160], // the back plume (the wing)
+  [6, -12, 20, 9, 200], // the tail unhooks
+];
+function peeled(f: number): Feather[] {
+  const out: Feather[] = [];
+  PEELS.forEach(([pf, x0, y0, len, ang], i) => {
+    const a = f - pf;
+    if (a < 0 || a > 1) return;
+    // the frame it peels it is lifted clear of the body behind it; one frame later it is caught
+    // higher up and further back, tumbling (then it leaves the frame: the cinematic's stream)
+    const x = (i === 0 ? x0 - 6 - a * 4 : -16 - (i % 2) - a * 3.5);
+    const y = (i === 0 ? y0 - a * 2 : y0 - 4 - a * 5);
+    if (x < -20.5) return;
+    out.push(Fe(x, y, (i === 0 ? ang - 90 : a ? 245 : 120) + (i % 3) * 12 + a * 30 - ang * 0, len + 1, a % 2 ? 1.4 : -1.4));
+  });
+  return out;
+}
 const DEATH: Table = {
   marks: { impact: 0, contact: 0, dissolve: 4 },
   keys: [
     [50, { ...STRUCK_HEAVY }],
     [60, { ...STRUCK_HEAVY, bx: -3, by: -1, drift: 4, sw: 2, sh: -2, fluff: 2, handN: Hd(-2, -3, -60, 20), handF: Hd(-2, -3, 60, 20), tailSwing: 4, tailCurl: 0.2, rippleAmp: 1.5, ripple: 0.2, loose: Fe(-12, -1, 200, 6, 1), bursts: [burst(0, 6, 8, 3, Math.PI * 0.9, 1.4, 1.4, 71, 0.18)] }],
-    [80, { ...SLUMP, fluff: 1.5, rippleAmp: 1.2, ripple: 0.4, free: [Fe(-16, 2, 190, 6, 1)], bursts: [burst(1, 6, 8, 3, Math.PI * 0.9, 1.4, 1.4, 71, 0.18)] }],
-    [90, { ...SLUMP, fluff: 2, rippleAmp: 1.5, ripple: 0.65, erode: 0.12, erodeDir: -1, seed: 6, free: [Fe(-17, 1, 175, 6, -1)], bursts: [burst(0, 5, 6, 2, WIND, 0.5, 1.8, 91, 0.02)] }],
-    [90, { ...SLUMP, fluff: 2, rippleAmp: 1.5, ripple: 0.9, erode: 0.32, erodeDir: -1, seed: 6, bursts: [burst(1, 5, 6, 2, WIND, 0.5, 1.8, 91, 0.02), burst(0, 5, 2, 8, WIND, 0.6, 1.8, 93, 0.02)] }],
-    [90, { ...SLUMP, fluff: 2, rippleAmp: 1.5, ripple: 0.15, erode: 0.52, erodeDir: -1, seed: 6, bursts: [burst(2, 5, 6, 2, WIND, 0.5, 1.8, 91, 0.02), burst(1, 5, 2, 8, WIND, 0.6, 1.8, 93, 0.02)] }],
-    [90, { ...SLUMP, fluff: 2, rippleAmp: 1.5, ripple: 0.4, erode: 0.7, erodeDir: -1, seed: 6, eyes: 'blink', bursts: [burst(3, 5, 6, 2, WIND, 0.5, 1.8, 91, 0.02), burst(2, 5, 2, 8, WIND, 0.6, 1.8, 93, 0.02)] }],
-    [90, { ...SLUMP, fluff: 2, rippleAmp: 1.5, ripple: 0.65, erode: 0.84, erodeDir: -1, seed: 6, eyes: 'shut', bursts: [burst(3, 5, 2, 8, WIND, 0.6, 1.8, 93, 0.02)] }],
-    [100, { ...SLUMP, erode: 0.93, erodeDir: -1, seed: 6, eyes: 'shut' }],
-    [120, { ...SLUMP, erode: 0.985, erodeDir: -1, seed: 6, eyes: 'shut' }],
+    // the gust arrives from the front: it takes the cowlick first
+    [80, { ...SLUMP, fluff: 2, rippleAmp: 1.5, ripple: 0.4, gust: 1, peel: 1, free: peeled(2) }],
+    // the front plumes go, the body leans into the wind
+    [90, { ...SLUMP, fluff: 2.4, drift: -2, rippleAmp: 1.5, ripple: 0.7, gust: 2, peel: 3, free: peeled(3) }],
+    [90, { ...SLUMP, fluff: 2.4, drift: -3, rippleAmp: 1.5, ripple: 0.95, gust: 3, peel: 5, free: peeled(4) }],
+    // the wing plume and the hands — only the bare sheet and the tail are left
+    [90, { ...SLUMP, fluff: 2, drift: -3, rippleAmp: 1.2, ripple: 0.2, gust: 4, peel: 7, eyes: 'wide', free: peeled(5) }],
+    // the tail unhooks; the bare sheet frays (the short pixel dissolve)
+    [90, { ...SLUMP, drift: -3, peel: 8, eyes: 'wide', erode: 0.55, erodeDir: -1, seed: 6, free: peeled(6) }],
+    // the eyes hang alone in the air…
+    [90, { ...SLUMP, eyesOnly: true, eyes: 'wide', free: peeled(7) }],
+    [100, { ...SLUMP, eyesOnly: true, eyes: 'wide', lookX: -1, free: peeled(8) }],
+    // …and blink out
+    [120, { ...SLUMP, eyesOnly: true, eyes: 'shut', free: peeled(9) }],
   ],
 };
 
@@ -291,11 +377,13 @@ const DEATH: Table = {
 const REVIVE: Table = {
   marks: { land: 5 },
   keys: [
-    [100, { ...SLUMP, erode: 0.97, erodeDir: -1, seed: 8, eyes: 'shut' }],
-    [100, { ...SLUMP, erode: 0.86, erodeDir: -1, seed: 8, eyes: 'shut' }],
-    [90, { ...SLUMP, erode: 0.68, erodeDir: -1, seed: 8, eyes: 'blink' }],
-    [90, { ...SLUMP, erode: 0.46, erodeDir: -1, seed: 8, eyes: 'blink', fluff: 1 }],
-    [90, { ...SLUMP, erode: 0.22, erodeDir: -1, seed: 8, eyes: 'open', fluff: 1, rippleAmp: 1, ripple: 0.3 }],
+    // the wind brings the feathers back from behind: first the eyes open in the air, then the bare
+    // sheet, then part by part in the reverse order the wind took them
+    [100, { ...SLUMP, eyesOnly: true, eyes: 'shut', free: [Fe(-19, -6, 330, 7.5, 1.4), Fe(-18, 10, 20, 7.5, -1.4)] }],
+    [100, { ...SLUMP, eyesOnly: true, eyes: 'blink', free: [Fe(-14, -2, 350, 7.5, -1.4), Fe(-15, 14, 10, 7.5, 1.4), Fe(-20, 4, 0, 7.5, 1.4)] }],
+    [90, { ...SLUMP, peel: 8, eyes: 'blink', free: [Fe(-18, 18, 15, 7.5, 1.4), Fe(-17, 0, 345, 7.5, -1.4)] }],
+    [90, { ...SLUMP, peel: 6, eyes: 'open', free: [Fe(-17, 6, 5, 7.5, 1.4), Fe(-16, -10, 40, 7, -1.4)] }],
+    [90, { ...SLUMP, peel: 3, eyes: 'open', fluff: 1, rippleAmp: 1, ripple: 0.3, free: [Fe(-15, 8, 10, 7.5, -1.4)] }],
     [110, { ...SLUMP, eyes: 'open', fluff: 0.5, loose: REST_FEATHER, rippleAmp: 0.8, ripple: 0.6 }],
     [90, { bx: -1, by: 1, drift: 1, sw: 1, sh: -1, eyes: 'open', handN: Hd(0, 1, 30), handF: Hd(0, 1, -20), tailCurl: 0.4, tailSwing: 1, crestX: -1, crestY: 1 }],
     [100, { by: -2, sh: 2, sw: -1, len: 1, eyes: 'wide', hollow: 1, fluff: 1, handN: Hd(0, -3, -40, 10), handF: Hd(0, -3, 230, 10), crestX: 2, crestY: -2, tailCurl: 0.5, rippleAmp: 1, ripple: 0.1 }],

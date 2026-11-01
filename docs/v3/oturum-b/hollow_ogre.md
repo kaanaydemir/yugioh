@@ -297,3 +297,76 @@ silhouette rows. A blind eye test (critic agent) is owed.
   body" — kept, it is the clearest defensive read.
 - Struck-wood material sound and idle SFX: unchanged open issues (orchestrator decisions 3 / 4).
 - The boosted club (glowing sprouts for the rest of the turn) is still a cinematic overlay at `points().staff/grip`.
+
+## Stage: CINEMATICS + SFX + SCENARIOS
+
+State found: a previous agent had already written (WIP checkpoint `1f503a4`, not logged here) the full set —
+`src/cinematics/kart-b/hollow_ogre.ts` (+ `hollow_ogre-fx.ts`, painters only, no side effects), `src/audio/v3/hollow_ogre.ts`
+(28 recipes + `HOLLOW_OGRE_VOICE`, wired via `kart-b.ts`) and `src/duel/scenarios/hollow_ogre.ts` (21 keys). This stage
+re-filmed everything against the round-2 rig, fixed what the films showed, tightened the effect to budget, levelled the sounds.
+
+### What the cinematics do (all registrations gated on LOOK_V3, priority 20; banish at priority 1 over `b2:banish`)
+- **Summon** (`kart-b:hollow_ogre:summon`, `runSummon` + own v3 entrance): growing fall shadow → the sealed log (summon f0)
+  drops from above the screen with bark streaks (hoLogFall, sustained) → STAKE on `land` f1 (hoStake, 3-px shake, crack star,
+  loam ring, splinters, earth3 light flash) → f2 ember glow in the seam → f3 bark doors split (hoBarkSplit, chips both ways,
+  gold flash) → f7 root foot steps out (hoStep) → f9 club SLAM (hoClubSlam: crack 22 px + floor ring + loam + splinters +
+  leaves off the crown, finale ring/badge).
+- **Strike "Kütük Ezmesi"** (`registerStrike`): charge via `takeCharge('hoCharge')`, two heavy hop-steps toward the target
+  (hoStep + loam + root-grip marks each), hoSwing f4, hoRelease, contact = `s.impact()` once (hit-stop from `heavy`):
+  hoImpact, crack star, ring, splinters, leaves, loam, earth4 flash. **Boosted** (effect used this turn): the glowing
+  sprouts on the club flare, 40-mote violet pollen burst + a slow drifting pollen cloud, void3 flash, hoPollen. Club thrown
+  on the shoulder (hoShoulder), steps home. Direct: smash in front + a floor rupture running to the duelist.
+- **Effect "Kovuğa ekim"** (activate hook + `'banish'` handler, both batch paths via `ctx.keep/take('ogre:reach')`):
+  reach pose (special f0–3) + the graveyard pile stirs (violet ring, motes, light pool, hoReach); per seed: the REAL
+  graveyard monster rises as a half-size void-ramp silhouette of its own idle pixels (hoShrink) and collapses into a light
+  seed, the seed arcs onto the tendril tip (hoSeed), catch f4 (hoCatch), into the hollow, knot light f6 (hoKnot, violet
+  flare, +400 number, badge roll), sprout on the club f7 (hoSprout); seed 2 is pipelined; hollow glow end (hoGlow).
+  `statChange` is consumed (badge rolls per seed). Persistent: `ogreBoost` aura (knot lights in the hollow + n glowing
+  sprouts on the club + breathing void light pool), cleared by an observer on `turnStart`/`gameOver`.
+- **Death** (`destroyed` hook, option (b), no shatter): f1 root arms unravel (hoUnravel; planted seeds escape as violet
+  motes), f2… strands slither out along the floor and dig into the tile (`rootsIntoTile`), dissolve → hoRootsRetract
+  (sustained), trunk caves in (hoCollapse, dust drawn inward), last frame: the lone sprout wilts (hoWilt, one leaf drifts),
+  4-step bayer knock-out, card born → graveyard. `DEATH_PRESETS` plant/plant (no stone).
+
+### Changes this stage
+- Seed flight was unreadable at 1× (a 4-px dot): new `drawSeed` size 3 (5×6 teardrop, gold4 core), 12-bead stepped trail,
+  bigger halo, two glints, stronger light pool; the shrink ends on the size-3 seed.
+- Two +400 numbers overlapped into "+4000": now placed side by side (±17 px) for k = 2, centred for k = 1.
+- Effect timing: RISE 110→90, SHRINK 240→200, FLIGHT 320→315, glow hold read for 120 ms (rest runs on) → hoEat2 2.316 s
+  game (≤ 2.32 = REHBER 1.6 s × 1.45). Spec storyboard (0.8 + k·0.7 s) would be 3.19 s for k = 2: compressed by pipelining.
+- Pollen burst was lost in the hit-stop clutter: 26 → 40 motes (+ 2-px squares) + a slow 10-puff pollen cloud that hangs
+  after the hit-stop.
+- Summon SLAM crack was too small to read: crack 16 → 22 px, + floor ring + loam.
+- Sounds (audio dev page stats): hoSeed was −21.6 dB loud / thin single sine → rebuilt (arc + fifth twin + warm triangle
+  body + 6 pentatonic spark plinks) → −13.6 dB. hoShrink / hoCatch / hoSprout / hoPollen / hoWilt were −23…−27 dB
+  (inaudible next to the −6…−8 dB impacts and the −15 dB wyrm/magus effect sounds) → a local `trim()` gain bus per recipe
+  → −15.6 / −16.8 / −17.3 / −15.9 / −18.2 dB. Spectrograms: scratch `…/scratchpad/hollow_ogre/snd/*.png`.
+
+### Scenario keys (`src/duel/scenarios/hollow_ogre.ts`)
+hoSummon, hoSummonP2, hoAttack, hoAttackP2, hoDirect, hoDirectP2, hoBlocked, hoGuard, hoKill, hoKillP2, hoKillDef,
+hoTrade, hoEat1Auto, hoEat1AutoP2, hoEat1Prompt, hoEat2, hoEat2P2, hoEatAttack, hoEatAttackP2, hoEatDirect, hoIdle.
+
+### Gates
+- `measure --look v3 --scenarios 'ho*' --camera-gate <scratch>/camera-base.json`: **21 ok, 0 FAIL** (zoom 1, no focus of
+  our own). Budgets (game clock): summon 2.55 s; attack battle 2.20 (≤ 3.19); direct 2.30 (≤ 2.32); declare 0.316
+  (≤ 0.435); death destroy 1.57 (≤ 2.03); effect k=1 1.85, k=2 2.316 (≤ 2.32); number − contact 0 ms everywhere.
+- palcheck (a5 rules, clip 200,40,240,240, frames in `shots/v3/kart-b/hollow_ogre/frames/`): hoEat2 Δoff +0.61 (ok);
+  white 2.0 % fails on every film incl. the reference saWyrmAtk (2.65 %) / suMagus (3.75 %) — the arena UI, not ours.
+  hoSummon Δ at t=102 (the shared card slam) and hoKill Δ at t=918 (ember_wolf's fire contact) are not ogre pixels.
+- `tsc` clean; `vitest tests/art/hollow_ogre* tests/presentation tests/audio` pass (the presentation registry-load test
+  timed out once under machine load, passed on re-run).
+
+### Evidence (shots/v3/kart-b/hollow_ogre/cine/)
+hoSummon.png, hoSummon-zoom.png, hoSummonP2.png, hoSummonP2-zoom.png, hoEat2.png, hoEat2-zoom.png, hoEat2-flight.png,
+hoEat2P2.png, hoEat1Auto*.png, hoEat1Prompt.png, hoEatAttack.png, hoEatAttack-contact.png, hoEatAttackP2.png,
+hoEatDirect.png, hoAttack*.png, hoDirect*.png, hoBlocked.png, hoGuard.png, hoKill.png, hoKill-death.png, hoKillP2.png,
+hoKillDef.png, hoTrade.png.
+
+### Open issues
+- Idle SFX not built (decision 3: optional) — none.
+- Struck-wood material sound when the ogre is HIT (decision 4): falls back to the generic hit; logged, not changed.
+- The two +400 numbers live 1.5 s scene (shared `impactNumber` LIFE): in back-to-back scenario steps they still float
+  over the attack declaration.
+- The seed arc reads at ×2 zoom and as a violet bead at 1×; a critic might still want it bigger / a brighter trail.
+- No clip/MP4 (`tools/clip.mjs`) rendered for the owner this stage; independent critic rounds still owed.
+- v1 filmdiff not re-run (every registration is LOOK_V3-gated; no shared file touched).

@@ -334,3 +334,8 @@ Balıkçılı: no drain, it breaks) to cover that branch explicitly.
 - Rig noise: isolated px ≈ 190/frame (gate ok, 6.5–8 %): the cage teeth/bars and outline corners are inherent; more cleanup
   possible on the tatters.
 - Sameness not re-run after the pose changes (gates re-run, green); a re-run of `tools/sameness.ts` is owed.
+**Gates after fix r1:** `tsc` clean; `tests/art/grim_warden*.test.ts` 12/12 (the cut-in test got a 20 s timeout: it paints
+12 frames and timed out at 5 s under load ≈ 12 on 4 CPUs); cinematics/presentation/audio 242/244 under load — the 2 failures
+were 5 s timeouts (the cut-in test above, and `engine-boundary` "registry loads", not a grim file). filmdiff v1: 16/16 filmed
+IDENTICAL (`fix-r1/filmdiff-v1.txt`; the 17th film was cut by my 590 s shell timeout, not a diff) — every change is v3-gated.
+Sprite gates 21 ok / 0 FAIL (`fix-r1/gates.txt`).

@@ -23,9 +23,13 @@ import { Sparks, onFrame } from '../../vfx/combat';
 import { lightPool, type LightHandle } from '../../view/light';
 
 export const TAU = Math.PI * 2;
+const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+const rint = (p: XY): XY => ({ x: Math.round(p.x), y: Math.round(p.y) });
 
 /** Mud tones, dark → wet highlight. */
 export const MUD = [PAL.earth0, PAL.earth1, PAL.earth2, PAL.earth3] as const;
+/** The pin's hands: one value lighter than the mud they rise from (they read against it and the dark floor). */
+export const HAND = [PAL.earth1, PAL.earth2, PAL.earth3, PAL.earth4] as const;
 /** The spirit's violet (eyes, pit, ember). */
 export const VIOLET = [PAL.void1, PAL.void2, PAL.void3, PAL.void4] as const;
 
@@ -143,28 +147,40 @@ export function mudHand(mk: MudMask, base: XY, tip: XY, o: { bend?: number; open
   const bend = o.bend ?? 0;
   const mid = { x: base.x + dx * 0.5 + nx * bend, y: base.y + dy * 0.5 + ny * bend };
   const w = o.w ?? 1.5;
-  // the arm thins toward the wrist (two segments)
-  mk.capsule(base.x, base.y, mid.x, mid.y, w + 0.5);
+  // a slumping mud arm: a fat collar of mud where it leaves the ground, a lumpy forearm thinning to the wrist
+  mk.ell(base.x, base.y, w + 2.5, w + 0.5);
+  mk.capsule(base.x, base.y, mid.x, mid.y, w + 0.8);
   mk.capsule(mid.x, mid.y, tip.x, tip.y, w);
-  // the palm
+  mk.disc(mid.x + nx * 0.6, mid.y + ny * 0.6, w + 1.1);
+  // the palm: a round wet lump
   const pr = o.palm ?? 2;
   const palm = { x: tip.x + ux * 1.5, y: tip.y + uy * 1.5 };
   mk.disc(palm.x, palm.y, pr);
-  // fingers: a fan around the arm's direction; open splays and straightens, closed curls inward
+  // fingers: a few FAT clay fingers (2 px), open splays them, closed curls them in like a claw
   const open = Math.max(0, Math.min(1, o.open ?? 1));
-  const n = o.fingers ?? 4;
+  const n = o.fingers ?? 3;
   const a0 = Math.atan2(uy, ux);
+  const fr = w >= 1.4 ? 0.9 : 0.6;
   for (let i = 0; i < n; i++) {
     const k = n === 1 ? 0 : i / (n - 1) - 0.5;
-    const spread = (0.35 + 0.75 * open) * k * 2;
+    const spread = (0.3 + 0.7 * open) * k * 2;
     const a = a0 + spread;
-    const len1 = 2 + open * 1.5;
+    const len1 = 1.5 + open * 1.5;
     const p1 = { x: palm.x + Math.cos(a) * (pr + len1), y: palm.y + Math.sin(a) * (pr + len1) };
-    mk.capsule(palm.x + Math.cos(a) * pr, palm.y + Math.sin(a) * pr, p1.x, p1.y, 0.5);
-    // the tip segment: hooks inward (toward the arm's axis) as the hand closes — a clutching claw
-    const a2 = a - Math.sign(k || 1) * (1 - open) * 1.9;
-    const len2 = 1.5 + open;
-    mk.capsule(p1.x, p1.y, p1.x + Math.cos(a2) * len2, p1.y + Math.sin(a2) * len2, 0.5);
+    mk.capsule(palm.x + Math.cos(a) * pr * 0.5, palm.y + Math.sin(a) * pr * 0.5, p1.x, p1.y, fr);
+    const a2 = a - Math.sign(k || 1) * (1 - open) * 1.7;
+    const len2 = 1 + open;
+    mk.capsule(p1.x, p1.y, p1.x + Math.cos(a2) * len2, p1.y + Math.sin(a2) * len2, fr * 0.75);
+  }
+}
+
+/** Wet glints on painted mud hands: a hot pixel at each palm's top-left and a drip under it. */
+export function handGlint(g: Raster, mk: MudMask, tips: readonly XY[]): void {
+  for (const t of tips) {
+    const x = Math.round(t.x);
+    const y = Math.round(t.y);
+    if (mk.f(x - 1, y - 1)) g.px(x - 1, y - 1, MUD[3]);
+    if (!mk.f(x, y + 3) && mk.f(x, y + 2)) g.px(x, y + 3, MUD[1]);
   }
 }
 
@@ -556,6 +572,17 @@ function ringBand(mk: MudMask, at: XY, rx: number, ry: number, k: number): void 
   if (ix >= 2 && iy >= 1) mk.hole(at.x, at.y, ix, iy);
 }
 
+/** The lip of mud over the feet: lumps along the ring's front arc (wobbling slowly), not a flat slab. */
+function lumpyLip(mk: MudMask, at: XY, rx: number, ry: number, k: number, t: number): void {
+  if (k <= 0.05) return;
+  const n = 7;
+  for (let i = 0; i < n; i++) {
+    const a = Math.PI * (0.08 + (0.84 * i) / (n - 1));
+    const r = (i % 2 ? 1.6 : 2.3) + 0.5 * Math.sin(t * 2.4 + i * 1.7);
+    mk.disc(at.x + Math.cos(a) * rx * 0.62 * k, at.y + Math.sin(a) * ry * 0.55 * k, Math.max(1, r * k));
+  }
+}
+
 /** Draw the inside of the ring (the wet, dark floor inside it: churning). */
 function ringInside(g: Raster, at: XY, rx: number, ry: number, t: number, k: number): void {
   const ix = Math.round((rx - 6) * k);
@@ -575,7 +602,7 @@ function ringInside(g: Raster, at: XY, rx: number, ry: number, t: number, k: num
  */
 export function pinGrab(sc: Phaser.Scene, u: MonsterUnit, seed: number): PinGrab {
   const at = { x: Math.round(u.home.x), y: Math.round(u.home.y) };
-  const { rx, ry, lip } = ringOf(u);
+  const { rx, ry } = ringOf(u);
   const R = rng(seed);
   const s = u.sprite;
   const W = rx * 2 + 30;
@@ -585,10 +612,10 @@ export function pinGrab(sc: Phaser.Scene, u: MonsterUnit, seed: number): PinGrab
   const mkB = new MudMask(back.x, back.y, back.w, back.h);
   const mkF = new MudMask(front.x, front.y, front.w, front.h);
   const hands: PinHand[] = [
-    { a: Math.PI * 1.12, front: false, ph: R() },
-    { a: Math.PI * 1.85, front: false, ph: R() },
-    { a: Math.PI * 0.2, front: true, ph: R() },
-    { a: Math.PI * 0.82, front: true, ph: R() },
+    { a: Math.PI * 1.1, front: false, ph: R() },
+    { a: Math.PI * 1.9, front: false, ph: R() },
+    { a: Math.PI * 0.15, front: true, ph: R() },
+    { a: Math.PI * 0.85, front: true, ph: R() },
   ];
   const G: PinGrab = {
     seep: 0,
@@ -639,26 +666,34 @@ export function pinGrab(sc: Phaser.Scene, u: MonsterUnit, seed: number): PinGrab
     if (up > 0.02) {
       mkB.clear();
       mkF.clear();
+      const tipsB: XY[] = [];
+      const tipsF: XY[] = [];
       for (const h of hands) {
-        const rimR = 0.75 - 0.25 * G.grab;
-        const base = { x: at.x + Math.cos(h.a) * rx * rimR, y: at.y + Math.sin(h.a) * ry * rimR };
-        const towards = { x: at.x - base.x, y: at.y - base.y };
-        const height = Math.round(14 * up * (1 - 0.45 * G.grab));
-        // reach up, then bend in over the feet
-        const lean = 0.25 + 0.65 * G.grab;
-        const wob = Math.sin(t * 9 + h.ph * TAU) * (G.grab > 0.5 ? 0.6 : 1.2);
-        const tip = { x: Math.round(base.x + towards.x * lean + wob), y: Math.round(base.y + towards.y * lean - height) };
-        mudHand(h.front ? mkF : mkB, { x: Math.round(base.x), y: Math.round(base.y) }, tip, { open: 1 - G.grab, bend: (h.front ? 1 : -1) * 1.5, w: 1.2, fingers: 4, palm: 1.5 });
+        // each hand leaves the rim on its own side and clamps the foot on that side (back hands the back feet)
+        const ca = Math.cos(h.a);
+        const sa = Math.sin(h.a);
+        const base = { x: Math.round(at.x + ca * rx * 0.8), y: Math.round(at.y + sa * ry * 0.8) };
+        const foot = { x: at.x + ca * rx * 0.36, y: at.y + sa * ry * 0.3 - 3 };
+        const wob = Math.sin(t * 9 + h.ph * TAU) * (G.grab > 0.5 ? 0.5 : 1.2);
+        // burst: straight up out of the mud, fingers splayed; grab: the arm arches over and the palm comes down on the foot
+        const hi = { x: base.x + ca * 2 + wob, y: base.y - 19 * up };
+        const g = G.grab;
+        const tip = rint({ x: lerp(hi.x, foot.x, g), y: lerp(hi.y, foot.y, g) - Math.sin(Math.PI * g) * 4 * up });
+        const ux = tip.x - base.x;
+        mudHand(h.front ? mkF : mkB, base, tip, { open: 1 - g, bend: -Math.sign(ux || 1) * (1 + 4 * g) * up, w: 1.7, fingers: 3, palm: 2.2 });
+        (h.front ? tipsF : tipsB).push(tip);
       }
-      mkB.paint(back);
-      mkF.paint(front);
+      mkB.paint(back, { tones: HAND });
+      handGlint(back, mkB, tipsB);
+      mkF.paint(front, { tones: HAND });
+      handGlint(front, mkF, tipsF);
     }
     // the lip of mud over the feet (front): rises with the grab, stays in the ring
     if (G.grab > 0.3) {
       mkF.clear();
       const lk = Math.min(1, (G.grab - 0.3) / 0.5);
-      mkF.ell(at.x, at.y + 1, Math.round(lip * lk), Math.max(1, Math.round(2 * lk)));
-      mkF.paint(front, { tones: [MUD[0], MUD[1], MUD[2], MUD[2]], hi: false });
+      lumpyLip(mkF, at, rx, ry, lk, t);
+      mkF.paint(front);
     }
     back.end();
     front.end();
@@ -675,7 +710,7 @@ export function pinGrab(sc: Phaser.Scene, u: MonsterUnit, seed: number): PinGrab
 export function mudPinAura(sc: Phaser.Scene, u: MonsterUnit, seed: number): { destroy(): void } {
   const s = u.sprite;
   const R = rng(seed);
-  const { rx, ry, lip } = ringOf(u);
+  const { rx, ry } = ringOf(u);
   const W = rx * 2 + 30;
   const H = 52;
   const back = new Raster(sc, 0, 0, W, H, s.depth - 0.5);
@@ -683,12 +718,11 @@ export function mudPinAura(sc: Phaser.Scene, u: MonsterUnit, seed: number): { de
   const mkB = new MudMask(0, 0, W, H);
   const mkF = new MudMask(0, 0, W, H);
   const hands = [
-    { a: Math.PI * 1.15, front: false, off: 0 },
-    { a: Math.PI * 0.25, front: true, off: 0.36 },
-    { a: Math.PI * 1.8, front: false, off: 0.62 },
-    { a: Math.PI * 0.78, front: true, off: 0.83 },
+    { a: Math.PI * 1.2, front: false, off: 0 },
+    { a: Math.PI * 0.18, front: true, off: 0.34 },
+    { a: Math.PI * 1.78, front: false, off: 0.67 },
   ];
-  const CYCLE = 2.6;
+  const CYCLE = 2.4;
   let light: LightHandle | null = lightPool(sc, u.home.x, u.home.y, { color: PAL.void3, spill: null, radius: rx, floorY: u.home.y, intensity: 0.35, anim: 'breathe', fadeIn: 200 });
   let dying = -1;
   let el = 0;
@@ -761,25 +795,30 @@ export function mudPinAura(sc: Phaser.Scene, u: MonsterUnit, seed: number): { de
       if (k === 1) {
         mkB.clear();
         mkF.clear();
+        const tipsB: XY[] = [];
+        const tipsF: XY[] = [];
         for (const h of hands) {
           const ph = (t / CYCLE + h.off) % 1;
-          if (ph > 0.7) continue;
-          const up = ph < 0.15 ? ph / 0.15 : ph < 0.55 ? 1 : 1 - (ph - 0.55) / 0.15;
+          if (ph > 0.5) continue;
+          const up = ph < 0.1 ? ph / 0.1 : ph < 0.38 ? 1 : 1 - (ph - 0.38) / 0.12;
           const base = { x: Math.round(at.x + Math.cos(h.a) * (orx - 3)), y: Math.round(at.y + Math.sin(h.a) * (ory - 1)) };
-          const height = Math.round(8 * up);
-          if (height < 2) continue;
+          const height = Math.round(11 * up);
+          if (height < 3) continue;
           const sway = Math.round(Math.sin(t * 2.2 + h.off * TAU) * 1.5);
           const tip = { x: base.x + sway + Math.round(Math.cos(h.a) * 2), y: base.y - height };
-          const flex = 0.5 + 0.5 * Math.sin((ph - 0.15) * 22);
-          mudHand(h.front ? mkF : mkB, base, tip, { open: ph < 0.15 ? 1 : flex, w: 1, fingers: 3, palm: 1.2 });
+          const flex = 0.5 + 0.5 * Math.sin((ph - 0.1) * 30);
+          mudHand(h.front ? mkF : mkB, base, tip, { open: ph < 0.1 ? 1 : flex, w: 1.4, fingers: 3, palm: 1.8 });
+          (h.front ? tipsF : tipsB).push(tip);
         }
-        mkB.paint(back);
-        mkF.paint(front);
+        mkB.paint(back, { tones: HAND });
+        handGlint(back, mkB, tipsB);
+        mkF.paint(front, { tones: HAND });
+        handGlint(front, mkF, tipsF);
       }
       // the lip of mud over the feet
       mkF.clear();
-      mkF.ell(at.x, at.y + 1, Math.round(lip * k), Math.max(1, Math.round(2 * k)));
-      mkF.paint(front, { tones: [MUD[0], MUD[1], MUD[2], MUD[2]], hi: false });
+      lumpyLip(mkF, at, orx, ory, k, t);
+      mkF.paint(front);
     }
     back.end();
     front.end();
@@ -814,7 +853,7 @@ export function mudCrawl(sc: Phaser.Scene, from: XY, to: XY, ms: number, depth: 
           if (q > k || q < tail) continue;
           const x = from.x + (to.x - from.x) * q;
           const y = from.y + (to.y - from.y) * q + wig[Math.floor(q * 7.99)];
-          mk.ell(x, y, q > k - 0.08 ? 2.5 : 1.5, 1);
+          mk.ell(x, y, q > k - 0.08 ? 3.5 : 2, q > k - 0.08 ? 2 : 1);
         }
         mk.paint(g, { hi: false });
       });

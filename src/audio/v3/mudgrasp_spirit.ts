@@ -307,8 +307,12 @@ export const MUDGRASP_SPIRIT_RECIPES = {
     verb: 0.35,
     duck: 0.5,
     play(v) {
-      [0, 0.07, 0.13, 0.2].forEach((t, i) => slop(v, t, 0.42 - i * 0.05, { d: 0.05 + i * 0.008, f: SLOP * (1 - i * 0.035), pan: (i % 2 ? 0.35 : -0.35) * (1 - i * 0.15) }));
-      squelch(v, 0.02, 0.4, 0.08, { f: [300, 450, 260], rate: 44 });
+      [0, 0.075, 0.14, 0.215].forEach((t, i) => {
+        slop(v, t, 0.5 - i * 0.05, { d: 0.045 + i * 0.008, f: SLOP * (1 - i * 0.035), pan: (i % 2 ? 0.35 : -0.35) * (1 - i * 0.15) });
+        // each cup seats with a short low knock (the grip closing on the foot)
+        thump(v, t + 0.05 + i * 0.008, 150 - i * 10, 70, 0.16, 0.06);
+      });
+      squelch(v, 0.02, 0.4, 0.035, { f: [300, 450, 260], rate: 44 });
       puff(v, 0, 0.2, 0.2, 800, { kind: 'brown' });
       pats(v, 0.05, 0.35, 9, 0.1);
     },

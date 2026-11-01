@@ -137,6 +137,18 @@ function seedArc(v: Voice, t: number, d: number, f0: number, f1: number, g: numb
   v.noise('pink', { t, g: [[0, 0], [d * 0.4, g * 0.9], [d, 0.0001, 'e']], to: v.filt('bandpass', [[0, f0 * 1.5], [d * 0.7, f1 * 1.6, 'e']], 3, { t, to: out }) });
 }
 
+/** Run `fn` with every default-routed source of `v` going through a gain of `g` (a level trim for a whole recipe). */
+function trim(v: Voice, g: number, fn: () => void): void {
+  const bus = v.amp(g);
+  const prev = v.out;
+  Object.defineProperty(v, 'out', { value: bus, configurable: true, writable: true });
+  try {
+    fn();
+  } finally {
+    Object.defineProperty(v, 'out', { value: prev, configurable: true, writable: true });
+  }
+}
+
 // ================================================================ recipes
 
 export const HOLLOW_OGRE_RECIPES = {
@@ -299,17 +311,19 @@ export const HOLLOW_OGRE_RECIPES = {
     verb: 0.6,
     duck: 0.3,
     play(v) {
-      v.noise('pink', { g: [[0, 0], [0.02, 0.22], [0.5, 0.0001, 'e']], to: v.filt('bandpass', [[0, 1800], [0.5, 4200, 'e']], 1.4) });
-      const notes = [70, 73, 75, 78, 80, 82];
-      for (let i = 0; i < 9; i++) {
-        const m = notes[Math.floor(v.rnd() * notes.length) % notes.length];
-        const f = midiHz(m) * v.r(0.997, 1.003);
-        const t = 0.02 + Math.pow(i / 9, 1.3) * 0.5;
-        const pan = v.panner(v.r(-0.6, 0.6));
-        v.tone('sine', f, { t, g: perc(0.05 * (1 - i / 14), 0.35, 0.002), to: pan });
-        v.tone('sine', f * SLIT, { t, g: perc(0.018, 0.18, 0.002), to: pan });
-      }
-      v.tone('sine', [[0, midiHz(54)], [0.4, midiHz(58), 'e']], { g: perc(0.08, 0.5, 0.02) });
+      trim(v, 2.2, () => {
+        v.noise('pink', { g: [[0, 0], [0.02, 0.22], [0.5, 0.0001, 'e']], to: v.filt('bandpass', [[0, 1800], [0.5, 4200, 'e']], 1.4) });
+        const notes = [70, 73, 75, 78, 80, 82];
+        for (let i = 0; i < 9; i++) {
+          const m = notes[Math.floor(v.rnd() * notes.length) % notes.length];
+          const f = midiHz(m) * v.r(0.997, 1.003);
+          const t = 0.02 + Math.pow(i / 9, 1.3) * 0.5;
+          const pan = v.panner(v.r(-0.6, 0.6));
+          v.tone('sine', f, { t, g: perc(0.05 * (1 - i / 14), 0.35, 0.002), to: pan });
+          v.tone('sine', f * SLIT, { t, g: perc(0.018, 0.18, 0.002), to: pan });
+        }
+        v.tone('sine', [[0, midiHz(54)], [0.4, midiHz(58), 'e']], { g: perc(0.08, 0.5, 0.02) });
+      });
     },
   },
   /** Strike f9: the club is thrown onto the shoulder — wood knocking on wood, a short creak. */
@@ -353,12 +367,14 @@ export const HOLLOW_OGRE_RECIPES = {
     verb: 0.5,
     duck: 0.25,
     play(v) {
-      const D = 0.32;
-      // the inhale: a band closing in from wide and low to a narrow high point
-      v.noise('pink', { g: [[0, 0.0001], [D * 0.8, 0.22, 'e'], [D, 0.0001, 'e']], to: v.filt('bandpass', [[0, 500], [D, 2600, 'e']], [[0, 1], [D, 6]]) });
-      v.tone('sine', [[0, 220], [D, 880, 'e']], { g: [[0, 0], [D * 0.85, 0.06], [D, 0.0001, 'e']] });
-      // the seed forms: one small glassy-wood "tik" on the arrival
-      tok(v, D, midiHz(80), 0.06, { dec: 0.09, cavity: 0 });
+      trim(v, 2.6, () => {
+        const D = 0.32;
+        // the inhale: a band closing in from wide and low to a narrow high point
+        v.noise('pink', { g: [[0, 0.0001], [D * 0.8, 0.22, 'e'], [D, 0.0001, 'e']], to: v.filt('bandpass', [[0, 500], [D, 2600, 'e']], [[0, 1], [D, 6]]) });
+        v.tone('sine', [[0, 220], [D, 880, 'e']], { g: [[0, 0], [D * 0.85, 0.06], [D, 0.0001, 'e']] });
+        // the seed forms: one small glassy-wood "tik" on the arrival
+        tok(v, D, midiHz(80), 0.06, { dec: 0.09, cavity: 0 });
+      });
     },
   },
   /** Effect (per seed): the seed's arc through the air — the rising round sine "fiuuu". */
@@ -367,7 +383,19 @@ export const HOLLOW_OGRE_RECIPES = {
     gap: 0.01,
     verb: 0.55,
     play(v) {
-      seedArc(v, 0, 0.42, 720, 1320, 0.08, { pan: [0.35, -0.1] });
+      const D = 0.42;
+      // the arc: the round sine "fiuuu" (+ a detuned twin and a quiet fifth above = a living, breathing light)
+      seedArc(v, 0, D, 720, 1320, 0.2, { pan: [0.35, -0.1] });
+      seedArc(v, 0.01, D - 0.01, 720 * 1.5, 1320 * 1.5, 0.045, { pan: [0.3, -0.15] });
+      // a warm hollow body an octave under it (the seed is a piece of a creature, not a spark)
+      v.tone('triangle', [[0, 360], [D * 0.7, 660, 'e'], [D, 620, 'e']], { g: [[0, 0], [D * 0.3, 0.05], [D, 0.0001, 'e']], to: v.filt('lowpass', 1200, 0.8) });
+      // the sparks it sheds: tiny pentatonic plinks scattered along the arc, climbing with it
+      const notes = [78, 80, 82, 85, 87];
+      for (let i = 0; i < 6; i++) {
+        const t = 0.04 + (i / 6) * (D - 0.08) + v.r(-0.012, 0.012);
+        const f = midiHz(notes[Math.min(notes.length - 1, Math.floor((i / 6) * notes.length + v.rnd() * 1.5))]);
+        v.tone('sine', f, { t, g: perc(0.03, 0.12, 0.002), to: v.panner(0.3 - i * 0.08) });
+      }
     },
   },
   /** Effect (per seed): the seed lands on the root tip and the tendril wraps it — a soft high tok, a dry rustle. */
@@ -376,10 +404,12 @@ export const HOLLOW_OGRE_RECIPES = {
     gap: 0.008,
     verb: 0.35,
     play(v) {
-      tok(v, 0, midiHz(75), 0.12, { dec: 0.1, cavity: 0.15 });
-      rustle(v, 0.02, 0.22, 0.14, { c0: 1600, c1: 2600, rate: 34 });
-      snaps(v, 0.03, 0.16, 5, 0.06);
-      creak(v, 0.05, 0.18, 0.08, { f0: 210, f1: 180, rate: 40 });
+      trim(v, 2.4, () => {
+        tok(v, 0, midiHz(75), 0.12, { dec: 0.1, cavity: 0.15 });
+        rustle(v, 0.02, 0.22, 0.14, { c0: 1600, c1: 2600, rate: 34 });
+        snaps(v, 0.03, 0.16, 5, 0.06);
+        creak(v, 0.05, 0.18, 0.08, { f0: 210, f1: 180, rate: 40 });
+      });
     },
   },
   /** Effect (per seed): planted in the hollow — the knot "tok" (A#4; `pitch` moves the 2nd one) and its warm glow. */
@@ -403,9 +433,11 @@ export const HOLLOW_OGRE_RECIPES = {
     gap: 0.008,
     verb: 0.4,
     play(v) {
-      v.tone('triangle', [[0, midiHz(73)], [0.07, midiHz(85), 'e']], { g: perc(0.08, 0.16, 0.002) });
-      v.tone('sine', [[0, midiHz(85)], [0.09, midiHz(90), 'e']], { t: 0.015, g: perc(0.04, 0.2, 0.002) });
-      rustle(v, 0.02, 0.14, 0.08, { c0: 2200, c1: 3200, rate: 40 });
+      trim(v, 3.0, () => {
+        v.tone('triangle', [[0, midiHz(73)], [0.07, midiHz(85), 'e']], { g: perc(0.08, 0.16, 0.002) });
+        v.tone('sine', [[0, midiHz(85)], [0.09, midiHz(90), 'e']], { t: 0.015, g: perc(0.04, 0.2, 0.002) });
+        rustle(v, 0.02, 0.14, 0.08, { c0: 2200, c1: 3200, rate: 40 });
+      });
     },
   },
   /** Effect end: the hollow glows with its knot lights — a warm hollow chord (F# major, low) and embers. */
@@ -480,10 +512,12 @@ export const HOLLOW_OGRE_RECIPES = {
     verb: 0.65,
     duck: 0.2,
     play(v) {
-      leaves(v, 0, 0.06, 0.3);
-      v.tone('sine', [[0, midiHz(75)], [0.7, midiHz(70), 'e']], { t: 0.03, g: [[0, 0], [0.05, 0.05], [0.7, 0.0001, 'e']] });
-      v.tone('sine', [[0, midiHz(75) * SLIT], [0.4, midiHz(70) * SLIT, 'e']], { t: 0.03, g: perc(0.012, 0.35, 0.02) });
-      v.noise('pink', { t: 0.1, g: [[0, 0], [0.15, 0.04], [0.6, 0.0001, 'e']], to: v.filt('bandpass', 900, 2) });
+      trim(v, 2.4, () => {
+        leaves(v, 0, 0.06, 0.3);
+        v.tone('sine', [[0, midiHz(75)], [0.7, midiHz(70), 'e']], { t: 0.03, g: [[0, 0], [0.05, 0.05], [0.7, 0.0001, 'e']] });
+        v.tone('sine', [[0, midiHz(75) * SLIT], [0.4, midiHz(70) * SLIT, 'e']], { t: 0.03, g: perc(0.012, 0.35, 0.02) });
+        v.noise('pink', { t: 0.1, g: [[0, 0], [0.15, 0.04], [0.6, 0.0001, 'e']], to: v.filt('bandpass', 900, 2) });
+      });
     },
   },
   /** Revive (sustained, faded at land): the roots braid back up out of the tile — rustle rising, creaks climbing. */

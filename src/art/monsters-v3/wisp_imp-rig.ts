@@ -62,6 +62,10 @@ export interface Feather {
   len: number;
   /** bend of the vane (px, + = toward the right of root→tip) */
   bow?: number;
+  /** vane width (px; default 3.4 quilled / 4.2 plain) */
+  w?: number;
+  /** a free feather behind the body (the far half of the summon's whirl) */
+  back?: boolean;
 }
 
 /** A spray of small feather confetti (light: never outlined). */
@@ -138,7 +142,18 @@ export interface Pose {
   /** crackle motes round the body (spell) 0..2 */
   spark: number;
   seed: number;
+  /** the wind death peels parts off front to back: ≥1 cowlick, ≥2…6 the plumes (front first),
+   * ≥7 the hands, ≥8 the tail (the peeled parts fly on as `free` feathers, drawn by the anims) */
+  peel: number;
+  /** only the two eyes are left hanging in the air (the body is gone) */
+  eyesOnly: boolean;
+  /** a gust ribbon crossing the frame front → back: 0 none, 1…4 its phase */
+  gust: number;
 }
+
+/** the order the wind takes the plumes (PLUMES indices, front row first) */
+const PEEL_ORDER = [4, 3, 2, 1, 0];
+export const peeledPlume = (pz: Pose, k: number): boolean => pz.peel >= 2 + PEEL_ORDER.indexOf(k);
 
 const HAND0: Hand = { x: 0, y: 0, ang: 0, spread: 0, len: 0 };
 /** the loose feather in its slot: sticking out of the back of the hood like a little wing */
@@ -181,6 +196,9 @@ export const NEUTRAL: Pose = {
   lit: 0,
   spark: 0,
   seed: 1,
+  peel: 0,
+  eyesOnly: false,
+  gust: 0,
 };
 
 export function pose(d: Partial<Pose>): Pose {
@@ -271,9 +289,10 @@ export function geo(pz: Pose): Geo {
   const sy = HY + pz.by;
   const hx = sx + pz.hx;
   const hy = sy + pz.hy;
-  const rx = RX0 + pz.sw + puff * 3;
-  const ry = RY0 + pz.sh + puff * 2.5;
-  const L = L0 + pz.len + puff * 1.5;
+  // puff 1 = the attack's full 130 %: the hood ~1.35× wide, ~1.3× tall, the skirt a third longer
+  const rx = RX0 + pz.sw + puff * 4;
+  const ry = RY0 + pz.sh + puff * 3;
+  const L = L0 + pz.len + puff * 3;
   const g: Geo = { hx, hy, rx, ry, sx, sy, L, drift: pz.drift, puff, tail: [], tailW: [], tailBox: [0, 0, 0, 0], px: sx, py: sy + 7, pa: 14 + puff * 2 + pz.sw * 0.7, pb: 11 + puff * 2 + pz.sh * 0.7 };
   // tail: from the skirt's bottom, down and back, then hooking up and forward (a "?" laid on its side)
   const [bx0, by0] = skirtAt(g, 1);
@@ -478,11 +497,12 @@ function buildField(pz: Pose, g: Geo, side: 1 | -1): Field {
       }
       if (inHood(pz, g, px, py)) put(i, HOOD, 100);
       else if (sheetSdf(g, px, py, 2.2) <= 0) put(i, BASE, 1);
-      if (tailDist(g, px, py) <= 0) put(i, TAIL, 2);
+      if (pz.peel < 8 && tailDist(g, px, py) <= 0) put(i, TAIL, 2);
     }
   if (P < 0.55) {
     const tmp = new Int8Array(W * H);
     plumesOf(pz, g).forEach((pl, k) => {
+      if (peeledPlume(pz, k)) return;
       tmp.fill(-1);
       leaf(tmp, pl.rx, pl.ry, pl.tx, pl.ty, pl.bow, pl.w, side, 0, true);
       for (let i = 0; i < W * H; i++) {
@@ -599,7 +619,7 @@ function paintLoose(out: Int8Array, g: Geo, f: Feather, side: 1 | -1, quill = tr
   const a = (f.ang * Math.PI) / 180;
   const x = g.sx + f.x;
   const y = g.sy + f.y;
-  leaf(out, x, y, x + Math.cos(a) * f.len, y + Math.sin(a) * f.len, f.bow ?? 0.8, quill ? 3.4 : 4.2, side, 0, quill);
+  leaf(out, x, y, x + Math.cos(a) * f.len, y + Math.sin(a) * f.len, f.bow ?? 0.8, f.w ?? (quill ? 3.4 : 4.2), side, 0, quill);
 }
 
 // ------------------------------------------------------------------ the face
@@ -865,6 +885,16 @@ const quant = (dl: number) => (dl >= 0.3 ? 4 : dl >= 0 ? 3 : dl >= -0.36 ? 2 : 1
 
 export function drawWisp(p: PixelCanvas, pz: Pose, lightFrom: 'left' | 'right' = 'left'): DrawResult {
   const side: 1 | -1 = lightFrom === 'left' ? -1 : 1; // the frame edge the light comes from (x sign)
+  if (pz.eyesOnly) {
+    // the body is gone: the last peeled feathers tumble on, the two eyes hang alone in the air
+    const g0 = geo(pz);
+    paintFree(p, g0, pz, side, true);
+    paintFree(p, g0, pz, side, false);
+    p.outline(PAL.ink);
+    paintEyes(p, { ...pz, erode: 0 }, g0);
+    paintGust(p, pz);
+    return { geo: g0 };
+  }
   const L = [0.5 * side, -0.74, 0.46];
   const ln = Math.hypot(L[0], L[1], L[2]);
   L[0] /= ln;
@@ -881,7 +911,7 @@ export function drawWisp(p: PixelCanvas, pz: Pose, lightFrom: 'left' | 'right' =
 
   // far hand behind everything
   const farHand = new Int8Array(W * H).fill(-1);
-  paintHand(farHand, g, pz.handF, false, side);
+  if (pz.peel < 7) paintHand(farHand, g, pz.handF, false, side);
   for (let i = 0; i < W * H; i++) if (farHand[i] >= 0) tone[i] = farHand[i];
 
   // planes
@@ -965,7 +995,7 @@ export function drawWisp(p: PixelCanvas, pz: Pose, lightFrom: 'left' | 'right' =
   }
 
   // crest: one cowlick feather on the crown, curling forward (it echoes the tail's question mark)
-  if (pz.erode < 0.6 && pz.pillow < 0.7) {
+  if (pz.erode < 0.6 && pz.pillow < 0.7 && pz.peel < 1) {
     const crest = new Int8Array(W * H).fill(-1);
     const r2x = g.hx - 1;
     const r2y = g.hy - g.ry + 2.5;
@@ -980,7 +1010,7 @@ export function drawWisp(p: PixelCanvas, pz: Pose, lightFrom: 'left' | 'right' =
 
   // near hand over the body, with its cast shadow on the feathers under it (IŞ-6)
   const nearHand = new Int8Array(W * H).fill(-1);
-  paintHand(nearHand, g, pz.handN, true, side);
+  if (pz.peel < 7) paintHand(nearHand, g, pz.handN, true, side);
   for (let y = 1; y < H - 1; y++)
     for (let x = 1; x < W - 1; x++) {
       const i = y * W + x;
@@ -1018,13 +1048,11 @@ export function drawWisp(p: PixelCanvas, pz: Pose, lightFrom: 'left' | 'right' =
   const drift: [number, number, number, number][] = [];
   if (pz.erode > 0) erodeCells(layer, pz, g, drift);
 
+  // free feathers (summon's falling feather and whirl, the death's peeled plumes) are never eroded
+  // with the body; the whirl's far half goes behind it
+  paintFree(p, g, pz, side, true);
   p.blit(layer, 0, 0);
-  // free feathers (summon's falling feather, the death's strays) are never eroded with the body
-  if (pz.free.length) {
-    const fr = new Int8Array(W * H).fill(-1);
-    for (const f of pz.free) paintLoose(fr, g, f, side, false);
-    for (let i = 0; i < W * H; i++) if (fr[i] >= 0) p.set(i % W, Math.floor(i / W), F[fr[i]]);
-  }
+  paintFree(p, g, pz, side, false);
   p.outline(PAL.ink);
 
   // light after the outline
@@ -1035,7 +1063,48 @@ export function drawWisp(p: PixelCanvas, pz: Pose, lightFrom: 'left' | 'right' =
   paintBursts(p, g, pz);
   paintSwirl(p, g, pz, bodyNow);
   paintSparks(p, g, pz);
+  paintGust(p, pz);
   return { geo: g };
+}
+
+/** free feathers: quilled two-tone feathers (the peeled plumes, the knocked-loose ones) */
+function paintFree(p: PixelCanvas, g: Geo, pz: Pose, side: 1 | -1, back: boolean): void {
+  if (!pz.free.length) return;
+  const fr = new Int8Array(W * H).fill(-1);
+  for (const f of pz.free) if (!!f.back === back) paintLoose(fr, g, f, side, f.len >= 6.5);
+  for (let i = 0; i < W * H; i++) if (fr[i] >= 0) p.set(i % W, Math.floor(i / W), F[fr[i]]);
+}
+
+/**
+ * The gust (light, never outlined): two or three curved streaks of wind crossing the frame from the
+ * front (the attacker's side) to the back, each led by a little curl, white at the head, lilac tail.
+ */
+function paintGust(p: PixelCanvas, pz: Pose): void {
+  if (pz.gust <= 0) return;
+  const lanes: [number, number, number][] = [
+    [16, 0, 26],
+    [27, 3, 20],
+    [40, 6, 16],
+  ];
+  const set = (x: number, y: number, c: number) => {
+    if (x >= 2 && y >= 2 && x < W - 2 && y < H - 2 && !p.isOpaque(x, y)) p.set(x, y, c);
+  };
+  lanes.forEach(([y0, lag, len], li) => {
+    const head = Math.round(W + 4 - (pz.gust - 1) * 17 - lag * 2 - li * 3);
+    for (let i = 0; i < len; i++) {
+      const x = head + i;
+      const y = Math.round(y0 + 1.6 * Math.sin((x + li * 7) / 5));
+      set(x, y, i < 3 ? PAL.white : i < len * 0.55 ? PAL.void4 : PAL.void3);
+      if (i < len * 0.3 && i % 4 === 1) set(x, y - 1, PAL.void4);
+    }
+    // the leading curl: a small hook rolling over the head
+    const hy = Math.round(y0 + 1.6 * Math.sin((head + li * 7) / 5));
+    set(head - 1, hy - 1, PAL.white);
+    set(head - 1, hy - 2, PAL.white);
+    set(head, hy - 3, PAL.white);
+    set(head + 1, hy - 3, PAL.void4);
+    set(head + 2, hy - 2, PAL.void4);
+  });
 }
 
 /** a lone pixel of a feather tone inside the body takes its neighbours' tone (IŞ-4) */
