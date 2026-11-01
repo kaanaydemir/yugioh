@@ -225,7 +225,11 @@ export const V3_HATCH_RECIPES = {
     play(v) {
       glassBell(v, 2349, 0, 0.12, 0.06, { modes: 2 });
       puff(v, 0, 0.08, 0.05, 3000, { kind: 'white' });
-      thump(v, 0, 300, 140, 0.12, 0.05);
+      thump(v, 0, 300, 140, 0.18, 0.05);
+      // (crit c3r1 #9) the wind's body arriving: a low, soft pillow thump under the ting (no click on top),
+      // and a brown air-push that blooms a beat later — the baby's hit has weight without turning hard
+      thump(v, 0.004, 160, 62, 0.3, 0.14, { att: 0.006 });
+      puff(v, 0.01, 0.16, 0.16, 520, { kind: 'brown', att: 0.012 });
     },
   },
   /** It plops back on its tail (the recovery). */
@@ -349,7 +353,13 @@ export const V3_HATCH_RECIPES = {
 
   // ------------------------------------------------------------------ the growth: Büyüme
 
-  /** The circling air under the dial (sustained, built 1.6 s; stopped on growth f11). */
+  /**
+   * The circling air under the dial (sustained, built 1.6 s; stopped on growth f11). Crit c3r1 #9: it carries
+   * the whole dial build-up now — a pink band rising 500 → 2600 Hz that circles L ↔ R faster and faster, its
+   * level swelling in steps with the winds (no flat bed), a high breath band (3 → 6 kHz, the ring whistle's
+   * air) joining at 0.5 s, and a soft glide D5 → D6 that rises INTO the first growth hiccup's pitch (a glide,
+   * never a held note — the spiralhorn owns the held wind tone). No ticks (dial_jester's ratchet).
+   */
   hatchGrowWind: {
     cap: 1,
     gap: 0.2,
@@ -357,23 +367,41 @@ export const V3_HATCH_RECIPES = {
     duck: 0.25,
     play(v) {
       const E = 1.6;
-      // L ↔ R swings accelerating (0.4 → 0.12 s per swing): the air circles faster and faster
+      // L ↔ R swings accelerating (0.4 → 0.1 s per swing): the air circles faster and faster
       const pan: Pt[] = [];
       let t = 0;
-      let side = -0.6;
+      let side = -0.7;
       let sw = 0.4;
       pan.push([0, 0]);
       while (t < E) {
         t += sw;
         pan.push([Math.min(E, t), side]);
         side = -side;
-        sw = Math.max(0.12, sw * 0.82);
+        sw = Math.max(0.1, sw * 0.8);
       }
       const out = v.panner(pan);
-      const bp = v.filt('bandpass', [[0, 600], [1.2, 2400, 'e'], [E, 1800, 'e']], 1.4, { to: out });
-      v.noise('pink', { g: hold(0.09, 0.25, 1.3, E), to: bp });
-      // a faint low body under it (the hide stretching)
-      v.noise('brown', { g: hold(0.08, 0.4, 1.3, E), to: v.filt('lowpass', 220, 0.8) });
+      const bp = v.filt('bandpass', [[0, 500], [1.25, 2600, 'e'], [E, 1900, 'e']], [[0, 1.2], [1.25, 3]], { to: out });
+      // the swell in steps (the winds rise with each stage of the dial), then the natural fade
+      v.noise('pink', { g: [[0, 0.0001], [0.12, 0.12, 'e'], [0.36, 0.13], [0.42, 0.19, 'e'], [0.8, 0.2], [0.86, 0.26, 'e'], [1.3, 0.28], [E, 0.0001, 'e']], to: bp });
+      // the high breath of the ring whistle (joins at 0.5 s, follows the circling)
+      const hi = v.filt('bandpass', [[0, 3000], [E, 6000, 'e']], 2.5, { to: out });
+      v.noise('white', { g: [[0, 0.0001], [0.5, 0.0001], [0.9, 0.05, 'e'], [1.3, 0.07], [E, 0.0001, 'e']], to: hi });
+      // a glide that rises into the first hiccup (D5 → D6), a fast flutter, under everything
+      const gl = v.tone('sine', [[0, 587], [1.2, 1175, 'e']], { g: [[0, 0], [0.3, 0.012], [1.1, 0.028], [1.3, 0.0001, 'e']] });
+      v.lfo(gl.osc.detune, [[0, 5], [1.2, 14]], 25, { d: 1.3 });
+      // a low body under it (the hide stretching), swelling
+      v.noise('brown', { g: hold(0.14, 0.5, 1.3, E), to: v.filt('lowpass', [[0, 160], [1.2, 300, 'e']], 0.8) });
+    },
+  },
+  /** (crit c3r1 #9) One dial puff popping in: a soft cloud "pff" + a tiny FM bubble; the scene steps `pitch` up D major. */
+  hatchDialPuff: {
+    cap: 4,
+    gap: 0.015,
+    verb: 0.3,
+    play(v) {
+      puff(v, 0, 0.07, 0.05, 3200, { kind: 'pink', att: 0.006 });
+      v.bell(1175, { g: 0.018, dec: 0.06, ratio: 1.5, index: 0.5 });
+      v.tone('sine', [[0, 587], [0.05, 740, 'e']], { g: perc(0.02, 0.05, 0.004) });
     },
   },
   /** One revolution of the dial hand: an air pulse (no click), a soft low swell. Scene `pitch` 1 → 1.25. */

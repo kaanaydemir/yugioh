@@ -985,6 +985,23 @@ function drawBody(p: PixelCanvas, w: Workspace, P: HatchPose, light: Light, age:
   surface(p, P, S);
   // grown: the crease floor is leaf1 (leaf0 would be a 21st colour next to the night0 nostril / throat)
   if (S.sM >= 0.5) for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (p.get(x, y) === PAL.leaf0) p.set(x, y, PAL.leaf1);
+  // grown (crit c3r1 #3): the mane's shadow carved into the hide — a 1-px night4 band on every hide pixel
+  // with a cloud pixel above it or beside it, so the face, chest and legs separate from the cloud masses at 1×
+  // (the mane no longer melts into the green: a lion's ruff, not a sheep's fleece)
+  // (laid late: the despeckle pass would eat a 1-px band)
+  if (S.sM >= 0.5) late.push(() => {
+    const band: [number, number][] = [];
+    for (let y = 1; y < H - 1; y++)
+      for (let x = 1; x < W - 1; x++) {
+        if (!isHide(p.get(x, y))) continue;
+        if (isCloudPx(p.get(x, y - 1)) || isCloudPx(p.get(x - 1, y)) || isCloudPx(p.get(x + 1, y))) band.push([x, y]);
+      }
+    // under an overhanging mass the shadow runs one more step down the hide (leaf1), a 2-px cast shadow
+    const cast: [number, number][] = [];
+    for (const [x, y] of band) if (isCloudPx(p.get(x, y - 1)) && isHide(p.get(x, y + 1))) cast.push([x, y + 1]);
+    for (const [x, y] of band) p.set(x, y, PAL.night4);
+    for (const [x, y] of cast) p.set(x, y, PAL.leaf1);
+  });
 }
 
 /** a folded wing tip: a pointed leaf facet from its base to its tip */

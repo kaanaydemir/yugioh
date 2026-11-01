@@ -163,6 +163,22 @@ async function eggDropV3(S: Stage): Promise<void> {
     atFrame(u, 'summon', f, () => {
       play('hatchCrack', { volume: 0.75, pitch: [1, 1.12, 1.26][i], pan });
       c.bob = i % 2 === 0 ? -1 : 1;
+      // (crit c3r1 #6) the wait inside the egg ESCALATES: inside each 150 ms wobble the shell rattles
+      // 1 → 2 → 3 times (a whole-px knock sideways and back, each with a small chip tick a step higher),
+      // so the 600 game ms before the hatch is a build, never a held egg
+      const n = i + 1;
+      const gapMs = Math.floor(u.frameMs('summon', f) / (n + 1));
+      for (let k = 1; k <= n; k++) {
+        const dx = (k + i) % 2 === 0 ? 1 : -1;
+        void S.wait(gapMs * k).then(() => {
+          if (!live() || u.frameInfo().anim !== 'summon' || u.frameInfo().frame !== f) return;
+          u.sprite.setPosition(S.rest.x + dx, S.rest.y);
+          play('hatchCrack', { volume: 0.3 + 0.08 * i, pitch: 1.35 + 0.12 * (i + k), pan });
+          return S.wait(34).then(() => {
+            if (live() && u.lift === 0) u.sprite.setPosition(S.rest.x, S.rest.y);
+          });
+        });
+      }
     }),
   );
   atFrame(u, 'summon', 6, () => (c.bob = 0));

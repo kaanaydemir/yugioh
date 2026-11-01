@@ -1656,3 +1656,33 @@ Every claim was re-checked in the tree before acting on it. All 19 findings were
      voice AND body drop together and the FM index roughens as it drops.
   7. Blocked: the kit's ranged backlash fires on contact; our rebounding ring rides it home in 180 ms (the backlash's
      length) and the bonk plays the hatchling's `hit` on arrival (the kit does not pose a surviving ranged attacker).
+  8. Grown death: the lift-off (card birth, float start) comes on the anticipation frame f9, the float is 4 frame
+     changes (10 11 12 11, rise 4 / 5 / 5 = 14 px) and the card's arc is 220 ms — the grown knit runs 20 ms longer and
+     `kaChGrownLose` was 3.35 s (over 3.19); now 3.17 s. Baby keeps the blueprint's f10 lift-off and 6-step ping-pong.
+  9. The knit's skin4 pool steps out at lift-off (it lingered as a brown dither under the empty tile, `cine/gkillz.png`).
+  10. Growth swap: `playFrom(special, 3, hold)` already ends after f15's own hold; the extra f15 sleep was removed (it
+      left a ≈ 0.5 s dead beat before the stat beat, `cine/grow2end.png`).
+- **Measured (game ms, `--look v3`, 1×; `cine/measure1..5.json`)** vs REHBER §5 × 1.45: kaChSummon / P2 2450 (≤ 3340);
+  kaChAtk / P2 2333, kaChDefWin 2333, kaChBlocked 2466, kaChTie 3033, kaChLose / P2 2916 (≤ 3190); kaChDirect / P2 2200
+  (≤ 2320); kaChKill / P2 2600, kaChKillPhys 2883, kaChGuardKill 2216, kaChBolt 2466, kaChHit 1533; kaChRevive 2133
+  (≤ 3050); kaChFlip 733, kaChPos 4100 (two batches); kaChGrownAtk / P2 2550, kaChGrownBlocked 2400, kaChGrownLose 3166,
+  kaChGrownKill 2666, kaChGrownGuardKill 2583, kaChGrownHit 1533; kaChGrownDirect 2316 (≤ 2320, tight). The growth hook
+  (activate → statChange resolved): 3150 game ms (≤ 4060) in kaChGrow / P2 / Def; the whole kaChGrow batch 9.2 s is lane
+  D's coin (3.8 s) + massDestroy + the titan's death + ours. kaChAtkWeak 3816 is over: wisp_imp's own trigger (683 ms
+  activate) sits inside the battle — not this card's beat. 0 errors in every scenario.
+- **Sound** (`cine/{grow,atk,sum,gkill}.wav/.json`, `clip.mjs --music off`): peaks −2.0 / −2.6 / −2.0 / −1.9 dBFS (≤ −1),
+  0 clipped samples; every mark fired on its frame (the six growth hiccups at pitch 1 … 0.375 on f6 … f11 with the
+  alternating fwips, chime + wind stop on f11, gasp f12, `hatchVoiceDrop` on f13; sneeze + whistle on attack f8, squeeze
+  50 ms before contact, ting on the contact frame; land / three cracks / burst / cheep / hiccup on summon f2 / f3–f5 /
+  f7 / f10 / f12; grown curl f1, un-age f3, knit f4, lullaby f7, float on lift-off). The 1/3-octave LSD distinctness
+  table of §6.3 was NOT measured this round (known weakness).
+- **Gates:** `tsc` clean; tests/presentation + tests/audio + tests/art/cloud_hatchling + tests/duel/unit-variant 104/104;
+  `filmdiff --set v1` **17/17 IDENTICAL** (`cine/v1films`, `cine/filmdiff-v1.log`).
+- **Evidence (`shots/kart-a/cloud_hatchling/cine/`):** atk1 / atk1z (ring flight + contact ×3), sum1 / sum1z / sum1z2
+  (egg drop), grow1 / grow1z (r1: dial hidden), grow2z (dial fixed), grow2end (swap + "+1200"), growP2, growDef,
+  kaChKill / killz / killz2 (egg float + scatter), gkillz (grown un-aging death), kaChLose, kaChBlocked, kaChDirect,
+  gatkz (grown ring ×3), measure1–5.json, grow/atk/sum/gkill .mp4/.wav/.json.
+- **Known weaknesses:** the ring (D 14 → 17×10 px) is small at 1× next to big targets; the dial's rim puffs read as dots
+  at 1× and the spiral motes are faint; the egg sits ≈ 400 ms on the floor during the knit frames f7–f9 (art holds);
+  rewind (lane D) and the kaChGrown* cross-card films (chains, mirror, hat, equip, control, venom, ashen) were not
+  filmed this round; no LSD measurement; hatchhide still plays cloth (phase 1).

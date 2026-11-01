@@ -62,9 +62,12 @@ function sectorOf(travel: XY): number {
  * The ring of diameter D for a travel direction: a white outer row, a mist row inside it, and on the far
  * half a 1-px steel row inside that (it sits behind a target's depth). Offsets from the centre, cached.
  */
-export function windRing(D: number, travel: XY): RingPx[] {
+// (crit c3r1 #4) double-thick: TWO white rows outside, then mist, then (far half) steel; `inner` (the contact
+// frames) lays a 2-px colour band inside the white (water4: the wind's body as it closes round the target);
+// `ghost` draws only the outer row in that one tone (the afterimage ring trailing the flight).
+export function windRing(D: number, travel: XY, inner?: number, ghost?: number): RingPx[] {
   const sec = sectorOf(travel);
-  const key = `${D}|${sec}`;
+  const key = `${D}|${sec}|${inner ?? '-'}|${ghost ?? '-'}`;
   const hit = ringCache.get(key);
   if (hit) return hit;
   const a = (sec / 16) * Math.PI * 2;
@@ -88,19 +91,30 @@ export function windRing(D: number, travel: XY): RingPx[] {
     }
   };
   const r = D / 2;
-  put(r, PAL.white, false, 0);
-  put(r - 1, PAL.mist, false, 1);
-  if (r - 2 >= 1.5) put(r - 2, PAL.steel, true, 2);
+  if (ghost !== undefined) {
+    put(r, ghost, false, 0);
+    put(r - 1, ghost, false, 1);
+  } else {
+    put(r, PAL.white, false, 0);
+    put(r - 1, PAL.white, false, 1);
+    if (inner !== undefined) {
+      put(r - 2, inner, false, 2);
+      if (r - 3 >= 1.5) put(r - 3, inner, false, 3);
+    } else {
+      put(r - 2, PAL.mist, false, 2);
+      if (r - 3 >= 1.5) put(r - 3, PAL.steel, true, 3);
+    }
+  }
   const list = [...out.values()].map(({ x, y, c, far }) => ({ x, y, c, far }));
   ringCache.set(key, list);
   return list;
 }
 
 /** Draw a ring at (cx, cy); `half`: only its far / near half (for the depth split round a target). */
-export function drawRing(px: Px, cx: number, cy: number, D: number, travel: XY, half: 'all' | 'far' | 'near' = 'all'): void {
+export function drawRing(px: Px, cx: number, cy: number, D: number, travel: XY, half: 'all' | 'far' | 'near' = 'all', o: { inner?: number; ghost?: number } = {}): void {
   const x0 = Math.round(cx);
   const y0 = Math.round(cy);
-  for (const q of windRing(D, travel)) {
+  for (const q of windRing(D, travel, o.inner, o.ghost)) {
     if (half === 'far' && !q.far) continue;
     if (half === 'near' && q.far) continue;
     px.dot(x0 + q.x, y0 + q.y, q.c);

@@ -40,12 +40,13 @@ import { deathStartFrom, takePlannedEntry } from '../_v3/posematch';
 import { planGuardBreak, runGuardBreak, showsGuard } from '../_v3/guardbreak';
 import { atFrame, panAt, play, soundsOfUnit, start, takeCharge } from '../_v3/sound';
 import { followLight, layer, norm, onFrame, placeFeet, playFrom, seed, sleep, sourceOwnsDestroy, sub, RR, type Ctx } from './_kit';
-import { drawCloudShadow, drawDust, drawFizzle, drawGrassPatch, drawRing, drawShards, drawStreaks, eggScatter } from './cloud_hatchling-fx';
+import { drawCloudShadow, drawDust, drawFizzle, drawGrassPatch, drawPuff, drawRing, drawShards, drawStreaks, eggScatter } from './cloud_hatchling-fx';
 
 const STEP = 1000 / 60;
 
 /** The ring's diameters through its flight, one step per 60 ms (baby / grown, §5.2). */
-const RING_D = { baby: [8, 10, 12, 14], grown: [12, 16, 20, 24] } as const;
+// (crit c3r1 #4: the baby's 14 px ring was easy to miss at 1×; 18 now, the grown 28)
+const RING_D = { baby: [10, 12, 15, 18], grown: [14, 19, 24, 28] } as const;
 
 /** The frame-space point `name` of the frame the unit shows, in world px. */
 function framePt(u: MonsterUnit, name: 'muzzle' | 'core'): XY {
@@ -126,6 +127,18 @@ async function hatchRingV3(s: StrikeArgs): Promise<void> {
   atFrame(u, 'attack', 3, () => land(hop), { maxMs: 3000 });
   atFrame(u, 'attack', 4, () => hopTo(hop * 2), { maxMs: 3000 });
   atFrame(u, 'attack', 5, () => land(hop * 2), { maxMs: 3000 });
+  // (crit c3r1 #5) the "ha…" hold (f6) is never a still: the held breath shivers the body back 1 px and up
+  // again (whole px, only while f6 shows)
+  atFrame(u, 'attack', 6, () => {
+    const f = feetAt(hop * 2);
+    const quiver = (dx: number, dy: number) => {
+      if (live() && u.frameInfo().anim === 'attack' && u.frameInfo().frame === 6) placeFeet(u, { x: f.x + dx, y: f.y + dy });
+    };
+    void sleep(sc, 45).then(() => quiver(-Math.sign(travel.x || 1), 0));
+    void sleep(sc, 90).then(() => quiver(0, -1));
+    void sleep(sc, 135).then(() => quiver(0, 0));
+  }, { maxMs: 3000 });
+  atFrame(u, 'attack', 7, () => live() && placeFeet(u, feetAt(hop * 2)), { maxMs: 3000 });
   // home in two whole-px steps on the recovery frames (a dying attacker is taken home at contact instead)
   let homing = !loses && !tie;
   atFrame(u, 'attack', Math.min(n - 1, 11), () => homing && live() && placeFeet(u, feetAt(hop)), { maxMs: 4000 });
@@ -190,6 +203,7 @@ async function hatchRingV3(s: StrikeArgs): Promise<void> {
   );
   const squeezeAt = flightMs - 50;
   let squeezed = false;
+  const trail: XY[] = [];
   await new Promise<void>((resolve) => {
     onFrame(sc, (_dt, el) => {
       air.clear();
@@ -204,6 +218,10 @@ async function hatchRingV3(s: StrikeArgs): Promise<void> {
       pos = { x: Math.round(from.x + (aim.x - from.x) * k), y: Math.round(from.y + (aim.y - from.y) * k + arc) };
       D = Ds[Math.min(Ds.length - 1, Math.floor(el / 60))];
       tick = Math.floor(el / STEP);
+      // (crit c3r1 #4) an afterimage ring every second display frame: where the ring was three frames ago
+      trail.push({ ...pos });
+      if (trail.length > 4) trail.shift();
+      if (tick % 2 === 0 && trail.length >= 4 && Math.hypot(trail[0].x - pos.x, trail[0].y - pos.y) >= 4) drawRing(air, trail[0].x, trail[0].y, Math.max(Ds[0], D - 2), travel, 'all', { ghost: PAL.steel });
       drawStreaks(air, pos.x, pos.y, D, travel, tick);
       drawRing(air, pos.x, pos.y, D, travel);
       // a pressed patch on each stretch of floor the ring crosses (one per 26 px of ground)
@@ -267,13 +285,14 @@ async function hatchRingV3(s: StrikeArgs): Promise<void> {
   const tDepth = target && target.sprite.active ? target.sprite.depth : DEPTH.FX - 2;
   const back = layer(sc, tDepth - 0.5);
   const front = layer(sc, tDepth + 0.5);
-  const ringAt = (d: number) => {
+  const ringAt = (d: number, inner?: number) => {
     back.clear();
     front.clear();
-    drawRing(back, hit.x, hit.y, d, travel, 'far');
-    drawRing(front, hit.x, hit.y, d, travel, 'near');
+    drawRing(back, hit.x, hit.y, d, travel, 'far', { inner });
+    drawRing(front, hit.x, hit.y, d, travel, 'near', { inner });
   };
-  ringAt(Dmax);
+  // (crit c3r1 #4) the first contact frames: the ring's body fills water4 inside its white rows
+  ringAt(Dmax, PAL.water4);
   play(C?.impact ?? 'hatchRingTing', { volume: blocked ? 0.7 : 0.95, pitch: blocked ? 0.9 : 1, pan: tpan });
   s.impact(hit);
   void lightFlash(sc, ground.x, ground.y, PAL.mist, grown ? 30 : 24, 120, { floorY: ground.y, intensity: 0.9 });
@@ -314,7 +333,7 @@ async function hatchRingV3(s: StrikeArgs): Promise<void> {
 
   // the squeeze (the same table run backward, two steps) and the snap into 8 arcs
   await sleep(sc, STEP * 2);
-  ringAt(Ds[Ds.length - 2]);
+  ringAt(Ds[Ds.length - 2], PAL.water4);
   await sleep(sc, STEP * 2);
   ringAt(Ds[Ds.length - 3]);
   await sleep(sc, STEP * 2);
@@ -481,7 +500,53 @@ async function eggDeath(ctx: Ctx<'destroy'>, u: MonsterUnit, home: XY, grown: bo
   }, { late: false });
   // (grown: the lift-off comes on the anticipation frame f9 — its knit is longer; kaChGrownLose in budget)
   const liftF = Math.min(n - 1, grown ? FLOAT_SEQ[0] - 1 : FLOAT_SEQ[0]);
+  // (crit c3r1 #7) the knitted egg never sits still before it lifts: from f7 it bobs on its gathering cloud
+  // in whole-px steps (1 up, back, 1 up …) and small cloud puffs rise past it from the floor on both sides
+  // (they go on through the float: the cloud that carries it away)
+  const bobF = Math.min(liftF - 1, 7);
+  let bobbing = false;
+  let puffsOn = true;
+  const puffL = layer(sc, DEPTH.FX - 3);
+  const puffs: { x: number; y: number; age: number }[] = [];
+  let nextPuff = 0;
+  let side = u.player === 0 ? -1 : 1;
+  onFrame(
+    sc,
+    (dt, el) => {
+      puffL.clear();
+      if (el > 3000) puffsOn = false; // last-resort guard (a failed death never leaves a puff spawner)
+      if (bobbing && el >= nextPuff && puffsOn) {
+        nextPuff = el + 90;
+        puffs.push({ x: home.x + side * (5 + (puffs.length % 2) * 2), y: home.y - 2, age: 0 });
+        side = -side;
+      }
+      for (let i = puffs.length - 1; i >= 0; i--) {
+        const q = puffs[i];
+        q.age += dt;
+        const t = q.age / 320;
+        if (t >= 1) {
+          puffs.splice(i, 1);
+          continue;
+        }
+        // stepped rise (2 px per 40 ms), drifting 1 px outward halfway
+        const up = 2 * Math.floor(q.age / 40);
+        drawPuff(puffL, q.x + (t > 0.5 ? Math.sign(q.x - home.x) : 0), q.y - up, t);
+      }
+      return puffsOn || puffs.length > 0;
+    },
+    () => puffL.g.destroy(),
+  );
+  atFrame(u, 'death', bobF, () => {
+    if (!u.sprite.active || bobbing) return;
+    bobbing = true;
+    if (u.claimed) u.unclaim();
+    const step = Math.max(40, Math.round(u.rangeMs('death', bobF, liftF) / 4));
+    [1, 0, 1, 0].forEach((b, k) => void sleep(sc, step * k).then(() => {
+      if (u.sprite.active && u.frameInfo().anim === 'death' && u.frameInfo().frame < liftF) placeFeet(u, home, b);
+    }));
+  }, { late: false });
   await untilFrame(liftF);
+  if (!u.sprite.active || !u.sprite.visible) puffsOn = false;
   if (!u.sprite.active || !u.sprite.visible) return;
   // ---- lift-off = the burst frame: the card is born, the egg rides its cloud up
   burst();
@@ -525,6 +590,7 @@ async function eggDeath(ctx: Ctx<'destroy'>, u: MonsterUnit, home: XY, grown: bo
     await sleep(sc, FLOAT_MS);
   }
   floating = false;
+  puffsOn = false;
   u.sprite.setVisible(false);
   // the clusters drift on by themselves (≈ 160 ms more); the card is already in flight
   void scatter;

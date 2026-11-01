@@ -172,10 +172,12 @@ const ATTACK_KEYS: readonly (readonly [D, Beat<HatchPose>['name']?, boolean?])[]
   // (critique c1r1 #10) the charge ESCALATES: f2 a small hop, f3 the chest swells, f4 the cheeks puff
   // and the cowlick lifts on the second, higher hop, f5 a 2-px crouch with the tail shell lifting — f6's
   // squint hold is the top of a rising curve
-  [{ cheeks: 0.7, lift: 2, armN: 0.3, armF: 0.2, tuft: 0.3, cow: -1, mane: 0.6, lunge: [-3, 1], rear: -1.5, lag: 1 }],
-  [{ cheeks: 0.85, squash: -0.6, tuft: 1, head: [0, -1], cow: 1, mane: 0.8, drift: 0.5, lunge: [-3, 2], rear: -2 }],
-  [{ cheeks: 1.3, lift: 5, armF: 0.6, armN: 0.5, tuft: 0.6, cow: -4, fluff: 0.3, mane: 0.6, lunge: [-1, 0], lag: -1 }],
-  [{ cheeks: 1.3, squash: 1, hip: [0, 2], tailTap: -1, tail: -0.2, cow: 3, mane: 0.8, lunge: [-2, 1], rear: -1, lag: 1 }],
+  // (crit c3r1 #5) every wind-up frame now changes the silhouette: f2 the nubs flap out on the take-off, f3 a
+  // back lean with a shell tap on the landing, f4 a flap up on the higher hop, f5 the deepest lean back
+  [{ cheeks: 0.7, lift: 2, armN: 0.3, armF: 0.2, tuft: 0.3, cow: -1, mane: 0.6, wingOpen: 0.6, lunge: [-3, 1], rear: -1.5, lag: 1 }],
+  [{ cheeks: 0.85, squash: -0.6, tuft: 1, head: [-1, -1], lean: -1, tailTap: 1, cow: 1, mane: 0.8, drift: 0.5, lunge: [-3, 2], rear: -2 }],
+  [{ cheeks: 1.3, lift: 5, armF: 0.6, armN: 0.5, tuft: 0.6, cow: -4, fluff: 0.3, mane: 0.6, wingOpen: 1, lunge: [-1, 0], lag: -1 }],
+  [{ cheeks: 1.3, squash: 1, hip: [0, 2], lean: -2, head: [-1, 0], tailTap: -1, tail: -0.2, cow: 3, mane: 0.8, wingOpen: 0.3, lunge: [-2, 1], rear: -1, lag: 1 }],
   [{ head: [-2, -2], tilt: 2, eye: 1, cheeks: 0.6, jaw: 0.3, squash: -0.5, cow: -2, tuft: 0.6, wingOpen: 0.5, mane: 0.7, lunge: [-3, 0], stomp: 3, rear: 1 }],
   [{ head: [2, 1], tilt: -0.5, eye: 1, jaw: 0.3, cow: -1, wingOpen: 0.7, mane: 0.5, lunge: [1, 0], stomp: 2, lag: -2 }, 'swing'],
   // (critique c1r1 #9) grown: the blast recoils the head (lunge 3 → 0 px, the stamp carries the force)

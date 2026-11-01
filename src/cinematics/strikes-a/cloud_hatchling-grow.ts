@@ -45,6 +45,10 @@ const DIAL_UP = 22;
 const LONG = 20;
 const SHORT = 12;
 /** Pans of the six revolution pulses: round the stereo field. */
+/** Scene ms after the roar's hold frame (f14) begins before the stat beat starts (crit c3r1 #2). */
+const BEAT_AFTER_ROAR = 60;
+/** The dial puffs' pitches (semitones above the base): D major, once round the clock. */
+const DIAL_STEPS = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19] as const;
 const FWIP_PAN = [-0.6, 0.2, 0.6, -0.2, -0.6, 0.2];
 
 /** Units claimed by the growth hook (the staring loop lets go of them). */
@@ -126,10 +130,18 @@ async function hatchGrowV3(ctx: CinematicContext<ActivateEv>): Promise<void> {
     if (statIdx >= 0) await ctx.play(statIdx);
     return;
   }
-  const grows = visible.map((u, k) => sleep(ctx.scene, k * 150).then(() => growOne(ctx, u)));
+  // (crit c3r1 #2) the stat beat no longer waits for the swap at the end of f15: it starts BEAT_AFTER_ROAR
+  // after the last sibling's roar frame f14 begins (the roar flash and its loudest shake are over), so the
+  // leaf rim climbs the full-size roaring body and "+1200" / lpUp land ≈ 310 game ms earlier, on the roar's
+  // tail. It groups the consecutive statChanges as before.
+  let beat: Promise<void> | null = null;
+  const fireBeat = () => {
+    if (!beat) beat = statIdx >= 0 && !ctx.isConsumed(statIdx) ? ctx.play(statIdx) : Promise.resolve();
+  };
+  const last = visible.length - 1;
+  const grows = visible.map((u, k) => sleep(ctx.scene, k * 150).then(() => growOne(ctx, u, k === last ? fireBeat : undefined)));
   await Promise.all(grows);
-  // the stat beat comes after the last swap, on the grown body (it groups the consecutive statChanges)
-  const beat = statIdx >= 0 && !ctx.isConsumed(statIdx) ? ctx.play(statIdx) : Promise.resolve();
+  fireBeat();
   await Promise.all([beat, sleep(ctx.scene, 300)]);
 }
 
@@ -141,7 +153,7 @@ interface Fall {
   t0: number;
 }
 
-async function growOne(ctx: CinematicContext, u: MonsterUnit): Promise<void> {
+async function growOne(ctx: CinematicContext, u: MonsterUnit, onRoarTail?: () => void): Promise<void> {
   const sc = ctx.scene;
   const home = { ...u.home };
   const pan = panAt(home.x);
@@ -150,11 +162,19 @@ async function growOne(ctx: CinematicContext, u: MonsterUnit): Promise<void> {
   const sd = u.sprite.depth;
   const C0 = u.core();
   const centre: XY = { x: Math.round(C0.x), y: Math.round(C0.y - DIAL_UP) };
-  const wind = start('hatchGrowWind', { volume: 0.85, pan });
+  const wind = start('hatchGrowWind', { volume: 1, pan });
   const pool = lightPool(sc, home.x, home.y, { color: PAL.water4, radius: 24, intensity: 0, fadeIn: 0 });
-  pool.setIntensity(0.55, 1);
+  // (crit c3r1 #1) the floor pool rises in STEPS with the winds: build → rev 1 → every second growth frame
+  let poolStep = 0;
+  const stepPool = (k: number) => {
+    if (k <= poolStep) return;
+    poolStep = k;
+    pool.setIntensity(0.25 + 0.15 * k, 0);
+  };
+  stepPool(1);
   // ---- layers: the dial behind the body, the front-half landed puffs and the motes in front
   const dial = layer(sc, sd - 1);
+  const floor = layer(sc, DEPTH.CARD_ON_TILE + 1); // over the card on the tile, under the shadows
   const back = layer(sc, sd - 0.5);
   const front = layer(sc, sd + 0.5);
   // the ring slots (grown idle f0 = special f15), in world px through the sprite (mirrors for P2)
@@ -188,6 +208,7 @@ async function growOne(ctx: CinematicContext, u: MonsterUnit): Promise<void> {
     (dt) => {
       el += dt;
       dial.clear();
+      floor.clear();
       back.clear();
       front.clear();
       if (done || !live()) return false;
@@ -198,7 +219,10 @@ async function growOne(ctx: CinematicContext, u: MonsterUnit): Promise<void> {
       }
       // the long hand: rev 1 over f3–f5 (Quad.In), revs 2–6 one per frame f6 … f10, at 12 on f11
       if (curF >= 3 && curF <= 5) {
-        if (revStart < 0) revStart = el;
+        if (revStart < 0) {
+          revStart = el;
+          stepPool(2);
+        }
         const span = u.rangeMs('special', 3, 5) || 360;
         const t = Math.min(1, (el - revStart) / span);
         longA = t * t;
@@ -207,17 +231,32 @@ async function growOne(ctx: CinematicContext, u: MonsterUnit): Promise<void> {
         const t = Math.min(1, (el - fChange) / Math.max(1, u.frameMs('special', curF)));
         longA = k + t;
       } else if (curF >= 11) longA = 6;
-      // ---- rim puffs (the ones still on it), ticks, gold pip
+      // ---- (crit c3r1 #1) the dial face: a dark night4 band with a steel lip behind the puffs, built clockwise
+      //      with them, so the hollow clock reads as a shape at 1× (it blinks out with the hands)
+      if (handsGone < 3 && !(handsGone >= 0 && handsGone % 2 === 1)) {
+        const reach = built >= 12 ? Math.PI * 2 + 0.01 : (built / 12) * Math.PI * 2 + 0.01;
+        for (const r of RING) if (r.a <= reach) dial.dot(centre.x + r.x, centre.y + r.y, r.c);
+      }
+      // ---- the floor: the dial's stepped shadow ring (water tones, one step per stage), under the body
+      if (poolStep > 0 && handsGone < 3) {
+        const c = poolStep >= 4 ? PAL.water4 : poolStep >= 2 ? PAL.water3 : PAL.water2;
+        const every = poolStep >= 3 ? 1 : 2;
+        for (let i = 0; i < FLOOR.length; i += every) {
+          const q = FLOOR[i];
+          if (handsGone >= 0 && (i + handsGone) % 2 === 0) continue;
+          floor.dot(home.x + q.x, home.y + q.y, q.inner ? PAL.water2 : c);
+        }
+      }
+      // ---- rim puffs (the ones still on it): 7×4 cloud lobes, white crown, mist flanks, steel belly
       for (let h = 1; h <= 12; h++) {
         if (!onRim.has(h)) continue;
-        const p = hourPt(h);
-        dial.run(p.y - 1, p.x - 1, p.x + 1, PAL.white).run(p.y, p.x - 2, p.x + 1, PAL.mist).dot(p.x + 2, p.y, PAL.white).run(p.y + 1, p.x - 1, p.x + 1, PAL.steel);
+        puffLobe(dial, hourPt(h), false);
       }
       if (ticks && handsGone < 3) {
         for (const h of [12, 3, 6, 9]) {
-          const a = hourPt(h, DIAL_R - 4);
-          const b = hourPt(h, DIAL_R - 6);
-          if (handsGone < 0 || (handsGone + h) % 2 === 0) dial.dot(a.x, a.y, PAL.water4).dot(b.x, b.y, PAL.water4);
+          const a = hourPt(h, DIAL_R - 5);
+          const b = hourPt(h, DIAL_R - 7);
+          if (handsGone < 0 || (handsGone + h) % 2 === 0) dial.rect(a.x, a.y, 2, 2, PAL.water4).rect(b.x, b.y, 2, 2, PAL.water3);
         }
       }
       if (built >= 12 || onRim.size < 12) {
@@ -237,6 +276,7 @@ async function growOne(ctx: CinematicContext, u: MonsterUnit): Promise<void> {
           }
           hand(dial, centre, aS, SHORT, false);
           hand(dial, centre, aL, LONG, true);
+          dial.rect(centre.x - 1, centre.y - 1, 3, 3, PAL.steel).dot(centre.x, centre.y, PAL.white);
         }
         prevA = [...prevA.slice(-1), longA];
         if (handsGone >= 0) handsGone++;
@@ -249,7 +289,8 @@ async function growOne(ctx: CinematicContext, u: MonsterUnit): Promise<void> {
         const x = Math.round(f.from.x + (f.to.x - f.from.x) * e);
         const y = Math.round(f.from.y + (f.to.y - f.from.y) * e);
         const L = t >= 1 && f.back ? back : t >= 1 ? front : front;
-        L.run(y - 1, x - 1, x, f.back && t >= 1 ? PAL.mist : PAL.white).run(y, x - 1, x + 1, PAL.mist).dot(x, y + 1, PAL.steel);
+        if (t < 1) puffLobe(L, { x, y }, true);
+        else L.run(y - 1, x - 1, x, f.back ? PAL.mist : PAL.white).run(y, x - 1, x + 1, PAL.mist).dot(x, y + 1, PAL.steel);
       }
       // ---- the motes: an open spiral rising round the tile (radius 18 → 8, 0 → 30 px up), then the blast
       for (const m of motes) {
@@ -275,6 +316,7 @@ async function growOne(ctx: CinematicContext, u: MonsterUnit): Promise<void> {
     },
     () => {
       dial.g.destroy();
+      floor.g.destroy();
       back.g.destroy();
       front.g.destroy();
     },
@@ -286,7 +328,8 @@ async function growOne(ctx: CinematicContext, u: MonsterUnit): Promise<void> {
     onRim.add(h);
     built++;
     if (!defense && k % 4 === 0) u.pose('special', [0, 1, 2][k / 4]);
-    if (k % 3 === 0) play('hatchGrowFwipA', { volume: 0.25, pitch: 1.4, pan: ((k % 2) * 2 - 1) * 0.4 });
+    // (crit c3r1 #9) every puff pops in with its own soft cloud pop, climbing D major round the clock
+    play('hatchDialPuff', { volume: 0.55, pitch: 0.5 * 2 ** (DIAL_STEPS[k] / 12), pan: panAt(hourPt(h).x) });
     await sleep(sc, 25);
   }
   ticks = true;
@@ -317,6 +360,8 @@ async function growOne(ctx: CinematicContext, u: MonsterUnit): Promise<void> {
         falls.push({ hour: h, from: hourPt(h), to: { x: Math.round(s.x), y: Math.round(s.y) }, back: s.back, t0: el });
       }
       if (f === 8) void shake(sc, 120, 1);
+      if (f === 7) stepPool(3);
+      if (f === 9) stepPool(4);
       if (f === 11) {
         play('hatchGrowChime', { volume: 0.85, pan });
         wind.stop(80);
@@ -330,6 +375,7 @@ async function growOne(ctx: CinematicContext, u: MonsterUnit): Promise<void> {
   // the landed puffs vanish on the frame the sprite's own ring is complete (f11 → the next display frame)
   atFrame(u, 'special', 12, () => (landedAll = true), { maxMs: 5000 });
   atFrame(u, 'special', 12, () => play('hatchGrowGasp', { volume: 0.8, pan }), { maxMs: 5000 });
+  if (onRoarTail) atFrame(u, 'special', relF + 1, () => void sleep(sc, BEAT_AFTER_ROAR).then(onRoarTail), { maxMs: 5000 });
   atFrame(u, 'special', relF, () => {
     play('hatchVoiceDrop', { volume: 1, pan });
     blastAt = el;
@@ -354,14 +400,69 @@ async function growOne(ctx: CinematicContext, u: MonsterUnit): Promise<void> {
   void STEP;
 }
 
-/** A hand: a white 1-px head at the tip, a mist shaft (the long one), steel near the hub. */
+/**
+ * A hand (crit c3r1 #1: 2 px thick): a white core with a mist (long) / steel (short) side band, a 3-px white
+ * head at the tip, so the stepped sweep reads at 1×.
+ */
 function hand(px: Px, c: XY, a: number, len: number, long: boolean): void {
+  // the side band on the perpendicular that keeps the stroke 2 px wide on every angle
+  const sx = Math.abs(Math.sin(a)) > Math.abs(Math.cos(a)) ? 1 : 0;
+  const sy = 1 - sx;
   for (let r = 2; r <= len; r++) {
     const x = Math.round(c.x + Math.cos(a) * r);
     const y = Math.round(c.y + Math.sin(a) * r);
-    px.dot(x, y, r >= len - 1 ? PAL.white : long ? PAL.mist : r > len * 0.5 ? PAL.mist : PAL.steel);
+    const tip = r >= len - 2;
+    px.dot(x + sx, y + sy, tip ? PAL.mist : long ? PAL.mist : PAL.steel);
+    px.dot(x, y, tip || long ? PAL.white : r > len * 0.5 ? PAL.mist : PAL.steel);
   }
 }
+
+/** One rim puff (7×4 lobe): white crown, mist flanks, a steel belly; `small` is the falling 4×3 version. */
+function puffLobe(px: Px, p: XY, small: boolean): void {
+  if (small) {
+    px.run(p.y - 1, p.x - 1, p.x, PAL.white).run(p.y, p.x - 1, p.x + 1, PAL.white).dot(p.x + 2, p.y, PAL.mist).run(p.y + 1, p.x - 1, p.x + 1, PAL.steel);
+    return;
+  }
+  px.run(p.y - 2, p.x - 1, p.x + 1, PAL.white)
+    .run(p.y - 1, p.x - 2, p.x + 2, PAL.white)
+    .dot(p.x + 3, p.y - 1, PAL.mist)
+    .dot(p.x - 3, p.y, PAL.mist)
+    .run(p.y, p.x - 2, p.x + 2, PAL.white)
+    .dot(p.x + 3, p.y, PAL.mist)
+    .run(p.y + 1, p.x - 2, p.x + 2, PAL.steel);
+}
+
+/** The dial band (offsets from the centre): night4 body at r ∈ [R−1, R+1], a steel lip on the inside; by angle from 12. */
+const RING: readonly { x: number; y: number; a: number; c: number }[] = (() => {
+  const out: { x: number; y: number; a: number; c: number }[] = [];
+  const R = DIAL_R;
+  for (let y = -R - 2; y <= R + 2; y++)
+    for (let x = -R - 2; x <= R + 2; x++) {
+      const d = Math.hypot(x, y);
+      if (d < R - 2.5 || d >= R + 1.5) continue;
+      let a = Math.atan2(y, x) + Math.PI / 2;
+      if (a < 0) a += Math.PI * 2;
+      out.push({ x, y, a, c: d < R - 1.5 ? PAL.steel : PAL.night4 });
+    }
+  return out;
+})();
+
+/** The dial's floor ring (offsets from home): an iso ellipse rx 26 / ry 12 (round the card), a sparse inner ring rx 17 / ry 7. */
+const FLOOR: readonly { x: number; y: number; inner: boolean }[] = (() => {
+  const out: { x: number; y: number; inner: boolean }[] = [];
+  const seen = new Set<string>();
+  for (const [rx, ry, inner, n] of [[26, 12, false, 96], [17, 7, true, 28]] as const)
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const x = Math.round(Math.cos(a) * rx);
+      const y = Math.round(Math.sin(a) * ry);
+      const k = `${x},${y}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push({ x, y, inner });
+    }
+  return out;
+})();
 
 /** The swept wedge of a fast revolution: the sector from a0 to a1 (white leading edge, mist body, steel tail). */
 function wedge(px: Px, c: XY, a0: number, a1: number, len: number): void {
@@ -373,7 +474,7 @@ function wedge(px: Px, c: XY, a0: number, a1: number, len: number): void {
     const a = a0 + (d * i) / n;
     const col = i === n ? PAL.white : i < n * 0.25 ? PAL.steel : PAL.mist;
     // a hollow-ish wedge: the outer half of the radius only (the body stays readable behind it)
-    for (let r = Math.round(len * 0.45); r <= len; r += i === n ? 1 : 2) px.dot(Math.round(c.x + Math.cos(a) * r), Math.round(c.y + Math.sin(a) * r), col);
+    for (let r = Math.round(len * 0.35); r <= len; r += 1) px.dot(Math.round(c.x + Math.cos(a) * r), Math.round(c.y + Math.sin(a) * r), col);
   }
 }
 
