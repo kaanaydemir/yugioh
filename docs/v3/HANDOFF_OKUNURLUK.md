@@ -21,7 +21,7 @@ Make the duel screen read clearly at a glance, matching the owner-approved targe
 **`docs/v3/ref/hedef-gorunum-2.png`** (made from the current screen `docs/v3/ref/simdiki-gorunum-1.png`).
 The owner especially LOVED THE FOG — keep and animate it.
 
-Change ONLY these (all for the default `v3` look):
+Change ONLY these (all for the `v3` look — NOTE: the game's default is still `v1`, so always add `?look=v3`):
 1. Background (stands, machines, walls, floor around the platform): darker, lower contrast, less
    saturated, less detail; layered slowly drifting fog toward the edges; a few small warm torch lights
    that flicker.
@@ -45,6 +45,12 @@ Change ONLY these (all for the default `v3` look):
 - Arena runtime view: `src/view/board-nt/**` (also `src/view/board-calm/**`).
 - Light layer: `src/view/light/**` (profiles, pools, halos).
 - HUD v3: `src/view/v3/**` (hudSkin, hudV3), `src/view/HudView.ts`, `src/view/Button.ts`.
+
+## How to run (local)
+- `npm install` once, then `npm run dev` (Vite, hot reload) and open:
+  - **http://localhost:5173/?look=v3** — the normal game in the v3 look. WITHOUT `?look=v3` the OLD v1 look opens.
+  - **http://localhost:5173/?dev=duel&s=a6Hover&look=v3** — straight to a duel scene (fastest way to judge colour/fog).
+- Every URL / screenshot you check must contain `look=v3`.
 
 ## Tools / how to check your work
 - `npm install` once. `npm run typecheck` must be clean.
