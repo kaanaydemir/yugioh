@@ -175,15 +175,20 @@ const ROAR_HOLDS = [80, 120, 90, 60, 120, 100, 110, 120, 140];
 // ------------------------------------------------------------------ hit / heavy / magic
 
 const HIT_N = 6;
-// the neck is a SPRING: struck, it compresses into a tight low S with the head pulled in (f0–f1, the beak tipped
+// the neck is a SPRING: struck, it compresses into a tight low S with the head pulled in (f1, the beak tipped
 // down), releases past the idle S into a 2-px overshoot (f2: taller, the bends opened, the beak tipped up), then
-// settles back through a small undershoot to the idle S (f3–f4) — never a straight-up neck
-// (f0 is the contact frame: the compression starts there — kept local to the neck and head, HA-21 — and peaks on f1)
+// settles back through a small undershoot to the idle S (f3–f4) — never a straight-up neck.
+// f0 is the contact frame and stays LOCAL (HA-21 / KK-4): the eye shuts, the throat plumes flare, the lower bend of
+// the S kinks back and the head is jerked 2 px back ON ITS OWN ROW (the crown keeps idle f0's top row, so the
+// frame's extent never changes on the contact frame); the compression comes on f1.
+// The give is DRAWN (knock 'pose'): the body rocks back 3 px over f1 (feet planted, the leg leaning) and the
+// spring brings it home — the pond and the reeds never move under a blow.
+const STRUCK: Partial<Pose> = { n1x: 15, n1y: -38, n2x: -3, n2y: -46, hx: 6, hy: -55, ba: 0.08, eye: 0, ruffle: 1 };
 const SPRING: Partial<Pose> = { n1x: 15, n1y: -37, n2x: -6, n2y: -42, hx: 3, hy: -49, ba: 0.12, eye: 0, ruffle: 1 };
 const HIT_KEYS: Partial<Pose>[] = [
-  SPRING,
-  { n1x: 17, n1y: -35, n2x: -9, n2y: -40, hx: 0, hy: -45, ba: 0.25, eye: 0, ruffle: 2, bx: -1, by: 1 },
-  { n1x: 11, n1y: -41, n2x: 3, n2y: -50, hx: 10, hy: -58, ba: -0.12, eye: 1, ruffle: 1 },
+  STRUCK,
+  { n1x: 17, n1y: -35, n2x: -9, n2y: -40, hx: 0, hy: -45, ba: 0.25, eye: 0, ruffle: 2, bx: -3, by: 1 },
+  { n1x: 11, n1y: -41, n2x: 3, n2y: -50, hx: 10, hy: -58, ba: -0.12, eye: 1, ruffle: 1, bx: -1 },
   { n1x: 14, n1y: -38, n2x: -1, n2y: -46, hx: 7, hy: -54, ba: 0.04 },
   { n1x: 13, n1y: -39, n2x: 0, n2y: -47, hx: 8, hy: -55 },
 ];
@@ -194,11 +199,12 @@ export function hitPose(f: number): Pose {
 const HIT_HOLDS = [50, 50, 90, 100, 110, 120];
 
 const HH_N = 8;
-const HH0: Partial<Pose> = { ...SPRING, ruffle: 2 };
+// (f0 = the struck frame, local and on idle f0's top row; HA-24: death f0 is the same frame)
+const HH0: Partial<Pose> = { ...STRUCK, ruffle: 2 };
 const HH_KEYS: Partial<Pose>[] = [
   HH0,
-  { ...HH0, ruffle: 2, fl: 3, fx: -2, bx: -2, by: -2, hx: 1, wo: 0.15 },
-  { ...HH0, ruffle: 1, fl: 2, fx: -4, bx: -4, by: -1, hx: 2, wo: 0.25 },
+  { ...SPRING, ruffle: 2, fl: 3, fx: -2, bx: -2, by: -2, hx: 1, wo: 0.15 },
+  { ...SPRING, ruffle: 1, fl: 2, fx: -4, bx: -4, by: -1, hx: 2, wo: 0.25 },
   { n1x: 14, n1y: -38, n2x: -2, n2y: -45, hx: 6, hy: -52, fx: -4, fl: 0, bx: -4, by: 2, wo: 0.2, eye: 1 },
   { n1x: 13, n2x: 0, hx: 7, hy: -54, fx: -2, fl: 2, bx: -2, by: -1, wo: 0.1 },
   { fx: 0, fl: 0, bx: 0, by: 1 },
@@ -212,14 +218,14 @@ const HH_HOLDS = [50, 60, 80, 100, 90, 100, 110, 130];
 
 const HM_N = 8;
 const RIGID: Partial<Pose> = { n1x: 7, n1y: -41, n2x: 9, n2y: -50, hx: 10, hy: -58, rim: 1 };
+// (f0: the rim lights and the neck starts to straighten — on idle f0's top row; the head lifts on f1)
 const HM_KEYS: Partial<Pose>[] = [
-  RIGID,
-  { ...RIGID, bx: 1, rim: 0.85 },
-  { ...RIGID, bx: -1, rim: 0.65, wo: 0.12, ruffle: 1 },
-  { ...RIGID, rim: 0.35, wo: 0.06 },
-  { n1x: 11, n1y: -40, n2x: 4, n2y: -48, hx: 9, hy: -56, rim: 0.15 },
-  { n1x: 13, n2x: 1, hx: 8, hy: -55 },
-  { },
+  { n1x: 10, n1y: -40, n2x: 5, n2y: -48, hx: 9, hy: -55, rim: 1, eye: 0 },
+  { ...RIGID, bx: -2 },
+  { ...RIGID, bx: -1, rim: 0.85, wo: 0.12, ruffle: 1 },
+  { ...RIGID, rim: 0.6, wo: 0.06 },
+  { n1x: 11, n1y: -40, n2x: 4, n2y: -48, hx: 9, hy: -56, rim: 0.3 },
+  { n1x: 12, n2x: 1, hx: 8, hy: -55, rim: 0.1 },
 ];
 export function hitMagicPose(f: number): Pose {
   if (f >= HM_N - 1) return home();

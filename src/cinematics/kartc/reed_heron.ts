@@ -644,6 +644,22 @@ function mistDeath(ctx: DestroyCtx): void {
   let slipped = false;
   // the bank's own world bands: two thin wisps either side, widening the art's cover bands past the body
   const wisps = new Px(sc.add.graphics().setDepth(unitDepth(u.home.y) + 0.4));
+  // the killing blow does not shove him: the death's own drawn back-step is the give (the kit's shared lethal knock
+  // would drag the still pond and the reeds with the body). The spot he stood on at the struck frame is kept,
+  // after every update (the kit's shove tween runs in the update), until the mist has him.
+  let pin: { x: number; y: number } | null = null;
+  const spr = u.sprite;
+  const hold = () => {
+    if (done || !spr.active) return void sc.events.off('postupdate', hold);
+    if (u.frameInfo().anim !== 'death') return;
+    if (!pin) pin = { x: spr.x, y: spr.y };
+    if (spr.x === pin.x && spr.y === pin.y) return;
+    for (const tw of sc.tweens.getTweensOf(spr)) {
+      if (tw.data.some((d) => d.key === 'x' || d.key === 'y')) tw.stop();
+    }
+    spr.setPosition(pin.x, pin.y);
+  };
+  sc.events.on('postupdate', hold);
   const keep = onFrame(sc, (_dt, el) => {
     if (done || el > 4000) return false;
     const fi = u.frameInfo();
@@ -686,7 +702,10 @@ function mistDeath(ctx: DestroyCtx): void {
       }
     }
     return true;
-  }, () => wisps.g.destroy());
+  }, () => {
+    wisps.g.destroy();
+    sc.events.off('postupdate', hold);
+  });
   void keep;
 }
 
