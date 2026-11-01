@@ -22,14 +22,19 @@ import { musicEngine, musicVolume, scheduleMusic, startPlan, VICTORY_STING_SEC, 
 import { RECIPES } from './sounds';
 import { Voice } from './synth';
 import type { V3SfxName } from './v3/slice';
+import type { HarpoonerSfxName } from './v3/tide_harpooner';
 import type { V3MaterialSfxName } from './v3/materials';
+import type { SpiralhornSfxName } from './v3/steppe_spiralhorn';
 import type { V3VoiceSfxName } from './v3/voices';
+import type { HeronSfxName } from './v3/reed_heron';
 import type { V3SpellSfxName } from './v3/spells';
 import type { DawnSfxName } from './v3/dawn';
 import type { KartBSfxName } from './v3/kart-b';
 import type { AshenSfxName } from './v3/ashen';
+import type { AxemanSfxName } from './v3/crag_axeman';
 import type { UiCardSfxName } from './v3/ui-cards';
 import type { UiFlowSfxName } from './v3/ui-flow';
+import type { KiteSfxName } from './v3/kite_fencer';
 
 export type SfxName =
   // UI
@@ -54,16 +59,21 @@ export type SfxName =
   | 'victory' | 'defeat'
   // v3 look (additive: src/audio/v3/slice.ts — character, material, slice spell / trap sounds)
   | V3SfxName
+  | HarpoonerSfxName
   // v3 material hits (additive: src/audio/v3/materials.ts — the template hit<Material><Light|Heavy|Magic>)
   | V3MaterialSfxName
+  | SpiralhornSfxName
   // v3 character voices from presentation recipes (additive: src/audio/v3/voices.ts — voice:<card>:<role>)
   | V3VoiceSfxName
+  | HeronSfxName
   // A5 / A6 (additive, A56.0): spell / trap sounds (src/audio/v3/spells.ts) and the UI family
   // (src/audio/v3/ui-cards.ts, ui-flow.ts)
   | V3SpellSfxName
+  | KiteSfxName
   | DawnSfxName
   | KartBSfxName
   | AshenSfxName
+  | AxemanSfxName
   | UiCardSfxName
   | UiFlowSfxName;
 

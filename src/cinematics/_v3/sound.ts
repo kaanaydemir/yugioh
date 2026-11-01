@@ -23,11 +23,16 @@ import { variantOf } from '../../duel/unit-variant';
 import { LOOK_V3 } from '../../view/layout';
 import { setCombatSfx } from '../../vfx/combat';
 import { hitSfxName } from '../../audio/v3/materials';
+import { HARPOONER_VOICE } from '../../audio/v3/tide_harpooner';
 import { voiceSounds } from '../../audio/v3/voices';
 import { KART_B_VOICES } from '../../audio/v3/kart-b';
+import { HERON_VOICE } from '../../audio/v3/reed_heron';
 import type { MaterialId } from '../../art/materials';
+import { AXEMAN_VOICE } from '../../audio/v3/crag_axeman';
 import { v3Recipe } from '../../presentation/registry';
+import { KITE_VOICE } from '../../audio/v3/kite_fencer';
 import type { BlowKind } from './blow';
+import { SPIRALHORN_VOICE } from '../../audio/v3/steppe_spiralhorn';
 
 // ================================================================ play
 
@@ -173,9 +178,12 @@ export interface CharacterSounds {
   reviveGather: SfxName;
   /** Revive 'land' mark. */
   reviveLand: SfxName;
+  /** The struck body's own hit sounds when it has no material recipe (hitSoundFor): light / heavy / magic, and a guarded blow. */
+  struck?: { light: SfxName; heavy: SfxName; magic: SfxName; guard?: SfxName };
 }
 
 export const CHARACTER_SOUNDS: Partial<Record<CardId, CharacterSounds>> = {
+  tide_harpooner: HARPOONER_VOICE,
   crystal_wyrm: {
     roar: 'wyrmRoar',
     arrive: 'wyrmChime',
@@ -189,6 +197,7 @@ export const CHARACTER_SOUNDS: Partial<Record<CardId, CharacterSounds>> = {
     reviveGather: 'wyrmReviveGather',
     reviveLand: 'wyrmReviveLock',
   },
+  reed_heron: HERON_VOICE,
   abyss_magus: {
     roar: 'magusCall',
     arrive: 'magusPresence',
@@ -227,6 +236,9 @@ export const CHARACTER_SOUNDS: Partial<Record<CardId, CharacterSounds>> = {
     reviveGather: 'ashenReviveGather',
     reviveLand: 'ashenReviveBeat',
   },
+  kite_fencer: KITE_VOICE,
+  crag_axeman: AXEMAN_VOICE,
+  steppe_spiralhorn: SPIRALHORN_VOICE,
 };
 
 /**
@@ -384,6 +396,8 @@ export function materialOf(id: CardId | null | undefined, kind: BlowKind): Mater
  */
 export function hitSoundFor(u: MonsterUnit | null | undefined, o: { kind: BlowKind; heavy: boolean }): SfxName | null {
   if (!LOOK_V3 || !u) return null;
+  const own = soundsOf(u.cardId)?.struck;
+  if (own) return o.kind === 'magic' ? own.magic : u.guarding && !o.heavy && own.guard ? own.guard : o.heavy ? own.heavy : own.light;
   const m = materialOf(u.cardId, o.kind);
   if (!m) return null;
   try {
