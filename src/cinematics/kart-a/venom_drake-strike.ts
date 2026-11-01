@@ -33,7 +33,7 @@ import { registerStrike } from '../api';
 import { strikeStartFrame } from '../_v3/clash';
 import { atFrame, panAt, play, takeCharge } from '../_v3/sound';
 import { followLight, holdFrame, layer, onFrame, playFrom, seed, sleep } from '../strikes-a/_kit';
-import { STEP, acidHoles, splatBurst, etchDot, flyGlob, podiumKey, scarRemembers, scarTile, splatCrown, steamThreads, surfaceOf, zoneKey } from './venom_drake-acid';
+import { STEP, acidHoles, splatBurst, sprayPuddle, etchDot, flyGlob, podiumKey, scarRemembers, scarTile, splatCrown, steamThreads, surfaceOf, zoneKey } from './venom_drake-acid';
 
 const r = Math.round;
 
@@ -321,10 +321,11 @@ async function venomSprayV3(s: StrikeArgs): Promise<void> {
         const from = live() ? ptOf(u, 'muzzle') : ptOf(u, 'muzzle');
         const to = pts[i];
         const floorTo = last ? G : to;
-        const at = await flyGlob(sc, from, to, { ms: 220, apex: 16 + i * 4, floorFrom: home, floorTo, small: !last, trail: i % 2 === 0, light: last || i === 1 });
+        const at = await flyGlob(sc, from, to, { ms: 220, apex: 16 + i * 4, floorFrom: home, floorTo, small: !last, trail: true, light: last || i === 1 });
         if (!last) {
           // the drops splash on the floor: small crowns, a brief pit on the podium side
           play('venomDrip', { volume: 0.7, pitch: pitches[i], pan: panAt(at.x) });
+          sprayPuddle(sc, at);
           splatCrown(sc, at, at.y, 4, DEPTH.TILE_FX + 6, { up: 10, speed: 36 });
           void lightFlash(sc, at.x, at.y, PAL.leaf3, 12, 180, { intensity: 0.6 });
           etchDot(sc, at.x - 1, at.y);

@@ -39,7 +39,7 @@ function globCells(shape: 0 | 1 | 2, oct: number, small = false): Cell[] {
   const a = (oct * Math.PI) / 4;
   const ca = Math.cos(a);
   const sa = Math.sin(a);
-  const [A, B] = small ? ([2.2, 1.7] as const) : shape === 0 ? ([3.9, 3.4] as const) : shape === 1 ? ([4.7, 2.9] as const) : ([3.1, 4.0] as const);
+  const [A, B] = small ? ([3.0, 2.4] as const) : shape === 0 ? ([3.9, 3.4] as const) : shape === 1 ? ([4.7, 2.9] as const) : ([3.1, 4.0] as const);
   const inside = (x: number, y: number) => {
     const u = (x - 0.5) * ca + (y - 0.5) * sa;
     const v = -(x - 0.5) * sa + (y - 0.5) * ca;
@@ -72,6 +72,10 @@ function globCells(shape: 0 | 1 | 2, oct: number, small = false): Cell[] {
     for (const c of cells) if (c[2] !== PAL.ink && (c[0] === 0 || c[0] === 1) && (c[1] === 0 || c[1] === 1)) c[2] = PAL.gold3;
     const core = cells.find((c) => c[0] === 0 && c[1] === 0);
     if (core) core[2] = PAL.gold4;
+  } else {
+    // crit r3 #1: the spray drop (6×5 + ink) carries one gold3 heart pixel so it reads as venom at 1×
+    const core = cells.find((c) => c[0] === 0 && c[1] === 0 && c[2] !== PAL.ink);
+    if (core) core[2] = PAL.gold3;
   }
   GLOB_CACHE.set(key, cells);
   return cells;
@@ -293,9 +297,8 @@ export function flyGlob(sc: Phaser.Scene, from: XY, to: XY, o: FlightOpts): Prom
             drops.splice(i, 1);
             continue;
           }
-          // a falling drop: 2 px tall (leaf3 head, leaf2 tail) for the glob, 1 px for a spray drop
-          px.dot(r(d.x), r(d.y), PAL.leaf3);
-          if (!o.small) px.dot(r(d.x), r(d.y) - 1, PAL.leaf2);
+          // a falling drop: 2 px tall (leaf3 head, leaf2 tail)
+          px.dot(r(d.x), r(d.y), PAL.leaf3).dot(r(d.x), r(d.y) - 1, PAL.leaf2);
         }
         last = { ...pos };
         if (t >= 1) {
@@ -306,7 +309,15 @@ export function flyGlob(sc: Phaser.Scene, from: XY, to: XY, o: FlightOpts): Prom
         // a 2-px leaf2, then leaf1 and leaf0 single pixels (no alpha)
         hist.unshift({ ...pos });
         if (hist.length > 6) hist.length = 6;
-        if (!o.small) {
+        if (o.small) {
+          // crit r3 #1: the spray drop trails a short stepped 2-px streak (leaf3 → leaf2 → leaf1 → leaf0)
+          const [, h1, h2, h3, h4] = hist;
+          const back = Math.sign(vx) || 1;
+          if (h4) px.dot(h4.x - back, h4.y, PAL.leaf0);
+          if (h3) px.dot(h3.x - back, h3.y, PAL.leaf1).dot(h3.x, h3.y, PAL.leaf1);
+          if (h2) px.dot(h2.x - back, h2.y, PAL.leaf2).dot(h2.x, h2.y, PAL.leaf2).dot(h2.x, h2.y + 1, PAL.leaf1);
+          if (h1) px.dot(h1.x - back, h1.y, PAL.leaf3).dot(h1.x, h1.y, PAL.leaf3).dot(h1.x, h1.y + 1, PAL.leaf2);
+        } else {
           const [, h1, h2, h3, h4, h5] = hist;
           const back = Math.sign(vx) || 1;
           if (h5) px.dot(h5.x - back, h5.y + 1, PAL.leaf0);
@@ -347,6 +358,57 @@ export function flyGlob(sc: Phaser.Scene, from: XY, to: XY, o: FlightOpts): Prom
       },
     );
   });
+}
+
+// ================================================================ the spray puddle (direct)
+
+/**
+ * Crit r3 #1: a spray drop lands — a bright floor puddle instead of a dark smudge. Stepped, no alpha:
+ * 50 ms a 5×3 leaf3 splash, 50 ms a 9×5 puddle, then the peak (11×5: leaf1 pool, leaf2 rim, a leaf3 front-top
+ * lip, a gold3 glint with a gold4 heart that steps along the lip) held ~260 ms, then it soaks in
+ * (leaf1 rim / leaf0 pool → leaf0 dot) by ~760 ms. A night0 row under the front edge seats it on the tile.
+ */
+export function sprayPuddle(sc: Phaser.Scene, at: XY, depth: number = DEPTH.TILE_FX + 5, delay = 0): void {
+  const px = layer(sc, depth);
+  const cx = r(at.x);
+  const cy = r(at.y);
+  const pool = (rx: number, ry: number, fill: number, rim: number, lip: number | null): void => {
+    ell(px, cx, cy, rx + 1, ry, rim);
+    ell(px, cx, cy, rx, Math.max(0, ry - 1), fill);
+    // the shadow row seats it on the tile
+    px.run(cy + ry + 1, cx - rx + 1, cx + rx - 1, PAL.night0);
+    if (lip !== null) px.run(cy - ry, cx - rx + 1, cx + rx - 2, lip);
+  };
+  let el = -delay;
+  onFrame(
+    sc,
+    (dt) => {
+      el += dt;
+      px.clear();
+      if (el < 0) return true;
+      if (el < 50) {
+        pool(2, 1, PAL.leaf3, PAL.leaf2, null);
+        px.dot(cx, cy - 2, PAL.gold3);
+      } else if (el < 100) {
+        pool(4, 2, PAL.leaf1, PAL.leaf3, PAL.leaf3);
+        px.dot(cx - 2, cy - 2, PAL.gold3);
+      } else if (el < 360) {
+        pool(5, 2, PAL.leaf1, PAL.leaf2, PAL.leaf3);
+        // the glint steps along the lip, 1 px per 65 ms
+        const gx = cx - 3 + Math.min(4, Math.floor((el - 100) / 65));
+        px.dot(gx, cy - 2, PAL.gold4).dot(gx - 1, cy - 2, PAL.gold3).dot(gx + 1, cy - 1, PAL.gold3);
+        // one acid bubble on the pool
+        if (el > 180 && el < 300) px.dot(cx + 2, cy, PAL.leaf3);
+      } else if (el < 520) {
+        pool(5, 2, PAL.leaf0, PAL.leaf1, PAL.leaf2);
+        px.dot(cx + 1, cy - 2, PAL.gold3);
+      } else if (el < 760) {
+        pool(3, 1, PAL.leaf0, PAL.leaf0, null);
+      } else return false;
+      return true;
+    },
+    () => px.g.destroy(),
+  );
 }
 
 // ================================================================ the victim's frame space

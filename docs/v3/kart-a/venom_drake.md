@@ -1990,3 +1990,151 @@ Every file touched is reached only from `LOOK_V3` registrations (strike / summon
 - The P2 attack was filmed (`fix1/atkp2.png`: correct mirrored arc, glob, splat and holes). Direct, Blocked
   (`fix1/blocked.png`) and Lose were spot-checked. DiesDef, Hit, Magic, Flip, Revive and Pos are unchanged by
   this pass and were not re-filmed.
+
+### Critique round 2 (2026-11-01): fixes and rejections
+I checked every finding in round 2 (`shots/kart-a/venom_drake/crit4/`) against a fresh film or render before acting
+on it. Evidence for this pass is in `shots/kart-a/venom_drake/fix2/`.
+
+**Fixed**
+- **#1 (minor) Glob legibility at launch.** In `venom_drake-acid.ts` `flyGlob`, the large glob (and the spray's last
+  drop) gets a launch smear for its first 3 frames. It is a 2-px stepped wet streak from the stinger to the glob:
+  leaf3/leaf2 on top, leaf1 under. It covers the full length, then ½, then ¼. Frame 1 also has a gold3 plus with a
+  gold4 centre at the muzzle, and frame 2 has two diagonal gold3 sparks. Films: `fix2/atk-launch.png` and
+  `fix2/atk-launch-z.png` (×5). Verification note: a fresh `--film` (`fix2/atk-before-arc.png`) shows the glob
+  already clear of the stinger at 733 ms, one frame after `venomSpit`. So the "no glob until about 980 ms" reading
+  does not match. The arc rises above a tight clip, which is probably what hid it.
+- **#2 (minor, second half) Flight sound gap.** `venomSpit` now ends with a 0.3 s dense high fizz (crackle at
+  7 kHz, 44 clicks, front-weighted, so it thins toward the splat's held breath). It rides the arc between the spit
+  and the splat. A rising whistle was **rejected**: §6's identity rules out rising sweeps, and the whip is the
+  card's only sweep.
+- **#3 (minor) The dome at rest.** In `venom_drake-summon.ts`, `gas()` now returns the top pixel of every column,
+  and a new `domeLife()` draws over the dome only while it is at rest (`dome >= 4`):
+  - a gold3 glint, 2 px with a leaf3 tail, steps along the rim at 1 column per 34 ms, then rests for about 10
+    columns;
+  - three rim bubbles swell from 1 px to a 3×3 leaf3 ring with a leaf1 eye and a gold3 skin pixel at the peak,
+    then pop into two leaf2 flecks, all in 80 ms phases and out of step with each other;
+  - two body bubbles (leaf3 caps, a leaf2 eye, a leaf0 shadow) rise 1 px per 90 ms through the leaf1 body and burst
+    under the top band.
+
+  The inhale still rolls the dome out cleanly. Film: `fix2/sum-dome.png` (×3, 2200–2550 ms).
+- **#4 (minor/moderate) Summon loudness.** Solo renders (`fix2/audio/solo-*.json`) show the loudest 400 ms came
+  from `venomRoar` itself, at −8.0 dBFS solo. The shared cut-in's `cutIn` sting reached −12.6, and `venomScar`
+  only −25.6. The roar's sac gurgle now punches at 0.5 and sinks to 0.26 → 0.2 instead of holding 0.4, and its hiss
+  body steps from 0.24 to 0.14 / 0.11. The roar is now −10.6 dBFS solo. The full summon's loudest 400 ms is
+  **−9.8 dBFS** (was −8.2), peak −1.95, 0 clipped. The roar tail windows dropped 3–6 dB.
+  - **Rejected:** dropping `cardSlam` or pulling `impactHeavy`. Both live in the shared `_v3/cutin.ts`, which this
+    card does not own, and they already play at 0.45 / 0.2 for a voiced monster.
+  - **Rejected:** spacing `summonBurst` and `venomScar`. The scar is about 15 dB under the mix, so the stack adds
+    nothing measurable. The scar also stays locked to the etch ring's frame.
+
+  What now sets the loudest window (around 3.0 s) is the shared cut-in sting over the roar's attack.
+
+**Rejected (with reasons)**
+- **#2, first half (move `venomSpit` to about 820 ms).** The film shows the glob leaving at 717–733 ms, on the
+  release frame where `venomSpit` fires, so moving the sound would desync it. The whip at 650 ms is on attack f5,
+  the tail's peak, as asked.
+- **#5 (splat holds through the hit-stop, faint residue ring).** The hit-stop is the shared impact freeze: every
+  layer holds by design, so a still splat during it is correct hit-stop language. The pale expanding green ring at
+  1300–1650 ms (`fix2/atk-residue.png`) is not drawn by any venom file. It is the shared contact kit's ring in the
+  attacker's ramp, out of this card's scope. The card's own residue (holes and drips) reads in the same film.
+
+**Measured** (`fix2/measure.json`, game ms, errors 0 everywhere). Budgets are guidance only (owner, 2026-11-01).
+All times are unchanged from round 1:
+
+| Scenario | Game ms |
+|---|---|
+| Summon / P2 | 3850 |
+| Atk / P2 | 2200 (contact 1100) |
+| Direct / P2 | 2200 |
+| Blocked | 1900 |
+| Lose / Both | 3000 |
+| DefKill | 4017 |
+| Dies | 2733 |
+| DiesDef | 2683 |
+| Hit | 2450 |
+| Magic | 2633 |
+| Revive | 2183 |
+| Flip | 750 |
+| Pos | 1017 |
+
+**Sound** (`fix2/audio/`, music off, 0 clipped samples everywhere):
+
+| Scenario | Peak dBFS | Loudest 400 ms dBFS |
+|---|---|---|
+| Summon | −1.95 | −9.8 |
+| Atk | −2.45 | −15.1 |
+| Direct | −2.45 | −15.9 |
+
+**Gates**
+- `npx tsc --noEmit` reports no venom errors.
+- `tests/art/venom_drake` and `tests/presentation` pass 94/94. `engine-boundary` timed out at 5 s while the
+  filmdiff ran alongside, then passed 5/5 alone once the filmdiff had finished.
+- `filmdiff --set v1` gives **17/17 IDENTICAL** (`fix2/filmdiff-v1.txt`).
+- `filmdiff --set a6v1` gives **26/26 IDENTICAL** (`fix2/filmdiff-a6v1.txt`).
+- Every file touched is reached only from `LOOK_V3` registrations.
+
+**Remaining weaknesses**
+- The summon's loudest window (−9.8 dBFS) is now set by the shared cut-in sting over the roar's attack. Lowering it
+  further needs the cut-in owner.
+- The expanding contact ring after the splat comes from the shared kit, in the attacker's ramp. It is pale at 1×.
+- The splat still holds as a still through the hit-stop, by design.
+- The launch smear is short (the glob is only 3–8 px from the muzzle in its first frames). It ties the glob to the
+  stinger, but the main read is still the glob itself.
+
+### Critique round 3 (2026-11-01): fixes and rejections
+The round-3 critic gave a ship-quality "yes". I checked each finding against a fresh film. Evidence for this pass is in
+`shots/kart-a/venom_drake/fix3/`.
+
+**Fixed**
+- **#1 (minor) The direct spray now has visible mass.** Before the fix it was 2–3 px dots and a dark floor smudge
+  (`fix3/direct-before.png`). The change is in `venom_drake-acid.ts`, and it touches only the `small` drop, which
+  nothing but the spray uses.
+  - **Drops.** Each spray drop is an ink-outlined 6×5 drop instead of 4×3, with a leaf3 body, a leaf2 belly and a
+    gold3 heart pixel. Each drop now trails a short stepped 2-px streak over its last 4 places
+    (leaf3 → leaf2 → leaf1 → leaf0). Trail drops fall as 2-px drops (a leaf3 head over a leaf2 tail) for every drop:
+    in `venom_drake-strike.ts`, `trail: true` replaces `i % 2 === 0`.
+  - **Puddle.** New `sprayPuddle()` runs where each of the 4 floor drops lands, synced with its `venomDrip`. It is
+    stepped and uses no alpha:
+    - 50 ms: a 5×3 leaf3 splash.
+    - 50 ms: a 9×5 puddle.
+    - About 260 ms at the peak: an 11×5 leaf1 pool with a bright leaf2 rim, a leaf3 front-top lip, and a
+      gold4/gold3 glint that steps along the lip at 1 px per 65 ms, plus one acid bubble.
+    - Then it soaks in: a leaf0/leaf1 pool, then a 7×3 leaf0 pool, gone by about 760 ms.
+    - A night0 row under the front edge seats it on the tile.
+  - **Result.** The 1100–1250 ms ground beat now reads as bright puddles with gold glints, before the 1300 ms
+    starburst and number.
+  - **Films.**
+    - `fix3/direct-z.png`: P2 ×2, 850–1400 ms.
+    - `fix3/puddle-z.png`: ×4.
+    - `fix3/direct-1x.png`: P2 at 1×.
+    - `fix3/direct-p1.png`: P1 at 1×.
+  - **Deviation.** I chose the critic's "fan of larger drops with short stepped trails" over a continuous 2-px stream.
+    The spray is five separate drops, one per landing point, as in the blueprint's §5.3 storyboard. A stream would
+    blur the five landings.
+
+**Rejected / out of scope**
+- **#2: shared contact ring.** The shared battle kit draws it, not a venom file. The critic agrees it does not block
+  this card.
+- **#4: summon loudest window.** The loudest 400 ms is set by the shared `_v3/cutin.ts` sting, which belongs to the
+  cut-in owner, as noted in round 2.
+- **#3, #5: notes.** No action needed.
+
+**Measured** (`fix3/measure.json`, errors 0):
+- kaVenomDirect / P2: 2183 game ms, with contact and number at 1300. This is unchanged, because the pass changes art
+  only. Budgets are guidance only.
+
+**Sound** (`fix3/audio/kaVenomDirectP2.*`, music off):
+- Peak −2.45 dBFS, loudest 400 ms −15.9 dBFS, 0 clipped samples.
+- No recipe changed. The puddle onsets share the frame of their `venomDrip`.
+
+**Gates**
+- `npx tsc --noEmit` reports no venom errors.
+- `tests/art/venom_drake` and `tests/presentation` pass 94/94.
+- `filmdiff --set v1` gives **17/17 IDENTICAL** (`fix3/filmdiff-v1.txt`).
+- Both edited files are reached only from `LOOK_V3` registrations.
+
+**Remaining weaknesses**
+- The spray drops are still separate drops, not one mass. They read clearly at 1× near the duelist, but they are
+  smaller at the far end of the arc.
+- The brief level-1 scar (dark dither) still shows behind the first puddle. The puddle now dominates it.
+- The shared contact ring and the summon's cut-in loudness are still for their shared owners.
