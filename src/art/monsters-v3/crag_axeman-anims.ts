@@ -203,7 +203,7 @@ export function attackPose(f: number): Pose {
     case 11: // plant 3, the STOMP: the near boot slammed down wide in front, the deepest crouch of the run-up
       return key({ ...COCK, f1x: 7, f2x: 1, lean: 1, sink: 4, chy: 1, dust: 0.6, bead: 1, cape: -1 }, f, n);
     case 12: { // release: the chop comes over — the head mid-swing in front, its arc smeared from overhead behind
-      const p = key({ nx: 15, ny: -44, ba: 8, hl: 23, hd: 1, az: 1, fh: 1, g2: -6, sink: 4, lean: 3, f1x: 9, f2x: 1, smear: 1, eye: 2, hy: 1, mant: 1, bead: -2, cape: 2 }, f, n);
+      const p = key({ nx: 14, ny: -42, ba: 38, hl: 23, hd: 1, az: 1, fh: 1, g2: -6, sink: 4, lean: 3, f1x: 9, f2x: 1, smear: 1, eye: 2, hy: 1, mant: 1, bead: -2, cape: 2 }, f, n);
       const from = headAt(attackPose(8));
       const sk = skeleton(p);
       return { ...p, smx: rnd(from.x), smy: rnd(from.y), spx: rnd(sk.Sn[0] - AX), spy: rnd(sk.Sn[1] - GY) };

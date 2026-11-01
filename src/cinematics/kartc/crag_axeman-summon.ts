@@ -87,7 +87,6 @@ async function boulderEntrance(S: Stage): Promise<void> {
   // a dust kick on each touch, then the stop and two 1-px rocks in the silent still beat
   let bounce = 0;
   const bounceAt = [0.5, 0.8];
-  let dimNow = 2;
   let ovLive = true;
   const total = Math.hypot(home.x - from.x, home.y - from.y);
   await new Promise<void>((resolve) => {
@@ -104,8 +103,7 @@ async function boulderEntrance(S: Stage): Promise<void> {
           ovLive = false;
           u.showSprite();
           u.sprite.setVisible(true);
-        } else if (dim !== dimNow || true) {
-          dimNow = dim;
+        } else {
           ov.redraw(dimBoulder(roll, dim, light));
         }
       }

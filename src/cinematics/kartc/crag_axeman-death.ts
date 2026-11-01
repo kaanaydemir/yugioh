@@ -11,7 +11,7 @@
 //   f6–f11  the halves tilt apart in steps (caxFall, panned to each side, 140 ms apart); the seam-burn starts at the cut
 //   tail    the card is born on the last death frame (burnt scraps only); the burn eats the last of each half in ≥ 2-px
 //           clusters (white → earth4 → gone; caxBurn); the planted axe stays 400 ms (its floor seam closing), then
-//           tips flat ("tok": caxAxeTok) and blinks out
+//           tips flat ("tok": caxAxeTok) and sinks out in two palette steps
 // The bookkeeping is the shared death kit's (the toGraveyard claimed, the tile released, the card born on the burst
 // frame and flown to the graveyard: _v3/card.ts cardLeaves); the body is this card's own (no recipe: this hook is
 // the card's only death handler above the defaults).
@@ -74,13 +74,13 @@ function tailPoses(): { burn: Pose[]; planted: Pose[]; tip: Pose[] } {
 }
 let TAIL: ReturnType<typeof tailPoses> | null = null;
 const canvasCache = new Map<string, PixelCanvas>();
-function tailCanvas(kind: 'burn' | 'planted' | 'tip', i: number, light: 'left' | 'right'): PixelCanvas {
-  const key = `${kind}:${i}:${light}`;
+function tailCanvas(kind: 'burn' | 'planted' | 'tip', i: number, light: 'left' | 'right', dim = 0): PixelCanvas {
+  const key = `${kind}:${i}:${light}:${dim}`;
   let pc = canvasCache.get(key);
   if (!pc) {
     TAIL ??= tailPoses();
     pc = new PixelCanvas(W, H);
-    drawAxeman(pc, TAIL[kind][i], light);
+    drawAxeman(pc, { ...TAIL[kind][i], dim }, light);
     canvasCache.set(key, pc);
   }
   return pc;
@@ -154,25 +154,25 @@ async function splitBody(ctx: DestroyCtx, u: MonsterUnit, home: XY, burst: () =>
       await sleep(sc, 50);
       ov.redraw(tailCanvas('burn', 1, light));
       await sleep(sc, 50);
-      // the body is gone; the planted axe stays (its floor seam closing)
+      // the body is gone; the planted axe stays while the card flies (~400 ms from its birth): its floor seam closes
       ov.redraw(tailCanvas('planted', 0, light));
       (pour as LightHandle | null)?.fadeOut(140);
-      // 400 ms planted: the seam under it closes in three steps
-      for (let i = 1; i < 4; i++) {
-        await sleep(sc, 100);
+      for (const i of [2, 3]) {
+        await sleep(sc, 70);
         ov.redraw(tailCanvas('planted', i, light));
       }
-      await sleep(sc, 60);
+      await sleep(sc, 40);
+      // it tips flat ("tok" on the landing frame)
       for (let i = 0; i < 3; i++) {
         ov.redraw(tailCanvas('tip', i, light));
-        await sleep(sc, i < 2 ? 40 : 60);
+        if (i === 2) play('caxAxeTok', { volume: 0.85, pan });
+        await sleep(sc, i < 2 ? 40 : 90);
       }
-      play('caxAxeTok', { volume: 0.85, pan });
-      // blinks out: off, on, off
-      ov.img.setVisible(false);
-      await sleep(sc, 50);
-      ov.img.setVisible(true);
-      await sleep(sc, 50);
+      // and goes out in two palette steps into the night floor (never an on/off blink)
+      for (const d of [1, 2]) {
+        ov.redraw(tailCanvas('tip', 2, light, d));
+        await sleep(sc, 60);
+      }
     } finally {
       ov.destroy();
     }
