@@ -390,6 +390,19 @@ function paintFace(S: Surface, f: FaceDef, id: number, strips: Omit<StripPiece, 
         else if (inVent && u >= 3 && u <= UP_N - 4) c = u === 3 ? lo : u === UP_N - 4 ? hi : u % 2 === 0 ? INK : lo;
         // rivets in the upper plate's corners
         else if ((lx === 3 || lx === plen - 5) && (u === 2 || u === UP_N - 3)) c = f.lit ? N3 : N2;
+        // h4-6 (hedef-gorunum-3): a row of small LIT WINDOWS in the upper plate of every non-vent panel — 4 × 5 px each,
+        // an ink frame, a player-colour pane (cyan on P1's side, red on P2's), its top-left pixel the brightest tone
+        else if (!hasVent && sideAt(x) !== 2 && u >= 4 && u <= 10) {
+          const slot = lx - 6;
+          const k = Math.floor(slot / 7);
+          const wx = slot - k * 7;
+          if (slot >= 0 && k < Math.floor((plen - 10) / 7) && wx <= 4) {
+            const glass = sideAt(x) === 0 ? NT_PAL.blue : NT_PAL.red;
+            if (u === 4 || u === 10 || wx === 0 || wx === 4) c = INK;
+            else if (u === 5 && wx === 1) c = glass[3];
+            else c = u < 8 ? glass[2] : glass[1];
+          }
+        }
       } else if (v >= MAIN0 && v < MAIN0 + MAIN_N) {
         const u = v - MAIN0;
         if (inInset && u >= 2 && u <= MAIN_N - 3) {
@@ -417,9 +430,10 @@ function paintFace(S: Surface, f: FaceDef, id: number, strips: Omit<StripPiece, 
           }
         } else if (u >= MAIN_N - 2 && inInset) c = N0;
       } else if (v === BELT0 + 2 && !seam) {
-        // a small lamp at the middle of every panel on the belt (player colour, 2 px + a dim pixel each side)
-        if (x === mid || x === mid - 1) c = tones[4];
-        else if (x === mid + 1 || x === mid - 2) c = tones[2];
+        // a small lamp at the middle of every panel on the belt (player colour, 2 px + a dim pixel each side; h4-6: brighter)
+        const lamp = sideAt(x) === 0 ? NT_PAL.blue : sideAt(x) === 1 ? NT_PAL.red : null;
+        if (x === mid || x === mid - 1) c = lamp ? lamp[3] : tones[4];
+        else if (x === mid + 1 || x === mid - 2) c = lamp ? lamp[1] : tones[2];
       }
       S.put(x, yt + v, c);
       if ((v === STRIP_ROWS[0] || v === STRIP_ROWS[1]) && !seam) {
