@@ -170,7 +170,65 @@ Bu andan sonra hiçbir kapı (tsc hariç, o da arka planda) ve ekran görüntüs
 - `view/board-nt/backhall.ts` (yeni) + `wall.ts`: 4 taş sütun (taş sıraları, aydınlık sol yüz), üstlerinde oyuncu
   renginde altın amblemli sallanan sancaklar (3 kare), salon zemininde iki boru + perçinli metal plaka.
 
+## Oturum 4 — hedef-gorunum-3 ile kalan farklar (sahip, 2026-11-02)
+Sahip: "sahne, kürsüler ve gömme karolar hedefe uyuyor"; 6 madde, her biri bir commit + push. `git pull`: güncel.
+
+### h4-1 — sahne sıkılaştı (`d077089`)
+- `layout-nt.ts`: pay 0.375 karo → **5 px** (dış karo çizgisinden sahne kenarına bir kenar genişliği); köşeler
+  uzak (288, 59) / sağ (522, 176) / yakın (352, 261) / sol (118, 144), pah 3–4 px. `PLATE_X0/X1/Y0/Y1` 122/518/62/258.
+  `FACE_H` 58 → 60 (test sınırı). Yakın-sağ köşe artık x 358 (lights.ts ayrımı ona göre).
+- Kürsüler sahne dışında kalınca: `DAIS_LANDINGS` — her düellocunun altında sahneyle aynı yükseklikte, sahneye bağlı
+  bir blok (`platform.ts` `paintLanding`: aynı duvar satırları, derz, oyuncu renginde lamba, taş üst, aydınlık kenar).
+- Testler: `tests/view/board-nt-layout.test.ts` (kürsü kendi bloğunda, blok sahneye değer; köşe x 358),
+  `tests/art/arena-nt-platform.test.ts` (örnek noktalar yeni geometriye).
+
+### h4-2 — sis geri geldi (`05c068c`)
+- `art/arena-nt/lights.ts` `paintFogBand` (320 × 48): uzun yassı lob zinciri, tepe `steel`/`night3`, gövde
+  `night2`/`night1`, sıralı dither ile incelir, uçları yumuşar (alfasız, palet). 3 varyant.
+- `view/board-nt/lights.ts`: 5 bant — 2'si hologram kaidelerinin yanında (sahnenin arkasında), 3'ü zeminde ve ekranın
+  alt kenarında, sahnenin ayağının önünde; zıt yönlerde 14–19 s periyotla yavaş kayıyor. Karoları örtmez (derinlik
+  sahnenin altında).
+
+### h4-3 — arka duvar siyahtan çıktı (`fc2159d`)
+- `wall-parts.ts` `brickWall`: 7 px'lik taş sıraları, ink harç, aydınlık üst/sol dudak, blok başına 3 loş ton, çatlaklar;
+  eski bölmeler koyu niş olarak kaldı.
+- `calm-remap.ts` `LIFT_LAYERS` ('wall'): duvar katmanı bir ton yukarı (ink → night0, night0 → night1).
+- `backhall.ts`: sancaklar iki tarafta da **kırmızı** (P1'de cyan şerit, P2'de altın); şamdanların duvarda küçük sıcak
+  halesi (`paintWallHalo`, dither, 3 titreme seviyesi). Salon parçaları ayrı 'hall' katman adıyla (lift onları etkilemez).
+
+### h4-4 — sahne çevresi zemini + hologram kaideleri (`694327c`)
+- `apron.ts` `panel`: düz koyu döşeme yerine iso **metal plakalar** — ink derz, aydınlık uzak dudak, köşe perçinleri;
+  her 3 plakadan birinde ızgara, bazılarında kabartmalı (tread) desen. Uzak salon zemini (`paintFloorTile`) de plaka + ızgara.
+- `holograms.ts`: kaide opak (0.55 → 1), halka opak, koni 0.28 → 0.5 → kaideler okunur.
+
+### h4-5 — mangallar ve meşaleler (`a5f866d`)
+- `lights.ts` `paintBrazierPost`: geniş demir kâse (kenar + kor), 11 px kalın kare taş direk (aydınlık sol / gölge sağ,
+  blok sıraları), iki basamaklı kaide. `paintTorchPool` (72 × 30): mangalın ayağı etrafında zeminde dither sıcak ışık
+  havuzu (`earth1`/`earth0`/`skin0`), alevle birlikte titrer. Şamdanlar: duvarda küçük hale (h4-3).
+
+### h4-6 — sahne ön yan duvarlarında ışıklı pencereler (`f60d2d6`)
+- `platform.ts`: havalandırmasız her panelin üst plakasında 4 × 5 px küçük pencere sırası (ink çerçeve, oyuncu renginde
+  cam, sol üst piksel en parlak) — P1 tarafında cyan, P2 tarafında kırmızı; kemer lambaları bir ton daha parlak.
+
+### h4-pal — palet kuralı (`2917a45`)
+- `LightLayer.ts` `ditherToPalette`: birim gölgesi (düşen + taban) ve ayak havuzu canvas'ta boyanıp **4×4 sıralı dither
+  ile palete** (ink / night0 / skin0 / earth1, alfa 255 ya da 0) çevriliyor; sıcak anahtar ışık da `earth1` dither.
+
+### Kapılar (son madde sonrası, `2917a45`)
+- `npm run typecheck`: **temiz**.
+- `npx vitest run`: 8 başarısız / 1448 geçti — oturum başındakiyle **aynı 8** (6 bilinen + hollow_ogre / mudgrasp_spirit
+  5 s zaman aşımı, yük altında). **Yeni hata yok**; arena testleri (güncellenen ikisi dahil) geçiyor.
+- `node tools/palcheck.mjs shots/ok/h4-final.png`: **PASS** — off **4.30 %** (önce 57.99 %), white 0.88 %, bands 0.
+- `node tools/filmdiff.mjs --set v1 --base shots/v3/a3/baseline/v1films --jobs 1`: **17/17 IDENTICAL** (333 s; önceki
+  turdaki `spBoltAce` yakalama hatası `--jobs 1` ile yok).
+- `node tools/filmdiff.mjs --set a6v1 --base shots/v3/a56/baseline/a6v1films --jobs 1`: **26/26 IDENTICAL** (458 s).
+  → v1 görünümü piksel piksel aynı.
+- `docs/v3/ref/okunurluk-sonrasi.png` = `shots/ok/h4-final.png` (`?dev=duel&s=a6Hover&look=v3`, 640 × 360).
+- Not: kapılar sırayla çalıştırıldı (`shots/ok/finalgates.cmd`); paralel çalışınca makine yükünden yakalama zaman aşımı
+  oluyor.
+
 ### Açık konular
+- Görüntüleyicim bu oturumda resim göstermiyor; görsel karşılaştırmayı sahip yapıyor.
 - Kapılar (vitest, palcheck, filmdiff v1/a6v1) h3 adımlarında çalıştırılmadı (sahip kararı); Claude birleştirmeden
   önce çalıştırmalı. `tests/art/arena-nt-platform.test.ts` op(213, 232)/op(213, 214)/op(320, 270) örnek noktaları eski
   sekizgene göre — yeni şekle göre güncellenmesi gerekebilir.
