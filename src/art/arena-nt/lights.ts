@@ -22,7 +22,6 @@ export const lightFrame = {
   fogBack: (variant: number): string => `fog:back:${variant}`,
   fogFront: (variant: number): string => `fog:front:${variant}`,
   fogWisp: (variant: number): string => `fog:wisp:${variant}`,
-  fogBand: (variant: number): string => `fog:band:${variant}`,
   torch: (frame: number): string => `torch:${frame}`,
 };
 
@@ -197,36 +196,6 @@ function paintFogFront(variant: number): PixelCanvas {
       }
     }
   }
-  return p;
-}
-
-/**
- * h4-2: a LOW FOG BAND (320 × 48) that lies along the hall floor / the screen's lower edge: a long flat lobe chain, its
- * crest the lightest (steel over night3), its body night2 / night1, thinning out by ordered dither (palette only, opaque
- * pixels; whatever is not set shows the floor). `variant` 0..2 shifts the lobes so the layers never line up.
- */
-export const FOG_BAND = { w: 320, h: 48 } as const;
-function paintFogBand(variant: number): PixelCanvas {
-  const W = FOG_BAND.w;
-  const H = FOG_BAND.h;
-  const p = new PixelCanvas(W, H);
-  const phase = variant * 2.3 + 0.4;
-  const lobes: Lobe[] = [];
-  for (let i = 0; i < 7; i++) lobes.push({ cx: 20 + i * 48 + ((i * 37 + variant * 23) % 21), cy: 28 + ((i + variant) % 3) * 3, rx: 52 + ((i * 13) % 17), ry: 15 + ((i * 7 + variant) % 5), w: 0.7 + ((i + variant) % 3) * 0.09 });
-  for (let y = 0; y < H; y++)
-    for (let x = 0; x < W; x++) {
-      // fade the band's ends so the layers tile seamlessly when two sit side by side
-      const edge = Math.min(1, Math.min(x, W - 1 - x) / 40);
-      const d = sampleLobes(x, y, lobes, phase) * edge;
-      if (d <= 0.1) continue;
-      const th = bayer4(x + variant * 3, y + variant);
-      if (d < th * 0.85) continue;
-      const crest = sampleLobes(x, y - 4, lobes, phase) * edge < d - 0.07;
-      if (crest && d > 0.5) p.set(x, y, th < 0.3 ? PAL.steel : PAL.night3);
-      else if (d > 0.62) p.set(x, y, th < 0.5 ? PAL.night3 : PAL.night2);
-      else if (d > 0.36) p.set(x, y, th < 0.55 ? PAL.night2 : PAL.night1);
-      else p.set(x, y, PAL.night1);
-    }
   return p;
 }
 
@@ -495,7 +464,6 @@ export function bakeLights(): LightsBake {
     parts.push([lightFrame.fogFront(v), paintFogFront(v)]);
     parts.push([lightFrame.fogWisp(v), paintFogWisp(v)]);
   }
-  for (let v = 0; v < 3; v++) parts.push([lightFrame.fogBand(v), paintFogBand(v)]);
   for (let f = 0; f < 3; f++) {
     parts.push([lightFrame.torch(f), paintTorch(f)]);
     parts.push([torchFrame.sconce(f), paintMountedTorch('sconce', f)]);
