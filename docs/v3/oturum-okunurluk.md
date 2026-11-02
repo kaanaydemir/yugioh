@@ -106,6 +106,36 @@ Claude birleştirmeden önce kapıları çalıştırmalı.
 - Görüntüler: `shots/ok/s3-grey.png` → `s5-pads.png` → `s6-key.png` → `s7-statue.png` (son hâl).
 - `docs/v3/ref/okunurluk-sonrasi.png` = `s7-statue.png`. `okunurluk-oncesi.png` (taban `d5dc22b`) değişmedi.
 
+### Adım 4 — hedef-1 renkleri + hedef-2 sisi; yumuşak kare çizgileri, plaka dokusu, düşen gölgeler (commit `65324b0`)
+- Gri remap kapatıldı (`calm-remap.ts` `CALM_LAYERS` boş), hologramlar yeniden mavi/mor ve parlak (alpha 0.72).
+- `src/view/board-nt/floor.ts`: slot çizgileri 2D canvas ile yumuşak (anti-alias) çiziliyor; plaka üstüne taş plaka dokusu.
+- `src/view/light/LightLayer.ts`: birimlerin altında sağ-alta düşen uzun gölge (`ensureCastShadowTex`).
+- **Not**: bu yumuşak katmanlar paletin dışında → palcheck FAIL (aşağıda). Hedef-3 adımlarında basamaklı/dither'a çevrilecek.
+
+### Adım 5 — seyirci + tribün katmanları kaldırıldı (commit `fb7243b`, `src/view/board-nt/index.ts`)
+
+## Oturum 3 — hedef-gorunum-3 (sahip, 2026-11-02)
+
+### Adım 0 — mevcut işi it (push)
+- `git pull`: güncel (yerel dal uzaktakinin 11 commit önünde; `8ff6b78` uzaktaki hedef-3 dokümanlarını birleştirdi).
+- Sahip kararı: palcheck FAIL olsa da mevcut iş itilsin, log'a yazılsın.
+- Kapılar (`8ff6b78`):
+  - `npm run typecheck`: temiz.
+  - `npx vitest run`: 8 başarısız / 1448 geçti. 6'sı bilinen (cardface-v3 G1, cloud_hatchling "no cyan", dusk_ashen,
+    hourglass_imp, shield_titan, crag_axeman "own voice"); 2'si yük altında 5 s zaman aşımı (hollow_ogre,
+    mudgrasp_spirit — film kapısı paralel çalışırken). Yeni gerçek hata yok.
+  - palcheck (`shots/ok/s10-nostands.png`): **FAIL — off 57.99 % > 50 %** (yumuşak slot çizgisi, doku, sis, gölge
+    gradyanları). Hedef-3 adımlarında düzeltilecek.
+  - filmdiff v1 / a6v1: bkz. aşağıdaki sonuç satırı.
+- Not: görüntüleyicim bu oturumda resim göstermeyi reddediyor ("media omitted"); ekran görüntülerini sahip inceliyor.
+
+### Sahip kararları (hedef-3 için)
+- Sahne ana hatları: karo satırlarına paralel sıkı dikdörtgen (küçük pah köşeler); iki düellocu sahneye bitişik
+  ayrı kürsülerde. `tests/view/board-nt-layout.test.ts` "tek dışbükey sekizgen iki pedi içerir" testi bu tasarıma
+  göre güncellenecek.
+- Yan duvar: `FACE_H` testi 45..60 px ve sahne altı ≤ y 320 ile sınırlı; yakın kenar y 262'de. "3 kat" sığmıyor →
+  sığan en yüksek (≈ 56–60 px) + daha belirgin derz/ışıklar.
+
 ### Açık konular
 - Film kapıları ve palcheck bu adımdan sonra çalıştırılmadı (sahip kararı).
 - Ekran görüntüleri yük altında bazen `__neon.ready` zaman aşımına düşüyor, görüntü yine de yazılıyor.
