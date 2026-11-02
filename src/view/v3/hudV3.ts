@@ -1067,9 +1067,9 @@ export class HudV3 implements HudApi {
           // A6B-8: the panel comes complete — body, name, LP, bar and counters from its first frame — and
           // only its trim steps up into its rest tone (two palette steps); never a frame without its numbers
           if (s === 2) this.applyTrim(P);
-          else P.trim.set(styleTrim(st, (P.active ? 0 : -1) - (2 - s)));
+          else P.trim.set(styleTrim(st, (P.active ? -1 : -2) - (2 - s)));
         },
-        wake: (w) => P.trim.set(w === 'white' ? flatTrim(PAL.white) : w === 'up' ? styleTrim(st, P.active ? 1 : 0) : (P.trimOverride ?? this.restTrim(P))),
+        wake: (w) => P.trim.set(w === 'white' ? flatTrim(PAL.white) : w === 'up' ? styleTrim(st, P.active ? 0 : -1) : (P.trimOverride ?? this.restTrim(P))),
       };
     };
     const pb = UI.phaseBar;
@@ -1242,9 +1242,12 @@ export class HudV3 implements HudApi {
     return P;
   }
 
-  /** The panel's resting trim: calmer low-glow tones (0 active, -1 inactive). */
+  /**
+   * The panel's resting trim: calm low-glow tones (readability pass, docs/v3/ref/hedef-gorunum-2.png):
+   * -1 active (cyan1 / cyan2), -2 inactive (cyan0 / cyan1). Flashes / wakes still lift it.
+   */
   private restTrim(P: PanelV3): Trim {
-    return styleTrim(playerStyleV3(P.player), P.active ? 0 : -1);
+    return styleTrim(playerStyleV3(P.player), P.active ? -1 : -2);
   }
 
   private applyTrim(P: PanelV3): void {

@@ -74,6 +74,14 @@
 - Köşe sütunlarının şerit/kapak vurgusu `ramp[1]` → `ramp[0]`.
 - Görüntü: `shots/ok/s1-strips.png` (öncesi `shots/ok/head-2b39735.png`).
 - `tests/art/arena-nt-*.test.ts`: 17/17 geçti.
+- Kapılar: `tsc` temiz, v1 17/17, a6v1 26/26 IDENTICAL, palcheck PASS (off 43.35 %, white 0.87 %). Commit `7aedab2`.
+
+### Adım 2 — oyuncu panellerinin çerçevesi bir ton sakinleşti (`src/view/v3/hudV3.ts`)
+- Panelin dinlenme çerçevesi (`restTrim`): aktif `cyan2/cyan3` → `cyan1/cyan2`, pasif `cyan1/cyan2` → `cyan0/cyan1`
+  (P2 kırmızı aynı biçimde). Açılış merdiveni (`stage`) ve `wake 'up'` aynı oranda bir ton aşağı kaydırıldı;
+  beyaz flaş ve `trimOverride` değişmedi. Konum, boyut, yazı aynı. Paylaşılan `styleTrim` / `FRAME_V3` sabitleri
+  (testlerde sabitlenmiş) **değişmedi**; yalnızca panelin istediği kaldırma (lift) değeri değişti.
+- Görüntü: `shots/ok/s2-hudpanel.png` (öncesi `shots/ok/s1-strips.png`, yakın plan `shots/ok/hud-bl.png`).
 
 ## Kontrol Kapıları (Gates)
 - `npm run typecheck`: Temiz (0 hata)
