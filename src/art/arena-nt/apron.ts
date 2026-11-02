@@ -114,23 +114,31 @@ function footingTop(e: number): Color {
 }
 
 function panel(x: number, y: number, q: number): Color {
+  // h4-4 (hedef-gorunum-3): METAL FLOOR PLATES instead of plain dark slabs — iso plates of 1 × 1 tile (32 × 16 half),
+  // each with an ink seam, a 1-px lit lip on its far edges (light from the top left), four rivets near its corners; every
+  // third plate is a GRATE (slots of ink every 3 px along the plate's row axis) and a few are tread plates (diamond bumps).
   const ga = (x + 0.5 - NT_OX) / 32;
   const sum = (y + 0.5 - NT_OY) / 16;
-  const col = Math.floor((ga + sum) / 2 + 0.5);
-  const row = Math.floor((sum - ga) / 2 + 0.5);
-  const ccx = NT_OX + (col - row) * 32;
-  const ccy = NT_OY + (col + row) * 16;
-  const px = x + 0.5 - ccx;
-  const py = y + 0.5 - ccy;
-  const dv = 16 - (Math.abs(px) / 2 + Math.abs(py));
-  const nc = px < 0 ? (py < 0 ? col - 1 : col) : py < 0 ? col : col + 1;
-  const nr = px < 0 ? (py < 0 ? row : row + 1) : py < 0 ? row - 1 : row;
-  const plateEdge = Math.floor(nc / 2) !== Math.floor(col / 2) || Math.floor(nr / 2) !== Math.floor(row / 2);
-  let c: Color = N0;
-  if (dv < 1) {
-    c = plateEdge ? INK : N0;
-  } else if (dv < 2 && plateEdge && py < 0) {
-    c = N1;
+  const gc = (ga + sum) / 2 + 0.5;
+  const gr = (sum - ga) / 2 + 0.5;
+  const col = Math.floor(gc);
+  const row = Math.floor(gr);
+  const fc = gc - col;
+  const fr = gr - row;
+  const ec = Math.min(fc, 1 - fc) * 32; // px from the plate's col edges
+  const er = Math.min(fr, 1 - fr) * 32;
+  const kind = (((col * 73856093) ^ (row * 19349663)) >>> 0) % 6;
+  let c: Color = N1;
+  if (ec < 0.8 || er < 0.8) c = INK;
+  else if ((fc < 0.5 && ec < 1.8) || (fr < 0.5 && er < 1.8)) c = N2;
+  else if (ec < 2.8 || er < 2.8) c = N0;
+  else if (ec > 3.2 && ec < 4.8 && er > 3.2 && er < 4.8) c = N2; // rivet
+  else if (kind === 0 || kind === 3) {
+    // grate: ink slots along the row axis
+    c = Math.floor(fc * 32) % 3 === 0 && ec > 5 && er > 5 ? INK : N0;
+  } else if (kind === 1) {
+    // tread plate: a sparse diamond bump pattern
+    c = Math.floor(fc * 32) % 4 === 0 && Math.floor(fr * 32) % 4 === 2 ? N2 : N1;
   }
   if (q <= SHADOW) {
     // stepped falloff (no blur): ink near the stage, then one tone down, then a 2×2 dither of the two

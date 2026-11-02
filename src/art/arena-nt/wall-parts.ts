@@ -291,16 +291,23 @@ export function paintDataPanel(frame: number, _hue: readonly [number, number]): 
 // ------------------------------------------------------------------ hall floor tile (64 × 32, iso diamonds)
 
 export function paintFloorTile(): PixelCanvas {
+  // h4-4: the far hall floor as dim metal plates (the wall layer lifts it one step: ink → night0, night0 → night1):
+  // an iso plate per tile with an ink seam, a lit lip on its far edges, four rivets and, on alternate rows, grate slots.
   const W = 64;
   const H = 32;
   const p = new PixelCanvas(W, H);
-  p.rect(0, 0, W, H, T.ink);
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
       const dx = Math.abs(x + 0.5 - 32);
       const dy = Math.abs(y + 0.5 - 16);
       const d = dx / 32 + dy / 16;
-      if (d >= 0.96 && d < 1.0) p.set(x, y, T.n0);
+      let c: number = T.n0;
+      if (d >= 0.95) c = T.ink;
+      else if (d >= 0.88 && y < 16) c = T.n1; // lit far lip
+      else if (d >= 0.84) c = T.ink;
+      else if (Math.abs(d - 0.62) < 0.04 && (dx < 3 || dy < 2)) c = T.n1; // rivets on the inner ring's tips
+      else if (d < 0.5 && y % 3 === 0 && x % 2 === 0) c = T.ink; // grate slots in the plate's middle
+      p.set(x, y, c);
     }
   return p;
 }
