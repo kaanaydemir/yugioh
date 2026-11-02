@@ -177,23 +177,13 @@ const RIM3: readonly Color[] = [G2, N0, G1, N0, G2, N0, G2, N0];
  * right / bottom. A low-frequency wave breaks the band edges so they read as stone, not as rings.
  */
 function topTone(x: number, y: number): Color {
-  // hedef-gorunum-3: stone flags in palette steps — iso flags of one tile (seams on the half tile, between the slots):
-  // an ink groove with a lit lip under it, a per-flag tone (stone1 / its 2×2 dither with stone0) and a rare chip.
-  const ga = (x + 0.5 - NT_OX) / 32;
-  const sum = (y + 0.5 - NT_OY) / 16;
-  const c = (ga + sum) / 2 + 0.5;
-  const r = (sum - ga) / 2 + 0.5;
-  const fc = Math.floor(c);
-  const fr = Math.floor(r);
-  const ec = Math.min(c - fc, 1 - (c - fc)) * 32;
-  const er = Math.min(r - fr, 1 - (r - fr)) * 32;
-  if (ec < 0.75 || er < 0.75) return N0;
-  if ((c - fc < 0.5 && ec < 1.75) || (r - fr < 0.5 && er < 1.75)) return G2;
-  const h = (((fc * 73856093) ^ (fr * 19349663)) >>> 0) % 7;
-  const far = Math.hypot((x - 150) / 470, (y - 110) / 260) > 0.92;
-  if (far || h === 0) return (x + y) % 2 === 0 ? G0 : G1;
-  if (h === 1 && (x * 7 + y * 13) % 29 === 0) return G0;
-  return G1;
+  // owner decision 2026-11-02 (back to fb7243b): one calm stone tone; only the far bottom-right corner steps down. The
+  // texture is the smooth stone-flag overlay (view/board-nt/floor.ts ensurePlateTexture), the warm top-left light the
+  // key-light wash of the light layer — no pixel dither on the plate (it read as "dotted").
+  const dx = (x - 150) / 470;
+  const dy = (y - 110) / 260;
+  const wave = 0.03 * Math.sin(x * 0.045 + y * 0.07) + 0.02 * Math.cos(x * 0.021 - y * 0.05);
+  return Math.hypot(dx, dy) + wave < 0.92 ? G1 : G0;
 }
 
 function paintTop(S: Surface, x0: number, y0: number, x1: number, y1: number): PlatformArt['dashes'] {

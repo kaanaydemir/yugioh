@@ -253,11 +253,11 @@ export function createFloorLayer(ctx: NtCtx): NtLayer {
     boost: number;
     shown: string;
   }
-  // hedef-gorunum-3 + pixel rules: the slots are the pixel atlas again (palette only, inset shading) and the plate's
-  // texture is baked into the plate (art/arena-nt/platform.ts topTone); the smooth canvas versions stay unused.
-  void ensurePlateTexture;
-  void ensureSmoothSlots;
-  const slotKey = NT_FLOOR_KEY;
+  // owner decision 2026-11-02: back to the fb7243b board top — the smooth stone-flag texture over the plate and the smooth,
+  // thin slot lines (the pixel-dither version read as "dotted"). The thick stage, daises and side walls of h3 stay.
+  const plateTex = ensurePlateTexture(scene);
+  if (plateTex) ctx.add(scene.add.image(PLATE_X0, PLATE_Y0, plateTex).setOrigin(0).setDepth(NT_DEPTH.platform + 0.5));
+  const slotKey = ensureSmoothSlots(scene);
   const slots: Slot[] = calmZones().map((z) => {
     const c = zoneXY(z.player, z.spot, z.index);
     const pile = z.spot !== 'monster' && z.spot !== 'spellTrap';
