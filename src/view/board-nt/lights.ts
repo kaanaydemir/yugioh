@@ -126,6 +126,14 @@ export function createLightsLayer(ctx: NtCtx): NtLayer {
   // 3. thin wisps gliding over the low banks
   addFog(lightFrame.fogWisp(0), 6, 252, false, NT_DEPTH.platform - 0.12, 10, 2, 8600, 2100);
   addFog(lightFrame.fogWisp(1), 486, 246, true, NT_DEPTH.platform - 0.12, -10, 2, 9000, 4900);
+  // h4-2 (owner loves the fog): three LOW BANDS (lights atlas fogBand) drifting slowly, in alternate directions, along the
+  // floor and the screen edges. They lie behind the stage (they never cover the board's tiles) and hug the bottom / the
+  // hologram plinths; the near band runs under the stage's foot so the wall rises out of it.
+  addFog(lightFrame.fogBand(0), -40, 118, false, NT_DEPTH.holo + 0.8, 16, 2, 14000, 0);
+  addFog(lightFrame.fogBand(1), 360, 132, true, NT_DEPTH.holo + 0.8, -16, 2, 15500, 3800);
+  addFog(lightFrame.fogBand(2), -60, 278, false, NT_DEPTH.platform - 0.1, 22, 2, 17000, 1200);
+  addFog(lightFrame.fogBand(0), 380, 282, true, NT_DEPTH.platform - 0.1, -22, 2, 16200, 7400);
+  addFog(lightFrame.fogBand(1), 150, 306, false, NT_DEPTH.platform - 0.1, 18, 1, 18800, 5100);
 
   // 4. mounted torches (wall sconces / post braziers) with an ordered-dither warm glow behind them
   const torches: TorchLight[] = TORCH_SPOTS.map((spot) => {
