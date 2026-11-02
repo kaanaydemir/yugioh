@@ -55,3 +55,33 @@ const MAP = new Map<number, number>([
 export function calmRemap(pc: PixelCanvas): PixelCanvas {
   return pc.clone().map((c) => MAP.get(c) ?? c);
 }
+
+/**
+ * Atmosphere (owner, 2026-11-02 — hedef-gorunum-3): the hall around the stage is far brighter in the target (measured:
+ * back wall ≈ rgb 60/55/80, floor ≈ 40/40/70; ours were ≈ 20/20/40). The back wall and the hall floor go up the night ramp
+ * by LIFT_STEPS palette steps (ink → night0 → night1 …), palette only. Tuned by measuring against the target
+ * (shots/ok/compare.ps1).
+ */
+export const LIFT_LAYERS: ReadonlySet<string> = new Set(['wall', 'apron']);
+const NIGHT_LADDER = [PAL.ink, PAL.night0, PAL.night1, PAL.night2, PAL.night3, PAL.night4] as const;
+export const LIFT_STEPS = 2;
+// round 2: the target's back wall is a warm grey-violet STONE (≈ 67/59/73), not navy: the wall's night tones go onto
+// the stone ramp (ink stays darkest), the floor stays navy but one step lighter (target ≈ 40/40/72 = night2).
+const WALL_MAP = new Map<number, number>([
+  [PAL.ink, PAL.night0],
+  [PAL.night0, PAL.stone0],
+  [PAL.night1, PAL.stone1],
+  [PAL.night2, PAL.stone1],
+  [PAL.night3, PAL.stone2],
+  [PAL.night4, PAL.stone2],
+]);
+// round 3: measured — the stone map was darker than the navy lift (score 16.4 vs 15.2); both layers go up the night ramp,
+// the wall by 3 steps (target wall ≈ 67/59/73), the floor by 3 (target floor ≈ 40/40/72). WALL_MAP kept for reference.
+void WALL_MAP;
+export function liftRemap(pc: PixelCanvas, layer = 'apron'): PixelCanvas {
+  const steps = layer === 'wall' ? LIFT_STEPS + 1 : LIFT_STEPS + 1;
+  return pc.clone().map((c) => {
+    const i = (NIGHT_LADDER as readonly number[]).indexOf(c);
+    return i < 0 ? c : NIGHT_LADDER[Math.min(NIGHT_LADDER.length - 1, i + steps)];
+  });
+}
