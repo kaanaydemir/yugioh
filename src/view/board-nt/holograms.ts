@@ -223,8 +223,9 @@ export function createHologramsLayer(ctx: NtCtx): NtLayer {
         const p = spec.pedestal;
         const ox = p.cx - st.anchor.x;
         const oy = p.cy - 1 - st.anchor.y;
-        st.creature = ctx.add(scene.add.image(ox, oy, key, 'f0').setOrigin(0).setDepth(Z.creature).setAlpha(0.36).setVisible(false));
-        st.tear = ctx.add(scene.add.image(ox, oy, key, 'f0').setOrigin(0).setDepth(Z.tear).setAlpha(0.36).setVisible(false));
+        // hedef-gorunum-1: the hologram reads clearly (violet magus, blue wyrm), still a little see-through in the fog
+        st.creature = ctx.add(scene.add.image(ox, oy, key, 'f0').setOrigin(0).setDepth(Z.creature).setAlpha(0.72).setVisible(false));
+        st.tear = ctx.add(scene.add.image(ox, oy, key, 'f0').setOrigin(0).setDepth(Z.tear).setAlpha(0.72).setVisible(false));
         st.ready = true;
         st.rows = lit ? 0 : -1;
       });

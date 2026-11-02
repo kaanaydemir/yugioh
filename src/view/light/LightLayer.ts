@@ -1053,6 +1053,52 @@ function ensureFootTex(scene: Phaser.Scene, rx: number, ry: number): string {
   return key;
 }
 
+/**
+ * Readability pass (owner feedback, hedef-gorunum-1/2): the CAST shadow of a unit. The key light comes from
+ * the top left, so the shadow falls down-right across the floor: a long soft ellipse, darkest at the feet,
+ * fading away from them. Origin of the texture = the feet (see SteppedUnitLight: setOrigin(FOOT_OX, FOOT_OY)).
+ * `len` ≈ the unit's opaque height.
+ */
+const CAST_PAD = 6;
+function ensureCastShadowTex(scene: Phaser.Scene, rx: number, len: number): { key: string; ox: number; oy: number } {
+  const L = Math.max(14, Math.min(46, Math.round(len * 0.62)));
+  const W = rx * 2 + L + CAST_PAD * 2;
+  const H = Math.round(rx * 0.8) + Math.round(L * 0.5) + CAST_PAD * 2;
+  const footX = CAST_PAD + rx;
+  const footY = CAST_PAD + Math.round(rx * 0.4);
+  const key = `light:v3cast:${rx}x${L}`;
+  if (scene.textures.exists(key)) return { key, ox: footX / W, oy: footY / H };
+  const cv = document.createElement('canvas');
+  cv.width = W;
+  cv.height = H;
+  const g = cv.getContext('2d');
+  if (g) {
+    // the long axis runs down-right along the floor (iso: 2 px right per 1 px down)
+    const ang = Math.atan2(1, 2);
+    const cx = footX + Math.cos(ang) * L * 0.45;
+    const cy = footY + Math.sin(ang) * L * 0.45;
+    g.save();
+    g.translate(cx, cy);
+    g.rotate(ang);
+    const a = L * 0.5 + rx * 0.6;
+    const b = Math.max(4, rx * 0.42);
+    g.scale(a, b);
+    // darker near the feet: a gradient along the long axis, multiplied by a radial falloff
+    const rad = g.createRadialGradient(-0.35, 0, 0, -0.1, 0, 1.05);
+    rad.addColorStop(0, 'rgba(4, 4, 12, 0.62)');
+    rad.addColorStop(0.5, 'rgba(4, 4, 12, 0.36)');
+    rad.addColorStop(0.85, 'rgba(4, 4, 12, 0.1)');
+    rad.addColorStop(1, 'rgba(4, 4, 12, 0)');
+    g.fillStyle = rad;
+    g.beginPath();
+    g.arc(0, 0, 1, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
+  }
+  scene.textures.addCanvas(key, cv);
+  return { key, ox: footX / W, oy: footY / H };
+}
+
 /** Wide soft drop shadow on the board floor under a monster card/unit or duelist podium. */
 function ensureFloorShadowTex(scene: Phaser.Scene, rx: number, ry: number): string {
   const key = `light:v3floorshd:${rx}x${ry}`;
@@ -1161,8 +1207,9 @@ class SteppedUnitLight {
     this.rx = Math.round(Math.max(12, Math.min(24, ow.w * 0.36)));
     this.ry = Math.max(4, Math.round(this.rx * 0.37));
     this.patch = layer.makePatch();
-    const floorShdKey = ensureFloorShadowTex(this.scene, 40, 21);
-    this.floorShdImg = layer.makeSteppedImage(floorShdKey, DEPTH.CARD_ON_TILE - 0.2);
+    // readability pass: a long cast shadow falling down-right from the feet (key light top left)
+    const cast = ensureCastShadowTex(this.scene, this.rx, ow.h);
+    this.floorShdImg = layer.makeSteppedImage(cast.key, DEPTH.CARD_ON_TILE + 0.2).setOrigin(cast.ox, cast.oy);
     const footKey = ensureFootTex(this.scene, this.rx, this.ry);
     this.footImg = layer.makeSteppedImage(footKey, DEPTH.SHADOW + 0.05);
     this.rimImg = layer.makeSteppedImage('__DEFAULT', unit.sprite.depth + 0.01);
@@ -1198,7 +1245,7 @@ class SteppedUnitLight {
     this.floorShdImg.setVisible(showFoot);
     this.footImg.setVisible(showFoot);
     if (showFoot) {
-      this.floorShdImg.setPosition(Math.round(s.x + 2), Math.round(groundY + 3));
+      this.floorShdImg.setPosition(Math.round(s.x), Math.round(groundY));
       this.footImg.setPosition(Math.round(s.x), Math.round(groundY));
     }
 

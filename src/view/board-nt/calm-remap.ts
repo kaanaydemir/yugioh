@@ -8,7 +8,9 @@ import { PAL } from '../../art/palette';
 import type { PixelCanvas } from '../../art/pixel';
 
 /** Layers whose textures go through the calm remap. */
-export const CALM_LAYERS: ReadonlySet<string> = new Set(['wall', 'stands', 'crowd', 'platform', 'apron', 'pads']);
+// Owner decision 2026-11-02: the target is hedef-gorunum-1 (navy / violet colours) with hedef-2's fog and
+// torches, so the grey remap is OFF (kept for a later A/B: list the layers here to turn it back on).
+export const CALM_LAYERS: ReadonlySet<string> = new Set<string>([]);
 
 const MAP = new Map<number, number>([
   // navy → grey stone (one step brighter at the bottom so the hall is not pitch black)
