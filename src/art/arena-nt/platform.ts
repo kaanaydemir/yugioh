@@ -496,6 +496,8 @@ function paintPillar(S: Surface, p: Pillar): void {
 // ---------------------------------------------------------------- corner blocks
 
 function paintCorners(S: Surface): PlatformArt['corners'] {
+  // hedef-gorunum-3: the tight stage has no corner cubes (they would stand on the tiles' margin); kept for a later return
+  if (S) return [];
   const out: PlatformArt['corners'] = [];
   const HW = 18;
   const HH = 9;

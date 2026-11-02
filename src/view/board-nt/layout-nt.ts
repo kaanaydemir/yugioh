@@ -35,10 +35,12 @@ export function ntIso(col: number, row: number): XY {
  * band), its four corners cut by the screen lines x = PLATE_X0 / PLATE_X1 (vertical end caps) and y = PLATE_Y0 / PLATE_Y1
  * (flat far / near edges). Every vertex lands on a whole screen pixel; the slab is point-symmetric about the board centre (320, 160).
  */
+// hedef-gorunum-3: the stage is a TIGHT block parallel to the tile rows (0.375 tile margin on every side, small chamfered
+// corners); the duelists stand on their own raised daises attached to the stage (pads layer), not on the plate.
 export const PLATE_C0 = -0.875;
 export const PLATE_C1 = NT_COLS - 0.5 + 0.375; // 6.875
-export const PLATE_R0 = -1.9375;
-export const PLATE_R1 = NT_ROWS - 0.5 + 1.9375; // 5.9375
+export const PLATE_R0 = -0.875;
+export const PLATE_R1 = NT_ROWS - 0.5 + 0.375; // 4.875
 /** The chamfer lines (screen px): vertical end caps x, flat far / near edges y. */
 export const PLATE_X0 = 114;
 export const PLATE_X1 = 526;
@@ -62,23 +64,25 @@ export function ntGrid(x: number, y: number): [number, number] {
  * Platform top outline (grid coords), duelist pads inside it: the eight vertices of the octagon, clockwise on screen, starting
  * at the near-left corner (index 6 is the near-right end of the flat near edge: arena-nt/lights.ts splits blue / crimson there).
  */
+// The four sharp corners of the tight block are far (288, 52), right (536, 176), near (352, 268), left (104, 144); the
+// chamfer lines cut 6 px off the far / near tips and 10 px off the side tips.
 export const PLATE_OUTLINE: readonly [number, number][] = [
-  ntGrid(PLATE_X0, 183), // near-left corner (left face start)
+  ntGrid(PLATE_X0, 149), // near-left corner (left face start)
   ntGrid(PLATE_X0, 139), // left end cap, top
   ntGrid(276, PLATE_Y0), // far flat edge, left end
-  ntGrid(368, PLATE_Y0), // far flat edge, right end
-  ntGrid(PLATE_X1, 137), // right end cap, top
+  ntGrid(300, PLATE_Y0), // far flat edge, right end
+  ntGrid(PLATE_X1, 171), // right end cap, top
   ntGrid(PLATE_X1, 181), // right end cap, bottom
   ntGrid(364, PLATE_Y1), // near flat edge, right end (the near corner of the right face)
-  ntGrid(272, PLATE_Y1), // near flat edge, left end
+  ntGrid(340, PLATE_Y1), // near flat edge, left end
 ];
 
 /** The extreme points of the plate's top (screen): the middle of the flat far edge, the right / left end caps, the middle of the flat near edge. */
 export const PLATE_CORNERS = {
-  apex: { x: 322, y: PLATE_Y0 },
-  right: { x: PLATE_X1, y: 159 },
-  bottom: { x: 318, y: PLATE_Y1 },
-  left: { x: PLATE_X0, y: 161 },
+  apex: { x: 288, y: PLATE_Y0 },
+  right: { x: PLATE_X1, y: 176 },
+  bottom: { x: 352, y: PLATE_Y1 },
+  left: { x: PLATE_X0, y: 144 },
 } as const;
 
 /** Screen bounding box of the plate top (duelist pads are inside it). */
