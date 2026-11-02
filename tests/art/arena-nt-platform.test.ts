@@ -4,7 +4,7 @@ import { buildPlatformArt, PLATFORM_BOX } from '../../src/art/arena-nt/platform'
 import { buildFloorArt } from '../../src/art/arena-nt/floor';
 import { buildPadsArt } from '../../src/art/arena-nt/pads';
 import { APRON_BOX, buildApronArt } from '../../src/art/arena-nt/apron';
-import { FACE_H, PLATE_Y1 } from '../../src/view/board-nt/layout-nt';
+import { FACE_H } from '../../src/view/board-nt/layout-nt';
 
 const allowed = new Set<number>(Object.values(PAL));
 function offPalette(p: { w: number; h: number; data: Uint8ClampedArray }): number {
@@ -25,14 +25,13 @@ describe('neon tower platform painters', () => {
     expect(offPalette(a.canvas)).toBe(0);
     // the slab: opaque inside the octagon, clear outside (the old bumps / apex notch are gone)
     const op = (x: number, y: number): boolean => a.canvas.isOpaque(x - PLATFORM_BOX.x, y - PLATFORM_BOX.y);
-    // h4-1: the tight stage (far edge y 62, end caps x 122 / 518) + the two dais landings
-    expect(op(290, 63)).toBe(true); // far flat edge
+    expect(op(320, 59)).toBe(true); // far flat edge
     expect(op(320, 270)).toBe(true); // near armour
-    expect(op(300, 58)).toBe(false); // above the flat far edge
-    expect(op(116, 160)).toBe(false); // left of the end cap
-    expect(op(213, 232)).toBe(true); // the P1 landing's wall under the P1 dais
-    expect(op(427, 80)).toBe(false); // above the upper-right edge, beside P2's landing
-    expect(op(213, 214)).toBe(true); // the P1 dais stands on its landing
+    expect(op(300, 56)).toBe(false); // above the flat far edge
+    expect(op(108, 160)).toBe(false); // left of the end cap (the old left tip stuck out to x 104)
+    expect(op(213, 232)).toBe(true); // the lower-left face runs straight under the P1 pad (no notch)
+    expect(op(427, 80)).toBe(false); // above the upper-right edge (the old far bump)
+    expect(op(213, 214)).toBe(true); // the P1 pad stands on the plate
     expect(a.strips.length).toBeGreaterThan(8);
     expect(a.vents.length).toBeGreaterThan(0);
   });
@@ -49,12 +48,12 @@ describe('neon tower platform painters', () => {
   it('draws a thick slab: a side wall of FACE_H px under the far-left corner and the near edge', () => {
     const a = buildPlatformArt();
     const op = (x: number, y: number): boolean => a.canvas.isOpaque(x - PLATFORM_BOX.x, y - PLATFORM_BOX.y);
-    // the near flat edge (y PLATE_Y1, x 346..358) carries FACE_H rows of armour: last row opaque, the one below clear
-    expect(op(352, PLATE_Y1 + FACE_H - 1)).toBe(true);
-    expect(op(352, PLATE_Y1 + FACE_H + 1)).toBe(false);
-    // five or more tones on the lit side face (one column, x 300: its top edge is y 146 + (300 − 122) / 2 = 235)
+    // the near flat edge (y 262) carries FACE_H rows of armour: last row opaque, the one below clear
+    expect(op(318, 262 + FACE_H - 1)).toBe(true);
+    expect(op(318, 262 + FACE_H + 1)).toBe(false);
+    // five or more tones on the lit side face (one column)
     const tones = new Set<number>();
-    for (let y = 235; y < 235 + FACE_H; y++) tones.add(a.canvas.get(300 - PLATFORM_BOX.x, y - PLATFORM_BOX.y) ?? -1);
+    for (let y = 262; y < 262 + FACE_H; y++) tones.add(a.canvas.get(300 - PLATFORM_BOX.x, y - PLATFORM_BOX.y) ?? -1);
     expect(tones.size).toBeGreaterThanOrEqual(6);
   });
   it('paints the apron (hall floor around the platform) palette-clean, opaque, with rails and lamps', () => {
