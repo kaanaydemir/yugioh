@@ -106,3 +106,9 @@ D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (ka
   kalın yükseltilmiş sahne (yüksek yan duvar, üst kenarda ışıklı pah, yere gölge), karo sıralarına paralel
   sahne kenarı, gömük karolar, her düellocu kendi renginde parlayan basamaklı kürsüde, duvara/direğe oturmuş
   meşaleler. Karo yerleri ve kamera DEĞİŞMEZ; yeni şekil mevcut karoların etrafına kurulur.
+- GEMINI SONUCU (2026-11-02, h4 b593350): SAHİP — "geriye gitti". L şekilli sahne, taşan kürsü blokları, mavi
+  bulut topağı sis ve SAHA ÜSTÜ (noktalı dither doku, çamurlu kahve-gri karolar) kötü. Gemini arena yapısında
+  durduruldu. Sıfırlamadan sonra Claude: dalı 9f98c45'e (h3 sonu, iyi hâl) çeker, h4'ten yalnız işe yarayanları
+  (gölgelerin palete basamaklanması, arka duvarın bir ton açılması) alır, kalanı hedef-gorunum-3'e bakarak yapar.
+  Saha üstü hedefi: sakin, temiz koyu arduvaz; karo içi tek düz ton + en fazla 1 ince doku tonu, noktalı/ekran
+  kapısı dither YOK; gömük karo kenarları net; turkuaz/kırmızı sınırlar ince.
