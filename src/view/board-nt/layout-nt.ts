@@ -49,7 +49,7 @@ export const PLATE_Y1 = 262;
  * light channel 6, main armour plate 18 (big bevelled panel face), belt 5, footing flange 4 incl. the bottom outline. The stands /
  * crowd sit behind it (armour bottom y = 178 + x/2 on the left face, 448 − x/2 on the right face, 314 on the flat near edge).
  */
-export const FACE_H = 52;
+export const FACE_H = 58; // hedef-gorunum-3: as tall as the screen allows (near edge 262 + 58 = 320, the hand / hint plate draw over it)
 
 /** Grid coordinates of a screen point (inverse of ntIso). */
 export function ntGrid(x: number, y: number): [number, number] {

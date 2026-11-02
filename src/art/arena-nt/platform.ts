@@ -14,7 +14,7 @@ export const NT_PLATFORM_KEY = 'nt:platform';
 export const NT_PLATFORM_FX_KEY = 'nt:platform:fx';
 
 /** Screen rect of the body texture: the plate (104..536 × 52..296) + corner blocks above + the contact shadow around. */
-export const PLATFORM_BOX = { x: 88, y: 36, w: 464, h: 284 } as const;
+export const PLATFORM_BOX = { x: 88, y: 36, w: 464, h: 290 } as const;
 
 // ---------------------------------------------------------------- tones
 
@@ -292,29 +292,38 @@ function faceDefs(): FaceDef[] {
 
 type RowTone = Color | 'S' | 'L' | 'l';
 const rowsOf = (...segs: RowTone[][]): RowTone[] => segs.flat();
-const LIT_ROWS: RowTone[] = rowsOf(
-  [N3, N2, N1, INK],
-  [N2, N2, N1, N1, G1, G1, G1, G0, G0, N0, N0, N0],
-  [INK],
-  [N0, 'L', 'S', 'S', 'l', N0],
-  [INK],
-  [N2, N2, N1, N1, G1, G1, G1, G1, G0, G0, G0, G0, N0, N0, N0, N0, N0, INK],
-  [INK],
-  [N1, G1, 'l', N0, N0],
-  [N1, N0, N0, INK],
-);
-const SHD_ROWS: RowTone[] = rowsOf(
-  [N2, N1, G1, INK],
-  [N2, N1, N1, G1, G1, G0, G0, G0, N0, N0, N0, N0],
-  [INK],
-  [N0, 'L', 'S', 'S', 'l', N0],
-  [INK],
-  [N2, N1, N1, G1, G1, G1, G0, G0, G0, G0, N0, N0, N0, N0, N0, N0, N0, INK],
-  [INK],
-  [N1, G0, 'l', N0, INK],
-  [N1, N0, N0, INK],
-);
-const STRIP_ROWS = [19, 20] as const;
+
+// hedef-gorunum-3: a THICK stage wall. The rows are generated for FACE_H: coping 4 (row 0 = the warm lit bevel),
+// upper armour plate 16, ink seam, light channel 6, ink seam, the main panel (FACE_H − 36 rows), ink seam, belt 5
+// (with a small lamp per panel), footing 2.
+const UP0 = 4;
+const UP_N = 16;
+const CH0 = UP0 + UP_N + 1;
+const MAIN0 = CH0 + 6 + 1;
+const MAIN_N = FACE_H - 36;
+const BELT0 = MAIN0 + MAIN_N + 1;
+function faceRows(lit: boolean): RowTone[] {
+  const main: RowTone[] = [];
+  for (let i = 0; i < MAIN_N - 1; i++) {
+    const k = i / (MAIN_N - 1);
+    main.push(lit ? (k < 0.09 ? N2 : k < 0.18 ? N1 : k < 0.45 ? G1 : k < 0.7 ? G0 : N0) : k < 0.06 ? N2 : k < 0.18 ? N1 : k < 0.36 ? G1 : k < 0.6 ? G0 : N0);
+  }
+  main.push(INK);
+  return rowsOf(
+    lit ? [PAL.earth2, N2, N1, INK] : [PAL.earth1, N1, G1, INK],
+    lit ? [N2, N2, N1, N1, G1, G1, G1, G1, G0, G0, G0, G0, N0, N0, N0, N0] : [N2, N1, N1, G1, G1, G1, G0, G0, G0, G0, N0, N0, N0, N0, N0, N0],
+    [INK],
+    [N0, 'L', 'S', 'S', 'l', N0],
+    [INK],
+    main,
+    [INK],
+    lit ? [N1, G1, 'l', N0, N0] : [N1, G0, 'l', N0, INK],
+    [N0, INK],
+  );
+}
+const LIT_ROWS: RowTone[] = faceRows(true);
+const SHD_ROWS: RowTone[] = faceRows(false);
+const STRIP_ROWS = [CH0 + 2, CH0 + 3] as const;
 const LADDER: readonly Color[] = [INK, N0, G0, G1, N1, N2, N3];
 const shiftTone = (c: Color, d: number): Color => {
   const i = LADDER.indexOf(c);
@@ -357,34 +366,46 @@ function paintFace(S: Surface, f: FaceDef, id: number, strips: Omit<StripPiece, 
     for (let v = 0; v < FACE_H; v++) {
       const t = rows[v];
       let c: Color = t === 'S' ? tones[2] : t === 'L' ? tones[1] : t === 'l' ? tones[0] : t;
-      if (v >= 4 && v <= 46 && seam) {
+      if (v >= UP0 && v <= FACE_H - 6 && seam) {
         c = isSeam1 ? INK : hi;
-      } else if (v >= 4 && v <= 15) {
-        const u = v - 4;
+      } else if (v >= UP0 && v < UP0 + UP_N) {
+        const u = v - UP0;
         if (u === 0 && nearSeam) c = rows[5] as Color;
         else if (lx === 1 && u >= 1) c = hi;
         else if (lx === plen - 3 && u >= 1) c = lo;
-        else if (inVent && u >= 3 && u <= 8) c = u === 3 ? lo : u === 8 ? hi : u % 2 === 0 ? INK : lo;
-      } else if (v >= 24 && v <= 41) {
-        const u = v - 24;
-        if (inInset && u >= 2 && u <= 15) {
-          const edge = u === 2 ? hi : u === 15 ? INK : lx === 3 ? hi : lx === plen - 5 ? lo : null;
+        else if (inVent && u >= 3 && u <= UP_N - 4) c = u === 3 ? lo : u === UP_N - 4 ? hi : u % 2 === 0 ? INK : lo;
+        // rivets in the upper plate's corners
+        else if ((lx === 3 || lx === plen - 5) && (u === 2 || u === UP_N - 3)) c = f.lit ? N3 : N2;
+      } else if (v >= MAIN0 && v < MAIN0 + MAIN_N) {
+        const u = v - MAIN0;
+        if (inInset && u >= 2 && u <= MAIN_N - 3) {
+          const edge = u === 2 ? hi : u === MAIN_N - 3 ? INK : lx === 3 ? hi : lx === plen - 5 ? lo : null;
           if (edge !== null) c = edge;
           else {
             c = inner(u);
             const lw = plen - 8;
             const cx = lx - 4;
+            const lu = (MAIN_N >> 1) - 3;
             if (variant === 0) {
-              if (cx >= 3 && cx <= lw - 4 && u >= 5 && u <= 12) c = u % 2 === 1 ? INK : f.lit ? N1 : G0;
+              if (cx >= 3 && cx <= lw - 4 && u >= 5 && u <= MAIN_N - 6) c = u % 2 === 1 ? INK : f.lit ? N1 : G0;
             } else if (variant === 1) {
-              if (Math.abs(cx - (lw >> 1)) <= 4 && u >= 6 && u <= 11) {
+              if (Math.abs(cx - (lw >> 1)) <= 4 && u >= lu && u <= lu + 5) {
                 const wx = Math.abs(cx - (lw >> 1));
-                if (u === 6 || u === 11 || wx === 4) c = INK;
-                else c = u === 7 ? tones[2] : tones[1];
+                if (u === lu || u === lu + 5 || wx === 4) c = INK;
+                else c = u === lu + 1 ? tones[2] : tones[1];
               }
+            } else {
+              // a recessed vertical rib pair (panel seams that read at a glance on the tall wall)
+              const rx = lw >> 1;
+              if ((cx === rx - 3 || cx === rx + 3) && u >= 4 && u <= MAIN_N - 6) c = INK;
+              else if ((cx === rx - 2 || cx === rx + 4) && u >= 4 && u <= MAIN_N - 6) c = f.lit ? N2 : N1;
             }
           }
-        } else if (u >= 16 && u <= 17 && inInset) c = N0;
+        } else if (u >= MAIN_N - 2 && inInset) c = N0;
+      } else if (v === BELT0 + 2 && !seam) {
+        // a small lamp at the middle of every panel on the belt (player colour, 2 px + a dim pixel each side)
+        if (x === mid || x === mid - 1) c = tones[4];
+        else if (x === mid + 1 || x === mid - 2) c = tones[2];
       }
       S.put(x, yt + v, c);
       if ((v === STRIP_ROWS[0] || v === STRIP_ROWS[1]) && !seam) {

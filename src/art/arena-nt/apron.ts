@@ -90,7 +90,8 @@ export function paintApron(): PixelCanvas {
 
 const FOOT = 10;
 const FOOT_FACE = 4;
-const SHADOW = 14;
+// hedef-gorunum-3: a wider, darker cast shadow of the raised stage on the hall floor
+const SHADOW = 30;
 
 function floorPixel(x: number, y: number): Color {
   const e = outsideOf(x + 0.5, y + 0.5);
@@ -132,8 +133,10 @@ function panel(x: number, y: number, q: number): Color {
     c = N1;
   }
   if (q <= SHADOW) {
-    const d = q <= 6 ? 2 : 1;
-    return shift(c, -d);
+    // stepped falloff (no blur): ink near the stage, then one tone down, then a 2×2 dither of the two
+    if (q <= 10) return INK;
+    if (q <= 20) return shift(c, -2);
+    return (x + y) % 2 === 0 ? shift(c, -1) : c;
   }
   return c;
 }
