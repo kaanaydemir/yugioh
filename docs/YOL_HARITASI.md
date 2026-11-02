@@ -112,3 +112,6 @@ D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (ka
   (gölgelerin palete basamaklanması, arka duvarın bir ton açılması) alır, kalanı hedef-gorunum-3'e bakarak yapar.
   Saha üstü hedefi: sakin, temiz koyu arduvaz; karo içi tek düz ton + en fazla 1 ince doku tonu, noktalı/ekran
   kapısı dither YOK; gömük karo kenarları net; turkuaz/kırmızı sınırlar ince.
+- SAHİP (2026-11-02): hedef-gorunum-3 aynen uygulanacak; TEK FARK: ortadaki boş gri gömük yuvalar ("delikler",
+  iki oyuncunun alanı arasındaki/çevresindeki işlevsiz karolar) OLMAYACAK — orası düz sahne taşı. Yalnız gerçek
+  bölgeler (turkuaz P1, kırmızı P2) gömük karo olur.
