@@ -124,3 +124,9 @@ D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (ka
   * FRAGMAN: 60–90 sn, oyunun kendi kayıt araçlarıyla (tools/shot.mjs film + ses kaydı → MP4). Arena okunurluk
     işi + İngilizce geçiş bittikten SONRA çekilecek (son görünüm görünmeli). Ayrıca Reddit için 10–15 sn'lik
     tek-imza-animasyon klipleri.
+- REDDIT GERİ BİLDİRİMİ (2026-11-02): animasyonlar çok beğenildi; "daha da iyi" isteniyor → 1 numaralı hedef
+  değişmedi: mükemmel, akıcı VFX/SFX/animasyon. İkinci geri bildirim: "canavarlar daha özgün olabilir".
+  SAHİP KARARI: bize özgü YENİ canavarlar, büyüler ve tuzaklar eklenecek (tasarım, sıfırlama sonrası).
+  NOT: Gerçek Yu-Gi-Oh canavarları (adları, tasarımları) oyuna KONMAZ — Konami'nin telifli/markalı içeriği,
+  Steam'de satılan oyunda yasal risk. Klasik arketipler (ejderha, büyücü, savaşçı) serbest, ama her tasarım
+  bizim olmalı ve tanınan bir karta benzememeli. Mevcut 20 kart zaten özgün; yeni kartlar da öyle olacak.
