@@ -99,3 +99,6 @@ D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (ka
 - Bulut Yavrusu (cloud_hatchling) BİTTİ: şerit A 3cd1647, ana dal 03b0221, test sürümü 14. Sırada Zehir Ejderi (şerit A çalışıyor).
 - Zehir Ejderi (venom_drake) BİTTİ: şerit A dd6ce16, test sürümü 15. ŞERİT A TAMAMEN BİTTİ (Kül Ejderi,
   Bulut Yavrusu, Zehir Ejderi). Özet ve açık şeritler-arası notlar: docs/v3/oturum-a.md "LANE A DONE".
+- SAHİP KARARI (2026-11-02, Gemini okunurluk sonucu üzerine): hologramlar PARLAK kalır (soluklaştırılmaz) ve
+  arka plandaki tribünler KALDIRILMIŞ hâliyle kalır — ikisi de sahibin isteği. Düzeltilecekler: havada asılı
+  meşaleler (duvara/direğe oturacak) ve sis/ışığın piksel-net + yalnız palet renkleriyle yapılması.

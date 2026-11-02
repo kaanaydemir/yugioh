@@ -32,6 +32,12 @@ Change ONLY these (all for the `v3` look — NOTE: the game's default is still `
    pool at each unit's feet; subtle top-left rim on units — via the light layer, NOT by editing sprites.
 5. HUD panels/buttons: same position, size and text; slimmer frames, much less neon glow.
 
+## Owner decisions after the first result (2026-11-02)
+- KEEP the holograms bright (do NOT dim them) and KEEP the stands removed — both are the owner's choice.
+- FIX: every torch must be mounted (wall sconce or standing brazier on a post/plinth), never floating in mid-air.
+- FIX: fog and light must stay pixel-crisp: palette colours only, stepped/dithered bands, no smooth blur
+  (`node tools/palcheck.mjs`).
+
 ## Do NOT touch
 - Monster / unit sprites and their art files (`src/art/monsters*`, `src/art/rigkit`, `src/art/materials`),
   cut-ins, card art, cinematics (`src/cinematics/**`), audio (`src/audio/**`), engine (`src/engine/**`),
