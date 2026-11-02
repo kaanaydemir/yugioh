@@ -32,10 +32,10 @@ export interface HoloLook {
 }
 
 export const HOLO_LOOKS: readonly [HoloLook, HoloLook] = [
-  // Kristal Ejder: calm slate-blue tones (sits calmly in fog without harsh white glare)
-  { ramp: [PAL.night0, PAL.night1, PAL.night2, PAL.night3, PAL.steel, PAL.mist], flip: false, scale: 4 / 3, bands: [0.1, 0.28, 0.5, 0.74, 0.9] },
-  // Uçurum Büyücüsü: calm slate-violet tones
-  { ramp: [PAL.night0, PAL.void0, PAL.void1, PAL.night3, PAL.void2, PAL.steel], flip: true, scale: 1.5, bands: [0.18, 0.4, 0.66, 0.87, 0.97] },
+  // Kristal Ejder: dim grey stone statue in the fog (readability pass, hedef-gorunum-2.png)
+  { ramp: [PAL.stone0, PAL.stone1, PAL.stone1, PAL.stone2, PAL.stone2, PAL.stone3], flip: false, scale: 4 / 3, bands: [0.1, 0.28, 0.5, 0.74, 0.9] },
+  // Uçurum Büyücüsü: the same stone, a hair of violet left in the mid band
+  { ramp: [PAL.stone0, PAL.stone1, PAL.void1, PAL.stone2, PAL.stone2, PAL.stone3], flip: true, scale: 1.5, bands: [0.18, 0.4, 0.66, 0.87, 0.97] },
 ];
 
 export interface Box {

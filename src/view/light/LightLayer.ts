@@ -1304,10 +1304,10 @@ function fieldColor(id: string): number {
 function ensureKeyLightTex(scene: Phaser.Scene): string {
   const key = 'light:v3keywash';
   if (scene.textures.exists(key)) return key;
-  const OX = 104;
-  const OY = 52;
-  const W = 280;
-  const H = 168;
+  const OX = PLATE_X0;
+  const OY = PLATE_Y0;
+  const W = PLATE_X1 - PLATE_X0;
+  const H = PLATE_Y1 - PLATE_Y0;
   const cv = document.createElement('canvas');
   cv.width = W;
   cv.height = H;
@@ -1325,19 +1325,20 @@ function ensureKeyLightTex(scene: Phaser.Scene): string {
         if (c < PLATE_C0 || c > PLATE_C1 || r < PLATE_R0 || r > PLATE_R1) continue;
         // Distance from the upper-left edge of the platform (c = PLATE_C0) and radial falloff from (162, 124)
         const edgeDist = (c - PLATE_C0) * 32;
-        const dx = (sx - 162) / 185;
-        const dy = (sy - 124) / 100;
+        // readability pass: a wider, warmer pool from the top left that fades smoothly across the board
+        const dx = (sx - 190) / 300;
+        const dy = (sy - 130) / 165;
         const d = Math.hypot(dx, dy);
         if (d >= 1) continue;
-        const falloff = Math.pow(1 - d, 1.65);
-        const rimBoost = edgeDist < 24 ? (1 - edgeDist / 24) * 0.18 : 0;
-        const alpha = Math.min(0.38, falloff * 0.26 + rimBoost);
+        const falloff = Math.pow(1 - d, 1.35);
+        const rimBoost = edgeDist < 24 ? (1 - edgeDist / 24) * 0.14 : 0;
+        const alpha = Math.min(0.42, falloff * 0.34 + rimBoost);
         if (alpha <= 0.005) continue;
         const idx = (y * W + x) * 4;
-        // Warm golden-amber key light grazing from the upper-left
-        data[idx] = 252;
-        data[idx + 1] = 196;
-        data[idx + 2] = 114;
+        // Warm amber key light grazing from the upper-left
+        data[idx] = 236;
+        data[idx + 1] = 168;
+        data[idx + 2] = 104;
         data[idx + 3] = Math.round(alpha * 255);
       }
     }
@@ -1420,7 +1421,7 @@ export class LightLayer {
       try {
         const keyTex = ensureKeyLightTex(scene);
         const keyImg = this.makeSteppedImage(keyTex, DEPTH.TILE + 2.2);
-        keyImg.setOrigin(0).setPosition(104, 52).setVisible(this.on);
+        keyImg.setOrigin(0).setPosition(PLATE_X0, PLATE_Y0).setVisible(this.on);
         this.steppedStaticImgs.push(keyImg);
         const padShdTex = ensureFloorShadowTex(scene, 34, 18);
         const dFootTex = ensureFootTex(scene, 14, 7);

@@ -43,10 +43,11 @@ function paintMultiLobeFog(
     ctx.translate(l.cx, l.cy);
     ctx.scale(1, l.ry / l.rx);
     const g = ctx.createRadialGradient(0, 0, 0, 0, 0, l.rx);
-    g.addColorStop(0, `rgba(92, 118, 164, ${l.a0})`);
-    g.addColorStop(0.45, `rgba(58, 78, 118, ${l.a1})`);
-    g.addColorStop(0.78, `rgba(28, 40, 68, ${(l.a1 * 0.48).toFixed(3)})`);
-    g.addColorStop(1, 'rgba(12, 18, 34, 0)');
+    // neutral grey fog (target: hedef-gorunum-2.png), not blue
+    g.addColorStop(0, `rgba(118, 116, 124, ${l.a0})`);
+    g.addColorStop(0.45, `rgba(84, 82, 92, ${l.a1})`);
+    g.addColorStop(0.78, `rgba(46, 45, 54, ${(l.a1 * 0.48).toFixed(3)})`);
+    g.addColorStop(1, 'rgba(24, 23, 30, 0)');
     ctx.fillStyle = g;
     ctx.beginPath();
     ctx.arc(0, 0, l.rx, 0, Math.PI * 2);

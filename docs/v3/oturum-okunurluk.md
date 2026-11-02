@@ -82,6 +82,34 @@
   beyaz flaş ve `trimOverride` değişmedi. Konum, boyut, yazı aynı. Paylaşılan `styleTrim` / `FRAME_V3` sabitleri
   (testlerde sabitlenmiş) **değişmedi**; yalnızca panelin istediği kaldırma (lift) değeri değişti.
 - Görüntü: `shots/ok/s2-hudpanel.png` (öncesi `shots/ok/s1-strips.png`, yakın plan `shots/ok/hud-bl.png`).
+- tsc temiz, vitest (HUD + arena-nt) 102/102. Film kapıları yarıda kesildi (v1 ilk 4 film IDENTICAL). Commit `e85231b`.
+
+### Sahip kararı (2026-11-02): kontroller atlanıyor, doğrudan hedefe benzetme
+Sahip: "hiçbir kontrol yapma, arenayı direkt hedef görsele benzet, neresi olmadı ben söylerim". Bu andan sonra
+**film kapıları (v1 / a6v1), vitest ve palcheck çalıştırılmadı**; yalnızca `tsc` ve her adımda bir ekran görüntüsü.
+Claude birleştirmeden önce kapıları çalıştırmalı.
+
+### Adım 3 — arka plan gri taşa, zemin taşa, sis griye (mevcut paletle, A seçeneği)
+- `src/view/board-nt/calm-remap.ts` (yeni) + `src/view/board-nt/textures.ts`: arka plan katmanlarının
+  (wall, stands, crowd, platform, apron, pads) dokuları kayıt anında bir PAL→PAL tablosundan geçiyor:
+  lacivert `night*` / `steel` / `mist` / `void*` → `stone0..3`; neon `cyan/crim/mag/teal/water` iki ton aşağı.
+  Sıcak tonlar (gold, fire, earth, skin) olduğu gibi → meşaleler ve sıcak ışık sıcak kalıyor.
+  Yalnızca Neon Tower (v3) dokuları; v1 arenası bu yoldan geçmiyor.
+- `src/view/board-nt/lights.ts`: sis gradyanı mavi → nötr gri.
+- `src/art/arena-nt/holo-bake.ts`: iki hologram heykel gri taş tonlarında (büyücüde bir tutam `void1`).
+- `src/art/arena-nt/platform.ts`: üst plaka tek sakin taş tonu (`stone1`), yalnızca uzak sağ-alt köşe `stone0`.
+- `src/art/arena-nt/floor.ts`: slot içleri saydam (yalnızca 1-px çizgi), plaka ve ışık altından görünüyor.
+- `src/view/board-calm/BoardViewCalm.ts` (+ `skip.pads`, ek alan) ve `src/view/board-nt/index.ts` (`NT_SKIP.pads`):
+  sakin tahtanın kendi lacivert pad görselleri v3 Neon Tower'da alpha 0.
+- `src/view/light/LightLayer.ts`: sol üst sıcak anahtar ışık tüm plakayı kapsıyor, daha geniş ve daha sıcak
+  (`ensureKeyLightTex`, doku plaka boyutunda).
+- Görüntüler: `shots/ok/s3-grey.png` → `s5-pads.png` → `s6-key.png` → `s7-statue.png` (son hâl).
+- `docs/v3/ref/okunurluk-sonrasi.png` = `s7-statue.png`. `okunurluk-oncesi.png` (taban `d5dc22b`) değişmedi.
+
+### Açık konular
+- Film kapıları ve palcheck bu adımdan sonra çalıştırılmadı (sahip kararı).
+- Ekran görüntüleri yük altında bazen `__neon.ready` zaman aşımına düşüyor, görüntü yine de yazılıyor.
+- Sahibin geri bildirimi bekleniyor (hangi bölge hedefe benzemedi).
 
 ## Kontrol Kapıları (Gates)
 - `npm run typecheck`: Temiz (0 hata)

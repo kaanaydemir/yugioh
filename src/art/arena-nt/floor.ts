@@ -41,19 +41,19 @@ function slotFrame(player: 0 | 1, pile: boolean, state: number, boost: number): 
   // Crisp 1-px tile border (calm muted cyan1/crim1 when empty, cyan2/crim2 when occupied) on smooth G[1] slate
   const line: Color = empty ? ramp[1] : ramp[2];
   const stud: Color = NT_PAL.metal[3];
-  const G = NT_PAL.graphite;
   const isLine = (i: number, j: number): boolean => i >= 0 && j >= 0 && i < 64 && j < 32 && m.line.get(i, j) !== null;
   const isFill = (i: number, j: number): boolean => i >= 0 && j >= 0 && i < 64 && j < 32 && m.fill.get(i, j) !== null;
   for (let j = 0; j < 32; j++) {
     for (let i = 0; i < 64; i++) {
       if (m.tile.get(i, j) === null) continue;
-      let c: Color = isLine(i, j) ? line : G[1];
+      // readability pass: the slot interior stays transparent so the lit stone plate shows through
+      let c: Color | null = isLine(i, j) ? line : null;
       if (state === SLOT_DOWN && !isFill(i, j)) {
         const dx = Math.abs(i + 0.5 - 32);
         const dy = Math.abs(j + 0.5 - 16);
         if ((dx > 28 && dy < 2.5) || (dy > 13 && dx < 3.5)) c = stud;
       }
-      p.set(i, j, c);
+      if (c !== null) p.set(i, j, c);
     }
   }
   void pile;

@@ -171,6 +171,20 @@ const RIM: readonly Color[] = [PAL.earth2, N2, PAL.stone2, N2, PAL.earth2, N2, P
 const RIM2: readonly Color[] = [PAL.earth1, N1, PAL.stone1, N1, PAL.earth1, N1, PAL.earth1, N0];
 const RIM3: readonly Color[] = [G2, N0, G1, N0, G2, N0, G2, N0];
 
+/**
+ * Readability pass (hedef-gorunum-2.png): the top plate is warm dark stone lit from the top left — flat
+ * tone bands (no noise) stepping from warm skin0 near the key light through stone1 to stone0 at the far
+ * right / bottom. A low-frequency wave breaks the band edges so they read as stone, not as rings.
+ */
+function topTone(x: number, y: number): Color {
+  // one calm stone tone; only the far bottom-right corner steps down. The warm top-left light is the soft
+  // key-light wash of the light layer (src/view/light/LightLayer.ts ensureKeyLightTex), not baked bands.
+  const dx = (x - 150) / 470;
+  const dy = (y - 110) / 260;
+  const wave = 0.03 * Math.sin(x * 0.045 + y * 0.07) + 0.02 * Math.cos(x * 0.021 - y * 0.05);
+  return Math.hypot(dx, dy) + wave < 0.92 ? G1 : G0;
+}
+
 function paintTop(S: Surface, x0: number, y0: number, x1: number, y1: number): PlatformArt['dashes'] {
   const dashPx: { x: number; y: number }[][] = Array.from({ length: 13 }, () => []);
   for (let y = Math.max(y0, PLATE_Y0); y < Math.min(y1, PLATE_Y1); y++) {
@@ -191,8 +205,8 @@ function paintTop(S: Surface, x0: number, y0: number, x1: number, y1: number): P
             dashPx[k].push({ x, y });
           }
         }
-        // Clean smooth dark slate board surface (tile lines are drawn solely by nt:floor play zones)
-        S.put(x, y, G1);
+        // warm stone board surface lit from the top left (tile lines are drawn solely by nt:floor play zones)
+        S.put(x, y, topTone(x, y));
         continue;
       }
       if (d32 < 1) {
@@ -221,8 +235,8 @@ function paintTop(S: Surface, x0: number, y0: number, x1: number, y1: number): P
         S.put(x, y, G0);
         continue;
       }
-      // Clean smooth dark slate border without speckles
-      S.put(x, y, G1);
+      // the border band between the coping and the zones: the same lit stone
+      S.put(x, y, topTone(x, y));
     }
   }
   return dashPx.filter((_, k) => k !== 6);
