@@ -32,6 +32,24 @@ Change ONLY these (all for the `v3` look — NOTE: the game's default is still `
    pool at each unit's feet; subtle top-left rim on units — via the light layer, NOT by editing sprites.
 5. HUD panels/buttons: same position, size and text; slimmer frames, much less neon glow.
 
+## Owner decisions after the first result (2026-11-02)
+- KEEP the holograms bright (do NOT dim them) and KEEP the stands removed — both are the owner's choice.
+- FIX: every torch must be mounted (wall sconce or standing brazier on a post/plinth), never floating in mid-air.
+- FIX: fog and light must stay pixel-crisp: palette colours only, stepped/dithered bands, no smooth blur
+  (`node tools/palcheck.mjs`).
+
+## NEW TARGET (owner, 2026-11-02): `docs/v3/ref/hedef-gorunum-3.png`
+It supersedes hedef-gorunum-2 for the arena structure. On top of the points above:
+- Stage is a THICK raised block: tall side walls (~3x today) with panel seams and small lights,
+  a lit 1-px bevel (warm/gold) on the top edge, a dark cast shadow on the floor below.
+- Stage outline runs parallel to the tile rows (2:1 iso), small chamfered corners, no odd empty areas.
+- Tiles are shallow inset slots (darker inner wall on far edges, lit lip on near edges); cyan/red borders kept.
+- Each duelist stands on a raised 2–3 step dais glowing in the player colour (cyan P1, red P2).
+- Back wall: dark brick/stone with pillars, banners, wall-sconce torches; floor: metal plates, pipes,
+  standing braziers on stone posts, low layered fog.
+- Tile/zone SCREEN POSITIONS and the camera do NOT move (`src/view/layout.ts` is a shared contract):
+  build the new stage shape around the existing tiles.
+
 ## Do NOT touch
 - Monster / unit sprites and their art files (`src/art/monsters*`, `src/art/rigkit`, `src/art/materials`),
   cut-ins, card art, cinematics (`src/cinematics/**`), audio (`src/audio/**`), engine (`src/engine/**`),
