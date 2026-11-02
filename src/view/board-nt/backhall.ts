@@ -11,6 +11,24 @@ export const NT_PILLAR_KEY = 'nt:hall:pillar';
 export const NT_BANNER_KEY = (side: 0 | 1, frame: number): string => `nt:hall:banner:${side}:${frame}`;
 export const NT_PIPES_KEY = 'nt:hall:pipes';
 
+/** h4-3: the warm halo a wall sconce throws on the stone (34 × 30, ordered dither of earth0 / earth1 / fire1). */
+export const NT_WALL_HALO_KEY = (level: number): string => `nt:hall:halo:${level}`;
+export const WALL_HALO = { w: 34, h: 30, cx: 17, cy: 13 } as const;
+export function paintWallHalo(level: number): PixelCanvas {
+  const p = new PixelCanvas(WALL_HALO.w, WALL_HALO.h);
+  const B = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+  for (let y = 0; y < WALL_HALO.h; y++)
+    for (let x = 0; x < WALL_HALO.w; x++) {
+      const d = Math.hypot((x + 0.5 - WALL_HALO.cx) / 17, (y + 0.5 - WALL_HALO.cy) / 15);
+      if (d >= 1) continue;
+      const k = (1 - d) * (0.55 + 0.1 * level);
+      const th = (B[((y & 3) << 2) | (x & 3)] + 0.5) / 16;
+      if (k > th + 0.25) p.set(x, y, d < 0.3 ? PAL.fire1 : PAL.earth1);
+      else if (k > th) p.set(x, y, PAL.earth0);
+    }
+  return p;
+}
+
 /** A square stone pillar, 22 × 120: lit left face, shaded right face, stone courses every 9 px, base + capital. */
 export function paintPillar(): PixelCanvas {
   const W = 22;
@@ -40,7 +58,9 @@ export function paintBanner(side: 0 | 1, frame: number): PixelCanvas {
   const W = 16;
   const H = 46;
   const p = new PixelCanvas(W, H);
-  const R: readonly number[] = side === 0 ? [PAL.cyan0, PAL.cyan1, PAL.cyan2] : [PAL.crim0, PAL.crim1, PAL.crim2];
+  // h4-3: the hall's banners are RED on both sides (hedef-gorunum-3); P1's carry a cyan stripe, P2's a gold one
+  void side;
+  const R: readonly number[] = [PAL.crim0, PAL.crim1, PAL.crim2];
   const sway = frame === 1 ? 1 : frame === 2 ? -1 : 0;
   // the rod
   p.hline(0, W - 1, 0, PAL.ink);
@@ -55,7 +75,7 @@ export function paintBanner(side: 0 | 1, frame: number): PixelCanvas {
       const edge = x === 2 || x === W - 3 || y === H - 1 || (tail && Math.abs(dx + 0.5 - W / 2) < k + 1);
       let c: number = edge ? PAL.ink : x < 5 ? R[2] : x < W - 5 ? R[1] : R[0];
       // a gold border stripe and a small diamond emblem
-      if (!edge && (x === 4 || x === W - 5) && y > 4 && !tail) c = PAL.gold1;
+      if (!edge && (x === 4 || x === W - 5) && y > 4 && !tail) c = side === 0 ? PAL.cyan1 : PAL.gold1;
       const ey = Math.abs(y - 20);
       const ex = Math.abs(x + 0.5 - W / 2);
       if (!edge && ex + ey / 1.5 <= 3) c = ex + ey / 1.5 <= 1.5 ? PAL.gold3 : PAL.gold2;
@@ -95,9 +115,11 @@ export function paintPipes(): PixelCanvas {
 }
 
 export function ensureBackHallTextures(scene: Phaser.Scene): void {
-  ensureNtTexture(scene, 'wall', NT_PILLAR_KEY, paintPillar);
-  for (const side of [0, 1] as const) for (let f = 0; f < 3; f++) ensureNtTexture(scene, 'wall', NT_BANNER_KEY(side, f), () => paintBanner(side, f));
-  ensureNtTexture(scene, 'wall', NT_PIPES_KEY, paintPipes);
+  // own layer name 'hall' (not 'wall'): these are painted at their final brightness, the wall lift must not touch them
+  ensureNtTexture(scene, 'hall', NT_PILLAR_KEY, paintPillar);
+  for (const side of [0, 1] as const) for (let f = 0; f < 3; f++) ensureNtTexture(scene, 'hall', NT_BANNER_KEY(side, f), () => paintBanner(side, f));
+  ensureNtTexture(scene, 'hall', NT_PIPES_KEY, paintPipes);
+  for (let l = 0; l < 3; l++) ensureNtTexture(scene, 'hall', NT_WALL_HALO_KEY(l), () => paintWallHalo(l));
 }
 
 /** Pillar x positions (left edge) and their banner side: outside the screens and the holograms' heads, two per side. */

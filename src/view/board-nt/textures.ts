@@ -5,7 +5,7 @@
 import type Phaser from 'phaser';
 import type { PixelCanvas } from '../../art/pixel';
 import { canvasTexture } from '../../art/textures';
-import { CALM_LAYERS, calmRemap } from './calm-remap';
+import { CALM_LAYERS, LIFT_LAYERS, calmRemap, liftRemap } from './calm-remap';
 
 /** Build profile of the Neon Tower textures built so far (ms per layer, texture bytes / count). */
 export const NT_BUILD: { ms: Record<string, number>; bytes: number; textures: number } = { ms: {}, bytes: 0, textures: 0 };
@@ -15,7 +15,7 @@ export function ensureNtTexture(scene: Phaser.Scene, layer: string, key: string,
   if (scene.textures.exists(key)) return key;
   const t0 = performance.now();
   // readability pass: the background layers go through the calm grey-stone remap (./calm-remap.ts)
-  const pc = CALM_LAYERS.has(layer) ? calmRemap(paint()) : paint();
+  const pc = CALM_LAYERS.has(layer) ? calmRemap(paint()) : LIFT_LAYERS.has(layer) ? liftRemap(paint()) : paint();
   canvasTexture(scene, key, pc);
   NT_BUILD.ms[layer] = Math.round((performance.now() - t0) * 10) / 10;
   NT_BUILD.bytes += pc.w * pc.h * 4;
