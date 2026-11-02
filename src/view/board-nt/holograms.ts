@@ -149,10 +149,9 @@ export function createHologramsLayer(ctx: NtCtx): NtLayer {
     const { cx, cy } = h.pedestal;
     const add = <T extends Phaser.GameObjects.GameObject>(o: T): T => ctx.add(o);
     // the round pedestal, the light ring on its top, the cone (above the pedestal, below the creature)
-    // h4-4: the plinths read (opaque, palette-crisp), their ring and cone a little brighter than the readability pass had them
-    add(scene.add.image(cx - PED_AT.x, cy - PED_AT.y, NT_HOLO_KEY, pedName(side)).setOrigin(0).setDepth(Z.ped));
-    const ring = add(scene.add.image(cx, cy, NT_HOLO_KEY, ringName(side, 0)).setDepth(Z.ring));
-    const cone = add(scene.add.image(cx, cy - 2, NT_HOLO_KEY, coneName(side)).setOrigin(0.5, 1).setDepth(Z.cone).setAlpha(0.5));
+    add(scene.add.image(cx - PED_AT.x, cy - PED_AT.y, NT_HOLO_KEY, pedName(side)).setOrigin(0).setDepth(Z.ped).setAlpha(0.55));
+    const ring = add(scene.add.image(cx, cy, NT_HOLO_KEY, ringName(side, 0)).setDepth(Z.ring).setAlpha(0.38));
+    const cone = add(scene.add.image(cx, cy - 2, NT_HOLO_KEY, coneName(side)).setOrigin(0.5, 1).setDepth(Z.cone).setAlpha(0.28));
     const hot = [0, 1].map(() => add(scene.add.image(cx, cy, NT_HOLO_KEY, hotName(side)).setDepth(Z.hot).setVisible(false).setAlpha(0.5)));
     const floor = add(scene.add.image(cx, cy, NT_HOLO_KEY, flareName(side, 0)).setDepth(Z.floor).setVisible(false).setAlpha(0.5));
     const beam = add(scene.add.image(cx, cy - 2, NT_HOLO_KEY, beamName(side)).setOrigin(0.5, 1).setDepth(Z.beam).setVisible(false).setAlpha(0.5));
