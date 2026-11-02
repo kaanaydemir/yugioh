@@ -25,6 +25,7 @@ import {
 } from '../../art/arena-nt/wall';
 import type { NtAtlas } from '../../art/arena-nt/wall-kit';
 import { PixelCanvas } from '../../art/pixel';
+import { HALL_PILLARS, HALL_PIPES, NT_BANNER_KEY, NT_PILLAR_KEY, NT_PIPES_KEY, ensureBackHallTextures } from './backhall';
 import { type NtCtx, type NtLayer } from './layer';
 import { ensureNtTexture } from './textures';
 
@@ -78,6 +79,15 @@ export function createWallLayer(ctx: NtCtx): NtLayer {
   const bannerLast: number[] = WALL_BANNERS.map((b) => bannerFrame(b, 0));
   WALL_DATA.forEach((d) => live.create(d.x, d.y, `data:${d.hue}:0`));
 
+  // hedef-gorunum-3: stone pillars with hanging banners on the back wall + floor pipe plates (./backhall.ts)
+  ensureBackHallTextures(scene);
+  for (const pl of HALL_PILLARS) ctx.add(scene.add.image(pl.x, pl.y, NT_PILLAR_KEY).setOrigin(0).setDepth(WALL_Z.decor + 0.05));
+  const banners = HALL_PILLARS.map((pl) =>
+    ctx.add(scene.add.image(pl.x + 3, pl.y + 22, NT_BANNER_KEY(pl.side, 0)).setOrigin(0).setDepth(WALL_Z.decor + 0.06)),
+  );
+  const bannerHall: number[] = HALL_PILLARS.map(() => -1);
+  for (const pp of HALL_PIPES) ctx.add(scene.add.image(pp.x, pp.y, NT_PIPES_KEY).setOrigin(0).setFlipX(pp.flip).setDepth(WALL_Z.floorProp));
+
   const moteB = ctx.add(scene.add.blitter(0, 0, NT_WALL_KEY).setDepth(WALL_Z.motes));
   const moteBobs: Bob[] = WALL_MOTES.map((m) => moteB.create(m.x, m.y, `mote:${m.tone}`));
   const moteLast: number[] = WALL_MOTES.map(() => -1);
@@ -94,6 +104,15 @@ export function createWallLayer(ctx: NtCtx): NtLayer {
           bannerLast[i] = f;
           const b = WALL_BANNERS[i];
           bannerBobs[i].setFrame(`banner${b.short ? 'S' : ''}:${b.hue}:${f}`);
+        }
+      }
+      // the hall banners sway slowly (three frames, each banner on its own phase)
+      for (let i = 0; i < banners.length; i++) {
+        const f = Math.floor((t + i * 977) / 900) % 4;
+        const fr = f === 3 ? 1 : f;
+        if (fr !== bannerHall[i]) {
+          bannerHall[i] = fr;
+          banners[i].setTexture(NT_BANNER_KEY(HALL_PILLARS[i].side, fr));
         }
       }
       for (let i = 0; i < WALL_MOTES.length; i++) {

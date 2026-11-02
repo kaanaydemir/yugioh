@@ -6,8 +6,11 @@ import type Phaser from 'phaser';
 import {
   NT_LIGHTS_KEY,
   type LightsBake,
+  TORCH_GLOW,
+  TORCH_MOUNT,
   bakeLights,
   lightFrame,
+  torchFrame,
 } from '../../art/arena-nt/lights';
 import { PAL } from '../../art/palette';
 import { attributeLightColor, lightFlash } from '../light';
@@ -60,54 +63,8 @@ export function ensureLightsTextures(scene: Phaser.Scene): void {
   ensureNtTexture(scene, 'lights', NT_LIGHTS_KEY, () => lightsBake().canvas);
   const tex = scene.textures.get(NT_LIGHTS_KEY);
   for (const [name, r] of Object.entries(lightsBake().frames)) if (!tex.has(name)) tex.add(name, 0, r.x, r.y, r.w, r.h);
-
-  if (!scene.textures.exists(FOG_BANK_KEY)) {
-    const ct = scene.textures.createCanvas(FOG_BANK_KEY, 280, 150);
-    if (ct) {
-      paintMultiLobeFog(ct.getContext(), 280, 150, [
-        { cx: 92, cy: 78, rx: 90, ry: 52, a0: 0.52, a1: 0.28 },
-        { cx: 168, cy: 70, rx: 98, ry: 56, a0: 0.48, a1: 0.26 },
-        { cx: 132, cy: 94, rx: 106, ry: 48, a0: 0.44, a1: 0.22 },
-        { cx: 58, cy: 92, rx: 60, ry: 38, a0: 0.38, a1: 0.18 },
-        { cx: 212, cy: 88, rx: 64, ry: 40, a0: 0.36, a1: 0.18 },
-      ]);
-      ct.refresh();
-    }
-  }
-
-  if (!scene.textures.exists(FOG_WISP_KEY)) {
-    const ct = scene.textures.createCanvas(FOG_WISP_KEY, 220, 114);
-    if (ct) {
-      paintMultiLobeFog(ct.getContext(), 220, 114, [
-        { cx: 78, cy: 58, rx: 72, ry: 38, a0: 0.48, a1: 0.24 },
-        { cx: 142, cy: 52, rx: 76, ry: 40, a0: 0.44, a1: 0.22 },
-        { cx: 110, cy: 68, rx: 82, ry: 34, a0: 0.38, a1: 0.18 },
-      ]);
-      ct.refresh();
-    }
-  }
-
-  if (!scene.textures.exists(TORCH_GLOW_KEY)) {
-    const ct = scene.textures.createCanvas(TORCH_GLOW_KEY, 88, 72);
-    if (ct) {
-      const ctx = ct.getContext();
-      ctx.clearRect(0, 0, 88, 72);
-      ctx.save();
-      ctx.translate(44, 34);
-      ctx.scale(1, 0.82);
-      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 42);
-      g.addColorStop(0, 'rgba(255, 206, 112, 0.56)');
-      g.addColorStop(0.28, 'rgba(246, 144, 52, 0.32)');
-      g.addColorStop(0.64, 'rgba(192, 72, 24, 0.12)');
-      g.addColorStop(1, 'rgba(120, 32, 12, 0)');
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(0, 0, 42, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-      ct.refresh();
-    }
-  }
+  // hedef-gorunum-3 + pixel rules: no smooth canvas fog / glow any more (the atlas has the dithered ones)
+  void paintMultiLobeFog;
 }
 
 interface FogDrifter {
@@ -128,22 +85,22 @@ interface TorchLight {
   period: number;
   phase: number;
   lastFrame: number;
+  frameOf: (f: number) => string;
 }
 
 /**
- * Torch positions matching docs/v3/ref/hedef-gorunum-2.png:
- * - Upper-left pillar sconce (115, 52) between left dragon statue and P1 screen
- * - Back-wall sconces flanking the top emblem (254, 46) and (384, 46)
- * - Right wall sconce below P2 screen (508, 82)
- * - Lower-left and lower-right platform apron braziers (148, 282) and (554, 242)
+ * hedef-gorunum-3: every torch is mounted — `x, y` is the FLAME centre.
+ * - 'sconce': iron brackets on the back wall's pillars (beside the tower and outside the screens);
+ * - 'post': braziers on stone posts standing on the hall floor (left / right of the stage, clear of the HUD).
  */
-const TORCH_SPOTS: readonly { x: number; y: number; depth: number; period: number; phase: number }[] = [
-  { x: 115, y: 52, depth: NT_DEPTH.wallLights + 0.5, period: 420, phase: 0 },
-  { x: 254, y: 46, depth: NT_DEPTH.wallLights + 0.5, period: 460, phase: 140 },
-  { x: 384, y: 46, depth: NT_DEPTH.wallLights + 0.5, period: 440, phase: 290 },
-  { x: 508, y: 82, depth: NT_DEPTH.wallLights + 0.5, period: 410, phase: 80 },
-  { x: 148, y: 282, depth: NT_DEPTH.platform + 1.5, period: 390, phase: 210 },
-  { x: 554, y: 242, depth: NT_DEPTH.platform + 1.5, period: 450, phase: 340 },
+const TORCH_SPOTS: readonly { kind: 'sconce' | 'post'; x: number; y: number; depth: number; period: number; phase: number }[] = [
+  // one sconce on the front face of each hall pillar (./backhall.ts HALL_PILLARS: x + 11, under the banner)
+  { kind: 'sconce', x: 133, y: 82, depth: NT_DEPTH.wallLights + 0.5, period: 420, phase: 0 },
+  { kind: 'sconce', x: 255, y: 88, depth: NT_DEPTH.wallLights + 0.5, period: 460, phase: 140 },
+  { kind: 'sconce', x: 385, y: 88, depth: NT_DEPTH.wallLights + 0.5, period: 440, phase: 290 },
+  { kind: 'sconce', x: 507, y: 104, depth: NT_DEPTH.wallLights + 0.5, period: 410, phase: 80 },
+  { kind: 'post', x: 82, y: 212, depth: NT_DEPTH.platform + 1.5, period: 390, phase: 210 },
+  { kind: 'post', x: 566, y: 222, depth: NT_DEPTH.platform + 1.5, period: 450, phase: 340 },
 ];
 
 export function createLightsLayer(ctx: NtCtx): NtLayer {
@@ -151,60 +108,42 @@ export function createLightsLayer(ctx: NtCtx): NtLayer {
   ensureLightsTextures(scene);
 
   const fogs: FogDrifter[] = [];
-  const addFog = (
-    key: string,
-    x: number,
-    y: number,
-    flipX: boolean,
-    depth: number,
-    alpha: number,
-    ampX: number,
-    ampY: number,
-    period: number,
-    phase: number,
-  ): void => {
-    const img = ctx.add(
-      scene.add
-        .image(x, y, key)
-        .setOrigin(0)
-        .setFlipX(flipX)
-        .setAlpha(alpha)
-        .setDepth(depth),
-    );
+  // hedef-gorunum-3 + pixel rules: the fog is the baked ordered-dither fog of the lights atlas (palette only, opaque
+  // pixels, no alpha); it lies LOW (hall floor, the stage's foot, the hologram plinths) in layers that drift slowly.
+  const addFog = (frame: string, x: number, y: number, flipX: boolean, depth: number, ampX: number, ampY: number, period: number, phase: number): void => {
+    const img = ctx.add(scene.add.image(x, y, NT_LIGHTS_KEY, frame).setOrigin(0).setFlipX(flipX).setDepth(depth));
     fogs.push({ img, baseX: x, baseY: y, ampX, ampY, period, phase, lastX: x, lastY: y });
   };
+  void FOG_BANK_KEY;
+  void FOG_WISP_KEY;
 
-  // 1. Mid-ground billowy fog enveloping the hologram statues and stands
-  addFog(FOG_BANK_KEY, -46, 36, false, NT_DEPTH.holo + 0.6, 0.90, 6, 2, 9200, 0);
-  addFog(FOG_BANK_KEY, 406, 40, true, NT_DEPTH.holo + 0.6, 0.90, -6, 2, 9800, 2400);
+  // 1. back layer: around the hologram plinths (behind the stage)
+  addFog(lightFrame.fogBack(0), -60, 96, false, NT_DEPTH.holo + 0.6, 6, 2, 9200, 0);
+  addFog(lightFrame.fogBack(1), 490, 106, true, NT_DEPTH.holo + 0.6, -6, 2, 9800, 2400);
+  // 2. mid layer: low banks on the hall floor beside the stage
+  addFog(lightFrame.fogFront(0), -70, 210, false, NT_DEPTH.platform - 0.18, 7, 2, 10600, 1500);
+  addFog(lightFrame.fogFront(1), 460, 214, true, NT_DEPTH.platform - 0.18, -7, 2, 11200, 4100);
+  // 3. thin wisps gliding over the low banks
+  addFog(lightFrame.fogWisp(0), 6, 252, false, NT_DEPTH.platform - 0.12, 10, 2, 8600, 2100);
+  addFog(lightFrame.fogWisp(1), 486, 246, true, NT_DEPTH.platform - 0.12, -10, 2, 9000, 4900);
 
-  // 2. Lower hologram base & mid-stand mist clouds
-  addFog(FOG_WISP_KEY, -18, 102, false, NT_DEPTH.holo + 0.75, 0.88, 8, 3, 7800, 900);
-  addFog(FOG_WISP_KEY, 438, 106, true, NT_DEPTH.holo + 0.75, 0.88, -8, 3, 8300, 3200);
-
-  // 3. Foreground edge fog banks drifting across lower corners and apron around the platform
-  addFog(FOG_BANK_KEY, -48, 160, false, NT_DEPTH.platform - 0.18, 0.96, 7, 2, 10600, 1500);
-  addFog(FOG_BANK_KEY, 408, 160, true, NT_DEPTH.platform - 0.18, 0.96, -7, 2, 11200, 4100);
-
-  // 4. Lower corner mist wisps hugging the bottom edges around the platform
-  addFog(FOG_WISP_KEY, 0, 204, false, NT_DEPTH.platform - 0.12, 0.88, 7, 2, 8600, 2100);
-  addFog(FOG_WISP_KEY, 420, 204, true, NT_DEPTH.platform - 0.12, 0.88, -7, 2, 9000, 4900);
-
-  // 5. Sculpted warm flickering torches + smooth radial amber glow halos
+  // 4. mounted torches (wall sconces / post braziers) with an ordered-dither warm glow behind them
   const torches: TorchLight[] = TORCH_SPOTS.map((spot) => {
+    void TORCH_GLOW_KEY;
     const glow = ctx.add(
       scene.add
-        .image(spot.x - 44, spot.y - 34, TORCH_GLOW_KEY)
+        .image(spot.x - TORCH_GLOW.cx, spot.y - TORCH_GLOW.cy, NT_LIGHTS_KEY, torchFrame.glow(0))
         .setOrigin(0)
         .setDepth(spot.depth - 0.05),
     );
+    const frameOf = (f: number): string => (spot.kind === 'sconce' ? torchFrame.sconce(f) : torchFrame.post(f));
     const img = ctx.add(
       scene.add
-        .image(spot.x - 9, spot.y - 12, NT_LIGHTS_KEY, lightFrame.torch(0))
+        .image(spot.x - TORCH_MOUNT.cx, spot.y - TORCH_MOUNT.flameY, NT_LIGHTS_KEY, frameOf(0))
         .setOrigin(0)
         .setDepth(spot.depth),
     );
-    return { img, glow, period: spot.period, phase: spot.phase, lastFrame: 0 };
+    return { img, glow, period: spot.period, phase: spot.phase, lastFrame: 0, frameOf };
   });
 
   let lights = true;
@@ -259,8 +198,9 @@ export function createLightsLayer(ctx: NtCtx): NtLayer {
             const step = Math.floor((t + tr.phase) / (tr.period / 3)) % 3;
             if (step !== tr.lastFrame) {
               tr.lastFrame = step;
-              tr.img.setFrame(lightFrame.torch(step));
-              tr.glow.setAlpha(step === 0 ? 0.92 : step === 1 ? 1.0 : 0.85);
+              tr.img.setFrame(tr.frameOf(step));
+              // the glow flickers by swapping its dither level (no alpha: palette-crisp)
+              tr.glow.setFrame(torchFrame.glow(step));
             }
           }
         }

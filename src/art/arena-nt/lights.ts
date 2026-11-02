@@ -271,6 +271,88 @@ function paintTorch(frame: number): PixelCanvas {
   return p;
 }
 
+/**
+ * hedef-gorunum-3: every torch is MOUNTED. The flame of paintTorch (rows 0..cy) on
+ * - kind 'sconce': an iron wall bracket (an arm bent into the wall + a back plate) — for the back wall / pillars;
+ * - kind 'post': a squat brazier bowl on a stone post with a base — standing on the hall floor.
+ * Canvas 18 × 40; the flame centre is at (9, 11); the bottom row (39) is the foot (post) / the bracket ends at row 22.
+ */
+export const TORCH_MOUNT = { w: 18, h: 40, cx: 9, flameY: 11 } as const;
+function paintMountedTorch(kind: 'sconce' | 'post', frame: number): PixelCanvas {
+  const p = new PixelCanvas(TORCH_MOUNT.w, TORCH_MOUNT.h);
+  const f = paintTorch(frame);
+  // the flame only (rows above the bowl)
+  for (let y = 0; y <= 11; y++) for (let x = 0; x < f.w; x++) {
+    const c = f.get(x, y);
+    if (c !== null) p.set(x, y, c);
+  }
+  const cx = TORCH_MOUNT.cx;
+  // the bowl (shared)
+  p.hline(cx - 4, cx + 4, 12, PAL.ink);
+  p.hline(cx - 3, cx + 3, 12, PAL.earth2);
+  p.hline(cx - 4, cx + 4, 13, PAL.stone2);
+  p.set(cx - 4, 13, PAL.ink).set(cx + 4, 13, PAL.ink);
+  p.hline(cx - 3, cx + 3, 14, PAL.stone1);
+  p.set(cx - 3, 14, PAL.ink).set(cx + 3, 14, PAL.ink);
+  p.hline(cx - 2, cx + 2, 15, PAL.ink);
+  if (kind === 'sconce') {
+    // the arm down from the bowl, bent back into a wall plate
+    for (let y = 16; y <= 19; y++) {
+      p.set(cx - 1, y, PAL.stone2);
+      p.set(cx, y, PAL.stone1);
+      p.set(cx + 1, y, PAL.ink);
+    }
+    p.hline(cx - 1, cx + 3, 20, PAL.stone1);
+    p.hline(cx - 1, cx + 3, 21, PAL.ink);
+    // wall plate (a small iron shield behind the arm)
+    for (let y = 15; y <= 23; y++) {
+      p.set(cx + 4, y, y === 15 || y === 23 ? PAL.ink : PAL.stone2);
+      p.set(cx + 5, y, y === 15 || y === 23 ? PAL.ink : PAL.stone1);
+      p.set(cx + 6, y, PAL.ink);
+    }
+    p.set(cx + 5, 19, PAL.gold2);
+  } else {
+    // stone post with a lit left face, a seam every 7 rows, and a wider base
+    for (let y = 16; y <= 35; y++) {
+      p.set(cx - 3, y, PAL.ink);
+      p.set(cx - 2, y, y % 7 === 0 ? PAL.stone1 : PAL.stone3);
+      p.set(cx - 1, y, y % 7 === 0 ? PAL.stone1 : PAL.stone2);
+      p.set(cx, y, y % 7 === 0 ? PAL.stone0 : PAL.stone2);
+      p.set(cx + 1, y, y % 7 === 0 ? PAL.stone0 : PAL.stone1);
+      p.set(cx + 2, y, PAL.stone0);
+      p.set(cx + 3, y, PAL.ink);
+    }
+    p.hline(cx - 3, cx + 3, 16, PAL.ink);
+    for (let y = 36; y <= 39; y++) {
+      p.hline(cx - 5, cx + 5, y, y === 39 ? PAL.ink : y === 36 ? PAL.stone2 : PAL.stone1);
+      p.set(cx - 5, y, PAL.ink).set(cx + 5, y, PAL.ink);
+    }
+    p.hline(cx - 5, cx + 5, 36, PAL.ink);
+  }
+  return p;
+}
+
+/** A warm torch glow: concentric ordered-dither rings of fire1 / gold1 (palette only, alpha 255). */
+export const TORCH_GLOW = { w: 56, h: 44, cx: 28, cy: 20 } as const;
+function paintTorchGlow(level: number): PixelCanvas {
+  const p = new PixelCanvas(TORCH_GLOW.w, TORCH_GLOW.h);
+  for (let y = 0; y < TORCH_GLOW.h; y++)
+    for (let x = 0; x < TORCH_GLOW.w; x++) {
+      const d = Math.hypot((x + 0.5 - TORCH_GLOW.cx) / 27, (y + 0.5 - TORCH_GLOW.cy) / 21);
+      if (d >= 1) continue;
+      const k = (1 - d) * (0.34 + 0.08 * level);
+      if (k > bayer4(x, y) + 0.12) p.set(x, y, d < 0.35 ? PAL.fire1 : PAL.earth1);
+      else if (k > bayer4(x, y)) p.set(x, y, PAL.earth0);
+    }
+  return p;
+}
+
+export const torchFrame = {
+  sconce: (frame: number): string => `torch:sconce:${frame}`,
+  post: (frame: number): string => `torch:post:${frame}`,
+  glow: (level: number): string => `torch:glow:${level}`,
+};
+
 // ---------------------------------------------------------------------------------------------- edge glow (sparse tiles)
 
 export const EDGE_TILE = 16;
@@ -384,6 +466,9 @@ export function bakeLights(): LightsBake {
   }
   for (let f = 0; f < 3; f++) {
     parts.push([lightFrame.torch(f), paintTorch(f)]);
+    parts.push([torchFrame.sconce(f), paintMountedTorch('sconce', f)]);
+    parts.push([torchFrame.post(f), paintMountedTorch('post', f)]);
+    parts.push([torchFrame.glow(f), paintTorchGlow(f)]);
   }
   const edge = paintEdgeGlow();
   parts.push(...edge.parts);

@@ -136,7 +136,45 @@ Claude birleştirmeden önce kapıları çalıştırmalı.
 - Yan duvar: `FACE_H` testi 45..60 px ve sahne altı ≤ y 320 ile sınırlı; yakın kenar y 262'de. "3 kat" sığmıyor →
   sığan en yüksek (≈ 56–60 px) + daha belirgin derz/ışıklar.
 
+- Adım 0 sonucu: v1 film kapısı 16/17 IDENTICAL + `spBoltAce` ERROR (yük altında yakalama zaman aşımı, piksel farkı
+  değil). a6v1 yarıda kesildi. Mevcut iş `8dec27b` olarak itildi.
+
+### Sahip kararı (2026-11-02, ikinci kez): test yok, doğrudan kod — sahip test edip sonucu söyleyecek
+Bu andan sonra hiçbir kapı (tsc hariç, o da arka planda) ve ekran görüntüsü alınmadı; adımlar commit + push.
+
+### h3-a — kalın sahne duvarı (`5380fac`)
+- `layout-nt.ts` `FACE_H` 52 → 58 (test sınırı 45..60, sahne altı y 320). `platform.ts`: yüz satırları `FACE_H`'den
+  üretiliyor (`faceRows`): sıcak üst pah (`earth2`/`earth1`), 16 px üst zırh (perçinler), ışık kanalı, ana panel
+  (dikey kaburga çifti / havalandırma / lamba varyantları), her panelin kemerinde oyuncu renginde küçük lamba.
+  `PLATFORM_BOX.h` 284 → 290. `apron.ts`: zemin gölgesi 14 → 30 px, basamaklı (ink → iki ton aşağı → 2×2 dither).
+
+### h3-b — karo satırlarına paralel sıkı sahne (`904eb81`)
+- `PLATE_R0/R1` −1.9375/5.9375 → −0.875/4.875 (her yanda 0.375 karo pay). Sekizgen: küçük pah (uç/uç 6–10 px).
+  Yakın-sağ köşe x 364 korunuyor (lights.ts ayrımı). Köşe küpleri kaldırıldı.
+- `tests/view/board-nt-layout.test.ts`: "sekizgen iki pedi içerir" → "karo ızgarasını içerir; her kürsü sahneye
+  değer" (sahip kararı).
+
+### h3-c + d — sığ gömme karolar, plaka dokusu, basamaklı kürsüler (`c227a97`)
+- `art/arena-nt/floor.ts`: slot = 1-px cyan2/crim2 kenar (dolu/sıradaki tarafta bir ton yukarı), uzak kenarlarda
+  2 px koyu iç duvar (ink + night0), yakın kenarda 1 px parlak dudak, iç zemin 2×2 dither; dolu slotta oyuncu tonu.
+  `view/board-nt/floor.ts`: yumuşak canvas slotları ve doku kapatıldı (palet kuralı) → piksel atlas.
+- `platform.ts` `topTone`: piksel taş plakalar (yarım karo üzerinde ink derz + stone2 dudak, plaka başına ton/dither).
+- `art/arena-nt/pads.ts`: kürsü = 3 basamak (her basamak 6×3 px geniş, 4 px yüksek), her yükseltinin ilk satırı oyuncu
+  renginde ışık çizgisi (seviyeye göre parlar). `PAD_CANVAS` 58×35 → 86×52 (merkez = ayaklar, konum aynı).
+
+### h3-e — duvar şamdanları, direk üstü mangallar, salon sütunları/sancaklar, borular, alçak sis (bu commit)
+- `art/arena-nt/lights.ts`: `paintMountedTorch('sconce' | 'post')` (demir kol + duvar plakası / taş direk + kaide),
+  `paintTorchGlow` (sıralı dither, `fire1`/`earth1`/`earth0`, alfasız; titreme = kare değişimi).
+- `view/board-nt/lights.ts`: 4 şamdan sütunların önünde, 2 mangal sahnenin solunda/sağında zeminde; havada meşale yok.
+  Sis: yumuşak canvas sisi kaldırıldı → atlasın dither sisi (`fogBack/fogFront/fogWisp`), alçak, 3 katman, yavaş kayan.
+- `view/board-nt/backhall.ts` (yeni) + `wall.ts`: 4 taş sütun (taş sıraları, aydınlık sol yüz), üstlerinde oyuncu
+  renginde altın amblemli sallanan sancaklar (3 kare), salon zemininde iki boru + perçinli metal plaka.
+
 ### Açık konular
+- Kapılar (vitest, palcheck, filmdiff v1/a6v1) h3 adımlarında çalıştırılmadı (sahip kararı); Claude birleştirmeden
+  önce çalıştırmalı. `tests/art/arena-nt-platform.test.ts` op(213, 232)/op(213, 214)/op(320, 270) örnek noktaları eski
+  sekizgene göre — yeni şekle göre güncellenmesi gerekebilir.
+- `LightLayer.ts` hâlâ yumuşak (canvas) gölge/anahtar ışık dokuları kullanıyor → palcheck için basamaklıya çevrilmeli.
 - Film kapıları ve palcheck bu adımdan sonra çalıştırılmadı (sahip kararı).
 - Ekran görüntüleri yük altında bazen `__neon.ready` zaman aşımına düşüyor, görüntü yine de yazılıyor.
 - Sahibin geri bildirimi bekleniyor (hangi bölge hedefe benzemedi).
