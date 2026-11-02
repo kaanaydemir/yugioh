@@ -55,16 +55,3 @@ const MAP = new Map<number, number>([
 export function calmRemap(pc: PixelCanvas): PixelCanvas {
   return pc.clone().map((c) => MAP.get(c) ?? c);
 }
-
-/**
- * h4-3 (owner: "lift the back wall out of pure black"): the back-wall layer's textures one dark step up — ink → night0,
- * night0 → night1 — so the stone, the tower and the niches read, dim. Only the wall layer (texture layer name 'wall').
- */
-export const LIFT_LAYERS: ReadonlySet<string> = new Set(['wall']);
-const LIFT = new Map<number, number>([
-  [PAL.ink, PAL.night0],
-  [PAL.night0, PAL.night1],
-]);
-export function liftRemap(pc: PixelCanvas): PixelCanvas {
-  return pc.clone().map((c) => LIFT.get(c) ?? c);
-}

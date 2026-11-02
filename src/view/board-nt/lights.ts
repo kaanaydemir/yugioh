@@ -20,7 +20,6 @@ import { zoneXY } from '../layout';
 import { REDUCED_MOTION } from '../v3/motion';
 import type { CrowdReaction } from './api';
 import { NT_DEPTH } from './layout-nt';
-import { NT_WALL_HALO_KEY, WALL_HALO, ensureBackHallTextures } from './backhall';
 import { type NtCtx, type NtEventInfo, type NtLayer } from './layer';
 import { ensureNtTexture } from './textures';
 
@@ -87,7 +86,6 @@ interface TorchLight {
   phase: number;
   lastFrame: number;
   frameOf: (f: number) => string;
-  glowOf: (f: number) => [string, string | undefined];
 }
 
 /**
@@ -138,14 +136,14 @@ export function createLightsLayer(ctx: NtCtx): NtLayer {
   addFog(lightFrame.fogBand(1), 150, 306, false, NT_DEPTH.platform - 0.1, 18, 1, 18800, 5100);
 
   // 4. mounted torches (wall sconces / post braziers) with an ordered-dither warm glow behind them
-  ensureBackHallTextures(scene);
   const torches: TorchLight[] = TORCH_SPOTS.map((spot) => {
     void TORCH_GLOW_KEY;
-    // sconces: a small warm halo on the wall around the flame; post braziers: the bigger dithered glow (+ a floor pool, below)
-    const glow =
-      spot.kind === 'sconce'
-        ? ctx.add(scene.add.image(spot.x - WALL_HALO.cx, spot.y - WALL_HALO.cy, NT_WALL_HALO_KEY(0)).setOrigin(0).setDepth(spot.depth - 0.05))
-        : ctx.add(scene.add.image(spot.x - TORCH_GLOW.cx, spot.y - TORCH_GLOW.cy, NT_LIGHTS_KEY, torchFrame.glow(0)).setOrigin(0).setDepth(spot.depth - 0.05));
+    const glow = ctx.add(
+      scene.add
+        .image(spot.x - TORCH_GLOW.cx, spot.y - TORCH_GLOW.cy, NT_LIGHTS_KEY, torchFrame.glow(0))
+        .setOrigin(0)
+        .setDepth(spot.depth - 0.05),
+    );
     const frameOf = (f: number): string => (spot.kind === 'sconce' ? torchFrame.sconce(f) : torchFrame.post(f));
     const img = ctx.add(
       scene.add
@@ -153,8 +151,7 @@ export function createLightsLayer(ctx: NtCtx): NtLayer {
         .setOrigin(0)
         .setDepth(spot.depth),
     );
-    const glowOf = (f: number): [string, string | undefined] => (spot.kind === 'sconce' ? [NT_WALL_HALO_KEY(f), undefined] : [NT_LIGHTS_KEY, torchFrame.glow(f)]);
-    return { img, glow, period: spot.period, phase: spot.phase, lastFrame: 0, frameOf, glowOf };
+    return { img, glow, period: spot.period, phase: spot.phase, lastFrame: 0, frameOf };
   });
 
   let lights = true;
@@ -211,8 +208,7 @@ export function createLightsLayer(ctx: NtCtx): NtLayer {
               tr.lastFrame = step;
               tr.img.setFrame(tr.frameOf(step));
               // the glow flickers by swapping its dither level (no alpha: palette-crisp)
-              const [gk, gf] = tr.glowOf(step);
-              tr.glow.setTexture(gk, gf);
+              tr.glow.setFrame(torchFrame.glow(step));
             }
           }
         }

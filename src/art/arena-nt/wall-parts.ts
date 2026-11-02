@@ -59,54 +59,11 @@ function bay(p: PixelCanvas, x0: number, kind: number): void {
   }
 }
 
-/**
- * h4-3: a dim stone-block wall (hedef-gorunum-3) instead of near-black panels: courses of 7 px with an ink mortar line and
- * a 1-px lit top lip, blocks of 16..24 px staggered per course, each block one of three dim tones (night1 / night2 /
- * stone0-ish) with its top-left corner lit and its lower edge a step darker; a few cracked / chipped blocks.
- */
-function brickWall(p: PixelCanvas, y0: number, y1: number): void {
-  const tones = [T.n1, T.n2, T.n1, T.n0] as const;
-  for (let y = y0; y < y1; y++) {
-    const course = Math.floor((y - y0) / 7);
-    const v = (y - y0) % 7;
-    const shift = (course % 2) * 11;
-    for (let x = 0; x < PANEL_W; x++) {
-      const bx = (x + shift) % PANEL_W;
-      // block widths 16 / 20 / 24 / 20 / 16 / 32 per course → seams at fixed offsets of the 128-px repeat
-      const seams = [0, 16, 36, 60, 80, 96, 128];
-      let k = 0;
-      while (k + 1 < seams.length && bx >= seams[k + 1]) k++;
-      const lx = bx - seams[k];
-      const w = seams[k + 1] - seams[k];
-      if (v === 6 || lx === w - 1) {
-        p.set(x, y, T.ink);
-        continue;
-      }
-      const tone = tones[Math.floor(hash01(k, course, 31) * tones.length)];
-      let c: number = tone;
-      if (v === 0 || lx === 0) c = tone === T.n0 ? T.n1 : T.n2 === tone ? T.n3 : T.n2; // lit top / left lip
-      else if (v === 5) c = tone === T.n2 ? T.n1 : T.n0; // shaded lower edge
-      if (hash01(k, course, 77) < 0.08 && lx > 3 && lx < w - 4 && v === 3) c = T.ink; // a crack
-      p.set(x, y, c);
-    }
-  }
-}
-
-/** The repeating wall band tile (128 x 110): a dim stone-block wall (h4-3), the old bays only as recessed niches. */
+/** The repeating wall band tile (128 x 110): dark, low-contrast architectural backing. */
 export function paintPanelTile(): PixelCanvas {
   const p = new PixelCanvas(PANEL_W, PANEL_H);
   bay(p, 0, 0);
   bay(p, 64, 1);
-  // h4-3: the stone blocks cover the bays' faces (rows 28 .. plinth); the bays' plates stay readable as dark niches
-  brickWall(p, 28, WALL_BASE_Y - WALL_Y0 - 12);
-  for (const x0 of [0, 64]) {
-    const bx = x0 + 10;
-    const by = 42;
-    p.frame(bx, by, 44, 40, T.ink);
-    p.rect(bx + 1, by + 1, 42, 38, T.n0);
-    p.hline(bx + 1, bx + 42, by + 38, T.n1);
-    p.vline(bx + 42, by + 1, by + 38, T.n1);
-  }
   // ceiling vault
   p.rect(0, 0, PANEL_W, 14, T.ink);
   for (let x = 0; x < PANEL_W; x += 32) {
