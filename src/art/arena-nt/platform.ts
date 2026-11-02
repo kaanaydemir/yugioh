@@ -3,7 +3,7 @@
 // the upper-left coping edges, and darkened low-contrast side armour without bright neon strip glare.
 // Pure PixelCanvas code (no Phaser): runs in Node for tests. Colours only from src/art/palette.ts.
 
-import { FACE_H, NT_COLS, NT_OX, NT_OY, NT_ROWS, PLATE_C0, PLATE_C1, PLATE_OUTLINE, PLATE_R0, PLATE_R1, PLATE_X0, PLATE_X1, PLATE_Y0, PLATE_Y1, ntIso } from '../../view/board-nt/layout-nt';
+import { DAIS_LANDINGS, FACE_H, NT_COLS, NT_OX, NT_OY, NT_ROWS, PLATE_C0, PLATE_C1, PLATE_OUTLINE, PLATE_R0, PLATE_R1, PLATE_X0, PLATE_X1, PLATE_Y0, PLATE_Y1, ntGrid, ntIso } from '../../view/board-nt/layout-nt';
 import { type Color, PixelCanvas } from '../pixel';
 import { PAL } from '../palette';
 import { NT_PAL } from './palette';
@@ -121,11 +121,14 @@ export function buildPlatformArt(): PlatformArt {
 
   const faces = faceDefs();
   const cand: { x: number; y: number; tone: Color }[][] = [];
+  // h4-1: P2's landing lies behind the stage (painted first, the stage covers it); P1's in front (painted last)
+  paintLanding(S, DAIS_LANDINGS[1], 1);
   faces.forEach((f, i) => paintFace(S, f, i, strips, cand, vents, rim));
   lap('faces');
   const dashes = paintTop(S, x0, y0, x1, y1);
   lap('top');
   for (const k of PILLARS()) paintPillar(S, k);
+  paintLanding(S, DAIS_LANDINGS[0], 0);
   const kept: Omit<StripPiece, 'frame'>[] = [];
   strips.forEach((st, i) => {
     const px = cand[i].filter((q) => S.at(q.x, q.y) === q.tone);
@@ -438,6 +441,48 @@ function paintFace(S: Surface, f: FaceDef, id: number, strips: Omit<StripPiece, 
     strips.push({ x: 0, y: 0, side: sideAt(px[px.length >> 1].x), face: id, n: n++ });
   }
   if (B[0] - A[0] > 60) rim.push(lipPts);
+}
+
+/**
+ * h4-1: a duelist's landing — a block of stage height: its two near faces (lit lower-left, shaded lower-right) as FACE_H-tall
+ * walls in the stage's own row tones (seams every ~16 px, a lamp per panel in the player colour), then its stone top with a lit
+ * far rim. `side` picks the lamp / strip colour.
+ */
+function paintLanding(S: Surface, L: { c0: number; c1: number; r0: number; r1: number }, side: 0 | 1): void {
+  const iso = (c: number, r: number): { x: number; y: number } => ntIso(c, r);
+  const left = iso(L.c0, L.r1);
+  const near = iso(L.c1, L.r1);
+  const right = iso(L.c1, L.r0);
+  const tones = STRIP_TONES[side];
+  for (let x = Math.ceil(left.x); x < Math.floor(right.x); x++) {
+    const lit = x < near.x;
+    const yt = lit ? Math.round(left.y + ((x + 0.5 - left.x) * (near.y - left.y)) / (near.x - left.x)) : Math.round(near.y + ((x + 0.5 - near.x) * (right.y - near.y)) / (right.x - near.x));
+    const rows = lit ? LIT_ROWS : SHD_ROWS;
+    const lx = Math.round(x - left.x);
+    const seam = lx % 16 === 0 && lx > 0;
+    const mid = lx % 16 === 8;
+    for (let v = 0; v < FACE_H; v++) {
+      const t = rows[v];
+      let c: Color = t === 'S' ? tones[2] : t === 'L' ? tones[1] : t === 'l' ? tones[0] : t;
+      if (seam && v >= UP0 && v <= FACE_H - 6) c = INK;
+      if (v === BELT0 + 2 && (mid || lx % 16 === 7)) c = tones[4];
+      S.put(x, yt + v, c);
+    }
+  }
+  // the top: stone, a 1-px lit rim on the two far edges, ink on the near ones
+  const bx0 = Math.floor(left.x);
+  const bx1 = Math.ceil(right.x);
+  const by0 = Math.floor(iso(L.c0, L.r0).y);
+  const by1 = Math.ceil(near.y);
+  for (let y = by0; y <= by1; y++)
+    for (let x = bx0; x <= bx1; x++) {
+      const [c, r] = ntGrid(x + 0.5, y + 0.5);
+      if (c < L.c0 || c > L.c1 || r < L.r0 || r > L.r1) continue;
+      // P1's landing joins the stage on its r0 edge (no rim there: it would cross the plate's margin)
+      const dFar = Math.min(c - L.c0, side === 0 ? Infinity : r - L.r0) * 32;
+      const dNear = Math.min(L.c1 - c, L.r1 - r) * 32;
+      S.put(x, y, dNear < 1 ? INK : dFar < 1 ? PAL.earth2 : dFar < 2 ? N2 : topTone(x, y));
+    }
 }
 
 function edgeTop(ky: number, slope: number, kx: number, x: number): number {

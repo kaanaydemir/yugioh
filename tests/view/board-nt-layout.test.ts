@@ -4,7 +4,7 @@
 import { FRAME_H, FRAME_W, SCREEN_AT } from '../../src/art/arena-nt/screens';
 import { describe, expect, it } from 'vitest';
 import { ARENA_NT } from '../../src/view/board-nt/flag';
-import { DUELIST_PADS, FACE_H, PLATE_FULL, PLATE_TOP, HOLOS, KEEP_OUT, PLATE_CORNERS, PLATE_OUTLINE, SCREENS, STANDS, ntIso, ntRegions, rectsOverlap, standsBounds } from '../../src/view/board-nt/layout-nt';
+import { DAIS_LANDINGS, DUELIST_PADS, FACE_H, PLATE_FULL, PLATE_TOP, HOLOS, KEEP_OUT, PLATE_CORNERS, PLATE_OUTLINE, SCREENS, STANDS, ntGrid, ntIso, ntRegions, rectsOverlap, standsBounds } from '../../src/view/board-nt/layout-nt';
 import { duelistXY, zoneXY } from '../../src/view/layout';
 
 describe('neon tower layout map', () => {
@@ -60,9 +60,15 @@ describe('neon tower layout map', () => {
       }
     for (const p of [0, 1] as const) {
       const d = duelistXY(p);
-      // the dais (40×20 diamond around the feet) reaches the stage: at least one of its tips lies on the plate
-      const tips = [[-20, 0], [20, 0], [0, -10], [0, 10]].map(([dx, dy]) => inside(d.x + dx, d.y + dy));
-      expect(tips.some(Boolean), `dais ${p}`).toBe(true);
+      // the dais (40×20 diamond around the feet) stands on its landing, and the landing overlaps the plate
+      const L = DAIS_LANDINGS[p];
+      const onLanding = (x: number, y: number): boolean => {
+        const [c, r] = ntGrid(x, y);
+        return c >= L.c0 && c <= L.c1 && r >= L.r0 && r <= L.r1;
+      };
+      for (const [dx, dy] of [[-20, 0], [20, 0], [0, -10], [0, 10]]) expect(onLanding(d.x + dx, d.y + dy), `dais ${p}`).toBe(true);
+      const m = ntIso((L.c0 + L.c1) / 2, p === 0 ? L.r0 + 0.02 : L.r1 - 0.02);
+      expect(inside(m.x, m.y), `landing ${p} joins the stage`).toBe(true);
     }
   });
 
@@ -72,7 +78,7 @@ describe('neon tower layout map', () => {
     expect(PLATE_TOP.y).toBeGreaterThanOrEqual(52);
     expect(PLATE_FULL.y + PLATE_FULL.h).toBeLessThanOrEqual(320);
     // the near-right corner (outline index 6) is where lights.ts splits blue / crimson
-    expect(Math.round(ntIso(PLATE_OUTLINE[6][0], PLATE_OUTLINE[6][1]).x)).toBe(364);
+    expect(Math.round(ntIso(PLATE_OUTLINE[6][0], PLATE_OUTLINE[6][1]).x)).toBe(358); // h4-1: tight stage (was 364)
     expect(PLATE_CORNERS.left.x).toBe(PLATE_TOP.x);
     expect(PLATE_CORNERS.right.x).toBe(PLATE_TOP.x + PLATE_TOP.w);
   });

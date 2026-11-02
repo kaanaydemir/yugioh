@@ -37,21 +37,25 @@ export function ntIso(col: number, row: number): XY {
  */
 // hedef-gorunum-3: the stage is a TIGHT block parallel to the tile rows (0.375 tile margin on every side, small chamfered
 // corners); the duelists stand on their own raised daises attached to the stage (pads layer), not on the plate.
-export const PLATE_C0 = -0.875;
-export const PLATE_C1 = NT_COLS - 0.5 + 0.375; // 6.875
-export const PLATE_R0 = -0.875;
-export const PLATE_R1 = NT_ROWS - 0.5 + 0.375; // 4.875
+// Owner feedback 2026-11-02 (h4-1): the margin is ONE tile-border wide — 5 px (5/32 tile) between the outer tiles' lines
+// and the stage edge (a 3-px coping + 2 px of stone). Sharp corners: far (288, 59), right (522, 176), near (352, 261),
+// left (118, 144); the chamfers cut 3 px off the far / near tips and 4 px off the side tips (whole-pixel vertices).
+const PLATE_M = 5 / 32;
+export const PLATE_C0 = -0.5 - PLATE_M;
+export const PLATE_C1 = NT_COLS - 0.5 + PLATE_M;
+export const PLATE_R0 = -0.5 - PLATE_M;
+export const PLATE_R1 = NT_ROWS - 0.5 + PLATE_M;
 /** The chamfer lines (screen px): vertical end caps x, flat far / near edges y. */
-export const PLATE_X0 = 114;
-export const PLATE_X1 = 526;
-export const PLATE_Y0 = 58;
-export const PLATE_Y1 = 262;
+export const PLATE_X0 = 122;
+export const PLATE_X1 = 518;
+export const PLATE_Y0 = 62;
+export const PLATE_Y1 = 258;
 /**
  * Height of the side armour below the top edge (J1: 28, was 18; J4: a THICK slab, 52): coping 3 + groove, upper armour plate 12,
  * light channel 6, main armour plate 18 (big bevelled panel face), belt 5, footing flange 4 incl. the bottom outline. The stands /
  * crowd sit behind it (armour bottom y = 178 + x/2 on the left face, 448 − x/2 on the right face, 314 on the flat near edge).
  */
-export const FACE_H = 58; // hedef-gorunum-3: as tall as the screen allows (near edge 262 + 58 = 320, the hand / hint plate draw over it)
+export const FACE_H = 60; // hedef-gorunum-3: as tall as the layout test allows (near edge 258 + 60 = 318, the hand / hint plate draw over it)
 
 /** Grid coordinates of a screen point (inverse of ntIso). */
 export function ntGrid(x: number, y: number): [number, number] {
@@ -64,17 +68,25 @@ export function ntGrid(x: number, y: number): [number, number] {
  * Platform top outline (grid coords), duelist pads inside it: the eight vertices of the octagon, clockwise on screen, starting
  * at the near-left corner (index 6 is the near-right end of the flat near edge: arena-nt/lights.ts splits blue / crimson there).
  */
-// The four sharp corners of the tight block are far (288, 52), right (536, 176), near (352, 268), left (104, 144); the
-// chamfer lines cut 6 px off the far / near tips and 10 px off the side tips.
 export const PLATE_OUTLINE: readonly [number, number][] = [
-  ntGrid(PLATE_X0, 149), // near-left corner (left face start)
-  ntGrid(PLATE_X0, 139), // left end cap, top
-  ntGrid(276, PLATE_Y0), // far flat edge, left end
-  ntGrid(300, PLATE_Y0), // far flat edge, right end
-  ntGrid(PLATE_X1, 171), // right end cap, top
-  ntGrid(PLATE_X1, 181), // right end cap, bottom
-  ntGrid(364, PLATE_Y1), // near flat edge, right end (the near corner of the right face)
-  ntGrid(340, PLATE_Y1), // near flat edge, left end
+  ntGrid(PLATE_X0, 146), // near-left corner (left face start)
+  ntGrid(PLATE_X0, 142), // left end cap, top
+  ntGrid(282, PLATE_Y0), // far flat edge, left end
+  ntGrid(294, PLATE_Y0), // far flat edge, right end
+  ntGrid(PLATE_X1, 174), // right end cap, top
+  ntGrid(PLATE_X1, 178), // right end cap, bottom
+  ntGrid(358, PLATE_Y1), // near flat edge, right end (the near corner of the right face)
+  ntGrid(346, PLATE_Y1), // near flat edge, left end
+];
+
+/**
+ * h4-1: the duelists' LANDINGS — a raised block (stage height, FACE_H walls) under each dais that joins the stage edge, so the
+ * daises (pads layer, centred on layout.duelistXY: P1 (3, 5.35), P2 (3, −1.35)) stand on the stage block. Grid rects of the
+ * 7×5 reference grid; each overlaps the plate by 0.1 tile.
+ */
+export const DAIS_LANDINGS: readonly { c0: number; c1: number; r0: number; r1: number }[] = [
+  { c0: 2.35, c1: 3.65, r0: PLATE_R1 - 0.1, r1: 6.0 }, // P1 (in front of the near-left face)
+  { c0: 2.35, c1: 3.65, r0: -2.0, r1: PLATE_R0 + 0.1 }, // P2 (behind the far-right edge)
 ];
 
 /** The extreme points of the plate's top (screen): the middle of the flat far edge, the right / left end caps, the middle of the flat near edge. */
