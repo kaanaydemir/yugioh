@@ -55,3 +55,5 @@ Stil referansı + "do NOT copy its low resolution" ile çözüldü.
 - İnceleme panelinde tam kart, ekran çözünürlüğünde (kamera/oyun 640×360 değişmez).
 - Elde/sahada: sahnenin canavar bölümü küçültülmüş kırpım.
 - Steam: yapay zekâ içeriği mağaza sayfasında beyan edilmeli.
+- PİKSEL KURALI (2026-11-02): 1024² resim oyunda serbest küçültülmez (karışık piksel boyu = bulanık). İnceleme
+  panelinde tam sayı oranda (nearest) gösterilir; elde/sahada oyunun piksel boyuna ÖNCEDEN indirilmiş ayrı görsel kullanılır.
