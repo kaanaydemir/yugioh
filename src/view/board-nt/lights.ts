@@ -8,7 +8,6 @@ import {
   type LightsBake,
   TORCH_GLOW,
   TORCH_MOUNT,
-  TORCH_POOL,
   bakeLights,
   lightFrame,
   torchFrame,
@@ -89,7 +88,6 @@ interface TorchLight {
   lastFrame: number;
   frameOf: (f: number) => string;
   glowOf: (f: number) => [string, string | undefined];
-  pool: Img | null;
 }
 
 /**
@@ -103,9 +101,8 @@ const TORCH_SPOTS: readonly { kind: 'sconce' | 'post'; x: number; y: number; dep
   { kind: 'sconce', x: 255, y: 88, depth: NT_DEPTH.wallLights + 0.5, period: 460, phase: 140 },
   { kind: 'sconce', x: 385, y: 88, depth: NT_DEPTH.wallLights + 0.5, period: 440, phase: 290 },
   { kind: 'sconce', x: 507, y: 104, depth: NT_DEPTH.wallLights + 0.5, period: 410, phase: 80 },
-  // h4-5: chunky stone-post braziers on the hall floor, left and right of the stage (foot y = flame y + 28)
-  { kind: 'post', x: 86, y: 206, depth: NT_DEPTH.platform + 1.5, period: 390, phase: 210 },
-  { kind: 'post', x: 560, y: 214, depth: NT_DEPTH.platform + 1.5, period: 450, phase: 340 },
+  { kind: 'post', x: 82, y: 212, depth: NT_DEPTH.platform + 1.5, period: 390, phase: 210 },
+  { kind: 'post', x: 566, y: 222, depth: NT_DEPTH.platform + 1.5, period: 450, phase: 340 },
 ];
 
 export function createLightsLayer(ctx: NtCtx): NtLayer {
@@ -157,13 +154,7 @@ export function createLightsLayer(ctx: NtCtx): NtLayer {
         .setDepth(spot.depth),
     );
     const glowOf = (f: number): [string, string | undefined] => (spot.kind === 'sconce' ? [NT_WALL_HALO_KEY(f), undefined] : [NT_LIGHTS_KEY, torchFrame.glow(f)]);
-    // h4-5: a post brazier lights the floor around its foot (a dithered warm pool on the hall floor, under the fog)
-    let pool: Img | null = null;
-    if (spot.kind === 'post') {
-      const footY = spot.y - TORCH_MOUNT.flameY + TORCH_MOUNT.h - 1;
-      pool = ctx.add(scene.add.image(spot.x - TORCH_POOL.cx, footY - TORCH_POOL.cy, NT_LIGHTS_KEY, torchFrame.pool(0)).setOrigin(0).setDepth(NT_DEPTH.platform - 0.3));
-    }
-    return { img, glow, pool, period: spot.period, phase: spot.phase, lastFrame: 0, frameOf, glowOf };
+    return { img, glow, period: spot.period, phase: spot.phase, lastFrame: 0, frameOf, glowOf };
   });
 
   let lights = true;
@@ -222,7 +213,6 @@ export function createLightsLayer(ctx: NtCtx): NtLayer {
               // the glow flickers by swapping its dither level (no alpha: palette-crisp)
               const [gk, gf] = tr.glowOf(step);
               tr.glow.setTexture(gk, gf);
-              tr.pool?.setFrame(torchFrame.pool(step));
             }
           }
         }

@@ -343,68 +343,23 @@ function paintMountedTorch(kind: 'sconce' | 'post', frame: number): PixelCanvas 
     }
     p.set(cx + 5, 19, PAL.gold2);
   } else {
-    paintBrazierPost(p, cx);
-  }
-  return p;
-}
-
-/**
- * h4-5 (hedef-gorunum-3): a CHUNKY stone-post brazier under the flame — a wide iron bowl with a rim and coals, on a squat
- * square stone post (lit left face, shaded right face, block courses), on a stepped plinth. Overwrites the shared bowl.
- */
-function paintBrazierPost(p: PixelCanvas, cx: number): void {
-  // wide bowl (rows 11..16): rim, coals, body tapering in
-  p.hline(cx - 7, cx + 7, 11, PAL.ink);
-  p.hline(cx - 6, cx + 6, 12, PAL.fire1);
-  p.set(cx - 3, 12, PAL.fire2).set(cx + 1, 12, PAL.fire2).set(cx + 4, 12, PAL.fire2);
-  p.hline(cx - 7, cx + 7, 13, PAL.stone2);
-  p.set(cx - 7, 13, PAL.ink).set(cx + 7, 13, PAL.ink);
-  p.hline(cx - 6, cx + 6, 14, PAL.stone1);
-  p.hline(cx - 6, cx - 2, 14, PAL.stone2);
-  p.set(cx - 6, 14, PAL.ink).set(cx + 6, 14, PAL.ink);
-  p.hline(cx - 5, cx + 5, 15, PAL.stone0);
-  p.set(cx - 5, 15, PAL.ink).set(cx + 5, 15, PAL.ink);
-  p.hline(cx - 4, cx + 4, 16, PAL.ink);
-  // squat post (rows 17..33), 11 px wide: lit left half, shaded right half, block courses every 6 rows
-  for (let y = 17; y <= 33; y++) {
-    const course = (y - 17) % 6 === 5;
-    for (let x = cx - 5; x <= cx + 5; x++) {
-      let c: number;
-      if (x === cx - 5 || x === cx + 5) c = PAL.ink;
-      else if (course) c = x <= cx ? PAL.stone1 : PAL.stone0;
-      else if (x === cx - 4) c = PAL.stone3;
-      else c = x <= cx ? PAL.stone2 : x < cx + 4 ? PAL.stone1 : PAL.stone0;
-      p.set(x, y, c);
+    // stone post with a lit left face, a seam every 7 rows, and a wider base
+    for (let y = 16; y <= 35; y++) {
+      p.set(cx - 3, y, PAL.ink);
+      p.set(cx - 2, y, y % 7 === 0 ? PAL.stone1 : PAL.stone3);
+      p.set(cx - 1, y, y % 7 === 0 ? PAL.stone1 : PAL.stone2);
+      p.set(cx, y, y % 7 === 0 ? PAL.stone0 : PAL.stone2);
+      p.set(cx + 1, y, y % 7 === 0 ? PAL.stone0 : PAL.stone1);
+      p.set(cx + 2, y, PAL.stone0);
+      p.set(cx + 3, y, PAL.ink);
     }
-  }
-  // stepped plinth (rows 34..39): two steps, each 2 px wider
-  for (let y = 34; y <= 39; y++) {
-    const hw = y < 37 ? 6 : 7;
-    for (let x = cx - hw; x <= cx + hw; x++) {
-      const edge = x === cx - hw || x === cx + hw || y === 39 || y === 34 || y === 37;
-      p.set(x, y, edge ? PAL.ink : x <= cx ? PAL.stone2 : PAL.stone1);
+    p.hline(cx - 3, cx + 3, 16, PAL.ink);
+    for (let y = 36; y <= 39; y++) {
+      p.hline(cx - 5, cx + 5, y, y === 39 ? PAL.ink : y === 36 ? PAL.stone2 : PAL.stone1);
+      p.set(cx - 5, y, PAL.ink).set(cx + 5, y, PAL.ink);
     }
-    if (y === 35 || y === 38) p.set(cx - hw + 1, y, PAL.stone3);
+    p.hline(cx - 5, cx + 5, 36, PAL.ink);
   }
-}
-
-/**
- * h4-5: the warm LIGHT POOL a post brazier throws on the hall floor (an iso ellipse 72 × 30, ordered dither of earth0 /
- * earth1 / fire1, opaque pixels only). Its centre is the brazier's foot.
- */
-export const TORCH_POOL = { w: 72, h: 30, cx: 36, cy: 15 } as const;
-function paintTorchPool(level: number): PixelCanvas {
-  const p = new PixelCanvas(TORCH_POOL.w, TORCH_POOL.h);
-  for (let y = 0; y < TORCH_POOL.h; y++)
-    for (let x = 0; x < TORCH_POOL.w; x++) {
-      const d = Math.hypot((x + 0.5 - TORCH_POOL.cx) / 36, (y + 0.5 - TORCH_POOL.cy) / 15);
-      if (d >= 1) continue;
-      const k = (1 - d) * (0.5 + 0.08 * level);
-      const th = bayer4(x, y);
-      if (k > th + 0.3) p.set(x, y, PAL.earth1);
-      else if (k > th + 0.12) p.set(x, y, PAL.earth0);
-      else if (k > th) p.set(x, y, PAL.skin0);
-    }
   return p;
 }
 
@@ -427,7 +382,6 @@ export const torchFrame = {
   sconce: (frame: number): string => `torch:sconce:${frame}`,
   post: (frame: number): string => `torch:post:${frame}`,
   glow: (level: number): string => `torch:glow:${level}`,
-  pool: (level: number): string => `torch:pool:${level}`,
 };
 
 // ---------------------------------------------------------------------------------------------- edge glow (sparse tiles)
@@ -547,7 +501,6 @@ export function bakeLights(): LightsBake {
     parts.push([torchFrame.sconce(f), paintMountedTorch('sconce', f)]);
     parts.push([torchFrame.post(f), paintMountedTorch('post', f)]);
     parts.push([torchFrame.glow(f), paintTorchGlow(f)]);
-    parts.push([torchFrame.pool(f), paintTorchPool(f)]);
   }
   const edge = paintEdgeGlow();
   parts.push(...edge.parts);
