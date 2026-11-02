@@ -51,6 +51,30 @@
 - Tribünler, arka duvar, makineler ve platform çevresi koyulaştırıldı ve kontrastı düşürüldü.
 - HUD panelleri ve butonlarının çerçeveleri inceltildi, neon parlamaları azaltıldı.
 
+## Oturum 2 (2026-11-02) — devam, küçük adımlar
+
+### Başlangıç durumu
+- Dalda önceki oturumdan 5 commit vardı (`9d18b3b` … `2b39735`) + 18 dosyada commit edilmemiş deneme
+  (sıcak erik-arduvaz `PAL.slate*` tonları, kart quantizer'ında `ARENA_ONLY_COLORS` filtresi, kalibre değişmiş
+  zemin, kalabalık blitter'ı gizleme …). Bu deneme `src/art/cards.ts` / `src/art/palette.ts` gibi görev dışı
+  dosyalara dokunduğu için **silinmedi, `git stash`'e alındı**: `stash@{0}` "okunurluk: uncommitted WIP from earlier
+  session (18 files)". Gerekirse `git stash show -p 'stash@{0}'` ile incelenebilir.
+- `npm install` (exit 0), `npx playwright install chromium` (exit 0; chromium-1194 = playwright-core 1.56.1).
+  Not: Windows PowerShell'de `npm.ps1` engelli → `npm.cmd` / `npx.cmd` kullanıldı.
+- **v1 bazları dokunulmamış taban commit'te yeniden çekildi** (`d5dc22b`, `git checkout d5dc22b` → `--write` → dala
+  dönüş): `shots/v3/a3/baseline/v1films` 17 film yazıldı, `shots/v3/a56/baseline/a6v1films` 26 film yazıldı
+  (ikisi de exit 0; manifest `git.head = d5dc22b…`, `srcDirty: false`). Önceki oturumun bazları
+  `v1films.prev-earlier` / `a6v1films.prev-earlier` adıyla kenara alındı.
+- HEAD `2b39735` kapıları: `tsc` temiz, v1 **17/17 IDENTICAL**, a6v1 **26/26 IDENTICAL**,
+  palcheck (`shots/ok/head-2b39735.png`) PASS (off 43.03 %, white 0.88 %).
+
+### Adım 1 — platform yan zırhındaki neon şeritler bir ton kısıldı (`src/art/arena-nt/platform.ts`)
+- `STRIP_TONES` (P1 cyan / P2 crim): `cyan0..cyan2` → `night1/cyan0..cyan1` (kırmızı aynı biçimde). Yan duvarda
+  parlak neon boru yerine soluk oyuncu renkli bir derz kalıyor (hedefte platform yanı koyu ve sakin).
+- Köşe sütunlarının şerit/kapak vurgusu `ramp[1]` → `ramp[0]`.
+- Görüntü: `shots/ok/s1-strips.png` (öncesi `shots/ok/head-2b39735.png`).
+- `tests/art/arena-nt-*.test.ts`: 17/17 geçti.
+
 ## Kontrol Kapıları (Gates)
 - `npm run typecheck`: Temiz (0 hata)
 - `node tools/palcheck.mjs docs/v3/ref/okunurluk-sonrasi.png`: `PASS` (`off 43.39% <= 50%`, `white 0.88% <= 1.5%`)

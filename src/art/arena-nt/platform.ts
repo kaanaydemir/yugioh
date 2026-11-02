@@ -28,9 +28,11 @@ const G0 = NT_PAL.graphite[0];
 const G1 = NT_PAL.graphite[1];
 const G2 = NT_PAL.graphite[2];
 /** energy tones per side: 0 blue (player), 1 crimson (opponent), 2 neutral (the middle panel of the right face) */
+// Readability pass: one tone lower than the original neon (the side armour reads as a dark wall with a faint
+// player-coloured seam, not a glowing tube; docs/v3/ref/hedef-gorunum-2.png).
 export const STRIP_TONES: Record<0 | 1 | 2, readonly [Color, Color, Color, Color, Color]> = {
-  0: [PAL.night0, PAL.cyan0, PAL.cyan1, PAL.cyan1, PAL.cyan2],
-  1: [PAL.night0, PAL.crim0, PAL.crim1, PAL.crim1, PAL.crim2],
+  0: [PAL.night0, PAL.night1, PAL.cyan0, PAL.cyan0, PAL.cyan1],
+  1: [PAL.night0, PAL.night1, PAL.crim0, PAL.crim0, PAL.crim1],
   2: [N0, N1, N2, N2, N3],
 };
 
@@ -437,7 +439,8 @@ function paintPillar(S: Surface, p: Pillar): void {
         c = base === INK ? INK : shiftTone(base, d);
       }
       if (v === STRIP_ROWS[0] || v === STRIP_ROWS[1]) {
-        if (ak <= 3) c = ak === 3 ? ramp[0] : ramp[1];
+        // readability pass: the pillar's accent one tone lower (dim seam, no neon dot)
+        if (ak <= 3) c = ak === 3 ? N0 : ramp[0];
         else if (ak < PIL_HW) c = N0;
       }
       S.put(x, yt + v, c);
@@ -449,7 +452,7 @@ function paintPillar(S: Surface, p: Pillar): void {
       else if (v === top + 1) c = k <= 0 ? N2 : N1;
       else if (v === -1) c = N0;
       else c = k < -1 ? N2 : k < 1 ? N1 : G0;
-      if ((v === top + 3 || v === top + 4) && ak <= 1) c = ramp[1];
+      if ((v === top + 3 || v === top + 4) && ak <= 1) c = ramp[0];
       S.put(x, yt + v, c);
     }
   }
