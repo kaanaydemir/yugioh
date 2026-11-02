@@ -102,3 +102,7 @@ D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (ka
 - SAHİP KARARI (2026-11-02, Gemini okunurluk sonucu üzerine): hologramlar PARLAK kalır (soluklaştırılmaz) ve
   arka plandaki tribünler KALDIRILMIŞ hâliyle kalır — ikisi de sahibin isteği. Düzeltilecekler: havada asılı
   meşaleler (duvara/direğe oturacak) ve sis/ışığın piksel-net + yalnız palet renkleriyle yapılması.
+- HEDEF GÖRÜNÜM v3 (SAHİP, 2026-11-02): docs/v3/ref/hedef-gorunum-3.png — Gemini sonucunun üstüne ChatGPT ile:
+  kalın yükseltilmiş sahne (yüksek yan duvar, üst kenarda ışıklı pah, yere gölge), karo sıralarına paralel
+  sahne kenarı, gömük karolar, her düellocu kendi renginde parlayan basamaklı kürsüde, duvara/direğe oturmuş
+  meşaleler. Karo yerleri ve kamera DEĞİŞMEZ; yeni şekil mevcut karoların etrafına kurulur.
