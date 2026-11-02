@@ -115,3 +115,12 @@ D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (ka
 - SAHİP (2026-11-02): hedef-gorunum-3 aynen uygulanacak; TEK FARK: ortadaki boş gri gömük yuvalar ("delikler",
   iki oyuncunun alanı arasındaki/çevresindeki işlevsiz karolar) OLMAYACAK — orası düz sahne taşı. Yalnız gerçek
   bölgeler (turkuaz P1, kırmızı P2) gömük karo olur.
+- SAHİP (2026-11-02) — sıfırlamadan SONRA yapılacaklara eklendi:
+  * Marka temizliği: "Yu-Gi-Oh" adı oyuncuya görünen hiçbir yerde geçmeyecek (zaten geçmiyor); CLAUDE.md /
+    GAME_DESIGN.md esinlenme notları sadeleşir; depo adını sahip değiştirir (GitHub Settings → Rename).
+    Yapay zekâ kart çerçevesi bizim neon/koyu çizgimize çekilir (kahve-altın + yıldız sırası fazla benzer).
+  * Steam hazırlığı: mağaza sayfası erken açılacak (istek listesi toplamak için); kapsül görseli, açıklama,
+    yapay zekâ beyanı.
+  * FRAGMAN: 60–90 sn, oyunun kendi kayıt araçlarıyla (tools/shot.mjs film + ses kaydı → MP4). Arena okunurluk
+    işi + İngilizce geçiş bittikten SONRA çekilecek (son görünüm görünmeli). Ayrıca Reddit için 10–15 sn'lik
+    tek-imza-animasyon klipleri.
