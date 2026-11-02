@@ -988,6 +988,45 @@ class UnitLight {
 }
 
 /**
+ * h4 (pixel rules, palcheck): turn a soft canvas (painted with gradients) into crisp palette pixels — every pixel becomes
+ * either fully transparent or the nearest of `tones` at alpha 255, kept when its alpha × `gain` beats a 4×4 ordered-dither
+ * threshold. So the shadows / light pools keep their shape and falloff as a stepped dither, with no blur and no off-palette
+ * blend.
+ */
+const BAYER4X4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+function ditherToPalette(cv: HTMLCanvasElement, tones: readonly number[], gain = 1): void {
+  const g = cv.getContext('2d');
+  if (!g) return;
+  const img = g.getImageData(0, 0, cv.width, cv.height);
+  const d = img.data;
+  const rgbT = tones.map((c) => [(c >> 16) & 255, (c >> 8) & 255, c & 255] as const);
+  for (let y = 0; y < cv.height; y++)
+    for (let x = 0; x < cv.width; x++) {
+      const i = (y * cv.width + x) * 4;
+      const a = (d[i + 3] / 255) * gain;
+      const th = (BAYER4X4[((y & 3) << 2) | (x & 3)] + 0.5) / 16;
+      if (a <= th) {
+        d[i + 3] = 0;
+        continue;
+      }
+      let best = 0;
+      let bd = Infinity;
+      rgbT.forEach(([r, gg, b], k) => {
+        const dd = (r - d[i]) ** 2 + (gg - d[i + 1]) ** 2 + (b - d[i + 2]) ** 2;
+        if (dd < bd) {
+          bd = dd;
+          best = k;
+        }
+      });
+      d[i] = rgbT[best][0];
+      d[i + 1] = rgbT[best][1];
+      d[i + 2] = rgbT[best][2];
+      d[i + 3] = 255;
+    }
+  g.putImageData(img, 0, 0);
+}
+
+/**
  * Build (or get) a cached smooth foot texture: soft contact shadow at the centre +
  * faint warm/slate light pool around its rim (smooth radial alpha, no checkerboard speckles).
  */
@@ -1049,6 +1088,7 @@ function ensureFootTex(scene: Phaser.Scene, rx: number, ry: number): string {
     g.fill();
     g.restore();
   }
+  ditherToPalette(cv, [PAL.ink, PAL.night0, PAL.skin0, PAL.earth1]);
   scene.textures.addCanvas(key, cv);
   return key;
 }
@@ -1095,6 +1135,7 @@ function ensureCastShadowTex(scene: Phaser.Scene, rx: number, len: number): { ke
     g.fill();
     g.restore();
   }
+  ditherToPalette(cv, [PAL.ink]);
   scene.textures.addCanvas(key, cv);
   return { key, ox: footX / W, oy: footY / H };
 }
@@ -1124,6 +1165,7 @@ function ensureFloorShadowTex(scene: Phaser.Scene, rx: number, ry: number): stri
     g.fill();
     g.restore();
   }
+  ditherToPalette(cv, [PAL.ink]);
   scene.textures.addCanvas(key, cv);
   return key;
 }
@@ -1382,11 +1424,14 @@ function ensureKeyLightTex(scene: Phaser.Scene): string {
         const alpha = Math.min(0.42, falloff * 0.34 + rimBoost);
         if (alpha <= 0.005) continue;
         const idx = (y * W + x) * 4;
-        // Warm amber key light grazing from the upper-left
-        data[idx] = 236;
-        data[idx + 1] = 168;
-        data[idx + 2] = 104;
-        data[idx + 3] = Math.round(alpha * 255);
+        // h4 (pixel rules): a warm stepped dither instead of an alpha wash — opaque earth1 pixels where the light beats the
+        // 4×4 threshold (the density follows the falloff), so the plate reads lit from the top left, palette-crisp
+        const th = (BAYER4X4[((sy & 3) << 2) | (sx & 3)] + 0.5) / 16;
+        if (alpha * 0.9 <= th) continue;
+        data[idx] = (PAL.earth1 >> 16) & 255;
+        data[idx + 1] = (PAL.earth1 >> 8) & 255;
+        data[idx + 2] = PAL.earth1 & 255;
+        data[idx + 3] = 255;
       }
     }
     ctx.putImageData(imgData, 0, 0);
