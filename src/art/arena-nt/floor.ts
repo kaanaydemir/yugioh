@@ -38,16 +38,42 @@ function slotFrame(player: 0 | 1, pile: boolean, state: number, boost: number): 
   const p = new PixelCanvas(64, 32);
   const ramp = player === 0 ? NT_PAL.blue : NT_PAL.red;
   const empty = state === SLOT_EMPTY;
-  // Crisp 1-px tile border (calm muted cyan1/crim1 when empty, cyan2/crim2 when occupied) on smooth G[1] slate
-  const line: Color = empty ? ramp[1] : ramp[2];
+  // hedef-gorunum-3: a clear 1-px border (cyan2 / crim2, one up when occupied or on the side to move)
+  const line: Color = ramp[Math.min(4, (empty ? 2 : 3) + (empty ? boost : 0))];
   const stud: Color = NT_PAL.metal[3];
   const isLine = (i: number, j: number): boolean => i >= 0 && j >= 0 && i < 64 && j < 32 && m.line.get(i, j) !== null;
   const isFill = (i: number, j: number): boolean => i >= 0 && j >= 0 && i < 64 && j < 32 && m.fill.get(i, j) !== null;
+  // shallow inset slot: the interior's distance (px) from the border, and which half it is in
+  let lx0 = 64;
+  let lx1 = -1;
+  let ly0 = 32;
+  let ly1 = -1;
+  for (let j = 0; j < 32; j++)
+    for (let i = 0; i < 64; i++)
+      if (m.line.get(i, j) !== null) {
+        lx0 = Math.min(lx0, i);
+        lx1 = Math.max(lx1, i);
+        ly0 = Math.min(ly0, j);
+        ly1 = Math.max(ly1, j);
+      }
+  const scx = (lx0 + lx1 + 1) / 2;
+  const scy = (ly0 + ly1 + 1) / 2;
+  const hw = (lx1 - lx0 + 1) / 2;
+  const hh = (ly1 - ly0 + 1) / 2;
+  const insetDepth = (i: number, j: number): number => (1 - (Math.abs(i + 0.5 - scx) / hw + Math.abs(j + 0.5 - scy) / hh)) * hh;
+  const G = NT_PAL.graphite;
   for (let j = 0; j < 32; j++) {
     for (let i = 0; i < 64; i++) {
       if (m.tile.get(i, j) === null) continue;
-      // readability pass: the slot interior stays transparent so the lit stone plate shows through
       let c: Color | null = isLine(i, j) ? line : null;
+      if (c === null && isFill(i, j)) {
+        const d = insetDepth(i, j);
+        const far = j + 0.5 < scy;
+        // far edges: the slot's dark inner wall (2 px); near edges: a 1-px lit lip; the floor of the slot one tone down
+        if (far) c = d < 1.6 ? NT_PAL.ink : d < 2.6 ? NT_PAL.metal[0] : (i + j) % 2 === 0 ? G[0] : null;
+        else c = d < 1.1 ? NT_PAL.metal[2] : (i + j) % 2 === 0 ? G[0] : null;
+        if (!empty && c === null) c = (i + j) % 2 === 0 ? ramp[0] : null;
+      }
       if (state === SLOT_DOWN && !isFill(i, j)) {
         const dx = Math.abs(i + 0.5 - 32);
         const dy = Math.abs(j + 0.5 - 16);
