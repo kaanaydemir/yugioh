@@ -29,7 +29,7 @@ import type { GameEvent } from '../../engine/types';
 import { LOOK_V3, type XY } from '../../view/layout';
 import { lightFlash, lightPool } from '../../view/light';
 import { shake } from '../../vfx/core';
-import { sleep } from '../../vfx/combat';
+import { sleep, stopTime } from '../../vfx/combat';
 import { registerCardHook, registerEvent, registerStrike } from '../api';
 import type { StrikeArgs } from '../_core/types';
 import { strikeStartFrame } from '../_v3/clash';
@@ -329,10 +329,18 @@ registerStrike(
     const fromUnder = archerPoint(u, 'puddle') ?? { x: u.home.x + dir * 24, y: ground + 5 };
     const dist = Math.hypot(to.x - from.x, to.y - from.y);
     const ms = Math.round(clamp(dist * 1.1, 150, s.direct ? 300 : 260));
+    // the body never freezes through the flight: halfway along it the archer eases off the follow-through pose
+    // while its reflection (two frames ahead in the art) is already lowering its bow — "one step ahead"
+    void sleep(sc, u.frameMs('attack', REL) + Math.round(ms * 0.45)).then(() => {
+      const fi = u.frameInfo();
+      if (u.sprite.active && !u.retired && fi.anim === 'attack' && fi.frame === HOLD) u.pose('attack', HOLD + 1);
+    });
     await twinArrows(sc, { from, fromUnder, ground, to, toGround, ms, dir });
     flight.stop(30);
     // ---- contact: top and bottom meet
     s.impact(to);
+    // the card's own stop (YENI_KARTLAR §C4: 90 ms): merged with the class's stop, the longer one wins
+    void stopTime(sc, 90);
     play(s.blocked ? 'archerDeflect' : 'archerImpact', { volume: 0.95, pan: panAt(to.x) });
     void mirrorMeet(sc, { at: to, ground: toGround, dir, blocked: s.blocked, direct: s.direct });
     void echoRings(sc, toGround, { r: s.blocked ? 22 : 32, ms: 360, depth: FLOOR_DEPTH });
@@ -348,7 +356,8 @@ registerStrike(
       return;
     }
     // the follow-through: the reflection lowers its bow first (the art), the archer after it
-    await u.playRange('attack', HOLD + 1);
+    const fi = u.frameInfo();
+    await u.playRange('attack', fi.anim === 'attack' && fi.frame > HOLD ? fi.frame + 1 : HOLD + 1);
   },
   { priority: 20, name: 'd:reflection_archer:strike' },
 );

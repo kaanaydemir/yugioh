@@ -31,6 +31,7 @@ import { framePose } from '../../art/monsters-v3/dial_jester-anims';
 import { skeleton } from '../../art/monsters-v3/dial_jester-rig';
 import { coin as drawCoin, cog, floorDial } from '../../art/monsters-v3/dial_jester-kit';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
+import { unitFrame } from '../../duel/unit-variant';
 import { sfx } from '../../audio/sfx';
 import { BOARD_CENTER, DEPTH, zoneXY, LANE_MID, type XY } from '../../view/layout';
 import { lightFlash } from '../../view/light';
@@ -609,33 +610,58 @@ export function foldRect(sc: Phaser.Scene, box: { x: number; y: number; w: numbe
  * folds DOWN into its card in three whole-px crops with a 1-px gold seam on the cut, and is hidden.
  * No hologram, no tint silhouette, no alpha blob, no dust. Resolves when the body is hidden.
  */
-export async function rewindBody(sc: Phaser.Scene, u: MonsterUnit, ms: number): Promise<void> {
+export async function rewindBody(sc: Phaser.Scene, u: MonsterUnit, ms: number, onFold?: () => void): Promise<void> {
   const s = u.sprite;
   if (!s.active) return;
   const seq: [AnyMonsterAnim, number][] = [];
   if (u.has('attack')) for (let f = u.frameCount('attack') - 1; f >= 0; f--) seq.push(['attack', f]);
   if (u.has('idle')) {
     const n = u.frameCount('idle');
-    for (let i = 1; i <= Math.min(n, 8); i++) seq.push(['idle', (n - i) % n]);
+    for (let i = 1; i <= Math.min(n, 4); i++) seq.push(['idle', (n - i) % n]);
   }
-  const step = seq.length ? Math.max(14, Math.round((ms - 60) / seq.length)) : 0;
-  for (let i = 0; i < seq.length; i++) {
-    if (!s.active) return;
-    u.pose(seq[i][0], seq[i][1]);
-    if (i % 3 === 1) rimEcho(sc, s, i % 2 ? PAL.gold3 : PAL.gold4, 60);
-    await sleepMs(sc, step);
+  // driven by the clock, not by awaits (one pose per elapsed step, frames skipped if the render lags)
+  const step = seq.length ? ms / seq.length : 0;
+  const echoes: (() => void)[] = [];
+  if (seq.length) {
+    await new Promise<void>((done) => {
+      let last = -1;
+      onFrame(
+        sc,
+        (_dt, el) => {
+          if (!s.active) return false;
+          const i = Math.min(seq.length - 1, Math.floor(el / step));
+          if (i !== last) {
+            if (Math.floor(i / 3) !== Math.floor(last / 3) && last >= 0) echoes.push(rimEcho(sc, s, i % 2 ? PAL.gold3 : PAL.gold4, 60));
+            last = i;
+            u.pose(seq[i][0], seq[i][1]);
+          }
+          return el < ms;
+        },
+        () => done(),
+      );
+    });
   }
-  // it folds down into its card: three whole-px crops from the top, a 1-px gold seam on the cut
+  if (!s.active) return;
+  // it folds down into its card (which rises round it now): three whole-px crops from the top, a 1-px gold seam
+  // across the body on the cut
+  echoes.forEach((k) => k());
+  onFold?.();
+  const fi = u.frameInfo();
+  const pc = unitFrame(u, fi.anim ?? 'idle', fi.frame);
+  const ob = pc.bounds() ?? { x: 0, y: 0, w: pc.w, h: pc.h };
+  const a = u.framePoint(ob.x, ob.y);
+  const c = u.framePoint(ob.x + ob.w, ob.y + ob.h);
+  const x0 = Math.round(Math.min(a.x, c.x)) + 1;
+  const x1 = Math.round(Math.max(a.x, c.x)) - 2;
   const fr = s.frame;
+  const top = Math.round(s.y - s.originY * fr.height);
   const seam = new Raster(sc, 0, 0, 640, 360, s.depth + 0.1);
-  for (const k of [0.4, 0.65, 0.85]) {
+  for (const k of [0.25, 0.5, 0.75]) {
     if (!s.active) break;
-    const cut = Math.round(fr.height * k);
+    const cut = Math.round(ob.y + ob.h * k);
     s.setCrop(0, cut, fr.width, fr.height - cut);
-    const b = s.getBounds();
-    const y = Math.round(b.y + (s.flipY ? 0 : cut));
-    seam.draw((g) => g.line(Math.round(b.x) + 2, y, Math.round(b.x + b.width) - 3, y, k > 0.8 ? PAL.white : PAL.gold4));
-    await sleepMs(sc, 26);
+    seam.draw((g) => g.line(x0, top + cut, x1, top + cut, k > 0.7 ? PAL.gold3 : PAL.gold4));
+    await sleepMs(sc, 34);
   }
   seam.destroy();
   if (!s.active) return;
@@ -654,10 +680,12 @@ function rimCopies(sc: Phaser.Scene, s: Phaser.GameObjects.Sprite, color: number
   );
 }
 
-/** One gold rim tick round a sprite's current frame, gone after `ms`. */
-function rimEcho(sc: Phaser.Scene, s: Phaser.GameObjects.Sprite, color: number, ms: number): void {
+/** One gold rim tick round a sprite's current frame, gone after `ms` (or when the returned kill is called). */
+function rimEcho(sc: Phaser.Scene, s: Phaser.GameObjects.Sprite, color: number, ms: number): () => void {
   const imgs = rimCopies(sc, s, color, s.depth - 0.2);
-  void animate(sc, ms, () => undefined).then(() => imgs.forEach((g) => g.destroy()));
+  const kill = () => imgs.forEach((g) => g.active && g.destroy());
+  void animate(sc, ms, () => undefined).then(kill);
+  return kill;
 }
 
 /**

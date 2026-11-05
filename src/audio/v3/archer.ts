@@ -361,16 +361,21 @@ export const V3_ARCHER_RECIPES = {
     verb: 0.55,
     duck: 0.55,
     play(v) {
-      crack(v, 0, 0.3, { hp: 2200, n: 3, gap: 0.012, dec: 0.016 });
-      thump(v, 0, 240, 90, 0.1, 0.08);
+      // the body breaks: a low glass crunch under the high crack (a few fast, mid-low grinding cracks + a weighty
+      // knock), so the climax carries over whatever else is landing on that frame
+      crack(v, 0, 0.42, { hp: 2200, n: 3, gap: 0.012, dec: 0.016 });
+      crack(v, 0.004, 0.36, { hp: 500, lp: 2600, n: 4, gap: 0.009, dec: 0.022 });
+      thump(v, 0, 300, 80, 0.26, 0.11, { drive: 2 });
+      puff(v, 0, 0.12, 0.09, 1800, { kind: 'white' });
       for (let i = 0; i < 14; i++) {
         const k = Math.pow(v.rnd(), 1.4);
         const f = GLASS[Math.floor(v.rnd() * GLASS.length) % GLASS.length];
-        shard(v, f * v.r(0.996, 1.004), 0.01 + k * 0.55, 0.07 * (1 - 0.6 * k) * v.r(0.6, 1), v.r(0.08, 0.2), v.r(-0.6, 0.6), i % 2 === 0);
+        shard(v, f * v.r(0.996, 1.004), 0.01 + k * 0.55, 0.1 * (1 - 0.6 * k) * v.r(0.6, 1), v.r(0.08, 0.2), v.r(-0.6, 0.6), i % 2 === 0);
       }
-      // the last of the mirror note, cut short
-      mirror(v, F, 0, perc(0.08, 0.25, 0.002), { w: 0.6 });
-      sweep(v, 0, 0.5, [7000, 5000, 2500], 0.04, { kind: 'white', q: 1.2, pan: [-0.4, 0.4], peakAt: 0.1 });
+      // the mirror note struck hard one last time, its reflection answering 80 ms later an octave down
+      mirror(v, F, 0, perc(0.2, 0.3, 0.002), { w: 0.6 });
+      reflect(v, F, 0, perc(0.14, 0.4, 0.004), { side: -0.3 });
+      sweep(v, 0, 0.5, [7000, 5000, 2500], 0.06, { kind: 'white', q: 1.2, pan: [-0.4, 0.4], peakAt: 0.1 });
     },
   },
   /** Revive: the glass gathers back (rising, converging 660 shimmer; the 330 comes first) — sustained → land. */

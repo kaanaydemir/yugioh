@@ -28,7 +28,7 @@ describe('dial_jester', () => {
       expect(s, a).toBeTruthy();
       expect(s.holds?.length, a).toBe(s.frames);
     }
-    expect(spec('attack').marks).toEqual({ charge: 1, release: 6, impact: 6, contact: 7, recover: 9 });
+    expect(spec('attack').marks).toEqual({ charge: 1, release: 9, impact: 9, contact: 13, recover: 15 });
     expect(spec('special').marks?.release).toBe(5);
     expect(spec('summon').marks?.land).toBe(2);
     expect(spec('death').marks?.dissolve).toBe(4);
@@ -93,11 +93,25 @@ describe('dial_jester', () => {
     expect(count('summon', 3, [PAL.stone4, PAL.stone2])).toBeGreaterThan(6);
   });
 
-  it('attack: the somersault turns the dial below the coin hand, the contact reaches forward', () => {
-    const top = art.points!('attack', 6);
+  it('attack: a full somersault in eight drawn turns (the dial goes round the core), the contact reaches forward', () => {
+    const top = art.points!('attack', 9);
     expect(top.head!.y).toBeGreaterThan(top.core!.y);
+    // the head goes all the way round the core over f5 … f12: right of it, below it, left of it, back above
+    const ang = [5, 6, 7, 8, 9, 10, 11, 12].map((f) => {
+      const p = art.points!('attack', f);
+      return Math.atan2(p.head!.x - p.core!.x, -(p.head!.y - p.core!.y));
+    });
+    let turn = 0;
+    for (let i = 1; i < ang.length; i++) {
+      let d = ang[i] - ang[i - 1];
+      if (d < -Math.PI) d += Math.PI * 2;
+      if (d > Math.PI) d -= Math.PI * 2;
+      expect(d, `f${i + 5}`).toBeGreaterThan(0);
+      turn += d;
+    }
+    expect(turn).toBeGreaterThan(Math.PI * 1.5);
     const rest = art.points!('idle', 0);
-    expect(art.points!('attack', 7).muzzle!.x).toBeGreaterThanOrEqual(rest.muzzle!.x + 12);
+    expect(art.points!('attack', 13).muzzle!.x).toBeGreaterThanOrEqual(rest.muzzle!.x + 12);
   });
 
   it('card picture: 4 living frames, both sizes inside the kit budgets', () => {

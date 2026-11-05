@@ -66,6 +66,8 @@ export interface Pose {
   rwF: number;
   /** front wheel wobble on its axle 0/1 (a bolt sparks) */
   wob: number;
+  /** front wheel tilting off its axle 0 on … 1 hanging off (narrows, slides out 2 px, the bare stub shows) — the strike's follow-through */
+  fwTilt: number;
 
   // the PEDALLER (middle): hip offset, head offset, mouth 0 shut 1 open 2 yell, eyes 0 open 1 squint 2 shut 3 white, arms 0 bars 1 up 2 slumped
   pX: number;
@@ -150,7 +152,7 @@ export interface Pose {
 }
 
 export const NEUTRAL: Pose = {
-  bx: 0, by: 0, bob: 0, tilt: 0, deck: 0, wr: 0, wf: 0, fwF: 0, rwF: 0, wob: 0,
+  bx: 0, by: 0, bob: 0, tilt: 0, deck: 0, wr: 0, wf: 0, fwF: 0, rwF: 0, wob: 0, fwTilt: 0,
   pX: 0, pY: 0, pHx: 0, pHy: 0, pM: 0, pE: 0, pArm: 0, pVis: 1, pLeg: 0, pLp: 0, ramFall: 0,
   wX: 0, wY: 0, wHx: 0, wHy: 0, wM: 0, wE: 0, wAx: 3, wAy: -5, wAng: -1.2, wLeg: 0, wLp: 0, wVis: 1,
   sX: 0, sY: 0, sHx: 0, sHy: 0, sM: 0, sE: 0, sAx: 3, sAy: -5, sPull: 0, sLeg: 0, sLp: 0, sVis: 1,
@@ -269,12 +271,13 @@ const ptI = (a: Pt): Pt => [rnd(a[0]), rnd(a[1])];
 
 // ---------------------------------------------------------------- wheels
 
-function drawWheel(f: Frame, c: Pt, r: number, flat: number, spin: number, near: boolean, part: number, wob: number): void {
+function drawWheel(f: Frame, c: Pt, r: number, flat: number, spin: number, near: boolean, part: number, wob: number, tilt = 0): void {
   const { light } = f;
   const ry = Math.max(3, r - (r - 3) * flat);
-  const rx = r;
+  // a wheel tilting off its axle shows its tyre edge-on more and more (narrower), and slides out
+  const rx = tilt > 0 ? Math.max(2.5, r - (r - 2) * 0.6 * tilt) : r;
   // a flattening wheel keeps its bottom on the floor and its x span (HA-9)
-  const cx = rnd(c[0]);
+  const cx = rnd(c[0] + tilt * 2.4);
   const cy = flat > 0 ? rnd(c[1] + r - ry) : rnd(c[1]);
   const q = layer();
   q.ellipse(cx + 0.5, cy + 0.5, rx + 0.5, ry + 0.5, PAL.stone1);
@@ -376,8 +379,8 @@ function drawTub(f: Frame): void {
   }
   f.comp.add(q, Part.tub, { out: PAL.ink });
 
-  // the front axle bracket (seen when the front wheel lies on the floor)
-  if (o.fwF > 0) {
+  // the front axle bracket (seen when the front wheel lies on the floor or hangs off its stub)
+  if (o.fwF > 0 || o.fwTilt > 0.3) {
     const a = layer();
     const [x, y] = ptI(sk.tub(FRONT_WHEEL[0], -10));
     const ay = Math.min(rnd(sk.front[1]), sk.R[1] - 2);
@@ -867,27 +870,37 @@ function sparkLight(f: Frame): void {
 function flashLight(f: Frame): void {
   const { o, sk } = f;
   if (o.flash > 0) {
-    // the ram's KLANG: a white core on the spikes, eight fire rays, and a shock arc ")" rolling forward
+    // the ram's KLANG: a white diamond core on the spikes, a fat 8-ray star (white → gold → fire), and a double
+    // shock arc ")" rolling forward — wide enough to read at 1x
     const [x, y] = ptI(sk.ram);
     const k = o.flash;
-    const core = k > 0.6 ? 3 : 1;
-    for (let i = -core; i <= core; i++) for (let j = -core - 1; j <= core + 1; j++) if (Math.abs(i) + Math.abs(j) * 0.7 <= core + 0.6) put(f, x + i, y + j, PAL.white);
-    const len = 3 + k * 7;
+    const core = k > 0.6 ? 4 : 2;
+    for (let i = -core; i <= core; i++) for (let j = -core - 1; j <= core + 1; j++) if (Math.abs(i) + Math.abs(j) * 0.75 <= core + 0.6) put(f, x + i, y + j, PAL.white);
+    const len = 5 + k * 11;
     for (let r = 0; r < 8; r++) {
       const a = (r / 8) * Math.PI * 2 + 0.2;
       const l = r % 2 ? len * 0.6 : len;
-      for (let d = core + 1; d <= l; d++) put(f, x + Math.cos(a) * d, y + Math.sin(a) * d, d < l * 0.55 ? PAL.fire4 : d < l * 0.8 ? PAL.fire3 : PAL.fire2);
+      for (let d = core + 1; d <= l; d++) {
+        const c = d < l * 0.45 ? PAL.white : d < l * 0.7 ? PAL.gold4 : d < l * 0.88 ? PAL.fire3 : PAL.fire2;
+        const px = x + Math.cos(a) * d;
+        const py = y + Math.sin(a) * d;
+        put(f, px, py, c);
+        // the long rays are 2 px thick near the core
+        if (r % 2 === 0 && d < l * 0.6) put(f, px + Math.round(-Math.sin(a)), py + Math.round(Math.cos(a)), c === PAL.white ? PAL.gold4 : PAL.fire3);
+      }
     }
     if (k > 0.6)
-      for (let j = -9; j <= 9; j++) {
-        const bow = Math.round(Math.sqrt(Math.max(0, 1 - (j * j) / 90)) * 2);
-        put(f, x + 2 + bow, y + j, Math.abs(j) < 4 ? PAL.white : PAL.fire4);
-        put(f, x + 1 + bow, y + j, PAL.fire3);
-      }
+      for (const [off, R, c0, c1] of [[3, 12, PAL.white, PAL.fire4], [6, 15, PAL.gold4, PAL.fire3]] as const)
+        for (let j = -R; j <= R; j++) {
+          const bow = Math.round(Math.sqrt(Math.max(0, 1 - (j * j) / (R * R))) * 3);
+          put(f, x + off + bow, y + j, Math.abs(j) < R * 0.4 ? c0 : c1);
+          if (off === 3) put(f, x + off - 1 + bow, y + j, PAL.fire3);
+        }
     else
-      for (let j = -11; j <= 11; j++) {
-        const bow = Math.round(Math.sqrt(Math.max(0, 1 - (j * j) / 132)) * 2);
-        if ((j & 1) === 0) put(f, x + 1 + bow, y + j, PAL.fire2);
+      for (let j = -14; j <= 14; j++) {
+        const bow = Math.round(Math.sqrt(Math.max(0, 1 - (j * j) / 196)) * 3);
+        if ((j & 1) === 0) put(f, x + 4 + bow, y + j, PAL.fire2);
+        if ((j & 3) === 0) put(f, x + 7 + bow, y + j, PAL.fire1);
       }
   }
   if (o.deb > 0) {
@@ -1015,26 +1028,52 @@ function dustLight(f: Frame): void {
   }
 }
 
-/** the last ~150 ms: the body breaks to scrap grit by 2×2 cells */
+/**
+ * The last ~250 ms: the wreck sags apart into PLATES (§5.2 C5 "araba çöker"): the body is cut into 6×4 px plate
+ * cells along their own seams; each plate slides down (and a little sideways) by its own amount, the highest
+ * ones furthest, and lands on the floor; a few plates are gone (the card is born from them). The moved plates
+ * keep their own pixels (no dither noise) and get a fresh ink outline, a lit top edge on every plate.
+ */
 function dissolvePass(f: Frame): void {
   const { p, comp, o } = f;
   if (o.diss <= 0) return;
-  const gone: number[] = [];
-  const mark: number[] = [];
+  const src = p.clone();
+  const ids = comp.id.slice();
+  const moved: [number, number, number, number][] = [];
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
-      if (!p.isOpaque(x, y) || comp.id[y * W + x] === Part.none) continue;
-      const cx = fl((x - RX) / 2);
-      const cy = fl((y - GY) / 2);
-      const thr = hash2(cx, cy, 7) * 0.8 + clamp((GY - y) / 40, 0, 1) * 0.2;
-      if (thr < o.diss - 0.12) gone.push(x, y);
-      else if (thr < o.diss) mark.push(x, y);
+      if (!src.isOpaque(x, y) || ids[y * W + x] === Part.none) continue;
+      p.erase(x, y);
+      comp.id[y * W + x] = Part.none;
+      const cx = fl((x - RX + 60) / 6);
+      const cy = fl((y + 2 * cx) / 4);
+      const h = hash2(cx, cy, 7);
+      // plates go missing from the top down
+      const height = clamp((GY - y) / 34, 0, 1);
+      if (h * 0.7 + (1 - height) * 0.3 < o.diss * 0.62 - 0.05) continue;
+      const fall = o.diss * (3 + height * 16 + h * 5);
+      const dx = rnd(o.diss * (h - 0.5) * 6);
+      const ny = Math.min(GY - (h > 0.5 ? 1 : 0), rnd(y + fall));
+      moved.push([x + dx, ny, src.get(x, y)!, ids[y * W + x]]);
     }
-  for (let i = 0; i < gone.length; i += 2) {
-    p.erase(gone[i], gone[i + 1]);
-    comp.id[gone[i + 1] * W + gone[i]] = Part.none;
+  // lower plates first so a plate that lands on another sits on top of it
+  moved.sort((a, b) => a[1] - b[1]);
+  for (const [x, y, c, id] of moved) {
+    if (x < 0 || y < 0 || x >= W || y >= H) continue;
+    p.set(x, y, c);
+    comp.id[y * W + x] = id;
   }
-  for (let i = 0; i < mark.length; i += 2) p.set(mark[i], mark[i + 1], (fl((mark[i] - RX) / 2) + fl((mark[i + 1] - GY) / 2)) & 1 ? PAL.earth2 : PAL.stone3);
+  // every plate gets its seam back: ink where a plate meets air or another plate's edge, a lit top edge
+  p.outline(PAL.ink);
+  for (let y = 1; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      if (comp.id[y * W + x] === Part.none || p.get(x, y) === PAL.ink) continue;
+      if (!p.isOpaque(x, y - 1) || p.get(x, y - 1) === PAL.ink) {
+        const c = p.get(x, y);
+        if (c === IRON.M || c === IRON.S) p.set(x, y, IRON.L);
+        else if (c === RUST.M || c === RUST.S) p.set(x, y, RUST.L);
+      }
+    }
 }
 
 // ---------------------------------------------------------------- draw
@@ -1064,7 +1103,7 @@ export function drawRaiders(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right'
   if (o.aWh > 0) {
     const lift = -(1 - clamp(o.aWh, 0, 1)) * 12;
     drawWheel(f, [sk.rear[0], sk.rear[1] + lift], REAR_R, o.rwF, o.wr, true, Part.wheelR, 0);
-    drawWheel(f, [sk.front[0], sk.front[1] + lift], FRONT_R, o.fwF, o.wf, true, Part.wheelF, o.wob);
+    drawWheel(f, [sk.front[0], sk.front[1] + lift], FRONT_R, o.fwF, o.wf, true, Part.wheelF, o.wob, o.fwTilt);
   }
   if (wreck) drawHeap(f);
   for (const w of ['S', 'P', 'W'] as const) if (front(w)) drawCrew(f, w);

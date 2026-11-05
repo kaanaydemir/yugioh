@@ -77,6 +77,15 @@ const scenarios: Record<string, Scenario> = {
     stage: { zones: 5, p0: { monsters: five(N, N, 'reflection_archer') } },
     steps: [{ type: 'changePosition', player: 0, zone: 2 }],
   },
+  raBoard: {
+    desc: 'Yansıyan Okçu kalabalık tahtada: iki komşu okçu, önlerinde kapalı büyü/tuzak kartları, oyuncu 2 okçusu savunmada (okunurluk)',
+    stage: {
+      zones: 5,
+      p0: { monsters: five('ember_wolf', 'reflection_archer', 'reflection_archer', 'shade_assassin'), spellTraps: [N, 'mirror_barrier', 'judgment_bolt', 'mirror_barrier', N] },
+      p1: { monsters: five(N, 'storm_hawk', { id: 'reflection_archer', position: 'defense' }, 'reflection_archer', 'stone_sentinel'), spellTraps: [N, N, 'mirror_barrier', N, N] },
+    },
+    steps: [],
+  },
   raFlip: {
     desc: 'Kapalı Yansıyan Okçu açılarak çağrılır',
     stage: { zones: 5, p0: { monsters: five(N, N, { id: 'reflection_archer', faceUp: false, position: 'defense' }) } },

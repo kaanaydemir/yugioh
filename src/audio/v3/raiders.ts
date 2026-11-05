@@ -309,9 +309,11 @@ export const V3_RAIDERS_RECIPES = {
     verb: 0.4,
     duck: 0.65,
     play(v) {
-      clank(v, 520, 0, 0.32, 0.32, { ratio: 1.41, index: 3.2, click: 2 });
-      thump(v, 0, 150, ENGINE * 0.75, 0.6, 0.26, { drive: 2.6 });
-      crack(v, 0, 0.26, { hp: 2000, lp: 10000, n: 2, gap: 0.009 });
+      clank(v, 520, 0, 0.4, 0.32, { ratio: 1.41, index: 3.2, click: 2.8 });
+      thump(v, 0, 150, ENGINE * 0.75, 0.75, 0.26, { drive: 2.8 });
+      crack(v, 0, 0.34, { hp: 2000, lp: 10000, n: 2, gap: 0.009 });
+      // the ram's iron-on-target smack: a hard, short transient on top (the loudest beat of the strike)
+      v.noise('white', { t: 0, g: perc(0.5, 0.018, 0.0005), to: v.filt('bandpass', 2600, 0.8) });
       tin(v, 1700, 0.003, 0.12, 0.1);
       // the flying bolts and gears land and bounce (after the freeze)
       for (const [x, f, g] of [[0.2, 3300, 0.07], [0.26, 2700, 0.06], [0.31, 3900, 0.05], [0.37, 3100, 0.045], [0.45, 2900, 0.04], [0.52, 3500, 0.03]] as const) link(v, f, x, g, 0.08);
@@ -427,6 +429,39 @@ export const V3_RAIDERS_RECIPES = {
       engine(v, 0.45, 0.3, 9, 9, 0.22, 0.14);
       cheer(v, 2, 0.32, 0.14, 1.08);
       cheer(v, 1, 0.36, 0.12, 1.08);
+    },
+  },
+
+  // ---------------------------------------------------------------- idle / rested guard
+  /** Idle identity: two goblins bicker (gabbled syllables) over a loose plate's takırtı. Quiet (a living detail). */
+  raidersChatter: {
+    cap: 1,
+    gap: 1.2,
+    verb: 0.2,
+    duck: 0.1,
+    vary: 0.06,
+    play(v) {
+      gob(v, 1, 0, 0.08, 0.05, [[0, 1.05], [0.08, 0.9, 'e']], { vowel: 0.85 });
+      gob(v, 1, 0.1, 0.07, 0.045, [[0, 1.1], [0.07, 1.2, 'e']], { vowel: 1.1 });
+      gob(v, 2, 0.2, 0.12, 0.05, [[0, 1.2], [0.05, 1.4, 'e'], [0.12, 1.0, 'e']], { vowel: 1.15 });
+      gob(v, 1, 0.36, 0.09, 0.04, [[0, 0.95], [0.09, 0.8, 'e']], { vowel: 0.8 });
+      // the loose plate rattles on the engine beat
+      for (const x of [0.02, 0.16, 0.3, 0.44]) tin(v, v.r(1500, 2300), x, 0.025, 0.04);
+    },
+  },
+  /** The rested guard: three "hup!"s as the crew ducks behind the rim, the wrench clanks down on the ram, a tin settle. */
+  raidersBrace: {
+    cap: 1,
+    gap: 0.2,
+    verb: 0.25,
+    duck: 0.3,
+    play(v) {
+      gob(v, 2, 0, 0.08, 0.11, HOP, { vowel: 0.8 });
+      gob(v, 0, 0.04, 0.08, 0.09, HOP, { vowel: 0.8 });
+      gob(v, 1, 0.08, 0.08, 0.09, [[0, 1.0], [0.08, 0.85, 'e']], { vowel: 0.7 });
+      clank(v, 610, 0.13, 0.16, 0.14, { ratio: 1.41, index: 2.2, click: 1 });
+      thump(v, 0.13, 120, 60, 0.18, 0.07, { drive: 1.6 });
+      rattle(v, 0.15, 0.12, 3, 0.04, 1200, 2400);
     },
   },
 

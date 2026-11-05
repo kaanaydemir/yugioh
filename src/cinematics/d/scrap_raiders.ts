@@ -16,13 +16,15 @@
 // follow-through f7 — the front wheel works loose and spits a bolt (raidersLoose); it rolls home while the
 // slinger jumps back in (raidersHop). Blocked: a dull bonk (raidersBonk), the debris flies back, a higher kick
 // home. Direct: the charge crosses the field to the duelist.
-// Position (the attack-then-defense rule, End Phase): the tired guard — the loose wheel wobbles, drops flat
-// (raidersWheelOff, floor dust, black smoke), the wrench goblin hops out and kneels at the bare axle, sweat
-// flies off three heads, the stove steams, three mouths pant (raidersPant), the padlock shows on the plate and
-// the first repair taps ring (raidersTink). The guard loop IS the visible lock (the goblin hammering the axle).
+// Position (the attack-then-defense rule, End Phase): the unit switches to the TIRED sheet (_scrap_raiders-tired.ts)
+// — the loose wheel wobbles, drops flat (raidersWheelOff, floor dust, black smoke), the wrench goblin hops out and
+// kneels at the bare axle, sweat flies off three heads, the stove steams, three mouths pant (raidersPant), the
+// padlock shows on the plate and the first repair taps ring (raidersTink). The tired guard loop IS the visible
+// lock (the goblin hammering the axle); every hit / guard break / death during the lock is drawn on that sheet.
 // Lock end (the turn after the locked one starts): the last blow puts the wheel back on — BANG (raidersWheelOn),
-// hot sparks, the padlock goes, a short cheer — then, still in defense, the crew drops the wheel again and goes
-// back on watch (the art has one guard pose: the tired one). Back to attack (a later turn): the same BANG.
+// hot sparks, the padlock goes, a short cheer — and the crew braces into the RESTED guard (wheels on, ducked
+// behind the rim and the ram: the art's own guard), where it stays. A manual / unlocked defense is that rested
+// guard too (raidersBrace); back to attack the crew pops up out of it.
 // Death: the art's pose (the tub shudders f1 — raidersCreak; it caves in f2; the goblins bail out three ways f3 —
 // raidersFlee + dust at their feet; it sinks into its scrap f4 — raidersCollapse); on the burst frame the final
 // material (§5.2 C5): rust plates slide out, gears roll and fall flat, a wheel rolls away and settles, the
@@ -46,9 +48,8 @@ import { sourceOwnsDeath, worldBox } from '../strikes-b/_kit';
 import { runSummon, type Stage } from '../summon-a/_kit';
 import { capped } from '../summon-b/_kit';
 import {
-  FLOOR_DEPTH,
   Junk,
-  fleeDust,
+  goblinRunners,
   hammerSparks,
   heapDust,
   looseBolt,
@@ -64,6 +65,7 @@ import {
   sweatAndSteam,
   tyreSparks,
 } from './_scrap_raiders-fx';
+import { clearTired, isTired, setTired, warmTired } from './_scrap_raiders-tired';
 
 const ID = 'scrap_raiders';
 /** The hologram onset's tones: rust iron. */
@@ -84,6 +86,8 @@ async function entranceV3(S: Stage): Promise<void> {
   const u = S.unit;
   const pan = panAt(S.home.x);
   seedFx(u.uid * 29 + 5);
+  clearTired(sc, u.uid);
+  warmTired(sc);
   // the scrap shower: junk falls out of the sky onto the tile, a shadow grows under it
   play('raidersScrapRain', { volume: 0.85, pan });
   await scrapRain(sc, S.home, S.depth + 0.5, 260);
@@ -124,11 +128,11 @@ async function entranceV3(S: Stage): Promise<void> {
       { late: false },
     );
   });
-  // f9: the stove catches — VUF
+  // f10: the stove catches — VUF
   atFrame(
     u,
     'summon',
-    9,
+    10,
     () => {
       play('raidersVuf', { volume: 0.95, pan });
       const top = raidersPoint(u, 'pipe') ?? { x: S.home.x - S.dir * 26, y: S.home.y - 46 };
@@ -138,11 +142,11 @@ async function entranceV3(S: Stage): Promise<void> {
     },
     { late: false },
   );
-  // f11: the war cheer, two nuts tossed up and caught again
+  // f12: the war cheer, two nuts tossed up and caught again
   atFrame(
     u,
     'summon',
-    11,
+    12,
     () => {
       play('raidersCheer', { volume: 0.9, pan });
       fire.setIntensity(0.5, 200);
@@ -188,7 +192,7 @@ registerStrike(
     const home: XY = { ...u.rest0 };
     const floorY = u.home.y;
     // ---- the back-pedal: the engine revs, the tyres spit sparks, black smoke (the declaration's rev goes on)
-    const rev = takeCharge(u, 'raidersRev', { volume: 0.85, pan });
+    const rev = takeCharge(u, 'raidersRev', { volume: 0.62, pan });
     const spit = (f: number) => {
       const r = raidersPoint(u, 'rear');
       if (r) tyreSparks(sc, { x: r.x - sgn * 3, y: floorY }, (-sgn) as 1 | -1, spr.depth + 0.3, 3 + f * 2);
@@ -198,7 +202,11 @@ registerStrike(
     };
     if (f0 >= 1 && f0 <= 3) spit(f0);
     for (const f of [1, 2, 3]) if (f > f0) atFrame(u, 'attack', f, () => spit(f), { late: false });
-    if (f0 < SWING) await u.playRange('attack', f0, SWING - 1, { hold: true });
+    if (f0 < SWING) {
+      await u.playRange('attack', f0, SWING - 1, { hold: true });
+      // the back-pedal's peak (f3, crouched, nose up, everybody yelling) gets its own full beat on screen
+      if (live(u)) await sleep(sc, u.frameMs('attack', SWING - 1));
+    }
     if (!live(u)) {
       rev.stop(40);
       return;
@@ -267,13 +275,26 @@ registerStrike(
     void lightFlash(sc, hitAt.x, hitAt.y, s.blocked ? PAL.gold3 : PAL.fire4, s.direct ? 34 : 26, 240, { floorY: Math.round(s.toGround.y), intensity: 0.85 });
     void shake(sc, 120, s.blocked ? 1 : 2);
     if (loses || !live(u)) return;
-    await sleep(sc, u.frameMs('attack', CON));
+    // the hit-stop (s.impact, the heavy cart's ≈ 110 ms) has held the contact frame; a short beat more, then on
+    await sleep(sc, 30);
     if (!live(u)) return;
-    // ---- follow-through (the signature): the front wheel works loose and spits a bolt
+    // ---- follow-through (the signature's set-up): the front wheel tilts off its axle and spits a bolt
     if (!u.claimed) u.pose('attack', CON + 1);
-    play('raidersLoose', { volume: 0.85, pan: panAt(spr.x) });
+    play('raidersLoose', { volume: 0.9, pan: panAt(spr.x) });
     const fw = raidersPoint(u, 'front');
-    if (fw) looseBolt(sc, fw, (s.blocked ? -sgn : sgn) as 1 | -1, Math.round(spr.y), spr.depth + 0.3);
+    if (fw) looseBolt(sc, { x: fw.x + sgn * 2, y: fw.y - 3 }, (s.blocked ? -sgn : sgn) as 1 | -1, Math.round(spr.y), spr.depth + 0.3);
+    // f10: the wrench goblin whacks the hanging wheel back onto its stub (it stays loose: the End Phase drop)
+    atFrame(
+      u,
+      'attack',
+      CON + 4,
+      () => {
+        play('raidersTink', { volume: 0.95, pitch: 0.85, pan: panAt(spr.x) });
+        const w = raidersPoint(u, 'front');
+        if (w) hammerSparks(sc, { x: w.x, y: w.y - 2 }, 0.5, spr.depth + 0.3, u.home.y);
+      },
+      { late: false, maxMs: 2500 },
+    );
     await sleep(sc, u.frameMs('attack', CON + 1));
     if (!live(u)) return;
     // ---- it rolls home (a higher kick off a guard), the slinger jumps back in on the way
@@ -315,6 +336,8 @@ registerCardHook(
     const dir: 1 | -1 = u.flipX ? -1 : 1;
     const pan = panAt(home.x);
     const dissolveF = u.markFrame('death', 'dissolve', 4);
+    // f1: the cart groans under the blow (the voice's deathStart; joined late if the death started past it)
+    atFrame(u, 'death', 1, () => play('raidersCreak', { volume: 0.9, pan }), { maxMs: 3000 });
     // f2: the tub caves in — a puff of black smoke out of the stove
     atFrame(
       u,
@@ -333,7 +356,7 @@ registerCardHook(
       3,
       () => {
         play('raidersFlee', { volume: 0.9, pan });
-        fleeDust(sc, u, home.y, u.sprite.depth + 0.3);
+        void goblinRunners(sc, u, home.y, u.sprite.depth + 0.4);
       },
       { maxMs: 3000 },
     );
@@ -351,12 +374,12 @@ registerCardHook(
     return deathV3(ctx, {
       fallback: () => ctx.base(),
       onBurst: () => scrapScatter(sc, home, dir, DEPTH.FX - 1),
-    });
+    }).finally(() => clearTired(sc, u.uid));
   },
   { priority: 20, name: 'd:scrap_raiders:death' },
 );
 
-// ================================================================ position: the tired guard, the wheel back on
+// ================================================================ position: the tired lock, the rested guard
 
 /** v3: the card's quarter turn (ms, as summon-b/position.ts). */
 const TURN_V3 = 240;
@@ -366,19 +389,24 @@ function slotOf(s: GameState, uid: Uid) {
   return null;
 }
 
-/** The repair taps on the first guard cycle (the visible lock starts to sound). */
+/** The repair taps on the first tired guard cycle (the visible lock starts to sound). */
 function firstTaps(u: MonsterUnit): void {
   const pan = panAt(u.home.x);
   for (const f of [3, 7]) atFrame(u, 'guard', f, () => play('raidersTink', { volume: 0.7, pan }), { late: false, maxMs: 2500 });
 }
 
-/** The wheel drops off: toGuard with its beats (the loop after it is the tired guard). Resolves on guard f0. */
-async function wheelOff(u: MonsterUnit, o: { soft?: boolean; lock?: () => void } = {}): Promise<void> {
+/**
+ * The End Phase wheel-off (attackThenDefense): the unit switches to the TIRED sheet, whose toGuard is the loose
+ * wheel dropping flat, the nose clunking down and the wrench goblin kneeling at the bare axle; its guard loop is
+ * the repair (the visible lock). Resolves on the tired guard f0 (then loops it).
+ */
+async function wheelOff(u: MonsterUnit, o: { lock?: () => void } = {}): Promise<void> {
   const sc = u.scene;
   const pan = panAt(u.home.x);
   const dir: 1 | -1 = u.flipX ? -1 : 1;
-  atFrame(u, 'toGuard', 0, () => play('raidersLoose', { volume: o.soft ? 0.55 : 0.7, pan }), { maxMs: 2000 });
-  atFrame(u, 'toGuard', 1, () => play('raidersWheelOff', { volume: o.soft ? 0.7 : 0.9, pan }), { late: false, maxMs: 2000 });
+  setTired(u, true);
+  atFrame(u, 'toGuard', 0, () => play('raidersLoose', { volume: 0.7, pan }), { maxMs: 2000 });
+  atFrame(u, 'toGuard', 1, () => play('raidersWheelOff', { volume: 0.9, pan }), { late: false, maxMs: 2000 });
   atFrame(
     u,
     'toGuard',
@@ -387,7 +415,7 @@ async function wheelOff(u: MonsterUnit, o: { soft?: boolean; lock?: () => void }
       const fw = raidersPoint(u, 'front');
       heapDust(sc, { x: fw ? fw.x : u.home.x + dir * 14, y: u.home.y }, 0.55, u.sprite.depth + 0.2);
       const pipe = raidersPoint(u, 'pipe');
-      if (pipe) smokePuffs(sc, pipe, o.soft ? 1 : 3, u.sprite.depth + 0.2, (-dir) as 1 | -1);
+      if (pipe) smokePuffs(sc, pipe, 3, u.sprite.depth + 0.2, (-dir) as 1 | -1);
     },
     { late: false, maxMs: 2000 },
   );
@@ -397,19 +425,22 @@ async function wheelOff(u: MonsterUnit, o: { soft?: boolean; lock?: () => void }
     4,
     () => {
       o.lock?.();
-      if (o.soft) return;
       play('raidersPant', { volume: 0.85, pan });
       const heads = (['sHead', 'pHead', 'wHead'] as const).map((w) => raidersPoint(u, w)).filter((h): h is XY => !!h);
       sweatAndSteam(sc, heads, raidersPoint(u, 'stove'), u.sprite.depth + 0.3, u.home.y);
     },
     { late: false, maxMs: 2000 },
   );
-  if (!o.soft) firstTaps(u);
+  firstTaps(u);
   await u.playRange('toGuard', 0, undefined, { hold: true });
   if (live(u)) u.rest();
 }
 
-/** The last blow puts the wheel back on: fromGuard with its beats. Resolves on idle f0 (held). */
+/**
+ * The lock end: on the TIRED sheet's fromGuard the last blow, the wheel heaved up and BANG — on, the wrench goblin
+ * hops back in and the crew braces; its last frame IS the rested guard f0, where the unit leaves the tired sheet
+ * and loops the rested guard. No idle hold, no second wheel-off: wheel on = lock over.
+ */
 async function wheelOn(u: MonsterUnit, o: { unlock?: () => void } = {}): Promise<void> {
   const sc = u.scene;
   const pan = panAt(u.home.x);
@@ -440,7 +471,37 @@ async function wheelOn(u: MonsterUnit, o: { unlock?: () => void } = {}): Promise
     },
     { late: false, maxMs: 2000 },
   );
+  atFrame(u, 'fromGuard', 4, () => play('raidersBrace', { volume: 0.7, pan }), { late: false, maxMs: 2000 });
   await u.playRange('fromGuard', 0, undefined, { hold: true });
+  setTired(u, false);
+}
+
+/** A defense that is not the lock (a manual change): the crew ducks behind the rim and the ram — the rested guard. */
+async function braceIn(u: MonsterUnit): Promise<void> {
+  const pan = panAt(u.home.x);
+  setTired(u, false);
+  atFrame(u, 'toGuard', 1, () => play('raidersBrace', { volume: 0.85, pan }), { late: false, maxMs: 2000 });
+  await u.playRange('toGuard', 0, undefined, { hold: true });
+  if (live(u)) u.rest();
+}
+
+/** Back to attack from the rested guard: the crew pops up, the wrench goes up, a yell and the engine putters on. */
+async function braceOut(u: MonsterUnit): Promise<void> {
+  const pan = panAt(u.home.x);
+  setTired(u, false);
+  atFrame(u, 'fromGuard', 1, () => play('raidersHop', { volume: 0.8, pan }), { late: false, maxMs: 2000 });
+  atFrame(
+    u,
+    'fromGuard',
+    2,
+    () => {
+      const pipe = raidersPoint(u, 'pipe');
+      if (pipe) smokePuffs(u.scene, pipe, 2, u.sprite.depth + 0.2);
+    },
+    { late: false, maxMs: 2000 },
+  );
+  await u.playRange('fromGuard', 0, undefined, { hold: true });
+  if (live(u)) u.rest();
 }
 
 registerEvent(
@@ -464,17 +525,13 @@ registerEvent(
       u.position = ev.position;
       u.badge.setPosition(ev.position);
       if (toDef) {
-        // the padlock shows when the crew has slumped (the rules lock it with this very change)
+        // the rules lock the position with this very change (attackThenDefense): the tired wheel-off; a manual
+        // change (no lock) is the rested guard
         const slot = slotOf(ctx.after, ev.uid);
         const lock = slot ? plateLock(ctx.after, slot) : null;
-        jobs.push(wheelOff(u, { lock: () => u.setLock(lock) }));
-      } else {
-        jobs.push(
-          wheelOn(u, { unlock: () => void u.badge.pop() }).then(() => {
-            if (live(u)) u.rest();
-          }),
-        );
-      }
+        if (lock === 'kneel') jobs.push(wheelOff(u, { lock: () => u.setLock(lock) }));
+        else jobs.push(braceIn(u));
+      } else jobs.push(braceOut(u));
       await capped(ctx.scene, Promise.all(jobs), 900);
     } finally {
       u.posed = false;
@@ -490,7 +547,8 @@ registerEvent(
 );
 
 // The lock ends when the turn after the locked one starts (engine plateLock: turn > lockPositionTurn): the
-// repairing goblin's last blow puts the wheel back on, the padlock goes. Played before the turn banner.
+// repairing goblin's last blow puts the wheel back on, the padlock goes, a short cheer — the cart stays in
+// defense, now the RESTED guard (wheels on, crew braced). Played before the turn banner (≈ 0.7 s).
 registerEvent(
   'turnStart',
   async (ctx) => {
@@ -500,10 +558,16 @@ registerEvent(
     for (const pl of st.players)
       for (const m of pl.monsters) {
         if (!m || !m.faceUp || m.position !== 'defense' || m.lockPositionTurn === undefined) continue;
-        if (m.lockPositionTurn !== st.turn || ctx.ev.turn <= m.lockPositionTurn) continue;
         if (ctx.cardId(m.uid) !== ID) continue;
         const u = ctx.unit(m.uid);
-        if (u && live(u) && u.sprite.visible && u.has('fromGuard') && u.has('toGuard')) due.push(u);
+        if (!u || !live(u) || !u.sprite.visible) continue;
+        // still locked at the new turn: keep the tired sheet (a unit rebuilt for this uid gets it back) and the padlock
+        if (ctx.ev.turn <= m.lockPositionTurn) {
+          setTired(u, true);
+          u.setLock('kneel');
+          continue;
+        }
+        if (m.lockPositionTurn === st.turn && isTired(u) && u.has('fromGuard')) due.push(u);
       }
     if (!due.length) return ctx.base();
     await capped(
@@ -519,18 +583,14 @@ registerEvent(
                 play('raidersCheer', { volume: 0.7, pan: panAt(u.home.x) });
               },
             });
-            if (!live(u)) return;
-            // a beat on its wheels, then — still in defense — the crew drops the wheel again and goes back on watch
-            await u.playRange('idle', 0, 2, { hold: true });
-            if (!live(u)) return;
-            await wheelOff(u, { soft: true });
           } finally {
             u.posed = false;
+            setTired(u, false);
             if (live(u)) u.rest();
           }
         }),
       ),
-      2200,
+      900,
     );
     return ctx.base();
   },

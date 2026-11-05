@@ -29,7 +29,7 @@ describe('scrap_raiders', () => {
     expect(spec('death').marks?.dissolve).toBeDefined();
     expect(art.p2).toBe('relight');
     expect(art.hover).toBe(0);
-    expect(art.weight).toBe('heavy');
+    expect(art.weight).toBe('mediumHeavy');
   });
   it('validateArt (normal tier) has no errors', () => {
     expect(validateArt(art, { tier: 'normal', attack: 'melee' }).filter((f) => f.severity === 'error').map((f) => `${f.rule} ${f.anim} ${f.message}`)).toEqual([]);

@@ -321,6 +321,8 @@ registerEvent(
     const coinTop = { x: L2.x, y: L2.y - 15 };
     const disc = faceDisc(sc, { x: L2.x, y: L2.y - 46 }, coinTop, w);
     s.extras.push(disc);
+    // the call is answered by the face: the called word goes as the face shows (they never stack)
+    if (call.active) void animate(sc, 120, (t) => call.active && call.setAlpha(t < 0.5 ? 1 : 0.5)).then(() => call.active && call.destroy());
     void lightFlash(sc, coinTop.x, coinTop.y - 30, PAL.white, 26, 240, { floorY: L2.y, intensity: 0.9 });
     glow.setPosition(coinTop.x, coinTop.y - 20, L2.y);
     await sleep(sc, 140);
@@ -500,7 +502,6 @@ function clearSpot(ctx: Ctx<'coinToss'>, home: XY, own: PlayerId, opp: PlayerId,
       best = p;
     }
   }
-  console.log('[jester] clearSpot', JSON.stringify({ home, across, best, bestScore, n: boxes.length }));
   return best;
 }
 
@@ -693,7 +694,7 @@ registerEvent(
         // the number pours OUT of the panel into the arena: below a panel at the top of the screen (P2), above one
         // at the bottom (the default) — never over the LP digits
         const rc = panelRect(own);
-        const at = rc.y < 180 ? { x: R(rc.x + rc.w / 2), y: R(rc.y + rc.h + 16) } : undefined;
+        const at = rc.y < 180 ? { x: R(rc.x + rc.w / 2), y: R(rc.y + rc.h + 30) } : undefined;
         if (di >= 0) dmg = ctx.play(di, at ? { delivered: true, at } : { delivered: true });
       } else play('jesterFold', { volume: 0.5, pan: panAt(lp.x), pitch: 1.3 });
       panelFlash(sc, own, hits === 1);
@@ -769,7 +770,10 @@ async function rewindOne(ctx: Ctx<'massDestroy'>, s: Show, d: Doomed, o: { delay
     const total = steps.reduce((n, st) => n + body.frameCount(st.anim), 0);
     const step = total ? Math.max(18, Math.min(32, Math.round(Math.max(320, steps.length * 260) / total))) : 0;
     const bodyMs = total ? total * step : 340;
-    const fold = sleep(sc, Math.round(bodyMs * (total ? 0.4 : 0.6))).then(() => foldRect(sc, box, home, 300, body.sprite.depth + 0.6));
+    // the card closes round it: part-way through a summon played back, or as a pose-less body starts to fold down
+    let foldGo: () => void = () => undefined;
+    const foldStart = total ? sleep(sc, Math.round(bodyMs * 0.4)) : new Promise<void>((res) => (foldGo = res));
+    const fold = foldStart.then(() => foldRect(sc, box, home, 300, body.sprite.depth + 0.6));
     if (total) {
       let k = 0;
       for (const st of steps) {
@@ -783,7 +787,8 @@ async function rewindOne(ctx: Ctx<'massDestroy'>, s: Show, d: Doomed, o: { delay
     } else {
       // no summon pose (an old art): what it does have runs backwards fast — its attack, then its idle — with
       // crisp gold echoes peeling off, then a 2-frame opaque banded gold silhouette and it is gone; no dust
-      await rewindBody(sc, body, bodyMs);
+      await rewindBody(sc, body, 380, () => foldGo());
+      foldGo();
     }
     if (body.sprite.active) body.sprite.setVisible(false);
     play('jesterFold', { volume: 0.8, pan });

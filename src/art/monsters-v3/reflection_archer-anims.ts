@@ -46,14 +46,16 @@ const IDLE_N = 20;
 const I = {
   // every transition carries about one archer change and one (two-frame-late) reflection change (HA-17)
   // the weight leans onto the front foot and back: chest first, the head a frame later
-  lean: [0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, 0, 0],
-  hdx: [0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, 0],
+  lean: [0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  hdx: [0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  // second half: the archer lifts its chin toward the moon while its reflection (two frames late) turns to the viewer
+  hdy: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, 0, 0, 0],
   // breath (10-frame period, chest only)
-  ty: [0, 0, 0, 0, -1, -1, -1, -1, -1, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0],
+  ty: [0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1, -1, 0, 0, 0, -1, -1, -1, -1, 0],
   // the bow hand drifts with the breath, a frame late
-  by: [0, 0, 0, 0, 0, -1, -1, -1, -1, -1, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1],
+  by: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1, -1, 0, 0, 0, -1, -1, -1, -1],
   // the tabard hem swings after the chest
-  cloth: [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, -1, -1, -1, -1],
+  cloth: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, -1, -1, -1],
   lid: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 0],
   bowG: [1, 1, 1, 1, 1, 1, 1, 1.5, 1.5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
 };
@@ -61,7 +63,7 @@ const I = {
 function idleMain(f: number): Pose {
   const k = ((f % IDLE_N) + IDLE_N) % IDLE_N;
   return pose({
-    lean: I.lean[k], hdx: I.hdx[k], ty: I.ty[k], by: -29 + I.by[k], cloth: I.cloth[k], lid: I.lid[k], bowG: I.bowG[k],
+    lean: I.lean[k], hdx: I.hdx[k], hdy: I.hdy[k], ty: I.ty[k], by: -29 + I.by[k], cloth: I.cloth[k], lid: I.lid[k], bowG: I.bowG[k],
     hair: k / 10, hairK: 1.3, rip: k / IDLE_N, mote: k / IDLE_N, crownG: k >= 2 && k <= 4 ? 1.5 : 1, t: k / IDLE_N,
   });
 }
@@ -217,7 +219,7 @@ function lagged(main: (f: number) => Pose, f: number): Pose {
 
 const HIT_N = 6;
 const HIT_KEYS: Partial<Pose>[] = [
-  { hdx: -1, lid: 2, eye: 0.5, crownG: 0.5 },
+  { lid: 2, eye: 0.5, crownG: 0.5 },
   { hdx: -2, lean: -1, ty: 1, lid: 2, eye: 0.5, by: -27, cloth: -1, hairY: -1, spark: 0.3, crownG: 0.5 },
   { hdx: -1, lean: -1, lid: 1, eye: 0.8, by: -28, cloth: -1, spark: 0.7 },
 ];
@@ -234,7 +236,7 @@ const HIT_HOLDS = [50, 60, 130, 100, 110, 120];
 
 const HH_N = 8;
 const HH_KEYS: Partial<Pose>[] = [
-  { hdx: -1, lid: 2, eye: 0.4, lean: -1, crownG: 0.4, bowG: 0.6 },
+  { lid: 2, eye: 0.4, crownG: 0.4, bowG: 0.6 },
   { hdx: -2, hx: -2, lean: -3, py: 2, nfx: -1, nfl: 2, lid: 2, eye: 0.4, by: -25, bx: 11, ba: 14, cloth: -2, hairY: -1, spark: 0.3, shake: 1, crownG: 0.4, bowG: 0.6 },
   { hdx: -2, hx: -3, lean: -2, py: 3, nfx: -2, lid: 2, eye: 0.6, by: -24, bx: 11, ba: 16, cloth: -2, spark: 0.7, shake: 2, crownG: 0.5 },
   { hdx: -1, hx: -2, lean: -1, py: 2, nfx: -2, lid: 1, eye: 0.8, by: -26, bx: 12, ba: 10, cloth: -1 },
@@ -253,7 +255,7 @@ const HH_HOLDS = [50, 60, 130, 100, 110, 120, 130, 140];
 
 const HM_N = 8;
 const HM_KEYS: Partial<Pose>[] = [
-  { flash: 0.6, eye: 2, gem: 2.5, crownG: 2.5 },
+  { flash: 0.3, eye: 2, gem: 2.5, crownG: 2.5 },
   { flash: 1, eye: 2, gem: 3, crownG: 3, shake: 1, lean: 1, pudG: 2, bowG: 2.5 },
   { flash: 0.8, eye: 2, gem: 2.5, crownG: 2.5, shake: 2, lean: 1, pudG: 2, spark: 0.3, bowG: 2 },
   { flash: 0.5, eye: 1.6, gem: 2, crownG: 2, shake: 1, pudG: 1.4, spark: 0.7 },
@@ -318,14 +320,14 @@ export function deathPose(f: number): Pose {
     { hdx: -2, hx: -1, lean: -2, py: 1, lid: 2, eye: 0.3, by: -26, ba: 12, crack: 0.45, cloth: -1, spark: 0.4, crownG: 0.3, bowG: 0.4 },
     { hdx: -1, hx: -1, lean: -1, py: 1, lid: 1, eye: 0.6, by: -27, ba: 10, crack: 1, rbreak: 0.45, crownG: 0.3, bowG: 0.3 },
     { hdx: 0, lean: 0, py: 1, lid: 0, eye: 0.6, by: -28, ba: 8, crack: 1, rbreak: 0.85, crownG: 0.2, bowG: 0.2 },
-    { py: 1, eye: 0, crack: 1, rv: 0, flat: 1, crownG: 0, bowG: 0, gem: 0, hairK: 0 },
-    // the crack web runs out of the chest gem (two frames, whole), the shards part (one frame), one short frame
-    // of glass dust, then the figure is gone: the burst (glass slivers + their mirrored twins) is the cinematic's
+    { py: 1, eye: 0, crack: 1.25, rv: 0, flat: 1, crownG: 0, bowG: 0, gem: 0, hairK: 0 },
+    // the crack web runs out of the chest gem (two frames, growing), the body breaks into six glass panes (real
+    // pixels on the break frame), the panes part and fall with glints on their broken edges, then the figure is gone: the burst (glass slivers + their mirrored twins) is the cinematic's
     // (src/cinematics/d/_reflection_archer-fx.ts glassFall), never the generic material break
-    { py: 1, eye: 0, crack: 1, rv: 0, flat: 1, crownG: 0, bowG: 0, gem: 0, hairK: 0, shatter: 0.15 },
-    { py: 1, eye: 0, crack: 1, rv: 0, flat: 1, crownG: 0, bowG: 0, gem: 0, hairK: 0, shatter: 0.25 },
-    { py: 1, eye: 0, crack: 1, rv: 0, flat: 1, crownG: 0, bowG: 0, gem: 0, hairK: 0, shatter: 0.4 },
-    { py: 1, eye: 0, crack: 1, rv: 0, flat: 1, crownG: 0, bowG: 0, gem: 0, hairK: 0, shatter: 0.62, diss: 0.45 },
+    { py: 1, eye: 0, crack: 1.5, rv: 0, flat: 1, crownG: 0, bowG: 0, gem: 0, hairK: 0, shatter: 0.12 },
+    { py: 1, eye: 0, crack: 1.75, rv: 0, flat: 1, crownG: 0, bowG: 0, gem: 0, hairK: 0, shatter: 0.26 },
+    { py: 1, eye: 0, crack: 1, rv: 0, flat: 1, crownG: 0, bowG: 0, gem: 0, hairK: 0, shatter: 0.42 },
+    { py: 1, eye: 0, crack: 1, rv: 0, flat: 1, crownG: 0, bowG: 0, gem: 0, hairK: 0, shatter: 0.76 },
     { py: 1, eye: 0, crack: 1, rv: 0, flat: 1, crownG: 0, bowG: 0, gem: 0, hairK: 0, shatter: 1, diss: 1, pudG: 0.5 },
   ];
   const base = { ...hh0, lid: 0, shake: 0, rip: -1, mote: -1, t: f / (D_N - 1), hair: 0.2 };

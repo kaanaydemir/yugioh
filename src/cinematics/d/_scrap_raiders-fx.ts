@@ -16,6 +16,8 @@
 //   looseBolt(sc, at, dir, floorY, d)   the loose wheel spits one bolt that tinks away over the floor
 //   sweatAndSteam(sc, heads, stove, d)  the tired guard: sweat drops off three heads, steam out of the stove
 //   fleeDust(sc, u, ms)                 the death's three-way flight: dust kicked up at the three pairs of running feet
+//   goblinRunners(sc, u, depth)         the death's three-way flight: three goblin runner sprites (3-frame run cycle,
+//                                       whole-px moves) leave the wreck left / back / right
 //   scrapScatter(sc, home, dir, depth)  the death's final material (§5.2 C5): plates slide, gears roll and fall flat,
 //                                       a wheel rolls off and settles, the stove's last embers die
 //
@@ -25,8 +27,11 @@
 import type Phaser from 'phaser';
 import { PAL } from '../../art/palette';
 import type { AnyMonsterAnim } from '../../art/types';
-import { framePose } from '../../art/monsters-v3/scrap_raiders-anims';
-import { RX, GY, skeleton } from '../../art/monsters-v3/scrap_raiders-rig';
+import { FLEE_START, framePose } from '../../art/monsters-v3/scrap_raiders-anims';
+import { RX, GY, H as ART_H, W as ART_W, drawRaiders, pose, skeleton } from '../../art/monsters-v3/scrap_raiders-rig';
+import { PixelCanvas } from '../../art/pixel';
+import { canvasTexture } from '../../art/textures';
+import { isTired } from './_scrap_raiders-tired';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { DEPTH, type XY } from '../../view/layout';
 import { lightFlash } from '../../view/light';
@@ -60,8 +65,8 @@ const STEAM = [PAL.white, PAL.mist, PAL.stone4, PAL.stone3] as const;
 
 export type RaidersPt = 'ram' | 'front' | 'rear' | 'pipe' | 'stove' | 'hammer' | 'wHead' | 'pHead' | 'sHead' | 'wFeet' | 'pFeet' | 'sFeet' | 'core';
 
-function skPt(anim: AnyMonsterAnim, f: number, which: RaidersPt): readonly [number, number] {
-  const sk = skeleton(framePose(anim, f));
+function skPt(anim: AnyMonsterAnim, f: number, which: RaidersPt, tired = false): readonly [number, number] {
+  const sk = skeleton(framePose(anim, f, tired ? 'tired' : 'rest'));
   switch (which) {
     case 'ram':
       return sk.ram;
@@ -96,7 +101,7 @@ function skPt(anim: AnyMonsterAnim, f: number, which: RaidersPt): readonly [numb
 export function raidersPoint(u: MonsterUnit, which: RaidersPt): XY | null {
   if (!u.sprite.active || u.cardId !== 'scrap_raiders') return null;
   const fi = u.frameInfo();
-  const p = skPt(fi.anim ?? 'idle', fi.frame, which);
+  const p = skPt(fi.anim ?? 'idle', fi.frame, which, isTired(u));
   return rx(u.framePoint(Math.floor(p[0]) + 0.5, Math.floor(p[1]) + 0.5));
 }
 
@@ -135,70 +140,91 @@ export interface JunkPiece {
   turn?: number;
 }
 
-/** A tumbling bolt: head + shank, 4 pixel frames. */
-function drawBolt(g: Raster, x: number, y: number, ph: number): void {
-  const k = Math.floor(ph) & 3;
-  const H = PAL.mist;
-  const S = PAL.steel;
-  if (k === 0) {
-    g.px(x - 1, y, H);
-    g.px(x, y, S);
-    g.px(x + 1, y, S);
-  } else if (k === 1) {
-    g.px(x - 1, y - 1, H);
-    g.px(x, y, S);
-    g.px(x + 1, y + 1, S);
-  } else if (k === 2) {
-    g.px(x, y - 1, H);
-    g.px(x, y, S);
-    g.px(x, y + 1, S);
-  } else {
-    g.px(x + 1, y - 1, H);
-    g.px(x, y, S);
-    g.px(x - 1, y + 1, S);
+type Cell = [number, number, number];
+
+/** Stamp a small piece with a 1-px ink outline (4-neighbours of its cells that are not part of it). */
+function stamp(g: Raster, x: number, y: number, cells: readonly Cell[]): void {
+  const own = new Set(cells.map(([dx, dy]) => `${dx},${dy}`));
+  const ink = new Set<string>();
+  for (const [dx, dy] of cells)
+    for (const [ex, ey] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const k = `${dx + ex},${dy + ey}`;
+      if (!own.has(k)) ink.add(k);
+    }
+  for (const k of ink) {
+    const [dx, dy] = k.split(',').map(Number);
+    g.px(x + dx, y + dy, PAL.ink);
   }
+  for (const [dx, dy, c] of cells) g.px(x + dx, y + dy, c);
 }
 
-/** A brass nut: a 3×3 ring, lit top-left; edge-on it is a 3×1 bar. */
+/** Bolt shapes (head 2×3 + a threaded shank of 3), four tumble frames: flat, diagonal, upright, other diagonal. */
+const BOLT: readonly (readonly Cell[])[] = (() => {
+  const H0 = PAL.white;
+  const H1 = PAL.mist;
+  const S0 = PAL.steel;
+  const S1 = PAL.stone3;
+  return [
+    [[-2, -1, H0], [-1, -1, H1], [-2, 0, H1], [-1, 0, S0], [-2, 1, S0], [-1, 1, S1], [0, 0, S0], [1, 0, S1], [2, 0, S0]],
+    [[-2, -2, H0], [-1, -2, H1], [-2, -1, H1], [-1, -1, S0], [0, 0, S0], [1, 1, S1], [2, 2, S0]],
+    [[-1, -2, H0], [0, -2, H1], [1, -2, S0], [-1, -1, H1], [0, -1, S0], [1, -1, S1], [0, 0, S0], [0, 1, S1], [0, 2, S0]],
+    [[1, -2, H1], [2, -2, H0], [1, -1, S0], [2, -1, H1], [0, 0, S0], [-1, 1, S1], [-2, 2, S0]],
+  ];
+})();
+
+/** A tumbling bolt: a hex head and a threaded shank, ink outlined, 4 pixel frames. */
+function drawBolt(g: Raster, x: number, y: number, ph: number): void {
+  stamp(g, x, y, BOLT[Math.floor(ph) & 3]);
+}
+
+/** A brass nut: a 3×3 ring with a dark hole, lit top-left; edge-on a 3×1 bar. Ink outlined. */
 function drawNut(g: Raster, x: number, y: number, ph: number): void {
   const k = Math.floor(ph) & 3;
   if (k === 1 || k === 3) {
-    g.px(x - 1, y, PAL.gold3);
-    g.px(x, y, PAL.gold2);
-    g.px(x + 1, y, PAL.gold1);
+    stamp(g, x, y, [[-1, 0, PAL.gold3], [0, 0, PAL.gold2], [1, 0, PAL.gold1]]);
     return;
   }
-  g.px(x - 1, y - 1, PAL.gold4);
-  g.px(x, y - 1, PAL.gold3);
-  g.px(x + 1, y - 1, PAL.gold2);
-  g.px(x - 1, y, PAL.gold3);
-  g.px(x + 1, y, PAL.gold1);
-  g.px(x - 1, y + 1, PAL.gold2);
-  g.px(x, y + 1, PAL.gold1);
-  g.px(x + 1, y + 1, PAL.gold0);
+  stamp(g, x, y, [
+    [-1, -1, PAL.gold4], [0, -1, PAL.gold3], [1, -1, PAL.gold2],
+    [-1, 0, PAL.gold3], [0, 0, PAL.night0], [1, 0, PAL.gold1],
+    [-1, 1, PAL.gold2], [0, 1, PAL.gold1], [1, 1, PAL.gold0],
+  ]);
 }
 
-/** An iron gear: a 5×5 ring with four teeth that step round (2 frames); flat on the floor an iso ellipse. */
+const GEARS = new Map<string, Cell[]>();
+/** A cog of radius 2 with 8 square teeth (7×7 with the teeth) (2 tooth phases: it turns), a brass hub, lit top-left. */
+function gearCells(k: number): Cell[] {
+  const id = `g${k}`;
+  let c = GEARS.get(id);
+  if (c) return c;
+  c = [];
+  for (let dy = -3; dy <= 3; dy++)
+    for (let dx = -3; dx <= 3; dx++) {
+      const r = Math.hypot(dx, dy);
+      const a = Math.atan2(dy, dx) / TAU + 0.5 + k / 16;
+      const tooth = r > 2.2 && r <= 3.2 && Math.floor(a * 8 * 2) % 2 === 0;
+      if (r > 2.2 && !tooth) continue;
+      const lit = dx + dy < 0;
+      const col = r < 0.5 ? PAL.night0 : r < 1.2 ? PAL.gold2 : tooth ? (lit ? PAL.stone3 : PAL.stone1) : lit ? PAL.stone4 : dx + dy === 0 ? PAL.stone3 : PAL.stone2;
+      c.push([dx, dy, col]);
+    }
+  GEARS.set(id, c);
+  return c;
+}
+
+/** An iron gear: a toothed cog that turns (2 frames) and tumbles edge-on; flat on the floor an iso ellipse. */
 function drawGear(g: Raster, x: number, y: number, ph: number, flat: number): void {
   if (flat >= 1) {
-    g.ell(x, y, 3, 1, PAL.stone2);
-    g.px(x - 1, y - 1, PAL.stone3);
-    g.px(x + 2, y, PAL.stone1);
-    g.px(x, y, PAL.night1);
+    stamp(g, x, y, [[-3, 0, PAL.stone3], [-2, 0, PAL.stone3], [-1, 0, PAL.stone2], [0, 0, PAL.night0], [1, 0, PAL.stone2], [2, 0, PAL.stone1], [3, 0, PAL.stone1], [-2, -1, PAL.stone4], [-1, -1, PAL.stone3], [0, -1, PAL.stone3], [1, -1, PAL.stone2], [2, -1, PAL.stone2], [-1, 1, PAL.stone1], [1, 1, PAL.stone1]]);
     return;
   }
-  const ring: [number, number, number][] = [
-    [-1, -2, PAL.stone4], [0, -2, PAL.stone3], [1, -2, PAL.stone3],
-    [-2, -1, PAL.stone4], [2, -1, PAL.stone2],
-    [-2, 0, PAL.stone3], [2, 0, PAL.stone2],
-    [-2, 1, PAL.stone2], [2, 1, PAL.stone1],
-    [-1, 2, PAL.stone2], [0, 2, PAL.stone1], [1, 2, PAL.stone1],
-  ];
-  for (const [dx, dy, c] of ring) g.px(x + dx, y + dy, c);
-  g.px(x, y, PAL.gold2);
-  const k = Math.floor(ph) & 1;
-  const teeth: [number, number][] = k === 0 ? [[0, -3], [3, 0], [0, 3], [-3, 0]] : [[2, -2 - 1], [3, 2], [-2, 3], [-3, -2]];
-  for (const [dx, dy] of teeth) g.px(x + dx, y + dy, dy < 0 || dx < 0 ? PAL.stone3 : PAL.stone1);
+  const k = Math.floor(ph) & 3;
+  if (k === 3) {
+    // edge-on: a toothed bar
+    stamp(g, x, y, [[-3, 0, PAL.stone3], [-2, 0, PAL.stone4], [-1, 0, PAL.stone3], [0, 0, PAL.gold2], [1, 0, PAL.stone2], [2, 0, PAL.stone2], [3, 0, PAL.stone1], [-2, -1, PAL.stone3], [0, -1, PAL.stone3], [2, -1, PAL.stone2]]);
+    return;
+  }
+  stamp(g, x, y, gearCells(k & 1));
 }
 
 /** A rust plate with a rivet: 3 tumble frames (face, tilted, edge). */
@@ -519,4 +545,96 @@ export function scrapScatter(sc: Phaser.Scene, home: XY, dir: 1 | -1, depth: num
   for (let i = 0; i < 6; i++) sp.add({ x: home.x - dir * 14 + RR(-3, 3), y: home.y - 6, vx: RR(-10, 10), vy: -RR(20, 40), delay: i * 70, life: RR(500, 800), colors: [PAL.fire4, PAL.fire3, PAL.fire2, PAL.fire1], shape: 'px', flicker: true });
   sp.release();
   heapDust(sc, home, 0.9, depth - 0.1);
+}
+
+// ================================================================ the three runners (death f3)
+
+type Who = 'P' | 'W' | 'S';
+/** Runner frames drawn by the cart's own rig (only that goblin, legs running): cropped canvases + their hip spot. */
+const RUNNERS = new Map<string, { key: string; hx: number; hy: number }>();
+function runnerTex(sc: Phaser.Scene, who: Who, k: number, light: 'left' | 'right'): { key: string; hx: number; hy: number } {
+  const id = `raiders:runner:${who}:${k}:${light}`;
+  const had = RUNNERS.get(id);
+  if (had && sc.textures.exists(had.key)) return had;
+  const hip = FLEE_START[who];
+  const dx = hip[0] - RX;
+  const dy = hip[1] - GY;
+  const lp = k / 3;
+  const o = pose({
+    aTub: 0, aWh: 0, aRam: 0, aTop: 0, heap: 0, smk: 0, door: 0, pVis: 0, wVis: 0, sVis: 0,
+    ...(who === 'P' ? { pVis: 1, pLeg: 2, pX: dx, pY: dy, pLp: lp, pArm: 1, pM: 2, pE: 3, pHy: k === 1 ? -1 : 0 } : {}),
+    ...(who === 'W' ? { wVis: 1, wLeg: 2, wX: dx, wY: dy, wLp: lp, wM: 2, wE: 3, wAng: -2.2, wAy: -9, wHy: k === 1 ? -1 : 0 } : {}),
+    ...(who === 'S' ? { sVis: 1, sLeg: 2, sX: dx, sY: dy, sLp: lp, sM: 2, sE: 3, sAy: -8, sHy: k === 1 ? -1 : 0 } : {}),
+  });
+  const pc = new PixelCanvas(ART_W, ART_H);
+  drawRaiders(pc, o, light);
+  const b = pc.bounds() ?? { x: 0, y: 0, w: 1, h: 1 };
+  const crop = pc.crop(b.x, b.y, b.w, b.h);
+  const rec = { key: canvasTexture(sc, id, crop), hx: hip[0] - b.x, hy: hip[1] - b.y };
+  RUNNERS.set(id, rec);
+  return rec;
+}
+
+/**
+ * The death's three-way flight (§5.2 C5 "goblinler kaçar"): the goblins leave the wreck as three runner sprites
+ * where the art hides them (death f3) — the pedaller runs out the back, the wrench goblin out the front, the
+ * slinger jumps down and runs off up the field (away from the duelist). 3-frame run cycle, whole-px steps, a dust
+ * kick at every footfall; each runner fades in steps off the tile.
+ */
+export function goblinRunners(sc: Phaser.Scene, u: MonsterUnit, floorY: number, depth: number): Promise<void> {
+  const dir: 1 | -1 = u.flipX ? -1 : 1;
+  const plan: { who: Who; vx: number; vy: number; hop: number; delay: number }[] = [
+    { who: 'P', vx: -dir * 74, vy: 6, hop: 0, delay: 0 },
+    { who: 'W', vx: dir * 82, vy: 4, hop: 0, delay: 30 },
+    { who: 'S', vx: -dir * 22, vy: -34, hop: 1, delay: 60 },
+  ];
+  const ms = 720;
+  const jobs = plan.map((r) => {
+    const start = u.framePoint(FLEE_START[r.who][0] + 0.5, FLEE_START[r.who][1] + 0.5);
+    // a runner faces where it runs on screen (the rig draws facing right; a flipped one is drawn relit so the
+    // key light stays on the screen's left, as the relit P2 sheets do)
+    const flip = r.vx < 0;
+    const light: 'left' | 'right' = flip ? 'right' : 'left';
+    const t0 = runnerTex(sc, r.who, 0, light);
+    const img = sc.add.image(Math.round(start.x), Math.round(start.y), t0.key).setDepth(depth);
+    img.setFlipX(flip);
+    const place = (key: { key: string; hx: number; hy: number }, x: number, y: number) => {
+      img.setTexture(key.key);
+      const w = img.width;
+      const ox = flip ? w - key.hx : key.hx;
+      img.setOrigin(ox / w, key.hy / img.height);
+      img.setPosition(Math.round(x), Math.round(y));
+    };
+    place(t0, start.x, start.y);
+    img.setVisible(r.delay === 0);
+    let lastStep = -1;
+    const sp = new Sparks(sc, depth - 0.1);
+    // the slinger's drop from the deck to the floor, then on foot
+    const dropY = floorY - 6;
+    return animate(sc, ms, (t, el) => {
+      if (el < r.delay) return;
+      img.setVisible(true);
+      const s = (el - r.delay) / 1000;
+      let x = start.x + r.vx * s * (1 + s * 0.8);
+      let y = start.y + r.vy * s;
+      if (r.hop) {
+        // falls off the deck in the first ~180 ms (a small arc), then runs up the field
+        const k = Math.min(1, s / 0.18);
+        y = start.y + (dropY - start.y) * k * k - Math.sin(k * Math.PI) * 4 + (s > 0.18 ? r.vy * (s - 0.18) : 0);
+        x = start.x + r.vx * s;
+      }
+      const step = Math.floor(el / 70) % 3;
+      place(runnerTex(sc, r.who, step, light), x, y);
+      if (step !== lastStep) {
+        lastStep = step;
+        if (step === 0 && (!r.hop || s > 0.18)) sp.add({ x: Math.round(x), y: Math.round(r.hop ? y + 6 : floorY), vx: -Math.sign(r.vx) * RR(4, 10), vy: -RR(4, 9), drag: 2, life: RR(280, 400), colors: DUST, shape: 'puff', size: 2, grow: 3, alpha: 0.5 });
+      }
+      // off the tile: stepped fade (EF-6)
+      img.setAlpha(t > 0.85 ? 0.35 : t > 0.72 ? 0.7 : 1);
+    }).then(() => {
+      sp.release();
+      img.destroy();
+    });
+  });
+  return Promise.all(jobs).then(() => undefined);
 }

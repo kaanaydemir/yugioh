@@ -23,9 +23,14 @@ const DX = FEET_X - RX;
 const DY = LAKE - GY;
 /** The reflection's foreshortening in the picture (deeper than the sprite's puddle: a lake shows more). */
 const KR_CARD = 0.44;
-/** The sprite frame's crop that is the small picture (big px → small px 1:1). */
-const SMALL_CROP = [FEET_X - 15, 2, 44, 34] as const;
-
+/** The small picture is a closer view of the same scene: the lake's water line crosses the archer at chest
+ *  height (SMALL_WL, near mid-height), the archer's hood, crown, drawn bow and blazing arrow above it, and its
+ *  reflection's hood with the two white eyes turned at the viewer in the lower third. Frame x → small x: −SMALL_X0. */
+const SMALL_X0 = RX - 15;
+const SMALL_WL = 19;
+/** The frame row of the archer that sits on the small water line (chest), and the small's reflection depth. */
+const SMALL_CUT = GY - 30;
+const KR_SMALL = 0.5;
 const cardPose = (f: number): Pose =>
   pose({
     py: 1, lean: 0, hdx: 1, bx: 15, by: -37, ba: 0, draw: 1, bowFront: 1, nx: 3, ny: -39,
@@ -35,7 +40,7 @@ const cardPose = (f: number): Pose =>
 
 const SPT = skeleton(cardPose(0)).apt;
 const FOCUS = [Math.round(SPT[0] + DX - 0.5), Math.round(SPT[1] + DY - 0.5)] as const;
-const FOCUS_SMALL = [FOCUS[0] - SMALL_CROP[0], FOCUS[1] - SMALL_CROP[1]] as const;
+const FOCUS_SMALL = [Math.round(SPT[0] - 0.5) - SMALL_X0, Math.round(SPT[1] - 0.5) + SMALL_WL - SMALL_CUT] as const;
 
 /** The archer's light spilled on the lake: iso rings round the feet (the sprite's puddle, opened wide). */
 function rings(s: PixelCanvas, f: number): void {
@@ -83,13 +88,32 @@ function big(l: ArtLayers, f: number): void {
 }
 
 function small(l: ArtLayers, f: number): void {
-  const [cx, cy, w, h] = SMALL_CROP;
-  paintBackdrop(l.backdrop, 'LIGHT', { focus: FOCUS_SMALL, horizon: 40, radius: 10 });
-  lake(l.backdrop, f, w, LAKE - cy, h);
-  const s = new PixelCanvas(88, 68);
-  subject(s, f);
-  l.subject.blit(s.crop(cx, cy, w, h), 0, 0);
+  const w = 44;
+  const h = 34;
+  paintBackdrop(l.backdrop, 'LIGHT', { focus: FOCUS_SMALL, horizon: SMALL_WL + 1, radius: 10 });
+  lake(l.backdrop, f, w, SMALL_WL, h);
+  const o = cardPose(f);
+  // above the water line: the archer from the chest up
+  const a = new PixelCanvas(SW, SH);
+  drawArcher(a, o, 'left');
+  const ay = SMALL_WL - SMALL_CUT;
+  for (let y = 0; y <= SMALL_WL; y++)
+    for (let x = 0; x < w; x++) {
+      const c = a.get(x + SMALL_X0, y - ay);
+      if (c !== null) l.subject.set(x, y, c);
+    }
+  // under it: the reflection of the same part, mirrored at the water line (eyes at the viewer, shut on f2)
+  const m = new PixelCanvas(SW, SH);
+  drawMirrorFigure(m, { ...o, look: 1, eye: f === 2 ? 0 : 2, lid: f === 2 ? 2 : 0 }, 'left', KR_SMALL);
+  const my = SMALL_WL - Math.round(GY + (GY - SMALL_CUT) * KR_SMALL);
+  for (let y = SMALL_WL + 1; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const c = m.get(x + SMALL_X0, y - my);
+      if (c !== null) l.subject.set(x, y, c);
+    }
   ink(l.subject);
+  // the water line glints where the archer meets its reflection
+  for (let x = 13; x < 22; x++) if (!l.subject.isOpaque(x, SMALL_WL + 1) || x % 3 === 0) l.light.set(x, SMALL_WL + 1, x % 3 === 0 ? PAL.mist : PAL.steel);
   const [fx, fy] = FOCUS_SMALL;
   l.light.set(fx, fy, PAL.white).set(fx + 1, fy, PAL.white).set(fx + 2, fy, PAL.gold4);
 }

@@ -1,8 +1,9 @@
 // Hurda Akıncıları (scrap_raiders) — v3 art (?look=v3 only). A WIDE scrap cart-tank (C5): a patchwork tub of iron
 // and rust plates on a big rear and a small front wheel, a coal stove + pipe and a red flag on the rear deck, a spiked
 // ram in front; three goblins crammed inside (the slinger at the back, the goggled pedaller in the middle, the
-// wrench goblin in front). Its guard is the TIRED pose of the attackThenDefense lock: the front wheel lies on the
-// floor and the wrench goblin hammers the bare axle (toGuard = the wheel falls off, fromGuard = it goes back on).
+// wrench goblin in front). Its guard is the RESTED defense (wheels on, the crew ducked behind the rim and the ram);
+// the TIRED pose of the attackThenDefense lock (front wheel flat on the floor, the wrench goblin hammering the bare
+// axle) is a hidden 'tired' sheet with the same frame names (_scrap_raiders-tired.ts), shown while the lock lasts.
 // Hand-made rig (scrap_raiders-rig / -kit / -anims); frame 104×74, anchor on the floor between the wheels, P2 relit.
 
 import type { AnyMonsterAnim, DrawOpts, MonsterAnim, MonsterAnimExtra, MonsterArt, MonsterPoints } from '../types';
@@ -23,7 +24,7 @@ const scrapRaidersV3: MonsterArt = {
   core: { x: RX - 2, y: GY - 18 },
   anims: ANIMS,
   attackImpactFrame: IMPACT,
-  weight: 'heavy',
+  weight: 'mediumHeavy',
   p2: 'relight',
   draw(p: PixelCanvas, anim: MonsterAnim, frame: number, o?: DrawOpts) {
     drawRaiders(p, framePose(anim, frame), o?.lightFrom ?? 'left');

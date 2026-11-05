@@ -338,7 +338,7 @@ export function victoryPose(f: number): Pose {
   if (f === 6) return blend(snap(key(keys[5], 5, V_N)), IDLE0, 0.7);
   return snap(key(keys[Math.min(f, 5)], f, V_N));
 }
-const V_HOLDS = [100, 110, 120, 130, 140, 320, 120, 140];
+const V_HOLDS = [100, 110, 120, 130, 140, 200, 160, 140];
 
 // ------------------------------------------------------------------ tables
 
