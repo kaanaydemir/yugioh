@@ -13,14 +13,17 @@
 //   e_axeBite     IMPACT: a deep floor thump + a heavy crack + the iron head's dark ring + dirt + the haft's quiver twang
 //   e_axeChain    the chains drop and coil on the floor: a run of iron links settling (decelerating, panned)
 //   e_axePulse    one vein beat: the low beating drone swells and falls (×3, the scene raises it a little each time)
-//   e_axeWrench   the wrench: the long iron-earth groan (rising creak train, iron resonances, grit), chains whining taut
-//   e_axeSnap     chains SNAP and the axe tears out: hard link bursts, a whip crack, earth torn, an iron clank
+//   e_axeGrip     the hand closes on the haft: a dull knock on dark wood + a leather creak + the vein's hiss starting
+//   e_axeWrench   the wrench (0.92 s, three tugs): the long iron-earth groan (rising creak train, iron resonances,
+//                 grit, a dull knock per tug), chains whining taut
+//   e_axeSnap     chains SNAP and the axe tears out: dark link bursts (1.2–2 kHz) first, the earth TEARS (falling
+//                 brown-noise rip + clods), the flung links skitter; no thump lead
 //   e_axeIgnite   the oath: eyes take the ember — a dark iron hum swelling into a dry snap, embers crackling off
 //   e_axeCard     the equip's card crumbles to embers on its tile (the axe leaves the field)
 //   e_axeSlip     return: the axe slips out of the grip by itself — an iron scrape down the haft + a tick
 //   e_axeFly      the axe flies home spinning: whirring air (4 turns) + chains rattling behind
-//   e_axeDeck     it slams onto the deck pile: "güm" (deep thump, card slap, short iron clank)
-//   e_axeLash     a chain whips the owner's LP panel: a fast rising swish → a whip CRACK + link jingle
+//   e_axeDeck     it slams onto the deck pile: "güm" of a card stack (paper / board body, papery slap, a riffle; no iron)
+//   e_axeLash     a chain whips the owner's LP panel: a rising swish → a whip CRACK landing as a hit (100 Hz body)
 
 import type { Recipe } from '../../sounds';
 import type { Voice } from '../../synth';
@@ -122,33 +125,51 @@ export const RECIPES = {
       v.tone('sine', [[0, 88], [0.25, 82, 'e']], { g: [[0, 0], [0.06, 0.06], [0.3, 0.0001, 'e']] });
     },
   },
+  e_axeGrip: {
+    cap: 1,
+    gap: 0.2,
+    verb: 0.3,
+    play(v) {
+      // the hand closes on the haft: a dull knock of flesh on dark wood, a leather creak, the vein's hiss starting
+      v.tone('triangle', [[0, 260], [0.06, 190, 'e']], { g: perc(0.34, 0.09, 0.001) });
+      v.noise('pink', { g: perc(0.22, 0.05, 0.001), to: v.filt('bandpass', 420, 1.6) });
+      const cr = v.filt('bandpass', [[0, 600], [0.18, 880, 'e']], 8);
+      v.bursts([0.03, 0.055, 0.075, 0.092, 0.106, 0.118], [0.1, 0.12, 0.13, 0.12, 0.1, 0.08], { dec: 0.01, f: 700, q: 1.2, to: cr, kind: 'pink' });
+      // the vein starts up the arm: a hiss climbing through a narrow band, the drone throbbing under it
+      sweep(v, 0.05, 0.36, [500, 1400, 2600], 0.05, { q: 6, peakAt: 0.8 });
+      ironDrone(v, 0, 0.5, 0.14, { lp: 480 });
+    },
+  },
   e_axeWrench: {
     cap: 1,
     gap: 0.3,
     verb: 0.36,
     play(v) {
-      const D = 0.5;
-      // the earth-metal groan: a pulse train speeding up (creak) through two iron resonances
+      const D = 0.92;
+      // the earth-metal groan: a creak train speeding up and RISING through two iron resonances, three tug accents
       const res = v.amp(1);
-      res.connect(v.filt('bandpass', [[0, 340], [D, 520, 'e']], 6));
-      res.connect(v.filt('bandpass', [[0, 910], [D, 1280, 'e']], 8));
+      res.connect(v.filt('bandpass', [[0, 300], [D, 560, 'e']], 6));
+      res.connect(v.filt('bandpass', [[0, 820], [D, 1350, 'e']], 8));
       const times: number[] = [];
       const gains: number[] = [];
       let tt = 0;
-      let gap = 0.042;
+      let gap = 0.05;
       while (tt < D) {
         times.push(tt);
-        gains.push(0.12 + (tt / D) * 0.18);
+        // each tug (every ~0.31 s) starts loud and slow, then the creak speeds up
+        const ph = (tt % 0.31) / 0.31;
+        gains.push((0.1 + (tt / D) * 0.2) * (ph < 0.15 ? 1.5 : 1));
         tt += gap;
-        gap = Math.max(0.011, gap * 0.9);
+        gap = ph > 0.85 ? 0.05 : Math.max(0.01, gap * 0.88);
       }
       v.bursts(times, gains, { dec: 0.012, f: 700, q: 1.4, to: res, kind: 'pink' });
-      // the iron itself groaning: a saw bending upward, gritty
-      v.tone('sawtooth', [[0, 72], [D, 104, 'e']], { g: [[0, 0], [0.1, 0.07], [D, 0.11], [D + 0.04, 0.0001, 'e']], to: v.filt('lowpass', 700, 2) });
-      // earth grit under it
-      v.noise('brown', { g: [[0, 0], [D * 0.8, 0.22], [D + 0.05, 0.0001, 'e']], to: v.filt('lowpass', 520, 0.9) });
+      // the iron itself groaning: a saw bending upward in three steps (one per tug), gritty
+      v.tone('sawtooth', [[0, 66], [0.3, 78, 'e'], [0.32, 74], [0.62, 90, 'e'], [0.64, 86], [D, 110, 'e']], { g: [[0, 0], [0.08, 0.08], [D, 0.13], [D + 0.04, 0.0001, 'e']], to: v.filt('lowpass', 760, 2) });
+      // earth grit under it, a dull knock on each tug
+      v.noise('brown', { g: [[0, 0], [D * 0.8, 0.24], [D + 0.05, 0.0001, 'e']], to: v.filt('lowpass', 520, 0.9) });
+      for (const t0 of [0, 0.31, 0.62]) thump(v, t0, 90, 60, 0.22, 0.12);
       // the chains pulled taut: a thin whine climbing
-      v.tone('sine', [[0, 2900], [D, 3500, 'e']], { g: [[0, 0], [D * 0.7, 0.012], [D, 0.022], [D + 0.02, 0.0001, 'e']] });
+      v.tone('sine', [[0, 2600], [D, 3300, 'e']], { g: [[0, 0], [D * 0.7, 0.012], [D, 0.024], [D + 0.02, 0.0001, 'e']] });
       ironDrone(v, 0, D + 0.1, 0.12, { lp: 600 });
     },
   },
@@ -158,15 +179,19 @@ export const RECIPES = {
     verb: 0.4,
     duck: 0.4,
     play(v) {
-      // chains snap: hard link bursts, a whip crack, the head's clank, torn earth
-      crack(v, 0, 0.7, { hp: 1800, lp: 11000, n: 2, gap: 0.014, dec: 0.014 });
-      links(v, 0, 0.09, 6, 0.16, 2200, 3800, { pan: 0.7 });
-      links(v, 0.05, 0.3, 8, 0.07, 1600, 2600, { curve: 1.5, pan: 0.8 });
-      iron(v, 0.01, 176, 0.32, 0.6);
-      thump(v, 0, 80, 48, 0.5, 0.2, { drive: 1.6 });
-      puff(v, 0.005, 0.28, 0.24, 1400, { kind: 'brown' });
-      v.crackle({ t: 0.02, d: 0.3, n: 12, g: 0.09, f: 2200, q: 1.1, dec: 0.008, curve: 1.6 });
-      sweep(v, 0, 0.22, [600, 2200, 1200], 0.14, { q: 1.4, peakAt: 0.25 });
+      // the chains SNAP first: a hard burst of dark iron links (1.2–2 kHz), each break a short ping
+      links(v, 0, 0.05, 6, 0.42, 1200, 2000, { pan: 0.7 });
+      for (const t0 of [0, 0.012]) v.tone('square', [[0, 1500], [0.02, 900, 'e']], { t: t0, g: perc(0.06, 0.03, 0.0004), to: v.filt('bandpass', 1600, 2) });
+      // the flung links land and skitter
+      links(v, 0.12, 0.42, 10, 0.07, 1200, 2100, { curve: 1.6, pan: 0.8 });
+      // the EARTH TEARS: a ripping brown-noise burst with a falling lowpass + clods
+      v.noise('brown', { t: 0.01, g: [[0, 0], [0.02, 0.9], [0.3, 0.0001, 'e']], to: v.filt('lowpass', [[0, 2600], [0.3, 300, 'e']], 1.1, { t: 0.01 }) });
+      // the rip's grit: torn soil fizzing high, then the clods
+      v.noise('white', { t: 0.01, g: [[0, 0], [0.015, 0.5], [0.24, 0.0001, 'e']], to: v.filt('bandpass', [[0, 7000], [0.24, 3000, 'e']], 0.8, { t: 0.01 }) });
+      v.crackle({ t: 0.02, d: 0.34, n: 22, g: 0.18, f: 1300, q: 1, dec: 0.01, curve: 1.6 });
+      v.bursts([0.05, 0.11, 0.17, 0.22], [0.22, 0.18, 0.14, 0.1], { dec: 0.03, f: 500, q: 1, kind: 'brown' });
+      // the axe flies free: a short low swish
+      sweep(v, 0.03, 0.22, [400, 1300, 700], 0.12, { q: 1.4, peakAt: 0.3 });
     },
   },
   e_axeIgnite: {
@@ -228,27 +253,38 @@ export const RECIPES = {
   e_axeDeck: {
     cap: 1,
     gap: 0.2,
-    verb: 0.4,
+    verb: 0.38,
     duck: 0.4,
     play(v) {
-      // "güm": it slams onto the deck pile — deep thump, the pile's card slap, a short dark iron clank
-      thump(v, 0, 84, 36, 0.85, 0.34, { drive: 1.8 });
-      v.noise('white', { g: perc(0.3, 0.02, 0.0004), to: v.filt('bandpass', 1500, 0.9) });
-      iron(v, 0.004, 140, 0.3, 0.5);
-      puff(v, 0.01, 0.12, 0.16, 1000, { kind: 'pink' });
-      links(v, 0.03, 0.2, 6, 0.05, 1800, 2700, { curve: 1.4 });
+      // "güm" on a STACK OF CARDS (paper and board, no iron ring): the stack's body (a boxy 200–400 Hz thud), the
+      // papery slap of the top cards, a wooden knock from the deck tray, the cards riffling as they settle
+      v.noise('pink', { g: perc(1.6, 0.08, 0.001), to: v.filt('bandpass', [[0, 420], [0.08, 280, 'e']], 1.6) });
+      v.tone('triangle', [[0, 300], [0.07, 210, 'e']], { g: perc(0.6, 0.1, 0.001) });
+      v.noise('white', { g: perc(1.0, 0.02, 0.0003), to: v.filt('bandpass', 2200, 1.0) });
+      v.noise('white', { t: 0.002, g: perc(0.5, 0.03, 0.0003), to: v.filt('bandpass', 5200, 1.2) });
+      v.tone('triangle', [[0, 520], [0.03, 470, 'e']], { t: 0.004, g: perc(0.22, 0.05, 0.0005) });
+      v.bursts([0.03, 0.045, 0.058, 0.07, 0.081, 0.09, 0.098, 0.105], [0.34, 0.3, 0.26, 0.22, 0.18, 0.15, 0.12, 0.08], { dec: 0.008, f: 3600, q: 1.1, kind: 'white' });
+      // a last rattle of the chain sliding in after it (dark)
+      links(v, 0.08, 0.18, 4, 0.04, 1300, 1900, { curve: 1.4 });
     },
   },
   e_axeLash: {
     cap: 1,
     gap: 0.2,
     verb: 0.36,
+    duck: 0.35,
     play(v) {
-      // the whip: a fast rising swish, then the CRACK (the tip breaking the air) + links jingling down the chain
-      sweep(v, 0, 0.13, [500, 3000, 4800], 0.32, { q: 1.6, peakAt: 0.9, pan: [-0.3, 0.3] });
-      crack(v, 0.12, 0.85, { hp: 2400, lp: 12000, n: 2, gap: 0.006, dec: 0.009 });
-      thump(v, 0.12, 140, 70, 0.3, 0.1);
-      links(v, 0.13, 0.22, 7, 0.06, 2000, 3400, { curve: 1.3, pan: 0.5 });
+      // the whip: a rising swish as the chain unrolls (links rattling dark along it), then the CRACK (a hard
+      // broadband transient with a fast falling chirp — the tip breaking the air) landing as a HIT (a 100 Hz body)
+      sweep(v, 0, 0.2, [400, 2400, 4200], 0.6, { q: 1.6, peakAt: 0.92, pan: [-0.3, 0.3] });
+      links(v, 0.02, 0.17, 8, 0.16, 1200, 1900, { curve: 0.8, pan: 0.5 });
+      const T0 = 0.2;
+      v.noise('white', { t: T0, g: perc(2.2, 0.008, 0.0001), to: v.filt('highpass', 2500, 0.7) });
+      v.tone('square', [[0, 6200], [0.012, 900, 'e']], { t: T0, g: perc(0.22, 0.018, 0.0002), to: v.filt('lowpass', 9000) });
+      crack(v, T0 + 0.004, 1.5, { hp: 3000, lp: 12000, n: 3, gap: 0.006, dec: 0.014 });
+      thump(v, T0, 100, 88, 1.0, 0.16, { drive: 2 });
+      // the links jangle down the chain after the hit, dark
+      links(v, T0 + 0.03, 0.26, 8, 0.16, 1250, 2000, { curve: 1.3, pan: 0.5 });
     },
   },
 } satisfies Record<string, Recipe>;

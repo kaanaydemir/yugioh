@@ -27,8 +27,8 @@ const plain = (p: PlayerId, id: CardId): Step => (D) => ({ type: 'activateSpell'
 const PACK: Record<string, Scenario> = {
   // ---- the equip
   eAxe: {
-    desc: 'Hınç Baltası (P1, elden): balta Kor Kurdu’nun yanına saplanır, kurt söker, ATK +800',
-    stage: { zones: 5, p0: { hand: ['spite_axe'], monsters: mons(N, 'ember_wolf', 'stone_sentinel') }, p1: { monsters: mons(N, 'magma_titan'), spellTraps: sts(N, 'mirror_barrier') } },
+    desc: 'Hınç Baltası (P1, elden): balta Gelgit Golemi’nin yanına saplanır, golem eğilip söker, gözleri kor yanar, ATK +800',
+    stage: { zones: 5, p0: { hand: ['spite_axe'], monsters: mons(N, 'tide_golem', 'stone_sentinel') }, p1: { monsters: mons(N, 'magma_titan'), spellTraps: sts(N, 'mirror_barrier') } },
     steps: [axe(0, 1, 2)],
   },
   eAxeP2: {
@@ -45,6 +45,16 @@ const PACK: Record<string, Scenario> = {
     desc: 'Hınç Baltası kapalıdan (P2): Uçurum Büyücüsü baltayı söker',
     stage: { zones: 5, active: 1, p1: { spellTraps: sts('spite_axe'), monsters: mons(N, 'abyss_magus') }, p0: { monsters: mons(N, N, 'tide_golem') } },
     steps: [axe(1, 1)],
+  },
+  eAxeWolf: {
+    desc: 'Hınç Baltası (P1, elden): Kor Kurdu (ateş canavarı) baltayı söker',
+    stage: { zones: 5, p0: { hand: ['spite_axe'], monsters: mons(N, 'ember_wolf') }, p1: { monsters: mons(N, 'magma_titan') } },
+    steps: [axe(0, 1, 2)],
+  },
+  eAxeCrowd: {
+    desc: 'Hınç Baltası (P1): hedefin iki yanı da dolu — balta kendi karosunun ön köşesine saplanır',
+    stage: { zones: 5, p0: { hand: ['spite_axe'], monsters: mons('ember_wolf', 'abyss_magus', 'stone_sentinel') }, p1: { monsters: mons(N, 'magma_titan') } },
+    steps: [axe(0, 1, 2)],
   },
   // ---- the return: the axe itself destroyed
   eAxePurge: {

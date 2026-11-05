@@ -52,16 +52,94 @@ export const FALLEN = new Map<Uid, Fallen>();
 const eyeCache = new Map<string, readonly XY[]>();
 
 /**
- * The eye pixels of a frame (frame coords, facing right): small bright clusters in the upper 45 % of the body's
- * front half next to a dark pixel; the frontmost one and a partner beside it. Empty when none is found.
+ * AUTHORED eye pixels per monster (frame coords of its idle:0 drawing, facing right) with the colour each eye pixel
+ * has there. On another frame (idle bob, a pose) the eye is found again: the nearest pixel of that same colour within
+ * 3 px of the anchor; when none matches, the anchor itself. Additive table: a monster missing here falls back to the
+ * validated heuristic (eyesOfFrame) and, failing that, to a 2-px glint at its head anchor (headGlint).
  */
-export function eyesOfFrame(data: Uint8ClampedArray, W: number, H: number): XY[] {
-  const lum = (x: number, y: number): number => {
-    if (x < 0 || y < 0 || x >= W || y >= H) return -1;
-    const i = (y * W + x) * 4;
-    if (data[i + 3] === 0) return -1;
-    return data[i] * 0.3 + data[i + 1] * 0.59 + data[i + 2] * 0.11;
+export const EYE_ANCHORS: Readonly<Record<string, readonly (readonly [number, number, number])[]>> = {
+  ember_wolf: [
+    [50, 21, PAL.gold4],
+    [51, 21, PAL.gold3],
+  ],
+  crystal_wyrm: [
+    [80, 26, PAL.cyan3],
+    [81, 26, PAL.cyan3],
+  ],
+  stone_sentinel: [
+    [38, 32, PAL.gold4],
+    [39, 32, PAL.gold4],
+  ],
+  abyss_magus: [
+    [63, 32, PAL.void4],
+    [64, 32, PAL.void4],
+  ],
+  tide_golem: [
+    [40, 18, PAL.cyan4],
+    [39, 18, PAL.cyan3],
+    [43, 18, PAL.cyan3],
+  ],
+  magma_titan: [
+    [48, 23, PAL.fire4],
+    [50, 23, PAL.fire4],
+    [51, 23, PAL.fire4],
+  ],
+  shade_assassin: [
+    [37, 25, PAL.white],
+    [36, 25, PAL.void4],
+  ],
+  crag_axeman: [[50, 31, PAL.white]],
+};
+
+const rgbAt = (data: Uint8ClampedArray, W: number, H: number, x: number, y: number): number => {
+  if (x < 0 || y < 0 || x >= W || y >= H) return -1;
+  const i = (y * W + x) * 4;
+  if (data[i + 3] === 0) return -1;
+  return (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];
+};
+
+/** The authored eyes found on a frame (see EYE_ANCHORS). */
+export function anchoredEyes(id: string, data: Uint8ClampedArray, W: number, H: number): XY[] | null {
+  const a = EYE_ANCHORS[id];
+  if (!a) return null;
+  const cols = new Set(a.map((e) => e[2]));
+  const out: XY[] = [];
+  const seen = new Set<number>();
+  const push = (x: number, y: number): void => {
+    const k = y * W + x;
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push({ x, y });
   };
+  for (const [ax, ay] of a) {
+    let best: XY | null = null;
+    let bd = Infinity;
+    for (let dy = -3; dy <= 3; dy++)
+      for (let dx = -3; dx <= 3; dx++) {
+        if (!cols.has(rgbAt(data, W, H, ax + dx, ay + dy))) continue;
+        const d = dx * dx + dy * dy;
+        if (d < bd) {
+          bd = d;
+          best = { x: ax + dx, y: ay + dy };
+        }
+      }
+    const p = best ?? { x: ax, y: ay };
+    push(p.x, p.y);
+    // the whole little eye: its eye-coloured neighbours too
+    if (best)
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ] as const)
+        if (cols.has(rgbAt(data, W, H, p.x + dx, p.y + dy))) push(p.x + dx, p.y + dy);
+  }
+  return out;
+}
+
+/** Opaque bounds of a frame. */
+function boundsOf(data: Uint8ClampedArray, W: number, H: number): { x0: number; y0: number; x1: number; y1: number } | null {
   let x0 = W;
   let y0 = H;
   let x1 = -1;
@@ -74,12 +152,54 @@ export function eyesOfFrame(data: Uint8ClampedArray, W: number, H: number): XY[]
         x1 = Math.max(x1, x);
         y1 = Math.max(y1, y);
       }
-  if (x1 < 0) return [];
+  return x1 < 0 ? null : { x0, y0, x1, y1 };
+}
+
+/** The head anchor glint: the frontmost body pixel in the top 30 % of the frame, 3 px in from the snout, 2 down. */
+export function headGlint(data: Uint8ClampedArray, W: number, H: number): XY[] {
+  const b = boundsOf(data, W, H);
+  if (!b) return [];
+  const yEnd = b.y0 + Math.max(2, Math.floor((b.y1 - b.y0) * 0.3));
+  let fx = -1;
+  let fy = b.y0;
+  for (let y = b.y0; y <= yEnd; y++)
+    for (let x = b.x1; x > fx; x--)
+      if (data[(y * W + x) * 4 + 3] > 0) {
+        fx = x;
+        fy = y;
+        break;
+      }
+  if (fx < 0) return [];
+  // step in until an inner (non-ink) body pixel
+  for (let k = 3; k < 10; k++) {
+    const x = fx - k;
+    const y = fy + 2;
+    const c = rgbAt(data, W, H, x, y);
+    if (c >= 0 && ((c >> 16) & 255) + ((c >> 8) & 255) + (c & 255) > 90) return [{ x, y }, { x: x - 1, y }];
+  }
+  return [{ x: fx - 3, y: fy + 2 }];
+}
+
+/**
+ * The eye pixels of a frame (frame coords, facing right): small bright clusters in the upper 45 % of the body's
+ * front half next to a dark pixel; the frontmost one and a partner beside it. VALIDATED: the result must sit in the
+ * head box (top 40 % of the body, front 45 %), else empty.
+ */
+export function eyesOfFrame(data: Uint8ClampedArray, W: number, H: number): XY[] {
+  const lum = (x: number, y: number): number => {
+    if (x < 0 || y < 0 || x >= W || y >= H) return -1;
+    const i = (y * W + x) * 4;
+    if (data[i + 3] === 0) return -1;
+    return data[i] * 0.3 + data[i + 1] * 0.59 + data[i + 2] * 0.11;
+  };
+  const b = boundsOf(data, W, H);
+  if (!b) return [];
+  const { x0, y0, x1, y1 } = b;
   const bh = y1 - y0 + 1;
   const bw = x1 - x0 + 1;
   const cands: { x: number; y: number; s: number }[] = [];
-  for (let y = y0; y <= y0 + Math.floor(bh * 0.45); y++)
-    for (let x = x0 + Math.floor(bw * 0.45); x <= x1; x++) {
+  for (let y = y0; y <= y0 + Math.floor(bh * 0.4); y++)
+    for (let x = x0 + Math.floor(bw * 0.55); x <= x1; x++) {
       const l = lum(x, y);
       if (l < 175) continue;
       let dark = 0;
@@ -92,15 +212,22 @@ export function eyesOfFrame(data: Uint8ClampedArray, W: number, H: number): XY[]
           if (n >= 175) bright++;
         }
       if (dark < 2 || bright > 2) continue;
+      // an eye is enclosed: opaque pixels on both sides (an edge highlight is not)
+      if (lum(x + 2, y) < 0 || lum(x - 2, y) < 0 || lum(x, y - 2) < 0) continue;
       cands.push({ x, y, s: x - y * 0.6 });
     }
   if (!cands.length) return [];
-  cands.sort((a, b) => b.s - a.s);
+  cands.sort((a, c) => c.s - a.s);
   const best = cands[0];
   const out: XY[] = cands.filter((c) => Math.abs(c.x - best.x) <= 1 && Math.abs(c.y - best.y) <= 1).map((c) => ({ x: c.x, y: c.y }));
-  const mate = cands.find((c) => Math.abs(c.y - best.y) <= 2 && best.x - c.x >= 3 && best.x - c.x <= 7);
-  if (mate) out.push(...cands.filter((c) => Math.abs(c.x - mate.x) <= 1 && Math.abs(c.y - mate.y) <= 1).map((c) => ({ x: c.x, y: c.y })));
-  return out.slice(0, 6);
+  return out.slice(0, 4);
+}
+
+/** The monster id of a unit sprite ('mon:<id>' textures), or ''. */
+function idOf(s: Phaser.GameObjects.Sprite): string {
+  const k = s.texture?.key ?? '';
+  const m = /^mon:([a-z_0-9]+)/.exec(k);
+  return m ? m[1] : '';
 }
 
 /** The eye pixels of a sprite on its current frame, in world pixels. */
@@ -116,7 +243,9 @@ export function eyesOf(s: Phaser.GameObjects.Sprite): XY[] {
     } catch {
       data = null;
     }
-    e = data ? eyesOfFrame(data, fr.realWidth, fr.realHeight) : [];
+    const W0 = fr.realWidth;
+    const H0 = fr.realHeight;
+    e = data ? (anchoredEyes(idOf(s), data, W0, H0) ?? (eyesOfFrame(data, W0, H0).length ? eyesOfFrame(data, W0, H0) : headGlint(data, W0, H0))) : [];
     if (eyeCache.size > 200) eyeCache.clear();
     eyeCache.set(key, e);
   }

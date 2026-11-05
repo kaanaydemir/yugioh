@@ -13,7 +13,7 @@ import Phaser from 'phaser';
 import type { CardId } from '../../data/cards';
 import { PAL } from '../../art/palette';
 import type { XY } from '../../view/layout';
-import { DEPTH, LANE_COLS, isoToScreen, screenToIso } from '../../view/layout';
+import { BOARD_ROWS, DEPTH, LANE_COLS, isoToScreen, screenToIso } from '../../view/layout';
 import { Raster, qbez, run } from '../../vfx/setpieces';
 import { silhouetteOf, type Silhouette } from '../_v3/spellfx';
 
@@ -156,7 +156,7 @@ export class Collar {
         const n = Math.max(40, R((rx + ry) * 10));
         const lim = (shown / steps) * n;
         const glintAt = L.glint >= 0 ? R(L.glint * n) : -99;
-        const lit = L.tint ?? PAL.void3;
+        const lit = L.tint ?? PAL.void4;
         for (let i = 0; i <= lim; i++) {
           const a = Math.PI / 2 + (i / n) * TAU;
           const x = R(c.x + Math.cos(a) * rx);
@@ -172,13 +172,13 @@ export class Collar {
             const d = fall > 0 ? fall + ((i >> 2) % 2) : 0;
             const stud = (((x - c.x) % 3) + 3) % 3 === 0 && Math.abs(x - c.x) >= 3;
             f.px(x, y - 2 + d, PAL.ink);
-            f.px(x, y - 1 + d, g ? PAL.white : stud ? PAL.gold3 : lit);
-            f.px(x, y + d, g ? PAL.white : stud ? PAL.gold2 : PAL.void2);
-            f.px(x, y + 1 + d, g ? PAL.void4 : PAL.void1);
+            f.px(x, y - 1 + d, g ? PAL.white : stud ? PAL.gold4 : lit);
+            f.px(x, y + d, g ? PAL.white : stud ? PAL.gold2 : PAL.void3);
+            f.px(x, y + 1 + d, g ? PAL.void4 : PAL.void2);
             f.px(x, y + 2 + d, PAL.ink);
           } else if (fall <= 0) {
             b.px(x, y - 2, PAL.ink);
-            b.px(x, y - 1, PAL.void2);
+            b.px(x, y - 1, PAL.void3);
             b.px(x, y, PAL.void1);
             b.px(x, y + 1, PAL.ink);
           }
@@ -423,6 +423,25 @@ export function leashPath(a: XY, b: XY, sag: number): XY[] {
   return out;
 }
 
+/** The whole-pixel, 8-connected pixels of a quadratic curve a → b through the control point c. */
+export function quadPath(a: XY, c: XY, b: XY): XY[] {
+  const len = Math.hypot(c.x - a.x, c.y - a.y) + Math.hypot(b.x - c.x, b.y - c.y);
+  const n = Math.max(2, Math.ceil(len * 1.5));
+  const out: XY[] = [];
+  for (let i = 0; i <= n; i++) {
+    const p = qbez(a, c, b, i / n);
+    const q = { x: R(p.x), y: R(p.y) };
+    const last = out[out.length - 1];
+    if (last && q.x === last.x && q.y === last.y) continue;
+    if (out.length >= 2) {
+      const pp = out[out.length - 2];
+      if (Math.abs(q.x - pp.x) <= 1 && Math.abs(q.y - pp.y) <= 1) out.pop();
+    }
+    out.push(q);
+  }
+  return out;
+}
+
 /** Draw the leash (see LeashLook) into a raster. */
 export function drawLeash(r: Raster, a: XY, b: XY, L: LeashLook): void {
   const pts = leashPath(a, b, L.sag);
@@ -483,9 +502,13 @@ export function drawLeash(r: Raster, a: XY, b: XY, L: LeashLook): void {
  * to the leash card (the `floor` raster, under every unit: whoever stands on it covers it). An ink pixel under
  * the floor part makes it read as a strap lying on the floor. `L.pulse` runs from the card (0) to the collar (1).
  */
-export function drawBond(back: Raster, floor: Raster, hook: XY, ground: XY, card: XY, L: LeashLook): void {
+export function drawBond(back: Raster, floor: Raster, hook: XY, ground: XY, card: XY, L: LeashLook, facingLeft: boolean): void {
   const foot = { x: R(hook.x), y: R(ground.y) };
-  const fl = leashPath(card, foot, L.sag);
+  // on the floor it swings out round the wearer's back side (clear of its stat plate) to the card's near corner
+  const f = facingLeft ? 1 : -1;
+  const end = { x: R(card.x + f * 10), y: R(card.y) };
+  const ctrl = { x: foot.x + f * 46, y: (foot.y + end.y) / 2 };
+  const fl = quadPath(end, ctrl, foot);
   const vert: XY[] = [];
   for (let y = foot.y - 1; y >= R(hook.y); y--) vert.push({ x: foot.x, y });
   const n = fl.length + vert.length;
@@ -512,11 +535,12 @@ export function drawBond(back: Raster, floor: Raster, hook: XY, ground: XY, card
       }
     }
     const d = i - pulseAt;
-    if (L.pulse >= 0 && d <= 0 && d > -4) {
-      // the run: a bright head and a 3-px body behind it, 2 px wide
-      const col = d === 0 ? (L.pulseHead ?? PAL.white) : runC;
+    if (L.pulse >= 0 && d <= 0 && d > -7) {
+      // the run: a bright head and a 6-px body behind it, 2 px wide, a 1-px dark-leaf halo on the far side
+      const col = d >= -1 ? (L.pulseHead ?? PAL.white) : runC;
       c = col;
       r.px(p.x + wx, p.y + wy, col);
+      if (L.pulseColor === PAL.leaf3 && d > -5) r.px(p.x - wx, p.y - wy, PAL.leaf2);
     }
     if (onFloor && !L.hot) r.px(p.x, p.y + 1, PAL.ink);
     r.px(p.x, p.y, c);
@@ -532,27 +556,53 @@ export interface Box {
   y1: number;
 }
 
-const overlap = (a: Box, b: Box): number => Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
+/** Another unit on the board, for the walk's route: its screen box, its opaque pixels and its feet's y. */
+export interface Obstacle extends Box {
+  has(x: number, y: number): boolean;
+  y: number;
+}
+
+/** The walker's opaque pixels (sampled every 2 px) as offsets from its feet. */
+export function walkerMask(sil: Silhouette, groundX: number, groundY: number): XY[] {
+  const out: XY[] = [];
+  for (let y = sil.top; y <= sil.bottom; y += 2) for (let x = sil.left; x <= sil.right; x += 2) if (sil.has(x, y)) out.push({ x: x - groundX, y: y - groundY });
+  return out;
+}
 
 /**
  * The walk's route from one monster zone to another (screen points, whole pixels): a shortest path over the
- * board's cells (the two monster rows and the free lane between them) that keeps the walker's box (w × h, its
- * feet at the point) off every other unit's box, then pulled straight wherever a straight line is as clean.
- * On an empty board it is the straight line; on a crowded one it steps out into the free lane, walks along it
- * and steps back in.
+ * board's cells (the monster rows, the free lane between them and one row beyond) that keeps the walker's
+ * pixels off every other unit's pixels, then pulled straight wherever a straight line is as clean. Covering a
+ * unit while walking IN FRONT of it costs four times more than passing behind one (a dark figure with gaps
+ * over a lit body is the mush; a lit body in front of the shadow reads as depth). On an empty board it is the
+ * straight line; on a crowded one it steps out into the free lane, walks along it and steps back in.
  */
-export function planRoute(from: XY, to: XY, obstacles: readonly Box[], w: number, h: number): XY[] {
+export function planRoute(from: XY, to: XY, obstacles: readonly Obstacle[], mask: readonly XY[]): XY[] {
   const a = screenToIso(from.x, from.y);
   const b = screenToIso(to.x, to.y);
   const c0 = LANE_COLS[0];
   const c1 = LANE_COLS[LANE_COLS.length - 1];
-  const r0 = Math.min(R(a.row), R(b.row));
-  const r1 = Math.max(R(a.row), R(b.row));
-  const area = Math.max(1, w * h);
+  const r0 = Math.max(0, Math.min(R(a.row), R(b.row)) - 1);
+  const r1 = Math.min(BOARD_ROWS - 1, Math.max(R(a.row), R(b.row)) + 1);
+  const area = Math.max(1, mask.length);
+  let mx0 = 0;
+  let mx1 = 0;
+  let my0 = 0;
+  for (const m of mask) {
+    mx0 = Math.min(mx0, m.x);
+    mx1 = Math.max(mx1, m.x);
+    my0 = Math.min(my0, m.y);
+  }
   const pen = (p: XY): number => {
-    const bx = { x0: p.x - w / 2, y0: p.y - h, x1: p.x + w / 2, y1: p.y };
     let s = 0;
-    for (const o of obstacles) s += overlap(bx, o) / area;
+    const px = R(p.x);
+    const py = R(p.y);
+    for (const o of obstacles) {
+      if (px + mx1 < o.x0 || px + mx0 > o.x1 || py < o.y0 || py + my0 > o.y1) continue;
+      let hits = 0;
+      for (const m of mask) if (o.has(px + m.x, py + m.y)) hits++;
+      s += (hits / area) * (py >= o.y ? 4 : 1);
+    }
     return s;
   };
   const segCost = (p: XY, q: XY): number => {
@@ -561,7 +611,7 @@ export function planRoute(from: XY, to: XY, obstacles: readonly Box[], w: number
     let c = 0;
     for (let i = 1; i <= ns; i++) {
       const k = i / ns;
-      c += (len / ns / 32) * (1 + 12 * pen({ x: p.x + (q.x - p.x) * k, y: p.y + (q.y - p.y) * k }));
+      c += (len / ns / 32) * (1 + 6 * pen({ x: p.x + (q.x - p.x) * k, y: p.y + (q.y - p.y) * k }));
     }
     return c;
   };

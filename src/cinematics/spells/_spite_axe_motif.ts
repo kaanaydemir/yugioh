@@ -28,7 +28,7 @@ export interface AxeOpts {
   mirror?: boolean;
   /** Vein wave position along the haft: -1 none, 0..3 head → butt. */
   pulse?: number;
-  /** Crack glow 0 (dim) … 3 (white-hot core). */
+  /** Crack glow 0 (dim) … 3 (fire4 core); 4 = impact: the cracks burn white-cored, the rivet white. */
   heat?: number;
   /** 'hot' white silhouette (impact frame), 'ember' fire silhouette (collapse), 'cool' gold4-free plain. */
   look?: AxeLook;
@@ -178,7 +178,7 @@ export function axeMotif(o: AxeOpts): Motif {
   const W = Math.ceil(x1) + ox + 4;
   const H = Math.ceil(y1) + oy + 4;
   const p = new PixelCanvas(W, H);
-  const heat = Math.max(0, Math.min(3, o.heat ?? 1));
+  const heat = Math.max(0, Math.min(4, o.heat ?? 1));
   const pulse = o.pulse ?? -1;
   // which part each pixel is (for the lit edge pass)
   const iron = new Uint8Array(W * H);
@@ -193,12 +193,17 @@ export function axeMotif(o: AxeOpts): Motif {
       if (inPoly(u, v, BLADE)) {
         metal = true;
         const de = lineDist(u, v, EDGE);
-        c = de < (sm ? 1.6 : 1.1) ? PAL.stone3 : de < (sm ? 2.2 : 2.6) ? PAL.stone2 : u < -9.5 ? PAL.stone0 : PAL.stone1;
+        c = sm && de < 0.9 ? PAL.stone4 : de < (sm ? 1.6 : 1.1) ? PAL.stone3 : de < (sm ? 2.2 : 2.6) ? PAL.stone2 : u < -9.5 ? PAL.stone0 : PAL.stone1;
         // the ember cracks (the small drawing keeps the two long ones)
         for (let i = 0; i < CRACKS.length; i++) {
           if (sm && i === 2) continue;
           const dc = lineDist(u, v, CRACKS[i]);
-          if (dc < (sm ? 0.95 : 0.62)) c = EMBER[Math.min(3, heat + (i === 0 && dc < 0.35 ? 1 : 0))];
+          if (heat >= 4) {
+            // impact: every crack burns, white at its core, a fire3 seam round it (wider than the cold crack)
+            if (dc < (sm ? 0.5 : 0.36)) c = PAL.white;
+            else if (dc < (sm ? 0.95 : 0.75)) c = PAL.fire4;
+            else if (dc < (sm ? 1.2 : 1.05) && c !== PAL.stone3) c = PAL.fire3;
+          } else if (dc < (sm ? 0.95 : 0.62)) c = EMBER[Math.min(3, heat + (i === 0 && dc < 0.35 ? 1 : 0))];
         }
       } else if (inPoly(u, v, SPIKE)) {
         metal = true;
@@ -207,14 +212,14 @@ export function axeMotif(o: AxeOpts): Motif {
         // the cheek round the haft, its ember rivet
         metal = true;
         c = u > 2 ? PAL.stone3 : PAL.stone2;
-        if (Math.abs(u + 2) < (sm ? 1.3 : 1.0) && Math.abs(v) < (sm ? 1.3 : 1.0)) c = EMBER[Math.min(3, heat + 1)];
+        if (Math.abs(u + 2) < (sm ? 1.3 : 1.0) && Math.abs(v) < (sm ? 1.3 : 1.0)) c = heat >= 4 ? PAL.white : EMBER[Math.min(3, heat + 1)];
       } else if (u >= -HAFT && u < -7 && Math.abs(v) <= (sm ? 1.9 : 1.6)) {
         // the haft: dark wood, a lit line, a shade line; the veins
         c = v < -0.7 ? PAL.earth2 : v > 0.7 ? PAL.earth0 : PAL.earth1;
         const veinV = Math.sin(u * 0.55) * 0.9;
         if (Math.abs(v - veinV) < (sm ? 0.75 : 0.5)) {
           const wave = pulse < 0 ? Infinity : Math.abs(u - (-9 - pulse * 6.5));
-          c = wave < 2.5 ? PAL.fire3 : wave < 5 ? PAL.crim3 : PAL.crim1;
+          c = heat >= 4 ? PAL.fire3 : wave < 2.5 ? PAL.fire3 : wave < 5 ? PAL.crim3 : PAL.crim1;
         }
         for (const w of WRAPS) {
           const dw = u - w;
