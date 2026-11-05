@@ -30,7 +30,7 @@ export function perWeight(x: PerWeight, w: HitWeight): number {
 }
 
 /** The ring kinds this module can play (the others are A4's: their first material brings the interpreter). */
-export const RING_KINDS: readonly RingKind[] = Object.freeze(['bar', 'fm', 'flutter', 'rumble'] as const);
+export const RING_KINDS: readonly RingKind[] = Object.freeze(['bar', 'fm', 'flutter', 'rumble', 'crackle'] as const);
 
 /** The material's own ring at relative time t, level k (the weight's scale). */
 function ring(v: Voice, s: RingSpec, t: number, k: number, w: HitWeight): void {
@@ -74,6 +74,20 @@ function ring(v: Voice, s: RingSpec, t: number, k: number, w: HitWeight): void {
       if (w === 'Heavy') v.bursts([0.09, 0.16, 0.26, 0.37], [0.14 * k, 0.1 * k, 0.07 * k, 0.05 * k], { t, dec: 0.012, f: 2400, q: 2.2 });
       return;
     }
+    case 'crackle': {
+      // ash / acid (lane A): no ring — a dry train of tiny high clicks (embers spitting, a hide fizzing
+      // where it is struck), front-loaded and thinning; optionally a short tonal knock under it (acid's
+      // wet low knock) and, on a heavy blow, two rattle clicks. Nothing in the mid band (not cloth's
+      // flap), no brown grind (not stone's), nothing that rings (not glass / metal).
+      const light = w === 'Light';
+      const magic = w === 'Magic';
+      const dec = s.dec ?? [0.25, 0.4];
+      const d = light ? perWeight(dec, 'Light') : magic ? perWeight(dec, 'Heavy') * 0.6 : perWeight(dec, 'Heavy');
+      v.crackle({ t: t + 0.004, d, n: Math.max(1, Math.round(s.rate * d)), g: (light ? 0.1 : 0.08) * k, f: s.hp, q: 0.9, dec: 0.003, curve: 1.3 });
+      if (s.knock) v.tone('sine', [[0, light ? s.knock * 1.25 : s.knock], [0.06, s.knock * 0.5, 'e']], { t, g: perc((light ? 0.2 : 0.3) * k, light ? 0.05 : 0.09, 0.002) });
+      if (s.rattle && w === 'Heavy') v.bursts([0.05, 0.11], [0.12 * k, 0.07 * k], { t, dec: 0.004, f: s.rattle, q: 1.4 });
+      return;
+    }
     default:
       throw new Error(`audio/v3/materials: ring kind '${s.kind}' has no interpreter yet`);
   }
@@ -115,8 +129,13 @@ export function materialHitRecipe(S: MaterialSound, w: HitWeight): Recipe {
 
 // ================================================================ the generated set
 
-/** New struck-body materials whose hit recipes are made here (the slice's three live in slice.ts). */
-export const GENERATED_HIT_MATERIALS = ['stone'] as const;
+/**
+ * New struck-body materials whose hit recipes are made here (the slice's three live in slice.ts).
+ * Lane A adds ash (ashen_drake), venomscale (venom_drake) and hatchhide (cloud_hatchling): the names
+ * hit<Material><Weight> exist from now on; a blow plays them when the definition's `sound` is its own
+ * (hitSfxName follows `sound.same`: hatchhide still sounds like cloth until its own parameters land).
+ */
+export const GENERATED_HIT_MATERIALS = ['stone', 'ash', 'venomscale', 'hatchhide'] as const;
 export type GeneratedHitMaterial = (typeof GENERATED_HIT_MATERIALS)[number];
 
 /** The names this module adds to SfxName: hit<Material><Light|Heavy|Magic>. */

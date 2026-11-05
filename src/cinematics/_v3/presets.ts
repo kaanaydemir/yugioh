@@ -40,9 +40,9 @@ export const DEATH_PRESETS: Record<MonsterId, DeathPreset> = {
   // expanded roster, batch 1 (placeholder flavours until each monster gets its own)
   dusk_sorcerer: { material: 'shadow', accent: 'shadow' },
   ashen_drake: { material: 'shadow', accent: 'fire' },
-  grim_warden: { material: 'shadow', accent: 'crystal' },
+  grim_warden: { material: 'shadow', accent: 'shadow' },
   venom_drake: { material: 'plant', accent: 'shadow' },
-  wisp_imp: { material: 'shadow', accent: 'shadow' },
+  wisp_imp: { material: 'light', accent: 'shadow' }, // R3 feathers drift up and flutter (never dragged down); white-gold matter, void accent
   steel_silencer: { material: 'stone', accent: 'crystal' },
   seal_head: { material: 'shadow', accent: 'crystal' },
   seal_arm_r: { material: 'shadow', accent: 'crystal' },
@@ -59,11 +59,11 @@ export const DEATH_PRESETS: Record<MonsterId, DeathPreset> = {
   cloud_hatchling: { material: 'plant', accent: 'light' },
   reflection_archer: { material: 'crystal', accent: 'light' },
   scrap_raiders: { material: 'stone', accent: 'fire' },
-  hollow_ogre: { material: 'plant', accent: 'stone' },
+  hollow_ogre: { material: 'plant', accent: 'plant' }, // C6 roots unravel into the tile, one sprout wilts (stone/ash endings are reserved, §5.2)
   crag_axeman: { material: 'light', accent: 'light' }, // §5.2: never a stone end — its own split death (kartc/crag_axeman-death.ts) draws the body
   reed_heron: { material: 'water', accent: 'plant' },
   kite_fencer: { material: 'plant', accent: 'light' },
-  mudgrasp_spirit: { material: 'stone', accent: 'shadow' },
+  mudgrasp_spirit: { material: 'water', accent: 'shadow' }, // C10 liquefies back into its puddle (stone/ash endings are reserved, §5.2)
   steppe_spiralhorn: { material: 'light', accent: 'plant' },
   polar_needle: { material: 'stone', accent: 'crystal' },
   polar_anvil: { material: 'stone', accent: 'crystal' },
@@ -97,6 +97,10 @@ export const MATTER_RAMP: Record<ShatterMaterial, Ramp> = {
   plant: RAMPS.leaf,
   fire: RAMPS.fire,
   water: RAMPS.water,
+  // lane A (additive): ash keeps the stone greys (fire1 is darker than stone3, so no ember on top: the
+  // ramp must climb in value); acid is venom's matter — the dark hide eaten into the green
+  ash: RAMPS.stone,
+  acid: [PAL.void0, PAL.void1, PAL.leaf1, PAL.leaf2, PAL.leaf3],
 };
 
 /** The tones of one matter (a recipe's `summon.matter`, A3). */

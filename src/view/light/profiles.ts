@@ -72,9 +72,13 @@ export const MONSTER_GLOW: Record<MonsterId, MonsterGlow> = {
   // expanded roster, batch 1 (attribute-coloured placeholder glow)
   dusk_sorcerer: { emissive: [T(PAL.void4, 1), T(PAL.mag4, 1), T(PAL.white, 0.8), T(PAL.void3, 0.4)], halo: 0.6, pool: 0.9 },
   ashen_drake: { emissive: [T(PAL.void4, 1), T(PAL.mag3, 0.7), T(PAL.white, 0.7), T(PAL.fire3, 0.4)], halo: 0.6, pool: 0.9 },
-  grim_warden: { emissive: [T(PAL.void4, 1), T(PAL.white, 1), T(PAL.mag4, 1), T(PAL.void3, 0.7)], halo: 0.6, pool: 0.9 },
+  // R2 lantern warden: only the soul fire (lantern flame + glass core) and the cage eye glow (leaf4 / leaf3 are
+  // lights-only in the rig; white only as the flame heart at full flare); the glass body (leaf2) glows only next to the flame
+  grim_warden: { emissive: [T(PAL.leaf4, 1), T(PAL.leaf3, 0.7), T(PAL.white, 0.8)], near: [T(PAL.leaf2, 0.45)], halo: 0.7, pool: 1.05, spill: PAL.leaf3 },
   venom_drake: { emissive: [T(PAL.leaf4, 1), T(PAL.leaf3, 0.7), T(PAL.white, 0.6), T(PAL.void4, 0.8)], halo: 0.6, pool: 0.9 },
-  wisp_imp: { emissive: [T(PAL.void4, 1), T(PAL.white, 0.8), T(PAL.mag4, 0.8)], halo: 0.6, pool: 0.9 },
+  // R3 Down Wisp: only the two gold dot eyes glow (gold4 glint / gold3 dot / gold2 lower row: gold is lights-only in
+  // the rig). The body is white / mist / steel / lilac void4 feathers, so white, mist and void4 are never emissive.
+  wisp_imp: { emissive: [T(PAL.gold4, 1), T(PAL.gold3, 0.8), T(PAL.gold2, 0.3)], halo: 0.5, pool: 0.85 },
   steel_silencer: { emissive: [T(PAL.crim4, 1), T(PAL.crim3, 0.7), T(PAL.white, 0.6), T(PAL.void4, 0.7)], halo: 0.6, pool: 0.9 },
   seal_head: { emissive: [T(PAL.mag4, 1), T(PAL.void4, 1), T(PAL.white, 0.8)], halo: 0.6, pool: 0.9 },
   seal_arm_r: { emissive: [T(PAL.mag4, 1), T(PAL.void4, 1), T(PAL.white, 0.7)], halo: 0.6, pool: 0.9 },
@@ -91,11 +95,11 @@ export const MONSTER_GLOW: Record<MonsterId, MonsterGlow> = {
   cloud_hatchling: { emissive: [T(PAL.leaf4, 1), T(PAL.white, 0.8), T(PAL.leaf3, 0.4)], halo: 0.6, pool: 0.9 },
   reflection_archer: { emissive: [T(PAL.gold4, 1), T(PAL.white, 1), T(PAL.gold3, 0.6)], halo: 0.6, pool: 0.9 },
   scrap_raiders: { emissive: [T(PAL.fire4, 1), T(PAL.fire3, 0.7), T(PAL.white, 0.7)], halo: 0.6, pool: 0.9 },
-  hollow_ogre: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
+  hollow_ogre: { emissive: [T(PAL.gold4, 1), T(PAL.gold3, 0.75), T(PAL.void4, 0.9), T(PAL.void3, 0.6)], halo: 0.55, pool: 0.85, spill: PAL.gold3 }, // ember eyes (gold3/4) + knot lights / seeds (void3/4): lights only, never body tones
   crag_axeman: { emissive: [T(PAL.white, 0.6)], halo: 0.4, pool: 0.6 }, // the axe edge and the eyes; the real light is the floor seam (kartc/crag_axeman-yarik.ts)
   reed_heron: { emissive: [T(PAL.gold4, 1), T(PAL.white, 0.5)], halo: 0.3, pool: 0.4 }, // C8: the dimmest presence (eye + beak glint only)
   kite_fencer: { emissive: [T(PAL.gold4, 1), T(PAL.white, 0.6)], halo: 0.5, pool: 0.6 }, // C9: the lit indicator panel + the rapier tip (no leaf tones: C11's)
-  mudgrasp_spirit: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
+  mudgrasp_spirit: { emissive: [T(PAL.void4, 1), T(PAL.void3, 0.75), T(PAL.white, 0.7)], near: [T(PAL.void2, 0.3)], halo: 0.55, pool: 0.85, spill: PAL.void3 }, // C10: only the eyes, mouth glow, veins and vortex core (void2–4 / white are lights-only in the rig)
   steppe_spiralhorn: { emissive: [T(PAL.gold4, 1), T(PAL.leaf4, 0.5)], halo: 0.5, pool: 0.7 },
   polar_needle: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
   polar_anvil: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },

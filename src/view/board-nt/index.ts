@@ -35,7 +35,7 @@ import { createWallLayer } from './wall';
 type Img = Phaser.GameObjects.Image;
 
 /** Which parts of the calm arena the Neon Tower layers have replaced so far (skeleton: none). */
-export const NT_SKIP: NonNullable<BoardViewCalmOptions['skip']> = { background: true, slabImage: true, trims: true };
+export const NT_SKIP: NonNullable<BoardViewCalmOptions['skip']> = { background: true, slabImage: true, trims: true, pads: true };
 
 export class BoardViewNt implements ArenaViewApi {
   readonly scene: Phaser.Scene;
@@ -51,10 +51,12 @@ export class BoardViewNt implements ArenaViewApi {
     this.calm = new BoardViewCalm(scene, { ...opts, skip: { ...NT_SKIP, ...opts.skip } });
     const ctx = makeCtx(scene, this.objs);
     // far → near (the order is only bookkeeping: depth comes from NT_DEPTH)
+    // owner decision 2026-11-02: no spectators / seats / grandstands in the hall (stands + crowd layers off);
+    // the hall floor, walls, fog and torches stay. createStandsLayer / createCrowdLayer are kept for a later return.
+    void createStandsLayer;
+    void createCrowdLayer;
     this.layers = [
       createWallLayer(ctx),
-      createStandsLayer(ctx),
-      createCrowdLayer(ctx),
       createScreensLayer(ctx),
       createHologramsLayer(ctx),
       createPlatformLayer(ctx),

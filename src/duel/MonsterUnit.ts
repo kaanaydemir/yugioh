@@ -47,7 +47,7 @@ import { CARDS, isMonster, type Attribute, type MonsterCardDef, type MonsterId }
 import { monsterArt } from '../art/monsters';
 import { PAL } from '../art/palette';
 import { PixelCanvas } from '../art/pixel';
-import { monsterAnimKey, monsterFrame, monsterFrameName, monsterP2TextureKey, monsterSheetKey, monsterTextureKey, warmMonsterSheet } from '../art/textures';
+import { artFrame, monsterAnimKey, monsterFrame, monsterFrameName, monsterP2TextureKey, monsterSheetKey, monsterTextureKey, warmMonsterSheet } from '../art/textures';
 import type { AnimMark, AnimSpec, AnyMonsterAnim, MonsterAnim, MonsterArt } from '../art/types';
 import { animLengthMs, animSpec, artMarkFrame, frameMs as specFrameMs, frameStartMs, impactFrame as artImpactFrame, impactMs as artImpactMs, rangeMs as specRangeMs } from '../art/animtime';
 import type { PlayerId, Position, Uid } from '../engine/types';
@@ -185,7 +185,7 @@ export class UnitSprite extends Phaser.GameObjects.Sprite {
   syncSheet(): void {
     const u = this.unit;
     const cur = this.texture?.key;
-    if (!u || !this.scene || !this.frame || cur === u.sheetKey || (cur !== u.p1Key && cur !== u.p2Key)) return;
+    if (!u || !this.scene || !this.frame || cur === u.sheetKey || !u.ownsKey(cur)) return;
     const name = this.frame.name;
     const tex = this.scene.textures.get(u.sheetKey);
     if (!tex.has(name)) return;
@@ -365,7 +365,8 @@ export class MonsterUnit {
   readonly uid: Uid;
   readonly cardId: MonsterId;
   readonly card: MonsterCardDef;
-  readonly art: MonsterArt;
+  /** The art the unit draws (monsterArt(cardId); a variant's art after setArt, src/duel/unit-variant.ts). */
+  art: MonsterArt;
   readonly attribute: Attribute;
   readonly sprite: Phaser.GameObjects.Sprite;
   readonly shadow: Phaser.GameObjects.Image;
@@ -398,11 +399,23 @@ export class MonsterUnit {
    * controls a monster that has a P2 relight sheet, else `mon:<id>`. Set by applyFacing.
    */
   sheetKey: string;
+  /** The sheet the unit's anim keys point at (`mon:<id>`, or a variant's P1 sheet): see animKey / ownsKey. */
+  animSheetKey: string;
+  // ---- variant hooks (lane A shared infrastructure; installed by src/duel/unit-variant.ts in the v3
+  // look only). Each returns null / does nothing for a unit without a variant: today's code path.
+  /** The sheet the unit shows instead of monsterSheetKey(cardId, player) (applyFacing). */
+  static sheetFor?: (u: MonsterUnit) => string | null;
+  /** The sheet its anim keys point at instead of `mon:<id>` (applyFacing). */
+  static animSheetFor?: (u: MonsterUnit) => string | null;
+  /** The anim key of `anim` instead of monsterAnimKey(cardId, anim). */
+  static animKeyFor?: (u: MonsterUnit, anim: AnyMonsterAnim) => string | null;
+  /** Called once as the last step of the constructor (every construction path). */
+  static onBuilt?: (u: MonsterUnit) => void;
   private readonly auras = new Map<string, Disposable>();
   private shown = true;
   private playToken = 0;
   private readonly waiters: (() => void)[] = [];
-  private readonly shadowBase: number;
+  private shadowBase: number;
   private readonly updateFn: () => void;
   /** Guard-hit knock-back in progress: the spot it springs back to, and its token. */
   private kbBase: XY | null = null;
@@ -431,6 +444,7 @@ export class MonsterUnit {
     this.p1Key = monsterTextureKey(o.cardId);
     this.p2Key = monsterP2TextureKey(o.cardId);
     this.sheetKey = this.p1Key;
+    this.animSheetKey = this.p1Key;
     const home = this.home;
     const rx = shadowRx(o.cardId);
     this.shadowBase = this.art.hover > 0 ? Math.max(0.55, 1 - this.art.hover / 30) : 1;
@@ -454,6 +468,35 @@ export class MonsterUnit {
     this.updateFn = () => this.update();
     scene.events.on(Phaser.Scenes.Events.POST_UPDATE, this.updateFn);
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroy());
+    MonsterUnit.onBuilt?.(this);
+  }
+
+  /** The anim key of `anim` for this unit (a variant's own keys, else `mon:<id>:<anim>`). */
+  private animKey(anim: AnyMonsterAnim): string {
+    return MonsterUnit.animKeyFor?.(this, anim) ?? monsterAnimKey(this.cardId, anim);
+  }
+
+  /** Is `k` one of this unit's own sheets (P1 / P2 / the shown one / its anim keys' one)? UnitSprite.syncSheet moves only these. */
+  ownsKey(k: string | undefined): boolean {
+    return k === this.p1Key || k === this.p2Key || k === this.sheetKey || k === this.animSheetKey;
+  }
+
+  /**
+   * Swap the unit's art (a variant, src/duel/unit-variant.ts setUnitVariant): the drop shadow is
+   * re-keyed from the new idle silhouette, the sheet follows (applyFacing), and a resting loop
+   * restarts on the new anim keys (a held / one-shot frame moves to the new sheet by name).
+   */
+  setArt(art: MonsterArt): void {
+    if (art === this.art) return;
+    this.art = art;
+    const b = artFrame(art, 'idle', 0).bounds();
+    const rx = Math.max(7, Math.round((b ? b.w : 24) * 0.36));
+    this.shadowBase = art.hover > 0 ? Math.max(0.55, 1 - art.hover / 30) : 1;
+    if (this.shadow.active) this.shadow.setTexture(shadowKey(this.scene, rx));
+    if (!this.sprite.active) return;
+    this.applyFacing();
+    const cur = this.frameInfo().anim;
+    if (this.sprite.anims.isPlaying && (cur === 'idle' || cur === 'guard') && !this.locked) this.rest();
   }
 
   // ================================================================ geometry
@@ -509,7 +552,7 @@ export class MonsterUnit {
         return { x: p.x, y: p.y + a.hover + this.lift };
       }
       case 'top': {
-        const b = monsterFrame(this.cardId, 'idle', 0).bounds();
+        const b = artFrame(this.art, 'idle', 0).bounds();
         const top = b ? b.y : 0;
         return this.framePoint(a.core.x, top);
       }
@@ -530,7 +573,7 @@ export class MonsterUnit {
   rest(randomStart = false): void {
     if (!this.sprite.active || this.locked) return;
     const anim: MonsterAnim = this.position === 'defense' ? 'guard' : 'idle';
-    const key = monsterAnimKey(this.cardId, anim);
+    const key = this.animKey(anim);
     if (!this.scene.anims.exists(key)) return;
     const n = this.art.anims[anim].frames;
     this.sprite.play({ key, repeat: -1, startFrame: randomStart ? Math.floor(rnd() * n) : 0 });
@@ -548,7 +591,7 @@ export class MonsterUnit {
   play(anim: AnyMonsterAnim, opts: PlayOpts = {}): Promise<void> {
     if (this.locked) return Promise.resolve();
     if (opts.fallback && !this.has(anim) && this.has(opts.fallback)) anim = opts.fallback;
-    const key = monsterAnimKey(this.cardId, anim);
+    const key = this.animKey(anim);
     const spec = this.spec(anim);
     if (!spec || !this.scene.anims.exists(key) || !this.sprite.active) return Promise.resolve();
     if (isHitAnim(anim) && this.guarding) return this.guardHit(opts);
@@ -593,7 +636,7 @@ export class MonsterUnit {
   playRange(anim: AnyMonsterAnim, from = 0, to?: number, o: PlayRangeOpts = {}): Promise<void> {
     if (this.locked) return Promise.resolve();
     const s = this.sprite;
-    const key = monsterAnimKey(this.cardId, anim);
+    const key = this.animKey(anim);
     const spec = this.spec(anim);
     if (!spec || !s.active || !this.scene.anims.exists(key)) return Promise.resolve();
     const last = spec.frames - 1;
@@ -664,7 +707,7 @@ export class MonsterUnit {
   /** Resolve when the current animation `anim` reaches `frame` (0-based). Starts it if needed. */
   playToFrame(anim: AnyMonsterAnim, frame: number): Promise<void> {
     if (this.locked) return Promise.resolve();
-    const key = monsterAnimKey(this.cardId, anim);
+    const key = this.animKey(anim);
     const spec = this.spec(anim);
     if (!spec || !this.scene.anims.exists(key) || !this.sprite.active) return Promise.resolve();
     if (isHitAnim(anim) && this.guarding) {
@@ -804,7 +847,7 @@ export class MonsterUnit {
 
   /** True while hits are answered from the guard pose (defense position, live, has a guard anim). */
   get guarding(): boolean {
-    return this.position === 'defense' && !this.guardBroken && !this.retired && this.sprite.active && this.scene.anims.exists(monsterAnimKey(this.cardId, 'guard'));
+    return this.position === 'defense' && !this.guardBroken && !this.retired && this.sprite.active && this.scene.anims.exists(this.animKey('guard'));
   }
 
   /** Is `key` (a play() argument) this unit's 'hit' animation? */
@@ -817,7 +860,7 @@ export class MonsterUnit {
     const k = typeof key === 'string' ? key : key instanceof Phaser.Animations.Animation ? key.key : key?.key;
     const name = typeof k === 'string' ? k : k instanceof Phaser.Animations.Animation ? k.key : null;
     if (name === null) return null;
-    for (const a of HIT_ANIMS) if (name === monsterAnimKey(this.cardId, a)) return a;
+    for (const a of HIT_ANIMS) if (name === this.animKey(a)) return a;
     return null;
   }
 
@@ -908,7 +951,7 @@ export class MonsterUnit {
   guardHitFromSprite(hit: AnyMonsterAnim = 'hit'): void {
     void this.guardHit();
     const s = this.sprite;
-    const key = monsterAnimKey(this.cardId, hit);
+    const key = this.animKey(hit);
     const anim = this.scene.anims.get(key);
     void wait(this.scene, this.animMs(hit)).then(() => {
       if (s.active) s.emit(Phaser.Animations.Events.ANIMATION_COMPLETE_KEY + key, anim, anim?.frames[anim.frames.length - 1], s, '');
@@ -1197,8 +1240,10 @@ export class MonsterUnit {
   private applyFacing(): void {
     const a = this.art;
     const flip = this.flipX;
-    const key = monsterSheetKey(this.cardId, this.player);
-    this.sheetKey = key !== this.p1Key && this.scene.textures.exists(key) ? key : this.p1Key;
+    const vk = MonsterUnit.sheetFor?.(this) ?? null;
+    const key = vk ?? monsterSheetKey(this.cardId, this.player);
+    this.sheetKey = vk ?? (key !== this.p1Key && this.scene.textures.exists(key) ? key : this.p1Key);
+    this.animSheetKey = MonsterUnit.animSheetFor?.(this) ?? this.p1Key;
     // v3: the poses a blow may need are painted first, in the background, as the unit takes the
     // field (A2 tech review r2 #12: never painted synchronously on a contact frame)
     if (LOOK_V3) warmMonsterSheet(this.sheetKey, WARM_ON_FIELD);

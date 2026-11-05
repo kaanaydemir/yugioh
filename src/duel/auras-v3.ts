@@ -19,7 +19,6 @@
 import type Phaser from 'phaser';
 import { PAL } from '../art/palette';
 import { greatSwordMotif, paintFlameTongue, swordMotif, type Motif } from '../art/spellmotifs-v3';
-import { monsterFrame } from '../art/textures';
 import { fxCount, fxRng, motifImage, setMotif, shards, silhouetteOf, steamEmitter, swordKey } from '../cinematics/_v3/spellfx';
 import { DEPTH, type XY } from '../view/layout';
 import { lightPool, type LightHandle } from '../view/light';
@@ -28,6 +27,7 @@ import { Sparks as PxSparks } from '../vfx/combat';
 import { Raster, onFrame } from '../vfx/setpieces';
 import type { Disposable } from './types';
 import type { MonsterUnit } from './MonsterUnit';
+import { unitFrame, variantTag } from './unit-variant';
 
 /** Where the three tongues stand along the silhouette's width, and which one burns behind the body. */
 const TONGUES: readonly { at: number; behind: boolean; lift: number }[] = [
@@ -271,10 +271,10 @@ export function anchorFromFrame(
 export function equipAnchor(unit: MonsterUnit): EquipAnchor {
   const anim = unit.position === 'defense' ? 'guard' : 'idle';
   const flip = unit.player === 1;
-  const key = `${unit.cardId}:${anim}:${flip ? 1 : 0}`;
+  const key = `${unit.cardId}${variantTag(unit)}:${anim}:${flip ? 1 : 0}`;
   let r = anchorCache.get(key);
   if (!r) {
-    r = anchorFromFrame(monsterFrame(unit.cardId, anim, 0), unit.art, flip);
+    r = anchorFromFrame(unitFrame(unit, anim, 0), unit.art, flip);
     anchorCache.set(key, r);
   }
   return r;

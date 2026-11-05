@@ -321,8 +321,11 @@ describe('material library: the slice materials equal the slice tables', () => {
 
 describe('material sounds: the generated recipes', () => {
   it('stone × Light / Heavy / Magic, under hit<Material><Weight>, without touching an existing name', () => {
-    expect(GENERATED_HIT_MATERIALS).toEqual(['stone']);
-    expect(Object.keys(V3_MATERIAL_RECIPES).sort()).toEqual(['hitStoneHeavy', 'hitStoneLight', 'hitStoneMagic']);
+    // lane A (docs/v3/oturum-a.md "Shared infrastructure"): ash, venomscale, hatchhide join the pilot's stone
+    expect(GENERATED_HIT_MATERIALS).toEqual(['stone', 'ash', 'venomscale', 'hatchhide']);
+    expect(Object.keys(V3_MATERIAL_RECIPES).sort()).toEqual(
+      ['hitStoneHeavy', 'hitStoneLight', 'hitStoneMagic', 'hitAshHeavy', 'hitAshLight', 'hitAshMagic', 'hitVenomscaleHeavy', 'hitVenomscaleLight', 'hitVenomscaleMagic', 'hitHatchhideHeavy', 'hitHatchhideLight', 'hitHatchhideMagic'].sort(),
+    );
     for (const [name, r] of Object.entries(V3_MATERIAL_RECIPES)) {
       expect(Object.keys(V3_RECIPES), name).not.toContain(name);
       expect((RECIPES as Record<string, Recipe>)[name], name).toBe(r);
@@ -398,5 +401,34 @@ describe('material library: verified definitions are frozen', () => {
     const ids = Object.keys(have).filter((k) => !k.startsWith('_'));
     expect(ids.sort(), 'every verified definition is in the golden file, and only those').toEqual(verified.map((d) => d.id).sort());
     for (const d of verified) expect(now[d.id], `${d.id} changed: a verified material is frozen (make ${d.id}@2)`).toBe(have[d.id]);
+  });
+});
+
+describe('material sounds: the crackle ring (lane A: ash, venomscale)', () => {
+  const traceOf = (id: string, w: HitWeight) => JSON.stringify(trace((v) => materialHitRecipe(soundOf(id), w).play(v)));
+
+  it('is interpretable, deterministic, ringless (no bell / FM) and distinct per weight and per material', () => {
+    expect(RING_KINDS).toContain('crackle');
+    for (const id of ['ash', 'venomscale']) {
+      expect(soundOf(id).ring.kind, id).toBe('crackle');
+      const t: Record<string, string> = {};
+      for (const w of WEIGHTS) {
+        t[w] = traceOf(id, w);
+        expect(t[w], `${id} ${w}`).toBe(traceOf(id, w));
+        expect(t[w], `${id} ${w}`).not.toMatch(/"bell"/);
+      }
+      expect(new Set(Object.values(t)).size, id).toBe(3);
+    }
+    for (const w of WEIGHTS) expect(traceOf('ash', w), w).not.toBe(traceOf('venomscale', w));
+    for (const w of WEIGHTS) expect(traceOf('ash', w), w).not.toBe(traceOf('stone', w));
+  });
+
+  it('hitSfxName: ash and venomscale play their own generated hits, hatchhide still plays cloth (sound.same)', () => {
+    for (const w of WEIGHTS) {
+      expect(hitSfxName('ash', w)).toBe(`hitAsh${w}`);
+      expect(hitSfxName('venomscale', w)).toBe(`hitVenomscale${w}`);
+      expect(hitSfxName('hatchhide', w)).toBe(`hitCloth${w}`);
+      for (const n of [`hitAsh${w}`, `hitVenomscale${w}`, `hitHatchhide${w}`]) expect((RECIPES as Record<string, Recipe>)[n], n).toBe((V3_MATERIAL_RECIPES as Record<string, Recipe>)[n]);
+    }
   });
 });
