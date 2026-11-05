@@ -447,7 +447,7 @@ class Curls {
           this.list.splice(i, 1);
           continue;
         }
-        c.vy += 300 * s;
+        c.vy += 900 * s;
         c.vx *= Math.exp(-1.6 * s);
         c.x += c.vx * s;
         c.y += c.vy * s;
@@ -847,7 +847,7 @@ async function signature(ctx: AnyCtx, s: SigArgs): Promise<void> {
         x: floor.x + side * 4,
         y: Math.round(tipY) + 2,
         vx: side * (55 + rnd() * 85),
-        vy: -(50 + rnd() * 80),
+        vy: -(70 + rnd() * 90),
         rot: rnd() * 6.28,
         vr: side * (8 + rnd() * 10),
         size: 2 + Math.floor(rnd() * 2 + t * 2),
@@ -919,7 +919,7 @@ async function signature(ctx: AnyCtx, s: SigArgs): Promise<void> {
         x: holeAt.x + Math.round(Math.cos(a) * 5),
         y: holeAt.y + Math.round(Math.sin(a) * 2),
         vx: Math.cos(a) * (60 + rnd() * 50),
-        vy: -(140 + rnd() * 70) + fountain * 4,
+        vy: -(190 + rnd() * 80) + fountain * 4,
         rot: a,
         vr: side * 14,
         size: 4 + (fountain % 3 === 0 ? 1 : 0),

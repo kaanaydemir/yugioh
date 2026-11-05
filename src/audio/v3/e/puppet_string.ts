@@ -8,7 +8,7 @@
 // the tok; the puppet's limbs: knocks and joint clicks) and string-on-wood (creak: a thin, narrow stick-slip squeak
 // — not a rope: Kuyu Kovası owns the hollow wood frame and the rope creak, §5.1). The five strings sit on an E-minor pentatonic (E5 G5 A5 B5 D6): the scene
 // passes `pitch` per string. The return is the same strings breaking: a high "ping" with a release glide down.
-//   e_puppetCross    the puppeteer's cross appears: an air draw-in + a hollow wooden "tok" with a low knock
+//   e_puppetCross    the puppeteer's cross appears: an air draw-in + a small dry "tik-tok", the strings ring on
 //   e_puppetTsing    one string drops and goes taut ("tsing", ×5, the scene pans and pitches it)
 //   e_puppetHook     a star hook bites a limb: a tiny metal tick + a star sparkle
 //   e_puppetGlint    the spiral glint in the eyes: two wobbling sines winding up (hypnotic), a soft bell
@@ -83,15 +83,15 @@ export const RECIPES = {
     play(v) {
       // the cross pops in from the air (a bright draw-in + a sparkle), lands on its strings with a small dry
       // double "tik-tok" of a marionette control, its five strings ring on after it (a sympathetic shimmer)
-      sweep(v, 0, 0.12, [2600, 6200, 4200], 0.06, { kind: 'white', q: 3, peakAt: 0.85 });
+      sweep(v, 0, 0.12, [3200, 7400, 5200], 0.06, { kind: 'white', q: 3, peakAt: 0.85 });
       v.bell(midiHz(100), { t: 0.1, g: 0.05, dec: 0.25, ratio: 2.4, index: 0.6 });
-      woodSmall(v, 1580, 0.12, 0.42, 0.045);
-      woodSmall(v, 1180, 0.165, 0.36, 0.05);
-      // a light weight on the strings (short, high: not a frame knock)
-      thump(v, 0.12, 260, 170, 0.12, 0.05);
-      // the strings ring on (E6 / B6 / E7 partials of one taut string, slow decay)
-      pluck(v, midiHz(88), 0.18, 0.06, 0.9, { bright: 0.5, settle: 0.008 });
-      v.tone('sine', midiHz(95), { t: 0.19, g: [[0, 0], [0.02, 0.016], [0.7, 0.0001, 'e']], detune: 4 });
+      // "tik-tok": two tiny laths knock (modes > 1.9 kHz, 30-40 ms), no hollow body
+      woodSmall(v, 2350, 0.12, 0.3, 0.03);
+      woodSmall(v, 1920, 0.158, 0.26, 0.034);
+      // the strings ring on after the tok (one taut string, E6 + its 5th up, a slow sympathetic decay)
+      pluck(v, midiHz(88), 0.165, 0.2, 1.1, { bright: 0.8, settle: 0.008 });
+      pluck(v, midiHz(95), 0.17, 0.09, 0.9, { bright: 0.55, settle: 0.006 });
+      v.tone('sine', midiHz(100), { t: 0.19, g: [[0, 0], [0.02, 0.014], [0.7, 0.0001, 'e']], detune: 4 });
     },
   },
   e_puppetTsing: {
@@ -136,13 +136,15 @@ export const RECIPES = {
     verb: 0.22,
     vary: 0.04,
     play(v) {
-      // the foot (a hollow wooden knock, no stone), the knee joint a beat later (a dry high click), the strings
-      // catching the weight (a quiet low twang), a breath of dust
-      wood(v, 430, 0, 0.3, 0.08);
-      wood(v, 260, 0.008, 0.16, 0.07);
-      wood(v, 1850, 0.05, 0.11, 0.025);
-      pluck(v, midiHz(64), 0.02, 0.035, 0.22, { bright: 0.5, settle: 0.05 });
-      puff(v, 0.005, 0.035, 0.1, 2200, { kind: 'pink' });
+      // the foot (a small dry wooden knock: a marionette's carved foot, no stone, no hollow body), the knee joint a
+      // beat later (a dry high click), the strings catching the weight (a quiet taut twang), a breath of dust
+      woodSmall(v, 1250, 0, 0.3, 0.035);
+      woodSmall(v, 2050, 0.006, 0.15, 0.022);
+      thump(v, 0, 300, 220, 0.08, 0.025);
+      woodSmall(v, 2700, 0.048, 0.12, 0.018);
+      pluck(v, midiHz(76), 0.018, 0.13, 0.34, { bright: 0.7, settle: 0.05 });
+      pluck(v, midiHz(83), 0.022, 0.05, 0.26, { bright: 0.5, settle: 0.05 });
+      puff(v, 0.005, 0.03, 0.08, 3200, { kind: 'pink' });
     },
   },
   e_puppetCreak: {
