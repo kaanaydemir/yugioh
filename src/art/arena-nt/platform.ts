@@ -31,9 +31,12 @@ const G2 = NT_PAL.graphite[2];
 // Readability pass: one tone lower than the original neon (the side armour reads as a dark wall with a faint
 // player-coloured seam, not a glowing tube; docs/v3/ref/hedef-gorunum-2.png).
 export const STRIP_TONES: Record<0 | 1 | 2, readonly [Color, Color, Color, Color, Color]> = {
-  0: [PAL.night0, PAL.night1, PAL.cyan0, PAL.cyan0, PAL.cyan1],
-  1: [PAL.night0, PAL.night1, PAL.crim0, PAL.crim0, PAL.crim1],
-  2: [N0, N1, N2, N2, N3],
+  // [-, -, channel line, spill under a window, window light]
+  // round 2 (hedef-gorunum-3): the channel is a visible 2-px light run (line + spill), windows one step brighter; the neutral
+  // middle panels get the target's small amber windows.
+  0: [PAL.night0, PAL.night1, PAL.cyan2, PAL.cyan1, PAL.cyan3],
+  1: [PAL.night0, PAL.night1, PAL.crim2, PAL.crim1, PAL.crim3],
+  2: [N0, N1, PAL.stone2, PAL.stone1, PAL.gold2],
 };
 
 type Side = 0 | 1 | 2;
@@ -167,9 +170,16 @@ export function paintPlatform(): PixelCanvas {
  * Edge-side rim tone (coping highlight): warm key light from top-left illuminates the upper-left edge (0: -col),
  * far flat edge (4), left cap (6), and upper-right edge (2: -row), while lower edges stay cool dark slate.
  */
-const RIM: readonly Color[] = [PAL.earth2, N2, PAL.stone2, N2, PAL.earth2, N2, PAL.earth2, N1];
-const RIM2: readonly Color[] = [PAL.earth1, N1, PAL.stone1, N1, PAL.earth1, N1, PAL.earth1, N0];
-const RIM3: readonly Color[] = [G2, N0, G1, N0, G2, N0, G2, N0];
+// hedef-gorunum-3: ONE thin warm bevel line runs round the whole top edge (earth2 where the key light falls, earth1 on the
+// shaded near-right edges), a 1-px stone lip inside it, then a dark groove — no coloured perimeter tube.
+// Round 2: the far / upper edges (toward the key light) one warm step lighter (earth3, a thin tan-gold line that reads all
+// the way round), the near-left / near flat edges earth2, the shaded near-right edge and right cap earth1 (darker, not bright).
+// Side index = plateDepth's: 0 upper-left, 1 lower-right, 2 upper-right, 3 lower-left, 4 far flat, 5 near flat, 6 left cap, 7 right cap.
+// Round 3: the lit upper edges (upper-left, upper-right, far flat, left cap) one warm step up again: gold2 (a visible warm gold
+// rim like the target, still 1 px); the near / shaded edges unchanged.
+const RIM: readonly Color[] = [PAL.gold2, PAL.earth1, PAL.gold2, PAL.earth2, PAL.gold2, PAL.earth2, PAL.gold2, PAL.earth1];
+const RIM2: readonly Color[] = [G2, G1, G2, G2, G2, G1, G2, G1];
+const RIM3: readonly Color[] = [G0, N0, G0, G0, G0, N0, G0, N0];
 
 /**
  * Readability pass (hedef-gorunum-2.png): the top plate is warm dark stone lit from the top left — flat
@@ -222,20 +232,6 @@ function paintTop(S: Surface, x0: number, y0: number, x1: number, y1: number): P
         S.put(x, y, RIM3[side]);
         continue;
       }
-      if (d32 < 4) {
-        // Subtle calm groove instead of bright neon perimeter tube
-        const ramp = r > 2.5 ? NT_PAL.blue : r < 1.5 ? NT_PAL.red : NT_PAL.metal;
-        S.put(x, y, ramp === NT_PAL.metal ? N1 : ramp[0]);
-        continue;
-      }
-      if (d32 < 5) {
-        S.put(x, y, N0);
-        continue;
-      }
-      if (d32 < 6) {
-        S.put(x, y, G0);
-        continue;
-      }
       // the border band between the coping and the zones: the same lit stone
       S.put(x, y, topTone(x, y));
     }
@@ -275,14 +271,10 @@ function faceDefs(): FaceDef[] {
     const L = b[0] - a[0];
     let seams: number[];
     let vents: number[];
-    if (side === null && !lit) {
-      seams = [a[0], 396, 428, 460, 493, b[0]];
-      vents = [1, 3];
-    } else {
-      const k = Math.max(1, Math.round(L / 33));
-      seams = Array.from({ length: k + 1 }, (_, j) => a[0] + Math.round((L * j) / k));
-      vents = k >= 3 ? [1] : [];
-    }
+    const k = Math.max(1, Math.round(L / 22));
+    seams = Array.from({ length: k + 1 }, (_, j) => a[0] + Math.round((L * j) / k));
+    vents = k >= 6 ? [2, k - 3] : k >= 3 ? [1] : [];
+    void side;
     return { a, b, col, lit, side, seams, vents };
   };
   out.push(mk(V[0], V[7], true, PLATE_C0, null));
@@ -291,49 +283,35 @@ function faceDefs(): FaceDef[] {
   return out;
 }
 
-type RowTone = Color | 'S' | 'L' | 'l';
-const rowsOf = (...segs: RowTone[][]): RowTone[] => segs.flat();
-
-// hedef-gorunum-3: a THICK stage wall. The rows are generated for FACE_H: coping 4 (row 0 = the warm lit bevel),
-// upper armour plate 16, ink seam, light channel 6, ink seam, the main panel (FACE_H − 36 rows), ink seam, belt 5
-// (with a small lamp per panel), footing 2.
-const UP0 = 4;
-const UP_N = 16;
+// hedef-gorunum-3 (arena pass 2026-11-05): a THICK stage wall of grey-navy armour panels. Rows (FACE_H = 58):
+// coping 3 (lit lip under the warm top bevel), upper panel band UP_N, ink seam, light channel 3 (one player-coloured
+// line), ink seam, the main panel band (small lit windows / vent grilles / plain insets), ink seam, belt 3, footing 2.
+// Vertical panel seams every ~22 px. Lit = the near-left face (key light from the top left), the others one tone darker.
+const COP_N = 3;
+const UP0 = COP_N;
+const UP_N = 15;
 const CH0 = UP0 + UP_N + 1;
-const MAIN0 = CH0 + 6 + 1;
-const MAIN_N = FACE_H - 36;
+const CH_N = 3;
+const MAIN0 = CH0 + CH_N + 1;
+const MAIN_N = FACE_H - MAIN0 - 7;
 const BELT0 = MAIN0 + MAIN_N + 1;
-function faceRows(lit: boolean): RowTone[] {
-  const main: RowTone[] = [];
-  for (let i = 0; i < MAIN_N - 1; i++) {
-    const k = i / (MAIN_N - 1);
-    main.push(lit ? (k < 0.09 ? N2 : k < 0.18 ? N1 : k < 0.45 ? G1 : k < 0.7 ? G0 : N0) : k < 0.06 ? N2 : k < 0.18 ? N1 : k < 0.36 ? G1 : k < 0.6 ? G0 : N0);
-  }
-  main.push(INK);
-  return rowsOf(
-    lit ? [PAL.earth2, N2, N1, INK] : [PAL.earth1, N1, G1, INK],
-    lit ? [N2, N2, N1, N1, G1, G1, G1, G1, G0, G0, G0, G0, N0, N0, N0, N0] : [N2, N1, N1, G1, G1, G1, G0, G0, G0, G0, N0, N0, N0, N0, N0, N0],
-    [INK],
-    [N0, 'L', 'S', 'S', 'l', N0],
-    [INK],
-    main,
-    [INK],
-    lit ? [N1, G1, 'l', N0, N0] : [N1, G0, 'l', N0, INK],
-    [N0, INK],
-  );
-}
-const LIT_ROWS: RowTone[] = faceRows(true);
-const SHD_ROWS: RowTone[] = faceRows(false);
-const STRIP_ROWS = [CH0 + 2, CH0 + 3] as const;
-const LADDER: readonly Color[] = [INK, N0, G0, G1, N1, N2, N3];
-const shiftTone = (c: Color, d: number): Color => {
-  const i = LADDER.indexOf(c);
-  return i < 0 ? c : LADDER[Math.max(1, Math.min(LADDER.length - 1, i + d))];
+const STRIP_ROWS = [CH0 + 1, CH0 + 1] as const;
+/** Base wall tones per face: [coping lip, coping, upper hi, upper body, upper low, main hi, main body, main low]. */
+// Round 2: grey-slate armour (hedef-gorunum-3's walls are grey-blue panels with lighter faces, not navy): stone ramp, the lit
+// face one step up on its highlights, seams stay ink.
+// Round 3: one stone step darker (calm dark wall; the lit top and the board read first). Lit face body stone1 with stone2
+// highlights; shaded faces body stone0 with stone1 highlights; seams ink.
+const WALL_LIT = [PAL.stone2, PAL.stone1, PAL.stone2, PAL.stone1, PAL.stone0, PAL.stone2, PAL.stone1, PAL.stone0] as const;
+const WALL_SHD = [PAL.stone1, PAL.stone0, PAL.stone1, PAL.stone0, INK, PAL.stone1, PAL.stone0, INK] as const;
+const hash = (n: number): number => {
+  let h = (n * 374761393) ^ 0x5bd1e995;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 };
 
 function paintFace(S: Surface, f: FaceDef, id: number, strips: Omit<StripPiece, 'frame'>[], cand: { x: number; y: number; tone: Color }[][], vents: PlatformArt['vents'], rim: PlatformArt['rim']): void {
   const [A, B] = [f.a, f.b];
-  const rows = f.lit ? LIT_ROWS : SHD_ROWS;
+  const W = f.lit ? WALL_LIT : WALL_SHD;
   const slope = (B[1] - A[1]) / (B[0] - A[0]);
   const yTop = (x: number): number => edgeTop(A[1], slope, A[0], x);
   const sideAt = (x: number): Side => (f.side !== null ? f.side : f.lit ? 0 : sideOfRow(f.col - (x - NT_OX) / 32));
@@ -343,10 +321,14 @@ function paintFace(S: Surface, f: FaceDef, id: number, strips: Omit<StripPiece, 
     while (i + 1 < f.seams.length - 1 && x >= f.seams[i + 1]) i++;
     return i;
   };
-  const hi = f.lit ? N2 : N1;
-  const lo = N0;
-  const inner = (u: number): Color => (f.lit ? (u < 6 ? G1 : u < 11 ? G0 : N0) : u < 8 ? G0 : N0);
+  const kindOf = (pi: number): number => {
+    if (f.vents.includes(pi)) return 3; // vent grille
+    // Round 3: calm wall, roughly one lit panel per 3 (0 a pair of lit windows); the rest plain insets (1) or rib pairs (2)
+    if (pi % 3 === 1) return 0;
+    return hash(pi * 7 + id * 131) < 0.6 ? 1 : 2;
+  };
   const runs = new Map<number, { x: number; y: number; tone: Color }[]>();
+  const wins: { x: number; v: number; side: Side; tall: boolean }[] = [];
   for (let x = A[0]; x < B[0]; x++) {
     const yt = yTop(x);
     const pi = panelOf(x);
@@ -354,72 +336,73 @@ function paintFace(S: Surface, f: FaceDef, id: number, strips: Omit<StripPiece, 
     const sx1 = f.seams[pi + 1];
     const plen = sx1 - sx0;
     const lx = x - sx0;
-    const isSeam0 = x === sx0 && pi > 0;
-    const isSeam1 = x === sx0 - 1 && pi > 0;
-    const seam = isSeam0 || isSeam1;
-    const tones = STRIP_TONES[sideAt(x)];
-    const nearSeam = Math.min(x - sx0, sx1 - 1 - x) <= 1;
+    const rx = sx1 - 1 - x;
+    const seamInk = lx === 0 && pi > 0;
+    const seamLit = lx === 1 && pi > 0;
+    const side = sideAt(x);
+    const tones = STRIP_TONES[side];
+    const kind = kindOf(pi);
     const mid = (sx0 + sx1) >> 1;
-    const hasVent = f.vents.includes(pi);
-    const variant = hasVent ? 0 : (pi + (f.lit ? 0 : 1)) % 3;
-    const inInset = lx >= 3 && lx <= plen - 5;
-    const inVent = hasVent && x >= mid - 6 && x < mid + 7;
     for (let v = 0; v < FACE_H; v++) {
-      const t = rows[v];
-      let c: Color = t === 'S' ? tones[2] : t === 'L' ? tones[1] : t === 'l' ? tones[0] : t;
-      if (v >= UP0 && v <= FACE_H - 6 && seam) {
-        c = isSeam1 ? INK : hi;
-      } else if (v >= UP0 && v < UP0 + UP_N) {
+      let c: Color;
+      if (v < COP_N) c = v === 0 ? W[0] : v === 1 ? W[1] : INK;
+      else if (v < UP0 + UP_N) {
         const u = v - UP0;
-        if (u === 0 && nearSeam) c = rows[5] as Color;
-        else if (lx === 1 && u >= 1) c = hi;
-        else if (lx === plen - 3 && u >= 1) c = lo;
-        else if (inVent && u >= 3 && u <= UP_N - 4) c = u === 3 ? lo : u === UP_N - 4 ? hi : u % 2 === 0 ? INK : lo;
-        // rivets in the upper plate's corners
-        else if ((lx === 3 || lx === plen - 5) && (u === 2 || u === UP_N - 3)) c = f.lit ? N3 : N2;
-      } else if (v >= MAIN0 && v < MAIN0 + MAIN_N) {
+        c = u === 0 ? W[2] : u < UP_N - 1 ? W[3] : W[4];
+        if (u >= 1 && u < UP_N - 1 && lx === 2 && pi >= 0) c = W[2];
+        if (u >= 1 && rx === 0) c = W[4];
+        // a tiny status pip in the upper right of every other panel (player colour, 1 px)
+        if (u === 3 && rx === 4 && (pi + id) % 2 === 0) c = tones[4];
+      } else if (v === CH0 - 1 || v === MAIN0 - 1 || v === BELT0 - 1) c = INK;
+      else if (v < CH0 + CH_N) {
+        const u = v - CH0;
+        c = u === 0 ? INK : u === 1 ? (lx <= 1 || rx <= 1 ? N0 : tones[2]) : tones[3];
+        if (u === 2 && (lx <= 1 || rx <= 1)) c = N0;
+      } else if (v < MAIN0 + MAIN_N) {
         const u = v - MAIN0;
-        if (inInset && u >= 2 && u <= MAIN_N - 3) {
-          const edge = u === 2 ? hi : u === MAIN_N - 3 ? INK : lx === 3 ? hi : lx === plen - 5 ? lo : null;
-          if (edge !== null) c = edge;
-          else {
-            c = inner(u);
-            const lw = plen - 8;
-            const cx = lx - 4;
-            const lu = (MAIN_N >> 1) - 3;
-            if (variant === 0) {
-              if (cx >= 3 && cx <= lw - 4 && u >= 5 && u <= MAIN_N - 6) c = u % 2 === 1 ? INK : f.lit ? N1 : G0;
-            } else if (variant === 1) {
-              if (Math.abs(cx - (lw >> 1)) <= 4 && u >= lu && u <= lu + 5) {
-                const wx = Math.abs(cx - (lw >> 1));
-                if (u === lu || u === lu + 5 || wx === 4) c = INK;
-                else c = u === lu + 1 ? tones[2] : tones[1];
-              }
-            } else {
-              // a recessed vertical rib pair (panel seams that read at a glance on the tall wall)
-              const rx = lw >> 1;
-              if ((cx === rx - 3 || cx === rx + 3) && u >= 4 && u <= MAIN_N - 6) c = INK;
-              else if ((cx === rx - 2 || cx === rx + 4) && u >= 4 && u <= MAIN_N - 6) c = f.lit ? N2 : N1;
-            }
-          }
-        } else if (u >= MAIN_N - 2 && inInset) c = N0;
-      } else if (v === BELT0 + 2 && !seam) {
-        // a small lamp at the middle of every panel on the belt (player colour, 2 px + a dim pixel each side)
-        if (x === mid || x === mid - 1) c = tones[4];
-        else if (x === mid + 1 || x === mid - 2) c = tones[2];
+        c = u === 0 ? W[5] : u < MAIN_N - 2 ? W[6] : W[7];
+        if (lx === 2 && u >= 1 && u < MAIN_N - 2) c = W[5];
+        if (rx === 0 && u >= 1) c = W[7];
+        const cx = x - mid;
+        if (kind === 3 && Math.abs(cx + 0.5) < 6 && u >= 5 && u <= MAIN_N - 6) c = u % 2 === 1 ? INK : W[7]; // vent grille
+        else if (kind === 2 && (cx === -3 || cx === 3) && u >= 3 && u <= MAIN_N - 4) c = INK; // recessed rib pair
+        else if (kind === 2 && (cx === -2 || cx === 4) && u >= 3 && u <= MAIN_N - 4) c = W[5];
+        else if (kind === 1 && lx >= 5 && rx >= 4 && (u === 4 || u === MAIN_N - 5) ) c = u === 4 ? W[7] : W[5]; // plain inset edge
+      } else {
+        const u = v - BELT0;
+        c = u === 0 ? W[1] : u === 1 ? W[6] : u === 2 ? N0 : u === 3 ? N0 : INK;
+        if (u === 1 && (x === mid || x === mid - 1) && kind !== 3) c = tones[2]; // belt marker light
       }
+      if (seamInk && v >= COP_N) c = INK;
+      else if (seamLit && v >= COP_N && v < FACE_H - 2) c = v === CH0 + 1 ? N0 : W[f.lit ? 2 : 5];
       S.put(x, yt + v, c);
-      if ((v === STRIP_ROWS[0] || v === STRIP_ROWS[1]) && !seam) {
+      if (v === STRIP_ROWS[0] && !seamInk && !seamLit && c === tones[2]) {
         const arr = runs.get(pi) ?? [];
         arr.push({ x, y: yt + v, tone: tones[2] });
         runs.set(pi, arr);
       }
     }
+    if (x === mid - 4 && kind === 0) wins.push({ x, v: MAIN0 + 4, side, tall: true });
+    if (x === mid + 1 && kind === 0) wins.push({ x, v: MAIN0 + 4, side, tall: true });
     lipPts.push({ x, y: yt - 1 });
+  }
+  // small lit windows: axis-aligned 3×2 (pair panels) / 3×2 (single) lights (no shear), an ink frame, a dim spill line under
+  // them; the top row is the bright window tone, the lower one step down (reads as a lit pane, not a dot)
+  for (const w of wins) {
+    const T = STRIP_TONES[w.side];
+    const y0 = yTop(w.x) + w.v;
+    const h = w.tall ? 3 : 2;
+    const ww = 3;
+    for (let dx = -1; dx <= ww; dx++)
+      for (let dy = -1; dy <= h; dy++) {
+        const frame = dx === -1 || dx === ww || dy === -1 || dy === h;
+        S.put(w.x + dx, y0 + dy, frame ? INK : dy === 0 ? T[4] : T[2]);
+      }
+    for (let dx = 0; dx < ww; dx++) S.put(w.x + dx, y0 + h + 1, T[3]);
   }
   for (const pi of f.vents) {
     const vx = (f.seams[pi] + f.seams[pi + 1]) >> 1;
-    vents.push({ x: vx, y: yTop(vx) + 8, dir: f.lit ? -1 : 1 });
+    vents.push({ x: vx, y: yTop(vx) + MAIN0 + 6, dir: f.lit ? -1 : 1 });
   }
   let n = 0;
   for (const px of [...runs.entries()].sort((p, q) => p[0] - q[0]).map((e) => e[1])) {
@@ -449,46 +432,25 @@ function PILLARS(): Pillar[] {
   const br = v(6);
   const right = v(5);
   return [
-    { k: left, sl: 0.5, sr: 0.5, cx: left[0] + 6, side: 0 },
+    { k: left, sl: 0.5, sr: 0.5, cx: left[0] + 2, side: 0 },
     { k: bl, sl: 0.5, sr: 0, cx: bl[0], side: 0 },
     { k: br, sl: 0, sr: -0.5, cx: br[0], side: 0 },
-    { k: right, sl: -0.5, sr: -0.5, cx: right[0] - 7, side: 1 },
+    { k: right, sl: -0.5, sr: -0.5, cx: right[0] - 2, side: 1 },
   ];
 }
 
-const PIL_HW = 6;
-const CAP_H = 7;
+const PIL_HW = 2;
 
+/** A flush corner post where two wall faces meet: a lit left column, a dark right one, a player-coloured pip in the channel. */
 function paintPillar(S: Surface, p: Pillar): void {
   const ramp = p.side === 0 ? NT_PAL.blue : p.side === 1 ? NT_PAL.red : NT_PAL.metal;
-  for (let x = p.cx - PIL_HW; x <= p.cx + PIL_HW; x++) {
+  for (let x = p.cx - PIL_HW; x < p.cx + PIL_HW; x++) {
     const yt = edgeTop(p.k[1], x <= p.k[0] ? p.sl : p.sr, p.k[0], x);
     const k = x - p.cx;
-    const ak = Math.abs(k);
-    for (let v = 0; v < FACE_H; v++) {
-      const t = LIT_ROWS[v];
-      let c: Color;
-      if (ak === PIL_HW) c = INK;
-      else {
-        const base: Color = t === 'S' || t === 'L' || t === 'l' ? N1 : t;
-        const d = k < -3 ? 1 : k < 0 ? 1 : k === 0 || k === 1 ? 1 : k < 4 ? -1 : -1;
-        c = base === INK ? INK : shiftTone(base, d);
-      }
-      if (v === STRIP_ROWS[0] || v === STRIP_ROWS[1]) {
-        // readability pass: the pillar's accent one tone lower (dim seam, no neon dot)
-        if (ak <= 3) c = ak === 3 ? N0 : ramp[0];
-        else if (ak < PIL_HW) c = N0;
-      }
-      S.put(x, yt + v, c);
-    }
-    const top = ak <= 3 ? -CAP_H : ak <= 5 ? -CAP_H + 1 : -CAP_H + 2;
-    for (let v = top; v < 0; v++) {
-      let c: Color;
-      if (ak === PIL_HW || v === top) c = INK;
-      else if (v === top + 1) c = k <= 0 ? N2 : N1;
-      else if (v === -1) c = N0;
-      else c = k < -1 ? N2 : k < 1 ? N1 : G0;
-      if ((v === top + 3 || v === top + 4) && ak <= 1) c = ramp[0];
+    for (let v = COP_N; v < FACE_H - 1; v++) {
+      let c: Color = k === -2 ? PAL.stone3 : k === -1 ? PAL.stone2 : k === 0 ? PAL.stone1 : INK;
+      if (v === CH0 + 1 && (k === -1 || k === 0)) c = ramp[1];
+      else if (v === CH0 - 1 || v === MAIN0 - 1 || v === BELT0 - 1) c = k === -2 ? PAL.stone2 : INK;
       S.put(x, yt + v, c);
     }
   }

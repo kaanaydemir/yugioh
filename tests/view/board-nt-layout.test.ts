@@ -23,10 +23,10 @@ describe('neon tower layout map', () => {
     }
   });
 
-  // hedef-gorunum-3 (owner decision 2026-11-02): the stage is a tight chamfered block around the tiles; the duelists stand
-  // on their own raised daises attached to its near / far edges (pads layer), so only the tile grid must be inside it and
-  // each dais must touch it.
-  it('is ONE chamfered slab: a convex octagon that contains the whole tile grid; each duelist dais touches it', () => {
+  // hedef-gorunum-3 (owner decisions 2026-11-02 / arena pass 2026-11-05): the stage is a tight chamfered block around the tiles
+  // (no wide empty margins); the duelists stand on their own raised daises ATTACHED to its two long edges (pads layer): each
+  // dais's back edge lies flush on the stage edge — its back tip on the plate, its centre and the rest of it off the plate.
+  it('is ONE tight chamfered slab: a convex octagon round the tile grid; each duelist dais sits flush against its long edge', () => {
     expect(PLATE_OUTLINE.length).toBe(8);
     const pts = PLATE_OUTLINE.map(([c, r]) => ntIso(c, r));
     // every vertex lands on a whole pixel and the outline is convex (all turns the same way)
@@ -58,11 +58,35 @@ describe('neon tower layout map', () => {
         const t = ntIso(col, row);
         for (const [dx, dy] of [[-32, 0], [32, 0], [0, -16], [0, 16]]) expect(inside(t.x + dx, t.y + dy), `tile ${col},${row}`).toBe(true);
       }
+    // tight: no tile-free margin wider than 0.6 tile on any side (each extreme vertex lies close to the grid's own corner)
+    const grid = { left: ntIso(0, 4).x - 32, right: ntIso(6, 0).x + 32, far: ntIso(0, 0).y - 16, near: ntIso(6, 4).y + 16 };
+    expect(grid.left - PLATE_TOP.x).toBeLessThanOrEqual(24);
+    expect(PLATE_TOP.x + PLATE_TOP.w - grid.right).toBeLessThanOrEqual(24);
+    expect(grid.far - PLATE_TOP.y).toBeLessThanOrEqual(12);
+    expect(PLATE_TOP.y + PLATE_TOP.h - grid.near).toBeLessThanOrEqual(12);
+    // arena pass round 2: an OCTAGON, not a rhombus with nicked tips — big chamfers: both vertical end caps ≥ 16 px tall,
+    // the flat far edge ≥ 48 px wide; the flat near edge stays 328..364 (the lighting split)
+    const len = (i: number): number => Math.hypot(pts[(i + 1) % 8].x - pts[i].x, pts[(i + 1) % 8].y - pts[i].y);
+    expect(pts[0].x).toBe(pts[1].x); // left cap is vertical
+    expect(pts[4].x).toBe(pts[5].x); // right cap is vertical
+    expect(len(0)).toBeGreaterThanOrEqual(16);
+    expect(len(4)).toBeGreaterThanOrEqual(16);
+    expect(pts[2].y).toBe(pts[3].y);
+    expect(len(2)).toBeGreaterThanOrEqual(48);
+    expect([Math.round(pts[7].x), Math.round(pts[6].x)]).toEqual([328, 364]);
     for (const p of [0, 1] as const) {
       const d = duelistXY(p);
-      // the dais (40×20 diamond around the feet) reaches the stage: at least one of its tips lies on the plate
-      const tips = [[-20, 0], [20, 0], [0, -10], [0, 10]].map(([dx, dy]) => inside(d.x + dx, d.y + dy));
-      expect(tips.some(Boolean), `dais ${p}`).toBe(true);
+      // the 40×20 pad diamond around the feet: its back edge (P1: top → right tip; P2: left → bottom tip, parallel to the stage
+      // edge) is on the plate, 2 px further in (towards the pad centre) is already off it — flush, neither floating off the
+      // edge nor standing on the stage top
+      const back = p === 0 ? { x: d.x, y: d.y - 10 } : { x: d.x, y: d.y + 10 };
+      const inward = p === 0 ? 2 : -2;
+      expect(inside(back.x, back.y), `dais ${p} back tip on the plate`).toBe(true);
+      expect(inside(back.x, back.y + inward), `dais ${p} flush`).toBe(false);
+      expect(inside(d.x, d.y), `dais ${p} centre off the plate`).toBe(false);
+      expect(inside(d.x + (p === 0 ? 20 : -20), d.y), `dais ${p} back edge's other end`).toBe(true);
+      const others = (p === 0 ? [[-20, 0], [0, 10]] : [[20, 0], [0, -10]]).map(([dx, dy]) => inside(d.x + dx, d.y + dy));
+      expect(others.some(Boolean), `dais ${p} rest off the plate`).toBe(false);
     }
   });
 

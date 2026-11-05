@@ -3,6 +3,7 @@
 
 import { FACE_H, NT_OX, NT_OY, PLATE_C0, PLATE_C1, PLATE_R0, PLATE_R1, PLATE_X0, PLATE_X1, PLATE_Y0, PLATE_Y1 } from '../../view/board-nt/layout-nt';
 import { type Color, PixelCanvas } from '../pixel';
+import { PAL } from '../palette';
 import { NT_PAL } from './palette';
 import { type Atlas, Surface, packAtlas } from './platform-pack';
 
@@ -92,17 +93,27 @@ const FOOT = 10;
 const FOOT_FACE = 4;
 // hedef-gorunum-3: a wider, darker cast shadow of the raised stage on the hall floor
 const SHADOW = 30;
+const SHADE: Color = PAL.stone0;
+const SHADOW_DX = 8;
+const SHADOW_DY = 4;
+const STAGE_FOOT_SHADOW = true;
 
 function floorPixel(x: number, y: number): Color {
   const e = outsideOf(x + 0.5, y + 0.5);
   if (e <= 0) return INK;
-  if (e <= FOOT) return footingTop(e);
-  for (let d = 1; d <= FOOT_FACE && e <= FOOT + FOOT_FACE; d++) {
-    if (outsideOf(x + 0.5, y + 0.5 - d) <= FOOT) {
-      return [N1, N0, INK, INK][d - 1];
+  // hedef-gorunum-3: the dark cast shadow starts right at the wall's base (no lit footing ring between them)
+  if (STAGE_FOOT_SHADOW && e <= FOOT + FOOT_FACE) return SHADE;
+  if (!STAGE_FOOT_SHADOW) {
+    if (e <= FOOT) return footingTop(e);
+    for (let d = 1; d <= FOOT_FACE && e <= FOOT + FOOT_FACE; d++) {
+      if (outsideOf(x + 0.5, y + 0.5 - d) <= FOOT) {
+        return [N1, N0, INK, INK][d - 1];
+      }
     }
   }
-  const q = outsideOf(x + 0.5, y + 0.5 - FOOT_FACE) - FOOT;
+  // round 2: the cast shadow is offset toward the lower right (away from the top-left key light): measured from the slab's
+  // base shifted by (SHADOW_DX, SHADOW_DY), so it is widest right of the right wall / below the near corner
+  const q = outsideOf(x + 0.5 - SHADOW_DX, y + 0.5 - FOOT_FACE - SHADOW_DY) - FOOT;
   return panel(x, y, q);
 }
 
@@ -133,10 +144,17 @@ function panel(x: number, y: number, q: number): Color {
     c = N1;
   }
   if (q <= SHADOW) {
-    // stepped falloff (no blur): ink near the stage, then one tone down, then a 2×2 dither of the two
-    if (q <= 10) return INK;
-    if (q <= 20) return shift(c, -2);
-    return (x + y) % 2 === 0 ? shift(c, -1) : c;
+    // stepped falloff (no blur): solid shade near the stage, then a checker, then a sparse 1-in-4 dither. The shade is
+    // stone0 — off the night ladder, so the apron's lift remap (view/board-nt/calm-remap.ts) keeps it dark (ink / night
+    // tones would be lifted three steps and the shadow vanished).
+    // round 2: a wide SOLID band (12 px past the footing), then only a 2-step fringe (checker 2 px, sparse 2 px) — no wide
+    // screen-door band next to the stage
+    if (q <= 12) return SHADE;
+    if (q <= 14) return (x + y) % 2 === 0 ? SHADE : c;
+    if (q <= 16) return x % 2 === 0 && y % 2 === 0 ? SHADE : c;
+    // round 3: a 1-px lighter floor rim just outside the fringe so the shadow edge (the stage lifting off the floor) reads
+    if (q <= 17) return c === INK ? c : N1;
+    return c;
   }
   return c;
 }
