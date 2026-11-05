@@ -470,24 +470,34 @@ function clearSpot(ctx: Ctx<'coinToss'>, home: XY, own: PlayerId, opp: PlayerId,
       if (t) boxes.push({ x: Math.round(z.x) - 22, y: Math.round(z.y) - 10, w: 44, h: 20 });
     }
   }
+  // the candidates: the no-man's-land on the jester's forward line (along and across it), every EMPTY monster tile
+  // of either row and the ways to them — the clearest one wins, nearer and more forward preferred
+  const cands: XY[] = [];
+  for (const t of [0.5, 0.42, 0.58, 0.34, 0.66]) for (const k of [0, -1, 1, -2, 2, -3, 3]) cands.push({ x: R(lerp(home.x, across.x, t) + (lx / ll) * k * 12), y: R(lerp(home.y, across.y, t) + (ly / ll) * k * 12) });
+  for (const p of [0, 1] as PlayerId[]) {
+    for (let i = 0; i < 5; i++) {
+      if (field.unitAt(p, i) || ctx.after?.players?.[p]?.monsters?.[i]) continue;
+      const z = zoneXY(p, 'monster', i);
+      for (const t of [0.55, 0.8, 1]) cands.push({ x: R(lerp(home.x, z.x, t)), y: R(lerp(home.y, z.y, t)) });
+    }
+  }
   let best: XY = { x: R(lerp(home.x, across.x, 0.5)), y: R(lerp(home.y, across.y, 0.5)) };
   let bestScore = -1e9;
-  for (const t of [0.5, 0.42, 0.58, 0.34, 0.66, 0.74]) {
-    for (const k of [0, -1, 1, -2, 2, -3, 3]) {
-      const p = { x: R(lerp(home.x, across.x, t) + (lx / ll) * k * 12), y: R(lerp(home.y, across.y, t) + (ly / ll) * k * 12) };
-      // the coin's own box (with the face disc rising over it)
-      const c = { x: p.x - 12, y: p.y - 16, w: 24, h: 22 };
-      let clear = 1e9;
-      for (const b of boxes) {
-        const dx = Math.max(b.x - (c.x + c.w), c.x - (b.x + b.w), 0);
-        const dy = Math.max(b.y - (c.y + c.h), c.y - (b.y + b.h), 0);
-        clear = Math.min(clear, dx === 0 && dy === 0 ? -Math.min(c.x + c.w - b.x, b.x + b.w - c.x, c.y + c.h - b.y, b.y + b.h - c.y) : Math.hypot(dx, dy));
-      }
-      const score = Math.min(clear, 10) * 3 - Math.abs(t - 0.5) * 16 - Math.abs(k) * 1.5;
-      if (score > bestScore) {
-        bestScore = score;
-        best = p;
-      }
+  for (const p of cands) {
+    // the coin's own box (with the face disc rising over it)
+    const c = { x: p.x - 12, y: p.y - 16, w: 24, h: 22 };
+    let clear = 1e9;
+    for (const b of boxes) {
+      const dx = Math.max(b.x - (c.x + c.w), c.x - (b.x + b.w), 0);
+      const dy = Math.max(b.y - (c.y + c.h), c.y - (b.y + b.h), 0);
+      clear = Math.min(clear, dx === 0 && dy === 0 ? -Math.min(c.x + c.w - b.x, b.x + b.w - c.x, c.y + c.h - b.y, b.y + b.h - c.y) : Math.hypot(dx, dy));
+    }
+    const d = Math.hypot(p.x - home.x, p.y - home.y);
+    const fwd = ((p.x - home.x) * fw.x + (p.y - home.y) * fw.y) / Math.max(1, d);
+    const score = Math.min(clear, 8) * 3 - Math.abs(d - 50) * 0.1 + fwd * 4;
+    if (score > bestScore) {
+      bestScore = score;
+      best = p;
     }
   }
   console.log('[jester] clearSpot', JSON.stringify({ home, across, best, bestScore, n: boxes.length }));
