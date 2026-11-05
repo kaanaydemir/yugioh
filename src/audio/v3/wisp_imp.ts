@@ -27,6 +27,7 @@
 //   wiTsk        strike: each of the micro jabs that follow (cap 8, tiny gap)
 //   wiShed       strike: the stuck darts flake off (fired on the first flake, contact + ~320 ms), the ghost
 //                deflates with a little sigh
+//   wiFfp        a blow it takes as the target knocks feathers off (guard / survived / lethal), over the shared layer
 //   wiHu         a tiny "hu!" when it takes a blow it survives (guard holds, blocked volley) or the lethal one
 //   wiGust       death 'dissolve' (no event): the wind strips the feathers off — gust + rustle + whimper
 //   wiAway       death: the last feathers flutter off on the wind (soft; NOT a pof)
@@ -77,7 +78,7 @@ function quills(v: Voice, t: number, d: number, n: number, g: number, o: { curve
  * The little ghost's voice: a triangle + soft saw glottis on the contour `f` (Hz at 0, d/2, d)
  * through the vowel's two formants (morphing `from` → `to`), a breathy pink layer, slow vibrato.
  */
-function ghostVoice(v: Voice, t: number, d: number, f: readonly [number, number, number], g: number, o: { from?: Vowel; to?: Vowel; breath?: number; out?: AudioNode; vib?: number } = {}): void {
+function ghostVoice(v: Voice, t: number, d: number, f: readonly [number, number, number], g: number, o: { from?: Vowel; to?: Vowel; breath?: number; out?: AudioNode; vib?: number; att?: number } = {}): void {
   const [a1, a2] = FORMANTS[o.from ?? 'u'];
   const [b1, b2] = FORMANTS[o.to ?? o.from ?? 'u'];
   const sum = v.amp(1, { t, to: o.out });
@@ -87,7 +88,7 @@ function ghostVoice(v: Voice, t: number, d: number, f: readonly [number, number,
   src.connect(f1);
   src.connect(f2);
   const contour: Pt[] = [[0, f[0]], [d * 0.45, f[1], 'e'], [d, f[2], 'e']];
-  const env: Pt[] = [[0, 0], [Math.min(0.04, d * 0.2), g], [d * 0.6, g * 0.85], [d, 0.0001, 'e']];
+  const env: Pt[] = [[0, 0], [o.att ?? Math.min(0.04, d * 0.2), g], [d * 0.6, g * 0.85], [d, 0.0001, 'e']];
   const tri = v.tone('triangle', contour, { t, g: env, to: src });
   const saw = v.tone('sawtooth', contour, { t, g: scaled(env, 0.32), to: src, detune: 6 });
   for (const o2 of [tri, saw]) v.lfo(o2.osc.detune, [[0, 4.5], [d, 6.5]], [[0, 10], [d, o.vib ?? 45]], { t, d: d + 0.02 });
@@ -187,12 +188,14 @@ export const WISP_IMP_RECIPES = {
     verb: 0.4,
     duck: 0.4,
     play(v) {
-      // the "b": a soft lip pop
-      v.noise('pink', { g: perc(0.35, 0.018, 0.001), to: v.filt('lowpass', 700, 0.9) });
-      thump(v, 0, 220, 120, 0.12, 0.04);
-      ghostVoice(v, 0.012, 0.36, [480, 620, 410], 0.38, { from: 'u', to: 'o', breath: 0.45, vib: 55 });
+      // the "b": a lip pop that LEADS the voice by 16 ms (FIX critic r2: it was masked) — a closed-lip
+      // thump, then the release click at 1.2–2 kHz
+      thump(v, 0, 260, 110, 0.3, 0.035, { att: 0.002 });
+      v.noise('pink', { g: perc(0.5, 0.014, 0.0008), to: v.filt('lowpass', 900, 0.9) });
+      v.noise('white', { t: 0.012, g: perc(0.3, 0.006, 0.0004), to: v.filt('bandpass', 1600, 1.6) });
+      ghostVoice(v, 0.016, 0.36, [480, 620, 410], 0.38, { from: 'u', to: 'o', breath: 0.45, vib: 55, att: 0.01 });
       // a ghostly octave shadow, quieter, a hair late (the hollow echoes)
-      ghostVoice(v, 0.03, 0.34, [960, 1240, 820], 0.08, { from: 'o', breath: 0.2 });
+      ghostVoice(v, 0.034, 0.34, [960, 1240, 820], 0.08, { from: 'o', breath: 0.2, att: 0.01 });
       // its feathers ruffle with it
       rustle(v, 0.04, [[0, 0], [0.06, 0.12], [0.35, 0.0001, 'e']], { rate: 64 });
     },
@@ -270,10 +273,15 @@ export const WISP_IMP_RECIPES = {
     duck: 0.12,
     vary: 0.1,
     play(v) {
-      v.noise('white', { g: perc(0.26, 0.003, 0.0002), to: v.filt('highpass', 4000, 0.8) });
-      v.noise('white', { t: 0.0015, g: perc(0.16, 0.022, 0.001), to: v.filt('bandpass', v.r(5000, 6200), 9) });
-      thump(v, 0, 240, 150, 0.1, 0.035);
-      rustle(v, 0.004, [[0, 0], [0.01, 0.08], [0.09, 0.0001, 'e']], { rate: 70 });
+      // (FIX critic r2: +9 dB and a 2–3 kHz cloth "tk" body, so the jabs cut through the LP roll;
+      // the cinematic steps its pitch up per jab)
+      v.noise('white', { g: perc(0.62, 0.003, 0.0002), to: v.filt('highpass', 4000, 0.8) });
+      v.noise('white', { t: 0.0015, g: perc(0.42, 0.024, 0.001), to: v.filt('bandpass', v.r(5000, 6200), 9) });
+      // the cloth "tk": a short knocked band at 2.4 kHz + a tight body thump
+      v.noise('pink', { g: perc(0.75, 0.018, 0.0008), to: v.filt('bandpass', v.r(2200, 2800), 3.2) });
+      v.tone('triangle', [[0, 2600], [0.02, 1900, 'e']], { g: perc(0.12, 0.022, 0.001) });
+      thump(v, 0, 260, 150, 0.22, 0.04);
+      rustle(v, 0.004, [[0, 0], [0.01, 0.2], [0.1, 0.0001, 'e']], { rate: 70 });
     },
   },
   /** Strike: the stuck darts flake off (on the first flake, not on the sprite's recover mark) and it deflates with a sigh. */
@@ -409,18 +417,17 @@ export const WISP_IMP_RECIPES = {
     verb: 0.45,
     duck: 0.6,
     play(v) {
-      // the "p": a soft plosive pop
-      v.noise('white', { g: perc(0.22, 0.004, 0.0003), to: v.filt('bandpass', 2400, 1.4) });
-      // the "o": two fat lobes, each a closing low-passed pink burst
-      for (const [t, g, pan] of [[0.002, 1.2, -0.18], [0.042, 0.95, 0.18]] as const) {
+      // (FIX critic r2) a real soft "p-OF": the "p" click lifted (+6 dB, 1.5–3 kHz) …
+      v.noise('white', { g: perc(0.45, 0.004, 0.0003), to: v.filt('bandpass', 2300, 1.2) });
+      v.noise('pink', { g: perc(0.3, 0.008, 0.0005), to: v.filt('bandpass', 1500, 1.4) });
+      // … then two SHORT fat lobes 60 ms apart, each closing fast (800 → 350 Hz), so they separate
+      for (const [t, g, pan] of [[0.008, 1.15, -0.18], [0.068, 0.85, 0.18]] as const) {
         const out = v.panner(pan, { t });
-        v.noise('pink', { t, g: [[0, 0], [0.008, g], [0.14, g * 0.72], [0.4, 0.0001, 'e']], to: v.filt('lowpass', [[0, 800], [0.3, 500, 'e']], 0.9, { t, to: out }) });
+        v.noise('pink', { t, g: [[0, 0], [0.006, g], [0.06, g * 0.5], [0.15, 0.0001, 'e']], to: v.filt('lowpass', [[0, 850], [0.12, 350, 'e']], 1.1, { t, to: out }) });
+        thump(v, t + 0.004, 150, 55, 0.42 * g, 0.12, { att: 0.004, to: out });
       }
-      puff(v, 0.004, 0.32, 0.12, 2000, { kind: 'pink', att: 0.003 });
-      thump(v, 0.012, 150, 52, 0.5, 0.26, { att: 0.006 });
-      thump(v, 0.05, 130, 50, 0.36, 0.2, { att: 0.005 });
-      // the "f": the air hisses out
-      sweep(v, 0.04, 0.32, [1600, 1100, 650], 0.18, { kind: 'pink', q: 1, peakAt: 0.12 });
+      // the "f": the air hisses out and carries the tail
+      sweep(v, 0.1, 0.36, [2600, 1700, 900], 0.2, { kind: 'pink', q: 0.9, peakAt: 0.15 });
       // the down scatters out wide: two rustles flying apart to the sides
       rustle(v, 0.05, [[0, 0], [0.05, 0.2], [0.75, 0.0001, 'e']], { rate: 42, f: 5200, fTo: 4400, pan: [[0, -0.15], [0.7, -0.65]] });
       rustle(v, 0.07, [[0, 0], [0.05, 0.17], [0.7, 0.0001, 'e']], { rate: 50, f: 5600, fTo: 4800, pan: [[0, 0.15], [0.7, 0.65]] });
@@ -480,6 +487,24 @@ export const WISP_IMP_RECIPES = {
       ghostVoice(v, 0, 0.15, [620, 760, 560], 0.11, { from: 'u', to: 'o', breath: 0.55, vib: 30 });
       rustle(v, 0, [[0, 0], [0.02, 0.09], [0.22, 0.0001, 'e']], { rate: 66 });
       quills(v, 0.01, 0.2, 5, 0.04, { curve: 1.6 });
+    },
+  },
+  /**
+   * (FIX critic r2) A blow knocks feathers off it (it is the TARGET: the guard holds, a recoil it
+   * survives, the lethal blow): a quick airy "ffp" — a 2–4 kHz breath burst closing on a tiny cloth
+   * pop, the 5 kHz rustle of the feathers flying off and a few quill ticks.
+   */
+  wiFfp: {
+    cap: 2,
+    gap: 0.08,
+    verb: 0.3,
+    duck: 0.2,
+    play(v) {
+      sweep(v, 0, 0.11, [2200, 3800, 2600], 0.34, { kind: 'pink', q: 1.2, peakAt: 0.3 });
+      v.noise('pink', { t: 0.075, g: perc(0.32, 0.012, 0.0006), to: v.filt('bandpass', 1300, 1.5) });
+      thump(v, 0.075, 210, 110, 0.18, 0.04);
+      rustle(v, 0.01, [[0, 0], [0.025, 0.3], [0.32, 0.0001, 'e']], { rate: 58, f: 5200, fTo: 4500 });
+      quills(v, 0.02, 0.3, 7, 0.07, { curve: 1.5 });
     },
   },
   /** Revive (sustained, stopped on 'land'): the wind turns round and brings the feathers back. */

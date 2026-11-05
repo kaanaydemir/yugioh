@@ -994,6 +994,30 @@ export function drawWisp(p: PixelCanvas, pz: Pose, lightFrom: 'left' | 'right' =
       if (k === TAIL && tailQuill(g, x + 0.5, y + 0.5)) tone[i] = Math.max(1, tone[i] - 1);
     }
 
+  // (FIX critic r2) the hood is feathered too: three big shingle scallops across the crown and the
+  // back of the hood (a curved tip edge one step down, its shade band under it), the same overlapping
+  // language as the skirt; the face hollow and its rim stay clean
+  if (pz.pillow < 0.4 && pz.erode < 0.3 && pz.peel < 2 && !pz.eyesOnly) {
+    const SC: [number, number, number][] = [
+      [-3, -5.5, 5],
+      [-7.5, 0, 4.6],
+    ];
+    for (const [ox, oy, r] of SC) {
+      const cx = g.hx + ox * (g.rx / 10);
+      const cy = g.hy + oy * (g.ry / 10);
+      for (let y = Math.floor(cy); y <= cy + r + 2; y++)
+        for (let x = Math.floor(cx - r - 1); x <= cx + r + 1; x++) {
+          if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1) continue;
+          const i = y * W + x;
+          if (kind[i] !== HOOD || tone[i] < 3) continue;
+          if (inHollow(pz, g, x, y) <= 2.2) continue;
+          const d = Math.hypot(x + 0.5 - cx, (y + 0.5 - cy) * 1.15);
+          if (d > r - 0.6 && d <= r + 0.5) tone[i] = 2;
+          else if (d > r + 0.5 && d <= r + 2.3) tone[i] = 3;
+        }
+    }
+  }
+
   // cast shade: whatever lies in front casts one step of shade on the surface right under it
   // (the hood's lip on the plumes, each plume on the plume or sheet behind it; IŞ-5/IŞ-6, never ink)
   {

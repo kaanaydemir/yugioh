@@ -38,6 +38,13 @@
 //    the breath); the pof is an inked cumulus (pop → wide puff → torn ring) throwing whole feathers.
 //    Every loose feather that matters is a `stamp` (inked, quilled, lit vane, falling-leaf turn-over).
 //    Blocked darts ricochet off with a white "tink" spark; shorter, closer summon pre-roll.)
+//   (FIX critic r2: the wisp that attacks and LOSES goes into the hug on its own contact (no survive
+//    recoil, no idle); a struck wisp staggers (hitHeavy) and then hugs — the hug is a real, shrinking,
+//    "> <" squeeze with a shiver that speeds up, never raised hands; wiClutch bridges into wiSwell;
+//    white-dominant curved stamps, fewer / bigger flock feathers; the wind keeps off the duelist;
+//    "0 · KORUNDU" stays 450 ms by the revealed LP (gold ring), the pof stays under the name row;
+//    the card answers blows it takes as the target (wiFfp + feathers knocked off); no shared heavy
+//    body blow under the darts; stepped-pitch jabs; no floor smudge under the falling feather.)
 //
 // Pixel language: every effect is drawn on whole-pixel rasters in palette tones (white / void4 /
 // void3 / void2 for the feathers, gold for the eyes), fading by stepping DOWN the ramp, never by
@@ -50,7 +57,7 @@ import { monsterFrame } from '../../art/textures';
 import type { MonsterId } from '../../data/cards';
 import type { GameEvent, PlayerId } from '../../engine/types';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
-import { DEPTH, GAME_H, GAME_W, LOOK_V3, panelRect, type XY, zoneXY } from '../../view/layout';
+import { DEPTH, GAME_H, GAME_W, LOOK_V3, duelistXY, panelRect, type XY, zoneXY } from '../../view/layout';
 import { lightFlash, lightPool } from '../../view/light';
 import { shake } from '../../vfx/core';
 import { Raster } from '../../vfx/setpieces';
@@ -281,6 +288,8 @@ class Plumes {
   readonly list: Plume[] = [];
   private stop: () => void;
   private closed = false;
+  /** A circle (world px) no feather may cross: one that reaches it is gone (the duelist). */
+  avoid: { x: number; y: number; r: number } | null = null;
 
   constructor(scene: Phaser.Scene, x: number, y: number, w: number, h: number, depth: number) {
     this.r = new Raster(scene, x, y, w, h, depth);
@@ -325,7 +334,7 @@ class Plumes {
       p.age += dt;
       if (p.age < p.delay) continue;
       const a = p.age - p.delay;
-      if (a >= p.life) {
+      if (a >= p.life || (this.avoid && Math.hypot(p.x - this.avoid.x, (p.y - this.avoid.y) * 0.8) < this.avoid.r)) {
         this.list.splice(i, 1);
         continue;
       }
@@ -532,13 +541,19 @@ async function summonV3(S: Stage): Promise<void> {
   spr.setPosition(rest.x, rest.y - FALL);
   // a lone feather casts no drop shadow: the unit's shadow stays hidden until the fountain has built a body
   let shadowOn = false;
+  // (FIX critic r2) the light layer's soft contact shadow follows the SPRITE: a lone feather high in
+  // the air must not drag a dark smudge across the floor — it counts as lifted until the body builds
+  u.lift = 40;
+  S.own({ destroy: () => (u.lift = 0) });
   const hideShadow = () => {
     if (!shadowOn && u.shadow.active) u.shadow.setVisible(false);
   };
   sc.events.on(Phaser.Scenes.Events.PRE_RENDER, hideShadow);
   S.own({ destroy: () => sc.events.off(Phaser.Scenes.Events.PRE_RENDER, hideShadow) });
   const drift = start('wiDrift', { volume: 0.9, pan });
-  const moon = lightPool(sc, w0.x, w0.y - FALL, { color: PAL.void4, spill: PAL.void3, radius: 12, floorY: S.home.y, air: 0.7, intensity: 0.45, anim: 'breathe', fadeIn: 120 });
+  // (FIX critic r2) a white moon-glint round the feather in the air only: the old void spill lay on the
+  // floor as a dark smudge
+  const moon = lightPool(sc, w0.x, w0.y - FALL, { color: PAL.white, spill: null, radius: 1, floorY: S.home.y, air: 0.75, airRadius: 9, intensity: 0.4, anim: 'breathe', fadeIn: 120 });
   S.own({ destroy: () => moon.destroy() });
   // the falling feather leaves a glinting thread of down behind it, and its little shadow on the
   // tile grows as it comes down (the eye knows where it will land before it does)
@@ -565,8 +580,11 @@ async function summonV3(S: Stage): Promise<void> {
     const ox = offs[f].x;
     const oy = offs[f].y + rise;
     const y = rest.y - FALL * (1 - e);
-    spr.setPosition(ri(rest.x + sway + ox), ri(y + oy));
-    moon.setPosition(ri(w0.x + sway), ri(w0.y - FALL * (1 - e)), S.home.y);
+    // (FIX critic r2) it drifts in from a clear patch of air beside the tile (never over the deck
+    // stack behind it): the wind's slant, gone by the touch
+    const slant = -S.dir * 30 * (1 - e) * (1 - e);
+    spr.setPosition(ri(rest.x + sway + ox + slant), ri(y + oy));
+    moon.setPosition(ri(w0.x + sway + slant), ri(w0.y - FALL * (1 - e)), S.home.y);
   });
   spr.setPosition(rest.x, rest.y);
   // ---- the summon pose: it keeps falling to the tile, touches, the fountain builds it
@@ -606,7 +624,10 @@ async function summonV3(S: Stage): Promise<void> {
     whirl = fountain(S, rnd);
     S.own({ destroy: () => whirl?.end() });
   });
-  atFrame(u, 'summon', Math.max(FOUNT + 1, LAND - 2), () => (shadowOn = true));
+  atFrame(u, 'summon', Math.max(FOUNT + 1, LAND - 2), () => {
+    shadowOn = true;
+    u.lift = 0;
+  });
   atFrame(u, 'summon', LAND, () => {
     play('wiLand', { volume: 0.9, pan });
     whirl?.fling();
@@ -986,6 +1007,10 @@ function gust(scene: Phaser.Scene, u: MonsterUnit, dir: number, ms: number, rnd:
   const W = 220;
   const r = new Raster(scene, c.x - W / 2, c.y - 50, W, 90, u.sprite.depth + 0.4);
   const plumes = new Plumes(scene, c.x - W / 2 - 40, c.y - 120, W + 80, 180, u.sprite.depth + 0.5);
+  const dz = duelistXY(u.player);
+  plumes.avoid = { x: dz.x, y: dz.y - 16, r: 30 };
+  // the ribbons / streaks end this far downwind (short of the duelist's dais)
+  const REACH = Math.max(40, Math.min(W / 2 - 4, Math.abs(dz.x - c.x) - 34));
   const ribbons = [
     { y: c.y - 22, len: 34, amp: 2.2, spd: 420, delay: 0 },
     { y: c.y - 6, len: 28, amp: 1.8, spd: 470, delay: 60 },
@@ -1000,14 +1025,14 @@ function gust(scene: Phaser.Scene, u: MonsterUnit, dir: number, ms: number, rnd:
       const head = c.x - dir * (W / 2 - 6) + dir * (a / 1000) * g.spd;
       for (let k = 0; k < g.len; k++) {
         const x = ri(head - dir * k);
-        if (Math.abs(x - c.x) > W / 2 - 2) continue;
+        if (Math.abs(x - c.x) > W / 2 - 2 || dir * (x - c.x) > REACH) continue;
         const y = ri(g.y + Math.sin((x - c.x) / 7 + g.delay) * g.amp);
         r.px(x, y, k < 4 ? PAL.white : k < g.len * 0.6 ? PAL.void4 : PAL.void3);
         if (k > 2 && k < g.len * 0.4 && k % 3 === 0) r.px(x, y + 1, PAL.void3);
       }
       // the rolling curl at its head
       const hx = ri(head);
-      if (Math.abs(hx - c.x) < W / 2 - 4) {
+      if (Math.abs(hx - c.x) < W / 2 - 4 && dir * (hx - c.x) <= REACH) {
         const hy = ri(g.y + Math.sin((hx - c.x) / 7 + g.delay) * g.amp);
         r.px(hx + dir, hy - 1, PAL.white);
         r.px(hx + dir, hy - 2, PAL.white);
@@ -1020,7 +1045,7 @@ function gust(scene: Phaser.Scene, u: MonsterUnit, dir: number, ms: number, rnd:
       const a = el - l.delay;
       if (a < 0) continue;
       const x = c.x - dir * 50 + dir * (l.x0 + (a / 1000) * l.spd);
-      if (Math.abs(x - c.x) > W / 2 - l.len) continue;
+      if (Math.abs(x - c.x) > W / 2 - l.len || dir * (x - c.x) > REACH) continue;
       for (let k = 0; k < l.len; k++) r.px(ri(x - dir * k), l.y, k < 3 ? PAL.void4 : k < 8 ? PAL.void3 : PAL.void2);
     }
     r.end();
@@ -1032,9 +1057,10 @@ function gust(scene: Phaser.Scene, u: MonsterUnit, dir: number, ms: number, rnd:
       const b = u.core();
       for (let i = 0; i < n; i++) {
         // they leave from the back edge of the body, where the sprite's own peeled feathers exit
-        // (FIX critic r2) the wind lifts them UP and away (a rising curl), never across the duelist's
-        // dais: a short run downwind, then they climb and fade before they could reach it
-        plumes.add({ x: b.x + dir * rr(rnd, 12, 18), y: b.y + rr(rnd, -18, 6), vx: dir * rr(rnd, 70, 105), vy: rr(rnd, -75, -45), len: i % 3 === 0 ? 9 : 8, grav: -38, drag: 1.6, life: rr(rnd, 560, 760), flut: rr(rnd, 6, 12), hz: rr(rnd, 1.2, 1.8), ang: dir > 0 ? -0.35 : Math.PI + 0.35, swing: 0.9, ink: true }, rnd);
+        // (FIX critic r2) never across the duelist's dais (which stands up-and-back of the tile): the
+        // wind carries them out low along the floor side, a short run, then they lift and fade —
+        // and any that would still reach the duelist melt away there (Plumes.avoid)
+        plumes.add({ x: b.x + dir * rr(rnd, 12, 18), y: b.y + rr(rnd, -14, 8), vx: dir * rr(rnd, 65, 95), vy: rr(rnd, 0, 30), len: i % 3 === 0 ? 9 : 8, grav: -30, drag: 1.8, life: rr(rnd, 420, 580), flut: rr(rnd, 6, 12), hz: rr(rnd, 1.2, 1.8), ang: dir > 0 ? 0.25 : Math.PI - 0.25, swing: 0.9, ink: true }, rnd);
       }
     },
     end() {
@@ -1421,23 +1447,24 @@ function pof(scene: Phaser.Scene, at: XY, rnd: Rnd): void {
         // the pop: tight, tall (stretched), bright
         // (as big as the pillow it replaces)
         const puffs: [number, number, number][] = [[0, -1, 11], [-14, 0, 8], [14, 0, 8]];
-        for (const l of L) puffs.push([Math.cos(l.a) * 24, Math.sin(l.a) * 9 - 1, l.r * 0.95]);
+        for (const l of L) puffs.push([Math.cos(l.a) * 24, Math.sin(l.a) * (Math.sin(l.a) < 0 ? 6 : 9) - 1, l.r * 0.95]);
         cumulus(r, at.x, at.y - 2, puffs);
       } else if (k === 1) {
-        // the puff: wide and squat
-        const puffs: [number, number, number][] = [[0, 0, 12], [-10, -3, 9], [10, -3, 9], [-22, 1, 8], [22, 1, 8]];
-        for (const l of L) puffs.push([Math.cos(l.a) * 34, Math.sin(l.a) * 13, l.r * 1.15]);
+        // the puff: wide and squat (FIX critic r2: it spreads sideways and DOWN, never up over the
+        // player-name row above the digits)
+        const puffs: [number, number, number][] = [[0, 1, 11], [-10, -1, 8], [10, -1, 8], [-22, 2, 8], [22, 2, 8]];
+        for (const l of L) puffs.push([Math.cos(l.a) * 36, Math.sin(l.a) * (Math.sin(l.a) < 0 ? 6 : 12), l.r * 1.05]);
         cumulus(r, at.x, at.y - 1, puffs);
       } else if (k === 2) {
         // the cloud tears open: a lumpy ring of lobes
         for (let i = 0; i < 9; i++) {
           const a = (i / 9) * TAU;
-          cumulus(r, ri(at.x + Math.cos(a) * 40), ri(at.y + Math.sin(a) * 17), [[0, 0, 5.5], [2, 1, 4]], true, i % 3 === 0 ? 1 : 0);
+          cumulus(r, ri(at.x + Math.cos(a) * 42), ri(at.y + Math.sin(a) * (Math.sin(a) < 0 ? 9 : 16)), [[0, 0, 5.5], [2, 1, 4]], true, i % 3 === 0 ? 1 : 0);
         }
       } else if (k === 3) {
         for (let i = 0; i < 9; i++) {
           const a = (i / 9) * TAU + 0.2;
-          cumulus(r, ri(at.x + Math.cos(a) * 48), ri(at.y + Math.sin(a) * 20), [[0, 0, 3.5]], false, 1);
+          cumulus(r, ri(at.x + Math.cos(a) * 50), ri(at.y + Math.sin(a) * (Math.sin(a) < 0 ? 11 : 19)), [[0, 0, 3.5]], false, 1);
         }
       } else r.ring(at.x, at.y, 54, 22, PAL.void2);
     });
@@ -1469,10 +1496,19 @@ async function pillowDeath(ctx: Ctx<'destroy'>, L: Leave | null, amount: number,
     const SWELL = Math.max(1, REL - 3);
     // (FIX critic r2) the swell has its own rising inhale (wiStuff is the panel's packing only), and
     // the hug's trembling hum is stopped here, where the pillow takes over
-    atFrame(u, 'special', SWELL, () => play('wiSwell', { volume: 0.85, pan }), { late: false });
+    atFrame(
+      u,
+      'special',
+      SWELL,
+      () => {
+        endClutchVoice(u, 90);
+        play('wiSwell', { volume: 0.85, pan });
+      },
+      { late: false },
+    );
     const held = clutched.has(u) && u.frameInfo().anim === 'special' ? u.frameInfo().frame : 0;
+    // (the hum hands over to the swell on its frame: the hold's loop leaves it playing)
     clutched.delete(u);
-    endClutchVoice(u, 110);
     const from = Math.min(SWELL - 1, held);
     await u.asClaimant(() => u.playRange('special', from, SWELL, { timeScale: 1.3 }));
     burstAt = artPoint(u, 'special', SWELL, 'core');
@@ -1765,9 +1801,9 @@ function holdClutch(sc: Phaser.Scene, u: MonsterUnit, now: boolean): void {
   };
   if (now && live(u)) grab(0);
   onFrame(sc, (dt, el) => {
-    const quit = (): false => {
+    const quit = (voice = true): false => {
       esc.close();
-      endClutchVoice(u, 200);
+      if (voice) endClutchVoice(u, 200);
       return false;
     };
     if (!held && clutched.has(u)) {
@@ -1785,11 +1821,11 @@ function holdClutch(sc: Phaser.Scene, u: MonsterUnit, now: boolean): void {
       return quit();
     }
     if (!held) {
-      if (u.frameInfo().anim !== 'idle') return true;
+      if (el < 50 || u.frameInfo().anim !== 'idle') return true;
       grab(el);
       return true;
     }
-    if (!clutched.has(u)) return quit(); // the effect took over
+    if (!clutched.has(u)) return quit(false); // the effect took over (it ends the hum on the swell)
     const fi = u.frameInfo();
     if (fi.anim !== 'special' || fi.frame > CLUTCH_FRAME + 3) return quit();
     const a = el - t0;
@@ -1867,9 +1903,14 @@ if (LOOK_V3)
             play('wiHu', { volume: 0.65, pan });
             play('wiFfp', { volume: 0.75, pan });
             featherPop(sc, u, 5, away, rnd);
+            // (the shared recoil starts on this same contact frame, after this call: the stagger
+            // takes over on the next frame, then the hug waits for it to let go)
             void sleep(sc, 17).then(() => {
-              if (live(u) && !clutched.has(u) && u.has('hitHeavy')) void u.asClaimant(() => u.playRange('hitHeavy', 1));
+              if (!live(u) || clutched.has(u)) return;
+              if (u.has('hitHeavy')) void u.asClaimant(() => u.playRange('hitHeavy', 1));
+              holdClutch(sc, u, false);
             });
+            return;
           } else if (lethal) {
             // killed in defense: the blow knocks the first feathers off before the wind comes
             play('wiFfp', { volume: 0.85, pan });
