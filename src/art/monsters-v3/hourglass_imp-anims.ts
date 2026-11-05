@@ -246,7 +246,7 @@ const D: K[] = [
 export const DEATH_TOPPLE = 9;
 const LYING = D[D.length - 1];
 const deathPose = (f: number): Pose => mk(IDLE0, D[Math.min(f, D.length - 1)]);
-const D_HOLDS = [50, 60, 70, 60, 60, 60, 60, 70, 80, 60, 45, 45, 45, 80];
+const D_HOLDS = [50, 60, 70, 60, 60, 60, 60, 60, 60, 60, 45, 45, 45, 80];
 
 // ------------------------------------------------------------------ revive (12 frames, land @ 8): the death backwards
 

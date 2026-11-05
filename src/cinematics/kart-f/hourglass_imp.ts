@@ -873,7 +873,7 @@ async function deathOwn(ctx: Ctx<'destroy'>): Promise<void> {
     await until(sc, () => !u.sprite.active || (inDeath() && u.frameInfo().frame >= n - 1), u.rangeMs('death', 0, n) + 300);
     drainH.h?.stop(40);
     if (!u.sprite.active) return;
-    await sleep(sc, Math.min(90, u.frameMs('death', n - 1)));
+    await sleep(sc, Math.min(30, u.frameMs('death', n - 1)));
     // ---- the bleed: the lying, cracked glass empties out of its crack in 4 steps, a gold rivulet ≤ 8 px
     layer = new ImpLayer(sc, u, 0, u.sprite.depth + 0.05);
     const L = layer;
