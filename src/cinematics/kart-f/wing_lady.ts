@@ -686,8 +686,13 @@ async function glideIn(S: Stage): Promise<void> {
   streams.g.destroy();
   // ---- 620: the brake-flare (f2–f3), the W; the rush lets go
   rush.stop(140);
-  const brake = u.playRange('summon', 2);
+  // the brake runs a touch quicker than the table, the run-out and fold quicker still (the salute must come
+  // while the glide is still in the eye: summon + bless ≤ 2.4 s scene, critique 7)
+  const brake = u.playRange('summon', 2, undefined, { timeScale: 1.25 });
   const landF = u.markFrame('summon', 'land', 7);
+  atFrame(u, 'summon', landF + 1, () => {
+    if (u.sprite.active && u.frameInfo().anim === 'summon') u.sprite.anims.timeScale = 1.6;
+  }, { late: true, maxMs: 2200 });
   const lifts = [9, 4, 1];
   for (let b = 0; b < 3; b++) {
     const f = 4 + b;
@@ -837,7 +842,7 @@ async function kestrel(s: StrikeArgs): Promise<void> {
     play('khStoop', { volume: 0.9, pan });
     const startP = { x: home.x, y: home.y - 12 };
     const goalAir = { x: goal.x, y: goal.y - (s.direct ? 6 : 0) };
-    const stoopMs = s.direct ? 280 : 200;
+    const stoopMs = s.direct ? 240 : 200;
     let prev = startP;
     const over = s.target && !s.direct ? s.target.sprite.depth + 1 : undefined;
     await animate(sc, stoopMs, (t) => {
@@ -904,7 +909,7 @@ async function kestrel(s: StrikeArgs): Promise<void> {
       // ---- direct: she bursts up off the clap and the wind carries her home on a high backward arc
       u.pose('attack', 7);
       const top = { x: (f6.x + home.x) / 2, y: Math.min(f6.y, home.y) - 26 };
-      await animate(sc, 420, (t) => {
+      await animate(sc, 340, (t) => {
         const p = quad(f6, top, { x: home.x, y: home.y - 3 }, E.inOutQ(t));
         const ground = { x: f6.x + (home.x - f6.x) * t, y: goal.y + (home.y - goal.y) * t };
         setFeet(u, p, ground);
@@ -929,10 +934,17 @@ async function kestrel(s: StrikeArgs): Promise<void> {
     charge.stop(80);
     streams.g.destroy();
     u.posed = false;
-    if (u.sprite.active && !u.retired && u.frameInfo().anim !== 'death') {
-      setFeet(u, home);
-      if (u.frameInfo().anim === 'attack') u.rest();
-    }
+    const settle = () => {
+      if (u.sprite.active && !u.retired && u.frameInfo().anim !== 'death' && !u.posed) {
+        setFeet(u, home);
+        if (u.frameInfo().anim === 'attack') u.rest();
+      }
+    };
+    // she lost: she falls where she struck (the death follows 150 ms after contact); a save sends her home later
+    if (loses && u.sprite.active) {
+      setFeet(u, feetOf(u));
+      void sleep(sc, 900).then(settle);
+    } else settle();
   }
 }
 
@@ -979,17 +991,23 @@ function paintBird(px: Px, cx: number, cy: number, span: number, up: number, rim
       for (let y = 0; y < h; y++) put(cx + x, cy - y);
     }
   } else {
+    // a kestrel seen from above: broad inner wings (5 px at the root), a wrist bend at 55 % of the span, pointed
+    // slate-sharp hands with three primary fingers on the trailing edge, a 3-px body, a head and a fanned tail
     for (let x = -S; x <= S; x++) {
       const a = Math.abs(x) / S;
-      const yc = Math.round(cy - up * a - a * a * 1.5);
-      const th = Math.max(1, Math.round(4 - a * 2.6));
+      // the leading edge: rises with the stroke, the hand swept back past the wrist
+      const yc = Math.round(cy - up * a + (a > 0.55 ? (a - 0.55) * 6 : 0) - (a < 0.55 ? a * 2 : 1.1));
+      let th = a < 0.2 ? 5 : a < 0.55 ? Math.round(5 - (a - 0.2) * 4) : Math.max(1, Math.round(3.6 - (a - 0.55) * 6));
+      // primary fingers: every second column of the hand trails one pixel further
+      if (a > 0.6 && Math.abs(x) % 2 === 0) th += 1;
       for (let y = 0; y < th; y++) put(cx + x, yc + y);
     }
-    // body + head + tail
-    for (let y = -2; y <= 3; y++) put(cx, cy + y);
-    put(cx - 1, cy + 1);
-    put(cx + 1, cy + 1);
+    // body (3 px), head, a fanned tail
+    for (let y = -2; y <= 5; y++) for (const dx of [-1, 0, 1]) put(cx + dx, cy + y);
     put(cx, cy - 3);
+    put(cx, cy - 4);
+    for (const dx of [-2, -1, 0, 1, 2]) put(cx + dx, cy + 6);
+    for (const dx of [-3, -1, 1, 3]) put(cx + dx, cy + 7);
   }
   for (const k of set) {
     const [x, y] = k.split(',').map(Number);
@@ -1117,7 +1135,7 @@ async function fallingCape(ctx: Ctx<'destroy'>): Promise<void> {
     for (let k = 0; k < 3; k++) {
       px.clear();
       if (k === 0) paintBird(px, body.x, body.y, 13, 0, PAL.gold2, PAL.night0, true);
-      else paintBird(px, body.x, body.y - k * 3, k === 1 ? 14 : 23, k === 1 ? 2 : 6, PAL.gold3, PAL.night0);
+      else paintBird(px, body.x, body.y - k * 3, k === 1 ? 11 : 17, k === 1 ? 2 : 6, PAL.gold3, PAL.night1);
       await sleep(sc, STEP_MS);
     }
     const from = { x: body.x, y: body.y - 6 };
@@ -1126,11 +1144,11 @@ async function fallingCape(ctx: Ctx<'destroy'>): Promise<void> {
       px.clear();
       if (t >= 1) return;
       const p = rint(quad(from, ctl, { x: pile.x, y: pile.y - 4 }, E.inOutQ(t)));
-      const span = Math.max(8, Math.round(23 - Math.max(0, t - 0.4) * 24));
+      const span = Math.max(8, Math.round(17 - Math.max(0, t - 0.4) * 16));
       const flap = Math.floor(t * 7) % 4;
       const up = flap === 0 ? 7 : flap === 1 ? 2 : flap === 2 ? -3 : 3;
       const rim = t < 0.45 ? PAL.gold3 : t < 0.75 ? PAL.gold2 : PAL.gold1;
-      const fill = t < 0.8 ? PAL.night0 : PAL.night1;
+      const fill = t < 0.8 ? PAL.night1 : PAL.night0;
       paintBird(px, p.x, p.y, span, up, rim, fill);
     });
     px.g.destroy();

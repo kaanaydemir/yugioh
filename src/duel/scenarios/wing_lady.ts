@@ -113,6 +113,11 @@ const scenarios: Record<string, Scenario> = {
     stage: { phase: 'battle', active: 1, p0: { monsters: [null, { id: 'stone_sentinel', position: 'defense' }] }, p1: { monsters: [null, 'wing_lady'] } },
     steps: [attack(1, 1, 1)],
   },
+  khAttackLose: {
+    desc: 'Kanat Hanımı (1300) attacks Kor Kurdu (1700) and loses: the clap, then the falling cape where she struck',
+    stage: { phase: 'battle', p0: { monsters: [null, 'wing_lady'] }, p1: { monsters: [null, 'ember_wolf'] } },
+    steps: [attack(1, 1)],
+  },
   khBuffAtk: {
     desc: 'The buffed hawk (1300) attacks Gelgit Golemi (1100): its crest flares at the declaration, the hawk wins',
     stage: { phase: 'battle', p0: { monsters: ['storm_hawk', 'wing_lady'] }, p1: { monsters: [{ id: 'tide_golem', position: 'attack' }] } },
