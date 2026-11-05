@@ -189,37 +189,11 @@ function seeds(f: Frame): void {
 
 // ---------------------------------------------------------------- death / revive
 
-/** The body's top row (horns excluded) for the grass bands; cached per frame on the Frame. */
-const TOP = new WeakMap<Frame, number>();
-function bodyTop(f: Frame): number {
-  let t = TOP.get(f);
-  if (t !== undefined) return t;
-  t = GY;
-  const { p, comp } = f;
-  for (let y = 0; y < H && t === GY; y++)
-    for (let x = 0; x < W; x++) {
-      if (!p.isOpaque(x, y)) continue;
-      const part = comp.at(x, y);
-      if (part === Part.hornN || part === Part.hornF) continue;
-      t = y;
-      break;
-    }
-  TOP.set(f, t);
-  return t;
-}
-
-/** Height fraction of row y in the body (0 at the floor, 1 at the top row). */
-function hfOf(f: Frame, x: number, y: number): number {
-  const top = bodyTop(f);
-  // a 1-px step every 4 columns: the band edge reads as grass, not a ruler
-  return (GY - y + ((x >> 2) & 1 ? 0.6 : 0)) / Math.max(6, GY - top + 1);
-}
-
-/** The coat has turned to grass here (clean bands climbing from the hooves: 0.34 · 0.67 · 1). */
 function frontY(f: Frame, x: number, y: number): boolean {
   const { o } = f;
   if (o.grass <= 0) return false;
-  return o.grass >= 1 || hfOf(f, x, y) < o.grass;
+  const thr = (GY - y) / 60 + 0.12 * hash2(x >> 1, y >> 1, 77);
+  return thr < o.grass * 1.12;
 }
 
 function windGone(f: Frame, x: number, y: number, x0: number, span: number): number {
@@ -259,14 +233,20 @@ export function deathPasses(f: Frame, stage: 'matter' | 'light'): void {
     if (!b) return;
     const x0 = b.x;
     const span = Math.max(20, b.w);
-    const conv: number[] = [];
-    const src = p.clone();
     for (let y = b.y; y < b.y + b.h; y++)
       for (let x = b.x; x < b.x + b.w; x++) {
         if (!p.isOpaque(x, y)) continue;
         const part = comp.at(x, y);
         const horn = part === Part.hornN || part === Part.hornF;
-        if (!horn && frontY(f, x, y)) conv.push(x, y);
+        if (!horn && frontY(f, x, y)) {
+          const c = p.get(x, y)!;
+          // the transform front: a 2-px leaf3 band
+          const nearFront = !frontY(f, x, y - 2);
+          // tufts: every third 2-px column steps one tone darker (grass texture by tone bands, MA-2)
+          const g = TO_GRASS[c] ?? PAL.leaf2;
+          const tuft = ((x >> 1) + (y >> 3)) % 3 === 0;
+          p.set(x, y, nearFront ? PAL.leaf3 : tuft ? (g === PAL.leaf3 ? PAL.leaf2 : g === PAL.leaf2 ? PAL.leaf1 : g) : g);
+        }
         if (horn) continue;
         const k = windGone(f, x, y, x0, span);
         if (k >= 0) {
@@ -275,49 +255,21 @@ export function deathPasses(f: Frame, stage: 'matter' | 'light'): void {
           if ((x & 1) === 0 && (y & 1) === 0 && hash2(x >> 1, y >> 1, 13) < 0.16) motes.push({ x, y, k, i: (x * 7 + y * 3) & 255 });
         }
       }
-    // the grass in his shape, in value planes measured on the body's silhouette: leaf3 top and lit edge, leaf1 on the
-    // underside and the side away from the light, leaf2 between; the band edge climbing the coat is a leaf3 front
-    const ls = f.light.side;
-    const solid = (x: number, y: number) => src.isOpaque(x, y) && comp.at(x, y) !== Part.hornN && comp.at(x, y) !== Part.hornF;
-    const runS = (x: number, y: number, dx: number, dy: number, cap: number) => {
-      let d = 0;
-      while (d < cap && solid(x + dx * (d + 1), y + dy * (d + 1))) d++;
-      return d;
-    };
-    for (let i = 0; i < conv.length; i += 2) {
-      const x = conv[i];
-      const y = conv[i + 1];
-      if (!p.isOpaque(x, y)) continue;
-      const above = solid(x, y - 1) && !frontY(f, x, y - 1);
-      const up = runS(x, y, 0, -1, 3);
-      const dn = runS(x, y, 0, 1, 3);
-      const tl = runS(x, y, ls, 0, 3);
-      const aw = runS(x, y, -ls, 0, 3);
-      p.set(x, y, above ? PAL.leaf3 : up < 2 || (up < 3 && tl < 3) || tl < 1 ? PAL.leaf3 : dn < 2 || aw < 2 ? PAL.leaf1 : PAL.leaf2);
-    }
     return;
   }
-  // light: blades poke out at every band edge (into the coat above it) and out of the mound's top (leaf3, a leaf4 tip,
-  // a white seedhead on some); on the mound frames they sway (o.t picks one of two drawn bends)
+  // light: blades poking out of the grass mound's top edge
   if (o.grass > 0.3 && o.wind < 0.9) {
     const b = p.bounds();
-    const sway = o.t >= 0.5 ? 1 : 0;
     if (b)
       for (let x = b.x + 1; x < b.x + b.w - 1; x += 3) {
         let y = b.y;
-        // the first grass pixel from the top of this column
-        while (y < b.y + b.h && !(p.isOpaque(x, y) && (p.get(x, y) === PAL.leaf3 || p.get(x, y) === PAL.leaf2 || p.get(x, y) === PAL.leaf1) && frontY(f, x, y))) y++;
-        if (y >= b.y + b.h - 1) continue;
-        const part = comp.at(x, y);
+        while (y < b.y + b.h && !(p.isOpaque(x, y) && p.get(x, y) !== PAL.ink)) y++;
+        if (y >= b.y + b.h - 1 || !frontY(f, x, y + 1)) continue;
+        const part = comp.at(x, y + 1);
         if (part === Part.hornN || part === Part.hornF) continue;
-        const edge = p.isOpaque(x, y - 1) && p.get(x, y - 1) !== PAL.ink;
-        const hgt = edge ? 2 : 2 + ((x * 5) % 3);
-        const lean = ((x >> 2) + sway) % 2 ? 1 : -1;
-        for (let i = 1; i <= hgt; i++) {
-          const xx = x + (i > 1 ? lean : 0);
-          f.p.set(xx, y - i, i === hgt ? PAL.leaf4 : PAL.leaf3);
-        }
-        if (!edge && o.grass >= 1 && (x * 7) % 5 === 0) put(f, x + lean * 2, y - hgt, PAL.white);
+        const hgt = 2 + ((x * 5) % 3);
+        const lean = (x >> 2) % 2 ? 1 : 0;
+        for (let i = 1; i <= hgt; i++) put(f, x + (i > 1 ? lean : 0), y - i, i === hgt ? PAL.leaf4 : PAL.leaf3);
       }
   }
   // the stream: erased clusters ride the wind leeward (−x, behind him), climbing on a curve

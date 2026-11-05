@@ -44,7 +44,7 @@ export const enum Part {
 }
 
 /** The only head angles the anims use (degrees, + = nose down): every angle is one rigid head + horn map. */
-export const HEAD_ANGLES = { sky: -45, up: -22, level: 0, down: 24, low: 50, pike: 78, ram: 92 } as const;
+export const HEAD_ANGLES = { sky: -45, up: -22, level: 0, down: 24, low: 50, pike: 78 } as const;
 
 // ---------------------------------------------------------------- pose
 
@@ -107,8 +107,6 @@ export interface Pose {
   wind: number;
   plume: number;
   gather: boolean;
-  /** death: the horns laid down along the floor (absolute angle of the near horn, deg; 0 = carried by the head) */
-  hornLay: number;
   /** global phase 0…1 (one-shots wrap it to 0 on their last frame) */
   t: number;
 }
@@ -151,7 +149,6 @@ export const NEUTRAL: Pose = {
   wind: 0,
   plume: 0,
   gather: false,
-  hornLay: 0,
   t: 0,
 };
 export const pose = (o: Partial<Pose>): Pose => ({ ...NEUTRAL, ...o });
@@ -164,6 +161,8 @@ const NOSE: Tones = { L: PAL.earth3, M: PAL.earth2, S: PAL.earth1, D: PAL.earth0
 const MANE: Tones = { L: PAL.leaf3, M: PAL.leaf2, S: PAL.leaf1, D: PAL.leaf0 };
 const CREST: Tones = { L: PAL.leaf2, M: PAL.leaf1, S: PAL.leaf0, D: PAL.leaf0 };
 const HOOF: Tones = { L: PAL.stone2, M: PAL.stone1, S: PAL.stone1, D: PAL.stone0 };
+const HORN: Tones = { L: PAL.earth4, M: PAL.earth4, S: PAL.earth2, D: PAL.earth3 };
+const HORN_FAR: Tones = { L: PAL.earth4, M: PAL.earth3, S: PAL.earth1, D: PAL.earth2 };
 
 // ---------------------------------------------------------------- skeleton
 
@@ -199,8 +198,8 @@ export interface Skel {
 
 const HORN_N_ANG = -112;
 const HORN_F_ANG = -93;
-const HORN_N_LEN = 20;
-const HORN_F_LEN = 19;
+const HORN_N_LEN = 17;
+const HORN_F_LEN = 16;
 
 function legSk(top: Pt, hoofT: Leg, l1: number, l2: number, lc: number, bend: number): LegSk {
   const a = (hoofT.a * Math.PI) / 180;
@@ -233,16 +232,16 @@ export function skeleton(o: Pose): Skel {
   const ff = legSk(bl(L + 1, 3), o.ff, 8, 11, 8, 1);
   const hn = legSk(bl(0, 2), o.hn, 9, 11, 9, -1);
   const hf = legSk(bl(3, 2), o.hf, 9, 11, 9, -1);
-  const horn = (bx: number, by: number, len: number, local: number, lay: number) => {
+  const horn = (bx: number, by: number, len: number, local: number) => {
     const base = hl(bx, by);
-    const ang = o.hornLay !== 0 ? o.hornLay + lay : local + ha;
+    const ang = local + ha;
     const r = (ang * Math.PI) / 180;
     return { base, tip: [base[0] + Math.cos(r) * len, base[1] + Math.sin(r) * len] as Pt, ang, len };
   };
   return {
     H: Hh, S, u, v, L, bl, poll, ha, hl, fn, ff, hn, hf,
-    hornN: horn(1, -0.5, HORN_N_LEN, HORN_N_ANG, 0),
-    hornF: horn(4, 0, HORN_F_LEN, HORN_F_ANG, -26),
+    hornN: horn(1, -0.5, HORN_N_LEN, HORN_N_ANG),
+    hornF: horn(4, 0, HORN_F_LEN, HORN_F_ANG),
     eye: hl(4, 3),
     core: bl(L / 2, 0),
     nose: hl(15, 8),
@@ -293,121 +292,46 @@ function drawLeg(f: Frame, which: 'fn' | 'ff' | 'hn' | 'hf'): void {
   f.comp.add(hq, part, {});
 }
 
-/** An ellipse as a polygon: centre c, its own axis angle (rad), radii along / across. */
-function ellPts(c: Pt, ang: number, rx: number, ry: number, n = 24): Pt[] {
-  const ca = Math.cos(ang);
-  const sa = Math.sin(ang);
-  return Array.from({ length: n }, (_, i) => {
-    const t = (i / n) * Math.PI * 2;
-    const x = Math.cos(t) * rx;
-    const y = Math.sin(t) * ry;
-    return [c[0] + x * ca - y * sa, c[1] + x * sa + y * ca] as Pt;
-  });
-}
-
-/** The barrel's two masses: the haunch (pitches only half as far, bunches when he rears) and the chest (follows the
- *  shoulder), joined by the back and the belly line — so a rear BENDS the body instead of tilting a rigid capsule. */
-interface Mass {
-  c: Pt;
-  ang: number;
-  rx: number;
-  ry: number;
-}
-function masses(sk: Skel, br: number): { hq: Mass; ch: Mass } {
-  const pitch = Math.atan2(sk.u[1], sk.u[0]);
-  const rear = clamp(-pitch / 0.75, 0, 1);
-  const hAng = pitch * 0.45;
-  const lift = br * 0.5;
-  // the haunch: centred a little ahead of the hip; rearing bunches it (shorter, deeper, lower)
-  const hc = sk.bl(1.5 - rear * 1.5, 0.5 + rear * 1.5);
-  const hq: Mass = { c: [hc[0], hc[1] - lift], ang: hAng, rx: 9 - rear * 1.5, ry: 8 + lift + rear * 1.2 };
-  const cc = sk.bl(sk.L - 0.5, 0.5);
-  const ch: Mass = { c: [cc[0], cc[1] - lift], ang: pitch, rx: 7.5, ry: 8 + lift };
-  return { hq, ch };
-}
-const massAt = (m: Mass, x: number, y: number): { r: number; nx: number; ny: number } => {
-  const dx = x + 0.5 - m.c[0];
-  const dy = y + 0.5 - m.c[1];
-  const ca = Math.cos(m.ang);
-  const sa = Math.sin(m.ang);
-  const lx = (dx * ca + dy * sa) / m.rx;
-  const ly = (-dx * sa + dy * ca) / m.ry;
-  const r = Math.hypot(lx, ly) || 1e-6;
-  // outward normal in screen space
-  const nlx = lx / m.rx;
-  const nly = ly / m.ry;
-  const nl = Math.hypot(nlx, nly) || 1;
-  return { r, nx: (nlx * ca - nly * sa) / nl, ny: (nlx * sa + nly * ca) / nl };
-};
-
 function drawBody(f: Frame): void {
   const { sk, o, light } = f;
   const L = sk.L;
-  const { hq, ch } = masses(sk, o.br);
+  const b = -7 - o.br;
+  const pts: Pt[] = [
+    sk.bl(-5, b + 1), sk.bl(1, b), sk.bl(L - 7, b + 0.5), sk.bl(L - 1, b), sk.bl(L + 3, -5), sk.bl(L + 5, -1), sk.bl(L + 5, 3),
+    sk.bl(L + 3, 7), sk.bl(L - 3, 8), sk.bl(6, 8.5), sk.bl(0, 8), sk.bl(-4, 7), sk.bl(-7, 4), sk.bl(-8, 0), sk.bl(-7.5, -4),
+  ];
   const q = layer();
-  const ca = (m: Mass, lx: number, ly: number): Pt => [m.c[0] + lx * Math.cos(m.ang) - ly * Math.sin(m.ang), m.c[1] + lx * Math.sin(m.ang) + ly * Math.cos(m.ang)];
-  q.poly(ellPts(hq.c, hq.ang, hq.rx, hq.ry), COAT.M);
-  q.poly(ellPts(ch.c, ch.ang, ch.rx, ch.ry), COAT.M);
-  // the back and the belly between them (the belly tucks up 1 px behind the girth: a curve, not a ruler line)
-  q.poly([ca(hq, 0, -hq.ry), ca(ch, -1, -ch.ry), ca(ch, -1, ch.ry - 0.5), ca(ch, -5, ch.ry - 0.2), ca(hq, 3, hq.ry - 1.2), ca(hq, 0, hq.ry - 0.5)], COAT.M);
+  q.poly(pts, COAT.M);
   const ls = light.side;
-  const lv: Pt = [light.v2[0], light.v2[1]];
-  // the shoulder blade: a slanted lit plate on the upper chest
-  const sp: Mass = { c: [ch.c[0] - sk.u[0] * 1 + sk.v[0] * -2, ch.c[1] - sk.u[1] * 1 + sk.v[1] * -2], ang: ch.ang + 1.15, rx: 6.5, ry: 3.6 };
-  const dot = (m: { nx: number; ny: number }, a: Pt) => m.nx * a[0] + m.ny * a[1];
+  bands(q, COAT, light, { top: 2, lit: 3, diag: 3, bottom: 3, away: 3 });
+  // flash patches: the belly (bottom rows, mist / white toward the light) and the rump (the back of the hindquarters)
   planes(q, (x, y, src) => {
-    const up = run(src, x, y, 0, -1, 3);
     const dn = run(src, x, y, 0, 1, 4);
-    const tl = run(src, x, y, ls, 0, 3);
-    const aw = run(src, x, y, -ls, 0, 3);
-    const ax = (x + 0.5 - sk.H[0]) * sk.u[0] + (y + 0.5 - sk.H[1]) * sk.u[1];
-    const H = massAt(hq, x, y);
-    const C = massAt(ch, x, y);
-    const B = massAt(sp, x, y);
-    // the flash patches: the white belly (an earth2 flank line over it), the rump
-    if (dn < 3 && ax > 3 && ax < L + 1) return dn < 1 ? PAL.mist : ls < 0 && ax < L * 0.45 ? PAL.mist : PAL.white;
-    if (ax < -5.5 && dn > 1 && up > 1) return ls < 0 ? PAL.white : PAL.mist;
-    if (dn === 3 && ax > 4 && ax < L - 1) return COAT.S;
-    // the back line and the lit edge
-    if (up < 1 || (up < 2 && tl < 3) || tl < 1) return COAT.L;
-    // the haunch's front crease (top-front around to the stifle), its lowest pixels earth1
-    if (H.r < 1 && H.r > 0.84 && dot(H, sk.u) > 0.25 && dot(H, sk.v) > -0.75 && C.r > 1 && up > 1 && dn > 0) return dot(H, sk.v) > 0.6 ? COAT.D : COAT.S;
-    // the shoulder blade's back edge and the elbow line behind the chest
-    if (B.r < 1.12 && B.r > 0.86 && dot(B, sk.u) < -0.2 && up > 1) return COAT.S;
-    if (C.r < 1 && C.r > 0.84 && dot(C, sk.u) < -0.45 && dot(C, sk.v) > 0.1 && H.r > 1 && dn > 0) return COAT.S;
-    // the lit muscle masses: the round of the haunch, the shoulder blade
-    if (H.r < 0.86 && H.r > 0.3 && dot(H, lv) > 0.3) return COAT.L;
-    if (B.r < 0.86 && dot(B, lv) > -0.1) return COAT.L;
-    // the shade side and the underside
-    if (aw < 2 || dn < 2) return COAT.S;
-    return COAT.M;
+    const ax = (x - sk.H[0]) * sk.u[0] + (y - sk.H[1]) * sk.u[1];
+    if (dn < 3 && ax > 2 && ax < L + 1) return dn < 1 ? PAL.mist : ls < 0 && ax < L * 0.45 ? PAL.mist : PAL.white;
+    if (ax < -4.5 && run(src, x, y, 0, 1, 3) > 1 && run(src, x, y, 0, -1, 3) > 1) return ls < 0 ? PAL.white : PAL.mist;
+    return null;
   });
+  // the near ham and shoulder read as planes of the barrel: a 1-px crease along the ham's front and the shoulder's back
+  const crease = (cx: number, cy: number, rx: number, ry: number, side: number) => {
+    const c = sk.bl(cx, cy);
+    const inside = (x: number, y: number) => {
+      const a = ((x + 0.5 - c[0]) * sk.u[0] + (y + 0.5 - c[1]) * sk.u[1]) / rx;
+      const bb = ((x + 0.5 - c[0]) * sk.v[0] + (y + 0.5 - c[1]) * sk.v[1]) / ry;
+      return a * a + bb * bb <= 1;
+    };
+    planes(q, (x, y, src) => {
+      if (!inside(x, y) || run(src, x, y, 0, 1, 2) < 2) return null;
+      if ((x + 0.5 - c[0]) * sk.v[0] + (y + 0.5 - c[1]) * sk.v[1] < 0) return null;
+      const ax = (x + 0.5 - c[0]) * sk.u[0] + (y + 0.5 - c[1]) * sk.u[1];
+      if (side * ax < 0) return null;
+      const out = !inside(x + 1, y) || !inside(x - 1, y) || !inside(x, y + 1);
+      const cur = src.get(x, y);
+      return out && cur !== PAL.white && cur !== PAL.mist ? COAT.S : null;
+    });
+  };
+  crease(-1, 2, 7, 7, 1);
   f.comp.add(q, Part.body, { out: PAL.earth0, outSkip: [Part.tail, Part.legFN, Part.legHN] });
-}
-
-/** Cast shadows (after the parts are laid): the barrel darkens the tops of the legs under it, the jaw the throat. */
-function castShadow(f: Frame): void {
-  const { comp, p } = f;
-  const b = p.bounds();
-  if (!b) return;
-  const legs = [Part.legFN, Part.legFF, Part.legHN, Part.legHF];
-  const out: [number, number, number][] = [];
-  for (let y = b.y; y < b.y + b.h; y++)
-    for (let x = b.x; x < b.x + b.w; x++) {
-      const part = comp.at(x, y);
-      const c = p.get(x, y);
-      if (c === null || c === PAL.ink || c === PAL.earth0) continue;
-      if (legs.includes(part)) {
-        const near = part === Part.legFN || part === Part.legHN;
-        const rows = near ? 1 : 2;
-        for (let k = 1; k <= rows; k++)
-          if (comp.at(x, y - k) === Part.body) {
-            out.push([x, y, near ? COAT.D : COAT_FAR.D]);
-            break;
-          }
-      } else if (part === Part.neck && comp.at(x, y - 1) === Part.head && c !== PAL.white && c !== PAL.mist) out.push([x, y, COAT.D]);
-    }
-  for (const [x, y, c] of out) p.set(x, y, c);
 }
 
 function drawTail(f: Frame): void {
@@ -478,11 +402,11 @@ const HEAD: Pt[] = [
   [10, 12], [9, 10.5], [8.5, 11.5], [6, 11.5], [2, 10.5], [-2, 7],
 ];
 const EAR: Record<number, Pt[]> = {
-  // up-back · flicked (upright) · flat back — a 3–4 px wide leaf ear behind the horn bases, readable at 1×
-  0: [[-0.5, 2], [-3, -0.5], [-6, -2.5], [-8, -2.5], [-7, 0.5], [-4, 3.5], [-0.5, 4.5]],
-  1: [[-0.5, 2], [-2, -2], [-3.5, -5.5], [-5.5, -5.5], [-5, -1.5], [-3, 3], [-0.5, 4.5]],
-  2: [[-0.5, 3], [-4, 2], [-9, 2.5], [-9.5, 4.5], [-4.5, 6], [-0.5, 5.5]],
+  0: [[-1, 3], [-4, 0.5], [-7, -0.5], [-7.5, 1], [-5, 4], [-2, 5]],
+  1: [[-1, 3], [-4, -1.5], [-6, -3.5], [-7.5, -2.5], [-5, 2], [-2, 5]],
+  2: [[-1, 3.5], [-5, 3], [-9, 3.5], [-8.5, 5], [-5, 6], [-2, 5.5]],
 };
+
 function drawHead(f: Frame): void {
   const { sk, o, light } = f;
   const ha = sk.ha;
@@ -533,38 +457,31 @@ function drawHead(f: Frame): void {
     if (o.blink !== 1) q.set(ex, ey, PAL.ink).set(ex + 1, ey, PAL.ink);
     q.set(ex + 1, ey + 2, COAT.S);
   }
-  // the ears: the far one peeks out behind the far horn base (laid before the skull), the near one lies over the skull
-  // behind the near horn
-  const shape = EAR[o.ear] ?? EAR[0];
-  const fq = layer();
-  fq.poly(shape.map(([x, y]) => sk.hl(x + 3, y - 1.5)), COAT_FAR.M);
-  bands(fq, COAT_FAR, light, { top: 1, lit: 0, bottom: 1, away: 1 });
-  f.comp.add(fq, Part.ear, { out: PAL.earth0, outSkip: [Part.hornF, Part.neck, Part.mane, Part.head, Part.body] });
-  f.comp.add(q, Part.head, { out: PAL.earth0, outSkip: [Part.hornF, Part.ear] });
+  f.comp.add(q, Part.head, { out: PAL.earth1, outSkip: [Part.hornF, Part.ear] });
+  // the ear (near side, over the skull)
   const eq = layer();
-  eq.poly(shape.map(([x, y]) => sk.hl(x, y)), COAT.M);
-  bands(eq, COAT, light, { top: 1, lit: 1, bottom: 1, away: 1 });
-  // the inner ear: an earth1 streak along its lower edge
+  eq.poly((EAR[o.ear] ?? EAR[0]).map(([x, y]) => sk.hl(x, y)), COAT_FAR.M);
+  bands(eq, COAT_FAR, light, { top: 1, lit: 1, bottom: 1, away: 1 });
+  // the inner ear: a 2-px earth1 streak along its lower edge
   planes(eq, (x, y, src) => (run(src, x, y, 0, 1, 2) < 1 && run(src, x, y, light.side, 0, 2) >= 1 ? COAT.D : null));
-  f.comp.add(eq, Part.ear, { out: PAL.earth0, outSkip: [Part.hornF] });
+  f.comp.add(eq, Part.ear, { out: PAL.earth2, outSkip: [Part.hornF, Part.neck, Part.mane] });
 }
 
-/** One spiral horn rasterised along its axis: ringed keratin — alternating 2-px ridges (earth4) and grooves (earth2),
- *  slanted like a screw thread, the silhouette stepping out on every ridge (a corkscrew zigzag that reads at 1×), a
- *  shade edge away from the key light and a gold tip. */
+/** One spiral horn rasterised along its axis: a waving (corkscrew) silhouette, thread dashes, a gold tip. */
 function drawHorn(f: Frame, h: Skel['hornN'], far: boolean): void {
   const { light } = f;
+  const t = far ? HORN_FAR : HORN;
   const q = layer();
   const r = (h.ang * Math.PI) / 180;
   const dx = Math.cos(r);
   const dy = Math.sin(r);
   const [bx, by] = h.base;
-  const P = 4;
-  const x0 = Math.floor(Math.min(bx, h.tip[0]) - 4);
-  const x1 = Math.ceil(Math.max(bx, h.tip[0]) + 4);
-  const y0 = Math.floor(Math.min(by, h.tip[1]) - 4);
-  const y1 = Math.ceil(Math.max(by, h.tip[1]) + 4);
-  const ridge = new Set<number>();
+  const P = 5.2;
+  const x0 = Math.floor(Math.min(bx, h.tip[0]) - 3);
+  const x1 = Math.ceil(Math.max(bx, h.tip[0]) + 3);
+  const y0 = Math.floor(Math.min(by, h.tip[1]) - 3);
+  const y1 = Math.ceil(Math.max(by, h.tip[1]) + 3);
+  const thread = new Set<number>();
   for (let y = y0; y <= y1; y++)
     for (let x = x0; x <= x1; x++) {
       const px = x + 0.5 - bx;
@@ -573,25 +490,25 @@ function drawHorn(f: Frame, h: Skel['hornN'], far: boolean): void {
       const n = -px * dy + py * dx;
       if (s < -0.5 || s > h.len) continue;
       const k = clamp(s / h.len, 0, 1);
-      const ph = (((s + 0.55 * n) / P) % 1 + 1) % 1;
-      const isRidge = ph < 0.5;
-      const hw = 2.05 - 1.3 * k + (isRidge && s < h.len - 4 ? 0.45 : 0);
-      if (Math.abs(n) > hw) continue;
-      if (s > h.len - 2) q.set(x, y, far ? PAL.gold3 : PAL.gold4);
-      else if (s > h.len - 4.5) q.set(x, y, far ? PAL.gold2 : PAL.gold3);
+      const c = 0.6 * Math.sin((s / P) * Math.PI * 2) * (1 - 0.3 * k);
+      const hw = 2.1 - 1.25 * k;
+      if (Math.abs(n - c) > hw) continue;
+      if (s > h.len - 1.6) q.set(x, y, far ? PAL.gold3 : PAL.gold4);
+      else if (s > h.len - 4) q.set(x, y, far ? PAL.gold2 : PAL.gold3);
       else {
-        q.set(x, y, far ? PAL.earth3 : PAL.earth4);
-        if (isRidge && s > 0.8) ridge.add(y * W + x);
+        q.set(x, y, t.M);
+        const ph = ((s + 0.35 * (n - c)) / P) % 1;
+        if (ph > 0.62 && ph < 0.9 && s > 1.5) thread.add(y * W + x);
       }
     }
-  const lit = far ? PAL.earth3 : PAL.earth4;
-  const groove = far ? PAL.earth1 : PAL.earth2;
+  // planes: a lit edge toward the light, a shade edge away (only on the keratin, not the gold tip)
   planes(q, (x, y, src) => {
     const c = src.get(x, y);
-    if (c !== lit) return null;
-    const shade = run(src, x, y, -light.side, 0, 1) < 1;
-    if (ridge.has(y * W + x)) return shade ? (far ? PAL.earth2 : PAL.earth3) : null;
-    return shade ? (far ? PAL.earth1 : PAL.earth1) : groove;
+    if (c !== t.M) return null;
+    if (thread.has(y * W + x)) return t.S;
+    if (run(src, x, y, light.side, 0, 1) < 1) return t.L;
+    if (run(src, x, y, -light.side, 0, 1) < 1) return t.D;
+    return null;
   });
   f.comp.add(q, far ? Part.hornF : Part.hornN, far ? {} : { out: PAL.earth1, outSkip: [Part.head, Part.ear, Part.neck, Part.mane] });
 }
@@ -616,7 +533,6 @@ export function drawSpiralhorn(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'rig
     drawNeck(f);
     drawMane(f);
     drawHead(f);
-    castShadow(f);
     if (horns) drawHorn(f, sk.hornN, false);
   } else if (horns) {
     drawHorn(f, sk.hornF, true);
