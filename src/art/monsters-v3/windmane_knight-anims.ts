@@ -8,9 +8,9 @@
 //   attack    — "Kargı Hamlesi": the lance comes out of the floor into a couch, a long couched hold, two heavy
 //               steps of lunge, contact, then the DOUBLE HIT: a frame after the thrust the mane whips forward
 //               over the helm like a lash (the "ŞAK" at the target's head); home again;
-//   special   — "Fırtına Hücumu": the lance spins once as a horizontal propeller at helm height (0°, 45°, end-on),
-//               the mane spirals up, a low couch with the mane taut and longest, then a GLIDE (feet off the floor,
-//               trailing) into the thrust;
+//   special   — "Fırtına Hücumu": a RIGID lance spins about the grip (4 angles + a smear arc), a deep charge stance
+//               with the mane swirling forward, a 4-frame charging run (looped by the strike while it travels), the
+//               release lean with the mane split into three rigid blades, the thrust;
 //   roar      — "Fırtına Çağrısı": the lance lifts to 45° in front, the mane spirals up around the crest, then
 //               SNAPS rigid into a taut horizontal blade (release), the pennon cracks taut, the eyes flare;
 //   hit       — the helm snaps back and the mane whips forward over the helm for a frame (inertia);
@@ -19,12 +19,13 @@
 //   guard     — the lance planted diagonally in front as a bar, head down, the mane draped down the back;
 //   summon    — two steps in with the mane GATHERED short, the lance driven into the tile (land), a held breath,
 //               then the UNFURL: the mane whip-cracks out to full length, the pennon snaps (the finale);
-//   death     — "Durgun Hava" (dead calm): the first stillness — mane and pennon FREEZE; the rigid mane snaps off
-//               the crest as one comet piece, tips back and shatters flat; the helm falls off (nobody inside),
-//               the plate comes apart standing from the top down, the lance topples like a felled flagpole, the
-//               pennon lands last, flat; only the empty boots still stand;
-//   revive    — the same backwards: the pieces climb back, the lance rises, the rigid mane reattaches — then the
-//               wind returns (land): the mane lifts and streams again.
+//   death     — "Kof Zırh" (the hollow armour): the first stillness — mane and pennon FREEZE; the rigid mane snaps
+//               off and shatters into ribbon segments; the empty helm pops up off the gorget (a dark open neck:
+//               nobody inside); the plate comes off the standing body top down; the lance topples like a felled
+//               flagpole; the pennon lands last, flat; only the two empty boots still stand, bolt upright;
+//   revive    — "the wind returns": a gust catches the standing boots and blows the plate back up onto them bottom-up
+//               (each piece lands with a 1-px settle), the helm drops on last, the eyes kindle, the mane unfurls (land).
+// The mane is a follow-through chain in every one-shot (see `lagMane`).
 // Every one-shot except death ends on idle f0 (HA-14).
 
 import type { AnimSpec, AnyMonsterAnim, MonsterAnim, MonsterAnimExtra, MonsterPoints } from '../types';

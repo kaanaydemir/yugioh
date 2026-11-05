@@ -114,12 +114,17 @@ export function paintCage(r: Raster, g: CageGeo, o: CageLook): void {
   const H = g.bot - g.top;
   const ym = Math.round(g.top + H / 2);
   // the sand in the lower bulb (front of the feet): earth3 body, earth4 top band, a gold3 crest line
+  // Round 1 #10: clipped to the bulb's curve, a mounded surface (the crest is highest under the stream and slopes 2 px
+  // down to the glass), a gold3 crest pixel per column over an earth4 band — sand in a bulb, not a slab
   if (o.fill > 0) {
     const sTop = g.bot - Math.round(o.fill);
+    const rMax = Math.max(1, Math.floor(cageR(g, sTop, o.grow)) - 1);
     for (let y = sTop; y <= g.bot; y++) {
       const rr = Math.floor(cageR(g, y, o.grow)) - 1;
       for (let x = -rr; x <= rr; x++) {
-        const c = y === sTop ? PAL.gold3 : y <= sTop + 1 ? PAL.earth4 : PAL.earth3;
+        const top = sTop + Math.round((Math.abs(x) / rMax) * Math.min(3, o.fill * 0.4) + (Math.abs(x) > 1 && (x & 3) === 1 ? 0.6 : 0));
+        if (y < top) continue;
+        const c = y === top ? (Math.abs(x) <= 1 ? PAL.gold4 : PAL.gold3) : y <= top + 1 ? PAL.earth4 : (x * 7 + y * 13) % 11 === 0 ? PAL.earth4 : PAL.earth3;
         r.px(g.cx + x, y, c);
       }
     }
@@ -129,6 +134,8 @@ export function paintCage(r: Raster, g: CageGeo, o: CageLook): void {
       const rr = Math.round(cageR(g, y, o.grow));
       r.px(g.cx - rr, y, wall);
       r.px(g.cx + rr, y, o.white ? PAL.white : y < ym ? PAL.stone3 : wall);
+      // the bulbs' widest rows: the lit (left) wall is 2 px thick, so the glass reads as a solid curve
+      if (rr >= g.R - 2 && rr > 3) r.px(g.cx - rr + 1, y, o.white ? PAL.white : PAL.steel);
     }
   }
   // the stream: a gold3 dash with gold4 heads marching down the neck to the sand (frozen: it stands)
@@ -140,7 +147,7 @@ export function paintCage(r: Raster, g: CageGeo, o: CageLook): void {
       r.px(g.cx, y, k === 5 ? PAL.gold4 : PAL.gold3);
     }
   }
-  if (o.caps > 0) capBar(r, g.cx, g.top - 1, g.R + 2);
+  if (o.caps > 0) capBar(r, g.cx, g.top - 1, g.R);
   if (o.caps > 1) floorRing(r, g.cx, g.bot, g.R + 2, PAL.gold2, PAL.gold1, -1);
 }
 
@@ -158,6 +165,16 @@ export function capBar(r: Raster, cx: number, y: number, hw: number): void {
     r.px(cx + x, y - 1, PAL.gold2);
     r.px(cx + x, y, x < -hw + 2 ? PAL.gold2 : PAL.gold1);
   }
+  // wooden end blocks (Round 1 #10): 2 px of dark wood at each end, one row taller than the bar
+  if (hw >= 4)
+    for (const sx of [-1, 1]) {
+      for (let k = 0; k < 2; k++) {
+        const x = cx + sx * (hw - k);
+        r.px(x, y - 2, k === 0 ? PAL.ink : PAL.earth2);
+        r.px(x, y - 1, PAL.earth1);
+        r.px(x, y, PAL.earth0);
+      }
+    }
   r.px(cx, y - 3, PAL.ink);
   r.px(cx - 1, y - 3, PAL.ink);
   r.px(cx + 1, y - 3, PAL.ink);

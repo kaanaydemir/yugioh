@@ -559,8 +559,27 @@ function drawArm(cp: Comp, sk: Skel, o: Pose, light: Light, near: boolean): void
   const q = layer();
   tube(q, S, el, 7, t.M);
   tube(q, el, w, 6, t.M);
-  q.disc(S[0], S[1], 3.6, t.M);
+  // the deltoid mass and a readable elbow knob (not a sausage)
+  q.disc(S[0] + (near ? -0.5 : 0), S[1] + (near ? 0.5 : 0), near ? 4.4 : 3.6, t.M);
+  q.disc(el[0], el[1], 3.4, t.M);
   bands(q, t, light, 2, 2);
+  if (near) {
+    // the deltoid's lower edge: a one-step-darker crease where the shoulder meets the upper arm
+    const mx = S[0] + (el[0] - S[0]) * 0.42;
+    const my = S[1] + (el[1] - S[1]) * 0.42;
+    const dx = el[0] - S[0];
+    const dy = el[1] - S[1];
+    const l = Math.hypot(dx, dy) || 1;
+    for (let k = -2; k <= 2; k++) {
+      const x = rnd(mx - (dy / l) * k);
+      const y = rnd(my + (dx / l) * k);
+      if (q.isOpaque(x, y) && q.get(x, y) !== t.L) q.set(x, y, t.S);
+    }
+    // the elbow crease
+    const ex = rnd(el[0]);
+    const ey = rnd(el[1]);
+    if (q.isOpaque(ex, ey)) q.set(ex, ey, t.S);
+  }
   cp.add(q, near ? Part.armN : Part.armF, { out: PAL.skin0 });
   // leather bracer near the wrist
   const br = layer();

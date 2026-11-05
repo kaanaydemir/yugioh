@@ -1,66 +1,25 @@
 // Card art v3 — Kalkan Devi (shield_titan, EARTH warrior): a close-up of the wall waking (style sheet
 // docs/v3/KART_RESIMLERI.md, contract ./_types.ts; design docs/v3/oturum-f/shield_titan.md §5).
 //
-// Source of the subject: the sprite rig itself (src/art/monsters-v3/shield_titan-rig.ts drawTitan), posed as the ward
-// waking (the sunstone open, the first iris ring, the bottom course lit). small = the sprite's own pixels cropped to
-// the bust (the bald head and white beard on the left, the four fingers hooked over the arched rim, the tall copper
-// face with the boss), then corrected by hand (the eye, the brow, a 1-px air row over the fingers); big = the SAME
-// bust redrawn at 2× density through the edge-preserving Scale2x (EPX) rule — flat bands stay bands, diagonals get half
-// steps — after the sprite's outline is stripped and a fresh 1-px PAL.ink outline is run round the new silhouette;
-// the light (sunstone, iris ring, lit course, the copper glint) is repainted after the outline, never outlined.
-// Ground: the kit's EARTH recipe; rim earth3. The 16×12 mini card reads: a copper bar, a gold dot, a white blob.
+// big   a NATIVE card-density painting (round 1: the EPX of the sprite crop is gone): a low camera up at the wall,
+//       the tower shield filling x 30–80 and bleeding off the bottom, four rounded knuckles and fingertips hooked over
+//       its arched rim, the sunstone boss at (54, 30) as the focus (iris rings in the light layer), the old giant's
+//       bald dome, white brow, lit eye and white beard fully inside the frame past the shield's back edge.
+// small the sprite's own pixels cropped to the bust (1× density), corrected by hand (the eye, the brow).
+// Ground: the kit's EARTH recipe (horizon 48); rim earth3. The 16×12 mini card reads: a copper bar, a gold dot, a white blob.
 // Living (2 frames, 260 ms): the sunstone breathes (core ↔ white-hot) and the iris ring steps out.
 
 import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
 import { W, H, drawTitan, pose } from '../monsters-v3/shield_titan-rig';
 import { ink, paintBackdrop, patch, recolor, rim } from './_kit';
-import type { CardArtV3 } from './_types';
+import type { ArtLayers, CardArtV3 } from './_types';
 
 /** The posed sprite on its own frame (outline included), lit from the left. */
 function sprite(f: number): PixelCanvas {
   const p = new PixelCanvas(W, H);
   drawTitan(p, pose({ boss: f % 2 ? 3 : 2, iris: f % 2 ? 2 : 1, courses: 1, glint: 1, gx: 2, cy: -1, bx: 1, nu: 24 }), 'left');
   return p;
-}
-
-/** Scale2x / EPX: each pixel becomes 2×2, corners rounded by the neighbours (transparent counts as a colour). */
-function epx(src: PixelCanvas): PixelCanvas {
-  const out = new PixelCanvas(src.w * 2, src.h * 2);
-  const at = (x: number, y: number) => (src.inBounds(x, y) ? src.get(x, y) : null);
-  for (let y = 0; y < src.h; y++)
-    for (let x = 0; x < src.w; x++) {
-      const p = at(x, y);
-      const a = at(x, y - 1);
-      const b = at(x + 1, y);
-      const c = at(x - 1, y);
-      const d = at(x, y + 1);
-      const eq = (u: number | null, v: number | null) => u === v;
-      let e0 = p;
-      let e1 = p;
-      let e2 = p;
-      let e3 = p;
-      if (eq(c, a) && !eq(c, d) && !eq(a, b)) e0 = a;
-      if (eq(a, b) && !eq(a, c) && !eq(b, d)) e1 = b;
-      if (eq(d, c) && !eq(d, b) && !eq(c, a)) e2 = c;
-      if (eq(b, d) && !eq(b, a) && !eq(d, c)) e3 = d;
-      for (const [k, col] of [[0, e0], [1, e1], [2, e2], [3, e3]] as [number, number | null][]) {
-        if (col !== null) out.set(x * 2 + (k & 1), y * 2 + (k >> 1), col);
-      }
-    }
-  return out;
-}
-
-/** Remove the sprite's outer outline (ink touching transparency) so a fresh 1-px outline can be drawn. */
-function stripOutline(p: PixelCanvas): PixelCanvas {
-  const out = p.clone();
-  for (let y = 0; y < p.h; y++)
-    for (let x = 0; x < p.w; x++) {
-      if (p.get(x, y) !== PAL.ink) continue;
-      const open = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]].some(([dx, dy]) => !p.isOpaque(x + dx, y + dy));
-      if (open) out.erase(x, y);
-    }
-  return out;
 }
 
 // crop box of the bust in sprite px (44 × 34): the head at the left third, the boss right of centre
@@ -94,19 +53,183 @@ function split(src: PixelCanvas): { body: PixelCanvas; light: PixelCanvas } {
 const EYE_PATCH = ['bw', 'ik'];
 const EYE_KEY = { b: PAL.white, w: PAL.stone4, i: PAL.ink, k: PAL.skin1 } as const;
 
+// ================================================================ big: a NATIVE card-density painting (round 1 #11)
+//
+// Low camera looking up at the wall: the tower shield fills x 30–80 and bleeds off the bottom, its arched top under the
+// four hooked fingers (x 40–56), the sunstone boss at (54, 30) the brightest point (iris rings in the light layer);
+// the old giant's bald head, white brow, lit eye and white beard peek past the shield's back (left) edge fully inside
+// the frame, his shoulder mass bleeding off the lower left. Flat bands only, one key light from the upper left.
+
+const SH_X0 = 30;
+const SH_X1 = 80;
+const BOSS: readonly [number, number] = [54, 30];
+/** The arched top of the shield: row of its top edge per column. */
+const shTop = (x: number): number => {
+  const e = Math.abs(x + 0.5 - (SH_X0 + SH_X1) / 2) / ((SH_X1 - SH_X0) / 2);
+  return 5 + Math.floor(5 * e * e);
+};
+
+function paintShield(q: PixelCanvas): void {
+  for (let x = SH_X0; x <= SH_X1; x++) {
+    const top = shTop(x);
+    for (let y = top; y < 68; y++) {
+      const fromL = x - SH_X0;
+      const fromR = SH_X1 - x;
+      const fromT = y - top;
+      let c: number;
+      if (fromL < 3 || fromR < 3 || fromT < 3) {
+        // the bronze rim: lit on the left and the top, shade on the right
+        const outer = fromL === 0 || fromR === 0 || fromT === 0;
+        const lit = fromT < 3 || fromL < 3;
+        c = outer ? (lit ? PAL.gold1 : PAL.earth0) : lit ? PAL.gold2 : PAL.gold1;
+        // studs down the side rims every 6 px
+        if (!outer && (fromL === 1 || fromR === 1) && fromT > 4 && (y - 2) % 6 === 0) c = fromL === 1 ? PAL.gold2 : PAL.gold1;
+      } else {
+        // the convex copper face: a lit band by the left rim, the sheen a third in, shade falling to the right
+        const v = x - SH_X0 - 3;
+        c = v < 3 ? PAL.fire2 : v < 9 ? PAL.fire3 : v < 21 ? PAL.fire2 : v < 36 ? PAL.fire1 : PAL.fire0;
+        if (fromT === 3) c = c === PAL.fire3 ? PAL.fire2 : c === PAL.fire2 ? PAL.fire1 : PAL.fire0;
+        // the bronze courses (masonry across the face): a lit top row, a shade row, rivets
+        for (const cy of [44, 59]) {
+          if (y === cy) c = (x - 2) % 5 === 0 ? PAL.gold1 : PAL.gold2;
+          else if (y === cy + 1) c = PAL.gold1;
+          else if (y === cy + 2) c = PAL.earth0;
+          else if (y === cy - 1 && c !== PAL.fire0) c = c === PAL.fire3 ? PAL.fire2 : PAL.fire1;
+        }
+        // the course through the boss, broken by it
+        if ((y === 29 || y === 30) && Math.abs(x - BOSS[0]) > 8) c = y === 29 ? PAL.gold2 : PAL.gold1;
+        // the boss casts a crescent of shade down-right
+        const dx = x - BOSS[0];
+        const dy = y - BOSS[1];
+        const d = Math.hypot(dx, dy);
+        if (d < 10 && d >= 7.5 && dx + dy > 2) c = PAL.fire0;
+      }
+      q.set(x, y, c);
+    }
+  }
+  // the boss: a bronze ring, a lit dome (upper left), the core (painted again as light)
+  for (let y = BOSS[1] - 8; y <= BOSS[1] + 8; y++)
+    for (let x = BOSS[0] - 8; x <= BOSS[0] + 8; x++) {
+      const d = Math.hypot(x - BOSS[0], y - BOSS[1]);
+      if (d > 7.5) continue;
+      const lit = x - BOSS[0] + (y - BOSS[1]) < 0;
+      q.set(x, y, d > 6.3 ? PAL.earth0 : d > 3.2 ? (lit ? PAL.gold2 : PAL.gold1) : PAL.gold1);
+    }
+  // the shield's back edge (its thickness), seen past the left rim
+  for (let y = shTop(SH_X0) + 2; y < 68; y++) {
+    q.set(SH_X0 - 1, y, PAL.gold1);
+    q.set(SH_X0 - 2, y, PAL.earth0);
+  }
+}
+
+function paintGiant(q: PixelCanvas): void {
+  const disc = (cx: number, cy: number, r: number, c: number) => {
+    for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++)
+      for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) if (Math.hypot(x + 0.5 - cx, y + 0.5 - cy) <= r) q.set(x, y, c);
+  };
+  // the shoulder mass + upper arm bleeding off the lower left (skin bands: lit top-left, shade toward the shield)
+  for (let y = 38; y < 68; y++)
+    for (let x = 0; x <= 27; x++) {
+      const shoulder = Math.hypot(x - 9, y - 47) <= 12;
+      const arm = y >= 48 && x >= 2 && x <= 22 - Math.floor((y - 48) * 0.2);
+      if (!shoulder && !arm) continue;
+      const lit = Math.hypot(x - 5, y - 42) < 7;
+      q.set(x, y, lit ? PAL.skin3 : x > 17 || y > 62 ? PAL.skin1 : PAL.skin2);
+    }
+  // the leather bracer on the forearm and the fist clamping the shield's back edge
+  for (let y = 52; y < 58; y++) for (let x = 16; x <= 24; x++) q.set(x, y, y === 52 ? PAL.earth2 : y > 55 ? PAL.earth1 : PAL.earth2);
+  disc(27, 55, 4.2, PAL.skin2);
+  q.set(25, 53, PAL.skin3).set(26, 53, PAL.skin3).set(28, 56, PAL.skin1).set(29, 57, PAL.skin1);
+  for (const ky of [54, 56]) q.set(29, ky, PAL.skin1);
+  // the bald head: one smooth dome, a single ear below it
+  disc(21, 23, 9.2, PAL.skin2);
+  for (let y = 14; y < 33; y++)
+    for (let x = 11; x < 31; x++) {
+      if (q.get(x, y) !== PAL.skin2) continue;
+      const d = Math.hypot(x - 18, y - 19);
+      if (d < 6.5) q.set(x, y, PAL.skin3);
+      else if (x > 26 || y > 29) q.set(x, y, PAL.skin1);
+    }
+  disc(13.5, 26.5, 2.2, PAL.skin1);
+  q.set(13, 26, PAL.skin2);
+  // the white bushy brow overhanging the eye, the eye with its catch-light, the nose
+  for (let x = 20; x <= 30; x++) {
+    q.set(x, 22, x < 27 ? PAL.white : PAL.stone4);
+    if (x > 21) q.set(x, 23, PAL.stone4);
+  }
+  q.set(30, 21, PAL.stone4).set(29, 21, PAL.white);
+  q.set(25, 25, PAL.ink).set(26, 25, PAL.ink).set(25, 24, PAL.skin1).set(26, 26, PAL.skin1).set(27, 25, PAL.white);
+  for (let y = 25; y <= 28; y++) q.set(29, y, PAL.skin2).set(28, y, y < 27 ? PAL.skin3 : PAL.skin2);
+  // the white beard: from under the nose, spilling down the shield's back edge, combed strands, a braid tie
+  for (let y = 28; y <= 52; y++) {
+    const k = (y - 28) / 24;
+    const xl = Math.round(14 - 3 * Math.sin(k * Math.PI) + k * 6);
+    const xr = Math.round(31 - k * 4);
+    for (let x = xl; x <= xr; x++) {
+      if (y > 49 && (x < xl + 3 || x > xr - 2)) continue;
+      // combed strands: long 1-px stone3 runs, shifted one column every 8 rows (no checkers)
+      const strand = (x - Math.floor((y - 28) / 8)) % 4 === 0 && y > 31 && x > xl + 1 && x < xr - 1;
+      const shade = x >= xr - 1 || y > 47;
+      q.set(x, y, strand ? PAL.stone3 : shade ? PAL.stone3 : x < xl + 2 ? PAL.white : PAL.stone4);
+    }
+  }
+  // the moustache (brightest white, lit side) and the braid end
+  for (let x = 20; x <= 30; x++) q.set(x, 29, x < 26 ? PAL.white : PAL.stone4);
+  for (let y = 53; y <= 58; y++) for (let x = 22; x <= 24; x++) q.set(x, y, y === 53 ? PAL.earth2 : x === 24 || (y - 54) % 3 === 2 ? PAL.stone3 : PAL.stone4);
+  // the four huge fingers hooked over the rim: a knuckle ridge above it, rounded tips over its front, 1-px gaps
+  // the back of the hand: four rounded knuckles behind the rim (not a bar)
+  for (let i = 0; i < 4; i++) {
+    const kx = Math.round(40 + i * 4.5);
+    for (let dx = 0; dx < 4; dx++) {
+      q.set(kx + dx, 5, PAL.skin2);
+      q.set(kx + dx, 4, dx === 0 ? PAL.skin3 : PAL.skin2);
+      if (dx === 1 || dx === 2) q.set(kx + dx, 3, PAL.skin3);
+    }
+  }
+  for (let i = 0; i < 4; i++) {
+    const x0 = 40 + i * 4.5;
+    const len = i === 1 || i === 2 ? 7 : 6;
+    for (let y = 6; y <= 5 + len; y++)
+      for (let dx = 0; dx < 4; dx++) {
+        const x = Math.round(x0 + dx);
+        const tip = y === 5 + len;
+        if (tip && (dx === 0 || dx === 3)) continue;
+        q.set(x, y, dx === 0 ? PAL.skin3 : y === 7 ? PAL.skin1 : dx === 3 || tip ? PAL.skin1 : PAL.skin2);
+      }
+  }
+}
+
+/** Light layer: the sunstone core (gold4 white-hot centre), the iris rings stepping out, the one copper glint. */
+function paintLight(l: PixelCanvas, f: number): void {
+  for (let y = BOSS[1] - 14; y <= BOSS[1] + 14; y++)
+    for (let x = BOSS[0] - 14; x <= BOSS[0] + 14; x++) {
+      const d = Math.hypot(x - BOSS[0], y - BOSS[1]);
+      if (d <= 3.6) l.set(x, y, d <= (f % 2 ? 2.8 : 2.4) ? PAL.gold4 : PAL.gold3);
+      else if (Math.abs(d - 9.5) < 0.72 || (f % 2 && Math.abs(d - 12.5) < 0.72)) {
+        if (x >= SH_X0 + 3 && x <= SH_X1 - 3) l.set(x, y, PAL.gold3);
+      }
+    }
+  l.set(35, 12, PAL.gold4).set(36, 13, PAL.gold4);
+}
+
+function paintBig(l: ArtLayers, f: number): void {
+  paintBackdrop(l.backdrop, 'EARTH', { focus: [BOSS[0], BOSS[1]], horizon: 48 });
+  const q = l.subject;
+  paintShield(q);
+  paintGiant(q);
+  ink(q);
+  rim(q, PAL.earth3, { skip: [PAL.white, PAL.gold2, PAL.fire3, PAL.skin3, PAL.stone4] });
+  paintLight(l.light, f);
+}
+
 const art: CardArtV3 = {
   id: 'shield_titan',
-  focus: [59, 51],
+  focus: [54, 30],
   focusSmall: [29, 25],
   frames: 2,
   holdMs: 260,
   big(l, f) {
-    paintBackdrop(l.backdrop, 'EARTH', { focus: [62, 40], horizon: 54 });
-    const { body, light } = split(sprite(f).crop(BX, BY, BW, BH));
-    l.subject.blit(epx(stripOutline(body)), 0, 0);
-    ink(l.subject);
-    rim(l.subject, PAL.earth3, { skip: [PAL.white, PAL.gold2, PAL.fire3] });
-    l.light.blit(epx(light), 0, 0);
+    paintBig(l, f);
   },
   small(l, f) {
     paintBackdrop(l.backdrop, 'EARTH', { focus: [62, 40], horizon: 54 });

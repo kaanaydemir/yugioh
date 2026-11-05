@@ -83,7 +83,7 @@ const enum Tex {
 }
 
 /** The authored glass: what lies at local (u, v). */
-function tex(u: number, v: number, open: number, tilted: boolean): Tex {
+function tex(u: number, v: number, open: number, tilted: boolean, post: number): Tex {
   const av = Math.abs(v);
   if (u >= GL && u < GL + 2 && av < 1.6) return open ? Tex.none : Tex.knob;
   if (u < 0 || u >= GL) return Tex.none;
@@ -91,12 +91,14 @@ function tex(u: number, v: number, open: number, tilted: boolean): Tex {
     if (av > GHW) return Tex.none;
     if (av > GHW - 0.9 && (u < 0.8 || u > GL - 0.8)) return Tex.none; // rounded corners
     if (open && u >= GL - 1 && av < 1.6) return Tex.hole;
-    const bw = tilted ? 1.6 : 1;
+    const bw = tilted ? 1.25 : 1;
     if (u >= 3 - bw && u < 3) return Tex.brass;
     if (u >= GL - 3 && u < GL - 3 + bw) return Tex.brass;
     return Tex.wood;
   }
-  if (av >= 6 && av <= GHW) return v > 0 && u >= NECK - 0.6 && u < NECK + 0.6 ? Tex.bead : Tex.post;
+  // posts: both when the glass stands (upright / upside down); tipped or lying only the screen-lower one (2 px), so
+  // the open side shows the bulbs' curved pinch in the silhouette (Round 1 #2: no "picture frame", no "crate")
+  if (post === 0 ? av >= 6 && av <= GHW : v * post >= 5.4 && av <= GHW) return v > 0 && u >= NECK - 0.6 && u < NECK + 0.6 ? Tex.bead : Tex.post;
   const r = bulbR(u);
   if (av >= r) return Tex.none;
   if (av >= r - 1 && r >= 2) return Tex.wall;
@@ -110,7 +112,19 @@ export interface GlassFrame {
   at(u: number, v: number): Pt;
 }
 
-export function glassFrame(g: GlassPose): GlassFrame {
+/**
+ * Small tilts (≤ 10° off an axis) are not rotations: they snap to the axis and the glass shifts by whole pixels (a
+ * wobble reads as a 1-px lift / slide of the crisp upright glass — Round 1 #2: no doubled, jagged posts).
+ */
+export function snapGlass(g: GlassPose): GlassPose {
+  const k = Math.round(g.a / 90) * 90;
+  if (g.a === k) return g;
+  if (Math.abs(g.a - k) > 10) return g;
+  return { ...g, a: k, ox: Math.round(g.ox), oy: Math.round(g.oy) };
+}
+
+export function glassFrame(g0: GlassPose): GlassFrame {
+  const g = snapGlass(g0);
   const r = (g.a * Math.PI) / 180;
   const U: Pt = [Math.sin(r), -Math.cos(r)];
   const V: Pt = [Math.cos(r), Math.sin(r)];
@@ -135,7 +149,8 @@ export interface GlassOut {
  * Paint the hourglass at pose g on a w × h raster, lit by `light`.
  * Deterministic; whole pixels; no randomness.
  */
-export function paintGlass(w: number, h: number, g: GlassPose, light: Light): GlassOut {
+export function paintGlass(w: number, h: number, g0: GlassPose, light: Light): GlassOut {
+  const g = snapGlass(g0);
   const q = new PixelCanvas(w, h);
   const out: number[] = [];
   const r = (g.a * Math.PI) / 180;
@@ -154,6 +169,9 @@ export function paintGlass(w: number, h: number, g: GlassPose, light: Light): Gl
   const y1 = Math.min(h - 1, Math.ceil(Math.max(...cs.map((c) => c[1]))));
   const m90 = ((g.a % 90) + 90) % 90;
   const tilted = Math.min(m90, 90 - m90) > 12;
+  const m180 = ((g.a % 180) + 180) % 180;
+  const standing = Math.min(m180, 180 - m180) < 1;
+  const post = standing ? 0 : V[1] >= 0 ? 1 : -1;
   const reg = new Uint8Array(w * h);
   const lu = new Float32Array(w * h);
   const lv = new Float32Array(w * h);
@@ -163,7 +181,7 @@ export function paintGlass(w: number, h: number, g: GlassPose, light: Light): Gl
       const dy = y + 0.5 - g.oy;
       const u = dx * U[0] + dy * U[1];
       const v = (dx * V[0] + dy * V[1]) / sx;
-      const t = tex(u, v, g.open, tilted);
+      const t = tex(u, v, g.open, tilted, post);
       if (t === Tex.none) continue;
       const i = y * w + x;
       reg[i] = t;
@@ -198,7 +216,7 @@ export function paintGlass(w: number, h: number, g: GlassPose, light: Light): Gl
           c = PAL.ink;
           break;
         case Tex.post:
-          c = tilted ? (lit(v) ? WOOD.L : WOOD.M) : lit(v) ? (Math.abs(v) > 6.8 ? WOOD.L : WOOD.M) : Math.abs(v) > 6.8 ? WOOD.S : WOOD.M;
+          c = post !== 0 ? (Math.abs(v) > 6.6 ? WOOD.S : WOOD.M) : tilted ? (lit(v) ? WOOD.L : WOOD.M) : lit(v) ? (Math.abs(v) > 6.8 ? WOOD.L : WOOD.M) : Math.abs(v) > 6.8 ? WOOD.S : WOOD.M;
           break;
         case Tex.wall:
           c = dark ? PAL.night2 : tilted ? (lit(v) ? PAL.mist : PAL.night1) : lit(v) ? PAL.mist : PAL.night2;

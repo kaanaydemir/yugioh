@@ -139,8 +139,13 @@ function wallLine(home: XY, player: 0 | 1): WallLine {
   const a0 = player === 0 ? { x: home.x, y: home.y - hh } : { x: home.x - hw, y: home.y };
   const b0 = player === 0 ? { x: home.x + hw, y: home.y } : { x: home.x, y: home.y + hh };
   const d = norm({ x: b0.x - a0.x, y: b0.y - a0.y });
-  const a = rint({ x: a0.x + d.x * 3, y: a0.y + d.y * 1.5 });
-  const b = rint({ x: b0.x - d.x * 3, y: b0.y - d.y * 1.5 });
+  // 4 px out past the tile edge, toward the opponent: the rampart stands clear of the shield's foot (round 1 #8)
+  const m0 = { x: (a0.x + b0.x) / 2, y: (a0.y + b0.y) / 2 };
+  const out = norm({ x: m0.x - home.x, y: (m0.y - home.y) * 2 });
+  const ox = out.x * 4;
+  const oy = out.y * 2;
+  const a = rint({ x: a0.x + d.x * 3 + ox, y: a0.y + d.y * 1.5 + oy });
+  const b = rint({ x: b0.x - d.x * 3 + ox, y: b0.y - d.y * 1.5 + oy });
   return { a, b, mid: rint({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }), len: Math.hypot(b.x - a.x, b.y - a.y), d };
 }
 
@@ -346,9 +351,9 @@ async function wardV3(ctx: Ctx<'activate'>): Promise<void> {
   const panA = panAt(a.home.x);
   const pulses = clamp(Math.ceil(drop / 100), 1, 5);
   const values = Array.from({ length: pulses }, (_, i) => (i === pulses - 1 ? post : pre - 100 * (i + 1)));
-  // P1: the wall stands on the FAR tile edge, behind him in iso depth (his shield occludes it, the copper stays
-  // readable); P2: the near edge, in front of him
-  const depth = player === 0 ? u.sprite.depth - 0.5 : u.sprite.depth + 0.5;
+  // the wall is drawn UNDER his sprite (P1: the far tile edge, behind him in iso depth; P2: masked by his body where
+  // they overlap), so the shield face, the boss and the copper always stay readable (EF-2, round 1 #8)
+  const depth = u.sprite.depth - 0.5;
   // ---- f0–f1: weight into the shield, heels dig in; the sunstone wakes (sustained)
   const wake = start('kdWardWake', { volume: 0.9, pan: panU });
   heelDust(sc, u);
@@ -562,7 +567,7 @@ function repel(sc: Phaser.Scene, w: Ward, a: MonsterUnit | null, holds: boolean)
   const aFeet = a && a.sprite.active ? a.worldPoint('feet') : null;
   const behind = !!aFeet && (aFeet.x - w.titan.home.x) * dirOf(w.titan) < -4;
   const line = behind ? wallLine(w.titan.home, (w.titan.player === 1 ? 0 : 1) as 0 | 1) : w.line;
-  const r = new Raster(sc, 0, 0, 640, 360, w.titan.sprite.depth + 0.5);
+  const r = new Raster(sc, 0, 0, 640, 360, w.titan.sprite.depth + (behind ? 0.5 : -0.5));
   const boss = rint(pointOf(w.titan, 'guard', 0, 'muzzle'));
   const aAt = a && a.sprite.active ? a.worldPoint('feet') : null;
   const lane = aAt ? norm({ x: aAt.x - line.mid.x, y: aAt.y - line.mid.y }) : { x: dirOf(w.titan), y: -0.5 };
@@ -777,7 +782,10 @@ async function gateFallV3(s: StrikeArgs): Promise<void> {
   rel();
   // ---- contact: SLAM
   await until(sc, () => !u.sprite.active || (u.frameInfo().anim === 'attack' && u.frameInfo().frame >= CON), 160);
-  const at = rint(pointOf(u, 'attack', CON, 'muzzle'));
+  // the impact point sits just past the rim corner, on the target's face: the generic contact flash lands on the
+  // target, never over the sunstone and the copper at the strongest beat (round 1 #12)
+  const rimAt = pointOf(u, 'attack', CON, 'muzzle');
+  const at = rint({ x: rimAt.x + nd.x * 6, y: rimAt.y + 4 });
   const floorY = s.target ? s.target.home.y : s.toGround.y;
   s.impact(at);
   play('kdSlabSlam', { volume: s.blocked ? 0.85 : 1, pan: panAt(at.x) });

@@ -34,7 +34,8 @@ import { lightOf } from '../../art/rigkit/light';
 import type { AnyMonsterAnim } from '../../art/types';
 import { paintGlass, glassFrame, GLASS0, type GlassPose } from '../../art/monsters-v3/hourglass_imp-glass';
 import { drawImp } from '../../art/monsters-v3/hourglass_imp-rig';
-import { framePose } from '../../art/monsters-v3/hourglass_imp-anims';
+import { BLOCKED_CATCH, BLOCKED_RESUME, DEATH_TOPPLE, SPECIAL_THUNK, framePose } from '../../art/monsters-v3/hourglass_imp-anims';
+import { BADGE_DEPTH } from '../../duel/StatBadge';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { Disposable } from '../../duel/types';
 import type { GameEvent, Uid } from '../../engine/types';
@@ -236,8 +237,8 @@ async function pourV3(S: Stage, aim: boolean): Promise<void> {
     const fi = u.frameInfo();
     const f = fi.anim === 'summon' ? fi.frame : LAND;
     ph = Math.floor(el0 / 60);
-    if (f < 8 && !dropped) {
-      const k = clamp(f / 7, 0, 1);
+    if (f < LAND - 2 && !dropped) {
+      const k = clamp(f / (LAND - 3), 0, 1);
       const g: GlassPose = { ...HANG, ph, sA: lerp(0.9, 0.12, k), sB: 0.08 };
       layer.draw((p) => {
         glassOn(p, g, T, from);
@@ -396,6 +397,11 @@ async function sealV3(ctx: Ctx<'activate'>): Promise<void> {
   let thread: { stop(ms?: number): void } | null = null;
   let held = false;
   let label: Phaser.GameObjects.BitmapText | null = null;
+  let bump: { u: MonsterUnit; d: number } | null = null;
+  const unbump = () => {
+    if (bump && bump.u.sprite.active) bump.u.sprite.setDepth(bump.d);
+    bump = null;
+  };
   try {
     // ---- 1. the flip: the glass goes up overhead and turns over (special f2–f4), the release on f5
     const from = aim ? 2 : 0;
@@ -403,6 +409,10 @@ async function sealV3(ctx: Ctx<'activate'>): Promise<void> {
     const CON = u ? u.markFrame('special', 'contact', 6) : 6;
     let imp: Promise<void> = Promise.resolve();
     if (u && u.has('special')) {
+      // Round 1 #4: the flip is the "who did it" beat — for its length the imp is drawn over every stat plate (a
+      // back-row neighbour's plate sits right in the band the glass turns through); restored after the pour / finally
+      bump = { u, d: u.sprite.depth };
+      u.sprite.setDepth(BADGE_DEPTH + 1);
       play('hgiFlip', { volume: 0.85, pan: panImp });
       imp = u.playRange('special', from, CON);
       await until(sc, () => !u.sprite.active || (u.frameInfo().anim === 'special' && u.frameInfo().frame >= REL), u.rangeMs('special', from, REL) + 120);
@@ -427,7 +437,7 @@ async function sealV3(ctx: Ctx<'activate'>): Promise<void> {
       // the brass top cap pops in over the target in steps as the line arrives
       const capStep = k < 0.55 ? 0 : k < 0.75 ? 1 : k < 0.9 ? 2 : 3;
       fx.draw((r) => {
-        if (capStep > 0) capBar(r, cage.cx, cage.top - 1, Math.round([0, 3, Math.max(4, cage.R / 2), cage.R + 2][capStep]));
+        if (capStep > 0) capBar(r, cage.cx, cage.top - 1, Math.round([0, 3, Math.max(4, cage.R / 2), cage.R][capStep]));
       });
     });
     // ---- 3. the cage steps out from the stream (3 whole-px steps), the stream pours down from the cap
@@ -457,6 +467,7 @@ async function sealV3(ctx: Ctx<'activate'>): Promise<void> {
       fx.draw((r) => paintCage(r, cage, { grow: 1, fill: f, ph, stream: true, caps: 2 }));
     });
     // ---- 5. THE STOP: the trickle cuts dead; every grain hangs; the target's frame is held; a gold rim
+    unbump(); // the flip and the pour have been seen; the neighbour's plate reads again
     thread.stop(0);
     thread = null;
     play('hgiSeal', { volume: 1, pan });
@@ -511,13 +522,14 @@ async function sealV3(ctx: Ctx<'activate'>): Promise<void> {
     if (u && u.sprite.active) {
       void imp.then(() => {
         if (!u.sprite.active || u.retired) return;
-        atFrame(u, 'special', 9, () => play('hgiRight', { volume: 0.8, pan: panImp }), { late: false, maxMs: 2500 });
+        atFrame(u, 'special', SPECIAL_THUNK, () => play('hgiRight', { volume: 0.8, pan: panImp }), { late: false, maxMs: 2500 });
         void u.playRange('special', CON + 1, undefined, { hold: false });
       });
     }
   } finally {
     thread?.stop(40);
     animating.delete(tuid);
+    unbump();
     if (held) {
       const t3 = live(ctx.unit(tuid));
       if (t3) t3.rest();
@@ -547,18 +559,55 @@ function arc(a: XY, b: XY, h: number): XY[] {
   return out;
 }
 
-/** The jet along `pts` from index i0 (tail) to i1 (head): a gold3 core 1–3 px wide with marching gaps, gold4 head. */
+/**
+ * The jet along `pts` from index i0 (tail) to i1 (head): a hose of sand, not a line (Round 1 #7) — a 2–3 px core
+ * (gold3 over an earth4 underside, gold4 grains glinting along its top), a 2 × 2 gold4 head, gaps marching with the
+ * flow, and grains peeling off its underside that fall a pixel further below the arc every frame (whole px).
+ */
 function paintJet(r: Raster, pts: XY[], i0: number, i1: number, w: number, ph: number): void {
   const a = Math.max(0, Math.floor(i0));
   const b = Math.min(pts.length - 1, Math.floor(i1));
   for (let i = a; i <= b; i++) {
     const p = pts[i];
     const head = i >= b - 2;
-    const gap = (i + ph) % 9 === 8 && !head;
+    const gap = (i + ph) % 9 === 8 && !head && w < 3;
     if (gap) continue;
-    r.px(p.x, p.y, head ? PAL.gold4 : PAL.gold3);
-    if (w >= 2) r.px(p.x, p.y + 1, (i + ph) % 4 === 0 ? PAL.gold4 : head ? PAL.gold3 : PAL.earth4);
-    if (w >= 3 && i % 2 === 0) r.px(p.x, p.y - 1, PAL.gold3);
+    r.px(p.x, p.y, head ? PAL.gold4 : (i + ph) % 5 === 0 ? PAL.gold4 : PAL.gold3);
+    if (w >= 2) r.px(p.x, p.y + 1, head ? PAL.gold4 : (i + ph) % 4 === 0 ? PAL.gold3 : PAL.earth4);
+    if (w >= 3) r.px(p.x, p.y - 1, (i + ph) % 3 === 0 ? PAL.gold4 : PAL.gold3);
+    if (head && w >= 2) r.px(p.x + 1, p.y, PAL.gold4);
+    // grains peeling off the underside: each falls 1 px a frame below its point, then lets go (4-frame life)
+    if (!head && w >= 2 && (i * 7) % 5 === 0) {
+      const life = (ph + i) % 4;
+      r.px(p.x + (i % 2), p.y + 2 + life, life < 2 ? PAL.earth4 : PAL.earth3);
+    }
+  }
+}
+
+/** A little pile of sand at the struck monster's feet: rises in 3 steps, sits, then sinks and blinks out (whole px). */
+async function footPile(sc: Phaser.Scene, at: XY, floorY: number): Promise<void> {
+  const r = new Raster(sc, 0, 0, 640, 360, unitDepth(floorY) + 0.35);
+  const x0 = Math.round(at.x);
+  const y0 = Math.round(floorY) + 1;
+  const paint = (h: number, c: number[]) =>
+    r.draw((q) => {
+      for (let y = 0; y < h; y++) {
+        const hw = (h - y) * 2 + 1;
+        for (let x = -hw; x <= hw; x++) q.px(x0 + x, y0 - y, y === h - 1 ? c[0] : (x + y) % 3 === 0 ? c[2] : c[1]);
+      }
+    });
+  try {
+    for (const h of [1, 2, 3]) {
+      paint(h, [PAL.gold3, PAL.earth4, PAL.earth3]);
+      await sleep(sc, 50);
+    }
+    await sleep(sc, 380);
+    for (const [h, c] of [[2, [PAL.earth4, PAL.earth3, PAL.earth2]], [1, [PAL.earth3, PAL.earth2, PAL.earth2]]] as [number, number[]][]) {
+      paint(h, c);
+      await sleep(sc, 70);
+    }
+  } finally {
+    r.destroy();
   }
 }
 
@@ -599,7 +648,7 @@ async function cannonV3(s: StrikeArgs): Promise<void> {
     await animate(sc, travel, (k, el) => {
       ph = Math.floor(el / 34);
       const head = k * (pts.length - 1);
-      jet.draw((r) => paintJet(r, pts, 0, head, 2, ph));
+      jet.draw((r) => paintJet(r, pts, Math.max(0, head - pts.length * 0.9), head, 3, ph));
       if (R() < 0.5) {
         const p = pts[Math.floor(head * R())];
         spray.add({ x: p.x, y: p.y, vx: RR(-10, 10), vy: RR(0, 20), ay: 220, life: RR(160, 260), colors: [PAL.earth4, PAL.gold3], shape: 'px', fadeAt: 1 });
@@ -613,6 +662,7 @@ async function cannonV3(s: StrikeArgs): Promise<void> {
     else play(s.blocked ? 'hgiSplash' : 'hgiScour', { volume: 1, pan: panAt(at.x) });
     void lightFlash(sc, at.x, at.y, PAL.gold3, s.blocked ? 22 : 30, 280, { floorY, air: 0.7, intensity: 0.85 });
     scour(sc, spray, at, m0, floorY, s.blocked, s.direct);
+    if (!s.blocked && !s.direct && s.target) void footPile(sc, { x: s.target.home.x, y: floorY }, floorY);
     if (loses) {
       // the counter-blow comes back along the jet: the grains rush back into his neck
       stopJet(60);
@@ -640,7 +690,8 @@ async function cannonV3(s: StrikeArgs): Promise<void> {
     jet.draw(() => undefined);
     atFrame(u, 'attack', Math.min(n - 1, REC), () => play('hgiRight', { volume: 0.8, pan }), { late: true, maxMs: 2500 });
     await skid;
-    const rest = u.playRange('attack', CON + 1, undefined, { hold: false });
+    if (s.blocked && u.sprite.active && !u.retired) await blockedCatch(sc, u, pan);
+    const rest = u.playRange('attack', s.blocked ? Math.min(n - 1, BLOCKED_RESUME) : CON + 1, undefined, { hold: false });
     await Promise.race([rest, sleep(sc, 900)]);
     void dune;
   } finally {
@@ -682,6 +733,25 @@ async function recoilSkid(sc: Phaser.Scene, u: MonsterUnit, dir: number): Promis
   });
   await sleep(sc, 60);
   if (s.active) s.x = x0;
+}
+
+/** Blocked: the comic catch (Round 1 #8) — the sprite is held hidden while its own rig draws BLOCKED_CATCH on a layer. */
+async function blockedCatch(sc: Phaser.Scene, u: MonsterUnit, pan: number): Promise<void> {
+  const L = new ImpLayer(sc, u, 0, u.sprite.depth + 0.05);
+  const from = lightFromOf(u);
+  try {
+    u.sprite.setVisible(false);
+    for (let i = 0; i < BLOCKED_CATCH.length; i++) {
+      const st = BLOCKED_CATCH[i];
+      L.place();
+      L.draw((p) => drawImp(p, st.pose, from));
+      if (i === 2) play('hgiCatch', { volume: 0.8, pan });
+      await sleep(sc, st.ms);
+    }
+  } finally {
+    if (u.sprite.active) u.sprite.setVisible(true);
+    L.destroy();
+  }
 }
 
 /** Direct: a little dune piles up against the duelist's spot (6 px), then slides off and blinks out in 3 steps. */
@@ -778,7 +848,7 @@ async function deathOwn(ctx: Ctx<'destroy'>): Promise<void> {
       u.asClaimant(() => void u.playRange('death', st, undefined, { hold: true }));
     }
     const DIS = u.markFrame('death', 'dissolve', 4);
-    const TOP = Math.min(n - 2, DIS + 4);
+    const TOP = Math.min(n - 3, DEATH_TOPPLE);
     atFrame(u, 'death', DIS, () => (drainH.h = start('hgiDrain', { volume: 0.9, pan })), { late: true, maxMs: 3000 });
     atFrame(
       u,
@@ -793,7 +863,7 @@ async function deathOwn(ctx: Ctx<'destroy'>): Promise<void> {
     atFrame(
       u,
       'death',
-      n - 1,
+      n - 2,
       () => {
         void shake(sc, 100, 1);
         lieDust(sc, u);
@@ -812,27 +882,31 @@ async function deathOwn(ctx: Ctx<'destroy'>): Promise<void> {
     const g0 = last.g;
     const gf = glassFrame(g0);
     // the crack: on the base-side bulb's lower edge (a 1-px mist zigzag); the rivulet runs out of it along the floor
-    const crack = gf.at(6.5, -4.6);
+    const crack = gf.at(6.5, 3.2);
     const cx = Math.round(crack[0]);
     const cy = Math.round(crack[1]);
     const face = u.flipX ? -1 : 1;
-    const s0 = rint(u.framePoint(cx + 0.5, Math.min(u.art.anchorY + 1, cy + 3) + 0.5));
-    const riv = new Raster(sc, 0, 0, 640, 360, unitDepth(home.y) + 0.45);
+    const s0 = rint(u.framePoint(cx + 0.5, u.art.anchorY + 1.5));
+    // Round 1 #9: the rivulet runs OFF the card onto the bare tile, drawn over the card (and the glass's foot), 12 px
+    const riv = new Raster(sc, 0, 0, 640, 360, u.sprite.depth + 0.2);
     rivR = riv;
     const rivAt = (i: number): XY => ({ x: s0.x - face * i, y: s0.y + Math.floor((i + 1) / 2) });
     const drawRiv = (len: number, dark: boolean, grain: number) =>
       riv.draw((r) => {
         for (let i = 0; i < len; i++) {
           const q = rivAt(i);
-          r.px(q.x, q.y, dark ? (i < 3 ? PAL.earth4 : PAL.earth3) : i === len - 1 ? PAL.gold4 : i < 3 || i >= len - 3 ? PAL.gold3 : PAL.earth4);
+          const head = i >= len - 2;
+          r.px(q.x, q.y, dark ? (i < 3 ? PAL.earth4 : PAL.earth3) : head ? PAL.gold3 : i % 3 === 0 ? PAL.earth4 : PAL.earth3);
+          // a 2-px-wide body: an earth2 shadow under it (the bank), so it reads on any card / tile
+          r.px(q.x, q.y + 1, dark ? PAL.earth2 : head ? PAL.earth4 : PAL.earth2);
         }
+        if (!dark && len > 0) r.px(rivAt(len - 1).x - face, rivAt(len - 1).y, PAL.gold4);
         if (grain > 0) r.px(s0.x, s0.y - 3 + grain, PAL.gold4);
       });
     const crackPx = (p: PixelCanvas) => {
-      p.set(cx - 1, cy + 1, PAL.mist);
-      p.set(cx, cy, PAL.mist);
-      p.set(cx + 1, cy + 1, PAL.mist);
-      p.set(cx + 2, cy, PAL.mist);
+      // a clear mist zig-zag across the bulb's lit face, with a white glint where it starts
+      for (const [dx, dy] of [[-2, -3], [-1, -2], [-1, -1], [0, 0], [1, 1], [1, 2], [2, 3]] as const) p.set(cx + dx, cy + dy, PAL.mist);
+      p.set(cx - 2, cy - 3, PAL.white);
     };
     const frame = (k: number, dark: boolean) =>
       L.draw((p) => {
@@ -843,7 +917,7 @@ async function deathOwn(ctx: Ctx<'destroy'>): Promise<void> {
     const bleed = start('hgiBleed', { volume: 0.85, pan });
     for (let st = 1; st <= 4; st++) {
       frame(st / 4, false);
-      drawRiv(st * 2, false, 0);
+      drawRiv(st * 3, false, 0);
       await sleep(sc, 55);
     }
     bleed.stop(40);
@@ -851,7 +925,7 @@ async function deathOwn(ctx: Ctx<'destroy'>): Promise<void> {
     play('hgiLastGrain', { volume: 0.9, pan });
     frame(1, true);
     for (let gy = 1; gy <= 3; gy++) {
-      drawRiv(8, true, gy);
+      drawRiv(12, true, gy);
       await sleep(sc, 25);
     }
     born();
@@ -870,7 +944,7 @@ async function deathOwn(ctx: Ctx<'destroy'>): Promise<void> {
           }
       });
       riv.draw((r) => {
-        for (let i = 0; i < 8; i++) if (hash(i + ev.uid, ki) >= k) r.px(rivAt(i).x, rivAt(i).y, PAL.earth3);
+        for (let i = 0; i < 12; i++) if (hash(i + ev.uid, ki) >= k) r.px(rivAt(i).x, rivAt(i).y, PAL.earth3);
       });
       ki++;
       await sleep(sc, 50);

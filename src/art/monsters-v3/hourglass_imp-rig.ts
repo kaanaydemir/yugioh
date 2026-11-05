@@ -15,8 +15,8 @@
 import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
 import { ik2, lightOf, type Light } from '../rigkit';
-import { BRASS, COAT, COAT_FAR, Comp, FELT, SKIN, SKIN_FAR, TO_SAND, WOOD, bands, type Tones } from './hourglass_imp-kit';
-import { GLASS0, glassPoints, paintGlass, type GlassPose } from './hourglass_imp-glass';
+import { BRASS, COAT, COAT_FAR, Comp, FELT, SKIN, SKIN_FAR, TO_SAND, WOOD, bands, hash2, type Tones } from './hourglass_imp-kit';
+import { GHW, GL, GLASS0, glassFrame, glassPoints, paintGlass, type GlassPose } from './hourglass_imp-glass';
 
 export const W = 60;
 export const H = 64;
@@ -104,6 +104,13 @@ export interface Pose {
   sneeze: number;
   /** grains shaken off the body (hitHeavy / blocked), phase (0 none) */
   grains: number;
+  /** 1: the near / far hand is pinned to the nearest grip point on the glass (Round 1 #12: no floating glass) */
+  pinN: number;
+  pinF: number;
+  /** death pour: the imp's rows above this y are gone (poured off into the glass; 0 none) */
+  cut: number;
+  /** 1: the hat stays dry sand even off the head (death: it re-colours only once it lands) */
+  hatDry: number;
 }
 
 export const NEUTRAL: Pose = {
@@ -112,7 +119,7 @@ export const NEUTRAL: Pose = {
   nhx: 31, nhy: 50, ngrip: 0, fhx: 15, fhy: 53, fgrip: 1,
   nfx: 0, nfl: 0, ffx: 0, ffl: 0,
   body: 1, sandTop: 99, sandBot: -1, cone: 0, heap: 0, pour: 0, ribbon: 0,
-  g: GLASS0, gShow: 1, gFront: 0, puff: 0, spark: 0, sneeze: 0, grains: 0,
+  g: GLASS0, gShow: 1, gFront: 0, puff: 0, spark: 0, sneeze: 0, grains: 0, pinN: 0, pinF: 0, cut: 0, hatDry: 0,
 };
 
 export const pose = (o: Partial<Pose>, g: Partial<GlassPose> = {}): Pose => ({ ...NEUTRAL, ...o, g: { ...GLASS0, ...(o.g ?? {}), ...g } });
@@ -156,13 +163,36 @@ export function skeleton(o: Pose): Skel {
   const Hc: Pt = [21 + o.bx + o.lean + o.hx, 41 + down + o.cy + o.hy];
   const Sn: Pt = [24 + o.bx + o.lean * 0.6, sy + 1.5];
   const Sf: Pt = [17.5 + o.bx + o.lean * 0.6, sy + 1.5];
-  const n = reach(Sn, [o.nhx, o.nhy], o.nhy > Sn[1] + 2 ? 1 : -1);
-  const f = reach(Sf, [o.fhx, o.fhy], o.fhy > Sf[1] + 2 ? 1 : -1);
+  const tn: Pt = o.pinN ? gripOn(o.g, Sn) : [o.nhx, o.nhy];
+  const tf: Pt = o.pinF ? gripOn(o.g, Sf) : [o.fhx, o.fhy];
+  const n = reach(Sn, tn, tn[1] > Sn[1] + 2 ? 1 : -1);
+  const f = reach(Sf, tf, tf[1] > Sf[1] + 2 ? 1 : -1);
   return {
     sy, hem, Hc, Sn, Sf, elN: n.el, wN: n.w, elF: f.el, wF: f.w,
     footN: [24 + o.nfx, GY - o.nfl], footF: [17 + o.ffx, GY - o.ffl],
     brim: [Hc[0] - 0.5, Hc[1] - 5.2],
   };
+}
+
+/** The grip point on the glass nearest the shoulder S (its posts, cap ends; 1 px inside the silhouette). */
+export function gripOn(g: GlassPose, S: Pt): Pt {
+  const f = glassFrame(g);
+  let best: Pt = f.at(GL / 2, 0);
+  let bd = Infinity;
+  const tryAt = (u: number, v: number) => {
+    const q = f.at(u, v);
+    const d = Math.hypot(q[0] - S[0], q[1] - S[1]);
+    if (d < bd) {
+      bd = d;
+      best = q;
+    }
+  };
+  for (let u = 1; u <= GL - 1; u += 1) for (const v of [-(GHW - 1), GHW - 1]) tryAt(u, v);
+  for (let v = -5; v <= 5; v += 1) {
+    tryAt(1, v);
+    tryAt(GL - 1, v);
+  }
+  return [best[0] - 0.5, best[1] - 0.5];
 }
 
 // ---------------------------------------------------------------- parts
@@ -279,7 +309,7 @@ function drawHead(cp: Comp, sk: Skel, o: Pose, light: Light): void {
   cp.add(nz, Part.head, { out: PAL.skin1 });
   // the long pointed ear, swept back (tip lags)
   const e = layer();
-  const tip: Pt = o.ear === 2 ? [hx - 7, hy - 9] : o.ear === 3 ? [hx - 10, hy + 1] : [hx - 10, hy - 4 - (o.ear === 1 ? 1 : 0)];
+  const tip: Pt = o.ear === 2 ? [hx - 5, hy - 12] : o.ear === 3 ? [hx - 10, hy + 1] : [hx - 10, hy - 4 - (o.ear === 1 ? 1 : 0)];
   e.poly([[hx - 3.5, hy - 2], [hx - 2.5, hy + 2.2], tip], SKIN.M);
   bands(e, SKIN, light, 1, 1);
   e.line(rnd(hx - 3.5), rnd(hy), rnd((hx - 3.5 + tip[0] * 2) / 3), rnd((hy + tip[1] * 2) / 3), PAL.skin1);
@@ -323,9 +353,9 @@ function drawHat(cp: Comp, sk: Skel, o: Pose, light: Light): void {
   if (o.hat === 3) hatShape(q, o.hax, o.hay, o.hang, o.tx, o.ty, light);
   else {
     const [bx, by] = sk.brim;
-    const dy = o.hat === 1 ? 3 : o.hat === 2 ? -1 : 0;
-    const dx = o.hat === 1 ? 1 : o.hat === 2 ? -1.5 : 0;
-    hatShape(q, bx + dx, by + dy, o.hat === 2 ? 14 + o.hang : o.hang, o.tx, o.ty, light);
+    const dy = o.hat === 1 ? 4 : o.hat === 2 ? -1 : 0;
+    const dx = o.hat === 1 ? 1.5 : o.hat === 2 ? -1.5 : 0;
+    hatShape(q, bx + dx, by + dy, o.hat === 2 ? 14 + o.hang : o.hat === 1 ? -12 + o.hang : o.hang, o.tx, o.ty, light);
   }
   cp.add(q, Part.hat, { out: PAL.fire0 });
 }
@@ -348,9 +378,9 @@ export function drawImp(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right' = '
     if (o.hat !== 3) drawHat(cp, sk, o, light);
   }
   if (o.heap > 0) drawHeap(cp, o.heap, light);
-  if (o.cone > 0) drawCone(cp, o.cone, light, lights);
+  if (o.cone > 0) drawCone(cp, o.cone, o.g.ph, light, lights);
   if (glass && !o.gFront) cp.add(glass.layer, Part.glass, {});
-  if (o.body) drawArm(cp, sk, o, light, true);
+  if (o.body && !o.cone) drawArm(cp, sk, o, light, true);
   if (glass && o.gFront) cp.add(glass.layer, Part.glass, {});
   if (o.body && o.gFront && o.ngrip !== 3) {
     // his fingers curl round the glass's post in front
@@ -361,6 +391,27 @@ export function drawImp(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right' = '
   }
   if (o.hat === 3) drawHat(cp, sk, o, light);
 
+  // the death pour: the body above `cut` has already run into the glass
+  if (o.body && o.cut > 0) {
+    for (let y = 0; y < Math.min(H, o.cut); y++)
+      for (let x = 0; x < W; x++) {
+        const id = cp.id[y * W + x];
+        if (id === Part.none || id === Part.glass || id === Part.fx || (o.hat === 3 && id === Part.hat)) continue;
+        p.erase(x, y);
+        cp.id[y * W + x] = Part.none;
+      }
+  }
+  // the falling hat stays dry sand until it lands
+  if (o.hat === 3 && o.hatDry) {
+    for (let i = 0; i < W * H; i++) {
+      if (cp.id[i] !== Part.hat) continue;
+      const x = i % W;
+      const y = (i / W) | 0;
+      const c = p.get(x, y);
+      const s = c === null ? undefined : TO_SAND.get(c);
+      if (s !== undefined) p.set(x, y, s);
+    }
+  }
   // dry sand: the imp's rows sandTop…sandBot turn to sand tones (the planes keep their value order)
   if (o.body && o.sandTop <= o.sandBot) {
     for (let y = Math.max(0, o.sandTop); y <= Math.min(H - 1, o.sandBot); y++)
@@ -402,19 +453,45 @@ function eyes(p: PixelCanvas, sk: Skel, o: Pose): void {
   const ey = rnd(sk.Hc[1] - 1.5);
   const e0 = rnd(sk.Hc[0] + 1);
   const e1 = rnd(sk.Hc[0] + 4);
-  if (o.eye !== 4) p.rect(e0, ey, 1, 2, PAL.gold4);
-  p.rect(e1, ey, 1, 2, PAL.gold4);
+  const ew = o.eye === 3 ? 2 : 1;
+  if (o.eye !== 4) p.rect(e0 - (ew - 1), ey, ew, 2, PAL.gold4);
+  p.rect(e1, ey, ew, 2, PAL.gold4);
 }
 
-/** Summon: the sand cone the body is sculpted from (earth3 / earth4 planes, a gold3 crest). */
-function drawCone(cp: Comp, h: number, light: Light, lights: number[]): void {
+/**
+ * Summon: the sand cone the body is sculpted from — a lumpy, stepped pile (each row's flank jitters by a hashed
+ * 0–1 px and the slope steps every 3 rows), earth4 / earth3 / earth2 planes, grains rolling down both flanks 2 px a
+ * frame, and a gold3 crest pixel that walks across the top (Round 1 #6).
+ */
+function drawCone(cp: Comp, h: number, ph: number, light: Light, lights: number[]): void {
   const q = layer();
   const apex = GY - h;
-  const hw = Math.min(10, 2 + h * 0.42);
-  q.poly([[AX - 3 - hw, GY + 1], [AX - 3 - 1.2, apex], [AX - 3 + 1.2, apex], [AX - 3 + hw + 1, GY + 1]], PAL.earth3);
+  const cx = AX - 3;
+  const hwMax = Math.min(10, 2 + h * 0.42);
+  for (let y = apex; y <= GY; y++) {
+    const t = (y - apex) / Math.max(1, GY - apex);
+    const step = Math.floor((y - apex) / 3) * 3 / Math.max(1, GY - apex);
+    const hw = 1.2 + (hwMax - 1.2) * (0.55 * t + 0.45 * step) + (hash2(y, 3, h) < 0.35 ? 1 : 0);
+    const l = rnd(cx - hw - (hash2(y, 5, h) < 0.25 ? 1 : 0));
+    const r = rnd(cx + hw + (hash2(y, 7, h) < 0.25 ? 1 : 0));
+    q.hline(l, r, y, PAL.earth3);
+  }
   bands(q, { L: PAL.earth4, M: PAL.earth3, S: PAL.earth2 }, light, 2, 2);
+  // shelf lines: every third row a darker step under a lighter lip
+  for (let y = apex + 3; y < GY - 1; y += 3)
+    for (let x = 0; x < W; x++) if (q.get(x, y) === PAL.earth3 && hash2(x, y, 1) < 0.5) q.set(x, y, PAL.earth2);
   cp.add(q, Part.fx, {});
-  lights.push(AX - 4, apex, PAL.gold3, AX - 3, apex, PAL.gold3);
+  // the crest: a gold3 pixel walking across the top, a gold4 head where the pour lands
+  lights.push(cx - 1 + (ph % 3), apex, PAL.gold3, cx, apex, PAL.gold4);
+  // grains rolling down the flanks (one per side, 2 px a frame, staggered)
+  if (h > 6)
+    for (const side of [-1, 1]) {
+      const k = (ph * 2 + (side > 0 ? h : 0)) % Math.max(3, h - 2);
+      const y = apex + 1 + k;
+      const t = (y - apex) / Math.max(1, GY - apex);
+      const x = rnd(cx + side * (1.8 + (hwMax - 1.2) * t + 1));
+      lights.push(x, y, (ph + side) % 2 ? PAL.gold3 : PAL.earth4);
+    }
 }
 
 /** A low heap of sand round his feet (summon sculpt). */
@@ -444,7 +521,7 @@ function pourLight(p: PixelCanvas, o: Pose): void {
 /** Death: his sand runs into the top cap as a curling ribbon (stage 1…3). */
 function ribbonLight(p: PixelCanvas, o: Pose, sk: Skel): void {
   const cap = glassPoints(o.g).muzzle;
-  const from: Pt = [sk.Hc[0], sk.Hc[1] + 6 + o.ribbon * 2];
+  const from: Pt = o.cut > 0 ? [sk.Hc[0] + 2, Math.max(o.cut, sk.Hc[1]) + 1] : [sk.Hc[0], sk.Hc[1] + 6 + o.ribbon * 2];
   const n = 14;
   for (let i = 0; i <= n; i++) {
     const t = i / n;
@@ -455,8 +532,10 @@ function ribbonLight(p: PixelCanvas, o: Pose, sk: Skel): void {
     const x = (1 - t) * (1 - t) * from[0] + 2 * (1 - t) * t * mx + t * t * cap[0];
     const y = (1 - t) * (1 - t) * from[1] + 2 * (1 - t) * t * my + t * t * cap[1];
     const c = i === n ? PAL.gold4 : PAL.gold3;
+    // a 3-px band of sand (Round 1 #3: a thick ribbon, not a 1-px thread)
+    setLight(p, rnd(x), rnd(y) - 1, i % 2 ? PAL.gold3 : PAL.gold4, true);
     setLight(p, rnd(x), rnd(y), c, true);
-    if (i % 3 !== 2) setLight(p, rnd(x), rnd(y) + 1, i % 2 ? PAL.gold3 : PAL.earth4, true);
+    setLight(p, rnd(x), rnd(y) + 1, i % 3 === 2 ? PAL.earth3 : PAL.earth4, true);
   }
 }
 

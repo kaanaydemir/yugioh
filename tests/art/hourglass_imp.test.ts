@@ -49,7 +49,7 @@ describe('hourglass_imp v3', () => {
     expect([art.w, art.h, art.anchorX, art.anchorY]).toEqual([60, 64, 24, 60]);
     for (const a of EXTRA) expect(art.extraAnims?.[a], a).toBeDefined();
     const frames = ALL.reduce((n, a) => n + specOf(a).frames, 0);
-    expect(frames).toBeLessThanOrEqual(140);
+    expect(frames).toBeLessThanOrEqual(150); // Round 1: + death / special / summon in-betweens (bytes rule below)
     expect(60 * 64 * 4 * frames).toBeLessThanOrEqual(2.2 * 1024 * 1024);
   });
 
