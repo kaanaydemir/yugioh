@@ -154,7 +154,7 @@ export function attackPose(f: number): Pose {
 // declaration's held f1 the coil SNAPS to f3 and tightens there 110 ms while the battle's lock-on fades under it,
 // then the 200-ms freeze (≥ 270 game ms after the declaration's arc has gone). The thrusts show only their 40-ms
 // micro-stops, retract 1 is 40 and retract 2 is 50 (ta-ta…TAK); the release f7 rides the glide's braking tail.)
-const ATTACK_HOLDS = [80, 60, 40, 110, 200, 112, 112, 40, 40, 40, 40, 50, 80, 50, 50, 50, 50];
+const ATTACK_HOLDS = [80, 60, 40, 110, 230, 112, 112, 40, 40, 40, 40, 50, 80, 50, 50, 50, 50];
 
 // ------------------------------------------------------------------ roar (9 frames): the wings open once
 

@@ -32,7 +32,7 @@ import { PAL } from '../../art/palette';
 import { framePose } from '../../art/monsters-v3/reed_heron-anims';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { DEPTH, LOOK_V3, TILE_W, type XY, unitDepth, zoneXY } from '../../view/layout';
-import { lightFlash, lightPool } from '../../view/light';
+import { STEP_DEPTH, lightFlash, lightPool } from '../../view/light';
 import { hitStop, shake } from '../../vfx/core';
 import { E, Px, Sparks, animate, onFrame, sleep } from '../../vfx/combat';
 import { registerCardHook, registerObserver, registerStrike } from '../api';
@@ -457,7 +457,7 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
       const at = m ? u.framePoint(m.x, m.y) : u.muzzle();
       // the needle light for exactly one frame (drawn here, not in the art) and droplets flicked back off the tip
       needleFlash(sc, DEPTH.FX - 0.4, at, sgn);
-      void lightFlash(sc, at.x, at.y, PAL.white, 9 + k * 3, 70, { floorY: s.toGround.y, intensity: 0.5 + 0.2 * k, air: 0.5, rise: 0 });
+      airFlash(sc, at, PAL.white, 9 + k * 3, 70, { floorY: s.toGround.y, intensity: 0.5 + 0.2 * k, air: 0.5, rise: 0 });
       const sp = new Sparks(sc, DEPTH.FX - 1);
       for (let i = 0; i < 2 + (k > 1 ? 1 : 0); i++) {
         const a = hash(f, i, 31);
@@ -509,7 +509,7 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
       pin.land();
       // the light answers on the struck body: a small white pool on its core (the floor spill under it)
       const lit = tgt ? tgt.core() : at;
-      void lightFlash(sc, lit.x, lit.y, PAL.white, 10, 120, { floorY: s.toGround.y, intensity: 0.85, air: 0.7, rise: 0 });
+      airFlash(sc, lit, PAL.white, 10, 120, { floorY: s.toGround.y, intensity: 0.85, air: 0.7, rise: 0 });
     }
     const mat = tgt ? [hitSoundFor(tgt, { kind: 'physical', heavy: true }), hitSoundFor(tgt, { kind: 'physical', heavy: false })] : [];
     // (blocked: the guard's shared shield bell is skipped in the contact call and re-played far under the TING)
@@ -523,6 +523,10 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
     // the target's shared contact flash (_v3/flash.ts: a white banded disc on the struck body) is the most
     // generic frame of any strike: the heron's pinpoint (three nicks → the triangle and its star, the light on the core) IS its contact
     hideContactFlash(sc, before, tgt ? tgt.sprite.depth : null);
+    // …and the battle's own contact light lands on the floor as a stepped pad tint (the calm-pad tone table: on
+    // this floor a dark night-tone Bayer stain that spreads by the target's feet for ~300 ms — read as dirt, not
+    // light): its floor stamp is dropped, the white on the struck body is his own core light
+    noFloorStep(sc, before);
     if (s.blocked) {
       play('shieldBlock', { volume: 0.3, pitch: 1.25, pan: panAt(aim.x) });
       coolGlance(sc, u, before, at, sgn);
@@ -599,6 +603,27 @@ function noBacklash(sc: Phaser.Scene, before: number): void {
   }
 }
 
+/**
+ * The stepped floor stamp of every light made since `before` (an opaque Image at STEP_DEPTH that the light layer
+ * re-shows whenever its stamps change, so it is zeroed by alpha, which the layer never touches). The stepped table
+ * lifts the calm pads' night tones; on the stone floor the "lit" pad reads as a dark stain, never as light — the
+ * strike's lights keep only their air glow on the struck point.
+ */
+function noFloorStep(sc: Phaser.Scene, before: number): void {
+  const list = sc.children.list;
+  for (let i = before; i < list.length; i++) {
+    const o = list[i] as Phaser.GameObjects.GameObject & { depth?: number; setAlpha?: (a: number) => unknown };
+    if (o.type === 'Image' && o.depth === STEP_DEPTH && o.setAlpha) o.setAlpha(0);
+  }
+}
+
+/** A one-shot light that glows in the air at the point and leaves no stepped stamp on the floor. */
+function airFlash(sc: Phaser.Scene, at: XY, color: number, radius: number, ms: number, o: Parameters<typeof lightFlash>[6]): void {
+  const before = sc.children.list.length;
+  void lightFlash(sc, at.x, at.y, color, radius, ms, o);
+  noFloorStep(sc, before);
+}
+
 /** Hide the shared contact flash image(s) the contact call made on the struck body (fx:cflash:*) and its burst. */
 function hideContactFlash(sc: Phaser.Scene, before: number, bodyDepth: number | null): void {
   const list = sc.children.list;
@@ -631,7 +656,7 @@ function coolGlance(sc: Phaser.Scene, u: MonsterUnit, before: number, at: XY, sg
     else if (o.type === 'Graphics' && (Math.abs(o.depth - (DEPTH.FX + 0.2)) < 1e-6 || Math.abs(o.depth - (DEPTH.FX + 0.1)) < 1e-6)) o.setVisible(false);
   }
   noBacklash(sc, before);
-  void lightFlash(sc, at.x, at.y, PAL.white, 10, 120, { floorY: u.home.y, intensity: 0.55, air: 0.6, rise: 0 });
+  airFlash(sc, at, PAL.white, 10, 120, { floorY: u.home.y, intensity: 0.55, air: 0.6, rise: 0 });
   const sp = new Sparks(sc, DEPTH.FX - 1);
   for (let i = 0; i < 6; i++) {
     const a = hash(i, 9, 41);
