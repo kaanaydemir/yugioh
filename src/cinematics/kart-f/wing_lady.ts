@@ -971,7 +971,7 @@ async function kestrel(s: StrikeArgs): Promise<void> {
       // ---- direct: she bursts up off the clap (open → sweep → rebound, moving together) and the wind carries her
       // home on a high backward arc
       const top = { x: (f6.x + home.x) / 2, y: Math.min(f6.y, home.y) - 26 };
-      await animate(sc, 400, (t) => {
+      await animate(sc, 340, (t) => {
         const p = quad(f6, top, { x: home.x, y: home.y - 3 }, E.inOutQ(t));
         const ground = { x: f6.x + (home.x - f6.x) * t, y: goal.y + (home.y - goal.y) * t };
         setFeet(u, p, ground);

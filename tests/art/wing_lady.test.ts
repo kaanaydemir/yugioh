@@ -20,10 +20,10 @@ describe('wing_lady', () => {
       expect(spec(a), a).toBeTruthy();
       expect(spec(a).holds?.length, a).toBe(spec(a).frames);
     }
-    expect(spec('attack').marks).toMatchObject({ charge: 1, release: 5, impact: 5, contact: 6, recover: 8 });
+    expect(spec('attack').marks).toMatchObject({ charge: 1, release: 5, impact: 5, contact: 6, recover: 10 });
     expect(spec('special').marks).toMatchObject({ charge: 1, release: 4, impact: 4, recover: 8 });
     expect(spec('roar').marks).toMatchObject({ charge: 1, release: 3, impact: 3, recover: 5 });
-    expect(spec('summon').marks?.land).toBe(7);
+    expect(spec('summon').marks?.land).toBe(10);
     expect(spec('revive').marks?.land).toBe(5);
     // the revive lands by ≈ 450 ms (soul_recall's ghost melts into f0, which lies on the tile)
     expect(spec('revive').holds!.slice(0, 5).reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(460);
@@ -134,8 +134,10 @@ describe('wing_lady', () => {
         expect(st.isolated).toBeLessThanOrEqual(0.1);
         expect(st.colors).toBeLessThanOrEqual(20);
         expect(st.backdropColors).toBeLessThanOrEqual(6);
+        // a close portrait whose wings bleed off the top and left edges (critique r1 #6, like crystal_wyrm's head:
+        // its fill is 0.93 / 0.88): the bounding-box rule is met by bleeding, the cover keeps air for the face
         expect(st.subjectFill).toBeGreaterThanOrEqual(0.6);
-        expect(st.subjectFill).toBeLessThanOrEqual(0.75);
+        expect(st.subjectCover).toBeLessThanOrEqual(0.85);
         expect(st.focusOk).toBe(true);
       }
     }

@@ -48,7 +48,8 @@ import { pixelText } from '../../ui/text';
 import { fx, registerCardHook, registerObserver, registerStrike } from '../api';
 import type { CinematicContext, StrikeArgs } from '../_core/types';
 import { strikeStartFrame } from '../_v3/clash';
-import { atFrame, dropCharge, panAt, play, start, takeCharge } from '../_v3/sound';
+import { atFrame, dropCharge, fade as fadeSnd, hush, panAt, play, start, takeCharge } from '../_v3/sound';
+import { sfx } from '../../audio/sfx';
 import { holoOnset } from '../_v3/summon';
 import { behindBodies, cardLeaves } from '../_v3/card';
 import { contactFlash } from '../_v3/flash';
@@ -602,13 +603,54 @@ if (LOOK_V3)
         })();
         dustPuffs(sc, from, 6, { spread: 10, push: { x: dir.x * 30, y: dir.y * 10 }, rnd });
       });
-      play('wmkGaleFront', { volume: 0.55, pan: panAt(to.x) });
+      play(sEv.player === 0 ? 'wmkGaleFront' : 'wmkGaleFrontP2', { volume: 0.55, pan: panAt(to.x) * 0.5 });
       return ctx.base();
     },
     { priority: 20, name: `kart-f:${ID}:tribute` },
   );
 
 // ================================================================ summon: out of the gale front
+
+/**
+ * Round 2 #2: while the shared cut-in band runs inside the summon, its four generic stingers are answered by the
+ * knight's own kit (as tide_harpooner-fx cutinVoice): the band's whoosh → a gale gust built from the howl, the plate's
+ * cardSlam → a deep plate clank with the helm ring, its impactHeavy layer dropped (the clank IS the slam), the exit's
+ * summonBurst dropped (the UNFURL is the beat, played by galeEntrance on the same tick). Every other name passes
+ * through. The global sfx.play is restored on the exit stinger, when `until` settles, or after `maxMs`.
+ */
+function knightCutinVoice(scene: Phaser.Scene, until: Promise<unknown>, maxMs = 1700): void {
+  const orig = sfx.play;
+  let done = false;
+  const restore = () => {
+    if (done) return;
+    done = true;
+    if (sfx.play === mine) sfx.play = orig;
+  };
+  const vol = (opts: Parameters<typeof sfx.play>[1], k: number) => Math.min(1, (opts?.volume ?? 1) * k);
+  const mine: typeof sfx.play = (name, opts) => {
+    switch (name) {
+      case 'whoosh':
+        return orig.call(sfx, 'wmkCutGust', { ...opts, pitch: 1, volume: vol(opts, 1.25) });
+      case 'cardSlam':
+        return orig.call(sfx, 'wmkCutClank', { ...opts, pitch: 1, volume: vol(opts, 1.8) });
+      case 'impactHeavy':
+        return;
+      case 'summonBurst':
+        restore();
+        return;
+      default:
+        return orig.call(sfx, name, opts);
+    }
+  };
+  sfx.play = mine;
+  void until.then(restore, restore);
+  const t = scene.time.delayedCall(maxMs, restore);
+  scene.events.once('shutdown', () => {
+    t.remove(false);
+    restore();
+  });
+}
+
 
 async function galeEntrance(S: Stage): Promise<void> {
   const sc = S.scene;
@@ -622,7 +664,7 @@ async function galeEntrance(S: Stage): Promise<void> {
   // ---- the gale front: from the enemy side of his tile to his back (never a full-width band)
   const g = S.own(gale(sc, { at: { x: home.x + fwd.x * 60, y: home.y + fwd.y * 60 }, dir: down, w: 70, h: 40, back: S.depth - 0.6, front: S.depth + 0.6, seed: u.uid * 5 + 1, ribbons: 10, billows: 14 }));
   g.amount(0.25);
-  const arrive = start('wmkGaleFront', { volume: 0.9, pan: panAt(home.x) });
+  const arrive = start(S.dir > 0 ? 'wmkGaleFront' : 'wmkGaleFrontP2', { volume: 0.9, pan: panAt(home.x) * 0.5 });
   const FRONT_MS = 760;
   const crossing = animate(sc, FRONT_MS, (t) => {
     const k = E.inOutQ(t);
@@ -678,16 +720,21 @@ async function galeEntrance(S: Stage): Promise<void> {
   await untilShown(u, 'summon', landF + 1, 1600);
   if (!landed) arrive.stop(160);
   // ---- the held breath: the cut-in band (mane gathered, eyes lit — summon f7–f9)
-  if (S.cutIn) await S.climax();
-  else await capped(sc, walk, 400);
+  if (S.cutIn) {
+    const cut = S.climax();
+    knightCutinVoice(sc, cut);
+    await cut;
+  } else await capped(sc, walk, 400);
   // ---- the UNFURL (f10): the mane whip-cracks out to full length, the pennon snaps taut — the finale
   const unfurl = u.playRange('summon', 10);
+  fadeSnd(['summonBurst'], 40); // (no cut-in: nothing generic is left under the unfurl either)
   play('wmkManeUnfurl', { volume: 1, pan: panAt(home.x) });
   const mane = pointNow(u, 'staff', { x: home.x - S.dir * 30, y: home.y - 66 });
   gritSpray(sc, mane, { x: -S.dir, y: -0.1 }, 12, rnd, { speed: 150, hair: 6, depth: S.depth + 0.6 });
   const tip = pointNow(u, 'muzzle', { x: home.x + S.dir * 26, y: home.y - 70 });
   void lightFlash(sc, tip.x, tip.y, PAL.gold3, 14, 180, { floorY: home.y, air: 1, intensity: 0.6 });
-  S.finale({ ring: S.big ? 70 : 50, ramp: RAMPS.stone, freezeMs: S.big ? 40 : 0, sfx: null, playerRing: false });
+  // round 2 #9: no generic finale ring — the unfurl's own hair spray and the grey dust ring carry the finale
+  S.finale({ ring: 0, ramp: RAMPS.stone, freezeMs: S.big ? 40 : 0, sfx: null, playerRing: false });
   void dustRing(sc, home, { r0: 8, r1: 34, ms: 420 });
   // the brew starts (summon turn, a battle still to come): six grains of grey dust circling his tile
   const lvl = levelIn(S.ctx.stateNext, u.uid);
@@ -752,11 +799,11 @@ async function stormCharge(ctx: Ctx<'statChange'>, u: MonsterUnit): Promise<void
     u.battleTint = false;
     void u.setStats(ev.atk, ev.def, true);
     void chip(sc, badgePoint(u), '+500 FIRTINA', PAL.gold4, { rise: 4, ms: 640 });
-    play('lpUp', { volume: 0.25, pan });
+    play('wmkStormTick', { volume: 0.8, pan });
   };
   await untilShown(u, 'roar', relF, 1400);
   // release: the mane SNAPS into a taut blade — a gust bursts downwind off it, the gold pool on his tile only
-  play('wmkManeUnfurl', { volume: 0.6, pan });
+  play('wmkBladeTaut', { volume: 1, pan });
   setStorm(sc, u, 2);
   const mane = pointNow(u, 'staff', { x: home.x + dw * 30, y: home.y - 70 });
   const gust = layer(sc, u.sprite.depth - 0.6);
@@ -1070,7 +1117,9 @@ async function stormStrike(s: StrikeArgs): Promise<void> {
     // ---- f7 contact: the gale BOOM; the wall overtakes him and blows past (or splits around the guard)
     u.pose('special', conF);
     const tipNow = pointNow(u, 'muzzle', aim);
-    s.impact(tipNow);
+    // round 2 #3: the gale boom IS the contact — the generic body blow is never stacked under it (a struck body with
+    // its own material still sounds)
+    hush(['impactHeavy', 'impactLight'], () => s.impact(tipNow));
     play(s.blocked ? 'wmkStormSplit' : 'wmkGaleBoom', { volume: 1, pan: panAt(tipNow.x) });
     void stopTime(sc, 30);
     void shake(sc, 180, s.blocked ? 2 : 4);

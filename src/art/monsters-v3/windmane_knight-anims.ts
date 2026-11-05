@@ -207,7 +207,7 @@ const SPECIAL_HOLDS = [70, 80, 80, 80, 80, 60, 160, 80, 80, 80, 80, 60, 80, 90, 
 
 // ------------------------------------------------------------------ roar (11): "Fırtına Çağrısı"
 
-const R_N = 11;
+const R_N = 12;
 function roarPose(f: number): Pose {
   const TAUT: Partial<Mane> = { th: 181, curl: 0, droop: 0, amp: 0, len: 42, spread: -1, ph: 0.5 };
   const keys: PD[] = [
@@ -215,6 +215,8 @@ function roarPose(f: number): Pose {
     { crouch: 1, gx: 69, gy: 51, la: -58, mane: { th: 215, curl: -30, ph: 0.15 }, pph: 0.15 },
     { crouch: 1, chest: -1, gx: 64, gy: 47, la: -45, lf: 40, lb: 36, mane: { th: 244, curl: -80, len: 30, ph: 0.25, spread: 0.2 }, pph: 0.3 },
     { crouch: 2, chest: -1, hy: -1, gx: 64, gy: 45, la: -45, lf: 40, lb: 36, eyes: 2, mane: { th: 258, curl: -140, len: 26, ph: 0.35, spread: 0.4, amp: 0.6 }, pph: 0.45 },
+    // round 2 #7: a 1-frame anticipation dip before the snap (the spiral wound tightest, the knees give)
+    { crouch: 3, chest: 0, hy: 0, gx: 64, gy: 47, la: -45, lf: 40, lb: 36, eyes: 2, mane: { th: 262, curl: -160, len: 24, ph: 0.4, spread: 0.5, amp: 0.4 }, pph: 0.5 },
     { crouch: 0, chest: -1, hy: -2, lean: 1, gx: 64, gy: 44, la: -45, lf: 40, lb: 36, eyes: 3, pen: 2, glint: 1, mane: TAUT },
     { crouch: 0, chest: -1, hy: -1, lean: 1, gx: 64, gy: 44, la: -45, lf: 40, lb: 36, eyes: 3, pen: 2, glint: 2, mane: { ...TAUT, ph: 0.55 } },
     { chest: -1, gx: 67, gy: 48, la: -55, lf: 42, lb: 34, eyes: 2, pen: 0, pph: 0.6, glint: 1, mane: { th: 186, curl: -6, droop: 1, amp: 1, len: 41, ph: 0.6 } },
@@ -225,7 +227,7 @@ function roarPose(f: number): Pose {
   if (f >= R_N - 1) return IDLE0();
   return K(keys[f]);
 }
-const ROAR_HOLDS = [80, 100, 120, 180, 60, 90, 110, 120, 130, 140, 150];
+const ROAR_HOLDS = [80, 100, 180, 230, 70, 60, 90, 110, 120, 130, 140, 150];
 
 // ------------------------------------------------------------------ hits
 
@@ -236,27 +238,32 @@ function hitPose(f: number): Pose {
     { bx: -1, lean: -1, hx: -2, la: -73, eyes: 2, mane: { th: 324, curl: 80, len: 28, amp: 0.4, spread: 0.5, front: true, ph: 0.2 } },
     { bx: -1, lean: -1, hx: -1, la: -77, mane: { th: 250, curl: -70, len: 30, amp: 1, ph: 0.3 } },
     { lean: -1, hx: -1, la: -74, mane: { th: 206, curl: -30, amp: 2.4, ph: 0.45 } },
-    { mane: { th: 198, amp: 2, ph: 0.7 } },
+    // round 2 #7: the plate has stopped ringing, the mane has not — its late follow-through swings back up and over
+    { mane: { th: 232, curl: -54, len: 34, amp: 1.2, ph: 0.6 } },
+    { mane: { th: 198, amp: 2, ph: 0.75 } },
   ];
-  if (f >= 5) return IDLE0();
+  if (f >= 6) return IDLE0();
   return K(keys[f]);
 }
-const HIT_HOLDS = [50, 60, 160, 100, 110, 140];
+const HIT_HOLDS = [40, 70, 130, 90, 120, 140, 150];
 
 function hitHeavyPose(f: number): Pose {
   const keys: PD[] = [
     { hx: -2, eyes: 3 },
     { bx: -3, lean: -3, crouch: 3, hx: -2, hy: 1, fbx: 37, gx: 72, gy: 60, la: -78, mane: { th: 248, curl: -40, len: 26, amp: 0.4, ph: 0.15 }, dust: [[66, GY, 2]] },
     { bx: -3, lean: -2, crouch: 3, hx: -1, hy: 1, fbx: 37, gx: 72, gy: 60, la: -79, mane: { th: 252, curl: -50, len: 26, amp: 0.4, ph: 0.2 }, dust: [[63, GY, 3]] },
+    // round 2 #7: the empty helm RATTLES on the gorget for two frames while the body is still braced
+    { bx: -3, lean: -2, crouch: 3, hx: 0, hy: 0, fbx: 37, gx: 72, gy: 60, la: -79, eyes: 2, mane: { th: 250, curl: -46, len: 27, amp: 0.5, ph: 0.24 } },
+    { bx: -3, lean: -2, crouch: 3, hx: -2, hy: 1, fbx: 37, gx: 72, gy: 60, la: -78, eyes: 3, mane: { th: 246, curl: -40, len: 28, amp: 0.6, ph: 0.27 } },
     { bx: -2, lean: -1, crouch: 2, fbx: 38, gx: 73, gy: 59, la: -77, mane: { th: 172, curl: 20, droop: 7, amp: 1, ph: 0.3 }, dust: [[61, GY, 2]] },
     { bx: -1, crouch: 1, fbx: 39, gx: 74, gy: 58, la: -76, mane: { th: 190, droop: 5, amp: 2.2, ph: 0.45 } },
     { crouch: 1, mane: { th: 196, amp: 2, ph: 0.6 } },
     { mane: { ph: 0.8 } },
   ];
-  if (f >= 7) return IDLE0();
+  if (f >= 9) return IDLE0();
   return K(keys[f]);
 }
-const HH_HOLDS = [50, 60, 140, 110, 80, 90, 110, 130];
+const HH_HOLDS = [50, 60, 120, 60, 60, 110, 90, 100, 120, 140];
 
 function hitMagicPose(f: number): Pose {
   const keys: PD[] = [
@@ -303,7 +310,7 @@ const SU_HOLDS = [120, 120, 110, 110, 110, 110, 130, 90, 90, 80, 60, 90, 110];
 
 // ------------------------------------------------------------------ death (10): "Durgun Hava" → the hollow armour
 
-const D_N = 10;
+const D_N = 13;
 const FROZEN: Partial<Mane> = { ph: 0.22, amp: 2.2, flick: 0 };
 /** the pile at the foot of the standing boots (death f7+): helm and pauldrons behind, cuirass on its back, fauld in front */
 const PILE = {
@@ -330,16 +337,23 @@ function deathPose(f: number): Pose {
     // the helm is off and falling behind; the open neck ring shows the dark inside — nobody in there
     { ...stag, eyes: 0, pen: 3, hollow: true, shards: 1, mane: FROZEN, fall: { helm: { dx: -16, dy: 26, rot: -60 }, lance: { dx: -6, dy: 0, rot: 16 } } },
     // the pauldrons slide off sideways and drop; the cuirass slips down; the arms hang
-    { ...stag, ...down, pen: 3, hollow: true, shards: 1, mane: FROZEN, fall: { helm: { dx: -27, dy: 49, rot: -96 }, pauldF: { dx: 9, dy: 24, rot: 34 }, pauldB: { dx: -10, dy: 26, rot: -28 }, cuirass: { dx: -1, dy: 2, rot: -4 }, arms: { dx: 0, dy: 9, rot: 0 }, lance: { dx: -24, dy: 0, rot: 34 } } },
+    { ...stag, ...down, pen: 3, hollow: true, shards: 1, mane: FROZEN, fall: { helm: { dx: -27, dy: 49, rot: -96 }, pauldF: { dx: 9, dy: 24, rot: 34 }, pauldB: { dx: -10, dy: 26, rot: -28 }, cuirass: { dx: 0, dy: 4, rot: 0 }, arms: { dx: 0, dy: 9, rot: 0 }, lance: { dx: -24, dy: 0, rot: 34 } } },
     // the faulds and gauntlets clatter down: only the EMPTY boots stand; the lance falls like a felled flagpole
     { ...stag, ...down, pen: 3, hollow: true, shards: 2, boots: true, mane: FROZEN, fall: { ...PILE, cuirass: { dx: -16, dy: 20, rot: -60 }, lance: { dx: -42, dy: -1, rot: 58 } } },
     { ...stag, ...down, pen: 3, hollow: true, shards: 2, boots: true, mane: FROZEN, fall: { ...PILE, lance: { dx: -52, dy: -4, rot: 78 } } },
     // the pennon lands last, flat
     { ...stag, ...down, pen: 5, hollow: true, shards: 2, boots: true, mane: FROZEN, fall: { ...PILE, lance: { dx: -54, dy: -4, rot: 82 } } },
+    // the ENDING (round 2 #8): the two empty greaves tip over one after the other — "tunk… tunk"
+    { ...stag, ...down, pen: 5, hollow: true, shards: 2, boots: true, bootTip: [34, 0], mane: FROZEN, fall: { ...PILE, lance: { dx: -54, dy: -4, rot: 82 } } },
+    { ...stag, ...down, pen: 5, hollow: true, shards: 2, boots: true, bootTip: [86, -32], mane: FROZEN, fall: { ...PILE, lance: { dx: -54, dy: -4, rot: 82 } } },
+    { ...stag, ...down, pen: 5, hollow: true, shards: 2, boots: true, bootTip: [88, -86], mane: FROZEN, fall: { ...PILE, lance: { dx: -54, dy: -4, rot: 82 } } },
   ];
   return K(keys[Math.min(f, D_N - 1)]);
 }
-const D_HOLDS = [50, 60, 160, 80, 70, 80, 80, 90, 100, 120];
+const D_HOLDS = [50, 60, 150, 80, 70, 80, 80, 80, 90, 110, 70, 90, 150];
+/** The death frame the pennon lands on (the card is born) and the greaves' landings (round 2 #8). */
+export const D_PENNON = 9;
+export const D_GREAVES = [11, 12] as const;
 
 // ------------------------------------------------------------------ revive (11): backwards, then the wind returns
 
@@ -350,7 +364,7 @@ function revivePose(f: number): Pose {
   const gust = (y: number): readonly (readonly [number, number, number])[] => [[8, y, 14], [20, y - 6, 10], [4, y - 12, 9]];
   const keys: PD[] = [
     // the empty boots catch a gust: the pennon lifts off the floor, the hair shards are blown away
-    { ...base, hand: [60, 70], hollow: true, boots: true, noMane: true, pen: 4, streaks: gust(86), fall: { ...end.fall, lance: { dx: -50, dy: -4, rot: 76 } } },
+    { ...base, hand: [60, 70], hollow: true, boots: true, bootTip: [40, -36], noMane: true, pen: 4, streaks: gust(86), fall: { ...end.fall, lance: { dx: -50, dy: -4, rot: 76 } } },
     // the gust lifts the fauld onto the boots; the cuirass tumbles up off the floor; the lance rises
     { ...base, hand: [60, 70], hollow: true, boots: true, noMane: true, pen: 0, pph: 0.2, streaks: gust(78), fall: { ...end.fall, fauld: { dx: 0, dy: 3, rot: 0 }, cuirass: { dx: -5, dy: 9, rot: -48 }, pauldF: { dx: 18, dy: 28, rot: 50 }, pauldB: { dx: -14, dy: 30, rot: -40 }, lance: { dx: -42, dy: -2, rot: 54 } } },
     // the fauld seats (1-px settle), the legs fill; the cuirass hangs IN THE AIR above them (a gap), still turning
@@ -381,15 +395,15 @@ export const ANIMS: Record<MonsterAnim, AnimSpec> = {
   idle: spec(IDLE_N, 8, true, IDLE_HOLDS),
   guard: spec(GUARD_N, 6, true, GUARD_HOLDS),
   attack: spec(A_N, 10, false, ATTACK_HOLDS, { charge: 1, release: IMPACT, impact: IMPACT, contact: 6, recover: 8 }),
-  roar: spec(R_N, 10, false, ROAR_HOLDS, { charge: 1, release: 4, impact: 4, recover: 6 }),
-  hit: spec(6, 12, false, HIT_HOLDS, { impact: 0, contact: 0, recover: 3 }),
+  roar: spec(R_N, 10, false, ROAR_HOLDS, { charge: 1, release: 5, impact: 5, recover: 7 }),
+  hit: spec(7, 12, false, HIT_HOLDS, { impact: 0, contact: 0, recover: 4 }),
 };
 export const EXTRA_ANIMS: Partial<Record<MonsterAnimExtra, AnimSpec>> = {
   summon: spec(SU_N, 10, false, SU_HOLDS, { land: 6 }),
   death: spec(D_N, 12, false, D_HOLDS, { impact: 0, contact: 0, dissolve: 4 }),
   revive: spec(RV_N, 10, false, RV_HOLDS, { land: 7 }),
   special: spec(SP_N, 10, false, SPECIAL_HOLDS, { charge: 1, release: 11, impact: 11, contact: 12, recover: 14 }),
-  hitHeavy: spec(8, 12, false, HH_HOLDS, { impact: 0, contact: 0, recover: 4 }),
+  hitHeavy: spec(10, 12, false, HH_HOLDS, { impact: 0, contact: 0, recover: 6 }),
   hitMagic: spec(8, 12, false, HM_HOLDS, { impact: 0, contact: 0, recover: 4 }),
   toGuard: spec(5, 14, false, TG_HOLDS),
   fromGuard: spec(5, 14, false, FG_HOLDS),

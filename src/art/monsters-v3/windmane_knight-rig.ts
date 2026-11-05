@@ -182,6 +182,8 @@ export interface Pose {
   arc?: readonly [number, number] | null;
   /** the crest is bare (revive: the mane has not grown back yet) */
   noMane?: boolean;
+  /** death ending (round 2 #8): the empty greaves tip over — [near, far] angle (deg, + toward the toe, − toward the heel) */
+  bootTip?: readonly [number, number];
 }
 
 export const NEUTRAL_MANE: Mane = { th: 192, len: 40, curl: -14, droop: 3, amp: 2.2, ph: 0, spread: 0, flick: 0, frizz: 0, front: false, bound: 0, blades: false };
@@ -536,10 +538,14 @@ function drawManeShards(f: PixelCanvas, P: Pose, S: Skel) {
 
 // ---------------------------------------------------------------- body parts
 
-function legOf(f: PixelCanvas, hipJ: V, ax: number, sole: number, light: Light, t: Tones, far: boolean, boots = false) {
-  const ankle: V = [ax, sole - 5];
+function legOf(f: PixelCanvas, hipJ: V, ax: number, sole: number, light: Light, t: Tones, far: boolean, boots = false, tip = 0) {
+  // an empty greave tipping over (death ending): every point turns about the sole edge it falls over (toe or heel)
+  const pv: V = tip >= 0 ? [ax + 8, sole] : [ax - 4, sole];
+  const ta = (tip * Math.PI) / 180;
+  const R = (p: V): V => (tip ? [pv[0] + (p[0] - pv[0]) * Math.cos(ta) - (p[1] - pv[1]) * Math.sin(ta), pv[1] + (p[0] - pv[0]) * Math.sin(ta) + (p[1] - pv[1]) * Math.cos(ta)] : p);
+  const ankle: V = R([ax, sole - 5]);
   // the empty boots stand bolt upright (no body above them to bend the knee)
-  const knee: V = boots ? [ax - 1, sole - 24] : ik2(hipJ, ankle, 13, 12, -1);
+  const knee: V = boots ? R([ax - 1, sole - 24]) : ik2(hipJ, ankle, 13, 12, -1);
   // cuisse (thigh plate) and greave
   if (!boots) {
     const thigh = tube(hipJ, knee, far ? 7 : 8, t.m);
@@ -558,7 +564,18 @@ function legOf(f: PixelCanvas, hipJ: V, ax: number, sole: number, light: Light, 
     shade(mq, light, MAIL, { lw: 0, sw: 1, tw: 0, bw: 1 });
     composite(f, mq, seam);
   }
-  if (boots) {
+  if (boots && Math.abs(tip) > 20) {
+    // the tipped greave: its open mouth faces sideways — a dark oval across the shin's end
+    const hq = new PixelCanvas(W, H);
+    const dx = knee[0] - ankle[0];
+    const dy = knee[1] - ankle[1];
+    const L = Math.hypot(dx, dy) || 1;
+    const nx = -dy / L;
+    const ny = dx / L;
+    hq.thickLine(rnd(knee[0] - nx * 3), rnd(knee[1] - ny * 3), rnd(knee[0] + nx * 3), rnd(knee[1] + ny * 3), 2, t.l);
+    hq.line(rnd(knee[0] - nx * 2 - (dx / L)), rnd(knee[1] - ny * 2 - (dy / L)), rnd(knee[0] + nx * 2 - (dx / L)), rnd(knee[1] + ny * 2 - (dy / L)), PAL.night0);
+    composite(f, hq, seam);
+  } else if (boots) {
     // the empty greave: its open top shows the dark inside (nobody in the armour)
     const top = Math.min(knee[1], ankle[1]);
     const cx = rnd(knee[0]);
@@ -582,18 +599,18 @@ function legOf(f: PixelCanvas, hipJ: V, ax: number, sole: number, light: Light, 
   }
   // sabaton: heel to a pointed toe, forward
   const sab = poly(
-    [
+    ([
       [ax - 4, sole],
       [ax - 4, sole - 4],
       [ax + 2, sole - 5],
       [ax + 6, sole - 2],
       [ax + 8, sole],
-    ],
+    ] as V[]).map(R),
     t.m,
   );
   shade(sab, light, t, { lw: 1, sw: 1, tw: 1, bw: 0 });
   // sole row one step darker
-  for (let x = ax - 4; x <= ax + 8; x++) if (sab.isOpaque(x, sole)) sab.set(x, sole, t.d);
+  if (!tip) for (let x = ax - 4; x <= ax + 8; x++) if (sab.isOpaque(x, sole)) sab.set(x, sole, t.d);
   composite(f, sab, seam);
 }
 
@@ -1093,9 +1110,9 @@ export function drawKnight(p: PixelCanvas, P: Pose, lightFrom: 'left' | 'right' 
   // 2. the far side: back arm, back pauldron, back leg
   if (!P.boots) drawArm(f, S.sB, [P.bgx + SHIFT + rnd(P.bx), P.bgy + rnd(P.by)], light, true, P.fall.arms);
   drawPauldron(f, P, S.sB, true, light, P.fall.pauldB);
-  legOf(f, hipB, rnd(P.fbx) + SHIFT, rnd(P.fby), light, PLATE_FAR, true, P.boots);
+  legOf(f, hipB, rnd(P.fbx) + SHIFT, rnd(P.fby), light, PLATE_FAR, true, P.boots, P.bootTip?.[1] ?? 0);
   // 3. near leg, fauld, cuirass, gorget
-  legOf(f, hipF, rnd(P.ffx) + SHIFT, rnd(P.ffy), light, PLATE, false, P.boots);
+  legOf(f, hipF, rnd(P.ffx) + SHIFT, rnd(P.ffy), light, PLATE, false, P.boots, P.bootTip?.[0] ?? 0);
   drawTorso(f, P, S, light);
   if (P.loose) {
     const q = new PixelCanvas(W, H);
