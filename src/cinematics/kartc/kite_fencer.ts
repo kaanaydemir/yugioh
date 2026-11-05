@@ -573,8 +573,9 @@ async function blockedPike(s: StrikeArgs, at: XY, stop: XY, home: XY, depth0: nu
  * Attack 2's beat lengths (scene ms; the cinematic plays the frames on its own clock so the flight, the sounds and
  * the frames stay locked): charge 220 (f1–f4), rise 170 (f5–f6), the downswing 260 (f7 → f8 → f9, accelerating), the
  * carry-through 210 (f10: the cloak snatches him UP beside the foe and over its head to the far side, leaving the
- * bottom at the downswing's own speed and slowing to the apex), the glide 250 (f11: the wind spills at the apex, he
- * glides back over the foe's head and home), the landing 90 + 50 (f12, f13) — ≈ 1.27 s + the 0.3 s declaration
+ * bottom at the downswing's own speed and slowing to the apex), the glide 340 (f11: the wind spills at the apex, he
+ * glides back low over the foe's head and settles onto his tile), the landing 90 + 50 (f12, f13) — ≈ 1.36 s + the 0.3 s
+ * declaration
  * (spec 2.2 s ÷ 1.25 = 1.75 s scene, trimmed to fit the 3.19 s gate with a slow-dying target).
  */
 const KT = { c1: 50, c2: 55, c3: 55, c4: 60, r5: 85, r6: 85, down: 260, exit: 210, glide: 340, land: 90, settle: 50 };

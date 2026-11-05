@@ -18,11 +18,11 @@ import { paintBackdrop, recolor } from './_kit';
 import type { ArtLayers, CardArtV3 } from './_types';
 
 /** Where the sprite frame's (0, 0) lands in the big picture, and the small picture's crop of the big one. */
-const BIG_AT = [12, 4] as const;
-const SMALL_CROP = [19, 5, 44, 34] as const;
+const BIG_AT = [14, 9] as const;
+const SMALL_CROP = [20, 5, 44, 34] as const;
 /** The lit indicator panel (big px) — the brightest point — and the same point in small px. */
-const FOCUS = [40, 22] as const;
-const FOCUS_SMALL = [16, 16] as const;
+const FOCUS = [38, 19] as const;
+const FOCUS_SMALL = [17, 12] as const;
 
 const LOOP: readonly Partial<Pose>[] = [
   { kbl: 2, rph: 0, svib: 0 },
@@ -48,11 +48,11 @@ function cardPose(f: number): Pose {
     ba: -6,
     fx: -4,
     fy: -19,
-    kx: -6,
-    ky: -13,
-    ka: 6,
-    ko: 1.42,
-    kh: 1.04,
+    kx: -8,
+    ky: -12,
+    ka: 2,
+    ko: 1.22,
+    kh: 1,
     smode: 1,
     pinX: 2,
     pinY: 82,
@@ -60,7 +60,6 @@ function cardPose(f: number): Pose {
     lamp: 2,
     glint: 0,
     ...LOOP[f % LOOP.length],
-    kbl: 3 + (LOOP[f % LOOP.length].kbl ?? 0),
   });
 }
 
