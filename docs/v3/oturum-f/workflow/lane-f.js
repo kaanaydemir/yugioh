@@ -104,7 +104,7 @@ does not reuse another card's signature layer, and that no moment is silent or f
     text: `LENS: IN-GAME INTEGRATION, TEMPO AND GATES. Play the card's scenarios (P1 and P2, attack and defense position, as attacker and
 as target, effect paths, revive via soul_recall if possible, the 5+5 board &zones=5) in the real duel (?dev=duel&s=<key>&look=v3) and film
 them. Check readability of the effect's game meaning (does the player understand what happened and to whom?), timing budgets (REHBER §5 ×1.45,
-measure.mjs), contact frame vs damage number, no hanging sounds, no leftover sprites/particles, depth ordering, nothing off-screen, camera
+measure.mjs — OWNER DECISION: there are NO fixed animation time limits any more; judge pacing by feel: nothing drags, nothing rushes, every beat reads), contact frame vs damage number, no hanging sounds, no leftover sprites/particles, depth ordering, nothing off-screen, camera
 gate unchanged (no focus/zoom), the v1 look unchanged, tests and typecheck for this card's files. Any functional bug is a blocker.`,
   },
 ]
@@ -196,12 +196,14 @@ function verifyPrompt(c, attempt) {
 TASK (Adversarial verification, attempt ${attempt}) for card ${c.id} (${c.name}). Try to REFUTE the claim "this card is done and ships".
 Run every gate yourself and report exact results:
 - npm run typecheck (errors in files of this card or lane-F shared lines = fail; other files: note only)
-- npm test (no new failures vs the known dusk_ashen / cardface G1; ${c.id} tests must pass${c.draft ? '; the card must be REMOVED from the exclusion list and registered' : '; the rig must be registered as src/art/monsters-v3/' + c.id + '.ts'})
+- npm test: ZERO failures in this card's own tests (and in any test touching lane-F files). Known failures that are NOT lane F's (ignore): tests/art/arena-nt-platform (2), tests/view/board-nt-layout (1), cardface-v3 G1 for scrap_raiders, dusk_ashen, tests/presentation/crag_axeman 'struck' (${c.id} tests must pass${c.draft ? '; the card must be REMOVED from the exclusion list and registered' : '; the rig must be registered as src/art/monsters-v3/' + c.id + '.ts'})
 - node tools/filmdiff.mjs --set v1 --base shots/v3/a3/baseline/v1films (17/17 IDENTICAL) and --set a6v1 --base shots/v3/a56/baseline/a6v1films (26/26 IDENTICAL)
   (if a diff appears, check whether it is caused by THIS card's change or by the other lane-F card's WIP; only this card's cause fails it)
 - camera gate: node tools/measure.mjs --look v3 --scenarios '<this card's scenarios + m1 placeholders it appears in>' --out <scratch>.json --camera-gate <base>
   (bases: shots/v3/kart-f/camera-base.json and shots/v3/kart-f/${c.id}/camera-base.json)
-- node tools/palcheck.mjs on frames of the card's films; monster-gates P1+P2 with --class; sameness thresholds; cardface-v3 test; budgets from measure.
+- node tools/palcheck.mjs on frames of the card's films; monster-gates P1+P2 with --class (MUST pass); sameness thresholds; cardface-v3 test (no failure for this card).
+- OWNER DECISION: no fixed animation time limits — do not fail on REHBER §5 budgets; only fail if pacing is visibly broken.
+- The v1 baselines were rebuilt from main (origin/claude/yugioh-card-game-tgi7td) after lane F merged it; a v1 diff means lane F changed the v1 look.
 - Definition of done: rig with all anims P1+P2, card art big+small, ${c.ace ? 'cut-in, ' : ''}unique summon/attack/death/effect cinematics, unique SFX for each, VOICE set,
   scenarios, docs/v3/oturum-f/${c.id}.md has ≥3 critique rounds recorded.
 Also film the card once more and LOOK for any visible defect. Default to pass=false if anything is uncertain. Do not edit source files.`
@@ -234,6 +236,9 @@ TASK (Ship) for card ${c.id} (${c.name}). You ARE allowed to commit and push in 
    Claude-Session: https://claude.ai/code/session_01Qe4uUEfXDGzxzyDTNDDYCa
    (if .git/index.lock exists because another agent is committing, wait and retry.)
 4. git push -u origin claude/kart-f (retry on network errors with backoff 2,4,8,16 s; if rejected as non-fast-forward, git pull --rebase origin claude/kart-f then push).
+5. Report the finished commit to the orchestrator session: load mcp__claude-code-remote__send_message with ToolSearch and send to
+   session_id session_011ShwEe8GGDg6nXF4VyX68H a short message: card id, commit hash, gate results (typecheck, vitest, filmdiff v1 x/17 + a6v1 x/26,
+   camera gate, monster-gates), and any open issue. ${v && v.pass ? '' : 'This card did NOT pass verification: commit it as WIP (message starts with "lane F: WIP"), say so in the report, and do NOT call it finished.'}
 Return the commit hash and what was included.`
 }
 
