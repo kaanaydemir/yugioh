@@ -882,7 +882,9 @@ async function kestrel(s: StrikeArgs): Promise<void> {
       const tc = s.target.core();
       const th = s.target.home;
       const top = s.target.worldPoint('top');
-      const perch = rint({ x: tc.x - dir * 3, y: Math.max(top.y + 2, tc.y - (th.y - tc.y) + 6) });
+      // 'top' is the idle silhouette top; attack f7 draws her soles 4 px above the anchor and a guard pose
+      // sits a few px lower than idle: +10 puts her soles ON the defender's head, not above it
+      const perch = rint({ x: tc.x - dir * 3, y: Math.max(top.y + 10, tc.y - (th.y - tc.y) + 6) });
       u.pose('attack', 7);
       await animate(sc, 110, (t) => {
         const k = E.outQ(t);
@@ -1119,7 +1121,7 @@ async function fallingCape(ctx: Ctx<'destroy'>): Promise<void> {
     await capped(sc, untilShown(u, 'death', n - 1, 1600), 1600);
     if (u.sprite.active) await sleep(sc, Math.min(90, u.frameMs('death', n - 1)));
     // ---- lift-off: her outline rises off the floor as a gold-rimmed bird, opens its wings and flies to the graveyard
-    const body = u.sprite.active ? { x: Math.round(u.sprite.x + dir * 4), y: Math.round(home.y - 4) } : { x: home.x, y: home.y - 4 };
+    const body = u.sprite.active ? { x: Math.round(u.sprite.x + dir * 4), y: feetOf(u).y - 4 } : { x: home.x, y: home.y - 4 };
     if (u.sprite.active) u.sprite.setVisible(false);
     play('khBirdFlight', { volume: 0.9, pan });
     born();
@@ -1129,18 +1131,19 @@ async function fallingCape(ctx: Ctx<'destroy'>): Promise<void> {
     } catch {
       /* keep */
     }
-    const px = layer(sc, DEPTH.FX + 2);
+    // over the card that is born on the same tile (the bird lifts off ABOVE it)
+    const px = layer(sc, DEPTH.FX + 40);
     void lightFlash(sc, body.x, body.y, PAL.gold3, 22, 240, { floorY: home.y, intensity: 0.55 });
     // 3 frames: slab → half wings → full bird (it lifts 2 px a frame)
     for (let k = 0; k < 3; k++) {
       px.clear();
       if (k === 0) paintBird(px, body.x, body.y, 13, 0, PAL.gold2, PAL.night0, true);
-      else paintBird(px, body.x, body.y - k * 3, k === 1 ? 11 : 17, k === 1 ? 2 : 6, PAL.gold3, PAL.night1);
+      else paintBird(px, body.x, body.y - k * 5, k === 1 ? 11 : 17, k === 1 ? 2 : 6, PAL.gold3, PAL.night1);
       await sleep(sc, STEP_MS);
     }
-    const from = { x: body.x, y: body.y - 6 };
+    const from = { x: body.x, y: body.y - 10 };
     const ctl = { x: (from.x + pile.x) / 2, y: Math.min(from.y, pile.y) - 34 };
-    await animate(sc, 460, (t) => {
+    await animate(sc, 400, (t) => {
       px.clear();
       if (t >= 1) return;
       const p = rint(quad(from, ctl, { x: pile.x, y: pile.y - 4 }, E.inOutQ(t)));
