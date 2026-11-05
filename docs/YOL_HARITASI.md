@@ -130,3 +130,7 @@ D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (ka
   NOT: Gerçek Yu-Gi-Oh canavarları (adları, tasarımları) oyuna KONMAZ — Konami'nin telifli/markalı içeriği,
   Steam'de satılan oyunda yasal risk. Klasik arketipler (ejderha, büyücü, savaşçı) serbest, ama her tasarım
   bizim olmalı ve tanınan bir karta benzememeli. Mevcut 20 kart zaten özgün; yeni kartlar da öyle olacak.
+- DIŞ AJAN (Claude API) OKUNURLUK DALI ANA DALA ALINDI (2026-11-05, sahip isteği: "fena olmadı, sonra üstünden
+  geçeriz"; gemini/okunurluk 2ff3ff0). Kapılar: typecheck temiz; v1 17/17 + a6v1 26/26 IDENTICAL; vitest bilinen
+  6 hata + 3 ESKİMİŞ arena geometri testi (arena-nt-platform ×2, board-nt-layout dais) — sahne şekli bilerek
+  değişti; arena düzeltme turunda testler yeni şekle göre yazılacak.

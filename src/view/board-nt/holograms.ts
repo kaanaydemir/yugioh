@@ -149,13 +149,13 @@ export function createHologramsLayer(ctx: NtCtx): NtLayer {
     const { cx, cy } = h.pedestal;
     const add = <T extends Phaser.GameObjects.GameObject>(o: T): T => ctx.add(o);
     // the round pedestal, the light ring on its top, the cone (above the pedestal, below the creature)
-    add(scene.add.image(cx - PED_AT.x, cy - PED_AT.y, NT_HOLO_KEY, pedName(side)).setOrigin(0).setDepth(Z.ped));
-    const ring = add(scene.add.image(cx, cy, NT_HOLO_KEY, ringName(side, 0)).setDepth(Z.ring));
-    const cone = add(scene.add.image(cx, cy - 2, NT_HOLO_KEY, coneName(side)).setOrigin(0.5, 1).setDepth(Z.cone));
-    const hot = [0, 1].map(() => add(scene.add.image(cx, cy, NT_HOLO_KEY, hotName(side)).setDepth(Z.hot).setVisible(false)));
-    const floor = add(scene.add.image(cx, cy, NT_HOLO_KEY, flareName(side, 0)).setDepth(Z.floor).setVisible(false));
-    const beam = add(scene.add.image(cx, cy - 2, NT_HOLO_KEY, beamName(side)).setOrigin(0.5, 1).setDepth(Z.beam).setVisible(false));
-    const motes = add(scene.add.blitter(0, 0, NT_HOLO_KEY).setDepth(Z.motes));
+    add(scene.add.image(cx - PED_AT.x, cy - PED_AT.y, NT_HOLO_KEY, pedName(side)).setOrigin(0).setDepth(Z.ped).setAlpha(0.55));
+    const ring = add(scene.add.image(cx, cy, NT_HOLO_KEY, ringName(side, 0)).setDepth(Z.ring).setAlpha(0.38));
+    const cone = add(scene.add.image(cx, cy - 2, NT_HOLO_KEY, coneName(side)).setOrigin(0.5, 1).setDepth(Z.cone).setAlpha(0.28));
+    const hot = [0, 1].map(() => add(scene.add.image(cx, cy, NT_HOLO_KEY, hotName(side)).setDepth(Z.hot).setVisible(false).setAlpha(0.5)));
+    const floor = add(scene.add.image(cx, cy, NT_HOLO_KEY, flareName(side, 0)).setDepth(Z.floor).setVisible(false).setAlpha(0.5));
+    const beam = add(scene.add.image(cx, cy - 2, NT_HOLO_KEY, beamName(side)).setOrigin(0.5, 1).setDepth(Z.beam).setVisible(false).setAlpha(0.5));
+    const motes = add(scene.add.blitter(0, 0, NT_HOLO_KEY).setDepth(Z.motes).setAlpha(0.32));
     const moteBobs = Array.from({ length: MOTES }, (_, i) => motes.create(cx, cy, moteName(side, i % MOTE_FRAMES)));
     return {
       side,
@@ -223,8 +223,9 @@ export function createHologramsLayer(ctx: NtCtx): NtLayer {
         const p = spec.pedestal;
         const ox = p.cx - st.anchor.x;
         const oy = p.cy - 1 - st.anchor.y;
-        st.creature = ctx.add(scene.add.image(ox, oy, key, 'f0').setOrigin(0).setDepth(Z.creature).setVisible(false));
-        st.tear = ctx.add(scene.add.image(ox, oy, key, 'f0').setOrigin(0).setDepth(Z.tear).setVisible(false));
+        // hedef-gorunum-1: the hologram reads clearly (violet magus, blue wyrm), still a little see-through in the fog
+        st.creature = ctx.add(scene.add.image(ox, oy, key, 'f0').setOrigin(0).setDepth(Z.creature).setAlpha(0.72).setVisible(false));
+        st.tear = ctx.add(scene.add.image(ox, oy, key, 'f0').setOrigin(0).setDepth(Z.tear).setAlpha(0.72).setVisible(false));
         st.ready = true;
         st.rows = lit ? 0 : -1;
       });

@@ -141,27 +141,26 @@ const WINDOW: [Uint8Array, Uint8Array] = [windowMask(0), windowMask(1)];
 // ------------------------------------------------------------------------------------------ the frame
 
 /**
- * The bezel round a screen. Metal is the arena's night ramp, lit from the top-left; the 1-px neon line round the window is the
- * only bright thing (dim: tone 1 of the player's ramp; bright: tone 3 + white glints). `bright` also lifts the metal one tone.
+ * The bezel round a screen. Metal is the arena's dark night ramp, lit from the top-left; a slim, low-glow
+ * 1-px trim line rounds the bezel so it frames the portrait cleanly without neon glare.
  */
 export function paintFrame(who: 0 | 1, bright: boolean): PixelCanvas {
   const R = who === 0 ? RAMPS.cyan : RAMPS.crim;
-  const neon = bright ? R[3] : R[2];
-  const neonIn = bright ? R[4] : R[3];
+  const neon = bright ? R[2] : R[1];
+  const neonIn = bright ? R[1] : R[0];
   const c = new PixelCanvas(FRAME_W, FRAME_H);
   const metal = bright
-    ? [PAL.night3, PAL.night4, PAL.steel, PAL.mist]
-    : [PAL.night2, PAL.night3, PAL.night4, PAL.steel];
-  // rings, outer → inner (the side margins are 6 wide, top / bottom 4): ink, a bright outer neon line, a lit metal rim, a mid metal
-  // step, a dark step, the inner neon line round the window
+    ? [PAL.night1, PAL.night2, PAL.night3, PAL.night4]
+    : [PAL.night0, PAL.night1, PAL.night2, PAL.night3];
+  // rings, outer → inner: ink, a slim outer trim line, dark slate metal steps, dark inner recess
   fillShape(c, who, 0, 0, PAL.ink);
   fillShape(c, who, 1, 1, neon);
   fillShape(c, who, 2, 2, metal[2]);
   fillShape(c, who, 3, 3, metal[1]);
-  fillShape(c, who, 4, 3, PAL.night1);
+  fillShape(c, who, 4, 3, PAL.night0);
   fillShape(c, who, 5, 3, neonIn);
   fillShape(c, who, PIC_AT.x, PIC_AT.y, PAL.ink);
-  // the lit rim: the top and the outer side get a brighter segment pattern (brushed metal: 6-px runs of two tones)
+  // the lit rim: the top and the outer side get a subtle brushed-metal segment pattern
   for (let x = 3; x <= FRAME_W - 4; x++) c.set(x, dyAt(who, x) + 2, x % 12 < 6 ? metal[3] : metal[2]);
   const outer = who === 0 ? 2 : FRAME_W - 3;
   for (let y = dyAt(who, outer) + 3; y <= bottomRow(who, outer) - 3; y++) c.set(outer, y, y % 10 < 5 ? metal[3] : metal[2]);
@@ -170,30 +169,27 @@ export function paintFrame(who: 0 | 1, bright: boolean): PixelCanvas {
     const b = bottomRow(who, x);
     if (b - 2 > dyAt(who, x) + 5) {
       c.set(x, b - 2, metal[0]);
-      c.set(x, b - 1, PAL.night0);
+      c.set(x, b - 1, PAL.ink);
     }
   }
   // clear the window
   for (let y = 0; y < FRAME_H; y++) for (let x = 0; x < FRAME_W; x++) if (WINDOW[who][y * FRAME_W + x]) c.erase(x, y);
-  // corner brackets: a 3-px lit L at both top corners
+  // corner brackets: a 3-px subtle L at both top corners
   for (const [x, dir] of [[2, 1], [FRAME_W - 3, -1]] as const) {
     const y = dyAt(who, x) + 1;
-    c.set(x, y, R[4]);
-    c.set(x + dir, y, R[4]);
-    c.set(x, y + 1, R[4]);
+    c.set(x, y, neon);
+    c.set(x + dir, y, neon);
+    c.set(x, y + 1, neon);
   }
   // the status LED row on the lower bezel
   const lx = who === 0 ? 10 : FRAME_W - 18;
   for (let i = 0; i < 4; i++) {
     const x = lx + i * 2;
-    c.set(x, bottomRow(who, x) - 2, i === 0 ? R[4] : i === 1 ? neon : PAL.night3);
+    c.set(x, bottomRow(who, x) - 2, i === 0 ? R[2] : i === 1 ? neon : PAL.night2);
   }
   if (bright) {
-    c.set(FRAME_W - 5, dyAt(who, FRAME_W - 5) + 2, PAL.white);
-    c.set(5, dyAt(who, 5) + 2, PAL.white);
-    // the neon line's lit corners
-    c.set(PIC_AT.x - 1, dyAt(who, PIC_AT.x - 1) + 3, PAL.white);
-    c.set(FRAME_W - PIC_AT.x, dyAt(who, FRAME_W - PIC_AT.x) + 3, PAL.white);
+    c.set(FRAME_W - 5, dyAt(who, FRAME_W - 5) + 2, R[3]);
+    c.set(5, dyAt(who, 5) + 2, R[3]);
   }
   return c;
 }
@@ -202,15 +198,14 @@ export function paintFrame(who: 0 | 1, bright: boolean): PixelCanvas {
 export const GLOW_PAD = 5;
 
 /**
- * The light a screen throws on the wall behind it: the bezel's sheared outline grown by GLOW_PAD px, in hard bands (ramp tone 0 on
- * the outside, tone 1 near the bezel). Drawn UNDER the screen by the wall layer at SCREEN_AT − (GLOW_PAD, GLOW_PAD); the bezel
- * covers the middle. Opaque tone bands only.
+ * The soft shadow/halo a screen throws on the wall behind it: kept dark and subdued so there is no
+ * bright neon spill around the portrait frames. Opaque tone bands only.
  */
 export function paintScreenGlow(who: 0 | 1): PixelCanvas {
   const R = who === 0 ? RAMPS.cyan : RAMPS.crim;
   const c = new PixelCanvas(FRAME_W + GLOW_PAD * 2, FRAME_H + GLOW_PAD * 2);
   const P = GLOW_PAD;
-  for (const [grow, col] of [[GLOW_PAD, R[0]], [3, R[1]], [1, R[1]]] as const) {
+  for (const [grow, col] of [[GLOW_PAD, PAL.ink], [3, PAL.night0], [1, R[0]]] as const) {
     for (let x = -grow; x < FRAME_W + grow; x++) {
       const cx = Math.max(0, Math.min(FRAME_W - 1, x));
       // the band follows the sheared edge but rounds off at the ends (a rounded corner: the grown rectangle's corners lose grow/2)
@@ -240,17 +235,14 @@ function raster(c: PixelCanvas): PixelCanvas {
 }
 
 /**
- * The grade of a portrait on the wall: deeper shadows and brighter lights (one ramp step each way) and a luminous backdrop (the dark
- * tones of the player's colour lift one step), so the faces read at 1× against the dark hall. Pure tone-step remap, palette-only.
+ * The grade of a portrait on the wall: deeper shadows and calm midtones so the faces read without
+ * harsh neon backdrop glare. Pure tone-step remap, palette-only.
  */
-const glowTones = new Set<number>([PAL.cyan0, PAL.cyan1, PAL.crim0, PAL.crim1, PAL.cyan2, PAL.crim2]);
 function grade(c: PixelCanvas): PixelCanvas {
   c.map((col) => {
     const l = lum(col);
     if (l < 22) return col; // ink outlines stay
-    if (glowTones.has(col)) return toneUp(col); // the backdrop glows
-    if (l < 60) return toneDown(col);
-    if (l > 150) return toneUp(col);
+    if (l < 65) return toneDown(col);
     return col;
   });
   return c;
@@ -295,8 +287,8 @@ function paintScan(who: 0 | 1): Sheared {
   const R = who === 0 ? RAMPS.cyan : RAMPS.crim;
   const flat = new PixelCanvas(PORTRAIT_W, 2);
   for (let x = 0; x < PORTRAIT_W; x++) {
-    if (x % 2 === 0) flat.set(x, 0, R[2]);
-    flat.set(x, 1, x % 4 === 1 ? R[1] : R[0]);
+    if (x % 2 === 0) flat.set(x, 0, R[1]);
+    flat.set(x, 1, R[0]);
   }
   return shearPiece(flat, who, PIC_AT.x, PIC_AT.y);
 }

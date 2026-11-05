@@ -143,7 +143,10 @@ export class PileView {
 
   private layerCount(n: number): number {
     if (n <= 0) return 0;
-    if (V3_A6_A) return Math.min(V3_MAX_LAYERS, n);
+    if (V3_A6_A) {
+      if (this.kind === 'deck') return n >= 4 ? V3_MAX_LAYERS : Math.min(V3_MAX_LAYERS, Math.max(3, n + 2));
+      return Math.min(V3_MAX_LAYERS, n);
+    }
     return Math.min(MAX_LAYERS, Math.ceil(n / 2));
   }
 
