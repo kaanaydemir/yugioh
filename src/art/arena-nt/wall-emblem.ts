@@ -12,8 +12,8 @@ const HW = EMBLEM_W / 2;
 
 function tones(frame: 0 | 1): { rim: number; hi: number; body: number; dark: number; core: number; coreHi: number } {
   return frame === 0
-    ? { rim: T.c3, hi: T.c4, body: T.c2, dark: T.c1, core: T.c4, coreHi: T.white }
-    : { rim: T.c4, hi: T.white, body: T.c3, dark: T.c2, core: T.white, coreHi: T.white };
+    ? { rim: T.n2, hi: T.n3, body: T.n1, dark: T.n0, core: T.n3, coreHi: T.c1 }
+    : { rim: T.n3, hi: T.c1, body: T.n2, dark: T.n1, core: T.c1, coreHi: T.c2 };
 }
 
 /**

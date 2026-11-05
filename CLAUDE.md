@@ -33,6 +33,8 @@ limited palette). Raise quality through craft, not resolution. (The HD trial in 
 ## Conventions
 - Resolution 640×360, `pixelArt: true`. Integer pixel positions for anything crisp.
 - UI text is Turkish (use correct letters: ç ğ ı İ ö ş ü). Code, identifiers and comments are English.
+  OWNER DECISION 2026-11-01: the WHOLE GAME switches to English (UI, card names, card text). The switch is
+  scheduled after the weekly reset (Thu 2026-11-05); until it lands keep writing Turkish UI text. See docs/YOL_HARITASI.md.
 - Colors only from `src/art/palette.ts` (`PAL`, `RAMPS`, `ATTRIBUTE_RAMP`, `PLAYER_COLOR`...).
 - Screen positions only via `src/view/layout.ts` (`zoneXY`, `isoToScreen`, `DEPTH`, `UI`).
 - Monsters are drawn facing RIGHT; player 2 uses flipX.

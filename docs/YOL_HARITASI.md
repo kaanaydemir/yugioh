@@ -11,11 +11,11 @@ Kart isimleri ve tasarımları ORİJİNAL olur; Yu-Gi-Oh kartları yalnızca "ro
 | 2 | Arenadan seyircileri kaldır (tribün yapısı kalır) | bitti (587828c, test sürümü 9) |
 | 3 | Animasyonları yavaşlat (v3 genel tempo çarpanı + kilit anlarda uzun bekleme; v1 aynı) | bitti (587828c, test sürümü 9) |
 | 4 | Akşam Büyücüsü (dusk_sorcerer) kartını oyundan çıkar (cards.ts'de "retired", desteler göç eder) | bitti (587828c, test sürümü 9) |
-| 5 | Kül Ejderi (ashen_drake) komple yeniden tasarım — altın kural | şerit A çalışıyor |
-| 6 | Hortlak Muhafız (grim_warden) yeniden tasarım | şerit B çalışıyor |
+| 5 | Kül Ejderi (ashen_drake) komple yeniden tasarım — altın kural | bitti (şerit A b2fc32e, ana dal bd5cf12, test sürümü 13) |
+| 6 | Hortlak Muhafız (grim_warden) yeniden tasarım | bitti (şerit B 09446f8, ana dal bb9e8f6, test sürümü 12) |
 | 7 | Pot of Greed rolünde büyü kartı (2 kart çek) — orijinal isim (Kuyu Kovası) | kural bitti (6178b55); sunum: şerit E |
 | 8 | Tüy Hayalet yeniden tasarım | şerit B çalışıyor |
-| 9 | The Legendary Fisherman rolünde canavar | kural bitti (6178b55, test sürümü 10); sunum: şerit C çalışıyor |
+| 9 | The Legendary Fisherman rolünde canavar | kural bitti (6178b55, test sürümü 10); sunum: bitti (Kabuk Zıpkıncı, şerit C 67baa70, ana dal 7bae67e, test sürümü 13) |
 | 10 | Time Wizard rolünde yeni kart (yazı-tura; doğru: rakip canavarlar yok, yanlış: kendi canavarların yok + yarı ATK hasar) — sahip onayladı | kural bitti (6178b55, test sürümü 10); sunum: şerit D çalışıyor |
 | 11 | Baby Dragon rolünde canavar | kural bitti (6178b55, test sürümü 10); sunum: şerit A çalışıyor |
 | 12 | Gemini Elf rolünde canavar | kural bitti (6178b55, test sürümü 10); sunum: şerit D çalışıyor |
@@ -51,3 +51,86 @@ Her şerit kendi dalına push eder; ana oturum dalları `claude/yugioh-card-game
 5. Yayın öncesi kalite denetimi (her kartın VFX/SFX'i altın kurala göre; performans, açılış, hatalar).
 6. İngilizce (ana dil).
 7. Yayın hazırlığı (Steam paketleme, ayarlar, kayıt, mağaza görselleri).
+
+## Ana oturum düzeltmeleri (test sürümü 11, 898dc9d)
+- Canavar tıklama çakışması (v3): hedef seçerken adayın görünen gövdesi öncelikli; üzerine gelince ve tıklayınca aynı canavar seçiliyor. Doğrulama: her tahta pikseli doğru (P1 19343/19343, P2 19308/19308).
+- Sıra sıra oyunda sağ ekran "OYUNCU 2" (CPU yalnız bilgisayara karşı).
+- Deste seçimi: fareyle tıklama seçer; üzerine gelmek seçimi değiştirmez; ikinci tıklama/düğme/Enter ilerletir.
+- Saman korkuluk "takılma": oyun hatası değil, test aracının perde geçişini iki kez tıklamasıymış (tools/playtest.mjs passCurtain düzeltildi).
+
+## Haftalık hak kararı (2026-11-01 08:35 TR)
+Haftalık kullanım %20'ye düştü. SAHİP KARARI: yalnız A, B, C şeritleri devam; D, E, F DURAKLATILDI
+(işlerini push edip kendi oturum-*.md dosyalarına devam talimatı yazdılar). Haftalık sıfırlamadan sonra
+D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (kapılar + kart başına commit).
+- D (c64b368), E (fda4f8e), F (f776d8e) duraklatıldı; devam talimatları oturum-d/e/f.md'de.
+- %92 KARARI (2026-11-01 14:20 TR): B hemen duraklatıldı (4ec15a3); A yalnız Kül Ejderi'ni, C yalnız
+  Kabuk Zıpkıncı'yı bitirip duraklatıldı (A 811d832, C 03c8952). İkisi ana dala alındı, test sürümü 13.
+  Şu an TÜM şeritler duraklı. Ana dalda yarım işlerden gelen bilinen test hataları: cloud_hatchling (4, şerit A),
+  crag_axeman "own voice" (şerit C) — şeritler devam edince düzelecek.
+- UYARI: claude/kart-f dalında shield_titan ve hourglass_imp v3 dışlama listesinden çıkarılmış ama eleştiri/kapılardan geçmedi → F devam edip kartlar geçmeden bu dal ana dala BİRLEŞTİRİLMEZ.
+
+## Sahip kararları (2026-11-01 akşam)
+- Kart resimleri: yapay zekâ ile (sahip üretir, Claude prompt verir ve oyuna bağlar). Sabit ana çerçeve,
+  Yu-Gi-Oh! oranı, sade koyu isim, piksel yazı/yıldız. Ayrıntı: docs/v3/KART_RESIM_AI.md.
+  Bu iş Perşembe (2026-11-05 23:00 TR) haftalık sıfırlamadan SONRA ele alınacak.
+- Oyunun TAMAMI İngilizce olacak (arayüz, kart adları, kart yazıları). Geçiş haftalık sıfırlamadan sonra
+  planlanacak; o zamana kadar mevcut Türkçe metinler kalır.
+- Kalan şerit işleri (A–F) yine haftalık sıfırlamadan sonra; şu an yalnız A şeridi (Bulut Yavrusu, Zehir Ejderi) çalışıyor.
+- ~~Açık soru: büyük büyülerin süre istisnası~~ → ÇÖZÜLDÜ (aşağıda).
+- SAHİP GERİ BİLDİRİMİ (2026-11-01): "her şey birbirine girmiş" (Witchbrook ile karşılaştırma). Okunurluk / sanat
+  yönetimi turu planlanacak (haftalık sıfırlamadan sonra, kart resimleriyle birlikte değerlendir):
+  1) arka plan katmanı (tribün, hologram, makineler) koyu + az doygun, az detay — sahne ön planda kalsın;
+  2) her bölgeye sınırlı palet; neon/doygun renk yalnız odak noktalarında (birimler, seçili kare, düğmeler);
+  3) saha zemini birimlerden net ayrışan, sakin, geniş yüzey; ızgara çizgileri inceltilsin;
+  4) arayüz: daha az ve daha düzenli panel, sahayı örtmeyen yerleşim, tek yazı boyu düzeni;
+  5) ışık yönü + yumuşak gölge ile derinlik. Hızlı maket: arka planı soldurmak tek başına ayrışmayı belirgin artırdı.
+- HEDEF GÖRÜNÜM (sahip onayı bekliyor): docs/v3/ref/hedef-gorunum-1.png (ChatGPT ile şimdiki ekrandan
+  — docs/v3/ref/simdiki-gorunum-1.png — üretildi). Alınacaklar: koyu/sakin arka plan + sıcak meşale ışık
+  noktaları, düz sakin arduvaz saha + ince ızgara, sol üstten tek ışık + birim altı gölgeler, daha az parlak arayüz.
+  Alınmayacaklar: piksel yoğunluğu (resim 640×360 ızgarasında değil, yumuşak) ve değişmiş birim çizimleri.
+- HEDEF GÖRÜNÜM v2 (SAHİP BEĞENDİ, ana referans): docs/v3/ref/hedef-gorunum-2.png — canavarlar korunarak
+  yalnız arka plan/ışık/arayüz değişti. Sahip özellikle SİS'i sevdi: arka planda katmanlı, yavaş sürüklenen
+  sis + soluk hologramlar + sıcak meşale ışık noktaları korunacak. Saha zemini sakin arduvaz, ince ızgara,
+  sol üstten tek ışık, birim altı gölge.
+- SAHİP KARARI (2026-11-01 21:00 TR): animasyonlar için SABİT SÜRE SINIRI YOK. Süreleri Claude belirler.
+  REHBER §5 × 1.45 (docs/v3/TEMPO.md) artık sert bir kapı değil, yalnız yol gösterici; bir an daha
+  etkileyici ve okunur oluyorsa daha uzun olabilir (ör. Boşluk Gözü ~5,4 sn kabul). Ölçüt: akıcı, okunur,
+  oyunu yavaşlatmayan tempo — sık görülen anlar (sıradan saldırı/çağırma) kısa kalır, nadir/büyük anlar uzar.
+- Bulut Yavrusu (cloud_hatchling) BİTTİ: şerit A 3cd1647, ana dal 03b0221, test sürümü 14. Sırada Zehir Ejderi (şerit A çalışıyor).
+- Zehir Ejderi (venom_drake) BİTTİ: şerit A dd6ce16, test sürümü 15. ŞERİT A TAMAMEN BİTTİ (Kül Ejderi,
+  Bulut Yavrusu, Zehir Ejderi). Özet ve açık şeritler-arası notlar: docs/v3/oturum-a.md "LANE A DONE".
+- SAHİP KARARI (2026-11-02, Gemini okunurluk sonucu üzerine): hologramlar PARLAK kalır (soluklaştırılmaz) ve
+  arka plandaki tribünler KALDIRILMIŞ hâliyle kalır — ikisi de sahibin isteği. Düzeltilecekler: havada asılı
+  meşaleler (duvara/direğe oturacak) ve sis/ışığın piksel-net + yalnız palet renkleriyle yapılması.
+- HEDEF GÖRÜNÜM v3 (SAHİP, 2026-11-02): docs/v3/ref/hedef-gorunum-3.png — Gemini sonucunun üstüne ChatGPT ile:
+  kalın yükseltilmiş sahne (yüksek yan duvar, üst kenarda ışıklı pah, yere gölge), karo sıralarına paralel
+  sahne kenarı, gömük karolar, her düellocu kendi renginde parlayan basamaklı kürsüde, duvara/direğe oturmuş
+  meşaleler. Karo yerleri ve kamera DEĞİŞMEZ; yeni şekil mevcut karoların etrafına kurulur.
+- GEMINI SONUCU (2026-11-02, h4 b593350): SAHİP — "geriye gitti". L şekilli sahne, taşan kürsü blokları, mavi
+  bulut topağı sis ve SAHA ÜSTÜ (noktalı dither doku, çamurlu kahve-gri karolar) kötü. Gemini arena yapısında
+  durduruldu. Sıfırlamadan sonra Claude: dalı 9f98c45'e (h3 sonu, iyi hâl) çeker, h4'ten yalnız işe yarayanları
+  (gölgelerin palete basamaklanması, arka duvarın bir ton açılması) alır, kalanı hedef-gorunum-3'e bakarak yapar.
+  Saha üstü hedefi: sakin, temiz koyu arduvaz; karo içi tek düz ton + en fazla 1 ince doku tonu, noktalı/ekran
+  kapısı dither YOK; gömük karo kenarları net; turkuaz/kırmızı sınırlar ince.
+- SAHİP (2026-11-02): hedef-gorunum-3 aynen uygulanacak; TEK FARK: ortadaki boş gri gömük yuvalar ("delikler",
+  iki oyuncunun alanı arasındaki/çevresindeki işlevsiz karolar) OLMAYACAK — orası düz sahne taşı. Yalnız gerçek
+  bölgeler (turkuaz P1, kırmızı P2) gömük karo olur.
+- SAHİP (2026-11-02) — sıfırlamadan SONRA yapılacaklara eklendi:
+  * Marka temizliği: "Yu-Gi-Oh" adı oyuncuya görünen hiçbir yerde geçmeyecek (zaten geçmiyor); CLAUDE.md /
+    GAME_DESIGN.md esinlenme notları sadeleşir; depo adını sahip değiştirir (GitHub Settings → Rename).
+    Yapay zekâ kart çerçevesi bizim neon/koyu çizgimize çekilir (kahve-altın + yıldız sırası fazla benzer).
+  * Steam hazırlığı: mağaza sayfası erken açılacak (istek listesi toplamak için); kapsül görseli, açıklama,
+    yapay zekâ beyanı.
+  * FRAGMAN: 60–90 sn, oyunun kendi kayıt araçlarıyla (tools/shot.mjs film + ses kaydı → MP4). Arena okunurluk
+    işi + İngilizce geçiş bittikten SONRA çekilecek (son görünüm görünmeli). Ayrıca Reddit için 10–15 sn'lik
+    tek-imza-animasyon klipleri.
+- REDDIT GERİ BİLDİRİMİ (2026-11-02): animasyonlar çok beğenildi; "daha da iyi" isteniyor → 1 numaralı hedef
+  değişmedi: mükemmel, akıcı VFX/SFX/animasyon. İkinci geri bildirim: "canavarlar daha özgün olabilir".
+  SAHİP KARARI: bize özgü YENİ canavarlar, büyüler ve tuzaklar eklenecek (tasarım, sıfırlama sonrası).
+  NOT: Gerçek Yu-Gi-Oh canavarları (adları, tasarımları) oyuna KONMAZ — Konami'nin telifli/markalı içeriği,
+  Steam'de satılan oyunda yasal risk. Klasik arketipler (ejderha, büyücü, savaşçı) serbest, ama her tasarım
+  bizim olmalı ve tanınan bir karta benzememeli. Mevcut 20 kart zaten özgün; yeni kartlar da öyle olacak.
+- DIŞ AJAN (Claude API) OKUNURLUK DALI ANA DALA ALINDI (2026-11-05, sahip isteği: "fena olmadı, sonra üstünden
+  geçeriz"; gemini/okunurluk 2ff3ff0). Kapılar: typecheck temiz; v1 17/17 + a6v1 26/26 IDENTICAL; vitest bilinen
+  6 hata + 3 ESKİMİŞ arena geometri testi (arena-nt-platform ×2, board-nt-layout dais) — sahne şekli bilerek
+  değişti; arena düzeltme turunda testler yeni şekle göre yazılacak.

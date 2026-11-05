@@ -20,6 +20,7 @@ import type { CardOrientation } from '../art/cards';
 import { TileCard } from '../view/TileCard';
 import { LOOK_V3, type XY } from '../view/layout';
 import { MonsterUnit } from './MonsterUnit';
+import { installUnitVariants, syncSlotVariant, syncUidVariants } from './unit-variant';
 import { PileView, type PileKind } from './PileView';
 import { equipAura, flameAura, steamAura } from './auras';
 import { CounterBadge } from './CounterBadge';
@@ -40,6 +41,9 @@ export interface ZoneEntry {
 }
 
 const key = (p: PlayerId, spot: FieldSpot, i: number) => `${p}:${spot}:${i}`;
+
+// v3 variant hooks on MonsterUnit (src/duel/unit-variant.ts; a no-op in the v1 look)
+installUnitVariants();
 
 export class FieldView {
   readonly scene: Phaser.Scene;
@@ -209,6 +213,7 @@ export class FieldView {
       });
     }
     this.lastState = state;
+    if (LOOK_V3) syncUidVariants(this.scene, state);
     const seen = new Set<string>();
     for (const p of [0, 1] as PlayerId[]) {
       const ps = state.players[p];
@@ -242,6 +247,7 @@ export class FieldView {
             this.addUnit(slot.uid, { atk, def, position: slot.position });
           }
           const u = e.unit!;
+          if (LOOK_V3) syncSlotVariant(u, cardId as MonsterId, slot);
           if (u.player !== p || u.zone !== i) u.setController(p, i);
           if (u.position !== slot.position) void u.setPosition(slot.position, false);
           if (u.displaced) u.settle();

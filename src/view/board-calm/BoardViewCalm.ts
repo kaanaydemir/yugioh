@@ -225,6 +225,8 @@ export interface BoardViewCalmOptions {
      * the calm outline is one column inside the Neon Tower plate and its trim would lie across the plate (J1: the plate paints its own line).
      */
     trims?: boolean;
+    /** The calm zone pads' own pixels (alpha 0): the Neon Tower plate shows through its slot lines (readability pass). */
+    pads?: boolean;
   };
 }
 
@@ -669,7 +671,7 @@ export class BoardViewCalm {
         row: c.row,
         x: s.x,
         y: s.y,
-        pad: this.add(this.scene.add.image(s.x, s.y, CALM.atlas, CALM.pad(z.player, z.spot, z.index)).setDepth(D.pad)),
+        pad: this.add(this.scene.add.image(s.x, s.y, CALM.atlas, CALM.pad(z.player, z.spot, z.index)).setDepth(D.pad).setAlpha(this.skip.pads ? 0 : 1)),
         fill: this.add(this.scene.add.image(s.x, s.y, CALM.atlas, CALM.maskFill).setDepth(D.padFill).setVisible(false)),
         line: this.add(this.scene.add.image(s.x, s.y, CALM.atlas, CALM.maskLine).setDepth(D.padLine).setVisible(false)),
         base: CALM_T.line[z.player],

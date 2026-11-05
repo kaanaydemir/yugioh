@@ -26,7 +26,19 @@ import {
   type Uid,
 } from '../engine/types';
 
-export type MonSpec = CardId | { id: CardId; position?: Position; faceUp?: boolean; enteredTurn?: number; attacks?: number; posChanged?: number };
+export type MonSpec =
+  | CardId
+  | {
+      id: CardId;
+      position?: Position;
+      faceUp?: boolean;
+      enteredTurn?: number;
+      attacks?: number;
+      posChanged?: number;
+      /** cloud_hatchling (lane A): a grown slot (MonsterSlot.permAtk / permDef; permDef defaults to 0). */
+      permAtk?: number;
+      permDef?: number;
+    };
 /** equippedTo = the index of the monster zone (same side) it is attached to. */
 export type STSpec = CardId | { id: CardId; faceUp?: boolean; setTurn?: number; equippedTo?: number; counter?: number };
 
@@ -112,6 +124,7 @@ export function buildStage(o: StageSpec = {}): GameState {
         enteredTurn: m.enteredTurn ?? turn - 1,
         attacksThisTurn: m.attacks ?? 0,
         positionChangedTurn: m.posChanged ?? -1,
+        ...(m.permAtk !== undefined ? { permAtk: m.permAtk, permDef: m.permDef ?? 0 } : {}),
       };
       ps.monsters[i] = slot;
     });
