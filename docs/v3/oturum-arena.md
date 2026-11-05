@@ -88,3 +88,68 @@ PASS. v1: değişen dosyaların hepsi yalnız NT/v3 yolunda (layout-nt, arena-nt
 
 Son: `shots/arena/r2-final-sbs.png`. Kalan farklar: pah hedefin parlak altınından sönük (bilerek); hedefin çevresi sıcak
 kahve/kömür, bizimki mavi (zemin/ışık maddeleri); kürsü basamakları kenarı örtüyor (kürsü maddesi).
+
+### Sahne bloğu — eleştiri turu 2/3 düzeltmeleri (2026-11-05)
+
+Önce: `shots/arena/r3-0.png`, `shots/arena/r3-0-sbs.png`, `shots/arena/r3-0-wall.png`. Her adımdan sonra görüntü alındı ve bakıldı:
+1. **#1 Pah (ışıklı üst kenarlar)** — `platform.ts` RIM: sol-üst, sağ-üst, uzak düz ve sol kapak `earth3` → `gold2`
+   (hedefteki görünür sıcak altın kenar), yakın/gölgeli kenarlar aynı (earth2 / earth1); çizgi hâlâ 1 px.
+   → `r3-1-bevel.png`, `r3-1-bevelz.png`
+2. **#3 Duvar sakinliği** — duvar panelleri bir stone basamağı koyu (ışıklı yüz gövde stone1 / vurgu stone2; gölgeli yüz
+   gövde stone0 / vurgu stone1; derzler ink). Pencereler: her 3 panelden birinde bir pencere çifti (`pi % 3 === 1`);
+   havalandırma paneli o yere düşerse pencere bir panel kayar (yoksa P2 yüzünde hiç kırmızı pencere kalmıyordu). "Düz panel"
+   türündeki tek küçük pencere kaldırıldı. Kanal şeridi (tek cyan/kırmızı ışık hattı) korundu. → `r3-2-wall.png`,
+   `r3-2-wallz.png`, `r3-2-sbs.png`, son hâli `r3-4-wallz.png`
+3. **#5 Gölge kenarı** — `apron.ts`: saçağın hemen dışında 1 px açık zemin tonu (metal N1) halkası, gölgenin kenarı okunsun
+   diye; düz stone0 bandı aynı. → `r3-3-shadow.png`, `r3-3-shadowz.png`, `r3-3-diff.png` (kırmızı = değişen pikseller)
+
+Reddedilen / devredilen (gerekçeli):
+- **#2 tahta üstü sıcak kahve**: `platform.ts` üst tonları zaten yalnız `stone1`/`stone0` (graphite = stone0..2); `earth`
+  yalnız kenar çizgisinde. Örnek piksel: tahta sol yarısı #69685b (stone1 #393846'nın üstüne ışık katmanının sıcak
+  anahtar-ışık yıkaması + `view/board-nt/floor.ts` taş-döşeme örtüsü). Tahta üstü / ışık katmanı maddesine devredildi.
+- **#3 "sağ yüzdeki gürültü"**: yakın çekimde (`r3-0-wall.png`) sağ duvar yüzü düz ton + ink derz; x ~520+ noktalı desen
+  zemin/sis katmanına ait (bu maddenin dosyası değil).
+- **#4**: yakın alt köşe HUD ipucu plakasının altında kalıyor, altından taşmıyor; değişiklik gerekmedi.
+- **#6 kürsü örtüşmesi** kürsü maddesine (pads.ts), **#7 çevre rengi** zemin/duvar maddelerine.
+- **#8 v1 kapısı**: `tools/shot.mjs` durağan görüntü ve `--film` aynı kodla iki koşuda bile farklı çıkıyor (film: koşu-koşu
+  121k–157k farklı piksel > şimdi/taban 70k; `r3-v1-film-now*.png`, `r3-v1-film-base.png`), yani piksel kanıtı bu araçla
+  verilemez. Yapısal kanıt: bu turda değişen `platform.ts` / `apron.ts` yalnız `src/boot/21-arena-nt-platform.ts`
+  (ARENA_NT = ?look=v3&arena=nt, başka sayfada hiçbir şey kurmuyor) tarafından çağrılıyor.
+
+Testler: `tests/art/arena-nt-platform.test.ts` yeni şekle göre güncellendi (uzak pah / sol kapak `gold2`; ışıklı yüzde stone1
+var, stone3 yok; P1 duvarında cyan3 18..36 piksel — iki yarıda da ≥ 6; P2 uzak sağ duvarda ≥ 6 crim3; P1'de kırmızı yok).
+`tests/view/board-nt-layout.test.ts` değişmeden geçiyor. 12/12. `npm run typecheck` temiz. `palcheck r3-4-final.png` PASS.
+Son: `shots/arena/r3-4-final.png`, `shots/arena/r3-4-sbs.png`.
+
+### Sahne bloğu — eleştiri turu 3/3 düzeltmeleri (2026-11-05)
+
+Not: önceki turların SBS'leri `--scale` varsayılanı 2 ile alınıp 640'a kırpılmıştı (yarım görüntü); bu turda çekimler
+`--scale 1`. Önce: `shots/arena/r4-0.png`, `shots/arena/r4-0-zoom.png`, `shots/arena/r4-0-left.png` (hedef: `r4-tgt-left.png`).
+Her adımdan sonra görüntü alındı ve bakıldı:
+1. **#3 Duvar boyu** — `layout-nt.ts` FACE_H 58 → 46 (−%21; hedefin tıknaz kaidesi ~35–40 px), kesinti `platform.ts` üst
+   panel bandından (UP_N 15 → 11); pencere bandı aynı boy. Kürsüler / gölge FACE_H'yi izliyor, kopma yok. → `r4-1-zoom.png`
+2. **#2 Pah** — tek, kesintisiz altın kenar: ışıklı + yakın kenarlar gold2, gölgeli yakın-sağ kenar ve sağ kapak gold1;
+   ışıklı kenarlarda her 6 px'te bir gold3 parıltı, içte earth1 alt-gölge satırı (2 px bevel, hâlâ ince). → `r4-2-zoom.png`
+3. **#4 Kırmızı pencereler / #5 panel kabartması** — sağ yüzde (P2 + nötr) her iki panelden birinde pencere çifti; P2
+   kürsüsü ile ipucu plakası arasındaki açıkta (x ~484–491, y ~222) kırmızı çift görünüyor. Her ikinci panelin üst
+   bandında 1 px vurgu satırı. → `r4-3-wall.png`
+4. **#3 iki cyan grup** — P1 kürsüsünün solundaki açık bölümde (panel 0..2) yalnız bir grup vardı; panel 0 da yakıldı → iki
+   ayrı cyan pencere grubu görünür. → `r4-4-wall.png`
+5. **#6 Gölge halkası** — `apron.ts` 3. turdaki 1 px açık zemin halkası kaldırıldı (görünmüyordu). → `r4-5.png`, `r4-5-sbs.png`
+
+Reddedilen (gerekçeli):
+- **#1 pah köşeleri / sekizgen**: anahat zaten sekizgen (iki dikey uç kapak + uzak/yakın düz kenar) ve hedefin anahattıyla
+  aynı topoloji; "keskin köşe" izlenimi 3. turda kenar çizgisinin uzak/sağ kenarlarda kaybolmasındandı. 2. adımdaki
+  kesintisiz altın kenar köşeleri okutuyor (`r4-2-zoom.png`). Ek 45° kesim layout + iki test dosyasının geometri
+  sözleşmesini değiştirir, kazanç küçük.
+- **#8 sol pay**: yapısal olarak simetrik — en sol karo köşesi x 128, PLATE_X0 118 (10 px); en sağ karo köşesi x 512,
+  PLATE_X1 522 (10 px). Algılanan fark sağdaki P2 kürsüsü + hologram çerçevesinden. Karolar / layout taşınamaz.
+- **#7 tahta üstü tonu**: tahta üstü / ışık katmanı maddesine ait (önceki turla aynı karar).
+
+Testler: `tests/art/arena-nt-platform.test.ts` yeni şekle göre: altın kenar her kenarda (gold2 uzak/sol kapak/yakın düz,
+x%6 parıltı gold3, gold1 yakın-sağ + sağ kapak), görünen açıklıklarda pencere (P1 kürsüsünün solunda iki ayrı cyan grup,
+sağ duvarda y 200..250 aralığında ≥ 6 crim3). `tests/view/board-nt-layout.test.ts`: FACE_H 44..50. 34/34 geçiyor
+(arena-nt + board-nt). `npm run typecheck` temiz. `palcheck r4-5.png` PASS. v1: FACE_H yalnız NT yolunda kullanılıyor
+(LightLayer / cinematics FACE_H okumuyor).
+Kalan farklar: tahta üstü hedefe göre sıcak/kahve (tahta/ışık maddesi), çevre maviden kömür-kahveye (zemin/duvar maddeleri),
+hedefin P1 duvarındaki amber pencereler (görev tanımı P1'de cyan istediği için bilerek cyan).

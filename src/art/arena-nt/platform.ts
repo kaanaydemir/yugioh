@@ -177,8 +177,12 @@ export function paintPlatform(): PixelCanvas {
 // Side index = plateDepth's: 0 upper-left, 1 lower-right, 2 upper-right, 3 lower-left, 4 far flat, 5 near flat, 6 left cap, 7 right cap.
 // Round 3: the lit upper edges (upper-left, upper-right, far flat, left cap) one warm step up again: gold2 (a visible warm gold
 // rim like the target, still 1 px); the near / shaded edges unchanged.
-const RIM: readonly Color[] = [PAL.gold2, PAL.earth1, PAL.gold2, PAL.earth2, PAL.gold2, PAL.earth2, PAL.gold2, PAL.earth1];
-const RIM2: readonly Color[] = [G2, G1, G2, G2, G2, G1, G2, G1];
+// Round 4 (critique 3/3 #2): ONE continuous gold rim on every edge (target: a warm gold line all the way round): gold2 on
+// the lit and near edges, gold1 on the shaded near-right edge / right cap; the lit edges get a gold3 glint every 6 px and an
+// earth1 under-shade row inside (reads as a 2-px bevel, still subtle).
+const RIM: readonly Color[] = [PAL.gold2, PAL.gold1, PAL.gold2, PAL.gold2, PAL.gold2, PAL.gold2, PAL.gold2, PAL.gold1];
+const RIM_LIT: readonly boolean[] = [true, false, true, false, true, false, true, false];
+const RIM2: readonly Color[] = [PAL.earth1, G1, PAL.earth1, G2, PAL.earth1, G2, PAL.earth1, G1];
 const RIM3: readonly Color[] = [G0, N0, G0, G0, G0, N0, G0, N0];
 
 /**
@@ -221,7 +225,7 @@ function paintTop(S: Surface, x0: number, y0: number, x1: number, y1: number): P
         continue;
       }
       if (d32 < 1) {
-        S.put(x, y, RIM[side]);
+        S.put(x, y, RIM_LIT[side] && x % 6 === 0 ? PAL.gold3 : RIM[side]);
         continue;
       }
       if (d32 < 2) {
@@ -283,13 +287,13 @@ function faceDefs(): FaceDef[] {
   return out;
 }
 
-// hedef-gorunum-3 (arena pass 2026-11-05): a THICK stage wall of grey-navy armour panels. Rows (FACE_H = 58):
+// hedef-gorunum-3 (arena pass 2026-11-05): a THICK stage wall of grey-navy armour panels. Rows (FACE_H = 46):
 // coping 3 (lit lip under the warm top bevel), upper panel band UP_N, ink seam, light channel 3 (one player-coloured
 // line), ink seam, the main panel band (small lit windows / vent grilles / plain insets), ink seam, belt 3, footing 2.
 // Vertical panel seams every ~22 px. Lit = the near-left face (key light from the top left), the others one tone darker.
 const COP_N = 3;
 const UP0 = COP_N;
-const UP_N = 15;
+const UP_N = 11; // round 4: wall trimmed 58 -> 46, the upper band takes the cut (main window band keeps its height)
 const CH0 = UP0 + UP_N + 1;
 const CH_N = 3;
 const MAIN0 = CH0 + CH_N + 1;
@@ -325,6 +329,12 @@ function paintFace(S: Surface, f: FaceDef, id: number, strips: Omit<StripPiece, 
     if (f.vents.includes(pi)) return 3; // vent grille
     // Round 3: calm wall, roughly one lit panel per 3 (0 a pair of lit windows); the rest plain insets (1) or rib pairs (2)
     if (pi % 3 === 1) return 0;
+    // round 4 (critique 3/3 #4): the right (P2 / neutral) face is mostly hidden by the P2 dais and the hint plate, so it
+    // gets a lit pair on every other panel — the crimson windows read in the open spans between them
+    if (!f.lit && f.side === null && pi % 2 === 1) return 0;
+    // the P1 face's open span left of the P1 dais holds panels 0..2 only: light panel 0 too, so two cyan groups read there
+    if (f.lit && pi === 0) return 0;
+    if (pi % 3 === 2 && f.vents.includes(pi - 1)) return 0; // a vent took the lit panel: the window moves one panel on
     return hash(pi * 7 + id * 131) < 0.6 ? 1 : 2;
   };
   const runs = new Map<number, { x: number; y: number; tone: Color }[]>();
@@ -351,6 +361,8 @@ function paintFace(S: Surface, f: FaceDef, id: number, strips: Omit<StripPiece, 
         c = u === 0 ? W[2] : u < UP_N - 1 ? W[3] : W[4];
         if (u >= 1 && u < UP_N - 1 && lx === 2 && pi >= 0) c = W[2];
         if (u >= 1 && rx === 0) c = W[4];
+        // round 4 (#5): every second panel carries a 1-px top highlight (slight panel relief, not a flat wall)
+        if (u === 1 && pi % 2 === 0 && lx >= 2 && rx >= 1) c = W[2];
         // a tiny status pip in the upper right of every other panel (player colour, 1 px)
         if (u === 3 && rx === 4 && (pi + id) % 2 === 0) c = tones[4];
       } else if (v === CH0 - 1 || v === MAIN0 - 1 || v === BELT0 - 1) c = INK;

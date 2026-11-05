@@ -73,13 +73,16 @@ describe('neon tower platform painters', () => {
     // grey-slate armour, not navy; round 3: one step darker (lit face body stone1, stone2 only as a highlight)
     expect(tones.has(PAL.stone1)).toBe(true);
     expect(tones.has(PAL.stone3)).toBe(false);
-    // a thin warm bevel on the top edge, all the way round (earth tones on the outermost plate pixel): one step lighter
-    // (round 3: gold2) on the far edges toward the key light, earth2 on the near-left edge, darker earth1 on the shaded near-right edge
-    const warm = new Set<number>([PAL.earth1, PAL.earth2, PAL.gold2]);
-    expect(at(294, 62)).toBe(PAL.gold2); // far flat edge
+    // round 4: ONE continuous gold rim on the top edge, all the way round: gold2 on the lit and near edges with a gold3 glint
+    // every 6 px on the lit ones, gold1 on the shaded near-right edge (no edge left in dull earth)
+    const gold = new Set<number>([PAL.gold2, PAL.gold3]);
+    expect(at(295, 62)).toBe(PAL.gold2); // far flat edge
+    expect(at(294, 62)).toBe(PAL.gold3); // ... with a glint pixel (x % 6 === 0)
     expect(at(118, 147)).toBe(PAL.gold2); // left end cap
-    expect(warm.has(at(200, top - 1) ?? -1)).toBe(true); // near-left edge, right above the wall
-    expect(at(450, 218)).toBe(PAL.earth1); // near-right edge (y = 173 + (542 − x) / 2): shaded, darker
+    expect(gold.has(at(200, top - 1) ?? -1)).toBe(true); // near-left edge, right above the wall
+    expect(at(346, 261)).toBe(PAL.gold2); // near flat edge
+    expect(at(450, 218)).toBe(PAL.gold1); // near-right edge (y = 173 + (542 − x) / 2): shaded, one gold step darker
+    expect(at(521, 173)).toBe(PAL.gold1); // right end cap (last plate column)
     // panel seams: ink columns cut the lit wall's upper band at least every ~30 px
     const seamXs: number[] = [];
     for (let x = 122; x < 326; x++) if (at(x, 157 + Math.floor((x + 0.5 - 118) / 2) + 8) === PAL.ink) seamXs.push(x);
@@ -90,11 +93,21 @@ describe('neon tower platform painters', () => {
       for (let x = x0; x < x1; x++) for (let y = 140; y < 320; y++) if (at(x, y) === c) n++;
       return n;
     };
-    // round 2: the windows are 3-px panes in a run along the whole wall (dozens of lit pixels, not a few dots)
-    expect(count(118, 326, PAL.cyan3)).toBeGreaterThanOrEqual(24);
+    // a calm wall — roughly one lit window pair per 3 panels (3-px panes), so a handful of clear lights on each side
+    expect(count(118, 326, PAL.cyan3)).toBeGreaterThanOrEqual(18);
+    expect(count(118, 326, PAL.cyan3)).toBeLessThanOrEqual(36);
     expect(count(118, 222, PAL.cyan3)).toBeGreaterThanOrEqual(6); // the far half of the P1 wall is lit as well
     expect(count(222, 326, PAL.cyan3)).toBeGreaterThanOrEqual(6);
-    expect(count(460, 522, PAL.crim3)).toBeGreaterThanOrEqual(6);
+    // round 4: lights where they are SEEN — two separate cyan window groups in the open span left of the P1 dais (x < 175,
+    // above the hint plate), and a crimson pair on the right wall between the P2 dais and the hint plate
+    const countIn = (x0: number, x1: number, y0: number, y1: number, c: number): number => {
+      let n = 0;
+      for (let x = x0; x < x1; x++) for (let y = y0; y < y1; y++) if (at(x, y) === c) n++;
+      return n;
+    };
+    expect(countIn(118, 140, 160, 250, PAL.cyan3)).toBeGreaterThanOrEqual(6);
+    expect(countIn(140, 170, 160, 250, PAL.cyan3)).toBeGreaterThanOrEqual(6);
+    expect(countIn(470, 522, 200, 250, PAL.crim3)).toBeGreaterThanOrEqual(6);
     expect(count(118, 326, PAL.crim3)).toBe(0);
   });
   it('paints the apron (hall floor around the platform) palette-clean, opaque, with rails and lamps', () => {

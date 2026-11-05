@@ -101,9 +101,9 @@ describe('neon tower layout map', () => {
     expect(PLATE_CORNERS.right.x).toBe(PLATE_TOP.x + PLATE_TOP.w);
   });
 
-  it('gives the platform a THICK armour side (J4: 45..60 px) and a bounding box that includes it', () => {
-    expect(FACE_H).toBeGreaterThanOrEqual(45);
-    expect(FACE_H).toBeLessThanOrEqual(60);
+  it('gives the platform a THICK but chunky armour side (round 4: 44..50 px, trimmed from 58) and a bounding box that includes it', () => {
+    expect(FACE_H).toBeGreaterThanOrEqual(44);
+    expect(FACE_H).toBeLessThanOrEqual(50);
     expect(PLATE_FULL.y + PLATE_FULL.h).toBe(PLATE_TOP.y + PLATE_TOP.h + FACE_H);
   });
 

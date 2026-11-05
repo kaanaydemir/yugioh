@@ -58,7 +58,7 @@ export const PLATE_Y1 = 262;
  * light channel 6, main armour plate 18 (big bevelled panel face), belt 5, footing flange 4 incl. the bottom outline. The stands /
  * crowd sit behind it (armour bottom y = 178 + x/2 on the left face, 448 − x/2 on the right face, 314 on the flat near edge).
  */
-export const FACE_H = 58; // hedef-gorunum-3: as tall as the screen allows (near edge 262 + 58 = 320, the hand / hint plate draw over it)
+export const FACE_H = 46; // hedef-gorunum-3: a chunky plinth (critique round 3: 58 read ~25% too tall vs the target; near edge 262 + 46 = 308)
 
 /** Grid coordinates of a screen point (inverse of ntIso). */
 export function ntGrid(x: number, y: number): [number, number] {
@@ -94,7 +94,7 @@ export const PLATE_CORNERS = {
 
 /** Screen bounding box of the plate top (duelist pads are inside it). */
 export const PLATE_TOP: Rect = { x: PLATE_X0, y: PLATE_Y0, w: PLATE_X1 - PLATE_X0, h: PLATE_Y1 - PLATE_Y0 };
-/** Plate + side armour (the lowest point is the flat near edge: y 262 + FACE_H = 314, behind the hint plate / hand: HUD draws over it). */
+/** Plate + side armour (the lowest point is the flat near edge: y 262 + FACE_H = 308, behind the hint plate / hand: HUD draws over it). */
 export const PLATE_FULL: Rect = { x: PLATE_X0, y: PLATE_Y0, w: PLATE_X1 - PLATE_X0, h: PLATE_Y1 - PLATE_Y0 + FACE_H };
 /** Soft contact shadow under the platform (ink, stepped): may run under the HUD, never above y 140. */
 export const PLATE_SHADOW: Rect = { x: 88, y: 140, w: 464, h: 196 };

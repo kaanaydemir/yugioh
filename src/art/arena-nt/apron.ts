@@ -152,8 +152,8 @@ function panel(x: number, y: number, q: number): Color {
     if (q <= 12) return SHADE;
     if (q <= 14) return (x + y) % 2 === 0 ? SHADE : c;
     if (q <= 16) return x % 2 === 0 && y % 2 === 0 ? SHADE : c;
-    // round 3: a 1-px lighter floor rim just outside the fringe so the shadow edge (the stage lifting off the floor) reads
-    if (q <= 17) return c === INK ? c : N1;
+    // round 4: the round-3 1-px lighter floor rim outside the fringe was removed (invisible under the light layer; a
+    // pointless pixel row — critique 3/3 #6)
     return c;
   }
   return c;
