@@ -23,10 +23,12 @@ export const PAD_CANVAS = { w: 96, h: 98, cx: 47, cy: 16 } as const;
  * the lower step is STEP_W / STEP_H wider per side and LOW_RISE px tall. Slate stone faces (left riser lit, right shaded), the
  * player colour only as light: the top step's rim glows, the lower step's top edge carries a thin light line.
  */
-export const DAIS = { steps: 2, stepW: 12, stepH: 6, rise: 5, lowRise: 4 } as const;
+export const DAIS = { steps: 2, stepW: 8, stepH: 4, rise: 5, lowRise: 4 } as const;
 
 /** Half width / height of the pad rhombus (a 40×20 diamond) and its raised rim thickness (px). */
-export const PAD_HALF = { w: 20, h: 10, thick: 5 } as const;
+// critique round 3 (#1 / #4): the target's dais is ~30 px across at the top and ~50 px at the foot, so 32×16 / 48×24 (was
+// 40×20 / 64×32): the stone the P1 bump / P2 ledge must carry shrinks with it.
+export const PAD_HALF = { w: 16, h: 8, thick: 5 } as const;
 
 export const padFrame = (player: 0 | 1, level: number): string => `pad:${player}:${level}`;
 
@@ -118,7 +120,7 @@ function paintBase(p: PixelCanvas, player: 0 | 1, foot: { x: number; y: number; 
   const qOf = (x: number, y: number): number => x / 2 + y;
   const fx = foot.x + ox;
   const fy = foot.y + oy;
-  const m = 3;
+  const m = 1;
   const qc = qOf(fx, fy);
   const oc = oOf(fx, fy);
   const q0 = Math.floor(qc - foot.hh - m);
@@ -208,42 +210,46 @@ function paintPad(player: 0 | 1, level: number): PixelCanvas {
   const p = new PixelCanvas(w, h);
   const d = new PixelCanvas(w, h);
   const ramp = player === 0 ? NT_PAL.blue : NT_PAL.red;
-  const rim: Color = ramp[player === 0 ? [2, 3, 4, 4][level] : [2, 3, 3, 4][level]];
-  const inner: Color = ramp[player === 0 ? [1, 2, 3, 3][level] : [2, 2, 3, 3][level]];
-  const low: Color = ramp[[1, 2, 3, 3][level]];
-  const spill: Color = ramp[[0, 1, 2, 2][level]];
-  const face: Color = ramp[[0, 1, 1, 1][level]];
-  const band: Color = ramp[[0, 1, 1, 2][level]];
+  // critique round 3 (#2 / #4): the light is quieter than the board's own borders. One thin rim line at the mid ramp step
+  // (peak: one step up), no inner bands; a one-row foot band and a wider flat pool on the stone round the dais carry the pulse.
+  const rim: Color = ramp[[2, 2, 2, 3][level]];
+  const low: Color = ramp[[1, 1, 2, 2][level]];
+  const band: Color = ramp[[1, 1, 2, 2][level]];
+  const pool: Color = ramp[[0, 1, 1, 1][level]];
+  const poolOut: Color = ramp[[0, 0, 0, 1][level]];
   const lowRise = DAIS.lowRise + (player === 1 ? 2 : 0);
+  // critique round 3 (#5): P2's risers one step toward the navy ramp (target: navy-grey faces): the shaded risers night3 (night4 on the lit side read too blue: rejected)
+  const lit2: Color = S[2];
+  const shd1: Color = player === 1 ? PAL.night3 : S[1];
   const lowY = cy + DAIS.rise;
   const lowHw = PAD_HALF.w + DAIS.stepW;
   const lowHh = PAD_HALF.h + DAIS.stepH;
   const baseY = lowY + lowRise;
-  paintBase(p, player, { x: cx, y: baseY, hw: lowHw + 4, hh: lowHh + 2 });
-  // hard cast shadow (two flat bands, no alpha) on the stone below / right of the dais
-  for (let j = 0; j < h; j++)
-    for (let i = 0; i < w; i++) {
-      const dv = inset(i, j, cx + 4, baseY + 2, lowHw, lowHh);
-      if (dv >= 2.5) p.set(i, j, NT_PAL.ink);
-      else if (dv >= 0) p.set(i, j, S[0]);
-    }
-  // the flat light band round the foot (player colour, stepped, no dither): two rows outside the lower step's base
+  paintBase(p, player, { x: cx, y: baseY, hw: lowHw + 10, hh: lowHh + 5 });
+  // the light pool: flat stepped rings (no dither) round the foot, on the stone the base painted (its gold bevel line stays) and on the bare board top round it (P2's front)
   for (let j = 0; j < h; j++)
     for (let i = 0; i < w; i++) {
       const dv = inset(i, j, cx, baseY, lowHw, lowHh);
-      if (dv < 0 && dv >= -2) p.set(i, j, band);
+      const under = p.get(i, j);
+      if (dv >= 0 || (under !== null && under !== PAL.stone2 && under !== PAL.earth1 && under !== PAL.stone0)) continue;
+      if (dv >= -1) p.set(i, j, band);
+      else if (dv >= -2.5) p.set(i, j, pool);
+      else if (dv >= -4) p.set(i, j, poolOut);
     }
-  // lower step: wide bright slate top, its outer rim glows (front rows brighter), a tinted row inside, a lit / shaded riser
+  // hard cast shadow (one flat stone0 band, no ink) on the stone below / right of the dais
+  for (let j = 0; j < h; j++)
+    for (let i = 0; i < w; i++) if (inset(i, j, cx + 2, baseY + 1, lowHw, lowHh) >= 0) p.set(i, j, S[0]);
+  // lower step: slate top, a thin light line on its two front edges, a lit / shaded riser
   paintStep(
     d,
     lowY,
     lowHw,
     lowHh,
     lowRise,
-    (_i, j, dv) => (dv < 1 ? (j + 0.5 > lowY ? low : spill) : dv < 2 ? (j + 0.5 > lowY ? spill : face) : dv < 3 && j + 0.5 > lowY ? face : S[2]),
-    (left, dd) => (dd >= lowRise ? S[0] : dd === 1 ? (left ? S[3] : S[2]) : left ? S[2] : S[1]),
+    (_i, j, dv) => (dv < 1 && j + 0.5 > lowY ? low : S[2]),
+    (left, dd) => (dd >= lowRise ? S[0] : dd === 1 ? (left ? S[3] : lit2) : left ? lit2 : shd1),
   );
-  // top step: glowing two-band rim, a player-tinted top with a hard dark contact patch under the feet, a taller riser
+  // top step: one thin rim line, a plain slate top with a stone0 contact patch under the feet
   paintStep(
     d,
     cy,
@@ -252,13 +258,11 @@ function paintPad(player: 0 | 1, level: number): PixelCanvas {
     DAIS.rise,
     (i, j, dv) => {
       if (dv < 1) return rim;
-      if (dv < 2) return inner;
-      const dx = (i + 0.5 - cx) / 10;
-      const dy = (j + 0.5 - cy - 1) / 4.5;
-      const r2 = dx * dx + dy * dy;
-      return r2 < 0.3 ? NT_PAL.ink : r2 < 0.6 ? S[0] : dv < 3 ? spill : face;
+      const dx = (i + 0.5 - cx) / 8;
+      const dy = (j + 0.5 - cy - 1) / 4;
+      return dx * dx + dy * dy < 0.5 ? S[0] : S[2];
     },
-    (left, dd) => (dd === 1 ? low : dd === DAIS.rise ? S[0] : left ? S[2] : S[1]),
+    (left, dd) => (dd === 1 ? low : dd === DAIS.rise ? S[0] : left ? lit2 : shd1),
   );
   d.outline(NT_PAL.ink);
   p.blit(d, 0, 0);

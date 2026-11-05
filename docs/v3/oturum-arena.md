@@ -302,3 +302,50 @@ nabız filmi `pod-5-film.png`. Kapılar: typecheck temiz, palcheck `pod-5.png` P
 stepped (= LOOK_V3) kolunda.
 Kalan farklar: hedefte kürsü çevresinde zemine yayılan renkli ışık havuzu (bizde yok, gerekçe #2); P1 konumu (#4);
 hedefte alt basamağın üst yüzü daha geniş ve aydınlık.
+
+#### Düellocu kürsüleri — eleştiri turu 2/3 düzeltmeleri (2026-11-05)
+Önce: `shots/arena/pod-6.png`, `pod-6-p1z.png`, `pod-6-p2z.png`, `pod-6-pz.png`.
+Tek dosyada (`art/arena-nt/pads.ts`; görüntü konumu `PAD_CANVAS` üzerinden, `view/board-nt/pads.ts` değişmedi), sahne
+`platform.ts`'ye dokunmadan:
+1. **#1 P2 boşlukta** (geçerli): yeni `paintBase` — kürsünün altında sahnenin arka-sağ kenarından dışarı çıkan taş çıkıntı
+   (üst yüz stone2 = tahta tonu, dış üç kenarında sahnenin altın pervazı: aydınlık kenarlar gold2 + her 6 px gold3 + earth1 +
+   stone0, gölgeli sağ kenar gold1/stone1/night0; görünen sağ yan duvar şeridi sahne üst yüzünün arkasında kesiliyor).
+   Birleştiği yerde sahnenin kendi pervaz satırlarını örtüyor → sahne tek blok + çıkıntı okunuyor.
+2. **#2 P1 ön duvarın üstünde** (geçerli): aynı `paintBase`, P1 için sahnenin sol-ön duvarından dışarı çıkan blok: üstü sahne
+   üstüyle aynı hizada, üç dış kenarında altın pervaz, altında 46 px'lik duvar (ön yüz aydınlık, sağ yüz gölgeli; sahne
+   `paintFace` satır düzeni: kaplama, üst panel bandı, camgöbeği kanal, ana bant, kemer), ortada panel dikişi, iki çift küçük
+   camgöbeği pencere, zeminde ink + stone0 temas çizgisi. Kürsü artık tamamen taş üstünde; duelistXY/layout değişmedi.
+3. **#3 ışıma yalnız çizgi** (geçerli): basamak üstleri oyuncu rengine bir ton (üst basamak yüzü ramp[0..1], alt basamağın iç
+   satırları ramp[0..2]); ayak çevresinde iki satırlık DÜZ (dither yok) oyuncu renkli ışık bandı; ayak altı temas lekesi ink +
+   stone0 (sert).
+4. **#4 alt basamak dar** (geçerli): `DAIS.stepW/stepH` 9/4 → 12/6; alt basamağın açık stone2 üst yüzü ~6 satır görünüyor.
+5. **#5 nabız sönük** (geçerli): nabız artık kenar + iç bant + yüz tonu + ayak bandı birlikte (seviye 0: ramp[0] yüz / bant, tepe:
+   ramp[1] yüz + ramp[2] bant). Film: `pod-7-film1.png` (P1), `pod-7-film2.png` (P2) — açıkça nefes alıyor.
+6. **#6 P2 solundaki meşale halesi** — bu maddenin dışı (duvar meşaleleri / ışık katmanı sahibi); dokunulmadı.
+Tuval 70×46 → 96×98 (ayak noktası aynı). Sonra: `pod-7.png`, `pod-7-pz.png` (üst biz / alt hedef), `pod-7-sbs.png`.
+Kapılar: typecheck temiz, palcheck `pod-7.png` PASS, vitest: 5 kırmızı test yalnız canavar/kart dosyalarında (başkasının işi).
+v1: atlas yalnız ARENA_NT yolunda (boot 29 kapılı).
+Kalan farklar: P1 kürsüsü hedefte tahta üstünde, bizde (sabit duelistXY yüzünden) sahneden çıkan bir çıkıntı üstünde;
+hedefte kürsü çevresindeki ışık havuzu daha geniş ve yumuşak (bizde 2 satırlık düz bant); P2 alt basamak yüzleri hedefte
+lacivert-gri, bizde arduvaz gri.
+
+#### Düellocu kürsüleri — eleştiri turu 3/3 düzeltmeleri (2026-11-05)
+Önce: `shots/arena/pod-8.png`, `pod-8-pz.png` (üst biz / alt hedef; sol P1, sağ P2). Tek dosya: `art/arena-nt/pads.ts`.
+1. **#1 / #4 P1 çıkıntısı ve P2 pervazı büyük** (geçerli): kürsü hedefin ölçüsüne küçültüldü — `PAD_HALF` 20×10 → 16×8, `DAIS.stepW/stepH`
+   12/6 → 8/4 (üst 32 px, alt basamak 48 px; hedef ≈30 / ≈50). Çıkıntı payı `m` 3 → 1. Taban artık alt basamak + 5 satır (3 satır
+   pervaz + ışık havuzu); P1 çıkıntısı ~2 satır, P2 pervazı da ona göre küçüldü (`pod-9`, son hali `pod-17`). Çıkıntıyı tamamen
+   kaldırmak duelistXY'yi taşımayı ister (dondurulmuş) → çentik küçüldü ama duruyor.
+   Ara deneme REDDEDİLDİ: taban payı yalnız +2/+1 (`pod-10`) — havuz için yer kalmadı, alt basamak doğrudan altın pervaza oturdu.
+2. **#2 ışıma sert** (geçerli): üst kenar tek ince çizgi ramp[2] (tepede ramp[3]), iç bantlar ve basamak yüzü tonu kaldırıldı
+   (yüzler düz stone2); alt basamağın ön kenarı ramp[1] ince çizgi; ayak bandı TEK satır; çevresine düz, basamaklı ışık havuzu
+   (dither yok): bant ramp[1|2] → 1.5 satır ramp[0|1] → 1.5 satır ramp[0|1]. Havuz tabanın taşına (altın çizgi kalır) ve P2'nin
+   önünde çıplak tahta üstüne basılıyor (kırmızı karolara değmiyor, `pod-14-p2z`). Paletin içinde stone2 üstüne "yumuşak camgöbeği"
+   ton yok (stepped ışık tablosu da stone2+camgöbeği → cyan1 veriyor), o yüzden havuz koyu doygun halkalar olarak okunuyor.
+3. **#3 temas gölgesi** (geçerli): döküm gölgesi ve ayak lekesi yalnız stone0 (ink yok), gölge kayması (+4,+2) → (+2,+1).
+4. **#5 P2 basamak yüzleri** (kısmen): gölgeli yükseltiler night3. Aydınlık yüzlerde night4 denendi → fazla mavi, REDDEDİLDİ (`pod-15-p2z`);
+   son `pod-16-p2z`.
+5. **#6 P2 arkasındaki dither sis / düz lacivert duvar**: bu maddenin dışı → duvar / sis sahibine bırakıldı.
+Nabız filmi: `pod-16-film1.png` (P1), `pod-16-film2.png` (P2) — hafif (kenar + bant + havuz birlikte bir ton).
+Kapılar: typecheck temiz, palcheck `pod-17.png` PASS, vitest arena-nt/board-nt/board-calm 37/37. v1: atlas yalnız ARENA_NT yolunda.
+Kalan farklar: P1 hâlâ sahne kenarından çıkan küçük bir blok üstünde (duelistXY); havuz hedefteki gibi yumuşak değil (palet sınırı);
+nabız sakin, bazı karelerde zor seçiliyor.
