@@ -137,4 +137,4 @@ D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (ka
 - 2026-11-05 gece: wisp_imp (şerit B, d9df6a4) + kite_fencer & reed_heron (şerit C, 0062f7c; crag_axeman test
   düzeltmesi dahil) ana dala alındı. Kapılar: typecheck temiz; vitest yalnız bilinen 7 (3 eski arena + G1, dusk_ashen,
   hourglass_imp, shield_titan); v1 17/17 + a6v1 26/26 IDENTICAL (referanslar 6d507fa'dan yeniden çekildi — makine
-  yenilendi; shot.mjs artık chrome-linux64'ü de buluyor). Test sürümü 16.
+  yenilendi; shot.mjs artık chrome-linux64'ü de buluyor). Test sürümü 16 YENİ adreste: https://claude.ai/artifact/1FtHvKhUno83ZUCg8ASrmc (eski sayfa dosya sınırına dayandı).
