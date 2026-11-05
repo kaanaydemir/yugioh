@@ -23,8 +23,8 @@
 //   strike    normal "Kargı Hamlesi": couch, two heavy steps of lunge, the thrust, then the DOUBLE HIT — a frame
 //             later the mane lashes the target's head ("ŞAK"); blocked: sparks skid along the guard and he is
 //             shoved back
-//             storm "Fırtına Hücumu" (summon turn only): the lance spins as a propeller (whole-pixel arcs), a
-//             knee-high dust devil, a gale wall builds behind him, he GLIDES inside it, the GALE BOOM on contact
+//             storm "Fırtına Hücumu" (summon turn only): the rigid lance spins about the grip (4 angles + a smear arc), a
+//             knee-high dust devil, a gale wall builds behind him, he CHARGES inside it (a 4-frame heavy run), the GALE BOOM on contact
 //             (a pressure ring, grey dust ring, hair ribbons blowing past the target); direct: the gale sweeps on
 //             to the duelist; blocked (e.g. the titan's −500 eats the storm): the gale SPLITS around the guard
 //   death     "Kof Zırh" (the hollow armour): the sprite's own ending — the calm (mane and pennon freeze, the aura
@@ -157,16 +157,30 @@ function setFeet(u: MonsterUnit, p: XY): void {
  * head end (the tip) the lightest. Whole pixels, palette steps only.
  */
 function ribbon(px: Px, p: XY, d: XY, len: number, ph: number, amp: number, tone = 2): void {
+  // a smooth 2-px horsehair stroke: one gentle S-curve over its whole length (never a kinked scribble), the
+  // core one tone, the leading (upper) edge a step lighter, the last 3 px a tapered 1-px tail
   const nx = -d.y;
   const ny = d.x;
-  const L = Math.max(2, Math.round(len));
+  const L = Math.max(4, Math.round(len));
+  const core = HAIR[Math.max(1, Math.min(2, tone))];
+  const lead = HAIR[Math.max(2, Math.min(3, tone + 1))];
+  const tail = HAIR[Math.max(0, Math.min(2, tone - 1))];
+  let px0 = Number.NaN;
+  let py0 = Number.NaN;
   for (let i = 0; i < L; i++) {
-    const w = Math.round(Math.sin(i * 0.45 + ph) * amp * Math.min(1, i / 4));
+    const u = i / L;
+    const w = Math.round(Math.sin(u * TAU * 0.8 + ph) * amp * 1.4 * Math.min(1, u * 3));
     const x = Math.round(p.x + d.x * i + nx * w);
     const y = Math.round(p.y + d.y * i + ny * w);
-    const k = i < 2 ? Math.min(3, tone + 1) : i > L - 3 ? Math.max(0, tone - 1) : tone;
-    px.dot(x, y, HAIR[k]);
-    px.dot(x, y + 1, HAIR[Math.max(0, k - 1)]);
+    if (x === px0 && y === py0) continue;
+    px0 = x;
+    py0 = y;
+    if (i >= L - 3) {
+      px.dot(x, y, tail);
+      continue;
+    }
+    px.dot(x, y, lead);
+    px.dot(x, y + 1, core);
   }
 }
 
@@ -283,7 +297,7 @@ function gale(sc: Phaser.Scene, o: { at: XY; dir: XY; w: number; h: number; back
   const d = norm(o.dir);
   const ribs: Rib[] = [];
   const nR = o.ribbons ?? 9;
-  for (let i = 0; i < nR; i++) ribs.push({ a: (rnd() - 0.5) * o.w, h: 3 + rnd() * (o.h - 6), len: 10 + rnd() * 12, k: 0.7 + rnd() * 0.7, ph: rnd() * TAU, tone: 1 + Math.floor(rnd() * 3) });
+  for (let i = 0; i < nR; i++) ribs.push({ a: ((i + 0.5) / nR - 0.5) * o.w + (rnd() - 0.5) * 4, h: 4 + ((i * 7) % nR) / nR * (o.h - 8), len: 12 + rnd() * 8, k: 0.7 + rnd() * 0.7, ph: rnd() * TAU, tone: 1 + Math.floor(rnd() * 3) });
   const nB = o.billows ?? 7;
   // two rows of billows: a low bank on the floor and a higher, thinner crest
   const bil = Array.from({ length: nB }, (_, i) => ({ a: ((i + 0.5) / nB - 0.5) * o.w + (rnd() - 0.5) * 6, r: (i % 2 ? 4 : 6) + rnd() * 4, ph: rnd() * TAU, up: i % 2 ? 0.5 + rnd() * 0.5 : rnd() * 0.25 }));
@@ -575,7 +589,7 @@ if (LOOK_V3)
         const from = u ? { ...u.home } : null;
         if (!from) return;
         const dir = norm({ x: to.x - from.x || -fwd.x, y: to.y - from.y || -fwd.y });
-        const g = gale(sc, { at: { x: from.x - dir.x * 30, y: from.y - dir.y * 30 }, dir, w: 44, h: 34, back: unitDepth(from.y) - 0.6, front: unitDepth(from.y) + 0.6, seed: uid * 7 + 3, ribbons: 8, billows: 5 });
+        const g = gale(sc, { at: { x: from.x - dir.x * 30, y: from.y - dir.y * 30 }, dir, w: 44, h: 34, back: unitDepth(from.y) - 0.6, front: unitDepth(from.y) + 0.6, seed: uid * 7 + 3, ribbons: 5, billows: 7 });
         g.amount(0.25);
         void (async () => {
           await sleep(sc, 40 + i * 90);
@@ -606,7 +620,7 @@ async function galeEntrance(S: Stage): Promise<void> {
   // the camera eases toward him as every ace entrance does (the same single lean the placeholder made; EF-8)
   if (S.big) void S.ctx.focus({ x: home.x, y: home.y - 30 }, { ms: 420, pan: 0.3 });
   // ---- the gale front: from the enemy side of his tile to his back (never a full-width band)
-  const g = S.own(gale(sc, { at: { x: home.x + fwd.x * 60, y: home.y + fwd.y * 60 }, dir: down, w: 70, h: 40, back: S.depth - 0.6, front: S.depth + 0.6, seed: u.uid * 5 + 1, ribbons: 18, billows: 14 }));
+  const g = S.own(gale(sc, { at: { x: home.x + fwd.x * 60, y: home.y + fwd.y * 60 }, dir: down, w: 70, h: 40, back: S.depth - 0.6, front: S.depth + 0.6, seed: u.uid * 5 + 1, ribbons: 10, billows: 14 }));
   g.amount(0.25);
   const arrive = start('wmkGaleFront', { volume: 0.9, pan: panAt(home.x) });
   const FRONT_MS = 760;
@@ -905,41 +919,6 @@ function galeBoom(sc: Phaser.Scene, at: XY, floor: XY): Promise<void> {
   }).then(() => px.g.destroy());
 }
 
-/** The propeller's whole-pixel arc overlay (special f1–f3): the lance's sweep at helm height. */
-function propeller(u: MonsterUnit): () => void {
-  const sc = u.scene;
-  const px = layer(sc, u.sprite.depth + 0.4);
-  let alive = true;
-  const stop = onFrame(sc, () => {
-    if (!alive) return false;
-    px.clear();
-    px.g.setDepth(u.sprite.depth + 0.4);
-    const fi = u.frameInfo();
-    if (fi.anim !== 'special' || fi.frame < 1 || fi.frame > 3) return true;
-    const g = artPoint(u, 'special', fi.frame, 'hand');
-    if (!g) return true;
-    const c = rint(u.framePoint(g.x, g.y));
-    const R = 30;
-    // the swept arc trails the lance by a third of a turn (stepped tones, 1 px)
-    const a0 = (fi.frame - 1) * 1.2;
-    for (let i = 0; i < 14; i++) {
-      const a = a0 - i * 0.12;
-      const x = Math.round(c.x + Math.cos(a) * R);
-      const y = Math.round(c.y + Math.sin(a) * R * 0.28);
-      px.dot(x, y, i < 4 ? PAL.mist : i < 9 ? PAL.steel : PAL.stone2);
-      const x2 = Math.round(c.x - Math.cos(a) * R * 0.7);
-      const y2 = Math.round(c.y - Math.sin(a) * R * 0.2);
-      if (i < 8) px.dot(x2, y2, i < 3 ? PAL.steel : PAL.stone2);
-    }
-    return true;
-  });
-  return () => {
-    alive = false;
-    stop();
-    px.g.destroy();
-  };
-}
-
 /** Where the lance tip of `anim` frame `f` meets `aim`: the feet point for the strike (never past the target). */
 function lungeFeet(u: MonsterUnit, anim: AnyMonsterAnim, f: number, aim: XY, inset: number): XY {
   const tip = artPoint(u, anim, f, 'muzzle') ?? u.art.muzzle;
@@ -1027,7 +1006,7 @@ async function lanceStrike(s: StrikeArgs): Promise<void> {
   }
 }
 
-/** "Fırtına Hücumu": the propeller spin, the dust devil, the gale wall, the glide, the gale boom. */
+/** "Fırtına Hücumu": the rigid lance spin, the dust devil, the gale wall, the charging run, the gale boom. */
 async function stormStrike(s: StrikeArgs): Promise<void> {
   const u = s.attacker;
   const sc = s.scene;
@@ -1039,8 +1018,11 @@ async function stormStrike(s: StrikeArgs): Promise<void> {
   const home = { ...u.home };
   const dir = u.flipX ? -1 : 1;
   const fwd = fwdOfUnit(u);
-  const relF = u.markFrame('special', 'release', 6);
-  const conF = u.markFrame('special', 'contact', 7);
+  const relF = u.markFrame('special', 'release', 11);
+  const conF = u.markFrame('special', 'contact', 12);
+  // the charging-run loop: the four frames before the release (contact, down, passing, contact)
+  const run0 = relF - 4;
+  const low = run0 - 1;
   const loses = s.ctx.ev.result === 'attackerDestroyed' || s.ctx.ev.result === 'bothDestroyed';
   const aim = aimOf(s);
   const goal0 = lungeFeet(u, 'special', conF, aim, s.direct ? 12 : s.blocked ? 8 : 3);
@@ -1048,37 +1030,41 @@ async function stormStrike(s: StrikeArgs): Promise<void> {
   const storm = stormOf(u);
   storm?.setLevel(3);
   u.posed = true;
-  const stopProp = propeller(u);
   let wall: Gale | null = null;
   try {
-    // ---- f1–f3: the lance spins once overhead (whole-pixel arcs), the mane spirals up, the dust devil whirls
-    const spin = s.direct ? 2 : 1; // direct: the anticipation spin is shortened (2 angles)
-    await u.playRange('special', spin, 4, { timeScale: 1.25 });
+    // ---- f1–f5: the rigid lance spins about the grip (4 angles + the smear arc), the mane spirals up, the dust devil whirls
+    const spin = s.direct ? 2 : 1; // direct: the anticipation spin is shortened (one angle fewer)
+    await u.playRange('special', spin, low, { timeScale: 1.15 });
     if (!u.sprite.active) return;
-    stopProp();
-    // ---- f4 (hold): couched low, the mane longest; the gale wall builds behind him
+    // ---- f6 (hold): the deep charge stance, the mane wrapped forward round the helm; the gale wall builds behind him
     const behind = (k: number): XY => {
       const f = feetOf(u);
       return { x: f.x - fwd.x * (16 - 12 * k), y: f.y - fwd.y * (16 - 12 * k) };
     };
-    wall = gale(sc, { at: behind(0), dir: fwd, w: 60, h: 40, back: u.sprite.depth - 0.7, front: u.sprite.depth + 0.7, seed: u.uid * 3 + 9, ribbons: 16, billows: 12 });
+    wall = gale(sc, { at: behind(0), dir: fwd, w: 60, h: 40, back: u.sprite.depth - 0.7, front: u.sprite.depth + 0.7, seed: u.uid * 3 + 9, ribbons: 9, billows: 12 });
     wall.amount(0.25);
     const w0 = wall;
-    await animate(sc, u.frameMs('special', 4) + u.frameMs('special', 5), (t) => {
+    u.pose('special', low);
+    await animate(sc, u.frameMs('special', low) + 120, (t) => {
       w0.amount(0.25 + 0.75 * Math.min(1, t * 1.6));
       w0.at(behind(0));
-      if (t > 0.45 && u.frameInfo().frame < 5) u.pose('special', 5);
     });
-    // ---- f6 release: the launch — carried by the storm, gliding (no footfalls), the wall riding behind
-    u.pose('special', relF);
+    // ---- f7–f10 looped: the charging run — heavy strides (dust on each footfall), the plate bobbing, the mane taut;
+    //      the wall rides behind him; f11 the release lean lands just before contact
     charge.stop(50);
     play('wmkStormRelease', { volume: 1, pan });
     const start0 = feetOf(u);
-    await stride(u, start0, goal, 260, rnd, {
-      glide: 2,
+    let shown = -1;
+    await stride(u, start0, goal, 300, rnd, {
+      steps: 2,
+      sound: true,
       onT: (t) => {
         w0.at(behind(Math.min(1, t * 1.4)));
-        if (t > 0.6 && u.frameInfo().frame < relF + 1) u.pose('special', relF + 1);
+        const f = t < 0.78 ? run0 + (Math.floor(t * 5.2) % 4) : relF;
+        if (f !== shown) {
+          shown = f;
+          u.pose('special', f);
+        }
       },
     });
     // ---- f7 contact: the gale BOOM; the wall overtakes him and blows past (or splits around the guard)
@@ -1126,7 +1112,6 @@ async function stormStrike(s: StrikeArgs): Promise<void> {
     await stride(u, feetOf(u), home, s.direct ? 420 : 480, rnd, { steps: 2, sound: true });
     await capped(sc, rest, 500);
   } finally {
-    stopProp();
     wall?.destroy();
     charge.stop(80);
     u.posed = false;

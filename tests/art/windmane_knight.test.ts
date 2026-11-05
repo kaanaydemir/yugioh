@@ -24,7 +24,7 @@ describe('windmane_knight', () => {
       expect(spec(a).holds?.length, a).toBe(spec(a).frames);
     }
     expect(spec('attack').marks).toMatchObject({ charge: 1, release: 5, impact: 5, contact: 6, recover: 8 });
-    expect(spec('special').marks).toMatchObject({ charge: 1, release: 6, impact: 6, contact: 7, recover: 9 });
+    expect(spec('special').marks).toMatchObject({ charge: 1, release: 11, impact: 11, contact: 12, recover: 14 });
     expect(spec('roar').marks).toMatchObject({ release: 4, impact: 4 });
     expect(spec('summon').marks?.land).toBe(6);
     expect(spec('revive').marks?.land).toBe(7);
@@ -39,10 +39,10 @@ describe('windmane_knight', () => {
     expect(validateArt(art, { tier: 'normal', attack: 'melee' }).filter((f) => f.severity === 'error').map((f) => `${f.rule} ${f.anim} ${f.frame ?? ''} ${f.message}`)).toEqual([]);
   });
 
-  it('is registered under the v3 look and fits the large class (≤ 140 frames, ≤ 5 MB)', async () => {
+  it('is registered under the v3 look and fits its budget (an ace: ≤ 131 frames by its own cap, ≤ 7 MB)', async () => {
     const frames = ALL.reduce((n, a) => n + spec(a).frames, 0);
-    expect(frames).toBeLessThanOrEqual(140);
-    expect(art.w * art.h * 4 * frames).toBeLessThanOrEqual(5_000_000);
+    expect(frames).toBeLessThanOrEqual(131);
+    expect(art.w * art.h * 4 * frames).toBeLessThanOrEqual(7_000_000);
     const fs = (await import(/* @vite-ignore */ 'node:fs' as string)) as { readdirSync(p: string): string[] };
     const src = fs.readdirSync('src/art/monsters-v3');
     expect(src).toContain('windmane_knight.ts');
@@ -90,6 +90,21 @@ describe('windmane_knight', () => {
     let earthLast = 0;
     for (let y = 0; y < art.anchorY - 12; y++) for (let x = 0; x < last.w; x++) if (last.get(x, y) === PAL.earth3 || last.get(x, y) === PAL.earth4) earthLast++;
     expect(earthLast).toBe(0);
+  });
+
+  it('death ends on the empty boots STANDING (open dark tops), and the revive is its own gust assembly, not a rewind', () => {
+    const n = spec('death').frames;
+    const last = drawFrame(art, 'death', n - 1, 'left');
+    // two upright greaves standing ≥ 18 px tall near the anchor, each with an open night0 top
+    let tops = 0;
+    for (let x = art.anchorX - 16; x <= art.anchorX + 12; x++)
+      for (let y = art.anchorY - 30; y < art.anchorY - 14; y++) if (last.get(x, y) === PAL.night0) { tops++; break; }
+    expect(tops).toBeGreaterThanOrEqual(4);
+    const deaths = Array.from({ length: n }, (_, f) => drawFrame(art, 'death', f, 'left'));
+    for (let f = 0; f < spec('revive').frames - 1; f++) {
+      const r = drawFrame(art, 'revive', f, 'left');
+      for (const d of deaths) expect(r.data.every((v: number, i: number) => v === d.data[i]), `revive ${f}`).toBe(false);
+    }
   });
 
   it('paints the card picture at both sizes within the kit budgets, and the cut-in at its own density in both lights', () => {

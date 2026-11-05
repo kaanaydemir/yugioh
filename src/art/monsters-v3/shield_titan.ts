@@ -10,24 +10,42 @@ import type { AnyMonsterAnim, DrawOpts, MonsterAnim, MonsterAnimExtra, MonsterAr
 import type { PixelCanvas } from '../pixel';
 import card from '../cardart-v3/shield_titan';
 import { renderArt } from '../cardart-v3/_kit';
-import { AX, GY, H, W, drawTitan, pose } from './shield_titan-rig';
+import { AX, GY, H, W, drawTitan, pose, skeleton, slabPoints, type Pose } from './shield_titan-rig';
 import { ANIMS, EXTRA_ANIMS, IMPACT, MUZZLE, frameJoints, framePoints, framePose } from './shield_titan-anims';
 
 /** Cinematic-only frames of the direct attack ("Kalkan Kızağı", src/cinematics/kart-f/shield_titan.ts): the giant with
- *  empty hands while his shield skids down the lane, and the shield itself lying face-down as the sledge. */
-export type TitanSledFrame = 'kick' | 'reach' | 'haul' | 'sled' | 'sledHot';
-function drawSled(p: PixelCanvas, kind: TitanSledFrame, lightFrom: 'left' | 'right' = 'left'): void {
-  if (kind === 'sled' || kind === 'sledHot') {
-    drawTitan(p, pose({ fall: 90, show: 0, boss: kind === 'sledHot' ? 3 : 2, courses: kind === 'sledHot' ? 3 : 1, hot: kind === 'sledHot' ? 1 : 0 }), lightFrom);
-    return;
+ *  empty hands while his shield skids down the lane (the drop's follow-through, the kick's wind-up / kick /
+ *  follow-through, the open-handed reach on the strap, the haul, the heave as he lifts it again), and the shield alone:
+ *  falling forward (tip 30…70°, side view), the 1-px squashed slap, the sledge lying along the lane (`k` = the lane's
+ *  sprite-space slope dy/dx, so it skids head-on). Slab frames return their foot / top points (frame px) so the
+ *  cinematic can pin the foot to the floor and hang the strap off it. */
+export type TitanSledFrame = 'drop' | 'windup' | 'kick' | 'follow' | 'reach' | 'haul' | 'heave' | 'tip30' | 'tip40' | 'tip60' | 'tip70' | 'slap' | 'sled' | 'sledHot';
+export interface SledPoints { foot: { x: number; y: number }; top: { x: number; y: number }; hand?: { x: number; y: number } }
+const GIANT: Record<string, Partial<Pose>> = {
+  drop: { gx: 1, nfx: 6, ffx: 3, cx: 5, cy: 3, nmode: 1, nhx: 44, nhy: 60, fmode: 1, fhx: 46, fhy: 56, mouth: 1, bx: 2, by: 1 },
+  windup: { gx: 0, nfx: -4, nfl: 2, ffx: 2, cx: -2, cy: 0, hy: -1, nmode: 1, nhx: 12, nhy: 50, fmode: 1, fhx: 40, fhy: 44, bx: -1 },
+  kick: { gx: 2, nfx: 12, nfl: 5, ffx: 2, cx: -3, cy: -1, nod: -1, nmode: 1, nhx: 10, nhy: 46, fmode: 1, fhx: 40, fhy: 40, mouth: 1, bx: -2, by: -1 },
+  follow: { gx: 3, nfx: 9, nfl: 2, ffx: 3, cx: 2, cy: 1, nmode: 1, nhx: 40, nhy: 52, nopen: 1, fmode: 1, fhx: 40, fhy: 48, bx: 2, by: 1 },
+  reach: { gx: 3, nfx: 6, ffx: 3, cx: 4, cy: 1, nmode: 1, nhx: 43, nhy: 48, nopen: 1, fmode: 1, fhx: 40, fhy: 52, bx: 1 },
+  haul: { gx: 1, nfx: 2, ffx: -1, cx: -3, cy: 1, hy: 1, nmode: 1, nhx: 34, nhy: 54, fmode: 1, fhx: 36, fhy: 52, mouth: 1, bx: -2 },
+  heave: { gy: 3, nfx: 2, ffx: 1, cx: 3, cy: 2, nmode: 1, nhx: 44, nhy: 56, fmode: 1, fhx: 46, fhy: 52, mouth: 1, bx: 1, by: 1 },
+};
+function drawSled(p: PixelCanvas, kind: TitanSledFrame, lightFrom: 'left' | 'right' = 'left', k = -0.5): SledPoints {
+  let o: Pose;
+  if (kind.startsWith('tip')) o = pose({ tip: Number(kind.slice(3)), show: 0, boss: 2, courses: 1 });
+  else if (kind === 'slap' || kind === 'sled' || kind === 'sledHot') {
+    const hot = kind !== 'sled';
+    o = pose({ skid: 1, lk: k, slap: kind === 'slap' ? 1 : 0, sy: kind === 'slap' ? 1 : 0, show: 0, boss: hot ? 3 : 2, courses: hot ? 3 : 1, hot: hot ? 1 : 0 });
+  } else {
+    const g = pose({ ...GIANT[kind], bare: 1 });
+    drawTitan(p, g, lightFrom);
+    const w = skeleton(g).wN;
+    const h = { x: Math.round(w[0]), y: Math.round(w[1]) };
+    return { foot: h, top: h, hand: h };
   }
-  const base = framePose('attack', kind === 'kick' ? 7 : 8);
-  const extra: Record<'kick' | 'reach' | 'haul', Partial<typeof base>> = {
-    kick: { nfx: 8, nfl: 3, mouth: 1 },
-    reach: { nmode: 1, nhx: 58, nhy: 50, fmode: 1, fhx: 56, fhy: 44, mouth: 0 },
-    haul: { nmode: 1, nhx: 40, nhy: 50, fmode: 1, fhx: 42, fhy: 46, gx: 2, cx: -2, hy: 1, mouth: 1 },
-  };
-  drawTitan(p, { ...base, ...extra[kind], bare: 1, glint: 0, smear: 0, puff: 0, lip: 0 }, lightFrom);
+  drawTitan(p, o, lightFrom);
+  const sp = slabPoints(o);
+  return { foot: { x: sp.foot[0], y: sp.foot[1] }, top: { x: sp.top[0], y: sp.top[1] } };
 }
 
 const art: MonsterArt & { titanSled: typeof drawSled } = {

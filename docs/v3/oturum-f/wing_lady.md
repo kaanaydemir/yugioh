@@ -774,6 +774,7 @@ a6v1 26/26 IDENTICAL then (`gates/filmdiff-*.txt`); clips `clips/khSummon|khKill
   chord; songBreak/fold/flatten/unbless/peel/fallThud/birdFlight; hover/stoop/clap|skid+perch+kickOff|directCry/
   back-flaps/toe). Audio pages `r5/audio-khBirdFlight.png`, `r5/audio-khUnbless.png` (+ r1 `audio/`): titles correct.
 - tsc clean; `tests/art/wing_lady.test.ts` + `tests/cinematics/wing_lady-aura.test.ts` 14/14.
+- v1 safety: `filmdiff --set v1` **17/17 IDENTICAL** after r5 (`r5/filmdiff-v1.txt`); a6v1 not re-run in r5 (26/26 in r4).
 
 **Known weaknesses (for the critique rounds):**
 - `khSummon` stages her at zone 2 right in front of the big ember_wolf: her body is half hidden by the wolf during the

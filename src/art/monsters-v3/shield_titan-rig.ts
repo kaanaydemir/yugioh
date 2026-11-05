@@ -133,6 +133,15 @@ export interface Pose {
   bare: number;
   /** air smear trailing the top edge on the swing (0 none, else its length px) */
   smear: number;
+  /** cinematic-only slab states (the direct attack's sledge): `tip` = a forward fall (deg) about the front-bottom
+   *  corner, side view, auto-shifted into the frame; `skid` 1 = lying face-up with its long axis along the lane, whose
+   *  sprite-space slope is `lk` (dy per dx, foreshortened head-on); `slap` 1 = the 1-px squash of the slap */
+  tip: number;
+  skid: number;
+  lk: number;
+  slap: number;
+  /** 1 = the near hand open (palm and four fingers) instead of a fist */
+  nopen: number;
   /** a loose dust speck sliding off the foot (0 none, else its phase 1…3); dust puff at the feet (0 none, else size) */
   speck: number;
   puff: number;
@@ -144,6 +153,7 @@ export const NEUTRAL: Pose = {
   nfx: 0, nfl: 0, ffx: 0, ffl: 0, show: 1, peek: 0, haul: 0, swing: 0,
   sx: 0, sy: 0, lift: 0, sink: 0, rot: 0, aw: 90, fall: 0, lip: 0,
   boss: 1, iris: 0, ripple: 0, sheen: 0, courses: 0, hot: 0, zap: 0, tarn: 0, glint: 0, smear: 0, speck: 0, puff: 0, bare: 0,
+  tip: 0, skid: 0, lk: -0.5, slap: 0, nopen: 0,
 };
 export const pose = (o: Partial<Pose>): Pose => ({ ...NEUTRAL, ...o });
 
@@ -159,6 +169,28 @@ export interface Slab {
 /** The affine frame of the shield face for a pose. */
 export function slab(o: Pose): Slab {
   const lift = o.lift - o.sink;
+  if (o.skid) {
+    // lying face-up along the lane (head-on, foreshortened): u runs down the lane, v across it on the floor;
+    // the width axis is chosen so the face never mirrors (det > 0) whichever way the lane slopes
+    const k = o.lk;
+    const a = 0.95;
+    const b = 0.55;
+    const sg = k > 0 ? -1 : 1;
+    const U: Pt = [a, a * k];
+    const V: Pt = [sg * b, -sg * b * k];
+    const C: Pt = [42 + o.sx, 60 + o.sy];
+    return { O: [C[0] - 28 * U[0] - 11 * V[0], C[1] - 28 * U[1] - 11 * V[1]], U, V, T: [0, o.slap ? 1 : 2] };
+  }
+  if (o.tip > 0) {
+    // a forward fall about the front-bottom corner (side view), shifted so the top stays inside the frame
+    const sn = Math.sin(rad(o.tip));
+    const cs = Math.cos(rad(o.tip));
+    const fx = Math.min(SX0 + SW, 80 - SL * sn);
+    const F: Pt = [fx, SY0 + o.sy - lift];
+    const U: Pt = [sn, -cs];
+    const V: Pt = [cs, 0.5 * sn];
+    return { O: [F[0] - SW * V[0], F[1] - SW * V[1]], U, V, T: [-2 * (1 - sn), -(1 - sn) + 2 * sn] };
+  }
   if (o.fall > 0) {
     const s = Math.sin(rad(o.fall));
     const c = Math.cos(rad(o.fall));
@@ -167,18 +199,20 @@ export function slab(o: Pose): Slab {
     return {
       O: [SX0 + o.sx + 28 * s, SY0 + o.sy - lift - 3 * s],
       U: [-s, -c],
-      V: [c, -0.5 * s],
-      T: [-2 * (1 - s), -1 * (1 - s) + 3 * s],
+      V: [c, -0.6 * s],
+      T: [-2 * (1 - s), -1 * (1 - s) + 4 * s],
     };
   }
   if (o.aw < 90) {
     const th = rad(o.aw);
     const k = o.aw / 90;
+    // the projected length rises monotonically from a flat 12 px plate to the upright 56 (a rigid slab never
+    // stretches past its upright height, round 1 #5); the near (front) edge is 3 px thick while it lies
     return {
-      O: [SX0 + o.sx, SY0 + o.sy - lift - rnd(2 * (1 - k))],
-      U: [0, -(0.5 * Math.cos(th) + Math.sin(th))],
+      O: [SX0 + o.sx, SY0 + o.sy - lift - rnd(3 * (1 - k))],
+      U: [0, -(0.22 + 0.78 * Math.sin(th))],
       V: [1, 0],
-      T: [-2 * k, 2 * (1 - k) - k],
+      T: [-2 * k, 3 * (1 - k) - k],
     };
   }
   const a = rad(o.rot);
@@ -360,7 +394,7 @@ function drawShield(o: Pose, light: Light, buf: ShieldBuf): PixelCanvas {
         const [eu, ev] = inv(s, px - s.T[0] * f, py - s.T[1] * f);
         if (!inside(eu, ev)) continue;
         let c: number;
-        if (s.T[1] > 0.5 && Math.abs(s.T[0]) < 1) c = k === n ? PAL.gold0 : PAL.gold1; // the near (front) edge of a lying slab
+        if (s.T[1] > 0.5 && Math.abs(s.T[0]) < 1) c = k === n ? PAL.gold0 : k === 2 && x % 5 === 2 ? PAL.gold2 : PAL.gold1; // the near (front) edge of a lying slab, riveted
         else if (eu >= topOf(Math.floor(ev)) - 1.5 && s.T[1] < 0) c = PAL.gold2; // the top edge faces up: lit
         else c = (s.T[0] < 0) === (light.side < 0) ? PAL.gold1 : PAL.gold0; // the side edge: lit toward the light
         if (o.tarn >= 1) c = TARN[c] ?? c;
@@ -370,7 +404,7 @@ function drawShield(o: Pose, light: Light, buf: ShieldBuf): PixelCanvas {
       }
     }
   // a planted foot's dirt lip: lumps over the face's bottom row
-  if (o.lip && o.fall === 0 && o.aw >= 90) {
+  if (o.lip && o.fall === 0 && o.aw >= 90 && !o.tip && !o.skid) {
     const a = slabAt(s, 0, 0);
     const b = slabAt(s, 0, SW);
     const yb = Math.min(GY, Math.floor(Math.max(a[1], b[1]) - 0.5));
@@ -535,7 +569,32 @@ function drawArm(cp: Comp, sk: Skel, o: Pose, light: Light, near: boolean): void
   bands(br, LEATHER, light, 1, 1);
   cp.add(br, near ? Part.armN : Part.armF, {});
   const showFist = near ? true : o.fmode === 1;
-  if (showFist) {
+  if (near && o.nopen) {
+    // an open hand: a palm and four spread fingers (1-px gaps the outline fills) and a thumb on the upper side
+    const dx = w[0] - el[0];
+    const dy = w[1] - el[1];
+    const l = Math.hypot(dx, dy) || 1;
+    const ux = dx / l;
+    const uy = dy / l;
+    const px = -uy;
+    const py = ux;
+    const f = layer();
+    const pc: Pt = [w[0] + ux * 2, w[1] + uy * 2];
+    f.disc(pc[0], pc[1], 3, t.M);
+    for (let i = 0; i < 4; i++) {
+      const sOff = (i - 1.5) * 2;
+      const len = i === 0 || i === 3 ? 3 : 4;
+      const a: Pt = [pc[0] + ux * 2 + px * sOff, pc[1] + uy * 2 + py * sOff];
+      for (let k = 0; k <= len; k++) f.set(rnd(a[0] + ux * k), rnd(a[1] + uy * k), t.M);
+    }
+    // the thumb, on the side facing up
+    const ts = py < 0 ? 1 : -1;
+    for (let k = 0; k <= 3; k++) f.set(rnd(pc[0] + px * ts * (3 + k * 0.6) + ux * k * 0.6), rnd(pc[1] + py * ts * (3 + k * 0.6) + uy * k * 0.6), t.M);
+    bands(f, t, light, 1, 1);
+    // the palm crease
+    f.set(rnd(pc[0]), rnd(pc[1]), t.S);
+    cp.add(f, Part.fist, { out: PAL.skin0 });
+  } else if (showFist) {
     const dx = w[0] - el[0];
     const dy = w[1] - el[1];
     const l = Math.hypot(dx, dy) || 1;
@@ -560,7 +619,7 @@ function drawHead(cp: Comp, sk: Skel, o: Pose, light: Light): void {
   bands(q, SKIN, light, 3, 2);
   q.set(hx + 9, hy + n, SKIN.L);
   // ear
-  q.rect(hx - 2, hy, 2, 3, SKIN.S).set(hx - 2, hy + 1, PAL.skin0);
+  q.rect(hx - 3, hy + 1, 2, 3, SKIN.S).set(hx - 3, hy + 1, SKIN.L).set(hx - 2, hy + 2, PAL.skin0);
   // eye under the brow
   const ex = hx + 5;
   const ey = hy + n;
@@ -586,17 +645,17 @@ function drawBeard(cp: Comp, sk: Skel, o: Pose, light: Light): void {
   const sp = rnd(k * 3);
   const q = layer();
   q.poly([
-    [hx - 4, hy + 3], [hx + 8, hy + 3], [hx + 9 + sp, hy + 8], [hx + 6 + sp, hy + 14],
+    [hx - 4, hy + 4], [hx - 1, hy + 3], [hx + 3, hy + 4], [hx + 8, hy + 4], [hx + 9 + sp, hy + 9], [hx + 6 + sp, hy + 14],
     [tip[0] + 2, tip[1] - 3], [tip[0], tip[1]], [tip[0] - 2, tip[1] - 4], [hx - 4 - sp, hy + 12], [hx - 5 - sp, hy + 7],
   ], BEARD.M);
   if (k > 0) {
-    // bristling: spikes stand out of the mass
-    for (let i = 0; i < 5; i++) {
-      const a = -0.6 + i * 0.55;
-      const cx = hx + 2;
-      const cy = hy + 9;
-      const r = 9 + sp;
-      q.thickLine(cx, cy, cx + Math.cos(a + Math.PI / 2) * r * (i % 2 ? 1 : 0.8), cy + Math.sin(a + Math.PI / 2) * r, 1.6, BEARD.M);
+    // bristling: the static stands the hair out — a jagged crown of spikes past the outline (back, down, front)
+    const cx = hx + 2;
+    const cy = hy + 7;
+    for (let i = 0; i < 8; i++) {
+      const ang = Math.PI * (0.42 + i * 0.12);
+      const r = ((i % 2 ? 12 : 9) + sp) * k;
+      q.thickLine(cx, cy, cx + Math.cos(ang) * r * 1.1, cy + Math.sin(ang) * r, 1.4, BEARD.M);
     }
   }
   bands(q, BEARD, light, 2, 2);
@@ -612,14 +671,14 @@ function drawBeard(cp: Comp, sk: Skel, o: Pose, light: Light): void {
   cp.add(br, Part.beard, {});
   // moustache over the mouth, mouth open below it on a shout
   const m = layer();
-  m.hline(hx + 3, hx + 8, hy + 3, BEARD.L).hline(hx + 2, hx + 9, hy + 4, BEARD.M);
-  if (o.mouth) m.rect(hx + 5, hy + 5, 3, 2, PAL.ink).set(hx + 7, hy + 5, PAL.skin0);
+  m.hline(hx + 4, hx + 8, hy + 4, BEARD.L).hline(hx + 3, hx + 9, hy + 5, BEARD.M);
+  if (o.mouth) m.rect(hx + 5, hy + 6, 3, 2, PAL.ink).set(hx + 7, hy + 6, PAL.skin0);
   cp.add(m, Part.beard, {});
 }
 
 /** The hanging strap end on the shield's back edge (swings). */
 function drawStrap(cp: Comp, o: Pose, s: Slab, light: Light): void {
-  if (o.fall > 0 || o.aw < 90) return;
+  if (o.fall > 0 || o.aw < 90 || o.tip || o.skid) return;
   const top = slabAt(s, 40, -1);
   const q = layer();
   const x = rnd(top[0]) - 3;
@@ -636,29 +695,33 @@ function drawStrap(cp: Comp, o: Pose, s: Slab, light: Light): void {
 function drawFingers(cp: Comp, o: Pose, s: Slab, light: Light): void {
   const q = layer();
   const lifts = [o.f0, o.f1, o.f2, o.f3];
-  const tt = topOf(Math.floor(o.fv + 5));
-  // the back of the hand behind the rim, a low rounded hump
-  q.poly([slabAt(s, tt - 0.5, o.fv - 0.6), slabAt(s, tt + 2.6, o.fv + 0.4), slabAt(s, tt + 3.4, o.fv + 3), slabAt(s, tt + 3.4, o.fv + 7.5), slabAt(s, tt + 2.4, o.fv + 10.2), slabAt(s, tt - 0.5, o.fv + 10.4)], SKIN.M);
+  const v0 = o.fv - 1;
+  const tt = topOf(Math.floor(v0 + 7));
+  // the back of the hand behind the rim: a low rounded knuckle ridge (not a box)
+  q.poly([slabAt(s, tt - 0.5, v0 + 0.2), slabAt(s, tt + 1.2, v0 + 1.2), slabAt(s, tt + 1.8, v0 + 4), slabAt(s, tt + 1.8, v0 + 9), slabAt(s, tt + 1.2, v0 + 11.8), slabAt(s, tt - 0.5, v0 + 12.8)], SKIN.M);
+  // four fingers hooked over the front of the rim, rounded tips, the middle two longer
+  const len = [3.6, 4.6, 4.4, 3.4];
   for (let i = 0; i < 4; i++) {
-    const v0 = o.fv + i * 2.5;
-    const lo = tt - 4.2 + lifts[i] * 2;
-    q.poly([slabAt(s, lo, v0 + 0.3), slabAt(s, tt + 0.5, v0), slabAt(s, tt + 0.5, v0 + 2.4), slabAt(s, lo, v0 + 2.1)], SKIN.M);
+    const a = v0 + i * 3.2;
+    const lo = tt - len[i] + lifts[i] * 2;
+    q.poly([slabAt(s, lo + 0.9, a), slabAt(s, tt + 0.5, a), slabAt(s, tt + 0.5, a + 2.6), slabAt(s, lo + 0.9, a + 2.6), slabAt(s, lo, a + 1.9), slabAt(s, lo, a + 0.7)], SKIN.M);
   }
   bands(q, SKIN, light, 2, 1, { top: 1, bottom: 1 });
-  // the gaps between the fingertips and the knuckle line where they bend over the rim
-  for (let i = 1; i < 4; i++)
-    for (let u = tt - 3.6; u <= tt - 0.4; u += 0.5) {
-      const a = slabAt(s, u, o.fv + i * 2.5 + 0.1);
-      const x = Math.floor(a[0]);
-      const y = Math.floor(a[1]);
-      if (q.isOpaque(x, y)) q.set(x, y, SKIN.D);
-    }
-  for (let v = o.fv; v < o.fv + 10; v += 0.5) {
-    const a = slabAt(s, tt + 0.6, v);
-    const x = Math.floor(a[0]);
-    const y = Math.floor(a[1]);
+  // the knuckle bend: a darker band just under the rim's top edge, broken by the finger gaps
+  for (let v = v0; v < v0 + 13; v += 0.5) {
+    const p = slabAt(s, tt - 0.6, v);
+    const x = Math.floor(p[0]);
+    const y = Math.floor(p[1]);
     if (q.isOpaque(x, y)) q.set(x, y, SKIN.S);
   }
+  // the gaps between the fingers (1 px, the shield's own shade shows through)
+  for (let i = 1; i < 4; i++)
+    for (let u = tt - 4.2; u <= tt - 0.8; u += 0.5) {
+      const p = slabAt(s, u, v0 + i * 3.2 - 0.3);
+      const x = Math.floor(p[0]);
+      const y = Math.floor(p[1]);
+      if (q.isOpaque(x, y)) q.erase(x, y);
+    }
   cp.add(q, Part.fingers, { out: PAL.skin0 });
 }
 
@@ -741,15 +804,21 @@ function drawHaul(cp: Comp, o: Pose, s: Slab, sk: Skel): void {
 
 /** Death final: the white beard tip and three fingers out from under the lid's near edge. */
 function drawPeek(cp: Comp, s: Slab, light: Light): void {
+  // a white beard tuft spilling out over the lid's near edge …
   const q = layer();
-  const near = slabAt(s, 38, 0); // the near edge (the back edge, lying), left part
+  const near = slabAt(s, 40, 0); // the near edge (the back edge, lying), left part
   const x = rnd(near[0]);
-  q.poly([[x - 2, GY - 1], [x + 4, GY - 2], [x + 6, GY], [x - 3, GY]], BEARD.M);
+  q.poly([[x - 3, GY], [x - 2, GY - 3], [x + 1, GY - 5], [x + 4, GY - 4], [x + 6, GY - 1], [x + 5, GY]], BEARD.M);
   bands(q, BEARD, light, 2, 1);
-  const h = slabAt(s, 14, 0);
+  q.set(x + 1, GY - 1, BEARD.S).set(x + 3, GY - 2, BEARD.S);
+  cp.add(q, Part.fx, { out: PAL.ink });
+  // … and three fingertips curled out from under it
+  const f = layer();
+  const h = slabAt(s, 15, 0);
   const hx = rnd(h[0]);
-  for (let i = 0; i < 3; i++) q.rect(hx + i * 2, GY - 1, 1, 2, i === 0 ? SKIN.L : SKIN.M);
-  cp.add(q, Part.fx, {});
+  for (let i = 0; i < 3; i++) f.rect(hx + i * 3, GY - 2 + (i === 1 ? -1 : 0), 2, 3 + (i === 1 ? 1 : 0), SKIN.M);
+  for (let i = 0; i < 3; i++) f.set(hx + i * 3 + (light.side < 0 ? 0 : 1), GY - 2 + (i === 1 ? -1 : 0), SKIN.L);
+  cp.add(f, Part.fx, { out: PAL.ink });
 }
 
 function lightPass(p: PixelCanvas, o: Pose, buf: ShieldBuf, light: Light): void {
@@ -781,7 +850,7 @@ function lightPass(p: PixelCanvas, o: Pose, buf: ShieldBuf, light: Light): void 
 }
 
 /** Points for the anims: the shield's top-front rim corner, the boss, the eye, the hands. */
-export function slabPoints(o: Pose): { rim: Pt; boss: Pt; face: Pt } {
+export function slabPoints(o: Pose): { rim: Pt; boss: Pt; face: Pt; foot: Pt; top: Pt } {
   const s = slab(o);
-  return { rim: slabAt(s, SL, SW), boss: slabAt(s, BOSS_U, BOSS_V), face: slabAt(s, 28, 11) };
+  return { rim: slabAt(s, SL, SW), boss: slabAt(s, BOSS_U, BOSS_V), face: slabAt(s, 28, 11), foot: slabAt(s, 0, SW / 2), top: slabAt(s, SL, SW / 2) };
 }

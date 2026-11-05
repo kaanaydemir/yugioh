@@ -3,21 +3,21 @@
 // dusty sun, the lance raised on a diagonal with the pennon cracking at the top (style sheet
 // docs/v3/KART_RESIMLERI.md, contract ./_types.ts).
 //
-// Source of the subject: the sprite rig itself (src/art/monsters-v3/windmane_knight-rig.ts drawKnight) in a card
-// pose (lance raised nearly upright beside the helm, the mane streaming with a full wave, a short pennon so it
-// never crosses the grille). small = the sprite's own pixels hand-cropped to helm, mane and lance head (1× density,
-// the grille eyes in the focus box; the 16×12 mini reads "blue-white helm blob + orange wedge + one gold dot"),
-// the ashen_drake pattern (not autoSmall); big = the SAME bust at 2×
-// density through the edge-preserving Scale2x (EPX) rule after the sprite's outline is stripped, then a fresh
-// 1-px ink outline, the EARTH rim, and the eye-points repainted native in the light layer.
-// Ground: the kit's EARTH recipe (earth0 sky, a stepped earth2 / earth3 low sun behind the mane, stone0 floor):
-// the steel-blue plate reads against the warm dusk, the mane's lit edge against the sun's dark step.
+// Sources of the subject. big = the bust painted NATIVELY at the cut-in's density (src/art/cutins-v3/windmane_knight.ts
+// paintBust 'stream': the flat-topped great helm in 3/4 with its keel, eye slit, three grille bars, rivets and gold
+// crest, the mane as five layered ribbons with forked tips, the raised lance head and its pennon) reduced 2:1 by the
+// kit's palette-keeping reduce2x — never the 1× sprite upscaled; then a fresh 1-px ink outline, the EARTH rim, and the
+// eye-points in the light layer. small = the sprite's own pixels hand-cropped to helm, mane and lance head (1×
+// density, the grille eyes in the focus box), the ashen_drake pattern (not autoSmall).
+// Ground: the kit's EARTH recipe with the low sun moved BEHIND THE HELM (the steel plate reads against the stepped
+// warm disc) so the warm mane streams over the dark earth0 sky — the figure-ground split holds at both sizes.
 // Living art: 4 frames × 180 ms — the mane's wave travels and the eye-points pulse (gold3 → gold4).
 
 import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
 import { NEUTRAL, NEUTRAL_MANE, W, H, drawKnight, type Pose } from '../monsters-v3/windmane_knight-rig';
-import { ink, paintBackdrop, rim } from './_kit';
+import { ink, paintBackdrop, reduce2x, rim } from './_kit';
+import { paintBust } from '../cutins-v3/windmane_knight';
 import type { CardArtV3 } from './_types';
 
 /** The card pose: lance raised close to the helm, the mane streaming, the pennon taut. */
@@ -45,30 +45,6 @@ function sprite(f: number): PixelCanvas {
   const p = new PixelCanvas(W, H);
   drawKnight(p, cardPose(f), 'left');
   return p;
-}
-
-/** Scale2x / EPX: each pixel becomes 2×2, corners rounded by the neighbours (transparent counts as a colour). */
-function epx(src: PixelCanvas): PixelCanvas {
-  const out = new PixelCanvas(src.w * 2, src.h * 2);
-  const at = (x: number, y: number) => (src.inBounds(x, y) ? src.get(x, y) : null);
-  for (let y = 0; y < src.h; y++)
-    for (let x = 0; x < src.w; x++) {
-      const p = at(x, y);
-      const a = at(x, y - 1);
-      const b = at(x + 1, y);
-      const c = at(x - 1, y);
-      const d = at(x, y + 1);
-      let e0 = p;
-      let e1 = p;
-      let e2 = p;
-      let e3 = p;
-      if (c === a && c !== d && a !== b) e0 = a;
-      if (a === b && a !== c && b !== d) e1 = b;
-      if (d === c && d !== b && c !== a) e2 = c;
-      if (b === d && b !== a && d !== c) e3 = d;
-      for (const [k, col] of [[0, e0], [1, e1], [2, e2], [3, e3]] as [number, number | null][]) if (col !== null) out.set(x * 2 + (k & 1), y * 2 + (k >> 1), col);
-    }
-  return out;
 }
 
 /** Remove the sprite's outer outline (ink touching transparency) so a fresh 1-px outline can be drawn. */
@@ -102,22 +78,30 @@ const BW = 44;
 const BH = 34;
 const crop = (f: number) => sprite(f).crop(BX, BY, BW, BH);
 
+/** The big bust: the native cut-in-density painting (stream mode) reduced 2:1, cropped to the 88×68 window. */
+function bust(f: number): PixelCanvas {
+  const hi = new PixelCanvas(200, 144);
+  paintBust(hi, f, -1, 'stream');
+  const r = reduce2x(hi, { keep: [PAL.white, PAL.gold4, PAL.gold3], tie: 'dark' });
+  return r.crop(8, 0, 88, 68);
+}
+
 const art: CardArtV3 = {
   id: 'windmane_knight',
-  focus: [56, 36],
+  focus: [64, 26],
   focusSmall: [28, 18],
   frames: 4,
   holdMs: 180,
   big(l, f) {
-    paintBackdrop(l.backdrop, 'EARTH', { focus: [40, 34], horizon: 60, radius: 26 });
-    const c = crop(f);
-    l.subject.blit(epx(stripOutline(c)), 0, 0);
+    paintBackdrop(l.backdrop, 'EARTH', { focus: [66, 28], horizon: 62, radius: 24 });
+    const b = bust(f);
+    l.subject.blit(stripOutline(b), 0, 0);
     ink(l.subject);
     rim(l.subject, PAL.earth3, { skip: [PAL.gold3, PAL.gold4, PAL.white, PAL.earth4, PAL.earth3] });
-    l.light.blit(epx(glow(c)), 0, 0);
+    l.light.blit(glow(b), 0, 0);
   },
   small(l, f) {
-    paintBackdrop(l.backdrop, 'EARTH', { focus: [40, 34], horizon: 60, radius: 26 });
+    paintBackdrop(l.backdrop, 'EARTH', { focus: [36, 34], horizon: 62, radius: 22 });
     const c = crop(f);
     l.subject.blit(c, 0, 0);
     l.light.blit(glow(c), 0, 0);

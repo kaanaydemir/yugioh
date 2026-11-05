@@ -55,7 +55,7 @@ const key = (d: Partial<Pose>, base: Pose = IDLE0): Pose => ({ ...base, ...d });
 
 /** The hero pose: crouched 4 px, the far shoulder jammed in the shield's back, the head peering past its back edge,
  *  the foot sunk 1 px with a dirt lip, the bottom course lit. */
-const G: Partial<Pose> = { gy: 4, cx: 3, cy: 1, hx: 3, hy: 1, nu: 30, lip: 1, sink: 1, courses: 1, boss: 1, ffx: 0 };
+const G: Partial<Pose> = { gy: 4, cx: 3, cy: 1, hx: -2, hy: 0, nu: 30, lip: 1, sink: 1, courses: 1, boss: 1, ffx: 0 };
 const GUARD_N = 8;
 const GQ = {
   cy: [1, 1, 0, 0, 1, 1, 1, 1],
@@ -76,17 +76,17 @@ const GUARD_HOLDS = [180, 150, 140, 160, 180, 150, 140, 160];
 const TG: Partial<Pose>[] = [
   {},
   { gy: 1, cx: 1, lift: 2, nu: 27 },
-  { gy: 3, cx: 2, hx: 1, lift: 2, nu: 29 },
-  { gy: 4, cx: 2, hx: 2, sink: 1, lip: 1, nu: 30, boss: 2 },
-  { gy: 4, cx: 3, cy: 1, hx: 3, hy: 1, sink: 1, lip: 1, nu: 30, courses: 1 },
+  { gy: 3, cx: 2, hx: 0, lift: 2, nu: 29 },
+  { gy: 4, cx: 2, hx: -1, sink: 1, lip: 1, nu: 30, boss: 2 },
+  { gy: 4, cx: 3, cy: 1, hx: -2, hy: 0, sink: 1, lip: 1, nu: 30, courses: 1, bx: 1 },
 ];
 const toGuardPose = (f: number): Pose => (f >= TG.length ? GUARD0 : key(TG[f]));
 const TG_HOLDS = [50, 60, 70, 60, 60, 80];
 
 const FG: Partial<Pose>[] = [
   { ...G },
-  { ...G, cx: 2, hx: 2, courses: 0 },
-  { gy: 3, cx: 1, hx: 1, lift: 1, nu: 28 },
+  { ...G, cx: 2, hx: -1, courses: 0 },
+  { gy: 3, cx: 1, hx: 0, lift: 1, nu: 28 },
   { gy: 2, cx: 1, nu: 27 },
   { gy: 1, cy: -1, nu: 26 },
 ];
@@ -95,18 +95,22 @@ const FG_HOLDS = [60, 60, 60, 70, 70, 70];
 
 // ------------------------------------------------------------------ attack (12 frames): "Kale Kapısı Düşer"
 
+// Anticipation AWAY from the target: he sinks 5 px into a hunch while the slab rises 7 px and tips BACK; the stride;
+// the slab high over him at full stretch; one smear frame at ~30° (a ghost rim trailing); contact squash (he compresses,
+// the foot bounces). The whole body shifts back in the frame (sx/gx) so the 30° lean stays inside the margin — the
+// cinematic's stride is derived from the contact frame's rim corner, so the reach on screen is unchanged.
 const A: Partial<Pose>[] = [
   {},
-  { gy: 1, nu: 24, boss: 1 },
-  { gy: 2, lift: 2, rot: -3, cx: -1, hy: 1, nu: 24 },
-  { gy: 3, lift: 4, rot: -6, cx: -2, cy: 1, nod: 1, by: -1, boss: 2, nu: 23 }, // charge: hunched under the lifted slab
-  { gx: 3, nfx: 3, sx: 3, lift: 6, rot: 0, cx: 1, puff: 1, nu: 24 }, // the heavy stride
-  { gx: 5, nfx: 6, ffx: 3, sx: 5, lift: 8, rot: 6, cx: 3, cy: -2, hy: -1, mouth: 1, nu: 26 }, // raised, tipping over
-  { gx: 6, nfx: 7, ffx: 4, sx: 6, lift: 4, rot: 16, cx: 5, mouth: 1, smear: 6, nu: 26 }, // release: swings down edge-first
-  { gx: 6, nfx: 7, ffx: 4, sx: 6, lift: 0, rot: 14, cx: 5, cy: 1, boss: 3, iris: 1, courses: 3, hot: 1, glint: 1, nu: 26 }, // contact: SLAM
-  { gx: 4, nfx: 5, ffx: 3, sx: 4, lift: 2, rot: 6, cx: 3, boss: 2, nu: 26 },
-  { gx: 2, nfx: 2, ffx: 1, sx: 2, lift: 1, rot: 0, cx: 1 }, // recover: steps back
-  { lip: 1, puff: 1, cy: 1 },
+  { gy: 2, nu: 24, boss: 1, cy: 1, by: -1 },
+  { gy: 3, lift: 3, rot: -2, cx: -1, cy: 1, hy: 1, nu: 24, by: -1 },
+  { gy: 5, lift: 7, rot: -5, cx: -2, cy: 2, hy: 1, nod: 1, by: -2, bx: -1, boss: 2, nu: 23, mouth: 0 }, // charge: hunched, slab up and BACK
+  { gx: 1, gy: 2, nfx: 3, sx: 0, lift: 9, rot: 3, cx: 1, cy: -1, puff: 1, nu: 24, bx: -1 }, // the heavy stride
+  { gx: 1, gy: -1, nfx: 5, ffx: 2, sx: -2, lift: 11, rot: 12, cx: 3, cy: -3, hy: -2, nod: -1, mouth: 1, nu: 26, bx: -2, by: -1 }, // high, full stretch
+  { gx: 1, nfx: 6, ffx: 3, sx: -6, lift: 5, rot: 30, cx: 5, cy: 0, mouth: 1, smear: 9, nu: 26, bx: -2 }, // release: the smear at 30°
+  { gx: 1, gy: 2, nfx: 6, ffx: 3, sx: -5, lift: 0, sy: 1, rot: 26, cx: 5, cy: 2, hy: 1, boss: 3, iris: 1, courses: 3, hot: 1, glint: 1, nu: 26, bx: 1, by: 1 }, // contact: SLAM, squash
+  { gx: 1, gy: 1, nfx: 5, ffx: 2, sx: -4, lift: 2, rot: 18, cx: 4, cy: 1, boss: 2, nu: 26, bx: 2 }, // the slab re-lifted (haul back)
+  { gx: 1, nfx: 3, ffx: 1, sx: -2, lift: 2, rot: 7, cx: 2, boss: 2, bx: 1 }, // recover: steps back
+  { lip: 1, puff: 1, cy: 1, bx: -1 }, // the re-plant
 ];
 const attackPose = (f: number): Pose => (f >= A.length ? IDLE0 : key(A[f]));
 const ATTACK_HOLDS = [70, 80, 100, 190, 110, 70, 60, 80, 90, 100, 120, 140];
@@ -139,11 +143,13 @@ const HT: Partial<Pose>[] = [
 const hitPose = (f: number): Pose => (f >= HT.length ? IDLE0 : key(HT[f]));
 const HIT_HOLDS = [50, 60, 130, 100, 120, 130];
 
+// the shield is KNOCKED ASIDE: it swings out one iso step about its foot, away from him (his bare chest and beard
+// exposed for two frames, the rim hand torn off it), his hips stagger 2 px, then he hauls it back in
 const HH: Partial<Pose>[] = [
   { hx: -1, lid: 1, mouth: 1, boss: 2 },
-  { rot: -7, sx: -3, cx: -3, hx: -3, nod: -1, lid: 1, mouth: 1, fmode: 1, fhx: 36, fhy: 28, bx: 2 },
-  { rot: -4, sx: -2, gx: -2, cx: -3, hx: -2, fmode: 1, fhx: 36, fhy: 30, mouth: 1, bx: 1 },
-  { rot: -1, sx: -1, gx: -1, cx: -1, hx: -1, bx: -1 },
+  { rot: 9, sx: 3, cx: -2, hx: -2, nod: -1, lid: 1, mouth: 1, fmode: 1, fhx: 40, fhy: 26, bx: 2, by: -1 },
+  { rot: 6, sx: 2, gx: -2, cx: -3, hx: -2, fmode: 1, fhx: 38, fhy: 30, mouth: 1, bx: 1 },
+  { rot: -2, sx: -1, gx: -1, cx: 1, hx: 0, bx: -1 },
   { sink: 1, lip: 1, puff: 1 },
   { cy: 1, by: 1 },
   { by: 1 },
@@ -151,12 +157,14 @@ const HH: Partial<Pose>[] = [
 const hitHeavyPose = (f: number): Pose => (f >= HH.length ? IDLE0 : key(HH[f]));
 const HH_HOLDS = [50, 70, 90, 100, 110, 120, 130, 140];
 
+// the copper conducts: the rim crackles, the beard bristles out, the braid lifts, he tears his rim hand off the copper
+// and shakes it (±1 px), the body jolts 1 px
 const HM: Partial<Pose>[] = [
   { zap: 1, boss: 2, lid: 1 },
-  { zap: 2, bristle: 1, nmode: 1, nhx: 26, nhy: 50, mouth: 1, iris: 1, boss: 3 },
-  { zap: 3, bristle: 1, nmode: 1, nhx: 24, nhy: 46, lid: 2, boss: 2 },
-  { zap: 4, bristle: 0.5, nmode: 1, nhx: 28, nhy: 50, boss: 2 },
-  { bristle: 0.3, nu: 27 },
+  { zap: 2, bristle: 1, fmode: 1, fhx: 38, fhy: 18, cy: -2, gx: 1, mouth: 1, iris: 1, boss: 3, lid: 2, by: -3 },
+  { zap: 3, bristle: 1, fmode: 1, fhx: 39, fhy: 19, cy: -2, gx: -1, lid: 2, boss: 2, by: -2, bx: 1 },
+  { zap: 4, bristle: 0.6, fmode: 1, fhx: 37, fhy: 18, cy: -1, gx: 0, boss: 2, by: -1, mouth: 1 },
+  { bristle: 0.3, nu: 27, by: 1 },
   { by: 1 },
   { by: 1, bx: 1 },
 ];
@@ -175,8 +183,8 @@ const SU: Partial<Pose>[] = [
   { gy: 4, cy: 1, nfx: -1, ffx: -1, boss: 1, nu: 29 },
   { gy: 2, cy: 0, nfx: -1, boss: 1, nu: 28, hy: -1, bx: -1 },
   { gy: 1, lift: 2, cy: -1, boss: 2, nu: 27, by: -1 }, // he lifts it 2 px
-  { sink: 1, lip: 1, boss: 3, courses: 3, hot: 1, puff: 2, bx: 1, by: 1 }, // LAND: the plant
-  { sink: 1, lip: 1, boss: 3, courses: 2, bx: 2 },
+  { gy: 2, cy: 1, sink: 1, sy: 1, lip: 1, boss: 3, courses: 3, hot: 1, puff: 2, bx: 1, by: 2 }, // LAND: the plant (he drops 2 px, the foot 1 px)
+  { gy: -1, cy: -1, sink: 1, lip: 1, boss: 3, courses: 2, bx: 2, by: -1 }, // the rebound
   { sink: 1, lip: 1, boss: 2, courses: 1, bx: -1 },
   { cy: -1, hy: -1, boss: 2 },
   { by: 1 },
@@ -186,7 +194,7 @@ const SU_HOLDS = [70, 70, 70, 80, 90, 70, 80, 70, 60, 80, 90, 100, 110, 130];
 
 // ------------------------------------------------------------------ death (11 frames, dissolve @ 6): the gate closes over him
 
-const FOLD: Partial<Pose> = { gy: 10, cx: 6, cy: 10, hx: 4, hy: 4, nod: 1, lid: 2, fmode: 1, fhx: 34, fhy: 66, nmode: 1, nhx: 32, nhy: 70, nfx: -4, ffx: -4, boss: 1 };
+const FOLD: Partial<Pose> = { gy: 10, cx: 1, cy: 10, hx: -3, hy: 3, nod: 1, lid: 2, fmode: 1, fhx: 34, fhy: 66, nmode: 1, nhx: 32, nhy: 70, nfx: -4, ffx: -4, boss: 1 };
 const LID: Partial<Pose> = { fall: 90, show: 0, peek: 1 };
 const D: Partial<Pose>[] = [
   { hx: -1, nod: -1, lid: 1, mouth: 1 },
@@ -224,17 +232,20 @@ const RV_HOLDS = [100, 80, 70, 70, 60, 70, 80, 60, 90, 110, 120, 140];
 
 // ------------------------------------------------------------------ special (12 frames): "Sur Kalkanı", the ward
 
+// f5–f9: one shove per ward pulse — the shoulder drives in 2 px and the slab gives 1 px toward the attacker, then eases
+// back while the beard swings after it (overlap: no two consecutive frames are equal); the cinematic adds a 1-px nudge of
+// the whole sprite on each launch, so every pulse has its own shove even on the "ease" frames
 const SP: Partial<Pose>[] = [
   { gy: 1, boss: 2, puff: 1 },
-  { ...G, cx: 4, boss: 2 },
-  { ...G, cx: 4, boss: 3, iris: 3 }, // charge: the sunstone opens
-  { ...G, cx: 5, boss: 3, iris: 2, courses: 3, hot: 1 }, // release: the rampart rises
-  { ...G, cx: 4, boss: 2, iris: 1, courses: 3 },
-  { ...G, cx: 5, cy: 0, boss: 3, courses: 3, hot: 1 }, // shove 1
-  { ...G, cx: 4, boss: 2, courses: 3 },
-  { ...G, cx: 5, cy: 0, boss: 3, courses: 3, hot: 1 },
-  { ...G, cx: 4, boss: 2, courses: 2 },
-  { ...G, cx: 5, cy: 0, boss: 3, courses: 2, hot: 1 }, // shove 5
+  { ...G, cx: 4, boss: 2, bx: 1 },
+  { ...G, cx: 4, cy: 2, gy: 5, boss: 3, iris: 3, bx: 1, by: 1 }, // charge: the sunstone opens, he sinks into it
+  { ...G, cx: 6, sx: 1, boss: 3, iris: 2, courses: 3, hot: 1, bx: -1, mouth: 1 }, // release: the rampart rises
+  { ...G, cx: 4, boss: 2, iris: 1, courses: 3, bx: 1 },
+  { ...G, cx: 6, gx: 1, sx: 1, boss: 3, courses: 3, hot: 1, bx: -1, by: -1, mouth: 1 }, // shove 1
+  { ...G, cx: 4, cy: 2, boss: 2, courses: 3, bx: 2, by: 1 },
+  { ...G, cx: 6, gx: 1, sx: 1, boss: 3, courses: 3, hot: 1, bx: -1, mouth: 1 }, // shove 3
+  { ...G, cx: 4, cy: 2, boss: 2, courses: 2, bx: 1, by: 1 },
+  { ...G, cx: 6, gx: 1, sx: 1, boss: 3, courses: 2, hot: 1, bx: -1, by: -1, mouth: 1 }, // shove 5
   { ...G }, // = guard f0 (the hook rests here)
 ];
 const specialPose = (f: number): Pose => (f >= SP.length ? IDLE0 : key(SP[f]));
