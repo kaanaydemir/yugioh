@@ -55,7 +55,7 @@ import { PixelCanvas } from '../../art/pixel';
 import { DEPTH, LOOK_V3, type XY, zoneXY } from '../../view/layout';
 import { Raster, onFrame, run } from '../../vfx/setpieces';
 import { Sparks as PxSparks } from '../../vfx/combat';
-import { wait } from '../../vfx/core';
+import { hitStop, wait } from '../../vfx/core';
 import { fxRng } from '../_v3/spellfx';
 import { panAt, play as playV3 } from '../_v3/sound';
 import { cardLeaves, landingCount } from '../_v3/card';
@@ -80,23 +80,29 @@ export const SIEVE_T = Object.freeze({
   shake: 320,
   /** One shake cycle (6 Hz) and the number of cycles. */
   cycleMs: 167,
-  cycles: 3,
-  toss: [830, 990, 1150] as readonly number[],
+  cycles: 4,
+  /** The tosses: the third (the climax) waits a beat longer and dips deeper. */
+  toss: [1040, 1220, 1440] as readonly number[],
   dipMs: 45,
+  bigDipMs: 80,
   flickMs: 40,
-  tossFlightMs: 230,
-  settle: 1300,
+  /** A tossed card's flight: base + per px of path (it carries the card almost all the way to the hand). */
+  flightBase: 220,
+  flightPerPx: 0.62,
+  /** Hit-stop on the third toss (scene ms). */
+  bigStop: 70,
+  settle: 1700,
   settleMs: 160,
   // the discard (from the first discard event)
-  dropMs: 260,
+  dropMs: 300,
   dropGap: 80,
   /** after the jolt: the pause before the cards dry, each drying step */
   strawWait: 30,
-  strawStepMs: 50,
-  gustMs: 440,
+  strawStepMs: 60,
+  gustMs: 560,
   /** the unravel starts this long after the gust */
-  unravelAfter: 300,
-  unravelMs: 220,
+  unravelAfter: 360,
+  unravelMs: 240,
 });
 
 /** Hover heights of the sieve over its shadow (px). */
@@ -107,25 +113,45 @@ const H_CATCH = 14;
 
 // ================================================================ the sieve's geometry (raster-local px)
 
-const W = 78;
-const H = 48;
-const CX = 39;
-/** Centre of the rim's top ellipse. */
-const CY = 16;
-const RX = 30;
-const RY = 13;
-const RXI = 27;
-const RYI = 11;
+/** A giant winnowing sieve: ~100 px across (1.5 tiles), on the caster's side near the board's middle. */
+const RX = 48;
+const RY = 20;
+const RXI = 44;
+const RYI = 17;
 /** The hoop's depth: the mesh lies this far under the rim. */
-const HOOP = 6;
+const HOOP = 8;
+/** Room for the shake (±6), the squash stretch (2) and the outline. */
+const W = 2 * (RX + 11);
+const CX = RX + 11;
+/** Centre of the rim's top ellipse. */
+const CY = RY + 4;
+const H = CY + RY + HOOP + 4;
 /** The mesh centre (the point that sits over the floor point). */
 const MY = CY + HOOP;
+/** Shake offsets of one cycle (12 steps ≈ one rendered frame each at 6 Hz), ±6 px. */
+const SHAKE = [0, 3, 5, 6, 5, 3, 0, -3, -5, -6, -5, -3] as const;
+/** The three cards standing in the grain: x off the heap centre, y off the mesh centre, lean. */
+const CARD_SPOTS: readonly (readonly [number, number, number])[] = [
+  [-18, 1, -1],
+  [1, -3, 0],
+  [19, 1, 1],
+];
 
 const ellY = (x: number, rx: number, ry: number): number => ry * Math.sqrt(Math.max(0, 1 - (x / rx) * (x / rx)));
 function inEll(x: number, y: number, cx: number, cy: number, rx: number, ry: number): boolean {
   const dx = (x + 0.5 - cx) / rx;
   const dy = (y + 0.5 - cy) / ry;
   return dx * dx + dy * dy <= 1;
+}
+
+/** A discarded card resting in the grain (its own pixel canvas, already outlined), half sunk. */
+interface Resting {
+  pc: PixelCanvas;
+  /** x of its centre off the mesh centre, y of its foot (layer px) */
+  dx: number;
+  foot: number;
+  /** rows of its foot buried in the grain */
+  sink: number;
 }
 
 interface SieveState {
@@ -139,6 +165,10 @@ interface SieveState {
   /** shake offset (px, x) and the dip / flick offset (px, y) */
   sx: number;
   dy: number;
+  /** a 1-frame squash on a stroke (px) */
+  squash: number;
+  /** the rim's flash (frames left; > 2 = white) */
+  rimFlash: number;
   /** hover height over the shadow */
   hgt: number;
   /** unravel: rows from the front gone 0..1, hoop opened 0..1 */
@@ -148,6 +178,8 @@ interface SieveState {
   /** the player's card-back tones for the cards in the grain */
   backTone: number;
   rimTone: number;
+  /** discarded cards resting in the grain */
+  rest: Resting[];
 }
 
 /** The mesh: a basket weave of straw strands (4×2 cells, alternating horizontal / vertical), a dark gap per cell. */
@@ -177,6 +209,8 @@ function grainTone(x: number, y: number, top: boolean, foot: boolean, phase: num
 function paintSieve(p: PixelCanvas, s: SieveState): void {
   const ox = R(s.sx);
   const cx = CX + ox;
+  const flash = s.rimFlash > 0;
+  const rimHi = s.rimFlash > 2 ? PAL.white : PAL.gold4;
   // the hoop's built part: angle measured from the front-centre (θ = 0 front, ±π back), visible while |θ| ≤ hoop·π
   const hoopOk = (dx: number, dy: number): boolean => {
     if (s.hoop >= 1 && s.undo <= 0) return true;
@@ -197,8 +231,10 @@ function paintSieve(p: PixelCanvas, s: SieveState): void {
         if (!hoopOk(dx, dy)) continue;
         // the rim's top surface: lit along its outer edge on the left / back, bound with straw lashings
         const edge = !inEll(x, y - 1, cx, CY, RX, RY);
-        const lash = Math.abs(Math.round(Math.atan2(dy / RY, dx / RX) / (TAU / 14)) * (TAU / 14) - Math.atan2(dy / RY, dx / RX)) < 0.07;
-        p.set(x, y, lash ? PAL.gold3 : edge && dx < 6 ? PAL.earth4 : PAL.earth3);
+        const ang = Math.atan2(dy / RY, dx / RX);
+        const lash = Math.abs(Math.round(ang / (TAU / 18)) * (TAU / 18) - ang) < 0.05;
+        if (flash) p.set(x, y, edge ? rimHi : PAL.gold3);
+        else p.set(x, y, lash ? PAL.gold3 : edge && dx < 10 ? PAL.earth4 : PAL.earth3);
         continue;
       }
       if (!innerTop) continue;
@@ -215,65 +251,81 @@ function paintSieve(p: PixelCanvas, s: SieveState): void {
       if (s.undo > 0 && 1 - row < s.undo * 1.4) continue;
       p.set(x, y, meshTone(x - ox, y));
     }
-  // ---- the grain heap (a mound on the mesh, sloshing) and the cards working their way up out of it
+  // ---- the grain heap (a mound on the mesh, sloshing: it piles up on the side it is thrown to) and the cards
+  //      working their way up out of it
+  const hx = cx + R(s.slosh);
+  const ph = Math.floor(s.el / 90) % 5;
   if (s.heap > 0 && s.mesh > 0.6) {
-    const hx = cx + R(s.slosh);
-    const grx = Math.max(2, R(19 * s.heap));
-    const gry = Math.max(1, R(7 * s.heap));
-    const hh = Math.max(1, R(5 * s.heap));
-    const ph = Math.floor(s.el / 90) % 5;
-    for (let y = MY - gry - hh - 1; y <= MY + gry; y++)
+    const grx = Math.max(2, R(34 * s.heap));
+    const gry = Math.max(1, R(13 * s.heap));
+    const hh = Math.max(1, R(8 * s.heap));
+    const tilt = Math.max(-1, Math.min(1, s.slosh / 6));
+    const liftAt = (x: number): number => {
+      const dx = (x + 0.5 - hx) / grx;
+      return R(hh * Math.max(0, 1 - dx * dx) * (1 + tilt * dx * 0.7) + Math.max(0, tilt * dx) * hh * 0.5);
+    };
+    for (let y = MY - gry - hh - 4; y <= MY + gry; y++)
       for (let x = hx - grx; x <= hx + grx; x++) {
-        // the mound: an ellipse raised by a dome (higher in the middle)
-        const dx = (x + 0.5 - hx) / grx;
-        const lift = R(hh * Math.max(0, 1 - dx * dx));
+        const lift = liftAt(x);
         if (!inEll(x, y + lift, hx, MY, grx, gry)) continue;
         if (!inEll(x, y, cx, MY, RXI - 1, RYI - 1) && !inEll(x, y + lift, cx, MY, RXI - 1, RYI - 1)) continue;
         if (s.undo > 0 && (y - (MY - RYI)) / (2 * RYI) > 1 - s.undo * 1.4) continue;
-        const top = !inEll(x, y - 1 + lift, hx, MY, grx, gry) || (lift > 0 && !inEll(x, y - 1 + R(hh * Math.max(0, 1 - dx * dx)), hx, MY, grx, gry));
+        const top = !inEll(x, y - 1 + lift, hx, MY, grx, gry);
         const foot = y > MY + gry - 2;
         p.set(x, y, grainTone(x, y, top && y < MY, foot, ph));
       }
     // the three cards: backs standing out of the grain, staggered (left leaning, middle straight, right leaning)
-    const spots: readonly [number, number, number][] = [
-      [-10, 1, -1],
-      [1, -2, 0],
-      [11, 1, 1],
-    ];
     s.cards.forEach((up, i) => {
       if (up <= 0) return;
-      const [dx, dy, lean] = spots[i];
+      const [dx, dy, lean] = CARD_SPOTS[i];
       const base = MY + dy;
-      const tall = R(up * 11);
+      const tall = R(up * 14);
       for (let k = 0; k < tall; k++) {
         const y = base - k;
-        const shift = lean === 0 ? 0 : Math.floor(k / 4) * lean;
-        for (let c = 0; c < 8; c++) {
-          const x = hx + dx - 4 + c + shift;
-          const rim = c === 0 || c === 7 || k === tall - 1;
-          p.set(x, y, rim ? s.rimTone : (c + k) % 4 === 0 ? PAL.night4 : s.backTone);
+        const shift = lean === 0 ? 0 : Math.floor(k / 5) * lean;
+        for (let c = 0; c < 10; c++) {
+          const x = hx + dx - 5 + c + shift;
+          const rim = c === 0 || c === 9 || k === tall - 1;
+          p.set(x, y, rim ? s.rimTone : (c + k) % 5 === 0 ? PAL.night4 : s.backTone);
         }
       }
+      // grain heaped round its foot (the card is IN the grain)
+      for (let c = -1; c < 11; c++) p.set(hx + dx - 5 + c, base, grainTone(hx + dx + c, base, (c & 1) === 0, false, ph));
     });
   }
-  // ---- the front wall of the hoop (covers the mesh's front edge and the heap's foot)
+  // ---- the discarded cards resting half sunk in the grain (their buried rows painted as grain)
+  for (const r of s.rest) {
+    const x0 = hx + r.dx - Math.floor(r.pc.w / 2);
+    const y0 = r.foot - r.pc.h;
+    for (let y = 0; y < r.pc.h; y++)
+      for (let x = 0; x < r.pc.w; x++) {
+        const c = r.pc.get(x, y);
+        if (c === null) continue;
+        const buried = y >= r.pc.h - r.sink;
+        const gy = y0 + y;
+        const crest = y === r.pc.h - r.sink;
+        p.set(x0 + x, gy, buried ? grainTone(x0 + x, gy, crest, false, ph) : c);
+      }
+  }
+  // ---- the front wall of the hoop (covers the mesh's front edge, the heap's foot and the resting cards' feet)
   for (let x = cx - RX; x <= cx + RX; x++) {
     const dx = x + 0.5 - cx;
     const top = Math.floor(CY + ellY(dx, RX, RY));
     const lipIn = Math.floor(CY + ellY(dx, RXI, RYI));
     if (!hoopOk(dx, ellY(dx, RX, RY))) continue;
     // the near rim's top surface
-    for (let y = Math.abs(dx) < RXI ? lipIn + 1 : Math.floor(CY); y <= top; y++) p.set(x, y, y === top ? PAL.earth4 : PAL.earth3);
-    // the bent-wood band: lit left, mid, shaded right; straw lashings every 9 px
+    for (let y = Math.abs(dx) < RXI ? lipIn + 1 : Math.floor(CY); y <= top; y++) p.set(x, y, flash ? (y === top ? rimHi : PAL.gold3) : y === top ? PAL.earth4 : PAL.earth3);
+    // the bent-wood band: lit left, mid, shaded right; straw lashings every 11 px
     const side = dx < -RX * 0.4 ? 0 : dx > RX * 0.45 ? 2 : 1;
     const band = [PAL.earth3, PAL.earth2, PAL.earth1][side];
-    const lash = (x - cx + 60) % 9 < 2;
+    const lash = (x - cx + 66) % 11 < 2;
     for (let y = top + 1; y <= top + HOOP; y++) {
       const r = y - top;
       let c: number = band;
       if (lash) c = r === 1 ? PAL.gold4 : PAL.gold3;
       else if (r === HOOP) c = side === 2 ? PAL.earth0 : PAL.earth1;
-      else if (r === 1) c = side === 0 ? PAL.earth4 : PAL.earth3;
+      else if (r === 1) c = flash ? PAL.gold4 : side === 0 ? PAL.earth4 : PAL.earth3;
+      else if (r === 4 && (x + 1) % 4 === 0) c = side === 2 ? PAL.earth0 : PAL.earth1;
       p.set(x, y, c);
     }
   }
@@ -292,29 +344,42 @@ interface Sieve {
   sift: number;
   /** Floating motes in the pool while waiting. */
   motes: boolean;
+  /** Throw a handful of grains over the rim on the side `dir` (a hard stroke). */
+  spill(dir: number, n: number): void;
   alive(): boolean;
   stop(): void;
 }
 
+/** Sieve depth: above the units' stat plates (it hangs over the board for its whole life), under the hand / HUD. */
+const D_SIEVE = DEPTH.FX_TOP + 2;
+
 function makeSieve(sc: Phaser.Scene, floor: XY, player: PlayerId, seed: number): Sieve {
   const fx = R(floor.x);
   const fy = R(floor.y);
-  const ras = new Raster(sc, fx - CX, fy - H_BORN - MY, W, H, DEPTH.FX + 2);
-  const shadow = new Raster(sc, fx - RX - 2, fy - RY - 2, 2 * RX + 5, 2 * RY + 5, DEPTH.TILE_FX + 3);
-  shadow.img.setAlpha(0.42);
+  const ras = new Raster(sc, fx - CX, fy - H_BORN - MY, W, H, D_SIEVE);
+  // the shadow: a flat, opaque palette ellipse on the floor (no alpha blending over the tiles)
+  const shadow = new Raster(sc, fx - RX - 4, fy - RY - 2, 2 * RX + 9, 2 * RY + 5, DEPTH.TILE_FX + 3);
   const layer = new PixelCanvas(W, H);
-  const chaff = new PxSparks(sc, DEPTH.FX + 1);
-  const air = new PxSparks(sc, DEPTH.FX + 3);
+  const chaff = new PxSparks(sc, D_SIEVE - 1);
+  const air = new PxSparks(sc, D_SIEVE + 1);
+  const spillSp = new PxSparks(sc, D_SIEVE + 0.5);
   const rnd = fxRng(seed);
   const ramp = PLAYER_RAMP[player];
-  const s: SieveState = { hoop: 0, mesh: 0, heap: 0, slosh: 0, cards: [0, 0, 0], sx: 0, dy: 0, hgt: H_BORN, undo: 0, el: 0, backTone: PAL.night3, rimTone: ramp[2] };
+  const s: SieveState = { hoop: 0, mesh: 0, heap: 0, slosh: 0, cards: [0, 0, 0], sx: 0, dy: 0, squash: 0, rimFlash: 0, hgt: H_BORN, undo: 0, el: 0, backTone: PAL.night3, rimTone: ramp[2], rest: [] };
   const rig: Sieve = {
     s,
     floor: { x: fx, y: fy },
     sift: 0,
     motes: false,
-    crest: () => ({ x: fx + R(s.sx + s.slosh), y: fy - R(s.hgt + s.dy) - R(4 * s.heap) - 2 }),
+    crest: () => ({ x: fx + R(s.sx + s.slosh), y: fy - R(s.hgt + s.dy) - R(8 * s.heap) - 2 }),
     mesh: () => ({ x: fx + R(s.sx), y: fy - R(s.hgt + s.dy) }),
+    spill(dir, n) {
+      const y = fy - R(s.hgt + s.dy) - HOOP + 2;
+      for (let i = 0; i < n; i++) {
+        const x = fx + R(s.sx) + dir * (RX - 6 - R(rnd() * 8));
+        spillSp.add({ x, y: y - R(rnd() * 3), vx: dir * (30 + rnd() * 50), vy: -(40 + rnd() * 50), ay: 520, life: 260 + rnd() * 160, colors: [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2], shape: rnd() < 0.35 ? 'sq' : 'px', size: 2, fadeAt: 1 });
+      }
+    },
     alive: () => ras.alive,
     stop() {
       stopFrame();
@@ -322,6 +387,7 @@ function makeSieve(sc: Phaser.Scene, floor: XY, player: PlayerId, seed: number):
       shadow.destroy();
       chaff.release();
       air.release();
+      spillSp.release();
     },
   };
   let lastMote = 0;
@@ -334,32 +400,50 @@ function makeSieve(sc: Phaser.Scene, floor: XY, player: PlayerId, seed: number):
     layer.outline(PAL.ink);
     ras.moveTo(fx - CX, fy - R(s.hgt + s.dy) - MY);
     ras.begin();
-    ras.pc.blit(layer, 0, 0);
+    const k = s.squash;
+    if (k > 0) {
+      // a stroke's squash: bottom anchored, k rows shorter and k px wider each side (nearest neighbour, whole px)
+      for (let y = k; y < H; y++) {
+        const sy = Math.min(H - 1, Math.floor(((y - k) * H) / (H - k)));
+        for (let x = 0; x < W; x++) {
+          const sxp = CX + R(((x - CX) * RX) / (RX + k));
+          if (sxp < 0 || sxp >= W) continue;
+          const c = layer.get(sxp, sy);
+          if (c !== null) ras.pc.set(x, y, c);
+        }
+      }
+    } else ras.pc.blit(layer, 0, 0);
     ras.end();
-    // its shadow on the floor: a flat ink ellipse, smaller and lighter the higher it hangs
+    if (dt > 0 && s.rimFlash > 0) s.rimFlash--;
+    // its shadow on the floor: a flat night ellipse with an ink core, smaller the higher it hangs
     shadow.begin();
     if (s.hoop > 0) {
-      const k = Math.max(0.5, 1 - s.hgt / 70);
-      const rx = R(RX * k * Math.min(1, s.hoop * 1.5) * (1 - s.undo * 0.6));
-      const ry = Math.max(1, R(RY * k * Math.min(1, s.hoop * 1.5) * (1 - s.undo * 0.6)));
-      if (rx > 0) shadow.pc.ellipse(RX + 2 + R(s.sx * 0.5), RY + 2, rx, ry, PAL.ink);
+      const kk = Math.max(0.5, 1 - s.hgt / 80);
+      const g = Math.min(1, s.hoop * 1.5) * (1 - s.undo * 0.6);
+      const rx = R(RX * kk * g);
+      const ry = Math.max(1, R(RY * kk * g));
+      const sx = RX + 4 + R(s.sx * 0.5);
+      if (rx > 0) {
+        shadow.pc.ellipse(sx, RY + 2, rx, ry, PAL.night0);
+        if (rx > 6) shadow.pc.ellipse(sx, RY + 2, rx - 5, Math.max(1, ry - 3), PAL.ink);
+      }
     }
     shadow.end();
     // chaff sifting through the mesh: a fine golden curtain down to the floor
     if (dt > 0 && rig.sift > 0) {
       const n = rig.sift * (dt / 16.7);
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < 5; i++) {
         if (rnd() > n / 3) continue;
-        const x = fx + R(s.sx) + R((rnd() - 0.5) * 2 * (RXI - 4));
+        const x = fx + R(s.sx) + R((rnd() - 0.5) * 2 * (RXI - 6));
         const y0 = fy - R(s.hgt + s.dy) + RY - 2 + HOOP;
         const fall = Math.max(4, y0 < fy ? fy - y0 : 4);
-        chaff.add({ x, y: y0, vx: (rnd() - 0.5) * 6, vy: 14 + rnd() * 10, ay: 160, life: Math.min(420, 120 + fall * 9), colors: [PAL.gold4, PAL.gold3, PAL.gold2, PAL.earth2], shape: 'px', fadeAt: 0.85 });
+        chaff.add({ x, y: y0, vx: (rnd() - 0.5) * 6, vy: 14 + rnd() * 10, ay: 160, life: Math.min(420, 120 + fall * 9), colors: [PAL.gold4, PAL.gold3, PAL.gold2, PAL.earth2], shape: 'px', fadeAt: 1 });
       }
     }
     // motes rising slowly in the warm pool while it waits
-    if (dt > 0 && rig.motes && el - lastMote > 150) {
+    if (dt > 0 && rig.motes && el - lastMote > 120) {
       lastMote = el;
-      air.add({ x: fx + R((rnd() - 0.5) * 2 * RX), y: fy - R(rnd() * 6), vx: (rnd() - 0.5) * 4, vy: -(7 + rnd() * 8), life: 700 + rnd() * 500, colors: [PAL.gold3, PAL.gold2, PAL.gold1], shape: 'px', fadeAt: 0.6 });
+      air.add({ x: fx + R((rnd() - 0.5) * 2 * RX), y: fy - R(rnd() * 6), vx: (rnd() - 0.5) * 4, vy: -(7 + rnd() * 8), life: 700 + rnd() * 500, colors: [PAL.gold3, PAL.gold2, PAL.gold1], shape: 'px', fadeAt: 1 });
     }
     return true;
   });
@@ -368,10 +452,10 @@ function makeSieve(sc: Phaser.Scene, floor: XY, player: PlayerId, seed: number):
 
 // ================================================================ the floor (landing ring), the pour column
 
-function floorRing(sc: Phaser.Scene, at: XY, ms = 300, r0 = 6, r1 = 34): Promise<void> {
+function floorRing(sc: Phaser.Scene, at: XY, ms = 320, r0 = 8, r1 = 58): Promise<void> {
   const fx0 = R(at.x);
   const fy0 = R(at.y);
-  const ras = new Raster(sc, fx0 - 40, fy0 - 20, 81, 41, DEPTH.TILE_FX + 4);
+  const ras = new Raster(sc, fx0 - 62, fy0 - 32, 125, 65, DEPTH.TILE_FX + 4);
   const ramp = [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2, PAL.gold1];
   let f = 0;
   return run(sc, ms, (t, _el, dt) => {
@@ -381,11 +465,11 @@ function floorRing(sc: Phaser.Scene, at: XY, ms = 300, r0 = 6, r1 = 34): Promise
       g.ring(fx0 + 0.5, fy0 + 0.5, r, r / 2, ramp[Math.min(ramp.length - 1, Math.floor(t * ramp.length))]);
       // a wheat-ear rune: four short ticks round the ring, for the first frames
       if (f < 4) {
-        g.ring(fx0 + 0.5, fy0 + 0.5, 18, 9, f < 2 ? PAL.gold4 : PAL.gold2);
-        for (let k = 0; k < 4; k++) {
-          const a = (k / 4) * TAU;
-          g.px(fx0 + R(Math.cos(a) * 21), fy0 + R(Math.sin(a) * 10.5), PAL.white);
-          g.px(fx0 + R(Math.cos(a) * 23), fy0 + R(Math.sin(a) * 11.5), PAL.gold3);
+        g.ring(fx0 + 0.5, fy0 + 0.5, 30, 15, f < 2 ? PAL.gold4 : PAL.gold2);
+        for (let k = 0; k < 8; k++) {
+          const a = (k / 8) * TAU;
+          g.px(fx0 + R(Math.cos(a) * 34), fy0 + R(Math.sin(a) * 17), PAL.white);
+          g.px(fx0 + R(Math.cos(a) * 37), fy0 + R(Math.sin(a) * 18.5), PAL.gold3);
         }
       }
     });
@@ -395,9 +479,9 @@ function floorRing(sc: Phaser.Scene, at: XY, ms = 300, r0 = 6, r1 = 34): Promise
 /** A column of wheat falling into the bowl from above (2–3 px wide, stepped, grains streaming). */
 function pourColumn(sc: Phaser.Scene, sv: Sieve, ms: number, seed: number): Promise<void> {
   const rnd = fxRng(seed);
-  const TOP = 46;
-  const ras = new Raster(sc, 0, 0, 9, TOP + 8, DEPTH.FX + 2.5);
-  const grains = new PxSparks(sc, DEPTH.FX + 2.6);
+  const TOP = 56;
+  const ras = new Raster(sc, 0, 0, 9, TOP + 8, D_SIEVE + 0.5);
+  const grains = new PxSparks(sc, D_SIEVE + 0.6);
   return run(sc, ms, (t, el, dt) => {
     const m = sv.crest();
     ras.moveTo(m.x - 4, m.y - TOP);
@@ -429,14 +513,19 @@ function pourColumn(sc: Phaser.Scene, sv: Sieve, ms: number, seed: number): Prom
 
 // ================================================================ a tumbling card (a native pixel drawing)
 
-/** Native sizes of a card as it flies (never a scaled sprite). */
+/** Native sizes of a card as it flies (never a scaled sprite); the last is the hand card itself (48 × 68). */
 const SIZES: readonly (readonly [number, number])[] = [
   [8, 11],
   [12, 17],
   [16, 23],
   [20, 28],
   [24, 34],
+  [32, 45],
+  [40, 57],
+  [48, 68],
 ];
+/** The size the hand's own draw sprite starts at (scale 0.5): a tossed card is handed over at exactly this size. */
+const HANDOFF_SIZE = 4;
 /** Height factors of a card tumbling end over end (stepped quarter turns). */
 const TUMBLE = [1, 0.66, 0.3, 0.08, 0.3, 0.66] as const;
 
@@ -461,54 +550,60 @@ function paintCardAt(p: PixelCanvas, src: PixelCanvas, w: number, h: number, fh:
   p.outline(PAL.ink);
 }
 
-interface Toss {
-  apex: Promise<XY>;
-  destroy(): void;
-}
-
-/** A card flicked out of the grain: it tumbles up and toward the hand; resolves at the apex. */
-function tossCard(sc: Phaser.Scene, from: XY, to: XY, player: PlayerId, ms: number, high: number): Toss {
+/**
+ * A card flicked out of the grain: it hops `up` px over its start, then tumbles DOWN along one parabola toward the
+ * hand, growing through native sizes, two grains riding behind it; it is handed over to the hand's own sprite only
+ * at `handoff` (a few dozen px from its slot), at the hand sprite's starting size. Resolves there.
+ */
+function tossCard(sc: Phaser.Scene, from: XY, handoff: XY, player: PlayerId, up: number, ms: number, seed: number): Promise<XY> {
   const BOX = 40;
   const ras = new Raster(sc, from.x - BOX / 2, from.y - BOX / 2, BOX, BOX, DEPTH.FX_TOP + 12);
   const pc = new PixelCanvas(BOX, BOX);
   const back = cardBackCanvas(player);
   const rim = PLAYER_RAMP[player][3];
-  // the apex: up out of the bowl and leaning toward the hand (the hand's own flight continues from there)
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const dl = Math.max(1, Math.hypot(dx, dy));
-  const apex: XY = { x: R(from.x + (dx / dl) * 26), y: R(Math.max(40, from.y - high + Math.max(0, (dy / dl) * 14))) };
-  let dead = false;
-  const draw = (pos: XY, size: number, fh: number) => {
-    if (dead) return;
+  const trail = new PxSparks(sc, DEPTH.FX_TOP + 11);
+  const rnd = fxRng(seed);
+  // y(t) = y0 + d·t − 4h·t(1 − t): h is chosen so the path's highest point is `up` px over the higher end
+  const d = handoff.y - from.y;
+  const U = up + Math.max(0, -d);
+  const B = 8 * d + 16 * U;
+  const h = (B + Math.sqrt(Math.max(0, B * B - 64 * d * d))) / 32;
+  const at = (t: number): XY => ({ x: from.x + (handoff.x - from.x) * t, y: from.y + d * t - 4 * h * t * (1 - t) });
+  let last = from;
+  let f = 0;
+  return run(sc, ms, (t, _el, dt) => {
+    // a little ease-out on the way up, then it drops (the parabola does the rest)
+    const u = t < 0.3 ? 0.3 * Math.sin(((t / 0.3) * Math.PI) / 2) : t;
+    const pos = at(u);
+    const size = Math.min(HANDOFF_SIZE, Math.floor(Math.sqrt(t) * 6));
+    const turn = Math.floor(Math.pow(t, 0.75) * TUMBLE.length * 1.5);
+    const fh = t > 0.86 ? 1 : TUMBLE[turn % TUMBLE.length];
     pc.clear();
-    const [w, h] = SIZES[size];
-    paintCardAt(pc, back, w, h, fh, rim);
+    const [w, hh] = SIZES[size];
+    paintCardAt(pc, back, w, hh, fh, rim);
     ras.moveTo(R(pos.x) - BOX / 2, R(pos.y) - BOX / 2);
     ras.begin();
     ras.pc.blit(pc, 0, 0);
     ras.end();
-  };
-  const apexP = run(sc, ms, (t) => {
-    const k = 1 - (1 - t) * (1 - t);
-    const pos = { x: from.x + (apex.x - from.x) * t, y: from.y + (apex.y - from.y) * k };
-    const size = Math.min(SIZES.length - 1, Math.floor(Math.pow(t, 0.75) * SIZES.length * 1.1));
-    // one and a half tumbles, slowing into the apex
-    const turn = Math.floor(Math.pow(t, 0.7) * TUMBLE.length * 1.5);
-    const fh = t > 0.92 ? 1 : TUMBLE[turn % TUMBLE.length];
-    draw(pos, size, fh);
+    // two grains ride behind it, a third shaken off every few frames
+    if (dt > 0) {
+      f++;
+      const vx = pos.x - last.x;
+      const vy = pos.y - last.y;
+      const vl = Math.max(0.5, Math.hypot(vx, vy));
+      const bx = -vx / vl;
+      const by = -vy / vl;
+      const rr = Math.round(hh * fh * 0.5) + 2;
+      trail.add({ x: R(pos.x + bx * rr), y: R(pos.y + by * rr), life: 50, colors: [PAL.gold4], shape: 'px', fadeAt: 1 });
+      trail.add({ x: R(pos.x + bx * (rr + 3) + by * 2), y: R(pos.y + by * (rr + 3) - bx * 2), life: 50, colors: [PAL.gold3], shape: 'px', fadeAt: 1 });
+      if (f % 3 === 0) trail.add({ x: R(pos.x + bx * rr), y: R(pos.y + by * rr), vx: (rnd() - 0.5) * 20, vy: 10 + rnd() * 20, ay: 300, life: 220 + rnd() * 120, colors: [PAL.gold4, PAL.gold3, PAL.gold2], shape: 'px', fadeAt: 1 });
+    }
+    last = pos;
   }).then(() => {
-    draw(apex, SIZES.length - 1, 1);
-    return { ...apex };
+    ras.destroy();
+    trail.release();
+    return { x: R(handoff.x), y: R(handoff.y) };
   });
-  return {
-    apex: apexP,
-    destroy() {
-      if (dead) return;
-      dead = true;
-      ras.destroy();
-    },
-  };
 }
 
 // ================================================================ straw (the discard)
@@ -516,76 +611,142 @@ function tossCard(sc: Phaser.Scene, from: XY, to: XY, player: PlayerId, ms: numb
 interface Stalk {
   x: number;
   y: number;
+  /** body length (px) */
   len: number;
-  ang: number;
+  /** start direction (0..7, 45° steps) and how many eighth turns it tumbles over the flight */
+  dir: number;
   spin: number;
+  /** its kink: the last third bends one step left or right */
+  bend: 1 | -1;
   delay: number;
   wob: number;
-  tone: number;
 }
 
-/** A gust carries `stalks` from their spots to `to` along a curved path; resolves as the last one lands. */
+/** The eight 45° directions (x right, y down). */
+const DIRS: readonly (readonly [number, number])[] = [
+  [1, 0],
+  [1, 1],
+  [0, 1],
+  [-1, 1],
+  [-1, 0],
+  [-1, -1],
+  [0, -1],
+  [1, -1],
+];
+const STALK_BOX = 30;
+const STALKS = new Map<string, PixelCanvas>();
+
+/**
+ * One straw stalk as a hand-placed pixel drawing: a 2-px bent straw (a gold4 lit edge over a gold2 body, ink
+ * outline) with a wheat ear at its tip (alternating grains on both sides), along direction `dir`, kinked one step.
+ */
+function stalkSprite(dir: number, bend: 1 | -1, len: number): PixelCanvas {
+  const key = `${dir}:${bend}:${len}`;
+  const hit = STALKS.get(key);
+  if (hit) return hit;
+  const p = new PixelCanvas(STALK_BOX, STALK_BOX);
+  const d0 = DIRS[dir];
+  const d1 = DIRS[(dir + 8 + bend) % 8];
+  // the second row of the 2-px straw: below a flat / diagonal stroke, right of a vertical one
+  const thick = (d: readonly [number, number]): readonly [number, number] => (d[0] === 0 ? [1, 0] : [0, 1]);
+  const total = len + 4;
+  let x = Math.floor(STALK_BOX / 2) - Math.round((d0[0] * len * 2) / 3 + (d1[0] * total) / 6);
+  let y = Math.floor(STALK_BOX / 2) - Math.round((d0[1] * len * 2) / 3 + (d1[1] * total) / 6);
+  const knee = Math.round(len * 0.66);
+  let d = d0;
+  for (let i = 0; i < len; i++) {
+    if (i === knee) d = d1;
+    const t = thick(d);
+    p.set(x + t[0], y + t[1], i === knee ? PAL.gold1 : PAL.gold2);
+    p.set(x, y, i % 4 === 3 ? PAL.gold3 : PAL.gold4);
+    x += d[0];
+    y += d[1];
+  }
+  // the ear: a spine of grains with grains on both sides, alternating
+  const n: readonly [number, number] = [-d[1], d[0]];
+  for (let i = 0; i < 4; i++) {
+    const ex = x + d[0] * i;
+    const ey = y + d[1] * i;
+    p.set(ex, ey, i === 3 ? PAL.gold4 : PAL.gold3);
+    if (i < 3) {
+      const side = i % 2 === 0 ? 1 : -1;
+      p.set(ex + n[0] * side, ey + n[1] * side, PAL.gold4);
+      p.set(ex - n[0] * side, ey - n[1] * side, PAL.gold2);
+    }
+  }
+  p.outline(PAL.ink);
+  STALKS.set(key, p);
+  return p;
+}
+
+/**
+ * The winnowing gust: three flat ribbon swooshes (tapered 3 → 1 px mist / white bands, staggered) run from the sieve
+ * to `to`; the stalks lift, tumble in 45° steps and ride it into the pile, shedding a chaff cloud that thins along
+ * the way. Resolves as the last stalk lands.
+ */
 function gustStraw(sc: Phaser.Scene, stalks: Stalk[], to: XY, ms: number, onLand: (k: number) => void, seed: number): Promise<void> {
   const rnd = fxRng(seed);
-  // the box that holds the whole flight
   const xs = [...stalks.map((s) => s.x), to.x];
   const ys = [...stalks.map((s) => s.y), to.y];
-  const bx0 = Math.floor(Math.min(...xs)) - 40;
-  const by0 = Math.floor(Math.min(...ys)) - 60;
-  const bx1 = Math.ceil(Math.max(...xs)) + 40;
-  const by1 = Math.ceil(Math.max(...ys)) + 20;
+  const bx0 = Math.floor(Math.min(...xs)) - 50;
+  const by0 = Math.floor(Math.min(...ys)) - 70;
+  const bx1 = Math.ceil(Math.max(...xs)) + 50;
+  const by1 = Math.ceil(Math.max(...ys)) + 24;
   const ras = new Raster(sc, bx0, by0, bx1 - bx0, by1 - by0, DEPTH.FX_TOP + 6);
+  const cloud = new PxSparks(sc, DEPTH.FX_TOP + 5);
   const from: XY = { x: stalks.reduce((a, s) => a + s.x, 0) / stalks.length, y: stalks.reduce((a, s) => a + s.y, 0) / stalks.length };
-  const lift = 34 + Math.min(30, Math.abs(to.x - from.x) * 0.12);
+  const lift = 30 + Math.min(34, Math.abs(to.x - from.x) * 0.14);
   const ctrl: XY = { x: (from.x + to.x) / 2, y: Math.min(from.y, to.y) - lift };
   const bez = (a: XY, t: number): XY => ({
     x: (1 - t) * (1 - t) * a.x + 2 * (1 - t) * t * ctrl.x + t * t * to.x,
     y: (1 - t) * (1 - t) * a.y + 2 * (1 - t) * t * ctrl.y + t * t * to.y,
   });
+  // the path's length (for 1-px sampling of the ribbons)
+  let plen = 0;
+  for (let i = 1; i <= 20; i++) {
+    const a = bez(from, (i - 1) / 20);
+    const b = bez(from, i / 20);
+    plen += Math.hypot(b.x - a.x, b.y - a.y);
+  }
   const landed = new Array(stalks.length).fill(false) as boolean[];
-  // three wind curls running ahead along the path (spread across its width)
-  const curls = [0, 0.14, 0.3].map((d, i) => ({ d, off: (i - 1) * 7 }));
-  const straw = new PixelCanvas(ras.w, ras.h);
-  void rnd;
-  return run(sc, ms, (t) => {
+  // three ribbons: offset across the path, staggered in time, the middle one the longest and thickest
+  const ribbons = [
+    { d: 0, off: -7, len: 46, w: 3 },
+    { d: 0.07, off: 0, len: 60, w: 3 },
+    { d: 0.15, off: 7, len: 40, w: 2 },
+  ];
+  let f = 0;
+  return run(sc, ms, (t, _el, dt) => {
+    if (dt > 0) f++;
     ras.begin();
-    const g = ras;
-    // ---- the wind: stepped streaks along the path (white head, leaf4 body, mist tail, a mist shadow row) and a
-    //      hooked curl at the head
-    for (const c of curls) {
-      const u = (t - c.d) / 0.55;
-      if (u <= 0 || u >= 1.3) continue;
+    // ---- the ribbons: flat tapered bands along the curve (white lit edge, mist body, steel underside)
+    for (const rb of ribbons) {
+      const u = (t - rb.d) / 0.62;
+      if (u <= 0 || u >= 1 + rb.len / plen) continue;
       const head = Math.min(1, u);
-      for (let k = 0; k < 22; k++) {
-        const tt = head - k * 0.018;
+      for (let k = 0; k < rb.len; k++) {
+        const tt = head - k / plen;
         if (tt < 0) break;
-        if (u > 1 && k < (u - 1) * 75) continue;
-        const p = bez({ x: from.x, y: from.y + c.off }, tt);
-        const tone = k < 2 ? PAL.white : k < 9 ? PAL.leaf4 : PAL.mist;
-        g.px(R(p.x), R(p.y) + c.off, tone);
-        if (k > 3 && k < 16 && k % 2 === 0) g.px(R(p.x), R(p.y) + c.off + 1, PAL.steel);
-      }
-      if (u < 1) {
-        const p = bez({ x: from.x, y: from.y + c.off }, head);
-        const hx = R(p.x);
-        const hy = R(p.y) + c.off;
-        g.px(hx + 1, hy - 1, PAL.white);
-        g.px(hx + 2, hy - 2, PAL.white);
-        g.px(hx + 2, hy - 3, PAL.leaf4);
-        g.px(hx + 1, hy - 4, PAL.leaf4);
-        g.px(hx, hy - 4, PAL.mist);
-        g.px(hx - 1, hy - 3, PAL.mist);
+        // the tail draws in after the head arrives
+        if (u > 1 && k < (u - 1) * plen) continue;
+        const p = bez({ x: from.x, y: from.y + rb.off }, tt);
+        const x = R(p.x);
+        const y = R(p.y) + rb.off;
+        const w = k < rb.len * 0.3 ? rb.w : k < rb.len * 0.7 ? Math.max(1, rb.w - 1) : 1;
+        for (let r = 0; r < w; r++) {
+          const c = r === 0 ? (k < rb.len * 0.5 ? PAL.white : PAL.mist) : r === w - 1 && w > 2 ? PAL.steel : PAL.mist;
+          ras.px(x, y + r, c);
+        }
       }
     }
-    // ---- the stalks: straw strokes at stepped angles with a wheat-ear tip, ink outlined, riding the curve
-    straw.clear();
+    // ---- the stalks: hand-drawn straw sprites at 45° steps, riding the curve with a wobble
     stalks.forEach((s, i) => {
       const u = Math.max(0, Math.min(1, (t - s.delay) / (1 - s.delay)));
       const e = u * u * (3 - 2 * u);
       const p0 = bez({ x: s.x, y: s.y }, e);
-      const wob = Math.sin(u * Math.PI * 2 + s.wob) * 5 * (1 - u);
-      const x = R(p0.x + wob) - ras.x;
-      const y = R(p0.y) - ras.y;
+      const wob = Math.sin(u * Math.PI * 2 + s.wob) * 6 * (1 - u);
+      const x = R(p0.x + wob);
+      const y = R(p0.y);
       if (u >= 1) {
         if (!landed[i]) {
           landed[i] = true;
@@ -593,45 +754,33 @@ function gustStraw(sc: Phaser.Scene, stalks: Stalk[], to: XY, ms: number, onLand
         }
         return;
       }
-      const a = Math.round((s.ang + s.spin * u) / (Math.PI / 8)) * (Math.PI / 8);
-      const dx = Math.cos(a);
-      const dy = Math.sin(a);
-      const L = Math.max(3, R(s.len * (1 - u * 0.4)));
-      for (let k = 0; k < L; k++) {
-        const px0 = R(x + dx * (k - L / 2));
-        const py0 = R(y + dy * (k - L / 2));
-        straw.set(px0, py0, k < 2 ? PAL.gold4 : k === L - 1 ? PAL.gold2 : s.tone);
-      }
+      const dir = (((s.dir + Math.floor(u * s.spin)) % 8) + 8) % 8;
+      ras.pc.blit(stalkSprite(dir, s.bend, s.len), x - ras.x - STALK_BOX / 2, y - ras.y - STALK_BOX / 2);
+      // chaff shed from it, thinning along the path
+      if (dt > 0 && u > 0 && f % 2 === i % 2 && rnd() < 0.55 * (1 - u)) cloud.add({ x, y, vx: (rnd() - 0.5) * 16, vy: (rnd() - 0.5) * 10 + 4, drag: 2, life: 240 + rnd() * 200, colors: [PAL.gold4, PAL.gold3, PAL.gold2, PAL.earth3], shape: rnd() < 0.25 ? 'sq' : 'px', size: 2, fadeAt: 1 });
     });
-    straw.outline(PAL.ink);
-    ras.pc.blit(straw, 0, 0);
     ras.end();
   }).then(() => {
     stalks.forEach((_, i) => {
       if (!landed[i]) onLand(i);
     });
     ras.destroy();
+    cloud.release();
   });
 }
 
 // ================================================================ where the sieve stands
 
-/** The sieve's floor point: the caster's free spell/trap tile nearest its cast spot (a set card: its own tile). */
-function sieveSpot(ctx: ActCtx, player: PlayerId, setHome: XY | null): XY {
-  if (setHome) return { x: R(setHome.x), y: R(setHome.y) };
-  const c = castSpot(player);
-  let best: XY | null = null;
-  let bd = Infinity;
-  ctx.state.players[player].spellTraps.forEach((slot, i) => {
-    if (slot) return;
-    const z = zoneXY(player, 'spellTrap', i);
-    const d = Math.hypot(z.x - c.x, z.y - c.y);
-    if (d < bd) {
-      bd = d;
-      best = { x: R(z.x), y: R(z.y) };
-    }
-  });
-  return best ?? { x: c.x, y: castFloor(c) - 4 };
+/**
+ * The sieve's floor point: near the middle of the caster's side — P1 over its middle spell/trap tile, P2 between its
+ * middle spell/trap and monster tiles (so the rim stays under the top HUD band). A set card is only the origin: its
+ * orb flows here, so the sieve never sits under a monster's stat plate on the set tile's row.
+ */
+function sieveSpot(player: PlayerId): XY {
+  const st = zoneXY(player, 'spellTrap', 2);
+  if (player === 0) return { x: R(st.x), y: R(st.y) };
+  const mo = zoneXY(player, 'monster', 2);
+  return { x: R((st.x + mo.x) / 2), y: R((st.y + mo.y) / 2) };
 }
 
 // ================================================================ the waiting sieve (across the choice)
@@ -663,7 +812,7 @@ function idle(sc: Phaser.Scene, w: Waiting): () => void {
     if (t0 < 0) t0 = el;
     const ph = (el - t0) / 1300;
     const v = Math.sin(ph * TAU);
-    S.slosh = R(v * 3);
+    S.slosh = R(v * 4);
     const side = v > 0.95 ? 1 : v < -0.95 ? -1 : 0;
     if (side !== 0 && side !== lastSide) {
       lastSide = side;
@@ -680,7 +829,7 @@ async function unravel(sc: Phaser.Scene, rig: Sieve, pool: LightHandle, pan: num
   rig.motes = false;
   void pool.fadeOut(ms + 120);
   const rnd = fxRng(rig.floor.x * 3 + rig.floor.y);
-  const sp = new PxSparks(sc, DEPTH.FX + 3);
+  const sp = new PxSparks(sc, D_SIEVE + 1);
   let last = -1;
   await run(sc, ms, (t) => {
     const k = Math.floor(t * 8) / 8;
@@ -729,7 +878,7 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
     } else if (e.type === 'activate' || e.type === 'turnStart' || e.type === 'phaseChange' || e.type === 'gameOver') break;
   }
   const set = setTileOf(ctx);
-  const spot = sieveSpot(ctx, player, set ? ip(set.home) : null);
+  const spot = sieveSpot(player);
   const pan = panAt(spot.x);
   const sfx = sfxAt(pan);
   const op = await spellOpening(ctx, { uid: ev.uid, cardId: ev.cardId, player, from: set ? 'set' : 'hand', zone: ev.zone, hold: 220, releaseFrom: 'bottom', setRelease: 'flow' });
@@ -744,8 +893,8 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   const rig = makeSieve(sc, spot, player, spot.x * 7 + spot.y * 13 + player);
   const S = rig.s;
   bg(floorRing(sc, spot));
-  void lightFlash(sc, spot.x, spot.y - 10, PAL.gold4, 30, 300, { floorY: spot.y, intensity: 0.9 });
-  const pool = lightPool(sc, spot.x, spot.y - 8, { color: PAL.gold3, radius: 36, floorY: spot.y, intensity: 0, anim: 'breathe', fadeIn: 0 });
+  void lightFlash(sc, spot.x, spot.y - 10, PAL.gold4, 44, 300, { floorY: spot.y, intensity: 0.9 });
+  const pool = lightPool(sc, spot.x, spot.y - 8, { color: PAL.gold3, radius: 58, floorY: spot.y, intensity: 0, anim: 'breathe', fadeIn: 0 });
   pool.setIntensity(0.55, 220);
   sfx('e_sieveWeave');
   let el = 0;
@@ -779,16 +928,26 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   );
   pool.setIntensity(0.75, 200);
 
-  // ---- SHAKE: 6 Hz, the grain lags a step, chaff sifts, the three cards work their way up
+  // ---- SHAKE: 6 Hz, ±6 px, a squash on each stroke; the grain lags and piles against the rim (some of it flies
+  //      over), chaff sifts, the three cards work their way up
   await at(T.shake);
-  const OFFS = [0, 2, 3, 2, 0, -2, -3, -2];
-  rig.sift = 1;
+  rig.sift = 1.4;
   for (let c = 0; c < T.cycles; c++) {
-    sfx('e_sieveShake', { volume: 0.95, pitch: 1 + c * 0.02 });
+    sfx('e_sieveShake', { volume: 1, pitch: 1 + c * 0.015 });
+    let lastI = -1;
     await run(sc, T.cycleMs, (t) => {
-      const i = Math.min(OFFS.length - 1, Math.floor(t * OFFS.length));
-      S.sx = OFFS[i];
-      S.slosh = -R(OFFS[(i + OFFS.length - 2) % OFFS.length] * 0.7);
+      const i = Math.min(SHAKE.length - 1, Math.floor(t * SHAKE.length));
+      S.sx = SHAKE[i];
+      // the heap lags two steps behind the hoop and overshoots it
+      S.slosh = -R(SHAKE[(i + SHAKE.length - 3) % SHAKE.length] * 0.9);
+      if (i !== lastI) {
+        lastI = i;
+        // a stroke's end: a 1-frame squash and grain thrown over that side of the rim
+        if (Math.abs(SHAKE[i]) === 6) {
+          S.squash = 2;
+          rig.spill(Math.sign(SHAKE[i]), 3 + c);
+        } else S.squash = 0;
+      }
       const g = (c + t) / T.cycles;
       // only as many cards work their way up as will be drawn (the middle one first, then left, right)
       const up = (j: number) => Math.min(1, Math.max(0, g * 1.25 - j * 0.12));
@@ -798,16 +957,18 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   }
   S.sx = 0;
   S.slosh = 0;
-  rig.sift = 0.25;
+  S.squash = 0;
+  rig.sift = 0.3;
   S.cards = [draws.length > 1 ? 1 : 0, 1, draws.length > 2 ? 1 : 0];
 
-  // ---- TOSSES: dip, flick, the card tumbles out of a fountain of grain; the hand takes it at the apex
+  // ---- TOSSES: dip, flick, a golden burst; the card tumbles up a little and down toward the hand, handed over
+  //      to the hand only near its slot. The third is the climax: a deeper dip, a hit-stop, a white rim flash.
   const hand = ctx.views.hand;
   const cam = sc.cameras.main;
   const scroll = (p: XY): XY => ({ x: R(p.x - (cam.zoom === 1 ? cam.scrollX : 0)), y: R(p.y - (cam.zoom === 1 ? cam.scrollY : 0)) });
   const worldOf = (p: XY): XY => ({ x: R(p.x + (cam.zoom === 1 ? cam.scrollX : 0)), y: R(p.y + (cam.zoom === 1 ? cam.scrollY : 0)) });
   const pile = ctx.views.field.pile(player, 'deck');
-  const spray = new PxSparks(sc, DEPTH.FX + 2.8);
+  const spray = new PxSparks(sc, D_SIEVE + 0.8);
   const rnd = fxRng(spot.y * 17 + 5);
   const flights: Promise<void>[] = [];
   const handOffs: Promise<void>[] = [];
@@ -817,36 +978,52 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
     const d = evAt(ctx, draws[k], 'draw');
     if (!d) continue;
     ctx.consumeAt(draws[k]);
+    const big = k === 2;
     // anticipation: the sieve dips …
-    await run(sc, T.dipMs, (t) => (S.dy = -R(3 * Math.sin((t * Math.PI) / 2))));
-    el += T.dipMs;
+    const dip = big ? 5 : 3;
+    const dms = big ? T.bigDipMs : T.dipMs;
+    await run(sc, dms, (t) => {
+      S.dy = -R(dip * Math.sin((t * Math.PI) / 2));
+      S.squash = big && t > 0.5 ? 1 : 0;
+    });
+    el += dms;
     // … and flicks up: the card leaves
-    S.dy = 4;
+    S.dy = big ? 6 : 4;
+    S.squash = 0;
+    S.rimFlash = big ? 6 : 2;
     const slot = order[k];
     S.cards[slot] = 0;
-    sfx('e_sieveToss', { pitch: 1 + k * 0.06, volume: 0.9 + k * 0.05 });
+    sfx(big ? 'e_sieveTossBig' : 'e_sieveToss', { pitch: 1 + k * 0.05, volume: 1 });
     pile.set(Math.max(0, pile.count - 1), null);
     pile.bump();
     const c = rig.crest();
-    const from = { x: c.x + [-10, 1, 11][slot], y: c.y - 2 };
-    void lightFlash(sc, from.x, from.y, PAL.gold4, 22 + k * 4, 220, { floorY: spot.y, intensity: 0.7 });
-    // the grain fountain (falls back into the bowl)
-    const n = 12 + k * 6;
+    const from = { x: c.x + CARD_SPOTS[slot][0], y: c.y - 4 };
+    void lightFlash(sc, from.x, from.y, PAL.gold4, big ? 48 : 30, big ? 320 : 220, { floorY: spot.y, intensity: big ? 1 : 0.75 });
+    // the golden burst out of the grain (falls back into the bowl): 2-px crest grains among 1-px ones
+    const n = big ? 70 : 40 + k * 8;
     for (let i = 0; i < n; i++) {
-      const vy = -(60 + rnd() * (70 + k * 30));
-      const life = Math.min(700, (-2 * vy * 1000) / 520 + 20);
-      spray.add({ x: from.x + R((rnd() - 0.5) * 8), y: from.y, vx: (rnd() - 0.5) * (40 + k * 16), vy, ay: 520, life, colors: [PAL.white, PAL.gold4, PAL.gold3, PAL.gold3, PAL.gold2], shape: 'px', fadeAt: 1 });
+      const vy = -(90 + rnd() * (100 + k * 50));
+      const life = Math.min(760, (-2 * vy * 1000) / 520 + 30);
+      const two = rnd() < 0.3;
+      spray.add({ x: from.x + R((rnd() - 0.5) * 14), y: from.y + 2, vx: (rnd() - 0.5) * (60 + k * 30), vy, ay: 520, life, colors: two ? [PAL.white, PAL.gold4, PAL.gold3] : [PAL.gold4, PAL.gold3, PAL.gold3, PAL.gold2], shape: two ? 'sq' : 'px', size: 2, fadeAt: 1 });
     }
-    const target = worldOf(hand.owner === player ? hand.nextSlotXY() : hand.miniXY(player));
-    const tc = tossCard(sc, from, target, player, T.tossFlightMs, 34 + k * 6);
-    bg(run(sc, T.flickMs, (t) => (S.dy = R(4 * (1 - t)))).then(() => (S.dy = 0)));
-    const handOff = tc.apex.then((apex) => {
-      tc.destroy();
-      flights.push(hand.addCard(d.uid as Uid, d.cardId, scroll(apex), player).catch(() => undefined));
-    });
-    handOffs.push(handOff);
+    rig.spill(-1, big ? 5 : 2);
+    rig.spill(1, big ? 5 : 2);
+    if (big) await hitStop(sc, T.bigStop);
+    const slotXY = worldOf(hand.owner === player ? hand.nextSlotXY() : hand.miniXY(player));
+    // the hand-over point: just over the slot (a short, last glide into the fan is the hand's own)
+    const handoff: XY = hand.owner === player ? { x: slotXY.x + (player === 0 ? -14 : 14), y: slotXY.y - 40 } : { x: slotXY.x, y: slotXY.y + (slotXY.y < 180 ? 30 : -30) };
+    const up = Math.max(6, Math.min(22, from.y - 70));
+    const dist = Math.hypot(handoff.x - from.x, handoff.y - from.y);
+    const fms = R(T.flightBase + dist * T.flightPerPx);
+    bg(run(sc, T.flickMs + (big ? 30 : 0), (t) => (S.dy = R((big ? 6 : 4) * (1 - t)))).then(() => (S.dy = 0)));
+    handOffs.push(
+      tossCard(sc, from, handoff, player, up, fms, d.uid * 3 + k).then((p) => {
+        flights.push(hand.addCard(d.uid as Uid, d.cardId, scroll(p), player).catch(() => undefined));
+      }),
+    );
   }
-  sfx('e_sieveFall', { volume: 0.8 });
+  sfx('e_sieveFall', { volume: 0.9 });
   spray.release();
   rig.sift = 0;
   // the spent spell card: born on the floor beside the sieve as the last card leaves, off to the graveyard
@@ -854,7 +1031,7 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   let send: Promise<void> = Promise.resolve();
   if (g && !ctx.isConsumed(gi)) {
     ctx.consumeAt(gi);
-    send = cardLeaves(ctx, { owner: g.owner, cardId: g.cardId, from: { x: spot.x + (player === 0 ? -16 : 16), y: spot.y + 6 }, delay: 60 });
+    send = cardLeaves(ctx, { owner: g.owner, cardId: g.cardId, from: { x: spot.x + (player === 0 ? -RX + 8 : RX - 8), y: spot.y + 8 }, delay: 60 });
   }
 
   // ---- SETTLE LOW (or, with no choice to wait for, unravel at once)
@@ -922,6 +1099,11 @@ function strawOf(c: number, x: number, step: number): number | null {
   return x % 3 === 0 ? (tone === PAL.earth1 ? PAL.earth3 : PAL.gold4) : tone;
 }
 
+/** The resting card's canvas (16 × 23 + its outline). */
+const REST_W = 16;
+const REST_H = 23;
+const REST_SINK = 8;
+
 registerEvent(
   'discard',
   async (ctx: DCtx) => {
@@ -961,107 +1143,114 @@ registerEvent(
     const windDir = gTop.x >= rig.floor.x ? 1 : -1;
     w.pool.setIntensity(0.7, 200);
 
-    // ---- DROP: the cards fall from the hand into the sieve (it rises to meet them)
+    // ---- DROP: the cards fall from the hand into the sieve (it rises to meet them), shrinking through native sizes
+    //      from the hand card's own size down to the resting size, then they sit half sunk IN the grain
     const h0 = S.hgt;
     bg(run(sc, T.dropMs, (t) => (S.hgt = R(h0 + (H_CATCH - h0) * Math.sin((t * Math.PI) / 2)))));
     const gone = new Set<Uid>();
-    const BOX = 40;
+    const BOX = 56;
+    const n = group.length;
+    const restDx = (k: number) => (n > 1 ? (k === 0 ? -9 : 10) : 0);
     const cards = group.map((ev, k) => {
       const from = takeFromHand(ctx, ev, gone);
-      const ras = new Raster(sc, from.x - BOX / 2, from.y - BOX / 2, BOX, BOX, DEPTH.FX_TOP + 12);
-      return { ev, from, ras, face: cardFaceCanvas(ev.cardId), pc: new PixelCanvas(BOX, BOX), k, rest: { x: 0, y: 0 } as XY };
+      const ras = new Raster(sc, from.x - BOX / 2, from.y - BOX / 2, BOX, 76, DEPTH.FX_TOP + 12);
+      return { ev, from, ras, face: cardFaceCanvas(ev.cardId), pc: new PixelCanvas(BOX, 76), k, rest: null as Resting | null };
     });
+    const restCanvas = (face: PixelCanvas, step: number): PixelCanvas => {
+      const pc = new PixelCanvas(REST_W + 2, REST_H + 2);
+      paintCardAt(pc, face, REST_W, REST_H, 1, null, step < 0 ? undefined : (col, px) => strawOf(col, px, step));
+      return pc;
+    };
     const drops = cards.map((c) =>
       wait(sc, c.k * T.dropGap).then(() => {
         sfx('e_sieveDrop', { pitch: 1 + c.k * 0.05 });
         return run(sc, T.dropMs - 40, (t) => {
           const m = rig.mesh();
-          const to = { x: m.x + (c.k === 0 ? -6 : 7) * (cards.length > 1 ? 1 : 0), y: m.y - 8 };
-          c.rest = to;
+          const to = { x: m.x + restDx(c.k), y: m.y - 8 };
           const k = 1 - (1 - t) * (1 - t);
           const x = c.from.x + (to.x - c.from.x) * t;
           const y = c.from.y + (to.y - c.from.y) * k - Math.sin(t * Math.PI) * 30;
-          const size = Math.max(1, SIZES.length - 1 - Math.floor(t * 4));
+          // from the hand's size (48 × 68) down to the resting size (16 × 23), whole native steps
+          const size = Math.max(2, SIZES.length - 1 - Math.floor(t * (SIZES.length - 2)));
           const [sw, sh] = SIZES[size];
           c.pc.clear();
           paintCardAt(c.pc, c.face, sw, sh, 1, null);
-          c.ras.moveTo(R(x) - BOX / 2, R(y) - BOX / 2);
+          c.ras.moveTo(R(x) - BOX / 2, R(y) - 38);
           c.ras.begin();
           c.ras.pc.blit(c.pc, 0, 0);
           c.ras.end();
         }).then(() => {
-          // the card settles into the grain: a little puff of grain
-          const m = c.rest;
-          const sp = new PxSparks(sc, DEPTH.FX + 2.8);
+          // the card sinks into the grain: it now belongs to the sieve's own drawing (behind the front band)
+          c.ras.destroy();
+          c.rest = { pc: restCanvas(c.face, -1), dx: restDx(c.k), foot: MY + 6, sink: REST_SINK };
+          S.rest.push(c.rest);
+          const m = rig.mesh();
+          const sp = new PxSparks(sc, D_SIEVE + 0.8);
           const rnd = fxRng(c.ev.uid * 7);
-          for (let i = 0; i < 7; i++) sp.add({ x: m.x + R((rnd() - 0.5) * 10), y: m.y + 6, vx: (rnd() - 0.5) * 40, vy: -(30 + rnd() * 40), ay: 480, life: 180 + rnd() * 80, colors: [PAL.gold4, PAL.gold3, PAL.gold2], shape: 'px', fadeAt: 1 });
+          for (let i = 0; i < 12; i++) sp.add({ x: m.x + restDx(c.k) + R((rnd() - 0.5) * 16), y: m.y + 2, vx: (rnd() - 0.5) * 50, vy: -(40 + rnd() * 50), ay: 480, life: 200 + rnd() * 100, colors: [PAL.gold4, PAL.gold3, PAL.gold2], shape: rnd() < 0.3 ? 'sq' : 'px', size: 2, fadeAt: 1 });
           sp.release();
         });
       }),
     );
     await Promise.all(drops);
 
-    // ---- JOLT: one hard shake cycle, the cards sink in a step
-    sfx('e_sieveShake', { volume: 0.9, pitch: 0.94 });
-    const OFFS = [0, 3, 4, 3, 0, -3, -4, -3];
-    const paintResting = (step: number) => {
-      for (const c of cards) {
-        const m = rig.mesh();
-        const x = m.x + (cards.length > 1 ? (c.k === 0 ? -6 : 7) : 0);
-        const y = m.y - 8;
-        c.pc.clear();
-        paintCardAt(c.pc, c.face, 12, 17, 1, null, step < 0 ? undefined : (col, px) => strawOf(col, px, step));
-        c.ras.moveTo(R(x) - BOX / 2, R(y) - BOX / 2);
-        c.ras.begin();
-        c.ras.pc.blit(c.pc, 0, 0);
-        c.ras.end();
-      }
-    };
+    // ---- JOLT: one hard shake cycle, the cards sink a step deeper
+    sfx('e_sieveShake', { volume: 1, pitch: 0.94 });
+    let lastI = -1;
     await run(sc, T.cycleMs, (t) => {
-      const i = Math.min(OFFS.length - 1, Math.floor(t * OFFS.length));
-      S.sx = OFFS[i];
-      S.slosh = -R(OFFS[(i + 6) % 8] * 0.7);
-      paintResting(-1);
+      const i = Math.min(SHAKE.length - 1, Math.floor(t * SHAKE.length));
+      S.sx = SHAKE[i];
+      S.slosh = -R(SHAKE[(i + SHAKE.length - 3) % SHAKE.length] * 0.9);
+      if (i !== lastI) {
+        lastI = i;
+        S.squash = Math.abs(SHAKE[i]) === 6 ? 2 : 0;
+        if (Math.abs(SHAKE[i]) === 6) rig.spill(Math.sign(SHAKE[i]), 3);
+      }
+      for (const c of cards) if (c.rest) c.rest.sink = REST_SINK + (t > 0.5 ? 2 : 1);
     });
     S.sx = 0;
     S.slosh = 0;
-    paintResting(-1);
+    S.squash = 0;
 
     // ---- STRAW: the faces dry to straw, split into stalks, break apart
     await wait(sc, T.strawWait);
-    sfx('e_sieveStraw');
-    for (const c of cards) void lightFlash(sc, c.rest.x, c.rest.y, PAL.gold4, 18, 200, { floorY: rig.floor.y, intensity: 0.6 });
-    paintResting(0);
+    sfx('e_sieveStraw', { volume: 1 });
+    for (const c of cards) {
+      const m = rig.mesh();
+      void lightFlash(sc, m.x + restDx(c.k), m.y - 10, PAL.gold4, 24, 220, { floorY: rig.floor.y, intensity: 0.7 });
+    }
+    for (const c of cards) if (c.rest) c.rest.pc = restCanvas(c.face, 0);
     await wait(sc, T.strawStepMs);
-    paintResting(1);
+    for (const c of cards) if (c.rest) c.rest.pc = restCanvas(c.face, 1);
     await wait(sc, T.strawStepMs);
-    // break into stalks: one per kept column pair, from the card's own spot
+    // break into stalks: from the card's own spot, the gust takes them
     const stalks: Stalk[] = [];
     const owners: number[] = [];
     const rnd = fxRng(first.uid * 13 + 3);
+    const m0 = rig.mesh();
     for (const c of cards) {
-      c.ras.destroy();
-      const m = rig.mesh();
-      const x0 = m.x + (cards.length > 1 ? (c.k === 0 ? -6 : 7) : 0);
-      for (let j = 0; j < 8; j++) {
+      if (c.rest) S.rest.splice(S.rest.indexOf(c.rest), 1);
+      const x0 = m0.x + restDx(c.k);
+      for (let j = 0; j < 6; j++) {
         stalks.push({
-          x: x0 - 6 + R(j * 1.6),
-          y: m.y - 8 + R((rnd() - 0.5) * 6),
-          len: 6 + R(rnd() * 5),
-          ang: Math.PI / 2 + (rnd() - 0.5) * 0.6,
-          spin: (rnd() < 0.5 ? -1 : 1) * (Math.PI * (1 + rnd() * 2)),
-          delay: c.k * 0.08 + j * 0.022 + rnd() * 0.04,
+          x: x0 - 6 + R(j * 2.4),
+          y: m0.y - 12 + R((rnd() - 0.5) * 10),
+          len: 7 + Math.floor(rnd() * 3),
+          dir: windDir > 0 ? [7, 0, 1, 6][j % 4] : [3, 4, 5, 2][j % 4],
+          spin: windDir * (4 + Math.floor(rnd() * 6)),
+          bend: rnd() < 0.5 ? 1 : -1,
+          delay: c.k * 0.08 + j * 0.03 + rnd() * 0.04,
           wob: rnd() * TAU,
-          tone: j % 2 === 0 ? PAL.gold3 : PAL.earth4,
         });
         owners.push(c.k);
       }
     }
 
-    // ---- GUST: the wind sweeps the straw into the graveyard
-    sfx('e_sieveGust', { pan: w.pan + windDir * 0.3 });
+    // ---- GUST: the winnowing breath sweeps the straw into the graveyard (its sound pans along with it)
+    const gp = panAt(gTop.x);
+    sfxAt((w.pan + gp) / 2)(windDir > 0 ? 'e_sieveGustR' : 'e_sieveGustL', { volume: 1 });
     S.heap = 0.85;
-    const left = cards.map(() => 8);
+    const left = cards.map(() => 6);
     let landedCards = 0;
     const gustP = gustStraw(
       sc,
@@ -1076,15 +1265,14 @@ registerEvent(
         landedCards++;
         grave.set(landingCount(grave.count, ctx.after.players[owner].graveyard.length), c.ev.cardId);
         grave.bump();
-        sfxAt(panAt(gTop.x))('e_sieveGrave', { pitch: 1 + landedCards * 0.05 });
-        void lightFlash(sc, gTop.x, gTop.y - 4, PAL.gold3, 20, 260, { intensity: 0.55 });
+        sfxAt(gp)('e_sieveGrave', { pitch: 1 + landedCards * 0.05 });
+        void lightFlash(sc, gTop.x, gTop.y - 4, PAL.gold3, 24, 260, { intensity: 0.6 });
       },
       first.uid * 5,
     );
     // the gust also lifts loose chaff off the heap
-    const sp = new PxSparks(sc, DEPTH.FX + 3);
-    const m = rig.mesh();
-    for (let i = 0; i < 14; i++) sp.add({ x: m.x + R((rnd() - 0.5) * 30), y: m.y - 4, vx: windDir * (40 + rnd() * 70), vy: -(20 + rnd() * 40), ay: 30, drag: 1, delay: rnd() * 120, life: 340 + rnd() * 240, colors: [PAL.gold4, PAL.gold3, PAL.earth3], shape: 'px', fadeAt: 0.7 });
+    const sp = new PxSparks(sc, D_SIEVE + 1);
+    for (let i = 0; i < 22; i++) sp.add({ x: m0.x + R((rnd() - 0.5) * 50), y: m0.y - 6, vx: windDir * (40 + rnd() * 80), vy: -(20 + rnd() * 40), ay: 30, drag: 1, delay: rnd() * 140, life: 340 + rnd() * 260, colors: [PAL.gold4, PAL.gold3, PAL.earth3], shape: 'px', fadeAt: 1 });
     sp.release();
     await wait(sc, T.unravelAfter);
     // ---- UNRAVEL

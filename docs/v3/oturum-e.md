@@ -31,9 +31,16 @@ Uçurum Büyücüsü için yalnız KART resmi. Brif: `docs/v3/PARALEL_OTURUMLAR.
   Koruyucu Tılsım olayları tek kolektif yükselişte). SFX: `src/audio/v3/e/void_eye.ts` (13 tarif, `e_void*`).
 - Senaryolar: `src/duel/scenarios/e_void_eye.ts` (eVoid, eVoidP2, eVoidQuick, eVoidSet, eVoidSetP2, eVoidOne,
   eVoidCharm, eVoidSovereign, eVoidEquip); test `tests/e/void_eye.test.ts`.
-- Kanıt: `shots/e/void_eye/` (r5-crowd.png, r3-p2.png, r4-eye.png, r4-set.png, r4-sovereign.png, art/, sfx/, measure.json).
-- Ölçüm (oyun ms): eVoidQuick 5,50 sn, eVoidSet 5,37 sn, eVoidOne 5,17 sn; kamera 0. §7 imzası 3,2 sn olduğundan
-  REHBER §5 büyü bütçesini (2,0 × 1,45) aşar — açık konu.
+- Kanıt: `shots/e/void_eye/r2/` (quick.png, quick_zoom.png, quick_pull.png, quick_tear.png, quick_land.png, p2_full.png,
+  p2_rise.png, token.png, art/, sfx/, measure.json, measure-quick.json).
+- Eleştiri turu 1 düzeltmeleri: renk çarpımı (setTint) yok — kasılmada 1 beyaz kare, sonra void3/void2 dolgu + void4
+  kenar; gece örtüsü (mürekkep, 4 adım, TILE_FX altı) sahayı ~%30 karartır; göz katmanı birimlerin ARKASINDA
+  (arka sıra önünde durur); yutuş = 4 adımlı çekiş + gözbebeğine yakınsayan çizgiler + kenarda zerre patlaması;
+  kapanış + iki ayrı kırpma (100 ms kapalı bekleme); büyük damla (7×10), asılma, lekeli iki halkalı sıçrama;
+  e_voidSwell yalnız 28 Hz katları (tremolo yok), e_voidGulp cam emiş → cam çimdik (chasmShut LSD 17,4 dB);
+  kartlar göz kırparken mezarlığa (kendi e_voidCard sesi, cardPlace yok); magic_hat sahte şapkası da yükselir.
+- Ölçüm (oyun ms): eVoidQuick 5,85 sn, eVoidSet/SetP2 5,83 sn, eVoidOne/Charm/Equip 5,85 sn; kamera 0.
+  Sahibin kararı: sabit süre sınırı yok.
 
 ### S5 Harman Eleği (`winnow_sieve`)
 - Resim: `src/art/cardart-v3/winnow_sieve.ts` (88×68 + elle 44×34, 4 kare yaşayan resim: elek sallanır, taneler
