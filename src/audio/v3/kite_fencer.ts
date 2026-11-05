@@ -136,11 +136,14 @@ const KITE_RECIPES = {
     gap: 0.05,
     verb: 0.4,
     play(v) {
-      // one leaf sway of the EMPTY kite falling (×3, alternating pans): only air — an airy pink whoosh rising and
-      // falling 1.2 → 2.2 → 1.4 kHz over 240 ms, high-passed (no cloth body, no flap transient: nothing strikes it)
-      const hp = v.filt('highpass', 700, 0.7);
-      sweep(v, 0, 0.24, [1200, 2200, 1400], 0.2, { kind: 'pink', q: 1.4, peakAt: 0.5 });
-      v.noise('pink', { g: [[0, 0], [0.12, 0.03], [0.24, 0.0001, 'e']], to: v.filt('bandpass', [[0, 2600], [0.12, 3400], [0.24, 2800, 'e']], 2.2, { to: hp }) });
+      // one leaf sway of the EMPTY kite falling (×3, alternating pans): ONLY AIR, nothing strikes it — no cloth body,
+      // no flap transient, and a hole where the struck cloth lives (1–1.6 kHz). The loudest layer is the thin hiss of
+      // air sliding off the panel edges (pink, 3.2 → 4.6 → 3.6 kHz) …
+      sweep(v, 0, 0.26, [3200, 4600, 3600], 0.2, { kind: 'pink', q: 2, peakAt: 0.5, to: v.filt('highpass', 1800, 0.7) });
+      // … the sway's own pitch contour (the sheet's 1.2 → 2.2 → 1.4 kHz) as a faint narrow whistle of air over it …
+      sweep(v, 0.01, 0.24, [1200, 2200, 1400], 0.028, { kind: 'pink', q: 5, peakAt: 0.5 });
+      // … and the soft push of the air the panel turns over (a low breath under 400 Hz, felt more than heard)
+      v.noise('pink', { g: [[0, 0], [0.11, 0.035], [0.26, 0.0001, 'e']], to: v.filt('lowpass', 300, 0.7) });
     },
   },
   kfnKiteFlop: {
@@ -291,10 +294,18 @@ const KITE_RECIPES = {
     gap: 0.15,
     verb: 0.3,
     play(v) {
-      // the downswing is ~0.37 s of game time from its first frame to the cut: the air and the string both peak there
-      sweep(v, 0, 0.44, [400, 1600, 500], 0.2, { kind: 'pink', q: 1.3, peakAt: 0.84, pan: [-0.25, 0.25] });
-      // the string peaks at the low point of the arc
-      stringBuzz(v, 0, [[0, 1320], [0.36, 1480, 'e'], [0.46, 1400]], [[0, 0], [0.22, 0.03], [0.36, 0.05], [0.46, 0.0001, 'e']], { flutter: 95, q: 7 });
+      // the pendulum, two voices and a gap between them: a deep "vwoooom" of the whole open kite falling through the
+      // air (300 → 800 → 380 Hz, peaking as it bottoms out) and the taut STRING singing over it, its buzz band at
+      // 2.6–3 kHz (the 2nd harmonic of 1320 → 1480 Hz, peaking at the low point). Nothing in the 1–2 kHz band where a
+      // generic whoosh and the struck kite cloth live. The downswing is ~0.37 s of game time from its first frame to the cut
+      const air = v.filt('lowpass', 900, 0.7);
+      sweep(v, 0, 0.44, [300, 700, 360], 0.34, { kind: 'pink', q: 2.2, peakAt: 0.84, pan: [-0.25, 0.25], to: air });
+      v.noise('pink', { g: [[0, 0], [0.34, 0.05], [0.38, 0.055], [0.46, 0.0001, 'e']], to: v.filt('lowpass', 420, 0.7) });
+      // (only the buzz band: the wire's fundamental is left out so the 1–2 kHz gap stays open)
+      const fl = v.flutter(95, 0.4, { d: 0.48, base: 0.7 });
+      const strF: Pt[] = [[0, 1320], [0.36, 1480, 'e'], [0.46, 1400]];
+      const bp = v.filt('bandpass', strF.map(([x, y, c]) => [x, y * 2, c] as Pt), 11, { to: v.filt('highpass', 2200, 0.8, { to: fl }) });
+      v.tone('sawtooth', strF, { g: [[0, 0], [0.22, 0.03], [0.36, 0.055], [0.46, 0.0001, 'e']], to: bp });
     },
   },
   kfnCut: {
