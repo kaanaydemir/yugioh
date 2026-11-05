@@ -1,7 +1,7 @@
 # wing_lady — Kanat Hanımı (lane F design)
 
 RÜZGAR / Kanatlı · Sv4 · 1300/1400 · normal (no cut-in) · effect `windAura300`
-Card text: "Sahandaki diğer RÜZGAR canavarlarının ATK'si +300." Draft: 2026-10-31. Status: **art built** (sprite rig, card art, glow; §12). Cinematics, sounds and scenarios not yet built.
+Card text: "Sahandaki diğer RÜZGAR canavarlarının ATK'si +300." Draft: 2026-10-31. Status: **art built** (§12) and **cinematics + SFX + scenarios built** (§13; critique rounds pending).
 
 > **Read §11 first.** The design critique (round D1, verdict needs-work) was folded in on 2026-10-31; §11 supersedes the sections it names (the persistent marker is now a wing-shaped floor LIGHT, not a shadow; the death is "the falling cape"; the guard is asymmetric; the summon opener, the revive and several sounds changed).
 
@@ -721,3 +721,67 @@ Accepted unless marked. The sprite-side items are already built (§12); the rest
 - Death f4–f5 (tipping forward under the cape) are busy; the prone end frames read as a low warm mound with a dark head at the front.
 - MOTloop UYARI vs shade_assassin (idle) needs the blind eye test; MOTsig vs abyss_magus (attack) 0.71.
 - `tests/art/cardface-v3.test.ts` G1 fails on `scrap_raiders` (not this card).
+
+## 13. Build log (cinematics + sound stage, 2026-11-01 → 2026-11-05)
+
+**Files (owned by this card):** `src/cinematics/kart-f/wing_lady.ts` (summon hook p20, the aura `statChange`
+handler p25, the arrival `summon` wrapper p30, the `flip` wrapper p30, the `attackDeclare` crest flare p25, the strike,
+the `destroyed` hook p20, the aura observer — every registration `if (LOOK_V3)`, names `kart-f:wing_lady:<part>`),
+`kart-f/wing_lady-aura.ts` (exports only: floor-light + crest painters, `wingAura`), `kart-f/wing_lady-rules.ts`
+(pure engine reading: `auraDelta` over the `withStats` block, critique #1), `src/audio/v3/wing_lady.ts` (27 recipes,
+`WING_LADY_VOICE` set with every required role incl. the revive pair), `src/duel/scenarios/wing_lady.ts` (29 `kh*`
+keys), `tests/cinematics/wing_lady-aura.test.ts`. Shared one-liners: `DEATH_PRESETS.wing_lady = {material:'light',
+accent:'light'}` (the plant accent is gone), `MONSTER_GLOW.wing_lady` leaf4/gold4 (art stage).
+
+**How the effect surfaces (no activate event):** the +300s are `statChange` events in the engine's `withStats` diff.
+`auraDelta` reads Δ`auraBonus` across the block (projection-safe) and only aura-caused events are claimed; anything else
+(the knight's +500, equips) goes to `ctx.base()`. Her own summon plays **Kanat Selamı** inside the summon hook (no
+sync between); a flip plays it from the `flip` wrapper; an ally arriving buffed (no event) gets the **arrival bless**
+from the `summon` / `flip` wrappers; the loss (**Kanatlar Döner**) folds the lights toward her tile / her graveyard;
+her own death takes the loss run into the falling cape (f4). The persistent aura `khWing` (gold wing floor light +
+crest pair over ATK, one pair per lady) is born only by a bless beat; the observer removes stale auras and restores
+steady state after a rebuild.
+
+**Camera base:** `shots/v3/kart-f/wing_lady/camera-base.json` (measured on the placeholder presentation, 27 keys).
+
+**Rounds r1–r4 (2026-11-01, before the pause):** films in `shots/v3/kart-f/wing_lady/r1..r4/`; v1 filmdiff 17/17 and
+a6v1 26/26 IDENTICAL then (`gates/filmdiff-*.txt`); clips `clips/khSummon|khKill|khAttack`.
+
+**Round r5 (2026-11-05, after the main merge; arena readability):** evidence `shots/v3/kart-f/wing_lady/r5/`.
+- Filmed every scenario P1 + P2 (`khSummon[P2|Alone|Edge]`, `khEffect[P2]`, `khArrive[P2]`, `khFlip`, `khAttack[P2]`,
+  `khAttackLose` (new), `khDirect[P2]`, `khBlocked[P2]`, `khBuffAtk`, `khGuard[P2]`, `khKill[P2|Alone]`, `khBolt`,
+  `khTribute`, `khRevive[P2]`, `khBoard5`) and looked at each; close-ups `khSummon-clip/-late/-b`, `khKill-bird/-lift/-lift2`,
+  `khBlocked-perch`, `khBoard5-zoom/-zoom2`.
+- Fixes from the look:
+  1. **Death bird hidden under her own card** (it opened on the tile while the card was born there): the bird layer now
+     sits above the card (FX+40), opens 5 px/frame higher; the silhouette was a thin 47-px gold line → a chunky kestrel
+     (5-px inner wing, wrist bend, three primary fingers, body, head, fanned tail; night1 fill, gold rim), 35 px span;
+     flight 460 → 400 ms (`khKill-lift2.png`).
+  2. **Attacker-loses** (new `khAttackLose`): she used to snap home from the contact point before dying; now she falls
+     where she struck (a save sends her home 900 ms later) and the bird lifts from her body, not her tile.
+  3. **Perch hovered ~8 px above the defender** (idle-top vs guard-top + her f7 soles 4 px above the anchor): +10 px,
+     she now stands on the sentinel's head (`khBlocked-perch.png`).
+  4. **Floor light murky at 1×** under the 50 % drop shadow: aura floor layer moved to `DEPTH.SHADOW + 1` (still under
+     every body) — the gold wing now reads under every buffed ally (`khBoard5-zoom2.png`).
+  5. **Budgets:** direct was 2450 ms game (> 2.32 s): stoop 280 → 240, the carried-back arc 420 → 340 → **2283**.
+     Summon + bless 3333 → **3083** game (brake at timeScale 1.25, run-out/fold at 1.6 after the land frame).
+- **Measure** `r5/measure-final.json`, camera gate vs the base: **28 ok, 1 NOBASE (khAttackLose), 0 FAIL**; zoom 1,
+  0 close-ups, focusCalls = base everywhere. Game-clock: attack 2600 (≤ 3190), direct 2283 (≤ 2320), blocked 2700,
+  death 1750 (≤ 2030), summon+bless k=2 3083 (≈ 2.28 s scene ≤ 2.4), alone 2200, Kanat Selamı on revive 1600 (≤ 2320),
+  arrival 2483 incl. the hawk's own entrance, number-after-contact 0 ms, 0 errors.
+- **Sound:** clips `r5/clips/{khSummon,khKill,khAttack,khBlocked,khDirect,khRevive}.{mp4,wav,json}`: peaks −1.83 …
+  −4.9 dBFS, 0 clipped; every beat fires on its frame (the sfx lists: glide/3 wing beats/land/toe/song/currents/bless
+  chord; songBreak/fold/flatten/unbless/peel/fallThud/birdFlight; hover/stoop/clap|skid+perch+kickOff|directCry/
+  back-flaps/toe). Audio pages `r5/audio-khBirdFlight.png`, `r5/audio-khUnbless.png` (+ r1 `audio/`): titles correct.
+- tsc clean; `tests/art/wing_lady.test.ts` + `tests/cinematics/wing_lady-aura.test.ts` 14/14.
+
+**Known weaknesses (for the critique rounds):**
+- `khSummon` stages her at zone 2 right in front of the big ember_wolf: her body is half hidden by the wolf during the
+  salute (scenario staging; the 3-zone `khEffect` reads cleanly).
+- The arrival bless keeps the ally's badge on its already-buffed number (critique #13: no silent reset); the "+300"
+  chip, the crest bloom and the chord voice carry it, but there is no visible roll.
+- The bird reaches the pile ~200 ms after her card lands (by design, but it reads as trailing).
+- `khBirdFlight` is quiet (−21 dB peak on its page); `khRevive` replays `khSong` in the bless (her song after the
+  revive's own land note) — acceptable, but the ear hears two onsets.
+- The guard buckler and the hit poses are unchanged from the art stage (see §12 weaknesses).
+- No numpy LSD separation run yet (§6 offline checks); no independent critic round yet (0/3).

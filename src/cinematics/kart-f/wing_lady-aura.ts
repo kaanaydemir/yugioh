@@ -148,7 +148,8 @@ export interface WingAura {
  * `bloom`: start closed and open (false: appear open, e.g. a steady state after a rebuild).
  */
 export function wingAura(scene: Phaser.Scene, u: MonsterUnit, o: { count: number; bloom: boolean; ladies: () => MonsterUnit[] }): WingAura {
-  const floor = layer(scene, FLOOR_DEPTH);
+  // over the 50 % drop shadow (it dimmed the gold to a murk at 1×), still under every body
+  const floor = layer(scene, DEPTH.SHADOW + 1);
   const crest = layer(scene, BADGE_DEPTH + 1);
   let count = Math.max(1, o.count);
   let openAt = o.bloom ? -1 : -1e9; // el when the bloom started (−1: start on the first frame)
