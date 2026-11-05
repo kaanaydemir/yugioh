@@ -13,8 +13,10 @@
 //   caxBite       contact: the edge bites the floor — a deep 40 Hz thud, a stone crack, a brown dust puff
 //   caxRunR/L     the Yarık "crackle run" from the attacker to the target (screen L→R / R→L)
 //   caxClimb      the seam climbs the target: a rising "tsss"
+//   caxArrive     the seam ARRIVES (the contact: number, flash): a dry stone "tak" + a short driven thump — the 2nd hit
 //   caxWrench     follow-through: the axe torn out (a stone grind + a clod)
 //   caxShoulder   the axe back on the shoulder: a soft fur thud
+//   caxScuff      a plain step of the walk home (grit, no weight)
 //   caxSeamTick   the persisting seam's breathing (four faint ticks; `dry` last one by pitch)
 //   caxRoll       summon: the boulder rolls in (gravel + an AM rumble slowing 6 → 3 Hz)
 //   caxBounce     summon: one boulder bounce (×2, the second louder)
@@ -36,7 +38,7 @@
 //   caxAxeTok     death: the planted axe tips flat — a dry stone "tok"
 //   caxBurn       death: the seam-burn eats the last of the halves (a thin hiss going out)
 //   caxReviveGather / caxReviveSeal   revive: the tear run backwards, the seam sealing shut
-//   caxTap        idle accent (no ambient-idle hook in the codebase yet: dev preview only)
+//   caxTap        idle accent: the axe tapped on the floor on idle f11 (the card's own idle watcher, crag_axeman.ts)
 
 import type { Recipe } from '../sounds';
 import type { CharacterSounds } from '../../cinematics/_v3/sound';
@@ -67,13 +69,15 @@ function tsss(v: Voice, t: number, d: number, g: number, hp: number, o: { pan?: 
 
 /** The crackle run along the floor seam: dense clicks 3.5 → 5 kHz, panned `from` → `to`. */
 function crackleRun(v: Voice, from: number, to: number, g: number): void {
-  const d = 0.26;
-  const pan = v.panner([[0, from], [d, to]]);
-  const bp = v.filt('bandpass', [[0, 3500], [d, 5000, 'e']], 1.1, { to: pan });
-  v.crackle({ d, n: 26, g, f: 4200, q: 0.6, dec: 0.005, curve: 0.9, to: bp });
+  // it starts 20 ms after the bite's transient (unmasked), and runs with the seam's head
+  const t = 0.02;
+  const d = 0.24;
+  const pan = v.panner([[0, from], [d, to]], { t });
+  const bp = v.filt('bandpass', [[0, 3500], [d, 5000, 'e']], 1.1, { t, to: pan });
+  v.crackle({ t, d, n: 26, g, f: 4200, q: 0.6, dec: 0.005, curve: 0.9, to: bp });
   // the gravel under the light: a few low grains along the run (the floor itself splits)
-  v.crackle({ d: d * 0.9, n: 9, g: g * 0.6, f: 900, q: 0.8, dec: 0.008, to: pan });
-  v.noise('white', { g: [[0, 0], [0.03, g * 0.18], [d, g * 0.1], [d + 0.06, 0.0001, 'e']], to: v.filt('bandpass', [[0, 3000], [d, 5200, 'e']], 3, { to: pan }) });
+  v.crackle({ t, d: d * 0.9, n: 9, g: g * 0.6, f: 900, q: 0.8, dec: 0.008, to: pan });
+  v.noise('white', { t, g: [[0, 0], [0.03, g * 0.18], [d, g * 0.1], [d + 0.06, 0.0001, 'e']], to: v.filt('bandpass', [[0, 3000], [d, 5200, 'e']], 3, { t, to: pan }) });
 }
 
 /**
@@ -134,17 +138,17 @@ export const V3_AXEMAN_RECIPES = {
     play(v) {
       const D = 0.5;
       const pan = v.panner([[0, 0], [0.12, -0.7], [0.24, 0.7], [0.37, -0.7], [D, 0.7]]);
-      const bp = v.filt('bandpass', [[0, 180], [0.22, 420, 'e'], [D, 260, 'e']], 1.4, { to: pan });
-      // two passes of the head in front of him: two swells, the second faster and louder
-      v.noise('pink', { g: env([[0, 0], [0.12, 0.08], [0.2, 0.32], [0.27, 0.1], [0.38, 0.44], [0.44, 0.16], [D, 0.0001, 'e']]), to: bp });
+      const bp = v.filt('bandpass', [[0, 180], [0.22, 420, 'e']], 1.4, { to: pan });
+      // the body's air turning (a low bed)
+      v.noise('pink', { g: env([[0, 0], [0.12, 0.12], [0.2, 0.34], [0.27, 0.14], [0.38, 0.44], [0.44, 0.18], [D, 0.0001, 'e']]), to: bp });
+      // the axe head's "WHUM": a 500 → 1500 Hz band on the same panner, peaking as the head passes the front twice
+      const whum = v.filt('bandpass', [[0, 520], [0.2, 900, 'e'], [0.38, 1400, 'e'], [D, 1100, 'e']], 2.2, { to: pan });
+      v.noise('pink', { g: env([[0, 0], [0.13, 0.1], [0.2, 1.3], [0.25, 0.12], [0.33, 0.15], [0.39, 1.6], [0.44, 0.15], [D, 0.0001, 'e']]), to: whum });
       // the air cut by the crescent edge: a thin high band on the same passes
-      const hi = v.filt('bandpass', [[0, 1500], [D, 2600, 'e']], 4, { to: pan });
-      v.noise('white', { g: env([[0, 0], [0.19, 0.06], [0.25, 0.01], [0.37, 0.09], [0.43, 0.015], [D, 0.0001, 'e']]), to: hi });
-      // the heavy stone head: a low whirr, its rate quickening
-      const o = v.tone('triangle', [[0, 72], [D, 118, 'e']], { g: env([[0, 0], [0.1, 0.1], [0.4, 0.16], [D, 0.0001, 'e']]), to: pan });
-      v.lfo(o.amp.gain, [[0, 5], [D, 11, 'e']], 0.06, { d: D });
-      // the boots pivot on the floor
-      v.crackle({ t: 0.02, d: 0.42, n: 12, g: 0.1, f: 3000, q: 0.7, dec: 0.006 });
+      const hi = v.filt('bandpass', [[0, 1800], [D, 2800, 'e']], 4, { to: pan });
+      v.noise('white', { g: env([[0, 0], [0.19, 0.2], [0.25, 0.02], [0.37, 0.3], [0.43, 0.03], [D, 0.0001, 'e']]), to: hi });
+      // the boots pivot on the floor (gravel)
+      v.crackle({ t: 0.02, d: 0.42, n: 14, g: 0.3, f: 3000, q: 0.7, dec: 0.005 });
     },
   },
   /** The axe swung up behind the head (the longest frame): a short exertion breath, the haft creaks. */
@@ -165,11 +169,15 @@ export const V3_AXEMAN_RECIPES = {
     gap: 0.05,
     verb: 0.18,
     play(v) {
-      // f 77: the dominants land at ~90 / 95 / 100 Hz with the run-up's pitches 1 / 1.055 / 1.11 (probe: f 77 → 86 Hz, f 83 → 97 Hz)
-      gravel(v, 0, 0.7, { f: 80, dec: 0.09, n: 10 });
+      // GRIT first (the boot grinding gravel), the thump short under it: never the ogre's wooden stomp. f 80: the
+      // dominants land at ~90 / 95 / 100 Hz with the run-up's pitches 1 / 1.055 / 1.11
+      thump(v, 0, 96, 70, 0.26, 0.05, { drive: 1.6 });
+      v.crackle({ d: 0.07, n: 16, g: 0.9, f: 2800, q: 0.7, dec: 0.004, curve: 1.5 });
+      // the gravel layer: grains crushed under the sole (bandpassed noise bursts, 6 dB up)
+      v.noise('white', { g: perc(0.55, 0.05, 0.001), to: v.filt('bandpass', 2400, 1.1) });
+      v.crackle({ t: 0.008, d: 0.06, n: 9, g: 0.45, f: 4600, q: 0.9, dec: 0.003 });
       // a pebble hops off the boot
-      v.noise('white', { t: 0.05, g: perc(0.06, 0.006, 0.0002), to: v.filt('bandpass', 3600, 2) });
-      fur(v, 0.006, 0.1);
+      v.noise('white', { t: 0.05, g: perc(0.08, 0.006, 0.0002), to: v.filt('bandpass', 3600, 2) });
     },
   },
   /** Release: the chop comes down — a short downward air cut, a low push under it. */
@@ -192,20 +200,23 @@ export const V3_AXEMAN_RECIPES = {
     verb: 0.35,
     duck: 0.7,
     play(v) {
-      thump(v, 0, 40, 28, 0.62, 0.35, { drive: 2.2 });
-      thump(v, 0, 120, 60, 0.24, 0.08, { drive: 1.4 });
+      thump(v, 0, 40, 28, 0.62, 0.22, { drive: 2.2 });
       crack(v, 0, 0.5, { hp: 1800, lp: 9000, n: 2, gap: 0.01, dec: 0.014 });
-      puff(v, 0.004, 0.3, 0.4, 700, { kind: 'brown' });
-      // the stone edge buried in stone: a short gritty grind
-      v.noise('brown', { t: 0.01, g: perc(0.22, 0.12, 0.004), to: v.filt('bandpass', 260, 3) });
+      // STONE, not wood: a gravel burst flung off the edge (2.8 kHz, dense) and a short ringing stone "klak" (600 Hz,
+      // a narrow band with its inharmonic partials: the rock floor answering) — no woody mid-band puff
+      v.crackle({ d: 0.09, n: 18, g: 0.85, f: 2800, q: 0.8, dec: 0.004, curve: 1.8 });
+      v.noise('white', { t: 0.002, g: perc(0.8, 0.04, 0.0004), to: v.filt('bandpass', 600, 8) });
+      v.tone('triangle', [[0, 610], [0.05, 590, 'e']], { g: perc(0.22, 0.045, 0.0005) });
+      v.tone('sine', [[0, 1630], [0.04, 1600, 'e']], { g: perc(0.08, 0.03, 0.0005) });
+      puff(v, 0.004, 0.12, 0.2, 260, { kind: 'brown' });
       // chips skittering
-      v.crackle({ t: 0.02, d: 0.28, n: 14, g: 0.2, f: 3200, q: 0.8, dec: 0.006, curve: 1.8 });
+      v.crackle({ t: 0.03, d: 0.24, n: 14, g: 0.22, f: 3600, q: 0.8, dec: 0.005, curve: 1.8 });
     },
   },
   /** The crackle run (screen left → right: a P1 attacker). */
-  caxRunR: { cap: 2, gap: 0.05, verb: 0.3, play: (v) => crackleRun(v, -0.6, 0.6, 1.4) },
+  caxRunR: { cap: 2, gap: 0.05, verb: 0.3, play: (v) => crackleRun(v, -0.6, 0.6, 2.2) },
   /** The crackle run (screen right → left: a P2 attacker). */
-  caxRunL: { cap: 2, gap: 0.05, verb: 0.3, play: (v) => crackleRun(v, 0.6, -0.6, 1.4) },
+  caxRunL: { cap: 2, gap: 0.05, verb: 0.3, play: (v) => crackleRun(v, 0.6, -0.6, 2.2) },
   /** The seam climbs through the target: a rising "tsss" (light pouring), with a thin high tick at the crown. */
   caxClimb: {
     cap: 2,
@@ -216,16 +227,47 @@ export const V3_AXEMAN_RECIPES = {
       v.noise('white', { t: 0.1, g: perc(0.1, 0.01, 0.0003), to: v.filt('bandpass', 6400, 3) });
     },
   },
-  /** Follow-through: the axe wrenched out of the floor — a stone grind (bp 220), a clod tossed, a grunt of effort. */
+  /** Follow-through: the axe wrenched out of the floor — a short stone grind (bp 220), a clod tossed, a breath of effort. */
   caxWrench: {
     cap: 1,
     gap: 0.1,
-    verb: 0.25,
+    verb: 0.2,
     play(v) {
-      v.noise('brown', { g: env([[0, 0], [0.03, 0.42], [0.25, 0.0001, 'e']]), to: v.filt('bandpass', [[0, 260], [0.22, 190, 'e']], 4) });
-      v.crackle({ t: 0.01, d: 0.18, n: 9, g: 0.18, f: 1800, q: 0.8, dec: 0.006 });
-      puff(v, 0.09, 0.16, 0.18, 900, { kind: 'brown' });
-      vox(v, 0, 0.2, [[0, 128], [0.06, 134, 'e'], [0.2, 100, 'e']], 0.2, { formants: [520, 1000, 2400], breath: 0.4, grit: 2 });
+      // well under the contact (follow-through, not a second blow): a short stone grind, a few grains, the clod puff
+      // as its only accent, a grunt of effort
+      v.noise('brown', { g: env([[0, 0], [0.02, 0.85], [0.15, 0.0001, 'e']]), to: v.filt('bandpass', [[0, 260], [0.14, 190, 'e']], 4) });
+      v.crackle({ t: 0.01, d: 0.12, n: 6, g: 0.3, f: 1800, q: 0.8, dec: 0.006 });
+      puff(v, 0.08, 0.85, 0.14, 900, { kind: 'brown' });
+      // a breath of effort (no voiced grunt: a driven voice would sit as loud as the blow itself)
+      v.noise('pink', { t: 0.01, g: env([[0, 0], [0.04, 0.2], [0.16, 0.0001, 'e']]), to: v.filt('bandpass', 700, 2) });
+    },
+  },
+  /**
+   * The seam ARRIVES (the contact frame: the number, the flash): a dry stone "tak" (two cracks 6 ms apart, hp 2.2 kHz),
+   * a short driven 70 → 45 Hz thump under it and a 30 ms white snap — a second hit after the bite, never a hiss.
+   */
+  caxArrive: {
+    cap: 1,
+    gap: 0.08,
+    verb: 0.3,
+    duck: 0.6,
+    play(v) {
+      crack(v, 0, 0.75, { hp: 2200, lp: 10000, n: 2, gap: 0.006, dec: 0.01 });
+      thump(v, 0, 70, 45, 0.7, 0.12, { drive: 1.8 });
+      v.noise('white', { g: perc(0.4, 0.03, 0.0004), to: v.filt('highpass', 3000, 0.7) });
+      // the stone ringing where the seam stopped: a short 600 Hz "klak"
+      v.noise('white', { t: 0.002, g: perc(0.28, 0.04, 0.0005), to: v.filt('bandpass', 640, 8) });
+    },
+  },
+  /** A plain step on the walk home (no weight thrown: the boot scuffs the grit, the fur sways). */
+  caxScuff: {
+    cap: 2,
+    gap: 0.05,
+    verb: 0.15,
+    play(v) {
+      v.crackle({ d: 0.05, n: 7, g: 0.3, f: 3000, q: 0.8, dec: 0.004, curve: 1.4 });
+      thump(v, 0, 140, 95, 0.18, 0.04);
+      v.noise('pink', { t: 0.005, g: perc(0.08, 0.06, 0.004), to: v.filt('bandpass', 2200, 0.9) });
     },
   },
   /** The axe lands back on the shoulder: a soft fur thud with the stone's weight under it. */
@@ -296,16 +338,15 @@ export const V3_AXEMAN_RECIPES = {
     gap: 0.05,
     verb: 0.2,
     play(v) {
-      // (kept ≥ 9 dB LSD from C11's hide + horn: the weight is in the chest knock and the fur brush, no keratin tick)
-      v.noise('pink', { g: perc(0.34, 0.08, 0.002), to: v.filt('lowpass', 900, 0.8) });
-      thump(v, 0, 110, 58, 0.72, 0.09, { drive: 1.4 });
-      // the leather slap: the jerkin struck flat (a sharp 1.2 kHz smack with a 2nd crack of the hide 15 ms on)
-      v.noise('white', { t: 0.002, g: perc(0.55, 0.02, 0.0004), to: v.filt('bandpass', 1200, 2.2) });
-      v.noise('white', { t: 0.017, g: perc(0.2, 0.012, 0.0003), to: v.filt('bandpass', 1700, 2.6) });
-      // the fur of the mantle brushed flat by the blow (a soft high hiss, 60 ms)
-      v.noise('pink', { t: 0.006, g: perc(0.14, 0.06, 0.006), to: v.filt('bandpass', 2600, 0.9) });
+      // the LEATHER SLAP leads (bp 1.2 kHz, Q 2, 20 ms) with a fur brush at 2.5 kHz: a light hit is heard as a slap on
+      // the hide, never as his step; the chest knock only under it (kept ≥ 9 dB LSD from C11's hide + horn)
+      v.noise('white', { t: 0.002, g: perc(1.6, 0.02, 0.0004), to: v.filt('bandpass', 1200, 2) });
+      v.noise('white', { t: 0.015, g: perc(0.6, 0.014, 0.0003), to: v.filt('bandpass', 1700, 2.6) });
+      v.noise('pink', { t: 0.004, g: perc(0.7, 0.07, 0.004), to: v.filt('bandpass', 2500, 0.9) });
+      thump(v, 0, 120, 70, 0.2, 0.05, { drive: 1.2 });
+      v.noise('pink', { g: perc(0.12, 0.06, 0.002), to: v.filt('lowpass', 900, 0.8) });
       // the beads clack on the chest
-      for (const t of [0.03, 0.055]) v.noise('white', { t, g: perc(0.09, 0.006, 0.0002), to: v.filt('bandpass', 3300, 3) });
+      for (const t of [0.03, 0.055]) v.noise('white', { t, g: perc(0.12, 0.006, 0.0002), to: v.filt('bandpass', 3300, 3) });
     },
   },
   /** Heavy: the same body blow, deeper and longer, the cloak flopping, and the baritone grunt (breath knocked out). */
@@ -375,14 +416,19 @@ export const V3_AXEMAN_RECIPES = {
   caxSplit: {
     cap: 1,
     gap: 0.1,
-    verb: 0.4,
+    verb: 0.35,
     duck: 0.4,
     play(v) {
-      const bp = v.filt('bandpass', [[0, 4000], [0.23, 6000, 'e']], 1.1);
-      v.crackle({ d: 0.23, n: 20, g: 0.3, f: 5000, q: 0.6, dec: 0.004, curve: 0.8, to: bp });
-      tsss(v, 0.08, 0.15, 0.18, 6000);
-      // the rock giving way along the line: a dry split
-      crack(v, 0.21, 0.4, { hp: 900, lp: 6000, n: 2, gap: 0.014, dec: 0.02 });
+      // ROCK opening along one line (never the wyrm's crystal crack): a grainy 1.2 → 2 kHz crackle running up the
+      // face, a stone groan (a 500 → 300 Hz band of brown noise, the halves grinding apart), dry stone cracks, and the
+      // light's "tsss" only as a thin top layer
+      const bp = v.filt('bandpass', [[0, 1200], [0.24, 2000, 'e']], 1.3);
+      v.crackle({ d: 0.24, n: 30, g: 0.8, f: 1600, q: 0.7, dec: 0.005, curve: 1, drive: 1.4, to: bp });
+      v.noise('brown', { g: env([[0, 0], [0.05, 0.4], [0.22, 0.3], [0.34, 0.0001, 'e']]), to: v.filt('bandpass', [[0, 500], [0.3, 300, 'e']], 3) });
+      thump(v, 0.2, 110, 70, 0.35, 0.1, { drive: 1.4 });
+      crack(v, 0.0, 0.3, { hp: 900, lp: 5000, n: 3, gap: 0.05, dec: 0.012 });
+      crack(v, 0.21, 0.45, { hp: 900, lp: 6000, n: 2, gap: 0.014, dec: 0.02 });
+      tsss(v, 0.1, 0.14, 0.06, 6000);
     },
   },
   /** Summon: the two halves land left and right (60 ms apart) with a brown dust breath each. */
@@ -434,10 +480,14 @@ export const V3_AXEMAN_RECIPES = {
     gap: 0.06,
     verb: 0.2,
     play(v) {
-      thump(v, 0, 160, 110, 0.55, 0.05, { drive: 1.3 });
-      v.noise('white', { g: perc(0.35, 0.03, 0.0005), to: v.filt('bandpass', 700, 3.5) });
-      v.tone('triangle', [[0, 520], [0.06, 470, 'e']], { g: perc(0.12, 0.06, 0.0005) });
-      fur(v, 0.008, 0.14);
+      // the haft SLAPPED across the chest: a hollow wooden knock high up (1.1 → 1.4 kHz, a ringing narrow band) — no low
+      // thump (the struck hide owns the body's weight)
+      v.noise('white', { g: perc(1.4, 0.035, 0.0004), to: v.filt('bandpass', 1250, 10) });
+      v.tone('triangle', [[0, 1180], [0.07, 1120, 'e']], { g: perc(0.4, 0.07, 0.0004) });
+      v.tone('sine', [[0, 1420], [0.05, 1400]], { g: perc(0.18, 0.05, 0.0004) });
+      v.noise('white', { t: 0.003, g: perc(0.45, 0.012, 0.0003), to: v.filt('bandpass', 2600, 2) });
+      // the grip creaks on the haft
+      v.noise('white', { t: 0.02, g: perc(0.06, 0.05, 0.004), to: v.filt('bandpass', 760, 4) });
     },
   },
   /** Struck: a short baritone grunt (low, closed vowel) — the human under the material. */
@@ -486,15 +536,20 @@ export const V3_AXEMAN_RECIPES = {
   caxTear: {
     cap: 1,
     gap: 0.2,
-    verb: 0.45,
+    verb: 0.4,
     duck: 0.6,
     play(v) {
       const D = 0.45;
-      const bp = v.filt('bandpass', [[0, 2500], [D, 1200, 'e']], 1.2);
-      v.crackle({ d: D, n: 40, g: 0.9, f: 1800, q: 0.7, dec: 0.007, curve: 1.2, drive: 1.6, to: bp });
-      crack(v, 0, 0.8, { hp: 1100, lp: 7000, n: 6, gap: 0.03, dec: 0.016 });
-      // the fibre of the body giving way: a low tearing noise band under the cracks
-      v.noise('brown', { g: env([[0, 0], [0.04, 0.35], [D, 0.08], [D + 0.1, 0.0001, 'e']]), to: v.filt('bandpass', [[0, 420], [D, 180, 'e']], 2.5) });
+      // ONE continuous tear: dense crackle through a band sweeping DOWN 2.5 → 1.2 kHz, held loud to 0.35 s
+      const bp = v.filt('bandpass', [[0, 2500], [D, 1200, 'e']], 1.4);
+      const amp = v.amp(env([[0, 0], [0.02, 1], [0.35, 0.85], [D + 0.05, 0.0001, 'e']]), { to: bp });
+      v.crackle({ d: D, n: 40, g: 3, f: 1800, q: 0.7, dec: 0.006, curve: 1, drive: 1.8, to: amp });
+      // a noise core under the crackle, sweeping with it (the tear is continuous, not a string of clicks)
+      v.noise('white', { g: env([[0, 0], [0.02, 1.2], [0.35, 1], [D + 0.05, 0.0001, 'e']]), to: v.filt('bandpass', [[0, 2400], [D, 1150, 'e']], 2) });
+      // cloth and flesh giving way: a low rip band 400 → 250 Hz
+      v.noise('pink', { g: env([[0, 0], [0.03, 0.9], [0.32, 0.6], [D + 0.08, 0.0001, 'e']]), to: v.filt('bandpass', [[0, 400], [D, 250, 'e']], 2.4) });
+      // six cracks 30 ms apart on top
+      crack(v, 0, 0.7, { hp: 1100, lp: 7000, n: 6, gap: 0.03, dec: 0.016 });
     },
   },
   /** Death: one half falls (×2: the cinematic pans them apart, 140 ms between) — a body thud with a fur flop. */
