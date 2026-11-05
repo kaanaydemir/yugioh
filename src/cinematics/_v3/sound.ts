@@ -19,13 +19,20 @@ import { sfx, type SfxHandle, type SfxName, type SfxOpts } from '../../audio/sfx
 import type { AnimMark, AnyMonsterAnim } from '../../art/types';
 import type { CardId } from '../../data/cards';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
+import { variantOf } from '../../duel/unit-variant';
 import { LOOK_V3 } from '../../view/layout';
 import { setCombatSfx } from '../../vfx/combat';
 import { hitSfxName } from '../../audio/v3/materials';
+import { HARPOONER_VOICE } from '../../audio/v3/tide_harpooner';
 import { voiceSounds } from '../../audio/v3/voices';
+import { KART_B_VOICES } from '../../audio/v3/kart-b';
+import { HERON_VOICE } from '../../audio/v3/reed_heron';
 import type { MaterialId } from '../../art/materials';
+import { AXEMAN_VOICE } from '../../audio/v3/crag_axeman';
 import { v3Recipe } from '../../presentation/registry';
+import { KITE_VOICE } from '../../audio/v3/kite_fencer';
 import type { BlowKind } from './blow';
+import { SPIRALHORN_VOICE } from '../../audio/v3/steppe_spiralhorn';
 
 // ================================================================ play
 
@@ -171,9 +178,12 @@ export interface CharacterSounds {
   reviveGather: SfxName;
   /** Revive 'land' mark. */
   reviveLand: SfxName;
+  /** The struck body's own hit sounds when it has no material recipe (hitSoundFor): light / heavy / magic, and a guarded blow. */
+  struck?: { light: SfxName; heavy: SfxName; magic: SfxName; guard?: SfxName };
 }
 
 export const CHARACTER_SOUNDS: Partial<Record<CardId, CharacterSounds>> = {
+  tide_harpooner: HARPOONER_VOICE,
   crystal_wyrm: {
     roar: 'wyrmRoar',
     arrive: 'wyrmChime',
@@ -187,6 +197,7 @@ export const CHARACTER_SOUNDS: Partial<Record<CardId, CharacterSounds>> = {
     reviveGather: 'wyrmReviveGather',
     reviveLand: 'wyrmReviveLock',
   },
+  reed_heron: HERON_VOICE,
   abyss_magus: {
     roar: 'magusCall',
     arrive: 'magusPresence',
@@ -205,6 +216,70 @@ export const CHARACTER_SOUNDS: Partial<Record<CardId, CharacterSounds>> = {
     reviveGather: 'magusReviveGather',
     reviveLand: 'magusReviveSettle',
   },
+  ...KART_B_VOICES, // lane B cards (src/audio/v3/kart-b.ts)
+  // lane A (docs/v3/kart-a/ashen_drake.md §6.4)
+  ashen_drake: {
+    roar: 'ashenRoar',
+    arrive: 'ashenMound',
+    land: 'ashenTalon',
+    charge: 'ashenInhale',
+    release: 'ashenExhale',
+    impact: 'ashenIgnite',
+    // r3 (critic r2 #4): the death scored on the frames the picture moves — the crackle on the cloak's drop
+    // (the 'dissolve' mark, death f6), the crumble as the plates break (f7), the core on the floor (f9)
+    dissolve: 'ashenCrackle',
+    afterDissolve: [
+      [1, 'ashenCrumble', 1],
+      [3, 'ashenCoreDrop', 0.9],
+    ],
+    burst: 'ashenCool',
+    reviveGather: 'ashenReviveGather',
+    reviveLand: 'ashenReviveBeat',
+  },
+  kite_fencer: KITE_VOICE,
+  crag_axeman: AXEMAN_VOICE,
+  steppe_spiralhorn: SPIRALHORN_VOICE,
+  // lane A (docs/v3/kart-a/cloud_hatchling.md §6.4); the grown body's roles: VARIANT_SOUNDS below
+  cloud_hatchling: {
+    roar: 'hatchCheep',
+    arrive: 'hatchCloudDrift',
+    land: 'hatchEggLand',
+    charge: 'hatchInhale',
+    swing: 'hatchHop',
+    release: 'hatchSneeze',
+    impact: 'hatchRingTing',
+    deathStart: 'hatchCurl',
+    dissolve: 'hatchKnit',
+    afterDissolve: [[3, 'hatchLullaby', 0.8]],
+    burst: 'hatchFloat',
+    reviveGather: 'hatchReviveGather',
+    reviveLand: 'hatchReviveLand',
+  },
+  // lane A (docs/v3/kart-a/venom_drake.md §6). Death frames (13 f): dissolve = f3 (the seam web), f4–f6 the
+  // three hole steps (the same three ticks it gave its victims), f8 the slump, f10 the stinger marker, f11 the
+  // bead falls into the pool (the drip leitmotif closes the card)
+  venom_drake: {
+    roar: 'venomRoar',
+    arrive: 'venomArrive',
+    land: 'venomLand',
+    charge: 'venomCharge',
+    swing: 'venomWhip',
+    release: 'venomSpit',
+    impact: 'venomSplat',
+    deathStart: 'venomTear',
+    dissolve: 'venomMelt',
+    afterDissolve: [
+      [1, 'venomEat', 0.8],
+      [2, 'venomEat', 0.9],
+      [3, 'venomEat', 1],
+      [5, 'venomSlump', 0.8],
+      [7, 'venomMarker', 0.7],
+      [8, 'venomDrip', 0.7],
+    ],
+    burst: 'venomPuddle',
+    reviveGather: 'venomReviveGather',
+    reviveLand: 'venomReviveLand',
+  },
 };
 
 /**
@@ -218,6 +293,28 @@ export function soundsOf(id: CardId | null | undefined): CharacterSounds | null 
   const v = v3Recipe(id)?.voice;
   if (v && !('custom' in v)) return voiceSounds(id);
   return CHARACTER_SOUNDS[(v?.custom ?? id) as CardId] ?? null;
+}
+
+/**
+ * Per-variant voice overrides (lane A shared infrastructure; src/art/variants.ts), keyed
+ * `<cardId>:<variant>` (e.g. 'cloud_hatchling:grown'): the roles listed replace the card's own set
+ * for a unit in that variant. Empty until a card registers its variant's voice here (additively).
+ */
+export const VARIANT_SOUNDS: Record<string, Partial<CharacterSounds>> = {
+  // lane A (docs/v3/kart-a/cloud_hatchling.md §6.4): the grown cloud dragon's own voice
+  'cloud_hatchling:grown': { roar: 'hatchGrownRoar', charge: 'hatchGrownInhale', swing: 'hatchGrownStomp', release: 'hatchGrownSneeze', impact: 'hatchGrownRingBoom', deathStart: 'hatchGrownCurl' },
+};
+
+/**
+ * A unit's character sounds: soundsOf(u.cardId), with its variant's roles over them (VARIANT_SOUNDS).
+ * Exactly soundsOf(u.cardId) for every unit without a variant (and null when the card has no set).
+ */
+export function soundsOfUnit(u: MonsterUnit): CharacterSounds | null {
+  const C = soundsOf(u.cardId);
+  if (!C) return null;
+  const v = variantOf(u);
+  const o = v ? VARIANT_SOUNDS[`${u.cardId}:${v}`] : undefined;
+  return o ? { ...C, ...o } : C;
 }
 
 /** The card of a blow's source (react.ts `by`: a unit, a monster art, `{ art }`, a weight class). */
@@ -248,7 +345,7 @@ const TAKE_MS = 320;
 
 /** The attacker's charge pose is on screen (the declaration): its own charge sound starts now. */
 export function holdCharge(u: MonsterUnit, o: { volume?: number } = {}): void {
-  const C = soundsOf(u.cardId);
+  const C = soundsOfUnit(u);
   if (!C) return;
   dropCharge(u, 40);
   const h = start(C.charge, { volume: o.volume ?? 0.85, pan: panAt(u.home.x) });
@@ -343,6 +440,8 @@ export function materialOf(id: CardId | null | undefined, kind: BlowKind): Mater
  */
 export function hitSoundFor(u: MonsterUnit | null | undefined, o: { kind: BlowKind; heavy: boolean }): SfxName | null {
   if (!LOOK_V3 || !u) return null;
+  const own = soundsOf(u.cardId)?.struck;
+  if (own) return o.kind === 'magic' ? own.magic : u.guarding && !o.heavy && own.guard ? own.guard : o.heavy ? own.heavy : own.light;
   const m = materialOf(u.cardId, o.kind);
   if (!m) return null;
   try {

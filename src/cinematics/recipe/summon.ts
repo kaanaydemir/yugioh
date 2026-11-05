@@ -40,7 +40,7 @@ import { Raster } from '../../vfx/setpieces';
 import type { CinematicContext } from '../_core/types';
 import { matterRamp, rampOfMatter } from '../_v3/presets';
 import { summonPose } from '../_v3/summon';
-import { panAt, play, soundsOf, start } from '../_v3/sound';
+import { panAt, play, soundsOfUnit, start } from '../_v3/sound';
 import { entrance, type Entrance, type SummonCtx } from '../summon-b/_kit';
 import { hooksOf } from './strike';
 
@@ -193,7 +193,7 @@ function lockDust(scene: Phaser.Scene, at: XY, ramp: Ramp): void {
 async function assemble(e: Entrance, r: PresentationRecipe, hooks: RecipeHooks | null): Promise<void> {
   const sc = e.scene;
   const u = e.unit;
-  const voice = soundsOf(u.cardId);
+  const voice = soundsOfUnit(u);
   const pan = panAt(e.home.x);
   const ramp: Ramp = r.summon.matter ? rampOfMatter(r.summon.matter) : matterRamp(u.cardId);
   const lead = Math.max(0, Math.round(r.summon.leadMs ?? ASSEMBLE_LEAD_MS));

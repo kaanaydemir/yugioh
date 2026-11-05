@@ -51,8 +51,13 @@ export type RingSpec =
   | { readonly kind: 'rumble'; readonly f: number; readonly grit: number }
   /** water (A4): an impact splash + bubbles — no interpreter yet */
   | { readonly kind: 'slosh'; readonly f: number; readonly bubbles: number }
-  /** fire / electric (A4): crackle — no interpreter yet */
-  | { readonly kind: 'crackle'; readonly hp: number; readonly rate: number };
+  /**
+   * ash / acid / fire (lane A, src/audio/v3/materials.ts): a dry train of tiny clicks at `hp` (Hz),
+   * `rate` clicks per second, lasting `dec` s ([Light, Heavy], default [0.25, 0.4]; Magic = 0.6 ×
+   * Heavy) — never a pitched ring. Optional: `knock` a short tonal sine knock (Hz; × 1.25 on a light
+   * blow, falling to half), `rattle` two extra clicks at that band (Hz) on a heavy blow.
+   */
+  | { readonly kind: 'crackle'; readonly hp: number; readonly rate: number; readonly dec?: PerWeight; readonly knock?: number; readonly rattle?: number };
 export type RingKind = RingSpec['kind'];
 
 /** The struck body's sound: the parameters of its hit recipes (src/audio/v3/materials.ts). */

@@ -1,35 +1,222 @@
-// Neon Tower layer: FLOOR (slots / grid) — owner A1 (docs/v3/ARENA_NEON_TOWER.md §2, §7, §12).
-// The slot art on the top plate: for every zone BoardViewCalm builds (LANES-aware, so 5+5 and 3+3 both get
-// exactly the zones layout.ts says) one slot image — calm's 64×32 tile geometry in the owner's tones: a dim
-// thin border (cyan1 / crimson1: BoardViewCalm's `base` line, which it steps up on hover / selection / flash),
-// a faint glow ring outside it, the calm pad interior (kept, the stepped floor light reads it). The slot
-// sits just above calm's own pad image (which stays underneath: zoneAt / tileImage / TargetMarks keep
-// working on it) and under the stepped light (TILE + 0.5), the lit line masks and every highlight.
-// The neutral centre strip is part of the platform body; this layer animates it: the emblem's two ring
-// halves breathe on opposite phases, the dashes of the centre line carry a slow light run, all of it
-// dark until the floodlights are on. In 3+3 the outer lane cells (grid cols 0 and 6) have no zone: they
-// stay empty graphite, painted into the platform body.
+// Neon Tower layer: FLOOR (slots / grid) — owner A1.
+// Readability pass: apron rail strips and blinking lamps stay off so the floor around the platform stays calm and dark.
 
 import type Phaser from 'phaser';
 import { FLOOR_FRAMES, NT_FLOOR_KEY, SLOT_DOWN, SLOT_EMPTY, SLOT_OCCUPIED, buildFloorArt } from '../../art/arena-nt/floor';
-import { NT_PAL } from '../../art/arena-nt/palette';
 import type { FloorArt } from '../../art/arena-nt/floor';
 import { APRON_BOX, NT_APRON_FX_KEY, NT_APRON_KEY, buildApronArt, type ApronArt } from '../../art/arena-nt/apron';
-import { calmZones } from '../board-calm/art';
+import { buildCalmArt, calmZones } from '../board-calm/art';
+import { PAL, RAMPS } from '../../art/palette';
 import type { FieldView } from '../../duel/FieldView';
 import type { GameEvent, PlayerId } from '../../engine/types';
 import { type BoardSpot, zoneXY } from '../layout';
-import { CENTER_EMBLEM, NT_DEPTH } from './layout-nt';
+import { CENTER_EMBLEM, NT_COLS, NT_DEPTH, NT_ROWS, PLATE_OUTLINE, PLATE_X0, PLATE_X1, PLATE_Y0, PLATE_Y1, ntIso } from './layout-nt';
+import { mulberry32 } from '../../art/pixel';
 import { TEX } from '../../vfx/core';
 import { type NtCtx, type NtLayer } from './layer';
 import { ensureNtTexture } from './textures';
 
 type Img = Phaser.GameObjects.Image;
 
-/** Depth of the apron: above the wall's iso floor (9.95), below the wall band (10), the stands and the platform. */
 const APRON_Z = 9.96;
 
-/** Register the floor atlas (idempotent): slot frames, emblem levels, dash masks. Used by boot step 22 and the layer. */
+// ---------------------------------------------------------------- smooth slot borders (readability pass)
+// Owner feedback 2026-11-02: the tile lines of hedef-gorunum-1/2 are smooth, ours were hard 1-px stairs.
+// The slots are drawn on a 2D canvas instead: an anti-aliased diamond line + a faint glow + a light interior
+// tint, in the player's PAL ramp (cyan / crimson). Same frame names as the pixel atlas (FLOOR_FRAMES.slot),
+// same 64×32 box, same place; the diamond is fitted to the calm board's own zone-line mask.
+
+const NT_FLOOR_SMOOTH_KEY = 'nt:floor:smooth';
+
+const rgbOf = (c: number): string => `${(c >> 16) & 255}, ${(c >> 8) & 255}, ${c & 255}`;
+
+// ---------------------------------------------------------------- stone texture of the plate (readability pass)
+// Owner feedback: the plate of hedef-gorunum-1/2 has a texture, ours was one flat colour. A soft 2D-canvas
+// overlay on the plate's top (clipped to the octagon, under the slots): big iso stone flags with thin
+// anti-aliased seams (dark groove + lit lip from the top left), a gentle per-flag tone shift and low-frequency
+// mottling. Deterministic (seeded), static, drawn once.
+
+const NT_PLATE_TEX_KEY = 'nt:plate:texture';
+
+function ensurePlateTexture(scene: Phaser.Scene): string | null {
+  if (scene.textures.exists(NT_PLATE_TEX_KEY)) return NT_PLATE_TEX_KEY;
+  const W = PLATE_X1 - PLATE_X0;
+  const H = PLATE_Y1 - PLATE_Y0;
+  const ct = scene.textures.createCanvas(NT_PLATE_TEX_KEY, W, H);
+  if (!ct) return null;
+  const g = ct.getContext();
+  g.clearRect(0, 0, W, H);
+  g.save();
+  g.translate(-PLATE_X0, -PLATE_Y0);
+  // clip to the plate's top octagon, 5 px inside the coping
+  const pts = PLATE_OUTLINE.map(([c, r]) => ntIso(c, r));
+  const mx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+  const my = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+  g.beginPath();
+  pts.forEach((p, i) => {
+    const dx = p.x - mx;
+    const dy = p.y - my;
+    const k = 1 - 7 / Math.hypot(dx, dy * 2);
+    const x = mx + dx * k;
+    const y = my + dy * k;
+    if (i === 0) g.moveTo(x, y);
+    else g.lineTo(x, y);
+  });
+  g.closePath();
+  g.clip();
+
+  const rnd = mulberry32(90210);
+  const ink = rgbOf(PAL.ink);
+  const lit = rgbOf(PAL.stone3);
+  // 1. per-flag tone shift: flags of 1 × 1 tile in the 7 × 5 reference grid, offset half a tile
+  // one flag = the 64 × 32 diamond centred on grid point (c, r); flags sit on the half-tile so their seams
+  // run between the slots
+  const flag = (c: number, r: number): void => {
+    const p = ntIso(c, r);
+    g.beginPath();
+    g.moveTo(p.x, p.y - 16);
+    g.lineTo(p.x + 32, p.y);
+    g.lineTo(p.x, p.y + 16);
+    g.lineTo(p.x - 32, p.y);
+    g.closePath();
+  };
+  for (let c = -2; c <= NT_COLS + 1; c++)
+    for (let r = -3; r <= NT_ROWS + 2; r++) {
+      const v = rnd();
+      flag(c - 0.5, r - 0.5);
+      g.fillStyle = v < 0.5 ? `rgba(${ink}, ${(0.05 + v * 0.1).toFixed(3)})` : `rgba(${lit}, ${((v - 0.5) * 0.07).toFixed(3)})`;
+      g.fill();
+    }
+  // 2. low-frequency mottling (soft blotches, no single-pixel noise)
+  for (let i = 0; i < 70; i++) {
+    const x = PLATE_X0 + rnd() * W;
+    const y = PLATE_Y0 + rnd() * H;
+    const rx = 10 + rnd() * 26;
+    const gr = g.createRadialGradient(x, y, 0, x, y, rx);
+    const dark = rnd() < 0.6;
+    gr.addColorStop(0, dark ? `rgba(${ink}, 0.10)` : `rgba(${lit}, 0.05)`);
+    gr.addColorStop(1, dark ? `rgba(${ink}, 0)` : `rgba(${lit}, 0)`);
+    g.fillStyle = gr;
+    g.beginPath();
+    g.ellipse(x, y, rx, rx * 0.5, 0, 0, Math.PI * 2);
+    g.fill();
+  }
+  // 3. the flag seams: groove (ink) + a lit lip one pixel below-right
+  const seam = (x0: number, y0: number, x1: number, y1: number): void => {
+    g.lineWidth = 1;
+    g.strokeStyle = `rgba(${ink}, 0.34)`;
+    g.beginPath();
+    g.moveTo(x0, y0);
+    g.lineTo(x1, y1);
+    g.stroke();
+    g.strokeStyle = `rgba(${lit}, 0.07)`;
+    g.beginPath();
+    g.moveTo(x0, y0 + 1);
+    g.lineTo(x1, y1 + 1);
+    g.stroke();
+  };
+  for (let k = -3; k <= NT_COLS + 2; k++) {
+    // lines of constant col (running down-left) and constant row (running down-right), on the half-tile
+    const a = ntIso(k - 0.5, -4);
+    const b = ntIso(k - 0.5, NT_ROWS + 3);
+    seam(a.x, a.y, b.x, b.y);
+  }
+  for (let k = -4; k <= NT_ROWS + 3; k++) {
+    const a = ntIso(-3, k - 0.5);
+    const b = ntIso(NT_COLS + 2, k - 0.5);
+    seam(a.x, a.y, b.x, b.y);
+  }
+  g.restore();
+  ct.refresh();
+  return NT_PLATE_TEX_KEY;
+}
+
+function ensureSmoothSlots(scene: Phaser.Scene): string {
+  if (scene.textures.exists(NT_FLOOR_SMOOTH_KEY)) return NT_FLOOR_SMOOTH_KEY;
+  // the zone line's extent inside its 64×32 box
+  const line = buildCalmArt().masks.line;
+  let x0 = 64;
+  let x1 = -1;
+  let y0 = 32;
+  let y1 = -1;
+  for (let j = 0; j < 32; j++)
+    for (let i = 0; i < 64; i++)
+      if (line.get(i, j) !== null) {
+        x0 = Math.min(x0, i);
+        x1 = Math.max(x1, i);
+        y0 = Math.min(y0, j);
+        y1 = Math.max(y1, j);
+      }
+  if (x1 < 0) return NT_FLOOR_KEY;
+  const L = x0 + 0.5;
+  const R = x1 + 0.5;
+  const T = y0 + 0.5;
+  const B = y1 + 0.5;
+  const cx = (L + R) / 2;
+  const cy = (T + B) / 2;
+
+  const specs: { name: string; player: 0 | 1; state: number; boost: number }[] = [];
+  for (const player of [0, 1] as const)
+    for (const pile of [false, true])
+      for (const state of pile ? [SLOT_EMPTY, SLOT_OCCUPIED] : [SLOT_EMPTY, SLOT_OCCUPIED, SLOT_DOWN])
+        for (const boost of [0, 1]) specs.push({ name: FLOOR_FRAMES.slot(player, pile, state, boost), player, state, boost });
+  const cols = 4;
+  const W = cols * 64;
+  const H = Math.ceil(specs.length / cols) * 32;
+  const ct = scene.textures.createCanvas(NT_FLOOR_SMOOTH_KEY, W, H);
+  if (!ct) return NT_FLOOR_KEY;
+  const g = ct.getContext();
+  g.clearRect(0, 0, W, H);
+  g.lineJoin = 'round';
+  const diamond = (inset: number): void => {
+    g.beginPath();
+    g.moveTo(cx, T + inset / 2);
+    g.lineTo(R - inset, cy);
+    g.lineTo(cx, B - inset / 2);
+    g.lineTo(L + inset, cy);
+    g.closePath();
+  };
+  specs.forEach((sp, k) => {
+    const ramp = sp.player === 0 ? RAMPS.cyan : RAMPS.crim;
+    const on = sp.state !== SLOT_EMPTY;
+    const lit = on || sp.boost === 1;
+    g.save();
+    g.translate((k % cols) * 64, Math.floor(k / cols) * 32);
+    // interior: a dark wash (empty) or a faint player tint (occupied)
+    diamond(1.5);
+    g.fillStyle = on ? `rgba(${rgbOf(ramp[0])}, 0.38)` : 'rgba(7, 7, 15, 0.16)';
+    g.fill();
+    // soft glow just around the line
+    diamond(0);
+    g.lineWidth = 3.2;
+    g.strokeStyle = `rgba(${rgbOf(ramp[lit ? 3 : 2])}, ${on ? 0.26 : lit ? 0.17 : 0.11})`;
+    g.stroke();
+    // the line itself: thin, anti-aliased
+    diamond(0);
+    g.lineWidth = 1.1;
+    g.strokeStyle = `rgba(${rgbOf(ramp[on ? 3 : 2])}, ${on ? 0.95 : lit ? 0.85 : 0.68})`;
+    g.stroke();
+    // face-down: four small studs at the diamond's tips
+    if (sp.state === SLOT_DOWN) {
+      g.fillStyle = `rgba(${rgbOf(PAL.steel)}, 0.9)`;
+      for (const [px, py] of [
+        [cx, T + 3],
+        [R - 5, cy],
+        [cx, B - 3],
+        [L + 5, cy],
+      ] as const) {
+        g.beginPath();
+        g.ellipse(px, py, 1.6, 0.9, 0, 0, Math.PI * 2);
+        g.fill();
+      }
+    }
+    g.restore();
+  });
+  ct.refresh();
+  specs.forEach((sp, k) => ct.add(sp.name, 0, (k % cols) * 64, Math.floor(k / cols) * 32, 64, 32));
+  return NT_FLOOR_SMOOTH_KEY;
+}
+
 export function registerFloorTextures(scene: Phaser.Scene): FloorArt {
   const art = buildFloorArt();
   ensureNtTexture(scene, 'floor', NT_FLOOR_KEY, () => art.atlas.canvas);
@@ -39,7 +226,6 @@ export function registerFloorTextures(scene: Phaser.Scene): FloorArt {
   return art;
 }
 
-/** Register the apron (hall floor around the platform): the opaque floor texture and the fx atlas of its light strips (idempotent). */
 export function registerApronTextures(scene: Phaser.Scene): ApronArt {
   const art = buildApronArt();
   ensureNtTexture(scene, 'apron', NT_APRON_KEY, () => art.canvas);
@@ -49,26 +235,14 @@ export function registerApronTextures(scene: Phaser.Scene): ApronArt {
   return art;
 }
 
-/** Ring level (0..2) of a half-emblem at phase u: dim, a rise, a held peak, a fall. */
-function breath(u: number): number {
-  const f = ((u % 1) + 1) % 1;
-  return f < 0.3 ? 0 : f < 0.45 ? 1 : f < 0.75 ? 2 : f < 0.9 ? 1 : 0;
-}
-
 export function createFloorLayer(ctx: NtCtx): NtLayer {
   const scene = ctx.scene;
   const art = registerFloorTextures(scene);
   const apron = registerApronTextures(scene);
-  // the hall floor around the platform: just above the wall's iso floor (9.95), below the wall band, stands and the platform
   ctx.add(scene.add.image(APRON_BOX.x, APRON_BOX.y, NT_APRON_KEY).setOrigin(0).setDepth(APRON_Z));
-  // its light strips (one white mask per rail piece, tinted by a pulse that runs outward from the platform) and beacon lamps
-  const railTones = [NT_PAL.blue, NT_PAL.red];
   const railImgs: Img[] = apron.strips.map((st) => ctx.add(scene.add.image(st.x, st.y, NT_APRON_FX_KEY, st.frame).setOrigin(0).setDepth(APRON_Z + 0.01).setVisible(false)));
   const lampImgs: Img[] = apron.lamps.map((l) => ctx.add(scene.add.image(l.x, l.y, TEX.px1).setOrigin(0).setScale(l.wide ? 2 : 1, 1).setDepth(APRON_Z + 0.02).setVisible(false)));
 
-  // ---- the slots: one image per zone, three states (empty / occupied / face-down) read off the FieldView, the border one tone up
-  // for the side to move and for a moment on a summon / attack of that side. The calm pad image stays underneath (zoneAt, tileImage,
-  // TargetMarks, the stepped floor light) and calm's own hover / selection line and fill stay above.
   interface Slot {
     img: Img;
     player: PlayerId;
@@ -79,15 +253,19 @@ export function createFloorLayer(ctx: NtCtx): NtLayer {
     boost: number;
     shown: string;
   }
+  // owner decision 2026-11-02: back to the fb7243b board top — the smooth stone-flag texture over the plate and the smooth,
+  // thin slot lines (the pixel-dither version read as "dotted"). The thick stage, daises and side walls of h3 stay.
+  const plateTex = ensurePlateTexture(scene);
+  if (plateTex) ctx.add(scene.add.image(PLATE_X0, PLATE_Y0, plateTex).setOrigin(0).setDepth(NT_DEPTH.platform + 0.5));
+  const slotKey = ensureSmoothSlots(scene);
   const slots: Slot[] = calmZones().map((z) => {
     const c = zoneXY(z.player, z.spot, z.index);
     const pile = z.spot !== 'monster' && z.spot !== 'spellTrap';
     const shown = FLOOR_FRAMES.slot(z.player, pile);
-    const img = ctx.add(scene.add.image(c.x - 32, c.y - 16, NT_FLOOR_KEY, shown).setOrigin(0).setDepth(NT_DEPTH.floor + 0.25));
+    const img = ctx.add(scene.add.image(c.x - 32, c.y - 16, slotKey, shown).setOrigin(0).setDepth(NT_DEPTH.floor + 0.25));
     return { img, player: z.player, spot: z.spot, index: z.index, pile, state: SLOT_EMPTY, boost: 0, shown };
   });
   const fieldView = (): FieldView | null => (scene as unknown as { views?: { field?: FieldView } }).views?.field ?? null;
-  /** The state of a zone right now. */
   const stateOf = (z: Slot, f: FieldView): number => {
     try {
       if (z.spot === 'deck' || z.spot === 'graveyard') return f.pile(z.player, z.spot).count > 0 ? SLOT_OCCUPIED : SLOT_EMPTY;
@@ -99,13 +277,10 @@ export function createFloorLayer(ctx: NtCtx): NtLayer {
       return SLOT_EMPTY;
     }
   };
-  /** Until this time a side's slot borders show one tone up (a summon / attack declaration of that side). */
   const liftUntil: [number, number] = [0, 0];
   let nextScan = 0;
 
-  // ---- the centre strip's life
-  const emblem = ctx.add(scene.add.image(CENTER_EMBLEM.x, CENTER_EMBLEM.y, NT_FLOOR_KEY, FLOOR_FRAMES.emblem(0, 0)).setOrigin(0).setDepth(NT_DEPTH.floor + 0.1));
-  const dashTones = [NT_PAL.metal[2], NT_PAL.metal[3], NT_PAL.metal[4]];
+  const emblem = ctx.add(scene.add.image(CENTER_EMBLEM.x, CENTER_EMBLEM.y, NT_FLOOR_KEY, FLOOR_FRAMES.emblem(0, 0)).setOrigin(0).setDepth(NT_DEPTH.floor + 0.1).setVisible(false));
   const dashes: Img[] = art.dashes.map((d, k) =>
     ctx.add(scene.add.image(d.x, d.y, NT_FLOOR_KEY, FLOOR_FRAMES.dash(k)).setOrigin(0).setDepth(NT_DEPTH.floor + 0.1).setVisible(false)),
   );
@@ -113,8 +288,6 @@ export function createFloorLayer(ctx: NtCtx): NtLayer {
   let onAt = 0;
   let active: PlayerId | null = null;
   let now = 0;
-  let lastB = -1;
-  let lastR = -1;
   let pending: { until: number; done: () => void } | null = null;
 
   return {
@@ -145,7 +318,6 @@ export function createFloorLayer(ctx: NtCtx): NtLayer {
     },
     tick(_dt, t) {
       now = t;
-      // slots: re-read the board a few times a second (the FieldView is the truth), one setFrame per change
       if (t >= nextScan) {
         nextScan = t + 120;
         const f = fieldView();
@@ -164,49 +336,10 @@ export function createFloorLayer(ctx: NtCtx): NtLayer {
         pending.done();
         pending = null;
       }
-      const on = lights && t >= onAt;
-      // emblem: the two halves breathe on opposite phases (a 4.8 s cycle); the active side's half rests one level up
-      let b = on ? Math.max(breath(t / 4800), active === 0 ? 1 : 0) : 0;
-      let r = on ? Math.max(breath(t / 4800 + 0.5), active === 1 ? 1 : 0) : 0;
-      if (on && b === 0 && r === 0) b = 1;
-      if (b !== lastB || r !== lastR) {
-        emblem.setFrame(FLOOR_FRAMES.emblem(b, r));
-        lastB = b;
-        lastR = r;
-      }
-      // apron: a pulse runs outward along each rail (7.5 s lap, 3-tone head, the side to move one level up), the lamps blink
-      apron.strips.forEach((st, i) => {
-        const img = railImgs[i];
-        if (!on) {
-          img.setVisible(false);
-          return;
-        }
-        const u = (((t / 7500 + st.rail * 0.21) * 9 - st.n) % 9 + 9) % 9;
-        let level = u < 0.9 ? 3 : u < 1.9 ? 2 : u < 3 ? 1 : 0;
-        if (active === st.side) level = Math.max(level, 1);
-        img.setVisible(level > 0).setTint(railTones[st.side][1 + level]);
-      });
-      apron.lamps.forEach((l, i) => {
-        const img = lampImgs[i];
-        if (!on) {
-          img.setVisible(false);
-          return;
-        }
-        const f = (((t + l.phase) % l.period) + l.period) % l.period / l.period;
-        img.setVisible(true).setTint(railTones[l.side][f < 0.18 ? 4 : f < 0.5 ? 2 : 1]);
-      });
-      // dashes: a light run along the centre line (7.2 s lap, 2-tone head)
-      const n = dashes.length;
-      dashes.forEach((d, k) => {
-        if (!on) {
-          d.setVisible(false);
-          return;
-        }
-        const u = (t / 7200) * (n + 4) - k;
-        const lv = ((u % (n + 4)) + (n + 4)) % (n + 4);
-        const level = lv < 0.8 ? 3 : lv < 1.8 ? 2 : lv < 2.6 ? 1 : 0;
-        d.setVisible(level > 0).setTint(dashTones[level - 1]);
-      });
+      emblem.setVisible(false);
+      for (const img of railImgs) img.setVisible(false);
+      for (const img of lampImgs) img.setVisible(false);
+      for (const d of dashes) d.setVisible(false);
     },
     destroy() {
       if (pending) pending.done();

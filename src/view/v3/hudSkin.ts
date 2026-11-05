@@ -323,16 +323,16 @@ export function emblemV3(player: PlayerId): PixelCanvas {
   ];
   // rings by successive fills: ink outline, the trim ring (dark tone), the body (lower band)
   p.poly(hexPts(0), PAL.ink);
-  p.poly(hexPts(1), R[2]);
+  p.poly(hexPts(1), R[1]);
   p.poly(hexPts(2), FRAME_V3.bodyBottom);
   // light from the top left: the ring's upper half (and the left tip) one tone up; the body's upper band
   p.map((c, x, y) => {
-    if (c === R[2]) return y < mid || (x < 3 && y <= mid) ? R[3] : R[2];
+    if (c === R[1]) return y < mid || (x < 3 && y <= mid) ? R[2] : R[1];
     if (c === FRAME_V3.bodyBottom) return y < mid ? FRAME_V3.bodyTop : FRAME_V3.bodyBottom;
     return c;
   });
   // the number, caps centred on the middle row (HudView v1: capY('md', -3) from the centre)
-  const num = textCanvas(String(player + 1), 'md', R[3]);
+  const num = textCanvas(String(player + 1), 'md', R[2]);
   p.blit(num, 12 + Math.round(0.5 - num.w / 2), mid - 3 - textMetrics('md').capTop);
   return p;
 }
@@ -357,13 +357,13 @@ export function panelBodyV3(player: PlayerId): PixelCanvas {
 export function chipV3(player: PlayerId, caretDx = 0): PixelCanvas {
   const { w, h } = HUD3.chip;
   const style = playerStyleV3(player);
-  const t = styleTrim(style, 1);
+  const t = styleTrim(style, 0);
   const p = new PixelCanvas(w, h);
   frameRectV3(p, 0, 0, w, h, t, { bands: [PAL.night1, PAL.night1] });
   // caret ▶ (3 × 5) and the word
   const cx = 4 + caretDx;
   for (let i = 0; i < 3; i++) p.vline(cx + i, 3 + i, 7 - i, t.light);
-  paintText(p, 10, capYV3('sm', 3), 'SIRA', 'sm', styleTone(style, 3));
+  paintText(p, 10, capYV3('sm', 3), 'SIRA', 'sm', styleTone(style, 2));
   return p;
 }
 
@@ -820,7 +820,7 @@ export class ButtonSkinV3 {
   }
 
   private lift(): number {
-    return this.state === 'd' ? -2 : this.state === 'h' || this.state === 'p' ? 1 : 0;
+    return this.state === 'd' ? -2 : this.state === 'h' || this.state === 'p' ? 0 : -1;
   }
 
   private drawTrim(): void {
@@ -834,7 +834,7 @@ export class ButtonSkinV3 {
     if (on === this.trim.running) return;
     this.trim.setNode(
       on
-        ? { head: PAL.white, tail: [styleTone(this.style, 3), styleTone(this.style, 2)], lapMs: HUD3.attentionLapMs, restMs: HUD3.attentionRestMs }
+        ? { head: styleTone(this.style, 2), tail: [styleTone(this.style, 1)], lapMs: HUD3.attentionLapMs, restMs: HUD3.attentionRestMs }
         : null,
     );
   }
