@@ -238,17 +238,18 @@ export function gatherFx(f: Frame): void {
 export function floorSeamFx(f: Frame): void {
   const { o, p, sk } = f;
   const seg = (x0: number, len: number, k: number, dir: 1 | -1) => {
-    // a 2:1 iso line on the floor (one row per two px), white core with earth4 lips; k = brightness step
-    const core = k >= 1 ? PAL.white : k >= 0.5 ? PAL.earth4 : PAL.earth3;
-    const lip = k >= 1 ? PAL.earth4 : k >= 0.5 ? PAL.earth3 : PAL.earth2;
-    let y = GY;
+    // a 2:1 iso line on the floor (one row per two px): lit (k ≥ 1) a white core with earth4 lips; going out, a SUNKEN
+    // notch (an ink slot with dark earth lips — never a lit tan bar lying on the floor)
+    const core = k >= 1 ? PAL.white : k >= 0.5 ? PAL.night0 : PAL.ink;
+    const lip = k >= 1 ? PAL.earth4 : k >= 0.5 ? PAL.earth1 : PAL.earth0;
+    const y = GY;
     for (let i = 0; i <= len; i++) {
       const x = x0 + i * dir;
       if (x < 1 || x > W - 2) break;
       if (y > H - 2) break;
       p.set(x, y, core);
-      if (!p.isOpaque(x, y - 1) || p.get(x, y - 1) === PAL.ink) p.set(x, y - 1, lip);
-      p.set(x, y + 1, lip);
+      if (!p.isOpaque(x, y - 1) || p.get(x, y - 1) === PAL.ink) p.set(x, y - 1, k >= 1 ? lip : PAL.ink);
+      if (k >= 1 || i < len) p.set(x, y + 1, lip);
     }
     const hx = x0 + len * dir;
     if (k >= 1 && hx > 0 && hx < W - 1) p.set(hx, y, PAL.gold4);
@@ -272,7 +273,8 @@ export function smearFx(f: Frame): void {
   const { o, p, sk } = f;
   if (o.smear === 0) return;
   if (o.spx !== 0 || o.spy !== 0) {
-    arcSmear(f);
+    if (o.smear > 0) crescentSmear(f);
+    else arcSmear(f);
     return;
   }
   // the arc the head just swept (around the grip): two 1-px arcs trailing the edge, the outer white, the inner stone4;
@@ -294,6 +296,50 @@ export function smearFx(f: Frame): void {
       p.set(X, Y, k === 0 && d < 24 ? PAL.white : PAL.stone4);
     }
   }
+}
+
+/**
+ * The CHOP's smear (release frame only, one frame): a filled crescent band on the head's own path over its last stretch
+ * — 4 px thick at the axe head, tapering to 1 px about 28 px back along the arc (never more than 90°), stone4 with a
+ * white outer (cutting-edge) rim; it never reaches below or ahead of the head (it stops above whatever stands there).
+ * Light: not outlined, never over the body's own colours.
+ */
+function crescentSmear(f: Frame): void {
+  const { o, p, sk } = f;
+  const px0 = AX + o.spx;
+  const py0 = GY + o.spy;
+  const a0 = Math.atan2(GY + o.smy - py0, AX + o.smx - px0);
+  const a1 = Math.atan2(sk.axe[1] - py0, sk.axe[0] - px0);
+  const r1 = Math.hypot(sk.axe[0] - px0, sk.axe[1] - py0);
+  let da = a1 - a0;
+  while (da > Math.PI) da -= TAU;
+  while (da < -Math.PI) da += TAU;
+  const dirS = Math.sign(da) || 1;
+  const span = Math.min(Math.PI / 2, Math.abs(da), 24 / Math.max(8, r1 + 5));
+  const headX = sk.axe[0];
+  const headY = sk.axe[1];
+  const free = (x: number, y: number) => x >= 1 && y >= 1 && x <= W - 2 && y <= GY && (!p.isOpaque(x, y) || p.get(x, y) === PAL.ink);
+  const put = new Map<number, number>();
+  const steps = Math.max(24, Math.ceil(span * (r1 + 8) * 3));
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps; // 0 = the tail, 1 = at the head
+    const a = a1 - dirS * span * (1 - t);
+    const th = 1 + 3 * t; // 1 → 4 px
+    const rc = r1 + 5; // the crescent's mass rides outside the head centre
+    for (let d = -th / 2; d <= th / 2 + 0.01; d += 0.4) {
+      const X = rnd(px0 + Math.cos(a) * (rc + d));
+      const Y = rnd(py0 + Math.sin(a) * (rc + d));
+      // stop above / behind the head: nothing ahead of it or below it
+      if (Y > headY + 2) continue;
+      if (!free(X, Y)) continue;
+      const k = Y * W + X;
+      const outer = d > th / 2 - 0.9 && t > 0.3;
+      const c = outer ? PAL.white : PAL.stone4;
+      if (put.get(k) !== PAL.white) put.set(k, c);
+    }
+  }
+  void headX;
+  for (const [k, c] of put) p.set(k % W, Math.floor(k / W), c);
 }
 
 /**

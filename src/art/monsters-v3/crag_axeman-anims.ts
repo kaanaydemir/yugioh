@@ -210,16 +210,27 @@ export function attackPose(f: number): Pose {
     }
     case 13: { // contact: the BITE — a deep lunge (front knee bent, torso pitched over, both arms driven straight down the
       // haft, the beads thrown forward), the edge buried in the floor in front, the seam starting, chips burst back
-      const p = key({ nx: 21, ny: -22, ba: 62, hl: 23, hd: 1, az: 1, fh: 1, g2: -9, sink: 8, lean: 8, chy: 2, f1x: 12, f2x: -3, eye: 2, hx: 3, hy: 5, mant: 2, bead: 4, cape: 4, chips: 0.25, crack: 7, crackK: 1, bury: 1, spark: 0.2 }, f, n);
+      const p = key({ nx: 21, ny: -22, ba: 62, hl: 23, hd: 1, az: 1, fh: 1, g2: -9, sink: 8, lean: 8, chy: 2, f1x: 12, f2x: -3, eye: 2, hx: 3, hy: 5, mant: 2, bead: 4, cape: 4, chips: 0.25, crack: 3, crackK: 1, bury: 1, spark: 0.2 }, f, n);
       return plant(p, GY + 4);
     }
     case 14: // the heave: the axe torn out of the floor, chips and a clod fly
-      return key({ nx: 13, ny: -42, ba: -52, hl: 23, hd: 1, az: 1, fh: 1, g2: -6, sink: 2, lean: 1, f1x: 4, f2x: 1, chips: 0.75, crack: 7, crackK: 0.5, eye: 1, bead: 1, cape: 1, dust: 0.6 }, f, n);
+      return key({ nx: 13, ny: -42, ba: -52, hl: 23, hd: 1, az: 1, fh: 1, g2: -6, sink: 2, lean: 1, f1x: 4, f2x: 1, chips: 0.75, crack: 4, crackK: 0.4, eye: 1, bead: 1, cape: 1, dust: 0.6 }, f, n);
     default: // 15: swung back onto the shoulder
       return snap(key({ ...mix(key({ nx: 15, ny: -42, ba: -105, hl: 25, hd: -1, az: 0, f1x: 1, sink: 1, bead: -1, cape: -1 }, f, n), IDLE0, 0.35) }, f, n));
   }
 }
-const ATTACK_HOLDS = [70, 110, 100, 85, 75, 65, 60, 60, 170, 160, 135, 110, 60, 80, 110, 120, 140];
+const ATTACK_HOLDS = [70, 110, 100, 85, 75, 65, 60, 60, 170, 160, 135, 110, 45, 80, 110, 120, 140];
+
+/**
+ * The walk home after a blow (drawn step frames on the cinematic's overlay, not sprite frames): the axe on the
+ * shoulder, the near boot lifted and set back, then the far one; the beads and the cloak trail; the last is the
+ * settle (idle f0 with the beads still swinging).
+ */
+export const WALK_POSES: Pose[] = [
+  key({ f1x: -3, f1y: -2, f2x: 1, sink: 1, lean: -1, bead: 2, cape: 1, hem: 0.2, t: 0.2 }, 0, 2),
+  key({ f2x: -3, f2y: -2, f1x: 1, sink: 1, lean: -1, bead: -1, cape: -1, hem: 0.6, t: 0.6 }, 0, 2),
+  key({ bead: 1, cape: 0 }, 0, 2),
+];
 
 // ------------------------------------------------------------------ roar (10 frames): the NARA
 

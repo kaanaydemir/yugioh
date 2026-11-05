@@ -20,12 +20,15 @@ import { play } from '../_v3/sound';
 /** Floor-decal depth: over the tile cards, under every unit. */
 export const SEAM_DEPTH = DEPTH.CARD_ON_TILE + 3;
 
-/** The seam's tone pairs [core, lip] from full light down to gone (the breathing swaps 0 ↔ 1; the fade 1 → 2 → 3). */
-const TONES: readonly (readonly [number, number])[] = [
-  [PAL.white, PAL.earth4],
-  [PAL.earth4, PAL.earth3],
-  [PAL.earth3, PAL.earth2],
-  [PAL.earth2, PAL.earth1],
+/**
+ * The seam's tones [core, far (lit) lip, near (shaded) lip] from full light down to gone (the breathing swaps 0 ↔ 1;
+ * the fade 1 → 2 → 3).
+ */
+const TONES: readonly (readonly [number, number, number])[] = [
+  [PAL.white, PAL.earth4, PAL.earth3],
+  [PAL.earth4, PAL.earth3, PAL.earth2],
+  [PAL.earth3, PAL.earth2, PAL.earth1],
+  [PAL.earth2, PAL.earth1, PAL.earth0],
 ];
 
 /** Whole-pixel points of a straight line a → b (Bresenham), a included. */
@@ -61,8 +64,15 @@ export interface SeamOpts {
   from: XY;
   /** Where it runs to (floor point). */
   to: XY;
-  /** Run time from → to (scene ms; the spec: 60). */
+  /** The target's toes on the line (floor point): `reached` resolves when the head gets there (default: `to`). */
+  feet?: XY;
+  /** Run time from → feet (scene ms), shown in `chunks` visible steps (default 3: three frames of a head on the floor). */
   runMs: number;
+  /** Run time feet → to (scene ms, under the body; default 40). */
+  tailMs?: number;
+  chunks?: number;
+  /** Points of the line already open at the start (hidden under the buried blade): the chunks share out the rest. */
+  lead?: number;
   /** How long it stays after arriving (scene ms; the spec: 1500 from the blow). */
   persistMs?: number;
   /** The blocked case: it stops at `to` and forks into a tiny "Y", then dies early. */
@@ -77,13 +87,21 @@ export interface SeamOpts {
   quiet?: boolean;
 }
 
-/** A running, persisting floor seam. `arrived` resolves when its head reaches `to`. */
+/** The floor light's levels (stepped light: 2 = two tones up at the core, night1 → night3; 1 = one tone). */
+const BEAM_FULL = 2;
+const BEAM_BREATH = 1.25;
+
+/** A running, persisting floor seam. `reached` resolves when its head reaches the toes, `arrived` at `to`. */
 export class Seam {
   readonly arrived: Promise<void>;
+  readonly reached: Promise<void>;
   private readonly px: Px;
   private readonly pts: XY[];
+  private readonly offs: number[];
   private readonly dir: XY;
   private head = 0;
+  /** the head index of the previous drawn frame (the pixels past it are this frame's fresh run: they flare white) */
+  private prevHead = 0;
   private gone = false;
   private beam: BeamHandle | null = null;
   private pools: LightHandle[] = [];
@@ -92,29 +110,56 @@ export class Seam {
   constructor(private readonly scene: Phaser.Scene, private readonly o: SeamOpts) {
     this.px = new Px(scene.add.graphics().setDepth(SEAM_DEPTH));
     this.pts = linePts(o.from, o.to);
+    this.offs = jogs(this.pts.length, Math.round(o.from.x * 7 + o.from.y * 3));
     const L = Math.max(1, Math.hypot(o.to.x - o.from.x, o.to.y - o.from.y));
     this.dir = { x: (o.to.x - o.from.x) / L, y: (o.to.y - o.from.y) / L };
     let arrive!: () => void;
     this.arrived = new Promise<void>((r) => (arrive = r));
+    let reach!: () => void;
+    this.reached = new Promise<void>((r) => (reach = r));
     const n = this.pts.length;
+    // the toes' index on the line (the visible floor run ends there)
+    let nf = n;
+    if (o.feet) {
+      let best = Infinity;
+      for (let i = 0; i < n; i++) {
+        const d = Math.hypot(this.pts[i].x - o.feet.x, this.pts[i].y - o.feet.y);
+        if (d < best) {
+          best = d;
+          nf = i + 1;
+        }
+      }
+    }
+    const chunks = Math.max(1, o.chunks ?? 3);
+    const tailMs = o.tailMs ?? 40;
     const persist = o.persistMs ?? 1500;
     const fadeStep = o.quiet ? 120 : 160;
     // the fade: 3 palette steps at the end of the persist
-    const fadeAt = Math.max(o.runMs + 120, persist - fadeStep * 3);
+    const fadeAt = Math.max(o.runMs + tailMs + 120, persist - fadeStep * 3);
     let arrivedAt = -1;
+    let reachedYet = false;
     let lastTick = -1;
+    let lastBreath = -1;
     if (o.light !== false) {
-      this.beam = lightBeam(scene, o.from, o.from, PAL.white, 0, { air: false, floor: { from: o.from, to: o.from }, floorWidth: 13, intensity: 0, shimmer: 0 });
-      this.beam.setIntensity(2.4, Math.max(40, o.runMs));
+      this.beam = lightBeam(scene, o.from, o.from, PAL.white, 0, { air: false, floor: { from: o.from, to: o.from }, floorWidth: 30, intensity: 0, shimmer: 0 });
+      this.beam.setIntensity(BEAM_FULL, 30);
     }
     this.stopFn = onFrame(
       scene,
       (_dt, el) => {
         if (this.gone) return false;
-        // ---- the run
+        // ---- the run: `chunks` whole steps from the bite to the toes (each held ~25 ms: the head is SEEN moving on
+        // the floor), then on under the body to its end
         if (this.head < n) {
-          const k = o.runMs <= 0 ? 1 : Math.min(1, el / o.runMs);
-          this.head = Math.max(1, Math.round(k * n));
+          let h: number;
+          const lead = Math.min(nf - 1, Math.max(0, o.lead ?? 0));
+          if (el < o.runMs) h = lead + Math.round((Math.min(chunks, Math.floor((el / Math.max(1, o.runMs)) * chunks) + 1) / chunks) * (nf - lead));
+          else h = nf + Math.round(Math.min(1, (el - o.runMs) / Math.max(1, tailMs)) * (n - nf));
+          this.head = Math.max(1, Math.min(n, h));
+          if (!reachedYet && this.head >= nf) {
+            reachedYet = true;
+            reach();
+          }
           const hp = this.pts[Math.min(n - 1, this.head - 1)];
           this.beam?.setEnds(o.from, hp, { from: o.from, to: hp });
           if (this.head >= n) {
@@ -123,14 +168,14 @@ export class Seam {
             // the floor pool along the line: white stepped pools strung on it (the light layer's own steps), so the
             // floor beside the crack reads lit at 1× (EF-6: white, never warm)
             if (o.light !== false) {
-              const L = Math.hypot(o.to.x - o.from.x, o.to.y - o.from.y);
-              const k = Math.max(1, Math.round(L / 14));
+              const Ln = Math.hypot(o.to.x - o.from.x, o.to.y - o.from.y);
+              const k = Math.max(1, Math.round(Ln / 16));
               for (let i = 0; i < k; i++) {
                 const t = (i + 0.5) / k;
                 const x = Math.round(o.from.x + (o.to.x - o.from.x) * t);
                 const y = Math.round(o.from.y + (o.to.y - o.from.y) * t);
-                const lp = lightPool(scene, x, y, { color: PAL.white, radius: 11, floorY: y, air: 0, intensity: 0, anim: 'steady', fadeIn: 0 });
-                lp.setIntensity(1.1, 60);
+                const lp = lightPool(scene, x, y, { color: PAL.white, radius: 15, floorY: y, air: 0, intensity: 0, anim: 'steady', fadeIn: 0 });
+                lp.setIntensity(1.6, 40);
                 this.pools.push(lp);
               }
             }
@@ -152,7 +197,16 @@ export class Seam {
               for (const lp of this.pools) void lp.fadeOut(fadeStep * 2);
               this.pools = [];
             }
-          } else tone = Math.floor(since / 200) % 2 === 1 ? 1 : 0;
+          } else {
+            const br = Math.floor(since / 200) % 2;
+            tone = br === 1 ? 1 : 0;
+            // the floor light breathes with the crack (two tones ↔ one and a quarter)
+            if (br !== lastBreath) {
+              lastBreath = br;
+              this.beam?.setIntensity(br ? BEAM_BREATH : BEAM_FULL, 40);
+              for (const lp of this.pools) lp.setIntensity(br ? 1 : 1.6, 40);
+            }
+          }
           // faint crackle ticks, one on each breathing swap (every 200 ms, at most four), then a dry "tik" as it fades
           if (o.ticks !== false) {
             const tk = el >= fadeAt ? 99 : Math.floor(since / 200);
@@ -164,68 +218,69 @@ export class Seam {
           }
         }
         this.draw(tone, el, arrivedAt, fadeAt);
+        this.prevHead = this.head;
         return true;
       },
       () => this.dispose(),
     );
-    if (o.fork) void this.arrived.then(() => undefined);
-  }
-
-  /** The crack's 1-px jog (perpendicular, every 7 px, alternating): one straight line overall, never branching. */
-  private jog(i: number): number {
-    return Math.floor(i / 7) % 2 === 1 ? 1 : 0;
   }
 
   private draw(tone: number, el: number, arrivedAt: number, fadeAt: number): void {
     const px = this.px.clear();
-    const [core, lip] = TONES[tone];
-    const n = Math.min(this.head, this.pts.length);
-    // a CRACK, not a stick: night0 ink lips either side (they also cover whatever floor marking lies under it), the
-    // earth4 lips lit from inside, the white core; a 1-px jog every 7 px (the joints of the rock), filled at each step
-    const edge = tone >= 3 ? PAL.night1 : PAL.night0;
+    const [core, lipHi, lipLo] = TONES[tone];
+    const N = this.pts.length;
+    const n = Math.min(this.head, N);
+    // a CRACK SUNK INTO THE FLOOR, not a rod lying on it: from the top, the far wall lit (lipHi), a night0 gap, the white
+    // core deep inside, a night0 gap, the near lip in shade (lipLo); a 1-px jog every 8–12 px (the joints of the rock),
+    // the far end tapering to the bare core. The pixels the head ran over THIS frame flare white across the crack.
+    const gap = tone >= 3 ? PAL.night1 : PAL.night0;
+    const running = n < N;
+    const y = (i: number) => this.pts[i].y + this.offs[i];
     for (let i = 0; i < n; i++) {
       const p = this.pts[i];
-      const y = p.y + this.jog(i);
-      px.dot(p.x, y - 2, edge).dot(p.x, y + 2, edge);
-      if (i > 0 && this.jog(i) !== this.jog(i - 1)) px.dot(p.x, y - 3 + (this.jog(i) ? 0 : 1) * 2, edge);
+      const yy = y(i);
+      const tail = N - 1 - i; // px to the far end
+      const fresh = running && i >= this.prevHead;
+      const wide = tail >= 6;
+      if (wide) {
+        px.dot(p.x, yy - 2, fresh ? PAL.white : lipHi).dot(p.x, yy + 2, fresh ? PAL.white : lipLo);
+      }
+      if (tail >= 2) px.dot(p.x, yy - 1, fresh ? PAL.white : gap).dot(p.x, yy + 1, fresh ? PAL.white : gap);
+      px.dot(p.x, yy, tail >= 2 ? core : TONES[Math.min(3, tone + 1)][0]);
+      // the jog's riser: the step between two runs stays one crack (its corner lit, its walls dark)
+      if (i > 0 && this.offs[i] !== this.offs[i - 1]) {
+        const y0 = this.pts[i].y + this.offs[i - 1];
+        px.dot(p.x, y0, core);
+        if (tail >= 2) px.dot(p.x, Math.min(y0, yy) - 1, gap).dot(p.x, Math.max(y0, yy) + 1, gap);
+      }
     }
-    for (let i = 0; i < n; i++) {
-      const p = this.pts[i];
-      const y = p.y + this.jog(i);
-      px.dot(p.x, y - 1, lip).dot(p.x, y + 1, lip);
-    }
-    for (let i = 0; i < n; i++) {
-      const p = this.pts[i];
-      const y = p.y + this.jog(i);
-      px.dot(p.x, y, core);
-      // the jog's riser: the core steps one row, its corner stays lit
-      if (i > 0 && this.jog(i) !== this.jog(i - 1)) px.dot(p.x, p.y + this.jog(i - 1), core);
-    }
-    // the running head: gold4, a 1-px white flare just ahead
-    if (n < this.pts.length) {
+    // the running head: gold4, a white flare one px ahead of it
+    if (running) {
       const h = this.pts[n - 1];
-      px.dot(h.x, h.y + this.jog(n - 1), PAL.gold4);
-      const a = this.pts[Math.min(this.pts.length - 1, n)];
-      px.dot(a.x, a.y + this.jog(n), PAL.white);
+      px.dot(h.x, y(n - 1), PAL.gold4);
+      const a = this.pts[Math.min(N - 1, n)];
+      px.dot(a.x, y(Math.min(N - 1, n)), PAL.white);
     } else if (this.o.fork && arrivedAt >= 0) {
-      // blocked: a "Y" at the guard's front edge — a white flash at the split (one frame), then two 3–4 px prongs
-      // splayed across the line that die in two palette steps, faster than the seam
-      const e = this.pts[this.pts.length - 1];
-      const ey = e.y + this.jog(this.pts.length - 1);
+      // blocked: a "Y" at the guard's front edge — a white flash at the split (two frames), then two 4-px prongs splayed
+      // across the line that die in two palette steps, faster than the seam
+      const e = this.pts[N - 1];
+      const ey = y(N - 1);
       const since = el - arrivedAt;
-      const st = since < 140 ? 0 : since < 260 ? 1 : since < 360 ? 2 : 3;
-      if (since < 40) px.dot(e.x - 1, ey, PAL.white).dot(e.x + 1, ey, PAL.white).dot(e.x, ey - 1, PAL.white).dot(e.x, ey + 1, PAL.white);
+      const st = since < 160 ? 0 : since < 280 ? 1 : since < 380 ? 2 : 3;
+      if (since < 45) for (const [dx, dy] of [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1], [2, 0], [0, -2]] as const) px.dot(e.x + dx, ey + dy, PAL.white);
       if (st < 3) {
         const [pc, pl] = TONES[Math.min(3, st + (st > 0 ? 1 : 0))];
         const nx = -this.dir.y;
         const ny = this.dir.x;
         for (const sd of [1, -1])
           for (let k = 1; k <= 4; k++) {
-            const x = Math.round(e.x + this.dir.x * k * 0.7 + nx * sd * k * 0.9);
-            const y = Math.round(ey + this.dir.y * k * 0.7 + ny * sd * k * 0.9);
-            px.dot(x, y + 1, edge);
-            px.dot(x, y, k <= 2 ? pc : pl);
+            const x = Math.round(e.x + this.dir.x * k * 0.8 + nx * sd * k * 0.9);
+            const yy = Math.round(ey + this.dir.y * k * 0.8 + ny * sd * k * 0.9);
+            px.dot(x, yy + 1, gap);
+            px.dot(x, yy - 1, gap);
+            px.dot(x, yy, k <= 2 ? pc : pl);
           }
+        if (st === 0) px.dot(e.x, ey, PAL.gold4);
       }
     }
     // the spark: one gold4 pixel running from the attacker toward the target along the breathing seam
@@ -233,10 +288,11 @@ export class Seam {
       const T0 = arrivedAt + 260;
       const T1 = Math.min(fadeAt - 40, T0 + 620);
       if (el >= T0 && el <= T1) {
-        const i = Math.round(((el - T0) / Math.max(1, T1 - T0)) * (this.pts.length - 1));
+        const i = Math.round(((el - T0) / Math.max(1, T1 - T0)) * (N - 1));
         const p = this.pts[i];
-        px.dot(p.x, p.y + this.jog(i), PAL.gold4);
-        if (i + 1 < this.pts.length) px.dot(this.pts[i + 1].x, this.pts[i + 1].y + this.jog(i + 1), PAL.white);
+        px.dot(p.x, y(i), PAL.gold4);
+        if (i + 1 < N) px.dot(this.pts[i + 1].x, y(i + 1), PAL.white);
+        if (i > 0) px.dot(this.pts[i - 1].x, y(i - 1), PAL.gold4);
       }
     }
   }
@@ -255,6 +311,26 @@ export class Seam {
     this.pools = [];
     if (this.px.g.active) this.px.g.destroy();
   }
+}
+
+/** The crack's joints: a 1-px jog (0 / +1 / 0 / −1 …) every 8–12 px, deterministic per seam; one line overall. */
+export function jogs(n: number, salt: number): number[] {
+  const out: number[] = [];
+  let off = 0;
+  let run = 0;
+  let len = 8 + (Math.abs(salt) % 5);
+  let k = 0;
+  for (let i = 0; i < n; i++) {
+    if (run >= len) {
+      k++;
+      off = [0, 1, 0, -1][k % 4];
+      run = 0;
+      len = 8 + (Math.abs(salt * 31 + k * 17) % 5);
+    }
+    out.push(off);
+    run++;
+  }
+  return out;
 }
 
 /**

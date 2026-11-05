@@ -228,6 +228,34 @@ export const V3_AXEMAN_RECIPES = {
       vox(v, 0, 0.2, [[0, 128], [0.06, 134, 'e'], [0.2, 100, 'e']], 0.2, { formants: [520, 1000, 2400], breath: 0.4, grit: 2 });
     },
   },
+  /**
+   * The seam ARRIVES (the contact frame: the number, the flash): a dry stone "tak" (two cracks 6 ms apart, hp 2.2 kHz),
+   * a short driven 70 → 45 Hz thump under it and a 30 ms white snap — a second hit after the bite, never a hiss.
+   */
+  caxArrive: {
+    cap: 1,
+    gap: 0.08,
+    verb: 0.3,
+    duck: 0.6,
+    play(v) {
+      crack(v, 0, 0.75, { hp: 2200, lp: 10000, n: 2, gap: 0.006, dec: 0.01 });
+      thump(v, 0, 70, 45, 0.7, 0.12, { drive: 1.8 });
+      v.noise('white', { g: perc(0.4, 0.03, 0.0004), to: v.filt('highpass', 3000, 0.7) });
+      // the stone ringing where the seam stopped: a short 600 Hz "klak"
+      v.noise('white', { t: 0.002, g: perc(0.28, 0.04, 0.0005), to: v.filt('bandpass', 640, 8) });
+    },
+  },
+  /** A plain step on the walk home (no weight thrown: the boot scuffs the grit, the fur sways). */
+  caxScuff: {
+    cap: 2,
+    gap: 0.05,
+    verb: 0.15,
+    play(v) {
+      v.crackle({ d: 0.05, n: 7, g: 0.3, f: 3000, q: 0.8, dec: 0.004, curve: 1.4 });
+      thump(v, 0, 140, 95, 0.18, 0.04);
+      v.noise('pink', { t: 0.005, g: perc(0.08, 0.06, 0.004), to: v.filt('bandpass', 2200, 0.9) });
+    },
+  },
   /** The axe lands back on the shoulder: a soft fur thud with the stone's weight under it. */
   caxShoulder: {
     cap: 1,

@@ -17,7 +17,7 @@ import { MONSTER_GLOW } from '../../src/view/light/profiles';
 import { PAL } from '../../src/art/palette';
 import scenarios from '../../src/duel/scenarios/crag_axeman';
 import { linePts } from '../../src/cinematics/kartc/crag_axeman-yarik';
-import { cutPlan } from '../../src/cinematics/kartc/crag_axeman';
+import { BLADE_FRONT, cutPlan } from '../../src/cinematics/kartc/crag_axeman';
 
 describe('crag_axeman presentation', () => {
   it('has no recipe (its strike, summon and death are its own files; the shared table rows carry the rest)', () => {
@@ -67,12 +67,16 @@ describe('crag_axeman presentation', () => {
     const plan = cutPlan(home, aim, 329, 1, 23);
     const d = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
     expect(d(plan.steps[0], plan.steps[3])).toBeGreaterThanOrEqual(20);
-    expect(d(plan.land, home)).toBeGreaterThanOrEqual(15);
+    // he still closes in: he plants ahead of home, and the whole run-up (back-step to plant) is a real charge
+    expect(d(plan.start, plan.land)).toBeGreaterThanOrEqual(20);
     const legs = [d(plan.steps[0], plan.steps[1]), d(plan.steps[1], plan.steps[2]), d(plan.steps[2], plan.steps[3])];
     expect(legs[0]).toBeGreaterThan(legs[1]);
     expect(legs[1]).toBeGreaterThan(legs[2]);
-    // the bite sits just in front of the footprint; blocked, a stride short (the seam then runs to the guard)
-    expect(329 - plan.bite.x).toBeLessThanOrEqual(4);
-    expect(329 - cutPlan(home, aim, 329, 1, 23, { blocked: true }).bite.x).toBeGreaterThanOrEqual(14);
+    // the bite sits a visible stride (10–14 px) in front of the footprint, so the seam is seen RUNNING on the floor;
+    // blocked, further short (the seam then runs to the guard and forks)
+    // (measured from the buried blade's front horn, BLADE_FRONT px ahead of the edge point)
+    expect(329 - plan.bite.x - BLADE_FRONT).toBeGreaterThanOrEqual(10);
+    expect(329 - plan.bite.x - BLADE_FRONT).toBeLessThanOrEqual(14);
+    expect(329 - cutPlan(home, aim, 329, 1, 23, { blocked: true }).bite.x).toBeGreaterThanOrEqual(18);
   });
 });
