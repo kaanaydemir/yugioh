@@ -1467,15 +1467,19 @@ async function pillowDeath(ctx: Ctx<'destroy'>, L: Leave | null, amount: number,
     // cloud — the pillow shape is kept for the panel (the payoff)
     const REL = u.markFrame('special', 'release', 8);
     const SWELL = Math.max(1, REL - 3);
-    atFrame(u, 'special', SWELL, () => play('wiStuff', { volume: 0.6, pan }), { late: false });
+    // (FIX critic r2) the swell has its own rising inhale (wiStuff is the panel's packing only), and
+    // the hug's trembling hum is stopped here, where the pillow takes over
+    atFrame(u, 'special', SWELL, () => play('wiSwell', { volume: 0.85, pan }), { late: false });
     const held = clutched.has(u) && u.frameInfo().anim === 'special' ? u.frameInfo().frame : 0;
     clutched.delete(u);
+    endClutchVoice(u, 110);
     const from = Math.min(SWELL - 1, held);
     await u.asClaimant(() => u.playRange('special', from, SWELL, { timeScale: 1.3 }));
     burstAt = artPoint(u, 'special', SWELL, 'core');
     burstAt = { x: burstAt.x, y: burstAt.y - 4 };
     await sleep(sc, 60);
   }
+  if (u) endClutchVoice(u, 60);
   play('wiCloud', { volume: 0.9, pan });
   void lightFlash(sc, burstAt.x, burstAt.y, PAL.white, 26, 300, { floorY: home.y, air: 0.8, intensity: 0.75 });
   let lift!: (v: { rim: number; c: XY }) => void;
@@ -1581,11 +1585,15 @@ async function pillowDeath(ctx: Ctx<'destroy'>, L: Leave | null, amount: number,
   // ---- POF
   play('wiPof', { volume: 1, pan: panAt(at.x) });
   P.destroy();
-  pof(sc, at, rnd);
+  pof(sc, { x: at.x, y: at.y + (top ? 3 : 2) }, rnd);
   shine.end();
-  // the label blinks out with the pof (whole frames, no alpha)
+  // (FIX critic r2) the payoff must READ: the label stays ~450 ms after the pof, settled next to the
+  // revealed (untouched) LP, which gets one gold ring of light; then it blinks out (whole frames)
+  void sleep(sc, 120).then(() => panelFlash(sc, at));
   const lab = labelRef;
   void (async () => {
+    if (lab && lab.active) lab.setTint(PAL.gold4).setY(ly);
+    await sleep(sc, 450);
     for (let i = 0; i < 3 && lab && lab.active; i++) {
       lab.setVisible(false);
       await sleep(sc, 40);
@@ -1762,10 +1770,15 @@ function holdClutch(sc: Phaser.Scene, u: MonsterUnit, now: boolean): void {
       endClutchVoice(u, 200);
       return false;
     };
+    if (!held && clutched.has(u)) {
+      // another hold already has it (the strike took it on its own contact)
+      esc.close();
+      return false;
+    }
     if (!live(u) || u.retired) return quit();
     if (el > 3200) {
       // the effect never came: let it go (never leave a frozen body)
-      if (clutched.has(u)) {
+      if (held && clutched.has(u)) {
         clutched.delete(u);
         void u.play('idle');
       }
