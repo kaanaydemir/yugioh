@@ -87,7 +87,7 @@ export function idlePose(f: number): Pose {
     moss: I.moss[k],
     // the mane follows the creak two frames late and keeps rocking in the wind after the log has settled
     maneSway: late * 5 + rnd(3 * Math.sin(TAU * (ph * 2 - 0.15))),
-    ...planted(55 + 9.5 * Math.sin(TAU * (ph - 0.1))),
+    ...planted(55 + 9.5 * Math.sin(TAU * (ph - 0.4))),
     nb: -1,
     fx: -15 + rnd(2 * Math.sin(TAU * (ph - 0.3))),
     fy: -16 + rnd(Math.sin(TAU * (ph * 2 - 0.2)) * 1.2),
@@ -191,10 +191,10 @@ const ATTACK_KEYS: Partial<Pose>[] = [
   { ...hand(52, 20, -15), nb: -1, crouch: 1, lean: -3, eye: 2, mane: 0.5, fx: -18, fy: -24, fc: 1, maneSway: -10, probe: -1, fly: -1 },
   // release: the club comes down forward, the log pitching over
   { ...hand(57, 38, 35), crouch: 2, lean: 8, eye: 2, mane: 0.2, fx: -15, fy: -18, fc: 0.8, maneSway: -4, probe: -1, fly: -1 },
-  // contact: the head smashes the ground ahead (splinters, leaves, dust)
-  { ...hand(60, 51, 45), crouch: 4, lean: 11, bob: 2, eye: 2, fx: -14, fy: -16, fc: 0.6, maneSway: 6, splinter: 0.25, leaves: 0.15, sx: 38, sy: -3, dust: 0.3, probe: -1, fly: -1 },
-  // the bounce
-  { ...hand(59, 48, 38), crouch: 3, lean: 9, bob: 1, eye: 1.8, maneSway: 8, splinter: 0.55, leaves: 0.35, sx: 38, sy: -3, dust: 0.6, probe: -1, fly: -1 },
+  // contact: the head CRUSHES the target's upper body from above (chest height in front of the giant)
+  { ...hand(56, 40, 22), crouch: 3, lean: 10, bob: 1, eye: 2, fx: -15, fy: -17, fc: 0.7, maneSway: 4, probe: -1, fly: -1 },
+  // … and falls through to the floor: the ground cracks (splinters, leaves, dust)
+  { ...hand(60, 51, 45), crouch: 4, lean: 11, bob: 2, eye: 1.9, maneSway: 8, splinter: 0.4, leaves: 0.25, sx: 38, sy: -3, dust: 0.5, probe: -1, fly: -1 },
   // recover: the club lifts
   { ...hand(54, 40, -5), crouch: 1, lean: 5, eye: 1.6, maneSway: 3, splinter: 0.85, leaves: 0.6, sx: 38, sy: -3, dust: 0.9, probe: -1, fly: -1 },
   // the club is thrown onto the shoulder
@@ -304,7 +304,7 @@ const SUMMON_KEYS: Partial<Pose>[] = [
 export function summonPose(f: number): Pose {
   return table(SUMMON_KEYS, f, SU_N);
 }
-const SU_HOLDS = [100, 90, 100, 80, 90, 100, 100, 90, 140, 60, 100, 120, 140];
+const SU_HOLDS = [100, 90, 90, 70, 80, 80, 80, 80, 170, 60, 100, 120, 140];
 
 // ------------------------------------------------------------------ death (10): roots unravel into the tile, the trunk caves in, one sprout wilts
 
@@ -359,28 +359,29 @@ const RV_HOLDS = [90, 90, 90, 90, 90, 100, 100, 110, 130, 140];
 const SP_N = 13;
 const SPECIAL_KEYS: Partial<Pose>[] = [
   {},
-  // charge: the club lifts toward the graveyard, a tendril buds on the shoulder
-  { ...hand(55, 40, 25), lean: 1, eye: 1.3, tl: 0.3, tx: 24, ty: -62, tc: 6, probe: -1, fly: -1 },
-  { ...hand(57, 32, -40), lean: -1, eye: 1.6, tl: 0.7, tx: 24, ty: -64, tc: 8, mane: 0.2, probe: -1, fly: -1 },
-  // the receiving hold: club held out, the tendril high with its tip forked open
-  { ...hand(57, 31, -42), lean: -1, eye: 1.8, tl: 1, tx: 24, ty: -64, tc: 8, topen: 1, mane: 0.35, probe: -1, fly: -1 },
-  // release: the seed lands on the tip, the fork snaps shut
-  { ...hand(57, 31, -42), lean: -1, eye: 1.8, tl: 1, tx: 23, ty: -63, tc: 8, seed: 1, mane: 0.35, probe: -1, fly: -1 },
-  // contact: the tendril curls down and plants the seed into the hollow
-  { ...hand(57, 32, -40), lean: 0, eye: 1.9, tl: 1, tx: 8, ty: -40, tc: 14, seed: 2, mane: 0.3, probe: -1, fly: -1 },
-  // the knot light flares, a sprout springs from the club
-  { ...hand(57, 37, -34), lean: 2, crouch: 1, shake: 1, eye: 2, tl: 0.85, tx: 7, ty: -39, tc: 14, knots: 1, knotHot: 1, sprout: 0.5, mane: 0.5, probe: -1, fly: -1 },
-  { ...hand(57, 32, -40), lean: 0, eye: 2, tl: 0.5, tx: 14, ty: -50, tc: 10, knots: 1, sprout: 1, mane: 0.4, probe: -1, fly: -1 },
-  // the glowing hold (the cinematic may hold this frame until every seed is planted)
-  { ...hand(57, 33, -38), eye: 1.8, tl: 0.2, tx: 18, ty: -56, tc: 6, knots: 1, sprout: 1, mane: 0.3, probe: -1, fly: -1 },
-  // recover: the club comes back down
-  { ...hand(58, 44, 30), eye: 1.5, knots: 1, sprout: 1, probe: -1, fly: -1 },
-  { ...planted(48), eye: 1.3, knots: 1, sprout: 0.6, probe: -1, fly: -1 },
+  // charge: the roots heave the club up in front of the chest, head high (the stab's wind-up); the hollow wakes
+  { ...hand(55, 40, -96), lean: -2, bob: 1, eye: 1.4, mane: 0.4, fx: 6, fy: -34, fc: 0.6, probe: -1, fly: -1 },
+  // STAB: the club is driven head-first into the floor right in front of the near foot (the roots run out of it)
+  { ...hand(57, 46, 78), crouch: 2, lean: 3, shake: 1, eye: 1.8, mane: 0.6, maneSway: 5, fx: 12, fy: -31, fc: 0.85, dust: 0.3, probe: -1, fly: -1 },
+  // the receiving hold: both hands on the planted club (a lever), hunched over it, the hollow blazing
+  { ...hand(57, 45, 80), crouch: 1, lean: 2, eye: 1.9, lid: 1, mane: 0.45, fx: 12, fy: -32, fc: 0.85, probe: -1, fly: -1 },
+  // release: the seed is caught by the floor root — the giant HAULS on the club (leans back, roots taut)
+  { ...hand(55, 44, 82), crouch: 2, lean: -1, eye: 2, scar: 1, mane: 0.5, maneSway: -4, fx: 10, fy: -32, fc: 1, probe: -1, fly: -1 },
+  // contact: the seed climbs up the club and the arm into the hollow — chest thrown open, head back
+  { ...hand(55, 45, 81), crouch: 1, lean: -3, bob: -1, eye: 2, scar: 1, mane: 0.7, maneSway: -6, fx: 10, fy: -33, fc: 0.9, probe: -1, fly: -1 },
+  // the knot light flares (the trunk jolts), a sprout springs from the club
+  { ...hand(57, 46, 79), crouch: 2, lean: 2, shake: 1, eye: 2, knots: 1, knotHot: 1, sprout: 0.5, mane: 0.8, maneSway: 6, fx: 12, fy: -32, fc: 0.85, probe: -1, fly: -1 },
+  { ...hand(57, 45, 80), crouch: 1, lean: 1, eye: 2, knots: 1, sprout: 1, mane: 0.55, fx: 12, fy: -32, fc: 0.85, probe: -1, fly: -1 },
+  // the glowing hold (the cinematic holds this frame for the finale)
+  { ...hand(57, 45, 80), crouch: 1, lean: 0, bob: -1, eye: 1.9, knots: 1, sprout: 1, mane: 0.4, fx: 11, fy: -32, fc: 0.8, probe: -1, fly: -1 },
+  // recover: the club is wrenched out of the floor and comes back to the hang
+  { ...hand(56, 40, 60), crouch: 1, lean: -1, eye: 1.6, knots: 1, sprout: 1, dust: 0.25, probe: -1, fly: -1 },
+  { ...planted(50), eye: 1.3, knots: 1, sprout: 0.8, probe: -1, fly: -1 },
 ];
 export function specialPose(f: number): Pose {
   return table(SPECIAL_KEYS, f, SP_N);
 }
-const SP_HOLDS = [90, 140, 130, 190, 50, 110, 70, 120, 200, 100, 130, 150, 160];
+const SP_HOLDS = [90, 150, 70, 190, 60, 120, 70, 120, 200, 110, 130, 150, 160];
 
 // ------------------------------------------------------------------ tables
 

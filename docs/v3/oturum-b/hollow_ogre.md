@@ -467,3 +467,86 @@ snd-hoIdleCreak.png, snd-hoFirefly.png, snd-hoKnot.png.
 - Struck-wood material sound when the ogre is hit by other attacks: unchanged (orchestrator decision 4).
 - `knotFlare` (old painter) is still exported from `hollow_ogre-fx.ts`, unused.
 - No MP4 clip rendered this round; sameness / blind test still owed.
+
+## Stage: FIX — round 1 after the main merge (critic `critic-r1/pm/`)
+
+Owner decision 2026-11-05 applied: REHBER §5 budgets are no longer a gate — the signature now breathes. Evidence:
+`shots/v3/kart-b/hollow_ogre/fix-r1b/`. Gates: `monster-gates --class medium` **21 ok, 0 FAIL** (`gates.txt`, sheets
+regenerated in `sheet/`, `sheet-p2/`); `tsc` clean; `vitest tests/art/hollow_ogre* tests/audio` 21/21. `measure` /
+camera gate / v1 filmdiff NOT re-run this round (all registrations still LOOK_V3-gated; no shared file touched).
+
+### Findings → what changed
+1. **BLOCKER — reach went into the opponent's lane.** The special is redrawn: f1 the club is heaved up in front of the
+   chest, **f2 it is STABBED head-first into the floor in front of the near foot** (hoStab: thump + tok, floor crack,
+   loam, splinters, 2-px shake), f3 both hands on the planted club (a lever); f4 HAUL (leans back, the lightning scar
+   lights violet), f5 head back (seed climbing), f6 knot jolt, f7 sprout, f8 glow hold, f9–10 the club is wrenched out.
+   The shoulder tendril is gone (also fixes sprite finding (c)). New cinematic `graveRoot` (fx): a 3→2-px ink-edged
+   bark root bursts out of the club head and runs **along the floor toward the player's own graveyard** (60 % of the
+   way; plows broken lips + rootlets, loam off its growing tip; hoRootRun), rises 17 px and opens a three-pronged cup
+   whose tips catch violet light (hoCupOpen). Catch point = the cup, low, between the giant and its pile — on P1
+   (down-right) and P2 (up-left) alike (`hoEat2-zoom.png`, `hoEat2P2-zoom.png`). The club never leaves the giant's tile.
+   +400 now rises over the hollow on the giant's OWN side (core + back·10, −24).
+2. **BLOCKER — compressed timing.** New timeline: ghost rise 150 + HOLD 210 (the real monster's violet ghost stands
+   over the pile, rim flickering, breathing a px) + shrink 260; flight 480 (first seed +100 ms and a local slow-motion
+   weight bump round its apex and catch, `seedFlight({slow})`); the catch (cup snaps, sparks, hoCatch); **the root
+   carries the seed home** as a swollen glowing knot running along it (290 ms, hoCarry); the seed climbs club → grip →
+   hollow (`climbSeed`, 250 ms, hoClimb run of three toks); knot; sprout. The next seed launches as soon as the cup is
+   free (pipelined). FINALE 560 ms: f8 held, the buds flare every 180 ms, 12 motes rise out of the hollow, hoGlow is now a
+   1.2 s resonant hollow tok + cavity hum + F# chord (spectrogram `snd-hoGlow.png`), the root sinks back into the floor.
+   k = 2 ≈ 4.5 s from the first ghost to the club coming out (k = 1 ≈ 2.5 s).
+3. **MAJOR — 1-px vector rings.** All gone: `knotBloom` → `knotBurst` (the hollow flashes white 2 frames, 7 jagged
+   2-px banded EMBER CRACKS run out of the bark round it, white → void4 → void3 → void2, spark beads on their tips, motes);
+   no circle round the sprout (the bud itself pops); `pileStir` = three rotating banded arcs (`arcBand`: void4 lead /
+   void3 body + a bead) + sparse lit glints; `floorRing` = 5 broken banded earth arcs with chip beads; seed halo ring and
+   held-seed ring removed (4 sparks); the attack club flare = two whirling banded arcs; the pollen ring removed.
+4. **MAJOR — violet floor stains.** Root cause: in the v3 stepped light layer a violet light is ONLY a floor stamp, and
+   its first void tone ≥ 80 % of the merged floor's luminance is void3 → a dark violet dither. Every void-coloured
+   `lightPool` / `lightFlash` of this card was removed (seed flight pool, boost pool under the hollow, pile pool, knot /
+   end / catch / pollen flashes, death knot flashes); violet light on the floor is now a few drawn void4/void3 glints.
+   Warm earth/gold floor lights (they brighten) stay.
+5. **MAJOR — summon log + doors.** `logColumn` flares the falling log ×1.6 over 26 rows (wider than the shoulders) with
+   burls, ring cracks, knot holes; the falling log wobbles ±1 px (no rotation). Doors (`drawDoor`): heartwood inner face
+   with wavy grain + a knot, the face turned from the light one value down, a dark bark THICKNESS strip on the free
+   edge, a torn free edge; on the SLAM they tip forward and fall flat (foreshorten to a plank on the floor), and break
+   into chips on f11.
+6. **MAJOR — summon static middle / weak SLAM.** Holds f2–f8 tightened (90/70/80/80/80/80/170: f8 is the held
+   anticipation), new beats: f4 eyes ignite (gold flash) + crumbs off both door hinges, f5 shoulders shrug (hoShrug:
+   two-step creak, leaves off the mane, bark chips), f8 eye flare. SLAM: a real 100 ms `hitStop`, 3-px shake 260 ms,
+   bigger earth4 floor flash + a gold4 core flash, a dust wall at the blow, a 12-leaf burst off the crown, the root-crack
+   star + sprout ring as before. (`hoSummon-zoom.png`)
+7. **MAJOR — boost unreadable.** Aura sprouts are now 9–11 px with 2-px ink-edged stems, two leaf pairs each, and a
+   5×5 ink-edged violet bud (void4 heart, gold4 glint, twinkling sparkle pixels; all blaze on flare / step); pollen
+   motes drift up off the buds every 300 ms while boosted. Contact: a pollen FOUNTAIN shot up out of each bud (44 + 30
+   2-px squares that rise, slow and hang, 12 gold sparkles, 16 hanging puffs above the head) + a short upward white
+   star. (`hoEatAttack-zoom.png` #24–#29)
+8. **MAJOR — contact placement.** attack f6 (contact) now holds the club head at chest height in front (hand 56,40 /
+   22°); f7 is the fall-through to the floor. The strike aims the contact frame's club head at the target's **core**,
+   the giant stands ≥ 3 px nearer the camera (drawn over the target); body hit = heartwood/bark chips (no green leaves)
+   + an earth4 air flash; the floor crack / ring / splinters / loam fire on the fall-through frame. Direct: the club is
+   played to the floor before the rupture. (`hoAttack-zoom.png` #18–#23, `hoDirect.png`)
+9. **MAJOR — sprite.** (a) The log's open top is now a shallow charred pit (earth1, a tiny earth0 heart) — the chest
+   hollow is the only dark focus. (b) Near-shoulder moss = two small dim tufts up on the shoulder ridge (leaf0 body,
+   leaf2 lit lip). (c) tendril removed from the special. (d) root fingers over the handle: unchanged (open).
+   Gate fallout: HA-17 was 1.96 (failing after the merge, independent of these changes) → idle club pendulum phase moved
+   (ph − 0.4): HA-17 1.68, HA-21 phase ≤ 44.8 %.
+10. minor — guard: its beat (chips, grip marks, eye flare, hoBlock + a creak) now lands 100 ms after `v3:contact`, with
+   a 1-px club recoil.
+11. minor — death: strands tapered (2 → 1 px), tips curl as they dig in, every third strand short and pulled back
+   first; when boosted the knot lights leave the hollow as two small seeds that rise, dim and fall into the tile beside
+   the lone sprout.
+12. minor — SFX: hoImpact raw ×0.67 (−3.5 dB; raw pk 1.48 → 0.99), hoClubSlam ×0.84 (raw pk 0.99); hoGlow 1.2 s tail;
+   new hoStab, hoRootRun, hoCupOpen, hoCarry, hoClimb, hoShrug (all raw pk ≤ 0.67, loud −7…−21 dB).
+
+### Evidence (shots/v3/kart-b/hollow_ogre/fix-r1b/)
+hoEat2.png (1×), hoEat2-zoom.png (whole planting), hoEat2-plant.png (carry / climb / knot of an earlier timing),
+hoEat2-finale.png, hoEat2P2.png, hoEat2P2-zoom.png, hoEat1Auto-zoom.png (single batch), hoSummon-zoom.png,
+hoAttack-zoom.png, hoEatAttack-zoom.png, hoDirect.png, hoKill-zoom.png, hoGuard-zoom.png, snd-hoGlow.png,
+snd-hoImpact.png, snd-hoRootRun.png.
+
+### Open issues
+- Struck-wood material sound when the ogre is hit: unchanged (decision 4).
+- Root fingers over the club handle still mush at 1× (sprite (d)).
+- Idle club hang (board overlap with neighbours, minor): not changed — it is pinned by HA-9/HA-17/HA-21; logged.
+- Guard chips still share the frame with the shared BLOK badge (now readable after the beam).
+- Summon stake → SLAM ≈ 1.2 s (busy with beats now, but not the 1.6 s total the critic floated).
+- `measure` / camera gate / v1 filmdiff not re-run this round.

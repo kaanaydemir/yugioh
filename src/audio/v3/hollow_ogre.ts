@@ -231,6 +231,8 @@ export const HOLLOW_OGRE_RECIPES = {
     verb: 0.5,
     duck: 0.7,
     play(v) {
+      // −1.5 dB raw (round-1 critic: raw peak 1.18)
+      trim(v, 0.84, () => {
       // the slam
       thump(v, 0, 110, 32, 0.85, 0.48, { drive: 2.6 });
       tok(v, 0, midiHz(54), 0.3, { dec: 0.45, cavity: 0.9 });
@@ -242,6 +244,7 @@ export const HOLLOW_OGRE_RECIPES = {
       creak(v, 0.06, 0.62, 0.3, { f0: 84, f1: 98, rate: 22, body: 0.7 });
       creak(v, 0.12, 0.5, 0.18, { f0: 168, f1: 186, rate: 31 });
       v.noise('pink', { t: 0.1, g: [[0, 0], [0.12, 0.08], [0.6, 0.0001, 'e']], to: v.filt('bandpass', [[0, 180], [0.6, 260, 'e']], 6, { t: 0.1 }) });
+      });
     },
   },
   /** Strike charge (sustained): the roots tighten round the club and heave it up — creaks climbing, fibres rustling. */
@@ -293,6 +296,8 @@ export const HOLLOW_OGRE_RECIPES = {
     verb: 0.4,
     duck: 0.65,
     play(v) {
+      // −3.5 dB raw (round-1 critic: the raw peak was 1.48 and leant on the limiter)
+      trim(v, 0.67, () => {
       thump(v, 0, 135, 34, 0.85, 0.45, { drive: 3 });
       thump(v, 0.002, 300, 110, 0.3, 0.08, { drive: 2 });
       // the club itself rings: a knotted log, hollow, an octave under the knots
@@ -302,6 +307,7 @@ export const HOLLOW_OGRE_RECIPES = {
       puff(v, 0.004, 0.45, 0.45, 1000, { kind: 'brown' });
       leaves(v, 0.03, 0.16, 0.45);
       v.crackle({ t: 0.03, d: 0.45, n: 20, g: 0.14, f: 3000, q: 1.1, curve: 1.6, dec: 0.007 });
+      });
     },
   },
   /** Strike contact when boosted: the sprouts burst into violet pollen — soft knot chimes rising, a breath of air. */
@@ -492,21 +498,114 @@ export const HOLLOW_OGRE_RECIPES = {
   hoGlow: {
     cap: 1,
     gap: 0.2,
-    verb: 0.6,
+    verb: 0.65,
     duck: 0.3,
     play(v) {
-      const D = 0.8;
+      // the FINALE: one deep hollow "tok" that rings out for 1.4 s inside the log (a resonant decay + a cavity hum),
+      // the warm F# chord of the knot lights swelling over it, embers ticking
+      const D = 1.4;
+      tok(v, 0, midiHz(54), 0.34, { dec: 0.9, cavity: 1.2 });
+      tok(v, 0.003, midiHz(66), 0.12, { dec: 0.6, cavity: 0.5 });
+      const hum = v.tone('sine', [[0, midiHz(42)], [D, midiHz(42) * 0.985, 'e']], { t: 0.02, g: [[0, 0], [0.18, 0.12], [D * 0.7, 0.07], [D, 0.0001, 'e']], to: v.filt('lowpass', 300, 1.2) });
+      v.lfo(hum.osc.detune, 3.2, 10, { t: 0.02, d: D });
       for (const [m, gg, det] of [
-        [54, 0.07, 0],
-        [61, 0.05, 4],
-        [66, 0.035, -5],
-        [70, 0.025, 3],
+        [54, 0.06, 0],
+        [61, 0.045, 4],
+        [66, 0.032, -5],
+        [70, 0.024, 3],
       ] as const) {
-        const s = v.tone('triangle', midiHz(m), { g: [[0, 0], [0.1, gg], [D * 0.6, gg * 0.7], [D, 0.0001, 'e']], detune: det, to: v.filt('lowpass', 1400, 0.9) });
-        v.lfo(s.osc.detune, 5, 6, { d: D });
+        const s = v.tone('triangle', midiHz(m), { t: 0.08, g: [[0, 0], [0.25, gg], [D * 0.6, gg * 0.7], [D - 0.08, 0.0001, 'e']], detune: det, to: v.filt('lowpass', 1400, 0.9) });
+        v.lfo(s.osc.detune, 5, 6, { t: 0.08, d: D });
       }
-      tok(v, 0, midiHz(66), 0.12, { dec: 0.3, cavity: 0.8 });
-      v.crackle({ t: 0.05, d: D - 0.2, n: 12, g: 0.05, f: 3400, q: 1.2, dec: 0.005 });
+      v.crackle({ t: 0.08, d: D - 0.3, n: 16, g: 0.05, f: 3400, q: 1.2, dec: 0.005 });
+      // the club's buds answer: two soft high plinks
+      v.tone('sine', midiHz(85), { t: 0.32, g: perc(0.03, 0.4, 0.004) });
+      v.tone('sine', midiHz(87), { t: 0.5, g: perc(0.025, 0.4, 0.004) });
+    },
+  },
+  /** Summon f5: the giant shrugs its shoulders free of the log — a deep two-step creak, bark crumbling, a leaf rustle. */
+  hoShrug: {
+    cap: 1,
+    gap: 0.2,
+    verb: 0.45,
+    duck: 0.3,
+    play(v) {
+      creak(v, 0, 0.32, 0.22, { f0: 150, f1: 190, rate: 26, body: 0.85 });
+      creak(v, 0.18, 0.3, 0.16, { f0: 200, f1: 170, rate: 32 });
+      v.crackle({ t: 0.04, d: 0.4, n: 12, g: 0.08, f: 2400, q: 1, kind: 'brown', dec: 0.01 });
+      leaves(v, 0.12, 0.1, 0.4);
+    },
+  },
+  /** Effect f2: the club is stabbed head-first into the floor — a short driven thump, a knot tok, loam. */
+  hoStab: {
+    cap: 1,
+    gap: 0.2,
+    verb: 0.4,
+    duck: 0.55,
+    play(v) {
+      trim(v, 0.85, () => {
+        thump(v, 0, 150, 46, 0.75, 0.26, { drive: 2.4 });
+        tok(v, 0, midiHz(51), 0.24, { dec: 0.3, cavity: 0.9 });
+        crack(v, 0, 0.35, { hp: 1800, lp: 7000, n: 2, gap: 0.01, dec: 0.012 });
+        puff(v, 0.004, 0.3, 0.35, 900, { kind: 'brown' });
+        creak(v, 0.06, 0.3, 0.14, { f0: 190, f1: 160, rate: 36 });
+      });
+    },
+  },
+  /** Effect: the root burrows out of the club along the floor to the graveyard — a creak running away under loam. */
+  hoRootRun: {
+    cap: 1,
+    gap: 0.2,
+    verb: 0.45,
+    duck: 0.3,
+    play(v) {
+      const D = 0.55;
+      const fl = v.flutter(26, 0.7, { d: D + 0.05, base: 0.35, to: v.filt('bandpass', [[0, 420], [D, 1500, 'e']], 1.3) });
+      v.noise('brown', { g: [[0, 0], [0.05, 0.45], [D * 0.8, 0.3], [D, 0.0001, 'e']], to: fl });
+      creak(v, 0.02, D - 0.05, 0.16, { f0: 165, f1: 205, rate: 30 });
+      rustle(v, 0.05, D, 0.1, { c0: 1100, c1: 2500, rate: 26, pan: [-0.2, 0.4] });
+      v.crackle({ t: 0.02, d: D, n: 18, g: 0.08, f: 2200, q: 1, kind: 'brown', dec: 0.01 });
+    },
+  },
+  /** Effect: the root's cup opens over the floor — three fibre ticks and a soft rising knot. */
+  hoCupOpen: {
+    cap: 1,
+    gap: 0.2,
+    verb: 0.4,
+    play(v) {
+      trim(v, 2.2, () => {
+        snaps(v, 0, 0.12, 3, 0.07);
+        tok(v, 0.06, midiHz(68), 0.08, { dec: 0.12, cavity: 0.2 });
+        v.tone('sine', [[0, midiHz(80)], [0.2, midiHz(85), 'e']], { t: 0.08, g: perc(0.03, 0.25, 0.01) });
+      });
+    },
+  },
+  /** Effect (per seed): the root carries the seed home inside it — a sliding wooden creak with a muffled violet hum. */
+  hoCarry: {
+    cap: 6,
+    gap: 0.008,
+    verb: 0.4,
+    play(v) {
+      trim(v, 1.6, () => {
+        const D = 0.38;
+        creak(v, 0, D, 0.12, { f0: 205, f1: 160, rate: 34 });
+        rustle(v, 0, D, 0.08, { c0: 2200, c1: 900, rate: 22 });
+        v.tone('sine', [[0, midiHz(78)], [D, midiHz(70), 'e']], { g: [[0, 0], [0.05, 0.035], [D, 0.0001, 'e']], to: v.filt('lowpass', 1800, 1) });
+      });
+    },
+  },
+  /** Effect (per seed): the seed climbs the club into the hollow — a quick rising run of three pentatonic toks. */
+  hoClimb: {
+    cap: 6,
+    gap: 0.008,
+    verb: 0.45,
+    play(v) {
+      trim(v, 2.6, () => {
+        tok(v, 0, midiHz(63), 0.08, { dec: 0.09, cavity: 0.2 });
+        tok(v, 0.07, midiHz(66), 0.08, { dec: 0.09, cavity: 0.2 });
+        tok(v, 0.14, midiHz(68), 0.09, { dec: 0.12, cavity: 0.3 });
+        v.tone('sine', [[0, midiHz(75)], [0.22, midiHz(82), 'e']], { g: [[0, 0], [0.08, 0.03], [0.26, 0.0001, 'e']] });
+      });
     },
   },
   /** Death f1: the root arms unravel — a run of fibre snaps, a strained creak sliding down. */

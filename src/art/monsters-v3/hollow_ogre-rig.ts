@@ -209,6 +209,7 @@ const FAR: Tones = { L: PAL.earth2, M: PAL.earth1, S: PAL.earth0 };
 const ROOT: Tones = { L: PAL.earth3, M: PAL.earth2, S: PAL.earth1 };
 const CLUB: Tones = { L: PAL.earth2, M: PAL.earth1, S: PAL.earth0 };
 const MOSS: Tones = { L: PAL.leaf2, M: PAL.leaf1, S: PAL.leaf0 };
+const MOSS_NEAR: Tones = { L: PAL.leaf2, M: PAL.leaf0, S: PAL.leaf0 };
 const MOSS_FAR: Tones = { L: PAL.leaf1, M: PAL.leaf0, S: PAL.leaf0 };
 const CREASE = PAL.earth0;
 const HEART = PAL.earth4;
@@ -643,8 +644,10 @@ function drawTrunk(f: Frame): void {
         const e = ((x - cx) / (rx + 0.4)) ** 2 + ((y - cy) / (ry + 0.4)) ** 2;
         if (e > 1) continue;
         const ei = ((x - cx) / (rx - 2.6)) ** 2 + ((y - cy + 0.5) / Math.max(1, ry - 1.4)) ** 2;
-        // a broken stump top: charred end grain (earth2, the lit quarter earth3), a small dark hole
-        q.set(x, y, ei <= 1 ? PAL.void0 : (x - cx) * -light.side > rx * 0.35 ? PAL.earth3 : PAL.earth2);
+        // a broken stump top: charred end grain (earth2, the lit quarter earth3); the hole is a shallow charred pit
+        // (earth1 with splinter teeth, a tiny earth0 heart) so the chest hollow stays the ONLY dark focus
+        const pit = ei <= 0.3 ? PAL.earth0 : PAL.earth1;
+        q.set(x, y, ei <= 1 ? pit : (x - cx) * -light.side > rx * 0.35 ? PAL.earth3 : PAL.earth2);
       }
     // the near crown shards stand IN FRONT of the ring's lip (it reads as a splintered stump, not a second mouth)
     for (const [u, h0, sl] of SHARDS) {
@@ -731,10 +734,16 @@ function drawDoor(f: Frame): void {
     const free = hinge + s * DW * proj + s * fall * 4;
     const x0 = Math.min(hinge, free);
     const x1 = Math.max(hinge, free);
-    const dy = rnd(fall * fall * 28);
-    for (let j = 0; j < ph; j++) {
-      const y0 = rnd(hy - ph / 2) + j + dy;
+    // shaken loose, the slab tips forward and falls FLAT onto the tile: it drops and foreshortens to a plank lying
+    // on the floor (the cinematic breaks it into chips on the last frame)
+    const bot0 = rnd(hy + ph / 2);
+    const bot = bot0 + rnd(fall * fall * (GY - 1 - bot0));
+    const vis = Math.max(3, rnd(ph * (1 - fall * 0.85)));
+    for (let j = 0; j < vis; j++) {
+      const y0 = bot - vis + j;
       for (let x = rnd(x0); x <= rnd(x1); x++) {
+        // a torn, splintered free edge
+        if (Math.abs(x - rnd(free)) === 0 && hash2(x, j, 31) > 0.62) continue;
         // the free edge comes forward and down: rows shear by the swing
         const u = Math.abs(x - hinge) / Math.max(1, DW);
         const y = y0 + rnd(u * Math.sin(theta) * 2.2 * (inner ? 1 : 0));
@@ -744,7 +753,8 @@ function drawDoor(f: Frame): void {
     }
   }
   if (inner) {
-    // the inner faces: heartwood (earth4) with an earth3 grain band and a charred inner edge by the hinge
+    // the inner faces: heartwood with wavy grain lines and a knot, the slab's bark THICKNESS showing as a dark strip
+    // on the free edge, a charred hinge edge; the face turned from the light is one value down
     const src = q.clone();
     for (let y = 0; y < H; y++)
       for (let x = 0; x < W; x++) {
@@ -752,8 +762,14 @@ function drawDoor(f: Frame): void {
         const s = x < hx ? -1 : 1;
         const hinge = hx + s * (sk.hrx + 1);
         const d = Math.abs(x - hinge);
+        const outer = !src.isOpaque(x + s, y);
         const edge = !src.isOpaque(x, y - 1) || !src.isOpaque(x, y + 1);
-        q.set(x, y, d <= 0 ? CREASE : edge ? PAL.earth3 : (d + (y >> 2)) % 4 === 0 ? PAL.earth3 : HEART);
+        const lit = s === light.side;
+        const base = lit ? HEART : PAL.earth3;
+        const grain = lit ? PAL.earth3 : PAL.earth2;
+        const wav = (d + ((y + (d % 3)) >> 2)) % 4 === 0;
+        const knot = d === 4 && (y - hy) % 7 === 2;
+        q.set(x, y, d <= 0 ? CREASE : outer ? PAL.earth1 : edge ? (lit ? PAL.earth3 : PAL.earth2) : knot ? PAL.earth1 : wav ? grain : base);
       }
   } else bands(q, BARK, light, 1, 1, { top: 1, bottom: 1 });
   f.comp.add(q, Part.door, { out: PAL.ink });
@@ -832,7 +848,10 @@ function drawNearArm(f: Frame): void {
 function drawNearMoss(f: Frame): void {
   const { sk, o, light } = f;
   if (o.collapse > 0.45 || (o.door >= 0 && o.door < 0.2)) return;
-  mossClump(f, [sk.shN[0], sk.shN[1] - 1], 5, MOSS, Part.nearMoss, 4, false);
+  // the near-shoulder moss sits UP on the shoulder ridge in two dim tufts (a big saturated clump beside the hollow read
+  // as a green cheek at 1×): a leaf0 body under a leaf2 lit lip
+  mossClump(f, [sk.shN[0] - 2, sk.shN[1] - 4], 3, MOSS_NEAR, Part.nearMoss, 1, false);
+  mossClump(f, [sk.shN[0] + 3, sk.shN[1] - 3], 2, MOSS_NEAR, Part.nearMoss, 0, false);
   const q = layer();
   // two pale toadstools on long stems rise out of the moss, clear of the log top (they read against the sky)
   mushroom(q, [sk.shN[0] + 6, sk.shN[1] + 1], 5, light, 4);
