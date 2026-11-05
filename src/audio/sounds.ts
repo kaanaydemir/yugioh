@@ -7,8 +7,11 @@
 import type { SfxName } from './sfx';
 import { ahr, midiHz, perc, swell, type Pt, type Voice } from './synth';
 import { V3_RECIPES } from './v3/slice';
+import { V3_HARPOONER_RECIPES } from './v3/tide_harpooner';
 import { V3_MATERIAL_RECIPES } from './v3/materials';
+import { V3_SPIRALHORN_RECIPES } from './v3/steppe_spiralhorn';
 import { V3_VOICE_RECIPES } from './v3/voices';
+import { V3_HERON_RECIPES } from './v3/reed_heron';
 import { V3_SPELL_RECIPES } from './v3/spells';
 import { V3_DAWN_RECIPES } from './v3/dawn';
 import { V3_POLAR_ANVIL_RECIPES } from './v3/polar_anvil';
@@ -18,8 +21,14 @@ import { V3_JESTER_RECIPES } from './v3/jester';
 import { V3_ARCHER_RECIPES } from './v3/archer';
 import { V3_RAIDERS_RECIPES } from './v3/raiders';
 import { V3_STRAW_RECIPES } from './v3/straw';
+import { KART_B_RECIPES } from './v3/kart-b';
+import { V3_ASHEN_RECIPES } from './v3/ashen';
+import { V3_AXEMAN_RECIPES } from './v3/crag_axeman';
+import { V3_HATCH_RECIPES } from './v3/hatchling';
+import { V3_VENOM_RECIPES } from './v3/venom';
 import { UI_CARD_RECIPES } from './v3/ui-cards';
 import { UI_FLOW_RECIPES } from './v3/ui-flow';
+import { V3_KITE_RECIPES } from './v3/kite_fencer';
 
 export interface Recipe {
   /** Reverb send 0..1. */
@@ -1092,8 +1101,11 @@ export const RECIPES: Record<SfxName, Recipe> = {
 
   // ================================================================ v3 (additive: ./v3/slice.ts)
   ...V3_RECIPES,
+  ...V3_HARPOONER_RECIPES, // tide_harpooner (lane C, C1)
   ...V3_MATERIAL_RECIPES, // v3 material hits generated from the material library (./v3/materials.ts)
+  ...V3_SPIRALHORN_RECIPES, // Bozkır Boynuzlusu (./v3/steppe_spiralhorn.ts)
   ...V3_VOICE_RECIPES, // v3 character voices generated from presentation recipes (./v3/voices.ts)
+  ...V3_HERON_RECIPES, // Sazlık Balıkçılı (./v3/reed_heron.ts)
   // A5 / A6 (registered once in A56.0; the lanes fill their own modules, never this table)
   ...V3_SPELL_RECIPES, // A5-A spell / trap sounds (./v3/spells.ts)
   ...V3_DAWN_RECIPES, // Şafak Kılıçları (./v3/dawn.ts)
@@ -1104,6 +1116,12 @@ export const RECIPES: Record<SfxName, Recipe> = {
   ...V3_ARCHER_RECIPES, // Yansıyan Okçu (./v3/archer.ts)
   ...V3_RAIDERS_RECIPES, // Hurda Akıncıları (./v3/raiders.ts)
   ...V3_STRAW_RECIPES, // Saman Korkuluk jetonu (./v3/straw.ts)
+  ...KART_B_RECIPES, // lane B cards (./v3/kart-b.ts)
+  ...V3_ASHEN_RECIPES, // Kül Ejderi, lane A (./v3/ashen.ts)
+  ...V3_AXEMAN_RECIPES, // Kaya Baltacı (./v3/crag_axeman.ts)
+  ...V3_HATCH_RECIPES, // Bulut Yavrusu, lane A (./v3/hatchling.ts)
+  ...V3_VENOM_RECIPES, // Zehir Ejderi, lane A (./v3/venom.ts)
   ...UI_CARD_RECIPES, // A6 UI sounds, cards (./v3/ui-cards.ts; written by A6-A)
   ...UI_FLOW_RECIPES, // A6 UI sounds, flow (./v3/ui-flow.ts; written by A6-A)
+  ...V3_KITE_RECIPES, // Uçurtma Eskrimci (kite_fencer, lane C) — ./v3/kite_fencer.ts
 };

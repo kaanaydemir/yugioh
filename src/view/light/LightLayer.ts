@@ -26,16 +26,19 @@
 // hue through a fixed table, opaque, at whole pixels, faded by a 2×2 ordered dither instead of
 // alpha. No soft glow textures, no air glows / halos / spill / tint washes / caustics, no dim veil
 // (its ramp still runs, so lightDim keeps its timing). Monsters get one flat seat of their own
-// light on their pad (the still's drawLights); flashes, pools and beam floor strips step the floor
-// locally, an expanding ring steps a 1–2 px iso ring.
+// light on their pad (the still's drawLights), plus a soft dithered contact shadow + faint light
+// pool at their feet and a subtle top-left rim highlight via the light layer.
 
 import Phaser from 'phaser';
 import { CARDS, isMonster, type MonsterId } from '../../data/cards';
+import { frameRGBA } from '../../art/atlas';
 import { PAL } from '../../art/palette';
+import { PixelCanvas } from '../../art/pixel';
 import { monsterFrame, monsterTextureKey } from '../../art/textures';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { ZoneEntry } from '../../duel/FieldView';
-import { DEPTH, GAME_H, GAME_W, LOOK_V3, type XY } from '../layout';
+import { DEPTH, duelistXY, GAME_H, GAME_W, LOOK_V3, type XY } from '../layout';
+import { ntGrid, PLATE_C0, PLATE_C1, PLATE_R0, PLATE_R1, PLATE_X0, PLATE_X1, PLATE_Y0, PLATE_Y1 } from '../board-nt/layout-nt';
 import { onDuelStart } from '../../duel/seeds';
 import { type Stamp, StepPatch, quantize } from './stepped';
 import { CAUSTIC_FRAMES, LIGHT_TEX, LT, ensureLightTextures } from './textures';
@@ -985,23 +988,213 @@ class UnitLight {
 }
 
 /**
+ * Build (or get) a cached smooth foot texture: soft contact shadow at the centre +
+ * faint warm/slate light pool around its rim (smooth radial alpha, no checkerboard speckles).
+ */
+function ensureFootTex(scene: Phaser.Scene, rx: number, ry: number): string {
+  const key = `light:v3foot:${rx}x${ry}`;
+  if (scene.textures.exists(key)) return key;
+  const rxP = rx + 12;
+  const ryP = ry + 6;
+  const W = rxP * 2;
+  const H = ryP * 2;
+  const cv = document.createElement('canvas');
+  cv.width = W;
+  cv.height = H;
+  const g = cv.getContext('2d');
+  if (g) {
+    // 1. Outer soft ambient ground shadow around the unit
+    g.save();
+    g.translate(rxP, ryP);
+    g.scale(rxP, ryP);
+    const amb = g.createRadialGradient(0, 0, 0.25, 0, 0, 1);
+    amb.addColorStop(0, 'rgba(5, 6, 17, 0.55)');
+    amb.addColorStop(0.65, 'rgba(5, 6, 17, 0.28)');
+    amb.addColorStop(1, 'rgba(5, 6, 17, 0)');
+    g.fillStyle = amb;
+    g.beginPath();
+    g.arc(0, 0, 1, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
+
+    // 2. Faint warm-amber light pool at the unit's feet
+    const rxL = Math.max(8, rx + 4);
+    const ryL = Math.max(4, ry + 2);
+    g.save();
+    g.translate(rxP, ryP);
+    g.scale(rxL, ryL);
+    const pool = g.createRadialGradient(0, 0, 0.15, 0, 0, 1);
+    pool.addColorStop(0, 'rgba(235, 188, 118, 0.28)');
+    pool.addColorStop(0.65, 'rgba(155, 170, 205, 0.14)');
+    pool.addColorStop(1, 'rgba(155, 170, 205, 0)');
+    g.fillStyle = pool;
+    g.beginPath();
+    g.arc(0, 0, 1, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
+
+    // 3. Crisp dark contact shadow core right under the feet (no dither speckles)
+    const rxS = Math.max(6, Math.round(rx * 0.82));
+    const ryS = Math.max(3, Math.round(ry * 0.82));
+    g.save();
+    g.translate(rxP, ryP);
+    g.scale(rxS, ryS);
+    const shd = g.createRadialGradient(0, 0, 0, 0, 0, 1);
+    shd.addColorStop(0, 'rgba(5, 6, 17, 0.82)');
+    shd.addColorStop(0.58, 'rgba(5, 6, 17, 0.48)');
+    shd.addColorStop(1, 'rgba(5, 6, 17, 0)');
+    g.fillStyle = shd;
+    g.beginPath();
+    g.arc(0, 0, 1, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
+  }
+  scene.textures.addCanvas(key, cv);
+  return key;
+}
+
+/**
+ * Readability pass (owner feedback, hedef-gorunum-1/2): the CAST shadow of a unit. The key light comes from
+ * the top left, so the shadow falls down-right across the floor: a long soft ellipse, darkest at the feet,
+ * fading away from them. Origin of the texture = the feet (see SteppedUnitLight: setOrigin(FOOT_OX, FOOT_OY)).
+ * `len` ≈ the unit's opaque height.
+ */
+const CAST_PAD = 6;
+function ensureCastShadowTex(scene: Phaser.Scene, rx: number, len: number): { key: string; ox: number; oy: number } {
+  const L = Math.max(14, Math.min(46, Math.round(len * 0.62)));
+  const W = rx * 2 + L + CAST_PAD * 2;
+  const H = Math.round(rx * 0.8) + Math.round(L * 0.5) + CAST_PAD * 2;
+  const footX = CAST_PAD + rx;
+  const footY = CAST_PAD + Math.round(rx * 0.4);
+  const key = `light:v3cast:${rx}x${L}`;
+  if (scene.textures.exists(key)) return { key, ox: footX / W, oy: footY / H };
+  const cv = document.createElement('canvas');
+  cv.width = W;
+  cv.height = H;
+  const g = cv.getContext('2d');
+  if (g) {
+    // the long axis runs down-right along the floor (iso: 2 px right per 1 px down)
+    const ang = Math.atan2(1, 2);
+    const cx = footX + Math.cos(ang) * L * 0.45;
+    const cy = footY + Math.sin(ang) * L * 0.45;
+    g.save();
+    g.translate(cx, cy);
+    g.rotate(ang);
+    const a = L * 0.5 + rx * 0.6;
+    const b = Math.max(4, rx * 0.42);
+    g.scale(a, b);
+    // darker near the feet: a gradient along the long axis, multiplied by a radial falloff
+    const rad = g.createRadialGradient(-0.35, 0, 0, -0.1, 0, 1.05);
+    rad.addColorStop(0, 'rgba(4, 4, 12, 0.62)');
+    rad.addColorStop(0.5, 'rgba(4, 4, 12, 0.36)');
+    rad.addColorStop(0.85, 'rgba(4, 4, 12, 0.1)');
+    rad.addColorStop(1, 'rgba(4, 4, 12, 0)');
+    g.fillStyle = rad;
+    g.beginPath();
+    g.arc(0, 0, 1, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
+  }
+  scene.textures.addCanvas(key, cv);
+  return { key, ox: footX / W, oy: footY / H };
+}
+
+/** Wide soft drop shadow on the board floor under a monster card/unit or duelist podium. */
+function ensureFloorShadowTex(scene: Phaser.Scene, rx: number, ry: number): string {
+  const key = `light:v3floorshd:${rx}x${ry}`;
+  if (scene.textures.exists(key)) return key;
+  const W = rx * 2;
+  const H = ry * 2;
+  const cv = document.createElement('canvas');
+  cv.width = W;
+  cv.height = H;
+  const g = cv.getContext('2d');
+  if (g) {
+    g.save();
+    g.translate(rx, ry);
+    g.scale(rx, ry);
+    const shd = g.createRadialGradient(0, 0, 0.1, 0, 0, 1);
+    shd.addColorStop(0, 'rgba(4, 5, 14, 0.76)');
+    shd.addColorStop(0.55, 'rgba(4, 5, 14, 0.42)');
+    shd.addColorStop(0.82, 'rgba(4, 5, 14, 0.16)');
+    shd.addColorStop(1, 'rgba(4, 5, 14, 0)');
+    g.fillStyle = shd;
+    g.beginPath();
+    g.arc(0, 0, 1, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
+  }
+  scene.textures.addCanvas(key, cv);
+  return key;
+}
+
+/**
+ * Build (or get) a cached 1-px subtle top-left rim highlight texture for a sprite frame,
+ * reading its pixels via frameRGBA() without modifying any monster sprite art.
+ */
+function ensureRimTex(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite): string | null {
+  const f = s.frame;
+  const texKey = s.texture?.key;
+  if (!f || !texKey) return null;
+  const key = `light:v3rim:${texKey}:${f.name}:${s.flipX ? 1 : 0}`;
+  if (scene.textures.exists(key)) return key;
+  const rgba = frameRGBA(f);
+  if (!rgba) return null;
+  const w = f.realWidth;
+  const h = f.realHeight;
+  const p = new PixelCanvas(w, h);
+  // In frame space, screen-left is -1 when not flipped, +1 when flipX is true
+  const dirX = s.flipX ? 1 : -1;
+  const maxY = Math.round(h * 0.72);
+  const aAt = (x: number, y: number): number => {
+    if (x < 0 || x >= w || y < 0 || y >= h) return 0;
+    return rgba[(y * w + x) * 4 + 3];
+  };
+  const cAt = (x: number, y: number): number => {
+    const i = (y * w + x) * 4;
+    return (rgba[i] << 16) | (rgba[i + 1] << 8) | rgba[i + 2];
+  };
+  for (let y = 1; y < maxY; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      if (aAt(x, y) < 250) continue;
+      const c = cAt(x, y);
+      // Do not overwrite the 1-px ink silhouette outline itself; check pixels just inside the top-left silhouette
+      if (c === PAL.ink) continue;
+      const outTL = aAt(x + dirX, y - 1) === 0 || (cAt(x + dirX, y - 1) === PAL.ink && aAt(x + 2 * dirX, y - 2) === 0);
+      const outT = aAt(x, y - 1) === 0 || (cAt(x, y - 1) === PAL.ink && aAt(x, y - 2) === 0);
+      if ((outTL || outT) && ((x + y) & 1) === 0) {
+        p.set(x, y, PAL.skin3);
+      }
+    }
+  }
+  scene.textures.addCanvas(key, p.toCanvas());
+  return key;
+}
+
+/**
  * Stepped mode: a monster's own light is ONE flat seat on its pad (the still's drawLights: the
  * wyrm's cyan seat, the magus' violet one) — its glow colour (MONSTER_GLOW spill, else the
- * attribute light), one step, centred under the sprite's ground point at whole pixels. It fades in
- * / out through the dither as the unit appears / leaves, weakens as the unit rises off the floor
- * (lift / hover) and follows it when it moves.
+ * attribute light), one step, centred under the sprite's ground point at whole pixels, PLUS
+ * a soft opaque contact shadow + faint light pool at the unit's feet and a subtle top-left rim
+ * highlight on the unit via the light layer.
  */
 class SteppedUnitLight {
   readonly unit: MonsterUnit;
+  private readonly scene: Phaser.Scene;
   private readonly patch: StepPatch;
+  private readonly floorShdImg: Img;
+  private readonly footImg: Img;
+  private readonly rimImg: Img;
   private readonly lvl = new Ramp(0);
   private readonly color: number;
   private readonly rx: number;
   private readonly ry: number;
+  private shown = true;
   dead = false;
 
   constructor(layer: LightLayer, unit: MonsterUnit) {
     this.unit = unit;
+    this.scene = layer.scene;
     const al = ATTRIBUTE_LIGHT[unit.attribute];
     this.color = monsterGlow(unit.cardId)?.spill ?? al.color;
     let ow = opaqueW.get(unit.cardId);
@@ -1014,6 +1207,12 @@ class SteppedUnitLight {
     this.rx = Math.round(Math.max(12, Math.min(24, ow.w * 0.36)));
     this.ry = Math.max(4, Math.round(this.rx * 0.37));
     this.patch = layer.makePatch();
+    // readability pass: a long cast shadow falling down-right from the feet (key light top left)
+    const cast = ensureCastShadowTex(this.scene, this.rx, ow.h);
+    this.floorShdImg = layer.makeSteppedImage(cast.key, DEPTH.CARD_ON_TILE + 0.2).setOrigin(cast.ox, cast.oy);
+    const footKey = ensureFootTex(this.scene, this.rx, this.ry);
+    this.footImg = layer.makeSteppedImage(footKey, DEPTH.SHADOW + 0.05);
+    this.rimImg = layer.makeSteppedImage('__DEFAULT', unit.sprite.depth + 0.01);
   }
 
   tick(dt: number, _t: number, gain: number, onField: boolean, layer: LightLayer): boolean {
@@ -1027,6 +1226,9 @@ class SteppedUnitLight {
     if (!onField && lv <= 0.003 && vis <= 0.003) return false;
     if (!s.active) {
       this.patch.draw([]);
+      this.floorShdImg.setVisible(false);
+      this.footImg.setVisible(false);
+      this.rimImg.setVisible(false);
       return lv > 0.003 && onField;
     }
     const air = u.art.hover + u.lift;
@@ -1036,15 +1238,51 @@ class SteppedUnitLight {
     const cx = Math.round(s.x + (u.flipX ? -1 : 1) * 2);
     const cy = Math.round(groundY - 1);
     this.patch.draw(level > 0 ? [{ kind: 'ellipse', cx, cy, rx: this.rx, ry: this.ry, level: Math.min(1, level), hue: this.color, core: 0 }] : []);
+
+    // Replace MonsterUnit's checkerboard dither shadow with smooth radial contact shadow + floor shadow + light pool
+    if (u.shadow?.active) u.shadow.setAlpha(0);
+    const showFoot = this.shown && s.visible && !u.retired && lv > 0.25 && u.lift < 28;
+    this.floorShdImg.setVisible(showFoot);
+    this.footImg.setVisible(showFoot);
+    if (showFoot) {
+      this.floorShdImg.setPosition(Math.round(s.x), Math.round(groundY));
+      this.footImg.setPosition(Math.round(s.x), Math.round(groundY));
+    }
+
+    // Subtle 1-px top-left rim on the unit sprite
+    const showRim = this.shown && s.visible && !u.retired && s.alpha >= 0.99 && !s.isCropped && s.scaleX === 1 && s.scaleY === 1 && s.angle === 0;
+    if (showRim) {
+      const rimKey = ensureRimTex(this.scene, s);
+      if (rimKey) {
+        if (this.rimImg.texture.key !== rimKey) this.rimImg.setTexture(rimKey);
+        this.rimImg
+          .setOrigin(s.originX, s.originY)
+          .setFlipX(s.flipX)
+          .setPosition(Math.round(s.x), Math.round(s.y))
+          .setDepth(s.depth + 0.01)
+          .setVisible(true);
+      } else {
+        this.rimImg.setVisible(false);
+      }
+    } else {
+      this.rimImg.setVisible(false);
+    }
+
     return true;
   }
 
   images(): Img[] {
-    return [this.patch.img];
+    return [this.patch.img, this.floorShdImg, this.footImg, this.rimImg];
   }
 
   setShown(on: boolean): void {
+    this.shown = on;
     this.patch.setShown(on);
+    if (!on) {
+      this.floorShdImg.setVisible(false);
+      this.footImg.setVisible(false);
+      this.rimImg.setVisible(false);
+    }
   }
 
   pixels(): number {
@@ -1054,6 +1292,9 @@ class SteppedUnitLight {
   destroy(): void {
     this.dead = true;
     this.patch.destroy();
+    if (this.floorShdImg.active) this.floorShdImg.destroy();
+    if (this.footImg.active) this.footImg.destroy();
+    if (this.rimImg.active) this.rimImg.destroy();
     this.lvl.flush();
   }
 }
@@ -1106,6 +1347,54 @@ function fieldColor(id: string): number {
   return id === 'volcano_arena' ? PAL.fire3 : PAL.teal3;
 }
 
+/** Build (or get) a smooth warm top-left key-light wash strictly clipped inside the v3 platform octagon. */
+function ensureKeyLightTex(scene: Phaser.Scene): string {
+  const key = 'light:v3keywash';
+  if (scene.textures.exists(key)) return key;
+  const OX = PLATE_X0;
+  const OY = PLATE_Y0;
+  const W = PLATE_X1 - PLATE_X0;
+  const H = PLATE_Y1 - PLATE_Y0;
+  const cv = document.createElement('canvas');
+  cv.width = W;
+  cv.height = H;
+  const ctx = cv.getContext('2d');
+  if (ctx) {
+    const imgData = ctx.createImageData(W, H);
+    const data = imgData.data;
+    for (let y = 0; y < H; y++) {
+      const sy = OY + y;
+      if (sy < PLATE_Y0 || sy >= PLATE_Y1) continue;
+      for (let x = 0; x < W; x++) {
+        const sx = OX + x;
+        if (sx < PLATE_X0 || sx >= PLATE_X1) continue;
+        const [c, r] = ntGrid(sx + 0.5, sy + 0.5);
+        if (c < PLATE_C0 || c > PLATE_C1 || r < PLATE_R0 || r > PLATE_R1) continue;
+        // Distance from the upper-left edge of the platform (c = PLATE_C0) and radial falloff from (162, 124)
+        const edgeDist = (c - PLATE_C0) * 32;
+        // readability pass: a wider, warmer pool from the top left that fades smoothly across the board
+        const dx = (sx - 190) / 300;
+        const dy = (sy - 130) / 165;
+        const d = Math.hypot(dx, dy);
+        if (d >= 1) continue;
+        const falloff = Math.pow(1 - d, 1.35);
+        const rimBoost = edgeDist < 24 ? (1 - edgeDist / 24) * 0.14 : 0;
+        const alpha = Math.min(0.42, falloff * 0.34 + rimBoost);
+        if (alpha <= 0.005) continue;
+        const idx = (y * W + x) * 4;
+        // Warm amber key light grazing from the upper-left
+        data[idx] = 236;
+        data[idx + 1] = 168;
+        data[idx + 2] = 104;
+        data[idx + 3] = Math.round(alpha * 255);
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
+  }
+  scene.textures.addCanvas(key, cv);
+  return key;
+}
+
 // ====================================================================== the layer
 
 export interface LightLayerOpts {
@@ -1122,6 +1411,7 @@ export class LightLayer {
   private readonly lights = new Set<LightBase>();
   private readonly unitLights = new Map<MonsterUnit, UnitLight>();
   private readonly steppedUnits = new Map<MonsterUnit, SteppedUnitLight>();
+  private readonly steppedStaticImgs: Img[] = [];
   /** Stepped mode (v3 look): flat tone steps on the pads instead of soft blended light. */
   readonly stepped: boolean;
   private readonly tileLights = new Map<ZoneEntry, TileLight>();
@@ -1173,6 +1463,28 @@ export class LightLayer {
       .setVisible(false);
     this.excludeUi(this.veil);
     this.excludeUi(this.wash);
+    if (this.stepped) {
+      // Smooth top-left warm key-light wash on the board floor + duelist foot contact shadows & faint light pools
+      try {
+        const keyTex = ensureKeyLightTex(scene);
+        const keyImg = this.makeSteppedImage(keyTex, DEPTH.TILE + 2.2);
+        keyImg.setOrigin(0).setPosition(PLATE_X0, PLATE_Y0).setVisible(this.on);
+        this.steppedStaticImgs.push(keyImg);
+        const padShdTex = ensureFloorShadowTex(scene, 34, 18);
+        const dFootTex = ensureFootTex(scene, 14, 7);
+        for (const p of [0, 1] as const) {
+          const xy = duelistXY(p);
+          const pShd = this.makeSteppedImage(padShdTex, DEPTH.PLATFORM + 8.5);
+          pShd.setPosition(Math.round(xy.x + 2), Math.round(xy.y + 4)).setVisible(this.on);
+          this.steppedStaticImgs.push(pShd);
+          const dImg = this.makeSteppedImage(dFootTex, DEPTH.SHADOW + 0.1);
+          dImg.setPosition(Math.round(xy.x), Math.round(xy.y)).setVisible(this.on);
+          this.steppedStaticImgs.push(dImg);
+        }
+      } catch {
+        // Ignore in headless stub tests without full canvas support
+      }
+    }
     // raw frame time (not Phaser's smoothed delta: its history spikes after a stall / under the
     // stepped test clock, while tweens run on their own clock)
     // (While the loop sleeps — the stepped QA clock of main.ts / tools/measure.mjs — the step's
@@ -1218,6 +1530,7 @@ export class LightLayer {
     // stepped patches show only when they hold pixels
     for (const l of this.lights) l.setVisibleAll(on);
     for (const u of this.steppedUnits.values()) u.setShown(on);
+    for (const im of this.steppedStaticImgs) im.setVisible(on);
   }
 
   /** Current dim level (−1 brighten … 0 normal … 1 dramatic dim). */
@@ -1280,6 +1593,13 @@ export class LightLayer {
     return p;
   }
 
+  /** Internal (stepped mode): an opaque palette-only image at `depth` (no alpha, no blend). */
+  makeSteppedImage(tex: string, depth: number): Img {
+    const im = this.scene.add.image(-999, -999, tex).setDepth(depth).setVisible(false);
+    this.excludeUi(im);
+    return im;
+  }
+
   /** Internal: a light image at `depth` (hidden until its light renders it). */
   makeImage(tex: string, depth: number, blend: LightBlend, frame?: string | number): Img {
     const im = this.scene.add
@@ -1299,7 +1619,7 @@ export class LightLayer {
   }
 
   private allImages(): Img[] {
-    const out: Img[] = [];
+    const out: Img[] = [...this.steppedStaticImgs];
     for (const l of this.lights) out.push(...(l as unknown as { imgs: Img[] }).imgs);
     for (const u of this.unitLights.values()) out.push(...u.images());
     for (const u of this.steppedUnits.values()) out.push(...u.images());
@@ -1320,7 +1640,7 @@ export class LightLayer {
     const gain = this.gain;
     for (const l of [...this.lights]) l.tick(dt, t, gain);
     if (this.stepped) {
-      // stepped: monster seats only (no tile glows, no dim veil / wash: no alpha anywhere)
+      // stepped: monster seats + foot pools + top-left rim (no tile glows, no dim veil / wash: no alpha anywhere)
       this.updateSteppedUnits(dt, t, gain);
       return;
     }
@@ -1454,6 +1774,8 @@ export class LightLayer {
     this.unitLights.clear();
     for (const sl of this.steppedUnits.values()) sl.destroy();
     this.steppedUnits.clear();
+    for (const im of this.steppedStaticImgs) if (im.active) im.destroy();
+    this.steppedStaticImgs.length = 0;
     for (const tl of this.tileLights.values()) tl.destroy();
     this.tileLights.clear();
     this.dim.flush();

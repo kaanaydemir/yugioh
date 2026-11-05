@@ -16,6 +16,9 @@ import type { PixelCanvas } from '../pixel';
 import { renderArt } from '../cardart-v3/_kit';
 import dawnSwords from '../cardart-v3/dawn_swords';
 import magicHat from '../cardart-v3/magic_hat';
+import cloudHatchling from '../cardart-v3/cloud_hatchling';
+import venomDrake from '../cardart-v3/venom_drake';
+import ashenDrake from '../cardart-v3/ashen_drake';
 
 /** A card's v3 artwork painter (CARD_ART_W × CARD_ART_H, palette tones only). */
 export type CardArtV3Painter = (p: PixelCanvas) => void;
@@ -29,6 +32,12 @@ const ART: Partial<Record<CardId, CardArtV3Painter>> = {
   magic_hat: (p) => {
     p.blit(renderArt(magicHat, 0).smallPx, 0, 0);
   },
+  // Bulut Yavrusu: the v3 picture (small version)
+  cloud_hatchling: (p) => { p.blit(renderArt(cloudHatchling, 0).smallPx, 0, 0); },
+  // Zehir Ejderi: the v3 picture (small version; its v3 sprite is registered)
+  venom_drake: (p) => p.blit(renderArt(venomDrake, 0).smallPx, 0, 0),
+  // Kül Ejderi: the v3 picture (small version; its v3 sprite is registered)
+  ashen_drake: (p) => p.blit(renderArt(ashenDrake, 0).smallPx, 0, 0),
 };
 const ICON: Partial<Record<CardId, (p: PixelCanvas) => void>> = {};
 

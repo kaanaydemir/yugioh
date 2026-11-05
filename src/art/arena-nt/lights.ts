@@ -1,16 +1,5 @@
-// Neon Tower — the baked LIGHT stipples of the lights layer (owner C, docs/v3/ARENA_NEON_TOWER.md §11).
-// The v3 look has no alpha light: a light is a set of flat pixels in a palette tone, faded through ordered-dither
-// density steps (the language of src/view/light/stepped.ts). Everything here is pure PixelCanvas code (no Phaser,
-// no Math.random): a SHAPE is a density field D(x, y) in 0…1 and a LEVEL (1…3) lights the pixels whose density
-// beats the 4×4 Bayer threshold of the pixel (world-aligned for the sparse tiles, so tiles repeat seamlessly).
-//
-//   cone       a ceiling spotlight under a lamp fixture (lean = px of drift per row), 3 density levels
-//   pool       an iso ellipse of light on the hall floor (hologram plinths, the floors in front of the stands)
-//   halo       a frame of light around a screen bay (screens glow on the wall around them)
-//   edge tiles the contact glow on the hall floor just below the platform's near faces (sparse 16×16 tiles, de-duplicated)
-//
-// Cone / pool / halo texels are pure white: the runtime tints them with ONE palette tone (setTint multiplies white
-// by that exact colour), so one frame serves both sides (flipX). Edge tiles carry their palette tones baked in.
+// Neon Tower — the baked LIGHT stipples, layered FOG banks, and warm TORCH lights (owner C).
+// Every texel is an exact PAL colour with alpha 255 or 0 (ordered Bayer dither, zero alpha blending).
 
 import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
@@ -19,40 +8,34 @@ import { type NtAtlas, packAtlas } from './wall-kit';
 
 export const NT_LIGHTS_KEY = 'arena-nt:lights';
 
-/** Density multiplier of each level (index = level; 0 = dark). Bayer threshold test: lit when D × LV > threshold. */
 export const LIGHT_LV = [0, 0.4, 0.66, 0.92] as const;
 export const LIGHT_LEVELS = 3;
 
 const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5] as const;
-/** The 4×4 Bayer threshold (0…1) of a world pixel. */
 export const bayer4 = (x: number, y: number): number => (BAYER4[((y & 3) << 2) | (x & 3)] + 0.5) / 16;
 
-/** Names of the atlas frames. */
 export const lightFrame = {
   cone: (shape: number, level: number): string => `cone:${shape}:${level}`,
   pool: (shape: number, level: number): string => `pool:${shape}:${level}`,
   halo: (level: number): string => `halo:${level}`,
   tile: (side: 0 | 1, level: number, i: number): string => `edge:${side}:${level}:${i}`,
+  fogBack: (variant: number): string => `fog:back:${variant}`,
+  fogFront: (variant: number): string => `fog:front:${variant}`,
+  fogWisp: (variant: number): string => `fog:wisp:${variant}`,
+  torch: (frame: number): string => `torch:${frame}`,
 };
 
-// ---------------------------------------------------------------------------------------------- shapes
-
 export interface ConeShape {
-  /** Drift per row: the cone leans (px of x per row; negative = left). */
   lean: number;
-  /** Rows. */
   h: number;
-  /** Half-width at the lens / growth per row. */
   hw0: number;
   grow: number;
 }
-/** The two cone shapes (the right pair mirrors them with flipX): the outer lamp leans out, the inner one stands almost straight. */
 export const CONES: readonly ConeShape[] = [
   { lean: -0.42, h: 84, hw0: 2.5, grow: 0.36 },
   { lean: -0.14, h: 76, hw0: 2.5, grow: 0.3 },
 ];
 
-/** A cone's canvas size and where its apex (the lens centre) sits inside it. */
 export function coneBox(c: ConeShape): { w: number; h: number; ax: number } {
   const reach = c.hw0 + c.h * c.grow;
   const drift = Math.abs(c.lean) * c.h;
@@ -81,10 +64,8 @@ function paintCone(c: ConeShape, level: number): PixelCanvas {
 export interface PoolShape {
   rx: number;
   ry: number;
-  /** Light strength at the centre (0…1). */
   peak: number;
 }
-/** Pool 0: the hologram plinth's floor pool. Pool 1: the floor in front of a grandstand. */
 export const POOLS: readonly PoolShape[] = [
   { rx: 74, ry: 28, peak: 0.85 },
   { rx: 66, ry: 24, peak: 0.7 },
@@ -101,13 +82,11 @@ function paintPool(s: PoolShape, level: number): PixelCanvas {
       const d2 = dx * dx + dy * dy;
       if (d2 >= 1) continue;
       const d = s.peak * (1 - d2);
-      // a flat contour (no dither): the level decides how far the light reaches, the edge is one clean 2:1 ellipse step
       if (d * LIGHT_LV[level] > 0.24) p.set(x, y, PAL.white);
     }
   return p;
 }
 
-/** The glow frame around a screen bay: a hole of the bay's size, `HALO_M` px of light around it. */
 export const HALO_M = 8;
 export const HALO_BAY = { w: 98, h: 74 } as const;
 
@@ -119,7 +98,7 @@ function paintHalo(level: number): PixelCanvas {
     for (let x = 0; x < W; x++) {
       const ox = Math.max(HALO_M - x - 1, x - (HALO_M + HALO_BAY.w), 0);
       const oy = Math.max(HALO_M - y - 1, y - (HALO_M + HALO_BAY.h), 0);
-      if (ox === 0 && oy === 0) continue; // inside the bay: the bay is opaque, nothing to light
+      if (ox === 0 && oy === 0) continue;
       const d = Math.hypot(ox, oy);
       if (d > HALO_M) continue;
       const f = 0.8 * (1 - (d - 0.5) / HALO_M);
@@ -128,17 +107,259 @@ function paintHalo(level: number): PixelCanvas {
   return p;
 }
 
+// ---------------------------------------------------------------------------------------------- layered fog & warm torches
+
+interface Lobe {
+  cx: number;
+  cy: number;
+  rx: number;
+  ry: number;
+  w: number;
+}
+
+function sampleLobes(x: number, y: number, lobes: readonly Lobe[], phase: number): number {
+  let d = 0;
+  for (let i = 0; i < lobes.length; i++) {
+    const l = lobes[i];
+    const waveX = Math.sin((y * 0.09) + phase + i * 1.7) * 6;
+    const waveY = Math.cos((x * 0.07) - phase + i * 1.3) * 4;
+    const dx = (x - (l.cx + waveX)) / l.rx;
+    const dy = (y - (l.cy + waveY)) / l.ry;
+    const r2 = dx * dx + dy * dy;
+    if (r2 < 1) {
+      const v = (1 - r2) * (1 - r2) * l.w;
+      d = 1 - (1 - d) * (1 - v);
+    }
+  }
+  return d;
+}
+
+/** Upper-outer fog bank covering stands, wall corners, and hologram statues (210 × 150). */
+function paintFogBack(variant: number): PixelCanvas {
+  const W = 210;
+  const H = 150;
+  const p = new PixelCanvas(W, H);
+  const phase = variant * 1.6;
+  const lobes: readonly Lobe[] = [
+    { cx: 24, cy: 52, rx: 95, ry: 48, w: 0.92 },
+    { cx: 70, cy: 78, rx: 110, ry: 54, w: 0.85 },
+    { cx: 118, cy: 96, rx: 92, ry: 46, w: 0.72 },
+    { cx: 36, cy: 112, rx: 88, ry: 44, w: 0.88 },
+    { cx: 145, cy: 68, rx: 64, ry: 34, w: 0.52 },
+  ];
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const d = sampleLobes(x, y, lobes, phase);
+      if (d <= 0.08) continue;
+      const th = bayer4(x + variant * 2, y + variant);
+      if (d < th * 0.75) continue;
+      // Billow crest highlight vs deep mist body
+      const crest = sampleLobes(x, y - 6, lobes, phase) < d - 0.06;
+      if (d > 0.72) {
+        p.set(x, y, crest && d < 0.84 && th < 0.5 ? PAL.night2 : d > 0.86 && x < 48 ? PAL.ink : PAL.night0);
+      } else if (d > 0.45) {
+        p.set(x, y, crest && th < 0.45 ? PAL.night2 : th < 0.6 ? PAL.night1 : PAL.night0);
+      } else {
+        p.set(x, y, th < 0.35 ? PAL.night1 : PAL.night0);
+      }
+    }
+  }
+  return p;
+}
+
+/** Lower-outer fog bank covering lower stands, hologram plinths, and apron floor corners (250 × 185). */
+function paintFogFront(variant: number): PixelCanvas {
+  const W = 250;
+  const H = 185;
+  const p = new PixelCanvas(W, H);
+  const phase = variant * 1.8 + 0.7;
+  const lobes: readonly Lobe[] = [
+    { cx: 28, cy: 48, rx: 105, ry: 48, w: 0.9 },
+    { cx: 82, cy: 84, rx: 118, ry: 56, w: 0.86 },
+    { cx: 40, cy: 136, rx: 125, ry: 60, w: 0.95 },
+    { cx: 124, cy: 142, rx: 116, ry: 52, w: 0.82 },
+    { cx: 176, cy: 158, rx: 82, ry: 38, w: 0.62 },
+  ];
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const d = sampleLobes(x, y, lobes, phase);
+      if (d <= 0.08) continue;
+      const th = bayer4(x + variant * 2, y + variant);
+      if (d < th * 0.72) continue;
+      const crest = sampleLobes(x, y - 5, lobes, phase) < d - 0.05;
+      if (d > 0.74) {
+        p.set(x, y, crest && d < 0.85 && th < 0.55 ? PAL.night2 : d > 0.88 && x < 54 && y > 110 ? PAL.ink : PAL.night0);
+      } else if (d > 0.44) {
+        p.set(x, y, crest && th < 0.5 ? PAL.night2 : th < 0.65 ? PAL.night1 : PAL.night0);
+      } else {
+        p.set(x, y, th < 0.4 ? PAL.night1 : PAL.night0);
+      }
+    }
+  }
+  return p;
+}
+
+/** Soft drifting mist wisp layer (150 × 84) that glides slowly across the fog banks. */
+function paintFogWisp(variant: number): PixelCanvas {
+  const W = 150;
+  const H = 84;
+  const p = new PixelCanvas(W, H);
+  const phase = variant * 2.1;
+  const lobes: readonly Lobe[] = [
+    { cx: 52, cy: 42, rx: 56, ry: 26, w: 0.72 },
+    { cx: 94, cy: 48, rx: 48, ry: 24, w: 0.66 },
+    { cx: 34, cy: 50, rx: 38, ry: 20, w: 0.6 },
+  ];
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const d = sampleLobes(x, y, lobes, phase);
+      if (d <= 0.14) continue;
+      const th = bayer4(x + variant, y);
+      if (d * 0.82 > th) {
+        p.set(x, y, d > 0.52 && th < 0.45 ? PAL.night2 : PAL.night1);
+      }
+    }
+  }
+  return p;
+}
+
+/** Sculpted dark iron sconce/brazier with a warm flickering flame (18 × 24, opaque PAL pixels). */
+function paintTorch(frame: number): PixelCanvas {
+  const W = 18;
+  const H = 24;
+  const cx = 9;
+  const cy = 11;
+  const p = new PixelCanvas(W, H);
+
+  // Dark iron brazier bowl & stem below the flame (cy + 1 .. cy + 10)
+  p.hline(cx - 3, cx + 3, cy + 1, PAL.ink);
+  p.hline(cx - 2, cx + 2, cy + 1, PAL.earth2);
+  p.hline(cx - 3, cx + 3, cy + 2, PAL.night2);
+  p.set(cx - 3, cy + 2, PAL.ink);
+  p.set(cx + 3, cy + 2, PAL.ink);
+  p.hline(cx - 2, cx + 2, cy + 3, PAL.night1);
+  p.set(cx - 2, cy + 3, PAL.ink);
+  p.set(cx + 2, cy + 3, PAL.ink);
+  // Stem / post
+  for (let y = cy + 4; y <= cy + 9; y++) {
+    p.set(cx - 1, y, PAL.night2);
+    p.set(cx, y, PAL.night1);
+    p.set(cx + 1, y, PAL.ink);
+  }
+  p.hline(cx - 2, cx + 2, cy + 10, PAL.ink);
+
+  // Multi-tone flickering warm flame (white/gold4 core -> gold3/fire3 body -> fire2/fire1 tip)
+  const tipDx = frame === 0 ? 0 : frame === 1 ? -1 : 1;
+  const topY = frame === 1 ? cy - 7 : frame === 2 ? cy - 5 : cy - 6;
+  p.set(cx + tipDx, topY, PAL.fire1);
+  p.set(cx + tipDx, topY + 1, PAL.fire2);
+  p.set(cx, topY + 1, PAL.fire3);
+  p.hline(cx - 1, cx + 1, cy - 4, PAL.fire2);
+  p.set(cx + tipDx, cy - 4, PAL.fire3);
+  p.hline(cx - 2, cx + 2, cy - 3, PAL.fire2);
+  p.hline(cx - 1, cx + 1, cy - 3, PAL.fire3);
+  p.set(cx, cy - 3, PAL.gold3);
+  p.hline(cx - 2, cx + 2, cy - 2, PAL.fire3);
+  p.hline(cx - 1, cx + 1, cy - 2, PAL.gold3);
+  p.set(cx, cy - 2, PAL.gold4);
+  p.hline(cx - 2, cx + 2, cy - 1, PAL.fire3);
+  p.hline(cx - 1, cx + 1, cy - 1, PAL.gold4);
+  p.set(cx, cy - 1, PAL.white);
+  p.hline(cx - 2, cx + 2, cy, PAL.fire2);
+  p.hline(cx - 1, cx + 1, cy, PAL.gold3);
+  p.set(cx, cy, PAL.gold4);
+  return p;
+}
+
+/**
+ * hedef-gorunum-3: every torch is MOUNTED. The flame of paintTorch (rows 0..cy) on
+ * - kind 'sconce': an iron wall bracket (an arm bent into the wall + a back plate) — for the back wall / pillars;
+ * - kind 'post': a squat brazier bowl on a stone post with a base — standing on the hall floor.
+ * Canvas 18 × 40; the flame centre is at (9, 11); the bottom row (39) is the foot (post) / the bracket ends at row 22.
+ */
+export const TORCH_MOUNT = { w: 18, h: 40, cx: 9, flameY: 11 } as const;
+function paintMountedTorch(kind: 'sconce' | 'post', frame: number): PixelCanvas {
+  const p = new PixelCanvas(TORCH_MOUNT.w, TORCH_MOUNT.h);
+  const f = paintTorch(frame);
+  // the flame only (rows above the bowl)
+  for (let y = 0; y <= 11; y++) for (let x = 0; x < f.w; x++) {
+    const c = f.get(x, y);
+    if (c !== null) p.set(x, y, c);
+  }
+  const cx = TORCH_MOUNT.cx;
+  // the bowl (shared)
+  p.hline(cx - 4, cx + 4, 12, PAL.ink);
+  p.hline(cx - 3, cx + 3, 12, PAL.earth2);
+  p.hline(cx - 4, cx + 4, 13, PAL.stone2);
+  p.set(cx - 4, 13, PAL.ink).set(cx + 4, 13, PAL.ink);
+  p.hline(cx - 3, cx + 3, 14, PAL.stone1);
+  p.set(cx - 3, 14, PAL.ink).set(cx + 3, 14, PAL.ink);
+  p.hline(cx - 2, cx + 2, 15, PAL.ink);
+  if (kind === 'sconce') {
+    // the arm down from the bowl, bent back into a wall plate
+    for (let y = 16; y <= 19; y++) {
+      p.set(cx - 1, y, PAL.stone2);
+      p.set(cx, y, PAL.stone1);
+      p.set(cx + 1, y, PAL.ink);
+    }
+    p.hline(cx - 1, cx + 3, 20, PAL.stone1);
+    p.hline(cx - 1, cx + 3, 21, PAL.ink);
+    // wall plate (a small iron shield behind the arm)
+    for (let y = 15; y <= 23; y++) {
+      p.set(cx + 4, y, y === 15 || y === 23 ? PAL.ink : PAL.stone2);
+      p.set(cx + 5, y, y === 15 || y === 23 ? PAL.ink : PAL.stone1);
+      p.set(cx + 6, y, PAL.ink);
+    }
+    p.set(cx + 5, 19, PAL.gold2);
+  } else {
+    // stone post with a lit left face, a seam every 7 rows, and a wider base
+    for (let y = 16; y <= 35; y++) {
+      p.set(cx - 3, y, PAL.ink);
+      p.set(cx - 2, y, y % 7 === 0 ? PAL.stone1 : PAL.stone3);
+      p.set(cx - 1, y, y % 7 === 0 ? PAL.stone1 : PAL.stone2);
+      p.set(cx, y, y % 7 === 0 ? PAL.stone0 : PAL.stone2);
+      p.set(cx + 1, y, y % 7 === 0 ? PAL.stone0 : PAL.stone1);
+      p.set(cx + 2, y, PAL.stone0);
+      p.set(cx + 3, y, PAL.ink);
+    }
+    p.hline(cx - 3, cx + 3, 16, PAL.ink);
+    for (let y = 36; y <= 39; y++) {
+      p.hline(cx - 5, cx + 5, y, y === 39 ? PAL.ink : y === 36 ? PAL.stone2 : PAL.stone1);
+      p.set(cx - 5, y, PAL.ink).set(cx + 5, y, PAL.ink);
+    }
+    p.hline(cx - 5, cx + 5, 36, PAL.ink);
+  }
+  return p;
+}
+
+/** A warm torch glow: concentric ordered-dither rings of fire1 / gold1 (palette only, alpha 255). */
+export const TORCH_GLOW = { w: 56, h: 44, cx: 28, cy: 20 } as const;
+function paintTorchGlow(level: number): PixelCanvas {
+  const p = new PixelCanvas(TORCH_GLOW.w, TORCH_GLOW.h);
+  for (let y = 0; y < TORCH_GLOW.h; y++)
+    for (let x = 0; x < TORCH_GLOW.w; x++) {
+      const d = Math.hypot((x + 0.5 - TORCH_GLOW.cx) / 27, (y + 0.5 - TORCH_GLOW.cy) / 21);
+      if (d >= 1) continue;
+      const k = (1 - d) * (0.34 + 0.08 * level);
+      if (k > bayer4(x, y) + 0.12) p.set(x, y, d < 0.35 ? PAL.fire1 : PAL.earth1);
+      else if (k > bayer4(x, y)) p.set(x, y, PAL.earth0);
+    }
+  return p;
+}
+
+export const torchFrame = {
+  sconce: (frame: number): string => `torch:sconce:${frame}`,
+  post: (frame: number): string => `torch:post:${frame}`,
+  glow: (level: number): string => `torch:glow:${level}`,
+};
+
 // ---------------------------------------------------------------------------------------------- edge glow (sparse tiles)
 
 export const EDGE_TILE = 16;
-/** How far below the platform's near faces the contact glow reaches (px). */
 export const EDGE_REACH = 24;
-/** Rows below the slab that the apron's footing flange (ring + front face) already covers: the glow starts past it. */
 const EDGE_SKIP = 14;
-/** The tile grid origin (screen) and size covering the plate + armour. */
 const EDGE_BOX = { x: 96, y: 140, w: 464, h: 208 } as const;
 
-/** Coverage mask of the platform's silhouette (plate top + the FACE_H armour below it) in screen pixels. */
 function plateMask(): PixelCanvas {
   const m = new PixelCanvas(EDGE_BOX.w, EDGE_BOX.h);
   const pts = PLATE_OUTLINE.map(([c, r]) => {
@@ -151,10 +372,8 @@ function plateMask(): PixelCanvas {
 
 export interface EdgeTile {
   side: 0 | 1;
-  /** Screen position of the tile's top-left. */
   x: number;
   y: number;
-  /** The frame per level (index 1…3; 0 unused). */
   frames: readonly [string, string, string, string];
 }
 
@@ -163,11 +382,9 @@ export interface EdgeArt {
   parts: [string, PixelCanvas][];
 }
 
-/** Bake the contact-glow tiles of both near faces: left (cyan, x < the near corner) and right (crimson). */
 export function paintEdgeGlow(): EdgeArt {
   const S = plateMask();
-  const corner = Math.round(ntIso(PLATE_OUTLINE[6][0], PLATE_OUTLINE[6][1]).x); // the near corner's x (352)
-  // density per pixel: k = rows below the silhouette (1…EDGE_REACH), only where the column's pixel above is the silhouette
+  const corner = Math.round(ntIso(PLATE_OUTLINE[6][0], PLATE_OUTLINE[6][1]).x);
   const dens = new Float32Array(EDGE_BOX.w * EDGE_BOX.h);
   const kk = new Uint8Array(EDGE_BOX.w * EDGE_BOX.h);
   for (let x = 0; x < EDGE_BOX.w; x++)
@@ -205,7 +422,6 @@ export function paintEdgeGlow(): EdgeArt {
             if (gx >= EDGE_BOX.w || gy >= EDGE_BOX.h) continue;
             const i = gy * EDGE_BOX.w + gx;
             if (dens[i] <= 0) continue;
-            // flat bands past the footing (no dither): level 1 = one thin band, 2 = + a second, 3 = + a wider outer one
             const k = kk[i] - EDGE_SKIP;
             if (k < 1 || k > 3 * L) continue;
             t.set(x, y, k <= 3 ? (L === 1 ? tones(side)[1] : tones(side)[0]) : tones(side)[1]);
@@ -230,8 +446,6 @@ export function paintEdgeGlow(): EdgeArt {
   return { tiles, parts };
 }
 
-// ---------------------------------------------------------------------------------------------- the atlas
-
 export interface LightsBake extends NtAtlas {
   tiles: EdgeTile[];
 }
@@ -245,8 +459,19 @@ export function bakeLights(): LightsBake {
     for (let L = 1; L <= LIGHT_LEVELS; L++) parts.push([lightFrame.pool(i, L), paintPool(s, L)]);
   });
   for (let L = 1; L <= LIGHT_LEVELS; L++) parts.push([lightFrame.halo(L), paintHalo(L)]);
+  for (let v = 0; v < 2; v++) {
+    parts.push([lightFrame.fogBack(v), paintFogBack(v)]);
+    parts.push([lightFrame.fogFront(v), paintFogFront(v)]);
+    parts.push([lightFrame.fogWisp(v), paintFogWisp(v)]);
+  }
+  for (let f = 0; f < 3; f++) {
+    parts.push([lightFrame.torch(f), paintTorch(f)]);
+    parts.push([torchFrame.sconce(f), paintMountedTorch('sconce', f)]);
+    parts.push([torchFrame.post(f), paintMountedTorch('post', f)]);
+    parts.push([torchFrame.glow(f), paintTorchGlow(f)]);
+  }
   const edge = paintEdgeGlow();
   parts.push(...edge.parts);
-  const atlas = packAtlas(parts, 512);
+  const atlas = packAtlas(parts, 1024);
   return { ...atlas, tiles: edge.tiles };
 }
