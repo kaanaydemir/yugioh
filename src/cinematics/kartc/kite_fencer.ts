@@ -184,6 +184,9 @@ function paintPanel(px: Px, x: number, y: number, rim: number, core: number, ste
 function panelAura(scene: Phaser.Scene, u: MonsterUnit): Disposable & { quiet(): void } {
   const s = u.sprite;
   const px = new Px(scene.add.graphics().setDepth(s.depth + 0.4));
+  // the floor under the lit side: a small stepped gold pool painted on the tile (under the unit), so "one attack
+  // left" reads at 1× on the board, not only as the 3-px core on the cloak
+  const floor = new Px(scene.add.graphics().setDepth(s.depth - 0.05));
   let pool: LightHandle | null = null;
   let dimAt = -1;
   let now = 0;
@@ -193,6 +196,7 @@ function panelAura(scene: Phaser.Scene, u: MonsterUnit): Disposable & { quiet():
     alive = false;
     halt();
     px.g.destroy();
+    floor.g.destroy();
     const p = pool;
     pool = null;
     if (p && p.alive) void p.fadeOut(160);
@@ -204,7 +208,9 @@ function panelAura(scene: Phaser.Scene, u: MonsterUnit): Disposable & { quiet():
       return false;
     }
     px.g.setDepth(s.depth + 0.4);
+    floor.g.setDepth(s.depth - 0.05);
     px.clear();
+    floor.clear();
     const step: 0 | 1 | 2 | 3 = dimAt < 0 ? 0 : (Math.min(3, 1 + Math.floor((el - dimAt) / 90)) as 1 | 2 | 3);
     if (step === 3) {
       kill();
@@ -219,6 +225,28 @@ function panelAura(scene: Phaser.Scene, u: MonsterUnit): Disposable & { quiet():
         px.dot(Math.floor(w.x), Math.floor(w.y), q.c);
       }
     }
+    if (pt && step < 2 && Math.abs(u.lift) < 1) {
+      // the stepped pool: a flat iso lozenge (9 × 3 px) under the cloak's leading side — gold4 core, gold3 band,
+      // gold2 dithered rim; it breathes with the pulse (the rim drops out on the off beat) and shrinks as it dims
+      const f = u.framePoint(AX - 6, GY);
+      const cx = R(f.x);
+      const cy = R(u.home.y) + 1;
+      const on = Math.floor(el / 600) % 2 === 0;
+      const half = step === 0 ? 4 : 2;
+      for (let dx = -half - 1; dx <= half + 1; dx++) {
+        const ax = Math.abs(dx);
+        if (ax <= 1) floor.dot(cx + dx, cy, step === 0 ? PAL.gold4 : PAL.gold3);
+        else if (ax <= half) floor.dot(cx + dx, cy, PAL.gold3);
+        else if (on && (cx + dx) % 2 === 0) floor.dot(cx + dx, cy, PAL.gold2);
+        if (ax <= half - 2) {
+          floor.dot(cx + dx, cy - 1, PAL.gold2);
+          floor.dot(cx + dx, cy + 1, PAL.gold2);
+        } else if (on && ax <= half && (cx + dx + cy) % 2 === 0) {
+          floor.dot(cx + dx, cy - 1, PAL.gold2);
+          floor.dot(cx + dx, cy + 1, PAL.gold2);
+        }
+      }
+    }
     if (pt) {
       const w = u.framePoint(pt.x, pt.y);
       const pulse = Math.floor(el / 600) % 2 === 0;
@@ -227,7 +255,7 @@ function panelAura(scene: Phaser.Scene, u: MonsterUnit): Disposable & { quiet():
     if (!pool && dimAt < 0) {
       const h = u.home;
       const side = u.framePoint(AX - 8, GY);
-      pool = lightPool(scene, R(side.x), h.y, { color: PAL.gold4, spill: PAL.gold2, radius: 10, floorY: h.y, intensity: 0.3, anim: 'breathe', fadeIn: 120 });
+      pool = lightPool(scene, R(side.x), h.y, { color: PAL.gold4, spill: PAL.gold2, radius: 12, floorY: h.y, intensity: 0.45, anim: 'breathe', fadeIn: 120 });
     }
     return true;
   });
@@ -549,7 +577,7 @@ async function blockedPike(s: StrikeArgs, at: XY, stop: XY, home: XY, depth0: nu
  * glides back over the foe's head and home), the landing 90 + 50 (f12, f13) — ≈ 1.27 s + the 0.3 s declaration
  * (spec 2.2 s ÷ 1.25 = 1.75 s scene, trimmed to fit the 3.19 s gate with a slow-dying target).
  */
-const KT = { c1: 50, c2: 55, c3: 55, c4: 60, r5: 85, r6: 85, down: 260, exit: 210, glide: 250, land: 90, settle: 50 };
+const KT = { c1: 50, c2: 55, c3: 55, c4: 60, r5: 85, r6: 85, down: 260, exit: 210, glide: 340, land: 90, settle: 50 };
 /** The pendulum: the start angle, how far behind his home tile the swing starts (px). */
 const TH0 = (85 * Math.PI) / 180;
 const BACK = 12;
@@ -709,14 +737,24 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
     arch += 4;
   }
   const exitPath = arcPath(exitPts);
-  // the glide home goes back OVER the target's head (apex → above its near edge → home): never into its box
-  let hq = 10;
+  // the glide home goes back OVER the target's head in two segments, never into its box: a low, flat arc from the apex
+  // to a point just above its near edge (Q), then the braking settle down onto his tile (it leaves Q along the arc's
+  // own tangent and lands near-vertically: a kite losing its wind, not a hop)
+  const Q: XY = { x: near - sgn * (FLY_HALF_W + 2), y: box.y0 - OVER_TOP - 1 };
+  let hq = 4;
   let glidePts: XY[] = [];
   for (let tries = 0; tries < 12; tries++) {
-    const q: XY = { x: near - sgn * 6, y: box.y0 - OVER_TOP - hq };
-    glidePts = Array.from({ length: 49 }, (_, i) => quad(P, q, home, i / 48));
+    const ca: XY = { x: (P.x + Q.x) / 2, y: Math.min(P.y, Q.y) - hq };
+    const segA = Array.from({ length: 25 }, (_, i) => quad(P, ca, Q, i / 24));
+    const dx = Q.x - ca.x;
+    const dy = Q.y - ca.y;
+    const dn = Math.hypot(dx, dy) || 1;
+    const c1: XY = { x: Q.x + (dx / dn) * 12, y: Q.y + (dy / dn) * 12 };
+    const c2: XY = { x: home.x + sgn * 2, y: Math.min(home.y - 16, Math.max(Q.y, home.y - 40)) };
+    const segB = Array.from({ length: 25 }, (_, i) => cubic(Q, c1, c2, home, i / 24));
+    glidePts = [...segA, ...segB.slice(1)];
     if (!glidePts.some((p) => overlaps(p, box, OVER_TOP) && Math.abs(p.x - home.x) > 10)) break;
-    hq += 6;
+    hq += 3;
   }
   const glidePath = arcPath(glidePts);
   // the carry-through leaves the bottom at the downswing's own speed (swingEase'(1) = 1.6: θ0·1.6 / down per ms, ×RP
@@ -830,8 +868,9 @@ async function kiteFlight(s: StrikeArgs): Promise<void> {
   const pp = panelPoint('special', 11) ?? panelPoint('special', 10);
   if (pp) void threadMote(sc, u.framePoint(pp.x, pp.y), -sgn, flyDepth + 0.2);
   await animate(sc, KT.glide, (t) => {
-    // off the apex from rest, fastest over the foe, braking onto the tile; a last 2-px float before the touch-down
-    const e = t * t * (3 - 2 * t) * 0.35 + quadOut(t) * 0.65;
+    // off the apex from rest, gliding over the foe, braking all the way down onto the tile (a smootherstep: no snap
+    // at either end); a last 2-px float before the touch-down
+    const e = t * t * t * (t * (t * 6 - 15) + 10) * 0.55 + quadOut(t) * 0.45;
     const p = glidePath.at(e);
     at({ x: p.x, y: p.y - Math.sin(Math.PI * t) * 2 * t });
   });
@@ -992,8 +1031,12 @@ async function leafKite(S: Stage): Promise<void> {
     [5, 3, PAL.gold3],
   ];
   for (const [dx, dy, c] of pools) void lightFlash(sc, R(flat.x + sgn * dx), R(home.y + dy), c, 9, 90, { floorY: R(home.y + dy), intensity: 0.75, rise: 10 });
-  // (the flat frame holds: the cloth settles on the tile)
-  await sleep(sc, 80);
+  // (the flat cloth settles on the tile: it lands on a cushion of air, sinks the last pixel as the air escapes from
+  // under the panels — never a still frame)
+  place(u, { x: rest.x, y: rest.y - 1 });
+  await sleep(sc, 25);
+  place(u, rest);
+  await sleep(sc, 30);
   // ---- a bump rises under the cloth, it tents (the spar crossing lifted: the ridge is the highest point)
   show(u, 'summon', 3);
   play('kfnClothRustle', { pan, volume: 0.9 });
@@ -1053,9 +1096,24 @@ registerCardHook(
 
 /** Follow the recipe's death pose (deathV3) frame by frame and add the card's own beats. */
 const deathWatched = new WeakSet<MonsterUnit>();
+/**
+ * The death's taut beat is OWNED by kiteDeathPose: until it releases the beat, a death pose that a lethal recoil starts
+ * early (react.ts hands the recoil over to the death on its matching frame, under the attacker's bite / bolt) is held on
+ * its first frame — the string stays slack, nothing pulls taut or snaps under the killer's contact overlay.
+ */
+const deathBeat = new WeakMap<MonsterUnit, { released: boolean }>();
+const beatOf = (u: MonsterUnit): { released: boolean } => {
+  let b = deathBeat.get(u);
+  if (!b) deathBeat.set(u, (b = { released: false }));
+  return b;
+};
+/** A held early death pose lets go by itself after this long (scene ms) if kiteDeathPose never claims the beat. */
+const BEAT_FALLBACK_MS = 1100;
 function watchDeath(scene: Phaser.Scene, u: MonsterUnit): void {
   if (deathWatched.has(u)) return;
   deathWatched.add(u);
+  const beat = beatOf(u);
+  let held = false;
   const sgn = sgnOf(u);
   const flip = u.flipX;
   const light = lightOf(u);
@@ -1072,8 +1130,19 @@ function watchDeath(scene: Phaser.Scene, u: MonsterUnit): void {
     if (el > 2600) return false;
     const fi = u.frameInfo();
     const active = u.sprite.active;
+    if (active && fi.anim === 'death' && !beat.released) {
+      if (el > BEAT_FALLBACK_MS) {
+        beat.released = true;
+        if (held) u.asClaimant(() => void u.playRange('death', 1, undefined, { hold: true }));
+      } else if (!held && fi.frame <= 1) {
+        // an early death pose (the recoil's hand-over): hold it here, slack, until the beat is released
+        held = true;
+        u.asClaimant(() => u.pose('death', fi.frame));
+      }
+      return true;
+    }
     if (active && fi.anim === 'death') {
-      // the string pulls taut as the death begins (the pose may join at f2 straight from the recoil: the tension
+      // the string pulls taut as the beat is released (the pose may join at f2 straight from the recoil: the tension
       // still sounds before the snap)
       if (!taut && fi.frame >= 1) {
         taut = true;
@@ -1096,7 +1165,7 @@ function watchDeath(scene: Phaser.Scene, u: MonsterUnit): void {
           });
         }
       }
-      if (taut && !snapped && fi.frame >= 2 && el - tautAt >= 60) {
+      if (taut && !snapped && fi.frame >= 2 && el - tautAt >= 40) {
         snapped = true;
         play('kfnSnap', { pan });
         // the break point: halfway between the kite's tail and the pin (death f2: pin at AX − 22, GY)
@@ -1270,9 +1339,14 @@ async function kiteDeath(ctx: DestroyCtx, unit: MonsterUnit): Promise<void> {
   await leave;
 }
 
-/** The death's taut beat: held until TAUT_AFTER ms after the contact, and at least TAUT_MIN ms. */
-const TAUT_AFTER = 190;
-const TAUT_MIN = 110;
+/**
+ * The death's taut beat waits for the killer to clear: at least TAUT_AFTER ms after the destroy starts AND the
+ * attacker's live silhouette no longer over his (or TAUT_WAIT_MAX at most) — then the string pulls taut (f1, drawn
+ * above every effect) for TAUT_HOLD ms, alone on screen, and snaps.
+ */
+const TAUT_AFTER = 70;
+const TAUT_WAIT_MAX = 320;
+const TAUT_HOLD = 210;
 
 async function kiteDeathPose(ctx: DestroyCtx, u: MonsterUnit, home: XY, born: () => void): Promise<void> {
   const sc = ctx.scene;
@@ -1301,14 +1375,34 @@ async function kiteDeathPose(ctx: DestroyCtx, u: MonsterUnit, home: XY, born: ()
     }
   }
   if (planned && !inDeath()) await until(sc, inDeath, Math.min(700, (planned.leadMs ?? u.rangeMs(planned.anim, 0, planned.hold)) + 40));
-  // the TAUT beat owns its moment: the pose holds f1 (the string pulled tight, drawn above every effect) until the
-  // attacker's contact overlay has cleared — at least TAUT_AFTER ms after the contact, at least TAUT_MIN ms on screen —
-  // then the snap (f2) and the rest of the pose play on. (A pose already past the snap is left alone.)
-  if (u.sprite.active && !(inDeath() && u.frameInfo().frame > 2)) {
-    u.asClaimant(() => u.pose('death', 1));
-    await sleep(sc, Math.max(TAUT_MIN, TAUT_AFTER - (sc.time.now - t0)));
-    if (u.sprite.active) u.asClaimant(() => void u.playRange('death', 2, undefined, { hold: true }));
+  // the TAUT beat owns its moment: the slack pose (f0, or f1 if the recoil handed over there) waits until the killer
+  // has pulled clear of him — its bite / bolt / fire overlay with it — then the string pulls taut (f1, the gold line
+  // above every effect) and holds alone on screen, then the snap (f2) and the rest of the pose play on. (A pose already
+  // past the snap is left alone.)
+  const beat = beatOf(u);
+  if (u.sprite.active && !(inDeath() && u.frameInfo().frame > 1)) {
+    if (!inDeath()) u.asClaimant(() => u.pose('death', 0));
+    const foe = deathFoe.get(u) ?? null;
+    // the string's own patch of screen (the cloak's tail → its floor pin behind him, + the cloak's lower edge): the
+    // killer only has to be off THAT for the taut line to read — a head still at his chest does not hide it
+    const tp = tailPoint('death', 1);
+    const a = tp ? u.framePoint(tp.x, tp.y) : u.core();
+    const b = u.framePoint(AX - 22, GY);
+    const str: Box = { x0: Math.min(a.x, b.x) - 4, x1: Math.max(a.x, b.x) + 4, y0: Math.min(a.y, b.y) - 6, y1: Math.max(a.y, b.y) + 2 };
+    const clear = (): boolean => {
+      if (!foe || !foe.sprite.active || !foe.sprite.visible || foe.retired) return true;
+      const f = targetBox(foe, foe.core(), foe.home.y);
+      return f.x1 < str.x0 || f.x0 > str.x1 || f.y1 < str.y0 || f.y0 > str.y1;
+    };
+    await until(sc, () => sc.time.now - t0 >= TAUT_AFTER && clear(), TAUT_WAIT_MAX);
+    beat.released = true;
+    if (u.sprite.active) {
+      u.asClaimant(() => u.pose('death', 1));
+      await sleep(sc, TAUT_HOLD);
+      if (u.sprite.active) u.asClaimant(() => void u.playRange('death', 2, undefined, { hold: true }));
+    }
   }
+  beat.released = true;
   if (!inDeath() && u.sprite.active) {
     const from = Math.max(0, Math.min(n - 2, planned ? planned.start : deathStartFrom(u)));
     u.asClaimant(() => void u.playRange('death', from, undefined, { hold: true }));
