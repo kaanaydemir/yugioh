@@ -1,21 +1,23 @@
 // Kuyu Kovası (well_pail) — v3 card art (style sheet docs/v3/KART_RESIMLERI.md, contract ./_types.ts).
 // "Çıkrıklı taş kuyu, yükselen kovada parlayan su ve iki kart silueti, ay ışığı." (YENI_KARTLAR §7 S1) — the image of
-// the scene (src/cinematics/spells/well_pail.ts): the same coursed stone ring and wooden windlass, the bucket hanging
-// under the rope drum brimming with glowing water, two cards leaping out of it like fish, a crescent moon.
-//   backdrop  the kit's SPELL recipe (night0 / night1 sky, night0 floor, teal1 horizon) with its teal portal light
-//             centred on the bucket's water: the well's light IS the spell's light.
-//   subject   matter, ink outlined, ONE key light from the top left: the stone ring (stone3 lit left, stone2 middle,
-//             stone1 shade; mortar one step darker; stone4 lip), the dark mouth with its far inner wall, the posts and
-//             axle (earth3 / earth2 / earth1), the hemp drum (earth4 / earth3 diagonal coils), the crank, the bucket
-//             (staves earth3 → earth1, two iron hoops), two cards (night3 backs, mist frame, teal diamond), the moon
-//             (mist crescent). The teal3 rim runs on the shadow side (IŞ-7).
-//   light     never outlined: the brimming water dome (teal3 → teal4, a white core = the focus), the streams over the
-//             lip, droplets trailing the cards, the glimmer down the well.
+// the scene (src/cinematics/spells/well_pail.ts): the same coursed stone ring and wooden windlass; the bucket hangs
+// HIGH on its rope, clear above the ring, brimming with a domed surface of glowing water that runs over its lips back
+// into the well; two cards leap out of that water like fish along droplet arcs; a crescent moon in a night sky.
+//   backdrop  the kit's SPELL recipe (night0 / night1 sky, night0 floor, teal1 horizon); its portal light is small and
+//             centred on the bucket's water (the water IS the spell's light), so the sky stays night around it.
+//   subject   matter, ink outlined, ONE key light from the top left (the moon): the stone ring (stone4 moonlit lip,
+//             stone3 lit left, stone2 middle, stone1 shade; mortar one step darker), the dark mouth, the posts and
+//             axle (earth3 / earth2 / earth1), the hemp drum, the crank, the bucket (staves earth3 → earth1, two iron
+//             hoops), two cards (night3 backs, teal diamond, a bright wet rim on their lit edges), the moon (mist).
+//             The teal3 rim runs on the shadow side (IŞ-7).
+//   light     never outlined: the brimming water dome (water3 → water4 → teal4, a white core = the focus), the
+//             streams over both lips into the well, the droplet arcs behind the leaping cards, the glimmer down
+//             the shaft, three stars.
 // Small (44×34): the same composition painted again at 1× density by the same code (it reads the geometry in big
-// pixels and halves it), then corrected by hand: the drum's coils, the bucket's hoops and the two cards are redrawn
-// natively so they read at 1×.
-// Living art: 4 frames × 150 ms, palette only, ≤ 2 px motion: the water dome's glints run, the streams flow, the
-// cards' droplets fall a step, the well's glimmer blinks.
+// pixels and halves it), then corrected natively: the dome, the two cards and their arcs are redrawn so the bucket,
+// its water and the cards read at 1×.
+// Living art: 4 frames × 150 ms, palette only, ≤ 2 px motion: the dome's glints run, the streams flow, the droplets
+// fall a step, the well's glimmer blinks.
 
 import { PAL } from '../palette';
 import type { PixelCanvas } from '../pixel';
@@ -24,7 +26,7 @@ import type { ArtLayers, CardArtV3 } from './_types';
 
 const FRAMES = 4;
 /** The focus: the brimming water's white core, BIG px. */
-const FOCUS = [41, 27] as const;
+const FOCUS = [42, 21] as const;
 
 type P = PixelCanvas;
 

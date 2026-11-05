@@ -34,7 +34,7 @@
 //   +1180  a GUARDIAN CHARM answers: its tile flares gold, a gold tether snaps up to its monster and yanks it back
 //          down onto its tile (thud, dust, a gold ring); "KORUNDU" shows over its head for 450 ms and is gone
 //          before the contraction — e_voidSave, e_voidThud
-//   +1900  THE PUPIL CONTRACTS (two stepped frames, 7 → 4 → 2 px) — e_voidTick (dry, close); 70 ms hit-stop; every
+//   +1900  THE PUPIL CONTRACTS (two stepped frames, 7 → 4 → 2 px) — e_voidTick (dry, close); hit-stop: every body freezes; every
 //          risen body flashes WHITE for one frame, then becomes a flat void3 silhouette with a void4 rim (tint
 //          FILLS only: palette colours, never a multiply)
 //   +1960  THE PULL: every silhouette is snapped to the pupil in 4 stepped, accelerating frames (positions only),
@@ -53,7 +53,7 @@
 //   +3240  it LANDS: two stepped splash rings (void4 then void3, ~48 px), a crown of 8 droplets, a violet stain on
 //          the floor fading in steps, a strong violet floor flash, 3 px shake — e_voidDrip; the slit is gone, the
 //          night veil lifts in 4 steps
-//   +3700  end
+//   +3580  end
 // The ground NEVER opens (YENI_KARTLAR: "zemin hiç açılmaz"): everything goes UP.
 
 import Phaser from 'phaser';
@@ -65,7 +65,7 @@ import { BOARD_CENTER, DEPTH, GAME_H, GAME_W, LOOK_V3, type XY, zoneXY } from '.
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { TileCard } from '../../view/TileCard';
 import { dropHat, getHat } from '../../view/hats';
-import { Raster, freeze, run, spriteBox } from '../../vfx/setpieces';
+import { Raster, run, spriteBox } from '../../vfx/setpieces';
 import { shake, wait } from '../../vfx/core';
 import { pixelText } from '../../ui/text';
 import { fxRng } from '../_v3/spellfx';
@@ -120,7 +120,7 @@ const T = {
   tear: 2900,
   tearFall: 3020,
   land: 3240,
-  end: 3700,
+  end: 3580,
 } as const;
 
 // ================================================================ helpers
@@ -680,11 +680,6 @@ async function cardHome(ctx: MassCtx, owner: PlayerId, cardId: CardId, from: XY,
   const a = { x: R(from.x), y: R(from.y) };
   const img = sc.add.image(a.x, a.y, key).setOrigin(ISO_CX / ISO_TEX_W, ISO_CY / ISO_TEX_H).setDepth(DEPTH.FX + 5);
   if (tile?.active) tile.destroy();
-  // one violet fill frame (the eye's mark on it), then the card itself
-  img.setTintFill(PAL.void4);
-  await wait(sc, 30);
-  if (!img.active) return;
-  img.clearTint();
   const to0 = pile.topXY();
   const to = { x: R(to0.x), y: R(to0.y) };
   const dist = Math.hypot(to.x - a.x, to.y - a.y);
@@ -759,6 +754,9 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
     S.el = el;
     // ================================ the eye's state
     S.crack = q(ease.out(seg(el, T.rift, T.riftMs)), 4);
+    // after the second blink the rift seals from both tips toward the slit (4 steps); only the slit that holds the
+    // tear is left, and it is gone once the drop lets go
+    if (el >= T.blink2 + BLINK_MS) S.crack = 1 - q(seg(el, T.blink2 + BLINK_MS, 140), 4) * 0.86;
     S.open = lidAt(el);
     // the open eye breathes: the lids ease 1 px in and out (nothing stands still)
     if (el > T.lid + T.lidMs && el < T.close) S.open = Math.floor(el / 420) % 2 ? 0.95 : 1;
@@ -776,7 +774,7 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
     else S.rp = 3;
     S.glow = el >= T.contract && el < T.contract + 50 ? 2 : el - lastBite < 34 ? 2 : el >= T.pull && el < T.gulp + 60 ? 1 : el >= T.gaze ? 0.6 : 0;
     S.flash = el >= T.gulp && el < T.gulp + 34 ? 2 : el >= T.gulp && el < T.gulp + 80 ? 1 : 0;
-    S.fade = el < T.blink2 + BLINK_MS + 160 ? 0 : el < T.land ? 0.6 : 1;
+    S.fade = el < T.tearFall + 40 ? 0 : el < T.tearFall + 100 ? 0.6 : 1;
 
     // ================================ marks
     once('lid', el, T.lid, () => {
@@ -830,18 +828,19 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
     }
     once('contract', el, T.contract, () => {
       playV3('e_voidTick', { volume: 1 });
-      void freeze(sc, 70);
+      // the hit-stop is the bodies' own: from here every body holds still until its pull (the eye keeps living)
       for (const b of bodies) {
         if (b.kind === 'saved' || !b.ghost) continue;
         b.ghost.anims.stop();
         b.ghost.setTintFill(PAL.white);
       }
     });
-    once('silhouette', el, T.contract + 40, () => {
+    once('silhouette', el, T.contract + 30, () => {
       // a flat violet silhouette inside a one-pixel void4 rim (fills only: palette colours)
       const order = bodies.filter((b) => b.kind !== 'saved' && b.ghost).sort((a, c) => Math.hypot(a.ghost!.x - eye.x, a.ghost!.y - eye.y) - Math.hypot(c.ghost!.x - eye.x, c.ghost!.y - eye.y));
       order.forEach((b, k) => {
-        b.ghost!.setTintFill(PAL.void3);
+        // neighbours alternate void3 / void2 fills so overlapping bodies stay apart inside their void4 rims
+        b.ghost!.setTintFill(k % 2 ? PAL.void2 : PAL.void3);
         rimOf(sc, b, PAL.void4);
         b.px0 = b.ghost!.x;
         b.py0 = b.ghost!.y;
@@ -894,7 +893,7 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
       // the crown of droplets
       for (let k = 0; k < 8; k++) {
         const a = Math.PI + (k / 7) * Math.PI;
-        motes.add({ x: fieldMid.x + R(Math.cos(a) * 3), y: fieldMid.y - 1, vx: Math.cos(a) * (44 + (k % 2) * 16), vy: -50 - (k % 3) * 22 + Math.sin(a) * 10, g: 340, life: 340, c: k % 2 ? PAL.void4 : PAL.white });
+        motes.add({ x: fieldMid.x + R(Math.cos(a) * 3), y: fieldMid.y - 1, vx: Math.cos(a) * (50 + (k % 2) * 18), vy: -70 - (k % 3) * 24 + Math.sin(a) * 10, g: 420, life: 360, c: k % 2 ? PAL.void4 : PAL.white, trail: true });
       }
     });
 
@@ -943,8 +942,10 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
           }
           // its tile flashes and goes dark; a token / decoy tile crumbles (it has no card to keep)
           if (b.tile?.active) {
-            b.tile.setHighlight(null);
-            void b.tile.pulse(PAL.void4, 200);
+            // its tile flashes violet for a beat and goes dark
+            const t = b.tile;
+            t.setHighlight(PAL.void4);
+            bg(wait(sc, 60).then(() => t.active && t.setHighlight(null)));
           }
           if (b.kind === 'token' || b.kind === 'decoy') {
             const { tile } = field.release(b.uid);
@@ -956,6 +957,11 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
             }
           }
         }
+        continue;
+      }
+      // the hit-stop: frozen in place from the contraction to the pull
+      if (el >= T.contract && b.kind !== 'saved') {
+        moveRims(b);
         continue;
       }
       // ---- the rise: squat 1 px (anticipation), snap 2 px (tears off), then the slow float to its seat
@@ -1013,7 +1019,7 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
         g.setFlipX(!g.flipX);
         g.setOrigin(1 - g.originX, g.originY);
         g.setTintFill(PAL.void4);
-        b.edgeUntil = el + 40;
+        b.edgeUntil = el + 20;
       }
       if (b.edgeUntil >= 0 && el >= b.edgeUntil && el < T.contract) {
         b.edgeUntil = -1;
@@ -1061,13 +1067,13 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
         ring(0, 22, PAL.void4);
         ring(70, 16, PAL.void3);
         // the stain (stepped tones)
-        const sc3 = u < 140 ? PAL.void4 : u < 260 ? PAL.void3 : u < 380 ? PAL.void2 : u < 460 ? PAL.void1 : -1;
+        const sc3 = u < 100 ? PAL.void4 : u < 190 ? PAL.void3 : u < 270 ? PAL.void2 : u < 330 ? PAL.void1 : -1;
         if (sc3 >= 0) {
           for (let yy = -2; yy <= 2; yy++) {
             const w = [3, 6, 7, 6, 3][yy + 2];
             for (let xx = -w; xx <= w; xx++) r.px(fieldMid.x + xx, fieldMid.y + yy, sc3);
           }
-          if (u < 260) r.px(fieldMid.x - 3, fieldMid.y - 1, PAL.white);
+          if (u < 190) r.px(fieldMid.x - 3, fieldMid.y - 1, PAL.white);
         }
       }
     });
