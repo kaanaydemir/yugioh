@@ -134,3 +134,7 @@ D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (ka
   geçeriz"; gemini/okunurluk 2ff3ff0). Kapılar: typecheck temiz; v1 17/17 + a6v1 26/26 IDENTICAL; vitest bilinen
   6 hata + 3 ESKİMİŞ arena geometri testi (arena-nt-platform ×2, board-nt-layout dais) — sahne şekli bilerek
   değişti; arena düzeltme turunda testler yeni şekle göre yazılacak.
+- 2026-11-05 gece: wisp_imp (şerit B, d9df6a4) + kite_fencer & reed_heron (şerit C, 0062f7c; crag_axeman test
+  düzeltmesi dahil) ana dala alındı. Kapılar: typecheck temiz; vitest yalnız bilinen 7 (3 eski arena + G1, dusk_ashen,
+  hourglass_imp, shield_titan); v1 17/17 + a6v1 26/26 IDENTICAL (referanslar 6d507fa'dan yeniden çekildi — makine
+  yenilendi; shot.mjs artık chrome-linux64'ü de buluyor). Test sürümü 16.
