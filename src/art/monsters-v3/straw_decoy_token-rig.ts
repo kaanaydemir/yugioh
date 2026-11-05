@@ -20,12 +20,22 @@ import { PixelCanvas } from '../pixel';
 import { Comp, bands, drawCrow, fleck, hash2, plane, rnd, strand, turn, unturn, type CrowMode, type Pt, type Side } from './straw_decoy_token-kit';
 
 export const W = 68;
-export const H = 62;
+export const H = 59;
 export const RX = 36;
-export const GY = 58;
-/** local heights over the foot of the stake */
+export const GY = 54;
+/** local heights over the foot of the stake (the rig's design heights; see sy) */
 const BAR = -32;
 const HEAD = -42;
+/**
+ * The token is a SMALL thing (Sv1 0/0, the 48-px class): the bare stake under the straw skirt is shortened. Every
+ * local height goes through sy(): the lower `SY_LOW` px of the stake are squeezed to `SY_LOW - SY_CUT`, everything
+ * above simply moves down by SY_CUT (whole px, so the body keeps its proportions and outlines).
+ */
+const SY_LOW = -14;
+const SY_CUT = 6;
+export function sy(ly: number): number {
+  return ly >= SY_LOW ? (ly * (SY_LOW + SY_CUT)) / SY_LOW : ly + SY_CUT;
+}
 
 export interface Pose {
   /** px the upper body leans at the bar height (+ toward the foe); the stake shears with it */
@@ -55,7 +65,12 @@ export interface Pose {
   hat: number;
   hfx: number;
   hfy: number;
-  /** eyes 0 dull, 1 glint, 2 lit (summon / magic); look −1…1 (px, + toward the foe); mouth 0 stitch, 1 gape, 2 wince */
+  /** the head squashed (it lands on the stake / bounces on the floor) 0/1; the free hat upside down (mid flip) 0/1 */
+  hsq: number;
+  hflip: number;
+  /** the jacket's cloth smear as it flies on (0…1, trails upwind) */
+  jsm: number;
+  /** eyes 0 dull, 1 glint, 2 lit (magic / fading summon glow), 3 the summon's one bright flash; look −1…1 (px, + toward the foe); mouth 0 stitch, 1 gape, 2 wince */
   eye: number;
   look: number;
   mouth: number;
@@ -105,6 +120,7 @@ export interface Pose {
 export const NEUTRAL: Pose = {
   lean: 0, lift: 0, topple: 0, aL: 0, aR: 0, slL: 0, slR: 0, droop: 0, fiL: 0, fiR: 0, curl: 0, spread: 0,
   hx: 0, hy: 0, hatX: 0, hatY: 0, hatTilt: 0, hat: 1, hfx: -10, hfy: 0,
+  hsq: 0, hflip: 0, jsm: 0,
   eye: 1, look: 0, mouth: 0, skirt: 0, flap: 0, rope: 0, bristle: 0,
   crow: null, cx: 0, cy: 0, cf: 1, wing: 0,
   wrap: 1, jk: 1, jkx: 0, jky: 0, hd: 1, hdy: 0, hdFree: 0, hfx2: 0, hfy2: 0,
@@ -156,7 +172,7 @@ export function skeleton(o: Pose): Skel {
   const fx = RX;
   const fy = GY - o.lift;
   const t = o.topple;
-  const P = (lx: number, ly: number): Pt => turn(fx, fy, lx, ly, t);
+  const P = (lx: number, ly: number): Pt => turn(fx, fy, lx, sy(ly), t);
   const s = sh(o, -BAR);
   const barL = P(-15 + s, BAR + o.aL);
   const barR = P(15 + s, BAR + o.aR);
@@ -186,7 +202,7 @@ function lpoly(q: PixelCanvas, o: Pose, pts: readonly Pt[], c: number): void {
   const fy = GY - o.lift;
   q.poly(
     pts.map(([x, y]) => {
-      const [a, b] = turn(fx, fy, x, y, o.topple);
+      const [a, b] = turn(fx, fy, x, sy(y), o.topple);
       return [rnd(a), rnd(b)] as Pt;
     }),
     c,
@@ -195,8 +211,8 @@ function lpoly(q: PixelCanvas, o: Pose, pts: readonly Pt[], c: number): void {
 function lline(q: PixelCanvas, o: Pose, a: Pt, b: Pt, c: number): void {
   const fx = RX;
   const fy = GY - o.lift;
-  const A = turn(fx, fy, a[0], a[1], o.topple);
-  const B = turn(fx, fy, b[0], b[1], o.topple);
+  const A = turn(fx, fy, a[0], sy(a[1]), o.topple);
+  const B = turn(fx, fy, b[0], sy(b[1]), o.topple);
   strand(q, A[0], A[1], B[0], B[1], c);
 }
 
@@ -307,8 +323,8 @@ function skirt(o0: Pose, L: Side): PixelCanvas {
     const x0 = i * 0.8 + s;
     const x1 = i * 1.2 + s + sw;
     const lit = i * L > 0;
-    if ((i + 40) % 2 === 0) strand(q, RX + x0, GY - o.lift + top + 1, RX + x1, GY - o.lift + tipY, lit ? PAL.gold3 : PAL.gold1);
-    else if (Math.abs(i) >= hw) strand(q, RX + x0, GY - o.lift + top + 3, RX + x1, GY - o.lift + tipY - 1, PAL.gold2);
+    if ((i + 40) % 2 === 0) strand(q, RX + x0, GY - o.lift + sy(top + 1), RX + x1, GY - o.lift + sy(tipY), lit ? PAL.gold3 : PAL.gold1);
+    else if (Math.abs(i) >= hw) strand(q, RX + x0, GY - o.lift + sy(top + 3), RX + x1, GY - o.lift + sy(tipY - 1), PAL.gold2);
   }
   if (o0.topple !== 0) {
     // the same skirt turned with the stake (inverse-mapped from the upright one)
@@ -382,7 +398,7 @@ function belt(o: Pose): PixelCanvas {
   if (o.untie <= 0) {
     lline(q, o, [-6 + s, y], [6 + s, y], PAL.earth3);
     lpoly(q, o, [[3 + s, y - 1], [4 + s, y - 1], [4 + s, y + 1], [3 + s, y + 1]], PAL.earth2);
-    lline(q, o, [4 + s, y + 1], [5 + s + o.rope, y + 4], PAL.earth3);
+    lline(q, o, [4 + s, y + 1], [5 + s + o.rope, y + 4], PAL.earth2);
   } else {
     // snapped: two ends fly loose
     lline(q, o, [3 + s, y], [8 + s, y - 3], PAL.earth3);
@@ -406,46 +422,53 @@ function head(o: Pose, hc: Pt, L: Side): PixelCanvas {
   const q = layer();
   const cx = rnd(hc[0]);
   const cy = rnd(hc[1]);
+  const sq = o.hsq > 0 ? 1 : 0;
   // straw hair at the back of the head, under the brim
   if (o.hat) {
-    q.line(cx - 5, cy - 3, cx - 7, cy - 1 + rnd(o.fiL * 0.5), PAL.gold3);
-    q.line(cx - 5, cy - 2, cx - 6, cy + 1, PAL.gold2);
+    q.line(cx - 5, cy - 3 + sq, cx - 7, cy - 1 + rnd(o.fiL * 0.5) + sq, PAL.gold3);
+    q.line(cx - 5, cy - 2 + sq, cx - 6, cy + 1 + sq, PAL.gold2);
   }
-  q.ellipse(cx, cy, 5, 5, SACK.base);
+  // the sack: a squashed bag when it lands (wider, lower), else round
+  q.ellipse(cx, cy + sq, 5 + sq, 5 - sq, SACK.base);
   // the gathered neck under the twine
   q.rect(cx - 2, cy + 5, 5, 2, SACK.base);
   // the corner of the sack poking up at the back (seen when the hat is off)
-  if (!o.hat) q.poly([[cx - 4, cy - 3], [cx - 6, cy - 6], [cx - 2, cy - 5]], SACK.base);
+  if (!o.hat) q.poly([[cx - 4, cy - 3 + sq], [cx - 6, cy - 6 + sq], [cx - 2, cy - 5 + sq]], SACK.base);
   bands(q, L, SACK.lit, SACK.shade);
   plane(q, L, cx + (L < 0 ? 2 : 0), SACK.base, SACK.shade);
-  // twine tie
+  // burlap weave: two dither lines of darker threads across the cloth (forehead and jaw)
+  for (const y of [cy - 4 + sq, cy + 4]) for (let x = cx - 5; x <= cx + 5; x++) if ((x + y) % 2 === 0 && q.get(x, y) === SACK.base) q.set(x, y, SACK.shade);
+  // the rope tie: twine round the gathered neck, a knot and its loose end
   q.hline(cx - 2, cx + 2, cy + 5, PAL.earth1);
-  // burlap weave: two short dashes on the shaded cheek
-  q.hline(cx - 2 * L, cx - 2 * L + 1, cy + 3, SACK.shade);
-  // eyes: two buttons (far, near), facing right; look shifts them
+  q.set(cx - 1, cy + 6, SACK.shade).set(cx + 1, cy + 6, SACK.shade);
+  q.set(cx + 3, cy + 5, PAL.earth2).set(cx + 3, cy + 6, PAL.earth2);
+  if (!o.hdFree) q.set(cx + 4, cy + 7, PAL.earth1);
+  // eyes: two round buttons (far, near), facing right; look shifts them. A dark disc with a lit corner — the lit
+  // ones (summon / magic) are drawn on the light layer (drawStraw)
   const lk = rnd(o.look);
-  const eyeC = o.eye >= 2 ? PAL.gold4 : PAL.night1;
   for (const ex of [cx + lk, cx + 3 + lk]) {
-    q.rect(ex, cy - 2, 2, 2, eyeC);
+    q.rect(ex, cy - 2 + sq, 2, 2, PAL.night1);
+    q.set(L < 0 ? ex : ex + 1, cy - 2 + sq, PAL.steel);
   }
-  // mouth
+  // mouth: a stitched seam (cross stitches), a gape, or a wince
+  const my = cy + 2;
   if (o.mouth === 1) {
-    q.hline(cx + 1, cx + 4, cy + 2, PAL.ink);
-    q.hline(cx + 2, cx + 3, cy + 3, PAL.ink);
-    q.set(cx + 1, cy + 1, PAL.earth1).set(cx + 4, cy + 1, PAL.earth1);
+    q.hline(cx, cx + 3, my, PAL.ink);
+    q.hline(cx + 1, cx + 2, my + 1, PAL.ink);
+    q.set(cx, my - 1, PAL.earth1).set(cx + 3, my - 1, PAL.earth1);
   } else if (o.mouth === 2) {
-    q.line(cx + 1, cy + 2, cx + 2, cy + 1, PAL.earth1);
-    q.line(cx + 3, cy + 2, cx + 4, cy + 1, PAL.earth1);
-    q.set(cx + 3, cy + 1, PAL.earth1);
+    q.line(cx, my, cx + 1, my - 1, PAL.earth1);
+    q.line(cx + 2, my, cx + 3, my - 1, PAL.earth1);
+    q.set(cx + 2, my - 1, PAL.earth1);
   } else {
-    q.hline(cx + 1, cx + 4, cy + 2, PAL.earth1);
-    q.set(cx + 2, cy + 1, PAL.earth1).set(cx + 4, cy + 3, PAL.earth1);
+    q.hline(cx - 1, cx + 3, my, PAL.earth1);
+    for (const x of [cx, cx + 2]) q.set(x, my - 1, PAL.earth1).set(x, my + 1, PAL.earth1);
   }
   return q;
 }
 
-/** The floppy felt hat with a red band and a straw sprig, brim centre (bx, by) world. */
-function hat(o: Pose, bx: number, by: number, L: Side): PixelCanvas {
+/** The floppy felt hat with a red band and a straw sprig, brim centre (bx, by) world; upside down mid-flip. */
+function hat(o: Pose, bx: number, by: number, L: Side, flip = false): PixelCanvas {
   const q = layer();
   const X = rnd(bx);
   const Y = rnd(by);
@@ -453,12 +476,20 @@ function hat(o: Pose, bx: number, by: number, L: Side): PixelCanvas {
   // crown (a dent in the top) and the brim (longer in front)
   q.poly([[X - 3, Y], [X - 2, Y - 5 - t], [X, Y - 5], [X + 1, Y - 4], [X + 3, Y - 6 + t], [X + 5, Y]], HAT.base);
   q.poly([[X - 6, Y + t], [X + 7, Y - t], [X + 8, Y + 1 - t], [X - 5, Y + 1 + t]], HAT.base);
-  bands(q, L, HAT.lit, HAT.shade);
   // band
   q.line(X - 3, Y - 1, X + 4, Y - 1, PAL.crim1);
-  q.set(X - 2 + (L < 0 ? 0 : 5), Y - 1, PAL.crim2);
   // the straw sprig in the band
   q.line(X - 3, Y - 2, X - 5, Y - 4, PAL.gold3);
+  if (flip) {
+    // mid-flip: the hat seen edge-on, spinning (the brim a vertical stroke, the crown a bump off it, the band a line)
+    q.clear();
+    q.rect(X, Y - 6, 2, 12, HAT.base);
+    q.rect(X - 4, Y - 3, 4, 6, HAT.base);
+    q.vline(X - 1, Y - 3, Y + 2, PAL.crim1);
+    q.line(X - 2, Y - 3, X - 4, Y - 6, PAL.gold3);
+  }
+  bands(q, L, HAT.lit, HAT.shade, null, HAT.base);
+  if (!flip) q.set(X - 2 + (L < 0 ? 0 : 5), Y - 1, PAL.crim2);
   return q;
 }
 
@@ -487,7 +518,7 @@ function floorPile(o: Pose, L: Side): PixelCanvas {
 /** Straw falling from the hem (mid-spill, in the air). */
 function falling(o: Pose, q: PixelCanvas, L: Side): void {
   if (o.spill <= 0 || o.spill >= 0.9) return;
-  const y0 = GY - 16 + rnd(o.spill * 10);
+  const y0 = GY - 12 + rnd(o.spill * 8);
   for (const [dx, dy] of [[-5, 0], [-2, 3], [2, 1], [5, 4], [-7, 5]] as const) {
     const y = y0 + dy;
     if (y >= GY - 1) continue;
@@ -529,25 +560,42 @@ export function drawStraw(p: PixelCanvas, o: Pose, light: 'left' | 'right'): voi
   if (o.wrap > 0.8) k.add(collar(o), Part.collar, null);
   if (o.hd > 0) k.add(head(o, sk.head, L), Part.head);
   if (o.hat > 0 && o.hd > 0) k.add(hat(o, sk.head[0] + o.hatX + 1, sk.head[1] - 5 + o.hatY, L), Part.hat);
-  else if (o.hat <= 0 && o.hfy !== 0) k.add(hat(o, RX + o.hfx, GY + o.hfy, L), Part.hat);
+  else if (o.hat <= 0 && o.hfy !== 0) k.add(hat(o, RX + o.hfx, GY + o.hfy, L, o.hflip > 0), Part.hat);
   const fall = layer();
   falling(o, fall, L);
   k.add(fall, Part.floor, null);
+  // toppled: whatever the turn swings under the floor lies flat on it (the far straw hand, the bar end)
+  if (o.topple > 0.3) for (let y = GY + 2; y < H; y++) for (let x = 0; x < W; x++) p.erase(x, y);
   p.outline(PAL.ink);
 
   // ---- light layer (never outlined)
   // the crow (its own outline)
-  if (o.crow) drawCrow(p, RX + o.cx, GY + o.cy, o.crow, o.wing, o.cf, L);
-  // button-eye glints
-  if (o.hd > 0 && o.eye >= 1) {
+  if (o.crow) drawCrow(p, RX + o.cx, GY + sy(o.cy), o.crow, o.wing, o.cf, L);
+  // the buttons light up (summon: one bright flash, then a fading glow; magic: a steady glow) — the button
+  // pixels themselves turn warm, the brightest one gets a 1-px halo; never a white bar across the face
+  if (o.hd > 0 && o.eye >= 2) {
     const cx = rnd(sk.head[0]) + rnd(o.look);
-    const cy = rnd(sk.head[1]);
-    const gx = L < 0 ? 0 : 1;
-    for (const ex of [cx, cx + 3]) p.set(ex + gx, cy - 2, o.eye >= 2 ? PAL.white : PAL.mist);
-    if (o.eye >= 2) {
-      // the lit buttons spill a little warm light (a 1-px halo cross round the near eye)
-      p.set(cx + 3, cy - 3, PAL.gold3).set(cx + 6, cy - 2, PAL.gold3).set(cx + 6, cy - 1, PAL.gold3).set(cx + 2, cy - 1, PAL.gold4);
+    const cy = rnd(sk.head[1]) + (o.hsq > 0 ? 1 : 0);
+    const hot = o.eye >= 3;
+    for (const ex of [cx, cx + 3]) {
+      const gx = L < 0 ? ex : ex + 1;
+      p.rect(ex, cy - 2, 2, 2, hot ? PAL.gold3 : PAL.gold2);
+      p.set(gx, cy - 2, hot ? PAL.gold4 : PAL.gold3);
     }
+    if (hot) {
+      // the near button's halo: one warm pixel off each side (in front, above, below)
+      p.set(cx + 5, cy - 2, PAL.gold3).set(cx + 5, cy - 1, PAL.gold2).set(cx + 3, cy - 3, PAL.gold2).set(cx + 4, cy, PAL.gold2);
+    }
+  }
+  // the jacket flying on: a cloth smear trailing upwind of it (flat streaks of its own tones)
+  if (o.jsm > 0 && o.jk > 0) {
+    const n = rnd(2 + o.jsm * 4);
+    const jx = RX + rnd(sh(o, 26)) + o.jkx - 13;
+    const jy = GY + sy(-30) + o.jky;
+    p.hline(jx - n, jx - 1, jy, PAL.night4);
+    p.hline(jx - n + 2, jx - 1, jy + 3, PAL.night3);
+    p.hline(jx - n - 1, jx - 3, jy + 6, PAL.steel);
+    if (o.jsm > 0.6) p.hline(jx - n + 3, jx - 2, jy - 3, PAL.night3);
   }
   // magic: straw tips burn white, sparks crawl the stake
   if (o.zap >= 0.5) {
@@ -565,7 +613,7 @@ export function drawStraw(p: PixelCanvas, o: Pose, light: 'left' | 'right'): voi
   if (o.zap > 0) {
     const n = Math.ceil(o.zap * 6);
     for (let i = 0; i < n; i++) {
-      const y = GY - 8 - ((i * 7 + rnd(o.t * 20)) % 40);
+      const y = GY - 8 - ((i * 7 + rnd(o.t * 20)) % 34);
       const x = RX + ((i % 2) * 2 - 1) * (2 + (i % 3));
       if (p.isOpaque(x, y)) p.set(x, y, i % 2 ? PAL.white : PAL.gold4);
     }
@@ -592,7 +640,7 @@ export function drawStraw(p: PixelCanvas, o: Pose, light: 'left' | 'right'): voi
   }
   // falling speed lines over the stake (summon)
   if (o.speed > 0) {
-    const top = rnd(skeleton(o).foot[1]) - 40;
+    const top = rnd(skeleton(o).foot[1]) - 34;
     for (const dx of [-3, 0, 3]) {
       const len = 3 + rnd(o.speed * 4) - Math.abs(dx);
       for (let i = 0; i < len; i++) if (top - 2 - i >= 2) p.set(RX + dx, top - 2 - i, dx === 0 ? PAL.gold4 : PAL.earth4);

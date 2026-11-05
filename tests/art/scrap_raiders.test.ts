@@ -1,7 +1,7 @@
 // Hurda Akıncıları (v3 art): every anim exists with marks and holds, validateArt (normal tier, melee) reports no
 // errors, a frame is deterministic, P2 is a relight of the same silhouette, the wheels' feet band never moves in idle,
-// guard and the transitions (HA-9, even while the front wheel falls flat and the wrench goblin kneels), the guard is
-// the tired lock pose (front wheel flat on the floor), the summon starts as a falling scrap pile without the cart,
+// guard and the transitions (HA-9), the guard is the rested pose and the hidden tired sheet the lock pose (front
+// wheel flat on the floor), the summon starts as a falling scrap pile without the cart,
 // and the card picture paints within the kit budgets.
 
 import { describe, expect, it } from 'vitest';
@@ -9,6 +9,7 @@ import art from '../../src/art/monsters-v3/scrap_raiders';
 import card from '../../src/art/cardart-v3/scrap_raiders';
 import { artStats, renderArt } from '../../src/art/cardart-v3/_kit';
 import { framePose } from '../../src/art/monsters-v3/scrap_raiders-anims';
+import { tiredRaidersArt } from '../../src/art/monsters-v3/_scrap_raiders-tired';
 import { drawFrame, validateArt } from '../../src/art/rigkit';
 import type { AnyMonsterAnim } from '../../src/art/types';
 
@@ -58,15 +59,34 @@ describe('scrap_raiders', () => {
       for (const a of ['idle', 'guard', 'toGuard', 'fromGuard'] as const) for (let f = 0; f < spec(a).frames; f++) expect(band(a, f, side), `${side} ${a} f${f}`).toBe(ref);
     }
   });
-  it('guard is the tired lock pose: the front wheel lies flat, the wrench goblin kneels on the floor', () => {
+  it('guard is the RESTED pose (wheels on); the tired sheet is the lock (front wheel flat, the wrench goblin kneeling)', () => {
     for (let f = 0; f < spec('guard').frames; f++) {
-      const o = framePose('guard', f);
-      expect(o.fwF, `guard f${f}`).toBe(1);
-      expect(o.wLeg, `guard f${f}`).toBe(1);
-      expect(o.sweat, `guard f${f}`).toBeGreaterThan(0);
+      const r = framePose('guard', f);
+      expect(r.fwF, `rest guard f${f}`).toBe(0);
+      expect(r.wLeg, `rest guard f${f}`).toBe(0);
+      const o = framePose('guard', f, 'tired');
+      expect(o.fwF, `tired guard f${f}`).toBe(1);
+      expect(o.wLeg, `tired guard f${f}`).toBe(1);
+      expect(o.sweat, `tired guard f${f}`).toBeGreaterThan(0);
     }
     expect(framePose('idle', 0).fwF).toBe(0);
     expect(framePose('fromGuard', spec('fromGuard').frames - 1).fwF).toBe(0);
+    // the lock end lands on the rested guard f0; the guard break's bridge (tired fromGuard f0/f1) keeps the wheel down
+    expect(framePose('fromGuard', spec('fromGuard').frames - 1, 'tired')).toEqual(framePose('guard', 0));
+    expect(framePose('fromGuard', 0, 'tired').fwF).toBe(1);
+    expect(framePose('fromGuard', 1, 'tired').fwF).toBeGreaterThan(0.5);
+    // a death from the lock never puts the wheel back on
+    for (let f = 0; f < spec('death').frames; f++) expect(framePose('death', f, 'tired').fwF, `tired death f${f}`).toBe(1);
+  });
+  it('the tired sheet keeps the feet band of the rested sheet in its guard and the wheel-off (HA-9)', () => {
+    const tired = tiredRaidersArt(art);
+    const band = (anim: AnyMonsterAnim, f: number) => {
+      const p = drawFrame(tired, anim, f, 'left');
+      const b = p.bounds()!;
+      return b.y + b.h - 1;
+    };
+    const ref = band('guard', 0);
+    for (let f = 0; f < spec('guard').frames; f++) expect(band('guard', f), `tired guard f${f}`).toBe(ref);
   });
   it('summon f0 is a falling scrap pile: no cart, no crew', () => {
     const o = framePose('summon', 0);

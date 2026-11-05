@@ -1042,7 +1042,12 @@ function dissolvePass(f: Frame): void {
   const moved: [number, number, number, number][] = [];
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
-      if (!src.isOpaque(x, y) || ids[y * W + x] === Part.none) continue;
+      if (!src.isOpaque(x, y)) continue;
+      // the old outline goes with its plates (a fresh one is drawn round the moved plates)
+      if (ids[y * W + x] === Part.none) {
+        if (src.get(x, y) === PAL.ink) p.erase(x, y);
+        continue;
+      }
       p.erase(x, y);
       comp.id[y * W + x] = Part.none;
       const cx = fl((x - RX + 60) / 6);
@@ -1050,7 +1055,7 @@ function dissolvePass(f: Frame): void {
       const h = hash2(cx, cy, 7);
       // plates go missing from the top down
       const height = clamp((GY - y) / 34, 0, 1);
-      if (h * 0.7 + (1 - height) * 0.3 < o.diss * 0.62 - 0.05) continue;
+      if (h * 0.7 + (1 - height) * 0.3 < o.diss * 0.38 - 0.06) continue;
       const fall = o.diss * (3 + height * 16 + h * 5);
       const dx = rnd(o.diss * (h - 0.5) * 6);
       const ny = Math.min(GY - (h > 0.5 ? 1 : 0), rnd(y + fall));

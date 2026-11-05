@@ -8,7 +8,7 @@
 //   plantBurst(sc, home, dir)            the point bites the floor: dirt clods, straw chaff, one flat dirt ring, a dull
 //                                        warm floor flash
 //   windWrap(sc, u, home, dir, ms)       straw stalks blow in from upwind on a curling path and wrap the stake
-//   eyeGlint(sc, u)                      the button eyes light once: two plus-glints and a warm flash on the floor
+//   eyeGlint(sc, u)                      the button eyes light once: their warm light on the face and the floor
 //   crowOff(sc, from, dir, depth)        a crow lifts off a shoulder and flies away up out of the frame, flapping
 //   Litter                               straw stalks that fall, lie on the floor, and are blown away by the wind
 //   chaffBurst(sc, at, dir, floorY, n)   a straw slap / blow: chaff flies along the blow and settles as litter
@@ -165,15 +165,14 @@ export function windWrap(sc: Phaser.Scene, u: MonsterUnit, home: XY, dir: 1 | -1
   sp.release();
 }
 
-/** The button eyes light once: two plus-glints on the eyes and a warm flash on the floor. */
+/**
+ * The button eyes light once: the buttons themselves glow on the sprite (rig `eye` 3 → 2, a 1-px warm halo); here
+ * only their warm light spills on the floor and the face (no sparks: never a white bar across the face).
+ */
 export function eyeGlint(sc: Phaser.Scene, u: MonsterUnit): void {
   const h = strawPoint(u, 'head');
   if (!h) return;
-  const f = u.flipX ? -1 : 1;
-  const sp = new Sparks(sc, u.sprite.depth + 0.6);
-  for (const dx of [1, 4]) sp.add({ x: h.x + dx * f, y: h.y - 1, life: 180, colors: [PAL.white, PAL.gold4, PAL.gold3], shape: 'plus', size: 1, fadeAt: 0.6 });
-  sp.release();
-  void lightFlash(sc, h.x, h.y, PAL.gold4, 12, 220, { floorY: u.home.y, intensity: 0.5 });
+  void lightFlash(sc, h.x + (u.flipX ? -2 : 2), h.y - 1, PAL.gold4, 12, 240, { floorY: u.home.y, intensity: 0.5 });
 }
 
 /**

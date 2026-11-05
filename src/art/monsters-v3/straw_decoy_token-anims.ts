@@ -2,9 +2,9 @@
 //
 // Rhythm: a thing of straw and cloth moved only by the wind and by blows. idle = a 20-frame wind loop: the cross bar
 // rocks on the stake, the sleeves follow a frame later, the straw hands flutter on their own fast beat, the skirt
-// trails three frames behind, the hat slips forward and is lifted back by a gust; a crow comes in from the top right,
-// lands on the near sleeve, looks round, caws ("gak") and flies off. guard = hunched: the head sunk into the collar,
-// the hat pulled low, the sleeves hanging, the straw hands folded down — the crow still visits and pecks. Every
+// trails three frames behind, the hat slips forward, tilts and is lifted back by a gust, the straw hands open in the
+// strongest gusts. guard = hunched: the head sunk into the collar, the hat pulled low, the sleeves hanging, the straw
+// hands folded down. (The crow that visits now and then is the cinematic side's: one token at a time.) Every
 // one-shot starts and ends on idle f0. summon = the S9 storyboard: the stake falls and is planted ("tok"), straw
 // wraps round it, the jacket flies on, the sack head drops, the hat lands, the button eyes light once and the arms
 // open. death = the vanish: the rope belt snaps, the straw spills to the floor, the head drops off, the stake
@@ -12,10 +12,10 @@
 
 import type { AnimSpec, AnyMonsterAnim, MonsterAnim, MonsterAnimExtra, MonsterPoints } from '../types';
 import { FALLEN, rnd } from './straw_decoy_token-kit';
-import { GY, NEUTRAL, RX, skeleton, type Pose } from './straw_decoy_token-rig';
+import { GY, NEUTRAL, RX, skeleton, sy, type Pose } from './straw_decoy_token-rig';
 
 /** Pose fields that are whole pixels (rounded when blended). */
-const PX: (keyof Pose)[] = ['lean', 'aL', 'aR', 'slL', 'slR', 'droop', 'fiL', 'fiR', 'hx', 'hy', 'hatX', 'hatY', 'hatTilt', 'skirt', 'flap', 'rope', 'look', 'jkx', 'jky', 'hdy', 'cx', 'cy'];
+const PX: (keyof Pose)[] = ['hsq', 'hflip', 'lean', 'aL', 'aR', 'slL', 'slR', 'droop', 'fiL', 'fiR', 'hx', 'hy', 'hatX', 'hatY', 'hatTilt', 'skirt', 'flap', 'rope', 'look', 'jkx', 'jky', 'hdy', 'cx', 'cy'];
 
 export function mix(a: Pose, b: Pose, t: number): Pose {
   const o = { ...b } as Pose;
@@ -32,6 +32,8 @@ export function mix(a: Pose, b: Pose, t: number): Pose {
 const K = (d: Partial<Pose>, t = 0): Pose => ({ ...NEUTRAL, t, ...d });
 
 // ------------------------------------------------------------------ idle (20 frames, ~1.95 s)
+// (the crow is no longer baked into the loops: one crow at a time visits ONE token now and then, flown by the
+// cinematic side — src/cinematics/d/_straw_decoy_token-crow.ts — so a row of tokens never shows cloned crows)
 
 const IDLE_N = 20;
 const at = (seq: number[], f: number, lag = 0) => seq[(((f - lag) % seq.length) + seq.length) % seq.length];
@@ -39,73 +41,43 @@ const at = (seq: number[], f: number, lag = 0) => seq[(((f - lag) % seq.length) 
 const ROCK = [0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, -1, -1, -1, -1, 0, 0, 0, 0, 0];
 const FLUT = [0, 1, 0, -1];
 const FLAP = [0, 0, 1, 1, 0, 0, 0, 1, 1, 0];
-const HATX = [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-const HATY = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0, 0, 0, 0];
-const LOOK = [0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0];
-type CrowKey = Pick<Pose, 'crow' | 'cx' | 'cy' | 'cf' | 'wing'>;
-const NO_CROW: CrowKey = { crow: null, cx: 0, cy: 0, cf: 1, wing: 0 };
-/** the crow on the near sleeve: feet on the sleeve's top (follows the bar and the droop) */
-const perch = (mode: Pose['crow'], wing: number, rock: number, droop = 0, cf: 1 | -1 = 1): CrowKey => ({ crow: mode, cx: 13, cy: -34 + rnd((rock * 10) / 15) + droop, cf, wing });
-function idleCrow(f: number): CrowKey {
-  const r = ROCK[f];
-  switch (f) {
-    case 6: return { crow: 'far', cx: 25, cy: -51, cf: -1, wing: 0 };
-    case 7: return { crow: 'fly', cx: 20, cy: -46, cf: -1, wing: 0 };
-    case 8: return { crow: 'fly', cx: 17, cy: -41, cf: -1, wing: 2 };
-    case 9: return { crow: 'fly', cx: 13, cy: -37, cf: -1, wing: 1 };
-    case 10: return perch('perch', 1, r);
-    case 11: return perch('perch', 0, r);
-    case 12: return perch('caw', 0, r);
-    case 13: return perch('peck', 0, r);
-    case 14: return perch('crouch', 0, r);
-    case 15: return { crow: 'fly', cx: 15, cy: -41, cf: 1, wing: 0 };
-    case 16: return { crow: 'fly', cx: 20, cy: -46, cf: 1, wing: 2 };
-    case 17: return { crow: 'far', cx: 25, cy: -51, cf: 1, wing: 1 };
-    default: return NO_CROW;
-  }
-}
+/** the hat slips forward over the gust, hangs, and the next gust lifts it back */
+const HATX = [0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+const HATY = [0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, -1, -1, 0, 0, 0, 0, 0, 0, 0];
+const TILT = [0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+const LOOK = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0];
+/** the straw hands open in the strongest gust */
+const SPREAD = [0, 0.5, 0.5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.5, 0.5];
 export function idlePose(f: number): Pose {
   const k = ((f % IDLE_N) + IDLE_N) % IDLE_N;
   const r = ROCK[k];
   return K({
-    aR: r, aL: 0,
-    slR: -at(ROCK, k, 1) || 0, slL: at(ROCK, k, 2),
+    aR: r, aL: -at(ROCK, k, 1),
+    slR: -at(ROCK, k, 1) * 2 || 0, slL: at(ROCK, k, 2),
     fiR: at(FLUT, k), fiL: at(FLUT, k, 2),
     hx: at(ROCK, k, 2) > 0 ? 0 : at(ROCK, k, 2) < 0 ? -1 : 0,
-    skirt: -at(ROCK, k, 3),
-    flap: at(FLAP, k), rope: at(FLAP, k, 1),
-    hatX: HATX[k], hatY: HATY[k], look: LOOK[k],
-    ...idleCrow(k),
+    skirt: -at(ROCK, k, 3) * 2,
+    flap: at(FLAP, k), rope: at(FLAP, k, 1) * 2,
+    spread: SPREAD[k],
+    hatX: HATX[k], hatY: HATY[k], hatTilt: TILT[k], look: LOOK[k],
   }, k / IDLE_N);
 }
 const IDLE0 = idlePose(0);
 const IDLE_HOLDS = [110, 100, 90, 100, 110, 100, 90, 90, 80, 90, 110, 100, 120, 100, 90, 80, 90, 100, 110, 120];
 
-// ------------------------------------------------------------------ guard (12 frames loop): hunched, the crow pecks
+// ------------------------------------------------------------------ guard (12 frames loop): hunched, the wind tugs
 
 const GUARD_N = 12;
 const G0: Partial<Pose> = { hy: 2, hatY: 1, droop: 2, curl: 1, look: 0 };
-function guardCrow(f: number): CrowKey {
-  switch (f) {
-    case 3: return { crow: 'fly', cx: 15, cy: -38, cf: -1, wing: 1 };
-    case 4: return perch('perch', 1, 0, 2);
-    case 5: return perch('perch', 0, 0, 2);
-    case 6: return perch('peck', 0, 0, 2);
-    case 7: return perch('perch', 0, 0, 2);
-    case 8: return perch('peck', 0, 0, 2);
-    case 9: return perch('crouch', 0, 0, 2);
-    case 10: return { crow: 'fly', cx: 17, cy: -42, cf: 1, wing: 0 };
-    default: return NO_CROW;
-  }
-}
 const GSKIRT = [0, 0, 1, 1, 1, 0, 0, 0, -1, -1, 0, 0];
+const GHAT = [0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0];
 export function guardPose(f: number): Pose {
   const k = f % GUARD_N;
   return K({
     ...G0,
     fiR: [0, 1, 0, 0, -1, 0][k % 6], fiL: [0, 0, -1, 0, 0, 1][k % 6],
-    skirt: GSKIRT[k], flap: GSKIRT[(k + 9) % 12] > 0 ? 1 : 0,
-    ...guardCrow(k),
+    skirt: GSKIRT[k], flap: GSKIRT[(k + 9) % 12] > 0 ? 1 : 0, rope: GSKIRT[(k + 10) % 12],
+    hatX: GHAT[k], slR: GSKIRT[(k + 11) % 12], slL: -GSKIRT[(k + 10) % 12],
   }, k / GUARD_N);
 }
 const GUARD0 = guardPose(0);
@@ -215,42 +187,55 @@ export function hitMagicPose(f: number): Pose {
 }
 const HM_HOLDS = [50, 50, 70, 70, 90, 110, 120, 130];
 
-// ------------------------------------------------------------------ summon (14): planted, wrapped, dressed, eyes lit once
+// ------------------------------------------------------------------ summon (16): planted, wrapped, dressed, eyes lit once
+// Every piece arrives on in-betweens (never a one-frame pop): the jacket flies in from upwind with a cloth smear and
+// snaps on (f5 → f7), the sack head drops from above and squashes on the stake (f7 → f9), the hat flips through
+// the air in an arc and lands (f9 → f11), the buttons flash once and fade (f12 → f14).
 
-const SU_N = 14;
+const SU_N = 16;
+/** the summon's beats (the cinematic plays each sound on the frame its piece lands) */
+export const SU_F = { wrap: 3, jacketIn: 5, jacket: 7, sack: 9, hat: 11, eye: 12 } as const;
 const BARE: Partial<Pose> = { wrap: 0, jk: 0, hd: 0, hat: 0, hfy: 0, eye: 0 };
+const DRESS: Partial<Pose> = { hat: 0, hfy: 0, eye: 0 };
 const SUMMON: Partial<Pose>[] = [
   { ...BARE, lift: 11, mound: 0, speed: 1 },
-  { ...BARE, lift: 5, mound: 0, speed: 0.6 },
+  { ...BARE, lift: 4, mound: 0, speed: 0.6 },
   { ...BARE, flash: 1, dust: 0.3, aR: 1, aL: -1 },
-  { ...BARE, wrap: 0.25, flash: 0.4, dust: 0.7, aR: -1, aL: 1 },
-  { ...BARE, wrap: 0.55, skirt: 1 },
-  { ...BARE, wrap: 0.85, skirt: -1, fiR: 1 },
-  { ...BARE, wrap: 1, jk: 1, jkx: -4, jky: -6, flap: 2, slR: -1, fiL: 1 },
-  { ...BARE, wrap: 1, jk: 1, jkx: -1, jky: -2, flap: 1, skirt: 1 },
-  { ...BARE, wrap: 1, jk: 1, hd: 1, hdy: 6, flap: -1 },
-  { ...BARE, wrap: 1, jk: 1, hd: 1, hy: 1, hat: 1, hatY: -3, skirt: -1 },
-  { eye: 0, hatY: 1, hy: 0, skirt: 1 },
-  { eye: 2, spread: 1, slR: 1, slL: -1, skirt: 0 },
-  { eye: 1, spread: 0.5, skirt: -1 },
+  { ...BARE, wrap: 0.3, flash: 0.4, dust: 0.7, aR: -1, aL: 1 },
+  { ...BARE, wrap: 0.65, skirt: 1 },
+  { ...DRESS, hd: 0, wrap: 0.9, jk: 1, jkx: -11, jky: -8, jsm: 1, flap: 2, slR: -2, slL: -2, skirt: -1, fiR: 1 },
+  { ...DRESS, hd: 0, wrap: 1, jk: 1, jkx: -5, jky: -3, jsm: 0.5, flap: 2, slR: -1, slL: -1, fiL: 1 },
+  { ...DRESS, hd: 1, hdy: 9, wrap: 1, jk: 1, jkx: 1, jky: 0, flap: -1, slR: 1, skirt: 1 },
+  { ...DRESS, hd: 1, hdy: 4, flap: 1, hfx: -15, hfy: -28, hatTilt: -1 },
+  { ...DRESS, hd: 1, hy: 1, hsq: 1, droop: 1, hfx: -8, hfy: -38, hflip: 1, skirt: -1 },
+  { ...DRESS, hd: 1, hdy: 1, hfx: -1, hfy: -43, hatTilt: 1 },
+  { hatY: -2, hatTilt: -1, eye: 0, skirt: 1 },
+  { hatY: 1, eye: 3, spread: 1, slR: 1, slL: -1 },
+  { eye: 3, spread: 1, skirt: -1 },
+  { eye: 2, spread: 0.5, skirt: 1 },
 ];
 export function summonPose(f: number): Pose {
   if (f >= SU_N - 1) return { ...IDLE0 };
   return K(SUMMON[f], f / (SU_N - 1));
 }
-const SU_HOLDS = [70, 60, 90, 80, 80, 80, 80, 80, 90, 90, 100, 110, 120, 140];
+const SU_HOLDS = [60, 50, 80, 70, 60, 50, 50, 60, 50, 70, 50, 60, 60, 70, 90, 110];
 
-// ------------------------------------------------------------------ death (10): the binding comes undone, the stake topples
+// ------------------------------------------------------------------ death (11): the binding comes undone, the stake topples
+// The sack head tips forward (f2), falls free in an arc with the hat flipping off it (f3, f4), bounces once on the
+// floor (f5 squash, f6 up, f7 rest) while the straw spills; the stake topples onto the floor on f8.
 
-const D_N = 10;
-const FALL: Partial<Pose> = { untie: 1, deflate: 1, hdFree: 1, hfx2: 10, hfy2: -6, hat: 0, hfx: 18, hfy: -1, droop: 3, curl: 1, eye: 0, mouth: 2 };
+const D_N = 11;
+/** the vanish's beats (the cinematic plays each sound on its frame) */
+export const D_F = { untie: 1, spill: 3, sack: 5, hat: 6, topple: 8 } as const;
+const FALL: Partial<Pose> = { untie: 1, deflate: 1, hdFree: 1, hfx2: 11, hfy2: -6, hat: 0, hfx: 18, hfy: -1, droop: 3, curl: 1, eye: 0, mouth: 2 };
 const DEATH: Partial<Pose>[] = [
   { ...HH[0] },
-  { lean: -2, hx: -2, hatX: -2, hatY: -2, untie: 0.5, droop: 1, mouth: 2, eye: 0, fleck: 0.3, fdir: -1, skirt: 2 },
-  { lean: -2, hx: -3, hy: 2, hatX: -3, hatTilt: -1, untie: 1, deflate: 0.5, spill: 0.3, droop: 2, curl: 0.5, mouth: 2, eye: 0, fleck: 0.6, fdir: -1, skirt: 1 },
-  { ...FALL, lean: -1, spill: 0.6, fleck: 0.9, fdir: -1 },
-  { ...FALL, topple: 0.25, spill: 0.8, wrap: 0.5 },
-  { ...FALL, topple: 0.5, spill: 1, wrap: 0.3 },
+  { lean: -2, hx: -1, hatX: -1, hatY: -2, untie: 0.5, droop: 1, mouth: 2, eye: 0, fleck: 0.3, fdir: -1, skirt: 2 },
+  { lean: -1, hx: 2, hy: 2, hatX: 3, hatY: 1, hatTilt: 1, untie: 1, deflate: 0.5, spill: 0.3, droop: 2, curl: 0.5, mouth: 2, eye: 0, fleck: 0.6, fdir: -1, skirt: 1 },
+  { ...FALL, lean: -1, hfx2: 6, hfy2: -29, hfx: 10, hfy: -38, hatTilt: 1, spill: 0.6, fleck: 0.9, fdir: -1 },
+  { ...FALL, hfx2: 9, hfy2: -16, hfx: 15, hfy: -28, hflip: 1, topple: 0.1, spill: 0.8, wrap: 0.6 },
+  { ...FALL, hfx2: 10, hfy2: -5, hsq: 1, hfx: 18, hfy: -14, hatTilt: -1, topple: 0.3, spill: 1, wrap: 0.4 },
+  { ...FALL, hfx2: 11, hfy2: -9, topple: 0.5, spill: 1, wrap: 0.3 },
   { ...FALL, topple: 0.72, aL: -5, droop: 1, spill: 1, wrap: 0.2, dust: 0.3 },
   { ...FALL, topple: FALLEN, aL: -5, droop: 1, spill: 1, wrap: 0.2, dust: 0.7 },
   { ...FALL, topple: FALLEN - 0.05, aL: -5, droop: 1, spill: 1, wrap: 0.2, dust: 0.4, diss: 0.12 },
@@ -259,7 +244,7 @@ const DEATH: Partial<Pose>[] = [
 export function deathPose(f: number): Pose {
   return K(DEATH[Math.min(f, D_N - 1)], f / (D_N - 1));
 }
-const D_HOLDS = [50, 60, 70, 80, 90, 90, 90, 90, 100, 110];
+const D_HOLDS = [50, 60, 60, 60, 60, 60, 60, 70, 90, 100, 110];
 
 // ------------------------------------------------------------------ revive (11): the straw gathers, the stake rights itself
 
@@ -268,9 +253,9 @@ const REVIVE: Partial<Pose>[] = [
   { ...FALL, topple: FALLEN, aL: -5, droop: 1, spill: 1, wrap: 0.2, diss: 0.2 },
   { ...FALL, topple: FALLEN, aL: -5, droop: 1, spill: 1, wrap: 0.2, diss: 0.15 },
   { ...FALL, topple: 0.78, aL: -5, droop: 1, spill: 1, wrap: 0.3 },
-  { ...FALL, topple: 0.6, spill: 0.7, wrap: 0.5, deflate: 0.8, hfx2: 6, hfy2: -16, hfx: 14, hfy: -12 },
-  { ...FALL, topple: 0.25, spill: 0.4, wrap: 0.7, deflate: 0.5, hfx2: 3, hfy2: -30, hfx: 8, hfy: -32 },
-  { spill: 0.1, wrap: 0.9, deflate: 0.2, hdy: 3, hat: 0, hfx: -3, hfy: -48, droop: 1, untie: 1, eye: 0 },
+  { ...FALL, topple: 0.6, spill: 0.7, wrap: 0.5, deflate: 0.8, hfx2: 6, hfy2: -14, hfx: 14, hfy: -12 },
+  { ...FALL, topple: 0.25, spill: 0.4, wrap: 0.7, deflate: 0.5, hfx2: 3, hfy2: -26, hfx: 8, hfy: -28 },
+  { spill: 0.1, wrap: 0.9, deflate: 0.2, hdy: 3, hat: 0, hfx: -3, hfy: -44, droop: 1, untie: 1, eye: 0 },
   { hatY: -2, eye: 2, dust: 0.4, spread: 1 },
   { hatY: 0, eye: 1, spread: 0.5, skirt: 1 },
   { lean: -1, skirt: 1 },
@@ -295,8 +280,8 @@ export const ANIMS: Record<MonsterAnim, AnimSpec> = {
   hit: spec(HIT_N, 12, false, HIT_HOLDS, { impact: 0, contact: 0, recover: 3 }),
 };
 export const EXTRA_ANIMS: Partial<Record<MonsterAnimExtra, AnimSpec>> = {
-  summon: spec(SU_N, 10, false, SU_HOLDS, { land: 2 }),
-  death: spec(D_N, 12, false, D_HOLDS, { impact: 0, contact: 0, dissolve: 4 }),
+  summon: spec(SU_N, 12, false, SU_HOLDS, { land: 2 }),
+  death: spec(D_N, 12, false, D_HOLDS, { impact: 0, contact: 0, dissolve: 5 }),
   revive: spec(RV_N, 10, false, RV_HOLDS, { land: 6 }),
   hitHeavy: spec(HH_N, 12, false, HH_HOLDS, { impact: 0, contact: 0, recover: 3 }),
   hitMagic: spec(HM_N, 12, false, HM_HOLDS, { impact: 0, contact: 0, recover: 4 }),
@@ -329,7 +314,7 @@ export function framePose(anim: AnyMonsterAnim, f: number): Pose {
   return p;
 }
 
-export const MUZZLE = { x: RX + 17, y: GY - 31 };
+export const MUZZLE = { x: RX + 17, y: GY + sy(-31) };
 
 export function framePoints(anim: AnyMonsterAnim, f: number): MonsterPoints {
   const o = framePose(anim, f);

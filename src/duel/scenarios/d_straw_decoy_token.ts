@@ -39,6 +39,21 @@ const scenarios: Record<string, Scenario> = {
     stage: { zones: 5, p0: { hand: ['straw_decoys'], monsters: five(N, N, N, 'crag_axeman', 'reed_heron') }, p1: { monsters: five(N, { id: 'ember_wolf', position: 'attack' }) } },
     steps: [decoys(0), { type: 'endTurn', player: 0 }, { type: 'endTurn', player: 1 }, { type: 'changePosition', player: 0, zone: 1 }, { type: 'enterBattle', player: 0 }, attack(1, 1)],
   },
+  stAttackClear: {
+    desc: 'Saman Korkuluk (0 ATK) Kor Kurdu’na saldırır, yolunda kimse yok: tokat, karşı darbe, geri savrulup çözülür',
+    stage: { zones: 5, p0: { hand: ['straw_decoys'], monsters: five(N, N, N, N, 'reed_heron') }, p1: { monsters: five(N, { id: 'ember_wolf', position: 'attack' }) } },
+    steps: [decoys(0), { type: 'endTurn', player: 0 }, { type: 'endTurn', player: 1 }, { type: 'changePosition', player: 0, zone: 1 }, { type: 'enterBattle', player: 0 }, attack(1, 1)],
+  },
+  stBlockedClear: {
+    desc: 'Saman Korkuluk savunmadaki Taş Muhafız’a saldırır (yolunda kimse yok) ve sekip geri döner',
+    stage: { zones: 5, p0: { hand: ['straw_decoys'], monsters: five(N, N, N, N, 'reed_heron') }, p1: { monsters: five(N, { id: 'stone_sentinel', position: 'defense' }) } },
+    steps: [decoys(0), { type: 'endTurn', player: 0 }, { type: 'endTurn', player: 1 }, { type: 'changePosition', player: 0, zone: 1 }, { type: 'enterBattle', player: 0 }, attack(1, 1)],
+  },
+  stCrow: {
+    desc: 'Saman Korkuluklar sahada bekler: karga ara sıra tek bir korkuluğa konar, bakınır, gaklar, uçup gider',
+    stage: { zones: 5, p0: { hand: ['straw_decoys'] }, p1: { monsters: five(N, N, 'ember_wolf') } },
+    steps: [decoys(0)],
+  },
   stDirect: {
     desc: 'Saman Korkuluk doğrudan saldırır (0 hasar: saman tokadı)',
     stage: { zones: 5, p0: { hand: ['straw_decoys'], monsters: five(N, N, N, 'crag_axeman', 'reed_heron') } },

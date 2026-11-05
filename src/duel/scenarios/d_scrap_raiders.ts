@@ -64,9 +64,14 @@ const scenarios: Record<string, Scenario> = {
     steps: [attack(2, 2, 1)],
   },
   srGuardKill: {
-    desc: 'Savunmadaki (yorgun) Hurda Akıncıları (DEF 0) Kor Kurdu’nun saldırısıyla yok olur',
+    desc: 'Savunmadaki (dinlenmiş, kilitsiz) Hurda Akıncıları (DEF 0) Kor Kurdu’nun saldırısıyla yok olur',
     stage: { zones: 5, phase: 'battle', p0: { monsters: five(N, N, 'ember_wolf') }, p1: { monsters: five(N, N, { id: 'scrap_raiders', position: 'defense' }) } },
     steps: [attack(2, 2)],
+  },
+  srLockKill: {
+    desc: 'Kilitli (yorgun) Hurda Akıncıları rakibin turunda Magma Titanı’nın saldırısıyla yok olur: tekerlek yerde kalır, goblinler kaçar',
+    stage: { zones: 5, phase: 'battle', p0: { monsters: five(N, N, 'scrap_raiders') }, p1: { monsters: five(N, N, { id: 'storm_hawk', position: 'attack' }, 'magma_titan') } },
+    steps: [attack(2, 2), end(0), { type: 'enterBattle', player: 1 }, attack(3, 2, 1)],
   },
   srLock: {
     desc: 'Hurda Akıncıları saldırır, tur biter: tekerlek düşer, yorgun savunma + kilit (anahtarlı goblin tamir eder)',
@@ -84,12 +89,12 @@ const scenarios: Record<string, Scenario> = {
     steps: [attack(2, null), end(0), end(1), end(0)],
   },
   srPositionUp: {
-    desc: 'Savunmadaki Hurda Akıncıları saldırı pozisyonuna geçer (tekerlek takılır)',
+    desc: 'Savunmadaki Hurda Akıncıları saldırı pozisyonuna geçer (tayfa siperden fırlar)',
     stage: { zones: 5, p0: { monsters: five(N, N, { id: 'scrap_raiders', position: 'defense' }) } },
     steps: [{ type: 'changePosition', player: 0, zone: 2 }],
   },
   srPosition: {
-    desc: 'Hurda Akıncıları elle savunma pozisyonuna geçer',
+    desc: 'Hurda Akıncıları elle savunma pozisyonuna geçer (dinlenmiş siper: tekerlekler takılı, kilit yok)',
     stage: { zones: 5, p0: { monsters: five(N, N, 'scrap_raiders') } },
     steps: [{ type: 'changePosition', player: 0, zone: 2 }],
   },

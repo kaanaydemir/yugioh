@@ -45,6 +45,8 @@ import { atFrame, atMark, panAt, play, start, takeCharge } from '../_v3/sound';
 import { worldBox } from '../strikes-b/_kit';
 import { runSummon, type Stage } from '../summon-a/_kit';
 import { FLOOR_DEPTH, Litter, chaffBurst, crowOff, eyeGlint, fallShadow, plantBurst, seedFx, stakeDust, strawPoint, windWrap } from './_straw_decoy_token-fx';
+import { crowVisits } from './_straw_decoy_token-crow';
+import { D_F, SU_F } from '../../art/monsters-v3/straw_decoy_token-anims';
 import type { SfxName } from '../../audio/sfx';
 
 const ID = 'straw_decoy_token';
@@ -52,8 +54,10 @@ const ID = 'straw_decoy_token';
 const STRAW_RAMP: Ramp = [PAL.night2, PAL.gold1, PAL.gold2, PAL.gold3, PAL.gold4];
 const STAKES: readonly SfxName[] = ['scarecrowStakeA', 'scarecrowStakeB', 'scarecrowStakeC'];
 /** A batch of tokens: each one starts this long after the one before. */
-const STAGGER_MS = 170;
+const STAGGER_MS = 120;
 const HIT_ANIMS: readonly AnyMonsterAnim[] = ['hit', 'hitHeavy', 'hitMagic'];
+/** Depth lift of a striking token over the unit band (units are UNIT + y, y < 360; FX stays above). */
+const STRIKE_LIFT = 400;
 
 type BattleEv = Extract<GameEvent, { type: 'battle' }>;
 type VanishEv = Extract<GameEvent, { type: 'tokenVanish' }>;
@@ -76,12 +80,13 @@ function entranceFor(k: number, n: number): (S: Stage) => Promise<void> {
     seedFx(u.uid * 37 + k * 11 + 3);
     const pool = S.glow({ color: PAL.gold3, radius: 18, intensity: 0.3, anim: 'flicker', fadeIn: 120 });
     play('scarecrowFall', { volume: 0.55, pan });
-    await fallShadow(sc, S.home, 170, S.depth + 0.5);
+    await fallShadow(sc, S.home, 150, S.depth + 0.5);
     const p = summonPose(sc, u, { ramp: STRAW_RAMP, hologram: false });
     if (!p) return;
     const snd: { wrap: ReturnType<typeof start> | null } = { wrap: null };
     atMark(u, 'summon', 'land', () => {
-      play(STAKES[k % STAKES.length], { volume: 0.9, pan });
+      // (a token is small: its "tok" sits ≈ 6 dB under the spell's activation, SE-7)
+      play(STAKES[k % STAKES.length], { volume: 0.45, pan });
       plantBurst(sc, S.home, dir);
       pool.setIntensity(0.65, 40);
       void shake(sc, 50, 1);
@@ -89,30 +94,31 @@ function entranceFor(k: number, n: number): (S: Stage) => Promise<void> {
     atFrame(
       u,
       'summon',
-      3,
+      SU_F.wrap,
       () => {
         snd.wrap = start('scarecrowWrap', { volume: 0.7, pan });
-        windWrap(sc, u, S.home, dir, u.rangeMs('summon', 3, 6));
+        windWrap(sc, u, S.home, dir, u.rangeMs('summon', SU_F.wrap, SU_F.jacketIn + 1));
       },
       { late: false },
     );
+    // the jacket flies in (its whoosh starts as it enters, its snap lands on the frame it goes on)
     atFrame(
       u,
       'summon',
-      6,
+      SU_F.jacketIn,
       () => {
-        snd.wrap?.stop(60);
+        snd.wrap?.stop(80);
         snd.wrap = null;
         play('scarecrowJacket', { volume: 0.75, pan });
       },
       { late: false },
     );
-    atFrame(u, 'summon', 8, () => play('scarecrowSack', { volume: 0.7, pan }), { late: false });
-    atFrame(u, 'summon', 10, () => play('scarecrowHat', { volume: 0.6, pan }), { late: false });
+    atFrame(u, 'summon', SU_F.sack, () => play('scarecrowSack', { volume: 0.7, pan }), { late: false });
+    atFrame(u, 'summon', SU_F.hat, () => play('scarecrowHat', { volume: 0.6, pan }), { late: false });
     atFrame(
       u,
       'summon',
-      11,
+      SU_F.eye,
       () => {
         play('scarecrowEye', { volume: 0.8, pan });
         eyeGlint(sc, u);
@@ -129,10 +135,53 @@ function entranceFor(k: number, n: number): (S: Stage) => Promise<void> {
       },
       { late: false },
     );
+    // a token set in defense hunches into its guard straight out of the summon's last pose (never a pop from
+    // the upright idle f0 into the guard loop)
+    let hunch: Promise<void> = Promise.resolve();
+    if (u.position === 'defense' && u.has('toGuard')) {
+      atFrame(
+        u,
+        'summon',
+        u.frameCount('summon') - 1,
+        () => {
+          play('scarecrowLower', { volume: 0.45, pan });
+          hunch = u.playRange('toGuard', 0, undefined, { hold: true }).then(() => {
+            if (u.sprite.active && !u.retired && !u.claimed) u.rest();
+          });
+        },
+        { late: false },
+      );
+    }
     await p.done;
+    await hunch;
     snd.wrap?.stop(40);
     void pool.fadeOut(300);
+    desync(u);
+    crowVisits(sc, S.ctx.views.field, u.uid * 97 + 13);
   };
+}
+
+/**
+ * Tokens of one batch must not sway as clones: each one's idle / guard loop runs at its own pace (a timeScale from
+ * its uid, 0.86…1.14), so loops that start together drift apart within a few seconds — never a jump to another
+ * frame. One-shots always run at 1 (the timeScale is only ours while a loop plays and a play's own is respected).
+ */
+function desync(u: MonsterUnit): void {
+  const s = u.sprite;
+  const unit = u as MonsterUnit & Record<string, unknown>;
+  if (unit.__strawPace || !s.active) return;
+  const ts = 0.86 + (((u.uid * 37 + 11) % 29) / 28) * 0.28 + 0.0013;
+  const apply = () => {
+    if (!s.active) return;
+    const a = u.frameInfo().anim;
+    const loop = a === 'idle' || a === 'guard';
+    if (loop && s.anims.timeScale === 1) s.anims.timeScale = ts;
+    else if (!loop && s.anims.timeScale === ts) s.anims.timeScale = 1;
+  };
+  unit.__strawPace = true;
+  s.on('animationstart', apply);
+  s.once('destroy', () => s.off('animationstart', apply));
+  apply();
 }
 
 /** Old entrance (no v3 summon pose): the generic kit's own. */
@@ -247,34 +296,37 @@ async function vanishV3(sc: Phaser.Scene, field: FieldView, ev: VanishEv, o: { p
     // never stall the vanish on the floor); each beat fires on the tick its frame is shown
     let blown: Promise<void> = Promise.resolve();
     let leave: Promise<unknown> = Promise.resolve();
+    const GUST = D_F.topple + 1;
     const beats: Record<number, () => void> = {
-      1: () => {
+      [D_F.untie]: () => {
         play('scarecrowUntie', { volume: 0.85, pan });
         const c = strawPoint(u, 'core') ?? { x: ground.x, y: ground.y - 27 };
         chaffBurst(sc, { x: c.x, y: c.y + 4 }, { x: wind * 0.6, y: -0.4 }, ground.y, 8, s.depth + 0.4);
       },
-      2: () => {
+      // the sack head lands on the floor (it fell in an arc off the stake, f2 → f5) and bounces once
+      [D_F.sack]: () => {
         play('scarecrowSack', { volume: 0.55, pan });
         const hd = strawPoint(u, 'head');
-        if (hd) litter.throw(hd, 3, { vx: wind * 30, vy: -30, spread: 20, floorY: ground.y });
+        if (hd) litter.throw({ x: hd.x, y: hd.y + 3 }, 3, { vx: face * 20, vy: -30, spread: 20, floorY: ground.y });
       },
-      3: () => {
+      [D_F.hat]: () => play('scarecrowHat', { volume: 0.4, pan }),
+      [D_F.spill]: () => {
         play('scarecrowSpill', { volume: 0.85, pan });
         const c = strawPoint(u, 'core') ?? { x: ground.x, y: ground.y - 24 };
         litter.throw({ x: c.x, y: c.y + 6 }, 14, { vx: -face * 20, vy: -20, spread: 45, floorY: ground.y, floorJitter: 4 });
         litter.throw({ x: ground.x, y: ground.y - 10 }, 10, { vx: face * 25, vy: -40, spread: 35, floorY: ground.y, delay: 80, floorJitter: 4 });
       },
-      7: () => {
-        play('scarecrowTopple', { volume: 0.9, pan });
-        const top = strawPoint(u, 'head', { anim: 'death', frame: 7 });
-        const bar = strawPoint(u, 'barL', { anim: 'death', frame: 7 }) ?? ground;
+      [D_F.topple]: () => {
+        play('scarecrowTopple', { volume: 0.8, pan });
+        const top = strawPoint(u, 'head', { anim: 'death', frame: D_F.topple });
+        const bar = strawPoint(u, 'barL', { anim: 'death', frame: D_F.topple }) ?? ground;
         stakeDust(sc, ground, top && Math.abs(top.x - ground.x) > Math.abs(bar.x - ground.x) ? top : bar, ground.y);
         litter.throw({ x: R((ground.x + bar.x) / 2), y: ground.y - 4 }, 5, { vx: 0, vy: -50, spread: 40, floorY: ground.y });
         void shake(sc, 70, 1);
         // the gust comes right behind the impact
       },
-      // f8: the wind takes the straw at once (no still beat on the floor); the card dissolves under it
-      8: () => {
+      // the wind takes the straw at once after the topple (no still beat on the floor); the card dissolves under it
+      [GUST]: () => {
         if (litter.blowing) return;
         play('scarecrowScatter', { volume: 0.75, pan });
         blown = litter.blowAway(wind);
@@ -293,16 +345,16 @@ async function vanishV3(sc: Phaser.Scene, field: FieldView, ev: VanishEv, o: { p
       },
     };
     const last = u.frameCount('death') - 1;
-    // f0 … f7 on the sheet's holds (the fall a little quicker); the topple's impact (f7) is followed 60 ms later
-    // by the gust (f8), and the remains thin out over f8 / f9 while the straw blows off
-    for (let f = from; f <= Math.min(7, last); f++) {
+    // f0 … the topple on the sheet's holds (the fall a little quicker); the topple's impact is followed 60 ms
+    // later by the gust, and the remains thin out over the last two frames while the straw blows off
+    for (let f = from; f <= Math.min(D_F.topple, last); f++) {
       if (!s.active) break;
       u.asClaimant(() => u.pose('death', f));
       beats[f]?.();
-      await sleep(sc, f === 7 ? 60 : Math.round(u.frameMs('death', f) * (f >= 4 ? 0.6 : 1)));
+      await sleep(sc, f === D_F.topple ? 60 : Math.round(u.frameMs('death', f) * (f >= 4 ? 0.8 : 1)));
     }
-    beats[8]();
-    for (const [f, a] of [[8, 0.66], [9, 0.33]] as const) {
+    beats[GUST]();
+    for (const [f, a] of [[GUST, 0.66], [GUST + 1, 0.33]] as const) {
       if (!s.active) break;
       if (f <= last) u.asClaimant(() => u.pose('death', f));
       s.setAlpha(a);
@@ -393,6 +445,28 @@ async function handOver(ctx: CinematicContext<BattleEv>, uid: number | null): Pr
 
 registerCardHook(ID, 'defend', (ctx) => handOver(ctx as CinematicContext<BattleEv>, (ctx.ev as BattleEv).targetUid), { priority: 20, name: 'd:straw_decoy_token:defend' });
 
+// ================================================================ position
+
+/**
+ * A position change keeps the generic card turn and pose, plus the scarecrow's own sound: it hunches on its stake
+ * (scarecrowLower on toGuard f1) or straightens up (scarecrowRaise on fromGuard f1). The visiting crow, if any, takes
+ * off on its own (the unit is posed).
+ */
+registerEvent(
+  'positionChange',
+  async (ctx) => {
+    const ev = ctx.ev;
+    const u = ctx.views.field.unit(ev.uid);
+    if (!LOOK_V3 || !u || u.cardId !== ID || !u.sprite.active) return ctx.base();
+    const pan = panAt(u.home.x);
+    const toDef = ev.position === 'defense';
+    const anim: AnyMonsterAnim = toDef ? 'toGuard' : 'fromGuard';
+    if (u.has(anim)) atFrame(u, anim, 1, () => play(toDef ? 'scarecrowLower' : 'scarecrowRaise', { volume: 0.7, pan }), { maxMs: 1500 });
+    await ctx.base();
+  },
+  { priority: 20, name: 'd:straw_decoy_token:position' },
+);
+
 // ================================================================ strike
 
 /** Where the feet stand so the straw hand (tipR) of `frame` lands on `aim` (world px; offsets are position-free). */
@@ -427,10 +501,12 @@ registerStrike(
     // the stake stands on the floor line of the target (never floats over / under it)
     feet = { x: feet.x - sgn * (s.blocked ? 3 : 0), y: R(s.toGround.y + (s.direct ? 0 : 2)) };
     const dist = Math.hypot(feet.x - feetHome.x, feet.y - feetHome.y);
+    // the little token travels IN FRONT of every unit on its way (a 0/0 straw slap must never be hidden behind a
+    // big monster standing on the lane); it sinks back into its row when home
     const place = (p: XY, lift = 0) => {
       if (!spr.active || u.retired) return;
       spr.setPosition(R(p.x), R(p.y - u.hover - lift));
-      spr.setDepth(unitDepth(p.y));
+      spr.setDepth(unitDepth(p.y) + STRIKE_LIFT);
     };
     /** Hop along a straight line in `n` hops of `ms` each (whole px, a 7-px arc, a "tok" per landing). */
     const hops = async (a: XY, b: XY, n: number, ms: number, vol: number) => {
@@ -459,7 +535,7 @@ registerStrike(
     const hitAt: XY = s.direct ? { x: R(s.to.x), y: R(s.to.y) } : tip;
     s.impact(hitAt);
     const blow = norm({ x: s.toGround.x - u.home.x, y: s.toGround.y - u.home.y });
-    if (s.blocked) {
+    if (s.blocked && !loses) {
       play('scarecrowBounce', { volume: 0.9, pan: panAt(tip.x) });
       chaffBurst(sc, tip, { x: -blow.x, y: -0.6 }, s.toGround.y, 12);
     } else {
@@ -472,7 +548,15 @@ registerStrike(
       const vi = ctx.findType('tokenVanish', (e) => e.uid === u.uid, { until: (e) => e.type === 'attackDeclare' || e.type === 'turnStart' });
       if (vi >= 0 && usable(u)) {
         ctx.consumeAt(vi);
-        await sleep(sc, 90);
+        // the counter blow knocks it back one long hop toward home (out of the defender's shadow, in the open),
+        // and it comes undone where it lands
+        await sleep(sc, 60);
+        const kick: XY = { x: R(feet.x + (feetHome.x - feet.x) * Math.min(0.45, 22 / Math.max(1, dist))), y: R(feet.y + (feetHome.y - feet.y) * Math.min(0.45, 22 / Math.max(1, dist))) };
+        if (spr.active && !u.claimed) u.pose('hitHeavy', 1);
+        await animate(sc, 170, (t) => place({ x: feet.x + (kick.x - feet.x) * t, y: feet.y + (kick.y - feet.y) * t }, Math.sin(Math.PI * t) * 10));
+        place(kick);
+        play('scarecrowHop', { volume: 0.6, pan: panAt(kick.x) });
+        chaffBurst(sc, { x: kick.x, y: kick.y - 1 }, { x: -blow.x, y: -0.3 }, kick.y, 5, DEPTH.FX - 1);
         await vanishV3(sc, ctx.views.field, ctx.events[vi] as VanishEv, { struck: true, push: { x: -blow.x, y: 0 } });
       }
       return;

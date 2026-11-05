@@ -27,6 +27,8 @@
 //           raidersPant          the tired guard: three mouths panting + steam hiss from the stove
 //           raidersTink          a repair tap of the wrench on the bare axle (guard frames)
 //   lock end raidersWheelOn      the wheel is hammered back on: BANG + the engine coughs + a short cheer
+//   idle    raidersChatter       every third idle loop: two goblins bicker + a loose plate's takırtı (quiet)
+//   guard   raidersBrace         the rested guard: three "hup!"s as the crew ducks, the wrench clanks down on the ram
 //   deathStart raidersCreak      the cart groans under the blow (iron stress, rivets popping)
 //           raidersFlee          the goblins bail out three ways: three squeals, L / C / R
 //   dissolve   raidersCollapse   the tub caves in: descending clanks

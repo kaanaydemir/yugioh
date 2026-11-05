@@ -102,11 +102,11 @@ export function guardPose(f: number): Pose {
     ...IDLE0,
     ...RG,
     // the springs settle on the engine beat, every other frame
-    deck: [0, 0, 1, 1, 0, 0, 1, 1][k],
+    deck: [0, 1, 1, 0, 0, 1, 1, 0][k],
     // the pedaller peeks over the bar and ducks again
     pHy: [3, 3, 2, 1, 1, 2, 3, 3][k],
     pHx: [0, 0, 0, 1, 1, 0, 0, 0][k],
-    pE: [1, 1, 0, 0, 0, 1, 1, 2][k],
+    pE: [1, 1, 0, 0, 0, 1, 2, 1][k],
     // the slinger draws, holds, eases off
     sPull: [0.4, 0.55, 0.7, 0.8, 0.8, 0.7, 0.55, 0.4][k],
     sHy: [0, 0, -1, -1, -1, 0, 0, 0][k],

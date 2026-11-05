@@ -83,3 +83,27 @@ export function setTired(u: MonsterUnit, on: boolean): void {
 export function clearTired(sc: Phaser.Scene, uid: number): void {
   tiredUids.get(sc)?.delete(uid);
 }
+
+// ---------------------------------------------------------------- the padlock while the lock shows
+//
+// The mid-batch view syncs (Director.syncFrontier) reconcile the field with states projected from the events
+// (projectBatch), and no event carries lockPositionTurn: between the End Phase and the end of the next turn's
+// draw batch they clear the padlock the final state shows again (critic r1: gone for the whole opponent draw).
+// While the cart shows its lock, its plate keeps the padlock: a null from a sync is read as 'kneel' until the
+// lock end lets go (holdPadlock(u, false)).
+const held = new WeakSet<MonsterUnit>();
+const patched = new WeakSet<MonsterUnit>();
+
+export function holdPadlock(u: MonsterUnit, on: boolean): void {
+  if (!LOOK_V3 || u.cardId !== ID) return;
+  const was = held.has(u);
+  if (on) held.add(u);
+  else held.delete(u);
+  if (!patched.has(u)) {
+    patched.add(u);
+    const orig = u.setLock.bind(u);
+    u.setLock = (l) => orig(l === null && held.has(u) ? 'kneel' : l);
+  }
+  if (on) u.setLock('kneel');
+  else if (was) u.setLock(null);
+}

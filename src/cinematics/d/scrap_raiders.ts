@@ -30,6 +30,7 @@
 // material (§5.2 C5): rust plates slide out, gears roll and fall flat, a wheel rolls away and settles, the
 // stove's last embers die. Camera never moves (EF-8).
 
+import Phaser from 'phaser';
 import { PAL, RAMPS, type Ramp } from '../../art/palette';
 import { plateLock } from '../../engine';
 import type { GameEvent, GameState, Uid } from '../../engine/types';
@@ -65,7 +66,7 @@ import {
   sweatAndSteam,
   tyreSparks,
 } from './_scrap_raiders-fx';
-import { clearTired, isTired, setTired, warmTired } from './_scrap_raiders-tired';
+import { clearTired, holdPadlock, isTired, setTired, warmTired } from './_scrap_raiders-tired';
 
 const ID = 'scrap_raiders';
 /** The hologram onset's tones: rust iron. */
@@ -78,6 +79,25 @@ const norm = (p: XY): XY => {
   return { x: p.x / l, y: p.y / l };
 };
 const live = (u: MonsterUnit): boolean => u.sprite.active && !u.retired;
+
+// ================================================================ idle identity
+
+/**
+ * The idle's sound (§5.1 C5 SFX: formant chatter + the loose plate's takırtı): every third idle loop the pedaller
+ * and the wrench goblin bicker on their mouth frames (idle f2–f5), quietly — a living detail, never over a set
+ * piece (only while the unit rests). Attached once per unit (summon, and every turn start for staged units).
+ */
+const chatty = new WeakSet<MonsterUnit>();
+function idleChatter(u: MonsterUnit): void {
+  if (!LOOK_V3 || chatty.has(u) || !u.sprite.active) return;
+  chatty.add(u);
+  let n = 0;
+  u.sprite.on(Phaser.Animations.Events.ANIMATION_REPEAT, (a: Phaser.Animations.Animation) => {
+    if (!a.key.endsWith(':idle') || u.posed || u.retired) return;
+    if (n++ % 3 !== 1) return;
+    atFrame(u, 'idle', 2, () => play('raidersChatter', { volume: 0.55, pan: panAt(u.home.x) }), { late: false, maxMs: 600 });
+  });
+}
 
 // ================================================================ summon
 
@@ -158,6 +178,7 @@ async function entranceV3(S: Stage): Promise<void> {
   );
   await p.done;
   void fire.fadeOut(300);
+  idleChatter(u);
 }
 
 registerCardHook(
@@ -177,6 +198,21 @@ registerStrike(
   ID,
   async (s: StrikeArgs) => {
     if (!LOOK_V3) return s.base?.();
+    // the cart drives over its own plate's row (a P2 charge runs down the screen): the plate goes under the cart
+    // while it does, and back on top at home
+    const img = s.attacker.badge.image;
+    const d0 = img.depth;
+    try {
+      await hurdaHucumu(s, d0);
+    } finally {
+      if (img.active) img.setDepth(d0);
+    }
+  },
+  { priority: 20, name: 'd:scrap_raiders:strike' },
+);
+
+async function hurdaHucumu(s: StrikeArgs, badgeDepth: number): Promise<void> {
+  {
     const u = s.attacker;
     const sc = s.scene;
     const spr = u.sprite;
@@ -232,6 +268,8 @@ registerStrike(
       if (!live(u)) return;
       spr.setPosition(Math.round(p.x), Math.round(p.y - lift));
       spr.setDepth(Math.max(unitDepth(p.y), tDepth));
+      const img = u.badge.image;
+      if (img.active) img.setDepth(Math.abs(p.x - home.x) > 4 || Math.abs(p.y - home.y) > 4 ? Math.min(badgeDepth, spr.depth - 0.05) : badgeDepth);
     };
     // ---- off it goes: the slinger is thrown off the back and runs behind
     rev.stop(40);
@@ -316,9 +354,8 @@ registerStrike(
     play('raidersBounce', { volume: 0.55, pitch: 0.92, pan });
     heapDust(sc, u.home, 0.5, spr.depth - 0.2);
     if (!u.claimed) await u.playRange('attack', CON + 4);
-  },
-  { priority: 20, name: 'd:scrap_raiders:strike' },
-);
+  }
+}
 
 // ================================================================ death
 
@@ -480,6 +517,7 @@ async function wheelOn(u: MonsterUnit, o: { unlock?: () => void } = {}): Promise
 async function braceIn(u: MonsterUnit): Promise<void> {
   const pan = panAt(u.home.x);
   setTired(u, false);
+  holdPadlock(u, false);
   atFrame(u, 'toGuard', 1, () => play('raidersBrace', { volume: 0.85, pan }), { late: false, maxMs: 2000 });
   await u.playRange('toGuard', 0, undefined, { hold: true });
   if (live(u)) u.rest();
@@ -529,7 +567,7 @@ registerEvent(
         // change (no lock) is the rested guard
         const slot = slotOf(ctx.after, ev.uid);
         const lock = slot ? plateLock(ctx.after, slot) : null;
-        if (lock === 'kneel') jobs.push(wheelOff(u, { lock: () => u.setLock(lock) }));
+        if (lock === 'kneel') jobs.push(wheelOff(u, { lock: () => holdPadlock(u, true) }));
         else jobs.push(braceIn(u));
       } else jobs.push(braceOut(u));
       await capped(ctx.scene, Promise.all(jobs), 900);
@@ -557,6 +595,10 @@ registerEvent(
     const due: MonsterUnit[] = [];
     for (const pl of st.players)
       for (const m of pl.monsters) {
+        if (m && m.faceUp && ctx.cardId(m.uid) === ID) {
+          const cu = ctx.unit(m.uid);
+          if (cu) idleChatter(cu);
+        }
         if (!m || !m.faceUp || m.position !== 'defense' || m.lockPositionTurn === undefined) continue;
         if (ctx.cardId(m.uid) !== ID) continue;
         const u = ctx.unit(m.uid);
@@ -564,7 +606,7 @@ registerEvent(
         // still locked at the new turn: keep the tired sheet (a unit rebuilt for this uid gets it back) and the padlock
         if (ctx.ev.turn <= m.lockPositionTurn) {
           setTired(u, true);
-          u.setLock('kneel');
+          holdPadlock(u, true);
           continue;
         }
         if (m.lockPositionTurn === st.turn && isTired(u) && u.has('fromGuard')) due.push(u);
@@ -579,13 +621,14 @@ registerEvent(
           try {
             await wheelOn(u, {
               unlock: () => {
-                u.setLock(null);
+                holdPadlock(u, false);
                 play('raidersCheer', { volume: 0.7, pan: panAt(u.home.x) });
               },
             });
           } finally {
             u.posed = false;
             setTired(u, false);
+            holdPadlock(u, false);
             if (live(u)) u.rest();
           }
         }),

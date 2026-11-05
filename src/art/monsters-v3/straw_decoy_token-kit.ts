@@ -138,11 +138,13 @@ export type CrowMode = 'perch' | 'peck' | 'caw' | 'crouch' | 'fly' | 'far';
 export function drawCrow(p: PixelCanvas, x: number, y: number, mode: CrowMode, wing: number, f: Side, L: Side): void {
   const X = rnd(x);
   const Y = rnd(y);
-  const B = PAL.night1;
+  const B = PAL.night0;
   if (mode === 'far') {
     // two little wing strokes, a long way off
     const up = wing === 0 ? -1 : 0;
-    for (const [dx, dy] of [[-3, up], [-2, up], [-1, 0], [0, 1], [1, 0], [2, up], [3, up]] as const) p.set(X + dx, Y + dy, PAL.ink);
+    for (const [dx, dy] of [[-3, up], [-2, up], [-1, 0], [0, 1], [1, 0], [2, up], [3, up]] as const) p.set(X + dx, Y + dy, PAL.night0);
+    // the wing tips catch the light (it reads as a bird against the dark arena, not a smudge)
+    p.set(X - 3, Y + up - 1, PAL.steel).set(X + 3, Y + up - 1, PAL.steel);
     return;
   }
   const q = new PixelCanvas(p.w, p.h);
@@ -183,12 +185,12 @@ export function drawCrow(p: PixelCanvas, x: number, y: number, mode: CrowMode, w
   for (let yy = 0; yy < q.h; yy++)
     for (let xx = 0; xx < q.w; xx++) {
       if (src.get(xx, yy) !== B) continue;
-      if (!src.isOpaque(xx, yy - 1)) q.set(xx, yy, PAL.night4);
-      else if (!src.isOpaque(xx + L, yy)) q.set(xx, yy, PAL.night3);
+      if (!src.isOpaque(xx, yy - 1)) q.set(xx, yy, PAL.steel);
+      else if (!src.isOpaque(xx + L, yy)) q.set(xx, yy, PAL.night2);
     }
   for (const b of beak) q.set(b[0], b[1], PAL.stone3);
   q.outline(PAL.ink);
   p.blit(q, 0, 0);
   // the eye: one warm pixel (light, never outlined)
-  p.set(eye[0], eye[1], PAL.gold3);
+  p.set(eye[0], eye[1], PAL.gold4);
 }

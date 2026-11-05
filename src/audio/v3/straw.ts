@@ -28,6 +28,8 @@
 //   dissolve scarecrowSpill        the straw bundles spill to the floor (a pouring rustle)
 //   afterDissolve scarecrowTopple  the stake topples onto the floor: a clatter "tok" and two little bounces
 //   burst   scarecrowScatter       the wind takes the last of the straw (an airy gust + sparse grains)
+//   (crow)  scarecrowFlap          the visiting crow takes off from a shoulder (wing claps + flutter)
+//   (pos)   scarecrowLower / Raise to defense / to attack: straw rustle + a wood creak down / up
 //   reviveGather scarecrowGather   the straw gathers back (rising rustle, sustained → land)
 //   reviveLand   scarecrowRise     the stake rights itself (a "tok" + the eyes' tik)
 // Levels: pre-chain linear amplitudes like the slice; small beats duck ≤ 0.3, the planted stake and the topple
@@ -35,7 +37,7 @@
 
 import type { Recipe } from '../sounds';
 import { perc, type Pt, type Voice } from '../synth';
-import { puff, scaled, sweep, thump } from './kit';
+import { scaled, sweep, thump } from './kit';
 
 /** Dry wood "tok": a splintery click + three short inharmonic wood modes (+ an optional dirt thud). */
 function tok(v: Voice, t: number, f: number, g: number, o: { dirt?: number; dec?: number; to?: AudioNode } = {}): void {
@@ -297,9 +299,10 @@ export const V3_STRAW_RECIPES = {
     duck: 0.25,
     play(v) {
       rustle(v, 0, 0.5, 70, 0.08, { curve: 1.5, f: 4600 });
-      // bundles land on the marble: soft dull pats
-      v.bursts([0.05, 0.16, 0.29, 0.4], [0.07, 0.06, 0.045, 0.03], { dec: 0.025, f: 650, q: 1, kind: 'pink' });
-      puff(v, 0.02, 0.04, 0.3, 1800, { kind: 'pink', att: 0.03 });
+      // bundles land on the marble: dry, dull pats (band-passed white grit, never a soft pink puff)
+      v.bursts([0.05, 0.16, 0.29, 0.4], [0.06, 0.05, 0.04, 0.025], { dec: 0.018, f: 900, q: 1.3, kind: 'white' });
+      // the bed under it: a low, dense, dry grain trickle (straw settling on straw)
+      v.crackle({ t: 0.03, d: 0.36, n: 46, g: 0.12, f: 2100, q: 0.9, dec: 0.006, curve: 1.8 });
     },
   },
   /** Vanish: the stake topples onto the floor — a clatter "tok" and two smaller bounces. */
@@ -325,6 +328,46 @@ export const V3_STRAW_RECIPES = {
     play(v) {
       sweep(v, 0, 0.5, [600, 1900, 3000], 0.25, { kind: 'pink', q: 1, peakAt: 0.4, pan: [-0.25, 0.35] });
       rustle(v, 0.04, 0.42, 20, 0.04, { curve: 1.2, f: 6200 });
+    },
+  },
+  /** The visiting crow takes off: two quick wing claps and a feathery flutter (small, a bird, not a cloth). */
+  scarecrowFlap: {
+    cap: 2,
+    gap: 0.2,
+    verb: 0.3,
+    duck: 0.05,
+    play(v) {
+      v.bursts([0, 0.075, 0.15, 0.215], [0.13, 0.11, 0.07, 0.04], { dec: 0.022, f: 1500, q: 1.1, kind: 'white' });
+      sweep(v, 0, 0.3, [900, 2200, 1300], 0.05, { kind: 'pink', q: 1.6, peakAt: 0.3 });
+      v.crackle({ t: 0.01, d: 0.22, n: 10, g: 0.05, f: 3800, q: 0.9, dec: 0.005, curve: 1.2 });
+    },
+  },
+  /** Position → defense: the scarecrow hunches on its stake — a falling straw rustle and a low wood creak. */
+  scarecrowLower: {
+    cap: 2,
+    gap: 0.1,
+    verb: 0.25,
+    duck: 0.1,
+    play(v) {
+      rustle(v, 0, 0.22, 16, 0.05, { curve: 1.6, f: 4400 });
+      const bp = v.filt('bandpass', [[0, 360], [0.22, 250, 'e']], 4);
+      const gate = v.ring([[0, 30], [0.22, 18, 'e']], { d: 0.26, mix: 0.85, to: bp });
+      v.tone('sawtooth', [[0, 330], [0.22, 240, 'e']], { g: [[0, 0], [0.04, 0.07], [0.18, 0.05], [0.26, 0.0001, 'e']], to: gate });
+      tok(v, 0.2, 560, 0.06, { dec: 0.035 });
+    },
+  },
+  /** Position → attack: the scarecrow straightens up — a rising rustle, a wood creak upward, the hat flicks. */
+  scarecrowRaise: {
+    cap: 2,
+    gap: 0.1,
+    verb: 0.25,
+    duck: 0.1,
+    play(v) {
+      rustle(v, 0, 0.2, 16, 0.05, { curve: 0.8, f: 5200 });
+      const bp = v.filt('bandpass', [[0, 260], [0.2, 400, 'e']], 4);
+      const gate = v.ring([[0, 20], [0.2, 34, 'e']], { d: 0.24, mix: 0.85, to: bp });
+      v.tone('sawtooth', [[0, 250], [0.2, 370, 'e']], { g: [[0, 0], [0.04, 0.06], [0.16, 0.06], [0.24, 0.0001, 'e']], to: gate });
+      v.noise('pink', { t: 0.19, g: perc(0.1, 0.025, 0.002), to: v.filt('bandpass', 1300, 1.5) });
     },
   },
   /** Revive gather: the straw gathers back round the stake — a rising rustle (sustained). */
