@@ -261,3 +261,44 @@ iki çekim 17.5k piksel, eski↔yeni 16.5k piksel fark — fark yalnız v1'in ke
 v1 önizlemesi çekimler arası deterministik değil; NT değişikliğinden kaynaklı fark yok. Not: platform.ts / LightLayer.ts
 tur 2 değişiklikleri `37c582c` checkpoint commit'inde duruyor (kaybolmamış).
 Kalan farklar: hedefte çizgilerin dışında yumuşak neon ışıması; hedefte kırmızı biraz daha canlı; hedef tahta daha büyük.
+
+### Düellocu kürsüleri (2026-11-05)
+
+Önce: `shots/arena/pod-0.png`, `pod-0-sbs.png`, `pod-0-pz.png` (kürsü yakın çekimi, solda biz / sağda hedef).
+Somut farklar: bizim kürsü 3 ince, düz basamak (lacivert metal), her basamakta neon çizgi → iç içe hedef tahtası gibi
+çizgili okunuyordu; hedefte 2 tıknaz taş basamak, kalın yükseltiler, oyuncu rengi yalnız ışık olarak (üst kenar parlıyor,
+alt basamağın ön kenarında ince ışık çizgisi).
+1. `art/arena-nt/pads.ts` `paintPad` yeniden yazıldı: 2 basamak (`DAIS` steps 2, üst yükselti 5 px, alt 4 px, alt basamak
+   her yana 9×4 px geniş), arduvaz taş yüzler (RAMPS.stone; sol yükselti aydınlık, sağ gölgeli, alt basamak ayağı koyu satır),
+   üst kenarda oyuncu renginde basamaklı ışıma (kenar + bir satır içte bir ton aşağı), alt basamağın ön kenarlarında ince
+   ışık çizgisi, ayak altında koyu temas lekesi. Tuval 86×52 → 64×40 (merkez aynı ayak noktası). → `pod-1-pz.png`
+2. Seviye 1'de de iç ışıma satırı (ramp[1]) → `pod-2-pz.png`, nabız filmi `pod-2-film.png`
+3. Kenar en düşük seviyede de ramp[3] (sönük dipte bile parlak; nabız iç satır + tepe ramp[4] ile) →
+   `pod-3.png`, `pod-3-sbs.png`, `pod-3-film.png` (P2 nabız filmi).
+Kapılar: typecheck temiz, palcheck `pod-3.png` PASS. v1: kürsü atlası yalnız ARENA_NT yolunda (boot 29 kapılı).
+Kalan farklar: hedefte kürsülerin çevresinde zemine taşan renkli ışık havuzu var (tahta üstünde dither yasak, düz palet
+tonu gri zeminde koyu/doygun kalıyor → yapılmadı); duelistXY sabit olduğu için P1 kürsüsü sahne ön kenarına yaslı
+(yarısı yan duvarın önünde), P2 arka kenarın arkasında — hedefte ikisi de tahta üstünde; kırmızı ışıma hedeften biraz sönük.
+
+#### Düellocu kürsüleri — eleştiri turu 1/3 düzeltmeleri (2026-11-05)
+Önce: `shots/arena/pod-4.png`, `pod-4-pz.png` (üst: biz, alt: hedef; sol P1, sağ P2), `pod-4-p1z.png`.
+1. **#1 yumuşak temas gölgesi** (geçerli): kaynak kürsü atlası değil, `view/light/LightLayer.ts` stepped kolundaki iki radyal
+   gradyan (`ensureFloorShadowTex 34×18` + `ensureFootTex 14×7`, düellocu başına). `DUELIST_SOFT_SHADOWS = false` ile kapatıldı
+   (yalnız v3 stepped kolu; canavar ayak gölgeleri dokunulmadı). Yerine `art/arena-nt/pads.ts` içinde sert, iki düz bantlı
+   (ink + stone0) döküm gölgesi: alt basamak elmasının sağ-alta (+4, +rise+2) kaydırılmış kopyası; ayak altı koyu yama aynen.
+2. **#2 ışıma ince çizgi** (geçerli): tahta-üstü dither yasağı yüzünden zemin halkası yerine eleştirinin B seçeneği: üst kenar
+   artık iki tam bant (kenar + iç satır, her seviyede), alt basamağın dış kenarı da (arka kenarlar bir ton aşağı) ışıyor,
+   üst yükseltinin ilk satırı oyuncu renginde (kenardan dökülen ışık). Kenar kalınlığı 2 px ≈ hedefin parlama ağırlığı.
+   Zemin halkası REDDEDİLDİ: P2'nin önü ve P1'in sağı tahta üstü; kürsü tuvali altındakini bilmiyor → dither tahtaya taşar.
+3. **#3 P2 havada** (geçerli): P2 alt basamak yükseltisi 4 → 6 px, koyu ayak satırı + sert döküm gölgesi → zemine oturuyor.
+4. **#4 P1 sol yükseltisi duvarı kesiyor** (kısmen): ölçüm — sahne ön kenarı x=213'te y≈204, P1 ayak noktası (213, 214)
+   yani düellocu kenarın ~10 px ÖNÜNDE (layout dondurulmuş). Kırpmak kürsüyü ikiye böler; ink dış çizgi + sağa düşen sert
+   döküm gölgesi kürsüyü duvara "çıkıntı/balkon" gibi bağlıyor. Tam çözüm duelistXY taşımayı ister (bu maddenin dışı).
+5. **#5 nabız görünmez** (geçerli): periyot 5.6/6.7 s → 2.0/2.3 s, döngü 1-2-1-0 eşit çeyrekler; kenar dipte ramp[2],
+   tepede ramp[4] (P1). Aktif oyuncu bir seviye yukarı (+1, en çok 3; eskiden en az 2'ye sabitleniyordu, nabız kayboluyordu).
+6. **#6 kırmızı sönük** (geçerli): P2 iç bandı bir ton yukarıda (crim2→crim3), crim4 (pembe) yalnız tepe/tur nabzında.
+Tuval 64×40 → 70×46 (merkez/ayak noktası aynı; gölge sağa-aşağı taşar). Sonra: `pod-5.png`, `pod-5-pz.png`, `pod-5-p1z.png`,
+nabız filmi `pod-5-film.png`. Kapılar: typecheck temiz, palcheck `pod-5.png` PASS. v1: atlas NT yolunda, LightLayer değişikliği
+stepped (= LOOK_V3) kolunda.
+Kalan farklar: hedefte kürsü çevresinde zemine yayılan renkli ışık havuzu (bizde yok, gerekçe #2); P1 konumu (#4);
+hedefte alt basamağın üst yüzü daha geniş ve aydınlık.

@@ -1060,6 +1060,8 @@ function ensureFootTex(scene: Phaser.Scene, rx: number, ry: number): string {
  * `len` ≈ the unit's opaque height.
  */
 const CAST_PAD = 6;
+/** Soft gradient shadows under the duelist podiums (v3 stepped mode); off: the pads atlas paints hard ones. */
+const DUELIST_SOFT_SHADOWS = false;
 function ensureCastShadowTex(scene: Phaser.Scene, rx: number, len: number): { key: string; ox: number; oy: number } {
   const L = Math.max(14, Math.min(46, Math.round(len * 0.62)));
   const W = rx * 2 + L + CAST_PAD * 2;
@@ -1485,9 +1487,11 @@ export class LightLayer {
           keyImg.setOrigin(0).setPosition(PLATE_X0, PLATE_Y0).setVisible(this.on);
           this.steppedStaticImgs.push(keyImg);
         }
+        // Duelist podiums: their contact / cast shadow is now hard, flat palette bands painted in the pads atlas
+        // (art/arena-nt/pads.ts) — the soft radial gradients here read as blur (arena pass, podium critique 1).
         const padShdTex = ensureFloorShadowTex(scene, 34, 18);
         const dFootTex = ensureFootTex(scene, 14, 7);
-        for (const p of [0, 1] as const) {
+        for (const p of DUELIST_SOFT_SHADOWS ? ([0, 1] as const) : []) {
           const xy = duelistXY(p);
           const pShd = this.makeSteppedImage(padShdTex, DEPTH.PLATFORM + 8.5);
           pShd.setPosition(Math.round(xy.x + 2), Math.round(xy.y + 4)).setVisible(this.on);
