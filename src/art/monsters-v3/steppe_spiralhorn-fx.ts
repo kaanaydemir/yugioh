@@ -107,16 +107,34 @@ function curls(f: Frame): void {
 function glint(f: Frame): void {
   const { o, sk } = f;
   if (o.glint <= 0) return;
+  if (o.glint === 1) {
+    // hitMagic: both tips flash a 3×3 star (f0), it opens to a 7-px cross (f1), then steps out to four gold dots (f2)
+    const step = Math.round(o.t * 12);
+    [sk.hornN.tip, sk.hornF.tip].forEach((tp, i) => {
+      const x = rnd(tp[0]);
+      const y = rnd(tp[1]);
+      const far = i === 1;
+      if (step === 0) {
+        put(f, x, y, PAL.white);
+        for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) put(f, x + dx, y + dy, PAL.gold4);
+        for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) put(f, x + dx, y + dy, far ? PAL.gold3 : PAL.gold4);
+      } else if (step === 1) {
+        put(f, x, y, PAL.white);
+        for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) put(f, x + dx, y + dy, PAL.white);
+        for (const [dx, dy] of [[-2, 0], [2, 0], [0, -2], [0, 2]] as const) put(f, x + dx, y + dy, PAL.gold4);
+        for (const [dx, dy] of [[-3, 0], [3, 0], [0, -3]] as const) put(f, x + dx, y + dy, PAL.gold3);
+      } else if (step === 2) {
+        put(f, x, y, PAL.gold4);
+        for (const [dx, dy] of [[-2, 0], [2, 0], [0, -2], [0, 2]] as const) put(f, x + dx, y + dy, PAL.gold3);
+      }
+    });
+    return;
+  }
   const step = Math.floor(o.t * 12) % 3;
-  const tips = o.glint === 1 ? [sk.hornN.tip, sk.hornF.tip] : [sk.hornN.tip];
-  tips.forEach((tp, i) => {
-    const x = rnd(tp[0]);
-    const y = rnd(tp[1]);
-    f.p.set(x, y, PAL.white);
-    const big = o.glint === 1 ? (step + i) % 2 === 0 : step === 1;
-    if (big) for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) f.p.set(x + dx, y + dy, PAL.gold4);
-    if (o.glint === 1 && big) for (const [dx, dy] of [[-3, 0], [3, 0], [0, -3]] as const) put(f, x + dx, y + dy, PAL.gold3);
-  });
+  const x = rnd(sk.hornN.tip[0]);
+  const y = rnd(sk.hornN.tip[1]);
+  f.p.set(x, y, PAL.white);
+  if (step === 1) for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) f.p.set(x + dx, y + dy, PAL.gold4);
 }
 
 /** Grass wake at the floor: kind 1 = the take-off fan (blades bend away, behind the hooves); 2 = the landing crescent. */
@@ -220,7 +238,7 @@ function windGone(f: Frame, x: number, y: number, x0: number, span: number): num
   // the wind comes from the front (where the killing blow came from): the mound erodes from the head end and the stream
   // leaves backward, away from the attacker (it never blows into the killer's body)
   const u = (x0 + span - x) / span;
-  const thr = u * 0.8 + 0.2 * hash2(x >> 1, y >> 1, 91) + (GY - y) * 0.002;
+  const thr = u * 0.9 + 0.07 * hash2(x >> 1, y >> 2, 91) - (GY - y) * 0.004 + 0.06;
   return thr < o.wind ? o.wind - thr : -1;
 }
 
@@ -230,8 +248,8 @@ const TO_GRASS: Record<number, number> = {
   [PAL.earth2]: PAL.leaf1,
   [PAL.earth1]: PAL.leaf1,
   [PAL.earth0]: PAL.leaf0,
-  [PAL.white]: PAL.leaf4,
-  [PAL.mist]: PAL.leaf3,
+  [PAL.white]: PAL.leaf2,
+  [PAL.mist]: PAL.leaf2,
   [PAL.stone1]: PAL.leaf1,
   [PAL.stone2]: PAL.leaf1,
   [PAL.stone0]: PAL.leaf0,
@@ -249,8 +267,19 @@ export function deathPasses(f: Frame, stage: 'matter' | 'light'): void {
     motes.length = 0;
     const b = p.bounds();
     if (!b) return;
-    const x0 = b.x;
-    const span = Math.max(20, b.w);
+    // the wind's span is the mound alone (the laid horns reach far ahead of it and go last)
+    let bx0 = W;
+    let bx1 = -1;
+    for (let y = b.y; y < b.y + b.h; y++)
+      for (let x = b.x; x < b.x + b.w; x++) {
+        if (!p.isOpaque(x, y)) continue;
+        const pt = comp.at(x, y);
+        if (pt === Part.hornN || pt === Part.hornF) continue;
+        if (x < bx0) bx0 = x;
+        if (x > bx1) bx1 = x;
+      }
+    const x0 = bx1 >= bx0 ? bx0 : b.x;
+    const span = Math.max(20, bx1 >= bx0 ? bx1 - bx0 + 1 : b.w);
     const conv: number[] = [];
     const src = p.clone();
     for (let y = b.y; y < b.y + b.h; y++)
@@ -285,7 +314,42 @@ export function deathPasses(f: Frame, stage: 'matter' | 'light'): void {
       const dn = runS(x, y, 0, 1, 3);
       const tl = runS(x, y, ls, 0, 3);
       const aw = runS(x, y, -ls, 0, 3);
-      p.set(x, y, above ? PAL.leaf3 : up < 2 || (up < 3 && tl < 3) || tl < 1 ? PAL.leaf3 : dn < 2 || aw < 2 ? PAL.leaf1 : PAL.leaf2);
+      // three bands that follow his body planes: the coat's own tones step to leaf (lit coat → leaf3, mid → leaf2,
+      // shade → leaf1), the top rim and the lit edge leaf3, the underside and the far side leaf1
+      const own = TO_GRASS[src.get(x, y) ?? -1];
+      const c = above || up < 1 || tl < 1 ? PAL.leaf3 : dn < 2 || aw < 1 ? PAL.leaf1 : own !== undefined ? own : up < 2 || (up < 3 && tl < 3) ? PAL.leaf3 : dn < 2 || aw < 2 ? PAL.leaf1 : PAL.leaf2;
+      p.set(x, y, c === PAL.leaf4 ? PAL.leaf3 : c);
+    }
+    // the grass grain: short leaf1 strokes in the mid band (2 px, vertical, sparse), so the mound reads as standing grass
+    for (let i = 0; i < conv.length; i += 2) {
+      const x = conv[i];
+      const y = conv[i + 1];
+      if (x % 3 !== 1 || (y & 1) !== 0 || hash2(x, y >> 1, 57) > 0.42) continue;
+      if (p.get(x, y) === PAL.leaf2 && p.get(x, y + 1) === PAL.leaf2 && p.get(x, y - 1) === PAL.leaf2) {
+        p.set(x, y, PAL.leaf1);
+        p.set(x, y + 1, PAL.leaf1);
+      }
+    }
+    // the wind presses the windward (front) edge of the mound down before it peels: the top rows of the front columns
+    // lie flat (the mound slopes down into the wind)
+    if (o.press > 0) {
+      const nb = p.bounds();
+      if (nb) {
+        const cut = (x: number) => Math.max(0, Math.round((x - (nb.x + nb.w * 0.62)) / (nb.w * 0.38) * 4 * o.press));
+        for (let x = nb.x; x < nb.x + nb.w; x++) {
+          const n = cut(x);
+          if (n <= 0) continue;
+          let y = nb.y;
+          while (y < nb.y + nb.h && !(p.isOpaque(x, y) && comp.at(x, y) !== Part.hornN && comp.at(x, y) !== Part.hornF)) y++;
+          for (let k = 0; k < n && y + k < GY - 2; k++) {
+            if (comp.at(x, y + k) === Part.hornN || comp.at(x, y + k) === Part.hornF) continue;
+            p.erase(x, y + k);
+            comp.id[(y + k) * W + x] = Part.none;
+          }
+          const ny = y + n;
+          if (ny < GY - 2 && p.isOpaque(x, ny)) p.set(x, ny, PAL.leaf3);
+        }
+      }
     }
     return;
   }
@@ -293,7 +357,8 @@ export function deathPasses(f: Frame, stage: 'matter' | 'light'): void {
   // a white seedhead on some); on the mound frames they sway (o.t picks one of two drawn bends)
   if (o.grass > 0.3 && o.wind < 0.9) {
     const b = p.bounds();
-    const sway = o.t >= 0.5 ? 1 : 0;
+    // a 3-state wave runs along the top leeward (−x): each column leans back / stands / leans forward in turn
+    const sway = Math.round(o.t * 3) % 3;
     if (b)
       for (let x = b.x + 1; x < b.x + b.w - 1; x += 3) {
         let y = b.y;
@@ -304,9 +369,10 @@ export function deathPasses(f: Frame, stage: 'matter' | 'light'): void {
         if (part === Part.hornN || part === Part.hornF) continue;
         const edge = p.isOpaque(x, y - 1) && p.get(x, y - 1) !== PAL.ink;
         const hgt = edge ? 2 : 2 + ((x * 5) % 3);
-        const lean = ((x >> 2) + sway) % 2 ? 1 : -1;
+        const ph = ((x >> 2) + sway) % 3;
+        const lean = ph === 0 ? -1 : ph === 1 ? 0 : 1;
         for (let i = 1; i <= hgt; i++) {
-          const xx = x + (i > 1 ? lean : 0);
+          const xx = x + (i > 1 ? lean : 0) + (i > 2 ? lean : 0);
           f.p.set(xx, y - i, i === hgt ? PAL.leaf4 : PAL.leaf3);
         }
         if (!edge && o.grass >= 1 && (x * 7) % 5 === 0) put(f, x + lean * 2, y - hgt, PAL.white);
@@ -315,8 +381,9 @@ export function deathPasses(f: Frame, stage: 'matter' | 'light'): void {
   // the stream: erased clusters ride the wind leeward (−x, behind him), climbing on a curve
   for (const m of f.motes) {
     const k = m.k;
-    const x = rnd(m.x - 4 - k * 95 + Math.sin(k * 5 + m.i) * 2);
-    const y = rnd(m.y - 2 - k * 14 - k * k * 30 + Math.sin(k * 7 + m.i * 0.3) * 1.5);
+    if (k > 0.22) continue;
+    const x = rnd(m.x - 2 - k * 40);
+    const y = rnd(m.y - 1 - k * 18);
     if (m.i % 3 === 0) blade(f, x, y, m.i);
     else seed(f, x, y, m.i + rnd(k * 6), 1);
   }

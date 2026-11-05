@@ -5,21 +5,27 @@
 //   strike "Bozkır Sıçrayışı"
 //     rear     the declaration's held charge (attack f1, the snort) → f2–f3: he rears on the hind legs, the forehooves
 //              paw the air twice (sshPaw), the horn-tip curls peel off (the art)
-//     bounds   THREE airborne bounds, each higher and longer (220 / 260 / 300 ms; sprite lift 8 / 13 / 22 px over the drawn
-//              lifts), each with its own drawn take-off / apex / descent frames, on a straight run toward the target (a
-//              slight bow toward its side, never a loop away). He is `posed` for the whole strike (FieldView.sync never
-//              settles him onto his tile while the battle commits its state). At each take-off a grass-wake fan springs
-//              out of the floor behind the hooves, at each apex a whistle curl peels off each horn tip and rides with it
-//              (≤ 10 px, 3 drawn steps), and the flute fragment rises 880 / 988 / 1175 Hz. No rings, no afterimages.
-//     toss     bound 3 keeps the tightest tuck through its apex and drops the head only on the way down; he lands BESIDE
-//              the target on its floor row (strikeStop: the levelled horn tip 3 px short), holds the scoop a beat, the
-//              horns sweep up through 60° (the in-between), then the toss with a 2-px lunge: the keratin crack,
-//              s.impact() (the shared body blow hushed under it), hit-stop 80, a small white floor light, and one frame
-//              later the SEED BURST — 16 feather-grass seeds open into a crown over the contact, then glide down leeward
-//              (away from him) with spinning plumes, land and blink out; the follow-through frame plays under the stop
+//     run-up   a low gathering back-hop AGAINST his facing (16 px) before the rear: the charge has a run-up
+//     bounds   THREE airborne bounds, each higher and longer (230 / 270 / 310 ms; sprite lift 4 / 7 / 12 px over the drawn
+//              lifts 5 / 8 / 12), each with its own drawn take-off / apex / descent frames. The ground path follows his
+//              facing: x moves monotonically toward the target in every bound (30 / 33 / 37 % of the run), the row change
+//              rides the later bounds (20 / 30 / 50 %) — he travels into the target's lane, never strafes up his column.
+//              He is `posed` for the whole strike (FieldView.sync never settles him onto his tile while the battle commits
+//              its state). At each take-off a grass-wake fan springs out of the floor behind the hooves, at each apex a
+//              whistle curl peels off each horn tip and rides with it (≤ 10 px, 3 drawn steps), and the flute fragment
+//              rises 880 / 988 / 1175 Hz. No rings, no afterimages.
+//     toss     he lands in front of the target with the levelled scoop horns over its near half at its core height
+//              (strikeStopInto), holds the scoop a beat, the haunches fire (f15, the rising keratin scrape), then the
+//              toss (f16: hind legs straight and driving, barrel pitched nose-up, neck fully extended, chin tucked so the
+//              horn tips lead): the HORN-SWEEP SMEAR (a stepped earth4 / gold arc the two tips cut from the scoop up
+//              through the target, 2 steps), gold tip glints, the keratin crack with its knock and whump, s.impact()
+//              (the shared body blow hushed under it), hit-stop 80, a small white floor light, and one frame later the
+//              SEED BURST — 16 feather-grass seeds open into a crown over the contact, then glide down leeward (away from
+//              him) with spinning plumes, land and blink out; the follow-through frame plays under the stop
 //     rebound  one high back-bound off the target (f11), a low bound home (hoof ticks + grass), the head shake (f13)
-//     blocked  the horns lock against the guard (a double clack), he is shoved back 4 px sliding on his hooves, three
-//              blades spring up at the slide — no seeds — and he bounds home
+//     blocked  the horns lock against the guard (a double clack), he is shoved back 6 px sliding on his hooves with the
+//              scoop held (the card keeps its frames on him through the battle's recoil claim), three blades spring up at
+//              the hooves, two dust ticks, a head shake — no seeds — and he bounds home
 //     direct   the three bounds across the field and the toss at the duelist plate (seed burst there)
 //   summon     a gust sweeps across the tile from his entry side and the grass GROWS in a travelling wave (three heights,
 //              white seedheads); he enters from OFF SCREEN (P1 from the left edge, P2 from the right) in ONE long high
@@ -51,12 +57,11 @@ import { lightFlash } from '../../view/light';
 import { shake } from '../../vfx/core';
 import { animate, onFrame, setCombatSfx, sleep, stopTime } from '../../vfx/combat';
 import { registerCardHook, registerObserver, registerStrike, type CinematicContext, type StrikeArgs } from '../api';
-import { strikeStartFrame } from '../_v3/clash';
 import { warmPoses } from '../_v3/warm';
 import { atFrame, fade, hush, panAt, play, takeCharge } from '../_v3/sound';
 import { sourceOwnsDeath } from '../strikes-b/_kit';
 import { runSummon, type Stage, type SummonCtx } from '../summon-a/_kit';
-import { GrassPatch, SeedStream, dustTick, hornCurl, plumes, rng, seedBurst, strikeStop, wakeFan } from './steppe_spiralhorn-fx';
+import { GrassPatch, SeedStream, dustTick, hornCurl, hornSweep, plumes, rng, seedBurst, strikeStop, strikeStopInto, tipGlints, wakeFan } from './steppe_spiralhorn-fx';
 
 const ID: MonsterId = 'steppe_spiralhorn';
 const R = Math.round;
@@ -134,8 +139,9 @@ interface Bound {
 }
 
 /** One airborne bound on the scene clock; `onApex` fires once at the apex frame, `onDown` at the descent frame. */
-async function bound(u: MonsterUnit, B: Bound, minDepth: (t: number) => number, onApex?: (at: XY, lift: number) => void, onDown?: () => void): Promise<XY> {
+async function bound(u: MonsterUnit, B: Bound, minDepth: (t: number) => number, onApex?: (at: XY, lift: number) => void, onDown?: () => void, onLift?: (at: XY) => void): Promise<XY> {
   const sc = u.scene;
+  let lifted = !onLift;
   let apexDone = false;
   let downDone = false;
   let shown = -1;
@@ -149,6 +155,11 @@ async function bound(u: MonsterUnit, B: Bound, minDepth: (t: number) => number, 
     const p = B.path(t);
     const lift = B.h * 4 * t * (1 - t);
     place(u, p, lift, minDepth(t));
+    // the take-off sound on the first step the hooves are off the floor (SE-1)
+    if (!lifted && u.lift >= 1) {
+      lifted = true;
+      onLift?.(p);
+    }
     if (!apexDone && t >= B.a) {
       apexDone = true;
       onApex?.(p, lift);
@@ -198,39 +209,47 @@ async function sicrayis(s: StrikeArgs): Promise<void> {
   // him back onto his tile mid-strike (MonsterUnit.posed)
   u.posed = true;
 
-  // ---- geometry: he lands BESIDE the target, on its own floor row (a step behind it in depth), with the levelled horn
-  // tips of the scoop (f14) a few px short of the target's facing side — the toss then drives them up and through it
+  // ---- geometry (r3): he TRAVELS into the target's lane. A gathering back-hop against his facing first (the run-up),
+  // then three bounds whose ground path follows his facing toward the target: x moves monotonically toward it in
+  // every bound, the row change rides mostly on the later bounds (a curve, not a strafe up his own column). He lands
+  // in front of the target with the levelled scoop horns over its near half at its core height (strikeStopInto),
+  // so the toss rips them UP through it.
   const aim: XY = { x: s.toGround.x, y: s.toGround.y };
   const tip14 = tipOffset(u, 'attack', AF.scoop);
-  const front = s.direct ? aim.x : frontOf(target, aim, sgn);
-  const stop = strikeStop(aim, front, tip14.x, sgn, { blocked: s.blocked, direct: s.direct });
-  // the run-in: a straight charge with a slight bow toward the target's side (never a loop away from it)
-  const dist = Math.hypot(stop.x - home.x, stop.y - home.y);
-  let nrm: XY = dist > 0 ? { x: -(stop.y - home.y) / dist, y: (stop.x - home.x) / dist } : { x: 0, y: 1 };
-  if (nrm.x * sgn < 0 || (nrm.x === 0 && nrm.y < 0)) nrm = { x: -nrm.x, y: -nrm.y };
-  const sag = Math.min(8, dist * 0.12);
-  const run = (t: number): XY => {
-    const b = sag * 4 * t * (1 - t);
-    return { x: lerp(home.x, stop.x, t) + nrm.x * b, y: lerp(home.y, stop.y, t) + nrm.y * b };
-  };
-  // the bounds lengthen: 26 % / 32 % / 42 % of the run
-  const K = [0, 0.26, 0.58, 1];
-  const P = K.map((k) => {
-    const p = run(k);
+  const core: XY | null = target && target.sprite.active ? target.core() : null;
+  const stop = s.direct || !core ? strikeStop(aim, s.direct ? aim.x : frontOf(target, aim, sgn), tip14.x, sgn, { blocked: s.blocked, direct: s.direct }) : strikeStopInto(aim, core, tip14, sgn, { blocked: s.blocked });
+  const runUp: XY = { x: home.x - sgn * 16, y: home.y + (stop.y < home.y ? 3 : stop.y > home.y ? -3 : 0) };
+  // x by the bound's share of the run (30 / 33 / 37 %), y on a later curve (20 / 30 / 50 %)
+  const KX = [0, 0.3, 0.63, 1];
+  const KY = [0, 0.2, 0.5, 1];
+  const ptAt = (kx: number, ky: number): XY => ({ x: lerp(runUp.x, stop.x, kx), y: lerp(runUp.y, stop.y, ky) });
+  const P = KX.map((k, i) => {
+    const p = ptAt(k, KY[i]);
     return { x: R(p.x), y: R(p.y) };
   });
-  const seg = (i: number) => (t: number) => run(lerp(K[i], K[i + 1], t));
+  const seg = (i: number) => (t: number) => ptAt(lerp(KX[i], KX[i + 1], t), lerp(KY[i], KY[i + 1], t));
   const line = (a: XY, b: XY) => (t: number) => lerpXY(a, b, t);
   const curlDepth = Math.max(depth0, tDepth) + 0.6;
   const feetDepth = () => -Infinity;
 
   // ---- the rear: from the declaration's held charge (f1) through the full rear (f3); the snort goes on
-  const ch = takeCharge(u, 'sshSnort', { volume: 0.85, pan });
-  const held = strikeStartFrame(u);
+  const ch = takeCharge(u, 'sshSnort', { volume: 0.55, pan });
   const gather = s.direct ? 30 : 40;
   try {
+    // the run-up: a low gathering back-hop against his facing (the crouch, the hop, the landing gathered)
+    show(u, 'attack', AF.gather);
+    await sleep(sc, 50);
+    if (u.locked || !u.sprite.active) return;
+    await bound(u, { path: line(home, runUp), ms: 170, h: 4, up: AF.back, apex: AF.back, down: AF.land, a: 0.1, b: 0.7 }, feetDepth, undefined, undefined, (at) =>
+      play('sshTakeoff', { volume: 0.45, pan: panAt(at.x), pitch: 1.15 }),
+    );
+    play('sshHoofTick', { volume: 0.6, pan: panAt(runUp.x), pitch: 1.05 });
+    dustTick(sc, { x: R(runUp.x + sgn * 6), y: runUp.y }, sgn);
+    show(u, 'attack', AF.gather);
+    await sleep(sc, 60);
+    if (u.locked || !u.sprite.active) return;
     // the rear: f2 (rising, the forehooves leave the floor) and f3 (the full rear, the paw)
-    if (held < AF.rise && !s.direct) {
+    if (!s.direct) {
       show(u, 'attack', AF.rise);
       ch.stop(60);
       play('sshPaw', { volume: 0.8, pan });
@@ -271,19 +290,19 @@ async function sicrayis(s: StrikeArgs): Promise<void> {
     };
     // bound 1: 220 ms, low
     takeoff(P[0], 0, 0);
-    await bound(u, { path: seg(0), ms: 220, h: 8, up: AF.up1, apex: AF.apex1, down: AF.down1, a: 0.26, b: 0.7 }, feetDepth, apexAt(0));
+    await bound(u, { path: seg(0), ms: 230, h: 4, up: AF.up1, apex: AF.apex1, down: AF.down1, a: 0.26, b: 0.7 }, feetDepth, apexAt(0));
     land(P[1]);
     show(u, 'attack', AF.gather);
     await sleep(sc, gather);
     // bound 2: 260 ms, higher
     takeoff(P[1], 0.5, 1);
-    await bound(u, { path: seg(1), ms: 260, h: 13, up: AF.up2, apex: AF.apex2, down: AF.down2, a: 0.24, b: 0.72 }, feetDepth, apexAt(1));
+    await bound(u, { path: seg(1), ms: 270, h: 7, up: AF.up2, apex: AF.apex2, down: AF.down2, a: 0.24, b: 0.72 }, feetDepth, apexAt(1));
     land(P[2]);
     show(u, 'attack', AF.gather);
     await sleep(sc, gather + 10);
     // bound 3: 300 ms, the highest — the tightest tuck through the apex, the head drops only on the way down
     takeoff(P[2], 1, 2);
-    await bound(u, { path: seg(2), ms: 300, h: 22, up: AF.up3, apex: AF.apex3, down: AF.down3, a: 0.22, b: 0.78 }, feetDepth, apexAt(2), () => play('sshDrop', { volume: 0.85, pan: panAt(stop.x) }));
+    await bound(u, { path: seg(2), ms: 310, h: 12, up: AF.up3, apex: AF.apex3, down: AF.down3, a: 0.22, b: 0.78 }, feetDepth, apexAt(2), () => play('sshDrop', { volume: 0.85, pan: panAt(stop.x) }));
     if (u.locked || !u.sprite.active) return;
     // the landing scoop: the horns levelled a few px short of the target — the beat before the toss
     show(u, 'attack', AF.scoop);
@@ -296,9 +315,10 @@ async function sicrayis(s: StrikeArgs): Promise<void> {
     }
     await sleep(sc, 70);
     if (u.locked || !u.sprite.active) return;
-    // the drive begins: horns sweeping up through 60°
+    // the drive: the haunches fire, the horns swing up through 70° — the rising keratin scrape leads the crack
     show(u, 'attack', AF.toss0);
-    await sleep(sc, 40);
+    play('sshHornScrape', { volume: 0.9, pan: panAt(stop.x + sgn * 30) });
+    await sleep(sc, 50);
     if (u.locked || !u.sprite.active) return;
 
     // ---- CONTACT: the horn toss, a 2-px lunge forward
@@ -307,6 +327,18 @@ async function sicrayis(s: StrikeArgs): Promise<void> {
     place(u, lunge, 0);
     const tip = tipAt(u, 'attack', AF.toss0, lunge);
     const hitAt: XY = target && target.sprite.active ? { x: R(lerp(tip.x, target.core().x, 0.3)), y: R(Math.max(tip.y, target.core().y - 8)) } : s.to;
+    // the card's own contact mark: the arc the horn tips cut from the levelled scoop up to the toss (both horns), and
+    // gold glints where they rip out
+    const farTip = (anim: 'attack', f: number, feet: XY): XY => {
+      const sk = skeleton(framePose(anim, f));
+      const o = offsetOf(u, { x: sk.hornF.tip[0], y: sk.hornF.tip[1] });
+      return { x: R(feet.x + o.x), y: R(feet.y + o.y) };
+    };
+    const tipUp = tipAt(u, 'attack', AF.contact, lunge);
+    const farUp = farTip('attack', AF.contact, lunge);
+    const fxDepth = Math.max(u.sprite.depth, tDepth) + 0.7;
+    hornSweep(sc, { from: tipAt(u, 'attack', AF.scoop, stop), to: tipUp }, { from: farTip('attack', AF.scoop, stop), to: farUp }, sgn, fxDepth);
+    tipGlints(sc, [tipUp, farUp, { x: R((tipUp.x + farUp.x) / 2 + sgn * 3), y: R((tipUp.y + farUp.y) / 2 + 6) }], fxDepth + 0.1);
     // his own hide-on-horn scores the contact: the shared body blow never sounds under it (§0.2)
     const SHARED = ['impactHeavy', 'impactLight', 'shieldBlock'] as const;
     hush([...SHARED], () => s.impact(hitAt));
@@ -336,8 +368,11 @@ async function sicrayis(s: StrikeArgs): Promise<void> {
     if (s.direct) {
       // the direct run is long: one high back-bound carries him the whole way home
       const far = Math.hypot(stop.x - home.x, stop.y - home.y);
-      play('sshTakeoff', { volume: 0.6, pan: panAt(stop.x), pitch: 1.08 });
-      await bound(u, { path: line(lunge, home), ms: R(260 + far * 0.35), h: R(14 + far * 0.05), up: AF.back, apex: AF.back, down: AF.down1, a: 0, b: 0.8 }, feetDepth);
+      show(u, 'attack', AF.gather);
+      await sleep(sc, 40);
+      await bound(u, { path: line(lunge, home), ms: R(260 + far * 0.35), h: R(14 + far * 0.05), up: AF.back, apex: AF.back, down: AF.down1, a: 0, b: 0.8 }, feetDepth, undefined, undefined, (at) =>
+        play('sshTakeoff', { volume: 0.6, pan: panAt(at.x), pitch: 1.08 }),
+      );
       land(home);
       show(u, 'attack', AF.land);
       await sleep(sc, 60);
@@ -347,15 +382,24 @@ async function sicrayis(s: StrikeArgs): Promise<void> {
       return;
     }
     // ---- the rebound: one high back-bound off the target, then a low bound home
+    // (each rebound bound starts from a 40-ms crouch; its take-off sounds on the first lifted step)
     const mid = lerpXY(lunge, home, 0.55);
-    play('sshTakeoff', { volume: 0.6, pan: panAt(stop.x), pitch: 1.08 });
     const back = Math.hypot(stop.x - home.x, stop.y - home.y);
-    await bound(u, { path: line(lunge, { x: R(mid.x), y: R(mid.y) }), ms: R(240 + back * 0.25), h: R(17 + back * 0.05), up: AF.back, apex: AF.back, down: AF.back, a: 0, b: 1 }, feetDepth);
+    show(u, 'attack', AF.gather);
+    await sleep(sc, 40);
+    if (u.locked || !u.sprite.active) return;
+    await bound(u, { path: line(lunge, { x: R(mid.x), y: R(mid.y) }), ms: R(240 + back * 0.25), h: R(14 + back * 0.05), up: AF.back, apex: AF.back, down: AF.back, a: 0, b: 1 }, feetDepth, undefined, undefined, (at) =>
+      play('sshTakeoff', { volume: 0.6, pan: panAt(at.x), pitch: 1.08 }),
+    );
     land(mid);
     show(u, 'attack', AF.land);
     await sleep(sc, 50);
-    play('sshTakeoff', { volume: 0.45, pan: panAt(mid.x), pitch: 1.12 });
-    await bound(u, { path: line({ x: R(mid.x), y: R(mid.y) }, home), ms: R(190 + back * 0.3), h: R(7 + back * 0.04), up: AF.back, apex: AF.apex1, down: AF.land, a: 0.25, b: 0.75 }, feetDepth);
+    show(u, 'attack', AF.gather);
+    await sleep(sc, 40);
+    if (u.locked || !u.sprite.active) return;
+    await bound(u, { path: line({ x: R(mid.x), y: R(mid.y) }, home), ms: R(190 + back * 0.3), h: R(6 + back * 0.04), up: AF.back, apex: AF.apex1, down: AF.land, a: 0.25, b: 0.75 }, feetDepth, undefined, undefined, (at) =>
+      play('sshTakeoff', { volume: 0.45, pan: panAt(at.x), pitch: 1.12 }),
+    );
     land(home);
     show(u, 'attack', AF.land);
     await sleep(sc, 70);
@@ -376,46 +420,91 @@ async function sicrayis(s: StrikeArgs): Promise<void> {
   }
 }
 
-/** Blocked: the horns lock against the guard (a clack), he is shoved back 4 px sliding on his hooves, then bounds home. */
+/** Blocked: the horns lock against the guard (a clack), he is shoved back 6 px sliding on his hooves with the scoop
+ *  held, a head shake, then a bound home. The battle's recoil claims his animation: the card keeps its own frames on it
+ *  (as the claimant) for the whole beat, so he never drops into an idle stance mid-recoil. */
 async function blocked(s: StrikeArgs, stop: XY, home: XY, depth0: number, pan: number): Promise<void> {
   const u = s.attacker;
   const sc = s.scene;
   const sgn = sgnOf(u);
-  // the levelled horns meet the guard (the scoop frame held), no toss, no seeds
-  show(u, 'attack', AF.scoop);
-  place(u, stop, 0);
-  const tip = tipAt(u, 'attack', AF.scoop, stop);
-  const SHARED = ['impactHeavy', 'impactLight', 'shieldBlock'] as const;
-  hush([...SHARED], () => s.impact(tip));
-  fade([...SHARED], 0);
-  queueMicrotask(() => fade([...SHARED], 0));
-  play('sshLockClack', { volume: 1, pan: panAt(tip.x) });
-  void lightFlash(sc, tip.x, tip.y, PAL.white, 8, 110, { floorY: stop.y, intensity: 0.5 });
-  if (attackerLoses(s)) {
-    let g = 0;
-    while (!u.claimed && !u.retired && g++ < 16) await sleep(sc, 30);
-    return;
+  // the frame the card wants on him (null: hands-off); enforced every frame, through the claim when there is one
+  let want: number | null = AF.scoop;
+  let holding = true;
+  onFrame(sc, () => {
+    if (!holding || u.retired || !u.sprite.active) return false;
+    if (want === null) return true;
+    const fi = u.frameInfo();
+    if (fi.anim !== 'attack' || fi.frame !== want) {
+      const f = want;
+      u.asClaimant(() => u.pose('attack', f));
+    }
+    return true;
+  });
+  const hold = (f: number) => {
+    want = f;
+    u.asClaimant(() => u.pose('attack', f));
+  };
+  try {
+    // the levelled horns meet the guard (the scoop frame held), no toss, no seeds
+    hold(AF.scoop);
+    place(u, stop, 0);
+    const tip = tipAt(u, 'attack', AF.scoop, stop);
+    const SHARED = ['impactHeavy', 'impactLight', 'shieldBlock'] as const;
+    hush([...SHARED], () => s.impact(tip));
+    fade([...SHARED], 0);
+    queueMicrotask(() => fade([...SHARED], 0));
+    play('sshLockClack', { volume: 1, pan: panAt(tip.x) });
+    void lightFlash(sc, tip.x, tip.y, PAL.white, 8, 110, { floorY: stop.y, intensity: 0.5 });
+    if (attackerLoses(s)) {
+      holding = false;
+      let g = 0;
+      while (!u.claimed && !u.retired && g++ < 16) await sleep(sc, 30);
+      return;
+    }
+    await sleep(sc, 90);
+    // shoved back 6 px over 120 ms, sliding on the hooves with the scoop held: three blades spring up at the hooves on
+    // the first slide frame, two dust ticks
+    const back: XY = { x: stop.x - sgn * 6, y: stop.y };
+    play('sshSlide', { volume: 0.85, pan: panAt(stop.x) });
+    wakeFan(sc, { x: R(stop.x + sgn * 3), y: stop.y }, (-sgn) as 1 | -1, 0, u.uid * 7 + 1, 3);
+    dustTick(sc, { x: R(stop.x + sgn * 8), y: stop.y }, (-sgn) as 1 | -1);
+    void sleep(sc, 60).then(() => dustTick(sc, { x: R(stop.x - sgn * 8), y: stop.y + 1 }, (-sgn) as 1 | -1));
+    await animate(sc, 120, (t) => place(u, lerpXY(stop, back, 1 - (1 - t) * (1 - t)), 0));
+    await sleep(sc, 60);
+    // the head shake (one frame), then the gather
+    hold(AF.shake);
+    play('sshHeadShake', { volume: 0.7, pan });
+    await sleep(sc, 110);
+    hold(AF.gather);
+    await sleep(sc, 50);
+    // one low bound home (the card's frames ride the claim if the recoil still holds his animation)
+    want = null;
+    holding = false;
+    const flat = (f: number) => u.asClaimant(() => u.pose('attack', f));
+    let shown = -1;
+    let lifted = false;
+    await animate(sc, 300, (t) => {
+      const f = t < 0.25 ? AF.back : t < 0.75 ? AF.apex1 : AF.land;
+      if (f !== shown) {
+        shown = f;
+        flat(f);
+      }
+      place(u, lerpXY(back, home, t), 9 * 4 * t * (1 - t));
+      if (!lifted && u.lift >= 1) {
+        lifted = true;
+        play('sshTakeoff', { volume: 0.5, pan: panAt(u.sprite.x), pitch: 1.1 });
+      }
+    });
+    place(u, home, 0);
+    play('sshHoofTick', { volume: 0.7, pan });
+    dustTick(sc, { x: R(home.x + sgn * 6), y: home.y }, sgn);
+    flat(AF.land);
+    await sleep(sc, 90);
+    flat(AF.end);
+    void depth0;
+  } finally {
+    holding = false;
   }
-  await sleep(sc, 90);
-  // shoved back 4 px, sliding on the hooves; three blades spring up at the slide
-  const back: XY = { x: stop.x - sgn * 4, y: stop.y };
-  show(u, 'attack', AF.land);
-  play('sshSlide', { volume: 0.85, pan: panAt(stop.x) });
-  wakeFan(sc, { x: R(stop.x + sgn * 4), y: stop.y }, (-sgn) as 1 | -1, 0, u.uid * 7 + 1);
-  await animate(sc, 180, (t) => place(u, lerpXY(stop, back, 1 - (1 - t) * (1 - t)), 0));
-  // the battle's recoil plays on him (a claim on the animation): the bound home waits for it to hand him back
-  let g = 0;
-  while (u.claimed && !u.retired && g++ < 24) await sleep(sc, 30);
-  await sleep(sc, 40);
-  // one low bound home
-  play('sshTakeoff', { volume: 0.5, pan: panAt(back.x), pitch: 1.1 });
-  await bound(u, { path: (t) => lerpXY(back, home, t), ms: 280, h: 9, up: AF.back, apex: AF.apex1, down: AF.land, a: 0.25, b: 0.75 }, () => -Infinity);
-  play('sshHoofTick', { volume: 0.7, pan });
-  dustTick(sc, { x: R(home.x + sgn * 6), y: home.y }, sgn);
-  show(u, 'attack', AF.shake);
-  play('sshHeadShake', { volume: 0.7, pan });
-  await sleep(sc, u.frameMs('attack', AF.shake));
-  void depth0;
 }
 
 registerStrike(
@@ -528,9 +617,13 @@ async function steppeEntrance(S: Stage): Promise<void> {
     // ---- one long high bound in from off screen (P1 from the left edge, P2 from the right)
     const cam = sc.cameras.main;
     const startX = sgn > 0 ? cam.worldView.x - 28 : cam.worldView.x + cam.worldView.width + 28;
-    const from: XY = { x: startX, y: home.y - 8 };
+    // P2 enters from the right edge on a far floor line BEHIND the duelist's podium (his feet stay up-screen of the
+    // duelist's until he has cleared its x, then the line curves down onto his tile): the duelist figure and its
+    // podium are never covered by the bound — they stand in front of it
+    const from: XY = { x: startX, y: sgn > 0 ? home.y - 8 : home.y - 74 };
     const leapMs = 540;
-    const lift = arc(16, 30);
+    const lift = sgn > 0 ? arc(16, 30) : arc(10, 26);
+    const pathAt = (t: number): XY => (sgn > 0 ? lerpXY(from, home, t) : { x: lerp(from.x, home.x, t), y: lerp(from.y, home.y, t * t * t) });
     u.showSprite();
     show(u, 'summon', 0);
     place(u, from, lift(0));
@@ -545,7 +638,7 @@ async function steppeEntrance(S: Stage): Promise<void> {
         shown = f;
         show(u, 'summon', f);
       }
-      const p = lerpXY(from, home, t);
+      const p = pathAt(t);
       const h = lift(t);
       place(u, p, h);
       if (!fluted && t >= 0.36) {
@@ -687,15 +780,18 @@ function watchDeath(sc: Phaser.Scene, u: MonsterUnit): void {
         turned = true;
         play('sshGrassTurn', { volume: 0.9, pan });
       }
-      // the wind takes the mound: the stream carries on leeward past the frame's edge, climbing
-      if (f >= 7 && f <= 10) {
-        stream ??= new SeedStream(sc, lee, u.sprite.depth + 0.7, u.uid * 13 + 9);
+      // the wind takes the mound (f7 → the last frame): it is peeled column by column from the windward (front) side,
+      // and every peeled column leaves as members of ONE curving ribbon of blades and plumed seeds that drifts leeward
+      // and climbs (spawned over the whole ~640 ms, never all at once)
+      if (f >= 7 && f < last) {
+        stream ??= new SeedStream(sc, lee, Math.max(u.sprite.depth, unitDepth(u.home.y)) + 0.7, u.uid * 13 + 9);
         acc += dt;
-        while (acc >= 22) {
-          acc -= 22;
-          const k = (f - 7) / 3;
-          const p = u.framePoint(AX - 8 + Math.round(k * 20), GY - 6 - Math.round(k * 4));
-          stream.emit({ x: R(p.x), y: R(p.y) }, 1, 8, 6);
+        while (acc >= 16) {
+          acc -= 16;
+          const k = Math.min(1, (f - 7 + (acc / Math.max(1, u.frameMs('death', f)))) / (last - 7));
+          // the erosion front runs from the head end (+x in the frame) to the rump; it leaves from the mound's top half
+          const p = u.framePoint(AX + 16 - Math.round(k * 32), GY - 6 - Math.round(4 * Math.sin(k * Math.PI)));
+          stream.emit({ x: R(p.x), y: R(p.y) }, 1, 4, 6);
         }
       }
       if (f >= last && !gone) {

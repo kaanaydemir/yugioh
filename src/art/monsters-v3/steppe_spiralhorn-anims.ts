@@ -90,6 +90,10 @@ export function guardPose(f: number): Pose {
   return {
     ...G0,
     hdx: k === 1 || k === 2 ? 13 : 12,
+    // the horn tips waver a pixel (f2 up, f4 down) and the barrel breathes (f3–f4 the whole back rises)
+    hdy: k === 2 ? -5 : k === 4 ? -3 : -4,
+    hipY: k === 3 || k === 4 ? G0.hipY - 1 : G0.hipY,
+    shY: k === 3 || k === 4 ? G0.shY - 1 : G0.shY,
     br: k === 3 || k === 4 ? 1 : 0,
     sniff: k === 2 ? 1 : 0,
     tail: k === 5 ? 2 : 0,
@@ -163,12 +167,16 @@ const ATTACK: Pose[] = [
   // f14 release (landed): the scoop — forehand low, forelegs braced forward, the head down with the horns levelled at
   // the target's body
   { ...IDLE0, hipX: -10, hipY: -30, shX: 9, shY: -25, hdx: 12, hdy: -1, ha: A.ram, ear: 2, sniff: 2, fn: leg(15, 0, -24), ff: leg(18, 0, -20), hn: leg(-8, 0, -34), hf: leg(-5, 0, -30), mane: 0.85, tail: 3, t: at(22, 14) },
-  // f15 the toss begins: the head drives up through 60°, the forehand rises, the hind legs push
-  { ...IDLE0, hipX: -9, hipY: -31, shX: 10, shY: -30, hdx: 11, hdy: -6, ha: A.low, ear: 2, sniff: 2, fn: leg(16, 0, -12), ff: leg(19, 0, -8), hn: leg(-9, 0, -40), hf: leg(-6, 0, -36), mane: 0.95, tail: 3, t: at(22, 15) },
-  // f16 contact: the horn toss — head and horns UP and through, a 2-px lunge forward, the forelegs leave the floor
-  lifted({ hipX: -8, hipY: -32, shX: 11, shY: -37, hdx: 9, hdy: -14, ha: A.level, ear: 2, sniff: 2, fn: leg(16, -4, 40), ff: leg(19, -3, 30), hn: leg(-7, 2, -44), hf: leg(-4, 2, -40), mane: 1, tail: 3, t: at(22, 16) }, 2),
-  // f17 follow-through: the head flings on past level, the mane and the tail catch up (the hold under the hit-stop)
-  lifted({ hipX: -8, hipY: -32, shX: 11, shY: -37, hdx: 8, hdy: -15, ha: A.up, ear: 1, sniff: 1, fn: leg(16, -4, 46), ff: leg(19, -3, 36), hn: leg(-7, 2, -44), hf: leg(-4, 2, -40), mane: 0.3, maneK: 2, tail: 1, t: at(22, 17) }, 2),
+  // f15 the drive (one in-between, under the horn-sweep smear): the haunches fire, the forehand starts to rise, the
+  // chin tucks so the horns swing from levelled up through 70° while the head climbs
+  { ...IDLE0, hipX: -9, hipY: -29, shX: 11, shY: -32, hdx: 12, hdy: -8, ha: A.drive, ear: 2, sniff: 2, fn: leg(17, 0, -16), ff: leg(20, 0, -12), hn: leg(-14, 0, 10), hf: leg(-11, 0, 8), mane: 0.95, tail: 3, t: at(22, 15) },
+  // f16 CONTACT, the horn toss: the hind legs straight and driving (hooves far back), the barrel pitched ~20° nose-up,
+  // the forelegs flung forward off the floor, the neck fully extended up and forward, the chin tucked so both horn
+  // tips lead the muzzle — the horns ripping UP through the target
+  { ...IDLE0, hipX: -8, hipY: -27, shX: 12, shY: -34, hdx: 12, hdy: -17, ha: A.toss, ear: 2, sniff: 2, fn: leg(20, -3, -30), ff: leg(23, -2, -26), hn: leg(-18, 0, 20), hf: leg(-15, 0, 18), mane: 1, maneK: 2, tail: 3, t: at(22, 16) },
+  // f17 follow-through: the head flings on past vertical, the forehand still up, the mane and the tail catch up (the
+  // hold under the hit-stop)
+  { ...IDLE0, hipX: -8, hipY: -28, shX: 11, shY: -36, hdx: 10, hdy: -18, ha: A.up, ear: 1, sniff: 1, fn: leg(17, -6, 46), ff: leg(20, -4, 36), hn: leg(-16, 0, 14), hf: leg(-13, 0, 12), mane: 0.3, maneK: 2, tail: 1, t: at(22, 17) },
   // f18 recover: the back-bound off the target, legs reaching forward
   lifted({ hipX: -11, shX: 7, hdx: 7, hdy: -12, ha: A.up, ear: 1, fn: leg(17, -3, -20), ff: leg(20, -2, -10), hn: leg(-12, -3, -40), hf: leg(-9, -2, -36), mane: 0.1, tail: 3, t: at(22, 18) }, 6),
   // f19 the low bound home lands: hooves gathered
@@ -182,7 +190,7 @@ const ATTACK: Pose[] = [
 // (they stay on the floor / at the contact point while he flies on and rebounds); the attack frames keep only what
 // rides the body (the horn-tip curls, the eye, the mane).
 export const attackPose = (f: number): Pose => ATTACK[Math.min(f, ATTACK.length - 1)];
-const ATTACK_HOLDS = [80, 90, 110, 170, 90, 100, 80, 90, 90, 110, 90, 100, 120, 80, 70, 40, 80, 110, 100, 110, 120, 140];
+const ATTACK_HOLDS = [80, 90, 110, 170, 90, 100, 80, 90, 90, 110, 90, 100, 120, 80, 70, 50, 80, 110, 100, 110, 120, 140];
 /** attack frame indices the strike cinematic shows by name */
 export const AF = { rise: 2, rear: 3, up1: 4, apex1: 5, down1: 6, gather: 7, up2: 8, apex2: 9, down2: 10, up3: 11, apex3: 12, down3: 13, scoop: 14, toss0: 15, contact: 16, follow: 17, back: 18, land: 19, shake: 20, end: 21 } as const;
 
@@ -210,9 +218,10 @@ const ROAR_HOLDS = [80, 150, 100, 160, 130, 100, 110, 120, 140];
 
 const HIT: Pose[] = [
   // f0 (the contact frame, HA-21 local): the ears flatten, the eyes shut, the nostrils flare — the head snaps back on f1
-  { ...IDLE0, hdx: 7, ear: 2, blink: 2, sniff: 1 },
-  { ...IDLE0, hipX: -11, shX: 7, hdx: 5, hdy: -12, ha: A.up, ear: 2, blink: 2, mane: 0.3, tail: 2 },
-  { ...IDLE0, hipX: -11, shX: 7, hdx: 6, hdy: -11, ear: 2, blink: 1, mane: 0.55 },
+  { ...IDLE0, hipY: -28, shY: -29, hdx: 7, hdy: -10, ear: 2, blink: 2, sniff: 1 },
+  // f1: the head is tossed up and back (6 px up, 5 back), the ears pinned flat to the skull
+  { ...IDLE0, hipX: -11, shX: 7, shY: -31, hdx: 3, hdy: -17, ha: A.up, ear: 2, blink: 2, mane: 0.3, maneK: 2, tail: 2 },
+  { ...IDLE0, hipX: -11, shX: 7, hdx: 5, hdy: -14, ha: A.up, ear: 2, blink: 1, mane: 0.55 },
   { ...IDLE0, hdx: 7, ear: 1, mane: 0.75, nose: 1 },
   { ...IDLE0, ear: 1, mane: 0.9 },
   { ...IDLE0 },
@@ -224,10 +233,10 @@ const HH: Pose[] = [
   // f0 (contact): the ears flatten, the eyes shut, the tail clamps — the head is thrown up on f1
   { ...IDLE0, hdx: 7, ear: 2, blink: 2, sniff: 2, tail: 2 },
   // f1–f2: he skitters back on buckled hind legs, a front hoof up
-  { ...IDLE0, hipX: -12, hipY: -26, shX: 6, shY: -29, hdx: 5, hdy: -12, ha: A.up, ear: 2, blink: 2, fn: leg(8, -3, 30), hn: leg(-14, 0, -26), hf: leg(-10, 0, -24), mane: 0.3, tail: 2, dust: 0.2 },
-  { ...IDLE0, hipX: -12, hipY: -27, shX: 6, shY: -29, hdx: 6, hdy: -11, ear: 2, blink: 1, fn: leg(8, -2, 20), hn: leg(-14, 0, -22), hf: leg(-10, 0, -20), mane: 0.5, tail: 2, dust: 0.5 },
+  { ...IDLE0, hipX: -13, hipY: -26, shX: 5, shY: -29, hdx: 4, hdy: -14, ha: A.up, ear: 2, blink: 2, fn: leg(7, -3, 30), ff: leg(11, 0, 4), hn: leg(-15, 0, -26), hf: leg(-11, 0, -24), mane: 0.3, tail: 2, dust: 0.2 },
+  { ...IDLE0, hipX: -13, hipY: -27, shX: 5, shY: -29, hdx: 5, hdy: -12, ear: 2, blink: 1, fn: leg(6, -2, 20), ff: leg(10, 0, 2), hn: leg(-15, 0, -22), hf: leg(-11, 0, -20), mane: 0.5, tail: 2, dust: 0.5 },
   // f3: the front hoof plants, he catches himself
-  { ...IDLE0, hipX: -11, hipY: -28, shX: 7, hdx: 7, ear: 1, hn: leg(-13, 0, -16), mane: 0.7 },
+  { ...IDLE0, hipX: -12, hipY: -28, shX: 6, hdx: 7, ear: 1, fn: leg(8, 0, 0), hn: leg(-14, 0, -16), mane: 0.7 },
   { ...IDLE0, hipX: -11, ear: 1, mane: 0.85, nose: 1 },
   { ...IDLE0, ear: 1, mane: 0.95 },
   { ...IDLE0 },
@@ -235,12 +244,14 @@ const HH: Pose[] = [
 export const hitHeavyPose = (f: number): Pose => HH[Math.min(f, HH.length - 1)];
 const HH_HOLDS = [50, 60, 80, 90, 100, 120, 140];
 
+const STIFF = { fn: leg(10, 0, 0), ff: leg(14, 0, 0), hn: leg(-13, 0, 0), hf: leg(-9, 0, 0) };
 const HM: Pose[] = [
-  // f0: the coat goes rigid — legs locked straight, the eye wide, both horn tips glint and ring
-  { ...IDLE0, hdy: -12, ear: 2, blink: 3, glint: 1, rigid: 1, tail: 1, t: 0 },
-  { ...IDLE0, hipX: -9, hipY: -30, shX: 9, shY: -31, hdx: 9, hdy: -12, ear: 2, blink: 3, glint: 1, rigid: 1, tail: 1, t: 1 / 12 },
-  { ...IDLE0, hipX: -11, hipY: -30, shX: 7, shY: -31, hdx: 7, hdy: -12, ear: 2, blink: 3, glint: 1, rigid: 1, tail: 1, t: 2 / 12 },
-  { ...IDLE0, hipY: -30, shY: -31, hdy: -12, ear: 1, blink: 0, glint: 1, rigid: 1, t: 3 / 12 },
+  // f0–f2: the coat goes rigid — the legs locked straight and spread a pixel, the eye wide, the mane teeth on end;
+  // both horn tips flash a 3×3 star that opens (f1) and steps out (f2)
+  { ...IDLE0, hdy: -12, ear: 2, blink: 3, glint: 1, rigid: 1, tail: 1, ...STIFF, t: 0 },
+  { ...IDLE0, hipX: -9, hipY: -30, shX: 9, shY: -31, hdx: 9, hdy: -12, ear: 2, blink: 3, glint: 1, rigid: 1, tail: 1, ...STIFF, t: 1 / 12 },
+  { ...IDLE0, hipX: -11, hipY: -30, shX: 7, shY: -31, hdx: 7, hdy: -12, ear: 2, blink: 3, glint: 1, rigid: 1, tail: 1, ...STIFF, t: 2 / 12 },
+  { ...IDLE0, hipY: -30, shY: -31, hdy: -12, ear: 1, blink: 0, rigid: 1, ...STIFF, t: 3 / 12 },
   { ...IDLE0, ear: 1, blink: 1, mane: 0.5, nose: 1 },
   { ...IDLE0 },
 ];
@@ -279,6 +290,14 @@ const LIE: Pose = {
   hipX: -11, hipY: -11, shX: 7, shY: -12, hdx: 11, hdy: -5, ha: A.down, ear: 2, blink: 2, hornLay: -6,
   fn: leg(1, -1, 80), ff: leg(5, -1, 78), hn: leg(-2, -1, -80), hf: leg(1, -1, -78), tail: 2,
 };
+/** The wind frames: the mound is peeled from the windward (front) side column by column; the laid horns sink with the
+ *  grass under them onto the floor line and slide back from the killer; the top blades sway as a wave running leeward. */
+const WIND_N = 8;
+const windFrame = (i: number): Pose => {
+  const w = 0.17 + i * 0.115;
+  const k = Math.min(1, w * 1.25);
+  return { ...LIE, grass: 1, wind: w, press: 1, t: (i % 3) / 3, hornDy: rnd(k * 13), hornDx: -rnd(k * 12), hornLayF: rnd(-26 + k * 18) };
+};
 const DEATH: Pose[] = [
   { ...HH[0] },
   // a weak rear
@@ -289,26 +308,24 @@ const DEATH: Pose[] = [
   // climbs from the hooves)
   { ...LIE, hdy: -7, hornLay: -48, grass: 0.34, mane: 0.5 },
   // the horns lie on the floor; the second band
-  { ...LIE, grass: 0.67, mane: 0.6 },
-  // the mound is grass in his shape; its blades sway
-  { ...LIE, grass: 1, mane: 0.7, t: 0 },
-  { ...LIE, grass: 1, mane: 0.8, t: 0.5 },
-  // the wind takes it from the windward side as a curving stream
-  { ...LIE, grass: 1, wind: 0.18, t: 0 },
-  { ...LIE, grass: 1, wind: 0.4, t: 0.5 },
-  { ...LIE, grass: 1, wind: 0.62, t: 0 },
-  { ...LIE, grass: 1, wind: 0.85, t: 0.5 },
-  // the horns go last: they lie on the floor a moment (the card's watcher turns them into two seed plumes on the last)
-  { ...LIE, grass: 1, wind: 1 },
+  { ...LIE, grass: 0.67, mane: 0.6, t: 1 / 3 },
+  // the mound is grass in his shape (three bands on his body planes); its top blades sway as a wave running leeward,
+  // and the first gust presses the windward edge down
+  { ...LIE, grass: 1, mane: 0.7, t: 2 / 3 },
+  { ...LIE, grass: 1, mane: 0.8, press: 1, t: 0 },
+  // the wind takes it: peeled from the windward side into a curving, climbing ribbon (the card's SeedStream carries it)
+  ...Array.from({ length: WIND_N }, (_, i) => windFrame(i)),
+  // the horns go last: they lie on the floor line a moment (the card's watcher turns them into two seed plumes)
+  { ...LIE, grass: 1, wind: 1, hornDy: 13, hornDx: -12, hornLayF: -8 },
 ];
 export const deathPose = (f: number): Pose => DEATH[Math.min(f, DEATH.length - 1)];
-const D_HOLDS = [50, 50, 60, 80, 70, 60, 60, 60, 60, 60, 60, 200];
+const D_HOLDS = [50, 50, 60, 80, 70, 50, 50, ...Array.from({ length: WIND_N }, () => 80), 200];
 
 // ------------------------------------------------------------------ revive (10 frames): the death run backwards
 
 const REVIVE: Pose[] = [
-  { ...LIE, grass: 1, wind: 1, plume: 0.4, gather: true },
-  { ...LIE, grass: 1, wind: 0.85, plume: 0, gather: true },
+  { ...LIE, grass: 1, wind: 1, plume: 0.4, gather: true, hornDy: 13, hornDx: -12, hornLayF: -8 },
+  { ...LIE, grass: 1, wind: 0.85, plume: 0, gather: true, hornDy: 8, hornDx: -7, hornLayF: -16 },
   { ...LIE, grass: 1, wind: 0.45, gather: true },
   // the mound gathered; the coat comes back down the bands (the horns rising off the floor)
   { ...LIE, hdy: -7, hornLay: -48, grass: 0.5, blink: 1, gather: true },

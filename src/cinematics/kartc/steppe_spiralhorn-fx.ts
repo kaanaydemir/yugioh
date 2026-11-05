@@ -35,6 +35,19 @@ export function strikeStop(aim: XY, front: number, tipX: number, sgn: 1 | -1, o:
   return { x: Math.round(fx), y: Math.round(o.direct ? aim.y : aim.y - 3) };
 }
 
+/**
+ * Where the strike's third bound lands against a monster (the feet), r3: he travels INTO the target's lane. The levelled
+ * horn tips of the scoop (`tip`: their offset from the feet, world orientation) come to rest over the near half of the
+ * target's body (4 px short of its core; a guard: 12 px short, the horns meet the pike / shield face), at the height of
+ * its core, so the toss rips them UP through it. The feet stay on a row in front of the target (≥ 4 px nearer the camera,
+ * never more than 22 px), so he is drawn over it and the depth never flickers.
+ */
+export function strikeStopInto(aim: XY, core: XY, tip: XY, sgn: 1 | -1, o: { blocked?: boolean } = {}): XY {
+  const x = core.x - sgn * (o.blocked ? 12 : 4) - tip.x;
+  const y = Math.min(aim.y + 22, Math.max(aim.y + 4, core.y + 2 - tip.y));
+  return { x: Math.round(x), y: Math.round(y) };
+}
+
 /** Deterministic per-moment random (films and measures stay repeatable). */
 export function rng(seed: number): () => number {
   let s = (Math.imul(seed | 0, 2654435761) ^ 0x5a1ca) >>> 0 || 1;
@@ -202,9 +215,9 @@ export class GrassPatch {
 // ================================================================ small motifs
 
 /** A take-off grass fan: blades spring out of the floor behind the hooves, bend away (−dir), spring back, shrink. */
-export function wakeFan(sc: Phaser.Scene, at: XY, dir: 1 | -1, k: number, seed: number): void {
+export function wakeFan(sc: Phaser.Scene, at: XY, dir: 1 | -1, k: number, seed: number, count?: number): void {
   const rnd = rng(seed);
-  const n = 4 + Math.min(2, Math.round(k * 2));
+  const n = count ?? 4 + Math.min(2, Math.round(k * 2));
   const bl = Array.from({ length: n }, (_, i) => ({
     x: R(at.x - dir * (i * 2 - 1) + (rnd() - 0.5) * 2),
     y: R(at.y + (i % 2 ? 1 : 0) - (i === n - 1 ? 1 : 0)),
@@ -295,6 +308,84 @@ export function hornCurl(sc: Phaser.Scene, tip: () => XY | null, dir: 1 | -1, de
       const ox = R(at.x - dir * (2 + k * 6));
       const oy = R(at.y - 2 - k * 2);
       for (const [x, y, head] of CURL_STEPS[step]) px.dot(ox - dir * x, oy + y, head && step < 2 ? PAL.leaf4 : PAL.leaf3);
+      return true;
+    },
+    () => px.g.destroy(),
+  );
+}
+
+// ================================================================ the toss: the horn-sweep smear and the tip glints
+
+/**
+ * The card's own contact mark: the path the horn tips cut as they rip up through the target — a stepped arc from the
+ * levelled tip (`from`) to the raised tip (`to`), bulging forward (`sgn`) like the tip's real swing. 2 px wide (earth4,
+ * the leading 4 px gold3 → gold4), then 1 px (earth3, a gold3 lead) over the upper half, then gone (~70 ms, 2 steps).
+ * `far` (optional): the far horn's own, thinner arc. Drawn arcs only: never a ring.
+ */
+export function hornSweep(sc: Phaser.Scene, near: { from: XY; to: XY }, far: { from: XY; to: XY } | null, sgn: 1 | -1, depth: number): void {
+  const px = layer(sc, depth);
+  const arc = (a: XY, b: XY) => {
+    const c: XY = { x: Math.max(a.x * sgn, b.x * sgn) * sgn + sgn * 13, y: (a.y + b.y) / 2 - 4 };
+    const pts: XY[] = [];
+    let last = '';
+    for (let i = 0; i <= 48; i++) {
+      const t = i / 48;
+      const x = R((1 - t) * (1 - t) * a.x + 2 * (1 - t) * t * c.x + t * t * b.x);
+      const y = R((1 - t) * (1 - t) * a.y + 2 * (1 - t) * t * c.y + t * t * b.y);
+      const k = `${x},${y}`;
+      if (k !== last) pts.push({ x, y });
+      last = k;
+    }
+    return pts;
+  };
+  const N = arc(near.from, near.to);
+  const F = far ? arc(far.from, far.to) : [];
+  let el = 0;
+  onFrame(
+    sc,
+    (dt) => {
+      el += dt;
+      px.clear();
+      if (el >= 72) return false;
+      const wide = el < 38;
+      const draw = (P: XY[], main: boolean) => {
+        const n = P.length;
+        const from = wide ? 0 : Math.floor(n * 0.45);
+        for (let i = from; i < n; i++) {
+          const p = P[i];
+          const lead = n - 1 - i;
+          const c = lead < 2 ? (wide ? PAL.gold4 : PAL.gold3) : lead < 4 ? PAL.gold3 : main ? (wide ? PAL.earth4 : PAL.earth3) : PAL.earth3;
+          px.dot(p.x, p.y, c);
+          // the second pixel sits on the inside of the swing (toward the head)
+          if (wide && main) px.dot(p.x - sgn, p.y, lead < 4 ? PAL.gold3 : PAL.earth3);
+        }
+      };
+      if (F.length) draw(F, false);
+      draw(N, true);
+      return true;
+    },
+    () => px.g.destroy(),
+  );
+}
+
+/** Two or three gold4 glints at the burst origin: a 3×3 star (white core) → a single gold4 pixel → gone (~130 ms). */
+export function tipGlints(sc: Phaser.Scene, at: XY[], depth: number): void {
+  const px = layer(sc, depth);
+  let el = 0;
+  onFrame(
+    sc,
+    (dt) => {
+      el += dt;
+      px.clear();
+      if (el >= 140) return false;
+      at.forEach((p, i) => {
+        const age = el - i * 20;
+        if (age < 0) return;
+        if (age < 70) {
+          px.dot(p.x, p.y, PAL.white);
+          for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) px.dot(p.x + dx, p.y + dy, PAL.gold4);
+        } else if (age < 120) px.dot(p.x, p.y, PAL.gold4);
+      });
       return true;
     },
     () => px.g.destroy(),
@@ -463,11 +554,11 @@ export class SeedStream {
             this.list.splice(i, 1);
             continue;
           }
-          // the stream climbs on a curve and slows a little as it leaves; a sway along it
-          m.vx *= Math.exp(-0.9 * s);
-          m.vy -= 26 * s;
+          // the ribbon: every member rides the same curve (leeward, then bending up and climbing), with a small sway
+          m.vx *= Math.exp(-0.7 * s);
+          m.vy -= 58 * s;
           m.x += m.vx * s;
-          m.y += (m.vy + Math.sin(m.age / 90 + m.i) * 9) * s;
+          m.y += (m.vy + Math.sin(m.age / 110 + m.i * 0.7) * 4) * s;
           const k = m.age / m.life;
           const x = R(m.x);
           const y = R(m.y);
@@ -495,9 +586,9 @@ export class SeedStream {
       this.list.push({
         x: at.x + (this.rnd() - 0.5) * w,
         y: at.y + (this.rnd() - 0.5) * h,
-        vx: this.dir * (55 + this.rnd() * 45),
-        vy: -6 - this.rnd() * 18,
-        life: 560 + this.rnd() * 420,
+        vx: this.dir * (100 + this.rnd() * 22),
+        vy: -3 - this.rnd() * 6,
+        life: 900 + this.rnd() * 300,
         age: 0,
         i,
       });
@@ -516,8 +607,8 @@ export class SeedStream {
  */
 export function plumes(sc: Phaser.Scene, horns: { base: XY; ang: number }[], dir: 1 | -1, depth: number, len: number): void {
   const px = layer(sc, depth);
-  const ms = 1000;
-  const lag = 70;
+  const ms = 1100;
+  const lag = 80;
   let el = 0;
   onFrame(
     sc,
@@ -530,24 +621,41 @@ export function plumes(sc: Phaser.Scene, horns: { base: XY; ang: number }[], dir
         const e = 1 - Math.pow(1 - k, 1.7);
         // rise and drift: the far plume climbs steeper and travels further
         const bx = h.base.x + dir * e * (30 + j * 18);
-        const by = h.base.y - e * (20 + j * 16) + Math.sin(k * 7 + j * 2) * 1.2;
+        const by = h.base.y - e * (22 + j * 16) + Math.sin(k * 7 + j * 2) * 1.2;
         // from lying along the floor up into the wind: the shaft turns to lean leeward-up (j: a different angle)
         const target = -Math.PI / 2 + dir * (0.55 + j * 0.45);
         let da = target - h.ang;
         while (da > Math.PI) da -= Math.PI * 2;
         while (da < -Math.PI) da += Math.PI * 2;
         const a = h.ang + da * Math.min(1, e * 1.4);
-        const shaft = k < 0.7 ? PAL.white : PAL.mist;
-        const L = Math.max(3, R(len * (k < 0.82 ? 1 : 1 - (k - 0.82) / 0.18)));
+        // the shaft (the horn's keratin, 2 px) shortens as the seed leaves, the head stays
+        const L = Math.max(4, R(len * (0.85 - 0.4 * Math.min(1, k * 2)) * (k < 0.8 ? 1 : 1 - ((k - 0.8) / 0.2) * 0.6)));
+        const ca = Math.cos(a);
+        const sa = Math.sin(a);
+        const nx = R(-sa) || 0;
+        const ny = R(ca) || 1;
+        const shaft = k < 0.8 ? PAL.earth3 : PAL.earth2;
+        let tx = 0;
+        let ty = 0;
         for (let s = 0; s <= L; s++) {
-          const x = R(bx + Math.cos(a) * s + Math.sin(s * 0.9 + k * 9 + j) * 0.6 * e);
-          const y = R(by + Math.sin(a) * s);
-          px.dot(x, y, s < 2 ? PAL.earth3 : shaft);
-          // the feather barbs open as it lifts
-          if (s > 2 && s % 3 === j % 3 && s < L - 1 && k > 0.08 && k < 0.85) {
-            px.dot(x - dir, y + 1, PAL.mist);
-            if (k > 0.25) px.dot(x - dir * 2, y + 1, PAL.mist);
-          }
+          tx = R(bx + ca * s);
+          ty = R(by + sa * s);
+          px.dot(tx, ty, shaft);
+          if (s < L - 1) px.dot(tx + nx, ty + ny, shaft);
+        }
+        // the feather head at the top end: the burst seed's plume, 4–5 px, spinning through two drawn states
+        const spin = (Math.floor(el / 120) + j) & 1;
+        const plume = k < 0.78 ? PAL.white : PAL.mist;
+        if (spin) {
+          // lying: the feather streams back along the wind (6 px, two rows)
+          for (const [dx, dy] of [[1, -1], [2, -1], [3, -2], [4, -2], [2, -2], [3, -3]] as const) px.dot(tx - dir * dx, ty + dy, plume);
+          px.dot(tx - dir * 5, ty - 3, PAL.mist);
+          px.dot(tx - dir * 4, ty - 3, PAL.mist);
+        } else {
+          // standing: the feather curls up over the shaft
+          for (const [dx, dy] of [[0, -1], [0, -2], [1, -2], [1, -3], [-1, -3], [2, -4]] as const) px.dot(tx - dir * dx, ty + dy, plume);
+          px.dot(tx - dir * 3, ty - 5, PAL.mist);
+          px.dot(tx, ty - 4, PAL.mist);
         }
       });
       return true;
