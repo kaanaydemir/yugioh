@@ -211,3 +211,53 @@ Kapılar: `npm run typecheck` temiz; arena-nt / board-nt testleri geçiyor (kala
 `bt2-6-sbs.png`.
 Kalan farklar: hedefte çizgilerin dışında hafif neon ışıması ve tahtanın sol üstünde yumuşak ışık (palet dışı gradyan
 gerektirir); kırmızı cyan'dan doğası gereği bir tık koyu (crim3 / cyan3 parlaklığı).
+
+### Tahta üstü — eleştiri turu 2/3 düzeltmeleri (2026-11-05)
+
+Önce: `shots/arena/bt3-0.png`, `bt3-0-sbs.png` (hedef plaka kırpımı `bt3-tgt-board.png`). Her adımda görüntü alındı, bakıldı:
+1. **#1 Plaka sıcak mor-kahve (≈ 88/74/78)** — `view/light/LightLayer.ts`: skin2 anahtar ışık yıkaması kapalı
+   (`KEY_WASH_ON = false`, kod A/B için duruyor). Plaka ve altın pahın iç bandı artık saf palet taşı; mor dökümü bitti.
+   → `bt3-1.png`, `bt3-1-sbs.png` (plaka düz stone1, fazla koyu ve karolarla aynı ton — 2. adım bunu çözüyor).
+2. **#2 Işık düşüşü yok** — `art/arena-nt/platform.ts` `topTone`: atlasın kendisinde TEK sert kenarlı bant — x + 2y = k
+   izometrik köşegeninin sol üst (anahtar ışık) tarafı stone2, ötesi stone1, en uzak sağ alt köşe stone0 (eskisi gibi).
+   Kenar plakanın taş dalgasıyla hafif kırılıyor (dither yok). k = +300 bandı küçük bir köşe gibi okuttu (`bt3-2-z.png`);
+   k = +420 plakayı sol üst aydınlık / sağ alt koyu iki yarıya ayırıyor, hedefin hacmi (`bt3-3-z.png`).
+3. **#3 Karo gömük değil koyu panel** — `art/arena-nt/floor.ts` `slotFrame`: boş karo zemini stone1 → stone2. Çukur artık
+   koyu uzak duvar + ışıklı dudakla okunuyor; karanlık yarıda karo plakadan bir tık açık (hedefte de alt karolar
+   ≈ 86/89/111, plaka ≈ 74/67/94). → `bt3-4-z.png`
+4. **#4 Kırmızı cyan'dan sönük** — crim3 parlaklığı (luma ≈ 132) cyan3'ten (≈ 177) düşük ve a6Hover'da kırmızı taraf sırada
+   olmadığı için uzak duvar ışıma satırı crim1 idi (neredeyse siyah). Kırmızı karoların ışıma satırı bir ramp adımı yukarıda
+   (`redLift`: crim2, sıradaysa crim3). Kırmızı çerçeveler cyan ile aynı ağırlıkta. → `bt3-5-z.png`, `bt3-5.png`, `bt3-5-sbs.png`
+
+Reddedilen (gerekçeli):
+- **#5 dış neon ışıma halkası (isteğe bağlı)**: "en fazla her ikinci piksel" halkası tahta üstünde dither demek; sahip kararı
+  tahta üstünde dither yasak, ve tam 1 px cyan0/crim0 halka çizgiyi kalın gösteriyor ("ince sınır"). Yapılmadı.
+- **#6 / #7**: uyum notu / başka maddeler (çevre, sahne bloğu, tahta ölçeği = sabit bölge konumları).
+
+Kapılar: `npm run typecheck` temiz; `palcheck bt3-5.png` PASS (off 6.74 %, tahta artık tamamen palet pikseli);
+vitest 1451 geçti, 5 hata kart/canavar/sunum testleri (bu maddeyle ilgisiz). v1: değişiklik yalnız NT atlası
+(`art/arena-nt/floor.ts`, `art/arena-nt/platform.ts`) ve LightLayer'ın stepped (v3) dalı.
+Kalan farklar: hedefin sol üstündeki ışık hafif sıcak (palette stone2 ile skin arasında nötr yok, soğuk tutuldu); hedefte
+çizgilerin dışında yumuşak neon ışıması; hedef tahta daha büyük (sabit bölge konumları).
+
+### Tahta üstü — eleştiri turu 3/3 düzeltmeleri (2026-11-05)
+
+Önce: `shots/arena/bt4-0.png`, `bt4-0-z.png`. Her adımda görüntü alındı, bakıldı:
+1. **#1 Karo derinliği 1x'te zayıf** — `art/arena-nt/floor.ts` `slotFrame`: uzak iç duvarın iç satırı bir taş adımı koyu
+   (stone0 → ink; duvar artık ışıma satırı + 2 px ink), yakın dudak bir adım açık (stone3 → stone4, hâlâ 1 px). Çukur
+   1x'te koyu uzak duvar + parlak dudak olarak okunuyor. → `bt4-1-z.png`, `bt4-1.png`
+2. **#2 Plaka ışık düşüşü zayıf** — `art/arena-nt/platform.ts` `KEY_BAND` +420 → +480: stone2 (aydınlık) bölge merkeze
+   doğru genişledi; sol üst belirgin aydınlık, sağ alt köşe koyu, bant kenarı daha net. Dither yok. → `bt4-2.png`, `bt4-2-sbs.png`
+
+Reddedilen (gerekçeli):
+- **#3 sağdaki kırmızı karoların crim3 satırını yükseltmek**: kırmızı çizgi zaten ramp'in en parlak sınır tonu crim3;
+  bir üstü crim4 pastel pembe (tur 1'de sınır rengi olamaz diye reddedildi). Uzak duvar ışıma satırını crim3'e çıkarmak
+  çizgiyi 2 px yapar ("ince sınır" kararına aykırı). `redLift` korunuyor.
+- **#4 dış neon ışıma** ve **#5 tahta ölçeği**: eleştirmen de kabul ediyor (palette ton yok / sabit bölge konumları).
+
+Kapılar: `npm run typecheck` temiz; `palcheck bt4-2.png` PASS; arena-nt + board-nt testleri 34/34. v1: değişiklik yalnız
+NT atlası (`art/arena-nt/floor.ts`, `platform.ts`; v1 yolu bunları çizmiyor). v1 donmuş film karşılaştırması: eski↔eski
+iki çekim 17.5k piksel, eski↔yeni 16.5k piksel fark — fark yalnız v1'in kendi canlı öğelerinde (spot, ikon, HUD), yani
+v1 önizlemesi çekimler arası deterministik değil; NT değişikliğinden kaynaklı fark yok. Not: platform.ts / LightLayer.ts
+tur 2 değişiklikleri `37c582c` checkpoint commit'inde duruyor (kaybolmamış).
+Kalan farklar: hedefte çizgilerin dışında yumuşak neon ışıması; hedefte kırmızı biraz daha canlı; hedef tahta daha büyük.
