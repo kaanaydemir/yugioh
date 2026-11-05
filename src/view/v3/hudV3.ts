@@ -401,7 +401,7 @@ export class HudV3 implements HudApi {
     });
     this.phaseBody = scene.add.image(0, 0, barKey).setOrigin(0);
     this.phaseRoot.add(this.phaseBody);
-    this.phaseTrim = new TrimGfx(scene, this.phaseRoot, 0, 0, pb.w, pb.h).set(styleTrim('neutral'));
+    this.phaseTrim = new TrimGfx(scene, this.phaseRoot, 0, 0, pb.w, pb.h).set(styleTrim('neutral', -1));
     this.pill = scene.add.graphics();
     this.phaseRoot.add(this.pill);
     PHASES.forEach((ph, i) => {
@@ -423,7 +423,7 @@ export class HudV3 implements HudApi {
     const badgeKey = canvasTexture(scene, `ui3:hud:turnbadge:${T.w}x${T.h}`, () => plateBodyV3(T.w, T.h));
     this.turnBody = scene.add.image(0, 0, badgeKey).setOrigin(0);
     this.turnRoot.add(this.turnBody);
-    this.turnTrim = new TrimGfx(scene, this.turnRoot, 0, 0, T.w, T.h).set(styleTrim('neutral'));
+    this.turnTrim = new TrimGfx(scene, this.turnRoot, 0, 0, T.w, T.h).set(styleTrim('neutral', -1));
     const tur = new PalText(scene, T.labelX, capYV3('sm', T.labelCap), 'TUR', { size: 'sm', color: PAL.mist });
     this.turnRoot.add(tur.root);
     // the number: an odometer whose window is the badge's inside (the rows between the trims)
@@ -1067,9 +1067,9 @@ export class HudV3 implements HudApi {
           // A6B-8: the panel comes complete — body, name, LP, bar and counters from its first frame — and
           // only its trim steps up into its rest tone (two palette steps); never a frame without its numbers
           if (s === 2) this.applyTrim(P);
-          else P.trim.set(styleTrim(st, (P.active ? 1 : 0) - (2 - s)));
+          else P.trim.set(styleTrim(st, (P.active ? -1 : -2) - (2 - s)));
         },
-        wake: (w) => P.trim.set(w === 'white' ? flatTrim(PAL.white) : w === 'up' ? styleTrim(st, P.active ? 2 : 1) : (P.trimOverride ?? this.restTrim(P))),
+        wake: (w) => P.trim.set(w === 'white' ? flatTrim(PAL.white) : w === 'up' ? styleTrim(st, P.active ? 0 : -1) : (P.trimOverride ?? this.restTrim(P))),
       };
     };
     const pb = UI.phaseBar;
@@ -1091,11 +1091,11 @@ export class HudV3 implements HudApi {
       shown: -1,
       stage: (s) => {
         // the phase bar and the turn badge come with their words; their trims step up into rest (A6B-8)
-        for (const [, , trim] of plates) trim.set(styleTrim('neutral', s - 2));
+        for (const [, , trim] of plates) trim.set(styleTrim('neutral', s - 3));
         for (const b of toolbar) b.appearStep(s);
       },
       wake: (w) => {
-        for (const [, , trim] of plates) trim.set(w === 'white' ? flatTrim(PAL.white) : styleTrim('neutral', w === 'up' ? 1 : 0));
+        for (const [, , trim] of plates) trim.set(w === 'white' ? flatTrim(PAL.white) : styleTrim('neutral', w === 'up' ? 0 : -1));
         for (const b of toolbar) b.wakeStep(w);
       },
     };
@@ -1129,7 +1129,7 @@ export class HudV3 implements HudApi {
 
   private panelNode(p: PlayerId): TrimNode {
     const st = playerStyleV3(p);
-    return { head: PAL.white, tail: [PAL.white, styleTone(st, 2)], lapMs: HUD3.nodeLapMs, restMs: HUD3.nodeRestMs };
+    return { head: styleTone(st, 1), tail: [styleTone(st, 0)], lapMs: HUD3.nodeLapMs, restMs: HUD3.nodeRestMs };
   }
 
   private chipKey(p: PlayerId): string {
@@ -1242,9 +1242,12 @@ export class HudV3 implements HudApi {
     return P;
   }
 
-  /** The panel's resting trim: the owner's, one tone up while active. */
+  /**
+   * The panel's resting trim: calm low-glow tones (readability pass, docs/v3/ref/hedef-gorunum-2.png):
+   * -1 active (cyan1 / cyan2), -2 inactive (cyan0 / cyan1). Flashes / wakes still lift it.
+   */
   private restTrim(P: PanelV3): Trim {
-    return styleTrim(playerStyleV3(P.player), P.active ? 1 : 0);
+    return styleTrim(playerStyleV3(P.player), P.active ? -1 : -2);
   }
 
   private applyTrim(P: PanelV3): void {
@@ -1336,8 +1339,8 @@ export class HudV3 implements HudApi {
     if (f1 > 0) {
       const low = isLowLp(P.lp) || (P.lp === 0 && f1 > 0);
       const dim = low && P.lowDim && P.rollTone === null;
-      const body = low ? (dim ? PAL.crim2 : PAL.crim3) : R[3];
-      const lead = low ? (dim ? PAL.crim3 : PAL.crim4) : R[4];
+      const body = low ? (dim ? PAL.crim2 : PAL.crim3) : R[2];
+      const lead = low ? (dim ? PAL.crim3 : PAL.crim4) : R[3];
       if (g1 > 0) g.fillStyle(body, 1).fillRect(x, y, g1, h);
       if (f1 > g1) g.fillStyle(PAL.leaf3, 1).fillRect(x + g1, y, f1 - g1, h);
       g.fillStyle(f1 > g1 ? (P.leadWhite && fill <= w ? PAL.white : PAL.leaf4) : lead, 1).fillRect(x + f1 - 1, y, 1, h);
@@ -1386,7 +1389,7 @@ export class HudV3 implements HudApi {
   /**
    * The active cell's pill: a tab over the bar's full height — its 1-px frame takes the bar's trim
    * rows over the cell (top / left the turn player's light tone, bottom / right one darker; corners
-   * cut) — over a night2 inside, so a label's accents and outline never touch the frame.
+   * cut) — over a night1 inside, so a label's accents and outline never touch the frame.
    */
   private drawPill(): void {
     const g = this.pill;
@@ -1395,12 +1398,12 @@ export class HudV3 implements HudApi {
     const y = HUD3.phase.pillY;
     const w = HUD3.phase.segW - 2;
     const h = HUD3.phase.pillH;
-    const light = this.pillFlash ? PAL.white : this.pillRamp[3];
-    const dark = this.pillFlash ? PAL.white : this.pillRamp[2];
+    const light = this.pillFlash ? PAL.white : this.pillRamp[2];
+    const dark = this.pillFlash ? PAL.white : this.pillRamp[1];
     // the SAVAŞ cell's crimson fill (F2) sits under the pill; in battle the pill's inside shows it
     const bt = this.battleTone;
     if (bt !== null) g.fillStyle(bt, 1).fillRect(this.pillHome(2) + 1, y + 1, w - 2, h - 2);
-    g.fillStyle(this.phase === 'battle' && bt !== null ? bt : PAL.night2, 1).fillRect(x + 1, y + 1, w - 2, h - 2);
+    g.fillStyle(this.phase === 'battle' && bt !== null ? bt : PAL.night1, 1).fillRect(x + 1, y + 1, w - 2, h - 2);
     g.fillStyle(light, 1);
     g.fillRect(x + 1, y, w - 2, 1);
     g.fillRect(x, y + 1, 1, h - 2);
@@ -1413,7 +1416,7 @@ export class HudV3 implements HudApi {
   private refreshPhaseLabels(moving = false): void {
     const idx = PHASES.indexOf(this.phase);
     this.phaseLabels.forEach((t, i) => {
-      if (i === idx && !moving) t.setColor(this.labelFlash === i ? PAL.white : this.pillRamp[4]);
+      if (i === idx && !moving) t.setColor(this.labelFlash === i ? PAL.white : this.pillRamp[3]);
       else if (i < idx) t.setColor(PAL.steel);
       else t.setColor(PAL.mist);
     });
@@ -1468,7 +1471,7 @@ export class HudV3 implements HudApi {
     const h = 11;
     const root = sc.add.container(owner.x, owner.y + owner.h + 3).setDepth(DEPTH.HUD + 8).setScrollFactor(0).setVisible(false);
     root.add(sc.add.image(0, 0, canvasTexture(sc, `ui3:hud:tip:${w}x${h}`, () => plateBodyV3(w, h))).setOrigin(0));
-    const trim = new TrimGfx(sc, root, 0, 0, w, h).set(styleTrim('neutral'));
+    const trim = new TrimGfx(sc, root, 0, 0, w, h).set(styleTrim('neutral', -1));
     const t = new PalText(sc, 5, capYV3('sm', 3), text, { size: 'sm', color: PAL.white });
     root.add(t.root);
     const timer = sc.time.delayedCall(150, () => root.active && root.setVisible(this.visible));
@@ -1548,7 +1551,7 @@ export class HudV3 implements HudApi {
     if (!look) return;
     if (!look.flash) {
       if (swapped) {
-        this.hintTrim?.set(styleTrim('neutral', 1));
+        this.hintTrim?.set(styleTrim('neutral', 0));
         this.hintTrimBack = now + 2;
       }
       return;
@@ -1640,7 +1643,7 @@ export class HudV3 implements HudApi {
     const red = look.flash && !look.burnt;
     this.hintTrim?.set(this.hintTrimFor(look.style, s, red));
     // a reason past its burn wears the neutral caret (a 'fire' style must not keep it crimson)
-    const caret = red ? HINT_CARET_FLASH[s + 2] : styleTone(look.flash ? 'neutral' : look.style, 1 + s);
+    const caret = red ? HINT_CARET_FLASH[s + 2] : styleTone(look.flash ? 'neutral' : look.style, s);
     this.hintCaret?.setTexture(iconTexture(this.scene, ICON.caret, { w: caret, m: caret, s: caret, n: caret }) ?? ICON.caret);
     this.hintText_?.setColor((red ? HINT_WORDS_FLASH : look.flash ? HINT_WORDS_REASON : HINT_WORDS)[s + 2]);
     // rising 2 → 0 px with the steps (sinking the same way out); none with reduced motion
@@ -1649,7 +1652,7 @@ export class HudV3 implements HudApi {
 
   private hintTrimFor(style: UiStyle, step: number, flash: boolean): Trim {
     void style;
-    return styleTrim(flash ? 'fire' : 'neutral', step);
+    return styleTrim(flash ? 'fire' : 'neutral', step - 1);
   }
 
   private hintPlateKey(w: number, h: number, step: number): string {

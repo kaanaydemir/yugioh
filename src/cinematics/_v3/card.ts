@@ -29,7 +29,6 @@ import { sfx } from '../../audio/sfx';
 import { DEPTH, type XY } from '../../view/layout';
 import type { TileCard } from '../../view/TileCard';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
-import { monsterFrame } from '../../art/textures';
 import { Px, Sparks, animate, onFrame, sleep } from '../../vfx/combat';
 import type { CinematicContext } from '../_core/types';
 import { V3HOOKS } from '../v3small/_hooks';
@@ -38,6 +37,7 @@ type AnyCtx = CinematicContext<GameEvent>;
 
 export { flightMs } from './presets';
 import { flightMs } from './presets';
+import { unitFrame } from '../../duel/unit-variant';
 
 export interface CardLeaveOpts {
   owner: PlayerId;
@@ -198,7 +198,7 @@ export function behindBodies(ctx: AnyCtx, skip?: MonsterUnit | null): (floor: XY
       const s = u.sprite;
       if (u === skip || u.retired || !s.active || !s.visible) continue;
       if (u.home.y <= floor.y) continue; // behind the card's floor point: the card is in front of it
-      const b = monsterFrame(u.cardId, 'idle', 0).bounds();
+      const b = unitFrame(u, 'idle', 0).bounds();
       if (!b) continue;
       const fx = u.flipX ? u.art.w - b.x - b.w : b.x;
       const left = s.x - s.displayOriginX + fx;

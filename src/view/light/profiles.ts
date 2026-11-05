@@ -90,17 +90,17 @@ export const MONSTER_GLOW: Record<MonsterId, MonsterGlow> = {
   shield_titan: { emissive: [T(PAL.gold4, 1), T(PAL.gold3, 0.7), T(PAL.white, 0.5)], halo: 0.6, pool: 0.9 },
   wing_lady: { emissive: [T(PAL.teal4, 1), T(PAL.white, 0.9), T(PAL.gold4, 0.8), T(PAL.teal3, 0.5)], halo: 0.6, pool: 0.9 },
   // batch 2 (attribute-coloured placeholder glow)
-  tide_harpooner: { emissive: [T(PAL.water4, 0.8), T(PAL.white, 0.8), T(PAL.cyan4, 0.6)], halo: 0.6, pool: 0.9 },
+  tide_harpooner: { emissive: [T(PAL.water4, 0.8), T(PAL.white, 0.8), T(PAL.gold4, 0.4)], halo: 0.6, pool: 0.9 },
   dial_jester: { emissive: [T(PAL.gold4, 1), T(PAL.white, 1), T(PAL.gold3, 0.6)], halo: 0.6, pool: 0.9 },
   cloud_hatchling: { emissive: [T(PAL.leaf4, 1), T(PAL.white, 0.8), T(PAL.leaf3, 0.4)], halo: 0.6, pool: 0.9 },
   reflection_archer: { emissive: [T(PAL.gold4, 1), T(PAL.white, 1), T(PAL.gold3, 0.6)], halo: 0.6, pool: 0.9 },
   scrap_raiders: { emissive: [T(PAL.fire4, 1), T(PAL.fire3, 0.7), T(PAL.white, 0.7)], halo: 0.6, pool: 0.9 },
   hollow_ogre: { emissive: [T(PAL.gold4, 1), T(PAL.gold3, 0.75), T(PAL.void4, 0.9), T(PAL.void3, 0.6)], halo: 0.55, pool: 0.85, spill: PAL.gold3 }, // ember eyes (gold3/4) + knot lights / seeds (void3/4): lights only, never body tones
-  crag_axeman: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
-  reed_heron: { emissive: [T(PAL.water4, 0.8), T(PAL.white, 0.8), T(PAL.cyan4, 0.6)], halo: 0.6, pool: 0.9 },
-  kite_fencer: { emissive: [T(PAL.leaf4, 1), T(PAL.white, 0.8), T(PAL.leaf3, 0.4)], halo: 0.6, pool: 0.9 },
+  crag_axeman: { emissive: [T(PAL.white, 0.6)], halo: 0.4, pool: 0.6 }, // the axe edge and the eyes; the real light is the floor seam (kartc/crag_axeman-yarik.ts)
+  reed_heron: { emissive: [T(PAL.gold4, 1), T(PAL.white, 0.5)], halo: 0.3, pool: 0.4 }, // C8: the dimmest presence (eye + beak glint only)
+  kite_fencer: { emissive: [T(PAL.gold4, 1), T(PAL.white, 0.6)], halo: 0.5, pool: 0.6 }, // C9: the lit indicator panel + the rapier tip (no leaf tones: C11's)
   mudgrasp_spirit: { emissive: [T(PAL.void4, 1), T(PAL.void3, 0.75), T(PAL.white, 0.7)], near: [T(PAL.void2, 0.3)], halo: 0.55, pool: 0.85, spill: PAL.void3 }, // C10: only the eyes, mouth glow, veins and vortex core (void2–4 / white are lights-only in the rig)
-  steppe_spiralhorn: { emissive: [T(PAL.leaf4, 1), T(PAL.white, 0.8), T(PAL.leaf3, 0.4)], halo: 0.6, pool: 0.9 },
+  steppe_spiralhorn: { emissive: [T(PAL.gold4, 1), T(PAL.leaf4, 0.5)], halo: 0.5, pool: 0.7 },
   polar_needle: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
   polar_anvil: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
   polar_coil: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },

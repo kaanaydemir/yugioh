@@ -16,6 +16,7 @@
 //   await t.js('js expr')                              // evaluate (async ok) in the page
 //   await t.inputMode()                                // HumanInput.mode ('idle', 'zone', 'menu', ...)
 //   await t.waitMode('idle' | ['idle','zone'], { timeout })
+//   await t.passCurtain()                              // tap the hot-seat curtain once; resolves when input left 'curtain'
 //   t.zone(player, spot, index)                        // screen centre of a board zone
 //   await t.handXY(uid)                                // resting screen point of a hand card
 //   t.note('...')                                      // logged with a timestamp
@@ -223,6 +224,16 @@ try {
         { timeout: o.timeout ?? 120000, polling: 100 },
       );
       await page.waitForTimeout(o.settle ?? 250);
+    },
+    // Hot-seat curtain: tap it once while its blocker takes taps, then wait until the input leaves
+    // 'curtain' (it stays there while the new hand turns face up, after the blocker is gone; a loop that
+    // taps again on 'curtain' then clicks the board under it — the "stuck menu" of shots/eng/pt).
+    async passCurtain(o = {}) {
+      const up = `(() => { const sc = window.__neon.game.scene.keys.Duel; return !!sc && sc.children.list.some((g) => g.depth === 5000 && g.input && g.input.enabled); })()`;
+      await page.waitForFunction(up, null, { timeout: o.timeout ?? 120000, polling: 100 });
+      await page.waitForTimeout(o.settle ?? 600);
+      if (await page.evaluate(up)) await t.click(320, 180);
+      await page.waitForFunction(() => window.__neon.game.scene.keys.Duel.controller.input.mode !== 'curtain', null, { timeout: o.timeout ?? 120000, polling: 100 });
     },
     zone(player, spot, index = 0) {
       const c = zoneCell(player, spot, index);

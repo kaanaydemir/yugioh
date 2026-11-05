@@ -32,10 +32,10 @@ export interface HoloLook {
 }
 
 export const HOLO_LOOKS: readonly [HoloLook, HoloLook] = [
-  // Kristal Ejder: deep blue, blue, bright azure, ice, pale ice, white
-  { ramp: [PAL.water0, PAL.water1, PAL.water2, PAL.water3, PAL.water4, PAL.white], flip: false, scale: 4 / 3, bands: [0.1, 0.28, 0.5, 0.74, 0.9] },
-  // Uçurum Büyücüsü: ink violet, violet, bright violet, magenta, lilac, white
-  { ramp: [PAL.void1, PAL.void2, PAL.void3, PAL.mag3, PAL.void4, PAL.white], flip: true, scale: 1.5, bands: [0.18, 0.4, 0.66, 0.87, 0.97] },
+  // Kristal Ejder: blue hologram (hedef-gorunum-1), one tone under the original so it sits in the fog
+  { ramp: [PAL.night0, PAL.water0, PAL.water1, PAL.water2, PAL.water3, PAL.water4], flip: false, scale: 4 / 3, bands: [0.1, 0.28, 0.5, 0.74, 0.9] },
+  // Uçurum Büyücüsü: violet hologram (hedef-gorunum-1), its brightest band void4 instead of white
+  { ramp: [PAL.void0, PAL.void1, PAL.void2, PAL.void3, PAL.mag3, PAL.void4], flip: true, scale: 1.5, bands: [0.18, 0.4, 0.66, 0.87, 0.97] },
 ];
 
 export interface Box {

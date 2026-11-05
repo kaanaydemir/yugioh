@@ -23,7 +23,10 @@ describe('neon tower layout map', () => {
     }
   });
 
-  it('is ONE chamfered slab: a convex octagon that contains the whole tile grid and both duelist pads', () => {
+  // hedef-gorunum-3 (owner decision 2026-11-02): the stage is a tight chamfered block around the tiles; the duelists stand
+  // on their own raised daises attached to its near / far edges (pads layer), so only the tile grid must be inside it and
+  // each dais must touch it.
+  it('is ONE chamfered slab: a convex octagon that contains the whole tile grid; each duelist dais touches it', () => {
     expect(PLATE_OUTLINE.length).toBe(8);
     const pts = PLATE_OUTLINE.map(([c, r]) => ntIso(c, r));
     // every vertex lands on a whole pixel and the outline is convex (all turns the same way)
@@ -57,7 +60,9 @@ describe('neon tower layout map', () => {
       }
     for (const p of [0, 1] as const) {
       const d = duelistXY(p);
-      for (const [dx, dy] of [[-20, 0], [20, 0], [0, -10], [0, 10 + 4]]) expect(inside(d.x + dx, d.y + dy), `pad ${p}`).toBe(true);
+      // the dais (40×20 diamond around the feet) reaches the stage: at least one of its tips lies on the plate
+      const tips = [[-20, 0], [20, 0], [0, -10], [0, 10]].map(([dx, dy]) => inside(d.x + dx, d.y + dy));
+      expect(tips.some(Boolean), `dais ${p}`).toBe(true);
     }
   });
 
