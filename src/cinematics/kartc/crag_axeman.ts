@@ -8,15 +8,17 @@
 //             holds); each plant a shake (1 / 1 / 2 px), a dust puff, a pebble hop and the gravel crunch rising in
 //             level and pitch (caxStep ×3) — the upper body stays locked in the cocked pose
 //   chop      f12 (60 ms, smeared): the vertical chop comes down (caxChop)
-//   BITE      f13: the edge bites the floor just in front of the target (caxBite): stone chips burst back toward him, a
-//             small white floor flash; the Yarık RUNS from the bite under the target (60 ms, caxRunR/L panned from the
-//             attacker to the target), then CLIMBS the target's own body as a vertical light seam in 2 frames (caxClimb);
-//             s.impact() lands when it reaches the crown: the kit's hit-stop (heavy class), shake, flash and number
-//   heave     f14–f16: the axe wrenched out (chips, a clod; caxWrench), onto the shoulder (caxShoulder); he walks home
-//             in three plain steps (no shake). The seam stays ~1.5 s: breathing, one gold4 spark run, faint ticks, a
+//   BITE      f13: the blade's front horn bites the floor a stride (12 px) in front of the target's toes (caxBite): stone
+//             chips burst back toward him; the target's ATK/DEF plate steps aside (back at contact + 300 ms); the Yarık
+//             RUNS in three visible steps (a gold4 head flaring white on the floor, ~75 ms, caxRunR/L panned from the
+//             attacker to the target) while his lunge settles a px, and CLIMBS the target's own body the frame it reaches
+//             the toes (caxClimb); s.impact() lands when it reaches the crown, with the dry stone "tak" (caxArrive)
+//   heave     f14–f15: the axe wrenched out (chips, a clod; caxWrench), onto the shoulder (caxShoulder); he walks home
+//             in three plain drawn steps (no shake; caxScuff). The seam stays ~1.5 s: breathing, one gold4 spark run, faint ticks, a
 //             three-step fade (crag_axeman-yarik.ts)
-//   blocked   the seam reaches the guard's front edge and forks into a tiny "Y" (no climb); the axe bounces in the floor
-//             and he staggers back a step
+//   blocked   the seam runs to where the line meets the guard and forks 3 px short of it into a "Y" (a white flash at
+//             the split; no climb); the axe bounces in the floor (3 px up, back 1), he staggers back a step (hitHeavy
+//             frames, the haft dragging) and walks home
 //   direct    no steps (the direct budget is ~1.6 s): the spin, the cock, the chop from his own tile's front edge; the
 //             seam runs the whole way off the board to the duelist's plate and a vertical light seam flashes over the
 //             duelist
@@ -30,12 +32,13 @@ import { monsterFrame } from '../../art/textures';
 import { DEPTH, LOOK_V3, unitDepth, type XY } from '../../view/layout';
 import { lightFlash } from '../../view/light';
 import { shake } from '../../vfx/core';
-import { registerObserver, registerStrike } from '../api';
+import { registerEvent, registerObserver, registerStrike, type CinematicContext } from '../api';
+import type { GameEvent } from '../../engine/types';
 import type { StrikeArgs } from '../_core/types';
 import { strikeStartFrame } from '../_v3/clash';
 import { atFrame, panAt, play, takeCharge } from '../_v3/sound';
 import { E, RR, Sparks, TAU, lerp, norm, onFrame, overlay, seed, sleep, sub } from '../strikes-a/_kit';
-import { Seam, SEAM_DEPTH, climbBody, climbLine } from './crag_axeman-yarik';
+import { Seam, SEAM_DEPTH, climbBody, climbLine, linePts } from './crag_axeman-yarik';
 import { PixelCanvas } from '../../art/pixel';
 import { H, W, drawAxeman } from '../../art/monsters-v3/crag_axeman-rig';
 import { WALK_POSES } from '../../art/monsters-v3/crag_axeman-anims';
@@ -117,7 +120,7 @@ function floorFront(t: MonsterUnit | null, aim: XY, sgn: number): number {
 }
 
 /** How far he backs off during the spin (px along the attack axis: the run-up starts behind home). */
-export const SPIN_BACK = 20;
+export const SPIN_BACK = 21;
 /** The three steps' share of the run-up (long, then shorter and quicker: 9 / 7 / 6). */
 export const STEP_SPLIT = [0, 9 / 22, 16 / 22, 1] as const;
 /** How far in front of the target's footprint the blade's front horn bites (px along the attack axis): the seam's visible floor run. */
@@ -160,6 +163,35 @@ function onLineAtX(a: XY, b: XY, x: number): XY {
   const dx = b.x - a.x;
   const t = Math.abs(dx) > 0.5 ? Math.max(0, Math.min(1, (x - a.x) / dx)) : 1;
   return { x: Math.round(a.x + dx * t), y: Math.round(a.y + (b.y - a.y) * t) };
+}
+
+/**
+ * Where a floor line a → b first meets a unit's drawn body (whole px on the line; the frame it shows): the toes the
+ * seam reaches, or the guard's front edge it dies on. null when it never does (no frame, an empty one).
+ */
+function entryOnLine(t: MonsterUnit | null, a: XY, b: XY): XY | null {
+  if (!t || !t.sprite.active) return null;
+  try {
+    const fi = t.frameInfo();
+    const pc = monsterFrame(t.cardId, fi.anim ?? 'idle', fi.frame);
+    const w0 = t.framePoint(0, 0);
+    const w1 = t.framePoint(1, 1);
+    const sx = w1.x - w0.x || 1;
+    for (const p of linePts(a, b)) {
+      const fx = Math.floor((p.x + 0.5 - w0.x) / sx);
+      const fy = Math.floor(p.y + 0.5 - w0.y);
+      if (pc.isOpaque(fx, fy) || pc.isOpaque(fx, fy - 1)) return p;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/** The point `d` px back along a line from `p` toward `a`. */
+function backOff(p: XY, a: XY, d: number): XY {
+  const L = Math.max(1, Math.hypot(p.x - a.x, p.y - a.y));
+  return { x: Math.round(p.x + ((a.x - p.x) / L) * d), y: Math.round(p.y + ((a.y - p.y) / L) * d) };
 }
 
 /** Rig-drawn canvases for the walk home (step frames that are not sprite frames; cached per light side). */
@@ -261,25 +293,29 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
     SP = plan.steps;
     const dir = plan.dir;
     if (s.blocked) {
-      // it dies 3 px in front of the guard's toes: the fork is drawn on open floor, never under the guard
-      seamTo = onLineAtX(bite, { x: aim.x, y: aim.y }, front - sgn * 3);
+      // it dies 3 px in front of the guard's front edge (where the line first meets the drawn guard): the fork lies on
+      // open floor, never under the guard
+      const aimG = { x: aim.x, y: aim.y };
+      const hit = entryOnLine(s.target, bite, aimG);
+      seamTo = hit ? backOff(hit, bite, 3) : onLineAtX(bite, aimG, front - sgn * 3);
     } else {
       seamTo = { x: Math.round(aim.x + dir.x * 12), y: Math.round(aim.y + dir.y * 12) };
-      // the toes: the climb starts the frame the running head reaches them
-      feet = onLineAtX(bite, seamTo, front);
+      // the toes: the climb starts the frame the running head reaches them (where the line meets the drawn body)
+      feet = entryOnLine(s.target, bite, seamTo) ?? onLineAtX(bite, seamTo, front);
     }
   }
   const back = norm(sub(homeFeet, land.x === homeFeet.x && land.y === homeFeet.y ? { x: homeFeet.x + sgn, y: homeFeet.y } : land));
 
   // ---- sound on the marks: the declaration's grip goes on until the spin takes over
   const grip = takeCharge(u, 'caxGrip', { volume: 0.8, pan });
-  // the plates step aside for the run: the target's ATK/DEF plate sits on the very floor the seam runs over (back
-  // at contact + 300 ms, unless the target dies)
+  // the plates step aside for the run: the ATK/DEF plates (the target's, and the attacker's own — for P2 it lies in
+  // front of him, on the seam's path) sit on the very floor the seam runs over (back at contact + 300 ms, unless that
+  // unit dies)
   const plates: { back: ((keep: (x: MonsterUnit) => boolean) => void) | null } = { back: null };
   atFrame(u, 'attack', spinF0, () => {
     grip.stop(60);
     play('caxSpin', { volume: 0.95, pan });
-    if (!s.direct && s.target) plates.back = platesOff([s.target]);
+    if (!s.direct) plates.back = platesOff([s.target ?? null, u]);
   });
   atFrame(u, 'attack', cockF, () => play('caxCock', { volume: 0.9, pan }));
   atFrame(u, 'attack', relF, () => play('caxChop', { volume: 0.9, pan: panAt(land.x) }));
@@ -405,7 +441,7 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
     s.impact(hitAt);
     // the seam ARRIVES: a dry stone "tak" with a low thump under it (the number and the flash land on it)
     if (!s.blocked) play('caxArrive', { volume: 1, pan: panAt(hitAt.x) });
-    void sleep(sc, 300).then(() => plates.back?.((x) => !(x === s.target && targetDies)));
+    void sleep(sc, 300).then(() => plates.back?.((x) => !((x === s.target && targetDies) || (x === u && loses))));
     // the seam's own light on the struck body: white (the kit's contact light is the attribute's earth tone)
     if (!s.blocked) void lightFlash(sc, hitAt.x, hitAt.y, PAL.white, 20, 260, { floorY: s.direct ? seamTo.y : s.toGround.y, intensity: 0.8 });
     if (loses) {
@@ -467,7 +503,7 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
     placeAt(u, homeFeet);
   } finally {
     driving = false;
-    plates.back?.((x) => !(x === s.target && targetDies));
+    plates.back?.((x) => !((x === s.target && targetDies) || (x === u && loses)));
     if (u.sprite.active) u.sprite.setAlpha(1);
     if (u.sprite.active && !u.retired && !u.claimed) {
       placeAt(u, homeFeet);
@@ -495,7 +531,68 @@ function sleepAnimate(sc: Phaser.Scene, ms: number, fn: (t: number) => void): Pr
   });
 }
 
-if (LOOK_V3) registerStrike(ID, async (s) => (LOOK_V3 ? dagYaran(s) : s.base?.()));
+// ================================================================ the idle accent: the axe tapped on the floor (idle f11)
+
+/**
+ * The idle's sound (oturum-c-tasarim §2.3 "Idle", §0.5): the stone "tok" of the axe head tapped on the floor between
+ * his boots on idle f11 — an ambient tick at most once per 4.5 s across every axeman on the board, never within 2.5 s
+ * of a board action, only while the unit stands in its idle loop. No shared ambient-idle hook exists, so each unit
+ * carries its own watcher (started on its summon, its strike, a position change, or the first phase / turn change).
+ * Sound only: no pixels change.
+ */
+const idleWatched = new WeakSet<MonsterUnit>();
+let idleBusy = false;
+const idleClock = new WeakMap<Phaser.Scene, { last: number; contact: number }>();
+export function idleTap(sc: Phaser.Scene, u: MonsterUnit): void {
+  if (!LOOK_V3 || idleWatched.has(u)) return;
+  idleWatched.add(u);
+  let st = idleClock.get(sc);
+  if (!st) {
+    st = { last: -1e9, contact: -1e9 };
+    idleClock.set(sc, st);
+  }
+  const clock = st;
+  let prev = -1;
+  onFrame(sc, () => {
+    if (u.retired || !u.sprite.active) return false;
+    const fi = u.frameInfo();
+    const f = fi.anim === 'idle' ? fi.frame : -1;
+    const now = sc.time.now;
+    if (idleBusy) {
+      idleBusy = false;
+      clock.contact = now;
+    }
+    if (f === 11 && prev !== 11 && u.sprite.visible && !u.claimed && now - clock.last > 4500 && now - clock.contact > 2500) {
+      clock.last = now;
+      play('caxTap', { pan: panAt(u.home.x), volume: 0.6 });
+    }
+    prev = f;
+    return true;
+  });
+}
+
+if (LOOK_V3) {
+  registerObserver((ev) => {
+    if (ev.type !== 'phaseChange' && ev.type !== 'turnStart') idleBusy = true;
+  });
+  const scan = async (ctx: CinematicContext<Extract<GameEvent, { type: 'phaseChange' | 'turnStart' }>>) => {
+    try {
+      for (const u of ctx.views.field.units()) if (u.cardId === ID && !u.retired) idleTap(ctx.scene, u);
+    } catch {
+      /* never break the event */
+    }
+    return ctx.base();
+  };
+  registerEvent('phaseChange', scan, { priority: -50, name: 'kartc:crag_axeman:idle-scan' });
+  registerEvent('turnStart', scan, { priority: -50, name: 'kartc:crag_axeman:idle-scan' });
+}
+
+if (LOOK_V3)
+  registerStrike(ID, async (s) => {
+    if (!LOOK_V3) return s.base?.();
+    idleTap(s.scene, s.attacker);
+    return dagYaran(s);
+  });
 
 // ---- the haft coming across the chest on a position change (the struck body's own sounds — fur / hide, the haft
 // slap on a guarded blow, the grunt on a heavy one — are the voice's `struck` set: src/audio/v3/crag_axeman.ts)
@@ -504,6 +601,7 @@ if (LOOK_V3) {
     if (ev.type === 'positionChange' && ev.position === 'defense') {
       const u = ctx.unit(ev.uid);
       if (!u || u.cardId !== ID) return;
+      idleTap(ctx.scene, u);
       // the haft comes across the chest as a bar on the guard's last in-between frame
       atFrame(u, 'toGuard', 3, () => play('caxGuard', { volume: 0.7, pan: panAt(u.home.x) }), { maxMs: 2000 });
     }

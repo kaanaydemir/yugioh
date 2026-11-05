@@ -25,7 +25,7 @@ export const SEAM_DEPTH = DEPTH.CARD_ON_TILE + 3;
  * the fade 1 → 2 → 3).
  */
 const TONES: readonly (readonly [number, number, number])[] = [
-  [PAL.white, PAL.earth4, PAL.earth3],
+  [PAL.white, PAL.earth4, PAL.earth2],
   [PAL.earth4, PAL.earth3, PAL.earth2],
   [PAL.earth3, PAL.earth2, PAL.earth1],
   [PAL.earth2, PAL.earth1, PAL.earth0],
@@ -85,6 +85,8 @@ export interface SeamOpts {
   spark?: boolean;
   /** A short seam (the summon split, the death) breathes less: the fade starts sooner. */
   quiet?: boolean;
+  /** No drawn floor pool beside the crack (the summon's short split seam). */
+  noPool?: boolean;
 }
 
 /** The floor light's levels (stepped light: 2 = two tones up at the core, night1 → night3; 1 = one tone). */
@@ -234,18 +236,38 @@ export class Seam {
     // core deep inside, a night0 gap, the near lip in shade (lipLo); a 1-px jog every 8–12 px (the joints of the rock),
     // the far end tapering to the bare core. The pixels the head ran over THIS frame flare white across the crack.
     const gap = tone >= 3 ? PAL.night1 : PAL.night0;
+    const rim = PAL.night1;
     const running = n < N;
     const y = (i: number) => this.pts[i].y + this.offs[i];
+    // the light it pours on the floor beside it: a stepped, dithered stone2 / stone3 pool hugging the crack (the floor's
+    // own light layer cannot light every arena's floor; white light on the night floor steps through the cool greys),
+    // breathing with the core and gone once it fades
+    if (tone <= 1 && !this.o.noPool) {
+      for (let i = 0; i < n; i++) {
+        const p = this.pts[i];
+        const yy = y(i);
+        const tail = N - 1 - i;
+        if (tail < 4 || i < 2) continue;
+        // the core band: one row each side, a 2×2 ordered dither (stone3 at full light, stone2 as it breathes); a
+        // sparser stone2 row beyond it at full light only
+        const near = (p.x + yy) % 2 === 0;
+        const far = tone === 0 && (p.x + 2 * yy) % 4 === 0;
+        const c = tone === 0 ? PAL.stone3 : PAL.stone2;
+        if (near) px.dot(p.x, yy - 3, c).dot(p.x, yy + 3, c);
+        else if (tone === 0) px.dot(p.x, yy - 3, PAL.stone2).dot(p.x, yy + 3, PAL.stone2);
+        if (far) px.dot(p.x, yy - 4, PAL.stone2).dot(p.x, yy + 4, PAL.stone2);
+      }
+    }
     for (let i = 0; i < n; i++) {
       const p = this.pts[i];
       const yy = y(i);
       const tail = N - 1 - i; // px to the far end
       const fresh = running && i >= this.prevHead;
       const wide = tail >= 6;
-      if (wide) {
-        px.dot(p.x, yy - 2, fresh ? PAL.white : lipHi).dot(p.x, yy + 2, fresh ? PAL.white : lipLo);
-      }
-      if (tail >= 2) px.dot(p.x, yy - 1, fresh ? PAL.white : gap).dot(p.x, yy + 1, fresh ? PAL.white : gap);
+      // top → bottom: the far edge (a night1 rim where the floor breaks), the far wall lit from inside (lipHi), the
+      // white core deep in the crack, the near wall's shadow (night0), the near lip (lipLo) — iso: you see INTO it
+      if (wide) px.dot(p.x, yy - 2, fresh ? PAL.white : rim).dot(p.x, yy + 2, fresh ? PAL.white : lipLo);
+      if (tail >= 2) px.dot(p.x, yy - 1, fresh ? PAL.white : lipHi).dot(p.x, yy + 1, fresh ? PAL.white : gap);
       px.dot(p.x, yy, tail >= 2 ? core : TONES[Math.min(3, tone + 1)][0]);
       // the jog's riser: the step between two runs stays one crack (its corner lit, its walls dark)
       if (i > 0 && this.offs[i] !== this.offs[i - 1]) {
@@ -267,18 +289,18 @@ export class Seam {
       const ey = y(N - 1);
       const since = el - arrivedAt;
       const st = since < 160 ? 0 : since < 280 ? 1 : since < 380 ? 2 : 3;
-      if (since < 45) for (const [dx, dy] of [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1], [2, 0], [0, -2]] as const) px.dot(e.x + dx, ey + dy, PAL.white);
+      if (since < 70) for (const [dx, dy] of [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1], [2, 0], [-2, 0], [0, -2], [1, -1], [-1, -1]] as const) px.dot(e.x + dx, ey + dy, PAL.white);
       if (st < 3) {
         const [pc, pl] = TONES[Math.min(3, st + (st > 0 ? 1 : 0))];
         const nx = -this.dir.y;
         const ny = this.dir.x;
         for (const sd of [1, -1])
-          for (let k = 1; k <= 4; k++) {
+          for (let k = 1; k <= 5; k++) {
             const x = Math.round(e.x + this.dir.x * k * 0.8 + nx * sd * k * 0.9);
             const yy = Math.round(ey + this.dir.y * k * 0.8 + ny * sd * k * 0.9);
             px.dot(x, yy + 1, gap);
             px.dot(x, yy - 1, gap);
-            px.dot(x, yy, k <= 2 ? pc : pl);
+            px.dot(x, yy, k <= 3 ? pc : pl);
           }
         if (st === 0) px.dot(e.x, ey, PAL.gold4);
       }

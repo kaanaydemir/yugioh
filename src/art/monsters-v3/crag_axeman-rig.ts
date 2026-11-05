@@ -388,12 +388,18 @@ function paintCloak(f: Frame): void {
     // down the spine, teeth only along the hem. A back-3/4 turn hangs lopsided (the turned side narrower).
     const hy = hemY - 4;
     const turn = L.head === 'back34' ? mx : 0;
-    const wl = (17 - sway * 0.4) * L.sw * (turn > 0 ? 1.08 : turn < 0 ? 0.86 : 1);
-    const wr = (17 + sway * 0.4) * L.sw * (turn > 0 ? 0.86 : turn < 0 ? 1.08 : 1);
+    // the turn reads in the pelt: the shoulder hump rides across with the turn (right in the back-3/4 right, a px left of
+    // centre square from behind, left in the back-3/4 left), the hem flares out on the side it swings to (centrifugal,
+    // `cape` px) and hangs a px longer there, and the half turned away from the light goes a band darker — swapping
+    // sides as he comes round
+    const sway2 = sway * 0.8;
+    const wl = (17 - Math.min(0, sway2)) * L.sw * (turn > 0 ? 1.08 : turn < 0 ? 0.86 : 1) + (sway2 < 0 ? -sway2 * 0.5 : 0);
+    const wr = (17 + Math.max(0, sway2)) * L.sw * (turn > 0 ? 0.86 : turn < 0 ? 1.08 : 1);
+    const humpX = cx + (turn !== 0 ? turn * 7 : -2) * L.sw;
     // a bell, not a box: narrow under the mantle's humps, the sides curving out to a wider ragged hem
-    const sideR = spline([[cx + 12 * L.sw, cy - 9], [cx + 13 * L.sw, cy + 1], [cx + wr + 1, hy]], 4);
-    const sideL = spline([[cx - wl - 1, hy], [cx - 13 * L.sw, cy + 1], [cx - 12 * L.sw, cy - 9]], 4);
-    const pts: Pt[] = [[cx - 12 * L.sw, cy - 10], [cx - 6 * L.sw, cy - 12], [cx + 6 * L.sw, cy - 12], ...sideR];
+    const sideR = spline([[cx + 12 * L.sw, cy - 9], [cx + 13 * L.sw + Math.max(0, sway2) * 0.3, cy + 1], [cx + wr + 1, hy + (sway2 > 1 ? 1 : 0)]], 4);
+    const sideL = spline([[cx - wl - 1, hy + (sway2 < -1 ? 1 : 0)], [cx - 13 * L.sw + Math.min(0, sway2) * 0.3, cy + 1], [cx - 12 * L.sw, cy - 9]], 4);
+    const pts: Pt[] = [[cx - 12 * L.sw, cy - 10], [humpX - 5, cy - 12], [humpX, cy - 14], [humpX + 5, cy - 12], [cx + 12 * L.sw, cy - 10], ...sideR];
     const tpts: Pt[] = [];
     hemTeeth(tpts, cx - wl - 1, cx + wr + 1, hy, 7, o.hem, 3);
     tpts.reverse();
@@ -401,11 +407,13 @@ function paintCloak(f: Frame): void {
     polyT(f, q, pts, FUR.M);
     const ls = f.light.side;
     const fold = cx + turn * 3;
+    const shadeSide = turn > 0 ? -1 : 1;
+    const shadeFrom = turn === 0 ? 5 : 1;
     planes(q, (x, y, src) => {
       const [bx, by] = xfInv(f.T, x, y);
       let toL = 0;
       while (toL < 4 && src.isOpaque(x + ls * (toL + 1), y)) toL++;
-      if (toL < 3) return FUR.L;
+      if (toL < 3 && shadeSide * (bx - fold) <= shadeFrom) return FUR.L;
       let away = 0;
       while (away < 4 && src.isOpaque(x - ls * (away + 1), y)) away++;
       let dn = 0;
@@ -420,6 +428,10 @@ function paintCloak(f: Frame): void {
         if (X === fx) return FUR.S;
         if (X === fx + ls) return FUR.L;
       }
+      // the half turned away from the light: a darker band
+      if (shadeSide * (bx - fold) > shadeFrom) return FUR.S;
+      // the hump catches the light
+      if (Math.abs(bx - humpX) < 3 && by < cy - 9) return FUR.L;
       // the shoulder blades under the pelt: a soft shade crease below each hump
       if (Math.abs(by - (cy - 4)) < 0.6 && Math.abs(bx - cx) > 4 && Math.abs(bx - cx) < 10 * L.sw) return FUR.S;
       return FUR.M;
@@ -618,11 +630,14 @@ function paintMantle(f: Frame): void {
 // A moustache-and-chin mass only (the cheek and the jaw's back stay skin), then TWO short braids hanging onto the chest
 // with a clear gap of skin between them (5 px apart: their soft outlines never touch), each ending in a bright 2×2 stone
 // bead — never a solid plate over the lower face, never a grille over the haft crossing the chest.
-const BEARDS: Record<'r34' | 'side' | 'front' | 'back34', { mass: (readonly [number, number])[]; braids: [number, number, number][] }> = {
-  r34: { mass: [[4, 1.5], [6, 0.5], [8, 1.5], [8.5, 3], [7, 4.5], [5, 4.5], [3.5, 3]], braids: [[4, 4, 4], [7.8, 3.5, 5]] },
-  side: { mass: [[5, 1.5], [7, 0.5], [9, 1.5], [9.5, 3], [8, 4.5], [6, 4.5], [4.5, 3]], braids: [[5, 4, 4], [8.8, 3.5, 5]] },
-  front: { mass: [[-4.5, 0.5], [0, -0.5], [4.5, 0.5], [5, 2], [3.5, 3.5], [-3.5, 3.5], [-5, 2]], braids: [[-3, 3, 6], [3, 3, 6]] },
-  back34: { mass: [[4.5, 1], [6.5, 1], [7, 4], [5.5, 5.5]], braids: [[6.2, 4, 5]] },
+const BEARDS: Record<'r34' | 'side' | 'front' | 'back34', { mass: (readonly [number, number])[]; braids: [number, number, number][]; mouth: [number, number][] }> = {
+  // a moustache-and-chin mass over the jaw's front, then 2–3 BRAIDS hanging 6–8 px below the chin onto the chest, each
+  // a twisted 2-px rope (stone2, stone1 twist nicks, a stone3 lit edge) with a 2×2 stone4 bead, all outlined in ink so
+  // they never merge with the mantle, the arm or the haft behind them
+  r34: { mass: [[2.5, 2], [5.5, 1], [8.5, 2], [8.5, 4], [7, 5.5], [4, 6], [2.5, 4]], braids: [[3.5, 5.5, 7], [7.2, 5.5, 8]], mouth: [[5, 3], [6, 3]] },
+  side: { mass: [[3.5, 2], [6.5, 1], [9.5, 2], [9.5, 4], [8, 5.5], [5, 6], [3.5, 4]], braids: [[4.5, 5.5, 7], [8.2, 5.5, 8]], mouth: [[6, 3], [7, 3]] },
+  front: { mass: [[-4.5, 0.5], [0, -0.5], [4.5, 0.5], [5, 2.5], [3.5, 4], [-3.5, 4], [-5, 2.5]], braids: [[-2.5, 3.5, 7], [2.5, 3.5, 8]], mouth: [[-1, 2], [0, 2], [1, 2]] },
+  back34: { mass: [[4.5, 1], [6.5, 1], [7, 4], [5.5, 5.5]], braids: [[6.2, 4, 6]], mouth: [] },
 };
 
 function paintBeard(f: Frame): void {
@@ -633,41 +648,57 @@ function paintBeard(f: Frame): void {
   const mx = front ? 1 : L.mx;
   const [hx, hy] = sk.Hd;
   const B = BEARDS[L.head];
-  // the moustache-and-chin mass over the jaw's front (moustache stone2 lit stone3, the chin under it a step darker)
+  const open = o.mouth > 0 && L.head !== 'back34';
+  // the moustache-and-chin mass over the jaw's front (stone2 lit stone3, the chin under it a step darker)
   const q = layer();
   polyT(f, q, loc([hx, hy], mx, B.mass), BEARD.M);
   bands(q, BEARD, f.light, 1, 1, { top: 1, bottom: 1 });
-  f.comp.add(q, Part.beard, { out: BEARD.D });
-  // the braids, each its own part with a SOFT outline (stone1: a grey on skin, not ink bars), swinging by `bead` (the
-  // longer front one the latest); the braid's twist is a nick on its shadow side every 2 rows (a zig-zag, not stripes);
-  // a 2×2 stone bead on each end (stone4 lit, stone3, a stone0 under-rim)
+  // a soft stone1 contour (an ink one would close the face under the eye into one dark band)
+  f.comp.add(q, Part.beard, { out: BEARD.S });
+  // the braids (the jaw drops a px when he shouts: they hang a px lower), swinging by `bead` (the middle, longest one
+  // the latest)
+  const drop = open ? 1 : 0;
   B.braids.forEach(([dx, y0, len], i) => {
     const bq = layer();
-    const x0 = hx + dx * mx;
-    const sw = o.bead * (len / 7) * (i === B.braids.length - 1 ? 1.2 : 0.85);
-    const path = spline([[x0, hy + y0], [x0 + sw * 0.4, hy + y0 + len * 0.5], [x0 + sw, hy + y0 + len]], 4);
-    polyT(f, bq, ribbon(path, (k) => lerp(1.8, 1.4, k)), BEARD.M);
+    // shouting, the beard parts round the open mouth: the braids swing out a px either side
+    const part = open ? (i === 0 ? -1 : i === B.braids.length - 1 ? 1 : 0) : 0;
+    const x0 = hx + (dx + part) * mx;
+    const lag = i === B.braids.length - 1 ? 1.2 : 0.85;
+    const sw = o.bead * (len / 7) * lag;
+    const top = hy + y0 + drop;
+    const path = spline([[x0, top], [x0 + sw * 0.35, top + len * 0.5], [x0 + sw, top + len]], 4);
+    polyT(f, bq, ribbon(path, (k) => lerp(2.1, 1.7, k)), BEARD.M);
     planes(bq, (x, y, src) => {
       const [, by] = xfInv(f.T, x, y);
-      if (!src.isOpaque(x + f.light.side, y)) return BEARD.L;
-      if (!src.isOpaque(x - f.light.side, y) && rnd(by - hy) % 2 === 0) return BEARD.S;
+      const r = rnd(by - top);
+      if (!src.isOpaque(x + f.light.side, y)) return r % 3 === 0 ? BEARD.S : BEARD.L;
+      if (r % 3 === 1) return BEARD.S;
       return BEARD.M;
     });
-    f.comp.add(bq, Part.beard, { out: BEARD.S });
+    f.comp.add(bq, Part.beard, { out: PAL.ink });
+    // the bead: 2×2, stone4 lit corner, stone3, an ink outline (bright against the leather / skin / fur)
     const kq = layer();
-    const [X, Y] = xf(f.T, [x0 + sw, hy + y0 + len + 1]);
+    const [X, Y] = xf(f.T, [x0 + sw, top + len + 1]);
     kq.rect(rnd(X) - 1, rnd(Y) - 1, 2, 2, PAL.stone3);
     kq.set(rnd(X) - 1 + (f.light.side < 0 ? 0 : 1), rnd(Y) - 1, PAL.stone4);
-    f.comp.add(kq, Part.beard, { out: PAL.stone0 });
+    kq.set(rnd(X) - 1 + (f.light.side < 0 ? 1 : 0), rnd(Y), PAL.stone2);
+    f.comp.add(kq, Part.beard, { out: PAL.ink });
   });
-  // the open mouth (nara): a dark hole in the beard under the moustache
-  if (o.mouth > 0 && L.head !== 'back34') {
-    const pts: [number, number][] = front ? [[-1, 3], [0, 3], [1, 3], [-1, 4], [0, 4], [1, 4], [0, 5]] : [[5, 3], [6, 3], [7, 3], [5, 4], [6, 4], [6, 5]];
-    for (const [lx, ly] of pts) {
-      const [x, y] = xf(f.T, [hx + lx * mx, hy + ly]);
-      f.p.set(rnd(x), rnd(y), ly === 3 ? PAL.skin0 : PAL.ink);
+  const set = (lx: number, ly: number, c: number) => {
+    const [x, y] = xf(f.T, [hx + lx * mx, hy + ly]);
+    f.p.set(rnd(x), rnd(y), c);
+  };
+  if (open) {
+    // the open mouth (nara): a 2×3 ink hole under a skin3 upper lip, the beard parted round it
+    const m = B.mouth.map(([lx]) => lx);
+    const xs = [m[0] - 1, ...m];
+    for (const lx of xs) {
+      set(lx, 2, PAL.skin4);
+      for (const ly of [3, 4, 5]) set(lx, ly, PAL.ink);
     }
-  }
+    set(xs[0] - 1, 4, BEARD.S);
+    set(xs[xs.length - 1] + 1, 4, BEARD.S);
+  } else for (const [lx, ly] of B.mouth) set(lx, ly, PAL.ink); // the closed mouth: a 2-px ink line in the beard
 }
 
 // ---------------------------------------------------------------- head
@@ -721,21 +752,27 @@ function paintHead(f: Frame): void {
     const p = xf(f.T, [hx + lx * (front ? 1 : mx), hy + ly]);
     return [rnd(p[0]), rnd(p[1])];
   };
-  const brow = (lx: number) => {
-    const [x, y] = at(lx, -3);
-    if (f.comp.id[y * W + x] === Part.head) f.p.set(x, y, SKIN.D);
-  };
+  const onHead = (x: number, y: number) => f.comp.id[y * W + x] === Part.head;
   if (mode === 'r34' || mode === 'side' || front) {
+    // a READABLE face at 1×: an ink brow ridge over each eye, the eye a white px with an ink pupil looking ahead (shut:
+    // an ink lid line; glare: the white widened behind the pupil), the cheek shade under it; the war paint moved back
+    // onto the forehead, clear of the eye
     const eyesX = front ? [-2, 2] : mode === 'side' ? [5] : [4];
     for (const ex of eyesX) {
-      brow(ex - (front && ex < 0 ? 1 : 0));
-      brow(ex + (front ? (ex < 0 ? 0 : 1) : 1));
-      if (!front) brow(ex + 2);
+      const fwd = front ? (ex < 0 ? -1 : 1) : 1;
+      for (const d of front ? [-1, 0, 1] : [-1, 0, 1]) {
+        const [x, y] = at(ex + d * (front ? fwd : 1), -3);
+        if (onHead(x, y)) f.p.set(x, y, PAL.ink);
+      }
       f.eyes.push(at(ex, -2));
       const [ux, uy] = at(ex, -1);
-      if (f.comp.id[uy * W + ux] === Part.head) f.p.set(ux, uy, SKIN.S);
+      if (onHead(ux, uy)) f.p.set(ux, uy, SKIN.S);
+      if (!front) {
+        const [cx, cy] = at(ex - 1, 0);
+        if (onHead(cx, cy)) f.p.set(cx, cy, SKIN.S);
+      }
     }
-    const stripes = front ? [-2, 2] : mode === 'side' ? [3, 5] : [2, 4];
+    const stripes = front ? [-3, 3] : mode === 'side' ? [1, 3] : [0, 2];
     for (const sx of stripes) for (let ly = -7; ly <= -4; ly++) f.paint.push(at(sx, ly));
   }
   if (mode === 'back' || mode === 'back34') {
@@ -938,9 +975,11 @@ function drawBody(f: Frame, withAxe: boolean): void {
   paintMantle(f);
   if (o.az === 0 && withAxe) paintAxe(f, Part.axeBack);
   paintHead(f);
-  paintBeard(f);
   if (!armsBack) {
     paintArm(f, false, Part.armN);
+    // the braids hang over the near collarbone and shoulder (drawn after that arm, so they read at 1× and never merge
+    // into the arm or the mantle behind them)
+    paintBeard(f);
     if (o.az > 0 && withAxe) paintAxe(f, Part.axe);
     if (twoHanded) paintFist(f, true);
     paintFist(f, false);
@@ -955,11 +994,18 @@ function newFrame(p: PixelCanvas, o: Pose, light: Light, T: Xf): Frame {
 
 function lightPass(f: Frame): void {
   const { p, o } = f;
-  // eyes: white 1 px (shut = a skin1 lid line)
+  // eyes: a white px with an ink pupil one px ahead (the way he faces); shut = an ink lid line over both; glare = the
+  // white also a px behind (wide-eyed)
+  const fwd = f.sk.L.head === 'front' ? 0 : f.sk.L.mx;
   for (const [x, y] of f.eyes) {
-    if (o.eye <= 0.2) p.set(x, y, PAL.skin1);
-    else p.set(x, y, PAL.white);
-    if (o.eye > 1.5) p.set(x + 1, y, PAL.white);
+    if (o.eye <= 0.2) {
+      p.set(x, y, PAL.ink);
+      if (fwd) p.set(x + fwd, y, PAL.ink);
+      continue;
+    }
+    p.set(x, y, PAL.white);
+    if (fwd) p.set(x + fwd, y, PAL.ink);
+    if (o.eye > 1.5 && fwd) p.set(x - fwd, y, PAL.white);
   }
   // war paint: two 1×4 fire stripes (body accent), flashing to a fire4 / white light in hitMagic
   for (const [x, y] of f.paint) {
@@ -1041,9 +1087,10 @@ export function drawAxeman(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right')
     f = newFrame(p, o, light, IDENT);
     // the fallen halves lie behind him (drawn first: his boots stand in front of them); the whole boulder hides him, and
     // while its halves fall open they are still the shell AROUND him (drawn over him: he is revealed as they fall away)
-    if (o.bould >= 5) boulderFx(f, true);
+    // the falling halves (4) too: they fall away to the sides, behind him — he stands revealed between them
+    if (o.bould >= 4) boulderFx(f, true);
     if (!o.hide) drawBody(f, true);
-    if (o.bould > 0 && o.bould < 5) boulderFx(f, true);
+    if (o.bould > 0 && o.bould < 4) boulderFx(f, true);
     p.outline(PAL.ink);
     if (!o.hide) {
       lightPass(f);

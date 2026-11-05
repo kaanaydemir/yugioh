@@ -17,77 +17,104 @@ const layer = () => kitLayer(W, H);
 const BR = 16;
 const BCX = AX + 1;
 const BCY = GY - 16;
-/** A lumpy boulder outline (a 14-gon) turned by the roll frame; slightly flattened (it rests on the floor). */
-function boulderPts(cx: number, cy: number, roll: number, sq = 0.95): Pt[] {
+/**
+ * A MOUNTAIN boulder outline (never a disc): a 16-gon with uneven radii, three flat spots (faces broken off the rock)
+ * and two chip notches; the whole shape turns a quarter per roll frame, so its bumps visibly go round in the 4-frame
+ * cycle. Slightly flattened (it rests on the floor).
+ */
+function boulderPts(cx: number, cy: number, roll: number, sq = 0.93): Pt[] {
+  const N = 16;
   const pts: Pt[] = [];
-  for (let i = 0; i < 14; i++) {
-    const a = (i / 14) * TAU + roll * (TAU / 14 / 2);
-    const r = BR * (0.9 + 0.12 * hash2(i, 7, 3));
+  const FLAT = [2, 7, 12];
+  const CHIP = [5, 14];
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * TAU + roll * (TAU / 4) + 0.2;
+    let r = BR * (0.86 + 0.16 * hash2(i, 7, 3));
+    if (FLAT.includes(i) || FLAT.includes((i + N - 1) % N)) r = BR * 0.86; // two equal radii in a row: a flat face
+    if (CHIP.includes(i)) r -= 2.2;
     pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r * sq]);
   }
   return pts;
 }
 
+/** A feature point of the rock (a crack end, a moss tuft, a pit) in rock coords, turned by the roll like the outline. */
+function rockAt(cx: number, cy: number, roll: number, a: number, r: number): Pt {
+  const t = a + roll * (TAU / 4) + 0.2;
+  return [cx + Math.cos(t) * r, cy + Math.sin(t) * r * 0.93];
+}
+
 /**
- * Flat carved facets of the boulder (Voronoi cells around seeds that turn with the roll): each facet one tone by its
- * facing (the lit top-left facets stone3/4, the under-belly stone1), 1-px creases one step darker between facets.
+ * The rock's value plan (flat bands, no facets): a lit top band (stone4 at the very rim toward the light, stone3 under
+ * it), the stone2 body, a stone1 core shadow on the far lower side and a stone1 under-rim; then, turning with the roll,
+ * two ink cracks with a lit lip, three moss pixels on the lit top and a few 1-px pits.
  */
 function stoneFacets(q: PixelCanvas, f: Frame, cx: number, cy: number, roll: number, step: number): void {
   const T = [PAL.stone4, PAL.stone3, PAL.stone2, PAL.stone1, PAL.stone0];
   const s = clamp(step, 0, 2);
   const ls = f.light.side;
-  // big irregular facets: jittered seeds (no hub), turned with the roll
-  const seeds: [number, number][] = [];
-  for (let i = 0; i < 6; i++) {
-    const a = (i / 6) * TAU + roll * 0.52 + (hash2(i, 4, 1) - 0.5) * 0.9;
-    const r = BR * (0.3 + 0.5 * hash2(i, 2, 9));
-    seeds.push([Math.cos(a) * r, Math.sin(a) * r]);
-  }
   planes(q, (x, y, src) => {
-    const dx = x - cx;
-    const dy = y - cy;
-    let b0 = 1e9;
-    let b1 = 1e9;
-    let bi = 0;
-    for (let i = 0; i < seeds.length; i++) {
-      const d = Math.hypot(dx - seeds[i][0], dy - seeds[i][1]);
-      if (d < b0) {
-        b1 = b0;
-        b0 = d;
-        bi = i;
-      } else if (d < b1) b1 = d;
-    }
-    const [sx, sy] = seeds[bi];
-    const lit = (-sx * ls * 0.6 - sy * 0.8) / BR + (-dx * ls * 0.3 - dy * 0.4) / BR;
-    let tone = lit > 0.35 ? 0 : lit > 0.05 ? 1 : lit > -0.3 ? 2 : 3;
-    // rim: the outer edge row of a facet facing the light is lit, the under edge dark
-    if (!src.isOpaque(x, y + 1) || !src.isOpaque(x + ls * -1, y + 1)) tone = Math.max(tone, 3);
-    if (b1 - b0 < 0.8) tone = Math.min(4, tone + 1);
+    const dx = (x - cx) / BR;
+    const dy = (y - cy) / BR;
+    let up = 0;
+    while (up < 3 && src.isOpaque(x, y - up - 1)) up++;
+    let toL = 0;
+    while (toL < 3 && src.isOpaque(x + ls * (toL + 1), y)) toL++;
+    let dn = 0;
+    while (dn < 2 && src.isOpaque(x, y + dn + 1)) dn++;
+    const lit = -dx * ls * 0.55 - dy * 0.85;
+    let tone = lit > 0.42 ? 1 : lit > -0.3 ? 2 : 3;
+    if ((up < 1 || toL < 1) && lit > -0.1) tone = 0; // the rim toward the light
+    else if (up < 2 && lit > 0.1) tone = Math.min(tone, 1);
+    if (dn < 1) tone = 3; // the under-rim on the floor
     return T[Math.min(4, tone + s)];
   });
+  // cracks (ink, a lit lip one px above), moss and pits — all in rock coords
+  const cracks: [number, number, number, number][] = [[-2.2, 0.15, -1.2, 0.75], [0.5, 0.6, 1.4, 0.2]];
+  for (const [a0, r0, a1, r1] of cracks) {
+    const p0 = rockAt(cx, cy, roll, a0, BR * r0);
+    const p1 = rockAt(cx, cy, roll, a1, BR * r1);
+    const n = Math.ceil(Math.hypot(p1[0] - p0[0], p1[1] - p0[1]));
+    for (let i = 0; i <= n; i++) {
+      const x = rnd(lerp(p0[0], p1[0], i / n) + (i % 3 === 1 ? 1 : 0));
+      const y = rnd(lerp(p0[1], p1[1], i / n));
+      if (!q.isOpaque(x, y) || !q.isOpaque(x, y + 1)) continue;
+      q.set(x, y, PAL.stone0);
+      if (q.isOpaque(x, y - 1) && q.get(x, y - 1) !== PAL.stone0) q.set(x, y - 1, T[Math.min(4, 1 + s)]);
+    }
+  }
+  for (const [a, r, c] of [[-1.9, 0.78, PAL.leaf2], [-1.75, 0.82, PAL.leaf1], [-1.6, 0.76, PAL.leaf2]] as const) {
+    const [x, y] = rockAt(cx, cy, roll, a, BR * r);
+    if (q.isOpaque(rnd(x), rnd(y)) && s < 2) q.set(rnd(x), rnd(y), s ? PAL.leaf1 : c);
+  }
+  for (let i = 0; i < 5; i++) {
+    const [x, y] = rockAt(cx, cy, roll, hash2(i, 3, 9) * TAU, BR * (0.25 + 0.5 * hash2(i, 5, 1)));
+    const X = rnd(x);
+    const Y = rnd(y);
+    if (q.isOpaque(X, Y) && q.isOpaque(X, Y + 1) && q.get(X, Y) !== PAL.stone0) q.set(X, Y, T[Math.min(4, 3 + s)]);
+  }
 }
-
 
 /** One half of the boulder (s = −1 left, +1 right) in boulder-local points, the flat cut face on x = BCX. */
 function halfPts(s: number, roll: number): Pt[] {
   const pts = boulderPts(BCX, BCY, roll).filter(([x]) => (s < 0 ? x <= BCX : x >= BCX));
-  pts.push([BCX, BCY + BR * 0.95], [BCX, BCY - BR * 0.95]);
+  pts.push([BCX, BCY + BR * 0.93], [BCX, BCY - BR * 0.93]);
   pts.sort((a, b) => Math.atan2(a[1] - BCY, a[0] - BCX) - Math.atan2(b[1] - BCY, b[0] - BCX));
   return pts;
 }
 
-/** The cut face's light band: within 2 px of the cut line (white at the face's very edge, earth4 behind it). */
+/**
+ * The cut face of a half: STONE, not a light plane — a stone3 face (turning toward the viewer as the half tips out, so
+ * it widens with the tilt), a stone4 rim on the cut edge, white only as the 1-px seam line on the very edge while the
+ * light is still in it (k 0), and stone1 grain pits.
+ */
 function cutFaceLight(h: PixelCanvas, toLocal: (x: number, y: number) => Pt, s: number, k: number, deg = 0): void {
-  // the flat cut face is the brightest plane of the stone: it turns toward the viewer as the half tips out, so the lit
-  // band widens with the tilt (white at the cut, the face stone4, its far edge earth4) — a clean plane, never a hinge
-  const LIT = [PAL.white, PAL.earth4, PAL.stone3, PAL.stone2];
-  const face = 2.6 + deg / 12;
+  const face = 2 + deg / 15;
   planes(h, (x, y) => {
-    const [lx] = toLocal(x, y);
+    const [lx, ly] = toLocal(x, y);
     const d = (lx - BCX) * s; // 0 at the cut, growing into the half
-    if (d < 1) return LIT[Math.min(3, k)];
-    if (d < face - 1.2) return k === 0 ? PAL.stone4 : LIT[Math.min(3, k + 1)];
-    if (d < face) return LIT[Math.min(3, k + 1)];
+    if (d < 1) return k === 0 ? PAL.white : PAL.stone4;
+    if (d < 2) return PAL.stone4;
+    if (d < face) return hash2(rnd(lx), rnd(ly), 4) < 0.12 ? PAL.stone1 : PAL.stone3;
     return null;
   });
 }
@@ -95,18 +122,23 @@ function cutFaceLight(h: PixelCanvas, toLocal: (x: number, y: number) => Pt, s: 
 function halvesFalling(f: Frame, deg: number, roll: number): void {
   for (const s of [-1, 1]) {
     const h = layer();
-    // pivot: the half's bottom outer corner; the top swings out (left half counter-clockwise, right clockwise)
-    const px = BCX + s * (BR - 2);
+    // each half falls AWAY to its side: it slides out (4 px at 30°, 7 at 60°) and tips about its bottom outer corner,
+    // so the two never cross in front of him (they are drawn behind him: he stands revealed between them)
+    const out = s * (deg / 10);
+    const px = BCX + s * (BR - 2) + out;
     const py = GY - 1;
     const a = s * deg * (Math.PI / 180);
     const c = Math.cos(a);
     const sn = Math.sin(a);
-    const rot = ([x, y]: Pt): Pt => [px + (x - px) * c - (y - py) * sn, py + (x - px) * sn + (y - py) * c];
-    const inv = (x: number, y: number): Pt => [px + (x - px) * c + (y - py) * sn, py - (x - px) * sn + (y - py) * c];
+    const rot = ([x, y]: Pt): Pt => {
+      const X = x + out;
+      return [px + (X - px) * c - (y - py) * sn, py + (X - px) * sn + (y - py) * c];
+    };
+    const inv = (x: number, y: number): Pt => [px + (x - px) * c + (y - py) * sn - out, py - (x - px) * sn + (y - py) * c];
     const shown = halfPts(s, roll).map(rot);
     h.poly(shown, PAL.stone2);
-    stoneFacets(h, f, BCX + s * 8, GY - 8, roll + (s > 0 ? 1 : 2), 0);
-    cutFaceLight(h, inv, s, 0, deg);
+    stoneFacets(h, f, BCX + s * 8 + out, GY - 8, roll, 0);
+    cutFaceLight(h, inv, s, deg > 40 ? 1 : 0, deg);
     f.comp.add(h, 14, { out: PAL.stone0 });
   }
 }
@@ -120,11 +152,13 @@ function halvesLying(f: Frame, sink: number, roll: number): void {
     const hh = Math.max(3, 9 - sink * 2);
     const cy = s < 0 ? GY - 5 : GY - 1;
     const w = 7;
-    // a low dome on its round back, the cut face up (its top 2 rows)
-    h.poly([[cx - w, cy - hh], [cx + w, cy - hh], [cx + w + 1, cy - hh + 3], [cx + w - 3, cy], [cx - w + 3, cy], [cx - w - 1, cy - hh + 3]], PAL.stone2);
+    // a low dome on its round back, the cut face up (its top 2 rows: stone, a stone4 rim, grain pits)
+    h.poly([[cx - w, cy - hh], [cx + w - 1, cy - hh], [cx + w + 1, cy - hh + 3], [cx + w - 3, cy], [cx - w + 2, cy], [cx - w - 1, cy - hh + 2]], PAL.stone2);
     stoneFacets(h, f, cx, GY - 4, roll + (s > 0 ? 1 : 2), Math.min(2, sink));
     const top = cy - hh;
-    planes(h, (_x, y) => (y <= top + 1 ? [PAL.earth4, PAL.stone3, PAL.stone2, PAL.stone1][Math.min(3, sink)] : y === top + 2 && sink === 0 ? PAL.stone4 : null));
+    const rim = [PAL.stone4, PAL.stone3, PAL.stone2, PAL.stone1][Math.min(3, sink)];
+    const face = [PAL.stone3, PAL.stone2, PAL.stone1, PAL.stone1][Math.min(3, sink)];
+    planes(h, (x, y) => (y === top ? rim : y === top + 1 ? (hash2(x, y, 6) < 0.18 ? PAL.stone1 : face) : null));
     f.comp.add(h, 14, { out: PAL.stone0 });
   }
 }
@@ -211,12 +245,55 @@ export function burnPass(q: PixelCanvas, T: Xf, burn: number, gather: boolean): 
       const [bx, by] = xfInv(T, x, y);
       const cx = Math.floor(bx / 3);
       const cy = Math.floor(by / 3);
-      const d = Math.abs(bx - seam) / reach;
-      const thr = 0.9 * d + 0.1 * hash2(cx, cy, 5);
+      const d = Math.min(1, Math.abs(bx - seam) / reach);
+      // from the cut outward, and from the top down: the last of each half is a low scrap on the floor, never a piece
+      // left hanging in the air
+      const h = Math.max(0, Math.min(1, (GY - by) / 64));
+      const thr = 0.45 * d + 0.45 * (1 - h) + 0.1 * hash2(cx, cy, 5);
+      // the last of it (the tail) is only the scraps lying on the floor
+      // (from half-way on, a ragged ceiling comes down to the floor: nothing is left hanging above it)
+      const ceil = burn >= 0.75 ? GY - 10 + (burn - 0.75) * 12 : GY - 10 - (0.75 - burn) * 140 + hash2(cx, cy, 7) * 6;
+      if (!gather && burn >= 0.5 && by < ceil) {
+        q.erase(x, y);
+        continue;
+      }
       if (thr < burn - 0.14) q.erase(x, y);
       else if (thr < burn - 0.06) q.set(x, y, gather ? PAL.white : PAL.earth4);
       else if (thr < burn) q.set(x, y, gather ? PAL.earth4 : PAL.white);
     }
+  if (!gather) dropIslands(q);
+}
+
+/** Keep only the largest 8-connected piece of a half (a burnt-off scrap never floats detached from it). */
+function dropIslands(q: PixelCanvas): void {
+  const seen = new Uint8Array(W * H);
+  let best: number[] = [];
+  const all: number[][] = [];
+  for (let i = 0; i < W * H; i++) {
+    if (seen[i] || !q.isOpaque(i % W, Math.floor(i / W))) continue;
+    const comp: number[] = [];
+    const stack = [i];
+    seen[i] = 1;
+    while (stack.length) {
+      const k = stack.pop()!;
+      comp.push(k);
+      const x = k % W;
+      const y = Math.floor(k / W);
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          const X = x + dx;
+          const Y = y + dy;
+          if (X < 0 || Y < 0 || X >= W || Y >= H) continue;
+          const j = Y * W + X;
+          if (seen[j] || !q.isOpaque(X, Y)) continue;
+          seen[j] = 1;
+          stack.push(j);
+        }
+    }
+    all.push(comp);
+    if (comp.length > best.length) best = comp;
+  }
+  for (const comp of all) if (comp !== best) for (const k of comp) q.erase(k % W, Math.floor(k / W));
 }
 
 /** Revive: the motes that will become the body hang in the seam's column. */
@@ -237,19 +314,18 @@ export function gatherFx(f: Frame): void {
 /** The floor seam: from the axe head forward along the attack axis (crack), or the summon's split seam (fseam). */
 export function floorSeamFx(f: Frame): void {
   const { o, p, sk } = f;
-  const seg = (x0: number, len: number, k: number, dir: 1 | -1) => {
+  const seg = (x0: number, len: number, k: number, dir: 1 | -1, y = GY) => {
     // a 2:1 iso line on the floor (one row per two px): lit (k ≥ 1) a white core with earth4 lips; going out, a SUNKEN
     // notch (an ink slot with dark earth lips — never a lit tan bar lying on the floor)
-    const core = k >= 1 ? PAL.white : k >= 0.5 ? PAL.night0 : PAL.ink;
-    const lip = k >= 1 ? PAL.earth4 : k >= 0.5 ? PAL.earth1 : PAL.earth0;
-    const y = GY;
+    const core = k >= 1 ? PAL.white : k >= 0.75 ? PAL.earth4 : k >= 0.5 ? PAL.night0 : PAL.ink;
+    const lip = k >= 1 ? PAL.earth4 : k >= 0.75 ? PAL.earth3 : k >= 0.5 ? PAL.earth1 : PAL.earth0;
     for (let i = 0; i <= len; i++) {
       const x = x0 + i * dir;
       if (x < 1 || x > W - 2) break;
-      if (y > H - 2) break;
+      if (y > H - 3) break;
       p.set(x, y, core);
-      if (!p.isOpaque(x, y - 1) || p.get(x, y - 1) === PAL.ink) p.set(x, y - 1, k >= 1 ? lip : PAL.ink);
-      if (k >= 1 || i < len) p.set(x, y + 1, lip);
+      if (!p.isOpaque(x, y - 1) || p.get(x, y - 1) === PAL.ink) p.set(x, y - 1, k >= 0.75 ? lip : PAL.ink);
+      if ((k >= 0.75 || i < len) && y + 1 <= H - 3) p.set(x, y + 1, lip);
     }
     const hx = x0 + len * dir;
     if (k >= 1 && hx > 0 && hx < W - 1) p.set(hx, y, PAL.gold4);
@@ -261,8 +337,9 @@ export function floorSeamFx(f: Frame): void {
   }
   if (o.fseam > 0) {
     const n = rnd(o.fseam / 2);
-    seg(AX + 1, n, o.fseamK, 1);
-    seg(AX + 1, n, o.fseamK, -1);
+    // just in FRONT of the boots (the floor between the fallen halves), so it is seen, not stood on
+    seg(AX + 1, n, o.fseamK, 1, GY + 1);
+    seg(AX + 1, n, o.fseamK, -1, GY + 1);
   }
 }
 

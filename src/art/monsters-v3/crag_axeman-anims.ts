@@ -244,10 +244,12 @@ export function roarPose(f: number): Pose {
     case 1: return key({ nx: 13, ny: -34, ba: -125, sink: 2, chy: 1, hy: 2, hx: -1, eye: 0, bead: 2, tilt: -1, fx: -11, fy: -27 }, f, n);
     case 2: return key({ nx: 13, ny: -33, ba: -128, sink: 3, chy: 2, hy: 3, hx: -1, eye: 0, bead: 2, tilt: -1, cape: 1, fx: -10, fy: -26 }, f, n);
     case 3: return key({ ...RAISED, sink: 1, bead: -2, cape: -2, glint: 1 }, f, n);
-    case 4: return key({ ...RAISED, bead: -1, cape: -3, glint: 1, fseam: 8, fseamK: 1 }, f, n);
-    case 5: return key({ ...RAISED, bead: 1, cape: -2, hx: 2, glint: 1, fseam: 8, fseamK: 1 }, f, n);
-    case 6: return key({ ...RAISED, bead: 2, cape: -1, mouth: 0, fseam: 8, fseamK: 0.5 }, f, n);
-    case 7: return key({ nx: 16, ny: -46, ba: -132, hl: 25, az: 0, eye: 1, bead: 1, cape: 0, hy: -1, fseam: 6, fseamK: 0 }, f, n);
+    // the held shout is a LIVING two-frame loop (the summon cycles 4 ↔ 5 at ~80 ms): the chest heaves a px, the head
+    // pushes forward and back, the raised axe shakes a px, the beads tremble, the floor seam breathes with the voice
+    case 4: return key({ ...RAISED, chy: -1, hx: 1, bead: -1, cape: -3, glint: 1, fseam: 16, fseamK: 1 }, f, n);
+    case 5: return key({ ...RAISED, chy: 0, shr: -1, hx: 2, hy: 0, nx: 18, ny: -62, bead: 1, cape: -2, fseam: 16, fseamK: 0.75 }, f, n);
+    case 6: return key({ ...RAISED, bead: 2, cape: -1, mouth: 0, fseam: 14, fseamK: 0.5 }, f, n);
+    case 7: return key({ nx: 16, ny: -46, ba: -132, hl: 25, az: 0, eye: 1, bead: 1, cape: 0, hy: -1, fseam: 10, fseamK: 0 }, f, n);
     default: return snap(key({ ...mix(key({ nx: 15, ny: -40, ba: -124, hl: 26, az: 0 }, f, n), IDLE0, 0.5) }, f, n));
   }
 }
@@ -309,7 +311,9 @@ export function toGuardPose(f: number): Pose {
   if (f === 0) return blend(IDLE0, { ...mid, ba: -130, hd: -1 }, 0.5);
   if (f === 1) return { ...mid, hem: 0.2 };
   if (f === 2) return blend(mid, GUARD0, 0.55);
-  return blend(mid, GUARD0, 0.85);
+  // the last in-between is also the guard's RECOIL frame (the brace plays it back on a blocked blow): the bar driven 2 px
+  // into the chest, the chest giving, the head snapped back a px, the beads thrown (the boots stay planted: the kit's knock slides him)
+  return { ...GUARD0, nx: (G0.nx ?? 15) - 2, ny: (G0.ny ?? -33) + 1, shr: 1, hx: -1, hy: 2, bead: 2, eye: 0 };
 }
 const TG_HOLDS = [60, 70, 70, 80, 80];
 export function fromGuardPose(f: number): Pose {
@@ -338,7 +342,7 @@ export function summonPose(f: number): Pose {
   if (f === 5) return key({ hide: true, bould: 3, roll: 0, bk: 0.5, chips: 0.6 }, f, n);
   if (f === 6) return key({ hide: true, bould: 3, roll: 0, bk: 1, chips: 0.9 }, f, n);
   if (f === 7) return key({ ...CROUCH, bould: 4, bk: 30, fseam: 4, fseamK: 1 }, f, n);
-  if (f === 8) return key({ ...CROUCH, sink: 3, bould: 4, bk: 60, fseam: 6, fseamK: 1, bead: 1 }, f, n);
+  if (f === 8) return key({ ...CROUCH, sink: 3, bould: 4, bk: 52, fseam: 6, fseamK: 1, bead: 1 }, f, n);
   if (f === 9) return key({ ...CROUCH, sink: 3, lean: 1, bould: 5, bk: 0, fseam: 8, fseamK: 1, nx: 15, ny: -34, ba: -42, bead: 1 }, f, n);
   return key({ ...CROUCH, sink: 2, lean: 1, f1x: 3, dust: 0.4, fseam: 8, fseamK: 1, nx: 17, ny: -37, ba: -60, hl: 25, bead: -1, cape: -1 }, f, n);
 }

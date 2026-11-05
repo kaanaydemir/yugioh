@@ -22,7 +22,7 @@ import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { LOOK_V3, unitDepth, type XY } from '../../view/layout';
 import { lightFlash } from '../../view/light';
 import { shake } from '../../vfx/core';
-import { E, Sparks, onFrame, sleep } from '../../vfx/combat';
+import { E, Px, Sparks, onFrame, sleep } from '../../vfx/combat';
 import { PixelCanvas } from '../../art/pixel';
 import { framePose } from '../../art/monsters-v3/crag_axeman-anims';
 import { H, W, drawAxeman, type Pose } from '../../art/monsters-v3/crag_axeman-rig';
@@ -31,7 +31,7 @@ import { registerCardHook } from '../api';
 import { atFrame, fade, panAt, play } from '../_v3/sound';
 import { poseEntrance } from '../_v3/summon';
 import { runSummon, type Stage } from '../summon-a/_kit';
-import { biteChips, plantDust } from './crag_axeman';
+import { biteChips, idleTap, plantDust } from './crag_axeman';
 import { Seam, SEAM_DEPTH } from './crag_axeman-yarik';
 
 const ID = 'crag_axeman';
@@ -60,6 +60,42 @@ const dimBoulder = (roll: number, dim: number, light: 'left' | 'right') => rigCa
 /** The two fallen halves lying on the floor, sinking in palette steps (0…3). */
 const lyingHalves = (sink: number, light: 'left' | 'right') => rigCanvas(`halves:${sink}`, { ...framePose('summon', 9), hide: true, bould: 5, bk: sink, fseam: 0, chips: 0, dust: 0 }, light);
 
+/**
+ * One beat of the shout on the floor: a stepped iso dust ring spreading from his boots (earth3 → earth2 → earth1, whole
+ * pixels, broken dots — never a glowing ring) and 2–4 pebbles hopping 1–2 px. `k` 2 = the burst (the biggest).
+ */
+function shoutBeat(sc: Phaser.Scene, at: XY, k: number): void {
+  const g = new Px(sc.add.graphics().setDepth(SEAM_DEPTH + 1));
+  const R0 = 14;
+  const R1 = 24 + k * 5;
+  const steps = [PAL.earth4, PAL.earth3, PAL.earth2];
+  onFrame(
+    sc,
+    (_dt, el) => {
+      const t = el / 240;
+      if (t >= 1) return false;
+      g.clear();
+      const r = Math.round(R0 + (R1 - R0) * E.outQ(t));
+      const c = steps[Math.min(2, Math.floor(t * 3))];
+      for (let a = 0; a < 40; a++) {
+        if ((a + Math.floor(t * 6)) % 3 === 0) continue;
+        const th = (a / 40) * Math.PI * 2;
+        g.dot(Math.round(at.x + Math.cos(th) * r), Math.round(at.y + Math.sin(th) * r * 0.5), c);
+      }
+      return true;
+    },
+    () => {
+      if (g.g.active) g.g.destroy();
+    },
+  );
+  const sp = new Sparks(sc, unitDepth(at.y) + 0.3);
+  for (let i = 0; i < 2 + k; i++) {
+    const side = i % 2 ? 1 : -1;
+    sp.add({ x: Math.round(at.x + side * (8 + i * 3)), y: at.y + (i % 3) - 1, vx: side * 6, vy: -(28 + k * 6), ay: 420, life: 220, colors: [PAL.stone3, PAL.stone2], shape: 'px', floor: at.y + 1 + (i % 3), bounce: 0.25, fadeAt: 1 });
+  }
+  sp.release();
+}
+
 async function boulderEntrance(S: Stage): Promise<void> {
   const sc: Phaser.Scene = S.scene;
   const u = S.unit;
@@ -81,7 +117,8 @@ async function boulderEntrance(S: Stage): Promise<void> {
   placeAt(u, from);
   // it comes in out of the dark in two palette steps (no pop-in): two dim rig canvases over the hidden sprite, then lit
   const ov = overlay(u, dimBoulder(0, 2, light), { depth: u.sprite.depth });
-  u.sprite.setVisible(false);
+  // the sprite goes transparent, not invisible: its ground shadow stays under the rolling rock from the first frame
+  u.sprite.setVisible(true).setAlpha(0);
   play('caxRoll', { volume: 0.9, pan: panAt(from.x) });
   // ---- the roll: the 4 drawn frames cycled by the distance rolled (never setAngle), two bounces (2 px, then 1 px) with
   // a dust kick on each touch, then the stop and two 1-px rocks in the silent still beat
@@ -102,7 +139,7 @@ async function boulderEntrance(S: Stage): Promise<void> {
           ov.destroy();
           ovLive = false;
           u.showSprite();
-          u.sprite.setVisible(true);
+          u.sprite.setVisible(true).setAlpha(1);
         } else {
           ov.redraw(dimBoulder(roll, dim, light));
         }
@@ -136,7 +173,7 @@ async function boulderEntrance(S: Stage): Promise<void> {
         ov.destroy();
         ovLive = false;
       }
-      u.sprite.setVisible(true);
+      u.sprite.setVisible(true).setAlpha(1);
       placeAt(u, home);
       resolve();
     });
@@ -170,6 +207,7 @@ async function boulderEntrance(S: Stage): Promise<void> {
       spark: false,
       quiet: true,
       light: false,
+      noPool: true,
     });
   });
   // the halves fall apart (f7, f8) and land (f9): the landing thumps
@@ -200,16 +238,25 @@ async function boulderEntrance(S: Stage): Promise<void> {
   // ---- the NARA: the roar's own drawn frames (build, the axe raised one-handed with the mouth open held ~460 ms, the
   // mouth closing with the axe still up, the release) — the shout (~0.8 s) lasts as long as its picture
   if (u.has('roar') && u.sprite.active) {
-    const beats: [number, number][] = [[2, 100], [3, 90], [4, 170], [5, 170], [6, 120], [7, 90], [8, 90]];
+    // the held shout is ALIVE: the roar's two hold frames alternate every ~80 ms (the chest heaving, the head pushing,
+    // the raised axe shaking a px, the beads trembling, the floor seam between the halves breathing with the voice);
+    // on the voice's beats the floor answers — a stepped dust ring and pebbles hopping round his boots
+    const beats: [number, number][] = [[2, 100], [3, 90], [4, 80], [5, 80], [4, 80], [5, 80], [4, 80], [5, 80], [6, 120], [7, 90], [8, 90]];
+    let i = 0;
     for (const [f, ms] of beats) {
       if (!u.sprite.active) break;
       u.pose('roar', f);
       if (f === 2) play('caxNara', { volume: 0.95, pan });
-      if (f === 3) void u.badge.pop();
+      // the plate pops once the shout is over: during it, the floor seam breathing in front of his boots is seen
+      if (f === 8) void u.badge.pop();
+      if (f === 3 || (f === 4 && (i === 4 || i === 6))) shoutBeat(sc, home, f === 3 ? 2 : i === 4 ? 1 : 0);
+      i++;
       await sleep(sc, ms);
     }
+    if (!u.badge.visible) void u.badge.pop();
   } else void u.badge.pop();
   placeAt(u, home);
+  idleTap(sc, u);
 }
 
 if (LOOK_V3)
