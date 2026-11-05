@@ -424,12 +424,14 @@ const SPECIAL: Table = {
   keys: [
     [70, { eyes: 'wide', lookX: -1, crestY: -1, handN: Hd(0, -1, 15), handF: Hd(0, -1, -10) }],
     // f1 THE HUG: it clutches itself (the clutch observer holds the lethal-blow body from here)
-    [100, { eyes: 'shut', by: 1, sw: -1, sh: -1, handN: Hd(-4, -1, 130, -16), handF: Hd(4, -1, -110, -16), crestX: -1, crestY: 1, tailCurl: 1, tailLift: 2 }],
-    // f2–f4 (FIX r2) the build-up, a living hold: it squeezes smaller, then shudders left / right
-    // while its feathers lift one by one and the first ones already slip out of it
-    [90, { eyes: 'squeeze', by: 2, sw: -2, sh: -2, len: -2, fluff: 1, rippleAmp: 1.2, ripple: 0.15, handN: Hd(-5, -2, 140, -20), handF: Hd(5, -2, -120, -20), crestX: -2, crestY: 2, tailCurl: 1.1, tailLift: 3, free: [Fe(-14, 6, 200, 6, 1.2)] }],
-    [90, { eyes: 'squeeze', bx: -1, hx: -1, by: 1, sw: -1, sh: -2, len: -1, fluff: 1.7, rippleAmp: 1.5, ripple: 0.45, handN: Hd(-5, -1, 135, -18), handF: Hd(5, -1, -115, -18), crestX: 2, crestY: 0, tailCurl: 0.9, tailLift: 2, tailSwing: 2, loose: Fe(-12, -3, 215, 6.5, 1.3), free: [Fe(-18, 2, 240, 6, -1.2), Fe(10, 13, 40, 5.5, 1)] }],
-    [90, { eyes: 'shut', bx: 1, hx: 1, by: 2, sw: -2, sh: -1, len: -2, fluff: 2.2, rippleAmp: 1.5, ripple: 0.75, handN: Hd(-4, -2, 145, -20), handF: Hd(4, -2, -125, -20), crestX: -3, crestY: 1, tailCurl: 1.1, tailLift: 3, tailSwing: -2, loose: Fe(-15, -7, 250, 6.5, -1.3), free: [Fe(-20, -3, 285, 6, 1.2), Fe(13, 9, 330, 5.5, -1), Fe(-2, -14, 300, 5, 1)] }],
+    // (FIX critic r2: a real HUG, never a wave — the near hand lies flat ACROSS the belly pointing
+    // back, the far hand's fingertips wrap round the back edge pointing forward, both low; no
+    // feather is flung up; f2–f4 shrink 1 px a frame with the eyes squeezed "> <" and shiver ±1 px)
+    [100, { eyes: 'shut', by: 1, sw: -1, sh: -1, len: -1, handN: Hd(-6, 1, 152, -22, 1), handF: Hd(5, 1, 150, -22), crestX: -1, crestY: 1, tailCurl: 1, tailLift: 2, drift: 0.5, loose: null }],
+    // f2–f4 the build-up, a living hold: it squeezes smaller, then shivers left / right ever tighter
+    [90, { eyes: 'squeeze', by: 2, sw: -2, sh: -2, len: -2, fluff: 1, rippleAmp: 1.2, ripple: 0.15, handN: Hd(-7, 1, 156, -26, 1), handF: Hd(6, 1, 152, -24), crestX: -2, crestY: 2, tailCurl: 1.15, tailLift: 3, drift: 1, loose: null }],
+    [90, { eyes: 'squeeze', bx: -1, by: 2, sw: -3, sh: -3, len: -3, fluff: 1.6, rippleAmp: 1.5, ripple: 0.45, handN: Hd(-7, 2, 158, -28, 1), handF: Hd(6, 2, 154, -26), crestX: -3, crestY: 2, tailCurl: 1.2, tailLift: 3, tailSwing: 1, loose: null }],
+    [90, { eyes: 'squeeze', bx: 1, by: 3, sw: -3, sh: -4, len: -3, fluff: 2.2, rippleAmp: 1.5, ripple: 0.75, handN: Hd(-8, 2, 160, -28, 1), handF: Hd(7, 2, 156, -26), crestX: -2, crestY: 3, tailCurl: 1.25, tailLift: 4, tailSwing: -1, loose: null }],
     [110, { pillow: 0.35, puff: 0.35, fluff: 0.8, eyes: 'shut', by: 1, handN: Hd(-4, -1, 130, -16), handF: Hd(4, -1, -110, -16), tailCurl: 1, tailLift: 3 }],
     [170, { pillow: 1, puff: 0.45, eyes: 'happy', loose: null }],
     [60, { pillow: 1, puff: 0.2, sw: 2, sh: -3, eyes: 'shut', loose: null }],

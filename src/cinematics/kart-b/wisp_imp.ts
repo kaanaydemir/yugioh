@@ -62,7 +62,7 @@ import { strikeStartFrame } from '../_v3/clash';
 import { contactFlash } from '../_v3/flash';
 import { planGuardBreak, runGuardBreak, showsGuard } from '../_v3/guardbreak';
 import { deathStartFrom, takePlannedEntry } from '../_v3/posematch';
-import { atFrame, panAt, play, start, takeCharge } from '../_v3/sound';
+import { atFrame, hush, panAt, play, start, takeCharge } from '../_v3/sound';
 import { runSummon, type Stage } from '../summon-a/_kit';
 import { animate, onFrame, sleep, sourceOwnsDestroy, stopTime, type Ctx, type EvOf } from '../strikes-a/_kit';
 
@@ -167,29 +167,39 @@ function stamp(r: Raster, x: number, y: number, ang: number, len: number, step =
     ny = -ny;
   }
   const px = new Map<number, number>();
-  const put = (X: number, Y: number, c: number) => px.set(Y * 4096 + X, c);
+  const put = (X: number, Y: number, c: number, over = true) => {
+    const k = Y * 4096 + X;
+    if (over || !px.has(k)) px.set(k, c);
+  };
   const half = (len - 1) / 2;
-  const edgeOn = flip < 0.3;
-  // vane half-width along the feather: narrow at the root, broadest two-thirds out, a round tip
-  const vw = (f: number) => (edgeOn ? 0 : (f < 0.15 ? 0 : f < 0.7 ? 1 + (len >= 7 && f > 0.35 ? 1 : 0) : f < 0.93 ? 1 : 0) * (flip < 0.6 ? 0.5 : 1));
+  const edgeOn = flip < 0.22;
+  const thin = flip < 0.55;
+  // (FIX critic r2: WHITE-dominant, so it reads as a feather and not a lilac shard at 1×) the vane
+  // CURVES (its spine bows away from the light by ~1 px), the lit side is up to 2 px of white, the
+  // shade side 1 px of white with a lilac edge only near its tip; the shaft is a thin lilac quill
+  // whose bare root (the calamus) sticks out past the vane one step darker
+  const bow = (len >= 7 ? 1.1 : 0.6) * (thin ? 0.5 : 1);
   for (let i = 0; i < len; i++) {
     const f = i / Math.max(1, len - 1);
     const k = i - half;
-    const qx = cx + dx * k;
-    const qy = cy + dy * k;
-    const w = vw(f);
-    for (let j = 1; j <= Math.ceil(w); j++) {
-      put(ri(qx + nx * j), ri(qy + ny * j), lit);
-      put(ri(qx - nx * j), ri(qy - ny * j), j === 2 ? quill : shade);
-    }
-    put(ri(qx), ri(qy), f > 0.9 ? lit : quill);
+    const b = -bow * Math.sin(Math.PI * f);
+    const qx = cx + dx * k + nx * b;
+    const qy = cy + dy * k + ny * b;
+    let wL = edgeOn || f < 0.2 ? 0 : f < 0.88 ? (len >= 7 && f > 0.32 && f < 0.78 ? 2 : 1) : f < 0.98 ? 1 : 0;
+    let wS = edgeOn || f < 0.26 ? 0 : f < 0.92 ? 1 : 0;
+    if (thin) wL = Math.min(wL, 1);
+    if (thin && f > 0.6) wS = 0;
+    for (let j = 1; j <= wL; j++) put(ri(qx + nx * j), ri(qy + ny * j), lit);
+    if (wS) put(ri(qx - nx), ri(qy - ny), f > 0.62 ? shade : lit, false);
+    put(ri(qx), ri(qy), f < 0.2 ? quill : f > 0.86 ? lit : edgeOn ? quill : shade);
   }
+  // the ink rim only on the shadow side (right / below a pixel, the light comes from the top-left)
   if (step < TONES.length - 1) {
     const ink = step === 0 ? PAL.ink : PAL.void0;
     for (const key of px.keys()) {
       const X = key % 4096;
       const Y = Math.floor(key / 4096);
-      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      for (const [ox, oy] of [[1, 0], [0, 1]]) {
         const kk = (Y + oy) * 4096 + X + ox;
         if (!px.has(kk)) r.px(X + ox, Y + oy, ink);
       }
@@ -326,7 +336,7 @@ class Plumes {
       p.x += (p.vx + Math.cos(p.ph) * p.flut) * s;
       p.y += p.vy * s;
       const step = Math.floor(clamp((a / p.life - 0.55) / 0.45, 0, 0.999) * TONES.length);
-      if (p.ink && p.len >= 5) stamp(this.r, p.x, p.y, p.ang + Math.sin(p.ph) * p.swing, p.len, step, Math.abs(Math.cos(p.ph * 0.5)));
+      if (p.ink && p.len >= 5) stamp(this.r, p.x, p.y, p.ang + Math.sin(p.ph) * p.swing * 0.8, p.len, step, Math.abs(Math.cos(p.ph * 0.3)));
       else feather(this.r, p.x, p.y, p.ang + Math.sin(p.ph) * p.swing, p.len, step);
     }
     this.r.end();
@@ -730,8 +740,10 @@ function volley(s: StrikeArgs, from: XY, rnd: Rnd, onHit: (i: number, at: XY) =>
         const cA = Math.cos(d.ang);
         const sA = Math.sin(d.ang);
         const tail0 = (d.len - 1) / 2 + 1;
-        const TR = d.len >= 10 ? 6 : 4;
-        for (let k = 0; k < TR; k++) r.px(ri(p.x - cA * (tail0 + k)), ri(p.y - sA * (tail0 + k)), k < 1 ? PAL.white : k < 2 ? PAL.void4 : k < TR - 1 ? PAL.void3 : PAL.void2);
+        // (FIX critic r2) a direct volley flies over the open floor: a longer white streak so it reads at 1×
+        const TR = s.direct ? 9 : d.len >= 10 ? 6 : 4;
+        const WH = s.direct ? 4 : 1;
+        for (let k = 0; k < TR; k++) r.px(ri(p.x - cA * (tail0 + k)), ri(p.y - sA * (tail0 + k)), k < WH ? PAL.white : k < WH + 2 ? PAL.void4 : k < TR - 1 ? PAL.void3 : PAL.void2);
         for (let k = 2; k < d.hist.length; k += 2) r.px(d.hist[k].x, d.hist[k].y, k < 4 ? PAL.void3 : PAL.void2);
         // quill first (the narrow root is the dart's point, the broad vane its fletching)
         stamp(r, p.x, p.y, d.ang + Math.PI, d.len, 0, 1);
@@ -806,7 +818,11 @@ async function strikeV3(s: StrikeArgs): Promise<void> {
   const f0 = strikeStartFrame(u);
   const REL = u.markFrame('attack', 'release', u.impactFrame);
   const pan = panAt(u.home.x);
-  // (the declaration's charge pose started the puff already: the strike takes that voice over)
+  // (FIX critic r2, blocker) the wisp attacks and LOSES with its pillow coming in this batch: it
+  // must never play the survive recoil and idle alive before the effect — the first dart's contact
+  // (the counter-blow) sends it straight into the trembling hug, and the strike lets go as soon as
+  // the volley is in, so the effect follows right on
+  const selfPillow = s.blocked && pillowComes(s.ctx.events, s.ctx.index, u.uid);
   const charge = takeCharge(u, 'wiPuff', { volume: 0.85, pan });
   let relDone = false;
   const relSound = () => {
@@ -846,6 +862,7 @@ async function strikeV3(s: StrikeArgs): Promise<void> {
     return el < 3000;
   });
   let clock = 0;
+  let jab = 0;
   const clockStop = onFrame(sc, (_dt, el) => {
     clock = el;
     return el < 3000;
@@ -856,11 +873,18 @@ async function strikeV3(s: StrikeArgs): Promise<void> {
     for (let k = 0; k < 3; k++) sparks.add({ x: at.x, y: at.y, vx: rr(rnd, -40, 40), vy: rr(rnd, -50, -10), len: k ? 1 : 2, grav: 80, drag: 4, life: rr(rnd, 260, 420) }, rnd);
     if (first) {
       first = false;
-      s.impact(at);
+      // (FIX critic r2) no shared heavy body blow under a 300-ATK feather dart: the dart's own
+      // thump-and-tsk scores the contact
+      hush(['impactHeavy'], () => s.impact(at));
       play('wiImpact', { volume: s.blocked ? 0.7 : 0.9, pan: panAt(at.x) });
+      if (selfPillow && live(u)) holdClutch(sc, u, true);
       void stopTime(sc, 60);
       void lightFlash(sc, at.x, at.y, PAL.white, 20, 240, { floorY: s.target ? s.target.home.y : s.toGround.y, air: 0.7, intensity: 0.7 });
-    } else play('wiTsk', { volume: 0.75, pan: panAt(at.x) });
+    } else {
+      // (FIX critic r2) the five micro jabs climb in pitch, one step each: a little rhythm
+      jab++;
+      play('wiTsk', { volume: 0.95, pan: panAt(at.x), pitch: 1 + jab * 0.06 });
+    }
     void i;
   }, () => play('wiShed', { volume: 0.75, pan }));
   sparks.close();
@@ -870,6 +894,7 @@ async function strikeV3(s: StrikeArgs): Promise<void> {
     tsk.destroy();
   });
   if (!u.sprite.active || u.retired) return;
+  if (selfPillow) return;
   if (s.blocked) {
     // the guard holds and throws the volley back: a feather-light recoil and a tiny "hu!"
     await sleep(sc, 40);
@@ -882,7 +907,7 @@ async function strikeV3(s: StrikeArgs): Promise<void> {
   await run;
 }
 
-if (LOOK_V3) registerStrike(ID, (s) => strikeV3(s), { name: 'kart-b:wisp_imp:strike' });
+if (LOOK_V3) registerStrike(ID, (s) => strikeV3(s), { priority: 20, name: 'kart-b:wisp_imp:strike' });
 
 // ================================================================ death bookkeeping (no material shatter)
 
@@ -960,7 +985,7 @@ function gust(scene: Phaser.Scene, u: MonsterUnit, dir: number, ms: number, rnd:
   const c = u.core();
   const W = 220;
   const r = new Raster(scene, c.x - W / 2, c.y - 50, W, 90, u.sprite.depth + 0.4);
-  const plumes = new Plumes(scene, c.x - W / 2 - 40, c.y - 90, W + 80, 150, u.sprite.depth + 0.5);
+  const plumes = new Plumes(scene, c.x - W / 2 - 40, c.y - 120, W + 80, 180, u.sprite.depth + 0.5);
   const ribbons = [
     { y: c.y - 22, len: 34, amp: 2.2, spd: 420, delay: 0 },
     { y: c.y - 6, len: 28, amp: 1.8, spd: 470, delay: 60 },
@@ -1007,7 +1032,9 @@ function gust(scene: Phaser.Scene, u: MonsterUnit, dir: number, ms: number, rnd:
       const b = u.core();
       for (let i = 0; i < n; i++) {
         // they leave from the back edge of the body, where the sprite's own peeled feathers exit
-        plumes.add({ x: b.x + dir * rr(rnd, 12, 18), y: b.y + rr(rnd, -18, 10), vx: dir * rr(rnd, 90, 150), vy: rr(rnd, -55, -15), len: i % 3 === 0 ? 9 : 7, grav: -4, drag: 1, life: rr(rnd, 700, 1000), flut: rr(rnd, 8, 16), hz: rr(rnd, 1.6, 2.4), ang: dir > 0 ? 0.3 : Math.PI - 0.3, swing: 1.1, ink: true }, rnd);
+        // (FIX critic r2) the wind lifts them UP and away (a rising curl), never across the duelist's
+        // dais: a short run downwind, then they climb and fade before they could reach it
+        plumes.add({ x: b.x + dir * rr(rnd, 12, 18), y: b.y + rr(rnd, -18, 6), vx: dir * rr(rnd, 70, 105), vy: rr(rnd, -75, -45), len: i % 3 === 0 ? 9 : 8, grav: -38, drag: 1.6, life: rr(rnd, 560, 760), flut: rr(rnd, 6, 12), hz: rr(rnd, 1.2, 1.8), ang: dir > 0 ? -0.35 : Math.PI + 0.35, swing: 0.9, ink: true }, rnd);
       }
     },
     end() {
@@ -1281,7 +1308,9 @@ function pillowView(scene: Phaser.Scene, at: XY, back: number): { set(a: number,
  * down specks as filler). Resolves on arrival.
  */
 function flock(scene: Phaser.Scene, from: XY, to: XY, rnd: Rnd, ms: number, rim = 14): Promise<void> {
-  const N = 36;
+  // (FIX critic r2) fewer, bigger feathers (half of them whole 9–10 px stamps) so the flock reads
+  // as FEATHERS at 1×, not confetti
+  const N = 22;
   const r = new Raster(scene, 0, 0, GAME_W, GAME_H, DEPTH.HUD + 7);
   const up = to.y < from.y ? -1 : 1;
   const fs = Array.from({ length: N }, (_, i) => {
@@ -1289,14 +1318,14 @@ function flock(scene: Phaser.Scene, from: XY, to: XY, rnd: Rnd, ms: number, rim 
     const a = -Math.PI / 2 + (i % 2 ? 1 : -1) * rr(rnd, 0, Math.PI * 0.95);
     const p0 = { x: from.x + Math.cos(a) * rim, y: from.y + Math.sin(a) * rim * 0.8 };
     const side = rr(rnd, -1, 1);
-    const heavy = i % 3 === 0;
+    const heavy = i % 2 === 0;
     return {
       p0,
       c1: { x: lerp(p0.x, to.x, 0.2) + side * 34 + Math.cos(a) * 16, y: lerp(p0.y, to.y, 0.15) - 34 * (up < 0 ? 0.6 : 1.2) + rr(rnd, -10, 10) },
       c2: { x: lerp(p0.x, to.x, 0.7) + side * 16, y: lerp(p0.y, to.y, 0.75) - 16 * (up < 0 ? -0.4 : 1) },
       d: { x: to.x + rr(rnd, -14, 14), y: to.y + rr(rnd, -5, 5) },
       delay: (Math.abs(a + Math.PI / 2) / Math.PI) * ms * 0.3 + rr(rnd, 0, 40),
-      len: heavy ? (i % 2 ? 8 : 7) : i % 3 === 1 ? 4 : 2,
+      len: heavy ? (i % 4 === 0 ? 10 : 9) : i % 3 === 1 ? 4 : 2,
       heavy,
       ph: rr(rnd, 0, TAU),
       prev: p0,
@@ -1311,9 +1340,9 @@ function flock(scene: Phaser.Scene, from: XY, to: XY, rnd: Rnd, ms: number, rim 
       let p = cbez(f.p0, f.c1, f.c2, f.d, e);
       const wob = Math.sin(f.ph + el * 0.03) * 2.5 * (1 - lt);
       p = { x: p.x + wob, y: p.y };
-      const ang = Math.atan2(p.y - f.prev.y, p.x - f.prev.x) + Math.sin(f.ph + el * 0.02) * 0.7;
+      const ang = Math.atan2(p.y - f.prev.y, p.x - f.prev.x) + Math.sin(f.ph + el * 0.012) * (f.heavy ? 0.45 : 0.7);
       f.prev = p;
-      if (f.heavy) stamp(r, p.x, p.y, ang + Math.PI, f.len, 0, Math.abs(Math.cos(f.ph + el * 0.012)));
+      if (f.heavy) stamp(r, p.x, p.y, ang + Math.PI, f.len, 0, Math.abs(Math.cos(f.ph + el * 0.005)));
       else feather(r, p.x, p.y, ang, f.len, 0);
     }
     r.end();
@@ -1668,87 +1697,181 @@ if (LOOK_V3)
 /**
  * The engine's activation breaks the battle kit's consequence scan, so the blow that kills the wisp
  * plays as a non-lethal reaction and the body would spring back to idle — alive again for a beat —
- * before the effect arrives. Here: when a battle's wisp (target or attacker) has its own activation
- * coming in the same batch, the moment its hit reaction lets go of the sprite it is held in the
- * pillow's HUG pose (special f1: eyes shut, clutching itself), which the effect hook then plays on
- * from. One watcher per battle, ends on the hold, the unit leaving, or after 4 s.
+ * before the effect arrives. Here: when a battle's wisp has its own activation coming in the same
+ * batch it is held in the pillow's HUG (special f1–f4) until the effect hook plays on from it:
+ *   - struck (target): the blow throws it into its heavy stagger (hitHeavy: tumbles back, dizzy),
+ *     and the moment that lets go of the sprite it hugs itself;
+ *   - attacking and losing: strikeV3 sends it into the hug on its own volley's contact.
+ * (FIX critic r2) The hold ESCALATES — never a loop that reads as waving: the hug (f1), the squeeze
+ * (f2), then a shiver between the two tightest frames (f3 ↔ f4) that gets faster and faster, more
+ * and more feathers slipping out of it, under its own trembling hum (wiClutch, stopped when the
+ * pillow takes over or the hold ends).
  */
 const clutched = new WeakSet<MonsterUnit>();
-/** (FIX r2) The hold's own sustained voice (wiClutch): started with the hold, faded when the pillow takes over. */
 const clutchVoice = new WeakMap<MonsterUnit, { stop(ms?: number): void }>();
 function endClutchVoice(u: MonsterUnit, ms = 120): void {
   clutchVoice.get(u)?.stop(ms);
   clutchVoice.delete(u);
 }
 const CLUTCH_FRAME = 1;
+
+/** Is `uid`'s own activate (monsterEffect) coming later in this batch, before the next battle? */
+function pillowComes(events: readonly GameEvent[], i0: number, uid: number): boolean {
+  for (let i = i0 + 1; i < events.length; i++) {
+    const e = events[i];
+    if (e.type === 'battle') return false;
+    if (e.type === 'activate' && e.kind === 'monsterEffect' && e.uid === uid) return true;
+  }
+  return false;
+}
+
+/** Is `uid` destroyed later in this batch, before the next battle? */
+function diesHere(events: readonly GameEvent[], i0: number, uid: number): boolean {
+  for (let i = i0 + 1; i < events.length; i++) {
+    const e = events[i];
+    if (e.type === 'battle') return false;
+    if (e.type === 'destroy' && e.uid === uid) return true;
+  }
+  return false;
+}
+
+/** The hug hold (see above). `now` = take the sprite this frame (else: wait for its idle). */
+function holdClutch(sc: Phaser.Scene, u: MonsterUnit, now: boolean): void {
+  if (clutched.has(u)) return;
+  let held = false;
+  let t0 = 0;
+  let lastEsc = 0;
+  let phase = 0;
+  let prevEl = 0;
+  const esc = new Plumes(sc, u.home.x - 70, u.home.y - 110, 140, 130, u.sprite.depth + 0.3);
+  const escRnd = mulberry32(u.uid * 7 + 3);
+  const grab = (el: number): void => {
+    held = true;
+    t0 = el;
+    clutched.add(u);
+    // an exclusive one-shot takes the sprite (any pending recoil / attack play lets go WITHOUT
+    // sending it back to idle); the loop below poses every frame from here on
+    void u.asClaimant(() => u.playRange('special', CLUTCH_FRAME, CLUTCH_FRAME + 1));
+    u.pose('special', CLUTCH_FRAME);
+    clutchVoice.set(u, start('wiClutch', { volume: 0.7, pan: panAt(u.home.x) }));
+  };
+  if (now && live(u)) grab(0);
+  onFrame(sc, (dt, el) => {
+    const quit = (): false => {
+      esc.close();
+      endClutchVoice(u, 200);
+      return false;
+    };
+    if (!live(u) || u.retired) return quit();
+    if (el > 3200) {
+      // the effect never came: let it go (never leave a frozen body)
+      if (clutched.has(u)) {
+        clutched.delete(u);
+        void u.play('idle');
+      }
+      return quit();
+    }
+    if (!held) {
+      if (u.frameInfo().anim !== 'idle') return true;
+      grab(el);
+      return true;
+    }
+    if (!clutched.has(u)) return quit(); // the effect took over
+    const fi = u.frameInfo();
+    if (fi.anim !== 'special' || fi.frame > CLUTCH_FRAME + 3) return quit();
+    const a = el - t0;
+    let want = CLUTCH_FRAME;
+    if (a >= 110 && a < 210) want = CLUTCH_FRAME + 1;
+    else if (a >= 210) {
+      // the shiver: f3 ↔ f4, its beat tightening from 90 ms to 45 ms over 0.8 s
+      const beat = lerp(90, 45, clamp((a - 210) / 800, 0, 1));
+      phase += (el - prevEl) / beat;
+      want = CLUTCH_FRAME + 2 + (Math.floor(phase) % 2);
+    }
+    prevEl = el;
+    void dt;
+    if (fi.frame !== want) u.pose('special', want);
+    // feathers slip out of the hold, faster and faster (every 200 → 80 ms)
+    const every = lerp(200, 80, clamp(a / 900, 0, 1));
+    if (a >= 110 && el - lastEsc > every) {
+      lastEsc = el;
+      const c = u.core();
+      const side = u.flipX ? 1 : -1;
+      const ang = -Math.PI / 2 + side * rr(escRnd, 0.2, 1.4);
+      esc.add({ x: c.x + Math.cos(ang) * 10, y: c.y - 6 + Math.sin(ang) * 8, vx: Math.cos(ang) * rr(escRnd, 20, 40), vy: rr(escRnd, -45, -25), len: rr(escRnd, 0, 1) < 0.5 ? 7 : 8, grav: -8, drag: 1.4, life: rr(escRnd, 520, 720), ang: ang + Math.PI / 2, ink: true, swing: 1, hz: 1.6 }, escRnd);
+    }
+    return true;
+  });
+}
+
+/**
+ * (FIX critic r2) The card's own answer to a blow it takes as the TARGET: a feather "ffp" and a few
+ * whole inked feathers knocked off its hood, away from the blow — on a guard that holds, a recoil it
+ * survives, and the lethal blow in defense (before the wind takes it). Over the shared layer (the
+ * hex ward, the clang), never instead of it.
+ */
+function featherPop(sc: Phaser.Scene, u: MonsterUnit, n: number, away: number, rnd: Rnd): void {
+  const c = u.core();
+  const pl = new Plumes(sc, c.x - 70, c.y - 100, 140, 140, u.sprite.depth + 0.4);
+  for (let i = 0; i < n; i++) {
+    const a = -Math.PI / 2 + away * rr(rnd, 0.25, 1.1) + (i % 2 ? -0.35 : 0.2);
+    pl.add({ x: c.x + Math.cos(a) * 8, y: c.y - 10 + Math.sin(a) * 6, vx: Math.cos(a) * rr(rnd, 55, 95), vy: rr(rnd, -110, -70), len: i === 0 ? 9 : rr(rnd, 0, 1) < 0.5 ? 7 : 8, grav: 70, drag: 2.6, life: rr(rnd, 620, 820), ang: a, ink: true, swing: 1, hz: rr(rnd, 1.4, 2) }, rnd);
+  }
+  // a puff of down specks where it was struck
+  for (let i = 0; i < 6; i++) pl.add({ x: c.x + rr(rnd, -5, 5), y: c.y - 4 + rr(rnd, -5, 5), vx: away * rr(rnd, 20, 60), vy: rr(rnd, -60, -20), len: 2, grav: 40, drag: 4, life: rr(rnd, 300, 460) }, rnd);
+  pl.close();
+}
+
 if (LOOK_V3)
   registerObserver((ev, ctx) => {
     if (ev.type !== 'battle') return;
     const i0 = ctx.events.indexOf(ev);
     if (i0 < 0) return;
+    const atk = ev.attackerUid;
     const uids = [ev.targetUid, ev.attackerUid].filter((x): x is number => typeof x === 'number');
     for (const uid of uids) {
       if (ctx.cardId(uid) !== ID) continue;
-      let comes = false;
-      for (let i = i0 + 1; i < ctx.events.length; i++) {
-        const e = ctx.events[i];
-        if (e.type === 'battle') break;
-        if (e.type === 'activate' && e.kind === 'monsterEffect' && e.uid === uid) {
-          comes = true;
-          break;
-        }
-      }
       const u = ctx.unit(uid);
-      if (!comes || !live(u)) continue;
+      if (!live(u)) continue;
+      const comes = pillowComes(ctx.events, i0, uid);
+      const isTarget = uid !== atk;
+      // the wisp's own lost attack is taken by strikeV3 (on its contact); its survived / won one
+      // needs nothing here
+      if (!isTarget && !comes) continue;
       const sc = ctx.scene;
-      const atk = ev.attackerUid;
-      // the blow lands (the battle kit's contact): from the next frame on, the moment the body is
-      // back in its idle loop (straight away, or once a hit reaction lets go) it is held in the hug
+      const lethal = diesHere(ctx.events, i0, uid);
+      const rnd = mulberry32(uid * 29 + 11);
       const onContact = (who: number): void => {
         if (who !== atk) return;
         sc.events.off('v3:contact', onContact);
-        // the blow lands on it: a tiny "hu!" (not when the contact is its own volley landing)
-        if (uid !== atk) play('wiHu', { volume: 0.6, pan: panAt(u.home.x) });
-        let t0 = 0;
-        let held = false;
-        let lastEsc = 0;
-        // feathers already escaping the hold: whole inked feathers slip off its back and float up
-        const esc = new Plumes(sc, u.home.x - 70, u.home.y - 110, 140, 130, u.sprite.depth + 0.3);
-        const escRnd = mulberry32(u.uid * 7 + 3);
-        onFrame(sc, (_dt, el) => {
-          const quit = (): false => {
-            esc.close();
-            if (clutched.has(u)) endClutchVoice(u, 200);
-            return false;
-          };
-          if (!live(u) || u.retired || el > 3000) return quit();
-          if (el < 50) return true;
-          if (held && !clutched.has(u)) return quit(); // the effect took over
-          if (!held) {
-            if (u.frameInfo().anim !== 'idle') return true;
-            held = true;
-            u.pose('special', CLUTCH_FRAME);
-            clutched.add(u);
-            clutchVoice.set(u, start('wiClutch', { volume: 0.7, pan: panAt(u.home.x) }));
-            t0 = el;
-            return true;
+        if (!live(u)) return;
+        const pan = panAt(u.home.x);
+        const a = ctx.unit(atk);
+        const away = a ? Math.sign(u.home.x - a.home.x) || (u.flipX ? 1 : -1) : u.flipX ? 1 : -1;
+        if (isTarget) {
+          if (comes) {
+            // the lethal blow: a "hu!", feathers fly off, and it is thrown into its heavy stagger
+            play('wiHu', { volume: 0.65, pan });
+            play('wiFfp', { volume: 0.75, pan });
+            featherPop(sc, u, 5, away, rnd);
+            void sleep(sc, 17).then(() => {
+              if (live(u) && !clutched.has(u) && u.has('hitHeavy')) void u.asClaimant(() => u.playRange('hitHeavy', 1));
+            });
+          } else if (lethal) {
+            // killed in defense: the blow knocks the first feathers off before the wind comes
+            play('wiFfp', { volume: 0.85, pan });
+            featherPop(sc, u, 4, away, rnd);
+            return;
+          } else {
+            // the guard holds / it shrugs the blow off: a tiny "hu!" and a few feathers
+            play('wiHu', { volume: 0.55, pan });
+            play('wiFfp', { volume: 0.55, pan });
+            featherPop(sc, u, 3, away, rnd);
+            return;
           }
-          // (FIX r2) a living hold, not a frozen egg: after the hug (f1) it squeezes and shudders
-          // through the build-up frames f2 → f3 → f4 → f3 … while feathers slip out of it
-          const fi = u.frameInfo();
-          if (fi.anim !== 'special' || fi.frame > CLUTCH_FRAME + 3) return quit();
-          const beat = Math.floor((el - t0) / 100);
-          const want = beat === 0 ? CLUTCH_FRAME : CLUTCH_FRAME + [1, 2, 3, 2][(beat - 1) % 4];
-          if (fi.frame !== want) u.pose('special', want);
-          if (beat >= 1 && el - lastEsc > 170) {
-            lastEsc = el;
-            const c = u.core();
-            const side = u.flipX ? 1 : -1;
-            const a = -Math.PI / 2 + side * rr(escRnd, 0.3, 1.3);
-            esc.add({ x: c.x + Math.cos(a) * 10, y: c.y - 6 + Math.sin(a) * 8, vx: Math.cos(a) * rr(escRnd, 20, 40), vy: rr(escRnd, -45, -25), len: rr(escRnd, 0, 1) < 0.5 ? 6 : 7, grav: -8, drag: 1.4, life: rr(escRnd, 520, 720), ang: a + Math.PI / 2, ink: true, swing: 1.1, hz: 2 }, escRnd);
-          }
-          return true;
-        });
+        }
+        // (attacker fallback: strikeV3 normally holds it on its contact already)
+        holdClutch(sc, u, false);
       };
       sc.events.on('v3:contact', onContact);
       void sleep(sc, 8000).then(() => sc.events.off('v3:contact', onContact));
