@@ -77,8 +77,10 @@ const IDLE_HOLDS = [120, 110, 110, 120, 130, 110, 100, 110, 120, 130, 110, 100, 
 const GUARD_N = 6;
 const G0: Pose = {
   ...IDLE0,
-  hipX: -11, hipY: -27, shX: 8, shY: -26, hdx: 9, hdy: -5, ha: A.pike, ear: 2,
-  fn: leg(9, 0, 0), ff: leg(13, 0, 2), hn: leg(-12, 0, -12), hf: leg(-8, 0, -10),
+  // the head pushed out in front of the chest (the drooping nose hangs below the brisket, never inside the chest), the
+  // forelegs splayed forward and the hind legs back: braced
+  hipX: -11, hipY: -27, shX: 8, shY: -26, hdx: 12, hdy: -4, ha: A.pike, ear: 2,
+  fn: leg(11, 0, -10), ff: leg(15, 0, -8), hn: leg(-14, 0, -6), hf: leg(-10, 0, -4),
 };
 export function guardPose(f: number): Pose {
   const k = f % GUARD_N;
@@ -86,7 +88,7 @@ export function guardPose(f: number): Pose {
   // and the neck (f3–f4), the tail clamps (f5) — the pike never drops
   return {
     ...G0,
-    hdx: k === 1 || k === 2 ? 10 : 9,
+    hdx: k === 1 || k === 2 ? 13 : 12,
     br: k === 3 || k === 4 ? 1 : 0,
     sniff: k === 2 ? 1 : 0,
     tail: k === 5 ? 2 : 0,
@@ -115,51 +117,73 @@ export function fromGuardPose(f: number): Pose {
 }
 const FG_HOLDS = [70, 70, 80, 80, 90];
 
-// ------------------------------------------------------------------ attack "Bozkır Sıçrayışı" (15 frames)
-// rear (f1–f3) → three bounds, each higher (f4–f9) → the upward horn toss (f10) → the back-bound and home
+// ------------------------------------------------------------------ attack "Bozkır Sıçrayışı" (22 frames)
+// rear (f1–f3) → three bounds, each its own drawn take-off / apex / descent (f4–f13) → the landing scoop with the horns
+// levelled (f14) → the upward horn toss over three drawn steps (f15 in-between, f16 contact, f17 follow-through) → the
+// back-bound and home (f18–f20)
 
 const TUCK = { fn: leg(13, -11, 140), ff: leg(16, -10, 128), hn: leg(-8, -9, -120), hf: leg(-5, -8, -112) };
+/** bound 3's apex: the tightest tuck (knees to the chest), the highest */
+const TUCK3 = { fn: leg(11, -14, 152), ff: leg(14, -13, 142), hn: leg(-6, -12, -132), hf: leg(-3, -11, -126) };
 const STRETCH = { fn: leg(22, -6, 40), ff: leg(25, -5, 30), hn: leg(-24, -4, -70), hf: leg(-21, -3, -66) };
+/** the descent: the forelegs reach down and forward for the floor, the hind legs trail back */
+const REACH = { fn: leg(19, -2, -34), ff: leg(22, -1, -26), hn: leg(-21, -6, -96), hf: leg(-18, -5, -90) };
 const GATHER = { fn: leg(12, 0, -8), ff: leg(15, 0, -4), hn: leg(-6, 0, -24), hf: leg(-3, 0, -20) };
 
 const ATTACK: Pose[] = [
   // f0 anticipation: weight back, a sniff
-  { ...IDLE0, hdx: 7, sniff: 1, ear: 1, t: at(15, 0) },
+  { ...IDLE0, hdx: 7, sniff: 1, ear: 1, t: at(22, 0) },
   // f1 charge: sinks on the hind legs, head up, ears back
-  { ...IDLE0, hipX: -11, hipY: -27, shX: 7, shY: -31, hdx: 7, hdy: -13, ha: A.up, ear: 2, sniff: 2, hn: leg(-11, 0, -20), hf: leg(-7, 0, -18), tail: 1, t: at(15, 1) },
-  // f2 rearing: the shoulder lifts, the front hooves leave the floor
-  { ...IDLE0, hipX: -10, hipY: -27, shX: 5, shY: -39, hdx: 6, hdy: -13, ha: A.up, ear: 2, sniff: 2, fn: leg(13, -7, 110), ff: leg(16, -5, 90), hn: leg(-11, 0, -22), hf: leg(-7, 0, -20), tail: 1, mane: 0.2, curl: 0, t: at(15, 2) },
+  { ...IDLE0, hipX: -11, hipY: -27, shX: 7, shY: -31, hdx: 7, hdy: -13, ha: A.up, ear: 2, sniff: 2, hn: leg(-11, 0, -20), hf: leg(-7, 0, -18), tail: 1, t: at(22, 1) },
+  // f2 rearing: the shoulder lifts, the haunches bunch, the neck stretches, the front hooves leave the floor
+  { ...IDLE0, hipX: -10, hipY: -26, shX: 5, shY: -39, hdx: 8, hdy: -16, ha: A.up, ear: 2, sniff: 2, fn: leg(13, -7, 110), ff: leg(16, -5, 90), hn: leg(-11, 0, -24), hf: leg(-7, 0, -22), tail: 1, mane: 0.2, curl: 0, t: at(22, 2) },
   // f3 full rear (the longest hold): the front hooves paw the air, nostrils flared, the horn-tip curls peel off
-  { ...IDLE0, hipX: -9, hipY: -26, shX: 2, shY: -44, hdx: 6, hdy: -12, ha: A.up, ear: 2, sniff: 2, fn: leg(12, -17, 135), ff: leg(15, -12, 100), hn: leg(-10, 0, -26), hf: leg(-6, 0, -22), tail: 1, mane: 0.4, curl: 0.35, t: at(15, 3) },
-  // f4 take-off 1: stretched out low, the hind legs pushing, the grass fan springs behind
-  lifted({ hipX: -10, shX: 9, hdx: 9, hdy: -10, ha: A.level, ear: 2, ...STRETCH, hn: leg(-20, 2, -60), hf: leg(-17, 2, -55), wake: 0, wakeX: -16, wakeK: 1, mane: 0.6, tail: 3, t: at(15, 4) }, 2),
-  // f5 apex 1: tucked, a spiral curl peels off the horn tips
-  lifted({ hipX: -10, shX: 8, hdx: 8, hdy: -11, ha: A.level, ear: 2, ...TUCK, wake: 0.4, wakeX: -16 - 0, wakeK: 1, curl: 0.15, mane: 0.8, tail: 3, t: at(15, 5) }, 5),
-  // f6 landing 1 on the hoof tips → gathering for bound 2 (dust tick)
-  { ...IDLE0, hipX: -9, hipY: -27, shX: 8, shY: -28, hdx: 8, hdy: -11, ear: 2, ...GATHER, dust: 0.2, wake: 0, wakeX: -8, wakeK: 1, mane: 0, tail: 0, t: at(15, 6) },
-  // f7 apex 2: higher, a longer tuck
-  lifted({ hipX: -10, shX: 8, hdx: 8, hdy: -12, ha: A.level, ear: 2, ...TUCK, wake: 0.5, wakeX: -8, wakeK: 1, curl: 0.3, mane: 0.25, tail: 3, t: at(15, 7) }, 8),
-  // f8 take-off 3: the last gather, stretched and driving
-  lifted({ hipX: -10, shX: 9, hdx: 9, hdy: -10, ha: A.down, ear: 2, ...STRETCH, hn: leg(-21, 3, -62), hf: leg(-18, 3, -58), dust: 0.5, wake: 0, wakeX: -18, wakeK: 1, mane: 0.5, tail: 3, t: at(15, 8) }, 3),
-  // f9 release (60 ms): the third, highest tuck — the head drops, the horns level forward like a pike
-  lifted({ hipX: -10, shX: 8, hdx: 10, hdy: -6, ha: A.pike, ear: 2, ...TUCK, wake: 0.6, wakeX: -18, wakeK: 1, mane: 0.7, tail: 3, t: at(15, 9) }, 11),
-  // f10 contact: the horn toss — head and horns drive UP and through, the forelegs reach down; the seed burst
-  lifted({ hipX: -10, shX: 9, hipY: -31, shY: -36, hdx: 8, hdy: -15, ha: A.up, ear: 2, sniff: 2, fn: leg(15, -2, 10), ff: leg(18, -1, 20), hn: leg(-8, -6, -110), hf: leg(-5, -5, -100), seeds: 0.08, mane: 0.9, tail: 3, t: at(15, 10) }, 8),
-  // f11 recover: the back-bound off the target, legs reaching forward
-  lifted({ hipX: -11, shX: 7, hdx: 7, hdy: -12, ha: A.up, ear: 1, fn: leg(17, -3, -20), ff: leg(20, -2, -10), hn: leg(-12, -3, -40), hf: leg(-9, -2, -36), seeds: 0.4, mane: 0.1, tail: 3, t: at(15, 11) }, 6),
-  // f12 the low bound home lands: hooves gathered, a dust tick
-  { ...IDLE0, hipX: -10, hipY: -28, shX: 8, shY: -29, hdx: 8, hdy: -11, ear: 1, ...GATHER, fn: leg(10, 0, -4), ff: leg(14, 0, 0), hn: leg(-11, 0, -16), hf: leg(-7, 0, -14), dust: 0.3, seeds: 0.65, mane: 0.3, t: at(15, 12) },
-  // f13 shakes his head (the head swings down a step, ears flicked)
-  { ...IDLE0, hdx: 9, hdy: -10, ha: A.down, ear: 1, nose: 1, seeds: 0.9, mane: 0.6, tail: 1, t: at(15, 13) },
+  { ...IDLE0, hipX: -9, hipY: -25, shX: 2, shY: -44, hdx: 9, hdy: -17, ha: A.up, ear: 2, sniff: 2, fn: leg(12, -17, 135), ff: leg(15, -12, 100), hn: leg(-10, 0, -28), hf: leg(-6, 0, -24), tail: 1, mane: 0.4, curl: 0.35, t: at(22, 3) },
+  // f4 take-off 1: stretched out low, the hind legs pushing off the floor
+  lifted({ hipX: -10, shX: 9, hdx: 9, hdy: -10, ha: A.level, ear: 2, ...STRETCH, hn: leg(-20, 2, -60), hf: leg(-17, 2, -55), mane: 0.6, tail: 3, t: at(22, 4) }, 2),
+  // f5 apex 1: tucked
+  lifted({ hipX: -10, shX: 8, hdx: 8, hdy: -11, ha: A.level, ear: 2, ...TUCK, curl: 0.15, mane: 0.8, tail: 3, t: at(22, 5) }, 5),
+  // f6 descent 1: the forelegs reach for the floor, the hind legs trail
+  lifted({ hipX: -10, hipY: -30, shX: 9, shY: -29, hdx: 9, hdy: -10, ha: A.level, ear: 2, ...REACH, mane: 0.95, tail: 3, t: at(22, 6) }, 3),
+  // f7 landing on the hoof tips → gathering for the next bound
+  { ...IDLE0, hipX: -9, hipY: -27, shX: 8, shY: -28, hdx: 8, hdy: -11, ear: 2, ...GATHER, mane: 0, tail: 0, t: at(22, 7) },
+  // f8 take-off 2: a steeper launch — the forehand springs up, the hind legs drive straight down-back
+  lifted({ hipX: -10, hipY: -28, shX: 8, shY: -34, hdx: 8, hdy: -12, ha: A.up, ear: 2, fn: leg(14, -9, 120), ff: leg(17, -7, 100), hn: leg(-17, 3, -45), hf: leg(-14, 3, -40), mane: 0.3, tail: 3, t: at(22, 8) }, 3),
+  // f9 apex 2: higher, a longer tuck
+  lifted({ hipX: -10, shX: 8, hdx: 8, hdy: -12, ha: A.level, ear: 2, ...TUCK, curl: 0.3, mane: 0.5, tail: 3, t: at(22, 9) }, 8),
+  // f10 descent 2: a longer reach
+  lifted({ hipX: -10, hipY: -30, shX: 9, shY: -28, hdx: 9, hdy: -10, ha: A.level, ear: 2, ...REACH, fn: leg(21, -1, -40), ff: leg(24, 0, -32), mane: 0.75, tail: 3, t: at(22, 10) }, 4),
+  // f11 take-off 3: the big drive — the whole body pitched up off fully extended hind legs, the head thrown back
+  lifted({ hipX: -11, hipY: -27, shX: 7, shY: -37, hdx: 7, hdy: -13, ha: A.up, ear: 2, sniff: 2, fn: leg(12, -12, 130), ff: leg(15, -10, 112), hn: leg(-21, 4, -52), hf: leg(-18, 4, -48), mane: 0.1, tail: 3, t: at(22, 11) }, 4),
+  // f12 apex 3: the highest, tightest tuck (knees to the chest), the horns up into the wind
+  lifted({ hipX: -10, hipY: -30, shX: 8, shY: -31, hdx: 8, hdy: -12, ha: A.level, ear: 2, ...TUCK3, curl: 0.2, mane: 0.35, tail: 3, t: at(22, 12) }, 12),
+  // f13 descent 3: the head drops, the horns come level, the forelegs reach down
+  lifted({ hipX: -10, hipY: -31, shX: 9, shY: -28, hdx: 11, hdy: -5, ha: A.low, ear: 2, sniff: 1, ...REACH, fn: leg(18, -3, -30), ff: leg(21, -2, -22), mane: 0.6, tail: 3, t: at(22, 13) }, 5),
+  // f14 release (landed): the scoop — forehand low, forelegs braced forward, the head down with the horns levelled at
+  // the target's body
+  { ...IDLE0, hipX: -10, hipY: -30, shX: 9, shY: -25, hdx: 12, hdy: -1, ha: A.ram, ear: 2, sniff: 2, fn: leg(15, 0, -24), ff: leg(18, 0, -20), hn: leg(-8, 0, -34), hf: leg(-5, 0, -30), mane: 0.85, tail: 3, t: at(22, 14) },
+  // f15 the toss begins: the head drives up through 60°, the forehand rises, the hind legs push
+  { ...IDLE0, hipX: -9, hipY: -31, shX: 10, shY: -30, hdx: 11, hdy: -6, ha: A.low, ear: 2, sniff: 2, fn: leg(16, 0, -12), ff: leg(19, 0, -8), hn: leg(-9, 0, -40), hf: leg(-6, 0, -36), mane: 0.95, tail: 3, t: at(22, 15) },
+  // f16 contact: the horn toss — head and horns UP and through, a 2-px lunge forward, the forelegs leave the floor
+  lifted({ hipX: -8, hipY: -32, shX: 11, shY: -37, hdx: 9, hdy: -14, ha: A.level, ear: 2, sniff: 2, fn: leg(16, -4, 40), ff: leg(19, -3, 30), hn: leg(-7, 2, -44), hf: leg(-4, 2, -40), mane: 1, tail: 3, t: at(22, 16) }, 2),
+  // f17 follow-through: the head flings on past level, the mane and the tail catch up (the hold under the hit-stop)
+  lifted({ hipX: -8, hipY: -32, shX: 11, shY: -37, hdx: 8, hdy: -15, ha: A.up, ear: 1, sniff: 1, fn: leg(16, -4, 46), ff: leg(19, -3, 36), hn: leg(-7, 2, -44), hf: leg(-4, 2, -40), mane: 0.3, maneK: 2, tail: 1, t: at(22, 17) }, 2),
+  // f18 recover: the back-bound off the target, legs reaching forward
+  lifted({ hipX: -11, shX: 7, hdx: 7, hdy: -12, ha: A.up, ear: 1, fn: leg(17, -3, -20), ff: leg(20, -2, -10), hn: leg(-12, -3, -40), hf: leg(-9, -2, -36), mane: 0.1, tail: 3, t: at(22, 18) }, 6),
+  // f19 the low bound home lands: hooves gathered
+  { ...IDLE0, hipX: -10, hipY: -28, shX: 8, shY: -29, hdx: 8, hdy: -11, ear: 1, ...GATHER, fn: leg(10, 0, -4), ff: leg(14, 0, 0), hn: leg(-11, 0, -16), hf: leg(-7, 0, -14), mane: 0.3, t: at(22, 19) },
+  // f20 shakes his head (the head swings down a step, ears flicked)
+  { ...IDLE0, hdx: 9, hdy: -10, ha: A.down, ear: 1, nose: 1, mane: 0.6, tail: 1, t: at(22, 20) },
   { ...IDLE0 },
 ];
 // The strike cinematic (src/cinematics/kartc/steppe_spiralhorn.ts) moves the sprite through the air, so the floor-
 // and contact-bound effects (the take-off grass fans, the hoof dust, the seed burst) are painted there in WORLD space
 // (they stay on the floor / at the contact point while he flies on and rebounds); the attack frames keep only what
 // rides the body (the horn-tip curls, the eye, the mane).
-const ATTACK_BODY: Pose[] = ATTACK.map((p) => ({ ...p, wake: -1, dust: -1, seeds: -1 }));
-export const attackPose = (f: number): Pose => ATTACK_BODY[Math.min(f, ATTACK_BODY.length - 1)];
-const ATTACK_HOLDS = [80, 90, 110, 170, 100, 100, 90, 120, 100, 60, 80, 100, 110, 120, 140];
+export const attackPose = (f: number): Pose => ATTACK[Math.min(f, ATTACK.length - 1)];
+const ATTACK_HOLDS = [80, 90, 110, 170, 90, 100, 80, 90, 90, 110, 90, 100, 120, 80, 70, 40, 80, 110, 100, 110, 120, 140];
+/** attack frame indices the strike cinematic shows by name */
+export const AF = { rise: 2, rear: 3, up1: 4, apex1: 5, down1: 6, gather: 7, up2: 8, apex2: 9, down2: 10, up3: 11, apex3: 12, down3: 13, scoop: 14, toss0: 15, contact: 16, follow: 17, back: 18, land: 19, shake: 20, end: 21 } as const;
 
 // ------------------------------------------------------------------ roar (9 frames): rear + the saiga honk
 
@@ -246,11 +270,13 @@ const SUMMON: Pose[] = [
 export const summonPose = (f: number): Pose => SUMMON[Math.min(f, SUMMON.length - 1)];
 const SU_HOLDS = [70, 70, 80, 80, 60, 70, 100, 110, 170, 120, 120, 140];
 
-// ------------------------------------------------------------------ death (12 frames): the graceful collapse → grass → the wind
+// ------------------------------------------------------------------ death (13 frames): the graceful collapse → grass → the wind
 
 const LIE: Pose = {
   ...IDLE0,
-  hipX: -11, hipY: -11, shX: 7, shY: -12, hdx: 10, hdy: -5, ha: A.down, ear: 2, blink: 2,
+  // he lies curled, the chin down on the floor, the horns laid along it (the head never rotates by a fraction: the
+  // lying horns are their own stamped angle)
+  hipX: -11, hipY: -11, shX: 7, shY: -12, hdx: 11, hdy: -5, ha: A.down, ear: 2, blink: 2, hornLay: -6,
   fn: leg(1, -1, 80), ff: leg(5, -1, 78), hn: leg(-2, -1, -80), hf: leg(1, -1, -78), tail: 2,
 };
 const DEATH: Pose[] = [
@@ -259,22 +285,25 @@ const DEATH: Pose[] = [
   { ...IDLE0, hipY: -28, shX: 6, shY: -35, hdx: 7, hdy: -12, ha: A.up, ear: 2, blink: 1, fn: leg(11, -4, 90), ff: leg(14, -3, 70), hn: leg(-11, 0, -20), hf: leg(-7, 0, -18), tail: 2 },
   // the forelegs fold first: a kneel
   { ...IDLE0, hipY: -27, shX: 7, shY: -20, hdx: 9, hdy: -8, ha: A.down, ear: 2, blink: 1, fn: leg(4, -1, 82), ff: leg(8, -1, 80), hn: leg(-12, 0, -20), hf: leg(-8, 0, -18), tail: 2, mane: 0.3 },
-  // the hind legs follow; he lies down curled, the head last, the horns lowered gently
-  { ...LIE, mane: 0.5 },
-  // dissolve: from the hooves up the coat turns to grass
-  { ...LIE, grass: 0.3, mane: 0.6 },
-  { ...LIE, grass: 0.65, mane: 0.7 },
-  // the mound is grass; the wind takes it from the windward side as a curving stream
-  { ...LIE, grass: 1, wind: 0.12, mane: 0.8 },
-  { ...LIE, grass: 1, wind: 0.32 },
-  { ...LIE, grass: 1, wind: 0.52 },
-  { ...LIE, grass: 1, wind: 0.74 },
-  // the horns lie on the grass a moment, then become two long seed plumes that lift away
+  // the hind legs follow; he lies down curled, the head last, the horns coming down (dissolve: the first grass band
+  // climbs from the hooves)
+  { ...LIE, hdy: -7, hornLay: -48, grass: 0.34, mane: 0.5 },
+  // the horns lie on the floor; the second band
+  { ...LIE, grass: 0.67, mane: 0.6 },
+  // the mound is grass in his shape; its blades sway
+  { ...LIE, grass: 1, mane: 0.7, t: 0 },
+  { ...LIE, grass: 1, mane: 0.8, t: 0.5 },
+  // the wind takes it from the windward side as a curving stream
+  { ...LIE, grass: 1, wind: 0.18, t: 0 },
+  { ...LIE, grass: 1, wind: 0.4, t: 0.5 },
+  { ...LIE, grass: 1, wind: 0.62, t: 0 },
+  { ...LIE, grass: 1, wind: 0.85, t: 0.5 },
+  // the horns go last: they lie on the floor a moment (the card's watcher turns them into two seed plumes on the last)
   { ...LIE, grass: 1, wind: 1 },
-  { ...LIE, grass: 1, wind: 1, plume: 0.55 },
+  { ...LIE, grass: 1, wind: 1 },
 ];
 export const deathPose = (f: number): Pose => DEATH[Math.min(f, DEATH.length - 1)];
-const D_HOLDS = [50, 50, 60, 70, 55, 55, 55, 55, 55, 55, 60, 70];
+const D_HOLDS = [50, 50, 60, 80, 70, 70, 80, 60, 60, 60, 60, 110, 90];
 
 // ------------------------------------------------------------------ revive (10 frames): the death run backwards
 
@@ -283,8 +312,8 @@ const REVIVE: Pose[] = [
   { ...LIE, grass: 1, wind: 0.85, plume: 0, gather: true },
   { ...LIE, grass: 1, wind: 0.55, gather: true },
   { ...LIE, grass: 1, wind: 0.25, gather: true },
-  { ...LIE, grass: 0.7, gather: true },
-  { ...LIE, grass: 0.3, blink: 1, gather: true },
+  { ...LIE, grass: 0.67, gather: true },
+  { ...LIE, hdy: -7, hornLay: -48, grass: 0.34, blink: 1, gather: true },
   { ...DEATH[2], blink: 1, mane: 0.5 },
   // land: up on all four hooves
   { ...IDLE0, hipY: -28, shY: -29, hdx: 9, hdy: -9, ha: A.down, ear: 1, ...GATHER, fn: leg(9, 0, 0), ff: leg(13, 0, 2), dust: 0.3, mane: 0.7 },
@@ -299,17 +328,17 @@ const RV_HOLDS = [80, 80, 80, 80, 90, 90, 100, 110, 130, 140];
 
 const spec = (frames: number, fps: number, loop: boolean, holds: number[], marks?: AnimSpec['marks']): AnimSpec => ({ frames, fps, loop, holds, ...(marks ? { marks } : {}) });
 
-export const IMPACT = 9;
+export const IMPACT = 14;
 export const ANIMS: Record<MonsterAnim, AnimSpec> = {
   idle: spec(IDLE_N, 9, true, IDLE_HOLDS),
   guard: spec(GUARD_N, 6, true, GUARD_HOLDS),
   roar: spec(ROAR.length, 9, false, ROAR_HOLDS, { charge: 1, release: 4, impact: 4, recover: 6 }),
-  attack: spec(ATTACK.length, 10, false, ATTACK_HOLDS, { charge: 1, release: IMPACT, impact: IMPACT, contact: 10, recover: 11 }),
+  attack: spec(ATTACK.length, 10, false, ATTACK_HOLDS, { charge: 1, release: IMPACT, impact: IMPACT, contact: AF.contact, recover: AF.back }),
   hit: spec(HIT.length, 12, false, HIT_HOLDS, { impact: 0, contact: 0, recover: 4 }),
 };
 export const EXTRA_ANIMS: Partial<Record<MonsterAnimExtra, AnimSpec>> = {
   summon: spec(SUMMON.length, 10, false, SU_HOLDS, { land: 5 }),
-  death: spec(DEATH.length, 14, false, D_HOLDS, { impact: 0, contact: 0, dissolve: 4 }),
+  death: spec(DEATH.length, 14, false, D_HOLDS, { impact: 0, contact: 0, dissolve: 3 }),
   revive: spec(REVIVE.length, 10, false, RV_HOLDS, { land: 7 }),
   hitHeavy: spec(HH.length, 12, false, HH_HOLDS, { impact: 0, contact: 0, recover: 4 }),
   hitMagic: spec(HM.length, 12, false, HM_HOLDS, { impact: 0, contact: 0, recover: 4 }),
