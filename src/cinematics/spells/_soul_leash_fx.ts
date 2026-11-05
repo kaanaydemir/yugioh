@@ -580,10 +580,17 @@ export function walkerMask(sil: Silhouette, groundX: number, groundY: number): X
 export function planRoute(from: XY, to: XY, obstacles: readonly Obstacle[], mask: readonly XY[]): XY[] {
   const a = screenToIso(from.x, from.y);
   const b = screenToIso(to.x, to.y);
-  const c0 = LANE_COLS[0];
-  const c1 = LANE_COLS[LANE_COLS.length - 1];
+  const c0 = Math.max(0, LANE_COLS[0] - 1);
+  const c1 = LANE_COLS[LANE_COLS.length - 1] + 1;
   const r0 = Math.max(0, Math.min(R(a.row), R(b.row)) - 1);
   const r1 = Math.min(BOARD_ROWS - 1, Math.max(R(a.row), R(b.row)) + 1);
+  // the lanes between the two monster rows are the walk's home; the back rows and the side pads cost more
+  const rIn0 = Math.min(R(a.row), R(b.row));
+  const rIn1 = Math.max(R(a.row), R(b.row));
+  const outside = (p: XY): number => {
+    const g = screenToIso(p.x, p.y);
+    return g.row < rIn0 - 0.3 || g.row > rIn1 + 0.3 || g.col < LANE_COLS[0] - 0.3 || g.col > LANE_COLS[LANE_COLS.length - 1] + 0.3 ? 0.6 : 0;
+  };
   const area = Math.max(1, mask.length);
   let mx0 = 0;
   let mx1 = 0;
@@ -611,7 +618,8 @@ export function planRoute(from: XY, to: XY, obstacles: readonly Obstacle[], mask
     let c = 0;
     for (let i = 1; i <= ns; i++) {
       const k = i / ns;
-      c += (len / ns / 32) * (1 + 6 * pen({ x: p.x + (q.x - p.x) * k, y: p.y + (q.y - p.y) * k }));
+      const sp = { x: p.x + (q.x - p.x) * k, y: p.y + (q.y - p.y) * k };
+      c += (len / ns / 32) * (1 + outside(sp) + 6 * pen(sp));
     }
     return c;
   };

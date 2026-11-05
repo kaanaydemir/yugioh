@@ -9,32 +9,38 @@
 //   ~550   LAND: the equip flies on whole pixels to its spell zone and lies down — e_leashLand (leather slap +
 //          links), a void light on the zone (mark `land`)
 //   +0     THROW (180): a chain shoots out of the card along a sagging arc to the victim's neck, a gold ring at
-//          its tip — e_leashThrow (seven links rising)
-//   +180   WEAVE (300): the purple-gold leather collar wraps round the neck in 16 steps, clockwise from the
-//          front; two gold studs set; the BUCKLE shuts (one white frame) — e_leashWeave (groan, 4 ticks, click);
-//          the body jolts 1 px; gold light at the neck
-//   +540   GRIP (60): the body goes still (its animation stops: the soul is held), one void3 frame
-//   +600   TEAR (280): the SHADOW peels off the body — first it covers it (the body goes dark), then it slides
-//          out toward the caster's side in stepped pixels (1 2 4 6 9), void sparks off the seam; the collar
-//          goes with the shadow (it is the soul that is leashed) — e_leashTear (soft rip + "hoo"); the arena
-//          dims a little; the body's floor shadow is gone: a dark ribbon on the floor ties its feet to the
-//          shadow's feet
-//   +880   THE WALK: the shadow glides ahead in 4 quiet steps (240 each, a 1-px rise, a void puff at every
-//          footfall) — e_leashShadowStep ×4; the chain from the card holds its collar, sagging and tightening.
-//          ONE BEAT behind, the body follows in 4 heavy dull steps (stepped 3-frame moves, a 1-px drop and dust on
-//          every footfall, frozen pose) — e_leashBodyStep ×4 on the off-beats (pat-THUD-pat-THUD)
-//   +1840  the shadow stands on the new zone and TURNS to face its new side (one void4 frame) — e_leashTurn
-//   +2120  MERGE: the body walks into its shadow: void3 frame, the shadow is gone, the body turns (void4 frame),
-//          its animation comes back — e_leashMerge (suck → thud on the merge frame)
-//   +2200  LOCK: the collar is back on the body's neck, the buckle flashes, "klak" — e_leashLock; a stepped
-//          gold → void floor ring, the new tile flashes, the light comes back up
-//   +2400  BOND: the chain turns into the thin light bond: a white pulse runs down it from the collar to the
-//          card, a glint goes round the collar — e_leashBond
-//   ~2700  done. For as long as the leash stays: the collar on the neck, the thin bond from the collar's ring to
-//          the leash card (void2 / void3 with a slow gold bead), a faint light at the collar.
+//          its tip — e_leashThrow (a leather strap whip: air, a thin high link run, the strap cracks)
+//   +180   WEAVE (300): the leather collar (3 px of void4 / void3 / void2 leather between ink lines, gold studs
+//          every 3 px, a 5×4 brass buckle) wraps round the neck in 16 steps, clockwise from the front; the buckle
+//          goes half → shut (one white frame) — e_leashWeave (groan, 4 ticks, click); the body jolts 1 px
+//   +540   GRIP (60): the body goes still (its animation stops: the soul is held), one void rim frame
+//   +600   TEAR (280): the SHADOW peels out from BEHIND the body (drawn under it, 2 px out on the first frame,
+//          then 3 5 7 10 12 14 16) toward the route's first step — the body stays in full view — with a stride
+//          shear, void sparks off the seam; the collar goes with the shadow (it is the soul that is leashed) —
+//          e_leashTear (soft rip + "hoo"); the arena dims a little; a dark ribbon on the floor ties the body's
+//          feet to the shadow's feet (the body's own floor shadow is gone)
+//   +880   THE WALK along a ROUTE (planRoute: through the free lane round the other units, pulled straight
+//          where clean): the shadow strides ahead in 3–6 steps (220 each; a sheared stride pose, a 1-px rise, a
+//          void footprint that fades on every footfall) — e_leashShadowStep; it stays behind its body until it
+//          has stepped clear, then sorts by its feet. ONE BEAT behind, the body follows in heavy dull steps
+//          (stepped 3-frame moves, a 1-px drop and 1-px lean forward on every footfall, dust, frozen pose) —
+//          e_leashBodyStep on the off-beats (pat-THUD-pat-THUD); the chain from the card holds the collar
+//   end    the shadow stands on the new zone and TURNS to face its new side (one void4 frame) — e_leashTurn
+//   +120   MERGE: the body walks into its shadow: void frame, the shadow is gone, the collar is back on the body
+//          with its buckle OPEN, the body turns, its animation comes back — e_leashMerge
+//   +80    LOCK: the buckle swings half → KLAK (white frame), the collar squashes 1 px for one frame, a 4-frame
+//          gold starburst of plus motes at the buckle, a 50 ms hit stop — e_leashLock; a stepped gold → void
+//          floor ring, the new tile flashes, the light comes back up
+//   +200   BOND: the chain drops and becomes the thin bond — hanging from the BACK of the collar behind the body,
+//          then lying on the floor, swinging round the body's back side (clear of its stat plate) to the card —
+//          and a white light runs up it into the collar — e_leashBond
+//   done.  For as long as the leash stays: the collar on the neck, the two-part bond (void3 / void4 with a slow
+//          gold bead), a faint light at the collar. The generic equip aura is muted while the leash is the only
+//          equip (it would hang a sword and a waist ring on the leashed monster).
 //
-// THE OPPONENT'S DRAW PHASE (lpGain from the leash, a card hook): the bond beats twice (hot), green light runs
-//   from the card down the bond into the collar — e_leashPulse; a green orb leaves the collar on an arc to the
+// THE OPPONENT'S DRAW PHASE (lpGain from the leash, a card hook): the bond beats twice (2 px leaf3 / leaf4 with
+//   a leaf2 halo, leaf light pools at the collar and the card on each beat), a 6-px green run goes from the card
+//   along the floor and up into the collar, the collar flashes leaf4 — e_leashPulse; a green orb leaves the collar on an arc to the
 //   owner's LP panel — e_leashGift; on arrival the v3 LP gain (+1000) plays (fx.presentHeal).
 //
 // THE RETURN (the leash left the field: controlChange 'return', sourceUid null — claimed by the borrowed slot's
@@ -916,7 +922,10 @@ async function noRoomScene(ctx: DestroyCtx): Promise<void> {
   const hit = { x: R(a0.x + dir.x * (RUN + 4)), y: R(a0.y + unit.hover + dir.y * (RUN + 4)) };
   playV3('e_leashBounce', { volume: 0.9, pan: panAt(home.x) });
   bg(rimFlash(sc, sh.img, { ramp: [PAL.white, PAL.void4, PAL.void3], hold: 1 }));
-  bg(impactRing(sc, { x: hit.x, y: hit.y - 14 }));
+  // the ring stands at the shadow's leading shoulder, where it hits the row
+  const shW = sh.img.width;
+  const shH = sh.img.height;
+  bg(impactRing(sc, { x: R(sh.img.x + shW / 2 + dir.x * shW * 0.35), y: R(sh.img.y + shH * 0.45) }));
   voidPuff(sc, { x: hit.x, y: hit.y }, 8, 16);
   const owner = ctx.owner(ev.uid);
   let near: MonsterUnit | null = null;
@@ -949,13 +958,13 @@ async function noRoomScene(ctx: DestroyCtx): Promise<void> {
 
 /** A 2-frame white → void impact ring (an upright ellipse: it hits a wall of bodies, not the floor). */
 function impactRing(sc: Phaser.Scene, at: XY): Promise<void> {
-  const ras = Raster.around(sc, at.x, at.y, 30, 40, DEPTH.FX + 6);
+  const ras = Raster.around(sc, at.x, at.y, 34, 48, DEPTH.FX + 6);
   return run(sc, 3 * 40, (t) => {
     const f = Math.min(2, Math.floor(t * 3));
     ras.draw((r) => {
       if (t >= 1) return;
-      const rx = [4, 7, 9][f];
-      const ry = [8, 13, 16][f];
+      const rx = [6, 10, 13][f];
+      const ry = [11, 17, 21][f];
       r.ring(at.x + 0.5, at.y + 0.5, rx, ry, [PAL.white, PAL.void4, PAL.void2][f]);
       if (f === 0) r.ring(at.x + 0.5, at.y + 0.5, rx - 2, ry - 3, PAL.void4);
     });

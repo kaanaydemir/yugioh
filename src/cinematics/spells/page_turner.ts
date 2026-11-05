@@ -59,7 +59,8 @@ import { Raster, freeze, onFrame, run } from '../../vfx/setpieces';
 import { Sparks as PxSparks } from '../../vfx/combat';
 import { shake, wait } from '../../vfx/core';
 import { fxRng } from '../_v3/spellfx';
-import { panAt, play as playV3 } from '../_v3/sound';
+import { hush, panAt, play as playV3, start as startV3 } from '../_v3/sound';
+import { MINI_CARD_H, MINI_CARD_W } from '../../view/ui-textures';
 import { cardLeaves, landingCount } from '../_v3/card';
 import { registerCardHook } from '../api';
 import { SHOW_AT, SHOW_FLOOR, bg, evAt, ip, lightFlash, lightPool, relax, setTileOf, spellOpening, type ActCtx } from './_kit';
@@ -84,7 +85,8 @@ export const PAGE_T = Object.freeze({
   inhaleAfter: 60,
   inhaleMs: 110,
   slamMs: 80,
-  stop: 60,
+  /** the PAT's contact hold */
+  stop: 90,
   riffleAfter: 150,
   riffleOpenMs: 90,
   flipMs: 130,
@@ -93,26 +95,34 @@ export const PAGE_T = Object.freeze({
   foldAfter: 600,
   foldGap: 72,
   foldLag: 36,
+  /** the fold's 4 steps (flat, corners, sides, press); the deal flight takes over on the last */
   foldMs: 200,
+  /** the folded card's flight to its hand (kept under the hand's own 360-ms draw flight) */
+  dealMs: 250,
+  /** short deck: a starved page lifts, crumples and flops */
+  fizzleMs: 300,
   closeAfter: 160,
   closeMs: 150,
   runesMs: 320,
-  /** both hands empty: how long the blank spread stays open */
-  bareHold: 260,
+  /** both hands empty: the blank spread holds only this long, then searches its pages */
+  bareHold: 120,
+  /** both hands empty: the lazy search — three slow page turns this far apart, each this long */
+  bareGap: 170,
+  bareFlipMs: 230,
 });
 
 // ================================================================ the book's geometry (raster-local px)
 
-const BW = 124;
-const BH = 104;
+const BW = 156;
+const BH = 114;
 /** Spine x when open; the top row of the pages. */
-const SX = 62;
-const TOP = 30;
-/** Page width / height. */
-const PW = 40;
-const PH = 48;
+const SX = 78;
+const TOP = 36;
+/** Page width / height (a GIANT tome: the spread is ~110 × 66 px over the field). */
+const PW = 52;
+const PH = 58;
 /** How far a turning page's free edge rises at the vertical (px). */
-const LIFT = 16;
+const LIFT = 20;
 /** Local y of the book's visual centre (the world anchor). */
 const CY = TOP + PH / 2;
 
@@ -190,7 +200,7 @@ function paintHalf(p: PixelCanvas, side: -1 | 1, spine: number, stack: number, l
   if (print) {
     const cx = spine + side * (PW / 2 + 2);
     const x0 = cx - (print.w >> 1);
-    const y0 = TOP + 7;
+    const y0 = TOP + 8;
     for (let y = 0; y < print.h; y++)
       for (let x = 0; x < print.w; x++) {
         const c = print.get(x, y);
@@ -300,7 +310,7 @@ function paintBook(p: PixelCanvas, scratch: PixelCanvas, s: BookState): void {
         const full = PW - 16 - (ln === 3 ? 10 : 0);
         const len = Math.max(0, Math.min(1, s.write * 4 - ln)) * full;
         if (len <= 0) continue;
-        const y = TOP + 30 + ln * 4;
+        const y = TOP + 40 + ln * 4;
         const x0 = side < 0 ? spine - PW + 6 : spine + 9;
         for (let k = 0; k < len; k++) if ((k + ln * 3) % 7 !== 6) p.set(x0 + k, y, (k + ln) % 5 === 0 ? PAL.night3 : PAL.night2);
         if (len < full) {
@@ -376,7 +386,7 @@ function makeBook(sc: Phaser.Scene, at: XY, floorY: number): Book {
   const ax = R(at.x);
   const ay = R(at.y);
   const ras = new Raster(sc, ax - SX, ay - CY, BW, BH, DEPTH.FX + 2);
-  const shadow = new Raster(sc, ax - 50, floorY - 12, 101, 25, DEPTH.TILE_FX + 3);
+  const shadow = new Raster(sc, ax - 66, floorY - 14, 133, 29, DEPTH.TILE_FX + 3);
   shadow.img.setAlpha(0.42);
   const layer = new PixelCanvas(BW, BH);
   const scratch = new PixelCanvas(BW, BH);
@@ -412,9 +422,9 @@ function makeBook(sc: Phaser.Scene, at: XY, floorY: number): Book {
     shadow.begin();
     const open = 1 - Math.min(1, s.cover / PI);
     const k = s.form * (1 - Math.min(1, s.erase * 1.2));
-    const rx = R((22 + 22 * open) * k);
-    const ry = Math.max(1, R((6 + 3 * open) * k));
-    if (rx > 1) shadow.pc.ellipse(50 + R((spineAt(s.cover) - SX) * 0.3), 12, rx, ry, PAL.ink);
+    const rx = R((30 + 28 * open) * k);
+    const ry = Math.max(1, R((7 + 4 * open) * k));
+    if (rx > 1) shadow.pc.ellipse(66 + R((spineAt(s.cover) - SX) * 0.3), 14, rx, ry, PAL.ink);
     shadow.end();
     return true;
   });
@@ -495,19 +505,23 @@ function sepia(c: number): number {
   return v < 60 ? PAL.earth2 : v < 120 ? PAL.earth3 : v < 190 ? PAPER_M : PAPER;
 }
 
-/** A pressed page: the card's face sepia inside a paper sheet (w × h, a 1-px paper margin). */
+/**
+ * A pressed page: the card's face sepia inside a sheet with a dark earth3 border band (so the leaf separates from the
+ * cream pages it flies over), w × h.
+ */
 function pressedPage(face: PixelCanvas, w: number, h: number): PixelCanvas {
   const p = new PixelCanvas(w, h);
-  p.rect(0, 0, w, h, PAPER);
-  sampleInto(p, face, 1, 1, w - 2, h - 2, (c) => sepia(c));
+  p.rect(0, 0, w, h, PAL.earth3);
+  p.rect(1, 1, w - 2, h - 2, PAPER_M);
+  sampleInto(p, face, 2, 2, w - 4, h - 4, (c) => sepia(c));
   return p;
 }
 
 /** The faint print a bound card leaves on its page (the art window pressed light: earth3 / earth4 only). */
 function pagePrint(face: PixelCanvas): PixelCanvas {
-  const w = 22;
-  const h = 18;
-  const p = new PixelCanvas(w, h);
+  const w = 30;
+  const h = 24;
+  const p = new PixelCanvas(w, h + 8);
   // the face's art window (its upper middle), pressed light
   const art = face.crop(3, 9, 42, 33);
   sampleInto(p, art, 0, 0, w, h, (c) => {
@@ -581,7 +595,7 @@ function gatherFlight(sc: Phaser.Scene, o: { from: XY; startW: number; startH: n
 }
 
 /** A pressed page glides from the book to a graveyard, swaying (stepped shears), shrinking through native sizes. */
-function leafFlight(sc: Phaser.Scene, o: { from: XY; to: XY; face: PixelCanvas; ms: number; seed: number }): Mover {
+function leafFlight(sc: Phaser.Scene, o: { from: XY; to: XY; face: PixelCanvas; ms: number; seed: number; arc: number; out: number }): Mover {
   const BOX = 44;
   const ras = new Raster(sc, o.from.x - BOX / 2, o.from.y - BOX / 2, BOX, BOX, DEPTH.FX_TOP + 8);
   const sizes: readonly (readonly [number, number])[] = [
@@ -599,9 +613,11 @@ function leafFlight(sc: Phaser.Scene, o: { from: XY; to: XY; face: PixelCanvas; 
   const done = run(sc, o.ms, (t) => {
     // a lifted glide: out over the book's shoulder, then down the wind with a leaf's sway
     const k = 1 - (1 - t) * (1 - t);
-    const sway = Math.sin(t * PI * 2.5 + ph) * 9 * (1 - t);
-    const x = o.from.x + (o.to.x - o.from.x) * k + sway;
-    const y = o.from.y + (o.to.y - o.from.y) * (t * t * 0.6 + k * 0.4) - Math.sin(t * PI) * 22;
+    const sway = Math.sin(t * PI * 2.5 + ph) * 7 * (1 - t);
+    // first it is flung OUTWARD off the fore-edge (away from the book), then it glides down its lane to the pile
+    const fling = o.out * Math.sin(Math.min(1, t * 1.6) * PI) * (1 - t);
+    const x = o.from.x + (o.to.x - o.from.x) * k + sway + fling;
+    const y = o.from.y + (o.to.y - o.from.y) * (t * t * 0.6 + k * 0.4) - Math.sin(t * PI) * o.arc;
     const si = Math.min(sizes.length - 1, Math.floor(t * sizes.length));
     const page = pages[si];
     // the sway leans the sheet: a stepped shear (1 px every 6 rows) toward the swing
@@ -617,7 +633,8 @@ function leafFlight(sc: Phaser.Scene, o: { from: XY; to: XY; face: PixelCanvas; 
         if (c !== null) pc.set(x0 + xx + off, y0 + yy, c);
       }
     }
-    pc.outline(PAL.ink);
+    // the release glint: its first frames are rimmed white, then ink
+    pc.outline(t < 0.06 ? PAL.white : PAL.ink);
     ras.moveTo(R(x) - BOX / 2, R(y) - BOX / 2);
     ras.begin();
     ras.pc.blit(pc, 0, 0);
@@ -626,17 +643,25 @@ function leafFlight(sc: Phaser.Scene, o: { from: XY; to: XY; face: PixelCanvas; 
   return { done };
 }
 
-/** A fresh page lifts off its page and folds into a card back in 5 steps; resolves with its world centre. */
-function foldPage(sc: Phaser.Scene, at: () => XY, player: PlayerId, ms: number): Promise<XY> {
+/**
+ * A fresh page lifts off its page and folds into a card in 4 steps (flat, corners in, sides in, the white press);
+ * `onStep(f)` fires as each step shows (the crease / press sounds); resolves with its world centre, where the deal
+ * flight takes over at once with the card back (no card ever parks on the page).
+ */
+function foldPage(sc: Phaser.Scene, at: () => XY, player: PlayerId, ms: number, onStep: (f: number) => void): Promise<XY> {
   const BOX = 56;
   const p0 = at();
   const ras = new Raster(sc, p0.x - BOX / 2, p0.y - BOX / 2, BOX, BOX, DEPTH.FX_TOP + 10);
   const pc = new PixelCanvas(BOX, BOX);
-  const back = cardBackCanvas(player);
   const rimTone = PLAYER_RAMP[player][3];
   let last = { x: p0.x, y: p0.y };
+  let shown = -1;
   return run(sc, ms, (t) => {
-    const f = Math.min(4, Math.floor(t * 5));
+    const f = Math.min(3, Math.floor(t * 4));
+    if (f !== shown) {
+      shown = f;
+      onStep(f);
+    }
     const c = at();
     const lift = R(5 + 12 * t);
     const pos = { x: c.x, y: c.y - lift };
@@ -675,13 +700,10 @@ function foldPage(sc: Phaser.Scene, at: () => XY, player: PlayerId, ms: number):
           if (y % 2 === 0) pc.set(x0 + (w >> 1), y, PAPER_M);
         }
       pc.outline(PAL.ink);
-    } else if (f === 3) {
+    } else {
       // the press: a white card silhouette with the player's rim
       pc.rect(cx - 12, cy - 17, 24, 34, PAL.white);
       pc.outline(rimTone);
-    } else {
-      sampleInto(pc, back, cx - 12, cy - 17, 24, 34);
-      pc.outline(PAL.ink);
     }
     ras.moveTo(R(pos.x) - BOX / 2, R(pos.y) - BOX / 2);
     ras.begin();
@@ -709,6 +731,149 @@ function deckThread(sc: Phaser.Scene, from: XY, to: () => XY, ms: number): Promi
       const x = R(from.x + (b.x - from.x) * u);
       const y = R(from.y + (b.y - from.y) * u - lift);
       ras.px(x, y, u > head - 0.06 ? PAL.white : i % 3 === 0 ? PAL.teal4 : PAL.teal3);
+    }
+    ras.end();
+  }).then(() => ras.destroy());
+}
+
+/**
+ * A folded card leaves the page for its hand: the player's card back, whole pixels, growing (or shrinking) through
+ * native sizes in 2-px steps from 24 × 34 to the hand's size, on one arc, no trail. `to` is read every frame (the
+ * hand re-fans while it flies).
+ */
+function dealFlight(sc: Phaser.Scene, o: { from: XY; to: () => XY; player: PlayerId; w1: number; h1: number; ms: number; lean: number }): Promise<void> {
+  const BOX = 80;
+  const ras = new Raster(sc, o.from.x - BOX / 2, o.from.y - BOX / 2, BOX, BOX, DEPTH.HAND + 30);
+  const back = cardBackCanvas(o.player);
+  const pc = new PixelCanvas(BOX, BOX);
+  return run(sc, o.ms, (t) => {
+    const to = o.to();
+    const k = t < 0.5 ? 2 * t * t : 1 - 2 * (1 - t) * (1 - t);
+    const x = o.from.x + (to.x - o.from.x) * k + o.lean * Math.sin(t * PI) * 8;
+    const y = o.from.y + (to.y - o.from.y) * k - Math.sin(t * PI) * 22;
+    const w = Math.max(4, 2 * R((24 + (o.w1 - 24) * k) / 2) + (o.w1 % 2));
+    const h = Math.max(6, 2 * R((34 + (o.h1 - 34) * k) / 2) + (o.h1 % 2));
+    pc.clear();
+    sampleInto(pc, back, (BOX - w) >> 1, (BOX - h) >> 1, w, h);
+    pc.outline(PAL.ink);
+    ras.moveTo(R(x) - BOX / 2, R(y) - BOX / 2);
+    ras.begin();
+    ras.pc.blit(pc, 0, 0);
+    ras.end();
+  }).then(() => ras.destroy());
+}
+
+/** A starved page (short deck): it lifts, crumples, sags back down and lies flat — nothing to fold. */
+function fizzlePage(sc: Phaser.Scene, at: () => XY, ms: number): Promise<void> {
+  const BOX = 48;
+  const p0 = at();
+  const ras = new Raster(sc, p0.x - BOX / 2, p0.y - BOX / 2, BOX, BOX, DEPTH.FX_TOP + 10);
+  const pc = new PixelCanvas(BOX, BOX);
+  // a crumpled wad: a ragged outline and crease marks (fixed, hand-placed)
+  const CRUMPLE = ['..XXXX.XX...', '.XXXXXXXXXX.', 'XXXXXXXXXXXX', '.XXXXXXXXXXX', 'XXXXXXXXXXX.', 'XXXXXXXXXXXX', '.XXXXXXXXXX.', '..XX.XXXXX..'];
+  const CREASE: readonly [number, number][] = [[3, 2], [4, 3], [5, 3], [8, 2], [7, 4], [2, 5], [3, 5], [9, 5], [6, 6]];
+  return run(sc, ms, (t) => {
+    const f = Math.min(4, Math.floor(t * 5));
+    const c = at();
+    const lift = [4, 8, 9, 5, 0][f];
+    pc.clear();
+    const cx = BOX >> 1;
+    const cy = (BOX >> 1) - lift;
+    if (f <= 1) {
+      // the sheet lifts: 22 × 28 blank paper, its top corners curling
+      pc.rect(cx - 11, cy - 14, 22, 28, PAPER);
+      for (let y = cy - 14; y < cy + 14; y++) pc.set(cx + 10, y, PAPER_M);
+      if (f === 1) {
+        pc.set(cx - 11, cy - 14, PAPER_D);
+        pc.set(cx + 10, cy - 14, PAPER_D);
+      }
+    } else if (f <= 3) {
+      // it crumples (twice: a big wad, then smaller as it sags)
+      const sz = f === 2 ? 2 : 1;
+      const w = CRUMPLE[0].length * sz;
+      const h = CRUMPLE.length * sz;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (CRUMPLE[Math.floor(y / sz)][Math.floor(x / sz)] === 'X') pc.set(cx - (w >> 1) + x, cy - (h >> 1) + y, y < sz * 2 ? PAPER : PAPER_M);
+      for (const [x, y] of CREASE) pc.set(cx - (w >> 1) + x * sz, cy - (h >> 1) + y * sz, PAPER_D);
+    } else {
+      // it flops flat on the page: a thin crumpled strip
+      for (let x = -9; x <= 9; x++) {
+        pc.set(cx + x, cy + 12, x % 4 === 0 ? PAPER_D : PAPER_M);
+        if (Math.abs(x) < 6) pc.set(cx + x, cy + 11, PAPER);
+      }
+    }
+    pc.outline(PAL.ink);
+    ras.moveTo(R(c.x) - BOX / 2, R(c.y) - BOX / 2);
+    ras.begin();
+    ras.pc.blit(pc, 0, 0);
+    ras.end();
+  }).then(() => ras.destroy());
+}
+
+/**
+ * THE PAT's blast: loose page sheets thrown out of the closing edges — each a little ink-outlined sheet that steps
+ * down through native sizes (7×9 → 6×7 → 4×5 → 3×3) and flutters (it flips between upright and a 1-px shear), on its
+ * own ballistic line (whole pixels).
+ */
+function sheetBurst(sc: Phaser.Scene, src: { x: number; y: number; vx: number; vy: number }[], ms: number): Promise<void> {
+  const xs = src.map((s) => s.x);
+  const ys = src.map((s) => s.y);
+  const bx = Math.floor(Math.min(...xs)) - 90;
+  const by = Math.floor(Math.min(...ys)) - 80;
+  const W = Math.ceil(Math.max(...xs)) - bx + 90;
+  const H = Math.ceil(Math.max(...ys)) - by + 60;
+  const ras = new Raster(sc, bx, by, W, H, DEPTH.FX + 5);
+  const pc = new PixelCanvas(W, H);
+  const one = new PixelCanvas(12, 12);
+  const SIZES: readonly [number, number][] = [
+    [7, 9],
+    [6, 7],
+    [4, 5],
+    [3, 3],
+  ];
+  return run(sc, ms, (_t, el) => {
+    const s = el / 1000;
+    pc.clear();
+    src.forEach((p, i) => {
+      const life = ms * (0.75 + (i % 3) * 0.1);
+      if (el > life) return;
+      const u = el / life;
+      const drag = 1 - Math.exp(-s * 5);
+      const x = R(p.x - bx + (p.vx / 5) * drag);
+      const y = R(p.y - by + (p.vy / 5) * drag + 70 * s * s);
+      const [w, h] = SIZES[Math.min(3, Math.floor(u * 4))];
+      const flip = Math.floor(el / 50 + i) % 3;
+      one.clear();
+      for (let yy = 0; yy < h; yy++) {
+        const sh = flip === 1 ? (yy < h / 2 ? 1 : 0) : flip === 2 ? (yy < h / 2 ? 0 : 1) : 0;
+        for (let xx = 0; xx < w; xx++) one.set(2 + xx + sh, 2 + yy, yy === 0 ? PAL.white : xx === w - 1 || yy === h - 1 ? PAPER_M : PAPER);
+      }
+      if (w >= 6) one.set(3 + (flip === 1 ? 1 : 0), 4, PAPER_D);
+      one.outline(PAL.ink);
+      pc.blit(one, x - 6, y - 6);
+    });
+    ras.begin();
+    ras.pc.blit(pc, 0, 0);
+    ras.end();
+  }).then(() => ras.destroy());
+}
+
+/** Two frames of a horizontal paper-white shock arc blown out of a closing edge (dir −1 left, 1 right). */
+function shockArc(sc: Phaser.Scene, at: XY, dir: -1 | 1, size: number, stepMs: number): Promise<void> {
+  const ras = new Raster(sc, at.x - 40, at.y - 40, 81, 81, DEPTH.FX + 5);
+  return run(sc, stepMs * 2, (t) => {
+    const step = t < 0.5 ? 0 : 1;
+    const rx = R(size * (0.45 + 0.3 * step));
+    const ry = R(size * (0.95 + 0.25 * step));
+    const thick = step === 0 ? 2 : 1;
+    const tone = step === 0 ? PAL.white : PAPER;
+    ras.begin();
+    for (let a = -64; a <= 64; a += 2) {
+      const r = (a * PI) / 180;
+      for (let k = 0; k < thick; k++) {
+        const x = R(at.x + dir * ((rx - k) * Math.cos(r) - rx * 0.55));
+        const y = R(at.y + ry * Math.sin(r));
+        ras.px(x, y, Math.abs(a) > 50 ? PAPER_M : tone);
+      }
     }
     ras.end();
   }).then(() => ras.destroy());
@@ -747,13 +912,21 @@ function windStreaks(sc: Phaser.Scene, book: Book, ms: number, seed: number): Pr
   }).then(() => ras.destroy());
 }
 
-function dustRing(sc: Phaser.Scene, at: XY, ms = 260): Promise<void> {
-  const ras = new Raster(sc, at.x - 60, at.y - 20, 121, 41, DEPTH.TILE_FX + 4);
-  const ramp = [PAL.white, PAPER, PAPER_M, PAPER_D];
+function dustRing(sc: Phaser.Scene, at: XY, ms = 300, big = 1): Promise<void> {
+  const ras = new Raster(sc, at.x - 80, at.y - 26, 161, 53, DEPTH.TILE_FX + 4);
+  const ramp: readonly [number, number][] = [
+    [PAL.white, PAPER],
+    [PAPER, PAPER_M],
+    [PAPER_M, PAPER_D],
+    [PAPER_D, PAL.earth2],
+  ];
   return run(sc, ms, (t) => {
     ras.draw((g) => {
-      const r = 16 + 40 * (1 - (1 - t) * (1 - t));
-      g.ring(at.x + 0.5, at.y + 0.5, r, r / 2.4, ramp[Math.min(3, Math.floor(t * 4))]);
+      const r = (20 + 52 * (1 - (1 - t) * (1 - t))) * big;
+      const [a, b] = ramp[Math.min(3, Math.floor(t * 4))];
+      const th = t < 0.5 ? 3 : 2;
+      // a thick ring: the outer rows lit, the inner row a tone down
+      for (let k = 0; k < th; k++) g.ring(at.x + 0.5, at.y + 0.5, r - k, (r - k) / 2.4, k === th - 1 ? b : a);
     });
   }).then(() => ras.destroy());
 }
@@ -796,7 +969,8 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   const nDraws = draws[0].length + draws[1].length;
 
   const set = setTileOf(ctx);
-  const spot: XY = { x: R(SHOW_AT.x), y: R(SHOW_AT.y) - 14 };
+  // the giant tome hangs a little higher than the show spot so its spread clears the monster rows' heads
+  const spot: XY = { x: R(SHOW_AT.x), y: R(SHOW_AT.y) - 20 };
   const floorY = SHOW_FLOOR;
   const pan = panAt(spot.x);
   const sfx = sfxAt(pan);
@@ -858,6 +1032,7 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
     S.cover = Math.max(0, PI * (1 - Math.ceil(e * 8) / 8));
   });
   S.cover = 0;
+  sfx('e_pageBoard');
   el += T.openMs;
   pool.setIntensity(0.8, 200);
   paperBurst(air, book.world(SX + 30, TOP + 4), 4, rnd, 20, 30);
@@ -915,13 +1090,47 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
         const pg = book.page(q);
         sfx('e_pageBind', { pitch: 1 + (q === player ? 0 : 0.08) + (idx[q] % 3) * 0.04, pan: panAt(pg.x) });
         paperBurst(air, { x: pg.x, y: pg.y + 10 }, 5, rnd, 26, 40);
-        void lightFlash(sc, pg.x, pg.y, PAL.gold4, 20, 200, { floorY, intensity: 0.55 });
+        // a soft glow spills on the floor under the page (not on its face: the paper stays in palette)
+        void lightFlash(sc, pg.x, floorY - 4, PAL.gold4, 22, 200, { floorY, intensity: 0.3 });
       }),
     );
   }
   await Promise.all(binds);
   el = Math.max(el, gEnd);
-  if (nPages === 0) await at(el + T.bareHold);
+  if (nPages === 0) {
+    // ---- BARE: no page to take. The blank book SEARCHES itself: three slow, lazy page turns, dust lifts from the
+    // empty gutter, a small shrug — then it gives up and shuts (a lighter PAT)
+    await at(el + T.bareHold);
+    const b0 = el;
+    const flipsAt = [0, T.bareGap, T.bareGap * 2];
+    const fired = new Set<number>();
+    const bareLen = flipsAt[2] + T.bareFlipMs;
+    await run(sc, bareLen, (_t, e) => {
+      const fl: number[] = [];
+      flipsAt.forEach((t0, k) => {
+        const u = (e - t0) / T.bareFlipMs;
+        if (u <= 0 || u >= 1) return;
+        if (!fired.has(k)) {
+          fired.add(k);
+          sfx('e_pageFlap', { volume: 0.55, pitch: 0.82 + k * 0.04, pan: pan + (k % 2 ? 0.15 : -0.15) });
+          if (k === 1) {
+            sfx('e_pageDust', { volume: 0.8 });
+            const g = book.world(SX, TOP + PH / 2);
+            for (let i = 0; i < 9; i++) air.add({ x: g.x + R((rnd() - 0.5) * 8), y: g.y + R((rnd() - 0.5) * 30), vx: (rnd() - 0.5) * 30, vy: -(10 + rnd() * 22), ay: -6, drag: 1.5, life: 420 + rnd() * 260, colors: [PAPER, PAPER_M, PAPER_D, PAL.earth2], shape: 'px', fadeAt: 0.6 });
+          }
+        }
+        fl.push(PI * Math.ceil((u < 0.5 ? 2 * u * u : 1 - 2 * (1 - u) * (1 - u)) * 8) / 8);
+      });
+      S.flips = fl;
+    });
+    S.flips = [];
+    el = b0 + bareLen;
+    // the shrug: the tome sags a pixel and lifts again
+    S.squash = 1;
+    await wait(sc, 70);
+    S.squash = 0;
+    el += 70;
+  }
 
   // ---- INHALE → PAT
   await at(el + T.inhaleAfter);
@@ -939,16 +1148,38 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   });
   el += T.slamMs;
   S.cover = PI;
-  S.squash = 2;
-  S.white = 1;
+  const bare = nPages === 0 && nDraws === 0;
+  S.squash = bare ? 1 : 2;
+  S.white = bare ? 1 : 3;
   S.dy = 0;
-  sfx('e_pagePat', { volume: 1 });
-  void shake(sc, 110, 2);
-  void lightFlash(sc, spot.x, spot.y, PAL.gold4, 56, 280, { floorY, intensity: 1 });
-  bg(dustRing(sc, { x: spot.x, y: floorY }));
-  paperBurst(air, book.world(SX + PW / 2 + 1 - PW / 2 - 18, CY), 8, rnd, 6, 70);
-  paperBurst(air, book.world(SX + PW / 2 + 1 + PW / 2 + 4, CY), 8, rnd, 6, 70);
-  paperBurst(air, book.world(SX + PW / 2 + 1, TOP - 2), 6, rnd, 30, 50);
+  sfx('e_pagePat', { volume: bare ? 0.6 : 1 });
+  void shake(sc, 110, bare ? 1 : 2);
+  void lightFlash(sc, spot.x, floorY - 4, PAL.gold4, 64, 300, { floorY, intensity: bare ? 0.5 : 0.9 });
+  bg(dustRing(sc, { x: spot.x, y: floorY }, 320, bare ? 0.7 : 1));
+  // the contact frame's big shape: loose sheets blast out of the closing edges, a paper-white shock arc leaves the
+  // fore-edge (and a smaller one the spine), motes burst
+  {
+    const fore = book.world(SX - PW / 2 - 2, CY);
+    const spineW = book.world(SX + PW / 2 + 2, CY);
+    const topW = book.world(SX, TOP - 2);
+    const sheets: { x: number; y: number; vx: number; vy: number }[] = [];
+    const nS = bare ? 4 : 10;
+    for (let i = 0; i < nS; i++) {
+      const side = i % 5 === 4 ? 0 : i % 2 === 0 ? -1 : 1;
+      const o = side === 0 ? topW : side < 0 ? fore : spineW;
+      const ang = side === 0 ? -PI / 2 + (rnd() - 0.5) * 0.9 : side < 0 ? PI + (rnd() - 0.65) * 1.1 : (rnd() - 0.35) * -1.1;
+      const sp = (side < 0 ? 170 : 130) + rnd() * 110;
+      sheets.push({ x: o.x, y: o.y + R((rnd() - 0.5) * PH * 0.6), vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - 30 });
+    }
+    bg(sheetBurst(sc, sheets, bare ? 380 : 520));
+    if (!bare) {
+      bg(shockArc(sc, fore, -1, 26, 45));
+      bg(shockArc(sc, spineW, 1, 16, 45));
+    }
+    paperBurst(air, fore, 8, rnd, 6, 70);
+    paperBurst(air, spineW, 6, rnd, 6, 70);
+    paperBurst(air, topW, 6, rnd, 40, 50);
+  }
   await freeze(sc, T.stop);
   bg(wait(sc, 50).then(() => (S.squash = 1)));
   bg(wait(sc, 100).then(() => (S.squash = 0)));
@@ -961,7 +1192,18 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
     // the shut tome strains: it rattles sideways harder and harder until the board bursts open
     await at(pat + T.riffleAfter - 110);
     const RATTLE = [0, 1, 0, -1, 0, 1, -1, 1, -1, 2, -1, 1];
-    await run(sc, 110, (t) => (S.dx = RATTLE[Math.min(RATTLE.length - 1, Math.floor(t * RATTLE.length))]));
+    // dull leather knocks on the rattle's accelerating beats (steps 1, 5, 8, 10), pitch rising
+    const KNOCK = [1, 5, 8, 10];
+    let lastStep = -1;
+    await run(sc, 110, (t) => {
+      const i = Math.min(RATTLE.length - 1, Math.floor(t * RATTLE.length));
+      S.dx = RATTLE[i];
+      for (let j = lastStep + 1; j <= i; j++) {
+        const kn = KNOCK.indexOf(j);
+        if (kn >= 0) sfx('e_pageStrain', { pitch: 1 + kn * 0.08, volume: 0.65 + kn * 0.1, pan: pan + RATTLE[j] * 0.08 });
+      }
+      lastStep = i;
+    });
     S.dx = 0;
     el += 110;
     await at(pat + T.riffleAfter);
@@ -969,10 +1211,12 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
     await run(sc, T.riffleOpenMs, (t) => (S.cover = Math.max(0, PI * (1 - Math.ceil(t * 4) / 4))));
     el += T.riffleOpenMs;
     S.cover = 0;
+    sfx('e_pageBoard', { volume: 0.7, pitch: 1.1 });
     S.printL = null;
     S.printR = null;
     const r0 = el;
-    sfx('e_pageRiffle', { volume: 0.95 });
+    // the gust bed runs under the riffle and stops on its last page; every page's flap is fired by the page itself
+    const gust = startV3('e_pageGust', { volume: 0.9, pan });
     const riffleLen = RIFFLE_TIMES[RIFFLE_TIMES.length - 1] + T.flipMs;
     bg(windStreaks(sc, book, riffleLen, spot.y));
     pool.setIntensity(1, 160);
@@ -989,10 +1233,21 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
     leaves.forEach((_, j) => carrier.set(Math.min(nf - 1, Math.floor(((j + 0.5) * nf) / Math.max(1, leaves.length))), j));
     const landings: Promise<void>[] = [];
     const startS = { l: S.stackL, r: S.stackR };
+    const flapped = new Set<number>();
+    let landed = false;
     await run(sc, riffleLen, (_t, e) => {
       const fl: number[] = [];
       RIFFLE_TIMES.forEach((t0, k) => {
         const u = (e - t0) / T.flipMs;
+        if (u > 0 && !flapped.has(k)) {
+          // this page leaves the block now: its own flap (every third a stiffer leaf), panned with the turn
+          flapped.add(k);
+          sfx(k % 3 === 2 ? 'e_pageFlapStiff' : 'e_pageFlap', { pitch: 1 + ((k * 7) % 5) * 0.025, pan: pan + (k % 2 ? 0.25 : -0.25), volume: 0.85 });
+        }
+        if (k === nf - 1 && u >= 1 && !landed) {
+          landed = true;
+          sfx('e_pageLand', { pan: pan - 0.2 });
+        }
         if (u <= 0 || u >= 1) return;
         // fast through the vertical (whole 1/8 steps of the turn)
         const v = Math.ceil((u < 0.5 ? 2 * u * u : 1 - 2 * (1 - u) * (1 - u)) * 8) / 8;
@@ -1003,8 +1258,11 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
           const { q, d } = leaves[j];
           const grave = ctx.views.field.pile(q, 'graveyard');
           const gTop = grave.topXY();
-          const c = book.crest();
-          const m = leafFlight(sc, { from: { x: c.x + (q === 0 ? -4 : 4), y: c.y + 6 }, to: { x: gTop.x, y: gTop.y - 4 }, face: cardFaceCanvas(d.cardId), ms: T.leafMs, seed: d.uid + j });
+          // each leaf leaves from its OWNER's fore-edge (P1 left, P2 right), outward, on one of three lanes
+          const ownSide = q === 0 ? -1 : 1;
+          const edge = book.world(SX + ownSide * (PW + 2), TOP + 8 + (j % 3) * 12);
+          const lane = Math.floor(j / 2) % 3;
+          const m = leafFlight(sc, { from: edge, to: { x: gTop.x + (lane - 1) * 3, y: gTop.y - 4 }, face: cardFaceCanvas(d.cardId), ms: T.leafMs + lane * 50, seed: d.uid + j, arc: [10, 24, 38][lane], out: ownSide * (10 + lane * 6) });
           landings.push(
             m.done.then(() => {
               grave.set(landingCount(grave.count, ctx.after.players[q].graveyard.length), d.cardId);
@@ -1022,6 +1280,8 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
       S.stackL = Math.min(7, startS.l + Math.floor((done * 2) / nf));
     });
     S.flips = [];
+    if (!landed) sfx('e_pageLand', { pan: pan - 0.2 });
+    gust.stop(90);
     el = r0 + riffleLen;
     pool.setIntensity(0.8, 200);
     // ---- REOPENED: fresh pages, ink stars bloom
@@ -1030,9 +1290,9 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
     await at(r0 + T.inkAfter - 0);
     sfx('e_pageInk', { volume: 0.8 });
     const stars: Star[] = [];
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 18; i++) {
       const side = i % 2 === 0 ? -1 : 1;
-      stars.push({ x: side * (8 + R(rnd() * (PW - 14))), y: TOP + 5 + R(rnd() * 20), born: S.el + i * 22, violet: i % 3 === 0 });
+      stars.push({ x: side * (8 + R(rnd() * (PW - 14))), y: TOP + 6 + R(rnd() * 28), born: S.el + i * 20, violet: i % 3 === 0 });
     }
     S.stars = stars;
     bg(run(sc, 360, (t) => (S.write = Math.ceil(t * 16) / 16)));
@@ -1046,6 +1306,23 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
     forder.sort((a, b) => a[2] - b[2]);
     const f0 = el;
     let fEnd = f0;
+    // the viewer's fan: a dealt card is registered in the hand (hidden, its own flight never shows: no cardDraw / no
+    // trail) when our flight leaves the page, and settled (the hand rebuilt at rest, the card flipped up) on arrival
+    const airborne = new Set<Uid>();
+    const settle = (uid: Uid, q: PlayerId) => {
+      airborne.delete(uid);
+      const list = hand.uids.map((u) => ({ uid: u, cardId: hand.sprite(u)?.cardId ?? null })).filter((c): c is { uid: Uid; cardId: CardId } => c.cardId !== null);
+      hand.setCards(list, q);
+      for (const u of airborne) hand.sprite(u)?.setVisible(false);
+      const spr = hand.sprite(uid);
+      if (spr && !hand.isFaceDown) {
+        spr.setFaceUp(false);
+        void spr.flip(true, 150);
+      }
+    };
+    /** the other side's mini-hand: the cards it got so far */
+    const minis: Record<PlayerId, { uid: Uid; cardId: CardId }[]> = { 0: [], 1: [] };
+    let tucks = 0;
     for (const [q, k, dt0] of forder) {
       const dr = draws[q][k];
       fEnd = Math.max(fEnd, f0 + dt0 + T.foldMs);
@@ -1060,18 +1337,70 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
           const lane = (k % 2 === 0 ? -1 : 1) * (k % 3 === 2 ? 0 : 1);
           const origin = () => {
             const p = book.page(q);
-            return { x: p.x + lane * 7 * side, y: p.y - 2 };
+            return { x: p.x + lane * 9 * side, y: p.y - 2 };
           };
           bg(deckThread(sc, { x: dTop.x, y: dTop.y - 4 }, origin, T.foldMs));
-          sfx('e_pageFold', { pitch: 1 + k * 0.05 + (q === player ? 0 : 0.1), pan: panAt(origin().x) });
+          const fp = { pitch: 1 + k * 0.05 + (q === player ? 0 : 0.1), pan: panAt(origin().x) };
+          sfx('e_pageFold', fp);
           // the page it folds from shows a star wink
           S.stars = S.stars.filter((st) => Math.sign(st.x) !== side || rnd() < 0.7);
-          const end = await foldPage(sc, origin, q, T.foldMs);
-          void lightFlash(sc, end.x, end.y, PLAYER_RAMP[q][3], 16, 180, { floorY, intensity: 0.5 });
-          await hand.addCard(dr.ev.uid as Uid, dr.ev.cardId, scroll(end), q).catch(() => undefined);
+          const end = await foldPage(sc, origin, q, T.foldMs, (f) => {
+            if (f === 1 || f === 2) sfx('e_pageCrease', { ...fp, pitch: fp.pitch * (f === 1 ? 1 : 1.12) });
+            else if (f === 3) sfx('e_pagePress', fp);
+          });
+          void lightFlash(sc, end.x, floorY - 4, PLAYER_RAMP[q][3], 18, 180, { floorY, intensity: 0.3 });
+          // ---- DEAL: the card back leaves the page at once for its hand (our own whole-pixel flight)
+          const uid = dr.ev.uid as Uid;
+          const own = hand.owner === q;
+          let target: () => XY;
+          if (own) {
+            hush(['cardDraw', 'cardPlace'], () => void hand.addCard(uid, dr.ev.cardId, scroll(end), q).catch(() => undefined));
+            airborne.add(uid);
+            const spr = hand.sprite(uid);
+            spr?.setTrail(false);
+            spr?.setVisible(false);
+            let last = worldOf(hand.nextSlotXY());
+            target = () => {
+              const c = hand.cardXY(uid);
+              if (c) last = worldOf(c);
+              return last;
+            };
+          } else {
+            const at0 = worldOf(hand.miniXY(q, minis[q].length));
+            target = () => at0;
+          }
+          await dealFlight(sc, { from: end, to: target, player: q, w1: own ? 48 : MINI_CARD_W, h1: own ? 68 : MINI_CARD_H, ms: T.dealMs, lean: side });
+          if (own) settle(uid, q);
+          else {
+            minis[q].push({ uid, cardId: dr.ev.cardId });
+            hand.setCards(minis[q], q);
+          }
+          const to = target();
+          playV3('e_pageTuck', { pitch: 1 + (tucks++ % 5) * 0.06, pan: panAt(to.x), volume: 0.85 });
         }),
       );
     }
+    // SHORT DECK: a side that lost more pages than its deck could give — one blank page tries to fold and fails
+    ([player, other] as PlayerId[]).forEach((q, sideIdx) => {
+      if (draws[q].length >= discards[q].length || discards[q].length === 0) return;
+      const dt0 = (sideIdx ? T.foldLag : 0) + draws[q].length * T.foldGap + 40;
+      fEnd = Math.max(fEnd, f0 + dt0 + T.fizzleMs);
+      deals.push(
+        wait(sc, dt0).then(async () => {
+          const deck = ctx.views.field.pile(q, 'deck');
+          const dTop = deck.topXY();
+          const pg = () => {
+            const p = book.page(q);
+            return { x: p.x, y: p.y - 2 };
+          };
+          sfx('e_pageFizzle', { pan: panAt(pg().x) });
+          // the empty deck coughs a dim puff
+          for (let i = 0; i < 8; i++) air.add({ x: dTop.x + R((rnd() - 0.5) * 12), y: dTop.y - 2, vx: (rnd() - 0.5) * 40, vy: -(14 + rnd() * 26), ay: 20, drag: 2, life: 300 + rnd() * 200, colors: [PAL.mist, PAL.steel, PAL.night3], shape: 'px', fadeAt: 0.5 });
+          deck.bump();
+          await fizzlePage(sc, pg, T.fizzleMs);
+        }),
+      );
+    });
     await at(fEnd + (nDraws ? T.closeAfter : 60));
     S.stars = [];
     S.write = 0;

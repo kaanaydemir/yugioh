@@ -71,13 +71,14 @@ export const EYE_ANCHORS: Readonly<Record<string, readonly (readonly [number, nu
     [39, 32, PAL.gold4],
   ],
   abyss_magus: [
-    [63, 32, PAL.void4],
-    [64, 32, PAL.void4],
+    [53, 33, PAL.white],
+    [54, 33, PAL.white],
   ],
   tide_golem: [
     [40, 18, PAL.cyan4],
     [39, 18, PAL.cyan3],
     [43, 18, PAL.cyan3],
+    [44, 18, PAL.cyan2],
   ],
   magma_titan: [
     [48, 23, PAL.fire4],
@@ -433,7 +434,7 @@ export class Fallen {
         landed = true;
         this.pose = end;
         playV3('e_axeChain', { volume: 0.55, pitch: 1.2, pan: panAt(end.x) });
-        playV3('e_axeDeck', { volume: 0.35, pitch: 1.5, pan: panAt(end.x) });
+        playV3('e_axeBite', { volume: 0.4, pitch: 1.3, pan: panAt(end.x) });
       }
       // buried once it lands: the rows under the floor line are cut (part of the drawing)
       setMotif(this.img, ...axeKey({ size: 'sm', angle: this.pose.angle, mirror: this.pose.mirror, heat: landed ? 1 : 2, cut: landed ? floor.y - this.pose.y : null }));

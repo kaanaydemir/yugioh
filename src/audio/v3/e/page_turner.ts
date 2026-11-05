@@ -2,38 +2,62 @@
 // Names are prefixed 'e_' + a short card key (e.g. e_wellCrank) so no name collides with another lane.
 // Built from ./../kit.ts blocks and the Voice primitives (src/audio/synth.ts). Aggregated by ../lane-e.ts.
 //
-// Identity (§5.1 S11 Sayfa Çeviren): the main colour is the PAPER FLUTTER (a riffle: a train of dry page flaps, each
-// one a short band of noise with its own little air pocket); the material is a LEATHER-BOUND BOOK + INK (a low leather
-// creak, the dull board of the cover, quill scratches); the separating layer is the shutting "PAT": a hard, dry,
-// broadband clap of two boards with a short ROOM answer (an early reflection at 45 ms + a small hall), nothing tonal.
-// Kept apart from: S4 Süpürge Rüzgarı (a wide L→R wind with paper and leaves: our wind is a short gust inside the
-// riffle only, our paper is single flaps), S5 Elek (6 Hz grain: no grain here), S9 (long straw rustle), S12 (wooden
-// tak-tak: our knocks are dull leather boards, never a ringing wood), and every glass sound (no bar modes at all: the
-// runes are soft sine breaths).
-//   e_pageBirth   the closed book forms in the air: a gathered breath and the dull drop of a heavy leather tome
-//   e_pageOpen    the cover swings open: a leather creak (slow rough pulse train) + a page rustle + the board landing
-//   e_pageSlip    a hand card leaves the hand as a page: a quick, light paper "fwip" (pitch per card)
-//   e_pageBind    a page is bound into the book: a paper slap "şap" with a small board knock (pitch per card)
-//   e_pageInhale  the book draws breath before shutting: both boards lift, air rushes in (a rising swell)
-//   e_pagePat     THE SHUT: "PAT" — two boards clapping, dry and hard, with a room answer
-//   e_pageRiffle  the book riffles its own pages in a gust: a train of flaps accelerating then slowing, wind under it
-//   e_pageLeaf    a pressed page settles on a graveyard: a soft dry "tss" and a feather-light tick
-//   e_pageInk     ink stars bloom on the fresh spread: three quill scratches and a soft ink-breath chord
-//   e_pageFold    a new page folds into a card: crisp origami crease ticks (two creases, a press)
-//   e_pageShut    the book closes softly at the end: a muffled leather bump (no clap, no room)
-//   e_pageRunes   the book comes apart into runes: an ink "pfft", rising soft sine motes, an airy release
+// Identity (§5.1 S11 Sayfa Çeviren): the main colour is the PAPER FLUTTER — single page flaps, each a sharp 1.5-ms
+// paper edge tick near 6.5 kHz, a fast downward "thwip" glide (5 → 1.8 kHz in 20 ms) and a tiny 90–120 Hz air
+// pocket; the riffle is a TRAIN of these fired by the scene one per turning page (so it stays in sync with the
+// pictures at every speed), over a narrow, quiet gust bed. The material is a LEATHER-BOUND BOOK + INK (a low leather
+// creak, the dull board of the cover, quill scratches); the separating layer is the shutting "PAT": a hard, dry
+// clap of two boards (a 1–3 kHz slap layer) with a short bright ROOM answer, nothing tonal.
+// Kept apart from: S4 Süpürge Rüzgarı (a wide L→R broadband wind with paper and leaves: our gust is a narrow, quiet
+// band only under the riffle and the colour is the flap's edge + glide), S5 Elek (6 Hz grain: none here), S9 (long
+// straw rustle), S12 (wooden tak-tak: our knocks are dull leather boards, never a ringing wood), and every glass sound
+// (no bar modes: the runes are soft sine breaths).
+//   e_pageBirth    the closed book forms in the air: a gathered breath and the dull drop of a heavy leather tome
+//   e_pageOpen     the cover swings open: a leather creak (slow rough pulse train) + a page rustle
+//   e_pageBoard    the swung board lands flat (fired on the frame it reaches the table)
+//   e_pageSlip     a hand card leaves the hand as a page: a quick, light paper "fwip" (pitch per card)
+//   e_pageBind     a page is bound into the book: a paper slap "şap" with a small board knock (pitch per card)
+//   e_pageInhale   the book draws breath before shutting: both boards lift, air rushes in (a rising swell)
+//   e_pagePat      THE SHUT: "PAT" — two boards clapping, dry and hard, with a room answer
+//   e_pageStrain   the shut tome strains against itself: one dull leather knock per rattle step (pitch rising)
+//   e_pageFlap     one turning page of the riffle (the main colour); e_pageFlapStiff: every third, a heavier leaf
+//   e_pageGust     the narrow gust bed under the riffle (start / stop on the riffle's first and last page)
+//   e_pageLand     the riffle's last page lands flat
+//   e_pageLeaf     a pressed page settles on a graveyard: a soft dry "tss" and a feather-light tick
+//   e_pageInk      ink stars bloom on the fresh spread: three quill scratches and a soft ink-breath chord
+//   e_pageFold     a fresh page peels up off the spread; e_pageCrease per crease step, e_pagePress on the press
+//   e_pageTuck     a fresh card tucks into its hand (pitch per card)
+//   e_pageFizzle   short deck: a starved page crumples and flops back; the empty deck puffs
+//   e_pageDust     both hands empty: dust lifts from the bare gutter
+//   e_pageShut     the book closes softly at the end: a muffled leather bump (no clap, no room)
+//   e_pageRunes    the book comes apart into runes: an ink "pfft", rising soft sine motes, an airy release
 
 import type { Recipe } from '../../sounds';
 import type { Voice } from '../../synth';
 import { perc } from '../../synth';
 import { puff, sweep, thump } from '../kit';
 
-/** One page flap: a short band of noise (dry paper) with a little low air pocket under it. */
+/** One page flap (used inside other recipes): a short band of noise (dry paper) with a little low air pocket. */
 function flap(v: Voice, t: number, g: number, o: { f?: number; d?: number; to?: AudioNode } = {}): void {
   const f = o.f ?? 2600;
   const d = o.d ?? 0.028;
   v.noise('white', { t, g: [[0, 0], [0.003, g], [d, 0.0001, 'e']], to: v.filt('bandpass', [[0, f * 0.8], [d, f * 1.25, 'e']], 1.6, { t, to: o.to }) });
   v.noise('pink', { t, g: perc(g * 0.5, d * 1.4, 0.004), to: v.filt('lowpass', 700, 0.8, { t, to: o.to }) });
+}
+
+/**
+ * THE PAGE FLAP — the card's main colour (one turning page). Not wind: a sharp 1.5-ms paper EDGE tick (a narrow band
+ * near 6.5 kHz), a fast downward "thwip" (a resonant band gliding 5 kHz → 1.8 kHz in 20 ms: the sheet cutting the
+ * air), and a tiny 90–120 Hz air pocket under it (the page slapping the air flat). `stiff`: a heavier leaf — a double
+ * edge tick, a shorter, higher glide and a firmer pocket.
+ */
+function pageFlap(v: Voice, t: number, g: number, stiff = false): void {
+  const tick = stiff ? 7400 : 6500;
+  v.noise('white', { t, g: perc(g * 0.9, 0.0016, 0.0002), to: v.filt('bandpass', tick, 3.2, { t }) });
+  if (stiff) v.noise('white', { t: t + 0.004, g: perc(g * 0.6, 0.0014, 0.0002), to: v.filt('bandpass', tick * 0.86, 3.2, { t }) });
+  const [f0, f1, d] = stiff ? [6000, 2400, 0.015] : [5000, 1800, 0.02];
+  v.noise('white', { t: t + 0.001, g: [[0, 0], [0.0015, g * 0.75], [d, g * 0.18, 'e'], [d + 0.012, 0.0001, 'e']], to: v.filt('bandpass', [[0, f0], [d, f1, 'e']], 4.5, { t: t + 0.001 }) });
+  v.tone('sine', [[0, stiff ? 125 : 115], [0.03, stiff ? 95 : 88, 'e']], { t: t + 0.003, g: perc(g * (stiff ? 0.32 : 0.22), 0.03, 0.002) });
 }
 
 /** The dull board of a leather cover meeting something: a low, short, non-ringing knock. */
@@ -97,8 +121,7 @@ export const RECIPES = {
       // … the pages riffle once as they fall open …
       flap(v, 0.1, 0.22, { f: 3000, d: 0.05 });
       flap(v, 0.135, 0.16, { f: 3600, d: 0.04 });
-      // … and the cover board lands flat
-      board(v, 0.19, 0.34, { f: 135 });
+      // (the board landing is e_pageBoard, fired by the scene on the frame the board reaches the table)
     },
   },
   e_pageSlip: {
@@ -130,8 +153,8 @@ export const RECIPES = {
     verb: 0.3,
     play(v) {
       // both boards lift: air pulled in between the pages, rising and tightening to the clap
-      sweep(v, 0, 0.16, [500, 1600, 3400], 0.22, { q: 1.1, kind: 'pink', peakAt: 0.95 });
-      creak(v, 0.02, 0.12, 0.14, 520, 760, 50);
+      sweep(v, 0, 0.16, [500, 1600, 3400], 0.36, { q: 1.1, kind: 'pink', peakAt: 0.95 });
+      creak(v, 0.02, 0.12, 0.24, 520, 760, 50);
     },
   },
   e_pagePat: {
@@ -141,36 +164,151 @@ export const RECIPES = {
     duck: 0.35,
     play(v) {
       // PAT — two boards clapping: a very hard broadband transient (two micro-strikes 2 ms apart) …
-      const room = v.echo(0.045, 0.22, { wet: 0.32, tone: 2600 });
+      const room = v.echo(0.052, 0.3, { wet: 0.4, tone: 4200 });
       const hit = v.filt('bandpass', 1500, 0.55);
       hit.connect(room);
-      v.noise('white', { g: perc(1.7, 0.03, 0.0002), to: hit });
-      v.noise('white', { t: 0.002, g: perc(0.95, 0.018, 0.0002), to: v.filt('highpass', 2600, 0.7) });
+      v.noise('white', { g: perc(1.8, 0.06, 0.0004), to: hit });
+      v.noise('white', { t: 0.002, g: perc(0.8, 0.03, 0.0003), to: v.filt('highpass', 2600, 0.7) });
+      // … the hand-clap body of the boards: a hard 1–3 kHz slap (two layers, the second 6 ms late = the far board)
+      const clap = v.filt('bandpass', 2000, 1.1);
+      clap.connect(room);
+      v.noise('white', { g: perc(3.0, 0.12, 0.0006), to: clap });
+      v.noise('white', { t: 0.006, g: perc(1.4, 0.06, 0.0006), to: v.filt('bandpass', 1200, 1.3) });
       // … the trapped air bursting out of the pages (a short low puff) …
-      puff(v, 0, 0.5, 0.06, 1100, { kind: 'white', att: 0.0005 });
+      puff(v, 0, 0.7, 0.1, 1300, { kind: 'white', att: 0.0008 });
       // … and the body of the closed tome (dull, dry: a quick low drop, no ring)
-      thump(v, 0, 140, 52, 0.48, 0.08, { drive: 1.6 });
+      thump(v, 0, 165, 62, 0.72, 0.12, { drive: 2.4 });
       // the paper inside settles a beat later
-      flap(v, 0.07, 0.07, { f: 3200, d: 0.05 });
+      flap(v, 0.07, 0.09, { f: 3200, d: 0.05 });
     },
   },
-  e_pageRiffle: {
+  e_pageFlap: {
+    cap: 8,
+    gap: 0.008,
+    verb: 0.18,
+    vary: 0.05,
+    play(v) {
+      // one page of the riffle turns (fired by the scene as each page leaves the block: synced at every speed)
+      pageFlap(v, 0, 0.46);
+    },
+  },
+  e_pageFlapStiff: {
+    cap: 8,
+    gap: 0.008,
+    verb: 0.18,
+    vary: 0.04,
+    play(v) {
+      // every third page is a heavier leaf: a double edge tick, a stiffer, shorter glide
+      pageFlap(v, 0, 0.52, true);
+    },
+  },
+  e_pageRiffleRef: {
+    cap: 1,
+    play(v) {
+      RIFFLE_TIMES.forEach((ms, i) => pageFlap(v, ms / 1000, i % 3 === 2 ? 0.52 : 0.46, i % 3 === 2));
+      const bp = v.filt('bandpass', [[0, 1300], [0.35, 1700, 'e'], [1.1, 1200, 'e']], 3.2);
+      const fl = v.flutter(26, 0.7, { d: 0.7, base: 0.3, to: bp });
+      v.noise('pink', { g: [[0, 0], [0.12, 0.055], [0.5, 0.05], [0.7, 0.0001, 'e']], to: fl });
+    },
+  },
+  e_pageGust: {
     cap: 1,
     gap: 0.2,
+    verb: 0.2,
+    play(v) {
+      // the gust under the riffle (started on the riffle's first page, stopped on its last): a NARROW band of air
+      // fluttering at the page rate, low and short — never a broadband sweep (that is S4's wind)
+      const bp = v.filt('bandpass', [[0, 1300], [0.35, 1700, 'e'], [1.1, 1200, 'e']], 3.2);
+      const fl = v.flutter(26, 0.7, { d: 1.2, base: 0.3, to: bp });
+      v.noise('pink', { g: [[0, 0], [0.12, 0.055], [0.7, 0.05], [1.2, 0.0001, 'e']], to: fl });
+    },
+  },
+  e_pageLand: {
+    cap: 1,
+    gap: 0.1,
     verb: 0.3,
     play(v) {
-      // the book flips through itself: one flap per page the scene turns (RIFFLE_TIMES), accelerating to a blur and
-      // slowing to the last page
-      const times = RIFFLE_TIMES.map((ms) => ms / 1000);
-      const t = times[times.length - 1] + 0.04;
-      const N = times.length - 1;
-      const L = v.panner(-0.35);
-      const R = v.panner(0.35);
-      times.forEach((tt, i) => flap(v, tt, 0.26 * (0.75 + 0.25 * Math.sin((i / N) * Math.PI)), { f: 2300 + (i % 4) * 420, d: 0.022, to: i % 2 ? R : L }));
-      // the gust that turns them (a short wind breath, inside the riffle, not a wide sweep)
-      sweep(v, 0, t + 0.06, [600, 1500, 900], 0.12, { q: 0.9, kind: 'pink', peakAt: 0.4 });
-      // the very last page lands
-      flap(v, t + 0.01, 0.2, { f: 1900, d: 0.06 });
+      // the riffle's very last page lands flat: a long thwip and a soft paper slap on the stack
+      pageFlap(v, 0, 0.6);
+      flap(v, 0.012, 0.3, { f: 1900, d: 0.06 });
+      board(v, 0.016, 0.14, { f: 190 });
+    },
+  },
+  e_pageBoard: {
+    cap: 2,
+    gap: 0.06,
+    verb: 0.3,
+    play(v) {
+      // the swung cover board lands flat (fired when the board reaches the table: synced at every speed)
+      board(v, 0, 0.42, { f: 135 });
+      flap(v, 0.004, 0.14, { f: 2400, d: 0.04 });
+    },
+  },
+  e_pageStrain: {
+    cap: 4,
+    gap: 0.01,
+    verb: 0.22,
+    play(v) {
+      // the shut tome strains: one dull leather knock of the board against its clasp (pitch rises per knock)
+      board(v, 0, 0.36, { f: 160 });
+      v.noise('white', { t: 0.002, g: perc(0.06, 0.012, 0.0005), to: v.filt('bandpass', 1800, 2) });
+    },
+  },
+  e_pageCrease: {
+    cap: 8,
+    gap: 0.006,
+    verb: 0.2,
+    vary: 0.04,
+    play(v) {
+      // one origami crease snapping in (fired on fold steps 1 and 2)
+      v.noise('white', { g: perc(0.9, 0.006, 0.0002), to: v.filt('bandpass', 5600, 2.4) });
+      v.noise('white', { t: 0.003, g: perc(0.3, 0.012, 0.0005), to: v.filt('bandpass', [[0, 4200], [0.012, 2600, 'e']], 3) });
+    },
+  },
+  e_pagePress: {
+    cap: 8,
+    gap: 0.006,
+    verb: 0.22,
+    vary: 0.03,
+    play(v) {
+      // the folded page is pressed into a card (fold step 3, the white press): a firm paper snap and a small glint
+      v.noise('white', { g: perc(0.5, 0.005, 0.0002), to: v.filt('bandpass', 6400, 2.4) });
+      flap(v, 0.004, 0.22, { f: 3000, d: 0.02 });
+      v.tone('sine', [[0, 1320], [0.05, 1180, 'e']], { t: 0.008, g: perc(0.05, 0.06, 0.002) });
+    },
+  },
+  e_pageTuck: {
+    cap: 8,
+    gap: 0.01,
+    verb: 0.15,
+    vary: 0.03,
+    play(v) {
+      // a fresh card tucks into its hand: a soft, short paper slide and a muted tap (pitch per card)
+      v.noise('white', { g: [[0, 0], [0.012, 0.26], [0.05, 0.0001, 'e']], to: v.filt('bandpass', [[0, 2600], [0.05, 4200, 'e']], 1.8) });
+      v.noise('pink', { t: 0.04, g: perc(0.5, 0.02, 0.001), to: v.filt('bandpass', 900, 1.2) });
+      thump(v, 0.04, 260, 180, 0.08, 0.03);
+    },
+  },
+  e_pageFizzle: {
+    cap: 2,
+    gap: 0.1,
+    verb: 0.25,
+    play(v) {
+      // a starved page: it crumples (a short dry crackle), flops back down and the empty deck puffs a little dust
+      v.crackle({ d: 0.12, n: 14, g: 0.22, f: 3200, q: 1.8, dec: 0.004 });
+      flap(v, 0.13, 0.32, { f: 1400, d: 0.07 });
+      thump(v, 0.15, 170, 100, 0.12, 0.05);
+      puff(v, 0.2, 0.12, 0.12, 700);
+    },
+  },
+  e_pageDust: {
+    cap: 2,
+    gap: 0.1,
+    verb: 0.35,
+    play(v) {
+      // dust lifts out of an empty gutter: a dry, soft breath, a few motes ticking
+      puff(v, 0, 0.2, 0.22, 1500);
+      v.crackle({ t: 0.03, d: 0.2, n: 6, g: 0.05, f: 5200, q: 2.5, dec: 0.003 });
     },
   },
   e_pageLeaf: {
@@ -180,9 +318,9 @@ export const RECIPES = {
     vary: 0.05,
     play(v) {
       // a pressed, dry page settles on the pile: soft air "tss" and a feather tick
-      v.noise('pink', { g: [[0, 0], [0.02, 0.17], [0.16, 0.0001, 'e']], to: v.filt('bandpass', [[0, 3800], [0.16, 2400, 'e']], 1.3) });
-      v.noise('white', { t: 0.012, g: perc(0.07, 0.01, 0.0005), to: v.filt('bandpass', 5200, 2) });
-      puff(v, 0.01, 0.06, 0.05, 600);
+      v.noise('pink', { g: [[0, 0], [0.02, 0.34], [0.16, 0.0001, 'e']], to: v.filt('bandpass', [[0, 3800], [0.16, 2400, 'e']], 1.3) });
+      v.noise('white', { t: 0.012, g: perc(0.16, 0.01, 0.0005), to: v.filt('bandpass', 5200, 2) });
+      puff(v, 0.01, 0.14, 0.05, 600);
     },
   },
   e_pageInk: {
@@ -191,11 +329,11 @@ export const RECIPES = {
     verb: 0.45,
     play(v) {
       // three quill strokes write the fresh pages …
-      quill(v, 0, 0.07, 0.16, 3400, 4600);
-      quill(v, 0.08, 0.06, 0.13, 4200, 3300);
-      quill(v, 0.15, 0.08, 0.12, 3600, 5000);
+      quill(v, 0, 0.07, 0.28, 3400, 4600);
+      quill(v, 0.08, 0.06, 0.24, 4200, 3300);
+      quill(v, 0.15, 0.08, 0.22, 3600, 5000);
       // … and the ink blooms into stars: a soft, breathy triad on triangles (no glass, no bell)
-      [523, 659, 784].forEach((f, i) => v.tone('triangle', f, { t: 0.04 + i * 0.05, g: [[0, 0], [0.04, 0.035], [0.32, 0.0001, 'e']] }));
+      [523, 659, 784].forEach((f, i) => v.tone('triangle', f, { t: 0.04 + i * 0.05, g: [[0, 0], [0.04, 0.06], [0.32, 0.0001, 'e']] }));
       v.noise('pink', { t: 0.04, g: [[0, 0], [0.08, 0.04], [0.36, 0.0001, 'e']], to: v.filt('bandpass', 5200, 2) });
     },
   },
@@ -205,11 +343,10 @@ export const RECIPES = {
     verb: 0.22,
     vary: 0.04,
     play(v) {
-      // origami: two crisp creases and the press of the finished card
-      v.noise('white', { g: perc(0.4, 0.006, 0.0002), to: v.filt('bandpass', 5600, 2.4) });
-      v.noise('white', { t: 0.045, g: perc(0.34, 0.006, 0.0002), to: v.filt('bandpass', 6400, 2.4) });
-      flap(v, 0.085, 0.12, { f: 3000, d: 0.02 });
-      v.tone('sine', [[0, 1320], [0.05, 1180, 'e']], { t: 0.09, g: perc(0.03, 0.05, 0.002) });
+      // a fresh page peels up off the spread (the creases and the press are e_pageCrease / e_pagePress, fired on
+      // the fold's own steps): a quick rising paper peel and a soft lift of air
+      sweep(v, 0, 0.07, [2200, 4800, 5600], 0.3, { q: 1.6, peakAt: 0.55 });
+      v.noise('white', { t: 0.002, g: perc(0.2, 0.004, 0.0002), to: v.filt('bandpass', 6000, 2.4) });
     },
   },
   e_pageShut: {

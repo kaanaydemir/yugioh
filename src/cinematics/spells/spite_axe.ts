@@ -21,43 +21,51 @@
 //   +150   the AXE appears high above (white-hot first frame), TUMBLES half a turn (4 turn drawings)…
 //   +260   …and DIVES head-first along its own haft line (inQuad), two chains streaming behind it, ember sparks
 //          trailing, a 1-frame light line behind it — e_axeFall (falling whistle + chain rattle)
-//   +500   THE BITE: its head buries 9 px in the floor beside the monster (rows under the floor line are cut);
-//          hit-stop 80 ms; a white-hot frame; five ember cracks race out over the floor (stepped growth); a dirt
-//          + ember burst; a floor flash (fire3); 3 px shake — e_axeBite. The haft QUIVERS (±1 px, 6 frames).
-//   +560   the chains fall slack and coil on the floor in two heaps — e_axeChain
-//   +640   VEIN PULSE ×3 (every 210 ms): a hot wave runs down the haft's veins, the cracks flare, the floor cracks
-//          brighten a step, an ember ring breathes round the bite — e_axePulse (low beating drone)
-//   +760   THE REACH: the monster leans toward the axe (2 px, stepped) and dips 1 px; crimson-ember veins CLIMB its
-//          edge from the feet (rimClimb, fire ramp) — the axe is taking it
-//   +1220  THE WRENCH: the haft trembles harder (±1–2 px), the chains lift off the floor and pull TAUT to two iron
-//          pegs (straight link lines, vibrating), the floor cracks run longer and glow fire4 — e_axeWrench (groan)
-//   +1580  SNAP: the chains break (white spark at each break, links flung), hit-stop 60 ms; the axe TEARS OUT of the
-//          floor (dirt clods + ember spray, a dark slit left in the floor) — e_axeSnap…
-//   +1600  …and swings up in an arc to its wielder's back (turning to the slung pose, 6 turn drawings), shrinking
-//          into the slung axe on a white-hot frame
-//   +1820  THE OATH: the EYES IGNITE (white-hot, then ember; a 4-ray star on them), the body's edge flares ember,
-//          the single "+800" beside the head, the badge rolls; the persistent aura starts (AxeAura) — e_axeIgnite.
-//          The floor cracks cool down the fire ramp to nothing (≈500 ms, not waited for)
-//   +1950  the input returns
+//   +500   THE BITE beside the wielder, on the side whose ground is FREE (planBite: the front first, else the back,
+//          else the front corner of its own tile), the haft's top 5 px off the body's edge at grip height: ONE white
+//          silhouette frame, then the real drawing with white-cored cracks (heat 4) through the 80 ms hit-stop; a
+//          1-frame hot floor ellipse; five ember cracks race out (stepped); dirt + ember burst; 3 px shake — e_axeBite.
+//          The haft QUIVERS (±1 px, 6 frames).
+//   +560   the chains fall slack and coil round two iron pegs on the far side (real links: _spite_axe_chain.ts)
+//   +640   VEIN PULSE (the haft beats, the cracks flare, an ember ring breathes) — e_axePulse
+//   +830   THE REACH: the wielder takes its reach pose (its strike toward a front bite, its flinch toward a back one)
+//          and steps 2 → 4 → 6 px toward the haft, a 1-px crouch on the first steps
+//   +1040  THE GRIP (contact frame: the haft's top in its hand) — e_axeGrip; a 1-px fire-ramp VEIN climbs from the
+//          hand up the body's near edge to the head (≈320 ms, stepped; then it beats)
+//   +1360  THE WRENCH: three tugs (230 ms each) — the wielder leans back (4 → 2 → −1 px) with a 1-px heave, the
+//          haft TILTS toward it in 15° drawings so its top stays in the hand, rising 1–2 px; the chains pull taut to
+//          their pegs as straight link rows vibrating ±1 px; the cracks glow fire4 — e_axeWrench (0.92 s, a tug accent each)
+//   +2050  SNAP: the chains break (a white star at each break, links FLUNG spinning), hit-stop 60 ms; the axe TEARS
+//          OUT (dirt clods + embers, the slit), white-cored for the stop; the wielder recoils in its pull pose —
+//          e_axeSnap; then it settles back through −5 → −3 → −1 → 0 px (overshoot)
+//   +2110  the axe arcs over its shoulder to its back (6 turn drawings), the torn chain ends trailing, into the slung
+//          small axe (two white-cored frames)
+//   +2350  THE OATH: the vein flares white → fire4 and cools out, the EYES IGNITE (authored eye anchors per monster:
+//          _spite_axe_aura.ts EYE_ANCHORS; white, then ember; a 4-ray star), the body's edge flares ember, "+800",
+//          the badge rolls; the persistent aura starts (AxeAura) — e_axeIgnite
+//   +2510  the input returns
 // DESTROYED (hook 'destroyed', the axe's card leaves its spell zone): the card flares ember, a crack runs across it,
 //   it crumbles into embers on its tile — e_axeCard
 // RETURN (lane-E toDeck, registerLaneE; +ms):
-//   +0     SLIP: the slung axe shudders (±1 px), the wielder's eyes go out (a wisp of ember smoke), the −800 rolls;
-//          a dead wielder's axe (Fallen) wrenches itself out of the floor instead — e_axeSlip
-//   +200   it drops 4 px out of the grip, tilts, and LAUNCHES: it flies in a high arc to its OWNER's deck pile,
-//          spinning 1.5 turns, growing to the big drawing on an ember frame, its chains whipping behind with small
-//          white cracks along them — e_axeFly
-//   +640   SLAM onto the deck pile, head down: hit-stop 60 ms, white-hot frame, ember burst, 2 px shake, the pile
-//          bumps (+1 card) — e_axeDeck; the axe sinks into the pile (cut from the top, ember look)
-//   +760   THE LASH: a chain uncoils from the pile and whips across to the owner's LP panel (a travelling wave of
-//          links); the CRACK on the panel: a white → ember edge flash round the panel, spark burst, the damage
-//          event (−500) plays there — e_axeLash
-//   +1100  the chain snaps back into the pile; done (≈1.25 s)
+//   +0     SLIP: the slung axe shudders (±1 px), the wielder's eyes go out (a wisp of ember smoke); a dead wielder's
+//          axe (Fallen) wrenches itself out of the floor instead — e_axeSlip. A card tile left on the field (a
+//          monster's death / a mass wipe: no 'destroyed' hook) crumbles to embers on its tile (crumbleTile, e_axeCard)
+//   +200   it drops 4 px out of the grip, tilts, and LAUNCHES (the −800 rolls NOW, as it leaves): one white-cored
+//          frame, a high arc to its OWNER's deck pile (the apex kept under the HUD band), spinning 1.5 turns, a chain
+//          of real links whipping behind with white cracks — e_axeFly
+//   +640   SLAM onto the deck pile: the white-cored drawing for the 60 ms stop, the pile squashes, its cards fan 1 px,
+//          a dust ring widens, embers; 2 px shake — e_axeDeck (a card-stack "güm", no iron); it sinks into the pile
+//   +770   THE LASH: a red-hot chain of links unrolls from the pile in an S-wave (2–3 crests travelling), its tip
+//          OVERSHOOTS the panel and snaps back: one held CRACK frame (a white-cored 8-ray star on the tip), the panel
+//          recoils 2 px (hud.shake) with a stepped white → fire edge, a spark ring; the damage (−500) plays there —
+//          e_axeLash (a whip crack landing as a 100 Hz hit)
+//   +1020  the chain jerks back off the panel in a wave and slithers into the pile; done (≈1.35 s)
 
 import type Phaser from 'phaser';
 import type { CardId } from '../../data/cards';
 import type { GameEvent, PlayerId, Uid } from '../../engine/types';
 import { PAL } from '../../art/palette';
+import { currentAtk } from '../../engine/query';
 import { crackPath } from '../../art/spellmotifs-v3';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { DEPTH, LOOK_V3, type XY, panelRect, zoneXY } from '../../view/layout';
@@ -74,7 +82,7 @@ import { lpPoint } from '../_core/helpers';
 import { fx, registerCardHook, registerEvent, registerObserver, type CinematicContext } from '../api';
 import { registerLaneE, type LaneECtx } from '../b2e/dispatch';
 import { bg, evAt, idxOf, lightFlash, lightPool, relax, setTileOf, spellOpening, type ActCtx, type AnyCtx } from './_kit';
-import { type AxeOpts, axeAngle, axeKey, axeOffset, paintLink } from './_spite_axe_motif';
+import { type AxeOpts, axeAngle, axeKey, axeOffset } from './_spite_axe_motif';
 import { AURAS, AxeAura, FALLEN, LAST, type AxePose, drawEyes, eyesOf, holdAt, holdPose } from './_spite_axe_aura';
 
 const ID: CardId = 'spite_axe';
@@ -159,30 +167,6 @@ class AxeSprite {
   }
   destroy(): void {
     if (this.img.active) this.img.destroy();
-  }
-}
-
-/** Chains: polyline of links (world points), drawn into a raster. */
-function chainAlong(r: Raster, pts: readonly XY[], pitch = 3, lit = -1): void {
-  let acc = 0;
-  let n = 0;
-  for (let i = 0; i + 1 < pts.length; i++) {
-    const a = pts[i];
-    const b = pts[i + 1];
-    const len = Math.hypot(b.x - a.x, b.y - a.y);
-    if (len <= 0) continue;
-    const dx = (b.x - a.x) / len;
-    const dy = (b.y - a.y) / len;
-    while (acc <= len) {
-      const x = R(a.x + dx * acc);
-      const y = R(a.y + dy * acc);
-      // ink under-pixel so the links read on any floor
-      r.px(x, y + 1, PAL.ink);
-      paintLink((px, py, c) => r.px(px, py, c), x, y, dx, dy, n, n === lit);
-      n++;
-      acc += pitch;
-    }
-    acc -= len;
   }
 }
 
@@ -395,11 +379,61 @@ interface Pose {
 }
 const frameName = (p: Pose): string => `${p.anim}:${p.frame}`;
 
-/** The REACH pose toward a bite on the monster's front (its strike) or its back (its flinch), and the WRENCH pose. */
-function poses(u: MonsterUnit, front: boolean): { reach: Pose; wrench: Pose } {
-  const strike: Pose = u.has('attack') ? { anim: 'attack', frame: Math.max(0, Math.min(u.frameCount('attack') - 1, u.impactFrame)) } : { anim: 'idle', frame: 0 };
-  const flinch: Pose = u.has('hit') ? { anim: 'hit', frame: Math.min(1, u.frameCount('hit') - 1) } : { anim: 'idle', frame: 0 };
-  return front ? { reach: strike, wrench: flinch } : { reach: flinch, wrench: strike };
+/** Opaque bottom row and the outermost column toward `side` within the body's middle band, of a frame (frame px). */
+function frameReach(m: FrameMask, side: number, flip: boolean): { bottom: number; reach: number } | null {
+  let top = -1;
+  let bottom = -1;
+  for (let y = 0; y < m.H; y++)
+    for (let x = 0; x < m.W; x++)
+      if (m.data[(y * m.W + x) * 4 + 3] > 0) {
+        if (top < 0) top = y;
+        bottom = y;
+        break;
+      }
+  if (top < 0) return null;
+  const y0 = Math.round(top + (bottom - top) * 0.3);
+  const y1 = Math.round(top + (bottom - top) * 0.75);
+  let reach = -Infinity;
+  for (let y = y0; y <= y1; y++)
+    for (let x = 0; x < m.W; x++) {
+      if (m.data[(y * m.W + x) * 4 + 3] === 0) continue;
+      const wx = flip ? m.W - 1 - x : x;
+      reach = Math.max(reach, side > 0 ? wx : -wx);
+    }
+  return { bottom, reach };
+}
+
+/**
+ * The REACH pose toward the bite (side) and the PULL pose away from it: chosen among the monster's own frames (its
+ * idle, the attack frames up to the impact, the flinch frames) — only GROUNDED ones (feet within 2 px of the idle
+ * drawing's: a leaper's mid-air strike frame never holds the axe) — the one reaching furthest toward the bite, and
+ * the one leaning furthest away.
+ */
+function poses(u: MonsterUnit, side: number): { reach: Pose; wrench: Pose } {
+  const s = u.sprite;
+  const cands: Pose[] = [{ anim: 'idle', frame: 0 }];
+  if (u.has('attack')) for (let f = 0; f <= Math.min(u.frameCount('attack') - 1, u.impactFrame); f++) cands.push({ anim: 'attack', frame: f });
+  if (u.has('hit')) for (let f = 0; f < u.frameCount('hit'); f++) cands.push({ anim: 'hit', frame: f });
+  const idle = frameMask(s, 'idle:0');
+  const base = idle ? frameReach(idle, side, s.flipX) : null;
+  let reach: Pose = cands[0];
+  let wrench: Pose = cands[0];
+  let rMax = base?.reach ?? 0;
+  let rMin = base?.reach ?? 0;
+  for (const c of cands) {
+    const m = frameMask(s, frameName(c));
+    const r = m ? frameReach(m, side, s.flipX) : null;
+    if (!r || !base || Math.abs(r.bottom - base.bottom) > 2) continue;
+    if (r.reach > rMax) {
+      rMax = r.reach;
+      reach = c;
+    }
+    if (r.reach < rMin) {
+      rMin = r.reach;
+      wrench = c;
+    }
+  }
+  return { reach, wrench };
 }
 
 /** The planted drawing for a bite on screen side `side` of the body: the blade fans away, the haft leans in. */
@@ -415,6 +449,8 @@ interface BitePlan {
   mirror: boolean;
   reach: Pose;
   wrench: Pose;
+  /** The axe's depth while planted (in front of the wielder, and of any neighbour it overlaps). */
+  depth?: number;
 }
 
 const REACH_PX = 6;
@@ -429,17 +465,17 @@ function planBite(ctx: EquipCtx, u: MonsterUnit): BitePlan {
   const s = u.sprite;
   const home = { x: R(u.home.x), y: R(u.home.y) };
   const facing = u.flipX ? -1 : 1;
-  const others: { l: number; r: number; t: number; b: number }[] = [];
+  const others: { l: number; r: number; t: number; b: number; d: number }[] = [];
   for (const p of ctx.state.players)
     for (const m of p.monsters) {
       if (!m || m.uid === u.uid) continue;
       const o = ctx.unit(m.uid);
       const sil = o && o.sprite.active && o.sprite.visible ? silhouetteOf(o.sprite) : null;
-      if (sil) others.push({ l: sil.left, r: sil.right, t: sil.top, b: sil.bottom });
+      if (sil) others.push({ l: sil.left, r: sil.right, t: sil.top, b: sil.bottom, d: o!.sprite.depth });
     }
   const build = (side: number, floorY: number): BitePlan & { box: { l: number; r: number; t: number; b: number } } => {
     const front = side === facing;
-    const ps = poses(u, front);
+    const ps = poses(u, side);
     const pp = plantFor(side);
     const lg: AxeOpts = { size: 'lg', angle: pp.angle, mirror: pp.mirror };
     const toe = axeOffset(lg, 9, 11);
@@ -455,13 +491,25 @@ function planBite(ctx: EquipCtx, u: MonsterUnit): BitePlan {
     const box = { l: Math.min(...xs) - 3, r: Math.max(...xs) + 3, t: plantO.y + pom.y, b: floorY + 2 };
     return { side, front, bite, floorY, plantO, angle: pp.angle, mirror: pp.mirror, reach: ps.reach, wrench: ps.wrench, box };
   };
-  const hits = (b: { l: number; r: number; t: number; b: number }): boolean => others.some((o) => b.l < o.r + 1 && b.r > o.l - 1 && b.t < o.b && b.b > o.t + 4);
-  for (const side of [facing, -facing]) {
-    const plan = build(side, home.y + 5);
-    if (!hits(plan.box)) return plan;
-  }
-  // both sides taken: the front corner of its own tile, nearer the camera
-  return build(facing, home.y + 10);
+  const overlap = (b: { l: number; r: number; t: number; b: number }): number =>
+    others.reduce((a, o) => a + Math.max(0, Math.min(b.r, o.r + 1) - Math.max(b.l, o.l - 1)) * Math.max(0, Math.min(b.b, o.b) - Math.max(b.t, o.t + 4)), 0);
+  // the front first, then the back; then the same a little nearer / farther from the camera: the least covered wins
+  let best: (BitePlan & { box: { l: number; r: number; t: number; b: number } }) | null = null;
+  let bestA = Infinity;
+  for (const dy of [5, 10, 0])
+    for (const side of [facing, -facing]) {
+      const plan = build(side, home.y + dy);
+      const a = overlap(plan.box);
+      if (a < bestA) {
+        bestA = a;
+        best = plan;
+      }
+      if (a === 0) return plan;
+    }
+  // crowded: drawn in front of any neighbour it overlaps (it is the target's axe, never hidden behind another body)
+  const b = best!.box;
+  const cover = others.filter((o) => b.l < o.r + 1 && b.r > o.l - 1 && b.t < o.b && b.b > o.t + 4);
+  return { ...best!, depth: Math.max(s.depth, ...cover.map((o) => o.d)) + 1 };
 }
 
 // ---------------------------------------------------------------- the vein (1-px fire ramp up the body's near edge)
@@ -486,7 +534,7 @@ function veinPath(s: Phaser.GameObjects.Sprite, grip: XY, side: number, eye: XY 
     return best;
   };
   for (let y = grip.y; y >= stopY; y--) {
-    const ex = nearest(y, x, out.length ? 4 : 10);
+    const ex = nearest(y, x, out.length ? 4 : 10) ?? (out.length ? nearest(y, x, 12) : null);
     if (ex === null) {
       if (out.length) break;
       continue;
@@ -496,7 +544,7 @@ function veinPath(s: Phaser.GameObjects.Sprite, grip: XY, side: number, eye: XY 
     if (out.length) {
       const last = out[out.length - 1];
       const st = Math.sign(nx - last.x);
-      for (let xx = last.x + st; st !== 0 && xx !== nx; xx += st) if (sil.has(xx, last.y)) out.push({ x: xx, y: last.y });
+      if (Math.abs(nx - last.x) <= 6) for (let xx = last.x + st; st !== 0 && xx !== nx; xx += st) if (sil.has(xx, last.y)) out.push({ x: xx, y: last.y });
     }
     out.push({ x: nx, y });
     x = nx + side;
@@ -528,7 +576,7 @@ async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void
   const st = evAt(ctx, ci, 'statChange');
   const tile = ctx.views.field.tileAt(ev.player, 'spellTrap', ev.spellZone);
   const from: XY = (ctx.hints.from as XY | undefined) ?? (tile ? { x: tile.home.x, y: tile.home.y } : zoneXY(ev.player, 'spellTrap', ev.spellZone));
-  const depthAxe = s.depth + 1;
+  const depthAxe = plan.depth ?? s.depth + 1;
   const sparks = new PxSparks(sc, DEPTH.FX + 3);
   const fxr = new Raster(sc, 0, 0, 640, 360, DEPTH.FX + 2);
   const chainR = new Raster(sc, 0, 0, 640, 360, depthAxe - 0.2);
@@ -986,10 +1034,14 @@ registerObserver((_ev, ctx) => {
  * The axe's bonus taken back from a wielder still standing (its card left the field): the aura ends here (never
  * Ejder Kılıcı's sword break, which keys on the 'equip' aura), then the plain stat roll plays.
  */
+/** Wielders whose axe is leaving right now: their −800 waits for the axe's launch. */
+const LAUNCH = new Map<Uid, Promise<void>>();
+
 registerEvent(
   'statChange',
   async (ctx) => {
     const e = ctx.ev as StatEv;
+    if (LOOK_V3 && e.atk < e.prevAtk && LAUNCH.has(e.uid)) await LAUNCH.get(e.uid);
     if (LOOK_V3 && e.atk < e.prevAtk) {
       const u = ctx.unit(e.uid);
       const a = u?.aura('equip');
@@ -1059,6 +1111,7 @@ registerLaneE(
 
 async function returnScene(ctx: DeckCtx): Promise<void> {
   const ev = ctx.ev;
+  console.log('[axe dbg] return', ctx.scene.time.now, AURAS.has(ev.uid), FALLEN.has(ev.uid));
   const sc = ctx.scene;
   const field = ctx.views.field;
   const owner: PlayerId = ev.owner;
@@ -1091,6 +1144,24 @@ async function returnScene(ctx: DeckCtx): Promise<void> {
   // the −800 rolls when the axe LEAVES its bearer (the launch), never before
   const ci = wielder ? ctx.findType('statChange', (e) => e.uid === wielder!.uid && e.atk < e.prevAtk) : -1;
   if (ci >= 0) ctx.consumeAt(ci);
+  // the −800 waits for the launch however it is played (a mass wipe's pass may play it beside this scene)
+  let launched: () => void = () => undefined;
+  let holding = false;
+  if (wielder) {
+    const w = wielder;
+    LAUNCH.set(w.uid, new Promise<void>((res) => (launched = res)));
+    bg(wait(sc, 4000).then(() => launched()));
+    // the badge keeps the bonus until the launch, even if a board sync between batches already took it down
+    const hold = currentAtk(ctx.stateNext, w.uid) + 800;
+    console.log('[axe dbg] hold', hold, 'shown', JSON.stringify(w.shownStats), 'ci', ci);
+    holding = true;
+    onFrame(sc, () => {
+      if (!holding || w.retired || !w.sprite.active) return false;
+      const sh = w.shownStats;
+      if (sh.atk !== hold) void w.setStats(hold, sh.def, false);
+      return true;
+    });
+  }
   const pile = field.pile(owner, 'deck');
   const deck = pile.topXY();
   const sparks = new PxSparks(sc, DEPTH.FX + 3);
@@ -1118,7 +1189,11 @@ async function returnScene(ctx: DeckCtx): Promise<void> {
 
   // ---- LAUNCH: a white-cracked frame, the big drawing, an arc to the deck (under the HUD band), spinning
   playV3('e_axeFly', { volume: 0.95, pan: panAt(pose.x) });
+  holding = false;
+  launched();
+  if (wielder) LAUNCH.delete(wielder.uid);
   if (ci >= 0) bg(ctx.play(ci));
+  else if (wielder && !wielder.retired) void wielder.setStats(currentAtk(ctx.stateNext, wielder.uid), wielder.shownStats.def, true);
   axe.set({ size: 'lg', heat: 4 });
   axe.img.setDepth(DEPTH.FX + 2);
   await frames(sc, 1);
@@ -1170,7 +1245,7 @@ async function returnScene(ctx: DeckCtx): Promise<void> {
   } catch {
     /* the sync fixes the pile anyway */
   }
-  const dust = Raster.around(sc, deck.x, deck.y + 4, 80, 40, DEPTH.CARD_ON_TILE + 7);
+  const dust = Raster.around(sc, deck.x, deck.y + 4, 100, 50, DEPTH.FX);
   bg(
     (async () => {
       for (let i = 0; i < 6; i++) {
@@ -1178,14 +1253,17 @@ async function returnScene(ctx: DeckCtx): Promise<void> {
         // the fanned card edges (1 px out each side, two frames), then the dust ring widening
         if (i < 2)
           for (let y = -2; y <= 2; y++) {
-            dust.px(deck.x - 12 - (y + 2 > 2 ? 1 : 0), deck.y + 2 + y, y === -2 ? PAL.mist : PAL.stone3);
-            dust.px(deck.x + 12 + (y + 2 > 2 ? 1 : 0), deck.y + 2 + y, y === -2 ? PAL.mist : PAL.stone3);
+            dust.px(deck.x - 21 - (y + 2 > 2 ? 1 : 0), deck.y + 3 + y, y === -2 ? PAL.mist : PAL.stone3);
+            dust.px(deck.x + 21 + (y + 2 > 2 ? 1 : 0), deck.y + 3 + y, y === -2 ? PAL.mist : PAL.stone3);
           }
-        const r = 10 + i * 4;
-        for (let a = 0; a < 40; a++) {
+        const r = 22 + i * 4;
+        for (let a = 0; a < 64; a++) {
           if ((a + i) % (i < 3 ? 2 : 3)) continue;
-          const x = R(deck.x + Math.cos((a / 40) * Math.PI * 2) * r);
-          const y = R(deck.y + 5 + Math.sin((a / 40) * Math.PI * 2) * r * 0.45);
+          const sn = Math.sin((a / 64) * Math.PI * 2);
+          // only the near half of the ring (the pile hides the far half)
+          if (sn < -0.2) continue;
+          const x = R(deck.x + Math.cos((a / 64) * Math.PI * 2) * r);
+          const y = R(deck.y + 8 + sn * r * 0.5);
           dust.px(x, y, i < 2 ? PAL.stone3 : i < 4 ? PAL.stone2 : PAL.stone1);
         }
         dust.end();

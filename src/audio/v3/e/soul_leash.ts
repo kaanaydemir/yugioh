@@ -11,8 +11,8 @@
 //   e_leashThrow      the strap whips out to the victim: an air sweep, a thin high link run, the strap's crack
 //   e_leashWeave      the collar wraps round the neck: a leather groan, four stud ticks, the buckle's click
 //   e_leashTear       the shadow tears off its body: a soft crackling rip falling in pitch + a low "hoo" drawn in
-//   e_leashShadowStep a shadow step: a soft boggy pat with a breath of air (quiet, the scene pans it)
-//   e_leashBodyStep   a body step, one beat behind: a heavy dull sub thump + muffled scuff + a leather creak
+//   e_leashShadowStep a shadow step: a soft boggy pat, an audible ~800 Hz puff, a breath (6–8 dB under the body)
+//   e_leashBodyStep   a body step, one beat behind: a dull sub thump + a 250–500 Hz scuff + a leather creak
 //   e_leashTurn       the shadow turns round on its new side: a dark swish and a low murmur
 //   e_leashMerge      the body walks into its shadow: a swelling suck that stops dead into a soft thud
 //   e_leashLock       the collar LOCKS: leather first (a strap thwack), then a small brass two-tone latch
